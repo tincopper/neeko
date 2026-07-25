@@ -1,7 +1,8 @@
 import { useCallback, useState } from 'react';
-import { useEditorStore } from '@/shared/store/editorStore';
-import { sendToTerminal } from '@/features/terminal/components/terminalCommands';
+
 import type { Tab } from '@/features/editor/types';
+import { sendToTerminal } from '@/features/terminal/components/terminalCommands';
+import { useEditorStore } from '@/shared/store/editorStore';
 
 interface PendingAction {
   message: string;

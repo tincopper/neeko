@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from 'react';
-import { X, Search } from '@/shared/components/icons';
+
 import { cn } from '@/lib/utils';
+import { X, Search } from '@/shared/components/icons';
 
 interface SourceFilterProps {
   sources: string[];

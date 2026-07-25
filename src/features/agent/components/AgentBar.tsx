@@ -1,7 +1,10 @@
 import React, { useEffect, useState, useCallback } from 'react';
-import { checkAgentsInstalled } from '../api/agentApi';
-import AgentIcon from './AgentIcon';
+
 import type { AgentConfig } from '@/shared/types';
+
+import { checkAgentsInstalled } from '../api/agentApi';
+
+import AgentIcon from './AgentIcon';
 
 interface AgentBarProps {
   agents: AgentConfig[];

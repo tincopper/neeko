@@ -1,10 +1,11 @@
+import { invoke } from '@tauri-apps/api/core';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { invoke } from '@tauri-apps/api/core';
-import ProjectPanel from '@/features/settings/components/ProjectPanel';
+
 import { useProjectStore } from '@/features/project/store';
-import { AVATAR_COLORS } from '@/shared/utils/projectAvatar';
+import ProjectPanel from '@/features/settings/components/ProjectPanel';
 import type { Project } from '@/shared/types';
+import { AVATAR_COLORS } from '@/shared/utils/projectAvatar';
 
 function makeProject(overrides: Partial<Project> = {}): Project {
   return {
@@ -57,7 +58,7 @@ describe('ProjectPanel — Appearance section', () => {
 
   it('avatar_color 为 null 时不显示 Reset 按钮', () => {
     render(<ProjectPanel projectId="p1" customIdes={[]} onProjectRemoved={vi.fn()} />);
-    expect(screen.queryByTestId('appearance-reset')).toBeNull();
+    expect(screen.queryByTestId('appearance-reset')).not.toBeInTheDocument();
   });
 
   it('avatar_color 已设置时显示 Reset，点击后调命令传 null 并清空 store', () => {

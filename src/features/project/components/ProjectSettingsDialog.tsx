@@ -1,12 +1,14 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { setProjectIde } from '../api/projectApi';
-import { setProjectAgents } from '../../agent/api/agentApi';
-import { IDE_PRESETS, getIdeCommand, getIdeIconSrc } from '@/shared/utils/idePresets';
+
 import AgentIcon from '@/features/agent/components/AgentIcon';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/ui/dialog';
-import { Button } from '@/ui/button';
-import type { AppConfig, AgentConfig } from '@/shared/types';
 import { cn } from '@/lib/utils';
+import type { AppConfig, AgentConfig } from '@/shared/types';
+import { IDE_PRESETS, getIdeCommand, getIdeIconSrc } from '@/shared/utils/idePresets';
+import { Button } from '@/ui/button';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/ui/dialog';
+
+import { setProjectAgents } from '../../agent/api/agentApi';
+import { setProjectIde } from '../api/projectApi';
 
 interface ProjectSettingsDialogProps {
   projectId: string;

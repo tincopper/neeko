@@ -1,4 +1,3 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ArrowLeft,
   Download,
@@ -11,16 +10,20 @@ import {
   SquareTerminal,
   PanelRight,
 } from 'lucide-react';
-import { Button } from '@/ui/button';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+
+import AgentIcon from '@/features/agent/components/AgentIcon';
+import type { AgentConfig } from '@/features/agent/types';
+import { useProjectStore } from '@/features/project/store';
 import { cn } from '@/lib/utils';
+import { Button } from '@/ui/button';
+
 import { getConversationMessages, exportConversation } from '../api/conversationApi';
+import type { ConversationMessage as ConversationMessageType, ConversationMeta } from '../types';
+
 import ConversationMessage from './ConversationMessage';
 import { MessageBlockRenderer } from './MessageBlocks';
 import MessageBubble from './MessageBubble';
-import AgentIcon from '@/features/agent/components/AgentIcon';
-import { useProjectStore } from '@/features/project/store';
-import type { ConversationMessage as ConversationMessageType, ConversationMeta } from '../types';
-import type { AgentConfig } from '@/features/agent/types';
 
 interface ConversationViewerProps {
   conversationId: string;

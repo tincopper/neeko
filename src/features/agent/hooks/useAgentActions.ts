@@ -1,10 +1,12 @@
 import { useCallback } from 'react';
-import { setProjectIde } from '../../project/api/projectApi';
+
+import type { SaveSessionFn } from '@/features/connection/hooks/useWslProjects';
+import { useProjectStore } from '@/features/project/store';
 import { refreshTerminal } from '@/features/terminal/components/terminalCache';
 import { switchAgentInTerminal } from '@/features/terminal/components/terminalCommands';
-import { useProjectStore } from '@/features/project/store';
 import type { AgentConfig } from '@/shared/types';
-import type { SaveSessionFn } from '@/features/connection/hooks/useWslProjects';
+
+import { setProjectIde } from '../../project/api/projectApi';
 
 interface TerminalSettings {
   fontSize: number;

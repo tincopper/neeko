@@ -1,7 +1,8 @@
 import React from 'react';
+
+import neekoIcon from '@/assets/neeko-icon.png';
 import { cn } from '@/lib/utils';
 import { getAvatarStyle, getProjectInitials } from '@/shared/utils/projectAvatar';
-import neekoIcon from '@/assets/neeko-icon.png';
 
 interface ProjectAvatarProps {
   /** Project display name. When missing/empty, falls back to the Neeko icon. */

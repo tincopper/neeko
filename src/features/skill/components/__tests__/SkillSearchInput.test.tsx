@@ -1,5 +1,6 @@
-import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
+import { describe, it, expect, vi } from 'vitest';
+
 import SkillSearchInput from '../SkillSearchInput';
 
 describe('SkillSearchInput', () => {
@@ -27,7 +28,7 @@ describe('SkillSearchInput', () => {
 
   it('clearable=false 时不显示清除按钮', () => {
     render(<SkillSearchInput value="some text" onChange={vi.fn()} clearable={false} />);
-    expect(screen.queryByRole('button')).toBeNull();
+    expect(screen.queryByRole('button')).not.toBeInTheDocument();
   });
 
   it('clearable=true 且 value 非空时显示清除按钮', () => {
@@ -37,7 +38,7 @@ describe('SkillSearchInput', () => {
 
   it('value 为空时即使 clearable=true 也不显示清除按钮', () => {
     render(<SkillSearchInput value="" onChange={vi.fn()} clearable />);
-    expect(screen.queryByRole('button')).toBeNull();
+    expect(screen.queryByRole('button')).not.toBeInTheDocument();
   });
 
   it('点击清除按钮时触发 onChange("")', () => {

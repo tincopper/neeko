@@ -1,17 +1,18 @@
 import { useState, useCallback, useRef, useMemo } from 'react';
+import { useShallow } from 'zustand/shallow';
+
 import { readDirTree, readFileContent, writeFileContent } from '@/features/file/api/fileApi';
-import type { FileNode, FileContent, Tab } from '@/shared/types';
-import { DEFAULT_TREE_DEPTH } from '@/shared/types/file';
-import type { ProjectCommands } from '@/shared/types/activeProject';
+import { useFileStore } from '@/features/file/store';
 import { useProjectStore } from '@/features/project/store';
 import { useWorktreeStore } from '@/features/project/worktreeStore';
-import { useFileStore } from '@/features/file/store';
+import { closeEditorTab } from '@/features/terminal/components/terminalTabCleanup';
 import { useEditorStore } from '@/shared/store';
-import { useShallow } from 'zustand/shallow';
-import { buildWorktreeTabKey, parseProjectIdFromTabKey } from '@/shared/utils/tabKey';
+import type { FileNode, FileContent, Tab } from '@/shared/types';
+import type { ProjectCommands } from '@/shared/types/activeProject';
+import { DEFAULT_TREE_DEPTH } from '@/shared/types/file';
 import { clearViewSnapshot, clearAllForTabKey } from '@/shared/utils/editorViewState';
 import { mergeSubTree, getTabId, getFileName, isFileTab } from '@/shared/utils/fileTree';
-import { closeEditorTab } from '@/features/terminal/components/terminalTabCleanup';
+import { buildWorktreeTabKey, parseProjectIdFromTabKey } from '@/shared/utils/tabKey';
 
 /**
  * useFileView �?文件视图 hook

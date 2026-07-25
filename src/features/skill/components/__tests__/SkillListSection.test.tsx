@@ -1,8 +1,9 @@
-import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
+import { describe, it, expect, vi } from 'vitest';
+
 import { createManagedSkill } from '../../../../testing/factories';
-import SkillListSection from '../SkillListSection';
 import type { SkillItemActions } from '../skillItemTypes';
+import SkillListSection from '../SkillListSection';
 
 function makeActions(overrides?: Partial<SkillItemActions>): SkillItemActions {
   return {

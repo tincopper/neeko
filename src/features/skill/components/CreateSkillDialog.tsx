@@ -1,7 +1,9 @@
 import React, { useState, useCallback } from 'react';
+
 import { X } from '@/shared/components/icons';
 import { Button, Input } from '@/ui';
 import { ResizablePanel } from '@/ui/ResizablePanel';
+
 import MarkdownEditor from './MarkdownEditor';
 
 interface CreateSkillDialogProps {

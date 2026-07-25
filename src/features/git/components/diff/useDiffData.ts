@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { DiffResult, DiffSource, DiffLine } from './types';
+
 import type { ProjectCommands } from '@/shared/types/activeProject';
+
+import type { DiffResult, DiffSource, DiffLine } from './types';
 
 // ── 模块级 Diff 结果缓存（避免在文件间切换时重复加载） ──────────────────
 const diffCache = new Map<string, DiffResult>();

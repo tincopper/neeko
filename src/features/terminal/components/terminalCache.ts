@@ -1,10 +1,12 @@
 ﻿import { emit } from '@tauri-apps/api/event';
-import { getAgent } from '../../agent/api/agentApi';
 import type { FitAddon } from '@xterm/addon-fit';
 import type { Terminal } from '@xterm/xterm';
+
+import { getAgent } from '../../agent/api/agentApi';
+import { closeTerminalSession } from '../api/terminalApi';
+
 import type { TerminalInputController } from './terminalInput';
 import type { TerminalCache } from './terminalTypes';
-import { closeTerminalSession } from '../api/terminalApi';
 
 // =============================================================================
 // Factory — shared by local / WSL / remote cache modules

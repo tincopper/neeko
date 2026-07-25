@@ -1,4 +1,11 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+
+import type { PRDetailTabData } from '@/features/editor/types';
+import { cn } from '@/lib/utils';
+import { SearchIcon, MessageSquare, ChevronDown, GitMerge, X } from '@/shared/components/icons';
+import { useEditorStore } from '@/shared/store';
+import type { PRListItem } from '@/shared/types';
+
 import {
   closePr,
   isGhInstalled,
@@ -8,11 +15,6 @@ import {
   listRepoAuthors,
   mergePr,
 } from '../api/gitApi';
-import type { PRListItem } from '@/shared/types';
-import type { PRDetailTabData } from '@/features/editor/types';
-import { useEditorStore } from '@/shared/store';
-import { cn } from '@/lib/utils';
-import { SearchIcon, MessageSquare, ChevronDown, GitMerge, X } from '@/shared/components/icons';
 import { getInvokeErrorMessage, mapPrLoadError } from '../utils/prLoadError';
 
 interface PullRequestsPanelProps {

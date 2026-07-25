@@ -1,3 +1,6 @@
+import React, { useCallback, useState, useEffect, useRef, useMemo } from 'react';
+
+import ContextMenu, { type ContextMenuItem } from '@/features/project/components/ContextMenu';
 import {
   ChevronRight,
   Globe,
@@ -6,11 +9,10 @@ import {
   Copy,
   ClipboardCopy,
 } from '@/shared/components/icons';
-import React, { useCallback, useState, useEffect, useRef, useMemo } from 'react';
-import { fileIconSrc } from '@/shared/utils/fileIcons';
-import { resolveAbsolutePath } from '@/shared/utils/browserUtils';
 import type { FileNode, FileChange } from '@/shared/types';
-import ContextMenu, { type ContextMenuItem } from '@/features/project/components/ContextMenu';
+import { resolveAbsolutePath } from '@/shared/utils/browserUtils';
+import { fileIconSrc } from '@/shared/utils/fileIcons';
+
 import { setDragFile } from '../hooks/useFileDrop';
 
 /** git status �?文件名颜�?class */

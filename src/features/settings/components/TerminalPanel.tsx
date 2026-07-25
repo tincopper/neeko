@@ -1,7 +1,9 @@
 import React from 'react';
-import { PRESET_SHELLS } from './constants';
+
 import { cn } from '@/lib/utils';
 import { Input, Switch } from '@/ui';
+
+import { PRESET_SHELLS } from './constants';
 
 interface TerminalPanelProps {
   terminalFontSize: number;

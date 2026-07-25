@@ -1,8 +1,10 @@
 import { useCallback } from 'react';
 import { useShallow } from 'zustand/shallow';
-import type { TerminalTab, AgentConfig, Tab, TerminalTabData } from '@/shared/types';
-import { closeAllEditorTabs, closeEditorTab } from '../components/terminalTabCleanup';
+
 import { useEditorStore } from '@/shared/store';
+import type { TerminalTab, AgentConfig, Tab, TerminalTabData } from '@/shared/types';
+
+import { closeAllEditorTabs, closeEditorTab } from '../components/terminalTabCleanup';
 
 function generateTabId(): string {
   return `tab_${crypto.randomUUID()}`;

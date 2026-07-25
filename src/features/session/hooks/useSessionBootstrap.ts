@@ -1,12 +1,14 @@
-import { useState, useEffect } from 'react';
 import { listen } from '@tauri-apps/api/event';
-import { listProjects } from '../../project/api/projectApi';
-import { getWorktreeChangedFiles, getGitBranchInfo, getAheadBehind } from '../../git/api/gitApi';
-import { loadSession } from '../api/sessionApi';
-import type { FileChange, Worktree, GitStatusDiff } from '@/shared/types';
-import { useProjectStore } from '@/features/project/store';
+import { useState, useEffect } from 'react';
+
 import { useGitStore } from '@/features/git/store';
+import { useProjectStore } from '@/features/project/store';
+import type { FileChange, Worktree, GitStatusDiff } from '@/shared/types';
 import { aheadBehindKey } from '@/shared/utils/aheadBehindKey';
+
+import { getWorktreeChangedFiles, getGitBranchInfo, getAheadBehind } from '../../git/api/gitApi';
+import { listProjects } from '../../project/api/projectApi';
+import { loadSession } from '../api/sessionApi';
 
 /** 将后�?git status 字符串映射为前端 FileChange.status */
 function mapGitStatus(status: string): FileChange['status'] {

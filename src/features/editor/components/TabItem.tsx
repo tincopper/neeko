@@ -1,6 +1,9 @@
-import React, { useCallback } from 'react';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
+import React, { useCallback } from 'react';
+
+import { resolveAgentIconSrc } from '@/features/agent/api/agentApi';
+import { cn } from '@/lib/utils';
 import {
   Terminal,
   FileText,
@@ -10,11 +13,9 @@ import {
   Pin,
   GitPullRequest,
 } from '@/shared/components/icons';
-import { cn } from '@/lib/utils';
-import { resolveAgentIconSrc } from '@/features/agent/api/agentApi';
-import { fileIconSrc } from '@/shared/utils/fileIcons';
-import type { Tab } from '@/shared/types/tab';
 import type { AgentConfig } from '@/shared/types';
+import type { Tab } from '@/shared/types/tab';
+import { fileIconSrc } from '@/shared/utils/fileIcons';
 
 interface TabItemProps {
   tab: Tab;

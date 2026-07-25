@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { groupConversationsByDate } from '@/features/conversation/utils/groupByDate';
+
 import type { ConversationMeta } from '@/features/conversation/types';
+import { groupConversationsByDate } from '@/features/conversation/utils/groupByDate';
 
 // Fixed reference: 2026-07-24 12:00 local
 const NOW = new Date(2026, 6, 24, 12, 0, 0).getTime();

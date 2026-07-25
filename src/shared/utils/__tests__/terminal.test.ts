@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+
 import { buildFontFamily, DEFAULT_FONT_FAMILY } from '../../utils/terminal';
 
 describe('buildFontFamily', () => {

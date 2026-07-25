@@ -1,8 +1,9 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
+
+import type { AgentConfig } from '@/features/agent/types';
 import ConversationItem from '@/features/conversation/components/ConversationItem';
 import type { ConversationMeta } from '@/features/conversation/types';
-import type { AgentConfig } from '@/features/agent/types';
 
 function createMeta(overrides: Partial<ConversationMeta> = {}): ConversationMeta {
   return {

@@ -1,4 +1,12 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
+
+import { useWorktreeStore } from '@/features/project/worktreeStore';
+import { terminalCache, destroyTerminalCache } from '@/features/terminal/components/terminalCache';
+import { cn } from '@/lib/utils';
+import ConfirmDialog from '@/shared/components/ConfirmDialog';
+import { BranchIcon, TrashIcon, FolderGitIcon } from '@/shared/components/icons';
+import { Worktree } from '@/shared/types';
+
 import {
   removeWorktree,
   deleteBranch,
@@ -7,12 +15,7 @@ import {
   isWorktreeDirty,
 } from '../../git/api/gitApi';
 import { closeTerminalSession } from '../../terminal/api/terminalApi';
-import { Worktree } from '@/shared/types';
-import { BranchIcon, TrashIcon, FolderGitIcon } from '@/shared/components/icons';
-import { terminalCache, destroyTerminalCache } from '@/features/terminal/components/terminalCache';
-import { cn } from '@/lib/utils';
-import { useWorktreeStore } from '@/features/project/worktreeStore';
-import ConfirmDialog from '@/shared/components/ConfirmDialog';
+
 import SessionChips from './SessionChips';
 
 interface WorktreeListProps {

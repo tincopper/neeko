@@ -1,5 +1,9 @@
 import { create } from 'zustand';
+
+import type { FileContent } from '@/features/file/types';
+import type { DiffSource, ViewMode } from '@/features/git/components/diff/types';
 import type { EditorGroupId, EditorSplitLayout, ProjectTabs, Tab, TabData } from '@/shared/types';
+import { createDefaultEditorLayout } from '@/shared/types/editorGroup';
 import type {
   FileTabData,
   TerminalTabData,
@@ -7,9 +11,6 @@ import type {
   HtmlPreviewTabData,
   PRDetailTabData,
 } from '@/shared/types/tab';
-import type { FileContent } from '@/features/file/types';
-import type { DiffSource, ViewMode } from '@/features/git/components/diff/types';
-import { createDefaultEditorLayout } from '@/shared/types/editorGroup';
 import { emitTabActivated } from '@/shared/utils/editorActivity';
 
 function ensureLayout(

@@ -1,7 +1,8 @@
 import { useEffect } from 'react';
-import type { AheadBehind } from '@/shared/types';
-import { useProjectStore } from '@/features/project/store';
+
 import { useGitStore } from '@/features/git/store';
+import { useProjectStore } from '@/features/project/store';
+import type { AheadBehind } from '@/shared/types';
 import { aheadBehindKey } from '@/shared/utils/aheadBehindKey';
 
 interface AheadBehindCommands {

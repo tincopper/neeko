@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+
 import {
   CONVERSATION_TAB_TITLE_MAX_CHARS,
   conversationTabTitle,

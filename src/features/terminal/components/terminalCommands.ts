@@ -1,6 +1,8 @@
 import { emit } from '@tauri-apps/api/event';
-import { resizeTerminal, closeTerminalSession } from '../api/terminalApi';
+
 import { getAgent } from '../../agent/api/agentApi';
+import { resizeTerminal, closeTerminalSession } from '../api/terminalApi';
+
 import {
   terminalCache,
   terminalCacheKey,

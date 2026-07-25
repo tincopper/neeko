@@ -1,6 +1,7 @@
 import React from 'react';
-import { SearchIcon, RefreshCw } from '@/shared/components/icons';
+
 import { cn } from '@/lib/utils';
+import { SearchIcon, RefreshCw } from '@/shared/components/icons';
 
 interface LogToolbarProps {
   searchQuery: string;

@@ -1,13 +1,16 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Terminal } from '@xterm/xterm';
+import { listen, emit } from '@tauri-apps/api/event';
 import { FitAddon } from '@xterm/addon-fit';
 import { Unicode11Addon } from '@xterm/addon-unicode11';
-import { listen, emit } from '@tauri-apps/api/event';
-import { getAgent } from '../../agent/api/agentApi';
+import { Terminal } from '@xterm/xterm';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+
 import { buildFontFamily, buildTerminalTheme } from '@/shared/utils/terminal';
-import { setupTerminalInput } from './terminalInput';
-import { tryLoadWebgl } from './terminalFactory';
+
+import { getAgent } from '../../agent/api/agentApi';
 import type { TerminalStrategy, CacheEntry } from '../strategies/types';
+
+import { tryLoadWebgl } from './terminalFactory';
+import { setupTerminalInput } from './terminalInput';
 
 interface TerminalViewBaseProps {
   strategy: TerminalStrategy;

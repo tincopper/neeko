@@ -9,9 +9,9 @@ import { useProjectStore } from '@/features/project/store';
 import { useWorktreeStore } from '@/features/project/worktreeStore';
 import { useEditorStore } from '@/shared/store';
 import type { Tab } from '@/shared/types';
+import { preloadLanguageExtension } from '@/shared/utils/codemirror';
 import { getFileName, getTabId } from '@/shared/utils/fileTree';
 import { buildWorktreeTabKey } from '@/shared/utils/tabKey';
-import { preloadLanguageExtension } from '@/shared/utils/codemirror';
 
 import { createNavigationHistory, type NavLocation } from './navigationHistory';
 

@@ -1,5 +1,5 @@
-import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
+import { describe, it, expect, vi } from 'vitest';
 
 import PRFileTree from '@/features/git/components/pr-detail/PRFileTree';
 import type { PRFileChange } from '@/features/git/types';

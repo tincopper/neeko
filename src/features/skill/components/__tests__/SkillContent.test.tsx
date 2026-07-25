@@ -1,5 +1,6 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
+
 import { useSkillStore, initialSkillState } from '../../store';
 import SkillContent from '../SkillContent';
 
@@ -66,8 +67,8 @@ describe('SkillContent — 视图路由', () => {
 describe('SkillContent — Dialogs', () => {
   it('初始时所有 dialog 均为关闭状态', () => {
     render(<SkillContent />);
-    expect(screen.queryByTestId('create-dialog')).toBeNull();
-    expect(screen.queryByTestId('edit-dialog')).toBeNull();
-    expect(screen.queryByTestId('view-dialog')).toBeNull();
+    expect(screen.queryByTestId('create-dialog')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('edit-dialog')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('view-dialog')).not.toBeInTheDocument();
   });
 });

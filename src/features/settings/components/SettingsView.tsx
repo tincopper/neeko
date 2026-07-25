@@ -1,22 +1,25 @@
 import React, { useState, useMemo, useCallback, useEffect } from 'react';
-import { listAgents } from '../../agent/api/agentApi';
-import { ArrowLeft, Search, FolderOpen } from '@/shared/components/icons';
-import { useAppViewStore } from '@/shared/store/appViewStore';
+
 import { useProjectStore } from '@/features/project/store';
-import { useAppContext } from '@/shared/contexts';
 import { cn } from '@/lib/utils';
-import { NAV_ITEMS, type SettingsNavId } from './constants';
-import { useSettingsPanelState } from './useSettingsPanelState';
-import AppearancePanel from './AppearancePanel';
-import EditorPanel from './EditorPanel';
-import TerminalPanel from './TerminalPanel';
-import AgentsPanel from './AgentsPanel';
-import IdePanel from './IdePanel';
-import GitPanel from './GitPanel';
-import ShortcutPanel from './ShortcutPanel';
-import ProjectPanel from './ProjectPanel';
-import LspPanel from './LspPanel';
+import { ArrowLeft, Search, FolderOpen } from '@/shared/components/icons';
+import { useAppContext } from '@/shared/contexts';
+import { useAppViewStore } from '@/shared/store/appViewStore';
 import type { AgentConfig, AppConfig } from '@/shared/types';
+
+import { listAgents } from '../../agent/api/agentApi';
+
+import AgentsPanel from './AgentsPanel';
+import AppearancePanel from './AppearancePanel';
+import { NAV_ITEMS, type SettingsNavId } from './constants';
+import EditorPanel from './EditorPanel';
+import GitPanel from './GitPanel';
+import IdePanel from './IdePanel';
+import LspPanel from './LspPanel';
+import ProjectPanel from './ProjectPanel';
+import ShortcutPanel from './ShortcutPanel';
+import TerminalPanel from './TerminalPanel';
+import { useSettingsPanelState } from './useSettingsPanelState';
 
 function SettingsView() {
   const setAppView = useAppViewStore((s) => s.setAppView);

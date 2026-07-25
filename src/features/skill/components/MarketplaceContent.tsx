@@ -1,12 +1,14 @@
 import React, { useCallback, useMemo, useState } from 'react';
-import { Store, Loader2 } from '@/shared/components/icons';
-import { useSkillStore } from '@/features/skill/store';
+
 import { useMarketplace } from '@/features/skill/hooks/useMarketplace';
-import MarketplaceSearchBar from './MarketplaceSearchBar';
+import { useSkillStore } from '@/features/skill/store';
+import { Store, Loader2 } from '@/shared/components/icons';
+
 import LeaderboardToggle from './LeaderboardToggle';
-import SourceFilter from './SourceFilter';
-import Pagination from './Pagination';
+import MarketplaceSearchBar from './MarketplaceSearchBar';
 import MarketSkillCard from './MarketSkillCard';
+import Pagination from './Pagination';
+import SourceFilter from './SourceFilter';
 
 interface MarketplaceContentProps {
   onSkillInstalled?: (skillId: string, skillName: string) => void;

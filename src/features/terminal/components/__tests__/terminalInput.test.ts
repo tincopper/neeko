@@ -1,5 +1,6 @@
 import type { Terminal } from '@xterm/xterm';
 import { describe, expect, it, vi } from 'vitest';
+
 import { setupTerminalInput } from '../terminalInput';
 
 type DataHandler = (data: string) => void;

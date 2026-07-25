@@ -1,5 +1,5 @@
-import { describe, it, expect } from 'vitest';
 import { render, screen } from '@testing-library/react';
+import { describe, it, expect } from 'vitest';
 
 import ChangeFileTree, { buildChangeTree } from '@/shared/components/ChangeFileTree';
 import type { ChangeFileItem } from '@/shared/components/ChangeFileTree';

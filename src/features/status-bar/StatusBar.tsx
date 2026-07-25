@@ -10,8 +10,8 @@ import { NotificationButton } from '@/features/notification/components/Notificat
 import { useNotificationStore } from '@/features/notification/notificationStore';
 import { useProjectStore } from '@/features/project/store';
 import { useTaskStore } from '@/features/task/store';
-import { useEditorStore } from '@/shared/store';
 import { Bug, Terminal } from '@/shared/components/icons';
+import { useEditorStore } from '@/shared/store';
 import { cn } from '@/shared/utils/cn';
 
 const BUILTIN_SERVER_NAMES: Record<string, string> = {

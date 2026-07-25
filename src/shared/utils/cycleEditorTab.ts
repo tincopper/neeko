@@ -24,7 +24,7 @@ export function resolveNextTabId(opts: {
   const activeGroupId = layout?.activeGroupId ?? 'left';
   const group = layout?.groups?.[activeGroupId];
 
-  let orderedIds: string[] =
+  const orderedIds: string[] =
     group?.tabIds && group.tabIds.length > 0
       ? group.tabIds.filter((id) => existingIds.has(id))
       : [...tabIds];

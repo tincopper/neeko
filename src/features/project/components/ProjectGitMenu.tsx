@@ -1,10 +1,10 @@
-import React from 'react';
 import { ArrowDownFromLine, ArrowUpFromLine, GitBranch, GitCommitHorizontal } from 'lucide-react';
+import React from 'react';
 
-import type { Project } from '@/shared/types';
 import type { DialogType } from '@/features/git/components/GitDialog';
-import { FolderGitIcon } from '@/shared/components/icons';
 import { cn } from '@/lib/utils';
+import { FolderGitIcon } from '@/shared/components/icons';
+import type { Project } from '@/shared/types';
 import {
   DropdownMenu,
   DropdownMenuContent,

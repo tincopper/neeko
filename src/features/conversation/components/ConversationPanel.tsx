@@ -1,13 +1,16 @@
-import React, { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { ChevronDown, RefreshCw, Search, X } from 'lucide-react';
-import { Button } from '@/ui/button';
-import { cn } from '@/lib/utils';
+import React, { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react';
+
 import AgentIcon from '@/features/agent/components/AgentIcon';
+import type { AgentConfig } from '@/features/agent/types';
+import { cn } from '@/lib/utils';
+import { Button } from '@/ui/button';
+
 import { useConversationList } from '../hooks/useConversationList';
 import { useConversationResume } from '../hooks/useConversationResume';
-import ConversationList from './ConversationList';
 import type { ConversationMeta } from '../types';
-import type { AgentConfig } from '@/features/agent/types';
+
+import ConversationList from './ConversationList';
 
 interface ConversationPanelProps {
   projectPath: string | null;

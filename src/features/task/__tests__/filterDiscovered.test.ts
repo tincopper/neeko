@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+
 import type { DiscoveredTask, TaskConfig } from '../types';
 
 /** Mirror of store filterDiscovered for pure unit testing. */

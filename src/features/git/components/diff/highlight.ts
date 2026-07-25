@@ -1,4 +1,5 @@
 import hljs from 'highlight.js/lib/core';
+
 import type { WordDiffPart } from './diffAlgorithm';
 
 const LANGUAGE_MAP: Record<string, () => Promise<unknown>> = {

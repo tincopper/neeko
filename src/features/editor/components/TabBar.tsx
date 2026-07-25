@@ -1,4 +1,3 @@
-import React, { useCallback, useRef, useMemo } from 'react';
 import {
   DndContext,
   closestCenter,
@@ -9,12 +8,15 @@ import {
   type DragEndEvent,
 } from '@dnd-kit/core';
 import { SortableContext, horizontalListSortingStrategy } from '@dnd-kit/sortable';
-import { Plus } from '@/shared/components/icons';
-import { cn } from '@/lib/utils';
-import TabItem from './TabItem';
+import React, { useCallback, useRef, useMemo } from 'react';
+
 import AgentIcon from '@/features/agent/components/AgentIcon';
-import type { Tab } from '@/shared/types/tab';
+import { cn } from '@/lib/utils';
+import { Plus } from '@/shared/components/icons';
 import type { AgentConfig } from '@/shared/types';
+import type { Tab } from '@/shared/types/tab';
+
+import TabItem from './TabItem';
 
 interface TabBarProps {
   tabs: Tab[];

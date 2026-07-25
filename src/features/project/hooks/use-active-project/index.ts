@@ -8,12 +8,14 @@
  */
 
 import { useMemo } from 'react';
+
 import { useProjectStore } from '@/features/project/store';
 import { useWorktreeStore } from '@/features/project/worktreeStore';
 import type { ActiveProjectContext } from '@/shared/types/activeProject';
 import { environmentToConnectionContext } from '@/shared/types/project';
-import { getCapabilities } from './capabilities';
+
 import { toLocalView } from './adapters';
+import { getCapabilities } from './capabilities';
 import { createProjectCommands } from './commandFactory';
 
 /**

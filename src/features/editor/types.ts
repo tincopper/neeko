@@ -1,7 +1,7 @@
 // ─── Tab Types ──────────────────────────────────────────────────────────────
-import type { DiffSource, ViewMode, CommitFileChange } from '@/features/git/components/diff/types';
-import type { FileContent } from '@/features/file/types';
 import type { ConversationMeta } from '@/features/conversation/types';
+import type { FileContent } from '@/features/file/types';
+import type { DiffSource, ViewMode, CommitFileChange } from '@/features/git/components/diff/types';
 
 export type TabKind = 'terminal' | 'file' | 'diff' | 'html-preview' | 'conversation' | 'prDetail';
 

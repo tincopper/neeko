@@ -1,8 +1,9 @@
 import React from 'react';
-import { AppProvider, SidebarProvider } from '@/shared/contexts';
-import { ProjectActionsProvider } from '@/features/project/context';
+
 import { FileActionsProvider } from '@/features/editor/FileActionsContext';
+import { ProjectActionsProvider } from '@/features/project/context';
 import { ConnectionProjectProvider } from '@/features/project/contexts/ConnectionProjectContext';
+import { AppProvider, SidebarProvider } from '@/shared/contexts';
 import { EditorProvider } from '@/shared/contexts';
 
 type AppProviderValue = React.ComponentProps<typeof AppProvider>['value'];

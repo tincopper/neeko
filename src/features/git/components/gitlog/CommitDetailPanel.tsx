@@ -1,5 +1,6 @@
 import React, { useCallback } from 'react';
-import type { CommitDetail, CommitFileChange } from '@/shared/types';
+
+import { cn } from '@/lib/utils';
 import {
   GitCommitHorizontal,
   FileText,
@@ -9,7 +10,7 @@ import {
   Trash2,
   FilePlus,
 } from '@/shared/components/icons';
-import { cn } from '@/lib/utils';
+import type { CommitDetail, CommitFileChange } from '@/shared/types';
 
 interface CommitDetailPanelProps {
   detail: CommitDetail | null;

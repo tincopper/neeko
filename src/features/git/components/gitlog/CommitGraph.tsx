@@ -1,4 +1,5 @@
 import React, { useMemo } from 'react';
+
 import type { CommitEntry } from '@/shared/types';
 
 /**

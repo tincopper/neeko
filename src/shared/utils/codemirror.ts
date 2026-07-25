@@ -1,6 +1,7 @@
 import type { Extension } from '@codemirror/state';
 import { tags as t } from '@lezer/highlight';
 import { createTheme } from '@uiw/codemirror-themes';
+
 import { buildFontFamily } from './terminal';
 
 // Extension to file extension mapping (lazy loaded)

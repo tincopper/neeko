@@ -1,9 +1,10 @@
-import React, { useCallback, useState } from 'react';
 import { X } from 'lucide-react';
-import { Button } from '@/ui';
-import { ResizablePanel } from '@/ui/ResizablePanel';
+import React, { useCallback, useState } from 'react';
+
 import { cn } from '@/lib/utils';
 import type { TagGroup } from '@/shared/types';
+import { Button } from '@/ui';
+import { ResizablePanel } from '@/ui/ResizablePanel';
 
 interface AssignTagGroupDialogProps {
   open: boolean;

@@ -1,7 +1,8 @@
 import { useCallback, useEffect } from 'react';
-import { useEditorStore } from '@/shared/store';
-import { useTerminalTabs } from '@/features/terminal/hooks/useTerminalTabs';
+
 import { closeEditorTab } from '@/features/terminal/components/terminalTabCleanup';
+import { useTerminalTabs } from '@/features/terminal/hooks/useTerminalTabs';
+import { useEditorStore } from '@/shared/store';
 import { buildWorktreeTabKey } from '@/shared/utils/tabKey';
 
 const APP_SETTINGS_PROJECT_ID = '__app__';

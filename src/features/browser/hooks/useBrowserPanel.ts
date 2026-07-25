@@ -1,4 +1,14 @@
+import { listen } from '@tauri-apps/api/event';
 import { useCallback, useEffect, useRef } from 'react';
+
+import { useFileChangedEvent } from '@/features/git/hooks/useFileChangedEvent';
+import { useProjectStore } from '@/features/project/store';
+import { sendToTerminal } from '@/features/terminal/components/terminalCommands';
+import { useEditorStore } from '@/shared/store';
+import { useDockStore } from '@/shared/store/dockStore';
+import type { FileChangedEvent } from '@/shared/types';
+import { fileUrlToFilePath } from '@/shared/utils/browserUtils';
+
 import {
   createBrowserWebview,
   browserNavigate,
@@ -10,18 +20,11 @@ import {
   browserSetBounds,
   openInDefaultBrowser,
 } from '../api/browserApi';
-import { listen } from '@tauri-apps/api/event';
-import { useBrowserStore } from '../store';
-import { useDockStore } from '@/shared/store/dockStore';
-import { useProjectStore } from '@/features/project/store';
-import { useEditorStore } from '@/shared/store';
-import { sendToTerminal } from '@/features/terminal/components/terminalCommands';
-import { useFileChangedEvent } from '@/features/git/hooks/useFileChangedEvent';
-import { useBrowserPicker } from './useBrowserPicker';
-import { BROWSER_WEBVIEW_LABEL } from './useBrowserConstants';
 import { isAgentCliTab, formatPickerMessage, getThemeColors } from '../components/pickerUtils';
-import { fileUrlToFilePath } from '@/shared/utils/browserUtils';
-import type { FileChangedEvent } from '@/shared/types';
+import { useBrowserStore } from '../store';
+
+import { BROWSER_WEBVIEW_LABEL } from './useBrowserConstants';
+import { useBrowserPicker } from './useBrowserPicker';
 
 /** Safety-net timeout: auto-refresh even if no git-changed event arrives */
 const AUTO_REFRESH_TIMEOUT_MS = 30_000;

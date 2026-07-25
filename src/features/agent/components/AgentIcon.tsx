@@ -1,4 +1,5 @@
 import React from 'react';
+
 import { resolveAgentIconSrc } from '../api/agentApi';
 
 interface AgentIconProps {

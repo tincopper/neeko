@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 
-import { flattenFilePaths } from '../fileIndex';
 import type { FileNode } from '@/shared/types';
+
+import { flattenFilePaths } from '../fileIndex';
 
 describe('flattenFilePaths', () => {
   it('should_flatten_nested_files', () => {

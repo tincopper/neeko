@@ -1,8 +1,10 @@
 import React from 'react';
-import { cn } from '@/lib/utils';
+
 import type { CommitEntry, CommitDetail, CommitFileChange } from '@/features/git/types';
-import LogToolbar from './LogToolbar';
+import { cn } from '@/lib/utils';
+
 import CommitList from './CommitList';
+import LogToolbar from './LogToolbar';
 
 interface GitLogPanelProps {
   commits: CommitEntry[];

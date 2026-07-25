@@ -19,6 +19,7 @@ import {
   getWorktreeChangedFiles,
   isWorktreeDirty,
 } from '../../git/api/gitApi';
+
 import ConnectionWorktreeList from './ConnectionWorktreeList';
 import type { ConnectionProjectCardProps } from './types';
 

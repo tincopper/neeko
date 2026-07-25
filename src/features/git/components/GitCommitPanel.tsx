@@ -1,17 +1,19 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+
+import { useAppContext } from '@/shared/contexts';
 import type { AheadBehind, CommitResult, PushOutcome } from '@/shared/types';
 import type {
   ProjectView,
   ProjectCommands,
   ProjectCapabilities,
 } from '@/shared/types/activeProject';
-import { useAppContext } from '@/shared/contexts';
 import { withTimeout } from '@/shared/utils/withTimeout';
+
 import BranchInfo from './BranchInfo';
 import ChangesList from './ChangesList';
 import CommitForm from './CommitForm';
-import GitDialog, { type DialogState } from './GitDialog';
 import GitCredentialDialog from './GitCredentialDialog';
+import GitDialog, { type DialogState } from './GitDialog';
 
 // Timeout constants (ms). These protect against indefinite IPC hangs caused by
 // the Rust backend's project_manager Mutex being held by a long operation.

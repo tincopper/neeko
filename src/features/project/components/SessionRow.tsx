@@ -1,6 +1,8 @@
 import React from 'react';
+
 import { cn } from '@/lib/utils';
 import { TerminalIcon, FolderGitIcon } from '@/shared/components/icons';
+
 import SessionChips from './SessionChips';
 
 type SessionKind = 'local' | 'worktree';

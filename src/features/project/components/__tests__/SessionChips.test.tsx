@@ -1,5 +1,6 @@
 import { render, screen } from '@testing-library/react';
 import { describe, it, expect } from 'vitest';
+
 import SessionChips from '@/features/project/components/SessionChips';
 
 describe('SessionChips.Ahead', () => {
@@ -36,13 +37,13 @@ describe('SessionChips.Changes', () => {
   it('仅 add > 0 时只渲染 +A', () => {
     render(<SessionChips.Changes add={120} del={0} />);
     expect(screen.getByText('+120')).toBeInTheDocument();
-    expect(screen.queryByText(/^-/)).toBeNull();
+    expect(screen.queryByText(/^-/)).not.toBeInTheDocument();
   });
 
   it('仅 del > 0 时只渲染 -D', () => {
     render(<SessionChips.Changes add={0} del={9} />);
     expect(screen.getByText('-9')).toBeInTheDocument();
-    expect(screen.queryByText(/^\+/)).toBeNull();
+    expect(screen.queryByText(/^\+/)).not.toBeInTheDocument();
   });
 
   it('两者均为 0 时不渲染', () => {

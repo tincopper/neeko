@@ -1,6 +1,7 @@
 import { invoke } from '@tauri-apps/api/core';
 
 import type { TaskConfig } from '@/shared/types';
+
 import type { DiscoveredTask } from '../types';
 
 export function getTaskConfigs(projectPath?: string | null): Promise<TaskConfig[]> {

@@ -1,15 +1,16 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+
 import { useWslActions } from '@/features/connection/hooks/useWslActions';
 import { useConnectionStore } from '@/features/connection/store';
 import { useProjectStore } from '@/features/project/store';
 import { useWorktreeStore } from '@/features/project/worktreeStore';
-import { useEditorStore } from '@/shared/store';
-import type { WSLEntrySession } from '@/shared/types';
 import {
   switchAgentInWslTerminal,
   refreshWslTerminal,
 } from '@/features/terminal/components/terminalCache';
+import { useEditorStore } from '@/shared/store';
+import type { WSLEntrySession } from '@/shared/types';
 
 vi.mock('@/features/terminal/components/terminalCache', () => ({
   wslCacheKey: (distro: string, projectId: string) => `wsl:${distro}:${projectId}`,

@@ -1,8 +1,11 @@
 import React from 'react';
+
+import ProjectAvatar from '@/shared/components/ProjectAvatar';
+
+import type { ConversationMessage as ConversationMessageType } from '../types';
+
 import { MessageBlockRenderer, TextBlock } from './MessageBlocks';
 import MessageBubble from './MessageBubble';
-import ProjectAvatar from '@/shared/components/ProjectAvatar';
-import type { ConversationMessage as ConversationMessageType } from '../types';
 
 interface ConversationMessageProps {
   message: ConversationMessageType;

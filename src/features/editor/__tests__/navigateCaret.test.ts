@@ -1,6 +1,7 @@
-import { describe, it, expect } from 'vitest';
 import { EditorState } from '@codemirror/state';
 import { EditorView } from '@codemirror/view';
+import { describe, it, expect } from 'vitest';
+
 import { applyNavigateCaret, navigateCaretExtension, resolveDocPos } from '../navigateCaret';
 
 function makeView(doc: string): EditorView {

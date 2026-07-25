@@ -1,10 +1,13 @@
 import React, { useCallback } from 'react';
+
 import { useAppContext } from '@/shared/contexts';
 import { useEditorContext } from '@/shared/contexts';
 import { useEditorStore } from '@/shared/store';
 import type { AuthMethod } from '@/shared/types';
-import TerminalViewBase from './TerminalViewBase';
+
 import { useTerminalStrategy } from '../strategies';
+
+import TerminalViewBase from './TerminalViewBase';
 
 export interface TerminalViewProps {
   paneId: string;

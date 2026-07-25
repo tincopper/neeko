@@ -1,4 +1,5 @@
 import type { ITheme } from '@xterm/xterm';
+
 import { isDarkTheme } from './theme';
 
 const IS_LINUX = navigator.platform.toLowerCase().startsWith('linux');

@@ -1,5 +1,6 @@
-import React from 'react';
 import { HardDrive, GitBranch, Store } from 'lucide-react';
+import React from 'react';
+
 import { useSkillStore } from '@/features/skill/store';
 import { cn } from '@/lib/utils';
 

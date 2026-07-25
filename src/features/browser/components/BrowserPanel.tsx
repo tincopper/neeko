@@ -1,7 +1,10 @@
-import React, { useRef, useCallback, useEffect } from 'react';
 import { Globe } from 'lucide-react';
-import { useBrowserPanel } from '../hooks/useBrowserPanel';
+import React, { useRef, useCallback, useEffect } from 'react';
+
 import { useAppContext } from '@/shared/contexts/AppContext';
+
+import { useBrowserPanel } from '../hooks/useBrowserPanel';
+
 import BrowserToolbar from './BrowserToolbar';
 
 const BrowserPanel: React.FC = () => {

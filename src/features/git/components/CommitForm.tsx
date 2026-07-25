@@ -1,6 +1,7 @@
 import React, { useRef } from 'react';
-import { Button } from '@/ui/button';
+
 import { GitCommitHorizontal, ArrowUp, Sparkles, Loader2 } from '@/shared/components/icons';
+import { Button } from '@/ui/button';
 
 interface CommitFormProps {
   /** 受控 message 值 */

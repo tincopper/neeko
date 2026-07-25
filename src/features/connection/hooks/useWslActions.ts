@@ -2,9 +2,9 @@
  * @deprecated Use `useProjectActions({ environment: "wsl", ... })` from `features/project/hooks/useProjectActions` instead.
  * This is a thin wrapper for backwards compatibility.
  */
+import type { SaveSessionFn } from '@/features/project/hooks/useConnectionProjects';
 import { useProjectActions } from '@/features/project/hooks/useProjectActions';
 import type { AppConfig } from '@/shared/types';
-import type { SaveSessionFn } from '@/features/project/hooks/useConnectionProjects';
 
 interface DeprecatedUseWslActionsParams {
   config: AppConfig;

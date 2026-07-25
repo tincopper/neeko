@@ -1,9 +1,12 @@
 import React, { useCallback, useEffect, useMemo, useRef } from 'react';
+
+import type { AgentConfig } from '@/features/agent/types';
+
+import type { ConversationMeta } from '../types';
+import { groupConversationsByDate } from '../utils/groupByDate';
+
 import ConversationItem from './ConversationItem';
 import ConversationListSkeleton from './ConversationListSkeleton';
-import { groupConversationsByDate } from '../utils/groupByDate';
-import type { ConversationMeta } from '../types';
-import type { AgentConfig } from '@/features/agent/types';
 
 interface ConversationListProps {
   conversations: ConversationMeta[];

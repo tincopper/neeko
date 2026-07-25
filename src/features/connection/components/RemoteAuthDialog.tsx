@@ -1,10 +1,12 @@
 import { useState } from 'react';
-import { testRemoteConnection } from '../api/connectionApi';
+
 import type { AuthMethod } from '@/shared/types';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/ui/dialog';
-import { Input } from '@/ui/input';
 import { Button } from '@/ui/button';
 import { Checkbox } from '@/ui/checkbox';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/ui/dialog';
+import { Input } from '@/ui/input';
+
+import { testRemoteConnection } from '../api/connectionApi';
 
 interface RemoteAuthDialogProps {
   isOpen: boolean;

@@ -1,6 +1,8 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { isAgentCliTab, formatPickerMessage, getThemeColors } from '../pickerUtils';
+
 import type { ProjectTabs, Tab } from '@/shared/types/tab';
+
+import { isAgentCliTab, formatPickerMessage, getThemeColors } from '../pickerUtils';
 
 // ---------------------------------------------------------------------------
 // Helpers

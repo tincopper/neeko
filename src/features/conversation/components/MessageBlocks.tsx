@@ -1,8 +1,10 @@
+import { ChevronDown, ChevronRight, File, Terminal, Search, Edit, Check, X } from 'lucide-react';
 import React, { useState } from 'react';
+
 import { cn } from '@/lib/utils';
 import { MarkdownPreview } from '@/ui/MarkdownPreview';
+
 import type { MessageBlock } from '../types';
-import { ChevronDown, ChevronRight, File, Terminal, Search, Edit, Check, X } from 'lucide-react';
 
 // 工具图标映射
 const TOOL_ICONS: Record<string, React.FC<{ className?: string }>> = {

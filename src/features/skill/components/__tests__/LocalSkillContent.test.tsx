@@ -1,9 +1,10 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { invoke } from '@tauri-apps/api/core';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { invoke } from '@tauri-apps/api/core';
-import { useSkillStore, initialSkillState } from '../../store';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
+
 import { createDiscoveredSkill } from '../../../../testing/factories';
+import { useSkillStore, initialSkillState } from '../../store';
 import LocalSkillContent from '../LocalSkillContent';
 import type { SkillDialogState } from '../skillItemTypes';
 
@@ -81,6 +82,6 @@ describe('LocalSkillContent', () => {
 
   it('初始时不渲染 DiscoveredSkillsList', () => {
     renderComponent();
-    expect(screen.queryByText(/Discovered/)).toBeNull();
+    expect(screen.queryByText(/Discovered/)).not.toBeInTheDocument();
   });
 });

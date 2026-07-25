@@ -1,22 +1,23 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { checkAgentsInstalled } from '@/features/agent/api/agentApi';
-import ProjectGuidePage from '@/features/project/components/ProjectGuidePage';
-import EditorGroupLayout from '@/features/editor/components/EditorGroupLayout';
-import { Button } from '@/ui/button';
-import { useAppContext } from '@/shared/contexts';
-import { useProjectActionsContext } from '@/features/project/context';
-import { useRemoteContext } from '@/features/connection/contexts/RemoteContext';
-import { useEditorContext } from '@/shared/contexts';
-import type { AgentConfig, Tab } from '@/shared/types';
-import { useProjectStore } from '@/features/project/store';
-import { useConnectionStore } from '@/features/connection/store';
-import { useWorktreeStore } from '@/features/project/worktreeStore';
-import { useEditorStore } from '@/shared/store';
 import { useShallow } from 'zustand/shallow';
+
+import { checkAgentsInstalled } from '@/features/agent/api/agentApi';
+import { useRemoteContext } from '@/features/connection/contexts/RemoteContext';
+import { useConnectionStore } from '@/features/connection/store';
+import EditorGroupLayout from '@/features/editor/components/EditorGroupLayout';
 import { useAppViewStore } from '@/shared/store/appViewStore';
 import { buildWorktreeTabKey } from '@/shared/utils/tabKey';
 import { useFileDrop } from '@/features/file/hooks/useFileDrop';
+import ProjectGuidePage from '@/features/project/components/ProjectGuidePage';
+import { useProjectActionsContext } from '@/features/project/context';
+import { useProjectStore } from '@/features/project/store';
+import { useWorktreeStore } from '@/features/project/worktreeStore';
 import { FolderIcon, KeyRound } from '@/shared/components/icons';
+import { useEditorContext } from '@/shared/contexts';
+import { useAppContext } from '@/shared/contexts';
+import { useEditorStore } from '@/shared/store';
+import type { AgentConfig, Tab } from '@/shared/types';
+import { Button } from '@/ui/button';
 
 const APP_SETTINGS_PROJECT_ID = '__app__';
 

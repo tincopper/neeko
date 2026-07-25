@@ -1,4 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+
+import { IS_MACOS } from '../../utils/platform';
 import {
   parseBinding,
   formatBinding,
@@ -14,7 +16,6 @@ import {
   buildIdeaShortcutOverrides,
   IDEA_SHORTCUT_PRESET,
 } from '../../utils/shortcutRegistry';
-import { IS_MACOS } from '../../utils/platform';
 
 vi.mock('../../utils/platform', () => ({
   IS_MACOS: false,

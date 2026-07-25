@@ -6,8 +6,8 @@ import { create } from 'zustand';
 import { lspRequest } from '@/features/lsp/api/lspApi';
 import { fromFileUri } from '@/features/lsp/languageMap';
 import type { LspLocation } from '@/features/lsp/types';
-import { openProjectFile } from '@/features/quick-open/openFile';
 import { fuzzyFilter } from '@/features/quick-open/fuzzy';
+import { openProjectFile } from '@/features/quick-open/openFile';
 
 import { flattenDocumentSymbols, symbolKindLabel, type FlatSymbol } from './documentSymbols';
 

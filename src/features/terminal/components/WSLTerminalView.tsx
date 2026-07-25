@@ -1,7 +1,10 @@
 import React from 'react';
+
 import { useEditorContext } from '@/shared/contexts';
-import TerminalViewBase from './TerminalViewBase';
+
 import { useWslTerminalStrategy } from '../strategies';
+
+import TerminalViewBase from './TerminalViewBase';
 
 interface WSLTerminalViewProps {
   paneId?: string;

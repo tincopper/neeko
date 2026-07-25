@@ -1,25 +1,29 @@
 import React, { useCallback, useMemo, useState, useRef, useEffect } from 'react';
+
 import { checkAgentsInstalled } from '@/features/agent/api/agentApi';
+import AgentIcon from '@/features/agent/components/AgentIcon';
+import ConversationViewer from '@/features/conversation/components/ConversationViewer';
+
 import DiffView from '@/features/git/components/diff';
 import { PRDetailView } from '@/features/git/components/pr-detail';
-import SplitLayout from '@/features/terminal/components/SplitLayout';
-import TerminalView from '@/features/terminal/components/TerminalView';
-import { closeEditorTab } from '@/features/terminal/components/terminalTabCleanup';
-import type { SplitStateInfo } from '@/features/terminal/components/SplitLayout';
-import FileViewer from './FileViewer';
-import HtmlPreview from './HtmlPreview';
-import ConversationViewer from '@/features/conversation/components/ConversationViewer';
-import TabBar from './TabBar';
-import AgentIcon from '@/features/agent/components/AgentIcon';
 import ContextMenu from '@/features/project/components/ContextMenu';
 import type { ContextMenuItem } from '@/features/project/components/ContextMenu';
-import type { AgentConfig, AuthMethod, EditorGroupId } from '@/shared/types';
+import type { SplitStateInfo } from '@/features/terminal/components/SplitLayout';
+import SplitLayout from '@/features/terminal/components/SplitLayout';
+import { closeEditorTab } from '@/features/terminal/components/terminalTabCleanup';
+import TerminalView from '@/features/terminal/components/TerminalView';
 import { cn } from '@/lib/utils';
 import { useEditorContext, EditorProvider } from '@/shared/contexts';
 import { useAppContext } from '@/shared/contexts/AppContext';
-import { useEditorGroupLayout } from '../hooks/useEditorGroupLayout';
 import { useEditorStore } from '@/shared/store';
+import type { AgentConfig, AuthMethod, EditorGroupId } from '@/shared/types';
 import { buildDiffSource } from '@/shared/utils/diffSource';
+
+import { useEditorGroupLayout } from '../hooks/useEditorGroupLayout';
+
+import FileViewer from './FileViewer';
+import HtmlPreview from './HtmlPreview';
+import TabBar from './TabBar';
 
 interface EditorGroupPaneProps {
   /** "left" | "right" for normal groups; "pinned" for the fixed pin panel */

@@ -1,11 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import {
-  saveConfig as saveConfigApi,
-  loadConfig as loadConfigApi,
-  syncAgentTheme,
-  listCustomThemes,
-  getCustomTheme,
-} from '../api/settingsApi';
+
+import { useConnectionStore } from '@/features/connection/store';
+import { useProjectStore } from '@/features/project/store';
 import type {
   AppConfig,
   ThemeListItem,
@@ -16,9 +12,15 @@ import type {
 } from '@/features/settings/types';
 import { BUILTIN_THEMES } from '@/features/settings/types';
 import { updateAllTerminalThemes } from '@/features/terminal';
-import { useProjectStore } from '@/features/project/store';
-import { useConnectionStore } from '@/features/connection/store';
 import { buildFontFamily } from '@/shared/utils/terminal';
+
+import {
+  saveConfig as saveConfigApi,
+  loadConfig as loadConfigApi,
+  syncAgentTheme,
+  listCustomThemes,
+  getCustomTheme,
+} from '../api/settingsApi';
 
 const DEFAULT_CONFIG: AppConfig = {
   theme: 'dark',

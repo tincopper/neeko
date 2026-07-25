@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
-import type { GitInfo, AheadBehind } from '@/shared/types';
+
+import BranchDropdownContent from '@/shared/components/BranchDropdownContent';
 import { BranchIcon, PlusIcon } from '@/shared/components/icons';
 import {
   GitBranch,
@@ -9,7 +10,7 @@ import {
   FolderGit2,
   CloudDownload,
 } from '@/shared/components/icons';
-import BranchDropdownContent from '@/shared/components/BranchDropdownContent';
+import type { GitInfo, AheadBehind } from '@/shared/types';
 
 interface BranchInfoProps {
   gitInfo: GitInfo | null;

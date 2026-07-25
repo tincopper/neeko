@@ -1,5 +1,6 @@
 import { render, screen } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
+
 import ProjectAvatar from '@/shared/components/ProjectAvatar';
 
 describe('ProjectAvatar', () => {
@@ -28,6 +29,6 @@ describe('ProjectAvatar', () => {
   it('applies the provided color as the text color', () => {
     const { container } = render(<ProjectAvatar name="neeko" color="#e06c75" size={16} />);
     const el = container.firstElementChild as HTMLElement;
-    expect(el.style.color).toBe('rgb(224, 108, 117)');
+    expect(el).toHaveStyle({ color: 'rgb(224, 108, 117)' });
   });
 });

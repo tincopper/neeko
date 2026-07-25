@@ -1,8 +1,9 @@
 import React from 'react';
+
+import { cn } from '@/lib/utils';
 import type { AppConfig } from '@/shared/types';
 import type { IdePreset } from '@/shared/utils/idePresets';
 import { IDE_PRESETS, getIdeIconSrc } from '@/shared/utils/idePresets';
-import { cn } from '@/lib/utils';
 import { Input, Button } from '@/ui';
 
 interface IdePanelProps {

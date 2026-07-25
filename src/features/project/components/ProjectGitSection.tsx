@@ -1,10 +1,12 @@
 import React, { useMemo } from 'react';
-import type { Project } from '@/shared/types';
-import WorktreeList from './WorktreeList';
-import SessionRow from './SessionRow';
-import { useWorktreeStore } from '@/features/project/worktreeStore';
+
 import { useGitStore } from '@/features/git/store';
+import { useWorktreeStore } from '@/features/project/worktreeStore';
+import type { Project } from '@/shared/types';
 import { aheadBehindKey } from '@/shared/utils/aheadBehindKey';
+
+import SessionRow from './SessionRow';
+import WorktreeList from './WorktreeList';
 
 interface ProjectGitSectionProps {
   project: Project;

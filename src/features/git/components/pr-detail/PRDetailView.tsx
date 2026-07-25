@@ -1,10 +1,9 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { cn } from '@/lib/utils';
 
+import { cn } from '@/lib/utils';
 import { SplitPane } from '@/shared/components';
 import { FileDiff, GitCommitHorizontal, MessageSquare } from '@/shared/components/icons';
 import { useAppContext } from '@/shared/contexts/AppContext';
-
 import { ScrollArea } from '@/ui/ScrollArea';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/ui/tabs';
 
@@ -23,8 +22,8 @@ import PRCommentList from './PRCommentList';
 import PRCommitList from './PRCommitList';
 import PRDescription from './PRDescription';
 import PRDetailSkeleton from './PRDetailSkeleton';
-import PRFileTree from './PRFileTree';
 import PRFilesChangedPanel from './PRFilesChangedPanel';
+import PRFileTree from './PRFileTree';
 import PRTimeline from './PRTimeline';
 import { usePRResource } from './usePRResource';
 

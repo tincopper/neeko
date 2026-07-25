@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+
 import type { FileChange, Project } from '@/shared/types';
 
 const noop = () => {};

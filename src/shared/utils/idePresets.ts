@@ -1,11 +1,11 @@
-import vscodeIcon from '../../assets/ides/vscode.svg';
 import cursorIcon from '../../assets/ides/cursor.png';
-import zedIcon from '../../assets/ides/zed.png';
-import ideaIcon from '../../assets/ides/idea.svg';
-import golandIcon from '../../assets/ides/goland.svg';
-import rustroverIcon from '../../assets/ides/rustrover.svg';
-import pycharmIcon from '../../assets/ides/pycharm.svg';
 import defaultIdeIcon from '../../assets/ides/default.svg';
+import golandIcon from '../../assets/ides/goland.svg';
+import ideaIcon from '../../assets/ides/idea.svg';
+import pycharmIcon from '../../assets/ides/pycharm.svg';
+import rustroverIcon from '../../assets/ides/rustrover.svg';
+import vscodeIcon from '../../assets/ides/vscode.svg';
+import zedIcon from '../../assets/ides/zed.png';
 
 const IDE_ICON_MAP: Record<string, string> = {
   'vscode.svg': vscodeIcon,

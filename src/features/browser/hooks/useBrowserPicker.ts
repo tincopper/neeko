@@ -1,9 +1,10 @@
-import { useState, useCallback, useEffect, type RefObject } from 'react';
-import { browserStartPicker, browserStopPicker } from '../api/browserApi';
 import { listen } from '@tauri-apps/api/event';
-import { BROWSER_WEBVIEW_LABEL } from './useBrowserConstants';
+import { useState, useCallback, useEffect, type RefObject } from 'react';
 
+import { browserStartPicker, browserStopPicker } from '../api/browserApi';
 import type { PickerThemeColors } from '../components/pickerUtils';
+
+import { BROWSER_WEBVIEW_LABEL } from './useBrowserConstants';
 
 /**
  * useBrowserPicker — manages the browser element picker lifecycle.

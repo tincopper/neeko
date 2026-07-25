@@ -1,7 +1,8 @@
 import React from 'react';
-import { Flame, TrendingUp, Star } from '@/shared/components/icons';
-import { cn } from '@/lib/utils';
+
 import type { LeaderboardType } from '@/features/skill/hooks/useMarketplace';
+import { cn } from '@/lib/utils';
+import { Flame, TrendingUp, Star } from '@/shared/components/icons';
 
 interface LeaderboardToggleProps {
   value: LeaderboardType;

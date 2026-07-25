@@ -1,7 +1,8 @@
-import { useEffect, type RefObject } from 'react';
 import type { EditorView } from '@codemirror/view';
+import { useEffect, type RefObject } from 'react';
 
 import { useDebugStore } from '../store/debugStore';
+
 import { applyDebugCurrentLine } from './useBreakpointGutter';
 
 function normalizePath(p: string): string {

@@ -1,4 +1,5 @@
 import { invoke } from '@tauri-apps/api/core';
+
 import type { ThemeListItem, CustomThemeData } from '@/features/settings/types';
 
 export function getSystemFonts(): Promise<string[]> {

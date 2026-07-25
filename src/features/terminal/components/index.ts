@@ -55,6 +55,7 @@ export { launchAgentInAnyTerminal, switchAgentInAnyTerminal } from './terminalCa
 export { default as SplitLayout } from './SplitLayout';
 
 import { buildTerminalTheme } from '@/shared/utils/terminal';
+
 import { terminalCache, wslTerminalCache, remoteTerminalCache } from './terminalCache';
 
 export function updateAllTerminalThemes() {

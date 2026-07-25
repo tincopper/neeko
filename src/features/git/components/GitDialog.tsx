@@ -1,12 +1,14 @@
-import React, { useState, useEffect } from 'react';
-import { createBranch, createWorktree } from '../api/gitApi';
-import { getWslHomeDir } from '../../connection/api/connectionApi';
 import { homeDir } from '@tauri-apps/api/path';
+import React, { useState, useEffect } from 'react';
+
 import { cn } from '@/lib/utils';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/ui/dialog';
-import { Input } from '@/ui/input';
 import { Button } from '@/ui/button';
 import { Checkbox } from '@/ui/checkbox';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/ui/dialog';
+import { Input } from '@/ui/input';
+
+import { getWslHomeDir } from '../../connection/api/connectionApi';
+import { createBranch, createWorktree } from '../api/gitApi';
 
 export type DialogType = 'new-branch' | 'new-worktree';
 

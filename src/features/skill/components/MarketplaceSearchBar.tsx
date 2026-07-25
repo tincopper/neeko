@@ -1,4 +1,5 @@
 import React from 'react';
+
 import { Search, X } from '@/shared/components/icons';
 
 interface MarketplaceSearchBarProps {

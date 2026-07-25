@@ -1,10 +1,12 @@
-import { describe, it, expect, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
 import { DndContext } from '@dnd-kit/core';
 import { SortableContext, horizontalListSortingStrategy } from '@dnd-kit/sortable';
-import TabItem from '../TabItem';
-import type { Tab } from '@/shared/types/tab';
+import { render, screen } from '@testing-library/react';
+import { describe, it, expect, vi } from 'vitest';
+
 import type { AgentConfig } from '@/shared/types';
+import type { Tab } from '@/shared/types/tab';
+
+import TabItem from '../TabItem';
 
 function renderTabItem(tab: Tab, agents: AgentConfig[] = []) {
   return render(

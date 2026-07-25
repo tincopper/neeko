@@ -1,10 +1,11 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+
 import { useRemoteProjects } from '@/features/connection/hooks/useRemoteProjects';
-import type { RemoteEntrySession, AuthMethod } from '@/shared/types';
-import { useProjectStore } from '@/features/project/store';
 import { useConnectionStore } from '@/features/connection/store';
+import { useProjectStore } from '@/features/project/store';
 import { useWorktreeStore } from '@/features/project/worktreeStore';
+import type { RemoteEntrySession, AuthMethod } from '@/shared/types';
 
 vi.mock('@/features/terminal/components/terminalCache', () => ({
   remoteCacheKey: (entryId: string, projectId: string) => `remote:${entryId}:${projectId}`,

@@ -1,5 +1,5 @@
-import type { Project } from '@/shared/types/project';
 import type { ProjectView } from '@/shared/types/activeProject';
+import type { Project } from '@/shared/types/project';
 
 /**
  * Convert unified Project to ProjectView (all environments — local, WSL, remote).

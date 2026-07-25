@@ -1,7 +1,9 @@
-import { describe, it, expect, vi } from 'vitest';
 import { convertFileSrc } from '@tauri-apps/api/core';
-import { resolveAgentIconSrc } from '../agentApi';
+import { describe, it, expect, vi } from 'vitest';
+
 import { DEFAULT_AGENT_ICON } from '@/shared/utils/agents';
+
+import { resolveAgentIconSrc } from '../agentApi';
 
 describe('resolveAgentIconSrc', () => {
   it('returns null for empty icon', () => {

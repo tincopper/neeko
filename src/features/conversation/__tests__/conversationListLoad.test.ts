@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+
 import {
   AUTO_SCAN_THROTTLE_MS,
   listLoadKey,

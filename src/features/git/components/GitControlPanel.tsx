@@ -1,4 +1,5 @@
 import React from 'react';
+
 import { cn } from '@/lib/utils';
 import type { AheadBehind, CommitEntry, CommitDetail, CommitFileChange } from '@/shared/types';
 import type {
@@ -6,6 +7,7 @@ import type {
   ProjectCommands,
   ProjectCapabilities,
 } from '@/shared/types/activeProject';
+
 import GitCommitPanel from './GitCommitPanel';
 import GitLogPanel from './gitlog/GitLogPanel';
 

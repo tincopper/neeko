@@ -1,9 +1,11 @@
-import React, { useMemo } from 'react';
 import { SquareTerminal, Eye } from 'lucide-react';
+import React, { useMemo } from 'react';
+
 import AgentIcon from '@/features/agent/components/AgentIcon';
-import { cn } from '@/lib/utils';
-import type { ConversationMeta } from '../types';
 import type { AgentConfig } from '@/features/agent/types';
+import { cn } from '@/lib/utils';
+
+import type { ConversationMeta } from '../types';
 
 interface ConversationItemProps {
   meta: ConversationMeta;

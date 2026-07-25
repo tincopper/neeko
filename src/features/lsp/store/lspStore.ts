@@ -1,6 +1,8 @@
-import { create } from 'zustand';
 import { listen } from '@tauri-apps/api/event';
 import type { UnlistenFn } from '@tauri-apps/api/event';
+import { create } from 'zustand';
+
+import { preloadLanguageExtension } from '@/shared/utils/codemirror';
 
 import {
   lspCheckServerInstalled,
@@ -9,9 +11,8 @@ import {
   lspGetExtensionMap,
   type LspExtensionConflictDto,
 } from '../api/lspApi';
-import type { ProjectLanguageProfile } from '../types';
 import { setCustomLspExtensionMap } from '../languageMap';
-import { preloadLanguageExtension } from '@/shared/utils/codemirror';
+import type { ProjectLanguageProfile } from '../types';
 
 export interface LspSessionState {
   languageId: string;

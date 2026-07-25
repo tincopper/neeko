@@ -1,9 +1,12 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Play, Square, ChevronDown, Plus, Pencil, X, Download } from '@/shared/components/icons';
-import { useTaskStore } from '../store';
+
 import { useProjectStore } from '@/features/project/store';
-import TaskDialog from './TaskDialog';
+import { Play, Square, ChevronDown, Plus, Pencil, X, Download } from '@/shared/components/icons';
 import type { DiscoveredTask, TaskConfig } from '@/shared/types/task';
+
+import { useTaskStore } from '../store';
+
+import TaskDialog from './TaskDialog';
 
 // ── TaskRunButton ────────────────────────────────────────────────────────────
 

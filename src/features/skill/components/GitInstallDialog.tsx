@@ -1,13 +1,14 @@
-import React, { useCallback, useEffect, useState } from 'react';
 import { X, Loader2, GitBranch } from 'lucide-react';
-import { Button, Input } from '@/ui';
-import { ResizablePanel } from '@/ui/ResizablePanel';
-import { cn } from '@/lib/utils';
+import React, { useCallback, useEffect, useState } from 'react';
+
 import {
   previewGitInstall,
   confirmGitInstall,
   cancelGitPreview,
 } from '@/features/skill/api/skillApi';
+import { cn } from '@/lib/utils';
+import { Button, Input } from '@/ui';
+import { ResizablePanel } from '@/ui/ResizablePanel';
 
 export interface GitSkillOption {
   name: string;

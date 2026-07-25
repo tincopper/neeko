@@ -1,5 +1,6 @@
-import React from 'react';
 import { Search, X } from 'lucide-react';
+import React from 'react';
+
 import { cn } from '@/lib/utils';
 
 interface SkillSearchInputProps {

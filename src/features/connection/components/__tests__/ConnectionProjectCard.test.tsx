@@ -1,9 +1,10 @@
+import { invoke } from '@tauri-apps/api/core';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { invoke } from '@tauri-apps/api/core';
+
 import ConnectionProjectCard from '@/features/connection/components/ConnectionProjectCard';
-import { useWorktreeStore } from '@/features/project/worktreeStore';
 import { useGitStore } from '@/features/git/store';
+import { useWorktreeStore } from '@/features/project/worktreeStore';
 import type { WSLProject } from '@/shared/types';
 
 function makeWslProject(overrides: Partial<WSLProject> = {}): WSLProject {
@@ -147,6 +148,6 @@ describe('ConnectionProjectCard (WSL)', () => {
       />,
     );
 
-    expect(screen.queryByText('↑3')).toBeNull();
+    expect(screen.queryByText('↑3')).not.toBeInTheDocument();
   });
 });

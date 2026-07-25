@@ -1,4 +1,6 @@
 import * as React from 'react';
+
+import { Button } from '@/ui/button';
 import {
   Dialog,
   DialogContent,
@@ -7,7 +9,7 @@ import {
   DialogDescription,
   DialogFooter,
 } from '@/ui/dialog';
-import { Button } from '@/ui/button';
+
 import { CloseIcon, TrashIcon } from './icons';
 
 interface ConfirmDialogProps {

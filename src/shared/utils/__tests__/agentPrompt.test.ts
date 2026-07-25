@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+
 import { buildDiffMessage } from '../agentPrompt';
 
 describe('buildDiffMessage', () => {

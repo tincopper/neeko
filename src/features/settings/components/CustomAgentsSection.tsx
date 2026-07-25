@@ -1,9 +1,10 @@
 import React from 'react';
-import type { AgentConfig, AppConfig } from '@/shared/types';
-import { PRESET_AGENT_ICONS } from '@/shared/utils/agents';
+
 import { resolveAgentIconSrc } from '@/features/agent/api/agentApi';
 import { cn } from '@/lib/utils';
 import { FolderIcon } from '@/shared/components/icons';
+import type { AgentConfig, AppConfig } from '@/shared/types';
+import { PRESET_AGENT_ICONS } from '@/shared/utils/agents';
 import { Input, Button } from '@/ui';
 
 interface CustomAgentsSectionProps {

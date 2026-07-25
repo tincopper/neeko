@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+
 import type { AuthMethod, RemoteEntrySession, WSLEntrySession } from '@/shared/types';
 
 interface ConnectionStoreState {

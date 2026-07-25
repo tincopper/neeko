@@ -1,5 +1,6 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, it, expect, vi } from 'vitest';
+
 import ProjectGroup from '@/features/project/components/ProjectGroup';
 
 function setup(overrides: Partial<React.ComponentProps<typeof ProjectGroup>> = {}) {
@@ -46,7 +47,7 @@ describe('ProjectGroup header', () => {
         <span data-testid="session-child">child</span>
       </ProjectGroup>,
     );
-    expect(screen.queryByTestId('session-child')).toBeNull();
+    expect(screen.queryByTestId('session-child')).not.toBeInTheDocument();
   });
 });
 
@@ -89,10 +90,10 @@ describe('ProjectGroup hover actions', () => {
 
   it('未提供回调时不渲染对应按钮', () => {
     render(<ProjectGroup name="neeko" sessionCount={1} expanded actions={{ onToggle: vi.fn() }} />);
-    expect(screen.queryByTitle('Open in IDE')).toBeNull();
-    expect(screen.queryByTitle('Git actions')).toBeNull();
-    expect(screen.queryByTitle('Remove project')).toBeNull();
-    expect(screen.queryByTitle('New Worktree')).toBeNull();
+    expect(screen.queryByTitle('Open in IDE')).not.toBeInTheDocument();
+    expect(screen.queryByTitle('Git actions')).not.toBeInTheDocument();
+    expect(screen.queryByTitle('Remove project')).not.toBeInTheDocument();
+    expect(screen.queryByTitle('New Worktree')).not.toBeInTheDocument();
   });
 
   it('Chevron 按钮独立触发 onToggle', () => {
@@ -144,7 +145,7 @@ describe('ProjectGroup avatar color override', () => {
     );
     const avatar = container.querySelector("[aria-hidden='true']") as HTMLElement;
     expect(avatar).toBeTruthy();
-    expect(avatar.style.color).toBe('rgb(224, 108, 117)');
+    expect(avatar).toHaveStyle({ color: 'rgb(224, 108, 117)' });
   });
 
   it('avatarColor 缺省时走 hash 兜底（与同名稳定一致）', () => {

@@ -1,4 +1,5 @@
 import React, { createContext, useContext } from 'react';
+
 import type { AuthMethod, RemoteEntrySession, WSLEntrySession } from '@/shared/types';
 
 // ── WSL-specific types ────────────────────────────────────────────────────

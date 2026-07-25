@@ -1,6 +1,7 @@
-import React, { useState, useCallback, useRef, useEffect } from 'react';
-import { cn } from '@/lib/utils';
 import { ChevronsLeft, ChevronsRight } from 'lucide-react';
+import React, { useState, useCallback, useRef, useEffect } from 'react';
+
+import { cn } from '@/lib/utils';
 
 interface ResizablePanelProps {
   open: boolean;

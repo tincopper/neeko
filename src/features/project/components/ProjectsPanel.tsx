@@ -14,19 +14,19 @@ import React, { useCallback, useState, useEffect, useMemo } from 'react';
 import ConnectionProjectCard from '@/features/connection/components/ConnectionProjectCard';
 import { useRemoteContext } from '@/features/connection/contexts/RemoteContext';
 import { useWslContext } from '@/features/connection/contexts/WslContext';
-import { SectionHeader } from '@/features/project/components/SectionHeader';
-import { getDistroIcon } from '@/shared/utils/distros';
 import CommitDialog from '@/features/git/components/CommitDialog';
 import GitDialog, { DialogState } from '@/features/git/components/GitDialog';
 import { useAheadBehindSync } from '@/features/git/hooks/useAheadBehindSync';
 import ProjectItem from '@/features/project/components/ProjectItem';
+import { SectionHeader } from '@/features/project/components/SectionHeader';
 import { useProjectActionsContext } from '@/features/project/context';
 import { useActiveProject } from '@/features/project/hooks/use-active-project';
 import { useProjectStore } from '@/features/project/store';
 import { useAppContext } from '@/shared/contexts/AppContext';
-import serverIcon from '../../../assets/server.svg';
+import { getDistroIcon } from '@/shared/utils/distros';
 import { withTimeout } from '@/shared/utils/withTimeout';
 
+import serverIcon from '../../../assets/server.svg';
 import { push, pull, type PushOutcome } from '../../git/api/gitApi';
 
 const ProjectsPanel: React.FC = () => {

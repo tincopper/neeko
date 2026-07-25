@@ -1,5 +1,5 @@
-import { describe, it, expect } from 'vitest';
 import { render, screen } from '@testing-library/react';
+import { describe, it, expect } from 'vitest';
 
 import FileStatsBar from '@/features/git/components/pr-detail/FileStatsBar';
 import type { PRFileChange } from '@/features/git/types';
@@ -11,7 +11,7 @@ function makeFile(overrides?: Partial<PRFileChange>): PRFileChange {
 describe('FileStatsBar', () => {
   it('returns null when files array is empty', () => {
     const { container } = render(<FileStatsBar files={[]} />);
-    expect(container.innerHTML).toBe('');
+    expect(container).toBeEmptyDOMElement();
   });
 
   it('displays file count', () => {

@@ -1,8 +1,9 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import { invoke } from '@tauri-apps/api/core';
-import { useSkillStore, initialSkillState } from '../../store';
+import { render, screen, waitFor, fireEvent } from '@testing-library/react';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
+
 import { createManagedSkill } from '../../../../testing/factories';
+import { useSkillStore, initialSkillState } from '../../store';
 import EditSkillDialog from '../EditSkillDialog';
 
 const mockInvoke = vi.mocked(invoke);
@@ -28,7 +29,7 @@ const skill = createManagedSkill({ id: 'sk-1', name: 'My Skill' });
 describe('EditSkillDialog', () => {
   it('open=false 时不渲染内容', () => {
     render(<EditSkillDialog open={false} skill={null} onClose={vi.fn()} onConfirm={vi.fn()} />);
-    expect(screen.queryByText('Edit Skill')).toBeNull();
+    expect(screen.queryByText('Edit Skill')).not.toBeInTheDocument();
   });
 
   it('open=true 时通过 store.getSkillDocument 加载文档', async () => {

@@ -1,5 +1,5 @@
-import type { ProjectEnvironment } from '@/shared/types/project';
 import type { ProjectCapabilities } from '@/shared/types/activeProject';
+import type { ProjectEnvironment } from '@/shared/types/project';
 
 const CAPABILITIES_MAP: Record<ProjectEnvironment['type'], ProjectCapabilities> = {
   Local: {

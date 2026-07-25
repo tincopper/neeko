@@ -2,18 +2,18 @@
  * Open a source file at a line when the debugger stops.
  * Mirrors go-to-definition navigation using editor store + file IPC.
  */
+import {
+  captureCurrentNavLocation,
+  recordNavigationJump,
+} from '@/features/editor/navigationHistoryStore';
 import { readFileContent } from '@/features/file/api/fileApi';
 import { useProjectStore } from '@/features/project/store';
 import { useWorktreeStore } from '@/features/project/worktreeStore';
 import { useEditorStore } from '@/shared/store';
 import type { Tab } from '@/shared/types';
-import { buildWorktreeTabKey } from '@/shared/utils/tabKey';
-import { getFileName, getTabId } from '@/shared/utils/fileTree';
 import { preloadLanguageExtension } from '@/shared/utils/codemirror';
-import {
-  captureCurrentNavLocation,
-  recordNavigationJump,
-} from '@/features/editor/navigationHistoryStore';
+import { getFileName, getTabId } from '@/shared/utils/fileTree';
+import { buildWorktreeTabKey } from '@/shared/utils/tabKey';
 
 /** Convert absolute path to project-relative if under workspace. */
 export function toProjectRelative(projectPath: string, absPath: string): string {

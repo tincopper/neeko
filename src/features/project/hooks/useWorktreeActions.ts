@@ -1,12 +1,15 @@
 import { useCallback } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
-import { setActiveProject, setViewTerminal } from '../api/projectApi';
+
 import { useProjectStore } from '@/features/project/store';
 import { useWorktreeStore } from '@/features/project/worktreeStore';
 import { useEditorStore } from '@/shared/store';
 import type { Tab } from '@/shared/types';
-import type { WorktreeItem } from './useWorktreeState';
 import { buildWorktreeTabKey } from '@/shared/utils/tabKey';
+
+import { setActiveProject, setViewTerminal } from '../api/projectApi';
+
+import type { WorktreeItem } from './useWorktreeState';
 
 interface UseWorktreeActionsParams {
   setActiveWorktreePath: (path: string | null) => void;

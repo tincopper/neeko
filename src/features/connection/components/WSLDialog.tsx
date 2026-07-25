@@ -1,15 +1,17 @@
 import { useState, useEffect, useRef } from 'react';
-import { getWslDistros, getWslDirectories, getWslHomeDir } from '../api/connectionApi';
-import { WSLProject, WSLEntrySession } from '@/shared/types';
+
 import AgentIcon from '@/features/agent/components/AgentIcon';
+import { cn } from '@/lib/utils';
 import { useAppContext } from '@/shared/contexts/AppContext';
+import { WSLProject, WSLEntrySession } from '@/shared/types';
 import { getDistroIcon } from '@/shared/utils/distros';
 import { IDE_PRESETS, getIdeCommand, getIdeIconSrc } from '@/shared/utils/idePresets';
 import { randomAvatarColor } from '@/shared/utils/projectAvatar';
-import { cn } from '@/lib/utils';
+import { Button } from '@/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/ui/dialog';
 import { Input } from '@/ui/input';
-import { Button } from '@/ui/button';
+
+import { getWslDistros, getWslDirectories, getWslHomeDir } from '../api/connectionApi';
 
 interface WSLDialogProps {
   isOpen: boolean;

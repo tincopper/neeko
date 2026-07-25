@@ -1,5 +1,6 @@
 import { render, screen } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
+
 import ConversationList from '@/features/conversation/components/ConversationList';
 import ConversationListSkeleton from '@/features/conversation/components/ConversationListSkeleton';
 import type { ConversationMeta } from '@/features/conversation/types';

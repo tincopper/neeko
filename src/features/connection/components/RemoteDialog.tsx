@@ -1,16 +1,18 @@
 import { useState, useEffect, useRef } from 'react';
-import { testRemoteConnection, listRemoteDirectories } from '../api/connectionApi';
-import { RemoteProject, RemoteEntrySession, AuthMethod } from '@/shared/types';
+
 import AgentIcon from '@/features/agent/components/AgentIcon';
+import { cn } from '@/lib/utils';
 import { useAppContext } from '@/shared/contexts/AppContext';
+import { RemoteProject, RemoteEntrySession, AuthMethod } from '@/shared/types';
 import { getIdeCommand, getIdeIconSrc, IDE_PRESETS } from '@/shared/utils/idePresets';
 import { randomAvatarColor } from '@/shared/utils/projectAvatar';
-import serverIcon from '../../../assets/server.svg';
-import { cn } from '@/lib/utils';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/ui/dialog';
-import { Input } from '@/ui/input';
 import { Button } from '@/ui/button';
 import { Checkbox } from '@/ui/checkbox';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/ui/dialog';
+import { Input } from '@/ui/input';
+
+import serverIcon from '../../../assets/server.svg';
+import { testRemoteConnection, listRemoteDirectories } from '../api/connectionApi';
 
 interface RemoteDialogProps {
   isOpen: boolean;

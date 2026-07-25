@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+
 import { isEditableKeyboardTarget } from '@/shared/hooks/useKeyboardShortcuts';
 
 describe('isEditableKeyboardTarget', () => {

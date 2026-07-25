@@ -1,5 +1,6 @@
-import React, { useEffect, useMemo, useRef } from 'react';
 import { convertFileSrc } from '@tauri-apps/api/core';
+import React, { useEffect, useMemo, useRef } from 'react';
+
 import { getViewSnapshot, setViewSnapshot } from '@/shared/utils/editorViewState';
 
 interface InlineHtmlPreviewProps {

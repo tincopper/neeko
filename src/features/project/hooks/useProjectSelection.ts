@@ -1,8 +1,10 @@
 import { useCallback } from 'react';
-import { setActiveProject } from '../api/projectApi';
+
 import { useProjectStore } from '@/features/project/store';
 import { useWorktreeStore } from '@/features/project/worktreeStore';
 import { useEditorStore } from '@/shared/store';
+
+import { setActiveProject } from '../api/projectApi';
 
 /**
  * useProjectSelection — extract project selection logic from useAppContainer.

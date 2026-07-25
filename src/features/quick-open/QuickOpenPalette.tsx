@@ -3,8 +3,8 @@
  */
 import React, { useEffect, useRef } from 'react';
 
-import { Dialog, DialogContent, DialogTitle } from '@/ui/dialog';
 import { cn } from '@/lib/utils';
+import { Dialog, DialogContent, DialogTitle } from '@/ui/dialog';
 
 import { quickOpenTitle, useQuickOpenStore } from './quickOpenStore';
 

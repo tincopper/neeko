@@ -1,11 +1,14 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { addAgent, removeAgent, importAgentIcon } from '../../agent/api/agentApi';
-import { getSystemFonts } from '../api/settingsApi';
 import { open } from '@tauri-apps/plugin-dialog';
-import { DEFAULT_AGENT_ICON } from '@/shared/utils/agents';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+
 import type { AgentConfig, AppConfig, DiffMode } from '@/shared/types';
+import { DEFAULT_AGENT_ICON } from '@/shared/utils/agents';
 import { IDE_PRESETS, getIdeCommand } from '@/shared/utils/idePresets';
 import type { IdePreset } from '@/shared/utils/idePresets';
+
+import { addAgent, removeAgent, importAgentIcon } from '../../agent/api/agentApi';
+import { getSystemFonts } from '../api/settingsApi';
+
 import { BUILTIN_FONTS, PRESET_SHELLS, type SettingsNavId } from './constants';
 
 interface UseSettingsPanelStateParams {

@@ -5,13 +5,13 @@ import { ChevronRightIcon } from '@/shared/components/icons';
 import { fileIconSrc } from '@/shared/utils/fileIcons';
 
 import { readFileContent, listPrReviewComments, addPrReviewComment } from '../../api/gitApi';
-import type { PRReviewComment } from '../../types/comment';
 import type { PRFileChange } from '../../types';
+import type { PRReviewComment } from '../../types/comment';
 import DiffTable from '../diff/DiffTable';
+import { detectLanguage } from '../diff/highlight';
 import SplitDiffTable from '../diff/SplitDiffTable';
 import type { ViewMode } from '../diff/types';
 import { useDiffData } from '../diff/useDiffData';
-import { detectLanguage } from '../diff/highlight';
 
 interface PRFilesChangedPanelProps {
   projectId: string;

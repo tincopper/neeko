@@ -1,10 +1,12 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Play, Square, ChevronDown, Bug, Plus, Pencil, X } from '@/shared/components/icons';
 
 import { useProjectStore } from '@/features/project/store';
+import { Play, Square, ChevronDown, Bug, Plus, Pencil, X } from '@/shared/components/icons';
 import { useEditorStore } from '@/shared/store';
+
 import { useDebugStore } from '../store/debugStore';
 import type { EntryPoint, LaunchConfig } from '../types';
+
 import LaunchConfigDialog from './LaunchConfigDialog';
 
 /** Active editor file path for ${file} / ${fileDirname} expansion. */

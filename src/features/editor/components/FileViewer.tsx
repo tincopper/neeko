@@ -21,39 +21,49 @@ import CodeMirror from '@uiw/react-codemirror';
 import React, { useState, useCallback, useEffect, useMemo, useRef, useLayoutEffect } from 'react';
 import { useShallow } from 'zustand/shallow';
 
+import { useBreakpointGutterExtensions } from '@/features/debug/hooks/useBreakpointGutter';
+import {
+  applyDebugCurrentLine,
+  resolveDebugHighlightLine,
+  useCurrentLineHighlight,
+} from '@/features/debug/hooks/useCurrentLineHighlight';
+import { EMPTY_BP_LINES, useDebugStore } from '@/features/debug/store/debugStore';
+import { applyNavigateCaret, navigateCaretExtension } from '@/features/editor/navigateCaret';
+import type { NavLocation } from '@/features/editor/navigationHistory';
+import {
+  captureCurrentNavLocation,
+  recordNavigationJump,
+} from '@/features/editor/navigationHistoryStore';
 import { readFileContent } from '@/features/file/api/fileApi';
 import { acquireLspPlugin, releaseLspClient } from '@/features/lsp/hooks/lspClientManager';
-import {
-  fromFileUri,
-  getLspLanguageId,
-  resolveLspLanguageId,
-  toFileUri,
-} from '@/features/lsp/languageMap';
 import { useCmdHeld } from '@/features/lsp/hooks/useCmdHeld';
 import { useLspDefinition } from '@/features/lsp/hooks/useLspDefinition';
 import {
   useLspLinkHighlightExtension,
   clearLinkHighlight,
 } from '@/features/lsp/hooks/useLspLinkHighlight';
+import {
+  fromFileUri,
+  getLspLanguageId,
+  resolveLspLanguageId,
+  toFileUri,
+} from '@/features/lsp/languageMap';
 import { resolveLspPositionFromOffset } from '@/features/lsp/position';
 import type { LspLocation } from '@/features/lsp/types';
-import { useSymbolNavStore } from '@/features/symbol-nav';
 import { useActiveProject } from '@/features/project/hooks/use-active-project';
 import { useProjectStore } from '@/features/project/store';
 import { useWorktreeStore } from '@/features/project/worktreeStore';
+import { useSymbolNavStore } from '@/features/symbol-nav';
 import { useTerminalTabs } from '@/features/terminal/hooks/useTerminalTabs';
+import { cn } from '@/lib/utils';
 import { Eye, Save, FileCode, Globe } from '@/shared/components/icons';
 import { useEditorContext } from '@/shared/contexts';
 import { useAppContext } from '@/shared/contexts/AppContext';
 import { useCodeMirrorBinding } from '@/shared/hooks/useResolvedShortcuts';
 import { useEditorStore } from '@/shared/store';
-import {
-  captureCurrentNavLocation,
-  recordNavigationJump,
-} from '@/features/editor/navigationHistoryStore';
-import type { NavLocation } from '@/features/editor/navigationHistory';
-import { applyNavigateCaret, navigateCaretExtension } from '@/features/editor/navigateCaret';
 import type { FileTab, AppTheme, Tab, FileTabData } from '@/shared/types';
+import type { EditorAction } from '@/shared/utils/agentPrompt';
+import { buildCodeMessage } from '@/shared/utils/agentPrompt';
 import { openHtmlInBrowserPanel, resolveAbsolutePath } from '@/shared/utils/browserUtils';
 import {
   getCachedLanguageExtension,
@@ -62,35 +72,25 @@ import {
   createCmTheme,
   isMarkdownFile,
 } from '@/shared/utils/codemirror';
-import { MarkdownPreview } from '@/ui';
-
-import { useFileActionsContext } from '../FileActionsContext';
-
-import { buildWorktreeTabKey } from '@/shared/utils/tabKey';
 import {
   getViewSnapshot,
   setViewSnapshot,
   clearViewSnapshot,
   type SerializedSelection,
 } from '@/shared/utils/editorViewState';
+import { getTabId, getFileName } from '@/shared/utils/fileTree';
+import { IS_MACOS } from '@/shared/utils/platform';
+import { buildWorktreeTabKey } from '@/shared/utils/tabKey';
+import { MarkdownPreview } from '@/ui';
+
+import { useFileActionsContext } from '../FileActionsContext';
+
 
 import { useEditorAgentActions } from '../hooks/useEditorAgentActions';
-import { useBreakpointGutterExtensions } from '@/features/debug/hooks/useBreakpointGutter';
-import {
-  applyDebugCurrentLine,
-  resolveDebugHighlightLine,
-  useCurrentLineHighlight,
-} from '@/features/debug/hooks/useCurrentLineHighlight';
-import { EMPTY_BP_LINES, useDebugStore } from '@/features/debug/store/debugStore';
 
 import InlineHtmlPreview from './InlineHtmlPreview';
 import SelectionToolbar from './SelectionToolbar';
 
-import { cn } from '@/lib/utils';
-import { IS_MACOS } from '@/shared/utils/platform';
-import type { EditorAction } from '@/shared/utils/agentPrompt';
-import { buildCodeMessage } from '@/shared/utils/agentPrompt';
-import { getTabId, getFileName } from '@/shared/utils/fileTree';
 
 type PreviewMode = 'preview' | 'source';
 

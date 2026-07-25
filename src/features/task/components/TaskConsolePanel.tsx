@@ -5,12 +5,14 @@
  * their output buffers live in the task store until the tab is closed.
  */
 import React, { useCallback, useMemo, useRef, useState } from 'react';
+
 import { Square, Terminal, X } from '@/shared/components/icons';
+import { useAppContext } from '@/shared/contexts/AppContext';
 import { cn } from '@/shared/utils/cn';
 import { buildFontFamily } from '@/shared/utils/terminal';
-import { useAppContext } from '@/shared/contexts/AppContext';
 
 import { useTaskStore } from '../store';
+
 import TaskConsoleOutput from './TaskConsoleOutput';
 
 const PANEL_H_KEY = 'neeko.task.consoleHeight';

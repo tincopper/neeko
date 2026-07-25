@@ -1,5 +1,9 @@
 import { useState, useCallback, useEffect } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
+import { useShallow } from 'zustand/shallow';
+
+import { useConnectionStore } from '@/features/connection/store';
+import { useProjectStore } from '@/features/project/store';
 import {
   wslCacheKey,
   destroyWslCachesByPrefix,
@@ -7,9 +11,6 @@ import {
   destroyRemoteCachesByPrefix,
 } from '@/features/terminal/components/terminalCache';
 import type { AuthMethod, RemoteEntrySession, WSLEntrySession } from '@/shared/types';
-import { useProjectStore } from '@/features/project/store';
-import { useConnectionStore } from '@/features/connection/store';
-import { useShallow } from 'zustand/shallow';
 import { applyStateAction, upsertEntryById } from '@/shared/utils/entryUpdates';
 
 export type SaveSessionFn = (...args: unknown[]) => Promise<void>;

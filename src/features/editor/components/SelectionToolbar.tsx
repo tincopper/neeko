@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
-import type { EditorAction } from '@/shared/utils/agentPrompt';
+
 import { CloseIcon } from '@/shared/components/icons';
+import type { EditorAction } from '@/shared/utils/agentPrompt';
 
 interface SelectionToolbarProps {
   visible: boolean;

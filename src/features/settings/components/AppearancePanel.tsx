@@ -1,4 +1,5 @@
 import React from 'react';
+
 import type { AppTheme, ThemeListItem } from '@/features/settings/types';
 import { cn } from '@/lib/utils';
 import { Switch } from '@/ui';

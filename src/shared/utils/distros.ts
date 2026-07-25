@@ -1,12 +1,12 @@
-import ubuntu from '../../assets/distros/ubuntu.svg';
+import alpine from '../../assets/distros/alpine.svg';
+import archlinux from '../../assets/distros/archlinux.svg';
+import centos from '../../assets/distros/centos.svg';
 import debian from '../../assets/distros/debian.svg';
 import fedora from '../../assets/distros/fedora.svg';
-import opensuse from '../../assets/distros/opensuse.svg';
-import archlinux from '../../assets/distros/archlinux.svg';
 import kalilinux from '../../assets/distros/kalilinux.svg';
-import alpine from '../../assets/distros/alpine.svg';
-import centos from '../../assets/distros/centos.svg';
+import opensuse from '../../assets/distros/opensuse.svg';
 import oracle from '../../assets/distros/oracle.svg';
+import ubuntu from '../../assets/distros/ubuntu.svg';
 import linuxIcon from '../../assets/linux.svg';
 
 const DISTRO_ICONS: Record<string, string> = {

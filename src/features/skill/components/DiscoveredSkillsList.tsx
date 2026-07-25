@@ -1,7 +1,8 @@
 import React, { useCallback } from 'react';
+
 import { Download, X } from '@/shared/components/icons';
-import { Button } from '@/ui';
 import type { DiscoveredSkillDto } from '@/shared/types';
+import { Button } from '@/ui';
 
 interface DiscoveredSkillsListProps {
   skills: DiscoveredSkillDto[];

@@ -1,7 +1,8 @@
 import React from 'react';
+
 import { cn } from '@/lib/utils';
-import { getAvatarStyle, getProjectInitials } from '@/shared/utils/projectAvatar';
 import { ChevronRightIcon, PlusIcon, TrashIcon, MoreVerticalIcon } from '@/shared/components/icons';
+import { getAvatarStyle, getProjectInitials } from '@/shared/utils/projectAvatar';
 
 interface ProjectGroupActions {
   /** 折叠/展开切换。点�?header 主体�?chevron 按钮均触�?*/

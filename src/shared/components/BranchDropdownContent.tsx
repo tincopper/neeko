@@ -7,6 +7,7 @@
  */
 
 import React, { useRef, useEffect, useMemo } from 'react';
+
 import { GitBranch, SearchIcon } from './icons';
 
 export interface BranchDropdownContentProps {

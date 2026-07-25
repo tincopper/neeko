@@ -1,7 +1,6 @@
 import { invoke } from '@tauri-apps/api/core';
 
 import type { GitInfo } from '@/features/git/types';
-
 import type { Project } from '@/shared/types';
 
 export function addProject(

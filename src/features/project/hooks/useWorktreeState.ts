@@ -1,7 +1,8 @@
 import { useCallback } from 'react';
+import { useShallow } from 'zustand/shallow';
+
 import { useWorktreeStore } from '@/features/project/worktreeStore';
 import { useEditorStore } from '@/shared/store';
-import { useShallow } from 'zustand/shallow';
 import { buildWorktreeTabKey } from '@/shared/utils/tabKey';
 
 export interface WorktreeItem {

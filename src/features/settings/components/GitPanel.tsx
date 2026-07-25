@@ -1,4 +1,5 @@
 import React from 'react';
+
 import type { DiffMode } from '@/shared/types';
 import { ToggleGroup, ToggleGroupItem } from '@/ui';
 

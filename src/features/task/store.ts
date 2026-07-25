@@ -1,4 +1,12 @@
 import { create } from 'zustand';
+
+import { useProjectStore } from '@/features/project/store';
+import type { DiscoveredTask, TaskConfig, TaskRun } from '@/shared/types/task';
+import {
+  exclusiveOpenTaskConsole,
+  registerTaskConsoleCloser,
+} from '@/shared/utils/bottomPanelExclusive';
+
 import {
   getTaskConfigs,
   saveTaskConfig as saveTaskConfigApi,
@@ -6,12 +14,6 @@ import {
   discoverTaskConfigs,
   importDiscoveredTask as importDiscoveredTaskApi,
 } from './api/taskApi';
-import { useProjectStore } from '@/features/project/store';
-import {
-  exclusiveOpenTaskConsole,
-  registerTaskConsoleCloser,
-} from '@/shared/utils/bottomPanelExclusive';
-import type { DiscoveredTask, TaskConfig, TaskRun } from '@/shared/types/task';
 import {
   formatTaskExit,
   formatTaskHeader,

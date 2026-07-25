@@ -1,6 +1,6 @@
+import type { Transport } from '@codemirror/lsp-client';
 import { invoke } from '@tauri-apps/api/core';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
-import type { Transport } from '@codemirror/lsp-client';
 
 import { useNotificationStore } from '@/features/notification/notificationStore';
 

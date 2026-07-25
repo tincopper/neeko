@@ -1,8 +1,10 @@
 import React from 'react';
-import { Settings } from '@/shared/components/icons';
-import neekoIcon from '../../../assets/neeko-icon.png';
+
 import AgentIcon from '@/features/agent/components/AgentIcon';
+import { Settings } from '@/shared/components/icons';
 import type { AgentConfig } from '@/shared/types';
+
+import neekoIcon from '../../../assets/neeko-icon.png';
 
 interface ProjectGuidePageProps {
   selectedAgent: AgentConfig | null;

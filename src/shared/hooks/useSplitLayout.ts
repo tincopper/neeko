@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+
 import type { PaneDirection, PaneId, PaneNode, SplitPathStep, SplitState } from '@/shared/types';
 
 const MIN_RATIO = 0.2;

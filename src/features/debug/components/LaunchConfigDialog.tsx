@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
+
 import { X } from '@/shared/components/icons';
 
 import type { LaunchConfig } from '../types';

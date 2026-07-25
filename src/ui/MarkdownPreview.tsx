@@ -1,12 +1,14 @@
+import { convertFileSrc } from '@tauri-apps/api/core';
+import plantumlEncoder from 'plantuml-encoder';
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
 import rehypeHighlight from 'rehype-highlight';
 import rehypeRaw from 'rehype-raw';
-import plantumlEncoder from 'plantuml-encoder';
-import { convertFileSrc } from '@tauri-apps/api/core';
+import remarkGfm from 'remark-gfm';
+
 import type { AppTheme } from '@/shared/types';
 import { isDarkTheme } from '@/shared/utils/theme';
+
 import { InlineDiffBlock } from './InlineDiffBlock';
 
 function resolveImageSrc(src: string, basePath?: string): string {

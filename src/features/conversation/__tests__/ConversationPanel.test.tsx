@@ -1,9 +1,10 @@
+import { invoke } from '@tauri-apps/api/core';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { invoke } from '@tauri-apps/api/core';
+
+import type { AgentConfig } from '@/features/agent/types';
 import ConversationPanel from '@/features/conversation/components/ConversationPanel';
 import type { ConversationMeta } from '@/features/conversation/types';
-import type { AgentConfig } from '@/features/agent/types';
 
 const mockInvoke = vi.mocked(invoke);
 

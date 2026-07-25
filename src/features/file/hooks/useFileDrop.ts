@@ -9,8 +9,9 @@
  */
 
 import { useEffect } from 'react';
-import { useEditorStore } from '@/shared/store';
+
 import { sendToTerminal } from '@/features/terminal/components/terminalCommands';
+import { useEditorStore } from '@/shared/store';
 
 // ---------------------------------------------------------------------------
 // Module-level state

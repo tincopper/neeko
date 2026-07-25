@@ -1,9 +1,10 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, act, waitFor } from '@testing-library/react';
 import { invoke } from '@tauri-apps/api/core';
+import { render, screen, fireEvent, act, waitFor } from '@testing-library/react';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+
 import OpenIdeButton from '@/app/components/OpenIdeButton';
-import { useProjectStore } from '@/features/project/store';
 import { useConnectionStore } from '@/features/connection/store';
+import { useProjectStore } from '@/features/project/store';
 import type { Project } from '@/shared/types';
 
 const mockInvoke = invoke as unknown as ReturnType<typeof vi.fn>;
@@ -160,7 +161,7 @@ describe('OpenIdeButton', () => {
     });
     await openDropdown();
 
-    expect(screen.queryByText('IntelliJ IDEA')).toBeInTheDocument();
+    expect(screen.getByText('IntelliJ IDEA')).toBeInTheDocument();
 
     const ideaRow = (await screen.findByText('IntelliJ IDEA')).closest('div');
     await act(async () => {

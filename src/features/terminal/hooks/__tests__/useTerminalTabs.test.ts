@@ -1,5 +1,6 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+
 import { useTerminalTabs } from '@/features/terminal/hooks/useTerminalTabs';
 import { useEditorStore } from '@/shared/store';
 

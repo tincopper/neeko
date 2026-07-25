@@ -1,8 +1,11 @@
 import React from 'react';
-import type { AuthMethod } from '@/shared/types';
+
 import { useEditorContext } from '@/shared/contexts';
-import TerminalViewBase from './TerminalViewBase';
+import type { AuthMethod } from '@/shared/types';
+
 import { useRemoteTerminalStrategy } from '../strategies';
+
+import TerminalViewBase from './TerminalViewBase';
 
 export interface RemoteTerminalViewProps {
   entryId: string;

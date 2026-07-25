@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+
 import type { AheadBehind } from '@/shared/types';
 
 interface GitStoreState {

@@ -1,7 +1,9 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { ChevronDown, Play } from '@/shared/components/icons';
-import { loadConfig } from '@/features/session/api/sessionApi';
+
 import { useProjectStore } from '@/features/project/store';
+import { loadConfig } from '@/features/session/api/sessionApi';
+import { ChevronDown, Play } from '@/shared/components/icons';
+import type { AppConfig } from '@/shared/types';
 import {
   getIdeCommand,
   getIdeDisplayName,
@@ -11,7 +13,6 @@ import {
   resolveIdePreset,
   IDE_PRESETS,
 } from '@/shared/utils/idePresets';
-import type { AppConfig } from '@/shared/types';
 
 /**
  * OpenIdeButton — 标题栏中 TaskRunButton 左侧的 IDE 打开/选择按钮

@@ -1,6 +1,7 @@
 import { useCallback } from 'react';
-import { useProjectStore } from '@/features/project/store';
+
 import { useConnectionStore } from '@/features/connection/store';
+import { useProjectStore } from '@/features/project/store';
 import { useWorktreeStore } from '@/features/project/worktreeStore';
 import { useAppViewStore } from '@/shared/store/appViewStore';
 

@@ -1,5 +1,6 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, it, expect, vi } from 'vitest';
+
 import SessionRow from '@/features/project/components/SessionRow';
 
 describe('SessionRow', () => {
@@ -23,7 +24,7 @@ describe('SessionRow', () => {
 
   it('非 active 时即使 ahead > 0 也不渲染 ↑N（仅 active 行展示）', () => {
     render(<SessionRow kind="local" label="local" ahead={208} />);
-    expect(screen.queryByText('↑208')).toBeNull();
+    expect(screen.queryByText('↑208')).not.toBeInTheDocument();
   });
 
   it('changes 不论 active 都渲染 +A -D', () => {
@@ -39,7 +40,7 @@ describe('SessionRow', () => {
 
   it('无 shortcut 时不渲染 ⌘N', () => {
     render(<SessionRow kind="local" label="local" isActive />);
-    expect(screen.queryByText(/⌘|Ctrl\+/)).toBeNull();
+    expect(screen.queryByText(/⌘|Ctrl\+/)).not.toBeInTheDocument();
   });
 
   it('worktree kind 渲染 trailing 节点', () => {

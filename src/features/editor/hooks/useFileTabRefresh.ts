@@ -1,7 +1,7 @@
 import { readFileContent } from '@/features/file/api/fileApi';
-import type { FileChangedEvent, FileContent } from '@/shared/types';
-import { useEditorStore } from '@/shared/store';
 import { useFileChangedEvent } from '@/features/git/hooks/useFileChangedEvent';
+import { useEditorStore } from '@/shared/store';
+import type { FileChangedEvent, FileContent } from '@/shared/types';
 
 interface FileRefreshCommands {
   readFileContent(path: string): Promise<FileContent>;

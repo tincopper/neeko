@@ -1,6 +1,7 @@
 import React from 'react';
-import { ChevronLeft, ChevronRight } from '@/shared/components/icons';
+
 import { cn } from '@/lib/utils';
+import { ChevronLeft, ChevronRight } from '@/shared/components/icons';
 
 interface PaginationProps {
   page: number;

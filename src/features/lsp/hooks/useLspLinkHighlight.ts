@@ -1,14 +1,15 @@
-import { useMemo } from 'react';
-
 import type { Extension } from '@codemirror/state';
 import { StateEffect, StateField } from '@codemirror/state';
 import { Decoration, DecorationSet, EditorView } from '@codemirror/view';
+import { useMemo } from 'react';
+
+import { IS_MACOS } from '@/shared/utils/platform';
 
 import { lspGoToDefinition } from '../api/lspApi';
 import { resolveLspPositionFromOffset } from '../position';
 import { createDebouncedLatestRunner } from '../requestTracker';
+
 import { definitionCacheKey, getOrFetchDefinition } from './lspCache';
-import { IS_MACOS } from '@/shared/utils/platform';
 
 /** Debounce for Cmd/Ctrl+hover definition probes (reduces gopls flood). */
 const LINK_HIGHLIGHT_DEBOUNCE_MS = 150;

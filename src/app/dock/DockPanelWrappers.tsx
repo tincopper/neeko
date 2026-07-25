@@ -1,34 +1,35 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { revealInFileManager, readDirTree } from '@/features/file/api/fileApi';
 import { listen } from '@tauri-apps/api/event';
-import { useAppContext } from '@/shared/contexts';
-import { useFileActionsContext } from '@/features/editor/FileActionsContext';
-import { useFileStore } from '@/features/file/store';
-import { useProjectStore } from '@/features/project/store';
-import { useWorktreeStore } from '@/features/project/worktreeStore';
-import { useGitStore } from '@/features/git/store';
-import { aheadBehindKey } from '@/shared/utils/aheadBehindKey';
-import { useEditorStore } from '@/shared/store';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
+import ConversationPanel from '@/features/conversation/components/ConversationPanel';
+import type { ConversationMeta } from '@/features/conversation/types';
+import { conversationTabTitle } from '@/features/conversation/utils/conversationTabTitle';
+import { useFileActionsContext } from '@/features/editor/FileActionsContext';
+import { revealInFileManager, readDirTree } from '@/features/file/api/fileApi';
+import { useEditorStore } from '@/shared/store';
 import { useDockStore } from '@/shared/store/dockStore';
+import { aheadBehindKey } from '@/shared/utils/aheadBehindKey';
+
 import FilesPanel from '@/features/file/components/FilesPanel';
+import { useFileStore } from '@/features/file/store';
 import SkillsPanel from '@/features/skill/components/SkillsPanel';
 import GitCommitPanel from '@/features/git/components/GitCommitPanel';
 import GitControlPanel, { type GitControlTab } from '@/features/git/components/GitControlPanel';
-import PullRequestsPanel from '@/features/git/components/PullRequestsPanel';
-import ConversationPanel from '@/features/conversation/components/ConversationPanel';
 import GitLogPanel from '@/features/git/components/gitlog/GitLogPanel';
 import { useGitLog } from '@/features/git/components/gitlog/useGitLog';
 import { useCommitDetail } from '@/features/git/components/gitlog/useCommitDetail';
+import PullRequestsPanel from '@/features/git/components/PullRequestsPanel';
 import { useSingletonDiff } from '@/features/git/hooks/useSingletonDiff';
+import { useGitStore } from '@/features/git/store';
 import { useActiveProject } from '@/features/project/hooks/use-active-project';
-import { buildDiffSource } from '@/shared/utils/diffSource';
-import { openHtmlInBrowserPanel, resolveAbsolutePath } from '@/shared/utils/browserUtils';
-import { DEFAULT_TREE_DEPTH } from '@/shared/types/file';
-import { mergeSubTree } from '@/shared/utils/fileTree';
+import { useProjectStore } from '@/features/project/store';
+import { useWorktreeStore } from '@/features/project/worktreeStore';
+import { useAppContext } from '@/shared/contexts';
 import type { Tab, FileTreeChangedEvent } from '@/shared/types';
-import type { ConversationMeta } from '@/features/conversation/types';
-import { conversationTabTitle } from '@/features/conversation/utils/conversationTabTitle';
+import { DEFAULT_TREE_DEPTH } from '@/shared/types/file';
+import { openHtmlInBrowserPanel, resolveAbsolutePath } from '@/shared/utils/browserUtils';
+import { buildDiffSource } from '@/shared/utils/diffSource';
+import { mergeSubTree } from '@/shared/utils/fileTree';
 import { buildWorktreeTabKey } from '@/shared/utils/tabKey';
 
 // ── FilesPanelWrapper ──

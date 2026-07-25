@@ -258,12 +258,12 @@ describe('AgentSkillContent', () => {
 
     await waitFor(() => {
       expect(mockRemoveSkillFromAgent).toHaveBeenCalledWith('opencode', '/skills/git-helper', 's1');
-      expect(mockRemoveSkillFromAgent).toHaveBeenCalledWith(
-        'opencode',
-        '/skills/code-formatter',
-        null,
-      );
     });
+    expect(mockRemoveSkillFromAgent).toHaveBeenCalledWith(
+      'opencode',
+      '/skills/code-formatter',
+      null,
+    );
   });
 
   it('select all in multi-select mode selects filtered skills only', async () => {

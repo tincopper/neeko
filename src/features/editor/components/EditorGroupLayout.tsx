@@ -1,8 +1,11 @@
 import React, { useCallback, useEffect, useRef } from 'react';
-import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from '@/ui/resizable';
-import EditorGroupPane from './EditorGroupPane';
-import { useEditorGroupLayout } from '../hooks/useEditorGroupLayout';
+
 import type { AuthMethod } from '@/shared/types';
+import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from '@/ui/resizable';
+
+import { useEditorGroupLayout } from '../hooks/useEditorGroupLayout';
+
+import EditorGroupPane from './EditorGroupPane';
 
 interface EditorGroupLayoutProps {
   tabKey: string;

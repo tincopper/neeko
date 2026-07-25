@@ -1,5 +1,7 @@
 import React, { useCallback } from 'react';
+
 import { cn } from '@/lib/utils';
+
 import type { PRCommit } from '../../types';
 
 interface PRCommitListProps {

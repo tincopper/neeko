@@ -1,8 +1,8 @@
 import { useMemo } from 'react';
 
 import { useProjectStore } from '@/features/project/store';
-import { useAppContext, useEditorContext } from '@/shared/contexts';
 import { useWorktreeStore } from '@/features/project/worktreeStore';
+import { useAppContext, useEditorContext } from '@/shared/contexts';
 import { buildWorktreeTabKey } from '@/shared/utils/tabKey';
 
 import { createTerminalSession, resizeTerminal, closeTerminalSession } from '../api/terminalApi';

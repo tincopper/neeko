@@ -1,5 +1,5 @@
-import type { Project } from '@/features/project/types';
 import type { WSLProject, RemoteProject } from '@/features/connection/types';
+import type { Project } from '@/features/project/types';
 
 export function projectToWslProject(p: Project, distro: string): WSLProject {
   return {

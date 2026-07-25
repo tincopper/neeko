@@ -1,20 +1,21 @@
 import { useEffect, useRef } from 'react';
-import { refreshTerminal, terminalCacheKey } from '@/features/terminal/components/terminalCache';
+
+import { useNavHistoryStore } from '@/features/editor/navigationHistoryStore';
+import type { ProjectListItem } from '@/features/project/hooks/useProjectList';
 import { useProjectStore } from '@/features/project/store';
 import { useWorktreeStore } from '@/features/project/worktreeStore';
+import { useQuickOpenStore } from '@/features/quick-open';
+import { refreshTerminal, terminalCacheKey } from '@/features/terminal/components/terminalCache';
 import { useEditorStore } from '@/shared/store';
 import { useDockStore } from '@/shared/store/dockStore';
-import { buildWorktreeTabKey } from '@/shared/utils/tabKey';
-import { useNavHistoryStore } from '@/features/editor/navigationHistoryStore';
-import { useQuickOpenStore } from '@/features/quick-open';
+import { resolveNextTabId } from '@/shared/utils/cycleEditorTab';
 import {
   resolveBindings,
   matchesBinding,
   SHORTCUT_ACTIONS,
   getShortcutAction,
 } from '@/shared/utils/shortcutRegistry';
-import { resolveNextTabId } from '@/shared/utils/cycleEditorTab';
-import type { ProjectListItem } from '@/features/project/hooks/useProjectList';
+import { buildWorktreeTabKey } from '@/shared/utils/tabKey';
 
 interface UseKeyboardShortcutsParams {
   updateWtPath: (path: string | null, branch: string) => void;

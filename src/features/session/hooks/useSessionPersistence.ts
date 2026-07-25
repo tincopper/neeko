@@ -1,6 +1,7 @@
 import { useState, useRef, useCallback } from 'react';
-import { saveSession as saveSessionApi } from '../api/sessionApi';
+
 import type { SaveSessionFn } from '../../connection/hooks/useWslProjects';
+import { saveSession as saveSessionApi } from '../api/sessionApi';
 
 export interface UseSessionPersistenceResult {
   worktreeState: Record<string, string>;

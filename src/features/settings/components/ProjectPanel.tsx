@@ -1,21 +1,16 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import {
-  renameProject,
-  changeProjectPath,
-  setProjectIde,
-  setProjectColor,
-  removeProject,
-  setProjectPrimaryLanguage,
-} from '../../project/api/projectApi';
-import { setProjectAgents, listAgents } from '../../agent/api/agentApi';
-import { useLspStore } from '@/features/lsp/store/lspStore';
 import { open } from '@tauri-apps/plugin-dialog';
-import { Pencil, Trash2, Plus } from '@/shared/components/icons';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+
+import { useLspStore } from '@/features/lsp/store/lspStore';
 import { useProjectStore } from '@/features/project/store';
+import TaskDialog from '@/features/task/components/TaskDialog';
 import { useTaskStore } from '@/features/task/store';
+import { cn } from '@/lib/utils';
+import { Pencil, Trash2, Plus } from '@/shared/components/icons';
+import type { Project } from '@/shared/types';
+import type { TaskConfig } from '@/shared/types/task';
 import { IDE_PRESETS } from '@/shared/utils/idePresets';
 import { AVATAR_COLORS } from '@/shared/utils/projectAvatar';
-import { cn } from '@/lib/utils';
 import {
   Select,
   SelectTrigger,
@@ -26,9 +21,16 @@ import {
   Button,
   Separator,
 } from '@/ui';
-import TaskDialog from '@/features/task/components/TaskDialog';
-import type { TaskConfig } from '@/shared/types/task';
-import type { Project } from '@/shared/types';
+
+import { setProjectAgents, listAgents } from '../../agent/api/agentApi';
+import {
+  renameProject,
+  changeProjectPath,
+  setProjectIde,
+  setProjectColor,
+  removeProject,
+  setProjectPrimaryLanguage,
+} from '../../project/api/projectApi';
 
 interface ProjectPanelProps {
   projectId: string;

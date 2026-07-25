@@ -1,6 +1,7 @@
-import React, { useCallback, useMemo } from 'react';
-import CodeMirror from '@uiw/react-codemirror';
+import { closeBrackets, closeBracketsKeymap } from '@codemirror/autocomplete';
+import { defaultKeymap } from '@codemirror/commands';
 import { markdown, markdownLanguage } from '@codemirror/lang-markdown';
+import { foldGutter, indentOnInput, bracketMatching } from '@codemirror/language';
 import {
   lineNumbers,
   highlightActiveLine,
@@ -8,11 +9,11 @@ import {
   drawSelection,
   keymap,
 } from '@codemirror/view';
-import { defaultKeymap } from '@codemirror/commands';
-import { foldGutter, indentOnInput, bracketMatching } from '@codemirror/language';
-import { closeBrackets, closeBracketsKeymap } from '@codemirror/autocomplete';
-import { createCmTheme } from '@/shared/utils/codemirror';
+import CodeMirror from '@uiw/react-codemirror';
+import React, { useCallback, useMemo } from 'react';
+
 import { useAppContext } from '@/shared/contexts';
+import { createCmTheme } from '@/shared/utils/codemirror';
 
 interface MarkdownEditorProps {
   value: string;

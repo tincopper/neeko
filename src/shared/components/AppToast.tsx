@@ -1,4 +1,5 @@
 import { cn } from '@/lib/utils';
+
 import { InfoCircleIcon, ErrorOctagonIcon } from './icons';
 
 interface AppToastProps {

@@ -1,5 +1,7 @@
 import { invoke } from '@tauri-apps/api/core';
+
 import type { ProjectCommands } from '@/shared/types/activeProject';
+import type { FileNode, FileContent } from '@/shared/types/file';
 import type {
   GitInfo,
   AheadBehind,
@@ -10,7 +12,6 @@ import type {
   DiffResult,
   PushOutcome,
 } from '@/shared/types/git';
-import type { FileNode, FileContent } from '@/shared/types/file';
 
 export function createProjectCommands(projectId: string): ProjectCommands {
   return {

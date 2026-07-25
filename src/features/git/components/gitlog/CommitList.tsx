@@ -1,17 +1,7 @@
 import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react';
+
 import type { CommitEntry, CommitDetail, CommitFileChange } from '@/features/git/types';
-import CommitGraph, { computeLayout, ROW_HEIGHT, BRANCH_SPACING, NODE_RADIUS } from './CommitGraph';
-import {
-  parseCommitMessage,
-  commitBodyPreview,
-  typeStyle,
-  formatRefs,
-  formatAbsoluteTime,
-  formatRelativeTime,
-  graphWidthForCols,
-  textLeftForCol,
-  splitFilePath,
-} from './commitListUtils';
+import { cn } from '@/lib/utils';
 import {
   Copy,
   MoreHorizontal,
@@ -27,7 +17,19 @@ import {
   Trash2,
   FileText,
 } from '@/shared/components/icons';
-import { cn } from '@/lib/utils';
+
+import CommitGraph, { computeLayout, ROW_HEIGHT, BRANCH_SPACING, NODE_RADIUS } from './CommitGraph';
+import {
+  parseCommitMessage,
+  commitBodyPreview,
+  typeStyle,
+  formatRefs,
+  formatAbsoluteTime,
+  formatRelativeTime,
+  graphWidthForCols,
+  textLeftForCol,
+  splitFilePath,
+} from './commitListUtils';
 
 interface CommitListProps {
   commits: CommitEntry[];

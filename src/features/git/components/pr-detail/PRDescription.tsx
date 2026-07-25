@@ -1,6 +1,7 @@
 import React from 'react';
-import { MarkdownPreview } from '@/ui/MarkdownPreview';
+
 import type { AppTheme } from '@/shared/types';
+import { MarkdownPreview } from '@/ui/MarkdownPreview';
 
 interface PRDescriptionProps {
   body: string | null;

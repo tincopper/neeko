@@ -1,7 +1,7 @@
 import { invoke, convertFileSrc } from '@tauri-apps/api/core';
-import { getAgentIconSrc as getPresetIconSrc } from '@/shared/utils/agents';
 
 import type { AgentConfig } from '@/shared/types';
+import { getAgentIconSrc as getPresetIconSrc } from '@/shared/utils/agents';
 
 export function listAgents(): Promise<AgentConfig[]> {
   return invoke<AgentConfig[]>('list_agents');

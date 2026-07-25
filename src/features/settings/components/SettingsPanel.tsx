@@ -1,19 +1,22 @@
 import React, { useEffect, useState } from 'react';
-import { listAgents } from '../../agent/api/agentApi';
-import { useAppContext } from '@/shared/contexts';
+
 import { cn } from '@/lib/utils';
-import type { AgentConfig, AppConfig, DiffMode } from '@/shared/types';
 import { CloseIcon } from '@/shared/components/icons';
-import { NAV_ITEMS, BUILTIN_FONTS, PRESET_SHELLS, type NavCategory } from './constants';
-import { useSettingsPanelState } from './useSettingsPanelState';
-import AppearancePanel from './AppearancePanel';
-import EditorPanel from './EditorPanel';
-import TerminalPanel from './TerminalPanel';
+import { useAppContext } from '@/shared/contexts';
+import type { AgentConfig, AppConfig, DiffMode } from '@/shared/types';
+
+import { listAgents } from '../../agent/api/agentApi';
+
 import AgentsPanel from './AgentsPanel';
-import IdePanel from './IdePanel';
+import AppearancePanel from './AppearancePanel';
+import { NAV_ITEMS, BUILTIN_FONTS, PRESET_SHELLS, type NavCategory } from './constants';
+import EditorPanel from './EditorPanel';
 import GitPanel from './GitPanel';
-import ShortcutPanel from './ShortcutPanel';
+import IdePanel from './IdePanel';
 import LspPanel from './LspPanel';
+import ShortcutPanel from './ShortcutPanel';
+import TerminalPanel from './TerminalPanel';
+import { useSettingsPanelState } from './useSettingsPanelState';
 
 export type { AppConfig, DiffMode };
 export { BUILTIN_FONTS, PRESET_SHELLS };

@@ -3,18 +3,18 @@ import type { Dispatch, SetStateAction } from 'react';
 import { useState, useCallback } from 'react';
 import { useShallow } from 'zustand/shallow';
 
+import { useGitStore } from '@/features/git/store';
 import { useProjectStore } from '@/features/project/store';
 import { destroyTerminalCachesByPrefix } from '@/features/terminal/components/terminalCache';
 import { useEditorStore } from '@/shared/store';
 import type { Project, AgentConfig, Tab, FileChange, Worktree } from '@/shared/types';
+import { aheadBehindKey } from '@/shared/utils/aheadBehindKey';
 import { applyStateAction } from '@/shared/utils/entryUpdates';
 import { getMacAppNameByCommand, resolveIdeLaunchCommand } from '@/shared/utils/idePresets';
 import { randomAvatarColor } from '@/shared/utils/projectAvatar';
 
 import { listAgents } from '../../agent/api/agentApi';
 import { getWorktreeChangedFiles, getGitBranchInfo, getAheadBehind } from '../../git/api/gitApi';
-import { useGitStore } from '@/features/git/store';
-import { aheadBehindKey } from '@/shared/utils/aheadBehindKey';
 import { saveSession } from '../../session/api/sessionApi';
 import {
   addProject,

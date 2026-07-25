@@ -1,10 +1,11 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { invoke } from '@tauri-apps/api/core';
 import { render, screen, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+
 import SettingsPanel from '@/features/settings';
 import { AppProvider } from '@/shared/contexts';
 import type { AppConfig } from '@/shared/types';
-import { invoke } from '@tauri-apps/api/core';
 
 const mockInvoke = vi.mocked(invoke);
 
@@ -228,7 +229,7 @@ describe('SettingsPanel', () => {
       await user.click(screen.getByRole('button', { name: 'Terminal' }));
       // Find font trigger by text content (shows current font or "Select font...")
       const fontTrigger = screen.getByText(/default.*mono/i);
-      expect(fontTrigger).toBeTruthy();
+      expect(fontTrigger).toBeInTheDocument();
       await user.click(fontTrigger);
       expect(screen.getByText('Fira Code')).toBeInTheDocument();
       expect(screen.getByText('JetBrains Mono')).toBeInTheDocument();
