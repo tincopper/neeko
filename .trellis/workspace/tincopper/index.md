@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-2.md`
-- **Total Sessions**: 93
+- **Total Sessions**: 94
 - **Last Active**: 2026-07-25
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-2.md` | ~1221 | Active |
+| `journal-2.md` | ~1254 | Active |
 | `journal-1.md` | ~1986 | Archived |
 <!-- @@@/auto:active-documents -->
 
@@ -30,6 +30,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 94 | 2026-07-25 | diff-tab-ui-modernization | `bea3742` | `main` |
 | 93 | 2026-07-25 | Git Log 面板重构 - 检查与修复 | `f35adc2` | `main` |
 | 92 | 2026-07-24 | Dock registry architecture | `60d53b8` | `main` |
 | 91 | 2026-07-24 | Layout architecture cleanup | `f2e2618` | `main` |

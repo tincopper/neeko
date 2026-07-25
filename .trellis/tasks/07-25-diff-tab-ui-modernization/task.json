@@ -1,0 +1,43 @@
+{
+  "id": "diff-tab-ui-modernization",
+  "name": "diff-tab-ui-modernization",
+  "title": "Diff tab panel UI modernization",
+  "description": "Redesign DiffView toolbar adaptiveness, combined-mode file collapse/navigation, and visual alignment with Neeko theme. Includes HTML prototype tracked with the task.",
+  "status": "in_progress",
+  "dev_type": null,
+  "scope": null,
+  "package": null,
+  "priority": "P1",
+  "creator": "tincopper",
+  "assignee": "tincopper",
+  "createdAt": "2026-07-25",
+  "completedAt": null,
+  "branch": null,
+  "base_branch": "main",
+  "worktree_path": null,
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [],
+  "parent": null,
+  "relatedFiles": [
+    "src/features/git/components/diff/DiffView.tsx",
+    "src/features/git/components/diff/types.ts",
+    "src/features/git/components/diff/useDiffData.ts",
+    "src/features/git/hooks/useSingletonDiff.ts",
+    ".trellis/tasks/07-25-diff-tab-ui-modernization/prototype.html",
+    ".trellis/tasks/07-25-diff-tab-ui-modernization/prd.md",
+    ".trellis/tasks/07-25-diff-tab-ui-modernization/design.md",
+    ".trellis/tasks/07-25-diff-tab-ui-modernization/implement.md"
+  ],
+  "notes": "Complex task. Prototype: prototype.html. Do not start until PRD/design/implement reviewed. Phases D1–D4.",
+  "meta": {
+    "prototype": "prototype.html",
+    "phases": [
+      "D1-toolbar",
+      "D2-collapse",
+      "D3-file-nav",
+      "D4-polish"
+    ]
+  }
+}
