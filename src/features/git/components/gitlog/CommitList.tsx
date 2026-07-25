@@ -399,7 +399,7 @@ const CommitList: React.FC<CommitListProps> = ({
                               <div
                                 key={f.path}
                                 className={cn(
-                                  "grid grid-cols-[auto_auto_minmax(0,1fr)_auto] items-center gap-x-1.5 px-1.5 py-1 rounded cursor-pointer min-w-0 w-full",
+                                  "flex items-center gap-x-1.5 px-1.5 py-1 rounded cursor-pointer min-w-0 w-full overflow-hidden",
                                   // Keyboard focus only — no hover wash on file rows.
                                   isFocused && "bg-bg-hover/60",
                                 )}
@@ -415,18 +415,19 @@ const CommitList: React.FC<CommitListProps> = ({
                               >
                                 <span className={cn(statusInfo.color, "shrink-0")}>{statusInfo.icon}</span>
                                 {/* filename keeps priority; only dir column shrinks with ellipsis */}
-                                <span className="truncate max-w-[9rem] text-[calc(var(--font-size)-1px)] font-mono text-text-primary">
+                                <span className="shrink-0 max-w-[9rem] truncate text-[calc(var(--font-size)-1px)] font-mono text-text-primary" title={name}>
                                   {name}
                                 </span>
                                 <span
                                   className={cn(
-                                    "min-w-0 overflow-hidden text-ellipsis whitespace-nowrap text-[calc(var(--font-size)-3px)] font-mono text-text-muted",
+                                    "flex-1 min-w-0 truncate text-[calc(var(--font-size)-3px)] font-mono text-text-muted",
                                     !dir && "invisible",
                                   )}
+                                  title={dir}
                                 >
                                   {dir || "—"}
                                 </span>
-                                <span className="flex items-center gap-1 justify-end tabular-nums">
+                                <span className="shrink-0 flex items-center gap-1 justify-end tabular-nums">
                                   <span className="flex items-center gap-px text-accent-green whitespace-nowrap">
                                     <Plus size={9} />
                                     <span className="text-[calc(var(--font-size)-2px)]">{f.additions}</span>
