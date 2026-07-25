@@ -1,4 +1,4 @@
-import { IS_MACOS } from "./platform";
+import { IS_MACOS } from './platform';
 
 export interface ParsedBinding {
   code: string;
@@ -19,12 +19,7 @@ export interface ConflictEntry {
 }
 
 /** Settings UI + routing domain. */
-export type ShortcutCategory =
-  | "tabs"
-  | "editor"
-  | "workspace"
-  | "terminal"
-  | "dock";
+export type ShortcutCategory = 'tabs' | 'editor' | 'workspace' | 'terminal' | 'dock';
 
 export interface ShortcutAction {
   id: string;
@@ -45,11 +40,11 @@ export interface ShortcutAction {
 }
 
 export const SHORTCUT_CATEGORIES: { id: ShortcutCategory; label: string }[] = [
-  { id: "tabs", label: "Tabs & Navigation" },
-  { id: "editor", label: "Editor" },
-  { id: "workspace", label: "Workspace" },
-  { id: "terminal", label: "Terminal" },
-  { id: "dock", label: "Panels" },
+  { id: 'tabs', label: 'Tabs & Navigation' },
+  { id: 'editor', label: 'Editor' },
+  { id: 'workspace', label: 'Workspace' },
+  { id: 'terminal', label: 'Terminal' },
+  { id: 'dock', label: 'Panels' },
 ];
 
 /**
@@ -60,169 +55,169 @@ export const SHORTCUT_CATEGORIES: { id: ShortcutCategory; label: string }[] = [
 export const SHORTCUT_ACTIONS: ShortcutAction[] = [
   // ── Tabs ──────────────────────────────────────────────────────────────
   {
-    id: "closeTab",
-    label: "Close Tab",
-    defaultBinding: "Ctrl+W",
-    category: "tabs",
+    id: 'closeTab',
+    label: 'Close Tab',
+    defaultBinding: 'Ctrl+W',
+    category: 'tabs',
   },
   {
-    id: "prevTab",
-    label: "Previous Tab",
+    id: 'prevTab',
+    label: 'Previous Tab',
     // IDEA: Alt+Left / Option+Left — cycle editor tabs
-    defaultBinding: "Alt+Left",
-    category: "tabs",
+    defaultBinding: 'Alt+Left',
+    category: 'tabs',
   },
   {
-    id: "nextTab",
-    label: "Next Tab",
+    id: 'nextTab',
+    label: 'Next Tab',
     // IDEA: Alt+Right / Option+Right
-    defaultBinding: "Alt+Right",
-    category: "tabs",
+    defaultBinding: 'Alt+Right',
+    category: 'tabs',
   },
   {
-    id: "switchTabNext",
-    label: "Switcher: Next Tab",
-    defaultBinding: "Ctrl+Tab",
-    category: "tabs",
+    id: 'switchTabNext',
+    label: 'Switcher: Next Tab',
+    defaultBinding: 'Ctrl+Tab',
+    category: 'tabs',
     allowInEditable: true,
   },
   {
-    id: "switchTabPrev",
-    label: "Switcher: Previous Tab",
-    defaultBinding: "Ctrl+Shift+Tab",
-    category: "tabs",
+    id: 'switchTabPrev',
+    label: 'Switcher: Previous Tab',
+    defaultBinding: 'Ctrl+Shift+Tab',
+    category: 'tabs',
     allowInEditable: true,
   },
 
   // ── Editor ────────────────────────────────────────────────────────────
   {
-    id: "saveFile",
-    label: "Save File",
-    defaultBinding: "Ctrl+S",
-    category: "editor",
+    id: 'saveFile',
+    label: 'Save File',
+    defaultBinding: 'Ctrl+S',
+    category: 'editor',
     allowInEditable: true,
   },
   {
-    id: "gotoDefinition",
-    label: "Go to Definition",
-    defaultBinding: "F12",
-    category: "editor",
+    id: 'gotoDefinition',
+    label: 'Go to Definition',
+    defaultBinding: 'F12',
+    category: 'editor',
     allowInEditable: true,
   },
   {
-    id: "gotoDefinitionAlt",
-    label: "Go to Definition (IDEA)",
-    defaultBinding: "Ctrl+B",
-    category: "editor",
+    id: 'gotoDefinitionAlt',
+    label: 'Go to Definition (IDEA)',
+    defaultBinding: 'Ctrl+B',
+    category: 'editor',
     allowInEditable: true,
   },
   {
-    id: "findReferences",
-    label: "Find References",
-    defaultBinding: "Shift+F12",
-    category: "editor",
+    id: 'findReferences',
+    label: 'Find References',
+    defaultBinding: 'Shift+F12',
+    category: 'editor',
     allowInEditable: true,
   },
   {
-    id: "findReferencesAlt",
-    label: "Find Usages (IDEA)",
-    defaultBinding: "Alt+F7",
-    category: "editor",
+    id: 'findReferencesAlt',
+    label: 'Find Usages (IDEA)',
+    defaultBinding: 'Alt+F7',
+    category: 'editor',
     allowInEditable: true,
   },
   {
-    id: "navigateBack",
-    label: "Navigate Back",
+    id: 'navigateBack',
+    label: 'Navigate Back',
     // IDEA: Ctrl+Alt+Left → Cmd+Option+Left on macOS (see matchesBinding)
-    defaultBinding: "Ctrl+Alt+Left",
-    category: "editor",
+    defaultBinding: 'Ctrl+Alt+Left',
+    category: 'editor',
   },
   {
-    id: "navigateForward",
-    label: "Navigate Forward",
+    id: 'navigateForward',
+    label: 'Navigate Forward',
     // IDEA: Ctrl+Alt+Right → Cmd+Option+Right on macOS
-    defaultBinding: "Ctrl+Alt+Right",
-    category: "editor",
+    defaultBinding: 'Ctrl+Alt+Right',
+    category: 'editor',
   },
   {
-    id: "gotoFile",
-    label: "Go to File",
-    defaultBinding: "Ctrl+Shift+N",
-    category: "editor",
+    id: 'gotoFile',
+    label: 'Go to File',
+    defaultBinding: 'Ctrl+Shift+N',
+    category: 'editor',
   },
   {
-    id: "recentFiles",
-    label: "Recent Files",
-    defaultBinding: "Ctrl+E",
-    category: "editor",
+    id: 'recentFiles',
+    label: 'Recent Files',
+    defaultBinding: 'Ctrl+E',
+    category: 'editor',
   },
   {
-    id: "fileStructure",
-    label: "File Structure",
-    defaultBinding: "Ctrl+F12",
-    category: "editor",
+    id: 'fileStructure',
+    label: 'File Structure',
+    defaultBinding: 'Ctrl+F12',
+    category: 'editor',
     allowInEditable: true,
   },
   {
-    id: "splitRight",
-    label: "Split Right",
-    defaultBinding: "Ctrl+\\",
-    category: "editor",
+    id: 'splitRight',
+    label: 'Split Right',
+    defaultBinding: 'Ctrl+\\',
+    category: 'editor',
   },
   {
-    id: "unsplitEditor",
-    label: "Unsplit Editor",
-    defaultBinding: "Ctrl+Shift+\\",
-    category: "editor",
+    id: 'unsplitEditor',
+    label: 'Unsplit Editor',
+    defaultBinding: 'Ctrl+Shift+\\',
+    category: 'editor',
   },
 
   // ── Workspace ─────────────────────────────────────────────────────────
   {
-    id: "cycleWorktree",
-    label: "Cycle Worktree",
-    defaultBinding: "Ctrl+N",
-    category: "workspace",
+    id: 'cycleWorktree',
+    label: 'Cycle Worktree',
+    defaultBinding: 'Ctrl+N',
+    category: 'workspace',
   },
   {
-    id: "openIde",
-    label: "Open in IDE",
-    defaultBinding: "Ctrl+O",
-    category: "workspace",
+    id: 'openIde',
+    label: 'Open in IDE',
+    defaultBinding: 'Ctrl+O',
+    category: 'workspace',
   },
   {
-    id: "cycleProject",
-    label: "Next Project",
-    defaultBinding: "Ctrl+Q",
-    category: "workspace",
+    id: 'cycleProject',
+    label: 'Next Project',
+    defaultBinding: 'Ctrl+Q',
+    category: 'workspace',
   },
   {
-    id: "switchProject",
-    label: "Jump to Project 1–9",
-    defaultBinding: "Ctrl+[1-9]",
-    category: "workspace",
+    id: 'switchProject',
+    label: 'Jump to Project 1–9',
+    defaultBinding: 'Ctrl+[1-9]',
+    category: 'workspace',
     recordable: false,
   },
 
   // ── Terminal ──────────────────────────────────────────────────────────
   {
-    id: "refreshTerminal",
-    label: "Refresh Terminal",
-    defaultBinding: "Ctrl+Alt+R",
-    category: "terminal",
+    id: 'refreshTerminal',
+    label: 'Refresh Terminal',
+    defaultBinding: 'Ctrl+Alt+R',
+    category: 'terminal',
   },
 
   // ── Dock (defaults avoid Ctrl+1..9 project jump) ──────────────────────
   {
-    id: "toggleDockProjects",
-    label: "Toggle Projects Panel",
-    defaultBinding: "Ctrl+Shift+1",
-    category: "dock",
+    id: 'toggleDockProjects',
+    label: 'Toggle Projects Panel',
+    defaultBinding: 'Ctrl+Shift+1',
+    category: 'dock',
   },
   {
-    id: "toggleDockSkills",
-    label: "Toggle Skills Panel",
-    defaultBinding: "Ctrl+Shift+2",
-    category: "dock",
+    id: 'toggleDockSkills',
+    label: 'Toggle Skills Panel',
+    defaultBinding: 'Ctrl+Shift+2',
+    category: 'dock',
   },
 ];
 
@@ -237,29 +232,29 @@ export function getShortcutAction(id: string): ShortcutAction | undefined {
  * Only includes actions with clear IntelliJ-style defaults used by Neeko.
  */
 export const IDEA_SHORTCUT_PRESET: Record<string, string> = {
-  closeTab: "Ctrl+F4",
-  prevTab: "Alt+Left",
-  nextTab: "Alt+Right",
-  switchTabNext: "Ctrl+Tab",
-  switchTabPrev: "Ctrl+Shift+Tab",
-  saveFile: "Ctrl+S",
-  gotoDefinition: "F12",
-  gotoDefinitionAlt: "Ctrl+B",
-  findReferences: "Shift+F12",
-  findReferencesAlt: "Alt+F7",
-  navigateBack: "Ctrl+Alt+Left",
-  navigateForward: "Ctrl+Alt+Right",
-  gotoFile: "Ctrl+Shift+N",
-  recentFiles: "Ctrl+E",
-  fileStructure: "Ctrl+F12",
-  splitRight: "Ctrl+\\",
-  unsplitEditor: "Ctrl+Shift+\\",
-  cycleWorktree: "Ctrl+N",
-  openIde: "Ctrl+O",
-  cycleProject: "Ctrl+Q",
-  refreshTerminal: "Ctrl+Alt+R",
-  toggleDockProjects: "Ctrl+Shift+1",
-  toggleDockSkills: "Ctrl+Shift+2",
+  closeTab: 'Ctrl+F4',
+  prevTab: 'Alt+Left',
+  nextTab: 'Alt+Right',
+  switchTabNext: 'Ctrl+Tab',
+  switchTabPrev: 'Ctrl+Shift+Tab',
+  saveFile: 'Ctrl+S',
+  gotoDefinition: 'F12',
+  gotoDefinitionAlt: 'Ctrl+B',
+  findReferences: 'Shift+F12',
+  findReferencesAlt: 'Alt+F7',
+  navigateBack: 'Ctrl+Alt+Left',
+  navigateForward: 'Ctrl+Alt+Right',
+  gotoFile: 'Ctrl+Shift+N',
+  recentFiles: 'Ctrl+E',
+  fileStructure: 'Ctrl+F12',
+  splitRight: 'Ctrl+\\',
+  unsplitEditor: 'Ctrl+Shift+\\',
+  cycleWorktree: 'Ctrl+N',
+  openIde: 'Ctrl+O',
+  cycleProject: 'Ctrl+Q',
+  refreshTerminal: 'Ctrl+Alt+R',
+  toggleDockProjects: 'Ctrl+Shift+1',
+  toggleDockSkills: 'Ctrl+Shift+2',
 };
 
 /** Build a full override map from the IDEA preset (merges onto current defaults). */
@@ -275,52 +270,52 @@ export function buildIdeaShortcutOverrides(): Record<string, string> {
   return out;
 }
 
-const MODIFIER_MAP: Record<string, keyof Omit<ParsedBinding, "code">> = {
-  Ctrl: "ctrl",
-  Control: "ctrl",
-  Alt: "alt",
-  Shift: "shift",
-  Meta: "meta",
-  Cmd: "meta",
+const MODIFIER_MAP: Record<string, keyof Omit<ParsedBinding, 'code'>> = {
+  Ctrl: 'ctrl',
+  Control: 'ctrl',
+  Alt: 'alt',
+  Shift: 'shift',
+  Meta: 'meta',
+  Cmd: 'meta',
 };
 
 const CODE_TO_CHAR: Record<string, string> = {
-  Backquote: "`",
-  Minus: "-",
-  Equal: "=",
-  BracketLeft: "[",
-  BracketRight: "]",
-  Backslash: "\\",
-  Semicolon: ";",
+  Backquote: '`',
+  Minus: '-',
+  Equal: '=',
+  BracketLeft: '[',
+  BracketRight: ']',
+  Backslash: '\\',
+  Semicolon: ';',
   Quote: "'",
-  Comma: ",",
-  Period: ".",
-  Slash: "/",
-  Space: "Space",
-  Escape: "Esc",
-  Enter: "Enter",
-  Tab: "Tab",
-  Backspace: "Backspace",
-  Delete: "Delete",
-  ArrowUp: "Up",
-  ArrowDown: "Down",
-  ArrowLeft: "Left",
-  ArrowRight: "Right",
-  Insert: "Insert",
-  Home: "Home",
-  End: "End",
-  PageUp: "PageUp",
-  PageDown: "PageDown",
-  CapsLock: "CapsLock",
-  NumLock: "NumLock",
-  ScrollLock: "ScrollLock",
+  Comma: ',',
+  Period: '.',
+  Slash: '/',
+  Space: 'Space',
+  Escape: 'Esc',
+  Enter: 'Enter',
+  Tab: 'Tab',
+  Backspace: 'Backspace',
+  Delete: 'Delete',
+  ArrowUp: 'Up',
+  ArrowDown: 'Down',
+  ArrowLeft: 'Left',
+  ArrowRight: 'Right',
+  Insert: 'Insert',
+  Home: 'Home',
+  End: 'End',
+  PageUp: 'PageUp',
+  PageDown: 'PageDown',
+  CapsLock: 'CapsLock',
+  NumLock: 'NumLock',
+  ScrollLock: 'ScrollLock',
 };
 
 function codeToLabel(code: string): string {
   if (code in CODE_TO_CHAR) return CODE_TO_CHAR[code];
-  if (code.startsWith("Key")) return code.slice(3);
-  if (code.startsWith("Digit")) return code.slice(5);
-  if (code.startsWith("F") && /^F\d+$/.test(code)) return code;
+  if (code.startsWith('Key')) return code.slice(3);
+  if (code.startsWith('Digit')) return code.slice(5);
+  if (code.startsWith('F') && /^F\d+$/.test(code)) return code;
   return code;
 }
 
@@ -335,11 +330,11 @@ function labelToCode(label: string): string {
 }
 
 export function parseBinding(binding: string): ParsedBinding | null {
-  if (!binding || binding.trim() === "") return null;
-  const parts = binding.split("+");
+  if (!binding || binding.trim() === '') return null;
+  const parts = binding.split('+');
   if (parts.length < 1) return null;
 
-  const parsed: ParsedBinding = { code: "", ctrl: false, alt: false, shift: false, meta: false };
+  const parsed: ParsedBinding = { code: '', ctrl: false, alt: false, shift: false, meta: false };
 
   for (let i = 0; i < parts.length - 1; i++) {
     const part = parts[i].trim();
@@ -350,8 +345,8 @@ export function parseBinding(binding: string): ParsedBinding | null {
   }
 
   const codePart = parts[parts.length - 1].trim();
-  if (codePart === "[1-9]") {
-    parsed.code = "Digit";
+  if (codePart === '[1-9]') {
+    parsed.code = 'Digit';
     return parsed;
   }
 
@@ -363,18 +358,18 @@ export function parseBinding(binding: string): ParsedBinding | null {
 
 export function formatBinding(parsed: ParsedBinding): string {
   const parts: string[] = [];
-  if (parsed.ctrl) parts.push("Ctrl");
-  if (parsed.alt) parts.push("Alt");
-  if (parsed.shift) parts.push("Shift");
-  if (parsed.meta) parts.push("Meta");
+  if (parsed.ctrl) parts.push('Ctrl');
+  if (parsed.alt) parts.push('Alt');
+  if (parsed.shift) parts.push('Shift');
+  if (parsed.meta) parts.push('Meta');
 
-  if (parsed.code === "Digit") {
-    parts.push("[1-9]");
+  if (parsed.code === 'Digit') {
+    parts.push('[1-9]');
   } else {
     parts.push(codeToLabel(parsed.code));
   }
 
-  return parts.join("+");
+  return parts.join('+');
 }
 
 export function captureBinding(e: KeyboardEvent): ParsedBinding {
@@ -407,8 +402,8 @@ export function captureBinding(e: KeyboardEvent): ParsedBinding {
  * Explicit "Meta"/"Cmd" in a chord maps to the other modifier on that platform.
  */
 export function modifiersMatch(
-  e: Pick<KeyboardEvent, "ctrlKey" | "altKey" | "shiftKey" | "metaKey">,
-  want: Pick<ParsedBinding, "ctrl" | "alt" | "shift" | "meta">,
+  e: Pick<KeyboardEvent, 'ctrlKey' | 'altKey' | 'shiftKey' | 'metaKey'>,
+  want: Pick<ParsedBinding, 'ctrl' | 'alt' | 'shift' | 'meta'>,
   isMac: boolean = IS_MACOS,
 ): boolean {
   if (e.altKey !== want.alt || e.shiftKey !== want.shift) {
@@ -437,27 +432,22 @@ export function modifiersMatch(
 }
 
 export function matchesBinding(e: KeyboardEvent, binding: string): MatchResult {
-  if (!binding || binding.trim() === "") return { matched: false };
+  if (!binding || binding.trim() === '') return { matched: false };
 
-  const isRangeBinding = binding.endsWith("+[1-9]");
+  const isRangeBinding = binding.endsWith('+[1-9]');
   if (isRangeBinding) {
     const prefix = binding.slice(0, -5);
-    const modifierParts = prefix.split("+").filter(Boolean);
+    const modifierParts = prefix.split('+').filter(Boolean);
 
     const match = e.code.match(/^Digit([1-9])$/);
     if (!match) return { matched: false };
 
-    const hasCtrl = modifierParts.includes("Ctrl");
-    const hasAlt = modifierParts.includes("Alt");
-    const hasShift = modifierParts.includes("Shift");
-    const hasMeta = modifierParts.includes("Meta") || modifierParts.includes("Cmd");
+    const hasCtrl = modifierParts.includes('Ctrl');
+    const hasAlt = modifierParts.includes('Alt');
+    const hasShift = modifierParts.includes('Shift');
+    const hasMeta = modifierParts.includes('Meta') || modifierParts.includes('Cmd');
 
-    if (
-      !modifiersMatch(
-        e,
-        { ctrl: hasCtrl, alt: hasAlt, shift: hasShift, meta: hasMeta },
-      )
-    ) {
+    if (!modifiersMatch(e, { ctrl: hasCtrl, alt: hasAlt, shift: hasShift, meta: hasMeta })) {
       return { matched: false };
     }
 
@@ -477,11 +467,13 @@ export function matchesBinding(e: KeyboardEvent, binding: string): MatchResult {
 }
 
 /** Merge user overrides with defaults. Empty override string means unbound. */
-export function resolveBindings(overrides: Record<string, string> | null | undefined): Record<string, string> {
+export function resolveBindings(
+  overrides: Record<string, string> | null | undefined,
+): Record<string, string> {
   const resolved: Record<string, string> = {};
   for (const action of SHORTCUT_ACTIONS) {
     if (overrides && Object.prototype.hasOwnProperty.call(overrides, action.id)) {
-      resolved[action.id] = overrides[action.id] ?? "";
+      resolved[action.id] = overrides[action.id] ?? '';
     } else {
       resolved[action.id] = action.defaultBinding;
     }
@@ -495,9 +487,9 @@ export function getResolvedBinding(
   overrides?: Record<string, string> | null,
 ): string {
   const action = ACTION_BY_ID.get(actionId);
-  if (!action) return "";
+  if (!action) return '';
   if (overrides && Object.prototype.hasOwnProperty.call(overrides, actionId)) {
-    return overrides[actionId] ?? "";
+    return overrides[actionId] ?? '';
   }
   return action.defaultBinding;
 }
@@ -508,33 +500,33 @@ export function getResolvedBinding(
  */
 export function toCodeMirrorKey(binding: string): string {
   const parsed = parseBinding(binding);
-  if (!parsed || !parsed.code) return "";
+  if (!parsed || !parsed.code) return '';
 
   const mods: string[] = [];
   // Primary modifier → Mod (Cmd on mac, Ctrl on win)
-  if (parsed.ctrl) mods.push("Mod");
-  if (parsed.alt) mods.push("Alt");
-  if (parsed.shift) mods.push("Shift");
-  if (parsed.meta) mods.push("Ctrl"); // secondary on mac when stored as Meta
+  if (parsed.ctrl) mods.push('Mod');
+  if (parsed.alt) mods.push('Alt');
+  if (parsed.shift) mods.push('Shift');
+  if (parsed.meta) mods.push('Ctrl'); // secondary on mac when stored as Meta
 
   let key = codeToLabel(parsed.code);
   const arrowMap: Record<string, string> = {
-    Up: "ArrowUp",
-    Down: "ArrowDown",
-    Left: "ArrowLeft",
-    Right: "ArrowRight",
-    Esc: "Escape",
+    Up: 'ArrowUp',
+    Down: 'ArrowDown',
+    Left: 'ArrowLeft',
+    Right: 'ArrowRight',
+    Esc: 'Escape',
   };
   if (arrowMap[key]) key = arrowMap[key];
   else if (key.length === 1 && /[A-Za-z]/.test(key)) key = key.toLowerCase();
 
-  return [...mods, key].join("-");
+  return [...mods, key].join('-');
 }
 
 export function findConflicts(bindings: Record<string, string>): ConflictEntry[] {
   const byBinding = new Map<string, string[]>();
   for (const [actionId, binding] of Object.entries(bindings)) {
-    if (!binding || binding.trim() === "") continue;
+    if (!binding || binding.trim() === '') continue;
     const existing = byBinding.get(binding);
     if (existing) {
       existing.push(actionId);
@@ -553,7 +545,7 @@ export function findConflicts(bindings: Record<string, string>): ConflictEntry[]
 }
 
 export function isSwitchProjectBinding(binding: string): boolean {
-  return binding.endsWith("+[1-9]");
+  return binding.endsWith('+[1-9]');
 }
 
 export function isRecordableAction(action: ShortcutAction): boolean {

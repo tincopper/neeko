@@ -34,9 +34,7 @@ const ConversationMessage: React.FC<ConversationMessageProps> = React.memo(
         role={isUser ? 'user' : 'assistant'}
         label={isUser ? 'You' : 'Assistant'}
         icon={
-          isUser ? (
-            <ProjectAvatar name={projectName} color={projectColor} size={16} />
-          ) : undefined
+          isUser ? <ProjectAvatar name={projectName} color={projectColor} size={16} /> : undefined
         }
         timestamp={message.timestamp}
         dense={!hasBlocks}

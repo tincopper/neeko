@@ -1,6 +1,6 @@
-import React, { useEffect, useState, useCallback } from "react";
-import { checkAgentsInstalled } from "../api/agentApi";
-import AgentIcon from "./AgentIcon";
+import React, { useEffect, useState, useCallback } from 'react';
+import { checkAgentsInstalled } from '../api/agentApi';
+import AgentIcon from './AgentIcon';
 import type { AgentConfig } from '@/shared/types';
 
 interface AgentBarProps {
@@ -10,7 +10,7 @@ interface AgentBarProps {
   /** Project whose Local/WSL/SSH environment is used for install checks. */
   projectId?: string | null;
   onSelectAgent: (agentId: string | null) => void;
-  onShowToast?: (message: string, type?: "info" | "error") => void;
+  onShowToast?: (message: string, type?: 'info' | 'error') => void;
 }
 
 interface AgentBarButtonProps {
@@ -19,14 +19,14 @@ interface AgentBarButtonProps {
   isInstalled: boolean;
   compactMode: boolean;
   onClick: () => void;
-  onShowToast?: (message: string, type?: "info" | "error") => void;
+  onShowToast?: (message: string, type?: 'info' | 'error') => void;
 }
 
 const AgentBarButton: React.FC<AgentBarButtonProps> = React.memo(
   ({ agent, isSelected, isInstalled, compactMode, onClick, onShowToast }) => {
     const handleClick = useCallback(() => {
       if (!isInstalled) {
-        onShowToast?.(`${agent.name} (${agent.command}) is not installed`, "error");
+        onShowToast?.(`${agent.name} (${agent.command}) is not installed`, 'error');
         return;
       }
       if (!agent.enabled) return;
@@ -35,7 +35,7 @@ const AgentBarButton: React.FC<AgentBarButtonProps> = React.memo(
 
     return (
       <button
-        className={`agent-bar-btn ${isSelected ? "selected" : ""} ${!isInstalled ? "not-installed" : ""} ${compactMode ? "compact" : ""}`}
+        className={`agent-bar-btn ${isSelected ? 'selected' : ''} ${!isInstalled ? 'not-installed' : ''} ${compactMode ? 'compact' : ''}`}
         onClick={handleClick}
         disabled={!agent.enabled}
         title={agent.name}
@@ -44,7 +44,7 @@ const AgentBarButton: React.FC<AgentBarButtonProps> = React.memo(
         {!compactMode && <span className="agent-bar-btn-name">{agent.name}</span>}
       </button>
     );
-  }
+  },
 );
 
 const AgentBar: React.FC<AgentBarProps> = React.memo(
@@ -67,7 +67,7 @@ const AgentBar: React.FC<AgentBarProps> = React.memo(
           setInstalledMap(new Map(Object.entries(result)));
         })
         .catch((err) => {
-          console.error("[AgentBar] Failed to check agents installed:", err);
+          console.error('[AgentBar] Failed to check agents installed:', err);
         });
     }, [agents, projectId]);
 
@@ -75,7 +75,7 @@ const AgentBar: React.FC<AgentBarProps> = React.memo(
       (agentId: string | null) => {
         onSelectAgent(agentId);
       },
-      [onSelectAgent]
+      [onSelectAgent],
     );
 
     const enabledAgents = agents.filter((a) => a.enabled);
@@ -89,7 +89,7 @@ const AgentBar: React.FC<AgentBarProps> = React.memo(
     }
 
     return (
-      <div className={`agent-bar ${compactMode ? "compact" : ""}`}>
+      <div className={`agent-bar ${compactMode ? 'compact' : ''}`}>
         {enabledAgents.map((agent) => {
           const installed = installedMap.size === 0 || (installedMap.get(agent.id) ?? true);
           return (
@@ -106,7 +106,7 @@ const AgentBar: React.FC<AgentBarProps> = React.memo(
         })}
       </div>
     );
-  }
+  },
 );
 
 export default AgentBar;

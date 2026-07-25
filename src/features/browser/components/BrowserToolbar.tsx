@@ -1,5 +1,12 @@
-import React, { useState, useCallback, type KeyboardEvent } from "react";
-import { ArrowLeft, ArrowRight, Bug, ExternalLink, MousePointerClick, RefreshCw } from "@/shared/components/icons"
+import React, { useState, useCallback, type KeyboardEvent } from 'react';
+import {
+  ArrowLeft,
+  ArrowRight,
+  Bug,
+  ExternalLink,
+  MousePointerClick,
+  RefreshCw,
+} from '@/shared/components/icons';
 
 interface BrowserToolbarProps {
   url: string;
@@ -15,7 +22,7 @@ interface BrowserToolbarProps {
 }
 
 const BTN =
-  "flex items-center justify-center w-6 h-6 rounded-md text-text-secondary hover:bg-bg-hover hover:text-text-primary transition-colors disabled:opacity-50 disabled:cursor-not-allowed";
+  'flex items-center justify-center w-6 h-6 rounded-md text-text-secondary hover:bg-bg-hover hover:text-text-primary transition-colors disabled:opacity-50 disabled:cursor-not-allowed';
 
 const BrowserToolbar: React.FC<BrowserToolbarProps> = ({
   url,
@@ -33,10 +40,15 @@ const BrowserToolbar: React.FC<BrowserToolbarProps> = ({
 
   const handleKeyDown = useCallback(
     (e: KeyboardEvent<HTMLInputElement>) => {
-      if (e.key === "Enter") {
+      if (e.key === 'Enter') {
         let finalUrl = inputValue.trim();
-        if (finalUrl && !finalUrl.startsWith("http://") && !finalUrl.startsWith("https://") && !finalUrl.startsWith("file://")) {
-          finalUrl = "https://" + finalUrl;
+        if (
+          finalUrl &&
+          !finalUrl.startsWith('http://') &&
+          !finalUrl.startsWith('https://') &&
+          !finalUrl.startsWith('file://')
+        ) {
+          finalUrl = 'https://' + finalUrl;
         }
         if (finalUrl) {
           onNavigate(finalUrl);
@@ -64,13 +76,8 @@ const BrowserToolbar: React.FC<BrowserToolbarProps> = ({
       </button>
 
       {/* 刷新 */}
-      <button
-        onClick={onRefresh}
-        disabled={isLoading || !url}
-        className={BTN}
-        title="Refresh"
-      >
-        <RefreshCw size={12} className={isLoading ? "animate-spin" : ""} />
+      <button onClick={onRefresh} disabled={isLoading || !url} className={BTN} title="Refresh">
+        <RefreshCw size={12} className={isLoading ? 'animate-spin' : ''} />
       </button>
 
       {/* 地址栏 */}
@@ -94,7 +101,12 @@ const BrowserToolbar: React.FC<BrowserToolbarProps> = ({
       </button>
 
       {/* 在默认浏览器中打开 */}
-      <button onClick={onOpenExternal} disabled={!url} className={BTN} title="Open in default browser">
+      <button
+        onClick={onOpenExternal}
+        disabled={!url}
+        className={BTN}
+        title="Open in default browser"
+      >
         <ExternalLink size={12} />
       </button>
 

@@ -1,40 +1,27 @@
-import * as React from "react";
+import * as React from 'react';
 import { cn } from '@/lib/utils';
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from '@/ui/tooltip';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/ui/tooltip';
 
 // --- Sidebar (layout container) ---
 
-interface SidebarProps extends React.ComponentProps<"div"> {
-  variant?: "icon" | "panel";
+interface SidebarProps extends React.ComponentProps<'div'> {
+  variant?: 'icon' | 'panel';
 }
 
 function Sidebar({ variant, className, children, ...props }: SidebarProps) {
-  if (variant === "icon") {
+  if (variant === 'icon') {
     return (
-      <div
-        className={cn(
-          "w-12 shrink-0 flex flex-col bg-bg-secondary",
-          className,
-        )}
-        {...props}
-      >
+      <div className={cn('w-12 shrink-0 flex flex-col bg-bg-secondary', className)} {...props}>
         {children}
       </div>
     );
   }
 
   // variant="panel" resize handle removed in Phase 3 �?replaced by DockLayout
-  if (variant === "panel") {
+  if (variant === 'panel') {
     return (
       <div
-        className={cn(
-          "flex flex-col shrink-0 bg-bg-secondary overflow-hidden",
-          className,
-        )}
+        className={cn('flex flex-col shrink-0 bg-bg-secondary overflow-hidden', className)}
         {...props}
       >
         {children}
@@ -43,7 +30,7 @@ function Sidebar({ variant, className, children, ...props }: SidebarProps) {
   }
 
   return (
-    <div className={cn("flex flex-col", className)} {...props}>
+    <div className={cn('flex flex-col', className)} {...props}>
       {children}
     </div>
   );
@@ -51,13 +38,9 @@ function Sidebar({ variant, className, children, ...props }: SidebarProps) {
 
 // --- SidebarHeader ---
 
-function SidebarHeader({
-  className,
-  children,
-  ...props
-}: React.ComponentProps<"div">) {
+function SidebarHeader({ className, children, ...props }: React.ComponentProps<'div'>) {
   return (
-    <div className={cn("border-b border-border", className)} {...props}>
+    <div className={cn('border-b border-border', className)} {...props}>
       {children}
     </div>
   );
@@ -65,13 +48,9 @@ function SidebarHeader({
 
 // --- SidebarContent ---
 
-function SidebarContent({
-  className,
-  children,
-  ...props
-}: React.ComponentProps<"div">) {
+function SidebarContent({ className, children, ...props }: React.ComponentProps<'div'>) {
   return (
-    <div className={cn("flex-1 overflow-y-auto", className)} {...props}>
+    <div className={cn('flex-1 overflow-y-auto', className)} {...props}>
       {children}
     </div>
   );
@@ -79,11 +58,7 @@ function SidebarContent({
 
 // --- SidebarFooter ---
 
-function SidebarFooter({
-  className,
-  children,
-  ...props
-}: React.ComponentProps<"div">) {
+function SidebarFooter({ className, children, ...props }: React.ComponentProps<'div'>) {
   return (
     <div className={cn(className)} {...props}>
       {children}
@@ -93,13 +68,9 @@ function SidebarFooter({
 
 // --- SidebarMenu ---
 
-function SidebarMenu({
-  className,
-  children,
-  ...props
-}: React.ComponentProps<"ul">) {
+function SidebarMenu({ className, children, ...props }: React.ComponentProps<'ul'>) {
   return (
-    <ul className={cn("flex flex-col gap-0.5 w-full", className)} {...props}>
+    <ul className={cn('flex flex-col gap-0.5 w-full', className)} {...props}>
       {children}
     </ul>
   );
@@ -107,13 +78,9 @@ function SidebarMenu({
 
 // --- SidebarMenuItem ---
 
-function SidebarMenuItem({
-  className,
-  children,
-  ...props
-}: React.ComponentProps<"li">) {
+function SidebarMenuItem({ className, children, ...props }: React.ComponentProps<'li'>) {
   return (
-    <li className={cn("list-none", className)} {...props}>
+    <li className={cn('list-none', className)} {...props}>
       {children}
     </li>
   );
@@ -121,7 +88,7 @@ function SidebarMenuItem({
 
 // --- SidebarMenuButton ---
 
-interface SidebarMenuButtonProps extends React.ComponentProps<"button"> {
+interface SidebarMenuButtonProps extends React.ComponentProps<'button'> {
   isActive?: boolean;
   tooltip?: string;
 }
@@ -136,15 +103,15 @@ function SidebarMenuButton({
   const button = (
     <button
       className={cn(
-        "relative w-full h-12 flex items-center justify-center",
-        "transition-colors duration-150 focus:outline-none",
+        'relative w-full h-12 flex items-center justify-center',
+        'transition-colors duration-150 focus:outline-none',
         isActive
           ? [
-              "text-text-primary",
-              "before:absolute before:left-0 before:top-2 before:bottom-2",
-              "before:w-0.5 before:bg-white before:rounded-r",
+              'text-text-primary',
+              'before:absolute before:left-0 before:top-2 before:bottom-2',
+              'before:w-0.5 before:bg-white before:rounded-r',
             ]
-          : "text-text-secondary hover:text-text-primary hover:bg-bg-hover",
+          : 'text-text-secondary hover:text-text-primary hover:bg-bg-hover',
         className,
       )}
       {...props}
@@ -157,9 +124,7 @@ function SidebarMenuButton({
 
   return (
     <Tooltip>
-      <TooltipTrigger asChild>
-        {button}
-      </TooltipTrigger>
+      <TooltipTrigger asChild>{button}</TooltipTrigger>
       <TooltipContent side="right" sideOffset={8}>
         <p>{tooltip}</p>
       </TooltipContent>

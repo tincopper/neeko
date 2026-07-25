@@ -1,8 +1,8 @@
-import React from "react";
+import React from 'react';
 import { cn } from '@/lib/utils';
-import { buildSplitRows, computeWordDiff } from "./diffAlgorithm";
-import { renderHighlightedHtml, renderWordDiffHtml } from "./highlight";
-import type { DiffResult } from "./types";
+import { buildSplitRows, computeWordDiff } from './diffAlgorithm';
+import { renderHighlightedHtml, renderWordDiffHtml } from './highlight';
+import type { DiffResult } from './types';
 
 interface SplitDiffTableProps {
   diffResult: DiffResult;
@@ -22,13 +22,16 @@ const SplitDiffTable: React.FC<SplitDiffTableProps> = ({
   language,
   selectedLines,
   onToggleLine,
-  blockIdPrefix = "cb",
+  blockIdPrefix = 'cb',
   onCommentLine,
   renderCommentArea,
   commentCounts,
 }) => {
   return (
-    <table className="w-full border-collapse font-mono diff-table-split" style={{ fontSize: 'var(--font-size)' }}>
+    <table
+      className="w-full border-collapse font-mono diff-table-split"
+      style={{ fontSize: 'var(--font-size)' }}
+    >
       <colgroup>
         <col className="col-linenum" />
         <col className="col-code" />
@@ -42,13 +45,12 @@ const SplitDiffTable: React.FC<SplitDiffTableProps> = ({
             let inBlock = false;
             return buildSplitRows(hunk).map((row, rowIndex) => {
               // Skip @@ hunk headers — split line numbers already show position.
-              if (row.type === "hunk-header") {
+              if (row.type === 'hunk-header') {
                 return null;
               }
 
               const isChanged =
-                row.type === "change" &&
-                (row.oldType === "removed" || row.newType === "added");
+                row.type === 'change' && (row.oldType === 'removed' || row.newType === 'added');
               let blockId: string | undefined;
               if (isChanged && !inBlock) {
                 blockId = `${blockIdPrefix}-${globalBlockIdx++}`;
@@ -57,39 +59,36 @@ const SplitDiffTable: React.FC<SplitDiffTableProps> = ({
                 inBlock = false;
               }
 
-              let oldCellHtml = "";
-              let newCellHtml = "";
+              let oldCellHtml = '';
+              let newCellHtml = '';
 
-              if (row.type === "context") {
-                const highlighted = renderHighlightedHtml(row.oldContent || "", language);
+              if (row.type === 'context') {
+                const highlighted = renderHighlightedHtml(row.oldContent || '', language);
                 oldCellHtml = highlighted;
                 newCellHtml = highlighted;
-              } else if (row.type === "change") {
+              } else if (row.type === 'change') {
                 if (
-                  row.oldType === "removed" &&
-                  row.newType === "added" &&
+                  row.oldType === 'removed' &&
+                  row.newType === 'added' &&
                   row.oldContent &&
                   row.newContent
                 ) {
-                  const { oldParts, newParts } = computeWordDiff(
-                    row.oldContent,
-                    row.newContent,
-                  );
-                  oldCellHtml = renderWordDiffHtml(oldParts, "old", language);
-                  newCellHtml = renderWordDiffHtml(newParts, "new", language);
-                } else if (row.oldType === "removed" && row.oldContent) {
+                  const { oldParts, newParts } = computeWordDiff(row.oldContent, row.newContent);
+                  oldCellHtml = renderWordDiffHtml(oldParts, 'old', language);
+                  newCellHtml = renderWordDiffHtml(newParts, 'new', language);
+                } else if (row.oldType === 'removed' && row.oldContent) {
                   oldCellHtml = renderHighlightedHtml(row.oldContent, language);
-                } else if (row.newType === "added" && row.newContent) {
+                } else if (row.newType === 'added' && row.newContent) {
                   newCellHtml = renderHighlightedHtml(row.newContent, language);
                 }
               }
 
               const lineKey = `${hunkIndex}:${rowIndex}`;
               const isSelected = selectedLines?.has(lineKey) ?? false;
-              const isRemoved = row.type === "change" && row.oldType === "removed";
-              const isAdded = row.type === "change" && row.newType === "added";
+              const isRemoved = row.type === 'change' && row.oldType === 'removed';
+              const isAdded = row.type === 'change' && row.newType === 'added';
               const newLineNum = row.newLineNum;
-              const canComment = onCommentLine && row.newType === "added";
+              const canComment = onCommentLine && row.newType === 'added';
               const commentCount = commentCounts?.get(newLineNum ?? 0) ?? 0;
               const commentArea = renderCommentArea?.(newLineNum ?? 0);
 
@@ -97,46 +96,42 @@ const SplitDiffTable: React.FC<SplitDiffTableProps> = ({
                 <React.Fragment key={`${hunkIndex}-${rowIndex}`}>
                   <tr
                     id={blockId}
-                    className={cn(
-                      "diff-line split-row",
-                      isSelected && "diff-line-selected",
-                    )}
+                    className={cn('diff-line split-row', isSelected && 'diff-line-selected')}
                   >
                     <td
                       className={cn(
-                        "line-number old split-linenum",
+                        'line-number old split-linenum',
                         row.oldType,
-                        "cursor-pointer hover:bg-bg-hover",
-                        isSelected && "text-accent-blue font-semibold",
+                        'cursor-pointer hover:bg-bg-hover',
+                        isSelected && 'text-accent-blue font-semibold',
                       )}
                       onClick={() => onToggleLine?.(hunkIndex, rowIndex)}
-                      title={isSelected ? "Deselect line" : "Select line for AI review"}
+                      title={isSelected ? 'Deselect line' : 'Select line for AI review'}
                     >
-                      {row.oldLineNum ?? ""}
+                      {row.oldLineNum ?? ''}
                     </td>
                     <td
                       className={cn(
-                        "line-content split-cell",
+                        'line-content split-cell',
                         row.oldType,
-                        isSelected && isRemoved && "bg-diff-removed",
+                        isSelected && isRemoved && 'bg-diff-removed',
                       )}
                       dangerouslySetInnerHTML={{
                         __html:
-                          oldCellHtml ||
-                          (row.oldType === "empty" ? "" : row.oldContent || ""),
+                          oldCellHtml || (row.oldType === 'empty' ? '' : row.oldContent || ''),
                       }}
                     />
                     <td
                       className={cn(
-                        "line-number new split-linenum",
+                        'line-number new split-linenum',
                         row.newType,
-                        "cursor-pointer hover:bg-bg-hover relative group",
-                        isSelected && "text-accent-blue font-semibold",
+                        'cursor-pointer hover:bg-bg-hover relative group',
+                        isSelected && 'text-accent-blue font-semibold',
                       )}
                       onClick={() => onToggleLine?.(hunkIndex, rowIndex)}
-                      title={isSelected ? "Deselect line" : "Select line for AI review"}
+                      title={isSelected ? 'Deselect line' : 'Select line for AI review'}
                     >
-                      {row.newLineNum ?? ""}
+                      {row.newLineNum ?? ''}
                       {canComment && (
                         <button
                           className="absolute left-0 top-1/2 -translate-y-1/2 w-4 h-4 flex items-center justify-center text-[11px] font-bold text-text-muted hover:text-accent-blue hover:bg-bg-hover rounded opacity-0 group-hover:opacity-100 transition-opacity border-none bg-transparent cursor-pointer"
@@ -157,14 +152,13 @@ const SplitDiffTable: React.FC<SplitDiffTableProps> = ({
                     </td>
                     <td
                       className={cn(
-                        "line-content split-cell",
+                        'line-content split-cell',
                         row.newType,
-                        isSelected && isAdded && "bg-diff-added",
+                        isSelected && isAdded && 'bg-diff-added',
                       )}
                       dangerouslySetInnerHTML={{
                         __html:
-                          newCellHtml ||
-                          (row.newType === "empty" ? "" : row.newContent || ""),
+                          newCellHtml || (row.newType === 'empty' ? '' : row.newContent || ''),
                       }}
                     />
                   </tr>

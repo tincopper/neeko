@@ -26,10 +26,7 @@ const BUILTIN_SERVER_NAMES: Record<string, string> = {
 };
 
 /** Prefer live session/profile server name so custom LSPs display correctly. */
-function serverName(
-  languageId: string,
-  liveName?: string | null,
-): string {
+function serverName(languageId: string, liveName?: string | null): string {
   if (liveName && liveName.trim()) return liveName;
   return BUILTIN_SERVER_NAMES[languageId] ?? languageId;
 }
@@ -322,9 +319,7 @@ export function StatusBar() {
           title={`${p.languageId} (${markers}). Open a matching file to start ${label}.`}
         >
           <span className="w-1.5 h-1.5 rounded-full shrink-0 bg-text-muted" />
-          <span className="truncate">
-            {label} · detected
-          </span>
+          <span className="truncate">{label} · detected</span>
         </span>
       );
     }
@@ -429,8 +424,7 @@ export function StatusBar() {
                     'absolute -top-0.5 -right-0.5 w-1.5 h-1.5 rounded-full',
                     debugSession.status === 'stopped'
                       ? 'bg-accent-yellow'
-                      : debugSession.status === 'running' ||
-                          debugSession.status === 'starting'
+                      : debugSession.status === 'running' || debugSession.status === 'starting'
                         ? 'bg-accent-green animate-pulse'
                         : 'bg-text-muted',
                   )}

@@ -1,12 +1,7 @@
-import React from "react";
+import React from 'react';
 import { cn } from '@/lib/utils';
 import { getAvatarStyle, getProjectInitials } from '@/shared/utils/projectAvatar';
-import {
-  ChevronRightIcon,
-  PlusIcon,
-  TrashIcon,
-  MoreVerticalIcon,
-} from "@/shared/components/icons";
+import { ChevronRightIcon, PlusIcon, TrashIcon, MoreVerticalIcon } from '@/shared/components/icons';
 
 interface ProjectGroupActions {
   /** 折叠/展开切换。点�?header 主体�?chevron 按钮均触�?*/
@@ -75,7 +70,7 @@ const HeaderActionButton: React.FC<HeaderActionButtonProps> = ({
       if (hoverColor) (e.currentTarget as HTMLElement).style.color = hoverColor;
     }}
     onMouseOut={(e) => {
-      (e.currentTarget as HTMLElement).style.color = "";
+      (e.currentTarget as HTMLElement).style.color = '';
     }}
   >
     {children}
@@ -99,10 +94,10 @@ const ProjectGroup: React.FC<ProjectGroupProps> = ({
   const initials = getProjectInitials(name);
 
   return (
-    <div className={cn("group/proj", !isLast && "border-b border-white/[0.04]")}>
+    <div className={cn('group/proj', !isLast && 'border-b border-white/[0.04]')}>
       <div
         className={cn(
-          "flex items-center gap-2.5 px-3 py-2.5 cursor-pointer hover:bg-bg-hover relative",
+          'flex items-center gap-2.5 px-3 py-2.5 cursor-pointer hover:bg-bg-hover relative',
         )}
         onClick={actions.onToggle}
         onContextMenu={actions.onContextMenu}
@@ -129,15 +124,19 @@ const ProjectGroup: React.FC<ProjectGroupProps> = ({
         {/* 按钮 overlay：hover 时出现，不消耗 flex 空间 */}
         <div
           className={cn(
-            "absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-0.5 transition-opacity",
+            'absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-0.5 transition-opacity',
             forceShowActions
-              ? "opacity-100 pointer-events-auto"
-              : "opacity-0 pointer-events-none group-hover/proj:opacity-100 group-hover/proj:pointer-events-auto",
+              ? 'opacity-100 pointer-events-auto'
+              : 'opacity-0 pointer-events-none group-hover/proj:opacity-100 group-hover/proj:pointer-events-auto',
           )}
           onClick={(e) => e.stopPropagation()}
         >
           {actions.onOpenIde && (
-            <HeaderActionButton title="Open in IDE" onClick={actions.onOpenIde} hoverColor="#61afef">
+            <HeaderActionButton
+              title="Open in IDE"
+              onClick={actions.onOpenIde}
+              hoverColor="#61afef"
+            >
               {ideIconSrc ? (
                 <img src={ideIconSrc} className="w-3.5 h-3.5 object-contain block" alt="" />
               ) : (
@@ -165,10 +164,10 @@ const ProjectGroup: React.FC<ProjectGroupProps> = ({
               <PlusIcon size={15} />
             </HeaderActionButton>
           )}
-          <HeaderActionButton title={expanded ? "Collapse" : "Expand"} onClick={actions.onToggle}>
+          <HeaderActionButton title={expanded ? 'Collapse' : 'Expand'} onClick={actions.onToggle}>
             <ChevronRightIcon
               size={15}
-              className={cn("transition-transform duration-150", expanded && "rotate-90")}
+              className={cn('transition-transform duration-150', expanded && 'rotate-90')}
             />
           </HeaderActionButton>
         </div>

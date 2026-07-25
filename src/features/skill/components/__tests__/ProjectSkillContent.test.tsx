@@ -779,7 +779,9 @@ describe('ProjectSkillContent', () => {
     render(<ProjectSkillContent setDialog={vi.fn()} />);
 
     await waitFor(() => {
-      expect(screen.getByTestId('project-agent-chip-claude-code')).toHaveTextContent(/Claude Code/i);
+      expect(screen.getByTestId('project-agent-chip-claude-code')).toHaveTextContent(
+        /Claude Code/i,
+      );
     });
     await waitFor(() => {
       expect(screen.getByTestId('project-skill-tags-code-review')).toHaveTextContent('Backend');

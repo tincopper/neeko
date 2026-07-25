@@ -112,10 +112,9 @@ describe('useWorktreeState', () => {
   });
 
   it('不同项目间的状态隔离', () => {
-    const { result, rerender } = renderHook(
-      ({ projectId }) => useWorktreeState(projectId),
-      { initialProps: { projectId: 'project-1' as string | null } },
-    );
+    const { result, rerender } = renderHook(({ projectId }) => useWorktreeState(projectId), {
+      initialProps: { projectId: 'project-1' as string | null },
+    });
 
     act(() => {
       result.current.updateWtPath('/project-1/wt', 'main');

@@ -7,16 +7,14 @@
  * 从 unified Project store 读取活跃项目，不再区分 local/WSL/Remote 三个 store。
  */
 
-import { useMemo } from "react";
-import { useProjectStore } from "@/features/project/store";
-import { useWorktreeStore } from "@/features/project/worktreeStore";
+import { useMemo } from 'react';
+import { useProjectStore } from '@/features/project/store';
+import { useWorktreeStore } from '@/features/project/worktreeStore';
 import type { ActiveProjectContext } from '@/shared/types/activeProject';
-import {
-  environmentToConnectionContext,
-} from '@/shared/types/project';
-import { getCapabilities } from "./capabilities";
-import { toLocalView } from "./adapters";
-import { createProjectCommands } from "./commandFactory";
+import { environmentToConnectionContext } from '@/shared/types/project';
+import { getCapabilities } from './capabilities';
+import { toLocalView } from './adapters';
+import { createProjectCommands } from './commandFactory';
 
 /**
  * use-active-project — 从 unified Project store 读取活跃项目，构建统一 ActiveProjectContext

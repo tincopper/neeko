@@ -1,6 +1,10 @@
-import { useState, useCallback, useEffect, useRef, useMemo } from "react";
-import { fetchLeaderboard as fetchLeaderboardApi, searchSkillssh, installFromSkillssh } from "../api/skillApi";
-import { listen } from "@tauri-apps/api/event";
+import { useState, useCallback, useEffect, useRef, useMemo } from 'react';
+import {
+  fetchLeaderboard as fetchLeaderboardApi,
+  searchSkillssh,
+  installFromSkillssh,
+} from '../api/skillApi';
+import { listen } from '@tauri-apps/api/event';
 import type { SkillsShSkill, InstallProgress, LeaderboardType } from '@/shared/types';
 
 export type { LeaderboardType };
@@ -18,13 +22,15 @@ export function useMarketplace({ installedSkills, onSkillInstalled }: UseMarketp
   // Core data
   const [leaderboard, setLeaderboard] = useState<SkillsShSkill[]>([]);
   const [searchResults, setSearchResults] = useState<SkillsShSkill[]>([]);
-  const [board, setBoard] = useState<LeaderboardType>("hot");
-  const [searchQuery, setSearchQuery] = useState("");
+  const [board, setBoard] = useState<LeaderboardType>('hot');
+  const [searchQuery, setSearchQuery] = useState('');
   const [loading, setLoading] = useState(false);
 
   // Install state
   const [installingIds, setInstallingIds] = useState<Set<string>>(new Set());
-  const [installProgress, setInstallProgress] = useState<Map<string, InstallProgress["phase"]>>(new Map());
+  const [installProgress, setInstallProgress] = useState<Map<string, InstallProgress['phase']>>(
+    new Map(),
+  );
 
   // Source filter
   const [sourceFilter, setSourceFilter] = useState<string | null>(null);
@@ -50,7 +56,7 @@ export function useMarketplace({ installedSkills, onSkillInstalled }: UseMarketp
       setLeaderboard(result);
       leaderboardCache.current.set(boardType, result);
     } catch (e) {
-      console.error("Failed to fetch leaderboard:", e);
+      console.error('Failed to fetch leaderboard:', e);
       setLeaderboard([]);
     } finally {
       setLoading(false);
@@ -69,7 +75,7 @@ export function useMarketplace({ installedSkills, onSkillInstalled }: UseMarketp
       const result = await searchSkillssh(query.trim(), 100);
       setSearchResults(result);
     } catch (e) {
-      console.error("Failed to search marketplace:", e);
+      console.error('Failed to search marketplace:', e);
       setSearchResults([]);
     } finally {
       setLoading(false);
@@ -77,54 +83,57 @@ export function useMarketplace({ installedSkills, onSkillInstalled }: UseMarketp
   }, []);
 
   // Install from marketplace (await DTO so we can open assign-tag dialog)
-  const installFromMarket = useCallback(async (source: string, skillId: string) => {
-    const fullId = `${source}/${skillId}`;
+  const installFromMarket = useCallback(
+    async (source: string, skillId: string) => {
+      const fullId = `${source}/${skillId}`;
 
-    if (installingIds.has(fullId)) return;
+      if (installingIds.has(fullId)) return;
 
-    setInstallingIds(prev => new Set(prev).add(fullId));
-    setInstallProgress(prev => new Map(prev).set(fullId, "cloning"));
+      setInstallingIds((prev) => new Set(prev).add(fullId));
+      setInstallProgress((prev) => new Map(prev).set(fullId, 'cloning'));
 
-    try {
-      const dto = await installFromSkillssh(source, skillId);
-      setInstallingIds(prev => {
-        const next = new Set(prev);
-        next.delete(fullId);
-        return next;
-      });
-      setInstallProgress(prev => new Map(prev).set(fullId, "done"));
-      setTimeout(() => {
-        setInstallProgress(prev => {
+      try {
+        const dto = await installFromSkillssh(source, skillId);
+        setInstallingIds((prev) => {
+          const next = new Set(prev);
+          next.delete(fullId);
+          return next;
+        });
+        setInstallProgress((prev) => new Map(prev).set(fullId, 'done'));
+        setTimeout(() => {
+          setInstallProgress((prev) => {
+            const next = new Map(prev);
+            next.delete(fullId);
+            return next;
+          });
+        }, 2000);
+        onSkillInstalled?.({ id: dto.id, name: dto.name });
+        return dto;
+      } catch (e) {
+        console.error('Failed to install skill:', e);
+        setInstallingIds((prev) => {
+          const next = new Set(prev);
+          next.delete(fullId);
+          return next;
+        });
+        setInstallProgress((prev) => {
           const next = new Map(prev);
           next.delete(fullId);
           return next;
         });
-      }, 2000);
-      onSkillInstalled?.({ id: dto.id, name: dto.name });
-      return dto;
-    } catch (e) {
-      console.error("Failed to install skill:", e);
-      setInstallingIds(prev => {
-        const next = new Set(prev);
-        next.delete(fullId);
-        return next;
-      });
-      setInstallProgress(prev => {
-        const next = new Map(prev);
-        next.delete(fullId);
-        return next;
-      });
-      throw e;
-    }
-  }, [installingIds, onSkillInstalled]);
+        throw e;
+      }
+    },
+    [installingIds, onSkillInstalled],
+  );
 
   // Listen for install progress events (phase UI only; completion handled above)
   useEffect(() => {
-    const unlisten = listen<InstallProgress>("install-progress", (event) => {
+    const unlisten = listen<InstallProgress>('install-progress', (event) => {
       const { skill_id, phase } = event.payload;
-      setInstallProgress(prev => new Map(prev).set(skill_id, phase));
-      if (phase === "error") {
-        setInstallingIds(prev => {
+      setInstallProgress((prev) => new Map(prev).set(skill_id, phase));
+      if (phase === 'error') {
+        setInstallingIds((prev) => {
           const next = new Set(prev);
           next.delete(skill_id);
           return next;
@@ -133,7 +142,7 @@ export function useMarketplace({ installedSkills, onSkillInstalled }: UseMarketp
     });
 
     return () => {
-      unlisten.then(fn => fn());
+      unlisten.then((fn) => fn());
     };
   }, []);
 
@@ -165,7 +174,7 @@ export function useMarketplace({ installedSkills, onSkillInstalled }: UseMarketp
   const availableSources = useMemo(() => {
     const ownerSet = new Set<string>();
     for (const skill of rawList) {
-      const owner = skill.source.split("/")[0];
+      const owner = skill.source.split('/')[0];
       if (owner) ownerSet.add(owner);
     }
     return Array.from(ownerSet).sort();
@@ -174,7 +183,7 @@ export function useMarketplace({ installedSkills, onSkillInstalled }: UseMarketp
   // Derived: filtered list by source owner
   const filteredList = useMemo(() => {
     if (!sourceFilter) return rawList;
-    return rawList.filter(s => s.source.startsWith(sourceFilter + "/"));
+    return rawList.filter((s) => s.source.startsWith(sourceFilter + '/'));
   }, [rawList, sourceFilter]);
 
   // Derived: pagination
@@ -197,9 +206,12 @@ export function useMarketplace({ installedSkills, onSkillInstalled }: UseMarketp
     setSourceFilter(null);
   }, [board]);
 
-  const isInstalled = useCallback((skillName: string) => {
-    return installedSkills.includes(skillName);
-  }, [installedSkills]);
+  const isInstalled = useCallback(
+    (skillName: string) => {
+      return installedSkills.includes(skillName);
+    },
+    [installedSkills],
+  );
 
   return {
     // Data

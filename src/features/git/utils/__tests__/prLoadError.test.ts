@@ -1,9 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import {
-  cleanRawCommandError,
-  getInvokeErrorMessage,
-  mapPrLoadError,
-} from '../prLoadError';
+import { cleanRawCommandError, getInvokeErrorMessage, mapPrLoadError } from '../prLoadError';
 
 describe('getInvokeErrorMessage', () => {
   it('should_return_string_error_as_is', () => {
@@ -23,7 +19,8 @@ describe('getInvokeErrorMessage', () => {
 
 describe('cleanRawCommandError', () => {
   it('should_decode_stderr_byte_array_from_legacy_error', () => {
-    const text = "GraphQL: Could not resolve to a Repository with the name 'liusy0101/codeant'. (repository)\n";
+    const text =
+      "GraphQL: Could not resolve to a Repository with the name 'liusy0101/codeant'. (repository)\n";
     const bytes = Array.from(new TextEncoder().encode(text)).join(', ');
     const raw = `Unknown error: Command failed with code 1: stdout=[], stderr=[${bytes}]`;
     const cleaned = cleanRawCommandError(raw);
@@ -34,9 +31,7 @@ describe('cleanRawCommandError', () => {
 
   it('should_strip_git_error_prefix', () => {
     expect(
-      cleanRawCommandError(
-        "Git error: Repository 'o/r' was not found or you don't have access.",
-      ),
+      cleanRawCommandError("Git error: Repository 'o/r' was not found or you don't have access."),
     ).toContain("Repository 'o/r'");
   });
 });

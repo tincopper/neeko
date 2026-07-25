@@ -16,7 +16,7 @@ const MarketplaceSearchBar: React.FC<MarketplaceSearchBarProps> = React.memo(
           <input
             type="search"
             value={value}
-            onChange={e => onChange(e.target.value)}
+            onChange={(e) => onChange(e.target.value)}
             placeholder={placeholder}
             className="w-full h-7 pl-7 pr-7 text-[var(--font-size)] rounded-md bg-bg-hover/60 border border-transparent text-text-primary placeholder:text-text-muted outline-none focus:border-border focus:bg-bg-primary transition-colors"
           />

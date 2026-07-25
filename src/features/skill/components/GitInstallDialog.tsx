@@ -92,7 +92,7 @@ const GitInstallDialog: React.FC<GitInstallDialogProps> = React.memo(
           subpath.trim() || null,
         );
         setPreviewId(result.id);
-        const list = result.available_skills.map(s => ({
+        const list = result.available_skills.map((s) => ({
           name: s.name,
           path: s.path,
           description: s.description,
@@ -100,7 +100,7 @@ const GitInstallDialog: React.FC<GitInstallDialogProps> = React.memo(
         setSkills(list);
         // Pre-select all when few skills
         if (list.length > 0 && list.length <= 5) {
-          setSelected(new Set(list.map(s => s.path)));
+          setSelected(new Set(list.map((s) => s.path)));
         }
         if (list.length === 0) {
           setError('No skills (SKILL.md directories) found in this repository');
@@ -114,7 +114,7 @@ const GitInstallDialog: React.FC<GitInstallDialogProps> = React.memo(
     }, [url, branch, subpath, previewId, cleanupPreview]);
 
     const togglePath = useCallback((path: string) => {
-      setSelected(prev => {
+      setSelected((prev) => {
         const next = new Set(prev);
         if (next.has(path)) next.delete(path);
         else next.add(path);
@@ -168,7 +168,7 @@ const GitInstallDialog: React.FC<GitInstallDialogProps> = React.memo(
             </label>
             <Input
               value={url}
-              onChange={e => setUrl(e.target.value)}
+              onChange={(e) => setUrl(e.target.value)}
               placeholder="owner/repo or https://github.com/owner/repo.git"
               disabled={installing}
               className="text-sm"
@@ -185,7 +185,7 @@ const GitInstallDialog: React.FC<GitInstallDialogProps> = React.memo(
               </label>
               <Input
                 value={branch}
-                onChange={e => setBranch(e.target.value)}
+                onChange={(e) => setBranch(e.target.value)}
                 placeholder="main"
                 disabled={installing}
                 className="text-sm"
@@ -197,7 +197,7 @@ const GitInstallDialog: React.FC<GitInstallDialogProps> = React.memo(
               </label>
               <Input
                 value={subpath}
-                onChange={e => setSubpath(e.target.value)}
+                onChange={(e) => setSubpath(e.target.value)}
                 placeholder="skills/"
                 disabled={installing}
                 className="text-sm"
@@ -223,14 +223,14 @@ const GitInstallDialog: React.FC<GitInstallDialogProps> = React.memo(
                   disabled={installing}
                   onClick={() => {
                     if (selected.size === skills.length) setSelected(new Set());
-                    else setSelected(new Set(skills.map(s => s.path)));
+                    else setSelected(new Set(skills.map((s) => s.path)));
                   }}
                 >
                   {selected.size === skills.length ? 'Deselect all' : 'Select all'}
                 </button>
               </div>
               <ul className="space-y-1 max-h-64 overflow-y-auto border border-border rounded-md">
-                {skills.map(s => {
+                {skills.map((s) => {
                   const checked = selected.has(s.path);
                   return (
                     <li key={s.path}>
@@ -272,7 +272,12 @@ const GitInstallDialog: React.FC<GitInstallDialogProps> = React.memo(
         </div>
 
         <div className="flex items-center justify-end gap-2 px-4 py-3 border-t border-border">
-          <Button variant="ghost" size="sm" onClick={() => void handleClose()} disabled={installing}>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => void handleClose()}
+            disabled={installing}
+          >
             Cancel
           </Button>
           {phase === 'input' || (phase === 'preview' && skills.length === 0 && !installing) ? (

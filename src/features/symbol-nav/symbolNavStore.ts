@@ -1,21 +1,17 @@
 /**
  * Structure popup + Find Usages result list (IDEA-like).
  */
-import { create } from "zustand";
+import { create } from 'zustand';
 
-import { lspRequest } from "@/features/lsp/api/lspApi";
-import { fromFileUri } from "@/features/lsp/languageMap";
-import type { LspLocation } from "@/features/lsp/types";
-import { openProjectFile } from "@/features/quick-open/openFile";
-import { fuzzyFilter } from "@/features/quick-open/fuzzy";
+import { lspRequest } from '@/features/lsp/api/lspApi';
+import { fromFileUri } from '@/features/lsp/languageMap';
+import type { LspLocation } from '@/features/lsp/types';
+import { openProjectFile } from '@/features/quick-open/openFile';
+import { fuzzyFilter } from '@/features/quick-open/fuzzy';
 
-import {
-  flattenDocumentSymbols,
-  symbolKindLabel,
-  type FlatSymbol,
-} from "./documentSymbols";
+import { flattenDocumentSymbols, symbolKindLabel, type FlatSymbol } from './documentSymbols';
 
-export type SymbolNavMode = "structure" | "findUsages";
+export type SymbolNavMode = 'structure' | 'findUsages';
 
 export interface SymbolNavItem {
   id: string;
@@ -58,10 +54,10 @@ interface SymbolNavState {
 
 function structureItems(symbols: FlatSymbol[], filePath: string): SymbolNavItem[] {
   return symbols.map((s, i) => {
-    const indent = s.depth > 0 ? `${"  ".repeat(s.depth)}` : "";
+    const indent = s.depth > 0 ? `${'  '.repeat(s.depth)}` : '';
     const kind = symbolKindLabel(s.kind);
-    const detail = s.detail ? ` · ${s.detail}` : "";
-    const container = s.containerName ? ` in ${s.containerName}` : "";
+    const detail = s.detail ? ` · ${s.detail}` : '';
+    const container = s.containerName ? ` in ${s.containerName}` : '';
     return {
       id: `sym-${i}-${s.line}-${s.name}`,
       label: `${indent}${s.name}`,
@@ -77,7 +73,7 @@ function structureItems(symbols: FlatSymbol[], filePath: string): SymbolNavItem[
 function usagesItems(locations: LspLocation[]): SymbolNavItem[] {
   return locations.map((loc, i) => {
     const filePath = fromFileUri(loc.uri);
-    const base = filePath.replace(/\\/g, "/").split("/").pop() ?? filePath;
+    const base = filePath.replace(/\\/g, '/').split('/').pop() ?? filePath;
     const line = loc.range.start.line + 1;
     const col = loc.range.start.character;
     return {
@@ -98,9 +94,9 @@ function filterItems(all: SymbolNavItem[], query: string): SymbolNavItem[] {
 
 export const useSymbolNavStore = create<SymbolNavState>((set, get) => ({
   open: false,
-  mode: "structure",
-  title: "File Structure",
-  query: "",
+  mode: 'structure',
+  title: 'File Structure',
+  query: '',
   loading: false,
   allItems: [],
   items: [],
@@ -110,9 +106,9 @@ export const useSymbolNavStore = create<SymbolNavState>((set, get) => ({
   openStructure: ({ projectId, projectPath, languageId, uri, filePath }) => {
     set({
       open: true,
-      mode: "structure",
-      title: "File Structure",
-      query: "",
+      mode: 'structure',
+      title: 'File Structure',
+      query: '',
       loading: true,
       allItems: [],
       items: [],
@@ -122,13 +118,10 @@ export const useSymbolNavStore = create<SymbolNavState>((set, get) => ({
 
     void (async () => {
       try {
-        const raw = await lspRequest(
-          projectPath,
-          languageId,
-          "textDocument/documentSymbol",
-          { textDocument: { uri } },
-        );
-        if (!get().open || get().mode !== "structure") return;
+        const raw = await lspRequest(projectPath, languageId, 'textDocument/documentSymbol', {
+          textDocument: { uri },
+        });
+        if (!get().open || get().mode !== 'structure') return;
         const flat = flattenDocumentSymbols(raw);
         const allItems = structureItems(flat, filePath);
         set({
@@ -138,7 +131,7 @@ export const useSymbolNavStore = create<SymbolNavState>((set, get) => ({
           selectedIndex: 0,
         });
       } catch (e) {
-        console.error("[LSP] documentSymbol failed:", e);
+        console.error('[LSP] documentSymbol failed:', e);
         if (!get().open) return;
         set({ loading: false, allItems: [], items: [] });
       }
@@ -147,14 +140,12 @@ export const useSymbolNavStore = create<SymbolNavState>((set, get) => ({
 
   openFindUsages: ({ projectId, locations, symbolHint }) => {
     const allItems = usagesItems(locations);
-    const title = symbolHint
-      ? `Find Usages: ${symbolHint}`
-      : `Find Usages (${allItems.length})`;
+    const title = symbolHint ? `Find Usages: ${symbolHint}` : `Find Usages (${allItems.length})`;
     set({
       open: true,
-      mode: "findUsages",
+      mode: 'findUsages',
       title,
-      query: "",
+      query: '',
       loading: false,
       allItems,
       items: allItems.slice(0, 200),
@@ -196,7 +187,7 @@ export const useSymbolNavStore = create<SymbolNavState>((set, get) => ({
   close: () => {
     set({
       open: false,
-      query: "",
+      query: '',
       loading: false,
       allItems: [],
       items: [],

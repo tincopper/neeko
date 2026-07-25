@@ -1,7 +1,7 @@
-import { useCallback } from "react";
-import { useProjectStore } from "@/features/project/store";
-import { useConnectionStore } from "@/features/connection/store";
-import { useWorktreeStore } from "@/features/project/worktreeStore";
+import { useCallback } from 'react';
+import { useProjectStore } from '@/features/project/store';
+import { useConnectionStore } from '@/features/connection/store';
+import { useWorktreeStore } from '@/features/project/worktreeStore';
 import { useAppViewStore } from '@/shared/store/appViewStore';
 
 interface WslActions {
@@ -15,11 +15,7 @@ interface WslActions {
 interface RemoteActions {
   resetTransientState: () => void;
   handleRefreshGit: (entryId: string, projectId: string, projectPath: string) => void;
-  handleOpenWorktreeTerminal: (
-    entryId: string,
-    worktreePath: string,
-    branch: string,
-  ) => void;
+  handleOpenWorktreeTerminal: (entryId: string, worktreePath: string, branch: string) => void;
   setActiveWorktreePath: (path: string | null) => void;
 }
 
@@ -35,8 +31,8 @@ export function useCrossTypeSelection({
   selectProject,
 }: UseCrossTypeSelectionOptions) {
   const closeSettingsView = useCallback(() => {
-    if (useAppViewStore.getState().appView === "settings") {
-      useAppViewStore.getState().setAppView("normal");
+    if (useAppViewStore.getState().appView === 'settings') {
+      useAppViewStore.getState().setAppView('normal');
     }
   }, []);
 
@@ -47,13 +43,13 @@ export function useCrossTypeSelection({
       // Reset all transient worktree state
       useWorktreeStore.setState({
         activeWorktreePath: null,
-        activeWorktreeBranch: "",
+        activeWorktreeBranch: '',
       });
       wslActions.setWslDiffState?.(null);
       remoteActions.resetTransientState();
 
       // Find project in unified store
-      const project = useProjectStore.getState().projects.find(p => p.id === projectId);
+      const project = useProjectStore.getState().projects.find((p) => p.id === projectId);
       if (!project) return;
 
       // Always set unified active project (environment type is transparent)
@@ -66,7 +62,8 @@ export function useCrossTypeSelection({
         void wslActions.handleRefreshGit(project.environment.distro, project.id, project.path);
       } else if (project.environment.type === 'Remote') {
         const host = project.environment.host;
-        const entry = useConnectionStore.getState().remoteEntries.find(e => e.host === host) ?? null;
+        const entry =
+          useConnectionStore.getState().remoteEntries.find((e) => e.host === host) ?? null;
         if (entry) {
           void remoteActions.handleRefreshGit(entry.id, project.id, project.path);
         }

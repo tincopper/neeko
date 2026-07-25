@@ -31,7 +31,10 @@ import {
 } from '@/features/lsp/languageMap';
 import { useCmdHeld } from '@/features/lsp/hooks/useCmdHeld';
 import { useLspDefinition } from '@/features/lsp/hooks/useLspDefinition';
-import { useLspLinkHighlightExtension, clearLinkHighlight } from '@/features/lsp/hooks/useLspLinkHighlight';
+import {
+  useLspLinkHighlightExtension,
+  clearLinkHighlight,
+} from '@/features/lsp/hooks/useLspLinkHighlight';
 import { resolveLspPositionFromOffset } from '@/features/lsp/position';
 import type { LspLocation } from '@/features/lsp/types';
 import { useSymbolNavStore } from '@/features/symbol-nav';
@@ -49,10 +52,7 @@ import {
   recordNavigationJump,
 } from '@/features/editor/navigationHistoryStore';
 import type { NavLocation } from '@/features/editor/navigationHistory';
-import {
-  applyNavigateCaret,
-  navigateCaretExtension,
-} from '@/features/editor/navigateCaret';
+import { applyNavigateCaret, navigateCaretExtension } from '@/features/editor/navigateCaret';
 import type { FileTab, AppTheme, Tab, FileTabData } from '@/shared/types';
 import { openHtmlInBrowserPanel, resolveAbsolutePath } from '@/shared/utils/browserUtils';
 import {
@@ -164,9 +164,7 @@ function FileViewer() {
     );
   }
 
-  const projectPath =
-    activeProject?.path ??
-    null;
+  const projectPath = activeProject?.path ?? null;
 
   return (
     <div className="flex flex-col h-full">
@@ -261,12 +259,7 @@ function FileEditor({
     onLineNumberLeave,
   } = useBreakpointGutterExtensions(tab.projectId, absFilePath);
   // Current-line highlight field lives inside bpGutterExt; this only re-applies on stop.
-  useCurrentLineHighlight(
-    absFilePath,
-    tab.filePath,
-    editorViewRef,
-    editorViewEpoch,
-  );
+  useCurrentLineHighlight(absFilePath, tab.filePath, editorViewRef, editorViewEpoch);
 
   // Stable refs so lineNumbers handlers stay fresh without rebuilding extensions every render
   const lnClickRef = useRef(onLineNumberClick);
@@ -851,8 +844,7 @@ function FileEditor({
       editorViewRef.current = view;
       setEditorViewEpoch((n) => n + 1);
       // Apply any breakpoints already in the store (effect may have run before view existed)
-      const lines =
-        useDebugStore.getState().breakpoints[tab.projectId]?.[absFilePath] ?? [];
+      const lines = useDebugStore.getState().breakpoints[tab.projectId]?.[absFilePath] ?? [];
       lastSyncedBpKey.current = `${absFilePath}:${lines.join(',')}`;
       view.dispatch({ effects: bpSyncEffect(lines) });
       // Re-apply debug current-line if we stopped before the editor mounted.
@@ -868,11 +860,7 @@ function FileEditor({
 
       // Check for pending LSP navigation target (go-to-definition / find-references)
       const pending = useEditorStore.getState().pendingNavigateTarget;
-      if (
-        pending &&
-        pending.tabKey === tabKey &&
-        pending.tabId === tabId
-      ) {
+      if (pending && pending.tabKey === tabKey && pending.tabId === tabId) {
         console.log(`[perf] handleCreateEditor applying pending: L${pending.line}:${pending.col}`);
         // Defer one frame so layout is measured before scroll/focus
         requestAnimationFrame(() => {
@@ -930,11 +918,7 @@ function FileEditor({
   useEffect(() => {
     const unsubscribe = useEditorStore.subscribe((state) => {
       const pending = state.pendingNavigateTarget;
-      if (
-        pending &&
-        pending.tabKey === tabKey &&
-        pending.tabId === tabId
-      ) {
+      if (pending && pending.tabKey === tabKey && pending.tabId === tabId) {
         const view = editorViewRef.current;
         if (view) {
           requestAnimationFrame(() => {

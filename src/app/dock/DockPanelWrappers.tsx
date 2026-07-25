@@ -582,24 +582,21 @@ const GitLogPanelWrapper: React.FC = () => {
 
   const [selectedHash, setSelectedHash] = useState<string | null>(null);
   const [selectedExpanded, setSelectedExpanded] = useState(false);
-  const [searchQuery, setSearchQuery] = useState("");
+  const [searchQuery, setSearchQuery] = useState('');
   const [combined, setCombined] = useState(true);
   const [currentFileIdx, setCurrentFileIdx] = useState(0);
 
-  const { commits, loading, hasMore, loadMore, refresh, loadingMore } =
-    useGitLog(commands);
+  const { commits, loading, hasMore, loadMore, refresh, loadingMore } = useGitLog(commands);
 
-  const { detail, files, loading: detailLoading, error: detailError } = useCommitDetail(
-    commands,
-    selectedHash,
-  );
-
-  const { openFileInDiff, openCombined, pinFile, scrollToFile, refreshOpenDiff, hasSingleton } = useSingletonDiff(
-    project?.id,
-    selectedHash,
+  const {
+    detail,
     files,
-    connectionContext,
-  );
+    loading: detailLoading,
+    error: detailError,
+  } = useCommitDetail(commands, selectedHash);
+
+  const { openFileInDiff, openCombined, pinFile, scrollToFile, refreshOpenDiff, hasSingleton } =
+    useSingletonDiff(project?.id, selectedHash, files, connectionContext);
 
   const handleSelectCommit = useCallback(
     (hash: string) => {
@@ -627,7 +624,8 @@ const GitLogPanelWrapper: React.FC = () => {
   const handleToggleCombined = useCallback(
     (on: boolean) => {
       setCombined(on);
-      const preferred = files[currentFileIdx]?.path ?? (files.length > 0 ? files[0].path : undefined);
+      const preferred =
+        files[currentFileIdx]?.path ?? (files.length > 0 ? files[0].path : undefined);
       if (on) {
         if (preferred) openCombined(preferred);
       } else if (preferred) {
@@ -666,10 +664,10 @@ const GitLogPanelWrapper: React.FC = () => {
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       const tag = (e.target as HTMLElement).tagName;
-      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
 
       switch (e.key) {
-        case "J": {
+        case 'J': {
           e.preventDefault();
           const ci = commits.findIndex((c) => c.hash === selectedHash);
           if (ci >= 0 && ci < commits.length - 1) {
@@ -679,7 +677,7 @@ const GitLogPanelWrapper: React.FC = () => {
           }
           break;
         }
-        case "K": {
+        case 'K': {
           e.preventDefault();
           const ci = commits.findIndex((c) => c.hash === selectedHash);
           if (ci > 0) {
@@ -688,7 +686,7 @@ const GitLogPanelWrapper: React.FC = () => {
           }
           break;
         }
-        case "j": {
+        case 'j': {
           if (files.length === 0) break;
           e.preventDefault();
           const nextIdx = Math.min(currentFileIdx + 1, files.length - 1);
@@ -698,7 +696,7 @@ const GitLogPanelWrapper: React.FC = () => {
           }
           break;
         }
-        case "k": {
+        case 'k': {
           if (files.length === 0) break;
           e.preventDefault();
           const nextIdx = Math.max(currentFileIdx - 1, 0);
@@ -708,16 +706,25 @@ const GitLogPanelWrapper: React.FC = () => {
           }
           break;
         }
-        case "c": {
+        case 'c': {
           e.preventDefault();
           handleToggleCombined(!combined);
           break;
         }
       }
     };
-    window.addEventListener("keydown", handler);
-    return () => window.removeEventListener("keydown", handler);
-  }, [commits, selectedHash, files, currentFileIdx, combined, handleSelectCommit, openFileInDiff, handleToggleCombined]);
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [
+    commits,
+    selectedHash,
+    files,
+    currentFileIdx,
+    combined,
+    handleSelectCommit,
+    openFileInDiff,
+    handleToggleCombined,
+  ]);
 
   if (!project) {
     return (
@@ -865,7 +872,8 @@ const GitControlPanelWrapper: React.FC = React.memo(() => {
   const handleToggleCombined = useCallback(
     (on: boolean) => {
       setCombined(on);
-      const preferred = files[currentFileIdx]?.path ?? (files.length > 0 ? files[0].path : undefined);
+      const preferred =
+        files[currentFileIdx]?.path ?? (files.length > 0 ? files[0].path : undefined);
       if (on) {
         if (preferred) openCombined(preferred);
       } else if (preferred) {

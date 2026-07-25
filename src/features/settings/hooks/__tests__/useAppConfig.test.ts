@@ -225,9 +225,7 @@ describe('useAppConfig', () => {
     const { result } = renderHook(() => useAppConfig());
 
     await waitFor(() => {
-      expect(
-        document.documentElement.style.getPropertyValue('--font-size'),
-      ).toBe('12px');
+      expect(document.documentElement.style.getPropertyValue('--font-size')).toBe('12px');
     });
 
     const newConfig = { ...result.current.config, appearanceFontSize: 16 };
@@ -235,9 +233,7 @@ describe('useAppConfig', () => {
       await result.current.saveConfig(newConfig);
     });
 
-    expect(
-      document.documentElement.style.getPropertyValue('--font-size'),
-    ).toBe('16px');
+    expect(document.documentElement.style.getPropertyValue('--font-size')).toBe('16px');
   });
 
   it('terminalFontSize 变化时同步 CSS 变量 --terminal-font-size', async () => {
@@ -246,9 +242,7 @@ describe('useAppConfig', () => {
     const { result } = renderHook(() => useAppConfig());
 
     await waitFor(() => {
-      expect(
-        document.documentElement.style.getPropertyValue('--terminal-font-size'),
-      ).toBe('14px');
+      expect(document.documentElement.style.getPropertyValue('--terminal-font-size')).toBe('14px');
     });
 
     const newConfig = { ...result.current.config, terminalFontSize: 20 };
@@ -256,8 +250,6 @@ describe('useAppConfig', () => {
       await result.current.saveConfig(newConfig);
     });
 
-    expect(
-      document.documentElement.style.getPropertyValue('--terminal-font-size'),
-    ).toBe('20px');
+    expect(document.documentElement.style.getPropertyValue('--terminal-font-size')).toBe('20px');
   });
 });

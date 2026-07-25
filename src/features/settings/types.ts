@@ -1,10 +1,10 @@
-import type { AgentConfig } from "@/features/agent/types";
+import type { AgentConfig } from '@/features/agent/types';
 
-export type SkillView = "local" | "marketplace" | "project" | "agents";
-export type DiffMode = "unified" | "split";
+export type SkillView = 'local' | 'marketplace' | 'project' | 'agents';
+export type DiffMode = 'unified' | 'split';
 export type AppTheme = string;
 
-export const BUILTIN_THEMES = ["dark", "light", "one-dark-pro", "claude", "classic-dark"] as const;
+export const BUILTIN_THEMES = ['dark', 'light', 'one-dark-pro', 'claude', 'classic-dark'] as const;
 
 export interface ThemeListItem {
   name: string;

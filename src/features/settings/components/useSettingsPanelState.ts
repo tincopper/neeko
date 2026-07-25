@@ -1,16 +1,12 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { addAgent, removeAgent, importAgentIcon } from "../../agent/api/agentApi";
-import { getSystemFonts } from "../api/settingsApi";
-import { open } from "@tauri-apps/plugin-dialog";
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { addAgent, removeAgent, importAgentIcon } from '../../agent/api/agentApi';
+import { getSystemFonts } from '../api/settingsApi';
+import { open } from '@tauri-apps/plugin-dialog';
 import { DEFAULT_AGENT_ICON } from '@/shared/utils/agents';
 import type { AgentConfig, AppConfig, DiffMode } from '@/shared/types';
 import { IDE_PRESETS, getIdeCommand } from '@/shared/utils/idePresets';
 import type { IdePreset } from '@/shared/utils/idePresets';
-import {
-  BUILTIN_FONTS,
-  PRESET_SHELLS,
-  type SettingsNavId,
-} from "./constants";
+import { BUILTIN_FONTS, PRESET_SHELLS, type SettingsNavId } from './constants';
 
 interface UseSettingsPanelStateParams {
   config: AppConfig;
@@ -30,26 +26,24 @@ export function useSettingsPanelState({
   const [shellInput, setShellInput] = useState(config.shell);
 
   const [systemFonts, setSystemFonts] = useState<string[]>([]);
-  const [fontSearch, setFontSearch] = useState("");
+  const [fontSearch, setFontSearch] = useState('');
   const [fontsLoading, setFontsLoading] = useState(false);
   const [fontListOpen, setFontListOpen] = useState(false);
   const fontDropdownRef = useRef<HTMLDivElement>(null);
 
-  const [newIdeName, setNewIdeName] = useState("");
-  const [newIdeCommand, setNewIdeCommand] = useState("");
+  const [newIdeName, setNewIdeName] = useState('');
+  const [newIdeCommand, setNewIdeCommand] = useState('');
 
-  const [newAgentName, setNewAgentName] = useState("");
-  const [newAgentCommand, setNewAgentCommand] = useState("");
-  const [newAgentArgs, setNewAgentArgs] = useState("");
-  const [newAgentSkillPath, setNewAgentSkillPath] = useState("");
+  const [newAgentName, setNewAgentName] = useState('');
+  const [newAgentCommand, setNewAgentCommand] = useState('');
+  const [newAgentArgs, setNewAgentArgs] = useState('');
+  const [newAgentSkillPath, setNewAgentSkillPath] = useState('');
   const [newAgentIcon, setNewAgentIcon] = useState(DEFAULT_AGENT_ICON);
 
   const [editingPresetId, setEditingPresetId] = useState<string | null>(null);
-  const [editingValue, setEditingValue] = useState("");
-  const [skillPathEditingAgentId, setSkillPathEditingAgentId] = useState<
-    string | null
-  >(null);
-  const [skillPathInputValue, setSkillPathInputValue] = useState("");
+  const [editingValue, setEditingValue] = useState('');
+  const [skillPathEditingAgentId, setSkillPathEditingAgentId] = useState<string | null>(null);
+  const [skillPathInputValue, setSkillPathInputValue] = useState('');
 
   useEffect(() => {
     setShellInput(config.shell);
@@ -64,14 +58,14 @@ export function useSettingsPanelState({
       const fonts = await getSystemFonts();
       setSystemFonts(fonts);
     } catch (e) {
-      console.error("Failed to load system fonts:", e);
+      console.error('Failed to load system fonts:', e);
     } finally {
       setFontsLoading(false);
     }
   }, [systemFonts.length]);
 
   useEffect(() => {
-    if (activeNav === "terminal") {
+    if (activeNav === 'terminal') {
       void loadFonts();
     }
   }, [activeNav, loadFonts]);
@@ -81,25 +75,22 @@ export function useSettingsPanelState({
       return;
     }
     const handler = (e: MouseEvent) => {
-      if (
-        fontDropdownRef.current &&
-        !fontDropdownRef.current.contains(e.target as Node)
-      ) {
+      if (fontDropdownRef.current && !fontDropdownRef.current.contains(e.target as Node)) {
         setFontListOpen(false);
       }
     };
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
   }, [fontListOpen]);
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
+      if (e.key === 'Escape') {
         onClose();
       }
     };
-    document.addEventListener("keydown", handler);
-    return () => document.removeEventListener("keydown", handler);
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
   }, [onClose]);
 
   const setAppearanceFontSize = (size: number) =>
@@ -137,7 +128,7 @@ export function useSettingsPanelState({
   const applyFont = (font: string) => {
     onConfigChange({ ...config, fontFamily: font });
     setFontListOpen(false);
-    setFontSearch("");
+    setFontSearch('');
   };
 
   const addCustomIde = () => {
@@ -147,8 +138,7 @@ export function useSettingsPanelState({
       return;
     }
     const exists = (config.customIdes || []).some(
-      (ide) =>
-        ide.name.toLowerCase() === name.toLowerCase() || ide.command === command,
+      (ide) => ide.name.toLowerCase() === name.toLowerCase() || ide.command === command,
     );
     if (exists) {
       return;
@@ -157,8 +147,8 @@ export function useSettingsPanelState({
       ...config,
       customIdes: [...(config.customIdes || []), { name, command }],
     });
-    setNewIdeName("");
-    setNewIdeCommand("");
+    setNewIdeName('');
+    setNewIdeCommand('');
   };
 
   const removeCustomIde = (idx: number) => {
@@ -171,17 +161,19 @@ export function useSettingsPanelState({
     try {
       const selected = await open({
         multiple: false,
-        filters: [{
-          name: "Images",
-          extensions: ["png", "jpg", "jpeg", "svg", "gif", "webp", "ico", "bmp"],
-        }],
+        filters: [
+          {
+            name: 'Images',
+            extensions: ['png', 'jpg', 'jpeg', 'svg', 'gif', 'webp', 'ico', 'bmp'],
+          },
+        ],
       });
       if (!selected) return;
-      const path = typeof selected === "string" ? selected : selected;
+      const path = typeof selected === 'string' ? selected : selected;
       const iconPath = await importAgentIcon(path);
       setNewAgentIcon(iconPath);
     } catch (e) {
-      console.error("[Settings] Failed to upload agent icon:", e);
+      console.error('[Settings] Failed to upload agent icon:', e);
     }
   }, []);
 
@@ -191,7 +183,7 @@ export function useSettingsPanelState({
     if (!name || !command) {
       return;
     }
-    const id = `custom:${name.toLowerCase().replace(/\s+/g, "-")}`;
+    const id = `custom:${name.toLowerCase().replace(/\s+/g, '-')}`;
     const exists = (config.customAgents || []).some((agent) => agent.id === id);
     if (exists) {
       return;
@@ -200,7 +192,7 @@ export function useSettingsPanelState({
     const args = newAgentArgs.trim()
       ? newAgentArgs
           .trim()
-          .split(",")
+          .split(',')
           .map((arg) => arg.trim())
           .filter(Boolean)
       : [];
@@ -228,13 +220,13 @@ export function useSettingsPanelState({
     try {
       await addAgent(newAgent);
     } catch (e) {
-      console.error("[Settings] Failed to add agent:", e);
+      console.error('[Settings] Failed to add agent:', e);
     }
 
-    setNewAgentName("");
-    setNewAgentCommand("");
-    setNewAgentArgs("");
-    setNewAgentSkillPath("");
+    setNewAgentName('');
+    setNewAgentCommand('');
+    setNewAgentArgs('');
+    setNewAgentSkillPath('');
     setNewAgentIcon(DEFAULT_AGENT_ICON);
   };
 
@@ -249,7 +241,7 @@ export function useSettingsPanelState({
     try {
       await removeAgent(agent.id);
     } catch (e) {
-      console.error("[Settings] Failed to remove agent:", e);
+      console.error('[Settings] Failed to remove agent:', e);
     }
   };
 
@@ -262,7 +254,7 @@ export function useSettingsPanelState({
   const saveAgentOverride = (agentId: string) => {
     const trimmed = editingValue.trim();
     const agent = builtinAgents.find((item) => item.id === agentId);
-    const defaultCmd = agent?.command ?? "";
+    const defaultCmd = agent?.command ?? '';
     const overrides = { ...(config.agentCommandOverrides || {}) };
     if (trimmed && trimmed !== defaultCmd) {
       overrides[agentId] = trimmed;
@@ -289,18 +281,18 @@ export function useSettingsPanelState({
     try {
       await addAgent(updated);
     } catch (e) {
-      console.error("[Settings] Failed to update agent:", e);
+      console.error('[Settings] Failed to update agent:', e);
     }
   };
 
   const selectSkillPath = async (agent: AgentConfig) => {
     try {
       const selected = await open({ multiple: false, directory: true });
-      if (selected && typeof selected === "string") {
+      if (selected && typeof selected === 'string') {
         await updateAgentSkillPath(agent, selected);
       }
     } catch (e) {
-      console.error("[Settings] Failed to select skill path:", e);
+      console.error('[Settings] Failed to select skill path:', e);
     }
   };
 
@@ -311,7 +303,7 @@ export function useSettingsPanelState({
 
   const saveSkillPath = async (agent: AgentConfig) => {
     const trimmed = skillPathInputValue.trim();
-    if (trimmed !== (agent.skill_path ?? "")) {
+    if (trimmed !== (agent.skill_path ?? '')) {
       await updateAgentSkillPath(agent, trimmed);
     }
     setSkillPathEditingAgentId(null);
@@ -358,14 +350,14 @@ export function useSettingsPanelState({
 
   const cancelPresetEdit = () => {
     setEditingPresetId(null);
-    setEditingValue("");
+    setEditingValue('');
   };
 
   const getEffectiveCommand = (ide: IdePreset) =>
     config.ideCommandOverrides?.[ide.id] ?? getIdeCommand(ide);
 
   const isCustomShell =
-    shellInput !== "" && !PRESET_SHELLS.some((item) => item.value === shellInput);
+    shellInput !== '' && !PRESET_SHELLS.some((item) => item.value === shellInput);
 
   const allFonts = useMemo(
     () =>
@@ -377,9 +369,7 @@ export function useSettingsPanelState({
 
   const filteredFonts = useMemo(() => {
     const search = fontSearch.trim().toLowerCase();
-    return search
-      ? allFonts.filter((font) => font.toLowerCase().includes(search))
-      : allFonts;
+    return search ? allFonts.filter((font) => font.toLowerCase().includes(search)) : allFonts;
   }, [allFonts, fontSearch]);
 
   return {

@@ -1,8 +1,8 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState } from 'react';
 import type { Project } from '@/shared/types';
-import type { DialogState } from "@/features/git/components/GitDialog";
-import type { ContextMenuItem } from "./ContextMenu";
-import { FolderGitIcon, GitLogoIcon } from "@/shared/components/icons";
+import type { DialogState } from '@/features/git/components/GitDialog';
+import type { ContextMenuItem } from './ContextMenu';
+import { FolderGitIcon, GitLogoIcon } from '@/shared/components/icons';
 
 interface UseProjectItemMenuParams {
   project: Project;
@@ -47,8 +47,8 @@ export function useProjectItemMenu({
 
     if (project.selected_ide && onOpenIde) {
       items.push({
-        label: "Open in IDE",
-        shortcut: "Ctrl+O",
+        label: 'Open in IDE',
+        shortcut: 'Ctrl+O',
         action: () => onOpenIde(project.id),
       });
     }
@@ -56,44 +56,44 @@ export function useProjectItemMenu({
     if (gitInfo) {
       if (onCommit) {
         items.push({
-          label: "Commit Changes",
+          label: 'Commit Changes',
           icon: GitLogoIcon,
           action: () => onCommit(project.id),
         });
       }
       if (onPush) {
         items.push({
-          label: "Push",
+          label: 'Push',
           icon: GitLogoIcon,
           action: () => onPush(project.id),
         });
       }
       if (onPull) {
         items.push({
-          label: "Pull",
+          label: 'Pull',
           icon: GitLogoIcon,
           action: () => onPull(project.id),
         });
       }
       items.push({
-        label: "New Branch",
+        label: 'New Branch',
         icon: GitLogoIcon,
         action: () => {
           setGitMenuOpen(false);
           onOpenDialog({
-            type: "new-branch",
+            type: 'new-branch',
             projectId: project.id,
             branches: gitInfo.branches,
           });
         },
       });
       items.push({
-        label: "New Worktree",
+        label: 'New Worktree',
         icon: FolderGitIcon,
         action: () => {
           setGitMenuOpen(false);
           onOpenDialog({
-            type: "new-worktree",
+            type: 'new-worktree',
             projectId: project.id,
             branches: gitInfo.branches,
             projectPath: project.path,
@@ -104,8 +104,8 @@ export function useProjectItemMenu({
 
     if (onRefresh) {
       items.push({
-        label: "Refresh Terminal",
-        shortcut: "Ctrl+Alt+R",
+        label: 'Refresh Terminal',
+        shortcut: 'Ctrl+Alt+R',
         action: () => onRefresh(project.id),
       });
     }
@@ -114,13 +114,13 @@ export function useProjectItemMenu({
 
     if (onOpenSettings && hasConfig) {
       items.push({
-        label: "Project Settings",
+        label: 'Project Settings',
         action: () => setSettingsOpen(true),
       });
     }
 
     items.push({
-      label: "Remove Project",
+      label: 'Remove Project',
       action: () => onRemoveProject(project.id),
       danger: true,
     });

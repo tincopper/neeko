@@ -1,8 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import {
-  parseSkillDescription,
-  humanizeSkillId,
-} from '../parseSkillDescription';
+import { parseSkillDescription, humanizeSkillId } from '../parseSkillDescription';
 
 describe('parseSkillDescription', () => {
   it('reads single-line frontmatter description', () => {
@@ -36,9 +33,7 @@ Reviews pull requests for style and correctness.
 
 ## Steps
 `;
-    expect(parseSkillDescription(md)).toBe(
-      'Reviews pull requests for style and correctness.',
-    );
+    expect(parseSkillDescription(md)).toBe('Reviews pull requests for style and correctness.');
   });
 
   it('falls back to heading when no paragraph', () => {

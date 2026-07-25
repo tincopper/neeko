@@ -1,5 +1,5 @@
-import React, { useEffect, useRef, useMemo } from "react";
-import { LucideIcon } from "@/shared/components/icons"
+import React, { useEffect, useRef, useMemo } from 'react';
+import { LucideIcon } from '@/shared/components/icons';
 import { cn } from '@/lib/utils';
 
 export type ContextMenuItem =
@@ -29,16 +29,16 @@ const ContextMenu: React.FC<ContextMenuProps> = ({ items, position, onClose }) =
         onClose();
       }
     };
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
   }, [onClose]);
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
+      if (e.key === 'Escape') onClose();
     };
-    document.addEventListener("keydown", handler);
-    return () => document.removeEventListener("keydown", handler);
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
   }, [onClose]);
 
   const pos = useMemo(() => {
@@ -65,9 +65,9 @@ const ContextMenu: React.FC<ContextMenuProps> = ({ items, position, onClose }) =
           <div
             key={idx}
             className={cn(
-              "flex items-center justify-between px-3.5 py-1.5 text-[0.9em] text-text-primary cursor-pointer transition-[background-color] duration-100 select-none hover:bg-bg-hover",
-              item.danger && "text-[#e06c75] hover:bg-accent-red/15",
-              item.disabled && "opacity-40 cursor-default pointer-events-none"
+              'flex items-center justify-between px-3.5 py-1.5 text-[0.9em] text-text-primary cursor-pointer transition-[background-color] duration-100 select-none hover:bg-bg-hover',
+              item.danger && 'text-[#e06c75] hover:bg-accent-red/15',
+              item.disabled && 'opacity-40 cursor-default pointer-events-none',
             )}
             onClick={() => {
               if (!item.disabled) {
@@ -82,7 +82,7 @@ const ContextMenu: React.FC<ContextMenuProps> = ({ items, position, onClose }) =
               <span className="text-[0.85em] text-text-muted ml-4 font-mono">{item.shortcut}</span>
             )}
           </div>
-        )
+        ),
       )}
     </div>
   );

@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect } from 'react';
 import type { AheadBehind } from '@/shared/types';
 import { useProjectStore } from '@/features/project/store';
 import { useGitStore } from '@/features/git/store';
@@ -23,20 +23,26 @@ export function useAheadBehindSync(commands?: AheadBehindCommands | null) {
     if (!commands || !activeProjectId || !activeProject) return;
 
     const env = activeProject.environment;
-    const kind = env.type === "Local" ? "local" : env.type === "Wsl" ? "wsl" : "remote";
-    const entryId = env.type === "Wsl" ? env.distro
-      : env.type === "Remote" ? `${env.host}:${env.port}`
-      : activeProjectId;
+    const kind = env.type === 'Local' ? 'local' : env.type === 'Wsl' ? 'wsl' : 'remote';
+    const entryId =
+      env.type === 'Wsl'
+        ? env.distro
+        : env.type === 'Remote'
+          ? `${env.host}:${env.port}`
+          : activeProjectId;
     const key = aheadBehindKey(kind, entryId, activeProjectId);
 
     let cancelled = false;
-    commands.getAheadBehind()
+    commands
+      .getAheadBehind()
       .then((info) => {
         if (!cancelled) setAheadBehind(key, info);
       })
       .catch(() => {
         if (!cancelled) setAheadBehind(key, null);
       });
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [activeProjectId, activeProject, commands, setAheadBehind]);
 }

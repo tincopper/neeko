@@ -59,9 +59,7 @@ describe('buildChangeTree', () => {
   });
 
   it('handles deep nested paths', () => {
-    const files: ChangeFileItem[] = [
-      { path: 'a/b/c/d/file.ts', status: 'modified' },
-    ];
+    const files: ChangeFileItem[] = [{ path: 'a/b/c/d/file.ts', status: 'modified' }];
     const tree = buildChangeTree(files);
     expect(tree[0].name).toBe('a');
     expect(tree[0].children[0].name).toBe('b');
@@ -71,9 +69,7 @@ describe('buildChangeTree', () => {
   });
 
   it('handles Windows backslash paths', () => {
-    const files: ChangeFileItem[] = [
-      { path: 'src\\utils\\helper.ts', status: 'added' },
-    ];
+    const files: ChangeFileItem[] = [{ path: 'src\\utils\\helper.ts', status: 'added' }];
     const tree = buildChangeTree(files);
     expect(tree[0].name).toBe('src');
     expect(tree[0].children[0].name).toBe('utils');
@@ -145,9 +141,7 @@ describe('ChangeFileTree rendering', () => {
   });
 
   it('adds selected class for selected file', () => {
-    const { container } = render(
-      <ChangeFileTree files={files} selectedPath="src/main.ts" />,
-    );
+    const { container } = render(<ChangeFileTree files={files} selectedPath="src/main.ts" />);
     const rows = container.querySelectorAll('.flex.items-center.gap-1\\.5');
     let found = false;
     rows.forEach((row) => {

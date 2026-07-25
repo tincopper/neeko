@@ -1,6 +1,6 @@
-import { FitAddon } from "@xterm/addon-fit";
-import { Terminal } from "@xterm/xterm";
-import type { TerminalInputController } from "./terminalInput";
+import { FitAddon } from '@xterm/addon-fit';
+import { Terminal } from '@xterm/xterm';
+import type { TerminalInputController } from './terminalInput';
 
 export interface TerminalViewProps {
   paneId: string;

@@ -1,6 +1,6 @@
-import React, { useState, useCallback, useRef, useEffect } from "react";
+import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { cn } from '@/lib/utils';
-import { ChevronsLeft, ChevronsRight } from "lucide-react";
+import { ChevronsLeft, ChevronsRight } from 'lucide-react';
 
 interface ResizablePanelProps {
   open: boolean;
@@ -34,8 +34,9 @@ export function ResizablePanel({
   const [width, setWidth] = useState(defaultWidth);
   const panelRef = useRef<HTMLDivElement>(null);
 
-  const maxWidth = maxWidthProp ?? 
-    (typeof window !== "undefined" ? Math.floor(window.innerWidth * MAX_WIDTH_RATIO) : 1200);
+  const maxWidth =
+    maxWidthProp ??
+    (typeof window !== 'undefined' ? Math.floor(window.innerWidth * MAX_WIDTH_RATIO) : 1200);
 
   useEffect(() => {
     setWidth((w) => Math.min(w, maxWidth));
@@ -45,8 +46,8 @@ export function ResizablePanel({
   // flips to false) while a resize drag is still in progress.
   useEffect(() => {
     return () => {
-      document.body.style.cursor = "";
-      document.body.style.userSelect = "";
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
     };
   }, []);
 
@@ -65,37 +66,34 @@ export function ResizablePanel({
       };
 
       const onMouseUp = () => {
-        document.removeEventListener("mousemove", onMouseMove);
-        document.removeEventListener("mouseup", onMouseUp);
-        document.body.style.cursor = "";
-        document.body.style.userSelect = "";
+        document.removeEventListener('mousemove', onMouseMove);
+        document.removeEventListener('mouseup', onMouseUp);
+        document.body.style.cursor = '';
+        document.body.style.userSelect = '';
         if (onWidthPersist) {
           onWidthPersist(width);
         }
       };
 
-      document.body.style.cursor = "col-resize";
-      document.body.style.userSelect = "none";
-      document.addEventListener("mousemove", onMouseMove);
-      document.addEventListener("mouseup", onMouseUp);
+      document.body.style.cursor = 'col-resize';
+      document.body.style.userSelect = 'none';
+      document.addEventListener('mousemove', onMouseMove);
+      document.addEventListener('mouseup', onMouseUp);
     },
-    [width, minWidth, maxWidth, onWidthPersist]
+    [width, minWidth, maxWidth, onWidthPersist],
   );
 
   if (!open) return null;
 
   return (
     <div className="fixed inset-0 z-50 flex">
-      <div
-        className="absolute inset-0 bg-black/50"
-        onClick={onClose}
-      />
+      <div className="absolute inset-0 bg-black/50" onClick={onClose} />
 
       <div
         ref={panelRef}
         className={cn(
-          "relative ml-auto flex flex-col bg-bg-secondary border-l border-border shadow-xl",
-          className
+          'relative ml-auto flex flex-col bg-bg-secondary border-l border-border shadow-xl',
+          className,
         )}
         style={{ width: `${effectiveWidth}px` }}
       >
@@ -108,7 +106,7 @@ export function ResizablePanel({
           <button
             onClick={onToggleExpand}
             className="absolute top-2 left-[-24px] p-1 rounded-l-md bg-bg-secondary border border-border border-r-0 text-text-muted hover:text-text-primary hover:bg-bg-hover z-20"
-            title={expanded ? "Collapse panel" : "Expand panel"}
+            title={expanded ? 'Collapse panel' : 'Expand panel'}
           >
             {expanded ? (
               <ChevronsRight className="h-3.5 w-3.5" />
@@ -127,15 +125,16 @@ export function ResizablePanel({
 export function useResizableWidth(
   defaultWidth: number = DEFAULT_WIDTH,
   minWidth: number = MIN_WIDTH,
-  maxWidth?: number
+  maxWidth?: number,
 ) {
-  const resolvedMax = maxWidth ?? 
-    (typeof window !== "undefined" ? Math.floor(window.innerWidth * MAX_WIDTH_RATIO) : 1200);
+  const resolvedMax =
+    maxWidth ??
+    (typeof window !== 'undefined' ? Math.floor(window.innerWidth * MAX_WIDTH_RATIO) : 1200);
   const [width, setWidth] = useState(defaultWidth);
 
   const clampWidth = useCallback(
     (w: number) => Math.min(resolvedMax, Math.max(minWidth, w)),
-    [minWidth, resolvedMax]
+    [minWidth, resolvedMax],
   );
 
   return { width, setWidth, clampWidth };

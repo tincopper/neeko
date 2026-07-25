@@ -248,9 +248,7 @@ const ConversationViewer: React.FC<ConversationViewerProps> = React.memo(
     const modelLabel = conversationMeta?.model;
     // Prefer the conversation title (matches the History list row); fall back to agent name.
     const title =
-      conversationMeta?.userTitle?.trim() ||
-      conversationMeta?.title?.trim() ||
-      agentName;
+      conversationMeta?.userTitle?.trim() || conversationMeta?.title?.trim() || agentName;
 
     return (
       <div className="flex flex-col h-full overflow-hidden bg-bg-secondary">

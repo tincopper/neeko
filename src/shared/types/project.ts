@@ -10,8 +10,6 @@ export type {
   ProjectCommands,
   ProjectCapabilities,
   ActiveProjectContext,
-} from "@/features/project/types";
+} from '@/features/project/types';
 
-export {
-  environmentToConnectionContext,
-} from "@/features/project/types";
+export { environmentToConnectionContext } from '@/features/project/types';

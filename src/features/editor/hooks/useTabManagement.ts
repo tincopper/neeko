@@ -1,10 +1,10 @@
-import { useCallback, useEffect } from "react";
+import { useCallback, useEffect } from 'react';
 import { useEditorStore } from '@/shared/store';
 import { useTerminalTabs } from '@/features/terminal/hooks/useTerminalTabs';
 import { closeEditorTab } from '@/features/terminal/components/terminalTabCleanup';
 import { buildWorktreeTabKey } from '@/shared/utils/tabKey';
 
-const APP_SETTINGS_PROJECT_ID = "__app__";
+const APP_SETTINGS_PROJECT_ID = '__app__';
 
 interface UseTabManagementOptions {
   activeProject: { id: string; selected_agents?: string[] } | null;
@@ -26,9 +26,10 @@ export function useTabManagement(options: UseTabManagementOptions) {
 
   const currentProjectId = activeProject?.id ?? null;
 
-  const tabKey = activeWorktreePath && currentProjectId
-    ? buildWorktreeTabKey(currentProjectId, activeWorktreePath)
-    : (currentProjectId ?? APP_SETTINGS_PROJECT_ID);
+  const tabKey =
+    activeWorktreePath && currentProjectId
+      ? buildWorktreeTabKey(currentProjectId, activeWorktreePath)
+      : (currentProjectId ?? APP_SETTINGS_PROJECT_ID);
 
   useEffect(() => {
     if (!tabKey) return;
@@ -40,10 +41,19 @@ export function useTabManagement(options: UseTabManagementOptions) {
 
     if (!hasAnyTabs) {
       const agentId = activeProject?.selected_agents?.[0] ?? null;
-      const agentName = agentId ? (agents?.find((a) => a.id === agentId)?.name ?? undefined) : undefined;
+      const agentName = agentId
+        ? (agents?.find((a) => a.id === agentId)?.name ?? undefined)
+        : undefined;
       ensureDefaultTab(tabKey, agentId, agentName);
     }
-  }, [tabKey, ensureDefaultTab, activeProject?.selected_agents, agents, activeProject, activeWorktreePath]);
+  }, [
+    tabKey,
+    ensureDefaultTab,
+    activeProject?.selected_agents,
+    agents,
+    activeProject,
+    activeWorktreePath,
+  ]);
 
   const tabs = tabKey ? getTabs(tabKey) : [];
   const activeTabId = useEditorStore((state) => state.activeTabId);
@@ -53,19 +63,16 @@ export function useTabManagement(options: UseTabManagementOptions) {
     addTab(tabKey);
   }, [tabKey, addTab]);
 
-  const handleCloseTab = useCallback(
-    (tabId: string) => {
-      const state = useEditorStore.getState();
-      for (const [projectId, pt] of Object.entries(state.tabs)) {
-        if (pt.tabs.some((t) => t.id === tabId)) {
-          // Recycle PTY before removing the editor tab (Cmd+W / shell close).
-          closeEditorTab(projectId, tabId);
-          return;
-        }
+  const handleCloseTab = useCallback((tabId: string) => {
+    const state = useEditorStore.getState();
+    for (const [projectId, pt] of Object.entries(state.tabs)) {
+      if (pt.tabs.some((t) => t.id === tabId)) {
+        // Recycle PTY before removing the editor tab (Cmd+W / shell close).
+        closeEditorTab(projectId, tabId);
+        return;
       }
-    },
-    [],
-  );
+    }
+  }, []);
 
   const handleActivateTab = useCallback(
     (tabId: string) => {
@@ -76,7 +83,7 @@ export function useTabManagement(options: UseTabManagementOptions) {
   );
 
   const handleTabStatusChange = useCallback(
-    (tabId: string, status: "Idle" | "Running" | "Failed") => {
+    (tabId: string, status: 'Idle' | 'Running' | 'Failed') => {
       if (!tabKey) return;
       updateTabStatus(tabKey, tabId, status);
     },

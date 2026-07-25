@@ -1,8 +1,8 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Play, Square, ChevronDown, Plus, Pencil, X, Download } from "@/shared/components/icons"
-import { useTaskStore } from "../store";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Play, Square, ChevronDown, Plus, Pencil, X, Download } from '@/shared/components/icons';
+import { useTaskStore } from '../store';
 import { useProjectStore } from '@/features/project/store';
-import TaskDialog from "./TaskDialog";
+import TaskDialog from './TaskDialog';
 import type { DiscoveredTask, TaskConfig } from '@/shared/types/task';
 
 // ── TaskRunButton ────────────────────────────────────────────────────────────
@@ -33,7 +33,7 @@ function TaskRunButton() {
 
   const activeProject = useProjectStore((s) => s.activeProject);
   const projectPath = activeProject?.path ?? null;
-  const currentProjectId = activeProject?.id ?? "";
+  const currentProjectId = activeProject?.id ?? '';
 
   // Load saved + discover when project changes
   useEffect(() => {
@@ -51,20 +51,18 @@ function TaskRunButton() {
       }
     };
     if (dropdownOpen) {
-      document.addEventListener("mousedown", handleClickOutside);
+      document.addEventListener('mousedown', handleClickOutside);
     }
-    return () => document.removeEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [dropdownOpen]);
 
   // Running if the selected task (or any project task) has an active console session
   const isRunning = useMemo(() => {
     const sessions = consoleSessions.filter((s) => s.projectId === currentProjectId);
     if (selectedConfigId) {
-      return sessions.some(
-        (s) => s.configId === selectedConfigId && s.status === "running",
-      );
+      return sessions.some((s) => s.configId === selectedConfigId && s.status === 'running');
     }
-    return sessions.some((s) => s.status === "running");
+    return sessions.some((s) => s.status === 'running');
   }, [consoleSessions, currentProjectId, selectedConfigId]);
 
   const selectedLabel = useMemo(() => {
@@ -148,15 +146,12 @@ function TaskRunButton() {
     setDialogOpen(true);
   }, []);
 
-  const handleOpenEditDialog = useCallback(
-    (e: React.MouseEvent, config: TaskConfig) => {
-      e.stopPropagation();
-      setEditingConfig(config);
-      setDropdownOpen(false);
-      setDialogOpen(true);
-    },
-    [],
-  );
+  const handleOpenEditDialog = useCallback((e: React.MouseEvent, config: TaskConfig) => {
+    e.stopPropagation();
+    setEditingConfig(config);
+    setDropdownOpen(false);
+    setDialogOpen(true);
+  }, []);
 
   const handleDialogSubmit = useCallback(
     (name: string, command: string) => {
@@ -172,7 +167,7 @@ function TaskRunButton() {
           id: crypto.randomUUID(),
           name: name || command,
           command,
-          scope: "project",
+          scope: 'project',
           project_id: activeProject?.id,
         };
         void addConfig(config, projectPath ?? undefined);
@@ -200,24 +195,30 @@ function TaskRunButton() {
       <div className="relative flex items-center" ref={dropdownRef}>
         <div className="flex items-center h-5 rounded-md hover:bg-bg-hover transition-colors">
           <button
-            className={`flex items-center gap-1.5 pl-1.5 pr-2 h-full text-text-primary transition-colors cursor-pointer ${!canRun ? "opacity-50" : ""}`}
+            className={`flex items-center gap-1.5 pl-1.5 pr-2 h-full text-text-primary transition-colors cursor-pointer ${!canRun ? 'opacity-50' : ''}`}
             onClick={handlePlayStop}
             title={
-              isRunning
-                ? "Stop task"
-                : selectedLabel
-                  ? `Run: ${selectedLabel}`
-                  : "No task selected"
+              isRunning ? 'Stop task' : selectedLabel ? `Run: ${selectedLabel}` : 'No task selected'
             }
             disabled={!canRun}
           >
             {isRunning ? (
-              <Square size={13} className="text-accent-red shrink-0" fill="currentColor" strokeWidth={0} />
+              <Square
+                size={13}
+                className="text-accent-red shrink-0"
+                fill="currentColor"
+                strokeWidth={0}
+              />
             ) : (
-              <Play size={13} className="text-accent-green shrink-0" fill="currentColor" strokeWidth={0} />
+              <Play
+                size={13}
+                className="text-accent-green shrink-0"
+                fill="currentColor"
+                strokeWidth={0}
+              />
             )}
             <span className="text-[var(--font-size)] text-text-secondary max-w-[100px] truncate">
-              {selectedLabel ?? "Run"}
+              {selectedLabel ?? 'Run'}
             </span>
           </button>
 
@@ -247,7 +248,12 @@ function TaskRunButton() {
                       className="group flex items-center gap-2 px-3 py-2 cursor-pointer hover:bg-bg-hover"
                       onClick={() => handleSelectAndRunSaved(config)}
                     >
-                      <Play size={12} className="shrink-0 text-accent-green" fill="currentColor" strokeWidth={0} />
+                      <Play
+                        size={12}
+                        className="shrink-0 text-accent-green"
+                        fill="currentColor"
+                        strokeWidth={0}
+                      />
                       <div className="flex-1 min-w-0">
                         <div className="text-[var(--font-size)] text-text-primary truncate">
                           {config.name}
@@ -302,7 +308,12 @@ function TaskRunButton() {
                           className="group flex items-center gap-2 px-3 py-2 cursor-pointer hover:bg-bg-hover"
                           onClick={() => handleSelectAndRunDiscovered(task)}
                         >
-                          <Play size={12} className="shrink-0 text-accent-green" fill="currentColor" strokeWidth={0} />
+                          <Play
+                            size={12}
+                            className="shrink-0 text-accent-green"
+                            fill="currentColor"
+                            strokeWidth={0}
+                          />
                           <div className="flex-1 min-w-0">
                             <div className="text-[var(--font-size)] text-text-primary truncate">
                               {task.name}
@@ -328,8 +339,8 @@ function TaskRunButton() {
               {!hasAny && (
                 <div className="px-3 py-2.5 text-[var(--font-size)] text-text-muted">
                   {discovering
-                    ? "Scanning project for tasks…"
-                    : "No tasks found. Add one or open a project with package.json scripts."}
+                    ? 'Scanning project for tasks…'
+                    : 'No tasks found. Add one or open a project with package.json scripts.'}
                 </div>
               )}
             </div>

@@ -20,13 +20,13 @@ export interface DiffResult {
   truncated?: boolean;
 }
 
-export type ViewMode = "unified" | "split";
+export type ViewMode = 'unified' | 'split';
 
 export type DiffSource =
-  | { type: "local"; projectId: string }
-  | { type: "wsl"; distro: string; projectPath: string }
+  | { type: 'local'; projectId: string }
+  | { type: 'wsl'; distro: string; projectPath: string }
   | {
-      type: "remote";
+      type: 'remote';
       entryId: string;
       host: string;
       port: number;
@@ -34,11 +34,11 @@ export type DiffSource =
       auth: AuthMethod;
       projectPath: string;
     }
-  | { type: "worktree"; projectId: string; worktreePath: string }
-  | { type: "commit"; projectId: string; commitHash: string }
-  | { type: "wsl-commit"; distro: string; projectPath: string; commitHash: string }
+  | { type: 'worktree'; projectId: string; worktreePath: string }
+  | { type: 'commit'; projectId: string; commitHash: string }
+  | { type: 'wsl-commit'; distro: string; projectPath: string; commitHash: string }
   | {
-      type: "remote-commit";
+      type: 'remote-commit';
       host: string;
       port: number;
       username: string;
@@ -67,12 +67,12 @@ export interface DiffViewProps {
 }
 
 export interface SplitRow {
-  type: "hunk-header" | "change" | "context";
+  type: 'hunk-header' | 'change' | 'context';
   hunkHeader?: string;
   oldLineNum?: number;
   newLineNum?: number;
   oldContent?: string;
   newContent?: string;
-  oldType?: "removed" | "context" | "empty";
-  newType?: "added" | "context" | "empty";
+  oldType?: 'removed' | 'context' | 'empty';
+  newType?: 'added' | 'context' | 'empty';
 }

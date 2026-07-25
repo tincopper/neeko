@@ -62,7 +62,10 @@ export function NotificationDetail({ notification, onClose }: NotificationDetail
     >
       <Dialog.Portal>
         <Dialog.Overlay className="fixed inset-0 bg-black/50 z-[9998]" />
-        <Dialog.Content data-notification-detail className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 bg-popover border border-border rounded-lg shadow-xl z-[9999] w-[400px] max-w-[90vw]">
+        <Dialog.Content
+          data-notification-detail
+          className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 bg-popover border border-border rounded-lg shadow-xl z-[9999] w-[400px] max-w-[90vw]"
+        >
           <div className="px-4 py-3 border-b border-border flex items-center gap-2">
             <span className={typeColors[notification.type]}>
               {typeIcons[notification.type]({ size: 16 })}

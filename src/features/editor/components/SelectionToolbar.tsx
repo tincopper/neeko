@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import type { EditorAction } from '@/shared/utils/agentPrompt';
-import { CloseIcon } from "@/shared/components/icons";
+import { CloseIcon } from '@/shared/components/icons';
 
 interface SelectionToolbarProps {
   visible: boolean;
@@ -44,10 +44,7 @@ const SelectionToolbar: React.FC<SelectionToolbarProps> = ({
   };
 
   return (
-    <div
-      className="fixed z-[9999]"
-      style={{ top, left }}
-    >
+    <div className="fixed z-[9999]" style={{ top, left }}>
       {needsAgentTab ? (
         <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-bg-tertiary border border-border shadow-lg text-sm whitespace-nowrap">
           <span className="text-text-muted">No agent terminal open</span>
@@ -66,8 +63,11 @@ const SelectionToolbar: React.FC<SelectionToolbarProps> = ({
             className="w-56 px-2 py-1 rounded bg-bg-secondary text-text-primary text-xs outline-none border border-border"
             placeholder="Ask about the selected code..."
             value={askText}
-            onChange={e => setAskText(e.target.value)}
-            onKeyDown={e => { if (e.key === 'Enter') handleAskSend(); if (e.key === 'Escape') setShowAskInput(false); }}
+            onChange={(e) => setAskText(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') handleAskSend();
+              if (e.key === 'Escape') setShowAskInput(false);
+            }}
           />
           <button
             className="px-2 py-1 rounded bg-accent-blue text-white text-xs font-medium hover:opacity-90 transition"

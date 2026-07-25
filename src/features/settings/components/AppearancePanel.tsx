@@ -1,7 +1,7 @@
-import React from "react";
+import React from 'react';
 import type { AppTheme, ThemeListItem } from '@/features/settings/types';
 import { cn } from '@/lib/utils';
-import { Switch } from "@/ui";
+import { Switch } from '@/ui';
 
 interface AppearancePanelProps {
   appearanceFontSize: number;
@@ -16,11 +16,11 @@ interface AppearancePanelProps {
 }
 
 const BUILTIN_THEME_SWATCHES: { id: string; label: string; bg: string; textColor: string }[] = [
-  { id: "dark",          label: "Dark",         bg: "#1f1f1f", textColor: "#78a0dc" },
-  { id: "classic-dark",  label: "Classic Dark", bg: "#26292F", textColor: "#2997ff" },
-  { id: "one-dark-pro",  label: "One Dark Pro", bg: "#282c34", textColor: "#61afef" },
-  { id: "claude",        label: "Claude",        bg: "#f5f0e8", textColor: "#c96442" },
-  { id: "light",         label: "Light",         bg: "#ffffff", textColor: "#2f7cd3" },
+  { id: 'dark', label: 'Dark', bg: '#1f1f1f', textColor: '#78a0dc' },
+  { id: 'classic-dark', label: 'Classic Dark', bg: '#26292F', textColor: '#2997ff' },
+  { id: 'one-dark-pro', label: 'One Dark Pro', bg: '#282c34', textColor: '#61afef' },
+  { id: 'claude', label: 'Claude', bg: '#f5f0e8', textColor: '#c96442' },
+  { id: 'light', label: 'Light', bg: '#ffffff', textColor: '#2f7cd3' },
 ];
 
 const AppearancePanel: React.FC<AppearancePanelProps> = ({
@@ -39,9 +39,7 @@ const AppearancePanel: React.FC<AppearancePanelProps> = ({
       <h3 className="text-base font-semibold text-text-primary mb-4">Appearance</h3>
       <div className="flex items-center justify-between py-3 border-b border-white/[0.04] gap-6">
         <div className="flex-1 min-w-0">
-          <div className="text-[0.86em] text-text-primary font-medium mb-0.75">
-            Font Size
-          </div>
+          <div className="text-[0.86em] text-text-primary font-medium mb-0.75">Font Size</div>
           <div className="text-[0.79em] text-text-muted leading-relaxed">
             Controls sidebar, project list, file tree, and tab font size.
           </div>
@@ -75,8 +73,8 @@ const AppearancePanel: React.FC<AppearancePanelProps> = ({
           <button
             key={s.id}
             className={cn(
-              "flex flex-col items-center gap-2 p-4 rounded-lg border-2 transition-all duration-150 cursor-pointer bg-bg-tertiary hover:bg-bg-hover",
-              theme === s.id ? "border-accent-blue" : "border-transparent",
+              'flex flex-col items-center gap-2 p-4 rounded-lg border-2 transition-all duration-150 cursor-pointer bg-bg-tertiary hover:bg-bg-hover',
+              theme === s.id ? 'border-accent-blue' : 'border-transparent',
             )}
             onClick={() => onThemeChange(s.id)}
           >
@@ -84,7 +82,9 @@ const AppearancePanel: React.FC<AppearancePanelProps> = ({
               className="w-16 h-10 rounded border border-white/10 flex items-center justify-center"
               style={{ backgroundColor: s.bg }}
             >
-              <span className="text-xs font-semibold" style={{ color: s.textColor }}>Aa</span>
+              <span className="text-xs font-semibold" style={{ color: s.textColor }}>
+                Aa
+              </span>
             </div>
             <span className="text-sm text-text-primary">{s.label}</span>
           </button>
@@ -101,8 +101,8 @@ const AppearancePanel: React.FC<AppearancePanelProps> = ({
               <button
                 key={ct.name}
                 className={cn(
-                  "flex flex-col items-center gap-2 p-4 rounded-lg border-2 transition-all duration-150 cursor-pointer bg-bg-tertiary hover:bg-bg-hover",
-                  theme === ct.name ? "border-accent-blue" : "border-transparent",
+                  'flex flex-col items-center gap-2 p-4 rounded-lg border-2 transition-all duration-150 cursor-pointer bg-bg-tertiary hover:bg-bg-hover',
+                  theme === ct.name ? 'border-accent-blue' : 'border-transparent',
                 )}
                 onClick={() => onThemeChange(ct.name)}
               >
@@ -123,17 +123,12 @@ const AppearancePanel: React.FC<AppearancePanelProps> = ({
       {/* Pi Theme Sync Toggle */}
       <div className="flex items-center justify-between py-3 border-b border-white/[0.04]">
         <div className="flex-1 min-w-0">
-          <div className="text-[0.86em] text-text-primary font-medium mb-0.75">
-            Sync Pi Theme
-          </div>
+          <div className="text-[0.86em] text-text-primary font-medium mb-0.75">Sync Pi Theme</div>
           <div className="text-[0.79em] text-text-muted leading-relaxed">
             Automatically write .pi/settings.json theme to project directories.
           </div>
         </div>
-        <Switch
-          checked={enablePiThemeSync}
-          onCheckedChange={onPiThemeSyncChange}
-        />
+        <Switch checked={enablePiThemeSync} onCheckedChange={onPiThemeSyncChange} />
       </div>
 
       {/* OpenCode Theme Sync Toggle */}
@@ -146,10 +141,7 @@ const AppearancePanel: React.FC<AppearancePanelProps> = ({
             Automatically write .opencode/tui.json theme to project directories.
           </div>
         </div>
-        <Switch
-          checked={enableOpenCodeThemeSync}
-          onCheckedChange={onOpenCodeThemeSyncChange}
-        />
+        <Switch checked={enableOpenCodeThemeSync} onCheckedChange={onOpenCodeThemeSyncChange} />
       </div>
     </div>
   );

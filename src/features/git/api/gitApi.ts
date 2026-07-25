@@ -78,7 +78,12 @@ export function pushWithCredentials(
   username: string,
   password: string,
 ): Promise<PushOutcome> {
-  return invoke<PushOutcome>('push_with_credentials', { projectId, setUpstream, username, password });
+  return invoke<PushOutcome>('push_with_credentials', {
+    projectId,
+    setUpstream,
+    username,
+    password,
+  });
 }
 
 export function commitFiles(
@@ -99,11 +104,7 @@ export function revert(projectId: string, commitHash: string): Promise<void> {
   return invoke<void>('revert', { projectId, commitHash });
 }
 
-export function createTag(
-  projectId: string,
-  name: string,
-  message: string,
-): Promise<void> {
+export function createTag(projectId: string, name: string, message: string): Promise<void> {
   return invoke<void>('create_tag', { projectId, name, message });
 }
 
@@ -129,18 +130,11 @@ export function deleteBranch(
   return invoke<void>('delete_branch', { projectId, branchName, force });
 }
 
-export function renameBranch(
-  projectId: string,
-  oldName: string,
-  newName: string,
-): Promise<void> {
+export function renameBranch(projectId: string, oldName: string, newName: string): Promise<void> {
   return invoke<void>('rename_branch', { projectId, oldName, newName });
 }
 
-export function createAndSwitchBranch(
-  projectId: string,
-  branchName: string,
-): Promise<void> {
+export function createAndSwitchBranch(projectId: string, branchName: string): Promise<void> {
   return invoke<void>('create_and_switch_branch', { projectId, branchName });
 }
 
@@ -163,18 +157,11 @@ export function removeWorktree(projectId: string, worktreePath: string): Promise
   return invoke<void>('remove_worktree', { projectId, worktreePath });
 }
 
-export function renameWorktree(
-  projectId: string,
-  oldPath: string,
-  newPath: string,
-): Promise<void> {
+export function renameWorktree(projectId: string, oldPath: string, newPath: string): Promise<void> {
   return invoke<void>('rename_worktree', { projectId, oldPath, newPath });
 }
 
-export function isWorktreeDirty(
-  projectId: string,
-  worktreePath: string,
-): Promise<boolean> {
+export function isWorktreeDirty(projectId: string, worktreePath: string): Promise<boolean> {
   return invoke<boolean>('is_worktree_dirty', { projectId, worktreePath });
 }
 
@@ -202,7 +189,11 @@ export function getChangedFilesDiffStats(projectId: string): Promise<FileDiffSta
 export function getFileDiff(projectId: string, filePath: string): Promise<DiffResult> {
   const t0 = performance.now();
   return invoke<DiffResult>('get_file_diff', { projectId, filePath }).then((r) => {
-    console.debug('[perf] invoke get_file_diff:', filePath, `${(performance.now() - t0).toFixed(0)}ms`);
+    console.debug(
+      '[perf] invoke get_file_diff:',
+      filePath,
+      `${(performance.now() - t0).toFixed(0)}ms`,
+    );
     return r;
   });
 }
@@ -221,17 +212,11 @@ export function getCommitLog(
   return invoke<CommitEntry[]>('get_commit_log', { projectId, count, skip });
 }
 
-export function getCommitDetail(
-  projectId: string,
-  commitHash: string,
-): Promise<CommitDetail> {
+export function getCommitDetail(projectId: string, commitHash: string): Promise<CommitDetail> {
   return invoke<CommitDetail>('get_commit_detail', { projectId, commitHash });
 }
 
-export function getCommitFiles(
-  projectId: string,
-  commitHash: string,
-): Promise<CommitFileChange[]> {
+export function getCommitFiles(projectId: string, commitHash: string): Promise<CommitFileChange[]> {
   return invoke<CommitFileChange[]>('get_commit_files', { projectId, commitHash });
 }
 
@@ -330,15 +315,11 @@ export function listPrs(
   return invoke<import('../types').PRListItem[]>('list_prs_command', { projectId, state, limit });
 }
 
-export function listRepoLabels(
-  projectId: string,
-): Promise<import('../types').PrLabel[]> {
+export function listRepoLabels(projectId: string): Promise<import('../types').PrLabel[]> {
   return invoke<import('../types').PrLabel[]>('list_repo_labels_command', { projectId });
 }
 
-export function listRepoAuthors(
-  projectId: string,
-): Promise<string[]> {
+export function listRepoAuthors(projectId: string): Promise<string[]> {
   return invoke<string[]>('list_repo_authors_command', { projectId });
 }
 
@@ -376,7 +357,10 @@ export function listPrFiles(
   projectId: string,
   prNumber: number,
 ): Promise<import('../types').PRFileChange[]> {
-  return invoke<import('../types').PRFileChange[]>('list_pr_files_command', { projectId, prNumber });
+  return invoke<import('../types').PRFileChange[]>('list_pr_files_command', {
+    projectId,
+    prNumber,
+  });
 }
 
 export function listPrCommits(
@@ -415,10 +399,7 @@ export interface PRReviewComment {
   updatedAt?: string;
 }
 
-export function listPrComments(
-  projectId: string,
-  prNumber: number,
-): Promise<PRComment[]> {
+export function listPrComments(projectId: string, prNumber: number): Promise<PRComment[]> {
   return invoke<PRComment[]>('list_pr_comments_command', { projectId, prNumber });
 }
 
@@ -465,7 +446,12 @@ export function addPrReviewComment(
   side: string,
 ): Promise<PRReviewComment> {
   return invoke<PRReviewComment>('add_pr_review_comment_command', {
-    projectId, prNumber, body, filePath, line, side,
+    projectId,
+    prNumber,
+    body,
+    filePath,
+    line,
+    side,
   });
 }
 
@@ -475,9 +461,16 @@ export function listPrReviewComments(
 ): Promise<PRReviewComment[]> {
   const t0 = performance.now();
   return invoke<PRReviewComment[]>('list_pr_review_comments_command', {
-    projectId, prNumber,
+    projectId,
+    prNumber,
   }).then((r) => {
-    console.debug('[perf] invoke list_pr_review_comments:', prNumber, `${(performance.now() - t0).toFixed(0)}ms`, 'count:', r.length);
+    console.debug(
+      '[perf] invoke list_pr_review_comments:',
+      prNumber,
+      `${(performance.now() - t0).toFixed(0)}ms`,
+      'count:',
+      r.length,
+    );
     return r;
   });
 }

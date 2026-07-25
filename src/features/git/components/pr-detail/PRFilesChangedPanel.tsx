@@ -31,8 +31,6 @@ function getFileName(path: string): string {
   return path.split(/[\\/]/).pop() || path;
 }
 
-
-
 // 模块级缓存：避免多个 DiffBody 对同一 PR 重复请求 review comments
 const reviewCommentsCache = new Map<string, Promise<PRReviewComment[]>>();
 const reviewCommentsResult = new Map<string, PRReviewComment[]>();
@@ -258,15 +256,29 @@ interface FileDiffSectionProps {
 }
 
 const FileDiffSection: React.FC<FileDiffSectionProps> = React.memo(
-  ({ projectId, prNumber, file, viewMode, isCollapsed, isViewed, forceVisible, onToggle, onToggleViewed, refCallback }) => {
+  ({
+    projectId,
+    prNumber,
+    file,
+    viewMode,
+    isCollapsed,
+    isViewed,
+    forceVisible,
+    onToggle,
+    onToggleViewed,
+    refCallback,
+  }) => {
     const borderColor = FILE_STATUS_BORDER[file.status] || 'border-l-border';
     const [isVisible, setIsVisible] = useState(!!forceVisible);
     const sectionRef = useRef<HTMLDivElement | null>(null);
 
-    const setRefs = useCallback((el: HTMLDivElement | null) => {
-      sectionRef.current = el;
-      refCallback(el);
-    }, [refCallback]);
+    const setRefs = useCallback(
+      (el: HTMLDivElement | null) => {
+        sectionRef.current = el;
+        refCallback(el);
+      },
+      [refCallback],
+    );
 
     useEffect(() => {
       if (forceVisible) return; // 被选中文件无需 observer
@@ -379,7 +391,13 @@ interface DiffBodyProps {
   viewMode: ViewMode;
 }
 
-const DiffBody: React.FC<DiffBodyProps> = ({ projectId, prNumber, filePath, fileStatus, viewMode }) => {
+const DiffBody: React.FC<DiffBodyProps> = ({
+  projectId,
+  prNumber,
+  filePath,
+  fileStatus,
+  viewMode,
+}) => {
   const { diffResult, loading, error } = useDiffData({ projectId, filePath });
   const language = detectLanguage(filePath);
   const [commentLine, setCommentLine] = useState<number | null>(null);
@@ -421,7 +439,12 @@ const DiffBody: React.FC<DiffBodyProps> = ({ projectId, prNumber, filePath, file
     setSubmitting(true);
     try {
       const created = await addPrReviewComment(
-        projectId, prNumber, commentText.trim(), filePath, commentLine, 'RIGHT',
+        projectId,
+        prNumber,
+        commentText.trim(),
+        filePath,
+        commentLine,
+        'RIGHT',
       );
       setComments((prev) => [...prev, created]);
       setCommentLine(null);
@@ -433,56 +456,62 @@ const DiffBody: React.FC<DiffBodyProps> = ({ projectId, prNumber, filePath, file
     }
   }, [commentText, commentLine, projectId, prNumber, filePath]);
 
-  const renderCommentArea = useCallback((lineNum: number): React.ReactNode => {
-    const lineComments = comments.filter((c) => c.line === lineNum);
-    const isActive = commentLine === lineNum;
+  const renderCommentArea = useCallback(
+    (lineNum: number): React.ReactNode => {
+      const lineComments = comments.filter((c) => c.line === lineNum);
+      const isActive = commentLine === lineNum;
 
-    if (lineComments.length === 0 && !isActive) return null;
+      if (lineComments.length === 0 && !isActive) return null;
 
-    return (
-      <div className="flex flex-col gap-2">
-        {lineComments.map((c) => (
-          <div key={c.id} className="flex gap-2 text-[calc(var(--font-size)-1px)]">
-            <div className="flex flex-col gap-0.5 flex-1 min-w-0">
-              <div className="flex items-center gap-1.5">
-                <span className="font-medium text-text-primary">{c.author}</span>
-                <span className="text-text-muted text-[11px]">
-                  {new Date(c.createdAt).toLocaleDateString()}
-                </span>
+      return (
+        <div className="flex flex-col gap-2">
+          {lineComments.map((c) => (
+            <div key={c.id} className="flex gap-2 text-[calc(var(--font-size)-1px)]">
+              <div className="flex flex-col gap-0.5 flex-1 min-w-0">
+                <div className="flex items-center gap-1.5">
+                  <span className="font-medium text-text-primary">{c.author}</span>
+                  <span className="text-text-muted text-[11px]">
+                    {new Date(c.createdAt).toLocaleDateString()}
+                  </span>
+                </div>
+                <div className="text-text-secondary whitespace-pre-wrap">{c.body}</div>
               </div>
-              <div className="text-text-secondary whitespace-pre-wrap">{c.body}</div>
             </div>
-          </div>
-        ))}
-        {isActive && (
-          <div className="flex flex-col gap-1.5">
-            <textarea
-              className="w-full min-h-[60px] bg-bg-primary border border-border rounded p-2 text-[var(--font-size)] text-text-primary resize-none outline-none focus:border-accent-blue"
-              placeholder="Leave a comment on this line..."
-              value={commentText}
-              onChange={(e) => setCommentText(e.target.value)}
-              autoFocus
-            />
-            <div className="flex gap-2 justify-end">
-              <button
-                className="bg-transparent border border-border text-text-secondary px-2.5 py-1 rounded text-[calc(var(--font-size)-1px)] cursor-pointer hover:bg-bg-hover"
-                onClick={() => { setCommentLine(null); setCommentText(''); }}
-              >
-                Cancel
-              </button>
-              <button
-                className="bg-accent-blue border-none text-white px-2.5 py-1 rounded text-[calc(var(--font-size)-1px)] cursor-pointer disabled:opacity-50"
-                onClick={handleSubmitComment}
-                disabled={submitting || !commentText.trim()}
-              >
-                {submitting ? 'Submitting...' : 'Comment'}
-              </button>
+          ))}
+          {isActive && (
+            <div className="flex flex-col gap-1.5">
+              <textarea
+                className="w-full min-h-[60px] bg-bg-primary border border-border rounded p-2 text-[var(--font-size)] text-text-primary resize-none outline-none focus:border-accent-blue"
+                placeholder="Leave a comment on this line..."
+                value={commentText}
+                onChange={(e) => setCommentText(e.target.value)}
+                autoFocus
+              />
+              <div className="flex gap-2 justify-end">
+                <button
+                  className="bg-transparent border border-border text-text-secondary px-2.5 py-1 rounded text-[calc(var(--font-size)-1px)] cursor-pointer hover:bg-bg-hover"
+                  onClick={() => {
+                    setCommentLine(null);
+                    setCommentText('');
+                  }}
+                >
+                  Cancel
+                </button>
+                <button
+                  className="bg-accent-blue border-none text-white px-2.5 py-1 rounded text-[calc(var(--font-size)-1px)] cursor-pointer disabled:opacity-50"
+                  onClick={handleSubmitComment}
+                  disabled={submitting || !commentText.trim()}
+                >
+                  {submitting ? 'Submitting...' : 'Comment'}
+                </button>
+              </div>
             </div>
-          </div>
-        )}
-      </div>
-    );
-  }, [comments, commentLine, commentText, submitting, handleSubmitComment]);
+          )}
+        </div>
+      );
+    },
+    [comments, commentLine, commentText, submitting, handleSubmitComment],
+  );
 
   const sharedProps = {
     onCommentLine: setCommentLine,

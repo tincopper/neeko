@@ -1,66 +1,71 @@
-import { useState, useRef, useCallback } from "react";
-import { saveSession as saveSessionApi } from "../api/sessionApi";
-import type { SaveSessionFn } from "../../connection/hooks/useWslProjects";
+import { useState, useRef, useCallback } from 'react';
+import { saveSession as saveSessionApi } from '../api/sessionApi';
+import type { SaveSessionFn } from '../../connection/hooks/useWslProjects';
 
 export interface UseSessionPersistenceResult {
-   worktreeState: Record<string, string>;
-   restoreWorktreeState: (next: Record<string, string>) => void;
-   saveSession: SaveSessionFn;
-   saveWorktreeState: (projectId: string, wtPath: string | null) => void;
-   saveSidebarWidth: (width: number) => void;
+  worktreeState: Record<string, string>;
+  restoreWorktreeState: (next: Record<string, string>) => void;
+  saveSession: SaveSessionFn;
+  saveWorktreeState: (projectId: string, wtPath: string | null) => void;
+  saveSidebarWidth: (width: number) => void;
 }
 
 export function useSessionPersistence(): UseSessionPersistenceResult {
-   const [worktreeState, setWorktreeState] = useState<Record<string, string>>({});
-   const wtSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [worktreeState, setWorktreeState] = useState<Record<string, string>>({});
+  const wtSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-   const persistWorktreeState = useCallback((next: Record<string, string>) => {
-      if (wtSaveTimerRef.current) clearTimeout(wtSaveTimerRef.current);
-      wtSaveTimerRef.current = setTimeout(() => {
-         saveSessionApi(null, next).catch(() => { });
-      }, 500);
-   }, []);
+  const persistWorktreeState = useCallback((next: Record<string, string>) => {
+    if (wtSaveTimerRef.current) clearTimeout(wtSaveTimerRef.current);
+    wtSaveTimerRef.current = setTimeout(() => {
+      saveSessionApi(null, next).catch(() => {});
+    }, 500);
+  }, []);
 
-   const restoreWorktreeState = useCallback((next: Record<string, string>) => {
-      setWorktreeState(next);
-   }, []);
+  const restoreWorktreeState = useCallback((next: Record<string, string>) => {
+    setWorktreeState(next);
+  }, []);
 
-   const saveWorktreeState = useCallback((projectId: string, wtPath: string | null) => {
+  const saveWorktreeState = useCallback(
+    (projectId: string, wtPath: string | null) => {
       setWorktreeState((prev) => {
-         const next = { ...prev };
-         if (wtPath) {
-            next[projectId] = wtPath;
-         } else {
-            delete next[projectId];
-         }
-         persistWorktreeState(next);
-         return next;
+        const next = { ...prev };
+        if (wtPath) {
+          next[projectId] = wtPath;
+        } else {
+          delete next[projectId];
+        }
+        persistWorktreeState(next);
+        return next;
       });
-   }, [persistWorktreeState]);
+    },
+    [persistWorktreeState],
+  );
 
-   const saveSession: SaveSessionFn = useCallback(async () => {
-      await saveSessionApi();
-   }, []);
+  const saveSession: SaveSessionFn = useCallback(async () => {
+    await saveSessionApi();
+  }, []);
 
-   const sidebarWidthSaveTimeout = useRef<ReturnType<typeof setTimeout>>();
+  const sidebarWidthSaveTimeout = useRef<ReturnType<typeof setTimeout>>();
 
-   const saveSessionPartial = useCallback((opts: { sidebarWidth?: number | null }) => {
-      saveSessionApi(opts.sidebarWidth ?? null).catch(console.error);
-   }, []);
+  const saveSessionPartial = useCallback((opts: { sidebarWidth?: number | null }) => {
+    saveSessionApi(opts.sidebarWidth ?? null).catch(console.error);
+  }, []);
 
-   const saveSidebarWidth = useCallback((width: number) => {
+  const saveSidebarWidth = useCallback(
+    (width: number) => {
       clearTimeout(sidebarWidthSaveTimeout.current);
       sidebarWidthSaveTimeout.current = setTimeout(() => {
-         saveSessionPartial({ sidebarWidth: width });
+        saveSessionPartial({ sidebarWidth: width });
       }, 300);
-   }, [saveSessionPartial]);
+    },
+    [saveSessionPartial],
+  );
 
-
-   return {
-      worktreeState,
-      restoreWorktreeState,
-      saveSession,
-      saveWorktreeState,
-      saveSidebarWidth,
-   };
+  return {
+    worktreeState,
+    restoreWorktreeState,
+    saveSession,
+    saveWorktreeState,
+    saveSidebarWidth,
+  };
 }

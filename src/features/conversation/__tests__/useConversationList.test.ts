@@ -185,10 +185,7 @@ describe('useConversationList', () => {
 
   it('forceRefresh re-scans even within throttle window', async () => {
     const firstList: ConversationMeta[] = [createMeta('claude-code:1')];
-    const secondList: ConversationMeta[] = [
-      createMeta('claude-code:1'),
-      createMeta('gemini:2'),
-    ];
+    const secondList: ConversationMeta[] = [createMeta('claude-code:1'), createMeta('gemini:2')];
 
     mockInvoke.mockImplementation(async (cmd: string) => {
       if (cmd === 'scan_conversations') return [];
@@ -239,7 +236,9 @@ describe('useConversationList', () => {
       expect(result.current.hasMore).toBe(true);
     });
 
-    const scanCallsBefore = mockInvoke.mock.calls.filter(([c]) => c === 'scan_conversations').length;
+    const scanCallsBefore = mockInvoke.mock.calls.filter(
+      ([c]) => c === 'scan_conversations',
+    ).length;
 
     await act(async () => {
       await result.current.loadMore();

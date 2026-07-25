@@ -18,12 +18,7 @@ describe('SplitPane', () => {
   });
 
   it('renders drag handle', () => {
-    const { container } = render(
-      <SplitPane
-        left={<div>Left</div>}
-        right={<div>Right</div>}
-      />,
-    );
+    const { container } = render(<SplitPane left={<div>Left</div>} right={<div>Right</div>} />);
     const handle = container.querySelector('.cursor-col-resize');
     expect(handle).toBeInTheDocument();
   });

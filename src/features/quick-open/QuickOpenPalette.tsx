@@ -6,10 +6,7 @@ import React, { useEffect, useRef } from 'react';
 import { Dialog, DialogContent, DialogTitle } from '@/ui/dialog';
 import { cn } from '@/lib/utils';
 
-import {
-  quickOpenTitle,
-  useQuickOpenStore,
-} from './quickOpenStore';
+import { quickOpenTitle, useQuickOpenStore } from './quickOpenStore';
 
 export function QuickOpenPalette() {
   const open = useQuickOpenStore((s) => s.open);
@@ -121,11 +118,7 @@ export function QuickOpenPalette() {
             spellCheck={false}
           />
         </div>
-        <div
-          ref={listRef}
-          className="max-h-[min(360px,50vh)] overflow-y-auto py-1"
-          role="listbox"
-        >
+        <div ref={listRef} className="max-h-[min(360px,50vh)] overflow-y-auto py-1" role="listbox">
           {items.length === 0 ? (
             <div className="px-4 py-6 text-center text-[13px] text-text-muted">
               {loading ? 'Indexing project files…' : 'No matches'}

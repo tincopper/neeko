@@ -1,4 +1,4 @@
-import React, { useMemo } from "react";
+import React, { useMemo } from 'react';
 import type { CommitEntry } from '@/shared/types';
 
 /**
@@ -10,14 +10,14 @@ export { BRANCH_SPACING, NODE_RADIUS, LINE_W, laneColor };
 
 // ── 布局常量 ───────────────────────────────────────────────────────────────
 const BRANCH_SPACING = 6; // 每列水平宽度
-const NODE_RADIUS    = 4;  // commit dot 半径
-const LINE_W         = 1.5;  // 线宽
+const NODE_RADIUS = 4; // commit dot 半径
+const LINE_W = 1.5; // 线宽
 
 const LANE_COLORS = [
-  "var(--accent-blue)",
-  "var(--accent-green)",
-  "var(--accent-yellow)",
-  "var(--accent-red)",
+  'var(--accent-blue)',
+  'var(--accent-green)',
+  'var(--accent-yellow)',
+  'var(--accent-red)',
 ];
 
 function laneColor(branchOrder: number): string {
@@ -108,7 +108,7 @@ export function computeLayout(commits: CommitEntry[]): {
       children: childrenMap.get(c.hash) ?? [],
       x: -1,
       y: i,
-      color: "",
+      color: '',
     });
   });
 
@@ -128,12 +128,12 @@ export function computeLayout(commits: CommitEntry[]): {
     const node = commitsMap.get(commit.hash)!;
     // parent 在视图内：segment 延伸到 parent 行（由算法收尾）
     // parent 不在视图内（分页截断）或无 parent（root）：segment 终止在本行
-    const hasVisibleParent = node.parents.some(p => commitsMap.has(p));
+    const hasVisibleParent = node.parents.some((p) => commitsMap.has(p));
     const isRoot = node.parents.length === 0;
-    const end = (isRoot || !hasVisibleParent) ? index : Infinity;
+    const end = isRoot || !hasVisibleParent ? index : Infinity;
 
     // branch children：parents[0] === commit.hash 的 child
-    const branchChildren = node.children.filter(childHash => {
+    const branchChildren = node.children.filter((childHash) => {
       const child = commitsMap.get(childHash);
       return child && child.parents[0] === commit.hash;
     });
@@ -151,7 +151,7 @@ export function computeLayout(commits: CommitEntry[]): {
     } else if (hasBranchChildren) {
       // 类型 2：有 branch children → 最左侧 branch child 所在列
       const branchChildCols = branchChildren
-        .map(h => commitCols.get(h))
+        .map((h) => commitCols.get(h))
         .filter((c): c is number => c !== undefined);
 
       commitX = Math.min(...branchChildCols);
@@ -161,14 +161,14 @@ export function computeLayout(commits: CommitEntry[]): {
 
       // 其他 branch child 列：它们的 segment 在当前行-1 结束（它们在此处分叉）
       branchChildCols
-        .filter(cx => cx !== commitX)
-        .forEach(cx => updateSegmentEnd(cx, index - 1));
+        .filter((cx) => cx !== commitX)
+        .forEach((cx) => updateSegmentEnd(cx, index - 1));
     } else {
       // 类型 3：只有 merge children → 找空位列
       let minChildY = Infinity;
       let maxChildX = -1;
 
-      node.children.forEach(childHash => {
+      node.children.forEach((childHash) => {
         const child = commitsMap.get(childHash)!;
         if (child.y < minChildY) minChildY = child.y;
         const cx = commitCols.get(childHash) ?? -1;
@@ -177,7 +177,7 @@ export function computeLayout(commits: CommitEntry[]): {
 
       // 从 maxChildX+1 开始找"最后一个 segment 已结束"的列
       const startSearch = maxChildX + 1;
-      const slotIdx = columns.slice(startSearch).findIndex(segs => {
+      const slotIdx = columns.slice(startSearch).findIndex((segs) => {
         const last = segs[segs.length - 1];
         return minChildY >= last.end;
       });
@@ -208,7 +208,7 @@ export function computeLayout(commits: CommitEntry[]): {
     const segs = columns[node.x];
     if (segs) {
       // 找包含当前行的 segment
-      const seg = segs.find(s => s.start <= node.y && node.y <= s.end);
+      const seg = segs.find((s) => s.start <= node.y && node.y <= s.end);
       node.color = laneColor(seg ? seg.branchOrder : 0);
     } else {
       node.color = laneColor(0);
@@ -250,10 +250,7 @@ function nodeXY(
   expandOffsetY = 0,
 ): [number, number] {
   const extraY = expandAfterRow >= 0 && row > expandAfterRow ? expandOffsetY : 0;
-  return [
-    col * BRANCH_SPACING + NODE_RADIUS * 2,
-    row * ROW_HEIGHT + ROW_HEIGHT / 2 + extraY,
-  ];
+  return [col * BRANCH_SPACING + NODE_RADIUS * 2, row * ROW_HEIGHT + ROW_HEIGHT / 2 + extraY];
 }
 
 /** 行中心 Y（用于线段端点），含 expand 偏移 */
@@ -281,10 +278,7 @@ const CommitGraph: React.FC<CommitGraphProps> = ({
   expandAfterRow = -1,
   expandOffsetY = 0,
 }) => {
-  const { nodes, segments, maxColUsed } = useMemo(
-    () => computeLayout(commits),
-    [commits],
-  );
+  const { nodes, segments, maxColUsed } = useMemo(() => computeLayout(commits), [commits]);
 
   if (commits.length === 0) return null;
 
@@ -307,11 +301,7 @@ const CommitGraph: React.FC<CommitGraphProps> = ({
 
   return (
     <div className="shrink-0" style={{ width: svgWidth, minWidth: svgWidth }}>
-      <svg
-        width={svgWidth}
-        height={svgHeight}
-        style={{ display: "block", overflow: "visible" }}
-      >
+      <svg width={svgWidth} height={svgHeight} style={{ display: 'block', overflow: 'visible' }}>
         {/* ── 直线段（每条分支在其列内的竖线） ── */}
         {segments.map((seg, si) => {
           const endRow = seg.end === Infinity ? commits.length - 1 : seg.end;
@@ -333,14 +323,7 @@ const CommitGraph: React.FC<CommitGraphProps> = ({
             const yAfterExpand = rowCenterY(expandAfterRow + 1, expandAfterRow, offset);
             return (
               <g key={`seg-${si}`}>
-                <line
-                  x1={x}
-                  y1={y1}
-                  x2={x}
-                  y2={yAtExpand}
-                  stroke={color}
-                  strokeWidth={LINE_W}
-                />
+                <line x1={x} y1={y1} x2={x} y2={yAtExpand} stroke={color} strokeWidth={LINE_W} />
                 {/* bridge across expand panel */}
                 <line
                   x1={x}
@@ -351,14 +334,7 @@ const CommitGraph: React.FC<CommitGraphProps> = ({
                   strokeWidth={LINE_W}
                   strokeOpacity={0.35}
                 />
-                <line
-                  x1={x}
-                  y1={yAfterExpand}
-                  x2={x}
-                  y2={y2}
-                  stroke={color}
-                  strokeWidth={LINE_W}
-                />
+                <line x1={x} y1={yAfterExpand} x2={x} y2={y2} stroke={color} strokeWidth={LINE_W} />
               </g>
             );
           }
@@ -443,12 +419,7 @@ const CommitGraph: React.FC<CommitGraphProps> = ({
                   strokeOpacity={isSelected ? 0.9 : 0.55}
                 />
               ) : null}
-              <circle
-                cx={cx}
-                cy={cy}
-                r={NODE_RADIUS}
-                fill={node.color}
-              />
+              <circle cx={cx} cy={cy} r={NODE_RADIUS} fill={node.color} />
             </g>
           );
         })}

@@ -6,8 +6,8 @@
  * 使用者通过 footer prop 以组合模式注入底部操作区（如 New Branch 按钮）。
  */
 
-import React, { useRef, useEffect, useMemo } from "react";
-import { GitBranch, SearchIcon } from "./icons";
+import React, { useRef, useEffect, useMemo } from 'react';
+import { GitBranch, SearchIcon } from './icons';
 
 export interface BranchDropdownContentProps {
   /** 所有可选分支列表 */
@@ -30,7 +30,7 @@ function BranchDropdownContent({
   footer,
 }: BranchDropdownContentProps) {
   const searchInputRef = useRef<HTMLInputElement>(null);
-  const [searchQuery, setSearchQuery] = React.useState("");
+  const [searchQuery, setSearchQuery] = React.useState('');
 
   // Auto-focus search on mount
   useEffect(() => {
@@ -61,9 +61,9 @@ function BranchDropdownContent({
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
           onKeyDown={(e) => {
-            if (e.key === "Escape") {
+            if (e.key === 'Escape') {
               onClose();
-            } else if (e.key === "Enter" && filteredBranches.length === 1) {
+            } else if (e.key === 'Enter' && filteredBranches.length === 1) {
               handleSelect(filteredBranches[0]);
             }
           }}
@@ -80,11 +80,11 @@ function BranchDropdownContent({
                 key={branch}
                 className={`flex items-center gap-1.5 py-1 px-3 text-[var(--font-size)] font-mono cursor-pointer transition-colors duration-100 hover:bg-bg-hover ${
                   isCurrent
-                    ? "text-accent-blue cursor-default"
-                    : "text-text-secondary hover:text-text-primary"
+                    ? 'text-accent-blue cursor-default'
+                    : 'text-text-secondary hover:text-text-primary'
                 }`}
                 onClick={() => handleSelect(branch)}
-                title={isCurrent ? "Current branch" : `Switch to ${branch}`}
+                title={isCurrent ? 'Current branch' : `Switch to ${branch}`}
               >
                 <GitBranch size={11} className="shrink-0" />
                 <span className="flex-1 truncate">{branch}</span>

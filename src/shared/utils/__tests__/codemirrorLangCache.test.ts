@@ -19,9 +19,7 @@ describe('language extension cache', () => {
     const ext = await getLanguageExtension('main.go');
     expect(ext).not.toBeNull();
     expect(getCachedLanguageExtension('pkg/foo.go')).not.toBeNull();
-    expect(getCachedLanguageExtension('other/bar.go')).toBe(
-      getCachedLanguageExtension('main.go'),
-    );
+    expect(getCachedLanguageExtension('other/bar.go')).toBe(getCachedLanguageExtension('main.go'));
   });
 
   it('should_no_op_preload_when_already_cached', async () => {

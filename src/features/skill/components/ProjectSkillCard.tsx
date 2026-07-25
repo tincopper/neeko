@@ -1,4 +1,13 @@
-import { Check, Eye, LayoutGrid, MoreHorizontal, Plus, Power, PowerOff, Trash2 } from 'lucide-react';
+import {
+  Check,
+  Eye,
+  LayoutGrid,
+  MoreHorizontal,
+  Plus,
+  Power,
+  PowerOff,
+  Trash2,
+} from 'lucide-react';
 import React, { useMemo, useState } from 'react';
 
 // eslint-disable-next-line import/no-restricted-paths -- custom agent icons

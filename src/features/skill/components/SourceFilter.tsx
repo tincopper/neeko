@@ -16,7 +16,7 @@ const SourceFilter: React.FC<SourceFilterProps> = React.memo(
     const filteredSources = useMemo(() => {
       if (!query.trim()) return sources;
       const q = query.toLowerCase();
-      return sources.filter(s => s.toLowerCase().includes(q));
+      return sources.filter((s) => s.toLowerCase().includes(q));
     }, [sources, query]);
 
     if (sources.length === 0) return null;
@@ -31,7 +31,7 @@ const SourceFilter: React.FC<SourceFilterProps> = React.memo(
           <input
             type="text"
             value={query}
-            onChange={e => setQuery(e.target.value)}
+            onChange={(e) => setQuery(e.target.value)}
             placeholder="Filter…"
             disabled={disabled}
             className="h-6 w-20 pl-5 pr-1.5 text-[11px] rounded-md bg-bg-hover/60 border border-transparent text-text-primary placeholder:text-text-muted outline-none focus:border-border"
@@ -51,7 +51,7 @@ const SourceFilter: React.FC<SourceFilterProps> = React.memo(
         >
           All
         </button>
-        {filteredSources.map(source => (
+        {filteredSources.map((source) => (
           <button
             key={source}
             type="button"

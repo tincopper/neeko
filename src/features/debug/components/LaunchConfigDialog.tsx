@@ -68,10 +68,7 @@ function LaunchConfigDialog({
   const handleSubmit = useCallback(() => {
     const trimmedName = name.trim();
     if (!trimmedName) return;
-    const args = argsText
-      .trim()
-      .split(/\s+/)
-      .filter(Boolean);
+    const args = argsText.trim().split(/\s+/).filter(Boolean);
     const config: LaunchConfig = {
       name: trimmedName,
       type,
@@ -111,8 +108,8 @@ function LaunchConfigDialog({
 
         <div className="px-5 py-5 flex flex-col gap-4 overflow-y-auto">
           <p className="text-[var(--font-size)] text-text-muted leading-relaxed">
-            Saved to <code className="text-text-secondary">.neeko/launch.json</code> in the
-            project root. Use variables like{' '}
+            Saved to <code className="text-text-secondary">.neeko/launch.json</code> in the project
+            root. Use variables like{' '}
             <code className="text-text-secondary">${'{workspaceFolder}'}</code>,{' '}
             <code className="text-text-secondary">${'{fileDirname}'}</code>.
           </p>
@@ -161,9 +158,10 @@ function LaunchConfigDialog({
             />
             {type === 'go' ? (
               <p className="text-[11px] text-text-muted leading-relaxed">
-                Must point to a directory that contains <code className="text-text-secondary">.go</code>{' '}
-                files (usually <code className="text-text-secondary">cmd/…</code>). Module root only
-                works when it has a <code className="text-text-secondary">main</code> package.
+                Must point to a directory that contains{' '}
+                <code className="text-text-secondary">.go</code> files (usually{' '}
+                <code className="text-text-secondary">cmd/…</code>). Module root only works when it
+                has a <code className="text-text-secondary">main</code> package.
               </p>
             ) : null}
           </div>

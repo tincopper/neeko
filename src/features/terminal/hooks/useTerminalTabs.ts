@@ -1,10 +1,7 @@
-import { useCallback } from "react";
-import { useShallow } from "zustand/shallow";
+import { useCallback } from 'react';
+import { useShallow } from 'zustand/shallow';
 import type { TerminalTab, AgentConfig, Tab, TerminalTabData } from '@/shared/types';
-import {
-  closeAllEditorTabs,
-  closeEditorTab,
-} from "../components/terminalTabCleanup";
+import { closeAllEditorTabs, closeEditorTab } from '../components/terminalTabCleanup';
 import { useEditorStore } from '@/shared/store';
 
 function generateTabId(): string {
@@ -13,7 +10,7 @@ function generateTabId(): string {
 
 /** Type guard: narrow Tab to terminal kind */
 function isTerminalTab(tab: Tab): tab is Tab & { data: TerminalTabData } {
-  return tab.data.kind === "terminal";
+  return tab.data.kind === 'terminal';
 }
 
 /** Convert a unified Tab (terminal kind) to legacy TerminalTab */
@@ -38,7 +35,7 @@ export function useTerminalTabs() {
       if (!projectTabs) return [];
       return projectTabs.tabs.filter(isTerminalTab).map(tabToTerminalTab);
     },
-    [storeTabs]
+    [storeTabs],
   );
 
   const getActiveTab = useCallback(
@@ -56,7 +53,7 @@ export function useTerminalTabs() {
       // Otherwise, return the first terminal tab
       return tabToTerminalTab(terminalTabs[0]);
     },
-    [storeTabs]
+    [storeTabs],
   );
 
   const getActiveTabId = useCallback(
@@ -75,7 +72,7 @@ export function useTerminalTabs() {
       // Otherwise, return the first terminal tab's ID
       return terminalTabs[0].id;
     },
-    [storeTabs]
+    [storeTabs],
   );
 
   const ensureDefaultTab = useCallback(
@@ -107,12 +104,12 @@ export function useTerminalTabs() {
       const defaultTab: Tab = {
         id: tabId,
         projectId,
-        title: agentName ?? (agentId ?? "Terminal"),
+        title: agentName ?? agentId ?? 'Terminal',
         order: existing?.tabs.length ?? 0,
         data: {
-          kind: "terminal",
+          kind: 'terminal',
           agentId: agentId ?? null,
-          status: "Idle",
+          status: 'Idle',
         },
       };
 
@@ -120,7 +117,7 @@ export function useTerminalTabs() {
       state.activateTab(projectId, tabId);
       return tabId;
     },
-    []
+    [],
   );
 
   const addTab = useCallback(
@@ -137,9 +134,9 @@ export function useTerminalTabs() {
         title: agentName ?? agentId ?? `Terminal ${terminalCount + 1}`,
         order: existing?.tabs.length ?? 0,
         data: {
-          kind: "terminal",
+          kind: 'terminal',
           agentId: agentId ?? null,
-          status: "Idle",
+          status: 'Idle',
         },
       };
 
@@ -151,50 +148,41 @@ export function useTerminalTabs() {
         projectId,
         agentId: agentId ?? null,
         title: agentName ?? agentId ?? `Terminal ${terminalCount + 1}`,
-        status: "Idle",
+        status: 'Idle',
         order: newTab.order,
       };
     },
-    []
+    [],
   );
 
-  const closeTab = useCallback(
-    (projectId: string, tabId: string): void => {
-      // Recycle terminal PTY caches then remove the editor tab.
-      closeEditorTab(projectId, tabId);
-    },
-    []
-  );
+  const closeTab = useCallback((projectId: string, tabId: string): void => {
+    // Recycle terminal PTY caches then remove the editor tab.
+    closeEditorTab(projectId, tabId);
+  }, []);
 
-  const activateTab = useCallback(
-    (projectId: string, tabId: string): void => {
-      useEditorStore.getState().activateTab(projectId, tabId);
-    },
-    []
-  );
+  const activateTab = useCallback((projectId: string, tabId: string): void => {
+    useEditorStore.getState().activateTab(projectId, tabId);
+  }, []);
 
   const setTabAgent = useCallback(
     (projectId: string, tabId: string, agentId: string | null, agentName?: string): void => {
       useEditorStore.getState().updateTab(projectId, tabId, {
         agentId,
-        title: agentName ?? (agentId ? agentId : "Terminal"),
+        title: agentName ?? (agentId ? agentId : 'Terminal'),
       });
     },
-    []
+    [],
   );
 
-  const updateTabTitle = useCallback(
-    (projectId: string, tabId: string, title: string): void => {
-      useEditorStore.getState().updateTab(projectId, tabId, { title });
-    },
-    []
-  );
+  const updateTabTitle = useCallback((projectId: string, tabId: string, title: string): void => {
+    useEditorStore.getState().updateTab(projectId, tabId, { title });
+  }, []);
 
   const updateTabStatus = useCallback(
-    (projectId: string, tabId: string, status: TerminalTab["status"]): void => {
+    (projectId: string, tabId: string, status: TerminalTab['status']): void => {
       useEditorStore.getState().updateTab(projectId, tabId, { status });
     },
-    []
+    [],
   );
 
   const handleAgentClick = useCallback(
@@ -202,16 +190,13 @@ export function useTerminalTabs() {
       // Always create a new tab when clicking an agent
       return addTab(projectId, agent.id, agent.name);
     },
-    [addTab]
+    [addTab],
   );
 
-  const clearProjectTabs = useCallback(
-    (projectId: string): void => {
-      // Recycle all terminal PTY caches for this tab space then clear tabs.
-      closeAllEditorTabs(projectId);
-    },
-    []
-  );
+  const clearProjectTabs = useCallback((projectId: string): void => {
+    // Recycle all terminal PTY caches for this tab space then clear tabs.
+    closeAllEditorTabs(projectId);
+  }, []);
 
   return {
     getTabs,

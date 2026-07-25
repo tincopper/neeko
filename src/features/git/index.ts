@@ -18,11 +18,11 @@ export type {
   PRMergeResult,
   GitStatusFile,
   GitStatusDiff,
-} from "./types";
+} from './types';
 
 // Store
-export { useGitStore } from "./store";
+export { useGitStore } from './store';
 
 // Hooks
-export { useAheadBehindSync } from "./hooks/useAheadBehindSync";
-export { useFileChangedEvent } from "./hooks/useFileChangedEvent";
+export { useAheadBehindSync } from './hooks/useAheadBehindSync';
+export { useFileChangedEvent } from './hooks/useFileChangedEvent';

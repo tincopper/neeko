@@ -38,18 +38,14 @@ describe('PRFileTree', () => {
   });
 
   it('highlights selected file', () => {
-    const { container } = render(
-      <PRFileTree files={files} selectedPath="README.md" />,
-    );
+    const { container } = render(<PRFileTree files={files} selectedPath="README.md" />);
     const rows = container.querySelectorAll('[title="README.md"]');
     expect(rows.length).toBeGreaterThan(0);
     expect(rows[0].className).toContain('bg-accent-blue/10');
   });
 
   it('does not highlight non-selected files', () => {
-    const { container } = render(
-      <PRFileTree files={files} selectedPath="README.md" />,
-    );
+    const { container } = render(<PRFileTree files={files} selectedPath="README.md" />);
     const mainRow = container.querySelector('[title="src/main.ts"]');
     expect(mainRow?.className).not.toContain('bg-accent-blue/10');
   });

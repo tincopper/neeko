@@ -1,4 +1,4 @@
-import React, { useCallback, useRef, useState } from "react";
+import React, { useCallback, useRef, useState } from 'react';
 import type { AppConfig } from '@/shared/types';
 import {
   SHORTCUT_ACTIONS,
@@ -13,11 +13,16 @@ import {
 } from '@/shared/utils/shortcutRegistry';
 
 const MODIFIER_CODES = new Set([
-  "ControlLeft", "ControlRight",
-  "ShiftLeft", "ShiftRight",
-  "AltLeft", "AltRight",
-  "MetaLeft", "MetaRight",
-  "OSLeft", "OSRight",
+  'ControlLeft',
+  'ControlRight',
+  'ShiftLeft',
+  'ShiftRight',
+  'AltLeft',
+  'AltRight',
+  'MetaLeft',
+  'MetaRight',
+  'OSLeft',
+  'OSRight',
 ]);
 
 function isModifierKey(e: React.KeyboardEvent): boolean {
@@ -32,7 +37,9 @@ interface ShortcutPanelProps {
 function conflictForAction(conflicts: ConflictEntry[], actionId: string): string[] | null {
   for (const entry of conflicts) {
     if (entry.actions.includes(actionId)) {
-      return entry.actions.filter((a) => a !== actionId && SHORTCUT_ACTIONS.some((s) => s.id === a));
+      return entry.actions.filter(
+        (a) => a !== actionId && SHORTCUT_ACTIONS.some((s) => s.id === a),
+      );
     }
   }
   return null;
@@ -48,7 +55,11 @@ const ShortcutPanel: React.FC<ShortcutPanelProps> = ({ config, onConfigChange })
 
   const isOverridden = (id: string) => {
     const overrides = config.shortcuts;
-    return overrides && overrides[id] !== undefined && overrides[id] !== SHORTCUT_ACTIONS.find((a) => a.id === id)?.defaultBinding;
+    return (
+      overrides &&
+      overrides[id] !== undefined &&
+      overrides[id] !== SHORTCUT_ACTIONS.find((a) => a.id === id)?.defaultBinding
+    );
   };
 
   const handleResetAll = useCallback(() => {
@@ -71,10 +82,13 @@ const ShortcutPanel: React.FC<ShortcutPanelProps> = ({ config, onConfigChange })
     [config, onConfigChange],
   );
 
-  const handleSelectRow = useCallback((id: string) => {
-    if (recordingId) setRecordingId(null);
-    setSelectedId(id);
-  }, [recordingId]);
+  const handleSelectRow = useCallback(
+    (id: string) => {
+      if (recordingId) setRecordingId(null);
+      setSelectedId(id);
+    },
+    [recordingId],
+  );
 
   const handleStartRecording = useCallback((id: string) => {
     const action = SHORTCUT_ACTIONS.find((a) => a.id === id);
@@ -87,7 +101,7 @@ const ShortcutPanel: React.FC<ShortcutPanelProps> = ({ config, onConfigChange })
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
-      if (e.key === "Escape") {
+      if (e.key === 'Escape') {
         if (recordingId) {
           setRecordingId(null);
         } else if (selectedId) {
@@ -97,7 +111,7 @@ const ShortcutPanel: React.FC<ShortcutPanelProps> = ({ config, onConfigChange })
       }
 
       if (!recordingId) {
-        if (selectedId && e.key === "Enter") {
+        if (selectedId && e.key === 'Enter') {
           e.preventDefault();
           handleStartRecording(selectedId);
         }
@@ -151,9 +165,10 @@ const ShortcutPanel: React.FC<ShortcutPanelProps> = ({ config, onConfigChange })
       </div>
 
       <div className="text-[0.82em] text-text-muted mb-4">
-        Double-click a row (or select and press Enter) to record a new combination.
-        Press Escape to cancel. Changes are saved to your app config and override defaults.
-        Use <strong>Apply IDEA Preset</strong> for IntelliJ-style chords (Back/Forward as Ctrl+Alt+←/→, Close Tab as Ctrl+F4, etc.).
+        Double-click a row (or select and press Enter) to record a new combination. Press Escape to
+        cancel. Changes are saved to your app config and override defaults. Use{' '}
+        <strong>Apply IDEA Preset</strong> for IntelliJ-style chords (Back/Forward as Ctrl+Alt+←/→,
+        Close Tab as Ctrl+F4, etc.).
       </div>
 
       {conflicts.length > 0 && (
@@ -161,7 +176,7 @@ const ShortcutPanel: React.FC<ShortcutPanelProps> = ({ config, onConfigChange })
           {conflicts.map((entry) => {
             const actionLabels = entry.actions
               .map((id) => SHORTCUT_ACTIONS.find((a) => a.id === id)?.label ?? id)
-              .join(", ");
+              .join(', ');
 
             return (
               <div key={entry.binding} className="text-[0.82em] text-red-400">
@@ -172,7 +187,14 @@ const ShortcutPanel: React.FC<ShortcutPanelProps> = ({ config, onConfigChange })
         </div>
       )}
 
-      <div className="space-y-5" onKeyDown={handleKeyDown} tabIndex={-1} onClick={(e) => { if (e.target === e.currentTarget) setSelectedId(null); }}>
+      <div
+        className="space-y-5"
+        onKeyDown={handleKeyDown}
+        tabIndex={-1}
+        onClick={(e) => {
+          if (e.target === e.currentTarget) setSelectedId(null);
+        }}
+      >
         {SHORTCUT_CATEGORIES.map((cat) => {
           const actions = SHORTCUT_ACTIONS.filter((a) => a.category === cat.id);
           if (actions.length === 0) return null;
@@ -182,83 +204,90 @@ const ShortcutPanel: React.FC<ShortcutPanelProps> = ({ config, onConfigChange })
                 {cat.label}
               </div>
               <div className="space-y-0.5">
-        {actions.map((action) => {
-          const binding = bindings[action.id];
-          if (binding === undefined) return null;
-          const isRecording = recordingId === action.id;
-          const conflicting = conflictForAction(conflicts, action.id);
-          const overridden = isOverridden(action.id);
-          const recordable = isRecordableAction(action);
+                {actions.map((action) => {
+                  const binding = bindings[action.id];
+                  if (binding === undefined) return null;
+                  const isRecording = recordingId === action.id;
+                  const conflicting = conflictForAction(conflicts, action.id);
+                  const overridden = isOverridden(action.id);
+                  const recordable = isRecordableAction(action);
 
-          return (
-            <div
-              key={action.id}
-              className={`flex items-center justify-between py-2.5 px-2 rounded-md cursor-pointer transition-colors group ${
-                conflicting
-                  ? "bg-red-500/5 hover:bg-red-500/10"
-                  : overridden
-                    ? "bg-yellow-500/5 hover:bg-yellow-500/10"
-                    : selectedId === action.id
-                      ? "bg-accent-blue/10 hover:bg-accent-blue/15"
-                      : "hover:bg-bg-hover"
-              }`}
-              onClick={() => handleSelectRow(action.id)}
-              onDoubleClick={() => recordable && handleStartRecording(action.id)}
-              ref={isRecording ? recordingRef : undefined}
-            >
-              <div className="flex-1 min-w-0">
-                <div className="text-[0.84em] text-text-primary font-medium">{action.label}</div>
-                {conflicting && (
-                  <div className="text-[0.78em] text-red-400 mt-0.5">
-                    Also bound to: {conflicting.map((id) => SHORTCUT_ACTIONS.find((a) => a.id === id)?.label ?? id).join(", ")}
-                  </div>
-                )}
-                {!recordable && (
-                  <div className="text-[0.75em] text-text-muted mt-0.5">Fixed pattern (not rebindable)</div>
-                )}
-              </div>
+                  return (
+                    <div
+                      key={action.id}
+                      className={`flex items-center justify-between py-2.5 px-2 rounded-md cursor-pointer transition-colors group ${
+                        conflicting
+                          ? 'bg-red-500/5 hover:bg-red-500/10'
+                          : overridden
+                            ? 'bg-yellow-500/5 hover:bg-yellow-500/10'
+                            : selectedId === action.id
+                              ? 'bg-accent-blue/10 hover:bg-accent-blue/15'
+                              : 'hover:bg-bg-hover'
+                      }`}
+                      onClick={() => handleSelectRow(action.id)}
+                      onDoubleClick={() => recordable && handleStartRecording(action.id)}
+                      ref={isRecording ? recordingRef : undefined}
+                    >
+                      <div className="flex-1 min-w-0">
+                        <div className="text-[0.84em] text-text-primary font-medium">
+                          {action.label}
+                        </div>
+                        {conflicting && (
+                          <div className="text-[0.78em] text-red-400 mt-0.5">
+                            Also bound to:{' '}
+                            {conflicting
+                              .map((id) => SHORTCUT_ACTIONS.find((a) => a.id === id)?.label ?? id)
+                              .join(', ')}
+                          </div>
+                        )}
+                        {!recordable && (
+                          <div className="text-[0.75em] text-text-muted mt-0.5">
+                            Fixed pattern (not rebindable)
+                          </div>
+                        )}
+                      </div>
 
-              <div className="flex items-center gap-2 shrink-0">
-                {isRecording ? (
-                  <div
-                    className={`px-2.5 py-1 rounded text-[0.82em] font-mono ${
-                      conflicting
-                        ? "bg-red-500/20 text-red-300 border border-red-500/40"
-                        : "bg-accent-blue/20 text-accent-blue border border-accent-blue/40"
-                    }`}
-                  >
-                    Press keys...
-                  </div>
-                ) : (
-                  <div
-                    className={`px-2.5 py-1 rounded text-[0.82em] font-mono ${
-                      conflicting
-                        ? "bg-red-500/10 text-red-300"
-                        : overridden
-                          ? "bg-yellow-500/10 text-yellow-300"
-                          : "bg-bg-hover text-text-secondary"
-                    }`}
-                  >
-                    {binding}
-                  </div>
-                )}
+                      <div className="flex items-center gap-2 shrink-0">
+                        {isRecording ? (
+                          <div
+                            className={`px-2.5 py-1 rounded text-[0.82em] font-mono ${
+                              conflicting
+                                ? 'bg-red-500/20 text-red-300 border border-red-500/40'
+                                : 'bg-accent-blue/20 text-accent-blue border border-accent-blue/40'
+                            }`}
+                          >
+                            Press keys...
+                          </div>
+                        ) : (
+                          <div
+                            className={`px-2.5 py-1 rounded text-[0.82em] font-mono ${
+                              conflicting
+                                ? 'bg-red-500/10 text-red-300'
+                                : overridden
+                                  ? 'bg-yellow-500/10 text-yellow-300'
+                                  : 'bg-bg-hover text-text-secondary'
+                            }`}
+                          >
+                            {binding}
+                          </div>
+                        )}
 
-                {overridden && (
-                  <button
-                    className="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-bg-hover text-text-muted hover:text-text-primary transition-all text-[0.72em]"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleResetOne(action.id);
-                    }}
-                    title="Reset to default"
-                  >
-                    Reset
-                  </button>
-                )}
-              </div>
-            </div>
-          );
-        })}
+                        {overridden && (
+                          <button
+                            className="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-bg-hover text-text-muted hover:text-text-primary transition-all text-[0.72em]"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleResetOne(action.id);
+                            }}
+                            title="Reset to default"
+                          >
+                            Reset
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             </div>
           );

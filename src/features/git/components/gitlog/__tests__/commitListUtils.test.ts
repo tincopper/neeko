@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from 'vitest';
 import {
   parseCommitMessage,
   commitBodyPreview,
@@ -11,118 +11,116 @@ import {
   splitFilePath,
   MAX_GRAPH_LANES,
   TEXT_AFTER_DOT_GAP,
-} from "../commitListUtils";
+} from '../commitListUtils';
 
-describe("parseCommitMessage", () => {
-  it("should_parse_conventional_type_scope_and_subject_when_header_matches", () => {
-    expect(parseCommitMessage("feat(git): add graph hover\n\nbody")).toEqual({
-      type: "feat",
-      scope: "git",
-      subject: "add graph hover",
-      header: "feat(git): add graph hover",
+describe('parseCommitMessage', () => {
+  it('should_parse_conventional_type_scope_and_subject_when_header_matches', () => {
+    expect(parseCommitMessage('feat(git): add graph hover\n\nbody')).toEqual({
+      type: 'feat',
+      scope: 'git',
+      subject: 'add graph hover',
+      header: 'feat(git): add graph hover',
     });
   });
 
-  it("should_parse_breaking_change_marker_and_empty_scope", () => {
-    expect(parseCommitMessage("refactor!: drop legacy api")).toEqual({
-      type: "refactor",
-      scope: "",
-      subject: "drop legacy api",
-      header: "refactor!: drop legacy api",
+  it('should_parse_breaking_change_marker_and_empty_scope', () => {
+    expect(parseCommitMessage('refactor!: drop legacy api')).toEqual({
+      type: 'refactor',
+      scope: '',
+      subject: 'drop legacy api',
+      header: 'refactor!: drop legacy api',
     });
-    expect(
-      parseCommitMessage("refactor(conversation): format adapters and manager"),
-    ).toEqual({
-      type: "refactor",
-      scope: "conversation",
-      subject: "format adapters and manager",
-      header: "refactor(conversation): format adapters and manager",
+    expect(parseCommitMessage('refactor(conversation): format adapters and manager')).toEqual({
+      type: 'refactor',
+      scope: 'conversation',
+      subject: 'format adapters and manager',
+      header: 'refactor(conversation): format adapters and manager',
     });
   });
 
-  it("should_return_full_header_as_subject_when_not_conventional", () => {
-    expect(parseCommitMessage("Initial commit")).toEqual({
-      type: "",
-      scope: "",
-      subject: "Initial commit",
-      header: "Initial commit",
+  it('should_return_full_header_as_subject_when_not_conventional', () => {
+    expect(parseCommitMessage('Initial commit')).toEqual({
+      type: '',
+      scope: '',
+      subject: 'Initial commit',
+      header: 'Initial commit',
     });
   });
 });
 
-describe("commitBodyPreview", () => {
-  it("should_return_empty_when_only_header", () => {
-    expect(commitBodyPreview("feat: only header")).toBe("");
+describe('commitBodyPreview', () => {
+  it('should_return_empty_when_only_header', () => {
+    expect(commitBodyPreview('feat: only header')).toBe('');
   });
 
-  it("should_return_up_to_two_body_lines", () => {
-    const msg = "feat: title\n\nline1\nline2\nline3";
-    expect(commitBodyPreview(msg)).toBe("line1\nline2");
-  });
-});
-
-describe("typeStyle", () => {
-  it("should_use_accent_colors_for_common_types", () => {
-    expect(typeStyle("feat")).toContain("accent-blue");
-    expect(typeStyle("fix")).toContain("accent-red");
-    expect(typeStyle("perf")).toContain("accent-green");
-    expect(typeStyle("docs")).toContain("accent-yellow");
-    expect(typeStyle("chore")).toContain("text-muted");
+  it('should_return_up_to_two_body_lines', () => {
+    const msg = 'feat: title\n\nline1\nline2\nline3';
+    expect(commitBodyPreview(msg)).toBe('line1\nline2');
   });
 });
 
-describe("formatRefs", () => {
-  it("should_prefer_HEAD_target_as_primary", () => {
-    const r = formatRefs("HEAD -> main, origin/main, tag: v1.0.0");
+describe('typeStyle', () => {
+  it('should_use_accent_colors_for_common_types', () => {
+    expect(typeStyle('feat')).toContain('accent-blue');
+    expect(typeStyle('fix')).toContain('accent-red');
+    expect(typeStyle('perf')).toContain('accent-green');
+    expect(typeStyle('docs')).toContain('accent-yellow');
+    expect(typeStyle('chore')).toContain('text-muted');
+  });
+});
+
+describe('formatRefs', () => {
+  it('should_prefer_HEAD_target_as_primary', () => {
+    const r = formatRefs('HEAD -> main, origin/main, tag: v1.0.0');
     expect(r).toEqual({
-      primary: "main",
+      primary: 'main',
       extraCount: 2,
-      title: "main, origin/main, v1.0.0",
+      title: 'main, origin/main, v1.0.0',
     });
   });
 
-  it("should_return_null_when_refs_empty", () => {
-    expect(formatRefs("")).toBeNull();
-    expect(formatRefs("   ")).toBeNull();
+  it('should_return_null_when_refs_empty', () => {
+    expect(formatRefs('')).toBeNull();
+    expect(formatRefs('   ')).toBeNull();
   });
 });
 
-describe("formatRelativeTime", () => {
-  const now = new Date("2026-07-25T12:00:00");
+describe('formatRelativeTime', () => {
+  const now = new Date('2026-07-25T12:00:00');
 
-  it("should_return_minutes_hours_days_for_recent_times", () => {
-    expect(formatRelativeTime("2026-07-25T11:55:00", now)).toBe("5m ago");
-    expect(formatRelativeTime("2026-07-25T09:00:00", now)).toBe("3h ago");
-    expect(formatRelativeTime("2026-07-24T12:00:00", now)).toBe("yesterday");
-    expect(formatRelativeTime("2026-07-22T12:00:00", now)).toBe("3d ago");
+  it('should_return_minutes_hours_days_for_recent_times', () => {
+    expect(formatRelativeTime('2026-07-25T11:55:00', now)).toBe('5m ago');
+    expect(formatRelativeTime('2026-07-25T09:00:00', now)).toBe('3h ago');
+    expect(formatRelativeTime('2026-07-24T12:00:00', now)).toBe('yesterday');
+    expect(formatRelativeTime('2026-07-22T12:00:00', now)).toBe('3d ago');
   });
 
-  it("should_return_absolute_for_old_dates", () => {
-    expect(formatRelativeTime("2024-01-01T00:00:00", now)).toBe("2024/01/01 00:00");
-  });
-});
-
-describe("formatAbsoluteTime", () => {
-  it("should_format_yyyy_mm_dd_hh_mm", () => {
-    expect(formatAbsoluteTime("2026-07-25T09:08:00")).toBe("2026/07/25 09:08");
+  it('should_return_absolute_for_old_dates', () => {
+    expect(formatRelativeTime('2024-01-01T00:00:00', now)).toBe('2024/01/01 00:00');
   });
 });
 
-describe("graphWidthForCols", () => {
-  it("should_cap_visible_width_at_max_lanes", () => {
+describe('formatAbsoluteTime', () => {
+  it('should_format_yyyy_mm_dd_hh_mm', () => {
+    expect(formatAbsoluteTime('2026-07-25T09:08:00')).toBe('2026/07/25 09:08');
+  });
+});
+
+describe('graphWidthForCols', () => {
+  it('should_cap_visible_width_at_max_lanes', () => {
     const { fullWidth, visibleWidth } = graphWidthForCols(9, 6, 4, MAX_GRAPH_LANES);
     expect(fullWidth).toBeGreaterThan(visibleWidth);
     expect(visibleWidth).toBe(MAX_GRAPH_LANES * 6 + 4 * 4 + 2);
   });
 
-  it("should_not_cap_when_within_max_lanes", () => {
+  it('should_not_cap_when_within_max_lanes', () => {
     const { fullWidth, visibleWidth } = graphWidthForCols(2, 6, 4, MAX_GRAPH_LANES);
     expect(fullWidth).toBe(visibleWidth);
   });
 });
 
-describe("textLeftForCol", () => {
-  it("should_place_text_just_after_dot_not_full_graph_width", () => {
+describe('textLeftForCol', () => {
+  it('should_place_text_just_after_dot_not_full_graph_width', () => {
     const branchSpacing = 6;
     const nodeRadius = 4;
     // col 0: dot at 8, text at 8+4+gap
@@ -137,19 +135,19 @@ describe("textLeftForCol", () => {
   });
 });
 
-describe("splitFilePath", () => {
-  it("should_split_name_and_dir_for_posix_path", () => {
-    expect(splitFilePath("com/test/services/TestService.java")).toEqual({
-      name: "TestService.java",
-      dir: "com/test/services",
+describe('splitFilePath', () => {
+  it('should_split_name_and_dir_for_posix_path', () => {
+    expect(splitFilePath('com/test/services/TestService.java')).toEqual({
+      name: 'TestService.java',
+      dir: 'com/test/services',
     });
   });
 
-  it("should_handle_basename_only_and_windows_separators", () => {
-    expect(splitFilePath("README.md")).toEqual({ name: "README.md", dir: "" });
-    expect(splitFilePath("src\\features\\git\\CommitList.tsx")).toEqual({
-      name: "CommitList.tsx",
-      dir: "src/features/git",
+  it('should_handle_basename_only_and_windows_separators', () => {
+    expect(splitFilePath('README.md')).toEqual({ name: 'README.md', dir: '' });
+    expect(splitFilePath('src\\features\\git\\CommitList.tsx')).toEqual({
+      name: 'CommitList.tsx',
+      dir: 'src/features/git',
     });
   });
 });

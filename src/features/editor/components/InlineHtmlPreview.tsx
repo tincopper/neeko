@@ -1,9 +1,6 @@
-import React, { useEffect, useMemo, useRef } from "react";
-import { convertFileSrc } from "@tauri-apps/api/core";
-import {
-  getViewSnapshot,
-  setViewSnapshot,
-} from '@/shared/utils/editorViewState';
+import React, { useEffect, useMemo, useRef } from 'react';
+import { convertFileSrc } from '@tauri-apps/api/core';
+import { getViewSnapshot, setViewSnapshot } from '@/shared/utils/editorViewState';
 
 interface InlineHtmlPreviewProps {
   tabKey: string;
@@ -22,7 +19,7 @@ interface InlineHtmlPreviewProps {
  *   instead of triggering iframe navigation.
  * - Restores/saves scrollY across tab switches via editorViewState cache.
  *
- * Security note: `allow-scripts allow-same-origin` is intentional �?the iframe
+ * Security note: `allow-scripts allow-same-origin` is intentional �?the iframe
  * renders local HTML files authored by the user, so script execution is
  * expected. The combination allows the injected anchor-fix script to run while
  * still sandboxing external network requests.
@@ -35,7 +32,7 @@ function InlineHtmlPreview({ tabKey, tabId, content, basePath, fileName }: Inlin
 
     // Inject <base href> so relative-path resources load correctly (case-insensitive match)
     if (basePath) {
-      const dirAssetUrl = convertFileSrc(basePath, "asset");
+      const dirAssetUrl = convertFileSrc(basePath, 'asset');
       const baseTag = `<base href="${dirAssetUrl}/">`;
       if (/<head\b/i.test(html)) {
         html = html.replace(/<head\b([^>]*)>/i, (m) => `${m}${baseTag}`);
@@ -72,7 +69,7 @@ function InlineHtmlPreview({ tabKey, tabId, content, basePath, fileName }: Inlin
     return html;
   }, [content, basePath]);
 
-  // �?iframe load 完成后绑定滚动监�?+ 恢复上次 scrollY
+  // �?iframe load 完成后绑定滚动监�?+ 恢复上次 scrollY
   const handleLoad = () => {
     const iframe = iframeRef.current;
     if (!iframe) return;
@@ -80,15 +77,12 @@ function InlineHtmlPreview({ tabKey, tabId, content, basePath, fileName }: Inlin
     const doc = iframe.contentDocument;
     if (!win || !doc) return;
 
-    const snap = getViewSnapshot(tabKey, tabId, "html");
+    const snap = getViewSnapshot(tabKey, tabId, 'html');
     if (snap) {
       // 等下一帧让 iframe 完成首屏 layout
       requestAnimationFrame(() => {
         try {
-          const max = Math.max(
-            0,
-            (doc.documentElement.scrollHeight || 0) - (win.innerHeight || 0),
-          );
+          const max = Math.max(0, (doc.documentElement.scrollHeight || 0) - (win.innerHeight || 0));
           win.scrollTo(0, Math.min(snap.scrollTop, max));
         } catch {
           // sandbox 收紧或跨域时静默失败
@@ -98,28 +92,24 @@ function InlineHtmlPreview({ tabKey, tabId, content, basePath, fileName }: Inlin
 
     const onScroll = () => {
       try {
-        const y =
-          win.scrollY ||
-          doc.documentElement.scrollTop ||
-          doc.body?.scrollTop ||
-          0;
-        setViewSnapshot(tabKey, tabId, "html", { scrollTop: y });
+        const y = win.scrollY || doc.documentElement.scrollTop || doc.body?.scrollTop || 0;
+        setViewSnapshot(tabKey, tabId, 'html', { scrollTop: y });
       } catch {
         // ignore
       }
     };
-    win.addEventListener("scroll", onScroll, { passive: true });
-    // 把卸�?重载时的清理函数挂在 iframe 自身，下一�?load 之前调用
+    win.addEventListener('scroll', onScroll, { passive: true });
+    // 把卸�?重载时的清理函数挂在 iframe 自身，下一�?load 之前调用
     (iframe as unknown as { __neekoCleanup?: () => void }).__neekoCleanup = () => {
       try {
-        win.removeEventListener("scroll", onScroll);
+        win.removeEventListener('scroll', onScroll);
       } catch {
         // ignore
       }
     };
   };
 
-  // 卸载时再保存一次（�?onScroll 节流丢最后一帧），并清理监听
+  // 卸载时再保存一次（�?onScroll 节流丢最后一帧），并清理监听
   useEffect(() => {
     return () => {
       const iframe = iframeRef.current;
@@ -128,12 +118,8 @@ function InlineHtmlPreview({ tabKey, tabId, content, basePath, fileName }: Inlin
         const win = iframe.contentWindow;
         const doc = iframe.contentDocument;
         if (win && doc) {
-          const y =
-            win.scrollY ||
-            doc.documentElement.scrollTop ||
-            doc.body?.scrollTop ||
-            0;
-          setViewSnapshot(tabKey, tabId, "html", { scrollTop: y });
+          const y = win.scrollY || doc.documentElement.scrollTop || doc.body?.scrollTop || 0;
+          setViewSnapshot(tabKey, tabId, 'html', { scrollTop: y });
         }
       } catch {
         // ignore

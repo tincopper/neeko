@@ -1,4 +1,4 @@
-import type { Terminal } from "@xterm/xterm";
+import type { Terminal } from '@xterm/xterm';
 
 export interface TerminalInputController {
   dispose: () => void;
@@ -10,33 +10,33 @@ function isShiftImeSymbol(text: string): boolean {
 
 function isModifierKey(event: KeyboardEvent): boolean {
   return (
-    event.key === "Shift" ||
-    event.key === "Control" ||
-    event.key === "Alt" ||
-    event.key === "Meta" ||
-    event.key === "CapsLock"
+    event.key === 'Shift' ||
+    event.key === 'Control' ||
+    event.key === 'Alt' ||
+    event.key === 'Meta' ||
+    event.key === 'CapsLock'
   );
 }
 
 function createSyntheticInputEvent(data: string): InputEvent {
-  if (typeof InputEvent === "function") {
-    return new InputEvent("input", {
+  if (typeof InputEvent === 'function') {
+    return new InputEvent('input', {
       data,
-      inputType: "insertText",
+      inputType: 'insertText',
       bubbles: true,
       cancelable: true,
       composed: false,
     });
   }
 
-  const event = new Event("input", {
+  const event = new Event('input', {
     bubbles: true,
     cancelable: true,
   }) as InputEvent;
 
   Object.defineProperties(event, {
     data: { value: data },
-    inputType: { value: "insertText" },
+    inputType: { value: 'insertText' },
     composed: { value: false },
   });
 
@@ -53,7 +53,7 @@ function setupImeShiftSymbolFallback(term: Terminal): () => void {
   let waitingForShiftSymbolKeyDown = false;
 
   const handleKeyDown = (event: KeyboardEvent) => {
-    if (event.key === "Shift") {
+    if (event.key === 'Shift') {
       shiftDown = true;
       waitingForShiftSymbolKeyDown = true;
       return;
@@ -65,7 +65,7 @@ function setupImeShiftSymbolFallback(term: Terminal): () => void {
   };
 
   const handleKeyUp = (event: KeyboardEvent) => {
-    if (event.key === "Shift") {
+    if (event.key === 'Shift') {
       shiftDown = false;
       waitingForShiftSymbolKeyDown = false;
     }
@@ -75,7 +75,7 @@ function setupImeShiftSymbolFallback(term: Terminal): () => void {
     if (
       event.defaultPrevented ||
       event.isComposing ||
-      event.inputType !== "insertText" ||
+      event.inputType !== 'insertText' ||
       !event.data ||
       !shiftDown ||
       !waitingForShiftSymbolKeyDown ||
@@ -87,14 +87,14 @@ function setupImeShiftSymbolFallback(term: Terminal): () => void {
     textarea.dispatchEvent(createSyntheticInputEvent(event.data));
   };
 
-  textarea.addEventListener("keydown", handleKeyDown, true);
-  textarea.addEventListener("keyup", handleKeyUp, true);
-  textarea.addEventListener("beforeinput", handleBeforeInput, true);
+  textarea.addEventListener('keydown', handleKeyDown, true);
+  textarea.addEventListener('keyup', handleKeyUp, true);
+  textarea.addEventListener('beforeinput', handleBeforeInput, true);
 
   return () => {
-    textarea.removeEventListener("keydown", handleKeyDown, true);
-    textarea.removeEventListener("keyup", handleKeyUp, true);
-    textarea.removeEventListener("beforeinput", handleBeforeInput, true);
+    textarea.removeEventListener('keydown', handleKeyDown, true);
+    textarea.removeEventListener('keyup', handleKeyUp, true);
+    textarea.removeEventListener('beforeinput', handleBeforeInput, true);
   };
 }
 
@@ -106,15 +106,12 @@ function setupImeShiftSymbolFallback(term: Terminal): () => void {
  *
  * Returns a cleanup function that removes the handler.
  */
-function setupNewlineEnterHandler(
-  term: Terminal,
-  sendInput: (text: string) => void,
-): () => void {
+function setupNewlineEnterHandler(term: Terminal, sendInput: (text: string) => void): () => void {
   // attachCustomKeyEventHandler returns boolean:
   //   true  → let xterm.js process the key normally
   //   false → suppress xterm.js default handling
   term.attachCustomKeyEventHandler((event: KeyboardEvent) => {
-    if (event.type !== "keydown" || event.key !== "Enter") {
+    if (event.type !== 'keydown' || event.key !== 'Enter') {
       return true;
     }
 
@@ -122,7 +119,7 @@ function setupNewlineEnterHandler(
     const alt = event.altKey && !event.shiftKey && !event.ctrlKey && !event.metaKey;
 
     if (ctrl || alt) {
-      sendInput("\n");
+      sendInput('\n');
       return false;
     }
     return true;
@@ -166,8 +163,8 @@ export function setupTerminalInput({
       }, 0);
     };
 
-    textarea.addEventListener("compositionstart", compositionStartHandler);
-    textarea.addEventListener("compositionend", compositionEndHandler);
+    textarea.addEventListener('compositionstart', compositionStartHandler);
+    textarea.addEventListener('compositionend', compositionEndHandler);
   }
 
   const disposable = term.onData((data) => {
@@ -183,8 +180,8 @@ export function setupTerminalInput({
       composing = false;
       suppressNextOnData = false;
       if (textarea && compositionStartHandler && compositionEndHandler) {
-        textarea.removeEventListener("compositionstart", compositionStartHandler);
-        textarea.removeEventListener("compositionend", compositionEndHandler);
+        textarea.removeEventListener('compositionstart', compositionStartHandler);
+        textarea.removeEventListener('compositionend', compositionEndHandler);
       }
       disposeCtrlEnter();
       disposeImeFallback();

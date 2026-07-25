@@ -1,4 +1,4 @@
-import React, { createContext, useContext } from "react";
+import React, { createContext, useContext } from 'react';
 
 export interface ProjectActionsContextValue {
   onRemoveProject: (projectId: string) => void;
@@ -27,17 +27,13 @@ export function ProjectActionsProvider({
   value: ProjectActionsContextValue;
   children: React.ReactNode;
 }) {
-  return (
-    <ProjectActionsContext.Provider value={value}>
-      {children}
-    </ProjectActionsContext.Provider>
-  );
+  return <ProjectActionsContext.Provider value={value}>{children}</ProjectActionsContext.Provider>;
 }
 
 export function useProjectActionsContext() {
   const ctx = useContext(ProjectActionsContext);
   if (!ctx) {
-    throw new Error("useProjectActionsContext must be used within ProjectActionsProvider");
+    throw new Error('useProjectActionsContext must be used within ProjectActionsProvider');
   }
   return ctx;
 }

@@ -34,9 +34,7 @@ describe('languageMap', () => {
   });
 
   it('should_apply_custom_servers_from_config', () => {
-    applyCustomServersFromConfig([
-      { languageId: 'terraform', file_extensions: ['tf', '.TF'] },
-    ]);
+    applyCustomServersFromConfig([{ languageId: 'terraform', file_extensions: ['tf', '.TF'] }]);
     expect(getLspLanguageId('main.tf')).toBe('terraform');
   });
 

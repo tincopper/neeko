@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { PaneDirection, PaneId, PaneNode, SplitPathStep, SplitState } from '@/shared/types';
 
 const MIN_RATIO = 0.2;
@@ -11,17 +11,17 @@ export function clampRatio(ratio: number): number {
 }
 
 export function countPanes(node: PaneNode): number {
-  if (node.type === "leaf") return 1;
+  if (node.type === 'leaf') return 1;
   return countPanes(node.first) + countPanes(node.second);
 }
 
 function hasPane(node: PaneNode, paneId: PaneId): boolean {
-  if (node.type === "leaf") return node.paneId === paneId;
+  if (node.type === 'leaf') return node.paneId === paneId;
   return hasPane(node.first, paneId) || hasPane(node.second, paneId);
 }
 
 function firstLeafPaneId(node: PaneNode): PaneId {
-  if (node.type === "leaf") return node.paneId;
+  if (node.type === 'leaf') return node.paneId;
   return firstLeafPaneId(node.first);
 }
 
@@ -29,20 +29,20 @@ function splitLeafNode(
   node: PaneNode,
   paneId: PaneId,
   direction: PaneDirection,
-  nextPaneId: PaneId
+  nextPaneId: PaneId,
 ): { nextNode: PaneNode; changed: boolean } {
-  if (node.type === "leaf") {
+  if (node.type === 'leaf') {
     if (node.paneId !== paneId) {
       return { nextNode: node, changed: false };
     }
     return {
       changed: true,
       nextNode: {
-        type: "split",
+        type: 'split',
         direction,
         ratio: 0.5,
         first: node,
-        second: { type: "leaf", paneId: nextPaneId },
+        second: { type: 'leaf', paneId: nextPaneId },
       },
     };
   }
@@ -74,9 +74,9 @@ function splitLeafNode(
 
 function closeLeafNode(
   node: PaneNode,
-  paneId: PaneId
+  paneId: PaneId,
 ): { nextNode: PaneNode; changed: boolean; fallbackPaneId: PaneId | null } {
-  if (node.type === "leaf") {
+  if (node.type === 'leaf') {
     return {
       nextNode: node,
       changed: false,
@@ -84,7 +84,7 @@ function closeLeafNode(
     };
   }
 
-  if (node.first.type === "leaf" && node.first.paneId === paneId) {
+  if (node.first.type === 'leaf' && node.first.paneId === paneId) {
     return {
       changed: true,
       nextNode: node.second,
@@ -92,7 +92,7 @@ function closeLeafNode(
     };
   }
 
-  if (node.second.type === "leaf" && node.second.paneId === paneId) {
+  if (node.second.type === 'leaf' && node.second.paneId === paneId) {
     return {
       changed: true,
       nextNode: node.first,
@@ -131,23 +131,19 @@ function closeLeafNode(
   };
 }
 
-export function updateSplitRatio(
-  node: PaneNode,
-  path: SplitPathStep[],
-  ratio: number
-): PaneNode {
+export function updateSplitRatio(node: PaneNode, path: SplitPathStep[], ratio: number): PaneNode {
   if (path.length === 0) {
-    if (node.type !== "split") return node;
+    if (node.type !== 'split') return node;
     return {
       ...node,
       ratio: clampRatio(ratio),
     };
   }
 
-  if (node.type !== "split") return node;
+  if (node.type !== 'split') return node;
 
   const [head, ...rest] = path;
-  if (head === "first") {
+  if (head === 'first') {
     return {
       ...node,
       first: updateSplitRatio(node.first, rest, ratio),
@@ -173,10 +169,10 @@ interface UseSplitLayoutResult {
 function initialState(): SplitState {
   return {
     root: {
-      type: "leaf",
-      paneId: "p1",
+      type: 'leaf',
+      paneId: 'p1',
     },
-    activePaneId: "p1",
+    activePaneId: 'p1',
     paneCount: 1,
   };
 }
@@ -221,7 +217,7 @@ export function useSplitLayout(layoutId: string, maxPanes = 4): UseSplitLayoutRe
 
       return createdPaneId;
     },
-    [canSplit, maxPanes]
+    [canSplit, maxPanes],
   );
 
   const closePane = useCallback((paneId: PaneId) => {
@@ -235,7 +231,7 @@ export function useSplitLayout(layoutId: string, maxPanes = 4): UseSplitLayoutRe
 
       const nextActive =
         prev.activePaneId === paneId
-          ? result.fallbackPaneId ?? firstLeafPaneId(result.nextNode)
+          ? (result.fallbackPaneId ?? firstLeafPaneId(result.nextNode))
           : prev.activePaneId;
 
       return {

@@ -6,11 +6,7 @@ import { useAppContext, useEditorContext } from '@/shared/contexts';
 import { buildWorktreeTabKey } from '@/shared/utils/tabKey';
 import type { AuthMethod } from '@/shared/types';
 
-import {
-  createTerminalSession,
-  resizeTerminal,
-  closeTerminalSession,
-} from '../api/terminalApi';
+import { createTerminalSession, resizeTerminal, closeTerminalSession } from '../api/terminalApi';
 import {
   terminalCache,
   terminalRebuildCallbacks,
@@ -194,7 +190,13 @@ export function useTerminalStrategy(options: UseTerminalStrategyOptions): Termin
     }
 
     // ---- Remote ----
-    function buildRemoteStrategy(_env: { type: 'Remote'; host: string; port: number; username: string; auth: AuthMethod }): TerminalStrategy | null {
+    function buildRemoteStrategy(_env: {
+      type: 'Remote';
+      host: string;
+      port: number;
+      username: string;
+      auth: AuthMethod;
+    }): TerminalStrategy | null {
       if (!options.remoteConfig) return null;
       const { remoteConfig } = options;
       const projectId = activeProject!.id;

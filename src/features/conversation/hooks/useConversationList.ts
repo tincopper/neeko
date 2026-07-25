@@ -213,9 +213,7 @@ export function useConversationList(
       setTotal(0);
       setHasMore(false);
       setLoadState(
-        projectPath
-          ? { loading: true, refreshing: false, error: null }
-          : initialListLoadState(),
+        projectPath ? { loading: true, refreshing: false, error: null } : initialListLoadState(),
       );
     }
 

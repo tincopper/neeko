@@ -4,4 +4,4 @@ export type {
   RemoteProject,
   AuthMethod,
   RemoteEntrySession,
-} from "@/features/connection/types";
+} from '@/features/connection/types';

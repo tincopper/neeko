@@ -1,13 +1,13 @@
-import type { Terminal } from "@xterm/xterm";
+import type { Terminal } from '@xterm/xterm';
 
-import type { CacheEntry, TerminalStrategy } from "./types";
+import type { CacheEntry, TerminalStrategy } from './types';
 
 // =============================================================================
 // StrategyOptions — environment-provided configuration
 // =============================================================================
 
 export interface StrategyOptions {
-  kind: "local" | "wsl" | "remote";
+  kind: 'local' | 'wsl' | 'remote';
   createSession: (
     cols: number,
     rows: number,

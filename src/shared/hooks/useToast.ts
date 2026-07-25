@@ -1,13 +1,13 @@
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef, useCallback } from 'react';
 
 export function useToast() {
   const [toast, setToast] = useState<{
     message: string;
-    type: "info" | "error";
+    type: 'info' | 'error';
   } | null>(null);
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const showToast = useCallback((message: string, type: "info" | "error" = "info") => {
+  const showToast = useCallback((message: string, type: 'info' | 'error' = 'info') => {
     if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
     setToast({ message, type });
     toastTimerRef.current = setTimeout(() => setToast(null), 3000);

@@ -12,4 +12,4 @@ export type {
   AgentDiskSkill,
   ProjectDiskSkill,
   ProjectSkillAgentState,
-} from "@/features/skill/types";
+} from '@/features/skill/types';

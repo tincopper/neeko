@@ -5,8 +5,8 @@
 import {
   ConnectionProjectProvider,
   useConnectionProjectContext,
-} from "@/features/project/contexts/ConnectionProjectContext";
-import type { RemoteContextValue } from "@/features/project/contexts/ConnectionProjectContext";
+} from '@/features/project/contexts/ConnectionProjectContext';
+import type { RemoteContextValue } from '@/features/project/contexts/ConnectionProjectContext';
 
 // Re-export the provider with the old name for backwards compatibility
 export const RemoteProvider = ConnectionProjectProvider;

@@ -46,7 +46,12 @@ describe('ConversationPanel', () => {
   ];
 
   const list: ConversationMeta[] = [
-    createMeta({ id: 'claude-code:1', agentId: 'claude-code', title: 'Auth refactor', preview: 'auth module' }),
+    createMeta({
+      id: 'claude-code:1',
+      agentId: 'claude-code',
+      title: 'Auth refactor',
+      preview: 'auth module',
+    }),
     createMeta({ id: 'codex:2', agentId: 'codex', title: 'Ship release', preview: 'bump version' }),
   ];
 

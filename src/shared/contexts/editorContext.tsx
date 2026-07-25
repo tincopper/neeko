@@ -1,4 +1,4 @@
-import React, { createContext, useContext } from "react";
+import React, { createContext, useContext } from 'react';
 import type { AgentConfig, TerminalTab } from '@/shared/types';
 
 export interface EditorContextValue {
@@ -7,7 +7,7 @@ export interface EditorContextValue {
   onActivateTab: (tabId: string) => void;
   onCloseTab: (tabId: string) => void;
   onAddTab: () => void;
-  onTabStatusChange?: (tabId: string, status: "Idle" | "Running" | "Failed") => void;
+  onTabStatusChange?: (tabId: string, status: 'Idle' | 'Running' | 'Failed') => void;
   agents: AgentConfig[];
   compactMode: boolean;
   showAgentBar: boolean;
@@ -31,7 +31,7 @@ export function EditorProvider({
 export function useEditorContext() {
   const ctx = useContext(EditorContext);
   if (!ctx) {
-    throw new Error("useEditorContext must be used within EditorProvider");
+    throw new Error('useEditorContext must be used within EditorProvider');
   }
   return ctx;
 }

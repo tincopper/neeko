@@ -97,14 +97,15 @@ const PRTimeline: React.FC<PRTimelineProps> = ({ events, loading }) => {
               className="w-full h-full object-cover"
               onError={(e) => {
                 (e.target as HTMLImageElement).style.display = 'none';
-                (e.target as HTMLImageElement).parentElement!.innerText = (event.author?.charAt(0) || '#').toUpperCase();
+                (e.target as HTMLImageElement).parentElement!.innerText = (
+                  event.author?.charAt(0) || '#'
+                ).toUpperCase();
               }}
             />
           </div>
           <div className="flex-1 min-w-0">
             <div className="text-[var(--font-size)] text-text-primary">
-              <span className="font-semibold">{event.author}</span>
-              {' '}{event.message}
+              <span className="font-semibold">{event.author}</span> {event.message}
               {event.commitHash && (
                 <code className="font-mono text-accent-blue bg-accent-blue/10 px-1 py-0.5 rounded text-[calc(var(--font-size)-1px)] mx-1">
                   {event.commitHash.substring(0, 7)}

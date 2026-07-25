@@ -18,7 +18,11 @@ export interface DiffContext {
   filePaths?: string[];
 }
 
-export function buildCodeMessage(action: EditorAction, ctx: CodeContext, question?: string): string {
+export function buildCodeMessage(
+  action: EditorAction,
+  ctx: CodeContext,
+  question?: string,
+): string {
   const lang = ctx.language || ctx.filePath.split('.').pop() || '';
   const location = `${ctx.filePath}:${ctx.startLine}-${ctx.endLine}`;
 
@@ -34,7 +38,11 @@ export function buildCodeMessage(action: EditorAction, ctx: CodeContext, questio
   }
 }
 
-export function buildDiffMessage(action: EditorAction, ctx: DiffContext, question?: string): string {
+export function buildDiffMessage(
+  action: EditorAction,
+  ctx: DiffContext,
+  question?: string,
+): string {
   const filePath = ctx.filePath;
   const isCombined = !!ctx.combined;
   const fileCount = ctx.fileCount ?? ctx.filePaths?.length ?? 0;
@@ -80,7 +88,8 @@ export function buildDiffMessage(action: EditorAction, ctx: DiffContext, questio
       return `fix any issues in the changes to ${filePath}`;
     case 'ask': {
       if (isCombined) {
-        const filesPart = selectedFilesLabel || (fileCount ? `${fileCount} files` : 'combined diff');
+        const filesPart =
+          selectedFilesLabel || (fileCount ? `${fileCount} files` : 'combined diff');
         return `${question || '?'} (context: ${filesPart} diff${ctx.lineCount ? `, ${ctx.lineCount} lines` : ''})`;
       }
       return `${question || '?'} (context: ${filePath} diff${ctx.lineCount ? `, ${ctx.lineCount} lines` : ''})`;

@@ -1,6 +1,9 @@
-import { useCallback, useMemo } from "react";
+import { useCallback, useMemo } from 'react';
 import { useEditorStore } from '@/shared/store';
-import { closeAllEditorTabs, closeEditorTab } from '@/features/terminal/components/terminalTabCleanup';
+import {
+  closeAllEditorTabs,
+  closeEditorTab,
+} from '@/features/terminal/components/terminalTabCleanup';
 import type { EditorGroupId, EditorSplitLayout, Tab } from '@/shared/types';
 import { createDefaultEditorLayout, findGroupIdForTab } from '@/shared/types/editorGroup';
 
@@ -68,32 +71,38 @@ export function useEditorGroupLayout(tabKey: string): EditorGroupLayoutResult {
     [layout.groups.right.tabIds, tabsById],
   );
 
-  const splitRight = useCallback((tabId: string) => storeSplitRight(tabKey, tabId), [storeSplitRight, tabKey]);
-  const moveToRight = useCallback((tabId: string) => storeMoveToRight(tabKey, tabId), [storeMoveToRight, tabKey]);
-  const moveToLeft = useCallback((tabId: string) => storeMoveToLeft(tabKey, tabId), [storeMoveToLeft, tabKey]);
+  const splitRight = useCallback(
+    (tabId: string) => storeSplitRight(tabKey, tabId),
+    [storeSplitRight, tabKey],
+  );
+  const moveToRight = useCallback(
+    (tabId: string) => storeMoveToRight(tabKey, tabId),
+    [storeMoveToRight, tabKey],
+  );
+  const moveToLeft = useCallback(
+    (tabId: string) => storeMoveToLeft(tabKey, tabId),
+    [storeMoveToLeft, tabKey],
+  );
   const unsplit = useCallback(() => storeUnsplit(tabKey), [storeUnsplit, tabKey]);
-  const setActiveGroup = useCallback((groupId: EditorGroupId) => storeSetActiveGroup(tabKey, groupId), [storeSetActiveGroup, tabKey]);
-  const setSplitRatio = useCallback((ratio: number) => storeSetSplitRatio(tabKey, ratio), [storeSetSplitRatio, tabKey]);
+  const setActiveGroup = useCallback(
+    (groupId: EditorGroupId) => storeSetActiveGroup(tabKey, groupId),
+    [storeSetActiveGroup, tabKey],
+  );
+  const setSplitRatio = useCallback(
+    (ratio: number) => storeSetSplitRatio(tabKey, ratio),
+    [storeSetSplitRatio, tabKey],
+  );
 
   const activateTabInGroup = useCallback(
     (tabId: string) => storeActivateTab(tabKey, tabId),
     [storeActivateTab, tabKey],
   );
 
-  const getTabGroupId = useCallback(
-    (tabId: string) => findGroupIdForTab(layout, tabId),
-    [layout],
-  );
+  const getTabGroupId = useCallback((tabId: string) => findGroupIdForTab(layout, tabId), [layout]);
 
-  const pinTab = useCallback(
-    (tabId: string) => storePinTab(tabKey, tabId),
-    [storePinTab, tabKey],
-  );
+  const pinTab = useCallback((tabId: string) => storePinTab(tabKey, tabId), [storePinTab, tabKey]);
 
-  const unpinTab = useCallback(
-    () => storeUnpinTab(tabKey),
-    [storeUnpinTab, tabKey],
-  );
+  const unpinTab = useCallback(() => storeUnpinTab(tabKey), [storeUnpinTab, tabKey]);
 
   const setPinnedPanelRatio = useCallback(
     (ratio: number) => storeSetPinnedPanelRatio(tabKey, ratio),

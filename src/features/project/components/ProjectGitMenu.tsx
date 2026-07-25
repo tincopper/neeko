@@ -1,15 +1,10 @@
-import React from "react";
-import {
-  ArrowDownFromLine,
-  ArrowUpFromLine,
-  GitBranch,
-  GitCommitHorizontal,
-} from "lucide-react";
+import React from 'react';
+import { ArrowDownFromLine, ArrowUpFromLine, GitBranch, GitCommitHorizontal } from 'lucide-react';
 
-import type { Project } from "@/shared/types";
-import type { DialogType } from "@/features/git/components/GitDialog";
-import { FolderGitIcon } from "@/shared/components/icons";
-import { cn } from "@/lib/utils";
+import type { Project } from '@/shared/types';
+import type { DialogType } from '@/features/git/components/GitDialog';
+import { FolderGitIcon } from '@/shared/components/icons';
+import { cn } from '@/lib/utils';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -17,7 +12,7 @@ import {
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-} from "@/ui";
+} from '@/ui';
 
 interface ProjectGitMenuProps {
   project: Project;
@@ -34,24 +29,24 @@ interface ProjectGitMenuProps {
 /** Theme-aligned menu panel (matches skill/project context menus, portal-stacked). */
 function menuContentClass(className?: string) {
   return cn(
-    "z-[10000] min-w-[11.5rem] overflow-hidden rounded-md border border-border",
-    "bg-bg-tertiary text-text-primary p-1",
-    "shadow-[0_8px_24px_rgba(0,0,0,0.45)]",
+    'z-[10000] min-w-[11.5rem] overflow-hidden rounded-md border border-border',
+    'bg-bg-tertiary text-text-primary p-1',
+    'shadow-[0_8px_24px_rgba(0,0,0,0.45)]',
     // Override shadcn popover tokens so theme CSS variables win
-    "bg-bg-tertiary text-text-primary",
+    'bg-bg-tertiary text-text-primary',
     className,
   );
 }
 
 function menuItemClass(className?: string) {
   return cn(
-    "relative flex w-full cursor-pointer select-none items-center gap-2 rounded-md",
-    "px-2.5 py-1.5 text-[12px] outline-none transition-colors",
-    "text-text-primary",
-    "focus:bg-bg-hover focus:text-text-primary",
-    "data-[highlighted]:bg-bg-hover data-[highlighted]:text-text-primary",
-    "data-[disabled]:pointer-events-none data-[disabled]:opacity-40",
-    "[&_svg]:pointer-events-none [&_svg]:size-3.5 [&_svg]:shrink-0 [&_svg]:opacity-70",
+    'relative flex w-full cursor-pointer select-none items-center gap-2 rounded-md',
+    'px-2.5 py-1.5 text-[12px] outline-none transition-colors',
+    'text-text-primary',
+    'focus:bg-bg-hover focus:text-text-primary',
+    'data-[highlighted]:bg-bg-hover data-[highlighted]:text-text-primary',
+    'data-[disabled]:pointer-events-none data-[disabled]:opacity-40',
+    '[&_svg]:pointer-events-none [&_svg]:size-3.5 [&_svg]:shrink-0 [&_svg]:opacity-70',
     className,
   );
 }
@@ -89,9 +84,9 @@ const ProjectGitMenu: React.FC<ProjectGitMenuProps> = ({
           <button
             type="button"
             className={cn(
-              "bg-transparent border-none cursor-pointer p-1 rounded-md flex items-center",
-              "text-text-muted hover:text-text-primary hover:bg-bg-hover transition-colors",
-              "data-[state=open]:bg-bg-selected data-[state=open]:text-text-primary",
+              'bg-transparent border-none cursor-pointer p-1 rounded-md flex items-center',
+              'text-text-muted hover:text-text-primary hover:bg-bg-hover transition-colors',
+              'data-[state=open]:bg-bg-selected data-[state=open]:text-text-primary',
             )}
             title="Git actions"
             aria-label="Git actions"
@@ -111,9 +106,7 @@ const ProjectGitMenu: React.FC<ProjectGitMenuProps> = ({
           onClick={(e) => e.stopPropagation()}
           data-testid="project-git-menu"
         >
-          <DropdownMenuLabel
-            className="px-2.5 pt-1 pb-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-text-muted"
-          >
+          <DropdownMenuLabel className="px-2.5 pt-1 pb-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-text-muted">
             Git
           </DropdownMenuLabel>
 
@@ -167,7 +160,7 @@ const ProjectGitMenu: React.FC<ProjectGitMenuProps> = ({
                 className={menuItemClass()}
                 onSelect={() => {
                   setOpen(false);
-                  onOpenDialog("new-branch");
+                  onOpenDialog('new-branch');
                 }}
               >
                 <GitBranch />
@@ -177,7 +170,7 @@ const ProjectGitMenu: React.FC<ProjectGitMenuProps> = ({
                 className={menuItemClass()}
                 onSelect={() => {
                   setOpen(false);
-                  onOpenDialog("new-worktree");
+                  onOpenDialog('new-worktree');
                 }}
               >
                 <FolderGitIcon size={14} />

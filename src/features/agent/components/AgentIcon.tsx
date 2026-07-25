@@ -1,5 +1,5 @@
-import React from "react";
-import { resolveAgentIconSrc } from "../api/agentApi";
+import React from 'react';
+import { resolveAgentIconSrc } from '../api/agentApi';
 
 interface AgentIconProps {
   icon?: string | null;
@@ -7,18 +7,10 @@ interface AgentIconProps {
   fallback?: string;
 }
 
-const AgentIcon: React.FC<AgentIconProps> = ({ icon, size = 16, fallback = "" }) => {
+const AgentIcon: React.FC<AgentIconProps> = ({ icon, size = 16, fallback = '' }) => {
   const src = resolveAgentIconSrc(icon);
   if (src) {
-    return (
-      <img
-        className="w-4 h-4 object-contain"
-        src={src}
-        width={size}
-        height={size}
-        alt=""
-      />
-    );
+    return <img className="w-4 h-4 object-contain" src={src} width={size} height={size} alt="" />;
   }
   return <span>{icon || fallback}</span>;
 };

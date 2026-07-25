@@ -3,6 +3,6 @@ export interface TerminalTab {
   projectId: string;
   agentId: string | null;
   title: string;
-  status: "Idle" | "Running" | "Failed";
+  status: 'Idle' | 'Running' | 'Failed';
   order: number;
 }

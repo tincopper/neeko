@@ -1,11 +1,5 @@
 import React, { useState } from 'react';
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter,
-} from '@/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/ui/dialog';
 
 interface GitCredentialDialogProps {
   open: boolean;
@@ -33,26 +27,37 @@ const GitCredentialDialog: React.FC<GitCredentialDialogProps> = ({
   };
 
   return (
-    <Dialog open={open} onOpenChange={(o) => { if (!o) onCancel(); }}>
+    <Dialog
+      open={open}
+      onOpenChange={(o) => {
+        if (!o) onCancel();
+      }}
+    >
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Git Authentication Required</DialogTitle>
         </DialogHeader>
         <form onSubmit={handleSubmit}>
           <div style={{ marginBottom: 12 }}>
-            <label style={{ display: 'block', marginBottom: 4, fontSize: 13, color: '#888' }}>Host</label>
-            <div style={{
-              padding: '8px 12px',
-              background: '#2c313c',
-              borderRadius: 4,
-              fontSize: 13,
-              color: '#abb2bf',
-            }}>
+            <label style={{ display: 'block', marginBottom: 4, fontSize: 13, color: '#888' }}>
+              Host
+            </label>
+            <div
+              style={{
+                padding: '8px 12px',
+                background: '#2c313c',
+                borderRadius: 4,
+                fontSize: 13,
+                color: '#abb2bf',
+              }}
+            >
               {host}
             </div>
           </div>
           <div style={{ marginBottom: 12 }}>
-            <label style={{ display: 'block', marginBottom: 4, fontSize: 13, color: '#888' }}>Username</label>
+            <label style={{ display: 'block', marginBottom: 4, fontSize: 13, color: '#888' }}>
+              Username
+            </label>
             <input
               type="text"
               value={username}

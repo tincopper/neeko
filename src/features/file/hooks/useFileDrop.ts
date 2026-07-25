@@ -8,9 +8,9 @@
  * - Does NOT auto-submit (no \r) — path is pasted, user can edit.
  */
 
-import { useEffect } from "react";
-import { useEditorStore } from "@/shared/store";
-import { sendToTerminal } from "@/features/terminal/components/terminalCommands";
+import { useEffect } from 'react';
+import { useEditorStore } from '@/shared/store';
+import { sendToTerminal } from '@/features/terminal/components/terminalCommands';
 
 // ---------------------------------------------------------------------------
 // Module-level state
@@ -47,16 +47,16 @@ export function useFileDrop(): void {
       }
 
       const activeTab = entry.tabs.find((t) => t.id === entry.activeTabId);
-      if (!activeTab || activeTab.data.kind !== "terminal") {
+      if (!activeTab || activeTab.data.kind !== 'terminal') {
         console.log(`[dragend] active tab is not a terminal (kind=${activeTab?.data.kind})`);
         return;
       }
 
-      sendToTerminal(projectId, path + " ", activeTab.id);
+      sendToTerminal(projectId, path + ' ', activeTab.id);
       console.log(`[dragend] → terminal: "${path}"`);
     };
 
-    document.addEventListener("dragend", handleDragEnd);
-    return () => document.removeEventListener("dragend", handleDragEnd);
+    document.addEventListener('dragend', handleDragEnd);
+    return () => document.removeEventListener('dragend', handleDragEnd);
   }, []);
 }

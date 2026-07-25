@@ -1,17 +1,17 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
-import { renderHook, act } from "@testing-library/react";
-import { invoke } from "@tauri-apps/api/core";
-import { useWorktreeActions } from "@/features/project/hooks/useWorktreeActions";
-import { useProjectStore } from "@/features/project/store";
-import { useConnectionStore } from "@/features/connection/store";
-import { useWorktreeStore } from "@/features/project/worktreeStore";
-import { createProject } from "@/testing/factories";
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { renderHook, act } from '@testing-library/react';
+import { invoke } from '@tauri-apps/api/core';
+import { useWorktreeActions } from '@/features/project/hooks/useWorktreeActions';
+import { useProjectStore } from '@/features/project/store';
+import { useConnectionStore } from '@/features/connection/store';
+import { useWorktreeStore } from '@/features/project/worktreeStore';
+import { createProject } from '@/testing/factories';
 
 const mockInvoke = vi.mocked(invoke);
 
 function seedStore(overrides: Record<string, unknown> = {}) {
   const projectDefaults = {
-    projects: [createProject({ id: "p-wt" })],
+    projects: [createProject({ id: 'p-wt' })],
     activeProjectId: null as string | null,
     activeProject: null as unknown,
     isTerminalView: false,
@@ -32,7 +32,7 @@ function seedStore(overrides: Record<string, unknown> = {}) {
   };
   const worktreeDefaults = {
     activeWorktreePath: null as string | null,
-    activeWorktreeBranch: "",
+    activeWorktreeBranch: '',
     openedWorktrees: [] as unknown[],
     worktreeStateMap: {},
   };
@@ -58,50 +58,42 @@ function createDeps() {
   };
 }
 
-describe("useWorktreeActions", () => {
+describe('useWorktreeActions', () => {
   beforeEach(() => {
     mockInvoke.mockReset();
     mockInvoke.mockResolvedValue(undefined);
     seedStore();
   });
 
-  it("项目未激活时先激活项目再切换 worktree 终端", async () => {
+  it('项目未激活时先激活项目再切换 worktree 终端', async () => {
     const deps = createDeps();
     const { result } = renderHook(() => useWorktreeActions(deps));
 
     await act(async () => {
-      await result.current.handleOpenWorktreeTerminal(
-        "p-wt",
-        "/path/to/worktree",
-        "feature/test",
-      );
+      await result.current.handleOpenWorktreeTerminal('p-wt', '/path/to/worktree', 'feature/test');
     });
 
-    expect(useProjectStore.getState().activeProjectId).toBe("p-wt");
-    expect(mockInvoke).toHaveBeenCalledWith("set_active_project", { projectId: "p-wt" });
-    expect(mockInvoke).toHaveBeenCalledWith("set_view_terminal", { projectId: "p-wt" });
-    expect(deps.setActiveWorktreePath).toHaveBeenCalledWith("/path/to/worktree");
-    expect(deps.setActiveWorktreeBranch).toHaveBeenCalledWith("feature/test");
-    expect(deps.saveWorktreeState).toHaveBeenCalledWith("p-wt", "/path/to/worktree");
+    expect(useProjectStore.getState().activeProjectId).toBe('p-wt');
+    expect(mockInvoke).toHaveBeenCalledWith('set_active_project', { projectId: 'p-wt' });
+    expect(mockInvoke).toHaveBeenCalledWith('set_view_terminal', { projectId: 'p-wt' });
+    expect(deps.setActiveWorktreePath).toHaveBeenCalledWith('/path/to/worktree');
+    expect(deps.setActiveWorktreeBranch).toHaveBeenCalledWith('feature/test');
+    expect(deps.saveWorktreeState).toHaveBeenCalledWith('p-wt', '/path/to/worktree');
   });
 
-  it("项目已激活时不会重复调用 set_active_project", async () => {
+  it('项目已激活时不会重复调用 set_active_project', async () => {
     seedStore({
-      activeProjectId: "p-wt",
-      activeProject: createProject({ id: "p-wt" }),
+      activeProjectId: 'p-wt',
+      activeProject: createProject({ id: 'p-wt' }),
     });
     const deps = createDeps();
     const { result } = renderHook(() => useWorktreeActions(deps));
 
     await act(async () => {
-      await result.current.handleOpenWorktreeTerminal(
-        "p-wt",
-        "/path/to/worktree",
-        "feature/test",
-      );
+      await result.current.handleOpenWorktreeTerminal('p-wt', '/path/to/worktree', 'feature/test');
     });
 
-    expect(mockInvoke).not.toHaveBeenCalledWith("set_active_project", expect.anything());
-    expect(mockInvoke).toHaveBeenCalledWith("set_view_terminal", { projectId: "p-wt" });
+    expect(mockInvoke).not.toHaveBeenCalledWith('set_active_project', expect.anything());
+    expect(mockInvoke).toHaveBeenCalledWith('set_view_terminal', { projectId: 'p-wt' });
   });
 });

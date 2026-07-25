@@ -13,10 +13,7 @@ export function dapListConfigs(projectId: string): Promise<LaunchConfig[]> {
   return invoke<LaunchConfig[]>('dap_list_configs', { projectId });
 }
 
-export function dapSaveConfigs(
-  projectId: string,
-  configurations: LaunchConfig[],
-): Promise<void> {
+export function dapSaveConfigs(projectId: string, configurations: LaunchConfig[]): Promise<void> {
   return invoke('dap_save_configs', { projectId, configurations });
 }
 

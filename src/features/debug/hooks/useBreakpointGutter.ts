@@ -1,16 +1,5 @@
-import {
-  type Extension,
-  RangeSetBuilder,
-  StateEffect,
-  StateField,
-} from '@codemirror/state';
-import {
-  Decoration,
-  EditorView,
-  gutter,
-  GutterMarker,
-  type DecorationSet,
-} from '@codemirror/view';
+import { type Extension, RangeSetBuilder, StateEffect, StateField } from '@codemirror/state';
+import { Decoration, EditorView, gutter, GutterMarker, type DecorationSet } from '@codemirror/view';
 import { useMemo, useRef } from 'react';
 
 import { useDebugStore } from '../store/debugStore';
@@ -127,10 +116,7 @@ export function toggleBreakpointAt(
   }
 }
 
-export function setBreakpointHoverLine(
-  view: EditorView,
-  lineFrom: number | null,
-): boolean {
+export function setBreakpointHoverLine(view: EditorView, lineFrom: number | null): boolean {
   let next: number | null = null;
   if (lineFrom != null) {
     try {
@@ -159,10 +145,7 @@ export function clearBreakpointHoverLine(view: EditorView): boolean {
 }
 
 /** Apply yellow current-line highlight (1-based). */
-export function applyDebugCurrentLine(
-  view: EditorView,
-  line: number | null,
-): void {
+export function applyDebugCurrentLine(view: EditorView, line: number | null): void {
   try {
     view.dispatch({ effects: setCurrentLineEffect.of(line) });
   } catch {
@@ -172,9 +155,7 @@ export function applyDebugCurrentLine(
 
 // ── Extension pack (NO lineNumbers — FileViewer always owns that) ─────────
 
-function buildBreakpointOnlyExtensions(
-  onToggle: (line: number) => void,
-): Extension[] {
+function buildBreakpointOnlyExtensions(onToggle: (line: number) => void): Extension[] {
   const handleClick = (view: EditorView, lineFrom: number) =>
     toggleBreakpointAt(view, lineFrom, onToggle);
 
@@ -196,12 +177,7 @@ function buildBreakpointOnlyExtensions(
               byLine.set(line, breakpointMarker);
             }
           }
-          if (
-            hover != null &&
-            hover >= 1 &&
-            hover <= view.state.doc.lines &&
-            !bpSet.has(hover)
-          ) {
+          if (hover != null && hover >= 1 && hover <= view.state.doc.lines && !bpSet.has(hover)) {
             byLine.set(hover, breakpointHoverMarker);
           }
 
@@ -247,10 +223,8 @@ function buildBreakpointOnlyExtensions(
         boxShadow: '0 0 0 1px rgba(0, 0, 0, 0.25)',
       },
       '.cm-breakpoint-marker--hover': {
-        backgroundColor:
-          'color-mix(in srgb, var(--accent-red, #e06c75) 30%, transparent)',
-        boxShadow:
-          '0 0 0 1px color-mix(in srgb, var(--accent-red, #e06c75) 45%, transparent)',
+        backgroundColor: 'color-mix(in srgb, var(--accent-red, #e06c75) 30%, transparent)',
+        boxShadow: '0 0 0 1px color-mix(in srgb, var(--accent-red, #e06c75) 45%, transparent)',
       },
       // Line-number affordance only (numbers themselves come from FileViewer)
       '.cm-lineNumbers': {
@@ -279,8 +253,7 @@ function buildBreakpointOnlyExtensions(
 }
 
 const EMPTY_EXTENSIONS: Extension[] = [];
-const syncEffectOf = (lines: readonly number[]) =>
-  setBreakpointsEffect.of(lines);
+const syncEffectOf = (lines: readonly number[]) => setBreakpointsEffect.of(lines);
 
 /**
  * Breakpoint gutter + current-line highlight field.

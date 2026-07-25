@@ -1,11 +1,7 @@
-import React, { useCallback, useEffect, useRef } from "react";
-import {
-  ResizablePanelGroup,
-  ResizablePanel,
-  ResizableHandle,
-} from "@/ui/resizable";
-import EditorGroupPane from "./EditorGroupPane";
-import { useEditorGroupLayout } from "../hooks/useEditorGroupLayout";
+import React, { useCallback, useEffect, useRef } from 'react';
+import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from '@/ui/resizable';
+import EditorGroupPane from './EditorGroupPane';
+import { useEditorGroupLayout } from '../hooks/useEditorGroupLayout';
 import type { AuthMethod } from '@/shared/types';
 
 interface EditorGroupLayoutProps {
@@ -47,15 +43,15 @@ function EditorGroupLayout({
 
   // Panel IDs — stable per tabKey
   const pinnedPanelId = `pinned-${tabKey}`;
-  const leftPanelId   = `left-${tabKey}`;
-  const rightPanelId  = `right-${tabKey}`;
+  const leftPanelId = `left-${tabKey}`;
+  const rightPanelId = `right-${tabKey}`;
 
   // ── defaultLayout: fixed at mount, never re-derived from store ──
   // The key changes when panel count changes, forcing a fresh group mount with a
   // new ref. This is the same pattern react-resizable-panels expects.
   const hasPinned = !!pinnedTab;
   // "p" prefix = pinned present, "s" suffix = split present
-  const groupKey = `${hasPinned ? "p" : ""}${isSplit ? "s" : ""}-${tabKey}`;
+  const groupKey = `${hasPinned ? 'p' : ''}${isSplit ? 's' : ''}-${tabKey}`;
   const prevGroupKeyRef = useRef<string>(groupKey);
 
   const defaultLayoutRef = useRef<Record<string, number> | null>(null);
@@ -77,19 +73,19 @@ function EditorGroupLayout({
       };
     } else if (hasPinned && isSplit) {
       // Case C: pinned + left + right
-      const pinPct  = Math.round(pinnedPanelRatio * 100);
-      const rest    = 100 - pinPct;
+      const pinPct = Math.round(pinnedPanelRatio * 100);
+      const rest = 100 - pinPct;
       const leftPct = Math.round(rest * layout.ratio);
       defaultLayoutRef.current = {
         [pinnedPanelId]: pinPct,
-        [leftPanelId]:   leftPct,
-        [rightPanelId]:  rest - leftPct,
+        [leftPanelId]: leftPct,
+        [rightPanelId]: rest - leftPct,
       };
     } else {
       // Case D: left + right (no pin)
       const leftPct = Math.round(layout.ratio * 100);
       defaultLayoutRef.current = {
-        [leftPanelId]:  leftPct,
+        [leftPanelId]: leftPct,
         [rightPanelId]: 100 - leftPct,
       };
     }
@@ -112,7 +108,7 @@ function EditorGroupLayout({
 
           if (isSplit) {
             // Derive left/right ratio from their share of the remaining space
-            const leftPct  = lm[leftPanelId]  ?? 0;
+            const leftPct = lm[leftPanelId] ?? 0;
             const rightPct = lm[rightPanelId] ?? 0;
             const total = leftPct + rightPct;
             if (total > 0) setSplitRatio(leftPct / total);
@@ -124,7 +120,15 @@ function EditorGroupLayout({
       }, 150);
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [hasPinned, isSplit, pinnedPanelId, leftPanelId, rightPanelId, setPinnedPanelRatio, setSplitRatio],
+    [
+      hasPinned,
+      isSplit,
+      pinnedPanelId,
+      leftPanelId,
+      rightPanelId,
+      setPinnedPanelRatio,
+      setSplitRatio,
+    ],
   );
 
   useEffect(() => {
@@ -134,9 +138,9 @@ function EditorGroupLayout({
   }, []);
 
   // Layout IDs used by EditorGroupPane internals
-  const leftLayoutId   = buildLayoutId("left",   leftActiveTabId);
-  const rightLayoutId  = buildLayoutId("right",  rightActiveTabId);
-  const pinnedLayoutId = buildLayoutId("pinned", pinnedTab?.id ?? null);
+  const leftLayoutId = buildLayoutId('left', leftActiveTabId);
+  const rightLayoutId = buildLayoutId('right', rightActiveTabId);
+  const pinnedLayoutId = buildLayoutId('pinned', pinnedTab?.id ?? null);
 
   // ── Case A: no pin, no split — no ResizablePanelGroup needed ──
   if (!hasPinned && !isSplit) {
@@ -146,7 +150,7 @@ function EditorGroupLayout({
         onAddTerminalTab={onAddTerminalTab}
         remoteProject={remoteProject}
         groupId="left"
-        onFocusGroup={() => setActiveGroup("left")}
+        onFocusGroup={() => setActiveGroup('left')}
         layoutId={leftLayoutId}
       />
     );
@@ -180,11 +184,7 @@ function EditorGroupLayout({
       {/* ── Pinned panel (leftmost, Cases B & C) ── */}
       {hasPinned && (
         <>
-          <ResizablePanel
-            id={pinnedPanelId}
-            minSize={10}
-            className="py-0.5 pr-0.5 min-w-0"
-          >
+          <ResizablePanel id={pinnedPanelId} minSize={10} className="py-0.5 pr-0.5 min-w-0">
             <div className="flex-1 flex flex-col overflow-hidden min-w-0 rounded-lg shadow-sm bg-bg-secondary">
               <EditorGroupPane
                 tabKey={tabKey}
@@ -206,7 +206,13 @@ function EditorGroupLayout({
         minSize={10}
         className="py-0.5 min-w-0"
         // Add right padding only when there's no right panel
-        style={isSplit ? { paddingRight: "2px" } : hasPinned ? { paddingLeft: "2px" } : { paddingLeft: "2px" }}
+        style={
+          isSplit
+            ? { paddingRight: '2px' }
+            : hasPinned
+              ? { paddingLeft: '2px' }
+              : { paddingLeft: '2px' }
+        }
       >
         <div className="flex-1 flex flex-col overflow-hidden min-w-0 rounded-lg shadow-sm bg-bg-secondary">
           <EditorGroupPane
@@ -214,7 +220,7 @@ function EditorGroupLayout({
             onAddTerminalTab={onAddTerminalTab}
             remoteProject={remoteProject}
             groupId="left"
-            onFocusGroup={() => setActiveGroup("left")}
+            onFocusGroup={() => setActiveGroup('left')}
             layoutId={leftLayoutId}
           />
         </div>
@@ -224,18 +230,14 @@ function EditorGroupLayout({
       {isSplit && (
         <>
           <ResizableHandle id={`split-handle-${tabKey}`} />
-          <ResizablePanel
-            id={rightPanelId}
-            minSize={10}
-            className="py-0.5 pl-0.5 min-w-0"
-          >
+          <ResizablePanel id={rightPanelId} minSize={10} className="py-0.5 pl-0.5 min-w-0">
             <div className="flex-1 flex flex-col overflow-hidden min-w-0 rounded-lg shadow-sm bg-bg-secondary">
               <EditorGroupPane
                 tabKey={tabKey}
                 onAddTerminalTab={onAddTerminalTab}
                 remoteProject={remoteProject}
                 groupId="right"
-                onFocusGroup={() => setActiveGroup("right")}
+                onFocusGroup={() => setActiveGroup('right')}
                 layoutId={rightLayoutId}
               />
             </div>

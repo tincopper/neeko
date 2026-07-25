@@ -13,10 +13,7 @@ import { getFileName, getTabId } from '@/shared/utils/fileTree';
 import { buildWorktreeTabKey } from '@/shared/utils/tabKey';
 import { preloadLanguageExtension } from '@/shared/utils/codemirror';
 
-import {
-  createNavigationHistory,
-  type NavLocation,
-} from './navigationHistory';
+import { createNavigationHistory, type NavLocation } from './navigationHistory';
 
 const history = createNavigationHistory(100);
 

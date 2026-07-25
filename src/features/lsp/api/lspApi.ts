@@ -104,10 +104,7 @@ export function lspRestartSession(
   });
 }
 
-export function lspStopSession(
-  projectPath: string,
-  languageId: string,
-): Promise<void> {
+export function lspStopSession(projectPath: string, languageId: string): Promise<void> {
   return invoke('lsp_stop_session', {
     projectPath,
     languageId,

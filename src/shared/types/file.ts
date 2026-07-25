@@ -1,4 +1,4 @@
-export { DEFAULT_TREE_DEPTH } from "@/features/file/types";
+export { DEFAULT_TREE_DEPTH } from '@/features/file/types';
 export type {
   FileNode,
   FileContent,
@@ -6,4 +6,4 @@ export type {
   FileTab,
   FileChangedEvent,
   FileTreeChangedEvent,
-} from "@/features/file/types";
+} from '@/features/file/types';

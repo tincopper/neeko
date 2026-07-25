@@ -1,4 +1,4 @@
-import type { ProjectEnvironment } from "@/features/project/types";
+import type { ProjectEnvironment } from '@/features/project/types';
 
 export interface ProjectSessionData {
   id: string;

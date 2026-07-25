@@ -181,7 +181,12 @@ const PRDetailView: React.FC<PRDetailViewProps> = ({
           <span className="text-text-muted text-[calc(var(--font-size)-1px)] ml-1">
             #{prNumber}
           </span>
-          <span className={cn('inline-block align-middle ml-1.5 px-1.5 py-[1px] rounded text-[8px] font-semibold uppercase tracking-wide', getStateBadgeClass(prState))}>
+          <span
+            className={cn(
+              'inline-block align-middle ml-1.5 px-1.5 py-[1px] rounded text-[8px] font-semibold uppercase tracking-wide',
+              getStateBadgeClass(prState),
+            )}
+          >
             {prState.toUpperCase()}
           </span>
         </div>
@@ -218,14 +223,22 @@ const PRDetailView: React.FC<PRDetailViewProps> = ({
           {info.mergedBy && info.mergedAt && (
             <>
               <span className="text-border">·</span>
-              <span>merged by <strong className="font-medium text-text-secondary">{info.mergedBy.login}</strong> {formatTimestamp(info.mergedAt)}</span>
+              <span>
+                merged by{' '}
+                <strong className="font-medium text-text-secondary">{info.mergedBy.login}</strong>{' '}
+                {formatTimestamp(info.mergedAt)}
+              </span>
             </>
           )}
 
           {info.closedBy && info.closedAt && !info.mergedBy && (
             <>
               <span className="text-border">·</span>
-              <span>closed by <strong className="font-medium text-text-secondary">{info.closedBy.login}</strong> {formatTimestamp(info.closedAt)}</span>
+              <span>
+                closed by{' '}
+                <strong className="font-medium text-text-secondary">{info.closedBy.login}</strong>{' '}
+                {formatTimestamp(info.closedAt)}
+              </span>
             </>
           )}
 
@@ -236,7 +249,17 @@ const PRDetailView: React.FC<PRDetailViewProps> = ({
             {totalCommits} {totalCommits === 1 ? 'commit' : 'commits'}
           </span>
           <span className="inline-flex items-center gap-0.5 px-1.5 py-[1px] rounded text-[10px] font-medium bg-accent-blue/15 text-accent-blue">
-            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14,2 14,8 20,8"/></svg>
+            <svg
+              width="11"
+              height="11"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+            >
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+              <polyline points="14,2 14,8 20,8" />
+            </svg>
             {totalFiles} {totalFiles === 1 ? 'file' : 'files'}
           </span>
           {totalAdditions > 0 && (

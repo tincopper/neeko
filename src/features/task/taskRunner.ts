@@ -5,12 +5,9 @@
  * Low coupling: no React, no Console panel, no xterm, no terminal feature imports.
  * Extensible: swap backends via taskApi without touching the UI.
  */
-import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 
-import {
-  startTaskProcessSession,
-  stopTaskProcessSession,
-} from "./api/taskApi";
+import { startTaskProcessSession, stopTaskProcessSession } from './api/taskApi';
 
 export interface TaskProcessHandle {
   processId: string;
@@ -35,9 +32,7 @@ const DEFAULT_ROWS = 30;
  * Start a task as a dedicated process (`sh -c` / `cmd /c` via terminal manager).
  * Streams `terminal-output-{id}` into `onOutput` and reports exit via `onExit`.
  */
-export async function startTaskProcess(
-  opts: StartTaskProcessOptions,
-): Promise<TaskProcessHandle> {
+export async function startTaskProcess(opts: StartTaskProcessOptions): Promise<TaskProcessHandle> {
   const cols = opts.cols ?? DEFAULT_COLS;
   const rows = opts.rows ?? DEFAULT_ROWS;
 
@@ -50,7 +45,7 @@ export async function startTaskProcess(
   );
   const processId = session.id;
 
-  const decoder = new TextDecoder("utf-8", { fatal: false });
+  const decoder = new TextDecoder('utf-8', { fatal: false });
   let disposed = false;
   let unlistenOutput: UnlistenFn | null = null;
   let unlistenClosed: UnlistenFn | null = null;
@@ -112,11 +107,11 @@ export function formatTaskHeader(command: string, cwd: string): string {
   const lines = [
     `\x1b[90m────────────────────────────────────────\x1b[0m`,
     `\x1b[36m> ${command}\x1b[0m`,
-    cwd ? `\x1b[90m  cwd: ${cwd}\x1b[0m` : "",
+    cwd ? `\x1b[90m  cwd: ${cwd}\x1b[0m` : '',
     `\x1b[90m────────────────────────────────────────\x1b[0m`,
-    "",
+    '',
   ].filter(Boolean);
-  return `${lines.join("\r\n")}\r\n`;
+  return `${lines.join('\r\n')}\r\n`;
 }
 
 export function formatTaskExit(exitCode: number): string {

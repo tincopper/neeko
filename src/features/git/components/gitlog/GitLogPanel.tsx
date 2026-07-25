@@ -1,8 +1,8 @@
-import React from "react";
-import { cn } from "@/lib/utils";
-import type { CommitEntry, CommitDetail, CommitFileChange } from "@/features/git/types";
-import LogToolbar from "./LogToolbar";
-import CommitList from "./CommitList";
+import React from 'react';
+import { cn } from '@/lib/utils';
+import type { CommitEntry, CommitDetail, CommitFileChange } from '@/features/git/types';
+import LogToolbar from './LogToolbar';
+import CommitList from './CommitList';
 
 interface GitLogPanelProps {
   commits: CommitEntry[];
@@ -68,10 +68,10 @@ const GitLogPanel: React.FC<GitLogPanelProps> = ({
           <button
             type="button"
             className={cn(
-              "px-1.5 py-0.5 rounded text-[calc(var(--font-size)-2px)] font-medium transition-colors duration-150",
+              'px-1.5 py-0.5 rounded text-[calc(var(--font-size)-2px)] font-medium transition-colors duration-150',
               !combined
-                ? "bg-accent-blue/15 text-accent-blue"
-                : "text-text-muted hover:text-text-secondary",
+                ? 'bg-accent-blue/15 text-accent-blue'
+                : 'text-text-muted hover:text-text-secondary',
             )}
             onClick={() => onToggleCombined(false)}
             title="Single-file diff"
@@ -81,10 +81,10 @@ const GitLogPanel: React.FC<GitLogPanelProps> = ({
           <button
             type="button"
             className={cn(
-              "px-1.5 py-0.5 rounded text-[calc(var(--font-size)-2px)] font-medium transition-colors duration-150",
+              'px-1.5 py-0.5 rounded text-[calc(var(--font-size)-2px)] font-medium transition-colors duration-150',
               combined
-                ? "bg-accent-blue/15 text-accent-blue"
-                : "text-text-muted hover:text-text-secondary",
+                ? 'bg-accent-blue/15 text-accent-blue'
+                : 'text-text-muted hover:text-text-secondary',
             )}
             onClick={() => onToggleCombined(true)}
             title="Combined multi-file diff"
@@ -112,7 +112,7 @@ const GitLogPanel: React.FC<GitLogPanelProps> = ({
           loadingMore={loadingMore}
           searchQuery={searchQuery}
           focusedFileIndex={focusedFileIndex}
-          onClearSearch={() => onSearchChange("")}
+          onClearSearch={() => onSearchChange('')}
         />
       </div>
     </div>

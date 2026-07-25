@@ -104,28 +104,15 @@ export function useLspLinkHighlightExtension(
               { clientX: event.clientX, clientY: event.clientY, view },
               async ({ clientX, clientY, view: v }): Promise<LinkProbeHit | false> => {
                 const pos = v.posAtCoords({ x: clientX, y: clientY });
-                const lspPos = resolveLspPositionFromOffset(pos, (p) =>
-                  v.state.doc.lineAt(p),
-                );
+                const lspPos = resolveLspPositionFromOffset(pos, (p) => v.state.doc.lineAt(p));
                 if (pos === null || !lspPos) return false;
 
                 const word = v.state.wordAt(pos);
                 if (!word) return false;
 
-                const key = definitionCacheKey(
-                  projectPath,
-                  uri,
-                  lspPos.line,
-                  lspPos.character,
-                );
+                const key = definitionCacheKey(projectPath, uri, lspPos.line, lspPos.character);
                 const wrapped = await getOrFetchDefinition(key, () =>
-                  lspGoToDefinition(
-                    projectPath!,
-                    languageId!,
-                    uri,
-                    lspPos.line,
-                    lspPos.character,
-                  ),
+                  lspGoToDefinition(projectPath!, languageId!, uri, lspPos.line, lspPos.character),
                 );
 
                 if (!wrapped?.lspResult) return false;

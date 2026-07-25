@@ -3,7 +3,7 @@
  */
 
 export interface CycleTabLayoutSlice {
-  activeGroupId?: "left" | "right";
+  activeGroupId?: 'left' | 'right';
   pinnedTabId?: string | null;
   groups?: {
     left?: { tabIds?: string[]; activeTabId?: string | null };
@@ -21,7 +21,7 @@ export function resolveNextTabId(opts: {
   if (tabIds.length === 0) return null;
 
   const existingIds = new Set(tabIds);
-  const activeGroupId = layout?.activeGroupId ?? "left";
+  const activeGroupId = layout?.activeGroupId ?? 'left';
   const group = layout?.groups?.[activeGroupId];
 
   let orderedIds: string[] =
@@ -53,7 +53,6 @@ export function resolveNextTabId(opts: {
   const currentIndex = orderedIds.indexOf(currentActive);
   if (currentIndex < 0) return null;
 
-  const targetIndex =
-    (currentIndex + direction + orderedIds.length) % orderedIds.length;
+  const targetIndex = (currentIndex + direction + orderedIds.length) % orderedIds.length;
   return orderedIds[targetIndex] ?? null;
 }

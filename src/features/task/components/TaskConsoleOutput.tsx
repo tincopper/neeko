@@ -5,19 +5,16 @@
  * as a terminal emulator (ANSI, scrollback) — never as a PTY host.
  * Mount/unmount does not start or stop the task process.
  */
-import { FitAddon } from "@xterm/addon-fit";
-import { Terminal } from "@xterm/xterm";
-import React, { useEffect, useRef } from "react";
+import { FitAddon } from '@xterm/addon-fit';
+import { Terminal } from '@xterm/xterm';
+import React, { useEffect, useRef } from 'react';
 
-import { useAppContext } from "@/shared/contexts/AppContext";
-import {
-  buildFontFamily,
-  buildTerminalTheme,
-} from "@/shared/utils/terminal";
+import { useAppContext } from '@/shared/contexts/AppContext';
+import { buildFontFamily, buildTerminalTheme } from '@/shared/utils/terminal';
 
-import type { TaskRun } from "../types";
+import type { TaskRun } from '../types';
 
-import "@xterm/xterm/css/xterm.css";
+import '@xterm/xterm/css/xterm.css';
 
 interface Props {
   run: TaskRun;
@@ -41,9 +38,9 @@ function TaskConsoleOutput({ run, active }: Props) {
       convertEol: true,
       disableStdin: true,
       cursorBlink: false,
-      cursorStyle: "underline",
+      cursorStyle: 'underline',
       fontSize: config.terminalFontSize ?? 14,
-      fontFamily: buildFontFamily(config.fontFamily ?? ""),
+      fontFamily: buildFontFamily(config.fontFamily ?? ''),
       theme: buildTerminalTheme(),
       scrollback: 10000,
       allowProposedApi: true,
@@ -122,14 +119,14 @@ function TaskConsoleOutput({ run, active }: Props) {
   return (
     <div
       className="absolute inset-0 flex flex-col min-h-0 min-w-0"
-      style={{ display: active ? "flex" : "none" }}
+      style={{ display: active ? 'flex' : 'none' }}
       data-testid={`task-console-output-${run.id}`}
       data-run-status={run.status}
     >
       <div
         ref={containerRef}
         className="flex-1 min-h-0 min-w-0 overflow-hidden pl-2"
-        style={{ backgroundColor: "var(--terminal-bg, var(--bg-secondary))" }}
+        style={{ backgroundColor: 'var(--terminal-bg, var(--bg-secondary))' }}
       />
     </div>
   );

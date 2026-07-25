@@ -1,9 +1,9 @@
-import React from "react";
+import React from 'react';
 import { cn } from '@/lib/utils';
-import { TerminalIcon, FolderGitIcon } from "@/shared/components/icons";
-import SessionChips from "./SessionChips";
+import { TerminalIcon, FolderGitIcon } from '@/shared/components/icons';
+import SessionChips from './SessionChips';
 
-type SessionKind = "local" | "worktree";
+type SessionKind = 'local' | 'worktree';
 
 interface SessionRowProps {
   kind: SessionKind;
@@ -31,23 +31,23 @@ const SessionRow: React.FC<SessionRowProps> = ({
   onClick,
   trailing,
 }) => {
-  const Icon = kind === "worktree" ? FolderGitIcon : TerminalIcon;
+  const Icon = kind === 'worktree' ? FolderGitIcon : TerminalIcon;
   return (
     <div
       className={cn(
-        "group flex items-center gap-2.5 pl-4 pr-3 py-2 mx-1.5 rounded-md cursor-pointer transition-colors",
-        isActive ? "bg-bg-selected" : "hover:bg-bg-hover",
+        'group flex items-center gap-2.5 pl-4 pr-3 py-2 mx-1.5 rounded-md cursor-pointer transition-colors',
+        isActive ? 'bg-bg-selected' : 'hover:bg-bg-hover',
       )}
       onClick={onClick}
       title={title}
     >
       <span
         className={cn(
-          "w-7 h-7 rounded-md flex items-center justify-center shrink-0",
-          isActive ? "text-text-primary" : "text-text-muted",
+          'w-7 h-7 rounded-md flex items-center justify-center shrink-0',
+          isActive ? 'text-text-primary' : 'text-text-muted',
         )}
         style={{
-          backgroundColor: isActive ? "var(--bg-selected)" : "transparent",
+          backgroundColor: isActive ? 'var(--bg-selected)' : 'transparent',
         }}
       >
         <Icon size={16} />
@@ -56,9 +56,7 @@ const SessionRow: React.FC<SessionRowProps> = ({
         <div className="text-[var(--font-size)] font-semibold text-text-primary truncate">
           {label}
         </div>
-        {branch && (
-          <div className="text-[0.85em] font-mono text-text-muted truncate">{branch}</div>
-        )}
+        {branch && <div className="text-[0.85em] font-mono text-text-muted truncate">{branch}</div>}
       </div>
       <div className="flex items-center gap-2 shrink-0">
         {isActive && ahead !== undefined && <SessionChips.Ahead ahead={ahead} />}

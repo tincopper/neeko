@@ -30,7 +30,15 @@ function createDefaultParams() {
     onCloseTab: vi.fn(),
     shortcuts: {} as Record<string, string>,
     onToggleTerminal: vi.fn(),
-    unifiedItems: [] as { kind: string; id: string; name: string; path: string; has_git_info: boolean; isLast: boolean; isFirstInSection: boolean }[],
+    unifiedItems: [] as {
+      kind: string;
+      id: string;
+      name: string;
+      path: string;
+      has_git_info: boolean;
+      isLast: boolean;
+      isFirstInSection: boolean;
+    }[],
   };
 }
 
@@ -53,7 +61,7 @@ function seedStore(overrides: Record<string, unknown> = {}) {
   };
   const worktreeDefaults = {
     activeWorktreePath: null as string | null,
-    activeWorktreeBranch: "",
+    activeWorktreeBranch: '',
     openedWorktrees: [] as unknown[],
     worktreeStateMap: {} as Record<string, unknown>,
   };
@@ -169,7 +177,12 @@ describe('useKeyboardShortcuts', () => {
   });
 
   it('Ctrl+N 无 worktree 时不崩溃', () => {
-    storeState = seedStore({ ...storeState, activeProjectId: 'p1', isTerminalView: true, openedWorktrees: [] });
+    storeState = seedStore({
+      ...storeState,
+      activeProjectId: 'p1',
+      isTerminalView: true,
+      openedWorktrees: [],
+    });
 
     renderHook(() => useKeyboardShortcuts(params));
 
@@ -181,15 +194,43 @@ describe('useKeyboardShortcuts', () => {
   it('Ctrl+Q 循环到下一个项目', () => {
     storeState = seedStore({
       ...storeState,
-      projects: [createProject({ id: 'p1' }), createProject({ id: 'p2' }), createProject({ id: 'p3' })],
+      projects: [
+        createProject({ id: 'p1' }),
+        createProject({ id: 'p2' }),
+        createProject({ id: 'p3' }),
+      ],
       activeProjectId: 'p1',
     });
     const params = {
       ...createDefaultParams(),
       unifiedItems: [
-        { kind: 'local', id: 'p1', name: 'p1', path: '/tmp/p1', has_git_info: false, isLast: false, isFirstInSection: true },
-        { kind: 'local', id: 'p2', name: 'p2', path: '/tmp/p2', has_git_info: false, isLast: false, isFirstInSection: false },
-        { kind: 'local', id: 'p3', name: 'p3', path: '/tmp/p3', has_git_info: false, isLast: true, isFirstInSection: false },
+        {
+          kind: 'local',
+          id: 'p1',
+          name: 'p1',
+          path: '/tmp/p1',
+          has_git_info: false,
+          isLast: false,
+          isFirstInSection: true,
+        },
+        {
+          kind: 'local',
+          id: 'p2',
+          name: 'p2',
+          path: '/tmp/p2',
+          has_git_info: false,
+          isLast: false,
+          isFirstInSection: false,
+        },
+        {
+          kind: 'local',
+          id: 'p3',
+          name: 'p3',
+          path: '/tmp/p3',
+          has_git_info: false,
+          isLast: true,
+          isFirstInSection: false,
+        },
       ],
     };
 
@@ -209,8 +250,24 @@ describe('useKeyboardShortcuts', () => {
     const params = {
       ...createDefaultParams(),
       unifiedItems: [
-        { kind: 'local', id: 'p1', name: 'p1', path: '/tmp/p1', has_git_info: false, isLast: false, isFirstInSection: true },
-        { kind: 'local', id: 'p2', name: 'p2', path: '/tmp/p2', has_git_info: false, isLast: true, isFirstInSection: false },
+        {
+          kind: 'local',
+          id: 'p1',
+          name: 'p1',
+          path: '/tmp/p1',
+          has_git_info: false,
+          isLast: false,
+          isFirstInSection: true,
+        },
+        {
+          kind: 'local',
+          id: 'p2',
+          name: 'p2',
+          path: '/tmp/p2',
+          has_git_info: false,
+          isLast: true,
+          isFirstInSection: false,
+        },
       ],
     };
 
@@ -224,14 +281,42 @@ describe('useKeyboardShortcuts', () => {
   it('Ctrl+数字键切换到对应项目', () => {
     storeState = seedStore({
       ...storeState,
-      projects: [createProject({ id: 'p1' }), createProject({ id: 'p2' }), createProject({ id: 'p3' })],
+      projects: [
+        createProject({ id: 'p1' }),
+        createProject({ id: 'p2' }),
+        createProject({ id: 'p3' }),
+      ],
     });
     const params = {
       ...createDefaultParams(),
       unifiedItems: [
-        { kind: 'local', id: 'p1', name: 'p1', path: '/tmp/p1', has_git_info: false, isLast: false, isFirstInSection: true },
-        { kind: 'local', id: 'p2', name: 'p2', path: '/tmp/p2', has_git_info: false, isLast: false, isFirstInSection: false },
-        { kind: 'local', id: 'p3', name: 'p3', path: '/tmp/p3', has_git_info: false, isLast: true, isFirstInSection: false },
+        {
+          kind: 'local',
+          id: 'p1',
+          name: 'p1',
+          path: '/tmp/p1',
+          has_git_info: false,
+          isLast: false,
+          isFirstInSection: true,
+        },
+        {
+          kind: 'local',
+          id: 'p2',
+          name: 'p2',
+          path: '/tmp/p2',
+          has_git_info: false,
+          isLast: false,
+          isFirstInSection: false,
+        },
+        {
+          kind: 'local',
+          id: 'p3',
+          name: 'p3',
+          path: '/tmp/p3',
+          has_git_info: false,
+          isLast: true,
+          isFirstInSection: false,
+        },
       ],
     };
 

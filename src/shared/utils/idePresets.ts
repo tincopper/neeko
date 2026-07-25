@@ -1,21 +1,21 @@
-import vscodeIcon from "../../assets/ides/vscode.svg";
-import cursorIcon from "../../assets/ides/cursor.png";
-import zedIcon from "../../assets/ides/zed.png";
-import ideaIcon from "../../assets/ides/idea.svg";
-import golandIcon from "../../assets/ides/goland.svg";
-import rustroverIcon from "../../assets/ides/rustrover.svg";
-import pycharmIcon from "../../assets/ides/pycharm.svg";
-import defaultIdeIcon from "../../assets/ides/default.svg";
+import vscodeIcon from '../../assets/ides/vscode.svg';
+import cursorIcon from '../../assets/ides/cursor.png';
+import zedIcon from '../../assets/ides/zed.png';
+import ideaIcon from '../../assets/ides/idea.svg';
+import golandIcon from '../../assets/ides/goland.svg';
+import rustroverIcon from '../../assets/ides/rustrover.svg';
+import pycharmIcon from '../../assets/ides/pycharm.svg';
+import defaultIdeIcon from '../../assets/ides/default.svg';
 
 const IDE_ICON_MAP: Record<string, string> = {
-  "vscode.svg": vscodeIcon,
-  "cursor.png": cursorIcon,
-  "zed.png": zedIcon,
-  "idea.svg": ideaIcon,
-  "goland.svg": golandIcon,
-  "rustrover.svg": rustroverIcon,
-  "pycharm.svg": pycharmIcon,
-  "default.svg": defaultIdeIcon,
+  'vscode.svg': vscodeIcon,
+  'cursor.png': cursorIcon,
+  'zed.png': zedIcon,
+  'idea.svg': ideaIcon,
+  'goland.svg': golandIcon,
+  'rustrover.svg': rustroverIcon,
+  'pycharm.svg': pycharmIcon,
+  'default.svg': defaultIdeIcon,
 };
 
 /** Resolve IDE icon filename to importable URL. Returns default icon if not found. */
@@ -45,69 +45,69 @@ export interface IdePreset {
 
 export const IDE_PRESETS: IdePreset[] = [
   {
-    id: "vscode",
-    name: "VS Code",
-    command: { windows: "code", macos: "code", linux: "code" },
-    macAppName: "Visual Studio Code",
-    icon: "vscode.svg",
+    id: 'vscode',
+    name: 'VS Code',
+    command: { windows: 'code', macos: 'code', linux: 'code' },
+    macAppName: 'Visual Studio Code',
+    icon: 'vscode.svg',
   },
   {
-    id: "cursor",
-    name: "Cursor",
-    command: { windows: "cursor", macos: "cursor", linux: "cursor" },
-    macAppName: "Cursor",
-    icon: "cursor.png",
+    id: 'cursor',
+    name: 'Cursor',
+    command: { windows: 'cursor', macos: 'cursor', linux: 'cursor' },
+    macAppName: 'Cursor',
+    icon: 'cursor.png',
   },
   {
-    id: "zed",
-    name: "Zed",
-    command: { windows: "zed", macos: "zed", linux: "zed" },
-    macAppName: "Zed",
-    icon: "zed.png",
+    id: 'zed',
+    name: 'Zed',
+    command: { windows: 'zed', macos: 'zed', linux: 'zed' },
+    macAppName: 'Zed',
+    icon: 'zed.png',
   },
   {
-    id: "idea",
-    name: "IntelliJ IDEA",
-    command: { windows: "idea64.exe", macos: "idea", linux: "idea.sh" },
-    macAppName: "IntelliJ IDEA",
-    icon: "idea.svg",
+    id: 'idea',
+    name: 'IntelliJ IDEA',
+    command: { windows: 'idea64.exe', macos: 'idea', linux: 'idea.sh' },
+    macAppName: 'IntelliJ IDEA',
+    icon: 'idea.svg',
   },
   {
-    id: "goland",
-    name: "GoLand",
-    command: { windows: "goland64.exe", macos: "goland", linux: "goland.sh" },
-    macAppName: "GoLand",
-    icon: "goland.svg",
+    id: 'goland',
+    name: 'GoLand',
+    command: { windows: 'goland64.exe', macos: 'goland', linux: 'goland.sh' },
+    macAppName: 'GoLand',
+    icon: 'goland.svg',
   },
   {
-    id: "rustrover",
-    name: "RustRover",
-    command: { windows: "rustrover64.exe", macos: "rustrover", linux: "rustrover.sh" },
-    macAppName: "RustRover",
-    icon: "rustrover.svg",
+    id: 'rustrover',
+    name: 'RustRover',
+    command: { windows: 'rustrover64.exe', macos: 'rustrover', linux: 'rustrover.sh' },
+    macAppName: 'RustRover',
+    icon: 'rustrover.svg',
   },
   {
-    id: "pycharm",
-    name: "PyCharm",
-    command: { windows: "pycharm64.exe", macos: "pycharm", linux: "pycharm.sh" },
-    macAppName: "PyCharm",
-    icon: "pycharm.svg",
+    id: 'pycharm',
+    name: 'PyCharm',
+    command: { windows: 'pycharm64.exe', macos: 'pycharm', linux: 'pycharm.sh' },
+    macAppName: 'PyCharm',
+    icon: 'pycharm.svg',
   },
 ];
 
 // 根据当前平台返回预设命令
 export function getIdeCommand(preset: IdePreset): string {
   const platform = navigator.platform.toLowerCase();
-  if (platform.includes("win")) return preset.command.windows;
-  if (platform.includes("mac")) return preset.command.macos;
+  if (platform.includes('win')) return preset.command.windows;
+  if (platform.includes('mac')) return preset.command.macos;
   return preset.command.linux;
 }
 
 /** Normalize a stored IDE value (path / shim / id) for matching. */
 function normalizeIdeToken(value: string): string {
-  const trimmed = value.trim().replace(/^["']|["']$/g, "");
+  const trimmed = value.trim().replace(/^["']|["']$/g, '');
   const base = trimmed.split(/[/\\]/).pop() ?? trimmed;
-  return base.replace(/\.(exe|cmd|bat|sh)$/i, "").toLowerCase();
+  return base.replace(/\.(exe|cmd|bat|sh)$/i, '').toLowerCase();
 }
 
 /**
@@ -153,11 +153,7 @@ export function resolveIdePreset(
   const token = normalizeIdeToken(raw);
   for (const preset of IDE_PRESETS) {
     if (preset.id.toLowerCase() === token) return preset;
-    for (const cmd of [
-      preset.command.windows,
-      preset.command.macos,
-      preset.command.linux,
-    ]) {
+    for (const cmd of [preset.command.windows, preset.command.macos, preset.command.linux]) {
       if (normalizeIdeToken(cmd) === token) return preset;
     }
   }
@@ -194,7 +190,7 @@ export function getIdeDisplayName(
   commandOrId: string | null | undefined,
   overrides?: Record<string, string>,
 ): string {
-  if (!commandOrId?.trim()) return "IDE";
+  if (!commandOrId?.trim()) return 'IDE';
   const preset = resolveIdePreset(commandOrId, overrides);
   return preset?.name ?? commandOrId.trim();
 }

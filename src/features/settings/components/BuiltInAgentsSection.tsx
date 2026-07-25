@@ -1,9 +1,9 @@
-import React from "react";
+import React from 'react';
 import type { AgentConfig, AppConfig } from '@/shared/types';
 import { getAgentIconSrc } from '@/shared/utils/agents';
 import { cn } from '@/lib/utils';
-import { FolderIcon } from "@/shared/components/icons";
-import { Input } from "@/ui";
+import { FolderIcon } from '@/shared/components/icons';
+import { Input } from '@/ui';
 
 interface BuiltInAgentsSectionProps {
   config: AppConfig;
@@ -47,12 +47,9 @@ const BuiltInAgentsSection: React.FC<BuiltInAgentsSectionProps> = ({
   return (
     <div className="flex flex-col items-start gap-3 py-3 border-b border-white/[0.04] [&:last-child]:border-b-0">
       <div className="flex-1 min-w-0">
-        <div className="text-[0.86em] text-text-primary font-medium mb-0.75">
-          Built-in Agents
-        </div>
+        <div className="text-[0.86em] text-text-primary font-medium mb-0.75">Built-in Agents</div>
         <div className="text-[0.79em] text-text-muted leading-relaxed">
-          Pre-configured AI agent CLIs. Select one when adding a project or from
-          the title bar.
+          Pre-configured AI agent CLIs. Select one when adding a project or from the title bar.
         </div>
       </div>
 
@@ -62,7 +59,7 @@ const BuiltInAgentsSection: React.FC<BuiltInAgentsSectionProps> = ({
           const isEditing = editingPresetId === agent.id;
           const effectiveCmd = getEffectiveAgentCommand(agent);
           const isOverridden = !!config.agentCommandOverrides?.[agent.id];
-          const skillPathValue = agent.skill_path ?? "";
+          const skillPathValue = agent.skill_path ?? '';
           const hasSkillPath = !!skillPathValue;
 
           return (
@@ -76,7 +73,7 @@ const BuiltInAgentsSection: React.FC<BuiltInAgentsSectionProps> = ({
                   />
                 ) : (
                   <span className="text-[0.93em] size-[18px] text-center shrink-0 object-contain">
-                    {""}
+                    {''}
                   </span>
                 )}
 
@@ -93,10 +90,10 @@ const BuiltInAgentsSection: React.FC<BuiltInAgentsSectionProps> = ({
                     onChange={(e) => onEditingValueChange(e.target.value)}
                     onBlur={() => onSaveAgentOverride(agent.id)}
                     onKeyDown={(e) => {
-                      if (e.key === "Enter") {
+                      if (e.key === 'Enter') {
                         onSaveAgentOverride(agent.id);
                       }
-                      if (e.key === "Escape") {
+                      if (e.key === 'Escape') {
                         onCancelPresetEdit();
                       }
                     }}
@@ -104,8 +101,8 @@ const BuiltInAgentsSection: React.FC<BuiltInAgentsSectionProps> = ({
                 ) : (
                   <span
                     className={cn(
-                      "text-text-muted font-mono text-[0.82em] flex-1 min-w-[80px] overflow-hidden text-ellipsis whitespace-nowrap cursor-text rounded py-px px-1 transition-colors duration-150 hover:bg-bg-hover hover:text-text-secondary",
-                      isOverridden && "!text-accent-blue",
+                      'text-text-muted font-mono text-[0.82em] flex-1 min-w-[80px] overflow-hidden text-ellipsis whitespace-nowrap cursor-text rounded py-px px-1 transition-colors duration-150 hover:bg-bg-hover hover:text-text-secondary',
+                      isOverridden && '!text-accent-blue',
                     )}
                     title="Double-click to edit"
                     onDoubleClick={() => onStartEditAgent(agent)}
@@ -131,13 +128,11 @@ const BuiltInAgentsSection: React.FC<BuiltInAgentsSectionProps> = ({
 
               <div className="flex items-center gap-2.5 py-[5px] px-3 pb-2 border-b border-white/[0.03] text-[0.79em] [&:last-child]:border-b-0 bg-bg-secondary/30">
                 <span className="w-[18px] shrink-0" />
-                <span className="text-text-muted min-w-[100px] shrink-0">
-                  Skill Path:
-                </span>
+                <span className="text-text-muted min-w-[100px] shrink-0">Skill Path:</span>
                 <button
                   type="button"
                   className="bg-none border-none text-text-muted cursor-pointer p-1 rounded shrink-0 transition-colors duration-150 hover:text-accent-blue"
-                   title="Select folder"
+                  title="Select folder"
                   onClick={() => onSelectSkillPath(agent)}
                 >
                   <FolderIcon size={14} />
@@ -152,10 +147,10 @@ const BuiltInAgentsSection: React.FC<BuiltInAgentsSectionProps> = ({
                     onChange={(e) => onSkillPathInputValueChange(e.target.value)}
                     onBlur={() => onSaveSkillPath(agent)}
                     onKeyDown={(e) => {
-                      if (e.key === "Enter") {
+                      if (e.key === 'Enter') {
                         onSaveSkillPath(agent);
                       }
-                      if (e.key === "Escape") {
+                      if (e.key === 'Escape') {
                         onCancelSkillPathEdit();
                       }
                     }}
@@ -163,20 +158,13 @@ const BuiltInAgentsSection: React.FC<BuiltInAgentsSectionProps> = ({
                 ) : (
                   <span
                     className={cn(
-                      "text-text-muted font-mono flex-1 overflow-hidden text-ellipsis whitespace-nowrap cursor-text rounded py-px px-1 hover:bg-bg-hover",
-                      !hasSkillPath && "italic",
+                      'text-text-muted font-mono flex-1 overflow-hidden text-ellipsis whitespace-nowrap cursor-text rounded py-px px-1 hover:bg-bg-hover',
+                      !hasSkillPath && 'italic',
                     )}
                     title="Click to edit"
-                    onClick={() =>
-                      onStartEditSkillPath(
-                        agent.id,
-                        skillPathValue || "",
-                      )
-                    }
+                    onClick={() => onStartEditSkillPath(agent.id, skillPathValue || '')}
                   >
-                    {hasSkillPath
-                      ? skillPathValue
-                      : (agent.skill_path || "Not set")}
+                    {hasSkillPath ? skillPathValue : agent.skill_path || 'Not set'}
                   </span>
                 )}
               </div>

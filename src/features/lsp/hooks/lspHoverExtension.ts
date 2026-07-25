@@ -69,38 +69,40 @@ function lspTooltipSource(view: EditorView, pos: number, _side: -1 | 1): Promise
 
   const token = hoverTracker.next();
 
-  return hoverTracker.runIfCurrent(token, () => hoverRequest(plugin, pos)).then((result: any) => {
-    // Stale or empty — do not show a tooltip
-    if (!result || !hoverTracker.isCurrent(token)) return null;
+  return hoverTracker
+    .runIfCurrent(token, () => hoverRequest(plugin, pos))
+    .then((result: any) => {
+      // Stale or empty — do not show a tooltip
+      if (!result || !hoverTracker.isCurrent(token)) return null;
 
-    const tooltip: Tooltip = {
-      pos: result.range ? offsetFromPos(view.state.doc, result.range.start) : pos,
-      end: result.range ? offsetFromPos(view.state.doc, result.range.end) : pos,
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
-      create(_editorView: EditorView): TooltipView {
-        const el = document.createElement('div');
-        el.className = 'cm-lsp-hover-tooltip cm-lsp-documentation';
-        el.innerHTML = plugin.docToHTML(result.contents);
+      const tooltip: Tooltip = {
+        pos: result.range ? offsetFromPos(view.state.doc, result.range.start) : pos,
+        end: result.range ? offsetFromPos(view.state.doc, result.range.end) : pos,
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
+        create(_editorView: EditorView): TooltipView {
+          const el = document.createElement('div');
+          el.className = 'cm-lsp-hover-tooltip cm-lsp-documentation';
+          el.innerHTML = plugin.docToHTML(result.contents);
 
-        // Delegated click handler: intercept <a> clicks and
-        // navigate the app's built-in browser panel instead of
-        // following the link normally.
-        el.addEventListener('click', (e) => {
-          const target = e.target as HTMLElement;
-          const anchor = target.closest('a');
-          if (!anchor?.href) return;
-          e.preventDefault();
-          e.stopPropagation();
-          useBrowserStore.getState().navigateTo(anchor.href);
-          useDockStore.getState().activatePanel('right', 'browser');
-        });
+          // Delegated click handler: intercept <a> clicks and
+          // navigate the app's built-in browser panel instead of
+          // following the link normally.
+          el.addEventListener('click', (e) => {
+            const target = e.target as HTMLElement;
+            const anchor = target.closest('a');
+            if (!anchor?.href) return;
+            e.preventDefault();
+            e.stopPropagation();
+            useBrowserStore.getState().navigateTo(anchor.href);
+            useDockStore.getState().activatePanel('right', 'browser');
+          });
 
-        return { dom: el };
-      },
-      // Deliberately omit `above` — let CodeMirror auto-decide
-      // the direction based on available viewport space.
-      strictSide: false,
-    };
-    return tooltip;
-  });
+          return { dom: el };
+        },
+        // Deliberately omit `above` — let CodeMirror auto-decide
+        // the direction based on available viewport space.
+        strictSide: false,
+      };
+      return tooltip;
+    });
 }

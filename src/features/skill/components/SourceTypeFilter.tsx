@@ -3,7 +3,11 @@ import { HardDrive, GitBranch, Store } from 'lucide-react';
 import { useSkillStore } from '@/features/skill/store';
 import { cn } from '@/lib/utils';
 
-const SOURCES: Array<{ value: 'all' | 'local' | 'git' | 'skillssh'; label: string; icon?: React.ReactNode }> = [
+const SOURCES: Array<{
+  value: 'all' | 'local' | 'git' | 'skillssh';
+  label: string;
+  icon?: React.ReactNode;
+}> = [
   { value: 'all', label: 'All' },
   { value: 'local', label: 'Local', icon: <HardDrive className="h-3 w-3" /> },
   { value: 'git', label: 'Git', icon: <GitBranch className="h-3 w-3" /> },

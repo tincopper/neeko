@@ -1,7 +1,7 @@
-import React from "react";
-import { Settings } from "@/shared/components/icons"
-import neekoIcon from "../../../assets/neeko-icon.png";
-import AgentIcon from "@/features/agent/components/AgentIcon";
+import React from 'react';
+import { Settings } from '@/shared/components/icons';
+import neekoIcon from '../../../assets/neeko-icon.png';
+import AgentIcon from '@/features/agent/components/AgentIcon';
 import type { AgentConfig } from '@/shared/types';
 
 interface ProjectGuidePageProps {
@@ -14,10 +14,9 @@ interface ProjectGuidePageProps {
 }
 
 const ROW_CLASS =
-  "flex items-center gap-3 px-3 py-2 rounded-md bg-transparent border-none text-left cursor-pointer transition-colors duration-150 text-text-secondary hover:bg-white/5 hover:text-text-primary";
+  'flex items-center gap-3 px-3 py-2 rounded-md bg-transparent border-none text-left cursor-pointer transition-colors duration-150 text-text-secondary hover:bg-white/5 hover:text-text-primary';
 
-const ICON_CLASS =
-  "shrink-0 w-6 h-6 flex items-center justify-center opacity-70";
+const ICON_CLASS = 'shrink-0 w-6 h-6 flex items-center justify-center opacity-70';
 
 function ProjectGuidePage({
   selectedAgent,
@@ -38,7 +37,7 @@ function ProjectGuidePage({
       <div className="flex flex-col items-start gap-2">
         <button
           className={ROW_CLASS}
-          style={{ fontSize: "calc(var(--font-size) + 2px)" }}
+          style={{ fontSize: 'calc(var(--font-size) + 2px)' }}
           onClick={onOpenTerminal}
         >
           <span className={ICON_CLASS}>
@@ -62,7 +61,7 @@ function ProjectGuidePage({
         {selectedAgent && (
           <button
             className={ROW_CLASS}
-            style={{ fontSize: "calc(var(--font-size) + 2px)" }}
+            style={{ fontSize: 'calc(var(--font-size) + 2px)' }}
             onClick={onOpenAgent}
           >
             <span className={ICON_CLASS}>
@@ -75,7 +74,7 @@ function ProjectGuidePage({
         {selectedIde && (
           <button
             className={ROW_CLASS}
-            style={{ fontSize: "calc(var(--font-size) + 2px)" }}
+            style={{ fontSize: 'calc(var(--font-size) + 2px)' }}
             onClick={onOpenIde}
           >
             <span className={ICON_CLASS}>
@@ -100,7 +99,7 @@ function ProjectGuidePage({
 
         <button
           className={ROW_CLASS}
-          style={{ fontSize: "calc(var(--font-size) + 2px)" }}
+          style={{ fontSize: 'calc(var(--font-size) + 2px)' }}
           onClick={onOpenSettings}
         >
           <span className={ICON_CLASS}>

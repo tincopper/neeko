@@ -6,10 +6,7 @@ import type {
   ScanReport,
 } from '../types';
 
-export function scanConversations(
-  agentId?: string,
-  projectPath?: string,
-): Promise<ScanReport[]> {
+export function scanConversations(agentId?: string, projectPath?: string): Promise<ScanReport[]> {
   return invoke<ScanReport[]>('scan_conversations', { agentId, projectPath });
 }
 
@@ -34,7 +31,10 @@ export function getConversationMessages(id: string): Promise<ConversationMessage
   return invoke<ConversationMessage[]>('get_conversation_messages', { id });
 }
 
-export function searchConversations(query: string, projectPath?: string): Promise<ConversationMeta[]> {
+export function searchConversations(
+  query: string,
+  projectPath?: string,
+): Promise<ConversationMeta[]> {
   return invoke<ConversationMeta[]>('search_conversations', { query, projectPath });
 }
 
@@ -60,4 +60,3 @@ export interface ConversationScanProgressEvent {
   sessionsFound: number;
   projectPath?: string | null;
 }
-

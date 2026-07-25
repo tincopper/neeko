@@ -1,4 +1,4 @@
-import type { GitInfo } from "@/features/git/types";
+import type { GitInfo } from '@/features/git/types';
 
 export interface WSLProject {
   id: string;

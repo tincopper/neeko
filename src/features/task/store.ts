@@ -1,24 +1,24 @@
-import { create } from "zustand";
+import { create } from 'zustand';
 import {
   getTaskConfigs,
   saveTaskConfig as saveTaskConfigApi,
   deleteTaskConfig as deleteTaskConfigApi,
   discoverTaskConfigs,
   importDiscoveredTask as importDiscoveredTaskApi,
-} from "./api/taskApi";
-import { useProjectStore } from "@/features/project/store";
+} from './api/taskApi';
+import { useProjectStore } from '@/features/project/store';
 import {
   exclusiveOpenTaskConsole,
   registerTaskConsoleCloser,
-} from "@/shared/utils/bottomPanelExclusive";
-import type { DiscoveredTask, TaskConfig, TaskRun } from "@/shared/types/task";
+} from '@/shared/utils/bottomPanelExclusive';
+import type { DiscoveredTask, TaskConfig, TaskRun } from '@/shared/types/task';
 import {
   formatTaskExit,
   formatTaskHeader,
   startTaskProcess,
   stopTaskProcess,
   type TaskProcessHandle,
-} from "./taskRunner";
+} from './taskRunner';
 
 /** Active process handles keyed by run id — outside React so hide/show never touches them. */
 const processHandles = new Map<string, TaskProcessHandle>();
@@ -59,10 +59,7 @@ interface TaskStoreState {
   closeConsoleSession: (id: string) => void;
 }
 
-function filterDiscovered(
-  discovered: DiscoveredTask[],
-  configs: TaskConfig[],
-): DiscoveredTask[] {
+function filterDiscovered(discovered: DiscoveredTask[], configs: TaskConfig[]): DiscoveredTask[] {
   const saved = new Set(configs.map((c) => c.id));
   return discovered.filter((d) => !saved.has(d.id));
 }
@@ -89,7 +86,7 @@ function finalizeRun(runId: string, exitCode: number) {
     consoleSessions: state.consoleSessions.map((s) => {
       if (s.id !== runId) return s;
       // Already finalized (e.g. user Stop) — keep buffer, only fill exit metadata
-      if (s.status !== "running") {
+      if (s.status !== 'running') {
         return {
           ...s,
           processId: null,
@@ -99,7 +96,7 @@ function finalizeRun(runId: string, exitCode: number) {
       }
       return {
         ...s,
-        status: exitCode === 0 ? ("idle" as const) : ("failed" as const),
+        status: exitCode === 0 ? ('idle' as const) : ('failed' as const),
         processId: null,
         exitCode,
         endedAt: Date.now(),
@@ -135,14 +132,14 @@ async function launchProcessForRun(run: TaskRun) {
       ),
     }));
   } catch (e) {
-    console.error("[TaskStore] failed to start task process:", e);
+    console.error('[TaskStore] failed to start task process:', e);
     const msg = `\x1b[31m[Failed to start task: ${String(e)}]\x1b[0m\r\n`;
     useTaskStore.setState((state) => ({
       consoleSessions: state.consoleSessions.map((s) =>
         s.id === run.id
           ? {
               ...s,
-              status: "failed" as const,
+              status: 'failed' as const,
               processId: null,
               exitCode: 1,
               endedAt: Date.now(),
@@ -158,12 +155,12 @@ export const useTaskStore = create<TaskStoreState>((rawSet, get) => {
   /** Wrap set: opening Task Console always closes Debug panel. */
   const set = ((partial: Parameters<typeof rawSet>[0], replace?: boolean) => {
     const next =
-      typeof partial === "function"
+      typeof partial === 'function'
         ? (partial as (s: TaskStoreState) => Partial<TaskStoreState>)(get())
         : partial;
     if (
       next &&
-      typeof next === "object" &&
+      typeof next === 'object' &&
       (next as Partial<TaskStoreState>).consolePanelOpen === true
     ) {
       exclusiveOpenTaskConsole();
@@ -194,7 +191,7 @@ export const useTaskStore = create<TaskStoreState>((rawSet, get) => {
           if (first) set({ selectedConfigId: first.id });
         }
       } catch (e) {
-        console.error("Failed to load task configs:", e);
+        console.error('Failed to load task configs:', e);
       }
     },
 
@@ -216,7 +213,7 @@ export const useTaskStore = create<TaskStoreState>((rawSet, get) => {
           if (first) set({ selectedConfigId: first.id });
         }
       } catch (e) {
-        console.error("Failed to discover tasks:", e);
+        console.error('Failed to discover tasks:', e);
         set({ discovered: [], discovering: false });
       }
     },
@@ -228,7 +225,7 @@ export const useTaskStore = create<TaskStoreState>((rawSet, get) => {
         await get().loadDiscovered(projectPath);
         set({ selectedConfigId: task.id });
       } catch (e) {
-        console.error("Failed to import discovered task:", e);
+        console.error('Failed to import discovered task:', e);
       }
     },
 
@@ -238,7 +235,7 @@ export const useTaskStore = create<TaskStoreState>((rawSet, get) => {
         try {
           await importDiscoveredTaskApi(task, projectPath, projectId);
         } catch (e) {
-          console.error("Failed to import", task.id, e);
+          console.error('Failed to import', task.id, e);
         }
       }
       await get().loadConfigs(projectPath);
@@ -252,7 +249,7 @@ export const useTaskStore = create<TaskStoreState>((rawSet, get) => {
         await get().loadConfigs(projectPath);
         set({ selectedConfigId: config.id });
       } catch (e) {
-        console.error("Failed to save task config:", e);
+        console.error('Failed to save task config:', e);
       }
     },
 
@@ -261,7 +258,7 @@ export const useTaskStore = create<TaskStoreState>((rawSet, get) => {
         await saveTaskConfigApi(config, projectPath ?? null);
         await get().loadConfigs(projectPath);
       } catch (e) {
-        console.error("Failed to update task config:", e);
+        console.error('Failed to update task config:', e);
       }
     },
 
@@ -276,28 +273,25 @@ export const useTaskStore = create<TaskStoreState>((rawSet, get) => {
           set({ selectedConfigId: next?.id ?? null });
         }
       } catch (e) {
-        console.error("Failed to delete task config:", e);
+        console.error('Failed to delete task config:', e);
       }
     },
 
     runTask: (command: string, configId: string) => {
       const activeProject = useProjectStore.getState().activeProject;
       if (!activeProject) {
-        console.error("No active project to run task in");
+        console.error('No active project to run task in');
         return;
       }
 
       const projectId = activeProject.id;
-      const projectPath = activeProject.path ?? "";
+      const projectPath = activeProject.path ?? '';
       const name = resolveTaskName(get, configId, command);
       const sessions = get().consoleSessions;
 
       // Same task already running → focus its console tab (do not spawn a second process)
       const running = sessions.find(
-        (s) =>
-          s.projectId === projectId &&
-          s.configId === configId &&
-          s.status === "running",
+        (s) => s.projectId === projectId && s.configId === configId && s.status === 'running',
       );
       if (running) {
         set({
@@ -313,7 +307,7 @@ export const useTaskStore = create<TaskStoreState>((rawSet, get) => {
         (s) =>
           s.projectId === projectId &&
           s.configId === configId &&
-          (s.status === "idle" || s.status === "failed"),
+          (s.status === 'idle' || s.status === 'failed'),
       );
       if (finished) {
         const header = formatTaskHeader(command, projectPath);
@@ -321,7 +315,7 @@ export const useTaskStore = create<TaskStoreState>((rawSet, get) => {
           ...finished,
           command,
           name,
-          status: "running",
+          status: 'running',
           processId: null,
           output: header,
           exitCode: null,
@@ -348,7 +342,7 @@ export const useTaskStore = create<TaskStoreState>((rawSet, get) => {
         configId,
         name,
         command,
-        status: "running",
+        status: 'running',
         processId: null,
         output: header,
         exitCode: null,
@@ -370,15 +364,15 @@ export const useTaskStore = create<TaskStoreState>((rawSet, get) => {
       const id =
         runId ??
         state.activeConsoleId ??
-        state.consoleSessions.find((s) => s.status === "running")?.id;
+        state.consoleSessions.find((s) => s.status === 'running')?.id;
       if (!id) {
-        console.warn("[TaskStore] stopTask: no run");
+        console.warn('[TaskStore] stopTask: no run');
         return;
       }
 
       const session = state.consoleSessions.find((s) => s.id === id);
-      if (!session || session.status !== "running") {
-        console.warn("[TaskStore] stopTask: run not running", id);
+      if (!session || session.status !== 'running') {
+        console.warn('[TaskStore] stopTask: run not running', id);
         return;
       }
 
@@ -388,9 +382,7 @@ export const useTaskStore = create<TaskStoreState>((rawSet, get) => {
       processHandles.delete(id);
 
       if (processId) {
-        void stopTaskProcess(processId).catch((e) =>
-          console.error("Failed to stop task:", e),
-        );
+        void stopTaskProcess(processId).catch((e) => console.error('Failed to stop task:', e));
       }
 
       // Optimistic UI: mark stopped (exit event may still fire once)
@@ -399,7 +391,7 @@ export const useTaskStore = create<TaskStoreState>((rawSet, get) => {
           s.id === id
             ? {
                 ...s,
-                status: "idle" as const,
+                status: 'idle' as const,
                 processId: null,
                 exitCode: s.exitCode ?? -1,
                 endedAt: Date.now(),

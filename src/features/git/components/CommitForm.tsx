@@ -1,6 +1,6 @@
-import React, { useRef } from "react";
-import { Button } from "@/ui/button";
-import { GitCommitHorizontal, ArrowUp, Sparkles, Loader2 } from "@/shared/components/icons"
+import React, { useRef } from 'react';
+import { Button } from '@/ui/button';
+import { GitCommitHorizontal, ArrowUp, Sparkles, Loader2 } from '@/shared/components/icons';
 
 interface CommitFormProps {
   /** 受控 message 值 */
@@ -32,7 +32,7 @@ const CommitForm: React.FC<CommitFormProps> = ({
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+    if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
       e.preventDefault();
       if (message.trim()) {
         onCommit(message.trim());
@@ -54,7 +54,7 @@ const CommitForm: React.FC<CommitFormProps> = ({
 
   const aiDisabled = loading || aiGenerating || !canAiGenerate;
   const aiTooltip = !canAiGenerate
-    ? "Please select an Agent for the project first (right-click project > Select Agent)"
+    ? 'Please select an Agent for the project first (right-click project > Select Agent)'
     : undefined;
 
   return (
@@ -63,8 +63,16 @@ const CommitForm: React.FC<CommitFormProps> = ({
         <textarea
           ref={textareaRef}
           className="w-full bg-bg-tertiary/60 border-0 rounded-md px-2.5 py-1.5 text-[var(--font-size)] text-text-primary placeholder:text-text-muted resize-none outline-none focus:ring-1 focus:ring-accent-blue/30 transition-all duration-100 font-mono"
-          style={textareaHeight ? { height: textareaHeight, minHeight: textareaHeight } : { minHeight: 100 }}
-          placeholder={aiGenerating ? "AI is generating commit message..." : "Commit message (⌘+Enter to commit)"}
+          style={
+            textareaHeight
+              ? { height: textareaHeight, minHeight: textareaHeight }
+              : { minHeight: 100 }
+          }
+          placeholder={
+            aiGenerating
+              ? 'AI is generating commit message...'
+              : 'Commit message (⌘+Enter to commit)'
+          }
           value={message}
           onChange={(e) => onMessageChange(e.target.value)}
           onKeyDown={handleKeyDown}
@@ -103,11 +111,7 @@ const CommitForm: React.FC<CommitFormProps> = ({
           disabled={aiDisabled}
           title={aiTooltip}
         >
-          {aiGenerating ? (
-            <Loader2 size={12} className="animate-spin" />
-          ) : (
-            <Sparkles size={12} />
-          )}
+          {aiGenerating ? <Loader2 size={12} className="animate-spin" /> : <Sparkles size={12} />}
           AI
         </Button>
       </div>

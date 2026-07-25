@@ -54,11 +54,7 @@ const ConnectionProjectCard: React.FC<ConnectionProjectCardProps> = React.memo(
     const activeWorktreePath = useWorktreeStore((s) => s.activeWorktreePath);
 
     // ahead/behind 仅在 active 项目时显�?
-    const aheadKey = aheadBehindKey(
-      isWsl ? 'wsl' : 'remote',
-      identifier,
-      project.id,
-    );
+    const aheadKey = aheadBehindKey(isWsl ? 'wsl' : 'remote', identifier, project.id);
     const aheadBehind = useGitStore((s) => s.aheadBehind[aheadKey]);
 
     const [collapsed, setCollapsed] = useState(true);

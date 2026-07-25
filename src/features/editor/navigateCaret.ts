@@ -2,8 +2,8 @@
  * Apply go-to-line navigation: selection + scroll + focus + temporary line flash.
  * Without focus the caret does not blink and users cannot see where they landed.
  */
-import { RangeSetBuilder, StateEffect, StateField } from "@codemirror/state";
-import { Decoration, EditorView, type DecorationSet } from "@codemirror/view";
+import { RangeSetBuilder, StateEffect, StateField } from '@codemirror/state';
+import { Decoration, EditorView, type DecorationSet } from '@codemirror/view';
 
 /** 1-based line to flash, or null to clear. */
 export const flashNavLineEffect = StateEffect.define<number | null>();
@@ -20,11 +20,7 @@ const flashNavLineField = StateField.define<DecorationSet>({
         try {
           const lineObj = tr.state.doc.line(line);
           const builder = new RangeSetBuilder<Decoration>();
-          builder.add(
-            lineObj.from,
-            lineObj.from,
-            Decoration.line({ class: "cm-nav-flash-line" }),
-          );
+          builder.add(lineObj.from, lineObj.from, Decoration.line({ class: 'cm-nav-flash-line' }));
           return builder.finish();
         } catch {
           return Decoration.none;
@@ -43,7 +39,7 @@ export interface NavigateCaretOptions {
   /** How long the destination line stays highlighted (ms). Default 1400. */
   flashMs?: number;
   /** Scroll vertical position. Default "center". */
-  y?: "start" | "center" | "end" | "nearest";
+  y?: 'start' | 'center' | 'end' | 'nearest';
 }
 
 let flashClearTimer: ReturnType<typeof setTimeout> | null = null;
@@ -81,15 +77,12 @@ export function applyNavigateCaret(
   const resolved = resolveDocPos(view, line, col);
   if (!resolved) return false;
 
-  const y = opts.y ?? "center";
+  const y = opts.y ?? 'center';
   const flashMs = opts.flashMs ?? 1400;
 
   view.dispatch({
     selection: { anchor: resolved.pos, head: resolved.pos },
-    effects: [
-      EditorView.scrollIntoView(resolved.pos, { y }),
-      flashNavLineEffect.of(resolved.line),
-    ],
+    effects: [EditorView.scrollIntoView(resolved.pos, { y }), flashNavLineEffect.of(resolved.line)],
   });
 
   // Focus after paint so tab-switch mounts still get a blinking caret.

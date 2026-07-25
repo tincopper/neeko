@@ -1,13 +1,13 @@
-import type { DiffHunk, DiffLine, SplitRow } from "./types";
+import type { DiffHunk, DiffLine, SplitRow } from './types';
 
 export interface WordDiffPart {
   value: string;
-  type: "equal" | "added" | "removed";
+  type: 'equal' | 'added' | 'removed';
 }
 
 export function tokenizeForDiff(text: string): string[] {
   const tokens: string[] = [];
-  let current = "";
+  let current = '';
   for (let i = 0; i < text.length; i++) {
     const ch = text[i];
     if (/[a-zA-Z0-9_\u4e00-\u9fff]/.test(ch)) {
@@ -15,7 +15,7 @@ export function tokenizeForDiff(text: string): string[] {
     } else {
       if (current) {
         tokens.push(current);
-        current = "";
+        current = '';
       }
       tokens.push(ch);
     }
@@ -29,9 +29,7 @@ export function tokenizeForDiff(text: string): string[] {
 export function computeLCS(a: string[], b: string[]): boolean[][] {
   const m = a.length;
   const n = b.length;
-  const dp: number[][] = Array.from({ length: m + 1 }, () =>
-    new Array(n + 1).fill(0),
-  );
+  const dp: number[][] = Array.from({ length: m + 1 }, () => new Array(n + 1).fill(0));
 
   for (let i = 1; i <= m; i++) {
     for (let j = 1; j <= n; j++) {
@@ -43,9 +41,7 @@ export function computeLCS(a: string[], b: string[]): boolean[][] {
     }
   }
 
-  const lcs: boolean[][] = Array.from({ length: m }, () =>
-    new Array(n).fill(false),
-  );
+  const lcs: boolean[][] = Array.from({ length: m }, () => new Array(n).fill(false));
   let i = m;
   let j = n;
   while (i > 0 && j > 0) {
@@ -77,33 +73,27 @@ export function computeWordDiff(
 
   while (oi < oldTokens.length || ni < newTokens.length) {
     if (oi < oldTokens.length && ni < newTokens.length && lcs[oi][ni]) {
-      oldParts.push({ value: oldTokens[oi], type: "equal" });
-      newParts.push({ value: newTokens[ni], type: "equal" });
+      oldParts.push({ value: oldTokens[oi], type: 'equal' });
+      newParts.push({ value: newTokens[ni], type: 'equal' });
       oi++;
       ni++;
     } else {
-      let removedChunk = "";
-      while (
-        oi < oldTokens.length &&
-        (ni >= newTokens.length || !lcs[oi][ni])
-      ) {
+      let removedChunk = '';
+      while (oi < oldTokens.length && (ni >= newTokens.length || !lcs[oi][ni])) {
         removedChunk += oldTokens[oi];
         oi++;
       }
       if (removedChunk) {
-        oldParts.push({ value: removedChunk, type: "removed" });
+        oldParts.push({ value: removedChunk, type: 'removed' });
       }
 
-      let addedChunk = "";
-      while (
-        ni < newTokens.length &&
-        (oi >= oldTokens.length || !lcs[oi][ni])
-      ) {
+      let addedChunk = '';
+      while (ni < newTokens.length && (oi >= oldTokens.length || !lcs[oi][ni])) {
         addedChunk += newTokens[ni];
         ni++;
       }
       if (addedChunk) {
-        newParts.push({ value: addedChunk, type: "added" });
+        newParts.push({ value: addedChunk, type: 'added' });
       }
     }
   }
@@ -111,25 +101,25 @@ export function computeWordDiff(
   return { oldParts, newParts };
 }
 
-function getLineType(line: DiffLine): "added" | "removed" | "context" {
+function getLineType(line: DiffLine): 'added' | 'removed' | 'context' {
   if (line.Added !== undefined) {
-    return "added";
+    return 'added';
   }
   if (line.Removed !== undefined) {
-    return "removed";
+    return 'removed';
   }
-  return "context";
+  return 'context';
 }
 
 function getLineContent(line: DiffLine): string {
-  return line.Added ?? line.Removed ?? line.Context ?? "";
+  return line.Added ?? line.Removed ?? line.Context ?? '';
 }
 
 export function buildSplitRows(hunk: DiffHunk): SplitRow[] {
   const rows: SplitRow[] = [];
 
   rows.push({
-    type: "hunk-header",
+    type: 'hunk-header',
     hunkHeader: `@@ -${hunk.old_start},${hunk.old_lines} +${hunk.new_start},${hunk.new_lines} @@`,
   });
 
@@ -141,16 +131,16 @@ export function buildSplitRows(hunk: DiffHunk): SplitRow[] {
     const line = hunk.lines[i];
     const type = getLineType(line);
 
-    if (type === "context") {
+    if (type === 'context') {
       const content = getLineContent(line);
       rows.push({
-        type: "context",
+        type: 'context',
         oldLineNum: oldNum,
         newLineNum: newNum,
         oldContent: content,
         newContent: content,
-        oldType: "context",
-        newType: "context",
+        oldType: 'context',
+        newType: 'context',
       });
       oldNum++;
       newNum++;
@@ -159,10 +149,10 @@ export function buildSplitRows(hunk: DiffHunk): SplitRow[] {
       const removed: DiffLine[] = [];
       const added: DiffLine[] = [];
 
-      while (i < hunk.lines.length && getLineType(hunk.lines[i]) === "removed") {
+      while (i < hunk.lines.length && getLineType(hunk.lines[i]) === 'removed') {
         removed.push(hunk.lines[i++]);
       }
-      while (i < hunk.lines.length && getLineType(hunk.lines[i]) === "added") {
+      while (i < hunk.lines.length && getLineType(hunk.lines[i]) === 'added') {
         added.push(hunk.lines[i++]);
       }
 
@@ -171,13 +161,13 @@ export function buildSplitRows(hunk: DiffHunk): SplitRow[] {
         const r = removed[j];
         const a = added[j];
         rows.push({
-          type: "change",
+          type: 'change',
           oldLineNum: r ? oldNum : undefined,
           newLineNum: a ? newNum : undefined,
           oldContent: r ? getLineContent(r) : undefined,
           newContent: a ? getLineContent(a) : undefined,
-          oldType: r ? "removed" : "empty",
-          newType: a ? "added" : "empty",
+          oldType: r ? 'removed' : 'empty',
+          newType: a ? 'added' : 'empty',
         });
         if (r) {
           oldNum++;

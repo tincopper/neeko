@@ -49,11 +49,7 @@ describe('groupConversationsByDate', () => {
       NOW,
     );
 
-    expect(groups.map((g) => g.label)).toEqual([
-      'Previous 30 Days',
-      'May 2026',
-      'December 2025',
-    ]);
+    expect(groups.map((g) => g.label)).toEqual(['Previous 30 Days', 'May 2026', 'December 2025']);
     expect(groups[1].key).toBe('2026-05');
     expect(groups[2].key).toBe('2025-12');
   });

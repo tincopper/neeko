@@ -28,7 +28,7 @@ const PRCommitList: React.FC<PRCommitListProps> = ({ commits, onCommitClick, loa
     (hash: string) => {
       onCommitClick?.(hash);
     },
-    [onCommitClick]
+    [onCommitClick],
   );
 
   if (loading) {
@@ -64,9 +64,9 @@ const PRCommitList: React.FC<PRCommitListProps> = ({ commits, onCommitClick, loa
         >
           <button
             className={cn(
-              "font-mono text-[calc(var(--font-size)-2px)] px-1.5 py-0.5 rounded shrink-0",
-              "bg-accent-blue/10 text-accent-blue hover:bg-accent-blue/20 transition-colors duration-100",
-              "cursor-pointer border-none"
+              'font-mono text-[calc(var(--font-size)-2px)] px-1.5 py-0.5 rounded shrink-0',
+              'bg-accent-blue/10 text-accent-blue hover:bg-accent-blue/20 transition-colors duration-100',
+              'cursor-pointer border-none',
             )}
             onClick={() => handleCommitClick(commit.hash)}
             title={`View commit ${commit.hash}`}

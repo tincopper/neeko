@@ -1,6 +1,6 @@
-import React from "react";
-import { SearchIcon, RefreshCw } from "@/shared/components/icons";
-import { cn } from "@/lib/utils";
+import React from 'react';
+import { SearchIcon, RefreshCw } from '@/shared/components/icons';
+import { cn } from '@/lib/utils';
 
 interface LogToolbarProps {
   searchQuery: string;
@@ -25,7 +25,7 @@ const LogToolbar: React.FC<LogToolbarProps> = ({
         value={searchQuery}
         onChange={(e) => onSearchChange(e.target.value)}
         onKeyDown={(e) => {
-          if (e.key === "Escape") onSearchChange("");
+          if (e.key === 'Escape') onSearchChange('');
         }}
         aria-label="Filter commits"
       />
@@ -33,7 +33,7 @@ const LogToolbar: React.FC<LogToolbarProps> = ({
         <button
           type="button"
           className="text-text-muted hover:text-text-primary text-[calc(var(--font-size)-2px)] px-1 rounded hover:bg-bg-hover transition-colors"
-          onClick={() => onSearchChange("")}
+          onClick={() => onSearchChange('')}
           title="Clear filter (Esc)"
         >
           ✕
@@ -42,8 +42,8 @@ const LogToolbar: React.FC<LogToolbarProps> = ({
       <button
         type="button"
         className={cn(
-          "p-0.5 rounded text-text-muted hover:text-accent-blue hover:bg-bg-hover transition-colors duration-100",
-          loading && "animate-spin",
+          'p-0.5 rounded text-text-muted hover:text-accent-blue hover:bg-bg-hover transition-colors duration-100',
+          loading && 'animate-spin',
         )}
         title="Refresh"
         onClick={onRefresh}

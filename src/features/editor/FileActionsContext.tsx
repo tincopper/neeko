@@ -1,4 +1,4 @@
-import React, { createContext, useContext } from "react";
+import React, { createContext, useContext } from 'react';
 
 export interface FileActionsContextValue {
   onFileSelect: (filePath: string) => void;
@@ -21,17 +21,13 @@ export function FileActionsProvider({
   value: FileActionsContextValue;
   children: React.ReactNode;
 }) {
-  return (
-    <FileActionsContext.Provider value={value}>
-      {children}
-    </FileActionsContext.Provider>
-  );
+  return <FileActionsContext.Provider value={value}>{children}</FileActionsContext.Provider>;
 }
 
 export function useFileActionsContext() {
   const ctx = useContext(FileActionsContext);
   if (!ctx) {
-    throw new Error("useFileActionsContext must be used within FileActionsProvider");
+    throw new Error('useFileActionsContext must be used within FileActionsProvider');
   }
   return ctx;
 }

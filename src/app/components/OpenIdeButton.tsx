@@ -1,7 +1,7 @@
-import React, { useCallback, useEffect, useRef, useState } from "react";
-import { ChevronDown, Play } from "@/shared/components/icons"
-import { loadConfig } from "@/features/session/api/sessionApi";
-import { useProjectStore } from "@/features/project/store";
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { ChevronDown, Play } from '@/shared/components/icons';
+import { loadConfig } from '@/features/session/api/sessionApi';
+import { useProjectStore } from '@/features/project/store';
 import {
   getIdeCommand,
   getIdeDisplayName,
@@ -10,7 +10,7 @@ import {
   resolveIdeLaunchCommand,
   resolveIdePreset,
   IDE_PRESETS,
-} from "@/shared/utils/idePresets";
+} from '@/shared/utils/idePresets';
 import type { AppConfig } from '@/shared/types';
 
 /**
@@ -34,7 +34,7 @@ function OpenIdeButton() {
   useEffect(() => {
     loadConfig()
       .then((cfg) => setConfig(cfg as unknown as AppConfig))
-      .catch((e) => console.error("[OpenIdeButton] Failed to load config:", e));
+      .catch((e) => console.error('[OpenIdeButton] Failed to load config:', e));
   }, []);
 
   // 点击外部关闭下拉
@@ -45,8 +45,8 @@ function OpenIdeButton() {
         setDropdownOpen(false);
       }
     };
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
   }, [dropdownOpen]);
 
   // 当前活跃项目的 IDE 值（可能是预设 id `vscode` 或启动命令 `code`）
@@ -87,10 +87,10 @@ function OpenIdeButton() {
       for (let i = 0; i < config.customIdes.length; i++) {
         const ide = config.customIdes[i];
         options.push({
-          id: "custom:" + i,
+          id: 'custom:' + i,
           name: ide.name,
           command: ide.command,
-          icon: "",
+          icon: '',
         });
       }
     }
@@ -135,18 +135,10 @@ function OpenIdeButton() {
         <button
           className="flex items-center gap-1.5 pl-1.5 pr-1.5 h-full text-text-primary transition-colors cursor-pointer"
           onClick={handleOpenDefault}
-          title={
-            ideLaunchCommand
-              ? `Open in IDE (${ideLabel})`
-              : "No IDE configured"
-          }
+          title={ideLaunchCommand ? `Open in IDE (${ideLabel})` : 'No IDE configured'}
         >
           {ideStored ? (
-            <img
-              src={ideIconSrc}
-              className="w-3.5 h-3.5 object-contain shrink-0"
-              alt=""
-            />
+            <img src={ideIconSrc} className="w-3.5 h-3.5 object-contain shrink-0" alt="" />
           ) : null}
           <span className="text-[var(--font-size)] text-text-secondary max-w-[80px] truncate">
             {ideLabel}
@@ -179,24 +171,23 @@ function OpenIdeButton() {
             return (
               <div
                 key={option.id}
-                className={"group flex items-center gap-2 px-3 py-2 cursor-pointer transition-colors " + (isCurrent
-                    ? "bg-accent-blue/10 text-accent-blue"
-                    : "hover:bg-bg-hover text-text-primary")}
+                className={
+                  'group flex items-center gap-2 px-3 py-2 cursor-pointer transition-colors ' +
+                  (isCurrent
+                    ? 'bg-accent-blue/10 text-accent-blue'
+                    : 'hover:bg-bg-hover text-text-primary')
+                }
                 onClick={() => handleSelectIde(option.command)}
                 title="Set as default IDE for this project"
               >
                 {option.icon ? (
-                  <img
-                    src={option.icon}
-                    className="w-4 h-4 object-contain shrink-0"
-                    alt=""
-                  />
+                  <img src={option.icon} className="w-4 h-4 object-contain shrink-0" alt="" />
                 ) : (
-                  <span className="w-4 h-4 flex items-center justify-center text-xs shrink-0">💻</span>
+                  <span className="w-4 h-4 flex items-center justify-center text-xs shrink-0">
+                    💻
+                  </span>
                 )}
-                <span className="flex-1 text-[var(--font-size)] truncate">
-                  {option.name}
-                </span>
+                <span className="flex-1 text-[var(--font-size)] truncate">{option.name}</span>
                 <span className="text-[11px] text-text-muted truncate max-w-[80px]">
                   {option.command}
                 </span>
@@ -205,7 +196,7 @@ function OpenIdeButton() {
                   onClick={(e) => handleRunIde(option.command, e)}
                   className="opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center w-5 h-5 rounded text-text-muted hover:text-accent-blue hover:bg-bg-hover shrink-0"
                   title="Open now without changing default"
-                  aria-label={"Open " + option.name + " now"}
+                  aria-label={'Open ' + option.name + ' now'}
                 >
                   <Play size={11} />
                 </button>

@@ -3,11 +3,7 @@
  */
 import type { Tab } from '@/shared/types';
 
-export type TabActivatedListener = (
-  tabKey: string,
-  tabId: string,
-  tab: Tab | undefined,
-) => void;
+export type TabActivatedListener = (tabKey: string, tabId: string, tab: Tab | undefined) => void;
 
 const listeners = new Set<TabActivatedListener>();
 
@@ -18,11 +14,7 @@ export function onTabActivated(listener: TabActivatedListener): () => void {
   };
 }
 
-export function emitTabActivated(
-  tabKey: string,
-  tabId: string,
-  tab: Tab | undefined,
-): void {
+export function emitTabActivated(tabKey: string, tabId: string, tab: Tab | undefined): void {
   for (const l of listeners) {
     try {
       l(tabKey, tabId, tab);

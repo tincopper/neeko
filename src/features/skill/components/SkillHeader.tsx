@@ -15,10 +15,7 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
 } from '@/ui';
-import {
-  skillMenuContentClass,
-  skillMenuItemClass,
-} from './skillMenuStyles';
+import { skillMenuContentClass, skillMenuItemClass } from './skillMenuStyles';
 
 interface SkillHeaderProps {
   onCreateClick: () => void;
@@ -87,17 +84,11 @@ const SkillHeader: React.FC<SkillHeaderProps> = React.memo(
               sideOffset={6}
               className={skillMenuContentClass('w-[200px]')}
             >
-              <DropdownMenuItem
-                className={skillMenuItemClass()}
-                onSelect={onInstallDirectoryClick}
-              >
+              <DropdownMenuItem className={skillMenuItemClass()} onSelect={onInstallDirectoryClick}>
                 <FolderDown className="h-3.5 w-3.5" />
                 <span className="flex-1">From directory</span>
               </DropdownMenuItem>
-              <DropdownMenuItem
-                className={skillMenuItemClass()}
-                onSelect={onInstallGitClick}
-              >
+              <DropdownMenuItem className={skillMenuItemClass()} onSelect={onInstallGitClick}>
                 <GitBranch className="h-3.5 w-3.5" />
                 <span className="flex-1">From Git / GitHub</span>
               </DropdownMenuItem>
@@ -111,7 +102,9 @@ const SkillHeader: React.FC<SkillHeaderProps> = React.memo(
             disabled={scanning}
             className={cn(
               'h-7 px-2.5 text-xs gap-1',
-              scanning ? 'text-text-muted cursor-not-allowed' : 'text-text-secondary hover:text-text-primary hover:bg-bg-hover',
+              scanning
+                ? 'text-text-muted cursor-not-allowed'
+                : 'text-text-secondary hover:text-text-primary hover:bg-bg-hover',
             )}
             title="Scan agent skill directories"
           >
@@ -126,7 +119,9 @@ const SkillHeader: React.FC<SkillHeaderProps> = React.memo(
               disabled={refreshingMeta}
               className={cn(
                 'h-7 px-2.5 text-xs gap-1',
-                refreshingMeta ? 'text-text-muted cursor-not-allowed' : 'text-text-secondary hover:text-text-primary hover:bg-bg-hover',
+                refreshingMeta
+                  ? 'text-text-muted cursor-not-allowed'
+                  : 'text-text-secondary hover:text-text-primary hover:bg-bg-hover',
               )}
               title="Re-read SKILL.md descriptions into the library"
             >

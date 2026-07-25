@@ -74,15 +74,13 @@ export function mapPrLoadError(raw: string): PrLoadErrorView {
     ])
   ) {
     const repoMatch =
-      cleaned.match(/Repository '([^']+)'/i) ||
-      cleaned.match(/with the name '([^']+)'/i);
+      cleaned.match(/Repository '([^']+)'/i) || cleaned.match(/with the name '([^']+)'/i);
     const repo = repoMatch?.[1];
     return {
       title: "Can't access this repository",
       detail: repo
         ? `Repository '${repo}' was not found or you don't have access.`
-        : cleaned ||
-          'Repository was not found or you don\'t have access.',
+        : cleaned || "Repository was not found or you don't have access.",
       hint: 'Check the git remote URL and that your GitHub account has permission (private repos need the correct token scopes).',
       action: 'retry',
     };

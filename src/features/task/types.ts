@@ -2,7 +2,7 @@ export interface TaskConfig {
   id: string;
   name: string;
   command: string;
-  scope: "project" | "app";
+  scope: 'project' | 'app';
   project_id?: string;
 }
 
@@ -17,7 +17,7 @@ export interface DiscoveredTask {
   priority: number;
 }
 
-export type TaskRunStatus = "running" | "idle" | "failed";
+export type TaskRunStatus = 'running' | 'idle' | 'failed';
 
 /**
  * One task *run* shown as a tab in the bottom Console panel.
@@ -48,7 +48,7 @@ export type TaskConsoleSession = TaskRun;
 
 /** @deprecated Prefer TaskRun — kept for residual imports. */
 export interface TaskState {
-  status: "idle" | "running";
+  status: 'idle' | 'running';
   activeConfigId: string | null;
   sessionId: string | null;
   ptySessionId: string | null;

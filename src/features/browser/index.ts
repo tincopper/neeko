@@ -15,8 +15,4 @@ export { default as BrowserPanel } from './components/BrowserPanel';
 export { default as BrowserToolbar } from './components/BrowserToolbar';
 
 // Utils
-export {
-  getThemeColors,
-  isAgentCliTab,
-  formatPickerMessage,
-} from './components/pickerUtils';
+export { getThemeColors, isAgentCliTab, formatPickerMessage } from './components/pickerUtils';

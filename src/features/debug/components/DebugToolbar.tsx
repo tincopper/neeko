@@ -9,13 +9,7 @@ import {
 } from '@/shared/components/icons';
 import { cn } from '@/shared/utils/cn';
 
-export type DebugToolbarAction =
-  | 'continue'
-  | 'next'
-  | 'stepIn'
-  | 'stepOut'
-  | 'pause'
-  | 'stop';
+export type DebugToolbarAction = 'continue' | 'next' | 'stepIn' | 'stepOut' | 'pause' | 'stop';
 
 interface DebugToolbarProps {
   isStopped: boolean;
@@ -91,8 +85,7 @@ function DebugToolbar({
     <div
       className={cn(
         'inline-flex items-center gap-0.5 shrink-0',
-        variant === 'chip' &&
-          'rounded-md border border-border bg-bg-tertiary/60 px-0.5',
+        variant === 'chip' && 'rounded-md border border-border bg-bg-tertiary/60 px-0.5',
         className,
       )}
       role="toolbar"
@@ -128,12 +121,7 @@ function DebugToolbar({
         </ToolBtn>
       )}
       <div className="w-px h-3.5 bg-border/80 mx-1" />
-      <ToolBtn
-        title="Step Over"
-        size={size}
-        disabled={!isStopped}
-        onClick={() => onAction('next')}
-      >
+      <ToolBtn title="Step Over" size={size} disabled={!isStopped} onClick={() => onAction('next')}>
         <Redo2 size={icon} strokeWidth={1.75} />
       </ToolBtn>
       <ToolBtn

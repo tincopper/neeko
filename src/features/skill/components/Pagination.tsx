@@ -1,5 +1,5 @@
-import React from "react";
-import { ChevronLeft, ChevronRight } from "@/shared/components/icons"
+import React from 'react';
+import { ChevronLeft, ChevronRight } from '@/shared/components/icons';
 import { cn } from '@/lib/utils';
 
 interface PaginationProps {
@@ -12,16 +12,16 @@ interface PaginationProps {
   disabled?: boolean;
 }
 
-function getPageNumbers(current: number, total: number): (number | "...")[] {
+function getPageNumbers(current: number, total: number): (number | '...')[] {
   if (total <= 7) {
     return Array.from({ length: total }, (_, i) => i + 1);
   }
 
-  const pages: (number | "...")[] = [];
+  const pages: (number | '...')[] = [];
   pages.push(1);
 
   if (current > 3) {
-    pages.push("...");
+    pages.push('...');
   }
 
   const start = Math.max(2, current - 1);
@@ -31,7 +31,7 @@ function getPageNumbers(current: number, total: number): (number | "...")[] {
   }
 
   if (current < total - 2) {
-    pages.push("...");
+    pages.push('...');
   }
 
   pages.push(total);
@@ -57,15 +57,15 @@ const Pagination: React.FC<PaginationProps> = React.memo(
             onClick={() => onPageChange(page - 1)}
             disabled={disabled || page <= 1}
             className={cn(
-              "p-1 rounded transition-colors text-text-secondary hover:text-text-primary hover:bg-bg-hover",
-              (disabled || page <= 1) && "opacity-30 cursor-not-allowed"
+              'p-1 rounded transition-colors text-text-secondary hover:text-text-primary hover:bg-bg-hover',
+              (disabled || page <= 1) && 'opacity-30 cursor-not-allowed',
             )}
           >
             <ChevronLeft className="h-3.5 w-3.5" />
           </button>
 
           {pageNumbers.map((p, i) =>
-            p === "..." ? (
+            p === '...' ? (
               <span key={`ellipsis-${i}`} className="px-1 text-[11px] text-text-muted">
                 ...
               </span>
@@ -75,24 +75,24 @@ const Pagination: React.FC<PaginationProps> = React.memo(
                 onClick={() => onPageChange(p)}
                 disabled={disabled}
                 className={cn(
-                  "min-w-[24px] h-6 text-[11px] rounded transition-colors",
+                  'min-w-[24px] h-6 text-[11px] rounded transition-colors',
                   p === page
-                    ? "bg-bg-selected text-text-primary font-medium"
-                    : "text-text-secondary hover:text-text-primary hover:bg-bg-hover",
-                  disabled && "opacity-50 cursor-not-allowed"
+                    ? 'bg-bg-selected text-text-primary font-medium'
+                    : 'text-text-secondary hover:text-text-primary hover:bg-bg-hover',
+                  disabled && 'opacity-50 cursor-not-allowed',
                 )}
               >
                 {p}
               </button>
-            )
+            ),
           )}
 
           <button
             onClick={() => onPageChange(page + 1)}
             disabled={disabled || page >= totalPages}
             className={cn(
-              "p-1 rounded transition-colors text-text-secondary hover:text-text-primary hover:bg-bg-hover",
-              (disabled || page >= totalPages) && "opacity-30 cursor-not-allowed"
+              'p-1 rounded transition-colors text-text-secondary hover:text-text-primary hover:bg-bg-hover',
+              (disabled || page >= totalPages) && 'opacity-30 cursor-not-allowed',
             )}
           >
             <ChevronRight className="h-3.5 w-3.5" />
@@ -114,9 +114,9 @@ const Pagination: React.FC<PaginationProps> = React.memo(
         </div>
       </div>
     );
-  }
+  },
 );
 
-Pagination.displayName = "Pagination";
+Pagination.displayName = 'Pagination';
 
 export default Pagination;

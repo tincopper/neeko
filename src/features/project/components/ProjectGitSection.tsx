@@ -1,7 +1,7 @@
-import React, { useMemo } from "react";
+import React, { useMemo } from 'react';
 import type { Project } from '@/shared/types';
-import WorktreeList from "./WorktreeList";
-import SessionRow from "./SessionRow";
+import WorktreeList from './WorktreeList';
+import SessionRow from './SessionRow';
 import { useWorktreeStore } from '@/features/project/worktreeStore';
 import { useGitStore } from '@/features/git/store';
 import { aheadBehindKey } from '@/shared/utils/aheadBehindKey';
@@ -15,7 +15,7 @@ interface ProjectGitSectionProps {
     onSelectProject: (projectId: string) => void;
     onRefreshGit: (projectId: string) => void;
     onOpenWorktreeTerminal?: (projectId: string, worktreePath: string, branch: string) => void;
-    onShowToast?: (message: string, type?: "info" | "error") => void;
+    onShowToast?: (message: string, type?: 'info' | 'error') => void;
   };
 }
 
@@ -30,7 +30,7 @@ function ProjectGitSection({ project, isActive, shortcut, actions }: ProjectGitS
   const worktrees = project.git_info?.worktrees ?? [];
   const activeWorktreePath = useWorktreeStore((s) => s.activeWorktreePath);
   const aheadBehind = useGitStore(
-    (s) => s.aheadBehind[aheadBehindKey("local", project.id, project.id)],
+    (s) => s.aheadBehind[aheadBehindKey('local', project.id, project.id)],
   );
 
   // local 主终端的 +A -D = project.changed_files 聚合

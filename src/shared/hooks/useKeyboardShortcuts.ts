@@ -1,20 +1,20 @@
-import { useEffect, useRef } from "react";
-import { refreshTerminal, terminalCacheKey } from "@/features/terminal/components/terminalCache";
-import { useProjectStore } from "@/features/project/store";
-import { useWorktreeStore } from "@/features/project/worktreeStore";
+import { useEffect, useRef } from 'react';
+import { refreshTerminal, terminalCacheKey } from '@/features/terminal/components/terminalCache';
+import { useProjectStore } from '@/features/project/store';
+import { useWorktreeStore } from '@/features/project/worktreeStore';
 import { useEditorStore } from '@/shared/store';
 import { useDockStore } from '@/shared/store/dockStore';
-import { buildWorktreeTabKey } from "@/shared/utils/tabKey";
-import { useNavHistoryStore } from "@/features/editor/navigationHistoryStore";
-import { useQuickOpenStore } from "@/features/quick-open";
+import { buildWorktreeTabKey } from '@/shared/utils/tabKey';
+import { useNavHistoryStore } from '@/features/editor/navigationHistoryStore';
+import { useQuickOpenStore } from '@/features/quick-open';
 import {
   resolveBindings,
   matchesBinding,
   SHORTCUT_ACTIONS,
   getShortcutAction,
-} from "@/shared/utils/shortcutRegistry";
-import { resolveNextTabId } from "@/shared/utils/cycleEditorTab";
-import type { ProjectListItem } from "@/features/project/hooks/useProjectList";
+} from '@/shared/utils/shortcutRegistry';
+import { resolveNextTabId } from '@/shared/utils/cycleEditorTab';
+import type { ProjectListItem } from '@/features/project/hooks/useProjectList';
 
 interface UseKeyboardShortcutsParams {
   updateWtPath: (path: string | null, branch: string) => void;
@@ -26,24 +26,24 @@ interface UseKeyboardShortcutsParams {
 
 /** Global (non-editor-focused) actions handled here. Editor-scoped keys live in CodeMirror. */
 const GLOBAL_ACTION_IDS = new Set([
-  "cycleWorktree",
-  "openIde",
-  "refreshTerminal",
-  "closeTab",
-  "prevTab",
-  "nextTab",
-  "switchTabNext",
-  "switchTabPrev",
-  "cycleProject",
-  "switchProject",
-  "toggleDockProjects",
-  "toggleDockSkills",
-  "navigateBack",
-  "navigateForward",
-  "gotoFile",
-  "recentFiles",
-  "splitRight",
-  "unsplitEditor",
+  'cycleWorktree',
+  'openIde',
+  'refreshTerminal',
+  'closeTab',
+  'prevTab',
+  'nextTab',
+  'switchTabNext',
+  'switchTabPrev',
+  'cycleProject',
+  'switchProject',
+  'toggleDockProjects',
+  'toggleDockSkills',
+  'navigateBack',
+  'navigateForward',
+  'gotoFile',
+  'recentFiles',
+  'splitRight',
+  'unsplitEditor',
 ]);
 
 export function useKeyboardShortcuts({
@@ -62,8 +62,8 @@ export function useKeyboardShortcuts({
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (
-        document.querySelector("[data-modal]") ||
-        document.querySelector("[data-settings-view]")
+        document.querySelector('[data-modal]') ||
+        document.querySelector('[data-settings-view]')
       ) {
         return;
       }
@@ -71,16 +71,12 @@ export function useKeyboardShortcuts({
       const bindings = resolveBindings(shortcutsRef.current);
       const inEditable = isEditableKeyboardTarget(e.target);
       // Quick Open is not data-modal so Ctrl+Tab can keep cycling the switcher.
-      const quickOpenOpen = !!document.querySelector("[data-quick-open]");
+      const quickOpenOpen = !!document.querySelector('[data-quick-open]');
 
       for (const action of SHORTCUT_ACTIONS) {
         if (!GLOBAL_ACTION_IDS.has(action.id)) continue;
 
-        if (
-          quickOpenOpen &&
-          action.id !== "switchTabNext" &&
-          action.id !== "switchTabPrev"
-        ) {
+        if (quickOpenOpen && action.id !== 'switchTabNext' && action.id !== 'switchTabPrev') {
           continue;
         }
 
@@ -96,7 +92,7 @@ export function useKeyboardShortcuts({
         }
 
         switch (action.id) {
-          case "cycleWorktree": {
+          case 'cycleWorktree': {
             e.preventDefault();
             const proj = useProjectStore.getState();
             const wt = useWorktreeStore.getState();
@@ -109,7 +105,7 @@ export function useKeyboardShortcuts({
             } else {
               const idx = opened.findIndex((w) => w.path === cur);
               if (idx === opened.length - 1) {
-                updateWtPath(null, "");
+                updateWtPath(null, '');
               } else {
                 updateWtPath(opened[idx + 1].path, opened[idx + 1].branch);
               }
@@ -117,7 +113,7 @@ export function useKeyboardShortcuts({
             break;
           }
 
-          case "openIde": {
+          case 'openIde': {
             const p = useProjectStore.getState().activeProject;
             if (p) {
               e.preventDefault();
@@ -127,7 +123,7 @@ export function useKeyboardShortcuts({
             break;
           }
 
-          case "refreshTerminal": {
+          case 'refreshTerminal': {
             e.preventDefault();
             const proj = useProjectStore.getState();
             if (proj.activeProjectId && proj.isTerminalView) {
@@ -137,94 +133,94 @@ export function useKeyboardShortcuts({
             break;
           }
 
-          case "closeTab": {
+          case 'closeTab': {
             e.preventDefault();
             const tabId = activeTabIdRef.current;
             if (tabId) onCloseTab(tabId);
             break;
           }
 
-          case "prevTab": {
+          case 'prevTab': {
             e.preventDefault();
             cycleTab(-1);
             break;
           }
 
-          case "nextTab": {
+          case 'nextTab': {
             e.preventDefault();
             cycleTab(1);
             break;
           }
 
-          case "switchTabNext": {
+          case 'switchTabNext': {
             e.preventDefault();
             e.stopPropagation();
             useQuickOpenStore.getState().cycleTabSwitcher(1);
             break;
           }
 
-          case "switchTabPrev": {
+          case 'switchTabPrev': {
             e.preventDefault();
             e.stopPropagation();
             useQuickOpenStore.getState().cycleTabSwitcher(-1);
             break;
           }
 
-          case "gotoFile": {
+          case 'gotoFile': {
             e.preventDefault();
-            useQuickOpenStore.getState().openPalette("gotoFile");
+            useQuickOpenStore.getState().openPalette('gotoFile');
             break;
           }
 
-          case "recentFiles": {
+          case 'recentFiles': {
             e.preventDefault();
-            useQuickOpenStore.getState().openPalette("recentFiles");
+            useQuickOpenStore.getState().openPalette('recentFiles');
             break;
           }
 
-          case "splitRight": {
+          case 'splitRight': {
             e.preventDefault();
             splitActiveTabRight();
             break;
           }
 
-          case "unsplitEditor": {
+          case 'unsplitEditor': {
             e.preventDefault();
             unsplitActiveEditor();
             break;
           }
 
-          case "navigateBack": {
+          case 'navigateBack': {
             e.preventDefault();
             void useNavHistoryStore.getState().goBack();
             break;
           }
 
-          case "navigateForward": {
+          case 'navigateForward': {
             e.preventDefault();
             void useNavHistoryStore.getState().goForward();
             break;
           }
 
-          case "toggleDockProjects": {
+          case 'toggleDockProjects': {
             e.preventDefault();
-            useDockStore.getState().togglePanel("projects");
+            useDockStore.getState().togglePanel('projects');
             break;
           }
 
-          case "toggleDockSkills": {
+          case 'toggleDockSkills': {
             e.preventDefault();
-            useDockStore.getState().togglePanel("skills");
+            useDockStore.getState().togglePanel('skills');
             break;
           }
 
-          case "cycleProject":
-          case "switchProject": {
+          case 'cycleProject':
+          case 'switchProject': {
             e.preventDefault();
             if (unifiedItems.length === 0) break;
 
             let targetIdx: number;
-            if (action.id === "cycleProject") {
+            if (action.id === 'cycleProject') {
               const currentIdx = findCurrentIndex(unifiedItems);
               targetIdx = currentIdx < 0 ? 0 : (currentIdx + 1) % unifiedItems.length;
             } else if (result.digit !== undefined && result.digit >= 1) {
@@ -243,8 +239,8 @@ export function useKeyboardShortcuts({
       }
     };
 
-    window.addEventListener("keydown", handleKeyDown, true);
-    return () => window.removeEventListener("keydown", handleKeyDown, true);
+    window.addEventListener('keydown', handleKeyDown, true);
+    return () => window.removeEventListener('keydown', handleKeyDown, true);
   }, [updateWtPath, onCloseTab, unifiedItems]);
 }
 
@@ -259,12 +255,12 @@ export function isEditableKeyboardTarget(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false;
 
   // CodeMirror / similar code surfaces — allow global app chords.
-  if (target.closest(".cm-editor, .cm-content, [data-code-editor]")) {
+  if (target.closest('.cm-editor, .cm-content, [data-code-editor]')) {
     return false;
   }
 
   const tag = target.tagName;
-  if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return true;
+  if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return true;
   if (target.isContentEditable) return true;
   if (target.closest("input, textarea, select, [contenteditable=true], [role='textbox']")) {
     return true;
@@ -288,9 +284,7 @@ function resolveActiveTabKey(): string | null {
   const currentProjectId = proj.activeProjectId ?? null;
   if (!currentProjectId) return null;
   const worktreePath = wt.activeWorktreePath ?? null;
-  return worktreePath
-    ? buildWorktreeTabKey(currentProjectId, worktreePath)
-    : currentProjectId;
+  return worktreePath ? buildWorktreeTabKey(currentProjectId, worktreePath) : currentProjectId;
 }
 
 /** Cycle tabs in the focused editor group (IDEA Alt+Left/Right). */

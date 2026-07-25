@@ -1,11 +1,11 @@
-import React, { useMemo, useState, useCallback } from "react";
+import React, { useMemo, useState, useCallback } from 'react';
 import type { FileChange } from '@/shared/types';
 import { cn } from '@/lib/utils';
-import { Checkbox } from "@/ui/checkbox";
-import { Badge } from "@/ui/badge";
-import { ChevronRightIcon } from "@/shared/components/icons";
-import { Undo2, Plus, ListPlus } from "@/shared/components/icons"
-import { fileIconSrc } from "@/shared/utils/fileIcons";
+import { Checkbox } from '@/ui/checkbox';
+import { Badge } from '@/ui/badge';
+import { ChevronRightIcon } from '@/shared/components/icons';
+import { Undo2, Plus, ListPlus } from '@/shared/components/icons';
+import { fileIconSrc } from '@/shared/utils/fileIcons';
 
 interface ChangesListProps {
   files: FileChange[];
@@ -18,14 +18,14 @@ interface ChangesListProps {
   loading: boolean;
 }
 
-type FilterStatus = "all" | "Modified" | "Added" | "Deleted" | "Renamed";
+type FilterStatus = 'all' | 'Modified' | 'Added' | 'Deleted' | 'Renamed';
 
 const STATUS_LABELS: Record<FilterStatus, string> = {
-  all: "All",
-  Modified: "M",
-  Added: "A",
-  Deleted: "D",
-  Renamed: "R",
+  all: 'All',
+  Modified: 'M',
+  Added: 'A',
+  Deleted: 'D',
+  Renamed: 'R',
 };
 
 const ChangesList: React.FC<ChangesListProps> = ({
@@ -40,20 +40,14 @@ const ChangesList: React.FC<ChangesListProps> = ({
 }) => {
   const [changesExpanded, setChangesExpanded] = useState(true);
   const [unversionedExpanded, setUnversionedExpanded] = useState(true);
-  const [filter, setFilter] = useState<FilterStatus>("all");
+  const [filter, setFilter] = useState<FilterStatus>('all');
 
-  const trackedFiles = useMemo(
-    () => files.filter((f) => f.status !== "Untracked"),
-    [files],
-  );
+  const trackedFiles = useMemo(() => files.filter((f) => f.status !== 'Untracked'), [files]);
 
-  const untrackedFiles = useMemo(
-    () => files.filter((f) => f.status === "Untracked"),
-    [files],
-  );
+  const untrackedFiles = useMemo(() => files.filter((f) => f.status === 'Untracked'), [files]);
 
   const filteredTrackedFiles = useMemo(() => {
-    if (filter === "all") return trackedFiles;
+    if (filter === 'all') return trackedFiles;
     return trackedFiles.filter((f) => f.status === filter);
   }, [trackedFiles, filter]);
 
@@ -111,22 +105,20 @@ const ChangesList: React.FC<ChangesListProps> = ({
           loading={loading}
           filter={
             <div className="flex items-center gap-1">
-              {(["all", "Modified", "Added", "Deleted", "Renamed"] as FilterStatus[]).map(
-                (s) => (
-                  <button
-                    key={s}
-                    className={cn(
-                      "text-[calc(var(--font-size)-2px)] px-1.5 py-0.5 rounded transition-colors duration-100",
-                      filter === s
-                        ? "bg-bg-tertiary text-text-primary"
-                        : "text-text-muted hover:text-text-secondary",
-                    )}
-                    onClick={() => setFilter(s)}
-                  >
-                    {STATUS_LABELS[s]}
-                  </button>
-                ),
-              )}
+              {(['all', 'Modified', 'Added', 'Deleted', 'Renamed'] as FilterStatus[]).map((s) => (
+                <button
+                  key={s}
+                  className={cn(
+                    'text-[calc(var(--font-size)-2px)] px-1.5 py-0.5 rounded transition-colors duration-100',
+                    filter === s
+                      ? 'bg-bg-tertiary text-text-primary'
+                      : 'text-text-muted hover:text-text-secondary',
+                  )}
+                  onClick={() => setFilter(s)}
+                >
+                  {STATUS_LABELS[s]}
+                </button>
+              ))}
             </div>
           }
         />
@@ -217,15 +209,12 @@ const Section: React.FC<SectionProps> = ({
         <ChevronRightIcon
           size={9}
           className={cn(
-            "text-[0.6em] w-2.5 shrink-0 transition-transform duration-150 text-text-muted cursor-pointer",
-            expanded && "rotate-90",
+            'text-[0.6em] w-2.5 shrink-0 transition-transform duration-150 text-text-muted cursor-pointer',
+            expanded && 'rotate-90',
           )}
           onClick={onToggle}
         />
-        <Checkbox
-          checked={allSelected}
-          onCheckedChange={onSelectAll}
-        />
+        <Checkbox checked={allSelected} onCheckedChange={onSelectAll} />
         <span
           className="text-[calc(var(--font-size)-2px)] font-semibold uppercase tracking-[0.06em] text-text-muted cursor-pointer hover:text-text-secondary"
           onClick={onToggle}
@@ -233,13 +222,17 @@ const Section: React.FC<SectionProps> = ({
           {title} ({count})
         </span>
         {additions != null && additions > 0 && (
-          <span className="text-[#3fb950] text-[calc(var(--font-size)-2px)] font-semibold">+{additions}</span>
+          <span className="text-[#3fb950] text-[calc(var(--font-size)-2px)] font-semibold">
+            +{additions}
+          </span>
         )}
         {deletions != null && deletions > 0 && (
-          <span className="text-[#f85149] text-[calc(var(--font-size)-2px)] font-semibold">-{deletions}</span>
+          <span className="text-[#f85149] text-[calc(var(--font-size)-2px)] font-semibold">
+            -{deletions}
+          </span>
         )}
         {filter && <span className="ml-auto">{filter}</span>}
-        {headerAction && <span className={cn(!filter && "ml-auto")}>{headerAction}</span>}
+        {headerAction && <span className={cn(!filter && 'ml-auto')}>{headerAction}</span>}
       </div>
 
       {/* File list */}
@@ -251,10 +244,10 @@ const Section: React.FC<SectionProps> = ({
               <div
                 key={file.path}
                 className={cn(
-                  "flex items-center gap-2 py-0.5 px-2.5 text-[var(--font-size)] transition-colors duration-100 group cursor-pointer",
+                  'flex items-center gap-2 py-0.5 px-2.5 text-[var(--font-size)] transition-colors duration-100 group cursor-pointer',
                   isSelected
-                    ? "bg-bg-selected text-text-primary"
-                    : "text-text-secondary hover:bg-bg-hover",
+                    ? 'bg-bg-selected text-text-primary'
+                    : 'text-text-secondary hover:bg-bg-hover',
                 )}
                 onClick={() => onFileSelect?.(file.path)}
               >
@@ -275,26 +268,24 @@ const Section: React.FC<SectionProps> = ({
                 </span>
                 <Badge
                   variant={
-                    file.status === "Added"
-                      ? "added"
-                      : file.status === "Deleted"
-                        ? "deleted"
-                        : file.status === "Modified"
-                          ? "modified"
-                          : "default"
+                    file.status === 'Added'
+                      ? 'added'
+                      : file.status === 'Deleted'
+                        ? 'deleted'
+                        : file.status === 'Modified'
+                          ? 'modified'
+                          : 'default'
                   }
                   className="rounded-sm border-0 px-1 py-0 text-[calc(var(--font-size)-2px)]"
                 >
-                  {file.status === "Untracked"
-                    ? "U"
-                    : file.status[0]}
+                  {file.status === 'Untracked' ? 'U' : file.status[0]}
                 </Badge>
                 {(file.additions > 0 || file.deletions > 0) && (
                   <span className="text-[calc(var(--font-size)-2px)] font-mono shrink-0">
                     {file.additions > 0 && (
                       <span className="text-accent-green">+{file.additions}</span>
                     )}
-                    {file.additions > 0 && file.deletions > 0 && " "}
+                    {file.additions > 0 && file.deletions > 0 && ' '}
                     {file.deletions > 0 && (
                       <span className="text-accent-red">-{file.deletions}</span>
                     )}

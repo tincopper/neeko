@@ -1,5 +1,15 @@
 import { useCallback, useEffect, useRef } from 'react';
-import { createBrowserWebview, browserNavigate, browserGoBack, browserGoForward, browserOpenDevtools, browserClose, browserSetVisible, browserSetBounds, openInDefaultBrowser } from '../api/browserApi';
+import {
+  createBrowserWebview,
+  browserNavigate,
+  browserGoBack,
+  browserGoForward,
+  browserOpenDevtools,
+  browserClose,
+  browserSetVisible,
+  browserSetBounds,
+  openInDefaultBrowser,
+} from '../api/browserApi';
 import { listen } from '@tauri-apps/api/event';
 import { useBrowserStore } from '../store';
 import { useDockStore } from '@/shared/store/dockStore';
@@ -260,7 +270,11 @@ export function useBrowserPanel({ showToast }: UseBrowserPanelOptions) {
       setUrl(event.payload);
       setLoading(true);
     }).then((fn) => {
-      if (cancelled) { fn(); } else { unlisten = fn; }
+      if (cancelled) {
+        fn();
+      } else {
+        unlisten = fn;
+      }
     });
 
     return () => {
@@ -279,7 +293,11 @@ export function useBrowserPanel({ showToast }: UseBrowserPanelOptions) {
       setUrl(event.payload);
       setLoading(false);
     }).then((fn) => {
-      if (cancelled) { fn(); } else { unlisten = fn; }
+      if (cancelled) {
+        fn();
+      } else {
+        unlisten = fn;
+      }
     });
 
     return () => {
@@ -302,7 +320,11 @@ export function useBrowserPanel({ showToast }: UseBrowserPanelOptions) {
         setUrl(newUrl);
       }
     }).then((fn) => {
-      if (cancelled) { fn(); } else { unlisten = fn; }
+      if (cancelled) {
+        fn();
+      } else {
+        unlisten = fn;
+      }
     });
 
     return () => {
@@ -326,7 +348,10 @@ export function useBrowserPanel({ showToast }: UseBrowserPanelOptions) {
       const projectState = useProjectStore.getState();
       const editorState = useEditorStore.getState();
       const projectId = projectState.activeProjectId;
-      if (!projectId) { reinjectPicker(); return; }
+      if (!projectId) {
+        reinjectPicker();
+        return;
+      }
       const projectTabs = editorState.tabs[projectId];
       if (!isAgentCliTab(projectTabs, editorState.activeTabId)) {
         showToastRef.current('Please switch to an Agent CLI tab', 'error');
@@ -340,7 +365,11 @@ export function useBrowserPanel({ showToast }: UseBrowserPanelOptions) {
       armAutoRefresh();
       reinjectPicker();
     }).then((fn) => {
-      if (cancelled) { fn(); } else { unlisten = fn; }
+      if (cancelled) {
+        fn();
+      } else {
+        unlisten = fn;
+      }
     });
 
     return () => {
@@ -363,7 +392,11 @@ export function useBrowserPanel({ showToast }: UseBrowserPanelOptions) {
       // Trigger refresh and disarm
       refreshRef.current();
     }).then((fn) => {
-      if (cancelled) { fn(); } else { unlisten = fn; }
+      if (cancelled) {
+        fn();
+      } else {
+        unlisten = fn;
+      }
     });
 
     return () => {
@@ -415,7 +448,7 @@ export function useBrowserPanel({ showToast }: UseBrowserPanelOptions) {
       }
     });
     return () => unsubscribe();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Listen to dock panel changes, control webview visibility.

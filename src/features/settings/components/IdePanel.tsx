@@ -1,9 +1,9 @@
-import React from "react";
+import React from 'react';
 import type { AppConfig } from '@/shared/types';
 import type { IdePreset } from '@/shared/utils/idePresets';
 import { IDE_PRESETS, getIdeIconSrc } from '@/shared/utils/idePresets';
 import { cn } from '@/lib/utils';
-import { Input, Button } from "@/ui";
+import { Input, Button } from '@/ui';
 
 interface IdePanelProps {
   config: AppConfig;
@@ -46,12 +46,9 @@ const IdePanel: React.FC<IdePanelProps> = ({
 
       <div className="flex flex-col items-start gap-3 py-3 border-b border-white/[0.04] [&:last-child]:border-b-0">
         <div className="flex-1 min-w-0">
-          <div className="text-[0.86em] text-text-primary font-medium mb-0.75">
-            Preset IDEs
-          </div>
+          <div className="text-[0.86em] text-text-primary font-medium mb-0.75">Preset IDEs</div>
           <div className="text-[0.79em] text-text-muted leading-relaxed">
-            Built-in IDE presets. Select one when adding a project, or use Ctrl+O
-            to open.
+            Built-in IDE presets. Select one when adding a project, or use Ctrl+O to open.
           </div>
         </div>
 
@@ -85,10 +82,10 @@ const IdePanel: React.FC<IdePanelProps> = ({
                     onChange={(e) => onEditingValueChange(e.target.value)}
                     onBlur={() => onSavePresetOverride(ide.id)}
                     onKeyDown={(e) => {
-                      if (e.key === "Enter") {
+                      if (e.key === 'Enter') {
                         onSavePresetOverride(ide.id);
                       }
-                      if (e.key === "Escape") {
+                      if (e.key === 'Escape') {
                         onCancelPresetEdit();
                       }
                     }}
@@ -96,8 +93,8 @@ const IdePanel: React.FC<IdePanelProps> = ({
                 ) : (
                   <span
                     className={cn(
-                      "text-text-muted font-mono text-[0.82em] flex-1 overflow-hidden text-ellipsis whitespace-nowrap cursor-text rounded py-px px-1 transition-colors duration-150 hover:bg-bg-hover hover:text-text-secondary",
-                      isOverridden && "!text-accent-blue",
+                      'text-text-muted font-mono text-[0.82em] flex-1 overflow-hidden text-ellipsis whitespace-nowrap cursor-text rounded py-px px-1 transition-colors duration-150 hover:bg-bg-hover hover:text-text-secondary',
+                      isOverridden && '!text-accent-blue',
                     )}
                     title="Double-click to edit"
                     onDoubleClick={() => onStartEditPreset(ide)}
@@ -127,9 +124,7 @@ const IdePanel: React.FC<IdePanelProps> = ({
 
       <div className="flex flex-col items-start gap-3 py-3 border-b border-white/[0.04] [&:last-child]:border-b-0 mt-2">
         <div className="flex-1 min-w-0">
-          <div className="text-[0.86em] text-text-primary font-medium mb-0.75">
-            Custom IDEs
-          </div>
+          <div className="text-[0.86em] text-text-primary font-medium mb-0.75">Custom IDEs</div>
           <div className="text-[0.79em] text-text-muted leading-relaxed">
             Add custom IDEs by specifying a name and executable path or command.
           </div>
@@ -181,7 +176,7 @@ const IdePanel: React.FC<IdePanelProps> = ({
             value={newIdeCommand}
             onChange={(e) => onNewIdeCommandChange(e.target.value)}
             onKeyDown={(e) => {
-              if (e.key === "Enter") {
+              if (e.key === 'Enter') {
                 onAddCustomIde();
               }
             }}

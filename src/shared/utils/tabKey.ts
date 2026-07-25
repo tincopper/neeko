@@ -1,4 +1,4 @@
-const WT_SEP = ":wt:";
+const WT_SEP = ':wt:';
 
 /**
  * Build composite tab key for worktree tabs.

@@ -44,20 +44,21 @@ interface UseAppShellResult {
 
 export function useAppShell(): UseAppShellResult {
   const { config, saveConfig, customThemes } = useAppConfig();
-  const showToast = useCallback(
-    (message: string, type: "info" | "error" = "info") => {
-      useNotificationStore.getState().addNotification({
-        type: type === 'error' ? 'error' : 'info',
-        title: type === 'error' ? 'Error' : 'Info',
-        message,
-      });
-    },
-    [],
-  );
+  const showToast = useCallback((message: string, type: 'info' | 'error' = 'info') => {
+    useNotificationStore.getState().addNotification({
+      type: type === 'error' ? 'error' : 'info',
+      title: type === 'error' ? 'Error' : 'Info',
+      message,
+    });
+  }, []);
   const local = useLocalProjects();
   const session = useSessionPersistence();
-  const wsl = useConnectionProjects({ environment: "wsl", saveSession: session.saveSession });
-  const remote = useConnectionProjects({ environment: "remote", saveSession: session.saveSession, showToast });
+  const wsl = useConnectionProjects({ environment: 'wsl', saveSession: session.saveSession });
+  const remote = useConnectionProjects({
+    environment: 'remote',
+    saveSession: session.saveSession,
+    showToast,
+  });
   // Skill auto-load: install bound tag-group skills on project select (no remove)
   useApplyProjectSkills();
 
@@ -130,8 +131,18 @@ export function useAppShell(): UseAppShellResult {
     activeProject?.git_info,
   ]);
 
-  const wslActionsWrap = useProjectActions({ environment: "wsl", config, showToast, saveSession: session.saveSession });
-  const remoteActionsWrap = useProjectActions({ environment: "remote", config, showToast, saveSession: session.saveSession });
+  const wslActionsWrap = useProjectActions({
+    environment: 'wsl',
+    config,
+    showToast,
+    saveSession: session.saveSession,
+  });
+  const remoteActionsWrap = useProjectActions({
+    environment: 'remote',
+    config,
+    showToast,
+    saveSession: session.saveSession,
+  });
   const agentActionsWrap = useAgentActions({
     terminal: {
       fontSize: config.terminalFontSize ?? 14,
@@ -180,9 +191,7 @@ export function useAppShell(): UseAppShellResult {
     [fileView.openFile],
   );
   const handleFileRefresh = useCallback(() => {
-    const projectId =
-      useProjectStore.getState().activeProjectId ??
-      null;
+    const projectId = useProjectStore.getState().activeProjectId ?? null;
     if (!projectId) return;
     const rootPath =
       useWorktreeStore.getState().activeWorktreePath ??
@@ -259,7 +268,9 @@ export function useAppShell(): UseAppShellResult {
         handleCloseTab(currentTabId);
       }
     });
-    return () => { unlistenPromise.then((fn) => fn()); };
+    return () => {
+      unlistenPromise.then((fn) => fn());
+    };
   }, [activeTabId, handleCloseTab]);
 
   const { handleAgentClick } = useAgentClickHandler({

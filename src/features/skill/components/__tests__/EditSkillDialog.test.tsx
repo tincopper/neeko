@@ -10,7 +10,11 @@ const mockInvoke = vi.mocked(invoke);
 // stub MarkdownEditor 避免 CodeMirror DOM 依赖
 vi.mock('../MarkdownEditor', () => ({
   default: ({ value, onChange }: { value: string; onChange: (v: string) => void }) => (
-    <textarea data-testid="markdown-editor" value={value} onChange={e => onChange(e.target.value)} />
+    <textarea
+      data-testid="markdown-editor"
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+    />
   ),
 }));
 

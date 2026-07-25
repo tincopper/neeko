@@ -1,8 +1,15 @@
-import React, { useState, useRef, useEffect, useMemo } from "react";
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import type { GitInfo, AheadBehind } from '@/shared/types';
-import { BranchIcon, PlusIcon } from "@/shared/components/icons";
-import { GitBranch, ArrowDown, ArrowUp, RefreshCw, FolderGit2, CloudDownload } from "@/shared/components/icons"
-import BranchDropdownContent from "@/shared/components/BranchDropdownContent";
+import { BranchIcon, PlusIcon } from '@/shared/components/icons';
+import {
+  GitBranch,
+  ArrowDown,
+  ArrowUp,
+  RefreshCw,
+  FolderGit2,
+  CloudDownload,
+} from '@/shared/components/icons';
+import BranchDropdownContent from '@/shared/components/BranchDropdownContent';
 
 interface BranchInfoProps {
   gitInfo: GitInfo | null;
@@ -40,11 +47,11 @@ const BranchInfo: React.FC<BranchInfoProps> = ({
         setBranchDropdownOpen(false);
       }
     };
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
   }, [branchDropdownOpen]);
 
-  const currentBranch = gitInfo?.current_branch ?? "";
+  const currentBranch = gitInfo?.current_branch ?? '';
   const branches = gitInfo?.branches ?? [];
   const worktrees = gitInfo?.worktrees ?? [];
   // Exclude branches that are already checked out in a worktree
@@ -108,13 +115,19 @@ const BranchInfo: React.FC<BranchInfoProps> = ({
         {aheadBehind && (aheadBehind.ahead > 0 || aheadBehind.behind > 0) && (
           <span className="flex items-center gap-1 text-[calc(var(--font-size)-1px)] text-text-muted ml-0.5">
             {aheadBehind.behind > 0 && (
-              <span className="flex items-center gap-0.5 text-accent-blue" title={`${aheadBehind.behind} commits behind`}>
+              <span
+                className="flex items-center gap-0.5 text-accent-blue"
+                title={`${aheadBehind.behind} commits behind`}
+              >
                 <ArrowDown size={10} />
                 {aheadBehind.behind}
               </span>
             )}
             {aheadBehind.ahead > 0 && (
-              <span className="flex items-center gap-0.5 text-accent-green" title={`${aheadBehind.ahead} commits ahead`}>
+              <span
+                className="flex items-center gap-0.5 text-accent-green"
+                title={`${aheadBehind.ahead} commits ahead`}
+              >
                 <ArrowUp size={10} />
                 {aheadBehind.ahead}
               </span>
@@ -174,7 +187,7 @@ const BranchInfo: React.FC<BranchInfoProps> = ({
           onClick={onRefresh}
           disabled={loading}
         >
-          <RefreshCw size={13} className={loading ? "animate-spin" : ""} />
+          <RefreshCw size={13} className={loading ? 'animate-spin' : ''} />
         </button>
       </div>
     </div>

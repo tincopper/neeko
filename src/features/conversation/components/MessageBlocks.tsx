@@ -2,16 +2,7 @@ import React, { useState } from 'react';
 import { cn } from '@/lib/utils';
 import { MarkdownPreview } from '@/ui/MarkdownPreview';
 import type { MessageBlock } from '../types';
-import {
-  ChevronDown,
-  ChevronRight,
-  File,
-  Terminal,
-  Search,
-  Edit,
-  Check,
-  X,
-} from 'lucide-react';
+import { ChevronDown, ChevronRight, File, Terminal, Search, Edit, Check, X } from 'lucide-react';
 
 // 工具图标映射
 const TOOL_ICONS: Record<string, React.FC<{ className?: string }>> = {
@@ -98,9 +89,7 @@ const ThinkingBlock: React.FC<{ thinking: string }> = ({ thinking }) => {
         )}
         <span className="font-medium">Thinking</span>
         {!expanded && (
-          <span className="text-text-secondary/40 truncate ml-2">
-            {thinking.slice(0, 80)}...
-          </span>
+          <span className="text-text-secondary/40 truncate ml-2">{thinking.slice(0, 80)}...</span>
         )}
       </button>
       {expanded && (
@@ -133,9 +122,7 @@ const ToolUseBlock: React.FC<{ name: string; input: unknown }> = ({ name, input 
         )}
         <Icon className="w-3.5 h-3.5 text-accent-blue shrink-0" />
         <span className="font-medium text-accent-blue">{name}</span>
-        {summary && (
-          <span className="text-text-secondary/60 truncate ml-1">{summary}</span>
-        )}
+        {summary && <span className="text-text-secondary/60 truncate ml-1">{summary}</span>}
       </button>
       {expanded && (
         <div className="px-3 py-2 text-xs bg-bg-secondary/50 border-t border-border/50">
@@ -150,10 +137,7 @@ const ToolUseBlock: React.FC<{ name: string; input: unknown }> = ({ name, input 
 
 // ─── Tool Result Block ───────────────────────────────────────────────────────
 
-const ToolResultBlock: React.FC<{ content: string; isError: boolean }> = ({
-  content,
-  isError,
-}) => {
+const ToolResultBlock: React.FC<{ content: string; isError: boolean }> = ({ content, isError }) => {
   const [expanded, setExpanded] = useState(false);
   const preview = content.slice(0, 100);
 
@@ -161,9 +145,7 @@ const ToolResultBlock: React.FC<{ content: string; isError: boolean }> = ({
     <div
       className={cn(
         'my-2 border rounded-lg overflow-hidden',
-        isError
-          ? 'border-red-500/30 bg-red-500/5'
-          : 'border-green-500/30 bg-green-500/5',
+        isError ? 'border-red-500/30 bg-red-500/5' : 'border-green-500/30 bg-green-500/5',
       )}
     >
       <button
@@ -182,9 +164,7 @@ const ToolResultBlock: React.FC<{ content: string; isError: boolean }> = ({
           <Check className="w-3.5 h-3.5 text-green-400 shrink-0" />
         )}
         <span className="font-medium">{isError ? 'Error' : 'Result'}</span>
-        {preview && (
-          <span className="text-text-secondary/60 truncate ml-1">{preview}...</span>
-        )}
+        {preview && <span className="text-text-secondary/60 truncate ml-1">{preview}...</span>}
       </button>
       {expanded && (
         <div className="px-3 py-2 text-xs bg-bg-secondary/50 border-t border-border/50">

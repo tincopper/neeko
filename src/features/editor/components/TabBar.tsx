@@ -1,4 +1,4 @@
-import React, { useCallback, useRef, useMemo } from "react";
+import React, { useCallback, useRef, useMemo } from 'react';
 import {
   DndContext,
   closestCenter,
@@ -9,10 +9,10 @@ import {
   type DragEndEvent,
 } from '@dnd-kit/core';
 import { SortableContext, horizontalListSortingStrategy } from '@dnd-kit/sortable';
-import { Plus } from "@/shared/components/icons"
+import { Plus } from '@/shared/components/icons';
 import { cn } from '@/lib/utils';
-import TabItem from "./TabItem";
-import AgentIcon from "@/features/agent/components/AgentIcon";
+import TabItem from './TabItem';
+import AgentIcon from '@/features/agent/components/AgentIcon';
 import type { Tab } from '@/shared/types/tab';
 import type { AgentConfig } from '@/shared/types';
 
@@ -65,10 +65,10 @@ const AgentBarButton: React.FC<AgentBarButtonProps> = React.memo(
         {!compactMode && <span className="agent-bar-btn-name">{agent.name}</span>}
       </button>
     );
-  }
+  },
 );
 
-AgentBarButton.displayName = "AgentBarButton";
+AgentBarButton.displayName = 'AgentBarButton';
 
 const TabBar: React.FC<TabBarProps> = React.memo(
   ({
@@ -116,31 +116,25 @@ const TabBar: React.FC<TabBarProps> = React.memo(
 
     // 终端 tab 数量
     const terminalTabCount = useMemo(
-      () => tabs.filter((t) => t.data.kind === "terminal").length,
-      [tabs]
+      () => tabs.filter((t) => t.data.kind === 'terminal').length,
+      [tabs],
     );
 
     // 当前激�?tab 是否为终�?
-    const activeTab = useMemo(
-      () => tabs.find((t) => t.id === activeTabId),
-      [tabs, activeTabId]
-    );
-    const isActiveTerminal = activeTab?.data.kind === "terminal";
+    const activeTab = useMemo(() => tabs.find((t) => t.id === activeTabId), [tabs, activeTabId]);
+    const isActiveTerminal = activeTab?.data.kind === 'terminal';
 
     // 过滤可见 agents
     const visibleAgents = useMemo(
-      () =>
-        agents.filter(
-          (a) => a.enabled && !hiddenAgentIds.includes(a.id)
-        ),
-      [agents, hiddenAgentIds]
+      () => agents.filter((a) => a.enabled && !hiddenAgentIds.includes(a.id)),
+      [agents, hiddenAgentIds],
     );
 
     const handleAgentClick = useCallback(
       (agent: AgentConfig) => {
         onAgentClick?.(agent);
       },
-      [onAgentClick]
+      [onAgentClick],
     );
 
     const tabItems = useMemo(() => tabs.map((tab) => tab.id), [tabs]);
@@ -153,10 +147,7 @@ const TabBar: React.FC<TabBarProps> = React.memo(
             collisionDetection={closestCenter}
             onDragEnd={handleDragEnd}
           >
-            <SortableContext
-              items={tabItems}
-              strategy={horizontalListSortingStrategy}
-            >
+            <SortableContext items={tabItems} strategy={horizontalListSortingStrategy}>
               {tabs.map((tab) => (
                 <TabItem
                   key={tab.id}
@@ -213,12 +204,7 @@ const TabBar: React.FC<TabBarProps> = React.memo(
 
         {/* Agent Bar */}
         {showAgentBar && isActiveTerminal && visibleAgents.length > 0 && (
-          <div
-            className={cn(
-              "flex items-center gap-1 px-2 pb-1",
-              compactMode && "gap-0.5"
-            )}
-          >
+          <div className={cn('flex items-center gap-1 px-2 pb-1', compactMode && 'gap-0.5')}>
             {visibleAgents.map((agent) => (
               <AgentBarButton
                 key={agent.id}
@@ -231,9 +217,9 @@ const TabBar: React.FC<TabBarProps> = React.memo(
         )}
       </div>
     );
-  }
+  },
 );
 
-TabBar.displayName = "TabBar";
+TabBar.displayName = 'TabBar';
 
 export default TabBar;

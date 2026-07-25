@@ -1,13 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import {
-  Play,
-  Square,
-  ChevronDown,
-  Bug,
-  Plus,
-  Pencil,
-  X,
-} from '@/shared/components/icons';
+import { Play, Square, ChevronDown, Bug, Plus, Pencil, X } from '@/shared/components/icons';
 
 import { useProjectStore } from '@/features/project/store';
 import { useEditorStore } from '@/shared/store';
@@ -87,9 +79,7 @@ function DebugRunButton() {
   }, [dropdownOpen]);
 
   const isActive =
-    !!session?.sessionId &&
-    session.status !== 'terminated' &&
-    session.status !== 'ended';
+    !!session?.sessionId && session.status !== 'terminated' && session.status !== 'ended';
   const selectedConfig = configs.find((c) => c.name === selectedConfigName);
   // Can start with a config OR discovered entries (auto-resolve on start)
   const canStart = !!projectId && !isActive && (configs.length > 0 || entries.length > 0);

@@ -1,4 +1,4 @@
-export { default as TerminalView } from "./TerminalView";
+export { default as TerminalView } from './TerminalView';
 export {
   terminalCache,
   terminalRebuildCallbacks,
@@ -8,20 +8,20 @@ export {
   refreshTerminal,
   terminalWrapperRefs,
   executedAgentKeys,
-} from "./terminalCache";
-export { createTerminalForProject } from "./terminalFactory";
-export { launchAgentInTerminal, switchAgentInTerminal, sendToTerminal } from "./terminalCommands";
-export { worktreeKey } from "./worktreeTerminalKey";
+} from './terminalCache';
+export { createTerminalForProject } from './terminalFactory';
+export { launchAgentInTerminal, switchAgentInTerminal, sendToTerminal } from './terminalCommands';
+export { worktreeKey } from './worktreeTerminalKey';
 export {
   cleanupTerminalsForTab,
   cleanupTerminalsForTabKey,
   closeEditorTab,
   closeAllEditorTabs,
-} from "./terminalTabCleanup";
+} from './terminalTabCleanup';
 
 // Deprecated WSL terminal exports — kept for backward compatibility.
 // Prefer using the unified TerminalView with environment prop instead.
-export { default as WSLTerminalView } from "./WSLTerminalView";
+export { default as WSLTerminalView } from './WSLTerminalView';
 export {
   wslCacheKey,
   destroyWslCache,
@@ -34,10 +34,10 @@ export {
   switchAgentInWslTerminal,
   wslWrapperRefs,
   wslTerminalCache,
-} from "./terminalCache";
+} from './terminalCache';
 
 // Deprecated Remote terminal exports — kept for backward compatibility.
-export { default as RemoteTerminalView } from "./RemoteTerminalView";
+export { default as RemoteTerminalView } from './RemoteTerminalView';
 export {
   remoteCacheKey,
   launchAgentInRemoteTerminal,
@@ -47,22 +47,15 @@ export {
   switchAgentInRemoteTerminal,
   remoteWrapperRefs,
   remoteTerminalCache,
-} from "./terminalCache";
+} from './terminalCache';
 
 // New unified exports
-export {
-  launchAgentInAnyTerminal,
-  switchAgentInAnyTerminal,
-} from "./terminalCache";
+export { launchAgentInAnyTerminal, switchAgentInAnyTerminal } from './terminalCache';
 
-export { default as SplitLayout } from "./SplitLayout";
+export { default as SplitLayout } from './SplitLayout';
 
 import { buildTerminalTheme } from '@/shared/utils/terminal';
-import {
-  terminalCache,
-  wslTerminalCache,
-  remoteTerminalCache,
-} from "./terminalCache";
+import { terminalCache, wslTerminalCache, remoteTerminalCache } from './terminalCache';
 
 export function updateAllTerminalThemes() {
   const theme = buildTerminalTheme();

@@ -1,5 +1,5 @@
-import React, { createContext, useContext } from "react";
-import type { AuthMethod, RemoteEntrySession, WSLEntrySession } from "@/shared/types";
+import React, { createContext, useContext } from 'react';
+import type { AuthMethod, RemoteEntrySession, WSLEntrySession } from '@/shared/types';
 
 // ── WSL-specific types ────────────────────────────────────────────────────
 
@@ -35,11 +35,7 @@ export interface RemoteContextValue {
   onAddRemoteProject: (entryId: string) => void;
   onRefreshRemoteGit?: (entryId: string, projectId: string, projectPath: string) => void;
   onOpenRemoteIde?: (entryId: string, projectPath: string, ide: string) => void;
-  onOpenRemoteWorktreeTerminal?: (
-    entryId: string,
-    worktreePath: string,
-    branch: string,
-  ) => void;
+  onOpenRemoteWorktreeTerminal?: (entryId: string, worktreePath: string, branch: string) => void;
   invokeRemoteGit?: (
     command: string,
     entryId: string,
@@ -65,18 +61,14 @@ export function ConnectionProjectProvider({
   children: React.ReactNode;
 }) {
   return (
-    <ConnectionProjectContext.Provider value={value}>
-      {children}
-    </ConnectionProjectContext.Provider>
+    <ConnectionProjectContext.Provider value={value}>{children}</ConnectionProjectContext.Provider>
   );
 }
 
 export function useConnectionProjectContext() {
   const ctx = useContext(ConnectionProjectContext);
   if (!ctx) {
-    throw new Error(
-      "useConnectionProjectContext must be used within ConnectionProjectProvider",
-    );
+    throw new Error('useConnectionProjectContext must be used within ConnectionProjectProvider');
   }
   return ctx;
 }

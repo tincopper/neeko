@@ -24,7 +24,11 @@ export function isSystemDebugSource(sourcePath: string | null | undefined): bool
 
   // GOROOT stdlib: /usr/local/go/src/..., /opt/homebrew/opt/go/libexec/src/...
   // Match ".../go/src/<stdlib pkg>/..." but not GOPATH-style github.com trees.
-  if (/\/go\/src\/(runtime|internal|syscall|reflect|sync|os|fmt|time|net|crypto|context|errors|strings|bytes|io|unicode|math|sort|strconv|path|encoding|testing|unsafe|builtin)\//.test(p)) {
+  if (
+    /\/go\/src\/(runtime|internal|syscall|reflect|sync|os|fmt|time|net|crypto|context|errors|strings|bytes|io|unicode|math|sort|strconv|path|encoding|testing|unsafe|builtin)\//.test(
+      p,
+    )
+  ) {
     return true;
   }
   // libexec layout (Homebrew)

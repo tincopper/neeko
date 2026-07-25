@@ -1,4 +1,4 @@
-import React from "react";
+import React from 'react';
 
 // ─── Lucide aliases (semantic names for commonly used icons) ─────────────
 export {
@@ -22,13 +22,13 @@ export {
   Keyboard as KeyboardIcon,
   MoreVertical as MoreVerticalIcon,
   Server as ServerIcon,
-} from "lucide-react";
+} from 'lucide-react';
 
 // ─── Re-export everything so all lucide icons importable from one path ───
-export * from "lucide-react";
+export * from 'lucide-react';
 
 // ─── Special overrides (custom size/style) ───────────────────────────────
-import { X, Square, ChevronLeft, type LucideProps } from "lucide-react"
+import { X, Square, ChevronLeft, type LucideProps } from 'lucide-react';
 
 export const CloseIcon: React.FC<LucideProps> = (props) => (
   <X size={14} strokeWidth={1.8} {...props} />

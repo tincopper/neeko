@@ -1,5 +1,5 @@
-import { useEditorStore } from "@/shared/store";
-import { parseProjectIdFromTabKey } from "@/shared/utils/tabKey";
+import { useEditorStore } from '@/shared/store';
+import { parseProjectIdFromTabKey } from '@/shared/utils/tabKey';
 
 import {
   destroyRemoteCache,
@@ -9,10 +9,10 @@ import {
   remoteTerminalCache,
   terminalCache,
   wslTerminalCache,
-} from "./terminalCache";
+} from './terminalCache';
 
 function escapeRegExp(value: string): string {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
 /** True when cache key contains `tabId` as a full `:`-delimited segment. */
@@ -78,12 +78,8 @@ export function cleanupTerminalsForTabKey(tabKey: string): void {
   const wslRe = new RegExp(`^wsl:[^:]+:${escapeRegExp(projectId)}(?::|$)`);
   const remoteRe = new RegExp(`^remote:[^:]+:${escapeRegExp(projectId)}(?::|$)`);
 
-  destroyMatchingKeys(wslTerminalCache.keys(), destroyWslCache, (key) =>
-    wslRe.test(key),
-  );
-  destroyMatchingKeys(remoteTerminalCache.keys(), destroyRemoteCache, (key) =>
-    remoteRe.test(key),
-  );
+  destroyMatchingKeys(wslTerminalCache.keys(), destroyWslCache, (key) => wslRe.test(key));
+  destroyMatchingKeys(remoteTerminalCache.keys(), destroyRemoteCache, (key) => remoteRe.test(key));
 }
 
 /** Close one editor tab and recycle any terminal PTY behind it. */

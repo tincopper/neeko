@@ -1,1 +1,1 @@
-export type { TerminalTab } from "@/features/terminal/types";
+export type { TerminalTab } from '@/features/terminal/types';

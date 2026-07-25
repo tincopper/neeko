@@ -1,8 +1,8 @@
-import React, { useState, useCallback } from "react";
-import { X } from "@/shared/components/icons"
-import { Button, Input } from "@/ui";
-import { ResizablePanel } from "@/ui/ResizablePanel";
-import MarkdownEditor from "./MarkdownEditor";
+import React, { useState, useCallback } from 'react';
+import { X } from '@/shared/components/icons';
+import { Button, Input } from '@/ui';
+import { ResizablePanel } from '@/ui/ResizablePanel';
+import MarkdownEditor from './MarkdownEditor';
 
 interface CreateSkillDialogProps {
   open: boolean;
@@ -11,24 +11,24 @@ interface CreateSkillDialogProps {
 }
 
 function buildTemplate(name: string): string {
-  const title = name.replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+  const title = name.replace(/-/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
   return [
-    "---",
+    '---',
     `name: ${name}`,
     `description: ${title}`,
-    "---",
-    "",
+    '---',
+    '',
     `# ${title}`,
-    "",
-    "Write your skill instructions here.",
-    "",
-  ].join("\n");
+    '',
+    'Write your skill instructions here.',
+    '',
+  ].join('\n');
 }
 
 const CreateSkillDialog: React.FC<CreateSkillDialogProps> = React.memo(
   ({ open, onOpenChange, onConfirm }) => {
-    const [name, setName] = useState("");
-    const [content, setContent] = useState("");
+    const [name, setName] = useState('');
+    const [content, setContent] = useState('');
     const [submitting, setSubmitting] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
@@ -41,24 +41,24 @@ const CreateSkillDialog: React.FC<CreateSkillDialogProps> = React.memo(
           setContent(buildTemplate(newName));
         }
       },
-      [content, name]
+      [content, name],
     );
 
     const handleSubmit = useCallback(async () => {
       if (!name.trim()) {
-        setError("Name is required");
+        setError('Name is required');
         return;
       }
       if (!content.trim()) {
-        setError("SKILL.md content is required");
+        setError('SKILL.md content is required');
         return;
       }
       try {
         setSubmitting(true);
         setError(null);
         await onConfirm(name.trim(), content);
-        setName("");
-        setContent("");
+        setName('');
+        setContent('');
         onOpenChange(false);
       } catch (e) {
         setError(String(e));
@@ -68,8 +68,8 @@ const CreateSkillDialog: React.FC<CreateSkillDialogProps> = React.memo(
     }, [name, content, onConfirm, onOpenChange]);
 
     const handleClose = useCallback(() => {
-      setName("");
-      setContent("");
+      setName('');
+      setContent('');
       setError(null);
       onOpenChange(false);
     }, [onOpenChange]);
@@ -78,9 +78,7 @@ const CreateSkillDialog: React.FC<CreateSkillDialogProps> = React.memo(
       <ResizablePanel open={open} onClose={handleClose}>
         {/* Header */}
         <div className="flex items-center justify-between px-4 py-3 border-b border-border">
-          <span className="text-sm font-semibold text-text-primary">
-            Create New Skill
-          </span>
+          <span className="text-sm font-semibold text-text-primary">Create New Skill</span>
           <button
             onClick={handleClose}
             className="p-1 rounded hover:bg-bg-hover text-text-muted hover:text-text-primary"
@@ -91,9 +89,7 @@ const CreateSkillDialog: React.FC<CreateSkillDialogProps> = React.memo(
 
         {/* Name input */}
         <div className="px-4 py-3 border-b border-border">
-          <label className="text-xs font-medium text-text-secondary block mb-1.5">
-            Skill Name
-          </label>
+          <label className="text-xs font-medium text-text-secondary block mb-1.5">Skill Name</label>
           <Input
             value={name}
             onChange={handleNameChange}
@@ -102,16 +98,14 @@ const CreateSkillDialog: React.FC<CreateSkillDialogProps> = React.memo(
             autoFocus
           />
           <p className="text-[10px] text-text-muted mt-1">
-            SKILL.md will be saved to ~/.neeko/skills/{name || "{name}"}/
+            SKILL.md will be saved to ~/.neeko/skills/{name || '{name}'}/
           </p>
         </div>
 
         {/* Markdown editor */}
         <div className="flex-1 min-h-0 flex flex-col">
           <div className="px-4 py-2 border-b border-border">
-            <label className="text-xs font-medium text-text-secondary">
-              SKILL.md
-            </label>
+            <label className="text-xs font-medium text-text-secondary">SKILL.md</label>
           </div>
           <div className="flex-1 min-h-0">
             <MarkdownEditor
@@ -130,12 +124,7 @@ const CreateSkillDialog: React.FC<CreateSkillDialogProps> = React.memo(
           </div>
         )}
         <div className="flex items-center justify-end gap-2 px-4 py-3 border-t border-border">
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={handleClose}
-            className="text-xs"
-          >
+          <Button variant="ghost" size="sm" onClick={handleClose} className="text-xs">
             Cancel
           </Button>
           <Button
@@ -144,12 +133,12 @@ const CreateSkillDialog: React.FC<CreateSkillDialogProps> = React.memo(
             disabled={submitting || !name.trim() || !content.trim()}
             className="text-xs"
           >
-            {submitting ? "Creating..." : "Create"}
+            {submitting ? 'Creating...' : 'Create'}
           </Button>
         </div>
       </ResizablePanel>
     );
-  }
+  },
 );
-CreateSkillDialog.displayName = "CreateSkillDialog";
+CreateSkillDialog.displayName = 'CreateSkillDialog';
 export default CreateSkillDialog;

@@ -1,4 +1,4 @@
-﻿import { create } from "zustand";
+﻿import { create } from 'zustand';
 
 export interface BrowserState {
   /** 当前 webview label（由后端返回） */
@@ -31,7 +31,7 @@ export interface BrowserState {
 
 const initialState = {
   label: null,
-  url: "",
+  url: '',
   isCreated: false,
   isLoading: false,
 };

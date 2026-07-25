@@ -1,5 +1,13 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import { closePr, isGhInstalled, isGhAuthenticated, listPrs, listRepoLabels, listRepoAuthors, mergePr } from '../api/gitApi';
+import {
+  closePr,
+  isGhInstalled,
+  isGhAuthenticated,
+  listPrs,
+  listRepoLabels,
+  listRepoAuthors,
+  mergePr,
+} from '../api/gitApi';
 import type { PRListItem } from '@/shared/types';
 import type { PRDetailTabData } from '@/features/editor/types';
 import { useEditorStore } from '@/shared/store';
@@ -107,7 +115,12 @@ const PullRequestsPanel: React.FC<PullRequestsPanelProps> = ({
   }, []);
 
   const loadPRs = useCallback(async () => {
-    console.log('[PullRequestsPanel] loadPRs called:', { projectId, filter, ghInstalled, ghAuthenticated });
+    console.log('[PullRequestsPanel] loadPRs called:', {
+      projectId,
+      filter,
+      ghInstalled,
+      ghAuthenticated,
+    });
     if (!ghInstalled || !ghAuthenticated) {
       console.log('[PullRequestsPanel] Skipping load - gh not ready');
       return;
@@ -130,10 +143,7 @@ const PullRequestsPanel: React.FC<PullRequestsPanelProps> = ({
     }
   }, [projectId, filter, ghInstalled, ghAuthenticated]);
 
-  const errorView = useMemo(
-    () => (error ? mapPrLoadError(error) : null),
-    [error],
-  );
+  const errorView = useMemo(() => (error ? mapPrLoadError(error) : null), [error]);
 
   useEffect(() => {
     loadPRs();
@@ -142,8 +152,12 @@ const PullRequestsPanel: React.FC<PullRequestsPanelProps> = ({
   // Load full repo labels and authors list (separate from current PR list)
   useEffect(() => {
     if (!ghInstalled || !ghAuthenticated) return;
-    listRepoLabels(projectId).then(setRepoLabels).catch(() => {});
-    listRepoAuthors(projectId).then(setRepoAuthors).catch(() => {});
+    listRepoLabels(projectId)
+      .then(setRepoLabels)
+      .catch(() => {});
+    listRepoAuthors(projectId)
+      .then(setRepoAuthors)
+      .catch(() => {});
   }, [projectId, ghInstalled, ghAuthenticated]);
 
   // Use repo-level data for filter dropdowns, fall back to deriving from prList
@@ -160,7 +174,12 @@ const PullRequestsPanel: React.FC<PullRequestsPanelProps> = ({
   }, [repoLabels, prList]);
 
   const filterAssignees = useMemo(() => {
-    const assignees = new Set(prList.flatMap((pr) => pr.assignees ?? []).map((a) => a.login).filter(Boolean));
+    const assignees = new Set(
+      prList
+        .flatMap((pr) => pr.assignees ?? [])
+        .map((a) => a.login)
+        .filter(Boolean),
+    );
     return Array.from(assignees).sort();
   }, [prList]);
 
@@ -194,7 +213,10 @@ const PullRequestsPanel: React.FC<PullRequestsPanelProps> = ({
       if (labelDropdownRef.current && !labelDropdownRef.current.contains(event.target as Node)) {
         setLabelDropdownOpen(false);
       }
-      if (assigneeDropdownRef.current && !assigneeDropdownRef.current.contains(event.target as Node)) {
+      if (
+        assigneeDropdownRef.current &&
+        !assigneeDropdownRef.current.contains(event.target as Node)
+      ) {
         setAssigneeDropdownOpen(false);
       }
     };
@@ -348,7 +370,9 @@ const PullRequestsPanel: React.FC<PullRequestsPanelProps> = ({
 
       {!ghInstalled ? (
         <div className="px-3 py-4 text-[var(--font-size)] text-text-muted space-y-2">
-          <p>GitHub CLI (<code>gh</code>) is not installed.</p>
+          <p>
+            GitHub CLI (<code>gh</code>) is not installed.
+          </p>
           <p>Install it to manage pull requests.</p>
           <button
             className="text-[calc(var(--font-size)-2px)] px-3 py-1.5 rounded bg-bg-tertiary text-text-primary hover:bg-bg-hover transition-colors duration-100"
@@ -360,7 +384,9 @@ const PullRequestsPanel: React.FC<PullRequestsPanelProps> = ({
       ) : !ghAuthenticated ? (
         <div className="px-3 py-4 text-[var(--font-size)] text-text-muted space-y-2">
           <p>Not authenticated with GitHub.</p>
-          <p>Run <code>gh auth login</code> to authenticate.</p>
+          <p>
+            Run <code>gh auth login</code> to authenticate.
+          </p>
           <button
             className="text-[calc(var(--font-size)-2px)] px-3 py-1.5 rounded bg-bg-tertiary text-text-primary hover:bg-bg-hover transition-colors duration-100"
             onClick={() => onOpenTerminal('gh auth login', 'gh auth login')}
@@ -401,7 +427,13 @@ const PullRequestsPanel: React.FC<PullRequestsPanelProps> = ({
                 onClick={() => setStateDropdownOpen(!stateDropdownOpen)}
               >
                 {STATE_OPTIONS.find((o) => o.value === filter)?.label ?? 'State'}
-                <ChevronDown size={12} className={cn('transition-transform duration-150', stateDropdownOpen && 'rotate-180')} />
+                <ChevronDown
+                  size={12}
+                  className={cn(
+                    'transition-transform duration-150',
+                    stateDropdownOpen && 'rotate-180',
+                  )}
+                />
               </button>
               {stateDropdownOpen && (
                 <div className="absolute top-full left-0 mt-1 w-32 bg-bg-secondary border border-border rounded-md shadow-lg z-50 py-1">
@@ -442,12 +474,28 @@ const PullRequestsPanel: React.FC<PullRequestsPanelProps> = ({
               >
                 {authorFilter ?? 'Author'}
                 {authorFilter && (
-                  <X size={12} className="ml-0.5 hover:text-text-primary" onClick={(e) => { e.stopPropagation(); setAuthorFilter(null); }} />
+                  <X
+                    size={12}
+                    className="ml-0.5 hover:text-text-primary"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setAuthorFilter(null);
+                    }}
+                  />
                 )}
-                <ChevronDown size={12} className={cn('transition-transform duration-150', authorDropdownOpen && 'rotate-180')} />
+                <ChevronDown
+                  size={12}
+                  className={cn(
+                    'transition-transform duration-150',
+                    authorDropdownOpen && 'rotate-180',
+                  )}
+                />
               </button>
               {authorDropdownOpen && (
-                <div className="absolute top-full left-0 mt-1 w-48 bg-bg-secondary border border-border rounded-md shadow-lg z-50 py-1 flex flex-col" style={{ maxHeight: '260px' }}>
+                <div
+                  className="absolute top-full left-0 mt-1 w-48 bg-bg-secondary border border-border rounded-md shadow-lg z-50 py-1 flex flex-col"
+                  style={{ maxHeight: '260px' }}
+                >
                   <div className="px-2 pb-1 flex-shrink-0">
                     <input
                       ref={authorSearchRef}
@@ -461,7 +509,9 @@ const PullRequestsPanel: React.FC<PullRequestsPanelProps> = ({
                   </div>
                   <div className="overflow-y-auto flex-1">
                     {filteredAuthorOptions.length === 0 ? (
-                      <div className="px-3 py-1.5 text-[calc(var(--font-size)-1px)] text-text-muted">No authors</div>
+                      <div className="px-3 py-1.5 text-[calc(var(--font-size)-1px)] text-text-muted">
+                        No authors
+                      </div>
                     ) : (
                       filteredAuthorOptions.map((author) => (
                         <button
@@ -502,12 +552,28 @@ const PullRequestsPanel: React.FC<PullRequestsPanelProps> = ({
               >
                 {labelFilter ?? 'Label'}
                 {labelFilter && (
-                  <X size={12} className="ml-0.5 hover:text-text-primary" onClick={(e) => { e.stopPropagation(); setLabelFilter(null); }} />
+                  <X
+                    size={12}
+                    className="ml-0.5 hover:text-text-primary"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setLabelFilter(null);
+                    }}
+                  />
                 )}
-                <ChevronDown size={12} className={cn('transition-transform duration-150', labelDropdownOpen && 'rotate-180')} />
+                <ChevronDown
+                  size={12}
+                  className={cn(
+                    'transition-transform duration-150',
+                    labelDropdownOpen && 'rotate-180',
+                  )}
+                />
               </button>
               {labelDropdownOpen && (
-                <div className="absolute top-full left-0 mt-1 w-48 bg-bg-secondary border border-border rounded-md shadow-lg z-50 py-1 flex flex-col" style={{ maxHeight: '260px' }}>
+                <div
+                  className="absolute top-full left-0 mt-1 w-48 bg-bg-secondary border border-border rounded-md shadow-lg z-50 py-1 flex flex-col"
+                  style={{ maxHeight: '260px' }}
+                >
                   <div className="px-2 pb-1 flex-shrink-0">
                     <input
                       ref={labelSearchRef}
@@ -521,7 +587,9 @@ const PullRequestsPanel: React.FC<PullRequestsPanelProps> = ({
                   </div>
                   <div className="overflow-y-auto flex-1">
                     {filteredLabelOptions.length === 0 ? (
-                      <div className="px-3 py-1.5 text-[calc(var(--font-size)-1px)] text-text-muted">No labels</div>
+                      <div className="px-3 py-1.5 text-[calc(var(--font-size)-1px)] text-text-muted">
+                        No labels
+                      </div>
                     ) : (
                       filteredLabelOptions.map((label) => (
                         <button
@@ -562,12 +630,28 @@ const PullRequestsPanel: React.FC<PullRequestsPanelProps> = ({
               >
                 {assigneeFilter ?? 'Assignee'}
                 {assigneeFilter && (
-                  <X size={12} className="ml-0.5 hover:text-text-primary" onClick={(e) => { e.stopPropagation(); setAssigneeFilter(null); }} />
+                  <X
+                    size={12}
+                    className="ml-0.5 hover:text-text-primary"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setAssigneeFilter(null);
+                    }}
+                  />
                 )}
-                <ChevronDown size={12} className={cn('transition-transform duration-150', assigneeDropdownOpen && 'rotate-180')} />
+                <ChevronDown
+                  size={12}
+                  className={cn(
+                    'transition-transform duration-150',
+                    assigneeDropdownOpen && 'rotate-180',
+                  )}
+                />
               </button>
               {assigneeDropdownOpen && (
-                <div className="absolute top-full left-0 mt-1 w-48 bg-bg-secondary border border-border rounded-md shadow-lg z-50 py-1 flex flex-col" style={{ maxHeight: '260px' }}>
+                <div
+                  className="absolute top-full left-0 mt-1 w-48 bg-bg-secondary border border-border rounded-md shadow-lg z-50 py-1 flex flex-col"
+                  style={{ maxHeight: '260px' }}
+                >
                   <div className="px-2 pb-1 flex-shrink-0">
                     <input
                       ref={assigneeSearchRef}
@@ -581,7 +665,9 @@ const PullRequestsPanel: React.FC<PullRequestsPanelProps> = ({
                   </div>
                   <div className="overflow-y-auto flex-1">
                     {filteredAssigneeOptions.length === 0 ? (
-                      <div className="px-3 py-1.5 text-[calc(var(--font-size)-1px)] text-text-muted">No assignees</div>
+                      <div className="px-3 py-1.5 text-[calc(var(--font-size)-1px)] text-text-muted">
+                        No assignees
+                      </div>
                     ) : (
                       filteredAssigneeOptions.map((assignee) => (
                         <button
@@ -674,7 +760,9 @@ const PullRequestsPanel: React.FC<PullRequestsPanelProps> = ({
                         className="w-full h-full object-cover"
                         onError={(e) => {
                           (e.target as HTMLImageElement).style.display = 'none';
-                          (e.target as HTMLImageElement).parentElement!.innerText = (pr.author?.charAt(0) || '#').toUpperCase();
+                          (e.target as HTMLImageElement).parentElement!.innerText = (
+                            pr.author?.charAt(0) || '#'
+                          ).toUpperCase();
                         }}
                       />
                     </div>
@@ -682,7 +770,10 @@ const PullRequestsPanel: React.FC<PullRequestsPanelProps> = ({
                   {/* Left Content */}
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-1.5 mb-0.5">
-                      <span className="text-[var(--font-size)] font-medium text-text-primary truncate" title={pr.title}>
+                      <span
+                        className="text-[var(--font-size)] font-medium text-text-primary truncate"
+                        title={pr.title}
+                      >
                         {pr.title}
                       </span>
                       <span
@@ -706,7 +797,10 @@ const PullRequestsPanel: React.FC<PullRequestsPanelProps> = ({
                         <>
                           <span>·</span>
                           <span>
-                            assigned to <span className="text-text-secondary">{pr.assignees.map(a => a.login).join(', ')}</span>
+                            assigned to{' '}
+                            <span className="text-text-secondary">
+                              {pr.assignees.map((a) => a.login).join(', ')}
+                            </span>
                           </span>
                         </>
                       )}
@@ -718,9 +812,13 @@ const PullRequestsPanel: React.FC<PullRequestsPanelProps> = ({
                             key={label.name}
                             className="inline-block px-1.5 py-0.5 rounded text-[10px] font-medium leading-tight"
                             style={{
-                              backgroundColor: label.color ? `#${label.color}20` : 'var(--bg-tertiary)',
+                              backgroundColor: label.color
+                                ? `#${label.color}20`
+                                : 'var(--bg-tertiary)',
                               color: label.color ? `#${label.color}` : 'var(--text-muted)',
-                              border: label.color ? `1px solid #${label.color}40` : '1px solid transparent',
+                              border: label.color
+                                ? `1px solid #${label.color}40`
+                                : '1px solid transparent',
                             }}
                           >
                             {label.name}
@@ -761,7 +859,9 @@ const PullRequestsPanel: React.FC<PullRequestsPanelProps> = ({
                     {/* Comment Count */}
                     <div className="flex items-center gap-1 text-text-muted">
                       <MessageSquare size={13} />
-                      <span className="text-[calc(var(--font-size)-2px)]">{pr.commentCount ?? 0}</span>
+                      <span className="text-[calc(var(--font-size)-2px)]">
+                        {pr.commentCount ?? 0}
+                      </span>
                     </div>
                   </div>
                 </div>

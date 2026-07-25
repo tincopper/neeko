@@ -1,4 +1,4 @@
-import React, { createContext, useContext } from "react";
+import React, { createContext, useContext } from 'react';
 import type { AppConfig, ThemeListItem } from '@/features/settings/types';
 import type { AgentConfig } from '@/features/agent/types';
 
@@ -9,7 +9,7 @@ interface AppContextValue {
   agentInstalledMap: Record<string, boolean>;
   loading: boolean;
   ideCommandOverrides: Record<string, string>;
-  showToast: (message: string, type?: "info" | "error") => void;
+  showToast: (message: string, type?: 'info' | 'error') => void;
   saveConfig: (next: AppConfig) => Promise<void>;
 }
 
@@ -27,6 +27,6 @@ export function AppProvider({
 
 export function useAppContext() {
   const ctx = useContext(AppContext);
-  if (!ctx) throw new Error("useAppContext must be used within AppProvider");
+  if (!ctx) throw new Error('useAppContext must be used within AppProvider');
   return ctx;
 }

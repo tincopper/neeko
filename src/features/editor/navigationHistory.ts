@@ -25,11 +25,7 @@ export function sameNavLocation(a: NavLocation, b: NavLocation): boolean {
 
 /** True if same file (ignore caret) — used to avoid noise on tiny cursor moves. */
 export function sameNavFile(a: NavLocation, b: NavLocation): boolean {
-  return (
-    a.projectId === b.projectId &&
-    a.tabKey === b.tabKey &&
-    a.filePath === b.filePath
-  );
+  return a.projectId === b.projectId && a.tabKey === b.tabKey && a.filePath === b.filePath;
 }
 
 export interface NavigationHistory {

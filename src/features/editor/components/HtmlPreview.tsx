@@ -1,10 +1,9 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { convertFileSrc } from "@tauri-apps/api/core";
-import { readFileContent } from "@/features/file/api/fileApi";
-import { Globe, RefreshCw } from "@/shared/components/icons"
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { convertFileSrc } from '@tauri-apps/api/core';
+import { readFileContent } from '@/features/file/api/fileApi';
+import { Globe, RefreshCw } from '@/shared/components/icons';
 import type { FileChangedEvent } from '@/shared/types';
 import { useFileChangedEvent } from '@/features/git/hooks/useFileChangedEvent';
-
 
 interface HtmlPreviewProps {
   projectId: string;
@@ -24,8 +23,8 @@ function HtmlPreview({ projectId, filePath, fileName }: HtmlPreviewProps) {
 
   // 计算文件所在目录的 asset URL（用�?<base href> 注入，使相对路径资源正确加载�?
   const dirAssetUrl = useMemo(() => {
-    const dirPath = filePath.replace(/[\\/][^\\/]*$/, "");
-    return convertFileSrc(dirPath, "asset");
+    const dirPath = filePath.replace(/[\\/][^\\/]*$/, '');
+    return convertFileSrc(dirPath, 'asset');
   }, [filePath]);
 
   // 通过后端命令读取 HTML 文件内容并通过 srcdoc 渲染
@@ -34,13 +33,10 @@ function HtmlPreview({ projectId, filePath, fileName }: HtmlPreviewProps) {
     setError(null);
 
     try {
-      const fileContent = await readFileContent(
-        projectId,
-        filePath,
-      );
+      const fileContent = await readFileContent(projectId, filePath);
 
       if (fileContent.is_binary) {
-        throw new Error("Cannot preview binary file");
+        throw new Error('Cannot preview binary file');
       }
 
       let htmlContent = fileContent.content;
@@ -48,14 +44,14 @@ function HtmlPreview({ projectId, filePath, fileName }: HtmlPreviewProps) {
       // 注入 <base href="..."> 标签�?HTML 头部，使相对路径�?CSS/JS/图片能正确解�?
       const baseTag = `<base href="${dirAssetUrl}/">`;
 
-      if (htmlContent.includes("<head>")) {
-        htmlContent = htmlContent.replace("<head>", `<head>${baseTag}`);
-      } else if (htmlContent.includes("<HEAD>")) {
-        htmlContent = htmlContent.replace("<HEAD>", `<HEAD>${baseTag}`);
-      } else if (htmlContent.includes("<html>")) {
-        htmlContent = htmlContent.replace("<html>", `<html><head>${baseTag}</head>`);
-      } else if (htmlContent.includes("<HTML>")) {
-        htmlContent = htmlContent.replace("<HTML>", `<HTML><HEAD>${baseTag}</HEAD>`);
+      if (htmlContent.includes('<head>')) {
+        htmlContent = htmlContent.replace('<head>', `<head>${baseTag}`);
+      } else if (htmlContent.includes('<HEAD>')) {
+        htmlContent = htmlContent.replace('<HEAD>', `<HEAD>${baseTag}`);
+      } else if (htmlContent.includes('<html>')) {
+        htmlContent = htmlContent.replace('<html>', `<html><head>${baseTag}</head>`);
+      } else if (htmlContent.includes('<HTML>')) {
+        htmlContent = htmlContent.replace('<HTML>', `<HTML><HEAD>${baseTag}</HEAD>`);
       } else {
         htmlContent = `${baseTag}${htmlContent}`;
       }
@@ -75,18 +71,18 @@ function HtmlPreview({ projectId, filePath, fileName }: HtmlPreviewProps) {
         `},true);` +
         `})();</script>`;
 
-      if (htmlContent.includes("</body>")) {
-        htmlContent = htmlContent.replace("</body>", `${anchorFixScript}</body>`);
-      } else if (htmlContent.includes("</html>")) {
-        htmlContent = htmlContent.replace("</html>", `${anchorFixScript}</html>`);
+      if (htmlContent.includes('</body>')) {
+        htmlContent = htmlContent.replace('</body>', `${anchorFixScript}</body>`);
+      } else if (htmlContent.includes('</html>')) {
+        htmlContent = htmlContent.replace('</html>', `${anchorFixScript}</html>`);
       } else {
         htmlContent += anchorFixScript;
       }
 
       setHtmlContent(htmlContent);
     } catch (err) {
-      console.error("[HtmlPreview] Failed to load HTML file:", err);
-      setError(err instanceof Error ? err.message : "Failed to load HTML file");
+      console.error('[HtmlPreview] Failed to load HTML file:', err);
+      setError(err instanceof Error ? err.message : 'Failed to load HTML file');
     } finally {
       setIsLoading(false);
     }
@@ -102,14 +98,21 @@ function HtmlPreview({ projectId, filePath, fileName }: HtmlPreviewProps) {
     };
   }, [loadHtmlContent]);
 
-  const normalizedFilePath = filePath.replace(/\\/g, "/");
+  const normalizedFilePath = filePath.replace(/\\/g, '/');
 
   // 使用共享�?file-changed 事件订阅（与 useFileTabRefresh / useBrowserPanel 共享同一 IPC 监听�?
-  useFileChangedEvent(useCallback((event: FileChangedEvent) => {
-    const { paths } = event;
-    const matched = paths.some((p) => p === normalizedFilePath || p.endsWith("/" + normalizedFilePath));
-    if (matched) loadHtmlContent();
-  }, [normalizedFilePath, loadHtmlContent]));
+  useFileChangedEvent(
+    useCallback(
+      (event: FileChangedEvent) => {
+        const { paths } = event;
+        const matched = paths.some(
+          (p) => p === normalizedFilePath || p.endsWith('/' + normalizedFilePath),
+        );
+        if (matched) loadHtmlContent();
+      },
+      [normalizedFilePath, loadHtmlContent],
+    ),
+  );
 
   // 处理刷新
   const handleRefresh = useCallback(() => {
@@ -123,7 +126,7 @@ function HtmlPreview({ projectId, filePath, fileName }: HtmlPreviewProps) {
 
   // 处理 iframe 加载错误
   const handleIframeError = useCallback(() => {
-    setError("Failed to load HTML content in preview");
+    setError('Failed to load HTML content in preview');
     setIsLoading(false);
   }, []);
 
@@ -145,7 +148,9 @@ function HtmlPreview({ projectId, filePath, fileName }: HtmlPreviewProps) {
         <div className="flex-1 flex items-center justify-center">
           <div className="text-center text-text-secondary">
             <Globe size={48} className="mx-auto mb-3 opacity-30" />
-            <p className="text-[var(--font-size)] font-medium text-status-error mb-1">Preview Error</p>
+            <p className="text-[var(--font-size)] font-medium text-status-error mb-1">
+              Preview Error
+            </p>
             <p className="text-[var(--font-size)] opacity-60 max-w-md">{error}</p>
             <button
               className="mt-3 px-3 py-1.5 text-[var(--font-size)] rounded bg-bg-hover text-text-primary hover:bg-bg-selected transition-colors"
@@ -165,9 +170,7 @@ function HtmlPreview({ projectId, filePath, fileName }: HtmlPreviewProps) {
       <div className="flex items-center gap-2 px-3 py-1.5 border-b border-border bg-bg-secondary/50">
         <Globe size={12} className="text-text-secondary" />
         <span className="text-[var(--font-size)] text-text-secondary truncate">{fileName}</span>
-        {isLoading && (
-          <RefreshCw size={10} className="animate-spin text-text-secondary" />
-        )}
+        {isLoading && <RefreshCw size={10} className="animate-spin text-text-secondary" />}
         <div className="flex-1" />
         <button
           className="px-2 py-1 text-[var(--font-size)] rounded hover:bg-bg-hover text-text-secondary hover:text-text-primary transition-colors flex items-center gap-1"
@@ -184,21 +187,23 @@ function HtmlPreview({ projectId, filePath, fileName }: HtmlPreviewProps) {
           <div className="absolute inset-0 flex items-center justify-center bg-bg-primary/80 z-10">
             <div className="flex flex-col items-center gap-2">
               <RefreshCw size={24} className="animate-spin text-text-secondary" />
-              <span className="text-[var(--font-size)] text-text-secondary">Loading preview...</span>
+              <span className="text-[var(--font-size)] text-text-secondary">
+                Loading preview...
+              </span>
             </div>
           </div>
         )}
-         {htmlContent && (
-            <iframe
-              ref={iframeRef}
-              srcDoc={htmlContent}
-              sandbox="allow-scripts allow-same-origin"
-              className="w-full h-full border-none"
-              title={`Preview: ${fileName}`}
-              onLoad={handleIframeLoad}
-              onError={handleIframeError}
-            />
-         )}
+        {htmlContent && (
+          <iframe
+            ref={iframeRef}
+            srcDoc={htmlContent}
+            sandbox="allow-scripts allow-same-origin"
+            className="w-full h-full border-none"
+            title={`Preview: ${fileName}`}
+            onLoad={handleIframeLoad}
+            onError={handleIframeError}
+          />
+        )}
       </div>
     </div>
   );

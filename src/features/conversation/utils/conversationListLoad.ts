@@ -34,7 +34,11 @@ export function listLoadKey(projectPath: string | null, agentFilter?: string): s
  * Whether an automatic background scan should run.
  * Manual refresh always bypasses this (caller passes force=true upstream).
  */
-export function shouldAutoScan(lastScanAt: number | undefined, now: number, throttleMs = AUTO_SCAN_THROTTLE_MS): boolean {
+export function shouldAutoScan(
+  lastScanAt: number | undefined,
+  now: number,
+  throttleMs = AUTO_SCAN_THROTTLE_MS,
+): boolean {
   if (lastScanAt == null) return true;
   return now - lastScanAt >= throttleMs;
 }

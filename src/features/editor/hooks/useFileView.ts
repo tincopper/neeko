@@ -1,5 +1,5 @@
-import { useState, useCallback, useRef, useMemo } from "react";
-import { readDirTree, readFileContent, writeFileContent } from "@/features/file/api/fileApi";
+import { useState, useCallback, useRef, useMemo } from 'react';
+import { readDirTree, readFileContent, writeFileContent } from '@/features/file/api/fileApi';
 import type { FileNode, FileContent, Tab } from '@/shared/types';
 import { DEFAULT_TREE_DEPTH } from '@/shared/types/file';
 import type { ProjectCommands } from '@/shared/types/activeProject';
@@ -7,7 +7,7 @@ import { useProjectStore } from '@/features/project/store';
 import { useWorktreeStore } from '@/features/project/worktreeStore';
 import { useFileStore } from '@/features/file/store';
 import { useEditorStore } from '@/shared/store';
-import { useShallow } from "zustand/shallow";
+import { useShallow } from 'zustand/shallow';
 import { buildWorktreeTabKey, parseProjectIdFromTabKey } from '@/shared/utils/tabKey';
 import { clearViewSnapshot, clearAllForTabKey } from '@/shared/utils/editorViewState';
 import { mergeSubTree, getTabId, getFileName, isFileTab } from '@/shared/utils/fileTree';
@@ -37,20 +37,22 @@ export function useFileView(
   const currentProjectId = activeProjectId ?? activeProject?.id ?? null;
 
   // Resolve effective worktree path: external takes priority
-  const effectiveWorktreePath = externalWorktreePath !== undefined
-    ? externalWorktreePath
-    : activeWorktreePath;
+  const effectiveWorktreePath =
+    externalWorktreePath !== undefined ? externalWorktreePath : activeWorktreePath;
 
   // Composite tab key: worktree gets its own independent tab space
-  const tabKey = effectiveWorktreePath && currentProjectId
-    ? buildWorktreeTabKey(currentProjectId, effectiveWorktreePath)
-    : currentProjectId;
+  const tabKey =
+    effectiveWorktreePath && currentProjectId
+      ? buildWorktreeTabKey(currentProjectId, effectiveWorktreePath)
+      : currentProjectId;
 
   // Read project tabs from unified store using tabKey
-  const projectTabs = useEditorStore(useShallow((state) => {
-    if (!tabKey) return null;
-    return state.tabs[tabKey] ?? null;
-  }));
+  const projectTabs = useEditorStore(
+    useShallow((state) => {
+      if (!tabKey) return null;
+      return state.tabs[tabKey] ?? null;
+    }),
+  );
 
   // Derive file tabs (filtered by kind === "file")
   const fileTabs = useMemo(() => {
@@ -63,7 +65,7 @@ export function useFileView(
     if (!projectTabs) return null;
     // Prefer the project's active tab if it's a file tab
     const active = projectTabs.tabs.find((t) => t.id === projectTabs.activeTabId);
-    if (active && active.data.kind === "file") return active.id;
+    if (active && active.data.kind === 'file') return active.id;
     // Fall back to first file tab
     const first = projectTabs.tabs.find(isFileTab);
     return first?.id ?? null;
@@ -101,11 +103,7 @@ export function useFileView(
         tree = await cmds.readDirTree(worktreePath ?? undefined, undefined, DEFAULT_TREE_DEPTH);
       } else {
         // Local 模式：通过 unified 命令调用
-        tree = await readDirTree(
-          projectId,
-          "",
-          worktreePath ?? null,
-        );
+        tree = await readDirTree(projectId, '', worktreePath ?? null);
       }
       useFileStore.setState({
         fileTree: tree,
@@ -125,9 +123,7 @@ export function useFileView(
    */
   const expandSubTree = useCallback(async (dirPath: string) => {
     const cmds = externalCommandsRef.current;
-    const projectId =
-      useProjectStore.getState().activeProjectId ??
-      null;
+    const projectId = useProjectStore.getState().activeProjectId ?? null;
     if (!projectId) return;
     const rootPath = worktreePathRef.current ?? undefined;
 
@@ -138,11 +134,7 @@ export function useFileView(
         subChildren = await cmds.readDirTree(rootPath, dirPath, DEFAULT_TREE_DEPTH);
       } else {
         // Local 模式：通过 unified 命令
-        subChildren = await readDirTree(
-          projectId,
-          dirPath,
-          rootPath ?? null,
-        );
+        subChildren = await readDirTree(projectId, dirPath, rootPath ?? null);
       }
 
       const currentTree = useFileStore.getState().fileTree;
@@ -151,7 +143,7 @@ export function useFileView(
     } catch (e) {
       // Re-throw so the caller (FilesPanel.handleToggleDir) can handle it;
       // at minimum its `finally` block will clear the loading spinner.
-      console.error("[useFileView] expandSubTree failed for", dirPath, e);
+      console.error('[useFileView] expandSubTree failed for', dirPath, e);
       throw e;
     }
   }, []);
@@ -170,7 +162,7 @@ export function useFileView(
     const existing = useEditorStore.getState().tabs[tk];
     const existingTab = existing?.tabs.find((t) => t.id === tabId);
     if (existingTab) {
-      if (existingTab.data.kind === "file") {
+      if (existingTab.data.kind === 'file') {
         try {
           const rootPath = worktreePathRef.current ?? undefined;
           const cmds = externalCommandsRef.current;
@@ -181,12 +173,12 @@ export function useFileView(
           if (newContent.content !== oldContent) {
             if (existingTab.data.isDirty) {
               useEditorStore.getState().updateTab(tk, tabId, {
-                kind: "file",
+                kind: 'file',
                 externallyModified: true,
               });
             } else {
               useEditorStore.getState().updateTab(tk, tabId, {
-                kind: "file",
+                kind: 'file',
                 content: newContent,
                 isDirty: false,
                 externallyModified: false,
@@ -212,11 +204,7 @@ export function useFileView(
         content = await cmds.readFileContent(filePath, rootPath);
       } else {
         // Local 模式：通过 unified 命令
-        content = await readFileContent(
-          projectId,
-          filePath,
-          rootPath ?? null,
-        );
+        content = await readFileContent(projectId, filePath, rootPath ?? null);
       }
 
       const newTab: Tab = {
@@ -225,7 +213,7 @@ export function useFileView(
         title: getFileName(filePath),
         order: existing?.tabs.length ?? 0,
         data: {
-          kind: "file",
+          kind: 'file',
           filePath,
           fileName: getFileName(filePath),
           content,
@@ -270,7 +258,7 @@ export function useFileView(
     if (!projTabs) return;
 
     const tab = projTabs.tabs.find((t) => t.id === tabId);
-    if (!tab || tab.data.kind !== "file") return;
+    if (!tab || tab.data.kind !== 'file') return;
 
     useEditorStore.getState().updateTab(tk, tabId, {
       content: { ...tab.data.content, content },
@@ -290,10 +278,8 @@ export function useFileView(
 
     // Find the active file tab
     const active = projTabs.tabs.find((t) => t.id === projTabs.activeTabId);
-    const fileTab = active && active.data.kind === "file"
-      ? active
-      : projTabs.tabs.find(isFileTab);
-    if (!fileTab || fileTab.data.kind !== "file") return false;
+    const fileTab = active && active.data.kind === 'file' ? active : projTabs.tabs.find(isFileTab);
+    if (!fileTab || fileTab.data.kind !== 'file') return false;
 
     try {
       const rootPath = worktreePathRef.current ?? undefined;
@@ -303,11 +289,7 @@ export function useFileView(
         await cmds.writeFileContent(fileTab.data.filePath, content, rootPath);
       } else {
         // Local 模式：通过 unified 命令
-        await writeFileContent(
-          fileTab.projectId,
-          fileTab.data.filePath,
-          content,
-        );
+        await writeFileContent(fileTab.projectId, fileTab.data.filePath, content);
       }
 
       // Update tab: mark as not dirty, update content
@@ -333,7 +315,7 @@ export function useFileView(
     if (!projTabs) return;
 
     const tab = projTabs.tabs.find((t) => t.id === tabId);
-    if (!tab || tab.data.kind !== "file") return;
+    if (!tab || tab.data.kind !== 'file') return;
 
     useEditorStore.getState().updateTab(tk, tabId, {
       content: tab.data.content,

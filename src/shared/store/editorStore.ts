@@ -1,12 +1,23 @@
-import { create } from "zustand";
+import { create } from 'zustand';
 import type { EditorGroupId, EditorSplitLayout, ProjectTabs, Tab, TabData } from '@/shared/types';
-import type { FileTabData, TerminalTabData, DiffTabData, HtmlPreviewTabData, PRDetailTabData } from '@/shared/types/tab';
+import type {
+  FileTabData,
+  TerminalTabData,
+  DiffTabData,
+  HtmlPreviewTabData,
+  PRDetailTabData,
+} from '@/shared/types/tab';
 import type { FileContent } from '@/features/file/types';
 import type { DiffSource, ViewMode } from '@/features/git/components/diff/types';
 import { createDefaultEditorLayout } from '@/shared/types/editorGroup';
 import { emitTabActivated } from '@/shared/utils/editorActivity';
 
-function ensureLayout(layouts: Record<string, EditorSplitLayout>, tabKey: string, allTabIds: string[], activeTabId: string | null): EditorSplitLayout {
+function ensureLayout(
+  layouts: Record<string, EditorSplitLayout>,
+  tabKey: string,
+  allTabIds: string[],
+  activeTabId: string | null,
+): EditorSplitLayout {
   if (layouts[tabKey]) return layouts[tabKey];
   const layout = createDefaultEditorLayout();
   layout.groups.left.tabIds = allTabIds;
@@ -20,76 +31,99 @@ function mergeTabData(data: TabData, partial: Partial<TabData>): TabData {
   }
 
   switch (data.kind) {
-    case "terminal": {
+    case 'terminal': {
       const p = partial as Record<string, unknown>;
       const isTerminalPartial =
-        "agentId" in p ||
-        "status" in p ||
-        "taskCommand" in p ||
-        "taskConfigId" in p ||
-        "rebuildKey" in p;
+        'agentId' in p ||
+        'status' in p ||
+        'taskCommand' in p ||
+        'taskConfigId' in p ||
+        'rebuildKey' in p;
       if (!isTerminalPartial) return data;
       return {
-        kind: "terminal" as const,
-        agentId: p.agentId !== undefined ? (p.agentId as string | null) : (data as TerminalTabData).agentId,
-        status: p.status !== undefined ? (p.status as "Idle" | "Running" | "Failed") : (data as TerminalTabData).status,
-        taskCommand: p.taskCommand !== undefined ? (p.taskCommand as string | undefined) : (data as TerminalTabData).taskCommand,
-        taskConfigId: p.taskConfigId !== undefined ? (p.taskConfigId as string | undefined) : (data as TerminalTabData).taskConfigId,
-        rebuildKey: p.rebuildKey !== undefined ? (p.rebuildKey as number | undefined) : (data as TerminalTabData).rebuildKey,
+        kind: 'terminal' as const,
+        agentId:
+          p.agentId !== undefined
+            ? (p.agentId as string | null)
+            : (data as TerminalTabData).agentId,
+        status:
+          p.status !== undefined
+            ? (p.status as 'Idle' | 'Running' | 'Failed')
+            : (data as TerminalTabData).status,
+        taskCommand:
+          p.taskCommand !== undefined
+            ? (p.taskCommand as string | undefined)
+            : (data as TerminalTabData).taskCommand,
+        taskConfigId:
+          p.taskConfigId !== undefined
+            ? (p.taskConfigId as string | undefined)
+            : (data as TerminalTabData).taskConfigId,
+        rebuildKey:
+          p.rebuildKey !== undefined
+            ? (p.rebuildKey as number | undefined)
+            : (data as TerminalTabData).rebuildKey,
       };
     }
-    case "file": {
+    case 'file': {
       const p = partial as Record<string, unknown>;
       const isFilePartial =
-        "content" in p ||
-        "isDirty" in p ||
-        "filePath" in p ||
-        "fileName" in p ||
-        "externallyModified" in p;
+        'content' in p ||
+        'isDirty' in p ||
+        'filePath' in p ||
+        'fileName' in p ||
+        'externallyModified' in p;
       if (!isFilePartial) return data;
       const d = data as FileTabData;
       return {
-        kind: "file" as const,
+        kind: 'file' as const,
         filePath: p.filePath !== undefined ? (p.filePath as string) : d.filePath,
         fileName: p.fileName !== undefined ? (p.fileName as string) : d.fileName,
         content: p.content !== undefined ? (p.content as FileContent) : d.content,
         isDirty: p.isDirty !== undefined ? (p.isDirty as boolean) : d.isDirty,
-        externallyModified: "externallyModified" in p ? (p.externallyModified as boolean | undefined) : d.externallyModified,
+        externallyModified:
+          'externallyModified' in p
+            ? (p.externallyModified as boolean | undefined)
+            : d.externallyModified,
       };
     }
-    case "diff": {
+    case 'diff': {
       const p = partial as Record<string, unknown>;
-      if (!("diffSource" in p) && !("combined" in p) && !("scrollToPath" in p)) return data;
+      if (!('diffSource' in p) && !('combined' in p) && !('scrollToPath' in p)) return data;
       const d = data as DiffTabData;
       return {
-        kind: "diff" as const,
+        kind: 'diff' as const,
         filePath: p.filePath !== undefined ? (p.filePath as string) : d.filePath,
         fileName: p.fileName !== undefined ? (p.fileName as string) : d.fileName,
         diffSource: p.diffSource !== undefined ? (p.diffSource as DiffSource) : d.diffSource,
-        initialMode: p.initialMode !== undefined ? (p.initialMode as ViewMode | undefined) : d.initialMode,
+        initialMode:
+          p.initialMode !== undefined ? (p.initialMode as ViewMode | undefined) : d.initialMode,
         combined: p.combined !== undefined ? (p.combined as boolean) : d.combined,
-        combinedFiles: p.combinedFiles !== undefined ? (p.combinedFiles as import('@/features/git/components/diff/types').CommitFileChange[]) : d.combinedFiles,
-        scrollToPath: p.scrollToPath !== undefined ? (p.scrollToPath as string | undefined) : d.scrollToPath,
+        combinedFiles:
+          p.combinedFiles !== undefined
+            ? (p.combinedFiles as import('@/features/git/components/diff/types').CommitFileChange[])
+            : d.combinedFiles,
+        scrollToPath:
+          p.scrollToPath !== undefined ? (p.scrollToPath as string | undefined) : d.scrollToPath,
       };
     }
-    case "html-preview": {
+    case 'html-preview': {
       const p = partial as Record<string, unknown>;
-      if (!("filePath" in p)) return data;
+      if (!('filePath' in p)) return data;
       const d = data as HtmlPreviewTabData;
       return {
-        kind: "html-preview" as const,
+        kind: 'html-preview' as const,
         filePath: p.filePath !== undefined ? (p.filePath as string) : d.filePath,
         fileName: p.fileName !== undefined ? (p.fileName as string) : d.fileName,
       };
     }
-    case "conversation": {
+    case 'conversation': {
       return data;
     }
-    case "prDetail": {
+    case 'prDetail': {
       const p = partial as Record<string, unknown>;
       const d = data as PRDetailTabData;
       return {
-        kind: "prDetail" as const,
+        kind: 'prDetail' as const,
         projectId: p.projectId !== undefined ? (p.projectId as string) : d.projectId,
         prNumber: p.prNumber !== undefined ? (p.prNumber as number) : d.prNumber,
         prTitle: p.prTitle !== undefined ? (p.prTitle as string) : d.prTitle,
@@ -128,28 +162,32 @@ function clearPreviousPin(
 }
 
 function applyPin(layout: EditorSplitLayout, tabId: string): EditorSplitLayout {
-  const newLeftIds  = layout.groups.left.tabIds.filter((id) => id !== tabId);
+  const newLeftIds = layout.groups.left.tabIds.filter((id) => id !== tabId);
   const newRightIds = layout.groups.right.tabIds.filter((id) => id !== tabId);
-  const stillSplit  = layout.isSplit && newRightIds.length > 0;
+  const stillSplit = layout.isSplit && newRightIds.length > 0;
 
   return {
     ...layout,
     isSplit: stillSplit,
-    activeGroupId: stillSplit ? layout.activeGroupId : "left",
+    activeGroupId: stillSplit ? layout.activeGroupId : 'left',
     pinnedTabId: tabId,
     groups: {
       left: {
         tabIds: newLeftIds,
         activeTabId:
           layout.groups.left.activeTabId === tabId
-            ? (newLeftIds.length > 0 ? newLeftIds[newLeftIds.length - 1] : null)
+            ? newLeftIds.length > 0
+              ? newLeftIds[newLeftIds.length - 1]
+              : null
             : layout.groups.left.activeTabId,
       },
       right: {
         tabIds: newRightIds,
         activeTabId:
           layout.groups.right.activeTabId === tabId
-            ? (newRightIds.length > 0 ? newRightIds[newRightIds.length - 1] : null)
+            ? newRightIds.length > 0
+              ? newRightIds[newRightIds.length - 1]
+              : null
             : layout.groups.right.activeTabId,
       },
     },
@@ -173,7 +211,11 @@ interface EditorStoreState {
   addTab: (projectId: string, tab: Tab) => void;
   closeTab: (projectId: string, tabId: string) => void;
   activateTab: (projectId: string, tabId: string) => void;
-  updateTab: (projectId: string, tabId: string, partial: Partial<TabData> & { title?: string }) => void;
+  updateTab: (
+    projectId: string,
+    tabId: string,
+    partial: Partial<TabData> & { title?: string },
+  ) => void;
   clearProjectTabs: (projectId: string) => void;
 
   splitRight: (tabKey: string, tabId: string) => void;
@@ -204,9 +246,9 @@ export const useEditorStore = create<EditorStoreState>((set) => ({
     set((state) => {
       const existing = state.tabs[projectId];
 
-      if (tab.data.kind === "terminal") {
+      if (tab.data.kind === 'terminal') {
         const terminalCount = (existing?.tabs ?? []).filter(
-          (t) => t.data.kind === "terminal",
+          (t) => t.data.kind === 'terminal',
         ).length;
         if (terminalCount >= 10) return state;
       }
@@ -219,7 +261,12 @@ export const useEditorStore = create<EditorStoreState>((set) => ({
 
       const newTabs = { ...state.tabs, [projectId]: projectTabs };
 
-      const layout = ensureLayout(state.editorLayout, projectId, projectTabs.tabs.map(t => t.id), tab.id);
+      const layout = ensureLayout(
+        state.editorLayout,
+        projectId,
+        projectTabs.tabs.map((t) => t.id),
+        tab.id,
+      );
       const activeGroupId = layout.activeGroupId;
       const newLayout: EditorSplitLayout = {
         ...layout,
@@ -264,8 +311,8 @@ export const useEditorStore = create<EditorStoreState>((set) => ({
           newActiveId = null;
         } else {
           const layout = state.editorLayout[projectId];
-          let groupId: EditorGroupId = "left";
-          if (layout?.groups.right.tabIds.includes(tabId)) groupId = "right";
+          let groupId: EditorGroupId = 'left';
+          if (layout?.groups.right.tabIds.includes(tabId)) groupId = 'right';
           const groupIds = layout?.groups[groupId]?.tabIds;
           const groupIdx = groupIds?.indexOf(tabId) ?? -1;
 
@@ -279,8 +326,7 @@ export const useEditorStore = create<EditorStoreState>((set) => ({
         }
       }
 
-      const globalActiveId =
-        state.activeTabId === tabId ? newActiveId : state.activeTabId;
+      const globalActiveId = state.activeTabId === tabId ? newActiveId : state.activeTabId;
 
       const newTabs = {
         ...state.tabs,
@@ -290,10 +336,10 @@ export const useEditorStore = create<EditorStoreState>((set) => ({
       let newEditorLayout = state.editorLayout;
       const layout = state.editorLayout[projectId];
       if (layout) {
-        let groupId: EditorGroupId = "left";
-        if (layout.groups.right.tabIds.includes(tabId)) groupId = "right";
+        let groupId: EditorGroupId = 'left';
+        if (layout.groups.right.tabIds.includes(tabId)) groupId = 'right';
 
-        const updatedGroupIds = layout.groups[groupId].tabIds.filter(id => id !== tabId);
+        const updatedGroupIds = layout.groups[groupId].tabIds.filter((id) => id !== tabId);
         let newLayout: EditorSplitLayout = {
           ...layout,
           groups: {
@@ -301,9 +347,12 @@ export const useEditorStore = create<EditorStoreState>((set) => ({
             [groupId]: {
               ...layout.groups[groupId],
               tabIds: updatedGroupIds,
-              activeTabId: layout.groups[groupId].activeTabId === tabId
-                ? (updatedGroupIds.length > 0 ? newActiveId : null)
-                : layout.groups[groupId].activeTabId,
+              activeTabId:
+                layout.groups[groupId].activeTabId === tabId
+                  ? updatedGroupIds.length > 0
+                    ? newActiveId
+                    : null
+                  : layout.groups[groupId].activeTabId,
             },
           },
         };
@@ -312,7 +361,7 @@ export const useEditorStore = create<EditorStoreState>((set) => ({
           newLayout = {
             ...newLayout,
             isSplit: false,
-            activeGroupId: "left",
+            activeGroupId: 'left',
           };
         }
 
@@ -320,7 +369,7 @@ export const useEditorStore = create<EditorStoreState>((set) => ({
           newLayout = {
             ...newLayout,
             isSplit: false,
-            activeGroupId: "left",
+            activeGroupId: 'left',
             groups: {
               left: newLayout.groups.right,
               right: { tabIds: [], activeTabId: null },
@@ -349,8 +398,8 @@ export const useEditorStore = create<EditorStoreState>((set) => ({
       const layout = state.editorLayout[projectId];
       if (layout) {
         let groupId: EditorGroupId = layout.activeGroupId;
-        if (layout.groups.right.tabIds.includes(tabId)) groupId = "right";
-        else if (layout.groups.left.tabIds.includes(tabId)) groupId = "left";
+        if (layout.groups.right.tabIds.includes(tabId)) groupId = 'right';
+        else if (layout.groups.left.tabIds.includes(tabId)) groupId = 'left';
         newEditorLayout = {
           ...state.editorLayout,
           [projectId]: {
@@ -415,10 +464,9 @@ export const useEditorStore = create<EditorStoreState>((set) => ({
       const existing = state.tabs[projectId];
       if (!existing) return state;
 
-      const globalActiveId =
-        existing.tabs.some((t) => t.id === state.activeTabId)
-          ? null
-          : state.activeTabId;
+      const globalActiveId = existing.tabs.some((t) => t.id === state.activeTabId)
+        ? null
+        : state.activeTabId;
 
       const { [projectId]: _, ...rest } = state.tabs;
       const { [projectId]: __, ...restLayouts } = state.editorLayout;
@@ -431,26 +479,34 @@ export const useEditorStore = create<EditorStoreState>((set) => ({
       if (!projectTabs) return state;
       if (!projectTabs.tabs.some((t) => t.id === tabId)) return state;
 
-      const layout = ensureLayout(state.editorLayout, tabKey, projectTabs.tabs.map(t => t.id), projectTabs.activeTabId);
+      const layout = ensureLayout(
+        state.editorLayout,
+        tabKey,
+        projectTabs.tabs.map((t) => t.id),
+        projectTabs.activeTabId,
+      );
 
-      const newLeftIds = layout.groups.left.tabIds.filter(id => id !== tabId);
+      const newLeftIds = layout.groups.left.tabIds.filter((id) => id !== tabId);
       const newRightIds = layout.isSplit
-        ? (layout.groups.right.tabIds.includes(tabId)
+        ? layout.groups.right.tabIds.includes(tabId)
           ? layout.groups.right.tabIds
-          : [...layout.groups.right.tabIds, tabId])
+          : [...layout.groups.right.tabIds, tabId]
         : [tabId];
 
       const newLayout: EditorSplitLayout = {
         ...layout,
         isSplit: true,
-        activeGroupId: "right",
+        activeGroupId: 'right',
         groups: {
           left: {
             ...layout.groups.left,
             tabIds: newLeftIds,
-            activeTabId: layout.groups.left.activeTabId === tabId
-              ? (newLeftIds.length > 0 ? newLeftIds[newLeftIds.length - 1] : null)
-              : layout.groups.left.activeTabId,
+            activeTabId:
+              layout.groups.left.activeTabId === tabId
+                ? newLeftIds.length > 0
+                  ? newLeftIds[newLeftIds.length - 1]
+                  : null
+                : layout.groups.left.activeTabId,
           },
           right: {
             ...layout.groups.right,
@@ -472,24 +528,32 @@ export const useEditorStore = create<EditorStoreState>((set) => ({
       if (!projectTabs) return state;
       if (!projectTabs.tabs.some((t) => t.id === tabId)) return state;
 
-      const layout = ensureLayout(state.editorLayout, tabKey, projectTabs.tabs.map(t => t.id), projectTabs.activeTabId);
+      const layout = ensureLayout(
+        state.editorLayout,
+        tabKey,
+        projectTabs.tabs.map((t) => t.id),
+        projectTabs.activeTabId,
+      );
 
       if (layout.groups.right.tabIds.includes(tabId)) return state;
 
-      const newLeftIds = layout.groups.left.tabIds.filter(id => id !== tabId);
+      const newLeftIds = layout.groups.left.tabIds.filter((id) => id !== tabId);
       const newRightIds = [...layout.groups.right.tabIds, tabId];
 
       const newLayout: EditorSplitLayout = {
         ...layout,
         isSplit: true,
-        activeGroupId: "right",
+        activeGroupId: 'right',
         groups: {
           left: {
             ...layout.groups.left,
             tabIds: newLeftIds,
-            activeTabId: layout.groups.left.activeTabId === tabId
-              ? (newLeftIds.length > 0 ? newLeftIds[newLeftIds.length - 1] : null)
-              : layout.groups.left.activeTabId,
+            activeTabId:
+              layout.groups.left.activeTabId === tabId
+                ? newLeftIds.length > 0
+                  ? newLeftIds[newLeftIds.length - 1]
+                  : null
+                : layout.groups.left.activeTabId,
           },
           right: {
             ...layout.groups.right,
@@ -512,12 +576,12 @@ export const useEditorStore = create<EditorStoreState>((set) => ({
 
       if (layout.groups.left.tabIds.includes(tabId)) return state;
 
-      const newRightIds = layout.groups.right.tabIds.filter(id => id !== tabId);
+      const newRightIds = layout.groups.right.tabIds.filter((id) => id !== tabId);
       const newLeftIds = [...layout.groups.left.tabIds, tabId];
 
       let newLayout: EditorSplitLayout = {
         ...layout,
-        activeGroupId: "left",
+        activeGroupId: 'left',
         groups: {
           left: {
             ...layout.groups.left,
@@ -548,16 +612,20 @@ export const useEditorStore = create<EditorStoreState>((set) => ({
       if (!layout || !layout.isSplit) return state;
 
       const allTabIds = [...layout.groups.left.tabIds, ...layout.groups.right.tabIds];
-      const activeTabId = layout.activeGroupId === "right"
-        ? layout.groups.right.activeTabId
-        : layout.groups.left.activeTabId;
+      const activeTabId =
+        layout.activeGroupId === 'right'
+          ? layout.groups.right.activeTabId
+          : layout.groups.left.activeTabId;
 
       const newLayout: EditorSplitLayout = {
         ...layout,
         isSplit: false,
-        activeGroupId: "left",
+        activeGroupId: 'left',
         groups: {
-          left: { tabIds: allTabIds, activeTabId: activeTabId ?? allTabIds[allTabIds.length - 1] ?? null },
+          left: {
+            tabIds: allTabIds,
+            activeTabId: activeTabId ?? allTabIds[allTabIds.length - 1] ?? null,
+          },
           right: { tabIds: [], activeTabId: null },
         },
       };
@@ -641,10 +709,7 @@ export const useEditorStore = create<EditorStoreState>((set) => ({
         projectTabs.activeTabId,
       );
 
-      const newLayout = applyPin(
-        clearPreviousPin(layout, layout.pinnedTabId, tabId),
-        tabId,
-      );
+      const newLayout = applyPin(clearPreviousPin(layout, layout.pinnedTabId, tabId), tabId);
 
       return {
         editorLayout: { ...state.editorLayout, [tabKey]: newLayout },

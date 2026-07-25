@@ -1,10 +1,10 @@
-import React, { useCallback } from "react";
+import React, { useCallback } from 'react';
 import { useAppContext } from '@/shared/contexts';
 import { useEditorContext } from '@/shared/contexts';
 import { useEditorStore } from '@/shared/store';
 import type { AuthMethod } from '@/shared/types';
-import TerminalViewBase from "./TerminalViewBase";
-import { useTerminalStrategy } from "../strategies";
+import TerminalViewBase from './TerminalViewBase';
+import { useTerminalStrategy } from '../strategies';
 
 export interface TerminalViewProps {
   paneId: string;
@@ -35,21 +35,21 @@ function TerminalView({ paneId, worktreePath, worktreeBranch, remoteConfig }: Te
   const activeTab = tabs.find((tab) => tab.id === activeTabId) ?? null;
   const tabAgentId = activeTab?.agentId ?? null;
 
-  const agentCommandOverride = config.agentCommandOverrides?.[tabAgentId ?? ""];
+  const agentCommandOverride = config.agentCommandOverrides?.[tabAgentId ?? ''];
 
   // Task terminal fields — read from full Tab data in editorStore
-  const projectId = strategy ? strategy.cacheKey.split(":")[0] : null;
+  const projectId = strategy ? strategy.cacheKey.split(':')[0] : null;
   const fullTabData = useEditorStore((s) => {
     if (!projectId || !activeTabId) return null;
     const pt = s.tabs[projectId];
     return pt?.tabs.find((t) => t.id === activeTabId)?.data ?? null;
   });
-  const taskCommand = fullTabData?.kind === "terminal" ? (fullTabData.taskCommand ?? null) : null;
-  const taskConfigId = fullTabData?.kind === "terminal" ? (fullTabData.taskConfigId ?? null) : null;
-  const taskRebuildKey = fullTabData?.kind === "terminal" ? (fullTabData.rebuildKey ?? 0) : 0;
+  const taskCommand = fullTabData?.kind === 'terminal' ? (fullTabData.taskCommand ?? null) : null;
+  const taskConfigId = fullTabData?.kind === 'terminal' ? (fullTabData.taskConfigId ?? null) : null;
+  const taskRebuildKey = fullTabData?.kind === 'terminal' ? (fullTabData.rebuildKey ?? 0) : 0;
 
   const handleStatusChange = useCallback(
-    (status: "Idle" | "Running" | "Failed") => {
+    (status: 'Idle' | 'Running' | 'Failed') => {
       if (activeTabId) {
         onTabStatusChange?.(activeTabId, status);
       }

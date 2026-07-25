@@ -41,7 +41,7 @@ const DiscoveredSkillsList: React.FC<DiscoveredSkillsListProps> = React.memo(
           </Button>
         </div>
         <div className="pb-1.5">
-          {skills.map(skill => (
+          {skills.map((skill) => (
             <div
               key={skill.id}
               className="flex items-center gap-2 pl-3 pr-2 py-1.5 mx-1.5 rounded-md hover:bg-bg-hover/80"
@@ -57,9 +57,7 @@ const DiscoveredSkillsList: React.FC<DiscoveredSkillsListProps> = React.memo(
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={() =>
-                  void handleImport(skill.found_path, skill.name_guess || undefined)
-                }
+                onClick={() => void handleImport(skill.found_path, skill.name_guess || undefined)}
                 className="h-6 px-2 text-[11px] gap-1 shrink-0 text-text-secondary hover:text-text-primary"
               >
                 <Download className="h-3 w-3" />

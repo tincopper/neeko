@@ -1,19 +1,32 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { renameProject, changeProjectPath, setProjectIde, setProjectColor, removeProject, setProjectPrimaryLanguage } from "../../project/api/projectApi";
-import { setProjectAgents, listAgents } from "../../agent/api/agentApi";
-import { useLspStore } from "@/features/lsp/store/lspStore";
-import { open } from "@tauri-apps/plugin-dialog";
-import { Pencil, Trash2, Plus } from "@/shared/components/icons"
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import {
+  renameProject,
+  changeProjectPath,
+  setProjectIde,
+  setProjectColor,
+  removeProject,
+  setProjectPrimaryLanguage,
+} from '../../project/api/projectApi';
+import { setProjectAgents, listAgents } from '../../agent/api/agentApi';
+import { useLspStore } from '@/features/lsp/store/lspStore';
+import { open } from '@tauri-apps/plugin-dialog';
+import { Pencil, Trash2, Plus } from '@/shared/components/icons';
 import { useProjectStore } from '@/features/project/store';
 import { useTaskStore } from '@/features/task/store';
 import { IDE_PRESETS } from '@/shared/utils/idePresets';
 import { AVATAR_COLORS } from '@/shared/utils/projectAvatar';
 import { cn } from '@/lib/utils';
 import {
-  Select, SelectTrigger, SelectContent, SelectItem, SelectValue,
-  Input, Button, Separator,
-} from "@/ui";
-import TaskDialog from "@/features/task/components/TaskDialog";
+  Select,
+  SelectTrigger,
+  SelectContent,
+  SelectItem,
+  SelectValue,
+  Input,
+  Button,
+  Separator,
+} from '@/ui';
+import TaskDialog from '@/features/task/components/TaskDialog';
 import type { TaskConfig } from '@/shared/types/task';
 import type { Project } from '@/shared/types';
 
@@ -23,29 +36,19 @@ interface ProjectPanelProps {
   onProjectRemoved: () => void;
 }
 
-const ProjectPanel: React.FC<ProjectPanelProps> = ({
-  projectId,
-  customIdes,
-  onProjectRemoved,
-}) => {
+const ProjectPanel: React.FC<ProjectPanelProps> = ({ projectId, customIdes, onProjectRemoved }) => {
   const project = useProjectStore(
     useCallback((s) => s.projects.find((p: Project) => p.id === projectId), [projectId]),
   );
 
-  const [name, setName] = useState(project?.name ?? "");
-  const [activeTaskTab, setActiveTaskTab] = useState<"project" | "app">("project");
+  const [name, setName] = useState(project?.name ?? '');
+  const [activeTaskTab, setActiveTaskTab] = useState<'project' | 'app'>('project');
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingConfig, setEditingConfig] = useState<TaskConfig | null>(null);
   const [confirmRemove, setConfirmRemove] = useState(false);
   const [agents, setAgents] = useState<{ id: string; name: string }[]>([]);
 
-  const {
-    configs,
-    loadConfigs,
-    addConfig,
-    updateConfig,
-    deleteConfig,
-  } = useTaskStore();
+  const { configs, loadConfigs, addConfig, updateConfig, deleteConfig } = useTaskStore();
 
   const projectPath = project?.path ?? null;
 
@@ -56,21 +59,15 @@ const ProjectPanel: React.FC<ProjectPanelProps> = ({
   }, []);
 
   useEffect(() => {
-    setName(project?.name ?? "");
+    setName(project?.name ?? '');
   }, [project?.name]);
 
   useEffect(() => {
     if (projectPath) loadConfigs(projectPath);
   }, [projectPath, loadConfigs]);
 
-  const projectTasks = useMemo(
-    () => configs.filter((c) => c.scope === "project"),
-    [configs],
-  );
-  const appTasks = useMemo(
-    () => configs.filter((c) => c.scope === "app"),
-    [configs],
-  );
+  const projectTasks = useMemo(() => configs.filter((c) => c.scope === 'project'), [configs]);
+  const appTasks = useMemo(() => configs.filter((c) => c.scope === 'app'), [configs]);
 
   const patchProject = useCallback(
     (patch: Partial<Project>) => {
@@ -82,7 +79,7 @@ const ProjectPanel: React.FC<ProjectPanelProps> = ({
           projects: nextProjects,
           activeProject:
             state.activeProjectId === projectId
-              ? nextProjects.find((p) => p.id === projectId) ?? state.activeProject
+              ? (nextProjects.find((p) => p.id === projectId) ?? state.activeProject)
               : state.activeProject,
         };
       });
@@ -98,25 +95,22 @@ const ProjectPanel: React.FC<ProjectPanelProps> = ({
     }
   }, [name, project?.name, projectId, patchProject]);
 
-  const handleNameKeyDown = useCallback(
-    (e: React.KeyboardEvent) => {
-      if (e.key === "Enter") {
-        (e.target as HTMLInputElement).blur();
-      }
-    },
-    [],
-  );
+  const handleNameKeyDown = useCallback((e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      (e.target as HTMLInputElement).blur();
+    }
+  }, []);
 
   const handleChangePath = useCallback(async () => {
     const selected = await open({ directory: true, multiple: false });
-    if (selected && typeof selected === "string") {
+    if (selected && typeof selected === 'string') {
       await changeProjectPath(projectId, selected);
     }
   }, [projectId]);
 
   const handleAgentChange = useCallback(
     (value: string) => {
-      const agentId = value === "__global__" ? null : value;
+      const agentId = value === '__global__' ? null : value;
       setProjectAgents(projectId, agentId ? [agentId] : []);
       patchProject({ selected_agents: agentId ? [agentId] : [] });
     },
@@ -125,7 +119,7 @@ const ProjectPanel: React.FC<ProjectPanelProps> = ({
 
   const handleIdeChange = useCallback(
     (value: string) => {
-      const ide = value === "__global__" ? null : value;
+      const ide = value === '__global__' ? null : value;
       setProjectIde(projectId, ide);
       patchProject({ selected_ide: ide });
     },
@@ -135,7 +129,7 @@ const ProjectPanel: React.FC<ProjectPanelProps> = ({
   const handleAvatarColorChange = useCallback(
     (color: string | null) => {
       setProjectColor(projectId, color).catch((e) => {
-        console.error("[ProjectPanel] Failed to set avatar color:", e);
+        console.error('[ProjectPanel] Failed to set avatar color:', e);
       });
       patchProject({ avatar_color: color });
     },
@@ -144,9 +138,9 @@ const ProjectPanel: React.FC<ProjectPanelProps> = ({
 
   const handlePrimaryLanguageChange = useCallback(
     (value: string) => {
-      const language = value === "__auto__" ? null : value;
+      const language = value === '__auto__' ? null : value;
       setProjectPrimaryLanguage(projectId, language).catch((e) => {
-        console.error("[ProjectPanel] Failed to set primary language:", e);
+        console.error('[ProjectPanel] Failed to set primary language:', e);
       });
       patchProject({ primary_language: language });
     },
@@ -165,13 +159,13 @@ const ProjectPanel: React.FC<ProjectPanelProps> = ({
     }));
     const seen = new Set(fromProfile.map((o) => o.id));
     const builtins = [
-      { id: "go", label: "go (gopls)" },
-      { id: "rust", label: "rust (rust-analyzer)" },
-      { id: "typescript", label: "typescript (typescript-language-server)" },
-      { id: "javascript", label: "javascript (typescript-language-server)" },
-      { id: "python", label: "python (pyright)" },
-      { id: "java", label: "java (jdtls)" },
-      { id: "cpp", label: "cpp (clangd)" },
+      { id: 'go', label: 'go (gopls)' },
+      { id: 'rust', label: 'rust (rust-analyzer)' },
+      { id: 'typescript', label: 'typescript (typescript-language-server)' },
+      { id: 'javascript', label: 'javascript (typescript-language-server)' },
+      { id: 'python', label: 'python (pyright)' },
+      { id: 'java', label: 'java (jdtls)' },
+      { id: 'cpp', label: 'cpp (clangd)' },
     ];
     for (const b of builtins) {
       if (!seen.has(b.id)) {
@@ -218,7 +212,7 @@ const ProjectPanel: React.FC<ProjectPanelProps> = ({
           id: crypto.randomUUID(),
           name: taskName || command,
           command,
-          scope: activeTaskTab === "app" ? "app" : "project",
+          scope: activeTaskTab === 'app' ? 'app' : 'project',
           project_id: projectId,
         };
         addConfig(config, projectPath ?? undefined);
@@ -234,17 +228,15 @@ const ProjectPanel: React.FC<ProjectPanelProps> = ({
     onProjectRemoved();
   }, [projectId, onProjectRemoved]);
 
-  const isLocal = !projectPath?.startsWith("\\\\wsl") && !projectPath?.includes("@");
+  const isLocal = !projectPath?.startsWith('\\\\wsl') && !projectPath?.includes('@');
 
   if (!project) return null;
 
-  const currentTasks = activeTaskTab === "project" ? projectTasks : appTasks;
+  const currentTasks = activeTaskTab === 'project' ? projectTasks : appTasks;
 
   return (
     <div className="flex flex-col">
-      <h3 className="text-base font-semibold text-text-primary mb-6">
-        {project.name}
-      </h3>
+      <h3 className="text-base font-semibold text-text-primary mb-6">{project.name}</h3>
 
       {/* Name */}
       <div className="mb-6">
@@ -259,12 +251,10 @@ const ProjectPanel: React.FC<ProjectPanelProps> = ({
 
       {/* Path */}
       <div className="mb-6">
-        <div className="text-[0.86em] text-text-primary font-medium mb-1.5">
-          Project location
-        </div>
+        <div className="text-[0.86em] text-text-primary font-medium mb-1.5">Project location</div>
         <div className="flex items-center gap-2.5">
           <Input
-            value={projectPath ?? ""}
+            value={projectPath ?? ''}
             readOnly
             className="flex-1 text-text-secondary cursor-default"
           />
@@ -273,7 +263,7 @@ const ProjectPanel: React.FC<ProjectPanelProps> = ({
             size="sm"
             onClick={handleChangePath}
             disabled={!isLocal}
-            title={isLocal ? "Change project directory" : "Only available for local projects"}
+            title={isLocal ? 'Change project directory' : 'Only available for local projects'}
           >
             Change...
           </Button>
@@ -289,9 +279,7 @@ const ProjectPanel: React.FC<ProjectPanelProps> = ({
 
       {/* Overrides */}
       <div className="mb-6">
-        <div className="text-[0.86em] text-text-primary font-medium mb-1">
-          Project Overrides
-        </div>
+        <div className="text-[0.86em] text-text-primary font-medium mb-1">Project Overrides</div>
         <div className="text-[0.79em] text-text-muted mb-3">
           Agent, IDE, and primary language preferences specific to this project.
         </div>
@@ -299,7 +287,7 @@ const ProjectPanel: React.FC<ProjectPanelProps> = ({
           <div>
             <div className="text-[0.79em] text-text-muted mb-1.5">Agent</div>
             <Select
-              value={project.selected_agents?.[0] ?? "__global__"}
+              value={project.selected_agents?.[0] ?? '__global__'}
               onValueChange={handleAgentChange}
             >
               <SelectTrigger>
@@ -308,27 +296,30 @@ const ProjectPanel: React.FC<ProjectPanelProps> = ({
               <SelectContent>
                 <SelectItem value="__global__">Use global default</SelectItem>
                 {agents.map((a) => (
-                  <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>
+                  <SelectItem key={a.id} value={a.id}>
+                    {a.name}
+                  </SelectItem>
                 ))}
               </SelectContent>
             </Select>
           </div>
           <div>
             <div className="text-[0.79em] text-text-muted mb-1.5">IDE</div>
-            <Select
-              value={project.selected_ide ?? "__global__"}
-              onValueChange={handleIdeChange}
-            >
+            <Select value={project.selected_ide ?? '__global__'} onValueChange={handleIdeChange}>
               <SelectTrigger>
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="__global__">Use global default</SelectItem>
                 {IDE_PRESETS.map((ide) => (
-                  <SelectItem key={ide.id} value={ide.id}>{ide.name}</SelectItem>
+                  <SelectItem key={ide.id} value={ide.id}>
+                    {ide.name}
+                  </SelectItem>
                 ))}
                 {customIdes.map((ide) => (
-                  <SelectItem key={ide.name} value={ide.command}>{ide.name}</SelectItem>
+                  <SelectItem key={ide.name} value={ide.command}>
+                    {ide.name}
+                  </SelectItem>
                 ))}
               </SelectContent>
             </Select>
@@ -336,7 +327,7 @@ const ProjectPanel: React.FC<ProjectPanelProps> = ({
           <div className="col-span-2">
             <div className="text-[0.79em] text-text-muted mb-1.5">Primary language (LSP)</div>
             <Select
-              value={project.primary_language ?? "__auto__"}
+              value={project.primary_language ?? '__auto__'}
               onValueChange={handlePrimaryLanguageChange}
             >
               <SelectTrigger>
@@ -347,7 +338,7 @@ const ProjectPanel: React.FC<ProjectPanelProps> = ({
                   Auto
                   {projectProfile?.primary
                     ? ` (detected: ${projectProfile.primary.languageId})`
-                    : " (from root markers)"}
+                    : ' (from root markers)'}
                 </SelectItem>
                 {primaryLanguageOptions.map((opt) => (
                   <SelectItem key={opt.id} value={opt.id}>
@@ -357,7 +348,8 @@ const ProjectPanel: React.FC<ProjectPanelProps> = ({
               </SelectContent>
             </Select>
             <div className="text-[0.75em] text-text-muted mt-1.5">
-              Monorepos only soft-warm one primary language. Override when auto detection picks the wrong stack.
+              Monorepos only soft-warm one primary language. Override when auto detection picks the
+              wrong stack.
             </div>
           </div>
         </div>
@@ -376,23 +368,23 @@ const ProjectPanel: React.FC<ProjectPanelProps> = ({
         <div className="flex border-b border-border mb-3">
           <button
             className={cn(
-              "px-4 py-2 text-[0.82em] font-medium border-b-2 transition-colors cursor-pointer",
-              activeTaskTab === "project"
-                ? "text-accent-blue border-accent-blue"
-                : "text-text-muted border-transparent hover:text-text-primary",
+              'px-4 py-2 text-[0.82em] font-medium border-b-2 transition-colors cursor-pointer',
+              activeTaskTab === 'project'
+                ? 'text-accent-blue border-accent-blue'
+                : 'text-text-muted border-transparent hover:text-text-primary',
             )}
-            onClick={() => setActiveTaskTab("project")}
+            onClick={() => setActiveTaskTab('project')}
           >
             Project
           </button>
           <button
             className={cn(
-              "px-4 py-2 text-[0.82em] font-medium border-b-2 transition-colors cursor-pointer",
-              activeTaskTab === "app"
-                ? "text-accent-blue border-accent-blue"
-                : "text-text-muted border-transparent hover:text-text-primary",
+              'px-4 py-2 text-[0.82em] font-medium border-b-2 transition-colors cursor-pointer',
+              activeTaskTab === 'app'
+                ? 'text-accent-blue border-accent-blue'
+                : 'text-text-muted border-transparent hover:text-text-primary',
             )}
-            onClick={() => setActiveTaskTab("app")}
+            onClick={() => setActiveTaskTab('app')}
           >
             App (global)
           </button>
@@ -402,9 +394,9 @@ const ProjectPanel: React.FC<ProjectPanelProps> = ({
         <div className="flex flex-col gap-1.5">
           {currentTasks.length === 0 ? (
             <div className="py-6 text-center text-[0.82em] text-text-muted border border-dashed border-border rounded-md">
-              {activeTaskTab === "project"
-                ? "No project tasks configured."
-                : "No app-level tasks configured."}
+              {activeTaskTab === 'project'
+                ? 'No project tasks configured.'
+                : 'No app-level tasks configured.'}
             </div>
           ) : (
             currentTasks.map((task) => (
@@ -437,18 +429,13 @@ const ProjectPanel: React.FC<ProjectPanelProps> = ({
           )}
         </div>
 
-        {activeTaskTab === "app" && (
+        {activeTaskTab === 'app' && (
           <div className="mt-2 text-[0.75em] text-text-muted">
             App-level tasks are visible in all projects. Stored in ~/.neeko/tasks.json
           </div>
         )}
 
-        <Button
-          variant="outline"
-          size="sm"
-          className="mt-3"
-          onClick={handleAddTask}
-        >
+        <Button variant="outline" size="sm" className="mt-3" onClick={handleAddTask}>
           <Plus size={13} />
           Add Task
         </Button>
@@ -462,10 +449,7 @@ const ProjectPanel: React.FC<ProjectPanelProps> = ({
         <div className="text-[0.79em] text-text-muted mb-3">
           Avatar color shown in the project list and title bar.
         </div>
-        <div
-          className="flex items-center gap-2"
-          data-testid="appearance-swatches"
-        >
+        <div className="flex items-center gap-2" data-testid="appearance-swatches">
           {AVATAR_COLORS.map((color) => {
             const selected = project.avatar_color === color;
             return (
@@ -477,8 +461,8 @@ const ProjectPanel: React.FC<ProjectPanelProps> = ({
                 aria-pressed={selected}
                 onClick={() => handleAvatarColorChange(color)}
                 className={cn(
-                  "w-6 h-6 rounded-full transition-transform shrink-0 cursor-pointer",
-                  selected && "ring-2 ring-white/80 scale-110",
+                  'w-6 h-6 rounded-full transition-transform shrink-0 cursor-pointer',
+                  selected && 'ring-2 ring-white/80 scale-110',
                 )}
                 style={{ backgroundColor: color }}
               />
@@ -501,36 +485,22 @@ const ProjectPanel: React.FC<ProjectPanelProps> = ({
       <div className="mt-6 pt-6 border-t border-border">
         <div className="flex items-center justify-between">
           <div>
-            <div className="text-[0.86em] text-text-primary font-medium">
-              Remove project
-            </div>
+            <div className="text-[0.86em] text-text-primary font-medium">Remove project</div>
             <div className="text-[0.79em] text-text-muted">
               Remove from Neeko. Local files stay intact.
             </div>
           </div>
           {confirmRemove ? (
             <div className="flex items-center gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setConfirmRemove(false)}
-              >
+              <Button variant="outline" size="sm" onClick={() => setConfirmRemove(false)}>
                 Cancel
               </Button>
-              <Button
-                variant="destructive"
-                size="sm"
-                onClick={handleRemove}
-              >
+              <Button variant="destructive" size="sm" onClick={handleRemove}>
                 Confirm
               </Button>
             </div>
           ) : (
-            <Button
-              variant="destructive"
-              size="sm"
-              onClick={() => setConfirmRemove(true)}
-            >
+            <Button variant="destructive" size="sm" onClick={() => setConfirmRemove(true)}>
               Remove
             </Button>
           )}
@@ -540,7 +510,10 @@ const ProjectPanel: React.FC<ProjectPanelProps> = ({
       {/* Task Dialog */}
       {dialogOpen && (
         <TaskDialog
-          onClose={() => { setDialogOpen(false); setEditingConfig(null); }}
+          onClose={() => {
+            setDialogOpen(false);
+            setEditingConfig(null);
+          }}
           onSubmit={handleDialogSubmit}
           editConfig={editingConfig ?? undefined}
         />

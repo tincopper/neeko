@@ -1,10 +1,10 @@
-import { useState } from "react";
-import { testRemoteConnection } from "../api/connectionApi";
+import { useState } from 'react';
+import { testRemoteConnection } from '../api/connectionApi';
 import type { AuthMethod } from '@/shared/types';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/ui/dialog";
-import { Input } from "@/ui/input";
-import { Button } from "@/ui/button";
-import { Checkbox } from "@/ui/checkbox";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/ui/dialog';
+import { Input } from '@/ui/input';
+import { Button } from '@/ui/button';
+import { Checkbox } from '@/ui/checkbox';
 
 interface RemoteAuthDialogProps {
   isOpen: boolean;
@@ -23,17 +23,17 @@ export function RemoteAuthDialog({
   onCancel,
   onSuccess,
 }: RemoteAuthDialogProps) {
-  const [authType, setAuthType] = useState<"password" | "key">("password");
-  const [password, setPassword] = useState("");
-  const [keyPath, setKeyPath] = useState("");
+  const [authType, setAuthType] = useState<'password' | 'key'>('password');
+  const [password, setPassword] = useState('');
+  const [keyPath, setKeyPath] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [connecting, setConnecting] = useState(false);
   const [saveCredentials, setSaveCredentials] = useState(false);
 
   const reset = () => {
-    setAuthType("password");
-    setPassword("");
-    setKeyPath("");
+    setAuthType('password');
+    setPassword('');
+    setKeyPath('');
     setError(null);
     setConnecting(false);
     setSaveCredentials(false);
@@ -46,7 +46,7 @@ export function RemoteAuthDialog({
 
   const handleConnect = async () => {
     const auth: AuthMethod =
-      authType === "password" ? { Password: password } : { KeyFile: keyPath };
+      authType === 'password' ? { Password: password } : { KeyFile: keyPath };
 
     setError(null);
     setConnecting(true);
@@ -72,42 +72,56 @@ export function RemoteAuthDialog({
           {username}@{host}:{port}
         </p>
 
-        {error && <p className="text-accent-red bg-accent-red/10 border border-accent-red rounded-md p-3 mb-4 text-[13px]">{error}</p>}
+        {error && (
+          <p className="text-accent-red bg-accent-red/10 border border-accent-red rounded-md p-3 mb-4 text-[13px]">
+            {error}
+          </p>
+        )}
 
-        <label className="block text-xs font-medium text-text-secondary mb-1.5 uppercase tracking-wide">Auth Type</label>
+        <label className="block text-xs font-medium text-text-secondary mb-1.5 uppercase tracking-wide">
+          Auth Type
+        </label>
         <div className="flex gap-5 mb-4">
           <label className="custom-radio">
-            <input type="radio" checked={authType === "password"} onChange={() => setAuthType("password")} />
+            <input
+              type="radio"
+              checked={authType === 'password'}
+              onChange={() => setAuthType('password')}
+            />
             <span className="radio-mark" />
             Password
           </label>
           <label className="custom-radio">
-            <input type="radio" checked={authType === "key"} onChange={() => setAuthType("key")} />
+            <input type="radio" checked={authType === 'key'} onChange={() => setAuthType('key')} />
             <span className="radio-mark" />
             Key File
           </label>
         </div>
 
-        {authType === "password" ? (
+        {authType === 'password' ? (
           <>
-            <label className="block text-xs font-medium text-text-secondary mb-1.5 uppercase tracking-wide">Password</label>
+            <label className="block text-xs font-medium text-text-secondary mb-1.5 uppercase tracking-wide">
+              Password
+            </label>
             <Input
               type="password"
               value={password}
-              onChange={e => setPassword(e.target.value)}
-              onKeyDown={e => e.key === "Enter" && !connecting && handleConnect()}
+              onChange={(e) => setPassword(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && !connecting && handleConnect()}
               placeholder="••••••••"
               autoFocus
             />
           </>
         ) : (
           <>
-            <label className="block text-xs font-medium text-text-secondary mb-1.5 uppercase tracking-wide">Key File Path</label>
+            <label className="block text-xs font-medium text-text-secondary mb-1.5 uppercase tracking-wide">
+              Key File Path
+            </label>
             <Input
               type="text"
               value={keyPath}
-              onChange={e => setKeyPath(e.target.value)}
-              onKeyDown={e => e.key === "Enter" && !connecting && handleConnect()}
+              onChange={(e) => setKeyPath(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && !connecting && handleConnect()}
               placeholder="~/.ssh/id_rsa"
               autoFocus
             />
@@ -117,19 +131,21 @@ export function RemoteAuthDialog({
         <div className="mt-3.5">
           <Checkbox
             checked={saveCredentials}
-            onCheckedChange={checked => setSaveCredentials(!!checked)}
+            onCheckedChange={(checked) => setSaveCredentials(!!checked)}
             label="Remember credentials (local storage)"
           />
         </div>
 
         <DialogFooter>
-          <Button variant="secondary" onClick={handleCancel}>Cancel</Button>
+          <Button variant="secondary" onClick={handleCancel}>
+            Cancel
+          </Button>
           <Button
             variant="primary"
             onClick={handleConnect}
-            disabled={connecting || (authType === "password" ? !password : !keyPath)}
+            disabled={connecting || (authType === 'password' ? !password : !keyPath)}
           >
-            {connecting ? "Connecting..." : "Connect"}
+            {connecting ? 'Connecting...' : 'Connect'}
           </Button>
         </DialogFooter>
       </DialogContent>

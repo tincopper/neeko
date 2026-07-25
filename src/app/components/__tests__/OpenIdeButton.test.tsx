@@ -1,27 +1,27 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, fireEvent, act, waitFor } from "@testing-library/react";
-import { invoke } from "@tauri-apps/api/core";
-import OpenIdeButton from "@/app/components/OpenIdeButton";
-import { useProjectStore } from "@/features/project/store";
-import { useConnectionStore } from "@/features/connection/store";
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { render, screen, fireEvent, act, waitFor } from '@testing-library/react';
+import { invoke } from '@tauri-apps/api/core';
+import OpenIdeButton from '@/app/components/OpenIdeButton';
+import { useProjectStore } from '@/features/project/store';
+import { useConnectionStore } from '@/features/connection/store';
 import type { Project } from '@/shared/types';
 
 const mockInvoke = invoke as unknown as ReturnType<typeof vi.fn>;
 
 function makeProject(partial: Partial<Project> = {}): Project {
   return {
-    id: "p1",
-    name: "test-project",
-    path: "/tmp/test",
+    id: 'p1',
+    name: 'test-project',
+    path: '/tmp/test',
     selected_agents: [],
-    selected_ide: "goland",
+    selected_ide: 'goland',
     git_info: null,
-    active_view: "Terminal",
+    active_view: 'Terminal',
     ...partial,
   } as Project;
 }
 
-describe("OpenIdeButton", () => {
+describe('OpenIdeButton', () => {
   let openIdeSpy: ReturnType<typeof vi.fn>;
   let setProjectIdeSpy: ReturnType<typeof vi.fn>;
 
@@ -31,14 +31,14 @@ describe("OpenIdeButton", () => {
     setProjectIdeSpy = vi.fn();
 
     // 让 getIdeCommand 走 macOS 分支，避免 jsdom 默认 platform 影响命令字符串
-    Object.defineProperty(navigator, "platform", {
-      value: "MacIntel",
+    Object.defineProperty(navigator, 'platform', {
+      value: 'MacIntel',
       configurable: true,
     });
 
     // Default: load_config returns empty config
     mockInvoke.mockImplementation(async (cmd: string) => {
-      if (cmd === "load_config") return {};
+      if (cmd === 'load_config') return {};
       return undefined;
     });
 
@@ -57,51 +57,51 @@ describe("OpenIdeButton", () => {
   });
 
   async function openDropdown() {
-    const trigger = screen.getByTitle("Select IDE");
+    const trigger = screen.getByTitle('Select IDE');
     await act(async () => {
       fireEvent.click(trigger);
     });
   }
 
-  it("行点击 → 调 setProjectIde（持久化），不调 openIde", async () => {
+  it('行点击 → 调 setProjectIde（持久化），不调 openIde', async () => {
     await act(async () => {
       render(<OpenIdeButton />);
     });
     await openDropdown();
 
     // 找到 IntelliJ IDEA 行（不是 button，是 div）
-    const ideaRow = (await screen.findByText("IntelliJ IDEA")).closest("div");
+    const ideaRow = (await screen.findByText('IntelliJ IDEA')).closest('div');
     expect(ideaRow).not.toBeNull();
     await act(async () => {
       fireEvent.click(ideaRow!);
     });
 
-    expect(setProjectIdeSpy).toHaveBeenCalledWith("p1", "idea");
+    expect(setProjectIdeSpy).toHaveBeenCalledWith('p1', 'idea');
     expect(openIdeSpy).not.toHaveBeenCalled();
   });
 
-  it("行右侧 ▶ 按钮点击 → 调 openIde（一次性），不调 setProjectIde", async () => {
+  it('行右侧 ▶ 按钮点击 → 调 openIde（一次性），不调 setProjectIde', async () => {
     await act(async () => {
       render(<OpenIdeButton />);
     });
     await openDropdown();
 
-    const runButton = await screen.findByLabelText("Open IntelliJ IDEA now");
+    const runButton = await screen.findByLabelText('Open IntelliJ IDEA now');
     await act(async () => {
       fireEvent.click(runButton);
     });
 
-    expect(openIdeSpy).toHaveBeenCalledWith({ id: "p1", selected_ide: "idea" });
+    expect(openIdeSpy).toHaveBeenCalledWith({ id: 'p1', selected_ide: 'idea' });
     expect(setProjectIdeSpy).not.toHaveBeenCalled();
   });
 
-  it("▶ 按钮点击不会冒泡触发行的 setProjectIde", async () => {
+  it('▶ 按钮点击不会冒泡触发行的 setProjectIde', async () => {
     await act(async () => {
       render(<OpenIdeButton />);
     });
     await openDropdown();
 
-    const runButton = await screen.findByLabelText("Open GoLand now");
+    const runButton = await screen.findByLabelText('Open GoLand now');
     await act(async () => {
       fireEvent.click(runButton);
     });
@@ -111,23 +111,23 @@ describe("OpenIdeButton", () => {
     expect(setProjectIdeSpy).toHaveBeenCalledTimes(0);
   });
 
-  it("主按钮（左侧 IDE 名）点击 → 用当前默认 selected_ide 调 openIde", async () => {
+  it('主按钮（左侧 IDE 名）点击 → 用当前默认 selected_ide 调 openIde', async () => {
     await act(async () => {
       render(<OpenIdeButton />);
     });
 
     // 主按钮 title 使用展示名（GoLand）
-    const mainButton = screen.getByTitle("Open in IDE (GoLand)");
+    const mainButton = screen.getByTitle('Open in IDE (GoLand)');
     await act(async () => {
       fireEvent.click(mainButton);
     });
 
-    expect(openIdeSpy).toHaveBeenCalledWith({ id: "p1", selected_ide: "goland" });
+    expect(openIdeSpy).toHaveBeenCalledWith({ id: 'p1', selected_ide: 'goland' });
     expect(setProjectIdeSpy).not.toHaveBeenCalled();
   });
 
-  it("selected_ide 为预设 id vscode 时主按钮显示 VS Code 图标而非 default", async () => {
-    const project = makeProject({ selected_ide: "vscode" });
+  it('selected_ide 为预设 id vscode 时主按钮显示 VS Code 图标而非 default', async () => {
+    const project = makeProject({ selected_ide: 'vscode' });
     useProjectStore.setState({
       projects: [project],
       activeProjectId: project.id,
@@ -140,35 +140,35 @@ describe("OpenIdeButton", () => {
       render(<OpenIdeButton />);
     });
 
-    const mainButton = screen.getByTitle("Open in IDE (VS Code)");
-    const img = mainButton.querySelector("img");
+    const mainButton = screen.getByTitle('Open in IDE (VS Code)');
+    const img = mainButton.querySelector('img');
     expect(img).toBeTruthy();
     // default.svg is black monochrome; resolved vscode icon must not be that
-    expect(img?.getAttribute("src") ?? "").not.toMatch(/fill='%23000000'/);
-    expect(img?.getAttribute("src") ?? "").not.toMatch(/fill="#000000"/);
+    expect(img?.getAttribute('src') ?? '').not.toMatch(/fill='%23000000'/);
+    expect(img?.getAttribute('src') ?? '').not.toMatch(/fill="#000000"/);
 
     await act(async () => {
       fireEvent.click(mainButton);
     });
     // Launch uses platform command, not the stored preset id
-    expect(openIdeSpy).toHaveBeenCalledWith({ id: "p1", selected_ide: "code" });
+    expect(openIdeSpy).toHaveBeenCalledWith({ id: 'p1', selected_ide: 'code' });
   });
 
-  it("点行后下拉关闭", async () => {
+  it('点行后下拉关闭', async () => {
     await act(async () => {
       render(<OpenIdeButton />);
     });
     await openDropdown();
 
-    expect(screen.queryByText("IntelliJ IDEA")).toBeInTheDocument();
+    expect(screen.queryByText('IntelliJ IDEA')).toBeInTheDocument();
 
-    const ideaRow = (await screen.findByText("IntelliJ IDEA")).closest("div");
+    const ideaRow = (await screen.findByText('IntelliJ IDEA')).closest('div');
     await act(async () => {
       fireEvent.click(ideaRow!);
     });
 
     await waitFor(() => {
-      expect(screen.queryByText("IntelliJ IDEA")).not.toBeInTheDocument();
+      expect(screen.queryByText('IntelliJ IDEA')).not.toBeInTheDocument();
     });
   });
 });

@@ -1,6 +1,6 @@
-import { create } from "zustand";
+import { create } from 'zustand';
 
-export type AppView = "normal" | "skills" | "settings";
+export type AppView = 'normal' | 'skills' | 'settings';
 
 interface AppViewStore {
   appView: AppView;
@@ -8,6 +8,6 @@ interface AppViewStore {
 }
 
 export const useAppViewStore = create<AppViewStore>((set) => ({
-  appView: "normal",
+  appView: 'normal',
   setAppView: (view) => set({ appView: view }),
 }));

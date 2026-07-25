@@ -48,7 +48,11 @@ interface LspStoreState {
   profiles: Record<string, ProjectLanguageProfile>;
   /** Extension routing conflicts from the live registry. */
   extensionConflicts: LspExtensionConflictDto[];
-  setSessionState: (projectPath: string, languageId: string, state: Partial<LspSessionState>) => void;
+  setSessionState: (
+    projectPath: string,
+    languageId: string,
+    state: Partial<LspSessionState>,
+  ) => void;
   removeSession: (projectPath: string, languageId: string) => void;
   setProfile: (profile: ProjectLanguageProfile) => void;
   setExtensionConflicts: (conflicts: LspExtensionConflictDto[]) => void;
@@ -76,9 +80,7 @@ export const useLspStore = create<LspStoreState>((set, get) => ({
           [languageId]: {
             languageId,
             serverName:
-              state.serverName ??
-              prev.sessions[projectPath]?.[languageId]?.serverName ??
-              '',
+              state.serverName ?? prev.sessions[projectPath]?.[languageId]?.serverName ?? '',
             status:
               (state.status as LspSessionState['status']) ??
               prev.sessions[projectPath]?.[languageId]?.status ??
@@ -191,10 +193,7 @@ export const useLspStore = create<LspStoreState>((set, get) => ({
       }
 
       // Soft warm: binary presence in this project's environment (no spawn)
-      const installed = await lspCheckServerInstalled(
-        primary.languageId,
-        projectPath,
-      );
+      const installed = await lspCheckServerInstalled(primary.languageId, projectPath);
       if (!installed) {
         console.info(
           `[LSP] Soft-warm: ${primary.serverName} not on PATH for ${primary.languageId} (project=${projectPath})`,

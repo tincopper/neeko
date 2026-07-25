@@ -42,5 +42,3 @@ export function listRemoteDirectories(
 ): Promise<string[]> {
   return invoke<string[]>('list_remote_directories', { host, port, username, auth, path });
 }
-
-

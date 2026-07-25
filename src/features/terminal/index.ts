@@ -1,4 +1,4 @@
-export { default as TerminalView } from "./components/TerminalView";
+export { default as TerminalView } from './components/TerminalView';
 export {
   terminalCache,
   terminalRebuildCallbacks,
@@ -8,19 +8,23 @@ export {
   refreshTerminal,
   terminalWrapperRefs,
   executedAgentKeys,
-} from "./components/terminalCache";
-export { createTerminalForProject } from "./components/terminalFactory";
-export { launchAgentInTerminal, switchAgentInTerminal, sendToTerminal } from "./components/terminalCommands";
-export { worktreeKey } from "./components/worktreeTerminalKey";
+} from './components/terminalCache';
+export { createTerminalForProject } from './components/terminalFactory';
+export {
+  launchAgentInTerminal,
+  switchAgentInTerminal,
+  sendToTerminal,
+} from './components/terminalCommands';
+export { worktreeKey } from './components/worktreeTerminalKey';
 export {
   cleanupTerminalsForTab,
   cleanupTerminalsForTabKey,
   closeEditorTab,
   closeAllEditorTabs,
-} from "./components/terminalTabCleanup";
+} from './components/terminalTabCleanup';
 
 // Deprecated WSL terminal exports — kept for backward compatibility.
-export { default as WSLTerminalView } from "./components/WSLTerminalView";
+export { default as WSLTerminalView } from './components/WSLTerminalView';
 export {
   wslCacheKey,
   destroyWslCache,
@@ -33,10 +37,10 @@ export {
   switchAgentInWslTerminal,
   wslWrapperRefs,
   wslTerminalCache,
-} from "./components/terminalCache";
+} from './components/terminalCache';
 
 // Deprecated Remote terminal exports.
-export { default as RemoteTerminalView } from "./components/RemoteTerminalView";
+export { default as RemoteTerminalView } from './components/RemoteTerminalView';
 export {
   remoteCacheKey,
   launchAgentInRemoteTerminal,
@@ -46,17 +50,14 @@ export {
   switchAgentInRemoteTerminal,
   remoteWrapperRefs,
   remoteTerminalCache,
-} from "./components/terminalCache";
+} from './components/terminalCache';
 
 // New unified exports
-export {
-  launchAgentInAnyTerminal,
-  switchAgentInAnyTerminal,
-} from "./components/terminalCache";
+export { launchAgentInAnyTerminal, switchAgentInAnyTerminal } from './components/terminalCache';
 
-export { default as SplitLayout } from "./components/SplitLayout";
-export { updateAllTerminalThemes } from "./components/index";
-export type { TerminalTab } from "./types";
-export { useTerminalTabs } from "./hooks/useTerminalTabs";
+export { default as SplitLayout } from './components/SplitLayout';
+export { updateAllTerminalThemes } from './components/index';
+export type { TerminalTab } from './types';
+export { useTerminalTabs } from './hooks/useTerminalTabs';
 
-export { useTerminalStrategy } from "./strategies";
+export { useTerminalStrategy } from './strategies';

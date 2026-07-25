@@ -733,9 +733,7 @@ const AgentSkillContent: React.FC<AgentSkillContentProps> = React.memo(({ setDia
                     }
                     resyncing={resyncingPath === diskSkill.path}
                     onImportToLibrary={
-                      !diskSkill.managed
-                        ? () => void handleImportToLibrary(diskSkill)
-                        : undefined
+                      !diskSkill.managed ? () => void handleImportToLibrary(diskSkill) : undefined
                     }
                     importingToLibrary={importingPath === diskSkill.path}
                   />

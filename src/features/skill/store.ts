@@ -110,7 +110,11 @@ interface SkillStoreActions {
 
   // Project bindings
   loadProjectTagGroups: (projectId: string) => Promise<void>;
-  setProjectTagGroups: (projectId: string, tagGroupIds: string[], projectPath?: string) => Promise<void>;
+  setProjectTagGroups: (
+    projectId: string,
+    tagGroupIds: string[],
+    projectPath?: string,
+  ) => Promise<void>;
   applyProjectSkills: (projectId: string) => Promise<void>;
   /** Auto apply on project switch — install only, no remove; deduped. */
   applyProjectSkillsOnSelect: (projectId: string | null) => Promise<void>;
@@ -473,9 +477,11 @@ export const useSkillStore = create<SkillStoreState & SkillStoreActions>()((set,
       skills: state.skills.map((s) => (s.id === skillId ? { ...s, ...updated } : s)),
     }));
     // Tag-group skill_count only includes enabled skills — refresh badges.
-    await get().refreshTagGroups().catch((e) => {
-      console.error('[skillStore] refreshTagGroups after setSkillEnabled:', e);
-    });
+    await get()
+      .refreshTagGroups()
+      .catch((e) => {
+        console.error('[skillStore] refreshTagGroups after setSkillEnabled:', e);
+      });
   },
 
   // ── 文档编辑 ──

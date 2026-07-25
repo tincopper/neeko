@@ -1,7 +1,7 @@
-import React, { useState, useCallback } from "react";
+import React, { useState, useCallback } from 'react';
 import { FileChange } from '@/shared/types';
 import { fileIconSrc } from '@/shared/utils/fileIcons';
-import { Badge } from "@/ui/badge";
+import { Badge } from '@/ui/badge';
 
 export interface TreeNode {
   name: string;
@@ -17,14 +17,14 @@ const IGNORED_PREFIXES = ['.neeko/'];
 
 export function buildTree(files: FileChange[]): TreeNode[] {
   const filtered = files.filter((f) => {
-    const norm = f.path.replace(/\\/g, "/");
-    return !IGNORED_PREFIXES.some((p) => norm.startsWith(p) || norm.includes("/" + p));
+    const norm = f.path.replace(/\\/g, '/');
+    return !IGNORED_PREFIXES.some((p) => norm.startsWith(p) || norm.includes('/' + p));
   });
 
-  const root: TreeNode = { name: "", path: "", isDir: true, children: [] };
+  const root: TreeNode = { name: '', path: '', isDir: true, children: [] };
 
   for (const file of filtered) {
-    const parts = file.path.replace(/\\/g, "/").split("/");
+    const parts = file.path.replace(/\\/g, '/').split('/');
     let node = root;
     for (let i = 0; i < parts.length; i++) {
       const part = parts[i];
@@ -33,7 +33,7 @@ export function buildTree(files: FileChange[]): TreeNode[] {
       if (!child) {
         child = {
           name: part,
-          path: parts.slice(0, i + 1).join("/"),
+          path: parts.slice(0, i + 1).join('/'),
           isDir: !isLast,
           children: [],
           file: isLast ? file : undefined,
@@ -75,7 +75,7 @@ function compactTree(nodes: TreeNode[]) {
     }
 
     if (parts.length > 1) {
-      node.compactName = parts.join(".");
+      node.compactName = parts.join('.');
       node.children = cur.children;
       node.path = cur.path;
     }
@@ -84,20 +84,23 @@ function compactTree(nodes: TreeNode[]) {
   }
 }
 
-const STATUS_BADGE: Record<FileChange["status"], { label: string; variant: "modified" | "added" | "deleted" | "default" }> = {
-  Modified: { label: "M", variant: "modified" },
-  Added: { label: "A", variant: "added" },
-  Deleted: { label: "D", variant: "deleted" },
-  Renamed: { label: "R", variant: "default" },
-  Untracked: { label: "U", variant: "default" },
+const STATUS_BADGE: Record<
+  FileChange['status'],
+  { label: string; variant: 'modified' | 'added' | 'deleted' | 'default' }
+> = {
+  Modified: { label: 'M', variant: 'modified' },
+  Added: { label: 'A', variant: 'added' },
+  Deleted: { label: 'D', variant: 'deleted' },
+  Renamed: { label: 'R', variant: 'default' },
+  Untracked: { label: 'U', variant: 'default' },
 };
 
-const STATUS_TEXT_COLOR: Record<FileChange["status"], string> = {
-  Modified: "text-accent-yellow",
-  Added:    "text-accent-green",
-  Deleted:  "text-accent-red",
-  Renamed:  "text-accent-yellow",
-  Untracked:"text-accent-blue",
+const STATUS_TEXT_COLOR: Record<FileChange['status'], string> = {
+  Modified: 'text-accent-yellow',
+  Added: 'text-accent-green',
+  Deleted: 'text-accent-red',
+  Renamed: 'text-accent-yellow',
+  Untracked: 'text-accent-blue',
 };
 
 interface FileTreeProps {
@@ -135,12 +138,15 @@ const FileTree: React.FC<FileTreeProps> = ({ nodes, projectId, onSelectFile, dep
               <div
                 className="flex items-center gap-1 py-0.5 pr-2 text-[var(--font-size)] cursor-pointer rounded transition-colors duration-100 select-none min-w-0 hover:bg-bg-hover"
                 style={{ paddingLeft: indent }}
-                onClick={(e) => { e.stopPropagation(); toggle(node.path); }}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  toggle(node.path);
+                }}
                 title={node.path}
               >
                 <img
                   className="w-4 h-4 shrink-0 block"
-                  src={`/icons/${!isExpanded ? "_folder" : "_folder_open"}.svg`}
+                  src={`/icons/${!isExpanded ? '_folder' : '_folder_open'}.svg`}
                   alt=""
                   width={16}
                   height={16}
@@ -179,7 +185,11 @@ const FileTree: React.FC<FileTreeProps> = ({ nodes, projectId, onSelectFile, dep
               width={16}
               height={16}
             />
-            <span className={`flex-1 truncate group-hover:text-text-primary ${STATUS_TEXT_COLOR[file.status]}`}>{node.name}</span>
+            <span
+              className={`flex-1 truncate group-hover:text-text-primary ${STATUS_TEXT_COLOR[file.status]}`}
+            >
+              {node.name}
+            </span>
             <Badge variant={badge.variant}>{badge.label}</Badge>
           </div>
         );

@@ -1,1 +1,1 @@
-export { default as GitLogPanel } from "./GitLogPanel";
+export { default as GitLogPanel } from './GitLogPanel';

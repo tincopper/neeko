@@ -87,12 +87,7 @@ describe('SkillListSection', () => {
     const actions = makeActions();
     const skill = createManagedSkill({ id: 's1', name: 'My Skill' });
     render(
-      <SkillListSection
-        skills={[skill]}
-        loading={false}
-        selectedSkillId="s1"
-        actions={actions}
-      />,
+      <SkillListSection skills={[skill]} loading={false} selectedSkillId="s1" actions={actions} />,
     );
     fireEvent.click(screen.getByText('My Skill'));
     expect(actions.onSelectSkill).toHaveBeenCalledWith(null);

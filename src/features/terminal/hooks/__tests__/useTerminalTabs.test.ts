@@ -1,10 +1,10 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
-import { renderHook, act } from "@testing-library/react";
-import { useTerminalTabs } from "@/features/terminal/hooks/useTerminalTabs";
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { renderHook, act } from '@testing-library/react';
+import { useTerminalTabs } from '@/features/terminal/hooks/useTerminalTabs';
 import { useEditorStore } from '@/shared/store';
 
-vi.mock("@/features/terminal/components/terminalTabCleanup", async () => {
-  const { useEditorStore } = await import("@/shared/store");
+vi.mock('@/features/terminal/components/terminalTabCleanup', async () => {
+  const { useEditorStore } = await import('@/shared/store');
   return {
     closeEditorTab: vi.fn((projectId: string, tabId: string) => {
       useEditorStore.getState().closeTab(projectId, tabId);
@@ -17,18 +17,18 @@ vi.mock("@/features/terminal/components/terminalTabCleanup", async () => {
   };
 });
 
-describe("useTerminalTabs", () => {
-  const PROJECT_ID = "test-project";
+describe('useTerminalTabs', () => {
+  const PROJECT_ID = 'test-project';
 
   beforeEach(() => {
     // Clear the unified store tabs between tests
     useEditorStore.setState({ tabs: {}, activeTabId: null });
   });
 
-  it("should close the last tab and set activeTabId to null", () => {
+  it('should close the last tab and set activeTabId to null', () => {
     const { result } = renderHook(() => useTerminalTabs());
 
-    let tabId = "";
+    let tabId = '';
     act(() => {
       tabId = result.current.ensureDefaultTab(PROJECT_ID);
     });
@@ -44,11 +44,11 @@ describe("useTerminalTabs", () => {
     expect(result.current.getActiveTabId(PROJECT_ID)).toBeNull();
   });
 
-  it("should activate adjacent tab when closing a middle tab", () => {
+  it('should activate adjacent tab when closing a middle tab', () => {
     const { result } = renderHook(() => useTerminalTabs());
 
-    let tab2Id = "";
-    let tab3Id = "";
+    let tab2Id = '';
+    let tab3Id = '';
     act(() => {
       result.current.ensureDefaultTab(PROJECT_ID);
       const tab2 = result.current.addTab(PROJECT_ID);
@@ -68,11 +68,11 @@ describe("useTerminalTabs", () => {
     expect(result.current.getActiveTabId(PROJECT_ID)).toBe(tab3Id);
   });
 
-  it("should switch to previous tab when closing the last tab in list", () => {
+  it('should switch to previous tab when closing the last tab in list', () => {
     const { result } = renderHook(() => useTerminalTabs());
 
-    let tab1Id = "";
-    let tab2Id = "";
+    let tab1Id = '';
+    let tab2Id = '';
     act(() => {
       tab1Id = result.current.ensureDefaultTab(PROJECT_ID);
       const tab2 = result.current.addTab(PROJECT_ID);
@@ -89,8 +89,8 @@ describe("useTerminalTabs", () => {
     expect(result.current.getActiveTabId(PROJECT_ID)).toBe(tab1Id);
   });
 
-  describe("handleAgentClick", () => {
-    it("创建新 agent tab 并返回 TerminalTab 对象", () => {
+  describe('handleAgentClick', () => {
+    it('创建新 agent tab 并返回 TerminalTab 对象', () => {
       const { result } = renderHook(() => useTerminalTabs());
 
       let firstTab: string | undefined;
@@ -98,7 +98,7 @@ describe("useTerminalTabs", () => {
         firstTab = result.current.ensureDefaultTab(PROJECT_ID);
       });
 
-      const agent = { id: "claude-code", name: "Claude Code", command: "claude", args: [] };
+      const agent = { id: 'claude-code', name: 'Claude Code', command: 'claude', args: [] };
       let created: ReturnType<typeof result.current.handleAgentClick> = null;
       act(() => {
         created = result.current.handleAgentClick(PROJECT_ID, agent);
@@ -109,10 +109,10 @@ describe("useTerminalTabs", () => {
       expect(result.current.getActiveTabId(PROJECT_ID)).not.toBe(firstTab);
     });
 
-    it("新 tab 携带正确的 agentId", () => {
+    it('新 tab 携带正确的 agentId', () => {
       const { result } = renderHook(() => useTerminalTabs());
 
-      const agent = { id: "cursor-agent", name: "Cursor Agent", command: "cursor", args: [] };
+      const agent = { id: 'cursor-agent', name: 'Cursor Agent', command: 'cursor', args: [] };
       let created: ReturnType<typeof result.current.handleAgentClick> = null;
       act(() => {
         result.current.ensureDefaultTab(PROJECT_ID);
@@ -120,11 +120,11 @@ describe("useTerminalTabs", () => {
       });
 
       expect(created).not.toBeNull();
-      expect(created?.agentId).toBe("cursor-agent");
-      expect(created?.title).toBe("Cursor Agent");
+      expect(created?.agentId).toBe('cursor-agent');
+      expect(created?.title).toBe('Cursor Agent');
     });
 
-    it("达到 10 个 tab 上限时返回 null", () => {
+    it('达到 10 个 tab 上限时返回 null', () => {
       const { result } = renderHook(() => useTerminalTabs());
 
       // 创建 10 个终端 tab
@@ -136,7 +136,7 @@ describe("useTerminalTabs", () => {
 
       expect(result.current.getTabs(PROJECT_ID)).toHaveLength(10);
 
-      const agent = { id: "claude-code", name: "Claude Code", command: "claude", args: [] };
+      const agent = { id: 'claude-code', name: 'Claude Code', command: 'claude', args: [] };
       let created: ReturnType<typeof result.current.handleAgentClick> = null;
       act(() => {
         created = result.current.handleAgentClick(PROJECT_ID, agent);

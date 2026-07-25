@@ -23,7 +23,7 @@ const LeaderboardToggle: React.FC<LeaderboardToggleProps> = React.memo(
   ({ value, onChange, disabled }) => {
     return (
       <div className="flex items-center gap-0.5 px-2 py-1.5 border-b border-border shrink-0">
-        {boardOptions.map(option => {
+        {boardOptions.map((option) => {
           const Icon = option.icon;
           const isActive = value === option.key;
           return (

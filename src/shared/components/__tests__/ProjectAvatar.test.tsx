@@ -26,9 +26,7 @@ describe('ProjectAvatar', () => {
   });
 
   it('applies the provided color as the text color', () => {
-    const { container } = render(
-      <ProjectAvatar name="neeko" color="#e06c75" size={16} />,
-    );
+    const { container } = render(<ProjectAvatar name="neeko" color="#e06c75" size={16} />);
     const el = container.firstElementChild as HTMLElement;
     expect(el.style.color).toBe('rgb(224, 108, 117)');
   });

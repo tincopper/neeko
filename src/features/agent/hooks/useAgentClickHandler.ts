@@ -1,5 +1,5 @@
-import { useCallback } from "react";
-import { setProjectAgents } from "../api/agentApi";
+import { useCallback } from 'react';
+import { setProjectAgents } from '../api/agentApi';
 import { useProjectStore } from '@/features/project/store';
 import type { AgentConfig } from '@/shared/types';
 import type { TerminalTab } from '@/shared/types/terminal';
@@ -22,14 +22,8 @@ interface UseAgentClickHandlerOptions {
 }
 
 export function useAgentClickHandler(options: UseAgentClickHandlerOptions) {
-  const {
-    tabKey,
-    handleTabAgentClick,
-    activeProject,
-    agentActions,
-    wslActions,
-    remoteActions,
-  } = options;
+  const { tabKey, handleTabAgentClick, activeProject, agentActions, wslActions, remoteActions } =
+    options;
 
   const handleAgentClick = useCallback(
     (agent: AgentConfig) => {
@@ -52,7 +46,7 @@ export function useAgentClickHandler(options: UseAgentClickHandlerOptions) {
         }
       } else if (activeProject) {
         setProjectAgents(activeProject.id, [agent.id]).catch((err: unknown) => {
-          console.error("[TitleBar] Failed to set agent:", err);
+          console.error('[TitleBar] Failed to set agent:', err);
         });
         if (!newTab) {
           const cacheKey = `${activeProject.id}:1`;
@@ -60,14 +54,7 @@ export function useAgentClickHandler(options: UseAgentClickHandlerOptions) {
         }
       }
     },
-    [
-      tabKey,
-      handleTabAgentClick,
-      activeProject,
-      agentActions,
-      wslActions,
-      remoteActions,
-    ],
+    [tabKey, handleTabAgentClick, activeProject, agentActions, wslActions, remoteActions],
   );
 
   return { handleAgentClick };

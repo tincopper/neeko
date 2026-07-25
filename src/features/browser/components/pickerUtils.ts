@@ -52,11 +52,7 @@ export function isAgentCliTab(
  * Returns the full text including a trailing `\r` so the terminal
  * executes it immediately.
  */
-export function formatPickerMessage(
-  prompt: string,
-  html: string,
-  browserUrl: string,
-): string {
+export function formatPickerMessage(prompt: string, html: string, browserUrl: string): string {
   return [
     'Please modify the following page element:',
     '',

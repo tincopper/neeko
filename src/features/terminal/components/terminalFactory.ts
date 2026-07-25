@@ -128,9 +128,7 @@ export async function createTerminalForProject(
     const unlistenClosed = await listen<{ exit_code: number }>(
       `terminal-closed-${sid}`,
       async (event) => {
-        log(
-          `Session ${sid} closed by backend (exit_code=${event.payload?.exit_code ?? -1})`,
-        );
+        log(`Session ${sid} closed by backend (exit_code=${event.payload?.exit_code ?? -1})`);
         unlistenClosed();
 
         // Interactive terminal: destroy and rebuild so the shell can be reused.

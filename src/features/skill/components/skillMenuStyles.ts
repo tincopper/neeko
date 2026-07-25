@@ -10,10 +10,7 @@ export function skillMenuContentClass(className?: string) {
   );
 }
 
-export function skillMenuItemClass(opts?: {
-  danger?: boolean;
-  className?: string;
-}) {
+export function skillMenuItemClass(opts?: { danger?: boolean; className?: string }) {
   return cn(
     'relative flex w-full cursor-pointer select-none items-center gap-2 rounded-md',
     'px-2.5 py-1.5 text-[12px] outline-none transition-colors',

@@ -71,7 +71,7 @@ const AssignTagGroupDialog: React.FC<AssignTagGroupDialogProps> = React.memo(
             </p>
           ) : (
             <ul className="space-y-1 max-h-56 overflow-y-auto">
-              {tagGroups.map(tg => (
+              {tagGroups.map((tg) => (
                 <li key={tg.id}>
                   <button
                     type="button"

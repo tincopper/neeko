@@ -1,9 +1,9 @@
-import { useState, useCallback, useEffect, type RefObject } from "react";
-import { browserStartPicker, browserStopPicker } from "../api/browserApi";
-import { listen } from "@tauri-apps/api/event";
-import { BROWSER_WEBVIEW_LABEL } from "./useBrowserConstants";
+import { useState, useCallback, useEffect, type RefObject } from 'react';
+import { browserStartPicker, browserStopPicker } from '../api/browserApi';
+import { listen } from '@tauri-apps/api/event';
+import { BROWSER_WEBVIEW_LABEL } from './useBrowserConstants';
 
-import type { PickerThemeColors } from "../components/pickerUtils";
+import type { PickerThemeColors } from '../components/pickerUtils';
 
 /**
  * useBrowserPicker — manages the browser element picker lifecycle.
@@ -20,10 +20,13 @@ export function useBrowserPicker(params: {
   const startPicker = useCallback(async () => {
     if (!isCreatedRef.current) return;
     try {
-      await browserStartPicker(BROWSER_WEBVIEW_LABEL, getThemeColors() as unknown as Record<string, string>);
+      await browserStartPicker(
+        BROWSER_WEBVIEW_LABEL,
+        getThemeColors() as unknown as Record<string, string>,
+      );
       setIsPicking(true);
     } catch (err) {
-      console.error("[Browser] Failed to start picker:", err);
+      console.error('[Browser] Failed to start picker:', err);
     }
   }, [isCreatedRef, getThemeColors]);
 
@@ -33,14 +36,17 @@ export function useBrowserPicker(params: {
     try {
       await browserStopPicker(BROWSER_WEBVIEW_LABEL);
     } catch (err) {
-      console.error("[Browser] Failed to stop picker:", err);
+      console.error('[Browser] Failed to stop picker:', err);
     }
     setIsPicking(false);
   }, [isCreatedRef]);
 
   // Re-inject picker script (called on navigation, prompt-submit, etc.)
   const reinjectPicker = useCallback(() => {
-    browserStartPicker(BROWSER_WEBVIEW_LABEL, getThemeColors() as unknown as Record<string, string>).catch(() => {});
+    browserStartPicker(
+      BROWSER_WEBVIEW_LABEL,
+      getThemeColors() as unknown as Record<string, string>,
+    ).catch(() => {});
   }, [getThemeColors]);
 
   // Listen: picker cancelled (Escape / ×) — re-inject picker
@@ -48,7 +54,7 @@ export function useBrowserPicker(params: {
     let cancelled = false;
     let unlisten: (() => void) | null = null;
 
-    listen<void>("browser://picker-cancelled", () => {
+    listen<void>('browser://picker-cancelled', () => {
       if (!cancelled) reinjectPicker();
     }).then((fn) => {
       if (cancelled) fn();

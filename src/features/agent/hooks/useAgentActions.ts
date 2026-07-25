@@ -1,10 +1,10 @@
-import { useCallback } from "react";
-import { setProjectIde } from "../../project/api/projectApi";
+import { useCallback } from 'react';
+import { setProjectIde } from '../../project/api/projectApi';
 import { refreshTerminal } from '@/features/terminal/components/terminalCache';
 import { switchAgentInTerminal } from '@/features/terminal/components/terminalCommands';
 import { useProjectStore } from '@/features/project/store';
 import type { AgentConfig } from '@/shared/types';
-import type { SaveSessionFn } from "@/features/connection/hooks/useWslProjects";
+import type { SaveSessionFn } from '@/features/connection/hooks/useWslProjects';
 
 interface TerminalSettings {
   fontSize: number;
@@ -17,7 +17,7 @@ interface UseAgentActionsParams {
   terminal: TerminalSettings;
   agentCommandOverrides?: Record<string, string>;
   handleOpenIde: (project: { id: string; selected_ide: string | null }) => Promise<void>;
-  showToast: (message: string, type?: "info" | "error") => void;
+  showToast: (message: string, type?: 'info' | 'error') => void;
   saveSession: SaveSessionFn;
 }
 
@@ -42,106 +42,122 @@ export function useAgentActions({
 }: UseAgentActionsParams): UseAgentActionsResult {
   const projects = useProjectStore((state) => state.projects);
 
-  const handleSelectLocalAgent = useCallback((agent: AgentConfig | null, cacheKey: string) => {
-    const snapshot = useProjectStore.getState();
-    const currentActiveProject = snapshot.activeProject;
-    if (!currentActiveProject) {
-      return;
-    }
+  const handleSelectLocalAgent = useCallback(
+    (agent: AgentConfig | null, cacheKey: string) => {
+      const snapshot = useProjectStore.getState();
+      const currentActiveProject = snapshot.activeProject;
+      if (!currentActiveProject) {
+        return;
+      }
 
-    const agentId = agent?.id ?? null;
-    useProjectStore.setState((state) => {
-      const nextProjects = state.projects.map((project) => (
-        project.id === currentActiveProject.id
-          ? { ...project, selected_agents: agentId ? [agentId] : [] }
-          : project
-      ));
+      const agentId = agent?.id ?? null;
+      useProjectStore.setState((state) => {
+        const nextProjects = state.projects.map((project) =>
+          project.id === currentActiveProject.id
+            ? { ...project, selected_agents: agentId ? [agentId] : [] }
+            : project,
+        );
 
-      const nextActiveProject = state.activeProject && state.activeProject.id === currentActiveProject.id
-        ? { ...state.activeProject, selected_agents: agentId ? [agentId] : [] }
-        : state.activeProject;
+        const nextActiveProject =
+          state.activeProject && state.activeProject.id === currentActiveProject.id
+            ? { ...state.activeProject, selected_agents: agentId ? [agentId] : [] }
+            : state.activeProject;
 
-      return {
-        projects: nextProjects,
-        activeProject: nextActiveProject,
-      };
-    });
+        return {
+          projects: nextProjects,
+          activeProject: nextActiveProject,
+        };
+      });
 
-    if (agent) {
-      void switchAgentInTerminal(
-        cacheKey,
-        currentActiveProject.path,
-        currentActiveProject.name,
-        agent.id,
-        terminal.fontSize,
-        terminal.shell,
-        terminal.fontFamily,
-        currentActiveProject.id,
-        agentCommandOverrides,
-        terminal.gpuAcceleration,
-      );
-      return;
-    }
+      if (agent) {
+        void switchAgentInTerminal(
+          cacheKey,
+          currentActiveProject.path,
+          currentActiveProject.name,
+          agent.id,
+          terminal.fontSize,
+          terminal.shell,
+          terminal.fontFamily,
+          currentActiveProject.id,
+          agentCommandOverrides,
+          terminal.gpuAcceleration,
+        );
+        return;
+      }
 
-    setTimeout(() => refreshTerminal(currentActiveProject.id), 50);
-  }, [agentCommandOverrides, terminal.fontFamily, terminal.fontSize, terminal.shell, terminal.gpuAcceleration]);
+      setTimeout(() => refreshTerminal(currentActiveProject.id), 50);
+    },
+    [
+      agentCommandOverrides,
+      terminal.fontFamily,
+      terminal.fontSize,
+      terminal.shell,
+      terminal.gpuAcceleration,
+    ],
+  );
 
-  const handleOpenIdeCallback = useCallback((project: { id: string; selected_ide: string | null }) => {
-    if (!project.selected_ide) {
-      showToast("No IDE configured for this project", "error");
-      return;
-    }
+  const handleOpenIdeCallback = useCallback(
+    (project: { id: string; selected_ide: string | null }) => {
+      if (!project.selected_ide) {
+        showToast('No IDE configured for this project', 'error');
+        return;
+      }
 
-    showToast(`Opening ${project.selected_ide}...`, "info");
-    handleOpenIde(project).catch((error: unknown) => {
-      showToast(String(error), "error");
-    });
-  }, [handleOpenIde, showToast]);
+      showToast(`Opening ${project.selected_ide}...`, 'info');
+      handleOpenIde(project).catch((error: unknown) => {
+        showToast(String(error), 'error');
+      });
+    },
+    [handleOpenIde, showToast],
+  );
 
-  const handleOpenIdeForSidebar = useCallback((projectId: string) => {
-    const project = projects.find((item) => item.id === projectId);
-    if (!project) {
-      return;
-    }
-    handleOpenIdeCallback(project);
-  }, [projects, handleOpenIdeCallback]);
+  const handleOpenIdeForSidebar = useCallback(
+    (projectId: string) => {
+      const project = projects.find((item) => item.id === projectId);
+      if (!project) {
+        return;
+      }
+      handleOpenIdeCallback(project);
+    },
+    [projects, handleOpenIdeCallback],
+  );
 
-  const handleSaveProjectSettings = useCallback(async (
-    projectId: string,
-    agentId: string | null,
-    ideCommand: string | null,
-  ) => {
-    useProjectStore.setState((state) => {
-      const nextProjects = state.projects.map((project) => (
-        project.id === projectId
-          ? {
-              ...project,
-              selected_agents: agentId ? [agentId] : [],
-              selected_ide: ideCommand,
-            }
-          : project
-      ));
+  const handleSaveProjectSettings = useCallback(
+    async (projectId: string, agentId: string | null, ideCommand: string | null) => {
+      useProjectStore.setState((state) => {
+        const nextProjects = state.projects.map((project) =>
+          project.id === projectId
+            ? {
+                ...project,
+                selected_agents: agentId ? [agentId] : [],
+                selected_ide: ideCommand,
+              }
+            : project,
+        );
 
-      const nextActiveProject = state.activeProject && state.activeProject.id === projectId
-        ? {
-            ...state.activeProject,
-            selected_agents: agentId ? [agentId] : [],
-            selected_ide: ideCommand,
-          }
-        : state.activeProject;
+        const nextActiveProject =
+          state.activeProject && state.activeProject.id === projectId
+            ? {
+                ...state.activeProject,
+                selected_agents: agentId ? [agentId] : [],
+                selected_ide: ideCommand,
+              }
+            : state.activeProject;
 
-      return {
-        projects: nextProjects,
-        activeProject: nextActiveProject,
-      };
-    });
+        return {
+          projects: nextProjects,
+          activeProject: nextActiveProject,
+        };
+      });
 
-    try {
-      await saveSession();
-    } catch (error) {
-      console.error("Failed to save session after project settings change:", error);
-    }
-  }, [saveSession]);
+      try {
+        await saveSession();
+      } catch (error) {
+        console.error('Failed to save session after project settings change:', error);
+      }
+    },
+    [saveSession],
+  );
 
   /**
    * 把指�?IDE 设为某项目的默认 IDE，但不打开�?
@@ -171,7 +187,7 @@ export function useAgentActions({
       });
 
       saveSession().catch((error) => {
-        console.error("Failed to save session after IDE selection:", error);
+        console.error('Failed to save session after IDE selection:', error);
       });
     },
     [saveSession],

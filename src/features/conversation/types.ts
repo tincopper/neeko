@@ -49,4 +49,3 @@ export interface ConversationListPage {
   limit: number;
   hasMore: boolean;
 }
-

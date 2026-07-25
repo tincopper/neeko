@@ -61,19 +61,7 @@ export function useCurrentLineHighlight(
   useEffect(() => {
     const view = editorViewRef.current;
     if (!view) return;
-    const line = resolveDebugHighlightLine(
-      absFilePath,
-      tabFilePath,
-      stoppedAt,
-      sessionStatus,
-    );
+    const line = resolveDebugHighlightLine(absFilePath, tabFilePath, stoppedAt, sessionStatus);
     applyDebugCurrentLine(view, line);
-  }, [
-    stoppedAt,
-    sessionStatus,
-    absFilePath,
-    tabFilePath,
-    editorViewRef,
-    viewEpoch,
-  ]);
+  }, [stoppedAt, sessionStatus, absFilePath, tabFilePath, editorViewRef, viewEpoch]);
 }

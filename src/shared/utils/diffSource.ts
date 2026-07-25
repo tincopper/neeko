@@ -5,7 +5,7 @@
  * 单一职责：将统一连接上下文映射到 diff 所需的数据源描述。
  */
 
-import type { DiffSource } from "@/features/git/components/diff/types";
+import type { DiffSource } from '@/features/git/components/diff/types';
 import type { ConnectionContext } from '@/shared/types/activeProject';
 
 /**
@@ -19,22 +19,22 @@ export function buildDiffSource(
   worktreePath?: string | null,
 ): DiffSource {
   if (!ctx) {
-    return { type: "local", projectId: "" };
+    return { type: 'local', projectId: '' };
   }
 
-  if (ctx.type === "local" && worktreePath) {
-    return { type: "worktree", projectId: ctx.projectId, worktreePath };
+  if (ctx.type === 'local' && worktreePath) {
+    return { type: 'worktree', projectId: ctx.projectId, worktreePath };
   }
 
   switch (ctx.type) {
-    case "local":
-      return { type: "local", projectId: ctx.projectId };
-    case "wsl":
-      return { type: "wsl", distro: ctx.distro, projectPath: ctx.projectPath };
-    case "remote":
+    case 'local':
+      return { type: 'local', projectId: ctx.projectId };
+    case 'wsl':
+      return { type: 'wsl', distro: ctx.distro, projectPath: ctx.projectPath };
+    case 'remote':
       return {
-        type: "remote",
-        entryId: "",
+        type: 'remote',
+        entryId: '',
         host: ctx.host,
         port: ctx.port,
         username: ctx.username,

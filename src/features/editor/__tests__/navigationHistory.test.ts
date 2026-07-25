@@ -1,10 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import {
-  createNavigationHistory,
-  sameNavLocation,
-  type NavLocation,
-} from '../navigationHistory';
+import { createNavigationHistory, sameNavLocation, type NavLocation } from '../navigationHistory';
 
 function loc(file: string, line: number, column = 0): NavLocation {
   return {

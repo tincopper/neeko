@@ -1,5 +1,5 @@
-export { default } from "./DiffView";
-export { default as DiffView } from "./DiffView";
+export { default } from './DiffView';
+export { default as DiffView } from './DiffView';
 
 export type {
   DiffLine,
@@ -9,17 +9,12 @@ export type {
   DiffViewProps,
   SplitRow,
   ViewMode,
-} from "./types";
+} from './types';
 
-export {
-  tokenizeForDiff,
-  computeLCS,
-  computeWordDiff,
-  buildSplitRows,
-} from "./diffAlgorithm";
-export type { WordDiffPart } from "./diffAlgorithm";
+export { tokenizeForDiff, computeLCS, computeWordDiff, buildSplitRows } from './diffAlgorithm';
+export type { WordDiffPart } from './diffAlgorithm';
 
-export { detectLanguage, escapeHtml } from "./highlight";
+export { detectLanguage, escapeHtml } from './highlight';
 
 export {
   splitFilePath,
@@ -27,4 +22,4 @@ export {
   statusLetter,
   initialExpandedPaths,
   sumFileStats,
-} from "./diffViewUtils";
+} from './diffViewUtils';

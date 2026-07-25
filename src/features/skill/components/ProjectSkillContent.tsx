@@ -38,9 +38,7 @@ import { useSkillStore } from '@/features/skill/store';
 import { cn } from '@/lib/utils';
 import ConfirmDialog from '@/shared/components/ConfirmDialog';
 import type { ManagedSkillDto, ProjectDiskSkill } from '@/shared/types';
-import {
-  Button,
-} from '@/ui';
+import { Button } from '@/ui';
 
 import BindTagGroupsDialog from './BindTagGroupsDialog';
 import BoundTagGroupsSection from './BoundTagGroupsSection';
@@ -1462,8 +1460,7 @@ const ProjectSkillContent: React.FC<ProjectSkillContentProps> = React.memo(({ se
           <p className="text-sm text-text-secondary">
             Remove <span className="font-medium text-text-primary">{selectedSkills.length}</span>{' '}
             selected skill{selectedSkills.length === 1 ? '' : 's'} from agent skill directories
-            under{' '}
-            <span className="font-medium text-text-primary">{activeProject?.name}</span>? The
+            under <span className="font-medium text-text-primary">{activeProject?.name}</span>? The
             Library copies are kept.
           </p>
         }

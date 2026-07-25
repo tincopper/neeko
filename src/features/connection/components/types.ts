@@ -1,9 +1,4 @@
-import type {
-  AgentConfig,
-  AppConfig,
-  RemoteEntrySession,
-  WSLEntrySession,
-} from '@/shared/types';
+import type { AgentConfig, AppConfig, RemoteEntrySession, WSLEntrySession } from '@/shared/types';
 import type { Project } from '@/features/project/types';
 
 export type ConnectionSource =

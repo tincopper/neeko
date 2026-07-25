@@ -1,6 +1,6 @@
-﻿import React, { createContext, useCallback, useContext, useState } from "react";
+﻿import React, { createContext, useCallback, useContext, useState } from 'react';
 
-export type ActivityPanel = "projects" | "skills" | "files";
+export type ActivityPanel = 'projects' | 'skills' | 'files';
 
 interface SidebarContextValue {
   activePanel: ActivityPanel | null;
@@ -22,10 +22,7 @@ interface SidebarProviderProps {
  *
  * Kept for backward compatibility during migration.
  */
-export function SidebarProvider({
-  initialPanel = "projects",
-  children,
-}: SidebarProviderProps) {
+export function SidebarProvider({ initialPanel = 'projects', children }: SidebarProviderProps) {
   const [activePanel, setActivePanel] = useState<ActivityPanel | null>(initialPanel);
 
   const togglePanel = useCallback((panel: ActivityPanel) => {
@@ -41,6 +38,6 @@ export function SidebarProvider({
 
 export function useSidebar() {
   const ctx = useContext(SidebarContext);
-  if (!ctx) throw new Error("useSidebar must be used within SidebarProvider");
+  if (!ctx) throw new Error('useSidebar must be used within SidebarProvider');
   return ctx;
 }

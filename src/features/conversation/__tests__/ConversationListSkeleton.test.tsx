@@ -17,13 +17,7 @@ describe('ConversationList fishbone loading', () => {
 
   it('shows skeleton while loading with no rows', () => {
     render(
-      <ConversationList
-        conversations={[]}
-        agents={[]}
-        loading
-        onView={noop}
-        onResume={noop}
-      />,
+      <ConversationList conversations={[]} agents={[]} loading onView={noop} onResume={noop} />,
     );
     expect(screen.getByRole('status', { name: 'Loading conversations' })).toBeInTheDocument();
     expect(screen.queryByText('No conversations yet')).not.toBeInTheDocument();

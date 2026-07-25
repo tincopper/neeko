@@ -1,20 +1,20 @@
-import type React from "react";
+import type React from 'react';
 
 /**
  * Project avatar 调色板。前后端共享同一组色——后端不内嵌列表，
  * 前端在 ProjectSettingsDialog 选色后传给对应 setter 持久化。
  */
 export const AVATAR_COLORS = [
-  "#61afef",
-  "#98c379",
-  "#e5c07b",
-  "#e06c75",
-  "#c678dd",
-  "#56b6c2",
-  "#d19a66",
-  "#67a8e4",
-  "#abb2bf",
-  "#be5046",
+  '#61afef',
+  '#98c379',
+  '#e5c07b',
+  '#e06c75',
+  '#c678dd',
+  '#56b6c2',
+  '#d19a66',
+  '#67a8e4',
+  '#abb2bf',
+  '#be5046',
 ] as const;
 
 export type AvatarColor = (typeof AVATAR_COLORS)[number];
@@ -41,9 +41,7 @@ export function getAvatarStyle(input: {
 }): React.CSSProperties {
   const { name, color } = input;
   const finalColor =
-    color && (AVATAR_COLORS as readonly string[]).includes(color)
-      ? color
-      : hashFromName(name);
+    color && (AVATAR_COLORS as readonly string[]).includes(color) ? color : hashFromName(name);
   return { color: finalColor, backgroundColor: `${finalColor}26` };
 }
 
@@ -66,10 +64,10 @@ function hashFromName(name: string): string {
  *   "abc-def-ghi"    → "AD"
  */
 export function getProjectInitials(name: string): string {
-  const parts = name.split("-").filter(Boolean);
+  const parts = name.split('-').filter(Boolean);
   if (parts.length <= 1) return name.charAt(0).toUpperCase();
   return parts
     .map((s) => s.charAt(0).toUpperCase())
-    .join("")
+    .join('')
     .slice(0, 2);
 }

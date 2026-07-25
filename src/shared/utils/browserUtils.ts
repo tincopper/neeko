@@ -1,5 +1,5 @@
-import { useDockStore } from "@/shared/store/dockStore";
-import { useBrowserStore } from "@/features/browser/store";
+import { useDockStore } from '@/shared/store/dockStore';
+import { useBrowserStore } from '@/features/browser/store';
 
 /**
  * 将可能为相对路径的 filePath 解析为绝对路径（规范化斜杠）
@@ -7,11 +7,11 @@ import { useBrowserStore } from "@/features/browser/store";
  * - 相对路径 → 拼接 projectPath
  */
 export function resolveAbsolutePath(projectPath: string, filePath: string): string {
-  const normalized = filePath.replace(/\\/g, "/");
-  if (/^[A-Za-z]:/.test(normalized) || normalized.startsWith("/")) {
+  const normalized = filePath.replace(/\\/g, '/');
+  if (/^[A-Za-z]:/.test(normalized) || normalized.startsWith('/')) {
     return normalized;
   }
-  return `${projectPath.replace(/\\/g, "/")}/${normalized}`;
+  return `${projectPath.replace(/\\/g, '/')}/${normalized}`;
 }
 
 /**
@@ -20,7 +20,7 @@ export function resolveAbsolutePath(projectPath: string, filePath: string): stri
  * Unix: /path/file.html → file:///path/file.html
  */
 export function filePathToFileUrl(filePath: string): string {
-  const normalized = filePath.replace(/\\/g, "/");
+  const normalized = filePath.replace(/\\/g, '/');
   // Windows 路径: C:/... → file:///C:/...
   if (/^[A-Za-z]:/.test(normalized)) {
     return `file:///${normalized}`;
@@ -36,9 +36,9 @@ export function filePathToFileUrl(filePath: string): string {
  * 非 file:// URL 返回 null
  */
 export function fileUrlToFilePath(fileUrl: string): string | null {
-  if (!fileUrl.startsWith("file://")) return null;
+  if (!fileUrl.startsWith('file://')) return null;
   // file:///C:/... or file:///path/...
-  const withoutScheme = fileUrl.slice("file://".length);
+  const withoutScheme = fileUrl.slice('file://'.length);
   // Decode percent-encoded characters (e.g. %20 → space)
   const decoded = decodeURIComponent(withoutScheme);
   // Unix: file:///path → /path (keep leading slash)
@@ -59,5 +59,5 @@ export function openHtmlInBrowserPanel(filePath: string): void {
   // mounts. activatePanel triggers a React re-render that mounts the panel;
   // if we called activatePanel first the mount effect would read an empty store.
   useBrowserStore.getState().navigateTo(fileUrl);
-  useDockStore.getState().activatePanel("right", "browser");
+  useDockStore.getState().activatePanel('right', 'browser');
 }

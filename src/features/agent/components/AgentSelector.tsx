@@ -1,11 +1,14 @@
-import React, { useEffect, useRef, useState, useCallback } from "react";
-import { checkAgentsInstalled, listAgents, setProjectAgents } from "../api/agentApi";
-import { loadConfig as loadSessionConfig, saveConfig as saveSessionConfig } from "../../session/api/sessionApi";
-import AgentIcon from "./AgentIcon";
+import React, { useEffect, useRef, useState, useCallback } from 'react';
+import { checkAgentsInstalled, listAgents, setProjectAgents } from '../api/agentApi';
+import {
+  loadConfig as loadSessionConfig,
+  saveConfig as saveSessionConfig,
+} from '../../session/api/sessionApi';
+import AgentIcon from './AgentIcon';
 import type { AppConfig, AgentConfig } from '@/shared/types';
 import { useDockStore } from '@/shared/store/dockStore';
 
-type MenuMode = "none" | "main" | "terminal" | "chat" | "browser";
+type MenuMode = 'none' | 'main' | 'terminal' | 'chat' | 'browser';
 
 interface AgentSelectorProps {
   projectId: string;
@@ -13,7 +16,7 @@ interface AgentSelectorProps {
   onSelectAgent: (agent: AgentConfig | null) => void;
   /** WSL/SSH ��Ŀ�� true��������� set_project_agent�����ⲿ�ص����г־û� */
   skipBackendPersist?: boolean;
-  onShowToast?: (message: string, type?: "info" | "error") => void;
+  onShowToast?: (message: string, type?: 'info' | 'error') => void;
 }
 
 interface AgentBarProps {
@@ -22,7 +25,7 @@ interface AgentBarProps {
   installedMap: Map<string, boolean>;
   compactMode: boolean;
   onSelectAgent: (agentId: string) => void;
-  onShowToast?: (message: string, type?: "info" | "error") => void;
+  onShowToast?: (message: string, type?: 'info' | 'error') => void;
 }
 
 // Agent Bar Button Component
@@ -32,11 +35,11 @@ const AgentBarButton: React.FC<{
   isInstalled: boolean;
   compactMode: boolean;
   onClick: () => void;
-  onShowToast?: (message: string, type?: "info" | "error") => void;
+  onShowToast?: (message: string, type?: 'info' | 'error') => void;
 }> = React.memo(({ agent, isSelected, isInstalled, compactMode, onClick, onShowToast }) => {
   const handleClick = useCallback(() => {
     if (!isInstalled) {
-      onShowToast?.(`${agent.name} (${agent.command}) is not installed`, "error");
+      onShowToast?.(`${agent.name} (${agent.command}) is not installed`, 'error');
       return;
     }
     if (!agent.enabled) return;
@@ -45,7 +48,7 @@ const AgentBarButton: React.FC<{
 
   return (
     <button
-      className={`agent-bar-btn ${isSelected ? "selected" : ""} ${!isInstalled ? "not-installed" : ""} ${compactMode ? "compact" : ""}`}
+      className={`agent-bar-btn ${isSelected ? 'selected' : ''} ${!isInstalled ? 'not-installed' : ''} ${compactMode ? 'compact' : ''}`}
       onClick={handleClick}
       disabled={!agent.enabled}
       title={agent.name}
@@ -57,43 +60,38 @@ const AgentBarButton: React.FC<{
 });
 
 // Agent Bar Component
-const AgentBar: React.FC<AgentBarProps> = React.memo(({ 
-  agents, 
-  selectedAgentId, 
-  installedMap, 
-  compactMode, 
-  onSelectAgent, 
-  onShowToast 
-}) => {
-  const enabledAgents = agents.filter(a => a.enabled);
-  
-  if (enabledAgents.length === 0) {
+const AgentBar: React.FC<AgentBarProps> = React.memo(
+  ({ agents, selectedAgentId, installedMap, compactMode, onSelectAgent, onShowToast }) => {
+    const enabledAgents = agents.filter((a) => a.enabled);
+
+    if (enabledAgents.length === 0) {
+      return (
+        <div className="agent-bar-empty">
+          <span>No enabled agents</span>
+        </div>
+      );
+    }
+
     return (
-      <div className="agent-bar-empty">
-        <span>No enabled agents</span>
+      <div className={`agent-bar ${compactMode ? 'compact' : ''}`}>
+        {enabledAgents.map((agent) => {
+          const installed = installedMap.size === 0 || (installedMap.get(agent.id) ?? true);
+          return (
+            <AgentBarButton
+              key={agent.id}
+              agent={agent}
+              isSelected={selectedAgentId === agent.id}
+              isInstalled={installed}
+              compactMode={compactMode}
+              onClick={() => onSelectAgent(agent.id)}
+              onShowToast={onShowToast}
+            />
+          );
+        })}
       </div>
     );
-  }
-
-  return (
-    <div className={`agent-bar ${compactMode ? "compact" : ""}`}>
-      {enabledAgents.map(agent => {
-        const installed = installedMap.size === 0 || (installedMap.get(agent.id) ?? true);
-        return (
-          <AgentBarButton
-            key={agent.id}
-            agent={agent}
-            isSelected={selectedAgentId === agent.id}
-            isInstalled={installed}
-            compactMode={compactMode}
-            onClick={() => onSelectAgent(agent.id)}
-            onShowToast={onShowToast}
-          />
-        );
-      })}
-    </div>
-  );
-});
+  },
+);
 
 // Checkbox Item Component for menu toggles
 const MenuCheckboxItem: React.FC<{
@@ -108,11 +106,7 @@ const MenuCheckboxItem: React.FC<{
   return (
     <div className="add-menu-item menu-checkbox-item" onClick={handleClick}>
       <label className="custom-checkbox">
-        <input
-          type="checkbox"
-          checked={checked}
-          onChange={(e) => onChange(e.target.checked)}
-        />
+        <input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} />
         <span className="checkbox-mark" />
       </label>
       <span>{label}</span>
@@ -130,15 +124,15 @@ const AgentSelector: React.FC<AgentSelectorProps> = ({
   const [agents, setAgents] = useState<AgentConfig[]>([]);
   const [selectedAgentId, setSelectedAgentId] = useState<string | null>(currentAgentId);
   const [isAddMenuOpen, setIsAddMenuOpen] = useState(false);
-  const [activeMode, setActiveMode] = useState<MenuMode>("none");
+  const [activeMode, setActiveMode] = useState<MenuMode>('none');
   const [installedMap, setInstalledMap] = useState<Map<string, boolean>>(new Map());
-  
+
   // Config state
   const [showPresetBar, setShowPresetBar] = useState(true);
   const [compactMode, setCompactMode] = useState(false);
   const [hiddenAgentIds, setHiddenAgentIds] = useState<string[]>([]);
   const [configLoaded, setConfigLoaded] = useState(false);
-  
+
   const containerRef = useRef<HTMLDivElement>(null);
   const addMenuRef = useRef<HTMLDivElement>(null);
 
@@ -159,18 +153,18 @@ const AgentSelector: React.FC<AgentSelectorProps> = ({
 
   // Click outside handler
   useEffect(() => {
-    if (!isAddMenuOpen && activeMode === "none") return;
-    
+    if (!isAddMenuOpen && activeMode === 'none') return;
+
     const handler = (e: MouseEvent) => {
       const target = e.target as Node;
       if (containerRef.current && !containerRef.current.contains(target)) {
         setIsAddMenuOpen(false);
-        setActiveMode("none");
+        setActiveMode('none');
       }
     };
-    
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
+
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
   }, [isAddMenuOpen, activeMode]);
 
   // Check installed status when menu opens (in this project's environment)
@@ -182,7 +176,7 @@ const AgentSelector: React.FC<AgentSelectorProps> = ({
         setInstalledMap(new Map(Object.entries(result)));
       })
       .catch((err) => {
-        console.error("Failed to check agents installed:", err);
+        console.error('Failed to check agents installed:', err);
       });
   }, [isAddMenuOpen, agents, projectId]);
 
@@ -191,21 +185,25 @@ const AgentSelector: React.FC<AgentSelectorProps> = ({
       const agentList = await listAgents();
       setAgents(agentList);
     } catch (error) {
-      console.error("Failed to load agents:", error);
+      console.error('Failed to load agents:', error);
     }
   };
 
   const loadConfig = async () => {
     try {
       const saved = await loadSessionConfig();
-      if (saved && typeof saved === "object") {
+      if (saved && typeof saved === 'object') {
         const typed = saved as unknown as AppConfig;
         setShowPresetBar(typed.agentSelectorShowPresetBar ?? true);
         setCompactMode(typed.agentSelectorCompactMode ?? false);
-        setHiddenAgentIds(Array.isArray(typed.hiddenAgentIds) ? typed.hiddenAgentIds.filter((id: unknown) => typeof id === "string") : []);
+        setHiddenAgentIds(
+          Array.isArray(typed.hiddenAgentIds)
+            ? typed.hiddenAgentIds.filter((id: unknown) => typeof id === 'string')
+            : [],
+        );
       }
     } catch (e) {
-      console.error("[AgentSelector] Failed to load config:", e);
+      console.error('[AgentSelector] Failed to load config:', e);
     } finally {
       setConfigLoaded(true);
     }
@@ -217,68 +215,80 @@ const AgentSelector: React.FC<AgentSelectorProps> = ({
       const next = { ...current, ...updates } as unknown as AppConfig;
       await saveSessionConfig(next as unknown as Record<string, unknown>);
     } catch (e) {
-      console.error("[AgentSelector] Failed to save config:", e);
+      console.error('[AgentSelector] Failed to save config:', e);
     }
   }, []);
 
-  const handleToggleShowPresetBar = useCallback((checked: boolean) => {
-    setShowPresetBar(checked);
-    saveConfigToBackend({ agentSelectorShowPresetBar: checked });
-  }, [saveConfigToBackend]);
+  const handleToggleShowPresetBar = useCallback(
+    (checked: boolean) => {
+      setShowPresetBar(checked);
+      saveConfigToBackend({ agentSelectorShowPresetBar: checked });
+    },
+    [saveConfigToBackend],
+  );
 
-  const handleToggleCompactMode = useCallback((checked: boolean) => {
-    setCompactMode(checked);
-    saveConfigToBackend({ agentSelectorCompactMode: checked });
-  }, [saveConfigToBackend]);
+  const handleToggleCompactMode = useCallback(
+    (checked: boolean) => {
+      setCompactMode(checked);
+      saveConfigToBackend({ agentSelectorCompactMode: checked });
+    },
+    [saveConfigToBackend],
+  );
 
-  const handleSelectAgent = useCallback(async (agentId: string | null) => {
-    if (agentId === selectedAgentId) {
-      setIsAddMenuOpen(false);
-      setActiveMode("none");
-      return;
-    }
-    setSelectedAgentId(agentId);
-    setIsAddMenuOpen(false);
-    setActiveMode("none");
-    
-    if (!skipBackendPersist) {
-      try {
-        await setProjectAgents(projectId, agentId ? [agentId] : []);
-      } catch (error) {
-        console.error("Failed to set agent:", error);
+  const handleSelectAgent = useCallback(
+    async (agentId: string | null) => {
+      if (agentId === selectedAgentId) {
+        setIsAddMenuOpen(false);
+        setActiveMode('none');
+        return;
       }
-    }
-    
-    const agent = agentId ? agents.find((a) => a.id === agentId) ?? null : null;
-    onSelectAgent(agent);
-  }, [selectedAgentId, skipBackendPersist, projectId, agents, onSelectAgent]);
+      setSelectedAgentId(agentId);
+      setIsAddMenuOpen(false);
+      setActiveMode('none');
+
+      if (!skipBackendPersist) {
+        try {
+          await setProjectAgents(projectId, agentId ? [agentId] : []);
+        } catch (error) {
+          console.error('Failed to set agent:', error);
+        }
+      }
+
+      const agent = agentId ? (agents.find((a) => a.id === agentId) ?? null) : null;
+      onSelectAgent(agent);
+    },
+    [selectedAgentId, skipBackendPersist, projectId, agents, onSelectAgent],
+  );
 
   const handleToggleAddMenu = useCallback(() => {
-    setIsAddMenuOpen(prev => !prev);
-    if (activeMode !== "none") {
-      setActiveMode("none");
+    setIsAddMenuOpen((prev) => !prev);
+    if (activeMode !== 'none') {
+      setActiveMode('none');
     }
   }, [activeMode]);
 
-  const handleSelectMode = useCallback((mode: MenuMode) => {
-    if (mode === "chat") {
-      onShowToast?.("Coming soon", "info");
-      return;
-    }
-    if (mode === "browser") {
-      // Activate Browser dock panel
-      useDockStore.getState().togglePanel("browser");
-      setIsAddMenuOpen(false);
-      return;
-    }
-    setActiveMode(mode);
-    if (mode === "none") {
-      setIsAddMenuOpen(false);
-    }
-  }, [onShowToast]);
+  const handleSelectMode = useCallback(
+    (mode: MenuMode) => {
+      if (mode === 'chat') {
+        onShowToast?.('Coming soon', 'info');
+        return;
+      }
+      if (mode === 'browser') {
+        // Activate Browser dock panel
+        useDockStore.getState().togglePanel('browser');
+        setIsAddMenuOpen(false);
+        return;
+      }
+      setActiveMode(mode);
+      if (mode === 'none') {
+        setIsAddMenuOpen(false);
+      }
+    },
+    [onShowToast],
+  );
 
   const selectedAgent = agents.find((a) => a.id === selectedAgentId);
-  const enabledAgents = agents.filter(a => a.enabled && !hiddenAgentIds.includes(a.id));
+  const enabledAgents = agents.filter((a) => a.enabled && !hiddenAgentIds.includes(a.id));
 
   return (
     <div className="agent-selector" ref={containerRef}>
@@ -301,7 +311,7 @@ const AgentSelector: React.FC<AgentSelectorProps> = ({
 
         {/* Add Button */}
         <button
-          className={`agent-add-btn ${isAddMenuOpen ? "open" : ""}`}
+          className={`agent-add-btn ${isAddMenuOpen ? 'open' : ''}`}
           onClick={handleToggleAddMenu}
           title="Add or change agent"
         >
@@ -314,8 +324,8 @@ const AgentSelector: React.FC<AgentSelectorProps> = ({
         <div className="agent-add-menu" ref={addMenuRef}>
           {/* Terminal Option */}
           <div
-            className={`add-menu-item ${activeMode === "terminal" ? "active" : ""}`}
-            onClick={() => handleSelectMode("terminal")}
+            className={`add-menu-item ${activeMode === 'terminal' ? 'active' : ''}`}
+            onClick={() => handleSelectMode('terminal')}
           >
             <span className="add-menu-icon">?</span>
             <span>Terminal</span>
@@ -323,8 +333,8 @@ const AgentSelector: React.FC<AgentSelectorProps> = ({
 
           {/* Chat Option (Reserved) */}
           <div
-            className={`add-menu-item ${activeMode === "chat" ? "active" : ""}`}
-            onClick={() => handleSelectMode("chat")}
+            className={`add-menu-item ${activeMode === 'chat' ? 'active' : ''}`}
+            onClick={() => handleSelectMode('chat')}
           >
             <span className="add-menu-icon">??</span>
             <span>Chat</span>
@@ -333,8 +343,8 @@ const AgentSelector: React.FC<AgentSelectorProps> = ({
 
           {/* Browser Option (Reserved) */}
           <div
-            className={`add-menu-item ${activeMode === "browser" ? "active" : ""}`}
-            onClick={() => handleSelectMode("browser")}
+            className={`add-menu-item ${activeMode === 'browser' ? 'active' : ''}`}
+            onClick={() => handleSelectMode('browser')}
           >
             <span className="add-menu-icon">??</span>
             <span>Browser</span>
@@ -361,7 +371,7 @@ const AgentSelector: React.FC<AgentSelectorProps> = ({
           )}
 
           {/* Level 3: Agent Bar (shown when Terminal is selected) */}
-          {activeMode === "terminal" && showPresetBar && (
+          {activeMode === 'terminal' && showPresetBar && (
             <>
               <div className="agent-menu-divider" />
               <div className="agent-bar-wrapper">

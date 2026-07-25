@@ -1,8 +1,8 @@
-import React from "react";
+import React from 'react';
 import type { AgentConfig, AppConfig } from '@/shared/types';
-import { Switch } from "@/ui";
-import BuiltInAgentsSection from "./BuiltInAgentsSection";
-import CustomAgentsSection from "./CustomAgentsSection";
+import { Switch } from '@/ui';
+import BuiltInAgentsSection from './BuiltInAgentsSection';
+import CustomAgentsSection from './CustomAgentsSection';
 
 interface AgentsPanelProps {
   config: AppConfig;
@@ -75,9 +75,7 @@ const AgentsPanel: React.FC<AgentsPanelProps> = ({
 
       <div className="flex flex-col items-start gap-3 py-3 border-b border-white/[0.04]">
         <div className="flex-1 min-w-0">
-          <div className="text-[0.86em] text-text-primary font-medium mb-0.75">
-            Show Agent Bar
-          </div>
+          <div className="text-[0.86em] text-text-primary font-medium mb-0.75">Show Agent Bar</div>
           <div className="text-[0.79em] text-text-muted leading-relaxed">
             Display agent buttons in the title bar for quick selection.
           </div>
@@ -95,9 +93,7 @@ const AgentsPanel: React.FC<AgentsPanelProps> = ({
 
       <div className="flex flex-col items-start gap-3 py-3 border-b border-white/[0.04]">
         <div className="flex-1 min-w-0">
-          <div className="text-[0.86em] text-text-primary font-medium mb-0.75">
-            Compact Mode
-          </div>
+          <div className="text-[0.86em] text-text-primary font-medium mb-0.75">Compact Mode</div>
           <div className="text-[0.79em] text-text-muted leading-relaxed">
             Show only icons in the agent bar.
           </div>

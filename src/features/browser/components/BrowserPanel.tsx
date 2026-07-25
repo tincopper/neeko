@@ -78,7 +78,7 @@ const BrowserPanel: React.FC = () => {
   );
 
   return (
-    <div className='flex flex-col h-full'>
+    <div className="flex flex-col h-full">
       {/* Toolbar */}
       <BrowserToolbar
         url={url}
@@ -94,19 +94,19 @@ const BrowserPanel: React.FC = () => {
       />
 
       {/* Webview placeholder area */}
-      <div ref={containerRef} className='flex-1 relative'>
+      <div ref={containerRef} className="flex-1 relative">
         {!isCreated && !isLoading && (
-          <div className='absolute inset-0 flex flex-col items-center justify-center gap-2 text-[var(--text-secondary)]'>
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-[var(--text-secondary)]">
             <Globe size={48} strokeWidth={1} />
-            <span className='text-sm' style={{ fontSize: 'var(--font-size)' }}>
+            <span className="text-sm" style={{ fontSize: 'var(--font-size)' }}>
               Enter a URL to browse
             </span>
           </div>
         )}
 
         {isLoading && (
-          <div className='absolute inset-0 flex items-center justify-center text-[var(--text-secondary)]'>
-            <span className='text-sm' style={{ fontSize: 'var(--font-size)' }}>
+          <div className="absolute inset-0 flex items-center justify-center text-[var(--text-secondary)]">
+            <span className="text-sm" style={{ fontSize: 'var(--font-size)' }}>
               Loading...
             </span>
           </div>

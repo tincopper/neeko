@@ -84,7 +84,10 @@ const ProjectsPanel: React.FC = () => {
   const { localProjects, wslGroups, remoteGroups, lastGroup, lastProjectId } = useMemo(() => {
     const local: typeof projects = [];
     const wslMap = new Map<string, typeof projects>();
-    const remoteMap = new Map<string, { entry: (typeof remoteEntries)[number]; projects: typeof projects }>();
+    const remoteMap = new Map<
+      string,
+      { entry: (typeof remoteEntries)[number]; projects: typeof projects }
+    >();
 
     for (const p of projects) {
       const env = p.environment;
@@ -93,7 +96,7 @@ const ProjectsPanel: React.FC = () => {
         group.push(p);
         wslMap.set(env.distro, group);
       } else if (env.type === 'Remote') {
-        const entry = remoteEntries.find(e => e.host === env.host);
+        const entry = remoteEntries.find((e) => e.host === env.host);
         if (entry) {
           const existing = remoteMap.get(entry.id) ?? { entry, projects: [] };
           existing.projects.push(p);
@@ -104,25 +107,42 @@ const ProjectsPanel: React.FC = () => {
       }
     }
 
-    const wslGroups = Array.from(wslMap.entries()).map(([distro, projects]) => ({ distro, projects }));
+    const wslGroups = Array.from(wslMap.entries()).map(([distro, projects]) => ({
+      distro,
+      projects,
+    }));
     const remoteGroups = Array.from(remoteMap.values());
 
     // Determine which group has the last project across all sections
     let lastGroup: 'local' | 'wsl' | 'remote' | null = null;
     let lastProjectId: string | null = null;
-    if (local.length > 0) { lastGroup = 'local'; lastProjectId = local[local.length - 1].id; }
+    if (local.length > 0) {
+      lastGroup = 'local';
+      lastProjectId = local[local.length - 1].id;
+    }
     for (const g of wslGroups) {
-      if (g.projects.length > 0) { lastGroup = 'wsl'; lastProjectId = g.projects[g.projects.length - 1].id; }
+      if (g.projects.length > 0) {
+        lastGroup = 'wsl';
+        lastProjectId = g.projects[g.projects.length - 1].id;
+      }
     }
     for (const g of remoteGroups) {
-      if (g.projects.length > 0) { lastGroup = 'remote'; lastProjectId = g.projects[g.projects.length - 1].id; }
+      if (g.projects.length > 0) {
+        lastGroup = 'remote';
+        lastProjectId = g.projects[g.projects.length - 1].id;
+      }
     }
 
     return { localProjects: local, wslGroups, remoteGroups, lastGroup, lastProjectId };
   }, [projects, remoteEntries]);
 
   useEffect(() => {
-    if (!dialog || dialog.type !== 'new-worktree' || dialog.source?.type !== 'remote' || !dialog.source.entryId) {
+    if (
+      !dialog ||
+      dialog.type !== 'new-worktree' ||
+      dialog.source?.type !== 'remote' ||
+      !dialog.source.entryId
+    ) {
       setRemoteHomeDir('');
       return;
     }
@@ -136,8 +156,6 @@ const ProjectsPanel: React.FC = () => {
   const handleCommit = useCallback((projectId: string) => {
     setCommitProjectId(projectId);
   }, []);
-
-
 
   /** Convert PushOutcome to error string if AuthRequired. */
   function pushOutcomeMsg(outcome: PushOutcome): string | undefined {
@@ -157,7 +175,10 @@ const ProjectsPanel: React.FC = () => {
       try {
         const outcome = await withTimeout(push(projectId, false), 30_000, 'push');
         const msg = pushOutcomeMsg(outcome);
-        if (msg) { showToast?.(msg, 'error'); return; }
+        if (msg) {
+          showToast?.(msg, 'error');
+          return;
+        }
         onRefreshGit(projectId);
       } catch (e) {
         showToast?.(String(e), 'error');
@@ -171,7 +192,10 @@ const ProjectsPanel: React.FC = () => {
       try {
         const outcome = await withTimeout(pull(projectId), 30_000, 'pull');
         const msg = pushOutcomeMsg(outcome);
-        if (msg) { showToast?.(msg, 'error'); return; }
+        if (msg) {
+          showToast?.(msg, 'error');
+          return;
+        }
         onRefreshGit(projectId);
       } catch (e) {
         showToast?.(String(e), 'error');
@@ -214,7 +238,7 @@ const ProjectsPanel: React.FC = () => {
                       isLast={isLast}
                       actions={{
                         onSelectProject,
-                         onRemoveProject,
+                        onRemoveProject,
                         onSelectFile,
                         onRefreshGit,
                         onBackToMainTerminal,
@@ -250,7 +274,7 @@ const ProjectsPanel: React.FC = () => {
                       removeTitle="Remove distro"
                       onAdd={() => onAddWslProject(distro)}
                       onRemove={() => {
-                        const entry = wslEntries.find(e => e.distro === distro);
+                        const entry = wslEntries.find((e) => e.distro === distro);
                         if (entry) onRemoveWslEntry(entry.id);
                       }}
                     />
@@ -325,7 +349,8 @@ const ProjectsPanel: React.FC = () => {
                           config={config}
                           onSaveProjectSettings={
                             onSaveProjectSettings
-                              ? (agentId, ideCmd) => onSaveProjectSettings(project.id, agentId, ideCmd)
+                              ? (agentId, ideCmd) =>
+                                  onSaveProjectSettings(project.id, agentId, ideCmd)
                               : undefined
                           }
                           onShowToast={showToast}

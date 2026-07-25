@@ -9,13 +9,9 @@
  * - remote:  `remote:${entryId}:${projectId}`
  */
 
-export type AheadBehindKind = "local" | "wsl" | "remote";
+export type AheadBehindKind = 'local' | 'wsl' | 'remote';
 
-export function aheadBehindKey(
-  kind: AheadBehindKind,
-  entryId: string,
-  projectId: string,
-): string {
-  if (kind === "local") return `local:${projectId}`;
+export function aheadBehindKey(kind: AheadBehindKind, entryId: string, projectId: string): string {
+  if (kind === 'local') return `local:${projectId}`;
   return `${kind}:${entryId}:${projectId}`;
 }

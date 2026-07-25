@@ -8,10 +8,7 @@ import { destroyTerminalCachesByPrefix } from '@/features/terminal/components/te
 import { useEditorStore } from '@/shared/store';
 import type { Project, AgentConfig, Tab, FileChange, Worktree } from '@/shared/types';
 import { applyStateAction } from '@/shared/utils/entryUpdates';
-import {
-  getMacAppNameByCommand,
-  resolveIdeLaunchCommand,
-} from '@/shared/utils/idePresets';
+import { getMacAppNameByCommand, resolveIdeLaunchCommand } from '@/shared/utils/idePresets';
 import { randomAvatarColor } from '@/shared/utils/projectAvatar';
 
 import { listAgents } from '../../agent/api/agentApi';
@@ -235,10 +232,7 @@ export function useLocalProjects() {
     };
 
     try {
-      const changedFiles = await getWorktreeChangedFiles(
-        projectId,
-        '',
-      );
+      const changedFiles = await getWorktreeChangedFiles(projectId, '');
       updateProjectGitInfo({ changed_files: changedFiles, is_clean: changedFiles.length === 0 });
 
       getGitBranchInfo(projectId)
@@ -254,10 +248,7 @@ export function useLocalProjects() {
       // 同步 ahead/behind（待 push 数量），与 changed_files 一并刷新
       getAheadBehind(projectId)
         .then((ab) => {
-          useGitStore.getState().setAheadBehind(
-            aheadBehindKey('local', projectId, projectId),
-            ab,
-          );
+          useGitStore.getState().setAheadBehind(aheadBehindKey('local', projectId, projectId), ab);
         })
         .catch((error) => console.error('Failed to refresh ahead/behind:', error));
     } catch (error) {
@@ -270,8 +261,7 @@ export function useLocalProjects() {
       if (!project.selected_ide) return;
       const projectPath = projects.find((item) => item.id === project.id)?.path ?? '';
       // selected_ide may be preset id (`vscode`) or launch command (`code`)
-      const launchCmd =
-        resolveIdeLaunchCommand(project.selected_ide) ?? project.selected_ide;
+      const launchCmd = resolveIdeLaunchCommand(project.selected_ide) ?? project.selected_ide;
       const macAppName = getMacAppNameByCommand(project.selected_ide);
       await openIde(launchCmd, projectPath, macAppName);
     },

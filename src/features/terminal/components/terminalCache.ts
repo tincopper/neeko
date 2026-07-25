@@ -1,10 +1,10 @@
-﻿import { emit } from "@tauri-apps/api/event";
-import { getAgent } from "../../agent/api/agentApi";
-import type { FitAddon } from "@xterm/addon-fit";
-import type { Terminal } from "@xterm/xterm";
-import type { TerminalInputController } from "./terminalInput";
-import type { TerminalCache } from "./terminalTypes";
-import { closeTerminalSession } from "../api/terminalApi";
+﻿import { emit } from '@tauri-apps/api/event';
+import { getAgent } from '../../agent/api/agentApi';
+import type { FitAddon } from '@xterm/addon-fit';
+import type { Terminal } from '@xterm/xterm';
+import type { TerminalInputController } from './terminalInput';
+import type { TerminalCache } from './terminalTypes';
+import { closeTerminalSession } from '../api/terminalApi';
 
 // =============================================================================
 // Factory — shared by local / WSL / remote cache modules
@@ -50,13 +50,13 @@ export function createTerminalCacheBackend<TCache extends CacheEntry>(
   }
 
   function cacheKey(...parts: (string | null | undefined)[]): string {
-    return prefix + parts.filter(Boolean).join(":");
+    return prefix + parts.filter(Boolean).join(':');
   }
 
   function resolveCacheKey(keyOrPrefix: string): string | null {
     if (cache.has(keyOrPrefix)) return keyOrPrefix;
     for (const key of cache.keys()) {
-      if (key.startsWith(keyOrPrefix + ":")) {
+      if (key.startsWith(keyOrPrefix + ':')) {
         return key;
       }
     }
@@ -89,7 +89,7 @@ export function createTerminalCacheBackend<TCache extends CacheEntry>(
   function destroyCachesByPrefix(prefix: string): void {
     const keys = Array.from(cache.keys());
     for (const key of keys) {
-      if (key === prefix || key.startsWith(prefix + ":")) {
+      if (key === prefix || key.startsWith(prefix + ':')) {
         destroyCache(key);
       }
     }
@@ -125,11 +125,7 @@ export function createTerminalCacheBackend<TCache extends CacheEntry>(
     rebuildCb?.();
   }
 
-  function launchAgentInTerminal(
-    cacheKeyOrPrefix: string,
-    command: string,
-    args: string[],
-  ): void {
+  function launchAgentInTerminal(cacheKeyOrPrefix: string, command: string, args: string[]): void {
     const resolved = resolveCacheKey(cacheKeyOrPrefix);
     if (!resolved) return;
 
@@ -137,11 +133,11 @@ export function createTerminalCacheBackend<TCache extends CacheEntry>(
     if (!entry?.sessionId) return;
 
     const sessionId = entry.sessionId;
-    const ctrlC = Array.from(new TextEncoder().encode("\x03"));
+    const ctrlC = Array.from(new TextEncoder().encode('\x03'));
     emit(`terminal-input-${sessionId}`, ctrlC).catch(() => {});
 
     setTimeout(() => {
-      const cmdStr = [command, ...args].join(" ") + "\r";
+      const cmdStr = [command, ...args].join(' ') + '\r';
       const bytes = Array.from(new TextEncoder().encode(cmdStr));
       emit(`terminal-input-${sessionId}`, bytes).catch(() => {});
     }, 50);
@@ -172,9 +168,9 @@ export function createTerminalCacheBackend<TCache extends CacheEntry>(
 // =============================================================================
 
 const backend = createTerminalCacheBackend<TerminalCache>({
-  prefix: "",
+  prefix: '',
   closeSession: closeTerminalSession,
-  logPrefix: "[Terminal]",
+  logPrefix: '[Terminal]',
   trackExecutedAgents: true,
 });
 
@@ -183,14 +179,8 @@ export const terminalRebuildCallbacks = backend.rebuildCallbacks;
 export const terminalWrapperRefs = backend.wrapperRefs;
 export const executedAgentKeys = backend.executedAgentKeys!;
 
-export function terminalCacheKey(
-  projectId: string,
-  tabId?: string | null,
-  paneId = "p1",
-) {
-  return tabId
-    ? backend.cacheKey(projectId, tabId, paneId)
-    : backend.cacheKey(projectId, paneId);
+export function terminalCacheKey(projectId: string, tabId?: string | null, paneId = 'p1') {
+  return tabId ? backend.cacheKey(projectId, tabId, paneId) : backend.cacheKey(projectId, paneId);
 }
 
 export const log = backend.log;
@@ -221,9 +211,9 @@ export interface WslTerminalCache {
 }
 
 const wslBackend = createTerminalCacheBackend<WslTerminalCache>({
-  prefix: "wsl:",
+  prefix: 'wsl:',
   closeSession: closeTerminalSession,
-  logPrefix: "[WSL]",
+  logPrefix: '[WSL]',
 });
 
 export const wslTerminalCache = wslBackend.cache;
@@ -274,7 +264,7 @@ export function getWslOpenProjectIds(distro: string): Set<string> {
 export function getAllWslOpenProjectIds(): Set<string> {
   const result = new Set<string>();
   for (const [key, cache] of wslTerminalCache.entries()) {
-    if (key.startsWith("wsl:") && cache.sessionId) {
+    if (key.startsWith('wsl:') && cache.sessionId) {
       const projectId = parseProjectIdFromWslKey(key);
       if (projectId) result.add(projectId);
     }
@@ -282,11 +272,7 @@ export function getAllWslOpenProjectIds(): Set<string> {
   return result;
 }
 
-export function launchAgentInWslTerminal(
-  cacheKey: string,
-  command: string,
-  args: string[],
-) {
+export function launchAgentInWslTerminal(cacheKey: string, command: string, args: string[]) {
   wslBackend.launchAgentInTerminal(cacheKey, command, args);
 }
 
@@ -345,9 +331,9 @@ export interface RemoteTerminalCache {
 }
 
 const remoteBackend = createTerminalCacheBackend<RemoteTerminalCache>({
-  prefix: "remote:",
+  prefix: 'remote:',
   closeSession: closeTerminalSession,
-  logPrefix: "[SSH]",
+  logPrefix: '[SSH]',
 });
 
 export const remoteTerminalCache = remoteBackend.cache;
@@ -372,11 +358,7 @@ export function refreshRemoteTerminal(key: string) {
   remoteBackend.refreshTerminal(key);
 }
 
-export function launchAgentInRemoteTerminal(
-  cacheKey: string,
-  command: string,
-  args: string[],
-) {
+export function launchAgentInRemoteTerminal(cacheKey: string, command: string, args: string[]) {
   remoteBackend.launchAgentInTerminal(cacheKey, command, args);
 }
 
@@ -424,9 +406,7 @@ export async function switchAgentInRemoteTerminal(
  * Resolves the appropriate cache backend for a cache key by inspecting its
  * prefix ("wsl:", "remote:", or bare key for local).
  */
-function resolveBackendForKey(
-  key: string,
-): {
+function resolveBackendForKey(key: string): {
   cache: Map<string, unknown>;
   rebuildCallbacks: Map<string, () => void>;
   wrapperRefs: Map<string, HTMLDivElement>;
@@ -435,10 +415,10 @@ function resolveBackendForKey(
   destroyCache: (k: string) => void;
   refreshTerminal: (k: string) => void;
 } {
-  if (key.startsWith("wsl:")) {
+  if (key.startsWith('wsl:')) {
     return wslBackend;
   }
-  if (key.startsWith("remote:")) {
+  if (key.startsWith('remote:')) {
     return remoteBackend;
   }
   return backend;
@@ -449,11 +429,7 @@ function resolveBackendForKey(
  *
  * Dispatches to the correct backend based on the key prefix.
  */
-export function launchAgentInAnyTerminal(
-  cacheKey: string,
-  command: string,
-  args: string[],
-): void {
+export function launchAgentInAnyTerminal(cacheKey: string, command: string, args: string[]): void {
   const bk = resolveBackendForKey(cacheKey);
   bk.launchAgentInTerminal(cacheKey, command, args);
 }

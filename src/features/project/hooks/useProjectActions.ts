@@ -1,6 +1,6 @@
-import { useCallback, useMemo, useState } from "react";
-import { openWslIde, openRemoteIde } from "@/features/project/api/projectApi";
-import { getGitInfo } from "@/features/git/api/gitApi";
+import { useCallback, useMemo, useState } from 'react';
+import { openWslIde, openRemoteIde } from '@/features/project/api/projectApi';
+import { getGitInfo } from '@/features/git/api/gitApi';
 import {
   refreshWslTerminal,
   switchAgentInWslTerminal,
@@ -8,21 +8,16 @@ import {
   refreshRemoteTerminal,
   remoteCacheKey,
   switchAgentInRemoteTerminal,
-} from "@/features/terminal/components/terminalCache";
-import { useConnectionStore } from "@/features/connection/store";
-import { useWorktreeStore } from "@/features/project/worktreeStore";
-import { useProjectStore } from "@/features/project/store";
-import { useEditorStore } from "@/shared/store";
-import type {
-  AgentConfig,
-  AppConfig,
-  RemoteEntrySession,
-  Tab,
-} from "@/shared/types";
-import { updateProjectInEntries } from "@/shared/utils/entryUpdates";
-import type { SaveSessionFn } from "@/features/project/hooks/useConnectionProjects";
+} from '@/features/terminal/components/terminalCache';
+import { useConnectionStore } from '@/features/connection/store';
+import { useWorktreeStore } from '@/features/project/worktreeStore';
+import { useProjectStore } from '@/features/project/store';
+import { useEditorStore } from '@/shared/store';
+import type { AgentConfig, AppConfig, RemoteEntrySession, Tab } from '@/shared/types';
+import { updateProjectInEntries } from '@/shared/utils/entryUpdates';
+import type { SaveSessionFn } from '@/features/project/hooks/useConnectionProjects';
 
-export type ProjectEnvironment = "wsl" | "remote";
+export type ProjectEnvironment = 'wsl' | 'remote';
 
 export interface WslDiffState {
   distro: string;
@@ -33,7 +28,7 @@ export interface WslDiffState {
 interface UseProjectActionsParams {
   environment: ProjectEnvironment;
   config: AppConfig;
-  showToast: (message: string, type?: "info" | "error") => void;
+  showToast: (message: string, type?: 'info' | 'error') => void;
   saveSession: SaveSessionFn;
 }
 
@@ -50,7 +45,7 @@ export function useProjectActions({
   showToast,
   saveSession,
 }: UseProjectActionsParams) {
-  const isWsl = environment === "wsl";
+  const isWsl = environment === 'wsl';
 
   // ── Store selectors ──────────────────────────────────────────────────────
   const remoteEntries = useConnectionStore((state) => state.remoteEntries);
@@ -70,7 +65,7 @@ export function useProjectActions({
         useWorktreeStore.setState((s) => {
           const prev = s.worktreeStateMap[pid] ?? {
             activePath: null,
-            activeBranch: "",
+            activeBranch: '',
             opened: [],
           };
           return {
@@ -98,7 +93,7 @@ export function useProjectActions({
   const resetTransientState = useCallback(() => {
     useWorktreeStore.setState({
       activeWorktreePath: null,
-      activeWorktreeBranch: "",
+      activeWorktreeBranch: '',
     });
     if (isWsl) {
       setWslDiffState(null);
@@ -114,12 +109,12 @@ export function useProjectActions({
       _projectPath: string,
     ): Promise<void> => {
       const gitInfo = await getGitInfo(projectId).catch((e) => {
-        console.error(`[${isWsl ? "WSL" : "SSH"}] Failed to refresh git info:`, e);
+        console.error(`[${isWsl ? 'WSL' : 'SSH'}] Failed to refresh git info:`, e);
         return null;
       });
       if (!gitInfo) return;
 
-      const storeKey = isWsl ? "wslEntries" : "remoteEntries";
+      const storeKey = isWsl ? 'wslEntries' : 'remoteEntries';
       useConnectionStore.setState((state: any) => ({
         [storeKey]: updateProjectInEntries(state[storeKey], projectId, (project: any) => ({
           ...project,
@@ -149,64 +144,59 @@ export function useProjectActions({
 
   // ── File selection (WSL-only — Remote uses its own flow) ──────────────
 
-  const handleSelectFile = useCallback(
-    (distro: string, projectPath: string, filePath: string) => {
-      const activeProject = useProjectStore.getState().activeProject;
-      if (!activeProject) return;
+  const handleSelectFile = useCallback((distro: string, projectPath: string, filePath: string) => {
+    const activeProject = useProjectStore.getState().activeProject;
+    if (!activeProject) return;
 
-      const projectId = activeProject.id;
-      const existingTabs = useEditorStore.getState().tabs[projectId];
-      const existingDiffTab = existingTabs?.tabs.find(
-        (t) => t.data.kind === "diff" && t.data.filePath === filePath,
-      );
-      if (existingDiffTab) {
-        useEditorStore.getState().activateTab(projectId, existingDiffTab.id);
-        return;
-      }
+    const projectId = activeProject.id;
+    const existingTabs = useEditorStore.getState().tabs[projectId];
+    const existingDiffTab = existingTabs?.tabs.find(
+      (t) => t.data.kind === 'diff' && t.data.filePath === filePath,
+    );
+    if (existingDiffTab) {
+      useEditorStore.getState().activateTab(projectId, existingDiffTab.id);
+      return;
+    }
 
-      const fileName = filePath.split(/[\\/]/).pop() || filePath;
-      const tabId = `tab_${crypto.randomUUID()}`;
-      const tab: Tab = {
-        id: tabId,
-        projectId,
-        title: fileName,
-        order: existingTabs?.tabs.length ?? 0,
-        data: {
-          kind: "diff",
-          filePath,
-          fileName,
-          diffSource: { type: "wsl", distro, projectPath },
-        },
-      };
-      useEditorStore.getState().addTab(projectId, tab);
-      useEditorStore.getState().activateTab(projectId, tabId);
-    },
-    [],
-  );
+    const fileName = filePath.split(/[\\/]/).pop() || filePath;
+    const tabId = `tab_${crypto.randomUUID()}`;
+    const tab: Tab = {
+      id: tabId,
+      projectId,
+      title: fileName,
+      order: existingTabs?.tabs.length ?? 0,
+      data: {
+        kind: 'diff',
+        filePath,
+        fileName,
+        diffSource: { type: 'wsl', distro, projectPath },
+      },
+    };
+    useEditorStore.getState().addTab(projectId, tab);
+    useEditorStore.getState().activateTab(projectId, tabId);
+  }, []);
 
   // ── IDE operations ──────────────────────────────────────────────────────
 
   const handleOpenIde = useCallback(
     (connectionId: string, projectPath: string, ide: string) => {
       if (!ide) {
-        showToast("No IDE selected for this project", "error");
+        showToast('No IDE selected for this project', 'error');
         return;
       }
 
       if (isWsl) {
         openWslIde(connectionId, projectPath, ide).catch((error) => {
-          showToast(String(error), "error");
+          showToast(String(error), 'error');
         });
       } else {
         const entry = (remoteEntries as RemoteEntrySession[]).find(
           (item) => item.id === connectionId,
         );
         if (!entry) return;
-        openRemoteIde(entry.host, entry.port, entry.username, projectPath, ide).catch(
-          (error) => {
-            showToast(String(error), "error");
-          },
-        );
+        openRemoteIde(entry.host, entry.port, entry.username, projectPath, ide).catch((error) => {
+          showToast(String(error), 'error');
+        });
       }
     },
     [isWsl, remoteEntries, showToast],
@@ -227,18 +217,19 @@ export function useProjectActions({
       if (!activeProject) return;
 
       const agentId = agent?.id ?? null;
-      const storeKey = isWsl ? "wslEntries" : "remoteEntries";
+      const storeKey = isWsl ? 'wslEntries' : 'remoteEntries';
       useConnectionStore.setState((state: any) => ({
-        [storeKey]: updateProjectInEntries(
-          state[storeKey],
-          activeProject.id,
-          (project: any) => ({ ...project, selected_agents: agentId ? [agentId] : [] }),
-        ),
+        [storeKey]: updateProjectInEntries(state[storeKey], activeProject.id, (project: any) => ({
+          ...project,
+          selected_agents: agentId ? [agentId] : [],
+        })),
       }));
 
       useProjectStore.setState((state) => {
         if (state.activeProject?.id !== activeProject.id) return state;
-        return { activeProject: { ...state.activeProject, selected_agents: agentId ? [agentId] : [] } };
+        return {
+          activeProject: { ...state.activeProject, selected_agents: agentId ? [agentId] : [] },
+        };
       });
       saveSession().catch(console.error);
     },
@@ -250,7 +241,7 @@ export function useProjectActions({
       const activeProject = useProjectStore.getState().activeProject;
       if (!activeProject) return;
 
-      const envType = isWsl ? "Wsl" : "Remote";
+      const envType = isWsl ? 'Wsl' : 'Remote';
       if (activeProject.environment.type !== envType) return;
 
       if (isWsl) {
@@ -265,7 +256,7 @@ export function useProjectActions({
             activeProject.name,
             agent.id,
             config.terminalFontSize ?? 14,
-            config.fontFamily ?? "",
+            config.fontFamily ?? '',
             config.agentCommandOverrides,
           );
         }
@@ -275,8 +266,7 @@ export function useProjectActions({
         }
       } else {
         const env = activeProject.environment as any;
-        const entryId =
-          remoteEntries.find((e) => e.host === env.host)?.id ?? "";
+        const entryId = remoteEntries.find((e) => e.host === env.host)?.id ?? '';
         const cacheKey = remoteCacheKey(entryId, activeProject.id);
         if (agent) {
           void switchAgentInRemoteTerminal(cacheKey, agent.id, config.agentCommandOverrides);
@@ -293,30 +283,17 @@ export function useProjectActions({
   // ── Remote-specific: invokeRemoteGit ────────────────────────────────────
 
   const invokeRemoteGit = useCallback(
-    async (
-      command: string,
-      entryId: string,
-      extra: Record<string, unknown>,
-    ): Promise<unknown> => {
+    async (command: string, entryId: string, extra: Record<string, unknown>): Promise<unknown> => {
       if (isWsl) {
-        throw new Error("invokeRemoteGit is only available for Remote projects");
+        throw new Error('invokeRemoteGit is only available for Remote projects');
       }
-      const { invokeRemoteGitCommand } = await import("@/features/connection/api/connectionApi");
-      const entry = (remoteEntries as RemoteEntrySession[]).find(
-        (item) => item.id === entryId,
-      );
+      const { invokeRemoteGitCommand } = await import('@/features/connection/api/connectionApi');
+      const entry = (remoteEntries as RemoteEntrySession[]).find((item) => item.id === entryId);
       const auth = remoteAuthStore.get(entryId);
       if (!entry || !auth) {
-        throw new Error("No auth for entry");
+        throw new Error('No auth for entry');
       }
-      return invokeRemoteGitCommand(
-        command,
-        entry.host,
-        entry.port,
-        entry.username,
-        auth,
-        extra,
-      );
+      return invokeRemoteGitCommand(command, entry.host, entry.port, entry.username, auth, extra);
     },
     [isWsl, remoteEntries, remoteAuthStore],
   );

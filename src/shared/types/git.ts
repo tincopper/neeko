@@ -19,4 +19,4 @@ export type {
   GitStatusDiff,
   FileDiffStats,
   PushOutcome,
-} from "@/features/git/types";
+} from '@/features/git/types';

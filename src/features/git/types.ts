@@ -1,6 +1,6 @@
 export interface FileChange {
   path: string;
-  status: "Modified" | "Added" | "Deleted" | "Renamed" | "Untracked";
+  status: 'Modified' | 'Added' | 'Deleted' | 'Renamed' | 'Untracked';
   additions: number;
   deletions: number;
 }
@@ -149,7 +149,7 @@ export interface PRMergeResult {
 
 export interface PRFileChange {
   path: string;
-  status: "added" | "removed" | "modified" | "renamed";
+  status: 'added' | 'removed' | 'modified' | 'renamed';
   additions: number;
   deletions: number;
 }

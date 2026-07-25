@@ -21,13 +21,7 @@ export {
 export { acquireLspPlugin, releaseLspClient } from './hooks/lspClientManager';
 export { useCmdHeld } from './hooks/useCmdHeld';
 export { useLspDefinition } from './hooks/useLspDefinition';
-export {
-  useLspLinkHighlightExtension,
-  clearLinkHighlight,
-} from './hooks/useLspLinkHighlight';
+export { useLspLinkHighlightExtension, clearLinkHighlight } from './hooks/useLspLinkHighlight';
 export { resolveLspPositionFromOffset } from './position';
-export {
-  resolveLspLanguageId,
-  setCustomLspExtensionMap,
-} from './languageMap';
+export { resolveLspLanguageId, setCustomLspExtensionMap } from './languageMap';
 export type { LspLocation, LspDiagnostic, ProjectLanguageProfile, LspSessionInfo } from './types';

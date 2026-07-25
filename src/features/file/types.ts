@@ -37,4 +37,3 @@ export interface FileChangedEvent {
 export interface FileTreeChangedEvent {
   project_id: string;
 }
-

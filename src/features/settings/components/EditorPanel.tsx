@@ -1,24 +1,19 @@
-import React from "react";
-import { Separator } from "@/ui";
+import React from 'react';
+import { Separator } from '@/ui';
 
 interface EditorPanelProps {
   editorFontSize: number;
   onEditorFontSizeChange: (size: number) => void;
 }
 
-const EditorPanel: React.FC<EditorPanelProps> = ({
-  editorFontSize,
-  onEditorFontSizeChange,
-}) => {
+const EditorPanel: React.FC<EditorPanelProps> = ({ editorFontSize, onEditorFontSizeChange }) => {
   return (
     <>
       <h3 className="text-base font-semibold text-text-primary mb-4">Editor</h3>
       <Separator className="mb-5" />
       <div className="flex items-center justify-between py-3 border-b border-white/[0.04] gap-6 [&:last-child]:border-b-0">
         <div className="flex-1 min-w-0">
-          <div className="text-[0.86em] text-text-primary font-medium mb-0.75">
-            Font Size
-          </div>
+          <div className="text-[0.86em] text-text-primary font-medium mb-0.75">Font Size</div>
           <div className="text-[0.79em] text-text-muted leading-relaxed">
             Font size for the file editor.
           </div>

@@ -34,10 +34,7 @@ export async function openSourceAtLine(
   column = 0,
 ): Promise<void> {
   // Fall back to active project path when session snapshot is incomplete.
-  const resolvedProjectPath =
-    projectPath ||
-    useProjectStore.getState().activeProject?.path ||
-    '';
+  const resolvedProjectPath = projectPath || useProjectStore.getState().activeProject?.path || '';
   const filePath = resolvedProjectPath
     ? toProjectRelative(resolvedProjectPath, sourcePath)
     : sourcePath.replace(/\\/g, '/');
@@ -45,9 +42,7 @@ export async function openSourceAtLine(
 
   const activeWorktree = useWorktreeStore.getState().activeWorktreePath;
   const tabKey =
-    activeWorktree && projectId
-      ? buildWorktreeTabKey(projectId, activeWorktree)
-      : projectId;
+    activeWorktree && projectId ? buildWorktreeTabKey(projectId, activeWorktree) : projectId;
 
   if (!tabKey) return;
 

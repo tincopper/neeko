@@ -6,7 +6,14 @@ import { Button } from '@/ui/button';
 import { Checkbox } from '@/ui/checkbox';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/ui/dialog';
 
-import { commitFiles, push, pull, getWorktreeChangedFiles, getCommitLog, type PushOutcome } from '../api/gitApi';
+import {
+  commitFiles,
+  push,
+  pull,
+  getWorktreeChangedFiles,
+  getCommitLog,
+  type PushOutcome,
+} from '../api/gitApi';
 
 interface CommitDialogProps {
   projectId: string;
@@ -70,7 +77,10 @@ function CommitDialog({ projectId, onClose, onRefreshGit }: CommitDialogProps) {
         if (pushAfter) {
           const outcome = await withTimeout(push(projectId, false), 30_000, 'push');
           const msg = pushOutcomeMsg(outcome);
-          if (msg) { setError(msg); return; }
+          if (msg) {
+            setError(msg);
+            return;
+          }
         }
         onRefreshGit(projectId);
         onClose();
@@ -89,7 +99,10 @@ function CommitDialog({ projectId, onClose, onRefreshGit }: CommitDialogProps) {
     try {
       const outcome = await withTimeout(push(projectId, false), 30_000, 'push');
       const msg = pushOutcomeMsg(outcome);
-      if (msg) { setError(msg); return; }
+      if (msg) {
+        setError(msg);
+        return;
+      }
       onRefreshGit(projectId);
       onClose();
     } catch (e) {
@@ -105,7 +118,10 @@ function CommitDialog({ projectId, onClose, onRefreshGit }: CommitDialogProps) {
     try {
       const outcome = await withTimeout(pull(projectId), 30_000, 'pull');
       const msg = pushOutcomeMsg(outcome);
-      if (msg) { setError(msg); return; }
+      if (msg) {
+        setError(msg);
+        return;
+      }
       onRefreshGit(projectId);
       onClose();
     } catch (e) {

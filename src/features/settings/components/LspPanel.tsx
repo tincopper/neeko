@@ -7,10 +7,7 @@ import type {
   LspConfig,
 } from '@/features/settings/types';
 import { lspGetExtensionMap } from '@/features/lsp/api/lspApi';
-import {
-  applyCustomServersFromConfig,
-  setCustomLspExtensionMap,
-} from '@/features/lsp/languageMap';
+import { applyCustomServersFromConfig, setCustomLspExtensionMap } from '@/features/lsp/languageMap';
 import { useLspStore } from '@/features/lsp/store/lspStore';
 import {
   Button,
@@ -103,7 +100,9 @@ function parseCommaList(text: string): string[] {
 
 /** Extensions: comma list, strip leading dots, lowercase. */
 function parseExtensionsText(text: string): string[] {
-  return parseCommaList(text).map((e) => e.replace(/^\./, '').toLowerCase()).filter(Boolean);
+  return parseCommaList(text)
+    .map((e) => e.replace(/^\./, '').toLowerCase())
+    .filter(Boolean);
 }
 
 async function refreshFrontendExtensionMap(): Promise<void> {
@@ -157,9 +156,7 @@ function Field({
     <label className="flex flex-col gap-1.5 w-full">
       <span className="text-[0.79em] text-text-muted font-medium">{label}</span>
       {children}
-      {hint ? (
-        <span className="text-[0.72em] text-text-muted/80 leading-snug">{hint}</span>
-      ) : null}
+      {hint ? <span className="text-[0.72em] text-text-muted/80 leading-snug">{hint}</span> : null}
     </label>
   );
 }
@@ -270,10 +267,7 @@ const LspPanel: React.FC<LspPanelProps> = ({ config, onConfigChange }) => {
       </p>
       <Separator className="mb-1" />
 
-      <SettingRow
-        title="Auto-start"
-        description="When to launch language servers for a project."
-      >
+      <SettingRow title="Auto-start" description="When to launch language servers for a project.">
         <ToggleGroup
           type="single"
           value={lsp.autoStart}
@@ -431,10 +425,7 @@ const LspPanel: React.FC<LspPanelProps> = ({ config, onConfigChange }) => {
               </Field>
             </div>
 
-            <Field
-              label="Command"
-              hint="Space-separated arguments, e.g. buf beta lsp or gopls"
-            >
+            <Field label="Command" hint="Space-separated arguments, e.g. buf beta lsp or gopls">
               <Input
                 value={draft.commandText}
                 onChange={(e) => setDraft({ ...draft, commandText: e.target.value })}
@@ -449,10 +440,7 @@ const LspPanel: React.FC<LspPanelProps> = ({ config, onConfigChange }) => {
             </Field>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <Field
-                label="File extensions"
-                hint="Comma-separated, without dots, e.g. proto, pb"
-              >
+              <Field label="File extensions" hint="Comma-separated, without dots, e.g. proto, pb">
                 <Input
                   value={draft.extensionsText}
                   onChange={(e) => setDraft({ ...draft, extensionsText: e.target.value })}
@@ -486,9 +474,7 @@ const LspPanel: React.FC<LspPanelProps> = ({ config, onConfigChange }) => {
             <Field label="Auto-start">
               <Select
                 value={draft.autoStart}
-                onValueChange={(value) =>
-                  setDraft({ ...draft, autoStart: value as LspAutoStart })
-                }
+                onValueChange={(value) => setDraft({ ...draft, autoStart: value as LspAutoStart })}
               >
                 <SelectTrigger className="h-9 text-[0.86em] bg-bg-tertiary">
                   <SelectValue />
@@ -507,9 +493,7 @@ const LspPanel: React.FC<LspPanelProps> = ({ config, onConfigChange }) => {
             >
               <textarea
                 value={draft.initializationOptionsText}
-                onChange={(e) =>
-                  setDraft({ ...draft, initializationOptionsText: e.target.value })
-                }
+                onChange={(e) => setDraft({ ...draft, initializationOptionsText: e.target.value })}
                 placeholder='{"hoverKind": "FullDocumentation"}'
                 rows={3}
                 className="w-full min-h-[72px] rounded-md border border-border bg-bg-tertiary px-3 py-2 text-[0.86em] font-mono text-text-primary placeholder:text-text-muted focus:outline-none focus:ring-1 focus:ring-accent-blue resize-y"
@@ -519,9 +503,7 @@ const LspPanel: React.FC<LspPanelProps> = ({ config, onConfigChange }) => {
               />
             </Field>
 
-            {error && (
-              <p className="text-[0.79em] text-status-error leading-relaxed">{error}</p>
-            )}
+            {error && <p className="text-[0.79em] text-status-error leading-relaxed">{error}</p>}
 
             <div className="flex items-center justify-end gap-2 pt-1">
               <Button

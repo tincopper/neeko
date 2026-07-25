@@ -1,9 +1,9 @@
-import React from "react";
+import React from 'react';
 import { cn } from '@/lib/utils';
-import { computeWordDiff } from "./diffAlgorithm";
-import { renderHighlightedHtml, renderWordDiffHtml } from "./highlight";
-import type { DiffResult } from "./types";
-import { getLineContent, getLineType } from "./useDiffData";
+import { computeWordDiff } from './diffAlgorithm';
+import { renderHighlightedHtml, renderWordDiffHtml } from './highlight';
+import type { DiffResult } from './types';
+import { getLineContent, getLineType } from './useDiffData';
 
 interface DiffTableProps {
   diffResult: DiffResult;
@@ -23,7 +23,7 @@ const DiffTable: React.FC<DiffTableProps> = ({
   language,
   selectedLines,
   onToggleLine,
-  blockIdPrefix = "cb",
+  blockIdPrefix = 'cb',
   onCommentLine,
   renderCommentArea,
   commentCounts,
@@ -47,7 +47,7 @@ const DiffTable: React.FC<DiffTableProps> = ({
                   const curOld = oldNum;
                   const curNew = newNum;
 
-                  if (lineType === "collapsed") {
+                  if (lineType === 'collapsed') {
                     return (
                       <tr
                         key={`${hunkIndex}-${lineIndex}`}
@@ -60,15 +60,14 @@ const DiffTable: React.FC<DiffTableProps> = ({
                     );
                   }
 
-                  if (lineType !== "added") {
+                  if (lineType !== 'added') {
                     oldNum++;
                   }
-                  if (lineType !== "removed") {
+                  if (lineType !== 'removed') {
                     newNum++;
                   }
 
-                  const isChanged =
-                    lineType === "added" || lineType === "removed";
+                  const isChanged = lineType === 'added' || lineType === 'removed';
                   let blockId: string | undefined;
                   if (isChanged && !inBlock) {
                     blockId = `${blockIdPrefix}-${globalBlockIdx++}`;
@@ -78,23 +77,24 @@ const DiffTable: React.FC<DiffTableProps> = ({
                   }
 
                   let cellHtml = renderHighlightedHtml(content, language);
-                  if (lineType === "removed") {
+                  if (lineType === 'removed') {
                     const nextLine = hunk.lines[lineIndex + 1];
                     if (nextLine?.Added !== undefined) {
                       const { oldParts } = computeWordDiff(content, nextLine.Added);
-                      cellHtml = renderWordDiffHtml(oldParts, "old", language);
+                      cellHtml = renderWordDiffHtml(oldParts, 'old', language);
                     }
-                  } else if (lineType === "added") {
+                  } else if (lineType === 'added') {
                     const prevLine = hunk.lines[lineIndex - 1];
                     if (prevLine?.Removed !== undefined) {
                       const { newParts } = computeWordDiff(prevLine.Removed, content);
-                      cellHtml = renderWordDiffHtml(newParts, "new", language);
+                      cellHtml = renderWordDiffHtml(newParts, 'new', language);
                     }
                   }
 
                   const lineKey = `${hunkIndex}:${lineIndex}`;
                   const isSelected = selectedLines?.has(lineKey) ?? false;
-                  const canComment = onCommentLine && (lineType === "added" || lineType === "context");
+                  const canComment =
+                    onCommentLine && (lineType === 'added' || lineType === 'context');
                   const commentCount = commentCounts?.get(curNew) ?? 0;
                   const commentArea = renderCommentArea?.(curNew);
 
@@ -103,21 +103,21 @@ const DiffTable: React.FC<DiffTableProps> = ({
                       <tr
                         id={blockId}
                         className={cn(
-                          "diff-line border-none",
-                          lineType === "added" && "bg-diff-added",
-                          lineType === "removed" && "bg-diff-removed",
-                          isSelected && "diff-line-selected",
+                          'diff-line border-none',
+                          lineType === 'added' && 'bg-diff-added',
+                          lineType === 'removed' && 'bg-diff-removed',
+                          isSelected && 'diff-line-selected',
                         )}
                       >
                         <td
                           className={cn(
-                            "w-[40px] text-right text-text-muted select-none cursor-pointer hover:bg-bg-hover relative group",
-                            isSelected && "text-accent-blue",
+                            'w-[40px] text-right text-text-muted select-none cursor-pointer hover:bg-bg-hover relative group',
+                            isSelected && 'text-accent-blue',
                           )}
                           onClick={() => onToggleLine?.(hunkIndex, lineIndex)}
-                          title={isSelected ? "Deselect line" : "Select line for AI review"}
+                          title={isSelected ? 'Deselect line' : 'Select line for AI review'}
                         >
-                          {lineType !== "added" ? curOld : ""}
+                          {lineType !== 'added' ? curOld : ''}
                           {canComment && (
                             <button
                               className="absolute left-0 top-1/2 -translate-y-1/2 w-4 h-4 flex items-center justify-center text-[11px] font-bold text-text-muted hover:text-accent-blue hover:bg-bg-hover rounded opacity-0 group-hover:opacity-100 transition-opacity border-none bg-transparent cursor-pointer"
@@ -133,13 +133,13 @@ const DiffTable: React.FC<DiffTableProps> = ({
                         </td>
                         <td
                           className={cn(
-                            "w-[40px] text-right text-text-muted select-none cursor-pointer hover:bg-bg-hover relative",
-                            isSelected && "text-accent-blue",
+                            'w-[40px] text-right text-text-muted select-none cursor-pointer hover:bg-bg-hover relative',
+                            isSelected && 'text-accent-blue',
                           )}
                           onClick={() => onToggleLine?.(hunkIndex, lineIndex)}
-                          title={isSelected ? "Deselect line" : "Select line for AI review"}
+                          title={isSelected ? 'Deselect line' : 'Select line for AI review'}
                         >
-                          {lineType !== "removed" ? curNew : ""}
+                          {lineType !== 'removed' ? curNew : ''}
                           {commentCount > 0 && (
                             <span className="absolute right-1 top-1/2 -translate-y-1/2 text-[10px] text-accent-blue font-bold">
                               {commentCount}
@@ -147,22 +147,21 @@ const DiffTable: React.FC<DiffTableProps> = ({
                           )}
                         </td>
                         <td className="w-5 text-center select-none">
-                          {lineType === "added"
-                            ? "+"
-                            : lineType === "removed"
-                              ? "-"
-                              : " "}
+                          {lineType === 'added' ? '+' : lineType === 'removed' ? '-' : ' '}
                         </td>
                         <td
                           className="whitespace-pre-wrap break-all cursor-pointer"
                           onClick={() => onToggleLine?.(hunkIndex, lineIndex)}
-                          title={isSelected ? "Deselect line" : "Select line for AI review"}
+                          title={isSelected ? 'Deselect line' : 'Select line for AI review'}
                           dangerouslySetInnerHTML={{ __html: cellHtml }}
                         />
                       </tr>
                       {commentArea && (
                         <tr>
-                          <td colSpan={4} className="py-2 px-4 bg-bg-secondary border-t border-border">
+                          <td
+                            colSpan={4}
+                            className="py-2 px-4 bg-bg-secondary border-t border-border"
+                          >
                             {commentArea}
                           </td>
                         </tr>

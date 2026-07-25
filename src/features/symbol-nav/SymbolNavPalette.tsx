@@ -1,12 +1,12 @@
 /**
  * Shared palette for File Structure and Find Usages results.
  */
-import React, { useEffect, useRef } from "react";
+import React, { useEffect, useRef } from 'react';
 
-import { Dialog, DialogContent, DialogTitle } from "@/ui/dialog";
-import { cn } from "@/lib/utils";
+import { Dialog, DialogContent, DialogTitle } from '@/ui/dialog';
+import { cn } from '@/lib/utils';
 
-import { useSymbolNavStore } from "./symbolNavStore";
+import { useSymbolNavStore } from './symbolNavStore';
 
 export function SymbolNavPalette() {
   const open = useSymbolNavStore((s) => s.open);
@@ -32,20 +32,20 @@ export function SymbolNavPalette() {
 
   useEffect(() => {
     const el = listRef.current?.querySelector(`[data-idx="${selectedIndex}"]`);
-    el?.scrollIntoView({ block: "nearest" });
+    el?.scrollIntoView({ block: 'nearest' });
   }, [selectedIndex]);
 
   const onKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === "ArrowDown") {
+    if (e.key === 'ArrowDown') {
       e.preventDefault();
       moveSelection(1);
-    } else if (e.key === "ArrowUp") {
+    } else if (e.key === 'ArrowUp') {
       e.preventDefault();
       moveSelection(-1);
-    } else if (e.key === "Enter") {
+    } else if (e.key === 'Enter') {
       e.preventDefault();
       void confirm();
-    } else if (e.key === "Escape") {
+    } else if (e.key === 'Escape') {
       e.preventDefault();
       close();
     }
@@ -70,36 +70,30 @@ export function SymbolNavPalette() {
         <div className="px-3 pt-3 pb-2 border-b border-border">
           <div className="text-[11px] uppercase tracking-wide text-text-muted mb-1.5 px-0.5">
             {title}
-            {loading ? " · loading…" : ""}
+            {loading ? ' · loading…' : ''}
           </div>
           <input
             ref={inputRef}
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder={
-              mode === "structure" ? "Filter symbols…" : "Filter usages…"
-            }
+            placeholder={mode === 'structure' ? 'Filter symbols…' : 'Filter usages…'}
             className={cn(
-              "w-full px-3 py-2 rounded-md text-[13px]",
-              "bg-bg-primary border border-border text-text-primary",
-              "placeholder:text-text-muted outline-none focus:border-accent-blue",
+              'w-full px-3 py-2 rounded-md text-[13px]',
+              'bg-bg-primary border border-border text-text-primary',
+              'placeholder:text-text-muted outline-none focus:border-accent-blue',
             )}
             autoComplete="off"
             spellCheck={false}
           />
         </div>
-        <div
-          ref={listRef}
-          className="max-h-[min(360px,50vh)] overflow-y-auto py-1"
-          role="listbox"
-        >
+        <div ref={listRef} className="max-h-[min(360px,50vh)] overflow-y-auto py-1" role="listbox">
           {items.length === 0 ? (
             <div className="px-4 py-6 text-center text-[13px] text-text-muted">
               {loading
-                ? "Loading symbols…"
-                : mode === "structure"
-                  ? "No symbols in this file"
-                  : "No usages found"}
+                ? 'Loading symbols…'
+                : mode === 'structure'
+                  ? 'No symbols in this file'
+                  : 'No usages found'}
             </div>
           ) : (
             items.map((item, idx) => (
@@ -110,26 +104,20 @@ export function SymbolNavPalette() {
                 role="option"
                 aria-selected={idx === selectedIndex}
                 className={cn(
-                  "w-full text-left px-3 py-2 flex flex-col gap-0.5 cursor-pointer border-0 bg-transparent",
+                  'w-full text-left px-3 py-2 flex flex-col gap-0.5 cursor-pointer border-0 bg-transparent',
                   idx === selectedIndex
-                    ? "bg-accent-blue/15 text-text-primary"
-                    : "text-text-secondary hover:bg-bg-hover",
+                    ? 'bg-accent-blue/15 text-text-primary'
+                    : 'text-text-secondary hover:bg-bg-hover',
                 )}
-                onMouseEnter={() =>
-                  useSymbolNavStore.setState({ selectedIndex: idx })
-                }
+                onMouseEnter={() => useSymbolNavStore.setState({ selectedIndex: idx })}
                 onClick={() => {
                   useSymbolNavStore.setState({ selectedIndex: idx });
                   void confirm();
                 }}
               >
-                <span className="text-[13px] font-medium truncate font-mono">
-                  {item.label}
-                </span>
+                <span className="text-[13px] font-medium truncate font-mono">{item.label}</span>
                 {item.description ? (
-                  <span className="text-[11px] text-text-muted truncate">
-                    {item.description}
-                  </span>
+                  <span className="text-[11px] text-text-muted truncate">{item.description}</span>
                 ) : null}
               </button>
             ))

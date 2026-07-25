@@ -37,9 +37,7 @@ describe('getIdeCommand', () => {
       expect(typeof cmd).toBe('string');
       expect(cmd.length).toBeGreaterThan(0);
       // 命令应来自预设的三个平台之一
-      expect(
-        [preset.command.windows, preset.command.macos, preset.command.linux],
-      ).toContain(cmd);
+      expect([preset.command.windows, preset.command.macos, preset.command.linux]).toContain(cmd);
     }
   });
 });

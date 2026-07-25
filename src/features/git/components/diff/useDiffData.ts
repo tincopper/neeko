@@ -1,12 +1,12 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { DiffResult, DiffSource, DiffLine } from "./types";
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import type { DiffResult, DiffSource, DiffLine } from './types';
 import type { ProjectCommands } from '@/shared/types/activeProject';
 
 // ── 模块级 Diff 结果缓存（避免在文件间切换时重复加载） ──────────────────
 const diffCache = new Map<string, DiffResult>();
 
 function getCacheKey(projectId?: string, diffSource?: DiffSource, filePath?: string): string {
-  return `${projectId ?? ""}|${JSON.stringify(diffSource ?? "")}|${filePath ?? ""}`;
+  return `${projectId ?? ''}|${JSON.stringify(diffSource ?? '')}|${filePath ?? ''}`;
 }
 
 interface UseDiffDataParams {
@@ -21,7 +21,7 @@ export function useDiffData({ projectId, diffSource, filePath, commands }: UseDi
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [currentBlockIndex, setCurrentBlockIndex] = useState(0);
-  const lastLoadKeyRef = useRef<string>("");
+  const lastLoadKeyRef = useRef<string>('');
 
   const loadDiff = useCallback(async () => {
     // Empty path = intentionally idle (combined parent or collapsed section).
@@ -57,22 +57,28 @@ export function useDiffData({ projectId, diffSource, filePath, commands }: UseDi
 
       // 所有 diff 加载统一走 commands（ProjectCommands 在各环境下都可用）
       // commands 不可用时降级为 projectId 直调
-      if (ds?.type === "commit" || ds?.type === "wsl-commit" || ds?.type === "remote-commit") {
+      if (ds?.type === 'commit' || ds?.type === 'wsl-commit' || ds?.type === 'remote-commit') {
         if (commands) {
           result = await commands.getCommitFileDiff(ds.commitHash, filePath);
         } else {
-          const { getCommitFileDiff } = await import("../../api/gitApi");
-          result = await getCommitFileDiff(projectId ?? "", ds.commitHash, filePath);
+          const { getCommitFileDiff } = await import('../../api/gitApi');
+          result = await getCommitFileDiff(projectId ?? '', ds.commitHash, filePath);
         }
       } else if (commands) {
         result = await commands.getFileDiff(filePath);
       } else {
-        const { getFileDiff } = await import("../../api/gitApi");
-        result = await getFileDiff(projectId ?? "", filePath);
+        const { getFileDiff } = await import('../../api/gitApi');
+        result = await getFileDiff(projectId ?? '', filePath);
       }
 
       const elapsed = (performance.now() - t0).toFixed(0);
-      console.debug('[perf] useDiffData done:', filePath, `${elapsed}ms`, 'hunks:', result.hunks.length);
+      console.debug(
+        '[perf] useDiffData done:',
+        filePath,
+        `${elapsed}ms`,
+        'hunks:',
+        result.hunks.length,
+      );
 
       diffCache.set(cacheKey, result);
       setDiffResult(result);
@@ -147,21 +153,21 @@ export function useDiffData({ projectId, diffSource, filePath, commands }: UseDi
 }
 
 export function getLineContent(line: DiffLine): string {
-  return line.Collapsed ?? line.Context ?? line.Added ?? line.Removed ?? "";
+  return line.Collapsed ?? line.Context ?? line.Added ?? line.Removed ?? '';
 }
 
-export function getLineType(line: DiffLine): "context" | "added" | "removed" | "collapsed" {
+export function getLineType(line: DiffLine): 'context' | 'added' | 'removed' | 'collapsed' {
   if (line.Collapsed !== undefined) {
-    return "collapsed";
+    return 'collapsed';
   }
   if (line.Context !== undefined) {
-    return "context";
+    return 'context';
   }
   if (line.Added !== undefined) {
-    return "added";
+    return 'added';
   }
   if (line.Removed !== undefined) {
-    return "removed";
+    return 'removed';
   }
-  return "context";
+  return 'context';
 }

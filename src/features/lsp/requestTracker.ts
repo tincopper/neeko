@@ -58,10 +58,7 @@ export function createDebouncedLatestRunner<TArg>(options: DebouncedLatestRunner
   }
 
   return {
-    schedule<TResult>(
-      arg: TArg,
-      work: (arg: TArg) => Promise<TResult>,
-    ): Promise<TResult | null> {
+    schedule<TResult>(arg: TArg, work: (arg: TArg) => Promise<TResult>): Promise<TResult | null> {
       if (timer) {
         clearTimeout(timer);
         timer = null;

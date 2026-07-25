@@ -104,29 +104,20 @@ function DebugPanel() {
   const latestPanelH = useRef(PANEL_H_DEFAULT);
   const latestFramesW = useRef(FRAMES_W_DEFAULT);
 
-  const [panelHeight, setPanelHeight] = useState(() =>
-    readStored(PANEL_H_KEY, PANEL_H_DEFAULT),
-  );
-  const [framesWidth, setFramesWidth] = useState(() =>
-    readStored(FRAMES_W_KEY, FRAMES_W_DEFAULT),
-  );
+  const [panelHeight, setPanelHeight] = useState(() => readStored(PANEL_H_KEY, PANEL_H_DEFAULT));
+  const [framesWidth, setFramesWidth] = useState(() => readStored(FRAMES_W_KEY, FRAMES_W_DEFAULT));
 
   latestPanelH.current = panelHeight;
   latestFramesW.current = framesWidth;
 
-  const breakpointsMap = useDebugStore((s) =>
-    projectId ? s.breakpoints[projectId] : undefined,
-  );
+  const breakpointsMap = useDebugStore((s) => (projectId ? s.breakpoints[projectId] : undefined));
   const breakpoints = useMemo(
     () => (projectId ? listAllBreakpoints(projectId) : []),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [projectId, breakpointsMap, listAllBreakpoints],
   );
 
-  const live =
-    !!session &&
-    session.status !== 'terminated' &&
-    session.status !== 'ended';
+  const live = !!session && session.status !== 'terminated' && session.status !== 'ended';
   const isStopped = live && session?.status === 'stopped';
   const isRunning = live && !isStopped;
   const meta = statusMeta(session?.status, !!error);
@@ -171,10 +162,7 @@ function DebugPanel() {
     const startW = latestFramesW.current;
 
     const onMove = (ev: MouseEvent) => {
-      const next = Math.min(
-        FRAMES_W_MAX,
-        Math.max(FRAMES_W_MIN, startW + (ev.clientX - startX)),
-      );
+      const next = Math.min(FRAMES_W_MAX, Math.max(FRAMES_W_MIN, startW + (ev.clientX - startX)));
       latestFramesW.current = next;
       setFramesWidth(next);
     };
@@ -251,331 +239,320 @@ function DebugPanel() {
         className="relative flex flex-col overflow-hidden rounded-lg shadow-sm bg-bg-secondary"
         style={{ height: panelHeight }}
       >
-      {/* Top edge resize handle — full-width strip like SplitLayout */}
-      <div
-        className="absolute top-0 left-0 right-0 h-3 z-20 cursor-row-resize group"
-        onMouseDown={startPanelResize}
-        title="Drag to resize debug panel"
-        role="separator"
-        aria-orientation="horizontal"
-        aria-label="Resize debug panel"
-      >
-        <div className="absolute left-0 right-0 top-0 h-1 bg-transparent group-hover:bg-accent-blue/50 group-active:bg-accent-blue/60 transition-colors rounded-t-lg" />
-        <div className="absolute left-1/2 top-1 -translate-x-1/2 w-8 h-[3px] rounded-full bg-border/80 group-hover:bg-accent-blue/70 group-active:bg-accent-blue transition-colors" />
-      </div>
-
-      {/* Header — island tab bar density */}
-      <div className="flex items-center border-b border-border shrink-0 bg-bg-secondary h-8 rounded-t-lg">
-        <div className="inline-flex items-center gap-1.5 shrink-0 px-2.5 max-w-[220px]">
-          <Bug size={13} className="text-text-secondary shrink-0" />
-          <span className="text-[var(--font-size)] font-medium text-text-primary">
-            Debug
-          </span>
-          {session?.configName ? (
-            <span
-              className="inline-flex items-center gap-1.5 min-w-0 max-w-[150px]"
-              title={`${meta.label} · ${session.configName}`}
-            >
-              <span className={cn('w-1.5 h-1.5 rounded-full shrink-0', meta.dot)} />
-              <span className="truncate text-[calc(var(--font-size)-1px)] text-text-secondary">
-                {session.configName}
-              </span>
-            </span>
-          ) : (
-            <span className="text-[calc(var(--font-size)-1px)] text-text-muted">
-              No session
-            </span>
-          )}
-        </div>
-
-        <div className="w-px h-3.5 bg-border shrink-0" />
-
-        <div className="px-1 shrink-0">
-          <DebugToolbar
-            size="sm"
-            variant="flat"
-            isStopped={isStopped}
-            isRunning={isRunning}
-            showStop
-            onAction={handleToolbar}
-          />
-        </div>
-
-        <div className="flex-1 min-w-0" />
-
-        {/* Tabs — underline active style (RightPanel) */}
-        <div className="inline-flex items-stretch h-full shrink-0">
-          {VIEW_TABS.map((t) => {
-            const active = panelTab === t.id;
-            return (
-              <button
-                key={t.id}
-                type="button"
-                onClick={() => setPanelTab(t.id)}
-                className={cn(
-                  'px-3 text-xs transition-colors duration-100 cursor-pointer border-b-2 h-full',
-                  active
-                    ? 'border-accent-blue text-text-primary'
-                    : 'border-transparent text-text-secondary hover:text-text-primary',
-                )}
-              >
-                {t.label}
-                {t.id === 'breakpoints' && bpCount > 0 ? (
-                  <span className="ml-1 text-accent-red tabular-nums">{bpCount}</span>
-                ) : null}
-              </button>
-            );
-          })}
-        </div>
-
-        <button
-          type="button"
-          className="ml-0.5 mr-1 inline-flex items-center justify-center h-6 w-6 rounded text-text-muted hover:text-text-primary hover:bg-bg-hover cursor-pointer transition-colors shrink-0"
-          title="Hide panel"
-          onClick={() => setPanelOpen(false)}
-        >
-          <X size={13} />
-        </button>
-      </div>
-
-      {error ? (
-        <div className="shrink-0 px-3 py-1 text-[calc(var(--font-size)-1px)] text-accent-red bg-accent-red/8 border-b border-border truncate">
-          {error}
-        </div>
-      ) : null}
-
-      {/* Body */}
-      {panelTab === 'session' && (
-        <div className="flex-1 flex min-h-0">
-          {/* Frames column */}
-          <div
-            className="relative flex flex-col min-h-0 border-r border-border bg-bg-secondary shrink-0"
-            style={{ width: framesWidth }}
-          >
-            <SectionLabel>
-              Frames
-              {frames.length > 0 ? (
-                <span className="ml-auto tabular-nums">{frames.length}</span>
-              ) : null}
-            </SectionLabel>
-            <div className="flex-1 overflow-y-auto">
-              {frames.length === 0 ? (
-                <EmptyHint>
-                  {live ? 'No stack frames' : 'Start debugging to inspect frames'}
-                </EmptyHint>
-              ) : (
-                frames.map((f) => {
-                  const selected = selectedFrameId === f.id;
-                  const file = f.sourcePath
-                    ? f.sourcePath.split(/[/\\]/).pop()
-                    : null;
-                  return (
-                    <button
-                      key={f.id}
-                      type="button"
-                      className={cn(
-                        'w-full text-left px-2.5 py-1 cursor-pointer transition-colors duration-100',
-                        selected
-                          ? 'bg-accent-blue/10 text-text-primary'
-                          : 'text-text-secondary hover:bg-bg-hover',
-                      )}
-                      title={f.sourcePath ?? f.name}
-                      onClick={() => void handleFrameClick(f)}
-                    >
-                      <div
-                        className={cn(
-                          'truncate text-[var(--font-size)]',
-                          selected && 'font-medium',
-                        )}
-                      >
-                        {f.name}
-                      </div>
-                      <div className="truncate text-[10px] text-text-muted mt-0.5">
-                        {file ? (
-                          <>
-                            {file}
-                            <span className="text-text-muted">:{f.line}</span>
-                          </>
-                        ) : (
-                          `line ${f.line}`
-                        )}
-                      </div>
-                    </button>
-                  );
-                })
-              )}
-            </div>
-
-            {/* Frames width resize handle — RightPanel style */}
-            <div
-              className="absolute top-0 right-0 bottom-0 w-3 translate-x-1/2 z-10 cursor-col-resize group"
-              onMouseDown={startFramesResize}
-              title="Drag to resize frames"
-              role="separator"
-              aria-orientation="vertical"
-              aria-label="Resize frames column"
-            >
-              <div className="absolute left-1/2 top-0 bottom-0 w-1 -translate-x-1/2 bg-transparent group-hover:bg-accent-blue/50 group-active:bg-accent-blue/60 transition-colors" />
-            </div>
-          </div>
-
-          {/* Variables + evaluate (evaluate lives here, not in Console) */}
-          <div className="flex-1 flex flex-col min-h-0 min-w-0 bg-bg-secondary">
-            <div className="shrink-0 h-7 border-b border-border flex items-center px-2.5 gap-2 bg-bg-primary/40">
-              <span className="text-accent-blue font-mono text-[var(--font-size)] shrink-0 select-none">
-                ›
-              </span>
-              <input
-                type="text"
-                value={expr}
-                onChange={(e) => setExpr(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') void handleEval();
-                }}
-                placeholder={
-                  isStopped ? 'Evaluate expression…' : 'Evaluate when paused'
-                }
-                disabled={!isStopped}
-                className="flex-1 min-w-0 bg-transparent text-[var(--font-size)] text-text-primary placeholder:text-text-muted focus:outline-none disabled:opacity-40 font-mono"
-              />
-            </div>
-
-            <SectionLabel>
-              Variables
-              {variables.length > 0 ? (
-                <span className="ml-auto tabular-nums">{variables.length}</span>
-              ) : null}
-            </SectionLabel>
-
-            <div className="flex-1 overflow-y-auto text-[var(--font-size)] font-mono">
-              {variables.length === 0 ? (
-                <EmptyHint className="font-sans">
-                  {isStopped
-                    ? 'Variables are not available'
-                    : 'Pause to inspect variables'}
-                </EmptyHint>
-              ) : (
-                variables.map((v, i) => (
-                  <div
-                    key={`${v.name}-${i}`}
-                    className="px-2.5 py-0.5 hover:bg-bg-hover flex gap-2 items-baseline min-h-[22px]"
-                    title={v.type ?? undefined}
-                  >
-                    <span className="text-accent-blue shrink-0">{v.name}</span>
-                    <span className="text-text-muted shrink-0">=</span>
-                    <span className="text-text-primary truncate">{v.value}</span>
-                    {v.type ? (
-                      <span className="text-[10px] text-text-muted shrink-0 ml-auto pl-2">
-                        {v.type}
-                      </span>
-                    ) : null}
-                  </div>
-                ))
-              )}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {panelTab === 'console' && (
+        {/* Top edge resize handle — full-width strip like SplitLayout */}
         <div
-          className="flex-1 flex flex-col min-h-0 min-w-0"
-          style={{ backgroundColor: 'var(--terminal-bg, var(--bg-secondary))' }}
+          className="absolute top-0 left-0 right-0 h-3 z-20 cursor-row-resize group"
+          onMouseDown={startPanelResize}
+          title="Drag to resize debug panel"
+          role="separator"
+          aria-orientation="horizontal"
+          aria-label="Resize debug panel"
         >
-          {/* Match Task Console: same bg / fg / size / typeface as xterm */}
-          <div
-            className="flex-1 overflow-y-auto px-3 py-1.5 space-y-0.5"
-            style={{
-              fontSize: `${terminalType.fontSize}px`,
-              fontFamily: terminalType.fontFamily,
-              color: 'var(--terminal-fg, var(--text-secondary))',
-              lineHeight: 1.35,
-            }}
-          >
-            {consoleLines.length === 0 ? (
-              <div
-                className="h-full flex items-center justify-center px-3 text-center leading-relaxed"
-                style={{
-                  fontSize: `${terminalType.fontSize}px`,
-                  fontFamily: terminalType.fontFamily,
-                  color: 'var(--terminal-fg-dim, var(--text-muted))',
-                }}
+          <div className="absolute left-0 right-0 top-0 h-1 bg-transparent group-hover:bg-accent-blue/50 group-active:bg-accent-blue/60 transition-colors rounded-t-lg" />
+          <div className="absolute left-1/2 top-1 -translate-x-1/2 w-8 h-[3px] rounded-full bg-border/80 group-hover:bg-accent-blue/70 group-active:bg-accent-blue transition-colors" />
+        </div>
+
+        {/* Header — island tab bar density */}
+        <div className="flex items-center border-b border-border shrink-0 bg-bg-secondary h-8 rounded-t-lg">
+          <div className="inline-flex items-center gap-1.5 shrink-0 px-2.5 max-w-[220px]">
+            <Bug size={13} className="text-text-secondary shrink-0" />
+            <span className="text-[var(--font-size)] font-medium text-text-primary">Debug</span>
+            {session?.configName ? (
+              <span
+                className="inline-flex items-center gap-1.5 min-w-0 max-w-[150px]"
+                title={`${meta.label} · ${session.configName}`}
               >
-                Debug output and build messages appear here.
-              </div>
+                <span className={cn('w-1.5 h-1.5 rounded-full shrink-0', meta.dot)} />
+                <span className="truncate text-[calc(var(--font-size)-1px)] text-text-secondary">
+                  {session.configName}
+                </span>
+              </span>
             ) : (
-              consoleLines.map((line) => (
+              <span className="text-[calc(var(--font-size)-1px)] text-text-muted">No session</span>
+            )}
+          </div>
+
+          <div className="w-px h-3.5 bg-border shrink-0" />
+
+          <div className="px-1 shrink-0">
+            <DebugToolbar
+              size="sm"
+              variant="flat"
+              isStopped={isStopped}
+              isRunning={isRunning}
+              showStop
+              onAction={handleToolbar}
+            />
+          </div>
+
+          <div className="flex-1 min-w-0" />
+
+          {/* Tabs — underline active style (RightPanel) */}
+          <div className="inline-flex items-stretch h-full shrink-0">
+            {VIEW_TABS.map((t) => {
+              const active = panelTab === t.id;
+              return (
+                <button
+                  key={t.id}
+                  type="button"
+                  onClick={() => setPanelTab(t.id)}
+                  className={cn(
+                    'px-3 text-xs transition-colors duration-100 cursor-pointer border-b-2 h-full',
+                    active
+                      ? 'border-accent-blue text-text-primary'
+                      : 'border-transparent text-text-secondary hover:text-text-primary',
+                  )}
+                >
+                  {t.label}
+                  {t.id === 'breakpoints' && bpCount > 0 ? (
+                    <span className="ml-1 text-accent-red tabular-nums">{bpCount}</span>
+                  ) : null}
+                </button>
+              );
+            })}
+          </div>
+
+          <button
+            type="button"
+            className="ml-0.5 mr-1 inline-flex items-center justify-center h-6 w-6 rounded text-text-muted hover:text-text-primary hover:bg-bg-hover cursor-pointer transition-colors shrink-0"
+            title="Hide panel"
+            onClick={() => setPanelOpen(false)}
+          >
+            <X size={13} />
+          </button>
+        </div>
+
+        {error ? (
+          <div className="shrink-0 px-3 py-1 text-[calc(var(--font-size)-1px)] text-accent-red bg-accent-red/8 border-b border-border truncate">
+            {error}
+          </div>
+        ) : null}
+
+        {/* Body */}
+        {panelTab === 'session' && (
+          <div className="flex-1 flex min-h-0">
+            {/* Frames column */}
+            <div
+              className="relative flex flex-col min-h-0 border-r border-border bg-bg-secondary shrink-0"
+              style={{ width: framesWidth }}
+            >
+              <SectionLabel>
+                Frames
+                {frames.length > 0 ? (
+                  <span className="ml-auto tabular-nums">{frames.length}</span>
+                ) : null}
+              </SectionLabel>
+              <div className="flex-1 overflow-y-auto">
+                {frames.length === 0 ? (
+                  <EmptyHint>
+                    {live ? 'No stack frames' : 'Start debugging to inspect frames'}
+                  </EmptyHint>
+                ) : (
+                  frames.map((f) => {
+                    const selected = selectedFrameId === f.id;
+                    const file = f.sourcePath ? f.sourcePath.split(/[/\\]/).pop() : null;
+                    return (
+                      <button
+                        key={f.id}
+                        type="button"
+                        className={cn(
+                          'w-full text-left px-2.5 py-1 cursor-pointer transition-colors duration-100',
+                          selected
+                            ? 'bg-accent-blue/10 text-text-primary'
+                            : 'text-text-secondary hover:bg-bg-hover',
+                        )}
+                        title={f.sourcePath ?? f.name}
+                        onClick={() => void handleFrameClick(f)}
+                      >
+                        <div
+                          className={cn(
+                            'truncate text-[var(--font-size)]',
+                            selected && 'font-medium',
+                          )}
+                        >
+                          {f.name}
+                        </div>
+                        <div className="truncate text-[10px] text-text-muted mt-0.5">
+                          {file ? (
+                            <>
+                              {file}
+                              <span className="text-text-muted">:{f.line}</span>
+                            </>
+                          ) : (
+                            `line ${f.line}`
+                          )}
+                        </div>
+                      </button>
+                    );
+                  })
+                )}
+              </div>
+
+              {/* Frames width resize handle — RightPanel style */}
+              <div
+                className="absolute top-0 right-0 bottom-0 w-3 translate-x-1/2 z-10 cursor-col-resize group"
+                onMouseDown={startFramesResize}
+                title="Drag to resize frames"
+                role="separator"
+                aria-orientation="vertical"
+                aria-label="Resize frames column"
+              >
+                <div className="absolute left-1/2 top-0 bottom-0 w-1 -translate-x-1/2 bg-transparent group-hover:bg-accent-blue/50 group-active:bg-accent-blue/60 transition-colors" />
+              </div>
+            </div>
+
+            {/* Variables + evaluate (evaluate lives here, not in Console) */}
+            <div className="flex-1 flex flex-col min-h-0 min-w-0 bg-bg-secondary">
+              <div className="shrink-0 h-7 border-b border-border flex items-center px-2.5 gap-2 bg-bg-primary/40">
+                <span className="text-accent-blue font-mono text-[var(--font-size)] shrink-0 select-none">
+                  ›
+                </span>
+                <input
+                  type="text"
+                  value={expr}
+                  onChange={(e) => setExpr(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') void handleEval();
+                  }}
+                  placeholder={isStopped ? 'Evaluate expression…' : 'Evaluate when paused'}
+                  disabled={!isStopped}
+                  className="flex-1 min-w-0 bg-transparent text-[var(--font-size)] text-text-primary placeholder:text-text-muted focus:outline-none disabled:opacity-40 font-mono"
+                />
+              </div>
+
+              <SectionLabel>
+                Variables
+                {variables.length > 0 ? (
+                  <span className="ml-auto tabular-nums">{variables.length}</span>
+                ) : null}
+              </SectionLabel>
+
+              <div className="flex-1 overflow-y-auto text-[var(--font-size)] font-mono">
+                {variables.length === 0 ? (
+                  <EmptyHint className="font-sans">
+                    {isStopped ? 'Variables are not available' : 'Pause to inspect variables'}
+                  </EmptyHint>
+                ) : (
+                  variables.map((v, i) => (
+                    <div
+                      key={`${v.name}-${i}`}
+                      className="px-2.5 py-0.5 hover:bg-bg-hover flex gap-2 items-baseline min-h-[22px]"
+                      title={v.type ?? undefined}
+                    >
+                      <span className="text-accent-blue shrink-0">{v.name}</span>
+                      <span className="text-text-muted shrink-0">=</span>
+                      <span className="text-text-primary truncate">{v.value}</span>
+                      {v.type ? (
+                        <span className="text-[10px] text-text-muted shrink-0 ml-auto pl-2">
+                          {v.type}
+                        </span>
+                      ) : null}
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {panelTab === 'console' && (
+          <div
+            className="flex-1 flex flex-col min-h-0 min-w-0"
+            style={{ backgroundColor: 'var(--terminal-bg, var(--bg-secondary))' }}
+          >
+            {/* Match Task Console: same bg / fg / size / typeface as xterm */}
+            <div
+              className="flex-1 overflow-y-auto px-3 py-1.5 space-y-0.5"
+              style={{
+                fontSize: `${terminalType.fontSize}px`,
+                fontFamily: terminalType.fontFamily,
+                color: 'var(--terminal-fg, var(--text-secondary))',
+                lineHeight: 1.35,
+              }}
+            >
+              {consoleLines.length === 0 ? (
                 <div
-                  key={line.id}
-                  className="whitespace-pre-wrap"
+                  className="h-full flex items-center justify-center px-3 text-center leading-relaxed"
                   style={{
                     fontSize: `${terminalType.fontSize}px`,
                     fontFamily: terminalType.fontFamily,
-                    color:
-                      line.kind === 'in'
-                        ? 'var(--accent-blue)'
-                        : line.kind === 'err'
-                          ? 'var(--accent-red)'
-                          : line.kind === 'sys'
-                            ? 'var(--terminal-fg-dim, var(--text-muted))'
-                            : 'var(--terminal-fg, var(--text-secondary))',
+                    color: 'var(--terminal-fg-dim, var(--text-muted))',
                   }}
                 >
-                  {line.kind === 'in' ? `› ${line.text}` : line.text}
+                  Debug output and build messages appear here.
+                </div>
+              ) : (
+                consoleLines.map((line) => (
+                  <div
+                    key={line.id}
+                    className="whitespace-pre-wrap"
+                    style={{
+                      fontSize: `${terminalType.fontSize}px`,
+                      fontFamily: terminalType.fontFamily,
+                      color:
+                        line.kind === 'in'
+                          ? 'var(--accent-blue)'
+                          : line.kind === 'err'
+                            ? 'var(--accent-red)'
+                            : line.kind === 'sys'
+                              ? 'var(--terminal-fg-dim, var(--text-muted))'
+                              : 'var(--terminal-fg, var(--text-secondary))',
+                    }}
+                  >
+                    {line.kind === 'in' ? `› ${line.text}` : line.text}
+                  </div>
+                ))
+              )}
+              <div ref={consoleEndRef} />
+            </div>
+          </div>
+        )}
+
+        {panelTab === 'breakpoints' && (
+          <div className="flex-1 overflow-y-auto text-[var(--font-size)] bg-bg-secondary">
+            {breakpoints.length === 0 ? (
+              <EmptyHint>
+                No breakpoints. Click a line number or the left gutter to set one.
+                <span className="block mt-1 text-text-muted">
+                  Saved to <code className="text-text-secondary">.neeko/breakpoints.json</code>
+                </span>
+              </EmptyHint>
+            ) : (
+              breakpoints.map((bp) => (
+                <div
+                  key={`${bp.filePath}:${bp.line}`}
+                  className="flex items-center gap-2 px-3 py-1.5 hover:bg-bg-hover group border-b border-border/60"
+                >
+                  <CircleDot size={12} className="text-accent-red shrink-0" />
+                  <button
+                    type="button"
+                    className="flex-1 min-w-0 text-left cursor-pointer"
+                    onClick={() => void handleBpClick(bp.filePath, bp.line)}
+                    title={bp.filePath}
+                  >
+                    <span className="text-text-primary truncate block">
+                      {bp.filePath.split(/[/\\]/).pop()}
+                      <span className="text-text-muted">:{bp.line}</span>
+                    </span>
+                    <span className="text-[10px] text-text-muted truncate block mt-0.5">
+                      {bp.filePath}
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    className="opacity-0 group-hover:opacity-100 inline-flex items-center justify-center h-5 w-5 rounded text-text-muted hover:text-accent-red hover:bg-bg-hover cursor-pointer shrink-0 transition-opacity"
+                    title="Remove breakpoint"
+                    onClick={() => {
+                      if (projectId) void removeBreakpoint(projectId, bp.filePath, bp.line);
+                    }}
+                  >
+                    <X size={12} />
+                  </button>
                 </div>
               ))
             )}
-            <div ref={consoleEndRef} />
           </div>
-        </div>
-      )}
-
-      {panelTab === 'breakpoints' && (
-        <div className="flex-1 overflow-y-auto text-[var(--font-size)] bg-bg-secondary">
-          {breakpoints.length === 0 ? (
-            <EmptyHint>
-              No breakpoints. Click a line number or the left gutter to set one.
-              <span className="block mt-1 text-text-muted">
-                Saved to{' '}
-                <code className="text-text-secondary">.neeko/breakpoints.json</code>
-              </span>
-            </EmptyHint>
-          ) : (
-            breakpoints.map((bp) => (
-              <div
-                key={`${bp.filePath}:${bp.line}`}
-                className="flex items-center gap-2 px-3 py-1.5 hover:bg-bg-hover group border-b border-border/60"
-              >
-                <CircleDot size={12} className="text-accent-red shrink-0" />
-                <button
-                  type="button"
-                  className="flex-1 min-w-0 text-left cursor-pointer"
-                  onClick={() => void handleBpClick(bp.filePath, bp.line)}
-                  title={bp.filePath}
-                >
-                  <span className="text-text-primary truncate block">
-                    {bp.filePath.split(/[/\\]/).pop()}
-                    <span className="text-text-muted">:{bp.line}</span>
-                  </span>
-                  <span className="text-[10px] text-text-muted truncate block mt-0.5">
-                    {bp.filePath}
-                  </span>
-                </button>
-                <button
-                  type="button"
-                  className="opacity-0 group-hover:opacity-100 inline-flex items-center justify-center h-5 w-5 rounded text-text-muted hover:text-accent-red hover:bg-bg-hover cursor-pointer shrink-0 transition-opacity"
-                  title="Remove breakpoint"
-                  onClick={() => {
-                    if (projectId) void removeBreakpoint(projectId, bp.filePath, bp.line);
-                  }}
-                >
-                  <X size={12} />
-                </button>
-              </div>
-            ))
-          )}
-        </div>
-      )}
+        )}
       </div>
     </div>
   );
@@ -589,13 +566,7 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
   );
 }
 
-function EmptyHint({
-  children,
-  className,
-}: {
-  children: React.ReactNode;
-  className?: string;
-}) {
+function EmptyHint({ children, className }: { children: React.ReactNode; className?: string }) {
   return (
     <div
       className={cn(

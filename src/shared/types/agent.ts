@@ -1,1 +1,1 @@
-export type { AgentConfig } from "@/features/agent/types";
+export type { AgentConfig } from '@/features/agent/types';

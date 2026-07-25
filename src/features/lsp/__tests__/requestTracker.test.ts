@@ -1,9 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import {
-  createDebouncedLatestRunner,
-  LatestRequestTracker,
-} from '../requestTracker';
+import { createDebouncedLatestRunner, LatestRequestTracker } from '../requestTracker';
 
 describe('LatestRequestTracker', () => {
   it('should_treat_only_the_latest_token_as_current', () => {

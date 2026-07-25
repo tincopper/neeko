@@ -1,7 +1,7 @@
-import { useCallback } from "react";
+import { useCallback } from 'react';
 import { useWorktreeStore } from '@/features/project/worktreeStore';
 import { useEditorStore } from '@/shared/store';
-import { useShallow } from "zustand/shallow";
+import { useShallow } from 'zustand/shallow';
 import { buildWorktreeTabKey } from '@/shared/utils/tabKey';
 
 export interface WorktreeItem {
@@ -15,7 +15,7 @@ interface WorktreeState {
   opened: WorktreeItem[];
 }
 
-const EMPTY_STATE: WorktreeState = { activePath: null, activeBranch: "", opened: [] };
+const EMPTY_STATE: WorktreeState = { activePath: null, activeBranch: '', opened: [] };
 
 export function useWorktreeState(activeProjectId: string | null) {
   const worktreeStateMap = useWorktreeStore(useShallow((s) => s.worktreeStateMap));
@@ -28,74 +28,79 @@ export function useWorktreeState(activeProjectId: string | null) {
   const activeWorktreeBranch = currentWtState.activeBranch;
   const openedWorktrees = currentWtState.opened;
 
-  const updateWtPath = useCallback((path: string | null, branch: string) => {
-    if (!activeProjectId) return;
-    useWorktreeStore.setState((s) => {
-      const prev = s.worktreeStateMap[activeProjectId] ?? EMPTY_STATE;
-      return {
+  const updateWtPath = useCallback(
+    (path: string | null, branch: string) => {
+      if (!activeProjectId) return;
+      useWorktreeStore.setState((s) => {
+        const prev = s.worktreeStateMap[activeProjectId] ?? EMPTY_STATE;
+        return {
+          worktreeStateMap: {
+            ...s.worktreeStateMap,
+            [activeProjectId]: {
+              ...prev,
+              activePath: path,
+              activeBranch: branch,
+            },
+          },
+          activeWorktreePath: path,
+          activeWorktreeBranch: branch,
+        };
+      });
+      // Sync activeTabId from editor tabs
+      const tabKey = path ? buildWorktreeTabKey(activeProjectId, path) : activeProjectId;
+      const projectTabs = useEditorStore.getState().tabs[tabKey];
+      useEditorStore.setState({ activeTabId: projectTabs?.activeTabId ?? null });
+    },
+    [activeProjectId],
+  );
+
+  const setActiveWorktreePath = useCallback(
+    (path: string | null) => {
+      if (!activeProjectId) return;
+      useWorktreeStore.setState((s) => {
+        const prev = s.worktreeStateMap[activeProjectId] ?? EMPTY_STATE;
+        return {
+          worktreeStateMap: {
+            ...s.worktreeStateMap,
+            [activeProjectId]: {
+              ...prev,
+              activePath: path,
+            },
+          },
+          activeWorktreePath: path,
+        };
+      });
+      // Sync activeTabId from editor tabs
+      const tabKey = path ? buildWorktreeTabKey(activeProjectId, path) : activeProjectId;
+      const projectTabs = useEditorStore.getState().tabs[tabKey];
+      useEditorStore.setState({ activeTabId: projectTabs?.activeTabId ?? null });
+    },
+    [activeProjectId],
+  );
+
+  const setActiveWorktreeBranch = useCallback(
+    (branch: string) => {
+      if (!activeProjectId) return;
+      useWorktreeStore.setState((s) => ({
         worktreeStateMap: {
           ...s.worktreeStateMap,
           [activeProjectId]: {
-            ...prev,
-            activePath: path,
+            ...(s.worktreeStateMap[activeProjectId] ?? EMPTY_STATE),
             activeBranch: branch,
           },
         },
-        activeWorktreePath: path,
         activeWorktreeBranch: branch,
-      };
-    });
-    // Sync activeTabId from editor tabs
-    const tabKey = path
-      ? buildWorktreeTabKey(activeProjectId, path)
-      : activeProjectId;
-    const projectTabs = useEditorStore.getState().tabs[tabKey];
-    useEditorStore.setState({ activeTabId: projectTabs?.activeTabId ?? null });
-  }, [activeProjectId]);
-
-  const setActiveWorktreePath = useCallback((path: string | null) => {
-    if (!activeProjectId) return;
-    useWorktreeStore.setState((s) => {
-      const prev = s.worktreeStateMap[activeProjectId] ?? EMPTY_STATE;
-      return {
-        worktreeStateMap: {
-          ...s.worktreeStateMap,
-          [activeProjectId]: {
-            ...prev,
-            activePath: path,
-          },
-        },
-        activeWorktreePath: path,
-      };
-    });
-    // Sync activeTabId from editor tabs
-    const tabKey = path
-      ? buildWorktreeTabKey(activeProjectId, path)
-      : activeProjectId;
-    const projectTabs = useEditorStore.getState().tabs[tabKey];
-    useEditorStore.setState({ activeTabId: projectTabs?.activeTabId ?? null });
-  }, [activeProjectId]);
-
-  const setActiveWorktreeBranch = useCallback((branch: string) => {
-    if (!activeProjectId) return;
-    useWorktreeStore.setState((s) => ({
-      worktreeStateMap: {
-        ...s.worktreeStateMap,
-        [activeProjectId]: {
-          ...(s.worktreeStateMap[activeProjectId] ?? EMPTY_STATE),
-          activeBranch: branch,
-        },
-      },
-      activeWorktreeBranch: branch,
-    }));
-  }, [activeProjectId]);
+      }));
+    },
+    [activeProjectId],
+  );
 
   const setOpenedWorktrees = useCallback(
     (updater: WorktreeItem[] | ((prev: WorktreeItem[]) => WorktreeItem[])) => {
       if (!activeProjectId) return;
       useWorktreeStore.setState((s) => {
         const cur = s.worktreeStateMap[activeProjectId] ?? EMPTY_STATE;
-        const newOpened = typeof updater === "function" ? updater(cur.opened) : updater;
+        const newOpened = typeof updater === 'function' ? updater(cur.opened) : updater;
         return {
           worktreeStateMap: {
             ...s.worktreeStateMap,
@@ -116,7 +121,7 @@ export function useWorktreeState(activeProjectId: string | null) {
       return {
         worktreeStateMap: {
           ...s.worktreeStateMap,
-          [pid]: { ...cur, activePath: null, activeBranch: "" },
+          [pid]: { ...cur, activePath: null, activeBranch: '' },
         },
       };
     });

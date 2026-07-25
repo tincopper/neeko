@@ -129,7 +129,6 @@ export function NotificationList({ buttonRef }: NotificationListProps) {
                 Clear all
               </button>
             )}
-
           </div>
         </div>,
         document.body,

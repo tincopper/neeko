@@ -1,11 +1,6 @@
-import React, { useState, useCallback, useRef, useEffect, useMemo } from "react";
-import type { CommitEntry, CommitDetail, CommitFileChange } from "@/features/git/types";
-import CommitGraph, {
-  computeLayout,
-  ROW_HEIGHT,
-  BRANCH_SPACING,
-  NODE_RADIUS,
-} from "./CommitGraph";
+import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react';
+import type { CommitEntry, CommitDetail, CommitFileChange } from '@/features/git/types';
+import CommitGraph, { computeLayout, ROW_HEIGHT, BRANCH_SPACING, NODE_RADIUS } from './CommitGraph';
 import {
   parseCommitMessage,
   commitBodyPreview,
@@ -16,7 +11,7 @@ import {
   graphWidthForCols,
   textLeftForCol,
   splitFilePath,
-} from "./commitListUtils";
+} from './commitListUtils';
 import {
   Copy,
   MoreHorizontal,
@@ -31,8 +26,8 @@ import {
   Pencil,
   Trash2,
   FileText,
-} from "@/shared/components/icons";
-import { cn } from "@/lib/utils";
+} from '@/shared/components/icons';
+import { cn } from '@/lib/utils';
 
 interface CommitListProps {
   commits: CommitEntry[];
@@ -58,10 +53,10 @@ interface CommitListProps {
 const EXPAND_MAX_HEIGHT = 280;
 
 const STATUS_ICONS: Record<string, { icon: React.ReactNode; color: string }> = {
-  M: { icon: <Pencil size={11} />, color: "text-accent-blue" },
-  A: { icon: <FilePlus size={11} />, color: "text-accent-green" },
-  D: { icon: <Trash2 size={11} />, color: "text-accent-red" },
-  R: { icon: <FileText size={11} />, color: "text-accent-orange" },
+  M: { icon: <Pencil size={11} />, color: 'text-accent-blue' },
+  A: { icon: <FilePlus size={11} />, color: 'text-accent-green' },
+  D: { icon: <Trash2 size={11} />, color: 'text-accent-red' },
+  R: { icon: <FileText size={11} />, color: 'text-accent-orange' },
 };
 
 const CommitList: React.FC<CommitListProps> = ({
@@ -111,8 +106,8 @@ const CommitList: React.FC<CommitListProps> = ({
         setMenuOpen(null);
       }
     };
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
   }, [menuOpen]);
 
   // Measure expand height so graph below selected row can translateY
@@ -176,7 +171,7 @@ const CommitList: React.FC<CommitListProps> = ({
 
   const handleRowClick = useCallback(
     (hash: string, e: React.MouseEvent) => {
-      if ((e.target as HTMLElement).closest(".commit-expand")) return;
+      if ((e.target as HTMLElement).closest('.commit-expand')) return;
       onSelectCommit(hash);
     },
     [onSelectCommit],
@@ -184,7 +179,11 @@ const CommitList: React.FC<CommitListProps> = ({
 
   if (loading && commits.length === 0) {
     return (
-      <div className="h-full overflow-hidden px-1 py-1 space-y-1" aria-busy="true" aria-label="Loading">
+      <div
+        className="h-full overflow-hidden px-1 py-1 space-y-1"
+        aria-busy="true"
+        aria-label="Loading"
+      >
         {Array.from({ length: 8 }).map((_, i) => (
           <div key={i} className="flex items-center gap-2 h-8 animate-pulse">
             <div className="w-2 h-2 rounded-full bg-bg-tertiary shrink-0" />
@@ -201,7 +200,7 @@ const CommitList: React.FC<CommitListProps> = ({
   if (filteredCommits.length === 0) {
     return (
       <div className="flex-1 h-full flex flex-col items-center justify-center gap-2 text-[var(--font-size)] text-text-muted px-3">
-        <span>{searchQuery ? "No matching commits" : "No commits yet"}</span>
+        <span>{searchQuery ? 'No matching commits' : 'No commits yet'}</span>
         {searchQuery && onClearSearch ? (
           <button
             type="button"
@@ -254,14 +253,14 @@ const CommitList: React.FC<CommitListProps> = ({
               <div key={commit.hash} className="relative min-w-0">
                 <div
                   className={cn(
-                    "relative z-10 flex flex-col justify-center pr-2 cursor-pointer group transition-colors duration-100 min-w-0",
+                    'relative z-10 flex flex-col justify-center pr-2 cursor-pointer group transition-colors duration-100 min-w-0',
                     // Hover/selection only on the commit row — not the expand panel below.
                     isExpanded
-                      ? "bg-bg-selected"
+                      ? 'bg-bg-selected'
                       : isSelected
-                        ? "bg-bg-selected/70"
+                        ? 'bg-bg-selected/70'
                         : isHovered
-                          ? "bg-bg-hover"
+                          ? 'bg-bg-hover'
                           : undefined,
                   )}
                   style={{ height: ROW_HEIGHT, paddingLeft: textLeft }}
@@ -273,7 +272,7 @@ const CommitList: React.FC<CommitListProps> = ({
                     {type ? (
                       <span
                         className={cn(
-                          "shrink-0 max-w-[10rem] truncate text-[calc(var(--font-size)-3px)] font-medium px-1 py-px rounded leading-none",
+                          'shrink-0 max-w-[10rem] truncate text-[calc(var(--font-size)-3px)] font-medium px-1 py-px rounded leading-none',
                           typeStyle(type),
                         )}
                         title={scope ? `${type}(${scope})` : type}
@@ -342,7 +341,7 @@ const CommitList: React.FC<CommitListProps> = ({
                         title={refs.title}
                       >
                         {refs.primary}
-                        {refs.extraCount > 0 ? ` +${refs.extraCount}` : ""}
+                        {refs.extraCount > 0 ? ` +${refs.extraCount}` : ''}
                       </span>
                     ) : null}
                   </div>
@@ -356,20 +355,23 @@ const CommitList: React.FC<CommitListProps> = ({
                     style={{ marginLeft: Math.max(textLeft - 2, 4) }}
                   >
                     {detailLoading ? (
-                      <div className="text-[var(--font-size)] text-text-muted px-3 py-2">Loading details…</div>
+                      <div className="text-[var(--font-size)] text-text-muted px-3 py-2">
+                        Loading details…
+                      </div>
                     ) : detailError ? (
-                      <div className="text-[var(--font-size)] text-accent-red px-3 py-2">{detailError}</div>
+                      <div className="text-[var(--font-size)] text-accent-red px-3 py-2">
+                        {detailError}
+                      </div>
                     ) : detail ? (
                       <div
                         className="px-2.5 py-2"
-                        style={{ maxHeight: EXPAND_MAX_HEIGHT, overflowY: "auto" }}
+                        style={{ maxHeight: EXPAND_MAX_HEIGHT, overflowY: 'auto' }}
                       >
                         <div className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 mb-1 text-[calc(var(--font-size)-1px)]">
                           <span className="font-mono text-accent-blue">{detail.short_hash}</span>
                           <span className="text-text-muted">·</span>
                           <span className="text-text-muted">
-                            parents:{" "}
-                            {detail.parents.map((p) => p.slice(0, 7)).join(", ") || "—"}
+                            parents: {detail.parents.map((p) => p.slice(0, 7)).join(', ') || '—'}
                           </span>
                         </div>
                         {commitBodyPreview(detail.message) ? (
@@ -379,7 +381,7 @@ const CommitList: React.FC<CommitListProps> = ({
                         ) : null}
                         <div className="flex items-center gap-2 text-[calc(var(--font-size)-2px)] text-text-muted mb-1 border-t border-border/40 pt-1">
                           <span>
-                            {fileStats.count} {fileStats.count === 1 ? "file" : "files"}
+                            {fileStats.count} {fileStats.count === 1 ? 'file' : 'files'}
                           </span>
                           <span className="flex items-center gap-px text-accent-green">
                             <Plus size={9} />
@@ -399,9 +401,9 @@ const CommitList: React.FC<CommitListProps> = ({
                               <div
                                 key={f.path}
                                 className={cn(
-                                  "flex items-center gap-x-1.5 px-1.5 py-1 rounded cursor-pointer min-w-0 w-full overflow-hidden",
+                                  'flex items-center gap-x-1.5 px-1.5 py-1 rounded cursor-pointer min-w-0 w-full overflow-hidden',
                                   // Keyboard focus only — no hover wash on file rows.
-                                  isFocused && "bg-bg-hover/60",
+                                  isFocused && 'bg-bg-hover/60',
                                 )}
                                 onClick={(e) => {
                                   e.stopPropagation();
@@ -413,28 +415,37 @@ const CommitList: React.FC<CommitListProps> = ({
                                 }}
                                 title={`${f.path}  +${f.additions} −${f.deletions}\nClick: open diff · Double-click: pin tab`}
                               >
-                                <span className={cn(statusInfo.color, "shrink-0")}>{statusInfo.icon}</span>
+                                <span className={cn(statusInfo.color, 'shrink-0')}>
+                                  {statusInfo.icon}
+                                </span>
                                 {/* filename keeps priority; only dir column shrinks with ellipsis */}
-                                <span className="shrink-0 max-w-[9rem] truncate text-[calc(var(--font-size)-1px)] font-mono text-text-primary" title={name}>
+                                <span
+                                  className="shrink-0 max-w-[9rem] truncate text-[calc(var(--font-size)-1px)] font-mono text-text-primary"
+                                  title={name}
+                                >
                                   {name}
                                 </span>
                                 <span
                                   className={cn(
-                                    "flex-1 min-w-0 truncate text-[calc(var(--font-size)-3px)] font-mono text-text-muted",
-                                    !dir && "invisible",
+                                    'flex-1 min-w-0 truncate text-[calc(var(--font-size)-3px)] font-mono text-text-muted',
+                                    !dir && 'invisible',
                                   )}
                                   title={dir}
                                 >
-                                  {dir || "—"}
+                                  {dir || '—'}
                                 </span>
                                 <span className="shrink-0 flex items-center gap-1 justify-end tabular-nums">
                                   <span className="flex items-center gap-px text-accent-green whitespace-nowrap">
                                     <Plus size={9} />
-                                    <span className="text-[calc(var(--font-size)-2px)]">{f.additions}</span>
+                                    <span className="text-[calc(var(--font-size)-2px)]">
+                                      {f.additions}
+                                    </span>
                                   </span>
                                   <span className="flex items-center gap-px text-accent-red whitespace-nowrap">
                                     <Minus size={9} />
-                                    <span className="text-[calc(var(--font-size)-2px)]">{f.deletions}</span>
+                                    <span className="text-[calc(var(--font-size)-2px)]">
+                                      {f.deletions}
+                                    </span>
                                   </span>
                                 </span>
                               </div>
@@ -446,7 +457,9 @@ const CommitList: React.FC<CommitListProps> = ({
                         </div>
                       </div>
                     ) : (
-                      <div className="text-[var(--font-size)] text-text-muted px-3 py-2">No details</div>
+                      <div className="text-[var(--font-size)] text-text-muted px-3 py-2">
+                        No details
+                      </div>
                     )}
                   </div>
                 ) : null}
@@ -461,7 +474,11 @@ const CommitList: React.FC<CommitListProps> = ({
                     <MenuItem icon={<Undo2 size={11} />} label="Revert" disabled />
                     <MenuItem icon={<GitBranchPlus size={11} />} label="Create Branch" disabled />
                     <MenuItem icon={<Tag size={11} />} label="Create Tag" disabled />
-                    <MenuItem icon={<SquareArrowOutUpRight size={11} />} label="Checkout Detached" disabled />
+                    <MenuItem
+                      icon={<SquareArrowOutUpRight size={11} />}
+                      label="Checkout Detached"
+                      disabled
+                    />
                     <div className="px-2 py-1 text-[calc(var(--font-size)-3px)] text-text-muted border-t border-border/40 mt-0.5">
                       Coming soon
                     </div>
@@ -472,8 +489,11 @@ const CommitList: React.FC<CommitListProps> = ({
           })}
 
           {hasMore ? (
-            <div ref={sentinelRef} className="py-2 text-center text-[var(--font-size)] text-text-muted">
-              {loadingMore ? "Loading more…" : ""}
+            <div
+              ref={sentinelRef}
+              className="py-2 text-center text-[var(--font-size)] text-text-muted"
+            >
+              {loadingMore ? 'Loading more…' : ''}
             </div>
           ) : null}
         </div>
@@ -495,12 +515,12 @@ function MenuItem({
     <button
       type="button"
       disabled={disabled}
-      title={disabled ? "Coming soon" : undefined}
+      title={disabled ? 'Coming soon' : undefined}
       className={cn(
-        "flex items-center gap-1.5 w-full px-2 py-1 text-[var(--font-size)] transition-colors duration-100",
+        'flex items-center gap-1.5 w-full px-2 py-1 text-[var(--font-size)] transition-colors duration-100',
         disabled
-          ? "text-text-muted/60 cursor-not-allowed"
-          : "text-text-secondary hover:bg-bg-hover hover:text-text-primary",
+          ? 'text-text-muted/60 cursor-not-allowed'
+          : 'text-text-secondary hover:bg-bg-hover hover:text-text-primary',
       )}
     >
       <span className="text-text-muted shrink-0">{icon}</span>

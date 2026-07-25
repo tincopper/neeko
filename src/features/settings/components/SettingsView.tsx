@@ -1,29 +1,29 @@
-import React, { useState, useMemo, useCallback, useEffect } from "react";
-import { listAgents } from "../../agent/api/agentApi";
-import { ArrowLeft, Search, FolderOpen } from "@/shared/components/icons"
+import React, { useState, useMemo, useCallback, useEffect } from 'react';
+import { listAgents } from '../../agent/api/agentApi';
+import { ArrowLeft, Search, FolderOpen } from '@/shared/components/icons';
 import { useAppViewStore } from '@/shared/store/appViewStore';
 import { useProjectStore } from '@/features/project/store';
 import { useAppContext } from '@/shared/contexts';
 import { cn } from '@/lib/utils';
-import { NAV_ITEMS, type SettingsNavId } from "./constants";
-import { useSettingsPanelState } from "./useSettingsPanelState";
-import AppearancePanel from "./AppearancePanel";
-import EditorPanel from "./EditorPanel";
-import TerminalPanel from "./TerminalPanel";
-import AgentsPanel from "./AgentsPanel";
-import IdePanel from "./IdePanel";
-import GitPanel from "./GitPanel";
-import ShortcutPanel from "./ShortcutPanel";
-import ProjectPanel from "./ProjectPanel";
-import LspPanel from "./LspPanel";
+import { NAV_ITEMS, type SettingsNavId } from './constants';
+import { useSettingsPanelState } from './useSettingsPanelState';
+import AppearancePanel from './AppearancePanel';
+import EditorPanel from './EditorPanel';
+import TerminalPanel from './TerminalPanel';
+import AgentsPanel from './AgentsPanel';
+import IdePanel from './IdePanel';
+import GitPanel from './GitPanel';
+import ShortcutPanel from './ShortcutPanel';
+import ProjectPanel from './ProjectPanel';
+import LspPanel from './LspPanel';
 import type { AgentConfig, AppConfig } from '@/shared/types';
 
 function SettingsView() {
   const setAppView = useAppViewStore((s) => s.setAppView);
   const { config, customThemes, saveConfig } = useAppContext();
   const projects = useProjectStore((s) => s.projects);
-  const [activeNav, setActiveNav] = useState<SettingsNavId>("appearance");
-  const [searchQuery, setSearchQuery] = useState("");
+  const [activeNav, setActiveNav] = useState<SettingsNavId>('appearance');
+  const [searchQuery, setSearchQuery] = useState('');
   const [builtinAgents, setBuiltinAgents] = useState<AgentConfig[]>([]);
 
   useEffect(() => {
@@ -35,7 +35,7 @@ function SettingsView() {
           setBuiltinAgents(all.filter((a) => a.is_builtin === true));
         }
       } catch (e) {
-        console.error("[SettingsView] Failed to list agents:", e);
+        console.error('[SettingsView] Failed to list agents:', e);
       }
     })();
     return () => {
@@ -44,13 +44,10 @@ function SettingsView() {
   }, []);
 
   const handleBack = useCallback(() => {
-    setAppView("normal");
+    setAppView('normal');
   }, [setAppView]);
 
-  const onConfigChange = useCallback(
-    (next: AppConfig) => saveConfig(next),
-    [saveConfig],
-  );
+  const onConfigChange = useCallback((next: AppConfig) => saveConfig(next), [saveConfig]);
 
   const state = useSettingsPanelState({
     config,
@@ -67,11 +64,11 @@ function SettingsView() {
   }, [searchQuery]);
 
   const handleProjectRemoved = useCallback(() => {
-    setActiveNav("appearance");
+    setActiveNav('appearance');
   }, []);
 
   const renderPanel = () => {
-    if (activeNav.startsWith("project:")) {
+    if (activeNav.startsWith('project:')) {
       const projectId = activeNav.slice(8);
       return (
         <ProjectPanel
@@ -83,7 +80,7 @@ function SettingsView() {
     }
 
     switch (activeNav) {
-      case "appearance":
+      case 'appearance':
         return (
           <AppearancePanel
             appearanceFontSize={config.appearanceFontSize}
@@ -93,12 +90,16 @@ function SettingsView() {
             customThemes={customThemes}
             onAppearanceFontSizeChange={state.setAppearanceFontSize}
             onThemeChange={(theme) => onConfigChange({ ...config, theme })}
-            onPiThemeSyncChange={(enabled) => onConfigChange({ ...config, enablePiThemeSync: enabled })}
-            onOpenCodeThemeSyncChange={(enabled) => onConfigChange({ ...config, enableOpenCodeThemeSync: enabled })}
+            onPiThemeSyncChange={(enabled) =>
+              onConfigChange({ ...config, enablePiThemeSync: enabled })
+            }
+            onOpenCodeThemeSyncChange={(enabled) =>
+              onConfigChange({ ...config, enableOpenCodeThemeSync: enabled })
+            }
           />
         );
 
-      case "editor":
+      case 'editor':
         return (
           <EditorPanel
             editorFontSize={config.editorFontSize}
@@ -106,15 +107,10 @@ function SettingsView() {
           />
         );
 
-      case "lsp":
-        return (
-          <LspPanel
-            config={config}
-            onConfigChange={onConfigChange}
-          />
-        );
+      case 'lsp':
+        return <LspPanel config={config} onConfigChange={onConfigChange} />;
 
-      case "terminal":
+      case 'terminal':
         return (
           <TerminalPanel
             terminalFontSize={config.terminalFontSize}
@@ -137,7 +133,7 @@ function SettingsView() {
           />
         );
 
-      case "agents":
+      case 'agents':
         return (
           <AgentsPanel
             config={config}
@@ -181,7 +177,7 @@ function SettingsView() {
           />
         );
 
-      case "ide":
+      case 'ide':
         return (
           <IdePanel
             config={config}
@@ -202,21 +198,11 @@ function SettingsView() {
           />
         );
 
-      case "git":
-        return (
-          <GitPanel
-            diffMode={config.diffMode}
-            onDiffModeChange={state.setDiffMode}
-          />
-        );
+      case 'git':
+        return <GitPanel diffMode={config.diffMode} onDiffModeChange={state.setDiffMode} />;
 
-      case "shortcuts":
-        return (
-          <ShortcutPanel
-            config={config}
-            onConfigChange={onConfigChange}
-          />
-        );
+      case 'shortcuts':
+        return <ShortcutPanel config={config} onConfigChange={onConfigChange} />;
 
       default:
         return null;
@@ -265,15 +251,15 @@ function SettingsView() {
               <button
                 key={item.id}
                 className={cn(
-                  "flex items-center gap-2.5 py-2 px-3 bg-none border-none rounded-md text-text-secondary text-[0.86em] cursor-pointer text-left transition-[background-color,color] duration-150 w-full hover:bg-bg-hover hover:text-text-primary focus-visible:ring-2 focus-visible:ring-accent-blue focus-visible:ring-offset-1",
-                  activeNav === item.id && "!bg-accent-blue !text-[var(--text-on-accent)]",
+                  'flex items-center gap-2.5 py-2 px-3 bg-none border-none rounded-md text-text-secondary text-[0.86em] cursor-pointer text-left transition-[background-color,color] duration-150 w-full hover:bg-bg-hover hover:text-text-primary focus-visible:ring-2 focus-visible:ring-accent-blue focus-visible:ring-offset-1',
+                  activeNav === item.id && '!bg-accent-blue !text-[var(--text-on-accent)]',
                 )}
                 onClick={() => setActiveNav(item.id)}
               >
                 <span
                   className={cn(
-                    "text-text-muted shrink-0 flex items-center",
-                    activeNav === item.id && "!text-[var(--text-on-accent)]",
+                    'text-text-muted shrink-0 flex items-center',
+                    activeNav === item.id && '!text-[var(--text-on-accent)]',
                   )}
                 >
                   {item.icon}
@@ -295,16 +281,16 @@ function SettingsView() {
                     <button
                       key={p.id}
                       className={cn(
-                        "flex items-center gap-2.5 py-2 px-3 pl-5 bg-none border-none rounded-md text-text-secondary text-[0.86em] cursor-pointer text-left transition-[background-color,color] duration-150 w-full hover:bg-bg-hover hover:text-text-primary",
-                        activeNav === navId && "!bg-accent-blue !text-[var(--text-on-accent)]",
+                        'flex items-center gap-2.5 py-2 px-3 pl-5 bg-none border-none rounded-md text-text-secondary text-[0.86em] cursor-pointer text-left transition-[background-color,color] duration-150 w-full hover:bg-bg-hover hover:text-text-primary',
+                        activeNav === navId && '!bg-accent-blue !text-[var(--text-on-accent)]',
                       )}
                       onClick={() => setActiveNav(navId)}
                     >
                       <FolderOpen
                         size={14}
                         className={cn(
-                          "shrink-0 text-text-muted",
-                          activeNav === navId && "!text-[var(--text-on-accent)]",
+                          'shrink-0 text-text-muted',
+                          activeNav === navId && '!text-[var(--text-on-accent)]',
                         )}
                       />
                       <span className="font-medium truncate">{p.name}</span>
@@ -330,9 +316,7 @@ function SettingsView() {
 
         {/* Right content area */}
         <div className="flex-1 overflow-y-auto p-8 px-10">
-          <div className="max-w-[640px]">
-            {renderPanel()}
-          </div>
+          <div className="max-w-[640px]">{renderPanel()}</div>
         </div>
       </div>
     </div>

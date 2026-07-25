@@ -1,18 +1,25 @@
-import { ChevronRight, Globe, FolderOpen, FileText, Copy, ClipboardCopy } from "@/shared/components/icons"
-import React, { useCallback, useState, useEffect, useRef, useMemo } from "react";
+import {
+  ChevronRight,
+  Globe,
+  FolderOpen,
+  FileText,
+  Copy,
+  ClipboardCopy,
+} from '@/shared/components/icons';
+import React, { useCallback, useState, useEffect, useRef, useMemo } from 'react';
 import { fileIconSrc } from '@/shared/utils/fileIcons';
 import { resolveAbsolutePath } from '@/shared/utils/browserUtils';
 import type { FileNode, FileChange } from '@/shared/types';
-import ContextMenu, { type ContextMenuItem } from "@/features/project/components/ContextMenu";
-import { setDragFile } from "../hooks/useFileDrop";
+import ContextMenu, { type ContextMenuItem } from '@/features/project/components/ContextMenu';
+import { setDragFile } from '../hooks/useFileDrop';
 
 /** git status �?文件名颜�?class */
-const STATUS_TEXT_COLOR: Record<FileChange["status"], string> = {
-  Modified:  "text-accent-blue",
-  Added:     "text-accent-green",
-  Deleted:   "text-accent-red",
-  Renamed:   "text-accent-blue",
-  Untracked: "text-accent-red",
+const STATUS_TEXT_COLOR: Record<FileChange['status'], string> = {
+  Modified: 'text-accent-blue',
+  Added: 'text-accent-green',
+  Deleted: 'text-accent-red',
+  Renamed: 'text-accent-blue',
+  Untracked: 'text-accent-red',
 };
 
 interface FilesPanelProps {
@@ -28,7 +35,7 @@ interface FilesPanelProps {
   /** 懒加载：按需加载超过初始深度的子目录 */
   onExpandDir: (dirPath: string) => Promise<void>;
   /** 项目类型 */
-  projectType?: "Local" | "Wsl" | "Remote" | null;
+  projectType?: 'Local' | 'Wsl' | 'Remote' | null;
   /** �?Browser Panel 中打开 HTML 文件 */
   onOpenInBrowser?: (filePath: string) => void;
   /** 在系统文件管理器中显�?*/
@@ -41,10 +48,10 @@ interface FilesPanelProps {
  * Get all parent directory paths for a file path
  */
 function getParentPaths(filePath: string): string[] {
-  const parts = filePath.replace(/\\/g, "/").split("/");
+  const parts = filePath.replace(/\\/g, '/').split('/');
   const paths: string[] = [];
   for (let i = 1; i < parts.length; i++) {
-    paths.push(parts.slice(0, i).join("/"));
+    paths.push(parts.slice(0, i).join('/'));
   }
   return paths;
 }
@@ -73,7 +80,7 @@ interface FileTreeNodeProps {
   onSelectFile: (path: string) => void;
   onToggleDir: (path: string) => void;
   onContextMenu?: (position: { x: number; y: number }, node: FileNode) => void;
-  changedFilesMap?: Map<string, FileChange["status"]>;
+  changedFilesMap?: Map<string, FileChange['status']>;
 }
 
 function FileTreeNode({
@@ -100,18 +107,21 @@ function FileTreeNode({
     }
   }, [node.is_dir, node.path, onSelectFile, onToggleDir]);
 
-  const handleContextMenu = useCallback((e: React.MouseEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    onContextMenu?.({ x: e.clientX, y: e.clientY }, node);
-  }, [node, onContextMenu]);
+  const handleContextMenu = useCallback(
+    (e: React.MouseEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      onContextMenu?.({ x: e.clientX, y: e.clientY }, node);
+    },
+    [node, onContextMenu],
+  );
 
   const indent = 4 + depth * 12;
 
   const handleDragStart = useCallback(
     (e: React.DragEvent) => {
       if (node.is_dir || !projectId) return;
-      e.dataTransfer.effectAllowed = "copy";
+      e.dataTransfer.effectAllowed = 'copy';
       setDragFile(node.path, projectId);
     },
     [node.path, node.is_dir, projectId],
@@ -121,7 +131,7 @@ function FileTreeNode({
     <>
       <div
         className={`flex items-center gap-1 py-0.5 pr-2 text-[var(--font-size)] cursor-pointer rounded select-none min-w-0 ${
-          isActive ? "bg-bg-selected" : "hover:bg-bg-hover"
+          isActive ? 'bg-bg-selected' : 'hover:bg-bg-hover'
         }`}
         style={{ paddingLeft: indent }}
         draggable={!node.is_dir}
@@ -134,12 +144,12 @@ function FileTreeNode({
           <>
             <ChevronRight
               className={`w-3.5 h-3.5 shrink-0 text-text-muted transition-transform duration-150 ${
-                isExpanded ? "rotate-90" : ""
+                isExpanded ? 'rotate-90' : ''
               }`}
             />
             <img
               className="w-4 h-4 shrink-0 block"
-              src={`/icons/${isExpanded ? "_folder_open" : "_folder"}.svg`}
+              src={`/icons/${isExpanded ? '_folder_open' : '_folder'}.svg`}
               alt=""
               width={16}
               height={16}
@@ -162,8 +172,10 @@ function FileTreeNode({
             <span
               className={`flex-1 truncate ${
                 isActive
-                  ? "text-accent font-medium"
-                  : (changedFilesMap?.get(node.path) ? STATUS_TEXT_COLOR[changedFilesMap.get(node.path)!] : "text-text-secondary")
+                  ? 'text-accent font-medium'
+                  : changedFilesMap?.get(node.path)
+                    ? STATUS_TEXT_COLOR[changedFilesMap.get(node.path)!]
+                    : 'text-text-secondary'
               }`}
             >
               {node.name}
@@ -198,7 +210,21 @@ function FileTreeNode({
 
 const MemoizedFileTreeNode = React.memo(FileTreeNode);
 
-function FilesPanel({ projectName, projectPath, projectId, fileTree, isLoading, activeFilePath, onSelectFile, onRefresh, onExpandDir, projectType, onOpenInBrowser, onRevealInExplorer, changedFiles }: FilesPanelProps) {
+function FilesPanel({
+  projectName,
+  projectPath,
+  projectId,
+  fileTree,
+  isLoading,
+  activeFilePath,
+  onSelectFile,
+  onRefresh,
+  onExpandDir,
+  projectType,
+  onOpenInBrowser,
+  onRevealInExplorer,
+  changedFiles,
+}: FilesPanelProps) {
   const [expandedDirs, setExpandedDirs] = useState<Set<string>>(new Set());
   // 正在加载中的目录
   const [loadingDirs, setLoadingDirs] = useState<Set<string>>(new Set());
@@ -243,54 +269,54 @@ function FilesPanel({ projectName, projectPath, projectId, fileTree, isLoading, 
     }
   }, [activeFilePath]);
 
-  const handleToggleDir = useCallback(async (path: string) => {
-    // 收起：直�?toggle，无需懒加�?
-    if (expandedDirs.has(path)) {
-      setExpandedDirs((prev) => {
-        const next = new Set(prev);
-        next.delete(path);
-        return next;
-      });
-      return;
-    }
-
-    // 展开：检查是否需要懒加载
-    const node = findNode(fileTree, path);
-    const needsLazyLoad =
-      node &&
-      node.is_dir &&
-      node.children.length === 0 &&
-      !loadedEmptyDirs.has(path);
-
-    if (needsLazyLoad) {
-      // 先展开，显�?loading spinner
-      setExpandedDirs((prev) => new Set(prev).add(path));
-      setLoadingDirs((prev) => new Set(prev).add(path));
-      try {
-        await onExpandDir(path);
-        // 标记已加载（成功后），防止重复请求真正的空目�?
-        setLoadedEmptyDirs((prev) => new Set(prev).add(path));
-      } catch (e) {
-        // Lazy-load failed: collapse the directory so the UI doesn't show an
-        // empty expanded folder. The error is logged by expandSubTree.
-        console.error("[FilesPanel] Failed to expand directory:", path, e);
+  const handleToggleDir = useCallback(
+    async (path: string) => {
+      // 收起：直�?toggle，无需懒加�?
+      if (expandedDirs.has(path)) {
         setExpandedDirs((prev) => {
           const next = new Set(prev);
           next.delete(path);
           return next;
         });
-      } finally {
-        setLoadingDirs((prev) => {
-          const next = new Set(prev);
-          next.delete(path);
-          return next;
-        });
+        return;
       }
-    } else {
-      // children 已存在，或已知为真空目录：直接展开
-      setExpandedDirs((prev) => new Set(prev).add(path));
-    }
-  }, [fileTree, expandedDirs, loadedEmptyDirs, onExpandDir]);
+
+      // 展开：检查是否需要懒加载
+      const node = findNode(fileTree, path);
+      const needsLazyLoad =
+        node && node.is_dir && node.children.length === 0 && !loadedEmptyDirs.has(path);
+
+      if (needsLazyLoad) {
+        // 先展开，显�?loading spinner
+        setExpandedDirs((prev) => new Set(prev).add(path));
+        setLoadingDirs((prev) => new Set(prev).add(path));
+        try {
+          await onExpandDir(path);
+          // 标记已加载（成功后），防止重复请求真正的空目�?
+          setLoadedEmptyDirs((prev) => new Set(prev).add(path));
+        } catch (e) {
+          // Lazy-load failed: collapse the directory so the UI doesn't show an
+          // empty expanded folder. The error is logged by expandSubTree.
+          console.error('[FilesPanel] Failed to expand directory:', path, e);
+          setExpandedDirs((prev) => {
+            const next = new Set(prev);
+            next.delete(path);
+            return next;
+          });
+        } finally {
+          setLoadingDirs((prev) => {
+            const next = new Set(prev);
+            next.delete(path);
+            return next;
+          });
+        }
+      } else {
+        // children 已存在，或已知为真空目录：直接展开
+        setExpandedDirs((prev) => new Set(prev).add(path));
+      }
+    },
+    [fileTree, expandedDirs, loadedEmptyDirs, onExpandDir],
+  );
 
   // 右键菜单处理
   const handleContextMenu = useCallback((position: { x: number; y: number }, node: FileNode) => {
@@ -302,59 +328,62 @@ function FilesPanel({ projectName, projectPath, projectId, fileTree, isLoading, 
   }, []);
 
   // 构建上下文菜单项
-  const buildContextMenuItems = useCallback((node: FileNode): ContextMenuItem[] => {
-    const items: ContextMenuItem[] = [];
-    const isHtmlFile = !node.is_dir && /\.(html|htm)$/i.test(node.name);
+  const buildContextMenuItems = useCallback(
+    (node: FileNode): ContextMenuItem[] => {
+      const items: ContextMenuItem[] = [];
+      const isHtmlFile = !node.is_dir && /\.(html|htm)$/i.test(node.name);
 
-    if (!node.is_dir) {
-      items.push({
-        label: "Open in Editor",
-        icon: FileText,
-        action: () => onSelectFile(node.path),
-      });
-    }
+      if (!node.is_dir) {
+        items.push({
+          label: 'Open in Editor',
+          icon: FileText,
+          action: () => onSelectFile(node.path),
+        });
+      }
 
-    if (isHtmlFile && projectType === "Local" && onOpenInBrowser) {
-      items.push({
-        label: "Open in Browser",
-        icon: Globe,
-        action: () => onOpenInBrowser(node.path),
-      });
-    }
+      if (isHtmlFile && projectType === 'Local' && onOpenInBrowser) {
+        items.push({
+          label: 'Open in Browser',
+          icon: Globe,
+          action: () => onOpenInBrowser(node.path),
+        });
+      }
 
-    items.push({ separator: true });
-
-    items.push({
-      label: "Copy Path",
-      icon: Copy,
-      action: () => {
-        const absPath = projectPath
-          ? resolveAbsolutePath(projectPath, node.path)
-          : node.path;
-        navigator.clipboard.writeText(absPath);
-      },
-    });
-
-    if (projectPath) {
-      items.push({
-        label: "Copy Relative Path",
-        icon: ClipboardCopy,
-        // node.path 已经是相对于项目根的相对路径，直接复�?
-        action: () => { navigator.clipboard.writeText(node.path); },
-      });
-    }
-
-    if (projectType === "Local" && onRevealInExplorer) {
       items.push({ separator: true });
-      items.push({
-        label: "Reveal in File Manager",
-        icon: FolderOpen,
-        action: () => onRevealInExplorer(node.path),
-      });
-    }
 
-    return items;
-  }, [projectType, projectPath, onSelectFile, onOpenInBrowser, onRevealInExplorer]);
+      items.push({
+        label: 'Copy Path',
+        icon: Copy,
+        action: () => {
+          const absPath = projectPath ? resolveAbsolutePath(projectPath, node.path) : node.path;
+          navigator.clipboard.writeText(absPath);
+        },
+      });
+
+      if (projectPath) {
+        items.push({
+          label: 'Copy Relative Path',
+          icon: ClipboardCopy,
+          // node.path 已经是相对于项目根的相对路径，直接复�?
+          action: () => {
+            navigator.clipboard.writeText(node.path);
+          },
+        });
+      }
+
+      if (projectType === 'Local' && onRevealInExplorer) {
+        items.push({ separator: true });
+        items.push({
+          label: 'Reveal in File Manager',
+          icon: FolderOpen,
+          action: () => onRevealInExplorer(node.path),
+        });
+      }
+
+      return items;
+    },
+    [projectType, projectPath, onSelectFile, onOpenInBrowser, onRevealInExplorer],
+  );
 
   if (!projectName) {
     return (
@@ -366,7 +395,9 @@ function FilesPanel({ projectName, projectPath, projectId, fileTree, isLoading, 
     );
   }
 
-  const activeFileName = activeFilePath ? activeFilePath.split(/[\\/]/).pop() || activeFilePath : null;
+  const activeFileName = activeFilePath
+    ? activeFilePath.split(/[\\/]/).pop() || activeFilePath
+    : null;
 
   return (
     <div className="flex flex-col h-full">
@@ -381,14 +412,23 @@ function FilesPanel({ projectName, projectPath, projectId, fileTree, isLoading, 
                 height={16}
                 className="shrink-0"
               />
-              <span className="font-semibold text-[var(--font-size)] truncate">{activeFileName}</span>
-              <span className="text-text-muted text-[var(--font-size)] truncate">{activeFilePath}</span>
+              <span className="font-semibold text-[var(--font-size)] truncate">
+                {activeFileName}
+              </span>
+              <span className="text-text-muted text-[var(--font-size)] truncate">
+                {activeFilePath}
+              </span>
             </>
           ) : (
             <div className="flex flex-col gap-0.5 min-w-0">
-              <span className="text-[var(--font-size)] font-medium text-text-primary truncate">{projectName}</span>
+              <span className="text-[var(--font-size)] font-medium text-text-primary truncate">
+                {projectName}
+              </span>
               {projectPath && (
-                <span className="text-[calc(var(--font-size)-1px)] text-text-muted truncate" title={projectPath}>
+                <span
+                  className="text-[calc(var(--font-size)-1px)] text-text-muted truncate"
+                  title={projectPath}
+                >
                   {projectPath}
                 </span>
               )}
@@ -400,7 +440,16 @@ function FilesPanel({ projectName, projectPath, projectId, fileTree, isLoading, 
           onClick={handleRefresh}
           title="Refresh file tree"
         >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <svg
+            width="14"
+            height="14"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
             <path d="M21.5 2v6h-6" />
             <path d="M2.5 22v-6h6" />
             <path d="M2 11.5a10 10 0 0 1 18.8-4.3" />

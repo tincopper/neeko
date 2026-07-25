@@ -1,8 +1,8 @@
-import React from "react";
+import React from 'react';
 import type { AuthMethod } from '@/shared/types';
 import { useEditorContext } from '@/shared/contexts';
-import TerminalViewBase from "./TerminalViewBase";
-import { useRemoteTerminalStrategy } from "../strategies";
+import TerminalViewBase from './TerminalViewBase';
+import { useRemoteTerminalStrategy } from '../strategies';
 
 export interface RemoteTerminalViewProps {
   entryId: string;
@@ -21,9 +21,7 @@ export interface RemoteTerminalViewProps {
   cacheKeySuffix?: string;
 }
 
-export default React.memo(function RemoteTerminalView(
-  props: RemoteTerminalViewProps,
-) {
+export default React.memo(function RemoteTerminalView(props: RemoteTerminalViewProps) {
   const {
     entryId,
     projectId,
@@ -35,7 +33,7 @@ export default React.memo(function RemoteTerminalView(
     fontSize,
     fontFamily,
     onSessionReady,
-    paneId = "p1",
+    paneId = 'p1',
     cacheKeySuffix,
   } = props;
 
@@ -58,11 +56,5 @@ export default React.memo(function RemoteTerminalView(
   const activeTab = tabs.find((tab) => tab.id === activeTabId) ?? null;
   const tabAgentId = activeTab?.agentId ?? null;
 
-  return (
-    <TerminalViewBase
-      strategy={strategy}
-      tabAgentId={tabAgentId}
-      activeTabId={activeTabId}
-    />
-  );
+  return <TerminalViewBase strategy={strategy} tabAgentId={tabAgentId} activeTabId={activeTabId} />;
 });

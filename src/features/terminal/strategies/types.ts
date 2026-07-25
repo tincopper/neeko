@@ -1,6 +1,6 @@
-import type { FitAddon } from "@xterm/addon-fit";
-import type { Terminal } from "@xterm/xterm";
-import type { TerminalInputController } from "../components/terminalInput";
+import type { FitAddon } from '@xterm/addon-fit';
+import type { Terminal } from '@xterm/xterm';
+import type { TerminalInputController } from '../components/terminalInput';
 
 export interface CacheEntry {
   term: Terminal;
@@ -12,12 +12,16 @@ export interface CacheEntry {
 }
 
 export interface TerminalStrategy {
-  kind: "local" | "wsl" | "remote";
+  kind: 'local' | 'wsl' | 'remote';
   cacheKey: string;
   cache: Map<string, CacheEntry>;
   rebuildCallbacks: Map<string, () => void>;
   wrapperRefs: Map<string, HTMLDivElement>;
-  createSession: (cols: number, rows: number, payload?: { command?: string; configId?: string }) => Promise<string>;
+  createSession: (
+    cols: number,
+    rows: number,
+    payload?: { command?: string; configId?: string },
+  ) => Promise<string>;
   resize: (sessionId: string, cols: number, rows: number) => Promise<void>;
   closeSession: (sessionId: string) => Promise<void>;
   agentDelayMs: number;

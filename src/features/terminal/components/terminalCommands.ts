@@ -1,14 +1,14 @@
-import { emit } from "@tauri-apps/api/event";
-import { resizeTerminal, closeTerminalSession } from "../api/terminalApi";
-import { getAgent } from "../../agent/api/agentApi";
+import { emit } from '@tauri-apps/api/event';
+import { resizeTerminal, closeTerminalSession } from '../api/terminalApi';
+import { getAgent } from '../../agent/api/agentApi';
 import {
   terminalCache,
   terminalCacheKey,
   terminalWrapperRefs,
   terminalRebuildCallbacks,
   log,
-} from "./terminalCache";
-import { createTerminalForProject } from "./terminalFactory";
+} from './terminalCache';
+import { createTerminalForProject } from './terminalFactory';
 
 export function sendToTerminal(projectId: string, text: string, tabId?: string | null) {
   let sessionId: string | null = null;
@@ -43,13 +43,9 @@ export function sendToTerminal(projectId: string, text: string, tabId?: string |
   });
 }
 
-export function launchAgentInTerminal(
-  projectId: string,
-  command: string,
-  args: string[],
-) {
-  const cmdStr = [command, ...args].join(" ");
-  sendToTerminal(projectId, "\x03");
+export function launchAgentInTerminal(projectId: string, command: string, args: string[]) {
+  const cmdStr = [command, ...args].join(' ');
+  sendToTerminal(projectId, '\x03');
   setTimeout(() => sendToTerminal(projectId, `${cmdStr}\r`), 50);
 }
 
@@ -77,9 +73,7 @@ export async function switchAgentInTerminal(
 
   const wrapper = terminalWrapperRefs.get(resolvedKey);
   if (!wrapper) {
-    const agent = await getAgent(agentId).catch(
-      () => null,
-    );
+    const agent = await getAgent(agentId).catch(() => null);
     if (agent) {
       const cmd = agentCommandOverrides?.[agent.id] ?? agent.command;
       launchAgentInTerminal(backendProjectId, cmd, agent.args);
@@ -124,9 +118,7 @@ export async function switchAgentInTerminal(
     });
 
     if (oldCache?.sessionId) {
-      closeTerminalSession(oldCache.sessionId).catch(
-        () => {},
-      );
+      closeTerminalSession(oldCache.sessionId).catch(() => {});
     }
     oldCache?.term.dispose();
   } catch (err) {
