@@ -5,12 +5,12 @@ import type { CommitEntry } from '@/shared/types';
  * ROW_HEIGHT 必须与 CommitList.tsx 中保持一致。
  * dot 视觉中心 Y = i * ROW_HEIGHT + ROW_HEIGHT / 2
  */
-export const ROW_HEIGHT = 28;
+export const ROW_HEIGHT = 32;
 export { BRANCH_SPACING, NODE_RADIUS, LINE_W, laneColor };
 
 // ── 布局常量 ───────────────────────────────────────────────────────────────
-const BRANCH_SPACING = 4; // 每列水平宽度
-const NODE_RADIUS    = 3;  // commit dot 半径
+const BRANCH_SPACING = 6; // 每列水平宽度
+const NODE_RADIUS    = 4;  // commit dot 半径
 const LINE_W         = 1.5;  // 线宽
 
 const LANE_COLORS = [
@@ -30,6 +30,10 @@ interface CommitGraphProps {
   selectedHash: string | null;
   onSelectCommit: (hash: string) => void;
   hoveredHash?: string | null;
+  /** Row index after which an inline expand is open (-1 = none). */
+  expandAfterRow?: number;
+  /** Pixel height of the inline expand panel to offset subsequent rows. */
+  expandOffsetY?: number;
 }
 
 /** 一段直线分支路径，列内从 start 行画到 end 行 */
@@ -234,12 +238,28 @@ export function computeLayout(commits: CommitEntry[]): {
 
 // ── 坐标转换 ───────────────────────────────────────────────────────────────
 
-/** commit 节点在 SVG 里的像素坐标 */
-function nodeXY(col: number, row: number): [number, number] {
+/**
+ * commit 节点在 SVG 里的像素坐标。
+ * 当行内 expand 打开时，expand 行之后的节点整体下移 expandOffsetY，
+ * 与 DOM 列表被撑开后的位置对齐。
+ */
+function nodeXY(
+  col: number,
+  row: number,
+  expandAfterRow = -1,
+  expandOffsetY = 0,
+): [number, number] {
+  const extraY = expandAfterRow >= 0 && row > expandAfterRow ? expandOffsetY : 0;
   return [
     col * BRANCH_SPACING + NODE_RADIUS * 2,
-    row * ROW_HEIGHT + ROW_HEIGHT / 2,
+    row * ROW_HEIGHT + ROW_HEIGHT / 2 + extraY,
   ];
+}
+
+/** 行中心 Y（用于线段端点），含 expand 偏移 */
+function rowCenterY(row: number, expandAfterRow = -1, expandOffsetY = 0): number {
+  const extraY = expandAfterRow >= 0 && row > expandAfterRow ? expandOffsetY : 0;
+  return row * ROW_HEIGHT + ROW_HEIGHT / 2 + extraY;
 }
 
 // ── 曲线路径（DoltHub curvePath 公式） ────────────────────────────────────
@@ -254,7 +274,13 @@ function curvePath(start: [number, number], end: [number, number]): string {
 
 // ── React 组件 ─────────────────────────────────────────────────────────────
 
-const CommitGraph: React.FC<CommitGraphProps> = ({ commits, hoveredHash }) => {
+const CommitGraph: React.FC<CommitGraphProps> = ({
+  commits,
+  selectedHash,
+  hoveredHash,
+  expandAfterRow = -1,
+  expandOffsetY = 0,
+}) => {
   const { nodes, segments, maxColUsed } = useMemo(
     () => computeLayout(commits),
     [commits],
@@ -262,9 +288,12 @@ const CommitGraph: React.FC<CommitGraphProps> = ({ commits, hoveredHash }) => {
 
   if (commits.length === 0) return null;
 
+  const offset = expandAfterRow >= 0 ? expandOffsetY : 0;
+
   // 动态宽度：只到实际最右列的右边缘 + 少量 padding
-  const svgWidth  = (maxColUsed + 1) * BRANCH_SPACING + NODE_RADIUS * 4;
-  const svgHeight = commits.length * ROW_HEIGHT;
+  const svgWidth = (maxColUsed + 1) * BRANCH_SPACING + NODE_RADIUS * 4;
+  // 高度包含行内 expand 占位，避免后续节点被裁切
+  const svgHeight = commits.length * ROW_HEIGHT + offset;
 
   // nodesMap for quick lookup
   const nodesMap = useMemo(() => {
@@ -272,6 +301,9 @@ const CommitGraph: React.FC<CommitGraphProps> = ({ commits, hoveredHash }) => {
     for (const n of nodes) m.set(n.hash, n);
     return m;
   }, [nodes]);
+
+  const xy = (col: number, row: number): [number, number] =>
+    nodeXY(col, row, expandAfterRow, offset);
 
   return (
     <div className="shrink-0" style={{ width: svgWidth, minWidth: svgWidth }}>
@@ -285,14 +317,59 @@ const CommitGraph: React.FC<CommitGraphProps> = ({ commits, hoveredHash }) => {
           const endRow = seg.end === Infinity ? commits.length - 1 : seg.end;
           // start === end 表示单行孤立段（HEAD 且是 root），无需画线
           if (seg.start === endRow) return null;
-          const [x1, y1] = nodeXY(seg.col, seg.start);
-          const [x2, y2] = nodeXY(seg.col, endRow);
-          const color    = laneColor(seg.branchOrder);
+          const x = seg.col * BRANCH_SPACING + NODE_RADIUS * 2;
+          const y1 = rowCenterY(seg.start, expandAfterRow, offset);
+          const y2 = rowCenterY(endRow, expandAfterRow, offset);
+          // 若线段跨越 expand 行，在中间插入竖直间隙对应的折线（用两段 line）
+          const color = laneColor(seg.branchOrder);
+          const crossesExpand =
+            offset > 0 &&
+            expandAfterRow >= 0 &&
+            seg.start <= expandAfterRow &&
+            endRow > expandAfterRow;
+
+          if (crossesExpand) {
+            const yAtExpand = rowCenterY(expandAfterRow, expandAfterRow, 0);
+            const yAfterExpand = rowCenterY(expandAfterRow + 1, expandAfterRow, offset);
+            return (
+              <g key={`seg-${si}`}>
+                <line
+                  x1={x}
+                  y1={y1}
+                  x2={x}
+                  y2={yAtExpand}
+                  stroke={color}
+                  strokeWidth={LINE_W}
+                />
+                {/* bridge across expand panel */}
+                <line
+                  x1={x}
+                  y1={yAtExpand}
+                  x2={x}
+                  y2={yAfterExpand}
+                  stroke={color}
+                  strokeWidth={LINE_W}
+                  strokeOpacity={0.35}
+                />
+                <line
+                  x1={x}
+                  y1={yAfterExpand}
+                  x2={x}
+                  y2={y2}
+                  stroke={color}
+                  strokeWidth={LINE_W}
+                />
+              </g>
+            );
+          }
+
           return (
             <line
               key={`seg-${si}`}
-              x1={x1} y1={y1}
-              x2={x2} y2={y2}
+              x1={x}
+              y1={y1}
+              x2={x}
+              y2={y2}
               stroke={color}
               strokeWidth={LINE_W}
             />
@@ -300,17 +377,16 @@ const CommitGraph: React.FC<CommitGraphProps> = ({ commits, hoveredHash }) => {
         })}
 
         {/* ── 曲线（branch-out 和 merge） ── */}
-        {nodes.map(node => {
+        {nodes.map((node) => {
           const curves: React.ReactNode[] = [];
 
           // 1. Merge 曲线：从本 commit 到第二+ parent（合并线，向下弯）
           for (let p = 1; p < node.parents.length; p++) {
             const parent = nodesMap.get(node.parents[p]);
             if (!parent) continue;
-            const start = nodeXY(node.x, node.y) as [number, number];
-            // 终点：parent 行的上一行或 parent 本身（取较小者）
+            const start = xy(node.x, node.y);
             const endRow = node.y + 1 > parent.y ? parent.y : node.y + 1;
-            const end   = nodeXY(parent.x, endRow) as [number, number];
+            const end = xy(parent.x, endRow);
             curves.push(
               <path
                 key={`merge-${node.hash}-${p}`}
@@ -323,14 +399,13 @@ const CommitGraph: React.FC<CommitGraphProps> = ({ commits, hoveredHash }) => {
           }
 
           // 2. Branch-out 曲线：从本 commit 到 branch children（分叉线，向上弯）
-          node.children.forEach(childHash => {
+          node.children.forEach((childHash) => {
             const child = nodesMap.get(childHash);
             if (!child) return;
-            // branch child：parents[0] === node.hash 且列不同
             if (child.parents[0] === node.hash && child.x !== node.x) {
-              const start = nodeXY(node.x, node.y) as [number, number];
+              const start = xy(node.x, node.y);
               const endRow = node.y - 1 > child.y ? node.y - 1 : child.y;
-              const end   = nodeXY(child.x, endRow) as [number, number];
+              const end = xy(child.x, endRow);
               curves.push(
                 <path
                   key={`branch-${node.hash}-${childHash}`}
@@ -347,22 +422,34 @@ const CommitGraph: React.FC<CommitGraphProps> = ({ commits, hoveredHash }) => {
         })}
 
         {/* ── Commit dot（画在最上层，遮住线端） ── */}
-        {nodes.map(node => {
-          const [cx, cy] = nodeXY(node.x, node.y);
+        {nodes.map((node) => {
+          const [cx, cy] = xy(node.x, node.y);
           const isHovered = node.hash === hoveredHash;
+          const isSelected = node.hash === selectedHash;
+          // Soft ring instead of scale — keeps graph/text hover visually aligned
+          // over the full-row background highlight.
+          const showRing = isHovered || isSelected;
+          const ringRadius = NODE_RADIUS + (isSelected ? 2.5 : 2);
           return (
-            <circle
-              key={`dot-${node.hash}`}
-              cx={cx}
-              cy={cy}
-              r={NODE_RADIUS}
-              fill={node.color}
-              style={{
-                transition: "transform 0.15s ease-out",
-                transform: isHovered ? `scale(1.4)` : "scale(1)",
-                transformOrigin: `${cx}px ${cy}px`,
-              }}
-            />
+            <g key={`dot-${node.hash}`}>
+              {showRing ? (
+                <circle
+                  cx={cx}
+                  cy={cy}
+                  r={ringRadius}
+                  fill="none"
+                  stroke={node.color}
+                  strokeWidth={isSelected ? 1.5 : 1}
+                  strokeOpacity={isSelected ? 0.9 : 0.55}
+                />
+              ) : null}
+              <circle
+                cx={cx}
+                cy={cy}
+                r={NODE_RADIUS}
+                fill={node.color}
+              />
+            </g>
           );
         })}
       </svg>

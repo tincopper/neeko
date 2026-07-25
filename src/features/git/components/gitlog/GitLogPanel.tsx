@@ -1,4 +1,5 @@
 import React from "react";
+import { cn } from "@/lib/utils";
 import type { CommitEntry, CommitDetail, CommitFileChange } from "@/features/git/types";
 import LogToolbar from "./LogToolbar";
 import CommitList from "./CommitList";
@@ -24,6 +25,8 @@ interface GitLogPanelProps {
   onSearchChange: (query: string) => void;
   onRefresh: () => void;
   onToggleCombined: (combined: boolean) => void;
+  /** Optional: index of file focused via j/k shortcuts */
+  focusedFileIndex?: number;
 }
 
 const GitLogPanel: React.FC<GitLogPanelProps> = ({
@@ -46,28 +49,52 @@ const GitLogPanel: React.FC<GitLogPanelProps> = ({
   onSearchChange,
   onRefresh,
   onToggleCombined,
+  focusedFileIndex,
 }) => {
   return (
-    <div className="flex flex-col h-full p-1 gap-0.5">
-      <div className="flex items-center gap-1.5 shrink-0 px-1">
+    <div className="flex flex-col h-full p-1.5 gap-1">
+      <div className="flex items-center gap-1.5 shrink-0">
         <LogToolbar
           searchQuery={searchQuery}
           onSearchChange={onSearchChange}
           onRefresh={onRefresh}
           loading={loading}
         />
-        <label className="flex items-center gap-1 text-[calc(var(--font-size)-2px)] text-text-muted cursor-pointer shrink-0">
-          <input
-            type="checkbox"
-            checked={combined}
-            onChange={(e) => onToggleCombined(e.target.checked)}
-            className="accent-accent-blue"
-          />
-          组合
-        </label>
+        <div
+          className="flex items-center shrink-0 rounded-md border border-border/30 bg-bg-tertiary/40 p-0.5"
+          role="group"
+          aria-label="Diff view mode"
+        >
+          <button
+            type="button"
+            className={cn(
+              "px-1.5 py-0.5 rounded text-[calc(var(--font-size)-2px)] font-medium transition-colors duration-150",
+              !combined
+                ? "bg-accent-blue/15 text-accent-blue"
+                : "text-text-muted hover:text-text-secondary",
+            )}
+            onClick={() => onToggleCombined(false)}
+            title="Single-file diff"
+          >
+            Single
+          </button>
+          <button
+            type="button"
+            className={cn(
+              "px-1.5 py-0.5 rounded text-[calc(var(--font-size)-2px)] font-medium transition-colors duration-150",
+              combined
+                ? "bg-accent-blue/15 text-accent-blue"
+                : "text-text-muted hover:text-text-secondary",
+            )}
+            onClick={() => onToggleCombined(true)}
+            title="Combined multi-file diff"
+          >
+            All
+          </button>
+        </div>
       </div>
 
-      <div className="flex-1 min-h-0">
+      <div className="flex-1 min-h-0 rounded-md overflow-hidden">
         <CommitList
           commits={commits}
           selectedHash={selectedHash}
@@ -84,6 +111,8 @@ const GitLogPanel: React.FC<GitLogPanelProps> = ({
           onLoadMore={loadMore}
           loadingMore={loadingMore}
           searchQuery={searchQuery}
+          focusedFileIndex={focusedFileIndex}
+          onClearSearch={() => onSearchChange("")}
         />
       </div>
     </div>

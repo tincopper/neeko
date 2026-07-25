@@ -748,6 +748,7 @@ const GitLogPanelWrapper: React.FC = () => {
       onSearchChange={setSearchQuery}
       onRefresh={refresh}
       onToggleCombined={handleToggleCombined}
+      focusedFileIndex={currentFileIdx}
     />
   );
 };
