@@ -1252,3 +1252,37 @@ Hardened nested session scanning (normalize_file_pattern, **/ globstar), rewrote
 ### Next Steps
 
 - None - task complete
+
+
+## Session 95: Git Control Diff Tab 标题前缀微调（History 单文件→History Diff）
+
+**Date**: 2026-07-25
+**Task**: Git Control Diff Tab 标题前缀微调（History 单文件→History Diff）
+**Branch**: `main`
+
+### Summary
+
+Git Control > History 的单文件/钉住 Diff tab 标题从 'History Commit · 文件名' 改为 'History Diff · 文件名'，与单文件来源对齐；combined 维持 'History Commit · hash · N files'，Changes 的 'Commit Diff · 文件名' 不变。已通过 tsc + 全量 vitest；并在前端 quality-guidelines.md 固化该命名约定。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `5a91ed0` | (see git log) |
+| `4c226bc` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
