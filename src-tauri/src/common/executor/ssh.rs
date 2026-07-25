@@ -189,7 +189,7 @@ impl CommandExecutor for SshExecutor {
 // ── Helpers ─────────────────────────────────────────────────────────
 
 impl RusshReadAdapter {
-    fn new(receiver: StdioReceiver) -> Self {
+    const fn new(receiver: StdioReceiver) -> Self {
         Self {
             receiver,
             buffer: Vec::new(),
@@ -276,17 +276,15 @@ async fn bridge_loop(
     }
 }
 
-fn wait_from_watch(
+async fn wait_from_watch(
     mut rx: tokio::sync::watch::Receiver<Option<u32>>,
-) -> impl std::future::Future<Output = Result<i32, ExecError>> + Send + 'static {
-    async move {
-        loop {
-            if rx.changed().await.is_err() {
-                return Err(ExecError::Killed);
-            }
-            if let Some(code) = *rx.borrow() {
-                return Ok(i32::try_from(code).unwrap_or(i32::MAX));
-            }
+) -> Result<i32, ExecError> {
+    loop {
+        if rx.changed().await.is_err() {
+            return Err(ExecError::Killed);
+        }
+        if let Some(code) = *rx.borrow() {
+            return Ok(i32::try_from(code).unwrap_or(i32::MAX));
         }
     }
 }

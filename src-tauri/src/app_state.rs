@@ -177,6 +177,7 @@ impl AppStateWrapper {
     // ── Terminal dispatch ──────────────────────────────────────────────────
 
     /// Create a terminal session, routing to the correct backend.
+    #[allow(clippy::too_many_arguments)]
     pub async fn create_terminal_session(
         &self,
         project_id: &str,
@@ -393,6 +394,12 @@ impl AppStateWrapper {
                 .expect("Failed to create skill store"),
         );
         Self::new_with_skill_store(store)
+    }
+}
+
+impl Default for AppStateWrapper {
+    fn default() -> Self {
+        Self::new()
     }
 }
 

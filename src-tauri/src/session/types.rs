@@ -7,11 +7,11 @@ use std::path::PathBuf;
 use crate::common::terminal::types::TerminalStatus;
 use crate::core::ProjectEnvironment;
 
-fn default_collapsed() -> bool {
+const fn default_collapsed() -> bool {
     true
 }
 
-fn default_environment() -> ProjectEnvironment {
+const fn default_environment() -> ProjectEnvironment {
     ProjectEnvironment::Local
 }
 

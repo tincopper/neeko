@@ -224,7 +224,7 @@ pub async fn write_wsl_tui_config(
     };
 
     // 读取并合并已有 tui.json（与本地版本行为一致）
-    let merged_content = match {
+    let res = {
         let target = crate::common::executor::factory::ExecTarget::Wsl {
             distro: distro.to_string(),
         };
@@ -235,7 +235,8 @@ pub async fn write_wsl_tui_config(
         )
         .await
         .map_err(|e| anyhow::anyhow!("{}", e))
-    } {
+    };
+    let merged_content = match res {
         Ok(raw) => {
             let mut config: serde_json::Value =
                 serde_json::from_str(raw.trim()).unwrap_or_else(|_| json!({}));

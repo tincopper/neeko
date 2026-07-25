@@ -69,7 +69,7 @@ pub async fn read_dir_tree(
                 .await
                 .map_err(|e| AppError::File(format!("Failed to read dir tree: {}", e)))?;
 
-            let mut tree = build_file_tree_from_find(&output, &actual_path)?;
+            let mut tree = build_file_tree_from_find(&output, &actual_path);
             if let Some(sp) = effective_sub {
                 prefix_paths(&mut tree, sp);
             }
@@ -233,7 +233,7 @@ async fn write_file_content_remote(
 }
 
 /// 递归给所有节点的 path 字段加上前缀
-fn prefix_paths(nodes: &mut Vec<FileNode>, prefix: &str) {
+fn prefix_paths(nodes: &mut [FileNode], prefix: &str) {
     for node in nodes.iter_mut() {
         node.path = format!("{}/{}", prefix, node.path);
         if !node.children.is_empty() {

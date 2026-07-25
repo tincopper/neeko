@@ -50,6 +50,12 @@ pub struct TerminalManager {
     pty_handles: Arc<Mutex<HashMap<String, PtyHandle>>>,
 }
 
+impl Default for TerminalManager {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl TerminalManager {
     /// Creates a new TerminalManager with empty session and PTY maps.
     #[must_use]
@@ -61,6 +67,7 @@ impl TerminalManager {
     }
 
     /// Creates a new PTY terminal session for a local project.
+    #[allow(clippy::too_many_arguments)]
     pub fn create_session(
         &self,
         project_path: &str,

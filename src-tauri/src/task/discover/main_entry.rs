@@ -84,8 +84,6 @@ fn discover_python(root: &Path, out: &mut Vec<DiscoveredTask>) {
         // Prefer python3 when available at runtime is shell's job; use portable name.
         let command = if *rel == "__main__.py" {
             "python3 -m .".to_string()
-        } else if rel.starts_with("src/") {
-            format!("python3 {rel}")
         } else {
             format!("python3 {rel}")
         };

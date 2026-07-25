@@ -88,7 +88,7 @@ fn discover_package_json_tasks(project_path: &Path) -> Vec<DiscoveredTask> {
 }
 
 fn should_skip_script(name: &str) -> bool {
-    SKIP_SCRIPTS.iter().any(|s| *s == name)
+    SKIP_SCRIPTS.contains(&name)
 }
 
 /// Allow common npm script characters; reject shell-metacharacter names.

@@ -116,7 +116,7 @@ pub(crate) fn linearize_tree_entries(
         .iter()
         .enumerate()
         .filter(|(_, e)| {
-            role_filter.map_or(true, |rf| {
+            role_filter.is_none_or(|rf| {
                 e.get(type_field).and_then(|v| v.as_str()) == Some(rf)
             })
         })

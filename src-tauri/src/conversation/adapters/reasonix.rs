@@ -65,7 +65,7 @@ pub(crate) fn is_main_reasonix_session(file_path: &Path) -> bool {
     {
         return false;
     }
-    comps.iter().any(|c| *c == "sessions")
+    comps.contains(&"sessions")
 }
 
 /// Best-effort reverse of path sanitization (`/` → `-`, leading `/` dropped).
@@ -166,17 +166,17 @@ fn chat_entry_weight(entries: &[serde_json::Value]) -> usize {
 }
 
 /// Choose the richest message source: events log when it has more chat rows.
-fn load_transcript_entries(jsonl: &Path) -> Result<Vec<serde_json::Value>> {
+fn load_transcript_entries(jsonl: &Path) -> Vec<serde_json::Value> {
     let main = read_jsonl(jsonl).unwrap_or_default();
     let main_w = chat_entry_weight(&main);
     if let Some(from_events) = load_messages_from_events(jsonl) {
         let ev_w = chat_entry_weight(&from_events);
         // Prefer events when strictly richer (typical multi-turn sessions).
         if ev_w > main_w {
-            return Ok(from_events);
+            return from_events;
         }
     }
-    Ok(main)
+    main
 }
 
 fn content_as_text(content: &serde_json::Value) -> String {
@@ -326,7 +326,7 @@ impl AgentSessionAdapter for ReasonixAdapter {
         }
 
         // Prefer events-backed transcript when richer than the main stub jsonl.
-        let entries = load_transcript_entries(file_path).unwrap_or_default();
+        let entries = load_transcript_entries(file_path);
         let derived_count = chat_entry_weight(&entries) as u32;
         // meta.turns is often under-counted vs full event log — take the max.
         message_count = message_count.max(derived_count);
@@ -410,7 +410,7 @@ impl AgentSessionAdapter for ReasonixAdapter {
             bail!("skip: Reasonix not a main session file");
         }
         // Multi-turn history is usually in sibling `*.events.jsonl` (replace/append).
-        let entries = load_transcript_entries(file_path)?;
+        let entries = load_transcript_entries(file_path);
         let mut messages = Vec::new();
         let mut seq = 0u32;
         let mut first_user_done = false;
@@ -495,13 +495,13 @@ impl AgentSessionAdapter for ReasonixAdapter {
                     let content = if text.is_empty() {
                         blocks
                             .iter()
-                            .filter_map(|b| match b {
-                                MessageBlock::Text { text } => Some(text.clone()),
-                                MessageBlock::Thinking { thinking } => Some(thinking.clone()),
+                            .map(|b| match b {
+                                MessageBlock::Text { text } => text.clone(),
+                                MessageBlock::Thinking { thinking } => thinking.clone(),
                                 MessageBlock::ToolUse { name, .. } => {
-                                    Some(format!("[tool:{name}]"))
+                                    format!("[tool:{name}]")
                                 }
-                                MessageBlock::ToolResult { content, .. } => Some(content.clone()),
+                                MessageBlock::ToolResult { content, .. } => content.clone(),
                             })
                             .collect::<Vec<_>>()
                             .join("\n")

@@ -166,7 +166,7 @@ pub(crate) fn build_preview_messages(messages: &[(String, String)]) -> String {
     parts.join("\n")
 }
 
-fn role_label(role: &str) -> &'static str {
+const fn role_label(role: &str) -> &'static str {
     if role.eq_ignore_ascii_case("assistant") {
         "Assistant"
     } else if role.eq_ignore_ascii_case("user") {
@@ -209,7 +209,7 @@ fn is_suppressed_context_prefix(s: &str) -> bool {
     agents_match || xml_match
 }
 
-fn is_word_char(c: char) -> bool {
+const fn is_word_char(c: char) -> bool {
     c.is_ascii_alphanumeric() || c == '_'
 }
 
@@ -240,11 +240,11 @@ fn strip_harness_sentence_prefixes(s: &str) -> String {
     for prefix in HARNESS_SENTENCE_PREFIXES {
         if let Some(rest) = lower.strip_prefix(prefix) {
             // 确保前缀后紧跟句子分隔符或空格，避免误匹配
-            if rest.is_empty() || rest.starts_with(|c: char| c == '.' || c == ' ' || c == ',') {
+            if rest.is_empty() || rest.starts_with(['.', ' ', ',']) {
                 let after = &s[prefix.len()..];
                 // 剥离紧跟的标点/空格
                 let cleaned = after
-                    .trim_start_matches(|c: char| c == '.' || c == ' ' || c == ',' || c == '!');
+                    .trim_start_matches(['.', ' ', ',', '!']);
                 return cleaned.trim().to_string();
             }
         }
@@ -266,7 +266,7 @@ fn truncate_with_ellipsis(s: &str, max_chars: usize) -> String {
         .last()
         .map(|c| {
             let code = c as u32;
-            code >= 0xd800 && code <= 0xdbff
+            (0xd800..=0xdbff).contains(&code)
         })
         .unwrap_or(false)
     {

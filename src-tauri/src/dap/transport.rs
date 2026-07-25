@@ -170,23 +170,18 @@ pub async fn forward_process_lines(
     acc: Option<Arc<Mutex<String>>>,
 ) {
     let mut lines = BufReader::new(reader).lines();
-    loop {
-        match lines.next_line().await {
-            Ok(Some(line)) => {
-                if let Some(ref buf) = acc {
-                    let mut g = buf.lock().await;
-                    g.push_str(&line);
-                    g.push('\n');
-                    if g.len() > 16 * 1024 {
-                        let drain = g.len() - 8 * 1024;
-                        g.drain(..drain);
-                    }
-                }
-                if !line.trim().is_empty() {
-                    let _ = tx.send((category.to_string(), line));
-                }
+    while let Ok(Some(line)) = lines.next_line().await {
+        if let Some(ref buf) = acc {
+            let mut g = buf.lock().await;
+            g.push_str(&line);
+            g.push('\n');
+            if g.len() > 16 * 1024 {
+                let drain = g.len() - 8 * 1024;
+                g.drain(..drain);
             }
-            Ok(None) | Err(_) => break,
+        }
+        if !line.trim().is_empty() {
+            let _ = tx.send((category.to_string(), line));
         }
     }
 }

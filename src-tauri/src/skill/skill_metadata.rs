@@ -99,15 +99,7 @@ fn parse_frontmatter(content: &str) -> SkillMetadata {
     // Find closing --- on its own line (or at least after a newline)
     let end = after_open
         .find("\n---")
-        .or_else(|| after_open.find("\r\n---"))
-        .map(|i| {
-            // Include up to before \n---
-            if after_open.as_bytes().get(i) == Some(&b'\r') {
-                i
-            } else {
-                i
-            }
-        });
+        .or_else(|| after_open.find("\r\n---"));
     let Some(end_idx) = end else {
         // Try simple find for --- after start
         if let Some(e) = after_open.find("---") {

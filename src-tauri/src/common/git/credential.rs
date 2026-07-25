@@ -38,8 +38,8 @@ impl Credential {
             .split_once('@')
             .map(|(_, h)| h)
             .unwrap_or(rest)
-            .splitn(2, '/')
-            .nth(1)
+            .split_once('/')
+            .map(|(_, p)| p)
             .unwrap_or("")
             .to_string();
         // username 可能在 URL 中（已剥离），也可能作为 hint

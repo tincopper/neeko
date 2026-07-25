@@ -131,7 +131,7 @@ fn spawn_writer_listener(
     let prefix_owned = prefix.to_string();
 
     app_handle.listen(
-        &format!("terminal-input-{}", id),
+        format!("terminal-input-{}", id),
         move |event| match serde_json::from_str::<Vec<u8>>(event.payload()) {
             Ok(data) => {
                 if let Ok(mut w) = writer_clone.lock() {

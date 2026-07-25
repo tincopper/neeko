@@ -48,14 +48,9 @@ impl ThrottleScheduler {
         std::thread::Builder::new()
             .name("throttle-scheduler".to_string())
             .spawn(move || {
-                loop {
-                    // 阻塞等待第一个信号
-                    match rx.recv() {
-                        Ok(()) => {}
-                        Err(_) => break, // channel 关闭
-                    }
-
+                while let Ok(()) = rx.recv() {
                     // 立即触发回调
+
                     callback();
 
                     // 处理完成后，drain 掉执行期间积压的所有信号
@@ -169,13 +164,7 @@ impl TreeChangeDebounceSender {
         std::thread::Builder::new()
             .name(format!("tree-debounce-{}", project_id))
             .spawn(move || {
-                loop {
-                    // 阻塞等待第一个结构变更信号
-                    match rx.recv() {
-                        Ok(()) => {}
-                        Err(_) => break,
-                    }
-
+                while let Ok(()) = rx.recv() {
                     // 开始 500ms 滑动窗口：持续收信号就重置 deadline
                     let mut deadline = Instant::now() + Duration::from_millis(500);
                     loop {

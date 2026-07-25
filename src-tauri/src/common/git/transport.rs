@@ -130,20 +130,12 @@ impl std::error::Error for GitExecError {}
 /// Execution options for git subprocess: environment variables and `-c key=val` config.
 ///
 /// Use `Default::default()` for the default behaviour (no env, no extra config).
+#[derive(Default)]
 pub struct GitExecOptions<'a> {
     /// Environment variables to inject into the git process.
     pub env: &'a [(&'a str, &'a str)],
     /// Extra `-c key=val` config entries prepended to the git command.
     pub extra_config: &'a [(&'a str, &'a str)],
-}
-
-impl Default for GitExecOptions<'_> {
-    fn default() -> Self {
-        Self {
-            env: &[],
-            extra_config: &[],
-        }
-    }
 }
 
 impl<'a> GitExecOptions<'a> {

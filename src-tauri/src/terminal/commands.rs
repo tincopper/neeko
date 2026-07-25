@@ -8,6 +8,7 @@ use tauri::State;
 
 /// Creates a new PTY terminal session for a project.
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 pub async fn create_terminal_session(
     project_id: String,
     cols: u16,

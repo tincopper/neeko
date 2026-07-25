@@ -103,6 +103,7 @@ impl SkillRepository {
     }
 
     /// Update a skill's name, description, revisions, and hash after re-install.
+    #[allow(clippy::too_many_arguments)]
     pub fn update_skill_after_install(
         &self,
         id: &str,

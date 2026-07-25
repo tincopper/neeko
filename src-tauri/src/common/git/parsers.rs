@@ -1,6 +1,5 @@
 //! Parsers for git command output (diff, log, numstat, file tree, etc.).
 
-use anyhow::Result;
 use std::path::PathBuf;
 
 use crate::common::git::types::{DiffHunk, DiffLine, DiffResult};
@@ -25,8 +24,8 @@ pub fn parse_unified_diff(output: &str) -> DiffResult {
                 last.lines.push(DiffLine::Added(line[1..].to_string()));
             } else if line.starts_with('-') && !line.starts_with("---") {
                 last.lines.push(DiffLine::Removed(line[1..].to_string()));
-            } else if line.starts_with(' ') {
-                last.lines.push(DiffLine::Context(line[1..].to_string()));
+            } else if let Some(stripped) = line.strip_prefix(' ') {
+                last.lines.push(DiffLine::Context(stripped.to_string()));
             }
         }
     }
@@ -50,11 +49,8 @@ fn parse_hunk_header(line: &str) -> Option<(DiffHunk, &str)> {
 
     let rest = rest.strip_prefix('+')?;
 
-    let (new_part, _rest) = if let Some(pos) = rest.find(" @@") {
-        (&rest[..pos], &rest[pos..])
-    } else {
-        return None;
-    };
+    let pos = rest.find(" @@")?;
+    let (new_part, _rest) = (&rest[..pos], &rest[pos..]);
 
     let (new_start, new_lines) = if let Some((s, l)) = new_part.split_once(',') {
         (s.parse::<u32>().ok()?, l.parse::<u32>().ok()?)
@@ -87,14 +83,14 @@ fn flush_context_buffer(
         collapsed_lines.extend(buffer.drain(..keep_edges));
         collapsed_lines.push(DiffLine::Collapsed(format!("{} unmodified lines", middle)));
         buffer.drain(..middle);
-        collapsed_lines.extend(buffer.drain(..));
+        collapsed_lines.append(buffer);
     } else {
-        collapsed_lines.extend(buffer.drain(..));
+        collapsed_lines.append(buffer);
     }
 }
 
 /// Collapse consecutive context lines, keeping <keep_edges> lines before/after
-pub fn collapse_diff_context(hunks: &mut Vec<DiffHunk>, threshold: usize) {
+pub fn collapse_diff_context(hunks: &mut [DiffHunk], threshold: usize) {
     for hunk in hunks.iter_mut() {
         let mut collapsed_lines: Vec<DiffLine> = Vec::new();
         let mut context_buffer: Vec<DiffLine> = Vec::new();
@@ -165,7 +161,7 @@ pub fn parse_git_info_output(output: &str) -> GitInfo {
             }
             "worktrees" => {
                 let trimmed = line.trim();
-                if trimmed.starts_with("worktree ") {
+                if let Some(stripped) = trimmed.strip_prefix("worktree ") {
                     if let Some(path) = wt_path.take() {
                         worktrees.push(Worktree {
                             path,
@@ -173,13 +169,13 @@ pub fn parse_git_info_output(output: &str) -> GitInfo {
                             head: wt_head.clone(),
                         });
                     }
-                    wt_path = Some(PathBuf::from(&trimmed[9..]));
+                    wt_path = Some(PathBuf::from(stripped));
                     wt_head.clear();
                     wt_branch.clear();
-                } else if trimmed.starts_with("HEAD ") {
-                    wt_head = trimmed[5..].to_string();
-                } else if trimmed.starts_with("branch refs/heads/") {
-                    wt_branch = trimmed[18..].to_string();
+                } else if let Some(stripped) = trimmed.strip_prefix("HEAD ") {
+                    wt_head = stripped.to_string();
+                } else if let Some(stripped) = trimmed.strip_prefix("branch refs/heads/") {
+                    wt_branch = stripped.to_string();
                 } else if trimmed == "detached" {
                     wt_branch = "(detached HEAD)".to_string();
                 } else if trimmed == "bare" {
@@ -319,7 +315,7 @@ pub(crate) fn extract_commit_hash_from_output(output: &str) -> Option<String> {
 pub(crate) fn build_file_tree_from_find(
     find_output: &str,
     root_path: &str,
-) -> Result<Vec<FileNode>> {
+) -> Vec<FileNode> {
     use std::collections::HashMap;
 
     let mut path_set: std::collections::HashSet<String> = std::collections::HashSet::new();
@@ -388,7 +384,7 @@ pub(crate) fn build_file_tree_from_find(
         }
     });
 
-    Ok(top_level)
+    top_level
 }
 
 pub(crate) fn collect_file_tree_children(

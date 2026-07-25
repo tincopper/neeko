@@ -400,13 +400,14 @@ pub async fn get_commit_log(
     } else {
         None
     };
-    let mut args: Vec<String> = Vec::new();
-    args.push("log".to_string());
-    args.push(format.to_string());
-    args.push(count_str);
-    args.push("--decorate=full".to_string());
-    args.push("--all".to_string());
-    args.push("--topo-order".to_string());
+    let mut args: Vec<String> = vec![
+        "log".to_string(),
+        format.to_string(),
+        count_str,
+        "--decorate=full".to_string(),
+        "--all".to_string(),
+        "--topo-order".to_string(),
+    ];
     if let Some(s) = skip_str {
         args.push(s);
     }
@@ -713,7 +714,7 @@ fn parse_worktree_list(output: &str) -> Vec<Worktree> {
 
     for line in output.lines() {
         let line = line.trim();
-        if line.starts_with("worktree ") {
+        if let Some(stripped) = line.strip_prefix("worktree ") {
             if !current_path.is_empty() {
                 worktrees.push(Worktree {
                     path: std::path::PathBuf::from(&current_path),
@@ -721,14 +722,13 @@ fn parse_worktree_list(output: &str) -> Vec<Worktree> {
                     head: std::mem::take(&mut current_head),
                 });
             }
-            current_path = line["worktree ".len()..].to_string();
-        } else if line.starts_with("branch ") {
-            let ref_str = &line["branch ".len()..];
+            current_path = stripped.to_string();
+        } else if let Some(ref_str) = line.strip_prefix("branch ") {
             if let Some(name) = ref_str.strip_prefix("refs/heads/") {
                 current_branch = name.to_string();
             }
-        } else if line.starts_with("HEAD ") {
-            current_head = line["HEAD ".len()..].to_string();
+        } else if let Some(stripped) = line.strip_prefix("HEAD ") {
+            current_head = stripped.to_string();
         }
     }
     if !current_path.is_empty() {

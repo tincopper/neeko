@@ -28,7 +28,7 @@ impl LspAutoStart {
 
     /// Get the string representation of the auto-start policy.
     #[allow(clippy::must_use_candidate)]
-    pub fn as_str(self) -> &'static str {
+    pub const fn as_str(self) -> &'static str {
         match self {
             Self::OnFirstFile => "onFirstFile",
             Self::OnProjectSelect => "onProjectSelect",
@@ -107,14 +107,14 @@ impl LspPlugin {
 
     /// Set detection priority (lower wins).
     #[must_use]
-    pub fn with_detect_priority(mut self, priority: u32) -> Self {
+    pub const fn with_detect_priority(mut self, priority: u32) -> Self {
         self.detect_priority = priority;
         self
     }
 
     /// Set the auto-start policy.
     #[must_use]
-    pub fn with_auto_start(mut self, auto_start: LspAutoStart) -> Self {
+    pub const fn with_auto_start(mut self, auto_start: LspAutoStart) -> Self {
         self.auto_start = auto_start;
         self
     }
@@ -217,7 +217,7 @@ fn default_auto_start() -> String {
     "onFirstFile".into()
 }
 
-fn default_deactivate_minutes() -> u64 {
+const fn default_deactivate_minutes() -> u64 {
     30
 }
 

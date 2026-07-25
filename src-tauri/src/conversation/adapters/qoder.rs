@@ -204,7 +204,7 @@ impl AgentSessionAdapter for QoderAdapter {
                 blocks: Vec::new(),
                 model: None,
                 timestamp,
-                seq: seq as u32,
+                seq,
             });
             seq += 1;
         }

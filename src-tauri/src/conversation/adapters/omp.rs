@@ -34,7 +34,7 @@ impl OmpAdapter {
 
     /// Adapter with an explicit session root (fixtures / tests).
     #[must_use]
-    pub fn with_root(root: PathBuf) -> Self {
+    pub const fn with_root(root: PathBuf) -> Self {
         Self {
             root_override: Some(root),
         }

@@ -2,7 +2,7 @@
 
 use anyhow::Result;
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::path::Path;
 use std::sync::Arc;
 
 use super::repository::SkillRepository;
@@ -16,7 +16,7 @@ pub struct SkillStore {
 
 impl SkillStore {
     /// Open or create a skill store backed by a SQLite file at `db_path`.
-    pub fn new(db_path: &PathBuf) -> Result<Self> {
+    pub fn new(db_path: &Path) -> Result<Self> {
         Ok(Self {
             repo: Arc::new(SkillRepository::open(db_path)?),
         })
@@ -57,6 +57,7 @@ impl SkillStore {
     }
 
     /// Update a skill's metadata after re-installation.
+    #[allow(clippy::too_many_arguments)]
     pub fn update_skill_after_install(
         &self,
         id: &str,

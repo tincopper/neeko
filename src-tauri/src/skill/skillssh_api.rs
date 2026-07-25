@@ -34,7 +34,7 @@ pub enum LeaderboardType {
 impl LeaderboardType {
     /// Return the URL path segment for this leaderboard type.
     #[allow(clippy::must_use_candidate)]
-    pub fn as_str(&self) -> &'static str {
+    pub const fn as_str(&self) -> &'static str {
         match self {
             LeaderboardType::AllTime => "alltime",
             LeaderboardType::Trending => "trending",
@@ -44,6 +44,7 @@ impl LeaderboardType {
 
     /// Parse a leaderboard type from a string.
     #[must_use]
+    #[allow(clippy::should_implement_trait)]
     pub fn from_str(s: &str) -> Self {
         match s.to_lowercase().as_str() {
             "trending" => LeaderboardType::Trending,

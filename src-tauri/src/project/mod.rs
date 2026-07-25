@@ -16,6 +16,7 @@ use std::path::PathBuf;
 use uuid::Uuid;
 
 /// Manages the project list, lifecycle, and persistence callbacks.
+#[allow(clippy::type_complexity)]
 pub struct ProjectManager {
     projects: Vec<Project>,
     persist: Box<dyn Fn(&[Project]) + Send>,

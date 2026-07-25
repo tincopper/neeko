@@ -30,7 +30,7 @@ impl ThemeStrategy {
 
     /// Returns the display name of this strategy.
     #[allow(clippy::must_use_candidate)]
-    pub fn name(&self) -> &'static str {
+    pub const fn name(&self) -> &'static str {
         match self {
             Self::OpenCode => "OpenCode",
             Self::Pi => "Pi",

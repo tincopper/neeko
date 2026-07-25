@@ -39,6 +39,7 @@ pub(crate) fn resolve_title(
 /// - 持有所有 AgentSessionAdapter 实例
 /// - 扫描 Agent 原生会话文件，提取元数据存入内存缓存
 /// - 提供查询、搜索、消息查看、恢复上下文构建、Markdown 导出等功能
+#[allow(clippy::type_complexity)]
 pub struct ConversationManager {
     adapters: HashMap<String, Box<dyn AgentSessionAdapter>>,
     cache: Mutex<HashMap<String, ConversationMeta>>,
@@ -418,7 +419,7 @@ impl ConversationManager {
                 let parse_result = if let Some(meta) = cached_meta {
                     Ok(meta)
                 } else {
-                    adapter.parse_meta(path).map(|meta| {
+                    adapter.parse_meta(path).inspect(|meta| {
                         if let Some(sig) = signature {
                             crate::conversation::scan_cache::put_cached_file_meta(
                                 path_buf.clone(),
@@ -426,7 +427,6 @@ impl ConversationManager {
                                 meta.clone(),
                             );
                         }
-                        meta
                     })
                 };
 
@@ -527,7 +527,7 @@ impl ConversationManager {
             .cloned()
             .collect();
 
-        results.sort_by(|a, b| b.updated_at.cmp(&a.updated_at));
+        results.sort_by_key(|b| std::cmp::Reverse(b.updated_at));
 
         let total = u32::try_from(results.len()).unwrap_or(u32::MAX);
         let start = (offset as usize).min(results.len());
@@ -537,7 +537,7 @@ impl ConversationManager {
             (start + limit as usize).min(results.len())
         };
         let items: Vec<ConversationMeta> = results[start..end].to_vec();
-        let has_more = (offset as u64 + items.len() as u64) < u64::from(total);
+        let has_more = (u64::from(offset) + items.len() as u64) < u64::from(total);
 
         Ok(ConversationListPage {
             items,
@@ -637,7 +637,7 @@ impl ConversationManager {
             .cloned()
             .collect();
 
-        results.sort_by(|a, b| b.updated_at.cmp(&a.updated_at));
+        results.sort_by_key(|b| std::cmp::Reverse(b.updated_at));
         Ok(results)
     }
 

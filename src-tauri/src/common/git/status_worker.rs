@@ -6,7 +6,7 @@ use crate::common::utils::command::local;
 use std::collections::HashMap;
 #[cfg(unix)]
 use std::os::unix::process::ExitStatusExt;
-use std::{path::PathBuf, sync::mpsc, thread};
+use std::{path::Path, path::PathBuf, sync::mpsc, thread};
 
 /// Extract the git process exit code and signal for diagnostics (e.g. exit status 129 / SIGHUP).
 fn exit_diagnostics(status: &std::process::ExitStatus) -> (Option<i32>, Option<i32>) {
@@ -45,7 +45,7 @@ pub struct GitStatusFile {
 }
 
 impl GitStatusFile {
-    fn new(path: String, status: String) -> Self {
+    const     fn new(path: String, status: String) -> Self {
         Self {
             path,
             status,
@@ -181,7 +181,7 @@ fn worker_loop(
 /// 执行 git status --porcelain
 /// 优先使用 --no-optional-locks（避免锁冲突），若当前 git 版本不支持则自动回退。
 /// supports_no_optional_locks 为 per-worker 状态，一旦检测到不支持就记住，后续直接跳过重试。
-fn git_status_porcelain(repo_path: &PathBuf, supports_no_optional_locks: &mut bool) -> String {
+fn git_status_porcelain(repo_path: &Path, supports_no_optional_locks: &mut bool) -> String {
     let path_str = repo_path.to_str().unwrap_or(".");
 
     if *supports_no_optional_locks {
@@ -359,7 +359,7 @@ fn serialize_files_for_diff(files: &[GitStatusFile]) -> String {
 
 /// 运行 `git diff --numstat`（unstaged + cached）并返回 path → (additions, deletions)
 #[allow(clippy::cast_possible_truncation, clippy::cast_possible_wrap)]
-fn get_numstat_map(repo_path: &PathBuf) -> HashMap<String, (i32, i32)> {
+fn get_numstat_map(repo_path: &Path) -> HashMap<String, (i32, i32)> {
     let path_str = repo_path.to_str().unwrap_or(".");
     let mut map: HashMap<String, (i32, i32)> = HashMap::new();
 

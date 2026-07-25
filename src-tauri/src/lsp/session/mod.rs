@@ -47,7 +47,7 @@ pub(crate) enum LspSessionStatus {
 }
 
 impl LspSessionStatus {
-    pub(crate) fn as_str(&self) -> &str {
+    pub(crate) const fn as_str(&self) -> &str {
         match self {
             LspSessionStatus::Starting => "starting",
             LspSessionStatus::Initializing => "initializing",

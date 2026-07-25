@@ -61,7 +61,7 @@ pub struct IpcTransport {
 impl IpcTransport {
     /// Create a new IPC transport backed by the given Tauri AppHandle.
     #[must_use]
-    pub fn new(app_handle: tauri::AppHandle) -> Self {
+    pub const fn new(app_handle: tauri::AppHandle) -> Self {
         Self { app_handle }
     }
 }

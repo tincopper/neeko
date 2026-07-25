@@ -107,7 +107,7 @@ impl ToolAdapter {
 
     /// Check if this adapter has a path override set.
     #[must_use]
-    pub fn has_path_override(&self) -> bool {
+    pub const fn has_path_override(&self) -> bool {
         self.override_skills_dir.is_some()
     }
 }

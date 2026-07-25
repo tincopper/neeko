@@ -46,7 +46,7 @@ fn session_key(project_path: &str, language_id: &str) -> SessionKey {
 }
 
 /// Compute the restart delay with exponential backoff.
-fn restart_delay(attempt: u32) -> Duration {
+const fn restart_delay(attempt: u32) -> Duration {
     Duration::from_millis(RESTART_BASE_DELAY_MS * 2_u64.saturating_pow(attempt))
 }
 
@@ -234,12 +234,12 @@ impl LspManager {
     }
 
     /// Access the diagnostic bus (for hooking up transport subscribers).
-    pub fn diag_bus(&self) -> &DiagnosticBus {
+    pub const fn diag_bus(&self) -> &DiagnosticBus {
         &self.diag_bus
     }
 
     /// Access the plugin registry (for listing available languages from the frontend).
-    pub fn plugin_registry(&self) -> &Mutex<LspPluginRegistry> {
+    pub const fn plugin_registry(&self) -> &Mutex<LspPluginRegistry> {
         &self.plugin_registry
     }
 

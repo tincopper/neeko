@@ -32,7 +32,7 @@ pub struct AppRuntime {
 impl AppRuntime {
     /// Wrap an existing Tokio handle (e.g. from a dedicated test runtime).
     #[must_use]
-    pub fn from_handle(handle: Handle) -> Self {
+    pub const fn from_handle(handle: Handle) -> Self {
         Self { handle }
     }
 
@@ -64,7 +64,7 @@ impl AppRuntime {
 
     /// Borrow the underlying Tokio handle (escape hatch for advanced use).
     #[allow(clippy::must_use_candidate)]
-    pub fn handle(&self) -> &Handle {
+    pub const fn handle(&self) -> &Handle {
         &self.handle
     }
 

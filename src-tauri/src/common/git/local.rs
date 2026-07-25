@@ -295,12 +295,12 @@ fn count_lines_with_wc(path: &Path) -> usize {
     }
 }
 
-fn get_worktrees(repo: &Repository) -> Result<Vec<Worktree>> {
+fn get_worktrees(repo: &Repository) -> Vec<Worktree> {
     let mut worktrees = Vec::new();
 
     if let Ok(names) = repo.worktrees() {
         for name in names.iter().flatten() {
-            if let Some(wt) = repo.find_worktree(name).ok() {
+            if let Ok(wt) = repo.find_worktree(name) {
                 let path = wt.path().to_path_buf();
                 // Use git command to get branch and head info (avoids N+1 repo opens)
                 let wt_path_str = path.to_str().unwrap_or(".");
@@ -333,7 +333,7 @@ fn get_worktrees(repo: &Repository) -> Result<Vec<Worktree>> {
         }
     }
 
-    Ok(worktrees)
+    worktrees
 }
 
 /// Check out a local branch by name.
@@ -557,16 +557,14 @@ pub fn get_git_branch_info_from_repo(repo: &Repository) -> Result<GitBranchInfo>
     // 只获取本地分支
     let branches = repo.branches(Some(git2::BranchType::Local))?;
     let mut branch_names = Vec::new();
-    for branch_result in branches {
-        if let Ok((branch, _)) = branch_result {
-            if let Some(name) = branch.name()? {
-                branch_names.push(name.to_string());
-            }
+    for (branch, _) in branches.flatten() {
+        if let Some(name) = branch.name()? {
+            branch_names.push(name.to_string());
         }
     }
 
     // 获取 worktrees
-    let worktrees = get_worktrees(repo)?;
+    let worktrees = get_worktrees(repo);
 
     Ok(GitBranchInfo {
         current_branch,
@@ -1112,7 +1110,7 @@ pub fn get_ahead_behind(repo_path: &Path) -> Result<AheadBehind> {
 
 fn get_ahead_behind_uncached(repo_path: &Path) -> Result<AheadBehind> {
     let branch = get_current_branch_via_cli(repo_path)?;
-    if !check_upstream(repo_path, &branch)? {
+    if !check_upstream(repo_path, &branch) {
         return Ok(AheadBehind {
             ahead: 0,
             behind: 0,
@@ -1151,8 +1149,8 @@ fn get_current_branch_via_cli(repo_path: &Path) -> Result<String> {
     Ok(branch)
 }
 
-fn check_upstream(repo_path: &Path, branch: &str) -> Result<bool> {
-    Ok(exec("git")
+fn check_upstream(repo_path: &Path, branch: &str) -> bool {
+    exec("git")
         .args([
             "rev-parse",
             "--abbrev-ref",
@@ -1161,7 +1159,7 @@ fn check_upstream(repo_path: &Path, branch: &str) -> Result<bool> {
         .current_dir(repo_path)
         .output()
         .map(|o| o.status.success())
-        .unwrap_or(false))
+        .unwrap_or(false)
 }
 
 /// 获取单个 Commit 详细信息

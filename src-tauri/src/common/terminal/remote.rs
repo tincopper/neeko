@@ -37,6 +37,12 @@ pub struct RemoteTerminalManager {
     ssh_handles: Arc<Mutex<HashMap<String, SSHHandle>>>,
 }
 
+impl Default for RemoteTerminalManager {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl RemoteTerminalManager {
     /// Create a new empty `RemoteTerminalManager`.
     #[must_use]
@@ -48,6 +54,7 @@ impl RemoteTerminalManager {
     }
 
     /// Create a new SSH terminal session connected to the given host.
+    #[allow(clippy::too_many_arguments)]
     pub async fn create_session(
         &self,
         host: &str,
@@ -79,7 +86,7 @@ impl RemoteTerminalManager {
 
         // 请求 PTY
         channel
-            .request_pty(false, "xterm-256color", cols as u32, rows as u32, 0, 0, &[])
+            .request_pty(false, "xterm-256color", u32::from(cols), u32::from(rows), 0, 0, &[])
             .await?;
 
         // 请求 shell
@@ -111,7 +118,7 @@ impl RemoteTerminalManager {
         // 监听前端输入事件，把数据放入 mpsc
         let tx_clone = input_tx.clone();
         let input_listener_id =
-            app_handle.listen(&format!("terminal-input-{}", id), move |event| {
+            app_handle.listen(format!("terminal-input-{}", id), move |event| {
                 match serde_json::from_str::<Vec<u8>>(event.payload()) {
                     Ok(data) => {
                         let _ = tx_clone.send(data);
@@ -222,7 +229,7 @@ impl RemoteTerminalManager {
     pub fn resize_session(&self, session_id: &str, cols: u16, rows: u16) -> Result<()> {
         if let Ok(handles) = self.ssh_handles.lock() {
             if let Some(handle) = handles.get(session_id) {
-                let _ = handle.resize_tx.send((cols as u32, rows as u32));
+                let _ = handle.resize_tx.send((u32::from(cols), u32::from(rows)));
                 log_info(&format!(
                     "[SSH] Resize {}x{} sent to session {}",
                     cols,

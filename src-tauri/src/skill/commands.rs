@@ -1442,6 +1442,7 @@ pub async fn get_all_project_skill_counts(
 pub async fn get_agent_skills_cmd(
     state: State<'_, crate::AppStateWrapper>,
 ) -> Result<Vec<AgentSkillGroupDto>, AppError> {
+    #[allow(clippy::type_complexity)]
     let agent_info: Vec<(String, String, Option<String>, bool, Option<String>)> = state
         .agent_manager
         .lock()
@@ -1485,7 +1486,7 @@ pub async fn get_agent_skills_cmd(
                 continue;
             };
 
-            let skills_dir = std::path::PathBuf::from(super::tool_adapters::expand_skill_path(sp));
+            let skills_dir = super::tool_adapters::expand_skill_path(sp);
             let path_str = skills_dir.to_string_lossy().to_string();
 
             let mut skills: Vec<AgentDiskSkillDto> = Vec::new();
@@ -1596,7 +1597,7 @@ pub async fn import_skill_to_agent_cmd(
         }
 
         let agent_skills_dir =
-            std::path::PathBuf::from(super::tool_adapters::expand_skill_path(&agent_skill_path));
+            super::tool_adapters::expand_skill_path(&agent_skill_path);
         let target = agent_skills_dir.join(&skill.name);
 
         // Create parent directory if needed
@@ -1668,18 +1669,16 @@ pub async fn remove_skill_from_agent_cmd(
 
         // Optional safety: path should sit under the agent's skill dir when known.
         if let Some(sp) = agent_skill_path.as_ref() {
-            let agent_dir = std::path::PathBuf::from(super::tool_adapters::expand_skill_path(sp));
-            if let (Ok(agent_canon), Ok(path_parent)) = (
+            let agent_dir = super::tool_adapters::expand_skill_path(sp);
+            if let (Ok(agent_canon), Ok(Some(parent))) = (
                 agent_dir.canonicalize(),
                 path.parent().map(|p| p.canonicalize()).transpose(),
             ) {
-                if let Some(parent) = path_parent {
-                    if !parent.starts_with(&agent_canon) {
-                        return Err(AppError::InvalidInput(format!(
-                            "Skill path is outside agent skill directory: {}",
-                            skill_path
-                        )));
-                    }
+                if !parent.starts_with(&agent_canon) {
+                    return Err(AppError::InvalidInput(format!(
+                        "Skill path is outside agent skill directory: {}",
+                        skill_path
+                    )));
                 }
             }
         }
@@ -2033,6 +2032,7 @@ fn collect_project_disk_skills(
         .collect();
 
     let project = PathBuf::from(project_path);
+    #[allow(clippy::type_complexity)]
     let mut by_name: std::collections::BTreeMap<
         String,
         (

@@ -134,7 +134,7 @@ impl AgentSessionAdapter for OpenCodeAdapter {
         );
     }
 
-    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss, clippy::type_complexity)]
     fn parse_messages(&self, file_path: &Path) -> Result<Vec<ParsedMessage>> {
         let (db_path, session_id) = split_synthetic_path(file_path)
             .context("Invalid synthetic path; expected <dbPath>#<sessionId>")?;
@@ -578,7 +578,7 @@ fn extract_part_text(part_data: &str) -> Option<String> {
 }
 
 /// Normalize timestamp to milliseconds.
-fn normalize_timestamp(ts: i64) -> i64 {
+const fn normalize_timestamp(ts: i64) -> i64 {
     if ts > 1_000_000_000_000 {
         ts
     } else {

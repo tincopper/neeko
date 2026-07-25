@@ -291,7 +291,7 @@ impl AgentSessionAdapter for ClaudeCodeAdapter {
             .map(|s| s.to_string());
 
         // P4 / 预览来源：首条 user 消息原文
-        let first_user_raw = first_user_msg.map(|msg| extract_claude_message_content(msg));
+        let first_user_raw = first_user_msg.map(extract_claude_message_content);
 
         let title = custom_title.or(ai_title).or(agent_name_title);
 

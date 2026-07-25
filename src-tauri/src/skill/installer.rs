@@ -19,10 +19,16 @@ pub struct GitPreviewCache {
     previews: Vec<GitPreview>,
 }
 
+impl Default for GitPreviewCache {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl GitPreviewCache {
     /// Create an empty preview cache.
     #[must_use]
-    pub fn new() -> Self {
+    pub const fn new() -> Self {
         Self {
             previews: Vec::new(),
         }

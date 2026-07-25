@@ -84,10 +84,11 @@ async fn run_agent_local(
 ) -> Result<String, AppError> {
     let sp = std::path::PathBuf::from(wd);
     let config = resolve_agent_config(state, agent_id, command_override)?;
-    ai_svc::generate_commit_message(&sp, &config, file_paths).map_err(AppError::from)
+    ai_svc::generate_commit_message(&sp, &config, file_paths)
 }
 
 /// Run the agent on a remote host to generate a commit message.
+#[allow(clippy::too_many_arguments)]
 async fn run_agent_remote(
     wd: &str,
     agent_cmd: &str,

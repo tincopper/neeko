@@ -94,6 +94,7 @@ pub enum ExecError {
 /// along with wait and kill operations. Local, WSL, and SSH implementations
 /// all conform to this same interface so callers never need to branch on
 /// the execution environment.
+#[allow(clippy::type_complexity)]
 pub struct ExecChild {
     /// Standard input stream (write to send data to the process).
     pub stdin: Option<BoxAsyncWrite>,
@@ -177,7 +178,7 @@ pub struct SpawnOptions<'a> {
 impl<'a> SpawnOptions<'a> {
     /// Spawn options without a working directory override.
     #[must_use]
-    pub fn new(cmd: &'a str, args: &'a [&'a str]) -> Self {
+    pub const fn new(cmd: &'a str, args: &'a [&'a str]) -> Self {
         Self {
             cmd,
             args,

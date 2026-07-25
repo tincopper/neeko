@@ -20,20 +20,18 @@ pub fn init_host_user_path() {
     INIT.get_or_init(|| {
         #[cfg(unix)]
         {
-            match resolve_host_user_path() {
-                Some(full_path) => {
-                    log::info!(
-                        "[exec_env] Resolved host user PATH (len={}), injecting into process env",
-                        full_path.len()
-                    );
-                    // SAFETY: called once at process start before concurrent readers matter.
-                    std::env::set_var("PATH", &full_path);
-                }
-                None => {
-                    log::warn!(
-                        "[exec_env] Failed to resolve host user PATH, using process default"
-                    );
-                }
+            let full_path = resolve_host_user_path();
+            if full_path.is_empty() {
+                log::warn!(
+                    "[exec_env] Failed to resolve host user PATH, using process default"
+                );
+            } else {
+                log::info!(
+                    "[exec_env] Resolved host user PATH (len={}), injecting into process env",
+                    full_path.len()
+                );
+                // SAFETY: called once at process start before concurrent readers matter.
+                std::env::set_var("PATH", &full_path);
             }
             log::info!(
                 "[exec_env] Effective PATH after resolve: {}",
@@ -68,7 +66,7 @@ pub(crate) fn local_command_exists(command: &str) -> bool {
 }
 
 #[cfg(unix)]
-fn resolve_host_user_path() -> Option<String> {
+fn resolve_host_user_path() -> String {
     let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/sh".into());
     let seed = seed_path_for_probe();
 
@@ -88,11 +86,11 @@ fn resolve_host_user_path() -> Option<String> {
         let text = String::from_utf8_lossy(&output.stdout);
         let path = text.trim().lines().last().unwrap_or("").trim().to_string();
         if !path.is_empty() {
-            return Some(dedupe_path(&path, ':'));
+            return dedupe_path(&path, ':');
         }
     }
 
-    Some(crate::common::utils::command::local::resolve_full_path())
+    crate::common::utils::command::local::resolve_full_path()
 }
 
 /// Minimal PATH so shell startup scripts can find brew/fnm before profiles run.

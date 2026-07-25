@@ -24,6 +24,7 @@ pub struct LspProcess {
 
 impl LspProcess {
     /// Take ownership of stdio handles (for reader/writer threads).
+    #[allow(clippy::type_complexity)]
     pub fn take_stdio(
         &mut self,
     ) -> Result<
@@ -34,7 +35,7 @@ impl LspProcess {
         ),
         String,
     > {
-        let stdin = self
+    let stdin = self
             .stdin
             .take()
             .ok_or_else(|| "LSP stdin already taken".to_string())?;
@@ -203,7 +204,7 @@ struct ChannelReader {
 }
 
 impl ChannelReader {
-    fn new(rx: mpsc::Receiver<Vec<u8>>) -> Self {
+    const fn new(rx: mpsc::Receiver<Vec<u8>>) -> Self {
         Self {
             rx,
             buf: VecDeque::new(),

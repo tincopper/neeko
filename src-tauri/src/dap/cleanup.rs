@@ -56,11 +56,9 @@ pub fn cleanup_debug_artifacts(project_path: &Path) -> usize {
             if !ft.is_file() {
                 continue;
             }
-            if is_debug_artifact(&path) {
-                if fs::remove_file(&path).is_ok() {
-                    removed += 1;
-                    log::info!("[dap] cleaned debug artifact: {}", path.display());
-                }
+            if is_debug_artifact(&path) && fs::remove_file(&path).is_ok() {
+                removed += 1;
+                log::info!("[dap] cleaned debug artifact: {}", path.display());
             }
         }
     }

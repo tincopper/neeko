@@ -221,7 +221,7 @@ pub async fn write_wsl_pi_settings(
     };
 
     // 读取并合并已有 settings.json
-    let merged_content = match {
+    let res = {
         let target = crate::common::executor::factory::ExecTarget::Wsl {
             distro: distro.to_string(),
         };
@@ -232,7 +232,8 @@ pub async fn write_wsl_pi_settings(
         )
         .await
         .map_err(|e| anyhow::anyhow!("{}", e))
-    } {
+    };
+    let merged_content = match res {
         Ok(raw) => {
             let mut config: serde_json::Value =
                 serde_json::from_str(raw.trim()).unwrap_or_else(|_| json!({}));
