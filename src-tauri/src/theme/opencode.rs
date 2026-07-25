@@ -278,11 +278,13 @@ pub async fn write_wsl_tui_config(
 }
 
 /// 从 ~/.neeko/config.json 读取 enable_pi_theme_sync 字段
+#[must_use]
 pub fn read_enable_pi_theme_sync() -> bool {
     read_config_bool("enablePiThemeSync")
 }
 
 /// 从 ~/.neeko/config.json 读取 enable_open_code_theme_sync 字段
+#[must_use]
 pub fn read_enable_opencode_theme_sync() -> bool {
     read_config_bool("enableOpenCodeThemeSync")
 }

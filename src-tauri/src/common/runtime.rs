@@ -31,6 +31,7 @@ pub struct AppRuntime {
 
 impl AppRuntime {
     /// Wrap an existing Tokio handle (e.g. from a dedicated test runtime).
+    #[must_use]
     pub fn from_handle(handle: Handle) -> Self {
         Self { handle }
     }
@@ -38,6 +39,7 @@ impl AppRuntime {
     /// Bind to Tauri's global async runtime (creates it on first use if needed).
     ///
     /// Safe to call from sync contexts — does not require `Handle::current()`.
+    #[must_use]
     pub fn from_tauri() -> Self {
         Self {
             handle: tauri::async_runtime::handle().inner().clone(),
@@ -46,6 +48,7 @@ impl AppRuntime {
 
     /// Prefer the current Tokio handle when already inside a runtime;
     /// otherwise fall back to Tauri's global runtime.
+    #[must_use]
     pub fn try_current_or_tauri() -> Self {
         match Handle::try_current() {
             Ok(handle) => Self::from_handle(handle),
@@ -54,11 +57,13 @@ impl AppRuntime {
     }
 
     /// Shared default for app startup: always the Tauri-backed handle.
+    #[must_use]
     pub fn shared_default() -> Arc<Self> {
         Arc::new(Self::from_tauri())
     }
 
     /// Borrow the underlying Tokio handle (escape hatch for advanced use).
+    #[allow(clippy::must_use_candidate)]
     pub fn handle(&self) -> &Handle {
         &self.handle
     }

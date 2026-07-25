@@ -10,6 +10,7 @@ use lsp_server::RequestId;
 
 /// Methods for which only the latest in-flight request is useful.
 /// A newer request of the same method cancels the previous one.
+#[must_use]
 pub fn is_singleflight_method(method: &str) -> bool {
     matches!(
         method,
@@ -33,6 +34,7 @@ pub struct InflightRequestTracker {
 
 impl InflightRequestTracker {
     /// Create a new empty inflight request tracker.
+    #[must_use]
     pub fn new() -> Self {
         Self {
             by_method: HashMap::new(),

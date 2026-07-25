@@ -21,6 +21,7 @@ pub struct GitLabPrProvider {
 
 impl GitLabPrProvider {
     /// Create a new `GitLabPrProvider`.
+    #[must_use]
     pub fn new(repo_path: &Path, target: &ExecTarget) -> Self {
         Self {
             _repo_path: repo_path.to_path_buf(),

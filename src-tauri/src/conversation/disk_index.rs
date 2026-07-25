@@ -33,6 +33,7 @@ pub struct ConversationDiskIndex {
 
 impl ConversationDiskIndex {
     /// Build a new index envelope with the current schema version and timestamp.
+    #[must_use]
     pub fn new(conversations: Vec<ConversationMeta>) -> Self {
         Self {
             version: INDEX_VERSION,
@@ -43,6 +44,7 @@ impl ConversationDiskIndex {
 }
 
 /// Default index path: `~/.neeko/conversation-index.json`.
+#[must_use]
 pub fn default_index_path() -> PathBuf {
     dirs::home_dir()
         .unwrap_or_else(|| PathBuf::from("."))

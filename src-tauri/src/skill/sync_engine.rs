@@ -14,6 +14,7 @@ pub enum SyncMode {
 
 impl SyncMode {
     /// Return the string representation of this sync mode.
+    #[allow(clippy::must_use_candidate)]
     pub fn as_str(&self) -> &'static str {
         match self {
             SyncMode::Symlink => "symlink",
@@ -23,6 +24,7 @@ impl SyncMode {
 }
 
 /// Determine the sync mode for a tool based on configuration and defaults.
+#[must_use]
 pub fn sync_mode_for_tool(tool_key: &str, configured_mode: Option<&str>) -> SyncMode {
     match configured_mode {
         Some("copy") => SyncMode::Copy,

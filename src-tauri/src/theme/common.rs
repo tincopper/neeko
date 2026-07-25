@@ -1,6 +1,7 @@
 use std::path::PathBuf;
 
 /// Neeko 主题名 → Agent 主题名（OpenCode 和 Pi 共用同一映射）
+#[allow(clippy::must_use_candidate)]
 pub fn map_theme_name(neeko_theme: &str) -> &str {
     match neeko_theme {
         "dark" => "neeko-dark",
@@ -13,6 +14,7 @@ pub fn map_theme_name(neeko_theme: &str) -> &str {
 }
 
 /// 简单的 shell 转义
+#[must_use]
 pub fn shell_escape(s: &str) -> String {
     if s.is_empty() {
         return "''".to_string();
@@ -21,6 +23,7 @@ pub fn shell_escape(s: &str) -> String {
 }
 
 /// base64 编码（不依赖外部 crate）
+#[must_use]
 pub fn base64_encode(input: &str) -> String {
     const CHARS: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
     let bytes = input.as_bytes();
@@ -53,6 +56,7 @@ pub fn base64_encode(input: &str) -> String {
 }
 
 /// 从 ~/.neeko/config.json 读取当前主题
+#[must_use]
 pub fn get_current_theme(config_json: &serde_json::Value) -> String {
     config_json
         .get("theme")
@@ -62,6 +66,7 @@ pub fn get_current_theme(config_json: &serde_json::Value) -> String {
 }
 
 /// 从 ~/.neeko/config.json 读取当前主题名（读取文件）
+#[must_use]
 pub fn read_neeko_theme() -> Option<String> {
     let home = dirs::home_dir()?;
     let config_path = home.join(".neeko").join("config.json");
@@ -71,6 +76,7 @@ pub fn read_neeko_theme() -> Option<String> {
 }
 
 /// 从 ~/.neeko/config.json 读取布尔配置项
+#[must_use]
 pub fn read_config_bool(key: &str) -> bool {
     let home = match dirs::home_dir() {
         Some(h) => h,

@@ -37,6 +37,7 @@ fn emit_progress(app_handle: &tauri::AppHandle, language_id: &str, phase: &str, 
 }
 
 /// Whether `binary` exists in the project execution environment.
+#[must_use]
 pub fn check_binary_installed(binary: &str, target: &ExecTarget) -> bool {
     let found = crate::core::exec::command_exists_blocking(target, binary);
     log::info!(
@@ -49,6 +50,7 @@ pub fn check_binary_installed(binary: &str, target: &ExecTarget) -> bool {
 }
 
 /// Check whether the plugin's language server binary exists on `target`.
+#[must_use]
 pub fn check_plugin_installed(plugin: &LspPlugin, target: &ExecTarget) -> bool {
     if plugin.server_binary.is_empty() {
         return false;

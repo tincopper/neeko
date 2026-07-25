@@ -18,6 +18,7 @@ pub struct ParsedGitSource {
 }
 
 /// Parse a git source URL into its components (clone_url, branch, subpath).
+#[must_use]
 pub fn parse_git_source(url: &str) -> ParsedGitSource {
     let original_url = url.to_string();
     let mut clone_url = url.to_string();
@@ -142,6 +143,7 @@ pub fn cleanup_temp(path: &Path) {
 }
 
 /// Convert a GitHub shorthand (owner/repo) to a full HTTPS URL.
+#[must_use]
 pub fn construct_github_url(source: &str) -> String {
     if source.starts_with("http://") || source.starts_with("https://") || source.starts_with("git@")
     {

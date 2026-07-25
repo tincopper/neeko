@@ -18,6 +18,7 @@ pub struct LspPluginRegistry {
 
 impl LspPluginRegistry {
     /// Empty registry (tests / custom-only setups).
+    #[must_use]
     pub fn empty() -> Self {
         Self {
             plugins: HashMap::new(),
@@ -27,6 +28,7 @@ impl LspPluginRegistry {
     }
 
     /// Register all shipped built-in language plugins.
+    #[must_use]
     pub fn with_defaults() -> Self {
         let mut registry = Self::empty();
         for plugin in builtins::all_builtin_plugins() {
@@ -85,27 +87,32 @@ impl LspPluginRegistry {
     }
 
     /// Look up a plugin by file extension.
+    #[allow(clippy::must_use_candidate)]
     pub fn resolve_by_extension(&self, ext: &str) -> Option<&LspPlugin> {
         let language_id = self.ext_index.get(&ext.to_lowercase())?;
         self.plugins.get(language_id)
     }
 
     /// Look up a plugin by language identifier.
+    #[allow(clippy::must_use_candidate)]
     pub fn resolve_by_language(&self, language_id: &str) -> Option<&LspPlugin> {
         self.plugins.get(language_id)
     }
 
     /// List all registered plugins.
+    #[must_use]
     pub fn list_all(&self) -> Vec<&LspPlugin> {
         self.plugins.values().collect()
     }
 
     /// Check if a language is registered.
+    #[must_use]
     pub fn is_registered(&self, language_id: &str) -> bool {
         self.plugins.contains_key(language_id)
     }
 
     /// Full extension map for the frontend.
+    #[must_use]
     pub fn extension_map(&self) -> Vec<LspExtensionMapEntry> {
         let mut out = Vec::new();
         for (ext, lang) in &self.ext_index {
@@ -123,6 +130,7 @@ impl LspPluginRegistry {
     }
 
     /// Extensions claimed by more than one language (winner = last registration).
+    #[must_use]
     pub fn extension_conflicts(&self) -> Vec<LspExtensionConflict> {
         let mut out = Vec::new();
         for (ext, claimants) in &self.ext_claimants {
@@ -154,6 +162,7 @@ impl LspPluginRegistry {
     ///
     /// Returns `(marker_filename, language_id, server_name)` sorted by
     /// plugin `detect_priority` then marker name.
+    #[must_use]
     pub fn detection_markers(&self) -> Vec<(String, String, String)> {
         let mut plugins: Vec<&LspPlugin> = self.plugins.values().collect();
         plugins.sort_by_key(|p| (p.detect_priority, p.language_id.as_str()));
@@ -168,6 +177,7 @@ impl LspPluginRegistry {
     }
 
     /// Custom root markers only (compat helper).
+    #[must_use]
     pub fn custom_root_markers(&self) -> Vec<(String, String, String)> {
         let mut out = Vec::new();
         for p in self.plugins.values().filter(|p| p.is_custom) {

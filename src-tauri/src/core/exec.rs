@@ -108,6 +108,7 @@ pub async fn command_exists_on_project(env: &ProjectEnvironment, cmd: &str) -> b
 /// in async code.
 ///
 /// Safe to call from `spawn_blocking` (no current Tokio handle required).
+#[must_use]
 pub fn command_exists_blocking(target: &ExecTarget, cmd: &str) -> bool {
     match target {
         ExecTarget::Local => exec_env::local_command_exists(cmd),

@@ -17,6 +17,7 @@ const MAX_DEPTH: u32 = 8;
 
 /// Delete known debug artifacts under `project_path`.
 /// Returns the number of files removed (best-effort; IO errors are ignored).
+#[must_use]
 pub fn cleanup_debug_artifacts(project_path: &Path) -> usize {
     if !project_path.is_dir() {
         return 0;

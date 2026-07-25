@@ -28,6 +28,7 @@ fn extract_repo_name_from_resolve_error(text: &str) -> Option<String> {
 /// Classify common `gh` CLI stderr into stable, user-facing English messages.
 ///
 /// Returns `None` when no known pattern matches (caller should use cleaned stderr).
+#[must_use]
 pub fn classify_gh_error(stderr_or_stdout: &str) -> Option<String> {
     let text = stderr_or_stdout.trim();
     if text.is_empty() {
@@ -94,6 +95,7 @@ Check the remote URL and that your GitHub account can access this repo \
 }
 
 /// Map an executor failure from a `gh` invocation into a user-facing anyhow error.
+#[must_use]
 pub fn map_gh_exec_error(err: ExecError) -> anyhow::Error {
     match err {
         ExecError::CommandFailed {
@@ -167,6 +169,7 @@ pub struct GhCli {
 
 impl GhCli {
     /// Create a new `GhCli` for the given repository and execution target.
+    #[must_use]
     pub fn new(repo_path: &Path, target: &ExecTarget) -> Self {
         Self {
             repo_path: repo_path.to_path_buf(),

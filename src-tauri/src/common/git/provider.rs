@@ -6,6 +6,7 @@ use std::path::Path;
 use crate::common::types::GitProvider;
 
 /// 从 remote URL 检测 Git 提供商
+#[must_use]
 pub fn detect_provider(remote_url: &str) -> GitProvider {
     let url = remote_url.trim().to_lowercase();
     if url.contains("github.com") {

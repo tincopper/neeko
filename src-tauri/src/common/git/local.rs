@@ -644,6 +644,7 @@ pub fn delete_branch(repo_path: &Path, branch_name: &str, force: bool) -> Result
 }
 
 /// Check whether the given path is a valid git repository.
+#[must_use]
 pub fn is_git_repo(path: &Path) -> bool {
     Repository::open(path).is_ok()
 }

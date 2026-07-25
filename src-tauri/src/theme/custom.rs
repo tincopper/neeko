@@ -18,6 +18,7 @@ fn themes_dir() -> Option<PathBuf> {
 }
 
 /// 扫描 ~/.neeko/themes/*.json，返回可用主题列表
+#[must_use]
 pub fn scan_custom_themes() -> Vec<ThemeListItem> {
     let dir = match themes_dir() {
         Some(d) => d,
@@ -61,6 +62,7 @@ pub fn scan_custom_themes() -> Vec<ThemeListItem> {
 }
 
 /// 读取并验证单个自定义主题 JSON 文件
+#[must_use]
 pub fn read_custom_theme(name: &str) -> Option<CustomTheme> {
     let dir = themes_dir()?;
     let path = dir.join(format!("{}.json", name));

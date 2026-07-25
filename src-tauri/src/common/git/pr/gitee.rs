@@ -21,6 +21,7 @@ pub struct GiteePrProvider {
 
 impl GiteePrProvider {
     /// Create a new `GiteePrProvider`.
+    #[must_use]
     pub fn new(repo_path: &Path, target: &ExecTarget) -> Self {
         Self {
             _repo_path: repo_path.to_path_buf(),

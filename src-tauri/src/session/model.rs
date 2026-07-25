@@ -74,6 +74,7 @@ pub struct SessionStore {
 
 impl SessionStore {
     /// Creates an empty session store.
+    #[must_use]
     pub fn new() -> Self {
         Self {
             projects: Vec::new(),

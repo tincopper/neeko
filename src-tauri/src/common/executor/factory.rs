@@ -37,6 +37,7 @@ pub enum ExecTarget {
 }
 
 /// Create a [`CommandExecutor`] for the given [`ExecTarget`].
+#[must_use]
 pub fn create_executor(target: &ExecTarget) -> Box<dyn CommandExecutor> {
     match target {
         ExecTarget::Local => Box::new(LocalExecutor),

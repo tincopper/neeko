@@ -52,6 +52,7 @@ pub struct TerminalManager {
 
 impl TerminalManager {
     /// Creates a new TerminalManager with empty session and PTY maps.
+    #[must_use]
     pub fn new() -> Self {
         Self {
             sessions: Arc::new(Mutex::new(HashMap::new())),

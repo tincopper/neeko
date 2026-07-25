@@ -54,6 +54,7 @@ impl Credential {
     }
 
     /// Build stdin input for `git credential fill` (query cache, no password).
+    #[must_use]
     pub fn build_fill_input(&self) -> Vec<u8> {
         format!(
             "protocol={}\nhost={}\npath={}\n\n",
@@ -63,6 +64,7 @@ impl Credential {
     }
 
     /// Build stdin input for `git credential approve` (store username + password).
+    #[must_use]
     pub fn build_approve_input(&self, username: &str, password: &str) -> Vec<u8> {
         format!(
             "protocol={}\nhost={}\npath={}\nusername={}\npassword={}\n\n",
@@ -72,6 +74,7 @@ impl Credential {
     }
 
     /// Build stdin input for `git credential reject` (delete cached credentials).
+    #[must_use]
     pub fn build_reject_input(&self, username: &str) -> Vec<u8> {
         format!(
             "protocol={}\nhost={}\npath={}\nusername={}\n\n",

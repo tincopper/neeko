@@ -29,6 +29,7 @@ use super::types::LspPlugin;
 ///
 /// Registration order also influences extension conflict resolution
 /// (later registrations win) when ids differ.
+#[must_use]
 pub fn all_builtin_plugins() -> Vec<LspPlugin> {
     let mut out = Vec::with_capacity(24);
     out.extend(rust_lang::plugins());

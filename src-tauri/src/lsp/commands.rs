@@ -345,6 +345,7 @@ pub fn lsp_apply_settings(
 
 /// Resolve language id for a file path using the live registry (custom first).
 #[tauri::command]
+#[must_use]
 pub fn lsp_resolve_language(
     file_path: String,
     state: State<'_, AppStateWrapper>,

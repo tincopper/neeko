@@ -157,6 +157,7 @@ pub enum SessionStatus {
 
 impl SessionStatus {
     /// Return the wire-format string for this status.
+    #[allow(clippy::must_use_candidate)]
     pub fn as_str(self) -> &'static str {
         match self {
             Self::Starting => "starting",
@@ -196,6 +197,7 @@ impl ControlAction {
     }
 
     /// Return the DAP protocol command string for this action.
+    #[allow(clippy::must_use_candidate)]
     pub fn dap_command(self) -> &'static str {
         match self {
             Self::Continue => "continue",

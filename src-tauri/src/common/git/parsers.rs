@@ -11,6 +11,7 @@ use crate::project::types::{
 // ─── Diff parsers (originally from local.rs) ─────────────────────────────────
 
 /// Parse git diff --unified=3 text output into DiffResult
+#[must_use]
 pub fn parse_unified_diff(output: &str) -> DiffResult {
     let mut hunks: Vec<DiffHunk> = Vec::new();
 
@@ -114,6 +115,7 @@ pub fn collapse_diff_context(hunks: &mut Vec<DiffHunk>, threshold: usize) {
 // ─── Git info parser (originally from remote.rs) ─────────────────────────────
 
 /// Parse the combined output of git commands (branch / branches / worktrees / status) into GitInfo
+#[must_use]
 pub fn parse_git_info_output(output: &str) -> GitInfo {
     let mut current_branch = String::new();
     let mut branches = Vec::new();

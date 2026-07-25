@@ -54,6 +54,7 @@ pub fn init_host_user_path() {
 }
 
 /// Current host PATH used for local binary resolution (after init).
+#[must_use]
 pub fn host_user_path() -> String {
     crate::common::utils::command::local::resolve_full_path()
 }

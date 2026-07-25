@@ -8,11 +8,13 @@ use super::types::{BreakpointSpec, LaunchConfig, LaunchFile};
 use crate::AppError;
 
 /// Path to launch config under a project root.
+#[must_use]
 pub fn launch_json_path(project_path: &Path) -> PathBuf {
     project_path.join(".neeko").join("launch.json")
 }
 
 /// Path to persisted breakpoints under a project root.
+#[must_use]
 pub fn breakpoints_json_path(project_path: &Path) -> PathBuf {
     project_path.join(".neeko").join("breakpoints.json")
 }
@@ -88,6 +90,7 @@ pub fn save_launch_file(project_path: &Path, file: &LaunchFile) -> Result<(), Ap
 }
 
 /// Expand `${workspaceFolder}` style placeholders.
+#[must_use]
 pub fn expand_variables(s: &str, workspace: &Path, current_file: Option<&str>) -> String {
     let ws = workspace.to_string_lossy();
     let basename = workspace
@@ -123,6 +126,7 @@ pub fn expand_variables(s: &str, workspace: &Path, current_file: Option<&str>) -
 }
 
 /// Expand all string fields in a launch config.
+#[must_use]
 pub fn expand_config(
     cfg: &LaunchConfig,
     workspace: &Path,

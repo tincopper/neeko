@@ -21,6 +21,7 @@ pub struct GitPreviewCache {
 
 impl GitPreviewCache {
     /// Create an empty preview cache.
+    #[must_use]
     pub fn new() -> Self {
         Self {
             previews: Vec::new(),
@@ -39,6 +40,7 @@ impl GitPreviewCache {
     }
 
     /// Get a preview by ID.
+    #[must_use]
     pub fn get(&self, id: &str) -> Option<&GitPreview> {
         self.previews.iter().find(|p| p.id == id)
     }

@@ -27,6 +27,7 @@ pub enum EncodeStyle {
 }
 
 /// Normalize path separators and drop a trailing slash (except root).
+#[must_use]
 pub fn normalize_project_path(path: &str) -> String {
     let mut s = path.replace('\\', "/");
     while s.len() > 1 && s.ends_with('/') {
@@ -36,6 +37,7 @@ pub fn normalize_project_path(path: &str) -> String {
 }
 
 /// Claude/Reasonix encode: every non-alphanumeric becomes `-`.
+#[must_use]
 pub fn encode_claude_project_path(path: &str) -> String {
     let normalized = normalize_project_path(path);
     normalized
@@ -45,6 +47,7 @@ pub fn encode_claude_project_path(path: &str) -> String {
 }
 
 /// Pi encode: `--Users-tomgs-proj--` (slashes → `-`, wrapped in `--`).
+#[must_use]
 pub fn encode_pi_project_path(path: &str) -> String {
     let normalized = normalize_project_path(path);
     let body = normalized.trim_start_matches('/').replace('/', "-");
@@ -52,6 +55,7 @@ pub fn encode_pi_project_path(path: &str) -> String {
 }
 
 /// OMP encode candidates: home-relative first, then full Claude-style.
+#[must_use]
 pub fn encode_omp_project_paths(path: &str) -> Vec<String> {
     let normalized = normalize_project_path(path);
     let mut out = Vec::new();
@@ -76,6 +80,7 @@ pub fn encode_omp_project_paths(path: &str) -> Vec<String> {
 }
 
 /// Encode prefixes for a given style (may return multiple OMP candidates).
+#[must_use]
 pub fn encode_prefixes(path: &str, style: EncodeStyle) -> Vec<String> {
     match style {
         EncodeStyle::Claude => vec![encode_claude_project_path(path)],
@@ -86,6 +91,7 @@ pub fn encode_prefixes(path: &str, style: EncodeStyle) -> Vec<String> {
 
 /// True when `dir_name` is exactly a scope prefix or a nested-path extension
 /// (`prefix-…` boundary, matching Orca / Claude worktree dirs).
+#[must_use]
 pub fn dir_matches_project_scope(dir_name: &str, prefixes: &[String]) -> bool {
     prefixes.iter().any(|prefix| {
         if prefix.is_empty() {
@@ -99,6 +105,7 @@ pub fn dir_matches_project_scope(dir_name: &str, prefixes: &[String]) -> bool {
 /// project encode for `style`.
 ///
 /// Returns absolute paths to matching project dirs. Missing root → empty vec.
+#[must_use]
 pub fn resolve_encoded_project_dirs(
     session_root: &Path,
     project_path: &str,
@@ -151,6 +158,7 @@ pub fn resolve_encoded_project_dirs(
 ///
 /// - `None` project → `None` (caller should full-walk)
 /// - `Some(project)` → `Some(roots)` (possibly empty = early stop)
+#[must_use]
 pub fn discovery_roots_for(
     session_root: PathBuf,
     project_path: Option<&str>,

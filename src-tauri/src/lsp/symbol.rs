@@ -76,6 +76,7 @@ impl UnifiedLocation {
 
     /// Extract the target file URI from a definition response.
     /// Returns the URI of the first result, if any.
+    #[must_use]
     pub fn first_target_uri(value: &Value) -> Option<String> {
         let locations = Self::from_definition_response(value);
         locations.into_iter().next().map(|l| l.uri)

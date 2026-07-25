@@ -171,11 +171,13 @@ impl ProjectManager {
     }
 
     /// Returns a reference to a project by ID.
+    #[must_use]
     pub fn get_project(&self, project_id: &str) -> Option<&Project> {
         self.projects.iter().find(|p| p.id == project_id)
     }
 
     /// Returns a copy of all projects (with cleared changed_files in Git info).
+    #[must_use]
     pub fn list_projects(&self) -> Vec<Project> {
         self.projects
             .iter()

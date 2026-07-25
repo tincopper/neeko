@@ -17,6 +17,7 @@ pub enum LspAutoStart {
 
 impl LspAutoStart {
     /// Parse an auto-start policy string.
+    #[must_use]
     pub fn parse(s: &str) -> Self {
         match s {
             "onProjectSelect" | "on_project_select" => Self::OnProjectSelect,
@@ -26,6 +27,7 @@ impl LspAutoStart {
     }
 
     /// Get the string representation of the auto-start policy.
+    #[allow(clippy::must_use_candidate)]
     pub fn as_str(self) -> &'static str {
         match self {
             Self::OnFirstFile => "onFirstFile",
@@ -74,6 +76,7 @@ pub struct LspPlugin {
 
 impl LspPlugin {
     /// Construct a built-in language descriptor (used by `builtins/*` modules).
+    #[must_use]
     pub fn builtin(
         language_id: &str,
         extensions: &[&str],
@@ -96,24 +99,28 @@ impl LspPlugin {
     }
 
     /// Set root marker files for project detection.
+    #[must_use]
     pub fn with_root_markers(mut self, markers: &[&str]) -> Self {
         self.root_markers = markers.iter().map(|s| (*s).to_string()).collect();
         self
     }
 
     /// Set detection priority (lower wins).
+    #[must_use]
     pub fn with_detect_priority(mut self, priority: u32) -> Self {
         self.detect_priority = priority;
         self
     }
 
     /// Set the auto-start policy.
+    #[must_use]
     pub fn with_auto_start(mut self, auto_start: LspAutoStart) -> Self {
         self.auto_start = auto_start;
         self
     }
 
     /// Set LSP initialization options.
+    #[must_use]
     pub fn with_initialization_options(mut self, opts: serde_json::Value) -> Self {
         self.initialization_options = Some(opts);
         self

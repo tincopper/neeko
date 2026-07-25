@@ -37,11 +37,13 @@ pub struct AgentConfig {
 
 impl AgentConfig {
     /// Resolve prompt prefix args. Returns None if agent doesn't support prompt mode.
+    #[must_use]
     pub fn resolve_prompt_args(&self) -> Option<Vec<String>> {
         self.prompt_args.clone()
     }
 
     /// Resolve prompt suffix args (appended after prompt).
+    #[must_use]
     pub fn resolve_post_prompt_args(&self) -> Vec<String> {
         self.post_prompt_args.clone().unwrap_or_default()
     }

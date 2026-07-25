@@ -64,6 +64,7 @@ pub struct ScanProgressEvent {
 
 impl ConversationManager {
     /// 创建 ConversationManager，注入适配器列表
+    #[must_use]
     pub fn new(adapters: Vec<Box<dyn AgentSessionAdapter>>) -> Self {
         let mut adapter_map = HashMap::new();
         for adapter in adapters {

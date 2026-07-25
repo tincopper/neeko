@@ -60,6 +60,7 @@ fn save_tasks_to_file(path: &PathBuf, tasks: &[TaskConfig]) -> Result<(), std::i
 }
 
 /// Get all task configs (app-level + project-level).
+#[must_use]
 pub fn get_all_task_configs(project_path: Option<&str>) -> Vec<TaskConfig> {
     let mut tasks = Vec::new();
 

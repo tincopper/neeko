@@ -56,6 +56,7 @@ fn builtin_sources() -> Vec<Box<dyn TaskSource>> {
 }
 
 /// Run all registered sources and return a de-duplicated, priority-sorted list.
+#[must_use]
 pub fn discover_tasks(project_path: &Path) -> Vec<DiscoveredTask> {
     if !project_path.is_dir() {
         return Vec::new();
@@ -82,6 +83,7 @@ pub fn discover_tasks(project_path: &Path) -> Vec<DiscoveredTask> {
 }
 
 /// Convert a discovered task into a project-scoped persisted config.
+#[must_use]
 pub fn to_task_config(task: &DiscoveredTask, project_id: Option<String>) -> super::TaskConfig {
     super::TaskConfig {
         id: task.id.clone(),

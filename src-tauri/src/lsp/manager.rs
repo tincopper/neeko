@@ -83,6 +83,7 @@ pub struct LspManager {
 
 impl LspManager {
     /// Create a manager that schedules work on the given business runtime.
+    #[must_use]
     pub fn new(runtime: Arc<AppRuntime>) -> Self {
         let diag_bus = DiagnosticBus::new();
 
@@ -141,6 +142,7 @@ impl LspManager {
     }
 
     /// Convenience constructor for tests / simple call sites.
+    #[must_use]
     pub fn new_default() -> Self {
         Self::new(AppRuntime::shared_default())
     }
@@ -749,6 +751,7 @@ impl LspManager {
     }
 
     /// Resolve a file path to an LSP language id via extension lookup.
+    #[must_use]
     pub fn language_for_path(path: &str) -> Option<String> {
         let ext = std::path::Path::new(path)
             .extension()

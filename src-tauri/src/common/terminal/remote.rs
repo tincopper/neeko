@@ -39,6 +39,7 @@ pub struct RemoteTerminalManager {
 
 impl RemoteTerminalManager {
     /// Create a new empty `RemoteTerminalManager`.
+    #[must_use]
     pub fn new() -> Self {
         Self {
             sessions: Arc::new(Mutex::new(HashMap::new())),

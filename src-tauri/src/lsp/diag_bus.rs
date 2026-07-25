@@ -54,6 +54,7 @@ pub struct DiagnosticBus {
 
 impl DiagnosticBus {
     /// Create a new empty diagnostic bus.
+    #[must_use]
     pub fn new() -> Self {
         Self {
             listeners: Arc::new(RwLock::new(Vec::new())),
@@ -85,6 +86,7 @@ impl DiagnosticBus {
     }
 
     /// Number of active subscription slots (including dead ones).
+    #[must_use]
     pub fn subscriber_count(&self) -> usize {
         self.listeners.read().expect("infallible").len()
     }

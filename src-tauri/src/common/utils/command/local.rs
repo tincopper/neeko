@@ -13,6 +13,7 @@ pub mod flags {
 
 /// Create a `Command` that runs without a visible console window on Windows.
 #[cfg_attr(not(target_os = "windows"), allow(unused_mut))]
+#[must_use]
 pub fn exec(program: &str) -> Command {
     let mut cmd = Command::new(program);
     #[cfg(target_os = "windows")]
@@ -40,17 +41,20 @@ pub fn exec_detached(program: &str) -> Command {
 }
 
 /// Check whether a command exists under the given PATH string.
+#[must_use]
 pub fn command_exists_on_path(command: &str, path_env: &str) -> bool {
     let cwd = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("/"));
     which::which_in(command, Some(path_env), cwd.as_path()).is_ok()
 }
 
 /// Escape single quotes in a path for safe POSIX shell interpolation.
+#[must_use]
 pub fn safe_path(path: &str) -> String {
     path.replace('\'', "'\\''")
 }
 
 /// Single-quote a string for POSIX shell interpolation (`'foo'\''bar'` style).
+#[must_use]
 pub fn quote_shell_arg(s: &str) -> String {
     format!("'{}'", s.replace('\'', "'\\''"))
 }
@@ -66,6 +70,7 @@ pub fn join_quoted_command(cmd: &str, args: &[&str]) -> String {
 
 /// Resolve a command to its full executable path using `where.exe` (Windows) or `which` (Unix).
 /// Falls back to the original command name if not found.
+#[must_use]
 pub fn resolve_command_path(command: &str, path_env: &str) -> String {
     if std::path::Path::new(command).is_absolute() {
         return command.to_string();
@@ -115,6 +120,7 @@ pub fn resolve_command_path(command: &str, path_env: &str) -> String {
 ///
 /// Solves the issue of Tauri GUI processes not inheriting the user shell PATH
 /// (npm global bin, nvm, cargo, homebrew, etc.).
+#[must_use]
 pub fn resolve_full_path() -> String {
     let current = std::env::var("PATH").unwrap_or_default();
 

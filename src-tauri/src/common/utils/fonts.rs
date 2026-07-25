@@ -1,6 +1,7 @@
 //! System monospace font enumeration.
 
 /// Get the list of monospace fonts available on the system (cross-platform).
+#[must_use]
 pub fn get_monospace_fonts() -> Vec<String> {
     let mut fonts = get_system_fonts();
     fonts.sort_by_key(|a| a.to_lowercase());

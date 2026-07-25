@@ -12,6 +12,7 @@ use serde_json::{json, Value};
 /// Build a client Response for a server-initiated LSP request.
 ///
 /// Always returns a Response — never drop a request without answering.
+#[must_use]
 pub fn respond_to_server_request(req: &Request, workspace_folder_uri: Option<&str>) -> Response {
     match req.method.as_str() {
         "window/workDoneProgress/create" => Response::new_ok(req.id.clone(), Value::Null),

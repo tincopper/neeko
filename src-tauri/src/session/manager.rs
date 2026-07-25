@@ -37,6 +37,7 @@ impl StorageManager {
     }
 
     /// Returns the path to the config directory.
+    #[allow(clippy::must_use_candidate)]
     pub fn get_config_dir(&self) -> &Path {
         &self.config_dir
     }
@@ -97,6 +98,7 @@ impl StorageManager {
     }
 
     /// Builds a SessionStore from the current project list.
+    #[must_use]
     pub fn create_session_from_projects(
         &self,
         projects: &[Project],

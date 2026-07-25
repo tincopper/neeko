@@ -101,6 +101,7 @@ fn store() -> &'static Mutex<HashMap<PathBuf, GitProvider>> {
 }
 
 /// 缓存优先，未命中时通过 `get_git_provider` 检测并缓存
+#[must_use]
 pub fn resolve_provider(repo_path: &Path) -> GitProvider {
     if let Some(p) = store().lock().ok().and_then(|m| m.get(repo_path).copied()) {
         return p;

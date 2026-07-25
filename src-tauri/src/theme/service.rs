@@ -23,11 +23,13 @@ pub enum ThemeStrategy {
 
 impl ThemeStrategy {
     /// Returns all registered theme strategies.
+    #[must_use]
     pub fn all() -> Vec<Self> {
         vec![Self::OpenCode, Self::Pi]
     }
 
     /// Returns the display name of this strategy.
+    #[allow(clippy::must_use_candidate)]
     pub fn name(&self) -> &'static str {
         match self {
             Self::OpenCode => "OpenCode",
@@ -36,6 +38,7 @@ impl ThemeStrategy {
     }
 
     /// Whether this theme strategy is enabled in user config.
+    #[must_use]
     pub fn is_enabled(&self) -> bool {
         match self {
             Self::OpenCode => opencode::read_enable_opencode_theme_sync(),

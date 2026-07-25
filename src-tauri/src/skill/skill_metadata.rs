@@ -12,6 +12,7 @@ const SKILL_DIR_MARKERS: &[&str] = &[
 ];
 
 /// Parse SKILL.md (or fallback markers) for name/description metadata.
+#[must_use]
 pub fn parse_skill_md(dir: &Path) -> SkillMetadata {
     let candidates = [
         "SKILL.md",
@@ -35,6 +36,7 @@ pub fn parse_skill_md(dir: &Path) -> SkillMetadata {
 }
 
 /// Parse skill markdown: YAML frontmatter first, then body fallback for description.
+#[must_use]
 pub fn parse_skill_document(content: &str) -> SkillMetadata {
     let mut meta = parse_frontmatter(content);
     if meta
@@ -261,6 +263,7 @@ fn strip_frontmatter(content: &str) -> &str {
 }
 
 /// Check whether a directory looks like a valid skill directory.
+#[must_use]
 pub fn is_valid_skill_dir(dir: &Path) -> bool {
     dir.is_dir() && SKILL_DIR_MARKERS.iter().any(|name| dir.join(name).exists())
 }
@@ -277,6 +280,7 @@ const WINDOWS_RESERVED_BASENAMES: &[&str] = &[
 ];
 
 /// Sanitize a skill name for safe use as a directory component on all platforms.
+#[must_use]
 pub fn sanitize_skill_name(name: &str) -> Option<String> {
     let last = std::path::Path::new(name)
         .file_name()
@@ -313,6 +317,7 @@ pub fn sanitize_skill_name(name: &str) -> Option<String> {
 }
 
 /// Infer a skill name from a directory.
+#[must_use]
 pub fn infer_skill_name(dir: &Path) -> String {
     let meta = parse_skill_md(dir);
     if let Some(name) = meta.name {

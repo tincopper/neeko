@@ -33,6 +33,7 @@ impl Default for DapManager {
 
 impl DapManager {
     /// Create an empty DAP manager with no sessions or breakpoints.
+    #[must_use]
     pub fn new() -> Self {
         Self {
             sessions: Mutex::new(HashMap::new()),

@@ -42,6 +42,7 @@ pub struct ExecOutput {
 /// Format command failure using UTF-8 text (prefer stderr, then stdout).
 ///
 /// Avoids dumping raw byte arrays via `Debug`, which is unreadable in UI/logs.
+#[must_use]
 pub fn format_command_failed_msg(code: i32, stdout: &[u8], stderr: &[u8]) -> String {
     let stderr_text = String::from_utf8_lossy(stderr);
     let stdout_text = String::from_utf8_lossy(stdout);
@@ -150,6 +151,7 @@ impl ExecChild {
 
     /// Consume into wait future + kill future factory (after stdio taken).
     #[allow(clippy::type_complexity)]
+    #[must_use]
     pub fn into_wait_and_kill(
         self,
     ) -> (
@@ -174,6 +176,7 @@ pub struct SpawnOptions<'a> {
 
 impl<'a> SpawnOptions<'a> {
     /// Spawn options without a working directory override.
+    #[must_use]
     pub fn new(cmd: &'a str, args: &'a [&'a str]) -> Self {
         Self {
             cmd,

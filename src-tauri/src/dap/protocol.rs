@@ -3,6 +3,7 @@
 use serde_json::Value;
 
 /// Encode a JSON body as a DAP/LSP framed message.
+#[must_use]
 pub fn encode_message(body: &Value) -> Vec<u8> {
     let content = body.to_string();
     let header = format!("Content-Length: {}\r\n\r\n", content.len());

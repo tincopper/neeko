@@ -42,6 +42,7 @@ impl Default for ProjectEnvironment {
 
 impl ProjectEnvironment {
     /// Convert the environment into a Git transport kind with the project path.
+    #[must_use]
     pub fn to_git_transport<'a>(&'a self, project_path: &'a str) -> (GitTransportKind, &'a str) {
         match self {
             Self::Local => (GitTransportKind::Local, project_path),
@@ -70,6 +71,7 @@ impl ProjectEnvironment {
     }
 
     /// Convert the environment into an executor target.
+    #[must_use]
     pub fn to_exec_target(&self) -> crate::common::executor::factory::ExecTarget {
         match self {
             Self::Local => crate::common::executor::factory::ExecTarget::Local,

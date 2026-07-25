@@ -57,6 +57,7 @@ pub async fn sync_agent_theme(theme: String, targets: ProjectThemeTargets) -> Re
 
 /// Lists all available custom themes.
 #[tauri::command]
+#[must_use]
 pub fn list_custom_themes() -> Vec<ThemeListItem> {
     crate::theme::custom::scan_custom_themes()
 }

@@ -66,6 +66,7 @@ pub fn load_session(state: State<AppStateWrapper>) -> Result<SessionStore, AppEr
 
 /// Returns the config directory path as a string.
 #[tauri::command]
+#[must_use]
 pub fn get_config_dir(state: State<AppStateWrapper>) -> String {
     state
         .storage_manager
@@ -76,6 +77,7 @@ pub fn get_config_dir(state: State<AppStateWrapper>) -> String {
 
 /// Returns a greeting message for the given name.
 #[tauri::command]
+#[must_use]
 pub fn greet(name: &str) -> String {
     format!("Hello, {}! Welcome to Neeko!", name)
 }

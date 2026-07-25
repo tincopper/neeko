@@ -32,6 +32,7 @@ pub struct EntryPoint {
 }
 
 /// Scan project root for common Go / Rust entry layouts.
+#[must_use]
 pub fn discover_entries(project_path: &Path) -> Vec<EntryPoint> {
     let mut out = Vec::new();
     if !project_path.is_dir() {
@@ -186,6 +187,7 @@ fn parse_cargo_package_name(cargo_toml: &Path) -> Option<String> {
 }
 
 /// Build a launch config from a discovered entry.
+#[must_use]
 pub fn entry_to_launch_config(entry: &EntryPoint) -> super::types::LaunchConfig {
     super::types::LaunchConfig {
         name: entry.config_name.clone(),

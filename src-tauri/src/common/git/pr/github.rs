@@ -204,6 +204,7 @@ pub struct GitHubPrProvider {
 
 impl GitHubPrProvider {
     /// Create a new `GitHubPrProvider` for the given repository and execution target.
+    #[must_use]
     pub fn new(repo_path: &Path, target: &ExecTarget) -> Self {
         Self {
             repo_path: repo_path.to_path_buf(),

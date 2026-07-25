@@ -75,6 +75,7 @@ pub enum ErrorKind {
 }
 
 /// Classify git stderr text into an [`ErrorKind`]. Pure function, easy to unit-test.
+#[must_use]
 pub fn classify_stderr(stderr: &str) -> ErrorKind {
     if AUTH_SSH_PATTERNS.iter().any(|p| stderr.contains(*p)) {
         return ErrorKind::AuthSsh;

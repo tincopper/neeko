@@ -70,6 +70,7 @@ impl ToolAdapter {
 
     /// Get the skills directory for this adapter.
     /// Uses override if set, otherwise checks `~/.xxx` and `~/.config/xxx` candidates.
+    #[must_use]
     pub fn skills_dir(&self) -> PathBuf {
         if let Some(ref abs) = self.override_skills_dir {
             return PathBuf::from(abs);
@@ -79,6 +80,7 @@ impl ToolAdapter {
     }
 
     /// Returns all directories to scan for skills.
+    #[must_use]
     pub fn all_scan_dirs(&self) -> Vec<PathBuf> {
         let mut dirs = vec![self.skills_dir()];
         for rel in &self.additional_scan_dirs {
@@ -93,6 +95,7 @@ impl ToolAdapter {
     }
 
     /// Check if this tool is installed (has a detect directory).
+    #[must_use]
     pub fn is_installed(&self) -> bool {
         if self.is_custom || self.override_skills_dir.is_some() {
             return true;
@@ -103,6 +106,7 @@ impl ToolAdapter {
     }
 
     /// Check if this adapter has a path override set.
+    #[must_use]
     pub fn has_path_override(&self) -> bool {
         self.override_skills_dir.is_some()
     }
@@ -112,6 +116,7 @@ impl ToolAdapter {
 ///
 /// Also accepts fullwidth tilde (`～` U+FF5E) / wave dash (`〜` U+301C) prefixes,
 /// which often appear when paths are typed with an IME.
+#[must_use]
 pub fn expand_skill_path(path: &str) -> PathBuf {
     let trimmed = path.trim();
     let normalized = if let Some(rest) = trimmed.strip_prefix('\u{FF5E}') {
@@ -150,6 +155,7 @@ pub struct SkillTargetDir {
 /// Resolve skill directories from agent configs (`skill_path`).
 ///
 /// Only enabled agents with a non-empty skill path are included.
+#[must_use]
 pub fn skill_targets_from_agents(agents: &[(String, bool, Option<String>)]) -> Vec<SkillTargetDir> {
     let mut out = Vec::new();
     for (id, enabled, skill_path) in agents {
@@ -173,6 +179,7 @@ pub fn skill_targets_from_agents(agents: &[(String, bool, Option<String>)]) -> V
 /// Built-in tool adapters aligned with Neeko agents + common IDE tools.
 ///
 /// Keys for Neeko agents match `AgentConfig.id` / `skill_path`.
+#[must_use]
 pub fn default_tool_adapters() -> Vec<ToolAdapter> {
     vec![
         // ── Neeko built-in agents (paths match AgentManager) ──
@@ -328,11 +335,13 @@ mod tests {
 }
 
 /// Deserialize custom tool path overrides from a JSON string.
+#[must_use]
 pub fn custom_tool_paths(custom_tool_paths_json: &str) -> HashMap<String, String> {
     serde_json::from_str(custom_tool_paths_json).unwrap_or_default()
 }
 
 /// Build all adapters: built-in + custom, with path overrides applied.
+#[must_use]
 pub fn all_tool_adapters(
     custom_tool_paths_json: &str,
     custom_tools_json: &str,

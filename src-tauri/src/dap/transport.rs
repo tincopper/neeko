@@ -18,6 +18,7 @@ use crate::AppError;
 /// Accepts both:
 /// - `DAP server listening at: 127.0.0.1:12345`
 /// - `API server listening at: 127.0.0.1:12345`
+#[must_use]
 pub fn parse_listen_addr_line(line: &str) -> Option<String> {
     const MARKER: &str = " server listening at: ";
     let idx = line.find(MARKER)?;

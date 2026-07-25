@@ -72,6 +72,7 @@ pub fn get_selected_diff(project_path: &Path, file_paths: &[String]) -> Result<S
 }
 
 /// Build a commit prompt containing the diff and recent commit style reference.
+#[must_use]
 pub fn build_commit_prompt(diff: &str, recent_messages: &[String]) -> String {
     let recent_section = if recent_messages.is_empty() {
         "(no previous commits found)".to_string()
@@ -130,6 +131,7 @@ Changes to commit:
 }
 
 /// Build a short commit prompt for WSL/SSH environments (no diff content, agent analyzes changes).
+#[must_use]
 pub fn build_simple_commit_prompt(file_paths: &[String]) -> String {
     let files_section = file_paths
         .iter()
@@ -181,6 +183,7 @@ Output ONLY the raw commit message. No explanation, no quotes, no code blocks."#
 }
 
 /// Build a shell command string to invoke an agent for commit message generation in WSL/SSH.
+#[must_use]
 pub fn build_agent_commit_cmd(
     project_path: &str,
     agent_cmd: &str,
@@ -352,6 +355,7 @@ fn decode_output(bytes: &[u8]) -> String {
 // ─── AI Output Cleaning ─────────────────────────────────────────────────────
 
 /// Clean AI output by removing markdown wrapping, ANSI codes, and common waste prefixes to extract the commit message.
+#[must_use]
 pub fn clean_ai_output(raw: &str) -> String {
     let ansi_stripped = strip_ansi(raw);
     let trimmed = ansi_stripped.trim();

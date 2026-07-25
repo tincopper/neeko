@@ -199,6 +199,7 @@ pub fn set_project_primary_language(
 
 /// Returns the currently active project ID, if any.
 #[tauri::command]
+#[must_use]
 pub fn get_active_project(state: State<AppStateWrapper>) -> Option<String> {
     state.active_project_id.lock().ok().and_then(|g| g.clone())
 }

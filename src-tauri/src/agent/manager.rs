@@ -18,6 +18,7 @@ impl Default for AgentManager {
 
 impl AgentManager {
     /// Create a new `AgentManager` with the default built-in agents.
+    #[must_use]
     pub fn new() -> Self {
         let mut manager = Self { agents: Vec::new() };
         manager.agents = default_agents();
@@ -25,11 +26,13 @@ impl AgentManager {
     }
 
     /// Return all registered agents.
+    #[allow(clippy::must_use_candidate)]
     pub fn get_agents(&self) -> &[AgentConfig] {
         &self.agents
     }
 
     /// Get an agent by ID.
+    #[must_use]
     pub fn get_agent(&self, agent_id: &str) -> Option<&AgentConfig> {
         self.agents.iter().find(|a| a.id == agent_id)
     }
@@ -45,6 +48,7 @@ impl AgentManager {
     }
 
     /// Resolve agent IDs to their CLI command names.
+    #[must_use]
     pub fn resolve_commands(&self, agent_ids: &[String]) -> Vec<(String, Option<String>)> {
         agent_ids
             .iter()

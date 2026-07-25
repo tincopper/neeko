@@ -3,6 +3,7 @@ use std::path::PathBuf;
 
 /// Base directory for the skill management system: ~/.neeko/
 #[allow(clippy::expect_used)]
+#[must_use]
 pub fn base_dir() -> PathBuf {
     dirs::home_dir()
         .expect("Cannot determine home directory")
@@ -10,11 +11,13 @@ pub fn base_dir() -> PathBuf {
 }
 
 /// Skills central repository: ~/.neeko/skills/
+#[must_use]
 pub fn skills_dir() -> PathBuf {
     base_dir().join("skills")
 }
 
 /// Database path: ~/.neeko/skills.db
+#[must_use]
 pub fn db_path() -> PathBuf {
     base_dir().join("skills.db")
 }

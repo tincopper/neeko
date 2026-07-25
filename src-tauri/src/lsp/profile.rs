@@ -36,6 +36,7 @@ pub struct ProjectLanguageProfile {
 ///
 /// Prefer [`detect_project_profile_with_markers`] with
 /// `LspPluginRegistry::detection_markers()` so customs participate.
+#[must_use]
 pub fn detect_project_profile(project_path: &str) -> ProjectLanguageProfile {
     use super::plugin::LspPluginRegistry;
     let markers = LspPluginRegistry::with_defaults().detection_markers();
@@ -51,6 +52,7 @@ pub fn detect_project_profile(project_path: &str) -> ProjectLanguageProfile {
 /// `primary_override` wins when it matches a candidate; if not among markers
 /// but non-empty, a synthetic primary is created when server_name is provided
 /// via the first matching marker entry for that language id in `markers`.
+#[must_use]
 pub fn detect_project_profile_with_markers(
     project_path: &str,
     markers: &[(String, String, String)],
@@ -108,6 +110,7 @@ pub fn detect_project_profile_with_markers(
 }
 
 /// Backward-compatible name used by manager.
+#[must_use]
 pub fn detect_project_profile_with_extras(
     project_path: &str,
     extra_markers: &[(String, String, String)],

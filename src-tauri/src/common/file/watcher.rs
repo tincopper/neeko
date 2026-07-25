@@ -260,6 +260,7 @@ fn should_ignore_path(path: &Path) -> bool {
 
 impl WatcherManager {
     /// Create a new empty `WatcherManager`.
+    #[must_use]
     pub fn new() -> Self {
         Self {
             watchers: Arc::new(Mutex::new(HashMap::new())),
