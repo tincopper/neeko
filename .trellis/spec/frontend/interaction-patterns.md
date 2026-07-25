@@ -171,6 +171,59 @@ await withTimeout(commands.commitFiles(files, message), 30_000, 'commit');
 | CommitDialog | `CommitDialog.tsx` | ✅ | ✅ | - |
 | ProjectsPanel 右键 | `ProjectsPanel.tsx` | ✅ | ✅ | - |
 
+---
+
+## 键盘快捷键按 Tab 域限定
+
+### 背景
+
+合并后 Dock 面板（如 GitControlPanel）包含多个 Tab，各 Tab 有各自的键盘快捷键。需要在全局 `keydown` 监听中根据当前激活 Tab 做域限定，防止快捷键跨 Tab 误触。
+
+### 模式
+
+```tsx
+const handleKeyDown = useCallback((e: KeyboardEvent) => {
+  // 1. 让出非当前 Tab
+  if (tab !== 'history') return;
+
+  // 2. contentEditable / input guard
+  const target = e.target as HTMLElement;
+  if (target.isContentEditable || target.tagName === 'INPUT' || target.tagName === 'TEXTAREA') {
+    return;
+  }
+
+  // 3. 快捷键处理
+  switch (e.key) {
+    case 'c': handleCopyDiff(...); break;
+    case 'k': handleMoveUp(); break;
+    case 'j': handleMoveDown(); break;
+  }
+}, [tab, ...]);
+```
+
+### 规则
+
+1. **第一道关卡**：`tab !== 'xxx'` return，非当前 Tab 直接放行
+2. **第二道关卡**：`contentEditable / INPUT / TEXTAREA` 守卫，防止编辑器内触发热键
+3. **依赖数组包含 `tab`**：确保 `keydown` 回调能感知 Tab 切换
+4. **顶层解绑**：Wrapper 的 `useEffect` 返回 `removeEventListener` 清理
+
+### 反模式
+
+❌ 非当前 Tab 的子组件依然绑定全局 `keydown` 监听：
+
+```tsx
+// Changes tab 下 GitLogPanel 依然监听 J/K → 按键被误吞
+```
+
+❌ 缺少 contentEditable 守卫：
+
+```tsx
+// 用户在 commit message 输入框按 'j' → 触发了 GitLog 光标移动
+```
+
+---
+
 ### 9. Modifiers 说明
 
 - `restrictToVerticalAxis`：锁定垂直轴，防止水平漂移

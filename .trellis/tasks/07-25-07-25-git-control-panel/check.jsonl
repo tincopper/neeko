@@ -1,1 +1,2 @@
-{"_example": "Fill with {\"file\": \"<path>\", \"reason\": \"<why>\"}. Put spec/research files only — no code paths. Run `python3 .trellis/scripts/get_context.py --mode packages` to list available specs. Delete this line once real entries are added."}
+{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "验证明文记录 mode=hidden 的双面板挂载模式"}
+{"file": ".trellis/spec/frontend/interaction-patterns.md", "reason": "验证快捷键域限定的两道关卡规则"}

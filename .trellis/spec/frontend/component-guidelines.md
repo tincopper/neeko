@@ -617,6 +617,91 @@ const [confirmRemove, setConfirmRemove] = useState(false);
 
 ---
 
+## Tabbed Shell Component 模式（合并 Dock 面板）
+
+### 背景
+
+当多个紧密关联的 Dock 面板（如 gitCommit + gitLog）需要合并为一个面板以节省 Dock 插槽时，使用 Shell 组件 + 内部 Tab 切换模式。
+
+### 架构
+
+```
+DockPanelWrappers (GitControlPanelWrapper)
+├── useActiveProject()       ← 单次读取，避免重复调用
+├── tab state ('changes' | 'history')
+├── handleRefreshGit()       ← 合并原两个面板的刷新逻辑
+└── GitControlPanel (Shell)
+    ├── TabBar (Changes | History) + badge
+    ├── GitCommitPanel       ← hidden={tab !== 'changes'} 保持挂载
+    └── GitLogPanel          ← hidden={tab !== 'history'}
+```
+
+### 关键约定
+
+1. **两个面板同时挂载**：使用 `hidden` 而非条件渲染，避免切换 Tab 时丢失提交表单等草稿状态
+2. **`useActiveProject()` 提升到 Wrapper 层**：只需调用一次，通过 props 下传
+3. **Tab 默认值为 `'changes'`**（操作频率更高的面板在前）
+4. **刷新联动**：`handleRefreshGit` 同时触发两个面板的刷新，确保 commit 后切换 History 能看到新 commit
+
+### 完成示例
+
+```tsx
+// src/app/dock/DockPanelWrappers.tsx
+const GitControlPanelWrapper: React.FC = () => {
+  const { activeProject, baseRefreshGit } = useActiveProject();
+  const [tab, setTab] = useState<'changes' | 'history'>('changes');
+  const refreshRef = useRef<() => void>(() => {});
+
+  const handleRefreshGit = useCallback(() => {
+    baseRefreshGit();
+    refreshRef.current();
+  }, [baseRefreshGit]);
+
+  const handleKeyDown = useCallback((e: KeyboardEvent) => {
+    if (tab !== 'history') return;
+    const target = e.target as HTMLElement;
+    if (target.isContentEditable || target.tagName === 'INPUT' || target.tagName === 'TEXTAREA') return;
+    // J/K/j/k/c shortcuts...
+  }, [tab]);
+
+  return <GitControlPanel tab={tab} onTabChange={setTab} ... />;
+};
+```
+
+```tsx
+// src/features/git/components/GitControlPanel.tsx
+const GitControlPanel: React.FC<Props> = ({ tab, onTabChange, ... }) => {
+  return (
+    <div className="flex flex-col h-full">
+      <div className="flex border-b border-border">
+        <button onClick={() => onTabChange('changes')}>Changes</button>
+        <button onClick={() => onTabChange('history')}>History</button>
+      </div>
+      <div hidden={tab !== 'changes'} className="flex-1 overflow-auto">
+        <GitCommitPanel ... />
+      </div>
+      <div hidden={tab !== 'history'} className="flex-1 overflow-auto">
+        <GitLogPanel ... />
+      </div>
+    </div>
+  );
+};
+```
+
+### 反模式
+
+❌ 条件渲染（非挂载）：
+
+```tsx
+// 切换 Tab → 组件 unmount → 草稿全部丢失
+{tab === 'changes' && <GitCommitPanel />}
+{tab === 'history' && <GitLogPanel />}
+```
+
+❌ 每个面板各自调用 `useActiveProject()`：造成两次重复的 IPC 订阅和状态同步
+
+---
+
 ## Zustand + `useSyncExternalStore`：`useShallow` 用于派生数组
 
 ### 规则
