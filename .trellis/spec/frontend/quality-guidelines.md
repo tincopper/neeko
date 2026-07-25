@@ -62,6 +62,17 @@ ESLint：`import/no-restricted-paths` 禁止 layout→features/app；**无** doc
 
 当前 Git 相关 dock panel 只有 **`gitControl`**（title: Git Control）。旧的 `gitCommit` / `gitLog` 已合并进其内部 Changes | History tabs，不要再注册为独立 dock panel。
 
+Git Control 打开 Diff view 的 Tab 标题须按来源加前缀，分隔符用中点 `·`（U+00B7）：
+
+| 来源 | 模式 | 标题 |
+| --- | --- | --- |
+| Changes（即将提交的变更） | 单文件 | `Commit Diff · <文件名>` |
+| History（已提交历史） | 单文件 / 钉住 | `History Diff · <文件名>` |
+| History（已提交历史） | 合并多文件 | `History Commit · <hash 前7> · N files` |
+
+要点：单文件 Diff 用 `… Diff · …` 表达"来自某面板的单文件 diff"；合并模式仍保留 `History Commit` 前缀以锚定所在 commit。标题前缀是单一事实源，禁止回退为裸文件名。
+
+
 #### 多 Tab Dock Panel：保留子面板挂载状态
 
 **问题**：内部 tab 用条件渲染（`activeTab === 'x' ? <A/> : <B/>`）会卸载非活动面板，导致草稿 commit message、文件勾选、对话框状态丢失。
