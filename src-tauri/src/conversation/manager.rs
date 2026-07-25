@@ -526,7 +526,7 @@ impl ConversationManager {
 
         results.sort_by(|a, b| b.updated_at.cmp(&a.updated_at));
 
-        let total = results.len() as u32;
+        let total = u32::try_from(results.len()).unwrap_or(u32::MAX);
         let start = (offset as usize).min(results.len());
         let end = if limit == 0 {
             results.len()

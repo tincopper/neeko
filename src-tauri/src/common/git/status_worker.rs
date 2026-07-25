@@ -356,6 +356,7 @@ fn serialize_files_for_diff(files: &[GitStatusFile]) -> String {
 }
 
 /// 运行 `git diff --numstat`（unstaged + cached）并返回 path → (additions, deletions)
+#[allow(clippy::cast_possible_truncation, clippy::cast_possible_wrap)]
 fn get_numstat_map(repo_path: &PathBuf) -> HashMap<String, (i32, i32)> {
     let path_str = repo_path.to_str().unwrap_or(".");
     let mut map: HashMap<String, (i32, i32)> = HashMap::new();

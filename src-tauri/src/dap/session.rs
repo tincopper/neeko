@@ -453,7 +453,11 @@ impl DapSession {
         let mut out = Vec::new();
         if let Some(arr) = body.get("breakpoints").and_then(|b| b.as_array()) {
             for b in arr {
-                let line = b.get("line").and_then(|l| l.as_u64()).unwrap_or(0) as u32;
+                let line = b
+                    .get("line")
+                    .and_then(|l| l.as_u64())
+                    .and_then(|l| u32::try_from(l).ok())
+                    .unwrap_or(0);
                 let verified = b.get("verified").and_then(|v| v.as_bool()).unwrap_or(false);
                 out.push(BreakpointSpec {
                     file_path: file_path.to_string(),
@@ -501,8 +505,16 @@ impl DapSession {
                         .unwrap_or("?")
                         .to_string(),
                     source_path,
-                    line: f.get("line").and_then(|l| l.as_u64()).unwrap_or(0) as u32,
-                    column: f.get("column").and_then(|c| c.as_u64()).unwrap_or(0) as u32,
+                    line: f
+                        .get("line")
+                        .and_then(|l| l.as_u64())
+                        .and_then(|l| u32::try_from(l).ok())
+                        .unwrap_or(0),
+                    column: f
+                        .get("column")
+                        .and_then(|c| c.as_u64())
+                        .and_then(|c| u32::try_from(c).ok())
+                        .unwrap_or(0),
                 });
             }
         }

@@ -288,7 +288,7 @@ pub async fn clear_all_managed_skills(store: State<'_, Arc<SkillStore>>) -> Resu
     let store = store.inner().clone();
     run_blocking_result(move || {
         let skills = store.get_all_skills().map_err(AppError::from)?;
-        let n = skills.len() as u32;
+        let n = u32::try_from(skills.len()).unwrap_or(0);
         for s in &skills {
             let path = PathBuf::from(&s.central_path);
             if path.is_dir() && path.starts_with(super::central_repo::skills_dir()) {
@@ -1420,8 +1420,10 @@ pub async fn get_all_project_skill_counts(
         projects
             .into_iter()
             .map(|(project_id, project_path)| {
-                let total_count =
-                    collect_project_disk_skills(&project_path, &agent_info, &store)?.len() as i64;
+                let total_count = i64::try_from(
+                    collect_project_disk_skills(&project_path, &agent_info, &store)?.len(),
+                )
+                .unwrap_or(0);
                 Ok(ProjectSkillCountDto {
                     project_id,
                     total_count,

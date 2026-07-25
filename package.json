@@ -6,7 +6,9 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
-    "lint": "cargo fmt --manifest-path src-tauri/Cargo.toml --all -- --check && cargo clippy --manifest-path src-tauri/Cargo.toml 2>&1 && eslint src/ && pnpm tsc --noEmit",
+    "lint": "cargo fmt --manifest-path src-tauri/Cargo.toml --all -- --check && cargo clippy --manifest-path src-tauri/Cargo.toml 2>&1",
+    "lint:fe": "eslint src/ && pnpm tsc --noEmit",
+    "lint:all": "pnpm lint && pnpm lint:fe",
     "type-check": "npx tsc --noEmit",
     "preview": "vite preview",
     "tauri": "tauri",
