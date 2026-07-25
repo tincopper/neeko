@@ -1,7 +1,7 @@
 import React, { useCallback } from "react";
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { Terminal, FileText, ArrowLeftRight, Globe, MessageSquareText, Pin, GitPullRequest } from "@/shared/components/icons"
+import { Terminal, FileText, FileDiff, Globe, MessageSquareText, Pin, GitPullRequest } from "@/shared/components/icons"
 import { cn } from '@/lib/utils';
 import { resolveAgentIconSrc } from '@/features/agent/api/agentApi';
 import { fileIconSrc } from '@/shared/utils/fileIcons';
@@ -27,7 +27,7 @@ function getTabIcon(kind: Tab["data"]["kind"]) {
     case "file":
       return FileText;
     case "diff":
-      return ArrowLeftRight;
+      return FileDiff;
     case "html-preview":
       return Globe;
     case "conversation":
@@ -93,8 +93,9 @@ const TabItem: React.FC<TabItemProps> = React.memo(
           )
         : null;
 
+    // Diff tabs use the dedicated FileDiff kind icon, not the file-type glyph.
     const fileIcon =
-      data.kind === "file" || data.kind === "diff"
+      data.kind === "file"
         ? fileIconSrc(data.fileName)
         : null;
 

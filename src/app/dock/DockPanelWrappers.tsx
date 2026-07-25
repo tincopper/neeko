@@ -582,7 +582,7 @@ const GitLogPanelWrapper: React.FC = () => {
   const [selectedHash, setSelectedHash] = useState<string | null>(null);
   const [selectedExpanded, setSelectedExpanded] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
-  const [combined, setCombined] = useState(false);
+  const [combined, setCombined] = useState(true);
   const [currentFileIdx, setCurrentFileIdx] = useState(0);
 
   const { commits, loading, hasMore, loadMore, refresh, loadingMore } =

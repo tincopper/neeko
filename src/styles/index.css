@@ -241,6 +241,28 @@
   .diff-line .line-content .hljs-tag { color: var(--cm-tag); }
   .diff-line .line-content .hljs-formula { background-color: rgba(var(--accent-blue-rgb), 0.1); }
 
+  /* Diff line selection (AI review): stronger than add/remove wash, token-based. */
+  tr.diff-line-selected > td {
+    background-color: rgba(var(--accent-blue-rgb), 0.16) !important;
+  }
+  tr.diff-line-selected > td:first-child {
+    box-shadow: inset 3px 0 0 0 var(--accent-blue);
+  }
+  tr.diff-line-selected > td.line-number,
+  tr.diff-line-selected > td.split-linenum {
+    color: var(--accent-blue);
+    font-weight: 600;
+  }
+  /* Keep add/remove tint under selection so change type still readable. */
+  tr.diff-line-selected.bg-diff-added > td,
+  tr.diff-line-selected .split-cell.added {
+    background-color: color-mix(in srgb, var(--diff-added) 70%, rgba(var(--accent-blue-rgb), 0.22)) !important;
+  }
+  tr.diff-line-selected.bg-diff-removed > td,
+  tr.diff-line-selected .split-cell.removed {
+    background-color: color-mix(in srgb, var(--diff-removed) 70%, rgba(var(--accent-blue-rgb), 0.22)) !important;
+  }
+
   /* Placeholder styling */
   .path-input::placeholder { color: var(--text-muted); }
 

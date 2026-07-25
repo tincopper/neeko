@@ -24,6 +24,15 @@ export function useDiffData({ projectId, diffSource, filePath, commands }: UseDi
   const lastLoadKeyRef = useRef<string>("");
 
   const loadDiff = useCallback(async () => {
+    // Empty path = intentionally idle (combined parent or collapsed section).
+    if (!filePath) {
+      setDiffResult(null);
+      setLoading(false);
+      setError(null);
+      setCurrentBlockIndex(0);
+      return;
+    }
+
     const cacheKey = getCacheKey(projectId, diffSource, filePath);
 
     // 命中缓存则跳过 fetch，立即返回

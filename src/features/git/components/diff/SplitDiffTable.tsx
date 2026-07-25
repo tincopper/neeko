@@ -9,6 +9,8 @@ interface SplitDiffTableProps {
   language: string;
   selectedLines?: Set<string>;
   onToggleLine?: (hunkIdx: number, lineIdx: number) => void;
+  /** Prefix for change-block element ids (default `cb`). Combined mode scopes per file. */
+  blockIdPrefix?: string;
   // Optional comment support (for PR review)
   onCommentLine?: (lineNum: number) => void;
   renderCommentArea?: (lineNum: number) => React.ReactNode;
@@ -20,6 +22,7 @@ const SplitDiffTable: React.FC<SplitDiffTableProps> = ({
   language,
   selectedLines,
   onToggleLine,
+  blockIdPrefix = "cb",
   onCommentLine,
   renderCommentArea,
   commentCounts,
@@ -38,18 +41,9 @@ const SplitDiffTable: React.FC<SplitDiffTableProps> = ({
           return diffResult.hunks.map((hunk, hunkIndex) => {
             let inBlock = false;
             return buildSplitRows(hunk).map((row, rowIndex) => {
+              // Skip @@ hunk headers — split line numbers already show position.
               if (row.type === "hunk-header") {
-                return (
-                  <tr
-                    key={`${hunkIndex}-${rowIndex}`}
-                    className="bg-bg-tertiary text-accent-blue font-medium cursor-pointer hover:bg-bg-hover"
-                    onClick={() => onToggleLine?.(hunkIndex, -1)}
-                  >
-                    <td colSpan={4} className="py-1 px-2">
-                      {row.hunkHeader}
-                    </td>
-                  </tr>
-                );
+                return null;
               }
 
               const isChanged =
@@ -57,7 +51,7 @@ const SplitDiffTable: React.FC<SplitDiffTableProps> = ({
                 (row.oldType === "removed" || row.newType === "added");
               let blockId: string | undefined;
               if (isChanged && !inBlock) {
-                blockId = `cb-${globalBlockIdx++}`;
+                blockId = `${blockIdPrefix}-${globalBlockIdx++}`;
                 inBlock = true;
               } else if (!isChanged) {
                 inBlock = false;
@@ -105,17 +99,27 @@ const SplitDiffTable: React.FC<SplitDiffTableProps> = ({
                     id={blockId}
                     className={cn(
                       "diff-line split-row",
-                      isSelected && "bg-blue-500/10",
+                      isSelected && "diff-line-selected",
                     )}
                   >
                     <td
-                      className={cn("line-number old split-linenum", row.oldType, "cursor-pointer hover:bg-bg-hover")}
+                      className={cn(
+                        "line-number old split-linenum",
+                        row.oldType,
+                        "cursor-pointer hover:bg-bg-hover",
+                        isSelected && "text-accent-blue font-semibold",
+                      )}
                       onClick={() => onToggleLine?.(hunkIndex, rowIndex)}
+                      title={isSelected ? "Deselect line" : "Select line for AI review"}
                     >
                       {row.oldLineNum ?? ""}
                     </td>
                     <td
-                      className={cn("line-content split-cell", row.oldType, isSelected && isRemoved && "bg-diff-removed-selected")}
+                      className={cn(
+                        "line-content split-cell",
+                        row.oldType,
+                        isSelected && isRemoved && "bg-diff-removed",
+                      )}
                       dangerouslySetInnerHTML={{
                         __html:
                           oldCellHtml ||
@@ -123,8 +127,14 @@ const SplitDiffTable: React.FC<SplitDiffTableProps> = ({
                       }}
                     />
                     <td
-                      className={cn("line-number new split-linenum", row.newType, "cursor-pointer hover:bg-bg-hover relative group")}
+                      className={cn(
+                        "line-number new split-linenum",
+                        row.newType,
+                        "cursor-pointer hover:bg-bg-hover relative group",
+                        isSelected && "text-accent-blue font-semibold",
+                      )}
                       onClick={() => onToggleLine?.(hunkIndex, rowIndex)}
+                      title={isSelected ? "Deselect line" : "Select line for AI review"}
                     >
                       {row.newLineNum ?? ""}
                       {canComment && (
@@ -146,7 +156,11 @@ const SplitDiffTable: React.FC<SplitDiffTableProps> = ({
                       )}
                     </td>
                     <td
-                      className={cn("line-content split-cell", row.newType, isSelected && isAdded && "bg-diff-added-selected")}
+                      className={cn(
+                        "line-content split-cell",
+                        row.newType,
+                        isSelected && isAdded && "bg-diff-added",
+                      )}
                       dangerouslySetInnerHTML={{
                         __html:
                           newCellHtml ||

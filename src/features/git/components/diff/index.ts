@@ -20,3 +20,11 @@ export {
 export type { WordDiffPart } from "./diffAlgorithm";
 
 export { detectLanguage, escapeHtml } from "./highlight";
+
+export {
+  splitFilePath,
+  fileBlockId,
+  statusLetter,
+  initialExpandedPaths,
+  sumFileStats,
+} from "./diffViewUtils";
