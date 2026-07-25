@@ -93,8 +93,9 @@ A content panel inside the editor area. Kinds:
 | `terminal` | xterm.js PTY session (optionally with a task command instead of a shell) |
 | `file` | Text file editor |
 | `diff` | Git diff viewer (unified or split) |
-| `gitLog` | Commit history browser |
 | `html-preview` | Rendered HTML file preview |
+
+Commit history is **not** a center tab kind. It lives in the **Git Control** dock panel (`gitControl`) under the History tab (alongside Changes for the commit form).
 
 A task-runner tab is a `terminal`-kind tab that spawns a specific command rather than an interactive shell. It carries extra metadata: the task command and a config ID for lifecycle tracking.
 
@@ -117,7 +118,11 @@ A left/right layout dividing the editor area into two tab groups. A tab can be *
 A collapsible sidebar panel managed by the dock system. **Dock** is the canonical term — "sidebar" and "panel" are synonyms in conversation but all state lives in `dockStore`.
 
 - **Left dock** — the project sidebar (project list + worktree picker). Width is persisted as a percentage.
-- **Right dock** — tool panels (Files, Git, Browser, Settings, Skill Manager).
+- **Right dock** — tool panels (Files, Git Control, Pull Requests, Browser, History/Conversations, Skills).
+
+**Git Control** (`gitControl`) is the single Git dock panel. It has two internal tabs:
+- **Changes** — staging, discard, commit form (former Commit panel)
+- **History** — commit graph / log (former Git Log panel)
 
 Panel visibility, stacking order, and width are persisted in localStorage via `dockStore`. The left dock's pixel width (used for TitleBar layout offset) is computed from the percentage × window width — there should be no duplicate `leftPanelWidth` outside dockStore.
 

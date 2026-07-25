@@ -60,6 +60,29 @@ layout/DockRegistryContext ← app 用 DockRegistryProvider 注入；DockLayout/
 ESLint：`import/no-restricted-paths` 禁止 layout→features/app；**无** dockPanels 文件级例外。
 `shared/` 不得 import `layout/`（dockStore 只依赖 `shared/dock`）。
 
+当前 Git 相关 dock panel 只有 **`gitControl`**（title: Git Control）。旧的 `gitCommit` / `gitLog` 已合并进其内部 Changes | History tabs，不要再注册为独立 dock panel。
+
+#### 多 Tab Dock Panel：保留子面板挂载状态
+
+**问题**：内部 tab 用条件渲染（`activeTab === 'x' ? <A/> : <B/>`）会卸载非活动面板，导致草稿 commit message、文件勾选、对话框状态丢失。
+
+**正确做法**：两个子面板都始终挂载，用 `hidden` 切换可见性；键盘快捷键在 wrapper 层按 `activeTab` 门控。
+
+```tsx
+// Good — 状态在 tab 切换后仍在
+<div className={cn('h-full', activeTab !== 'changes' && 'hidden')}>
+  <GitCommitPanel ... />
+</div>
+<div className={cn('h-full', activeTab !== 'history' && 'hidden')}>
+  <GitLogPanel ... />
+</div>
+
+// Bad — 切到 History 会丢掉 Changes 草稿
+{activeTab === 'changes' ? <GitCommitPanel /> : <GitLogPanel />}
+```
+
+跨 tab 数据一致性：Changes 提交成功后的 `onRefreshGit` 应同时刷新 History 的 log（`useGitLog().refresh()`）。
+
 
 ---
 

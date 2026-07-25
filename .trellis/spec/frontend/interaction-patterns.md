@@ -167,7 +167,7 @@ await withTimeout(commands.commitFiles(files, message), 30_000, 'commit');
 
 | 触发路径 | 文件 | push | pull | fetch |
 |---------|------|------|------|-------|
-| GitCommitPanel | `GitCommitPanel.tsx` | ✅ | ✅ | ✅ |
+| Git Control → Changes | `GitCommitPanel.tsx`（由 `GitControlPanel` 挂载） | ✅ | ✅ | ✅ |
 | CommitDialog | `CommitDialog.tsx` | ✅ | ✅ | - |
 | ProjectsPanel 右键 | `ProjectsPanel.tsx` | ✅ | ✅ | - |
 

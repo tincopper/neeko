@@ -54,11 +54,12 @@ export function useSingletonDiff(
       const diffSource = buildDiffSource(connectionContext, commitHash);
       const store = useEditorStore.getState();
       const existing = store.tabs[tabKey]?.tabs.find((t) => t.id === DIFF_TAB_ID);
-      const title = fileNameOf(filePath);
+      const fileName = fileNameOf(filePath);
+      const title = `History Commit \u00b7 ${fileName}`;
       const partial = {
         title,
         filePath,
-        fileName: title,
+        fileName,
         diffSource,
         combined: false,
         combinedFiles: undefined,
@@ -87,7 +88,7 @@ export function useSingletonDiff(
       const targetPath = currentFile ?? files[0]?.path ?? '';
       if (!targetPath) return;
       const diffSource = buildDiffSource(connectionContext, commitHash);
-      const title = `Diff \u00b7 ${commitHash.slice(0, 7)} \u00b7 ${files.length} files`;
+      const title = `History Commit \u00b7 ${commitHash.slice(0, 7)} \u00b7 ${files.length} files`;
       const store = useEditorStore.getState();
       const existing = store.tabs[tabKey]?.tabs.find((t) => t.id === DIFF_TAB_ID);
       const partial = {
@@ -122,13 +123,14 @@ export function useSingletonDiff(
       const diffSource = buildDiffSource(connectionContext, commitHash);
       const pinnedId = `diff_pinned_${filePath.replace(/[/\\]/g, '_')}`;
       const store = useEditorStore.getState();
-      const title = fileNameOf(filePath);
+      const fileName = fileNameOf(filePath);
+      const title = `History Commit \u00b7 ${fileName}`;
       store.addTab(tabKey, {
         id: pinnedId,
         projectId: tabKey,
         title,
         order: 200,
-        data: { kind: 'diff', filePath, fileName: title, diffSource },
+        data: { kind: 'diff', filePath, fileName, diffSource },
       });
       store.activateTab(tabKey, pinnedId);
     },

@@ -3,7 +3,6 @@ import {
   FileText,
   FolderOpen,
   GitBranch,
-  GitCommitHorizontal,
   GitPullRequest,
   Globe,
   MessagesSquare,
@@ -20,7 +19,6 @@ export const dockPanelIcons: Record<string, LucideIcon> = {
   Blocks,
   FolderOpen,
   FileText,
-  GitCommitHorizontal,
   GitPullRequest,
   GitBranch,
   Globe,
@@ -48,9 +46,9 @@ const LazySkillsPanelWrapper = lazy(() =>
   })),
 );
 
-const LazyGitCommitPanelWrapper = lazy(() =>
+const LazyGitControlPanelWrapper = lazy(() =>
   import('@/app/dock/DockPanelWrappers').then((m) => ({
-    default: m.GitCommitPanelWrapper,
+    default: m.GitControlPanelWrapper,
   })),
 );
 
@@ -65,12 +63,6 @@ const LazyConversationsPanelWrapper = lazy(() =>
 const LazyPullRequestsPanelWrapper = lazy(() =>
   import('@/app/dock/DockPanelWrappers').then((m) => ({
     default: m.PullRequestsPanelWrapper,
-  })),
-);
-
-const LazyGitLogPanelWrapper = lazy(() =>
-  import('@/app/dock/DockPanelWrappers').then((m) => ({
-    default: m.GitLogPanelWrapper,
   })),
 );
 
@@ -101,13 +93,13 @@ const UI_BINDINGS: Record<string, UiBinding> = {
     >,
     minPanelSize: 200,
   },
-  gitCommit: {
-    title: 'Commit',
-    icon: 'GitCommitHorizontal',
-    component: LazyGitCommitPanelWrapper as React.LazyExoticComponent<
+  gitControl: {
+    title: 'Git Control',
+    icon: 'GitBranch',
+    component: LazyGitControlPanelWrapper as React.LazyExoticComponent<
       React.ComponentType<Record<string, unknown>>
     >,
-    minPanelSize: 260,
+    minPanelSize: 280,
   },
   pullRequests: {
     title: 'Pull Requests',
@@ -116,11 +108,6 @@ const UI_BINDINGS: Record<string, UiBinding> = {
       React.ComponentType<Record<string, unknown>>
     >,
     minPanelSize: 260,
-  },
-  git: {
-    title: 'Git Log',
-    icon: 'GitBranch',
-    // tab-mode: no dock component
   },
   browser: {
     title: 'Browser',
@@ -137,14 +124,6 @@ const UI_BINDINGS: Record<string, UiBinding> = {
       React.ComponentType<Record<string, unknown>>
     >,
     minPanelSize: 260,
-  },
-  gitLog: {
-    title: 'Git Log',
-    icon: 'GitBranch',
-    component: LazyGitLogPanelWrapper as React.LazyExoticComponent<
-      React.ComponentType<Record<string, unknown>>
-    >,
-    minPanelSize: 280,
   },
 };
 

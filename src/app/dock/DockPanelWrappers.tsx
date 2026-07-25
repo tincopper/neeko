@@ -14,6 +14,7 @@ import { useDockStore } from '@/shared/store/dockStore';
 import FilesPanel from '@/features/file/components/FilesPanel';
 import SkillsPanel from '@/features/skill/components/SkillsPanel';
 import GitCommitPanel from '@/features/git/components/GitCommitPanel';
+import GitControlPanel, { type GitControlTab } from '@/features/git/components/GitControlPanel';
 import PullRequestsPanel from '@/features/git/components/PullRequestsPanel';
 import ConversationPanel from '@/features/conversation/components/ConversationPanel';
 import GitLogPanel from '@/features/git/components/gitlog/GitLogPanel';
@@ -311,7 +312,7 @@ const GitCommitPanelWrapper: React.FC = React.memo(() => {
     const tab: Tab = {
       id: tabId,
       projectId: tabKey,
-      title: fileName,
+      title: `Commit Diff · ${fileName}`,
       order: existingTabs?.tabs.length ?? 0,
       data: { kind: 'diff', filePath, fileName, diffSource },
     };
@@ -754,11 +755,319 @@ const GitLogPanelWrapper: React.FC = () => {
 };
 GitLogPanelWrapper.displayName = 'GitLogPanelWrapper';
 
+// ── GitControlPanelWrapper ──
+
+/**
+ * Merged Git Control dock panel: Changes (commit) + History (log).
+ * Single useActiveProject() read; keyboard shortcuts gated to History tab.
+ * Old GitCommitPanelWrapper / GitLogPanelWrapper kept above for rollback.
+ */
+const GitControlPanelWrapper: React.FC = React.memo(() => {
+  const { showToast } = useAppContext();
+  const { project, commands, capabilities, connectionContext } = useActiveProject();
+  const activeWorktreeBranch = useWorktreeStore((s) => s.activeWorktreeBranch);
+  const activeWorktreePath = useWorktreeStore((s) => s.activeWorktreePath);
+
+  const [tab, setTab] = useState<GitControlTab>('changes');
+  const [selectedHash, setSelectedHash] = useState<string | null>(null);
+  const [selectedExpanded, setSelectedExpanded] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [combined, setCombined] = useState(true);
+  const [currentFileIdx, setCurrentFileIdx] = useState(0);
+
+  const { commits, loading, hasMore, loadMore, refresh, loadingMore } = useGitLog(commands);
+
+  const {
+    detail,
+    files,
+    loading: detailLoading,
+    error: detailError,
+  } = useCommitDetail(commands, selectedHash);
+
+  const { openFileInDiff, openCombined, pinFile, scrollToFile, refreshOpenDiff, hasSingleton } =
+    useSingletonDiff(project?.id, selectedHash, files, connectionContext);
+
+  const baseRefreshGit = useCallback(async () => {
+    if (!project || !commands) return;
+    const gitInfo = await commands.refreshGitInfo();
+    useProjectStore.setState((state) => {
+      const nextProjects = state.projects.map((p) =>
+        p.id === project.id ? { ...p, git_info: gitInfo } : p,
+      );
+      return {
+        projects: nextProjects,
+        activeProject:
+          state.activeProjectId === project.id
+            ? (nextProjects.find((p) => p.id === project.id) ?? state.activeProject)
+            : state.activeProject,
+      };
+    });
+    // Sync ahead/behind to global store for sidebar
+    try {
+      const ab = await commands.getAheadBehind();
+      const cc = connectionContext;
+      if (cc?.type === 'wsl') {
+        useGitStore.getState().setAheadBehind(aheadBehindKey('wsl', cc.distro, project.id), ab);
+      } else if (cc?.type === 'remote') {
+        useGitStore.getState().setAheadBehind(aheadBehindKey('remote', cc.host, project.id), ab);
+      } else {
+        useGitStore.getState().setAheadBehind(aheadBehindKey('local', project.id, project.id), ab);
+      }
+    } catch {
+      // ahead/behind refresh failure should not block the main flow
+    }
+  }, [project, commands, connectionContext]);
+
+  const handleRefreshGit = useCallback(async () => {
+    await baseRefreshGit();
+    refresh();
+  }, [baseRefreshGit, refresh]);
+
+  // 从全局 useGitStore 读取 ahead/behind（单数据源），传入 commit panel
+  const aheadBehindMap = useGitStore((s) => s.aheadBehind);
+  const aheadBehind = useMemo(() => {
+    if (!project || !connectionContext) return null;
+    const cc = connectionContext;
+    let key;
+    if (cc.type === 'wsl') {
+      key = aheadBehindKey('wsl', cc.distro, project.id);
+    } else if (cc.type === 'remote') {
+      key = aheadBehindKey('remote', cc.host, project.id);
+    } else {
+      key = aheadBehindKey('local', project.id, project.id);
+    }
+    return aheadBehindMap[key] ?? null;
+  }, [project, connectionContext, aheadBehindMap]);
+
+  const handleSelectCommit = useCallback(
+    (hash: string) => {
+      if (selectedHash === hash) {
+        setSelectedExpanded((prev) => !prev);
+      } else {
+        setSelectedHash(hash);
+        setSelectedExpanded(true);
+        setCurrentFileIdx(0);
+      }
+    },
+    [selectedHash],
+  );
+
+  // When commit detail files arrive, refresh an already-open Diff singleton.
+  useEffect(() => {
+    if (!selectedHash || files.length === 0) return;
+    if (!hasSingleton()) return;
+    const preferred = files[currentFileIdx]?.path ?? files[0]?.path ?? null;
+    refreshOpenDiff({ combined, preferredPath: preferred });
+    // Only re-run when commit/files identity changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedHash, files]);
+
+  const handleToggleCombined = useCallback(
+    (on: boolean) => {
+      setCombined(on);
+      const preferred = files[currentFileIdx]?.path ?? (files.length > 0 ? files[0].path : undefined);
+      if (on) {
+        if (preferred) openCombined(preferred);
+      } else if (preferred) {
+        // Closing combined mode: switch the Diff singleton back to single-file view.
+        openFileInDiff(preferred);
+      }
+    },
+    [files, currentFileIdx, openCombined, openFileInDiff],
+  );
+
+  const handleOpenDiff = useCallback(
+    (filePath: string) => {
+      const idx = files.findIndex((f) => f.path === filePath);
+      if (idx >= 0) setCurrentFileIdx(idx);
+      if (combined) {
+        // Combined mode: keep multi-file view and scroll to the target file.
+        if (hasSingleton()) {
+          scrollToFile(filePath);
+        } else {
+          openCombined(filePath);
+        }
+        return;
+      }
+      openFileInDiff(filePath);
+    },
+    [files, combined, hasSingleton, scrollToFile, openCombined, openFileInDiff],
+  );
+
+  const handlePinFile = useCallback(
+    (filePath: string) => {
+      pinFile(filePath);
+    },
+    [pinFile],
+  );
+
+  // J/K/j/k/c shortcuts only while History tab is active
+  useEffect(() => {
+    if (tab !== 'history') return;
+
+    const handler = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null;
+      const tag = target?.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || target?.isContentEditable) {
+        return;
+      }
+
+      switch (e.key) {
+        case 'J': {
+          e.preventDefault();
+          const ci = commits.findIndex((c) => c.hash === selectedHash);
+          if (ci >= 0 && ci < commits.length - 1) {
+            handleSelectCommit(commits[ci + 1].hash);
+          } else if (ci < 0 && commits.length > 0) {
+            handleSelectCommit(commits[0].hash);
+          }
+          break;
+        }
+        case 'K': {
+          e.preventDefault();
+          const ci = commits.findIndex((c) => c.hash === selectedHash);
+          if (ci > 0) {
+            const prev = commits[ci - 1];
+            handleSelectCommit(prev.hash);
+          }
+          break;
+        }
+        case 'j': {
+          if (files.length === 0) break;
+          e.preventDefault();
+          const nextIdx = Math.min(currentFileIdx + 1, files.length - 1);
+          if (nextIdx !== currentFileIdx) {
+            setCurrentFileIdx(nextIdx);
+            openFileInDiff(files[nextIdx].path);
+          }
+          break;
+        }
+        case 'k': {
+          if (files.length === 0) break;
+          e.preventDefault();
+          const nextIdx = Math.max(currentFileIdx - 1, 0);
+          if (nextIdx !== currentFileIdx) {
+            setCurrentFileIdx(nextIdx);
+            openFileInDiff(files[nextIdx].path);
+          }
+          break;
+        }
+        case 'c': {
+          e.preventDefault();
+          handleToggleCombined(!combined);
+          break;
+        }
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [
+    tab,
+    commits,
+    selectedHash,
+    files,
+    currentFileIdx,
+    combined,
+    handleSelectCommit,
+    openFileInDiff,
+    handleToggleCombined,
+  ]);
+
+  if (!project || !commands || !capabilities) {
+    return (
+      <div className="flex h-full items-center justify-center p-4 text-xs text-muted-foreground">
+        No project selected
+      </div>
+    );
+  }
+
+  // Override gitInfo.current_branch when a worktree is active
+  const effectiveProject =
+    activeWorktreeBranch && project.gitInfo
+      ? {
+          ...project,
+          gitInfo: {
+            ...project.gitInfo,
+            current_branch: activeWorktreeBranch,
+          },
+        }
+      : project;
+
+  const handleSelectFile = (filePath: string) => {
+    // tabKey 需要与 ProjectWorkspace 对齐：使用 store 中的原始项目 ID，
+    // 而非 use-active-project 的统一 ID（wsl:distro:path / remote:host:path）
+    const projectState = useProjectStore.getState();
+    const editorState = useEditorStore.getState();
+    const tabKey = projectState.activeProjectId ?? project.id;
+    const existingTabs = editorState.tabs[tabKey];
+    const existingDiffTab = existingTabs?.tabs.find(
+      (t) => t.data.kind === 'diff' && t.data.filePath === filePath,
+    );
+    if (existingDiffTab) {
+      editorState.activateTab(tabKey, existingDiffTab.id);
+      return;
+    }
+
+    const diffSource = buildDiffSource(connectionContext, activeWorktreePath);
+    const fileName = filePath.split(/[\\/]/).pop() || filePath;
+    const tabId = `tab_${crypto.randomUUID()}`;
+    const tabItem: Tab = {
+      id: tabId,
+      projectId: tabKey,
+      title: `Commit Diff · ${fileName}`,
+      order: existingTabs?.tabs.length ?? 0,
+      data: { kind: 'diff', filePath, fileName, diffSource },
+    };
+    editorState.addTab(tabKey, tabItem);
+    editorState.activateTab(tabKey, tabId);
+  };
+
+  const changedFileCount = project.gitInfo?.changed_files?.length ?? 0;
+
+  return (
+    <GitControlPanel
+      project={effectiveProject}
+      commands={commands}
+      capabilities={capabilities}
+      onRefreshGit={handleRefreshGit}
+      onSelectFile={handleSelectFile}
+      onShowToast={showToast}
+      aheadBehind={aheadBehind}
+      changedFileCount={changedFileCount}
+      commits={commits}
+      logLoading={loading}
+      hasMore={hasMore}
+      loadMore={loadMore}
+      loadingMore={loadingMore}
+      onRefreshLog={refresh}
+      selectedHash={selectedHash}
+      selectedExpanded={selectedExpanded}
+      searchQuery={searchQuery}
+      combined={combined}
+      detail={detail}
+      logFiles={files}
+      detailLoading={detailLoading}
+      detailError={detailError}
+      onSelectCommit={handleSelectCommit}
+      onOpenDiff={handleOpenDiff}
+      onPinFile={handlePinFile}
+      onSearchChange={setSearchQuery}
+      onToggleCombined={handleToggleCombined}
+      focusedFileIndex={currentFileIdx}
+      activeTab={tab}
+      onTabChange={setTab}
+    />
+  );
+});
+GitControlPanelWrapper.displayName = 'GitControlPanelWrapper';
+
 export {
   FilesPanelWrapper,
+  // Kept for rollback; registry uses GitControlPanelWrapper
   GitCommitPanelWrapper,
   SkillsPanelWrapper,
   ConversationsPanelWrapper,
   PullRequestsPanelWrapper,
   GitLogPanelWrapper,
+  GitControlPanelWrapper,
 };

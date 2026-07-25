@@ -20,8 +20,8 @@ export const DOCK_PANEL_META: Record<string, DockPanelMeta> = {
     defaultZone: 'left',
     defaultOrder: 2,
   },
-  gitCommit: {
-    id: 'gitCommit',
+  gitControl: {
+    id: 'gitControl',
     defaultZone: 'right',
     defaultOrder: 1,
   },
@@ -33,18 +33,13 @@ export const DOCK_PANEL_META: Record<string, DockPanelMeta> = {
   browser: {
     id: 'browser',
     defaultZone: 'right',
-    defaultOrder: 4,
+    defaultOrder: 3,
     defaultZoneSize: 50,
   },
   conversations: {
     id: 'conversations',
     defaultZone: 'right',
-    defaultOrder: 5,
-  },
-  gitLog: {
-    id: 'gitLog',
-    defaultZone: 'right',
-    defaultOrder: 6,
+    defaultOrder: 4,
   },
 };
 
@@ -52,8 +47,7 @@ export type DockPanelId =
   | 'projects'
   | 'files'
   | 'skills'
-  | 'gitCommit'
+  | 'gitControl'
   | 'pullRequests'
   | 'browser'
-  | 'conversations'
-  | 'gitLog';
+  | 'conversations';
