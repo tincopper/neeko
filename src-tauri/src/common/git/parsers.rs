@@ -312,10 +312,7 @@ pub(crate) fn extract_commit_hash_from_output(output: &str) -> Option<String> {
 // ─── File tree builder (originally from remote.rs) ───────────────────────────
 
 /// Build file tree from find command output (used by both SSH and WSL)
-pub(crate) fn build_file_tree_from_find(
-    find_output: &str,
-    root_path: &str,
-) -> Vec<FileNode> {
+pub(crate) fn build_file_tree_from_find(find_output: &str, root_path: &str) -> Vec<FileNode> {
     use std::collections::HashMap;
 
     let mut path_set: std::collections::HashSet<String> = std::collections::HashSet::new();

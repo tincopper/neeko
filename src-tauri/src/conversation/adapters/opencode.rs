@@ -134,7 +134,11 @@ impl AgentSessionAdapter for OpenCodeAdapter {
         );
     }
 
-    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss, clippy::type_complexity)]
+    #[allow(
+        clippy::cast_possible_truncation,
+        clippy::cast_sign_loss,
+        clippy::type_complexity
+    )]
     fn parse_messages(&self, file_path: &Path) -> Result<Vec<ParsedMessage>> {
         let (db_path, session_id) = split_synthetic_path(file_path)
             .context("Invalid synthetic path; expected <dbPath>#<sessionId>")?;
@@ -682,7 +686,6 @@ mod tests {
     }
 
     #[test]
-    #[test]
     fn should_filter_opencode_db_by_project_path() {
         let dir = TempDir::new().unwrap();
         let db_path = create_opencode_fixture(&dir);
@@ -697,6 +700,7 @@ mod tests {
         assert!(other.is_empty());
     }
 
+    #[test]
     fn should_parse_all_metas() {
         let dir = TempDir::new().unwrap();
         let db_path = create_opencode_fixture(&dir);

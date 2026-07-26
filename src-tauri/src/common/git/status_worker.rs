@@ -45,7 +45,7 @@ pub struct GitStatusFile {
 }
 
 impl GitStatusFile {
-    const     fn new(path: String, status: String) -> Self {
+    const fn new(path: String, status: String) -> Self {
         Self {
             path,
             status,

@@ -145,9 +145,7 @@ pub fn resolve_encoded_project_dirs(
         if exact_hit && prefixes.iter().any(|p| p == name) {
             continue; // already added
         }
-        if dir_matches_project_scope(name, &prefixes)
-            && !found.iter().any(|p| p == &path)
-        {
+        if dir_matches_project_scope(name, &prefixes) && !found.iter().any(|p| p == &path) {
             found.push(path);
         }
     }

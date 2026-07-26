@@ -13,6 +13,10 @@ vi.mock('../taskRunner', async (importOriginal) => {
 });
 
 vi.mock('@/features/project/store', () => ({
+  useProjectStore: {},
+}));
+
+vi.mock('@/shared/store/projectStore', () => ({
   useProjectStore: {
     getState: () => ({
       activeProject: {

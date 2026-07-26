@@ -243,8 +243,7 @@ fn strip_harness_sentence_prefixes(s: &str) -> String {
             if rest.is_empty() || rest.starts_with(['.', ' ', ',']) {
                 let after = &s[prefix.len()..];
                 // 剥离紧跟的标点/空格
-                let cleaned = after
-                    .trim_start_matches(['.', ' ', ',', '!']);
+                let cleaned = after.trim_start_matches(['.', ' ', ',', '!']);
                 return cleaned.trim().to_string();
             }
         }

@@ -65,7 +65,9 @@ export function useConversationList(
   // Reset state when the load key changes (deferred to avoid sync setState in effect)
   useEffect(() => {
     const nextKey = isActive ? (projectPath ? listLoadKey(projectPath, agentFilter) : null) : null;
+    let cancelled = false;
     Promise.resolve().then(() => {
+      if (cancelled) return;
       if (nextKey === null) {
         setConversations([]);
         setTotal(0);
@@ -78,6 +80,9 @@ export function useConversationList(
         setLoadState({ loading: true, refreshing: false, error: null });
       }
     });
+    return () => {
+      cancelled = true;
+    };
   }, [isActive, projectPath, agentFilter]);
 
   const runLoad = useCallback(
@@ -218,8 +223,13 @@ export function useConversationList(
 
   useEffect(() => {
     if (!isActive) return;
-    // Defer to avoid sync setState in effect (runLoad calls setLoadState synchronously in its IIFE)
-    Promise.resolve().then(() => runLoad({ forceScan: false }));
+    let cancelled = false;
+    Promise.resolve().then(() => {
+      if (!cancelled) runLoad({ forceScan: false });
+    });
+    return () => {
+      cancelled = true;
+    };
   }, [isActive, projectPath, agentFilter, runLoad]);
 
   return {

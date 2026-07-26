@@ -215,15 +215,13 @@ export function useAppShell(): UseAppShellResult {
     initialWslRemoteRefreshDone.current = true;
     for (const entry of wslEntries) {
       for (const project of entry.projects) {
-        if (!project.git_info)
-          void wslActionsWrap.handleRefreshGit(entry.distro, project.id, project.path);
+        if (!project.git_info) void wslActionsWrap.handleRefreshGit(entry.distro, project.id);
       }
     }
     for (const entry of remoteEntries) {
       if (!remoteAuthStore.has(entry.id)) continue;
       for (const project of entry.projects) {
-        if (!project.git_info)
-          void remoteActionsWrap.handleRefreshGit(entry.id, project.id, project.path);
+        if (!project.git_info) void remoteActionsWrap.handleRefreshGit(entry.id, project.id);
       }
     }
   }, [initializing, wslEntries, remoteEntries, remoteAuthStore, wslActionsWrap, remoteActionsWrap]);
@@ -390,8 +388,7 @@ export function useAppShell(): UseAppShellResult {
     async (entry: WSLEntrySession) => {
       await handleWSLEntryAdd(entry);
       for (const project of entry.projects) {
-        if (!project.git_info)
-          void wslActionsWrap.handleRefreshGit(entry.distro, project.id, project.path);
+        if (!project.git_info) void wslActionsWrap.handleRefreshGit(entry.distro, project.id);
       }
     },
     [handleWSLEntryAdd, wslActionsWrap],
@@ -402,8 +399,7 @@ export function useAppShell(): UseAppShellResult {
       const hasAuth = remoteAuthStore.has(entry.id) || !!auth;
       if (hasAuth) {
         for (const project of entry.projects) {
-          if (!project.git_info)
-            void remoteActionsWrap.handleRefreshGit(entry.id, project.id, project.path);
+          if (!project.git_info) void remoteActionsWrap.handleRefreshGit(entry.id, project.id);
         }
       }
     },

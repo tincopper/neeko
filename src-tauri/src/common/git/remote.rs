@@ -6,8 +6,6 @@ use crate::common::connection::types::AuthMethod;
 use crate::common::executor::factory::ExecTarget;
 use crate::common::executor::sync::exec_on;
 use crate::common::utils::command::local::safe_path;
-#[cfg(test)]
-use crate::project::types::FileStatus;
 use crate::project::types::{GitInfo, GitProvider};
 
 use super::parsers::parse_git_info_output;

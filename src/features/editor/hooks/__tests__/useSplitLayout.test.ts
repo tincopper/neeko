@@ -126,7 +126,7 @@ describe('useSplitLayout', () => {
     }
   });
 
-  it('layoutId 变化会重置布局', () => {
+  it('layoutId 变化会重置布局', async () => {
     const { result, rerender } = renderHook(({ layoutId }) => useSplitLayout(layoutId), {
       initialProps: { layoutId: 'layout-1' },
     });
@@ -137,6 +137,7 @@ describe('useSplitLayout', () => {
     expect(result.current.state.paneCount).toBe(2);
 
     rerender({ layoutId: 'layout-2' });
+    await act(async () => {});
     expect(result.current.state.paneCount).toBe(1);
     expect(result.current.state.activePaneId).toBe('p1');
   });

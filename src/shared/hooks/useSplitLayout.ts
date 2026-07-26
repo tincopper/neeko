@@ -185,8 +185,13 @@ export function useSplitLayout(layoutId: string, maxPanes = 4): UseSplitLayoutRe
   // Reset state when layoutId changes
   useEffect(() => {
     paneSeqRef.current = 1;
-    // Defer to avoid sync setState in effect
-    Promise.resolve().then(() => setState(initialState()));
+    let cancelled = false;
+    Promise.resolve().then(() => {
+      if (!cancelled) setState(initialState());
+    });
+    return () => {
+      cancelled = true;
+    };
   }, [layoutId]);
 
   const canSplit = useMemo(() => state.paneCount < maxPanes, [state.paneCount, maxPanes]);

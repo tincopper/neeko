@@ -1,3 +1,5 @@
+//! Integration test entry point aggregating the unit test submodules.
+
 #[path = "unit/agent_test.rs"]
 mod agent_test;
 #[path = "unit/git_test.rs"]

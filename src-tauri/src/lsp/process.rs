@@ -35,7 +35,7 @@ impl LspProcess {
         ),
         String,
     > {
-    let stdin = self
+        let stdin = self
             .stdin
             .take()
             .ok_or_else(|| "LSP stdin already taken".to_string())?;

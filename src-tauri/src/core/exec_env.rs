@@ -22,9 +22,7 @@ pub fn init_host_user_path() {
         {
             let full_path = resolve_host_user_path();
             if full_path.is_empty() {
-                log::warn!(
-                    "[exec_env] Failed to resolve host user PATH, using process default"
-                );
+                log::warn!("[exec_env] Failed to resolve host user PATH, using process default");
             } else {
                 log::info!(
                     "[exec_env] Resolved host user PATH (len={}), injecting into process env",

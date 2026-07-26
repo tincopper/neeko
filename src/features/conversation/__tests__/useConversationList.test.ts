@@ -277,6 +277,8 @@ describe('useConversationList', () => {
       expect(result.current.refreshing).toBe(false);
     });
 
+    await act(async () => {});
+
     expect(result.current.conversations).toHaveLength(1);
     expect(result.current.error).toMatch(/scan boom/);
     expect(listCalls).toBeGreaterThanOrEqual(1);

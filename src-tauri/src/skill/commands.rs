@@ -1596,8 +1596,7 @@ pub async fn import_skill_to_agent_cmd(
             )));
         }
 
-        let agent_skills_dir =
-            super::tool_adapters::expand_skill_path(&agent_skill_path);
+        let agent_skills_dir = super::tool_adapters::expand_skill_path(&agent_skill_path);
         let target = agent_skills_dir.join(&skill.name);
 
         // Create parent directory if needed

@@ -86,7 +86,15 @@ impl RemoteTerminalManager {
 
         // 请求 PTY
         channel
-            .request_pty(false, "xterm-256color", u32::from(cols), u32::from(rows), 0, 0, &[])
+            .request_pty(
+                false,
+                "xterm-256color",
+                u32::from(cols),
+                u32::from(rows),
+                0,
+                0,
+                &[],
+            )
             .await?;
 
         // 请求 shell
@@ -117,21 +125,20 @@ impl RemoteTerminalManager {
 
         // 监听前端输入事件，把数据放入 mpsc
         let tx_clone = input_tx.clone();
-        let input_listener_id =
-            app_handle.listen(format!("terminal-input-{}", id), move |event| {
-                match serde_json::from_str::<Vec<u8>>(event.payload()) {
-                    Ok(data) => {
-                        let _ = tx_clone.send(data);
-                    }
-                    Err(e) => {
-                        log_error(&format!(
-                            "[SSH-WRITER] Parse error: {} payload={}",
-                            e,
-                            event.payload()
-                        ));
-                    }
+        let input_listener_id = app_handle.listen(format!("terminal-input-{}", id), move |event| {
+            match serde_json::from_str::<Vec<u8>>(event.payload()) {
+                Ok(data) => {
+                    let _ = tx_clone.send(data);
                 }
-            });
+                Err(e) => {
+                    log_error(&format!(
+                        "[SSH-WRITER] Parse error: {} payload={}",
+                        e,
+                        event.payload()
+                    ));
+                }
+            }
+        });
 
         // 保存 handle（包含 resize_tx，供 resize_session 调用）
         if let Ok(mut handles) = self.ssh_handles.lock() {
