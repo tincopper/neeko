@@ -1356,3 +1356,36 @@ Root cause: EditorGroupPane.tsx and SplitLayout.tsx container divs called e.prev
 ### Next Steps
 
 - None - task complete
+
+
+## Session 98: Git Changes 支持撤销全部改动
+
+**Date**: 2026-07-26
+**Task**: Git Changes 支持撤销全部改动
+**Branch**: `main`
+
+### Summary
+
+在 Changes 面板增加 Discard All 按钮，并为单文件/全部 discard 增加二次确认对话框。后端命令已存在，补齐 ProjectCommands、commandFactory 与 UI 调用链。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `50ea8e1f` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
