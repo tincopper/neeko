@@ -29,8 +29,8 @@ export function useActiveProject(): ActiveProjectContext {
 
   const commands = useMemo(() => {
     if (!activeProject) return null;
-    return createProjectCommands(activeProject.id);
-  }, [activeProject]);
+    return createProjectCommands(activeProject.id, activeWorktreePath);
+  }, [activeProject, activeWorktreePath]);
 
   return useMemo((): ActiveProjectContext => {
     if (!activeProject) {

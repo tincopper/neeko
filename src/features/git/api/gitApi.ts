@@ -18,58 +18,86 @@ export type { PushOutcome };
 
 // ─── Staging ─────────────────────────────────────────────────────────────────
 
-export function stageFiles(projectId: string, filePaths: string[]): Promise<void> {
-  return invoke<void>('stage_files', { projectId, filePaths });
+export function stageFiles(
+  projectId: string,
+  filePaths: string[],
+  worktreePath?: string | null,
+): Promise<void> {
+  return invoke<void>('stage_files', { projectId, filePaths, worktreePath });
 }
 
-export function unstageFiles(projectId: string, filePaths: string[]): Promise<void> {
-  return invoke<void>('unstage_files', { projectId, filePaths });
+export function unstageFiles(
+  projectId: string,
+  filePaths: string[],
+  worktreePath?: string | null,
+): Promise<void> {
+  return invoke<void>('unstage_files', { projectId, filePaths, worktreePath });
 }
 
-export function stageAll(projectId: string): Promise<void> {
-  return invoke<void>('stage_all', { projectId });
+export function stageAll(projectId: string, worktreePath?: string | null): Promise<void> {
+  return invoke<void>('stage_all', { projectId, worktreePath });
 }
 
-export function unstageAll(projectId: string): Promise<void> {
-  return invoke<void>('unstage_all', { projectId });
+export function unstageAll(projectId: string, worktreePath?: string | null): Promise<void> {
+  return invoke<void>('unstage_all', { projectId, worktreePath });
 }
 
-export function discardFile(projectId: string, filePath: string): Promise<void> {
-  return invoke<void>('discard_file', { projectId, filePath });
+export function discardFile(
+  projectId: string,
+  filePath: string,
+  worktreePath?: string | null,
+): Promise<void> {
+  return invoke<void>('discard_file', { projectId, filePath, worktreePath });
 }
 
-export function discardAll(projectId: string): Promise<void> {
-  return invoke<void>('discard_all', { projectId });
+export function discardAll(projectId: string, worktreePath?: string | null): Promise<void> {
+  return invoke<void>('discard_all', { projectId, worktreePath });
 }
 
 // ─── Remote operations ───────────────────────────────────────────────────────
 
-export function fetch(projectId: string): Promise<PushOutcome> {
-  return invoke<PushOutcome>('fetch', { projectId });
+export function fetch(projectId: string, worktreePath?: string | null): Promise<PushOutcome> {
+  return invoke<PushOutcome>('fetch', { projectId, worktreePath });
 }
 
-export function pull(projectId: string): Promise<PushOutcome> {
-  return invoke<PushOutcome>('pull', { projectId });
+export function pull(projectId: string, worktreePath?: string | null): Promise<PushOutcome> {
+  return invoke<PushOutcome>('pull', { projectId, worktreePath });
 }
 
-export function push(projectId: string, setUpstream?: boolean): Promise<PushOutcome> {
-  return invoke<PushOutcome>('push', { projectId, setUpstream });
+export function push(
+  projectId: string,
+  setUpstream?: boolean,
+  worktreePath?: string | null,
+): Promise<PushOutcome> {
+  return invoke<PushOutcome>('push', { projectId, setUpstream, worktreePath });
 }
 
 export function fetchWithCredentials(
   projectId: string,
   username: string,
   password: string,
+  worktreePath?: string | null,
 ): Promise<PushOutcome> {
-  return invoke<PushOutcome>('fetch_with_credentials', { projectId, username, password });
+  return invoke<PushOutcome>('fetch_with_credentials', {
+    projectId,
+    username,
+    password,
+    worktreePath,
+  });
 }
 
 export function pullWithCredentials(
   projectId: string,
   username: string,
   password: string,
+  worktreePath?: string | null,
 ): Promise<PushOutcome> {
-  return invoke<PushOutcome>('pull_with_credentials', { projectId, username, password });
+  return invoke<PushOutcome>('pull_with_credentials', {
+    projectId,
+    username,
+    password,
+    worktreePath,
+  });
 }
 
 export function pushWithCredentials(
@@ -77,12 +105,14 @@ export function pushWithCredentials(
   setUpstream: boolean,
   username: string,
   password: string,
+  worktreePath?: string | null,
 ): Promise<PushOutcome> {
   return invoke<PushOutcome>('push_with_credentials', {
     projectId,
     setUpstream,
     username,
     password,
+    worktreePath,
   });
 }
 
@@ -90,8 +120,9 @@ export function commitFiles(
   projectId: string,
   filePaths: string[],
   message: string,
+  worktreePath?: string | null,
 ): Promise<CommitResult> {
-  return invoke<CommitResult>('commit_files', { projectId, filePaths, message });
+  return invoke<CommitResult>('commit_files', { projectId, filePaths, message, worktreePath });
 }
 
 // ─── Cherry-pick / Revert / Tag ──────────────────────────────────────────────
@@ -167,12 +198,15 @@ export function isWorktreeDirty(projectId: string, worktreePath: string): Promis
 
 // ─── Info / Read operations ──────────────────────────────────────────────────
 
-export function getGitInfo(projectId: string): Promise<GitInfo> {
-  return invoke<GitInfo>('get_git_info', { projectId });
+export function getGitInfo(projectId: string, worktreePath?: string | null): Promise<GitInfo> {
+  return invoke<GitInfo>('get_git_info', { projectId, worktreePath });
 }
 
-export function getGitBranchInfo(projectId: string): Promise<GitBranchInfo> {
-  return invoke<GitBranchInfo>('get_git_branch_info', { projectId });
+export function getGitBranchInfo(
+  projectId: string,
+  worktreePath?: string | null,
+): Promise<GitBranchInfo> {
+  return invoke<GitBranchInfo>('get_git_branch_info', { projectId, worktreePath });
 }
 
 export function getWorktreeChangedFiles(
@@ -182,13 +216,23 @@ export function getWorktreeChangedFiles(
   return invoke<FileChange[]>('get_worktree_changed_files', { projectId, worktreePath });
 }
 
-export function getChangedFilesDiffStats(projectId: string): Promise<FileDiffStats[]> {
-  return invoke<FileDiffStats[]>('get_changed_files_diff_stats', { projectId });
+export function getChangedFilesDiffStats(
+  projectId: string,
+  worktreePath?: string | null,
+): Promise<FileDiffStats[]> {
+  return invoke<FileDiffStats[]>('get_changed_files_diff_stats', {
+    projectId,
+    worktreePath,
+  });
 }
 
-export function getFileDiff(projectId: string, filePath: string): Promise<DiffResult> {
+export function getFileDiff(
+  projectId: string,
+  filePath: string,
+  worktreePath?: string | null,
+): Promise<DiffResult> {
   const t0 = performance.now();
-  return invoke<DiffResult>('get_file_diff', { projectId, filePath }).then((r) => {
+  return invoke<DiffResult>('get_file_diff', { projectId, filePath, worktreePath }).then((r) => {
     console.debug(
       '[perf] invoke get_file_diff:',
       filePath,
@@ -228,8 +272,11 @@ export function getCommitFileDiff(
   return invoke<DiffResult>('get_commit_file_diff', { projectId, commitHash, filePath });
 }
 
-export function getAheadBehind(projectId: string): Promise<AheadBehind> {
-  return invoke<AheadBehind>('get_ahead_behind', { projectId });
+export function getAheadBehind(
+  projectId: string,
+  worktreePath?: string | null,
+): Promise<AheadBehind> {
+  return invoke<AheadBehind>('get_ahead_behind', { projectId, worktreePath });
 }
 
 // ─── Default branch ──────────────────────────────────────────────────────────

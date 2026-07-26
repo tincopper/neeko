@@ -70,7 +70,8 @@ export function useDiffData({ projectId, diffSource, filePath, commands }: UseDi
         result = await commands.getFileDiff(filePath);
       } else {
         const { getFileDiff } = await import('../../api/gitApi');
-        result = await getFileDiff(projectId ?? '', filePath);
+        const wt = ds?.type === 'worktree' ? ds.worktreePath : undefined;
+        result = await getFileDiff(projectId ?? '', filePath, wt);
       }
 
       const elapsed = (performance.now() - t0).toFixed(0);

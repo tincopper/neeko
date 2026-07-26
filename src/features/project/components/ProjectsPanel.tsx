@@ -25,6 +25,7 @@ import { useRemoteContext } from '@/shared/contexts/RemoteContext';
 import { useWslContext } from '@/shared/contexts/WslContext';
 import { useAheadBehindSync } from '@/shared/hooks/useAheadBehindSync';
 import { useProjectStore } from '@/shared/store/projectStore';
+import { useWorktreeStore } from '@/shared/store/worktreeStore';
 import { getDistroIcon } from '@/shared/utils/distros';
 import { withTimeout } from '@/shared/utils/withTimeout';
 
@@ -36,6 +37,7 @@ const ProjectsPanel: React.FC = () => {
   const { config, agents, ideCommandOverrides, showToast } = useAppContext();
   const projects = useProjectStore((state) => state.projects);
   const activeProjectId = useProjectStore((state) => state.activeProjectId);
+  const activeWorktreePath = useWorktreeStore((state) => state.activeWorktreePath);
   const {
     onRemoveProject,
     onSelectProject,
@@ -181,7 +183,8 @@ const ProjectsPanel: React.FC = () => {
   const handlePush = useCallback(
     async (projectId: string) => {
       try {
-        const outcome = await withTimeout(push(projectId, false), 30_000, 'push');
+        const worktreePath = activeProjectId === projectId ? activeWorktreePath : null;
+        const outcome = await withTimeout(push(projectId, false, worktreePath), 30_000, 'push');
         const msg = pushOutcomeMsg(outcome);
         if (msg) {
           showToast?.(msg, 'error');
@@ -192,13 +195,14 @@ const ProjectsPanel: React.FC = () => {
         showToast?.(String(e), 'error');
       }
     },
-    [onRefreshGit, showToast],
+    [activeProjectId, activeWorktreePath, onRefreshGit, showToast],
   );
 
   const handlePull = useCallback(
     async (projectId: string) => {
       try {
-        const outcome = await withTimeout(pull(projectId), 30_000, 'pull');
+        const worktreePath = activeProjectId === projectId ? activeWorktreePath : null;
+        const outcome = await withTimeout(pull(projectId, worktreePath), 30_000, 'pull');
         const msg = pushOutcomeMsg(outcome);
         if (msg) {
           showToast?.(msg, 'error');
@@ -209,7 +213,7 @@ const ProjectsPanel: React.FC = () => {
         showToast?.(String(e), 'error');
       }
     },
-    [onRefreshGit, showToast],
+    [activeProjectId, activeWorktreePath, onRefreshGit, showToast],
   );
 
   return (

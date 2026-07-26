@@ -14,54 +14,68 @@ import type {
   PushOutcome,
 } from '@/shared/types/git';
 
-export function createProjectCommands(projectId: string): ProjectCommands {
+export function createProjectCommands(projectId: string, worktreePath?: string | null): ProjectCommands {
   return {
     refreshGitInfo(): Promise<GitInfo> {
-      return invoke<GitInfo>('get_git_info', { projectId });
+      return invoke<GitInfo>('get_git_info', { projectId, worktreePath });
     },
     getAheadBehind(): Promise<AheadBehind> {
-      return invoke<AheadBehind>('get_ahead_behind', { projectId });
+      return invoke<AheadBehind>('get_ahead_behind', { projectId, worktreePath });
     },
     getChangedFilesDiffStats(): Promise<
       Array<{ path: string; additions: number; deletions: number }>
     > {
       return invoke<Array<{ path: string; additions: number; deletions: number }>>(
         'get_changed_files_diff_stats',
-        { projectId },
+        { projectId, worktreePath },
       );
     },
     getFileDiff(filePath: string): Promise<DiffResult> {
-      return invoke<DiffResult>('get_file_diff', { projectId, filePath });
+      return invoke<DiffResult>('get_file_diff', { projectId, filePath, worktreePath });
     },
 
     stageFiles(filePaths: string[]): Promise<void> {
-      return invoke<void>('stage_files', { projectId, filePaths });
+      return invoke<void>('stage_files', { projectId, filePaths, worktreePath });
     },
     unstageFiles(filePaths: string[]): Promise<void> {
-      return invoke<void>('unstage_files', { projectId, filePaths });
+      return invoke<void>('unstage_files', { projectId, filePaths, worktreePath });
     },
     discardFile(filePath: string): Promise<void> {
-      return invoke<void>('discard_file', { projectId, filePath });
+      return invoke<void>('discard_file', { projectId, filePath, worktreePath });
     },
 
     commitFiles(filePaths: string[], message: string): Promise<CommitResult> {
-      return invoke<CommitResult>('commit_files', { projectId, filePaths, message });
+      return invoke<CommitResult>('commit_files', { projectId, filePaths, message, worktreePath });
     },
 
     fetch(): Promise<PushOutcome> {
-      return invoke<PushOutcome>('fetch', { projectId });
+      return invoke<PushOutcome>('fetch', { projectId, worktreePath });
     },
     pull(): Promise<PushOutcome> {
-      return invoke<PushOutcome>('pull', { projectId });
+      return invoke<PushOutcome>('pull', { projectId, worktreePath });
     },
     push(setUpstream?: boolean): Promise<PushOutcome> {
-      return invoke<PushOutcome>('push', { projectId, setUpstream: setUpstream ?? false });
+      return invoke<PushOutcome>('push', {
+        projectId,
+        setUpstream: setUpstream ?? false,
+        worktreePath,
+      });
     },
     fetchWithCredentials(username: string, password: string): Promise<PushOutcome> {
-      return invoke<PushOutcome>('fetch_with_credentials', { projectId, username, password });
+      return invoke<PushOutcome>('fetch_with_credentials', {
+        projectId,
+        username,
+        password,
+        worktreePath,
+      });
     },
     pullWithCredentials(username: string, password: string): Promise<PushOutcome> {
-      return invoke<PushOutcome>('pull_with_credentials', { projectId, username, password });
+      return invoke<PushOutcome>('pull_with_credentials', {
+        projectId,
+        username,
+        password,
+        worktreePath,
+      });
     },
     pushWithCredentials(
       setUpstream: boolean,
@@ -73,6 +87,7 @@ export function createProjectCommands(projectId: string): ProjectCommands {
         setUpstream,
         username,
         password,
+        worktreePath,
       });
     },
 
@@ -143,6 +158,7 @@ export function createProjectCommands(projectId: string): ProjectCommands {
         agentId,
         agentCommandOverride: agentCommandOverride ?? null,
         filePaths,
+        worktreePath,
       });
     },
   };

@@ -110,7 +110,8 @@ export function useProjectActions({
 
   const refreshGit = useMemo(() => {
     const handler = async (_connectionId: string, projectId: string): Promise<void> => {
-      const gitInfo = await getGitInfo(projectId).catch((e) => {
+      const worktreePath = unifiedActiveWtPath;
+      const gitInfo = await getGitInfo(projectId, worktreePath).catch((e) => {
         console.error(`[${isWsl ? 'WSL' : 'SSH'}] Failed to refresh git info:`, e);
         return null;
       });
@@ -135,7 +136,7 @@ export function useProjectActions({
       });
     };
     return handler;
-  }, [isWsl]);
+  }, [isWsl, unifiedActiveWtPath]);
 
   const handleRefreshGit = useCallback(
     async (connectionId: string, projectId: string) => {

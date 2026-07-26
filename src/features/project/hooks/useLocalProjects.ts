@@ -8,6 +8,7 @@ import { destroyTerminalCachesByPrefix } from '@/features/terminal/components/te
 import { useEditorStore } from '@/shared/store';
 import { useGitStore } from '@/shared/store/gitStore';
 import { useProjectStore } from '@/shared/store/projectStore';
+import { useWorktreeStore } from '@/shared/store/worktreeStore';
 import type { Project, AgentConfig, Tab, FileChange, Worktree } from '@/shared/types';
 import { aheadBehindKey } from '@/shared/utils/aheadBehindKey';
 import { applyStateAction } from '@/shared/utils/entryUpdates';
@@ -33,6 +34,7 @@ export function useLocalProjects() {
   const projects = useProjectStore(useShallow((state) => state.projects));
   const activeProjectId = useProjectStore((state) => state.activeProjectId);
   const activeProject = useProjectStore((state) => state.activeProject);
+  const activeWorktreePath = useWorktreeStore((s) => s.activeWorktreePath);
 
   const setProjects: Dispatch<SetStateAction<Project[]>> = useCallback((updater) => {
     useProjectStore.setState((state) => {
@@ -239,10 +241,13 @@ export function useLocalProjects() {
     };
 
     try {
-      const changedFiles = await getWorktreeChangedFiles(projectId, '');
+      const changedFiles = await getWorktreeChangedFiles(
+        projectId,
+        activeWorktreePath ?? '',
+      );
       updateProjectGitInfo({ changed_files: changedFiles, is_clean: changedFiles.length === 0 });
 
-      getGitBranchInfo(projectId)
+      getGitBranchInfo(projectId, activeWorktreePath)
         .then((branchInfo) => {
           updateProjectGitInfo({
             current_branch: branchInfo.current_branch,
@@ -253,7 +258,7 @@ export function useLocalProjects() {
         .catch((error) => console.error('Failed to refresh git branch info:', error));
 
       // 同步 ahead/behind（待 push 数量），与 changed_files 一并刷新
-      getAheadBehind(projectId)
+      getAheadBehind(projectId, activeWorktreePath)
         .then((ab) => {
           useGitStore.getState().setAheadBehind(aheadBehindKey('local', projectId, projectId), ab);
         })
@@ -261,7 +266,7 @@ export function useLocalProjects() {
     } catch (error) {
       console.error('Failed to refresh git info:', error);
     }
-  }, []);
+  }, [activeWorktreePath]);
 
   const handleOpenIde = useCallback(
     async (project: { id: string; selected_ide: string | null }) => {

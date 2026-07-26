@@ -14,6 +14,7 @@ pub async fn generate_commit_message(
     agent_id: String,
     agent_command_override: Option<String>,
     file_paths: Vec<String>,
+    worktree_path: Option<String>,
     state: State<'_, AppStateWrapper>,
 ) -> Result<String, AppError> {
     let _ = agent_command_override;
@@ -21,12 +22,13 @@ pub async fn generate_commit_message(
     let (agent_cmd, prompt_args, post_prompt_args) = resolve_agent_for_remote(&state, &agent_id);
     let prompt = ai_svc::build_simple_commit_prompt(&file_paths);
     let (t, wd) = state.resolve_project(&project_id)?;
+    let repo_path = worktree_path.as_deref().unwrap_or(&wd).to_string();
 
     let output = match t.exec_target() {
         ExecTarget::Local => {
             run_agent_local(
                 &state,
-                &wd,
+                &repo_path,
                 &agent_id,
                 agent_command_override.as_deref(),
                 &file_paths,
@@ -40,7 +42,7 @@ pub async fn generate_commit_message(
             ref auth,
         } => {
             run_agent_remote(
-                &wd,
+                &repo_path,
                 &agent_cmd,
                 &prompt_args,
                 &post_prompt_args,
@@ -54,7 +56,7 @@ pub async fn generate_commit_message(
         }
         ExecTarget::Wsl { ref distro } => {
             run_agent_wsl(
-                &wd,
+                &repo_path,
                 &agent_cmd,
                 &prompt_args,
                 &post_prompt_args,

@@ -207,7 +207,10 @@ describe('useLocalProjects', () => {
       projectId: 'p1',
       worktreePath: '',
     });
-    expect(mockInvoke).toHaveBeenCalledWith('get_ahead_behind', { projectId: 'p1' });
+    expect(mockInvoke).toHaveBeenCalledWith('get_ahead_behind', {
+      projectId: 'p1',
+      worktreePath: null,
+    });
   });
 
   it('handleOpenIde 不做任何操作当无 IDE', async () => {

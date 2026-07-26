@@ -17,23 +17,24 @@ describe('createProjectCommands (Local)', () => {
   const commands = createProjectCommands(projectId);
   const mockInvoke = vi.mocked(invoke);
   const payload = () => ({ projectId });
+  const wtPayload = () => ({ projectId, worktreePath: undefined });
 
   beforeEach(() => mockInvoke.mockClear());
 
   it('refreshGitInfo should call get_git_info', async () => {
     await commands.refreshGitInfo();
-    expect(mockInvoke).toHaveBeenCalledWith('get_git_info', payload());
+    expect(mockInvoke).toHaveBeenCalledWith('get_git_info', wtPayload());
   });
 
   it('getAheadBehind should call get_ahead_behind', async () => {
     await commands.getAheadBehind();
-    expect(mockInvoke).toHaveBeenCalledWith('get_ahead_behind', payload());
+    expect(mockInvoke).toHaveBeenCalledWith('get_ahead_behind', wtPayload());
   });
 
   it('stageFiles should call stage_files with filePaths', async () => {
     await commands.stageFiles(['src/foo.ts', 'src/bar.ts']);
     expect(mockInvoke).toHaveBeenCalledWith('stage_files', {
-      ...payload(),
+      ...wtPayload(),
       filePaths: ['src/foo.ts', 'src/bar.ts'],
     });
   });
@@ -41,7 +42,7 @@ describe('createProjectCommands (Local)', () => {
   it('unstageFiles should call unstage_files', async () => {
     await commands.unstageFiles(['src/foo.ts']);
     expect(mockInvoke).toHaveBeenCalledWith('unstage_files', {
-      ...payload(),
+      ...wtPayload(),
       filePaths: ['src/foo.ts'],
     });
   });
@@ -49,7 +50,7 @@ describe('createProjectCommands (Local)', () => {
   it('discardFile should call discard_file', async () => {
     await commands.discardFile('src/foo.ts');
     expect(mockInvoke).toHaveBeenCalledWith('discard_file', {
-      ...payload(),
+      ...wtPayload(),
       filePath: 'src/foo.ts',
     });
   });
@@ -57,7 +58,7 @@ describe('createProjectCommands (Local)', () => {
   it('commitFiles should call commit_files', async () => {
     await commands.commitFiles(['src/foo.ts'], 'fix: foo');
     expect(mockInvoke).toHaveBeenCalledWith('commit_files', {
-      ...payload(),
+      ...wtPayload(),
       filePaths: ['src/foo.ts'],
       message: 'fix: foo',
     });
@@ -65,18 +66,18 @@ describe('createProjectCommands (Local)', () => {
 
   it('fetch should call fetch', async () => {
     await commands.fetch();
-    expect(mockInvoke).toHaveBeenCalledWith('fetch', payload());
+    expect(mockInvoke).toHaveBeenCalledWith('fetch', wtPayload());
   });
 
   it('pull should call pull', async () => {
     await commands.pull();
-    expect(mockInvoke).toHaveBeenCalledWith('pull', payload());
+    expect(mockInvoke).toHaveBeenCalledWith('pull', wtPayload());
   });
 
   it('push should call push with setUpstream default false', async () => {
     await commands.push();
     expect(mockInvoke).toHaveBeenCalledWith('push', {
-      ...payload(),
+      ...wtPayload(),
       setUpstream: false,
     });
   });
@@ -84,7 +85,7 @@ describe('createProjectCommands (Local)', () => {
   it('push(true) should call push with setUpstream true', async () => {
     await commands.push(true);
     expect(mockInvoke).toHaveBeenCalledWith('push', {
-      ...payload(),
+      ...wtPayload(),
       setUpstream: true,
     });
   });
@@ -92,7 +93,7 @@ describe('createProjectCommands (Local)', () => {
   it('fetchWithCredentials should call fetch_with_credentials', async () => {
     await commands.fetchWithCredentials('user', 'pass');
     expect(mockInvoke).toHaveBeenCalledWith('fetch_with_credentials', {
-      ...payload(),
+      ...wtPayload(),
       username: 'user',
       password: 'pass',
     });
@@ -101,7 +102,7 @@ describe('createProjectCommands (Local)', () => {
   it('pullWithCredentials should call pull_with_credentials', async () => {
     await commands.pullWithCredentials('user', 'pass');
     expect(mockInvoke).toHaveBeenCalledWith('pull_with_credentials', {
-      ...payload(),
+      ...wtPayload(),
       username: 'user',
       password: 'pass',
     });
@@ -110,7 +111,7 @@ describe('createProjectCommands (Local)', () => {
   it('pushWithCredentials should call push_with_credentials', async () => {
     await commands.pushWithCredentials(false, 'user', 'pass');
     expect(mockInvoke).toHaveBeenCalledWith('push_with_credentials', {
-      ...payload(),
+      ...wtPayload(),
       setUpstream: false,
       username: 'user',
       password: 'pass',
@@ -232,10 +233,58 @@ describe('createProjectCommands (Local)', () => {
   it('generateCommitMessage should call generate_commit_message', async () => {
     await commands.generateCommitMessage('opencode', ['src/foo.ts'], null);
     expect(mockInvoke).toHaveBeenCalledWith('generate_commit_message', {
-      ...payload(),
+      ...wtPayload(),
       agentId: 'opencode',
       filePaths: ['src/foo.ts'],
       agentCommandOverride: null,
+    });
+  });
+});
+
+describe('createProjectCommands with worktreePath', () => {
+  const projectId = 'proj-123';
+  const worktreePath = '/tmp/wt-feature';
+  const commands = createProjectCommands(projectId, worktreePath);
+  const mockInvoke = vi.mocked(invoke);
+
+  beforeEach(() => mockInvoke.mockClear());
+
+  it('commitFiles should pass worktreePath', async () => {
+    await commands.commitFiles(['src/foo.ts'], 'feat: foo');
+    expect(mockInvoke).toHaveBeenCalledWith('commit_files', {
+      projectId,
+      filePaths: ['src/foo.ts'],
+      message: 'feat: foo',
+      worktreePath,
+    });
+  });
+
+  it('stageFiles should pass worktreePath', async () => {
+    await commands.stageFiles(['src/foo.ts']);
+    expect(mockInvoke).toHaveBeenCalledWith('stage_files', {
+      projectId,
+      filePaths: ['src/foo.ts'],
+      worktreePath,
+    });
+  });
+
+  it('push should pass worktreePath', async () => {
+    await commands.push(true);
+    expect(mockInvoke).toHaveBeenCalledWith('push', {
+      projectId,
+      setUpstream: true,
+      worktreePath,
+    });
+  });
+
+  it('generateCommitMessage should pass worktreePath', async () => {
+    await commands.generateCommitMessage('opencode', ['src/foo.ts'], null);
+    expect(mockInvoke).toHaveBeenCalledWith('generate_commit_message', {
+      projectId,
+      agentId: 'opencode',
+      agentCommandOverride: null,
+      filePaths: ['src/foo.ts'],
+      worktreePath,
     });
   });
 });

@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useCallback } from 'react';
 
 import type { FileChange } from '@/shared/types';
+import { useProjectStore } from '@/shared/store/projectStore';
+import { useWorktreeStore } from '@/shared/store/worktreeStore';
 import { withTimeout } from '@/shared/utils/withTimeout';
 import { Button } from '@/ui/Button';
 import { Checkbox } from '@/ui/Checkbox';
@@ -22,6 +24,10 @@ interface CommitDialogProps {
 }
 
 function CommitDialog({ projectId, onClose, onRefreshGit }: CommitDialogProps) {
+  const activeProjectId = useProjectStore((s) => s.activeProjectId);
+  const activeWorktreePath = useWorktreeStore((s) => s.activeWorktreePath);
+  const worktreePath = activeProjectId === projectId ? activeWorktreePath : null;
+
   const [files, setFiles] = useState<FileChange[]>([]);
   const [untrackedCount, setUntrackedCount] = useState(0);
   const [filesLoading, setFilesLoading] = useState(true);
@@ -38,7 +44,7 @@ function CommitDialog({ projectId, onClose, onRefreshGit }: CommitDialogProps) {
   }, [amend]);
 
   useEffect(() => {
-    getWorktreeChangedFiles(projectId, '')
+    getWorktreeChangedFiles(projectId, worktreePath ?? '')
       .then((result) => {
         const untracked = result.filter((f) => f.status === 'Untracked');
         setUntrackedCount(untracked.length);
@@ -46,7 +52,7 @@ function CommitDialog({ projectId, onClose, onRefreshGit }: CommitDialogProps) {
       })
       .catch((e) => setError(String(e)))
       .finally(() => setFilesLoading(false));
-  }, [projectId]);
+  }, [projectId, worktreePath]);
 
   useEffect(() => {
     if (!amend) return;
@@ -77,9 +83,9 @@ function CommitDialog({ projectId, onClose, onRefreshGit }: CommitDialogProps) {
       setError(null);
       try {
         const filePaths = files.map((f) => f.path);
-        await commitFiles(projectId, filePaths, message.trim());
+        await commitFiles(projectId, filePaths, message.trim(), worktreePath);
         if (pushAfter) {
-          const outcome = await withTimeout(push(projectId, false), 30_000, 'push');
+          const outcome = await withTimeout(push(projectId, false, worktreePath), 30_000, 'push');
           const msg = pushOutcomeMsg(outcome);
           if (msg) {
             setError(msg);
@@ -94,14 +100,14 @@ function CommitDialog({ projectId, onClose, onRefreshGit }: CommitDialogProps) {
         setSubmitting(false);
       }
     },
-    [projectId, message, files, onRefreshGit, onClose],
+    [projectId, worktreePath, message, files, onRefreshGit, onClose],
   );
 
   const handlePush = useCallback(async () => {
     setSubmitting(true);
     setError(null);
     try {
-      const outcome = await withTimeout(push(projectId, false), 30_000, 'push');
+      const outcome = await withTimeout(push(projectId, false, worktreePath), 30_000, 'push');
       const msg = pushOutcomeMsg(outcome);
       if (msg) {
         setError(msg);
@@ -114,13 +120,13 @@ function CommitDialog({ projectId, onClose, onRefreshGit }: CommitDialogProps) {
     } finally {
       setSubmitting(false);
     }
-  }, [projectId, onRefreshGit, onClose]);
+  }, [projectId, worktreePath, onRefreshGit, onClose]);
 
   const handlePull = useCallback(async () => {
     setSubmitting(true);
     setError(null);
     try {
-      const outcome = await withTimeout(pull(projectId), 30_000, 'pull');
+      const outcome = await withTimeout(pull(projectId, worktreePath), 30_000, 'pull');
       const msg = pushOutcomeMsg(outcome);
       if (msg) {
         setError(msg);
@@ -133,7 +139,7 @@ function CommitDialog({ projectId, onClose, onRefreshGit }: CommitDialogProps) {
     } finally {
       setSubmitting(false);
     }
-  }, [projectId, onRefreshGit, onClose]);
+  }, [projectId, worktreePath, onRefreshGit, onClose]);
 
   return (
     <Dialog open onOpenChange={(open) => !open && onClose()}>
