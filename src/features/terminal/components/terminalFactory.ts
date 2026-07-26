@@ -6,6 +6,7 @@ import { Terminal } from '@xterm/xterm';
 import type { AgentConfig } from '@/shared/types';
 import { buildFontFamily, buildTerminalTheme } from '@/shared/utils/terminal';
 
+// eslint-disable-next-line import/no-restricted-paths -- terminal factory needs agent API for agent config
 import { getAgent } from '../../agent/api/agentApi';
 import { createTerminalSession } from '../api/terminalApi';
 

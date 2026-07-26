@@ -1,8 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
-import { useEditorAgentActions } from '@/features/editor/hooks/useEditorAgentActions';
 import { cn } from '@/lib/utils';
 import { ChevronRight, Sparkles, CloseIcon } from '@/shared/components/icons';
+import { useEditorAgentActions } from '@/shared/hooks/useEditorAgentActions';
 import { useEditorStore } from '@/shared/store';
 import { useNotificationStore } from '@/shared/store/notificationStore';
 import { buildDiffMessage } from '@/shared/utils/agentPrompt';

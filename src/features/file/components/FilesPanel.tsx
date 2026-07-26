@@ -1,6 +1,6 @@
 import React, { useCallback, useState, useEffect, useRef, useMemo } from 'react';
 
-import ContextMenu, { type ContextMenuItem } from '@/features/project/components/ContextMenu';
+import ContextMenu, { type ContextMenuItem } from '@/shared/components/ContextMenu';
 import {
   ChevronRight,
   Globe,

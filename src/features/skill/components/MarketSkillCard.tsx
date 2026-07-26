@@ -1,5 +1,6 @@
 import React, { useCallback, useMemo } from 'react';
 
+// eslint-disable-next-line import/no-restricted-paths -- market skill card opens browser via browser API
 import { openInDefaultBrowser } from '@/features/browser/api/browserApi';
 import { humanizeSkillId } from '@/features/skill/utils/parseSkillDescription';
 import { cn } from '@/lib/utils';

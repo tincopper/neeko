@@ -1,5 +1,6 @@
 import React from 'react';
 
+// eslint-disable-next-line import/no-restricted-paths -- settings UI resolves agent icons via agent API
 import { resolveAgentIconSrc } from '@/features/agent/api/agentApi';
 import { cn } from '@/lib/utils';
 import { FolderIcon } from '@/shared/components/icons';

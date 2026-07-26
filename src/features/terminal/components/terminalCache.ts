@@ -2,6 +2,7 @@
 import type { FitAddon } from '@xterm/addon-fit';
 import type { Terminal } from '@xterm/xterm';
 
+// eslint-disable-next-line import/no-restricted-paths -- terminal cache needs agent API for agent config
 import { getAgent } from '../../agent/api/agentApi';
 import { closeTerminalSession } from '../api/terminalApi';
 

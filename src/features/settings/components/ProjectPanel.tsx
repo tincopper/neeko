@@ -1,6 +1,7 @@
 import { open } from '@tauri-apps/plugin-dialog';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 
+// eslint-disable-next-line import/no-restricted-paths -- settings project panel uses task dialog
 import TaskDialog from '@/features/task/components/TaskDialog';
 import { cn } from '@/lib/utils';
 import { Pencil, Trash2, Plus } from '@/shared/components/icons';
@@ -22,7 +23,9 @@ import {
   Separator,
 } from '@/ui';
 
+// eslint-disable-next-line import/no-restricted-paths -- settings project panel needs agent API for agent config
 import { setProjectAgents, listAgents } from '../../agent/api/agentApi';
+/* eslint-disable import/no-restricted-paths -- settings project panel needs project API for project operations */
 import {
   renameProject,
   changeProjectPath,
@@ -31,6 +34,7 @@ import {
   removeProject,
   setProjectPrimaryLanguage,
 } from '../../project/api/projectApi';
+/* eslint-enable import/no-restricted-paths */
 
 interface ProjectPanelProps {
   projectId: string;

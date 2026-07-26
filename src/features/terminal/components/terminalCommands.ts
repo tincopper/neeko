@@ -1,5 +1,6 @@
 import { emit } from '@tauri-apps/api/event';
 
+// eslint-disable-next-line import/no-restricted-paths -- terminal commands need agent API for agent config
 import { getAgent } from '../../agent/api/agentApi';
 import { resizeTerminal, closeTerminalSession } from '../api/terminalApi';
 

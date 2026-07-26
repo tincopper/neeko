@@ -1,7 +1,10 @@
 import { useEffect, useRef } from 'react';
 
+// eslint-disable-next-line import/no-restricted-paths -- keyboard shortcuts reference project list types
 import type { ProjectListItem } from '@/features/project/hooks/useProjectList';
+// eslint-disable-next-line import/no-restricted-paths -- keyboard shortcuts reference quick open store
 import { useQuickOpenStore } from '@/features/quick-open';
+// eslint-disable-next-line import/no-restricted-paths -- keyboard shortcuts need terminal cache for refresh
 import { refreshTerminal, terminalCacheKey } from '@/features/terminal/components/terminalCache';
 import { useEditorStore } from '@/shared/store';
 import { useDockStore } from '@/shared/store/dockStore';

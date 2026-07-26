@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { invoke } from '@/testing/tauriCore';
 
 import { createManagedSkill, createTagGroup } from '../../../../testing/factories';
+// eslint-disable-next-line import/no-restricted-paths -- test needs project store for mocking
 import { useProjectStore } from '../../../project/store';
 import { initialSkillState, useSkillStore } from '../../store';
 import ProjectSkillContent from '../ProjectSkillContent';

@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 
+// eslint-disable-next-line import/no-restricted-paths -- PR panel uses editor tab types for opening PR detail tabs
 import type { PRDetailTabData } from '@/features/editor/types';
 import { cn } from '@/lib/utils';
 import { SearchIcon, MessageSquare, ChevronDown, GitMerge, X } from '@/shared/components/icons';

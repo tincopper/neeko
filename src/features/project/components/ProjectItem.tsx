@@ -2,9 +2,9 @@ import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import React, { useMemo, useState } from 'react';
 
-import type { DialogType } from '@/features/git/components/GitDialog';
 import { cn } from '@/lib/utils';
 import ConfirmDialog from '@/shared/components/ConfirmDialog';
+import type { DialogType } from '@/shared/components/GitDialog';
 import { MoreVerticalIcon } from '@/shared/components/icons';
 import { useProjectStore } from '@/shared/store/projectStore';
 import { getIdeIconByCommand } from '@/shared/utils/idePresets';

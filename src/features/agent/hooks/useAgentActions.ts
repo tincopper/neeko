@@ -1,11 +1,14 @@
 import { useCallback } from 'react';
 
-import type { SaveSessionFn } from '@/features/connection/hooks/useWslProjects';
+// eslint-disable-next-line import/no-restricted-paths -- agent actions need terminal cache for refresh
 import { refreshTerminal } from '@/features/terminal/components/terminalCache';
+// eslint-disable-next-line import/no-restricted-paths -- agent actions need terminal command for switching
 import { switchAgentInTerminal } from '@/features/terminal/components/terminalCommands';
+import type { SaveSessionFn } from '@/shared/hooks/useConnectionProjects';
 import { useProjectStore } from '@/shared/store/projectStore';
 import type { AgentConfig } from '@/shared/types';
 
+// eslint-disable-next-line import/no-restricted-paths -- agent actions need project API for IDE setting
 import { setProjectIde } from '../../project/api/projectApi';
 
 interface TerminalSettings {

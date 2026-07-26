@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import React, { useState, useCallback, useEffect, useMemo } from 'react';
 
+// eslint-disable-next-line import/no-restricted-paths -- skills panel resolves agent icons via agent API
 import { resolveAgentIconSrc } from '@/features/agent/api/agentApi';
 import { useSkillStore } from '@/features/skill/store';
 import { cn } from '@/lib/utils';

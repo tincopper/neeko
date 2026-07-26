@@ -1,6 +1,8 @@
 import React, { useCallback, useMemo, useState } from 'react';
 
+// eslint-disable-next-line import/no-restricted-paths -- settings LSP panel needs LSP API for extension map
 import { lspGetExtensionMap } from '@/features/lsp/api/lspApi';
+// eslint-disable-next-line import/no-restricted-paths -- settings LSP panel needs languageMap for server config
 import { applyCustomServersFromConfig, setCustomLspExtensionMap } from '@/features/lsp/languageMap';
 import type {
   AppConfig,

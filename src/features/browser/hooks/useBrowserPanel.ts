@@ -1,8 +1,9 @@
 import { listen } from '@tauri-apps/api/event';
 import { useCallback, useEffect, useRef } from 'react';
 
-import { useFileChangedEvent } from '@/features/git/hooks/useFileChangedEvent';
+// eslint-disable-next-line import/no-restricted-paths -- browser panel sends terminal commands via terminal feature
 import { sendToTerminal } from '@/features/terminal/components/terminalCommands';
+import { useFileChangedEvent } from '@/shared/hooks/useFileChangedEvent';
 import { useEditorStore } from '@/shared/store';
 import { useDockStore } from '@/shared/store/dockStore';
 import { useProjectStore } from '@/shared/store/projectStore';

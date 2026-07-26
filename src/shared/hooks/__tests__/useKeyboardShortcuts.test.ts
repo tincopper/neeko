@@ -507,6 +507,7 @@ describe('useKeyboardShortcuts', () => {
   });
 
   it('Ctrl+Alt+R 刷新当前 tab 终端', async () => {
+    // eslint-disable-next-line import/no-restricted-paths -- test uses terminal cache for mock
     const { refreshTerminal } = await import('@/features/terminal/components/terminalCache');
     params.activeTabId = 'tab1';
     storeState = seedStore({
@@ -523,6 +524,7 @@ describe('useKeyboardShortcuts', () => {
   });
 
   it('Ctrl+Alt+R 无活跃 tab 时刷新项目终端', async () => {
+    // eslint-disable-next-line import/no-restricted-paths -- test uses terminal cache for mock
     const { refreshTerminal } = await import('@/features/terminal/components/terminalCache');
     params.activeTabId = null;
     storeState = seedStore({

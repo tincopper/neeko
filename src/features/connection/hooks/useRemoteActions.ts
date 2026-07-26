@@ -2,8 +2,8 @@
  * @deprecated Use `useProjectActions({ environment: "remote", ... })` from `features/project/hooks/useProjectActions` instead.
  * This is a thin wrapper for backwards compatibility.
  */
-import type { SaveSessionFn } from '@/features/project/hooks/useConnectionProjects';
-import { useProjectActions } from '@/features/project/hooks/useProjectActions';
+import type { SaveSessionFn } from '@/shared/hooks/useConnectionProjects';
+import { useProjectActions } from '@/shared/hooks/useProjectActions';
 import type { AppConfig } from '@/shared/types';
 
 interface DeprecatedUseRemoteActionsParams {

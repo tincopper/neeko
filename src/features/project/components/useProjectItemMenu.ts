@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 
-import type { DialogState } from '@/features/git/components/GitDialog';
+import type { DialogState } from '@/shared/components/GitDialog';
 import { FolderGitIcon, GitLogoIcon } from '@/shared/components/icons';
 import type { Project } from '@/shared/types';
 

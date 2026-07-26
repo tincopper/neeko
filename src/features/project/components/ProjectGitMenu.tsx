@@ -1,8 +1,8 @@
 import { ArrowDownFromLine, ArrowUpFromLine, GitBranch, GitCommitHorizontal } from 'lucide-react';
 import React from 'react';
 
-import type { DialogType } from '@/features/git/components/GitDialog';
 import { cn } from '@/lib/utils';
+import type { DialogType } from '@/shared/components/GitDialog';
 import { FolderGitIcon } from '@/shared/components/icons';
 import type { Project } from '@/shared/types';
 import {

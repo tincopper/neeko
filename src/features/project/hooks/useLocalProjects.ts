@@ -3,6 +3,7 @@ import type { Dispatch, SetStateAction } from 'react';
 import { useState, useCallback } from 'react';
 import { useShallow } from 'zustand/shallow';
 
+// eslint-disable-next-line import/no-restricted-paths -- useLocalProjects cleans terminal caches on project close
 import { destroyTerminalCachesByPrefix } from '@/features/terminal/components/terminalCache';
 import { useEditorStore } from '@/shared/store';
 import { useGitStore } from '@/shared/store/gitStore';
@@ -13,8 +14,11 @@ import { applyStateAction } from '@/shared/utils/entryUpdates';
 import { getMacAppNameByCommand, resolveIdeLaunchCommand } from '@/shared/utils/idePresets';
 import { randomAvatarColor } from '@/shared/utils/projectAvatar';
 
+// eslint-disable-next-line import/no-restricted-paths -- useLocalProjects needs agent API for listing agents
 import { listAgents } from '../../agent/api/agentApi';
+// eslint-disable-next-line import/no-restricted-paths -- useLocalProjects needs git API for branch/worktree info
 import { getWorktreeChangedFiles, getGitBranchInfo, getAheadBehind } from '../../git/api/gitApi';
+// eslint-disable-next-line import/no-restricted-paths -- useLocalProjects needs session API for persistence
 import { saveSession } from '../../session/api/sessionApi';
 import {
   addProject,

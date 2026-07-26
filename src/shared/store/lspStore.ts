@@ -2,6 +2,7 @@ import { listen } from '@tauri-apps/api/event';
 import type { UnlistenFn } from '@tauri-apps/api/event';
 import { create } from 'zustand';
 
+/* eslint-disable import/no-restricted-paths -- lspStore depends on LSP feature types and APIs (inherent dependency) */
 import {
   lspCheckServerInstalled,
   lspDetectProjectProfile,
@@ -11,6 +12,7 @@ import {
 } from '@/features/lsp/api/lspApi';
 import { setCustomLspExtensionMap } from '@/features/lsp/languageMap';
 import type { ProjectLanguageProfile } from '@/features/lsp/types';
+/* eslint-enable import/no-restricted-paths */
 import { preloadLanguageExtension } from '@/shared/utils/codemirror';
 
 export interface LspSessionState {

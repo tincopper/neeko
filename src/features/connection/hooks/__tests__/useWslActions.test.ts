@@ -2,10 +2,12 @@ import { renderHook, act } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 import { useWslActions } from '@/features/connection/hooks/useWslActions';
+/* eslint-disable import/no-restricted-paths -- test mocks terminal cache for wsl actions */
 import {
   switchAgentInWslTerminal,
   refreshWslTerminal,
 } from '@/features/terminal/components/terminalCache';
+/* eslint-enable import/no-restricted-paths */
 import { useEditorStore } from '@/shared/store';
 import { useConnectionStore } from '@/shared/store/connectionStore';
 import { useProjectStore } from '@/shared/store/projectStore';

@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 
-import AgentIcon from '@/features/agent/components/AgentIcon';
 import { cn } from '@/lib/utils';
+import AgentIcon from '@/shared/components/AgentIcon';
 import { useAppContext } from '@/shared/contexts/AppContext';
 import { WSLProject, WSLEntrySession } from '@/shared/types';
 import { getDistroIcon } from '@/shared/utils/distros';

@@ -9,6 +9,7 @@ import type {
   AgentSkillGroup,
 } from '@/shared/types';
 
+// eslint-disable-next-line import/no-restricted-paths -- skill store writes files via file API for document editing
 import { writeFileContent as writeFileContentApi } from '../file/api/fileApi';
 
 import {

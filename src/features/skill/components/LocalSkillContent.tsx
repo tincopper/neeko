@@ -1,5 +1,6 @@
 import React, { useMemo, useEffect, useState } from 'react';
 
+// eslint-disable-next-line import/no-restricted-paths -- local skill content lists agents via agent API
 import { listAgents } from '@/features/agent/api/agentApi';
 import { getSkillsForTagGroup } from '@/features/skill/api/skillApi';
 import { useSkillStore } from '@/features/skill/store';

@@ -1,4 +1,4 @@
-import type { DialogState } from '@/features/git/components/GitDialog';
+import type { DialogState } from '@/shared/components/GitDialog';
 import type { AgentConfig, AppConfig, Project } from '@/shared/types';
 
 export interface ProjectItemActions {

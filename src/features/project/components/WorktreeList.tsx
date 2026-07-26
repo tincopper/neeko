@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 
+// eslint-disable-next-line import/no-restricted-paths -- WorktreeList needs terminal cache for tab cleanup
 import { terminalCache, destroyTerminalCache } from '@/features/terminal/components/terminalCache';
 import { cn } from '@/lib/utils';
 import ConfirmDialog from '@/shared/components/ConfirmDialog';
@@ -7,6 +8,7 @@ import { BranchIcon, TrashIcon, FolderGitIcon } from '@/shared/components/icons'
 import { useWorktreeStore } from '@/shared/store/worktreeStore';
 import { Worktree } from '@/shared/types';
 
+/* eslint-disable import/no-restricted-paths -- WorktreeList needs git/terminal APIs for worktree management */
 import {
   removeWorktree,
   deleteBranch,
@@ -15,6 +17,7 @@ import {
   isWorktreeDirty,
 } from '../../git/api/gitApi';
 import { closeTerminalSession } from '../../terminal/api/terminalApi';
+/* eslint-enable import/no-restricted-paths */
 
 import SessionChips from './SessionChips';
 

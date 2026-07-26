@@ -1,9 +1,9 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 
-import SessionChips from '@/features/project/components/SessionChips';
 import { cn } from '@/lib/utils';
 import ConfirmDialog from '@/shared/components/ConfirmDialog';
 import { BranchIcon, TrashIcon, FolderGitIcon } from '@/shared/components/icons';
+import SessionChips from '@/shared/components/SessionChips';
 import type { FileChange, Worktree } from '@/shared/types';
 
 interface ConnectionWorktreeListProps {

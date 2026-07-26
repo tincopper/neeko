@@ -1,6 +1,7 @@
 import { useState, useRef, useCallback } from 'react';
 
-import type { SaveSessionFn } from '../../connection/hooks/useWslProjects';
+import type { SaveSessionFn } from '@/shared/hooks/useConnectionProjects';
+
 import { saveSession as saveSessionApi } from '../api/sessionApi';
 
 export interface UseSessionPersistenceResult {

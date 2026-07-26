@@ -3,10 +3,12 @@ import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { useDockStore } from '@/shared/store/dockStore';
 import type { AppConfig, AgentConfig } from '@/shared/types';
 
+/* eslint-disable import/no-restricted-paths -- agent selector loads/saves session config via session API */
 import {
   loadConfig as loadSessionConfig,
   saveConfig as saveSessionConfig,
 } from '../../session/api/sessionApi';
+/* eslint-enable import/no-restricted-paths */
 import { checkAgentsInstalled, listAgents, setProjectAgents } from '../api/agentApi';
 
 import AgentIcon from './AgentIcon';

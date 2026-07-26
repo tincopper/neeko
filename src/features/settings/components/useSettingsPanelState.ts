@@ -6,6 +6,7 @@ import { DEFAULT_AGENT_ICON } from '@/shared/utils/agents';
 import { IDE_PRESETS, getIdeCommand } from '@/shared/utils/idePresets';
 import type { IdePreset } from '@/shared/utils/idePresets';
 
+// eslint-disable-next-line import/no-restricted-paths -- settings panel state management needs agent API
 import { addAgent, removeAgent, importAgentIcon } from '../../agent/api/agentApi';
 import { getSystemFonts } from '../api/settingsApi';
 

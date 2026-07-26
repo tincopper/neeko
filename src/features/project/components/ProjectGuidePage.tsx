@@ -1,6 +1,6 @@
 import React from 'react';
 
-import AgentIcon from '@/features/agent/components/AgentIcon';
+import AgentIcon from '@/shared/components/AgentIcon';
 import { Settings } from '@/shared/components/icons';
 import type { AgentConfig } from '@/shared/types';
 

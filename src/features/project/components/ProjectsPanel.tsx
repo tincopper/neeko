@@ -11,22 +11,25 @@ import { restrictToVerticalAxis, restrictToParentElement } from '@dnd-kit/modifi
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import React, { useCallback, useState, useEffect, useMemo } from 'react';
 
+// eslint-disable-next-line import/no-restricted-paths -- projects panel renders connection project cards
 import ConnectionProjectCard from '@/features/connection/components/ConnectionProjectCard';
-import { useRemoteContext } from '@/features/connection/contexts/RemoteContext';
-import { useWslContext } from '@/features/connection/contexts/WslContext';
+// eslint-disable-next-line import/no-restricted-paths -- projects panel renders git commit dialog
 import CommitDialog from '@/features/git/components/CommitDialog';
-import GitDialog, { DialogState } from '@/features/git/components/GitDialog';
-import { useAheadBehindSync } from '@/features/git/hooks/useAheadBehindSync';
 import ProjectItem from '@/features/project/components/ProjectItem';
 import { SectionHeader } from '@/features/project/components/SectionHeader';
 import { useActiveProject } from '@/features/project/hooks/use-active-project';
 import { useProjectActionsContext } from '@/features/project/ProjectContext';
+import GitDialog, { DialogState } from '@/shared/components/GitDialog';
 import { useAppContext } from '@/shared/contexts/AppContext';
+import { useRemoteContext } from '@/shared/contexts/RemoteContext';
+import { useWslContext } from '@/shared/contexts/WslContext';
+import { useAheadBehindSync } from '@/shared/hooks/useAheadBehindSync';
 import { useProjectStore } from '@/shared/store/projectStore';
 import { getDistroIcon } from '@/shared/utils/distros';
 import { withTimeout } from '@/shared/utils/withTimeout';
 
 import serverIcon from '../../../assets/server.svg';
+// eslint-disable-next-line import/no-restricted-paths -- projects panel needs git push/pull APIs
 import { push, pull, type PushOutcome } from '../../git/api/gitApi';
 
 const ProjectsPanel: React.FC = () => {

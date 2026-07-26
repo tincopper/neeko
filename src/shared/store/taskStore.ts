@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 
+/* eslint-disable import/no-restricted-paths -- taskStore depends on task feature APIs (inherent dependency) */
 import {
   getTaskConfigs,
   saveTaskConfig as saveTaskConfigApi,
@@ -14,6 +15,7 @@ import {
   stopTaskProcess,
   type TaskProcessHandle,
 } from '@/features/task/taskRunner';
+/* eslint-enable import/no-restricted-paths */
 import { useProjectStore } from '@/shared/store/projectStore';
 import type { DiscoveredTask, TaskConfig, TaskRun } from '@/shared/types/task';
 import {

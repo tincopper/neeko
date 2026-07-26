@@ -9,6 +9,7 @@ import type {
   LspAutoStart,
 } from '@/features/settings/types';
 import { BUILTIN_THEMES } from '@/features/settings/types';
+// eslint-disable-next-line import/no-restricted-paths -- useAppConfig needs terminal theme update utility
 import { updateAllTerminalThemes } from '@/features/terminal';
 import { useConnectionStore } from '@/shared/store/connectionStore';
 import { useProjectStore } from '@/shared/store/projectStore';

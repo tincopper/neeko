@@ -1,6 +1,7 @@
 import { fireEvent, render, screen, within } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
+// eslint-disable-next-line import/no-restricted-paths -- test imports settings project panel
 import ProjectPanel from '@/features/settings/components/ProjectPanel';
 import { useProjectStore } from '@/shared/store/projectStore';
 import type { Project } from '@/shared/types';

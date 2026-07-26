@@ -6,7 +6,9 @@ import { useProjectStore } from '@/shared/store/projectStore';
 import type { FileChange, Worktree, GitStatusDiff } from '@/shared/types';
 import { aheadBehindKey } from '@/shared/utils/aheadBehindKey';
 
+// eslint-disable-next-line import/no-restricted-paths -- session bootstrap needs git API for reading git info
 import { getWorktreeChangedFiles, getGitBranchInfo, getAheadBehind } from '../../git/api/gitApi';
+// eslint-disable-next-line import/no-restricted-paths -- session bootstrap needs project API for listing projects
 import { listProjects } from '../../project/api/projectApi';
 import { loadSession } from '../api/sessionApi';
 

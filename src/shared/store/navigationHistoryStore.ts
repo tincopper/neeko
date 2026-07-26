@@ -4,6 +4,7 @@
  */
 import { create } from 'zustand';
 
+// eslint-disable-next-line import/no-restricted-paths -- navigationHistoryStore reads files via file API (inherent dependency)
 import { readFileContent } from '@/features/file/api/fileApi';
 import { useEditorStore } from '@/shared/store/editorStore';
 import { useProjectStore } from '@/shared/store/projectStore';

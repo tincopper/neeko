@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 
-import AgentIcon from '@/features/agent/components/AgentIcon';
 import { cn } from '@/lib/utils';
+import AgentIcon from '@/shared/components/AgentIcon';
 import { useAppContext } from '@/shared/contexts/AppContext';
 import { RemoteProject, RemoteEntrySession, AuthMethod } from '@/shared/types';
 import { getIdeCommand, getIdeIconSrc, IDE_PRESETS } from '@/shared/utils/idePresets';

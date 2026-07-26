@@ -7,6 +7,7 @@ import { useDockStore } from '@/shared/store/dockStore';
 import type { Tab } from '@/shared/types';
 import { getFileName, getTabId } from '@/shared/utils/fileTree';
 
+// eslint-disable-next-line import/no-restricted-paths -- terminal links need file API for file operations
 import { revealInFileManager, readFileContent } from '../../file/api/fileApi';
 
 interface FilePathLinkOptions {

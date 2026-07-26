@@ -6,6 +6,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 
 import { buildFontFamily, buildTerminalTheme } from '@/shared/utils/terminal';
 
+// eslint-disable-next-line import/no-restricted-paths -- terminal view needs agent API for agent config lookup
 import { getAgent } from '../../agent/api/agentApi';
 import type { TerminalStrategy, CacheEntry } from '../strategies/types';
 

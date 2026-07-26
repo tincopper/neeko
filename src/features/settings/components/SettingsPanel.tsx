@@ -5,6 +5,7 @@ import { CloseIcon } from '@/shared/components/icons';
 import { useAppContext } from '@/shared/contexts';
 import type { AgentConfig, AppConfig, DiffMode } from '@/shared/types';
 
+// eslint-disable-next-line import/no-restricted-paths -- settings panel lists agents via agent API
 import { listAgents } from '../../agent/api/agentApi';
 
 import AgentsPanel from './AgentsPanel';
