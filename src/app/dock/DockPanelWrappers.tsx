@@ -15,14 +15,14 @@ import { useCommitDetail } from '@/features/git/components/gitlog/useCommitDetai
 import { useGitLog } from '@/features/git/components/gitlog/useGitLog';
 import PullRequestsPanel from '@/features/git/components/PullRequestsPanel';
 import { useSingletonDiff } from '@/features/git/hooks/useSingletonDiff';
-import { useGitStore } from '@/features/git/store';
 import { useActiveProject } from '@/features/project/hooks/use-active-project';
-import { useProjectStore } from '@/features/project/store';
-import { useWorktreeStore } from '@/features/project/worktreeStore';
 import SkillsPanel from '@/features/skill/components/SkillsPanel';
 import { useAppContext } from '@/shared/contexts';
 import { useEditorStore } from '@/shared/store';
 import { useDockStore } from '@/shared/store/dockStore';
+import { useGitStore } from '@/shared/store/gitStore';
+import { useProjectStore } from '@/shared/store/projectStore';
+import { useWorktreeStore } from '@/shared/store/worktreeStore';
 import type { Tab, FileTreeChangedEvent } from '@/shared/types';
 import { DEFAULT_TREE_DEPTH } from '@/shared/types/file';
 import { aheadBehindKey } from '@/shared/utils/aheadBehindKey';

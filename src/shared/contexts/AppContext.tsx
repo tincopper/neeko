@@ -1,7 +1,7 @@
 import React, { createContext, useContext } from 'react';
 
-import type { AgentConfig } from '@/features/agent/types';
-import type { AppConfig, ThemeListItem } from '@/features/settings/types';
+import type { AgentConfig } from '@/shared/types/agent';
+import type { AppConfig, ThemeListItem } from '@/shared/types/settings';
 
 interface AppContextValue {
   config: AppConfig;

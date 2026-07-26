@@ -3,7 +3,7 @@ import type { Extension, Text } from '@codemirror/state';
 import type { EditorView, Tooltip, TooltipView } from '@codemirror/view';
 import { hoverTooltip } from '@codemirror/view';
 
-import { useBrowserStore } from '@/features/browser/store';
+import { useBrowserStore } from '@/shared/store/browserStore';
 import { useDockStore } from '@/shared/store/dockStore';
 
 import { LatestRequestTracker } from '../requestTracker';

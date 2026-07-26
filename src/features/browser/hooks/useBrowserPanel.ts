@@ -2,10 +2,10 @@ import { listen } from '@tauri-apps/api/event';
 import { useCallback, useEffect, useRef } from 'react';
 
 import { useFileChangedEvent } from '@/features/git/hooks/useFileChangedEvent';
-import { useProjectStore } from '@/features/project/store';
 import { sendToTerminal } from '@/features/terminal/components/terminalCommands';
 import { useEditorStore } from '@/shared/store';
 import { useDockStore } from '@/shared/store/dockStore';
+import { useProjectStore } from '@/shared/store/projectStore';
 import type { FileChangedEvent } from '@/shared/types';
 import { fileUrlToFilePath } from '@/shared/utils/browserUtils';
 

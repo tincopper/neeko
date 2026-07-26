@@ -3,7 +3,7 @@ import type { Transport } from '@codemirror/lsp-client';
 import { invoke } from '@tauri-apps/api/core';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 
-import { useNotificationStore } from '@/features/notification/notificationStore';
+import { useNotificationStore } from '@/shared/store/notificationStore';
 
 /**
  * Bridges @codemirror/lsp-client to Neeko's Rust LSP backend via Tauri IPC.

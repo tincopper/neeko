@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react';
 
-import { useProjectStore } from '@/features/project/store';
 import { useSkillStore } from '@/features/skill/store';
+import { useProjectStore } from '@/shared/store/projectStore';
 
 /**
  * When the active project changes, incrementally apply bound tag-group skills

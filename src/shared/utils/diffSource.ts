@@ -5,8 +5,8 @@
  * 单一职责：将统一连接上下文映射到 diff 所需的数据源描述。
  */
 
-import type { DiffSource } from '@/features/git/components/diff/types';
 import type { ConnectionContext } from '@/shared/types/activeProject';
+import type { DiffSource } from '@/shared/types/git';
 
 /**
  * buildDiffSource — 根据 ConnectionContext 构造 DiffSource

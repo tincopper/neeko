@@ -3,10 +3,10 @@ import { useShallow } from 'zustand/shallow';
 
 import { readDirTree, readFileContent, writeFileContent } from '@/features/file/api/fileApi';
 import { useFileStore } from '@/features/file/store';
-import { useProjectStore } from '@/features/project/store';
-import { useWorktreeStore } from '@/features/project/worktreeStore';
 import { closeEditorTab } from '@/features/terminal/components/terminalTabCleanup';
 import { useEditorStore } from '@/shared/store';
+import { useProjectStore } from '@/shared/store/projectStore';
+import { useWorktreeStore } from '@/shared/store/worktreeStore';
 import type { FileNode, FileContent, Tab } from '@/shared/types';
 import type { ProjectCommands } from '@/shared/types/activeProject';
 import { DEFAULT_TREE_DEPTH } from '@/shared/types/file';

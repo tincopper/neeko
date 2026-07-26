@@ -1,7 +1,7 @@
 import { useState, useCallback, useMemo } from 'react';
 
-import { useNotificationStore } from '@/features/notification/notificationStore';
 import { useSkillStore } from '@/features/skill/store';
+import { useNotificationStore } from '@/shared/store/notificationStore';
 import type { ManagedSkillDto, DiscoveredSkillDto } from '@/shared/types';
 
 import type { SkillDialogState, SkillItemActions } from './skillItemTypes';

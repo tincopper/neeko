@@ -1,24 +1,6 @@
-export interface ConversationMeta {
-  id: string;
-  nativeSessionId: string;
-  agentId: string;
-  title: string;
-  model?: string;
-  startedAt: number;
-  updatedAt: number;
-  messageCount: number;
-  preview: string;
-  filePath: string;
-  projectPath: string | null;
-  userTitle: string | null;
-  tags: string[];
-  /**
-   * Whether native resume is available.
-   * Backend always sends a boolean; UI shows Resume only when `true`.
-   * Optional for older/mock payloads — treat missing as not supported.
-   */
-  supportsResume?: boolean;
-}
+import type { ConversationMeta } from '@/shared/types/session';
+
+export type { ConversationMeta } from '@/shared/types/session';
 
 /// 消息内容块 - 表示 Agent 执行过程中的不同类型内容
 export type MessageBlock =

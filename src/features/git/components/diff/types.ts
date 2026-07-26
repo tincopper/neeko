@@ -1,4 +1,6 @@
-import type { AuthMethod } from '@/shared/types';
+import type { ViewMode, DiffSource } from '@/shared/types/git';
+
+export type { ViewMode, DiffSource } from '@/shared/types/git';
 
 export interface DiffLine {
   Context?: string;
@@ -19,33 +21,6 @@ export interface DiffResult {
   hunks: DiffHunk[];
   truncated?: boolean;
 }
-
-export type ViewMode = 'unified' | 'split';
-
-export type DiffSource =
-  | { type: 'local'; projectId: string }
-  | { type: 'wsl'; distro: string; projectPath: string }
-  | {
-      type: 'remote';
-      entryId: string;
-      host: string;
-      port: number;
-      username: string;
-      auth: AuthMethod;
-      projectPath: string;
-    }
-  | { type: 'worktree'; projectId: string; worktreePath: string }
-  | { type: 'commit'; projectId: string; commitHash: string }
-  | { type: 'wsl-commit'; distro: string; projectPath: string; commitHash: string }
-  | {
-      type: 'remote-commit';
-      host: string;
-      port: number;
-      username: string;
-      auth: AuthMethod;
-      projectPath: string;
-      commitHash: string;
-    };
 
 export interface CommitFileChange {
   path: string;

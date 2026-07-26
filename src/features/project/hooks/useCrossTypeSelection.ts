@@ -1,9 +1,9 @@
 import { useCallback } from 'react';
 
-import { useConnectionStore } from '@/features/connection/store';
-import { useProjectStore } from '@/features/project/store';
-import { useWorktreeStore } from '@/features/project/worktreeStore';
 import { useAppViewStore } from '@/shared/store/appViewStore';
+import { useConnectionStore } from '@/shared/store/connectionStore';
+import { useProjectStore } from '@/shared/store/projectStore';
+import { useWorktreeStore } from '@/shared/store/worktreeStore';
 
 interface WslActions {
   setWslDiffState: ((state: null) => void) | undefined;

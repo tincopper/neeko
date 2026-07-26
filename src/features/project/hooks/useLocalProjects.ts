@@ -3,10 +3,10 @@ import type { Dispatch, SetStateAction } from 'react';
 import { useState, useCallback } from 'react';
 import { useShallow } from 'zustand/shallow';
 
-import { useGitStore } from '@/features/git/store';
-import { useProjectStore } from '@/features/project/store';
 import { destroyTerminalCachesByPrefix } from '@/features/terminal/components/terminalCache';
 import { useEditorStore } from '@/shared/store';
+import { useGitStore } from '@/shared/store/gitStore';
+import { useProjectStore } from '@/shared/store/projectStore';
 import type { Project, AgentConfig, Tab, FileChange, Worktree } from '@/shared/types';
 import { aheadBehindKey } from '@/shared/utils/aheadBehindKey';
 import { applyStateAction } from '@/shared/utils/entryUpdates';

@@ -2,8 +2,8 @@ import { renderHook, act } from '@testing-library/react';
 import { describe, it, expect, beforeEach } from 'vitest';
 
 import { useWorktreeState } from '@/features/project/hooks/useWorktreeState';
-import { useWorktreeStore } from '@/features/project/worktreeStore';
 import { useEditorStore } from '@/shared/store';
+import { useWorktreeStore } from '@/shared/store/worktreeStore';
 
 describe('useWorktreeState', () => {
   let activeProjectId: string | null;

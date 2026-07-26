@@ -1,9 +1,9 @@
 import { useCallback } from 'react';
 
 import type { SaveSessionFn } from '@/features/connection/hooks/useWslProjects';
-import { useProjectStore } from '@/features/project/store';
 import { refreshTerminal } from '@/features/terminal/components/terminalCache';
 import { switchAgentInTerminal } from '@/features/terminal/components/terminalCommands';
+import { useProjectStore } from '@/shared/store/projectStore';
 import type { AgentConfig } from '@/shared/types';
 
 import { setProjectIde } from '../../project/api/projectApi';

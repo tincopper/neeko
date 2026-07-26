@@ -2,14 +2,14 @@ import { useState, useCallback, useEffect } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
 import { useShallow } from 'zustand/shallow';
 
-import { useConnectionStore } from '@/features/connection/store';
-import { useProjectStore } from '@/features/project/store';
 import {
   wslCacheKey,
   destroyWslCachesByPrefix,
   remoteCacheKey,
   destroyRemoteCachesByPrefix,
 } from '@/features/terminal/components/terminalCache';
+import { useConnectionStore } from '@/shared/store/connectionStore';
+import { useProjectStore } from '@/shared/store/projectStore';
 import type { AuthMethod, RemoteEntrySession, WSLEntrySession } from '@/shared/types';
 import { applyStateAction, upsertEntryById } from '@/shared/utils/entryUpdates';
 

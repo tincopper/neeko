@@ -1,9 +1,9 @@
 import { create } from 'zustand';
 
-import type { FileContent } from '@/features/file/types';
-import type { DiffSource, ViewMode } from '@/features/git/components/diff/types';
 import type { EditorGroupId, EditorSplitLayout, ProjectTabs, Tab, TabData } from '@/shared/types';
 import { createDefaultEditorLayout } from '@/shared/types/editorGroup';
+import type { FileContent } from '@/shared/types/file';
+import type { DiffSource, ViewMode } from '@/shared/types/git';
 import type {
   FileTabData,
   TerminalTabData,

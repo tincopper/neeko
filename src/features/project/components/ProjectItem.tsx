@@ -3,10 +3,10 @@ import { CSS } from '@dnd-kit/utilities';
 import React, { useMemo, useState } from 'react';
 
 import type { DialogType } from '@/features/git/components/GitDialog';
-import { useProjectStore } from '@/features/project/store';
 import { cn } from '@/lib/utils';
 import ConfirmDialog from '@/shared/components/ConfirmDialog';
 import { MoreVerticalIcon } from '@/shared/components/icons';
+import { useProjectStore } from '@/shared/store/projectStore';
 import { getIdeIconByCommand } from '@/shared/utils/idePresets';
 
 import { setProjectCollapsed as setProjectCollapsedApi } from '../api/projectApi';

@@ -1,12 +1,12 @@
 import { open } from '@tauri-apps/plugin-dialog';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 
-import { useLspStore } from '@/features/lsp/store/lspStore';
-import { useProjectStore } from '@/features/project/store';
 import TaskDialog from '@/features/task/components/TaskDialog';
-import { useTaskStore } from '@/features/task/store';
 import { cn } from '@/lib/utils';
 import { Pencil, Trash2, Plus } from '@/shared/components/icons';
+import { useLspStore } from '@/shared/store/lspStore';
+import { useProjectStore } from '@/shared/store/projectStore';
+import { useTaskStore } from '@/shared/store/taskStore';
 import type { Project } from '@/shared/types';
 import type { TaskConfig } from '@/shared/types/task';
 import { IDE_PRESETS } from '@/shared/utils/idePresets';

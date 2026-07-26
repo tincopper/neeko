@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
-import { useProjectStore } from '@/features/project/store';
 import { Play, Square, ChevronDown, Plus, Pencil, X, Download } from '@/shared/components/icons';
+import { useProjectStore } from '@/shared/store/projectStore';
 import type { DiscoveredTask, TaskConfig } from '@/shared/types/task';
 
 import { useTaskStore } from '../store';

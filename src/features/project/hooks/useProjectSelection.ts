@@ -1,8 +1,8 @@
 import { useCallback } from 'react';
 
-import { useProjectStore } from '@/features/project/store';
-import { useWorktreeStore } from '@/features/project/worktreeStore';
 import { useEditorStore } from '@/shared/store';
+import { useProjectStore } from '@/shared/store/projectStore';
+import { useWorktreeStore } from '@/shared/store/worktreeStore';
 
 import { setActiveProject } from '../api/projectApi';
 

@@ -21,8 +21,8 @@ import ProjectItem from '@/features/project/components/ProjectItem';
 import { SectionHeader } from '@/features/project/components/SectionHeader';
 import { useActiveProject } from '@/features/project/hooks/use-active-project';
 import { useProjectActionsContext } from '@/features/project/ProjectContext';
-import { useProjectStore } from '@/features/project/store';
 import { useAppContext } from '@/shared/contexts/AppContext';
+import { useProjectStore } from '@/shared/store/projectStore';
 import { getDistroIcon } from '@/shared/utils/distros';
 import { withTimeout } from '@/shared/utils/withTimeout';
 

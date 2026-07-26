@@ -1,5 +1,5 @@
-import type { Project } from '@/features/project/types';
 import type { AgentConfig, AppConfig, RemoteEntrySession, WSLEntrySession } from '@/shared/types';
+import type { Project } from '@/shared/types/project';
 
 export type ConnectionSource =
   | { type: 'wsl'; distro: string }

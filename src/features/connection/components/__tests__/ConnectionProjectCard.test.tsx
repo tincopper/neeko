@@ -2,8 +2,8 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 import ConnectionProjectCard from '@/features/connection/components/ConnectionProjectCard';
-import { useGitStore } from '@/features/git/store';
-import { useWorktreeStore } from '@/features/project/worktreeStore';
+import { useGitStore } from '@/shared/store/gitStore';
+import { useWorktreeStore } from '@/shared/store/worktreeStore';
 import type { WSLProject } from '@/shared/types';
 import { invoke } from '@/testing/tauriCore';
 

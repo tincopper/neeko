@@ -1,8 +1,8 @@
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import { create } from 'zustand';
 
-import { useNotificationStore } from '@/features/notification/notificationStore';
-import { useTaskStore } from '@/features/task/store';
+import { useNotificationStore } from '@/shared/store/notificationStore';
+import { useTaskStore } from '@/shared/store/taskStore';
 import {
   exclusiveOpenDebugPanel,
   registerDebugPanelCloser,

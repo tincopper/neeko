@@ -1,11 +1,11 @@
 import { renderHook } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-import { useConnectionStore } from '@/features/connection/store';
-import { useProjectStore } from '@/features/project/store';
-import { useWorktreeStore } from '@/features/project/worktreeStore';
 import { useKeyboardShortcuts } from '@/shared/hooks/useKeyboardShortcuts';
 import { useEditorStore } from '@/shared/store';
+import { useConnectionStore } from '@/shared/store/connectionStore';
+import { useProjectStore } from '@/shared/store/projectStore';
+import { useWorktreeStore } from '@/shared/store/worktreeStore';
 import { createProject } from '@/testing/factories';
 
 // mock terminal refresh functions

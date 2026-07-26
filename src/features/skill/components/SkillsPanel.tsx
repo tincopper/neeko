@@ -13,10 +13,10 @@ import {
 import React, { useState, useCallback, useEffect, useMemo } from 'react';
 
 import { resolveAgentIconSrc } from '@/features/agent/api/agentApi';
-import { useNotificationStore } from '@/features/notification/notificationStore';
-import { useProjectStore } from '@/features/project/store';
 import { useSkillStore } from '@/features/skill/store';
 import { cn } from '@/lib/utils';
+import { useNotificationStore } from '@/shared/store/notificationStore';
+import { useProjectStore } from '@/shared/store/projectStore';
 import type { SkillView } from '@/shared/types';
 import { getAvatarStyle, getProjectInitials } from '@/shared/utils/projectAvatar';
 

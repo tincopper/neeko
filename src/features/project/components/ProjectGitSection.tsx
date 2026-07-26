@@ -1,7 +1,7 @@
 import React, { useMemo } from 'react';
 
-import { useGitStore } from '@/features/git/store';
-import { useWorktreeStore } from '@/features/project/worktreeStore';
+import { useGitStore } from '@/shared/store/gitStore';
+import { useWorktreeStore } from '@/shared/store/worktreeStore';
 import type { Project } from '@/shared/types';
 import { aheadBehindKey } from '@/shared/utils/aheadBehindKey';
 

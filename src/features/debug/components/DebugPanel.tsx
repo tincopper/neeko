@@ -1,8 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
-import { useProjectStore } from '@/features/project/store';
 import { Bug, CircleDot, X } from '@/shared/components/icons';
 import { useAppContext } from '@/shared/contexts/AppContext';
+import { useProjectStore } from '@/shared/store/projectStore';
 import { cn } from '@/shared/utils/cn';
 import { buildFontFamily } from '@/shared/utils/terminal';
 

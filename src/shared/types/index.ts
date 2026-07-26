@@ -6,6 +6,7 @@ export * from './file';
 export * from './git';
 export * from './project';
 export * from './session';
+export * from './settings';
 export * from './skill';
 export * from './split';
 export * from './tab';

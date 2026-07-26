@@ -5,13 +5,13 @@ import { useShallow } from 'zustand/shallow';
 
 import { useDebugStore } from '@/features/debug/store/debugStore';
 import { lspListSessions, lspRestartSession, lspStopSession } from '@/features/lsp/api/lspApi';
-import { useLspStore, type LspSessionState } from '@/features/lsp/store/lspStore';
 import { NotificationButton } from '@/features/notification/components/NotificationButton';
-import { useNotificationStore } from '@/features/notification/notificationStore';
-import { useProjectStore } from '@/features/project/store';
-import { useTaskStore } from '@/features/task/store';
 import { Bug, Terminal } from '@/shared/components/icons';
 import { useEditorStore } from '@/shared/store';
+import { useLspStore, type LspSessionState } from '@/shared/store/lspStore';
+import { useNotificationStore } from '@/shared/store/notificationStore';
+import { useProjectStore } from '@/shared/store/projectStore';
+import { useTaskStore } from '@/shared/store/taskStore';
 import { cn } from '@/shared/utils/cn';
 
 const BUILTIN_SERVER_NAMES: Record<string, string> = {

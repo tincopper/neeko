@@ -1,10 +1,10 @@
 import React, { useState, useMemo, useCallback, useEffect } from 'react';
 
-import { useProjectStore } from '@/features/project/store';
 import { cn } from '@/lib/utils';
 import { ArrowLeft, Search, FolderOpen } from '@/shared/components/icons';
 import { useAppContext } from '@/shared/contexts';
 import { useAppViewStore } from '@/shared/store/appViewStore';
+import { useProjectStore } from '@/shared/store/projectStore';
 import type { AgentConfig, AppConfig } from '@/shared/types';
 
 import { listAgents } from '../../agent/api/agentApi';

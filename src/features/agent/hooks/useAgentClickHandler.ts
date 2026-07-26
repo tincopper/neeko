@@ -1,6 +1,6 @@
 import { useCallback } from 'react';
 
-import { useProjectStore } from '@/features/project/store';
+import { useProjectStore } from '@/shared/store/projectStore';
 import type { AgentConfig } from '@/shared/types';
 import type { TerminalTab } from '@/shared/types/terminal';
 

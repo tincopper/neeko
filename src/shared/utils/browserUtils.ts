@@ -1,4 +1,4 @@
-import { useBrowserStore } from '@/features/browser/store';
+import { useBrowserStore } from '@/shared/store/browserStore';
 import { useDockStore } from '@/shared/store/dockStore';
 
 /**

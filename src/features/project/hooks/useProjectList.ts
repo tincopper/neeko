@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 
-import { useProjectStore } from '@/features/project/store';
+import { useProjectStore } from '@/shared/store/projectStore';
 import type { ProjectEnvironment } from '@/shared/types';
 
 export interface ProjectListItem {

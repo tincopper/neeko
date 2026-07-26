@@ -1,8 +1,8 @@
 import { listen } from '@tauri-apps/api/event';
 import { useState, useEffect } from 'react';
 
-import { useGitStore } from '@/features/git/store';
-import { useProjectStore } from '@/features/project/store';
+import { useGitStore } from '@/shared/store/gitStore';
+import { useProjectStore } from '@/shared/store/projectStore';
 import type { FileChange, Worktree, GitStatusDiff } from '@/shared/types';
 import { aheadBehindKey } from '@/shared/utils/aheadBehindKey';
 

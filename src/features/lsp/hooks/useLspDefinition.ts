@@ -1,6 +1,6 @@
 import { useCallback } from 'react';
 
-import { useNotificationStore } from '@/features/notification/notificationStore';
+import { useNotificationStore } from '@/shared/store/notificationStore';
 
 import { lspGoToDefinition, lspRequest } from '../api/lspApi';
 import type { LspLocation } from '../types';

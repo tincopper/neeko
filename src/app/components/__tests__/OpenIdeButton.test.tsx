@@ -2,8 +2,8 @@ import { render, screen, fireEvent, waitFor, within } from '@testing-library/rea
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 import OpenIdeButton from '@/app/components/OpenIdeButton';
-import { useConnectionStore } from '@/features/connection/store';
-import { useProjectStore } from '@/features/project/store';
+import { useConnectionStore } from '@/shared/store/connectionStore';
+import { useProjectStore } from '@/shared/store/projectStore';
 import type { Project } from '@/shared/types';
 import { invoke } from '@/testing/tauriCore';
 

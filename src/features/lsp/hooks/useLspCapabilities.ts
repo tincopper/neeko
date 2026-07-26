@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 
-import { useNotificationStore } from '@/features/notification/notificationStore';
+import { useNotificationStore } from '@/shared/store/notificationStore';
 
 import { lspRequest } from '../api/lspApi';
 

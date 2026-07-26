@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
 
-import { useGitStore } from '@/features/git/store';
-import { useProjectStore } from '@/features/project/store';
+import { useGitStore } from '@/shared/store/gitStore';
+import { useProjectStore } from '@/shared/store/projectStore';
 import type { AheadBehind } from '@/shared/types';
 import { aheadBehindKey } from '@/shared/utils/aheadBehindKey';
 

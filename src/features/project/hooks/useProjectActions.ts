@@ -1,11 +1,8 @@
 import { useCallback, useMemo, useState } from 'react';
 
-import { useConnectionStore } from '@/features/connection/store';
 import { getGitInfo } from '@/features/git/api/gitApi';
 import { openWslIde, openRemoteIde } from '@/features/project/api/projectApi';
 import type { SaveSessionFn } from '@/features/project/hooks/useConnectionProjects';
-import { useProjectStore } from '@/features/project/store';
-import { useWorktreeStore } from '@/features/project/worktreeStore';
 import {
   refreshWslTerminal,
   switchAgentInWslTerminal,
@@ -15,6 +12,9 @@ import {
   switchAgentInRemoteTerminal,
 } from '@/features/terminal/components/terminalCache';
 import { useEditorStore } from '@/shared/store';
+import { useConnectionStore } from '@/shared/store/connectionStore';
+import { useProjectStore } from '@/shared/store/projectStore';
+import { useWorktreeStore } from '@/shared/store/worktreeStore';
 import type { AgentConfig, AppConfig, RemoteEntrySession, Tab } from '@/shared/types';
 import { updateProjectInEntries } from '@/shared/utils/entryUpdates';
 

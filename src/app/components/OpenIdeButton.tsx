@@ -1,8 +1,8 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 
-import { useProjectStore } from '@/features/project/store';
 import { loadConfig } from '@/features/session/api/sessionApi';
 import { ChevronDown, Play } from '@/shared/components/icons';
+import { useProjectStore } from '@/shared/store/projectStore';
 import type { AppConfig } from '@/shared/types';
 import {
   getIdeCommand,

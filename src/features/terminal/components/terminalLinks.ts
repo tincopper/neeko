@@ -1,8 +1,8 @@
 import { WebLinksAddon } from '@xterm/addon-web-links';
 import type { Terminal } from '@xterm/xterm';
 
-import { useBrowserStore } from '@/features/browser/store';
 import { useEditorStore } from '@/shared/store';
+import { useBrowserStore } from '@/shared/store/browserStore';
 import { useDockStore } from '@/shared/store/dockStore';
 import type { Tab } from '@/shared/types';
 import { getFileName, getTabId } from '@/shared/utils/fileTree';

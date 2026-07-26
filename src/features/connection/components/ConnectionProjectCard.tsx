@@ -2,13 +2,13 @@ import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import React, { useCallback, useMemo, useState } from 'react';
 
-import { useGitStore } from '@/features/git/store';
 import { ProjectGroup, SessionRow } from '@/features/project/components';
 import ContextMenu, { type ContextMenuItem } from '@/features/project/components/ContextMenu';
 import ProjectSettingsDialog from '@/features/project/components/ProjectSettingsDialog';
-import { useWorktreeStore } from '@/features/project/worktreeStore';
 import { cn } from '@/lib/utils';
 import ConfirmDialog from '@/shared/components/ConfirmDialog';
+import { useGitStore } from '@/shared/store/gitStore';
+import { useWorktreeStore } from '@/shared/store/worktreeStore';
 import type { FileChange } from '@/shared/types';
 import { aheadBehindKey } from '@/shared/utils/aheadBehindKey';
 import { getIdeIconByCommand } from '@/shared/utils/idePresets';

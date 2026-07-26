@@ -4,9 +4,9 @@
 import { create } from 'zustand';
 
 import { readDirTree } from '@/features/file/api/fileApi';
-import { useProjectStore } from '@/features/project/store';
-import { useWorktreeStore } from '@/features/project/worktreeStore';
 import { useEditorStore } from '@/shared/store';
+import { useProjectStore } from '@/shared/store/projectStore';
+import { useWorktreeStore } from '@/shared/store/worktreeStore';
 import { buildWorktreeTabKey } from '@/shared/utils/tabKey';
 
 import { flattenFilePaths } from './fileIndex';

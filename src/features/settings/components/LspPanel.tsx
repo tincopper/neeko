@@ -2,13 +2,13 @@ import React, { useCallback, useMemo, useState } from 'react';
 
 import { lspGetExtensionMap } from '@/features/lsp/api/lspApi';
 import { applyCustomServersFromConfig, setCustomLspExtensionMap } from '@/features/lsp/languageMap';
-import { useLspStore } from '@/features/lsp/store/lspStore';
 import type {
   AppConfig,
   CustomLspServerConfig,
   LspAutoStart,
   LspConfig,
 } from '@/features/settings/types';
+import { useLspStore } from '@/shared/store/lspStore';
 import {
   Button,
   Input,

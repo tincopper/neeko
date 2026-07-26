@@ -9,8 +9,8 @@
 
 import { useMemo } from 'react';
 
-import { useProjectStore } from '@/features/project/store';
-import { useWorktreeStore } from '@/features/project/worktreeStore';
+import { useProjectStore } from '@/shared/store/projectStore';
+import { useWorktreeStore } from '@/shared/store/worktreeStore';
 import type { ActiveProjectContext } from '@/shared/types/activeProject';
 import { environmentToConnectionContext } from '@/shared/types/project';
 

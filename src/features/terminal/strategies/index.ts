@@ -1,8 +1,8 @@
 import { useMemo } from 'react';
 
-import { useProjectStore } from '@/features/project/store';
-import { useWorktreeStore } from '@/features/project/worktreeStore';
 import { useAppContext, useEditorContext } from '@/shared/contexts';
+import { useProjectStore } from '@/shared/store/projectStore';
+import { useWorktreeStore } from '@/shared/store/worktreeStore';
 import type { AuthMethod } from '@/shared/types';
 import { buildWorktreeTabKey } from '@/shared/utils/tabKey';
 

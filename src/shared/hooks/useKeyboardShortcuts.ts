@@ -1,13 +1,13 @@
 import { useEffect, useRef } from 'react';
 
-import { useNavHistoryStore } from '@/features/editor/navigationHistoryStore';
 import type { ProjectListItem } from '@/features/project/hooks/useProjectList';
-import { useProjectStore } from '@/features/project/store';
-import { useWorktreeStore } from '@/features/project/worktreeStore';
 import { useQuickOpenStore } from '@/features/quick-open';
 import { refreshTerminal, terminalCacheKey } from '@/features/terminal/components/terminalCache';
 import { useEditorStore } from '@/shared/store';
 import { useDockStore } from '@/shared/store/dockStore';
+import { useNavHistoryStore } from '@/shared/store/navigationHistoryStore';
+import { useProjectStore } from '@/shared/store/projectStore';
+import { useWorktreeStore } from '@/shared/store/worktreeStore';
 import { resolveNextTabId } from '@/shared/utils/cycleEditorTab';
 import {
   resolveBindings,

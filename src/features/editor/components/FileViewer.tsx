@@ -29,11 +29,6 @@ import {
 } from '@/features/debug/hooks/useCurrentLineHighlight';
 import { EMPTY_BP_LINES, useDebugStore } from '@/features/debug/store/debugStore';
 import { applyNavigateCaret, navigateCaretExtension } from '@/features/editor/navigateCaret';
-import type { NavLocation } from '@/features/editor/navigationHistory';
-import {
-  captureCurrentNavLocation,
-  recordNavigationJump,
-} from '@/features/editor/navigationHistoryStore';
 import { readFileContent } from '@/features/file/api/fileApi';
 import { acquireLspPlugin, releaseLspClient } from '@/features/lsp/hooks/lspClientManager';
 import { useCmdHeld } from '@/features/lsp/hooks/useCmdHeld';
@@ -51,8 +46,6 @@ import {
 import { resolveLspPositionFromOffset } from '@/features/lsp/position';
 import type { LspLocation } from '@/features/lsp/types';
 import { useActiveProject } from '@/features/project/hooks/use-active-project';
-import { useProjectStore } from '@/features/project/store';
-import { useWorktreeStore } from '@/features/project/worktreeStore';
 import { useSymbolNavStore } from '@/features/symbol-nav';
 import { useTerminalTabs } from '@/features/terminal/hooks/useTerminalTabs';
 import { cn } from '@/lib/utils';
@@ -61,6 +54,13 @@ import { useEditorContext } from '@/shared/contexts';
 import { useAppContext } from '@/shared/contexts/AppContext';
 import { useCodeMirrorBinding } from '@/shared/hooks/useResolvedShortcuts';
 import { useEditorStore } from '@/shared/store';
+import type { NavLocation } from '@/shared/store/navigationHistory';
+import {
+  captureCurrentNavLocation,
+  recordNavigationJump,
+} from '@/shared/store/navigationHistoryStore';
+import { useProjectStore } from '@/shared/store/projectStore';
+import { useWorktreeStore } from '@/shared/store/worktreeStore';
 import type { FileTab, AppTheme, Tab, FileTabData } from '@/shared/types';
 import type { EditorAction } from '@/shared/utils/agentPrompt';
 import { buildCodeMessage } from '@/shared/utils/agentPrompt';

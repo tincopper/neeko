@@ -23,9 +23,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 // eslint-disable-next-line import/no-restricted-paths -- list agents for targets + card icons
 import { listAgents, resolveAgentIconSrc, setProjectAgents } from '@/features/agent/api/agentApi';
 // eslint-disable-next-line import/no-restricted-paths -- shared toast bus
-import { useNotificationStore } from '@/features/notification/notificationStore';
 // eslint-disable-next-line import/no-restricted-paths -- active project
-import { useProjectStore } from '@/features/project/store';
 import {
   getProjectSkills,
   getSkillsForTagGroup,
@@ -37,6 +35,8 @@ import {
 import { useSkillStore } from '@/features/skill/store';
 import { cn } from '@/lib/utils';
 import ConfirmDialog from '@/shared/components/ConfirmDialog';
+import { useNotificationStore } from '@/shared/store/notificationStore';
+import { useProjectStore } from '@/shared/store/projectStore';
 import type { ManagedSkillDto, ProjectDiskSkill } from '@/shared/types';
 import { Button } from '@/ui';
 

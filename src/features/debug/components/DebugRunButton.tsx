@@ -1,8 +1,8 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 
-import { useProjectStore } from '@/features/project/store';
 import { Play, Square, ChevronDown, Bug, Plus, Pencil, X } from '@/shared/components/icons';
 import { useEditorStore } from '@/shared/store';
+import { useProjectStore } from '@/shared/store/projectStore';
 
 import { useDebugStore } from '../store/debugStore';
 import type { EntryPoint, LaunchConfig } from '../types';

@@ -1,10 +1,10 @@
 import { renderHook, act } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-import { useConnectionStore } from '@/features/connection/store';
 import { useWorktreeActions } from '@/features/project/hooks/useWorktreeActions';
-import { useProjectStore } from '@/features/project/store';
-import { useWorktreeStore } from '@/features/project/worktreeStore';
+import { useConnectionStore } from '@/shared/store/connectionStore';
+import { useProjectStore } from '@/shared/store/projectStore';
+import { useWorktreeStore } from '@/shared/store/worktreeStore';
 import { createProject } from '@/testing/factories';
 import { invoke } from '@/testing/tauriCore';
 

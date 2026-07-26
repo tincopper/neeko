@@ -1,8 +1,8 @@
 import { fireEvent, render, screen, within } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-import { useProjectStore } from '@/features/project/store';
 import ProjectPanel from '@/features/settings/components/ProjectPanel';
+import { useProjectStore } from '@/shared/store/projectStore';
 import type { Project } from '@/shared/types';
 import { AVATAR_COLORS } from '@/shared/utils/projectAvatar';
 import { invoke } from '@/testing/tauriCore';

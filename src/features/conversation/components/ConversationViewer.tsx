@@ -14,8 +14,8 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import AgentIcon from '@/features/agent/components/AgentIcon';
 import type { AgentConfig } from '@/features/agent/types';
-import { useProjectStore } from '@/features/project/store';
 import { cn } from '@/lib/utils';
+import { useProjectStore } from '@/shared/store/projectStore';
 import { Button } from '@/ui/Button';
 
 import { getConversationMessages, exportConversation } from '../api/conversationApi';

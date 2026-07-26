@@ -7,4 +7,4 @@ export type {
   ProjectCommands,
   ProjectCapabilities,
   ActiveProjectContext,
-} from '@/features/project/types';
+} from './project';

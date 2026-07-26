@@ -1,8 +1,8 @@
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 
-import { useNotificationStore } from '@/features/notification/notificationStore';
-import { useProjectStore } from '@/features/project/store';
+import { useNotificationStore } from '@/shared/store/notificationStore';
+import { useProjectStore } from '@/shared/store/projectStore';
 import { invoke } from '@/testing/tauriCore';
 
 import { createManagedSkill, createProject, createTagGroup } from '../../../../testing/factories';

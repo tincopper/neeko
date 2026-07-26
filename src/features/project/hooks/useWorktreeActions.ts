@@ -1,9 +1,9 @@
 import { useCallback } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
 
-import { useProjectStore } from '@/features/project/store';
-import { useWorktreeStore } from '@/features/project/worktreeStore';
 import { useEditorStore } from '@/shared/store';
+import { useProjectStore } from '@/shared/store/projectStore';
+import { useWorktreeStore } from '@/shared/store/worktreeStore';
 import type { Tab } from '@/shared/types';
 import { buildWorktreeTabKey } from '@/shared/utils/tabKey';
 

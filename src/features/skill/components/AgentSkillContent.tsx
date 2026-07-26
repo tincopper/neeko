@@ -20,7 +20,6 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 // Cross-feature toast (same pattern as useLocalSkillActions / SkillsPanel)
 // eslint-disable-next-line import/no-restricted-paths -- notification is the shared toast bus
 import { resolveAgentIconSrc } from '@/features/agent/api/agentApi';
-import { useNotificationStore } from '@/features/notification/notificationStore';
 import {
   importDiscoveredSkill,
   importSkillToAgent,
@@ -29,6 +28,7 @@ import {
 import { useSkillStore } from '@/features/skill/store';
 import { cn } from '@/lib/utils';
 import ConfirmDialog from '@/shared/components/ConfirmDialog';
+import { useNotificationStore } from '@/shared/store/notificationStore';
 import type { AgentDiskSkill, ManagedSkillDto } from '@/shared/types';
 import { Button } from '@/ui';
 

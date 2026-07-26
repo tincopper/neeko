@@ -7,7 +7,6 @@ import { useRemoteAuthActions } from '@/features/connection/hooks/useRemoteAuthA
 import { useFileTabRefresh } from '@/features/editor/hooks/useFileTabRefresh';
 import { useFileView } from '@/features/editor/hooks/useFileView';
 import { useTabManagement } from '@/features/editor/hooks/useTabManagement';
-import { useNotificationStore } from '@/features/notification/notificationStore';
 import { useActiveProject } from '@/features/project/hooks/use-active-project';
 import { useConnectionProjects } from '@/features/project/hooks/useConnectionProjects';
 import { useCrossTypeSelection } from '@/features/project/hooks/useCrossTypeSelection';
@@ -17,14 +16,15 @@ import { useProjectList } from '@/features/project/hooks/useProjectList';
 import { useProjectSelection } from '@/features/project/hooks/useProjectSelection';
 import { useWorktreeActions } from '@/features/project/hooks/useWorktreeActions';
 import { useWorktreeState } from '@/features/project/hooks/useWorktreeState';
-import { useProjectStore } from '@/features/project/store';
-import { useWorktreeStore } from '@/features/project/worktreeStore';
 import { useSessionBootstrap } from '@/features/session/hooks/useSessionBootstrap';
 import { useSessionPersistence } from '@/features/session/hooks/useSessionPersistence';
 import { useAppConfig } from '@/features/settings/hooks/useAppConfig';
 import { useApplyProjectSkills } from '@/features/skill/hooks/useApplyProjectSkills';
 import { useAppLayoutProps } from '@/layout/hooks/useAppLayoutProps';
 import { useKeyboardShortcuts } from '@/shared/hooks/useKeyboardShortcuts';
+import { useNotificationStore } from '@/shared/store/notificationStore';
+import { useProjectStore } from '@/shared/store/projectStore';
+import { useWorktreeStore } from '@/shared/store/worktreeStore';
 import type { AuthMethod, RemoteEntrySession, WSLEntrySession } from '@/shared/types';
 
 import type AppModals from '../../app/AppModals';

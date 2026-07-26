@@ -1,7 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 
-import { useConnectionStore } from '@/features/connection/store';
-import { useProjectStore } from '@/features/project/store';
 import type {
   AppConfig,
   ThemeListItem,
@@ -12,6 +10,8 @@ import type {
 } from '@/features/settings/types';
 import { BUILTIN_THEMES } from '@/features/settings/types';
 import { updateAllTerminalThemes } from '@/features/terminal';
+import { useConnectionStore } from '@/shared/store/connectionStore';
+import { useProjectStore } from '@/shared/store/projectStore';
 import { buildFontFamily } from '@/shared/utils/terminal';
 
 import {

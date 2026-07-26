@@ -1,8 +1,8 @@
 import { useCallback } from 'react';
 
 import type { DiffSource } from '@/features/git/components/diff/types';
-import { useProjectStore } from '@/features/project/store';
 import { useEditorStore } from '@/shared/store';
+import { useProjectStore } from '@/shared/store/projectStore';
 import type { CommitFileChange, ConnectionContext } from '@/shared/types';
 
 const DIFF_TAB_ID = 'diff_singleton';

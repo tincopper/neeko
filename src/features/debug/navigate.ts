@@ -2,14 +2,14 @@
  * Open a source file at a line when the debugger stops.
  * Mirrors go-to-definition navigation using editor store + file IPC.
  */
+import { readFileContent } from '@/features/file/api/fileApi';
+import { useEditorStore } from '@/shared/store';
 import {
   captureCurrentNavLocation,
   recordNavigationJump,
-} from '@/features/editor/navigationHistoryStore';
-import { readFileContent } from '@/features/file/api/fileApi';
-import { useProjectStore } from '@/features/project/store';
-import { useWorktreeStore } from '@/features/project/worktreeStore';
-import { useEditorStore } from '@/shared/store';
+} from '@/shared/store/navigationHistoryStore';
+import { useProjectStore } from '@/shared/store/projectStore';
+import { useWorktreeStore } from '@/shared/store/worktreeStore';
 import type { Tab } from '@/shared/types';
 import { preloadLanguageExtension } from '@/shared/utils/codemirror';
 import { getFileName, getTabId } from '@/shared/utils/fileTree';
