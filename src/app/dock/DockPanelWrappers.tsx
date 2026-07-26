@@ -123,7 +123,8 @@ const FilesPanelWrapper: React.FC = React.memo(() => {
       // panel 未激活时跳过（下次激活时 justBecameActive 逻辑会自动加载）
       if (!isActive || !fileRootPath) return;
       // 静默刷新：直接调用 API，不触发 loading 状态，旧树保持可见
-      readDirTree(activeProjectId!, null, null, DEFAULT_TREE_DEPTH)
+      // 使用 fileRootPath 确保 worktree 激活时读 worktree 目录，而非主项目路径
+      readDirTree(activeProjectId!, null, fileRootPath, DEFAULT_TREE_DEPTH)
         .then((tree) => {
           useFileStore.setState({ fileTree: tree });
         })
