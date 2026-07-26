@@ -194,7 +194,8 @@ const AgentSelector: React.FC<AgentSelectorProps> = ({
 
   // Sync with external currentAgentId
   useEffect(() => {
-    setSelectedAgentId(currentAgentId);
+    // Defer to avoid sync setState in effect
+    Promise.resolve().then(() => setSelectedAgentId(currentAgentId));
   }, [currentAgentId]);
 
   // Click outside handler

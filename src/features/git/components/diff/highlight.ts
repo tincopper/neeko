@@ -150,10 +150,10 @@ export function renderWordDiffHtml(
         return escaped;
       }
       if (side === 'old' && part.type === 'removed') {
-        return `<span class=\"word-diff-removed\">${escaped}</span>`;
+        return `<span class="word-diff-removed">${escaped}</span>`;
       }
       if (side === 'new' && part.type === 'added') {
-        return `<span class=\"word-diff-added\">${escaped}</span>`;
+        return `<span class="word-diff-added">${escaped}</span>`;
       }
       return escaped;
     })

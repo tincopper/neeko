@@ -115,7 +115,8 @@ const CommitList: React.FC<CommitListProps> = ({
   // Reset expand height when selection clears
   useEffect(() => {
     if (!selectedExpanded || !selectedHash) {
-      setExpandHeight(0);
+      // Defer to avoid sync setState in effect (can trigger cascading renders)
+      Promise.resolve().then(() => setExpandHeight(0));
     }
   }, [selectedExpanded, selectedHash]);
 

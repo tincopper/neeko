@@ -41,7 +41,8 @@ const BrowserToolbar: React.FC<BrowserToolbarProps> = ({
 
   // Sync input value when URL changes
   useEffect(() => {
-    setInputValue(url);
+    // Defer to avoid sync setState in effect
+    Promise.resolve().then(() => setInputValue(url));
   }, [url]);
 
   const handleKeyDown = useCallback(

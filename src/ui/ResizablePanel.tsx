@@ -41,7 +41,8 @@ export function ResizablePanel({
 
   // Clamp width when maxWidth changes
   useEffect(() => {
-    setWidth((w) => Math.min(w, maxWidth));
+    // Defer to avoid sync setState in effect
+    Promise.resolve().then(() => setWidth((w) => Math.min(w, maxWidth)));
   }, [maxWidth]);
 
   // Guard against userSelect/cursor leak when the panel unmounts (e.g. `open`
@@ -99,7 +100,7 @@ export function ResizablePanel({
         )}
         style={{ width: `${effectiveWidth}px` }}
       >
-        {/* eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions, jsx-a11y/no-noninteractive-tabindex */}
+        {/* eslint-disable jsx-a11y/no-noninteractive-element-interactions, jsx-a11y/no-noninteractive-tabindex */}
         <div
           role="separator"
           tabIndex={0}
@@ -115,6 +116,7 @@ export function ResizablePanel({
             }
           }}
         />
+        {/* eslint-enable jsx-a11y/no-noninteractive-element-interactions, jsx-a11y/no-noninteractive-tabindex */}
 
         {onToggleExpand && (
           <button

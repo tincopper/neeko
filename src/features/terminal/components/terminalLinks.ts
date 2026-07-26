@@ -22,7 +22,7 @@ function openInEmbeddedBrowser(url: string): void {
 }
 
 const FILE_PATH_REGEX =
-  /((?:[A-Z]:\\|\/|\.\/|\.\.\/)?[\w\-\.\/\\]+\.\w+)(?:[(\[](\d+)(?:[,:](\d+))?[)\]])?/g;
+  /((?:[A-Z]:\\|\/|\.\/|\.\.\/)?[\w\-./\\]+\.\w+)(?:[([](\d+)(?:[,:](\d+))?[)\]])?/g;
 
 function resolveToAbsolute(matchedPath: string, projectPath: string): string {
   if (/^[A-Z]:\\/.test(matchedPath) || matchedPath.startsWith('/')) {

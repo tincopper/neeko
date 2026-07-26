@@ -1,7 +1,8 @@
-import { invoke } from '@tauri-apps/api/core';
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+
+import { invoke } from '@/testing/tauriCore';
 
 import { createManagedSkill, createTagGroup } from '../../../../testing/factories';
 import { useProjectStore } from '../../../project/store';
@@ -209,7 +210,7 @@ describe('ProjectSkillContent', () => {
     expect(screen.getAllByText(/In library/i).length).toBeGreaterThan(0);
     // no file-count badge next to title
     const card = screen.getByTestId('project-skill-card-code-review');
-    expect(within(card).queryByTestId('file-text-icon')).toBeNull();
+    expect(within(card).queryByTestId('file-text-icon')).not.toBeInTheDocument();
   });
 
   it('filters skills by agent', async () => {
@@ -1051,7 +1052,7 @@ describe('ProjectSkillContent', () => {
     const toggle = screen.getByTestId('project-agent-chips-toggle');
     expect(toggle).toHaveAttribute('aria-label', 'Collapse agent list');
     expect(toggle).not.toHaveTextContent(/Less/i);
-    expect(within(toggle).getByTestId('chevron-up-icon')).toBeTruthy();
+    expect(within(toggle).getByTestId('chevron-up-icon')).toBeInTheDocument();
 
     await user.click(toggle);
     expect(chips).toHaveAttribute('data-expanded', 'false');

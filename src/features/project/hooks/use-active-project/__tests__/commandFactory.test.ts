@@ -4,7 +4,7 @@ vi.mock('@tauri-apps/api/core', () => ({
   invoke: vi.fn().mockResolvedValue(undefined),
 }));
 
-import { invoke } from '@tauri-apps/api/core';
+import { invoke } from '@/testing/tauriCore';
 
 import { createProjectCommands } from '../commandFactory';
 

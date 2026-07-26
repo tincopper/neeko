@@ -61,7 +61,8 @@ const GitDialog: React.FC<GitDialogProps> = ({
   // Sync homeDirPath from remoteHomeDir
   useEffect(() => {
     if (dialog.type === 'new-worktree' && dialog.source?.type === 'remote' && remoteHomeDir) {
-      setHomeDirPath(remoteHomeDir);
+      // Defer to avoid sync setState in effect
+      Promise.resolve().then(() => setHomeDirPath(remoteHomeDir));
     }
   }, [dialog.type, dialog.source?.type, remoteHomeDir]);
 

@@ -1,7 +1,8 @@
-import { invoke } from '@tauri-apps/api/core';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, it, expect, beforeEach, vi } from 'vitest';
+
+import { invoke } from '@/testing/tauriCore';
 
 import { createDiscoveredSkill } from '../../../../testing/factories';
 import { useSkillStore, initialSkillState } from '../../store';

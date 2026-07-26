@@ -19,8 +19,8 @@ import GitDialog, { DialogState } from '@/features/git/components/GitDialog';
 import { useAheadBehindSync } from '@/features/git/hooks/useAheadBehindSync';
 import ProjectItem from '@/features/project/components/ProjectItem';
 import { SectionHeader } from '@/features/project/components/SectionHeader';
-import { useProjectActionsContext } from '@/features/project/ProjectContext';
 import { useActiveProject } from '@/features/project/hooks/use-active-project';
+import { useProjectActionsContext } from '@/features/project/ProjectContext';
 import { useProjectStore } from '@/features/project/store';
 import { useAppContext } from '@/shared/contexts/AppContext';
 import { getDistroIcon } from '@/shared/utils/distros';
@@ -144,7 +144,8 @@ const ProjectsPanel: React.FC = () => {
   // Reset remoteHomeDir when dialog becomes inactive
   useEffect(() => {
     if (!dialogRemoteEntryId) {
-      setRemoteHomeDir('');
+      // Defer to avoid sync setState in effect
+      Promise.resolve().then(() => setRemoteHomeDir(''));
     }
   }, [dialogRemoteEntryId]);
 

@@ -1,4 +1,3 @@
-import { invoke } from '@tauri-apps/api/core';
 import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
@@ -6,6 +5,7 @@ import OpenIdeButton from '@/app/components/OpenIdeButton';
 import { useConnectionStore } from '@/features/connection/store';
 import { useProjectStore } from '@/features/project/store';
 import type { Project } from '@/shared/types';
+import { invoke } from '@/testing/tauriCore';
 
 const mockInvoke = invoke as unknown as ReturnType<typeof vi.fn>;
 
@@ -67,7 +67,7 @@ describe('OpenIdeButton', () => {
 
     // 找到 IntelliJ IDEA 行（不是 button，是 div）
     const ideaRow = screen.getByText('IntelliJ IDEA');
-    expect(ideaRow).not.toBeNull();
+    expect(ideaRow).toBeInTheDocument();
     fireEvent.click(ideaRow);
 
     expect(setProjectIdeSpy).toHaveBeenCalledWith('p1', 'idea');
@@ -122,7 +122,7 @@ describe('OpenIdeButton', () => {
 
     const mainButton = screen.getByTitle('Open in IDE (VS Code)');
     const img = within(mainButton).queryByTestId('ide-icon');
-    expect(img).toBeTruthy();
+    expect(img).toBeInTheDocument();
     // default.svg is black monochrome; resolved vscode icon must not be that
     expect(img?.getAttribute('src') ?? '').not.toMatch(/fill='%23000000'/);
     expect(img?.getAttribute('src') ?? '').not.toMatch(/fill="#000000"/);

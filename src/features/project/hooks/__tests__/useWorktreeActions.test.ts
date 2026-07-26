@@ -1,4 +1,3 @@
-import { invoke } from '@tauri-apps/api/core';
 import { renderHook, act } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
@@ -7,6 +6,7 @@ import { useWorktreeActions } from '@/features/project/hooks/useWorktreeActions'
 import { useProjectStore } from '@/features/project/store';
 import { useWorktreeStore } from '@/features/project/worktreeStore';
 import { createProject } from '@/testing/factories';
+import { invoke } from '@/testing/tauriCore';
 
 const mockInvoke = vi.mocked(invoke);
 

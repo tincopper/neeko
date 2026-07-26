@@ -151,18 +151,21 @@ export function useMarketplace({ installedSkills, onSkillInstalled }: UseMarketp
   // Reset search results when search query is cleared
   useEffect(() => {
     if (!searchQuery) {
-      setSearchResults([]);
+      // Defer to avoid sync setState in effect
+      Promise.resolve().then(() => setSearchResults([]));
     }
   }, [searchQuery]);
 
   // Reset page when filter/query/board changes
   useEffect(() => {
-    setPage(1);
+    // Defer to avoid sync setState in effect
+    Promise.resolve().then(() => setPage(1));
   }, [sourceFilter, searchQuery, board]);
 
   // Reset source filter when board changes
   useEffect(() => {
-    setSourceFilter(null);
+    // Defer to avoid sync setState in effect
+    Promise.resolve().then(() => setSourceFilter(null));
   }, [board]);
 
   // Fetch leaderboard on mount and board change

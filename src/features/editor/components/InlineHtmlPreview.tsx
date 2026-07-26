@@ -1,3 +1,4 @@
+// eslint-disable-next-line no-restricted-imports -- convertFileSrc is needed for converting local file paths to asset URLs
 import { convertFileSrc } from '@tauri-apps/api/core';
 import React, { useEffect, useMemo, useRef } from 'react';
 

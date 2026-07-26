@@ -1,5 +1,16 @@
 import type { AgentConfig } from '@/features/agent/types';
-import type { GitInfo, PushOutcome } from '@/features/git/types';
+import type { AuthMethod } from '@/features/connection/types';
+import type { FileNode, FileContent } from '@/features/file/types';
+import type {
+  AheadBehind,
+  CommitDetail,
+  CommitEntry,
+  CommitFileChange,
+  CommitResult,
+  DiffResult,
+  GitInfo,
+  PushOutcome,
+} from '@/features/git/types';
 
 export type ProjectEnvironment =
   | { type: 'Local' }
@@ -53,18 +64,6 @@ export interface Project {
 export type TerminalEntry = {
   project: Project;
 };
-
-// ─── Active Project Types ───────────────────────────────────────────────────
-import type {
-  AheadBehind,
-  CommitEntry,
-  CommitDetail,
-  CommitFileChange,
-  CommitResult,
-  DiffResult,
-} from '@/features/git/types';
-import type { AuthMethod } from '@/features/connection/types';
-import type { FileNode, FileContent } from '@/features/file/types';
 
 export interface LocalConnectionContext {
   type: 'local';

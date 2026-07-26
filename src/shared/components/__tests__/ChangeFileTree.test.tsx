@@ -136,7 +136,7 @@ describe('ChangeFileTree rendering', () => {
 
   it('hides status dots when showStatusDot is false', () => {
     render(<ChangeFileTree files={[files[0]]} showStatusDot={false} />);
-    expect(screen.queryByTestId('status-dot')).toBeNull();
+    expect(screen.queryByTestId('status-dot')).not.toBeInTheDocument();
   });
 
   it('adds selected class for selected file', () => {

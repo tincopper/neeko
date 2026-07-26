@@ -64,7 +64,7 @@ const SplitPane: React.FC<SplitPaneProps> = ({
       <div className="overflow-auto shrink-0" style={{ width: leftWidth }}>
         {left}
       </div>
-      {/* eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions, jsx-a11y/no-noninteractive-tabindex */}
+      {/* eslint-disable jsx-a11y/no-noninteractive-element-interactions, jsx-a11y/no-noninteractive-tabindex */}
       <div
         role="separator"
         tabIndex={0}
@@ -86,6 +86,7 @@ const SplitPane: React.FC<SplitPaneProps> = ({
           }
         }}
       />
+      {/* eslint-enable jsx-a11y/no-noninteractive-element-interactions, jsx-a11y/no-noninteractive-tabindex */}
       <div className="flex-1 overflow-hidden min-w-0">{right}</div>
     </div>
   );

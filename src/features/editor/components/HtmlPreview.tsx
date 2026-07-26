@@ -1,3 +1,4 @@
+// eslint-disable-next-line no-restricted-imports -- convertFileSrc is needed for converting local file paths to asset URLs
 import { convertFileSrc } from '@tauri-apps/api/core';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
@@ -23,9 +24,12 @@ function HtmlPreview({ projectId, filePath, fileName }: HtmlPreviewProps) {
   const [isLoading, setIsLoading] = useState(true);
   // Reset loading state when filePath changes
   useEffect(() => {
-    setIsLoading(true);
-    setError(null);
-    setHtmlContent(null);
+    // Defer to avoid sync setState in effect (can trigger cascading renders)
+    Promise.resolve().then(() => {
+      setIsLoading(true);
+      setError(null);
+      setHtmlContent(null);
+    });
   }, [filePath]);
 
   // 计算文件所在目录的 asset URL（用�?<base href> 注入，使相对路径资源正确加载�?

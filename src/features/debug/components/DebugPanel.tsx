@@ -245,7 +245,7 @@ function DebugPanel() {
         style={{ height: panelHeight }}
       >
         {/* Top edge resize handle — full-width strip like SplitLayout */}
-        {/* eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions, jsx-a11y/no-noninteractive-tabindex */}
+        {/* eslint-disable jsx-a11y/no-noninteractive-element-interactions, jsx-a11y/no-noninteractive-tabindex */}
         <div
           role="separator"
           tabIndex={0}
@@ -263,6 +263,7 @@ function DebugPanel() {
           <div className="absolute left-0 right-0 top-0 h-1 bg-transparent group-hover:bg-accent-blue/50 group-active:bg-accent-blue/60 transition-colors rounded-t-lg" />
           <div className="absolute left-1/2 top-1 -translate-x-1/2 w-8 h-[3px] rounded-full bg-border/80 group-hover:bg-accent-blue/70 group-active:bg-accent-blue transition-colors" />
         </div>
+        {/* eslint-enable jsx-a11y/no-noninteractive-element-interactions, jsx-a11y/no-noninteractive-tabindex */}
 
         {/* Header — island tab bar density */}
         <div className="flex items-center border-b border-border shrink-0 bg-bg-secondary h-8 rounded-t-lg">
@@ -401,7 +402,7 @@ function DebugPanel() {
               </div>
 
               {/* Frames width resize handle — RightPanel style */}
-              {/* eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions, jsx-a11y/no-noninteractive-tabindex */}
+              {/* eslint-disable jsx-a11y/no-noninteractive-element-interactions, jsx-a11y/no-noninteractive-tabindex */}
               <div
                 role="separator"
                 tabIndex={0}
@@ -418,6 +419,7 @@ function DebugPanel() {
               >
                 <div className="absolute left-1/2 top-0 bottom-0 w-1 -translate-x-1/2 bg-transparent group-hover:bg-accent-blue/50 group-active:bg-accent-blue/60 transition-colors" />
               </div>
+              {/* eslint-enable jsx-a11y/no-noninteractive-element-interactions, jsx-a11y/no-noninteractive-tabindex */}
             </div>
 
             {/* Variables + evaluate (evaluate lives here, not in Console) */}

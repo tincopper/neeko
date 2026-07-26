@@ -7,13 +7,6 @@ export function useConversationDetail(conversationId: string | null) {
   const [messages, setMessages] = useState<ConversationMessage[]>([]);
   const [loading, setLoading] = useState(false);
 
-  // Reset messages when conversationId becomes null
-  useEffect(() => {
-    if (!conversationId) {
-      setMessages([]);
-    }
-  }, [conversationId]);
-
   const loadMessages = useCallback(async (id: string) => {
     setLoading(true);
     try {
@@ -43,5 +36,5 @@ export function useConversationDetail(conversationId: string | null) {
     }
   }, []);
 
-  return { messages, loading, exportConversation: handleExport };
+  return { messages: conversationId ? messages : [], loading, exportConversation: handleExport };
 }

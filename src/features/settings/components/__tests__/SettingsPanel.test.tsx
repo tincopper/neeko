@@ -1,4 +1,3 @@
-import { invoke } from '@tauri-apps/api/core';
 import { render, screen, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -6,6 +5,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import SettingsPanel from '@/features/settings';
 import { AppProvider } from '@/shared/contexts';
 import type { AppConfig } from '@/shared/types';
+import { invoke } from '@/testing/tauriCore';
 
 const mockInvoke = vi.mocked(invoke);
 
@@ -255,7 +255,7 @@ describe('SettingsPanel', () => {
         </AppProvider>,
       );
       // 全页模式不应有 fixed overlay
-      expect(screen.queryByTestId('settings-overlay')).toBeNull();
+      expect(screen.queryByTestId('settings-overlay')).not.toBeInTheDocument();
     });
 
     it('全页模式内容区可正常滚动', () => {

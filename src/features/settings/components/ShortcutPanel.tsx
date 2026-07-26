@@ -91,14 +91,14 @@ const ShortcutPanel: React.FC<ShortcutPanelProps> = ({ config, onConfigChange })
     [recordingId],
   );
 
-  const handleStartRecording = useCallback((id: string) => {
+  const handleStartRecording = (id: string) => {
     const action = SHORTCUT_ACTIONS.find((a) => a.id === id);
     if (action && !isRecordableAction(action)) {
       return;
     }
     setSelectedId(null);
     setRecordingId(id);
-  }, []);
+  };
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
@@ -140,7 +140,7 @@ const ShortcutPanel: React.FC<ShortcutPanelProps> = ({ config, onConfigChange })
       });
       setRecordingId(null);
     },
-    [recordingId, config, onConfigChange, selectedId, handleStartRecording],
+    [recordingId, config, onConfigChange, selectedId],
   );
 
   return (

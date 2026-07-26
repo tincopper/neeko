@@ -43,12 +43,8 @@ export function useLspCapabilities(
 ): LspCapabilities {
   const [caps, setCaps] = useState<LspCapabilities>(EMPTY_CAPABILITIES);
 
-  // Reset caps when deps become invalid
-  useEffect(() => {
-    if (!projectPath || !languageId) {
-      setCaps(EMPTY_CAPABILITIES);
-    }
-  }, [projectPath, languageId]);
+  // Derive display value: when deps are invalid, short-circuit to EMPTY (avoids sync setState in effect)
+  const isValid = !!projectPath && !!languageId;
 
   useEffect(() => {
     if (!projectPath || !languageId) return;
@@ -92,5 +88,5 @@ export function useLspCapabilities(
     };
   }, [projectPath, languageId]);
 
-  return caps;
+  return isValid ? caps : EMPTY_CAPABILITIES;
 }

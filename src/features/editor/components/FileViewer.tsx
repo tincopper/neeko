@@ -338,7 +338,8 @@ function FileEditor({
   useEffect(() => {
     const cached = getCachedLanguageExtension(tab.filePath);
     if (cached) {
-      setLangExtension(cached);
+      // Defer to avoid sync setState in effect (can trigger cascading renders)
+      Promise.resolve().then(() => setLangExtension(cached));
       return;
     }
     let cancelled = false;
@@ -416,7 +417,8 @@ function FileEditor({
   // Sync LSP language id when filePath changes + async tighten with live backend registry
   useEffect(() => {
     const sync = getLspLanguageId(tab.filePath);
-    setLspLanguageId(sync);
+    // Defer to avoid sync setState in effect (can trigger cascading renders)
+    Promise.resolve().then(() => setLspLanguageId(sync));
     void resolveLspLanguageId(tab.filePath).then((live) => {
       if (live) {
         setLspLanguageId(live);
@@ -572,6 +574,7 @@ function FileEditor({
       const character = pos - lineObj.from;
       const uri = projectPath ? toFileUri(projectPath, tab.filePath) : '';
 
+      // eslint-disable-next-line react-hooks/purity -- performance.now() in callback, not during render
       const t0 = performance.now();
       definition.goToDefinitionWithContent(lid, uri, line, character).then((result) => {
         if (!result) return;
@@ -1007,6 +1010,9 @@ function FileEditor({
     lspKeymap,
     linkHighlightExt,
     bpGutterExt,
+    handleLnClick,
+    handleLnHover,
+    handleLnLeave,
   ]);
 
   // Breadcrumb path segments

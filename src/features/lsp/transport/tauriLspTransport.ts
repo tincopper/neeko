@@ -1,4 +1,5 @@
 import type { Transport } from '@codemirror/lsp-client';
+// eslint-disable-next-line no-restricted-imports -- invoke is needed for Tauri IPC calls to LSP backend
 import { invoke } from '@tauri-apps/api/core';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 

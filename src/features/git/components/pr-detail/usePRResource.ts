@@ -24,28 +24,22 @@ export function usePRResource(projectId: string, prNumber: number, enabled: bool
 
   // Sync resource state when enabled/cached changes
   useEffect(() => {
-    if (!enabled && !cached) {
-      setResource(null);
-    } else if (enabled && cached) {
-      setResource(cached);
-    }
+    // Defer to avoid sync setState in effect (can trigger cascading renders)
+    Promise.resolve().then(() => {
+      if (!enabled && !cached) {
+        setResource(null);
+      } else if (enabled && cached) {
+        setResource(cached);
+      }
+    });
   }, [enabled, cached]);
-
-  // Sync when a cached value becomes available for an already-enabled key
-  useEffect(() => {
-    if (enabled && cached && resource !== cached) {
-      setResource(cached);
-    }
-  }, [enabled, cached, resource]);
 
   useEffect(() => {
     if (!enabled) return;
     if (cached) return;
 
     let cancelled = false;
-    let timer: ReturnType<typeof setTimeout>;
-
-    timer = setTimeout(() => {
+    const timer = setTimeout(() => {
       if (cancelled) return;
       Promise.all([
         viewPr(projectId, prNumber).catch((err: unknown) => {

@@ -1,4 +1,3 @@
-import { invoke } from '@tauri-apps/api/core';
 import { open } from '@tauri-apps/plugin-dialog';
 import { renderHook, waitFor, act } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -6,6 +5,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { useLocalProjects } from '@/features/project/hooks/useLocalProjects';
 import { useEditorStore } from '@/shared/store';
 import { createProject } from '@/testing/factories';
+import { invoke } from '@/testing/tauriCore';
 
 // mock destroyTerminalCache — 不验证内部调用
 vi.mock('@/features/terminal/components/terminalCache', () => ({

@@ -1,8 +1,8 @@
-import { invoke } from '@tauri-apps/api/core';
 import { renderHook, waitFor, act } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 import { useAppConfig } from '@/features/settings/hooks/useAppConfig';
+import { invoke } from '@/testing/tauriCore';
 
 const mockInvoke = vi.mocked(invoke);
 

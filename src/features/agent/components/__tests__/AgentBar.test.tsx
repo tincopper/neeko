@@ -1,9 +1,9 @@
-import { invoke } from '@tauri-apps/api/core';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 import AgentBar from '@/features/agent/components/AgentBar';
 import type { AgentConfig } from '@/shared/types';
+import { invoke } from '@/testing/tauriCore';
 
 const mockInvoke = invoke as unknown as ReturnType<typeof vi.fn>;
 

@@ -41,18 +41,21 @@ function ProjectSettingsDialog({
   // Sync selectedIdeId when currentIde changes
   useEffect(() => {
     if (!currentIde) return;
-    const preset = IDE_PRESETS.find((i) => {
-      const cmd = config.ideCommandOverrides?.[i.id] ?? getIdeCommand(i);
-      return cmd === currentIde;
-    });
-    if (preset) {
-      setSelectedIdeId(preset.id);
-    } else {
-      const customIdx = (config.customIdes ?? []).findIndex((c) => c.command === currentIde);
-      if (customIdx >= 0) {
-        setSelectedIdeId(`custom:${customIdx}`);
+    // Defer to avoid sync setState in effect
+    Promise.resolve().then(() => {
+      const preset = IDE_PRESETS.find((i) => {
+        const cmd = config.ideCommandOverrides?.[i.id] ?? getIdeCommand(i);
+        return cmd === currentIde;
+      });
+      if (preset) {
+        setSelectedIdeId(preset.id);
+      } else {
+        const customIdx = (config.customIdes ?? []).findIndex((c) => c.command === currentIde);
+        if (customIdx >= 0) {
+          setSelectedIdeId(`custom:${customIdx}`);
+        }
       }
-    }
+    });
   }, [currentIde, config.ideCommandOverrides, config.customIdes]);
 
   useEffect(() => {

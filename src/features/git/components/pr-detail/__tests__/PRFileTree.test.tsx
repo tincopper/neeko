@@ -41,13 +41,13 @@ describe('PRFileTree', () => {
     render(<PRFileTree files={files} selectedPath="README.md" />);
     const row = screen.getByTitle('README.md');
     expect(row).toBeInTheDocument();
-    expect(row.className).toContain('bg-accent-blue/10');
+    expect(row).toHaveClass('bg-accent-blue/10');
   });
 
   it('does not highlight non-selected files', () => {
     render(<PRFileTree files={files} selectedPath="README.md" />);
     const mainRow = screen.getByTitle('src/main.ts');
-    expect(mainRow.className).not.toContain('bg-accent-blue/10');
+    expect(mainRow).not.toHaveClass('bg-accent-blue/10');
   });
 
   it('shows loading skeleton when loading', () => {

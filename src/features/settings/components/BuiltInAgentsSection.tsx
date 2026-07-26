@@ -30,7 +30,6 @@ const BuiltInAgentsSection: React.FC<BuiltInAgentsSectionProps> = ({
   config,
   builtinAgents,
   editingPresetId,
-  editingValue,
   skillPathEditingAgentId,
   skillPathInputValue,
   onConfigChange,

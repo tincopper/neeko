@@ -21,6 +21,8 @@ function mapPRFilesToChangeFiles(prFiles: PRFileChange[]): ChangeFileItem[] {
   }));
 }
 
+const SKELETON_WIDTHS = [72, 85, 65, 78, 90, 70, 82, 76];
+
 const PRFileTree: React.FC<PRFileTreeProps> = ({ files, onFileClick, selectedPath, loading }) => {
   const changeFiles = React.useMemo(() => mapPRFilesToChangeFiles(files), [files]);
 
@@ -32,7 +34,7 @@ const PRFileTree: React.FC<PRFileTreeProps> = ({ files, onFileClick, selectedPat
             <div className="w-3 h-3 rounded bg-bg-tertiary animate-pulse shrink-0" />
             <div
               className="h-2.5 rounded bg-bg-tertiary animate-pulse"
-              style={{ width: `${60 + Math.random() * 35}%` }}
+              style={{ width: `${SKELETON_WIDTHS[i]}%` }}
             />
           </div>
         ))}

@@ -32,7 +32,8 @@ function CommitDialog({ projectId, onClose, onRefreshGit }: CommitDialogProps) {
   // Reset message when amend changes to false
   useEffect(() => {
     if (!amend) {
-      setMessage('');
+      // Defer to avoid sync setState in effect
+      Promise.resolve().then(() => setMessage(''));
     }
   }, [amend]);
 

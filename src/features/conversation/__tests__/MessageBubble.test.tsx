@@ -13,7 +13,7 @@ describe('MessageBubble', () => {
       </MessageBubble>,
     );
     const strip = screen.getByTestId('message-strip');
-    expect(strip.className).toContain('border-l-accent-blue');
+    expect(strip).toHaveClass('border-l-accent-blue');
     expect(strip.className).toMatch(/bg-accent-blue/);
     expect(screen.getByText('You')).toHaveClass('text-accent-blue');
   });
@@ -25,7 +25,7 @@ describe('MessageBubble', () => {
       </MessageBubble>,
     );
     const strip = screen.getByTestId('message-strip');
-    expect(strip.className).toContain('border-l-accent-green');
+    expect(strip).toHaveClass('border-l-accent-green');
     expect(screen.getByText('Claude Code')).toHaveClass('text-accent-green');
   });
 

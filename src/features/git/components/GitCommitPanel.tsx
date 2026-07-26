@@ -515,7 +515,7 @@ const GitCommitPanel: React.FC<GitCommitPanelProps> = ({
       </div>
 
       {/* Draggable divider */}
-      {/* eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions, jsx-a11y/no-noninteractive-tabindex */}
+      {/* eslint-disable jsx-a11y/no-noninteractive-element-interactions, jsx-a11y/no-noninteractive-tabindex */}
       <div
         role="separator"
         tabIndex={0}
@@ -531,6 +531,7 @@ const GitCommitPanel: React.FC<GitCommitPanelProps> = ({
       >
         <div className="w-8 h-[3px] rounded-full bg-border group-hover:bg-accent-blue/50 transition-colors duration-150" />
       </div>
+      {/* eslint-enable jsx-a11y/no-noninteractive-element-interactions, jsx-a11y/no-noninteractive-tabindex */}
 
       <CommitForm
         message={commitMessage}

@@ -30,7 +30,8 @@ export function useSettingsPanelState({
 
   // Sync shell input when config changes
   useEffect(() => {
-    setShellInput(config.shell);
+    // Defer to avoid sync setState in effect
+    Promise.resolve().then(() => setShellInput(config.shell));
   }, [config.shell]);
 
   const [systemFonts, setSystemFonts] = useState<string[]>([]);

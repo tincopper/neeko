@@ -1,10 +1,10 @@
-import { invoke } from '@tauri-apps/api/core';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import ProjectItem from '@/features/project/components/ProjectItem';
 import type { ProjectItemActions } from '@/features/project/components/projectItemTypes';
 import type { Project } from '@/shared/types';
+import { invoke } from '@/testing/tauriCore';
 
 function createProject(overrides: Partial<Project> = {}): Project {
   return {

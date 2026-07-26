@@ -144,7 +144,7 @@ describe('ProjectGroup avatar color override', () => {
       />,
     );
     const avatar = screen.getByTestId('project-group-avatar');
-    expect(avatar).toBeTruthy();
+    expect(avatar).toBeInTheDocument();
     expect(avatar).toHaveStyle({ color: 'rgb(224, 108, 117)' });
   });
 

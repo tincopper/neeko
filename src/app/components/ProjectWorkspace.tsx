@@ -98,20 +98,23 @@ function ProjectWorkspace() {
   // Seed installed status from cache when agents change
   const [installedMap, setInstalledMap] = useState<Map<string, boolean>>(new Map());
   useEffect(() => {
-    const ids = agents.map((a) => a.id);
-    const allCached = ids.every((id) =>
-      agentInstalledCache.has(agentInstallCacheKey(currentProjectId, id)),
-    );
-    if (allCached) {
-      const map = new Map<string, boolean>();
-      for (const id of ids) {
-        map.set(id, agentInstalledCache.get(agentInstallCacheKey(currentProjectId, id)) ?? true);
+    // Defer to avoid sync setState in effect (can trigger cascading renders)
+    Promise.resolve().then(() => {
+      const ids = agents.map((a) => a.id);
+      const allCached = ids.every((id) =>
+        agentInstalledCache.has(agentInstallCacheKey(currentProjectId, id)),
+      );
+      if (allCached) {
+        const map = new Map<string, boolean>();
+        for (const id of ids) {
+          map.set(id, agentInstalledCache.get(agentInstallCacheKey(currentProjectId, id)) ?? true);
+        }
+        setInstalledMap(map);
+      } else {
+        setInstalledMap(new Map());
       }
-      setInstalledMap(map);
-    } else {
-      setInstalledMap(new Map());
-    }
-  }, [agentIdFingerprint, currentProjectId]);
+    });
+  }, [agentIdFingerprint, currentProjectId, agents]);
 
   useEffect(() => {
     const ids = agents.map((a) => a.id);

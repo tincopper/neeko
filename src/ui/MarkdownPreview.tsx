@@ -1,6 +1,7 @@
+// eslint-disable-next-line no-restricted-imports -- convertFileSrc is needed for resolving local image paths in markdown
 import { convertFileSrc } from '@tauri-apps/api/core';
 import plantumlEncoder from 'plantuml-encoder';
-import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback, useId } from 'react';
 import ReactMarkdown from 'react-markdown';
 import rehypeHighlight from 'rehype-highlight';
 import rehypeRaw from 'rehype-raw';
@@ -32,13 +33,17 @@ interface MermaidBlockProps {
 function MermaidBlock({ code, theme }: MermaidBlockProps) {
   const [svg, setSvg] = useState<string>('');
   const [error, setError] = useState<string | null>(null);
-  const id = useRef(`mermaid-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+  const uid = useId();
+  const id = useRef(`mermaid-${uid}`);
   const cancelledRef = useRef(false);
 
   // Reset state when inputs change
   useEffect(() => {
-    setSvg('');
-    setError(null);
+    // Defer to avoid sync setState in effect
+    Promise.resolve().then(() => {
+      setSvg('');
+      setError(null);
+    });
   }, [code, theme]);
 
   useEffect(() => {

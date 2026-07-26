@@ -169,7 +169,7 @@ function SplitLayout({
             {renderTreeFn({ node: node.first, path: [...path, 'first'] })}
           </div>
 
-          {/* eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions, jsx-a11y/no-noninteractive-tabindex */}
+          {/* eslint-disable jsx-a11y/no-noninteractive-element-interactions, jsx-a11y/no-noninteractive-tabindex */}
           <div
             role="separator"
             tabIndex={0}
@@ -198,6 +198,7 @@ function SplitLayout({
               }`}
             />
           </div>
+          {/* eslint-enable jsx-a11y/no-noninteractive-element-interactions, jsx-a11y/no-noninteractive-tabindex */}
 
           <div className="min-w-0 min-h-0 flex-1 flex flex-col overflow-hidden">
             {renderTreeFn({ node: node.second, path: [...path, 'second'] })}

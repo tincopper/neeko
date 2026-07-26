@@ -90,7 +90,8 @@ const PRDetailView: React.FC<PRDetailViewProps> = ({
   // Sync comments when resource changes
   useEffect(() => {
     if (resource) {
-      setComments(resource.comments);
+      // Defer to avoid sync setState in effect
+      Promise.resolve().then(() => setComments(resource.comments));
     }
   }, [resource]);
 

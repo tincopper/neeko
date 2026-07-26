@@ -89,7 +89,8 @@ const PRFilesChangedPanel: React.FC<PRFilesChangedPanelProps> = ({
     if (!scrollToFile) return;
     const idx = files.findIndex((f) => f.path === scrollToFile);
     if (idx >= 0 && idx >= loadedCount) {
-      setLoadedCount(Math.min(idx + PAGE_SIZE, files.length));
+      // Defer to avoid cascading renders (setState depends on loadedCount in deps)
+      Promise.resolve().then(() => setLoadedCount(Math.min(idx + PAGE_SIZE, files.length)));
     }
   }, [scrollToFile, files, loadedCount]);
 
@@ -415,9 +416,12 @@ const DiffBody: React.FC<DiffBodyProps> = ({
   // Reset comment state when filePath changes
   useEffect(() => {
     commentsLoaded.current = false;
-    setCommentLine(null);
-    setCommentText('');
-    setComments([]);
+    // Defer to avoid sync setState in effect (can trigger cascading renders)
+    Promise.resolve().then(() => {
+      setCommentLine(null);
+      setCommentText('');
+      setComments([]);
+    });
   }, [filePath]);
 
   useEffect(() => {

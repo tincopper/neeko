@@ -1,5 +1,6 @@
 /* eslint-disable check-file/filename-naming-convention */
 /* eslint-disable import/export */
+import { X, Square, ChevronLeft, type LucideProps } from 'lucide-react';
 import React from 'react';
 
 // ─── Lucide aliases (semantic names for commonly used icons) ─────────────
@@ -30,7 +31,6 @@ export {
 export * from 'lucide-react';
 
 // ─── Special overrides (custom size/style) ───────────────────────────────
-import { X, Square, ChevronLeft, type LucideProps } from 'lucide-react';
 
 export const CloseIcon: React.FC<LucideProps> = (props) => (
   <X size={14} strokeWidth={1.8} {...props} />

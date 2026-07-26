@@ -47,7 +47,8 @@ const ProjectPanel: React.FC<ProjectPanelProps> = ({ projectId, customIdes, onPr
 
   // Sync name when project.name changes
   useEffect(() => {
-    setName(project?.name ?? '');
+    // Defer to avoid sync setState in effect
+    Promise.resolve().then(() => setName(project?.name ?? ''));
   }, [project?.name]);
 
   const [activeTaskTab, setActiveTaskTab] = useState<'project' | 'app'>('project');

@@ -69,7 +69,7 @@ describe('ConversationItem', () => {
     );
 
     const row = screen.getByRole('button', { name: /Refactoring/ });
-    expect(row.className).toContain('border-l-accent-blue');
+    expect(row).toHaveClass('border-l-accent-blue');
   });
 
   it('opens View when the whole row is clicked', () => {
