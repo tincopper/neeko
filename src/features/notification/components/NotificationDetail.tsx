@@ -2,6 +2,8 @@ import * as Dialog from '@radix-ui/react-dialog';
 import { Info, CircleCheckBig, CircleAlert, CircleX, Copy, Check } from 'lucide-react';
 import { useState, useCallback } from 'react';
 
+import { useNotificationStore } from '@/shared/store/notificationStore';
+
 import type { Notification, NotificationType } from '../notificationTypes';
 
 interface NotificationDetailProps {
@@ -37,6 +39,7 @@ function formatDateTime(ts: number): string {
 
 export function NotificationDetail({ notification, onClose }: NotificationDetailProps) {
   const [copied, setCopied] = useState(false);
+  const addNotification = useNotificationStore((s) => s.addNotification);
 
   const handleCopy = useCallback(async () => {
     if (!notification) return;
@@ -47,9 +50,13 @@ export function NotificationDetail({ notification, onClose }: NotificationDetail
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch {
-      // clipboard not available
+      addNotification({
+        type: 'error',
+        title: 'Copy failed',
+        message: 'Clipboard is not available. Please select and copy the text manually.',
+      });
     }
-  }, [notification]);
+  }, [notification, addNotification]);
 
   if (!notification) return null;
 
@@ -89,7 +96,7 @@ export function NotificationDetail({ notification, onClose }: NotificationDetail
           </div>
 
           <div className="px-4 py-3">
-            <p className="text-xs text-text-primary whitespace-pre-wrap break-words leading-relaxed">
+            <p className="text-xs text-text-primary whitespace-pre-wrap break-words leading-relaxed select-text">
               {notification.message}
             </p>
             <p className="text-[11px] text-text-muted mt-3">
