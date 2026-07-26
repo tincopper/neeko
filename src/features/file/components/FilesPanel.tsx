@@ -8,6 +8,7 @@ import {
   FileText,
   Copy,
   ClipboardCopy,
+  ExternalLink,
 } from '@/shared/components/icons';
 import type { FileNode, FileChange } from '@/shared/types';
 import { resolveAbsolutePath } from '@/shared/utils/browserUtils';
@@ -366,7 +367,7 @@ function FilesPanel({
         if (onOpenInSystemBrowser) {
           items.push({
             label: 'Open in System Browser',
-            icon: FolderOpen,
+            icon: ExternalLink,
             action: () => onOpenInSystemBrowser(node.path),
           });
         }
