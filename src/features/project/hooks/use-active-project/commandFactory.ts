@@ -14,7 +14,10 @@ import type {
   PushOutcome,
 } from '@/shared/types/git';
 
-export function createProjectCommands(projectId: string, worktreePath?: string | null): ProjectCommands {
+export function createProjectCommands(
+  projectId: string,
+  worktreePath?: string | null,
+): ProjectCommands {
   return {
     refreshGitInfo(): Promise<GitInfo> {
       return invoke<GitInfo>('get_git_info', { projectId, worktreePath });

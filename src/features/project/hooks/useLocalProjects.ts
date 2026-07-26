@@ -214,59 +214,61 @@ export function useLocalProjects() {
     [activeProjectId, setActiveProjectId],
   );
 
-  const handleRefreshGit = useCallback(async (projectId: string) => {
-    const defaultGitInfo = {
-      current_branch: '',
-      branches: [] as string[],
-      worktrees: [] as Worktree[],
-      changed_files: [] as FileChange[],
-      is_clean: true,
-      git_provider: '',
-    };
+  const handleRefreshGit = useCallback(
+    async (projectId: string) => {
+      const defaultGitInfo = {
+        current_branch: '',
+        branches: [] as string[],
+        worktrees: [] as Worktree[],
+        changed_files: [] as FileChange[],
+        is_clean: true,
+        git_provider: '',
+      };
 
-    const updateProjectGitInfo = (patch: Partial<typeof defaultGitInfo>) => {
-      useProjectStore.setState((state) => {
-        const nextProjects = state.projects.map((p) => {
-          if (p.id !== projectId) return p;
-          return { ...p, git_info: { ...(p.git_info ?? defaultGitInfo), ...patch } };
-        });
-        return {
-          projects: nextProjects,
-          activeProject:
-            state.activeProjectId === projectId
-              ? (nextProjects.find((p) => p.id === projectId) ?? state.activeProject)
-              : state.activeProject,
-        };
-      });
-    };
-
-    try {
-      const changedFiles = await getWorktreeChangedFiles(
-        projectId,
-        activeWorktreePath ?? '',
-      );
-      updateProjectGitInfo({ changed_files: changedFiles, is_clean: changedFiles.length === 0 });
-
-      getGitBranchInfo(projectId, activeWorktreePath)
-        .then((branchInfo) => {
-          updateProjectGitInfo({
-            current_branch: branchInfo.current_branch,
-            branches: branchInfo.branches,
-            worktrees: branchInfo.worktrees,
+      const updateProjectGitInfo = (patch: Partial<typeof defaultGitInfo>) => {
+        useProjectStore.setState((state) => {
+          const nextProjects = state.projects.map((p) => {
+            if (p.id !== projectId) return p;
+            return { ...p, git_info: { ...(p.git_info ?? defaultGitInfo), ...patch } };
           });
-        })
-        .catch((error) => console.error('Failed to refresh git branch info:', error));
+          return {
+            projects: nextProjects,
+            activeProject:
+              state.activeProjectId === projectId
+                ? (nextProjects.find((p) => p.id === projectId) ?? state.activeProject)
+                : state.activeProject,
+          };
+        });
+      };
 
-      // 同步 ahead/behind（待 push 数量），与 changed_files 一并刷新
-      getAheadBehind(projectId, activeWorktreePath)
-        .then((ab) => {
-          useGitStore.getState().setAheadBehind(aheadBehindKey('local', projectId, projectId), ab);
-        })
-        .catch((error) => console.error('Failed to refresh ahead/behind:', error));
-    } catch (error) {
-      console.error('Failed to refresh git info:', error);
-    }
-  }, [activeWorktreePath]);
+      try {
+        const changedFiles = await getWorktreeChangedFiles(projectId, activeWorktreePath ?? '');
+        updateProjectGitInfo({ changed_files: changedFiles, is_clean: changedFiles.length === 0 });
+
+        getGitBranchInfo(projectId, activeWorktreePath)
+          .then((branchInfo) => {
+            updateProjectGitInfo({
+              current_branch: branchInfo.current_branch,
+              branches: branchInfo.branches,
+              worktrees: branchInfo.worktrees,
+            });
+          })
+          .catch((error) => console.error('Failed to refresh git branch info:', error));
+
+        // 同步 ahead/behind（待 push 数量），与 changed_files 一并刷新
+        getAheadBehind(projectId, activeWorktreePath)
+          .then((ab) => {
+            useGitStore
+              .getState()
+              .setAheadBehind(aheadBehindKey('local', projectId, projectId), ab);
+          })
+          .catch((error) => console.error('Failed to refresh ahead/behind:', error));
+      } catch (error) {
+        console.error('Failed to refresh git info:', error);
+      }
+    },
+    [activeWorktreePath],
+  );
 
   const handleOpenIde = useCallback(
     async (project: { id: string; selected_ide: string | null }) => {

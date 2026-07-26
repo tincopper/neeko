@@ -1,6 +1,7 @@
 import { listen } from '@tauri-apps/api/event';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
+import { openInDefaultBrowser } from '@/features/browser/api/browserApi';
 import ConversationPanel from '@/features/conversation/components/ConversationPanel';
 import type { ConversationMeta } from '@/features/conversation/types';
 import { conversationTabTitle } from '@/features/conversation/utils/conversationTabTitle';
@@ -26,8 +27,11 @@ import { useWorktreeStore } from '@/shared/store/worktreeStore';
 import type { Tab, FileTreeChangedEvent } from '@/shared/types';
 import { DEFAULT_TREE_DEPTH } from '@/shared/types/file';
 import { aheadBehindKey } from '@/shared/utils/aheadBehindKey';
-import { openInDefaultBrowser } from '@/features/browser/api/browserApi';
-import { filePathToFileUrl, openHtmlInBrowserPanel, resolveAbsolutePath } from '@/shared/utils/browserUtils';
+import {
+  filePathToFileUrl,
+  openHtmlInBrowserPanel,
+  resolveAbsolutePath,
+} from '@/shared/utils/browserUtils';
 import { buildDiffSource } from '@/shared/utils/diffSource';
 import { mergeSubTree } from '@/shared/utils/fileTree';
 import { buildWorktreeTabKey } from '@/shared/utils/tabKey';

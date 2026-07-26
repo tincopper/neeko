@@ -47,9 +47,7 @@ const GitCommitPanel: React.FC<GitCommitPanelProps> = ({
   const [loading, setLoading] = useState(false);
   const [dialog, setDialog] = useState<DialogState | null>(null);
   const [discardConfirm, setDiscardConfirm] = useState<
-    | { type: 'file'; path: string }
-    | { type: 'all'; count: number }
-    | null
+    { type: 'file'; path: string } | { type: 'all'; count: number } | null
   >(null);
   const [credentialDialog, setCredentialDialog] = useState<{
     open: boolean;
@@ -305,10 +303,7 @@ const GitCommitPanel: React.FC<GitCommitPanelProps> = ({
         }
         return next;
       });
-      onShowToast?.(
-        confirm.type === 'all' ? 'Discarded all changes' : 'Discarded changes',
-        'info',
-      );
+      onShowToast?.(confirm.type === 'all' ? 'Discarded all changes' : 'Discarded changes', 'info');
     } catch (e: unknown) {
       onShowToast?.(String(e), 'error');
     } finally {
@@ -538,7 +533,9 @@ const GitCommitPanel: React.FC<GitCommitPanelProps> = ({
               : `This will discard changes in '${discardConfirm?.path}' and cannot be undone.`}
           </p>
           <DialogFooter>
-            <Button variant="outline" onClick={handleCancelDiscard}>Cancel</Button>
+            <Button variant="outline" onClick={handleCancelDiscard}>
+              Cancel
+            </Button>
             <Button variant="destructive" onClick={handleConfirmDiscard}>
               {discardConfirm?.type === 'all' ? 'Discard All' : 'Discard'}
             </Button>

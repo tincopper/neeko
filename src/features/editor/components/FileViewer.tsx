@@ -21,6 +21,7 @@ import CodeMirror from '@uiw/react-codemirror';
 import React, { useState, useCallback, useEffect, useMemo, useRef, useLayoutEffect } from 'react';
 import { useShallow } from 'zustand/shallow';
 
+import { openInDefaultBrowser } from '@/features/browser/api/browserApi';
 import { useBreakpointGutterExtensions } from '@/features/debug/hooks/useBreakpointGutter';
 import {
   applyDebugCurrentLine,
@@ -64,8 +65,11 @@ import { useWorktreeStore } from '@/shared/store/worktreeStore';
 import type { FileTab, AppTheme, Tab, FileTabData } from '@/shared/types';
 import type { EditorAction } from '@/shared/utils/agentPrompt';
 import { buildCodeMessage } from '@/shared/utils/agentPrompt';
-import { openInDefaultBrowser } from '@/features/browser/api/browserApi';
-import { filePathToFileUrl, openHtmlInBrowserPanel, resolveAbsolutePath } from '@/shared/utils/browserUtils';
+import {
+  filePathToFileUrl,
+  openHtmlInBrowserPanel,
+  resolveAbsolutePath,
+} from '@/shared/utils/browserUtils';
 import {
   getCachedLanguageExtension,
   getLanguageExtension,

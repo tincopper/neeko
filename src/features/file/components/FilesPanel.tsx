@@ -10,9 +10,9 @@ import {
   ClipboardCopy,
   ExternalLink,
 } from '@/shared/components/icons';
+import { useNotificationStore } from '@/shared/store/notificationStore';
 import type { FileNode, FileChange } from '@/shared/types';
 import { resolveAbsolutePath } from '@/shared/utils/browserUtils';
-import { useNotificationStore } from '@/shared/store/notificationStore';
 import { fileIconSrc } from '@/shared/utils/fileIcons';
 
 import { setDragFile } from '../hooks/useFileDrop';
@@ -419,7 +419,14 @@ function FilesPanel({
 
       return items;
     },
-    [projectType, projectPath, onSelectFile, onOpenInBrowser, onOpenInSystemBrowser, onRevealInExplorer],
+    [
+      projectType,
+      projectPath,
+      onSelectFile,
+      onOpenInBrowser,
+      onOpenInSystemBrowser,
+      onRevealInExplorer,
+    ],
   );
 
   if (!projectName) {

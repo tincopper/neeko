@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useCallback } from 'react';
 
-import type { FileChange } from '@/shared/types';
 import { useProjectStore } from '@/shared/store/projectStore';
 import { useWorktreeStore } from '@/shared/store/worktreeStore';
+import type { FileChange } from '@/shared/types';
 import { withTimeout } from '@/shared/utils/withTimeout';
 import { Button } from '@/ui/Button';
 import { Checkbox } from '@/ui/Checkbox';
