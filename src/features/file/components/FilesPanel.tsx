@@ -12,6 +12,7 @@ import {
 } from '@/shared/components/icons';
 import type { FileNode, FileChange } from '@/shared/types';
 import { resolveAbsolutePath } from '@/shared/utils/browserUtils';
+import { useNotificationStore } from '@/shared/store/notificationStore';
 import { fileIconSrc } from '@/shared/utils/fileIcons';
 
 import { setDragFile } from '../hooks/useFileDrop';
@@ -380,7 +381,13 @@ function FilesPanel({
         icon: Copy,
         action: () => {
           const absPath = projectPath ? resolveAbsolutePath(projectPath, node.path) : node.path;
-          navigator.clipboard.writeText(absPath);
+          navigator.clipboard.writeText(absPath).catch(() => {
+            useNotificationStore.getState().addNotification({
+              type: 'error',
+              title: 'Copy Path',
+              message: 'Failed to copy path to clipboard',
+            });
+          });
         },
       });
 
@@ -390,7 +397,13 @@ function FilesPanel({
           icon: ClipboardCopy,
           // node.path 已经是相对于项目根的相对路径，直接复�?
           action: () => {
-            navigator.clipboard.writeText(node.path);
+            navigator.clipboard.writeText(node.path).catch(() => {
+              useNotificationStore.getState().addNotification({
+                type: 'error',
+                title: 'Copy Relative Path',
+                message: 'Failed to copy path to clipboard',
+              });
+            });
           },
         });
       }
