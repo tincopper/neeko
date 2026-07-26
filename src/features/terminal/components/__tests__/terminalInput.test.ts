@@ -69,6 +69,20 @@ describe('setupTerminalInput', () => {
     expect(sendInput).toHaveBeenCalledWith('abc');
   });
 
+  it('转发普通空格输入', () => {
+    const term = new MockTerminal();
+    const sendInput = vi.fn();
+
+    setupTerminalInput({
+      term: term as unknown as Terminal,
+      sendInput,
+    });
+
+    term.emitData(' ');
+
+    expect(sendInput).toHaveBeenCalledWith(' ');
+  });
+
   it('dispose 后不再转发 xterm onData 输入', () => {
     const term = new MockTerminal();
     const sendInput = vi.fn();
@@ -403,6 +417,42 @@ describe('setupTerminalInput', () => {
       term.emitData('中');
 
       expect(sendInput).toHaveBeenCalledTimes(1);
+    });
+
+    it('compositionend 后紧随的空格仍然被转发', () => {
+      const term = new MockTerminal();
+      const sendInput = vi.fn();
+
+      setupTerminalInput({
+        term: term as unknown as Terminal,
+        sendInput,
+      });
+
+      fireCompositionStart(term.textarea);
+      fireCompositionEnd(term.textarea, '中');
+      term.emitData(' ');
+
+      expect(sendInput).toHaveBeenCalledWith('中');
+      expect(sendInput).toHaveBeenLastCalledWith(' ');
+      expect(sendInput).toHaveBeenCalledTimes(2);
+    });
+
+    it('compositionend 后无后续 onData 时抑制状态正确清除', () => {
+      const term = new MockTerminal();
+      const sendInput = vi.fn();
+
+      setupTerminalInput({
+        term: term as unknown as Terminal,
+        sendInput,
+      });
+
+      fireCompositionStart(term.textarea);
+      fireCompositionEnd(term.textarea, '中');
+      // No immediate onData; pending state should be cleared on the next input
+      term.emitData(' ');
+
+      expect(sendInput).toHaveBeenLastCalledWith(' ');
+      expect(sendInput).toHaveBeenCalledTimes(2);
     });
 
     it('取消 IME（空数据）不提交文本', () => {

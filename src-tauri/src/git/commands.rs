@@ -110,7 +110,9 @@ pub async fn fetch(
 ) -> Result<PushOutcome, AppError> {
     let (t, wd) = state.resolve_project(&project_id)?;
     let repo_path = worktree_path.as_deref().unwrap_or(&wd);
-    operations::fetch(&*t, repo_path).await.map_err(AppError::from)
+    operations::fetch(&*t, repo_path)
+        .await
+        .map_err(AppError::from)
 }
 
 /// Pull from remote.
@@ -122,7 +124,9 @@ pub async fn pull(
 ) -> Result<PushOutcome, AppError> {
     let (t, wd) = state.resolve_project(&project_id)?;
     let repo_path = worktree_path.as_deref().unwrap_or(&wd);
-    operations::pull(&*t, repo_path).await.map_err(AppError::from)
+    operations::pull(&*t, repo_path)
+        .await
+        .map_err(AppError::from)
 }
 
 /// Push to remote.

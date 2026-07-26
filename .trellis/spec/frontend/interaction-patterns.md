@@ -224,6 +224,68 @@ const handleKeyDown = useCallback((e: KeyboardEvent) => {
 
 ---
 
+## 终端 IME 输入：精确抑制 compositionend 后的 onData
+
+### 背景
+
+xterm.js 的 `onData` 与浏览器 `compositionend` 存在时序问题。如果 `compositionend` 后**无条件抑制下一个 `onData`**，按空格确认 IME 候选时，紧随其后的空格 `onData(' ')` 会被吞掉，表现为终端里空格键失效。
+
+### 正确做法
+
+记录 `compositionPendingText`，仅抑制内容与 pending text 完全相同的 `onData`。
+
+```ts
+let compositionPendingText: string | null = null;
+
+compositionStartHandler = () => {
+  composing = true;
+  compositionPendingText = null;
+};
+
+compositionEndHandler = (e: CompositionEvent) => {
+  composing = false;
+  const text = e.data;
+  if (text) {
+    compositionPendingText = text;
+    sendInput(text);
+  }
+};
+
+term.onData((data) => {
+  if (composing) return;
+
+  if (compositionPendingText !== null) {
+    if (data === compositionPendingText) {
+      compositionPendingText = null;
+      return;
+    }
+    compositionPendingText = null;
+  }
+
+  sendInput(data);
+});
+```
+
+### 错误做法
+
+```ts
+// 不要这样做 —— 会吞掉 IME 确认后紧随的空格
+suppressNextOnData = true;
+setTimeout(() => {
+  suppressNextOnData = false;
+}, 0);
+```
+
+### 测试断言
+
+| 场景 | 期望行为 |
+|------|---------|
+| 普通空格 `onData(' ')` | 正常转发到 PTY |
+| `compositionend('中')` 后 `onData(' ')` | 空格正常转发，不被抑制 |
+| `compositionend('中')` 后 `onData('中')` | 被抑制，避免重复发送 |
+
+---
+
 ### 9. Modifiers 说明
 
 - `restrictToVerticalAxis`：锁定垂直轴，防止水平漂移

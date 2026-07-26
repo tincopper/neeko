@@ -279,6 +279,7 @@ function EditorGroupPane({
         )}
         onClick={onFocusGroup}
         onKeyDown={(e) => {
+          if (e.target !== e.currentTarget) return;
           if (e.key === 'Enter' || e.key === ' ') {
             e.preventDefault();
             onFocusGroup();

@@ -142,7 +142,7 @@ export function setupTerminalInput({
 }): TerminalInputController {
   const textarea = term.textarea;
   let composing = false;
-  let suppressNextOnData = false;
+  let compositionPendingText: string | null = null;
 
   let compositionStartHandler: (() => void) | null = null;
   let compositionEndHandler: ((e: CompositionEvent) => void) | null = null;
@@ -150,17 +150,18 @@ export function setupTerminalInput({
   if (textarea) {
     compositionStartHandler = () => {
       composing = true;
+      compositionPendingText = null;
     };
 
     compositionEndHandler = (e: CompositionEvent) => {
       composing = false;
-      if (e.data) {
-        sendInput(e.data);
+      const text = e.data;
+      if (text) {
+        compositionPendingText = text;
+        sendInput(text);
+      } else {
+        compositionPendingText = null;
       }
-      suppressNextOnData = true;
-      setTimeout(() => {
-        suppressNextOnData = false;
-      }, 0);
     };
 
     textarea.addEventListener('compositionstart', compositionStartHandler);
@@ -168,7 +169,16 @@ export function setupTerminalInput({
   }
 
   const disposable = term.onData((data) => {
-    if (composing || suppressNextOnData) return;
+    if (composing) return;
+
+    if (compositionPendingText !== null) {
+      if (data === compositionPendingText) {
+        compositionPendingText = null;
+        return;
+      }
+      compositionPendingText = null;
+    }
+
     sendInput(data);
   });
 
@@ -178,7 +188,7 @@ export function setupTerminalInput({
   return {
     dispose: () => {
       composing = false;
-      suppressNextOnData = false;
+      compositionPendingText = null;
       if (textarea && compositionStartHandler && compositionEndHandler) {
         textarea.removeEventListener('compositionstart', compositionStartHandler);
         textarea.removeEventListener('compositionend', compositionEndHandler);
