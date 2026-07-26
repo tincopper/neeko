@@ -1389,3 +1389,36 @@ Root cause: EditorGroupPane.tsx and SplitLayout.tsx container divs called e.prev
 ### Next Steps
 
 - None - task complete
+
+
+## Session 99: 修复通知系统消息无法复制
+
+**Date**: 2026-07-26
+**Task**: 修复通知系统消息无法复制
+**Branch**: `main`
+
+### Summary
+
+修复 NotificationDetail Copy 按钮失败静默无反馈的问题，添加错误通知提示与消息文本可选中；补充单元测试。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `8ac4d622` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

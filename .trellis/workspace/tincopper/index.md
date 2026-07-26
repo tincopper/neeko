@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-2.md`
-- **Total Sessions**: 98
+- **Total Sessions**: 99
 - **Last Active**: 2026-07-26
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-2.md` | ~1391 | Active |
+| `journal-2.md` | ~1424 | Active |
 | `journal-1.md` | ~1986 | Archived |
 <!-- @@@/auto:active-documents -->
 
@@ -30,6 +30,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 99 | 2026-07-26 | 修复通知系统消息无法复制 | `8ac4d622` | `main` |
 | 98 | 2026-07-26 | Git Changes 支持撤销全部改动 | `50ea8e1f` | `main` |
 | 97 | 2026-07-26 | Fix space key swallowed by container div onKeyDown handlers + IME composition suppression | `e795ee99` | `main` |
 | 96 | 2026-07-25 | Git Control Panel spec update + quality verification | `de2f0b4`, `bcdbd86`, `4c226bc`, `5a91ed0`, `61117a9` | `main` |
