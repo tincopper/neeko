@@ -26,7 +26,8 @@ import { useWorktreeStore } from '@/shared/store/worktreeStore';
 import type { Tab, FileTreeChangedEvent } from '@/shared/types';
 import { DEFAULT_TREE_DEPTH } from '@/shared/types/file';
 import { aheadBehindKey } from '@/shared/utils/aheadBehindKey';
-import { openHtmlInBrowserPanel, resolveAbsolutePath } from '@/shared/utils/browserUtils';
+import { openInDefaultBrowser } from '@/features/browser/api/browserApi';
+import { filePathToFileUrl, openHtmlInBrowserPanel, resolveAbsolutePath } from '@/shared/utils/browserUtils';
 import { buildDiffSource } from '@/shared/utils/diffSource';
 import { mergeSubTree } from '@/shared/utils/fileTree';
 import { buildWorktreeTabKey } from '@/shared/utils/tabKey';
@@ -181,6 +182,20 @@ const FilesPanelWrapper: React.FC = React.memo(() => {
     [project?.type, projectPath],
   );
 
+  // 用系统默认浏览器打开 HTML 文件
+  const handleOpenInSystemBrowser = useCallback(
+    (filePath: string) => {
+      if (project?.type === 'Local' && projectPath) {
+        const absPath = resolveAbsolutePath(projectPath, filePath);
+        const fileUrl = filePathToFileUrl(absPath);
+        openInDefaultBrowser(fileUrl).catch((err) => {
+          console.error('[FilesPanelWrapper] Failed to open in system browser:', err);
+        });
+      }
+    },
+    [project?.type, projectPath],
+  );
+
   // 在系统文件管理器中显示文件（确保传绝对路径）
   const handleRevealInExplorer = useCallback(
     (filePath: string) => {
@@ -205,6 +220,7 @@ const FilesPanelWrapper: React.FC = React.memo(() => {
       onExpandDir={handleExpandDir}
       projectType={project?.type ?? null}
       onOpenInBrowser={handleOpenInBrowser}
+      onOpenInSystemBrowser={handleOpenInSystemBrowser}
       onRevealInExplorer={handleRevealInExplorer}
       changedFiles={changedFiles}
     />

@@ -38,9 +38,11 @@ interface FilesPanelProps {
   onExpandDir: (dirPath: string) => Promise<void>;
   /** 项目类型 */
   projectType?: 'Local' | 'Wsl' | 'Remote' | null;
-  /** �?Browser Panel 中打开 HTML 文件 */
+  /** 在 Browser Dock Panel 中打开 HTML 文件 */
   onOpenInBrowser?: (filePath: string) => void;
-  /** 在系统文件管理器中显�?*/
+  /** 用系统默认浏览器打开 HTML 文件 */
+  onOpenInSystemBrowser?: (filePath: string) => void;
+  /** 在系统文件管理器中显示 */
   onRevealInExplorer?: (filePath: string) => void;
   /** git 变更文件列表（用于文件名着色） */
   changedFiles?: FileChange[];
@@ -233,6 +235,7 @@ function FilesPanel({
   onExpandDir,
   projectType,
   onOpenInBrowser,
+  onOpenInSystemBrowser,
   onRevealInExplorer,
   changedFiles,
 }: FilesPanelProps) {
@@ -352,12 +355,21 @@ function FilesPanel({
         });
       }
 
-      if (isHtmlFile && projectType === 'Local' && onOpenInBrowser) {
-        items.push({
-          label: 'Open in Browser',
-          icon: Globe,
-          action: () => onOpenInBrowser(node.path),
-        });
+      if (isHtmlFile && projectType === 'Local') {
+        if (onOpenInBrowser) {
+          items.push({
+            label: 'Open in App Browser',
+            icon: Globe,
+            action: () => onOpenInBrowser(node.path),
+          });
+        }
+        if (onOpenInSystemBrowser) {
+          items.push({
+            label: 'Open in System Browser',
+            icon: FolderOpen,
+            action: () => onOpenInSystemBrowser(node.path),
+          });
+        }
       }
 
       items.push({ separator: true });
@@ -393,7 +405,7 @@ function FilesPanel({
 
       return items;
     },
-    [projectType, projectPath, onSelectFile, onOpenInBrowser, onRevealInExplorer],
+    [projectType, projectPath, onSelectFile, onOpenInBrowser, onOpenInSystemBrowser, onRevealInExplorer],
   );
 
   if (!projectName) {
