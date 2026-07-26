@@ -43,6 +43,9 @@ export function createProjectCommands(projectId: string, worktreePath?: string |
     discardFile(filePath: string): Promise<void> {
       return invoke<void>('discard_file', { projectId, filePath, worktreePath });
     },
+    discardAll(): Promise<void> {
+      return invoke<void>('discard_all', { projectId, worktreePath });
+    },
 
     commitFiles(filePaths: string[], message: string): Promise<CommitResult> {
       return invoke<CommitResult>('commit_files', { projectId, filePaths, message, worktreePath });

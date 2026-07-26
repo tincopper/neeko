@@ -55,6 +55,11 @@ describe('createProjectCommands (Local)', () => {
     });
   });
 
+  it('discardAll should call discard_all', async () => {
+    await commands.discardAll();
+    expect(mockInvoke).toHaveBeenCalledWith('discard_all', wtPayload());
+  });
+
   it('commitFiles should call commit_files', async () => {
     await commands.commitFiles(['src/foo.ts'], 'fix: foo');
     expect(mockInvoke).toHaveBeenCalledWith('commit_files', {
@@ -264,6 +269,14 @@ describe('createProjectCommands with worktreePath', () => {
     expect(mockInvoke).toHaveBeenCalledWith('stage_files', {
       projectId,
       filePaths: ['src/foo.ts'],
+      worktreePath,
+    });
+  });
+
+  it('discardAll should pass worktreePath', async () => {
+    await commands.discardAll();
+    expect(mockInvoke).toHaveBeenCalledWith('discard_all', {
+      projectId,
       worktreePath,
     });
   });

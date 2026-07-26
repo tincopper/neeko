@@ -12,6 +12,7 @@ interface ChangesListProps {
   selectedFiles: Set<string>;
   onToggleFile: (path: string) => void;
   onDiscardFile: (path: string) => void;
+  onDiscardAll?: () => void;
   onStageFile?: (path: string) => void;
   onStageAllUntracked?: () => void;
   onFileSelect?: (path: string) => void;
@@ -33,6 +34,7 @@ const ChangesList: React.FC<ChangesListProps> = ({
   selectedFiles,
   onToggleFile,
   onDiscardFile,
+  onDiscardAll,
   onStageFile,
   onStageAllUntracked,
   onFileSelect,
@@ -120,6 +122,21 @@ const ChangesList: React.FC<ChangesListProps> = ({
                 </button>
               ))}
             </div>
+          }
+          headerAction={
+            onDiscardAll && (
+              <button
+                className="p-0.5 rounded text-text-muted hover:text-accent-red hover:bg-bg-hover transition-colors duration-100"
+                title="Discard all changes"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onDiscardAll();
+                }}
+                disabled={loading}
+              >
+                <Undo2 size={14} />
+              </button>
+            )
           }
         />
       )}

@@ -110,6 +110,7 @@ export interface ProjectCommands {
   stageFiles(filePaths: string[]): Promise<void>;
   unstageFiles(filePaths: string[]): Promise<void>;
   discardFile(filePath: string): Promise<void>;
+  discardAll(): Promise<void>;
   commitFiles(filePaths: string[], message: string): Promise<CommitResult>;
   fetch(): Promise<PushOutcome>;
   pull(): Promise<PushOutcome>;

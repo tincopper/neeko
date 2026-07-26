@@ -8,6 +8,8 @@ import type {
   ProjectCapabilities,
 } from '@/shared/types/activeProject';
 import { withTimeout } from '@/shared/utils/withTimeout';
+import { Button } from '@/ui/Button';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/ui/Dialog';
 
 import BranchInfo from './BranchInfo';
 import ChangesList from './ChangesList';
@@ -44,6 +46,11 @@ const GitCommitPanel: React.FC<GitCommitPanelProps> = ({
   const [selectedFiles, setSelectedFiles] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(false);
   const [dialog, setDialog] = useState<DialogState | null>(null);
+  const [discardConfirm, setDiscardConfirm] = useState<
+    | { type: 'file'; path: string }
+    | { type: 'all'; count: number }
+    | null
+  >(null);
   const [credentialDialog, setCredentialDialog] = useState<{
     open: boolean;
     host: string;
@@ -265,26 +272,49 @@ const GitCommitPanel: React.FC<GitCommitPanelProps> = ({
     });
   }, []);
 
-  const handleDiscardFile = useCallback(
-    async (path: string) => {
-      setLoading(true);
-      try {
-        await withTimeout(commands.discardFile(path), TIMEOUT_LOCAL_MS, 'discard');
-        await onRefreshGit();
-        setSelectedFiles((prev) => {
-          const next = new Set(prev);
-          next.delete(path);
-          return next;
-        });
-        onShowToast?.('Discarded changes', 'info');
-      } catch (e: unknown) {
-        onShowToast?.(String(e), 'error');
-      } finally {
-        setLoading(false);
+  const handleDiscardFile = useCallback((path: string) => {
+    setDiscardConfirm({ type: 'file', path });
+  }, []);
+
+  const handleDiscardAllRequest = useCallback(() => {
+    setDiscardConfirm({ type: 'all', count: changedFiles.length });
+  }, [changedFiles.length]);
+
+  const handleCancelDiscard = useCallback(() => {
+    setDiscardConfirm(null);
+  }, []);
+
+  const handleConfirmDiscard = useCallback(async () => {
+    if (!discardConfirm) return;
+    const confirm = discardConfirm;
+    setDiscardConfirm(null);
+    setLoading(true);
+    try {
+      if (confirm.type === 'file') {
+        await withTimeout(commands.discardFile(confirm.path), TIMEOUT_LOCAL_MS, 'discard');
+      } else {
+        await withTimeout(commands.discardAll(), TIMEOUT_LOCAL_MS, 'discard-all');
       }
-    },
-    [commands, onRefreshGit, onShowToast],
-  );
+      await onRefreshGit();
+      setSelectedFiles((prev) => {
+        const next = new Set(prev);
+        if (confirm.type === 'all') {
+          next.clear();
+        } else {
+          next.delete(confirm.path);
+        }
+        return next;
+      });
+      onShowToast?.(
+        confirm.type === 'all' ? 'Discarded all changes' : 'Discarded changes',
+        'info',
+      );
+    } catch (e: unknown) {
+      onShowToast?.(String(e), 'error');
+    } finally {
+      setLoading(false);
+    }
+  }, [commands, discardConfirm, onRefreshGit, onShowToast]);
 
   const handleStageFile = useCallback(
     async (path: string) => {
@@ -495,6 +525,27 @@ const GitCommitPanel: React.FC<GitCommitPanelProps> = ({
         onCheckoutBranch={handleCheckoutBranch}
       />
 
+      <Dialog open={!!discardConfirm} onOpenChange={(open) => !open && setDiscardConfirm(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              {discardConfirm?.type === 'all' ? 'Discard all changes?' : 'Discard changes?'}
+            </DialogTitle>
+          </DialogHeader>
+          <p className="text-[13px] text-text-secondary">
+            {discardConfirm?.type === 'all'
+              ? `This will discard all ${discardConfirm.count} changes and delete untracked files. This action cannot be undone.`
+              : `This will discard changes in '${discardConfirm?.path}' and cannot be undone.`}
+          </p>
+          <DialogFooter>
+            <Button variant="outline" onClick={handleCancelDiscard}>Cancel</Button>
+            <Button variant="destructive" onClick={handleConfirmDiscard}>
+              {discardConfirm?.type === 'all' ? 'Discard All' : 'Discard'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <div className="flex-1 min-h-0 flex flex-col overflow-hidden rounded-md">
         {noCommits ? (
           <div className="flex-1 flex items-center justify-center">
@@ -506,6 +557,7 @@ const GitCommitPanel: React.FC<GitCommitPanelProps> = ({
             selectedFiles={selectedFiles}
             onToggleFile={toggleFile}
             onDiscardFile={handleDiscardFile}
+            onDiscardAll={handleDiscardAllRequest}
             onStageFile={handleStageFile}
             onStageAllUntracked={handleStageAllUntracked}
             onFileSelect={(path) => onSelectFile?.(path)}

@@ -1,0 +1,5 @@
+{"file": "src/features/git/components/ChangesList.tsx", "reason": "UI component for changes list, where the Discard All button will be added"}
+{"file": "src/features/git/components/GitCommitPanel.tsx", "reason": "Container for changes panel, will host discard-all confirmation dialog and handler"}
+{"file": "src/features/project/hooks/use-active-project/commandFactory.ts", "reason": "Factory that builds ProjectCommands; needs to expose discardAll"}
+{"file": "src/shared/types/project.ts", "reason": "ProjectCommands interface; needs discardAll method"}
+{"file": "src-tauri/src/git/commands.rs", "reason": "Backend already exposes discard_all command"}
