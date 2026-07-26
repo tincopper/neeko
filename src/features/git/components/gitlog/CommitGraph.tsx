@@ -281,6 +281,13 @@ const CommitGraph: React.FC<CommitGraphProps> = ({
 }) => {
   const { nodes, segments, maxColUsed } = useMemo(() => computeLayout(commits), [commits]);
 
+  // nodesMap for quick lookup
+  const nodesMap = useMemo(() => {
+    const m = new Map<string, CommitNode>();
+    for (const n of nodes) m.set(n.hash, n);
+    return m;
+  }, [nodes]);
+
   if (commits.length === 0) return null;
 
   const offset = expandAfterRow >= 0 ? expandOffsetY : 0;
@@ -289,13 +296,6 @@ const CommitGraph: React.FC<CommitGraphProps> = ({
   const svgWidth = (maxColUsed + 1) * BRANCH_SPACING + NODE_RADIUS * 4;
   // 高度包含行内 expand 占位，避免后续节点被裁切
   const svgHeight = commits.length * ROW_HEIGHT + offset;
-
-  // nodesMap for quick lookup
-  const nodesMap = useMemo(() => {
-    const m = new Map<string, CommitNode>();
-    for (const n of nodes) m.set(n.hash, n);
-    return m;
-  }, [nodes]);
 
   const xy = (col: number, row: number): [number, number] =>
     nodeXY(col, row, expandAfterRow, offset);

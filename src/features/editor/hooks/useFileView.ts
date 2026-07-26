@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef, useMemo } from 'react';
+import { useState, useCallback, useRef, useMemo, useEffect } from 'react';
 import { useShallow } from 'zustand/shallow';
 
 import { readDirTree, readFileContent, writeFileContent } from '@/features/file/api/fileApi';
@@ -80,15 +80,20 @@ export function useFileView(
   }, [fileTabs, activeFileTabId]);
 
   // Refs for callbacks (avoids stale closures)
-  // Sync during render phase �?ensures loadFileTree/openFile always read latest values
   const tabKeyRef = useRef(tabKey);
-  tabKeyRef.current = tabKey;
-
   const worktreePathRef = useRef(effectiveWorktreePath);
-  worktreePathRef.current = effectiveWorktreePath;
-
   const externalCommandsRef = useRef(externalCommands);
-  externalCommandsRef.current = externalCommands;
+
+  // Sync refs after render so callbacks always read latest values
+  useEffect(() => {
+    tabKeyRef.current = tabKey;
+  }, [tabKey]);
+  useEffect(() => {
+    worktreePathRef.current = effectiveWorktreePath;
+  }, [effectiveWorktreePath]);
+  useEffect(() => {
+    externalCommandsRef.current = externalCommands;
+  }, [externalCommands]);
 
   /**
    * Load the directory tree for a project

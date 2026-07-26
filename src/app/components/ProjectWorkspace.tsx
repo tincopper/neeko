@@ -95,37 +95,46 @@ function ProjectWorkspace() {
         .join(','),
     [agents],
   );
+  // Seed installed status from cache when agents change
   const [installedMap, setInstalledMap] = useState<Map<string, boolean>>(new Map());
+  useEffect(() => {
+    const ids = agents.map((a) => a.id);
+    const allCached = ids.every((id) =>
+      agentInstalledCache.has(agentInstallCacheKey(currentProjectId, id)),
+    );
+    if (allCached) {
+      const map = new Map<string, boolean>();
+      for (const id of ids) {
+        map.set(id, agentInstalledCache.get(agentInstallCacheKey(currentProjectId, id)) ?? true);
+      }
+      setInstalledMap(map);
+    } else {
+      setInstalledMap(new Map());
+    }
+  }, [agentIdFingerprint, currentProjectId]);
 
   useEffect(() => {
     const ids = agents.map((a) => a.id);
     if (ids.length === 0) return;
 
-    const buildMap = () => {
-      const map = new Map<string, boolean>();
-      for (const id of ids) {
-        map.set(id, agentInstalledCache.get(agentInstallCacheKey(currentProjectId, id)) ?? true);
-      }
-      return map;
-    };
-
     const missing = ids.filter(
       (id) => !agentInstalledCache.has(agentInstallCacheKey(currentProjectId, id)),
     );
-    if (missing.length === 0) {
-      setInstalledMap(buildMap());
-      return;
-    }
+    if (missing.length === 0) return;
 
     checkAgentsInstalled(missing, currentProjectId)
       .then((result) => {
         for (const [id, installed] of Object.entries(result)) {
           agentInstalledCache.set(agentInstallCacheKey(currentProjectId, id), installed);
         }
-        setInstalledMap(buildMap());
+        const map = new Map<string, boolean>();
+        for (const id of ids) {
+          map.set(id, agentInstalledCache.get(agentInstallCacheKey(currentProjectId, id)) ?? true);
+        }
+        setInstalledMap(map);
       })
       .catch((err) => console.error('[ProjectWorkspace] Failed to check agents installed:', err));
-  }, [agentIdFingerprint, currentProjectId]);
+  }, [agentIdFingerprint, currentProjectId, agents]);
 
   const handleAgentClick = useCallback(
     (agent: AgentConfig) => {
@@ -195,21 +204,20 @@ function ProjectWorkspace() {
   })();
 
   const remoteProjectProp = useMemo(() => {
-    const p = useProjectStore.getState().activeProject;
-    if (!p || p.environment.type !== 'Remote') return null;
-    const env = p.environment;
+    if (!activeProject || activeProject.environment.type !== 'Remote') return null;
+    const env = activeProject.environment;
     const entry = useConnectionStore.getState().remoteEntries.find((e) => e.host === env.host);
     if (!entry) return null;
     const auth = remoteAuthStore.get(entry.id);
     if (!auth) return null;
-    const projectPath = activeRemoteWorktreePath ?? p.path;
+    const projectPath = activeRemoteWorktreePath ?? activeProject.path;
     const cacheKeySuffix = activeRemoteWorktreePath
       ? `:wt:${btoa(activeRemoteWorktreePath).replace(/=/g, '')}`
       : '';
     return {
       entryId: entry.id,
-      projectId: p.id,
-      projectName: p.name,
+      projectId: activeProject.id,
+      projectName: activeProject.name,
       projectPath,
       host: entry.host,
       port: entry.port,

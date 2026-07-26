@@ -28,6 +28,11 @@ export function useSettingsPanelState({
 }: UseSettingsPanelStateParams) {
   const [shellInput, setShellInput] = useState(config.shell);
 
+  // Sync shell input when config changes
+  useEffect(() => {
+    setShellInput(config.shell);
+  }, [config.shell]);
+
   const [systemFonts, setSystemFonts] = useState<string[]>([]);
   const [fontSearch, setFontSearch] = useState('');
   const [fontsLoading, setFontsLoading] = useState(false);
@@ -48,10 +53,6 @@ export function useSettingsPanelState({
   const [skillPathEditingAgentId, setSkillPathEditingAgentId] = useState<string | null>(null);
   const [skillPathInputValue, setSkillPathInputValue] = useState('');
 
-  useEffect(() => {
-    setShellInput(config.shell);
-  }, [config.shell]);
-
   const loadFonts = useCallback(async () => {
     if (systemFonts.length > 0) {
       return;
@@ -67,11 +68,12 @@ export function useSettingsPanelState({
     }
   }, [systemFonts.length]);
 
+  // Load fonts — use Promise.resolve().then to avoid sync setState in effect
   useEffect(() => {
-    if (activeNav === 'terminal') {
-      void loadFonts();
+    if (activeNav === 'terminal' && systemFonts.length === 0) {
+      Promise.resolve().then(() => loadFonts());
     }
-  }, [activeNav, loadFonts]);
+  }, [activeNav, loadFonts, systemFonts.length]);
 
   useEffect(() => {
     if (!fontListOpen) {

@@ -62,10 +62,11 @@ export interface UseTerminalStrategyOptions {
  */
 export function useTerminalStrategy(options: UseTerminalStrategyOptions): TerminalStrategy | null {
   const { config, showToast } = useAppContext();
-  const { activeTabId, tabs } = useEditorContext();
+  const { activeTabId } = useEditorContext();
   const activeProject = useProjectStore((s) => s.activeProject);
   const activeWorktreePath = useWorktreeStore((s) => s.activeWorktreePath);
   const activeWorktreeBranch = useWorktreeStore((s) => s.activeWorktreeBranch);
+  const { paneId, remoteConfig, worktreePathOverride, worktreeBranchOverride } = options;
 
   return useMemo(() => {
     const env = activeProject?.environment;
@@ -92,7 +93,6 @@ export function useTerminalStrategy(options: UseTerminalStrategyOptions): Termin
       const projectId = activeProject?.id ?? null;
       if (!projectId) return null;
 
-      const { worktreePathOverride, worktreeBranchOverride } = options;
       const effWorktreePath = worktreePathOverride ?? activeWorktreePath;
       const effWorktreeBranch = worktreeBranchOverride ?? activeWorktreeBranch;
       const isWorktree = !!effWorktreePath;
@@ -103,9 +103,9 @@ export function useTerminalStrategy(options: UseTerminalStrategyOptions): Termin
 
       const cacheKey = projectId
         ? isWorktree
-          ? `${projectId}:wt:${effWorktreePath}:${activeTabId ?? 'default'}:${options.paneId}`
-          : terminalCacheKey(projectId, activeTabId, options.paneId)
-        : `local:none:${options.paneId}`;
+          ? `${projectId}:wt:${effWorktreePath}:${activeTabId ?? 'default'}:${paneId}`
+          : terminalCacheKey(projectId, activeTabId, paneId)
+        : `local:none:${paneId}`;
 
       return createTerminalStrategy({
         kind: 'local',
@@ -158,7 +158,7 @@ export function useTerminalStrategy(options: UseTerminalStrategyOptions): Termin
         ? `:wt:${btoa(activeWorktreePath).replace(/=/g, '')}`
         : '';
 
-      const cacheKey = `${wslCacheKey(distro, projectId)}${activeTabId ? `:${activeTabId}` : ''}${cacheKeySuffix}:${options.paneId}`;
+      const cacheKey = `${wslCacheKey(distro, projectId)}${activeTabId ? `:${activeTabId}` : ''}${cacheKeySuffix}:${paneId}`;
 
       return createTerminalStrategy({
         kind: 'wsl',
@@ -191,12 +191,11 @@ export function useTerminalStrategy(options: UseTerminalStrategyOptions): Termin
 
     // ---- Remote ----
     function buildRemoteStrategy(): TerminalStrategy | null {
-      if (!options.remoteConfig) return null;
-      const { remoteConfig } = options;
+      if (!remoteConfig) return null;
       const projectId = activeProject!.id;
       const projectPath = activeProject!.path;
 
-      const cacheKey = `${remoteCacheKey(remoteConfig.entryId, projectId)}${activeTabId ? `:${activeTabId}` : ''}${remoteConfig.cacheKeySuffix ?? ''}:${options.paneId}`;
+      const cacheKey = `${remoteCacheKey(remoteConfig.entryId, projectId)}${activeTabId ? `:${activeTabId}` : ''}${remoteConfig.cacheKeySuffix ?? ''}:${paneId}`;
 
       return createTerminalStrategy({
         kind: 'remote',
@@ -229,18 +228,12 @@ export function useTerminalStrategy(options: UseTerminalStrategyOptions): Termin
     activeProject,
     activeWorktreePath,
     activeWorktreeBranch,
-    options.paneId,
-    options.worktreePathOverride,
-    options.worktreeBranchOverride,
-    options.remoteConfig?.entryId,
-    options.remoteConfig?.host,
-    options.remoteConfig?.port,
-    options.remoteConfig?.username,
-    options.remoteConfig?.auth,
-    options.remoteConfig?.onSessionReady,
-    options.remoteConfig?.cacheKeySuffix,
+    paneId,
+    remoteConfig,
+    worktreePathOverride,
+    worktreeBranchOverride,
     activeTabId,
-    tabs,
+    showToast,
     config.terminalFontSize,
     config.fontFamily,
     config.terminalGpuAcceleration,

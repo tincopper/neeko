@@ -84,13 +84,18 @@ const PRFilesChangedPanel: React.FC<PRFilesChangedPanelProps> = ({
     return () => observer.disconnect();
   }, [files.length, loadedCount]);
 
-  // 当从左侧文件树选择文件时，确保该文件已加载并滚动到位置
+  // Ensure the selected file is loaded
   useEffect(() => {
     if (!scrollToFile) return;
     const idx = files.findIndex((f) => f.path === scrollToFile);
     if (idx >= 0 && idx >= loadedCount) {
       setLoadedCount(Math.min(idx + PAGE_SIZE, files.length));
     }
+  }, [scrollToFile, files, loadedCount]);
+
+  // Scroll to selected file when it's loaded
+  useEffect(() => {
+    if (!scrollToFile) return;
     const el = fileRefs.current.get(scrollToFile);
     if (el) {
       el.scrollIntoView({ behavior: 'auto', block: 'start' });
@@ -407,6 +412,7 @@ const DiffBody: React.FC<DiffBodyProps> = ({
   const [submitting, setSubmitting] = useState(false);
   const commentsLoaded = useRef(false);
 
+  // Reset comment state when filePath changes
   useEffect(() => {
     commentsLoaded.current = false;
     setCommentLine(null);

@@ -140,7 +140,7 @@ const ShortcutPanel: React.FC<ShortcutPanelProps> = ({ config, onConfigChange })
       });
       setRecordingId(null);
     },
-    [recordingId, config, onConfigChange],
+    [recordingId, config, onConfigChange, selectedId, handleStartRecording],
   );
 
   return (

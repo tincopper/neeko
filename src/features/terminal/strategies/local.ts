@@ -31,7 +31,7 @@ export function useLocalTerminalStrategy(
   const activeProject = useProjectStore((s) => s.activeProject);
   const activeWorktreePath = useWorktreeStore((s) => s.activeWorktreePath);
   const activeWorktreeBranch = useWorktreeStore((s) => s.activeWorktreeBranch);
-  const { activeTabId, tabs } = useEditorContext();
+  const { activeTabId } = useEditorContext();
 
   return useMemo(() => {
     const projectId = activeProject?.id ?? null;
@@ -102,7 +102,7 @@ export function useLocalTerminalStrategy(
     worktreeBranchOverride,
     paneId,
     activeTabId,
-    tabs,
+    showToast,
     config.terminalFontSize,
     config.fontFamily,
     config.terminalGpuAcceleration,

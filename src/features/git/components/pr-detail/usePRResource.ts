@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useEffect, useState } from 'react';
 
 import { viewPr, listPrFiles, listPrCommits, listPrComments } from '../../api/gitApi';
 import type { PRInfo, PRFileChange, PRCommit } from '../../types';
@@ -22,16 +22,25 @@ export function usePRResource(projectId: string, prNumber: number, enabled: bool
   const cached = cache.get(key);
   const [resource, setResource] = useState<PRResource | null>(cached ?? null);
 
+  // Sync resource state when enabled/cached changes
   useEffect(() => {
-    if (!enabled) {
-      if (!cached) setResource(null);
-      return;
-    }
-
-    if (cached) {
+    if (!enabled && !cached) {
+      setResource(null);
+    } else if (enabled && cached) {
       setResource(cached);
-      return;
     }
+  }, [enabled, cached]);
+
+  // Sync when a cached value becomes available for an already-enabled key
+  useEffect(() => {
+    if (enabled && cached && resource !== cached) {
+      setResource(cached);
+    }
+  }, [enabled, cached, resource]);
+
+  useEffect(() => {
+    if (!enabled) return;
+    if (cached) return;
 
     let cancelled = false;
     let timer: ReturnType<typeof setTimeout>;
@@ -63,7 +72,7 @@ export function usePRResource(projectId: string, prNumber: number, enabled: bool
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [key, enabled, cached]);
+  }, [key, enabled, cached, projectId, prNumber]);
 
   return resource;
 }

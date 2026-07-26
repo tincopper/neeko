@@ -86,11 +86,15 @@ const PRDetailView: React.FC<PRDetailViewProps> = ({
   const [ready, setReady] = useState(false);
   const resource = usePRResource(projectId, prNumber, ready);
   const [comments, setComments] = useState<PRComment[]>([]);
-  const [selectedFile, setSelectedFile] = useState<string | null>(null);
 
+  // Sync comments when resource changes
   useEffect(() => {
-    if (resource) setComments(resource.comments);
+    if (resource) {
+      setComments(resource.comments);
+    }
   }, [resource]);
+
+  const [selectedFile, setSelectedFile] = useState<string | null>(null);
 
   const handleFileClick = useCallback((filePath: string) => {
     setSelectedFile(filePath);

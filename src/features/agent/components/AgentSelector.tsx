@@ -153,20 +153,49 @@ const AgentSelector: React.FC<AgentSelectorProps> = ({
   const containerRef = useRef<HTMLDivElement>(null);
   const addMenuRef = useRef<HTMLDivElement>(null);
 
-  // Load agents on mount
+  const loadAgents = async () => {
+    try {
+      const agentList = await listAgents();
+      setAgents(agentList);
+    } catch (error) {
+      console.error('Failed to load agents:', error);
+    }
+  };
+
+  const loadConfig = async () => {
+    try {
+      const saved = await loadSessionConfig();
+      if (saved && typeof saved === 'object') {
+        const typed = saved as unknown as AppConfig;
+        setShowPresetBar(typed.agentSelectorShowPresetBar ?? true);
+        setCompactMode(typed.agentSelectorCompactMode ?? false);
+        setHiddenAgentIds(
+          Array.isArray(typed.hiddenAgentIds)
+            ? typed.hiddenAgentIds.filter((id: unknown) => typeof id === 'string')
+            : [],
+        );
+      }
+    } catch (e) {
+      console.error('[AgentSelector] Failed to load config:', e);
+    } finally {
+      setConfigLoaded(true);
+    }
+  };
+
+  // Load agents on mount (deferred to avoid sync setState in effect)
   useEffect(() => {
-    loadAgents();
+    Promise.resolve().then(() => loadAgents());
   }, []);
 
-  // Load config on mount
+  // Load config on mount (deferred to avoid sync setState in effect)
   useEffect(() => {
-    loadConfig();
+    Promise.resolve().then(() => loadConfig());
   }, []);
 
   // Sync with external currentAgentId
   useEffect(() => {
     setSelectedAgentId(currentAgentId);
-  }, [projectId, currentAgentId]);
+  }, [currentAgentId]);
 
   // Click outside handler
   useEffect(() => {
@@ -196,35 +225,6 @@ const AgentSelector: React.FC<AgentSelectorProps> = ({
         console.error('Failed to check agents installed:', err);
       });
   }, [isAddMenuOpen, agents, projectId]);
-
-  const loadAgents = async () => {
-    try {
-      const agentList = await listAgents();
-      setAgents(agentList);
-    } catch (error) {
-      console.error('Failed to load agents:', error);
-    }
-  };
-
-  const loadConfig = async () => {
-    try {
-      const saved = await loadSessionConfig();
-      if (saved && typeof saved === 'object') {
-        const typed = saved as unknown as AppConfig;
-        setShowPresetBar(typed.agentSelectorShowPresetBar ?? true);
-        setCompactMode(typed.agentSelectorCompactMode ?? false);
-        setHiddenAgentIds(
-          Array.isArray(typed.hiddenAgentIds)
-            ? typed.hiddenAgentIds.filter((id: unknown) => typeof id === 'string')
-            : [],
-        );
-      }
-    } catch (e) {
-      console.error('[AgentSelector] Failed to load config:', e);
-    } finally {
-      setConfigLoaded(true);
-    }
-  };
 
   const saveConfigToBackend = useCallback(async (updates: Partial<AppConfig>) => {
     try {

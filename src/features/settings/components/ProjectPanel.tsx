@@ -44,6 +44,12 @@ const ProjectPanel: React.FC<ProjectPanelProps> = ({ projectId, customIdes, onPr
   );
 
   const [name, setName] = useState(project?.name ?? '');
+
+  // Sync name when project.name changes
+  useEffect(() => {
+    setName(project?.name ?? '');
+  }, [project?.name]);
+
   const [activeTaskTab, setActiveTaskTab] = useState<'project' | 'app'>('project');
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingConfig, setEditingConfig] = useState<TaskConfig | null>(null);
@@ -59,10 +65,6 @@ const ProjectPanel: React.FC<ProjectPanelProps> = ({ projectId, customIdes, onPr
       .then((list) => setAgents(list.filter((a) => a.enabled)))
       .catch(() => {});
   }, []);
-
-  useEffect(() => {
-    setName(project?.name ?? '');
-  }, [project?.name]);
 
   useEffect(() => {
     if (projectPath) loadConfigs(projectPath);

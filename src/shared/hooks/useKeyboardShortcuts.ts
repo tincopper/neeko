@@ -55,10 +55,14 @@ export function useKeyboardShortcuts({
   unifiedItems,
 }: UseKeyboardShortcutsParams) {
   const shortcutsRef = useRef(shortcuts);
-  shortcutsRef.current = shortcuts;
-
   const activeTabIdRef = useRef(activeTabId);
-  activeTabIdRef.current = activeTabId;
+
+  useEffect(() => {
+    shortcutsRef.current = shortcuts;
+  }, [shortcuts]);
+  useEffect(() => {
+    activeTabIdRef.current = activeTabId;
+  }, [activeTabId]);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {

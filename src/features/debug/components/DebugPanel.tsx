@@ -108,8 +108,12 @@ function DebugPanel() {
   const [panelHeight, setPanelHeight] = useState(() => readStored(PANEL_H_KEY, PANEL_H_DEFAULT));
   const [framesWidth, setFramesWidth] = useState(() => readStored(FRAMES_W_KEY, FRAMES_W_DEFAULT));
 
-  latestPanelH.current = panelHeight;
-  latestFramesW.current = framesWidth;
+  useEffect(() => {
+    latestPanelH.current = panelHeight;
+  }, [panelHeight]);
+  useEffect(() => {
+    latestFramesW.current = framesWidth;
+  }, [framesWidth]);
 
   const breakpointsMap = useDebugStore((s) => (projectId ? s.breakpoints[projectId] : undefined));
   const breakpoints = useMemo(

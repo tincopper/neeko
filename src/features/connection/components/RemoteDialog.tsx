@@ -80,12 +80,16 @@ export function RemoteDialog({
     return () => document.removeEventListener('mousedown', handleClick);
   }, [showSuggestions]);
 
+  // Sync selected server when entry prop changes
   useEffect(() => {
     if (isOpen && addProjectMode && selectedEntryIdProp) {
       const entry = existingEntries.find((e) => e.id === selectedEntryIdProp);
       if (entry) {
-        setSelectedServer(entry);
-        setStep('add-project');
+        // Defer to avoid sync setState in effect
+        Promise.resolve().then(() => {
+          setSelectedServer(entry);
+          setStep('add-project');
+        });
       }
     }
   }, [isOpen, addProjectMode, selectedEntryIdProp, existingEntries]);

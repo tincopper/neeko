@@ -113,16 +113,13 @@ const TabBar: React.FC<TabBarProps> = React.memo(
       }
     }, []);
 
-    // 空状�?
-    if (tabs.length === 0) return null;
-
     // 终端 tab 数量
     const terminalTabCount = useMemo(
       () => tabs.filter((t) => t.data.kind === 'terminal').length,
       [tabs],
     );
 
-    // 当前激�?tab 是否为终�?
+    // 当前激活 tab 是否为终端
     const activeTab = useMemo(() => tabs.find((t) => t.id === activeTabId), [tabs, activeTabId]);
     const isActiveTerminal = activeTab?.data.kind === 'terminal';
 
@@ -140,6 +137,9 @@ const TabBar: React.FC<TabBarProps> = React.memo(
     );
 
     const tabItems = useMemo(() => tabs.map((tab) => tab.id), [tabs]);
+
+    // 空状态
+    if (tabs.length === 0) return null;
 
     const renderTabs = () => {
       if (reorderable && tabs.length > 1) {

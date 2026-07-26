@@ -183,7 +183,7 @@ const AgentSkillContent: React.FC<AgentSkillContentProps> = React.memo(({ setDia
       );
     }
     return list;
-  }, [activeGroup, searchQuery, sourceFilter]);
+  }, [activeGroup, searchQuery, sourceFilter, getSkillSourceType]);
 
   const handleImportMany = useCallback(
     async (skillIds: string[]) => {

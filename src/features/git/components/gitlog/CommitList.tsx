@@ -112,12 +112,16 @@ const CommitList: React.FC<CommitListProps> = ({
     return () => document.removeEventListener('mousedown', handler);
   }, [menuOpen]);
 
-  // Measure expand height so graph below selected row can translateY
+  // Reset expand height when selection clears
   useEffect(() => {
     if (!selectedExpanded || !selectedHash) {
       setExpandHeight(0);
-      return;
     }
+  }, [selectedExpanded, selectedHash]);
+
+  // Measure expand height so graph below selected row can translateY
+  useEffect(() => {
+    if (!selectedExpanded || !selectedHash) return;
     const el = expandRef.current;
     if (!el) {
       setExpandHeight(0);

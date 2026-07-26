@@ -106,12 +106,10 @@ const SkillCard: React.FC<SkillCardProps> = React.memo(
     const chips = skill.tags.slice(0, 4);
 
     const propDesc = skill.description?.trim() || '';
-    const [resolvedDesc, setResolvedDesc] = useState(propDesc);
+    const [lazyDesc, setLazyDesc] = useState('');
 
-    // Sync when store provides description
-    useEffect(() => {
-      if (propDesc) setResolvedDesc(propDesc);
-    }, [propDesc, skill.id]);
+    // Derive resolvedDesc from propDesc; fall back to async-loaded lazyDesc
+    const resolvedDesc = propDesc || lazyDesc;
 
     // Lazy-fill description from SKILL.md when missing
     useEffect(() => {
@@ -122,7 +120,7 @@ const SkillCard: React.FC<SkillCardProps> = React.memo(
           const doc = await getSkillDocument(skill.id);
           const parsed = parseSkillDescription(doc.content);
           if (!cancelled && parsed) {
-            setResolvedDesc(parsed);
+            setLazyDesc(parsed);
             onDescriptionResolved?.(skill.id, parsed);
           }
         } catch {

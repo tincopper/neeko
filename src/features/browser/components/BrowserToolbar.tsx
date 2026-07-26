@@ -1,4 +1,4 @@
-import React, { useState, useCallback, type KeyboardEvent } from 'react';
+import React, { useCallback, useEffect, useState, type KeyboardEvent } from 'react';
 
 import {
   ArrowLeft,
@@ -39,6 +39,11 @@ const BrowserToolbar: React.FC<BrowserToolbarProps> = ({
 }) => {
   const [inputValue, setInputValue] = useState(url);
 
+  // Sync input value when URL changes
+  useEffect(() => {
+    setInputValue(url);
+  }, [url]);
+
   const handleKeyDown = useCallback(
     (e: KeyboardEvent<HTMLInputElement>) => {
       if (e.key === 'Enter') {
@@ -58,11 +63,6 @@ const BrowserToolbar: React.FC<BrowserToolbarProps> = ({
     },
     [inputValue, onNavigate],
   );
-
-  // 同步外部 url 变化到输入框
-  React.useEffect(() => {
-    setInputValue(url);
-  }, [url]);
 
   return (
     <div className="flex items-center gap-1 h-8 px-2 bg-bg-secondary shrink-0">

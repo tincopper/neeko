@@ -1,6 +1,6 @@
 import { type Extension, RangeSetBuilder, StateEffect, StateField } from '@codemirror/state';
 import { Decoration, EditorView, gutter, GutterMarker, type DecorationSet } from '@codemirror/view';
-import { useMemo, useRef } from 'react';
+import { useCallback, useMemo } from 'react';
 
 import { useDebugStore } from '../store/debugStore';
 
@@ -273,24 +273,20 @@ export function useBreakpointGutterExtensions(
   onLineNumberHover: (view: EditorView, lineFrom: number) => boolean;
   onLineNumberLeave: (view: EditorView) => boolean;
 } {
-  const ctxRef = useRef({ projectId, filePath });
-  ctxRef.current = { projectId, filePath };
   const toggleBreakpoint = useDebugStore((s) => s.toggleBreakpoint);
 
-  const onToggle = (line: number) => {
-    const ctx = ctxRef.current;
-    if (!ctx.projectId || !ctx.filePath) return;
-    void toggleBreakpoint(ctx.projectId, ctx.filePath, line);
-  };
-
-  // Stable handlers for FileViewer lineNumbers (always call latest onToggle via ref)
-  const onToggleRef = useRef(onToggle);
-  onToggleRef.current = onToggle;
+  const onToggle = useCallback(
+    (line: number) => {
+      if (!projectId || !filePath) return;
+      void toggleBreakpoint(projectId, filePath, line);
+    },
+    [projectId, filePath, toggleBreakpoint],
+  );
 
   return useMemo(() => {
     const handlers = {
       onLineNumberClick: (view: EditorView, lineFrom: number) =>
-        toggleBreakpointAt(view, lineFrom, (line) => onToggleRef.current(line)),
+        toggleBreakpointAt(view, lineFrom, (line) => onToggle(line)),
       onLineNumberHover: (view: EditorView, lineFrom: number) =>
         setBreakpointHoverLine(view, lineFrom),
       onLineNumberLeave: (view: EditorView) => clearBreakpointHoverLine(view),
@@ -305,11 +301,11 @@ export function useBreakpointGutterExtensions(
       };
     }
     return {
-      extensions: buildBreakpointOnlyExtensions((line) => onToggleRef.current(line)),
+      extensions: buildBreakpointOnlyExtensions((line) => onToggle(line)),
       includesLineNumbers: false,
       syncEffect: syncEffectOf,
       ...handlers,
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [projectId, filePath]);
+  }, [projectId, filePath, onToggle]);
 }

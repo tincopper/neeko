@@ -58,7 +58,9 @@ export function useBrowserPanel({ showToast }: UseBrowserPanelOptions) {
   });
   // Keep showToast stable across renders via ref (avoids re-subscribing listeners)
   const showToastRef = useRef(showToast);
-  showToastRef.current = showToast;
+  useEffect(() => {
+    showToastRef.current = showToast;
+  }, [showToast]);
 
   // ── Auto-refresh after prompt submit ──
   // When armed, the next "git-changed" event (or the 30-sec timeout) triggers a page refresh.
@@ -174,13 +176,17 @@ export function useBrowserPanel({ showToast }: UseBrowserPanelOptions) {
 
   // Stable ref so arm/listener can call refresh without re-subscribing
   const refreshRef = useRef(refresh);
-  refreshRef.current = refresh;
+  useEffect(() => {
+    refreshRef.current = refresh;
+  }, [refresh]);
 
   // Stable ref for navigate �?prevents the store subscription below from
   // re-subscribing every time navigate's useCallback dependencies change,
   // which could cause duplicate navigation on the same url update.
   const navigateRef = useRef(navigate);
-  navigateRef.current = navigate;
+  useEffect(() => {
+    navigateRef.current = navigate;
+  }, [navigate]);
 
   /** Arm auto-refresh: wait for git-changed or timeout, then refresh the webview */
   const armAutoRefresh = useCallback(() => {
@@ -307,7 +313,7 @@ export function useBrowserPanel({ showToast }: UseBrowserPanelOptions) {
       cancelled = true;
       unlisten?.();
     };
-  }, [setUrl, setLoading]);
+  }, [setUrl, setLoading, disarmLoadingTimeout]);
 
   // Listen: target="_blank" link �?navigate in current webview
   useEffect(() => {

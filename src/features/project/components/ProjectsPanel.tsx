@@ -136,22 +136,26 @@ const ProjectsPanel: React.FC = () => {
     return { localProjects: local, wslGroups, remoteGroups, lastGroup, lastProjectId };
   }, [projects, remoteEntries]);
 
+  // Derive active dialog key; reset remoteHomeDir during render when dialog becomes inactive
+  const dialogRemoteEntryId =
+    dialog?.type === 'new-worktree' && dialog.source?.type === 'remote'
+      ? (dialog.source.entryId ?? null)
+      : null;
+  // Reset remoteHomeDir when dialog becomes inactive
   useEffect(() => {
-    if (
-      !dialog ||
-      dialog.type !== 'new-worktree' ||
-      dialog.source?.type !== 'remote' ||
-      !dialog.source.entryId
-    ) {
+    if (!dialogRemoteEntryId) {
       setRemoteHomeDir('');
-      return;
     }
+  }, [dialogRemoteEntryId]);
+
+  useEffect(() => {
+    if (!dialogRemoteEntryId) return;
     if (invokeRemoteGit) {
-      invokeRemoteGit('get_remote_home_dir', dialog.source.entryId, {})
+      invokeRemoteGit('get_remote_home_dir', dialogRemoteEntryId, {})
         .then((dir) => setRemoteHomeDir(dir as string))
         .catch(() => setRemoteHomeDir(''));
     }
-  }, [dialog, invokeRemoteGit]);
+  }, [dialogRemoteEntryId, invokeRemoteGit]);
 
   const handleCommit = useCallback((projectId: string) => {
     setCommitProjectId(projectId);

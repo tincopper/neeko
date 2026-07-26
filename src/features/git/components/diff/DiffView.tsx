@@ -271,7 +271,7 @@ const DiffView: React.FC<DiffViewProps> = React.memo(
     const scrollRef = useRef<HTMLDivElement>(null);
 
     // Combined-mode structure state
-    const fileList = files ?? [];
+    const fileList = useMemo(() => files ?? [], [files]);
     const [expandedPaths, setExpandedPaths] = useState<Set<string>>(() =>
       combined ? initialExpandedPaths(fileList, scrollToPath ?? filePath) : new Set(),
     );

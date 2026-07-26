@@ -112,7 +112,7 @@ function SplitLayout({
   );
 
   const renderTree = useCallback(
-    ({ node, path }: RenderNodeProps): React.ReactNode => {
+    function renderTreeFn({ node, path }: RenderNodeProps): React.ReactNode {
       if (node.type === 'leaf') {
         const isActive = state.activePaneId === node.paneId;
 
@@ -166,7 +166,7 @@ function SplitLayout({
               flexShrink: 0,
             }}
           >
-            {renderTree({ node: node.first, path: [...path, 'first'] })}
+            {renderTreeFn({ node: node.first, path: [...path, 'first'] })}
           </div>
 
           {/* eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions, jsx-a11y/no-noninteractive-tabindex */}
@@ -200,12 +200,12 @@ function SplitLayout({
           </div>
 
           <div className="min-w-0 min-h-0 flex-1 flex flex-col overflow-hidden">
-            {renderTree({ node: node.second, path: [...path, 'second'] })}
+            {renderTreeFn({ node: node.second, path: [...path, 'second'] })}
           </div>
         </div>
       );
     },
-    [canSplit, renderPane, setActivePaneId, startDrag, state.activePaneId, state.paneCount],
+    [renderPane, setActivePaneId, startDrag, setRatio, state.activePaneId, state.paneCount],
   );
 
   const tree = useMemo(() => renderTree({ node: state.root, path: [] }), [renderTree, state.root]);

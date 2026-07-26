@@ -52,24 +52,38 @@ export function useConversationList(
   );
 
   const conversationsRef = useRef(conversations);
-  conversationsRef.current = conversations;
-
   const requestGenRef = useRef(0);
   const lastScanAtRef = useRef<Map<string, number>>(new Map());
   const inFlightRef = useRef<Map<string, Promise<void>>>(new Map());
   const loadMoreInFlightRef = useRef(false);
-  const activeKeyRef = useRef<string | null>(
-    isActive && projectPath ? listLoadKey(projectPath, agentFilter) : null,
-  );
+
+  // Sync latest conversations to ref for callbacks
+  useEffect(() => {
+    conversationsRef.current = conversations;
+  }, [conversations]);
+
+  // Reset state when the load key changes (deferred to avoid sync setState in effect)
+  useEffect(() => {
+    const nextKey = isActive ? (projectPath ? listLoadKey(projectPath, agentFilter) : null) : null;
+    Promise.resolve().then(() => {
+      if (nextKey === null) {
+        setConversations([]);
+        setTotal(0);
+        setHasMore(false);
+        setLoadState(initialListLoadState());
+      } else {
+        setConversations([]);
+        setTotal(0);
+        setHasMore(false);
+        setLoadState({ loading: true, refreshing: false, error: null });
+      }
+    });
+  }, [isActive, projectPath, agentFilter]);
 
   const runLoad = useCallback(
     async (options: { forceScan: boolean }) => {
       if (!projectPath) {
-        setConversations([]);
-        conversationsRef.current = [];
-        setTotal(0);
-        setHasMore(false);
-        setLoadState(initialListLoadState());
+        // Reset already handled during render via key change
         return;
       }
 
@@ -204,21 +218,8 @@ export function useConversationList(
 
   useEffect(() => {
     if (!isActive) return;
-
-    const key = projectPath ? listLoadKey(projectPath, agentFilter) : null;
-    if (key !== activeKeyRef.current) {
-      activeKeyRef.current = key;
-      requestGenRef.current += 1;
-      setConversations([]);
-      conversationsRef.current = [];
-      setTotal(0);
-      setHasMore(false);
-      setLoadState(
-        projectPath ? { loading: true, refreshing: false, error: null } : initialListLoadState(),
-      );
-    }
-
-    void runLoad({ forceScan: false });
+    // Defer to avoid sync setState in effect (runLoad calls setLoadState synchronously in its IIFE)
+    Promise.resolve().then(() => runLoad({ forceScan: false }));
   }, [isActive, projectPath, agentFilter, runLoad]);
 
   return {

@@ -75,6 +75,7 @@ export function useWslTerminalStrategy(paneId: string): TerminalStrategy | null 
     activeWorktreePath,
     activeTabId,
     paneId,
+    showToast,
     config.terminalFontSize,
     config.fontFamily,
     config.terminalGpuAcceleration,

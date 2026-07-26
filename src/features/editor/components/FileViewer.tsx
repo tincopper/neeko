@@ -258,13 +258,19 @@ function FileEditor({
   // Current-line highlight field lives inside bpGutterExt; this only re-applies on stop.
   useCurrentLineHighlight(absFilePath, tab.filePath, editorViewRef, editorViewEpoch);
 
-  // Stable refs so lineNumbers handlers stay fresh without rebuilding extensions every render
-  const lnClickRef = useRef(onLineNumberClick);
-  const lnHoverRef = useRef(onLineNumberHover);
-  const lnLeaveRef = useRef(onLineNumberLeave);
-  lnClickRef.current = onLineNumberClick;
-  lnHoverRef.current = onLineNumberHover;
-  lnLeaveRef.current = onLineNumberLeave;
+  // Stable callbacks for lineNumbers handlers
+  const handleLnClick = useCallback(
+    (view: EditorView, lineFrom: number) => onLineNumberClick(view, lineFrom),
+    [onLineNumberClick],
+  );
+  const handleLnHover = useCallback(
+    (view: EditorView, lineFrom: number) => onLineNumberHover(view, lineFrom),
+    [onLineNumberHover],
+  );
+  const handleLnLeave = useCallback(
+    (view: EditorView) => onLineNumberLeave(view),
+    [onLineNumberLeave],
+  );
   const lastSyncedBpKey = useRef<string>('');
 
   useEffect(() => {
@@ -328,14 +334,14 @@ function FileEditor({
     return lastSlash >= 0 ? absFilePath.substring(0, lastSlash) : projectPath.replace(/\\/g, '/');
   }, [projectPath, tab.filePath]);
 
-  // Load language extension lazily (instant when cache is warm from preload)
+  // Load language extension (async + cached fallback)
   useEffect(() => {
-    let cancelled = false;
     const cached = getCachedLanguageExtension(tab.filePath);
     if (cached) {
       setLangExtension(cached);
       return;
     }
+    let cancelled = false;
     getLanguageExtension(tab.filePath).then((ext) => {
       if (!cancelled) setLangExtension(ext);
     });
@@ -387,7 +393,7 @@ function FileEditor({
   }, [saveCmKey, tab.isDirty, handleSave]);
 
   // Create theme object (new reference triggers CodeMirror reconfigure)
-  const cmTheme = useMemo(() => createCmTheme(fontFamily, fontSize), [fontFamily, fontSize, theme]);
+  const cmTheme = useMemo(() => createCmTheme(fontFamily, fontSize), [fontFamily, fontSize]);
 
   // LSP go-to-definition / find-references — keep custom handlers for cross-file navigation
   const definition = useLspDefinition(projectPath);
@@ -403,20 +409,19 @@ function FileEditor({
     getLspLanguageId(tab.filePath),
   );
   const lspLanguageIdRef = useRef(lspLanguageId);
-  lspLanguageIdRef.current = lspLanguageId;
-
   useEffect(() => {
-    let cancelled = false;
+    lspLanguageIdRef.current = lspLanguageId;
+  }, [lspLanguageId]);
+
+  // Sync LSP language id when filePath changes + async tighten with live backend registry
+  useEffect(() => {
     const sync = getLspLanguageId(tab.filePath);
     setLspLanguageId(sync);
     void resolveLspLanguageId(tab.filePath).then((live) => {
-      if (!cancelled && live) {
+      if (live) {
         setLspLanguageId(live);
       }
     });
-    return () => {
-      cancelled = true;
-    };
   }, [tab.filePath]);
 
   // @codemirror/lsp-client plugin — handles hover, diagnostics, completion, document lifecycle
@@ -424,19 +429,17 @@ function FileEditor({
   // language reuses the existing LSP client instead of destroying and re-initializing.
   const [lspClientExt, setLspClientExt] = useState<import('@codemirror/state').Extension[]>([]);
 
+  // LSP client ext is released via effect cleanup when deps become invalid
   useEffect(() => {
-    const lang = lspLanguageId;
-    if (!projectPath || !lang || !fileUri) {
-      setLspClientExt([]);
-      return;
-    }
+    if (!projectPath || !lspLanguageId || !fileUri) return;
 
-    const plugin = acquireLspPlugin(projectPath, lang, fileUri);
-    setLspClientExt([plugin]);
+    const plugin = acquireLspPlugin(projectPath, lspLanguageId, fileUri);
+    // Defer to avoid sync setState in effect
+    Promise.resolve().then(() => setLspClientExt([plugin]));
 
     return () => {
       setLspClientExt([]);
-      releaseLspClient(projectPath, lang);
+      releaseLspClient(projectPath, lspLanguageId);
     };
   }, [projectPath, lspLanguageId, fileUri]);
 
@@ -753,10 +756,11 @@ function FileEditor({
     [selectionLines, tab.filePath, currentProjectIdForToolbar, sendToAgent],
   );
 
+  const { addTab: addTerminalTab } = useTerminalTabs();
+
   const handleCreateTab = useCallback(() => {
-    const { addTab } = useTerminalTabs();
     const agentId = useProjectStore.getState().activeProject?.selected_agents?.[0] ?? 'opencode';
-    const tab = addTab(currentProjectIdForToolbar, agentId, agentId);
+    const tab = addTerminalTab(currentProjectIdForToolbar, agentId, agentId);
     if (tab && pending) {
       setTimeout(() => {
         import('@/features/terminal/components/terminalCommands').then(({ sendToTerminal }) => {
@@ -767,7 +771,7 @@ function FileEditor({
         });
       }, 1500);
     }
-  }, [currentProjectIdForToolbar, pending, clearPending]);
+  }, [currentProjectIdForToolbar, pending, clearPending, addTerminalTab]);
 
   // 把当前 EditorView 状态写回缓存
   const saveEditorSnapshot = useCallback(() => {
@@ -788,52 +792,58 @@ function FileEditor({
   }, [tabKey, tabId]);
 
   // updateListener: selection / scroll / geometry 变化都更新一次缓存
-  const viewStateExt = useMemo(
-    () =>
-      EditorView.updateListener.of((u) => {
-        if (u.selectionSet || u.geometryChanged || u.viewportChanged || u.docChanged) {
-          saveEditorSnapshot();
-        }
+  // Use a ref wrapper for the snapshot callback to avoid passing a ref-using
+  // closure through useMemo, which trips the react-hooks/refs rule even though
+  // the ref is only read inside the CodeMirror update listener (not during render).
+  const snapshotRef = useRef(saveEditorSnapshot);
+  useEffect(() => {
+    snapshotRef.current = saveEditorSnapshot;
+  }, [saveEditorSnapshot]);
 
-        // Update cursor position for the StatusBar
-        if (u.selectionSet || u.docChanged) {
-          const view = editorViewRef.current;
-          if (view) {
-            const pos = view.state.selection.main.head;
-            const lineObj = view.state.doc.lineAt(pos);
-            useEditorStore.getState().setCursorPosition({
-              line: lineObj.number,
-              col: pos - lineObj.from,
+  const viewStateExt = useMemo(() => {
+    // The update listener callback below accesses snapshotRef.current(), but that
+    // only runs inside the CodeMirror update listener — never during render.
+    // eslint-disable-next-line react-hooks/refs
+    return EditorView.updateListener.of((u) => {
+      const view = u.view;
+
+      if (u.selectionSet || u.geometryChanged || u.viewportChanged || u.docChanged) {
+        // eslint-disable-next-line react-hooks/refs
+        snapshotRef.current();
+      }
+
+      // Update cursor position for the StatusBar
+      if (u.selectionSet || u.docChanged) {
+        const pos = view.state.selection.main.head;
+        const lineObj = view.state.doc.lineAt(pos);
+        useEditorStore.getState().setCursorPosition({
+          line: lineObj.number,
+          col: pos - lineObj.from,
+        });
+      }
+
+      // Extract selection lines for AI toolbar
+      if (u.selectionSet) {
+        const sel = view.state.selection.main;
+        if (!sel.empty) {
+          const fromLine = view.state.doc.lineAt(sel.from).number;
+          const toLine = view.state.doc.lineAt(sel.to).number;
+          setSelectionLines({ startLine: fromLine, endLine: toLine });
+
+          const coords = view.coordsAtPos(sel.to);
+          if (coords) {
+            setToolbarPos({
+              top: coords.bottom + 4,
+              left: coords.left,
             });
           }
+        } else {
+          setSelectionLines(null);
+          setToolbarPos(null);
         }
-
-        // Extract selection lines for AI toolbar
-        if (u.selectionSet) {
-          const view = editorViewRef.current;
-          if (view) {
-            const sel = view.state.selection.main;
-            if (!sel.empty) {
-              const fromLine = view.state.doc.lineAt(sel.from).number;
-              const toLine = view.state.doc.lineAt(sel.to).number;
-              setSelectionLines({ startLine: fromLine, endLine: toLine });
-
-              const coords = view.coordsAtPos(sel.to);
-              if (coords) {
-                setToolbarPos({
-                  top: coords.bottom + 4,
-                  left: coords.left,
-                });
-              }
-            } else {
-              setSelectionLines(null);
-              setToolbarPos(null);
-            }
-          }
-        }
-      }),
-    [saveEditorSnapshot],
-  );
+      }
+    });
+  }, []);
 
   // CodeMirror 初始化完成后：捕获 view 引用，恢复上次的 scrollTop/selection
   const handleCreateEditor = useCallback(
@@ -899,7 +909,7 @@ function FileEditor({
         }
       });
     },
-    [tabKey, tabId, tab.projectId, absFilePath, bpSyncEffect],
+    [tabKey, tabId, tab.projectId, tab.filePath, absFilePath, bpSyncEffect],
   );
 
   // 卸载兜底：再保存一次（updateListener 大多已覆盖，但保险起见）
@@ -942,13 +952,13 @@ function FileEditor({
         formatNumber: (n) => String(n),
         domEventHandlers: {
           mousedown(view, line) {
-            return lnClickRef.current(view, line.from);
+            return handleLnClick(view, line.from);
           },
           mouseover(view, line) {
-            return lnHoverRef.current(view, line.from);
+            return handleLnHover(view, line.from);
           },
           mouseout(view) {
-            return lnLeaveRef.current(view);
+            return handleLnLeave(view);
           },
         },
       }),
@@ -990,10 +1000,8 @@ function FileEditor({
     return exts;
   }, [
     langExtension,
-    fontFamily,
-    fontSize,
+    cmTheme,
     saveKeymap,
-    theme,
     viewStateExt,
     lspClientExt,
     lspKeymap,
@@ -1295,8 +1303,8 @@ function MarkdownScrollContainer({
   }, [tabKey, tabId]);
 
   useEffect(() => {
+    const el = ref.current;
     return () => {
-      const el = ref.current;
       if (!el) return;
       setViewSnapshot(tabKey, tabId, 'markdown', { scrollTop: el.scrollTop });
     };

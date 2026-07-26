@@ -15,6 +15,15 @@ export function useCommitDetail(
   const [error, setError] = useState<string | null>(null);
   const lastHashRef = useRef<string | null>(null);
 
+  // Reset detail/files when commitHash becomes null
+  useEffect(() => {
+    if (!commitHash) {
+      setDetail(null);
+      setFiles([]);
+      lastHashRef.current = null;
+    }
+  }, [commitHash]);
+
   const loadDetail = useCallback(async () => {
     if (!commands || !commitHash) return;
     setLoading(true);
@@ -34,12 +43,7 @@ export function useCommitDetail(
   }, [commands, commitHash]);
 
   useEffect(() => {
-    if (!commitHash) {
-      setDetail(null);
-      setFiles([]);
-      lastHashRef.current = null;
-      return;
-    }
+    if (!commitHash) return;
     if (commitHash === lastHashRef.current) return;
     lastHashRef.current = commitHash;
     void loadDetail();

@@ -30,7 +30,7 @@ const MarkdownEditor: React.FC<MarkdownEditorProps> = React.memo(
 
     const cmTheme = useMemo(
       () => createCmTheme(config.fontFamily, config.editorFontSize),
-      [config.fontFamily, config.editorFontSize, config.theme],
+      [config.fontFamily, config.editorFontSize],
     );
 
     const extensions = useMemo(() => {
@@ -49,7 +49,7 @@ const MarkdownEditor: React.FC<MarkdownEditorProps> = React.memo(
       ];
 
       return exts;
-    }, [config.fontFamily, config.editorFontSize, config.theme]);
+    }, [cmTheme]);
 
     return (
       <CodeMirror

@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef } from 'react';
 
 import type { AuthMethod } from '@/shared/types';
 import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from '@/ui/Resizable';
@@ -49,52 +49,49 @@ function EditorGroupLayout({
   const leftPanelId = `left-${tabKey}`;
   const rightPanelId = `right-${tabKey}`;
 
-  // ── defaultLayout: fixed at mount, never re-derived from store ──
-  // The key changes when panel count changes, forcing a fresh group mount with a
-  // new ref. This is the same pattern react-resizable-panels expects.
+  // ── defaultLayout: computed via useMemo, never mutated ──
   const hasPinned = !!pinnedTab;
-  // "p" prefix = pinned present, "s" suffix = split present
   const groupKey = `${hasPinned ? 'p' : ''}${isSplit ? 's' : ''}-${tabKey}`;
-  const prevGroupKeyRef = useRef<string>(groupKey);
 
-  const defaultLayoutRef = useRef<Record<string, number> | null>(null);
-
-  // Re-initialise the seed whenever the panel configuration changes
-  // (pin appears/disappears, split appears/disappears).
-  if (defaultLayoutRef.current === null || prevGroupKeyRef.current !== groupKey) {
-    prevGroupKeyRef.current = groupKey;
-
+  const defaultLayout = useMemo(() => {
     if (!hasPinned && !isSplit) {
-      // Case A — no group needed, but keep ref in sync
-      defaultLayoutRef.current = {};
-    } else if (hasPinned && !isSplit) {
+      // Case A — no group needed
+      return {};
+    }
+    if (hasPinned && !isSplit) {
       // Case B: pinned + left
       const pinPct = Math.round(pinnedPanelRatio * 100);
-      defaultLayoutRef.current = {
+      return {
         [pinnedPanelId]: pinPct,
         [leftPanelId]: 100 - pinPct,
       };
-    } else if (hasPinned && isSplit) {
+    }
+    if (hasPinned && isSplit) {
       // Case C: pinned + left + right
       const pinPct = Math.round(pinnedPanelRatio * 100);
       const rest = 100 - pinPct;
       const leftPct = Math.round(rest * layout.ratio);
-      defaultLayoutRef.current = {
+      return {
         [pinnedPanelId]: pinPct,
         [leftPanelId]: leftPct,
         [rightPanelId]: rest - leftPct,
       };
-    } else {
-      // Case D: left + right (no pin)
-      const leftPct = Math.round(layout.ratio * 100);
-      defaultLayoutRef.current = {
-        [leftPanelId]: leftPct,
-        [rightPanelId]: 100 - leftPct,
-      };
     }
-  }
-
-  const defaultLayout = defaultLayoutRef.current!;
+    // Case D: left + right (no pin)
+    const leftPct = Math.round(layout.ratio * 100);
+    return {
+      [leftPanelId]: leftPct,
+      [rightPanelId]: 100 - leftPct,
+    };
+  }, [
+    hasPinned,
+    isSplit,
+    pinnedPanelRatio,
+    layout.ratio,
+    pinnedPanelId,
+    leftPanelId,
+    rightPanelId,
+  ]);
 
   // ── onLayoutChanged: persist ratio back to store ──
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);

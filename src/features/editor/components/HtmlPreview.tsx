@@ -21,6 +21,12 @@ function HtmlPreview({ projectId, filePath, fileName }: HtmlPreviewProps) {
   const [htmlContent, setHtmlContent] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  // Reset loading state when filePath changes
+  useEffect(() => {
+    setIsLoading(true);
+    setError(null);
+    setHtmlContent(null);
+  }, [filePath]);
 
   // 计算文件所在目录的 asset URL（用�?<base href> 注入，使相对路径资源正确加载�?
   const dirAssetUrl = useMemo(() => {
@@ -89,9 +95,9 @@ function HtmlPreview({ projectId, filePath, fileName }: HtmlPreviewProps) {
     }
   }, [projectId, filePath, dirAssetUrl]);
 
-  // 初始加载和文件路径变化时重新加载
+  // 初始加载和文件路径变化时重新加载 (deferred to avoid sync setState in effect)
   useEffect(() => {
-    loadHtmlContent();
+    Promise.resolve().then(() => loadHtmlContent());
 
     // 组件卸载时清�?
     return () => {

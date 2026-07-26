@@ -54,8 +54,8 @@ const BranchInfo: React.FC<BranchInfoProps> = ({
   }, [branchDropdownOpen]);
 
   const currentBranch = gitInfo?.current_branch ?? '';
-  const branches = gitInfo?.branches ?? [];
-  const worktrees = gitInfo?.worktrees ?? [];
+  const branches = useMemo(() => gitInfo?.branches ?? [], [gitInfo?.branches]);
+  const worktrees = useMemo(() => gitInfo?.worktrees ?? [], [gitInfo?.worktrees]);
   // Exclude branches that are already checked out in a worktree
   const availableBranches = useMemo(() => {
     const worktreeBranchSet = new Set(worktrees.map((wt) => wt.branch));

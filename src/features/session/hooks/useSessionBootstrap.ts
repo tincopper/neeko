@@ -33,8 +33,10 @@ export function useSessionBootstrap(deps: {
   const [initialSidebarWidth, setInitialSidebarWidth] = useState<number>(280);
   const [initializing, setInitializing] = useState(true);
 
+  const { loadProjects, restoreWorktreeState } = deps;
+
   useEffect(() => {
-    deps.loadProjects().then(async () => {
+    loadProjects().then(async () => {
       try {
         const projects = await listProjects();
         const defaultGitInfo = {
@@ -97,7 +99,7 @@ export function useSessionBootstrap(deps: {
         }
         const wtState = session.worktree_state;
         if (wtState && typeof wtState === 'object') {
-          deps.restoreWorktreeState(wtState);
+          restoreWorktreeState(wtState);
         }
 
         // 恢复上次活动的项目（来自 session 持久化的 active_project_id）
@@ -237,7 +239,7 @@ export function useSessionBootstrap(deps: {
       unlistenPromise.then((unlisten) => unlisten());
       unlistenDiffPromise.then((unlisten) => unlisten());
     };
-  }, []);
+  }, [loadProjects, restoreWorktreeState]);
 
   return { initialSidebarWidth, initializing };
 }

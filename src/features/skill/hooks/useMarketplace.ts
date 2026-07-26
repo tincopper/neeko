@@ -148,19 +148,34 @@ export function useMarketplace({ installedSkills, onSkillInstalled }: UseMarketp
     };
   }, []);
 
+  // Reset search results when search query is cleared
+  useEffect(() => {
+    if (!searchQuery) {
+      setSearchResults([]);
+    }
+  }, [searchQuery]);
+
+  // Reset page when filter/query/board changes
+  useEffect(() => {
+    setPage(1);
+  }, [sourceFilter, searchQuery, board]);
+
+  // Reset source filter when board changes
+  useEffect(() => {
+    setSourceFilter(null);
+  }, [board]);
+
   // Fetch leaderboard on mount and board change
   useEffect(() => {
     if (!searchQuery) {
-      fetchLeaderboard(board);
+      // Defer to avoid sync setState in effect (fetchLeaderboard calls setLoading synchronously)
+      Promise.resolve().then(() => fetchLeaderboard(board));
     }
   }, [board, searchQuery, fetchLeaderboard]);
 
   // Debounced search
   useEffect(() => {
-    if (!searchQuery) {
-      setSearchResults([]);
-      return;
-    }
+    if (!searchQuery) return;
 
     const timer = setTimeout(() => {
       searchMarketplace(searchQuery);
@@ -197,16 +212,6 @@ export function useMarketplace({ installedSkills, onSkillInstalled }: UseMarketp
     const start = (safePage - 1) * perPage;
     return filteredList.slice(start, start + perPage);
   }, [filteredList, safePage, perPage]);
-
-  // Reset page when filter or source changes
-  useEffect(() => {
-    setPage(1);
-  }, [sourceFilter, searchQuery, board]);
-
-  // Reset source filter when switching boards or searching
-  useEffect(() => {
-    setSourceFilter(null);
-  }, [board]);
 
   const isInstalled = useCallback(
     (skillName: string) => {

@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 
 import { lspGetExtensionMap } from '@/features/lsp/api/lspApi';
 import { applyCustomServersFromConfig, setCustomLspExtensionMap } from '@/features/lsp/languageMap';
@@ -162,11 +162,14 @@ function Field({
 }
 
 const LspPanel: React.FC<LspPanelProps> = ({ config, onConfigChange }) => {
-  const lsp: LspConfig = {
-    ...DEFAULT_LSP,
-    ...(config.lsp ?? {}),
-    customServers: config.lsp?.customServers ?? [],
-  };
+  const lsp: LspConfig = useMemo(
+    () => ({
+      ...DEFAULT_LSP,
+      ...(config.lsp ?? {}),
+      customServers: config.lsp?.customServers ?? [],
+    }),
+    [config.lsp],
+  );
   const [draft, setDraft] = useState<ServerDraftForm | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);

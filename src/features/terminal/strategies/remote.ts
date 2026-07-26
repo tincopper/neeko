@@ -39,7 +39,7 @@ export interface RemoteStrategyParams {
  */
 export function useRemoteTerminalStrategy(params: RemoteStrategyParams): TerminalStrategy {
   const { config, showToast } = useAppContext();
-  const { activeTabId, tabs } = useEditorContext();
+  const { activeTabId } = useEditorContext();
 
   const {
     entryId,
@@ -48,7 +48,6 @@ export function useRemoteTerminalStrategy(params: RemoteStrategyParams): Termina
     host,
     port,
     username,
-    auth,
     fontSize = 14,
     fontFamily = '',
     onSessionReady,
@@ -90,14 +89,13 @@ export function useRemoteTerminalStrategy(params: RemoteStrategyParams): Termina
     host,
     port,
     username,
-    auth,
     fontSize,
     fontFamily,
     onSessionReady,
     paneId,
     cacheKeySuffix,
     activeTabId,
-    tabs,
+    showToast,
     config.terminalGpuAcceleration,
   ]);
 }

@@ -182,6 +182,7 @@ export function useSplitLayout(layoutId: string, maxPanes = 4): UseSplitLayoutRe
   const [state, setState] = useState<SplitState>(() => initialState());
   const paneSeqRef = useRef(1);
 
+  // Reset state when layoutId changes
   useEffect(() => {
     paneSeqRef.current = 1;
     setState(initialState());

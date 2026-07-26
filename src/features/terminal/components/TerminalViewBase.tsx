@@ -32,26 +32,13 @@ export default React.memo(function TerminalViewBase({
   agentCommandOverride,
   onStatusChange,
 }: TerminalViewBaseProps) {
-  const {
-    cacheKey,
-    cache,
-    rebuildCallbacks,
-    wrapperRefs,
-    createSession,
-    resize,
-    agentDelayMs,
-    connectingMessage,
-    fontSize,
-    fontFamily: fontFamilyProp,
-    gpuAccel,
-    onSessionReady,
-    outputFilter,
-    setupFileLinks,
-  } = strategy;
+  const { cacheKey, cache, fontSize, fontFamily: fontFamilyProp } = strategy;
 
   const wrapperRef = useRef<HTMLDivElement>(null);
   const currentKeyRef = useRef<string | null>(null);
   const currentTermRef = useRef<Terminal | null>(null);
+  const strategyRef = useRef(strategy);
+  strategyRef.current = strategy;
   const [rebuildCount, setRebuildCount] = useState(0);
   const [ready, setReady] = useState(false);
   const [isAtBottom, setIsAtBottom] = useState(true);
@@ -65,16 +52,32 @@ export default React.memo(function TerminalViewBase({
 
   // Sync font changes to existing instance
   useEffect(() => {
-    const c = cache.get(cacheKey);
+    const c = strategyRef.current.cache.get(cacheKey);
     if (!c) return;
-    c.term.options.fontSize = fontSize;
-    c.term.options.fontFamily = buildFontFamily(fontFamilyProp);
+    c.term.options.fontSize = strategyRef.current.fontSize;
+    c.term.options.fontFamily = buildFontFamily(strategyRef.current.fontFamily);
     c.fitAddon.fit();
   }, [fontSize, fontFamilyProp, cacheKey, cache]);
 
   useEffect(() => {
     const wrapper = wrapperRef.current;
     if (!wrapper) return;
+
+    const {
+      cache,
+      rebuildCallbacks,
+      wrapperRefs,
+      resize,
+      fontSize: fontSizeVal,
+      fontFamily: fontFamilyVal,
+      gpuAccel: gpuAccelVal,
+      setupFileLinks: setupFileLinksVal,
+      connectingMessage: connectingMessageVal,
+      createSession: createSessionVal,
+      agentDelayMs: agentDelayMsVal,
+      onSessionReady: onSessionReadyVal,
+      outputFilter: outputFilterVal,
+    } = strategyRef.current;
 
     currentKeyRef.current = cacheKey;
     setReady(false);
@@ -133,8 +136,8 @@ export default React.memo(function TerminalViewBase({
 
       const term = new Terminal({
         cursorBlink: true,
-        fontSize,
-        fontFamily: buildFontFamily(fontFamilyProp),
+        fontSize: fontSizeVal,
+        fontFamily: buildFontFamily(fontFamilyVal),
         theme: buildTerminalTheme(),
         scrollback: 10000,
         overviewRuler: { width: 0 },
@@ -149,8 +152,8 @@ export default React.memo(function TerminalViewBase({
 
       wrapper.appendChild(element);
       term.open(element);
-      if (gpuAccel) void tryLoadWebgl(term);
-      if (setupFileLinks) setupFileLinks(term);
+      if (gpuAccelVal) void tryLoadWebgl(term);
+      if (setupFileLinksVal) setupFileLinksVal(term);
       fitAddon.fit();
 
       currentTermRef.current = term;
@@ -168,11 +171,11 @@ export default React.memo(function TerminalViewBase({
       };
       cache.set(cacheKey, entry);
 
-      term.write(connectingMessage);
+      term.write(connectingMessageVal);
 
       (async () => {
         try {
-          const sessionId = await createSession(term.cols, term.rows, {
+          const sessionId = await createSessionVal(term.cols, term.rows, {
             command: taskCommand ?? undefined,
             configId: taskConfigId ?? undefined,
           });
@@ -180,7 +183,7 @@ export default React.memo(function TerminalViewBase({
           if (currentKeyRef.current !== cacheKey) return;
           entry.sessionId = sessionId;
           setReady(true);
-          onSessionReady?.();
+          onSessionReadyVal?.();
 
           // 当 taskCommand 已设置时（如 resume），跳过 auto-launch
           if (tabAgentId && !taskCommand) {
@@ -197,12 +200,12 @@ export default React.memo(function TerminalViewBase({
               } catch (err) {
                 console.error('[Terminal] Auto-launch agent failed:', err);
               }
-            }, agentDelayMs);
+            }, agentDelayMsVal);
           }
 
           const unlisten = await listen<number[]>(`terminal-output-${sessionId}`, (event) => {
             let bytes: Uint8Array = new Uint8Array(event.payload);
-            if (outputFilter) bytes = outputFilter(bytes) as Uint8Array;
+            if (outputFilterVal) bytes = outputFilterVal(bytes) as Uint8Array;
             term.write(bytes);
           });
           entry.unlisten = unlisten;
@@ -258,7 +261,17 @@ export default React.memo(function TerminalViewBase({
       scrollDisposable?.dispose();
       currentTermRef.current = null;
     };
-  }, [cacheKey, rebuildCount, taskRebuildKey]);
+  }, [
+    cacheKey,
+    rebuildCount,
+    taskRebuildKey,
+    tabAgentId,
+    taskCommand,
+    taskConfigId,
+    agentCommandOverride,
+    onStatusChange,
+    // Strategy values (via strategyRef to avoid unnecessary re-runs)
+  ]);
 
   return (
     <div className="relative flex-1 flex flex-col overflow-hidden min-w-0 min-h-0">

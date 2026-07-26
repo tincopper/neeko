@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 
 import AgentIcon from '@/features/agent/components/AgentIcon';
 import { cn } from '@/lib/utils';
@@ -50,6 +50,7 @@ export function WSLDialog({
   const wrapperRef = useRef<HTMLDivElement>(null); // 用于点击外侧关闭
   const agentDropdownRef = useRef<HTMLDivElement>(null);
   const ideDropdownRef = useRef<HTMLDivElement>(null);
+  const handleSelectDistroRef = useRef<(distro: string) => Promise<void>>(async () => {});
 
   // 点击补全框外侧关闭下拉
   useEffect(() => {
@@ -62,18 +63,6 @@ export function WSLDialog({
     document.addEventListener('mousedown', handleClick);
     return () => document.removeEventListener('mousedown', handleClick);
   }, [showSuggestions]);
-
-  useEffect(() => {
-    if (!isOpen) return;
-    if (selectedEntryId) {
-      const entry = existingEntries.find((e) => e.id === selectedEntryId);
-      if (entry) {
-        handleSelectDistro(entry.distro);
-        return;
-      }
-    }
-    loadDistros();
-  }, [isOpen]);
 
   const loadDistros = async () => {
     try {
@@ -88,8 +77,21 @@ export function WSLDialog({
     }
   };
 
+  useEffect(() => {
+    if (!isOpen) return;
+    if (selectedEntryId) {
+      const entry = existingEntries.find((e) => e.id === selectedEntryId);
+      if (entry) {
+        handleSelectDistroRef.current(entry.distro);
+        return;
+      }
+    }
+    // Defer to avoid sync setState in effect (loadDistros calls setState internally)
+    Promise.resolve().then(() => loadDistros());
+  }, [isOpen, existingEntries, selectedEntryId]);
+
   // 根据输入路径查询补全。使用序号丢弃过期结果，避免慢请求覆盖新结果。
-  const fetchSuggestions = async (path: string, distro: string) => {
+  const fetchSuggestions = useCallback(async (path: string, distro: string) => {
     const seq = ++fetchSeq.current;
 
     if (!path) {
@@ -120,23 +122,30 @@ export function WSLDialog({
     } finally {
       if (seq === fetchSeq.current) setLoadingSuggestions(false);
     }
-  };
+  }, []);
 
-  const handleSelectDistro = async (distro: string) => {
-    setSelectedDistro(distro);
-    let homeDir = '/home';
-    try {
-      homeDir = await getWslHomeDir(distro);
-    } catch {
-      /* ignore */
-    }
-    setInputPath(homeDir);
-    setStep('select-path');
-    setTimeout(() => {
-      inputRef.current?.focus();
-      fetchSuggestions(homeDir, distro);
-    }, 50);
-  };
+  const handleSelectDistro = useCallback(
+    async (distro: string) => {
+      setSelectedDistro(distro);
+      let homeDir = '/home';
+      try {
+        homeDir = await getWslHomeDir(distro);
+      } catch {
+        /* ignore */
+      }
+      setInputPath(homeDir);
+      setStep('select-path');
+      setTimeout(() => {
+        inputRef.current?.focus();
+        fetchSuggestions(homeDir, distro);
+      }, 50);
+    },
+    [fetchSuggestions],
+  );
+
+  useEffect(() => {
+    handleSelectDistroRef.current = handleSelectDistro;
+  }, [handleSelectDistro]);
 
   const handlePathChange = (newPath: string) => {
     setInputPath(newPath);

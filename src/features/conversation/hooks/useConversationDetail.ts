@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 
 import { getConversationMessages, exportConversation } from '../api/conversationApi';
 import type { ConversationMessage } from '../types';
@@ -6,6 +6,13 @@ import type { ConversationMessage } from '../types';
 export function useConversationDetail(conversationId: string | null) {
   const [messages, setMessages] = useState<ConversationMessage[]>([]);
   const [loading, setLoading] = useState(false);
+
+  // Reset messages when conversationId becomes null
+  useEffect(() => {
+    if (!conversationId) {
+      setMessages([]);
+    }
+  }, [conversationId]);
 
   const loadMessages = useCallback(async (id: string) => {
     setLoading(true);
@@ -22,9 +29,8 @@ export function useConversationDetail(conversationId: string | null) {
 
   useEffect(() => {
     if (conversationId) {
-      loadMessages(conversationId);
-    } else {
-      setMessages([]);
+      // Defer to avoid sync setState in effect (loadMessages calls setLoading synchronously)
+      Promise.resolve().then(() => loadMessages(conversationId));
     }
   }, [conversationId, loadMessages]);
 

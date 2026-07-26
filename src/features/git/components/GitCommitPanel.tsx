@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 
 import { useAppContext } from '@/shared/contexts';
 import type { AheadBehind, CommitResult, PushOutcome } from '@/shared/types';
@@ -96,6 +96,14 @@ const GitCommitPanel: React.FC<GitCommitPanelProps> = ({
     [onShowToast],
   );
 
+  const [textareaHeight, setTextareaHeight] = useState(120);
+  const dragStartRef = useRef<{ startY: number; startHeight: number } | null>(null);
+
+  // AI 生成 commit message 相关状�?
+  const [commitMessage, setCommitMessage] = useState('');
+  const [aiGenerating, setAiGenerating] = useState(false);
+  const { config } = useAppContext();
+
   const handleCredentialSubmit = useCallback(
     async (username: string, password: string) => {
       const setUpstream = credentialDialog.setUpstream;
@@ -119,17 +127,13 @@ const GitCommitPanel: React.FC<GitCommitPanelProps> = ({
         setLoading(false);
       }
     },
-    [commands, onRefreshGit, onShowToast, handlePushOutcome],
+    [commands, onRefreshGit, onShowToast, handlePushOutcome, credentialDialog.setUpstream],
   );
-  const [textareaHeight, setTextareaHeight] = useState(120);
-  const dragStartRef = useRef<{ startY: number; startHeight: number } | null>(null);
 
-  // AI 生成 commit message 相关状�?
-  const [commitMessage, setCommitMessage] = useState('');
-  const [aiGenerating, setAiGenerating] = useState(false);
-  const { config } = useAppContext();
-
-  const changedFiles = project.gitInfo?.changed_files ?? [];
+  const changedFiles = useMemo(
+    () => project.gitInfo?.changed_files ?? [],
+    [project.gitInfo?.changed_files],
+  );
 
   const noCommits =
     project.gitInfo !== null &&
@@ -140,12 +144,19 @@ const GitCommitPanel: React.FC<GitCommitPanelProps> = ({
   const [diffStats, setDiffStats] = useState<
     Record<string, { additions: number; deletions: number }>
   >({});
+  // Reset diffStats when changes clear
+  const prevHasChangesRef = useRef(changedFiles.length > 0);
+  useEffect(() => {
+    if (changedFiles.length === 0 && prevHasChangesRef.current) {
+      prevHasChangesRef.current = false;
+      setDiffStats({});
+    } else if (changedFiles.length > 0) {
+      prevHasChangesRef.current = true;
+    }
+  }, [changedFiles]);
 
   useEffect(() => {
-    if (changedFiles.length === 0) {
-      setDiffStats({});
-      return;
-    }
+    if (changedFiles.length === 0) return;
     let cancelled = false;
     commands
       .getChangedFilesDiffStats()
@@ -161,7 +172,7 @@ const GitCommitPanel: React.FC<GitCommitPanelProps> = ({
     return () => {
       cancelled = true;
     };
-  }, [project.id, changedFiles.length]);
+  }, [project.id, changedFiles.length, commands]);
 
   // 合并 diff stats 到文件列�?
   const changedFilesWithStats = changedFiles.map((f) => ({

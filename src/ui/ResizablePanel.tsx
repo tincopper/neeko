@@ -39,6 +39,7 @@ export function ResizablePanel({
     maxWidthProp ??
     (typeof window !== 'undefined' ? Math.floor(window.innerWidth * MAX_WIDTH_RATIO) : 1200);
 
+  // Clamp width when maxWidth changes
   useEffect(() => {
     setWidth((w) => Math.min(w, maxWidth));
   }, [maxWidth]);

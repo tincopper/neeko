@@ -96,7 +96,7 @@ export function useLocalProjects() {
     } catch (error) {
       console.error('[App] Failed to load projects:', error);
     }
-  }, []);
+  }, [setProjects]);
 
   const loadAgents = useCallback(async () => {
     try {
@@ -129,7 +129,7 @@ export function useLocalProjects() {
     } finally {
       setLoading(false);
     }
-  }, [projects]);
+  }, [projects, setActiveProject, setActiveProjectId, setProjects]);
 
   const handleRemoveProject = useCallback(async (projectId: string) => {
     try {
@@ -163,11 +163,14 @@ export function useLocalProjects() {
     }
   }, []);
 
-  const handleSelectProject = useCallback(async (projectId: string) => {
-    setActiveProjectId(projectId);
-    // fire-and-forget: 通知后端，不阻塞前端切换
-    setActiveProjectApi(projectId).catch(console.error);
-  }, []);
+  const handleSelectProject = useCallback(
+    async (projectId: string) => {
+      setActiveProjectId(projectId);
+      // fire-and-forget: 通知后端，不阻塞前端切换
+      setActiveProjectApi(projectId).catch(console.error);
+    },
+    [setActiveProjectId],
+  );
 
   const handleSelectFile = useCallback(
     async (projectId: string, filePath: string) => {
@@ -202,7 +205,7 @@ export function useLocalProjects() {
       useEditorStore.getState().addTab(projectId, tab);
       useEditorStore.getState().activateTab(projectId, tabId);
     },
-    [activeProjectId],
+    [activeProjectId, setActiveProjectId],
   );
 
   const handleRefreshGit = useCallback(async (projectId: string) => {
@@ -268,26 +271,29 @@ export function useLocalProjects() {
     [projects],
   );
 
-  const handleDragEnd = useCallback((draggedId: string, targetId: string) => {
-    if (draggedId === targetId) return;
-    setProjects((prev) => {
-      const draggedIndex = prev.findIndex((p) => p.id === draggedId);
-      const targetIndex = prev.findIndex((p) => p.id === targetId);
-      if (draggedIndex < 0 || targetIndex < 0) return prev;
+  const handleDragEnd = useCallback(
+    (draggedId: string, targetId: string) => {
+      if (draggedId === targetId) return;
+      setProjects((prev) => {
+        const draggedIndex = prev.findIndex((p) => p.id === draggedId);
+        const targetIndex = prev.findIndex((p) => p.id === targetId);
+        if (draggedIndex < 0 || targetIndex < 0) return prev;
 
-      const newProjects = [...prev];
-      const [dragged] = newProjects.splice(draggedIndex, 1);
-      newProjects.splice(targetIndex, 0, dragged);
+        const newProjects = [...prev];
+        const [dragged] = newProjects.splice(draggedIndex, 1);
+        newProjects.splice(targetIndex, 0, dragged);
 
-      // Persist the new order
-      const orderedIds = newProjects.map((p) => p.id);
-      reorderProjects(orderedIds).catch((e) =>
-        console.error('[App] Failed to persist project order:', e),
-      );
+        // Persist the new order
+        const orderedIds = newProjects.map((p) => p.id);
+        reorderProjects(orderedIds).catch((e) =>
+          console.error('[App] Failed to persist project order:', e),
+        );
 
-      return newProjects;
-    });
-  }, []);
+        return newProjects;
+      });
+    },
+    [setProjects],
+  );
 
   return {
     projects,

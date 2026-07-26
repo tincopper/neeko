@@ -112,8 +112,8 @@ function InlineHtmlPreview({ tabKey, tabId, content, basePath, fileName }: Inlin
 
   // 卸载时再保存一次（�?onScroll 节流丢最后一帧），并清理监听
   useEffect(() => {
+    const iframe = iframeRef.current;
     return () => {
-      const iframe = iframeRef.current;
       if (!iframe) return;
       try {
         const win = iframe.contentWindow;

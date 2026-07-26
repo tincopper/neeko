@@ -188,7 +188,7 @@ export function useAppShell(): UseAppShellResult {
     (filePath: string) => {
       fileView.openFile(filePath);
     },
-    [fileView.openFile],
+    [fileView],
   );
   const handleFileRefresh = useCallback(() => {
     const projectId = useProjectStore.getState().activeProjectId ?? null;
@@ -198,10 +198,10 @@ export function useAppShell(): UseAppShellResult {
       useProjectStore.getState().activeProject?.path ??
       undefined;
     fileView.loadFileTree(projectId, rootPath);
-  }, [fileView.loadFileTree]);
+  }, [fileView]);
   const handleWslDiffBack = useCallback(() => {
     wslActionsWrap.setWslDiffState?.(null);
-  }, [wslActionsWrap.setWslDiffState]);
+  }, [wslActionsWrap]);
 
   const { initializing } = useSessionBootstrap({
     loadProjects,

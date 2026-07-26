@@ -29,6 +29,12 @@ function CommitDialog({ projectId, onClose, onRefreshGit }: CommitDialogProps) {
   const [amend, setAmend] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Reset message when amend changes to false
+  useEffect(() => {
+    if (!amend) {
+      setMessage('');
+    }
+  }, [amend]);
 
   useEffect(() => {
     getWorktreeChangedFiles(projectId, '')
@@ -42,10 +48,7 @@ function CommitDialog({ projectId, onClose, onRefreshGit }: CommitDialogProps) {
   }, [projectId]);
 
   useEffect(() => {
-    if (!amend) {
-      setMessage('');
-      return;
-    }
+    if (!amend) return;
     getCommitLog(projectId, 1)
       .then((entries) => {
         if (entries.length > 0) setMessage(entries[0].message);

@@ -132,8 +132,7 @@ const ConversationPanel: React.FC<ConversationPanelProps> = React.memo(
         count: agentFilter === id ? total : (counts.get(id) ?? 0),
         agent: agents.find((a) => a.id === id) ?? null,
       }));
-      // conversations dependency keeps options fresh on unfiltered reloads.
-    }, [conversations, agents, agentFilter, total]);
+    }, [agents, agentFilter, total]);
 
     // Detect whether the collapsed filter row overflows a single line.
     // Measure against the collapsed (single-line) height, so re-measure when

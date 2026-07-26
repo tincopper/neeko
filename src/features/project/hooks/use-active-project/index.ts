@@ -30,7 +30,7 @@ export function useActiveProject(): ActiveProjectContext {
   const commands = useMemo(() => {
     if (!activeProject) return null;
     return createProjectCommands(activeProject.id);
-  }, [activeProject?.id]);
+  }, [activeProject]);
 
   return useMemo((): ActiveProjectContext => {
     if (!activeProject) {

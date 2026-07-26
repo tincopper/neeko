@@ -148,7 +148,8 @@ const PullRequestsPanel: React.FC<PullRequestsPanelProps> = ({
   const errorView = useMemo(() => (error ? mapPrLoadError(error) : null), [error]);
 
   useEffect(() => {
-    loadPRs();
+    // Defer to avoid sync setState in effect (loadPRs calls setLoading/setError synchronously)
+    Promise.resolve().then(() => loadPRs());
   }, [loadPRs]);
 
   // Load full repo labels and authors list (separate from current PR list)

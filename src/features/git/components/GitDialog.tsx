@@ -58,6 +58,12 @@ const GitDialog: React.FC<GitDialogProps> = ({
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [homeDirPath, setHomeDirPath] = useState('');
+  // Sync homeDirPath from remoteHomeDir
+  useEffect(() => {
+    if (dialog.type === 'new-worktree' && dialog.source?.type === 'remote' && remoteHomeDir) {
+      setHomeDirPath(remoteHomeDir);
+    }
+  }, [dialog.type, dialog.source?.type, remoteHomeDir]);
 
   useEffect(() => {
     if (dialog.type !== 'new-worktree') return;
@@ -66,13 +72,12 @@ const GitDialog: React.FC<GitDialogProps> = ({
       getWslHomeDir(src.distro)
         .then(setHomeDirPath)
         .catch(() => {});
-    } else if (src?.type === 'remote') {
-      if (remoteHomeDir) setHomeDirPath(remoteHomeDir);
-    } else {
+    } else if (src?.type !== 'remote') {
       homeDir()
         .then(setHomeDirPath)
         .catch(() => {});
     }
+    // Remote case handled during render above — no sync setState in effect
   }, [dialog, remoteHomeDir]);
 
   const handleCreateBranch = async () => {
