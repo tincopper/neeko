@@ -49,7 +49,7 @@ import { useActiveProject } from '@/features/project/hooks/use-active-project';
 import { useSymbolNavStore } from '@/features/symbol-nav';
 import { useTerminalTabs } from '@/features/terminal/hooks/useTerminalTabs';
 import { cn } from '@/lib/utils';
-import { Eye, Save, FileCode, Globe } from '@/shared/components/icons';
+import { Eye, Save, FileCode, Globe, ExternalLink } from '@/shared/components/icons';
 import { useEditorContext } from '@/shared/contexts';
 import { useAppContext } from '@/shared/contexts/AppContext';
 import { useCodeMirrorBinding } from '@/shared/hooks/useResolvedShortcuts';
@@ -64,7 +64,8 @@ import { useWorktreeStore } from '@/shared/store/worktreeStore';
 import type { FileTab, AppTheme, Tab, FileTabData } from '@/shared/types';
 import type { EditorAction } from '@/shared/utils/agentPrompt';
 import { buildCodeMessage } from '@/shared/utils/agentPrompt';
-import { openHtmlInBrowserPanel, resolveAbsolutePath } from '@/shared/utils/browserUtils';
+import { openInDefaultBrowser } from '@/features/browser/api/browserApi';
+import { filePathToFileUrl, openHtmlInBrowserPanel, resolveAbsolutePath } from '@/shared/utils/browserUtils';
 import {
   getCachedLanguageExtension,
   getLanguageExtension,
@@ -372,6 +373,16 @@ function FileEditor({
   const handleOpenInBrowser = useCallback(() => {
     if (!projectPath || !canOpenInBrowser) return;
     openHtmlInBrowserPanel(resolveAbsolutePath(projectPath, tab.filePath));
+  }, [tab.filePath, projectPath, canOpenInBrowser]);
+
+  // 用系统默认浏览器打开 HTML 文件
+  const handleOpenInSystemBrowser = useCallback(() => {
+    if (!projectPath || !canOpenInBrowser) return;
+    const absPath = resolveAbsolutePath(projectPath, tab.filePath);
+    const fileUrl = filePathToFileUrl(absPath);
+    openInDefaultBrowser(fileUrl).catch((err) => {
+      console.error('[FileViewer] Failed to open in system browser:', err);
+    });
   }, [tab.filePath, projectPath, canOpenInBrowser]);
 
   // Save shortcut — from user-configurable shortcut registry (default Ctrl+S).
@@ -1117,6 +1128,7 @@ function FileEditor({
         onSave={handleSave}
         onTogglePreview={() => setPreviewMode((m) => (m === 'preview' ? 'source' : 'preview'))}
         onOpenInBrowser={handleOpenInBrowser}
+        onOpenInSystemBrowser={handleOpenInSystemBrowser}
         canOpenInBrowser={canOpenInBrowser}
       />
 
@@ -1177,6 +1189,7 @@ interface EditorHeaderProps {
   onSave: () => void;
   onTogglePreview: () => void;
   onOpenInBrowser?: () => void;
+  onOpenInSystemBrowser?: () => void;
   canOpenInBrowser?: boolean;
 }
 
@@ -1191,6 +1204,7 @@ function EditorHeader({
   onSave,
   onTogglePreview,
   onOpenInBrowser,
+  onOpenInSystemBrowser,
   canOpenInBrowser,
 }: EditorHeaderProps) {
   return (
@@ -1243,6 +1257,17 @@ function EditorHeader({
             title="Open in Browser Panel"
           >
             <Globe size={12} /> Browser
+          </button>
+        )}
+
+        {/* HTML: Open in System Browser */}
+        {isHtml && canOpenInBrowser && onOpenInSystemBrowser && (
+          <button
+            className="px-2 py-1 text-xs rounded hover:bg-bg-hover text-text-secondary hover:text-text-primary transition-colors flex items-center gap-1"
+            onClick={onOpenInSystemBrowser}
+            title="Open in System Browser"
+          >
+            <ExternalLink size={12} /> System
           </button>
         )}
 
