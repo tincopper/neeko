@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-2.md`
-- **Total Sessions**: 96
-- **Last Active**: 2026-07-25
+- **Total Sessions**: 97
+- **Last Active**: 2026-07-26
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-2.md` | ~1325 | Active |
+| `journal-2.md` | ~1358 | Active |
 | `journal-1.md` | ~1986 | Archived |
 <!-- @@@/auto:active-documents -->
 
@@ -30,6 +30,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 97 | 2026-07-26 | Fix space key swallowed by container div onKeyDown handlers + IME composition suppression | `e795ee99` | `main` |
 | 96 | 2026-07-25 | Git Control Panel spec update + quality verification | `de2f0b4`, `bcdbd86`, `4c226bc`, `5a91ed0`, `61117a9` | `main` |
 | 95 | 2026-07-25 | Git Control Diff Tab 标题前缀微调（History 单文件→History Diff） | `5a91ed0`, `4c226bc` | `main` |
 | 94 | 2026-07-25 | diff-tab-ui-modernization | `bea3742` | `main` |

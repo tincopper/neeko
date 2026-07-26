@@ -1323,3 +1323,36 @@ Git Control > History 的单文件/钉住 Diff tab 标题从 'History Commit · 
 ### Next Steps
 
 - None - task complete
+
+
+## Session 97: Fix space key swallowed by container div onKeyDown handlers + IME composition suppression
+
+**Date**: 2026-07-26
+**Task**: Fix space key swallowed by container div onKeyDown handlers + IME composition suppression
+**Branch**: `main`
+
+### Summary
+
+Root cause: EditorGroupPane.tsx and SplitLayout.tsx container divs called e.preventDefault() for space in bubble phase, preventing CodeMirror/xterm.js from inserting the character. Fixed with e.target !== e.currentTarget guard. Also fixed terminalInput.ts IME suppression (suppressNextOnData -> compositionPendingText) to prevent space loss after IME commit. Added 4 regression tests and spec entry.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `e795ee99` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
