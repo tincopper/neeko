@@ -1,0 +1,13 @@
+# Git hooks managed by lefthook (https://github.com/evilmartians/lefthook)
+# Install hooks with: pnpm lefthook install
+
+pre-commit:
+  parallel: true
+  commands:
+    lint-frontend:
+      glob: "src/**/*.{ts,tsx,js,jsx}"
+      run: pnpm lint:fe
+    lint-rust:
+      glob: "src-tauri/**/*.rs"
+      run: pnpm lint
+
