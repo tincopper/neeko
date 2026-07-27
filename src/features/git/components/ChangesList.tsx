@@ -1,29 +1,10 @@
 import React, { useMemo, useState, useCallback } from 'react';
 
 import { cn } from '@/lib/utils';
-import {
-  ChevronRightIcon,
-  Undo2,
-  Plus,
-  Minus,
-  ListPlus,
-  Pencil,
-  FilePlus,
-  Trash2,
-  FileText,
-} from '@/shared/components/icons';
+import { ChevronRightIcon, Undo2, Plus, Minus, ListPlus } from '@/shared/components/icons';
 import type { FileChange } from '@/shared/types';
+import { fileIconSrc } from '@/shared/utils/fileIcons';
 import { Checkbox } from '@/ui/Checkbox';
-
-// ── Status icons ─────────────────────────────────────────────────────────────
-
-const STATUS_ICONS: Record<string, { icon: React.ReactNode; color: string }> = {
-  Modified: { icon: <Pencil size={11} />, color: 'text-accent-blue' },
-  Added: { icon: <FilePlus size={11} />, color: 'text-accent-green' },
-  Deleted: { icon: <Trash2 size={11} />, color: 'text-accent-red' },
-  Renamed: { icon: <FileText size={11} />, color: 'text-accent-orange' },
-  Untracked: { icon: <FilePlus size={11} />, color: 'text-text-muted' },
-};
 
 // ── Path utilities ───────────────────────────────────────────────────────────
 
@@ -294,7 +275,6 @@ const Section: React.FC<SectionProps> = ({
         <div className="flex flex-col">
           {files.map((file) => {
             const isSelected = selectedFiles.has(file.path);
-            const statusInfo = STATUS_ICONS[file.status] ?? STATUS_ICONS.Modified;
             const { name, directory } = splitFilePath(file.path);
             return (
               <div
@@ -321,7 +301,13 @@ const Section: React.FC<SectionProps> = ({
                   onClick={(e: React.MouseEvent) => e.stopPropagation()}
                   className="shrink-0"
                 />
-                <span className={cn('shrink-0', statusInfo.color)}>{statusInfo.icon}</span>
+                <img
+                  className="w-3.5 h-3.5 shrink-0 block opacity-70"
+                  src={fileIconSrc(file.path)}
+                  alt=""
+                  width={14}
+                  height={14}
+                />
                 <span className="shrink-0 max-w-[9rem] truncate text-[calc(var(--font-size)-1px)] font-mono text-text-primary">
                   {name}
                 </span>
