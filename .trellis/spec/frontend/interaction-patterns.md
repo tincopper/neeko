@@ -290,3 +290,42 @@ setTimeout(() => {
 
 - `restrictToVerticalAxis`：锁定垂直轴，防止水平漂移
 - `restrictToParentElement`：限制拖拽范围在父容器内，防止拖出可见区域
+
+---
+
+## editor TabItem：关闭按钮 pointer 隔离
+
+### 背景
+
+`TabItem` 根 div 同时挂载 dnd-kit `listeners`（拖拽排序）与关闭按钮 `×`（子元素）。`PointerSensor` 的 `activationConstraint: { distance: 5 }` 只控制何时开始拖拽，但 `×` 上的 pointerdown 仍会冒泡到父 div 被 PointerSensor 捕获。用户在 `×` 上轻微移动（≥5px）会触发拖拽重排而非关闭，体感为「关错了 / 没关成」。
+
+### 正确做法
+
+在关闭按钮 `×` 上 `onPointerDown` 阻止冒泡，让 dnd-kit 忽略关闭按钮的指针按下：
+
+```tsx
+<button
+  onPointerDown={(e) => e.stopPropagation()}  // 阻断 dnd-kit 捕获
+  onClick={handleClose}
+  title="Close tab"
+>
+  ×
+</button>
+```
+
+`handleClose` 的 `e.stopPropagation()` 只在 click 阶段生效，dnd-kit 在 pointerdown 阶段就开始监听，所以必须额外阻断 pointerdown。
+
+### 反模式
+
+❌ 只在 `onClick` stopPropagation，不处理 pointerdown -- `×` 上轻微移动仍触发拖拽，关闭被劫持。
+
+### 泛型化 + renderLeading 多态
+
+`TabItem` 泛型化为 `<T extends TabLike>`（`{ id; title }`）纯展示组件，editor 特有的图标/状态点逻辑通过 `renderLeading?: (tab) => ReactNode` 注入（editor 用 `renderEditorTabLeading`）。`React.memo` 通过 `as unknown as typeof TabItem` 保留泛型签名。
+
+### 测试断言
+
+| 场景 | 期望行为 |
+|------|---------|
+| reorderable 模式下点 `×` | `onClose` 被调用，不触发拖拽 |
+| `×` 上 pointerdown 后移动 | 不触发 reorder |
