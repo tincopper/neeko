@@ -9,6 +9,8 @@ import type { DiffResult } from './types';
 interface SplitDiffTableProps {
   diffResult: DiffResult;
   language: string;
+  /** Triggers re-render after async language registration completes */
+  languageReady?: boolean;
   selectedLines?: Set<string>;
   onToggleLine?: (hunkIdx: number, lineIdx: number) => void;
   /** Prefix for change-block element ids (default `cb`). Combined mode scopes per file. */

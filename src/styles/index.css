@@ -219,8 +219,22 @@
   .split-cell.context, .split-linenum.context { background-color: transparent; }
 
   /* Diff word highlights (embedded in dangerouslySetInnerHTML) */
-  .word-diff-added { color: var(--diff-added-text); font-weight: 600; }
-  .word-diff-removed { color: var(--diff-removed-text); font-weight: 600; }
+  .word-diff-added {
+    color: var(--diff-added-text);
+    font-weight: 600;
+    background-color: rgba(48, 209, 88, 0.2);
+    border-radius: 2px;
+    padding: 0 2px;
+    text-decoration: none;
+  }
+  .word-diff-removed {
+    color: var(--diff-removed-text);
+    font-weight: 600;
+    background-color: rgba(255, 69, 58, 0.2);
+    border-radius: 2px;
+    padding: 0 2px;
+    text-decoration: line-through;
+  }
 
   /* Syntax highlighting — driven by CodeMirror theme variables */
   .diff-line .line-content .hljs-keyword, .diff-line .line-content .hljs-selector-tag { color: var(--cm-keyword); }

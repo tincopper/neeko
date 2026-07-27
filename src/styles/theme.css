@@ -91,8 +91,8 @@
   --status-failed:  #ff453a;
 
   /* Diff */
-  --diff-added:        #30d15820;
-  --diff-removed:      #ff453a20;
+  --diff-added:        #30d15830;
+  --diff-removed:      #ff453a30;
   --diff-added-text:   #30d158;
   --diff-removed-text: #ff453a;
 
@@ -199,8 +199,8 @@
   --status-failed:  #e06c75;
 
   /* Diff */
-  --diff-added:        #98c37920;
-  --diff-removed:      #e06c7520;
+  --diff-added:        #98c37930;
+  --diff-removed:      #e06c7530;
   --diff-added-text:   #98c379;
   --diff-removed-text: #e06c75;
 
@@ -295,8 +295,8 @@
   --status-failed:  #c0392b;
 
   /* Diff */
-  --diff-added:        #5a8a5e18;
-  --diff-removed:      #c0392b18;
+  --diff-added:        #5a8a5e28;
+  --diff-removed:      #c0392b28;
   --diff-added-text:   #5a8a5e;
   --diff-removed-text: #c0392b;
 
@@ -392,8 +392,8 @@
   --status-failed:  oklch(0.704 0.191 22.216);
 
   /* Diff */
-  --diff-added:        oklch(0.7 0.15 150 / 0.12);
-  --diff-removed:      oklch(0.704 0.191 22.216 / 0.12);
+  --diff-added:        oklch(0.7 0.15 150 / 0.2);
+  --diff-removed:      oklch(0.704 0.191 22.216 / 0.2);
   --diff-added-text:   oklch(0.7 0.15 150);
   --diff-removed-text: oklch(0.704 0.191 22.216);
 
@@ -515,8 +515,8 @@
   --status-failed:  #d32f2f;
 
   /* Diff */
-  --diff-added:        #4a9e3f15;
-  --diff-removed:      #d32f2f15;
+  --diff-added:        #4a9e3f25;
+  --diff-removed:      #d32f2f25;
   --diff-added-text:   #4a9e3f;
   --diff-removed-text: #d32f2f;
 

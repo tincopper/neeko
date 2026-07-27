@@ -194,10 +194,17 @@ const FileDiffSection: React.FC<FileDiffSectionProps> = React.memo(
 
     const language = useMemo(() => detectLanguage(filePath), [filePath]);
     const blockId = fileBlockId(filePath);
+    const [languageReady, setLanguageReady] = useState(false);
 
     useEffect(() => {
       if (!expanded) return;
-      void ensureLanguageRegistered(language);
+      let cancelled = false;
+      void ensureLanguageRegistered(language).then(() => {
+        if (!cancelled) setLanguageReady(true);
+      });
+      return () => {
+        cancelled = true;
+      };
     }, [expanded, language]);
 
     return (
@@ -232,6 +239,7 @@ const FileDiffSection: React.FC<FileDiffSectionProps> = React.memo(
             <DiffTable
               diffResult={diffResult}
               language={language}
+              languageReady={languageReady}
               selectedLines={selectedLines}
               onToggleLine={onToggleLine}
               blockIdPrefix={`cb-${blockId}`}
@@ -240,6 +248,7 @@ const FileDiffSection: React.FC<FileDiffSectionProps> = React.memo(
             <SplitDiffTable
               diffResult={diffResult}
               language={language}
+              languageReady={languageReady}
               selectedLines={selectedLines}
               onToggleLine={onToggleLine}
               blockIdPrefix={`cb-${blockId}`}
@@ -317,10 +326,17 @@ const DiffView: React.FC<DiffViewProps> = React.memo(
 
     const language = useMemo(() => detectLanguage(filePath), [filePath]);
     const singleParts = useMemo(() => splitFilePath(filePath), [filePath]);
+    const [singleLanguageReady, setSingleLanguageReady] = useState(false);
 
     useEffect(() => {
       if (combined) return;
-      void ensureLanguageRegistered(language);
+      let cancelled = false;
+      void ensureLanguageRegistered(language).then(() => {
+        if (!cancelled) setSingleLanguageReady(true);
+      });
+      return () => {
+        cancelled = true;
+      };
     }, [combined, language]);
 
     const scrollFileIntoView = useCallback((path: string) => {
@@ -844,6 +860,7 @@ const DiffView: React.FC<DiffViewProps> = React.memo(
           <DiffTable
             diffResult={diffResult}
             language={language}
+            languageReady={singleLanguageReady}
             selectedLines={selectedLines}
             onToggleLine={toggleLine}
           />
@@ -851,6 +868,7 @@ const DiffView: React.FC<DiffViewProps> = React.memo(
           <SplitDiffTable
             diffResult={diffResult}
             language={language}
+            languageReady={singleLanguageReady}
             selectedLines={selectedLines}
             onToggleLine={toggleLine}
           />

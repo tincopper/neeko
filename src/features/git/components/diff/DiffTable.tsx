@@ -10,6 +10,8 @@ import { getLineContent, getLineType } from './useDiffData';
 interface DiffTableProps {
   diffResult: DiffResult;
   language: string;
+  /** Triggers re-render after async language registration completes */
+  languageReady?: boolean;
   selectedLines?: Set<string>;
   onToggleLine?: (blockIdx: number, lineIdx: number) => void;
   /** Prefix for change-block element ids (default `cb`). Combined mode scopes per file. */
@@ -152,7 +154,7 @@ const DiffTable: React.FC<DiffTableProps> = ({
                           {lineType === 'added' ? '+' : lineType === 'removed' ? '-' : ' '}
                         </td>
                         <td
-                          className="whitespace-pre-wrap break-all cursor-pointer"
+                          className="line-content whitespace-pre-wrap break-all cursor-pointer"
                           onClick={() => onToggleLine?.(hunkIndex, lineIndex)}
                           title={isSelected ? 'Deselect line' : 'Select line for AI review'}
                           dangerouslySetInnerHTML={{ __html: view }}
