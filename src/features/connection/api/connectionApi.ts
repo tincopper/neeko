@@ -34,6 +34,15 @@ export function testRemoteConnection(
   return invoke<void>('test_remote_connection', { host, port, username, auth });
 }
 
+export function getRemoteHomeDir(
+  host: string,
+  port: number,
+  username: string,
+  auth: AuthMethod,
+): Promise<string> {
+  return invoke<string>('get_remote_home_dir', { host, port, username, auth });
+}
+
 export function listRemoteDirectories(
   host: string,
   port: number,

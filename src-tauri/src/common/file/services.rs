@@ -154,6 +154,101 @@ pub async fn write_file_content(
     }
 }
 
+/// 创建新文件（包含父目录），按 ExecTarget 类型分发。
+pub async fn create_new_file(
+    target: &ExecTarget,
+    base_path: &str,
+    file_path: &str,
+) -> Result<(), AppError> {
+    let full_path = format!("{}/{}", base_path, file_path);
+    match target {
+        ExecTarget::Local => {
+            let base = std::path::Path::new(base_path);
+            let canonical_base = base
+                .canonicalize()
+                .map_err(|e| AppError::File(format!("Invalid base path: {}", e)))?;
+
+            if file_path.split('/').any(|c| c == "..") {
+                return Err(AppError::File("Path traversal is not allowed".to_string()));
+            }
+
+            let full = canonical_base.join(file_path);
+
+            if let Some(parent) = full.parent() {
+                std::fs::create_dir_all(parent)
+                    .map_err(|e| AppError::File(format!("Failed to create parent dirs: {}", e)))?;
+            }
+            std::fs::write(&full, "")
+                .map_err(|e| AppError::File(format!("Failed to create file: {}", e)))?;
+            Ok(())
+        }
+        ExecTarget::Wsl { .. } | ExecTarget::Remote { .. } => {
+            create_new_file_remote(target, &full_path).await
+        }
+    }
+}
+
+/// Create or overwrite a file at `directory/filename` with the given content.
+/// Returns the relative path `directory/filename`.
+pub async fn save_new_file(
+    target: &ExecTarget,
+    base_path: &str,
+    directory: &str,
+    filename: &str,
+    content: &str,
+) -> Result<String, AppError> {
+    let rel_path = if directory.is_empty() || directory == "." {
+        filename.to_string()
+    } else {
+        format!("{}/{}", directory.trim_end_matches('/'), filename)
+    };
+
+    let full_path = format!("{}/{}", base_path, rel_path);
+    match target {
+        ExecTarget::Local => {
+            let base = std::path::Path::new(base_path);
+            let canonical_base = base
+                .canonicalize()
+                .map_err(|e| AppError::File(format!("Invalid base path: {}", e)))?;
+
+            if rel_path.split('/').any(|c| c == "..") {
+                return Err(AppError::File("Path traversal is not allowed".to_string()));
+            }
+
+            let full = canonical_base.join(&rel_path);
+
+            if let Some(parent) = full.parent() {
+                std::fs::create_dir_all(parent)
+                    .map_err(|e| AppError::File(format!("Failed to create parent dirs: {}", e)))?;
+            }
+            std::fs::write(&full, content)
+                .map_err(|e| AppError::File(format!("Failed to write file: {}", e)))?;
+            Ok(rel_path)
+        }
+        ExecTarget::Wsl { .. } | ExecTarget::Remote { .. } => {
+            let safe_fp = safe_path(&full_path);
+            let shell = if matches!(target, ExecTarget::Wsl { .. }) {
+                "bash"
+            } else {
+                "sh"
+            };
+
+            if let Some(parent) = std::path::Path::new(&full_path).parent() {
+                let safe_parent = safe_path(parent.to_str().unwrap_or(""));
+                let mkdir_cmd = format!("mkdir -p '{safe_parent}'");
+                let _ = exec_on(target, shell, &["-c", &mkdir_cmd]).await;
+            }
+
+            let escaped = content.replace('\'', "'\\''");
+            let write_cmd = format!("cat > '{safe_fp}' << 'EOF'\n{escaped}\nEOF");
+            exec_on(target, shell, &["-c", &write_cmd])
+                .await
+                .map_err(|e| AppError::File(format!("Failed to write file: {}", e)))?;
+            Ok(rel_path)
+        }
+    }
+}
+
 /// 通过 shell 读取文件内容（WSL / Remote）
 async fn read_file_content_shell(
     target: &ExecTarget,
@@ -201,6 +296,29 @@ async fn read_file_content_shell(
         size,
         is_binary: false,
     })
+}
+
+/// 通过 shell 创建新文件（WSL / Remote）
+async fn create_new_file_remote(target: &ExecTarget, full_path: &str) -> Result<(), AppError> {
+    let safe_fp = safe_path(full_path);
+    let shell = if matches!(target, ExecTarget::Wsl { .. }) {
+        "bash"
+    } else {
+        "sh"
+    };
+
+    if let Some(parent) = std::path::Path::new(full_path).parent() {
+        let safe_parent = safe_path(parent.to_str().unwrap_or(""));
+        let mkdir_cmd = format!("mkdir -p '{safe_parent}'");
+        let _ = exec_on(target, shell, &["-c", &mkdir_cmd]).await;
+    }
+
+    let touch_cmd = format!("touch '{safe_fp}'");
+    exec_on(target, shell, &["-c", &touch_cmd])
+        .await
+        .map_err(|e| AppError::File(format!("Failed to create file: {}", e)))?;
+
+    Ok(())
 }
 
 /// 通过 shell 写入文件内容（WSL / Remote）

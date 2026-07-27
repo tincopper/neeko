@@ -21,6 +21,9 @@ export interface FileTabData {
   content: FileContent;
   isDirty: boolean;
   externallyModified?: boolean;
+  initialPreviewMode?: 'preview' | 'source';
+  isUntitled?: boolean;
+  untitledName?: string;
 }
 
 export interface DiffTabData {

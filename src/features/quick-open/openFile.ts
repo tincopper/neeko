@@ -16,6 +16,8 @@ export async function openProjectFile(opts: {
   filePath: string;
   line?: number;
   column?: number;
+  /** When set, overrides the default preview mode (e.g. force source for newly created files). */
+  defaultPreviewMode?: 'preview' | 'source';
 }): Promise<void> {
   const { projectId, filePath } = opts;
   const line = Math.max(1, opts.line ?? 1);
@@ -48,6 +50,7 @@ export async function openProjectFile(opts: {
       fileName: getFileName(filePath),
       content,
       isDirty: false,
+      initialPreviewMode: opts.defaultPreviewMode,
     },
   };
   store.setPendingNavigateTarget({ tabKey, tabId, line, col });

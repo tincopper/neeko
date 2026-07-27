@@ -1,5 +1,8 @@
 import React, { useCallback, useMemo, useState, useRef, useEffect } from 'react';
 
+import { getActionMenuItems } from '@/features/action-menu/actionRegistry';
+import ActionMenuDropdown from '@/features/action-menu/components/ActionMenuDropdown';
+import type { ActionRegistryItem, ActionContext } from '@/features/action-menu/types/actionMenu';
 import { checkAgentsInstalled } from '@/features/agent/api/agentApi';
 import AgentIcon from '@/features/agent/components/AgentIcon';
 import ConversationViewer from '@/features/conversation/components/ConversationViewer';
@@ -7,6 +10,8 @@ import DiffView from '@/features/git/components/diff';
 import { PRDetailView } from '@/features/git/components/pr-detail';
 import ContextMenu from '@/features/project/components/ContextMenu';
 import type { ContextMenuItem } from '@/features/project/components/ContextMenu';
+import { useQuickOpenStore } from '@/features/quick-open';
+import { useRecentFilesStore } from '@/features/quick-open/recentFilesStore';
 import type { SplitStateInfo } from '@/features/terminal/components/SplitLayout';
 import SplitLayout from '@/features/terminal/components/SplitLayout';
 import { closeEditorTab } from '@/features/terminal/components/terminalTabCleanup';
@@ -15,6 +20,8 @@ import { cn } from '@/lib/utils';
 import { useEditorContext, EditorProvider } from '@/shared/contexts';
 import { useAppContext } from '@/shared/contexts/AppContext';
 import { useEditorStore } from '@/shared/store';
+import { useDockStore } from '@/shared/store/dockStore';
+import { useProjectStore } from '@/shared/store/projectStore';
 import type { AgentConfig, AuthMethod, EditorGroupId } from '@/shared/types';
 import { buildDiffSource } from '@/shared/utils/diffSource';
 
@@ -116,11 +123,20 @@ function EditorGroupPane({
 
   const handleCloseTab = useCallback(
     (tabId: string) => {
-      if (groupId === 'pinned') return; // pinned panel: close is handled via Unpin, not store.closeTab
-      // Recycle terminal PTY caches (local/WSL/remote) when closing any tab.
+      if (groupId === 'pinned') return;
+      const tab = tabs.find((t) => t.id === tabId);
+      if (tab?.data.kind === 'file' && tab.data.isUntitled && tab.data.isDirty) {
+        if (
+          !window.confirm(
+            `"${tab.data.untitledName ?? tab.data.fileName}" has unsaved changes. Close anyway?`,
+          )
+        ) {
+          return;
+        }
+      }
       closeEditorTab(tabKey, tabId);
     },
-    [tabKey, groupId],
+    [tabKey, groupId, tabs],
   );
 
   const handleReorderTab = useCallback(
@@ -145,6 +161,139 @@ function EditorGroupPane({
       .then((result) => setInstalledMap(new Map(Object.entries(result))))
       .catch(() => {});
   }, [agents, projectIdForCheck]);
+
+  // ── Action Menu ──
+  const [actionMenuRect, setActionMenuRect] = useState<DOMRect | null>(null);
+
+  const handleActionMenuOpen = useCallback((rect: DOMRect) => {
+    setActionMenuRect(rect);
+  }, []);
+
+  const handleActionMenuClose = useCallback(() => {
+    setActionMenuRect(null);
+  }, []);
+
+  const handleActionMenuExecute = useCallback(
+    (item: ActionRegistryItem) => {
+      switch (item.id) {
+        case 'new-terminal':
+          onAddTerminalTab?.();
+          break;
+        case 'open-file':
+          useQuickOpenStore.getState().openPalette('gotoFile');
+          break;
+        case 'recent-files':
+          useQuickOpenStore.getState().openPalette('recentFiles');
+          break;
+        case 'new-terminal-with-agent': {
+          if (projectIdForCheck) {
+            const enabled = agents.filter((a) => a.enabled);
+            const first = enabled[0];
+            if (first) {
+              const tabId = `tab_${crypto.randomUUID()}`;
+              useEditorStore.getState().addTab(tabKey, {
+                id: tabId,
+                projectId: projectIdForCheck,
+                title: first.name,
+                order: tabs.length,
+                data: {
+                  kind: 'terminal' as const,
+                  agentId: first.id,
+                  status: 'Idle' as const,
+                },
+              });
+              useEditorStore.getState().activateTab(tabKey, tabId);
+            }
+          }
+          break;
+        }
+        case 'new-file': {
+          if (projectIdForCheck) {
+            const existingUntitled = tabs.filter(
+              (t) => t.data.kind === 'file' && t.data.isUntitled,
+            ).length;
+            const num = existingUntitled + 1;
+            const tabId = `tab_${crypto.randomUUID()}`;
+            const name = `Untitled-${num}`;
+            useEditorStore.getState().addTab(tabKey, {
+              id: tabId,
+              projectId: projectIdForCheck,
+              title: name,
+              order: tabs.length,
+              data: {
+                kind: 'file',
+                filePath: '',
+                fileName: name,
+                content: {
+                  path: '',
+                  content: '',
+                  size: 0,
+                  is_binary: false,
+                },
+                isDirty: true,
+                isUntitled: true,
+                untitledName: name,
+                initialPreviewMode: 'source',
+              },
+            });
+            useEditorStore.getState().activateTab(tabKey, tabId);
+          }
+          break;
+        }
+        case 'open-side-terminal': {
+          useDockStore.getState().togglePanel('projects');
+          break;
+        }
+        case 'open-in-ide': {
+          const store = useProjectStore.getState();
+          const p = store.activeProject;
+          if (p) {
+            store.openIde({ id: p.id, selected_ide: p.selected_ide });
+          }
+          break;
+        }
+      }
+    },
+    [onAddTerminalTab, agents, projectIdForCheck, tabKey, tabs],
+  );
+
+  const handleActionMenuAgentTerminal = useCallback(
+    (agentId: string, agentName: string) => {
+      if (!projectIdForCheck) return;
+      const tabId = `tab_${crypto.randomUUID()}`;
+      useEditorStore.getState().addTab(tabKey, {
+        id: tabId,
+        projectId: projectIdForCheck,
+        title: agentName,
+        order: tabs.length,
+        data: {
+          kind: 'terminal' as const,
+          agentId,
+          status: 'Idle' as const,
+        },
+      });
+      useEditorStore.getState().activateTab(tabKey, tabId);
+    },
+    [tabKey, projectIdForCheck, tabs.length],
+  );
+
+  const actionMenuCtx: ActionContext = useMemo(
+    () => ({
+      projectId: projectIdForCheck,
+      tabKey,
+      agents,
+      recentFiles: projectIdForCheck
+        ? useRecentFilesStore
+            .getState()
+            .list(projectIdForCheck)
+            .map((r) => r.filePath)
+        : [],
+      closeMenu: handleActionMenuClose,
+    }),
+    [projectIdForCheck, tabKey, agents, handleActionMenuClose],
+  );
+
+  const actionMenuItems = useMemo(() => getActionMenuItems(actionMenuCtx), [actionMenuCtx]);
 
   const handleAgentClick = useCallback(
     (agent: AgentConfig) => {
@@ -298,12 +447,23 @@ function EditorGroupPane({
                   onActivateTab={handleActivateTab}
                   onCloseTab={handleCloseTab}
                   onAddTerminalTab={onAddTerminalTab}
+                  onActionMenuOpen={handleActionMenuOpen}
                   onContextMenu={handleTabContextMenu}
                   reorderable={groupId !== 'pinned'}
                   onReorderTab={handleReorderTab}
                   agents={installedEnabledAgents}
                 />
               </div>
+              {actionMenuRect && (
+                <ActionMenuDropdown
+                  items={actionMenuItems}
+                  ctx={actionMenuCtx}
+                  anchorRect={actionMenuRect}
+                  onClose={handleActionMenuClose}
+                  onExecute={handleActionMenuExecute}
+                  onAddAgentTerminal={handleActionMenuAgentTerminal}
+                />
+              )}
             </div>
 
             {showAgentBarRow && (

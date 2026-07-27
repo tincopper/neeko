@@ -1,0 +1,5 @@
+{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "UI component patterns, props conventions, Tailwind v4 + CSS variables, memo usage"}
+{"file": ".trellis/spec/frontend/interaction-patterns.md", "reason": "keyboard handling, DnD, focus management patterns"}
+{"file": ".trellis/spec/frontend/hook-guidelines.md", "reason": "custom hook design and data fetching patterns"}
+{"file": ".trellis/spec/frontend/state-management.md", "reason": "zustand store patterns and context usage"}
+{"file": ".trellis/spec/frontend/type-safety.md", "reason": "TypeScript conventions and type definitions"}

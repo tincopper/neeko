@@ -167,6 +167,8 @@ macro_rules! neeko_invoke_handler {
             $crate::git::commands::read_dir_tree,
             $crate::git::commands::read_file_content,
             $crate::git::commands::write_file_content,
+            $crate::git::commands::create_new_file,
+            $crate::git::commands::save_new_file,
             // unified commit message
             $crate::agent::commands_commit::generate_commit_message,
             // remote utilities

@@ -171,6 +171,13 @@ export const SHORTCUT_ACTIONS: ShortcutAction[] = [
     category: 'editor',
   },
 
+  {
+    id: 'commandPalette',
+    label: 'Command Palette',
+    defaultBinding: 'Ctrl+Shift+P',
+    category: 'workspace',
+  },
+
   // ── Workspace ─────────────────────────────────────────────────────────
   {
     id: 'cycleWorktree',

@@ -1,0 +1,433 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Neeko New Action Menu — Prototype</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            'bg-primary': '#0f172a',
+            'bg-secondary': '#1e293b',
+            'bg-tertiary': '#334155',
+            'bg-hover': '#33415580',
+            'border': '#475569',
+            'text-primary': '#f8fafc',
+            'text-secondary': '#94a3b8',
+            'text-muted': '#64748b',
+            'accent-blue': '#3b82f6',
+            'accent-green': '#22c55e',
+            'accent-red': '#ef4444',
+          },
+          fontFamily: {
+            sans: ['IBM Plex Sans', 'sans-serif'],
+            mono: ['JetBrains Mono', 'monospace'],
+          },
+        }
+      }
+    }
+  </script>
+  <style>
+    body { font-family: 'IBM Plex Sans', sans-serif; }
+    .font-mono { font-family: 'JetBrains Mono', monospace; }
+    /* 模拟无系统边框窗口 */
+    .titlebar-drag { -webkit-app-region: drag; }
+    .no-scrollbar::-webkit-scrollbar { display: none; }
+    .agent-btn.selected { background: rgba(59, 130, 246, 0.15); border-color: rgba(59, 130, 246, 0.5); }
+  </style>
+</head>
+<body class="bg-bg-primary text-text-primary h-screen overflow-hidden select-none">
+
+  <!-- 模拟主窗口 -->
+  <div class="flex flex-col h-full">
+    <!-- TitleBar -->
+    <div class="h-10 flex items-center justify-between px-3 border-b border-border titlebar-drag bg-bg-secondary">
+      <div class="text-sm font-semibold tracking-tight">Neeko</div>
+      <div class="flex gap-2 text-text-secondary">
+        <button class="w-3 h-3 rounded-full bg-bg-tertiary hover:bg-text-secondary transition-colors"></button>
+        <button class="w-3 h-3 rounded-full bg-bg-tertiary hover:bg-text-secondary transition-colors"></button>
+        <button class="w-3 h-3 rounded-full bg-bg-tertiary hover:bg-accent-red transition-colors"></button>
+      </div>
+    </div>
+
+    <!-- 主布局 -->
+    <div class="flex flex-1 overflow-hidden">
+      <!-- 左侧 ActivityBar -->
+      <div class="w-12 bg-bg-secondary border-r border-border flex flex-col items-center py-3 gap-2">
+        <div class="w-8 h-8 rounded-md bg-bg-tertiary flex items-center justify-center text-text-secondary text-xs">P</div>
+        <div class="w-8 h-8 rounded-md bg-bg-tertiary flex items-center justify-center text-text-secondary text-xs">G</div>
+        <div class="w-8 h-8 rounded-md bg-bg-tertiary flex items-center justify-center text-text-secondary text-xs">S</div>
+        <div class="mt-auto w-8 h-8 rounded-md bg-bg-tertiary flex items-center justify-center text-text-secondary text-xs">+</div>
+      </div>
+
+      <!-- 编辑区 -->
+      <div class="flex-1 flex flex-col min-w-0 bg-bg-primary">
+        <!-- TabBar -->
+        <div class="h-9 flex items-center gap-1 px-2 border-b border-border bg-bg-secondary shrink-0">
+          <div class="flex items-center gap-1 overflow-x-auto no-scrollbar flex-1" id="tab-list">
+            <button class="px-3 h-7 rounded-md bg-bg-tertiary text-text-primary text-xs flex items-center gap-2 border border-border">
+              <span class="w-2 h-2 rounded-full bg-accent-green"></span>
+              Terminal
+            </button>
+            <button class="px-3 h-7 rounded-md hover:bg-bg-hover text-text-secondary text-xs flex items-center gap-2 border border-transparent">
+              <span>📄</span>
+              App.tsx
+            </button>
+          </div>
+
+          <!-- 新的 + 按钮 -->
+          <div class="relative" id="action-menu-container">
+            <button
+              id="action-menu-btn"
+              class="w-6 h-6 rounded-md flex items-center justify-center text-text-secondary hover:bg-bg-hover hover:text-text-primary transition-colors"
+              title="New action"
+              aria-haspopup="menu"
+              aria-expanded="false"
+              onclick="toggleActionMenu()"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+            </button>
+
+            <!-- Action Menu Dropdown -->
+            <div
+              id="action-menu-dropdown"
+              class="hidden absolute top-full right-0 mt-1 w-72 rounded-md border border-border bg-bg-secondary shadow-xl z-50 overflow-hidden flex flex-col"
+              role="menu"
+            >
+              <!-- 搜索框 -->
+              <div class="p-2 border-b border-border">
+                <div class="relative">
+                  <input
+                    id="action-menu-search"
+                    type="text"
+                    placeholder="Search actions..."
+                    class="w-full h-8 pl-7 pr-2 rounded-md bg-bg-primary border border-border text-text-primary text-xs placeholder-text-muted outline-none focus:border-accent-blue"
+                    oninput="filterActionMenu(this.value)"
+                  />
+                  <svg class="absolute left-2 top-2 text-text-muted" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+                </div>
+              </div>
+
+              <!-- 列表 -->
+              <div class="max-h-[min(420px,50vh)] overflow-y-auto py-1" id="action-menu-list">
+                <!-- 动态生成 -->
+              </div>
+
+              <!-- 底部提示 -->
+              <div class="px-3 py-1.5 border-t border-border text-[10px] text-text-muted flex gap-3">
+                <span>↑↓ navigate</span>
+                <span>↵ open</span>
+                <span>esc close</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 模拟编辑内容 -->
+        <div class="flex-1 p-4 font-mono text-sm text-text-secondary">
+          <div class="mb-2 text-text-muted">// Prototype workspace</div>
+          <div>Press <span class="text-accent-blue">Ctrl+Shift+A</span> to open the command palette.</div>
+          <div class="mt-4">Click the <span class="text-accent-blue">+</span> button to open the action menu dropdown.</div>
+          <div id="event-log" class="mt-6 text-xs text-text-muted"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Action Palette（居中命令面板） -->
+  <div id="action-palette-overlay" class="hidden fixed inset-0 bg-black/50 z-[100] flex items-start justify-center pt-[15vh]" onclick="if(event.target===this) closePalette()">
+    <div class="w-full max-w-[560px] rounded-md border border-border bg-bg-secondary shadow-2xl overflow-hidden" role="dialog" aria-modal="true">
+      <div class="px-3 pt-3 pb-2 border-b border-border">
+        <div class="text-[11px] uppercase tracking-wide text-text-muted mb-1.5 px-0.5">New Action</div>
+        <div class="relative">
+          <input
+            id="palette-search"
+            type="text"
+            placeholder="Type an action..."
+            class="w-full px-3 py-2 rounded-md text-[13px] bg-bg-primary border border-border text-text-primary placeholder-text-muted outline-none focus:border-accent-blue"
+            oninput="filterPalette(this.value)"
+          />
+        </div>
+      </div>
+      <div class="max-h-[min(360px,50vh)] overflow-y-auto py-1" id="palette-list" role="listbox"></div>
+      <div class="px-3 py-1.5 border-t border-border text-[10px] text-text-muted flex gap-3">
+        <span>↑↓ navigate</span>
+        <span>↵ open</span>
+        <span>esc close</span>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // ===== 动作注册表 =====
+    const agents = [
+      { id: 'claude', name: 'Claude', icon: 'C', installed: true, enabled: true },
+      { id: 'opencode', name: 'OpenCode', icon: 'O', installed: true, enabled: true },
+      { id: 'codex', name: 'Codex', icon: 'X', installed: false, enabled: true },
+      { id: 'gemini', name: 'Gemini', icon: 'G', installed: true, enabled: false },
+    ];
+
+    const recentFiles = [
+      'src/features/action-menu/actionRegistry.ts',
+      'src/features/editor/components/TabBar.tsx',
+      'src/shared/types/tab.ts',
+      'docs/neeko-development-spec.md',
+    ];
+
+    const actions = [
+      { id: 'new-terminal', group: 'terminal', label: 'New Terminal', desc: 'Default shell', icon: 'terminal', shortcut: 'Ctrl+T', keywords: ['terminal', 'shell', 'bash', 'zsh'] },
+      { id: 'new-file', group: 'file', label: 'New File…', desc: 'Create and edit a new file', icon: 'file-plus', shortcut: '', keywords: ['file', 'new', 'create'] },
+      { id: 'open-file', group: 'file', label: 'Open File…', desc: 'Quick open in current project', icon: 'file', shortcut: 'Ctrl+P', keywords: ['file', 'open', 'quick open'] },
+      { id: 'open-side-terminal', group: 'quick', label: 'Open Side Terminal', desc: 'Toggle secondary terminal panel', icon: 'layout', shortcut: 'Ctrl+Alt+T', keywords: ['side', 'terminal', 'secondary'] },
+      { id: 'open-in-ide', group: 'quick', label: 'Open in IDE', desc: 'Launch project in selected IDE', icon: 'external', shortcut: 'Ctrl+O', keywords: ['ide', 'open', 'editor'] },
+    ];
+
+    let actionMenuOpen = false;
+    let paletteOpen = false;
+    let menuSelected = 0;
+    let paletteSelected = 0;
+    let filteredMenu = [];
+    let filteredPalette = [];
+    let agentExpanded = false;
+
+    const iconMap = {
+      terminal: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"></polyline><line x1="12" y1="19" x2="20" y2="19"></line></svg>',
+      file: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline></svg>',
+      'file-plus': '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="12" y1="18" x2="12" y2="12"></line><line x1="9" y1="15" x2="15" y2="15"></line></svg>',
+      layout: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="3" y1="9" x2="21" y2="9"></line><line x1="9" y1="21" x2="9" y2="9"></line></svg>',
+      external: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line></svg>',
+    };
+
+    function logEvent(msg) {
+      const el = document.getElementById('event-log');
+      const line = document.createElement('div');
+      line.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
+      el.appendChild(line);
+    }
+
+    function filterItems(query) {
+      const q = query.trim().toLowerCase();
+      if (!q) return actions;
+      return actions.filter(a =>
+        a.label.toLowerCase().includes(q) ||
+        a.desc.toLowerCase().includes(q) ||
+        a.keywords.some(k => k.includes(q))
+      );
+    }
+
+    // ===== Action Menu Dropdown =====
+    function toggleActionMenu() {
+      actionMenuOpen = !actionMenuOpen;
+      const dropdown = document.getElementById('action-menu-dropdown');
+      const btn = document.getElementById('action-menu-btn');
+      if (actionMenuOpen) {
+        dropdown.classList.remove('hidden');
+        btn.setAttribute('aria-expanded', 'true');
+        agentExpanded = false;
+        document.getElementById('action-menu-search').value = '';
+        filterActionMenu('');
+        setTimeout(() => document.getElementById('action-menu-search').focus(), 50);
+      } else {
+        dropdown.classList.add('hidden');
+        btn.setAttribute('aria-expanded', 'false');
+      }
+    }
+
+    function closeActionMenu() {
+      actionMenuOpen = false;
+      document.getElementById('action-menu-dropdown').classList.add('hidden');
+      document.getElementById('action-menu-btn').setAttribute('aria-expanded', 'false');
+    }
+
+    function renderActionMenu() {
+      const list = document.getElementById('action-menu-list');
+      list.innerHTML = '';
+
+      // Agent 快速区（始终显示）
+      const agentHeader = document.createElement('div');
+      agentHeader.className = 'px-2.5 py-1 text-[10px] uppercase tracking-wide text-text-muted font-semibold';
+      agentHeader.textContent = 'Agents';
+      list.appendChild(agentHeader);
+
+      const agentBar = document.createElement('div');
+      agentBar.className = 'px-2 pb-1 flex flex-wrap gap-1';
+      agents.filter(a => a.enabled).forEach(agent => {
+        const btn = document.createElement('button');
+        btn.className = `agent-btn px-2 h-7 rounded-md border border-border bg-bg-primary text-xs flex items-center gap-1.5 text-text-secondary hover:bg-bg-hover ${!agent.installed ? 'opacity-50 line-through' : ''}`;
+        btn.innerHTML = `<span class="w-4 h-4 rounded bg-bg-tertiary flex items-center justify-center text-[10px]">${agent.icon}</span><span>${agent.name}</span>`;
+        btn.onclick = () => { if (agent.installed) { logEvent(`New terminal with agent: ${agent.name}`); closeActionMenu(); } };
+        agentBar.appendChild(btn);
+      });
+      list.appendChild(agentBar);
+
+      const divider1 = document.createElement('div');
+      divider1.className = 'h-px bg-border my-1 mx-2';
+      list.appendChild(divider1);
+
+      // 过滤后的动作
+      const groups = { terminal: 'Terminal', file: 'File', quick: 'Quick Actions' };
+      Object.keys(groups).forEach(groupKey => {
+        const groupItems = filteredMenu.filter(a => a.group === groupKey);
+        if (groupItems.length === 0 && groupKey !== 'file') return;
+        const header = document.createElement('div');
+        header.className = 'px-2.5 py-1 text-[10px] uppercase tracking-wide text-text-muted font-semibold';
+        header.textContent = groups[groupKey];
+        list.appendChild(header);
+
+        groupItems.forEach((item, idx) => {
+          const globalIdx = filteredMenu.indexOf(item);
+          const el = document.createElement('button');
+          el.className = `w-full text-left px-2.5 py-1.5 flex items-center gap-2.5 text-[13px] transition-colors ${globalIdx === menuSelected ? 'bg-accent-blue/15 text-text-primary' : 'text-text-secondary hover:bg-bg-hover'} ${item.disabled ? 'opacity-40 pointer-events-none' : ''}`;
+          el.innerHTML = `
+            <span class="text-text-muted">${iconMap[item.icon]}</span>
+            <div class="flex-1 min-w-0">
+              <div class="truncate">${item.label}</div>
+              <div class="text-[11px] text-text-muted truncate">${item.desc}</div>
+            </div>
+            ${item.shortcut ? `<span class="text-[10px] text-text-muted font-mono">${item.shortcut}</span>` : ''}
+          `;
+          el.onmouseenter = () => { menuSelected = globalIdx; renderActionMenu(); };
+          el.onclick = () => executeAction(item);
+          list.appendChild(el);
+        });
+
+        // File 分组额外展示最近文件
+        if (groupKey === 'file' && recentFiles.length > 0) {
+          const recentHeader = document.createElement('div');
+          recentHeader.className = 'px-2.5 py-1 text-[10px] text-text-muted';
+          recentHeader.textContent = 'Recent';
+          list.appendChild(recentHeader);
+          recentFiles.slice(0, 5).forEach(path => {
+            const el = document.createElement('button');
+            el.className = 'w-full text-left px-2.5 py-1 flex items-center gap-2 text-[12px] text-text-secondary hover:bg-bg-hover';
+            el.innerHTML = `
+              <span class="text-text-muted">${iconMap['file']}</span>
+              <span class="truncate font-mono">${path}</span>
+            `;
+            el.onclick = () => { logEvent(`Open recent file: ${path}`); closeActionMenu(); };
+            list.appendChild(el);
+          });
+        }
+      });
+
+      if (filteredMenu.length === 0) {
+        const empty = document.createElement('div');
+        empty.className = 'px-4 py-6 text-center text-[13px] text-text-muted';
+        empty.textContent = 'No actions found';
+        list.appendChild(empty);
+      }
+    }
+
+    function filterActionMenu(query) {
+      filteredMenu = filterItems(query);
+      menuSelected = 0;
+      renderActionMenu();
+    }
+
+    // ===== Action Palette =====
+    function openPalette() {
+      paletteOpen = true;
+      document.getElementById('action-palette-overlay').classList.remove('hidden');
+      document.getElementById('palette-search').value = '';
+      filterPalette('');
+      setTimeout(() => document.getElementById('palette-search').focus(), 50);
+    }
+
+    function closePalette() {
+      paletteOpen = false;
+      document.getElementById('action-palette-overlay').classList.add('hidden');
+    }
+
+    function renderPalette() {
+      const list = document.getElementById('palette-list');
+      list.innerHTML = '';
+      filteredPalette.forEach((item, idx) => {
+        const el = document.createElement('button');
+        el.className = `w-full text-left px-3 py-2 flex flex-col gap-0.5 cursor-pointer border-0 bg-transparent ${idx === paletteSelected ? 'bg-accent-blue/15 text-text-primary' : 'text-text-secondary hover:bg-bg-hover'} ${item.disabled ? 'opacity-40 pointer-events-none' : ''}`;
+        el.setAttribute('role', 'option');
+        el.setAttribute('aria-selected', idx === paletteSelected);
+        el.innerHTML = `
+          <div class="flex items-center gap-2">
+            <span class="text-text-muted">${iconMap[item.icon]}</span>
+            <span class="text-[13px] font-medium truncate">${item.label}</span>
+            ${item.shortcut ? `<span class="ml-auto text-[10px] text-text-muted font-mono">${item.shortcut}</span>` : ''}
+          </div>
+          <span class="text-[11px] text-text-muted truncate font-mono pl-5">${item.desc}</span>
+        `;
+        el.onmouseenter = () => { paletteSelected = idx; renderPalette(); };
+        el.onclick = () => executeAction(item);
+        list.appendChild(el);
+      });
+      if (filteredPalette.length === 0) {
+        const empty = document.createElement('div');
+        empty.className = 'px-4 py-6 text-center text-[13px] text-text-muted';
+        empty.textContent = 'No matching actions';
+        list.appendChild(empty);
+      }
+    }
+
+    function filterPalette(query) {
+      filteredPalette = filterItems(query);
+      paletteSelected = 0;
+      renderPalette();
+    }
+
+    // ===== 执行 =====
+    function executeAction(item) {
+      if (item.disabled) return;
+      if (item.id === 'new-file') {
+        const path = window.prompt('Enter new file path (relative to project root):', 'src/features/action-menu/NewFile.ts');
+        if (path) {
+          logEvent(`Create new file: ${path}`);
+        }
+        if (actionMenuOpen) closeActionMenu();
+        if (paletteOpen) closePalette();
+        return;
+      }
+      logEvent(`Execute: ${item.label}`);
+      if (actionMenuOpen) closeActionMenu();
+      if (paletteOpen) closePalette();
+    }
+
+    // ===== 全局键盘 =====
+    document.addEventListener('keydown', (e) => {
+      // 全局打开命令面板
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === 'a') {
+        e.preventDefault();
+        if (!paletteOpen) openPalette();
+        return;
+      }
+
+      if (actionMenuOpen) {
+        if (e.key === 'Escape') { e.preventDefault(); closeActionMenu(); return; }
+        if (e.key === 'ArrowDown') { e.preventDefault(); menuSelected = Math.min(menuSelected + 1, filteredMenu.length - 1); renderActionMenu(); return; }
+        if (e.key === 'ArrowUp') { e.preventDefault(); menuSelected = Math.max(menuSelected - 1, 0); renderActionMenu(); return; }
+        if (e.key === 'Enter') { e.preventDefault(); if (filteredMenu[menuSelected]) executeAction(filteredMenu[menuSelected]); return; }
+      }
+
+      if (paletteOpen) {
+        if (e.key === 'Escape') { e.preventDefault(); closePalette(); return; }
+        if (e.key === 'ArrowDown') { e.preventDefault(); paletteSelected = Math.min(paletteSelected + 1, filteredPalette.length - 1); renderPalette(); return; }
+        if (e.key === 'ArrowUp') { e.preventDefault(); paletteSelected = Math.max(paletteSelected - 1, 0); renderPalette(); return; }
+        if (e.key === 'Enter') { e.preventDefault(); if (filteredPalette[paletteSelected]) executeAction(filteredPalette[paletteSelected]); return; }
+      }
+    });
+
+    // 点击外部关闭下拉页
+    document.addEventListener('mousedown', (e) => {
+      const container = document.getElementById('action-menu-container');
+      if (actionMenuOpen && !container.contains(e.target)) closeActionMenu();
+    });
+
+    // 初始化
+    filterActionMenu('');
+    filterPalette('');
+  </script>
+</body>
+</html>

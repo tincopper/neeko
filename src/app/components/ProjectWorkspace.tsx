@@ -1,17 +1,23 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useShallow } from 'zustand/shallow';
 
+import ActionPalette from '@/features/action-menu/components/ActionPalette';
+import SaveFileDialog from '@/features/action-menu/components/SaveFileDialog';
+import type { ActionRegistryItem, ActionContext } from '@/features/action-menu/types/actionMenu';
 import { checkAgentsInstalled } from '@/features/agent/api/agentApi';
 import { useRemoteContext } from '@/features/connection/contexts/RemoteContext';
 import EditorGroupLayout from '@/features/editor/components/EditorGroupLayout';
 import { useFileDrop } from '@/features/file/hooks/useFileDrop';
 import ProjectGuidePage from '@/features/project/components/ProjectGuidePage';
 import { useProjectActionsContext } from '@/features/project/ProjectContext';
+import { useQuickOpenStore } from '@/features/quick-open';
+import { useRecentFilesStore } from '@/features/quick-open/recentFilesStore';
 import { FolderIcon, KeyRound } from '@/shared/components/icons';
 import { useEditorContext, useAppContext } from '@/shared/contexts';
 import { useEditorStore } from '@/shared/store';
 import { useAppViewStore } from '@/shared/store/appViewStore';
 import { useConnectionStore } from '@/shared/store/connectionStore';
+import { useDockStore } from '@/shared/store/dockStore';
 import { useProjectStore } from '@/shared/store/projectStore';
 import { useWorktreeStore } from '@/shared/store/worktreeStore';
 import type { AgentConfig, Tab } from '@/shared/types';
@@ -191,6 +197,102 @@ function ProjectWorkspace() {
     return `${base}:${groupId}:${tabId ?? 'default'}`;
   }, []);
 
+  // ── Action Palette ──
+  const handlePaletteExecute = useCallback(
+    (item: ActionRegistryItem) => {
+      switch (item.id) {
+        case 'new-terminal':
+          handleAddTerminalTab();
+          break;
+        case 'open-file':
+          useQuickOpenStore.getState().openPalette('gotoFile');
+          break;
+        case 'recent-files':
+          useQuickOpenStore.getState().openPalette('recentFiles');
+          break;
+        case 'new-terminal-with-agent': {
+          if (currentProjectId) {
+            const enabled = agents.filter((a) => a.enabled);
+            const first = enabled[0];
+            if (first) {
+              const tabId = `tab_${crypto.randomUUID()}`;
+              useEditorStore.getState().addTab(tabKey, {
+                id: tabId,
+                projectId: currentProjectId,
+                title: first.name,
+                order: 0,
+                data: {
+                  kind: 'terminal' as const,
+                  agentId: first.id,
+                  status: 'Idle' as const,
+                },
+              });
+              useEditorStore.getState().activateTab(tabKey, tabId);
+            }
+          }
+          break;
+        }
+        case 'new-file': {
+          if (currentProjectId) {
+            const projTabs = useEditorStore.getState().tabs[tabKey]?.tabs ?? [];
+            const untitledCount = projTabs.filter(
+              (t) => t.data.kind === 'file' && t.data.isUntitled,
+            ).length;
+            const num = untitledCount + 1;
+            const tabId = `tab_${crypto.randomUUID()}`;
+            const name = `Untitled-${num}`;
+            useEditorStore.getState().addTab(tabKey, {
+              id: tabId,
+              projectId: currentProjectId,
+              title: name,
+              order: projTabs.length,
+              data: {
+                kind: 'file',
+                filePath: '',
+                fileName: name,
+                content: { path: '', content: '', size: 0, is_binary: false },
+                isDirty: true,
+                isUntitled: true,
+                untitledName: name,
+                initialPreviewMode: 'source',
+              },
+            });
+            useEditorStore.getState().activateTab(tabKey, tabId);
+          }
+          break;
+        }
+        case 'open-side-terminal':
+          useDockStore.getState().togglePanel('projects');
+          break;
+        case 'open-in-ide': {
+          if (activeProject) {
+            useProjectStore
+              .getState()
+              .openIde({ id: activeProject.id, selected_ide: activeProject.selected_ide });
+          }
+          break;
+        }
+      }
+    },
+    [handleAddTerminalTab, activeProject, currentProjectId, tabKey, agents],
+  );
+
+  const paletteCtx: ActionContext = useMemo(
+    () => ({
+      projectId: currentProjectId,
+      tabKey,
+      agents,
+      recentFiles: currentProjectId
+        ? useRecentFilesStore
+            .getState()
+            .list(currentProjectId)
+            .map((r) => r.filePath)
+        : [],
+      closeMenu: () => {},
+    }),
+    [currentProjectId, tabKey, agents],
+  );
+
   const onRemoteSessionReady = useCallback(
     (pid: string) => {
       setRemoteOpenSessions((prev) => new Set(prev).add(pid));
@@ -298,6 +400,9 @@ function ProjectWorkspace() {
           </div>
         </div>
       ) : null}
+
+      <ActionPalette ctx={paletteCtx} onExecute={handlePaletteExecute} />
+      <SaveFileDialog />
     </div>
   );
 }

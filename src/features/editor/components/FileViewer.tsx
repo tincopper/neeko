@@ -117,6 +117,9 @@ function tabToFileTab(tab: Tab & { data: FileTabData }): FileTab {
     content: tab.data.content,
     isDirty: tab.data.isDirty,
     order: tab.order,
+    initialPreviewMode: tab.data.initialPreviewMode,
+    isUntitled: tab.data.isUntitled,
+    untitledName: tab.data.untitledName,
   };
 }
 
@@ -224,7 +227,9 @@ function FileEditor({
   onSave,
   onContentChange,
 }: FileEditorProps) {
-  const [previewMode, setPreviewMode] = useState<PreviewMode>('preview');
+  const [previewMode, setPreviewMode] = useState<PreviewMode>(
+    () => tab.initialPreviewMode ?? 'preview',
+  );
   const [isSaving, setIsSaving] = useState(false);
   // Prefer sync cache so cross-file go-to-definition mounts CodeMirror once
   // with language highlighting already applied (avoids expensive reconfigure).

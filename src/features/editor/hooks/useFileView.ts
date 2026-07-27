@@ -1,6 +1,7 @@
 import { useState, useCallback, useRef, useMemo, useEffect } from 'react';
 import { useShallow } from 'zustand/shallow';
 
+import { useSaveAsStore } from '@/features/action-menu/store/saveAsStore';
 import { readDirTree, readFileContent, writeFileContent } from '@/features/file/api/fileApi';
 import { useFileStore } from '@/features/file/store';
 import { closeEditorTab } from '@/features/terminal/components/terminalTabCleanup';
@@ -286,6 +287,20 @@ export function useFileView(
     const active = projTabs.tabs.find((t) => t.id === projTabs.activeTabId);
     const fileTab = active && active.data.kind === 'file' ? active : projTabs.tabs.find(isFileTab);
     if (!fileTab || fileTab.data.kind !== 'file') return false;
+
+    // Untitled tab → trigger Save As dialog
+    if (fileTab.data.isUntitled) {
+      const projectPath = useProjectStore.getState().activeProject?.path ?? '';
+      useSaveAsStore.getState().requestSaveAs({
+        tabId: fileTab.id,
+        tabKey: tk,
+        projectId: fileTab.projectId,
+        content,
+        defaultDirectory: projectPath,
+        defaultFilename: fileTab.data.untitledName ?? fileTab.data.fileName,
+      });
+      return false;
+    }
 
     try {
       const rootPath = worktreePathRef.current ?? undefined;

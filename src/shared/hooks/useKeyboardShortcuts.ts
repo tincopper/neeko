@@ -1,11 +1,14 @@
 import { useEffect, useRef } from 'react';
 
 // eslint-disable-next-line import/no-restricted-paths -- keyboard shortcuts reference project list types
+import { useActionPaletteStore } from '@/features/action-menu/store/actionPaletteStore';
+// eslint-disable-next-line import/no-restricted-paths -- keyboard shortcuts reference project list types
 import type { ProjectListItem } from '@/features/project/hooks/useProjectList';
 // eslint-disable-next-line import/no-restricted-paths -- keyboard shortcuts reference quick open store
 import { useQuickOpenStore } from '@/features/quick-open';
 // eslint-disable-next-line import/no-restricted-paths -- keyboard shortcuts need terminal cache for refresh
 import { refreshTerminal, terminalCacheKey } from '@/features/terminal/components/terminalCache';
+// eslint-disable-next-line import/no-restricted-paths
 import { useEditorStore } from '@/shared/store';
 import { useDockStore } from '@/shared/store/dockStore';
 import { useNavHistoryStore } from '@/shared/store/navigationHistoryStore';
@@ -48,6 +51,7 @@ const GLOBAL_ACTION_IDS = new Set([
   'recentFiles',
   'splitRight',
   'unsplitEditor',
+  'commandPalette',
 ]);
 
 export function useKeyboardShortcuts({
@@ -219,6 +223,12 @@ export function useKeyboardShortcuts({
           case 'toggleDockSkills': {
             e.preventDefault();
             useDockStore.getState().togglePanel('skills');
+            break;
+          }
+
+          case 'commandPalette': {
+            e.preventDefault();
+            useActionPaletteStore.getState().openPalette();
             break;
           }
 

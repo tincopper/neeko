@@ -27,6 +27,9 @@ export interface FileTab {
   content: FileContent;
   isDirty: boolean;
   order: number;
+  initialPreviewMode?: 'preview' | 'source';
+  isUntitled?: boolean;
+  untitledName?: string;
 }
 
 export interface FileChangedEvent {

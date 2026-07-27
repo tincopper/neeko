@@ -72,7 +72,10 @@ function mergeTabData(data: TabData, partial: Partial<TabData>): TabData {
         'isDirty' in p ||
         'filePath' in p ||
         'fileName' in p ||
-        'externallyModified' in p;
+        'externallyModified' in p ||
+        'isUntitled' in p ||
+        'untitledName' in p ||
+        'initialPreviewMode' in p;
       if (!isFilePartial) return data;
       const d = data as FileTabData;
       return {
@@ -85,6 +88,12 @@ function mergeTabData(data: TabData, partial: Partial<TabData>): TabData {
           'externallyModified' in p
             ? (p.externallyModified as boolean | undefined)
             : d.externallyModified,
+        isUntitled: 'isUntitled' in p ? (p.isUntitled as boolean | undefined) : d.isUntitled,
+        untitledName: 'untitledName' in p ? (p.untitledName as string | undefined) : d.untitledName,
+        initialPreviewMode:
+          'initialPreviewMode' in p
+            ? (p.initialPreviewMode as 'preview' | 'source' | undefined)
+            : d.initialPreviewMode,
       };
     }
     case 'diff': {

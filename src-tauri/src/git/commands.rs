@@ -629,6 +629,37 @@ pub async fn write_file_content(
     crate::common::file::services::write_file_content(&target, &base, &file_path, &content).await
 }
 
+/// Create a new empty file (with parent directories).
+#[tauri::command]
+pub async fn create_new_file(
+    project_id: String,
+    file_path: String,
+    root_path: Option<String>,
+    state: State<'_, AppStateWrapper>,
+) -> Result<(), AppError> {
+    let (t, wd) = state.resolve_project(&project_id)?;
+    let target = t.exec_target();
+    let base = root_path.unwrap_or(wd);
+    crate::common::file::services::create_new_file(&target, &base, &file_path).await
+}
+
+/// Save a new file with content at `directory/filename`, returning the relative path.
+#[tauri::command]
+pub async fn save_new_file(
+    project_id: String,
+    directory: String,
+    filename: String,
+    content: String,
+    root_path: Option<String>,
+    state: State<'_, AppStateWrapper>,
+) -> Result<String, AppError> {
+    let (t, wd) = state.resolve_project(&project_id)?;
+    let target = t.exec_target();
+    let base = root_path.unwrap_or(wd);
+    crate::common::file::services::save_new_file(&target, &base, &directory, &filename, &content)
+        .await
+}
+
 // ─── Remote/SSH utilities ───────────────────────────────────────────────────
 
 /// Get the home directory on a remote host.

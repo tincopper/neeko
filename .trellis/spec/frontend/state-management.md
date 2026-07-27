@@ -443,3 +443,47 @@ if (activeTabId && !isWorktree && tabs.length > 0 && !tabs.some((t) => t.id === 
   return; // stale activeTabId from another project
 }
 ```
+
+### 7. 向 `FileTabData` 新增字段后忘记同步 `mergeTabData`
+
+**问题**：`editorStore.ts` 中的 `mergeTabData` 函数（`src/shared/store/editorStore.ts:68`）为 `'file'` case 维护了一份硬编码字段列表。新增 `FileTabData` 字段（如 `isUntitled`、`untitledName`、`initialPreviewMode`）后，如果不同步更新 `mergeTabData`，`updateTab` 调用时会剥离新字段，导致字段永久丢失。`isUntitled` 丢失后 `saveAs` 流程静默失效。
+
+**正确模式**：同步修改 `mergeTabData` 的 `'file'` case：
+1. 在 `isFilePartial` 守卫中添加 `'fieldName' in p`
+2. 在返回对象中添加 `fieldName: ... in p ? ... : d.fieldName`
+
+```ts
+// isFilePartial 守卫
+const isFilePartial =
+  'content' in p || 'isDirty' in p || 'filePath' in p ||
+  'fileName' in p || 'externallyModified' in p ||
+  'isUntitled' in p || 'untitledName' in p || 'initialPreviewMode' in p;
+
+// 返回对象
+return {
+  kind: 'file' as const,
+  ... existing fields ...,
+  isUntitled: 'isUntitled' in p ? (p.isUntitled as boolean | undefined) : d.isUntitled,
+  untitledName: 'untitledName' in p ? (p.untitledName as string | undefined) : d.untitledName,
+  initialPreviewMode: 'initialPreviewMode' in p
+    ? (p.initialPreviewMode as 'preview' | 'source' | undefined)
+    : d.initialPreviewMode,
+};
+```
+
+### 8. Save As 请求使用 `tabKey` 而非 `projectId`
+
+**问题**：Editor store 的 tabs 按 `tabKey`（复合 key，含 worktree 时形如 `"projectId:wt:path"`）索引，而非裸 `projectId`。`SaveAsRequest` 传 `projectId` 后在 `SaveFileDialog` 中用 `store.updateTab(request.projectId, ...)` 会导致 lookup 失败。
+
+**正确模式**：`SaveAsRequest` 包含 `tabKey` 字段：
+
+```ts
+interface SaveAsRequest {
+  tabId: string;
+  tabKey: string;   // 必须传 tabKey，而非 projectId
+  projectId: string;
+  content: string;
+  defaultDirectory: string;
+  defaultFilename: string;
+}
+```

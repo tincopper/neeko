@@ -1,0 +1,4 @@
+{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "UI component patterns and accessibility requirements"}
+{"file": ".trellis/spec/frontend/interaction-patterns.md", "reason": "keyboard navigation and focus management checks"}
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "code quality and testing expectations"}
+{"file": ".trellis/spec/unit-test/index.md", "reason": "unit test conventions and requirements"}

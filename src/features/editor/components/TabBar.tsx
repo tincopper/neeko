@@ -26,10 +26,11 @@ interface TabBarProps {
   onActivateTab: (tabId: string) => void;
   onCloseTab: (tabId: string) => void;
   onAddTerminalTab?: () => void;
+  onActionMenuOpen?: (buttonRect: DOMRect) => void;
   onContextMenu?: (tabId: string, e: React.MouseEvent) => void;
   /** 关闭其他 tab */
   onCloseOtherTabs?: (tabId: string) => void;
-  /** 关闭所�?tab */
+  /** 关闭所有 tab */
   onCloseAllTabs?: () => void;
   /** 启用拖拽排序 */
   reorderable?: boolean;
@@ -80,6 +81,7 @@ const TabBar: React.FC<TabBarProps> = React.memo(
     onActivateTab,
     onCloseTab,
     onAddTerminalTab,
+    onActionMenuOpen,
     onContextMenu,
     reorderable = false,
     onReorderTab,
@@ -192,12 +194,20 @@ const TabBar: React.FC<TabBarProps> = React.memo(
         >
           {renderTabs()}
 
-          {/* 新增终端按钮 */}
-          {terminalTabCount < 10 && onAddTerminalTab && (
+          {/* 新增终端 / 动作菜单按钮 */}
+          {terminalTabCount < 10 && (onAddTerminalTab || onActionMenuOpen) && (
             <button
               className="tb-icon-btn w-6 h-6 rounded-md flex items-center justify-center text-text-secondary hover:bg-bg-hover hover:text-text-primary transition-colors"
-              onClick={onAddTerminalTab}
-              title="New terminal tab"
+              onClick={(e) => {
+                if (onActionMenuOpen) {
+                  onActionMenuOpen(e.currentTarget.getBoundingClientRect());
+                } else {
+                  onAddTerminalTab?.();
+                }
+              }}
+              title="New action"
+              aria-label="New action"
+              aria-haspopup="menu"
             >
               <Plus size={14} />
             </button>

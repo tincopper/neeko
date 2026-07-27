@@ -32,6 +32,34 @@ export function readDirTree(
   });
 }
 
+export function createNewFile(
+  projectId: string,
+  filePath: string,
+  rootPath?: string | null,
+): Promise<void> {
+  return invoke<void>('create_new_file', {
+    projectId,
+    filePath,
+    rootPath: rootPath ?? null,
+  });
+}
+
+export function saveNewFile(
+  projectId: string,
+  directory: string,
+  filename: string,
+  content: string,
+  rootPath?: string | null,
+): Promise<string> {
+  return invoke<string>('save_new_file', {
+    projectId,
+    directory,
+    filename,
+    content,
+    rootPath: rootPath ?? null,
+  });
+}
+
 export function writeFileContent(
   projectId: string,
   filePath: string,
