@@ -8,7 +8,7 @@
 
 import React, { useRef, useEffect, useMemo } from 'react';
 
-import { GitBranch, SearchIcon } from './icons';
+import { GitBranch, SearchIcon, CloudDownload } from './icons';
 
 export interface BranchDropdownContentProps {
   /** 所有可选分支列表 */
@@ -76,6 +76,7 @@ function BranchDropdownContent({
         {filteredBranches.length > 0 ? (
           filteredBranches.map((branch) => {
             const isCurrent = branch === currentBranch;
+            const isRemote = branch.includes('/');
             return (
               <div
                 key={branch}
@@ -94,9 +95,19 @@ function BranchDropdownContent({
                     handleSelect(branch);
                   }
                 }}
-                title={isCurrent ? 'Current branch' : `Switch to ${branch}`}
+                title={
+                  isCurrent
+                    ? 'Current branch'
+                    : isRemote
+                      ? `Check out remote branch ${branch}`
+                      : `Switch to ${branch}`
+                }
               >
-                <GitBranch size={11} className="shrink-0" />
+                {isRemote ? (
+                  <CloudDownload size={11} className="shrink-0 text-text-muted" />
+                ) : (
+                  <GitBranch size={11} className="shrink-0" />
+                )}
                 <span className="flex-1 truncate">{branch}</span>
                 {isCurrent && (
                   <span

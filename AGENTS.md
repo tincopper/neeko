@@ -211,7 +211,7 @@ pnpm tauri build
 
 ```bash
 pnpm lint          # Rust fmt + clippy
-pnpm lint:fe       # ESLint + TypeScript
+pnpm lint:fe       # ESLint + TypeScript + Test typecheck
 pnpm type-check    # npx tsc --noEmit
 cargo check --manifest-path src-tauri/Cargo.toml
 ```

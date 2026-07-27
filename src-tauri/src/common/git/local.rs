@@ -336,20 +336,48 @@ fn get_worktrees(repo: &Repository) -> Vec<Worktree> {
     worktrees
 }
 
-/// Check out a local branch by name.
+/// Check out a branch by name.
+///
+/// Supports both local branches (`main`) and remote-tracking branches
+/// (`origin/feature/xxx`). For remote branches, a local tracking branch
+/// is created automatically.
 pub fn checkout_branch(repo_path: &Path, branch_name: &str) -> Result<()> {
     let repo = Repository::open(repo_path).context("Failed to open git repository")?;
 
-    let obj = repo
-        .revparse_single(&format!("refs/heads/{}", branch_name))
-        .context("Branch not found")?;
+    // 先尝试作为本地分支 checkout
+    let ref_name = format!("refs/heads/{}", branch_name);
+    if let Ok(obj) = repo.revparse_single(&ref_name) {
+        let commit = obj.peel_to_commit().context("Failed to peel to commit")?;
+        repo.checkout_tree(commit.as_object(), None)
+            .context("Failed to checkout tree")?;
+        repo.set_head(&ref_name).context("Failed to set HEAD")?;
+        invalidate_repo_caches(repo_path);
+        return Ok(());
+    }
 
+    // 不是本地分支，尝试作为远程跟踪分支处理（如 origin/feature/xxx）
+    let remote_ref = format!("refs/remotes/{}", branch_name);
+    let obj = repo
+        .revparse_single(&remote_ref)
+        .context(format!("Branch not found: {}", branch_name))?;
     let commit = obj.peel_to_commit().context("Failed to peel to commit")?;
+
+    // 提取本地分支名（去掉远程名前缀，如 origin/feature/xxx -> feature/xxx）
+    let local_name = branch_name.split('/').skip(1).collect::<Vec<_>>().join("/");
+    if local_name.is_empty() {
+        return Err(anyhow::anyhow!(
+            "Invalid remote branch name: {}",
+            branch_name
+        ));
+    }
+
+    // 创建本地跟踪分支
+    let mut local_ref = repo.branch(&local_name, &commit, false)?;
+    local_ref.set_upstream(Some(branch_name))?;
 
     repo.checkout_tree(commit.as_object(), None)
         .context("Failed to checkout tree")?;
-
-    repo.set_head(&format!("refs/heads/{}", branch_name))
+    repo.set_head(&format!("refs/heads/{}", local_name))
         .context("Failed to set HEAD")?;
 
     invalidate_repo_caches(repo_path);
@@ -554,12 +582,31 @@ pub fn get_git_branch_info_from_repo(repo: &Repository) -> Result<GitBranchInfo>
         "HEAD (detached)".to_string()
     };
 
-    // 只获取本地分支
-    let branches = repo.branches(Some(git2::BranchType::Local))?;
+    // 本地分支
+    let local_branches = repo.branches(Some(git2::BranchType::Local))?;
     let mut branch_names = Vec::new();
-    for (branch, _) in branches.flatten() {
+    for (branch, _) in local_branches.flatten() {
         if let Some(name) = branch.name()? {
             branch_names.push(name.to_string());
+        }
+    }
+
+    // 远程跟踪分支（如 origin/feature/xxx），仅当本地同名分支不存在时加入
+    if let Ok(remote_branches) = repo.branches(Some(git2::BranchType::Remote)) {
+        for (branch, _) in remote_branches.flatten() {
+            if let Some(name) = branch.name()? {
+                let name = name.to_string();
+                // 跳过 HEAD 远程引用 (origin/HEAD -> origin/main)
+                if name.ends_with("/HEAD") {
+                    continue;
+                }
+                // 提取远程名后的分支名，如 origin/feature/xxx -> feature/xxx
+                let local_name = name.split('/').skip(1).collect::<Vec<_>>().join("/");
+                if !local_name.is_empty() && branch_names.contains(&local_name) {
+                    continue;
+                }
+                branch_names.push(name);
+            }
         }
     }
 

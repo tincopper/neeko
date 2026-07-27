@@ -680,14 +680,33 @@ pub async fn get_git_branch_info_shell(
         current_branch
     };
 
-    let branches_output = transport
+    // 本地分支
+    let local_output = transport
         .run_git(&["branch", "--format=%(refname:short)"], work_dir)
         .await?;
-    let branches: Vec<String> = branches_output
+    let mut branches: Vec<String> = local_output
         .lines()
         .map(|l| l.trim().to_string())
         .filter(|l| !l.is_empty())
         .collect();
+
+    // 远程跟踪分支，跳过 HEAD 引用和已存在本地分支的同名分支
+    let remote_output = transport
+        .run_git(&["branch", "-r", "--format=%(refname:short)"], work_dir)
+        .await
+        .unwrap_or_default();
+    for line in remote_output.lines() {
+        let name = line.trim();
+        if name.is_empty() || name.ends_with("/HEAD") {
+            continue;
+        }
+        // 提取远程名后的分支名，如 origin/feature/xxx -> feature/xxx
+        let local_name = name.split('/').skip(1).collect::<Vec<&str>>().join("/");
+        if !local_name.is_empty() && branches.contains(&local_name) {
+            continue;
+        }
+        branches.push(name.to_string());
+    }
 
     let worktrees_output = transport
         .run_git(&["worktree", "list", "--porcelain"], work_dir)
