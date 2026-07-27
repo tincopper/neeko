@@ -5,8 +5,6 @@ import { useDockStore } from '@/shared/store/dockStore';
 
 import { useDockRegistry } from '../DockRegistryContext';
 
-import { useDragToReDock } from './useDragToReDock';
-
 interface DockZoneProps {
   zoneId: string;
 }
@@ -17,15 +15,9 @@ const DockZone: React.FC<DockZoneProps> = ({ zoneId }) => {
   const dockPanelRegistry = useDockRegistry();
   const zone = useDockStore((s) => s.zones[zoneId]);
 
-  // Drag-to-re-dock
-  const { isDragOver, dragHandlers } = useDragToReDock(zoneId);
-
   if (!zone) {
     return (
-      <div
-        className="flex h-full items-center justify-center text-xs text-text-muted"
-        {...dragHandlers}
-      >
+      <div className="flex h-full items-center justify-center text-xs text-text-muted">
         Unknown zone: {zoneId}
       </div>
     );
@@ -33,17 +25,7 @@ const DockZone: React.FC<DockZoneProps> = ({ zoneId }) => {
 
   // Empty or collapsed zone state
   if (zone.panels.length === 0 || !zone.expanded) {
-    return (
-      <div
-        className={cn(
-          'flex h-full items-center justify-center text-xs text-text-muted',
-          isDragOver && 'ring-2 ring-inset ring-accent-blue/50',
-        )}
-        {...dragHandlers}
-      >
-        {isDragOver ? 'Drop panel here' : ''}
-      </div>
-    );
+    return null;
   }
 
   // 渲染所有 panel，非活跃的用 CSS hidden 隐藏。
@@ -51,13 +33,7 @@ const DockZone: React.FC<DockZoneProps> = ({ zoneId }) => {
   const activePanelId = zone.activePanelId;
 
   return (
-    <div
-      className={cn(
-        'flex h-full flex-col overflow-hidden rounded-lg shadow-sm bg-bg-secondary',
-        isDragOver && 'ring-2 ring-inset ring-accent-blue/50',
-      )}
-      {...dragHandlers}
-    >
+    <div className="flex h-full flex-col overflow-hidden rounded-lg shadow-sm bg-bg-secondary">
       {zone.panels.map((panelId) => {
         const def = dockPanelRegistry[panelId];
         if (!def?.component) return null;

@@ -57,51 +57,45 @@ pnpm test:run
 
 ---
 
-## 阶段 4：dockStore 新增同 zone 排序（R3 准备）
+## 阶段 4：dockStore 同 zone 排序（已收回）
 
-**目标**：为 DockZoneTabs 迁移提供排序 action。
+**目标**：原计划为 DockZoneTabs 迁移提供排序 action。
 
-- [ ] `src/shared/store/dockStore.ts`：新增 `reorderPanelsInZone(zoneId, activeId, overId)`，结构对齐 `editorStore.reorderTab`。
-- [ ] `dockStore` 类型接口补充该方法签名。
-- [ ] 验证：`pnpm type-check`。
-- [ ] commit：`feat(dock): add reorderPanelsInZone action`
+- [x] ~~`dockStore` 新增 `reorderPanelsInZone`~~（commit `93a84d6a`）。
+- [x] 阶段 5 调查发现 `DockZoneTabs` 是死代码、dock 无 tab 排序需求，`reorderPanelsInZone` 无消费者，**已收回删除**。
 
 ---
 
-## 阶段 5：DockZoneTabs 迁移 @dnd-kit + 接入 TabItem（R1 + R3）
+## 阶段 5：清理 dock 死代码（范围调整）
 
-**目标**：移除 HTML5 drag，用 @dnd-kit 同 zone 排序，复用泛型 `TabItem`（不复用 TabBar，AgentBar/actionMenu 对 dock 无意义）。
+**背景**：调查发现 dock 是 islands 模式（`DockZone` + `DockBar` 图标切换），无 tab 头、无 tab 排序。`DockZoneTabs`（shadcn Tabs + HTML5 drag）是死代码（无组件 import）；`useDragToReDock`（drop target）因无 draggable source（DockZoneTabs 死）整体失效，`isDragOver` 恒 false。原"迁移 DockZoneTabs 到 @dnd-kit"前提不成立。
 
-- [ ] `src/layout/dock-layout/DockZoneTabs.tsx`：
-  - 移除 `draggable` / `onDragStart` / `handleDragStart`。
-  - 引入 `DndContext` + `SortableContext` + `useSensor(PointerSensor, { distance: 5 })`。
-  - 用 `TabItem`（泛型版）替代 shadcn `TabsTrigger` 作 tab 头，`renderLeading` 渲染 panel 图标；内容区仍用 `TabsContent`。
-  - `onDragEnd` 调 `reorderPanelsInZone(zoneId, activeId, overId)`。
-  - 关闭：复用 `TabItem` 的 `×`（含 pointer 隔离），保留 ContextMenu Close。
-- [ ] dock panel adapter：`zone.panels.map(id => ({ id, title: registry[id].title }))` 满足 `TabLike`。
-- [ ] 保留跨 zone `Move to {zone}` 右键菜单（`movePanel`）。
-- [ ] 验证：`pnpm type-check` + `pnpm test:run` + 手动 `pnpm tauri dev`。
-- [ ] commit：`refactor(dock): migrate DockZoneTabs to dnd-kit and reuse TabItem`
+**目标**：删除 dock 死代码，收回无消费者 action。
 
-**审查门**：TabItem 替换 TabsTrigger 后视觉/激活一致；HTML5 drag 残留 grep 清零。
+- [x] 删除 `DockZoneTabs.tsx`（死代码，唯一 `neeko-panel-id` drag source）。
+- [x] 删除 `useDragToReDock.ts`（无 source，drop 永不触发）。
+- [x] `DockZone.tsx`：移除 `useDragToReDock` import + `dragHandlers` + `isDragOver` 高亮，empty/collapsed 改 `return null`。
+- [x] `index.ts`：移除 `DockZoneTabs` / `useDragToReDock` export。
+- [x] `dockStore.ts`：收回 `reorderPanelsInZone`（接口 + 实现，无消费者）。
+- [x] 验证：`pnpm type-check` + 全量 `pnpm test:run`（88 files / 794 passed）+ grep 残留零。
+- [x] commit：`refactor(dock): remove dead DockZoneTabs and drag-to-re-dock code`
 
-**回滚点**：DockZoneTabs 整文件改动，revert 恢复 HTML5 drag。
+**结果**：editor tab 是唯一真正的 tab 系统，阶段 1-3 已完成统一与修复。dock 保留 islands 模式 + `movePanel`（右键/编程式跨 zone 移动）。
 
 ---
 
 ## 阶段 6：全量回归 + 清理
 
-- [ ] `pnpm lint` / `pnpm type-check` / `pnpm test:run` 全绿。
-- [ ] `cargo test --manifest-path src-tauri/Cargo.toml`（确认无后端影响，预期无变化）。
-- [ ] grep 确认：`draggable` / `onDragStart` 在 DockZoneTabs 已移除；`state.tabs` 全表扫描在 useTabManagement 已移除。
+- [ ] `pnpm lint`（cargo fmt+clippy）/ `pnpm type-check` / `pnpm test:run` 全绿。
+- [ ] grep 确认：`DockZoneTabs` / `useDragToReDock` / `reorderPanelsInZone` / `neeko-panel-id` 零残留；`state.tabs` 全表扫描在 useTabManagement 已移除。
 - [ ] 手动验证清单（`pnpm tauri dev`）：
   - editor tab 拖拽排序后点 `×` 关闭正确 tab（AC1）。
   - `×` 上轻微移动不触发拖拽（AC2）。
-  - dock panel 同 zone 拖拽排序 + 关闭（AC4）。
-  - dock panel 跨 zone Move（保留功能）。
+  - editor 经泛型 `TabItem` 渲染（AC3）；dock 已无 tab 头，不适用。
+  - dock panel 切换（DockBar 图标）+ `movePanel` 跨 zone 无回归（AC4 调整：dock 无 tab 排序）。
   - pinned tab / split left-right / 未保存确认 / Cmd+W 路径无回归。
-- [ ] 更新 spec：`interaction-patterns.md` 补「TabBar 泛型化 + pointer 隔离」模式；`DockZoneTabs` 从 HTML5 drag 条目移除。
-- [ ] commit：`docs(spec): record unified TabBar pattern and dnd-kit migration`
+- [ ] 更新 spec：`interaction-patterns.md` 补「TabItem 泛型化 + pointer 隔离」模式；移除 DockZoneTabs HTML5 drag 条目（已删）。
+- [ ] commit：`docs(spec): record TabItem generic pattern and dock dead-code removal`
 
 ---
 
@@ -109,11 +103,11 @@ pnpm test:run
 
 | 风险 | 应对 |
 |---|---|
-| Radix `TabsTrigger` + dnd-kit ref 合并导致 tab 切换失效 | 阶段 5 审查门单独验证；必要时用 `useMergeRefs` |
-| 泛型化后 editor 图标/状态点渲染回归 | 阶段 2 审查门手动验证；`renderTabContent` 迁出后单测覆盖 |
+| 泛型化后 editor 图标/状态点渲染回归 | 阶段 2 测试覆盖 agent-icon + close；type-check 全绿 |
 | Cmd+W 路径因 tabKey 收敛而关错 | 阶段 3 测试覆盖；`activeTabId` 在 tabKey 上下文内 |
-| dock panel 关闭后激活回退到 `panels[0]`（已知债） | design.md 已记录，本次不改；确认不引入新 bug |
+| DockZone 移除 dragHandlers 后视觉变化 | `isDragOver` 恒 false，高亮本就不显示；empty 改 null 视觉同空白 |
+| dock panel 关闭后激活回退（已知债） | dock 用 `activePanelId ?? panels[0]`，属激活策略，本次不改 |
 
-## 执行顺序依赖
+## 执行顺序
 
-阶段 1 独立，可先行。阶段 2 是阶段 5 的前置（TabBar 泛型化后 dock 才能复用）。阶段 3、4 相互独立，可并行。阶段 5 依赖 2+4。阶段 6 依赖全部。
+阶段 1 独立先行。阶段 2（TabItem 泛型化）独立。阶段 3（关闭收敛）独立。阶段 4（已收回）。阶段 5（dock 死代码清理）依赖阶段 4 的发现。阶段 6 依赖全部。

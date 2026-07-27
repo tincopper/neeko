@@ -49,7 +49,7 @@ interface TabItemProps<T extends TabLike> {
 ```
 
 - editor：`TabBar` 接收 `renderTabLeading` 转发给 `TabItem`；图标/状态点逻辑抽到 `TabItemLeading.tsx` 的 `renderEditorTabLeading(tab, agents)`。
-- dock：`DockZoneTabs` 直接用 `TabItem`（阶段 5），`renderLeading` 渲染 panel 图标，不复用 `TabBar`（AgentBar/actionMenu 对 dock 无意义）。
+- dock：调查发现 dock 是 islands 模式（`DockZone` + `DockBar` 图标切换，无 tab 头），`DockZoneTabs` 为死代码已删除；`TabItem` 泛型化为未来 dock tab 复用预留，当前 dock 不消费。
 
 `TabItem` 内部 `useSortable({ id: tab.id })` 不变；`React.memo` 通过 `as unknown as typeof TabItem` 保留泛型签名。
 
@@ -96,47 +96,25 @@ const handleCloseTab = useCallback((tabId: string) => {
 
 **注意**：`useAppShell.ts:265` 的 Cmd+W 路径调用 `handleCloseTab(currentTabId)`，`currentTabId` 来自 `activeTabId`（全局）。收敛后该路径仍用 tabKey 关闭当前 tabKey 的 active tab，行为正确（activeTabId 在 tabKey 上下文内）。
 
-### 3.4 DockZoneTabs 迁移 @dnd-kit（R3）
+### 3.4 dock 死代码清理（范围调整，原 R3 取消）
 
-移除 HTML5 drag，用 @dnd-kit 包裹 shadcn `TabsList`：
+调查发现原 R3（DockZoneTabs 迁移 @dnd-kit）前提不成立：
 
-```tsx
-<DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-  <SortableContext items={zone.panels} strategy={horizontalListSortingStrategy}>
-    <TabsList>
-      {zone.panels.map(panelId => (
-        <SortablePanelTrigger key={panelId} panelId={panelId} ... />
-      ))}
-    </TabsList>
-  </SortableContext>
-</DndContext>
-```
+- `DockZoneTabs` 是死代码（无组件 import），`DockLayout` 实际用 `DockZone`（islands 模式，`DockBar` 图标切换，无 tab 头）。
+- `useDragToReDock`（drop target）因唯一 drag source（`DockZoneTabs`）死而整体失效，`isDragOver` 恒 false。
 
-- `SortablePanelTrigger`：`TabsTrigger` 包 `useSortable({ id: panelId })`，合并 ref（`setNodeRef` + Radix trigger ref）。
-- `handleDragEnd`：提取 `active.id`/`over.id`，调 `dockStore.reorderPanelsInZone(zoneId, activeId, overId)`。
-- 跨 zone 拖拽：本次不做（Out of Scope），保留右键菜单 `Move to {zone}`。
+清理动作：
 
-**ref 合并风险**：Radix `TabsTrigger` 用 `forwardRef`，dnd-kit `setNodeRef` 需合并。用 `useMergeRefs` 或内联合并函数。验证点：拖拽时 transform 生效 + tab 切换 value 不丢。
+- 删除 `DockZoneTabs.tsx` + `useDragToReDock.ts`。
+- `DockZone.tsx` 移除 `useDragToReDock` import + `dragHandlers` + `isDragOver` 高亮；empty/collapsed 改 `return null`（原 `isDragOver` 恒 false，视觉同空白）。
+- `index.ts` 移除 `DockZoneTabs` / `useDragToReDock` export。
+- 保留 `movePanel`（右键菜单 / 编程式跨 zone 移动）。
 
-### 3.5 dockStore 新增 reorderPanelsInZone
+**结论**：dock 无 tab 排序需求，editor tab 是唯一真正的 tab 系统。
 
-```ts
-reorderPanelsInZone: (zoneId: string, activeId: string, overId: string) => {
-  set((state) => {
-    const zone = state.zones[zoneId];
-    if (!zone) return state;
-    const oldIndex = zone.panels.indexOf(activeId);
-    const newIndex = zone.panels.indexOf(overId);
-    if (oldIndex === -1 || newIndex === -1 || oldIndex === newIndex) return state;
-    const next = [...zone.panels];
-    next.splice(oldIndex, 1);
-    next.splice(newIndex, 0, activeId);
-    return { zones: { ...state.zones, [zoneId]: { ...zone, panels: next } } };
-  });
-},
-```
+### 3.5 reorderPanelsInZone（已收回）
 
-结构与 `editorStore.reorderTab`（`:685-698`）一致，基于 ID。
+阶段 4 为 R3 预加了 `dockStore.reorderPanelsInZone`。阶段 5 发现 dock 无 tab 排序需求后，该 action 无消费者，已收回删除（接口 + 实现）。
 
 ## 4. 数据模型不合并的权衡
 
