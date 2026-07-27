@@ -1422,3 +1422,36 @@ Root cause: EditorGroupPane.tsx and SplitLayout.tsx container divs called e.prev
 ### Next Steps
 
 - None - task complete
+
+
+## Session 100: New Action Menu + Untitled Save As Flow
+
+**Date**: 2026-07-27
+**Task**: New Action Menu + Untitled Save As Flow
+**Branch**: `main`
+
+### Summary
+
+Implemented unified Action Menu dropdown (replacing TabBar + button), Ctrl+Shift+P ActionPalette, and Untitled Save As flow. Backend: create_new_file/save_new_file commands. Frontend: SaveFileDialog/DirectoryPickerDialog. Fixed mergeTabData field stripping bug and saveAsRequest tabKey vs projectId mismatch.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `d1ed080a` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
