@@ -283,7 +283,7 @@ const Section: React.FC<SectionProps> = ({
                 tabIndex={-1}
                 aria-selected={isSelected}
                 className={cn(
-                  'flex items-center gap-x-1.5 px-1.5 py-1 rounded cursor-pointer min-w-0 w-full overflow-hidden transition-colors duration-100 group',
+                  'flex items-center gap-x-1.5 pl-[23px] pr-1.5 py-1 rounded cursor-pointer min-w-0 w-full overflow-hidden transition-colors duration-100 group',
                   isSelected ? 'bg-bg-selected text-text-primary' : 'hover:bg-bg-hover/60',
                 )}
                 onClick={() => onFileSelect?.(file.path)}

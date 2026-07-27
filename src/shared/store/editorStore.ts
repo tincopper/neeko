@@ -265,8 +265,14 @@ export const useEditorStore = create<EditorStoreState>((set) => ({
 
       if (existing?.tabs.some((t) => t.id === tab.id)) return state;
 
+      // Diff tabs: only allow one at a time, replace existing if opening a new one
+      let filteredTabs = existing?.tabs ?? [];
+      if (tab.data.kind === 'diff') {
+        filteredTabs = filteredTabs.filter((t) => t.data.kind !== 'diff');
+      }
+
       const projectTabs: ProjectTabs = existing
-        ? { tabs: [...existing.tabs, tab], activeTabId: tab.id }
+        ? { tabs: [...filteredTabs, tab], activeTabId: tab.id }
         : { tabs: [tab], activeTabId: tab.id };
 
       const newTabs = { ...state.tabs, [projectId]: projectTabs };
