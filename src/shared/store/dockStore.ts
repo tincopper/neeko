@@ -34,6 +34,7 @@ export interface DockStore {
   activatePanel: (zoneId: string, panelId: string) => void;
   movePanel: (panelId: string, targetZoneId: string, index?: number) => void;
   closePanel: (panelId: string) => void;
+  reorderPanelsInZone: (zoneId: string, activeId: string, overId: string) => void;
   setRightPanelSize: (panelId: string, size: number) => void;
   setLeftPanelSize: (size: number) => void;
 }
@@ -263,6 +264,25 @@ export const useDockStore = create<DockStore>()(
                   activePanelId: nextActive,
                   expanded: nextPanels.length > 0,
                 },
+              },
+            };
+          });
+        },
+
+        reorderPanelsInZone: (zoneId, activeId, overId) => {
+          set((state) => {
+            const zone = state.zones[zoneId];
+            if (!zone) return state;
+            const oldIndex = zone.panels.indexOf(activeId);
+            const newIndex = zone.panels.indexOf(overId);
+            if (oldIndex === -1 || newIndex === -1 || oldIndex === newIndex) return state;
+            const next = [...zone.panels];
+            next.splice(oldIndex, 1);
+            next.splice(newIndex, 0, activeId);
+            return {
+              zones: {
+                ...state.zones,
+                [zoneId]: { ...zone, panels: next },
               },
             };
           });
