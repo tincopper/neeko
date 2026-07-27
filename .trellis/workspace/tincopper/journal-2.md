@@ -1455,3 +1455,41 @@ Implemented unified Action Menu dropdown (replacing TabBar + button), Ctrl+Shift
 ### Next Steps
 
 - None - task complete
+
+
+## Session 101: 统一 Tab 系统协议与交互
+
+**Date**: 2026-07-27
+**Task**: 统一 Tab 系统协议与交互
+**Branch**: `refactor/unify-tab-system`
+
+### Summary
+
+修复 editor tab 拖拽后关闭错乱：dnd-kit listeners 与关闭按钮共享 pointer 通道导致拖拽劫持关闭，x 按钮 onPointerDown stopPropagation 隔离。TabItem 泛型化为纯展示组件 + renderLeading 多态，editor 图标逻辑抽到 TabItemLeading。handleCloseTab 收敛到 tabKey 上下文（删全表扫描）。调查发现 dock 是 islands 模式非 tab 系统，DockZoneTabs/useDragToReDock 为死代码已清理。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `a5fe93c1` | (see git log) |
+| `b55a3b5a` | (see git log) |
+| `d5d805f2` | (see git log) |
+| `93a84d6a` | (see git log) |
+| `ed14cc8b` | (see git log) |
+| `4825f80b` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
