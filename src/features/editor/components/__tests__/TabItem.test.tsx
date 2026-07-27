@@ -7,12 +7,19 @@ import type { AgentConfig } from '@/shared/types';
 import type { Tab } from '@/shared/types/tab';
 
 import TabItem from '../TabItem';
+import { renderEditorTabLeading } from '../TabItemLeading';
 
 function renderTabItem(tab: Tab, agents: AgentConfig[] = []) {
   return render(
     <DndContext>
       <SortableContext items={[tab.id]} strategy={horizontalListSortingStrategy}>
-        <TabItem tab={tab} isActive agents={agents} onActivate={vi.fn()} onClose={vi.fn()} />
+        <TabItem
+          tab={tab}
+          isActive
+          renderLeading={(t) => renderEditorTabLeading(t, agents)}
+          onActivate={vi.fn()}
+          onClose={vi.fn()}
+        />
       </SortableContext>
     </DndContext>,
   );

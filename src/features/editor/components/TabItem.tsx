@@ -2,196 +2,124 @@ import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import React, { useCallback } from 'react';
 
-import { resolveAgentIconSrc } from '@/features/agent/api/agentApi';
 import { cn } from '@/lib/utils';
-import {
-  Terminal,
-  FileText,
-  FileDiff,
-  Globe,
-  MessageSquareText,
-  Pin,
-  GitPullRequest,
-} from '@/shared/components/icons';
-import type { AgentConfig } from '@/shared/types';
-import type { Tab } from '@/shared/types/tab';
-import { fileIconSrc } from '@/shared/utils/fileIcons';
+import { Pin } from '@/shared/components/icons';
+import type { TabLike } from '@/shared/types/tab';
 
-interface TabItemProps {
-  tab: Tab;
+export interface TabItemProps<T extends TabLike> {
+  tab: T;
   isActive: boolean;
   isPinned?: boolean;
   reorderable?: boolean;
   onActivate: (tabId: string) => void;
   onClose: (tabId: string) => void;
   onContextMenu?: (tabId: string, e: React.MouseEvent) => void;
-  agents?: AgentConfig[];
+  /** Render leading content (icon / status dots) before the title. */
+  renderLeading?: (tab: T) => React.ReactNode;
 }
 
-/** 根据 tab kind 返回对应图标 */
-function getTabIcon(kind: Tab['data']['kind']) {
-  switch (kind) {
-    case 'terminal':
-      return Terminal;
-    case 'file':
-      return FileText;
-    case 'diff':
-      return FileDiff;
-    case 'html-preview':
-      return Globe;
-    case 'conversation':
-      return MessageSquareText;
-    case 'prDetail':
-      return GitPullRequest;
-  }
-}
+function TabItem<T extends TabLike>({
+  tab,
+  isActive,
+  isPinned = false,
+  reorderable = false,
+  onActivate,
+  onClose,
+  onContextMenu,
+  renderLeading,
+}: TabItemProps<T>) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: tab.id,
+    disabled: !reorderable,
+  });
 
-const TabItem: React.FC<TabItemProps> = React.memo(
-  ({
-    tab,
-    isActive,
-    isPinned = false,
-    reorderable = false,
-    onActivate,
-    onClose,
-    onContextMenu,
-    agents = [],
-  }) => {
-    const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
-      id: tab.id,
-      disabled: !reorderable,
-    });
+  const handleClick = useCallback(() => {
+    onActivate(tab.id);
+  }, [tab.id, onActivate]);
 
-    const handleClick = useCallback(() => {
-      onActivate(tab.id);
-    }, [tab.id, onActivate]);
+  const handleClose = useCallback(
+    (e: React.MouseEvent) => {
+      e.stopPropagation();
+      onClose(tab.id);
+    },
+    [tab.id, onClose],
+  );
 
-    const handleClose = useCallback(
-      (e: React.MouseEvent) => {
-        e.stopPropagation();
-        onClose(tab.id);
-      },
-      [tab.id, onClose],
-    );
+  const handleContextMenu = useCallback(
+    (e: React.MouseEvent) => {
+      onContextMenu?.(tab.id, e);
+    },
+    [tab.id, onContextMenu],
+  );
 
-    const handleContextMenu = useCallback(
-      (e: React.MouseEvent) => {
-        onContextMenu?.(tab.id, e);
-      },
-      [tab.id, onContextMenu],
-    );
-
-    const handleAuxClick = useCallback(
-      (e: React.MouseEvent) => {
-        if (e.button === 1) {
-          e.preventDefault();
-          // Pinned tabs cannot be closed via middle-click
-          if (!isPinned) {
-            onClose(tab.id);
-          }
+  const handleAuxClick = useCallback(
+    (e: React.MouseEvent) => {
+      if (e.button === 1) {
+        e.preventDefault();
+        // Pinned tabs cannot be closed via middle-click
+        if (!isPinned) {
+          onClose(tab.id);
         }
-      },
-      [tab.id, isPinned, onClose],
-    );
+      }
+    },
+    [tab.id, isPinned, onClose],
+  );
 
-    const Icon = getTabIcon(tab.data.kind);
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition: transition ?? undefined,
+  };
 
-    const data = tab.data;
-    const agentIconSrc =
-      data.kind === 'terminal' && data.agentId
-        ? resolveAgentIconSrc(agents.find((a) => a.id === data.agentId)?.icon)
-        : null;
+  return (
+    <div
+      ref={reorderable ? setNodeRef : undefined}
+      style={reorderable ? style : undefined}
+      {...(reorderable ? attributes : {})}
+      role="tab"
+      tabIndex={isActive ? 0 : -1}
+      aria-selected={isActive}
+      className={cn(
+        'flex items-center gap-1 h-6 px-2 rounded-md min-w-0 max-w-[10rem] transition-colors',
+        isActive
+          ? 'bg-bg-selected text-text-primary'
+          : 'text-text-secondary hover:bg-bg-hover hover:text-text-primary',
+        isDragging && 'opacity-50 shadow-lg shadow-black/20 z-50',
+      )}
+      onClick={handleClick}
+      onAuxClick={handleAuxClick}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          handleClick();
+        }
+      }}
+      onContextMenu={handleContextMenu}
+      {...(reorderable ? listeners : {})}
+      title={tab.title}
+    >
+      {renderLeading?.(tab)}
 
-    // Diff tabs use the dedicated FileDiff kind icon, not the file-type glyph.
-    const fileIcon = data.kind === 'file' ? fileIconSrc(data.fileName) : null;
+      {isPinned && <Pin size={10} className="shrink-0 opacity-50" />}
 
-    // 状态指示器
-    const terminalStatus = tab.data.kind === 'terminal' ? tab.data.status : null;
-    // Show a coloured dot for active task terminals:
-    //   Running �?green (accent-green)  Failed �?red (status-failed)
-    // Idle (normal completion) shows no dot �?the task finished cleanly.
-    const showStatusDot = terminalStatus === 'Running' || terminalStatus === 'Failed';
-    const statusDotColor = terminalStatus === 'Running' ? 'bg-accent-green' : 'bg-status-failed';
-    const showDirtyDot = tab.data.kind === 'file' && tab.data.isDirty;
+      <span className="truncate cursor-pointer" style={{ fontSize: 'var(--terminal-font-size)' }}>
+        {tab.title}
+      </span>
 
-    const style = {
-      transform: CSS.Transform.toString(transform),
-      transition: transition ?? undefined,
-    };
-
-    return (
-      <div
-        ref={reorderable ? setNodeRef : undefined}
-        style={reorderable ? style : undefined}
-        {...(reorderable ? attributes : {})}
-        role="tab"
-        tabIndex={isActive ? 0 : -1}
-        aria-selected={isActive}
-        className={cn(
-          'flex items-center gap-1 h-6 px-2 rounded-md min-w-0 max-w-[10rem] transition-colors',
-          isActive
-            ? 'bg-bg-selected text-text-primary'
-            : 'text-text-secondary hover:bg-bg-hover hover:text-text-primary',
-          isDragging && 'opacity-50 shadow-lg shadow-black/20 z-50',
-        )}
-        onClick={handleClick}
-        onAuxClick={handleAuxClick}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter' || e.key === ' ') {
-            e.preventDefault();
-            handleClick();
-          }
-        }}
-        onContextMenu={handleContextMenu}
-        {...(reorderable ? listeners : {})}
-        title={tab.title}
-      >
-        {agentIconSrc ? (
-          <img
-            data-testid="agent-icon"
-            src={agentIconSrc}
-            width={12}
-            height={12}
-            className="shrink-0 opacity-70"
-            alt=""
-          />
-        ) : fileIcon ? (
-          <img src={fileIcon} width={12} height={12} className="shrink-0 opacity-70" alt="" />
-        ) : (
-          <Icon
-            size={12}
-            className="shrink-0 opacity-70"
-            style={{ fontSize: 'var(--terminal-font-size)' }}
-          />
-        )}
-
-        {showStatusDot && (
-          <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${statusDotColor}`} />
-        )}
-        {showDirtyDot && <span className="w-1.5 h-1.5 rounded-full bg-accent shrink-0" />}
-
-        {isPinned && <Pin size={10} className="shrink-0 opacity-50" />}
-
-        <span className="truncate cursor-pointer" style={{ fontSize: 'var(--terminal-font-size)' }}>
-          {tab.title}
-        </span>
-
-        {!isPinned && (
-          <button
-            className="tb-icon-btn w-4 h-4 rounded text-inherit hover:bg-bg-hover transition-colors flex items-center justify-center shrink-0 leading-none"
-            style={{ fontSize: 'var(--terminal-font-size)' }}
-            onPointerDown={(e) => e.stopPropagation()}
-            onClick={handleClose}
-            title="Close tab"
-          >
-            ×
-          </button>
-        )}
-      </div>
-    );
-  },
-);
+      {!isPinned && (
+        <button
+          className="tb-icon-btn w-4 h-4 rounded text-inherit hover:bg-bg-hover transition-colors flex items-center justify-center shrink-0 leading-none"
+          style={{ fontSize: 'var(--terminal-font-size)' }}
+          onPointerDown={(e) => e.stopPropagation()}
+          onClick={handleClose}
+          title="Close tab"
+        >
+          ×
+        </button>
+      )}
+    </div>
+  );
+}
 
 TabItem.displayName = 'TabItem';
 
-export default TabItem;
+export default React.memo(TabItem) as unknown as typeof TabItem;

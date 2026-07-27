@@ -86,3 +86,9 @@ export interface ProjectTabs {
   tabs: Tab[];
   activeTabId: string | null;
 }
+
+/** Minimal shape any tab-like item must satisfy for the generic TabItem. */
+export interface TabLike {
+  id: string;
+  title: string;
+}

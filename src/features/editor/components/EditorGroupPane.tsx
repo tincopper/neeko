@@ -23,6 +23,7 @@ import { useEditorStore } from '@/shared/store';
 import { useDockStore } from '@/shared/store/dockStore';
 import { useProjectStore } from '@/shared/store/projectStore';
 import type { AgentConfig, AuthMethod, EditorGroupId } from '@/shared/types';
+import type { Tab } from '@/shared/types/tab';
 import { buildDiffSource } from '@/shared/utils/diffSource';
 
 import { useEditorGroupLayout } from '../hooks/useEditorGroupLayout';
@@ -30,6 +31,7 @@ import { useEditorGroupLayout } from '../hooks/useEditorGroupLayout';
 import FileViewer from './FileViewer';
 import HtmlPreview from './HtmlPreview';
 import TabBar from './TabBar';
+import { renderEditorTabLeading } from './TabItemLeading';
 
 interface EditorGroupPaneProps {
   /** "left" | "right" for normal groups; "pinned" for the fixed pin panel */
@@ -321,6 +323,11 @@ function EditorGroupPane({
     [enabledAgents, installedMap],
   );
 
+  const renderTabLeading = useCallback(
+    (tab: Tab) => renderEditorTabLeading(tab, installedEnabledAgents),
+    [installedEnabledAgents],
+  );
+
   const showAgentBarContent =
     showAgentBar && activeTab?.data.kind === 'terminal' && installedEnabledAgents.length > 0;
   const showAgentBarRow = activeTab?.data.kind === 'terminal';
@@ -452,6 +459,7 @@ function EditorGroupPane({
                   reorderable={groupId !== 'pinned'}
                   onReorderTab={handleReorderTab}
                   agents={installedEnabledAgents}
+                  renderTabLeading={renderTabLeading}
                 />
               </div>
               {actionMenuRect && (

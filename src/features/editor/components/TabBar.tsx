@@ -42,6 +42,8 @@ interface TabBarProps {
   compactMode?: boolean;
   hiddenAgentIds?: string[];
   onToggleHiddenAgent?: (agentId: string) => void;
+  /** Render leading content (icon / status dots) for each tab. */
+  renderTabLeading?: (tab: Tab) => React.ReactNode;
 }
 
 /** 单个 Agent 按钮 */
@@ -90,6 +92,7 @@ const TabBar: React.FC<TabBarProps> = React.memo(
     onAgentClick,
     compactMode = false,
     hiddenAgentIds = [],
+    renderTabLeading,
   }) => {
     const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -162,7 +165,7 @@ const TabBar: React.FC<TabBarProps> = React.memo(
                   onActivate={onActivateTab}
                   onClose={onCloseTab}
                   onContextMenu={onContextMenu}
-                  agents={agents}
+                  renderLeading={renderTabLeading}
                 />
               ))}
             </SortableContext>
@@ -179,7 +182,7 @@ const TabBar: React.FC<TabBarProps> = React.memo(
           onActivate={onActivateTab}
           onClose={onCloseTab}
           onContextMenu={onContextMenu}
-          agents={agents}
+          renderLeading={renderTabLeading}
         />
       ));
     };

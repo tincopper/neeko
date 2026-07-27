@@ -30,29 +30,28 @@
 
 ## 3. 核心设计
 
-### 3.1 TabBar / TabItem 泛型化 + 纯展示
+### 3.1 TabItem 泛型化 + 纯展示（TabBar 保持 editor 专用）
 
-`TabBar` 当前接收 `tabs: Tab[]`（editor 专用 `Tab` 类型）。泛型化为 `<T extends { id: string; title: string }>`，让 dock panel 适配同一组件。
+实施时发现 TabBar 内含 AgentBar / terminalTabCount / actionMenu 等 editor 特有逻辑（依赖 `tab.data.kind`），完全泛型化成本高且 dock 不需要。调整：**只泛型化 TabItem**（核心交互组件），TabBar 保持 editor 专用，通过 `renderTabLeading` prop 把图标逻辑外移。
 
 ```tsx
-// 统一 props 契约（纯展示，不读 store）
-interface TabBarProps<T extends TabLike> {
-  tabs: readonly T[];
-  activeId: string | null;
-  pinnedId?: string | null;
+// TabItem 纯展示 props 契约（泛型，不读 store）
+interface TabItemProps<T extends TabLike> {
+  tab: T;
+  isActive: boolean;
+  isPinned?: boolean;
   reorderable?: boolean;
   onActivate: (id: string) => void;
   onClose: (id: string) => void;
-  onReorder?: (activeId: string, overId: string) => void;
-  renderTabContent?: (tab: T) => React.ReactNode;  // 图标/状态点等多态
-  // 现有 agents / actionMenu / contextMenu 回调保留
+  onContextMenu?: (id: string, e: React.MouseEvent) => void;
+  renderLeading?: (tab: T) => React.ReactNode;  // 图标/状态点多态
 }
 ```
 
-- editor adapter：`tabs = layout.leftTabs`（`Tab[]` 已满足 `TabLike`），`renderTabContent` 复用现有图标逻辑。
-- dock adapter：`tabs = zone.panels.map(id => ({ id, title: registry[id].title }))`，`renderTabContent` 渲染 panel 图标。
+- editor：`TabBar` 接收 `renderTabLeading` 转发给 `TabItem`；图标/状态点逻辑抽到 `TabItemLeading.tsx` 的 `renderEditorTabLeading(tab, agents)`。
+- dock：`DockZoneTabs` 直接用 `TabItem`（阶段 5），`renderLeading` 渲染 panel 图标，不复用 `TabBar`（AgentBar/actionMenu 对 dock 无意义）。
 
-`TabItem` 同步泛型化，内部 `useSortable({ id: tab.id })` 不变。
+`TabItem` 内部 `useSortable({ id: tab.id })` 不变；`React.memo` 通过 `as unknown as typeof TabItem` 保留泛型签名。
 
 ### 3.2 pointer 隔离（修复 R2）
 

@@ -25,20 +25,21 @@ pnpm test:run
 
 ---
 
-## 阶段 2：TabBar / TabItem 泛型化（R1）
+## 阶段 2：TabItem 泛型化 + editor leading 抽取（R1）
 
-**目标**：`TabBar`/`TabItem` 接收 `{ id, title }` 形状，支持 dock panel 复用，保持 editor 向后兼容。
+**目标**：`TabItem` 泛型化为纯展示组件，editor 图标逻辑外移到 `TabItemLeading.tsx`；`TabBar` 保持 editor 专用，通过 `renderTabLeading` 转发。dock 阶段直接复用 `TabItem`。
 
-- [ ] `src/shared/types/tab.ts`：新增 `TabLike` 约束类型（`{ id: string; title: string }`）。
-- [ ] `TabBar.tsx`：泛型化 `<T extends TabLike>`，`tabs: readonly T[]`，新增可选 `renderTabContent?: (tab: T) => React.ReactNode`。现有 editor 图标逻辑提取到 editor adapter 的 `renderTabContent`。
-- [ ] `TabItem.tsx`：同步泛型化，`useSortable({ id: tab.id })` 不变。
-- [ ] `EditorGroupPane.tsx`：调用方适配--传入 `renderTabContent` 渲染 agent 图标 / 文件图标 / 状态点（从 TabItem 内部逻辑迁出）。
-- [ ] 验证：`pnpm type-check` + `pnpm test:run`（TabItem.test.tsx 适配泛型）。
-- [ ] commit：`refactor(editor): genericize TabBar/TabItem for reuse`
+- [x] `src/shared/types/tab.ts`：新增 `TabLike` 约束类型。
+- [x] `TabItem.tsx`：泛型化 `<T extends TabLike>`，移除 editor 图标逻辑，新增 `renderLeading`；`Pin` 通用渲染保留。
+- [x] `TabItemLeading.tsx`（新建）：`renderEditorTabLeading(tab, agents)` 迁出 agent/file 图标 + statusDot + dirtyDot。
+- [x] `TabBar.tsx`：新增 `renderTabLeading` prop 转发，移除传给 TabItem 的 `agents`（agents 仍用于 AgentBar）。
+- [x] `EditorGroupPane.tsx`：定义 `renderTabLeading`（useCallback，依赖 installedEnabledAgents）传入 TabBar。
+- [x] 验证：`pnpm type-check` + 全量 `pnpm test:run`（87 files / 793 passed）。
+- [x] commit：`refactor(editor): genericize TabItem and extract editor leading renderer`
 
-**回滚点**：泛型化对 editor 调用方向后兼容，revert 后 editor 恢复原状。
+**回滚点**：泛型化对 editor 向后兼容（Tab extends TabLike），revert 恢复。
 
-**审查门**：泛型化后 editor tab 视觉与交互无回归（手动 `pnpm tauri dev` 看 agent 图标、状态点、pinned 标记）。
+**审查门**：editor tab 视觉无回归（agent 图标 / 状态点 / pinned 由 renderEditorTabLeading + TabItem 通用 Pin 保证）；测试覆盖 agent-icon 与 close。
 
 ---
 
@@ -67,24 +68,24 @@ pnpm test:run
 
 ---
 
-## 阶段 5：DockZoneTabs 迁移 @dnd-kit + 接入 TabBar（R1 + R3）
+## 阶段 5：DockZoneTabs 迁移 @dnd-kit + 接入 TabItem（R1 + R3）
 
-**目标**：移除 HTML5 drag，用 @dnd-kit 同 zone 排序，复用 `TabBar`。
+**目标**：移除 HTML5 drag，用 @dnd-kit 同 zone 排序，复用泛型 `TabItem`（不复用 TabBar，AgentBar/actionMenu 对 dock 无意义）。
 
 - [ ] `src/layout/dock-layout/DockZoneTabs.tsx`：
   - 移除 `draggable` / `onDragStart` / `handleDragStart`。
   - 引入 `DndContext` + `SortableContext` + `useSensor(PointerSensor, { distance: 5 })`。
-  - `TabsTrigger` 包 `useSortable({ id: panelId })`，合并 ref（`setNodeRef` + Radix forwardRef）。
+  - 用 `TabItem`（泛型版）替代 shadcn `TabsTrigger` 作 tab 头，`renderLeading` 渲染 panel 图标；内容区仍用 `TabsContent`。
   - `onDragEnd` 调 `reorderPanelsInZone(zoneId, activeId, overId)`。
-  - 关闭按钮：复用 `TabBar` 的 `×`（含 pointer 隔离），或保留 ContextMenu Close。
-- [ ] dock panel adapter：`zone.panels.map(id => ({ id, title: registry[id].title }))`，`renderTabContent` 渲染 panel 图标。
+  - 关闭：复用 `TabItem` 的 `×`（含 pointer 隔离），保留 ContextMenu Close。
+- [ ] dock panel adapter：`zone.panels.map(id => ({ id, title: registry[id].title }))` 满足 `TabLike`。
 - [ ] 保留跨 zone `Move to {zone}` 右键菜单（`movePanel`）。
-- [ ] 验证：`pnpm type-check` + `pnpm test:run` + 手动 `pnpm tauri dev`（panel 拖拽排序、关闭、跨 zone 移动）。
-- [ ] commit：`refactor(dock): migrate DockZoneTabs to dnd-kit and reuse TabBar`
+- [ ] 验证：`pnpm type-check` + `pnpm test:run` + 手动 `pnpm tauri dev`。
+- [ ] commit：`refactor(dock): migrate DockZoneTabs to dnd-kit and reuse TabItem`
 
-**审查门**：ref 合并正确（拖拽 transform 生效 + tab 切换 value 不丢）；HTML5 drag 残留 grep 确认清零。
+**审查门**：TabItem 替换 TabsTrigger 后视觉/激活一致；HTML5 drag 残留 grep 清零。
 
-**回滚点**：DockZoneTabs 整文件改动，revert 恢复 HTML5 drag（但 dockStore.reorderPanelsInZone 留为无害新增）。
+**回滚点**：DockZoneTabs 整文件改动，revert 恢复 HTML5 drag。
 
 ---
 
