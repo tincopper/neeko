@@ -3,8 +3,8 @@ use crate::common::git::operations;
 use crate::common::git::types::{DiffResult, PushOutcome};
 use crate::project::types::{
     AheadBehind, CommitDetail, CommitEntry, CommitFileChange, CommitResult, FileChange,
-    FileContent, FileDiffStats, FileNode, GitBranchInfo, GitInfo, PRComment, PRCommit,
-    PRFileChange, PRInfo, PRListItem, PRMergeResult, PRReviewComment, PrLabel,
+    FileDiffStats, GitBranchInfo, GitInfo, PRComment, PRCommit, PRFileChange, PRInfo, PRListItem,
+    PRMergeResult, PRReviewComment, PrLabel,
 };
 use crate::AppError;
 use crate::AppStateWrapper;
@@ -575,89 +575,6 @@ pub async fn default_branch(
     operations::default_branch(&*t, &wd)
         .await
         .map_err(AppError::from)
-}
-
-// ─── File operations (unified via file service) ────────────────────────────
-
-/// 文件树默认递归深度
-/// Default maximum depth for directory tree traversal.
-const DEFAULT_TREE_DEPTH: u32 = 4;
-
-/// Read the directory tree.
-#[tauri::command]
-pub async fn read_dir_tree(
-    project_id: String,
-    root_path: Option<String>,
-    sub_path: Option<String>,
-    max_depth: Option<u32>,
-    state: State<'_, AppStateWrapper>,
-) -> Result<Vec<FileNode>, AppError> {
-    let depth = max_depth.unwrap_or(DEFAULT_TREE_DEPTH);
-    let (t, wd) = state.resolve_project(&project_id)?;
-    let target = t.exec_target();
-    let base = root_path.unwrap_or(wd);
-    crate::common::file::services::read_dir_tree(&target, &base, sub_path.as_deref(), depth).await
-}
-
-/// Shared implementation for reading file content via shell (stat -> binary-detect -> cat).
-/// Works for both Remote (SSH) and WSL transports.
-#[tauri::command]
-pub async fn read_file_content(
-    project_id: String,
-    file_path: String,
-    root_path: Option<String>,
-    state: State<'_, AppStateWrapper>,
-) -> Result<FileContent, AppError> {
-    let (t, wd) = state.resolve_project(&project_id)?;
-    let target = t.exec_target();
-    let base = root_path.unwrap_or(wd);
-    crate::common::file::services::read_file_content(&target, &base, &file_path).await
-}
-
-/// Write file content.
-#[tauri::command]
-pub async fn write_file_content(
-    project_id: String,
-    file_path: String,
-    content: String,
-    root_path: Option<String>,
-    state: State<'_, AppStateWrapper>,
-) -> Result<(), AppError> {
-    let (t, wd) = state.resolve_project(&project_id)?;
-    let target = t.exec_target();
-    let base = root_path.unwrap_or(wd);
-    crate::common::file::services::write_file_content(&target, &base, &file_path, &content).await
-}
-
-/// Create a new empty file (with parent directories).
-#[tauri::command]
-pub async fn create_new_file(
-    project_id: String,
-    file_path: String,
-    root_path: Option<String>,
-    state: State<'_, AppStateWrapper>,
-) -> Result<(), AppError> {
-    let (t, wd) = state.resolve_project(&project_id)?;
-    let target = t.exec_target();
-    let base = root_path.unwrap_or(wd);
-    crate::common::file::services::create_new_file(&target, &base, &file_path).await
-}
-
-/// Save a new file with content at `directory/filename`, returning the relative path.
-#[tauri::command]
-pub async fn save_new_file(
-    project_id: String,
-    directory: String,
-    filename: String,
-    content: String,
-    root_path: Option<String>,
-    state: State<'_, AppStateWrapper>,
-) -> Result<String, AppError> {
-    let (t, wd) = state.resolve_project(&project_id)?;
-    let target = t.exec_target();
-    let base = root_path.unwrap_or(wd);
-    crate::common::file::services::save_new_file(&target, &base, &directory, &filename, &content)
-        .await
 }
 
 // ─── Remote/SSH utilities ───────────────────────────────────────────────────

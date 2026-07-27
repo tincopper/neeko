@@ -163,12 +163,6 @@ macro_rules! neeko_invoke_handler {
             $crate::git::commands::get_ahead_behind,
             // default branch
             $crate::git::commands::default_branch,
-            // unified file operations
-            $crate::git::commands::read_dir_tree,
-            $crate::git::commands::read_file_content,
-            $crate::git::commands::write_file_content,
-            $crate::git::commands::create_new_file,
-            $crate::git::commands::save_new_file,
             // unified commit message
             $crate::agent::commands_commit::generate_commit_message,
             // remote utilities
@@ -196,6 +190,11 @@ macro_rules! neeko_invoke_handler {
             $crate::git::commands::list_pr_review_comments_command,
             // ── file ──────────────────────────────────────────────────────────
             $crate::file::commands::reveal_in_file_manager,
+            $crate::file::commands::read_dir_tree,
+            $crate::file::commands::read_file_content,
+            $crate::file::commands::write_file_content,
+            $crate::file::commands::create_new_file,
+            $crate::file::commands::save_new_file,
             // ── task ─────────────────────────────────────────────────────────
             $crate::task::commands::get_task_configs,
             $crate::task::commands::discover_task_configs,
