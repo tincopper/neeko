@@ -1,11 +1,40 @@
 import React, { useMemo, useState, useCallback } from 'react';
 
 import { cn } from '@/lib/utils';
-import { ChevronRightIcon, Undo2, Plus, ListPlus } from '@/shared/components/icons';
+import {
+  ChevronRightIcon,
+  Undo2,
+  Plus,
+  Minus,
+  ListPlus,
+  Pencil,
+  FilePlus,
+  Trash2,
+  FileText,
+} from '@/shared/components/icons';
 import type { FileChange } from '@/shared/types';
-import { fileIconSrc } from '@/shared/utils/fileIcons';
-import { Badge } from '@/ui/Badge';
 import { Checkbox } from '@/ui/Checkbox';
+
+// ── Status icons ─────────────────────────────────────────────────────────────
+
+const STATUS_ICONS: Record<string, { icon: React.ReactNode; color: string }> = {
+  Modified: { icon: <Pencil size={11} />, color: 'text-accent-blue' },
+  Added: { icon: <FilePlus size={11} />, color: 'text-accent-green' },
+  Deleted: { icon: <Trash2 size={11} />, color: 'text-accent-red' },
+  Renamed: { icon: <FileText size={11} />, color: 'text-accent-orange' },
+  Untracked: { icon: <FilePlus size={11} />, color: 'text-text-muted' },
+};
+
+// ── Path utilities ───────────────────────────────────────────────────────────
+
+function splitFilePath(path: string): { name: string; directory: string } {
+  const lastSlash = path.lastIndexOf('/');
+  if (lastSlash === -1) return { name: path, directory: '' };
+  return {
+    name: path.slice(lastSlash + 1),
+    directory: path.slice(0, lastSlash + 1),
+  };
+}
 
 interface ChangesListProps {
   files: FileChange[];
@@ -262,9 +291,11 @@ const Section: React.FC<SectionProps> = ({
 
       {/* File list */}
       {expanded && (
-        <div className="pl-4 min-w-max">
+        <div className="flex flex-col">
           {files.map((file) => {
             const isSelected = selectedFiles.has(file.path);
+            const statusInfo = STATUS_ICONS[file.status] ?? STATUS_ICONS.Modified;
+            const { name, directory } = splitFilePath(file.path);
             return (
               <div
                 key={file.path}
@@ -272,10 +303,8 @@ const Section: React.FC<SectionProps> = ({
                 tabIndex={-1}
                 aria-selected={isSelected}
                 className={cn(
-                  'flex items-center gap-2 py-0.5 px-2.5 text-[var(--font-size)] transition-colors duration-100 group cursor-pointer',
-                  isSelected
-                    ? 'bg-bg-selected text-text-primary'
-                    : 'text-text-secondary hover:bg-bg-hover',
+                  'flex items-center gap-x-1.5 px-1.5 py-1 rounded cursor-pointer min-w-0 w-full overflow-hidden transition-colors duration-100 group',
+                  isSelected ? 'bg-bg-selected text-text-primary' : 'hover:bg-bg-hover/60',
                 )}
                 onClick={() => onFileSelect?.(file.path)}
                 onKeyDown={(e) => {
@@ -284,71 +313,61 @@ const Section: React.FC<SectionProps> = ({
                     onFileSelect?.(file.path);
                   }
                 }}
+                title={`${file.path}  ${file.additions > 0 ? `+${file.additions}` : ''} ${file.deletions > 0 ? `-${file.deletions}` : ''}`}
               >
                 <Checkbox
                   checked={isSelected}
                   onCheckedChange={() => onToggleFile(file.path)}
                   onClick={(e: React.MouseEvent) => e.stopPropagation()}
+                  className="shrink-0"
                 />
-                <img
-                  className="w-3.5 h-3.5 shrink-0 block opacity-70"
-                  src={fileIconSrc(file.path)}
-                  alt=""
-                  width={14}
-                  height={14}
-                />
-                <span className="shrink-0 font-mono text-[calc(var(--font-size)-1px)]">
-                  {file.path}
+                <span className={cn('shrink-0', statusInfo.color)}>{statusInfo.icon}</span>
+                <span className="shrink-0 max-w-[9rem] truncate text-[calc(var(--font-size)-1px)] font-mono text-text-primary">
+                  {name}
                 </span>
-                <Badge
-                  variant={
-                    file.status === 'Added'
-                      ? 'added'
-                      : file.status === 'Deleted'
-                        ? 'deleted'
-                        : file.status === 'Modified'
-                          ? 'modified'
-                          : 'default'
-                  }
-                  className="rounded-sm border-0 px-1 py-0 text-[calc(var(--font-size)-2px)]"
-                >
-                  {file.status === 'Untracked' ? 'U' : file.status[0]}
-                </Badge>
-                {(file.additions > 0 || file.deletions > 0) && (
-                  <span className="text-[calc(var(--font-size)-2px)] font-mono shrink-0">
-                    {file.additions > 0 && (
-                      <span className="text-accent-green">+{file.additions}</span>
-                    )}
-                    {file.additions > 0 && file.deletions > 0 && ' '}
-                    {file.deletions > 0 && (
-                      <span className="text-accent-red">-{file.deletions}</span>
-                    )}
-                  </span>
-                )}
-                <button
-                  className="p-0.5 rounded text-text-muted hover:text-accent-red hover:bg-bg-hover transition-colors duration-100 opacity-0 group-hover:opacity-100"
-                  title="Discard changes"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onDiscardFile(file.path);
-                  }}
-                  disabled={loading}
-                >
-                  <Undo2 size={12} />
-                </button>
-                {onStageFile && (
+                <span className="flex-1 min-w-0 truncate text-[calc(var(--font-size)-3px)] font-mono text-text-muted">
+                  {directory}
+                </span>
+                <span className="shrink-0 flex items-center gap-1 justify-end tabular-nums">
+                  {file.additions > 0 && (
+                    <span className="flex items-center gap-px text-accent-green whitespace-nowrap">
+                      <Plus size={9} />
+                      <span className="text-[calc(var(--font-size)-2px)]">{file.additions}</span>
+                    </span>
+                  )}
+                  {file.deletions > 0 && (
+                    <span className="flex items-center gap-px text-accent-red whitespace-nowrap">
+                      <Minus size={9} />
+                      <span className="text-[calc(var(--font-size)-2px)]">{file.deletions}</span>
+                    </span>
+                  )}
+                </span>
+                <span className="shrink-0 flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity duration-100">
                   <button
-                    className="p-0.5 rounded text-text-muted hover:text-accent-green hover:bg-bg-hover transition-colors duration-100 opacity-0 group-hover:opacity-100"
-                    title="Stage file (git add)"
+                    className="p-0.5 rounded text-text-muted hover:text-accent-red hover:bg-bg-hover transition-colors duration-100"
+                    title="Discard changes"
                     onClick={(e) => {
                       e.stopPropagation();
-                      onStageFile(file.path);
+                      onDiscardFile(file.path);
                     }}
                     disabled={loading}
                   >
-                    <Plus size={12} />
+                    <Undo2 size={12} />
                   </button>
-                )}
+                  {onStageFile && (
+                    <button
+                      className="p-0.5 rounded text-text-muted hover:text-accent-green hover:bg-bg-hover transition-colors duration-100"
+                      title="Stage file (git add)"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onStageFile(file.path);
+                      }}
+                      disabled={loading}
+                    >
+                      <Plus size={12} />
+                    </button>
+                  )}
+                </span>
               </div>
             );
           })}
