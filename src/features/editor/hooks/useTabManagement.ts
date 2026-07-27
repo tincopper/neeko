@@ -64,16 +64,14 @@ export function useTabManagement(options: UseTabManagementOptions) {
     addTab(tabKey);
   }, [tabKey, addTab]);
 
-  const handleCloseTab = useCallback((tabId: string) => {
-    const state = useEditorStore.getState();
-    for (const [projectId, pt] of Object.entries(state.tabs)) {
-      if (pt.tabs.some((t) => t.id === tabId)) {
-        // Recycle PTY before removing the editor tab (Cmd+W / shell close).
-        closeEditorTab(projectId, tabId);
-        return;
-      }
-    }
-  }, []);
+  const handleCloseTab = useCallback(
+    (tabId: string) => {
+      if (!tabKey) return;
+      // Recycle PTY before removing the editor tab (Cmd+W / shell close).
+      closeEditorTab(tabKey, tabId);
+    },
+    [tabKey],
+  );
 
   const handleActivateTab = useCallback(
     (tabId: string) => {
