@@ -846,6 +846,11 @@ const GitControlPanelWrapper: React.FC = React.memo(() => {
     }
   }, [project, commands, connectionContext]);
 
+  // Refresh git info when active worktree changes so changes list stays in sync
+  useEffect(() => {
+    baseRefreshGit().catch(console.error);
+  }, [activeWorktreePath, baseRefreshGit]);
+
   const handleRefreshGit = useCallback(async () => {
     await baseRefreshGit();
     refresh();
