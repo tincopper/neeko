@@ -1,6 +1,6 @@
 import { DndContext } from '@dnd-kit/core';
 import { SortableContext, horizontalListSortingStrategy } from '@dnd-kit/sortable';
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, it, expect, vi } from 'vitest';
 
 import type { AgentConfig } from '@/shared/types';
@@ -56,5 +56,38 @@ describe('TabItem agent icon', () => {
 
     expect(screen.queryByTestId('agent-icon')).not.toBeInTheDocument();
     expect(screen.getByText('claude session')).toBeInTheDocument();
+  });
+});
+
+describe('TabItem close button pointer isolation', () => {
+  const terminalTab: Tab = {
+    id: 'tab-1',
+    title: 'claude session',
+    data: {
+      kind: 'terminal',
+      sessionId: 'session-1',
+      agentId: 'custom-agent',
+      status: 'Idle',
+    },
+  };
+
+  it('should_call_onClose_when_close_button_clicked_in_reorderable_mode', () => {
+    const onClose = vi.fn();
+    render(
+      <DndContext>
+        <SortableContext items={[terminalTab.id]} strategy={horizontalListSortingStrategy}>
+          <TabItem tab={terminalTab} isActive reorderable onActivate={vi.fn()} onClose={onClose} />
+        </SortableContext>
+      </DndContext>,
+    );
+
+    const closeBtn = screen.getByTitle('Close tab');
+    // pointerDown on × must not start a drag; click must still close.
+    fireEvent.pointerDown(closeBtn);
+    fireEvent.pointerUp(closeBtn);
+    fireEvent.click(closeBtn);
+
+    expect(onClose).toHaveBeenCalledTimes(1);
+    expect(onClose).toHaveBeenCalledWith('tab-1');
   });
 });

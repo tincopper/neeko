@@ -180,6 +180,7 @@ const TabItem: React.FC<TabItemProps> = React.memo(
           <button
             className="tb-icon-btn w-4 h-4 rounded text-inherit hover:bg-bg-hover transition-colors flex items-center justify-center shrink-0 leading-none"
             style={{ fontSize: 'var(--terminal-font-size)' }}
+            onPointerDown={(e) => e.stopPropagation()}
             onClick={handleClose}
             title="Close tab"
           >
