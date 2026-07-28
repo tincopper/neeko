@@ -245,36 +245,49 @@ const GitCommitPanelWrapper: React.FC = React.memo(() => {
   const activeWorktreeBranch = useWorktreeStore((s) => s.activeWorktreeBranch);
   const activeWorktreePath = useWorktreeStore((s) => s.activeWorktreePath);
 
+  // Use refs to avoid stale closure issues — these values are read inside
+  // async callbacks but should not be useCallback dependencies.
+  const commandsRef = useRef(commands);
+  const projectRef = useRef(project);
+  const connectionContextRef = useRef(connectionContext);
+  useEffect(() => {
+    commandsRef.current = commands;
+    projectRef.current = project;
+    connectionContextRef.current = connectionContext;
+  });
+
   const onRefreshGit = useCallback(async () => {
-    if (!project || !commands) return;
-    const gitInfo = await commands.refreshGitInfo();
+    const cmds = commandsRef.current;
+    const proj = projectRef.current;
+    const cc = connectionContextRef.current;
+    if (!proj || !cmds) return;
+    const gitInfo = await cmds.refreshGitInfo();
     useProjectStore.setState((state) => {
       const nextProjects = state.projects.map((p) =>
-        p.id === project.id ? { ...p, git_info: gitInfo } : p,
+        p.id === proj.id ? { ...p, git_info: gitInfo } : p,
       );
       return {
         projects: nextProjects,
         activeProject:
-          state.activeProjectId === project.id
-            ? (nextProjects.find((p) => p.id === project.id) ?? state.activeProject)
+          state.activeProjectId === proj.id
+            ? (nextProjects.find((p) => p.id === proj.id) ?? state.activeProject)
             : state.activeProject,
       };
     });
     // Sync ahead/behind to global store for sidebar
     try {
-      const ab = await commands.getAheadBehind();
-      const cc = connectionContext;
+      const ab = await cmds.getAheadBehind();
       if (cc?.type === 'wsl') {
-        useGitStore.getState().setAheadBehind(aheadBehindKey('wsl', cc.distro, project.id), ab);
+        useGitStore.getState().setAheadBehind(aheadBehindKey('wsl', cc.distro, proj.id), ab);
       } else if (cc?.type === 'remote') {
-        useGitStore.getState().setAheadBehind(aheadBehindKey('remote', cc.host, project.id), ab);
+        useGitStore.getState().setAheadBehind(aheadBehindKey('remote', cc.host, proj.id), ab);
       } else {
-        useGitStore.getState().setAheadBehind(aheadBehindKey('local', project.id, project.id), ab);
+        useGitStore.getState().setAheadBehind(aheadBehindKey('local', proj.id, proj.id), ab);
       }
     } catch {
       // ahead/behind refresh failure should not block the main flow
     }
-  }, [project, commands, connectionContext]);
+  }, []); // Stable — reads latest values from refs
 
   // 从全局 useGitStore 读取 ahead/behind（单数据源），传入 commit panel
   const aheadBehindMap = useGitStore((s) => s.aheadBehind);
@@ -815,36 +828,51 @@ const GitControlPanelWrapper: React.FC = React.memo(() => {
   const { openFileInDiff, openCombined, pinFile, scrollToFile, refreshOpenDiff, hasSingleton } =
     useSingletonDiff(project?.id, selectedHash, files, connectionContext);
 
+  // Use refs to break the dependency cycle: baseRefreshGit updates the store
+  // which changes activeProject → commands reference → baseRefreshGit reference
+  // → useEffect fires again → infinite loop. Refs let us read the latest values
+  // without making them useCallback dependencies.
+  const commandsRef = useRef(commands);
+  const projectRef = useRef(project);
+  const connectionContextRef = useRef(connectionContext);
+  useEffect(() => {
+    commandsRef.current = commands;
+    projectRef.current = project;
+    connectionContextRef.current = connectionContext;
+  });
+
   const baseRefreshGit = useCallback(async () => {
-    if (!project || !commands) return;
-    const gitInfo = await commands.refreshGitInfo();
+    const cmds = commandsRef.current;
+    const proj = projectRef.current;
+    const cc = connectionContextRef.current;
+    if (!proj || !cmds) return;
+    const gitInfo = await cmds.refreshGitInfo();
     useProjectStore.setState((state) => {
       const nextProjects = state.projects.map((p) =>
-        p.id === project.id ? { ...p, git_info: gitInfo } : p,
+        p.id === proj.id ? { ...p, git_info: gitInfo } : p,
       );
       return {
         projects: nextProjects,
         activeProject:
-          state.activeProjectId === project.id
-            ? (nextProjects.find((p) => p.id === project.id) ?? state.activeProject)
+          state.activeProjectId === proj.id
+            ? (nextProjects.find((p) => p.id === proj.id) ?? state.activeProject)
             : state.activeProject,
       };
     });
     // Sync ahead/behind to global store for sidebar
     try {
-      const ab = await commands.getAheadBehind();
-      const cc = connectionContext;
+      const ab = await cmds.getAheadBehind();
       if (cc?.type === 'wsl') {
-        useGitStore.getState().setAheadBehind(aheadBehindKey('wsl', cc.distro, project.id), ab);
+        useGitStore.getState().setAheadBehind(aheadBehindKey('wsl', cc.distro, proj.id), ab);
       } else if (cc?.type === 'remote') {
-        useGitStore.getState().setAheadBehind(aheadBehindKey('remote', cc.host, project.id), ab);
+        useGitStore.getState().setAheadBehind(aheadBehindKey('remote', cc.host, proj.id), ab);
       } else {
-        useGitStore.getState().setAheadBehind(aheadBehindKey('local', project.id, project.id), ab);
+        useGitStore.getState().setAheadBehind(aheadBehindKey('local', proj.id, proj.id), ab);
       }
     } catch {
       // ahead/behind refresh failure should not block the main flow
     }
-  }, [project, commands, connectionContext]);
+  }, []); // Stable — reads latest values from refs
 
   // Refresh git info when active worktree changes so changes list stays in sync
   useEffect(() => {
