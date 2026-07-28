@@ -1,0 +1,421 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Branch Switcher Panel — Prototype</title>
+<style>
+  :root {
+    --bg-primary: #1a1a2e;
+    --bg-secondary: #16213e;
+    --bg-tertiary: #0f3460;
+    --bg-hover: rgba(255,255,255,0.06);
+    --border: rgba(255,255,255,0.08);
+    --text-primary: #e8e8e8;
+    --text-secondary: #a0a0b0;
+    --text-muted: #6b6b7b;
+    --accent-blue: #5b9aff;
+    --accent-green: #4caf7d;
+    --accent-red: #e55555;
+    --accent-yellow: #e5b855;
+    --font-size: 13px;
+    --font-mono: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
+    --radius: 8px;
+    --shadow: 0 8px 32px rgba(0,0,0,0.4);
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    font-size: var(--font-size);
+    color: var(--text-primary);
+    background: #0d0d1a;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+  }
+
+  /* ===== Panel ===== */
+  .panel {
+    width: 360px;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    box-shadow: var(--shadow);
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* ===== Search ===== */
+  .search-bar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--border);
+  }
+  .search-bar .icon { color: var(--text-muted); font-size: 14px; }
+  .search-bar input {
+    flex: 1;
+    background: transparent;
+    border: none;
+    outline: none;
+    color: var(--text-primary);
+    font-size: var(--font-size);
+  }
+  .search-bar input::placeholder { color: var(--text-muted); }
+
+  /* ===== Section ===== */
+  .section-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 6px 12px 4px;
+    font-size: 11px;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+  .section-header .count {
+    background: var(--bg-tertiary);
+    border-radius: 10px;
+    padding: 0 6px;
+    font-size: 10px;
+  }
+
+  /* ===== Branch Item ===== */
+  .branch-list { padding: 2px 0; }
+
+  .branch-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 5px 12px;
+    cursor: pointer;
+    transition: background 0.1s;
+    position: relative;
+    height: 30px;
+  }
+  .branch-item:hover { background: var(--bg-hover); }
+  .branch-item.focused { background: rgba(91, 154, 255, 0.12); }
+
+  .branch-item .star {
+    font-size: 12px;
+    color: var(--text-muted);
+    cursor: pointer;
+    flex-shrink: 0;
+    width: 14px;
+    text-align: center;
+    transition: color 0.15s;
+  }
+  .branch-item .star.active { color: var(--accent-yellow); }
+  .branch-item .star:hover { color: var(--accent-yellow); }
+
+  .branch-item .branch-icon {
+    font-size: 12px;
+    color: var(--text-muted);
+    flex-shrink: 0;
+    width: 14px;
+    text-align: center;
+  }
+  .branch-item .branch-icon.remote { color: var(--accent-blue); }
+
+  .branch-item .name {
+    flex: 1;
+    font-family: var(--font-mono);
+    font-size: 12px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .branch-item .name.current { color: var(--accent-blue); }
+
+  .branch-item .badge {
+    font-size: 10px;
+    padding: 0 5px;
+    border-radius: 4px;
+    flex-shrink: 0;
+  }
+  .branch-item .badge.current {
+    color: var(--accent-green);
+    border: 1px solid var(--accent-green);
+  }
+  .branch-item .badge.ahead {
+    color: var(--accent-green);
+  }
+  .branch-item .badge.behind {
+    color: var(--accent-blue);
+  }
+
+  .branch-item .ahead-behind {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 11px;
+    flex-shrink: 0;
+    color: var(--text-muted);
+  }
+  .branch-item .ahead-behind .up { color: var(--accent-green); }
+  .branch-item .ahead-behind .down { color: var(--accent-blue); }
+
+  /* ===== Divider ===== */
+  .section-divider { height: 1px; background: var(--border); margin: 4px 12px; }
+
+  /* ===== Bottom Bar ===== */
+  .bottom-bar {
+    display: flex;
+    border-top: 1px solid var(--border);
+  }
+  .bottom-bar button {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 8px;
+    background: transparent;
+    border: none;
+    color: var(--text-secondary);
+    font-size: 12px;
+    cursor: pointer;
+    transition: background 0.1s, color 0.1s;
+  }
+  .bottom-bar button:hover {
+    background: var(--bg-hover);
+    color: var(--text-primary);
+  }
+  .bottom-bar button + button { border-left: 1px solid var(--border); }
+  .bottom-bar .icon { font-size: 13px; }
+
+  /* ===== Empty ===== */
+  .empty-state {
+    padding: 24px 12px;
+    text-align: center;
+    color: var(--text-muted);
+    font-size: 12px;
+  }
+
+  /* ===== Context Menu ===== */
+  .ctx-menu {
+    position: absolute;
+    left: 280px;
+    top: 220px;
+    width: 180px;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    box-shadow: var(--shadow);
+    padding: 4px 0;
+    z-index: 10;
+  }
+  .ctx-menu .item {
+    padding: 6px 12px;
+    font-size: 12px;
+    cursor: pointer;
+    transition: background 0.1s;
+  }
+  .ctx-menu .item:hover { background: var(--bg-hover); }
+  .ctx-menu .sep {
+    height: 1px;
+    background: var(--border);
+    margin: 4px 8px;
+  }
+</style>
+</head>
+<body>
+
+<div class="panel" id="panel">
+  <!-- Search -->
+  <div class="search-bar">
+    <span class="icon">&#x1F50D;</span>
+    <input type="text" placeholder="Search branches..." id="searchInput" autofocus>
+  </div>
+
+  <!-- Favorites -->
+  <div class="section-header">
+    <span>&#x2605; Favorites</span>
+    <span class="count">2</span>
+  </div>
+  <div class="branch-list" id="favoritesList">
+    <!-- populated by JS -->
+  </div>
+
+  <div class="section-divider"></div>
+
+  <!-- Local -->
+  <div class="section-header">
+    <span>&#x1F4C1; Local</span>
+    <span class="count">4</span>
+  </div>
+  <div class="branch-list" id="localList">
+    <!-- populated by JS -->
+  </div>
+
+  <div class="section-divider"></div>
+
+  <!-- Remote -->
+  <div class="section-header">
+    <span>&#x2601; Remote (origin)</span>
+    <span class="count">3</span>
+  </div>
+  <div class="branch-list" id="remoteList">
+    <!-- populated by JS -->
+  </div>
+
+  <!-- Bottom Bar -->
+  <div class="bottom-bar">
+    <button id="newBranchBtn">
+      <span class="icon">+</span> New Branch
+    </button>
+    <button id="newWorktreeBtn">
+      <span class="icon">&#x21C4;</span> New Worktree
+    </button>
+  </div>
+</div>
+
+<!-- Context Menu -->
+<div class="ctx-menu" id="ctxMenu" style="display:none">
+  <div class="item" data-action="checkout">&#x2714; Checkout</div>
+  <div class="sep"></div>
+  <div class="item" data-action="compare">&#x2194; Compare with Current</div>
+  <div class="item" data-action="merge">&#x2192; Merge into Current</div>
+  <div class="item" data-action="rebase">&#x21B4; Rebase onto Current</div>
+  <div class="sep"></div>
+  <div class="item" data-action="rename">&#x270F; Rename</div>
+  <div class="item" data-action="delete">&#x2716; Delete</div>
+  <div class="sep"></div>
+  <div class="item" data-action="copy-name">&#x1F4CB; Copy Name</div>
+</div>
+
+<script>
+const DATA = {
+  favorites: ['main', 'develop'],
+  local: ['main', 'develop', 'feature/new-ui', 'fix/login-crash'],
+  remote: ['origin/main', 'origin/feature/new-ui', 'origin/fix/login-crash'],
+  currentBranch: 'main',
+  aheadBehind: { 'main': { ahead: 0, behind: 3 }, 'develop': { ahead: 5, behind: 0 }, 'feature/new-ui': { ahead: 2, behind: 1 } }
+};
+
+const CURRENT = DATA.currentBranch;
+
+function renderBranchItem(name, isFav, isCurrent) {
+  const ab = DATA.aheadBehind[name] || DATA.aheadBehind[name.split('/').slice(1).join('/')] || null;
+  const isRemote = name.includes('/') && !['main','develop','feature/new-ui','fix/login-crash'].includes(name);
+  const div = document.createElement('div');
+  div.className = 'branch-item' + (isCurrent ? ' focused' : '');
+  div.dataset.branch = name;
+
+  // Star
+  const star = document.createElement('span');
+  star.className = 'star' + (isFav ? ' active' : '');
+  star.textContent = isFav ? '\u2605' : '\u2606';
+  star.onclick = (e) => { e.stopPropagation(); star.classList.toggle('active'); };
+  div.appendChild(star);
+
+  // Icon
+  const icon = document.createElement('span');
+  icon.className = 'branch-icon' + (isRemote ? ' remote' : '');
+  icon.textContent = isRemote ? '\u2601' : '\u2442';
+  div.appendChild(icon);
+
+  // Name
+  const name = document.createElement('span');
+  name.className = 'name' + (isCurrent ? ' current' : '');
+  name.textContent = name;
+  div.appendChild(name);
+
+  // Badges
+  if (isCurrent) {
+    const badge = document.createElement('span');
+    badge.className = 'badge current';
+    badge.textContent = 'CURRENT';
+    div.appendChild(badge);
+  } else if (ab) {
+    const abSpan = document.createElement('span');
+    abSpan.className = 'ahead-behind';
+    if (ab.ahead > 0) {
+      const up = document.createElement('span');
+      up.className = 'up';
+      up.textContent = '\u2191' + ab.ahead;
+      abSpan.appendChild(up);
+    }
+    if (ab.behind > 0) {
+      const down = document.createElement('span');
+      down.className = 'down';
+      down.textContent = '\u2193' + ab.behind;
+      abSpan.appendChild(down);
+    }
+    div.appendChild(abSpan);
+  }
+
+  // Right-click → context menu
+  div.oncontextmenu = (e) => {
+    e.preventDefault();
+    const menu = document.getElementById('ctxMenu');
+    menu.style.display = 'block';
+    menu.style.left = Math.min(e.clientX, window.innerWidth - 200) + 'px';
+    menu.style.top = Math.min(e.clientY, window.innerHeight - 280) + 'px';
+    menu.dataset.branch = name;
+    document.addEventListener('click', hideCtx, { once: true });
+  };
+
+  return div;
+}
+
+function render() {
+  const favList = document.getElementById('favoritesList');
+  const localList = document.getElementById('localList');
+  const remoteList = document.getElementById('remoteList');
+  favList.innerHTML = '';
+  localList.innerHTML = '';
+  remoteList.innerHTML = '';
+
+  for (const name of DATA.favorites) {
+    favList.appendChild(renderBranchItem(name, true, name === CURRENT));
+  }
+  for (const name of DATA.local) {
+    if (DATA.favorites.includes(name)) continue;
+    localList.appendChild(renderBranchItem(name, false, name === CURRENT));
+  }
+  for (const name of DATA.remote) {
+    remoteList.appendChild(renderBranchItem(name, false, false));
+  }
+}
+
+render();
+
+// Search
+document.getElementById('searchInput').addEventListener('input', function() {
+  const q = this.value.toLowerCase().trim();
+  document.querySelectorAll('.branch-item').forEach(el => {
+    const name = el.dataset.branch.toLowerCase();
+    el.style.display = (!q || name.includes(q)) ? '' : 'none';
+  });
+});
+
+// Context menu actions
+document.querySelectorAll('.ctx-menu .item').forEach(item => {
+  item.addEventListener('click', function() {
+    const action = this.dataset.action;
+    const branch = document.getElementById('ctxMenu').dataset.branch;
+    console.log(`[${action}] ${branch}`);
+    document.getElementById('ctxMenu').style.display = 'none';
+  });
+});
+
+function hideCtx() {
+  document.getElementById('ctxMenu').style.display = 'none';
+}
+
+// Escape closes
+document.addEventListener('keydown', function(e) {
+  if (e.key === 'Escape') {
+    document.getElementById('ctxMenu').style.display = 'none';
+  }
+});
+</script>
+</body>
+</html>
