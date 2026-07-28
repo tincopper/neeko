@@ -22,7 +22,7 @@ const LocalSkillContent: React.FC<LocalSkillContentProps> = React.memo(({ setDia
   const skills = useSkillStore((s) => s.skills);
   const loading = useSkillStore((s) => s.loading);
   const searchQuery = useSkillStore((s) => s.searchQuery);
-  const activeTagGroupId = useSkillStore((s) => s.activeTagGroupId);
+  const activeTagGroupIds = useSkillStore((s) => s.activeTagGroupIds);
   const selectedSkillId = useSkillStore((s) => s.selectedSkillId);
   const tagGroups = useSkillStore((s) => s.tagGroups);
   const sourceFilter = useSkillStore((s) => s.sourceFilter);
@@ -45,7 +45,7 @@ const LocalSkillContent: React.FC<LocalSkillContentProps> = React.memo(({ setDia
     handleImport,
     handleClearDiscovered,
     actions,
-  } = useLocalSkillActions(setDialog, activeTagGroupId);
+  } = useLocalSkillActions(setDialog, activeTagGroupIds);
 
   const [tagGroupSkills, setTagGroupSkills] = useState<typeof skills | null>(null);
   const [skillTagGroupMap, setSkillTagGroupMap] = useState<Record<string, string[]>>({});
@@ -54,19 +54,27 @@ const LocalSkillContent: React.FC<LocalSkillContentProps> = React.memo(({ setDia
   );
 
   useEffect(() => {
-    if (!activeTagGroupId) {
+    if (activeTagGroupIds.length === 0) {
       setTagGroupSkills(null);
       return;
     }
     setTagGroupSkills(null);
     let cancelled = false;
-    void fetchSkillsForTagGroup(activeTagGroupId).then((result) => {
-      if (!cancelled) setTagGroupSkills(result);
-    });
+    void (async () => {
+      const results = await Promise.all(activeTagGroupIds.map((id) => fetchSkillsForTagGroup(id)));
+      if (cancelled) return;
+      const merged = new Map<string, (typeof skills)[number]>();
+      for (const list of results) {
+        for (const s of list) {
+          merged.set(s.id, s);
+        }
+      }
+      setTagGroupSkills(Array.from(merged.values()));
+    })();
     return () => {
       cancelled = true;
     };
-  }, [activeTagGroupId, fetchSkillsForTagGroup, skills, tagGroupSkillsVersion]);
+  }, [activeTagGroupIds, fetchSkillsForTagGroup, skills, tagGroupSkillsVersion]);
 
   useEffect(() => {
     void listAgents().then((agents) => {
@@ -101,9 +109,12 @@ const LocalSkillContent: React.FC<LocalSkillContentProps> = React.memo(({ setDia
     };
   }, [tagGroups, skills]);
 
-  const activeGroupName = useMemo(
-    () => tagGroups.find((g) => g.id === activeTagGroupId)?.name ?? null,
-    [tagGroups, activeTagGroupId],
+  const activeGroupNames = useMemo(
+    () =>
+      activeTagGroupIds
+        .map((id) => tagGroups.find((g) => g.id === id)?.name)
+        .filter(Boolean) as string[],
+    [tagGroups, activeTagGroupIds],
   );
 
   const baseSkills = tagGroupSkills ?? skills;
@@ -139,15 +150,15 @@ const LocalSkillContent: React.FC<LocalSkillContentProps> = React.memo(({ setDia
           scanning={scanning}
           onRefreshMetadataClick={handleRefreshMetadata}
           refreshingMeta={refreshingMeta}
-          filterLabel={activeGroupName}
+          filterLabel={activeGroupNames.join(', ')}
           count={filteredSkills.length}
         />
         <SkillSearchInput
           value={searchQuery}
           onChange={setSearchQuery}
           placeholder={
-            activeGroupName
-              ? `Search skills in ${activeGroupName}…`
+            activeGroupNames.length > 0
+              ? `Search skills in ${activeGroupNames.join(', ')}…`
               : 'Search skills in the library…'
           }
           clearable
@@ -169,7 +180,7 @@ const LocalSkillContent: React.FC<LocalSkillContentProps> = React.memo(({ setDia
           selectedSkillId={selectedSkillId}
           actions={actions}
           tagGroups={tagGroups.map((g) => ({ id: g.id, name: g.name }))}
-          tagGroupLabel={activeGroupName}
+          tagGroupLabels={activeGroupNames}
           skillTagGroupMap={skillTagGroupMap}
           agents={agents}
           showAgentAssociations={false}

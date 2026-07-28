@@ -36,10 +36,11 @@ const SkillsPanel: React.FC = React.memo(() => {
   const activeSkillView = useSkillStore((s) => s.activeSkillView);
   const skills = useSkillStore((s) => s.skills);
   const tagGroups = useSkillStore((s) => s.tagGroups);
-  const activeTagGroupId = useSkillStore((s) => s.activeTagGroupId);
+  const activeTagGroupIds = useSkillStore((s) => s.activeTagGroupIds);
   const activeAgentId = useSkillStore((s) => s.activeAgentId);
   const setActiveSkillView = useSkillStore((s) => s.setActiveSkillView);
-  const setActiveTagGroupId = useSkillStore((s) => s.setActiveTagGroupId);
+  const setActiveTagGroupIds = useSkillStore((s) => s.setActiveTagGroupIds);
+  const toggleActiveTagGroupId = useSkillStore((s) => s.toggleActiveTagGroupId);
   const setActiveAgentId = useSkillStore((s) => s.setActiveAgentId);
   const deleteTagGroup = useSkillStore((s) => s.deleteTagGroup);
   const updateTagGroup = useSkillStore((s) => s.updateTagGroup);
@@ -104,43 +105,42 @@ const SkillsPanel: React.FC = React.memo(() => {
   /** Single active destination in the rail — Library / Tag / Agent / Project are exclusive. */
   const selectLibrary = useCallback(() => {
     setActiveSkillView('local');
-    setActiveTagGroupId(null);
+    setActiveTagGroupIds([]);
     setActiveAgentId(null);
-  }, [setActiveSkillView, setActiveTagGroupId, setActiveAgentId]);
+  }, [setActiveSkillView, setActiveTagGroupIds, setActiveAgentId]);
 
   const selectMarketplace = useCallback(() => {
     setActiveSkillView('marketplace');
-    setActiveTagGroupId(null);
+    setActiveTagGroupIds([]);
     setActiveAgentId(null);
-  }, [setActiveSkillView, setActiveTagGroupId, setActiveAgentId]);
+  }, [setActiveSkillView, setActiveTagGroupIds, setActiveAgentId]);
 
   const handleTagGroupSelect = useCallback(
     (id: string) => {
-      const next = id === activeTagGroupId ? null : id;
-      setActiveTagGroupId(next);
+      toggleActiveTagGroupId(id);
       setActiveSkillView('local');
       setActiveAgentId(null);
     },
-    [activeTagGroupId, setActiveTagGroupId, setActiveSkillView, setActiveAgentId],
+    [toggleActiveTagGroupId, setActiveSkillView, setActiveAgentId],
   );
 
   const selectAgent = useCallback(
     (agentId: string) => {
       setActiveAgentId(agentId);
       setActiveSkillView('agents');
-      setActiveTagGroupId(null);
+      setActiveTagGroupIds([]);
     },
-    [setActiveAgentId, setActiveSkillView, setActiveTagGroupId],
+    [setActiveAgentId, setActiveSkillView, setActiveTagGroupIds],
   );
 
   const selectProjectNav = useCallback(
     (projectId: string) => {
       selectProject(projectId);
       setActiveSkillView('project');
-      setActiveTagGroupId(null);
+      setActiveTagGroupIds([]);
       setActiveAgentId(null);
     },
-    [selectProject, setActiveSkillView, setActiveTagGroupId, setActiveAgentId],
+    [selectProject, setActiveSkillView, setActiveTagGroupIds, setActiveAgentId],
   );
 
   const handleCreate = useCallback(async () => {
@@ -222,7 +222,8 @@ const SkillsPanel: React.FC = React.memo(() => {
           {navItems.map((item) => {
             const Icon = item.icon;
             const isActive =
-              activeSkillView === item.key && (item.key !== 'local' || activeTagGroupId === null);
+              activeSkillView === item.key &&
+              (item.key !== 'local' || activeTagGroupIds.length === 0);
             return (
               <button
                 key={item.key}
@@ -239,7 +240,7 @@ const SkillsPanel: React.FC = React.memo(() => {
                   else if (item.key === 'marketplace') selectMarketplace();
                   else {
                     setActiveSkillView(item.key);
-                    setActiveTagGroupId(null);
+                    setActiveTagGroupIds([]);
                     setActiveAgentId(null);
                   }
                 }}
@@ -315,7 +316,7 @@ const SkillsPanel: React.FC = React.memo(() => {
               )}
 
               {tagGroups.map((tg) => {
-                const active = activeTagGroupId === tg.id && activeSkillView === 'local';
+                const active = activeTagGroupIds.includes(tg.id) && activeSkillView === 'local';
                 return (
                   <div
                     key={tg.id}

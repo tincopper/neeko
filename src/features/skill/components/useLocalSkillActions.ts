@@ -19,7 +19,7 @@ import type { SkillDialogState, SkillItemActions } from './skillItemTypes';
  */
 export function useLocalSkillActions(
   setDialog: (state: SkillDialogState) => void,
-  activeTagGroupId: string | null = null,
+  activeTagGroupIds: string[] = [],
 ) {
   const [discoveredSkills, setDiscoveredSkills] = useState<DiscoveredSkillDto[]>([]);
   const [scanning, setScanning] = useState(false);
@@ -127,8 +127,12 @@ export function useLocalSkillActions(
       onEditSkill: (skill: ManagedSkillDto) => setDialog({ type: 'edit', skill }),
       onViewSkill: (skill: ManagedSkillDto) => setDialog({ type: 'view', skill }),
       onDeleteSkill: (skillId: string) => {
-        if (activeTagGroupId) {
-          void removeSkillFromTagGroup(activeTagGroupId, skillId).catch(console.error);
+        if (activeTagGroupIds.length > 0) {
+          void (async () => {
+            for (const groupId of activeTagGroupIds) {
+              await removeSkillFromTagGroup(groupId, skillId).catch(console.error);
+            }
+          })();
         } else {
           void deleteSkill(skillId).catch(console.error);
         }
@@ -182,7 +186,7 @@ export function useLocalSkillActions(
       setSelectedSkillId,
       deleteSkill,
       removeSkillFromTagGroup,
-      activeTagGroupId,
+      activeTagGroupIds,
       addSkillToTagGroup,
       checkSkillUpdate,
       updateSkillFromSource,

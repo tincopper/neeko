@@ -25,8 +25,8 @@ const SkillCardSkeleton: React.FC = () => (
 );
 
 export interface SkillListSectionExtraProps {
-  /** Active tag-group filter label shown on cards. */
-  tagGroupLabel?: string | null;
+  /** Active tag-group filter labels shown on cards. */
+  tagGroupLabels?: string[];
   /** skillId → tag-group names for badge fallback. */
   skillTagGroupMap?: Record<string, string[]>;
   agents?: Array<{ id: string; icon: string | null; name: string }>;
@@ -44,7 +44,7 @@ const SkillListSection: React.FC<SkillListSectionProps & SkillListSectionExtraPr
     selectedSkillId,
     actions,
     tagGroups = [],
-    tagGroupLabel,
+    tagGroupLabels = [],
     skillTagGroupMap = {},
     agents = [],
     showAgentAssociations = true,
@@ -96,9 +96,8 @@ const SkillListSection: React.FC<SkillListSectionProps & SkillListSectionExtraPr
         aria-label={`Skills (${skills.length})`}
       >
         {skills.map((s) => {
-          const groups = skillTagGroupMap[s.id];
-          const cardTagGroupLabel =
-            tagGroupLabel ?? (groups && groups.length > 0 ? groups[0] : null);
+          const groups = skillTagGroupMap[s.id] ?? [];
+          const cardTagGroupLabels = tagGroupLabels.length > 0 ? tagGroupLabels : groups;
           return (
             <div key={s.id} role="listitem" className="min-w-0 h-full">
               <SkillCard
@@ -106,7 +105,7 @@ const SkillListSection: React.FC<SkillListSectionProps & SkillListSectionExtraPr
                 isSelected={selectedSkillId === s.id}
                 tagGroups={tagGroups}
                 agents={showAgentAssociations !== false ? agents : []}
-                tagGroupLabel={cardTagGroupLabel}
+                tagGroupLabels={cardTagGroupLabels}
                 onDescriptionResolved={onDescriptionResolved}
                 onTagClick={onTagClick}
                 onSelect={() => onSelectSkill(s.id === selectedSkillId ? null : s.id)}

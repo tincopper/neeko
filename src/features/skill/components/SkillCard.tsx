@@ -45,8 +45,8 @@ interface SkillCardProps {
   onUpdateSkill?: () => void;
   tagGroups?: Array<{ id: string; name: string }>;
   agents?: Array<{ id: string; icon: string | null; name: string }>;
-  /** Active / first tag-group name badge on the card. */
-  tagGroupLabel?: string | null;
+  /** Active / first tag-group name badges on the card. */
+  tagGroupLabels?: string[];
   /** Called when description is recovered from SKILL.md so store can update. */
   onDescriptionResolved?: (skillId: string, description: string) => void;
   /** Called when a tag chip is clicked. */
@@ -93,7 +93,7 @@ const SkillCard: React.FC<SkillCardProps> = React.memo(
     onUpdateSkill,
     tagGroups = [],
     agents = [],
-    tagGroupLabel,
+    tagGroupLabels = [],
     onDescriptionResolved,
     onTagClick,
     showAgentAssociations = true,
@@ -341,17 +341,22 @@ const SkillCard: React.FC<SkillCardProps> = React.memo(
             </div>
           )}
 
-          {tagGroupLabel ? (
-            <span
-              className={cn(
-                'inline-flex self-start text-[11px] leading-none px-2 py-1 rounded-md font-medium',
-                tagGroupBadgeClass(tagGroupLabel),
-              )}
-              title={tagGroupLabel}
-            >
-              {tagGroupLabel}
-            </span>
-          ) : null}
+          {tagGroupLabels.length > 0 && (
+            <div className="flex flex-wrap gap-1">
+              {tagGroupLabels.map((label) => (
+                <span
+                  key={label}
+                  className={cn(
+                    'inline-flex self-start text-[11px] leading-none px-2 py-1 rounded-md font-medium',
+                    tagGroupBadgeClass(label),
+                  )}
+                  title={label}
+                >
+                  {label}
+                </span>
+              ))}
+            </div>
+          )}
 
           {hasUpdate && (
             <button

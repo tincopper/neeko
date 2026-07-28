@@ -62,12 +62,12 @@ describe('SkillsPanel — 导航', () => {
   it('点击 Library 切换 activeSkillView 并清除 tag', () => {
     useSkillStore.setState({
       activeSkillView: 'marketplace',
-      activeTagGroupId: 'tg1',
+      activeTagGroupIds: ['tg1'],
     });
     render(<SkillsPanel />);
     fireEvent.click(screen.getByText('Library'));
     expect(useSkillStore.getState().activeSkillView).toBe('local');
-    expect(useSkillStore.getState().activeTagGroupId).toBeNull();
+    expect(useSkillStore.getState().activeTagGroupIds).toEqual([]);
   });
 
   it('skills 数量显示在 Library 旁边', () => {
@@ -89,7 +89,7 @@ describe('SkillsPanel — 导航', () => {
   it('侧栏选项互斥：选 agent 清除 tag；选 Library 清除 agent；选 project 清除两者', async () => {
     useSkillStore.setState({
       activeSkillView: 'local',
-      activeTagGroupId: 'tg1',
+      activeTagGroupIds: ['tg1'],
       activeAgentId: null,
       tagGroups: [createTagGroup({ id: 'tg1', name: 'Frontend' })],
     });
@@ -105,20 +105,20 @@ describe('SkillsPanel — 导航', () => {
     fireEvent.click(await screen.findByText('OpenCode'));
     expect(useSkillStore.getState().activeSkillView).toBe('agents');
     expect(useSkillStore.getState().activeAgentId).toBe('opencode');
-    expect(useSkillStore.getState().activeTagGroupId).toBeNull();
+    expect(useSkillStore.getState().activeTagGroupIds).toEqual([]);
 
     // Agent → Library: clears agent
     fireEvent.click(screen.getByText('Library'));
     expect(useSkillStore.getState().activeSkillView).toBe('local');
     expect(useSkillStore.getState().activeAgentId).toBeNull();
-    expect(useSkillStore.getState().activeTagGroupId).toBeNull();
+    expect(useSkillStore.getState().activeTagGroupIds).toEqual([]);
 
     // Library tag + project: project clears tag & agent
     fireEvent.click(screen.getByText('Frontend'));
-    expect(useSkillStore.getState().activeTagGroupId).toBe('tg1');
+    expect(useSkillStore.getState().activeTagGroupIds).toContain('tg1');
     fireEvent.click(screen.getByText('neeko'));
     expect(useSkillStore.getState().activeSkillView).toBe('project');
-    expect(useSkillStore.getState().activeTagGroupId).toBeNull();
+    expect(useSkillStore.getState().activeTagGroupIds).toEqual([]);
     expect(useSkillStore.getState().activeAgentId).toBeNull();
   });
 
@@ -198,24 +198,24 @@ describe('SkillsPanel — Tags', () => {
     expect(screen.getByText('Backend')).toBeInTheDocument();
   });
 
-  it('点击 tag 设置 activeTagGroupId', () => {
+  it('点击 tag 添加到 activeTagGroupIds', () => {
     useSkillStore.setState({
       tagGroups: [createTagGroup({ id: 'tg1', name: 'Frontend' })],
     });
     render(<SkillsPanel />);
     fireEvent.click(screen.getByText('Frontend'));
-    expect(useSkillStore.getState().activeTagGroupId).toBe('tg1');
+    expect(useSkillStore.getState().activeTagGroupIds).toContain('tg1');
     expect(useSkillStore.getState().activeSkillView).toBe('local');
   });
 
   it('再次点击已选中的 tag 取消选中', () => {
     useSkillStore.setState({
-      activeTagGroupId: 'tg1',
+      activeTagGroupIds: ['tg1'],
       tagGroups: [createTagGroup({ id: 'tg1', name: 'Frontend' })],
     });
     render(<SkillsPanel />);
     fireEvent.click(screen.getByText('Frontend'));
-    expect(useSkillStore.getState().activeTagGroupId).toBeNull();
+    expect(useSkillStore.getState().activeTagGroupIds).toEqual([]);
   });
 
   it('可点击 + 打开创建 tag 输入框', () => {

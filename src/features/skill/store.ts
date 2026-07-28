@@ -55,7 +55,7 @@ interface SkillStoreState {
   activeSkillView: SkillView;
   searchQuery: string;
   selectedSkillId: string | null;
-  activeTagGroupId: string | null;
+  activeTagGroupIds: string[];
   /** Tag groups bound to the current project (Project Skills view). */
   projectTagGroups: TagGroup[];
   projectBindingsLoading: boolean;
@@ -107,7 +107,7 @@ interface SkillStoreActions {
   createTagGroup: (name: string, description?: string, icon?: string) => Promise<void>;
   deleteTagGroup: (id: string) => Promise<void>;
   updateTagGroup: (id: string, name: string) => Promise<void>;
-  addSkillToTagGroup: (tagGroupId: string, skillId: string) => Promise<void>;
+  addSkillToTagGroup: (tagGroupIds: string | string[], skillId: string) => Promise<void>;
   removeSkillFromTagGroup: (tagGroupId: string, skillId: string) => Promise<void>;
   syncTagGroup: (tagGroupId: string) => Promise<void>;
 
@@ -147,7 +147,8 @@ interface SkillStoreActions {
   setActiveSkillView: (view: SkillView) => void;
   setSearchQuery: (q: string) => void;
   setSelectedSkillId: (id: string | null) => void;
-  setActiveTagGroupId: (id: string | null) => void;
+  setActiveTagGroupIds: (ids: string[]) => void;
+  toggleActiveTagGroupId: (id: string) => void;
   setActiveAgentId: (id: string | null) => void;
   setSourceFilter: (source: 'all' | 'local' | 'git' | 'skillssh') => void;
   setTagFilter: (tags: string[]) => void;
@@ -165,7 +166,7 @@ export const initialSkillState: SkillStoreState = {
   activeSkillView: 'local',
   searchQuery: '',
   selectedSkillId: null,
-  activeTagGroupId: null,
+  activeTagGroupIds: [],
   projectTagGroups: [],
   projectBindingsLoading: false,
   lastAppliedProjectId: null,
@@ -288,7 +289,7 @@ export const useSkillStore = create<SkillStoreState & SkillStoreActions>()((set,
     // Cascade delete on DB also drops project_tag_groups rows.
     set((state) => ({
       tagGroups: state.tagGroups.filter((g) => g.id !== id),
-      activeTagGroupId: state.activeTagGroupId === id ? null : state.activeTagGroupId,
+      activeTagGroupIds: state.activeTagGroupIds.filter((g) => g !== id),
       projectTagGroups: state.projectTagGroups.filter((g) => g.id !== id),
     }));
     void get()
@@ -304,8 +305,11 @@ export const useSkillStore = create<SkillStoreState & SkillStoreActions>()((set,
     }));
   },
 
-  addSkillToTagGroup: async (tagGroupId: string, skillId: string) => {
-    await addSkillToTagGroupApi(tagGroupId, skillId);
+  addSkillToTagGroup: async (tagGroupIds: string | string[], skillId: string) => {
+    const ids = Array.isArray(tagGroupIds) ? tagGroupIds : [tagGroupIds];
+    for (const id of ids) {
+      await addSkillToTagGroupApi(id, skillId);
+    }
     await get().refreshTagGroups();
     set((state) => ({ tagGroupSkillsVersion: state.tagGroupSkillsVersion + 1 }));
   },
@@ -513,7 +517,13 @@ export const useSkillStore = create<SkillStoreState & SkillStoreActions>()((set,
   setActiveSkillView: (view: SkillView) => set({ activeSkillView: view }),
   setSearchQuery: (q: string) => set({ searchQuery: q }),
   setSelectedSkillId: (id: string | null) => set({ selectedSkillId: id }),
-  setActiveTagGroupId: (id: string | null) => set({ activeTagGroupId: id }),
+  setActiveTagGroupIds: (ids: string[]) => set({ activeTagGroupIds: ids }),
+  toggleActiveTagGroupId: (id: string) =>
+    set((state) => ({
+      activeTagGroupIds: state.activeTagGroupIds.includes(id)
+        ? state.activeTagGroupIds.filter((g) => g !== id)
+        : [...state.activeTagGroupIds, id],
+    })),
   setActiveAgentId: (id: string | null) => set({ activeAgentId: id }),
   setSourceFilter: (source: 'all' | 'local' | 'git' | 'skillssh') => set({ sourceFilter: source }),
   setTagFilter: (tags: string[]) => set({ tagFilter: tags }),
