@@ -58,7 +58,14 @@ const LocalSkillContent: React.FC<LocalSkillContentProps> = React.memo(({ setDia
       setTagGroupSkills(null);
       return;
     }
-    void fetchSkillsForTagGroup(activeTagGroupId).then(setTagGroupSkills);
+    setTagGroupSkills(null);
+    let cancelled = false;
+    void fetchSkillsForTagGroup(activeTagGroupId).then((result) => {
+      if (!cancelled) setTagGroupSkills(result);
+    });
+    return () => {
+      cancelled = true;
+    };
   }, [activeTagGroupId, fetchSkillsForTagGroup, skills, tagGroupSkillsVersion]);
 
   useEffect(() => {
@@ -66,14 +73,6 @@ const LocalSkillContent: React.FC<LocalSkillContentProps> = React.memo(({ setDia
       setAgents(agents.map((a) => ({ id: a.id, icon: a.icon ?? null, name: a.name })));
     });
   }, []);
-
-  useEffect(() => {
-    if (!activeTagGroupId) {
-      setTagGroupSkills(null);
-      return;
-    }
-    void fetchSkillsForTagGroup(activeTagGroupId).then(setTagGroupSkills);
-  }, [activeTagGroupId, fetchSkillsForTagGroup, skills, tagGroupSkillsVersion]);
 
   useEffect(() => {
     if (tagGroups.length === 0) {
