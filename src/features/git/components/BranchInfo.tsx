@@ -1,9 +1,8 @@
-import React, { useState, useRef, useEffect, useMemo } from 'react';
+import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
+import { useShallow } from 'zustand/shallow';
 
-import BranchDropdownContent from '@/shared/components/BranchDropdownContent';
 import {
   BranchIcon,
-  PlusIcon,
   GitBranch,
   ArrowDown,
   ArrowUp,
@@ -11,10 +10,15 @@ import {
   FolderGit2,
   CloudDownload,
 } from '@/shared/components/icons';
+import { useGitStore } from '@/shared/store/gitStore';
 import type { GitInfo, AheadBehind } from '@/shared/types';
+import { filterWorktreeBranches } from '@/shared/utils';
+
+import BranchSwitcherPanel from './BranchSwitcherPanel';
 
 interface BranchInfoProps {
   gitInfo: GitInfo | null;
+  projectId: string;
   aheadBehind: AheadBehind | null;
   loading: boolean;
   onFetch: () => void;
@@ -28,6 +32,7 @@ interface BranchInfoProps {
 
 const BranchInfo: React.FC<BranchInfoProps> = ({
   gitInfo,
+  projectId,
   aheadBehind,
   loading,
   onFetch,
@@ -40,6 +45,9 @@ const BranchInfo: React.FC<BranchInfoProps> = ({
 }) => {
   const [branchDropdownOpen, setBranchDropdownOpen] = useState(false);
   const branchDropdownRef = useRef<HTMLDivElement>(null);
+
+  const favoriteBranches = useGitStore(useShallow((s) => s.favoriteBranches[projectId] ?? []));
+  const toggleFavorite = useGitStore((s) => s.toggleFavorite);
 
   // Close on outside click
   useEffect(() => {
@@ -57,10 +65,15 @@ const BranchInfo: React.FC<BranchInfoProps> = ({
   const branches = useMemo(() => gitInfo?.branches ?? [], [gitInfo?.branches]);
   const worktrees = useMemo(() => gitInfo?.worktrees ?? [], [gitInfo?.worktrees]);
   // Exclude branches that are already checked out in a worktree
-  const availableBranches = useMemo(() => {
-    const worktreeBranchSet = new Set(worktrees.map((wt) => wt.branch));
-    return branches.filter((b) => !worktreeBranchSet.has(b));
-  }, [worktrees, branches]);
+  const availableBranches = useMemo(
+    () => filterWorktreeBranches(branches, worktrees),
+    [worktrees, branches],
+  );
+
+  const aheadBehindMap = useMemo(() => {
+    if (!aheadBehind || !currentBranch) return {};
+    return { [currentBranch]: { ahead: aheadBehind.ahead, behind: aheadBehind.behind } };
+  }, [aheadBehind, currentBranch]);
 
   const handleCheckout = (branchName: string) => {
     onCheckoutBranch(branchName);
@@ -68,34 +81,27 @@ const BranchInfo: React.FC<BranchInfoProps> = ({
 
   const handleClose = () => setBranchDropdownOpen(false);
 
-  // Footer: "New Branch" action injected via composition
-  const dropdownFooter = (
-    <div
-      role="menuitem"
-      tabIndex={0}
-      className="flex items-center gap-1.5 py-1 px-3 text-[var(--font-size)] text-text-secondary cursor-pointer transition-colors duration-100 hover:bg-bg-hover hover:text-text-primary"
-      onClick={() => {
-        setBranchDropdownOpen(false);
-        onNewBranch();
-      }}
-      onKeyDown={(e) => {
-        if (e.key === 'Enter' || e.key === ' ') {
-          e.preventDefault();
-          setBranchDropdownOpen(false);
-          onNewBranch();
-        }
-      }}
-    >
-      <PlusIcon size={11} />
-      New Branch
-    </div>
+  const handleToggleFavorite = useCallback(
+    (branchName: string) => {
+      toggleFavorite(projectId, branchName);
+    },
+    [projectId, toggleFavorite],
   );
 
   return (
     <div className="flex items-center gap-2 px-2.5 py-1.5 bg-bg-tertiary/50 rounded-md">
       <div className="flex items-center gap-1.5 min-w-0 flex-1">
         {gitInfo ? (
-          <div className="relative min-w-0" ref={branchDropdownRef}>
+          <div
+            className="relative min-w-0"
+            ref={branchDropdownRef}
+            role="none"
+            onKeyDown={(e) => {
+              if (e.key === 'Escape') {
+                setBranchDropdownOpen(false);
+              }
+            }}
+          >
             {/* Trigger: styled pill badge */}
             <span
               role="button"
@@ -114,15 +120,25 @@ const BranchInfo: React.FC<BranchInfoProps> = ({
               {currentBranch}
             </span>
 
-            {/* Dropdown panel */}
+            {/* Panel */}
             {branchDropdownOpen && (
               <div className="absolute top-[calc(100%+4px)] left-0 z-[1000]">
-                <BranchDropdownContent
+                <BranchSwitcherPanel
                   branches={availableBranches}
                   currentBranch={currentBranch}
-                  onSelect={handleCheckout}
+                  favoriteBranches={favoriteBranches}
+                  aheadBehind={aheadBehindMap}
+                  onCheckout={handleCheckout}
+                  onToggleFavorite={handleToggleFavorite}
+                  onNewBranch={() => {
+                    setBranchDropdownOpen(false);
+                    onNewBranch();
+                  }}
+                  onNewWorktree={() => {
+                    setBranchDropdownOpen(false);
+                    onNewWorktree();
+                  }}
                   onClose={handleClose}
-                  footer={dropdownFooter}
                 />
               </div>
             )}

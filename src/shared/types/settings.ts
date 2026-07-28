@@ -71,4 +71,6 @@ export interface AppConfig {
   enableOpenCodeThemeSync: boolean;
   /** Language server settings (profile soft-warm, custom servers, idle recycle). */
   lsp: LspConfig;
+  /** Project-id → favorite branch names, persisted across sessions. */
+  favoriteBranches: Record<string, string[]>;
 }

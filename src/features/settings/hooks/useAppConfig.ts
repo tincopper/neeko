@@ -47,6 +47,7 @@ const DEFAULT_CONFIG: AppConfig = {
     deactivateStopMinutes: 30,
     customServers: [],
   },
+  favoriteBranches: {},
 };
 
 type PartialLoadedConfig = Partial<AppConfig> & {
@@ -327,6 +328,10 @@ export function useAppConfig() {
                 ? saved.enableOpenCodeThemeSync
                 : DEFAULT_CONFIG.enableOpenCodeThemeSync,
             lsp: mergeLspConfig(saved.lsp),
+            favoriteBranches:
+              saved.favoriteBranches && typeof saved.favoriteBranches === 'object'
+                ? saved.favoriteBranches
+                : DEFAULT_CONFIG.favoriteBranches,
           });
         }
       } catch (e) {

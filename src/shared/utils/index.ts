@@ -4,6 +4,7 @@ export * from './codemirror';
 export * from './distros';
 export * from './entryUpdates';
 export * from './fileIcons';
+export * from './git';
 export * from './idePresets';
 export * from './platform';
 export * from './theme';

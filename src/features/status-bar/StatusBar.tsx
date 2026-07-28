@@ -1,11 +1,13 @@
 import { listen } from '@tauri-apps/api/event';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { useShallow } from 'zustand/shallow';
 
 import { useDebugStore } from '@/features/debug/store/debugStore';
+import BranchStatusBarWidget from '@/features/git/components/BranchStatusBarWidget';
 import { lspListSessions, lspRestartSession, lspStopSession } from '@/features/lsp/api/lspApi';
 import { NotificationButton } from '@/features/notification/components/NotificationButton';
+import { useActiveProject } from '@/features/project/hooks/use-active-project';
 import { Bug, Terminal } from '@/shared/components/icons';
 import { useEditorStore } from '@/shared/store';
 import { useLspStore, type LspSessionState } from '@/shared/store/lspStore';
@@ -354,6 +356,23 @@ export function StatusBar() {
     return () => document.removeEventListener('mousedown', handler);
   }, [dropdownOpen]);
 
+  const { commands } = useActiveProject();
+
+  const handleStatusBarCheckout = useCallback(
+    async (branchName: string) => {
+      try {
+        await commands?.checkoutBranch(branchName);
+        // Refresh git info after checkout
+        if (activeProjectId) {
+          await commands?.refreshGitInfo();
+        }
+      } catch (e) {
+        console.error('[StatusBar] Checkout failed:', e);
+      }
+    },
+    [commands, activeProjectId],
+  );
+
   return (
     <div className="flex h-4 items-center justify-between px-3 text-xs leading-4 text-text-secondary shrink-0 select-none">
       <div className="flex h-full min-w-0 items-center gap-3">
@@ -373,6 +392,13 @@ export function StatusBar() {
         ) : null}
       </div>
       <div className="flex h-full shrink-0 items-center gap-3">
+        {activeProjectId && (
+          <BranchStatusBarWidget
+            onNewBranch={() => {}}
+            onNewWorktree={() => {}}
+            onCheckoutBranch={handleStatusBarCheckout}
+          />
+        )}
         {activeProjectId ? (
           <button
             type="button"

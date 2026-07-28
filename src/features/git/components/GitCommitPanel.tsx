@@ -507,6 +507,7 @@ const GitCommitPanel: React.FC<GitCommitPanelProps> = ({
       />
       <BranchInfo
         gitInfo={project.gitInfo ?? null}
+        projectId={project.id}
         aheadBehind={aheadBehind}
         loading={loading}
         onFetch={handleFetch}
