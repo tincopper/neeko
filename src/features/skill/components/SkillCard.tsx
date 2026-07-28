@@ -243,7 +243,10 @@ const SkillCard: React.FC<SkillCardProps> = React.memo(
                         <DropdownMenuItem
                           key={tg.id}
                           className={skillMenuItemClass({ className: 'pl-3' })}
-                          onSelect={() => onAddToTagGroup(tg.id, checked)}
+                          onSelect={(e) => {
+                            e.preventDefault();
+                            onAddToTagGroup(tg.id, checked);
+                          }}
                         >
                           <span
                             className={cn(
