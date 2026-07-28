@@ -73,6 +73,8 @@ interface SkillStoreState {
   /** Per-agent disk skill groups (left rail counts + Agents view source). */
   agentSkillGroups: AgentSkillGroup[];
   agentSkillGroupsLoading: boolean;
+  /** Version counter — bump to signal tag group skill list should re-fetch */
+  tagGroupSkillsVersion: number;
   /** Filter by source type. */
   sourceFilter: 'all' | 'local' | 'git' | 'skillssh';
   /** Filter by tag names (AND logic, empty = no filter). */
@@ -175,6 +177,7 @@ export const initialSkillState: SkillStoreState = {
   projectTagGroupCountsLoading: false,
   projectTagGroupCountsError: null,
   agentSkillGroups: [],
+  tagGroupSkillsVersion: 0,
   agentSkillGroupsLoading: false,
   sourceFilter: 'all',
   tagFilter: [],
@@ -304,11 +307,13 @@ export const useSkillStore = create<SkillStoreState & SkillStoreActions>()((set,
   addSkillToTagGroup: async (tagGroupId: string, skillId: string) => {
     await addSkillToTagGroupApi(tagGroupId, skillId);
     await get().refreshTagGroups();
+    set((state) => ({ tagGroupSkillsVersion: state.tagGroupSkillsVersion + 1 }));
   },
 
   removeSkillFromTagGroup: async (tagGroupId: string, skillId: string) => {
     await removeSkillFromTagGroupApi(tagGroupId, skillId);
     await get().refreshTagGroups();
+    set((state) => ({ tagGroupSkillsVersion: state.tagGroupSkillsVersion + 1 }));
   },
 
   syncTagGroup: async (tagGroupId: string) => {

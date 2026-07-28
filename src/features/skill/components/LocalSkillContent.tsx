@@ -31,6 +31,7 @@ const LocalSkillContent: React.FC<LocalSkillContentProps> = React.memo(({ setDia
   const fetchSkillsForTagGroup = useSkillStore((s) => s.fetchSkillsForTagGroup);
   const patchSkillDescription = useSkillStore((s) => s.patchSkillDescription);
   const toggleTagFilter = useSkillStore((s) => s.toggleTagFilter);
+  const tagGroupSkillsVersion = useSkillStore((s) => s.tagGroupSkillsVersion);
 
   const {
     discoveredSkills,
@@ -58,7 +59,7 @@ const LocalSkillContent: React.FC<LocalSkillContentProps> = React.memo(({ setDia
       return;
     }
     void fetchSkillsForTagGroup(activeTagGroupId).then(setTagGroupSkills);
-  }, [activeTagGroupId, fetchSkillsForTagGroup, skills]);
+  }, [activeTagGroupId, fetchSkillsForTagGroup, skills, tagGroupSkillsVersion]);
 
   useEffect(() => {
     void listAgents().then((agents) => {
@@ -72,7 +73,7 @@ const LocalSkillContent: React.FC<LocalSkillContentProps> = React.memo(({ setDia
       return;
     }
     void fetchSkillsForTagGroup(activeTagGroupId).then(setTagGroupSkills);
-  }, [activeTagGroupId, fetchSkillsForTagGroup, skills]);
+  }, [activeTagGroupId, fetchSkillsForTagGroup, skills, tagGroupSkillsVersion]);
 
   useEffect(() => {
     if (tagGroups.length === 0) {
