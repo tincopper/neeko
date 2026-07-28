@@ -65,8 +65,8 @@ const SkillContent: React.FC = React.memo(() => {
   }, [refreshSkills]);
 
   const handleAssign = useCallback(
-    async (skillId: string, tagGroupId: string) => {
-      await addSkillToTagGroup(tagGroupId, skillId);
+    async (skillId: string, tagGroupIds: string[]) => {
+      await addSkillToTagGroup(tagGroupIds, skillId);
     },
     [addSkillToTagGroup],
   );

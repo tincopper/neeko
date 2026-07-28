@@ -279,13 +279,13 @@ const ProjectSkillCard: React.FC<ProjectSkillCardProps> = React.memo(
           ) : null}
         </div>
 
-        <div className="flex items-center gap-2 px-3.5 py-2.5 mt-auto border-t border-border text-[11px]">
+        <div className="flex items-center flex-wrap gap-2 px-3.5 py-2.5 mt-auto border-t border-border text-[11px]">
           <span className="inline-flex items-center h-5 px-2 rounded-full text-[10px] font-medium bg-bg-selected text-text-secondary border border-border shrink-0">
             {inLibrary ? 'In library' : 'Local'}
           </span>
 
           <div
-            className="flex items-center gap-0.5 min-w-0 flex-1 justify-end"
+            className="flex items-center gap-0.5 ml-auto shrink-0"
             data-testid={`project-skill-agents-${skill.name}`}
           >
             {visible.map((st) => {
@@ -330,7 +330,7 @@ const ProjectSkillCard: React.FC<ProjectSkillCardProps> = React.memo(
                     else onToggleAgent?.(st.agent_id, !st.enabled);
                   }}
                   className={cn(
-                    'relative p-0.5 rounded-[4px] transition-all',
+                    'shrink-0 relative p-0.5 rounded-[4px] transition-all',
                     canToggle &&
                       'hover:bg-bg-hover hover:ring-1 hover:ring-accent-blue/50 hover:scale-110 cursor-pointer',
                     // Disk association drives highlight: only paused links are dimmed.
@@ -341,9 +341,9 @@ const ProjectSkillCard: React.FC<ProjectSkillCardProps> = React.memo(
                   )}
                 >
                   {src ? (
-                    <img src={src} alt="" className="w-3.5 h-3.5 rounded-[3px]" />
+                    <img src={src} alt="" className="w-3.5 h-3.5 rounded-[3px] shrink-0" />
                   ) : (
-                    <span className="inline-flex w-3.5 h-3.5 items-center justify-center rounded-[3px] bg-bg-hover text-[9px] font-semibold text-text-muted">
+                    <span className="inline-flex w-3.5 h-3.5 items-center justify-center rounded-[3px] bg-bg-hover text-[9px] font-semibold text-text-muted shrink-0">
                       {label.slice(0, 1).toUpperCase()}
                     </span>
                   )}
@@ -374,7 +374,7 @@ const ProjectSkillCard: React.FC<ProjectSkillCardProps> = React.memo(
           </div>
 
           {expanded && (
-            <div className="flex overflow-x-auto gap-1 mt-1 px-3.5 pb-1 thin-scrollbar">
+            <div className="flex flex-wrap gap-1 mt-1 px-3.5 order-10 flex-none w-full">
               {agentRows.map((st) => {
                 const meta = agentMeta.get(st.agent_id);
                 const src = resolveAgentIconSrc(meta?.icon ?? null);
@@ -396,53 +396,7 @@ const ProjectSkillCard: React.FC<ProjectSkillCardProps> = React.memo(
                       else onToggleAgent?.(st.agent_id, !st.enabled);
                     }}
                     className={cn(
-                      'shrink-0 flex items-center gap-1 p-1.5 rounded-[6px] transition-all whitespace-nowrap',
-                      canToggle && 'hover:ring-1 hover:ring-accent-blue/50 cursor-pointer',
-                      isLinked && !st.enabled && 'opacity-35 grayscale',
-                      isTarget && 'ring-1 ring-accent-blue/60 bg-accent-blue/10',
-                      (toggling || !canToggle) && 'cursor-default',
-                    )}
-                  >
-                    {src ? (
-                      <img src={src} alt="" className="w-4 h-4 rounded-[4px] shrink-0" />
-                    ) : (
-                      <span className="inline-flex w-4 h-4 items-center justify-center rounded-[4px] bg-bg-hover text-[10px] font-semibold text-text-muted shrink-0">
-                        {label.slice(0, 1).toUpperCase()}
-                      </span>
-                    )}
-                    <span className="text-[10px] font-medium text-text-primary shrink-0">
-                      {label}
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
-          )}
-
-          {expanded && (
-            <div className="flex flex-wrap gap-1 mt-1 px-3.5">
-              {agentRows.map((st) => {
-                const meta = agentMeta.get(st.agent_id);
-                const src = resolveAgentIconSrc(meta?.icon ?? null);
-                const label = meta?.name ?? st.agent_id;
-                const isTarget = targetAgentId != null && st.agent_id === targetAgentId;
-                const isLinked = st.linked;
-                const canToggle = Boolean(
-                  onToggleAgent && (isLinked ? st.enabled || skill.skill_id : skill.skill_id),
-                );
-                return (
-                  <button
-                    key={st.agent_id}
-                    type="button"
-                    disabled={toggling || !canToggle}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      if (!canToggle) return;
-                      if (!isLinked) onToggleAgent?.(st.agent_id, true);
-                      else onToggleAgent?.(st.agent_id, !st.enabled);
-                    }}
-                    className={cn(
-                      'p-0.5 rounded-[4px] transition-all',
+                      'shrink-0 p-0.5 rounded-[4px] transition-all',
                       canToggle && 'hover:ring-1 hover:ring-accent-blue/50 cursor-pointer',
                       isLinked && !st.enabled && 'opacity-35 grayscale',
                       isTarget && 'ring-1 ring-accent-blue/60',

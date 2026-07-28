@@ -1,4 +1,4 @@
-import { Check, ChevronRight, Code, Globe, Palette, Plus, Tags, Wrench, X } from 'lucide-react';
+import { Check, Code, Globe, Loader2, Palette, Plus, Tags, Wrench, X } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
@@ -20,7 +20,7 @@ interface AssignTagGroupDialogProps {
   skillId: string;
   tagGroups: TagGroup[];
   onClose: () => void;
-  onAssign: (skillId: string, tagGroupId: string) => Promise<void>;
+  onAssign: (skillId: string, tagGroupIds: string[]) => Promise<void>;
   onCreateTagGroup: (name: string) => Promise<void>;
   onSkip: () => void;
 }
@@ -40,12 +40,13 @@ function getTagGroupIcon(name: string): LucideIcon {
 }
 
 /**
- * Post-install prompt: optionally add a newly installed skill to a tag group.
- * Supports creating a new tag group inline.
+ * Post-install prompt: optionally add a newly installed skill to one or more tag groups.
+ * Supports multi-select with checkboxes and creating a new tag group inline.
  */
 const AssignTagGroupDialog: React.FC<AssignTagGroupDialogProps> = React.memo(
   ({ open, skillName, skillId, tagGroups, onClose, onAssign, onCreateTagGroup, onSkip }) => {
-    const [busyId, setBusyId] = useState<string | null>(null);
+    const [selected, setSelected] = useState<Set<string>>(new Set());
+    const [saving, setSaving] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
     // 新建 tag group 状态
@@ -55,13 +56,15 @@ const AssignTagGroupDialog: React.FC<AssignTagGroupDialogProps> = React.memo(
     const [creating, setCreating] = useState(false);
     const inputRef = useRef<HTMLInputElement>(null);
 
-    // 打开弹窗时重置新建状态
+    // 打开弹窗时重置状态
     useEffect(() => {
       if (open) {
+        setSelected(new Set());
+        setSaving(false);
+        setError(null);
         setIsCreating(false);
         setNewName('');
         setCreateError(null);
-        setError(null);
       }
     }, [open]);
 
@@ -72,21 +75,27 @@ const AssignTagGroupDialog: React.FC<AssignTagGroupDialogProps> = React.memo(
       }
     }, [isCreating]);
 
-    const handlePick = useCallback(
-      async (tagGroupId: string) => {
-        setBusyId(tagGroupId);
-        setError(null);
-        try {
-          await onAssign(skillId, tagGroupId);
-          onClose();
-        } catch (e) {
-          setError(String(e));
-        } finally {
-          setBusyId(null);
-        }
-      },
-      [skillId, onAssign, onClose],
-    );
+    const toggle = useCallback((id: string) => {
+      setSelected((prev) => {
+        const next = new Set(prev);
+        if (next.has(id)) next.delete(id);
+        else next.add(id);
+        return next;
+      });
+    }, []);
+
+    const handleConfirm = useCallback(async () => {
+      setSaving(true);
+      setError(null);
+      try {
+        await onAssign(skillId, Array.from(selected));
+        onClose();
+      } catch (e) {
+        setError(String(e));
+      } finally {
+        setSaving(false);
+      }
+    }, [skillId, selected, onAssign, onClose]);
 
     const handleCreate = useCallback(async () => {
       const name = newName.trim();
@@ -123,7 +132,7 @@ const AssignTagGroupDialog: React.FC<AssignTagGroupDialogProps> = React.memo(
       [handleCreate, handleCreateCancel],
     );
 
-    const isBusy = busyId !== null;
+    const isBusy = saving;
 
     // 按 sort_order 排序，让列表更稳定
     const sortedGroups = useMemo(
@@ -133,6 +142,8 @@ const AssignTagGroupDialog: React.FC<AssignTagGroupDialogProps> = React.memo(
         ),
       [tagGroups],
     );
+
+    const selectedCount = selected.size;
 
     return (
       <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
@@ -158,7 +169,7 @@ const AssignTagGroupDialog: React.FC<AssignTagGroupDialogProps> = React.memo(
           <div className="px-4 py-3 space-y-3">
             <DialogDescription className="text-[11px] text-text-secondary leading-relaxed">
               <span className="font-medium text-text-primary">{skillName}</span> installed. Add it
-              to a tag group so projects can load it automatically?
+              to tag groups so projects can load it automatically?
             </DialogDescription>
 
             {error && (
@@ -175,20 +186,32 @@ const AssignTagGroupDialog: React.FC<AssignTagGroupDialogProps> = React.memo(
               <ul className="space-y-0.5 max-h-52 overflow-y-auto thin-scrollbar -mx-1 px-1">
                 {sortedGroups.map((tg) => {
                   const Icon = getTagGroupIcon(tg.name);
-                  const isLoading = busyId === tg.id;
+                  const checked = selected.has(tg.id);
                   return (
                     <li key={tg.id}>
                       <button
                         type="button"
                         disabled={isBusy}
-                        onClick={() => void handlePick(tg.id)}
+                        onClick={() => toggle(tg.id)}
                         className={cn(
                           'w-full flex items-center gap-2.5 px-2.5 py-2 rounded-md',
                           'text-left transition-colors',
                           'hover:bg-bg-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-blue',
-                          isLoading && 'opacity-60',
+                          checked && 'bg-bg-hover/40',
                         )}
                       >
+                        {/* Checkbox */}
+                        <span
+                          className={cn(
+                            'w-4 h-4 rounded border flex items-center justify-center shrink-0',
+                            checked
+                              ? 'bg-accent-blue/15 border-accent-blue text-accent-blue'
+                              : 'border-border bg-transparent',
+                          )}
+                        >
+                          {checked ? <Check className="h-2.5 w-2.5" strokeWidth={3} /> : null}
+                        </span>
+
                         {/* 图标 */}
                         <span className="w-7 h-7 rounded-md bg-bg-tertiary flex items-center justify-center shrink-0">
                           <Icon className="h-3.5 w-3.5 text-text-secondary" />
@@ -203,9 +226,6 @@ const AssignTagGroupDialog: React.FC<AssignTagGroupDialogProps> = React.memo(
                         <span className="text-[11px] text-text-muted tabular-nums shrink-0">
                           {tg.skill_count}
                         </span>
-
-                        {/* 右箭头 */}
-                        <ChevronRight className="h-3.5 w-3.5 text-text-muted shrink-0" />
                       </button>
                     </li>
                   );
@@ -282,9 +302,27 @@ const AssignTagGroupDialog: React.FC<AssignTagGroupDialogProps> = React.memo(
           </div>
 
           {/* ── Footer ── */}
-          <DialogFooter className="px-4 py-2.5 border-t border-border">
-            <Button variant="secondary" size="sm" onClick={onSkip} disabled={isBusy}>
+          <DialogFooter className="px-4 py-2.5 border-t border-border flex gap-2">
+            <Button
+              variant="secondary"
+              size="sm"
+              className="flex-1"
+              onClick={onSkip}
+              disabled={isBusy}
+            >
               Skip
+            </Button>
+            <Button
+              variant="primary"
+              size="sm"
+              className="flex-1 gap-1.5"
+              disabled={isBusy || selectedCount === 0}
+              onClick={() => void handleConfirm()}
+            >
+              {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
+              {selectedCount === 0
+                ? 'Select groups'
+                : `Add to ${selectedCount} group${selectedCount === 1 ? '' : 's'}`}
             </Button>
           </DialogFooter>
         </DialogContent>
