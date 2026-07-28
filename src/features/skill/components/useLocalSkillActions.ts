@@ -137,8 +137,12 @@ export function useLocalSkillActions(
           void deleteSkill(skillId).catch(console.error);
         }
       },
-      onAddToTagGroup: (skillId: string, tagGroupId: string) => {
-        void addSkillToTagGroup(tagGroupId, skillId).catch(console.error);
+      onAddToTagGroup: (skillId: string, tagGroupId: string, isMember: boolean) => {
+        if (isMember) {
+          void removeSkillFromTagGroup(tagGroupId, skillId).catch(console.error);
+        } else {
+          void addSkillToTagGroup(tagGroupId, skillId).catch(console.error);
+        }
       },
       onCheckUpdate: async (skill: ManagedSkillDto) => {
         try {

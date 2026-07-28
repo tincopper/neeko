@@ -114,7 +114,9 @@ const SkillListSection: React.FC<SkillListSectionProps & SkillListSectionExtraPr
                 onTagClick={onTagClick}
                 onSelect={() => onSelectSkill(s.id === selectedSkillId ? null : s.id)}
                 onAddToTagGroup={
-                  onAddToTagGroup ? (tagGroupId) => onAddToTagGroup(s.id, tagGroupId) : undefined
+                  onAddToTagGroup
+                    ? (tagGroupId, isMember) => onAddToTagGroup(s.id, tagGroupId, isMember)
+                    : undefined
                 }
                 onCheckUpdate={onCheckUpdate ? () => onCheckUpdate(s) : undefined}
                 onUpdateSkill={onUpdateSkill ? () => onUpdateSkill(s) : undefined}

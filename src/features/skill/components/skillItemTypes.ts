@@ -31,8 +31,8 @@ export interface SkillItemActions {
   onViewSkill: (skill: ManagedSkillDto) => void;
   /** 删除 skill */
   onDeleteSkill: (skillId: string) => void;
-  /** 将 skill 加入指定标签组 */
-  onAddToTagGroup?: (skillId: string, tagGroupId: string) => void;
+  /** Toggle skill membership in a tag group (add if not member, remove if member) */
+  onAddToTagGroup?: (skillId: string, tagGroupId: string, isMember: boolean) => void;
   /** 检查 git skill 更新 */
   onCheckUpdate?: (skill: ManagedSkillDto) => void;
   /** 从源更新 skill */

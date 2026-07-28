@@ -41,7 +41,7 @@ interface SkillCardProps {
   isSelected: boolean;
   onSelect: () => void;
   onAction: (action: 'detail' | 'delete' | 'edit') => void;
-  onAddToTagGroup?: (tagGroupId: string) => void;
+  onAddToTagGroup?: (tagGroupId: string, isMember: boolean) => void;
   onCheckUpdate?: () => void;
   onUpdateSkill?: () => void;
   tagGroups?: Array<{ id: string; name: string }>;
@@ -243,7 +243,7 @@ const SkillCard: React.FC<SkillCardProps> = React.memo(
                         <DropdownMenuItem
                           key={tg.id}
                           className={skillMenuItemClass({ className: 'pl-3' })}
-                          onSelect={() => onAddToTagGroup(tg.id)}
+                          onSelect={() => onAddToTagGroup(tg.id, checked)}
                         >
                           <span
                             className={cn(
