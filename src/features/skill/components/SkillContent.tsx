@@ -25,6 +25,7 @@ const SkillContent: React.FC = React.memo(() => {
   const refreshTagGroups = useSkillStore((s) => s.refreshTagGroups);
   const tagGroups = useSkillStore((s) => s.tagGroups);
   const addSkillToTagGroup = useSkillStore((s) => s.addSkillToTagGroup);
+  const createTagGroup = useSkillStore((s) => s.createTagGroup);
 
   useEffect(() => {
     void refreshSkills();
@@ -126,6 +127,7 @@ const SkillContent: React.FC = React.memo(() => {
         tagGroups={tagGroups}
         onClose={closeDialog}
         onAssign={handleAssign}
+        onCreateTagGroup={createTagGroup}
         onSkip={closeDialog}
       />
     </div>

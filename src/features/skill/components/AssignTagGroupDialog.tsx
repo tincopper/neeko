@@ -1,10 +1,18 @@
-import { X } from 'lucide-react';
-import React, { useCallback, useState } from 'react';
+import { Check, ChevronRight, Code, Globe, Palette, Plus, Tags, Wrench, X } from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { cn } from '@/lib/utils';
 import type { TagGroup } from '@/shared/types';
-import { Button } from '@/ui';
-import { ResizablePanel } from '@/ui/ResizablePanel';
+import {
+  Button,
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/ui';
 
 interface AssignTagGroupDialogProps {
   open: boolean;
@@ -13,16 +21,56 @@ interface AssignTagGroupDialogProps {
   tagGroups: TagGroup[];
   onClose: () => void;
   onAssign: (skillId: string, tagGroupId: string) => Promise<void>;
+  onCreateTagGroup: (name: string) => Promise<void>;
   onSkip: () => void;
 }
 
 /**
+ * 根据 tag group 名称语义选择对应 Lucide 图标。
+ * 关键词匹配 → 返回最贴合的图标，否则回退到通用标签图标。
+ */
+function getTagGroupIcon(name: string): LucideIcon {
+  const n = name.toLowerCase();
+  if (/(rust|go|backend|后端|code|代码|dev|api)/.test(n)) return Code;
+  if (/(react|前端|page|设计|design|ui|css|html)/.test(n)) return Palette;
+  if (/(翻译|english|英文|global|i18n|lang)/.test(n)) return Globe;
+  if (/(tool|工具|util|config|设置)/.test(n)) return Wrench;
+  if (/(default|默认|通用)/.test(n)) return Tags;
+  return Tags;
+}
+
+/**
  * Post-install prompt: optionally add a newly installed skill to a tag group.
+ * Supports creating a new tag group inline.
  */
 const AssignTagGroupDialog: React.FC<AssignTagGroupDialogProps> = React.memo(
-  ({ open, skillName, skillId, tagGroups, onClose, onAssign, onSkip }) => {
+  ({ open, skillName, skillId, tagGroups, onClose, onAssign, onCreateTagGroup, onSkip }) => {
     const [busyId, setBusyId] = useState<string | null>(null);
     const [error, setError] = useState<string | null>(null);
+
+    // 新建 tag group 状态
+    const [isCreating, setIsCreating] = useState(false);
+    const [newName, setNewName] = useState('');
+    const [createError, setCreateError] = useState<string | null>(null);
+    const [creating, setCreating] = useState(false);
+    const inputRef = useRef<HTMLInputElement>(null);
+
+    // 打开弹窗时重置新建状态
+    useEffect(() => {
+      if (open) {
+        setIsCreating(false);
+        setNewName('');
+        setCreateError(null);
+        setError(null);
+      }
+    }, [open]);
+
+    // 进入创建模式后自动聚焦
+    useEffect(() => {
+      if (isCreating) {
+        inputRef.current?.focus();
+      }
+    }, [isCreating]);
 
     const handlePick = useCallback(
       async (tagGroupId: string) => {
@@ -40,66 +88,207 @@ const AssignTagGroupDialog: React.FC<AssignTagGroupDialogProps> = React.memo(
       [skillId, onAssign, onClose],
     );
 
-    if (!open) return null;
+    const handleCreate = useCallback(async () => {
+      const name = newName.trim();
+      if (!name) return;
+      setCreating(true);
+      setCreateError(null);
+      try {
+        await onCreateTagGroup(name);
+        setNewName('');
+        setIsCreating(false);
+      } catch (e) {
+        setCreateError(String(e));
+      } finally {
+        setCreating(false);
+      }
+    }, [newName, onCreateTagGroup]);
+
+    const handleCreateCancel = useCallback(() => {
+      setIsCreating(false);
+      setNewName('');
+      setCreateError(null);
+    }, []);
+
+    const handleInputKeyDown = useCallback(
+      (e: React.KeyboardEvent<HTMLInputElement>) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          void handleCreate();
+        } else if (e.key === 'Escape') {
+          e.preventDefault();
+          handleCreateCancel();
+        }
+      },
+      [handleCreate, handleCreateCancel],
+    );
+
+    const isBusy = busyId !== null;
+
+    // 按 sort_order 排序，让列表更稳定
+    const sortedGroups = useMemo(
+      () =>
+        (Array.isArray(tagGroups) ? [...tagGroups] : []).sort(
+          (a, b) => a.sort_order - b.sort_order,
+        ),
+      [tagGroups],
+    );
 
     return (
-      <ResizablePanel open={open} onClose={onClose} defaultWidth={420}>
-        <div className="flex items-center justify-between px-4 py-3 border-b border-border">
-          <span className="text-sm font-semibold text-text-primary">Add to tag group</span>
-          <button
-            onClick={onClose}
-            className="p-1 rounded hover:bg-bg-hover text-text-muted hover:text-text-primary"
-          >
-            <X className="h-4 w-4" />
-          </button>
-        </div>
-
-        <div className="px-4 py-3 space-y-3">
-          <p className="text-xs text-text-secondary">
-            <span className="font-medium text-text-primary">{skillName}</span> installed. Add it to
-            a tag group so projects can load it automatically?
-          </p>
-
-          {error && (
-            <div className="text-xs text-red-400 bg-red-400/10 border border-red-400/20 rounded px-3 py-2">
-              {error}
+      <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
+        <DialogContent className="max-w-[380px] p-0 gap-0" showCloseButton={false}>
+          {/* ── Header ── */}
+          <DialogHeader className="px-4 py-3 border-b border-border">
+            <div className="flex items-center justify-between">
+              <DialogTitle className="text-xs font-semibold text-text-primary">
+                Add to tag group
+              </DialogTitle>
+              <button
+                type="button"
+                onClick={onClose}
+                className="p-1 rounded-md text-text-muted hover:text-text-primary hover:bg-bg-hover transition-colors"
+                aria-label="Close dialog"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
             </div>
-          )}
+          </DialogHeader>
 
-          {tagGroups.length === 0 ? (
-            <p className="text-xs text-text-muted">
-              No tag groups yet. Create one in the Skills sidebar, then use the skill card menu.
-            </p>
-          ) : (
-            <ul className="space-y-1 max-h-56 overflow-y-auto">
-              {tagGroups.map((tg) => (
-                <li key={tg.id}>
-                  <button
-                    type="button"
-                    disabled={busyId !== null}
-                    onClick={() => void handlePick(tg.id)}
-                    className={cn(
-                      'w-full text-left px-3 py-2 rounded border border-border text-xs',
-                      'hover:bg-bg-hover border-border text-text-primary transition-colors',
-                      busyId === tg.id && 'opacity-60',
-                    )}
-                  >
-                    <span className="mr-1.5">{tg.icon ?? '📋'}</span>
-                    {tg.name}
-                    <span className="text-text-muted ml-1">({tg.skill_count})</span>
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
+          {/* ── Body ── */}
+          <div className="px-4 py-3 space-y-3">
+            <DialogDescription className="text-[11px] text-text-secondary leading-relaxed">
+              <span className="font-medium text-text-primary">{skillName}</span> installed. Add it
+              to a tag group so projects can load it automatically?
+            </DialogDescription>
 
-        <div className="flex justify-end gap-2 px-4 py-3 border-t border-border">
-          <Button variant="ghost" size="sm" onClick={onSkip}>
-            Skip
-          </Button>
-        </div>
-      </ResizablePanel>
+            {error && (
+              <div className="text-[11px] text-accent-red bg-accent-red/10 border border-accent-red/20 rounded-md px-3 py-2">
+                {error}
+              </div>
+            )}
+
+            {sortedGroups.length === 0 ? (
+              <div className="text-[11px] text-text-muted text-center py-5">
+                No tag groups yet. Create one below or in the Skills sidebar.
+              </div>
+            ) : (
+              <ul className="space-y-0.5 max-h-52 overflow-y-auto thin-scrollbar -mx-1 px-1">
+                {sortedGroups.map((tg) => {
+                  const Icon = getTagGroupIcon(tg.name);
+                  const isLoading = busyId === tg.id;
+                  return (
+                    <li key={tg.id}>
+                      <button
+                        type="button"
+                        disabled={isBusy}
+                        onClick={() => void handlePick(tg.id)}
+                        className={cn(
+                          'w-full flex items-center gap-2.5 px-2.5 py-2 rounded-md',
+                          'text-left transition-colors',
+                          'hover:bg-bg-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-blue',
+                          isLoading && 'opacity-60',
+                        )}
+                      >
+                        {/* 图标 */}
+                        <span className="w-7 h-7 rounded-md bg-bg-tertiary flex items-center justify-center shrink-0">
+                          <Icon className="h-3.5 w-3.5 text-text-secondary" />
+                        </span>
+
+                        {/* 组名 */}
+                        <span className="flex-1 min-w-0 text-xs font-medium text-text-primary truncate">
+                          {tg.name}
+                        </span>
+
+                        {/* 数量 */}
+                        <span className="text-[11px] text-text-muted tabular-nums shrink-0">
+                          {tg.skill_count}
+                        </span>
+
+                        {/* 右箭头 */}
+                        <ChevronRight className="h-3.5 w-3.5 text-text-muted shrink-0" />
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+
+            {/* ── 新建 tag group 区域 ── */}
+            <div className="pt-1">
+              {isCreating ? (
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2">
+                    <input
+                      ref={inputRef}
+                      type="text"
+                      value={newName}
+                      onChange={(e) => setNewName(e.target.value)}
+                      onKeyDown={handleInputKeyDown}
+                      onBlur={() => !newName.trim() && handleCreateCancel()}
+                      placeholder="Tag group name"
+                      disabled={creating}
+                      className={cn(
+                        'flex-1 h-8 px-2.5 text-xs rounded-md',
+                        'bg-bg-hover/50 border border-border/80',
+                        'text-text-primary placeholder:text-text-muted',
+                        'outline-none focus:border-border focus:bg-bg-primary transition-colors',
+                        'disabled:opacity-50',
+                      )}
+                    />
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="w-8 h-8"
+                      disabled={creating || !newName.trim()}
+                      onClick={() => void handleCreate()}
+                      aria-label="Confirm"
+                    >
+                      {creating ? (
+                        <span className="inline-block w-3.5 h-3.5 border-2 border-text-muted/30 border-t-text-muted rounded-full animate-spin" />
+                      ) : (
+                        <Check className="h-3.5 w-3.5" />
+                      )}
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="w-8 h-8"
+                      disabled={creating}
+                      onClick={handleCreateCancel}
+                      aria-label="Cancel"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
+                  {createError && <p className="text-[11px] text-accent-red">{createError}</p>}
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setIsCreating(true)}
+                  disabled={isBusy}
+                  className={cn(
+                    'w-full flex items-center gap-2 px-2.5 py-2 rounded-md',
+                    'text-[11px] text-text-muted hover:text-text-secondary',
+                    'hover:bg-bg-hover transition-colors',
+                    'disabled:opacity-50 disabled:pointer-events-none',
+                  )}
+                >
+                  <Plus className="h-3.5 w-3.5" />
+                  New tag group
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* ── Footer ── */}
+          <DialogFooter className="px-4 py-2.5 border-t border-border">
+            <Button variant="secondary" size="sm" onClick={onSkip} disabled={isBusy}>
+              Skip
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     );
   },
 );
