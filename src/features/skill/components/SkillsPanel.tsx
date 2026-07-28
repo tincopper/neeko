@@ -16,6 +16,7 @@ import React, { useState, useCallback, useEffect, useMemo } from 'react';
 import { resolveAgentIconSrc } from '@/features/agent/api/agentApi';
 import { useSkillStore } from '@/features/skill/store';
 import { cn } from '@/lib/utils';
+import ConfirmDialog from '@/shared/components/ConfirmDialog';
 import { useNotificationStore } from '@/shared/store/notificationStore';
 import { useProjectStore } from '@/shared/store/projectStore';
 import type { SkillView } from '@/shared/types';
@@ -64,6 +65,7 @@ const SkillsPanel: React.FC = React.memo(() => {
   const [newName, setNewName] = useState('');
   const [syncingId, setSyncingId] = useState<string | null>(null);
   const [renamingId, setRenamingId] = useState<string | null>(null);
+  const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState('');
   const projects = useProjectStore((s) => s.projects);
   const activeProjectId = useProjectStore((s) => s.activeProjectId);
@@ -172,9 +174,8 @@ const SkillsPanel: React.FC = React.memo(() => {
     [syncTagGroup, toast],
   );
 
-  const handleDelete = useCallback(
-    async (e: React.MouseEvent, id: string) => {
-      e.stopPropagation();
+  const deleteTagGroupById = useCallback(
+    async (id: string) => {
       try {
         await deleteTagGroup(id);
       } catch (err) {
@@ -182,6 +183,19 @@ const SkillsPanel: React.FC = React.memo(() => {
       }
     },
     [deleteTagGroup, toast],
+  );
+
+  const handleDelete = useCallback(
+    (e: React.MouseEvent, id: string) => {
+      e.stopPropagation();
+      const tag = tagGroups.find((t) => t.id === id);
+      if (tag && tag.skill_count > 0) {
+        setPendingDeleteId(id);
+        return;
+      }
+      void deleteTagGroupById(id);
+    },
+    [tagGroups, deleteTagGroupById],
   );
 
   const handleRenameStart = useCallback((e: React.MouseEvent, id: string, currentName: string) => {
@@ -570,6 +584,35 @@ const SkillsPanel: React.FC = React.memo(() => {
           )}
         </div>
       </div>
+      <ConfirmDialog
+        open={pendingDeleteId !== null}
+        onOpenChange={(open) => {
+          if (!open) setPendingDeleteId(null);
+        }}
+        title="Delete tag with skills?"
+        description={
+          pendingDeleteId ? (
+            <p className="text-sm text-text-secondary">
+              This tag still has{' '}
+              <span className="font-medium text-text-primary">
+                {tagGroups.find((t) => t.id === pendingDeleteId)?.skill_count} skill
+                {tagGroups.find((t) => t.id === pendingDeleteId)?.skill_count === 1 ? '' : 's'}
+              </span>{' '}
+              bound to it. Are you sure you want to delete it? All skill associations will be
+              removed.
+            </p>
+          ) : null
+        }
+        confirmLabel="Delete"
+        danger
+        onConfirm={() => {
+          if (pendingDeleteId) {
+            const id = pendingDeleteId;
+            setPendingDeleteId(null);
+            void deleteTagGroupById(id);
+          }
+        }}
+      />
     </div>
   );
 });
