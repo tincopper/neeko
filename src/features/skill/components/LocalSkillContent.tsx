@@ -44,7 +44,7 @@ const LocalSkillContent: React.FC<LocalSkillContentProps> = React.memo(({ setDia
     handleImport,
     handleClearDiscovered,
     actions,
-  } = useLocalSkillActions(setDialog);
+  } = useLocalSkillActions(setDialog, activeTagGroupId);
 
   const [tagGroupSkills, setTagGroupSkills] = useState<typeof skills | null>(null);
   const [skillTagGroupMap, setSkillTagGroupMap] = useState<Record<string, string[]>>({});

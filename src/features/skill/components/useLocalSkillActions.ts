@@ -17,7 +17,10 @@ import type { SkillDialogState, SkillItemActions } from './skillItemTypes';
  * 对标 useProjectItemDrag / useProjectItemMenu 模式�?
  * 组件只需消费返回值，不持有任何业务逻辑�?
  */
-export function useLocalSkillActions(setDialog: (state: SkillDialogState) => void) {
+export function useLocalSkillActions(
+  setDialog: (state: SkillDialogState) => void,
+  activeTagGroupId: string | null = null,
+) {
   const [discoveredSkills, setDiscoveredSkills] = useState<DiscoveredSkillDto[]>([]);
   const [scanning, setScanning] = useState(false);
   const [refreshingMeta, setRefreshingMeta] = useState(false);
@@ -29,6 +32,7 @@ export function useLocalSkillActions(setDialog: (state: SkillDialogState) => voi
   const refreshMetadata = useSkillStore((s) => s.refreshMetadata);
   const importDiscoveredSkill = useSkillStore((s) => s.importDiscoveredSkill);
   const deleteSkill = useSkillStore((s) => s.deleteSkill);
+  const removeSkillFromTagGroup = useSkillStore((s) => s.removeSkillFromTagGroup);
   const addSkillToTagGroup = useSkillStore((s) => s.addSkillToTagGroup);
   const checkSkillUpdate = useSkillStore((s) => s.checkSkillUpdate);
   const updateSkillFromSource = useSkillStore((s) => s.updateSkillFromSource);
@@ -123,7 +127,11 @@ export function useLocalSkillActions(setDialog: (state: SkillDialogState) => voi
       onEditSkill: (skill: ManagedSkillDto) => setDialog({ type: 'edit', skill }),
       onViewSkill: (skill: ManagedSkillDto) => setDialog({ type: 'view', skill }),
       onDeleteSkill: (skillId: string) => {
-        void deleteSkill(skillId).catch(console.error);
+        if (activeTagGroupId) {
+          void removeSkillFromTagGroup(activeTagGroupId, skillId).catch(console.error);
+        } else {
+          void deleteSkill(skillId).catch(console.error);
+        }
       },
       onAddToTagGroup: (skillId: string, tagGroupId: string) => {
         void addSkillToTagGroup(tagGroupId, skillId).catch(console.error);
@@ -173,6 +181,8 @@ export function useLocalSkillActions(setDialog: (state: SkillDialogState) => voi
       setDialog,
       setSelectedSkillId,
       deleteSkill,
+      removeSkillFromTagGroup,
+      activeTagGroupId,
       addSkillToTagGroup,
       checkSkillUpdate,
       updateSkillFromSource,
