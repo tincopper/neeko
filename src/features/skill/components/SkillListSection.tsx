@@ -29,6 +29,8 @@ export interface SkillListSectionExtraProps {
   tagGroupLabels?: string[];
   /** skillId → tag-group names for badge fallback. */
   skillTagGroupMap?: Record<string, string[]>;
+  /** skillId → tag-group IDs for membership check. */
+  skillTagGroupIdMap?: Record<string, string[]>;
   agents?: Array<{ id: string; icon: string | null; name: string }>;
   /** Whether to show agent association badges/icons on cards (defaults to true; set false for Library view to keep it agnostic). */
   showAgentAssociations?: boolean;
@@ -46,6 +48,7 @@ const SkillListSection: React.FC<SkillListSectionProps & SkillListSectionExtraPr
     tagGroups = [],
     tagGroupLabels = [],
     skillTagGroupMap = {},
+    skillTagGroupIdMap = {},
     agents = [],
     showAgentAssociations = true,
     onDescriptionResolved,
@@ -106,6 +109,7 @@ const SkillListSection: React.FC<SkillListSectionProps & SkillListSectionExtraPr
                 tagGroups={tagGroups}
                 agents={showAgentAssociations !== false ? agents : []}
                 tagGroupLabels={cardTagGroupLabels}
+                skillTagGroupIds={skillTagGroupIdMap[s.id]}
                 onDescriptionResolved={onDescriptionResolved}
                 onTagClick={onTagClick}
                 onSelect={() => onSelectSkill(s.id === selectedSkillId ? null : s.id)}

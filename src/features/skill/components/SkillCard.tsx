@@ -10,6 +10,7 @@ import {
   Tags,
   Power,
   PowerOff,
+  Check,
 } from 'lucide-react';
 import React, { useEffect, useState } from 'react';
 
@@ -47,6 +48,8 @@ interface SkillCardProps {
   agents?: Array<{ id: string; icon: string | null; name: string }>;
   /** Active / first tag-group name badges on the card. */
   tagGroupLabels?: string[];
+  /** Tag-group IDs this skill already belongs to (for checkmark in dropdown). */
+  skillTagGroupIds?: string[];
   /** Called when description is recovered from SKILL.md so store can update. */
   onDescriptionResolved?: (skillId: string, description: string) => void;
   /** Called when a tag chip is clicked. */
@@ -94,6 +97,7 @@ const SkillCard: React.FC<SkillCardProps> = React.memo(
     tagGroups = [],
     agents = [],
     tagGroupLabels = [],
+    skillTagGroupIds = [],
     onDescriptionResolved,
     onTagClick,
     showAgentAssociations = true,
@@ -233,15 +237,28 @@ const SkillCard: React.FC<SkillCardProps> = React.memo(
                         Add to tag group
                       </span>
                     </DropdownMenuLabel>
-                    {tagGroups.map((tg) => (
-                      <DropdownMenuItem
-                        key={tg.id}
-                        className={skillMenuItemClass({ className: 'pl-3' })}
-                        onSelect={() => onAddToTagGroup(tg.id)}
-                      >
-                        <span className="truncate">{tg.name}</span>
-                      </DropdownMenuItem>
-                    ))}
+                    {tagGroups.map((tg) => {
+                      const checked = skillTagGroupIds.includes(tg.id);
+                      return (
+                        <DropdownMenuItem
+                          key={tg.id}
+                          className={skillMenuItemClass({ className: 'pl-3' })}
+                          onSelect={() => onAddToTagGroup(tg.id)}
+                        >
+                          <span
+                            className={cn(
+                              'w-4 h-4 rounded border flex items-center justify-center shrink-0',
+                              checked
+                                ? 'bg-accent-blue/15 border-accent-blue text-accent-blue'
+                                : 'border-border bg-transparent',
+                            )}
+                          >
+                            {checked ? <Check className="h-2.5 w-2.5" strokeWidth={3} /> : null}
+                          </span>
+                          <span className="truncate">{tg.name}</span>
+                        </DropdownMenuItem>
+                      );
+                    })}
                   </>
                 )}
 

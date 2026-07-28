@@ -49,6 +49,7 @@ const LocalSkillContent: React.FC<LocalSkillContentProps> = React.memo(({ setDia
 
   const [tagGroupSkills, setTagGroupSkills] = useState<typeof skills | null>(null);
   const [skillTagGroupMap, setSkillTagGroupMap] = useState<Record<string, string[]>>({});
+  const [skillTagGroupIdMap, setSkillTagGroupIdMap] = useState<Record<string, string[]>>({});
   const [agents, setAgents] = useState<Array<{ id: string; icon: string | null; name: string }>>(
     [],
   );
@@ -90,19 +91,24 @@ const LocalSkillContent: React.FC<LocalSkillContentProps> = React.memo(({ setDia
     let cancelled = false;
     void (async () => {
       const map: Record<string, string[]> = {};
+      const idMap: Record<string, string[]> = {};
       await Promise.all(
         tagGroups.map(async (tg) => {
           try {
             const list = await getSkillsForTagGroup(tg.id);
             for (const s of list) {
               (map[s.id] ??= []).push(tg.name);
+              (idMap[s.id] ??= []).push(tg.id);
             }
           } catch {
             /* ignore */
           }
         }),
       );
-      if (!cancelled) setSkillTagGroupMap(map);
+      if (!cancelled) {
+        setSkillTagGroupMap(map);
+        setSkillTagGroupIdMap(idMap);
+      }
     })();
     return () => {
       cancelled = true;
@@ -182,6 +188,7 @@ const LocalSkillContent: React.FC<LocalSkillContentProps> = React.memo(({ setDia
           tagGroups={tagGroups.map((g) => ({ id: g.id, name: g.name }))}
           tagGroupLabels={activeGroupNames}
           skillTagGroupMap={skillTagGroupMap}
+          skillTagGroupIdMap={skillTagGroupIdMap}
           agents={agents}
           showAgentAssociations={false}
           onDescriptionResolved={patchSkillDescription}
