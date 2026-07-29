@@ -6,7 +6,10 @@ use std::collections::HashMap;
 use std::path::Path;
 use std::sync::Mutex;
 
-use super::types::{SkillRecord, SkillTargetRecord, TagGroupRecord, ToolToggleRecord};
+use super::types::{
+    PromptRecord, PromptVariableRecord, SkillRecord, SkillTargetRecord, TagGroupRecord,
+    ToolToggleRecord,
+};
 
 /// SQLite data access layer for all skill-related persistence.
 pub struct SkillRepository {
@@ -656,6 +659,181 @@ impl SkillRepository {
         conn.execute("DELETE FROM skillssh_cache", [])?;
         Ok(())
     }
+
+    // ── Prompts ───────────────────────────────────────────────────────────
+
+    /// Insert a new prompt.
+    pub fn insert_prompt(&self, prompt: &PromptRecord) -> Result<()> {
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| anyhow::anyhow!("Database lock poisoned: {}", e))?;
+        let tags_json = serde_json::to_string(&prompt.tags).unwrap_or_else(|_| "[]".to_string());
+        let variables_json =
+            serde_json::to_string(&prompt.variables).unwrap_or_else(|_| "[]".to_string());
+        conn.execute(
+            "INSERT INTO prompts (id, name, description, content, slash, tags_json, scope, project_id, variables_json, favorite, usage_count, last_used_at, created_at, updated_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
+            params![
+                prompt.id,
+                prompt.name,
+                prompt.description,
+                prompt.content,
+                prompt.slash,
+                tags_json,
+                prompt.scope,
+                prompt.project_id,
+                variables_json,
+                prompt.favorite as i32,
+                prompt.usage_count,
+                prompt.last_used_at,
+                prompt.created_at,
+                prompt.updated_at,
+            ],
+        )?;
+        Ok(())
+    }
+
+    /// Get all prompts ordered by updated_at descending.
+    pub fn get_all_prompts(&self) -> Result<Vec<PromptRecord>> {
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| anyhow::anyhow!("Database lock poisoned: {}", e))?;
+        let mut stmt = conn.prepare(
+            "SELECT id, name, description, content, slash, tags_json, scope, project_id, variables_json, favorite, usage_count, last_used_at, created_at, updated_at FROM prompts ORDER BY updated_at DESC",
+        )?;
+        let rows = stmt.query_map([], map_prompt_row)?;
+        Ok(rows.filter_map(|r| r.ok()).collect())
+    }
+
+    /// Get a prompt by its ID.
+    pub fn get_prompt_by_id(&self, id: &str) -> Result<Option<PromptRecord>> {
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| anyhow::anyhow!("Database lock poisoned: {}", e))?;
+        let mut stmt = conn.prepare(
+            "SELECT id, name, description, content, slash, tags_json, scope, project_id, variables_json, favorite, usage_count, last_used_at, created_at, updated_at FROM prompts WHERE id = ?1",
+        )?;
+        let mut rows = stmt.query_map(params![id], map_prompt_row)?;
+        Ok(rows.next().and_then(|r| r.ok()))
+    }
+
+    /// Get a prompt by its slash command (project scope takes priority).
+    ///
+    /// Returns the project-scoped prompt when `project_id` matches, otherwise
+    /// the global-scoped prompt. Used by the slash resolver.
+    pub fn get_prompt_by_slash(
+        &self,
+        slash: &str,
+        project_id: Option<&str>,
+    ) -> Result<Option<PromptRecord>> {
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| anyhow::anyhow!("Database lock poisoned: {}", e))?;
+        // Project scope first (override), then global.
+        let mut stmt = conn.prepare(
+            "SELECT id, name, description, content, slash, tags_json, scope, project_id, variables_json, favorite, usage_count, last_used_at, created_at, updated_at
+             FROM prompts
+             WHERE slash = ?1
+             ORDER BY CASE scope WHEN 'project' THEN 0 ELSE 1 END, updated_at DESC
+             LIMIT 1",
+        )?;
+        let mut rows = stmt.query_map(params![slash], map_prompt_row)?;
+        let found = rows.next().and_then(|r| r.ok());
+        // When a project id is provided, prefer a project-scoped match.
+        if let Some(pid) = project_id {
+            if let Some(ref p) = found {
+                if p.scope == "project" && p.project_id.as_deref() == Some(pid) {
+                    return Ok(found);
+                }
+            }
+            // Re-query for project-scoped specifically.
+            let mut stmt2 = conn.prepare(
+                "SELECT id, name, description, content, slash, tags_json, scope, project_id, variables_json, favorite, usage_count, last_used_at, created_at, updated_at
+                 FROM prompts
+                 WHERE slash = ?1 AND scope = 'project' AND project_id = ?2
+                 LIMIT 1",
+            )?;
+            let mut rows2 = stmt2.query_map(params![slash, pid], map_prompt_row)?;
+            if let Some(proj_match) = rows2.next().and_then(|r| r.ok()) {
+                return Ok(Some(proj_match));
+            }
+        }
+        Ok(found)
+    }
+
+    /// Update all fields of a prompt.
+    pub fn update_prompt(&self, prompt: &PromptRecord) -> Result<()> {
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| anyhow::anyhow!("Database lock poisoned: {}", e))?;
+        let now = chrono::Utc::now().timestamp_millis();
+        let tags_json = serde_json::to_string(&prompt.tags).unwrap_or_else(|_| "[]".to_string());
+        let variables_json =
+            serde_json::to_string(&prompt.variables).unwrap_or_else(|_| "[]".to_string());
+        conn.execute(
+            "UPDATE prompts SET name = ?1, description = ?2, content = ?3, slash = ?4, tags_json = ?5, scope = ?6, project_id = ?7, variables_json = ?8, favorite = ?9, usage_count = ?10, last_used_at = ?11, updated_at = ?12 WHERE id = ?13",
+            params![
+                prompt.name,
+                prompt.description,
+                prompt.content,
+                prompt.slash,
+                tags_json,
+                prompt.scope,
+                prompt.project_id,
+                variables_json,
+                prompt.favorite as i32,
+                prompt.usage_count,
+                prompt.last_used_at,
+                now,
+                prompt.id,
+            ],
+        )?;
+        Ok(())
+    }
+
+    /// Delete a prompt by ID.
+    pub fn delete_prompt(&self, id: &str) -> Result<()> {
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| anyhow::anyhow!("Database lock poisoned: {}", e))?;
+        conn.execute("DELETE FROM prompts WHERE id = ?1", params![id])?;
+        Ok(())
+    }
+
+    /// Increment usage count and update last_used_at.
+    pub fn record_prompt_usage(&self, id: &str) -> Result<()> {
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| anyhow::anyhow!("Database lock poisoned: {}", e))?;
+        let now = chrono::Utc::now().timestamp_millis();
+        conn.execute(
+            "UPDATE prompts SET usage_count = usage_count + 1, last_used_at = ?1, updated_at = ?1 WHERE id = ?2",
+            params![now, id],
+        )?;
+        Ok(())
+    }
+
+    /// Get all unique tag names across all prompts.
+    pub fn get_all_prompt_tags(&self) -> Result<Vec<String>> {
+        let prompts = self.get_all_prompts()?;
+        let mut tags = std::collections::BTreeSet::new();
+        for p in &prompts {
+            for t in &p.tags {
+                let trimmed = t.trim();
+                if !trimmed.is_empty() {
+                    tags.insert(trimmed.to_string());
+                }
+            }
+        }
+        Ok(tags.into_iter().collect())
+    }
 }
 
 // Row Mappers
@@ -706,6 +884,30 @@ fn map_tag_group_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<TagGroupRecord
         sort_order: row.get(4)?,
         created_at: row.get(5)?,
         updated_at: row.get(6)?,
+    })
+}
+
+fn map_prompt_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<PromptRecord> {
+    let tags_json: String = row.get(5)?;
+    let tags: Vec<String> = serde_json::from_str(&tags_json).unwrap_or_default();
+    let variables_json: String = row.get(8)?;
+    let variables: Vec<PromptVariableRecord> =
+        serde_json::from_str(&variables_json).unwrap_or_default();
+    Ok(PromptRecord {
+        id: row.get(0)?,
+        name: row.get(1)?,
+        description: row.get(2)?,
+        content: row.get(3)?,
+        slash: row.get(4)?,
+        tags,
+        scope: row.get(6)?,
+        project_id: row.get(7)?,
+        variables,
+        favorite: row.get::<_, i32>(9)? != 0,
+        usage_count: row.get(10)?,
+        last_used_at: row.get(11)?,
+        created_at: row.get(12)?,
+        updated_at: row.get(13)?,
     })
 }
 

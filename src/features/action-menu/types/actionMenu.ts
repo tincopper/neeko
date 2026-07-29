@@ -7,9 +7,12 @@ export type ActionId =
   | 'open-file'
   | 'recent-files'
   | 'open-side-terminal'
-  | 'open-in-ide';
+  | 'open-in-ide'
+  | 'open-resource-library'
+  | 'new-prompt'
+  | 'insert-prompt';
 
-export type ActionGroup = 'terminal' | 'agent' | 'file' | 'quick';
+export type ActionGroup = 'terminal' | 'agent' | 'file' | 'quick' | 'library';
 
 export interface ActionContext {
   projectId: string | null;
@@ -17,6 +20,10 @@ export interface ActionContext {
   agents: { id: string; name: string; icon?: string | null; enabled: boolean }[];
   recentFiles: string[];
   closeMenu: () => void;
+  /** Insert text into the active agent input (when available). */
+  insertToAgentInput?: (text: string) => void;
+  /** Open the Resource Library panel at a specific kind. */
+  openLibrary?: (opts?: { kind?: 'skill' | 'prompt' | 'action' }) => void;
 }
 
 export interface ActionRegistryItem {

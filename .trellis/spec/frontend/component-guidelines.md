@@ -133,6 +133,50 @@ const ProjectItem: React.FC<ProjectItemProps> = ({
 
 ---
 
+## 多 Tab 面板 + 内嵌现有组件模式
+
+### 适用场景
+
+新建统一面板需要整合多个资源域（如 Resource Library 整合 Skills / Prompts / Actions），且需要内嵌已有独立面板（如现有 `SkillsPanel`）作为其中一个 Tab 内容。
+
+### 模式结构
+
+```tsx
+// LibraryPanel.tsx —— 壳层
+const LibraryPanel: React.FC = React.memo(() => {
+  const activeKind = useLibraryStore((s) => s.activeKind);
+  return (
+    <div className="library">
+      <LibraryHeader />          {/* Tabs + Search + ViewToggle + New */}
+      <div className="library-body">
+        <LibrarySidebar />       {/* 过滤侧栏 */}
+        <div className="content">
+          {activeKind === 'skill' && <SkillsTabContent />}     {/* 内嵌现有 */}
+          {activeKind === 'prompt' && <PromptListSection />}   {/* 新建 */}
+          {activeKind === 'action' && <ActionListSection />}   {/* P1 */}
+        </div>
+      </div>
+    </div>
+  );
+});
+
+// SkillsTabContent.tsx —— 内嵌现有面板（仅透传，不复制业务逻辑）
+const SkillsTabContent: React.FC = React.memo(() => <SkillsPanel />);
+```
+
+### 关键规则
+
+1. **壳层不重复实现业务逻辑**：内嵌 Tab 内容仅做透传，不复制内部逻辑
+2. **状态隔离**：壳层 store 与内嵌面板的 store 独立，通过 props/context 通信
+3. **Tab 切换不丢失内嵌面板状态**：用 CSS `display` 控制显隐，不要 unmount
+4. **双视图模式**：网格/列表切换通过 `viewMode` 状态控制
+
+### 示例
+
+`features/library/components/LibraryPanel.tsx`（2026-07-29）
+
+---
+
 ## 样式模式
 
 ### Tailwind CSS v4 + CSS 自定义属性

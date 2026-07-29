@@ -24,6 +24,7 @@ src/features/
 ├── connection/api/connectionApi.ts  # SSH/WSL 连接相关 IPC
 ├── file/api/fileApi.ts          # 文件读写相关 IPC
 ├── git/api/gitApi.ts            # Git 操作相关 IPC
+├── library/api/libraryApi.ts    # 资源库 IPC（Prompts + Actions）
 ├── project/api/projectApi.ts    # 项目管理相关 IPC
 ├── session/api/sessionApi.ts    # 会话持久化相关 IPC
 ├── settings/api/settingsApi.ts  # 设置相关 IPC
@@ -250,13 +251,16 @@ export function getGitInfo(transport: GitTransportKind): Promise<GitInfo> {
 | `features/editor/hooks/useFileTabRefresh.ts` | `fileApi` |
 | `features/task/store.ts` | `taskApi`、`terminalApi` |
 | `features/skill/store.ts` | `skillApi`、`fileApi` |
+| `features/library/store/libraryStore.ts` | `libraryApi` |
+| `features/library/components/PromptListSection.tsx` | `libraryApi` |
+| `features/library/components/PromptEditorDialog.tsx` | `libraryApi` |
 | `features/terminal/components/terminalLinks.ts` | `fileApi` |
 
 ### App 协调层使用的 API
 
 | 组件 | 使用的 API |
 |---|---|
-| `app/components/ProjectWorkspace.tsx` | `agentApi` |
+| `app/components/ProjectWorkspace.tsx` | `agentApi`、`libraryApi`（openLibrary + insertToAgentInput） |
 | `app/components/OpenIdeButton.tsx` | `sessionApi` |
 | `app/dock/DockPanelWrappers.tsx` | `fileApi` |
 
@@ -467,6 +471,7 @@ useEffect(() => {
 
 | 日期 | 变更 |
 |------|------|
+| 2026-07-29 | 新增 `libraryApi.ts`（Prompts + Actions IPC） |
 | 2026-05-30 | 重写为 Feature API Wrapper 模式文档（从直接调用迁移） |
 | 2026-05-06 | `src/adapters/` 移除记录 |
 | 2026-04-17 | 终端分屏 IPC 契约添加 |

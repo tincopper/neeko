@@ -2744,3 +2744,289 @@ pub async fn install_from_skillssh(
     .await
     .map_err(|e| e.to_string())?
 }
+
+// --- Prompt Commands ---
+
+/// Prompt DTO returned to the frontend.
+#[derive(Debug, Clone, Serialize)]
+pub struct PromptDtoOut {
+    /// Unique prompt identifier.
+    pub id: String,
+    /// Display name.
+    pub name: String,
+    /// Optional description.
+    pub description: Option<String>,
+    /// Prompt body.
+    pub content: String,
+    /// Slash command without the leading slash.
+    pub slash: Option<String>,
+    /// Tag names.
+    pub tags: Vec<String>,
+    /// Scope: "global" or "project".
+    pub scope: String,
+    /// Project id when scope = "project".
+    pub project_id: Option<String>,
+    /// Template variables.
+    pub variables: Vec<PromptVariableDtoOut>,
+    /// Whether favorited.
+    pub favorite: bool,
+    /// Usage counter.
+    pub usage_count: i64,
+    /// Timestamp of last use.
+    pub last_used_at: Option<i64>,
+    /// Creation timestamp.
+    pub created_at: i64,
+    /// Last update timestamp.
+    pub updated_at: i64,
+}
+
+/// Variable DTO returned to the frontend.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PromptVariableDtoOut {
+    /// Variable name without braces.
+    pub name: String,
+    /// Optional description.
+    pub description: Option<String>,
+    /// Default value.
+    pub default: Option<String>,
+    /// Whether required.
+    pub required: bool,
+}
+
+/// Input for creating a prompt.
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CreatePromptInput {
+    /// Display name.
+    pub name: String,
+    /// Optional description.
+    pub description: Option<String>,
+    /// Prompt body.
+    pub content: String,
+    /// Slash command without the leading slash.
+    pub slash: Option<String>,
+    /// Tag names.
+    pub tags: Vec<String>,
+    /// Scope: "global" or "project".
+    pub scope: Option<String>,
+    /// Project id when scope = "project".
+    pub project_id: Option<String>,
+    /// Template variables.
+    pub variables: Vec<PromptVariableDtoOut>,
+}
+
+/// Input for updating a prompt.
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdatePromptInput {
+    /// Display name.
+    pub name: String,
+    /// Optional description.
+    pub description: Option<String>,
+    /// Prompt body.
+    pub content: String,
+    /// Slash command without the leading slash.
+    pub slash: Option<String>,
+    /// Tag names.
+    pub tags: Vec<String>,
+    /// Scope: "global" or "project".
+    pub scope: Option<String>,
+    /// Project id when scope = "project".
+    pub project_id: Option<String>,
+    /// Template variables.
+    pub variables: Vec<PromptVariableDtoOut>,
+    /// Whether favorited.
+    pub favorite: Option<bool>,
+}
+
+fn prompt_to_dto(s: super::types::PromptRecord) -> PromptDtoOut {
+    PromptDtoOut {
+        id: s.id,
+        name: s.name,
+        description: s.description,
+        content: s.content,
+        slash: s.slash,
+        tags: s.tags,
+        scope: s.scope,
+        project_id: s.project_id,
+        favorite: s.favorite,
+        usage_count: s.usage_count,
+        last_used_at: s.last_used_at,
+        created_at: s.created_at,
+        updated_at: s.updated_at,
+        variables: s
+            .variables
+            .into_iter()
+            .map(|v| PromptVariableDtoOut {
+                name: v.name,
+                description: v.description,
+                default: v.default,
+                required: v.required,
+            })
+            .collect(),
+    }
+}
+
+fn input_to_prompt_record(
+    id: String,
+    input: &CreatePromptInput,
+    now: i64,
+) -> super::types::PromptRecord {
+    super::types::PromptRecord {
+        id,
+        name: input.name.clone(),
+        description: input.description.clone(),
+        content: input.content.clone(),
+        slash: input.slash.clone(),
+        tags: input.tags.clone(),
+        scope: input.scope.clone().unwrap_or_else(|| "global".to_string()),
+        project_id: input.project_id.clone(),
+        favorite: false,
+        usage_count: 0,
+        last_used_at: None,
+        created_at: now,
+        updated_at: now,
+        variables: input
+            .variables
+            .iter()
+            .map(|v| super::types::PromptVariableRecord {
+                name: v.name.clone(),
+                description: v.description.clone(),
+                default: v.default.clone(),
+                required: v.required,
+            })
+            .collect(),
+    }
+}
+
+/// List all prompts.
+#[tauri::command]
+pub async fn list_prompts(
+    store: tauri::State<'_, std::sync::Arc<super::skill_store::SkillStore>>,
+) -> Result<Vec<PromptDtoOut>, AppError> {
+    let store = store.inner().clone();
+    run_blocking_result(move || {
+        let prompts = store.get_all_prompts().map_err(AppError::from)?;
+        Ok(prompts.into_iter().map(prompt_to_dto).collect())
+    })
+    .await
+}
+
+/// Get a single prompt by ID.
+#[tauri::command]
+pub async fn get_prompt(
+    id: String,
+    store: tauri::State<'_, std::sync::Arc<super::skill_store::SkillStore>>,
+) -> Result<PromptDtoOut, AppError> {
+    let store = store.inner().clone();
+    run_blocking_result(move || {
+        let prompt = store
+            .get_prompt_by_id(&id)
+            .map_err(AppError::from)?
+            .ok_or_else(|| AppError::NotFound(format!("Prompt not found: {id}")))?;
+        Ok(prompt_to_dto(prompt))
+    })
+    .await
+}
+
+/// Create a new prompt.
+#[tauri::command]
+pub async fn save_prompt(
+    input: CreatePromptInput,
+    store: tauri::State<'_, std::sync::Arc<super::skill_store::SkillStore>>,
+) -> Result<PromptDtoOut, AppError> {
+    let store = store.inner().clone();
+    run_blocking_result(move || {
+        let now = chrono::Utc::now().timestamp_millis();
+        let id = uuid::Uuid::new_v4().to_string();
+        let record = input_to_prompt_record(id, &input, now);
+        store.insert_prompt(&record).map_err(AppError::from)?;
+        Ok(prompt_to_dto(record))
+    })
+    .await
+}
+
+/// Update an existing prompt.
+#[tauri::command]
+pub async fn update_prompt_cmd(
+    id: String,
+    input: UpdatePromptInput,
+    store: tauri::State<'_, std::sync::Arc<super::skill_store::SkillStore>>,
+) -> Result<PromptDtoOut, AppError> {
+    let store = store.inner().clone();
+    run_blocking_result(move || {
+        let mut record = store
+            .get_prompt_by_id(&id)
+            .map_err(AppError::from)?
+            .ok_or_else(|| AppError::NotFound(format!("Prompt not found: {id}")))?;
+        record.name = input.name;
+        record.description = input.description;
+        record.content = input.content;
+        record.slash = input.slash;
+        record.tags = input.tags;
+        record.scope = input.scope.unwrap_or(record.scope);
+        record.project_id = input.project_id;
+        record.variables = input
+            .variables
+            .into_iter()
+            .map(|v| super::types::PromptVariableRecord {
+                name: v.name,
+                description: v.description,
+                default: v.default,
+                required: v.required,
+            })
+            .collect();
+        if let Some(fav) = input.favorite {
+            record.favorite = fav;
+        }
+        store.update_prompt(&record).map_err(AppError::from)?;
+        Ok(prompt_to_dto(record))
+    })
+    .await
+}
+
+/// Delete a prompt.
+#[tauri::command]
+pub async fn delete_prompt_cmd(
+    id: String,
+    store: tauri::State<'_, std::sync::Arc<super::skill_store::SkillStore>>,
+) -> Result<(), AppError> {
+    let store = store.inner().clone();
+    run_blocking_result(move || store.delete_prompt(&id).map_err(AppError::from)).await
+}
+
+/// Record prompt usage (increments counter + last_used_at).
+#[tauri::command]
+pub async fn use_prompt_cmd(
+    id: String,
+    store: tauri::State<'_, std::sync::Arc<super::skill_store::SkillStore>>,
+) -> Result<(), AppError> {
+    let store = store.inner().clone();
+    run_blocking_result(move || store.record_prompt_usage(&id).map_err(AppError::from)).await
+}
+
+/// Resolve a slash command to prompt content (project scope overrides global).
+#[tauri::command]
+pub async fn resolve_slash_prompt(
+    slash: String,
+    project_id: Option<String>,
+    store: tauri::State<'_, std::sync::Arc<super::skill_store::SkillStore>>,
+) -> Result<Option<PromptDtoOut>, AppError> {
+    let store = store.inner().clone();
+    run_blocking_result(move || {
+        let prompt = store
+            .get_prompt_by_slash(&slash, project_id.as_deref())
+            .map_err(AppError::from)?;
+        Ok(prompt.map(prompt_to_dto))
+    })
+    .await
+}
+
+/// Get all unique tag names across all prompts.
+#[tauri::command]
+pub async fn get_all_prompt_tags_cmd(
+    store: tauri::State<'_, std::sync::Arc<super::skill_store::SkillStore>>,
+) -> Result<Vec<String>, AppError> {
+    let store = store.inner().clone();
+    run_blocking_result(move || store.get_all_prompt_tags().map_err(AppError::from)).await
+}

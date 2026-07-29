@@ -263,6 +263,15 @@ macro_rules! neeko_invoke_handler {
             $crate::skill::commands::set_project_skill_enabled_cmd,
             $crate::skill::commands::get_all_project_skill_counts,
             $crate::skill::commands::get_all_project_tag_group_counts,
+            // ── prompt (resource library) ────────────────────────────────
+            $crate::skill::commands::list_prompts,
+            $crate::skill::commands::get_prompt,
+            $crate::skill::commands::save_prompt,
+            $crate::skill::commands::update_prompt_cmd,
+            $crate::skill::commands::delete_prompt_cmd,
+            $crate::skill::commands::use_prompt_cmd,
+            $crate::skill::commands::resolve_slash_prompt,
+            $crate::skill::commands::get_all_prompt_tags_cmd,
             // ── theme ────────────────────────────────────────────────────────
             $crate::theme::commands::sync_agent_theme,
             $crate::theme::commands::list_custom_themes,

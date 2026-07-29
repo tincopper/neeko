@@ -1,0 +1,1142 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Neeko · 资源库管理 + Action 入口 原型</title>
+<style>
+  :root {
+    --bg-0: #0f1013;
+    --bg-1: #15171b;
+    --bg-2: #1b1d22;
+    --bg-3: #22252c;
+    --bg-hover: #2a2e36;
+    --bg-selected: #243447;
+    --text: #eef0f4;
+    --text-2: #b4b8c1;
+    --text-3: #7c818c;
+    --border: #32363f;
+    --blue: #2997ff;
+    --green: #30d158;
+    --red: #ff453a;
+    --yellow: #ffd60a;
+    --orange: #ff9f0a;
+    --purple: #bf5af2;
+    --cyan: #64d2ff;
+    --font: "SF Pro Text", Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    --mono: "JetBrains Mono", "SF Mono", ui-monospace, monospace;
+    --dock-w: 42px;
+    --rail-w: 200px;
+    --radius: 10px;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+  body {
+    font-family: var(--font);
+    color: var(--text);
+    background: var(--bg-0);
+    font-size: 13px;
+    line-height: 1.4;
+  }
+  button, input, textarea, select { font: inherit; color: inherit; }
+  button { cursor: pointer; border: none; background: none; }
+  input, textarea {
+    background: var(--bg-0);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 8px 10px;
+    outline: none;
+    width: 100%;
+  }
+  input:focus, textarea:focus { border-color: var(--blue); }
+  textarea { resize: vertical; min-height: 120px; font-family: var(--mono); font-size: 12px; }
+
+  .page {
+    height: 100%;
+    display: grid;
+    grid-template-rows: auto minmax(0, 1fr);
+  }
+
+  .notes {
+    border-bottom: 1px solid var(--border);
+    background: linear-gradient(180deg, #1a2533, var(--bg-1));
+    padding: 10px 14px;
+  }
+  .notes h1 { margin: 0 0 4px; font-size: 15px; font-weight: 650; letter-spacing: -.01em; }
+  .notes p { margin: 0; color: var(--text-2); font-size: 12px; max-width: 150ch; }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+  .chip {
+    font-size: 11px; padding: 2px 8px; border-radius: 999px;
+    border: 1px solid var(--border); color: var(--text-2); background: var(--bg-2);
+  }
+  .chip.on { color: var(--blue); border-color: color-mix(in srgb, var(--blue) 45%, var(--border)); }
+  .chip.green { color: var(--green); border-color: color-mix(in srgb, var(--green) 40%, var(--border)); }
+  .chip.warn { color: var(--orange); border-color: color-mix(in srgb, var(--orange) 40%, var(--border)); }
+  .chip.purple { color: var(--purple); border-color: color-mix(in srgb, var(--purple) 40%, var(--border)); }
+
+  .app {
+    min-height: 0;
+    display: grid;
+    grid-template-rows: 34px minmax(0, 1fr) 28px;
+    margin: 10px;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    overflow: hidden;
+    background: var(--bg-1);
+    box-shadow: 0 20px 60px #0008;
+  }
+  .titlebar {
+    display: flex; align-items: center; gap: 10px;
+    padding: 0 12px; border-bottom: 1px solid var(--border); background: var(--bg-2);
+    font-size: 12px; color: var(--text-2);
+  }
+  .dots { display: flex; gap: 6px; }
+  .dot { width: 10px; height: 10px; border-radius: 50%; background: #3a3f4a; }
+  .dot.r { background: #ff5f57; } .dot.y { background: #febc2e; } .dot.g { background: #28c840; }
+  .titlebar .spacer { flex: 1; }
+  .kbd {
+    font-family: var(--mono); font-size: 11px; color: var(--text-3);
+    border: 1px solid var(--border); border-radius: 5px; padding: 1px 6px; background: var(--bg-0);
+  }
+
+  .main {
+    min-height: 0;
+    display: grid;
+    grid-template-columns: var(--dock-w) minmax(0, 1fr);
+  }
+  .dock {
+    border-right: 1px solid var(--border);
+    background: var(--bg-2);
+    display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 8px 0;
+  }
+  .dock-btn {
+    width: 28px; height: 28px; border-radius: 8px; color: var(--text-3);
+    display: grid; place-items: center; font-size: 14px;
+  }
+  .dock-btn:hover { background: var(--bg-hover); color: var(--text); }
+  .dock-btn.active { background: var(--bg-selected); color: var(--blue); }
+
+  .workspace {
+    min-width: 0; min-height: 0;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .workspace.with-library {
+    grid-template-columns: 720px minmax(0, 1fr);
+  }
+
+  .editor-pane {
+    min-width: 0; min-height: 0;
+    display: grid;
+    grid-template-rows: auto minmax(0, 1fr) auto;
+    border-right: 1px solid var(--border);
+    background: var(--bg-1);
+  }
+  .tabs {
+    display: flex; gap: 2px; padding: 6px 8px 0; border-bottom: 1px solid var(--border);
+    background: var(--bg-2); overflow: auto;
+  }
+  .tab {
+    padding: 6px 12px; border-radius: 8px 8px 0 0; color: var(--text-3); font-size: 12px;
+    border: 1px solid transparent; border-bottom: none;
+  }
+  .tab.active {
+    background: var(--bg-1); color: var(--text); border-color: var(--border);
+  }
+  .editor-body {
+    padding: 16px 18px; overflow: auto; color: var(--text-2);
+  }
+  .editor-body h2 { margin: 0 0 8px; color: var(--text); font-size: 16px; }
+  .editor-body code {
+    font-family: var(--mono); font-size: 12px; background: var(--bg-0);
+    border: 1px solid var(--border); padding: 1px 5px; border-radius: 4px;
+  }
+  .flow {
+    margin-top: 14px; display: grid; gap: 8px;
+  }
+  .flow-step {
+    display: grid; grid-template-columns: 24px 1fr; gap: 10px; align-items: start;
+    padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--bg-2);
+  }
+  .flow-n {
+    width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center;
+    background: color-mix(in srgb, var(--blue) 20%, var(--bg-0)); color: var(--blue); font-size: 12px; font-weight: 600;
+  }
+
+  .agent-bar {
+    border-top: 1px solid var(--border); padding: 10px 12px; background: var(--bg-2);
+    display: grid; gap: 8px;
+  }
+  .agent-input-wrap {
+    display: grid; grid-template-columns: 1fr auto; gap: 8px; align-items: end;
+  }
+  .agent-input {
+    min-height: 64px; font-family: var(--font);
+  }
+  .btn {
+    display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+    height: 32px; padding: 0 12px; border-radius: 8px;
+    border: 1px solid var(--border); background: var(--bg-3); color: var(--text);
+    white-space: nowrap;
+  }
+  .btn:hover { background: var(--bg-hover); }
+  .btn.primary { background: color-mix(in srgb, var(--blue) 28%, var(--bg-3)); border-color: color-mix(in srgb, var(--blue) 50%, var(--border)); color: #dcefff; }
+  .btn.primary:hover { background: color-mix(in srgb, var(--blue) 40%, var(--bg-3)); }
+  .btn.ghost { background: transparent; }
+  .btn.danger { color: #ffb4af; border-color: color-mix(in srgb, var(--red) 40%, var(--border)); }
+  .btn.sm { height: 26px; padding: 0 8px; font-size: 12px; border-radius: 6px; }
+  .btn:disabled { opacity: .45; cursor: not-allowed; }
+
+  /* Library panel */
+  .library {
+    min-width: 0; min-height: 0;
+    display: none;
+    grid-template-rows: auto minmax(0, 1fr);
+    background: var(--bg-1);
+  }
+  .workspace.with-library .library { display: grid; }
+
+  .lib-top {
+    display: flex; align-items: center; gap: 8px;
+    padding: 10px 12px; border-bottom: 1px solid var(--border); background: var(--bg-2);
+  }
+  .lib-title { font-weight: 650; letter-spacing: -.01em; }
+  .lib-tabs { display: flex; gap: 4px; margin-left: 8px; }
+  .lib-tab {
+    padding: 5px 10px; border-radius: 999px; color: var(--text-3);
+    border: 1px solid transparent; font-size: 12px;
+  }
+  .lib-tab:hover { background: var(--bg-hover); color: var(--text); }
+  .lib-tab.active {
+    color: var(--blue);
+    background: color-mix(in srgb, var(--blue) 12%, var(--bg-0));
+    border-color: color-mix(in srgb, var(--blue) 35%, var(--border));
+  }
+  .lib-tab .count {
+    margin-left: 4px; opacity: .75; font-variant-numeric: tabular-nums;
+  }
+  .lib-top .spacer { flex: 1; }
+  .search {
+    width: 180px; height: 30px; padding: 0 10px; border-radius: 8px;
+  }
+
+  .lib-body {
+    min-height: 0;
+    display: grid;
+    grid-template-columns: var(--rail-w) minmax(0, 1fr);
+  }
+  .rail {
+    border-right: 1px solid var(--border); background: var(--bg-2);
+    padding: 10px 8px; overflow: auto;
+  }
+  .rail-section { margin-bottom: 14px; }
+  .rail-label {
+    font-size: 10px; text-transform: uppercase; letter-spacing: .06em;
+    color: var(--text-3); padding: 0 8px 6px;
+  }
+  .rail-item {
+    width: 100%; text-align: left; padding: 7px 8px; border-radius: 8px;
+    color: var(--text-2); display: flex; align-items: center; gap: 8px;
+  }
+  .rail-item:hover { background: var(--bg-hover); color: var(--text); }
+  .rail-item.active { background: var(--bg-selected); color: var(--text); }
+  .rail-item .meta { margin-left: auto; color: var(--text-3); font-size: 11px; }
+  .tag-pill {
+    display: inline-flex; align-items: center; gap: 4px;
+    padding: 3px 8px; border-radius: 999px; margin: 2px;
+    border: 1px solid var(--border); color: var(--text-2); background: var(--bg-0);
+    font-size: 11px;
+  }
+  .tag-pill.active {
+    color: var(--cyan);
+    border-color: color-mix(in srgb, var(--cyan) 40%, var(--border));
+    background: color-mix(in srgb, var(--cyan) 10%, var(--bg-0));
+  }
+
+  .content {
+    min-width: 0; min-height: 0; overflow: auto; padding: 12px;
+  }
+  .content-head {
+    display: flex; align-items: center; gap: 8px; margin-bottom: 10px;
+  }
+  .content-head h3 { margin: 0; font-size: 13px; font-weight: 600; }
+  .content-head .hint { color: var(--text-3); font-size: 12px; }
+
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+    gap: 10px;
+  }
+  .card {
+    border: 1px solid var(--border); border-radius: 12px; background: var(--bg-2);
+    padding: 12px; display: grid; gap: 8px; min-height: 140px;
+    transition: border-color .15s, transform .15s;
+  }
+  .card:hover { border-color: color-mix(in srgb, var(--blue) 35%, var(--border)); }
+  .card.selected {
+    border-color: color-mix(in srgb, var(--blue) 55%, var(--border));
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--blue) 30%, transparent);
+  }
+  .card-top { display: flex; align-items: flex-start; gap: 8px; }
+  .kind {
+    font-size: 10px; text-transform: uppercase; letter-spacing: .04em;
+    padding: 2px 6px; border-radius: 999px; border: 1px solid var(--border);
+    color: var(--text-3); background: var(--bg-0); flex-shrink: 0;
+  }
+  .kind.skill { color: #9ad0ff; border-color: #2d4d70; }
+  .kind.prompt { color: #d2b8ff; border-color: #4d3a70; }
+  .kind.action { color: #ffd28a; border-color: #6a5228; }
+  .card-title { font-weight: 600; color: var(--text); line-height: 1.3; }
+  .card-desc {
+    color: var(--text-3); font-size: 12px;
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+  }
+  .card-tags { display: flex; flex-wrap: wrap; gap: 4px; }
+  .card-actions { display: flex; gap: 6px; margin-top: auto; }
+  .fav { margin-left: auto; color: var(--text-3); }
+  .fav.on { color: var(--yellow); }
+
+  .empty {
+    border: 1px dashed var(--border); border-radius: 12px;
+    padding: 36px 20px; text-align: center; color: var(--text-3);
+    background: color-mix(in srgb, var(--bg-0) 60%, transparent);
+  }
+  .empty h4 { margin: 0 0 6px; color: var(--text-2); font-size: 14px; }
+  .empty p { margin: 0 0 14px; font-size: 12px; }
+
+  .status {
+    border-top: 1px solid var(--border); background: var(--bg-2);
+    display: flex; align-items: center; gap: 12px; padding: 0 12px;
+    color: var(--text-3); font-size: 11px;
+  }
+  .status .ok { color: var(--green); }
+  .toast {
+    position: fixed; right: 18px; bottom: 18px; z-index: 50;
+    background: #1c2430; border: 1px solid #35506f; color: var(--text);
+    padding: 10px 14px; border-radius: 10px; box-shadow: 0 10px 30px #0008;
+    opacity: 0; transform: translateY(8px); transition: .2s; pointer-events: none;
+    max-width: 360px;
+  }
+  .toast.show { opacity: 1; transform: none; }
+
+  /* Palette */
+  .overlay {
+    position: fixed; inset: 0; background: #0008; display: none; place-items: start center;
+    padding-top: 12vh; z-index: 40;
+  }
+  .overlay.show { display: grid; }
+  .palette {
+    width: min(560px, calc(100vw - 24px));
+    background: var(--bg-1); border: 1px solid var(--border); border-radius: 12px;
+    overflow: hidden; box-shadow: 0 24px 80px #000a;
+  }
+  .palette-head { padding: 10px 12px; border-bottom: 1px solid var(--border); }
+  .palette-label {
+    font-size: 10px; text-transform: uppercase; letter-spacing: .06em;
+    color: var(--text-3); margin-bottom: 6px;
+  }
+  .palette-list { max-height: 360px; overflow: auto; padding: 6px; }
+  .palette-item {
+    width: 100%; text-align: left; padding: 9px 10px; border-radius: 8px;
+    display: grid; grid-template-columns: 28px 1fr auto; gap: 8px; align-items: center;
+    color: var(--text-2);
+  }
+  .palette-item:hover, .palette-item.active {
+    background: var(--bg-selected); color: var(--text);
+  }
+  .palette-item .ico {
+    width: 28px; height: 28px; border-radius: 8px; display: grid; place-items: center;
+    background: var(--bg-0); border: 1px solid var(--border); font-size: 13px;
+  }
+  .palette-item .name { font-weight: 550; }
+  .palette-item .desc { font-size: 11px; color: var(--text-3); }
+  .palette-item .right { color: var(--text-3); font-size: 11px; font-family: var(--mono); }
+
+  /* Modal */
+  .modal-overlay {
+    position: fixed; inset: 0; background: #0007; display: none; place-items: center; z-index: 45;
+  }
+  .modal-overlay.show { display: grid; }
+  .modal {
+    width: min(520px, calc(100vw - 24px));
+    background: var(--bg-1); border: 1px solid var(--border); border-radius: 12px;
+    box-shadow: 0 24px 80px #000a; overflow: hidden;
+  }
+  .modal-head {
+    display: flex; align-items: center; gap: 8px;
+    padding: 12px 14px; border-bottom: 1px solid var(--border); background: var(--bg-2);
+  }
+  .modal-head h3 { margin: 0; font-size: 14px; }
+  .modal-body { padding: 14px; display: grid; gap: 10px; }
+  .field label {
+    display: block; font-size: 11px; color: var(--text-3); margin-bottom: 4px;
+  }
+  .modal-foot {
+    display: flex; justify-content: flex-end; gap: 8px;
+    padding: 12px 14px; border-top: 1px solid var(--border); background: var(--bg-2);
+  }
+
+  .detail {
+    margin-top: 12px; border: 1px solid var(--border); border-radius: 12px;
+    background: var(--bg-2); overflow: hidden;
+  }
+  .detail-head {
+    display: flex; align-items: center; gap: 8px; padding: 10px 12px;
+    border-bottom: 1px solid var(--border); background: var(--bg-3);
+  }
+  .detail-body { padding: 12px; }
+  .mono-block {
+    font-family: var(--mono); font-size: 12px; white-space: pre-wrap;
+    background: var(--bg-0); border: 1px solid var(--border); border-radius: 8px;
+    padding: 10px; color: var(--text-2); max-height: 180px; overflow: auto;
+  }
+
+  .help-row {
+    display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px;
+  }
+</style>
+</head>
+<body>
+<div class="page">
+  <div class="notes">
+    <h1>Neeko · 资源库管理动作 / Library 原型</h1>
+    <p>
+      参考 <strong>vb.do/library</strong>（Themes / Prompts / Media）的「统一资源库 + 分类空状态 + 一键复用」模型，
+      映射到 Neeko 现有 <strong>Skills 面板 + Action Palette</strong>：MVP 聚焦 Skills / Prompts，Actions 为 P1。
+      快捷键：<span class="kbd">Ctrl/⌘ K</span> 打开 Action Palette，<span class="kbd">Ctrl/⌘ Shift L</span> 切换 Library。
+    </p>
+    <div class="chips">
+      <span class="chip on">P0 · Library 壳</span>
+      <span class="chip on">P0 · Prompts CRUD</span>
+      <span class="chip on">P0 · Open Library Action</span>
+      <span class="chip green">复用现有 Skills</span>
+      <span class="chip purple">P1 · 动态 Action Provider</span>
+      <span class="chip warn">Themes/Media 延后</span>
+    </div>
+  </div>
+
+  <div class="app" id="app">
+    <div class="titlebar">
+      <div class="dots"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span></div>
+      <span>neeko · feature-commands</span>
+      <span class="spacer"></span>
+      <button class="btn sm ghost" id="btnOpenPalette" title="Open Action Palette">⌘K Actions</button>
+      <button class="btn sm primary" id="btnToggleLib">⌘⇧L Library</button>
+    </div>
+
+    <div class="main">
+      <aside class="dock">
+        <button class="dock-btn" title="Explorer">📁</button>
+        <button class="dock-btn" title="Git">⎇</button>
+        <button class="dock-btn active" id="dockLibrary" title="Resource Library">📚</button>
+        <button class="dock-btn" title="Terminal">⌨</button>
+        <div style="flex:1"></div>
+        <button class="dock-btn" title="Settings">⚙</button>
+      </aside>
+
+      <div class="workspace with-library" id="workspace">
+        <!-- Library -->
+        <section class="library" id="library">
+          <div class="lib-top">
+            <div class="lib-title">Library</div>
+            <div class="lib-tabs" id="kindTabs">
+              <button class="lib-tab active" data-kind="skill">Skills <span class="count" id="countSkill">0</span></button>
+              <button class="lib-tab" data-kind="prompt">Prompts <span class="count" id="countPrompt">0</span></button>
+              <button class="lib-tab" data-kind="action">Actions <span class="count" id="countAction">0</span></button>
+            </div>
+            <div class="spacer"></div>
+            <input class="search" id="searchInput" placeholder="Search resources…" />
+            <button class="btn sm primary" id="btnCreate">+ New</button>
+            <button class="btn sm ghost" id="btnCloseLib" title="Close">✕</button>
+          </div>
+
+          <div class="lib-body">
+            <aside class="rail">
+              <div class="rail-section">
+                <div class="rail-label">Filter</div>
+                <button class="rail-item active" data-filter="all">All <span class="meta" id="metaAll">—</span></button>
+                <button class="rail-item" data-filter="fav">Favorites <span class="meta" id="metaFav">—</span></button>
+                <button class="rail-item" data-filter="recent">Recent</button>
+              </div>
+              <div class="rail-section">
+                <div class="rail-label">Scope</div>
+                <button class="rail-item active" data-scope="all">All scopes</button>
+                <button class="rail-item" data-scope="global">Global</button>
+                <button class="rail-item" data-scope="project">This project</button>
+              </div>
+              <div class="rail-section">
+                <div class="rail-label">Tags</div>
+                <div id="tagCloud"></div>
+              </div>
+              <div class="rail-section" id="skillExtra">
+                <div class="rail-label">Skills sources</div>
+                <button class="rail-item">Marketplace ↗</button>
+                <button class="rail-item">Agents</button>
+                <button class="rail-item">Projects</button>
+              </div>
+            </aside>
+
+            <div class="content">
+              <div class="content-head">
+                <h3 id="contentTitle">Skills</h3>
+                <span class="hint" id="contentHint">复用现有 Skill 中央库 · Apply 到 Agent/Project</span>
+              </div>
+              <div class="grid" id="resourceGrid"></div>
+              <div class="empty" id="emptyState" hidden>
+                <h4 id="emptyTitle">No prompts</h4>
+                <p id="emptyDesc">Create reusable prompts for recurring agent tasks.</p>
+                <button class="btn primary" id="btnEmptyCreate">Create Prompt</button>
+              </div>
+
+              <div class="detail" id="detail" hidden>
+                <div class="detail-head">
+                  <span class="kind" id="detailKind">prompt</span>
+                  <strong id="detailName">—</strong>
+                  <span class="spacer"></span>
+                  <button class="btn sm primary" id="btnPrimaryAction">Insert</button>
+                  <button class="btn sm" id="btnSecondaryAction">Copy</button>
+                </div>
+                <div class="detail-body">
+                  <div class="mono-block" id="detailBody">—</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- Editor / Agent mock -->
+        <section class="editor-pane">
+          <div class="tabs">
+            <div class="tab active">Design notes</div>
+            <div class="tab">Agent · claude-code</div>
+          </div>
+          <div class="editor-body">
+            <h2>资源库管理动作 · 交互说明</h2>
+            <p>对齐 vb.do Library 的三类资产思维，但按 Neeko 桌面工作区收敛：</p>
+            <div class="flow">
+              <div class="flow-step">
+                <div class="flow-n">1</div>
+                <div>
+                  <strong>统一 Library 壳</strong><br/>
+                  Dock / <code>Open Resource Library</code> Action 打开面板；Tabs = Skills · Prompts · Actions。
+                </div>
+              </div>
+              <div class="flow-step">
+                <div class="flow-n">2</div>
+                <div>
+                  <strong>Skills 不重写</strong><br/>
+                  继续用现有 <code>skillStore</code> + Marketplace；Library 只做投影与入口。
+                </div>
+              </div>
+              <div class="flow-step">
+                <div class="flow-n">3</div>
+                <div>
+                  <strong>Prompts 可沉淀</strong><br/>
+                  创建 / 搜索 / Insert 到 Agent 输入；支持从下方输入框 <em>Save as Prompt</em>。
+                </div>
+              </div>
+              <div class="flow-step">
+                <div class="flow-n">4</div>
+                <div>
+                  <strong>Action Palette 可发现</strong><br/>
+                  静态动作 + 最近 Prompt / 自定义 Action 动态项（见 ⌘K）。
+                </div>
+              </div>
+            </div>
+            <div class="help-row">
+              <button class="btn sm" data-demo="seed">重置示例数据</button>
+              <button class="btn sm" data-demo="palette-library">演示：Palette → Open Library</button>
+              <button class="btn sm" data-demo="insert-review">演示：Insert Code Review Prompt</button>
+            </div>
+          </div>
+          <div class="agent-bar">
+            <div style="display:flex;align-items:center;gap:8px;color:var(--text-3);font-size:12px;">
+              <span>Agent input</span>
+              <span class="kbd">Insert Prompt 写入此处</span>
+              <span class="spacer"></span>
+              <button class="btn sm" id="btnSaveAsPrompt">Save as Prompt</button>
+            </div>
+            <div class="agent-input-wrap">
+              <textarea class="agent-input" id="agentInput" placeholder="Ask the agent… 或从 Library Insert Prompt"></textarea>
+              <button class="btn primary" id="btnSend" disabled>Send</button>
+            </div>
+          </div>
+        </section>
+      </div>
+    </div>
+
+    <div class="status">
+      <span class="ok">● prototype</span>
+      <span id="statusText">Library open · kind=skill</span>
+      <span class="spacer"></span>
+      <span>设计文档：docs/resource-library-design.md</span>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<div class="overlay" id="paletteOverlay">
+  <div class="palette" role="dialog" aria-label="Command Palette">
+    <div class="palette-head">
+      <div class="palette-label">Command Palette · Actions + Library</div>
+      <input id="paletteInput" placeholder="Type a command or resource…" autocomplete="off" />
+    </div>
+    <div class="palette-list" id="paletteList"></div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="modalOverlay">
+  <div class="modal">
+    <div class="modal-head">
+      <h3 id="modalTitle">New Prompt</h3>
+      <span class="spacer"></span>
+      <button class="btn sm ghost" id="modalClose">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="field">
+        <label>Name</label>
+        <input id="fName" placeholder="Code Review Checklist" />
+      </div>
+      <div class="field">
+        <label>Slash command（可选）</label>
+        <input id="fSlash" placeholder="review" />
+      </div>
+      <div class="field">
+        <label>Tags（逗号分隔）</label>
+        <input id="fTags" placeholder="git, review" />
+      </div>
+      <div class="field">
+        <label>Content</label>
+        <textarea id="fContent" placeholder="Review the current branch against main. Focus on…"></textarea>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn ghost" id="modalCancel">Cancel</button>
+      <button class="btn primary" id="modalSave">Save</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(() => {
+  const state = {
+    libraryOpen: true,
+    kind: 'skill', // skill | prompt | action
+    filter: 'all', // all | fav | recent
+    scope: 'all',
+    tag: null,
+    query: '',
+    selectedId: null,
+    paletteOpen: false,
+    paletteQuery: '',
+    paletteIndex: 0,
+    editingId: null,
+  };
+
+  const seedSkills = () => ([
+    { id: 'sk-1', kind: 'skill', name: 'code-review', description: 'Review code changes in the current branch', tags: ['git', 'review'], scope: 'global', favorite: true, usageCount: 12, lastUsedAt: Date.now()-36e5, body: 'SKILL.md · command/workflow', source: 'local' },
+    { id: 'sk-2', kind: 'skill', name: 'full-ci', description: 'lint → test → build workflow', tags: ['ci'], scope: 'global', favorite: false, usageCount: 4, lastUsedAt: Date.now()-864e5, body: 'workflow steps', source: 'local' },
+    { id: 'sk-3', kind: 'skill', name: 'tdd-guard', description: 'Enforce test-first workflow for agent edits', tags: ['tdd', 'quality'], scope: 'project', favorite: true, usageCount: 7, lastUsedAt: Date.now()-72e5, body: 'from marketplace', source: 'skillssh' },
+  ]);
+
+  const seedPrompts = () => ([
+    { id: 'pr-1', kind: 'prompt', name: 'Code Review Checklist', description: 'Structured PR review for agent', tags: ['git', 'review'], scope: 'global', favorite: true, usageCount: 9, lastUsedAt: Date.now()-18e5, slash: 'review', body: 'Review the current branch against {{base}}.\n\nChecklist:\n1. Correctness & edge cases\n2. Tests coverage\n3. Security / secrets\n4. API compatibility\n\nReturn findings ordered by severity.' },
+    { id: 'pr-2', kind: 'prompt', name: 'Explain Diff', description: 'Summarize git diff for humans', tags: ['git'], scope: 'global', favorite: false, usageCount: 3, lastUsedAt: Date.now()-172e5, slash: 'explain-diff', body: 'Summarize the unstaged and staged diff in plain language. Call out risky changes.' },
+    { id: 'pr-3', kind: 'prompt', name: 'Write Release Notes', description: 'From commits since last tag', tags: ['docs', 'release'], scope: 'project', favorite: false, usageCount: 1, lastUsedAt: Date.now()-432e5, slash: 'release-notes', body: 'Draft release notes from commits since the last tag. Group by Features / Fixes / Chore.' },
+  ]);
+
+  const seedActions = () => ([
+    { id: 'ac-1', kind: 'action', name: 'Open Resource Library', description: 'Browse skills, prompts, actions', tags: ['library'], scope: 'global', favorite: true, usageCount: 20, lastUsedAt: Date.now(), body: 'open-panel:library', group: 'quick' },
+    { id: 'ac-2', kind: 'action', name: 'Insert Prompt…', description: 'Search prompts and insert into agent', tags: ['prompt'], scope: 'global', favorite: false, usageCount: 6, lastUsedAt: Date.now()-5e5, body: 'insert-prompt:picker', group: 'agent' },
+    { id: 'ac-3', kind: 'action', name: 'Run Full CI Skill', description: 'Execute full-ci skill in project terminal', tags: ['ci', 'skill'], scope: 'project', favorite: false, usageCount: 2, lastUsedAt: Date.now()-9e6, body: 'run-skill:full-ci', group: 'terminal' },
+  ]);
+
+  let skills = seedSkills();
+  let prompts = seedPrompts();
+  let actions = seedActions();
+
+  const el = (id) => document.getElementById(id);
+  const workspace = el('workspace');
+  const statusText = el('statusText');
+  const toastEl = el('toast');
+
+  function toast(msg) {
+    toastEl.textContent = msg;
+    toastEl.classList.add('show');
+    clearTimeout(toastEl._t);
+    toastEl._t = setTimeout(() => toastEl.classList.remove('show'), 2200);
+  }
+
+  function allResources() {
+    return [...skills, ...prompts, ...actions];
+  }
+
+  function resourcesOfKind(kind) {
+    if (kind === 'skill') return skills;
+    if (kind === 'prompt') return prompts;
+    return actions;
+  }
+
+  function setLibraryOpen(open) {
+    state.libraryOpen = open;
+    workspace.classList.toggle('with-library', open);
+    el('dockLibrary').classList.toggle('active', open);
+    updateStatus();
+  }
+
+  function updateStatus() {
+    statusText.textContent = state.libraryOpen
+      ? `Library open · kind=${state.kind} · filter=${state.filter}`
+      : 'Library closed · use ⌘⇧L or Action Palette';
+  }
+
+  function filteredList() {
+    let list = resourcesOfKind(state.kind).slice();
+    if (state.filter === 'fav') list = list.filter(r => r.favorite);
+    if (state.filter === 'recent') list = list.slice().sort((a,b) => (b.lastUsedAt||0)-(a.lastUsedAt||0));
+    if (state.scope !== 'all') list = list.filter(r => r.scope === state.scope);
+    if (state.tag) list = list.filter(r => r.tags.includes(state.tag));
+    if (state.query.trim()) {
+      const q = state.query.trim().toLowerCase();
+      list = list.filter(r =>
+        r.name.toLowerCase().includes(q) ||
+        (r.description||'').toLowerCase().includes(q) ||
+        r.tags.some(t => t.includes(q)) ||
+        (r.slash||'').toLowerCase().includes(q)
+      );
+    }
+    return list;
+  }
+
+  function primaryLabel(kind) {
+    if (kind === 'skill') return 'Apply';
+    if (kind === 'prompt') return 'Insert';
+    return 'Run';
+  }
+
+  function renderTags() {
+    const tags = new Map();
+    resourcesOfKind(state.kind).forEach(r => r.tags.forEach(t => tags.set(t, (tags.get(t)||0)+1)));
+    const cloud = el('tagCloud');
+    cloud.innerHTML = '';
+    if (!tags.size) {
+      cloud.innerHTML = '<span style="color:var(--text-3);padding:0 8px;font-size:12px;">No tags</span>';
+      return;
+    }
+    [...tags.entries()].sort((a,b)=>b[1]-a[1]).forEach(([t,c]) => {
+      const b = document.createElement('button');
+      b.className = 'tag-pill' + (state.tag === t ? ' active' : '');
+      b.textContent = `${t} ${c}`;
+      b.onclick = () => {
+        state.tag = state.tag === t ? null : t;
+        render();
+      };
+      cloud.appendChild(b);
+    });
+  }
+
+  function renderCards() {
+    const list = filteredList();
+    const grid = el('resourceGrid');
+    const empty = el('emptyState');
+    grid.innerHTML = '';
+
+    el('countSkill').textContent = skills.length;
+    el('countPrompt').textContent = prompts.length;
+    el('countAction').textContent = actions.length;
+    el('metaAll').textContent = resourcesOfKind(state.kind).length;
+    el('metaFav').textContent = resourcesOfKind(state.kind).filter(r=>r.favorite).length;
+
+    const titles = { skill: 'Skills', prompt: 'Prompts', action: 'Actions' };
+    const hints = {
+      skill: '复用现有 Skill 中央库 · Apply 到 Agent/Project',
+      prompt: '可复用提示词 · Insert 到 Agent 输入 / Copy',
+      action: 'P1 · 自定义动作 · 出现在 Action Palette',
+    };
+    el('contentTitle').textContent = titles[state.kind];
+    el('contentHint').textContent = hints[state.kind];
+    el('skillExtra').style.display = state.kind === 'skill' ? '' : 'none';
+
+    if (!list.length) {
+      empty.hidden = false;
+      const emptyMap = {
+        skill: ['No skills', 'Install from Marketplace or create a local skill.'],
+        prompt: ['No prompts', 'Create reusable prompts for recurring agent tasks.'],
+        action: ['No actions', 'Save command templates as runnable actions.'],
+      };
+      el('emptyTitle').textContent = emptyMap[state.kind][0];
+      el('emptyDesc').textContent = emptyMap[state.kind][1];
+      el('btnEmptyCreate').textContent = state.kind === 'prompt' ? 'Create Prompt' : state.kind === 'action' ? 'Create Action' : 'Create Skill';
+    } else {
+      empty.hidden = true;
+    }
+
+    list.forEach(r => {
+      const card = document.createElement('article');
+      card.className = 'card' + (state.selectedId === r.id ? ' selected' : '');
+      card.innerHTML = `
+        <div class="card-top">
+          <span class="kind ${r.kind}">${r.kind}</span>
+          <div style="min-width:0">
+            <div class="card-title">${escapeHtml(r.name)}${r.slash ? ` <span style="color:var(--text-3);font-weight:500">/${escapeHtml(r.slash)}</span>` : ''}</div>
+          </div>
+          <button class="fav ${r.favorite ? 'on' : ''}" data-fav="${r.id}" title="Favorite">${r.favorite ? '★' : '☆'}</button>
+        </div>
+        <div class="card-desc">${escapeHtml(r.description || r.body || '')}</div>
+        <div class="card-tags">${r.tags.map(t => `<span class="tag-pill">${escapeHtml(t)}</span>`).join('')}</div>
+        <div class="card-actions">
+          <button class="btn sm primary" data-primary="${r.id}">${primaryLabel(r.kind)}</button>
+          <button class="btn sm" data-select="${r.id}">Details</button>
+          <span class="meta" style="margin-left:auto;color:var(--text-3);font-size:11px">${r.scope}</span>
+        </div>
+      `;
+      grid.appendChild(card);
+    });
+
+    grid.querySelectorAll('[data-primary]').forEach(btn => {
+      btn.onclick = (e) => { e.stopPropagation(); runPrimary(btn.getAttribute('data-primary')); };
+    });
+    grid.querySelectorAll('[data-select]').forEach(btn => {
+      btn.onclick = (e) => { e.stopPropagation(); selectResource(btn.getAttribute('data-select')); };
+    });
+    grid.querySelectorAll('[data-fav]').forEach(btn => {
+      btn.onclick = (e) => {
+        e.stopPropagation();
+        const id = btn.getAttribute('data-fav');
+        const r = findResource(id);
+        if (r) { r.favorite = !r.favorite; render(); }
+      };
+    });
+  }
+
+  function findResource(id) {
+    return allResources().find(r => r.id === id);
+  }
+
+  function selectResource(id) {
+    state.selectedId = id;
+    const r = findResource(id);
+    const detail = el('detail');
+    if (!r) { detail.hidden = true; renderCards(); return; }
+    detail.hidden = false;
+    el('detailKind').textContent = r.kind;
+    el('detailKind').className = 'kind ' + r.kind;
+    el('detailName').textContent = r.name + (r.slash ? `  /${r.slash}` : '');
+    el('detailBody').textContent = r.body || r.description || '';
+    el('btnPrimaryAction').textContent = primaryLabel(r.kind);
+    el('btnSecondaryAction').textContent = r.kind === 'prompt' ? 'Copy' : r.kind === 'skill' ? 'Open' : 'Edit';
+    renderCards();
+  }
+
+  function runPrimary(id) {
+    const r = findResource(id);
+    if (!r) return;
+    r.usageCount = (r.usageCount || 0) + 1;
+    r.lastUsedAt = Date.now();
+    if (r.kind === 'prompt') {
+      const text = (r.body || '').replaceAll('{{base}}', 'main');
+      el('agentInput').value = text;
+      el('btnSend').disabled = !text.trim();
+      toast(`Inserted prompt: ${r.name}`);
+    } else if (r.kind === 'skill') {
+      toast(`Apply skill “${r.name}” → current project/agent（示意）`);
+    } else {
+      if (r.id === 'ac-1' || r.body === 'open-panel:library') {
+        setLibraryOpen(true);
+        toast('Action: Open Resource Library');
+      } else if (r.body === 'insert-prompt:picker') {
+        state.kind = 'prompt';
+        setLibraryOpen(true);
+        setPalette(false);
+        toast('Pick a prompt to insert');
+        render();
+      } else {
+        toast(`Run action: ${r.name}`);
+      }
+    }
+    selectResource(id);
+    updateStatus();
+  }
+
+  function renderKindTabs() {
+    document.querySelectorAll('.lib-tab').forEach(t => {
+      t.classList.toggle('active', t.dataset.kind === state.kind);
+    });
+  }
+
+  function renderRail() {
+    document.querySelectorAll('[data-filter]').forEach(b => {
+      b.classList.toggle('active', b.dataset.filter === state.filter);
+    });
+    document.querySelectorAll('[data-scope]').forEach(b => {
+      b.classList.toggle('active', b.dataset.scope === state.scope);
+    });
+  }
+
+  function render() {
+    renderKindTabs();
+    renderRail();
+    renderTags();
+    renderCards();
+    if (state.selectedId && !findResource(state.selectedId)) {
+      state.selectedId = null;
+      el('detail').hidden = true;
+    } else if (state.selectedId) {
+      selectResource(state.selectedId);
+    }
+    updateStatus();
+  }
+
+  function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  }
+
+  // Palette
+  function staticPaletteItems() {
+    return [
+      { id: 'pa-open-lib', ico: '📚', name: 'Open Resource Library', desc: 'Browse skills, prompts, actions', right: '⌘⇧L', kind: 'action', run: () => { setLibraryOpen(true); setPalette(false); toast('Opened Library'); } },
+      { id: 'pa-new-prompt', ico: '✨', name: 'New Prompt…', desc: 'Create a reusable agent prompt', right: '', kind: 'action', run: () => { setPalette(false); openModal(); } },
+      { id: 'pa-insert', ico: '💬', name: 'Insert Prompt…', desc: 'Search library prompts', right: '', kind: 'action', run: () => { state.kind = 'prompt'; setLibraryOpen(true); setPalette(false); el('searchInput').focus(); toast('Library → Prompts'); render(); } },
+      { id: 'pa-market', ico: '⬇', name: 'Install Skill from Marketplace', desc: 'Open skills.sh marketplace', right: '', kind: 'action', run: () => { state.kind = 'skill'; setLibraryOpen(true); setPalette(false); toast('Marketplace（示意，复用现视图）'); render(); } },
+    ];
+  }
+
+  function dynamicPaletteItems() {
+    const recentPrompts = prompts
+      .slice()
+      .sort((a,b)=>(b.lastUsedAt||0)-(a.lastUsedAt||0))
+      .slice(0, 5)
+      .map(p => ({
+        id: 'dyn-' + p.id,
+        ico: '💬',
+        name: `Insert: ${p.name}`,
+        desc: p.description || 'Prompt from library',
+        right: p.slash ? `/${p.slash}` : 'prompt',
+        kind: 'prompt',
+        run: () => { setPalette(false); runPrimary(p.id); },
+      }));
+    const customActions = actions
+      .filter(a => a.id !== 'ac-1')
+      .slice(0, 3)
+      .map(a => ({
+        id: 'dyn-' + a.id,
+        ico: '⚡',
+        name: a.name,
+        desc: a.description || '',
+        right: 'action',
+        kind: 'action',
+        run: () => { setPalette(false); runPrimary(a.id); },
+      }));
+    return [...recentPrompts, ...customActions];
+  }
+
+  function paletteItems() {
+    const q = state.paletteQuery.trim().toLowerCase();
+    let items = [...staticPaletteItems(), ...dynamicPaletteItems()];
+    if (q) {
+      items = items.filter(i =>
+        i.name.toLowerCase().includes(q) ||
+        i.desc.toLowerCase().includes(q) ||
+        i.kind.includes(q) ||
+        (i.right||'').toLowerCase().includes(q)
+      );
+      // also match resource names directly
+      allResources().forEach(r => {
+        const blob = `${r.name} ${r.description||''} ${r.tags.join(' ')} ${r.slash||''}`.toLowerCase();
+        if (blob.includes(q)) {
+          items.push({
+            id: 'res-' + r.id,
+            ico: r.kind === 'skill' ? '🧩' : r.kind === 'prompt' ? '💬' : '⚡',
+            name: r.name,
+            desc: `${r.kind} · ${r.description || ''}`.trim(),
+            right: primaryLabel(r.kind),
+            kind: r.kind,
+            run: () => { setPalette(false); state.kind = r.kind; setLibraryOpen(true); runPrimary(r.id); render(); },
+          });
+        }
+      });
+    }
+    // dedupe by id
+    const seen = new Set();
+    return items.filter(i => (seen.has(i.id) ? false : (seen.add(i.id), true)));
+  }
+
+  function renderPalette() {
+    const list = el('paletteList');
+    const items = paletteItems();
+    if (state.paletteIndex >= items.length) state.paletteIndex = Math.max(0, items.length - 1);
+    list.innerHTML = items.map((i, idx) => `
+      <button class="palette-item ${idx === state.paletteIndex ? 'active' : ''}" data-idx="${idx}">
+        <span class="ico">${i.ico}</span>
+        <span>
+          <div class="name">${escapeHtml(i.name)}</div>
+          <div class="desc">${escapeHtml(i.desc)}</div>
+        </span>
+        <span class="right">${escapeHtml(i.right || '')}</span>
+      </button>
+    `).join('') || `<div style="padding:16px;color:var(--text-3)">No matching actions</div>`;
+    list.querySelectorAll('.palette-item').forEach(node => {
+      node.onmouseenter = () => { state.paletteIndex = Number(node.dataset.idx); renderPalette(); };
+      node.onclick = () => items[Number(node.dataset.idx)]?.run();
+    });
+  }
+
+  function setPalette(open) {
+    state.paletteOpen = open;
+    el('paletteOverlay').classList.toggle('show', open);
+    if (open) {
+      state.paletteQuery = '';
+      state.paletteIndex = 0;
+      el('paletteInput').value = '';
+      renderPalette();
+      setTimeout(() => el('paletteInput').focus(), 0);
+    }
+  }
+
+  // Modal create prompt
+  function openModal(prefill = {}) {
+    state.editingId = prefill.id || null;
+    el('modalTitle').textContent = prefill.id ? 'Edit Prompt' : 'New Prompt';
+    el('fName').value = prefill.name || '';
+    el('fSlash').value = prefill.slash || '';
+    el('fTags').value = (prefill.tags || []).join(', ');
+    el('fContent').value = prefill.body || prefill.content || '';
+    el('modalOverlay').classList.add('show');
+    setTimeout(() => el('fName').focus(), 0);
+  }
+  function closeModal() {
+    el('modalOverlay').classList.remove('show');
+    state.editingId = null;
+  }
+  function saveModal() {
+    const name = el('fName').value.trim();
+    const content = el('fContent').value.trim();
+    if (!name || !content) { toast('Name 与 Content 必填'); return; }
+    const tags = el('fTags').value.split(',').map(s => s.trim()).filter(Boolean);
+    const slash = el('fSlash').value.trim().replace(/^\//, '') || null;
+    if (state.editingId) {
+      const p = prompts.find(x => x.id === state.editingId);
+      if (p) {
+        Object.assign(p, { name, body: content, tags, slash, description: content.slice(0, 80), updatedAt: Date.now() });
+      }
+      toast('Prompt updated');
+    } else {
+      prompts.unshift({
+        id: 'pr-' + Math.random().toString(36).slice(2, 8),
+        kind: 'prompt',
+        name,
+        description: content.slice(0, 80),
+        tags,
+        scope: 'global',
+        favorite: false,
+        usageCount: 0,
+        lastUsedAt: null,
+        slash,
+        body: content,
+      });
+      toast('Prompt created');
+    }
+    state.kind = 'prompt';
+    setLibraryOpen(true);
+    closeModal();
+    render();
+  }
+
+  // Events
+  el('btnToggleLib').onclick = () => setLibraryOpen(!state.libraryOpen);
+  el('btnCloseLib').onclick = () => setLibraryOpen(false);
+  el('dockLibrary').onclick = () => setLibraryOpen(!state.libraryOpen);
+  el('btnOpenPalette').onclick = () => setPalette(true);
+  el('btnCreate').onclick = () => {
+    if (state.kind === 'prompt') openModal();
+    else if (state.kind === 'action') toast('Create Action · P1 示意');
+    else toast('Create Skill · 复用现有 CreateSkillDialog');
+  };
+  el('btnEmptyCreate').onclick = () => el('btnCreate').click();
+  el('btnPrimaryAction').onclick = () => state.selectedId && runPrimary(state.selectedId);
+  el('btnSecondaryAction').onclick = () => {
+    const r = findResource(state.selectedId);
+    if (!r) return;
+    if (r.kind === 'prompt') {
+      navigator.clipboard?.writeText(r.body || '');
+      toast('Copied prompt content');
+    } else toast(`${el('btnSecondaryAction').textContent}: ${r.name}`);
+  };
+  el('searchInput').oninput = (e) => { state.query = e.target.value; render(); };
+  el('agentInput').oninput = (e) => { el('btnSend').disabled = !e.target.value.trim(); };
+  el('btnSaveAsPrompt').onclick = () => {
+    const content = el('agentInput').value.trim();
+    if (!content) { toast('Agent 输入为空'); return; }
+    openModal({ name: '', body: content, tags: [] });
+  };
+
+  document.querySelectorAll('.lib-tab').forEach(t => {
+    t.onclick = () => {
+      state.kind = t.dataset.kind;
+      state.selectedId = null;
+      state.tag = null;
+      el('detail').hidden = true;
+      render();
+    };
+  });
+  document.querySelectorAll('[data-filter]').forEach(b => {
+    b.onclick = () => { state.filter = b.dataset.filter; render(); };
+  });
+  document.querySelectorAll('[data-scope]').forEach(b => {
+    b.onclick = () => { state.scope = b.dataset.scope; render(); };
+  });
+  document.querySelectorAll('[data-demo]').forEach(b => {
+    b.onclick = () => {
+      const d = b.dataset.demo;
+      if (d === 'seed') {
+        skills = seedSkills(); prompts = seedPrompts(); actions = seedActions();
+        state.selectedId = null; el('detail').hidden = true; render(); toast('示例数据已重置');
+      } else if (d === 'palette-library') {
+        setPalette(true);
+        state.paletteQuery = 'library';
+        el('paletteInput').value = 'library';
+        state.paletteIndex = 0;
+        renderPalette();
+      } else if (d === 'insert-review') {
+        runPrimary('pr-1');
+      }
+    };
+  });
+
+  el('paletteOverlay').onclick = (e) => { if (e.target === el('paletteOverlay')) setPalette(false); };
+  el('paletteInput').oninput = (e) => { state.paletteQuery = e.target.value; state.paletteIndex = 0; renderPalette(); };
+  el('paletteInput').onkeydown = (e) => {
+    const items = paletteItems();
+    if (e.key === 'ArrowDown') { e.preventDefault(); state.paletteIndex = Math.min(items.length-1, state.paletteIndex+1); renderPalette(); }
+    if (e.key === 'ArrowUp') { e.preventDefault(); state.paletteIndex = Math.max(0, state.paletteIndex-1); renderPalette(); }
+    if (e.key === 'Enter') { e.preventDefault(); items[state.paletteIndex]?.run(); }
+    if (e.key === 'Escape') { setPalette(false); }
+  };
+
+  el('modalClose').onclick = closeModal;
+  el('modalCancel').onclick = closeModal;
+  el('modalSave').onclick = saveModal;
+  el('modalOverlay').onclick = (e) => { if (e.target === el('modalOverlay')) closeModal(); };
+
+  window.addEventListener('keydown', (e) => {
+    const meta = e.metaKey || e.ctrlKey;
+    if (meta && e.key.toLowerCase() === 'k') {
+      e.preventDefault();
+      setPalette(!state.paletteOpen);
+    }
+    if (meta && e.shiftKey && e.key.toLowerCase() === 'l') {
+      e.preventDefault();
+      setLibraryOpen(!state.libraryOpen);
+    }
+    if (e.key === 'Escape') {
+      if (state.paletteOpen) setPalette(false);
+      else if (el('modalOverlay').classList.contains('show')) closeModal();
+    }
+  });
+
+  render();
+})();
+</script>
+</body>
+</html>

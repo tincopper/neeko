@@ -250,6 +250,52 @@ impl SkillStore {
         self.repo.get_all_project_skill_counts()
     }
 
+    // Prompts
+
+    /// Insert a new prompt.
+    pub fn insert_prompt(&self, prompt: &super::types::PromptRecord) -> Result<()> {
+        self.repo.insert_prompt(prompt)
+    }
+
+    /// Get all prompts ordered by updated_at descending.
+    pub fn get_all_prompts(&self) -> Result<Vec<super::types::PromptRecord>> {
+        self.repo.get_all_prompts()
+    }
+
+    /// Get a prompt by its ID.
+    pub fn get_prompt_by_id(&self, id: &str) -> Result<Option<super::types::PromptRecord>> {
+        self.repo.get_prompt_by_id(id)
+    }
+
+    /// Get a prompt by its slash command (project scope takes priority).
+    pub fn get_prompt_by_slash(
+        &self,
+        slash: &str,
+        project_id: Option<&str>,
+    ) -> Result<Option<super::types::PromptRecord>> {
+        self.repo.get_prompt_by_slash(slash, project_id)
+    }
+
+    /// Update all fields of a prompt.
+    pub fn update_prompt(&self, prompt: &super::types::PromptRecord) -> Result<()> {
+        self.repo.update_prompt(prompt)
+    }
+
+    /// Delete a prompt by ID.
+    pub fn delete_prompt(&self, id: &str) -> Result<()> {
+        self.repo.delete_prompt(id)
+    }
+
+    /// Increment usage count and update last_used_at.
+    pub fn record_prompt_usage(&self, id: &str) -> Result<()> {
+        self.repo.record_prompt_usage(id)
+    }
+
+    /// Get all unique tag names across all prompts.
+    pub fn get_all_prompt_tags(&self) -> Result<Vec<String>> {
+        self.repo.get_all_prompt_tags()
+    }
+
     /// Bound tag-group counts for all projects (`project_id`, count).
     pub fn get_all_project_tag_group_counts(&self) -> Result<Vec<(String, i64)>> {
         self.repo.get_all_project_tag_group_counts()

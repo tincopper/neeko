@@ -118,6 +118,7 @@ fn some_command(state: State<AppStateWrapper>) -> Result<(), AppError> {
 | `settings/` | `commands.rs` | ~1 | `get_system_fonts` |
 | `theme/` | `commands.rs` | ~1 | `sync_agent_theme` |
 | `skill/` | `commands.rs` | ~25 | Skill CRUD、tag 管理、安装、同步 |
+| `skill/` | `commands.rs` | ~8 | **Prompt CRUD**（`list_prompts` / `get_prompt` / `save_prompt` / `update_prompt_cmd` / `delete_prompt_cmd` / `use_prompt_cmd` / `resolve_slash_prompt` / `get_all_prompt_tags_cmd`） |
 
 ### commands.rs → services.rs 委派模式
 
@@ -303,6 +304,85 @@ pub fn sync_agent_theme(theme: String, targets: ProjectThemeTargets) -> Result<(
 2. **静默失败不影响主流程**：配置读取失败不报错，门控内操作失败仅 warn 日志
 3. **不与 `State<AppStateWrapper>` 耦合**：配置读取函数不依赖 Tauri state，使得在非命令路径（terminal.rs、remote.rs）也可用
 4. **前端对应 TypeScript 字段**：在 `src/types/app.ts` 的 `AppConfig` 中同时声明，由 `save_config`/`load_config` 持久化
+---
+
+## 场景：Prompt 资源命令契约 2026-07-29
+
+### 1. Scope / Trigger
+- Trigger：新增 Prompt 资源类型（`prompts` 表），需要 CRUD + slash 解析 + usage 追踪
+- Scope：`src-tauri/src/skill/commands.rs`（复用 skill 模块）、`src-tauri/src/skill/repository.rs`、`src-tauri/src/skill/migrations.rs`（v3→v4）
+
+### 2. Signatures
+
+```rust
+#[tauri::command]
+pub fn list_prompts(project_path: Option<String>) -> Result<Vec<PromptRecord>, AppError>
+
+#[tauri::command]
+pub fn get_prompt(prompt_id: String) -> Result<PromptRecord, AppError>
+
+#[tauri::command]
+pub fn save_prompt(prompt: PromptRecord, project_path: Option<String>) -> Result<PromptRecord, AppError>
+
+#[tauri::command]
+pub fn update_prompt_cmd(prompt: PromptRecord) -> Result<PromptRecord, AppError>
+
+#[tauri::command]
+pub fn delete_prompt_cmd(prompt_id: String) -> Result<(), AppError>
+
+#[tauri::command]
+pub fn use_prompt_cmd(prompt_id: String) -> Result<(), AppError>
+
+#[tauri::command]
+pub fn resolve_slash_prompt(slash: String, project_id: Option<String>) -> Result<Option<PromptRecord>, AppError>
+
+#[tauri::command]
+pub fn get_all_prompt_tags_cmd() -> Result<Vec<String>, AppError>
+```
+
+### 3. Contracts
+- Request fields:
+  - `PromptRecord`：`id`、`name`、`description`、`content`、`slash`（可选）、`tags_json`（JSON 数组）、`scope`（`"global"` | `"project"`）、`project_id`（可选）、`variables_json`（可选）、`favorite`、`usage_count`、`last_used_at`、`created_at`、`updated_at`
+  - `project_path`：用于解析项目级 scope
+- Response fields：`PromptRecord` 或 `Vec<PromptRecord>`
+- Slash 解析契约：
+  - `resolve_slash_prompt` 先查 project scope（`project_id` 匹配），未找到再查 global scope
+  - 项目级 **覆盖** 全局同名 slash（不是合并）
+
+### 4. Validation & Error Matrix
+| Condition | Expected Behavior | Error / Risk |
+|---|---|---|
+| `save_prompt` 成功 | 返回完整 `PromptRecord`（含生成的 id） | 无 |
+| `save_prompt` 缺少 name/content | 校验失败 | `Err(AppError::Validation(...))` |
+| `get_prompt` 未找到 | 返回 `Err(AppError::NotFound(...))` | 前端显示空状态 |
+| `delete_prompt_cmd` 成功 | 返回 `Ok(())`，级联删除 tags | 无 |
+| `resolve_slash_prompt` 未匹配 | 返回 `Ok(None)` | 前端保留原文 |
+| DB 操作失败 | `map_err(AppError::from)` | `Err(AppError::Storage(...))` |
+
+### 5. Good/Base/Bad Cases
+- Good：创建 Prompt（含 slash），通过 `resolve_slash_prompt` 命中
+- Base：创建 Prompt（不含 slash），仅出现在列表
+- Bad：同名 slash 在 project 和 global 同时存在 — project 级覆盖全局
+
+### 6. Tests Required
+- Unit：`save_prompt` → `get_prompt` 往返一致
+- Unit：`resolve_slash_prompt` 项目覆盖全局
+- Unit：`delete_prompt_cmd` 后 `get_prompt` 返回 NotFound
+- Integration：v3→v4 migration 创建 `prompts` 表
+
+### 7. Wrong vs Correct
+#### Wrong
+```rust
+// 只查 global，忽略 project 覆盖
+let prompt = get_prompt_by_slash(&slash, None)?;
+```
+#### Correct
+```rust
+// 先查 project，再 fallback global
+let prompt = get_prompt_by_slash(&slash, Some(project_id))?
+    .or_else(|| get_prompt_by_slash(&slash, None)?);
+```
+
 ---
 
 ## 常见错误

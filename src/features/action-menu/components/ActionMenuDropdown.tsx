@@ -22,6 +22,7 @@ const GROUP_LABELS: Record<ActionGroup, string> = {
   agent: 'Agent',
   file: 'File',
   quick: 'Quick Actions',
+  library: 'Library',
 };
 
 const ActionMenuDropdown: React.FC<ActionMenuDropdownProps> = ({

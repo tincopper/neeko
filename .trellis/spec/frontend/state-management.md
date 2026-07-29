@@ -386,6 +386,74 @@ useAppStore.getState().setAheadBehind(k, info);
 
 ---
 
+## 场景：资源库双视图 + 分类持久化 2026-07-29
+
+### 1. Scope / Trigger
+- Trigger：Resource Library 面板需要记住用户上次查看的 kind（Skills/Prompts/Actions）和视图模式（grid/list）
+- Scope：`src/features/library/store/libraryStore.ts`
+
+### 2. Signatures
+
+```ts
+// src/features/library/store/libraryStore.ts
+interface LibraryState {
+  activeKind: ResourceKind;        // 'skill' | 'prompt' | 'action'
+  viewMode: ViewMode;              // 'grid' | 'list'
+  searchQuery: string;
+  tagFilter: string[];
+  scopeFilter: 'all' | 'global' | 'project';
+  selectedId: string | null;
+}
+
+interface LibraryActions {
+  setActiveKind(kind: ResourceKind): void;
+  setViewMode(mode: ViewMode): void;
+  toggleViewMode(): void;
+  setSearchQuery(q: string): void;
+  // ...
+}
+```
+
+### 3. Contracts
+- 持久化契约：`activeKind` 和 `viewMode` 通过 zustand `persist` 中间件持久化到 `~/.neeko/config.json` 的 `library` 域
+- `partialize` 仅持久化 `{ activeKind, viewMode }`，不持久化搜索/过滤等临时状态
+- 默认值：`activeKind='skill'`、`viewMode='grid'`
+
+### 4. Validation & Error Matrix
+| 场景 | 输入 | 预期 |
+|------|------|------|
+| 首次打开 | 无持久化数据 | 使用默认值 skill + grid |
+| 切换 kind | 点击 Prompts tab | `activeKind='prompt'`，持久化 |
+| 切换视图 | 点击列表图标 | `viewMode='list'`，持久化 |
+| 关闭再打开 | 读取持久化 | 恢复上次的 kind + viewMode |
+
+### 5. Good/Base/Bad Cases
+- Good：用户切换到 Prompts + list 视图，关闭面板，下次打开保持该状态
+- Base：用户在 Skills tab 刷新页面，保持 Skills
+- Bad：搜索关键词被持久化 — 不应持久化临时状态
+
+### 6. Tests Required
+- Store 单测：`setActiveKind` 更新状态并触发 persist
+- Store 单测：`toggleViewMode` 在 grid/list 间切换
+- 集成：关闭/打开面板后状态恢复
+
+### 7. Wrong vs Correct
+#### Wrong
+```ts
+// 持久化整个 state（含临时搜索状态）
+persist((set) => ({ ... }), { name: 'library' })
+```
+#### Correct
+```ts
+// 仅持久化用户偏好
+persist((set) => ({ ... }), {
+  name: 'library',
+  partialize: (s) => ({ activeKind: s.activeKind, viewMode: s.viewMode }),
+})
+```
+
+---
+
 ## 常见错误
 
 ### 1. 继续把跨域数据通过多层 Props 透传

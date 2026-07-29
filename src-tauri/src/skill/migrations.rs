@@ -2,7 +2,7 @@ use anyhow::{bail, Context, Result};
 use rusqlite::Connection;
 
 /// Current schema version. Bump this when adding a new migration.
-const LATEST_VERSION: u32 = 3;
+const LATEST_VERSION: u32 = 4;
 
 /// Run all pending migrations on the database.
 pub fn run_migrations(conn: &Connection) -> Result<()> {
@@ -44,6 +44,7 @@ fn migrate_step(conn: &Connection, from_version: u32) -> Result<()> {
         0 => migrate_v0_to_v1(conn),
         1 => migrate_v1_to_v2(conn),
         2 => migrate_v2_to_v3(conn),
+        3 => migrate_v3_to_v4(conn),
         _ => bail!("unknown migration version: {from_version}"),
     }
 }
@@ -159,6 +160,34 @@ fn migrate_v2_to_v3(conn: &Connection) -> Result<()> {
     Ok(())
 }
 
+/// v3 -> v4: Add prompts table for the Resource Library.
+fn migrate_v3_to_v4(conn: &Connection) -> Result<()> {
+    conn.execute_batch(
+        "
+        CREATE TABLE IF NOT EXISTS prompts (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            description TEXT,
+            content TEXT NOT NULL,
+            slash TEXT,
+            tags_json TEXT NOT NULL DEFAULT '[]',
+            scope TEXT NOT NULL DEFAULT 'global',
+            project_id TEXT,
+            variables_json TEXT NOT NULL DEFAULT '[]',
+            favorite INTEGER NOT NULL DEFAULT 0,
+            usage_count INTEGER NOT NULL DEFAULT 0,
+            last_used_at INTEGER,
+            created_at INTEGER NOT NULL,
+            updated_at INTEGER NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_prompts_slash ON prompts(slash);
+        CREATE INDEX IF NOT EXISTS idx_prompts_updated ON prompts(updated_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_prompts_scope_project ON prompts(scope, project_id);
+        ",
+    )?;
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -191,6 +220,7 @@ mod tests {
         assert!(tables.contains(&"tag_group_skill_tools".to_string()));
         assert!(tables.contains(&"settings".to_string()));
         assert!(tables.contains(&"skillssh_cache".to_string()));
+        assert!(tables.contains(&"prompts".to_string()));
     }
 
     #[test]

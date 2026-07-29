@@ -1,0 +1,10 @@
+{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "LibraryPanel / PromptEditorDialog / ResourceCard 等新组件需遵循组件模式"}
+{"file": ".trellis/spec/frontend/hook-guidelines.md", "reason": "useLibraryResources / usePromptActions 等 hook 需遵循数据获取模式"}
+{"file": ".trellis/spec/frontend/state-management.md", "reason": "libraryStore 需遵循 zustand 全局状态约定"}
+{"file": ".trellis/spec/frontend/api-layer.md", "reason": "list_prompts / save_prompt 等新 IPC 命令需遵循 Tauri invoke 模式"}
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "前端代码规范与禁止模式"}
+{"file": ".trellis/spec/backend/command-guidelines.md", "reason": "新增 library.rs / prompt 命令需遵循后端命令规范"}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "Prompt CRUD 错误处理需遵循 AppError 模式"}
+{"file": ".trellis/spec/backend/directory-structure.md", "reason": "新增 Rust 模块需遵循 backend 目录结构"}
+{"file": ".trellis/spec/frontend/interaction-patterns.md", "reason": "双视图切换 / slash 浮层 / Insert 双目标交互"}
+{"file": ".trellis/spec/unit-test/index.md", "reason": "新增功能需配套单元测试"}

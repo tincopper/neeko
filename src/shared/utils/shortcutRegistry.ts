@@ -226,6 +226,12 @@ export const SHORTCUT_ACTIONS: ShortcutAction[] = [
     defaultBinding: 'Ctrl+Shift+2',
     category: 'dock',
   },
+  {
+    id: 'toggleDockLibrary',
+    label: 'Toggle Resource Library',
+    defaultBinding: 'Ctrl+Shift+L',
+    category: 'dock',
+  },
 ];
 
 const ACTION_BY_ID = new Map(SHORTCUT_ACTIONS.map((a) => [a.id, a]));
