@@ -18,7 +18,7 @@ use super::plugin::CustomLspServerConfig;
 use super::plugin::{LspAutoStart, LspPlugin, LspPluginRegistry, LspSettings};
 use super::profile::{detect_project_profile_with_markers, ProjectLanguageProfile};
 use super::transport::{IpcTransport, LspTransport};
-use super::types::LspSessionInfo;
+use super::types::{LspServerInfo, LspServerLogEntry, LspSessionInfo};
 
 // ── Constants ───────────────────────────────────────────────────────────
 
@@ -740,6 +740,63 @@ impl LspManager {
                 progress_pct: None,
             })
             .collect()
+    }
+
+    /// Runtime metadata (version/commit/date + live memory snapshot) for a session.
+    pub fn get_server_info(
+        &self,
+        project_path: &str,
+        language_id: &str,
+    ) -> Result<LspServerInfo, AppError> {
+        let key = session_key(project_path, language_id);
+        let sessions = self.sessions.lock().expect("infallible: lsp sessions lock");
+        sessions
+            .get(&key)
+            .map(LspSession::snapshot_server_info)
+            .ok_or_else(|| AppError::Lsp(format!("No LSP session for: {key}")))
+    }
+
+    /// Recent stderr log lines for a session (newest last).
+    pub fn get_server_logs(
+        &self,
+        project_path: &str,
+        language_id: &str,
+        limit: Option<usize>,
+    ) -> Result<Vec<LspServerLogEntry>, AppError> {
+        let key = session_key(project_path, language_id);
+        let sessions = self.sessions.lock().expect("infallible: lsp sessions lock");
+        let session = sessions
+            .get(&key)
+            .ok_or_else(|| AppError::Lsp(format!("No LSP session for: {key}")))?;
+        Ok(session.snapshot_logs(limit.unwrap_or(500)))
+    }
+
+    /// Language ids of all active sessions for a project path.
+    pub fn session_language_ids_for_project(&self, project_path: &str) -> Vec<String> {
+        let sessions = self.sessions.lock().expect("infallible: lsp sessions lock");
+        sessions
+            .values()
+            .filter(|s| s.project_path == project_path)
+            .map(|s| s.language_id.clone())
+            .collect()
+    }
+
+    /// Stop every active session for a project (keeps profile cache).
+    pub fn stop_all_sessions_for_project(&self, project_path: &str) {
+        let languages = self.session_language_ids_for_project(project_path);
+        for lid in languages {
+            let _ = self.close_session(project_path, &lid);
+        }
+    }
+
+    /// Restart every active session for a project (stop then re-create).
+    pub fn restart_all_sessions_for_project(&self, project_path: &str) -> Result<(), AppError> {
+        let languages = self.session_language_ids_for_project(project_path);
+        for lid in languages {
+            let _ = self.close_session(project_path, &lid);
+            self.get_or_create_session(project_path, &lid)?;
+        }
+        Ok(())
     }
 
     /// Get cached server capabilities for a session.

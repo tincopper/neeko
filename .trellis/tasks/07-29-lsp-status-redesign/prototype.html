@@ -1,0 +1,439 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Neeko — LSP Status Menu Prototype</title>
+  <style>
+    :root {
+      --bg: #1e1e1e;
+      --bar: #252526;
+      --popover: #2d2d30;
+      --border: #3c3c3c;
+      --hover: #094771;
+      --row-hover: #2a2d2e;
+      --text: #cccccc;
+      --text-muted: #9d9d9d;
+      --text-bright: #ffffff;
+      --ready: #89d185;
+      --indexing: #cca700;
+      --error: #f48771;
+      --detected: #6e7681;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background: radial-gradient(1200px 600px at 50% 0%, #2a2a2e 0%, var(--bg) 55%);
+      color: var(--text);
+      font: 13px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      padding: 40px 24px 64px;
+    }
+    h1 {
+      margin: 0 0 8px;
+      font-size: 18px;
+      font-weight: 600;
+      color: var(--text-bright);
+      text-align: center;
+    }
+    .subtitle {
+      text-align: center;
+      color: var(--text-muted);
+      margin-bottom: 36px;
+      font-size: 12px;
+    }
+    .grid {
+      display: grid;
+      gap: 40px;
+      max-width: 980px;
+      margin: 0 auto;
+    }
+    .card {
+      background: rgba(37, 37, 38, 0.72);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 16px 16px 20px;
+    }
+    .card h2 {
+      margin: 0 0 4px;
+      font-size: 13px;
+      color: var(--text-bright);
+      font-weight: 600;
+    }
+    .card p {
+      margin: 0 0 14px;
+      color: var(--text-muted);
+      font-size: 12px;
+    }
+    .stage {
+      position: relative;
+      background: #1b1b1c;
+      border: 1px solid #333;
+      border-radius: 8px;
+      overflow: hidden;
+      min-height: 220px;
+    }
+    .editor-fake {
+      height: 150px;
+      background:
+        linear-gradient(90deg, #1b1b1c 48px, transparent 48px),
+        repeating-linear-gradient(
+          0deg,
+          transparent,
+          transparent 21px,
+          #222 21px,
+          #222 22px
+        );
+      opacity: 0.9;
+    }
+    .statusbar {
+      height: 28px;
+      background: var(--bar);
+      border-top: 1px solid #333;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 10px;
+      font-size: 12px;
+      position: relative;
+      z-index: 2;
+    }
+    .left, .right { display: flex; align-items: center; gap: 10px; }
+    .item {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 2px 6px;
+      border-radius: 4px;
+      cursor: pointer;
+      user-select: none;
+      color: var(--text);
+    }
+    .item:hover, .item.open { background: #3c3c3c; color: var(--text-bright); }
+    .item.muted { color: var(--text-muted); }
+    .icon { opacity: 0.85; display: inline-flex; }
+    .dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      flex: 0 0 auto;
+    }
+    .dot.ready { background: var(--ready); }
+    .dot.indexing { background: var(--indexing); animation: pulse 1.2s infinite; }
+    .dot.error { background: var(--error); }
+    .dot.detected { background: var(--detected); }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.35; }
+    }
+    .chevron {
+      width: 10px;
+      height: 10px;
+      opacity: 0.7;
+    }
+
+    /* Menus */
+    .menu {
+      position: absolute;
+      background: var(--popover);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      box-shadow: 0 10px 28px rgba(0, 0, 0, 0.5);
+      min-width: 210px;
+      overflow: hidden;
+      z-index: 10;
+      color: var(--text);
+    }
+    .menu-header {
+      padding: 7px 12px 6px;
+      color: var(--text-muted);
+      font-size: 11px;
+      border-bottom: 1px solid var(--border);
+    }
+    .row, .action {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 7px 12px;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+    .row:hover, .action:hover, .row.active { background: var(--row-hover); }
+    .row.active { background: #383838; }
+    .row-left { display: flex; align-items: center; gap: 8px; min-width: 0; }
+    .row-right { color: var(--text-muted); font-size: 11px; }
+    .sep { height: 1px; background: var(--border); margin: 4px 0; }
+    .submenu {
+      min-width: 300px;
+    }
+    .submenu-footer {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      padding: 8px 12px;
+      border-top: 1px solid var(--border);
+      color: var(--text-muted);
+      font-size: 11px;
+      white-space: nowrap;
+    }
+    .note {
+      margin-top: 10px;
+      font-size: 11px;
+      color: var(--text-muted);
+    }
+    .legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px 18px;
+      margin-top: 10px;
+      font-size: 11px;
+      color: var(--text-muted);
+    }
+    .legend span { display: inline-flex; align-items: center; gap: 6px; }
+    code {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 11px;
+      background: #1f1f22;
+      border: 1px solid #333;
+      padding: 1px 5px;
+      border-radius: 4px;
+      color: #d7d7d7;
+    }
+  </style>
+</head>
+<body>
+  <h1>LSP Status Menu Redesign</h1>
+  <div class="subtitle">
+    Trellis task: <code>07-29-lsp-status-redesign</code> · reference: VS Code / Cursor nested LSP menu
+  </div>
+
+  <div class="grid">
+    <!-- Scenario 1 -->
+    <section class="card">
+      <h2>1. Status bar chip (single ready server)</h2>
+      <p>Dot + server name + chevron. No <code>detected</code> text suffix.</p>
+      <div class="stage" style="min-height: auto;">
+        <div class="editor-fake" style="height: 72px;"></div>
+        <div class="statusbar">
+          <div class="left">
+            <div class="item">
+              <span class="icon" aria-hidden="true">
+                <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor"><path d="M13.5 1.5a1.5 1.5 0 0 1 1.5 1.5v2a1.5 1.5 0 0 1-1.5 1.5H12v1.293l2.146 2.147a.5.5 0 0 1-.708.708L11 8.707V12h1.5A1.5 1.5 0 0 1 14 13.5v1a1.5 1.5 0 0 1-1.5 1.5h-2A1.5 1.5 0 0 1 9 14.5v-1A1.5 1.5 0 0 1 10.5 12H12V8.707L9.854 6.561a.5.5 0 1 1 .708-.708L12.5 7.793V6.5H12a1.5 1.5 0 0 1-1.5-1.5v-2A1.5 1.5 0 0 1 12 1.5h1.5z"/></svg>
+              </span>
+              <span>main</span>
+            </div>
+            <div class="item open">
+              <span class="dot ready"></span>
+              <span>rust-analyzer</span>
+              <svg class="chevron" viewBox="0 0 12 12" fill="none"><path d="M3 4.5 6 7.5 9 4.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </div>
+          </div>
+          <div class="right">
+            <span class="icon">⌕</span>
+            <span class="icon">⚡</span>
+            <span class="icon">✓</span>
+          </div>
+        </div>
+      </div>
+      <div class="legend">
+        <span><i class="dot ready"></i> ready</span>
+        <span><i class="dot indexing"></i> indexing / starting</span>
+        <span><i class="dot error"></i> error</span>
+        <span><i class="dot detected"></i> detected (not running)</span>
+      </div>
+    </section>
+
+    <!-- Scenario 2: main + submenu matching screenshot -->
+    <section class="card">
+      <h2>2. Main dropdown + per-server submenu (target)</h2>
+      <p>Matches the reference: project header → server rows with chevron → aggregated actions; submenu with View Logs / Restart / Stop + runtime footer.</p>
+      <div class="stage" style="min-height: 280px;">
+        <div class="editor-fake"></div>
+        <div class="statusbar">
+          <div class="left">
+            <div class="item open" id="lsp-chip">
+              <span class="dot ready"></span>
+              <span>rust-analyzer</span>
+              <svg class="chevron" viewBox="0 0 12 12" fill="none"><path d="M3 4.5 6 7.5 9 4.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </div>
+          </div>
+          <div class="right">
+            <span class="icon">⌕</span>
+            <span class="icon">⚡</span>
+            <span class="icon">✓</span>
+          </div>
+
+          <!-- Main menu -->
+          <div class="menu" style="bottom: 34px; left: 12px;">
+            <div class="menu-header">neeko</div>
+            <div class="row active">
+              <span class="row-left">
+                <span class="dot ready"></span>
+                <span>rust-analyzer</span>
+              </span>
+              <span class="row-right">›</span>
+            </div>
+            <div class="sep"></div>
+            <div class="action">Restart All Servers</div>
+            <div class="action">Stop All Servers</div>
+          </div>
+
+          <!-- Submenu -->
+          <div class="menu submenu" style="bottom: 70px; left: 230px;">
+            <div class="action">View Logs</div>
+            <div class="action">Restart Server</div>
+            <div class="action">Stop Server</div>
+            <div class="submenu-footer">
+              <span class="dot ready"></span>
+              <span>Running — v1.97.1 (8bab26f4 2026-07-14) — 19.2 MB</span>
+            </div>
+          </div>
+        </div>
+      </div>
+      <p class="note">
+        Interaction: click chip → main menu; hover/click server row → submenu to the right;
+        outside click / Esc closes both. Footer is read-only metadata.
+      </p>
+    </section>
+
+    <!-- Scenario 3: multi-server -->
+    <section class="card">
+      <h2>3. Multi-server project</h2>
+      <p>Chip shows status dot + <strong>LSP icon</strong> only. Hover tooltip: <code>2 LSPs</code>. Menu lists all active sessions.</p>
+      <div class="stage" style="min-height: 300px;">
+        <div class="editor-fake"></div>
+        <div class="statusbar">
+          <div class="left">
+            <div class="item open" title="2 LSPs">
+              <span class="dot indexing"></span>
+              <span class="icon" aria-label="LSP" title="2 LSPs">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="8" rx="2"/><rect x="2" y="14" width="20" height="8" rx="2"/><circle cx="6" cy="6" r="1" fill="currentColor"/><circle cx="6" cy="18" r="1" fill="currentColor"/></svg>
+              </span>
+              <svg class="chevron" viewBox="0 0 12 12" fill="none"><path d="M3 4.5 6 7.5 9 4.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </div>
+          </div>
+          <div class="right"><span class="muted">Ln 12, Col 34</span></div>
+
+          <div class="menu" style="bottom: 34px; left: 12px; min-width: 230px;">
+            <div class="menu-header">neeko</div>
+            <div class="row active">
+              <span class="row-left"><span class="dot ready"></span><span>rust-analyzer</span></span>
+              <span class="row-right">›</span>
+            </div>
+            <div class="row">
+              <span class="row-left"><span class="dot indexing"></span><span>typescript-language-server</span></span>
+              <span class="row-right">›</span>
+            </div>
+            <div class="sep"></div>
+            <div class="action">Restart All Servers</div>
+            <div class="action">Stop All Servers</div>
+          </div>
+
+          <div class="menu submenu" style="bottom: 98px; left: 250px;">
+            <div class="action">View Logs → Console tab</div>
+            <div class="action">Restart Server</div>
+            <div class="action">Stop Server</div>
+            <div class="submenu-footer">
+              <span class="dot ready"></span>
+              <span>Running — v1.97.1 (8bab26f4 2026-07-14) — 19.2 MB</span>
+            </div>
+          </div>
+        </div>
+      </div>
+      <p class="note">View Logs reuses the bottom Console panel: opens a tab named after the server (e.g. <code>rust-analyzer</code>), polls logs while active. Closing the tab does not stop the LSP process.</p>
+    </section>
+
+    <!-- Scenario 3b: Console reuse sketch -->
+    <section class="card">
+      <h2>3b. View Logs → Console (reuse)</h2>
+      <p>Same bottom Console used by tasks; LSP appears as an extra tab with read-only output.</p>
+      <div class="stage" style="min-height: auto;">
+        <div class="editor-fake" style="height: 48px;"></div>
+        <div style="background:#1b1b1c;border-top:1px solid #333;padding:8px 10px;">
+          <div style="display:flex;gap:8px;margin-bottom:8px;font-size:11px;">
+            <span style="padding:3px 8px;border-radius:4px;background:#2d2d30;color:#9d9d9d;">pnpm build</span>
+            <span style="padding:3px 8px;border-radius:4px;background:#094771;color:#fff;">rust-analyzer</span>
+            <span style="margin-left:auto;color:#9d9d9d;">Console</span>
+          </div>
+          <pre style="margin:0;font:11px/1.45 ui-monospace,Menlo,monospace;color:#cccccc;white-space:pre-wrap;">[2026-07-29T12:01:02] INFO  rust-analyzer: loaded workspace neeko
+[2026-07-29T12:01:03] INFO  rust-analyzer: indexing 142 crates
+[2026-07-29T12:01:08] INFO  rust-analyzer: ready</pre>
+        </div>
+        <div class="statusbar">
+          <div class="left">
+            <div class="item" title="2 LSPs">
+              <span class="dot ready"></span>
+              <span class="icon">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="2" width="20" height="8" rx="2"/><rect x="2" y="14" width="20" height="8" rx="2"/></svg>
+              </span>
+            </div>
+          </div>
+          <div class="right"><span>Console</span></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Scenario 4: detected -->
+    <section class="card">
+      <h2>4. Detected but not running</h2>
+      <p>Grey dot + server name only. Click may open a lighter menu (Start Server) — optional for MVP.</p>
+      <div class="stage" style="min-height: auto;">
+        <div class="editor-fake" style="height: 72px;"></div>
+        <div class="statusbar">
+          <div class="left">
+            <div class="item muted">
+              <span class="dot detected"></span>
+              <span>typescript-language-server</span>
+            </div>
+          </div>
+          <div class="right">
+            <span class="icon">⌕</span>
+            <span class="icon">⚡</span>
+            <span class="icon">✓</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Scenario 5: error -->
+    <section class="card">
+      <h2>5. Error state</h2>
+      <p>Red dot in chip + menu; submenu footer shows <code>Error</code> and last known version if available.</p>
+      <div class="stage" style="min-height: 260px;">
+        <div class="editor-fake"></div>
+        <div class="statusbar">
+          <div class="left">
+            <div class="item open">
+              <span class="dot error"></span>
+              <span>rust-analyzer</span>
+              <svg class="chevron" viewBox="0 0 12 12" fill="none"><path d="M3 4.5 6 7.5 9 4.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </div>
+          </div>
+
+          <div class="menu" style="bottom: 34px; left: 12px;">
+            <div class="menu-header">neeko</div>
+            <div class="row active">
+              <span class="row-left"><span class="dot error"></span><span>rust-analyzer</span></span>
+              <span class="row-right">›</span>
+            </div>
+            <div class="sep"></div>
+            <div class="action">Restart All Servers</div>
+            <div class="action">Stop All Servers</div>
+          </div>
+
+          <div class="menu submenu" style="bottom: 70px; left: 230px;">
+            <div class="action">View Logs</div>
+            <div class="action">Restart Server</div>
+            <div class="action">Stop Server</div>
+            <div class="submenu-footer">
+              <span class="dot error"></span>
+              <span>Error — v1.97.1 (8bab26f4 2026-07-14) — —</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </div>
+</body>
+</html>

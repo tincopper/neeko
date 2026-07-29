@@ -41,6 +41,12 @@ vi.mock('../api/taskApi', () => ({
   importDiscoveredTask: vi.fn(),
 }));
 
+const mockLspGetServerLogs = vi.hoisted(() => vi.fn());
+
+vi.mock('@/features/lsp/api/lspApi', () => ({
+  lspGetServerLogs: (...args: unknown[]) => mockLspGetServerLogs(...args),
+}));
+
 import { useTaskStore } from '../store';
 
 describe('task store console / run lifecycle', () => {
@@ -156,5 +162,43 @@ describe('task store console / run lifecycle', () => {
     expect(session.status).toBe('idle');
     expect(session.output).toContain('partial');
     expect(session.output).toContain('Stopped');
+  });
+
+  it('should_open_lsp_log_console_tab_and_not_stop_process_on_close', async () => {
+    mockLspGetServerLogs.mockReset();
+    mockLspGetServerLogs.mockResolvedValue([
+      { timestamp: '1', level: 'warn', message: 'stderr line' },
+    ]);
+
+    await useTaskStore.getState().openLspLogConsole({
+      projectId: 'proj-1',
+      projectPath: '/tmp/proj',
+      languageId: 'rust',
+      serverName: 'rust-analyzer',
+    });
+
+    const state = useTaskStore.getState();
+    expect(state.consolePanelOpen).toBe(true);
+    expect(state.consoleSessions).toHaveLength(1);
+    expect(state.consoleSessions[0].source).toBe('lsp');
+    expect(state.consoleSessions[0].name).toBe('rust-analyzer');
+    expect(state.consoleSessions[0].output).toContain('stderr line');
+    expect(state.activeConsoleId).toBe(state.consoleSessions[0].id);
+    expect(mockLspGetServerLogs).toHaveBeenCalledWith('/tmp/proj', 'rust', 500);
+
+    // Focus existing tab instead of duplicating
+    await useTaskStore.getState().openLspLogConsole({
+      projectId: 'proj-1',
+      projectPath: '/tmp/proj',
+      languageId: 'rust',
+      serverName: 'rust-analyzer',
+    });
+    expect(useTaskStore.getState().consoleSessions).toHaveLength(1);
+
+    // Closing LSP tab must not call stopTaskProcess
+    const id = useTaskStore.getState().consoleSessions[0].id;
+    useTaskStore.getState().closeConsoleSession(id);
+    expect(mockStop).not.toHaveBeenCalled();
+    expect(useTaskStore.getState().consoleSessions).toHaveLength(0);
   });
 });

@@ -256,6 +256,60 @@ pub fn lsp_stop_session(
     state.lsp_manager.close_session(&project_path, &language_id)
 }
 
+#[tauri::command]
+/// Runtime metadata for a session (version/commit/date + memory snapshot).
+pub fn lsp_get_server_info(
+    project_path: String,
+    language_id: String,
+    state: State<AppStateWrapper>,
+) -> Result<crate::lsp::types::LspServerInfo, AppError> {
+    state
+        .lsp_manager
+        .get_server_info(&project_path, &language_id)
+}
+
+#[tauri::command]
+/// Recent stderr log lines for a session (for Console View Logs).
+pub fn lsp_get_server_logs(
+    project_path: String,
+    language_id: String,
+    limit: Option<usize>,
+    state: State<AppStateWrapper>,
+) -> Result<Vec<crate::lsp::types::LspServerLogEntry>, AppError> {
+    state
+        .lsp_manager
+        .get_server_logs(&project_path, &language_id, limit)
+}
+
+#[tauri::command]
+/// Stop every active LSP session for a project.
+pub fn lsp_stop_all_sessions(
+    project_path: String,
+    state: State<AppStateWrapper>,
+) -> Result<(), AppError> {
+    state
+        .lsp_manager
+        .stop_all_sessions_for_project(&project_path);
+    Ok(())
+}
+
+#[tauri::command]
+/// Restart every active LSP session for a project.
+pub async fn lsp_restart_all_sessions(
+    project_path: String,
+    state: State<'_, AppStateWrapper>,
+) -> Result<(), AppError> {
+    bind_project_exec_target(&state, &project_path)?;
+    let languages = state
+        .lsp_manager
+        .session_language_ids_for_project(&project_path);
+    for language_id in languages {
+        let _ = state.lsp_manager.close_session(&project_path, &language_id);
+        ensure_session_async(&state, &project_path, &language_id).await?;
+    }
+    Ok(())
+}
+
 /// Detect project languages from root markers (no server spawn).
 /// Uses the project's `primary_language` override when the path matches a known project.
 #[tauri::command]

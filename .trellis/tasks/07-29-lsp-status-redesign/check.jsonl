@@ -1,0 +1,5 @@
+{"file": "prd.md", "reason": "Verify acceptance criteria are met"}
+{"file": "design.md", "reason": "Verify UI structure and backend contract match the plan"}
+{"file": "src-tauri/src/lsp/", "reason": "Backend implementation of new LSP commands"}
+{"file": "src/features/status-bar/StatusBar.tsx", "reason": "Frontend implementation of new LSP status menu"}
+{"file": "src/features/lsp/api/lspApi.ts", "reason": "New frontend API wrappers"}

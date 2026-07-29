@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 
-/* eslint-disable import/no-restricted-paths -- taskStore depends on task feature APIs (inherent dependency) */
+/* eslint-disable import/no-restricted-paths -- taskStore depends on task/lsp feature APIs (inherent dependency) */
+import { lspGetServerLogs } from '@/features/lsp/api/lspApi';
 import {
   getTaskConfigs,
   saveTaskConfig as saveTaskConfigApi,
@@ -25,6 +26,29 @@ import {
 
 /** Active process handles keyed by run id — outside React so hide/show never touches them. */
 const processHandles = new Map<string, TaskProcessHandle>();
+
+/** Stable console session id for an LSP server log tab. */
+export function lspConsoleSessionId(projectPath: string, languageId: string): string {
+  return `lsp:${projectPath}:${languageId}`;
+}
+
+function formatLspLogs(
+  serverName: string,
+  entries: Array<{ timestamp: string; level: string; message: string }>,
+): string {
+  const header = `\x1b[90m[LSP logs · ${serverName}]\x1b[0m\r\n`;
+  if (entries.length === 0) {
+    return `${header}\x1b[90m(no log output yet)\x1b[0m\r\n`;
+  }
+  const body = entries
+    .map((e) => {
+      const levelColor =
+        e.level === 'error' ? '31' : e.level === 'warn' ? '33' : e.level === 'info' ? '36' : '90';
+      return `\x1b[90m${e.timestamp}\x1b[0m \x1b[${levelColor}m${e.level}\x1b[0m ${e.message}`;
+    })
+    .join('\r\n');
+  return `${header}${body}\r\n`;
+}
 
 interface TaskStoreState {
   configs: TaskConfig[];
@@ -60,6 +84,18 @@ interface TaskStoreState {
   setActiveConsoleId: (id: string | null) => void;
   /** Close a Console tab; stops process if still running and drops the buffer. */
   closeConsoleSession: (id: string) => void;
+  /**
+   * Open/focus a Console tab for LSP server logs (does not stop the LSP process).
+   * Fetches initial logs; caller/panel may poll while the tab stays active.
+   */
+  openLspLogConsole: (args: {
+    projectId: string;
+    projectPath: string;
+    languageId: string;
+    serverName: string;
+  }) => Promise<void>;
+  /** Refresh output for an LSP log tab (used by Console poll). */
+  refreshLspLogConsole: (sessionId: string) => Promise<void>;
 }
 
 function filterDiscovered(discovered: DiscoveredTask[], configs: TaskConfig[]): DiscoveredTask[] {
@@ -367,14 +403,15 @@ export const useTaskStore = create<TaskStoreState>((rawSet, get) => {
       const id =
         runId ??
         state.activeConsoleId ??
-        state.consoleSessions.find((s) => s.status === 'running')?.id;
+        state.consoleSessions.find((s) => s.status === 'running' && s.source !== 'lsp')?.id;
       if (!id) {
         console.warn('[TaskStore] stopTask: no run');
         return;
       }
 
       const session = state.consoleSessions.find((s) => s.id === id);
-      if (!session || session.status !== 'running') {
+      // LSP log tabs have no process to stop — ignore.
+      if (!session || session.source === 'lsp' || session.status !== 'running') {
         console.warn('[TaskStore] stopTask: run not running', id);
         return;
       }
@@ -418,12 +455,15 @@ export const useTaskStore = create<TaskStoreState>((rawSet, get) => {
 
     closeConsoleSession: (id) => {
       const session = get().consoleSessions.find((s) => s.id === id);
-      const handle = processHandles.get(id);
-      handle?.dispose();
-      processHandles.delete(id);
-      const processId = session?.processId ?? handle?.processId ?? null;
-      if (processId) {
-        void stopTaskProcess(processId).catch(() => {});
+      // LSP tabs: drop buffer only — never stop the language server process.
+      if (session?.source !== 'lsp') {
+        const handle = processHandles.get(id);
+        handle?.dispose();
+        processHandles.delete(id);
+        const processId = session?.processId ?? handle?.processId ?? null;
+        if (processId) {
+          void stopTaskProcess(processId).catch(() => {});
+        }
       }
       set((state) => {
         const next = state.consoleSessions.filter((s) => s.id !== id);
@@ -438,6 +478,88 @@ export const useTaskStore = create<TaskStoreState>((rawSet, get) => {
           consolePanelOpen: next.length > 0 ? state.consolePanelOpen : false,
         };
       });
+    },
+
+    openLspLogConsole: async ({ projectId, projectPath, languageId, serverName }) => {
+      const id = lspConsoleSessionId(projectPath, languageId);
+      const sessions = get().consoleSessions;
+      const existing = sessions.find((s) => s.id === id);
+
+      if (existing) {
+        set({
+          consolePanelOpen: true,
+          activeConsoleId: id,
+        });
+      } else {
+        const run: TaskRun = {
+          id,
+          projectId,
+          projectPath,
+          configId: `lsp:${languageId}`,
+          name: serverName,
+          command: `lsp logs · ${serverName}`,
+          status: 'running',
+          processId: null,
+          output: `\x1b[90m[LSP logs · ${serverName}]\x1b[0m\r\n\x1b[90mLoading…\x1b[0m\r\n`,
+          exitCode: null,
+          startedAt: Date.now(),
+          endedAt: null,
+          source: 'lsp',
+          languageId,
+        };
+        set({
+          consolePanelOpen: true,
+          activeConsoleId: id,
+          consoleSessions: [...sessions, run],
+        });
+      }
+
+      try {
+        const entries = await lspGetServerLogs(projectPath, languageId, 500);
+        const output = formatLspLogs(serverName, entries);
+        useTaskStore.setState((state) => ({
+          consoleSessions: state.consoleSessions.map((s) =>
+            s.id === id
+              ? {
+                  ...s,
+                  name: serverName,
+                  status: 'running' as const,
+                  output,
+                }
+              : s,
+          ),
+        }));
+      } catch (e) {
+        console.error('[TaskStore] openLspLogConsole failed:', e);
+        const msg = `\x1b[31m[Failed to load LSP logs: ${String(e)}]\x1b[0m\r\n`;
+        useTaskStore.setState((state) => ({
+          consoleSessions: state.consoleSessions.map((s) =>
+            s.id === id
+              ? {
+                  ...s,
+                  status: 'failed' as const,
+                  output: (s.output || '') + msg,
+                }
+              : s,
+          ),
+        }));
+      }
+    },
+
+    refreshLspLogConsole: async (sessionId: string) => {
+      const session = get().consoleSessions.find((s) => s.id === sessionId);
+      if (!session || session.source !== 'lsp' || !session.languageId) return;
+      try {
+        const entries = await lspGetServerLogs(session.projectPath, session.languageId, 500);
+        const output = formatLspLogs(session.name, entries);
+        useTaskStore.setState((state) => ({
+          consoleSessions: state.consoleSessions.map((s) =>
+            s.id === sessionId ? { ...s, status: 'running' as const, output } : s,
+          ),
+        }));
+      } catch (e) {
+        console.warn('[TaskStore] refreshLspLogConsole failed:', e);
+      }
     },
   };
 });

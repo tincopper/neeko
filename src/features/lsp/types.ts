@@ -7,6 +7,21 @@ export interface LspSessionInfo {
   progress_pct?: number;
 }
 
+/** Runtime metadata for a language server (submenu footer). camelCase from Rust. */
+export interface LspServerInfo {
+  version: string;
+  commit: string;
+  buildDate: string;
+  memoryMb: number;
+}
+
+/** One stderr / log line from an LSP server process. camelCase from Rust. */
+export interface LspServerLogEntry {
+  timestamp: string;
+  level: 'debug' | 'info' | 'warn' | 'error' | string;
+  message: string;
+}
+
 /** Root-marker detection result (no server spawn). camelCase from Rust serde. */
 export interface DetectedLanguage {
   languageId: string;

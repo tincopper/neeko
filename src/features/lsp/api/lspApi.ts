@@ -1,6 +1,13 @@
 import { invoke } from '@tauri-apps/api/core';
 
-import type { LspSessionInfo, ProjectLanguageProfile } from '../types';
+import type {
+  LspServerInfo,
+  LspServerLogEntry,
+  LspSessionInfo,
+  ProjectLanguageProfile,
+} from '../types';
+
+export type { LspServerInfo, LspServerLogEntry };
 
 export function lspRequest(
   projectPath: string,
@@ -109,6 +116,37 @@ export function lspStopSession(projectPath: string, languageId: string): Promise
     projectPath,
     languageId,
   });
+}
+
+/** Version / commit / date + memory snapshot for the per-server submenu footer. */
+export function lspGetServerInfo(projectPath: string, languageId: string): Promise<LspServerInfo> {
+  return invoke<LspServerInfo>('lsp_get_server_info', {
+    projectPath,
+    languageId,
+  });
+}
+
+/** Recent stderr log lines for Console View Logs. */
+export function lspGetServerLogs(
+  projectPath: string,
+  languageId: string,
+  limit?: number,
+): Promise<LspServerLogEntry[]> {
+  return invoke<LspServerLogEntry[]>('lsp_get_server_logs', {
+    projectPath,
+    languageId,
+    limit: limit ?? null,
+  });
+}
+
+/** Restart every active LSP session for a project. */
+export function lspRestartAllSessions(projectPath: string): Promise<void> {
+  return invoke('lsp_restart_all_sessions', { projectPath });
+}
+
+/** Stop every active LSP session for a project. */
+export function lspStopAllSessions(projectPath: string): Promise<void> {
+  return invoke('lsp_stop_all_sessions', { projectPath });
 }
 
 export interface LspGoToDefinitionResult {

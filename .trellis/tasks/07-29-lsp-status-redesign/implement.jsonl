@@ -1,0 +1,9 @@
+{"file": "prd.md", "reason": "Requirements and acceptance criteria for the LSP status menu redesign"}
+{"file": "design.md", "reason": "UX prototype, component structure, backend plan, and frontend API additions"}
+{"file": "implement.md", "reason": "Ordered implementation checklist, validation, rollback points"}
+{"file": "prototype.html", "reason": "Interactive HTML prototype of status chip + nested menus"}
+{"file": "src/features/status-bar/StatusBar.tsx", "reason": "Current LSP status display to be redesigned"}
+{"file": "src/features/lsp/api/lspApi.ts", "reason": "Existing LSP API surface to extend with new commands"}
+{"file": "src/shared/store/lspStore.ts", "reason": "Store holding LSP session state; may cache server info"}
+{"file": "src-tauri/src/lsp/commands.rs", "reason": "Register new info/logs/batch LSP commands"}
+{"file": "src-tauri/src/lsp/session/mod.rs", "reason": "Session metadata, version parse, stderr ring buffer"}

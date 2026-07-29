@@ -7,7 +7,7 @@
 mod notify;
 mod request;
 
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::io::{BufRead, BufReader};
 use std::sync::{Arc, Mutex};
 use std::thread;
@@ -21,10 +21,14 @@ use super::diag_bus::DiagnosticBus;
 use super::inflight::InflightRequestTracker;
 use super::plugin::LspPlugin;
 use super::transport::LspTransport;
+use super::types::{parse_server_version_output, LspServerInfo, LspServerLogEntry};
 use notify::{handle_diagnostics_notification, handle_progress_notification};
 use request::PendingSender;
 
 pub(crate) use request::do_send_request;
+
+/// Max stderr lines retained per session for View Logs.
+const LOG_RING_CAPACITY: usize = 800;
 
 // ── LspSessionStatus ────────────────────────────────────────────────────
 
@@ -86,6 +90,12 @@ pub(crate) struct LspSession {
     /// Child process handle for lifecycle management (kill on close).
     /// Local / WSL / SSH are unified via [`super::process::LspProcess`].
     pub(crate) child: Option<super::process::LspProcess>,
+    /// OS / remote process id for memory sampling (when available).
+    pub(crate) process_pid: Option<u32>,
+    /// Version metadata parsed from `--version` at spawn (memory filled on demand).
+    pub(crate) server_info: LspServerInfo,
+    /// Ring buffer of recent stderr lines for View Logs.
+    pub(crate) log_buffer: Arc<Mutex<VecDeque<LspServerLogEntry>>>,
     /// Transport for emitting session lifecycle events to the frontend.
     pub(crate) transport: Arc<dyn LspTransport>,
 }
@@ -147,12 +157,37 @@ impl LspSession {
             std::mem::discriminant(&exec_target)
         );
 
+        // Capture --version before spawn (best-effort; never blocks session start).
+        let mut server_info =
+            match super::process::run_command_blocking(&exec_target, &cmd[0], &["--version"]) {
+                Ok((_code, stdout, stderr)) => {
+                    let combined = if stdout.trim().is_empty() {
+                        stderr
+                    } else {
+                        stdout
+                    };
+                    parse_server_version_output(&combined)
+                }
+                Err(e) => {
+                    log::debug!(
+                        "[LSP] --version failed for {}: {} (continuing without metadata)",
+                        server_name,
+                        e
+                    );
+                    LspServerInfo::unknown()
+                }
+            };
+
         let args: Vec<&str> = cmd[1..].iter().map(|s| s.as_str()).collect();
         let mut process =
             super::process::spawn_lsp_process(&exec_target, &cmd[0], &args, Some(project_path))
                 .map_err(|e| {
                     anyhow::anyhow!("Failed to spawn LSP server {}: {}", server_name, e)
                 })?;
+
+        let process_pid = process.pid;
+        let log_buffer: Arc<Mutex<VecDeque<LspServerLogEntry>>> =
+            Arc::new(Mutex::new(VecDeque::with_capacity(LOG_RING_CAPACITY)));
 
         transport.push_session_event(
             project_path,
@@ -184,8 +219,9 @@ impl LspSession {
             })
             .unwrap();
 
-        // Stderr logger thread
+        // Stderr logger thread — also fills the ring buffer for View Logs.
         let stderr_name = server_name.clone();
+        let log_buf_clone = Arc::clone(&log_buffer);
         let stderr_handle = thread::Builder::new()
             .name(format!(
                 "lsp-stderr-{}",
@@ -199,6 +235,17 @@ impl LspSession {
                             let trimmed = l.trim_end().to_string();
                             if !trimmed.is_empty() {
                                 log::warn!("[LSP][{} stderr] {}", stderr_name, trimmed);
+                                let entry = LspServerLogEntry {
+                                    timestamp: chrono_like_now(),
+                                    level: "warn".into(),
+                                    message: trimmed,
+                                };
+                                if let Ok(mut buf) = log_buf_clone.lock() {
+                                    if buf.len() >= LOG_RING_CAPACITY {
+                                        buf.pop_front();
+                                    }
+                                    buf.push_back(entry);
+                                }
                             }
                         }
                         Err(_) => break,
@@ -381,6 +428,9 @@ impl LspSession {
             map.remove(&init_req_id);
         }
 
+        // Keep version fields; memory is filled on demand via get_server_info.
+        server_info.memory_mb = 0.0;
+
         Ok(Self {
             language_id,
             project_path: project_path.to_string(),
@@ -394,6 +444,9 @@ impl LspSession {
             server_capabilities,
             status: LspSessionStatus::Ready,
             child: Some(process),
+            process_pid,
+            server_info,
+            log_buffer,
             transport,
         })
     }
@@ -452,5 +505,86 @@ impl LspSession {
             message,
             progress_pct,
         );
+    }
+
+    /// Snapshot server metadata; refreshes RSS when a process pid is known.
+    pub(crate) fn snapshot_server_info(&self) -> LspServerInfo {
+        let mut info = self.server_info.clone();
+        info.memory_mb = self
+            .process_pid
+            .and_then(sample_process_memory_mb)
+            .unwrap_or(0.0);
+        info
+    }
+
+    /// Return the most recent stderr log lines (newest last), capped by `limit`.
+    pub(crate) fn snapshot_logs(&self, limit: usize) -> Vec<LspServerLogEntry> {
+        let Ok(buf) = self.log_buffer.lock() else {
+            return Vec::new();
+        };
+        let take = if limit == 0 {
+            buf.len()
+        } else {
+            limit.min(buf.len())
+        };
+        buf.iter()
+            .rev()
+            .take(take)
+            .cloned()
+            .collect::<Vec<_>>()
+            .into_iter()
+            .rev()
+            .collect()
+    }
+}
+
+/// Best-effort ISO-8601-ish local timestamp without pulling chrono.
+fn chrono_like_now() -> String {
+    use std::time::{SystemTime, UNIX_EPOCH};
+    let secs = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    // Keep it simple and stable for the Console view.
+    format!("{secs}")
+}
+
+/// Sample process RSS in megabytes (local host only; remote pids may miss).
+fn sample_process_memory_mb(pid: u32) -> Option<f64> {
+    #[cfg(target_os = "macos")]
+    {
+        // `ps -o rss=` reports kilobytes on macOS.
+        let output = std::process::Command::new("ps")
+            .args(["-o", "rss=", "-p", &pid.to_string()])
+            .output()
+            .ok()?;
+        let text = String::from_utf8_lossy(&output.stdout);
+        let kb: f64 = text.trim().parse().ok()?;
+        Some(kb / 1024.0)
+    }
+    #[cfg(target_os = "linux")]
+    {
+        let status = std::fs::read_to_string(format!("/proc/{pid}/status")).ok()?;
+        for line in status.lines() {
+            if let Some(rest) = line.strip_prefix("VmRSS:") {
+                let kb: f64 = rest
+                    .split_whitespace()
+                    .next()
+                    .and_then(|s| s.parse().ok())?;
+                return Some(kb / 1024.0);
+            }
+        }
+        None
+    }
+    #[cfg(target_os = "windows")]
+    {
+        // tasklist does not give RSS easily without PowerShell; skip for v1.
+        let _ = pid;
+        None
+    }
+    #[cfg(not(any(target_os = "macos", target_os = "linux", target_os = "windows")))]
+    {
+        let _ = pid;
+        None
     }
 }

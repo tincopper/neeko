@@ -20,6 +20,8 @@ pub struct LspProcess {
     stdout: Option<Box<dyn Read + Send>>,
     stderr: Option<Box<dyn Read + Send>>,
     kill: Option<Box<dyn FnOnce() + Send>>,
+    /// Best-effort OS / remote process id.
+    pub pid: Option<u32>,
 }
 
 impl LspProcess {
@@ -99,6 +101,7 @@ async fn spawn_lsp_process_async(
 }
 
 async fn bridge_exec_child(mut child: ExecChild) -> Result<LspProcess, String> {
+    let pid = child.pid;
     let (async_stdin, async_stdout, async_stderr) = child.take_stdio();
     let mut async_stdin = async_stdin.ok_or_else(|| "LSP process has no stdin".to_string())?;
     let mut async_stdout = async_stdout.ok_or_else(|| "LSP process has no stdout".to_string())?;
@@ -175,6 +178,7 @@ async fn bridge_exec_child(mut child: ExecChild) -> Result<LspProcess, String> {
         stdout: Some(Box::new(ChannelReader::new(out_rx))),
         stderr: Some(Box::new(ChannelReader::new(err_rx))),
         kill: Some(kill),
+        pid,
     })
 }
 

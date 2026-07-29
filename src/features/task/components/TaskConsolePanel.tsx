@@ -1,10 +1,11 @@
 /**
- * Bottom Console panel — read-only task output viewer.
+ * Bottom Console panel — read-only task / LSP log output viewer.
  *
  * Does not own process lifecycle. Hide/show only toggles visibility; runs and
  * their output buffers live in the task store until the tab is closed.
+ * LSP tabs poll logs while active and never stop the language server on close.
  */
-import React, { useCallback, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { Square, Terminal, X } from '@/shared/components/icons';
 import { useAppContext } from '@/shared/contexts/AppContext';
@@ -14,6 +15,8 @@ import { buildFontFamily } from '@/shared/utils/terminal';
 import { useTaskStore } from '../store';
 
 import TaskConsoleOutput from './TaskConsoleOutput';
+
+const LSP_LOG_POLL_MS = 2000;
 
 const PANEL_H_KEY = 'neeko.task.consoleHeight';
 const PANEL_H_DEFAULT = 260;
@@ -47,6 +50,7 @@ function TaskConsolePanel() {
   const setActiveConsoleId = useTaskStore((s) => s.setActiveConsoleId);
   const closeConsoleSession = useTaskStore((s) => s.closeConsoleSession);
   const stopTask = useTaskStore((s) => s.stopTask);
+  const refreshLspLogConsole = useTaskStore((s) => s.refreshLspLogConsole);
   const { config } = useAppContext();
   const terminalType = useMemo(
     () => ({
@@ -58,6 +62,19 @@ function TaskConsolePanel() {
 
   const latestH = useRef(PANEL_H_DEFAULT);
   const [panelHeight, setPanelHeight] = useState(() => readStored(PANEL_H_KEY, PANEL_H_DEFAULT));
+
+  const active = sessions.find((s) => s.id === activeConsoleId) ?? sessions[0] ?? null;
+
+  // Poll LSP logs while the active Console tab is an LSP session.
+  useEffect(() => {
+    if (!panelOpen || !active || active.source !== 'lsp') return;
+    const id = active.id;
+    void refreshLspLogConsole(id);
+    const timer = window.setInterval(() => {
+      void refreshLspLogConsole(id);
+    }, LSP_LOG_POLL_MS);
+    return () => window.clearInterval(timer);
+  }, [panelOpen, active, refreshLspLogConsole]);
 
   const startPanelResize = useCallback(
     (e: React.MouseEvent) => {
@@ -83,8 +100,6 @@ function TaskConsolePanel() {
   );
 
   if (!panelOpen) return null;
-
-  const active = sessions.find((s) => s.id === activeConsoleId) ?? sessions[0] ?? null;
 
   return (
     <div className="shrink-0 mx-11 px-px pb-0.5" data-testid="task-console-panel">
@@ -117,7 +132,7 @@ function TaskConsolePanel() {
           <div className="flex-1 min-w-0 flex items-center gap-0.5 overflow-x-auto h-full">
             {sessions.length === 0 ? (
               <span className="px-2 text-[calc(var(--font-size)-1px)] text-text-muted">
-                No task runs yet
+                No console sessions yet
               </span>
             ) : (
               sessions.map((s) => {
@@ -171,7 +186,7 @@ function TaskConsolePanel() {
             )}
           </div>
 
-          {active?.status === 'running' ? (
+          {active?.status === 'running' && active.source !== 'lsp' ? (
             <button
               type="button"
               className="shrink-0 flex items-center gap-1 px-2 h-6 rounded text-[calc(var(--font-size)-1px)] text-accent-red hover:bg-bg-hover cursor-pointer"

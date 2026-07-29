@@ -1,37 +1,20 @@
 import { listen } from '@tauri-apps/api/event';
 import { useEffect, useRef, useState, useCallback } from 'react';
-import { createPortal } from 'react-dom';
 import { useShallow } from 'zustand/shallow';
 
 import { useDebugStore } from '@/features/debug/store/debugStore';
 import BranchStatusBarWidget from '@/features/git/components/BranchStatusBarWidget';
-import { lspListSessions, lspRestartSession, lspStopSession } from '@/features/lsp/api/lspApi';
+import { lspListSessions } from '@/features/lsp/api/lspApi';
 import { NotificationButton } from '@/features/notification/components/NotificationButton';
 import { useActiveProject } from '@/features/project/hooks/use-active-project';
 import { Bug, Terminal } from '@/shared/components/icons';
 import { useEditorStore } from '@/shared/store';
 import { useLspStore, type LspSessionState } from '@/shared/store/lspStore';
-import { useNotificationStore } from '@/shared/store/notificationStore';
 import { useProjectStore } from '@/shared/store/projectStore';
 import { useTaskStore } from '@/shared/store/taskStore';
 import { cn } from '@/shared/utils/cn';
 
-const BUILTIN_SERVER_NAMES: Record<string, string> = {
-  rust: 'rust-analyzer',
-  python: 'pyright',
-  typescript: 'ts-server',
-  javascript: 'ts-server',
-  go: 'gopls',
-  java: 'jdtls',
-  cpp: 'clangd',
-  csharp: 'omnisharp',
-};
-
-/** Prefer live session/profile server name so custom LSPs display correctly. */
-function serverName(languageId: string, liveName?: string | null): string {
-  if (liveName && liveName.trim()) return liveName;
-  return BUILTIN_SERVER_NAMES[languageId] ?? languageId;
-}
+import { LspStatusSection, serverName } from './LspStatusSection';
 
 interface LspInstallProgressEvent {
   language_id: string;
@@ -43,6 +26,7 @@ export function StatusBar() {
   const cursorPosition = useEditorStore((s) => s.cursorPosition);
   const activeProjectPath = useProjectStore((s) => s.activeProject?.path);
   const activeProjectId = useProjectStore((s) => s.activeProject?.id ?? null);
+  const activeProjectName = useProjectStore((s) => s.activeProject?.name ?? 'Project');
   const debugSession = useDebugStore((s) => s.session);
   const debugPanelOpen = useDebugStore((s) => s.panelOpen);
   const toggleDebugPanel = useDebugStore((s) => s.togglePanel);
@@ -56,10 +40,6 @@ export function StatusBar() {
     consoleSessions.find((s) => s.status === 'running') ??
     null;
   const [installProgress, setInstallProgress] = useState<LspInstallProgressEvent | null>(null);
-  const [dropdownOpen, setDropdownOpen] = useState(false);
-  const [dropdownStyle, setDropdownStyle] = useState<React.CSSProperties | undefined>(undefined);
-  const dropdownRef = useRef<HTMLDivElement>(null);
-  const buttonRef = useRef<HTMLButtonElement>(null);
   const subscribedRef = useRef<string | null>(null);
 
   // Use shallow comparison to avoid re-render loops from new {} references.
@@ -134,63 +114,6 @@ export function StatusBar() {
     };
   }, []);
 
-  useEffect(() => {
-    if (dropdownOpen && buttonRef.current) {
-      const rect = buttonRef.current.getBoundingClientRect();
-      setDropdownStyle({
-        position: 'fixed',
-        bottom: window.innerHeight - rect.top + 4,
-        left: rect.left,
-        minWidth: 200,
-      });
-    } else {
-      setDropdownStyle(undefined);
-    }
-  }, [dropdownOpen]);
-
-  const handleRestart = async (languageId: string) => {
-    if (!activeProjectPath) return;
-    const store = useLspStore.getState();
-    const name = sessionEntries.find((s) => s.languageId === languageId)?.serverName;
-    setDropdownOpen(false);
-    store.setSessionState(activeProjectPath, languageId, {
-      status: 'starting',
-      serverName: name,
-      statusMessage: 'Restarting...',
-    });
-    try {
-      await lspRestartSession(activeProjectPath, languageId);
-    } catch (e) {
-      console.error('[LSP] Restart failed:', e);
-      store.setSessionState(activeProjectPath, languageId, {
-        status: 'error',
-        statusMessage: String(e),
-      });
-      useNotificationStore.getState().addNotification({
-        type: 'error',
-        title: 'LSP Restart Failed',
-        message: String(e),
-      });
-    }
-  };
-
-  const handleStop = async (languageId: string) => {
-    if (!activeProjectPath) return;
-    const store = useLspStore.getState();
-    setDropdownOpen(false);
-    store.removeSession(activeProjectPath, languageId);
-    try {
-      await lspStopSession(activeProjectPath, languageId);
-    } catch (e) {
-      console.error('[LSP] Stop failed:', e);
-      useNotificationStore.getState().addNotification({
-        type: 'error',
-        title: 'LSP Stop Failed',
-        message: String(e),
-      });
-    }
-  };
-
   const leftContent = () => {
     if (installProgress) {
       const { phase, language_id, message } = installProgress;
@@ -219,110 +142,18 @@ export function StatusBar() {
       );
     }
 
-    if (sessionEntries.length > 0) {
+    if (sessionEntries.length > 0 && activeProjectPath) {
       return (
-        <div className="relative" ref={dropdownRef}>
-          <button
-            ref={buttonRef}
-            type="button"
-            onClick={() => setDropdownOpen(!dropdownOpen)}
-            className="flex h-4 items-center gap-1.5 leading-4 hover:text-text-primary transition-colors"
-            title="Click to manage LSP servers"
-          >
-            <span
-              className={cn(
-                'w-1.5 h-1.5 rounded-full shrink-0',
-                sessionEntries.some((s) => s.status === 'error')
-                  ? 'bg-status-error'
-                  : sessionEntries.some((s) => s.status === 'indexing' || s.status === 'starting')
-                    ? 'bg-status-running animate-pulse'
-                    : 'bg-status-idle',
-              )}
-            />
-            <span className="truncate">
-              {sessionEntries.length > 1
-                ? `${sessionEntries.length} LSPs`
-                : serverName(sessionEntries[0].languageId, sessionEntries[0].serverName)}
-            </span>
-            <svg
-              className={cn(
-                'w-2.5 h-2.5 shrink-0 text-text-muted transition-transform',
-                dropdownOpen && 'rotate-180',
-              )}
-              viewBox="0 0 12 12"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.5"
-            >
-              <path d="M3 4.5L6 7.5L9 4.5" />
-            </svg>
-          </button>
-          {dropdownOpen &&
-            dropdownStyle &&
-            createPortal(
-              <div
-                className="bg-popover border border-border rounded-md shadow-lg py-1 z-50"
-                data-lsp-dropdown
-                style={dropdownStyle}
-              >
-                {sessionEntries.map((session) => (
-                  <div
-                    key={session.languageId}
-                    className="flex items-center justify-between px-3 py-1.5 text-xs hover:bg-hover"
-                    title={`${session.status}${session.statusMessage ? `: ${session.statusMessage}` : ''}${session.progressPct != null ? ` (${session.progressPct}%)` : ''}`}
-                  >
-                    <span className="flex items-center gap-1.5">
-                      <span
-                        className={cn(
-                          'w-1.5 h-1.5 rounded-full shrink-0',
-                          session.status === 'ready'
-                            ? 'bg-status-idle'
-                            : session.status === 'error'
-                              ? 'bg-status-error'
-                              : session.status === 'stopped'
-                                ? 'bg-text-muted'
-                                : 'bg-status-running animate-pulse',
-                        )}
-                      />
-                      <span>{serverName(session.languageId, session.serverName)}</span>
-                      {session.progressPct != null && (
-                        <span className="text-text-muted">{session.progressPct}%</span>
-                      )}
-                    </span>
-                    <span className="flex items-center gap-1">
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleRestart(session.languageId);
-                        }}
-                        className="text-text-muted hover:text-text-primary px-1"
-                        title="Restart"
-                      >
-                        ↻
-                      </button>
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleStop(session.languageId);
-                        }}
-                        className="text-text-muted hover:text-status-error px-1"
-                        title="Stop"
-                      >
-                        ✕
-                      </button>
-                    </span>
-                  </div>
-                ))}
-              </div>,
-              document.body,
-            )}
-        </div>
+        <LspStatusSection
+          activeProjectPath={activeProjectPath}
+          activeProjectId={activeProjectId}
+          projectName={activeProjectName}
+          sessionEntries={sessionEntries}
+        />
       );
     }
 
-    // Profile detected but no server running yet (autoStart=onFirstFile)
+    // Profile detected but no server running yet (autoStart=onFirstFile) — non-interactive in v1
     if (projectProfile?.primary) {
       const p = projectProfile.primary;
       const label = serverName(p.languageId, p.serverName);
@@ -350,23 +181,6 @@ export function StatusBar() {
           )
           .join('\n')
       : undefined;
-
-  // Close dropdown on outside click
-  useEffect(() => {
-    if (!dropdownOpen) return;
-    const handler = (e: MouseEvent) => {
-      const target = e.target as Node;
-      if (
-        dropdownRef.current &&
-        !dropdownRef.current.contains(target) &&
-        !(target as Element).closest?.('[data-lsp-dropdown]')
-      ) {
-        setDropdownOpen(false);
-      }
-    };
-    document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
-  }, [dropdownOpen]);
 
   const { commands } = useActiveProject();
 
