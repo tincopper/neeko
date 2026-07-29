@@ -1526,3 +1526,36 @@ Implemented unified Action Menu dropdown (replacing TabBar + button), Ctrl+Shift
 ### Next Steps
 
 - None - task complete
+
+
+## Session 103: Resource Library Phase 1 implementation
+
+**Date**: 2026-07-29
+**Task**: Resource Library Phase 1 implementation
+**Branch**: `feature-commands`
+
+### Summary
+
+Implemented Resource Library feature: new panelId:library Dock panel, Prompts CRUD (8 Tauri commands + prompts table migration), Action Palette integration (3 actions), dual view with persist, slash resolution with project override, Save as Prompt, Insert to Agent + Terminal PTY. All 12 acceptance criteria met. 844 frontend tests + 73 Rust tests pass.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `50fc2db1` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
