@@ -1526,3 +1526,135 @@ Implemented unified Action Menu dropdown (replacing TabBar + button), Ctrl+Shift
 ### Next Steps
 
 - None - task complete
+
+
+## Session 103: feat(statusbar): show worktree branch and disable branch switching
+
+**Date**: 2026-07-29
+**Task**: feat(statusbar): show worktree branch and disable branch switching
+**Branch**: `main`
+
+### Summary
+
+When a worktree is active, the status bar now displays the worktree's branch name instead of the main project's branch. Branch switching is disabled in worktree context since worktrees stay on their own branch. Added worktree-aware display component pattern to spec.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `75a310b8` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
+
+
+## Session 104: feat(statusbar): show worktree branch and disable branch switching
+
+**Date**: 2026-07-29
+**Task**: feat(statusbar): show worktree branch and disable branch switching
+**Branch**: `main`
+
+### Summary
+
+When a worktree is active, the status bar now displays the worktree's branch name instead of the main project's branch. Branch switching is disabled in worktree context since worktrees stay on their own branch. Added worktree-aware display component pattern to spec.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `75a310b8` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
+
+
+## Session 105: feat(statusbar): show worktree branch and disable branch switching
+
+**Date**: 2026-07-29
+**Task**: feat(statusbar): show worktree branch and disable branch switching
+**Branch**: `main`
+
+### Summary
+
+When a worktree is active, the status bar now displays the worktree's branch name instead of the main project's branch. Branch switching is disabled in worktree context since worktrees stay on their own branch. Added worktree-aware display component pattern to spec.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `75a310b8` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
+
+
+## Session 106: feat(statusbar): show worktree branch and disable branch switching
+
+**Date**: 2026-07-29
+**Task**: feat(statusbar): show worktree branch and disable branch switching
+**Branch**: `main`
+
+### Summary
+
+When a worktree is active, the status bar now displays the worktree's branch name instead of the main project's branch. Branch switching is disabled in worktree context since worktrees stay on their own branch. Added worktree-aware display component pattern to spec.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `75a310b8` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

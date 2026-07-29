@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-2.md`
-- **Total Sessions**: 102
-- **Last Active**: 2026-07-28
+- **Total Sessions**: 106
+- **Last Active**: 2026-07-29
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-2.md` | ~1528 | Active |
+| `journal-2.md` | ~1660 | Active |
 | `journal-1.md` | ~1986 | Archived |
 <!-- @@@/auto:active-documents -->
 
@@ -30,6 +30,10 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 106 | 2026-07-29 | feat(statusbar): show worktree branch and disable branch switching | `75a310b8` | `main` |
+| 105 | 2026-07-29 | feat(statusbar): show worktree branch and disable branch switching | `75a310b8` | `main` |
+| 104 | 2026-07-29 | feat(statusbar): show worktree branch and disable branch switching | `75a310b8` | `main` |
+| 103 | 2026-07-29 | feat(statusbar): show worktree branch and disable branch switching | `75a310b8` | `main` |
 | 102 | 2026-07-28 | branch switcher Hallmark redesign | `64678dd5` | `main` |
 | 101 | 2026-07-27 | 统一 Tab 系统协议与交互 | `a5fe93c1`, `b55a3b5a`, `d5d805f2`, `93a84d6a`, `ed14cc8b`, `4825f80b` | `refactor/unify-tab-system` |
 | 100 | 2026-07-27 | New Action Menu + Untitled Save As Flow | `d1ed080a` | `main` |
