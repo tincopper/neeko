@@ -25,7 +25,9 @@ function BranchStatusBarWidget({
 }: BranchStatusBarWidgetProps) {
   const [panelOpen, setPanelOpen] = useState(false);
   const ref = useRef<HTMLButtonElement>(null);
+  const spanRef = useRef<HTMLSpanElement>(null);
   const [panelStyle, setPanelStyle] = useState<React.CSSProperties | undefined>(undefined);
+  const [isOverflowing, setIsOverflowing] = useState(false);
 
   const activeProject = useProjectStore((s) => s.activeProject);
   const gitInfo: GitInfo | null = activeProject?.git_info ?? null;
@@ -88,6 +90,12 @@ function BranchStatusBarWidget({
     }
   }, [panelOpen]);
 
+  useEffect(() => {
+    const el = spanRef.current;
+    if (!el) return;
+    setIsOverflowing(el.scrollWidth > el.clientWidth);
+  }, [displayBranch]);
+
   if (!gitInfo || !displayBranch) return null;
 
   return (
@@ -107,7 +115,13 @@ function BranchStatusBarWidget({
         }
       >
         <BranchIcon size={12} className="shrink-0 text-accent-blue" />
-        <span className="truncate max-w-[120px] font-mono text-[12px]">{displayBranch}</span>
+        <span
+          ref={spanRef}
+          className="truncate max-w-[120px] font-mono text-[12px]"
+          dir={isOverflowing ? 'rtl' : 'ltr'}
+        >
+          {displayBranch}
+        </span>
         {aheadBehind && (aheadBehind.ahead > 0 || aheadBehind.behind > 0) && (
           <span className="flex items-center gap-1 text-[11px]">
             {aheadBehind.behind > 0 && (
