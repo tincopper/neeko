@@ -210,7 +210,7 @@ export function StatusBar() {
         );
       }
       if (phase === 'done') {
-        return <span className="text-status-idle">{label} installed</span>;
+        return <span className="text-status-idle">{label}</span>;
       }
       return (
         <span className="text-text-muted" title={message}>
@@ -244,6 +244,18 @@ export function StatusBar() {
                 ? `${sessionEntries.length} LSPs`
                 : serverName(sessionEntries[0].languageId, sessionEntries[0].serverName)}
             </span>
+            <svg
+              className={cn(
+                'w-2.5 h-2.5 shrink-0 text-text-muted transition-transform',
+                dropdownOpen && 'rotate-180',
+              )}
+              viewBox="0 0 12 12"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.5"
+            >
+              <path d="M3 4.5L6 7.5L9 4.5" />
+            </svg>
           </button>
           {dropdownOpen &&
             dropdownStyle &&
@@ -321,7 +333,7 @@ export function StatusBar() {
           title={`${p.languageId} (${markers}). Open a matching file to start ${label}.`}
         >
           <span className="w-1.5 h-1.5 rounded-full shrink-0 bg-text-muted" />
-          <span className="truncate">{label} · detected</span>
+          <span className="truncate">{label}</span>
         </span>
       );
     }
