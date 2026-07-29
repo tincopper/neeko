@@ -1,12 +1,10 @@
 import { useCallback } from 'react';
-import type { Dispatch, SetStateAction } from 'react';
 
 import { useEditorStore } from '@/shared/store';
 import { useProjectStore } from '@/shared/store/projectStore';
 import { useWorktreeStore } from '@/shared/store/worktreeStore';
-import type { Tab } from '@/shared/types';
-import { buildWorktreeTabKey } from '@/shared/utils/tabKey';
 
+import { loadOnboardingState } from '../api/onboardingApi';
 import { setActiveProject, setViewTerminal } from '../api/projectApi';
 
 import type { WorktreeItem } from './useWorktreeState';
@@ -14,18 +12,8 @@ import type { WorktreeItem } from './useWorktreeState';
 interface UseWorktreeActionsParams {
   setActiveWorktreePath: (path: string | null) => void;
   setActiveWorktreeBranch: (branch: string) => void;
-  setOpenedWorktrees: Dispatch<SetStateAction<WorktreeItem[]>>;
+  setOpenedWorktrees: React.Dispatch<React.SetStateAction<WorktreeItem[]>>;
   saveWorktreeState: (projectId: string, wtPath: string | null) => void;
-}
-
-interface UseWorktreeActionsResult {
-  handleBackToMainTerminal: (projectId: string) => void;
-  handleOpenWorktreeTerminal: (
-    projectId: string,
-    worktreePath: string,
-    branch: string,
-  ) => Promise<void>;
-  handleSelectWorktreeFile: (worktreePath: string, filePath: string) => void;
 }
 
 export function useWorktreeActions({
@@ -33,9 +21,9 @@ export function useWorktreeActions({
   setActiveWorktreeBranch,
   setOpenedWorktrees,
   saveWorktreeState,
-}: UseWorktreeActionsParams): UseWorktreeActionsResult {
-  const activeProjectId = useProjectStore((state) => state.activeProjectId);
-  const activeWorktreePath = useWorktreeStore((state) => state.activeWorktreePath);
+}: UseWorktreeActionsParams) {
+  const activeWorktreePath = useWorktreeStore((s) => s.activeWorktreePath);
+  const activeProjectId = useProjectStore((s) => s.activeProjectId);
 
   const handleBackToMainTerminal = useCallback(
     (projectId: string) => {
@@ -43,14 +31,19 @@ export function useWorktreeActions({
         setActiveWorktreePath(null);
         setActiveWorktreeBranch('');
         saveWorktreeState(projectId, null);
+        setViewTerminal(projectId).catch(() => {});
       }
-      setViewTerminal(projectId).catch(() => {});
     },
     [activeWorktreePath, setActiveWorktreePath, setActiveWorktreeBranch, saveWorktreeState],
   );
 
   const handleOpenWorktreeTerminal = useCallback(
     async (projectId: string, worktreePath: string, branch: string) => {
+      // Check if this is the first visit to this worktree
+      const worktreeKey = `${projectId}::${worktreePath}`;
+      const onboardingState = await loadOnboardingState(worktreeKey);
+      const isFirstVisit = onboardingState === null;
+
       if (activeProjectId !== projectId) {
         const targetProjectTabs = useEditorStore.getState().tabs[projectId];
         useProjectStore.setState({
@@ -73,7 +66,12 @@ export function useWorktreeActions({
         return [...prev, { path: worktreePath, branch }];
       });
       saveWorktreeState(projectId, worktreePath);
-      setViewTerminal(projectId).catch(() => {});
+
+      // Only auto-create terminal tab if this is not the first visit
+      // First visit shows the onboarding page instead
+      if (!isFirstVisit) {
+        setViewTerminal(projectId).catch(() => {});
+      }
     },
     [
       activeProjectId,
@@ -83,44 +81,8 @@ export function useWorktreeActions({
       saveWorktreeState,
     ],
   );
-
-  const handleSelectWorktreeFile = useCallback(
-    (worktreePath: string, filePath: string) => {
-      if (!activeProjectId) return;
-
-      const tabKey = buildWorktreeTabKey(activeProjectId, worktreePath);
-      const existingTabs = useEditorStore.getState().tabs[tabKey];
-      const existingDiffTab = existingTabs?.tabs.find(
-        (t) => t.data.kind === 'diff' && t.data.filePath === filePath,
-      );
-      if (existingDiffTab) {
-        useEditorStore.getState().activateTab(tabKey, existingDiffTab.id);
-        return;
-      }
-
-      const fileName = filePath.split(/[\\/]/).pop() || filePath;
-      const tabId = `tab_${crypto.randomUUID()}`;
-      const tab: Tab = {
-        id: tabId,
-        projectId: activeProjectId,
-        title: fileName,
-        order: existingTabs?.tabs.length ?? 0,
-        data: {
-          kind: 'diff',
-          filePath,
-          fileName,
-          diffSource: { type: 'worktree', projectId: activeProjectId, worktreePath },
-        },
-      };
-      useEditorStore.getState().addTab(tabKey, tab);
-      useEditorStore.getState().activateTab(tabKey, tabId);
-    },
-    [activeProjectId],
-  );
-
   return {
     handleBackToMainTerminal,
     handleOpenWorktreeTerminal,
-    handleSelectWorktreeFile,
   };
 }

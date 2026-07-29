@@ -9,7 +9,6 @@ export interface ProjectActionsContextValue {
   onBackToMainTerminal: (projectId: string) => void;
   onOpenIde?: (projectId: string) => void;
   onOpenWorktreeTerminal?: (projectId: string, worktreePath: string, branch: string) => void;
-  onSelectWorktreeFile?: (worktreePath: string, filePath: string) => void;
   onDragEnd?: (draggedId: string, targetId: string) => void;
   onSaveProjectSettings?: (
     projectId: string,

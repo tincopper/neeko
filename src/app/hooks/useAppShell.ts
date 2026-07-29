@@ -182,7 +182,6 @@ export function useAppShell(): UseAppShellResult {
   } = useTabManagement({
     activeProject,
     activeWorktreePath,
-    agents,
   });
   const handleFileSelect = useCallback(
     (filePath: string) => {
@@ -299,7 +298,6 @@ export function useAppShell(): UseAppShellResult {
     onBackToMainTerminal: worktreeActionsWrap.handleBackToMainTerminal,
     onOpenIde: agentActionsWrap.handleOpenIdeForSidebar,
     onOpenWorktreeTerminal: worktreeActionsWrap.handleOpenWorktreeTerminal,
-    onSelectWorktreeFile: worktreeActionsWrap.handleSelectWorktreeFile,
     onDragEnd: handleDragEnd,
     onSaveProjectSettings: agentActionsWrap.handleSaveProjectSettings,
   };

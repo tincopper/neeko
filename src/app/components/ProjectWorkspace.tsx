@@ -4,26 +4,27 @@ import { useShallow } from 'zustand/shallow';
 import ActionPalette from '@/features/action-menu/components/ActionPalette';
 import SaveFileDialog from '@/features/action-menu/components/SaveFileDialog';
 import type { ActionRegistryItem, ActionContext } from '@/features/action-menu/types/actionMenu';
-import { checkAgentsInstalled } from '@/features/agent/api/agentApi';
+import { checkAgentsInstalled, setProjectAgents } from '@/features/agent/api/agentApi';
 import { useRemoteContext } from '@/features/connection/contexts/RemoteContext';
 import EditorGroupLayout from '@/features/editor/components/EditorGroupLayout';
 import { useFileDrop } from '@/features/file/hooks/useFileDrop';
-import ProjectGuidePage from '@/features/project/components/ProjectGuidePage';
+import { ProjectGuidePage } from '@/features/project/components/ProjectGuidePage';
 import { useProjectActionsContext } from '@/features/project/ProjectContext';
 import { useQuickOpenStore } from '@/features/quick-open';
 import { useRecentFilesStore } from '@/features/quick-open/recentFilesStore';
-import { FolderIcon, KeyRound } from '@/shared/components/icons';
+import { KeyRound } from '@/shared/components/icons';
 import { useEditorContext, useAppContext } from '@/shared/contexts';
 import { useEditorStore } from '@/shared/store';
-import { useAppViewStore } from '@/shared/store/appViewStore';
 import { useConnectionStore } from '@/shared/store/connectionStore';
 import { useDockStore } from '@/shared/store/dockStore';
 import { useProjectStore } from '@/shared/store/projectStore';
 import { useWorktreeStore } from '@/shared/store/worktreeStore';
 import type { AgentConfig, Tab } from '@/shared/types';
+import { createUntitledFileTab } from '@/shared/utils/createUntitledFileTab';
 import { buildWorktreeTabKey } from '@/shared/utils/tabKey';
 import { Button } from '@/ui/Button';
 
+import { WelcomeScreen } from './WelcomeScreen';
 const APP_SETTINGS_PROJECT_ID = '__app__';
 
 // Module-level cache: `${projectId}::${agentId}` — status is environment-specific.
@@ -35,7 +36,7 @@ function agentInstallCacheKey(projectId: string | null, agentId: string): string
 
 function ProjectWorkspace() {
   const { showToast } = useAppContext();
-  const { onAddProject, onOpenIde } = useProjectActionsContext();
+  const { onAddProject } = useProjectActionsContext();
   const { remoteAuthStore, activeRemoteWorktreePath, setRemoteOpenSessions, setPendingAuthEntry } =
     useRemoteContext();
   const { agents, onAgentClick } = useEditorContext();
@@ -150,10 +151,11 @@ function ProjectWorkspace() {
       const installed = installedMap.size === 0 || (installedMap.get(agent.id) ?? true);
       if (!installed) {
         showToast(`${agent.name} (${agent.command}) is not installed`, 'error');
-        return;
+        return false;
       }
-      if (!agent.enabled) return;
+      if (!agent.enabled) return false;
       onAgentClick(agent);
+      return true;
     },
     [installedMap, onAgentClick, showToast],
   );
@@ -173,14 +175,22 @@ function ProjectWorkspace() {
     handleAgentClick(selectedAgent);
   }, [selectedAgent, handleAgentClick]);
 
-  const handleGuideOpenIde = useCallback(() => {
-    if (!activeProject || !onOpenIde) return;
-    onOpenIde(activeProject.id);
-  }, [activeProject, onOpenIde]);
+  const handleGuideNewFile = useCallback(() => {
+    if (!tabKey || !currentProjectId) return;
+    createUntitledFileTab(tabKey, currentProjectId);
+  }, [tabKey, currentProjectId]);
 
-  const handleGuideOpenSettings = useCallback(() => {
-    useAppViewStore.getState().setAppView('settings');
-  }, []);
+  const handleSelectAgent = useCallback(
+    (agent: AgentConfig) => {
+      const opened = handleAgentClick(agent);
+      if (opened && currentProjectId) {
+        setProjectAgents(currentProjectId, [agent.id]).catch((err) => {
+          console.error('[ProjectWorkspace] Failed to set project agent:', err);
+        });
+      }
+    },
+    [handleAgentClick, currentProjectId],
+  );
 
   const buildLayoutId = useCallback((groupId: string, tabId: string | null) => {
     const p = useProjectStore.getState().activeProject;
@@ -234,30 +244,7 @@ function ProjectWorkspace() {
         }
         case 'new-file': {
           if (currentProjectId) {
-            const projTabs = useEditorStore.getState().tabs[tabKey]?.tabs ?? [];
-            const untitledCount = projTabs.filter(
-              (t) => t.data.kind === 'file' && t.data.isUntitled,
-            ).length;
-            const num = untitledCount + 1;
-            const tabId = `tab_${crypto.randomUUID()}`;
-            const name = `Untitled-${num}`;
-            useEditorStore.getState().addTab(tabKey, {
-              id: tabId,
-              projectId: currentProjectId,
-              title: name,
-              order: projTabs.length,
-              data: {
-                kind: 'file',
-                filePath: '',
-                fileName: name,
-                content: { path: '', content: '', size: 0, is_binary: false },
-                isDirty: true,
-                isUntitled: true,
-                untitledName: name,
-                initialPreviewMode: 'source',
-              },
-            });
-            useEditorStore.getState().activateTab(tabKey, tabId);
+            createUntitledFileTab(tabKey, currentProjectId);
           }
           break;
         }
@@ -372,33 +359,21 @@ function ProjectWorkspace() {
         />
       ) : hasActiveProject && activeProject ? (
         <ProjectGuidePage
+          projectId={activeProject.id}
+          projectName={activeProject.name}
+          projectPath={activeProject.path}
+          selectedAgentIds={activeProject.selected_agents ?? []}
           selectedAgent={selectedAgent}
-          selectedIde={activeProject.selected_ide}
+          worktreePath={activeWorktreePath}
           onOpenTerminal={handleGuideOpenTerminal}
           onOpenAgent={handleGuideOpenAgent}
-          onOpenIde={handleGuideOpenIde}
-          onOpenSettings={handleGuideOpenSettings}
+          onNewFile={handleGuideNewFile}
+          agents={agents}
+          installedMap={installedMap}
+          onSelectAgent={handleSelectAgent}
         />
       ) : !hasActiveProject ? (
-        <div className="empty-state flex-1 flex flex-col text-text-secondary">
-          <div className="empty-body flex-1 flex flex-col items-center justify-center gap-4">
-            <FolderIcon
-              className="h-[5em] w-[5em] text-text-muted opacity-60"
-              strokeWidth={1.6}
-              aria-hidden="true"
-            />
-            <h2 className="text-2xl font-semibold text-text-primary">Welcome to Neeko</h2>
-            <p className="text-[var(--font-size)]">
-              Select a project or add a new one to get started
-            </p>
-            <button
-              className="add-project-btn mt-2 px-6 py-2.5 bg-accent-blue border-none rounded-md text-text-primary text-[var(--font-size)] font-medium cursor-pointer transition-colors duration-200 hover:opacity-90"
-              onClick={onAddProject}
-            >
-              Add Project
-            </button>
-          </div>
-        </div>
+        <WelcomeScreen onAddProject={onAddProject} />
       ) : null}
 
       <ActionPalette ctx={paletteCtx} onExecute={handlePaletteExecute} />

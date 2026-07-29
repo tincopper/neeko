@@ -6,7 +6,7 @@ export { default as ProjectGitSection } from './ProjectGitSection';
 export { default as ProjectGroup } from './ProjectGroup';
 export { default as SessionRow } from './SessionRow';
 export { default as SessionChips } from './SessionChips';
-export { default as ProjectGuidePage } from './ProjectGuidePage';
+export { ProjectGuidePage } from './ProjectGuidePage';
 export { useProjectItemMenu } from './useProjectItemMenu';
 export { SectionHeader } from './SectionHeader';
 export type {

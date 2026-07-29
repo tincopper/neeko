@@ -9,8 +9,11 @@ import { updateProjectInEntries } from '@/shared/utils/entryUpdates';
 
 // eslint-disable-next-line import/no-restricted-paths -- shared hook depends on git API for git info refresh
 import { getGitInfo } from '../../features/git/api/gitApi';
+// eslint-disable-next-line import/no-restricted-paths -- shared hook depends on project API for onboarding check
+import { loadOnboardingState } from '../../features/project/api/onboardingApi';
 // eslint-disable-next-line import/no-restricted-paths -- shared hook depends on project API for IDE launch
 import { openWslIde, openRemoteIde } from '../../features/project/api/projectApi';
+// eslint-disable-next-line import/no-restricted-paths -- shared hook mirrors local worktree onboarding check
 import {
   refreshWslTerminal,
   switchAgentInWslTerminal,
@@ -65,9 +68,17 @@ export function useProjectActions({
 
   const openWorktreeTerminal = useCallback(
     (worktreePath: string, branch: string) => {
-      useWorktreeStore.setState({ activeWorktreePath: worktreePath });
-      const pid = useProjectStore.getState().activeProjectId;
-      if (pid) {
+      // Mirror the local worktree behaviour: on the very first visit to a
+      // worktree, show the onboarding guide instead of jumping straight into a
+      // terminal.
+      void (async () => {
+        const pid = useProjectStore.getState().activeProjectId;
+        if (!pid) return;
+        const onboardingKey = `${pid}::${worktreePath}`;
+        const onboardingState = await loadOnboardingState(onboardingKey);
+        if (onboardingState === null) return;
+
+        useWorktreeStore.setState({ activeWorktreePath: worktreePath });
         useWorktreeStore.setState((s) => {
           const prev = s.worktreeStateMap[pid] ?? {
             activePath: null,
@@ -88,10 +99,10 @@ export function useProjectActions({
             activeWorktreeBranch: branch,
           };
         });
-      }
-      if (isWsl) {
-        setWslDiffState(null);
-      }
+        if (isWsl) {
+          setWslDiffState(null);
+        }
+      })();
     },
     [isWsl, setWslDiffState],
   );

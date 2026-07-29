@@ -1,4 +1,4 @@
-import { useCallback, useEffect } from 'react';
+import { useCallback } from 'react';
 
 import { closeEditorTab } from '@/features/terminal/components/terminalTabCleanup';
 import { useTerminalTabs } from '@/features/terminal/hooks/useTerminalTabs';
@@ -10,15 +10,13 @@ const APP_SETTINGS_PROJECT_ID = '__app__';
 interface UseTabManagementOptions {
   activeProject: { id: string; selected_agents?: string[] } | null;
   activeWorktreePath: string | null;
-  agents: { id: string; name?: string }[] | null;
 }
 
 export function useTabManagement(options: UseTabManagementOptions) {
-  const { activeProject, activeWorktreePath, agents } = options;
+  const { activeProject, activeWorktreePath } = options;
 
   const {
     getTabs,
-    ensureDefaultTab,
     addTab,
     activateTab,
     updateTabStatus,
@@ -31,30 +29,6 @@ export function useTabManagement(options: UseTabManagementOptions) {
     activeWorktreePath && currentProjectId
       ? buildWorktreeTabKey(currentProjectId, activeWorktreePath)
       : (currentProjectId ?? APP_SETTINGS_PROJECT_ID);
-
-  useEffect(() => {
-    if (!tabKey) return;
-    if (tabKey === APP_SETTINGS_PROJECT_ID) return;
-    if (activeProject && !activeWorktreePath) return;
-
-    const projectTabs = useEditorStore.getState().tabs[tabKey];
-    const hasAnyTabs = projectTabs && projectTabs.tabs.length > 0;
-
-    if (!hasAnyTabs) {
-      const agentId = activeProject?.selected_agents?.[0] ?? null;
-      const agentName = agentId
-        ? (agents?.find((a) => a.id === agentId)?.name ?? undefined)
-        : undefined;
-      ensureDefaultTab(tabKey, agentId, agentName);
-    }
-  }, [
-    tabKey,
-    ensureDefaultTab,
-    activeProject?.selected_agents,
-    agents,
-    activeProject,
-    activeWorktreePath,
-  ]);
 
   const tabs = tabKey ? getTabs(tabKey) : [];
   const activeTabId = useEditorStore((state) => state.activeTabId);

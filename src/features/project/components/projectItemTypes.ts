@@ -13,7 +13,6 @@ export interface ProjectItemActions {
   onPull?: (projectId: string) => void;
   onOpenIde?: (projectId: string) => void;
   onOpenWorktreeTerminal?: (projectId: string, worktreePath: string, branch: string) => void;
-  onSelectWorktreeFile?: (worktreePath: string, filePath: string) => void;
   ideCommandOverrides?: Record<string, string>;
   onOpenSettings?: () => void;
   onRefresh?: (projectId: string) => void;

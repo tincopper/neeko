@@ -33,6 +33,7 @@ import {
   setProjectSkillEnabled,
 } from '@/features/skill/api/skillApi';
 import { useSkillStore } from '@/features/skill/store';
+import { bindProjectTagGroups } from '@/features/skill/utils/bindProjectTagGroups';
 import { cn } from '@/lib/utils';
 import ConfirmDialog from '@/shared/components/ConfirmDialog';
 import { useNotificationStore } from '@/shared/store/notificationStore';
@@ -297,52 +298,28 @@ const ProjectSkillContent: React.FC<ProjectSkillContentProps> = React.memo(({ se
       if (!activeProjectId || !activeProject?.path) return;
       setBindSaving(true);
       try {
-        const prevIds = new Set(projectTagGroups.map((g) => g.id));
-        const nextIds = new Set(tagGroupIds);
-        const addedGroupIds = [...nextIds].filter((id) => !prevIds.has(id));
-
-        // 1) Persist declaration + backend reconcile (removes orphaned skills)
-        await setProjectTagGroups(activeProjectId, tagGroupIds, activeProject.path);
-
-        // 2) Install skills from newly bound groups onto target agent only.
-        let imported = 0;
-        let syncSkippedReason: string | null = null;
-        if (addedGroupIds.length > 0) {
-          const skillIds = new Set<string>();
-          const groupResults = await Promise.all(
-            addedGroupIds.map((id) => getSkillsForTagGroup(id)),
-          );
-          for (const list of groupResults) {
-            for (const s of list) skillIds.add(s.id);
-          }
-
-          const agentIds = projectTargetAgentIds;
-          if (skillIds.size === 0) {
-            syncSkippedReason = null;
-          } else if (agentIds.length === 0) {
-            syncSkippedReason =
-              'No target agent on this project (set project agent) — bindings saved without disk sync';
-          } else {
-            imported = await importSkillsToProject(
-              activeProject.path,
-              Array.from(skillIds),
-              agentIds,
-            );
-          }
-        }
+        const result = await bindProjectTagGroups(
+          {
+            projectId: activeProjectId,
+            projectPath: activeProject.path,
+            tagGroupIds,
+            previousBoundIds: projectTagGroups.map((g) => g.id),
+            targetAgentIds: projectTargetAgentIds,
+          },
+          {
+            setProjectTagGroups,
+            getSkillsForTagGroup,
+            importSkillsToProject,
+          },
+        );
 
         await reload({ silent: true });
         await refreshCounts();
 
-        const groupLabel = `${tagGroupIds.length} group${tagGroupIds.length === 1 ? '' : 's'}`;
-        const parts: string[] = [`Bound ${groupLabel}`];
-        if (imported > 0) {
-          parts.push(`synced ${imported} deployment${imported === 1 ? '' : 's'} to target agent`);
-        }
-        if (syncSkippedReason) {
-          toast(`${parts.join('; ')}. ${syncSkippedReason}`, 'info');
+        if (result.syncSkippedReason) {
+          toast(`${result.summary}. ${result.syncSkippedReason}`, 'info');
         } else {
-          toast(parts.join('; '), 'success');
+          toast(result.summary, 'success');
         }
         setBindOpen(false);
       } catch (e) {

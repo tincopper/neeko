@@ -46,7 +46,6 @@ const ProjectsPanel: React.FC = () => {
     onBackToMainTerminal,
     onOpenIde,
     onOpenWorktreeTerminal,
-    onSelectWorktreeFile,
     onSaveProjectSettings,
     onDragEnd,
   } = useProjectActionsContext();
@@ -260,7 +259,6 @@ const ProjectsPanel: React.FC = () => {
                         onPull: handlePull,
                         onOpenIde,
                         onOpenWorktreeTerminal,
-                        onSelectWorktreeFile,
                         onRefresh: onRefreshGit,
                         onSaveProjectSettings,
                         onShowToast: showToast,

@@ -44,7 +44,6 @@ describe('useTabManagement handleCloseTab', () => {
       useTabManagement({
         activeProject: { id: 'p1' },
         activeWorktreePath: null,
-        agents: [],
       }),
     );
 

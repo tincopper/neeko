@@ -1,0 +1,941 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Neeko · Onboarding Guide Redesign — 方案对比</title>
+<style>
+  :root {
+    --bg: #18181b;
+    --surface: #1f1f23;
+    --surface-2: #27272a;
+    --text: #fafafa;
+    --text-muted: #a1a1aa;
+    --text-dim: #71717a;
+    --border: #3f3f46;
+    --border-soft: #27272a;
+    --accent: #3b82f6;
+    --accent-soft: #1e3a5f;
+    --green: #16a34a;
+    --green-soft: #14532d;
+    --amber: #d97706;
+    --amber-soft: #451a03;
+    --red: #dc2626;
+    --radius: 10px;
+    --radius-sm: 6px;
+    --shadow: 0 1px 3px rgba(0,0,0,0.3);
+  }
+  @media (prefers-color-scheme: light) {
+    :root {
+      --bg: #fafafa;
+      --surface: #ffffff;
+      --surface-2: #f4f4f5;
+      --text: #18181b;
+      --text-muted: #71717a;
+      --text-dim: #a1a1aa;
+      --border: #e4e4e7;
+      --border-soft: #f4f4f5;
+      --accent-soft: #eff6ff;
+      --green-soft: #dcfce7;
+      --amber-soft: #fef3c7;
+    }
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", Roboto, sans-serif;
+    background: var(--bg); color: var(--text); line-height: 1.6;
+    padding: 2.5rem 2rem; max-width: 1400px; margin: 0 auto;
+    -webkit-font-smoothing: antialiased;
+  }
+  header { margin-bottom: 2.5rem; }
+  h1 { font-size: 1.75rem; font-weight: 700; letter-spacing: -0.02em; margin-bottom: 0.4rem; }
+  .subtitle { color: var(--text-muted); font-size: 0.95rem; }
+  .task-meta {
+    display: inline-flex; gap: 1.2rem; margin-top: 1rem;
+    font-size: 0.8rem; color: var(--text-dim);
+  }
+  .task-meta span { display: flex; align-items: center; gap: 0.35rem; }
+
+  /* ── Tabs ── */
+  .tabs { display: flex; gap: 0.25rem; margin-bottom: 2rem; border-bottom: 1px solid var(--border); }
+  .tab {
+    padding: 0.6rem 1.2rem; font-size: 0.875rem; font-weight: 500;
+    color: var(--text-muted); cursor: pointer;
+    border-bottom: 2px solid transparent; margin-bottom: -1px;
+    transition: color 150ms, border-color 150ms;
+    background: none; border-top: none; border-left: none; border-right: none;
+  }
+  .tab:hover { color: var(--text); }
+  .tab.active { color: var(--text); border-bottom-color: var(--accent); }
+  .panel { display: none; }
+  .panel.active { display: block; }
+
+  /* ── Comparison grid ── */
+  .grid-3 {
+    display: grid; grid-template-columns: repeat(3, 1fr); gap: 1.25rem;
+  }
+  .card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 1.5rem;
+    transition: transform 200ms ease, box-shadow 200ms ease, border-color 200ms ease;
+    position: relative; overflow: hidden;
+  }
+  .card:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 8px 24px rgba(0,0,0,0.2);
+  }
+  .card.recommended { border-color: var(--accent); border-width: 2px; }
+  .card.recommended::before {
+    content: '推荐'; position: absolute; top: 12px; right: 12px;
+    font-size: 0.7rem; font-weight: 600; color: var(--accent);
+    background: var(--accent-soft); padding: 2px 8px; border-radius: 4px;
+  }
+  .badge {
+    display: inline-flex; align-items: center; gap: 0.35rem;
+    font-size: 0.7rem; font-weight: 600; padding: 3px 10px;
+    border-radius: 100px; margin-bottom: 1rem;
+  }
+  .badge-a { background: var(--accent-soft); color: var(--accent); }
+  .badge-b { background: var(--green-soft); color: var(--green); }
+  .badge-c { background: var(--amber-soft); color: var(--amber); }
+  .card h2 { font-size: 1.1rem; font-weight: 600; margin-bottom: 0.5rem; }
+  .card .desc { font-size: 0.85rem; color: var(--text-muted); margin-bottom: 1.25rem; line-height: 1.65; }
+  .card ul { list-style: none; padding: 0; margin-bottom: 1.5rem; }
+  .card li {
+    font-size: 0.8rem; color: var(--text-muted); padding: 0.35rem 0;
+    display: flex; align-items: flex-start; gap: 0.5rem;
+  }
+  .card li::before { content: ''; display: inline-block; width: 14px; height: 14px; margin-top: 2px; flex-shrink: 0; background-size: contain; background-repeat: no-repeat; }
+  .li-pro::before { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2316a34a' stroke-width='2.5'%3E%3Cpath d='M20 6L9 17l-5-5'/%3E%3C/svg%3E"); }
+  .li-con::before { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23d97706' stroke-width='2.5'%3E%3Cpath d='M18 6L6 18M6 6l12 12'/%3E%3C/svg%3E"); }
+
+  .choose-btn {
+    width: 100%; padding: 0.6rem; border-radius: var(--radius-sm);
+    font-size: 0.85rem; font-weight: 500; cursor: pointer;
+    border: 1px solid var(--border); background: var(--surface-2);
+    color: var(--text); transition: background 150ms, border-color 150ms;
+  }
+  .choose-btn:hover { background: var(--accent-soft); border-color: var(--accent); }
+
+  /* ── Prototype mockup ── */
+  .mockup-wrap {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius); overflow: hidden;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+  }
+  .mockup-bar {
+    height: 36px; background: var(--surface-2); border-bottom: 1px solid var(--border-soft);
+    display: flex; align-items: center; padding: 0 12px; gap: 6px;
+  }
+  .dot { width: 10px; height: 10px; border-radius: 50%; }
+  .dot-r { background: #ef4444; } .dot-y { background: #eab308; } .dot-g { background: #22c55e; }
+  .mockup-title { font-size: 0.75rem; color: var(--text-dim); margin-left: auto; margin-right: auto; }
+
+  .mockup-body { display: grid; grid-template-columns: 200px 1fr; min-height: 520px; }
+
+  /* Sidebar */
+  .sidebar { background: var(--surface); border-right: 1px solid var(--border-soft); padding: 12px 8px; }
+  .sidebar-section { margin-bottom: 16px; }
+  .sidebar-label {
+    font-size: 0.65rem; font-weight: 700; letter-spacing: 0.12em;
+    text-transform: uppercase; color: var(--text-dim); padding: 0 8px 6px;
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  .sidebar-add {
+    width: 16px; height: 16px; border-radius: 3px;
+    display: flex; align-items: center; justify-content: center;
+    color: var(--text-dim); cursor: pointer; font-size: 0.75rem;
+  }
+  .sidebar-add:hover { background: var(--border); color: var(--text); }
+  .sidebar-item {
+    display: flex; align-items: center; gap: 8px;
+    padding: 6px 8px; border-radius: 6px; font-size: 0.78rem;
+    color: var(--text-muted); cursor: pointer; margin-bottom: 1px;
+  }
+  .sidebar-item:hover { background: var(--border-soft); color: var(--text); }
+  .sidebar-item.active { background: var(--accent-soft); color: var(--accent); }
+  .sidebar-icon { width: 14px; height: 14px; flex-shrink: 0; opacity: 0.6; }
+  .sidebar-count {
+    margin-left: auto; font-size: 0.65rem; color: var(--text-dim);
+    background: var(--border-soft); padding: 1px 6px; border-radius: 8px;
+  }
+  .sidebar-item.active .sidebar-count { background: var(--accent); color: white; }
+
+  /* Main content */
+  .main { background: var(--bg); display: flex; flex-direction: column; }
+
+  /* ── Mock A: Minimal contextual ── */
+  .guide-minimal { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 2rem; }
+  .guide-minimal .icon-wrap {
+    width: 56px; height: 56px; border-radius: 14px;
+    background: var(--accent-soft); display: flex; align-items: center; justify-content: center;
+    margin-bottom: 1.25rem;
+  }
+  .guide-minimal h3 { font-size: 1.15rem; font-weight: 600; margin-bottom: 0.4rem; }
+  .guide-minimal .sub { font-size: 0.82rem; color: var(--text-muted); margin-bottom: 1.75rem; text-align: center; max-width: 300px; }
+  .guide-actions { display: flex; flex-direction: column; gap: 0.5rem; width: 240px; }
+  .action-btn {
+    display: flex; align-items: center; gap: 10px; padding: 0.7rem 1rem;
+    border-radius: var(--radius-sm); border: 1px solid var(--border);
+    background: var(--surface); color: var(--text); font-size: 0.85rem;
+    cursor: pointer; transition: background 150ms, border-color 150ms;
+  }
+  .action-btn:hover { background: var(--surface-2); border-color: var(--accent); }
+  .action-btn .ai-icon { width: 22px; height: 22px; border-radius: 5px; background: var(--accent-soft); display: flex; align-items: center; justify-content: center; font-size: 0.65rem; font-weight: 700; color: var(--accent); flex-shrink: 0; }
+  .action-btn .arrow { margin-left: auto; color: var(--text-dim); font-size: 0.7rem; }
+  .action-btn small { display: block; font-size: 0.68rem; color: var(--text-dim); margin-top: 1px; }
+
+  /* ── Mock B: Onboarding steps ── */
+  .guide-onboard { flex: 1; padding: 2rem 1.75rem; overflow-y: auto; max-height: 520px; }
+  .guide-onboard .head { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 0.3rem; }
+  .guide-onboard h3 { font-size: 1.1rem; font-weight: 600; }
+  .step-progress { font-size: 0.72rem; color: var(--text-dim); }
+  .step-progress strong { color: var(--text); }
+  .guide-onboard .sub { font-size: 0.8rem; color: var(--text-muted); margin-bottom: 1.5rem; }
+  .steps { display: flex; flex-direction: column; gap: 0.5rem; }
+  .step {
+    display: flex; gap: 0.85rem; padding: 0.85rem 1rem; border-radius: var(--radius-sm);
+    border: 1px solid var(--border); background: var(--surface);
+    cursor: pointer; transition: background 150ms, border-color 150ms;
+  }
+  .step:hover { border-color: var(--accent); background: var(--surface-2); }
+  .step.done { opacity: 0.45; }
+  .step.done .step-check { background: var(--green); border-color: var(--green); }
+  .step-check {
+    width: 20px; height: 20px; border-radius: 50%; border: 2px solid var(--border);
+    flex-shrink: 0; margin-top: 2px; display: flex; align-items: center; justify-content: center;
+    background: var(--surface); transition: background 200ms;
+  }
+  .step.done .step-check::after {
+    content: ''; width: 6px; height: 10px;
+    border-right: 2px solid white; border-bottom: 2px solid white;
+    transform: rotate(45deg) translate(-1px,-1px);
+  }
+  .step-content { flex: 1; }
+  .step-title { font-size: 0.85rem; font-weight: 500; display: flex; align-items: center; gap: 0.5rem; }
+  .step-title .tag { font-size: 0.6rem; font-weight: 600; padding: 1px 6px; border-radius: 4px; background: var(--accent-soft); color: var(--accent); }
+  .step-desc { font-size: 0.75rem; color: var(--text-muted); margin-top: 0.2rem; }
+  .step-action { font-size: 0.72rem; color: var(--accent); margin-top: 0.4rem; }
+
+  /* ── Mock C: Dashboard ── */
+  .guide-dash { flex: 1; padding: 1.75rem; overflow-y: auto; max-height: 520px; }
+  .guide-dash .greeting { margin-bottom: 1.5rem; }
+  .guide-dash h3 { font-size: 1.15rem; font-weight: 600; }
+  .guide-dash .greeting-sub { font-size: 0.8rem; color: var(--text-muted); margin-top: 0.2rem; }
+  .stat-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.75rem; margin-bottom: 1.5rem; }
+  .stat-card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius-sm); padding: 0.85rem;
+  }
+  .stat-card .stat-label { font-size: 0.68rem; color: var(--text-dim); font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; }
+  .stat-card .stat-val { font-size: 1.5rem; font-weight: 700; margin-top: 0.3rem; }
+  .stat-card .stat-detail { font-size: 0.7rem; color: var(--text-muted); margin-top: 0.2rem; }
+  .section-title { font-size: 0.72rem; font-weight: 600; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 0.75rem; }
+  .action-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 0.5rem; }
+  .action-tile {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius-sm); padding: 0.85rem; cursor: pointer;
+    transition: background 150ms, border-color 150ms;
+  }
+  .action-tile:hover { border-color: var(--accent); background: var(--surface-2); }
+  .action-tile .tile-icon {
+    width: 28px; height: 28px; border-radius: 7px; margin-bottom: 0.6rem;
+    display: flex; align-items: center; justify-content: center;
+    background: var(--accent-soft); color: var(--accent);
+  }
+  .action-tile .tile-label { font-size: 0.82rem; font-weight: 500; }
+  .action-tile .tile-hint { font-size: 0.7rem; color: var(--text-muted); margin-top: 0.25rem; }
+
+  /* ── Welcome mockups ── */
+  .welcome-screen { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 2rem; }
+  .welcome-logo {
+    width: 64px; height: 64px; border-radius: 16px;
+    background: linear-gradient(135deg, var(--accent), #6366f1);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 1.5rem; color: white; font-weight: 700;
+    margin-bottom: 1.25rem;
+  }
+  .welcome-screen h2 { font-size: 1.3rem; font-weight: 600; margin-bottom: 0.35rem; }
+  .welcome-screen .welcome-sub { font-size: 0.82rem; color: var(--text-muted); text-align: center; max-width: 320px; margin-bottom: 1.75rem; }
+  .add-project-cta {
+    padding: 0.75rem 1.5rem; border-radius: var(--radius-sm); border: none;
+    background: var(--accent); color: white; font-size: 0.85rem; font-weight: 600;
+    cursor: pointer; transition: opacity 150ms;
+  }
+  .add-project-cta:hover { opacity: 0.9; }
+  .welcome-secondary { margin-top: 0.75rem; font-size: 0.75rem; color: var(--text-dim); cursor: pointer; }
+  .welcome-secondary:hover { color: var(--text-muted); }
+
+  /* ── Welcome v2: onboarding ── */
+  .welcome-onboard { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 1.5rem 2rem; }
+  .welcome-onboard h2 { font-size: 1.25rem; font-weight: 600; margin-bottom: 0.3rem; }
+  .welcome-onboard .onboard-sub { font-size: 0.8rem; color: var(--text-muted); margin-bottom: 1.5rem; }
+  .value-props { display: flex; flex-direction: column; gap: 0.5rem; width: 100%; max-width: 340px; margin-bottom: 1.75rem; }
+  .value-prop { display: flex; align-items: center; gap: 0.75rem; font-size: 0.82rem; color: var(--text-muted); padding: 0.6rem 0.75rem; border-radius: var(--radius-sm); background: var(--surface); border: 1px solid var(--border-soft); }
+  .value-prop .vp-icon { width: 26px; height: 26px; border-radius: 6px; display: flex; align-items: center; justify-content: center; font-size: 0.85rem; flex-shrink: 0; }
+  .vp-blue { background: var(--accent-soft); color: var(--accent); }
+  .vp-green { background: var(--green-soft); color: var(--green); }
+  .vp-amber { background: var(--amber-soft); color: var(--amber); }
+
+  /* ── Divider ── */
+  .divider { border: none; border-top: 1px solid var(--border-soft); margin: 2rem 0 1.75rem; }
+  .section-heading { font-size: 1rem; font-weight: 600; margin-bottom: 0.4rem; }
+  .section-note { font-size: 0.8rem; color: var(--text-dim); margin-bottom: 1.25rem; }
+  .compare-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; }
+  .compare-row > div { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 1rem; }
+  .compare-row h4 { font-size: 0.85rem; font-weight: 600; margin-bottom: 0.35rem; }
+  .compare-row p { font-size: 0.75rem; color: var(--text-muted); line-height: 1.6; }
+
+  /* ── Proto selector ── */
+  .proto-label { font-size: 0.72rem; font-weight: 600; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 0.75rem; }
+  .proto-toggle { display: flex; gap: 4px; margin-bottom: 1.25rem; background: var(--surface); padding: 3px; border-radius: 8px; width: fit-content; border: 1px solid var(--border); }
+  .proto-toggle button {
+    padding: 0.4rem 0.9rem; font-size: 0.78rem; font-weight: 500;
+    border: none; border-radius: 6px; cursor: pointer; color: var(--text-muted);
+    background: transparent; transition: background 150ms, color 150ms;
+  }
+  .proto-toggle button.active { background: var(--accent); color: white; }
+
+  /* ── Decision matrix ── */
+  .matrix { display: grid; grid-template-columns: 140px repeat(3, 1fr); gap: 1px; background: var(--border); border: 1px solid var(--border); border-radius: var(--radius-sm); overflow: hidden; font-size: 0.78rem; }
+  .matrix-head { background: var(--surface-2); padding: 0.6rem 0.75rem; font-weight: 600; text-align: center; }
+  .matrix-row-label { background: var(--surface); padding: 0.6rem 0.75rem; color: var(--text-muted); font-weight: 500; }
+  .matrix-cell { background: var(--surface); padding: 0.6rem 0.75rem; text-align: center; }
+  .score { font-weight: 700; }
+  .s5 { color: var(--green); } .s4 { color: #4ade80; } .s3 { color: var(--amber); } .s2 { color: var(--red); }
+
+  /* ── Detail expand ── */
+  details { margin-top: 0.5rem; }
+  summary { cursor: pointer; font-size: 0.78rem; color: var(--accent); padding: 0.3rem 0; }
+  summary:hover { text-decoration: underline; }
+
+  @media (max-width: 1100px) { .grid-3 { grid-template-columns: 1fr; } .compare-row { grid-template-columns: 1fr; } }
+  @media (max-width: 700px) { .mockup-body { grid-template-columns: 1fr; } .sidebar { display: none; } }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Onboarding Guide Redesign · 方案对比</h1>
+  <p class="subtitle">重新设计进入项目时的引导页面：Welcome（无项目）和 ProjectGuidePage（已选项目）</p>
+  <div class="task-meta">
+    <span>📁 07-28-redesign-project-onboarding-guide-pages</span>
+    <span>📅 2026-07-28</span>
+    <span>🎨 3 approaches</span>
+  </div>
+</header>
+
+<nav class="tabs">
+  <button class="tab active" onclick="switchTab(event, 'overview')">方案总览</button>
+  <button class="tab" onclick="switchTab(event, 'welcome')">Welcome 对比</button>
+  <button class="tab" onclick="switchTab(event, 'guide')">Guide 对比</button>
+  <button class="tab" onclick="switchTab(event, 'matrix')">决策矩阵</button>
+  <button class="tab" onclick="switchTab(event, 'recommended')">推荐方案</button>
+</nav>
+
+<!-- ═══════════════════════════════════════════════════════════════════════════ -->
+<!-- PANEL: Overview                                                          -->
+<!-- ═══════════════════════════════════════════════════════════════════════════ -->
+<section id="overview" class="panel active">
+
+  <div class="grid-3">
+    <!-- A -->
+    <div class="card">
+      <span class="badge badge-a">A · 极简上下文</span>
+      <h2>Minimal & Contextual</h2>
+      <p class="desc">保留当前布局骨架，仅通过文案和微交互提升信息密度。改动最小、最快上线。</p>
+      <ul>
+        <li class="li-pro">零学习成本，老用户无感</li>
+        <li class="li-pro">改动小，1-2 天可上线</li>
+        <li class="li-con">仍然偏"功能列表"，缺乏引导性</li>
+        <li class="li-con">首次进入的价值传递弱</li>
+      </ul>
+      <button class="choose-btn" onclick="switchTab(event, 'guide')">查看原型 →</button>
+    </div>
+
+    <!-- B recommended -->
+    <div class="card recommended">
+      <span class="badge badge-b">B · 步骤引导</span>
+      <h2>Onboarding Steps</h2>
+      <p class="desc">将进入项目转化为有明确进度的引导流程，step-by-step 驱动用户完成首次配置。</p>
+      <ul>
+        <li class="li-pro">强引导，显著提升首次配置完成率</li>
+        <li class="li-pro">天然支持"跳过/稍后"，不强迫</li>
+        <li class="li-pro">视觉丰富、有成就感</li>
+        <li class="li-con">已完成的用户每次进入仍会看到</li>
+        <li class="li-con">需要额外状态管理（step 持久化）</li>
+      </ul>
+      <button class="choose-btn" onclick="switchTab(event, 'recommended')">查看原型 →</button>
+    </div>
+
+    <!-- C -->
+    <div class="card">
+      <span class="badge badge-c">C · 仪表盘</span>
+      <h2>Dashboard</h2>
+      <p class="desc">进入项目即展示项目概览（终端数、Agent 状态、最近会话），适合高频深度用户。</p>
+      <ul>
+        <li class="li-pro">信息密度高，一键直达常用操作</li>
+        <li class="li-pro">数据驱动，有"控制台"质感</li>
+        <li class="li-con">信息过载，新用户可能看不懂</li>
+        <li class="li-con">实现成本最高（需要实时数据）</li>
+      </ul>
+      <button class="choose-btn" onclick="switchTab(event, 'guide')">查看原型 →</button>
+    </div>
+  </div>
+
+  <hr class="divider">
+
+  <h2 class="section-heading">核心设计问题</h2>
+  <p class="section-note">三种方案对关键问题的不同解法：</p>
+
+  <div class="compare-row">
+    <div>
+      <h4>首次进入时如何传递价值？</h4>
+      <p>A: 靠文案描述<br>B: 靠进度驱动"完成即价值"<br>C: 靠数据展示"已有成果"</p>
+    </div>
+    <div>
+      <h4>老用户如何不被打扰？</h4>
+      <p>A: 无打扰（静态）<br>B: 可标记"完成"后隐藏<br>C: 直接进入，无引导层</p>
+    </div>
+    <div>
+      <h4>引导深度怎么控制？</h4>
+      <p>A: 仅入口<br>B: 强制 3-5 步<br>C: 不引导，靠发现</p>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════════════════════ -->
+<!-- PANEL: Welcome                                                          -->
+<!-- ═══════════════════════════════════════════════════════════════════════════ -->
+<section id="welcome" class="panel">
+  <h2 class="section-heading" style="margin-bottom:1rem">Welcome Screen 对比（无项目状态）</h2>
+
+  <div class="proto-label">当前实现</div>
+  <div class="mockup-wrap" style="max-width:680px;margin-bottom:2rem">
+    <div class="mockup-bar"><div class="dot dot-r"></div><div class="dot dot-y"></div><div class="dot dot-g"></div><span class="mockup-title">Neeko · Workspace</span></div>
+    <div class="mockup-body">
+      <div class="sidebar">
+        <div class="sidebar-section">
+          <div class="sidebar-label">Skills</div>
+          <div class="sidebar-item active"><span class="sidebar-icon">◆</span> Library <span class="sidebar-count">12</span></div>
+          <div class="sidebar-item"><span class="sidebar-icon">⬇</span> Marketplace</div>
+        </div>
+        <div class="sidebar-section">
+          <div class="sidebar-label">Tags</div>
+          <div class="sidebar-item"><span class="sidebar-icon">▦</span> Backend <span class="sidebar-count">5</span></div>
+          <div class="sidebar-item"><span class="sidebar-icon">▦</span> Frontend <span class="sidebar-count">3</span></div>
+        </div>
+        <div class="sidebar-section">
+          <div class="sidebar-label">Agents</div>
+          <div class="sidebar-item"><span class="sidebar-icon">⬡</span> Claude Code <span class="sidebar-count">8</span></div>
+        </div>
+        <div class="sidebar-section">
+          <div class="sidebar-label">Projects</div>
+          <div class="sidebar-item"><span class="sidebar-icon">▣</span> acme-api <span class="sidebar-count">2</span></div>
+        </div>
+      </div>
+      <div class="main">
+        <div class="welcome-screen">
+          <div style="width:60px;height:60px;border-radius:14px;background:var(--border-soft);display:flex;align-items:center;justify-content:center;color:var(--text-dim);font-size:1.5rem;margin-bottom:1.25rem">▣</div>
+          <h2>Welcome to Neeko</h2>
+          <p class="welcome-sub">Select a project or add a new one to get started</p>
+          <button class="add-project-cta">Add Project</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="proto-label">推荐重设计（B-variant）</div>
+  <div class="mockup-wrap" style="max-width:680px;margin-bottom:2rem">
+    <div class="mockup-bar"><div class="dot dot-r"></div><div class="dot dot-y"></div><div class="dot dot-g"></div><span class="mockup-title">Neeko · Workspace</span></div>
+    <div class="mockup-body">
+      <div class="sidebar">
+        <div class="sidebar-section">
+          <div class="sidebar-label">Skills</div>
+          <div class="sidebar-item active"><span class="sidebar-icon">◆</span> Library <span class="sidebar-count">12</span></div>
+          <div class="sidebar-item"><span class="sidebar-icon">⬇</span> Marketplace</div>
+        </div>
+        <div class="sidebar-section">
+          <div class="sidebar-label">Tags</div>
+          <div class="sidebar-item"><span class="sidebar-icon">▦</span> Backend <span class="sidebar-count">5</span></div>
+          <div class="sidebar-item"><span class="sidebar-icon">▦</span> Frontend <span class="sidebar-count">3</span></div>
+        </div>
+        <div class="sidebar-section">
+          <div class="sidebar-label">Agents</div>
+          <div class="sidebar-item"><span class="sidebar-icon">⬡</span> Claude Code <span class="sidebar-count">8</span></div>
+        </div>
+        <div class="sidebar-section">
+          <div class="sidebar-label">Projects</div>
+          <div class="sidebar-item"><span class="sidebar-icon">▣</span> acme-api <span class="sidebar-count">2</span></div>
+        </div>
+      </div>
+      <div class="main">
+        <div class="welcome-onboard">
+          <div class="welcome-logo">N</div>
+          <h2>Welcome to Neeko</h2>
+          <p class="onboard-sub">统一 AI 会话、终端、Git 与 IDE 的桌面工作台</p>
+          <div class="value-props">
+            <div class="value-prop"><span class="vp-icon vp-blue">⬡</span> 同时管理多个 AI Agent 的会话与上下文</div>
+            <div class="value-prop"><span class="vp-icon vp-green">⌘</span> 内置终端，自动定位项目目录</div>
+            <div class="value-prop"><span class="vp-icon vp-amber">⎇</span> 跨项目的 Skill 库与标签管理</div>
+          </div>
+          <button class="add-project-cta">Add Your First Project</button>
+          <div class="welcome-secondary">或从 ~/.neeko/sessions.json 导入历史会话</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <details>
+    <summary>设计备注</summary>
+    <p style="font-size:0.8rem;color:var(--text-muted);margin-top:0.5rem;padding:0 0.5rem">
+      · 保留 logo + 主 CTA 按钮的结构<br>
+      · 新增 3 条价值主张（value props），每条对应一个核心能力<br>
+      · CTA 从 "Add Project" 改为 "Add Your First Project"，强化"首次"语境<br>
+      · 添加次级入口：导入历史会话（为老用户迁移保留退路）<br>
+      · 整体保持简洁，不引入进度条/步骤等重交互
+    </p>
+  </details>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════════════════════ -->
+<!-- PANEL: Guide                                                             -->
+<!-- ═══════════════════════════════════════════════════════════════════════════ -->
+<section id="guide" class="panel">
+  <h2 class="section-heading" style="margin-bottom:1rem">ProjectGuidePage 对比（已选项目）</h2>
+
+  <div class="proto-label">当前实现</div>
+  <div class="mockup-wrap" style="max-width:680px;margin-bottom:2rem">
+    <div class="mockup-bar"><div class="dot dot-r"></div><div class="dot dot-y"></div><div class="dot dot-g"></div><span class="mockup-title">Neeko · acme-api</span></div>
+    <div class="mockup-body">
+      <div class="sidebar">
+        <div class="sidebar-section">
+          <div class="sidebar-label">Skills</div>
+          <div class="sidebar-item active"><span class="sidebar-icon">◆</span> Library <span class="sidebar-count">12</span></div>
+          <div class="sidebar-item"><span class="sidebar-icon">⬇</span> Marketplace</div>
+        </div>
+        <div class="sidebar-section">
+          <div class="sidebar-label">Tags</div>
+          <div class="sidebar-item"><span class="sidebar-icon">▦</span> Backend <span class="sidebar-count">5</span></div>
+          <div class="sidebar-item"><span class="sidebar-icon">▦</span> Frontend <span class="sidebar-count">3</span></div>
+        </div>
+        <div class="sidebar-section">
+          <div class="sidebar-label">Agents</div>
+          <div class="sidebar-item"><span class="sidebar-icon">⬡</span> Claude Code <span class="sidebar-count">8</span></div>
+        </div>
+        <div class="sidebar-section">
+          <div class="sidebar-label">Projects</div>
+          <div class="sidebar-item active"><span class="sidebar-icon">▣</span> acme-api <span class="sidebar-count">2</span></div>
+        </div>
+      </div>
+      <div class="main">
+        <div class="guide-minimal" style="gap:0">
+          <div style="width:36px;height:36px;margin-bottom:1rem;opacity:0.3">▦</div>
+          <div style="display:flex;flex-direction:column;gap:0.4rem;width:200px">
+            <button class="action-btn" style="justify-content:flex-start"><span style="opacity:0.5">⌘</span> Open Terminal</button>
+            <button class="action-btn" style="justify-content:flex-start"><span style="opacity:0.5">⬡</span> Open Claude Code</button>
+            <button class="action-btn" style="justify-content:flex-start"><span style="opacity:0.5">↗</span> Open in Cursor</button>
+            <button class="action-btn" style="justify-content:flex-start"><span style="opacity:0.5">⚙</span> Settings</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="proto-label">方案 A：Minimal</div>
+  <div class="mockup-wrap" style="max-width:680px;margin-bottom:2rem">
+    <div class="mockup-bar"><div class="dot dot-r"></div><div class="dot dot-y"></div><div class="dot dot-g"></div><span class="mockup-title">Neeko · acme-api</span></div>
+    <div class="mockup-body">
+      <div class="sidebar">
+        <div class="sidebar-section">
+          <div class="sidebar-label">Skills</div>
+          <div class="sidebar-item active"><span class="sidebar-icon">◆</span> Library <span class="sidebar-count">12</span></div>
+          <div class="sidebar-item"><span class="sidebar-icon">⬇</span> Marketplace</div>
+        </div>
+        <div class="sidebar-section">
+          <div class="sidebar-label">Tags</div>
+          <div class="sidebar-item"><span class="sidebar-icon">▦</span> Backend <span class="sidebar-count">5</span></div>
+        </div>
+        <div class="sidebar-section">
+          <div class="sidebar-label">Agents</div>
+          <div class="sidebar-item"><span class="sidebar-icon">⬡</span> Claude Code <span class="sidebar-count">8</span></div>
+        </div>
+        <div class="sidebar-section">
+          <div class="sidebar-label">Projects</div>
+          <div class="sidebar-item active"><span class="sidebar-icon">▣</span> acme-api <span class="sidebar-count">2</span></div>
+        </div>
+      </div>
+      <div class="main">
+        <div class="guide-minimal">
+          <div class="icon-wrap" style="background:var(--accent-soft);width:48px;height:48px;border-radius:12px;font-size:1.2rem">⌘</div>
+          <h3>acme-api</h3>
+          <p class="sub">开始使用此项目的 AI 会话、终端或 IDE</p>
+          <div class="guide-actions">
+            <button class="action-btn"><span class="ai-icon">⌘</span> Open Terminal <small>打开项目终端</small><span class="arrow">›</span></button>
+            <button class="action-btn"><span class="ai-icon">⬡</span> Open Claude Code <small>AI 对话</small><span class="arrow">›</span></button>
+            <button class="action-btn"><span class="ai-icon">↗</span> Open in Cursor <small>外部 IDE</small><span class="arrow">›</span></button>
+            <button class="action-btn"><span class="ai-icon">⚙</span> Project Settings <small>配置与偏好</small><span class="arrow">›</span></button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="proto-label">方案 B：Onboarding Steps（推荐）</div>
+  <div class="mockup-wrap" style="max-width:680px;margin-bottom:2rem">
+    <div class="mockup-bar"><div class="dot dot-r"></div><div class="dot dot-y"></div><div class="dot dot-g"></div><span class="mockup-title">Neeko · acme-api</span></div>
+    <div class="mockup-body">
+      <div class="sidebar">
+        <div class="sidebar-section">
+          <div class="sidebar-label">Skills</div>
+          <div class="sidebar-item active"><span class="sidebar-icon">◆</span> Library <span class="sidebar-count">12</span></div>
+          <div class="sidebar-item"><span class="sidebar-icon">⬇</span> Marketplace</div>
+        </div>
+        <div class="sidebar-section">
+          <div class="sidebar-label">Tags</div>
+          <div class="sidebar-item"><span class="sidebar-icon">▦</span> Backend <span class="sidebar-count">5</span></div>
+        </div>
+        <div class="sidebar-section">
+          <div class="sidebar-label">Agents</div>
+          <div class="sidebar-item"><span class="sidebar-icon">⬡</span> Claude Code <span class="sidebar-count">8</span></div>
+        </div>
+        <div class="sidebar-section">
+          <div class="sidebar-label">Projects</div>
+          <div class="sidebar-item active"><span class="sidebar-icon">▣</span> acme-api <span class="sidebar-count">2</span></div>
+        </div>
+      </div>
+      <div class="main">
+        <div class="guide-onboard">
+          <div class="head">
+            <h3>Get started with acme-api</h3>
+            <span class="step-progress"><strong>0 / 3</strong> 完成</span>
+          </div>
+          <p class="sub">完成以下步骤以启用项目的完整 AI 能力，可随时跳过</p>
+          <div class="steps">
+            <div class="step">
+              <div class="step-check"></div>
+              <div class="step-content">
+                <div class="step-title">Open a Terminal <span class="tag">推荐</span></div>
+                <div class="step-desc">在项目目录启动终端，快速执行命令、运行脚本</div>
+                <div class="step-action">→ Open Terminal</div>
+              </div>
+            </div>
+            <div class="step">
+              <div class="step-check"></div>
+              <div class="step-content">
+                <div class="step-title">Start an AI Agent session</div>
+                <div class="step-desc">通过 Claude Code 等 Agent 进行代码问答、生成、重构</div>
+                <div class="step-action">→ Open Claude Code</div>
+              </div>
+            </div>
+            <div class="step">
+              <div class="step-check"></div>
+              <div class="step-content">
+                <div class="step-title">Bind tag groups</div>
+                <div class="step-desc">为项目分配标签，自动安装和启用相关 Skills</div>
+                <div class="step-action">→ Assign Tags</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="proto-label">方案 C：Dashboard</div>
+  <div class="mockup-wrap" style="max-width:680px;margin-bottom:2rem">
+    <div class="mockup-bar"><div class="dot dot-r"></div><div class="dot dot-y"></div><div class="dot dot-g"></div><span class="mockup-title">Neeko · acme-api</span></div>
+    <div class="mockup-body">
+      <div class="sidebar">
+        <div class="sidebar-section">
+          <div class="sidebar-label">Skills</div>
+          <div class="sidebar-item active"><span class="sidebar-icon">◆</span> Library <span class="sidebar-count">12</span></div>
+          <div class="sidebar-item"><span class="sidebar-icon">⬇</span> Marketplace</div>
+        </div>
+        <div class="sidebar-section">
+          <div class="sidebar-label">Tags</div>
+          <div class="sidebar-item"><span class="sidebar-icon">▦</span> Backend <span class="sidebar-count">5</span></div>
+        </div>
+        <div class="sidebar-section">
+          <div class="sidebar-label">Agents</div>
+          <div class="sidebar-item"><span class="sidebar-icon">⬡</span> Claude Code <span class="sidebar-count">8</span></div>
+        </div>
+        <div class="sidebar-section">
+          <div class="sidebar-label">Projects</div>
+          <div class="sidebar-item active"><span class="sidebar-icon">▣</span> acme-api <span class="sidebar-count">2</span></div>
+        </div>
+      </div>
+      <div class="main">
+        <div class="guide-dash">
+          <div class="greeting">
+            <h3>acme-api</h3>
+            <div class="greeting-sub">项目概览 · 最后更新 2 分钟前</div>
+          </div>
+          <div class="stat-row">
+            <div class="stat-card"><div class="stat-label">Terminals</div><div class="stat-val">2</div><div class="stat-detail">1 个活跃</div></div>
+            <div class="stat-card"><div class="stat-label">Agents</div><div class="stat-val">3</div><div class="stat-detail">Claude · Codex · Gemini</div></div>
+            <div class="stat-card"><div class="stat-label">Skills</div><div class="stat-val">7</div><div class="stat-detail">2 个 tag groups</div></div>
+          </div>
+          <div class="section-title">Quick Actions</div>
+          <div class="action-grid">
+            <div class="action-tile"><div class="tile-icon">⌘</div><div class="tile-label">New Terminal</div><div class="tile-hint">在当前目录打开</div></div>
+            <div class="action-tile"><div class="tile-icon">⬡</div><div class="tile-label">Chat with Agent</div><div class="tile-hint">选择已配置 Agent</div></div>
+            <div class="action-tile"><div class="tile-icon">↗</div><div class="tile-label">Open in IDE</div><div class="tile-hint">Cursor</div></div>
+            <div class="action-tile"><div class="tile-icon">⎇</div><div class="tile-label">Git Status</div><div class="tile-hint">3 files changed</div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════════════════════ -->
+<!-- PANEL: Decision Matrix                                                  -->
+<!-- ═══════════════════════════════════════════════════════════════════════════ -->
+<section id="matrix" class="panel">
+  <h2 class="section-heading" style="margin-bottom:1rem">决策矩阵</h2>
+  <p class="section-note" style="margin-bottom:1.5rem">按 5 个关键维度评分（5 = 最优）</p>
+
+  <div class="matrix">
+    <div class="matrix-head" style="background:transparent"></div>
+    <div class="matrix-head">A · Minimal</div>
+    <div class="matrix-head">B · Onboarding</div>
+    <div class="matrix-head">C · Dashboard</div>
+
+    <div class="matrix-row-label">首次引导性</div>
+    <div class="matrix-cell score s3">3</div>
+    <div class="matrix-cell score s5">5</div>
+    <div class="matrix-cell score s2">2</div>
+
+    <div class="matrix-row-label">老用户友好度</div>
+    <div class="matrix-cell score s4">4</div>
+    <div class="matrix-cell score s4">4</div>
+    <div class="matrix-cell score s5">5</div>
+
+    <div class="matrix-row-label">实现成本</div>
+    <div class="matrix-cell score s5">5</div>
+    <div class="matrix-cell score s3">3</div>
+    <div class="matrix-cell score s2">2</div>
+
+    <div class="matrix-row-label">视觉丰富度</div>
+    <div class="matrix-cell score s3">3</div>
+    <div class="matrix-cell score s5">5</div>
+    <div class="matrix-cell score s4">4</div>
+
+    <div class="matrix-row-label">扩展性</div>
+    <div class="matrix-cell score s2">2</div>
+    <div class="matrix-cell score s4">4</div>
+    <div class="matrix-cell score s5">5</div>
+
+    <div class="matrix-row-label" style="color:var(--text);font-weight:600">加权总分</div>
+    <div class="matrix-cell score" style="font-size:1rem">17</div>
+    <div class="matrix-cell score s5" style="font-size:1rem;font-weight:800">21</div>
+    <div class="matrix-cell score" style="font-size:1rem">18</div>
+  </div>
+
+  <hr class="divider">
+
+  <h2 class="section-heading">已知权衡与风险</h2>
+  <div class="compare-row">
+    <div>
+      <h4>B 方案的核心风险</h4>
+      <p>"完成后隐藏"需要持久化状态。如果判定逻辑不严谨（比如用户跳过了），可能会丢失引导层。</p>
+    </div>
+    <div>
+      <h4>A 方案的机会成本</h4>
+      <p>如果团队未来想做 onboarding，A 会被废弃。B 是更好的长期基础。</p>
+    </div>
+    <div>
+      <h4>C 方案的前提条件</h4>
+      <p>需要终端/Agent 的实时状态 API。如果这些接口不存在或不可靠，C 的"数据驱动"会变成"数据缺失"。</p>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════════════════════════════════════════════════════════════ -->
+<!-- PANEL: Recommended                                                      -->
+<!-- ═══════════════════════════════════════════════════════════════════════════ -->
+<section id="recommended" class="panel">
+  <h2 class="section-heading" style="margin-bottom:0.5rem">推荐方案：B · Onboarding Steps</h2>
+  <p class="section-note" style="margin-bottom:1.5rem">平衡首次引导、老用户友好与实现成本的最优解</p>
+
+  <div class="proto-toggle">
+    <button class="active" onclick="switchProto(event, 'rec-welcome')">Welcome</button>
+    <button onclick="switchProto(event, 'rec-guide')">Guide Page</button>
+    <button onclick="switchProto(event, 'rec-combined')">Combined Flow</button>
+  </div>
+
+  <div id="rec-welcome" class="proto-panel">
+    <div class="mockup-wrap">
+      <div class="mockup-bar"><div class="dot dot-r"></div><div class="dot dot-y"></div><div class="dot dot-g"></div><span class="mockup-title">Neeko · Workspace</span></div>
+      <div class="mockup-body">
+        <div class="sidebar">
+          <div class="sidebar-section"><div class="sidebar-label">Skills</div><div class="sidebar-item active"><span class="sidebar-icon">◆</span> Library <span class="sidebar-count">12</span></div></div>
+          <div class="sidebar-section"><div class="sidebar-label">Tags</div><div class="sidebar-item"><span class="sidebar-icon">▦</span> Backend <span class="sidebar-count">5</span></div></div>
+          <div class="sidebar-section"><div class="sidebar-label">Agents</div><div class="sidebar-item"><span class="sidebar-icon">⬡</span> Claude Code <span class="sidebar-count">8</span></div></div>
+          <div class="sidebar-section"><div class="sidebar-label">Projects</div><div class="sidebar-item"><span class="sidebar-icon">▣</span> acme-api</div></div>
+        </div>
+        <div class="main">
+          <div class="welcome-onboard">
+            <div class="welcome-logo">N</div>
+            <h2>Welcome to Neeko</h2>
+            <p class="onboard-sub">统一 AI 会话、终端、Git 与 IDE 的桌面工作台</p>
+            <div class="value-props">
+              <div class="value-prop"><span class="vp-icon vp-blue">⬡</span> 同时管理多个 AI Agent 的会话与上下文</div>
+              <div class="value-prop"><span class="vp-icon vp-green">⌘</span> 内置终端，自动定位项目目录</div>
+              <div class="value-prop"><span class="vp-icon vp-amber">⎇</span> 跨项目的 Skill 库与标签管理</div>
+            </div>
+            <button class="add-project-cta">Add Your First Project</button>
+            <div class="welcome-secondary">或从历史会话导入</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="rec-guide" class="proto-panel" style="display:none">
+    <div class="mockup-wrap">
+      <div class="mockup-bar"><div class="dot dot-r"></div><div class="dot dot-y"></div><div class="dot dot-g"></div><span class="mockup-title">Neeko · acme-api</span></div>
+      <div class="mockup-body">
+        <div class="sidebar">
+          <div class="sidebar-section"><div class="sidebar-label">Skills</div><div class="sidebar-item active"><span class="sidebar-icon">◆</span> Library <span class="sidebar-count">12</span></div></div>
+          <div class="sidebar-section"><div class="sidebar-label">Tags</div><div class="sidebar-item"><span class="sidebar-icon">▦</span> Backend <span class="sidebar-count">5</span></div></div>
+          <div class="sidebar-section"><div class="sidebar-label">Agents</div><div class="sidebar-item"><span class="sidebar-icon">⬡</span> Claude Code <span class="sidebar-count">8</span></div></div>
+          <div class="sidebar-section"><div class="sidebar-label">Projects</div><div class="sidebar-item active"><span class="sidebar-icon">▣</span> acme-api <span class="sidebar-count">2</span></div></div>
+        </div>
+        <div class="main">
+          <div class="guide-onboard">
+            <div class="head">
+              <h3>Get started with acme-api</h3>
+              <span class="step-progress"><strong>1 / 3</strong> 完成</span>
+            </div>
+            <p class="sub">完成以下步骤以启用项目的完整 AI 能力，可随时跳过</p>
+            <div class="steps">
+              <div class="step done">
+                <div class="step-check"></div>
+                <div class="step-content">
+                  <div class="step-title">Open a Terminal <span class="tag">推荐</span></div>
+                  <div class="step-desc">在项目目录启动终端</div>
+                  <div class="step-action" style="color:var(--text-dim)">已完成 ✓</div>
+                </div>
+              </div>
+              <div class="step">
+                <div class="step-check"></div>
+                <div class="step-content">
+                  <div class="step-title">Start an AI Agent session</div>
+                  <div class="step-desc">通过 Claude Code 等 Agent 进行代码问答、生成、重构</div>
+                  <div class="step-action">→ Open Claude Code</div>
+                </div>
+              </div>
+              <div class="step">
+                <div class="step-check"></div>
+                <div class="step-content">
+                  <div class="step-title">Bind tag groups</div>
+                  <div class="step-desc">为项目分配标签，自动安装和启用相关 Skills</div>
+                  <div class="step-action">→ Assign Tags</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="rec-combined" class="proto-panel" style="display:none">
+    <div class="mockup-wrap">
+      <div class="mockup-bar"><div class="dot dot-r"></div><div class="dot dot-y"></div><div class="dot dot-g"></div><span class="mockup-title">Neeko · acme-api</span></div>
+      <div class="mockup-body">
+        <div class="sidebar">
+          <div class="sidebar-section"><div class="sidebar-label">Skills</div><div class="sidebar-item active"><span class="sidebar-icon">◆</span> Library <span class="sidebar-count">12</span></div></div>
+          <div class="sidebar-section"><div class="sidebar-label">Tags</div><div class="sidebar-item"><span class="sidebar-icon">▦</span> Backend <span class="sidebar-count">5</span></div></div>
+          <div class="sidebar-section"><div class="sidebar-label">Agents</div><div class="sidebar-item"><span class="sidebar-icon">⬡</span> Claude Code <span class="sidebar-count">8</span></div></div>
+          <div class="sidebar-section"><div class="sidebar-label">Projects</div><div class="sidebar-item active"><span class="sidebar-icon">▣</span> acme-api <span class="sidebar-count">2</span></div></div>
+        </div>
+        <div class="main">
+          <div class="guide-onboard">
+            <div class="head">
+              <h3>acme-api</h3>
+              <span class="step-progress"><strong>3 / 3</strong> 完成 ✓</span>
+            </div>
+            <p class="sub">所有基础配置已完成。你现在可以：</p>
+            <div class="steps">
+              <div class="step" style="border-color:var(--green);background:var(--green-soft)">
+                <div class="step-check" style="border-color:var(--green);background:var(--green)"></div>
+                <div class="step-content">
+                  <div class="step-title">Resume last session</div>
+                  <div class="step-desc">继续上次的 Claude Code 对话（12分钟前）</div>
+                  <div class="step-action">→ Resume</div>
+                </div>
+              </div>
+              <div class="step">
+                <div class="step-check"></div>
+                <div class="step-content">
+                  <div class="step-title">New Terminal tab</div>
+                  <div class="step-desc">在项目根目录打开新终端</div>
+                  <div class="step-action">→ Open Terminal</div>
+                </div>
+              </div>
+              <div class="step">
+                <div class="step-check"></div>
+                <div class="step-content">
+                  <div class="step-title">Browse Skills Marketplace</div>
+                  <div class="step-desc">探索可安装到新 tag group 的技能</div>
+                  <div class="step-action">→ Marketplace</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <hr class="divider">
+
+  <h2 class="section-heading">实施建议</h2>
+  <div class="compare-row">
+    <div>
+      <h4>第一步：Welcome 文案 + 价值 props</h4>
+      <p>低风险快赢。只改 ProjectWorkspace.tsx 的 Welcome block，加 3 条 value props 和次级 CTA。1 天内可上线。</p>
+    </div>
+    <div>
+      <h4>第二步：ProjectGuidePage 改造为 Steps</h4>
+      <p>新增 step 状态持久化（localStorage 或 ~/.neeko/config.json），支持"标记完成"和"全部完成后折叠"。</p>
+    </div>
+    <div>
+      <h4>第三步：可选 Dashboard 叠加</h4>
+      <p>当 step 全部完成后，Dashboard 模式的"Recent Session"等数据块可以作为高级视图叠加。</p>
+    </div>
+  </div>
+
+  <hr class="divider">
+
+  <h2 class="section-heading">备注 & 下一步</h2>
+  <p style="font-size:0.82rem;color:var(--text-muted);line-height:1.7">
+    本方案的核心假设是：<strong>用户进入项目时存在"首次配置"与"日常回归"两种心态</strong>，应当用一套界面同时服务两种。<br>
+    B 方案（Onboarding Steps）的进度条在首次配置阶段是引导工具，在日常回归阶段则变成"快捷入口"——<br>
+    步骤标记为"完成后"变成深色的 Action tile，继续承担入口职责，不会沦为噪音。<br><br>
+    <strong>待用户确认</strong>：<br>
+    1. 推荐 B 方案还是倾向 A 或 C？<br>
+    2. Step 完成状态持久化策略（localStorage vs 配置文件）<br>
+    3. "Bind tag groups"是否作为必选项，还是放在 step 之后作为可选
+  </p>
+</section>
+
+<script>
+function switchTab(e, id) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+  if (e && e.target) e.target.classList.add('active');
+  document.getElementById(id).classList.add('active');
+}
+function switchProto(e, id) {
+  document.querySelectorAll('.proto-toggle button').forEach(b => b.classList.remove('active'));
+  e.target.classList.add('active');
+  document.querySelectorAll('.proto-panel').forEach(p => p.style.display = 'none');
+  document.getElementById(id).style.display = 'block';
+}
+</script>
+</body>
+</html>

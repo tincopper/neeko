@@ -19,6 +19,18 @@ export type {
 // Hooks
 export { useMarketplace, PAGE_SIZE_OPTIONS, DEFAULT_PAGE_SIZE } from './hooks/useMarketplace';
 export { useApplyProjectSkills } from './hooks/useApplyProjectSkills';
+export {
+  useBindProjectTagGroups,
+  resolveProjectTargetAgentIds,
+} from './hooks/useBindProjectTagGroups';
+export { bindProjectTagGroups } from './utils/bindProjectTagGroups';
+export type {
+  BindProjectTagGroupsInput,
+  BindProjectTagGroupsDeps,
+  BindProjectTagGroupsResult,
+} from './utils/bindProjectTagGroups';
+export { openProjectSkillsPanel } from './utils/openProjectSkillsPanel';
+export { ensureSkillsPanelOpen } from './utils/ensureSkillsPanelOpen';
 
 // Types & Hooks (public contract)
 export type {

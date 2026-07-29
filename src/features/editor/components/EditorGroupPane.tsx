@@ -24,6 +24,7 @@ import { useDockStore } from '@/shared/store/dockStore';
 import { useProjectStore } from '@/shared/store/projectStore';
 import type { AgentConfig, AuthMethod, EditorGroupId } from '@/shared/types';
 import type { Tab } from '@/shared/types/tab';
+import { createUntitledFileTab } from '@/shared/utils/createUntitledFileTab';
 import { buildDiffSource } from '@/shared/utils/diffSource';
 
 import { useEditorGroupLayout } from '../hooks/useEditorGroupLayout';
@@ -211,34 +212,7 @@ function EditorGroupPane({
         }
         case 'new-file': {
           if (projectIdForCheck) {
-            const existingUntitled = tabs.filter(
-              (t) => t.data.kind === 'file' && t.data.isUntitled,
-            ).length;
-            const num = existingUntitled + 1;
-            const tabId = `tab_${crypto.randomUUID()}`;
-            const name = `Untitled-${num}`;
-            useEditorStore.getState().addTab(tabKey, {
-              id: tabId,
-              projectId: projectIdForCheck,
-              title: name,
-              order: tabs.length,
-              data: {
-                kind: 'file',
-                filePath: '',
-                fileName: name,
-                content: {
-                  path: '',
-                  content: '',
-                  size: 0,
-                  is_binary: false,
-                },
-                isDirty: true,
-                isUntitled: true,
-                untitledName: name,
-                initialPreviewMode: 'source',
-              },
-            });
-            useEditorStore.getState().activateTab(tabKey, tabId);
+            createUntitledFileTab(tabKey, projectIdForCheck);
           }
           break;
         }
