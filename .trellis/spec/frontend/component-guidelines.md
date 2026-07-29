@@ -726,3 +726,95 @@ const items = useStore(
   useShallow((s) => s.list.slice(0, 10)),
 );
 ```
+## Worktree-Aware 展示组件模式
+
+### 背景
+
+当用户在 worktree 终端中工作时，多个 UI 组件需要感知当前激活的 worktree 并调整其展示与交互行为。核心原则：**worktree 是只读上下文**——展示 worktree 自身的分支名，但禁止分支切换操作。
+
+### 状态读取
+
+使用 `useWorktreeStore` 读取当前激活的 worktree 状态：
+
+```tsx
+import { useWorktreeStore } from '@/shared/store/worktreeStore';
+
+const activeWorktreePath = useWorktreeStore((s) => s.activeWorktreePath);
+const activeWorktreeBranch = useWorktreeStore((s) => s.activeWorktreeBranch);
+const isWorktreeActive = activeWorktreePath !== null;
+```
+
+### 展示覆盖模式
+
+当 worktree 激活时，展示组件应显示 worktree 的分支名而非主项目的分支名：
+
+```tsx
+// 正确：根据 worktree 状态决定展示内容
+const displayBranch = isWorktreeActive ? activeWorktreeBranch : currentBranch;
+```
+
+### 交互禁用模式
+
+当 worktree 激活时，分支切换功能必须完全禁用：
+
+```tsx
+// 正确：worktree 状态下禁用面板切换
+const handleTogglePanel = useCallback(() => {
+  if (isWorktreeActive) return;
+  setPanelOpen((v) => !v);
+}, [isWorktreeActive]);
+```
+
+### 视觉反馈
+
+worktree 激活时，组件应提供明确的视觉反馈表明当前处于只读状态：
+
+```tsx
+<button
+  className={cn(
+    'flex items-center gap-1 hover:text-text-primary cursor-pointer transition-colors',
+    isWorktreeActive && 'opacity-70 cursor-default',
+  )}
+  title={
+    isWorktreeActive
+      ? `Worktree branch: ${displayBranch} (read-only)`
+      : `Current branch: ${displayBranch}`
+  }
+>
+```
+
+要点：
+1. **opacity-70**：降低透明度表明非主上下文
+2. **cursor-default**：移除可点击手势
+3. **title 提示**：明确告知用户当前是 worktree 分支且只读
+
+### 实例参考
+
+| 组件 | 文件 | 行为 |
+|------|------|------|
+| BranchStatusBarWidget | `src/features/git/components/BranchStatusBarWidget.tsx` | 展示 worktree 分支名，禁用分支切换面板 |
+
+### 反模式
+
+❌ 组件直接读取 `gitInfo.current_branch` 而不检查 worktree 状态：
+
+```tsx
+// 错误：始终显示主项目分支，忽略 worktree
+const branch = gitInfo?.current_branch ?? '';
+```
+
+❌ worktree 激活时仍允许分支切换：
+
+```tsx
+// 错误：未在 worktree 状态下禁用交互
+const handleTogglePanel = useCallback(() => {
+  setPanelOpen((v) => !v);
+}, []);
+```
+
+❌ 为 worktree 新建独立组件而非复用现有组件：
+
+```tsx
+// 错误：复制一份 worktree 专用组件
+const WorktreeBranchStatusBarWidget = () => { ... };
+```

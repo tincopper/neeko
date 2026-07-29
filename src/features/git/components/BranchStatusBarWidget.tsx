@@ -5,8 +5,10 @@ import { useShallow } from 'zustand/shallow';
 import { BranchIcon, ArrowDown, ArrowUp } from '@/shared/components/icons';
 import { useGitStore } from '@/shared/store/gitStore';
 import { useProjectStore } from '@/shared/store/projectStore';
+import { useWorktreeStore } from '@/shared/store/worktreeStore';
 import type { GitInfo } from '@/shared/types';
 import { filterWorktreeBranches } from '@/shared/utils';
+import { cn } from '@/shared/utils/cn';
 
 import BranchSwitcherPanel from './BranchSwitcherPanel';
 
@@ -32,6 +34,11 @@ function BranchStatusBarWidget({
   const branches = gitInfo?.branches ?? [];
   const worktrees = gitInfo?.worktrees ?? [];
 
+  const activeWorktreePath = useWorktreeStore((s) => s.activeWorktreePath);
+  const activeWorktreeBranch = useWorktreeStore((s) => s.activeWorktreeBranch);
+  const isWorktreeActive = activeWorktreePath !== null;
+  const displayBranch = isWorktreeActive ? activeWorktreeBranch : currentBranch;
+
   const favoriteBranches = useGitStore(useShallow((s) => s.favoriteBranches[projectId] ?? []));
   const toggleFavorite = useGitStore((s) => s.toggleFavorite);
   const aheadBehind = useGitStore(
@@ -44,9 +51,9 @@ function BranchStatusBarWidget({
   );
 
   const aheadBehindMap = useMemo(() => {
-    if (!aheadBehind || !currentBranch) return {};
-    return { [currentBranch]: { ahead: aheadBehind.ahead, behind: aheadBehind.behind } };
-  }, [aheadBehind, currentBranch]);
+    if (!aheadBehind || !displayBranch) return {};
+    return { [displayBranch]: { ahead: aheadBehind.ahead, behind: aheadBehind.behind } };
+  }, [aheadBehind, displayBranch]);
 
   const handleToggleFavorite = useCallback(
     (branchName: string) => {
@@ -62,6 +69,12 @@ function BranchStatusBarWidget({
     [onCheckoutBranch],
   );
 
+  // Worktree cannot switch branches — disable panel when worktree is active
+  const handleTogglePanel = useCallback(() => {
+    if (isWorktreeActive) return;
+    setPanelOpen((v) => !v);
+  }, [isWorktreeActive]);
+
   useEffect(() => {
     if (panelOpen && ref.current) {
       const rect = ref.current.getBoundingClientRect();
@@ -75,19 +88,26 @@ function BranchStatusBarWidget({
     }
   }, [panelOpen]);
 
-  if (!gitInfo || !currentBranch) return null;
+  if (!gitInfo || !displayBranch) return null;
 
   return (
     <>
       <button
         ref={ref}
         type="button"
-        className="flex items-center gap-1 hover:text-text-primary cursor-pointer transition-colors shrink-0"
-        onClick={() => setPanelOpen((v) => !v)}
-        title={`Current branch: ${currentBranch}`}
+        className={cn(
+          'flex items-center gap-1 hover:text-text-primary cursor-pointer transition-colors shrink-0',
+          isWorktreeActive && 'opacity-70 cursor-default',
+        )}
+        onClick={handleTogglePanel}
+        title={
+          isWorktreeActive
+            ? `Worktree branch: ${displayBranch} (read-only)`
+            : `Current branch: ${displayBranch}`
+        }
       >
         <BranchIcon size={12} className="shrink-0 text-accent-blue" />
-        <span className="truncate max-w-[120px] font-mono text-[12px]">{currentBranch}</span>
+        <span className="truncate max-w-[120px] font-mono text-[12px]">{displayBranch}</span>
         {aheadBehind && (aheadBehind.ahead > 0 || aheadBehind.behind > 0) && (
           <span className="flex items-center gap-1 text-[11px]">
             {aheadBehind.behind > 0 && (
@@ -119,7 +139,7 @@ function BranchStatusBarWidget({
             <div className="fixed z-[1000]" style={panelStyle}>
               <BranchSwitcherPanel
                 branches={availableBranches}
-                currentBranch={currentBranch}
+                currentBranch={displayBranch}
                 favoriteBranches={favoriteBranches}
                 aheadBehind={aheadBehindMap}
                 onCheckout={(name) => {

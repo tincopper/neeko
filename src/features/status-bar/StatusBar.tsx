@@ -376,6 +376,13 @@ export function StatusBar() {
   return (
     <div className="flex h-4 items-center justify-between px-3 text-xs leading-4 text-text-secondary shrink-0 select-none">
       <div className="flex h-full min-w-0 items-center gap-3">
+        {activeProjectId && (
+          <BranchStatusBarWidget
+            onNewBranch={() => {}}
+            onNewWorktree={() => {}}
+            onCheckoutBranch={handleStatusBarCheckout}
+          />
+        )}
         {leftContent()}
         {extensionConflicts.length > 0 ? (
           <span
@@ -392,13 +399,6 @@ export function StatusBar() {
         ) : null}
       </div>
       <div className="flex h-full shrink-0 items-center gap-3">
-        {activeProjectId && (
-          <BranchStatusBarWidget
-            onNewBranch={() => {}}
-            onNewWorktree={() => {}}
-            onCheckoutBranch={handleStatusBarCheckout}
-          />
-        )}
         {activeProjectId ? (
           <button
             type="button"
