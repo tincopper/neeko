@@ -4,10 +4,9 @@ import neekoIcon from '@/assets/neeko-icon.png';
 
 interface WelcomeScreenProps {
   onAddProject: () => void;
-  onImportSessions?: () => void;
 }
 
-export function WelcomeScreen({ onAddProject, onImportSessions }: WelcomeScreenProps) {
+export function WelcomeScreen({ onAddProject }: WelcomeScreenProps) {
   return (
     <div className="flex-1 flex flex-col items-center justify-center px-6 text-center">
       <div className="w-14 h-14 rounded-2xl bg-accent-blue/15 flex items-center justify-center mb-5">
@@ -68,15 +67,6 @@ export function WelcomeScreen({ onAddProject, onImportSessions }: WelcomeScreenP
       >
         Add Your First Project
       </button>
-      {onImportSessions && (
-        <button
-          type="button"
-          className="mt-3 text-[12px] text-text-muted hover:text-text-secondary bg-transparent border-none cursor-pointer"
-          onClick={onImportSessions}
-        >
-          or import from historical sessions
-        </button>
-      )}
     </div>
   );
 }
