@@ -1658,3 +1658,36 @@ When a worktree is active, the status bar now displays the worktree's branch nam
 ### Next Steps
 
 - None - task complete
+
+
+## Session 107: LSP Code Review Remediation
+
+**Date**: 2026-07-30
+**Task**: LSP Code Review Remediation
+**Branch**: `main`
+
+### Summary
+
+Complete LSP front/back code review remediation: SRP split (session_store, plugin_manager, instance, log_ring_buffer, status, utils), critical fixes (thread spawn unwrap, shutdown protocol, DiagnosticBus compaction, installer HashSet), polish (root markers, display names, React keys, timestamps, log levels). All 450+79+891 tests pass.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `6f4c6c64` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

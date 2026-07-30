@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-2.md`
-- **Total Sessions**: 106
-- **Last Active**: 2026-07-29
+- **Total Sessions**: 107
+- **Last Active**: 2026-07-30
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-2.md` | ~1660 | Active |
+| `journal-2.md` | ~1693 | Active |
 | `journal-1.md` | ~1986 | Archived |
 <!-- @@@/auto:active-documents -->
 
@@ -30,6 +30,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 107 | 2026-07-30 | LSP Code Review Remediation | `6f4c6c64` | `main` |
 | 106 | 2026-07-29 | feat(statusbar): show worktree branch and disable branch switching | `75a310b8` | `main` |
 | 105 | 2026-07-29 | feat(statusbar): show worktree branch and disable branch switching | `75a310b8` | `main` |
 | 104 | 2026-07-29 | feat(statusbar): show worktree branch and disable branch switching | `75a310b8` | `main` |
