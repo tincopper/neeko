@@ -444,8 +444,16 @@ impl LspManager {
             let pp = project_path.to_string();
             let lid = language_id.to_string();
             self.runtime.spawn_blocking(move || {
-                let _ = s.send_notification_raw("shutdown", serde_json::json!({}));
-                std::thread::sleep(Duration::from_millis(100));
+                // LSP protocol: send shutdown request, wait for response, then exit notification
+                match s.send_shutdown_request() {
+                    Ok(_) => {
+                        log::info!("[LSP] Shutdown request acknowledged for {pp}:{lid}");
+                    }
+                    Err(e) => {
+                        log::warn!("[LSP] Shutdown request failed for {pp}:{lid}: {e}");
+                    }
+                }
+                let _ = s.send_notification_raw("exit", serde_json::json!({}));
                 s.kill_child();
                 log::info!("[LSP] Closed session: {pp}:{lid}");
             });

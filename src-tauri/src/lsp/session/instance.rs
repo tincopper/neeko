@@ -20,7 +20,7 @@ use super::log_ring_buffer::LogRingBuffer;
 use super::notify::{handle_diagnostics_notification, handle_progress_notification};
 use super::request::PendingSender;
 use super::status::LspSessionStatus;
-use super::utils::{chrono_like_now, sample_process_memory_mb};
+use super::utils::{iso_timestamp_now, sample_process_memory_mb};
 
 pub(crate) struct LspSession {
     /// Language identifier (e.g. "rust").
@@ -176,7 +176,7 @@ impl LspSession {
                 }
                 Ok(())
             })
-            .unwrap();
+            .map_err(|e| anyhow::anyhow!("Failed to spawn LSP writer thread: {}", e))?;
 
         let stderr_name = server_name.clone();
         let log_buf_clone = Arc::clone(&log_buffer);
@@ -192,10 +192,19 @@ impl LspSession {
                         Ok(l) => {
                             let trimmed = l.trim_end().to_string();
                             if !trimmed.is_empty() {
+                                // Infer log level from content
+                                let level =
+                                    if trimmed.contains("error") || trimmed.contains("panic") {
+                                        "error"
+                                    } else if trimmed.contains("warn") {
+                                        "warn"
+                                    } else {
+                                        "info"
+                                    };
                                 log::warn!("[LSP][{} stderr] {}", stderr_name, trimmed);
                                 let entry = LspServerLogEntry {
-                                    timestamp: chrono_like_now(),
-                                    level: "warn".into(),
+                                    timestamp: iso_timestamp_now(),
+                                    level: level.into(),
                                     message: trimmed,
                                 };
                                 if let Ok(mut buf) = log_buf_clone.lock() {
@@ -235,7 +244,9 @@ impl LspSession {
                 {
                     match &msg {
                         Message::Response(resp) => {
-                            let mut map = pending_clone.lock().expect("infallible");
+                            let mut map = pending_clone.lock().map_err(|e| {
+                                anyhow::anyhow!("LSP reader pending lock poisoned: {}", e)
+                            })?;
                             if let Some(tx) = map.remove(&resp.id) {
                                 let _ = tx.send(msg);
                                 continue;
@@ -286,7 +297,7 @@ impl LspSession {
                 }
                 Ok(())
             })
-            .unwrap();
+            .map_err(|e| anyhow::anyhow!("Failed to spawn LSP reader thread: {}", e))?;
 
         let (init_tx, init_rx) = tokio::sync::oneshot::channel::<Message>();
         let mut init_params = serde_json::json!({
@@ -309,7 +320,9 @@ impl LspSession {
 
         let init_req_id = RequestId::from(1i32);
         {
-            let mut map = pending.lock().expect("infallible");
+            let mut map = pending
+                .lock()
+                .map_err(|e| anyhow::anyhow!("LSP init pending lock poisoned: {}", e))?;
             map.insert(init_req_id.clone(), init_tx);
         }
 
@@ -341,7 +354,9 @@ impl LspSession {
             .context("Failed to send initialized notification")?;
 
         {
-            let mut map = pending.lock().expect("infallible");
+            let mut map = pending
+                .lock()
+                .map_err(|e| anyhow::anyhow!("LSP init pending lock poisoned: {}", e))?;
             map.remove(&init_req_id);
         }
 
@@ -387,13 +402,45 @@ impl LspSession {
         )
         .await
     }
-
     /// Send a raw LSP notification to the server.
     pub(crate) fn send_notification_raw(&self, method: &str, params: Value) -> Result<()> {
         let notif = Notification::new(method.to_string(), params);
         self.writer
             .send(Message::Notification(notif))
             .with_context(|| format!("Failed to send LSP notification: {}", method))
+    }
+
+    /// Send a graceful shutdown request and wait for the response.
+    /// Returns the response or an error if the server doesn't respond.
+    pub(crate) fn send_shutdown_request(&self) -> Result<Message> {
+        let (tx, rx) = tokio::sync::oneshot::channel::<Message>();
+        let req_id = RequestId::from(1000i32);
+        {
+            let mut map = self
+                .pending
+                .lock()
+                .map_err(|e| anyhow::anyhow!("LSP pending lock poisoned: {}", e))?;
+            map.insert(req_id.clone(), tx);
+        }
+        let req = Request::new(
+            req_id.clone(),
+            "shutdown".to_string(),
+            serde_json::json!({}),
+        );
+        self.writer
+            .send(Message::Request(req))
+            .context("Failed to send shutdown request")?;
+        let response = rx
+            .blocking_recv()
+            .context("LSP shutdown: no response received")?;
+        {
+            let mut map = self
+                .pending
+                .lock()
+                .map_err(|e| anyhow::anyhow!("LSP pending lock poisoned: {}", e))?;
+            map.remove(&req_id);
+        }
+        Ok(response)
     }
 
     /// Kill the child process and wait for it to exit.

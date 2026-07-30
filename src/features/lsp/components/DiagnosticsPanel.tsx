@@ -45,9 +45,9 @@ export function DiagnosticsPanel({ diagnostics, onJumpToLine }: DiagnosticsPanel
         </span>
       </div>
       <div className="flex-1 overflow-y-auto">
-        {diagnostics.map((d, i) => (
+        {diagnostics.map((d) => (
           <button
-            key={i}
+            key={`${d.message}-${d.range.start.line}-${d.range.start.character}-${d.severity ?? 'none'}`}
             className="w-full text-left px-3 py-1.5 text-xs hover:bg-bg-hover transition-colors border-b border-border/50 flex items-start gap-2"
             onClick={() => onJumpToLine?.(d.range.start.line)}
           >

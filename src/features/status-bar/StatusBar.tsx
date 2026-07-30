@@ -102,15 +102,27 @@ export function StatusBar() {
 
   // Listen for auto-install progress events
   useEffect(() => {
-    const unlistenP = listen<LspInstallProgressEvent>('lsp-install-progress', (event) => {
-      const { language_id, phase, message } = event.payload;
-      if (phase === 'done' || phase === 'error') {
-        setTimeout(() => setInstallProgress(null), phase === 'done' ? 2000 : 5000);
+    let unlisten: (() => void) | null = null;
+    let cancelled = false;
+
+    const setup = async () => {
+      const fn = await listen<LspInstallProgressEvent>('lsp-install-progress', (event) => {
+        if (cancelled) return;
+        const { language_id, phase, message } = event.payload;
+        if (phase === 'done' || phase === 'error') {
+          setTimeout(() => setInstallProgress(null), phase === 'done' ? 2000 : 5000);
+        }
+        setInstallProgress({ language_id, phase, message });
+      });
+      if (!cancelled) {
+        unlisten = fn;
       }
-      setInstallProgress({ language_id, phase, message });
-    });
+    };
+
+    setup();
     return () => {
-      unlistenP.then((unlisten) => unlisten());
+      cancelled = true;
+      unlisten?.();
     };
   }, []);
 

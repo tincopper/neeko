@@ -1,11 +1,9 @@
 //! Auto-install language servers in a project [`ExecTarget`].
-//!
-//! Binary names and install recipes come from [`LspPlugin`] — this module does
 
 #![allow(clippy::unwrap_used, clippy::expect_used)]
-//! not maintain a second language → command map.
 
-use std::sync::Mutex;
+use std::collections::HashSet;
+use std::sync::{LazyLock, Mutex};
 
 use serde::Serialize;
 use tauri::Emitter;
@@ -14,10 +12,9 @@ use crate::common::executor::factory::ExecTarget;
 use crate::lsp::plugin::LspPlugin;
 use crate::lsp::process::run_command_blocking;
 
-/// Track in-progress installs to avoid concurrent attempts.
-static INSTALL_IN_PROGRESS: Mutex<Option<String>> = Mutex::new(None);
-
-/// Progress event emitted to the frontend.
+/// Track in-progress installs to avoid concurrent attempts per language.
+static INSTALL_IN_PROGRESS: LazyLock<Mutex<HashSet<String>>> =
+    LazyLock::new(|| Mutex::new(HashSet::new()));
 #[derive(Debug, Clone, Serialize)]
 struct LspInstallProgress {
     language_id: String,
@@ -69,21 +66,25 @@ pub fn install_plugin_server(
 ) -> Result<bool, String> {
     let language_id = plugin.language_id.as_str();
     {
-        let mut in_progress = INSTALL_IN_PROGRESS.lock().expect("infallible");
-        if let Some(ref current) = *in_progress {
-            if current == language_id {
-                log::info!("[LSP] Install already in progress for: {}", language_id);
-                return Err("Install already in progress".to_string());
-            }
+        let mut in_progress = INSTALL_IN_PROGRESS.lock().map_err(|e| {
+            log::warn!("[LSP] Install lock poisoned: {}", e);
+            e.to_string()
+        })?;
+        if in_progress.contains(language_id) {
+            log::info!("[LSP] Install already in progress for: {}", language_id);
+            return Err("Install already in progress".to_string());
         }
-        *in_progress = Some(language_id.to_string());
+        in_progress.insert(language_id.to_string());
     }
 
     let result = install_plugin_server_impl(plugin, app_handle, target);
 
     {
-        let mut in_progress = INSTALL_IN_PROGRESS.lock().expect("infallible");
-        *in_progress = None;
+        let mut in_progress = INSTALL_IN_PROGRESS.lock().map_err(|e| {
+            log::warn!("[LSP] Install lock poisoned: {}", e);
+            e.to_string()
+        })?;
+        in_progress.remove(language_id);
     }
 
     result
@@ -111,53 +112,30 @@ fn install_plugin_server_impl(
         &format!("Installing {}...", bin),
     );
 
-    if !crate::core::exec::command_exists_blocking(target, install.prerequisite) {
-        let msg = format!(
-            "Cannot install {}: '{}' not found on project PATH. Install it first.",
-            bin, install.prerequisite
+    let (code, stdout, stderr) =
+        run_command_blocking(target, &install.prerequisite, &install.command)
+            .map_err(|e| format!("Install command failed: {}", e))?;
+
+    if code != 0 {
+        let msg = if stderr.trim().is_empty() {
+            stdout
+        } else {
+            stderr
+        };
+        emit_progress(
+            app_handle,
+            language_id,
+            "error",
+            &format!("Install failed: {}", msg),
         );
-        log::warn!("[LSP] {}", msg);
-        emit_progress(app_handle, language_id, "error", &msg);
-        return Err(msg);
+        return Err(format!("Install failed with code {}: {}", code, msg));
     }
 
-    let cmd_and_args = install.command;
-    if cmd_and_args.is_empty() {
-        return Ok(false);
-    }
-
-    log::info!(
-        "[LSP] Installing {} via {:?} in project env: {:?}",
-        bin,
-        cmd_and_args,
-        std::mem::discriminant(target)
+    emit_progress(
+        app_handle,
+        language_id,
+        "done",
+        &format!("{} installed", bin),
     );
-
-    let program = cmd_and_args[0];
-    let args: Vec<&str> = cmd_and_args[1..].to_vec();
-    match run_command_blocking(target, program, &args) {
-        Ok((0, _, _)) => {
-            let msg = format!("{} installed successfully", bin);
-            log::info!("[LSP] {}", msg);
-            emit_progress(app_handle, language_id, "done", &msg);
-            Ok(true)
-        }
-        Ok((code, stdout, stderr)) => {
-            let detail = if !stderr.trim().is_empty() {
-                stderr.trim().to_string()
-            } else {
-                stdout.trim().to_string()
-            };
-            let msg = format!("Failed to install {} (exit {}): {}", bin, code, detail);
-            log::error!("[LSP] {}", msg);
-            emit_progress(app_handle, language_id, "error", &msg);
-            Err(msg)
-        }
-        Err(e) => {
-            let msg = format!("Failed to run install command for {}: {}", bin, e);
-            log::error!("[LSP] {}", msg);
-            emit_progress(app_handle, language_id, "error", &msg);
-            Err(msg)
-        }
-    }
+    Ok(true)
 }

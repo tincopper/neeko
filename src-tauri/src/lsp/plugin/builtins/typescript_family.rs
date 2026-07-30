@@ -19,6 +19,7 @@ pub fn plugins() -> Vec<LspPlugin> {
             TS_CMD,
             Some(TS_INSTALL),
         )
+        .with_root_markers(&["tsconfig.json"])
         .with_detect_priority(16),
         LspPlugin::builtin("javascript", &["js"], TS_SERVER, TS_CMD, Some(TS_INSTALL))
             .with_root_markers(&["jsconfig.json", "package.json"])
@@ -30,6 +31,7 @@ pub fn plugins() -> Vec<LspPlugin> {
             TS_CMD,
             Some(TS_INSTALL),
         )
+        .with_root_markers(&["jsconfig.json", "package.json"])
         .with_detect_priority(21),
     ]
 }

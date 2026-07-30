@@ -1,24 +1,13 @@
-#![allow(clippy::unwrap_used, clippy::expect_used)]
-
 use std::sync::{Arc, RwLock};
 
 use serde::Serialize;
 
 /// A single diagnostic event published by the DiagnosticBus.
-///
-/// The `diagnostics` field carries the raw JSON array from the LSP
-/// `textDocument/publishDiagnostics` notification params — no
-/// intermediate parsing to structs, avoiding a serialize→parse→serialize
-/// round-trip.
 #[derive(Debug, Clone, Serialize)]
 pub struct DiagnosticEvent {
-    /// Project filesystem path.
     pub project_path: String,
-    /// Document URI (file:// scheme).
     pub uri: String,
-    /// Language identifier (e.g. "rust").
     pub language_id: String,
-    /// Raw diagnostics JSON array from the LSP notification.
     pub diagnostics: serde_json::Value,
 }
 
@@ -33,20 +22,24 @@ pub struct DiagnosticSubscription {
 
 impl Drop for DiagnosticSubscription {
     fn drop(&mut self) {
-        if let Ok(mut guard) = self.listeners.write() {
-            if let Some(slot) = guard.get_mut(self.index) {
-                // Replace with no-op to mark slot as dead
-                *slot = Box::new(|_| {});
+        match self.listeners.write() {
+            Ok(mut guard) => {
+                if self.index < guard.len() {
+                    let _ = guard.remove(self.index);
+                }
+            }
+            Err(poisoned) => {
+                log::warn!("[LSP] DiagnosticBus lock poisoned, recovering");
+                let mut guard = poisoned.into_inner();
+                if self.index < guard.len() {
+                    let _ = guard.remove(self.index);
+                }
             }
         }
     }
 }
 
 /// Pub/sub diagnostic event bus.
-///
-/// Decouples LSP session diagnostic push from frontend event emission.
-/// Multiple subscribers can listen independently; the bus itself
-/// doesn't know about Tauri events — transport adapters bridge that gap.
 #[derive(Clone)]
 pub struct DiagnosticBus {
     listeners: Arc<RwLock<Vec<Listener>>>,
@@ -62,33 +55,48 @@ impl DiagnosticBus {
     }
 
     /// Subscribe to all diagnostic events.
-    ///
-    /// Returns a handle; dropping it unsubscribes.
     pub fn subscribe<F>(&self, f: F) -> DiagnosticSubscription
     where
         F: Fn(&DiagnosticEvent) + Send + Sync + 'static,
     {
-        let mut guard = self.listeners.write().expect("infallible");
-        let index = guard.len();
-        guard.push(Box::new(f));
-        DiagnosticSubscription {
-            listeners: Arc::clone(&self.listeners),
-            index,
-        }
+        let (index, listeners) = match self.listeners.write() {
+            Ok(mut guard) => {
+                let index = guard.len();
+                guard.push(Box::new(f));
+                (index, Arc::clone(&self.listeners))
+            }
+            Err(poisoned) => {
+                log::warn!("[LSP] DiagnosticBus lock poisoned, recovering");
+                let mut guard = poisoned.into_inner();
+                let index = guard.len();
+                guard.push(Box::new(f));
+                (index, Arc::clone(&self.listeners))
+            }
+        };
+        DiagnosticSubscription { listeners, index }
     }
 
     /// Publish a diagnostic event to all active subscribers.
     pub fn publish(&self, event: DiagnosticEvent) {
-        let guard = self.listeners.read().expect("infallible");
-        for listener in guard.iter() {
-            listener(&event);
+        match self.listeners.read() {
+            Ok(guard) => {
+                for listener in guard.iter() {
+                    listener(&event);
+                }
+            }
+            Err(poisoned) => {
+                log::warn!("[LSP] DiagnosticBus lock poisoned, recovering");
+                for listener in poisoned.into_inner().iter() {
+                    listener(&event);
+                }
+            }
         }
     }
 
     /// Number of active subscription slots (including dead ones).
     #[must_use]
     pub fn subscriber_count(&self) -> usize {
-        self.listeners.read().expect("infallible").len()
+        self.listeners.read().map(|g| g.len()).unwrap_or(0)
     }
 }
 
@@ -101,49 +109,31 @@ impl Default for DiagnosticBus {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::atomic::{AtomicUsize, Ordering};
 
     #[test]
-    fn test_publish_reaches_subscriber() {
+    fn test_subscribe_and_publish() {
         let bus = DiagnosticBus::new();
-        let counter = Arc::new(AtomicUsize::new(0));
-        let c = Arc::clone(&counter);
-
-        let _sub = bus.subscribe(move |_event| {
-            c.fetch_add(1, Ordering::SeqCst);
+        let count = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let count_clone = Arc::clone(&count);
+        let _sub = bus.subscribe(move |_| {
+            count_clone.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
         });
-
         bus.publish(DiagnosticEvent {
             project_path: "/test".into(),
-            uri: "file:///test.rs".into(),
+            uri: "file:///test/main.rs".into(),
             language_id: "rust".into(),
             diagnostics: serde_json::json!([]),
         });
-
-        assert_eq!(counter.load(Ordering::SeqCst), 1);
+        assert_eq!(count.load(std::sync::atomic::Ordering::SeqCst), 1);
     }
 
     #[test]
-    fn test_multiple_subscribers() {
+    fn test_unsubscribe_on_drop() {
         let bus = DiagnosticBus::new();
-        let counter = Arc::new(AtomicUsize::new(0));
-        let c1 = Arc::clone(&counter);
-        let c2 = Arc::clone(&counter);
-
-        let _s1 = bus.subscribe(move |_| {
-            c1.fetch_add(1, Ordering::SeqCst);
-        });
-        let _s2 = bus.subscribe(move |_| {
-            c2.fetch_add(1, Ordering::SeqCst);
-        });
-
-        bus.publish(DiagnosticEvent {
-            project_path: "/test".into(),
-            uri: "file:///test.rs".into(),
-            language_id: "rust".into(),
-            diagnostics: serde_json::json!([]),
-        });
-
-        assert_eq!(counter.load(Ordering::SeqCst), 2);
+        {
+            let _sub = bus.subscribe(|_| {});
+            assert_eq!(bus.subscriber_count(), 1);
+        }
+        assert_eq!(bus.subscriber_count(), 0);
     }
 }

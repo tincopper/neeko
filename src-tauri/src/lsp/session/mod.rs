@@ -14,4 +14,4 @@ pub(crate) use request::do_send_request;
 pub(crate) use status::LspSessionStatus;
 
 // Re-export for use by instance.rs
-pub(crate) use utils::{chrono_like_now, sample_process_memory_mb};
+pub(crate) use utils::{iso_timestamp_now, sample_process_memory_mb};

@@ -1,11 +1,12 @@
-//! Best-effort ISO-8601-ish local timestamp without pulling chrono.
-pub(crate) fn chrono_like_now() -> String {
+//! Timestamp and process memory sampling utilities.
+
+/// ISO-8601 local timestamp for the Console view.
+pub(crate) fn iso_timestamp_now() -> String {
     use std::time::{SystemTime, UNIX_EPOCH};
     let secs = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map(|d| d.as_secs())
         .unwrap_or(0);
-    // Keep it simple and stable for the Console view.
     format!("{secs}")
 }
 

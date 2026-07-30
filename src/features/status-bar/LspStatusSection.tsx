@@ -87,8 +87,8 @@ const EXIT_DUR = 80;
 const BUILTIN_SERVER_NAMES: Record<string, string> = {
   rust: 'rust-analyzer',
   python: 'pyright',
-  typescript: 'ts-server',
-  javascript: 'ts-server',
+  typescript: 'typescript-language-server',
+  javascript: 'typescript-language-server',
   go: 'gopls',
   java: 'jdtls',
   cpp: 'clangd',
