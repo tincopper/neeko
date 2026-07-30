@@ -68,17 +68,30 @@ impl Drop for LspProcess {
 
 /// Spawn an LSP server in `target` with optional project working directory.
 ///
-/// Safe to call from `spawn_blocking` (uses [`AppRuntime::from_tauri`]).
+/// Runs on a dedicated OS thread with its own Tokio runtime so it is safe to
+/// call from *any* context — including async Tauri commands (where
+/// `Handle::block_on` would panic with "cannot start a runtime from within a
+/// runtime").
 pub fn spawn_lsp_process(
     target: &ExecTarget,
     cmd: &str,
     args: &[&str],
     current_dir: Option<&str>,
 ) -> Result<LspProcess, String> {
-    let runtime = AppRuntime::try_current_or_tauri();
-    runtime
-        .handle()
-        .block_on(spawn_lsp_process_async(target, cmd, args, current_dir))
+    let target = target.clone();
+    let cmd = cmd.to_string();
+    let args = args.iter().copied().map(String::from).collect::<Vec<_>>();
+    let current_dir = current_dir.map(String::from);
+    blocking_thread(move || {
+        let runtime = AppRuntime::from_tauri();
+        let args_ref: Vec<&str> = args.iter().map(String::as_str).collect();
+        runtime.handle().block_on(spawn_lsp_process_async(
+            &target,
+            &cmd,
+            &args_ref,
+            current_dir.as_deref(),
+        ))
+    })
 }
 
 async fn spawn_lsp_process_async(
@@ -241,20 +254,46 @@ impl Read for ChannelReader {
 }
 
 /// Run a short command on `target` and return exit code + stdout/stderr (blocking).
+///
+/// Runs on a dedicated OS thread with its own Tokio runtime so it is safe to
+/// call from any context (see [`spawn_lsp_process`]).
 pub fn run_command_blocking(
     target: &ExecTarget,
     cmd: &str,
     args: &[&str],
 ) -> Result<(i32, String, String), String> {
-    let runtime = AppRuntime::try_current_or_tauri();
-    runtime.handle().block_on(async {
-        let output = crate::common::executor::sync::collect_output(target, cmd, args)
-            .await
-            .map_err(|e| e.to_string())?;
-        Ok((
-            output.exit_code,
-            String::from_utf8_lossy(&output.stdout).into_owned(),
-            String::from_utf8_lossy(&output.stderr).into_owned(),
-        ))
+    let target = target.clone();
+    let cmd = cmd.to_string();
+    let args = args.iter().copied().map(String::from).collect::<Vec<_>>();
+    blocking_thread(move || {
+        let runtime = AppRuntime::from_tauri();
+        let args_ref: Vec<&str> = args.iter().map(String::as_str).collect();
+        runtime.handle().block_on(async {
+            let output = crate::common::executor::sync::collect_output(&target, &cmd, &args_ref)
+                .await
+                .map_err(|e| e.to_string())?;
+            Ok::<_, String>((
+                output.exit_code,
+                String::from_utf8_lossy(&output.stdout).into_owned(),
+                String::from_utf8_lossy(&output.stderr).into_owned(),
+            ))
+        })
     })
+}
+
+/// Run `func` on a dedicated OS thread with a fresh Tokio runtime, returning
+/// its result via a channel. This avoids "cannot start a runtime from within a
+/// runtime" panics when the caller is itself on a Tokio runtime thread (e.g.
+/// an async Tauri command).
+fn blocking_thread<F, R>(func: F) -> Result<R, String>
+where
+    F: FnOnce() -> Result<R, String> + Send + 'static,
+    R: Send + 'static,
+{
+    let (tx, rx) = mpsc::channel();
+    std::thread::spawn(move || {
+        let _ = tx.send(func());
+    });
+    rx.recv()
+        .map_err(|e| format!("blocking thread recv error: {e}"))?
 }

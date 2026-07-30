@@ -9,11 +9,80 @@ import {
   lspStopSession,
   type LspServerInfo,
 } from '@/features/lsp/api/lspApi';
-import { ServerIcon } from '@/shared/components/icons';
+import { RefreshCw, ServerIcon, Square, TerminalIcon } from '@/shared/components/icons';
 import { useLspStore, type LspSessionState } from '@/shared/store/lspStore';
 import { useNotificationStore } from '@/shared/store/notificationStore';
 import { useTaskStore } from '@/shared/store/taskStore';
 import { cn } from '@/shared/utils/cn';
+
+/**
+ * Enter/exit presence: mounts the element, animates opacity+transform, and only
+ * unmounts after the exit transition finishes. Returns the inline style that
+ * drives the animation plus an onTransitionEnd handler.
+ */
+function usePresence(visible: boolean, onExited?: () => void) {
+  const [mounted, setMounted] = useState(visible);
+  const [show, setShow] = useState(visible);
+  const onExitedRef = useRef(onExited);
+  useEffect(() => {
+    onExitedRef.current = onExited;
+  }, [onExited]);
+
+  useEffect(() => {
+    if (visible) {
+      // Sync mount + next-frame show: the element must be in the DOM before
+      // toggling the transform/opacity so the enter transition plays.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setMounted(true);
+      const id = requestAnimationFrame(() => setShow(true));
+      return () => cancelAnimationFrame(id);
+    }
+    setShow(false);
+    return undefined;
+  }, [visible]);
+
+  const onTransitionEnd = useCallback(() => {
+    if (!visible) {
+      setMounted(false);
+      onExitedRef.current?.();
+    }
+  }, [visible]);
+
+  return { mounted, show, onTransitionEnd };
+}
+
+/** Returns true one frame after mount — used to delay position transitions. */
+function useOnlyAfterMount() {
+  const [ready, setReady] = useState(false);
+  useEffect(() => {
+    const id = requestAnimationFrame(() => setReady(true));
+    return () => cancelAnimationFrame(id);
+  }, []);
+  return ready;
+}
+
+/** Respects the user's reduced-motion preference. */
+function useReducedMotion() {
+  const [reduced, setReduced] = useState(() => {
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') {
+      return false;
+    }
+    return window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  });
+  useEffect(() => {
+    if (typeof window.matchMedia !== 'function') return undefined;
+    const mq = window.matchMedia('(prefers-reduced-motion: reduce)');
+    const handler = (e: MediaQueryListEvent) => setReduced(e.matches);
+    mq.addEventListener('change', handler);
+    return () => mq.removeEventListener('change', handler);
+  }, []);
+  return reduced;
+}
+
+const EASE_OUT = 'cubic-bezier(0.16, 1, 0.3, 1)';
+const EASE_IN = 'cubic-bezier(0.7, 0, 0.84, 0)';
+const ENTER_DUR = 120;
+const EXIT_DUR = 80;
 
 const BUILTIN_SERVER_NAMES: Record<string, string> = {
   rust: 'rust-analyzer',
@@ -111,8 +180,8 @@ function ChevronDown({ open }: { open: boolean }) {
   return (
     <svg
       className={cn(
-        'w-2.5 h-2.5 shrink-0 text-text-muted transition-transform',
-        open && 'rotate-180',
+        'w-2.5 h-2.5 shrink-0 text-text-muted transition-transform duration-200',
+        open ? 'rotate-180' : 'rotate-0',
       )}
       viewBox="0 0 12 12"
       fill="none"
@@ -179,6 +248,18 @@ export function LspStatusSection({
   const closeTimerRef = useRef<number | null>(null);
 
   const openLspLogConsole = useTaskStore((s) => s.openLspLogConsole);
+  const reducedMotion = useReducedMotion();
+
+  // Main dropdown presence (enter/exit animation).
+  const dropdownPresence = usePresence(dropdownOpen);
+  // Submenu presence (enter/exit animation).
+  const submenuPresence = usePresence(dropdownOpen && !!activeSubmenuLanguageId, () => {
+    setActiveSubmenuLanguageId(null);
+    setSubmenuInfo(null);
+  });
+  // Gate position transitions to after-mount so the submenu doesn't animate
+  // into place on first open.
+  const submenuPositionReady = useOnlyAfterMount();
 
   const clearCloseTimer = () => {
     if (closeTimerRef.current != null) {
@@ -220,15 +301,20 @@ export function LspStatusSection({
     const el = rowRefs.current[activeSubmenuLanguageId];
     if (!el) return;
     const rect = el.getBoundingClientRect();
-    const width = 280;
+    // Auto-width: let content breathe between 260–360px.
+    const minWidth = 260;
+    const maxWidth = 360;
     const preferRight = rect.right + 4;
     const left =
-      preferRight + width > window.innerWidth ? Math.max(8, rect.left - width - 4) : preferRight;
+      preferRight + minWidth > window.innerWidth
+        ? Math.max(8, rect.left - minWidth - 4)
+        : preferRight;
     setSubmenuStyle({
       position: 'fixed',
       top: Math.max(8, rect.top),
       left,
-      width,
+      minWidth,
+      maxWidth,
     });
   }, [activeSubmenuLanguageId, dropdownOpen]);
 
@@ -411,11 +497,16 @@ export function LspStatusSection({
           if (dropdownOpen) closeAll();
           else setDropdownOpen(true);
         }}
-        className="flex h-4 items-center gap-1.5 leading-4 hover:text-text-primary transition-colors"
+        className="flex h-4 items-center gap-1.5 leading-4 hover:text-text-primary transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-blue rounded-sm"
         title={multi ? chipTitle : 'Click to manage LSP servers'}
         data-testid="lsp-status-chip"
       >
-        <span className={cn('w-1.5 h-1.5 rounded-full shrink-0', statusDotClass(agg))} />
+        <span
+          className={cn(
+            'w-1.5 h-1.5 rounded-full shrink-0 transition-colors duration-200',
+            statusDotClass(agg),
+          )}
+        />
         {multi ? (
           <ServerIcon size={12} className="shrink-0" aria-hidden />
         ) : (
@@ -426,14 +517,26 @@ export function LspStatusSection({
         <ChevronDown open={dropdownOpen} />
       </button>
 
-      {dropdownOpen &&
+      {dropdownPresence.mounted &&
         dropdownStyle &&
         createPortal(
           <div
             className="bg-popover border border-border rounded-md shadow-lg py-1 z-50 text-xs text-text-primary"
             data-lsp-dropdown
             data-testid="lsp-status-dropdown"
-            style={dropdownStyle}
+            style={{
+              ...dropdownStyle,
+              opacity: dropdownPresence.show ? 1 : 0,
+              transform: dropdownPresence.show
+                ? 'translateY(0) scale(1)'
+                : 'translateY(-4px) scale(0.96)',
+              transition: reducedMotion
+                ? 'opacity 80ms linear'
+                : dropdownPresence.show
+                  ? `opacity ${ENTER_DUR}ms ${EASE_OUT}, transform ${ENTER_DUR}ms ${EASE_OUT}`
+                  : `opacity ${EXIT_DUR}ms ${EASE_IN}, transform ${EXIT_DUR}ms ${EASE_IN}`,
+            }}
+            onTransitionEnd={dropdownPresence.onTransitionEnd}
             onMouseLeave={scheduleCloseSubmenu}
           >
             <div className="text-text-muted px-3 py-1 text-[11px] truncate" title={projectName}>
@@ -452,8 +555,8 @@ export function LspStatusSection({
                   }}
                   type="button"
                   className={cn(
-                    'w-full flex items-center justify-between px-3 py-1.5 hover:bg-hover cursor-pointer text-left',
-                    isActive && 'bg-hover',
+                    'w-full flex items-center justify-between px-3 py-1.5 hover:bg-bg-hover hover:rounded-sm cursor-pointer text-left transition-[background-color] duration-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent-blue',
+                    isActive && 'bg-bg-hover',
                   )}
                   title={`${session.status}${session.statusMessage ? `: ${session.statusMessage}` : ''}${session.progressPct != null ? ` (${session.progressPct}%)` : ''}`}
                   onMouseEnter={() => openSubmenu(session.languageId)}
@@ -481,25 +584,27 @@ export function LspStatusSection({
             <div className="border-t border-border my-0.5" />
             <button
               type="button"
-              className="w-full text-left px-3 py-1.5 hover:bg-hover"
+              className="w-full text-left px-3 py-1.5 hover:bg-bg-hover hover:rounded-sm transition-[background-color] duration-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent-blue flex items-center gap-2"
               onClick={() => void handleRestartAll()}
               data-testid="lsp-restart-all"
             >
+              <RefreshCw size={12} className="shrink-0 text-text-muted" />
               Restart All Servers
             </button>
             <button
               type="button"
-              className="w-full text-left px-3 py-1.5 hover:bg-hover"
+              className="w-full text-left px-3 py-1.5 hover:bg-bg-hover hover:rounded-sm transition-[background-color] duration-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent-blue flex items-center gap-2"
               onClick={() => void handleStopAll()}
               data-testid="lsp-stop-all"
             >
+              <Square size={12} className="shrink-0 text-text-muted" />
               Stop All Servers
             </button>
           </div>,
           document.body,
         )}
 
-      {dropdownOpen &&
+      {submenuPresence.mounted &&
         activeSession &&
         submenuStyle &&
         createPortal(
@@ -507,32 +612,49 @@ export function LspStatusSection({
             className="bg-popover border border-border rounded-md shadow-lg py-1 z-50 text-xs text-text-primary"
             data-lsp-submenu
             data-testid="lsp-server-submenu"
-            style={submenuStyle}
+            style={{
+              ...submenuStyle,
+              opacity: submenuPresence.show ? 1 : 0,
+              transform: submenuPresence.show
+                ? 'translateX(0) scale(1)'
+                : 'translateX(-4px) scale(0.96)',
+              transition: reducedMotion
+                ? 'opacity 80ms linear'
+                : submenuPresence.show
+                  ? `opacity ${ENTER_DUR}ms ${EASE_OUT}, transform ${ENTER_DUR}ms ${EASE_OUT}`
+                  : `opacity ${EXIT_DUR}ms ${EASE_IN}, transform ${EXIT_DUR}ms ${EASE_IN}${
+                      submenuPositionReady ? `, left 150ms ${EASE_OUT}, top 150ms ${EASE_OUT}` : ''
+                    }`,
+            }}
+            onTransitionEnd={submenuPresence.onTransitionEnd}
             onMouseEnter={clearCloseTimer}
             onMouseLeave={scheduleCloseSubmenu}
           >
             <button
               type="button"
-              className="w-full text-left px-3 py-1.5 hover:bg-hover"
+              className="w-full text-left px-3 py-1.5 hover:bg-bg-hover hover:rounded-sm transition-[background-color] duration-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent-blue flex items-center gap-2"
               onClick={() => void handleViewLogs(activeSession)}
               data-testid="lsp-view-logs"
             >
+              <TerminalIcon size={12} className="shrink-0 text-text-muted" />
               View Logs
             </button>
             <button
               type="button"
-              className="w-full text-left px-3 py-1.5 hover:bg-hover"
+              className="w-full text-left px-3 py-1.5 hover:bg-bg-hover hover:rounded-sm transition-[background-color] duration-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent-blue flex items-center gap-2"
               onClick={() => void handleRestart(activeSession.languageId)}
               data-testid="lsp-restart-server"
             >
+              <RefreshCw size={12} className="shrink-0 text-text-muted" />
               Restart Server
             </button>
             <button
               type="button"
-              className="w-full text-left px-3 py-1.5 hover:bg-hover"
+              className="w-full text-left px-3 py-1.5 hover:bg-bg-hover hover:rounded-sm transition-[background-color] duration-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent-blue flex items-center gap-2"
               onClick={() => void handleStop(activeSession.languageId)}
               data-testid="lsp-stop-server"
             >
+              <Square size={12} className="shrink-0 text-text-muted" />
               Stop Server
             </button>
             <div className="border-t border-border mt-0.5" />
@@ -547,11 +669,14 @@ export function LspStatusSection({
             >
               <span
                 className={cn(
-                  'w-1.5 h-1.5 rounded-full shrink-0',
+                  'w-1.5 h-1.5 rounded-full shrink-0 transition-colors duration-200',
                   statusDotClass(activeSession.status),
                 )}
               />
-              <span className="truncate">
+              <span
+                className="whitespace-nowrap transition-opacity duration-150"
+                style={{ opacity: submenuInfoLoading ? 0.5 : 1 }}
+              >
                 {submenuInfoLoading
                   ? `${humanStatus(activeSession.status)} — …`
                   : formatInfoFooter(activeSession.status, submenuInfo)}

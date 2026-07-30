@@ -27,8 +27,63 @@ use request::PendingSender;
 
 pub(crate) use request::do_send_request;
 
-/// Max stderr lines retained per session for View Logs.
-const LOG_RING_CAPACITY: usize = 800;
+/// Max total size (bytes) of retained stderr logs per session for View Logs.
+const LOG_RING_MAX_BYTES: usize = 10 * 1024 * 1024; // 10 MB
+
+/// Size of one log entry's heap content (the three `String` fields).
+const fn entry_size(e: &LspServerLogEntry) -> usize {
+    e.timestamp.len() + e.level.len() + e.message.len()
+}
+
+/// Byte-bounded ring buffer of recent stderr lines for View Logs.
+///
+/// Evicts the oldest entries once the total stored size exceeds
+/// [`LOG_RING_MAX_BYTES`] (10 MB). This caps per-session memory while keeping
+/// the most recent logs available.
+pub(crate) struct LogRingBuffer {
+    entries: VecDeque<LspServerLogEntry>,
+    total_bytes: usize,
+}
+
+impl LogRingBuffer {
+    const fn new() -> Self {
+        Self {
+            entries: VecDeque::new(),
+            total_bytes: 0,
+        }
+    }
+
+    fn push(&mut self, entry: LspServerLogEntry) {
+        self.total_bytes += entry_size(&entry);
+        self.entries.push_back(entry);
+        while self.total_bytes > LOG_RING_MAX_BYTES {
+            if let Some(front) = self.entries.pop_front() {
+                self.total_bytes -= entry_size(&front);
+            } else {
+                break;
+            }
+        }
+    }
+
+    /// Most recent entries (newest last), capped by `limit`. `limit == 0`
+    /// means "all".
+    fn snapshot(&self, limit: usize) -> Vec<LspServerLogEntry> {
+        let take = if limit == 0 {
+            self.entries.len()
+        } else {
+            limit.min(self.entries.len())
+        };
+        self.entries
+            .iter()
+            .rev()
+            .take(take)
+            .cloned()
+            .collect::<Vec<_>>()
+            .into_iter()
+            .rev()
+            .collect()
+    }
+}
 
 // ── LspSessionStatus ────────────────────────────────────────────────────
 
@@ -94,8 +149,8 @@ pub(crate) struct LspSession {
     pub(crate) process_pid: Option<u32>,
     /// Version metadata parsed from `--version` at spawn (memory filled on demand).
     pub(crate) server_info: LspServerInfo,
-    /// Ring buffer of recent stderr lines for View Logs.
-    pub(crate) log_buffer: Arc<Mutex<VecDeque<LspServerLogEntry>>>,
+    /// Ring buffer of recent stderr lines for View Logs (max 10 MB).
+    pub(crate) log_buffer: Arc<Mutex<LogRingBuffer>>,
     /// Transport for emitting session lifecycle events to the frontend.
     pub(crate) transport: Arc<dyn LspTransport>,
 }
@@ -186,8 +241,7 @@ impl LspSession {
                 })?;
 
         let process_pid = process.pid;
-        let log_buffer: Arc<Mutex<VecDeque<LspServerLogEntry>>> =
-            Arc::new(Mutex::new(VecDeque::with_capacity(LOG_RING_CAPACITY)));
+        let log_buffer: Arc<Mutex<LogRingBuffer>> = Arc::new(Mutex::new(LogRingBuffer::new()));
 
         transport.push_session_event(
             project_path,
@@ -241,10 +295,7 @@ impl LspSession {
                                     message: trimmed,
                                 };
                                 if let Ok(mut buf) = log_buf_clone.lock() {
-                                    if buf.len() >= LOG_RING_CAPACITY {
-                                        buf.pop_front();
-                                    }
-                                    buf.push_back(entry);
+                                    buf.push(entry);
                                 }
                             }
                         }
@@ -522,19 +573,7 @@ impl LspSession {
         let Ok(buf) = self.log_buffer.lock() else {
             return Vec::new();
         };
-        let take = if limit == 0 {
-            buf.len()
-        } else {
-            limit.min(buf.len())
-        };
-        buf.iter()
-            .rev()
-            .take(take)
-            .cloned()
-            .collect::<Vec<_>>()
-            .into_iter()
-            .rev()
-            .collect()
+        buf.snapshot(limit)
     }
 }
 
