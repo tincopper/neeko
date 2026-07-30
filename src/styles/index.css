@@ -546,7 +546,7 @@
     max-width: 480px;
     max-height: 340px;
     overflow-y: auto;
-    overflow-x: auto;
+    overflow-x: hidden;
     overflow-wrap: break-word;
     padding: 10px 14px;
 
@@ -598,7 +598,10 @@
       border-radius: 5px;
       padding: 8px 10px;
       margin: 0.5em 0;
+      max-width: 100%;
       overflow-x: auto;
+      white-space: pre-wrap;
+      word-break: break-word;
 
       &::-webkit-scrollbar { height: 2px; }
       &::-webkit-scrollbar-track { background: transparent; }
