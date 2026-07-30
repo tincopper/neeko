@@ -17,6 +17,7 @@ const EMPTY_FORM = {
   slash: '',
   tags: '',
   scope: 'global' as 'global' | 'project',
+  kind: 'prompt' as 'prompt' | 'command',
   variables: '',
 };
 
@@ -59,6 +60,7 @@ const PromptEditorDialog: React.FC = React.memo(() => {
   const open = useLibraryStore((s) => s.editorOpen);
   const editing = useLibraryStore((s) => s.editingPrompt);
   const initialContent = useLibraryStore((s) => s.initialContent);
+  const pendingKind = useLibraryStore((s) => s.pendingKind);
   const closeEditor = useLibraryStore((s) => s.closeEditor);
   const refreshPrompts = useLibraryStore((s) => s.refreshPrompts);
   const activeProjectId = useProjectStore((s) => s.activeProjectId);
@@ -77,16 +79,17 @@ const PromptEditorDialog: React.FC = React.memo(() => {
         slash: editing.slash ?? '',
         tags: editing.tags.join(', '),
         scope: editing.scope,
+        kind: (editing.kind as 'prompt' | 'command') ?? 'prompt',
         variables: JSON.stringify(editing.variables ?? [], null, 2),
       });
     } else if (initialContent) {
       // Pre-filled from "Save as Prompt" — keep defaults for the rest.
       setForm({ ...EMPTY_FORM, content: initialContent });
     } else {
-      setForm(EMPTY_FORM);
+      setForm({ ...EMPTY_FORM, kind: pendingKind });
     }
     setError(null);
-  }, [open, editing, initialContent]);
+  }, [open, editing, initialContent, pendingKind]);
 
   const update = useCallback(<K extends keyof FormState>(key: K, value: FormState[K]) => {
     setForm((prev) => ({ ...prev, [key]: value }));
@@ -107,6 +110,7 @@ const PromptEditorDialog: React.FC = React.memo(() => {
     const tags = parseTags(form.tags);
     const variables = parseVariables(form.variables);
     const scope = form.scope;
+    const kind = form.kind;
     const projectId = scope === 'project' ? activeProjectId : null;
 
     setSaving(true);
@@ -121,6 +125,7 @@ const PromptEditorDialog: React.FC = React.memo(() => {
           tags,
           scope,
           projectId,
+          kind,
           variables,
           favorite: editing.favorite,
         });
@@ -133,10 +138,13 @@ const PromptEditorDialog: React.FC = React.memo(() => {
           tags,
           scope,
           projectId,
+          kind,
           variables,
         });
       }
       await refreshPrompts();
+      // Also refresh commands list in case kind changed.
+      await useLibraryStore.getState().refreshCommands();
       closeEditor();
     } catch (e) {
       setError(String(e));
@@ -318,6 +326,47 @@ const PromptEditorDialog: React.FC = React.memo(() => {
                 Select a project to scope this prompt.
               </p>
             )}
+          </div>
+
+          {/* Kind (prompt vs command) */}
+          <div>
+            <span
+              id="prompt-kind-label"
+              className="block text-[11px] font-medium text-text-muted mb-1"
+            >
+              Type
+            </span>
+            <div role="radiogroup" aria-labelledby="prompt-kind-label" className="flex gap-2">
+              <button
+                type="button"
+                className={cn(
+                  'h-8 px-3 text-[var(--font-size)] rounded-md border transition-colors',
+                  form.kind === 'prompt'
+                    ? 'bg-bg-selected text-text-primary border-accent-blue'
+                    : 'bg-bg-primary text-text-secondary border-border hover:bg-bg-hover',
+                )}
+                onClick={() => update('kind', 'prompt')}
+              >
+                Prompt
+              </button>
+              <button
+                type="button"
+                className={cn(
+                  'h-8 px-3 text-[var(--font-size)] rounded-md border transition-colors',
+                  form.kind === 'command'
+                    ? 'bg-bg-selected text-text-primary border-accent-blue'
+                    : 'bg-bg-primary text-text-secondary border-border hover:bg-bg-hover',
+                )}
+                onClick={() => update('kind', 'command')}
+              >
+                Command
+              </button>
+            </div>
+            <p className="mt-1 text-[10.5px] text-text-muted">
+              {form.kind === 'command'
+                ? 'Commands are slash-triggered templates that deploy to agent command directories.'
+                : 'Prompts are reusable text blocks for your agents.'}
+            </p>
           </div>
 
           {/* Variables (advanced) */}

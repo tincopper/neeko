@@ -52,13 +52,19 @@ const LibraryHeader: React.FC<LibraryHeaderProps> = React.memo(({ count, filterL
   const [sortOpen, setSortOpen] = useState(false);
   const [importing, setImporting] = useState(false);
 
+  const openMcpEditor = useLibraryStore((s) => s.openMcpEditor);
+
   const handleNew = useCallback(() => {
     if (activeKind === 'action') {
       openActionEditor(null);
+    } else if (activeKind === 'mcp') {
+      openMcpEditor(null);
+    } else if (activeKind === 'command') {
+      openEditor(null, 'command');
     } else {
       openEditor(null);
     }
-  }, [activeKind, openEditor, openActionEditor]);
+  }, [activeKind, openEditor, openActionEditor, openMcpEditor]);
 
   const handleSaveAsPrompt = useCallback(() => {
     const content = readAgentInput();
@@ -123,7 +129,14 @@ const LibraryHeader: React.FC<LibraryHeaderProps> = React.memo(({ count, filterL
     }
   }, [importing]);
 
-  const searchPlaceholder = activeKind === 'action' ? 'Search actions…' : 'Search prompts…';
+  const searchPlaceholders: Record<string, string> = {
+    skill: 'Search skills…',
+    prompt: 'Search prompts…',
+    action: 'Search actions…',
+    mcp: 'Search MCP servers…',
+    command: 'Search commands…',
+  };
+  const searchPlaceholder = searchPlaceholders[activeKind] ?? 'Search…';
 
   return (
     <div className="shrink-0 border-b border-border">
@@ -260,6 +273,7 @@ const LibraryHeader: React.FC<LibraryHeaderProps> = React.memo(({ count, filterL
         >
           <Plus className="h-3.5 w-3.5" />
           New
+          {activeKind === 'mcp' ? ' Server' : activeKind === 'command' ? ' Command' : ''}
         </button>
       </div>
       {count > 0 && (

@@ -672,8 +672,8 @@ impl SkillRepository {
         let variables_json =
             serde_json::to_string(&prompt.variables).unwrap_or_else(|_| "[]".to_string());
         conn.execute(
-            "INSERT INTO prompts (id, name, description, content, slash, tags_json, scope, project_id, variables_json, favorite, usage_count, last_used_at, created_at, updated_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
+            "INSERT INTO prompts (id, name, description, content, slash, tags_json, scope, project_id, variables_json, kind, favorite, usage_count, last_used_at, created_at, updated_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)",
             params![
                 prompt.id,
                 prompt.name,
@@ -684,6 +684,7 @@ impl SkillRepository {
                 prompt.scope,
                 prompt.project_id,
                 variables_json,
+                prompt.kind,
                 prompt.favorite as i32,
                 prompt.usage_count,
                 prompt.last_used_at,
@@ -701,9 +702,22 @@ impl SkillRepository {
             .lock()
             .map_err(|e| anyhow::anyhow!("Database lock poisoned: {}", e))?;
         let mut stmt = conn.prepare(
-            "SELECT id, name, description, content, slash, tags_json, scope, project_id, variables_json, favorite, usage_count, last_used_at, created_at, updated_at FROM prompts ORDER BY updated_at DESC",
+            "SELECT id, name, description, content, slash, tags_json, scope, project_id, variables_json, kind, favorite, usage_count, last_used_at, created_at, updated_at FROM prompts ORDER BY updated_at DESC",
         )?;
         let rows = stmt.query_map([], map_prompt_row)?;
+        Ok(rows.filter_map(|r| r.ok()).collect())
+    }
+
+    /// Get prompts filtered by kind ('prompt' or 'command').
+    pub fn get_prompts_by_kind(&self, kind: &str) -> Result<Vec<PromptRecord>> {
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| anyhow::anyhow!("Database lock poisoned: {}", e))?;
+        let mut stmt = conn.prepare(
+            "SELECT id, name, description, content, slash, tags_json, scope, project_id, variables_json, kind, favorite, usage_count, last_used_at, created_at, updated_at FROM prompts WHERE kind = ?1 ORDER BY updated_at DESC",
+        )?;
+        let rows = stmt.query_map(params![kind], map_prompt_row)?;
         Ok(rows.filter_map(|r| r.ok()).collect())
     }
 
@@ -714,7 +728,7 @@ impl SkillRepository {
             .lock()
             .map_err(|e| anyhow::anyhow!("Database lock poisoned: {}", e))?;
         let mut stmt = conn.prepare(
-            "SELECT id, name, description, content, slash, tags_json, scope, project_id, variables_json, favorite, usage_count, last_used_at, created_at, updated_at FROM prompts WHERE id = ?1",
+            "SELECT id, name, description, content, slash, tags_json, scope, project_id, variables_json, kind, favorite, usage_count, last_used_at, created_at, updated_at FROM prompts WHERE id = ?1",
         )?;
         let mut rows = stmt.query_map(params![id], map_prompt_row)?;
         Ok(rows.next().and_then(|r| r.ok()))
@@ -735,7 +749,7 @@ impl SkillRepository {
             .map_err(|e| anyhow::anyhow!("Database lock poisoned: {}", e))?;
         // Project scope first (override), then global.
         let mut stmt = conn.prepare(
-            "SELECT id, name, description, content, slash, tags_json, scope, project_id, variables_json, favorite, usage_count, last_used_at, created_at, updated_at
+            "SELECT id, name, description, content, slash, tags_json, scope, project_id, variables_json, kind, favorite, usage_count, last_used_at, created_at, updated_at
              FROM prompts
              WHERE slash = ?1
              ORDER BY CASE scope WHEN 'project' THEN 0 ELSE 1 END, updated_at DESC
@@ -752,7 +766,7 @@ impl SkillRepository {
             }
             // Re-query for project-scoped specifically.
             let mut stmt2 = conn.prepare(
-                "SELECT id, name, description, content, slash, tags_json, scope, project_id, variables_json, favorite, usage_count, last_used_at, created_at, updated_at
+                "SELECT id, name, description, content, slash, tags_json, scope, project_id, variables_json, kind, favorite, usage_count, last_used_at, created_at, updated_at
                  FROM prompts
                  WHERE slash = ?1 AND scope = 'project' AND project_id = ?2
                  LIMIT 1",
@@ -776,7 +790,7 @@ impl SkillRepository {
         let variables_json =
             serde_json::to_string(&prompt.variables).unwrap_or_else(|_| "[]".to_string());
         conn.execute(
-            "UPDATE prompts SET name = ?1, description = ?2, content = ?3, slash = ?4, tags_json = ?5, scope = ?6, project_id = ?7, variables_json = ?8, favorite = ?9, usage_count = ?10, last_used_at = ?11, updated_at = ?12 WHERE id = ?13",
+            "UPDATE prompts SET name = ?1, description = ?2, content = ?3, slash = ?4, tags_json = ?5, scope = ?6, project_id = ?7, variables_json = ?8, kind = ?9, favorite = ?10, usage_count = ?11, last_used_at = ?12, updated_at = ?13 WHERE id = ?14",
             params![
                 prompt.name,
                 prompt.description,
@@ -786,6 +800,7 @@ impl SkillRepository {
                 prompt.scope,
                 prompt.project_id,
                 variables_json,
+                prompt.kind,
                 prompt.favorite as i32,
                 prompt.usage_count,
                 prompt.last_used_at,
@@ -948,6 +963,145 @@ impl SkillRepository {
         let mut tags = std::collections::BTreeSet::new();
         for a in &actions {
             for t in &a.tags {
+                let trimmed = t.trim();
+                if !trimmed.is_empty() {
+                    tags.insert(trimmed.to_string());
+                }
+            }
+        }
+        Ok(tags.into_iter().collect())
+    }
+
+    // ── MCP Servers ───────────────────────────────────────────────────────
+
+    /// Insert a new MCP server record.
+    pub fn insert_mcp_server(&self, server: &crate::skill::types::McpServerRecord) -> Result<()> {
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| anyhow::anyhow!("Database lock poisoned: {}", e))?;
+        let tags_json = serde_json::to_string(&server.tags).unwrap_or_else(|_| "[]".to_string());
+        conn.execute(
+            "INSERT INTO mcp_servers (id, name, description, command, args_json, env_json,
+             transport, scope, project_id, tags_json, enabled, usage_count, last_used_at,
+             created_at, updated_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)",
+            params![
+                server.id,
+                server.name,
+                server.description,
+                server.command,
+                server.args_json,
+                server.env_json,
+                server.transport,
+                server.scope,
+                server.project_id,
+                tags_json,
+                i32::from(server.enabled),
+                server.usage_count,
+                server.last_used_at,
+                server.created_at,
+                server.updated_at,
+            ],
+        )?;
+        Ok(())
+    }
+
+    /// Get all MCP servers ordered by name.
+    pub fn get_all_mcp_servers(&self) -> Result<Vec<crate::skill::types::McpServerRecord>> {
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| anyhow::anyhow!("Database lock poisoned: {}", e))?;
+        let mut stmt = conn.prepare(
+            "SELECT id, name, description, command, args_json, env_json, transport, scope,
+             project_id, tags_json, enabled, usage_count, last_used_at, created_at, updated_at
+             FROM mcp_servers ORDER BY name",
+        )?;
+        let rows = stmt.query_map([], map_mcp_row)?;
+        Ok(rows.filter_map(|r| r.ok()).collect())
+    }
+
+    /// Get an MCP server by its ID.
+    pub fn get_mcp_server_by_id(
+        &self,
+        id: &str,
+    ) -> Result<Option<crate::skill::types::McpServerRecord>> {
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| anyhow::anyhow!("Database lock poisoned: {}", e))?;
+        let mut stmt = conn.prepare(
+            "SELECT id, name, description, command, args_json, env_json, transport, scope,
+             project_id, tags_json, enabled, usage_count, last_used_at, created_at, updated_at
+             FROM mcp_servers WHERE id = ?1",
+        )?;
+        let mut rows = stmt.query_map(params![id], map_mcp_row)?;
+        Ok(rows.next().and_then(|r| r.ok()))
+    }
+
+    /// Update all fields of an MCP server record.
+    pub fn update_mcp_server(&self, server: &crate::skill::types::McpServerRecord) -> Result<()> {
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| anyhow::anyhow!("Database lock poisoned: {}", e))?;
+        let now = chrono::Utc::now().timestamp_millis();
+        let tags_json = serde_json::to_string(&server.tags).unwrap_or_else(|_| "[]".to_string());
+        conn.execute(
+            "UPDATE mcp_servers SET name = ?1, description = ?2, command = ?3, args_json = ?4,
+             env_json = ?5, transport = ?6, scope = ?7, project_id = ?8, tags_json = ?9,
+             enabled = ?10, usage_count = ?11, last_used_at = ?12, updated_at = ?13 WHERE id = ?14",
+            params![
+                server.name,
+                server.description,
+                server.command,
+                server.args_json,
+                server.env_json,
+                server.transport,
+                server.scope,
+                server.project_id,
+                tags_json,
+                i32::from(server.enabled),
+                server.usage_count,
+                server.last_used_at,
+                now,
+                server.id,
+            ],
+        )?;
+        Ok(())
+    }
+
+    /// Delete an MCP server by ID.
+    pub fn delete_mcp_server(&self, id: &str) -> Result<()> {
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| anyhow::anyhow!("Database lock poisoned: {}", e))?;
+        conn.execute("DELETE FROM mcp_servers WHERE id = ?1", params![id])?;
+        Ok(())
+    }
+
+    /// Increment usage count and update last_used_at for an MCP server.
+    pub fn record_mcp_server_usage(&self, id: &str) -> Result<()> {
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| anyhow::anyhow!("Database lock poisoned: {}", e))?;
+        let now = chrono::Utc::now().timestamp_millis();
+        conn.execute(
+            "UPDATE mcp_servers SET usage_count = usage_count + 1, last_used_at = ?1, updated_at = ?1 WHERE id = ?2",
+            params![now, id],
+        )?;
+        Ok(())
+    }
+
+    /// Get all unique tag names across all MCP servers.
+    pub fn get_all_mcp_server_tags(&self) -> Result<Vec<String>> {
+        let servers = self.get_all_mcp_servers()?;
+        let mut tags = std::collections::BTreeSet::new();
+        for s in &servers {
+            for t in &s.tags {
                 let trimmed = t.trim();
                 if !trimmed.is_empty() {
                     tags.insert(trimmed.to_string());
@@ -1161,6 +1315,28 @@ fn map_tag_group_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<TagGroupRecord
     })
 }
 
+fn map_mcp_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<crate::skill::types::McpServerRecord> {
+    let tags_json: String = row.get(9)?;
+    let tags: Vec<String> = serde_json::from_str(&tags_json).unwrap_or_default();
+    Ok(crate::skill::types::McpServerRecord {
+        id: row.get(0)?,
+        name: row.get(1)?,
+        description: row.get(2)?,
+        command: row.get(3)?,
+        args_json: row.get(4)?,
+        env_json: row.get(5)?,
+        transport: row.get(6)?,
+        scope: row.get(7)?,
+        project_id: row.get(8)?,
+        tags,
+        enabled: row.get::<_, i32>(10)? != 0,
+        usage_count: row.get(11)?,
+        last_used_at: row.get(12)?,
+        created_at: row.get(13)?,
+        updated_at: row.get(14)?,
+    })
+}
+
 fn map_action_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<super::types::ActionRecord> {
     let tags_json: String = row.get(6)?;
     let tags: Vec<String> = serde_json::from_str(&tags_json).unwrap_or_default();
@@ -1196,11 +1372,12 @@ fn map_prompt_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<PromptRecord> {
         scope: row.get(6)?,
         project_id: row.get(7)?,
         variables,
-        favorite: row.get::<_, i32>(9)? != 0,
-        usage_count: row.get(10)?,
-        last_used_at: row.get(11)?,
-        created_at: row.get(12)?,
-        updated_at: row.get(13)?,
+        kind: row.get::<_, String>(9)?,
+        favorite: row.get::<_, i32>(10)? != 0,
+        usage_count: row.get(11)?,
+        last_used_at: row.get(12)?,
+        created_at: row.get(13)?,
+        updated_at: row.get(14)?,
     })
 }
 
@@ -1248,5 +1425,98 @@ mod tests {
             .unwrap();
         let counts = repo.get_all_project_tag_group_counts().unwrap();
         assert!(counts.is_empty());
+    }
+
+    // ── MCP server tests ──────────────────────────────────────────────────
+
+    fn sample_mcp(id: &str, name: &str) -> crate::skill::types::McpServerRecord {
+        crate::skill::types::McpServerRecord {
+            id: id.to_string(),
+            name: name.to_string(),
+            description: Some("test mcp".to_string()),
+            command: "npx".to_string(),
+            args_json: r#"["-y","fs-mcp"]"#.to_string(),
+            env_json: "{}".to_string(),
+            transport: "stdio".to_string(),
+            scope: "global".to_string(),
+            project_id: None,
+            tags: vec!["fs".to_string()],
+            enabled: true,
+            usage_count: 0,
+            last_used_at: None,
+            created_at: 1,
+            updated_at: 1,
+        }
+    }
+
+    #[test]
+    fn mcp_server_round_trip() {
+        let repo = SkillRepository::open_in_memory().unwrap();
+        let server = sample_mcp("mcp-1", "fs-server");
+        repo.insert_mcp_server(&server).unwrap();
+
+        let loaded = repo.get_mcp_server_by_id("mcp-1").unwrap();
+        assert!(loaded.is_some());
+        let loaded = loaded.unwrap();
+        assert_eq!(loaded.name, "fs-server");
+        assert_eq!(loaded.command, "npx");
+        assert_eq!(loaded.transport, "stdio");
+
+        let all = repo.get_all_mcp_servers().unwrap();
+        assert_eq!(all.len(), 1);
+    }
+
+    #[test]
+    fn mcp_server_delete_then_not_found() {
+        let repo = SkillRepository::open_in_memory().unwrap();
+        repo.insert_mcp_server(&sample_mcp("mcp-1", "fs")).unwrap();
+        repo.delete_mcp_server("mcp-1").unwrap();
+        assert!(repo.get_mcp_server_by_id("mcp-1").unwrap().is_none());
+    }
+
+    #[test]
+    fn mcp_server_usage_increment() {
+        let repo = SkillRepository::open_in_memory().unwrap();
+        repo.insert_mcp_server(&sample_mcp("mcp-1", "fs")).unwrap();
+        repo.record_mcp_server_usage("mcp-1").unwrap();
+        repo.record_mcp_server_usage("mcp-1").unwrap();
+        let loaded = repo.get_mcp_server_by_id("mcp-1").unwrap().unwrap();
+        assert_eq!(loaded.usage_count, 2);
+        assert!(loaded.last_used_at.is_some());
+    }
+
+    // ── Prompts kind tests ────────────────────────────────────────────────
+
+    fn sample_prompt(id: &str, kind: &str) -> crate::skill::types::PromptRecord {
+        crate::skill::types::PromptRecord {
+            id: id.to_string(),
+            name: format!("prompt-{id}"),
+            description: None,
+            content: "body".to_string(),
+            slash: Some("review".to_string()),
+            tags: vec![],
+            scope: "global".to_string(),
+            project_id: None,
+            variables: vec![],
+            kind: kind.to_string(),
+            favorite: false,
+            usage_count: 0,
+            last_used_at: None,
+            created_at: 1,
+            updated_at: 1,
+        }
+    }
+
+    #[test]
+    fn get_prompts_by_kind_filters() {
+        let repo = SkillRepository::open_in_memory().unwrap();
+        repo.insert_prompt(&sample_prompt("p1", "prompt")).unwrap();
+        repo.insert_prompt(&sample_prompt("p2", "command")).unwrap();
+        repo.insert_prompt(&sample_prompt("p3", "command")).unwrap();
+
+        let commands = repo.get_prompts_by_kind("command").unwrap();
+        assert_eq!(commands.len(), 2);
+        let prompts = repo.get_prompts_by_kind("prompt").unwrap();
+        assert_eq!(prompts.len(), 1);
     }
 }

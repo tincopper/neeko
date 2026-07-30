@@ -267,6 +267,11 @@ impl SkillStore {
         self.repo.get_prompt_by_id(id)
     }
 
+    /// Get prompts filtered by kind ('prompt' or 'command').
+    pub fn get_prompts_by_kind(&self, kind: &str) -> Result<Vec<super::types::PromptRecord>> {
+        self.repo.get_prompts_by_kind(kind)
+    }
+
     /// Get a prompt by its slash command (project scope takes priority).
     pub fn get_prompt_by_slash(
         &self,
@@ -331,6 +336,43 @@ impl SkillStore {
     /// Get all unique tag names across all actions.
     pub fn get_all_action_tags(&self) -> Result<Vec<String>> {
         self.repo.get_all_action_tags()
+    }
+
+    // MCP Servers
+
+    /// Insert a new MCP server.
+    pub fn insert_mcp_server(&self, server: &super::types::McpServerRecord) -> Result<()> {
+        self.repo.insert_mcp_server(server)
+    }
+
+    /// Get all MCP servers ordered by name.
+    pub fn get_all_mcp_servers(&self) -> Result<Vec<super::types::McpServerRecord>> {
+        self.repo.get_all_mcp_servers()
+    }
+
+    /// Get an MCP server by its ID.
+    pub fn get_mcp_server_by_id(&self, id: &str) -> Result<Option<super::types::McpServerRecord>> {
+        self.repo.get_mcp_server_by_id(id)
+    }
+
+    /// Update all fields of an MCP server.
+    pub fn update_mcp_server(&self, server: &super::types::McpServerRecord) -> Result<()> {
+        self.repo.update_mcp_server(server)
+    }
+
+    /// Delete an MCP server by ID.
+    pub fn delete_mcp_server(&self, id: &str) -> Result<()> {
+        self.repo.delete_mcp_server(id)
+    }
+
+    /// Increment usage count and update last_used_at.
+    pub fn record_mcp_server_usage(&self, id: &str) -> Result<()> {
+        self.repo.record_mcp_server_usage(id)
+    }
+
+    /// Get all unique tag names across all MCP servers.
+    pub fn get_all_mcp_server_tags(&self) -> Result<Vec<String>> {
+        self.repo.get_all_mcp_server_tags()
     }
 
     /// Bound tag-group counts for all projects (`project_id`, count).

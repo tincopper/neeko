@@ -2766,6 +2766,8 @@ pub struct PromptDtoOut {
     pub scope: String,
     /// Project id when scope = "project".
     pub project_id: Option<String>,
+    /// Resource kind: "prompt" or "command".
+    pub kind: String,
     /// Template variables.
     pub variables: Vec<PromptVariableDtoOut>,
     /// Whether favorited.
@@ -2811,6 +2813,8 @@ pub struct CreatePromptInput {
     pub scope: Option<String>,
     /// Project id when scope = "project".
     pub project_id: Option<String>,
+    /// Resource kind: "prompt" (default) or "command".
+    pub kind: Option<String>,
     /// Template variables.
     pub variables: Vec<PromptVariableDtoOut>,
 }
@@ -2833,6 +2837,8 @@ pub struct UpdatePromptInput {
     pub scope: Option<String>,
     /// Project id when scope = "project".
     pub project_id: Option<String>,
+    /// Resource kind: "prompt" (default) or "command".
+    pub kind: Option<String>,
     /// Template variables.
     pub variables: Vec<PromptVariableDtoOut>,
     /// Whether favorited.
@@ -2849,6 +2855,7 @@ fn prompt_to_dto(s: super::types::PromptRecord) -> PromptDtoOut {
         tags: s.tags,
         scope: s.scope,
         project_id: s.project_id,
+        kind: s.kind,
         favorite: s.favorite,
         usage_count: s.usage_count,
         last_used_at: s.last_used_at,
@@ -2881,6 +2888,7 @@ fn input_to_prompt_record(
         tags: input.tags.clone(),
         scope: input.scope.clone().unwrap_or_else(|| "global".to_string()),
         project_id: input.project_id.clone(),
+        kind: input.kind.clone().unwrap_or_else(|| "prompt".to_string()),
         favorite: false,
         usage_count: 0,
         last_used_at: None,
@@ -2966,6 +2974,9 @@ pub async fn update_prompt_cmd(
         record.tags = input.tags;
         record.scope = input.scope.unwrap_or(record.scope);
         record.project_id = input.project_id;
+        if let Some(kind) = input.kind {
+            record.kind = kind;
+        }
         record.variables = input
             .variables
             .into_iter()
@@ -3424,6 +3435,7 @@ pub async fn import_library_bundle(
                 tags: prompt_dto.tags.clone(),
                 scope: prompt_dto.scope.clone(),
                 project_id: prompt_dto.project_id.clone(),
+                kind: prompt_dto.kind.clone(),
                 favorite: prompt_dto.favorite,
                 usage_count: prompt_dto.usage_count,
                 last_used_at: prompt_dto.last_used_at,
@@ -3489,4 +3501,494 @@ pub async fn import_library_bundle(
         })
     })
     .await
+}
+
+// ─── MCP Server Commands ─────────────────────────────────────────────────────
+
+/// MCP server DTO returned to the frontend.
+#[derive(Debug, Clone, Serialize)]
+pub struct McpServerDtoOut {
+    /// Unique MCP server identifier.
+    pub id: String,
+    /// Display name.
+    pub name: String,
+    /// Optional description.
+    pub description: Option<String>,
+    /// Executable command.
+    pub command: String,
+    /// Command arguments.
+    pub args: Vec<serde_json::Value>,
+    /// Environment variables.
+    pub env: std::collections::HashMap<String, String>,
+    /// Transport type ("stdio" or "sse").
+    pub transport: String,
+    /// Scope ("global" or "project").
+    pub scope: String,
+    /// Project id when scope = "project".
+    pub project_id: Option<String>,
+    /// Tag names.
+    pub tags: Vec<String>,
+    /// Whether enabled.
+    pub enabled: bool,
+    /// Usage counter.
+    pub usage_count: i64,
+    /// Timestamp of last use.
+    pub last_used_at: Option<i64>,
+    /// Creation timestamp.
+    pub created_at: i64,
+    /// Last update timestamp.
+    pub updated_at: i64,
+}
+
+fn mcp_record_to_dto(s: super::types::McpServerRecord) -> McpServerDtoOut {
+    let args: Vec<serde_json::Value> = serde_json::from_str(&s.args_json).unwrap_or_default();
+    let env: std::collections::HashMap<String, String> =
+        serde_json::from_str(&s.env_json).unwrap_or_default();
+    McpServerDtoOut {
+        id: s.id,
+        name: s.name,
+        description: s.description,
+        command: s.command,
+        args,
+        env,
+        transport: s.transport,
+        scope: s.scope,
+        project_id: s.project_id,
+        tags: s.tags,
+        enabled: s.enabled,
+        usage_count: s.usage_count,
+        last_used_at: s.last_used_at,
+        created_at: s.created_at,
+        updated_at: s.updated_at,
+    }
+}
+
+/// Input for creating an MCP server.
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CreateMcpServerInput {
+    /// Display name.
+    pub name: String,
+    /// Optional description.
+    pub description: Option<String>,
+    /// Executable command.
+    pub command: String,
+    /// Command arguments.
+    pub args: Option<Vec<String>>,
+    /// Environment variables.
+    pub env: Option<std::collections::HashMap<String, String>>,
+    /// Transport type ("stdio" or "sse").
+    pub transport: Option<String>,
+    /// Scope ("global" or "project").
+    pub scope: Option<String>,
+    /// Project id when scope = "project".
+    pub project_id: Option<String>,
+    /// Tag names.
+    pub tags: Option<Vec<String>>,
+}
+
+/// List all MCP servers.
+#[tauri::command]
+pub async fn list_mcp_servers(
+    store: tauri::State<'_, std::sync::Arc<super::skill_store::SkillStore>>,
+) -> Result<Vec<McpServerDtoOut>, AppError> {
+    let store = store.inner().clone();
+    run_blocking_result(move || {
+        let servers = store.get_all_mcp_servers().map_err(AppError::from)?;
+        Ok(servers.into_iter().map(mcp_record_to_dto).collect())
+    })
+    .await
+}
+
+/// Get a single MCP server by ID.
+#[tauri::command]
+pub async fn get_mcp_server(
+    id: String,
+    store: tauri::State<'_, std::sync::Arc<super::skill_store::SkillStore>>,
+) -> Result<McpServerDtoOut, AppError> {
+    let store = store.inner().clone();
+    run_blocking_result(move || {
+        let server = store
+            .get_mcp_server_by_id(&id)
+            .map_err(AppError::from)?
+            .ok_or_else(|| AppError::NotFound(format!("MCP server not found: {id}")))?;
+        Ok(mcp_record_to_dto(server))
+    })
+    .await
+}
+
+/// Create a new MCP server.
+#[tauri::command]
+pub async fn save_mcp_server(
+    input: CreateMcpServerInput,
+    store: tauri::State<'_, std::sync::Arc<super::skill_store::SkillStore>>,
+) -> Result<McpServerDtoOut, AppError> {
+    let store = store.inner().clone();
+    run_blocking_result(move || {
+        let now = chrono::Utc::now().timestamp_millis();
+        let id = uuid::Uuid::new_v4().to_string();
+        let args_json = serde_json::to_string(&input.args.unwrap_or_default())
+            .unwrap_or_else(|_| "[]".to_string());
+        let env_json = serde_json::to_string(&input.env.unwrap_or_default())
+            .unwrap_or_else(|_| "{}".to_string());
+        let server = super::types::McpServerRecord {
+            id: id.clone(),
+            name: input.name.clone(),
+            description: input.description.clone(),
+            command: input.command.clone(),
+            args_json,
+            env_json,
+            transport: input.transport.unwrap_or_else(|| "stdio".to_string()),
+            scope: input.scope.unwrap_or_else(|| "global".to_string()),
+            project_id: input.project_id.clone(),
+            tags: input.tags.unwrap_or_default(),
+            enabled: true,
+            usage_count: 0,
+            last_used_at: None,
+            created_at: now,
+            updated_at: now,
+        };
+        store.insert_mcp_server(&server).map_err(AppError::from)?;
+        Ok(mcp_record_to_dto(server))
+    })
+    .await
+}
+
+/// Update an existing MCP server.
+#[tauri::command]
+pub async fn update_mcp_server_cmd(
+    id: String,
+    input: CreateMcpServerInput,
+    store: tauri::State<'_, std::sync::Arc<super::skill_store::SkillStore>>,
+) -> Result<McpServerDtoOut, AppError> {
+    let store = store.inner().clone();
+    run_blocking_result(move || {
+        let mut server = store
+            .get_mcp_server_by_id(&id)
+            .map_err(AppError::from)?
+            .ok_or_else(|| AppError::NotFound(format!("MCP server not found: {id}")))?;
+        server.name = input.name;
+        server.description = input.description;
+        server.command = input.command;
+        if let Some(args) = input.args {
+            server.args_json = serde_json::to_string(&args).unwrap_or_else(|_| "[]".to_string());
+        }
+        if let Some(env) = input.env {
+            server.env_json = serde_json::to_string(&env).unwrap_or_else(|_| "{}".to_string());
+        }
+        if let Some(transport) = input.transport {
+            server.transport = transport;
+        }
+        if let Some(scope) = input.scope {
+            server.scope = scope;
+        }
+        server.project_id = input.project_id;
+        if let Some(tags) = input.tags {
+            server.tags = tags;
+        }
+        store.update_mcp_server(&server).map_err(AppError::from)?;
+        Ok(mcp_record_to_dto(server))
+    })
+    .await
+}
+
+/// Delete an MCP server by ID.
+#[tauri::command]
+pub async fn delete_mcp_server_cmd(
+    id: String,
+    store: tauri::State<'_, std::sync::Arc<super::skill_store::SkillStore>>,
+) -> Result<(), AppError> {
+    let store = store.inner().clone();
+    run_blocking_result(move || store.delete_mcp_server(&id).map_err(AppError::from)).await
+}
+
+/// Input for deploying an MCP server to an agent.
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DeployMcpInput {
+    /// MCP server ID.
+    pub mcp_id: String,
+    /// Target agent ID.
+    pub agent_id: String,
+    /// Optional project path for project-level deployment.
+    pub project_path: Option<String>,
+}
+
+/// Deploy an MCP server to an agent's configuration file.
+#[tauri::command]
+pub async fn deploy_mcp_to_agent(
+    input: DeployMcpInput,
+    store: tauri::State<'_, std::sync::Arc<super::skill_store::SkillStore>>,
+) -> Result<(), AppError> {
+    let store = store.inner().clone();
+    let server = run_blocking_result(move || {
+        store
+            .get_mcp_server_by_id(&input.mcp_id)
+            .map_err(AppError::from)?
+            .ok_or_else(|| AppError::NotFound(format!("MCP server not found: {}", input.mcp_id)))
+    })
+    .await?;
+
+    let project = input.project_path.as_deref().map(std::path::Path::new);
+    let deployer = super::super::agent::resource_deployer::ResourceDeployer::new();
+    deployer
+        .deploy_mcp(&server, &input.agent_id, project)
+        .map_err(AppError::from)?;
+    Ok(())
+}
+
+/// Input for deploying a command to an agent.
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DeployCommandInput {
+    /// Prompt/command ID.
+    pub command_id: String,
+    /// Target agent ID.
+    pub agent_id: String,
+    /// Optional project path for project-level deployment.
+    pub project_path: Option<String>,
+}
+
+/// Deploy a command (kind='command' prompt) to an agent's commands directory.
+#[tauri::command]
+pub async fn deploy_command_to_agent(
+    input: DeployCommandInput,
+    store: tauri::State<'_, std::sync::Arc<super::skill_store::SkillStore>>,
+) -> Result<(), AppError> {
+    let store = store.inner().clone();
+    let command = run_blocking_result(move || {
+        let record = store
+            .get_prompt_by_id(&input.command_id)
+            .map_err(AppError::from)?
+            .ok_or_else(|| {
+                AppError::NotFound(format!("Command not found: {}", input.command_id))
+            })?;
+        if record.kind != "command" {
+            return Err(AppError::InvalidInput(format!(
+                "Prompt '{}' is not a command (kind={})",
+                input.command_id, record.kind
+            )));
+        }
+        Ok(record)
+    })
+    .await?;
+
+    let project = input.project_path.as_deref().map(std::path::Path::new);
+    let deployer = super::super::agent::resource_deployer::ResourceDeployer::new();
+    deployer
+        .deploy_command(&command, &input.agent_id, project)
+        .map_err(AppError::from)?;
+    Ok(())
+}
+
+/// Result of listing deployed MCP servers from an agent's config file.
+#[derive(Debug, Serialize)]
+pub struct DeployedMcpDto {
+    /// Agent ID.
+    pub agent_id: String,
+    /// MCP servers found in the agent's config file.
+    pub servers: Vec<serde_json::Value>,
+}
+
+/// List deployed MCP servers for a given agent (reads from disk).
+#[tauri::command]
+pub fn list_deployed_mcp(
+    agent_id: String,
+    project_path: Option<String>,
+) -> Result<Vec<serde_json::Value>, AppError> {
+    let project = project_path.as_deref().map(std::path::Path::new);
+    let deployer = super::super::agent::resource_deployer::ResourceDeployer::new();
+    deployer
+        .list_deployed_mcp(&agent_id, project)
+        .map_err(AppError::from)
+}
+
+/// List deployed command names for a given agent (reads from disk).
+#[tauri::command]
+pub fn list_deployed_commands(
+    agent_id: String,
+    project_path: Option<String>,
+) -> Result<Vec<String>, AppError> {
+    let project = project_path.as_deref().map(std::path::Path::new);
+    let deployer = super::super::agent::resource_deployer::ResourceDeployer::new();
+    deployer
+        .list_deployed_commands(&agent_id, project)
+        .map_err(AppError::from)
+}
+
+/// Input for removing a deployed MCP server.
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RemoveDeployedMcpInput {
+    /// Server name (as stored in config).
+    pub server_name: String,
+    /// Agent ID.
+    pub agent_id: String,
+    /// Optional project path.
+    pub project_path: Option<String>,
+}
+
+/// Remove an MCP server from an agent's configuration file.
+#[tauri::command]
+pub fn remove_deployed_mcp(input: RemoveDeployedMcpInput) -> Result<(), AppError> {
+    let project = input.project_path.as_deref().map(std::path::Path::new);
+    let deployer = super::super::agent::resource_deployer::ResourceDeployer::new();
+    deployer
+        .remove_mcp(&input.server_name, &input.agent_id, project)
+        .map_err(AppError::from)
+}
+
+/// Input for removing a deployed command.
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RemoveDeployedCommandInput {
+    /// Command name (file stem or directory name).
+    pub command_name: String,
+    /// Agent ID.
+    pub agent_id: String,
+    /// Optional project path.
+    pub project_path: Option<String>,
+}
+
+/// Remove a deployed command from an agent's commands directory.
+#[tauri::command]
+pub fn remove_deployed_command(input: RemoveDeployedCommandInput) -> Result<(), AppError> {
+    let project = input.project_path.as_deref().map(std::path::Path::new);
+    let deployer = super::super::agent::resource_deployer::ResourceDeployer::new();
+    deployer
+        .remove_command(&input.command_name, &input.agent_id, project)
+        .map_err(AppError::from)
+}
+
+/// Resource resolved from a slash command — either a prompt or a command.
+#[derive(Debug, Serialize)]
+pub struct SlashResourceDto {
+    /// Resource kind: "prompt" or "command".
+    pub kind: String,
+    /// Resource ID.
+    pub id: String,
+    /// Display name.
+    pub name: String,
+    /// Resolved content (with variables intact).
+    pub content: String,
+    /// Slash trigger.
+    pub slash: Option<String>,
+}
+
+/// Resolve a slash command to a prompt or command (project scope overrides global).
+///
+/// Searches both prompts (kind='prompt') and commands (kind='command') with
+/// project-scoped resources taking priority over global ones.
+#[tauri::command]
+pub async fn resolve_slash_resource(
+    slash: String,
+    project_id: Option<String>,
+    store: tauri::State<'_, std::sync::Arc<super::skill_store::SkillStore>>,
+) -> Result<Option<SlashResourceDto>, AppError> {
+    let store = store.inner().clone();
+    run_blocking_result(move || {
+        // Commands take priority (kind='command'), then prompts (kind='prompt').
+        for kind in ["command", "prompt"] {
+            let target_kind = kind.to_string();
+            let found = {
+                let store_ref = &store;
+                let store_ref2 = &store;
+                // Try project-scoped first
+                let project_match: Option<super::types::PromptRecord> = store_ref
+                    .get_all_prompts()
+                    .map_err(AppError::from)?
+                    .into_iter()
+                    .find(|p| {
+                        p.kind == target_kind
+                            && p.slash.as_deref() == Some(slash.as_str())
+                            && p.scope == "project"
+                            && p.project_id.as_deref() == project_id.as_deref()
+                    });
+                if project_match.is_some() {
+                    project_match
+                } else {
+                    // Fall back to global
+                    store_ref2
+                        .get_all_prompts()
+                        .map_err(AppError::from)?
+                        .into_iter()
+                        .find(|p| {
+                            p.kind == target_kind
+                                && p.slash.as_deref() == Some(slash.as_str())
+                                && p.scope == "global"
+                        })
+                }
+            };
+            if let Some(p) = found {
+                return Ok(Some(SlashResourceDto {
+                    kind: p.kind,
+                    id: p.id,
+                    name: p.name,
+                    content: p.content,
+                    slash: p.slash,
+                }));
+            }
+        }
+        Ok(None)
+    })
+    .await
+}
+
+/// Get agent capabilities (what resource types each agent supports).
+#[tauri::command]
+pub fn get_agent_capabilities(
+    agent_id: String,
+) -> Result<Option<super::super::agent::resource_deployer::AgentCapabilitiesDto>, AppError> {
+    let deployer = super::super::agent::resource_deployer::ResourceDeployer::new();
+    Ok(deployer.agent_capabilities(&agent_id))
+}
+
+/// List agent IDs that support a given capability.
+#[tauri::command]
+pub fn list_agents_supporting(capability: String) -> Vec<String> {
+    let deployer = super::super::agent::resource_deployer::ResourceDeployer::new();
+    deployer.agents_supporting(&capability)
+}
+
+/// Result of an MCP connection test.
+#[derive(Debug, Serialize)]
+pub struct McpTestResult {
+    /// Whether the command was found.
+    pub command_found: bool,
+    /// The command that was checked.
+    pub command: String,
+    /// Optional message.
+    pub message: String,
+}
+
+/// Test an MCP server connection (checks if the command exists in PATH).
+#[tauri::command]
+pub async fn test_mcp_server_cmd(
+    id: String,
+    store: tauri::State<'_, std::sync::Arc<super::skill_store::SkillStore>>,
+) -> Result<McpTestResult, AppError> {
+    let store = store.inner().clone();
+    let server = crate::common::runtime::run_blocking(move || {
+        store
+            .get_mcp_server_by_id(&id)
+            .map_err(|e| AppError::Unknown(e.to_string()))?
+            .ok_or_else(|| AppError::NotFound(format!("MCP server not found: {id}")))
+    })
+    .await
+    .map_err(|e| AppError::Unknown(format!("blocking task join error: {e}")))??;
+
+    let found = which::which(&server.command).is_ok();
+    let message = if found {
+        format!("Command '{}' found in PATH", server.command)
+    } else {
+        format!(
+            "Command '{}' not found in PATH — install it before deploying",
+            server.command
+        )
+    };
+    Ok(McpTestResult {
+        command_found: found,
+        command: server.command,
+        message,
+    })
 }

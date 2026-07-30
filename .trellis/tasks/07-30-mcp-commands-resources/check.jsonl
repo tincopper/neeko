@@ -1,0 +1,8 @@
+{"file": ".trellis/spec/backend/command-guidelines.md", "reason": "MCP/Command 命令规范"}
+{"file": ".trellis/spec/frontend/api-layer.md", "reason": "API 层规范"}
+{"file": ".trellis/spec/frontend/state-management.md", "reason": "状态管理规范"}
+{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "组件规范"}
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "代码质量"}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "部署错误处理"}
+{"file": ".trellis/spec/frontend/interaction-patterns.md", "reason": "slash 触发 + MCP 测试交互"}
+{"file": ".trellis/spec/unit-test/index.md", "reason": "新增功能配套测试"}

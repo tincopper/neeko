@@ -9,6 +9,7 @@ import type {
   ScopeFilter,
   PromptResource,
 } from '@/shared/types/library';
+import type { McpServer, AgentCapabilities } from '@/shared/types/mcpServer';
 
 import {
   listPrompts,
@@ -19,6 +20,12 @@ import {
   saveAction as saveActionApi,
   updateAction as updateActionApi,
   runAction as runActionApi,
+  listMcpServers,
+  saveMcpServer as saveMcpServerApi,
+  updateMcpServer as updateMcpServerApi,
+  deleteMcpServer as deleteMcpServerApi,
+  testMcpServer as testMcpServerApi,
+  getAgentCapabilities,
 } from '../api/libraryApi';
 
 /** Sort mode for resource lists. */
@@ -61,6 +68,19 @@ interface LibraryState {
   actionsLoading: boolean;
   actionsError: string | null;
 
+  /** MCP servers cache. */
+  mcpServers: McpServer[];
+  mcpServersLoading: boolean;
+  mcpServersError: string | null;
+
+  /** Commands cache (prompts with kind='command'). */
+  commands: PromptResource[];
+  commandsLoading: boolean;
+  commandsError: string | null;
+
+  /** MCP server being edited (null = creating a new MCP server). */
+  editingMcpServer: McpServer | null;
+
   /** Last active kind + viewMode remembered across panel close/reopen (both persisted). */
 
   /** Editor dialog state. */
@@ -68,6 +88,8 @@ interface LibraryState {
   editingPrompt: PromptResource | null;
   /** Pre-filled content when opening the editor for a new prompt (e.g. "Save as Prompt"). */
   initialContent: string | null;
+  /** Default kind for the next new-prompt creation (set when opening from Commands tab). */
+  pendingKind: 'prompt' | 'command';
   /** Action being edited (null = creating a new action). */
   editingAction: ActionResource | null;
   /** Insert dialog state. */
@@ -120,12 +142,51 @@ interface LibraryActions {
   deleteAction: (id: string) => Promise<void>;
   executeAction: (id: string) => Promise<void>;
 
+  refreshMcpServers: () => Promise<void>;
+  createMcpServer: (input: {
+    name: string;
+    description?: string | null;
+    command: string;
+    args?: unknown[];
+    env?: Record<string, string>;
+    transport?: 'stdio' | 'sse';
+    scope?: 'global' | 'project';
+    projectId?: string | null;
+    tags?: string[];
+  }) => Promise<void>;
+  updateMcpServer: (
+    id: string,
+    input: {
+      name: string;
+      description?: string | null;
+      command: string;
+      args?: unknown[];
+      env?: Record<string, string>;
+      transport?: 'stdio' | 'sse';
+      scope?: 'global' | 'project';
+      projectId?: string | null;
+      tags?: string[];
+    },
+  ) => Promise<void>;
+  deleteMcpServer: (id: string) => Promise<void>;
+  testMcpConnection: (id: string) => Promise<{
+    commandFound: boolean;
+    command: string;
+    message: string;
+  }>;
+
+  refreshCommands: () => Promise<void>;
+  openMcpEditor: (server?: McpServer | null) => void;
+  closeMcpEditor: () => void;
+
+  getAgentCapabilities: (agentId: string) => Promise<AgentCapabilities | null>;
+
   /** Detect `{{variable}}` placeholders in content. */
   detectVariables: (content: string) => string[];
   /** Replace `{{variable}}` placeholders using provided values. */
   resolveVariables: (content: string, values: Record<string, string>) => string;
 
-  openEditor: (prompt?: PromptResource | null) => void;
+  openEditor: (prompt?: PromptResource | null, defaultKind?: 'prompt' | 'command') => void;
   /** Open the editor for a new prompt with pre-filled content (e.g. "Save as Prompt"). */
   openEditorWithContent: (content: string) => void;
   /** Open the action editor for a new or existing action. */
@@ -154,9 +215,17 @@ const initialState: LibraryState = {
   actions: [],
   actionsLoading: false,
   actionsError: null,
+  mcpServers: [],
+  mcpServersLoading: false,
+  mcpServersError: null,
+  commands: [],
+  commandsLoading: false,
+  commandsError: null,
+  editingMcpServer: null,
   editorOpen: false,
   editingPrompt: null,
   initialContent: null,
+  pendingKind: 'prompt',
   editingAction: null,
   insertOpen: false,
   variableDialogOpen: false,
@@ -266,6 +335,97 @@ export const useLibraryStore = create<LibraryState & LibraryActions>()(
         }
       },
 
+      refreshMcpServers: async () => {
+        set({ mcpServersLoading: true, mcpServersError: null });
+        try {
+          const mcpServers = await listMcpServers();
+          set({ mcpServers, mcpServersLoading: false });
+        } catch (e) {
+          const message = String(e);
+          console.error('[libraryStore] refreshMcpServers failed:', e);
+          set({ mcpServersLoading: false, mcpServersError: message });
+        }
+      },
+
+      createMcpServer: async (input) => {
+        await saveMcpServerApi({
+          name: input.name,
+          description: input.description,
+          command: input.command,
+          args: input.args ?? [],
+          env: input.env ?? {},
+          transport: input.transport ?? 'stdio',
+          scope: input.scope ?? 'global',
+          projectId: input.projectId,
+          tags: input.tags ?? [],
+        });
+        await useLibraryStore.getState().refreshMcpServers();
+      },
+
+      updateMcpServer: async (id, input) => {
+        await updateMcpServerApi(id, {
+          name: input.name,
+          description: input.description,
+          command: input.command,
+          args: input.args ?? [],
+          env: input.env ?? {},
+          transport: input.transport ?? 'stdio',
+          scope: input.scope ?? 'global',
+          projectId: input.projectId,
+          tags: input.tags ?? [],
+        });
+        await useLibraryStore.getState().refreshMcpServers();
+      },
+
+      deleteMcpServer: async (id: string) => {
+        await deleteMcpServerApi(id);
+        set((state) => ({
+          mcpServers: state.mcpServers.filter((s) => s.id !== id),
+        }));
+      },
+
+      testMcpConnection: async (id: string) => {
+        return testMcpServerApi(id);
+      },
+
+      refreshCommands: async () => {
+        set({ commandsLoading: true, commandsError: null });
+        try {
+          // Commands are prompts with kind='command'. We reuse listPrompts and filter.
+          const allPrompts = await listPrompts();
+          const commands = allPrompts.filter(
+            (p) => (p as PromptResource & { kind?: string }).kind === 'command',
+          );
+          set({ commands, commandsLoading: false });
+        } catch (e) {
+          const message = String(e);
+          console.error('[libraryStore] refreshCommands failed:', e);
+          set({ commandsLoading: false, commandsError: message });
+        }
+      },
+
+      openMcpEditor: (server) =>
+        set({
+          editorOpen: true,
+          editingMcpServer: server ?? null,
+          editingAction: null,
+          editingPrompt: null,
+          initialContent: null,
+        }),
+      closeMcpEditor: () =>
+        set({
+          editingMcpServer: null,
+        }),
+
+      getAgentCapabilities: async (agentId: string) => {
+        try {
+          return await getAgentCapabilities(agentId);
+        } catch (e) {
+          console.error('[libraryStore] getAgentCapabilities failed:', e);
+          return null;
+        }
+      },
+
       detectVariables: (content: string) => {
         const matches = content.match(/\{\{[a-zA-Z_][a-zA-Z0-9_]*\}\}/g);
         if (!matches) return [];
@@ -281,12 +441,13 @@ export const useLibraryStore = create<LibraryState & LibraryActions>()(
           name in values ? values[name] : `{{${name}}}`,
         ),
 
-      openEditor: (prompt) =>
+      openEditor: (prompt, defaultKind) =>
         set({
           editorOpen: true,
           editingPrompt: prompt ?? null,
           initialContent: null,
           editingAction: null,
+          pendingKind: defaultKind ?? 'prompt',
         }),
       openEditorWithContent: (content) =>
         set({

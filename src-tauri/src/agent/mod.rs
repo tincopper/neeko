@@ -8,5 +8,6 @@ pub mod path_resolver;
 pub mod plugin;
 pub mod plugin_commands;
 pub mod registry;
+pub mod resource_deployer;
 
 pub use manager::AgentManager;

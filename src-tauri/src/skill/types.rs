@@ -130,6 +130,9 @@ pub struct PromptRecord {
     pub project_id: Option<String>,
     /// Template variables.
     pub variables: Vec<PromptVariableRecord>,
+    /// Resource kind: "prompt" or "command". Commands are slash-triggered templates
+    /// that get deployed to agent-specific command directories.
+    pub kind: String,
     /// Whether the prompt is favorited.
     pub favorite: bool,
     /// Usage counter.
@@ -153,6 +156,43 @@ pub struct PromptVariableRecord {
     pub default: Option<String>,
     /// Whether the variable must be filled before insert.
     pub required: bool,
+}
+
+// -- MCP Server --
+
+/// An MCP (Model Context Protocol) server definition stored in the database.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct McpServerRecord {
+    /// Unique MCP server identifier.
+    pub id: String,
+    /// Display name.
+    pub name: String,
+    /// Optional description.
+    pub description: Option<String>,
+    /// Executable command to launch the MCP server.
+    pub command: String,
+    /// Serialized JSON array of command arguments.
+    pub args_json: String,
+    /// Serialized JSON object of environment variables.
+    pub env_json: String,
+    /// Transport type: "stdio" or "sse".
+    pub transport: String,
+    /// Scope: "global" or "project".
+    pub scope: String,
+    /// Project id when scope = "project".
+    pub project_id: Option<String>,
+    /// Tag names.
+    pub tags: Vec<String>,
+    /// Whether the MCP server is enabled.
+    pub enabled: bool,
+    /// Usage counter.
+    pub usage_count: i64,
+    /// Timestamp of last use.
+    pub last_used_at: Option<i64>,
+    /// Creation timestamp.
+    pub created_at: i64,
+    /// Last update timestamp.
+    pub updated_at: i64,
 }
 
 // -- Skill Metadata --

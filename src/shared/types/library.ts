@@ -9,7 +9,7 @@
 import type { ManagedSkillDto } from './skill';
 
 /** Resource kinds managed by the Library. */
-export type ResourceKind = 'skill' | 'prompt' | 'action';
+export type ResourceKind = 'skill' | 'prompt' | 'action' | 'mcp' | 'command';
 
 /**
  * Insert target for a prompt. `agent` dispatches the custom event the agent
@@ -62,6 +62,9 @@ export interface PromptResource {
   scope: 'global' | 'project';
   projectId?: string | null;
   variables?: PromptVariable[];
+  /** Resource kind: "prompt" (default) or "command". Commands are slash-triggered
+   *  templates that get deployed to agent-specific command directories. */
+  kind?: string;
   favorite: boolean;
   usageCount: number;
   lastUsedAt?: number | null;
@@ -83,7 +86,10 @@ export interface PromptVariable {
 export type PromptInput = Omit<
   PromptResource,
   'id' | 'createdAt' | 'updatedAt' | 'usageCount' | 'lastUsedAt' | 'favorite'
->;
+> & {
+  /** Resource kind: "prompt" (default) or "command". */
+  kind?: string;
+};
 
 /**
  * Action resource (P1 — data model only in MVP).

@@ -1,4 +1,4 @@
-import { Blocks, Library, MessageSquare, Zap } from 'lucide-react';
+import { Blocks, Library, MessageSquare, Server, Terminal, Zap } from 'lucide-react';
 import React, { useCallback, useEffect, useMemo } from 'react';
 
 import { useLibraryStore } from '@/features/library/store/libraryStore';
@@ -14,8 +14,10 @@ import type {
 import { skillToResourceSummary } from '@/shared/types/library';
 
 import ActionsTabContent from './ActionsTabContent';
+import CommandTabContent from './CommandTabContent';
 import LibraryHeader from './LibraryHeader';
 import LibrarySidebar from './LibrarySidebar';
+import McpTabContent from './McpTabContent';
 import PromptEditorDialog from './PromptEditorDialog';
 import PromptInsertDialog from './PromptInsertDialog';
 import PromptListSection from './PromptListSection';
@@ -61,14 +63,18 @@ const LibraryPanel: React.FC<LibraryPanelProps> = React.memo(({ onInsertPrompt }
 
   const promptCount = prompts.length;
   const actionCount = actions.length;
+  const mcpCount = useLibraryStore((s) => s.mcpServers.length);
+  const commandCount = useLibraryStore((s) => s.commands.length);
 
   const tabs: TabDef[] = useMemo(
     () => [
       { key: 'skill', label: 'Skills', icon: Blocks, count: skillSummaries.length },
       { key: 'prompt', label: 'Prompts', icon: MessageSquare, count: promptCount },
       { key: 'action', label: 'Actions', icon: Zap, count: actionCount },
+      { key: 'mcp', label: 'MCP', icon: Server, count: mcpCount },
+      { key: 'command', label: 'Commands', icon: Terminal, count: commandCount },
     ],
-    [skillSummaries.length, promptCount, actionCount],
+    [skillSummaries.length, promptCount, actionCount, mcpCount, commandCount],
   );
 
   const variableDialogOpen = useLibraryStore((s) => s.variableDialogOpen);
@@ -174,6 +180,18 @@ const LibraryPanel: React.FC<LibraryPanelProps> = React.memo(({ onInsertPrompt }
             <>
               <LibraryHeader count={actionCount} />
               <ActionsTabContent />
+            </>
+          )}
+          {activeKind === 'mcp' && (
+            <>
+              <LibraryHeader count={mcpCount} />
+              <McpTabContent />
+            </>
+          )}
+          {activeKind === 'command' && (
+            <>
+              <LibraryHeader count={commandCount} />
+              <CommandTabContent />
             </>
           )}
         </div>

@@ -112,6 +112,23 @@ macro_rules! neeko_invoke_handler {
             $crate::agent::plugin_commands::list_custom_plugins,
             $crate::agent::plugin_commands::save_custom_plugin,
             $crate::agent::plugin_commands::delete_custom_plugin,
+            // ── MCP server commands ──────────────────────────────────────
+            $crate::skill::commands::list_mcp_servers,
+            $crate::skill::commands::get_mcp_server,
+            $crate::skill::commands::save_mcp_server,
+            $crate::skill::commands::update_mcp_server_cmd,
+            $crate::skill::commands::delete_mcp_server_cmd,
+            $crate::skill::commands::deploy_mcp_to_agent,
+            $crate::skill::commands::list_deployed_mcp,
+            $crate::skill::commands::remove_deployed_mcp,
+            $crate::skill::commands::test_mcp_server_cmd,
+            // ── Commands (slash commands) ────────────────────────────────
+            $crate::skill::commands::deploy_command_to_agent,
+            $crate::skill::commands::list_deployed_commands,
+            $crate::skill::commands::remove_deployed_command,
+            $crate::skill::commands::resolve_slash_resource,
+            $crate::skill::commands::get_agent_capabilities,
+            $crate::skill::commands::list_agents_supporting,
             // ── connection ───────────────────────────────────────────────────
             $crate::connection::commands::get_wsl_distros,
             $crate::connection::commands::get_wsl_directories,
