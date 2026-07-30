@@ -344,6 +344,19 @@ cargo test --manifest-path src-tauri/Cargo.toml
 4. WSL 命令使用 `cfg!(target_os = "windows")` 门控
 5. Windows 使用 `CREATE_NO_WINDOW` (0x08000000) 避免控制台闪烁
 
+### AI 代码审查红线 (Review Gates)
+
+> 以下规则经代码库验证，违反即为 Block 级问题。每条附真实代码参照。
+
+1. **跨平台 shell 选择**：Local 执行路径必须区分 Windows (`cmd /c`) 与 Unix (`sh -c`)。正确参照 `terminal/mod.rs` 的 task-command 分支（`#[cfg(target_os = "windows")]` -> `cmd` / `#[cfg(not(...))]` -> `sh`）。禁止在任何 `ExecTarget::Local` 路径中无条件硬编码 `sh -c` 或 `bash -lc`。
+2. **阻塞 I/O 隔离**：异步 Command 中禁止直接调用 `std::fs::*`、`std::process::Command` 或 portable-pty 阻塞读写。必须包裹进 `tokio::task::spawn_blocking`。参照 `core/exec.rs`、`lsp/manager.rs` 的既有用法。
+3. **IPC 大文本边界**：单次 Command 返回的 JSON 不超过 2MB。Diff 视图、PTY 缓冲区等大文本必须走 Tauri 二进制流 (`Vec<u8>`) 或前端虚拟滚动按需请求。
+4. **Event 名常量化**：Tauri Event 字符串（如 `terminal-output-{id}`、`git-status-diff`）禁止双端各自硬编码。Rust 端定义为常量，前端通过统一模块引用。
+5. **Command 层保持极薄**：`#[tauri::command]` 只做参数接收 + 反序列化校验 + 调度 manager/service。禁止在 Command 内部平铺 Git、SSH、PTY 核心控制逻辑。
+6. **if-let 嵌套不超过 3 层**：连续 3 层及以上 `if let` / `if let else if` 必须拍平为单个 `match`。反之，仅有 1-2 个 Happy Path 的解构优先用 `if let`，禁止写出带 `_ => {}` 占位的 `match`。
+7. **路径安全校验**：前端传入的路径（IDE 路径、项目 Root、文件操作路径）在 Rust 端消费前必须 `canonicalize()`，严防路径穿越。`capabilities` 配置禁止放开 `fs:allow-all`、`shell:allow-all`。
+8. **mod.rs 保持极薄**：`mod.rs`（或同名根文件）只允许 `mod` 声明与 `pub use` re-export。业务 `fn`、`impl` 块、结构体字段实现必须抽离到同级独立文件（`services.rs`、`manager.rs`、`types.rs`）。
+
 ## Important Files
 
 | 文件 | 作用 |

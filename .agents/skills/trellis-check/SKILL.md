@@ -50,6 +50,17 @@ Run the project's lint, type-check, and test commands. Fix any failures before p
 - [ ] No debug logging left in?
 - [ ] No suppressed warnings or type-safety bypasses?
 
+### Review Gates (Neeko-specific)
+
+- [ ] **Cross-platform shell**: any `ExecTarget::Local` path uses `cmd /c` on Windows and `sh -c` on Unix via `#[cfg]`? No unconditional `sh -c` / `bash -lc` on local paths?
+- [ ] **Blocking I/O isolation**: async Commands use `spawn_blocking` for `std::fs::*`, `std::process::Command`, or PTY blocking reads? No blocking I/O on Tokio worker threads?
+- [ ] **IPC payload size**: single Command return under 2MB? Large text (diff, PTY buffer) uses binary stream or pagination?
+- [ ] **Event name constants**: Tauri event strings defined as constants on Rust side, referenced (not re-hardcoded) on frontend?
+- [ ] **Skinny Commands**: `#[tauri::command]` only does param validation + dispatch? No business logic (Git/SSH/PTY) inlined?
+- [ ] **if-let nesting**: no 3+ level `if let` chains? Flattened to `match`? Conversely, no over-engineered `match` with `_ => {}` for a single Happy Path?
+- [ ] **Path safety**: frontend-supplied paths `canonicalize()`d before use? No `fs:allow-all` / `shell:allow-all` in capabilities?
+- [ ] **Slim mod.rs**: `mod.rs` only has `mod` declarations and `pub use`? Business logic extracted to `services.rs` / `manager.rs` / `types.rs`?
+
 ### Test Coverage
 
 - [ ] New function → unit test added?
