@@ -1658,3 +1658,36 @@ MCP servers (CRUD + deploy via AgentPlugin paths + test) and Commands (kind='com
 ### Next Steps
 
 - None - task complete
+
+
+## Session 107: ToolAdapter complete replacement + Agent config Schema
+
+**Date**: 2026-07-30
+**Task**: ToolAdapter complete replacement + Agent config Schema
+**Branch**: `feature-commands`
+
+### Summary
+
+Deleted tool_adapters.rs (375 lines). Migrated scanner/sync_engine/commands to AgentPlugin + PathResolver. Zero ToolAdapter references remain. 475 Rust + 844 FE tests pass.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `031c9a63` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
