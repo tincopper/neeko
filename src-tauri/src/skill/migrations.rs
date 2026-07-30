@@ -2,7 +2,7 @@ use anyhow::{bail, Context, Result};
 use rusqlite::Connection;
 
 /// Current schema version. Bump this when adding a new migration.
-const LATEST_VERSION: u32 = 5;
+const LATEST_VERSION: u32 = 6;
 
 /// Run all pending migrations on the database.
 pub fn run_migrations(conn: &Connection) -> Result<()> {
@@ -46,6 +46,7 @@ fn migrate_step(conn: &Connection, from_version: u32) -> Result<()> {
         2 => migrate_v2_to_v3(conn),
         3 => migrate_v3_to_v4(conn),
         4 => migrate_v4_to_v5(conn),
+        5 => migrate_v5_to_v6(conn),
         _ => bail!("unknown migration version: {from_version}"),
     }
 }
@@ -213,6 +214,31 @@ fn migrate_v4_to_v5(conn: &Connection) -> Result<()> {
     Ok(())
 }
 
+/// v5 -> v6: Add agent_plugins table for the Agent Plugin System.
+fn migrate_v5_to_v6(conn: &Connection) -> Result<()> {
+    conn.execute_batch(
+        "
+        CREATE TABLE IF NOT EXISTS agent_plugins (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            icon TEXT,
+            description TEXT,
+            version TEXT NOT NULL DEFAULT '1.0',
+            is_builtin INTEGER NOT NULL DEFAULT 0,
+            enabled INTEGER NOT NULL DEFAULT 1,
+            execution_json TEXT NOT NULL,
+            configuration_json TEXT NOT NULL,
+            capabilities_json TEXT NOT NULL,
+            paths_json TEXT NOT NULL,
+            lifecycle_json TEXT,
+            created_at INTEGER NOT NULL,
+            updated_at INTEGER NOT NULL
+        );
+        ",
+    )?;
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -247,6 +273,7 @@ mod tests {
         assert!(tables.contains(&"skillssh_cache".to_string()));
         assert!(tables.contains(&"prompts".to_string()));
         assert!(tables.contains(&"actions".to_string()));
+        assert!(tables.contains(&"agent_plugins".to_string()));
     }
 
     #[test]

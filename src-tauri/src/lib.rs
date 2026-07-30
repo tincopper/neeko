@@ -102,6 +102,16 @@ macro_rules! neeko_invoke_handler {
             $crate::agent::commands::set_project_agents,
             $crate::agent::commands::check_agents_installed,
             $crate::agent::commands::import_agent_icon,
+            // ── agent plugin system ──────────────────────────────────────
+            $crate::agent::plugin_commands::list_agent_plugins,
+            $crate::agent::plugin_commands::get_agent_plugin,
+            $crate::agent::plugin_commands::resolve_plugin_path,
+            $crate::agent::plugin_commands::detect_installed_agents,
+            $crate::agent::plugin_commands::deploy_skill_to_agent,
+            $crate::agent::plugin_commands::get_plugin_resource_paths,
+            $crate::agent::plugin_commands::list_custom_plugins,
+            $crate::agent::plugin_commands::save_custom_plugin,
+            $crate::agent::plugin_commands::delete_custom_plugin,
             // ── connection ───────────────────────────────────────────────────
             $crate::connection::commands::get_wsl_distros,
             $crate::connection::commands::get_wsl_directories,

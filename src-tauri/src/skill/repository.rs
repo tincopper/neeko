@@ -956,6 +956,158 @@ impl SkillRepository {
         }
         Ok(tags.into_iter().collect())
     }
+
+    // ── Agent Plugins (custom) ─────────────────────────────────────────────
+
+    /// Insert a custom agent plugin into the `agent_plugins` table.
+    pub fn insert_agent_plugin(
+        &self,
+        id: &str,
+        name: &str,
+        icon: Option<&str>,
+        description: Option<&str>,
+        version: &str,
+        is_builtin: bool,
+        execution_json: &str,
+        configuration_json: &str,
+        capabilities_json: &str,
+        paths_json: &str,
+        lifecycle_json: Option<&str>,
+    ) -> Result<()> {
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| anyhow::anyhow!("Database lock poisoned: {}", e))?;
+        let now = chrono::Utc::now().timestamp_millis();
+        conn.execute(
+            "INSERT INTO agent_plugins (id, name, icon, description, version, is_builtin, enabled,
+             execution_json, configuration_json, capabilities_json, paths_json, lifecycle_json,
+             created_at, updated_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, 1, ?7, ?8, ?9, ?10, ?11, ?12, ?12)",
+            params![
+                id,
+                name,
+                icon,
+                description,
+                version,
+                i32::from(is_builtin),
+                execution_json,
+                configuration_json,
+                capabilities_json,
+                paths_json,
+                lifecycle_json,
+                now,
+            ],
+        )?;
+        Ok(())
+    }
+
+    /// Get all custom (non-built-in) agent plugins.
+    pub fn get_custom_agent_plugins(&self) -> Result<Vec<serde_json::Value>> {
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| anyhow::anyhow!("Database lock poisoned: {}", e))?;
+        let mut stmt = conn.prepare(
+            "SELECT id, name, icon, description, version, is_builtin, enabled,
+             execution_json, configuration_json, capabilities_json, paths_json, lifecycle_json,
+             created_at, updated_at
+             FROM agent_plugins WHERE is_builtin = 0 ORDER BY created_at DESC",
+        )?;
+        let rows = stmt.query_map([], |row| {
+            let id: String = row.get(0)?;
+            let name: String = row.get(1)?;
+            let icon: Option<String> = row.get(2)?;
+            let description: Option<String> = row.get(3)?;
+            let version: String = row.get(4)?;
+            let is_builtin: bool = row.get::<_, i32>(5)? != 0;
+            let enabled: bool = row.get::<_, i32>(6)? != 0;
+            let execution_json: String = row.get(7)?;
+            let configuration_json: String = row.get(8)?;
+            let capabilities_json: String = row.get(9)?;
+            let paths_json: String = row.get(10)?;
+            let lifecycle_json: Option<String> = row.get(11)?;
+            let created_at: i64 = row.get(12)?;
+            let updated_at: i64 = row.get(13)?;
+            Ok(serde_json::json!({
+                "id": id,
+                "name": name,
+                "icon": icon,
+                "description": description,
+                "version": version,
+                "is_builtin": is_builtin,
+                "enabled": enabled,
+                "execution": serde_json::from_str::<serde_json::Value>(&execution_json).unwrap_or_default(),
+                "configuration": serde_json::from_str::<serde_json::Value>(&configuration_json).unwrap_or_default(),
+                "capabilities": serde_json::from_str::<serde_json::Value>(&capabilities_json).unwrap_or_default(),
+                "paths": serde_json::from_str::<serde_json::Value>(&paths_json).unwrap_or_default(),
+                "lifecycle": lifecycle_json.and_then(|s| serde_json::from_str::<serde_json::Value>(&s).ok()),
+                "created_at": created_at,
+                "updated_at": updated_at,
+            }))
+        })?;
+        Ok(rows.filter_map(|r| r.ok()).collect())
+    }
+
+    /// Get a custom agent plugin by ID.
+    pub fn get_custom_agent_plugin_by_id(&self, id: &str) -> Result<Option<serde_json::Value>> {
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| anyhow::anyhow!("Database lock poisoned: {}", e))?;
+        let mut stmt = conn.prepare(
+            "SELECT id, name, icon, description, version, is_builtin, enabled,
+             execution_json, configuration_json, capabilities_json, paths_json, lifecycle_json,
+             created_at, updated_at
+             FROM agent_plugins WHERE is_builtin = 0 AND id = ?1",
+        )?;
+        let mut rows = stmt.query_map(params![id], |row| {
+            let id: String = row.get(0)?;
+            let name: String = row.get(1)?;
+            let icon: Option<String> = row.get(2)?;
+            let description: Option<String> = row.get(3)?;
+            let version: String = row.get(4)?;
+            let is_builtin: bool = row.get::<_, i32>(5)? != 0;
+            let enabled: bool = row.get::<_, i32>(6)? != 0;
+            let execution_json: String = row.get(7)?;
+            let configuration_json: String = row.get(8)?;
+            let capabilities_json: String = row.get(9)?;
+            let paths_json: String = row.get(10)?;
+            let lifecycle_json: Option<String> = row.get(11)?;
+            let created_at: i64 = row.get(12)?;
+            let updated_at: i64 = row.get(13)?;
+            Ok(serde_json::json!({
+                "id": id,
+                "name": name,
+                "icon": icon,
+                "description": description,
+                "version": version,
+                "is_builtin": is_builtin,
+                "enabled": enabled,
+                "execution": serde_json::from_str::<serde_json::Value>(&execution_json).unwrap_or_default(),
+                "configuration": serde_json::from_str::<serde_json::Value>(&configuration_json).unwrap_or_default(),
+                "capabilities": serde_json::from_str::<serde_json::Value>(&capabilities_json).unwrap_or_default(),
+                "paths": serde_json::from_str::<serde_json::Value>(&paths_json).unwrap_or_default(),
+                "lifecycle": lifecycle_json.and_then(|s| serde_json::from_str::<serde_json::Value>(&s).ok()),
+                "created_at": created_at,
+                "updated_at": updated_at,
+            }))
+        })?;
+        Ok(rows.next().and_then(|r| r.ok()))
+    }
+
+    /// Delete a custom agent plugin by ID. Built-in plugins cannot be deleted.
+    pub fn delete_custom_agent_plugin(&self, id: &str) -> Result<()> {
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| anyhow::anyhow!("Database lock poisoned: {}", e))?;
+        conn.execute(
+            "DELETE FROM agent_plugins WHERE id = ?1 AND is_builtin = 0",
+            params![id],
+        )?;
+        Ok(())
+    }
 }
 
 // Row Mappers

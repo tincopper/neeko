@@ -381,6 +381,53 @@ impl SkillStore {
     pub fn clear_all_cache(&self) -> Result<()> {
         self.repo.clear_all_cache()
     }
+
+    // Agent Plugins (custom)
+
+    /// Insert a custom agent plugin.
+    pub fn insert_agent_plugin(
+        &self,
+        id: &str,
+        name: &str,
+        icon: Option<&str>,
+        description: Option<&str>,
+        version: &str,
+        is_builtin: bool,
+        execution_json: &str,
+        configuration_json: &str,
+        capabilities_json: &str,
+        paths_json: &str,
+        lifecycle_json: Option<&str>,
+    ) -> Result<()> {
+        self.repo.insert_agent_plugin(
+            id,
+            name,
+            icon,
+            description,
+            version,
+            is_builtin,
+            execution_json,
+            configuration_json,
+            capabilities_json,
+            paths_json,
+            lifecycle_json,
+        )
+    }
+
+    /// Get all custom (non-built-in) agent plugins.
+    pub fn get_custom_agent_plugins(&self) -> Result<Vec<serde_json::Value>> {
+        self.repo.get_custom_agent_plugins()
+    }
+
+    /// Get a custom agent plugin by ID.
+    pub fn get_custom_agent_plugin_by_id(&self, id: &str) -> Result<Option<serde_json::Value>> {
+        self.repo.get_custom_agent_plugin_by_id(id)
+    }
+
+    /// Delete a custom agent plugin by ID.
+    pub fn delete_custom_agent_plugin(&self, id: &str) -> Result<()> {
+        self.repo.delete_custom_agent_plugin(id)
+    }
 }
 
 #[cfg(test)]
