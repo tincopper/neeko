@@ -272,6 +272,17 @@ macro_rules! neeko_invoke_handler {
             $crate::skill::commands::use_prompt_cmd,
             $crate::skill::commands::resolve_slash_prompt,
             $crate::skill::commands::get_all_prompt_tags_cmd,
+            // ── action (resource library) ─────────────────────────────────
+            $crate::skill::commands::list_actions,
+            $crate::skill::commands::get_action,
+            $crate::skill::commands::save_action,
+            $crate::skill::commands::update_action_cmd,
+            $crate::skill::commands::delete_action_cmd,
+            $crate::skill::commands::use_action_cmd,
+            $crate::skill::commands::run_action_cmd,
+            // ── library bundle (import/export) ─────────────────────────────
+            $crate::skill::commands::export_library_bundle,
+            $crate::skill::commands::import_library_bundle,
             // ── theme ────────────────────────────────────────────────────────
             $crate::theme::commands::sync_agent_theme,
             $crate::theme::commands::list_custom_themes,

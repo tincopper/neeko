@@ -13,12 +13,14 @@ import type {
 } from '@/shared/types/library';
 import { skillToResourceSummary } from '@/shared/types/library';
 
+import ActionsTabContent from './ActionsTabContent';
 import LibraryHeader from './LibraryHeader';
 import LibrarySidebar from './LibrarySidebar';
 import PromptEditorDialog from './PromptEditorDialog';
 import PromptInsertDialog from './PromptInsertDialog';
 import PromptListSection from './PromptListSection';
 import SkillsTabContent from './SkillsTabContent';
+import VariableDialog from './VariableDialog';
 
 interface TabDef {
   key: ResourceKind;
@@ -38,16 +40,19 @@ const LibraryPanel: React.FC<LibraryPanelProps> = React.memo(({ onInsertPrompt }
   const tagFilter = useLibraryStore((s) => s.tagFilter);
   const scopeFilter = useLibraryStore((s) => s.scopeFilter);
   const prompts = useLibraryStore((s) => s.prompts);
+  const actions = useLibraryStore((s) => s.actions);
   const refreshPrompts = useLibraryStore((s) => s.refreshPrompts);
   const recordUsage = useLibraryStore((s) => s.recordUsage);
+  const refreshActions = useLibraryStore((s) => s.refreshActions);
 
   const skills = useSkillStore((s) => s.skills);
   const activeProjectId = useProjectStore((s) => s.activeProjectId);
 
-  // Refresh prompts when the panel mounts or project changes.
+  // Refresh prompts and actions when the panel mounts or project changes.
   useEffect(() => {
     void refreshPrompts();
-  }, [refreshPrompts, activeProjectId]);
+    void refreshActions();
+  }, [refreshPrompts, refreshActions, activeProjectId]);
 
   const skillSummaries = useMemo<ResourceSummary[]>(
     () => skills.map(skillToResourceSummary),
@@ -55,7 +60,7 @@ const LibraryPanel: React.FC<LibraryPanelProps> = React.memo(({ onInsertPrompt }
   );
 
   const promptCount = prompts.length;
-  const actionCount = 0; // P1
+  const actionCount = actions.length;
 
   const tabs: TabDef[] = useMemo(
     () => [
@@ -66,12 +71,39 @@ const LibraryPanel: React.FC<LibraryPanelProps> = React.memo(({ onInsertPrompt }
     [skillSummaries.length, promptCount, actionCount],
   );
 
+  const variableDialogOpen = useLibraryStore((s) => s.variableDialogOpen);
+  const variableDialogContent = useLibraryStore((s) => s.variableDialogContent);
+  const variableDialogResolve = useLibraryStore((s) => s.variableDialogResolve);
+  const closeVariableDialog = useLibraryStore((s) => s.closeVariableDialog);
+
   const handleInsert = useCallback(
     (prompt: PromptResource, target: PromptInsertTarget = 'agent') => {
       void recordUsage(prompt.id);
+      // Detect variables — only for agent inserts (not terminal PTY).
+      if (target === 'agent') {
+        const variables = useLibraryStore.getState().detectVariables(prompt.content);
+        if (variables.length > 0) {
+          // Open variable dialog; resolve will continue the insert.
+          void useLibraryStore
+            .getState()
+            .openVariableDialog(prompt.content)
+            .then((rendered) => {
+              onInsertPrompt?.({ ...prompt, content: rendered }, target);
+            });
+          return;
+        }
+      }
       onInsertPrompt?.(prompt, target);
     },
     [recordUsage, onInsertPrompt],
+  );
+
+  const handleVariableConfirm = useCallback(
+    (rendered: string) => {
+      variableDialogResolve?.(rendered);
+      closeVariableDialog();
+    },
+    [variableDialogResolve, closeVariableDialog],
   );
 
   const filterLabel = useMemo(() => {
@@ -139,15 +171,10 @@ const LibraryPanel: React.FC<LibraryPanelProps> = React.memo(({ onInsertPrompt }
             </>
           )}
           {activeKind === 'action' && (
-            <div className="flex flex-col items-center justify-center h-full min-h-[200px] text-text-muted gap-2 px-6">
-              <Zap className="h-8 w-8 opacity-30" />
-              <p className="text-[var(--font-size)] text-text-secondary text-center">
-                Actions coming soon.
-              </p>
-              <p className="text-[11px] text-text-muted text-center">
-                Save terminal commands and workflows as reusable action templates.
-              </p>
-            </div>
+            <>
+              <LibraryHeader count={actionCount} />
+              <ActionsTabContent />
+            </>
           )}
         </div>
       </div>
@@ -155,6 +182,13 @@ const LibraryPanel: React.FC<LibraryPanelProps> = React.memo(({ onInsertPrompt }
       {/* Dialogs */}
       <PromptEditorDialog />
       <PromptInsertDialog onInsert={handleInsert} />
+      {variableDialogOpen && variableDialogContent && (
+        <VariableDialog
+          content={variableDialogContent}
+          onConfirm={handleVariableConfirm}
+          onCancel={closeVariableDialog}
+        />
+      )}
     </div>
   );
 });

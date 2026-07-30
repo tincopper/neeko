@@ -357,6 +357,9 @@ function ProjectWorkspace() {
             .map((r) => r.filePath)
         : [],
       closeMenu: () => {},
+      insertToAgentInput: (text: string) => {
+        window.dispatchEvent(new CustomEvent('neeko:insert-to-agent-input', { detail: { text } }));
+      },
       openLibrary: (opts) => {
         const kind = opts?.kind ?? 'skill';
         useDockStore.getState().togglePanel('library');

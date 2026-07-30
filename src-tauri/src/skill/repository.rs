@@ -834,6 +834,128 @@ impl SkillRepository {
         }
         Ok(tags.into_iter().collect())
     }
+
+    // ── Actions ───────────────────────────────────────────────────────────
+
+    /// Insert a new action.
+    pub fn insert_action(&self, action: &super::types::ActionRecord) -> Result<()> {
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| anyhow::anyhow!("Database lock poisoned: {}", e))?;
+        let tags_json = serde_json::to_string(&action.tags).unwrap_or_else(|_| "[]".to_string());
+        conn.execute(
+            "INSERT INTO actions (id, name, description, \"group\", payload_json, shortcut, tags_json, enabled, usage_count, last_used_at, created_at, updated_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
+            params![
+                action.id,
+                action.name,
+                action.description,
+                action.group,
+                action.payload_json,
+                action.shortcut,
+                tags_json,
+                i32::from(action.enabled),
+                action.usage_count,
+                action.last_used_at,
+                action.created_at,
+                action.updated_at,
+            ],
+        )?;
+        Ok(())
+    }
+
+    /// Get all actions ordered by updated_at descending.
+    pub fn get_all_actions(&self) -> Result<Vec<super::types::ActionRecord>> {
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| anyhow::anyhow!("Database lock poisoned: {}", e))?;
+        let mut stmt = conn.prepare(
+            "SELECT id, name, description, \"group\", payload_json, shortcut, tags_json, enabled, usage_count, last_used_at, created_at, updated_at FROM actions ORDER BY updated_at DESC",
+        )?;
+        let rows = stmt.query_map([], map_action_row)?;
+        Ok(rows.filter_map(|r| r.ok()).collect())
+    }
+
+    /// Get an action by its ID.
+    pub fn get_action_by_id(&self, id: &str) -> Result<Option<super::types::ActionRecord>> {
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| anyhow::anyhow!("Database lock poisoned: {}", e))?;
+        let mut stmt = conn.prepare(
+            "SELECT id, name, description, \"group\", payload_json, shortcut, tags_json, enabled, usage_count, last_used_at, created_at, updated_at FROM actions WHERE id = ?1",
+        )?;
+        let mut rows = stmt.query_map(params![id], map_action_row)?;
+        Ok(rows.next().and_then(|r| r.ok()))
+    }
+
+    /// Update all fields of an action.
+    pub fn update_action(&self, action: &super::types::ActionRecord) -> Result<()> {
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| anyhow::anyhow!("Database lock poisoned: {}", e))?;
+        let now = chrono::Utc::now().timestamp_millis();
+        let tags_json = serde_json::to_string(&action.tags).unwrap_or_else(|_| "[]".to_string());
+        conn.execute(
+            "UPDATE actions SET name = ?1, description = ?2, \"group\" = ?3, payload_json = ?4, shortcut = ?5, tags_json = ?6, enabled = ?7, usage_count = ?8, last_used_at = ?9, updated_at = ?10 WHERE id = ?11",
+            params![
+                action.name,
+                action.description,
+                action.group,
+                action.payload_json,
+                action.shortcut,
+                tags_json,
+                i32::from(action.enabled),
+                action.usage_count,
+                action.last_used_at,
+                now,
+                action.id,
+            ],
+        )?;
+        Ok(())
+    }
+
+    /// Delete an action by ID.
+    pub fn delete_action(&self, id: &str) -> Result<()> {
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| anyhow::anyhow!("Database lock poisoned: {}", e))?;
+        conn.execute("DELETE FROM actions WHERE id = ?1", params![id])?;
+        Ok(())
+    }
+
+    /// Increment usage count and update last_used_at.
+    pub fn record_action_usage(&self, id: &str) -> Result<()> {
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| anyhow::anyhow!("Database lock poisoned: {}", e))?;
+        let now = chrono::Utc::now().timestamp_millis();
+        conn.execute(
+            "UPDATE actions SET usage_count = usage_count + 1, last_used_at = ?1, updated_at = ?1 WHERE id = ?2",
+            params![now, id],
+        )?;
+        Ok(())
+    }
+
+    /// Get all unique tag names across all actions.
+    pub fn get_all_action_tags(&self) -> Result<Vec<String>> {
+        let actions = self.get_all_actions()?;
+        let mut tags = std::collections::BTreeSet::new();
+        for a in &actions {
+            for t in &a.tags {
+                let trimmed = t.trim();
+                if !trimmed.is_empty() {
+                    tags.insert(trimmed.to_string());
+                }
+            }
+        }
+        Ok(tags.into_iter().collect())
+    }
 }
 
 // Row Mappers
@@ -884,6 +1006,25 @@ fn map_tag_group_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<TagGroupRecord
         sort_order: row.get(4)?,
         created_at: row.get(5)?,
         updated_at: row.get(6)?,
+    })
+}
+
+fn map_action_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<super::types::ActionRecord> {
+    let tags_json: String = row.get(6)?;
+    let tags: Vec<String> = serde_json::from_str(&tags_json).unwrap_or_default();
+    Ok(super::types::ActionRecord {
+        id: row.get(0)?,
+        name: row.get(1)?,
+        description: row.get(2)?,
+        group: row.get(3)?,
+        payload_json: row.get(4)?,
+        shortcut: row.get(5)?,
+        tags,
+        enabled: row.get::<_, i32>(7)? != 0,
+        usage_count: row.get(8)?,
+        last_used_at: row.get(9)?,
+        created_at: row.get(10)?,
+        updated_at: row.get(11)?,
     })
 }
 

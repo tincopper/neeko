@@ -96,7 +96,7 @@ export interface ActionResource {
   name: string;
   description?: string | null;
   group: 'terminal' | 'agent' | 'file' | 'git' | 'quick' | 'custom';
-  keywords: string[];
+  keywords?: string[];
   payload:
     | { type: 'insert-prompt'; promptId: string }
     | { type: 'run-skill'; skillId: string }
@@ -105,6 +105,10 @@ export interface ActionResource {
   shortcut?: string | null;
   tags: string[];
   enabled: boolean;
+  usageCount: number;
+  lastUsedAt?: number | null;
+  createdAt: number;
+  updatedAt: number;
 }
 
 /** Adapter: managed skill DTO → resource summary for the Library list. */

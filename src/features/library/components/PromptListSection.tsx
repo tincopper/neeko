@@ -18,6 +18,7 @@ const PromptListSection: React.FC<PromptListSectionProps> = React.memo(({ onInse
   const tagFilter = useLibraryStore((s) => s.tagFilter);
   const scopeFilter = useLibraryStore((s) => s.scopeFilter);
   const viewMode = useLibraryStore((s) => s.viewMode);
+  const sortMode = useLibraryStore((s) => s.sortMode);
   const openEditor = useLibraryStore((s) => s.openEditor);
   const deletePrompt = useLibraryStore((s) => s.deletePrompt);
 
@@ -44,8 +45,15 @@ const PromptListSection: React.FC<PromptListSectionProps> = React.memo(({ onInse
           p.tags.some((t) => t.toLowerCase().includes(q)),
       );
     }
+    if (sortMode === 'alphabetical') {
+      list.sort((a, b) => a.name.localeCompare(b.name));
+    } else if (sortMode === 'frequent') {
+      list.sort((a, b) => b.usageCount - a.usageCount);
+    } else {
+      list.sort((a, b) => b.updatedAt - a.updatedAt);
+    }
     return list;
-  }, [prompts, scopeFilter, tagFilter, searchQuery]);
+  }, [prompts, scopeFilter, tagFilter, searchQuery, sortMode]);
 
   const handleCopy = useCallback((content: string) => {
     void navigator.clipboard.writeText(content).then(() => {

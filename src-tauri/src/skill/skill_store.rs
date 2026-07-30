@@ -296,6 +296,43 @@ impl SkillStore {
         self.repo.get_all_prompt_tags()
     }
 
+    // Actions
+
+    /// Insert a new action.
+    pub fn insert_action(&self, action: &super::types::ActionRecord) -> Result<()> {
+        self.repo.insert_action(action)
+    }
+
+    /// Get all actions ordered by updated_at descending.
+    pub fn get_all_actions(&self) -> Result<Vec<super::types::ActionRecord>> {
+        self.repo.get_all_actions()
+    }
+
+    /// Get an action by its ID.
+    pub fn get_action_by_id(&self, id: &str) -> Result<Option<super::types::ActionRecord>> {
+        self.repo.get_action_by_id(id)
+    }
+
+    /// Update all fields of an action.
+    pub fn update_action(&self, action: &super::types::ActionRecord) -> Result<()> {
+        self.repo.update_action(action)
+    }
+
+    /// Delete an action by ID.
+    pub fn delete_action(&self, id: &str) -> Result<()> {
+        self.repo.delete_action(id)
+    }
+
+    /// Increment usage count and update last_used_at.
+    pub fn record_action_usage(&self, id: &str) -> Result<()> {
+        self.repo.record_action_usage(id)
+    }
+
+    /// Get all unique tag names across all actions.
+    pub fn get_all_action_tags(&self) -> Result<Vec<String>> {
+        self.repo.get_all_action_tags()
+    }
+
     /// Bound tag-group counts for all projects (`project_id`, count).
     pub fn get_all_project_tag_group_counts(&self) -> Result<Vec<(String, i64)>> {
         self.repo.get_all_project_tag_group_counts()

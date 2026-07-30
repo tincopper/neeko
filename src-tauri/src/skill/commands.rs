@@ -2748,7 +2748,7 @@ pub async fn install_from_skillssh(
 // --- Prompt Commands ---
 
 /// Prompt DTO returned to the frontend.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PromptDtoOut {
     /// Unique prompt identifier.
     pub id: String,
@@ -3029,4 +3029,464 @@ pub async fn get_all_prompt_tags_cmd(
 ) -> Result<Vec<String>, AppError> {
     let store = store.inner().clone();
     run_blocking_result(move || store.get_all_prompt_tags().map_err(AppError::from)).await
+}
+
+// ─── Action Commands ─────────────────────────────────────────────────────────
+
+/// Action DTO returned to the frontend.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ActionDtoOut {
+    /// Unique action identifier.
+    pub id: String,
+    /// Display name.
+    pub name: String,
+    /// Optional description.
+    pub description: Option<String>,
+    /// Group: "terminal" | "agent" | "file" | "git" | "quick" | "custom".
+    pub group: String,
+    /// Serialized payload JSON string.
+    pub payload_json: String,
+    /// Optional keyboard shortcut.
+    pub shortcut: Option<String>,
+    /// Tag names.
+    pub tags: Vec<String>,
+    /// Whether the action is enabled.
+    pub enabled: bool,
+    /// Usage counter.
+    pub usage_count: i64,
+    /// Timestamp of last use.
+    pub last_used_at: Option<i64>,
+    /// Creation timestamp.
+    pub created_at: i64,
+    /// Last update timestamp.
+    pub updated_at: i64,
+}
+
+/// Input for creating an action.
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CreateActionInput {
+    /// Display name.
+    pub name: String,
+    /// Optional description.
+    pub description: Option<String>,
+    /// Group.
+    pub group: Option<String>,
+    /// Serialized payload JSON string.
+    pub payload_json: String,
+    /// Optional keyboard shortcut.
+    pub shortcut: Option<String>,
+    /// Tag names.
+    pub tags: Vec<String>,
+}
+
+/// Input for updating an action.
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdateActionInput {
+    /// Display name.
+    pub name: String,
+    /// Optional description.
+    pub description: Option<String>,
+    /// Group.
+    pub group: Option<String>,
+    /// Serialized payload JSON string.
+    pub payload_json: String,
+    /// Optional keyboard shortcut.
+    pub shortcut: Option<String>,
+    /// Tag names.
+    pub tags: Vec<String>,
+    /// Whether enabled.
+    pub enabled: Option<bool>,
+}
+
+fn action_to_dto(s: super::types::ActionRecord) -> ActionDtoOut {
+    ActionDtoOut {
+        id: s.id,
+        name: s.name,
+        description: s.description,
+        group: s.group,
+        payload_json: s.payload_json,
+        shortcut: s.shortcut,
+        tags: s.tags,
+        enabled: s.enabled,
+        usage_count: s.usage_count,
+        last_used_at: s.last_used_at,
+        created_at: s.created_at,
+        updated_at: s.updated_at,
+    }
+}
+
+/// List all actions.
+#[tauri::command]
+pub async fn list_actions(
+    store: tauri::State<'_, std::sync::Arc<super::skill_store::SkillStore>>,
+) -> Result<Vec<ActionDtoOut>, AppError> {
+    let store = store.inner().clone();
+    run_blocking_result(move || {
+        let actions = store.get_all_actions().map_err(AppError::from)?;
+        Ok(actions.into_iter().map(action_to_dto).collect())
+    })
+    .await
+}
+
+/// Get a single action by ID.
+#[tauri::command]
+pub async fn get_action(
+    id: String,
+    store: tauri::State<'_, std::sync::Arc<super::skill_store::SkillStore>>,
+) -> Result<ActionDtoOut, AppError> {
+    let store = store.inner().clone();
+    run_blocking_result(move || {
+        let action = store
+            .get_action_by_id(&id)
+            .map_err(AppError::from)?
+            .ok_or_else(|| AppError::NotFound(format!("Action not found: {id}")))?;
+        Ok(action_to_dto(action))
+    })
+    .await
+}
+
+/// Create a new action.
+#[tauri::command]
+pub async fn save_action(
+    input: CreateActionInput,
+    store: tauri::State<'_, std::sync::Arc<super::skill_store::SkillStore>>,
+) -> Result<ActionDtoOut, AppError> {
+    let store = store.inner().clone();
+    run_blocking_result(move || {
+        let now = chrono::Utc::now().timestamp_millis();
+        let id = uuid::Uuid::new_v4().to_string();
+        let record = super::types::ActionRecord {
+            id,
+            name: input.name,
+            description: input.description,
+            group: input.group.unwrap_or_else(|| "custom".to_string()),
+            payload_json: input.payload_json,
+            shortcut: input.shortcut,
+            tags: input.tags,
+            enabled: true,
+            usage_count: 0,
+            last_used_at: None,
+            created_at: now,
+            updated_at: now,
+        };
+        store.insert_action(&record).map_err(AppError::from)?;
+        Ok(action_to_dto(record))
+    })
+    .await
+}
+
+/// Update an existing action.
+#[tauri::command]
+pub async fn update_action_cmd(
+    id: String,
+    input: UpdateActionInput,
+    store: tauri::State<'_, std::sync::Arc<super::skill_store::SkillStore>>,
+) -> Result<ActionDtoOut, AppError> {
+    let store = store.inner().clone();
+    run_blocking_result(move || {
+        let mut record = store
+            .get_action_by_id(&id)
+            .map_err(AppError::from)?
+            .ok_or_else(|| AppError::NotFound(format!("Action not found: {id}")))?;
+        record.name = input.name;
+        record.description = input.description;
+        if let Some(group) = input.group {
+            record.group = group;
+        }
+        record.payload_json = input.payload_json;
+        record.shortcut = input.shortcut;
+        record.tags = input.tags;
+        if let Some(enabled) = input.enabled {
+            record.enabled = enabled;
+        }
+        store.update_action(&record).map_err(AppError::from)?;
+        Ok(action_to_dto(record))
+    })
+    .await
+}
+
+/// Delete an action.
+#[tauri::command]
+pub async fn delete_action_cmd(
+    id: String,
+    store: tauri::State<'_, std::sync::Arc<super::skill_store::SkillStore>>,
+) -> Result<(), AppError> {
+    let store = store.inner().clone();
+    run_blocking_result(move || store.delete_action(&id).map_err(AppError::from)).await
+}
+
+/// Record action usage (increments counter + last_used_at).
+#[tauri::command]
+pub async fn use_action_cmd(
+    id: String,
+    store: tauri::State<'_, std::sync::Arc<super::skill_store::SkillStore>>,
+) -> Result<(), AppError> {
+    let store = store.inner().clone();
+    run_blocking_result(move || store.record_action_usage(&id).map_err(AppError::from)).await
+}
+
+/// Result of running an action.
+#[derive(Debug, Serialize)]
+pub struct RunActionResult {
+    /// Whether the action was dispatched.
+    pub dispatched: bool,
+    /// The resolved prompt content (for insert-prompt type).
+    pub prompt_content: Option<String>,
+    /// The command to run (for run-command type).
+    pub command: Option<String>,
+    /// The panel id to toggle (for open-panel type).
+    pub panel_id: Option<String>,
+}
+
+/// Run an action by ID — dispatches by payload type.
+#[tauri::command]
+pub async fn run_action_cmd(
+    id: String,
+    store: tauri::State<'_, std::sync::Arc<super::skill_store::SkillStore>>,
+) -> Result<RunActionResult, AppError> {
+    let store = store.inner().clone();
+    run_blocking_result(move || {
+        let action = store
+            .get_action_by_id(&id)
+            .map_err(AppError::from)?
+            .ok_or_else(|| AppError::NotFound(format!("Action not found: {id}")))?;
+
+        // Record usage.
+        store.record_action_usage(&id).map_err(AppError::from)?;
+
+        // Parse payload and dispatch.
+        let payload: serde_json::Value =
+            serde_json::from_str(&action.payload_json).map_err(AppError::from)?;
+        let payload_type = payload.get("type").and_then(|v| v.as_str());
+
+        match payload_type {
+            Some("insert-prompt") => {
+                let prompt_id = payload
+                    .get("promptId")
+                    .and_then(|v| v.as_str())
+                    .ok_or_else(|| {
+                        AppError::InvalidInput("insert-prompt missing promptId".into())
+                    })?;
+                let prompt = store
+                    .get_prompt_by_id(prompt_id)
+                    .map_err(AppError::from)?
+                    .ok_or_else(|| AppError::NotFound(format!("Prompt not found: {prompt_id}")))?;
+                Ok(RunActionResult {
+                    dispatched: true,
+                    prompt_content: Some(prompt.content),
+                    command: None,
+                    panel_id: None,
+                })
+            }
+            Some("run-command") => {
+                let command = payload
+                    .get("command")
+                    .and_then(|v| v.as_str())
+                    .ok_or_else(|| AppError::InvalidInput("run-command missing command".into()))?;
+                Ok(RunActionResult {
+                    dispatched: true,
+                    prompt_content: None,
+                    command: Some(command.to_string()),
+                    panel_id: None,
+                })
+            }
+            Some("open-panel") => {
+                let panel_id = payload
+                    .get("panelId")
+                    .and_then(|v| v.as_str())
+                    .ok_or_else(|| AppError::InvalidInput("open-panel missing panelId".into()))?;
+                Ok(RunActionResult {
+                    dispatched: true,
+                    prompt_content: None,
+                    command: None,
+                    panel_id: Some(panel_id.to_string()),
+                })
+            }
+            Some("run-skill") => {
+                // run-skill is a future capability — acknowledged but not executed.
+                Ok(RunActionResult {
+                    dispatched: false,
+                    prompt_content: None,
+                    command: None,
+                    panel_id: None,
+                })
+            }
+            _ => Err(AppError::InvalidInput(format!(
+                "Unknown action payload type: {payload_type:?}"
+            ))),
+        }
+    })
+    .await
+}
+
+// ─── Library Bundle (import/export) ───────────────────────────────────────────
+
+/// Export bundle DTO.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct LibraryBundleDto {
+    /// Bundle format version.
+    pub version: String,
+    /// Export timestamp.
+    pub exported_at: i64,
+    /// Prompts.
+    pub prompts: Vec<PromptDtoOut>,
+    /// Actions.
+    pub actions: Vec<ActionDtoOut>,
+}
+
+/// Import result DTO.
+#[derive(Debug, Serialize)]
+pub struct ImportResultDto {
+    /// Number of prompts imported.
+    pub prompts_imported: u32,
+    /// Number of prompts skipped.
+    pub prompts_skipped: u32,
+    /// Number of actions imported.
+    pub actions_imported: u32,
+    /// Number of actions skipped.
+    pub actions_skipped: u32,
+}
+
+/// Export the library (prompts + actions) to a JSON file.
+#[tauri::command]
+pub async fn export_library_bundle(
+    path: String,
+    store: tauri::State<'_, std::sync::Arc<super::skill_store::SkillStore>>,
+) -> Result<(), AppError> {
+    let store = store.inner().clone();
+    run_blocking_result(move || {
+        let prompts = store
+            .get_all_prompts()
+            .map_err(AppError::from)?
+            .into_iter()
+            .map(prompt_to_dto)
+            .collect::<Vec<_>>();
+        let actions = store
+            .get_all_actions()
+            .map_err(AppError::from)?
+            .into_iter()
+            .map(action_to_dto)
+            .collect::<Vec<_>>();
+        let bundle = LibraryBundleDto {
+            version: "1.0".to_string(),
+            exported_at: chrono::Utc::now().timestamp_millis(),
+            prompts,
+            actions,
+        };
+        let json = serde_json::to_string_pretty(&bundle).map_err(AppError::from)?;
+        std::fs::write(&path, json).map_err(AppError::from)?;
+        Ok(())
+    })
+    .await
+}
+
+/// Input for importing a library bundle.
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ImportBundleInput {
+    /// File path to import from.
+    pub path: String,
+    /// Conflict resolution mode: "skip" or "overwrite".
+    pub mode: String,
+}
+
+/// Import prompts + actions from a JSON bundle file.
+#[tauri::command]
+pub async fn import_library_bundle(
+    input: ImportBundleInput,
+    store: tauri::State<'_, std::sync::Arc<super::skill_store::SkillStore>>,
+) -> Result<ImportResultDto, AppError> {
+    let store = store.inner().clone();
+    run_blocking_result(move || {
+        let json = std::fs::read_to_string(&input.path).map_err(AppError::from)?;
+        let bundle: LibraryBundleDto = serde_json::from_str(&json).map_err(AppError::from)?;
+
+        let overwrite = input.mode == "overwrite";
+        let mut prompts_imported = 0u32;
+        let mut prompts_skipped = 0u32;
+
+        for prompt_dto in &bundle.prompts {
+            let existing = store
+                .get_prompt_by_id(&prompt_dto.id)
+                .map_err(AppError::from)?;
+            if existing.is_some() && !overwrite {
+                prompts_skipped += 1;
+                continue;
+            }
+            let record = super::types::PromptRecord {
+                id: prompt_dto.id.clone(),
+                name: prompt_dto.name.clone(),
+                description: prompt_dto.description.clone(),
+                content: prompt_dto.content.clone(),
+                slash: prompt_dto.slash.clone(),
+                tags: prompt_dto.tags.clone(),
+                scope: prompt_dto.scope.clone(),
+                project_id: prompt_dto.project_id.clone(),
+                favorite: prompt_dto.favorite,
+                usage_count: prompt_dto.usage_count,
+                last_used_at: prompt_dto.last_used_at,
+                created_at: prompt_dto.created_at,
+                updated_at: prompt_dto.updated_at,
+                variables: prompt_dto
+                    .variables
+                    .iter()
+                    .map(|v| super::types::PromptVariableRecord {
+                        name: v.name.clone(),
+                        description: v.description.clone(),
+                        default: v.default.clone(),
+                        required: v.required,
+                    })
+                    .collect(),
+            };
+            if existing.is_some() {
+                store.update_prompt(&record).map_err(AppError::from)?;
+            } else {
+                store.insert_prompt(&record).map_err(AppError::from)?;
+            }
+            prompts_imported += 1;
+        }
+
+        let mut actions_imported = 0u32;
+        let mut actions_skipped = 0u32;
+
+        for action_dto in &bundle.actions {
+            let existing = store
+                .get_action_by_id(&action_dto.id)
+                .map_err(AppError::from)?;
+            if existing.is_some() && !overwrite {
+                actions_skipped += 1;
+                continue;
+            }
+            let record = super::types::ActionRecord {
+                id: action_dto.id.clone(),
+                name: action_dto.name.clone(),
+                description: action_dto.description.clone(),
+                group: action_dto.group.clone(),
+                payload_json: action_dto.payload_json.clone(),
+                shortcut: action_dto.shortcut.clone(),
+                tags: action_dto.tags.clone(),
+                enabled: action_dto.enabled,
+                usage_count: action_dto.usage_count,
+                last_used_at: action_dto.last_used_at,
+                created_at: action_dto.created_at,
+                updated_at: action_dto.updated_at,
+            };
+            if existing.is_some() {
+                store.update_action(&record).map_err(AppError::from)?;
+            } else {
+                store.insert_action(&record).map_err(AppError::from)?;
+            }
+            actions_imported += 1;
+        }
+
+        Ok(ImportResultDto {
+            prompts_imported,
+            prompts_skipped,
+            actions_imported,
+            actions_skipped,
+        })
+    })
+    .await
 }

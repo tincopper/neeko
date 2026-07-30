@@ -1,8 +1,21 @@
-import { LayoutGrid, List, Plus, Save, Search, X } from 'lucide-react';
-import React, { useCallback } from 'react';
+import {
+  ArrowDownUp,
+  Download,
+  LayoutGrid,
+  List,
+  Plus,
+  Save,
+  Search,
+  Upload,
+  X,
+} from 'lucide-react';
+import React, { useCallback, useState } from 'react';
 
-import { useLibraryStore } from '@/features/library/store/libraryStore';
+import { useLibraryStore, type SortMode } from '@/features/library/store/libraryStore';
 import { cn } from '@/lib/utils';
+import { useNotificationStore } from '@/shared/store/notificationStore';
+
+import { exportLibraryBundle, importLibraryBundle } from '../api/libraryApi';
 
 interface LibraryHeaderProps {
   /** Number of items currently displayed (for the count badge). */
@@ -18,6 +31,12 @@ function readAgentInput(): string | null {
   return read ? read() : null;
 }
 
+const SORT_OPTIONS: { value: SortMode; label: string }[] = [
+  { value: 'recent', label: 'Recent' },
+  { value: 'frequent', label: 'Most Used' },
+  { value: 'alphabetical', label: 'A-Z' },
+];
+
 const LibraryHeader: React.FC<LibraryHeaderProps> = React.memo(({ count, filterLabel }) => {
   const searchQuery = useLibraryStore((s) => s.searchQuery);
   const setSearchQuery = useLibraryStore((s) => s.setSearchQuery);
@@ -26,10 +45,20 @@ const LibraryHeader: React.FC<LibraryHeaderProps> = React.memo(({ count, filterL
   const toggleViewMode = useLibraryStore((s) => s.toggleViewMode);
   const openEditor = useLibraryStore((s) => s.openEditor);
   const openEditorWithContent = useLibraryStore((s) => s.openEditorWithContent);
+  const openActionEditor = useLibraryStore((s) => s.openActionEditor);
+  const sortMode = useLibraryStore((s) => s.sortMode);
+  const setSortMode = useLibraryStore((s) => s.setSortMode);
+
+  const [sortOpen, setSortOpen] = useState(false);
+  const [importing, setImporting] = useState(false);
 
   const handleNew = useCallback(() => {
-    openEditor(null);
-  }, [openEditor]);
+    if (activeKind === 'action') {
+      openActionEditor(null);
+    } else {
+      openEditor(null);
+    }
+  }, [activeKind, openEditor, openActionEditor]);
 
   const handleSaveAsPrompt = useCallback(() => {
     const content = readAgentInput();
@@ -40,6 +69,61 @@ const LibraryHeader: React.FC<LibraryHeaderProps> = React.memo(({ count, filterL
       openEditor(null);
     }
   }, [openEditor, openEditorWithContent]);
+
+  const handleExport = useCallback(async () => {
+    try {
+      // Use the Tauri save dialog via the dialog plugin.
+      const { save } = await import('@tauri-apps/plugin-dialog');
+      const filePath = await save({
+        defaultPath: 'neeko-library.json',
+        filters: [{ name: 'JSON', extensions: ['json'] }],
+      });
+      if (filePath) {
+        await exportLibraryBundle(filePath);
+        useNotificationStore.getState().addNotification({
+          type: 'info',
+          title: 'Exported',
+          message: 'Library exported successfully',
+        });
+      }
+    } catch (e) {
+      useNotificationStore.getState().addNotification({
+        type: 'error',
+        title: 'Export Failed',
+        message: String(e),
+      });
+    }
+  }, []);
+
+  const handleImport = useCallback(async () => {
+    if (importing) return;
+    setImporting(true);
+    try {
+      const { open } = await import('@tauri-apps/plugin-dialog');
+      const filePath = await open({
+        multiple: false,
+        filters: [{ name: 'JSON', extensions: ['json'] }],
+      });
+      if (filePath && typeof filePath === 'string') {
+        const result = await importLibraryBundle(filePath, 'skip');
+        useNotificationStore.getState().addNotification({
+          type: 'info',
+          title: 'Imported',
+          message: `Imported ${result.promptsImported} prompts, ${result.actionsImported} actions (${result.promptsSkipped + result.actionsSkipped} skipped)`,
+        });
+      }
+    } catch (e) {
+      useNotificationStore.getState().addNotification({
+        type: 'error',
+        title: 'Import Failed',
+        message: String(e),
+      });
+    } finally {
+      setImporting(false);
+    }
+  }, [importing]);
+
+  const searchPlaceholder = activeKind === 'action' ? 'Search actions…' : 'Search prompts…';
 
   return (
     <div className="shrink-0 border-b border-border">
@@ -52,7 +136,7 @@ const LibraryHeader: React.FC<LibraryHeaderProps> = React.memo(({ count, filterL
               'bg-bg-hover/60 border border-border text-text-primary',
               'outline-none focus:border-accent-blue placeholder:text-text-muted',
             )}
-            placeholder="Search prompts…"
+            placeholder={searchPlaceholder}
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
           />
@@ -94,6 +178,47 @@ const LibraryHeader: React.FC<LibraryHeaderProps> = React.memo(({ count, filterL
             <List className="h-3.5 w-3.5" />
           </button>
         </div>
+
+        {/* Sort dropdown */}
+        <div className="relative shrink-0">
+          <button
+            type="button"
+            className={cn(
+              'h-7 w-7 rounded-md flex items-center justify-center transition-colors',
+              'text-text-muted hover:text-text-primary hover:bg-bg-hover',
+            )}
+            onClick={() => setSortOpen((v) => !v)}
+            title="Sort"
+          >
+            <ArrowDownUp className="h-3.5 w-3.5" />
+          </button>
+          {sortOpen && (
+            <div
+              className="absolute right-0 top-full mt-1 w-36 rounded-md border border-border bg-popover shadow-lg py-1 z-10"
+              onMouseLeave={() => setSortOpen(false)}
+            >
+              {SORT_OPTIONS.map((opt) => (
+                <button
+                  key={opt.value}
+                  type="button"
+                  className={cn(
+                    'w-full text-left px-2.5 py-1.5 text-[var(--font-size)]',
+                    sortMode === opt.value
+                      ? 'bg-accent-blue/15 text-accent-blue'
+                      : 'text-text-secondary hover:bg-bg-hover',
+                  )}
+                  onClick={() => {
+                    setSortMode(opt.value);
+                    setSortOpen(false);
+                  }}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
         {activeKind === 'prompt' && (
           <button
             type="button"
@@ -105,6 +230,29 @@ const LibraryHeader: React.FC<LibraryHeaderProps> = React.memo(({ count, filterL
             Save as Prompt
           </button>
         )}
+
+        {/* Import / Export (prompts tab) */}
+        {activeKind === 'prompt' && (
+          <>
+            <button
+              type="button"
+              className="h-7 w-7 rounded-md text-text-muted hover:text-text-primary hover:bg-bg-hover flex items-center justify-center shrink-0"
+              onClick={() => void handleImport()}
+              title="Import library"
+            >
+              <Upload className="h-3.5 w-3.5" />
+            </button>
+            <button
+              type="button"
+              className="h-7 w-7 rounded-md text-text-muted hover:text-text-primary hover:bg-bg-hover flex items-center justify-center shrink-0"
+              onClick={() => void handleExport()}
+              title="Export library"
+            >
+              <Download className="h-3.5 w-3.5" />
+            </button>
+          </>
+        )}
+
         <button
           type="button"
           className="h-7 px-2.5 text-[11px] font-medium rounded-md bg-accent-blue/15 text-accent-blue hover:bg-accent-blue/25 flex items-center gap-1 shrink-0"

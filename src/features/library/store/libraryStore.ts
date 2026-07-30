@@ -1,9 +1,36 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 
-import type { ResourceKind, ViewMode, ScopeFilter, PromptResource } from '@/shared/types/library';
+import { useDockStore } from '@/shared/store/dockStore';
+import type {
+  ActionResource,
+  ResourceKind,
+  ViewMode,
+  ScopeFilter,
+  PromptResource,
+} from '@/shared/types/library';
 
-import { listPrompts, deletePrompt as deletePromptApi, recordPromptUsage } from '../api/libraryApi';
+import {
+  listPrompts,
+  deletePrompt as deletePromptApi,
+  recordPromptUsage,
+  listActions,
+  deleteAction as deleteActionApi,
+  saveAction as saveActionApi,
+  updateAction as updateActionApi,
+  runAction as runActionApi,
+} from '../api/libraryApi';
+
+/** Sort mode for resource lists. */
+export type SortMode = 'recent' | 'frequent' | 'alphabetical';
+
+/** Variable context for resolving `{{var}}` placeholders. */
+export interface VariableContext {
+  branch?: string | null;
+  projectName?: string | null;
+  filePath?: string | null;
+  projectPath?: string | null;
+}
 
 // ─── State ──────────────────────────────────────────────────────────────────
 
@@ -21,10 +48,18 @@ interface LibraryState {
   /** View mode (grid | list) — persisted. */
   viewMode: ViewMode;
 
+  /** Sort mode for resource lists. */
+  sortMode: SortMode;
+
   /** Prompts cache. */
   prompts: PromptResource[];
   promptsLoading: boolean;
   promptsError: string | null;
+
+  /** Actions cache. */
+  actions: ActionResource[];
+  actionsLoading: boolean;
+  actionsError: string | null;
 
   /** Last active kind + viewMode remembered across panel close/reopen (both persisted). */
 
@@ -33,8 +68,15 @@ interface LibraryState {
   editingPrompt: PromptResource | null;
   /** Pre-filled content when opening the editor for a new prompt (e.g. "Save as Prompt"). */
   initialContent: string | null;
+  /** Action being edited (null = creating a new action). */
+  editingAction: ActionResource | null;
   /** Insert dialog state. */
   insertOpen: boolean;
+  /** Variable dialog state — content pending variable fill. */
+  variableDialogOpen: boolean;
+  variableDialogContent: string | null;
+  /** Callback invoked with the rendered content after variable fill. */
+  variableDialogResolve: ((rendered: string) => void) | null;
 }
 
 // ─── Actions ────────────────────────────────────────────────────────────────
@@ -48,17 +90,52 @@ interface LibraryActions {
   setSelectedId: (id: string | null) => void;
   setViewMode: (mode: ViewMode) => void;
   toggleViewMode: () => void;
+  setSortMode: (mode: SortMode) => void;
 
   refreshPrompts: () => Promise<void>;
   deletePrompt: (id: string) => Promise<void>;
   recordUsage: (id: string) => Promise<void>;
 
+  refreshActions: () => Promise<void>;
+  createAction: (input: {
+    name: string;
+    description?: string | null;
+    group?: string;
+    payload: ActionResource['payload'];
+    shortcut?: string | null;
+    tags?: string[];
+  }) => Promise<void>;
+  updateAction: (
+    id: string,
+    input: {
+      name: string;
+      description?: string | null;
+      group?: string;
+      payload: ActionResource['payload'];
+      shortcut?: string | null;
+      tags?: string[];
+      enabled?: boolean;
+    },
+  ) => Promise<void>;
+  deleteAction: (id: string) => Promise<void>;
+  executeAction: (id: string) => Promise<void>;
+
+  /** Detect `{{variable}}` placeholders in content. */
+  detectVariables: (content: string) => string[];
+  /** Replace `{{variable}}` placeholders using provided values. */
+  resolveVariables: (content: string, values: Record<string, string>) => string;
+
   openEditor: (prompt?: PromptResource | null) => void;
   /** Open the editor for a new prompt with pre-filled content (e.g. "Save as Prompt"). */
   openEditorWithContent: (content: string) => void;
+  /** Open the action editor for a new or existing action. */
+  openActionEditor: (action?: ActionResource | null) => void;
   closeEditor: () => void;
   openInsert: () => void;
   closeInsert: () => void;
+  /** Open the variable dialog for content with `{{var}}` placeholders. */
+  openVariableDialog: (content: string) => Promise<string>;
+  closeVariableDialog: () => void;
 }
 
 // ─── Initial state ──────────────────────────────────────────────────────────
@@ -70,13 +147,21 @@ const initialState: LibraryState = {
   scopeFilter: 'all',
   selectedId: null,
   viewMode: 'grid',
+  sortMode: 'recent',
   prompts: [],
   promptsLoading: false,
   promptsError: null,
+  actions: [],
+  actionsLoading: false,
+  actionsError: null,
   editorOpen: false,
   editingPrompt: null,
   initialContent: null,
+  editingAction: null,
   insertOpen: false,
+  variableDialogOpen: false,
+  variableDialogContent: null,
+  variableDialogResolve: null,
 };
 
 // ─── Store ──────────────────────────────────────────────────────────────────
@@ -100,6 +185,7 @@ export const useLibraryStore = create<LibraryState & LibraryActions>()(
       setViewMode: (mode) => set({ viewMode: mode }),
       toggleViewMode: () =>
         set((state) => ({ viewMode: state.viewMode === 'grid' ? 'list' : 'grid' })),
+      setSortMode: (mode) => set({ sortMode: mode }),
 
       refreshPrompts: async () => {
         set({ promptsLoading: true, promptsError: null });
@@ -126,17 +212,124 @@ export const useLibraryStore = create<LibraryState & LibraryActions>()(
         }
       },
 
+      refreshActions: async () => {
+        set({ actionsLoading: true, actionsError: null });
+        try {
+          const actions = await listActions();
+          set({ actions, actionsLoading: false });
+        } catch (e) {
+          const message = String(e);
+          console.error('[libraryStore] refreshActions failed:', e);
+          set({ actionsLoading: false, actionsError: message });
+        }
+      },
+
+      createAction: async (input) => {
+        await saveActionApi(input);
+        await useLibraryStore.getState().refreshActions();
+      },
+
+      updateAction: async (id, input) => {
+        await updateActionApi(id, input);
+        await useLibraryStore.getState().refreshActions();
+      },
+
+      deleteAction: async (id: string) => {
+        await deleteActionApi(id);
+        set((state) => ({ actions: state.actions.filter((a) => a.id !== id) }));
+      },
+
+      executeAction: async (id: string) => {
+        try {
+          const result = await runActionApi(id);
+          if (result.dispatched) {
+            if (result.promptContent !== null) {
+              window.dispatchEvent(
+                new CustomEvent('neeko:insert-to-agent-input', {
+                  detail: { text: result.promptContent },
+                }),
+              );
+            }
+            if (result.command !== null) {
+              // Write to active terminal via the bridge exposed by ProjectWorkspace.
+              const insertToTerminal = (
+                window as unknown as { __neekoInsertToTerminal?: (text: string) => boolean }
+              ).__neekoInsertToTerminal;
+              insertToTerminal?.(result.command);
+            }
+            if (result.panelId !== null) {
+              useDockStore.getState().togglePanel(result.panelId);
+            }
+          }
+        } catch (e) {
+          console.error('[libraryStore] executeAction failed:', e);
+        }
+      },
+
+      detectVariables: (content: string) => {
+        const matches = content.match(/\{\{[a-zA-Z_][a-zA-Z0-9_]*\}\}/g);
+        if (!matches) return [];
+        const vars = new Set<string>();
+        for (const m of matches) {
+          vars.add(m.slice(2, -2));
+        }
+        return Array.from(vars);
+      },
+
+      resolveVariables: (content: string, values: Record<string, string>) =>
+        content.replace(/\{\{([a-zA-Z_][a-zA-Z0-9_]*)\}\}/g, (_match, name: string) =>
+          name in values ? values[name] : `{{${name}}}`,
+        ),
+
       openEditor: (prompt) =>
-        set({ editorOpen: true, editingPrompt: prompt ?? null, initialContent: null }),
+        set({
+          editorOpen: true,
+          editingPrompt: prompt ?? null,
+          initialContent: null,
+          editingAction: null,
+        }),
       openEditorWithContent: (content) =>
-        set({ editorOpen: true, editingPrompt: null, initialContent: content }),
-      closeEditor: () => set({ editorOpen: false, editingPrompt: null, initialContent: null }),
+        set({
+          editorOpen: true,
+          editingPrompt: null,
+          initialContent: content,
+          editingAction: null,
+        }),
+      openActionEditor: (action) =>
+        set({
+          editorOpen: true,
+          editingAction: action ?? null,
+          editingPrompt: null,
+          initialContent: null,
+        }),
+      closeEditor: () =>
+        set({ editorOpen: false, editingPrompt: null, initialContent: null, editingAction: null }),
       openInsert: () => set({ insertOpen: true }),
       closeInsert: () => set({ insertOpen: false }),
+      openVariableDialog: (content) =>
+        new Promise<string>((resolve) => {
+          set({
+            variableDialogOpen: true,
+            variableDialogContent: content,
+            variableDialogResolve: (rendered: string) => {
+              resolve(rendered);
+            },
+          });
+        }),
+      closeVariableDialog: () =>
+        set({
+          variableDialogOpen: false,
+          variableDialogContent: null,
+          variableDialogResolve: null,
+        }),
     }),
     {
       name: 'neeko-library',
-      partialize: (state) => ({ activeKind: state.activeKind, viewMode: state.viewMode }),
+      partialize: (state) => ({
+        activeKind: state.activeKind,
+        viewMode: state.viewMode,
+        sortMode: state.sortMode,
+      }),
     },
   ),
 );

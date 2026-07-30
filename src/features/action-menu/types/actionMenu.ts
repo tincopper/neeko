@@ -10,7 +10,8 @@ export type ActionId =
   | 'open-in-ide'
   | 'open-resource-library'
   | 'new-prompt'
-  | 'insert-prompt';
+  | 'insert-prompt'
+  | string;
 
 export type ActionGroup = 'terminal' | 'agent' | 'file' | 'quick' | 'library';
 
