@@ -38,9 +38,9 @@ const DEFAULT_DEACTIVATE_STOP_SECS: u64 = 30 * 60;
 const fn compute_restart_delay(attempt: u32, base_ms: u64) -> Duration {
     Duration::from_millis(base_ms * 2_u64.saturating_pow(attempt))
 }
-
 /// Whether a session should be restarted based on current attempt count.
-pub fn should_restart(current_count: u32, max_count: u32) -> bool {
+#[must_use]
+pub const fn should_restart(current_count: u32, max_count: u32) -> bool {
     current_count < max_count
 }
 

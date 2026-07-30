@@ -8,10 +8,7 @@ mod notify;
 mod request;
 mod status;
 mod utils;
+
 // Re-export for external use
 pub(crate) use instance::LspSession;
 pub(crate) use request::do_send_request;
-pub(crate) use status::LspSessionStatus;
-
-// Re-export for use by instance.rs
-pub(crate) use utils::{iso_timestamp_now, sample_process_memory_mb};

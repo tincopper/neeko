@@ -6,8 +6,6 @@ use std::sync::{Mutex, RwLock};
 use crate::lsp::session::LspSession;
 use crate::lsp::types::LspSessionInfo;
 
-const MAX_RESTART_COUNT: u32 = 5;
-
 /// Tracked open document for session restart recovery.
 #[derive(Clone)]
 pub(crate) struct OpenDocument {
@@ -115,10 +113,6 @@ impl LspSessionStore {
                 poisoned.into_inner().remove(key);
             }
         }
-    }
-
-    pub(crate) const fn max_restart() -> u32 {
-        MAX_RESTART_COUNT
     }
 
     pub(crate) fn register_open_document(&self, key: String, doc: OpenDocument) {
