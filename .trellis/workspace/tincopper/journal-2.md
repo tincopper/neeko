@@ -1559,3 +1559,36 @@ Implemented Resource Library feature: new panelId:library Dock panel, Prompts CR
 ### Next Steps
 
 - None - task complete
+
+
+## Session 104: Resource Library Phase 2: Actions, import/export, variables, dynamic palette
+
+**Date**: 2026-07-30
+**Task**: Resource Library Phase 2: Actions, import/export, variables, dynamic palette
+**Branch**: `feature-commands`
+
+### Summary
+
+Phase 2 complete: Action templates (8 commands + CRUD UI + run dispatch), JSON bundle import/export with conflict handling, {{variable}} fill with auto-fill (branch/projectName/filePath), sortMode (recent/frequent/alphabetical) with persist, Action Palette dynamic provider (top 5 recent). All 10 AC met. 844 FE + 445 Rust tests pass.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `8d225370` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
