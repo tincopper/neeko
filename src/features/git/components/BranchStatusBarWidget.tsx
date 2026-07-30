@@ -33,8 +33,6 @@ function BranchStatusBarWidget({
   const gitInfo: GitInfo | null = activeProject?.git_info ?? null;
   const projectId = activeProject?.id ?? '';
   const currentBranch = gitInfo?.current_branch ?? '';
-  const branches = gitInfo?.branches ?? [];
-  const worktrees = gitInfo?.worktrees ?? [];
 
   const activeWorktreePath = useWorktreeStore((s) => s.activeWorktreePath);
   const activeWorktreeBranch = useWorktreeStore((s) => s.activeWorktreeBranch);
@@ -48,8 +46,8 @@ function BranchStatusBarWidget({
   );
 
   const availableBranches = useMemo(
-    () => filterWorktreeBranches(branches, worktrees),
-    [worktrees, branches],
+    () => filterWorktreeBranches(gitInfo?.branches ?? [], gitInfo?.worktrees ?? []),
+    [gitInfo],
   );
 
   const aheadBehindMap = useMemo(() => {
