@@ -17,6 +17,7 @@ export class TauriLspTransport implements Transport {
   private handlers = new Set<(value: string) => void>();
   private unlistenDiag: UnlistenFn | null = null;
   private unlistenProgress: UnlistenFn | null = null;
+  private subscribed = false;
 
   constructor(
     private projectPath: string,
@@ -63,19 +64,15 @@ export class TauriLspTransport implements Transport {
   subscribe(handler: (value: string) => void): void {
     this.handlers.add(handler);
 
+    // Guard against double-call: only register Tauri listeners once
+    if (this.subscribed) return;
+    this.subscribed = true;
+
     // Listen for server-pushed diagnostics via Tauri events,
     // and convert them to LSP JSON-RPC notifications for the client.
     const diagEventName = `lsp-diagnostics-${this.projectPath}`;
     listen<{ uri: string; diagnostics: unknown[] }>(diagEventName, (event) => {
-      const notification = JSON.stringify({
-        jsonrpc: '2.0',
-        method: 'textDocument/publishDiagnostics',
-        params: {
-          uri: event.payload.uri,
-          diagnostics: event.payload.diagnostics,
-        },
-      });
-      handler(notification);
+      this.handlers.forEach((h) => h(JSON.stringify(event.payload)));
     }).then((unlisten) => {
       this.unlistenDiag = unlisten;
     });
@@ -83,27 +80,10 @@ export class TauriLspTransport implements Transport {
     // Listen for work-done progress events
     const progressEventName = `lsp-progress-${this.projectPath}`;
     listen<{
-      languageId: string;
       token: string;
-      kind: string;
-      message: string | null;
-      percentage: number | null;
+      value: { kind: string; title?: string; message?: string; percentage?: number };
     }>(progressEventName, (event) => {
-      const { token, kind, message, percentage } = event.payload;
-      let value: unknown;
-      if (kind === 'begin') {
-        value = { kind: 'begin', title: message ?? '' };
-      } else if (kind === 'report') {
-        value = { kind: 'report', message, percentage };
-      } else {
-        value = { kind: 'end', message };
-      }
-      const notification = JSON.stringify({
-        jsonrpc: '2.0',
-        method: '$/progress',
-        params: { token, value },
-      });
-      handler(notification);
+      this.handlers.forEach((h) => h(JSON.stringify(event.payload)));
     }).then((unlisten) => {
       this.unlistenProgress = unlisten;
     });

@@ -2,23 +2,28 @@
 
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
-use crate::common::runtime::AppRuntime;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use anyhow::Result;
 use serde_json::Value;
+use tauri::Emitter;
 
+use crate::common::runtime::AppRuntime;
 use crate::AppError;
 
 use super::diag_bus::{DiagnosticBus, DiagnosticEvent};
-#[cfg(test)]
-use super::plugin::CustomLspServerConfig;
 use super::plugin::{LspAutoStart, LspPlugin, LspPluginRegistry, LspSettings};
-use super::profile::{detect_project_profile_with_markers, ProjectLanguageProfile};
+use super::plugin_manager::LspPluginManager;
+use super::profile::detect_project_profile_with_markers;
+use super::session::{do_send_request, LspSession};
+use super::session_store::LspSessionStore;
 use super::transport::{IpcTransport, LspTransport};
 use super::types::{LspServerInfo, LspServerLogEntry, LspSessionInfo};
+
+// ── Re-exports ─────────────────────────────────────────────────────────
+
+pub use super::profile::ProjectLanguageProfile;
 
 // ── Constants ───────────────────────────────────────────────────────────
 
@@ -29,56 +34,44 @@ const RESTART_BASE_DELAY_MS: u64 = 500;
 /// Default: after a project is deactivated, wait this long before closing sessions.
 const DEFAULT_DEACTIVATE_STOP_SECS: u64 = 30 * 60;
 
-/// Tracked open document for session restart recovery.
-#[derive(Clone)]
-struct OpenDocument {
-    uri: String,
-    language_id: String,
-    text: String,
-    version: i64,
+/// Compute the restart delay with exponential backoff.
+const fn compute_restart_delay(attempt: u32, base_ms: u64) -> Duration {
+    Duration::from_millis(base_ms * 2_u64.saturating_pow(attempt))
 }
 
-/// Atomic request ID counter for LSP requests.
-type SessionKey = String;
+/// Whether a session should be restarted based on current attempt count.
+pub fn should_restart(current_count: u32, max_count: u32) -> bool {
+    current_count < max_count
+}
 
-fn session_key(project_path: &str, language_id: &str) -> SessionKey {
+fn session_key(project_path: &str, language_id: &str) -> String {
     format!("{}:{}", project_path, language_id)
 }
 
-/// Compute the restart delay with exponential backoff.
-const fn restart_delay(attempt: u32) -> Duration {
-    Duration::from_millis(RESTART_BASE_DELAY_MS * 2_u64.saturating_pow(attempt))
-}
-
-use super::session::{do_send_request, LspSession, LspSessionStatus};
-
 // ── LspManager ──────────────────────────────────────────────────────────
 
-/// Manages LSP server sessions with plugin-based language discovery
-/// and exponential backoff restart strategy.
+/// Coordinates LSP session lifecycle, plugin management, and project profiles.
+///
+/// Owns an [`LspSessionStore`] for session state and an [`LspPluginManager`]
+/// for plugin discovery. Cross-domain operations (e.g., deactivate closing
+/// sessions) are orchestrated here.
 pub struct LspManager {
     /// Business async executor (never bare `tokio::spawn`).
     runtime: Arc<AppRuntime>,
-    /// Active LSP sessions keyed by project:language.
-    sessions: Arc<Mutex<HashMap<SessionKey, LspSession>>>,
-    /// Open documents tracked per session for restart recovery.
-    open_docs: Arc<Mutex<HashMap<SessionKey, Vec<OpenDocument>>>>,
-    /// Registry of available LSP language plugins.
-    plugin_registry: Mutex<LspPluginRegistry>,
+    /// Session lifecycle and document tracking.
+    session_store: LspSessionStore,
+    /// Plugin discovery, registration, and project execution targets.
+    plugin_manager: LspPluginManager,
     /// Diagnostic event bus for pub/sub.
     diag_bus: DiagnosticBus,
     /// Tauri AppHandle for event emission.
     app_handle: Mutex<Option<tauri::AppHandle>>,
-    /// Cached language profiles per project path (from root-marker detection).
+    /// Cached language profiles per project path.
     profiles: Mutex<HashMap<String, ProjectLanguageProfile>>,
     /// Generation counter per project path to cancel pending deactivate timers.
-    deactivate_gens: Arc<Mutex<HashMap<String, u64>>>,
+    deactivate_gens: Mutex<HashMap<String, u64>>,
     /// Seconds after deactivation before closing sessions (from settings).
     deactivate_stop_secs: Mutex<u64>,
-    /// Default auto-start policy for built-in languages.
-    default_auto_start: Mutex<LspAutoStart>,
-    /// Project path → execution target (Local/WSL/SSH) for env-aware binary checks.
-    project_exec_targets: Mutex<HashMap<String, crate::common::executor::factory::ExecTarget>>,
 }
 
 impl LspManager {
@@ -89,16 +82,13 @@ impl LspManager {
 
         Self {
             runtime,
-            sessions: Arc::new(Mutex::new(HashMap::new())),
-            open_docs: Arc::new(Mutex::new(HashMap::new())),
-            plugin_registry: Mutex::new(LspPluginRegistry::with_defaults()),
+            session_store: LspSessionStore::new(),
+            plugin_manager: LspPluginManager::new(),
             diag_bus,
             app_handle: Mutex::new(None),
             profiles: Mutex::new(HashMap::new()),
-            deactivate_gens: Arc::new(Mutex::new(HashMap::new())),
+            deactivate_gens: Mutex::new(HashMap::new()),
             deactivate_stop_secs: Mutex::new(DEFAULT_DEACTIVATE_STOP_SECS),
-            default_auto_start: Mutex::new(LspAutoStart::OnFirstFile),
-            project_exec_targets: Mutex::new(HashMap::new()),
         }
     }
 
@@ -108,24 +98,16 @@ impl LspManager {
         project_path: &str,
         target: crate::common::executor::factory::ExecTarget,
     ) {
-        if let Ok(mut map) = self.project_exec_targets.lock() {
-            map.insert(project_path.to_string(), target);
-        }
+        self.plugin_manager
+            .set_project_exec_target(project_path, target);
     }
 
     /// Execution target previously recorded for a project path.
-    ///
-    /// Returns `None` when never set — callers must resolve via project
-    /// environment and call [`Self::set_project_exec_target`] first.
-    /// Never invents `Local`.
     pub fn project_exec_target(
         &self,
         project_path: &str,
     ) -> Option<crate::common::executor::factory::ExecTarget> {
-        self.project_exec_targets
-            .lock()
-            .ok()
-            .and_then(|m| m.get(project_path).cloned())
+        self.plugin_manager.project_exec_target(project_path)
     }
 
     /// Require a recorded execution target, or return a clear LSP error.
@@ -133,12 +115,8 @@ impl LspManager {
         &self,
         project_path: &str,
     ) -> Result<crate::common::executor::factory::ExecTarget, AppError> {
-        self.project_exec_target(project_path).ok_or_else(|| {
-            AppError::Lsp(format!(
-                "No execution environment recorded for project path '{project_path}'. \
-                 Activate the project (or call detect/check with project context) before starting LSP."
-            ))
-        })
+        self.plugin_manager
+            .require_project_exec_target(project_path)
     }
 
     /// Convenience constructor for tests / simple call sites.
@@ -154,37 +132,29 @@ impl LspManager {
 
     /// Resolve language id for a file path from the live plugin registry (custom first).
     pub fn resolve_language_for_path(&self, file_path: &str) -> Option<String> {
-        let ext = std::path::Path::new(file_path)
-            .extension()
-            .and_then(|e| e.to_str())
-            .unwrap_or("");
-        self.plugin_registry
-            .lock()
-            .ok()
-            .and_then(|r| r.resolve_by_extension(ext).map(|p| p.language_id.clone()))
+        self.plugin_manager.resolve_language_for_path(file_path)
     }
 
     /// Apply LSP settings from config.json (`lsp` object).
     pub fn apply_settings(&self, settings: &LspSettings) {
-        *self.deactivate_stop_secs.lock().expect("infallible") =
-            settings.deactivate_stop_minutes.saturating_mul(60).max(60);
-        *self.default_auto_start.lock().expect("infallible") =
-            LspAutoStart::parse(&settings.auto_start);
-
-        let mut registry = self.plugin_registry.lock().expect("infallible");
-        registry.reset_to_defaults();
-        for custom in &settings.custom_servers {
-            if custom.language_id.trim().is_empty() || custom.command.is_empty() {
-                log::warn!("[LSP] Skipping invalid custom server id={}", custom.id);
-                continue;
-            }
-            registry.register(LspPlugin::from_custom(custom));
-            log::info!(
-                "[LSP] Registered custom server language={} cmd={:?}",
-                custom.language_id,
-                custom.command
-            );
+        if let Err(e) = self._apply_settings_internal(settings) {
+            log::warn!("[LSP] Failed to apply settings: {}", e);
         }
+    }
+
+    fn _apply_settings_internal(&self, settings: &LspSettings) -> Result<(), AppError> {
+        *self
+            .deactivate_stop_secs
+            .lock()
+            .map_err(|e| AppError::Lsp(e.to_string()))? =
+            settings.deactivate_stop_minutes.saturating_mul(60).max(60);
+
+        let policy = LspAutoStart::parse(&settings.auto_start);
+        self.plugin_manager.set_default_auto_start(policy);
+
+        self.plugin_manager.apply_settings(settings)?;
+
+        Ok(())
     }
 
     /// Apply LSP settings from a full app config JSON value.
@@ -199,36 +169,24 @@ impl LspManager {
 
     /// Get the extension-to-language map from the plugin registry.
     pub fn extension_map(&self) -> Vec<super::plugin::LspExtensionMapEntry> {
-        self.plugin_registry
-            .lock()
-            .expect("infallible")
-            .extension_map()
+        self.plugin_manager.extension_map()
     }
 
     /// Extension conflicts from the live registry (later registration wins).
     pub fn extension_conflicts(&self) -> Vec<super::plugin::LspExtensionConflict> {
-        self.plugin_registry
-            .lock()
-            .expect("infallible")
-            .extension_conflicts()
+        self.plugin_manager.extension_conflicts()
     }
 
     /// Get a snapshot of current LSP settings.
     pub fn get_settings_snapshot(&self) -> LspSettings {
-        // Reconstruct from runtime state is incomplete for custom list —
-        // prefer reading config; this returns defaults + empty customs for API convenience.
+        let auto_start = self.plugin_manager.default_auto_start();
         LspSettings {
-            auto_start: self
-                .default_auto_start
-                .lock()
-                .expect("infallible")
-                .as_str()
-                .to_string(),
+            auto_start: auto_start.as_str().to_string(),
             deactivate_stop_minutes: self
                 .deactivate_stop_secs
                 .lock()
-                .expect("infallible")
-                .saturating_div(60),
+                .map(|x| x.saturating_div(60))
+                .unwrap_or_default(),
             custom_servers: Vec::new(),
         }
     }
@@ -238,25 +196,19 @@ impl LspManager {
         &self.diag_bus
     }
 
-    /// Access the plugin registry (for listing available languages from the frontend).
-    pub const fn plugin_registry(&self) -> &Mutex<LspPluginRegistry> {
-        &self.plugin_registry
+    /// Access the plugin manager.
+    pub const fn plugin_manager(&self) -> &LspPluginManager {
+        &self.plugin_manager
     }
 
     /// Server binary name for a language id from the live plugin registry.
     pub fn plugin_server_binary(&self, language_id: &str) -> Option<String> {
-        self.plugin_registry.lock().ok().and_then(|r| {
-            r.resolve_by_language(language_id)
-                .map(|p| p.server_binary.clone())
-        })
+        self.plugin_manager.plugin_server_binary(language_id)
     }
 
     /// Register a custom LSP plugin at runtime (e.g. from user settings).
     pub fn register_plugin(&self, plugin: LspPlugin) {
-        self.plugin_registry
-            .lock()
-            .expect("infallible")
-            .register(plugin);
+        self.plugin_manager.register_plugin(plugin);
     }
 
     /// Register an open document for session restart recovery.
@@ -269,51 +221,36 @@ impl LspManager {
         version: i64,
     ) {
         let key = session_key(project_path, language_id);
-        log::info!("[LSP] Register open doc: {} (key={})", uri, key);
-        let doc = OpenDocument {
-            uri: uri.to_string(),
-            language_id: language_id.to_string(),
-            text: text.to_string(),
-            version,
-        };
-        if let Ok(mut map) = self.open_docs.lock() {
-            map.entry(key).or_default().push(doc);
-        }
+        self.session_store.register_open_document(
+            key,
+            super::session_store::OpenDocument {
+                uri: uri.to_string(),
+                language_id: language_id.to_string(),
+                text: text.to_string(),
+                version,
+            },
+        );
     }
 
     /// Check whether a document is already registered as open for this session.
     pub fn is_document_open(&self, project_path: &str, language_id: &str, uri: &str) -> bool {
         let key = session_key(project_path, language_id);
-        if let Ok(map) = self.open_docs.lock() {
-            if let Some(docs) = map.get(&key) {
-                return docs.iter().any(|d| d.uri == uri);
-            }
-        }
-        false
+        self.session_store.is_document_open(&key, uri)
     }
 
     /// Unregister a closed document.
     pub fn unregister_open_document(&self, project_path: &str, language_id: &str, uri: &str) {
         let key = session_key(project_path, language_id);
-        if let Ok(mut map) = self.open_docs.lock() {
-            if let Some(docs) = map.get_mut(&key) {
-                docs.retain(|d| d.uri != uri);
-                if docs.is_empty() {
-                    map.remove(&key);
-                }
-            }
-        }
+        self.session_store.unregister_open_document(&key, uri);
     }
 
     /// Set the Tauri AppHandle and connect the diagnostic bus to event emission.
     pub fn set_app_handle(&self, app_handle: tauri::AppHandle) {
-        // Connect the diagnostic bus to Tauri event emission
         let ah = app_handle.clone();
         let diag_subscriber = self.diag_bus.subscribe(move |event: &DiagnosticEvent| {
             let transport = IpcTransport::new(ah.clone());
             transport.push_diagnostics(&event.project_path, &event.uri, event.diagnostics.clone());
         });
-        // Leak the subscription intentionally — it lives for the app lifetime
         std::mem::forget(diag_subscriber);
 
         if let Ok(mut handle) = self.app_handle.lock() {
@@ -328,41 +265,34 @@ impl LspManager {
         language_id: &str,
     ) -> Result<String, AppError> {
         let key = session_key(project_path, language_id);
-        let mut sessions = self.sessions.lock().expect("infallible: lsp sessions lock");
 
-        if let Some(session) = sessions.get(&key) {
-            if session.is_alive() {
-                return Ok(key);
-            }
-            log::warn!("[LSP] Session {} is dead, removing", key);
-            sessions.remove(&key);
+        // Fast path: check if session exists and is alive (short lock)
+        if self.session_store.is_alive(&key) {
+            return Ok(key);
         }
 
-        // Look up plugin via registry
-        let plugin = {
-            let registry = self.plugin_registry.lock().expect("infallible");
-            registry
-                .resolve_by_language(language_id)
-                .cloned()
-                .ok_or_else(|| {
-                    AppError::Lsp(format!(
-                        "No LSP plugin registered for language: {}",
-                        language_id
-                    ))
-                })?
-        };
+        // Slow path: create session without holding the sessions lock
+        let plugin = self
+            .plugin_manager
+            .resolve_by_language(language_id)
+            .ok_or_else(|| {
+                AppError::Lsp(format!(
+                    "No LSP plugin registered for language: {}",
+                    language_id
+                ))
+            })?;
 
         let app_handle = self
             .app_handle
             .lock()
-            .expect("infallible: lsp app_handle lock")
+            .map_err(|e| AppError::Lsp(e.to_string()))?
             .clone()
             .ok_or_else(|| AppError::Lsp("AppHandle not set".to_string()))?;
 
         let diag_bus = Arc::new(self.diag_bus.clone());
         let transport: Arc<dyn LspTransport> = Arc::new(IpcTransport::new(app_handle.clone()));
-
         let exec_target = self.require_project_exec_target(project_path)?;
+
         let session = LspSession::new(
             &plugin,
             project_path,
@@ -373,51 +303,33 @@ impl LspManager {
         )
         .map_err(|e| AppError::Lsp(e.to_string()))?;
 
-        // Re-open any previously open documents for this session (covers restart)
-        let open_count = self.reopen_documents(&key, &session);
+        // Insert session, handling concurrent creation
+        if self.session_store.contains(&key) && self.session_store.is_alive(&key) {
+            return Ok(key);
+        }
+        let open_count = self
+            .session_store
+            .reopen_documents(&key, |uri, lang, ver, text| {
+                let params = serde_json::json!({
+                    "textDocument": {
+                        "uri": uri,
+                        "languageId": lang,
+                        "version": ver,
+                        "text": text,
+                    }
+                });
+                session
+                    .send_notification_raw("textDocument/didOpen", params)
+                    .is_ok()
+            });
         log::info!(
             "[LSP] Session {} created for {} (re-opened {} doc(s))",
             key,
             plugin.server_binary,
             open_count
         );
-
-        sessions.insert(key.clone(), session);
+        self.session_store.insert(key.clone(), session);
         Ok(key)
-    }
-
-    /// Re-open all tracked documents for a session key (after restart).
-    fn reopen_documents(&self, key: &str, session: &LspSession) -> usize {
-        let Ok(docs_map) = self.open_docs.lock() else {
-            return 0;
-        };
-        let Some(docs) = docs_map.get(key) else {
-            return 0;
-        };
-        let mut count = 0;
-        for doc in docs {
-            log::info!(
-                "[LSP] Re-opening document {} after session restart",
-                doc.uri
-            );
-            let open_params = serde_json::json!({
-                "textDocument": {
-                    "uri": doc.uri.clone(),
-                    "languageId": doc.language_id.clone(),
-                    "version": doc.version,
-                    "text": doc.text.clone(),
-                }
-            });
-            let ok = session
-                .send_notification_raw("textDocument/didOpen", open_params)
-                .is_ok();
-            if ok {
-                count += 1;
-            } else {
-                log::warn!("[LSP] Failed to re-open document: {}", doc.uri);
-            }
-        }
-        count
     }
 
     /// Send an LSP request asynchronously, restarting the session if needed.
@@ -431,51 +343,43 @@ impl LspManager {
         let key = session_key(project_path, language_id);
 
         // Fast path: extract session ingredients, drop lock before awaiting
-        let fast_result = {
-            let sessions = self.sessions.lock().expect("infallible");
-
-            if let Some(session) = sessions.get(&key) {
-                if session.is_alive() {
-                    let pending = Arc::clone(&session.pending);
-                    let writer = session.writer.clone();
-                    let inflight = Arc::clone(&session.inflight);
-                    Some((pending, writer, inflight))
-                } else {
-                    log::warn!("[LSP] Session {} is not alive, will restart", key);
-                    None
-                }
-            } else {
-                None
-            }
-        };
-
-        if let Some((pending, writer, inflight)) = fast_result {
-            match do_send_request(pending, writer, inflight, method, params.clone()).await {
-                Ok(val) => return Ok(val),
-                Err(e) => {
-                    log::warn!(
-                        "[LSP] send_request_async failed for {}, reason: {}. Will restart.",
-                        key,
-                        e
-                    );
+        if self.session_store.is_alive(&key) {
+            if let Some((pending, writer, inflight)) = self.session_store.with_session(&key, |s| {
+                (
+                    Arc::clone(&s.pending),
+                    s.writer.clone(),
+                    Arc::clone(&s.inflight),
+                )
+            }) {
+                match do_send_request(pending, writer, inflight, method, params.clone()).await {
+                    Ok(val) => return Ok(val),
+                    Err(e) => {
+                        log::warn!(
+                            "[LSP] send_request_async failed for {}, reason: {}. Will restart.",
+                            key,
+                            e
+                        );
+                    }
                 }
             }
         }
 
-        // Restart path: gather state under lock, then drop it
-        let attempt = {
-            let mut sessions = self.sessions.lock().expect("infallible");
-            let attempt = sessions.get(&key).map(|s| s.restart_count).unwrap_or(0);
-            sessions.remove(&key);
-            attempt
-        };
+        // Restart path
+        let prev_count = self.session_store.restart_count(&key);
 
-        if attempt > 0 && attempt < MAX_RESTART_COUNT {
-            let delay = restart_delay(attempt);
+        if prev_count >= MAX_RESTART_COUNT {
+            return Err(AppError::Lsp(format!(
+                "Max restart count ({}) exceeded for {}",
+                MAX_RESTART_COUNT, key
+            )));
+        }
+
+        if prev_count > 0 {
+            let delay = compute_restart_delay(prev_count, RESTART_BASE_DELAY_MS);
             log::warn!(
                 "[LSP] Backoff: waiting {:?} before restart attempt {} for {}",
                 delay,
-                attempt + 1,
+                prev_count + 1,
                 key
             );
             tokio::time::sleep(delay).await;
@@ -490,28 +394,25 @@ impl LspManager {
             .await
             .map_err(|e| AppError::Lsp(format!("spawn_blocking join error: {}", e)))??;
 
-        let (pending, writer, inflight) = {
-            let sessions = self.sessions.lock().expect("infallible");
-            match sessions.get(&key) {
-                Some(session) => (
-                    Some(Arc::clone(&session.pending)),
-                    Some(session.writer.clone()),
-                    Some(Arc::clone(&session.inflight)),
-                ),
-                None => (None, None, None),
-            }
-        };
+        // Increment restart_count
+        self.session_store.increment_restart(&key);
 
-        match (pending, writer, inflight) {
-            (Some(pending), Some(writer), Some(inflight)) => {
-                do_send_request(pending, writer, inflight, method, params)
-                    .await
-                    .map_err(|e| AppError::Lsp(e.to_string()))
-            }
-            _ => Err(AppError::Lsp(format!(
+        // Get session ingredients for the request
+        if let Some((pending, writer, inflight)) = self.session_store.with_session(&key, |s| {
+            (
+                Arc::clone(&s.pending),
+                s.writer.clone(),
+                Arc::clone(&s.inflight),
+            )
+        }) {
+            do_send_request(pending, writer, inflight, method, params)
+                .await
+                .map_err(|e| AppError::Lsp(e.to_string()))
+        } else {
+            Err(AppError::Lsp(format!(
                 "Failed to create LSP session: {}",
                 key
-            ))),
+            )))
         }
     }
 
@@ -524,48 +425,59 @@ impl LspManager {
         params: Value,
     ) -> Result<(), AppError> {
         let key = session_key(project_path, language_id);
-        let sessions = self.sessions.lock().expect("infallible: lsp sessions lock");
-
-        let session = sessions
-            .get(&key)
-            .ok_or_else(|| AppError::Lsp(format!("No LSP session for: {}", key)))?;
-
-        session
-            .send_notification_raw(method, params)
-            .map_err(|e| AppError::Lsp(e.to_string()))
+        self.session_store
+            .with_session(&key, |session| {
+                session
+                    .send_notification_raw(method, params)
+                    .map_err(|e| AppError::Lsp(e.to_string()))
+            })
+            .unwrap_or_else(|| Err(AppError::Lsp(format!("No LSP session for: {}", key))))
     }
 
     /// Close an LSP session for a project and language.
     pub fn close_session(&self, project_path: &str, language_id: &str) -> Result<(), AppError> {
         let key = session_key(project_path, language_id);
-        let mut sessions = self.sessions.lock().expect("infallible: lsp sessions lock");
-
-        if let Some(mut s) = sessions.remove(&key) {
+        let session = self.session_store.close_session(&key);
+        if let Some(mut s) = session {
             s.transport
                 .push_session_event(project_path, language_id, "stopped", None, None);
-            let _ = s.send_notification_raw("shutdown", serde_json::json!({}));
-            s.kill_child();
-            log::info!("[LSP] Closed session: {}", key);
-        }
-        if let Ok(mut docs) = self.open_docs.lock() {
-            docs.remove(&key);
+            let pp = project_path.to_string();
+            let lid = language_id.to_string();
+            self.runtime.spawn_blocking(move || {
+                let _ = s.send_notification_raw("shutdown", serde_json::json!({}));
+                std::thread::sleep(Duration::from_millis(100));
+                s.kill_child();
+                log::info!("[LSP] Closed session: {pp}:{lid}");
+            });
         }
         Ok(())
     }
 
-    /// Close every LSP session belonging to `project_path`.
     pub fn close_sessions_for_project(&self, project_path: &str) {
-        let to_close: Vec<(String, String)> = {
-            let sessions = self.sessions.lock().expect("infallible");
-            sessions
-                .values()
-                .filter(|s| s.project_path == project_path)
-                .map(|s| (s.project_path.clone(), s.language_id.clone()))
-                .collect()
-        };
-        for (pp, lid) in to_close {
-            let _ = self.close_session(&pp, &lid);
+        let languages = self
+            .session_store
+            .session_language_ids_for_project(project_path);
+        let mut sessions: Vec<LspSession> = Vec::new();
+        for lid in &languages {
+            let key = session_key(project_path, lid);
+            if let Some(session) = self.session_store.close_session(&key) {
+                session
+                    .transport
+                    .push_session_event(project_path, lid, "stopped", None, None);
+                let _ = session.send_notification_raw("shutdown", serde_json::json!({}));
+                sessions.push(session);
+            }
         }
+
+        if !sessions.is_empty() {
+            self.runtime.spawn_blocking(move || {
+                for mut s in sessions {
+                    std::thread::sleep(Duration::from_millis(10));
+                    s.kill_child();
+                }
+            });
+        }
+
         if let Ok(mut profiles) = self.profiles.lock() {
             profiles.remove(project_path);
         }
@@ -577,48 +489,41 @@ impl LspManager {
 
     /// Invalidate any pending deactivate timer for this project.
     pub fn cancel_deactivate(&self, project_path: &str) {
-        let mut gens = self.deactivate_gens.lock().expect("infallible");
-        let entry = gens.entry(project_path.to_string()).or_insert(0);
-        *entry = entry.saturating_add(1);
+        if let Ok(mut gens) = self.deactivate_gens.lock() {
+            let entry = gens.entry(project_path.to_string()).or_insert(0);
+            *entry = entry.saturating_add(1);
+        }
         log::debug!("[LSP] Cancelled deactivate timer for {}", project_path);
     }
 
     /// After leaving a project, schedule session teardown in DEACTIVATE_STOP_SECS.
     pub fn schedule_deactivate(self: &Arc<Self>, project_path: String) {
         let my_gen = {
-            let mut gens = self.deactivate_gens.lock().expect("infallible");
-            let entry = gens.entry(project_path.clone()).or_insert(0);
-            *entry = entry.saturating_add(1);
-            *entry
+            if let Ok(mut gens) = self.deactivate_gens.lock() {
+                let entry = gens.entry(project_path.clone()).or_insert(0);
+                *entry = entry.saturating_add(1);
+                *entry
+            } else {
+                0
+            }
         };
 
-        let stop_secs = *self.deactivate_stop_secs.lock().expect("infallible");
+        let stop_secs = self
+            .deactivate_stop_secs
+            .lock()
+            .map(|x| *x)
+            .unwrap_or(DEFAULT_DEACTIVATE_STOP_SECS);
         let this = Arc::clone(self);
         let pp = project_path.clone();
-        // Business runtime — safe from sync Tauri commands (no current Handle).
         self.runtime.spawn(async move {
             tokio::time::sleep(Duration::from_secs(stop_secs)).await;
             let current = this
                 .deactivate_gens
                 .lock()
-                .expect("infallible")
-                .get(&pp)
-                .copied()
+                .map(|g| g.get(&pp).copied().unwrap_or(0))
                 .unwrap_or(0);
             if current == my_gen {
-                log::info!(
-                    "[LSP] Project deactivated for {}s, stopping sessions: {}",
-                    stop_secs,
-                    pp
-                );
                 this.close_sessions_for_project(&pp);
-            } else {
-                log::debug!(
-                    "[LSP] Deactivate timer for {} superseded (gen {} → {})",
-                    pp,
-                    my_gen,
-                    current
-                );
             }
         });
         log::info!(
@@ -629,22 +534,13 @@ impl LspManager {
     }
 
     /// Detect profile, cancel stop timer, emit profile event. Call when project becomes active.
-    /// If autoStart is onProjectSelect, spawns the primary language server in the background.
-    ///
-    /// `primary_override` is the project-level primary language preference (from
-    /// `Project.primary_language`). When set, it wins over root-marker priority.
     pub fn activate_project(
         self: &Arc<Self>,
         project_path: &str,
         primary_override: Option<&str>,
     ) -> ProjectLanguageProfile {
         self.cancel_deactivate(project_path);
-        // All markers (built-in + custom) come from the live plugin registry.
-        let markers = self
-            .plugin_registry
-            .lock()
-            .expect("infallible")
-            .detection_markers();
+        let markers = self.plugin_manager.detection_markers();
         let profile = detect_project_profile_with_markers(project_path, &markers, primary_override);
         if let Ok(mut map) = self.profiles.lock() {
             map.insert(project_path.to_string(), profile.clone());
@@ -652,16 +548,14 @@ impl LspManager {
 
         if let Ok(handle) = self.app_handle.lock() {
             if let Some(app) = handle.as_ref() {
-                use tauri::Emitter;
                 if let Err(e) = app.emit("lsp-project-profile", &profile) {
                     log::warn!("[LSP] Failed to emit global profile event: {}", e);
                 }
             }
         }
 
-        // Optional: start primary when policy is onProjectSelect (via AppRuntime).
         if let Some(ref primary) = profile.primary {
-            let policy = self.resolve_auto_start(&primary.language_id);
+            let policy = self.plugin_manager.resolve_auto_start(&primary.language_id);
             if policy == LspAutoStart::OnProjectSelect {
                 let this = Arc::clone(self);
                 let pp = project_path.to_string();
@@ -688,16 +582,6 @@ impl LspManager {
         profile
     }
 
-    fn resolve_auto_start(&self, language_id: &str) -> LspAutoStart {
-        let registry = self.plugin_registry.lock().expect("infallible");
-        if let Some(p) = registry.resolve_by_language(language_id) {
-            if p.is_custom {
-                return p.auto_start;
-            }
-        }
-        *self.default_auto_start.lock().expect("infallible")
-    }
-
     /// Cached profile if available.
     pub fn get_profile(&self, project_path: &str) -> Option<ProjectLanguageProfile> {
         self.profiles
@@ -708,52 +592,31 @@ impl LspManager {
 
     /// Close all active LSP sessions.
     pub fn close_all_sessions(&self) {
-        let mut sessions = self.sessions.lock().expect("infallible: lsp sessions lock");
-        for (key, mut s) in sessions.drain() {
-            s.transport
-                .push_session_event(&s.project_path, &s.language_id, "stopped", None, None);
-            let _ = s.send_notification_raw("shutdown", serde_json::json!({}));
-            s.kill_child();
-            log::info!("[LSP] Closed session: {}", key);
+        let sessions = self.session_store.close_all();
+        if !sessions.is_empty() {
+            self.runtime.spawn_blocking(move || {
+                for mut s in sessions {
+                    s.kill_child();
+                }
+            });
         }
-        if let Ok(mut docs) = self.open_docs.lock() {
-            docs.clear();
-        }
-        log::info!("[LSP] Closed all sessions");
     }
 
     /// List all active LSP sessions.
     pub fn list_sessions(&self) -> Vec<LspSessionInfo> {
-        let sessions = self.sessions.lock().expect("infallible: lsp sessions lock");
-
-        sessions
-            .values()
-            .map(|s| LspSessionInfo {
-                language_id: s.language_id.clone(),
-                project_path: s.project_path.clone(),
-                server_name: s.server_name.clone(),
-                status: s.status.as_str().to_string(),
-                status_message: match &s.status {
-                    LspSessionStatus::Error(msg) => Some(msg.clone()),
-                    _ => None,
-                },
-                progress_pct: None,
-            })
-            .collect()
+        self.session_store.list()
     }
 
-    /// Runtime metadata (version/commit/date + live memory snapshot) for a session.
+    /// Runtime metadata for a session.
     pub fn get_server_info(
         &self,
         project_path: &str,
         language_id: &str,
     ) -> Result<LspServerInfo, AppError> {
         let key = session_key(project_path, language_id);
-        let sessions = self.sessions.lock().expect("infallible: lsp sessions lock");
-        sessions
-            .get(&key)
-            .map(LspSession::snapshot_server_info)
-            .ok_or_else(|| AppError::Lsp(format!("No LSP session for: {key}")))
+        self.session_store
+            .with_session(&key, |s| s.server_info.clone())
+            .ok_or_else(|| AppError::Lsp(format!("No LSP session for: {}", key)))
     }
 
     /// Recent stderr log lines for a session (newest last).
@@ -764,26 +627,27 @@ impl LspManager {
         limit: Option<usize>,
     ) -> Result<Vec<LspServerLogEntry>, AppError> {
         let key = session_key(project_path, language_id);
-        let sessions = self.sessions.lock().expect("infallible: lsp sessions lock");
-        let session = sessions
-            .get(&key)
-            .ok_or_else(|| AppError::Lsp(format!("No LSP session for: {key}")))?;
-        Ok(session.snapshot_logs(limit.unwrap_or(500)))
+        self.session_store
+            .with_session(&key, |s| {
+                s.log_buffer
+                    .lock()
+                    .map(|r| r.snapshot(limit.unwrap_or(500)))
+                    .unwrap_or_default()
+            })
+            .ok_or_else(|| AppError::Lsp(format!("No LSP session for: {}", key)))
     }
 
     /// Language ids of all active sessions for a project path.
     pub fn session_language_ids_for_project(&self, project_path: &str) -> Vec<String> {
-        let sessions = self.sessions.lock().expect("infallible: lsp sessions lock");
-        sessions
-            .values()
-            .filter(|s| s.project_path == project_path)
-            .map(|s| s.language_id.clone())
-            .collect()
+        self.session_store
+            .session_language_ids_for_project(project_path)
     }
 
     /// Stop every active session for a project (keeps profile cache).
     pub fn stop_all_sessions_for_project(&self, project_path: &str) {
-        let languages = self.session_language_ids_for_project(project_path);
+        let languages = self
+            .session_store
+            .session_language_ids_for_project(project_path);
         for lid in languages {
             let _ = self.close_session(project_path, &lid);
         }
@@ -791,7 +655,9 @@ impl LspManager {
 
     /// Restart every active session for a project (stop then re-create).
     pub fn restart_all_sessions_for_project(&self, project_path: &str) -> Result<(), AppError> {
-        let languages = self.session_language_ids_for_project(project_path);
+        let languages = self
+            .session_store
+            .session_language_ids_for_project(project_path);
         for lid in languages {
             let _ = self.close_session(project_path, &lid);
             self.get_or_create_session(project_path, &lid)?;
@@ -800,11 +666,10 @@ impl LspManager {
     }
 
     /// Get cached server capabilities for a session.
-    /// Used by lsp_transport to respond to @codemirror/lsp-client initialize.
     pub fn get_capabilities(&self, project_path: &str, language_id: &str) -> Option<Value> {
         let key = session_key(project_path, language_id);
-        let sessions = self.sessions.lock().expect("infallible: lsp sessions lock");
-        sessions.get(&key).map(|s| s.server_capabilities.clone())
+        self.session_store
+            .with_session(&key, |s| s.server_capabilities.clone())
     }
 
     /// Resolve a file path to an LSP language id via extension lookup.
@@ -827,11 +692,12 @@ impl Default for LspManager {
     }
 }
 
-// ── Tests ───────────────────────────────────────────────────────────────
+// ── Tests ──────────────────────────────────────────────────────────────
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::lsp::plugin::CustomLspServerConfig;
 
     #[test]
     fn test_session_key() {
@@ -841,14 +707,20 @@ mod tests {
 
     #[test]
     fn test_restart_delay() {
-        let d0 = restart_delay(0);
+        let d0 = compute_restart_delay(0, 500);
         assert_eq!(d0, Duration::from_millis(500));
-
-        let d2 = restart_delay(2);
+        let d2 = compute_restart_delay(2, 500);
         assert_eq!(d2, Duration::from_millis(2000));
-
-        let d4 = restart_delay(4);
+        let d4 = compute_restart_delay(4, 500);
         assert_eq!(d4, Duration::from_millis(8000));
+    }
+
+    #[test]
+    fn test_should_restart_within_limit() {
+        assert!(should_restart(0, 5));
+        assert!(should_restart(4, 5));
+        assert!(!should_restart(5, 5));
+        assert!(!should_restart(10, 5));
     }
 
     #[test]
@@ -867,11 +739,12 @@ mod tests {
     #[test]
     fn test_plugin_registry_integration() {
         let manager = LspManager::new_default();
-        let registry = manager.plugin_registry.lock().unwrap();
-
-        assert!(registry.resolve_by_extension("rs").is_some());
-        assert!(registry.resolve_by_extension("py").is_some());
-        assert!(registry.resolve_by_extension("go").is_some());
+        assert!(manager.plugin_manager.resolve_by_language("rust").is_some());
+        assert!(manager
+            .plugin_manager
+            .resolve_by_language("python")
+            .is_some());
+        assert!(manager.plugin_manager.resolve_by_language("go").is_some());
     }
 
     #[test]
@@ -916,16 +789,11 @@ mod tests {
             auto_start: None,
             initialization_options: None,
         }));
-
-        let registry = manager.plugin_registry.lock().unwrap();
-        assert!(registry.is_registered("testlang"));
-        assert_eq!(
-            registry.resolve_by_extension("tl").unwrap().language_id,
-            "testlang"
-        );
+        assert!(manager
+            .plugin_manager
+            .resolve_by_language("testlang")
+            .is_some());
     }
-
-    // ── LspSessionStatus tests ──────────────────────────────────────────
 
     #[test]
     fn test_session_info_has_status_field() {
@@ -942,20 +810,6 @@ mod tests {
     }
 
     #[test]
-    fn test_session_info_has_status_message_and_progress() {
-        let info = LspSessionInfo {
-            language_id: "python".into(),
-            project_path: "/test".into(),
-            server_name: "pyright".into(),
-            status: "indexing".into(),
-            status_message: Some("Indexing workspace...".into()),
-            progress_pct: Some(45),
-        };
-        assert_eq!(info.status_message, Some("Indexing workspace...".into()));
-        assert_eq!(info.progress_pct, Some(45));
-    }
-
-    #[test]
     fn test_session_info_serialization_includes_status() {
         let info = LspSessionInfo {
             language_id: "go".into(),
@@ -969,7 +823,6 @@ mod tests {
         let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
         assert_eq!(parsed["status"].as_str(), Some("starting"));
         assert_eq!(parsed["connected"].as_bool(), None);
-        // Old `connected` field must not exist
         assert!(parsed.get("connected").is_none());
     }
 }

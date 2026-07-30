@@ -8,10 +8,12 @@ pub mod inflight;
 pub mod installer;
 pub mod manager;
 pub mod plugin;
+pub mod plugin_manager;
 pub mod process;
 pub mod profile;
 pub mod server_request;
 pub mod session;
+pub mod session_store;
 pub mod symbol;
 pub mod transport;
 /// Serializable types for LSP IPC with the frontend.
@@ -22,5 +24,7 @@ pub use plugin::{
     CustomLspServerConfig, LspAutoStart, LspExtensionConflict, LspExtensionMapEntry, LspPlugin,
     LspPluginRegistry, LspSettings,
 };
+pub use plugin_manager::LspPluginManager;
 pub use profile::{detect_project_profile, ProjectLanguageProfile};
+pub use session_store::LspSessionStore;
 pub use types::*;

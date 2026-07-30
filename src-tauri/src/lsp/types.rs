@@ -1,5 +1,27 @@
 use serde::{Deserialize, Serialize};
 
+// ── LSP Event Constants ─────────────────────────────────────────────────
+// Single source of truth for all LSP-related event names emitted to the frontend.
+
+/// Prefix for LSP diagnostic events: `lsp-diagnostics-{project_path}`.
+pub const LSP_DIAG_EVENT_PREFIX: &str = "lsp-diagnostics-";
+
+/// Prefix for LSP progress events: `lsp-progress-{project_path}`.
+pub const LSP_PROGRESS_EVENT_PREFIX: &str = "lsp-project-";
+
+/// LSP session lifecycle events.
+pub mod session_events {
+    pub const STARTING: &str = "starting";
+    pub const READY: &str = "ready";
+    pub const ERROR: &str = "error";
+    pub const STOPPED: &str = "stopped";
+}
+
+/// LSP profile detection event name.
+pub const LSP_PROFILE_EVENT: &str = "lsp-project-profile";
+
+/// Maximum size (in bytes) for auto-opened documents via IPC.
+pub const MAX_AUTO_OPEN_FILE_SIZE: usize = 2 * 1024 * 1024; // 2 MB
 /// Serializable LSP session info for the frontend.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LspSessionInfo {
@@ -267,3 +289,6 @@ pub struct LspCompletionItem {
     /// Text to insert when selected.
     pub insert_text: Option<String>,
 }
+
+// Re-export commonly used event constants
+pub use self::session_events::*;

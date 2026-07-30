@@ -8,6 +8,15 @@ import { useDockStore } from '@/shared/store/dockStore';
 
 import { LatestRequestTracker } from '../requestTracker';
 
+interface LspHoverRange {
+  start: { line: number; character: number };
+  end: { line: number; character: number };
+}
+
+interface LspHoverResult {
+  range?: LspHoverRange;
+  contents: string | { kind: string; value: string };
+}
 /**
  * Convert an LSP `{line, character}` position to a CodeMirror document
  * offset. Equivalent to `fromPosition` in @codemirror/lsp-client/src/pos.ts
@@ -18,8 +27,17 @@ function offsetFromPos(doc: Text, pos: { line: number; character: number }): num
   return line.from + pos.character;
 }
 
-/** Module-level tracker: only the newest hover response updates the tooltip. */
-const hoverTracker = new LatestRequestTracker();
+/** Per-view trackers: each editor instance has its own hover generation counter. */
+const hoverTrackers = new WeakMap<EditorView, LatestRequestTracker>();
+
+function getHoverTracker(view: EditorView): LatestRequestTracker {
+  let tracker = hoverTrackers.get(view);
+  if (!tracker) {
+    tracker = new LatestRequestTracker();
+    hoverTrackers.set(view, tracker);
+  }
+  return tracker;
+}
 
 /**
  * Custom hover tooltip extension that replaces @codemirror/lsp-client's
@@ -67,22 +85,24 @@ function lspTooltipSource(view: EditorView, pos: number, _side: -1 | 1): Promise
   const plugin = LSPPlugin.get(view);
   if (!plugin) return Promise.resolve(null);
 
-  const token = hoverTracker.next();
+  const tracker = getHoverTracker(view);
+  const token = tracker.next();
 
-  return hoverTracker
+  return tracker
     .runIfCurrent(token, () => hoverRequest(plugin, pos))
-    .then((result: any) => {
+    .then((result: unknown) => {
       // Stale or empty — do not show a tooltip
-      if (!result || !hoverTracker.isCurrent(token)) return null;
+      if (!result || !tracker.isCurrent(token)) return null;
 
+      const hover = result as LspHoverResult;
       const tooltip: Tooltip = {
-        pos: result.range ? offsetFromPos(view.state.doc, result.range.start) : pos,
-        end: result.range ? offsetFromPos(view.state.doc, result.range.end) : pos,
+        pos: hover.range ? offsetFromPos(view.state.doc, hover.range.start) : pos,
+        end: hover.range ? offsetFromPos(view.state.doc, hover.range.end) : pos,
         // eslint-disable-next-line @typescript-eslint/no-unused-vars
         create(_editorView: EditorView): TooltipView {
           const el = document.createElement('div');
           el.className = 'cm-lsp-hover-tooltip cm-lsp-documentation';
-          el.innerHTML = plugin.docToHTML(result.contents);
+          el.innerHTML = plugin.docToHTML(hover.contents as Parameters<typeof plugin.docToHTML>[0]);
 
           // Delegated click handler: intercept <a> clicks and
           // navigate the app's built-in browser panel instead of

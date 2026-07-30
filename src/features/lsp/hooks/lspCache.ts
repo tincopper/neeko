@@ -2,6 +2,8 @@ import type { LspGoToDefinitionResult } from '../api/lspApi';
 
 const CACHE_TTL_MS = 3000;
 const PENDING_TTL_MS = 15000;
+const MAX_CACHE_ENTRIES = 200;
+const MAX_PENDING_ENTRIES = 50;
 
 type CacheEntry = {
   data: LspGoToDefinitionResult;
@@ -37,6 +39,11 @@ function getCachedDefinition(key: string): LspGoToDefinitionResult | null {
 
 function setCachedDefinition(key: string, data: LspGoToDefinitionResult): void {
   defCache.set(key, { data, ts: Date.now() });
+  while (defCache.size > MAX_CACHE_ENTRIES) {
+    const oldest = defCache.keys().next().value;
+    if (oldest === undefined) break;
+    defCache.delete(oldest);
+  }
 }
 
 /**
@@ -71,6 +78,11 @@ export function getOrFetchDefinition(
       throw err;
     });
 
+  while (pendingCache.size > MAX_PENDING_ENTRIES) {
+    const oldest = pendingCache.keys().next().value;
+    if (oldest === undefined) break;
+    pendingCache.delete(oldest);
+  }
   pendingCache.set(key, { promise, ts: Date.now() });
   return promise;
 }

@@ -4,7 +4,7 @@ use serde_json::Value;
 use tauri::State;
 
 use crate::lsp::symbol::UnifiedLocation;
-use crate::lsp::types::LspSessionInfo;
+use crate::lsp::types::{LspSessionInfo, MAX_AUTO_OPEN_FILE_SIZE};
 use crate::AppError;
 use crate::AppStateWrapper;
 
@@ -66,20 +66,28 @@ pub async fn lsp_request(
                 file_path
             );
             if let Ok(text) = std::fs::read_to_string(file_path) {
-                let open_params = serde_json::json!({
-                    "textDocument": {
-                        "uri": uri,
-                        "languageId": &language_id,
-                        "version": 1,
-                        "text": text,
-                    }
-                });
-                let _ = state.lsp_manager.send_notification(
-                    &project_path,
-                    &language_id,
-                    "textDocument/didOpen",
-                    open_params,
-                );
+                if text.len() > MAX_AUTO_OPEN_FILE_SIZE {
+                    log::warn!(
+                        "[LSP] File too large for auto-open: {} ({} bytes)",
+                        file_path,
+                        text.len()
+                    );
+                } else {
+                    let open_params = serde_json::json!({
+                        "textDocument": {
+                            "uri": uri,
+                            "languageId": &language_id,
+                            "version": 1,
+                            "text": text,
+                        }
+                    });
+                    let _ = state.lsp_manager.send_notification(
+                        &project_path,
+                        &language_id,
+                        "textDocument/didOpen",
+                        open_params,
+                    );
+                }
             } else {
                 log::warn!("[LSP] Could not read file for didOpen: {}", file_path);
             }
@@ -99,17 +107,14 @@ pub async fn lsp_request(
 
 #[tauri::command]
 /// Send an LSP notification, creating the session if needed.
-pub fn lsp_notification(
+pub async fn lsp_notification(
     project_path: String,
     language_id: String,
     method: String,
     params: Value,
-    state: State<AppStateWrapper>,
+    state: State<'_, AppStateWrapper>,
 ) -> Result<(), AppError> {
-    bind_project_exec_target(&state, &project_path)?;
-    state
-        .lsp_manager
-        .get_or_create_session(&project_path, &language_id)?;
+    ensure_session_async(&state, &project_path, &language_id).await?;
     state
         .lsp_manager
         .send_notification(&project_path, &language_id, &method, params)

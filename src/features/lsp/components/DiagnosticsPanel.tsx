@@ -11,22 +11,23 @@ export function DiagnosticsPanel({ diagnostics, onJumpToLine }: DiagnosticsPanel
     return <div className="p-3 text-xs text-text-secondary">No diagnostics</div>;
   }
 
-  const errors = diagnostics.filter((d) => d.severity !== null && d.severity <= 2);
-  const warnings = diagnostics.filter(
-    (d) => d.severity !== null && d.severity > 2 && d.severity <= 3,
-  );
-  const info = diagnostics.filter((d) => d.severity === null || d.severity > 3);
+  const errors = diagnostics.filter((d) => d.severity === 1);
+  const warnings = diagnostics.filter((d) => d.severity === 2);
+  const info = diagnostics.filter((d) => d.severity === 3);
+  const hints = diagnostics.filter((d) => d.severity === null || d.severity === 4);
 
   const severityIcon = (severity: number | null) => {
-    if (severity === null || severity > 3) return 'ℹ️';
-    if (severity <= 2) return '✕';
-    return '⚠';
+    if (severity === 1) return '✕';
+    if (severity === 2) return '⚠';
+    if (severity === 3) return 'ℹ️';
+    return '💡';
   };
 
   const severityColor = (severity: number | null) => {
-    if (severity === null || severity > 3) return 'text-blue-500';
-    if (severity <= 2) return 'text-red-500';
-    return 'text-yellow-500';
+    if (severity === 1) return 'text-red-500';
+    if (severity === 2) return 'text-yellow-500';
+    if (severity === 3) return 'text-blue-500';
+    return 'text-text-muted';
   };
 
   return (
@@ -39,6 +40,9 @@ export function DiagnosticsPanel({ diagnostics, onJumpToLine }: DiagnosticsPanel
           {warnings.length} warning{warnings.length !== 1 ? 's' : ''}
         </span>
         <span className="text-blue-500">{info.length} info</span>
+        <span className="text-text-muted">
+          {hints.length} hint{hints.length !== 1 ? 's' : ''}
+        </span>
       </div>
       <div className="flex-1 overflow-y-auto">
         {diagnostics.map((d, i) => (
