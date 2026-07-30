@@ -176,12 +176,13 @@ impl CommandExecutor for SshExecutor {
         let wait = wait_from_watch(exit_rx);
         let kill = kill_for(handle, remote_pid);
 
-        Ok(ExecChild::new(
+        Ok(ExecChild::new_with_pid(
             Some(stdin),
             Some(stdout),
             Some(stderr),
             wait,
             kill,
+            Some(remote_pid),
         ))
     }
 }

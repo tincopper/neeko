@@ -39,6 +39,7 @@ impl CommandExecutor for LocalExecutor {
         }
 
         let mut child = command.spawn().map_err(ExecError::Io)?;
+        let pid = child.id();
 
         let stdin: Option<BoxAsyncWrite> = child.stdin.take().map(|w| Box::pin(w) as BoxAsyncWrite);
         let stdout: Option<BoxAsyncRead> = child.stdout.take().map(|r| Box::pin(r) as BoxAsyncRead);
@@ -66,6 +67,8 @@ impl CommandExecutor for LocalExecutor {
             .boxed()
         };
 
-        Ok(ExecChild::new(stdin, stdout, stderr, wait, kill_fn))
+        Ok(ExecChild::new_with_pid(
+            stdin, stdout, stderr, wait, kill_fn, pid,
+        ))
     }
 }

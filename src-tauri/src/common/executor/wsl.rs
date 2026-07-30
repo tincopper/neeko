@@ -91,6 +91,8 @@ impl CommandExecutor for WslExecutor {
         command.env_remove("PATH");
 
         let mut child = command.spawn().map_err(ExecError::Io)?;
+        // Host-side wsl.exe pid — may not match the Linux process, but is best-effort.
+        let pid = child.id();
 
         let stdin: Option<BoxAsyncWrite> = child.stdin.take().map(|w| Box::pin(w) as BoxAsyncWrite);
         let stdout: Option<BoxAsyncRead> = child.stdout.take().map(|r| Box::pin(r) as BoxAsyncRead);
@@ -116,7 +118,9 @@ impl CommandExecutor for WslExecutor {
             .boxed()
         };
 
-        Ok(ExecChild::new(stdin, stdout, stderr, wait, kill_fn))
+        Ok(ExecChild::new_with_pid(
+            stdin, stdout, stderr, wait, kill_fn, pid,
+        ))
     }
 }
 

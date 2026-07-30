@@ -107,6 +107,8 @@ pub struct ExecChild {
     /// Internal kill function — called by [`ExecChild::kill`].
     kill_fn:
         Box<dyn FnOnce() -> Pin<Box<dyn Future<Output = Result<(), ExecError>> + Send>> + Send>,
+    /// Best-effort OS / remote process id when known (local, WSL host, SSH remote).
+    pub pid: Option<u32>,
 }
 
 impl ExecChild {
@@ -121,12 +123,28 @@ impl ExecChild {
             + Send
             + 'static,
     ) -> Self {
+        Self::new_with_pid(stdin, stdout, stderr, wait, kill_fn, None)
+    }
+
+    /// Create a new `ExecChild` including an optional process id.
+    #[allow(clippy::type_complexity)]
+    pub fn new_with_pid(
+        stdin: Option<BoxAsyncWrite>,
+        stdout: Option<BoxAsyncRead>,
+        stderr: Option<BoxAsyncRead>,
+        wait: impl Future<Output = Result<i32, ExecError>> + Send + 'static,
+        kill_fn: impl FnOnce() -> Pin<Box<dyn Future<Output = Result<(), ExecError>> + Send>>
+            + Send
+            + 'static,
+        pid: Option<u32>,
+    ) -> Self {
         Self {
             stdin,
             stdout,
             stderr,
             wait: Box::pin(wait),
             kill_fn: Box::new(kill_fn),
+            pid,
         }
     }
 
