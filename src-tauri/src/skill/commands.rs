@@ -9,6 +9,9 @@ use tauri::State;
 use super::skill_store::SkillStore;
 #[allow(clippy::wildcard_imports)]
 use super::types::*;
+use crate::agent::path_resolver::PathResolver;
+use crate::agent::plugin::AgentPlugin;
+use crate::agent::registry::default_agent_plugins;
 use crate::common::runtime::{run_blocking, run_blocking_result};
 use crate::AppError;
 
@@ -471,6 +474,27 @@ pub struct DiscoveredSkillDto {
     pub name_guess: Option<String>,
 }
 
+/// Build the list of AgentPlugins to scan, applying custom path overrides from config.
+fn build_scan_plugins(state: &crate::AppStateWrapper) -> Vec<AgentPlugin> {
+    let mut plugins = default_agent_plugins();
+
+    // Apply custom path overrides from config (legacy `customToolPathOverrides`).
+    if let Ok(config) = state.storage_manager.load_config() {
+        if let Some(overrides) = config
+            .get("customToolPathOverrides")
+            .and_then(|v| v.as_object())
+        {
+            for plugin in &mut plugins {
+                if let Some(path) = overrides.get(&plugin.id).and_then(|v| v.as_str()) {
+                    plugin.paths.skills.relative = path.to_string();
+                }
+            }
+        }
+    }
+
+    plugins
+}
+
 /// Scan all tool directories for unmanaged skills.
 #[tauri::command]
 pub async fn scan_local_skills(
@@ -478,28 +502,12 @@ pub async fn scan_local_skills(
     state: tauri::State<'_, crate::AppStateWrapper>,
 ) -> Result<Vec<DiscoveredSkillDto>, AppError> {
     let store = store.inner().clone();
-    let (custom_tool_paths_str, custom_tools_str) = {
-        let config = state
-            .storage_manager
-            .load_config()
-            .map_err(|e| AppError::Storage(format!("Failed to load config: {e}")))?;
-        let paths = config
-            .get("customToolPathOverrides")
-            .map(|v| v.to_string())
-            .unwrap_or_default();
-        let tools = config
-            .get("customToolAdapters")
-            .map(|v| v.to_string())
-            .unwrap_or_default();
-        (paths, tools)
-    };
+    let plugins = build_scan_plugins(state.inner());
     run_blocking_result(move || {
         let skills = store.get_all_skills().map_err(AppError::from)?;
         let managed_paths: Vec<String> = skills.iter().map(|s| s.central_path.clone()).collect();
-        let adapters =
-            super::tool_adapters::all_tool_adapters(&custom_tool_paths_str, &custom_tools_str);
         let discovered =
-            super::scanner::scan_local_skills(&managed_paths, &adapters).map_err(AppError::from)?;
+            super::scanner::scan_local_skills(&managed_paths, &plugins).map_err(AppError::from)?;
         Ok(discovered
             .into_iter()
             .map(|d| DiscoveredSkillDto {
@@ -946,10 +954,41 @@ pub async fn set_skill_tool_toggle_cmd(
     .await
 }
 
-/// Collect skill deploy targets from AgentManager (preferred) with adapter fallback.
-fn resolve_sync_targets(
-    state: &crate::AppStateWrapper,
-) -> Vec<super::tool_adapters::SkillTargetDir> {
+/// A resolved skill deploy target: agent key + absolute skills directory.
+#[derive(Debug, Clone)]
+struct SkillTargetDir {
+    /// Agent / tool key (e.g. "claude-code", "cursor").
+    key: String,
+    /// Absolute path to the skills directory.
+    dir: PathBuf,
+}
+
+/// Resolve skill directories from agent configs (`skill_path`).
+///
+/// Only enabled agents with a non-empty skill path are included.
+fn skill_targets_from_agents(agents: &[(String, bool, Option<String>)]) -> Vec<SkillTargetDir> {
+    let mut out = Vec::new();
+    for (id, enabled, skill_path) in agents {
+        if !enabled {
+            continue;
+        }
+        let Some(path) = skill_path.as_ref() else {
+            continue;
+        };
+        if path.trim().is_empty() {
+            continue;
+        }
+        let resolver = PathResolver::new(None).with_agent_id(id);
+        out.push(SkillTargetDir {
+            key: id.clone(),
+            dir: resolver.resolve_str(path),
+        });
+    }
+    out
+}
+
+/// Collect skill deploy targets from AgentManager (preferred) with plugin fallback.
+fn resolve_sync_targets(state: &crate::AppStateWrapper) -> Vec<SkillTargetDir> {
     let agent_triples: Vec<(String, bool, Option<String>)> = state
         .agent_manager
         .lock()
@@ -961,9 +1000,9 @@ fn resolve_sync_targets(
         })
         .unwrap_or_default();
 
-    let mut targets = super::tool_adapters::skill_targets_from_agents(&agent_triples);
+    let mut targets = skill_targets_from_agents(&agent_triples);
     if targets.is_empty() {
-        // Fallback when agents not yet loaded: Neeko agent adapters only
+        // Fallback when agents not yet loaded: Neeko built-in agent plugins only
         const FALLBACK_KEYS: &[&str] = &[
             "opencode",
             "claude-code",
@@ -975,12 +1014,13 @@ fn resolve_sync_targets(
             "omp",
             "reasonix",
         ];
-        targets = super::tool_adapters::default_tool_adapters()
+        let resolver = PathResolver::new(None);
+        targets = default_agent_plugins()
             .into_iter()
-            .filter(|a| FALLBACK_KEYS.contains(&a.key.as_str()))
-            .map(|a| {
-                let dir = a.skills_dir();
-                super::tool_adapters::SkillTargetDir { key: a.key, dir }
+            .filter(|p| FALLBACK_KEYS.contains(&p.id.as_str()))
+            .map(|p| {
+                let dir = resolver.resolve_home_skills_dir(&p);
+                SkillTargetDir { key: p.id, dir }
             })
             .collect();
     }
@@ -991,7 +1031,7 @@ fn resolve_sync_targets(
 fn sync_skills_to_targets(
     store: &SkillStore,
     skills: &[SkillRecord],
-    targets: &[super::tool_adapters::SkillTargetDir],
+    targets: &[SkillTargetDir],
     configured_mode: Option<&str>,
 ) {
     for skill in skills {
@@ -1486,7 +1526,8 @@ pub async fn get_agent_skills_cmd(
                 continue;
             };
 
-            let skills_dir = super::tool_adapters::expand_skill_path(sp);
+            let resolver = PathResolver::new(None).with_agent_id(id);
+            let skills_dir = resolver.resolve_str(sp);
             let path_str = skills_dir.to_string_lossy().to_string();
 
             let mut skills: Vec<AgentDiskSkillDto> = Vec::new();
@@ -1596,7 +1637,8 @@ pub async fn import_skill_to_agent_cmd(
             )));
         }
 
-        let agent_skills_dir = super::tool_adapters::expand_skill_path(&agent_skill_path);
+        let resolver = PathResolver::new(None).with_agent_id(&agent_id);
+        let agent_skills_dir = resolver.resolve_str(&agent_skill_path);
         let target = agent_skills_dir.join(&skill.name);
 
         // Create parent directory if needed
@@ -1668,7 +1710,8 @@ pub async fn remove_skill_from_agent_cmd(
 
         // Optional safety: path should sit under the agent's skill dir when known.
         if let Some(sp) = agent_skill_path.as_ref() {
-            let agent_dir = super::tool_adapters::expand_skill_path(sp);
+            let resolver = PathResolver::new(None).with_agent_id(&agent_id);
+            let agent_dir = resolver.resolve_str(sp);
             if let (Ok(agent_canon), Ok(Some(parent))) = (
                 agent_dir.canonicalize(),
                 path.parent().map(|p| p.canonicalize()).transpose(),
@@ -1816,7 +1859,8 @@ fn relative_skills_from_agent_path(skill_path: &str) -> Option<String> {
         return Some(rest.to_string());
     }
 
-    let expanded = super::tool_adapters::expand_skill_path(trimmed);
+    let resolver = PathResolver::new(None);
+    let expanded = resolver.resolve_str(trimmed);
     let home = dirs::home_dir()?;
     if let Ok(rel) = expanded.strip_prefix(&home) {
         let s = rel.to_string_lossy();
@@ -1831,7 +1875,7 @@ fn relative_skills_from_agent_path(skill_path: &str) -> Option<String> {
 
 /// Resolve the project-relative skills directory for an agent.
 ///
-/// 1. Built-in tool adapter `relative_skills_dir` (e.g. `.claude/skills`)
+/// 1. Built-in AgentPlugin `relative_skills_dir` (e.g. `.claude/skills`)
 /// 2. Else derive from the agent's configured `skill_path` under `$HOME`
 /// 3. Else for custom agents: `.agents/{sanitized_id}/skills`
 fn project_agent_skills_dir(
@@ -1839,13 +1883,14 @@ fn project_agent_skills_dir(
     agent_id: &str,
     agent_skill_path: Option<&str>,
 ) -> Option<PathBuf> {
-    let adapters = super::tool_adapters::default_tool_adapters();
     let key = agent_id.strip_prefix("custom:").unwrap_or(agent_id);
-    if let Some(a) = adapters
+    if let Some(plugin) = default_agent_plugins()
         .into_iter()
-        .find(|a| a.key == agent_id || a.key == key)
+        .find(|p| p.id == agent_id || p.id == key)
     {
-        return Some(project_path.join(&a.relative_skills_dir));
+        if let Some(rel) = plugin.relative_skills_dir() {
+            return Some(project_path.join(rel));
+        }
     }
 
     if let Some(sp) = agent_skill_path {

@@ -211,6 +211,38 @@ impl AgentPlugin {
         }
     }
 
+    /// Get the project-relative skills directory (e.g., `.claude/skills`).
+    ///
+    /// Strips the `{{projectPath}}/` prefix from the skills path template.
+    /// Returns `None` if the template does not start with `{{projectPath}}/`.
+    #[must_use]
+    pub fn relative_skills_dir(&self) -> Option<String> {
+        self.paths
+            .skills
+            .relative
+            .strip_prefix("{{projectPath}}/")
+            .or_else(|| self.paths.skills.relative.strip_prefix("{{projectPath}}\\"))
+            .map(str::to_string)
+    }
+
+    /// Get the relative path for a given resource type (strips `{{projectPath}}/`).
+    #[must_use]
+    pub fn relative_resource_path(&self, resource_type: &str) -> Option<String> {
+        let template = match resource_type {
+            "config" => &self.paths.config.relative,
+            "skills" => &self.paths.skills.relative,
+            "commands" => &self.paths.commands.relative,
+            "mcp" => &self.paths.mcp.relative,
+            "hooks" => &self.paths.hooks.relative,
+            "plugins" => &self.paths.plugins.relative,
+            _ => return None,
+        };
+        template
+            .strip_prefix("{{projectPath}}/")
+            .or_else(|| template.strip_prefix("{{projectPath}}\\"))
+            .map(str::to_string)
+    }
+
     /// Check whether this plugin supports a given capability category.
     #[must_use]
     pub fn supports(&self, capability: &str) -> bool {

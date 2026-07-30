@@ -1,6 +1,4 @@
 //! Plugin registry — provides access to built-in AgentPlugin definitions.
-//!
-//! Replaces the role of `default_tool_adapters()` from `skill/tool_adapters.rs`.
 
 use std::collections::HashMap;
 

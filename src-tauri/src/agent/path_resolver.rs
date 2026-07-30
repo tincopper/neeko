@@ -1,8 +1,7 @@
 //! Path resolution engine for AgentPlugin path templates.
 //!
 //! Resolves template variables ({{home}}, {{projectPath}}, {{agentId}}, {{configDir}})
-//! to absolute paths. Replaces the role of `expand_skill_path()` from
-//! `skill/tool_adapters.rs`.
+//! to absolute paths. This is the single source of truth for all path resolution.
 
 use std::path::{Path, PathBuf};
 
@@ -105,6 +104,60 @@ impl PathResolver {
     pub fn resolve_skills_dir(&self, plugin: &AgentPlugin, override_path: Option<&str>) -> PathBuf {
         let template = plugin.skills_path_template(override_path);
         self.resolve(&template)
+    }
+
+    /// Resolve a plugin's skills directory at the **home** level (no project path).
+    ///
+    /// Used for scanning/syncing unmanaged skills in the global agent directory.
+    /// If the plugin's skills path is `{{projectPath}}/.claude/skills`, this returns
+    /// `~/.claude/skills` (by stripping the `{{projectPath}}/` prefix and joining with `{{home}}`).
+    #[must_use]
+    pub fn resolve_home_skills_dir(&self, plugin: &AgentPlugin) -> PathBuf {
+        self.resolve_home_dir(&plugin.paths.skills.relative)
+    }
+
+    /// Resolve a plugin's resource directory at the **home** level for a given resource type.
+    #[must_use]
+    pub fn resolve_home_dir(&self, template: &str) -> PathBuf {
+        // Strip {{projectPath}}/ prefix to get the relative portion
+        let relative = template
+            .strip_prefix("{{projectPath}}/")
+            .or_else(|| template.strip_prefix("{{projectPath}}\\"))
+            .unwrap_or(template);
+
+        // Now resolve the relative portion against {{home}}
+        if relative.starts_with("~/") {
+            let rest = relative.trim_start_matches("~/");
+            return self.home_dir.join(rest);
+        }
+        if let Some(rest) = relative.strip_prefix("{{home}}/") {
+            return self.home_dir.join(rest);
+        }
+        if relative == "{{home}}" {
+            return self.home_dir.clone();
+        }
+
+        // For relative paths like ".claude/skills", join with home
+        // (handles the case where skills path is relative without ~ or {{home}})
+        if !relative.starts_with('/') && !relative.starts_with("~") {
+            return self.home_dir.join(relative);
+        }
+
+        PathBuf::from(relative)
+    }
+
+    /// Build a scan target from a plugin at the home level.
+    ///
+    /// Returns `None` if the plugin has no detectable skills directory.
+    #[must_use]
+    pub fn home_scan_target(&self, plugin: &AgentPlugin) -> Option<super::plugin::PathTemplate> {
+        let home_dir = self.resolve_home_skills_dir(plugin);
+        Some(super::plugin::PathTemplate {
+            relative: home_dir.to_string_lossy().to_string(),
+            format: plugin.paths.skills.format.clone(),
+            description: plugin.paths.skills.description.clone(),
+            project_level: false,
+        })
     }
 
     /// Get all resource paths for a plugin (global + project-level).
