@@ -33,6 +33,8 @@ const defaultConfig: AppConfig = {
     deactivateStopMinutes: 30,
     customServers: [],
   },
+  favoriteBranches: {},
+  agentPluginConfigs: {},
 };
 
 function renderPanel(overrides: Partial<AppConfig> = {}) {

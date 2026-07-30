@@ -9,6 +9,7 @@ use tauri::State;
 use crate::agent::path_resolver::PathResolver;
 use crate::agent::plugin::AgentPlugin;
 use crate::agent::registry::default_agent_plugins;
+use crate::agent::schema_validator::validate_config;
 use crate::common::runtime::run_blocking_result;
 use crate::skill::skill_store::SkillStore;
 use crate::AppError;
@@ -301,4 +302,76 @@ pub async fn delete_custom_plugin(
             .map_err(AppError::from)
     })
     .await
+}
+
+/// Input for validating agent configuration against its schema.
+#[derive(Debug, Deserialize)]
+pub struct ValidateConfigInput {
+    /// Plugin ID whose schema to validate against.
+    pub plugin_id: String,
+    /// Configuration value to validate.
+    pub config: serde_json::Value,
+}
+
+/// Validate an agent configuration against its plugin schema.
+///
+/// Returns the config with defaults applied on success, or a list of
+/// field-level validation errors.
+#[tauri::command]
+pub fn validate_agent_config(input: ValidateConfigInput) -> Result<serde_json::Value, AppError> {
+    let plugin = default_agent_plugins()
+        .into_iter()
+        .find(|p| p.id == input.plugin_id)
+        .ok_or_else(|| AppError::NotFound(format!("Plugin not found: {}", input.plugin_id)))?;
+
+    match validate_config(&plugin.configuration.schema, &input.config) {
+        Ok(applied) => Ok(applied),
+        Err(errors) => {
+            let messages: Vec<String> = errors
+                .into_iter()
+                .map(|e| {
+                    if e.path.is_empty() {
+                        e.message
+                    } else {
+                        format!("{}: {}", e.path, e.message)
+                    }
+                })
+                .collect();
+            Err(AppError::InvalidInput(messages.join("; ")))
+        }
+    }
+}
+
+/// Get the schema for a given plugin (exposed for frontend form generation).
+#[tauri::command]
+pub fn get_agent_schema(plugin_id: String) -> Result<serde_json::Value, AppError> {
+    default_agent_plugins()
+        .into_iter()
+        .find(|p| p.id == plugin_id)
+        .map(|p| p.configuration.schema)
+        .ok_or_else(|| AppError::NotFound(format!("Plugin not found: {}", plugin_id)))
+}
+
+/// Validate a configuration value against an arbitrary schema (frontend mirror).
+#[tauri::command]
+pub fn validate_against_schema(
+    schema: serde_json::Value,
+    config: serde_json::Value,
+) -> Result<serde_json::Value, AppError> {
+    match validate_config(&schema, &config) {
+        Ok(applied) => Ok(applied),
+        Err(errors) => {
+            let messages: Vec<String> = errors
+                .into_iter()
+                .map(|e| {
+                    if e.path.is_empty() {
+                        e.message
+                    } else {
+                        format!("{}: {}", e.path, e.message)
+                    }
+                })
+                .collect();
+            Err(AppError::InvalidInput(messages.join("; ")))
+        }
+    }
 }

@@ -48,6 +48,7 @@ const DEFAULT_CONFIG: AppConfig = {
     customServers: [],
   },
   favoriteBranches: {},
+  agentPluginConfigs: {},
 };
 
 type PartialLoadedConfig = Partial<AppConfig> & {
@@ -332,6 +333,10 @@ export function useAppConfig() {
               saved.favoriteBranches && typeof saved.favoriteBranches === 'object'
                 ? saved.favoriteBranches
                 : DEFAULT_CONFIG.favoriteBranches,
+            agentPluginConfigs:
+              saved.agentPluginConfigs && typeof saved.agentPluginConfigs === 'object'
+                ? saved.agentPluginConfigs
+                : DEFAULT_CONFIG.agentPluginConfigs,
           });
         }
       } catch (e) {

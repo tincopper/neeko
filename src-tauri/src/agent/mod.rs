@@ -9,5 +9,6 @@ pub mod plugin;
 pub mod plugin_commands;
 pub mod registry;
 pub mod resource_deployer;
+pub mod schema_validator;
 
 pub use manager::AgentManager;

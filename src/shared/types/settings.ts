@@ -73,4 +73,6 @@ export interface AppConfig {
   lsp: LspConfig;
   /** Project-id → favorite branch names, persisted across sessions. */
   favoriteBranches: Record<string, string[]>;
+  /** Plugin-id → schema-validated configuration object, persisted across sessions. */
+  agentPluginConfigs?: Record<string, Record<string, unknown>>;
 }

@@ -32,13 +32,12 @@ pub fn default_agent_plugins() -> Vec<AgentPlugin> {
                 }),
             },
             configuration: super::plugin::AgentConfiguration {
-                schema: serde_json::json!({
-                    "type": "object",
-                    "properties": {
-                        "model": { "type": "string", "default": "sonnet" }
-                    }
-                }),
-                defaults: HashMap::new(),
+                schema: schema_claude_code(),
+                defaults: {
+                    let mut m = HashMap::new();
+                    m.insert("model".to_string(), serde_json::json!("sonnet"));
+                    m
+                },
                 secrets: Some(vec![super::plugin::SecretDefinition {
                     key: "ANTHROPIC_API_KEY".into(),
                     label: "Anthropic API Key".into(),
@@ -136,8 +135,15 @@ pub fn default_agent_plugins() -> Vec<AgentPlugin> {
                 }),
             },
             configuration: super::plugin::AgentConfiguration {
-                schema: serde_json::json!({ "type": "object" }),
-                defaults: HashMap::new(),
+                schema: schema_cursor(),
+                defaults: {
+                    let mut m = HashMap::new();
+                    m.insert(
+                        "model".to_string(),
+                        serde_json::json!("claude-sonnet-4-20250514"),
+                    );
+                    m
+                },
                 secrets: None,
             },
             capabilities: super::plugin::AgentCapabilities {
@@ -321,8 +327,15 @@ pub fn default_agent_plugins() -> Vec<AgentPlugin> {
                 }),
             },
             configuration: super::plugin::AgentConfiguration {
-                schema: serde_json::json!({ "type": "object" }),
-                defaults: HashMap::new(),
+                schema: schema_windsurf(),
+                defaults: {
+                    let mut m = HashMap::new();
+                    m.insert(
+                        "model".to_string(),
+                        serde_json::json!("claude-sonnet-4-20250514"),
+                    );
+                    m
+                },
                 secrets: None,
             },
             capabilities: super::plugin::AgentCapabilities {
@@ -380,6 +393,197 @@ pub fn default_agent_plugins() -> Vec<AgentPlugin> {
     ]
 }
 
+// ─── Schema Definitions ───────────────────────────────────────────────────
+
+/// Claude Code: full schema with model, permissions, mcpServers, env.
+fn schema_claude_code() -> serde_json::Value {
+    serde_json::json!({
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "object",
+        "properties": {
+            "model": {
+                "type": "string",
+                "enum": ["sonnet", "opus", "haiku"],
+                "default": "sonnet",
+                "description": "Default Claude model"
+            },
+            "permissions": {
+                "type": "object",
+                "description": "Tool permission rules",
+                "properties": {
+                    "allow": {
+                        "type": "array",
+                        "items": { "type": "string" },
+                        "description": "Allowed tools"
+                    },
+                    "deny": {
+                        "type": "array",
+                        "items": { "type": "string" },
+                        "description": "Denied tools"
+                    }
+                }
+            },
+            "mcpServers": {
+                "type": "object",
+                "description": "MCP server configurations",
+                "additionalProperties": {
+                    "type": "object",
+                    "properties": {
+                        "command": { "type": "string" },
+                        "args": { "type": "array", "items": { "type": "string" } },
+                        "env": { "type": "object", "additionalProperties": { "type": "string" } }
+                    },
+                    "required": ["command"]
+                }
+            },
+            "env": {
+                "type": "object",
+                "description": "Environment variables",
+                "additionalProperties": { "type": "string" }
+            },
+            "verbose": {
+                "type": "boolean",
+                "default": false,
+                "description": "Enable verbose output"
+            }
+        }
+    })
+}
+
+/// Cursor: model, rules, mcpServers.
+fn schema_cursor() -> serde_json::Value {
+    serde_json::json!({
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "object",
+        "properties": {
+            "model": {
+                "type": "string",
+                "enum": [
+                    "claude-sonnet-4-20250514",
+                    "claude-opus-4-20250514",
+                    "gpt-4o",
+                    "gpt-4o-mini",
+                    "o1",
+                    "o1-mini"
+                ],
+                "default": "claude-sonnet-4-20250514",
+                "description": "Default AI model"
+            },
+            "rules": {
+                "type": "array",
+                "items": { "type": "string" },
+                "description": "Cursor rules (always-apply instructions)"
+            },
+            "mcpServers": {
+                "type": "object",
+                "description": "MCP server configurations",
+                "additionalProperties": {
+                    "type": "object",
+                    "properties": {
+                        "command": { "type": "string" },
+                        "args": { "type": "array", "items": { "type": "string" } }
+                    },
+                    "required": ["command"]
+                }
+            },
+            "telemetry": {
+                "type": "boolean",
+                "default": true,
+                "description": "Enable telemetry"
+            }
+        }
+    })
+}
+
+/// Windsurf: model, rules.
+fn schema_windsurf() -> serde_json::Value {
+    serde_json::json!({
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "object",
+        "properties": {
+            "model": {
+                "type": "string",
+                "enum": [
+                    "claude-sonnet-4-20250514",
+                    "claude-opus-4-20250514",
+                    "gpt-4o",
+                    "gemini-2.5-pro"
+                ],
+                "default": "claude-sonnet-4-20250514",
+                "description": "Default AI model"
+            },
+            "rules": {
+                "type": "array",
+                "items": { "type": "string" },
+                "description": "Windsurf rules"
+            },
+            "enableMemory": {
+                "type": "boolean",
+                "default": false,
+                "description": "Enable conversation memory"
+            }
+        }
+    })
+}
+
+/// Generic schema for shell-based CLI agents (codex, gemini, qoder, etc.).
+fn schema_for_shell_agent(id: &str) -> serde_json::Value {
+    let model_enum = match id {
+        "gemini" => serde_json::json!(["gemini-2.5-pro", "gemini-2.5-flash", "gemini-2.0-flash"]),
+        "codex" => serde_json::json!(["o1", "o1-mini", "o3-mini", "gpt-4o", "gpt-4o-mini"]),
+        "qoder" => serde_json::json!(["qoder-1.0", "qoder-2.0", "claude-sonnet-4-20250514"]),
+        "codebuddy" => {
+            serde_json::json!(["codebuddy-default", "claude-sonnet-4-20250514", "gpt-4o"])
+        }
+        "opencode" => serde_json::json!(["claude-sonnet-4-20250514", "gpt-4o", "gemini-2.5-pro"]),
+        "omp" => serde_json::json!(["omp-default", "claude-sonnet-4-20250514"]),
+        "pi" => serde_json::json!(["pi-default", "pi-pro"]),
+        "reasonix" => serde_json::json!(["reasonix-default", "claude-opus-4-20250514"]),
+        "grok" => serde_json::json!(["grok-3", "grok-3-mini", "grok-2"]),
+        _ => serde_json::json!(["default"]),
+    };
+
+    let default_model = match id {
+        "gemini" => "gemini-2.5-pro",
+        "codex" => "o1",
+        "qoder" => "qoder-2.0",
+        "codebuddy" => "codebuddy-default",
+        "opencode" => "claude-sonnet-4-20250514",
+        "omp" => "omp-default",
+        "pi" => "pi-default",
+        "reasonix" => "reasonix-default",
+        "grok" => "grok-3",
+        _ => "default",
+    };
+
+    serde_json::json!({
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "object",
+        "properties": {
+            "model": {
+                "type": "string",
+                "enum": model_enum,
+                "default": default_model,
+                "description": "Default AI model"
+            },
+            "systemInstruction": {
+                "type": "string",
+                "description": "System-level instruction prepended to every session"
+            },
+            "tools": {
+                "type": "array",
+                "items": { "type": "string" },
+                "description": "Enabled tool names"
+            },
+            "verbose": {
+                "type": "boolean",
+                "default": false,
+                "description": "Enable verbose output"
+            }
+        }
+    })
+}
+
 /// Helper: construct a `PathTemplate`.
 fn path_tpl(
     relative: &str,
@@ -407,6 +611,16 @@ fn agent_plugin_shell(
     post_prompt_args: Option<Vec<String>>,
     _capabilities_extra: &[&str],
 ) -> AgentPlugin {
+    let schema = schema_for_shell_agent(id);
+    let defaults: HashMap<String, serde_json::Value> = schema
+        .pointer("/properties/model/default")
+        .and_then(|v| v.as_str())
+        .map(|m| {
+            let mut map = HashMap::new();
+            map.insert("model".to_string(), serde_json::json!(m));
+            map
+        })
+        .unwrap_or_default();
     AgentPlugin {
         id: id.into(),
         name: name.into(),
@@ -427,8 +641,8 @@ fn agent_plugin_shell(
             }),
         },
         configuration: super::plugin::AgentConfiguration {
-            schema: serde_json::json!({ "type": "object" }),
-            defaults: HashMap::new(),
+            schema,
+            defaults,
             secrets: None,
         },
         capabilities: super::plugin::AgentCapabilities {

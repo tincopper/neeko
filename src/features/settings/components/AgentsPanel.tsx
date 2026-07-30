@@ -4,11 +4,13 @@ import React, { useState, useCallback } from 'react';
 import { AgentPluginCard, AgentPluginDetails } from '@/features/agent';
 // eslint-disable-next-line import/no-restricted-paths -- settings UI uses agent plugin hook
 import { useAgentPlugins } from '@/features/agent/hooks/useAgentPlugins';
+import type { JsonSchema } from '@/lib/schemaValidator';
 import type { AgentConfig, AppConfig } from '@/shared/types';
 import { Switch } from '@/ui';
 
 import BuiltInAgentsSection from './BuiltInAgentsSection';
 import CustomAgentsSection from './CustomAgentsSection';
+import SchemaForm from './SchemaForm';
 
 interface AgentsPanelProps {
   config: AppConfig;
@@ -156,6 +158,33 @@ const AgentsPanel: React.FC<AgentsPanelProps> = ({
         {selectedPlugin && (
           <div className="mt-2 border border-border rounded-lg overflow-hidden">
             <AgentPluginDetails plugin={selectedPlugin} />
+            {/* Schema-generated configuration form */}
+            {selectedPlugin.configuration?.schema &&
+              selectedPlugin.configuration.schema.type === 'object' && (
+                <div className="border-t border-border">
+                  <div className="px-3 py-1.5 text-[0.75em] text-text-muted font-medium bg-bg-secondary/30">
+                    Configuration
+                  </div>
+                  <SchemaForm
+                    schema={selectedPlugin.configuration.schema as JsonSchema}
+                    initialValue={
+                      (config.agentPluginConfigs?.[selectedPlugin.id] as Record<string, unknown>) ||
+                      (selectedPlugin.configuration.defaults as Record<string, unknown>) ||
+                      {}
+                    }
+                    onChange={(value) => {
+                      const next = {
+                        ...config,
+                        agentPluginConfigs: {
+                          ...(config.agentPluginConfigs || {}),
+                          [selectedPlugin.id]: value,
+                        },
+                      };
+                      onConfigChange(next);
+                    }}
+                  />
+                </div>
+              )}
           </div>
         )}
       </div>

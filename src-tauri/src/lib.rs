@@ -112,6 +112,9 @@ macro_rules! neeko_invoke_handler {
             $crate::agent::plugin_commands::list_custom_plugins,
             $crate::agent::plugin_commands::save_custom_plugin,
             $crate::agent::plugin_commands::delete_custom_plugin,
+            $crate::agent::plugin_commands::validate_agent_config,
+            $crate::agent::plugin_commands::get_agent_schema,
+            $crate::agent::plugin_commands::validate_against_schema,
             // ── MCP server commands ──────────────────────────────────────
             $crate::skill::commands::list_mcp_servers,
             $crate::skill::commands::get_mcp_server,

@@ -1,0 +1,5 @@
+{"file": ".trellis/spec/backend/command-guidelines.md", "reason": "命令规范"}
+{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "SchemaForm 组件规范"}
+{"file": ".trellis/spec/frontend/interaction-patterns.md", "reason": "表单交互模式"}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "验证错误处理"}
+{"file": ".trellis/spec/unit-test/index.md", "reason": "测试覆盖"}
