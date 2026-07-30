@@ -1,0 +1,31 @@
+{
+  "id": "lsp-review-remediation",
+  "name": "lsp-review-remediation",
+  "title": "LSP Code Review Remediation",
+  "description": "Address architectural and correctness issues identified in the LSP front/back code review.",
+  "status": "completed",
+  "dev_type": null,
+  "scope": null,
+  "package": null,
+  "priority": "P1",
+  "creator": "tincopper",
+  "assignee": "tincopper",
+  "createdAt": "2026-07-30",
+  "completedAt": "2026-07-30",
+  "branch": null,
+  "base_branch": "main",
+  "worktree_path": null,
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [
+    "07-30-lsp-critical-stability",
+    "07-30-lsp-robustness",
+    "07-30-lsp-frontend-cleanup",
+    "07-30-lsp-polish"
+  ],
+  "parent": null,
+  "relatedFiles": [],
+  "notes": "",
+  "meta": {}
+}

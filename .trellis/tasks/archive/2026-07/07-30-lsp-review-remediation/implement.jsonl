@@ -1,0 +1,7 @@
+{"file": "prd.md", "reason": "Parent task goals, subtasks, and acceptance criteria"}
+{"file": "findings.md", "reason": "Detailed mapping of all 23 review findings to subtasks"}
+{"file": "history://LspCodeReview", "reason": "Full reviewer agent transcript with file/line evidence"}
+{"file": "src/features/lsp/", "reason": "Frontend LSP feature to refactor"}
+{"file": "src-tauri/src/lsp/", "reason": "Backend LSP module to refactor"}
+{"file": "src/shared/store/lspStore.ts", "reason": "Store that must migrate to feature layer"}
+{"file": "src/features/status-bar/StatusBar.tsx", "reason": "Status bar LSP UI to update"}

@@ -1,0 +1,5 @@
+{"file": "prd.md", "reason": "Verify acceptance criteria"}
+{"file": "findings.md", "reason": "Verify each finding is addressed or explicitly deferred"}
+{"file": "src/features/lsp/", "reason": "Verify frontend changes pass lint/type-check/tests"}
+{"file": "src-tauri/src/lsp/", "reason": "Verify backend changes pass cargo test/clippy"}
+{"file": "src/shared/store/lspStore.ts", "reason": "Verify layering cycle is resolved"}
