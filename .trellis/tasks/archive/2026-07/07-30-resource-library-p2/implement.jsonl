@@ -1,0 +1,20 @@
+{"file": "src/features/library/store/libraryStore.ts", "reason": "Phase 1 store，扩展 sortMode + resolveVariables"}
+{"file": "src/features/library/components/PromptListSection.tsx", "reason": "列表模式参考，ActionListSection 复用"}
+{"file": "src/features/library/components/PromptEditorDialog.tsx", "reason": "编辑器模式参考，ActionEditorDialog 复用"}
+{"file": "src/features/library/components/LibraryPanel.tsx", "reason": "壳层，增加 ActionsTabContent"}
+{"file": "src/features/library/components/LibraryHeader.tsx", "reason": "增加导入/导出按钮 + 排序下拉"}
+{"file": "src/features/action-menu/actionRegistry.ts", "reason": "静态 action，新增动态 Provider"}
+{"file": "src/features/action-menu/components/ActionPalette.tsx", "reason": "Palette 组件，需支持动态项"}
+{"file": "src/shared/types/library.ts", "reason": "ActionResource + ActionPayload + PromptInsertTarget 类型"}
+{"file": "src-tauri/src/skill/commands.rs", "reason": "新增 action + bundle 命令"}
+{"file": "src-tauri/src/skill/repository.rs", "reason": "actions CRUD + bundle import/export"}
+{"file": "src-tauri/src/skill/migrations.rs", "reason": "v4→v5 actions 表"}
+{"file": "src-tauri/src/skill/types.rs", "reason": "ActionRecord 类型"}
+{"file": "src-tauri/src/lib.rs", "reason": "命令注册"}
+{"file": "src/app/components/ProjectWorkspace.tsx", "reason": "sendToTerminal + git context"}
+{"file": "src/shared/store/gitStore.ts", "reason": "activeBranch 用于变量填充"}
+{"file": "src/shared/store/projectStore.ts", "reason": "activeProject 用于变量填充"}
+{"file": ".trellis/spec/backend/command-guidelines.md", "reason": "后端命令规范"}
+{"file": ".trellis/spec/frontend/api-layer.md", "reason": "API 层规范"}
+{"file": ".trellis/spec/frontend/state-management.md", "reason": "状态管理规范"}
+{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "组件规范"}

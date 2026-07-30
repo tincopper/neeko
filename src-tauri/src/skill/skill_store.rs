@@ -250,6 +250,131 @@ impl SkillStore {
         self.repo.get_all_project_skill_counts()
     }
 
+    // Prompts
+
+    /// Insert a new prompt.
+    pub fn insert_prompt(&self, prompt: &super::types::PromptRecord) -> Result<()> {
+        self.repo.insert_prompt(prompt)
+    }
+
+    /// Get all prompts ordered by updated_at descending.
+    pub fn get_all_prompts(&self) -> Result<Vec<super::types::PromptRecord>> {
+        self.repo.get_all_prompts()
+    }
+
+    /// Get a prompt by its ID.
+    pub fn get_prompt_by_id(&self, id: &str) -> Result<Option<super::types::PromptRecord>> {
+        self.repo.get_prompt_by_id(id)
+    }
+
+    /// Get prompts filtered by kind ('prompt' or 'command').
+    pub fn get_prompts_by_kind(&self, kind: &str) -> Result<Vec<super::types::PromptRecord>> {
+        self.repo.get_prompts_by_kind(kind)
+    }
+
+    /// Get a prompt by its slash command (project scope takes priority).
+    pub fn get_prompt_by_slash(
+        &self,
+        slash: &str,
+        project_id: Option<&str>,
+    ) -> Result<Option<super::types::PromptRecord>> {
+        self.repo.get_prompt_by_slash(slash, project_id)
+    }
+
+    /// Update all fields of a prompt.
+    pub fn update_prompt(&self, prompt: &super::types::PromptRecord) -> Result<()> {
+        self.repo.update_prompt(prompt)
+    }
+
+    /// Delete a prompt by ID.
+    pub fn delete_prompt(&self, id: &str) -> Result<()> {
+        self.repo.delete_prompt(id)
+    }
+
+    /// Increment usage count and update last_used_at.
+    pub fn record_prompt_usage(&self, id: &str) -> Result<()> {
+        self.repo.record_prompt_usage(id)
+    }
+
+    /// Get all unique tag names across all prompts.
+    pub fn get_all_prompt_tags(&self) -> Result<Vec<String>> {
+        self.repo.get_all_prompt_tags()
+    }
+
+    // Actions
+
+    /// Insert a new action.
+    pub fn insert_action(&self, action: &super::types::ActionRecord) -> Result<()> {
+        self.repo.insert_action(action)
+    }
+
+    /// Get all actions ordered by updated_at descending.
+    pub fn get_all_actions(&self) -> Result<Vec<super::types::ActionRecord>> {
+        self.repo.get_all_actions()
+    }
+
+    /// Get an action by its ID.
+    pub fn get_action_by_id(&self, id: &str) -> Result<Option<super::types::ActionRecord>> {
+        self.repo.get_action_by_id(id)
+    }
+
+    /// Update all fields of an action.
+    pub fn update_action(&self, action: &super::types::ActionRecord) -> Result<()> {
+        self.repo.update_action(action)
+    }
+
+    /// Delete an action by ID.
+    pub fn delete_action(&self, id: &str) -> Result<()> {
+        self.repo.delete_action(id)
+    }
+
+    /// Increment usage count and update last_used_at.
+    pub fn record_action_usage(&self, id: &str) -> Result<()> {
+        self.repo.record_action_usage(id)
+    }
+
+    /// Get all unique tag names across all actions.
+    pub fn get_all_action_tags(&self) -> Result<Vec<String>> {
+        self.repo.get_all_action_tags()
+    }
+
+    // MCP Servers
+
+    /// Insert a new MCP server.
+    pub fn insert_mcp_server(&self, server: &super::types::McpServerRecord) -> Result<()> {
+        self.repo.insert_mcp_server(server)
+    }
+
+    /// Get all MCP servers ordered by name.
+    pub fn get_all_mcp_servers(&self) -> Result<Vec<super::types::McpServerRecord>> {
+        self.repo.get_all_mcp_servers()
+    }
+
+    /// Get an MCP server by its ID.
+    pub fn get_mcp_server_by_id(&self, id: &str) -> Result<Option<super::types::McpServerRecord>> {
+        self.repo.get_mcp_server_by_id(id)
+    }
+
+    /// Update all fields of an MCP server.
+    pub fn update_mcp_server(&self, server: &super::types::McpServerRecord) -> Result<()> {
+        self.repo.update_mcp_server(server)
+    }
+
+    /// Delete an MCP server by ID.
+    pub fn delete_mcp_server(&self, id: &str) -> Result<()> {
+        self.repo.delete_mcp_server(id)
+    }
+
+    /// Increment usage count and update last_used_at.
+    pub fn record_mcp_server_usage(&self, id: &str) -> Result<()> {
+        self.repo.record_mcp_server_usage(id)
+    }
+
+    /// Get all unique tag names across all MCP servers.
+    pub fn get_all_mcp_server_tags(&self) -> Result<Vec<String>> {
+        self.repo.get_all_mcp_server_tags()
+    }
+
     /// Bound tag-group counts for all projects (`project_id`, count).
     pub fn get_all_project_tag_group_counts(&self) -> Result<Vec<(String, i64)>> {
         self.repo.get_all_project_tag_group_counts()
@@ -297,6 +422,53 @@ impl SkillStore {
     /// Clear all cache entries.
     pub fn clear_all_cache(&self) -> Result<()> {
         self.repo.clear_all_cache()
+    }
+
+    // Agent Plugins (custom)
+
+    /// Insert a custom agent plugin.
+    pub fn insert_agent_plugin(
+        &self,
+        id: &str,
+        name: &str,
+        icon: Option<&str>,
+        description: Option<&str>,
+        version: &str,
+        is_builtin: bool,
+        execution_json: &str,
+        configuration_json: &str,
+        capabilities_json: &str,
+        paths_json: &str,
+        lifecycle_json: Option<&str>,
+    ) -> Result<()> {
+        self.repo.insert_agent_plugin(
+            id,
+            name,
+            icon,
+            description,
+            version,
+            is_builtin,
+            execution_json,
+            configuration_json,
+            capabilities_json,
+            paths_json,
+            lifecycle_json,
+        )
+    }
+
+    /// Get all custom (non-built-in) agent plugins.
+    pub fn get_custom_agent_plugins(&self) -> Result<Vec<serde_json::Value>> {
+        self.repo.get_custom_agent_plugins()
+    }
+
+    /// Get a custom agent plugin by ID.
+    pub fn get_custom_agent_plugin_by_id(&self, id: &str) -> Result<Option<serde_json::Value>> {
+        self.repo.get_custom_agent_plugin_by_id(id)
+    }
+
+    /// Delete a custom agent plugin by ID.
+    pub fn delete_custom_agent_plugin(&self, id: &str) -> Result<()> {
+        self.repo.delete_custom_agent_plugin(id)
     }
 }
 

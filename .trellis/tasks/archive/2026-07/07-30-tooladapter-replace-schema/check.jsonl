@@ -1,0 +1,6 @@
+{"file": ".trellis/spec/backend/command-guidelines.md", "reason": "命令规范"}
+{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "组件规范"}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "错误处理"}
+{"file": ".trellis/spec/backend/directory-structure.md", "reason": "目录结构（删除 tool_adapters.rs）"}
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "代码质量"}
+{"file": ".trellis/spec/unit-test/index.md", "reason": "测试覆盖"}

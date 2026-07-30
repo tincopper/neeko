@@ -3,7 +3,7 @@ import React, { useEffect, useRef } from 'react';
 import { cn } from '@/lib/utils';
 import { Dialog, DialogContent, DialogTitle } from '@/ui/Dialog';
 
-import { getAllActions } from '../actionRegistry';
+import { getAllActionsAsync } from '../actionRegistry';
 import { useActionMenu } from '../hooks/useActionMenu';
 import { useActionPaletteStore } from '../store/actionPaletteStore';
 import type { ActionRegistryItem, ActionContext } from '../types/actionMenu';
@@ -19,8 +19,19 @@ const ActionPalette: React.FC<ActionPaletteProps> = ({ ctx, onExecute }) => {
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
 
-  const paletteCtx: ActionContext = { ...ctx, closeMenu: closePalette };
-  const allItems = getAllActions();
+  const paletteCtx: ActionContext = React.useMemo(
+    () => ({ ...ctx, closeMenu: closePalette }),
+    [ctx, closePalette],
+  );
+  const [allItems, setAllItems] = React.useState<ActionRegistryItem[]>([]);
+
+  // Load dynamic items (recent prompts/actions) when the palette opens.
+  React.useEffect(() => {
+    if (open) {
+      void getAllActionsAsync(paletteCtx).then(setAllItems);
+    }
+  }, [open, paletteCtx]);
+
   const { query, setQuery, filtered, selectedIndex, setSelectedIndex, handleKeyDown } =
     useActionMenu(allItems, paletteCtx);
 

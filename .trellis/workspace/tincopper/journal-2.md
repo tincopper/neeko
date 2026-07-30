@@ -1528,15 +1528,15 @@ Implemented unified Action Menu dropdown (replacing TabBar + button), Ctrl+Shift
 - None - task complete
 
 
-## Session 103: feat(statusbar): show worktree branch and disable branch switching
+## Session 103: Resource Library Phase 1 implementation
 
 **Date**: 2026-07-29
-**Task**: feat(statusbar): show worktree branch and disable branch switching
-**Branch**: `main`
+**Task**: Resource Library Phase 1 implementation
+**Branch**: `feature-commands`
 
 ### Summary
 
-When a worktree is active, the status bar now displays the worktree's branch name instead of the main project's branch. Branch switching is disabled in worktree context since worktrees stay on their own branch. Added worktree-aware display component pattern to spec.
+Implemented Resource Library feature: new panelId:library Dock panel, Prompts CRUD (8 Tauri commands + prompts table migration), Action Palette integration (3 actions), dual view with persist, slash resolution with project override, Save as Prompt, Insert to Agent + Terminal PTY. All 12 acceptance criteria met. 844 frontend tests + 73 Rust tests pass.
 
 ### Main Changes
 
@@ -1546,7 +1546,7 @@ When a worktree is active, the status bar now displays the worktree's branch nam
 
 | Hash | Message |
 |------|---------|
-| `75a310b8` | (see git log) |
+| `50fc2db1` | (see git log) |
 
 ### Testing
 
@@ -1561,114 +1561,15 @@ When a worktree is active, the status bar now displays the worktree's branch nam
 - None - task complete
 
 
-## Session 104: feat(statusbar): show worktree branch and disable branch switching
-
-**Date**: 2026-07-29
-**Task**: feat(statusbar): show worktree branch and disable branch switching
-**Branch**: `main`
-
-### Summary
-
-When a worktree is active, the status bar now displays the worktree's branch name instead of the main project's branch. Branch switching is disabled in worktree context since worktrees stay on their own branch. Added worktree-aware display component pattern to spec.
-
-### Main Changes
-
-(Add details)
-
-### Git Commits
-
-| Hash | Message |
-|------|---------|
-| `75a310b8` | (see git log) |
-
-### Testing
-
-- [OK] (Add test results)
-
-### Status
-
-[OK] **Completed**
-
-### Next Steps
-
-- None - task complete
-
-
-## Session 105: feat(statusbar): show worktree branch and disable branch switching
-
-**Date**: 2026-07-29
-**Task**: feat(statusbar): show worktree branch and disable branch switching
-**Branch**: `main`
-
-### Summary
-
-When a worktree is active, the status bar now displays the worktree's branch name instead of the main project's branch. Branch switching is disabled in worktree context since worktrees stay on their own branch. Added worktree-aware display component pattern to spec.
-
-### Main Changes
-
-(Add details)
-
-### Git Commits
-
-| Hash | Message |
-|------|---------|
-| `75a310b8` | (see git log) |
-
-### Testing
-
-- [OK] (Add test results)
-
-### Status
-
-[OK] **Completed**
-
-### Next Steps
-
-- None - task complete
-
-
-## Session 106: feat(statusbar): show worktree branch and disable branch switching
-
-**Date**: 2026-07-29
-**Task**: feat(statusbar): show worktree branch and disable branch switching
-**Branch**: `main`
-
-### Summary
-
-When a worktree is active, the status bar now displays the worktree's branch name instead of the main project's branch. Branch switching is disabled in worktree context since worktrees stay on their own branch. Added worktree-aware display component pattern to spec.
-
-### Main Changes
-
-(Add details)
-
-### Git Commits
-
-| Hash | Message |
-|------|---------|
-| `75a310b8` | (see git log) |
-
-### Testing
-
-- [OK] (Add test results)
-
-### Status
-
-[OK] **Completed**
-
-### Next Steps
-
-- None - task complete
-
-
-## Session 107: LSP Code Review Remediation
+## Session 104: Resource Library Phase 2: Actions, import/export, variables, dynamic palette
 
 **Date**: 2026-07-30
-**Task**: LSP Code Review Remediation
-**Branch**: `main`
+**Task**: Resource Library Phase 2: Actions, import/export, variables, dynamic palette
+**Branch**: `feature-commands`
 
 ### Summary
 
-Complete LSP front/back code review remediation: SRP split (session_store, plugin_manager, instance, log_ring_buffer, status, utils), critical fixes (thread spawn unwrap, shutdown protocol, DiagnosticBus compaction, installer HashSet), polish (root markers, display names, React keys, timestamps, log levels). All 450+79+891 tests pass.
+Phase 2 complete: Action templates (8 commands + CRUD UI + run dispatch), JSON bundle import/export with conflict handling, {{variable}} fill with auto-fill (branch/projectName/filePath), sortMode (recent/frequent/alphabetical) with persist, Action Palette dynamic provider (top 5 recent). All 10 AC met. 844 FE + 445 Rust tests pass.
 
 ### Main Changes
 
@@ -1678,7 +1579,139 @@ Complete LSP front/back code review remediation: SRP split (session_store, plugi
 
 | Hash | Message |
 |------|---------|
-| `6f4c6c64` | (see git log) |
+| `8d225370` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
+
+
+## Session 105: Agent Plugin System: unified provider abstraction
+
+**Date**: 2026-07-30
+**Task**: Agent Plugin System: unified provider abstraction
+**Branch**: `feature-commands`
+
+### Summary
+
+AgentPlugin as complete contract for Agent providers. 12 built-in plugins, path resolver with templates, install detection, custom plugin CRUD, ResourceDeployer trait, Settings integration. 844 FE + 469 Rust tests pass.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `c3147ab1` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
+
+
+## Session 106: MCP & Commands resource management via AgentPlugin
+
+**Date**: 2026-07-30
+**Task**: MCP & Commands resource management via AgentPlugin
+**Branch**: `feature-commands`
+
+### Summary
+
+MCP servers (CRUD + deploy via AgentPlugin paths + test) and Commands (kind='command' in prompts + deploy). ResourceDeployer unified trait. Library MCP/Commands tabs. resolve_slash_resource. 844 FE + 477 Rust tests pass.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `6663e8de` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
+
+
+## Session 107: ToolAdapter complete replacement + Agent config Schema
+
+**Date**: 2026-07-30
+**Task**: ToolAdapter complete replacement + Agent config Schema
+**Branch**: `feature-commands`
+
+### Summary
+
+Deleted tool_adapters.rs (375 lines). Migrated scanner/sync_engine/commands to AgentPlugin + PathResolver. Zero ToolAdapter references remain. 475 Rust + 844 FE tests pass.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `031c9a63` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
+
+
+## Session 108: Agent Configuration Schema system
+
+**Date**: 2026-07-30
+**Task**: Agent Configuration Schema system
+**Branch**: `feature-commands`
+
+### Summary
+
+JSON Schemas for 12 Agents + validation engine + SchemaForm auto-generation. Settings → Agents shows auto-generated config forms. 481 Rust + 844 FE tests pass.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `a167fd43` | (see git log) |
 
 ### Testing
 

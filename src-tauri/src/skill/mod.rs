@@ -25,7 +25,5 @@ pub mod skill_store;
 pub mod skillssh_api;
 /// Sync engine for deploying skills to tool directories.
 pub mod sync_engine;
-/// Tool adapter definitions for agent platforms.
-pub mod tool_adapters;
 /// Shared types and DTOs.
 pub mod types;

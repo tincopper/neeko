@@ -1,0 +1,18 @@
+{"file": "src/features/skill/store.ts", "reason": "现有 skillStore 状态管理，Library Skills tab 复用"}
+{"file": "src/features/skill/components/SkillsPanel.tsx", "reason": "现有 Skills 面板，作为 Library Skills tab 内容嵌入"}
+{"file": "src/features/skill/components/LocalSkillContent.tsx", "reason": "现有 Library 列表，作为 Skills tab 主内容"}
+{"file": "src/features/skill/components/MarketplaceContent.tsx", "reason": "现有 Marketplace，作为 Skills tab 子入口"}
+{"file": "src/features/action-menu/actionRegistry.ts", "reason": "新增 open-resource-library / new-prompt / insert-prompt 静态 action"}
+{"file": "src/features/action-menu/components/ActionPalette.tsx", "reason": "Action Palette 组件，需支持动态 Provider"}
+{"file": "src/features/action-menu/hooks/useActionMenu.ts", "reason": "Action 过滤与选择逻辑"}
+{"file": "src/shared/hooks/useKeyboardShortcuts.ts", "reason": "新增 Ctrl/⌘+Shift+L 快捷键绑定"}
+{"file": "src/app/dock/registry.ts", "reason": "注册新 panelId: library"}
+{"file": "src/app/dock/DockPanelWrappers.tsx", "reason": "新增 LibraryPanelWrapper"}
+{"file": "src/shared/types/skill.ts", "reason": "现有 Skill DTO，新增 ResourceSummary / PromptResource 类型"}
+{"file": "src-tauri/src/skill/mod.rs", "reason": "现有 skill 模块结构，参考新增 library 模块"}
+{"file": "src-tauri/src/skill/commands.rs", "reason": "现有 Tauri 命令注册模式，新增 prompt 命令参考"}
+{"file": "src-tauri/src/skill/model.rs", "reason": "现有数据模型模式，新增 PromptRecord 参考"}
+{"file": "src-tauri/src/skill/repository.rs", "reason": "现有 SQLite CRUD 模式，新增 prompts 表操作参考"}
+{"file": "src-tauri/src/lib.rs", "reason": "neeko_invoke_handler! 命令注册入口"}
+{"file": "src/shared/store/projectStore.ts", "reason": "项目状态，项目级 Prompt 覆盖需读取 activeProjectId"}
+{"file": "src/features/agent/api/agentApi.ts", "reason": "Agent 上下文，Insert 到 Agent 输入需 agent 状态"}

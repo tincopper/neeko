@@ -1,10 +1,16 @@
-import React from 'react';
+import React, { useState, useCallback } from 'react';
 
+// eslint-disable-next-line import/no-restricted-paths -- settings UI displays agent plugin cards via agent components
+import { AgentPluginCard, AgentPluginDetails } from '@/features/agent';
+// eslint-disable-next-line import/no-restricted-paths -- settings UI uses agent plugin hook
+import { useAgentPlugins } from '@/features/agent/hooks/useAgentPlugins';
+import type { JsonSchema } from '@/lib/schemaValidator';
 import type { AgentConfig, AppConfig } from '@/shared/types';
 import { Switch } from '@/ui';
 
 import BuiltInAgentsSection from './BuiltInAgentsSection';
 import CustomAgentsSection from './CustomAgentsSection';
+import SchemaForm from './SchemaForm';
 
 interface AgentsPanelProps {
   config: AppConfig;
@@ -71,6 +77,18 @@ const AgentsPanel: React.FC<AgentsPanelProps> = ({
   onSaveSkillPath,
   onCancelSkillPathEdit,
 }) => {
+  // ── Agent Plugin System state ────────────────────────────────────────────
+  const { plugins, detectionResults, loading: pluginsLoading } = useAgentPlugins(null);
+  const [selectedPluginId, setSelectedPluginId] = useState<string | null>(null);
+
+  const selectedPlugin = selectedPluginId
+    ? (plugins.find((p) => p.id === selectedPluginId) ?? null)
+    : null;
+
+  const handleSelectPlugin = useCallback((id: string) => {
+    setSelectedPluginId((prev) => (prev === id ? null : id));
+  }, []);
+
   return (
     <>
       <h3 className="text-base font-semibold text-text-primary mb-4">Agents</h3>
@@ -109,6 +127,66 @@ const AgentsPanel: React.FC<AgentsPanelProps> = ({
             })
           }
         />
+      </div>
+
+      {/* ── Agent Plugin Cards ──────────────────────────────────────────── */}
+      <div className="py-3 border-b border-white/[0.04]">
+        <div className="text-[0.86em] text-text-primary font-medium mb-2">
+          Agent Plugins
+          {!pluginsLoading && (
+            <span className="text-[0.78em] text-text-muted ml-1.5">({plugins.length})</span>
+          )}
+        </div>
+        <div className="text-[0.75em] text-text-muted mb-2 leading-relaxed">
+          Supported agent providers and their resource contracts.
+        </div>
+        {pluginsLoading ? (
+          <div className="text-[0.78em] text-text-muted">Loading plugins...</div>
+        ) : (
+          <div className="grid grid-cols-2 gap-1.5">
+            {plugins.map((plugin) => (
+              <AgentPluginCard
+                key={plugin.id}
+                plugin={plugin}
+                installed={detectionResults[plugin.id]?.installed}
+                isSelected={selectedPluginId === plugin.id}
+                onClick={() => handleSelectPlugin(plugin.id)}
+              />
+            ))}
+          </div>
+        )}
+        {selectedPlugin && (
+          <div className="mt-2 border border-border rounded-lg overflow-hidden">
+            <AgentPluginDetails plugin={selectedPlugin} />
+            {/* Schema-generated configuration form */}
+            {selectedPlugin.configuration?.schema &&
+              selectedPlugin.configuration.schema.type === 'object' && (
+                <div className="border-t border-border">
+                  <div className="px-3 py-1.5 text-[0.75em] text-text-muted font-medium bg-bg-secondary/30">
+                    Configuration
+                  </div>
+                  <SchemaForm
+                    schema={selectedPlugin.configuration.schema as JsonSchema}
+                    initialValue={
+                      (config.agentPluginConfigs?.[selectedPlugin.id] as Record<string, unknown>) ||
+                      (selectedPlugin.configuration.defaults as Record<string, unknown>) ||
+                      {}
+                    }
+                    onChange={(value) => {
+                      const next = {
+                        ...config,
+                        agentPluginConfigs: {
+                          ...(config.agentPluginConfigs || {}),
+                          [selectedPlugin.id]: value,
+                        },
+                      };
+                      onConfigChange(next);
+                    }}
+                  />
+                </div>
+              )}
+          </div>
+        )}
       </div>
 
       <BuiltInAgentsSection

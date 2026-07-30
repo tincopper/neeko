@@ -1,14 +1,16 @@
+import { Library, MessageSquare, PlusCircle } from 'lucide-react';
+
 import {
+  Bot,
+  ExternalLink,
   FileIcon,
   FolderOpen,
   History,
-  TerminalIcon,
-  Bot,
   SplitSquareVertical,
-  ExternalLink,
+  TerminalIcon,
 } from '@/shared/components/icons';
 
-import type { ActionRegistryItem, ActionContext } from './types/actionMenu';
+import type { ActionContext, ActionRegistryItem } from './types/actionMenu';
 
 const ACTION_ITEMS: ActionRegistryItem[] = [
   {
@@ -80,6 +82,45 @@ const ACTION_ITEMS: ActionRegistryItem[] = [
     keywords: ['ide', 'open', 'external'],
     execute: (ctx) => ctx.closeMenu(),
   },
+
+  // ── Resource Library ──────────────────────────────────────────────────
+  {
+    id: 'open-resource-library',
+    group: 'library',
+    label: 'Open Resource Library',
+    description: 'Browse skills, prompts, and reusable actions',
+    icon: Library,
+    shortcut: 'Ctrl+Shift+L',
+    keywords: ['library', 'skills', 'prompts', 'resources', 'actions'],
+    execute: (ctx) => {
+      ctx.openLibrary?.({});
+      ctx.closeMenu();
+    },
+  },
+  {
+    id: 'new-prompt',
+    group: 'library',
+    label: 'New Prompt…',
+    description: 'Create a reusable prompt',
+    icon: PlusCircle,
+    keywords: ['prompt', 'new', 'create', 'library'],
+    execute: (ctx) => {
+      ctx.openLibrary?.({ kind: 'prompt' });
+      ctx.closeMenu();
+    },
+  },
+  {
+    id: 'insert-prompt',
+    group: 'library',
+    label: 'Insert Prompt…',
+    description: 'Search and insert a prompt into the agent input',
+    icon: MessageSquare,
+    keywords: ['prompt', 'insert', 'library', 'slash'],
+    execute: (ctx) => {
+      ctx.openLibrary?.({ kind: 'prompt' });
+      ctx.closeMenu();
+    },
+  },
 ];
 
 export function getActionMenuItems(ctx: ActionContext): ActionRegistryItem[] {
@@ -88,4 +129,23 @@ export function getActionMenuItems(ctx: ActionContext): ActionRegistryItem[] {
 
 export function getAllActions(): ActionRegistryItem[] {
   return ACTION_ITEMS;
+}
+
+/**
+ * Build the full action list including dynamic "recently used" library items.
+ *
+ * The static ACTION_ITEMS are always included; dynamic items are appended
+ * after the static library group. Returns a promise because the library
+ * store is queried asynchronously.
+ */
+export async function getAllActionsAsync(ctx: ActionContext): Promise<ActionRegistryItem[]> {
+  const staticItems = ACTION_ITEMS.filter((item) => !item.visible || item.visible(ctx));
+  try {
+    const { getLibraryActionItems } = await import('./providers/libraryActionProvider');
+    const dynamic = await getLibraryActionItems(ctx);
+    return [...staticItems, ...dynamic];
+  } catch (e) {
+    console.error('[actionRegistry] failed to load dynamic items:', e);
+    return staticItems;
+  }
 }

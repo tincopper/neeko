@@ -20,6 +20,11 @@ export const DOCK_PANEL_META: Record<string, DockPanelMeta> = {
     defaultZone: 'left',
     defaultOrder: 2,
   },
+  library: {
+    id: 'library',
+    defaultZone: 'left',
+    defaultOrder: 3,
+  },
   gitControl: {
     id: 'gitControl',
     defaultZone: 'right',
@@ -47,6 +52,7 @@ export type DockPanelId =
   | 'projects'
   | 'files'
   | 'skills'
+  | 'library'
   | 'gitControl'
   | 'pullRequests'
   | 'browser'

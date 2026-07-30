@@ -16,6 +16,7 @@ import { useCommitDetail } from '@/features/git/components/gitlog/useCommitDetai
 import { useGitLog } from '@/features/git/components/gitlog/useGitLog';
 import PullRequestsPanel from '@/features/git/components/PullRequestsPanel';
 import { useSingletonDiff } from '@/features/git/hooks/useSingletonDiff';
+import LibraryPanel from '@/features/library/components/LibraryPanel';
 import { useActiveProject } from '@/features/project/hooks/use-active-project';
 import SkillsPanel from '@/features/skill/components/SkillsPanel';
 import { useAppContext } from '@/shared/contexts';
@@ -26,6 +27,7 @@ import { useProjectStore } from '@/shared/store/projectStore';
 import { useWorktreeStore } from '@/shared/store/worktreeStore';
 import type { Tab, FileTreeChangedEvent } from '@/shared/types';
 import { DEFAULT_TREE_DEPTH } from '@/shared/types/file';
+import type { PromptInsertTarget } from '@/shared/types/library';
 import { aheadBehindKey } from '@/shared/utils/aheadBehindKey';
 import {
   filePathToFileUrl,
@@ -378,6 +380,51 @@ const SkillsPanelWrapper: React.FC = React.memo(() => {
   return <SkillsPanel />;
 });
 SkillsPanelWrapper.displayName = 'SkillsPanelWrapper';
+
+// ── LibraryPanelWrapper ──
+
+/**
+ * Renders the Resource Library panel. Insert is wired through the app-level
+ * action context (set on the window by ProjectWorkspace) when available;
+ * falls back to clipboard copy otherwise.
+ */
+const LibraryPanelWrapper: React.FC = React.memo(() => {
+  const { showToast } = useAppContext();
+
+  const handleInsertPrompt = useCallback(
+    (
+      prompt: import('@/shared/types/library').PromptResource,
+      target: PromptInsertTarget = 'agent',
+    ) => {
+      if (target === 'terminal') {
+        const insertTerminal = (
+          window as unknown as { __neekoInsertToTerminal?: (text: string) => boolean }
+        ).__neekoInsertToTerminal;
+        if (insertTerminal && insertTerminal(prompt.content)) {
+          showToast(`Inserted "${prompt.name}" to terminal`, 'info');
+          return;
+        }
+        // Terminal unavailable — fall through to agent insert.
+        showToast('No active terminal — inserting to agent input', 'info');
+      }
+
+      const insert = (window as unknown as { __neekoInsertToAgentInput?: (text: string) => void })
+        .__neekoInsertToAgentInput;
+      if (insert) {
+        insert(prompt.content);
+      } else {
+        // Fallback: copy to clipboard.
+        void navigator.clipboard.writeText(prompt.content).then(() => {
+          showToast('Prompt copied to clipboard', 'info');
+        });
+      }
+    },
+    [showToast],
+  );
+
+  return <LibraryPanel onInsertPrompt={handleInsertPrompt} />;
+});
+LibraryPanelWrapper.displayName = 'LibraryPanelWrapper';
 
 // ── ConversationsPanelWrapper ──
 
@@ -1128,6 +1175,7 @@ export {
   // Kept for rollback; registry uses GitControlPanelWrapper
   GitCommitPanelWrapper,
   SkillsPanelWrapper,
+  LibraryPanelWrapper,
   ConversationsPanelWrapper,
   PullRequestsPanelWrapper,
   GitLogPanelWrapper,

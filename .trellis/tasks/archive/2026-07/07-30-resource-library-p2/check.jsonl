@@ -1,0 +1,8 @@
+{"file": ".trellis/spec/backend/command-guidelines.md", "reason": "新增 action/bundle 命令需遵循命令规范"}
+{"file": ".trellis/spec/frontend/api-layer.md", "reason": "新增 libraryApi 函数需遵循 API 层规范"}
+{"file": ".trellis/spec/frontend/state-management.md", "reason": "sortMode + resolveVariables 需遵循状态管理规范"}
+{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "ActionListSection/ActionEditorDialog/VariableDialog 需遵循组件规范"}
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "代码质量与禁止模式"}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "Action 执行错误处理"}
+{"file": ".trellis/spec/frontend/interaction-patterns.md", "reason": "变量表单 + 导入/导出交互"}
+{"file": ".trellis/spec/unit-test/index.md", "reason": "新增功能需配套单元测试"}

@@ -5,6 +5,7 @@ import {
   GitBranch,
   GitPullRequest,
   Globe,
+  Library,
   MessagesSquare,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
@@ -22,6 +23,7 @@ export const dockPanelIcons: Record<string, LucideIcon> = {
   GitPullRequest,
   GitBranch,
   Globe,
+  Library,
   MessagesSquare,
 };
 
@@ -43,6 +45,12 @@ const LazyFilesPanelWrapper = lazy(() =>
 const LazySkillsPanelWrapper = lazy(() =>
   import('@/app/dock/DockPanelWrappers').then((m) => ({
     default: m.SkillsPanelWrapper,
+  })),
+);
+
+const LazyLibraryPanelWrapper = lazy(() =>
+  import('@/app/dock/DockPanelWrappers').then((m) => ({
+    default: m.LibraryPanelWrapper,
   })),
 );
 
@@ -92,6 +100,14 @@ const UI_BINDINGS: Record<string, UiBinding> = {
       React.ComponentType<Record<string, unknown>>
     >,
     minPanelSize: 200,
+  },
+  library: {
+    title: 'Library',
+    icon: 'Library',
+    component: LazyLibraryPanelWrapper as React.LazyExoticComponent<
+      React.ComponentType<Record<string, unknown>>
+    >,
+    minPanelSize: 240,
   },
   gitControl: {
     title: 'Git Control',

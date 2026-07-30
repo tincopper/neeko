@@ -2,7 +2,7 @@ use anyhow::{bail, Context, Result};
 use rusqlite::Connection;
 
 /// Current schema version. Bump this when adding a new migration.
-const LATEST_VERSION: u32 = 3;
+const LATEST_VERSION: u32 = 7;
 
 /// Run all pending migrations on the database.
 pub fn run_migrations(conn: &Connection) -> Result<()> {
@@ -44,6 +44,10 @@ fn migrate_step(conn: &Connection, from_version: u32) -> Result<()> {
         0 => migrate_v0_to_v1(conn),
         1 => migrate_v1_to_v2(conn),
         2 => migrate_v2_to_v3(conn),
+        3 => migrate_v3_to_v4(conn),
+        4 => migrate_v4_to_v5(conn),
+        5 => migrate_v5_to_v6(conn),
+        6 => migrate_v6_to_v7(conn),
         _ => bail!("unknown migration version: {from_version}"),
     }
 }
@@ -159,6 +163,113 @@ fn migrate_v2_to_v3(conn: &Connection) -> Result<()> {
     Ok(())
 }
 
+/// v3 -> v4: Add prompts table for the Resource Library.
+fn migrate_v3_to_v4(conn: &Connection) -> Result<()> {
+    conn.execute_batch(
+        "
+        CREATE TABLE IF NOT EXISTS prompts (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            description TEXT,
+            content TEXT NOT NULL,
+            slash TEXT,
+            tags_json TEXT NOT NULL DEFAULT '[]',
+            scope TEXT NOT NULL DEFAULT 'global',
+            project_id TEXT,
+            variables_json TEXT NOT NULL DEFAULT '[]',
+            favorite INTEGER NOT NULL DEFAULT 0,
+            usage_count INTEGER NOT NULL DEFAULT 0,
+            last_used_at INTEGER,
+            created_at INTEGER NOT NULL,
+            updated_at INTEGER NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_prompts_slash ON prompts(slash);
+        CREATE INDEX IF NOT EXISTS idx_prompts_updated ON prompts(updated_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_prompts_scope_project ON prompts(scope, project_id);
+        ",
+    )?;
+    Ok(())
+}
+
+/// v4 -> v5: Add actions table for the Resource Library.
+fn migrate_v4_to_v5(conn: &Connection) -> Result<()> {
+    conn.execute_batch(
+        "
+        CREATE TABLE IF NOT EXISTS actions (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            description TEXT,
+            \"group\" TEXT NOT NULL DEFAULT 'custom',
+            payload_json TEXT NOT NULL,
+            shortcut TEXT,
+            tags_json TEXT NOT NULL DEFAULT '[]',
+            enabled INTEGER NOT NULL DEFAULT 1,
+            usage_count INTEGER NOT NULL DEFAULT 0,
+            last_used_at INTEGER,
+            created_at INTEGER NOT NULL,
+            updated_at INTEGER NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_actions_updated ON actions(updated_at DESC);
+        ",
+    )?;
+    Ok(())
+}
+
+/// v5 -> v6: Add agent_plugins table for the Agent Plugin System.
+fn migrate_v5_to_v6(conn: &Connection) -> Result<()> {
+    conn.execute_batch(
+        "
+        CREATE TABLE IF NOT EXISTS agent_plugins (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            icon TEXT,
+            description TEXT,
+            version TEXT NOT NULL DEFAULT '1.0',
+            is_builtin INTEGER NOT NULL DEFAULT 0,
+            enabled INTEGER NOT NULL DEFAULT 1,
+            execution_json TEXT NOT NULL,
+            configuration_json TEXT NOT NULL,
+            capabilities_json TEXT NOT NULL,
+            paths_json TEXT NOT NULL,
+            lifecycle_json TEXT,
+            created_at INTEGER NOT NULL,
+            updated_at INTEGER NOT NULL
+        );
+        ",
+    )?;
+    Ok(())
+}
+
+/// v6 -> v7: Add mcp_servers table and kind column to prompts.
+fn migrate_v6_to_v7(conn: &Connection) -> Result<()> {
+    conn.execute_batch(
+        "
+        CREATE TABLE IF NOT EXISTS mcp_servers (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            description TEXT,
+            command TEXT NOT NULL,
+            args_json TEXT NOT NULL DEFAULT '[]',
+            env_json TEXT NOT NULL DEFAULT '{}',
+            transport TEXT NOT NULL DEFAULT 'stdio',
+            scope TEXT NOT NULL DEFAULT 'global',
+            project_id TEXT,
+            tags_json TEXT NOT NULL DEFAULT '[]',
+            enabled INTEGER NOT NULL DEFAULT 1,
+            usage_count INTEGER NOT NULL DEFAULT 0,
+            last_used_at INTEGER,
+            created_at INTEGER NOT NULL,
+            updated_at INTEGER NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_mcp_servers_name ON mcp_servers(name);
+
+        ALTER TABLE prompts ADD COLUMN kind TEXT NOT NULL DEFAULT 'prompt';
+        CREATE INDEX IF NOT EXISTS idx_prompts_kind ON prompts(kind);
+        ",
+    )?;
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -191,6 +302,10 @@ mod tests {
         assert!(tables.contains(&"tag_group_skill_tools".to_string()));
         assert!(tables.contains(&"settings".to_string()));
         assert!(tables.contains(&"skillssh_cache".to_string()));
+        assert!(tables.contains(&"prompts".to_string()));
+        assert!(tables.contains(&"actions".to_string()));
+        assert!(tables.contains(&"agent_plugins".to_string()));
+        assert!(tables.contains(&"mcp_servers".to_string()));
     }
 
     #[test]
