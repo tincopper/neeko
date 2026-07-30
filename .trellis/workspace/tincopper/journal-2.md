@@ -1625,3 +1625,36 @@ AgentPlugin as complete contract for Agent providers. 12 built-in plugins, path 
 ### Next Steps
 
 - None - task complete
+
+
+## Session 106: MCP & Commands resource management via AgentPlugin
+
+**Date**: 2026-07-30
+**Task**: MCP & Commands resource management via AgentPlugin
+**Branch**: `feature-commands`
+
+### Summary
+
+MCP servers (CRUD + deploy via AgentPlugin paths + test) and Commands (kind='command' in prompts + deploy). ResourceDeployer unified trait. Library MCP/Commands tabs. resolve_slash_resource. 844 FE + 477 Rust tests pass.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `6663e8de` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
