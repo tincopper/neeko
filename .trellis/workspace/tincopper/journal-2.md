@@ -1724,3 +1724,36 @@ JSON Schemas for 12 Agents + validation engine + SchemaForm auto-generation. Set
 ### Next Steps
 
 - None - task complete
+
+
+## Session 109: Fix git graph line disconnections
+
+**Date**: 2026-07-31
+**Task**: Fix git graph line disconnections
+**Branch**: `main`
+
+### Summary
+
+Resolved DAG rendering issues: persistent layout via useCommitLayout, pagination overlap for parent continuity, edge endpoints use actual node coordinates. Added virtual scroll and spec.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `4c0da710` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
