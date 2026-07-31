@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 
-import type { CommitEntry } from '@/shared/types';
+import type { CommitEntry } from '@/features/git/types';
 import type { ProjectCommands } from '@/shared/types/activeProject';
 
 import type { GitLogData } from './types';

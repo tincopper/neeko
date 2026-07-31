@@ -1,4 +1,4 @@
-import type { CommitDetail, CommitFileChange } from '@/shared/types';
+import type { CommitDetail, CommitFileChange } from '@/features/git/types';
 
 /** Data returned by useGitLog hook */
 export interface GitLogData {

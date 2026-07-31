@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 
-import type { CommitEntry } from '@/shared/types';
+import type { CommitEntry } from '@/features/git/types';
 
 import { computeLayout, computeRowMaxX, bezierXAtY } from '../CommitGraph';
 

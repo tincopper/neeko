@@ -1,6 +1,6 @@
 import React, { useMemo } from 'react';
 
-import type { CommitEntry } from '@/shared/types';
+import type { CommitEntry } from '@/features/git/types';
 
 /**
  * ROW_HEIGHT 必须与 CommitList.tsx 中保持一致。

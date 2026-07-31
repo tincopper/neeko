@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 
-import type { CommitEntry } from '@/shared/types';
+import type { CommitEntry } from '@/features/git/types';
 
 import { computeLayout, type CommitNode, type BranchSegment } from './CommitGraph';
 
