@@ -104,6 +104,8 @@ fn worker_loop(
     on_change: impl Fn(GitStatusDiff),
 ) {
     let mut last_status = String::new();
+    // 分支切换检测：分支变化时全量替换 diff，避免残留旧分支 changes
+    let mut last_branch = String::new();
     // 首次尝试带 --no-optional-locks；若 git 版本不支持则永久回退到不带该参数
     let mut supports_no_optional_locks = true;
     let path_str = repo_path.display().to_string();
@@ -131,6 +133,7 @@ fn worker_loop(
         log::debug!("[GitWorker] Running git status for {}", path_str);
 
         let current = git_status_porcelain(&repo_path, &mut supports_no_optional_locks);
+        let current_branch = get_current_branch(&repo_path);
 
         // Parse porcelain output and enrich with additions/deletions from --numstat
         let mut current_files = parse_porcelain(&current);
@@ -154,13 +157,32 @@ fn worker_loop(
             current != last_status
         );
 
+        // 分支切换：全量替换 diff（旧分支文件全部 removed，新分支文件全部 added），
+        // 前端整体替换 changed_files，避免残留旧分支的 changes
+        if current_branch != last_branch {
+            let last_files = parse_porcelain(&last_status);
+            let diff = compute_branch_switch_diff(&last_files, &current_files);
+            log::debug!(
+                "[GitWorker] Branch changed {} -> {} for {}, emitting full diff",
+                last_branch,
+                current_branch,
+                path_str
+            );
+            last_status = current;
+            last_branch = current_branch;
+            on_change(diff);
+            continue;
+        }
+
         if current != last_status {
             let last_files = parse_porcelain(&last_status);
             let last_serialized = serialize_files_for_diff(&last_files);
 
+            // 无论 serialized 是否一致都推进 last_status，避免 worker 卡在旧快照
+            last_status = current;
+
             if current_serialized != last_serialized {
                 let diff = compute_status_diff(&last_files, &current_files);
-                last_status = current;
 
                 // 只在有实际变化时通知
                 if !diff.added.is_empty() || !diff.removed.is_empty() || !diff.modified.is_empty() {
@@ -175,6 +197,20 @@ fn worker_loop(
                 }
             }
         }
+    }
+}
+
+/// 获取当前分支名（detached HEAD 时返回 "HEAD"），失败时返回空字符串。
+fn get_current_branch(repo_path: &Path) -> String {
+    let path_str = repo_path.to_str().unwrap_or(".");
+    match local::exec("git")
+        .args(["-C", path_str, "rev-parse", "--abbrev-ref", "HEAD"])
+        .output()
+    {
+        Ok(output) if output.status.success() => {
+            String::from_utf8_lossy(&output.stdout).trim().to_string()
+        }
+        _ => String::new(),
     }
 }
 
@@ -305,6 +341,21 @@ fn xy_to_status(xy: &str) -> String {
         "Renamed".to_string()
     } else {
         "Modified".to_string()
+    }
+}
+
+/// 分支切换时生成全量替换 diff：
+/// 旧分支的所有文件进入 `removed`，新分支的所有文件进入 `added`，
+/// 前端收到后整体替换列表，避免增量 merge 残留旧分支数据。
+fn compute_branch_switch_diff(
+    old_files: &[GitStatusFile],
+    new_files: &[GitStatusFile],
+) -> GitStatusDiff {
+    GitStatusDiff {
+        project_id: String::new(),
+        added: new_files.to_vec(),
+        removed: old_files.iter().map(|f| f.path.clone()).collect(),
+        modified: Vec::new(),
     }
 }
 
@@ -509,5 +560,45 @@ mod tests {
         assert_eq!(diff.modified.len(), 1);
         assert_eq!(diff.modified[0].additions, 5);
         assert_eq!(diff.modified[0].deletions, 3);
+    }
+
+    /// 分支切换时旧分支文件必须全部进入 removed（回归：切换分支后残留旧分支 changes）
+    #[test]
+    fn compute_branch_switch_diff_removes_old_branch_files() {
+        let old = parse_porcelain(" M src/main.rs\n?? notes.md\n");
+        let new = parse_porcelain(" A feature.rs\n");
+        let diff = compute_branch_switch_diff(&old, &new);
+        assert_eq!(diff.removed.len(), 2, "旧分支的全部文件应进入 removed");
+        assert!(diff.removed.contains(&"src/main.rs".to_string()));
+        assert!(diff.removed.contains(&"notes.md".to_string()));
+        assert_eq!(diff.added.len(), 1, "新分支的全部文件应进入 added");
+        assert_eq!(diff.added[0].path, "feature.rs");
+        assert!(diff.modified.is_empty());
+    }
+
+    /// 分支切换后新分支干净时，removed 必须携带旧分支全部文件（前端据此清空列表）
+    #[test]
+    fn compute_branch_switch_diff_clean_target_branch() {
+        let old = parse_porcelain(" M src/main.rs\n");
+        let new = parse_porcelain("");
+        let diff = compute_branch_switch_diff(&old, &new);
+        assert_eq!(diff.removed, vec!["src/main.rs".to_string()]);
+        assert!(diff.added.is_empty());
+        assert!(diff.modified.is_empty());
+    }
+
+    /// 分支切换后新分支同样有改动时，added 携带新文件且保留 numstat 计数
+    #[test]
+    fn compute_branch_switch_diff_keeps_new_counts() {
+        let old = parse_porcelain(" M src/main.rs\n");
+        let mut new: Vec<GitStatusFile> = parse_porcelain(" M src/main.rs\n");
+        new[0].additions = 10;
+        new[0].deletions = 4;
+        let diff = compute_branch_switch_diff(&old, &new);
+        assert_eq!(diff.removed, vec!["src/main.rs".to_string()]);
+        assert_eq!(diff.added.len(), 1);
+        assert_eq!(diff.added[0].additions, 10);
+        assert_eq!(diff.added[0].deletions, 4);
+        assert!(diff.modified.is_empty());
     }
 }

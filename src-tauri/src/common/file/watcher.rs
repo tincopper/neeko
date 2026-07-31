@@ -205,6 +205,8 @@ struct WatcherHandle {
     _scheduler: ThrottleScheduler,
     // worker clone 保持 alive，与 scheduler 回调中的 clone 共享同一个 worker 线程
     _worker: GitStatusWorker,
+    // .git/HEAD 监听器（分支切换检测），单独 watch HEAD 文件绕过 should_ignore_path
+    _head_watcher: Option<RecommendedWatcher>,
     // file-changed debounce sender（drop 时关闭 channel，结束 debounce 线程）
     _debounce: DebounceSender,
     // file-tree-changed debounce sender（Create/Remove/Rename 事件触发）
@@ -245,6 +247,29 @@ fn should_ignore_path(path: &Path) -> bool {
         }
     }
     false
+}
+
+/// 解析仓库 HEAD 文件路径（分支切换检测用）。
+/// 普通仓库为 `<repo>/.git/HEAD`；linked worktree 的 `.git` 是指针文件，
+/// 内容形如 `gitdir: /path/to/main/.git/worktrees/<name>`，HEAD 位于该目录下。
+fn resolve_git_head_path(repo_path: &Path) -> Option<PathBuf> {
+    let git_path = repo_path.join(".git");
+    if git_path.is_dir() {
+        return Some(git_path.join("HEAD"));
+    }
+    if git_path.is_file() {
+        // linked worktree：.git 是指针文件，读取 gitdir 定位真实 HEAD
+        let content = std::fs::read_to_string(&git_path).ok()?;
+        let gitdir = content
+            .lines()
+            .find_map(|l| l.trim().strip_prefix("gitdir:"))?
+            .trim();
+        if gitdir.is_empty() {
+            return None;
+        }
+        return Some(PathBuf::from(gitdir).join("HEAD"));
+    }
+    None
 }
 
 impl WatcherManager {
@@ -357,6 +382,55 @@ impl WatcherManager {
             path.display()
         );
 
+        // 4b. 创建 HEAD watcher -- 单独监听 .git/HEAD（分支切换），
+        // 绕过 should_ignore_path（该过滤会丢弃 .git 内事件，导致 checkout 后
+        // git worker 无法感知分支变化，changes 列表残留旧分支数据）
+        let head_watcher = resolve_git_head_path(&path).and_then(|head_path| {
+            let head_scheduler_tx = scheduler.sender();
+            let pid_head_log = project_id.clone();
+            let pid_head_emit = project_id.clone();
+            let head_result = RecommendedWatcher::new(
+                move |result: Result<Event, notify::Error>| {
+                    if result.is_ok() {
+                        log::debug!(
+                            "[Watcher:{}] .git/HEAD changed, triggering git status",
+                            pid_head_emit
+                        );
+                        let _ = head_scheduler_tx.send(());
+                    }
+                },
+                Config::default(),
+            );
+            match head_result {
+                Ok(mut head) => match head.watch(&head_path, RecursiveMode::NonRecursive) {
+                    Ok(()) => {
+                        log::info!(
+                            "[Watcher] Watching HEAD {} for {}",
+                            head_path.display(),
+                            pid_head_log
+                        );
+                        Some(head)
+                    }
+                    Err(e) => {
+                        log::warn!(
+                            "[Watcher] watch HEAD error for {}: {}",
+                            head_path.display(),
+                            e
+                        );
+                        None
+                    }
+                },
+                Err(e) => {
+                    log::warn!(
+                        "[Watcher] create HEAD watcher error for {}: {}",
+                        head_path.display(),
+                        e
+                    );
+                    None
+                }
+            }
+        });
+
         // 停止信号（供心跳线程使用）
         let stop = Arc::new(AtomicBool::new(false));
 
@@ -388,6 +462,7 @@ impl WatcherManager {
                     _watcher: watcher,
                     _scheduler: scheduler,
                     _worker: worker,
+                    _head_watcher: head_watcher,
                     _debounce: debounce,
                     _tree_debounce: tree_debounce,
                     stop_signal: stop,
@@ -415,5 +490,50 @@ impl WatcherManager {
             }
         }
         log::info!("[Watcher] All watchers stopped");
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// 普通仓库：HEAD 位于 `<repo>/.git/HEAD`
+    #[test]
+    fn resolve_git_head_path_normal_repo() {
+        let tmp = tempfile::tempdir().unwrap();
+        let repo = tmp.path();
+        let git_dir = repo.join(".git");
+        std::fs::create_dir_all(&git_dir).unwrap();
+        std::fs::write(git_dir.join("HEAD"), "ref: refs/heads/main\n").unwrap();
+
+        let head = resolve_git_head_path(repo).expect("should resolve HEAD");
+        assert_eq!(head, git_dir.join("HEAD"));
+    }
+
+    /// linked worktree：`.git` 是指针文件，HEAD 位于 gitdir 指向的目录下
+    #[test]
+    fn resolve_git_head_path_linked_worktree() {
+        let tmp = tempfile::tempdir().unwrap();
+        let main_repo = tmp.path().join("main");
+        let wt = tmp.path().join("wt");
+        let wt_gitdir = main_repo.join(".git").join("worktrees").join("dev");
+        std::fs::create_dir_all(&wt_gitdir).unwrap();
+        std::fs::write(wt_gitdir.join("HEAD"), "ref: refs/heads/dev\n").unwrap();
+        std::fs::create_dir_all(&wt).unwrap();
+        std::fs::write(
+            wt.join(".git"),
+            format!("gitdir: {}\n", wt_gitdir.display()),
+        )
+        .unwrap();
+
+        let head = resolve_git_head_path(&wt).expect("should resolve worktree HEAD");
+        assert_eq!(head, wt_gitdir.join("HEAD"));
+    }
+
+    /// 非 git 目录：返回 None
+    #[test]
+    fn resolve_git_head_path_not_a_repo() {
+        let tmp = tempfile::tempdir().unwrap();
+        assert!(resolve_git_head_path(tmp.path()).is_none());
     }
 }
