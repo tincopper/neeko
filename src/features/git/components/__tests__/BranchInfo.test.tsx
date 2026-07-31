@@ -59,7 +59,19 @@ describe('BranchInfo worktree 分支切换限制', () => {
       activeWorktreeBranch: 'feature-x',
     });
     renderBranchInfo();
-    fireEvent.click(screen.getByText('main'));
+    // worktree 激活时徽标显示 worktree 分支名，点击不应打开切换面板
+    fireEvent.click(screen.getByText('feature-x'));
     expect(screen.queryByPlaceholderText('Search branches...')).not.toBeInTheDocument();
+  });
+
+  it('worktree 激活时徽标显示 worktree 分支名而非主分支（回归：worktree 下展示错误分支）', () => {
+    useWorktreeStore.setState({
+      activeWorktreePath: '/tmp/proj-wt',
+      activeWorktreeBranch: 'feature-x',
+    });
+    renderBranchInfo();
+    expect(screen.getByText('feature-x')).toBeInTheDocument();
+    expect(screen.queryByText('main')).not.toBeInTheDocument();
+    expect(screen.getByTitle('Worktree branch: feature-x (read-only)')).toBeInTheDocument();
   });
 });

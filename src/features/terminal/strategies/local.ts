@@ -3,7 +3,7 @@ import { useMemo } from 'react';
 import { useAppContext, useEditorContext } from '@/shared/contexts';
 import { useProjectStore } from '@/shared/store/projectStore';
 import { useWorktreeStore } from '@/shared/store/worktreeStore';
-import { buildWorktreeTabKey } from '@/shared/utils/tabKey';
+import { resolveTabKey } from '@/shared/utils/tabKey';
 
 import { createTerminalSession, resizeTerminal, closeTerminalSession } from '../api/terminalApi';
 import {
@@ -86,10 +86,7 @@ export function useLocalTerminalStrategy(
       },
       setupFileLinks: (term) => {
         if (projectPath) {
-          const tabKey =
-            isWorktree && effWorktreePath
-              ? buildWorktreeTabKey(projectId, effWorktreePath)
-              : projectId;
+          const tabKey = resolveTabKey(projectId, isWorktree ? effWorktreePath : null);
           setupTerminalLinks(term, { projectPath, tabKey, projectId, showToast });
         }
       },

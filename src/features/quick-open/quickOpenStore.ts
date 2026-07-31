@@ -7,7 +7,7 @@ import { readDirTree } from '@/features/file/api/fileApi';
 import { useEditorStore } from '@/shared/store';
 import { useProjectStore } from '@/shared/store/projectStore';
 import { useWorktreeStore } from '@/shared/store/worktreeStore';
-import { buildWorktreeTabKey } from '@/shared/utils/tabKey';
+import { resolveTabKey } from '@/shared/utils/tabKey';
 
 import { flattenFilePaths } from './fileIndex';
 import { fuzzyFilter } from './fuzzy';
@@ -49,7 +49,7 @@ interface QuickOpenState {
 
 function currentTabKey(projectId: string): string {
   const wt = useWorktreeStore.getState().activeWorktreePath;
-  return wt ? buildWorktreeTabKey(projectId, wt) : projectId;
+  return resolveTabKey(projectId, wt);
 }
 
 function buildFileItems(paths: string[], query: string): QuickOpenItem[] {

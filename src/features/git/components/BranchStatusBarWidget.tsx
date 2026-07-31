@@ -7,7 +7,7 @@ import { useGitStore } from '@/shared/store/gitStore';
 import { useProjectStore } from '@/shared/store/projectStore';
 import { useWorktreeStore } from '@/shared/store/worktreeStore';
 import type { GitInfo } from '@/shared/types';
-import { filterWorktreeBranches } from '@/shared/utils';
+import { filterWorktreeBranches, isActiveWorktree } from '@/shared/utils';
 import { cn } from '@/shared/utils/cn';
 
 import BranchSwitcherPanel from './BranchSwitcherPanel';
@@ -36,7 +36,7 @@ function BranchStatusBarWidget({
 
   const activeWorktreePath = useWorktreeStore((s) => s.activeWorktreePath);
   const activeWorktreeBranch = useWorktreeStore((s) => s.activeWorktreeBranch);
-  const isWorktreeActive = activeWorktreePath !== null;
+  const isWorktreeActive = isActiveWorktree(activeWorktreePath);
   const displayBranch = isWorktreeActive ? activeWorktreeBranch : currentBranch;
 
   const favoriteBranches = useGitStore(useShallow((s) => s.favoriteBranches[projectId] ?? []));

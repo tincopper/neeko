@@ -13,7 +13,7 @@ import {
 import { useGitStore } from '@/shared/store/gitStore';
 import { useWorktreeStore } from '@/shared/store/worktreeStore';
 import type { GitInfo, AheadBehind } from '@/shared/types';
-import { filterWorktreeBranches } from '@/shared/utils';
+import { filterWorktreeBranches, isActiveWorktree } from '@/shared/utils';
 
 import BranchSwitcherPanel from './BranchSwitcherPanel';
 
@@ -52,7 +52,8 @@ const BranchInfo: React.FC<BranchInfoProps> = ({
 
   // Worktree 绑定独立分支，不允许在 changes 面板切换分支（与 BranchStatusBarWidget 一致）
   const activeWorktreePath = useWorktreeStore((s) => s.activeWorktreePath);
-  const isWorktreeActive = activeWorktreePath !== null;
+  const activeWorktreeBranch = useWorktreeStore((s) => s.activeWorktreeBranch);
+  const isWorktreeActive = isActiveWorktree(activeWorktreePath);
 
   const handleToggleBranchDropdown = useCallback(() => {
     if (isWorktreeActive) return;
@@ -72,6 +73,8 @@ const BranchInfo: React.FC<BranchInfoProps> = ({
   }, [branchDropdownOpen]);
 
   const currentBranch = gitInfo?.current_branch ?? '';
+  // worktree 激活时显示 worktree 分支名，而非主分支的 current_branch
+  const displayBranch = isWorktreeActive ? activeWorktreeBranch : currentBranch;
   const branches = useMemo(() => gitInfo?.branches ?? [], [gitInfo?.branches]);
   const worktrees = useMemo(() => gitInfo?.worktrees ?? [], [gitInfo?.worktrees]);
   // Exclude branches that are already checked out in a worktree
@@ -81,9 +84,9 @@ const BranchInfo: React.FC<BranchInfoProps> = ({
   );
 
   const aheadBehindMap = useMemo(() => {
-    if (!aheadBehind || !currentBranch) return {};
-    return { [currentBranch]: { ahead: aheadBehind.ahead, behind: aheadBehind.behind } };
-  }, [aheadBehind, currentBranch]);
+    if (!aheadBehind || !displayBranch) return {};
+    return { [displayBranch]: { ahead: aheadBehind.ahead, behind: aheadBehind.behind } };
+  }, [aheadBehind, displayBranch]);
 
   const handleCheckout = (branchName: string) => {
     onCheckoutBranch(branchName);
@@ -120,7 +123,7 @@ const BranchInfo: React.FC<BranchInfoProps> = ({
                 isWorktreeActive ? 'opacity-70 cursor-default' : ''
               }`}
               title={
-                isWorktreeActive ? `Worktree branch: ${currentBranch} (read-only)` : currentBranch
+                isWorktreeActive ? `Worktree branch: ${displayBranch} (read-only)` : displayBranch
               }
               onClick={handleToggleBranchDropdown}
               onKeyDown={(e) => {
@@ -131,7 +134,7 @@ const BranchInfo: React.FC<BranchInfoProps> = ({
               }}
             >
               <BranchIcon size={11} />
-              {currentBranch}
+              {displayBranch}
             </span>
 
             {/* Panel */}

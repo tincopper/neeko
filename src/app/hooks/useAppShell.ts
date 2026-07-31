@@ -26,6 +26,7 @@ import { useNotificationStore } from '@/shared/store/notificationStore';
 import { useProjectStore } from '@/shared/store/projectStore';
 import { useWorktreeStore } from '@/shared/store/worktreeStore';
 import type { AuthMethod, RemoteEntrySession, WSLEntrySession } from '@/shared/types';
+import { isActiveWorktree } from '@/shared/utils/git';
 
 import type AppModals from '../../app/AppModals';
 import type AppProviders from '../../app/AppProviders';
@@ -237,7 +238,7 @@ export function useAppShell(): UseAppShellResult {
   const isTerminalView = activeProject?.active_view === 'Terminal';
   useEffect(() => {
     useProjectStore.setState({
-      isTerminalView: isTerminalView || activeWorktreePath !== null,
+      isTerminalView: isTerminalView || isActiveWorktree(activeWorktreePath),
       selectProject: cross.handleSelectProject,
       openIde: agentActionsWrap.handleOpenIdeCallback,
       setProjectIde: agentActionsWrap.handleSetProjectIde,

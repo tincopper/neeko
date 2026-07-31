@@ -1,7 +1,25 @@
 import { describe, it, expect } from 'vitest';
 
 import type { Worktree } from '../../types/git';
-import { filterWorktreeBranches } from '../git';
+import { filterWorktreeBranches, isActiveWorktree } from '../git';
+
+describe('isActiveWorktree', () => {
+  it('null 视为未激活', () => {
+    expect(isActiveWorktree(null)).toBe(false);
+  });
+
+  it('空字符串视为未激活（与 resolveTabKey 语义一致）', () => {
+    expect(isActiveWorktree('')).toBe(false);
+  });
+
+  it('undefined 视为未激活', () => {
+    expect(isActiveWorktree(undefined)).toBe(false);
+  });
+
+  it('有效路径视为激活', () => {
+    expect(isActiveWorktree('/tmp/proj-wt')).toBe(true);
+  });
+});
 
 describe('filterWorktreeBranches', () => {
   it('worktree 为空时返回全部分支', () => {

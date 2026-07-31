@@ -7,7 +7,7 @@ import { useWorktreeStore } from '@/shared/store/worktreeStore';
 import type { Tab } from '@/shared/types';
 import { preloadLanguageExtension } from '@/shared/utils/codemirror';
 import { getFileName, getTabId } from '@/shared/utils/fileTree';
-import { buildWorktreeTabKey } from '@/shared/utils/tabKey';
+import { resolveTabKey } from '@/shared/utils/tabKey';
 
 import { useRecentFilesStore } from './recentFilesStore';
 
@@ -24,7 +24,7 @@ export async function openProjectFile(opts: {
   const col = Math.max(0, opts.column ?? 0);
 
   const wt = useWorktreeStore.getState().activeWorktreePath;
-  const tabKey = wt ? buildWorktreeTabKey(projectId, wt) : projectId;
+  const tabKey = resolveTabKey(projectId, wt);
   const store = useEditorStore.getState();
   const tabId = getTabId(tabKey, filePath);
   const existing = store.tabs[tabKey]?.tabs.find((t) => t.id === tabId);

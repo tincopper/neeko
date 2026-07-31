@@ -12,7 +12,7 @@ import { useWorktreeStore } from '@/shared/store/worktreeStore';
 import type { Tab } from '@/shared/types';
 import { preloadLanguageExtension } from '@/shared/utils/codemirror';
 import { getFileName, getTabId } from '@/shared/utils/fileTree';
-import { buildWorktreeTabKey } from '@/shared/utils/tabKey';
+import { resolveTabKey } from '@/shared/utils/tabKey';
 
 import { createNavigationHistory, type NavLocation } from './navigationHistory';
 
@@ -48,9 +48,7 @@ export function captureCurrentNavLocation(): NavLocation | null {
   const projectId = proj.activeProjectId;
   if (!projectId) return null;
 
-  const tabKey = wt.activeWorktreePath
-    ? buildWorktreeTabKey(projectId, wt.activeWorktreePath)
-    : projectId;
+  const tabKey = resolveTabKey(projectId, wt.activeWorktreePath);
 
   const projectTabs = editor.tabs[tabKey];
   if (!projectTabs?.activeTabId) return null;

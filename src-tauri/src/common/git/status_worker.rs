@@ -449,6 +449,51 @@ fn get_numstat_map(repo_path: &Path) -> HashMap<String, (i32, i32)> {
 mod tests {
     use super::*;
 
+    /// 创建带一次初始提交的临时仓库，返回 (TempDir, Repository)
+    fn create_repo_with_commit() -> (tempfile::TempDir, git2::Repository) {
+        let tmp = tempfile::tempdir().unwrap();
+        let repo = git2::Repository::init(tmp.path()).unwrap();
+        let sig = git2::Signature::now("Test", "test@test.com").unwrap();
+        std::fs::write(tmp.path().join("README.md"), "# Test\n").unwrap();
+        {
+            let mut index = repo.index().unwrap();
+            index.add_path(std::path::Path::new("README.md")).unwrap();
+            index.write().unwrap();
+            let tree_id = index.write_tree().unwrap();
+            let tree = repo.find_tree(tree_id).unwrap();
+            repo.commit(Some("HEAD"), &sig, &sig, "Initial commit", &tree, &[])
+                .unwrap();
+        }
+        (tmp, repo)
+    }
+
+    /// get_current_branch 在初始分支上返回正确分支名
+    #[test]
+    fn get_current_branch_returns_initial_branch() {
+        let (tmp, repo) = create_repo_with_commit();
+        let expected = repo.head().unwrap().shorthand().unwrap().to_string();
+        assert_eq!(get_current_branch(tmp.path()), expected);
+    }
+
+    /// get_current_branch 感知分支切换（checkout 后返回新分支名）
+    #[test]
+    fn get_current_branch_detects_branch_switch() {
+        let (tmp, repo) = create_repo_with_commit();
+        let head = repo.head().unwrap();
+        let commit = head.peel_to_commit().unwrap();
+        repo.branch("feature-commands", &commit, false).unwrap();
+        repo.set_head("refs/heads/feature-commands").unwrap();
+        repo.checkout_head(None).unwrap();
+        assert_eq!(get_current_branch(tmp.path()), "feature-commands");
+    }
+
+    /// 非 git 目录返回空字符串（不 panic）
+    #[test]
+    fn get_current_branch_returns_empty_for_non_repo() {
+        let tmp = tempfile::tempdir().unwrap();
+        assert_eq!(get_current_branch(tmp.path()), "");
+    }
+
     #[test]
     fn parse_porcelain_single_file() {
         let output = " M src/main.rs\n";

@@ -4,6 +4,7 @@ import type { DiffSource } from '@/features/git/components/diff/types';
 import { useEditorStore } from '@/shared/store';
 import { useProjectStore } from '@/shared/store/projectStore';
 import type { CommitFileChange, ConnectionContext } from '@/shared/types';
+import { resolveTabKey } from '@/shared/utils/tabKey';
 
 const DIFF_TAB_ID = 'diff_singleton';
 
@@ -40,8 +41,13 @@ export function useSingletonDiff(
   commitHash: string | null,
   files: CommitFileChange[],
   connectionContext: ConnectionContext | null,
+  activeWorktreePath?: string | null,
 ) {
-  const tabKey = useProjectStore.getState().activeProjectId ?? projectId ?? '';
+  // worktree 激活时使用 worktree 专属 tab key，避免 commit diff 落入 local tab 组
+  const tabKey = resolveTabKey(
+    useProjectStore.getState().activeProjectId ?? projectId ?? '',
+    activeWorktreePath,
+  );
 
   const hasSingleton = useCallback(() => {
     const store = useEditorStore.getState();

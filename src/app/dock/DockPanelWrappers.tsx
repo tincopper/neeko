@@ -36,7 +36,7 @@ import {
 } from '@/shared/utils/browserUtils';
 import { buildDiffSource } from '@/shared/utils/diffSource';
 import { mergeSubTree } from '@/shared/utils/fileTree';
-import { buildWorktreeTabKey, resolveTabKey } from '@/shared/utils/tabKey';
+import { resolveTabKey } from '@/shared/utils/tabKey';
 
 // ── FilesPanelWrapper ──
 
@@ -448,10 +448,9 @@ const ConversationsPanelWrapper: React.FC = React.memo(() => {
   // Determine project ID and tab key for opening conversation tabs
   const currentProjectId = useProjectStore((s) => s.activeProjectId);
   const activeWorktreePath = useWorktreeStore((s) => s.activeWorktreePath);
-  const tabKey =
-    activeWorktreePath && currentProjectId
-      ? buildWorktreeTabKey(currentProjectId, activeWorktreePath)
-      : currentProjectId;
+  const tabKey = currentProjectId
+    ? resolveTabKey(currentProjectId, activeWorktreePath)
+    : currentProjectId;
 
   const handleResumeConversation = useCallback(
     async (meta: ConversationMeta) => {
@@ -579,8 +578,9 @@ const PullRequestsPanelWrapper: React.FC = React.memo(() => {
 
   const tabKey = useMemo(() => {
     if (!project) return '';
-    if (project.type === 'Local' && worktreePath) {
-      return buildWorktreeTabKey(project.id, worktreePath);
+    // worktree tab key 仅对 local 项目生效（WSL/Remote 使用各自的 worktree 流程）
+    if (project.type === 'Local') {
+      return resolveTabKey(project.id, worktreePath);
     }
     return project.id;
   }, [project, worktreePath]);
@@ -661,6 +661,7 @@ PullRequestsPanelWrapper.displayName = 'PullRequestsPanelWrapper';
 
 const GitLogPanelWrapper: React.FC = () => {
   const { project, commands, connectionContext } = useActiveProject();
+  const activeWorktreePath = useWorktreeStore((s) => s.activeWorktreePath);
 
   const [selectedHash, setSelectedHash] = useState<string | null>(null);
   const [selectedExpanded, setSelectedExpanded] = useState(false);
@@ -678,7 +679,7 @@ const GitLogPanelWrapper: React.FC = () => {
   } = useCommitDetail(commands, selectedHash);
 
   const { openFileInDiff, openCombined, pinFile, scrollToFile, refreshOpenDiff, hasSingleton } =
-    useSingletonDiff(project?.id, selectedHash, files, connectionContext);
+    useSingletonDiff(project?.id, selectedHash, files, connectionContext, activeWorktreePath);
 
   const handleSelectCommit = useCallback(
     (hash: string) => {
@@ -874,7 +875,7 @@ const GitControlPanelWrapper: React.FC = React.memo(() => {
   } = useCommitDetail(commands, selectedHash);
 
   const { openFileInDiff, openCombined, pinFile, scrollToFile, refreshOpenDiff, hasSingleton } =
-    useSingletonDiff(project?.id, selectedHash, files, connectionContext);
+    useSingletonDiff(project?.id, selectedHash, files, connectionContext, activeWorktreePath);
 
   // Use refs to break the dependency cycle: baseRefreshGit updates the store
   // which changes activeProject → commands reference → baseRefreshGit reference

@@ -13,7 +13,7 @@ import type { ProjectCommands } from '@/shared/types/activeProject';
 import { DEFAULT_TREE_DEPTH } from '@/shared/types/file';
 import { clearViewSnapshot, clearAllForTabKey } from '@/shared/utils/editorViewState';
 import { mergeSubTree, getTabId, getFileName, isFileTab } from '@/shared/utils/fileTree';
-import { buildWorktreeTabKey, parseProjectIdFromTabKey } from '@/shared/utils/tabKey';
+import { parseProjectIdFromTabKey, resolveTabKey } from '@/shared/utils/tabKey';
 
 /**
  * useFileView �?文件视图 hook
@@ -43,10 +43,9 @@ export function useFileView(
     externalWorktreePath !== undefined ? externalWorktreePath : activeWorktreePath;
 
   // Composite tab key: worktree gets its own independent tab space
-  const tabKey =
-    effectiveWorktreePath && currentProjectId
-      ? buildWorktreeTabKey(currentProjectId, effectiveWorktreePath)
-      : currentProjectId;
+  const tabKey = currentProjectId
+    ? resolveTabKey(currentProjectId, effectiveWorktreePath)
+    : currentProjectId;
 
   // Read project tabs from unified store using tabKey
   const projectTabs = useEditorStore(

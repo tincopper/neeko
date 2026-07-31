@@ -21,7 +21,7 @@ import {
   SHORTCUT_ACTIONS,
   getShortcutAction,
 } from '@/shared/utils/shortcutRegistry';
-import { buildWorktreeTabKey } from '@/shared/utils/tabKey';
+import { resolveTabKey } from '@/shared/utils/tabKey';
 
 interface UseKeyboardShortcutsParams {
   updateWtPath: (path: string | null, branch: string) => void;
@@ -309,7 +309,7 @@ function resolveActiveTabKey(): string | null {
   const currentProjectId = proj.activeProjectId ?? null;
   if (!currentProjectId) return null;
   const worktreePath = wt.activeWorktreePath ?? null;
-  return worktreePath ? buildWorktreeTabKey(currentProjectId, worktreePath) : currentProjectId;
+  return resolveTabKey(currentProjectId, worktreePath);
 }
 
 /** Cycle tabs in the focused editor group (IDEA Alt+Left/Right). */

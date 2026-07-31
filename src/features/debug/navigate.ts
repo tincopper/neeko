@@ -13,7 +13,7 @@ import { useWorktreeStore } from '@/shared/store/worktreeStore';
 import type { Tab } from '@/shared/types';
 import { preloadLanguageExtension } from '@/shared/utils/codemirror';
 import { getFileName, getTabId } from '@/shared/utils/fileTree';
-import { buildWorktreeTabKey } from '@/shared/utils/tabKey';
+import { resolveTabKey } from '@/shared/utils/tabKey';
 
 /** Convert absolute path to project-relative if under workspace. */
 export function toProjectRelative(projectPath: string, absPath: string): string {
@@ -41,8 +41,7 @@ export async function openSourceAtLine(
   preloadLanguageExtension(filePath);
 
   const activeWorktree = useWorktreeStore.getState().activeWorktreePath;
-  const tabKey =
-    activeWorktree && projectId ? buildWorktreeTabKey(projectId, activeWorktree) : projectId;
+  const tabKey = projectId ? resolveTabKey(projectId, activeWorktree) : projectId;
 
   if (!tabKey) return;
 

@@ -24,7 +24,7 @@ import { useProjectStore } from '@/shared/store/projectStore';
 import { useWorktreeStore } from '@/shared/store/worktreeStore';
 import type { AgentConfig, Tab } from '@/shared/types';
 import { createUntitledFileTab } from '@/shared/utils/createUntitledFileTab';
-import { buildWorktreeTabKey } from '@/shared/utils/tabKey';
+import { resolveTabKey } from '@/shared/utils/tabKey';
 import { Button } from '@/ui/Button';
 
 import { WelcomeScreen } from './WelcomeScreen';
@@ -50,10 +50,9 @@ function ProjectWorkspace() {
   const currentProjectId = activeProject?.id ?? null;
 
   // Composite tab key: worktree gets its own independent tab space
-  const tabKey =
-    activeWorktreePath && currentProjectId
-      ? buildWorktreeTabKey(currentProjectId, activeWorktreePath)
-      : (currentProjectId ?? APP_SETTINGS_PROJECT_ID);
+  const tabKey = currentProjectId
+    ? resolveTabKey(currentProjectId, activeWorktreePath)
+    : APP_SETTINGS_PROJECT_ID;
 
   // Get unified tabs from store
   const projectTabs = useEditorStore(

@@ -3,7 +3,7 @@ import { useCallback } from 'react';
 import { closeEditorTab } from '@/features/terminal/components/terminalTabCleanup';
 import { useTerminalTabs } from '@/features/terminal/hooks/useTerminalTabs';
 import { useEditorStore } from '@/shared/store';
-import { buildWorktreeTabKey } from '@/shared/utils/tabKey';
+import { resolveTabKey } from '@/shared/utils/tabKey';
 
 const APP_SETTINGS_PROJECT_ID = '__app__';
 
@@ -25,10 +25,9 @@ export function useTabManagement(options: UseTabManagementOptions) {
 
   const currentProjectId = activeProject?.id ?? null;
 
-  const tabKey =
-    activeWorktreePath && currentProjectId
-      ? buildWorktreeTabKey(currentProjectId, activeWorktreePath)
-      : (currentProjectId ?? APP_SETTINGS_PROJECT_ID);
+  const tabKey = currentProjectId
+    ? resolveTabKey(currentProjectId, activeWorktreePath)
+    : APP_SETTINGS_PROJECT_ID;
 
   const tabs = tabKey ? getTabs(tabKey) : [];
   const activeTabId = useEditorStore((state) => state.activeTabId);

@@ -3,7 +3,7 @@ import { useShallow } from 'zustand/shallow';
 
 import { useEditorStore } from '@/shared/store';
 import { useWorktreeStore } from '@/shared/store/worktreeStore';
-import { buildWorktreeTabKey } from '@/shared/utils/tabKey';
+import { resolveTabKey } from '@/shared/utils/tabKey';
 
 export interface WorktreeItem {
   path: string;
@@ -48,7 +48,7 @@ export function useWorktreeState(activeProjectId: string | null) {
         };
       });
       // Sync activeTabId from editor tabs
-      const tabKey = path ? buildWorktreeTabKey(activeProjectId, path) : activeProjectId;
+      const tabKey = resolveTabKey(activeProjectId, path);
       const projectTabs = useEditorStore.getState().tabs[tabKey];
       useEditorStore.setState({ activeTabId: projectTabs?.activeTabId ?? null });
     },
@@ -72,7 +72,7 @@ export function useWorktreeState(activeProjectId: string | null) {
         };
       });
       // Sync activeTabId from editor tabs
-      const tabKey = path ? buildWorktreeTabKey(activeProjectId, path) : activeProjectId;
+      const tabKey = resolveTabKey(activeProjectId, path);
       const projectTabs = useEditorStore.getState().tabs[tabKey];
       useEditorStore.setState({ activeTabId: projectTabs?.activeTabId ?? null });
     },

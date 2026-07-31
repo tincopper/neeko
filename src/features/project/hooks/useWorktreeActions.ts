@@ -3,6 +3,7 @@ import { useCallback } from 'react';
 import { useEditorStore } from '@/shared/store';
 import { useProjectStore } from '@/shared/store/projectStore';
 import { useWorktreeStore } from '@/shared/store/worktreeStore';
+import { isActiveWorktree } from '@/shared/utils/git';
 
 import { loadOnboardingState } from '../api/onboardingApi';
 import { setActiveProject, setViewTerminal } from '../api/projectApi';
@@ -27,7 +28,7 @@ export function useWorktreeActions({
 
   const handleBackToMainTerminal = useCallback(
     (projectId: string) => {
-      if (activeWorktreePath !== null) {
+      if (isActiveWorktree(activeWorktreePath)) {
         setActiveWorktreePath(null);
         setActiveWorktreeBranch('');
         saveWorktreeState(projectId, null);

@@ -4,7 +4,7 @@ import { useAppContext, useEditorContext } from '@/shared/contexts';
 import { useProjectStore } from '@/shared/store/projectStore';
 import { useWorktreeStore } from '@/shared/store/worktreeStore';
 import type { AuthMethod } from '@/shared/types';
-import { buildWorktreeTabKey } from '@/shared/utils/tabKey';
+import { resolveTabKey } from '@/shared/utils/tabKey';
 
 import { createTerminalSession, resizeTerminal, closeTerminalSession } from '../api/terminalApi';
 import {
@@ -138,10 +138,7 @@ export function useTerminalStrategy(options: UseTerminalStrategyOptions): Termin
         },
         setupFileLinks: (term) => {
           if (projectPath) {
-            const tabKey =
-              isWorktree && effWorktreePath
-                ? buildWorktreeTabKey(projectId, effWorktreePath)
-                : projectId;
+            const tabKey = resolveTabKey(projectId, isWorktree ? effWorktreePath : null);
             setupTerminalLinks(term, { projectPath, tabKey, projectId, showToast });
           }
         },
@@ -180,9 +177,7 @@ export function useTerminalStrategy(options: UseTerminalStrategyOptions): Termin
         onSessionReady: () => {},
         setupFileLinks: (term) => {
           if (projectPath) {
-            const tabKey = activeWorktreePath
-              ? buildWorktreeTabKey(projectId, activeWorktreePath)
-              : projectId;
+            const tabKey = resolveTabKey(projectId, activeWorktreePath);
             setupTerminalLinks(term, { projectPath, tabKey, projectId, showToast });
           }
         },

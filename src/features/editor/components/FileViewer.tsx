@@ -85,7 +85,7 @@ import {
 } from '@/shared/utils/editorViewState';
 import { getTabId, getFileName } from '@/shared/utils/fileTree';
 import { IS_MACOS } from '@/shared/utils/platform';
-import { buildWorktreeTabKey } from '@/shared/utils/tabKey';
+import { resolveTabKey } from '@/shared/utils/tabKey';
 import { MarkdownPreview } from '@/ui';
 
 import { useFileActionsContext } from '../FileActionsContext';
@@ -137,10 +137,9 @@ function FileViewer() {
   // Composite tab key: unified across local/WSL/remote projects
   const currentProjectId = activeProjectId ?? activeProject?.id ?? null;
   const effectiveWorktreePath = activeWorktreePath ?? null;
-  const tabKey =
-    effectiveWorktreePath && currentProjectId
-      ? buildWorktreeTabKey(currentProjectId, effectiveWorktreePath)
-      : currentProjectId;
+  const tabKey = currentProjectId
+    ? resolveTabKey(currentProjectId, effectiveWorktreePath)
+    : currentProjectId;
 
   // Read project tabs from unified store
   const projectTabs = useEditorStore(
