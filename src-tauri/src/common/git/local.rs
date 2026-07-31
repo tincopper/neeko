@@ -560,12 +560,6 @@ pub fn remove_worktree(repo_path: &Path, worktree_path: &Path) -> Result<()> {
     Ok(())
 }
 
-/// 获取指定路径（worktree 或项目路径）的变更文件列表
-pub fn get_changed_files_for_path(repo_path: &Path) -> Result<Vec<FileChange>> {
-    let repo = Repository::open(repo_path).context("Failed to open git repository")?;
-    get_changed_files_from_repo(&repo)
-}
-
 /// 获取 Git 分支信息（轻量级，不含 changed_files）
 pub fn get_git_branch_info(repo_path: &Path) -> Result<GitBranchInfo> {
     let repo = Repository::open(repo_path).context("Failed to open git repository")?;
@@ -618,11 +612,6 @@ pub fn get_git_branch_info_from_repo(repo: &Repository) -> Result<GitBranchInfo>
         branches: branch_names,
         worktrees,
     })
-}
-
-/// 获取指定路径（worktree 或项目路径）中某文件的 diff
-pub fn get_file_diff_for_path(repo_path: &Path, file_path: &str) -> Result<DiffResult> {
-    get_file_diff(repo_path, file_path)
 }
 
 /// 检查 worktree 是否有未提交的更改（modified / untracked）
@@ -732,69 +721,6 @@ pub fn rename_worktree(repo_path: &Path, worktree_path: &Path, new_name: &str) -
     }
 
     Ok(wt_new_str.to_string())
-}
-
-/// CLI 方式获取文件 diff（工作区 vs index，仅未暂存变更）
-pub fn get_file_diff_cli(
-    repo_path: &Path,
-    file_path: &str,
-    line_limit: Option<usize>,
-) -> Result<DiffResult> {
-    let output = exec("git")
-        .args(["diff", "-U3", "--", file_path])
-        .current_dir(repo_path)
-        .output()
-        .context("Failed to run git diff")?;
-    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
-    let mut result = parse_unified_diff(&stdout);
-
-    // Fallback for untracked/added files: git diff returns empty for files
-    // not yet in HEAD (new files staged or untracked). Read the file directly
-    // and present all lines as Added so the user can see the content.
-    if result.hunks.is_empty() {
-        let full_path = repo_path.join(file_path);
-        if full_path.exists() && full_path.is_file() {
-            if let Ok(content) = std::fs::read_to_string(&full_path) {
-                let lines: Vec<DiffLine> = content
-                    .lines()
-                    .map(|line| DiffLine::Added(line.to_string()))
-                    .collect();
-                if !lines.is_empty() {
-                    #[allow(clippy::cast_possible_truncation)]
-                    result.hunks.push(DiffHunk {
-                        old_start: 0,
-                        old_lines: 0,
-                        new_start: 1,
-                        new_lines: lines.len() as u32,
-                        lines,
-                    });
-                }
-            }
-        }
-    }
-
-    if let Some(limit) = line_limit {
-        let mut total = 0;
-        for hunk in result.hunks.iter() {
-            total += hunk.lines.len();
-        }
-        if total > limit {
-            result.truncated = true;
-            let mut current = 0;
-            for hunk in result.hunks.iter_mut() {
-                let remaining = limit.saturating_sub(current);
-                if remaining == 0 {
-                    hunk.lines.clear();
-                } else if hunk.lines.len() > remaining {
-                    hunk.lines.truncate(remaining);
-                }
-                current += hunk.lines.len();
-            }
-            result.hunks.retain(|h| !h.lines.is_empty());
-        }
-    }
-    collapse_diff_context(&mut result.hunks, 12);
-    Ok(result)
 }
 
 /// Stage 指定文件
@@ -1491,40 +1417,6 @@ pub fn default_branch(repo_path: &Path) -> Result<String> {
     })
 }
 
-/// 获取仓库 web URL（参考 Muxy GitRepositoryService.remoteWebURL）
-pub fn remote_web_url(repo_path: &Path) -> Result<String> {
-    let output = exec("git")
-        .args(["remote", "get-url", "origin"])
-        .current_dir(repo_path)
-        .output()
-        .context("Failed to get remote URL")?;
-    let url = String::from_utf8_lossy(&output.stdout).trim().to_string();
-    if let Some(rest) = url.strip_prefix("git@") {
-        if let Some((host, path)) = rest.split_once(':') {
-            return Ok(format!(
-                "https://{}/{}",
-                host,
-                path.strip_suffix(".git").unwrap_or(path)
-            ));
-        }
-    }
-    if let Some(rest) = url.strip_prefix("ssh://") {
-        // ssh://[user@]host[:port]/path
-        let after_at = rest.split('@').nth(1).unwrap_or(rest);
-        let (host_port, path) = after_at.split_once('/').unwrap_or((after_at, ""));
-        // Strip SSH port — HTTPS uses 443
-        let host = host_port.split(':').next().unwrap_or(host_port);
-        if !path.is_empty() {
-            return Ok(format!(
-                "https://{}/{}",
-                host,
-                path.strip_suffix(".git").unwrap_or(path)
-            ));
-        }
-    }
-    Ok(url.strip_suffix(".git").unwrap_or(&url).to_string())
-}
-
 use crate::project::types::{AheadBehind, CommitResult};
 
 /// 获取指定文件相对于 HEAD 的 diff（未 staged 也包含）。
@@ -1803,8 +1695,8 @@ mod tests {
         // Modify a file
         std::fs::write(&file_path, "modified content\n").unwrap();
 
-        // Call get_changed_files_for_path (should detect modification)
-        let files = get_changed_files_for_path(repo_path).unwrap();
+        // Call get_changed_files_from_repo (should detect modification)
+        let files = get_changed_files_from_repo(&repo).unwrap();
         assert!(!files.is_empty(), "Should detect changed file");
         assert_eq!(files[0].status, FileStatus::Modified);
     }
@@ -1832,7 +1724,7 @@ mod tests {
             .unwrap();
 
         // No modifications
-        let files = get_changed_files_for_path(repo_path).unwrap();
+        let files = get_changed_files_from_repo(&repo).unwrap();
         assert!(files.is_empty(), "Clean repo should have no changes");
     }
 
@@ -1862,7 +1754,7 @@ mod tests {
         std::fs::write(&file_path, "line1\nmodified\nline3\n").unwrap();
 
         // Get diff
-        let diff_result = get_file_diff_for_path(repo_path, "test.txt").unwrap();
+        let diff_result = get_file_diff(repo_path, "test.txt").unwrap();
         assert!(!diff_result.hunks.is_empty(), "Should have hunks");
         // Should have removed and added lines
         let has_removed = diff_result
@@ -1905,7 +1797,7 @@ mod tests {
         let new_file = repo_path.join("new_file.txt");
         std::fs::write(&new_file, "new content\n").unwrap();
 
-        let files = get_changed_files_for_path(repo_path).unwrap();
+        let files = get_changed_files_from_repo(&repo).unwrap();
         let new_file_entry = files
             .iter()
             .find(|f| f.path.to_string_lossy().contains("new_file.txt"));

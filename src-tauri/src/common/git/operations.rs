@@ -59,14 +59,107 @@ pub async fn unstage_all(transport: &dyn GitTransport, work_dir: &str) -> Result
 }
 
 /// Discard file changes: `git checkout -- <file>`
+///
+/// 未跟踪文件（`??`）无法用 checkout 恢复，直接删除；已暂存文件先 reset 撤销暂存；
+/// 仅工作区修改恢复到 index 版本。参考 `local::discard_file` 的状态判定。
 pub async fn discard_file(
     transport: &dyn GitTransport,
     work_dir: &str,
     file_path: &str,
 ) -> Result<()> {
-    transport
-        .run_git(&["checkout", "--", file_path], work_dir)
+    // 先查询文件状态，区分未跟踪 / 已暂存 / 仅工作区修改
+    let status = transport
+        .run_git(
+            &["status", "--porcelain=1", "-z", "--", file_path],
+            work_dir,
+        )
         .await?;
+
+    if status.is_empty() {
+        bail!("File '{}' has no changes to discard.", file_path);
+    }
+
+    let bytes = status.as_bytes();
+    let x = bytes.first().copied().unwrap_or(b' ');
+    let y = bytes.get(1).copied().unwrap_or(b' ');
+
+    // ?? → 未跟踪文件：直接删除（checkout 无法处理未跟踪文件）
+    if x == b'?' && y == b'?' {
+        transport
+            .run_git(&["clean", "-fd", "--", file_path], work_dir)
+            .await?;
+        return Ok(());
+    }
+
+    // X (index) 有变更 → 先撤销暂存（reset；无 HEAD 的 staged 新增走 rm --cached）
+    if x != b' ' && x != b'?' {
+        unstage_via_reset_or_rm_cached(transport, work_dir, file_path, x == b'A').await?;
+    }
+
+    // reset 撤销暂存后工作区可能仍有残留变更（如 staged 修改 `M `），
+    // 重新查询状态并恢复工作区。
+    let status_after = transport
+        .run_git(
+            &["status", "--porcelain=1", "-z", "--", file_path],
+            work_dir,
+        )
+        .await?;
+    if status_after.is_empty() {
+        return Ok(());
+    }
+    let bytes_after = status_after.as_bytes();
+    let x2 = bytes_after.first().copied().unwrap_or(b' ');
+    let y2 = bytes_after.get(1).copied().unwrap_or(b' ');
+
+    // reset 后变为未跟踪（如 staged 新增）→ 删除
+    if x2 == b'?' && y2 == b'?' {
+        transport
+            .run_git(&["clean", "-fd", "--", file_path], work_dir)
+            .await?;
+        return Ok(());
+    }
+    // 工作区有变更 → checkout 恢复
+    if y2 != b' ' && y2 != b'?' {
+        transport
+            .run_git(&["checkout", "--", file_path], work_dir)
+            .await?;
+    }
+
+    Ok(())
+}
+
+/// 撤销指定文件的暂存状态。
+///
+/// 优先 `git reset HEAD -- <file>`；新仓库无 HEAD 时 reset 报 unknown revision，
+/// 此时 staged 新增（`A`）走 `rm --cached` + `clean` 删除。
+async fn unstage_via_reset_or_rm_cached(
+    transport: &dyn GitTransport,
+    work_dir: &str,
+    file_path: &str,
+    staged_as_new: bool,
+) -> Result<()> {
+    if let Err(e) = transport
+        .run_git(&["reset", "HEAD", "--", file_path], work_dir)
+        .await
+    {
+        let stderr = e
+            .downcast_ref::<GitExecError>()
+            .map(|ge| ge.stderr.as_str())
+            .unwrap_or("");
+        // 真实错误 → 直接传播；仅"无 HEAD"类错误继续走 rm --cached 兜底
+        if !stderr.contains("unknown revision") && !stderr.contains("ambiguous") {
+            return Err(e);
+        }
+        // 新仓库无 HEAD：staged 新增 → 变为 untracked → 删除
+        if staged_as_new {
+            transport
+                .run_git(&["rm", "--cached", "-f", "--", file_path], work_dir)
+                .await?;
+            transport
+                .run_git(&["clean", "-fd", "--", file_path], work_dir)
+                .await?;
+        }
+    }
     Ok(())
 }
 
@@ -1190,4 +1283,195 @@ fn extract_username_hint(url: &str) -> Option<String> {
         .strip_prefix("https://")
         .or_else(|| url.strip_prefix("http://"))?;
     rest.split_once('@').map(|(user, _)| user.to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::common::executor::factory::ExecTarget;
+    use crate::common::git::transport::{GitExecOptions, GitTransportKind};
+    use async_trait::async_trait;
+    use tempfile::tempdir;
+
+    /// 初始化一个含单个提交的临时 git 仓库，返回 (TempDir, 路径)。
+    fn init_repo() -> (tempfile::TempDir, String) {
+        let dir = tempdir().expect("create temp dir");
+        let path = dir.path().to_string_lossy().to_string();
+        let commands: Vec<Vec<&str>> = vec![
+            vec!["init", "-q"],
+            vec!["config", "user.email", "t@t"],
+            vec!["config", "user.name", "t"],
+        ];
+        for cmd in &commands {
+            let out = exec("git")
+                .args(cmd)
+                .current_dir(&path)
+                .output()
+                .expect("run git init/config");
+            assert!(
+                out.status.success(),
+                "git {:?} failed: {}",
+                cmd,
+                String::from_utf8_lossy(&out.stderr)
+            );
+        }
+        std::fs::write(dir.path().join("base.txt"), "base\n").expect("write base");
+        let out = exec("git")
+            .args(["add", "-A"])
+            .current_dir(&path)
+            .output()
+            .expect("run git add");
+        assert!(out.status.success(), "git add failed");
+        let out = exec("git")
+            .args(["commit", "-qm", "init"])
+            .current_dir(&path)
+            .output()
+            .expect("run git commit");
+        assert!(out.status.success(), "git commit failed");
+        (dir, path)
+    }
+
+    #[tokio::test]
+    async fn discard_file_should_delete_untracked_file() {
+        // 未跟踪文件（git status ??）：`git checkout -- <file>` 会报 pathspec 错误，
+        // discard 应改为删除文件，而不是失败。
+        let (dir, path) = init_repo();
+        std::fs::write(dir.path().join("test_structure.html"), "new\n").expect("write untracked");
+
+        let transport = GitTransportKind::Local;
+        discard_file(&transport, &path, "test_structure.html")
+            .await
+            .expect("discard untracked file should not fail");
+
+        assert!(
+            !dir.path().join("test_structure.html").exists(),
+            "untracked file should be deleted"
+        );
+    }
+
+    #[tokio::test]
+    async fn discard_file_should_restore_modified_tracked_file() {
+        // 已跟踪文件的工作区修改：应恢复到 HEAD 版本。
+        let (dir, path) = init_repo();
+        std::fs::write(dir.path().join("base.txt"), "modified\n").expect("modify tracked");
+
+        let transport = GitTransportKind::Local;
+        discard_file(&transport, &path, "base.txt")
+            .await
+            .expect("discard tracked file should succeed");
+
+        let content = std::fs::read_to_string(dir.path().join("base.txt")).expect("read base");
+        assert_eq!(content, "base\n", "tracked file should be restored");
+    }
+
+    #[tokio::test]
+    async fn discard_file_should_unstage_and_restore_staged_file() {
+        // 已暂存（index 变更）：应撤销暂存并恢复工作区。
+        let (dir, path) = init_repo();
+        std::fs::write(dir.path().join("base.txt"), "staged\n").expect("modify tracked");
+        let out = exec("git")
+            .args(["add", "base.txt"])
+            .current_dir(&path)
+            .output()
+            .expect("run git add");
+        assert!(out.status.success(), "git add failed");
+
+        let transport = GitTransportKind::Local;
+        discard_file(&transport, &path, "base.txt")
+            .await
+            .expect("discard staged file should succeed");
+
+        let content = std::fs::read_to_string(dir.path().join("base.txt")).expect("read base");
+        assert_eq!(content, "base\n", "staged file should be restored");
+    }
+
+    /// 脚本化 mock transport：status 返回已暂存修改，reset 返回真实错误（非 unknown revision）。
+    struct ResetErrorTransport;
+
+    #[async_trait]
+    impl GitTransport for ResetErrorTransport {
+        async fn run_git(&self, args: &[&str], work_dir: &str) -> Result<String> {
+            self.run_git_opts(args, work_dir, GitExecOptions::default())
+                .await
+        }
+
+        async fn run_git_opts(
+            &self,
+            args: &[&str],
+            _work_dir: &str,
+            _opts: GitExecOptions<'_>,
+        ) -> Result<String> {
+            match args.first() {
+                Some(&"status") => Ok("M  base.txt\0".to_string()),
+                Some(&"reset") => Err(GitExecError {
+                    kind: ErrorKind::Other,
+                    stderr: "fatal: unable to reset".to_string(),
+                    stdout: String::new(),
+                    command: "git reset HEAD -- base.txt".to_string(),
+                }
+                .into()),
+                _ => Ok(String::new()),
+            }
+        }
+
+        async fn run_git_with_stdin(
+            &self,
+            _args: &[&str],
+            _work_dir: &str,
+            _opts: GitExecOptions<'_>,
+            _stdin: &[u8],
+        ) -> Result<String> {
+            unimplemented!()
+        }
+
+        fn open_repo(&self, _path: &str) -> Option<git2::Repository> {
+            None
+        }
+
+        async fn is_git_repo(&self, _path: &str) -> bool {
+            true
+        }
+
+        fn exec_target(&self) -> ExecTarget {
+            ExecTarget::Local
+        }
+    }
+
+    #[tokio::test]
+    async fn discard_file_should_delete_staged_add_in_repo_without_head() {
+        // 新仓库无 HEAD：staged 新增（A）→ reset 报 unknown revision → rm --cached + clean 删除
+        let dir = tempdir().expect("create temp dir");
+        let path = dir.path().to_string_lossy().to_string();
+        let out = exec("git")
+            .args(["init", "-q"])
+            .current_dir(&path)
+            .output()
+            .expect("run git init");
+        assert!(out.status.success(), "git init failed");
+        std::fs::write(dir.path().join("new.txt"), "new\n").expect("write new file");
+        let out = exec("git")
+            .args(["add", "new.txt"])
+            .current_dir(&path)
+            .output()
+            .expect("run git add");
+        assert!(out.status.success(), "git add failed");
+
+        let transport = GitTransportKind::Local;
+        discard_file(&transport, &path, "new.txt")
+            .await
+            .expect("discard staged add in no-HEAD repo should succeed");
+
+        assert!(
+            !dir.path().join("new.txt").exists(),
+            "staged add should be deleted in no-HEAD repo"
+        );
+    }
+
+    #[tokio::test]
+    async fn discard_file_should_propagate_real_reset_error() {
+        // reset 返回真实错误（stderr 非 unknown revision / ambiguous）→ 错误应传播而非静默吞掉
+        let transport = ResetErrorTransport;
+        let result = discard_file(&transport, "/tmp", "base.txt").await;
+        assert!(result.is_err(), "real reset error should propagate");
+    }
 }
