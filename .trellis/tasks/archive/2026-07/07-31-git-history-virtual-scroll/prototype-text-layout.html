@@ -1,0 +1,375 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Git Graph Line-Based Text Layout</title>
+  <style>
+    :root {
+      --bg-primary: #1a1b26;
+      --bg-secondary: #24283b;
+      --bg-tertiary: #2a2e45;
+      --bg-selected: rgba(122, 162, 247, 0.12);
+      --text-primary: #c0caf5;
+      --text-secondary: #a9b1d6;
+      --text-muted: #565f89;
+      --accent-blue: #7aa2f7;
+      --accent-green: #9ece6a;
+      --accent-yellow: #e0af68;
+      --accent-red: #f7768e;
+      --accent-purple: #bb9af7;
+      --row-height: 36px;
+      --branch-spacing: 14px;
+      --node-radius: 5px;
+      --line-width: 2px;
+      --text-gap: 8px;
+      --font-size: 13px;
+      --font-small: 11px;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: var(--bg-primary);
+      color: var(--text-primary);
+      padding: 40px;
+      font-size: var(--font-size);
+    }
+
+    h1 { font-size: 20px; margin-bottom: 8px; }
+    .subtitle { color: var(--text-muted); margin-bottom: 32px; font-size: var(--font-small); }
+
+    .panel {
+      background: var(--bg-secondary);
+      border: 1px solid var(--bg-tertiary);
+      border-radius: 8px;
+      padding: 16px;
+      margin-bottom: 32px;
+      max-width: 860px;
+    }
+
+    .panel-title {
+      color: var(--accent-blue);
+      font-size: 14px;
+      margin-bottom: 16px;
+      font-weight: 600;
+    }
+
+    .history { position: relative; }
+
+    .row {
+      position: relative;
+      height: var(--row-height);
+      display: flex;
+      align-items: center;
+    }
+
+    .row:hover { background: var(--bg-selected); border-radius: 4px; }
+
+    .graph-layer {
+      position: absolute;
+      left: 0;
+      top: 0;
+      bottom: 0;
+      pointer-events: none;
+      z-index: 1;
+    }
+
+    .text-layer {
+      position: relative;
+      z-index: 2;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      padding-right: 12px;
+      background: var(--bg-primary); /* opaque so any curve tail behind text is hidden */
+    }
+
+    .message { color: var(--text-primary); }
+
+    .meta {
+      color: var(--text-muted);
+      font-size: var(--font-small);
+      margin-left: 8px;
+    }
+
+    .type-tag {
+      display: inline-block;
+      padding: 1px 4px;
+      border-radius: 3px;
+      font-size: var(--font-small);
+      margin-right: 6px;
+      font-weight: 500;
+    }
+
+    .type-tag.feat { background: rgba(158, 206, 106, 0.15); color: var(--accent-green); }
+    .type-tag.fix { background: rgba(247, 118, 142, 0.15); color: var(--accent-red); }
+    .type-tag.docs { background: rgba(224, 175, 104, 0.15); color: var(--accent-yellow); }
+    .type-tag.style { background: rgba(187, 154, 247, 0.15); color: var(--accent-purple); }
+
+    .note {
+      margin-top: 16px;
+      padding: 12px;
+      background: var(--bg-tertiary);
+      border-radius: 6px;
+      font-size: var(--font-small);
+      color: var(--text-secondary);
+      line-height: 1.6;
+    }
+
+    code {
+      font-family: "SF Mono", Monaco, monospace;
+      background: rgba(0, 0, 0, 0.2);
+      padding: 1px 4px;
+      border-radius: 3px;
+      color: var(--accent-blue);
+    }
+
+    .row-label {
+      position: absolute;
+      right: 8px;
+      top: 50%;
+      transform: translateY(-50%);
+      font-size: 10px;
+      color: var(--text-muted);
+      font-family: monospace;
+      z-index: 3;
+      background: var(--bg-secondary);
+      padding: 0 4px;
+      border-radius: 3px;
+    }
+
+    .legend {
+      display: flex;
+      gap: 24px;
+      margin-top: 16px;
+      padding-top: 16px;
+      border-top: 1px solid var(--bg-tertiary);
+      font-size: var(--font-small);
+      color: var(--text-muted);
+    }
+
+    .legend-item { display: flex; align-items: center; gap: 8px; }
+    .legend-color { width: 12px; height: 3px; border-radius: 2px; }
+  </style>
+</head>
+<body>
+  <h1>Line-Based Text Layout（基于曲线实际路径）</h1>
+  <p class="subtitle">每行 textLeft = 该行所有竖线 + 所有曲线在该行 Y 处的实际 X 的最大值 + gap</p>
+
+  <div class="panel">
+    <div class="panel-title">场景 A：线性历史（单列 — 文字紧凑）</div>
+    <div class="history" id="linear"></div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-title">场景 B：简单分支 Merge</div>
+    <div class="history" id="branch"></div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-title">场景 C：交叉曲线（曲线从 col0 出发向右弯向 col2，穿过中间行）</div>
+    <div class="history" id="complex"></div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-title">布局规则</div>
+    <div class="note">
+      <p><strong>1. 基于线的位置，不是点的位置：</strong>对每一行，求该行所有曲线在 <code>rowCenterY</code> 处的实际 X（贝塞尔采样），而非只取端点列号。</p>
+      <p><strong>2. 公式：</strong><code>textLeft(row) = max(竖线X, 曲线X(row)) + TEXT_GAP</code></p>
+      <p><strong>3. 曲线路径采样：</strong>三次贝塞尔在端点间单调，用二分法求 <code>t</code> 使 <code>B(t).y = rowCenterY</code>，取 <code>B(t).x</code>。</p>
+      <p><strong>4. 兜底：</strong>文字层有背景色，曲线尾端若仍越界会被隐藏，不产生视觉遮挡。</p>
+    </div>
+  </div>
+
+  <div class="legend">
+    <div class="legend-item"><div class="legend-color" style="background: var(--accent-blue)"></div> main</div>
+    <div class="legend-item"><div class="legend-color" style="background: var(--accent-green)"></div> feature-b</div>
+    <div class="legend-item"><div class="legend-color" style="background: var(--accent-purple)"></div> hotfix</div>
+  </div>
+
+  <script>
+    const colors = {
+      main: '#7aa2f7',
+      featureB: '#9ece6a',
+      hotfix: '#bb9af7',
+    };
+
+    const BRANCH_SPACING = 14;
+    const NODE_RADIUS = 5;
+    const ROW_HEIGHT = 36;
+    const TEXT_GAP = 8;
+
+    function colX(col) { return col * BRANCH_SPACING + NODE_RADIUS; }
+    function rowY(row) { return row * ROW_HEIGHT + ROW_HEIGHT / 2; }
+
+    // Cubic bezier point
+    function bezierPoint(p0, p1, p2, p3, t) {
+      const mt = 1 - t;
+      return {
+        x: mt*mt*mt*p0.x + 3*mt*mt*t*p1.x + 3*mt*t*t*p2.x + t*t*t*p3.x,
+        y: mt*mt*mt*p0.y + 3*mt*mt*t*p1.y + 3*mt*t*t*p2.y + t*t*t*p3.y,
+      };
+    }
+
+    // Binary search t such that bezier.y(t) === targetY (y is monotonic when
+    // control points are within [p0.y, p3.y], which our curvePath guarantees)
+    function bezierXAtY(p0, p1, p2, p3, targetY) {
+      let lo = 0, hi = 1;
+      for (let i = 0; i < 60; i++) {
+        const mid = (lo + hi) / 2;
+        const y = bezierPoint(p0, p1, p2, p3, mid).y;
+        if (y < targetY) lo = mid; else hi = mid;
+      }
+      return bezierPoint(p0, p1, p2, p3, (lo + hi) / 2).x;
+    }
+
+    function createDot(cx, cy, color) {
+      const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+      circle.setAttribute('cx', cx);
+      circle.setAttribute('cy', cy);
+      circle.setAttribute('r', NODE_RADIUS);
+      circle.setAttribute('fill', color);
+      return circle;
+    }
+
+    function createLine(x1, y1, x2, y2, color) {
+      const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+      line.setAttribute('x1', x1);
+      line.setAttribute('y1', y1);
+      line.setAttribute('x2', x2);
+      line.setAttribute('y2', y2);
+      line.setAttribute('stroke', color);
+      line.setAttribute('stroke-width', '2');
+      return line;
+    }
+
+    function createCurve(p0, p1, p2, p3, color) {
+      const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+      path.setAttribute('d', `M ${p0.x} ${p0.y} C ${p1.x} ${p1.y}, ${p2.x} ${p2.y}, ${p3.x} ${p3.y}`);
+      path.setAttribute('stroke', color);
+      path.setAttribute('stroke-width', '2');
+      path.setAttribute('fill', 'none');
+      return path;
+    }
+
+    function renderHistory(containerId, rows) {
+      const container = document.getElementById(containerId);
+      const n = rows.length;
+
+      // Build geometry: vertical segments + bezier curves
+      const colRanges = {};
+      rows.forEach((row, idx) => {
+        const col = row.col;
+        if (!colRanges[col]) colRanges[col] = { start: idx, end: idx };
+        colRanges[col].end = idx;
+      });
+
+      const curves = [];
+      rows.forEach((row, idx) => {
+        if (!row.curves) return;
+        row.curves.forEach(curve => {
+          const p0 = { x: colX(row.col), y: rowY(idx) };
+          const p3 = { x: colX(curve.toCol), y: rowY(curve.toRow) };
+          // Same formula as CommitGraph.curvePath
+          const p1 = { x: p0.x * 0.1 + p3.x * 0.9, y: p0.y * 0.6 + p3.y * 0.4 };
+          const p2 = { x: p0.x * 0.03 + p3.x * 0.97, y: p0.y * 0.4 + p3.y * 0.6 };
+          curves.push({ p0, p1, p2, p3, color: curve.color });
+        });
+      });
+
+      // For each row: max X of vertical lines + actual curve X at rowCenterY
+      const rowMaxX = new Array(n).fill(0);
+      for (let r = 0; r < n; r++) {
+        // vertical lines covering this row
+        for (const [col, range] of Object.entries(colRanges)) {
+          if (range.start <= r && r <= range.end) {
+            rowMaxX[r] = Math.max(rowMaxX[r], colX(Number(col)));
+          }
+        }
+        // curves passing through this row's Y
+        const targetY = rowY(r);
+        for (const c of curves) {
+          const minY = Math.min(c.p0.y, c.p3.y);
+          const maxY = Math.max(c.p0.y, c.p3.y);
+          if (targetY < minY || targetY > maxY) continue;
+          const xAtRow = bezierXAtY(c.p0, c.p1, c.p2, c.p3, targetY);
+          rowMaxX[r] = Math.max(rowMaxX[r], xAtRow);
+        }
+      }
+
+      // Graph SVG
+      const globalMaxX = Math.max(...rowMaxX);
+      const svgWidth = globalMaxX + NODE_RADIUS + 4;
+      const svgHeight = n * ROW_HEIGHT;
+      const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+      svg.setAttribute('class', 'graph-layer');
+      svg.setAttribute('width', svgWidth);
+      svg.setAttribute('height', svgHeight);
+
+      for (const [col, range] of Object.entries(colRanges)) {
+        const x = colX(Number(col));
+        svg.appendChild(createLine(x, rowY(range.start), x, rowY(range.end), rows[range.start].color));
+      }
+      curves.forEach(c => svg.appendChild(createCurve(c.p0, c.p1, c.p2, c.p3, c.color)));
+      rows.forEach((row, idx) => svg.appendChild(createDot(colX(row.col), rowY(idx), row.color)));
+      container.appendChild(svg);
+
+      // Text rows
+      rows.forEach((row, idx) => {
+        const textLeft = rowMaxX[idx] + TEXT_GAP;
+        const rowEl = document.createElement('div');
+        rowEl.className = 'row';
+
+        const textEl = document.createElement('div');
+        textEl.className = 'text-layer';
+        textEl.style.marginLeft = textLeft + 'px';
+        textEl.innerHTML = `
+          ${row.type ? `<span class="type-tag ${row.type}">${row.type}${row.scope ? `(${row.scope})` : ''}</span>` : ''}
+          <span class="message">${row.message}</span>
+          <span class="meta">${row.author} · ${row.time} · ${row.hash}</span>
+        `;
+
+        const label = document.createElement('span');
+        label.className = 'row-label';
+        label.textContent = `x${Math.round(textLeft)}`;
+
+        rowEl.appendChild(textEl);
+        rowEl.appendChild(label);
+        container.appendChild(rowEl);
+      });
+    }
+
+    // Scene A: Linear
+    renderHistory('linear', [
+      { col: 0, color: colors.main, type: 'feat', scope: 'ui', message: 'replace hardcoded opacity values with design tokens', author: 'tincopper', time: '2h ago', hash: 'a1b2c3d' },
+      { col: 0, color: colors.main, type: 'fix', scope: 'worktree', message: 'clear worktree state on deactivate', author: 'tincopper', time: '3h ago', hash: 'e4f5g6h' },
+      { col: 0, color: colors.main, type: 'fix', scope: 'dock', message: 'clamp right panel size to minSize floor', author: 'tincopper', time: '5h ago', hash: 'i7j8k9l' },
+      { col: 0, color: colors.main, type: 'docs', message: 'capture per-project metadata extension spec', author: 'vinci', time: '1d ago', hash: 'm0n1o2p' },
+    ]);
+
+    // Scene B: Simple branch merge (curve col0 -> col1)
+    renderHistory('branch', [
+      { col: 0, color: colors.main, type: 'feat', message: 'merge feature-b into main', author: 'tincopper', time: '1h ago', hash: 'q3r4s5t', curves: [{ toCol: 1, toRow: 2, color: colors.featureB }] },
+      { col: 0, color: colors.main, type: 'fix', message: 'prepare main for feature merge', author: 'tincopper', time: '2h ago', hash: 'u6v7w8x' },
+      { col: 1, color: colors.featureB, type: 'feat', scope: 'b', message: 'add feature-b core logic', author: 'vinci', time: '3h ago', hash: 'y9z0a1b' },
+      { col: 1, color: colors.featureB, type: 'feat', scope: 'b', message: 'branch feature-b from main', author: 'vinci', time: '4h ago', hash: 'c2d3e4f' },
+      { col: 0, color: colors.main, type: 'docs', message: 'initial main commit', author: 'tincopper', time: '1d ago', hash: 'g5h6i7j' },
+    ]);
+
+    // Scene C: Crossing curves — curve from col0 sweeps RIGHT to col2 (crossing
+    // intermediate rows), and a second curve from col1 back to col0.
+    renderHistory('complex', [
+      { col: 0, color: colors.main, type: 'feat', message: 'merge hotfix and feature-b', author: 'tincopper', time: '30m ago', hash: 'k8l9m0n',
+        curves: [{ toCol: 1, toRow: 2, color: colors.featureB }, { toCol: 2, toRow: 3, color: colors.hotfix }] },
+      { col: 0, color: colors.main, type: 'fix', message: 'mainline stabilization while hotfix diverges far right', author: 'tincopper', time: '1h ago', hash: 'o1p2q3r' },
+      { col: 1, color: colors.featureB, type: 'feat', scope: 'b', message: 'complete feature-b implementation', author: 'vinci', time: '2h ago', hash: 's4t5u6v' },
+      { col: 2, color: colors.hotfix, type: 'fix', message: 'critical hotfix patch on its own lane', author: 'hush', time: '3h ago', hash: 'w7x8y9z' },
+      { col: 1, color: colors.featureB, type: 'feat', scope: 'b', message: 'start feature-b work', author: 'vinci', time: '5h ago', hash: 'a1b2c3d' },
+      { col: 2, color: colors.hotfix, type: 'fix', message: 'branch hotfix from main', author: 'hush', time: '6h ago', hash: 'e4f5g6h' },
+      { col: 0, color: colors.main, type: 'docs', message: 'project bootstrap', author: 'tincopper', time: '1d ago', hash: 'i7j8k9l' },
+    ]);
+  </script>
+</body>
+</html>
