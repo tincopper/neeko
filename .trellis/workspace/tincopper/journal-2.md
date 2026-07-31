@@ -1757,3 +1757,36 @@ Resolved DAG rendering issues: persistent layout via useCommitLayout, pagination
 ### Next Steps
 
 - None - task complete
+
+
+## Session 110: refactor: split CommitList into hooks + presentational components
+
+**Date**: 2026-07-31
+**Task**: refactor: split CommitList into hooks + presentational components
+**Branch**: `main`
+
+### Summary
+
+CommitList 599→180 行拆分：3 hooks + 4 展示组件 + 组合层；TDD 全流程（70 测试）；类型 import 统一走 feature 门面
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `2da9ba4a` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

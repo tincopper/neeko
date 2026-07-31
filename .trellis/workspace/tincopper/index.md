@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-2.md`
-- **Total Sessions**: 109
+- **Total Sessions**: 110
 - **Last Active**: 2026-07-31
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-2.md` | ~1759 | Active |
+| `journal-2.md` | ~1792 | Active |
 | `journal-1.md` | ~1986 | Archived |
 <!-- @@@/auto:active-documents -->
 
@@ -30,6 +30,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 110 | 2026-07-31 | refactor: split CommitList into hooks + presentational components | `2da9ba4a` | `main` |
 | 109 | 2026-07-31 | Fix git graph line disconnections | `4c0da710` | `main` |
 | 108 | 2026-07-30 | Agent Configuration Schema system | `a167fd43` | `feature-commands` |
 | 107 | 2026-07-30 | ToolAdapter complete replacement + Agent config Schema | `031c9a63` | `feature-commands` |
