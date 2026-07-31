@@ -278,6 +278,124 @@ function curvePath(start: [number, number], end: [number, number]): string {
   return `M ${start[0]} ${start[1]} C ${cx1} ${cy1}, ${cx2} ${cy2}, ${end[0]} ${end[1]}`;
 }
 
+/** 与 curvePath 相同的三次贝塞尔控制点（P1、P2）。 */
+function curveControlPoints(
+  start: [number, number],
+  end: [number, number],
+): [[number, number], [number, number]] {
+  const cx1 = start[0] * 0.1 + end[0] * 0.9;
+  const cy1 = start[1] * 0.6 + end[1] * 0.4;
+  const cx2 = start[0] * 0.03 + end[0] * 0.97;
+  const cy2 = start[1] * 0.4 + end[1] * 0.6;
+  return [
+    [cx1, cy1],
+    [cx2, cy2],
+  ];
+}
+
+/** 三次贝塞尔在 t 处的点。 */
+function bezierPoint(
+  p0: [number, number],
+  p1: [number, number],
+  p2: [number, number],
+  p3: [number, number],
+  t: number,
+): [number, number] {
+  const mt = 1 - t;
+  return [
+    mt * mt * mt * p0[0] + 3 * mt * mt * t * p1[0] + 3 * mt * t * t * p2[0] + t * t * t * p3[0],
+    mt * mt * mt * p0[1] + 3 * mt * mt * t * p1[1] + 3 * mt * t * t * p2[1] + t * t * t * p3[1],
+  ];
+}
+
+/**
+ * 二分法求三次贝塞尔曲线在 targetY 处的 X。
+ *
+ * 前提：控制点 Y 都在端点 Y 之间（curveControlPoints 公式保证），
+ * 因此 B(t).y 单调，二分法收敛可靠。
+ */
+export function bezierXAtY(
+  p0: [number, number],
+  p1: [number, number],
+  p2: [number, number],
+  p3: [number, number],
+  targetY: number,
+): number {
+  const minY = Math.min(p0[1], p3[1]);
+  const maxY = Math.max(p0[1], p3[1]);
+  if (targetY <= minY) return p0[1] < p3[1] ? p0[0] : p3[0];
+  if (targetY >= maxY) return p0[1] < p3[1] ? p3[0] : p0[0];
+  let lo = 0;
+  let hi = 1;
+  for (let i = 0; i < 60; i++) {
+    const mid = (lo + hi) / 2;
+    if (bezierPoint(p0, p1, p2, p3, mid)[1] < targetY) lo = mid;
+    else hi = mid;
+  }
+  return bezierPoint(p0, p1, p2, p3, (lo + hi) / 2)[0];
+}
+
+/**
+ * 计算每行的最大 graph X（竖线 + 曲线在该行 Y 处的实际路径）。
+ *
+ * textLeft(row) = rowMaxX[row] + TEXT_AFTER_DOT_GAP，保证文字始终位于
+ * 该行所有 graph 元素（含交叉曲线）的右侧，不被遮挡。
+ * 与 CommitGraph 渲染共用同一套几何（nodeXY / curveControlPoints）。
+ */
+export function computeRowMaxX(commits: CommitEntry[]): number[] {
+  if (commits.length === 0) return [];
+  const { nodes, segments } = computeLayout(commits);
+  const n = commits.length;
+  const rowMaxX = new Array<number>(n).fill(0);
+
+  // 1. 竖线 segment 覆盖的行
+  for (const seg of segments) {
+    const endRow = seg.end === Infinity ? n - 1 : seg.end;
+    const x = seg.col * BRANCH_SPACING + NODE_RADIUS * 2;
+    for (let r = seg.start; r <= endRow; r++) {
+      if (x > rowMaxX[r]) rowMaxX[r] = x;
+    }
+  }
+
+  // 2. 曲线采样：merge（第二+ parent）与 branch-out 曲线
+  const nodesMap = new Map<string, CommitNode>();
+  for (const node of nodes) nodesMap.set(node.hash, node);
+
+  const sampleCurve = (p0: [number, number], p3: [number, number]) => {
+    const [p1, p2] = curveControlPoints(p0, p3);
+    const minY = Math.min(p0[1], p3[1]);
+    const maxY = Math.max(p0[1], p3[1]);
+    const maxX = Math.max(p0[0], p1[0], p2[0], p3[0]);
+    const firstRow = Math.max(0, Math.floor(minY / ROW_HEIGHT));
+    const lastRow = Math.min(n - 1, Math.ceil(maxY / ROW_HEIGHT));
+    for (let r = firstRow; r <= lastRow; r++) {
+      if (rowMaxX[r] >= maxX) continue; // 该行已比曲线最右点更靠右，跳过
+      const x = bezierXAtY(p0, p1, p2, p3, r * ROW_HEIGHT + ROW_HEIGHT / 2);
+      if (x > rowMaxX[r]) rowMaxX[r] = x;
+    }
+  };
+
+  for (const node of nodes) {
+    const start = nodeXY(node.x, node.y);
+    // merge 曲线：node → parents[1..N]
+    for (let p = 1; p < node.parents.length; p++) {
+      const parent = nodesMap.get(node.parents[p]);
+      if (!parent) continue;
+      sampleCurve(start, nodeXY(parent.x, parent.y));
+    }
+    // branch-out 曲线：node → branch children（跨列）
+    for (const childHash of node.children) {
+      const child = nodesMap.get(childHash);
+      if (!child) continue;
+      if (child.parents[0] === node.hash && child.x !== node.x) {
+        sampleCurve(start, nodeXY(child.x, child.y));
+      }
+    }
+  }
+
+  return rowMaxX;
+}
+
 // ── React 组件 ─────────────────────────────────────────────────────────────
 
 const CommitGraph: React.FC<CommitGraphProps> = ({

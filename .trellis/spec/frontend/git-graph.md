@@ -57,6 +57,28 @@ nodeCenter(hash) = (col * BRANCH_SPACING + NODE_RADIUS * 2, row * ROW_HEIGHT + R
 
 **实现**：`useGitLog.loadMore` 使用 `skip = commits.length - 1`（overlap 1 条）。
 
+### 文字列与 Graph 的分层（Text Column Separation）
+
+**规则**：每行 commit 文字的左内边距由**该行所有 graph 元素（竖线 + 曲线）在行中心 Y 处的实际最大 X** 决定；文字始终位于这些元素右侧，禁止用 z-index 让文字覆盖在曲线上方。
+
+**原因**：
+- 曲线是跨行的：一条从 col0 弯向 col2 的曲线会穿过中间行，仅看 commit 自身列无法避免遮挡
+- 只有对每条曲线在**该行 Y 处采样实际路径 X**，才能保证文字不与任何线条重叠
+
+**公式**：
+```
+rowMaxX(row) = max(覆盖该行的竖线 X, 所有曲线在 rowCenterY 处的贝塞尔 X)
+textLeft(row) = rowMaxX(row) + TEXT_AFTER_DOT_GAP
+```
+
+**实现**：`computeRowMaxX(commits)` 与 `CommitGraph` 渲染共用同一套几何（`nodeXY` / `curveControlPoints`），保证采样路径与绘制路径一致。曲线 Y 单调（控制点 Y 在端点之间），用二分法求 `bezierXAtY`。
+
+**禁止**：
+- ❌ `textLeft = textLeftForCol(node.x, ...)`（只看 commit 自身列，交叉曲线仍会遮挡）
+- ❌ `textLeft = rowGraphWidth + TEXT_AFTER_DOT_GAP`（所有行统一对齐，简单行浪费空间）
+- ❌ 文字在曲线上方（z-index 覆盖），而非曲线右侧
+- ✅ `textLeft = computeRowMaxX(commits)[row] + TEXT_AFTER_DOT_GAP`（按曲线实际路径采样）
+
 ---
 
 ## 算法：computeLayout
@@ -179,6 +201,8 @@ if (seg.start === endRow) {
 | branch + merge | 分支节点在不同列，merge 曲线端点精确连接 |
 | 分页截断 | `truncatedRows` 正确标记，segment 不提前关闭 |
 | 布局稳定性 | 相同 commits 输入，多次计算输出 identical |
+| 文字避让 | `computeRowMaxX` 对交叉曲线采样，`textLeft` 不小于任何经过该行的线条 X |
+| 曲线采样 | `bezierXAtY` 在端点与中点处收敛到贝塞尔解析值 |
 
 ---
 
