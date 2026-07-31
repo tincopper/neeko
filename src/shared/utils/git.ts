@@ -1,4 +1,4 @@
-import type { Worktree } from '@/shared/types';
+import type { GitInfo, Worktree } from '@/shared/types';
 
 export function filterWorktreeBranches(branches: string[], worktrees: Worktree[]): string[] {
   const excluded = new Set(worktrees.map((wt) => wt.branch));
@@ -11,4 +11,19 @@ export function filterWorktreeBranches(branches: string[], worktrees: Worktree[]
  */
 export function isActiveWorktree(path: string | null | undefined): boolean {
   return path !== null && path !== undefined && path !== '';
+}
+
+/**
+ * 合并 worktree 场景下写回 projectStore 的 git_info：
+ * worktree 激活时保留主分支（local 入口）的 current_branch，
+ * 避免 store 中项目的 current_branch 被 worktree 分支名污染。
+ * 其余字段（changed_files 等）仍使用 worktree 的最新数据。
+ */
+export function mergeGitInfoForStore(
+  existing: GitInfo | null | undefined,
+  incoming: GitInfo,
+  worktreeActive: boolean,
+): GitInfo {
+  if (!worktreeActive) return incoming;
+  return { ...incoming, current_branch: existing?.current_branch ?? incoming.current_branch };
 }

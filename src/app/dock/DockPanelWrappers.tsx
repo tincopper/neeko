@@ -36,6 +36,7 @@ import {
 } from '@/shared/utils/browserUtils';
 import { buildDiffSource } from '@/shared/utils/diffSource';
 import { mergeSubTree } from '@/shared/utils/fileTree';
+import { mergeGitInfoForStore } from '@/shared/utils/git';
 import { parseProjectIdFromTabKey, resolveTabKey } from '@/shared/utils/tabKey';
 
 // ── FilesPanelWrapper ──
@@ -264,9 +265,13 @@ const GitCommitPanelWrapper: React.FC = React.memo(() => {
     const cc = connectionContextRef.current;
     if (!proj || !cmds) return;
     const gitInfo = await cmds.refreshGitInfo();
+    // worktree 激活时保留 local 主分支名，避免 store 中 current_branch 被 worktree 分支污染
+    const worktreeActive = useWorktreeStore.getState().activeWorktreePath != null;
     useProjectStore.setState((state) => {
       const nextProjects = state.projects.map((p) =>
-        p.id === proj.id ? { ...p, git_info: gitInfo } : p,
+        p.id === proj.id
+          ? { ...p, git_info: mergeGitInfoForStore(p.git_info, gitInfo, worktreeActive) }
+          : p,
       );
       return {
         projects: nextProjects,
@@ -592,9 +597,13 @@ const PullRequestsPanelWrapper: React.FC = React.memo(() => {
       void _projectId;
       if (!project || !commands) return;
       const gitInfo = await commands.refreshGitInfo();
+      // worktree 激活时保留 local 主分支名，避免 store 中 current_branch 被 worktree 分支污染
+      const worktreeActive = useWorktreeStore.getState().activeWorktreePath != null;
       useProjectStore.setState((state) => {
         const nextProjects = state.projects.map((p) =>
-          p.id === project.id ? { ...p, git_info: gitInfo } : p,
+          p.id === project.id
+            ? { ...p, git_info: mergeGitInfoForStore(p.git_info, gitInfo, worktreeActive) }
+            : p,
         );
         return {
           projects: nextProjects,
@@ -900,9 +909,13 @@ const GitControlPanelWrapper: React.FC = React.memo(() => {
     const cc = connectionContextRef.current;
     if (!proj || !cmds) return;
     const gitInfo = await cmds.refreshGitInfo();
+    // worktree 激活时保留 local 主分支名，避免 store 中 current_branch 被 worktree 分支污染
+    const worktreeActive = useWorktreeStore.getState().activeWorktreePath != null;
     useProjectStore.setState((state) => {
       const nextProjects = state.projects.map((p) =>
-        p.id === proj.id ? { ...p, git_info: gitInfo } : p,
+        p.id === proj.id
+          ? { ...p, git_info: mergeGitInfoForStore(p.git_info, gitInfo, worktreeActive) }
+          : p,
       );
       return {
         projects: nextProjects,
