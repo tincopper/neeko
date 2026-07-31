@@ -368,9 +368,16 @@ pub async fn lsp_check_server_installed(
                 "No LSP plugin registered for language: {language_id}"
             ))
         })?;
-    Ok(crate::lsp::installer::check_binary_installed(
-        &binary, &target,
-    ))
+    // check_binary_installed 内部对 WSL/SSH 走同步命令执行（command_exists_blocking），
+    // 必须放入 blocking 线程池，避免在 async driver 线程内构建 runtime 导致 panic。
+    let target = target.clone();
+    let binary = binary.to_string();
+    crate::common::runtime::run_blocking(move || {
+        Ok::<_, AppError>(crate::lsp::installer::check_binary_installed(
+            &binary, &target,
+        ))
+    })
+    .await?
 }
 
 /// Full extension → language map (built-in + custom) for the frontend router.

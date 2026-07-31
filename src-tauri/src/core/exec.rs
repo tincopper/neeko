@@ -10,8 +10,8 @@
 //! tools for WSL/SSH projects live in those environments.
 
 use crate::common::executor::factory::{create_executor, ExecTarget};
-use crate::common::executor::sync::{collect_output, exec_on};
-use crate::common::executor::{ExecChild, ExecError, ExecOutput};
+use crate::common::executor::sync::{collect_child_output, collect_output, exec_on};
+use crate::common::executor::{ExecChild, ExecError, ExecOutput, SpawnOptions};
 use crate::core::exec_env;
 use crate::core::project::ProjectEnvironment;
 
@@ -42,13 +42,8 @@ pub async fn spawn_with(
     args: &[&str],
     current_dir: Option<&str>,
 ) -> Result<ExecChild, ExecError> {
-    use crate::common::executor::SpawnOptions;
     create_executor(target)
-        .spawn_with(SpawnOptions {
-            cmd,
-            args,
-            current_dir,
-        })
+        .spawn_with(SpawnOptions::new(cmd, args).with_current_dir_if(current_dir))
         .await
 }
 
@@ -107,26 +102,187 @@ pub async fn command_exists_on_project(env: &ProjectEnvironment, cmd: &str) -> b
 /// `spawn_blocking` worker). Prefer [`command_exists`] / [`command_exists_on_project`]
 /// in async code.
 ///
-/// Safe to call from `spawn_blocking` (no current Tokio handle required).
+/// Safe to call from `spawn_blocking` or dedicated OS threads (no current
+/// Tokio handle required). Must NOT be called from an async driver thread —
+/// use the async [`command_exists`] there.
 #[must_use]
 pub fn command_exists_blocking(target: &ExecTarget, cmd: &str) -> bool {
     match target {
         ExecTarget::Local => exec_env::local_command_exists(cmd),
         ExecTarget::Wsl { .. } | ExecTarget::Remote { .. } => {
-            match tokio::runtime::Builder::new_current_thread()
-                .enable_all()
-                .build()
-            {
-                Ok(rt) => rt.block_on(command_exists(target, cmd)),
-                Err(e) => {
-                    log::warn!("[exec] failed to build temp runtime for command_exists: {e}");
-                    false
-                }
-            }
+            block_on_temp(command_exists(target, cmd)).unwrap_or(false)
         }
     }
 }
 
+/// Run a command with full [`SpawnOptions`] and collect raw output.
+async fn collect_with_opts(
+    target: &ExecTarget,
+    opts: SpawnOptions<'_>,
+) -> Result<ExecOutput, ExecError> {
+    let child = create_executor(target).spawn_with(opts).await?;
+    collect_child_output(child).await
+}
+
+/// Build a temporary current-thread runtime and run `future` to completion.
+///
+/// Used by the blocking facade for sync call sites (git worker threads, git2
+/// helpers, sync Tauri commands). Prefers an existing runtime handle when the
+/// calling thread already has one (e.g. tokio blocking pool), and only falls
+/// back to a brand-new current-thread runtime when no context exists.
+///
+/// Must NOT be called from an async driver thread (async task body /
+/// `#[tokio::test]` body) — callers there should use the async variants
+/// (`run` / `collect`) directly.
+///
+/// `#[track_caller]` + caller logging：一旦被误在 async driver 线程调用而触发
+/// Tokio 的 block-on panic，panic 位置与日志均指向实际调用点，便于排查。
+#[track_caller]
+fn block_on_temp<T>(future: impl std::future::Future<Output = T>) -> Result<T, ExecError> {
+    let caller = std::panic::Location::caller();
+    match tokio::runtime::Handle::try_current() {
+        Ok(handle) => {
+            log::debug!(
+                "[exec] block_on_temp inside existing runtime, called from {caller}; \
+                 context must be a blocking pool / OS thread, not an async driver thread"
+            );
+            Ok(handle.block_on(future))
+        }
+        Err(_) => match tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+        {
+            Ok(rt) => Ok(rt.block_on(future)),
+            Err(e) => {
+                log::warn!("[exec] failed to build temp runtime for blocking exec: {e}");
+                Err(ExecError::InvalidConfig(format!(
+                    "failed to build temporary runtime: {e}"
+                )))
+            }
+        },
+    }
+}
+
+/// Blocking [`collect`] for sync call sites.
+///
+/// Returns raw stdout/stderr/exit code even for non-zero exits. Safe outside
+/// any Tokio context (dedicated worker threads, sync Tauri commands).
+pub fn collect_blocking(
+    target: &ExecTarget,
+    cmd: &str,
+    args: &[&str],
+) -> Result<ExecOutput, ExecError> {
+    let opts = SpawnOptions::new(cmd, args);
+    block_on_temp(collect_with_opts(target, opts))?
+}
+
+/// Blocking [`collect`] with full [`SpawnOptions`] (working directory + env).
+pub fn collect_blocking_with(
+    target: &ExecTarget,
+    opts: SpawnOptions<'_>,
+) -> Result<ExecOutput, ExecError> {
+    block_on_temp(collect_with_opts(target, opts))?
+}
+
+/// Blocking [`run`] for sync call sites: UTF-8 stdout on success, error otherwise.
+pub fn run_blocking(target: &ExecTarget, cmd: &str, args: &[&str]) -> Result<String, ExecError> {
+    let output = collect_blocking(target, cmd, args)?;
+    if output.exit_code == 0 {
+        Ok(String::from_utf8_lossy(&output.stdout).into_owned())
+    } else {
+        Err(ExecError::CommandFailed {
+            code: output.exit_code,
+            stdout: output.stdout,
+            stderr: output.stderr,
+        })
+    }
+}
+
+/// Blocking, fire-and-forget launch of a GUI / long-lived process (IDE,
+/// default browser, `wsl.exe`, …). The child keeps running after this returns;
+/// stdio is nulled and the process is detached (Unix process group / Windows
+/// `DETACHED_PROCESS`).
+pub fn spawn_detached(target: &ExecTarget, cmd: &str, args: &[&str]) -> Result<(), ExecError> {
+    let opts = SpawnOptions::new(cmd, args);
+    block_on_temp(async move {
+        let executor = create_executor(target);
+        executor.spawn_detached(opts.cmd, opts.args).await
+    })?
+}
+
 fn shell_quote(s: &str) -> String {
     crate::common::utils::command::local::quote_shell_arg(s)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// 同步桥必须在无 Tokio 上下文的线程上调用（普通 `#[test]` 线程即满足）。
+    #[test]
+    fn collect_blocking_captures_stdout_and_zero_exit() {
+        let output = collect_blocking(&ExecTarget::Local, "sh", &["-c", "printf hello"]).unwrap();
+        assert_eq!(output.exit_code, 0);
+        assert_eq!(String::from_utf8_lossy(&output.stdout), "hello");
+        assert!(output.stderr.is_empty());
+    }
+
+    #[test]
+    fn collect_blocking_preserves_nonzero_exit_and_stderr() {
+        let output =
+            collect_blocking(&ExecTarget::Local, "sh", &["-c", "echo boom >&2; exit 3"]).unwrap();
+        assert_eq!(output.exit_code, 3);
+        assert!(String::from_utf8_lossy(&output.stderr).contains("boom"));
+    }
+
+    #[test]
+    fn collect_blocking_with_sets_current_dir_and_env() {
+        let dir = std::env::temp_dir().canonicalize().unwrap();
+        let dir_str = dir.to_str().unwrap();
+        let output = collect_blocking_with(
+            &ExecTarget::Local,
+            SpawnOptions::new("sh", &["-c", "pwd; [ \"$NEEKO_TEST_ENV\" = \"42\" ]"])
+                .with_current_dir(dir_str)
+                .with_env(&[("NEEKO_TEST_ENV", "42")]),
+        )
+        .unwrap();
+        assert_eq!(output.exit_code, 0);
+        assert!(String::from_utf8_lossy(&output.stdout).contains(dir_str));
+    }
+
+    #[test]
+    fn run_blocking_returns_stdout_on_success_and_error_on_failure() {
+        let ok = run_blocking(&ExecTarget::Local, "sh", &["-c", "printf ok"]).unwrap();
+        assert_eq!(ok, "ok");
+
+        let err = run_blocking(&ExecTarget::Local, "sh", &["-c", "exit 5"]).unwrap_err();
+        assert!(matches!(err, ExecError::CommandFailed { code: 5, .. }));
+    }
+
+    #[test]
+    fn spawn_detached_launches_local_process_without_error() {
+        // 成功启动：fire-and-forget，立即返回 Ok。
+        spawn_detached(&ExecTarget::Local, "sh", &["-c", "true"]).expect("spawn sh");
+    }
+
+    #[test]
+    fn spawn_detached_reports_spawn_failure() {
+        // 不存在的命令：应返回 Io 错误而非 panic。
+        let err = spawn_detached(
+            &ExecTarget::Local,
+            "definitely-not-a-real-command-987654",
+            &[],
+        )
+        .unwrap_err();
+        assert!(matches!(err, ExecError::Io(_)));
+    }
+
+    #[test]
+    fn command_exists_blocking_local() {
+        assert!(command_exists_blocking(&ExecTarget::Local, "sh"));
+        assert!(!command_exists_blocking(
+            &ExecTarget::Local,
+            "definitely-not-a-real-command-987654"
+        ));
+    }
 }

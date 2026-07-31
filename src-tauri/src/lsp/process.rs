@@ -100,11 +100,7 @@ async fn spawn_lsp_process_async(
     args: &[&str],
     current_dir: Option<&str>,
 ) -> Result<LspProcess, String> {
-    let opts = SpawnOptions {
-        cmd,
-        args,
-        current_dir,
-    };
+    let opts = SpawnOptions::new(cmd, args).with_current_dir_if(current_dir);
     let child = create_executor(target)
         .spawn_with(opts)
         .await

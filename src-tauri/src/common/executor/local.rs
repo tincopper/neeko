@@ -31,9 +31,16 @@ impl CommandExecutor for LocalExecutor {
         command
             .args(opts.args)
             .env("PATH", &path)
+            .envs(opts.env.iter().copied())
             .stdin(std::process::Stdio::piped())
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped());
+        #[cfg(target_os = "windows")]
+        {
+            use std::os::windows::process::CommandExt;
+            // 与旧 `common::utils::command::local::exec` 对齐：隐藏控制台窗口。
+            command.creation_flags(crate::common::utils::command::local::flags::CREATE_NO_WINDOW);
+        }
         if let Some(dir) = opts.current_dir {
             command.current_dir(dir);
         }
@@ -70,5 +77,38 @@ impl CommandExecutor for LocalExecutor {
         Ok(ExecChild::new_with_pid(
             stdin, stdout, stderr, wait, kill_fn, pid,
         ))
+    }
+
+    /// Detached GUI / long-lived process launch (IDE, default browser, …).
+    ///
+    /// Stdio is nulled (no pipes to leak), Unix spawns a new process group so
+    /// signals to the parent don't propagate, Windows detaches the process so
+    /// it outlives the parent console / lifetime.
+    async fn spawn_detached(&self, cmd: &str, args: &[&str]) -> Result<(), ExecError> {
+        let path = crate::common::utils::command::local::resolve_full_path();
+        let resolved = crate::common::utils::command::local::resolve_command_path(cmd, &path);
+
+        let mut command = Command::new(&resolved);
+        command
+            .args(args)
+            .env("PATH", &path)
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null());
+        #[cfg(target_os = "windows")]
+        {
+            use crate::common::utils::command::local::flags;
+            use std::os::windows::process::CommandExt;
+            command.creation_flags(
+                flags::CREATE_NO_WINDOW | flags::DETACHED_PROCESS | flags::CREATE_NEW_PROCESS_GROUP,
+            );
+        }
+        #[cfg(unix)]
+        {
+            command.process_group(0);
+        }
+
+        command.spawn().map_err(ExecError::Io)?;
+        Ok(())
     }
 }

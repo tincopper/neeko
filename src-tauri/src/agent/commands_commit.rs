@@ -84,9 +84,15 @@ async fn run_agent_local(
     command_override: Option<&str>,
     file_paths: &[String],
 ) -> Result<String, AppError> {
+    // 同步业务逻辑（git diff / 最近提交 / agent CLI）放入 blocking 线程池，
+    // 避免在 async driver 线程内执行同步命令执行。
     let sp = std::path::PathBuf::from(wd);
     let config = resolve_agent_config(state, agent_id, command_override)?;
-    ai_svc::generate_commit_message(&sp, &config, file_paths)
+    let file_paths = file_paths.to_vec();
+    crate::common::runtime::run_blocking(move || {
+        ai_svc::generate_commit_message(&sp, &config, &file_paths)
+    })
+    .await?
 }
 
 /// Run the agent on a remote host to generate a commit message.

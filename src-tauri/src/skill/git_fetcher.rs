@@ -1,5 +1,8 @@
 //! Git repository cloning, parsing, and cleanup helpers for skill installation.
 
+use crate::common::executor::factory::ExecTarget;
+use crate::common::executor::SpawnOptions;
+use crate::core::exec::collect_blocking_with;
 use anyhow::{Context, Result};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -75,21 +78,21 @@ pub fn clone_repo_ref(
 
     let temp_dir = tempfile::tempdir()?;
     let temp_path = temp_dir.path().to_path_buf();
+    let temp_path_str = temp_path
+        .to_str()
+        .ok_or_else(|| anyhow::anyhow!("Invalid temp path"))?;
 
-    let mut cmd = crate::common::utils::command::local::exec("git");
-    cmd.args(["clone", "--depth", "1"]);
+    let mut args: Vec<String> = vec!["clone".to_string(), "--depth".to_string(), "1".to_string()];
 
     if let Some(b) = branch {
-        cmd.args(["-b", b]);
+        args.push("-b".to_string());
+        args.push(b.to_string());
     }
 
-    if let Some(p) = proxy {
-        cmd.env("https_proxy", p);
-        cmd.env("http_proxy", p);
-    }
+    args.push(url.to_string());
+    args.push(temp_path_str.to_string());
 
-    cmd.arg(url);
-    cmd.arg(&temp_path);
+    let arg_refs: Vec<&str> = args.iter().map(String::as_str).collect();
 
     // Check cancel flag before starting
     if let Some(cancel_flag) = cancel {
@@ -98,7 +101,18 @@ pub fn clone_repo_ref(
         }
     }
 
-    let output = cmd.output().context("Failed to execute git clone")?;
+    let output = match proxy {
+        Some(p) => {
+            let envs = [("https_proxy", p), ("http_proxy", p)];
+            collect_blocking_with(
+                &ExecTarget::Local,
+                SpawnOptions::new("git", &arg_refs).with_env(&envs),
+            )
+            .context("Failed to execute git clone")?
+        }
+        None => collect_blocking_with(&ExecTarget::Local, SpawnOptions::new("git", &arg_refs))
+            .context("Failed to execute git clone")?,
+    };
 
     // Check cancel flag after completion
     if let Some(cancel_flag) = cancel {
@@ -108,7 +122,7 @@ pub fn clone_repo_ref(
         }
     }
 
-    if !output.status.success() {
+    if output.exit_code != 0 {
         let stderr = String::from_utf8_lossy(&output.stderr);
         anyhow::bail!("Git clone failed: {}", stderr);
     }
@@ -121,13 +135,16 @@ pub fn clone_repo_ref(
 
 /// Get the HEAD commit revision of a git repository.
 pub fn get_head_revision(repo_path: &Path) -> Result<String> {
-    let output = crate::common::utils::command::local::exec("git")
-        .args(["rev-parse", "HEAD"])
-        .current_dir(repo_path)
-        .output()
-        .context("Failed to get HEAD revision")?;
+    let repo_str = repo_path
+        .to_str()
+        .ok_or_else(|| anyhow::anyhow!("Invalid path"))?;
+    let output = collect_blocking_with(
+        &ExecTarget::Local,
+        SpawnOptions::new("git", &["rev-parse", "HEAD"]).with_current_dir(repo_str),
+    )
+    .context("Failed to get HEAD revision")?;
 
-    if !output.status.success() {
+    if output.exit_code != 0 {
         anyhow::bail!("Failed to get HEAD revision");
     }
 

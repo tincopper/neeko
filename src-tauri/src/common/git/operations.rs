@@ -7,10 +7,11 @@ use super::credential::{
 };
 use super::transport::{ErrorKind, GitExecError, GitTransport};
 use super::types::PushOutcome;
+use crate::common::executor::factory::ExecTarget;
 use crate::common::git::parsers::parse_numstat_line;
 use crate::common::git::provider::detect_provider;
 use crate::common::git::types::{DiffHunk, DiffLine, DiffResult};
-use crate::common::utils::command::local::exec;
+use crate::core::exec::collect_in_dir;
 use crate::project::types::{
     AheadBehind, CommitDetail, CommitEntry, CommitFileChange, CommitResult, FileChange,
     FileDiffStats, FileStatus, GitBranchInfo, GitInfo, GitProvider, Worktree,
@@ -977,14 +978,20 @@ async fn get_file_diff_shell(
 
 /// Get changed files diff stats (additions/deletions) for local
 pub async fn get_changed_files_diff_stats_local(work_dir: &str) -> Result<Vec<FileDiffStats>> {
-    let unstaged = exec("git")
-        .args(["diff", "--numstat"])
-        .current_dir(work_dir)
-        .output()?;
-    let staged = exec("git")
-        .args(["diff", "--cached", "--numstat"])
-        .current_dir(work_dir)
-        .output()?;
+    let unstaged = collect_in_dir(
+        &ExecTarget::Local,
+        "git",
+        &["diff", "--numstat"],
+        Some(work_dir),
+    )
+    .await?;
+    let staged = collect_in_dir(
+        &ExecTarget::Local,
+        "git",
+        &["diff", "--cached", "--numstat"],
+        Some(work_dir),
+    )
+    .await?;
 
     let mut stats: Vec<FileDiffStats> = Vec::new();
     let mut tracked_paths: std::collections::HashSet<String> = std::collections::HashSet::new();
@@ -1016,10 +1023,13 @@ pub async fn get_changed_files_diff_stats_local(work_dir: &str) -> Result<Vec<Fi
         }
     }
 
-    let untracked = exec("git")
-        .args(["ls-files", "--others", "--exclude-standard"])
-        .current_dir(work_dir)
-        .output()?;
+    let untracked = collect_in_dir(
+        &ExecTarget::Local,
+        "git",
+        &["ls-files", "--others", "--exclude-standard"],
+        Some(work_dir),
+    )
+    .await?;
     for file_path in String::from_utf8_lossy(&untracked.stdout).lines() {
         let file_path = file_path.trim();
         if file_path.is_empty() || tracked_paths.contains(file_path) {
@@ -1047,23 +1057,27 @@ pub async fn get_changed_files_diff_stats_local(work_dir: &str) -> Result<Vec<Fi
 /// Get git info. Uses git2 for local transports, shell fallback otherwise.
 pub async fn get_git_info(transport: &dyn GitTransport, work_dir: &str) -> Result<GitInfo> {
     if let Some(repo) = transport.open_repo(work_dir) {
-        let branch_info = super::local::get_git_branch_info_from_repo(&repo)?;
-        let changed_files = super::local::get_changed_files_from_repo(&repo)?;
-        let is_clean = changed_files.is_empty();
-        let git_provider = repo
-            .find_remote("origin")
-            .ok()
-            .and_then(|r| r.url().map(|u| u.to_string()))
-            .map(|u| detect_provider(&u))
-            .unwrap_or(GitProvider::Unknown);
-        Ok(GitInfo {
-            current_branch: branch_info.current_branch,
-            branches: branch_info.branches,
-            worktrees: branch_info.worktrees,
-            changed_files,
-            is_clean,
-            git_provider,
+        tokio::task::spawn_blocking(move || {
+            let branch_info = super::local::get_git_branch_info_from_repo(&repo)?;
+            let changed_files = super::local::get_changed_files_from_repo(&repo)?;
+            let is_clean = changed_files.is_empty();
+            let git_provider = repo
+                .find_remote("origin")
+                .ok()
+                .and_then(|r| r.url().map(|u| u.to_string()))
+                .map(|u| detect_provider(&u))
+                .unwrap_or(GitProvider::Unknown);
+            Ok(GitInfo {
+                current_branch: branch_info.current_branch,
+                branches: branch_info.branches,
+                worktrees: branch_info.worktrees,
+                changed_files,
+                is_clean,
+                git_provider,
+            })
         })
+        .await
+        .map_err(|e| anyhow::anyhow!("git info task join error: {e}"))?
     } else {
         get_git_info_shell(transport, work_dir).await
     }
@@ -1075,7 +1089,9 @@ pub async fn get_git_branch_info(
     work_dir: &str,
 ) -> Result<GitBranchInfo> {
     if let Some(repo) = transport.open_repo(work_dir) {
-        Ok(super::local::get_git_branch_info_from_repo(&repo)?)
+        tokio::task::spawn_blocking(move || super::local::get_git_branch_info_from_repo(&repo))
+            .await
+            .map_err(|e| anyhow::anyhow!("git branch info task join error: {e}"))?
     } else {
         get_git_branch_info_shell(transport, work_dir).await
     }
@@ -1088,7 +1104,9 @@ pub async fn get_worktree_changed_files(
     worktree_path: &str,
 ) -> Result<Vec<FileChange>> {
     if let Some(repo) = transport.open_repo(worktree_path) {
-        Ok(super::local::get_changed_files_from_repo(&repo)?)
+        tokio::task::spawn_blocking(move || super::local::get_changed_files_from_repo(&repo))
+            .await
+            .map_err(|e| anyhow::anyhow!("git changed files task join error: {e}"))?
     } else {
         get_worktree_changed_files_shell(transport, worktree_path).await
     }
@@ -1101,7 +1119,12 @@ pub async fn get_changed_files_diff_stats(
     work_dir: &str,
 ) -> Result<Vec<FileDiffStats>> {
     if transport.open_repo(work_dir).is_some() {
-        super::local::get_changed_files_diff_stats(std::path::Path::new(work_dir))
+        let work_dir_owned = work_dir.to_string();
+        tokio::task::spawn_blocking(move || {
+            super::local::get_changed_files_diff_stats(std::path::Path::new(&work_dir_owned))
+        })
+        .await
+        .map_err(|e| anyhow::anyhow!("git diff stats task join error: {e}"))?
     } else {
         get_changed_files_diff_stats_local(work_dir).await
     }
@@ -1115,7 +1138,13 @@ pub async fn get_file_diff(
     file_path: &str,
 ) -> Result<DiffResult> {
     if let Some(_repo) = transport.open_repo(work_dir) {
-        super::local::get_file_diff(std::path::Path::new(work_dir), file_path)
+        let work_dir_owned = work_dir.to_string();
+        let file_path_owned = file_path.to_string();
+        tokio::task::spawn_blocking(move || {
+            super::local::get_file_diff(std::path::Path::new(&work_dir_owned), &file_path_owned)
+        })
+        .await
+        .map_err(|e| anyhow::anyhow!("git file diff task join error: {e}"))?
     } else {
         get_file_diff_shell(transport, work_dir, file_path).await
     }
@@ -1293,8 +1322,15 @@ mod tests {
     use async_trait::async_trait;
     use tempfile::tempdir;
 
+    /// 在测试中执行本地 git 命令（async，走统一接口）。
+    async fn git_local(path: &str, args: &[&str]) -> crate::common::executor::ExecOutput {
+        collect_in_dir(&ExecTarget::Local, "git", args, Some(path))
+            .await
+            .expect("run git command")
+    }
+
     /// 初始化一个含单个提交的临时 git 仓库，返回 (TempDir, 路径)。
-    fn init_repo() -> (tempfile::TempDir, String) {
+    async fn init_repo() -> (tempfile::TempDir, String) {
         let dir = tempdir().expect("create temp dir");
         let path = dir.path().to_string_lossy().to_string();
         let commands: Vec<Vec<&str>> = vec![
@@ -1303,31 +1339,19 @@ mod tests {
             vec!["config", "user.name", "t"],
         ];
         for cmd in &commands {
-            let out = exec("git")
-                .args(cmd)
-                .current_dir(&path)
-                .output()
-                .expect("run git init/config");
+            let out = git_local(&path, cmd).await;
             assert!(
-                out.status.success(),
+                out.exit_code == 0,
                 "git {:?} failed: {}",
                 cmd,
                 String::from_utf8_lossy(&out.stderr)
             );
         }
         std::fs::write(dir.path().join("base.txt"), "base\n").expect("write base");
-        let out = exec("git")
-            .args(["add", "-A"])
-            .current_dir(&path)
-            .output()
-            .expect("run git add");
-        assert!(out.status.success(), "git add failed");
-        let out = exec("git")
-            .args(["commit", "-qm", "init"])
-            .current_dir(&path)
-            .output()
-            .expect("run git commit");
-        assert!(out.status.success(), "git commit failed");
+        let out = git_local(&path, &["add", "-A"]).await;
+        assert!(out.exit_code == 0, "git add failed");
+        let out = git_local(&path, &["commit", "-qm", "init"]).await;
+        assert!(out.exit_code == 0, "git commit failed");
         (dir, path)
     }
 
@@ -1335,7 +1359,7 @@ mod tests {
     async fn discard_file_should_delete_untracked_file() {
         // 未跟踪文件（git status ??）：`git checkout -- <file>` 会报 pathspec 错误，
         // discard 应改为删除文件，而不是失败。
-        let (dir, path) = init_repo();
+        let (dir, path) = init_repo().await;
         std::fs::write(dir.path().join("test_structure.html"), "new\n").expect("write untracked");
 
         let transport = GitTransportKind::Local;
@@ -1352,7 +1376,7 @@ mod tests {
     #[tokio::test]
     async fn discard_file_should_restore_modified_tracked_file() {
         // 已跟踪文件的工作区修改：应恢复到 HEAD 版本。
-        let (dir, path) = init_repo();
+        let (dir, path) = init_repo().await;
         std::fs::write(dir.path().join("base.txt"), "modified\n").expect("modify tracked");
 
         let transport = GitTransportKind::Local;
@@ -1367,14 +1391,10 @@ mod tests {
     #[tokio::test]
     async fn discard_file_should_unstage_and_restore_staged_file() {
         // 已暂存（index 变更）：应撤销暂存并恢复工作区。
-        let (dir, path) = init_repo();
+        let (dir, path) = init_repo().await;
         std::fs::write(dir.path().join("base.txt"), "staged\n").expect("modify tracked");
-        let out = exec("git")
-            .args(["add", "base.txt"])
-            .current_dir(&path)
-            .output()
-            .expect("run git add");
-        assert!(out.status.success(), "git add failed");
+        let out = git_local(&path, &["add", "base.txt"]).await;
+        assert!(out.exit_code == 0, "git add failed");
 
         let transport = GitTransportKind::Local;
         discard_file(&transport, &path, "base.txt")
@@ -1442,19 +1462,11 @@ mod tests {
         // 新仓库无 HEAD：staged 新增（A）→ reset 报 unknown revision → rm --cached + clean 删除
         let dir = tempdir().expect("create temp dir");
         let path = dir.path().to_string_lossy().to_string();
-        let out = exec("git")
-            .args(["init", "-q"])
-            .current_dir(&path)
-            .output()
-            .expect("run git init");
-        assert!(out.status.success(), "git init failed");
+        let out = git_local(&path, &["init", "-q"]).await;
+        assert!(out.exit_code == 0, "git init failed");
         std::fs::write(dir.path().join("new.txt"), "new\n").expect("write new file");
-        let out = exec("git")
-            .args(["add", "new.txt"])
-            .current_dir(&path)
-            .output()
-            .expect("run git add");
-        assert!(out.status.success(), "git add failed");
+        let out = git_local(&path, &["add", "new.txt"]).await;
+        assert!(out.exit_code == 0, "git add failed");
 
         let transport = GitTransportKind::Local;
         discard_file(&transport, &path, "new.txt")

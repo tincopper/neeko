@@ -55,6 +55,13 @@ impl WslExecutor {
 fn build_login_script(opts: &SpawnOptions<'_>) -> String {
     use crate::common::utils::command::local::{join_quoted_command, quote_shell_arg};
     let mut script = String::new();
+    for (key, value) in opts.env {
+        script.push_str("export ");
+        script.push_str(key);
+        script.push('=');
+        script.push_str(&quote_shell_arg(value));
+        script.push_str("; ");
+    }
     if let Some(dir) = opts.current_dir {
         script.push_str("cd ");
         script.push_str(&quote_shell_arg(dir));

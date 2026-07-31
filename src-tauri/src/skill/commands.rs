@@ -621,9 +621,12 @@ pub async fn preview_git_install(
     subpath: Option<String>,
 ) -> Result<GitSkillPreviewDto, AppError> {
     let normalized = normalize_git_clone_url(&clone_url);
-    let preview_id =
+    // preview 内部执行 git clone（网络操作 + 同步命令执行），必须放入 blocking 线程池。
+    let preview_id = crate::common::runtime::run_blocking_result(move || {
         super::installer::preview_git_install(&normalized, branch.as_deref(), subpath.as_deref())
-            .map_err(AppError::from)?;
+            .map_err(AppError::from)
+    })
+    .await?;
     let preview = super::installer::get_preview(&preview_id)
         .ok_or_else(|| AppError::NotFound("Preview not found".to_string()))?;
     Ok(GitSkillPreviewDto {

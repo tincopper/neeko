@@ -191,6 +191,8 @@ pub struct SpawnOptions<'a> {
     /// Working directory in the target environment (host path for Local,
     /// Linux path for WSL/SSH).
     pub current_dir: Option<&'a str>,
+    /// Extra environment variables to set for the command.
+    pub env: &'a [(&'a str, &'a str)],
 }
 
 impl<'a> SpawnOptions<'a> {
@@ -201,7 +203,31 @@ impl<'a> SpawnOptions<'a> {
             cmd,
             args,
             current_dir: None,
+            env: &[],
         }
+    }
+
+    /// Set the working directory in the target environment.
+    #[must_use]
+    pub const fn with_current_dir(mut self, current_dir: &'a str) -> Self {
+        self.current_dir = Some(current_dir);
+        self
+    }
+
+    /// Set the working directory only when `Some`.
+    #[must_use]
+    pub const fn with_current_dir_if(self, current_dir: Option<&'a str>) -> Self {
+        match current_dir {
+            Some(dir) => self.with_current_dir(dir),
+            None => self,
+        }
+    }
+
+    /// Set extra environment variables for the command.
+    #[must_use]
+    pub const fn with_env(mut self, env: &'a [(&'a str, &'a str)]) -> Self {
+        self.env = env;
+        self
     }
 }
 
@@ -230,4 +256,26 @@ pub trait CommandExecutor: Send + Sync {
     /// * WSL — distro login shell (`bash -lc`)
     /// * SSH — remote login shell (`bash -lc`)
     async fn spawn_with(&self, opts: SpawnOptions<'_>) -> Result<ExecChild, ExecError>;
+
+    /// Fire-and-forget launch: spawn `cmd` detached and return immediately.
+    ///
+    /// Default implementation spawns normally and drops the child handle
+    /// (process keeps running, stdio pipes close). Concrete executors may
+    /// override this — e.g. Local detaches the process group on Unix and uses
+    /// `DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP` on Windows so GUI apps
+    /// (IDEs, browsers) are not tied to the parent's lifetime or console.
+    ///
+    /// # Default implementation limits
+    /// * Only suitable for commands whose stdio is irrelevant — stdout/stderr
+    ///   pipes close on drop, so a chatty child may hit SIGPIPE.
+    /// * The wait future is discarded, so the child is never reaped (Unix
+    ///   zombie until the parent exits).
+    /// * WSL/SSH executors MUST override: the default `spawn` bridges a
+    ///   channel whose drop would terminate the remote/WSL process.
+    async fn spawn_detached(&self, cmd: &str, args: &[&str]) -> Result<(), ExecError> {
+        let mut child = self.spawn(cmd, args).await?;
+        drop(child.stdin.take());
+        drop(child);
+        Ok(())
+    }
 }

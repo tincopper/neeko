@@ -2,20 +2,14 @@
 
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
-use crate::common::utils::command::local;
+use crate::common::executor::factory::ExecTarget;
+use crate::core::exec::collect_blocking;
 use std::collections::HashMap;
-#[cfg(unix)]
-use std::os::unix::process::ExitStatusExt;
 use std::{path::Path, path::PathBuf, sync::mpsc, thread};
 
-/// Extract the git process exit code and signal for diagnostics (e.g. exit status 129 / SIGHUP).
-fn exit_diagnostics(status: &std::process::ExitStatus) -> (Option<i32>, Option<i32>) {
-    let code = status.code();
-    #[cfg(unix)]
-    let signal = status.signal();
-    #[cfg(not(unix))]
-    let signal = None;
-    (code, signal)
+/// git 命令执行结果诊断：仅记录退出码（统一接口不暴露 signal）。
+const fn exit_diagnostics(code: i32) -> (Option<i32>, Option<i32>) {
+    (Some(code), None)
 }
 
 /// Incremental status diff: what changed since the last `git status` poll.
@@ -203,11 +197,12 @@ fn worker_loop(
 /// 获取当前分支名（detached HEAD 时返回 "HEAD"），失败时返回空字符串。
 fn get_current_branch(repo_path: &Path) -> String {
     let path_str = repo_path.to_str().unwrap_or(".");
-    match local::exec("git")
-        .args(["-C", path_str, "rev-parse", "--abbrev-ref", "HEAD"])
-        .output()
-    {
-        Ok(output) if output.status.success() => {
+    match collect_blocking(
+        &ExecTarget::Local,
+        "git",
+        &["-C", path_str, "rev-parse", "--abbrev-ref", "HEAD"],
+    ) {
+        Ok(output) if output.exit_code == 0 => {
             String::from_utf8_lossy(&output.stdout).trim().to_string()
         }
         _ => String::new(),
@@ -221,17 +216,18 @@ fn git_status_porcelain(repo_path: &Path, supports_no_optional_locks: &mut bool)
     let path_str = repo_path.to_str().unwrap_or(".");
 
     if *supports_no_optional_locks {
-        match local::exec("git")
-            .args([
+        match collect_blocking(
+            &ExecTarget::Local,
+            "git",
+            &[
                 "-C",
                 path_str,
                 "status",
                 "--porcelain",
                 "--no-optional-locks",
-            ])
-            .output()
-        {
-            Ok(output) if output.status.success() => {
+            ],
+        ) {
+            Ok(output) if output.exit_code == 0 => {
                 return String::from_utf8_lossy(&output.stdout).to_string();
             }
             Ok(output) => {
@@ -246,7 +242,7 @@ fn git_status_porcelain(repo_path: &Path, supports_no_optional_locks: &mut bool)
                     // fall through to retry without the flag
                 } else {
                     // 其他错误（权限、非 git 仓库等），直接返回空 stdout
-                    let (code, signal) = exit_diagnostics(&output.status);
+                    let (code, signal) = exit_diagnostics(output.exit_code);
                     log::warn!(
                         "[GitWorker] git status failed at {}: exit={:?} signal={:?} stderr={}",
                         repo_path.display(),
@@ -269,14 +265,15 @@ fn git_status_porcelain(repo_path: &Path, supports_no_optional_locks: &mut bool)
     }
 
     // Fallback：不带 --no-optional-locks
-    match local::exec("git")
-        .args(["-C", path_str, "status", "--porcelain"])
-        .output()
-    {
+    match collect_blocking(
+        &ExecTarget::Local,
+        "git",
+        &["-C", path_str, "status", "--porcelain"],
+    ) {
         Ok(output) => {
-            if !output.status.success() {
+            if output.exit_code != 0 {
                 let stderr = String::from_utf8_lossy(&output.stderr);
-                let (code, signal) = exit_diagnostics(&output.status);
+                let (code, signal) = exit_diagnostics(output.exit_code);
                 log::warn!(
                     "[GitWorker] git status failed at {}: exit={:?} signal={:?} stderr={}",
                     repo_path.display(),
@@ -415,10 +412,11 @@ fn get_numstat_map(repo_path: &Path) -> HashMap<String, (i32, i32)> {
     let mut map: HashMap<String, (i32, i32)> = HashMap::new();
 
     // Unstaged changes
-    if let Ok(output) = std::process::Command::new("git")
-        .args(["-C", path_str, "diff", "--numstat"])
-        .output()
-    {
+    if let Ok(output) = collect_blocking(
+        &ExecTarget::Local,
+        "git",
+        &["-C", path_str, "diff", "--numstat"],
+    ) {
         for line in String::from_utf8_lossy(&output.stdout).lines() {
             if let Some((add, del, path)) = super::parsers::parse_numstat_line(line) {
                 let entry = map.entry(path).or_insert((0, 0));
@@ -429,10 +427,11 @@ fn get_numstat_map(repo_path: &Path) -> HashMap<String, (i32, i32)> {
     }
 
     // Staged changes
-    if let Ok(output) = std::process::Command::new("git")
-        .args(["-C", path_str, "diff", "--cached", "--numstat"])
-        .output()
-    {
+    if let Ok(output) = collect_blocking(
+        &ExecTarget::Local,
+        "git",
+        &["-C", path_str, "diff", "--cached", "--numstat"],
+    ) {
         for line in String::from_utf8_lossy(&output.stdout).lines() {
             if let Some((add, del, path)) = super::parsers::parse_numstat_line(line) {
                 let entry = map.entry(path).or_insert((0, 0));

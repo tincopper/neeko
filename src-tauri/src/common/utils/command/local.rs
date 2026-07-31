@@ -12,6 +12,14 @@ pub mod flags {
 }
 
 /// Create a `Command` that runs without a visible console window on Windows.
+///
+/// # Deprecated
+/// 业务代码禁止直接调用 —— 命令执行必须走 `crate::core::exec` /
+/// `crate::common::executor` 统一接口（见 AGENTS.md Review Gate #1）。
+/// 保留仅用于历史兼容，避免误用复活。
+#[deprecated(
+    note = "use crate::core::exec / crate::common::executor unified interface instead (AGENTS.md Review Gate #1)"
+)]
 #[cfg_attr(not(target_os = "windows"), allow(unused_mut))]
 #[must_use]
 pub fn exec(program: &str) -> Command {
@@ -28,6 +36,12 @@ pub fn exec(program: &str) -> Command {
 ///
 /// Suitable for launching GUI applications (e.g. IDE): no console inheritance,
 /// not tied to parent process lifetime.
+///
+/// # Deprecated
+/// 业务代码禁止直接调用 —— 使用 `crate::core::exec::spawn_detached`
+/// （`ExecTarget::Local`）替代，其内部已携带相同 flags
+/// （见 AGENTS.md Review Gate #1）。
+#[deprecated(note = "use crate::core::exec::spawn_detached instead (AGENTS.md Review Gate #1)")]
 #[cfg(target_os = "windows")]
 pub fn exec_detached(program: &str) -> Command {
     let mut cmd = Command::new(program);
