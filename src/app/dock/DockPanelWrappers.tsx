@@ -36,7 +36,7 @@ import {
 } from '@/shared/utils/browserUtils';
 import { buildDiffSource } from '@/shared/utils/diffSource';
 import { mergeSubTree } from '@/shared/utils/fileTree';
-import { buildWorktreeTabKey } from '@/shared/utils/tabKey';
+import { buildWorktreeTabKey, resolveTabKey } from '@/shared/utils/tabKey';
 
 // ── FilesPanelWrapper ──
 
@@ -329,10 +329,11 @@ const GitCommitPanelWrapper: React.FC = React.memo(() => {
 
   const handleSelectFile = (filePath: string) => {
     // tabKey 需要与 ProjectWorkspace 对齐：使用 store 中的原始项目 ID，
-    // 而非 use-active-project 的统一 ID（wsl:distro:path / remote:host:path）
+    // 而非 use-active-project 的统一 ID（wsl:distro:path / remote:host:path）；
+    // worktree 激活时使用 worktree 专属 tab key，避免 diff tab 落入 local tab 组
     const projectState = useProjectStore.getState();
     const editorState = useEditorStore.getState();
-    const tabKey = projectState.activeProjectId ?? project.id;
+    const tabKey = resolveTabKey(projectState.activeProjectId ?? project.id, activeWorktreePath);
     const existingTabs = editorState.tabs[tabKey];
     const existingDiffTab = existingTabs?.tabs.find(
       (t) => t.data.kind === 'diff' && t.data.filePath === filePath,
@@ -1104,10 +1105,11 @@ const GitControlPanelWrapper: React.FC = React.memo(() => {
 
   const handleSelectFile = (filePath: string) => {
     // tabKey 需要与 ProjectWorkspace 对齐：使用 store 中的原始项目 ID，
-    // 而非 use-active-project 的统一 ID（wsl:distro:path / remote:host:path）
+    // 而非 use-active-project 的统一 ID（wsl:distro:path / remote:host:path）；
+    // worktree 激活时使用 worktree 专属 tab key，避免 diff tab 落入 local tab 组
     const projectState = useProjectStore.getState();
     const editorState = useEditorStore.getState();
-    const tabKey = projectState.activeProjectId ?? project.id;
+    const tabKey = resolveTabKey(projectState.activeProjectId ?? project.id, activeWorktreePath);
     const existingTabs = editorState.tabs[tabKey];
     const existingDiffTab = existingTabs?.tabs.find(
       (t) => t.data.kind === 'diff' && t.data.filePath === filePath,
