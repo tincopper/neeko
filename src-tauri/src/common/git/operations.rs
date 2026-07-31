@@ -394,7 +394,6 @@ pub async fn get_commit_log(
     skip: usize,
 ) -> Result<Vec<CommitEntry>> {
     let format = "--format=%H%x00%h%x00%an%x00%aI%x00%s%x00%D%x00%P";
-    let count_str = format!("-{}", count);
     let skip_str = if skip > 0 {
         Some(format!("--skip={}", skip))
     } else {
@@ -403,11 +402,13 @@ pub async fn get_commit_log(
     let mut args: Vec<String> = vec![
         "log".to_string(),
         format.to_string(),
-        count_str,
         "--decorate=full".to_string(),
         "--all".to_string(),
         "--topo-order".to_string(),
     ];
+    if count > 0 {
+        args.push(format!("-{}", count));
+    }
     if let Some(s) = skip_str {
         args.push(s);
     }

@@ -1114,22 +1114,24 @@ pub fn pull(repo_path: &Path) -> Result<()> {
 }
 
 /// 获取 Commit 历史（参考 Muxy git log 格式）
+///
+/// `count = 0` 表示不限制数量，加载全部 commit。
 pub fn get_commit_log(repo_path: &Path, count: usize, skip: usize) -> Result<Vec<CommitEntry>> {
     let format = "--format=%H%x00%h%x00%an%x00%aI%x00%s%x00%D%x00%P";
-    let count_str = format!("-{}", count);
     let skip_str = if skip > 0 {
         Some(format!("--skip={}", skip))
     } else {
         None
     };
-    let mut args = vec![
-        "log",
-        format,
-        count_str.as_str(),
-        "--decorate=full",
-        "--all",
-        "--topo-order",
-    ];
+    let mut args = vec!["log", format, "--decorate=full", "--all", "--topo-order"];
+    let count_arg = if count > 0 {
+        Some(format!("-{}", count))
+    } else {
+        None
+    };
+    if let Some(ref c) = count_arg {
+        args.push(c.as_str());
+    }
     if let Some(ref s) = skip_str {
         args.push(s.as_str());
     }

@@ -48,7 +48,7 @@ export interface BranchSegment {
 }
 
 /** 已计算位置的 commit 节点 */
-interface CommitNode {
+export interface CommitNode {
   hash: string;
   parents: string[];
   children: string[];
@@ -95,8 +95,10 @@ export function computeLayout(commits: CommitEntry[]): {
   segments: BranchSegment[];
   totalCols: number;
   maxColUsed: number;
+  truncatedRows: number[];
 } {
-  if (commits.length === 0) return { nodes: [], segments: [], totalCols: 0, maxColUsed: 0 };
+  if (commits.length === 0)
+    return { nodes: [], segments: [], totalCols: 0, maxColUsed: 0, truncatedRows: [] };
 
   const childrenMap = buildChildrenMap(commits);
 
@@ -125,6 +127,8 @@ export function computeLayout(commits: CommitEntry[]): {
     }
   }
 
+  const truncatedRows: number[] = [];
+
   commits.forEach((commit, index) => {
     const node = commitsMap.get(commit.hash)!;
     // parent 在视图内：segment 延伸到 parent 行（由算法收尾）
@@ -132,6 +136,9 @@ export function computeLayout(commits: CommitEntry[]): {
     const hasVisibleParent = node.parents.some((p) => commitsMap.has(p));
     const isRoot = node.parents.length === 0;
     const end = isRoot || !hasVisibleParent ? index : Infinity;
+    if (!isRoot && !hasVisibleParent) {
+      truncatedRows.push(index);
+    }
 
     // branch children：parents[0] === commit.hash 的 child
     const branchChildren = node.children.filter((childHash) => {
@@ -234,6 +241,7 @@ export function computeLayout(commits: CommitEntry[]): {
     segments,
     totalCols,
     maxColUsed,
+    truncatedRows,
   };
 }
 
@@ -279,7 +287,10 @@ const CommitGraph: React.FC<CommitGraphProps> = ({
   expandAfterRow = -1,
   expandOffsetY = 0,
 }) => {
-  const { nodes, segments, maxColUsed } = useMemo(() => computeLayout(commits), [commits]);
+  const { nodes, segments, maxColUsed, truncatedRows } = useMemo(
+    () => computeLayout(commits),
+    [commits],
+  );
 
   // nodesMap for quick lookup
   const nodesMap = useMemo(() => {
@@ -306,8 +317,22 @@ const CommitGraph: React.FC<CommitGraphProps> = ({
         {/* ── 直线段（每条分支在其列内的竖线） ── */}
         {segments.map((seg, si) => {
           const endRow = seg.end === Infinity ? commits.length - 1 : seg.end;
-          // start === end 表示单行孤立段（HEAD 且是 root），无需画线
-          if (seg.start === endRow) return null;
+          // start === end 表示单行孤立段，画 1px 竖线保持视觉延续
+          if (seg.start === endRow) {
+            const x = seg.col * BRANCH_SPACING + NODE_RADIUS * 2;
+            const y = rowCenterY(seg.start, expandAfterRow, offset);
+            return (
+              <line
+                key={`seg-${si}`}
+                x1={x}
+                y1={y}
+                x2={x}
+                y2={y + 1}
+                stroke={laneColor(seg.branchOrder)}
+                strokeWidth={LINE_W}
+              />
+            );
+          }
           const x = seg.col * BRANCH_SPACING + NODE_RADIUS * 2;
           const y1 = rowCenterY(seg.start, expandAfterRow, offset);
           const y2 = rowCenterY(endRow, expandAfterRow, offset);
@@ -362,8 +387,7 @@ const CommitGraph: React.FC<CommitGraphProps> = ({
             const parent = nodesMap.get(node.parents[p]);
             if (!parent) continue;
             const start = xy(node.x, node.y);
-            const endRow = node.y + 1 > parent.y ? parent.y : node.y + 1;
-            const end = xy(parent.x, endRow);
+            const end = xy(parent.x, parent.y);
             curves.push(
               <path
                 key={`merge-${node.hash}-${p}`}
@@ -381,12 +405,11 @@ const CommitGraph: React.FC<CommitGraphProps> = ({
             if (!child) return;
             if (child.parents[0] === node.hash && child.x !== node.x) {
               const start = xy(node.x, node.y);
-              const endRow = node.y - 1 > child.y ? node.y - 1 : child.y;
-              const end = xy(child.x, endRow);
+              const end = xy(child.x, child.y);
               curves.push(
                 <path
                   key={`branch-${node.hash}-${childHash}`}
-                  d={curvePath(start, [end[0], end[1] + NODE_RADIUS * 2])}
+                  d={curvePath(start, end)}
                   stroke={child.color}
                   strokeWidth={LINE_W}
                   fill="none"
@@ -421,6 +444,34 @@ const CommitGraph: React.FC<CommitGraphProps> = ({
                 />
               ) : null}
               <circle cx={cx} cy={cy} r={NODE_RADIUS} fill={node.color} />
+            </g>
+          );
+        })}
+
+        {/* Truncation markers for paged mode */}
+        {truncatedRows.map((row) => {
+          const node = nodes[row];
+          if (!node) return null;
+          const [cx, cy] = xy(node.x, row);
+          const y1 = cy + NODE_RADIUS;
+          const y2 = y1 + 8;
+          return (
+            <g key={`trunc-${row}`}>
+              <line
+                x1={cx}
+                y1={y1}
+                x2={cx}
+                y2={y2}
+                stroke={node.color}
+                strokeWidth={LINE_W}
+                strokeDasharray="3,2"
+                strokeOpacity={0.5}
+              />
+              <polygon
+                points={`${cx - 3},${y2} ${cx + 3},${y2} ${cx},${y2 + 4}`}
+                fill={node.color}
+                fillOpacity={0.5}
+              />
             </g>
           );
         })}

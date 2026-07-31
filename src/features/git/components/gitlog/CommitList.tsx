@@ -18,7 +18,7 @@ import {
   FileText,
 } from '@/shared/components/icons';
 
-import CommitGraph, { computeLayout, ROW_HEIGHT, BRANCH_SPACING, NODE_RADIUS } from './CommitGraph';
+import CommitGraph, { BRANCH_SPACING, NODE_RADIUS } from './CommitGraph';
 import {
   parseCommitMessage,
   commitBodyPreview,
@@ -30,6 +30,8 @@ import {
   textLeftForCol,
   splitFilePath,
 } from './commitListUtils';
+import { useCommitLayout } from './useCommitLayout';
+import { ROW_HEIGHT, getVirtualWindow, computeRowOffsets } from './virtualScroll';
 
 interface CommitListProps {
   commits: CommitEntry[];
@@ -83,9 +85,12 @@ const CommitList: React.FC<CommitListProps> = ({
   const [menuOpen, setMenuOpen] = useState<string | null>(null);
   const [hoveredHash, setHoveredHash] = useState<string | null>(null);
   const [expandHeight, setExpandHeight] = useState(0);
+  const [scrollTop, setScrollTop] = useState(0);
+  const [viewportHeight, setViewportHeight] = useState(0);
   const menuRef = useRef<HTMLDivElement>(null);
   const expandRef = useRef<HTMLDivElement>(null);
   const sentinelRef = useRef<HTMLDivElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
 
   // Infinite scroll
   useEffect(() => {
@@ -99,6 +104,25 @@ const CommitList: React.FC<CommitListProps> = ({
     observer.observe(sentinelRef.current);
     return () => observer.disconnect();
   }, [hasMore, loadingMore, onLoadMore]);
+
+  // Track scroll position and viewport size for virtual scrolling
+  const handleScroll = useCallback(() => {
+    if (containerRef.current) {
+      setScrollTop(containerRef.current.scrollTop);
+      setViewportHeight(containerRef.current.clientHeight);
+    }
+  }, []);
+
+  // Measure viewport height for virtual scroll
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const measure = () => setViewportHeight(el.clientHeight);
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
 
   // Close menu on outside click
   useEffect(() => {
@@ -125,7 +149,8 @@ const CommitList: React.FC<CommitListProps> = ({
     if (!selectedExpanded || !selectedHash) return;
     const el = expandRef.current;
     if (!el) {
-      setExpandHeight(0);
+      // Expand panel may be outside the virtual window; keep previous height
+      // so total height and row offsets stay stable while scrolling.
       return;
     }
     const measure = () => setExpandHeight(el.offsetHeight);
@@ -151,14 +176,32 @@ const CommitList: React.FC<CommitListProps> = ({
     return filteredCommits.findIndex((c) => c.hash === selectedHash);
   }, [filteredCommits, selectedHash, selectedExpanded]);
 
-  const { maxColUsed, textLeftByHash } = useMemo(() => {
-    const layout = computeLayout(filteredCommits);
+  // ── Virtual scroll math ───────────────────────────────────────────────────
+  const rowOffsets = useMemo(
+    () =>
+      computeRowOffsets(
+        filteredCommits.length,
+        selectedRowIndex,
+        selectedExpanded ? expandHeight : 0,
+      ),
+    [filteredCommits.length, selectedRowIndex, selectedExpanded, expandHeight],
+  );
+
+  const totalHeight = rowOffsets[filteredCommits.length] ?? 0;
+
+  const { startIndex, endIndex, offsetY } = useMemo(
+    () => getVirtualWindow(rowOffsets, scrollTop, viewportHeight),
+    [rowOffsets, scrollTop, viewportHeight],
+  );
+  const layout = useCommitLayout(filteredCommits);
+  const { maxColUsed, nodes } = layout;
+  const textLeftByHash = useMemo(() => {
     const leftMap = new Map<string, number>();
-    for (const node of layout.nodes) {
+    for (const node of nodes) {
       leftMap.set(node.hash, textLeftForCol(node.x, BRANCH_SPACING, NODE_RADIUS));
     }
-    return { maxColUsed: layout.maxColUsed, textLeftByHash: leftMap };
-  }, [filteredCommits]);
+    return leftMap;
+  }, [nodes]);
 
   // Graph overlay width (may be wider than any single row's text inset).
   const { fullWidth: rowGraphFullWidth, visibleWidth: rowGraphWidth } = useMemo(
@@ -222,9 +265,9 @@ const CommitList: React.FC<CommitListProps> = ({
   }
 
   return (
-    <div className="h-full overflow-auto">
+    <div className="h-full overflow-auto" ref={containerRef} onScroll={handleScroll}>
       {/* w-full + min-w-0 so long paths truncate instead of expanding the panel */}
-      <div className="relative w-full min-w-0">
+      <div className="relative w-full min-w-0" style={{ height: totalHeight }}>
         {/* Graph above row backgrounds so hover/selection never covers dots */}
         <div
           className="absolute left-0 top-0 shrink-0 z-30 overflow-x-auto overflow-y-hidden pointer-events-none"
@@ -242,8 +285,8 @@ const CommitList: React.FC<CommitListProps> = ({
           </div>
         </div>
 
-        <div className="min-w-0">
-          {filteredCommits.map((commit) => {
+        <div style={{ transform: `translateY(${offsetY}px)` }}>
+          {filteredCommits.slice(startIndex, endIndex + 1).map((commit) => {
             const isSelected = commit.hash === selectedHash;
             const isExpanded = isSelected && selectedExpanded;
             const { type, scope, subject, header } = parseCommitMessage(commit.message);
@@ -515,6 +558,7 @@ const CommitList: React.FC<CommitListProps> = ({
             <div
               ref={sentinelRef}
               className="py-2 text-center text-[var(--font-size)] text-text-muted"
+              style={{ position: 'absolute', top: totalHeight - 32, width: '100%' }}
             >
               {loadingMore ? 'Loading more…' : ''}
             </div>
