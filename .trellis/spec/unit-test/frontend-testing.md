@@ -431,3 +431,41 @@ vi.mock('react', () => ({ useState: vi.fn() }));
 // 正确 —— 在边界处 mock（Tauri API）
 vi.mock('@tauri-apps/api/core', () => ({ invoke: vi.fn() }));
 ```
+
+### 5. `vi.stubGlobal` 被全局 `afterEach` 撤销
+
+全局 setup（`src/testing/setup.ts`）的 `afterEach` 会执行 `vi.unstubAllGlobals()`，因此**在模块顶层一次性 `vi.stubGlobal` 只会对第一个测试生效**，后续测试访问该全局变量会直接 `ReferenceError`。
+
+```typescript
+// 错误 —— 顶层 stub 在第一个测试后就被撤销
+vi.stubGlobal('IntersectionObserver', MockIO);
+
+describe('...', () => { ... });
+
+// 正确 —— stub 必须放 beforeEach（每次测试前重新注入）
+beforeEach(() => {
+  vi.stubGlobal('IntersectionObserver', MockIO);
+  vi.stubGlobal('ResizeObserver', MockRO);
+});
+```
+
+### 6. RO/IO stub 测试要点（jsdom 无真实布局）
+
+- jsdom 中 `clientHeight`/`getBoundingClientRect` 恒为 0，`isIntersecting` 恒为 false → **回调必须手动调用**，`scrollIntoView` 需在 stub 中置空实现（jsdom 未实现，直接调用会抛错）。
+- `renderHook` 无 DOM：mount 时 `containerRef.current` 为 null → 观察者**不会**被创建，观察者创建/断开的断言必须放到真实渲染的集成测试（`render` + `@testing-library/react`）里。
+- 始终断言清理：`expect(io.disconnect).toHaveBeenCalled()`，防泄漏回归。
+
+```typescript
+// MockIO/MockRO 需在类中提供 disconnect/observe/unobserve 的 vi.fn() 实现，
+// 回调由测试手动触发：
+(io as MockIO).trigger([{ isIntersecting: true } as IntersectionObserverEntry]);
+```
+
+### 7. 文本断言陷阱：拆分渲染与子串匹配
+
+- 组件把信息拆成多个文本节点渲染时（如 `splitFilePath` 拆出文件名与目录、type badge 与 subject 分开），`getByText('src/foo.ts')` 找不到——精确匹配拆分后的节点（`getByText('foo.ts')`）。
+- `getByText` 默认是精确子串匹配：`'item 13'` **不包含** `'item 3'`（是 `'item 1'` + `'3'`），搜索断言前先确认目标子串真实存在于匹配集中。
+
+### 8. detached 节点事件不冒泡
+
+测试中手动创建并触发事件的 DOM 节点若未挂载到 `document`，事件不会冒泡到 `document` 监听器（如外部点击关闭菜单的逻辑）——先 `document.body.appendChild(el)`，结束再移除。
