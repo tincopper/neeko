@@ -4,7 +4,7 @@ import type { DiffSource } from '@/features/git/components/diff/types';
 import { useEditorStore } from '@/shared/store';
 import { useProjectStore } from '@/shared/store/projectStore';
 import type { CommitFileChange, ConnectionContext } from '@/shared/types';
-import { resolveTabKey } from '@/shared/utils/tabKey';
+import { parseProjectIdFromTabKey, resolveTabKey } from '@/shared/utils/tabKey';
 
 const DIFF_TAB_ID = 'diff_singleton';
 
@@ -77,7 +77,9 @@ export function useSingletonDiff(
       } else {
         store.addTab(tabKey, {
           id: DIFF_TAB_ID,
-          projectId: tabKey,
+          // tab 的 projectId 必须是真实 project id，不能用复合 worktree tab key
+          //（否则后端 resolve_project 找不到项目）
+          projectId: parseProjectIdFromTabKey(tabKey),
           title,
           order: 200,
           data: { kind: 'diff', ...partial },
@@ -112,7 +114,9 @@ export function useSingletonDiff(
       } else {
         store.addTab(tabKey, {
           id: DIFF_TAB_ID,
-          projectId: tabKey,
+          // tab 的 projectId 必须是真实 project id，不能用复合 worktree tab key
+          //（否则后端 resolve_project 找不到项目）
+          projectId: parseProjectIdFromTabKey(tabKey),
           title,
           order: 200,
           data: { kind: 'diff', ...partial },
@@ -133,7 +137,7 @@ export function useSingletonDiff(
       const title = `History Diff \u00b7 ${fileName}`;
       store.addTab(tabKey, {
         id: pinnedId,
-        projectId: tabKey,
+        projectId: parseProjectIdFromTabKey(tabKey),
         title,
         order: 200,
         data: { kind: 'diff', filePath, fileName, diffSource },

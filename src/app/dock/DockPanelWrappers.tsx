@@ -36,7 +36,7 @@ import {
 } from '@/shared/utils/browserUtils';
 import { buildDiffSource } from '@/shared/utils/diffSource';
 import { mergeSubTree } from '@/shared/utils/fileTree';
-import { resolveTabKey } from '@/shared/utils/tabKey';
+import { parseProjectIdFromTabKey, resolveTabKey } from '@/shared/utils/tabKey';
 
 // ── FilesPanelWrapper ──
 
@@ -348,7 +348,9 @@ const GitCommitPanelWrapper: React.FC = React.memo(() => {
     const tabId = `tab_${crypto.randomUUID()}`;
     const tab: Tab = {
       id: tabId,
-      projectId: tabKey,
+      // tab 的 projectId 必须是真实 project id，不能用复合 worktree tab key
+      //（否则后端 resolve_project 找不到项目）
+      projectId: parseProjectIdFromTabKey(tabKey),
       title: `Commit Diff · ${fileName}`,
       order: existingTabs?.tabs.length ?? 0,
       data: { kind: 'diff', filePath, fileName, diffSource },
@@ -614,7 +616,9 @@ const PullRequestsPanelWrapper: React.FC = React.memo(() => {
       const tabId = crypto.randomUUID();
       const tab: Tab = {
         id: tabId,
-        projectId: tabKey,
+        // tab 的 projectId 必须是真实 project id，不能用复合 worktree tab key
+        //（否则后端 resolve_project 找不到项目）
+        projectId: parseProjectIdFromTabKey(tabKey),
         title,
         order: existingTabs?.tabs.length ?? 0,
         data: {
@@ -1125,7 +1129,9 @@ const GitControlPanelWrapper: React.FC = React.memo(() => {
     const tabId = `tab_${crypto.randomUUID()}`;
     const tabItem: Tab = {
       id: tabId,
-      projectId: tabKey,
+      // tab 的 projectId 必须是真实 project id，不能用复合 worktree tab key
+      //（否则后端 resolve_project 找不到项目）
+      projectId: parseProjectIdFromTabKey(tabKey),
       title: `Commit Diff · ${fileName}`,
       order: existingTabs?.tabs.length ?? 0,
       data: { kind: 'diff', filePath, fileName, diffSource },
