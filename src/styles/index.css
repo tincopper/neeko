@@ -336,12 +336,13 @@
 .agent-name { font-size: 13px; font-weight: 500; color: var(--text-primary); }
 
   /* Diff split columns */
-  .diff-table-split { table-layout: fixed; }
+  /* 单一 table 内左右两侧并排：水平滚动随外层 overflow-auto 整体滚动，天然同步 */
+  .diff-table-split { table-layout: auto; width: max-content; min-width: 100%; }
   .diff-table-split .col-linenum { width: 48px; }
-  .diff-table-split .col-code { width: calc(50% - 48px); }
+  .diff-table-split .col-code { min-width: calc(50% - 48px); }
 
-  /* Diff split cell content - preserve whitespace/indentation */
-  .split-cell { white-space: pre-wrap; word-break: break-all; }
+  /* Diff split cell content - preserve whitespace/indentation, no auto wrap */
+  .split-cell { white-space: pre; }
 
   /* Diff split row backgrounds */
   .split-cell.added, .split-linenum.added { background-color: var(--diff-added); }
