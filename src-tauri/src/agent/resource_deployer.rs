@@ -8,7 +8,7 @@
 use std::collections::HashMap;
 use std::path::Path;
 
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 
 use super::path_resolver::PathResolver;
 use super::plugin::{AgentPlugin, PathTemplate};
@@ -23,9 +23,10 @@ pub enum ResourceKind {
     /// Slash command (markdown file).
     Command,
 }
-
 impl ResourceKind {
-    pub fn as_str(self) -> &'static str {
+    /// Returns the string representation of the resource kind.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
         match self {
             Self::Mcp => "mcp",
             Self::Command => "command",
@@ -68,11 +69,11 @@ impl ResourceDeployer {
 
     /// Create a ResourceDeployer with a custom plugin map (for testing).
     #[must_use]
-    pub fn with_plugins(plugins: HashMap<String, AgentPlugin>) -> Self {
+    pub const fn with_plugins(plugins: HashMap<String, AgentPlugin>) -> Self {
         Self { plugins }
     }
-
     /// Get a plugin by ID.
+    #[must_use]
     pub fn plugin(&self, agent_id: &str) -> Option<&AgentPlugin> {
         self.plugins.get(agent_id)
     }
@@ -320,8 +321,8 @@ impl ResourceDeployer {
     }
 
     // ── Agent capabilities ──────────────────────────────────────────────────
-
     /// Get the capabilities of a plugin (what resource types it supports).
+    #[must_use]
     pub fn agent_capabilities(&self, agent_id: &str) -> Option<AgentCapabilitiesDto> {
         self.plugins.get(agent_id).map(|p| AgentCapabilitiesDto {
             agent_id: p.id.clone(),
@@ -345,6 +346,7 @@ impl ResourceDeployer {
     }
 
     /// List all agent IDs that support a given capability.
+    #[must_use]
     pub fn agents_supporting(&self, capability: &str) -> Vec<String> {
         self.plugins
             .values()
@@ -432,7 +434,7 @@ impl ResourceDeployer {
         if let Some(servers) = root.get_mut("mcpServers").and_then(|v| v.as_object_mut()) {
             servers.remove(server_name);
         }
-        Ok(serde_json::to_string_pretty(&root).map_err(AppError::from)?)
+        serde_json::to_string_pretty(&root).map_err(AppError::from)
     }
 
     /// Merge an MCP server into a TOML config file.
@@ -580,13 +582,21 @@ impl Default for ResourceDeployer {
 /// DTO describing an agent's resource capabilities.
 #[derive(Debug, Clone, Serialize)]
 pub struct AgentCapabilitiesDto {
+    /// Agent identifier.
     pub agent_id: String,
+    /// Human-readable agent name.
     pub agent_name: String,
+    /// Whether the agent supports MCP servers.
     pub supports_mcp: bool,
+    /// Whether the agent supports slash commands.
     pub supports_commands: bool,
+    /// MCP transport types supported (e.g., "sse", "stdio").
     pub mcp_transports: Vec<String>,
+    /// Command format if commands are supported.
     pub commands_format: Option<String>,
+    /// Filesystem path where MCP configuration is written.
     pub mcp_path: String,
+    /// Filesystem path where command files are written.
     pub commands_path: String,
 }
 

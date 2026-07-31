@@ -5,9 +5,13 @@ use serde::Serialize;
 /// A single diagnostic event published by the DiagnosticBus.
 #[derive(Debug, Clone, Serialize)]
 pub struct DiagnosticEvent {
+    /// Project filesystem path.
     pub project_path: String,
+    /// Document URI (file:// scheme).
     pub uri: String,
+    /// Language identifier (e.g. "rust").
     pub language_id: String,
+    /// Raw diagnostics JSON array from the LSP notification.
     pub diagnostics: serde_json::Value,
 }
 

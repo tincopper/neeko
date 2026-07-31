@@ -685,7 +685,7 @@ impl SkillRepository {
                 prompt.project_id,
                 variables_json,
                 prompt.kind,
-                prompt.favorite as i32,
+                i32::from(prompt.favorite),
                 prompt.usage_count,
                 prompt.last_used_at,
                 prompt.created_at,
@@ -801,7 +801,7 @@ impl SkillRepository {
                 prompt.project_id,
                 variables_json,
                 prompt.kind,
-                prompt.favorite as i32,
+                i32::from(prompt.favorite),
                 prompt.usage_count,
                 prompt.last_used_at,
                 now,
@@ -1113,7 +1113,7 @@ impl SkillRepository {
 
     // ── Agent Plugins (custom) ─────────────────────────────────────────────
 
-    /// Insert a custom agent plugin into the `agent_plugins` table.
+    #[allow(clippy::too_many_arguments)]
     pub fn insert_agent_plugin(
         &self,
         id: &str,

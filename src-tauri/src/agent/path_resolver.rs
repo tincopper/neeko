@@ -46,6 +46,7 @@ impl PathResolver {
     }
 
     /// Resolve a raw template string.
+    #[must_use]
     pub fn resolve_str(&self, template: &str) -> PathBuf {
         let mut result = template.to_string();
 
@@ -207,7 +208,6 @@ impl PathResolver {
 
         match detection.detection_type.as_str() {
             "command" => {
-                use crate::core::exec::command_exists;
                 let target = &detection.target;
                 // For command detection, check if the command exists in PATH
                 // (async check is done in commands.rs; this is the sync approximation)

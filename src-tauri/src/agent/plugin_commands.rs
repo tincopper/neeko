@@ -75,8 +75,11 @@ pub fn resolve_plugin_path(
 /// Result of detecting installed agents.
 #[derive(Debug, Serialize)]
 pub struct AgentDetectionResultDto {
+    /// Plugin identifier.
     pub plugin_id: String,
+    /// Whether the agent is installed on the current machine.
     pub installed: bool,
+    /// Resolved target path or command if installed.
     pub resolved_target: Option<String>,
 }
 
@@ -110,8 +113,11 @@ pub fn detect_installed_agents(
 /// Input for deploying a skill to an agent via the plugin system.
 #[derive(Debug, Deserialize)]
 pub struct DeploySkillInput {
+    /// Skill identifier to deploy.
     pub skill_id: String,
+    /// Target agent identifier.
     pub agent_id: String,
+    /// Project path for project-level deployment.
     pub project_path: Option<String>,
 }
 
@@ -230,15 +236,25 @@ pub fn get_plugin_resource_paths(
 /// Input for creating / updating a custom agent plugin.
 #[derive(Debug, Deserialize)]
 pub struct SaveCustomPluginInput {
+    /// Unique plugin identifier.
     pub id: String,
+    /// Human-readable display name.
     pub name: String,
+    /// Optional icon identifier.
     pub icon: Option<String>,
+    /// Optional description of the plugin.
     pub description: Option<String>,
+    /// Plugin version string.
     pub version: Option<String>,
+    /// JSON blob containing execution configuration.
     pub execution_json: String,
+    /// JSON blob containing general configuration.
     pub configuration_json: String,
+    /// JSON blob containing capabilities declaration.
     pub capabilities_json: String,
+    /// JSON blob containing resource path templates.
     pub paths_json: String,
+    /// JSON blob containing lifecycle hooks (optional).
     pub lifecycle_json: Option<String>,
 }
 

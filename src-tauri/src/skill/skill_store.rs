@@ -427,6 +427,7 @@ impl SkillStore {
     // Agent Plugins (custom)
 
     /// Insert a custom agent plugin.
+    #[allow(clippy::too_many_arguments)]
     pub fn insert_agent_plugin(
         &self,
         id: &str,

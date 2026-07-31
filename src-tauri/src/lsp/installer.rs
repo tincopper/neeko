@@ -113,7 +113,7 @@ fn install_plugin_server_impl(
     );
 
     let (code, stdout, stderr) =
-        run_command_blocking(target, install.prerequisite, &install.command)
+        run_command_blocking(target, install.prerequisite, install.command)
             .map_err(|e| format!("Install command failed: {}", e))?;
 
     if code != 0 {

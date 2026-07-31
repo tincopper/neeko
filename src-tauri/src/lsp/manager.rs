@@ -461,6 +461,7 @@ impl LspManager {
         Ok(())
     }
 
+    /// Close every LSP session belonging to `project_path`.
     pub fn close_sessions_for_project(&self, project_path: &str) {
         let languages = self
             .session_store

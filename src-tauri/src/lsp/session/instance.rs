@@ -41,15 +41,16 @@ pub(crate) struct LspSession {
     #[allow(dead_code)]
     pub(crate) stderr_logger: Option<thread::JoinHandle<()>>,
     /// Number of times this session has been restarted.
+    #[allow(dead_code)]
     pub(crate) restart_count: u32,
     /// Cached server capabilities from the initialize handshake.
     pub(crate) server_capabilities: Value,
     /// Current lifecycle status.
     pub(crate) status: LspSessionStatus,
     /// Child process handle for lifecycle management (kill on close).
-    /// Local / WSL / SSH are unified via [`super::process::LspProcess`].
     pub(crate) child: Option<crate::lsp::process::LspProcess>,
     /// OS / remote process id for memory sampling (when available).
+    #[allow(dead_code)]
     pub(crate) process_pid: Option<u32>,
     /// Version metadata parsed from `--version` at spawn (memory filled on demand).
     pub(crate) server_info: LspServerInfo,
@@ -72,7 +73,6 @@ impl LspSession {
         let language_id = plugin.language_id.to_string();
         let server_name = plugin.server_binary.to_string();
 
-        // ── Binary presence + auto-install in project environment ───────
         if !crate::lsp::installer::check_plugin_installed(plugin, &exec_target) {
             log::info!(
                 "[LSP] {} not found in project env, attempting auto-install for: {}",
@@ -83,10 +83,7 @@ impl LspSession {
                 Ok(true) => {
                     log::info!("[LSP] Auto-install succeeded for {}", language_id);
                     if !crate::lsp::installer::check_plugin_installed(plugin, &exec_target) {
-                        anyhow::bail!(
-                            "{} was installed but still not found in project PATH. Try restarting Neeko.",
-                            server_name
-                        );
+                        anyhow::bail!("{} was installed but still not found in project PATH. Try restarting Neeko.", server_name);
                     }
                 }
                 Ok(false) => {
@@ -121,12 +118,11 @@ impl LspSession {
             &["--version"],
         ) {
             Ok((_code, stdout, stderr)) => {
-                let combined = if stdout.trim().is_empty() {
-                    stderr
+                parse_server_version_output(if stdout.trim().is_empty() {
+                    &stderr
                 } else {
-                    stdout
-                };
-                parse_server_version_output(&combined)
+                    &stdout
+                })
             }
             Err(e) => {
                 log::debug!(
@@ -149,7 +145,6 @@ impl LspSession {
 
         let process_pid = process.pid;
         let log_buffer: Arc<Mutex<LogRingBuffer>> = Arc::new(Mutex::new(LogRingBuffer::new()));
-
         transport.push_session_event(
             project_path,
             &language_id,
@@ -188,31 +183,28 @@ impl LspSession {
             .spawn(move || {
                 let reader = BufReader::new(child_stderr);
                 for line in reader.lines() {
-                    match line {
-                        Ok(l) => {
-                            let trimmed = l.trim_end().to_string();
-                            if !trimmed.is_empty() {
-                                // Infer log level from content
-                                let level =
-                                    if trimmed.contains("error") || trimmed.contains("panic") {
-                                        "error"
-                                    } else if trimmed.contains("warn") {
-                                        "warn"
-                                    } else {
-                                        "info"
-                                    };
-                                log::warn!("[LSP][{} stderr] {}", stderr_name, trimmed);
-                                let entry = LspServerLogEntry {
-                                    timestamp: iso_timestamp_now(),
-                                    level: level.into(),
-                                    message: trimmed,
-                                };
-                                if let Ok(mut buf) = log_buf_clone.lock() {
-                                    buf.push(entry);
-                                }
-                            }
-                        }
+                    let l = match line {
+                        Ok(l) => l,
                         Err(_) => break,
+                    };
+                    let trimmed = l.trim_end().to_string();
+                    if !trimmed.is_empty() {
+                        let level = if trimmed.contains("error") || trimmed.contains("panic") {
+                            "error"
+                        } else if trimmed.contains("warn") {
+                            "warn"
+                        } else {
+                            "info"
+                        };
+                        log::warn!("[LSP][{} stderr] {}", stderr_name, trimmed);
+                        let entry = LspServerLogEntry {
+                            timestamp: iso_timestamp_now(),
+                            level: level.into(),
+                            message: trimmed,
+                        };
+                        if let Ok(mut buf) = log_buf_clone.lock() {
+                            buf.push(entry);
+                        }
                     }
                 }
             })
@@ -221,7 +213,6 @@ impl LspSession {
         let root_uri = url::Url::from_directory_path(project_path)
             .map_err(|_| anyhow::anyhow!("Invalid project path: {}", project_path))?
             .to_string();
-
         let pending: Arc<Mutex<HashMap<RequestId, PendingSender>>> =
             Arc::new(Mutex::new(HashMap::new()));
 
@@ -301,9 +292,7 @@ impl LspSession {
 
         let (init_tx, init_rx) = tokio::sync::oneshot::channel::<Message>();
         let mut init_params = serde_json::json!({
-            "processId": std::process::id(),
-            "rootUri": root_uri,
-            "rootPath": project_path,
+            "processId": std::process::id(), "rootUri": root_uri, "rootPath": project_path,
             "workspaceFolders": [{ "uri": root_uri, "name": std::path::Path::new(project_path).file_name().and_then(|n| n.to_str()).unwrap_or("workspace") }],
             "capabilities": {
                 "textDocument": { "hover": { "contentFormat": ["markdown", "plaintext"] }, "definition": { "linkSupport": true }, "references": {}, "completion": { "completionItem": { "snippetSupport": false, "documentationFormat": ["markdown", "plaintext"] } }, "publishDiagnostics": { "relatedInformation": true } },
@@ -334,7 +323,6 @@ impl LspSession {
         let init_response = init_rx
             .blocking_recv()
             .context("LSP initialization: no response received")?;
-
         let server_capabilities = match init_response {
             Message::Response(ref resp) => resp
                 .result
@@ -344,7 +332,6 @@ impl LspSession {
         }?;
 
         log::info!("[LSP] {} initialized, capabilities received", server_name);
-
         transport.push_session_event(project_path, &language_id, "initializing", None, None);
         transport.push_session_event(project_path, &language_id, "ready", None, None);
 
@@ -352,7 +339,6 @@ impl LspSession {
         writer_tx
             .send(Message::Notification(notif))
             .context("Failed to send initialized notification")?;
-
         {
             let mut map = pending
                 .lock()
@@ -402,6 +388,7 @@ impl LspSession {
         )
         .await
     }
+
     /// Send a raw LSP notification to the server.
     pub(crate) fn send_notification_raw(&self, method: &str, params: Value) -> Result<()> {
         let notif = Notification::new(method.to_string(), params);
@@ -411,7 +398,6 @@ impl LspSession {
     }
 
     /// Send a graceful shutdown request and wait for the response.
-    /// Returns the response or an error if the server doesn't respond.
     pub(crate) fn send_shutdown_request(&self) -> Result<Message> {
         let (tx, rx) = tokio::sync::oneshot::channel::<Message>();
         let req_id = RequestId::from(1000i32);
@@ -468,6 +454,7 @@ impl LspSession {
     }
 
     /// Snapshot server metadata; refreshes RSS when a process pid is known.
+    #[allow(dead_code)]
     pub(crate) fn snapshot_server_info(&self) -> LspServerInfo {
         let mut info = self.server_info.clone();
         info.memory_mb = self
@@ -478,6 +465,7 @@ impl LspSession {
     }
 
     /// Return the most recent stderr log lines (newest last), capped by `limit`.
+    #[allow(dead_code)]
     pub(crate) fn snapshot_logs(&self, limit: usize) -> Vec<LspServerLogEntry> {
         let Ok(buf) = self.log_buffer.lock() else {
             return Vec::new();

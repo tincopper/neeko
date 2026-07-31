@@ -304,13 +304,11 @@ fn validate_format(s: &str, format: &str, path: &str, errors: &mut Vec<Validatio
                 });
             }
         }
-        "uri" => {
-            if !s.contains("://") && !s.starts_with('/') {
-                errors.push(ValidationError {
-                    path: path.to_string(),
-                    message: "Must be a valid URI".to_string(),
-                });
-            }
+        "uri" if !s.contains("://") && !s.starts_with('/') => {
+            errors.push(ValidationError {
+                path: path.to_string(),
+                message: "Must be a valid URI".to_string(),
+            });
         }
         // password and path don't need structural validation
         _ => {}

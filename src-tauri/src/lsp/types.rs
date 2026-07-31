@@ -11,9 +11,13 @@ pub const LSP_PROGRESS_EVENT_PREFIX: &str = "lsp-project-";
 
 /// LSP session lifecycle events.
 pub mod session_events {
+    /// Server process is starting.
     pub const STARTING: &str = "starting";
+    /// Server is ready to accept requests.
     pub const READY: &str = "ready";
+    /// An error occurred (carries message).
     pub const ERROR: &str = "error";
+    /// Session has been stopped.
     pub const STOPPED: &str = "stopped";
 }
 

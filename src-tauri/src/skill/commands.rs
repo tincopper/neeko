@@ -3776,9 +3776,7 @@ pub async fn deploy_mcp_to_agent(
 
     let project = input.project_path.as_deref().map(std::path::Path::new);
     let deployer = super::super::agent::resource_deployer::ResourceDeployer::new();
-    deployer
-        .deploy_mcp(&server, &input.agent_id, project)
-        .map_err(AppError::from)?;
+    deployer.deploy_mcp(&server, &input.agent_id, project)?;
     Ok(())
 }
 
@@ -3820,9 +3818,7 @@ pub async fn deploy_command_to_agent(
 
     let project = input.project_path.as_deref().map(std::path::Path::new);
     let deployer = super::super::agent::resource_deployer::ResourceDeployer::new();
-    deployer
-        .deploy_command(&command, &input.agent_id, project)
-        .map_err(AppError::from)?;
+    deployer.deploy_command(&command, &input.agent_id, project)?;
     Ok(())
 }
 
@@ -3843,9 +3839,7 @@ pub fn list_deployed_mcp(
 ) -> Result<Vec<serde_json::Value>, AppError> {
     let project = project_path.as_deref().map(std::path::Path::new);
     let deployer = super::super::agent::resource_deployer::ResourceDeployer::new();
-    deployer
-        .list_deployed_mcp(&agent_id, project)
-        .map_err(AppError::from)
+    deployer.list_deployed_mcp(&agent_id, project)
 }
 
 /// List deployed command names for a given agent (reads from disk).
@@ -3856,9 +3850,7 @@ pub fn list_deployed_commands(
 ) -> Result<Vec<String>, AppError> {
     let project = project_path.as_deref().map(std::path::Path::new);
     let deployer = super::super::agent::resource_deployer::ResourceDeployer::new();
-    deployer
-        .list_deployed_commands(&agent_id, project)
-        .map_err(AppError::from)
+    deployer.list_deployed_commands(&agent_id, project)
 }
 
 /// Input for removing a deployed MCP server.
@@ -3878,9 +3870,7 @@ pub struct RemoveDeployedMcpInput {
 pub fn remove_deployed_mcp(input: RemoveDeployedMcpInput) -> Result<(), AppError> {
     let project = input.project_path.as_deref().map(std::path::Path::new);
     let deployer = super::super::agent::resource_deployer::ResourceDeployer::new();
-    deployer
-        .remove_mcp(&input.server_name, &input.agent_id, project)
-        .map_err(AppError::from)
+    deployer.remove_mcp(&input.server_name, &input.agent_id, project)
 }
 
 /// Input for removing a deployed command.
@@ -3900,9 +3890,7 @@ pub struct RemoveDeployedCommandInput {
 pub fn remove_deployed_command(input: RemoveDeployedCommandInput) -> Result<(), AppError> {
     let project = input.project_path.as_deref().map(std::path::Path::new);
     let deployer = super::super::agent::resource_deployer::ResourceDeployer::new();
-    deployer
-        .remove_command(&input.command_name, &input.agent_id, project)
-        .map_err(AppError::from)
+    deployer.remove_command(&input.command_name, &input.agent_id, project)
 }
 
 /// Resource resolved from a slash command — either a prompt or a command.
@@ -3990,6 +3978,7 @@ pub fn get_agent_capabilities(
 
 /// List agent IDs that support a given capability.
 #[tauri::command]
+#[must_use]
 pub fn list_agents_supporting(capability: String) -> Vec<String> {
     let deployer = super::super::agent::resource_deployer::ResourceDeployer::new();
     deployer.agents_supporting(&capability)

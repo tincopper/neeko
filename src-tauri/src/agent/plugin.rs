@@ -28,6 +28,7 @@ pub struct AgentExecution {
 /// Installation detection strategy.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AgentDetection {
+    /// Detection strategy type (e.g., "command", "path").
     #[serde(rename = "type")]
     pub detection_type: String,
     /// Target to check (command name or path template).
@@ -53,12 +54,17 @@ pub struct AgentConfiguration {
 /// A secret the user must provide to use this Agent.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SecretDefinition {
+    /// Unique key identifying this secret.
     pub key: String,
+    /// Human-readable label for the secret.
     pub label: String,
+    /// Optional description explaining the secret's purpose.
     #[serde(default)]
     pub description: Option<String>,
+    /// Secret type (e.g., "password", "token").
     #[serde(rename = "type")]
     pub secret_type: String,
+    /// Whether this secret is required for the agent to function.
     pub required: bool,
 }
 
@@ -67,48 +73,67 @@ pub struct SecretDefinition {
 /// Declares what resource types this Agent supports.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct AgentCapabilities {
+    /// MCP capability declaration.
     #[serde(default)]
     pub mcp: Option<McpCapability>,
+    /// Commands capability declaration.
     #[serde(default)]
     pub commands: Option<CommandsCapability>,
+    /// Hooks capability declaration.
     #[serde(default)]
     pub hooks: Option<HooksCapability>,
+    /// Skills capability declaration.
     #[serde(default)]
     pub skills: Option<SkillsCapability>,
+    /// Plugins capability declaration.
     #[serde(default)]
     pub plugins: Option<PluginsCapability>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+/// MCP capability declaration.
 pub struct McpCapability {
+    /// Whether MCP is supported.
     pub supported: bool,
+    /// Supported transport types.
     #[serde(default)]
     pub transports: Option<Vec<String>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+/// Commands capability declaration.
 pub struct CommandsCapability {
+    /// Whether commands are supported.
     pub supported: bool,
+    /// Command format.
     #[serde(default)]
     pub format: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+/// Hooks capability declaration.
 pub struct HooksCapability {
+    /// Whether hooks are supported.
     pub supported: bool,
+    /// Supported hook events.
     #[serde(default)]
     pub events: Option<Vec<String>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+/// Skills capability declaration.
 pub struct SkillsCapability {
+    /// Whether skills are supported.
     pub supported: bool,
+    /// Skill format.
     #[serde(default)]
     pub format: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+/// Plugins capability declaration.
 pub struct PluginsCapability {
+    /// Whether plugins are supported.
     pub supported: bool,
 }
 
@@ -117,12 +142,19 @@ pub struct PluginsCapability {
 /// Templated paths to various resource locations.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AgentResourcePaths {
+    /// Configuration directory path template.
     pub config: PathTemplate,
+    /// Skills directory path template.
     pub skills: PathTemplate,
+    /// Commands directory path template.
     pub commands: PathTemplate,
+    /// MCP directory path template.
     pub mcp: PathTemplate,
+    /// Hooks directory path template.
     pub hooks: PathTemplate,
+    /// Plugins directory path template.
     pub plugins: PathTemplate,
+    /// Secrets path template (optional).
     #[serde(default)]
     pub secrets: Option<PathTemplate>,
 }
@@ -134,19 +166,20 @@ pub struct PathTemplate {
     pub relative: String,
     /// File format / content type.
     pub format: String,
+    /// Human-readable description.
     #[serde(default)]
     pub description: Option<String>,
+    /// Whether this path is project-level (true) or user-level (false).
     #[serde(default)]
     pub project_level: bool,
 }
-
-// ─── Lifecycle ──────────────────────────────────────────────────────────────
-
 /// Lifecycle hooks for intervening in Agent execution.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct AgentLifecycle {
+    /// Command to run when a project is activated.
     #[serde(default)]
     pub on_project_activate: Option<String>,
+    /// Command to run when a session starts.
     #[serde(default)]
     pub on_session_start: Option<String>,
 }
@@ -194,7 +227,7 @@ fn default_version() -> String {
     "1.0".to_string()
 }
 
-fn default_true() -> bool {
+const fn default_true() -> bool {
     true
 }
 
@@ -247,31 +280,27 @@ impl AgentPlugin {
     #[must_use]
     pub fn supports(&self, capability: &str) -> bool {
         match capability {
-            "mcp" => self
-                .capabilities
-                .mcp
-                .as_ref()
-                .map_or(false, |c| c.supported),
+            "mcp" => self.capabilities.mcp.as_ref().is_some_and(|c| c.supported),
             "commands" => self
                 .capabilities
                 .commands
                 .as_ref()
-                .map_or(false, |c| c.supported),
+                .is_some_and(|c| c.supported),
             "hooks" => self
                 .capabilities
                 .hooks
                 .as_ref()
-                .map_or(false, |c| c.supported),
+                .is_some_and(|c| c.supported),
             "skills" => self
                 .capabilities
                 .skills
                 .as_ref()
-                .map_or(false, |c| c.supported),
+                .is_some_and(|c| c.supported),
             "plugins" => self
                 .capabilities
                 .plugins
                 .as_ref()
-                .map_or(false, |c| c.supported),
+                .is_some_and(|c| c.supported),
             _ => false,
         }
     }

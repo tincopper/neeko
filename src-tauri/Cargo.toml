@@ -53,8 +53,8 @@ libc = "0.2"
 
 [lints.clippy]
 # --- 正确性（Phase 4 完成：production unwrap 已消除，warn 保留给测试代码）---
-unwrap_used = "warn"
-expect_used = "warn"
+unwrap_used = "deny"
+expect_used = "deny"
 cast_possible_truncation = "deny"
 cast_sign_loss = "deny"
 cast_possible_wrap = "deny"
@@ -79,7 +79,7 @@ unnecessary_wraps = "warn"
 redundant_else = "warn"
 
 [lints.rust]
-missing_docs = "warn"
+missing_docs = "deny"
 
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.52", features = [
