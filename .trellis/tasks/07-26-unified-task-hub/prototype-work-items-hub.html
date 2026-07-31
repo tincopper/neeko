@@ -1,0 +1,1133 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Neeko · 统一任务中心（Tasks）原型 · CRUD 完整流程</title>
+<style>
+  :root, :root[data-theme="dark"] {
+    --bg-primary: oklch(0.178 0 0);
+    --bg-secondary: oklch(0.205 0 0);
+    --bg-tertiary: oklch(0.269 0 0);
+    --bg-hover: oklch(0.3 0 0);
+    --bg-selected: oklch(0.35 0 0);
+    --text-primary: oklch(0.985 0 0);
+    --text-secondary: oklch(0.85 0 0);
+    --text-muted: oklch(0.708 0 0);
+    --border: oklch(1 0 0 / 12%);
+    --accent: oklch(0.7 0.1 250);
+    --text-on-accent: oklch(0.205 0 0);
+    --success: oklch(0.7 0.15 150);
+    --warning: oklch(0.8 0.15 85);
+    --danger: oklch(0.704 0.191 22.216);
+    --purple: oklch(0.7 0.14 300);
+    --page-bg: oklch(0.14 0 0);
+    --shadow: 0 16px 40px oklch(0 0 0 / 35%);
+    color-scheme: dark;
+  }
+  :root[data-theme="light"] {
+    --bg-primary: #ebecf0;
+    --bg-secondary: #fff;
+    --bg-tertiary: #f4f5f7;
+    --bg-hover: #dcdee3;
+    --bg-selected: #d2d4d9;
+    --text-primary: #1e1e1e;
+    --text-secondary: #6e6e6e;
+    --text-muted: #8a8a8a;
+    --border: #dadbdd;
+    --accent: #2f7cd3;
+    --text-on-accent: #fff;
+    --success: #4a9e3f;
+    --warning: #c49000;
+    --danger: #d32f2f;
+    --purple: #7c3aed;
+    --page-bg: #e5e7eb;
+    --shadow: 0 12px 28px rgba(0,0,0,.08);
+    color-scheme: light;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    background: var(--page-bg);
+    color: var(--text-primary);
+    font-size: 13px;
+    line-height: 1.4;
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  button, input, select, textarea { font: inherit; color: inherit; background: none; border: none; cursor: pointer; }
+  button:focus-visible, input:focus-visible, textarea:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .mono { font-family: "JetBrains Mono", ui-monospace, monospace; }
+  .muted { color: var(--text-muted); }
+  .truncate { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  /* ── App shell ── */
+  .page { max-width: 1280px; margin: 0 auto; padding: 16px 14px 32px; width: 100%; }
+  .titlebar { display: flex; align-items: center; justify-content: space-between; padding: 0 0 10px; font-size: 12px; color: var(--text-secondary); }
+  .body { display: flex; gap: 8px; min-height: 600px; }
+  .dock { width: 36px; display: flex; flex-direction: column; align-items: center; gap: 4px; padding-top: 4px; }
+  .dock-btn { width: 30px; height: 30px; border-radius: 6px; display: grid; place-items: center; color: var(--text-secondary); font-size: 9px; font-weight: 700; }
+  .dock-btn:hover { background: var(--bg-hover); color: var(--text-primary); }
+  .dock-btn.active { background: var(--accent); color: var(--text-on-accent); }
+  .island { flex: 1; border-radius: 10px; border: 1px solid var(--border); background: var(--bg-secondary); display: flex; flex-direction: column; overflow: hidden; min-width: 0; }
+  .statusbar { display: flex; justify-content: space-between; padding: 10px 0 0; font-size: 11px; color: var(--text-muted); }
+  .footnote { margin-top: 16px; font-size: 11px; color: var(--text-muted); line-height: 1.6; padding: 8px 12px; border-radius: 8px; background: var(--bg-secondary); border: 1px solid var(--border); }
+  .footnote ul { margin: 4px 0 0 16px; }
+
+  /* ── Tasks Panel ── */
+  .tasks { display: flex; flex-direction: column; flex: 1; min-height: 0; }
+  .tasks-header { display: flex; align-items: center; gap: 8px; padding: 10px; border-bottom: 1px solid var(--border); flex-shrink: 0; }
+  .tasks-header h2 { font-size: 14px; font-weight: 650; }
+  .tabs { display: flex; gap: 2px; background: var(--bg-tertiary); border-radius: 6px; padding: 2px; }
+  .view-tab { padding: 3px 10px; border-radius: 5px; font-size: 11px; color: var(--text-secondary); }
+  .view-tab.active { background: var(--bg-primary); color: var(--text-primary); font-weight: 600; }
+  .header-actions { margin-left: auto; display: flex; gap: 4px; }
+  .icon-btn { width: 26px; height: 26px; border-radius: 5px; display: grid; place-items: center; color: var(--text-secondary); font-size: 14px; }
+  .icon-btn:hover { background: var(--bg-hover); color: var(--text-primary); }
+  .icon-btn.primary { background: var(--accent); color: var(--text-on-accent); }
+  .icon-btn.primary:hover { filter: brightness(1.15); }
+
+  /* ── Filters / Context Bar ── */
+  .ctx-bar { display: flex; flex-wrap: wrap; gap: 6px; padding: 6px 10px; flex-shrink: 0; align-items: center; }
+  .search-wrap { flex: 1; min-width: 100px; position: relative; }
+  .search { width: 100%; height: 26px; padding: 0 8px; border-radius: 6px; border: 1px solid var(--border); background: var(--bg-primary); font-size: 11px; }
+  .search:focus { border-color: var(--accent); }
+  .select { height: 26px; padding: 0 6px; border-radius: 6px; border: 1px solid var(--border); background: var(--bg-primary); font-size: 11px; }
+  .select:focus { border-color: var(--accent); }
+  .pill { height: 20px; padding: 0 8px; border-radius: 999px; border: 1px solid var(--border); background: var(--bg-primary); color: var(--text-secondary); font-size: 10px; display: inline-flex; align-items: center; gap: 4px; }
+  .pill.active { border-color: var(--accent); color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent); }
+  .pill.off { opacity: 0.4; }
+  .provider-pills { display: flex; gap: 4px; flex-wrap: wrap; }
+
+  /* ── Board View ── */
+  .board-wrap { flex: 1; min-height: 0; overflow: hidden; }
+  .columns { display: flex; gap: 8px; padding: 8px; height: 100%; overflow-x: auto; }
+  .col { flex: 1; min-width: 160px; max-width: 240px; display: flex; flex-direction: column; border-radius: 8px; background: var(--bg-tertiary); }
+  .col-head { display: flex; align-items: center; justify-content: space-between; padding: 6px 8px; font-size: 11px; font-weight: 650; color: var(--text-secondary); }
+  .col-head .count { font-size: 10px; font-weight: 400; color: var(--text-muted); background: var(--bg-primary); padding: 0 6px; border-radius: 999px; }
+  .col-body { flex: 1; min-height: 60px; overflow-y: auto; padding: 6px; display: flex; flex-direction: column; gap: 6px; }
+  .col-body:empty::after { content: 'No tasks'; display: block; text-align: center; color: var(--text-muted); font-size: 11px; padding: 16px; }
+
+  /* ── Card ── */
+  .card {
+    padding: 8px; border-radius: 7px; border: 1px solid var(--border); background: var(--bg-primary);
+    cursor: pointer; transition: border-color .12s, box-shadow .12s;
+  }
+  .card:hover { border-color: var(--accent); box-shadow: 0 1px 4px oklch(0 0 0 / 20%); }
+  .card.dragging { opacity: 0.5; }
+  .card-title { font-size: 11px; font-weight: 500; margin: 4px 0 6px; line-height: 1.35; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .card-meta { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; font-size: 9px; }
+  .kind-ico { font-size: 9px; font-weight: 700; width: 16px; height: 16px; border-radius: 4px; display: grid; place-items: center; }
+  .kind-ico.blue { background: color-mix(in srgb, oklch(0.7 0.15 250) 20%, transparent); color: oklch(0.7 0.15 250); }
+  .kind-ico.green { background: color-mix(in srgb, var(--success) 20%, transparent); color: var(--success); }
+  .kind-ico.orange { background: color-mix(in srgb, var(--warning) 20%, transparent); color: var(--warning); }
+  .kind-ico.purple { background: color-mix(in srgb, var(--purple) 20%, transparent); color: var(--purple); }
+  .prov { font-size: 8px; font-weight: 650; text-transform: uppercase; padding: 1px 4px; border-radius: 3px; background: var(--bg-tertiary); color: var(--text-muted); }
+  .label { font-size: 8px; padding: 0 4px; border-radius: 3px; border: 1px solid var(--border); background: var(--bg-primary); color: var(--text-muted); }
+  .priority { font-size: 8px; font-weight: 700; padding: 0 4px; border-radius: 3px; }
+  .priority.p0 { color: var(--danger); }
+  .priority.p1 { color: var(--warning); }
+  .priority.p2 { color: var(--accent); }
+  .priority.p3 { color: var(--text-muted); }
+  .avatar { width: 16px; height: 16px; border-radius: 999px; display: grid; place-items: center; font-size: 8px; font-weight: 700; background: var(--accent); color: var(--text-on-accent); }
+  .add-btn { padding: 6px; border-radius: 6px; border: 1px dashed var(--border); background: transparent; color: var(--text-muted); font-size: 11px; text-align: center; }
+  .add-btn:hover { border-color: var(--accent); color: var(--accent); background: color-mix(in srgb, var(--accent) 8%, transparent); }
+
+  /* ── List View ── */
+  .list-wrap { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+  .split { flex: 1; display: flex; min-height: 0; }
+  .list { width: 50%; overflow-y: auto; border-right: 1px solid var(--border); }
+  .group-label { padding: 4px 10px; font-size: 9px; font-weight: 650; text-transform: uppercase; color: var(--text-muted); letter-spacing: 0.3px; border-bottom: 1px solid var(--border); background: var(--bg-tertiary); }
+  .row { display: flex; gap: 8px; align-items: flex-start; padding: 7px 10px; border-bottom: 1px solid var(--border); width: 100%; text-align: left; }
+  .row:hover { background: var(--bg-hover); }
+  .row.active { background: var(--bg-selected); }
+  .row-top { display: flex; gap: 4px; align-items: baseline; }
+  .row-title { font-size: 11px; font-weight: 500; }
+  .row-meta { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 2px; }
+  .checks { font-size: 9px; padding: 0 4px; border-radius: 3px; }
+  .checks.ok { color: var(--success); }
+  .checks.fail { color: var(--danger); }
+  .detail { flex: 1; overflow-y: auto; display: flex; flex-direction: column; }
+  .detail-empty { flex: 1; display: grid; place-items: center; color: var(--text-muted); padding: 24px; text-align: center; font-size: 12px; }
+  .detail-head { padding: 12px 12px 8px; border-bottom: 1px solid var(--border); }
+  .detail-head h3 { font-size: 14px; font-weight: 600; margin-bottom: 4px; }
+  .detail-meta { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+  .actions { display: flex; flex-wrap: wrap; gap: 6px; padding: 8px 12px; border-bottom: 1px solid var(--border); }
+  .action-btn { height: 26px; padding: 0 10px; border-radius: 5px; font-size: 11px; display: inline-flex; align-items: center; gap: 4px; border: 1px solid var(--border); background: var(--bg-tertiary); color: var(--text-primary); }
+  .action-btn:hover { background: var(--bg-hover); }
+  .action-btn.danger { color: var(--danger); border-color: var(--danger); }
+  .action-btn.danger:hover { background: color-mix(in srgb, var(--danger) 12%, transparent); }
+  .action-btn.primary { background: var(--accent); color: var(--text-on-accent); border-color: var(--accent); }
+  .detail-body { padding: 12px; font-size: 12px; line-height: 1.6; color: var(--text-secondary); white-space: pre-wrap; }
+  .detail-section { margin-bottom: 12px; }
+  .detail-section h4 { font-size: 10px; font-weight: 650; text-transform: uppercase; color: var(--text-muted); margin-bottom: 4px; letter-spacing: 0.3px; }
+
+  /* ── Stage Rail ── */
+  .stage-rail { display: flex; align-items: center; gap: 0; padding: 10px 12px; border-bottom: 1px solid var(--border); overflow-x: auto; }
+  .stage-node { display: flex; align-items: center; gap: 4px; cursor: pointer; white-space: nowrap; }
+  .stage-node .dot { width: 10px; height: 10px; border-radius: 999px; border: 2px solid var(--border); background: var(--bg-primary); flex-shrink: 0; transition: all .15s; }
+  .stage-node .dot.active { border-color: var(--accent); background: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 25%, transparent); }
+  .stage-node .dot.transitionable { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 20%, transparent); }
+  .stage-node .dot:hover { transform: scale(1.25); }
+  .stage-node .s-label { font-size: 10px; color: var(--text-secondary); }
+  .stage-node .s-label.active { color: var(--accent); font-weight: 600; }
+  .stage-connector { width: 16px; height: 2px; background: var(--border); flex-shrink: 0; }
+
+  /* ── Dialog / Modal ── */
+  .overlay {
+    position: fixed; inset: 0; z-index: 200;
+    background: oklch(0 0 0 / 45%);
+    display: flex; align-items: center; justify-content: center;
+    opacity: 0; pointer-events: none; transition: opacity .15s;
+  }
+  .overlay.open { opacity: 1; pointer-events: auto; }
+  .dialog {
+    width: 480px; max-height: 80vh; overflow-y: auto;
+    background: var(--bg-secondary); border-radius: 10px; border: 1px solid var(--border);
+    box-shadow: var(--shadow);
+    display: flex; flex-direction: column;
+    transform: translateY(8px); transition: transform .15s;
+  }
+  .overlay.open .dialog { transform: translateY(0); }
+  .dialog-head { display: flex; align-items: center; justify-content: space-between; padding: 14px 16px; border-bottom: 1px solid var(--border); }
+  .dialog-head h3 { font-size: 14px; font-weight: 600; }
+  .dialog-close { width: 24px; height: 24px; border-radius: 5px; display: grid; place-items: center; color: var(--text-muted); }
+  .dialog-close:hover { background: var(--bg-hover); color: var(--text-primary); }
+  .dialog-body { padding: 16px; display: flex; flex-direction: column; gap: 12px; }
+  .field { display: flex; flex-direction: column; gap: 4px; }
+  .field label { font-size: 11px; font-weight: 600; color: var(--text-secondary); }
+  .field input, .field textarea, .field select {
+    padding: 7px 10px; border-radius: 6px; border: 1px solid var(--border);
+    background: var(--bg-primary); font-size: 12px; width: 100%;
+  }
+  .field textarea { min-height: 72px; resize: vertical; }
+  .field input:focus, .field textarea:focus, .field select:focus { border-color: var(--accent); }
+  .field-row { display: flex; gap: 10px; }
+  .field-row .field { flex: 1; }
+  .dialog-foot { display: flex; justify-content: flex-end; gap: 8px; padding: 12px 16px; border-top: 1px solid var(--border); }
+  .btn { height: 30px; padding: 0 14px; border-radius: 6px; font-size: 12px; font-weight: 500; display: inline-flex; align-items: center; gap: 6px; }
+  .btn-secondary { border: 1px solid var(--border); background: var(--bg-tertiary); color: var(--text-primary); }
+  .btn-secondary:hover { background: var(--bg-hover); }
+  .btn-primary { background: var(--accent); color: var(--text-on-accent); border: 1px solid var(--accent); }
+  .btn-primary:hover { filter: brightness(1.1); }
+  .btn-danger { background: var(--danger); color: #fff; border: 1px solid var(--danger); }
+  .btn-danger:hover { filter: brightness(1.1); }
+
+  /* ── Toast ── */
+  .toast {
+    position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%) translateY(20px);
+    padding: 8px 16px; border-radius: 8px; background: var(--bg-tertiary); color: var(--text-primary);
+    font-size: 12px; border: 1px solid var(--border);
+    opacity: 0; transition: opacity .2s, transform .2s; pointer-events: none; z-index: 100;
+    display: flex; align-items: center; gap: 10px;
+  }
+  .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); pointer-events: auto; }
+  .toast .toast-undo { padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; color: var(--accent); border: 1px solid var(--accent); }
+  .toast .toast-undo:hover { background: color-mix(in srgb, var(--accent) 12%, transparent); }
+
+  /* ── Hidden / Utility ── */
+  .hidden { display: none !important; }
+</style>
+</head>
+<body>
+  <div class="page">
+    <div class="titlebar">
+      <span><strong>Neeko</strong> · neeko · <span class="mono">worktree-ui-design-audit</span></span>
+      <span>Tasks → Board / List · CRUD 完整原型</span>
+    </div>
+    <div class="body">
+      <nav class="dock" aria-label="Left">
+        <button class="dock-btn" type="button" title="Projects">Pr</button>
+        <button class="dock-btn" type="button" title="Skills">Sk</button>
+        <div style="flex:1"></div>
+        <button class="dock-btn" type="button" title="Settings">⚙</button>
+      </nav>
+
+      <main class="island">
+        <div class="tasks">
+
+          <!-- ====== HEADER ====== -->
+          <div class="tasks-header">
+            <h2>Tasks</h2>
+            <div class="tabs">
+              <button class="view-tab active" type="button" data-view="board">Board</button>
+              <button class="view-tab" type="button" data-view="list">List</button>
+            </div>
+            <div class="header-actions">
+              <button class="icon-btn primary" type="button" id="btnNewTask" title="New Task">＋</button>
+              <button class="icon-btn" type="button" id="btnRefresh" title="Refresh">↻</button>
+              <button class="icon-btn" type="button" id="btnConnect" title="Integrations">⚙</button>
+            </div>
+          </div>
+
+          <!-- ====== SHARED FILTERS ====== -->
+          <div class="ctx-bar">
+            <div class="search-wrap">
+              <input class="search" id="search" type="search" placeholder="Search title, key, #number…" />
+            </div>
+            <select class="select" id="statusFilter" aria-label="Status">
+              <option value="all">Status: All open-ish</option>
+              <option value="open">Open / Backlog</option>
+              <option value="in_progress">In progress / Review</option>
+              <option value="draft">Draft</option>
+              <option value="blocked">Blocked</option>
+              <option value="done">Done / Merged</option>
+            </select>
+            <select class="select" id="sortFilter" aria-label="Sort">
+              <option value="updated">Sort: Updated</option>
+              <option value="created">Sort: Created</option>
+              <option value="priority">Sort: Priority</option>
+            </select>
+            <div class="provider-pills" id="providerPills">
+              <button class="pill active" type="button" data-provider="all">All</button>
+              <button class="pill active" type="button" data-provider="local">Local</button>
+              <button class="pill active" type="button" data-provider="github">GitHub</button>
+              <button class="pill active" type="button" data-provider="gitlab">GitLab</button>
+              <button class="pill active" type="button" data-provider="linear">Linear</button>
+              <button class="pill active" type="button" data-provider="jira">Jira</button>
+            </div>
+          </div>
+
+          <!-- ====== BOARD VIEW ====== -->
+          <div class="board-wrap" id="boardView">
+            <div class="columns" id="columns"></div>
+          </div>
+
+          <!-- ====== LIST VIEW ====== -->
+          <div class="list-wrap hidden" id="listView">
+            <div class="ctx-bar" style="border-bottom:1px solid var(--border)">
+              <div class="tabs" id="kindTabs" role="tablist">
+                <button class="tab view-tab active" type="button" data-kind="all">All <span class="n muted" id="n-all">0</span></button>
+                <button class="tab view-tab" type="button" data-kind="mine">Mine <span class="n muted" id="n-mine">0</span></button>
+                <button class="tab view-tab" type="button" data-kind="local_task">Local <span class="n muted" id="n-local">0</span></button>
+                <button class="tab view-tab" type="button" data-kind="pull_request">PRs <span class="n muted" id="n-pr">0</span></button>
+                <button class="tab view-tab" type="button" data-kind="issue">Issues <span class="n muted" id="n-issue">0</span></button>
+                <button class="tab view-tab" type="button" data-kind="ticket">Tickets <span class="n muted" id="n-ticket">0</span></button>
+              </div>
+            </div>
+            <div class="split">
+              <div class="list" id="list" role="listbox" aria-label="Work items"></div>
+              <aside class="detail" id="detail">
+                <div class="detail-empty" id="detailEmpty">
+                  <div>
+                    <div style="font-size:24px;margin-bottom:8px">📋</div>
+                    <div>选择左侧任务查看详情</div>
+                    <div class="muted" style="font-size:11px;margin-top:4px">点击卡片可编辑、删除、流转 stage</div>
+                  </div>
+                </div>
+                <div id="detailContent" class="hidden"></div>
+              </aside>
+            </div>
+          </div>
+
+        </div>
+      </main>
+
+      <nav class="dock" aria-label="Right">
+        <button class="dock-btn" type="button">Fi</button>
+        <button class="dock-btn active" type="button" title="Tasks">Tk</button>
+        <button class="dock-btn" type="button">Hi</button>
+      </nav>
+    </div>
+    <div class="statusbar">
+      <span id="sbLeft">Local built-in + optional providers</span>
+      <span id="sbRight">CRUD: Create · Edit · Delete · Stage Transition</span>
+    </div>
+
+    <div class="footnote">
+      <strong>Tasks 统一面板 · 完整 CRUD 原型</strong><br/>
+      <ul>
+        <li><strong>Add</strong> — 点击面板标题栏 [＋] 按钮或列底部 [+ Add task] 打开 Create Task 对话框</li>
+        <li><strong>Edit</strong> — 点击卡片 → 右侧 Detail 面板 → [Edit] 按钮打开编辑对话框</li>
+        <li><strong>Delete</strong> — Detail 面板 → [···] 菜单 → [Delete] 弹出确认对话框</li>
+        <li><strong>Stage transition</strong> — Detail 面板 Stage Rail 点击可流转的 stage 节点</li>
+        <li><strong>Provider</strong> — Local 内置默认；GitHub/GitLab/Linear/Jira 在 Settings → Integrations 配置</li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- ====== OVERLAY: Create/Edit Task Dialog ====== -->
+  <div class="overlay" id="taskDialogOverlay">
+    <div class="dialog">
+      <div class="dialog-head">
+        <h3 id="dialogTitle">Create Task</h3>
+        <button class="dialog-close" type="button" id="dialogClose">✕</button>
+      </div>
+      <div class="dialog-body">
+        <div class="field">
+          <label for="fieldTitle">Title <span class="muted">*</span></label>
+          <input id="fieldTitle" type="text" placeholder="e.g. Refactor auth module" autocomplete="off" />
+        </div>
+        <div class="field">
+          <label for="fieldDesc">Description</label>
+          <textarea id="fieldDesc" placeholder="Optional description or details…"></textarea>
+        </div>
+        <div class="field-row">
+          <div class="field">
+            <label for="fieldStage">Stage</label>
+            <select id="fieldStage">
+              <option value="Backlog">Backlog</option>
+              <option value="Ready">Ready</option>
+              <option value="In Progress">In Progress</option>
+              <option value="Review">Review</option>
+              <option value="Done">Done</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="fieldPriority">Priority</label>
+            <select id="fieldPriority">
+              <option value="0">P0 — Urgent</option>
+              <option value="1">P1 — High</option>
+              <option value="2" selected>P2 — Medium</option>
+              <option value="3">P3 — Low</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="fieldAssign">Assignee</label>
+            <input id="fieldAssign" type="text" placeholder="@name" />
+          </div>
+        </div>
+        <div class="field">
+          <label for="fieldLabels">Labels <span class="muted">(comma separated)</span></label>
+          <input id="fieldLabels" type="text" placeholder="e.g. design, prototype" />
+        </div>
+      </div>
+      <div class="dialog-foot">
+        <button class="btn btn-secondary" type="button" id="dialogCancel">Cancel</button>
+        <button class="btn btn-primary" type="button" id="dialogConfirm">Create</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ====== OVERLAY: Delete Confirmation Dialog ====== -->
+  <div class="overlay" id="deleteOverlay">
+    <div class="dialog" style="width:380px">
+      <div class="dialog-head">
+        <h3>Delete Task</h3>
+        <button class="dialog-close" type="button" id="deleteClose">✕</button>
+      </div>
+      <div class="dialog-body">
+        <p style="font-size:13px;line-height:1.5">
+          Are you sure you want to delete
+          <strong id="deleteItemTitle">"this task"</strong>?
+        </p>
+        <p class="muted" style="font-size:11px;margin-top:4px">This action cannot be undone.</p>
+      </div>
+      <div class="dialog-foot">
+        <button class="btn btn-secondary" type="button" id="deleteCancel">Cancel</button>
+        <button class="btn btn-danger" type="button" id="deleteConfirm">Delete</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ====== TOAST ====== -->
+  <div class="toast" id="toast">
+    <span id="toastMsg"></span>
+    <button class="toast-undo hidden" id="toastUndo" type="button">Undo</button>
+  </div>
+
+  <script>
+    /* ───────────────────────────────────────────────
+       DATA
+       ─────────────────────────────────────────────── */
+    const STAGES = ['Backlog', 'Ready', 'In Progress', 'Review', 'Done'];
+
+    let ITEMS = [
+      { id: 'local:1', provider:'local', kind:'local_task', title:'完成 UI 设计 audit 原型更新', key:'T-1', status:{ category:'in_progress', label:'In Progress' }, projectKey:'neeko-design', author:'tincopper', assignees:['tincopper'], labels:['design','prototype'], priority:1, stage:'In Progress', capabilities:['transition','assign','open'],
+        body:'更新 Tasks 原型：Board/List 合一、Local-first、状态流转、CRUD 操作。\n\n新增：\n- Create Task 对话框\n- Edit Task 对话框\n- Delete 确认对话框\n- Stage Rail 点击流转\n- 拖拽卡片改变 stage',
+        workflow:{ stages:STAGES, currentIndex:2 } },
+      { id: 'local:2', provider:'local', kind:'local_task', title:'设计 Docker 支持的项目卡片样式', key:'T-2', status:{ category:'open', label:'Open' }, projectKey:'neeko-design', author:'tincopper', assignees:[], labels:['design','docker'], priority:2, stage:'Backlog', capabilities:['transition','assign','open'],
+        body:'Projects 面板需要预留 Docker 远程容器项目的展示样式。\n包括连接状态指示器、容器名称、端口映射等。',
+        workflow:{ stages:STAGES, currentIndex:0 } },
+      { id: 'local:3', provider:'local', kind:'local_task', title:'补充 Tasks 看板首页原型', key:'T-3', status:{ category:'in_progress', label:'In Progress' }, projectKey:'neeko-design', author:'tincopper', assignees:['tincopper'], labels:['design','prototype'], priority:1, stage:'Review', capabilities:['transition','assign','open'],
+        body:'看板首页以卡片列展示所有任务状态分布与流转情况。\n预期输出：\n- Board 视图默认首页\n- List 视图作为备选\n- 两者数据共享',
+        workflow:{ stages:STAGES, currentIndex:3 } },
+      { id: 'local:4', provider:'local', kind:'local_task', title:'实现 Settings → Integrations 页面', key:'T-4', status:{ category:'open', label:'Open' }, projectKey:'neeko-design', author:'bob', assignees:[], labels:['settings','ux'], priority:2, stage:'Backlog', capabilities:['transition','assign','open'],
+        body:'Provider 配置页面，支持连接/断开 GitHub/GitLab/Linear/Jira。\n展示 Provider 卡片、连接状态、项目绑定映射。',
+        workflow:{ stages:STAGES, currentIndex:0 } },
+      { id: 'github:pr:128', provider:'github', kind:'pull_request', title:'Unify dock density tokens and StatusBar height', key:'#128', number:128, status:{ category:'open', label:'Open' }, projectKey:'tincopper/neeko', author:'tincopper', assignees:['tincopper'], reviewers:['alice'], labels:['ui','polish'], priority:2, stage:'In Progress', updatedAt:'2026-07-26T02:10:00Z', createdAt:'2026-07-25T09:00:00Z',
+        pr:{ sourceBranch:'worktree-ui-design-audit', targetBranch:'main', isDraft:false, checks:{ pass:4, fail:0, pending:1 }, reviewDecision:'Review required' },
+        body:'Align TitleBar/PanelHeader/StatusBar density.\n- StatusBar 16→22\n- semantic tokens for git colors\n- no hardcoded One Dark in dialogs',
+        capabilities:['merge','checkout','comment','review','open'] },
+      { id: 'github:pr:119', provider:'github', kind:'pull_request', title:'Draft: Skills IA single surface', key:'#119', number:119, status:{ category:'draft', label:'Draft' }, projectKey:'tincopper/neeko', author:'tincopper', assignees:[], labels:['wip'], priority:3, stage:'Backlog', updatedAt:'2026-07-24T18:00:00Z', createdAt:'2026-07-24T12:00:00Z',
+        pr:{ sourceBranch:'feat/skills-ia', targetBranch:'main', isDraft:true, checks:{ pass:2, fail:1, pending:0 } },
+        body:'Stop dual-mounting SkillContent over workspace.', capabilities:['checkout','comment','open'] },
+      { id: 'github:issue:88', provider:'github', kind:'issue', title:'GitCredentialDialog ignores theme tokens', key:'#88', number:88, status:{ category:'open', label:'Open' }, projectKey:'tincopper/neeko', author:'bob', assignees:['tincopper'], labels:['bug','theme'], priority:1, stage:'Ready', updatedAt:'2026-07-26T01:00:00Z', createdAt:'2026-07-20T10:00:00Z',
+        body:'Hardcoded #1e2229 / #528bff break Light and Claude themes.', capabilities:['comment','assign','open'] },
+      { id: 'gitlab:mr:15', provider:'gitlab', kind:'pull_request', title:'ci: cache pnpm store on runners', key:'!15', number:15, status:{ category:'merged', label:'Merged' }, projectKey:'neeko/ci-templates', author:'carol', assignees:['carol'], labels:['ci'], priority:4, stage:'Done', updatedAt:'2026-07-22T16:00:00Z', createdAt:'2026-07-21T09:00:00Z',
+        pr:{ sourceBranch:'ci/pnpm-cache', targetBranch:'main', isDraft:false, checks:{ pass:6, fail:0, pending:0 }, reviewDecision:'Approved' },
+        body:'Merged yesterday.', capabilities:['open','comment'] },
+      { id: 'gitlab:issue:3', provider:'gitlab', kind:'issue', title:'Document remote Docker context setup', key:'#3', number:3, status:{ category:'in_progress', label:'Doing' }, projectKey:'neeko/docs', author:'carol', assignees:['carol','dan'], labels:['docs'], priority:2, stage:'In Progress', updatedAt:'2026-07-23T10:00:00Z', createdAt:'2026-07-19T08:00:00Z',
+        body:'Step-by-step for SSH -> Docker context in Neeko.', capabilities:['comment','assign','open'] },
+      { id: 'linear:1', provider:'linear', kind:'ticket', title:'Agent session recovery flaky on reconnect', key:'LIN-42', status:{ category:'blocked', label:'Blocked' }, projectKey:'neeko/agent', author:'eve', assignees:['eve'], labels:['bug','agent'], priority:0, stage:'In Progress', updatedAt:'2026-07-25T22:00:00Z', createdAt:'2026-07-18T14:00:00Z',
+        body:'When network drops, the agent session recovery sometimes double-fires.', capabilities:['comment','assign','transition','open'] },
+      { id: 'jira:1', provider:'jira', kind:'ticket', title:'Sprint 24: Terminal font prefs ignored', key:'NEEK-207', status:{ category:'in_progress', label:'In Progress' }, projectKey:'neeko/terminal', author:'frank', assignees:['frank'], labels:['terminal','font','sprint-24'], priority:1, stage:'In Progress', updatedAt:'2026-07-25T16:00:00Z', createdAt:'2026-07-14T09:00:00Z',
+        body:'Custom fontFamily in settings does not apply to xterm instances.', capabilities:['comment','assign','transition','open'] },
+    ];
+
+    /* ───────────────────────────────────────────────
+       STATE
+       ─────────────────────────────────────────────── */
+    const ME = 'tincopper';
+    let currentView = 'board';
+    let kindTab = 'all';
+    let statusFilter = 'all';
+    let sortFilter = 'updated';
+    let search = '';
+    let selectedId = null;
+    let editingId = null; // id being edited in dialog
+    let deletingId = null; // id being deleted
+    let lastDeleted = null; // for undo
+    const providerOn = { local:true, github:true, gitlab:true, linear:true, jira:true };
+
+    let nextLocalId = 100;
+
+    /* ───────────────────────────────────────────────
+       DOM REFS
+       ─────────────────────────────────────────────── */
+    const toast = document.getElementById('toast');
+    const toastMsg = document.getElementById('toastMsg');
+    const toastUndo = document.getElementById('toastUndo');
+    let toastTimer = null;
+
+    function showToast(msg, undoCallback) {
+      toastMsg.textContent = msg;
+      toastUndo.classList.toggle('hidden', !undoCallback);
+      if (undoCallback) {
+        toastUndo.onclick = () => { undoCallback(); hideToast(); };
+      }
+      toast.classList.add('show');
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(hideToast, 3000);
+    }
+
+    function hideToast() {
+      toast.classList.remove('show');
+      clearTimeout(toastTimer);
+    }
+
+    /* ───────────────────────────────────────────────
+       UTILITY
+       ─────────────────────────────────────────────── */
+    function kindIcon(kind) {
+      const map = { local_task:{ t:'T', cls:'blue' }, pull_request:{ t:'PR', cls:'green' }, issue:{ t:'I', cls:'orange' }, ticket:{ t:'TK', cls:'purple' } };
+      return map[kind] || { t:'?', cls:'' };
+    }
+
+    function providerClass(p) {
+      const map = { local:'local', github:'gh', gitlab:'gl', linear:'lin', jira:'jira' };
+      return map[p] || '';
+    }
+
+    function escapeHtml(s) {
+      const d = document.createElement('div');
+      d.textContent = s;
+      return d.innerHTML;
+    }
+
+    function matchesStatus(item) {
+      if (statusFilter === 'all') return true;
+      return item.status.category === statusFilter;
+    }
+
+    function statusClass(cat) {
+      const map = { open:'', in_progress:'', draft:'', blocked:'', done:'', merged:'', cancelled:'' };
+      return map[cat] || '';
+    }
+
+    function relTime(iso) {
+      if (!iso) return '';
+      const d = (Date.now() - new Date(iso).getTime()) / 1000;
+      if (d < 60) return 'just now';
+      if (d < 3600) return Math.floor(d/60)+'m';
+      if (d < 86400) return Math.floor(d/3600)+'h';
+      if (d < 604800) return Math.floor(d/86400)+'d';
+      return Math.floor(d/604800)+'w';
+    }
+
+    function genLocalId() {
+      return 'local:' + (nextLocalId++);
+    }
+
+    function newLocalKey() {
+      return 'T-' + (ITEMS.filter(i => i.provider === 'local').length + 1);
+    }
+
+    /* ───────────────────────────────────────────────
+       FILTER + SORT
+       ─────────────────────────────────────────────── */
+    function filtered() {
+      let rows = ITEMS.filter((it) => providerOn[it.provider]);
+
+      // Kind tab
+      if (kindTab === 'mine') {
+        rows = rows.filter((it) => (it.assignees||[]).includes(ME) || it.author === ME);
+      } else if (kindTab !== 'all') {
+        rows = rows.filter((it) => it.kind === kindTab);
+      }
+
+      // Status filter
+      if (statusFilter !== 'all') {
+        rows = rows.filter(matchesStatus);
+      }
+
+      // Search
+      if (search.trim()) {
+        const q = search.trim().toLowerCase();
+        rows = rows.filter((it) =>
+          it.title.toLowerCase().includes(q) ||
+          it.key?.toLowerCase().includes(q) ||
+          it.id.toLowerCase().includes(q)
+        );
+      }
+
+      // Sort
+      if (sortFilter === 'created') {
+        rows.sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
+      } else if (sortFilter === 'priority') {
+        rows.sort((a, b) => (a.priority ?? 99) - (b.priority ?? 99));
+      } else {
+        rows.sort((a, b) => (b.updatedAt || '').localeCompare(a.updatedAt || ''));
+      }
+
+      return rows;
+    }
+
+    /* ───────────────────────────────────────────────
+       RENDER: BOARD
+       ─────────────────────────────────────────────── */
+    function renderBoard() {
+      const rows = filtered();
+      const colsEl = document.getElementById('columns');
+      const html = [];
+      for (const stage of STAGES) {
+        const items = rows.filter((it) => it.stage === stage);
+        const cards = items.map((it) => {
+          const ki = kindIcon(it.kind);
+          const prio = it.priority !== undefined ? `<span class="priority p${it.priority}">P${it.priority}</span>` : '';
+          const blocked = it.status.category === 'blocked' ? `<span style="color:var(--danger);font-size:9px;font-weight:700">⛔ BLOCKED</span>` : '';
+          return `
+            <div class="card" data-id="${it.id}" draggable="true" title="${escapeHtml(it.title)}">
+              <div style="display:flex;gap:5px;align-items:center;flex-wrap:wrap">
+                <span class="kind-ico ${ki.cls}">${ki.t}</span>
+                <span class="prov ${providerClass(it.provider)}">${it.provider}</span>
+                ${prio} ${blocked}
+              </div>
+              <div class="card-title">${escapeHtml(it.title)}</div>
+              <div class="card-meta">
+                <span class="mono" style="font-size:8px;color:var(--text-muted)">${escapeHtml(it.key || '')}</span>
+                ${it.labels?.slice(0,2).map((l) => `<span class="label">${escapeHtml(l)}</span>`).join('') || ''}
+                <span style="flex:1"></span>
+                ${(it.assignees||[]).map((a) => `<span class="avatar" title="@${a}">${a.slice(0,1).toUpperCase()}</span>`).join('')}
+              </div>
+            </div>
+          `;
+        }).join('');
+        html.push(`
+          <div class="col" data-stage="${stage}">
+            <div class="col-head"><span>${stage}</span><span class="count">${items.length}</span></div>
+            <div class="col-body">${cards || ''}<button class="add-btn" type="button" data-stage="${stage}">＋ Add task</button></div>
+          </div>
+        `);
+      }
+      colsEl.innerHTML = html.join('');
+
+      // Card click → detail
+      colsEl.querySelectorAll('.card').forEach((card) => {
+        card.addEventListener('click', () => {
+          selectedId = card.getAttribute('data-id');
+          renderDetail();
+        });
+        // Drag events for stage transition
+        card.addEventListener('dragstart', (e) => {
+          e.dataTransfer.setData('text/plain', card.getAttribute('data-id'));
+          card.classList.add('dragging');
+        });
+        card.addEventListener('dragend', () => { card.classList.remove('dragging'); });
+      });
+
+      // Add task buttons
+      colsEl.querySelectorAll('.add-btn').forEach((btn) => {
+        btn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const stage = btn.getAttribute('data-stage');
+          openCreateDialog(stage);
+        });
+      });
+
+      // Column drop zones
+      colsEl.querySelectorAll('.col').forEach((col) => {
+        col.addEventListener('dragover', (e) => e.preventDefault());
+        col.addEventListener('drop', (e) => {
+          e.preventDefault();
+          const id = e.dataTransfer.getData('text/plain');
+          const targetStage = col.getAttribute('data-stage');
+          const item = ITEMS.find(i => i.id === id);
+          if (item && item.stage !== targetStage && item.provider === 'local') {
+            item.stage = targetStage;
+            item.status = { category: stageToCategory(targetStage), label: targetStage };
+            const idx = STAGES.indexOf(targetStage);
+            if (item.workflow) item.workflow.currentIndex = idx >= 0 ? idx : 0;
+            renderBoard();
+            if (selectedId === id) renderDetail();
+            showToast(`Moved to ${targetStage}`);
+          }
+        });
+      });
+    }
+
+    function stageToCategory(stage) {
+      const map = { 'Backlog':'open', 'Ready':'open', 'In Progress':'in_progress', 'Review':'in_progress', 'Done':'done' };
+      return map[stage] || 'open';
+    }
+
+    /* ───────────────────────────────────────────────
+       RENDER: LIST
+       ─────────────────────────────────────────────── */
+    function updateCounts() {
+      const enabled = ITEMS.filter((it) => providerOn[it.provider]);
+      const openish = (it) => !['merged','done','cancelled'].includes(it.status.category);
+      document.getElementById('n-all').textContent = enabled.filter(openish).length;
+      document.getElementById('n-mine').textContent = enabled.filter((it) => openish(it) && ((it.assignees||[]).includes(ME)||it.author===ME)).length;
+      document.getElementById('n-local').textContent = enabled.filter((it) => it.kind==='local_task' && openish(it)).length;
+      document.getElementById('n-pr').textContent = enabled.filter((it) => it.kind==='pull_request' && openish(it)).length;
+      document.getElementById('n-issue').textContent = enabled.filter((it) => it.kind==='issue' && openish(it)).length;
+      document.getElementById('n-ticket').textContent = enabled.filter((it) => it.kind==='ticket' && openish(it)).length;
+    }
+
+    function renderList() {
+      const rows = filtered();
+      updateCounts();
+      document.getElementById('sbLeft').textContent = rows.length + ' items · List · ' + Object.entries(providerOn).filter(([,v])=>v).map(([k])=>k).join(', ');
+      const listEl = document.getElementById('list');
+      if (!rows.length) {
+        listEl.innerHTML = `<div class="detail-empty">没有匹配的工作项<br/><span class="muted">试试切换 Provider 或 Status</span></div>`;
+        return;
+      }
+      const groups = new Map();
+      for (const it of rows) { if (!groups.has(it.provider)) groups.set(it.provider, []); groups.get(it.provider).push(it); }
+      const html = [];
+      for (const [prov, items] of groups) {
+        html.push(`<div class="group-label">${prov}</div>`);
+        for (const it of items) {
+          const ki = kindIcon(it.kind);
+          const checks = it.pr?.checks ? `<span class="checks ${it.pr.checks.fail?'fail':'ok'}">✓${it.pr.checks.pass}${it.pr.checks.fail?' ✗'+it.pr.checks.fail:''}${it.pr.checks.pending?' ·'+it.pr.checks.pending:''}</span>` : '';
+          html.push(`
+            <button type="button" class="row ${selectedId===it.id?'active':''}" data-id="${it.id}" role="option" aria-selected="${selectedId===it.id}">
+              <span class="kind-ico ${ki.cls}">${ki.t}</span>
+              <span style="flex:1;min-width:0">
+                <span class="row-top">
+                  <span class="row-title truncate">${escapeHtml(it.title)}</span>
+                </span>
+                <div class="row-meta">
+                  <span class="mono muted" style="font-size:9px">${escapeHtml(it.key || it.id)}</span>
+                  <span style="font-size:10px;color:var(--text-muted)">${it.stage || ''}</span>
+                  ${checks}
+                  ${(it.labels||[]).slice(0,2).map((l) => `<span class="label">${escapeHtml(l)}</span>`).join('')}
+                  ${relTime(it.updatedAt) ? `<span class="muted" style="font-size:9px">${relTime(it.updatedAt)}</span>` : ''}
+                </div>
+              </span>
+            </button>
+          `);
+        }
+      }
+      listEl.innerHTML = html.join('');
+      listEl.querySelectorAll('.row').forEach((row) => {
+        row.addEventListener('click', () => {
+          selectedId = row.getAttribute('data-id');
+          renderList();
+          renderDetail();
+        });
+      });
+    }
+
+    /* ───────────────────────────────────────────────
+       RENDER: DETAIL
+       ─────────────────────────────────────────────── */
+    function renderDetail() {
+      const it = ITEMS.find((x) => x.id === selectedId);
+      const empty = document.getElementById('detailEmpty');
+      const content = document.getElementById('detailContent');
+      if (!it) {
+        empty.classList.remove('hidden');
+        content.classList.add('hidden');
+        return;
+      }
+      empty.classList.add('hidden');
+      content.classList.remove('hidden');
+
+      // Stage rail
+      const stages = it.workflow?.stages || STAGES;
+      const currentIdx = it.workflow?.currentIndex ?? Math.max(0, stages.indexOf(it.stage));
+      const currentStage = stages[currentIdx] || it.stage;
+      let railHtml = '<div class="stage-rail">';
+      stages.forEach((s, i) => {
+        const isActive = i === currentIdx;
+        const isTransitionable = Math.abs(i - currentIdx) === 1;
+        const dotClass = isActive ? 'active' : (isTransitionable ? 'transitionable' : '');
+        const labelClass = isActive ? 'active' : '';
+        if (i > 0) railHtml += '<div class="stage-connector"></div>';
+        railHtml += `<span class="stage-node" data-stage="${s}" data-idx="${i}">
+          <span class="dot ${dotClass}"></span>
+          <span class="s-label ${labelClass}">${s}</span>
+        </span>`;
+      });
+      railHtml += '</div>';
+
+      // Actions
+      const isLocal = it.provider === 'local';
+      const actionsHtml = `
+        <div class="actions">
+          ${isLocal ? `<button class="action-btn primary" type="button" id="detailEdit">✏️ Edit</button>` : ''}
+          ${isLocal ? `<button class="action-btn danger" type="button" id="detailDelete">🗑 Delete</button>` : ''}
+          ${it.capabilities?.includes('open') ? `<button class="action-btn" type="button">🌐 Open in Browser</button>` : ''}
+          ${it.capabilities?.includes('checkout') ? `<button class="action-btn" type="button">⬇ Checkout</button>` : ''}
+          ${it.capabilities?.includes('merge') ? `<button class="action-btn" type="button">🔀 Merge</button>` : ''}
+          ${it.capabilities?.includes('comment') ? `<button class="action-btn" type="button">💬 Comment</button>` : ''}
+          <button class="action-btn" type="button" id="detailAssign">👤 Assign</button>
+        </div>
+      `;
+
+      // Labels
+      const labelsHtml = (it.labels||[]).map(l => `<span class="label">${escapeHtml(l)}</span>`).join('');
+
+      content.innerHTML = `
+        ${railHtml}
+        <div class="detail-head">
+          <h3>${escapeHtml(it.title)}</h3>
+          <div class="detail-meta">
+            <span class="prov ${providerClass(it.provider)}">${it.provider}</span>
+            <span class="mono" style="font-size:11px;color:var(--text-muted)">${escapeHtml(it.key || it.id)}</span>
+            <span style="font-size:10px;padding:1px 6px;border-radius:999px;border:1px solid var(--border);background:var(--bg-tertiary)">${it.status.label}</span>
+            ${it.priority !== undefined ? `<span class="priority p${it.priority}">P${it.priority}</span>` : ''}
+            ${labelsHtml}
+          </div>
+          <div style="margin-top:6px;font-size:11px;color:var(--text-muted)">
+            ${it.author ? `<span>@${it.author}</span>` : ''}
+            ${it.assignees?.length ? ` · assignees: ${it.assignees.map(a => '@'+a).join(', ')}` : ''}
+            ${it.updatedAt ? ` · updated ${relTime(it.updatedAt)} ago` : ''}
+          </div>
+        </div>
+        ${actionsHtml}
+        <div class="detail-body">
+          <div class="detail-section">
+            <h4>Description</h4>
+            <div>${escapeHtml(it.body || 'No description')}</div>
+          </div>
+          ${it.pr ? `
+          <div class="detail-section">
+            <h4>Pull Request</h4>
+            <div style="font-size:11px">
+              <div>${it.pr.sourceBranch} → ${it.pr.targetBranch}</div>
+              ${it.pr.checks ? `<div>Checks: ✓${it.pr.checks.pass} ${it.pr.checks.fail?'✗'+it.pr.checks.fail:''} ${it.pr.checks.pending?'·'+it.pr.checks.pending+' pending':''}</div>` : ''}
+              ${it.pr.reviewDecision ? `<div>Review: ${it.pr.reviewDecision}</div>` : ''}
+            </div>
+          </div>` : ''}
+        </div>
+      `;
+
+      // Stage rail click → transition
+      content.querySelectorAll('.stage-node').forEach((node) => {
+        node.addEventListener('click', () => {
+          const targetStage = node.getAttribute('data-stage');
+          const targetIdx = parseInt(node.getAttribute('data-idx'));
+          if (targetIdx === currentIdx) return;
+          if (Math.abs(targetIdx - currentIdx) !== 1 && isLocal) {
+            showToast('Cannot transition: must move one stage at a time');
+            return;
+          }
+          if (!isLocal) {
+            showToast(`Transition to "${targetStage}" — requires provider API`);
+            return;
+          }
+          it.stage = targetStage;
+          it.status = { category: stageToCategory(targetStage), label: targetStage };
+          it.workflow.currentIndex = targetIdx;
+          renderBoard();
+          renderDetail();
+          showToast(`Moved to ${targetStage}`);
+        });
+      });
+
+      // Edit button
+      const editBtn = document.getElementById('detailEdit');
+      if (editBtn) editBtn.addEventListener('click', () => openEditDialog(it));
+
+      // Delete button
+      const delBtn = document.getElementById('detailDelete');
+      if (delBtn) delBtn.addEventListener('click', () => openDeleteDialog(it));
+    }
+
+    /* ───────────────────────────────────────────────
+       DIALOG: Create / Edit
+       ─────────────────────────────────────────────── */
+    const overlay = document.getElementById('taskDialogOverlay');
+    const dialogTitle = document.getElementById('dialogTitle');
+    const fieldTitle = document.getElementById('fieldTitle');
+    const fieldDesc = document.getElementById('fieldDesc');
+    const fieldStage = document.getElementById('fieldStage');
+    const fieldPriority = document.getElementById('fieldPriority');
+    const fieldAssign = document.getElementById('fieldAssign');
+    const fieldLabels = document.getElementById('fieldLabels');
+    const dialogConfirm = document.getElementById('dialogConfirm');
+
+    function openCreateDialog(presetStage) {
+      editingId = null;
+      dialogTitle.textContent = 'Create Task';
+      dialogConfirm.textContent = 'Create';
+      fieldTitle.value = '';
+      fieldDesc.value = '';
+      fieldStage.value = presetStage || 'Backlog';
+      fieldPriority.value = '2';
+      fieldAssign.value = ME;
+      fieldLabels.value = '';
+      overlay.classList.add('open');
+      setTimeout(() => fieldTitle.focus(), 100);
+    }
+
+    function openEditDialog(item) {
+      editingId = item.id;
+      dialogTitle.textContent = 'Edit Task';
+      dialogConfirm.textContent = 'Save Changes';
+      fieldTitle.value = item.title || '';
+      fieldDesc.value = item.body || '';
+      fieldStage.value = item.stage || 'Backlog';
+      fieldPriority.value = String(item.priority ?? 2);
+      fieldAssign.value = (item.assignees||[]).join(', ');
+      fieldLabels.value = (item.labels||[]).join(', ');
+      overlay.classList.add('open');
+      setTimeout(() => fieldTitle.focus(), 100);
+    }
+
+    function closeDialog() {
+      overlay.classList.remove('open');
+      editingId = null;
+    }
+
+    function handleDialogSubmit() {
+      const title = fieldTitle.value.trim();
+      if (!title) { showToast('Title is required'); return; }
+
+      const stage = fieldStage.value;
+      const priority = parseInt(fieldPriority.value);
+      const assignees = fieldAssign.value.trim() ? fieldAssign.value.split(',').map(s => s.trim()).filter(Boolean) : [];
+      const labels = fieldLabels.value.trim() ? fieldLabels.value.split(',').map(s => s.trim()).filter(Boolean) : [];
+
+      if (editingId) {
+        // EDIT existing
+        const item = ITEMS.find(i => i.id === editingId);
+        if (!item) { closeDialog(); return; }
+        const oldStage = item.stage;
+        item.title = title;
+        item.body = fieldDesc.value.trim();
+        item.stage = stage;
+        item.priority = priority;
+        item.assignees = assignees;
+        item.labels = labels;
+        item.status = { category: stageToCategory(stage), label: stage };
+        const idx = STAGES.indexOf(stage);
+        if (item.workflow) item.workflow.currentIndex = idx >= 0 ? idx : 0;
+        item.updatedAt = new Date().toISOString();
+        closeDialog();
+        renderBoard();
+        if (selectedId === editingId) renderDetail();
+        showToast(`Task updated: "${title}"`);
+      } else {
+        // CREATE new
+        const stageIdx = STAGES.indexOf(stage);
+        const newItem = {
+          id: genLocalId(),
+          provider: 'local',
+          kind: 'local_task',
+          title,
+          key: newLocalKey(),
+          status: { category: stageToCategory(stage), label: stage },
+          projectKey: 'neeko-design',
+          author: ME,
+          assignees,
+          labels,
+          priority,
+          stage,
+          capabilities: ['transition','assign','open'],
+          body: fieldDesc.value.trim() || '',
+          workflow: { stages: STAGES, currentIndex: stageIdx >= 0 ? stageIdx : 0 },
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        };
+        ITEMS.push(newItem);
+        closeDialog();
+        renderBoard();
+        // Auto-select the new item
+        selectedId = newItem.id;
+        if (currentView === 'list') { renderList(); renderDetail(); }
+        showToast(`Task created: "${title}"`);
+      }
+    }
+
+    /* ───────────────────────────────────────────────
+       DIALOG: Delete Confirmation
+       ─────────────────────────────────────────────── */
+    const deleteOverlay = document.getElementById('deleteOverlay');
+    const deleteItemTitle = document.getElementById('deleteItemTitle');
+
+    function openDeleteDialog(item) {
+      deletingId = item.id;
+      deleteItemTitle.textContent = `"${item.title}"`;
+      deleteOverlay.classList.add('open');
+    }
+
+    function closeDeleteDialog() {
+      deleteOverlay.classList.remove('open');
+      deletingId = null;
+    }
+
+    function handleDeleteConfirm() {
+      if (!deletingId) return;
+      const idx = ITEMS.findIndex(i => i.id === deletingId);
+      if (idx === -1) { closeDeleteDialog(); return; }
+      const deleted = ITEMS[idx];
+      ITEMS.splice(idx, 1);
+      const wasSelected = selectedId === deletingId;
+      if (wasSelected) { selectedId = null; }
+      closeDeleteDialog();
+      renderBoard();
+      if (currentView === 'list') {
+        if (wasSelected) { document.getElementById('detailEmpty').classList.remove('hidden'); document.getElementById('detailContent').classList.add('hidden'); }
+        renderList();
+      }
+      showToast(`Task deleted: "${deleted.title}"`, () => {
+        // Undo
+        ITEMS.splice(idx, 0, deleted);
+        selectedId = deleted.id;
+        renderBoard();
+        if (currentView === 'list') renderList();
+        showToast('Task restored');
+      });
+    }
+
+    /* ───────────────────────────────────────────────
+       VIEW SWITCHING
+       ─────────────────────────────────────────────── */
+    function switchView(view) {
+      currentView = view;
+      document.querySelectorAll('.view-tab[data-view]').forEach((t) => t.classList.toggle('active', t.getAttribute('data-view') === view));
+      document.getElementById('boardView').classList.toggle('hidden', view !== 'board');
+      document.getElementById('listView').classList.toggle('hidden', view !== 'list');
+      if (view === 'board') renderBoard();
+      else { renderList(); renderDetail(); }
+    }
+
+    /* ───────────────────────────────────────────────
+       EVENT BINDING
+       ─────────────────────────────────────────────── */
+    // View tabs
+    document.querySelectorAll('.view-tab[data-view]').forEach((btn) => {
+      btn.addEventListener('click', () => switchView(btn.getAttribute('data-view')));
+    });
+
+    // Kind tabs (list view)
+    document.querySelectorAll('.view-tab[data-kind]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        kindTab = btn.getAttribute('data-kind');
+        document.querySelectorAll('.view-tab[data-kind]').forEach((t) => t.classList.toggle('active', t.getAttribute('data-kind') === kindTab));
+        renderList();
+      });
+    });
+
+    // Provider pills
+    document.querySelectorAll('.pill[data-provider]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const prov = btn.getAttribute('data-provider');
+        if (prov === 'all') {
+          const allOn = Object.values(providerOn).every(v => v);
+          const newVal = !allOn;
+          for (const k of Object.keys(providerOn)) providerOn[k] = newVal;
+          document.querySelectorAll('.pill[data-provider]').forEach((p) => p.classList.toggle('active', p.getAttribute('data-provider') === 'all' ? newVal : newVal));
+        } else {
+          providerOn[prov] = !providerOn[prov];
+          btn.classList.toggle('active', providerOn[prov]);
+        }
+        if (currentView === 'board') renderBoard();
+        else renderList();
+      });
+    });
+
+    // Search
+    document.getElementById('search').addEventListener('input', (e) => {
+      search = e.target.value;
+      if (currentView === 'board') renderBoard();
+      else renderList();
+    });
+
+    // Status filter
+    document.getElementById('statusFilter').addEventListener('change', (e) => {
+      statusFilter = e.target.value;
+      if (currentView === 'board') renderBoard();
+      else renderList();
+    });
+
+    // Sort filter
+    document.getElementById('sortFilter').addEventListener('change', (e) => {
+      sortFilter = e.target.value;
+      if (currentView === 'board') renderBoard();
+      else renderList();
+    });
+
+    // New Task button
+    document.getElementById('btnNewTask').addEventListener('click', () => openCreateDialog('Backlog'));
+
+    // Refresh button
+    document.getElementById('btnRefresh').addEventListener('click', () => {
+      if (currentView === 'board') renderBoard();
+      else renderList();
+      showToast('Refreshed');
+    });
+
+    // Connect button (placeholder)
+    document.getElementById('btnConnect').addEventListener('click', () => {
+      showToast('Settings → Integrations: Configure providers');
+    });
+
+    // Dialog events
+    document.getElementById('dialogClose').addEventListener('click', closeDialog);
+    document.getElementById('dialogCancel').addEventListener('click', closeDialog);
+    dialogConfirm.addEventListener('click', handleDialogSubmit);
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) closeDialog(); });
+
+    // Delete dialog events
+    document.getElementById('deleteClose').addEventListener('click', closeDeleteDialog);
+    document.getElementById('deleteCancel').addEventListener('click', closeDeleteDialog);
+    document.getElementById('deleteConfirm').addEventListener('click', handleDeleteConfirm);
+    deleteOverlay.addEventListener('click', (e) => { if (e.target === deleteOverlay) closeDeleteDialog(); });
+
+    // Keyboard shortcuts
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        if (overlay.classList.contains('open')) closeDialog();
+        else if (deleteOverlay.classList.contains('open')) closeDeleteDialog();
+      }
+      if ((e.metaKey || e.ctrlKey) && e.key === 'n' && !overlay.classList.contains('open')) {
+        e.preventDefault();
+        openCreateDialog('Backlog');
+      }
+      if (e.key === 'Delete' && selectedId && currentView === 'list' && !overlay.classList.contains('open')) {
+        const item = ITEMS.find(i => i.id === selectedId);
+        if (item && item.provider === 'local') openDeleteDialog(item);
+      }
+    });
+
+    // Enter in dialog
+    fieldTitle.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); handleDialogSubmit(); } });
+
+    /* ───────────────────────────────────────────────
+       INITIAL RENDER
+       ─────────────────────────────────────────────── */
+    renderBoard();
+    document.getElementById('sbLeft').textContent = ITEMS.length + ' items · Board';
+    document.getElementById('sbRight').textContent = 'CRUD: Create · Edit · Delete · Stage Transition · Drag & Drop';
+  </script>
+</body>
+</html>
