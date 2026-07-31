@@ -2,6 +2,7 @@ import { listen } from '@tauri-apps/api/event';
 import type { UnlistenFn } from '@tauri-apps/api/event';
 import { useEffect } from 'react';
 
+import { FILE_CHANGED_EVENT } from '@/shared/events';
 import type { FileChangedEvent } from '@/shared/types';
 
 type Callback = (event: FileChangedEvent) => void;
@@ -12,7 +13,7 @@ let refCount = 0;
 
 function ensureListening() {
   if (refCount === 0) {
-    listen<FileChangedEvent>('file-changed', (event) => {
+    listen<FileChangedEvent>(FILE_CHANGED_EVENT, (event) => {
       for (const cb of subscribers) cb(event.payload);
     }).then((unlisten) => {
       sharedUnlisten = unlisten;

@@ -47,4 +47,7 @@ src-tauri/gen/
 tsconfig.app.tsbuildinfo
 nul
 
+# Git worktrees
+.worktrees/
+
 reasonix.toml

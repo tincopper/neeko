@@ -20,18 +20,15 @@ pub fn detect_provider(remote_url: &str) -> GitProvider {
     }
 }
 
-/// 执行 git remote get-url origin（同步，local 使用）
+/// 执行 git remote get-url origin（同步）。
+/// 通过 git2 直接读取 `.git/config`：零子进程、零 tokio runtime，
+/// 可在 async command 调用链中安全调用（无 runtime-in-runtime panic）。
+/// git2 原生支持 linked worktree 的 `.git` 指针文件。
 pub fn get_git_provider(repo_path: &Path) -> Result<GitProvider> {
-    let output = std::process::Command::new("git")
-        .args(["remote", "get-url", "origin"])
-        .current_dir(repo_path)
-        .output()?;
-    if output.status.success() {
-        let url = String::from_utf8_lossy(&output.stdout);
-        Ok(detect_provider(&url))
-    } else {
-        Ok(GitProvider::Unknown)
-    }
+    let repo = git2::Repository::open(repo_path)?;
+    let remote = repo.find_remote("origin")?;
+    let url = remote.url().unwrap_or_default();
+    Ok(detect_provider(url))
 }
 
 #[cfg(test)]
@@ -110,5 +107,40 @@ mod tests {
     #[test]
     fn test_detect_nonsense() {
         assert_eq!(detect_provider("not-a-url"), GitProvider::Unknown);
+    }
+
+    /// 临时仓库 + origin remote（GitHub）→ 返回 GitHub
+    #[test]
+    fn get_git_provider_detects_github_origin() {
+        let tmp = tempfile::tempdir().unwrap();
+        let repo = git2::Repository::init(tmp.path()).unwrap();
+        repo.remote("origin", "https://github.com/user/repo.git")
+            .unwrap();
+        assert_eq!(get_git_provider(tmp.path()).unwrap(), GitProvider::GitHub);
+    }
+
+    /// 临时仓库 + origin remote（GitLab）→ 返回 GitLab
+    #[test]
+    fn get_git_provider_detects_gitlab_origin() {
+        let tmp = tempfile::tempdir().unwrap();
+        let repo = git2::Repository::init(tmp.path()).unwrap();
+        repo.remote("origin", "git@gitlab.com:user/repo.git")
+            .unwrap();
+        assert_eq!(get_git_provider(tmp.path()).unwrap(), GitProvider::GitLab);
+    }
+
+    /// 仓库存在但无 origin → 返回 Err（调用方 unwrap_or(Unknown) 兜底）
+    #[test]
+    fn get_git_provider_returns_err_without_origin() {
+        let tmp = tempfile::tempdir().unwrap();
+        git2::Repository::init(tmp.path()).unwrap();
+        assert!(get_git_provider(tmp.path()).is_err());
+    }
+
+    /// 非 git 目录 → 返回 Err（不 panic）
+    #[test]
+    fn get_git_provider_returns_err_for_non_repo() {
+        let tmp = tempfile::tempdir().unwrap();
+        assert!(get_git_provider(tmp.path()).is_err());
     }
 }

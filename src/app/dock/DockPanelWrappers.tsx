@@ -20,6 +20,7 @@ import LibraryPanel from '@/features/library/components/LibraryPanel';
 import { useActiveProject } from '@/features/project/hooks/use-active-project';
 import SkillsPanel from '@/features/skill/components/SkillsPanel';
 import { useAppContext } from '@/shared/contexts';
+import { FILE_TREE_CHANGED_EVENT } from '@/shared/events';
 import { useEditorStore } from '@/shared/store';
 import { useDockStore } from '@/shared/store/dockStore';
 import { useGitStore } from '@/shared/store/gitStore';
@@ -123,7 +124,7 @@ const FilesPanelWrapper: React.FC = React.memo(() => {
   // 静默刷新：不设 fileViewLoading，旧树保持展示直到新数据到达，避免闪烁
   // 仅本地项目响应此事件（WSL/Remote 不经过本地 notify watcher）
   useEffect(() => {
-    const unlistenPromise = listen<FileTreeChangedEvent>('file-tree-changed', (event) => {
+    const unlistenPromise = listen<FileTreeChangedEvent>(FILE_TREE_CHANGED_EVENT, (event) => {
       const { project_id } = event.payload;
       // 只响应当前活动项目的事件
       if (!activeProjectId || project_id !== activeProjectId) return;

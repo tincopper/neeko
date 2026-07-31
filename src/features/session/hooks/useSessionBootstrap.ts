@@ -1,8 +1,10 @@
 import { listen } from '@tauri-apps/api/event';
 import { useState, useEffect } from 'react';
 
+import { GIT_CHANGED_EVENT, GIT_STATUS_DIFF_EVENT } from '@/shared/events';
 import { useGitStore } from '@/shared/store/gitStore';
 import { useProjectStore } from '@/shared/store/projectStore';
+import { useWorktreeStore } from '@/shared/store/worktreeStore';
 import type { FileChange, Worktree, GitStatusDiff } from '@/shared/types';
 import { aheadBehindKey } from '@/shared/utils/aheadBehindKey';
 
@@ -12,7 +14,7 @@ import { getWorktreeChangedFiles, getGitBranchInfo, getAheadBehind } from '../..
 import { listProjects } from '../../project/api/projectApi';
 import { loadSession } from '../api/sessionApi';
 
-/** 将后�?git status 字符串映射为前端 FileChange.status */
+/** 将后端 git status 字符串映射为前端 FileChange.status */
 function mapGitStatus(status: string): FileChange['status'] {
   switch (status) {
     case 'Untracked':
@@ -68,7 +70,7 @@ export function useSessionBootstrap(deps: {
 
         for (const p of projects) {
           if (!p.git_info?.changed_files?.length) {
-            // split 轻量路径：与 watcher git-changed 处理一致，避免重量�?refresh_git_info
+            // split 轻量路径：与 watcher git-changed 处理一致，避免重量级 refresh_git_info
             getWorktreeChangedFiles(p.id, '')
               .then((changedFiles) => {
                 patchGitInfo(p.id, {
@@ -161,10 +163,13 @@ export function useSessionBootstrap(deps: {
       })
       .catch(console.error);
 
-    const unlistenPromise = listen<string>('git-changed', (event) => {
+    const unlistenPromise = listen<string>(GIT_CHANGED_EVENT, (event) => {
       const projectId = event.payload;
+      // worktree 激活时按 activeWorktreePath 刷新（HEAD watcher 监听 .git/worktrees
+      // 目录后，worktree 内切分支也会触发本事件，需请求 worktree 的数据）
+      const worktreePath = useWorktreeStore.getState().activeWorktreePath ?? '';
 
-      // split 轻量路径：分别获�?changed_files �?branch_info，避免全�?refresh_git_info
+      // split 轻量路径：分别获取 changed_files 与 branch_info，避免全量 refresh_git_info
       const defaultGitInfo = {
         current_branch: '',
         branches: [] as string[],
@@ -191,17 +196,22 @@ export function useSessionBootstrap(deps: {
       };
 
       // 1. 获取变更文件列表（轻量）
-      getWorktreeChangedFiles(projectId, '')
+      getWorktreeChangedFiles(projectId, worktreePath)
         .then((changedFiles) => {
           updateGitInfo({ changed_files: changedFiles, is_clean: changedFiles.length === 0 });
         })
         .catch((e) => console.error('[SessionBootstrap] get_worktree_changed_files failed:', e));
 
       // 2. 获取分支信息（异步，不阻塞文件列表更新）
-      getGitBranchInfo(projectId)
+      getGitBranchInfo(projectId, worktreePath)
         .then((branchInfo) => {
+          // worktree 激活时保留 local 主分支名，避免 local 入口分支名跟随 worktree 变动
+          const currentBranch = worktreePath
+            ? (useProjectStore.getState().projects.find((p) => p.id === projectId)?.git_info
+                ?.current_branch ?? branchInfo.current_branch)
+            : branchInfo.current_branch;
           updateGitInfo({
-            current_branch: branchInfo.current_branch,
+            current_branch: currentBranch,
             branches: branchInfo.branches,
             worktrees: branchInfo.worktrees,
           });
@@ -209,15 +219,15 @@ export function useSessionBootstrap(deps: {
         .catch((e) => console.error('[SessionBootstrap] get_git_branch_info_command failed:', e));
 
       // 3. 同步 ahead/behind（待 push / 待 pull 数量），与 changed_files 一并刷新
-      getAheadBehind(projectId)
+      getAheadBehind(projectId, worktreePath)
         .then((ab) => {
           useGitStore.getState().setAheadBehind(aheadBehindKey('local', projectId, projectId), ab);
         })
         .catch((e) => console.error('[SessionBootstrap] get_ahead_behind failed:', e));
     });
 
-    // 增量 diff 事件：直�?patch store，无需重新请求后端
-    const unlistenDiffPromise = listen<GitStatusDiff>('git-status-diff', (event) => {
+    // 增量 diff 事件：直接 patch store，无需重新请求后端
+    const unlistenDiffPromise = listen<GitStatusDiff>(GIT_STATUS_DIFF_EVENT, (event) => {
       const diff = event.payload;
       if (!diff.project_id) return;
       useProjectStore.getState().patchChangedFiles(diff.project_id, {

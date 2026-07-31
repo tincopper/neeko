@@ -409,13 +409,16 @@ fn serialize_files_for_diff(files: &[GitStatusFile]) -> String {
 }
 
 /// 运行 `git diff --numstat`（unstaged + cached）并返回 path → (additions, deletions)
+/// 与 `git_status_porcelain` 一致走 `local::exec("git")` 直连：
+/// Windows 直连可执行文件（CREATE_NO_WINDOW），Unix 直连 git 二进制，
+/// 不经过 transport 的 `sh -c` 包裹，避免无 sh 环境下静默失败。
 #[allow(clippy::cast_possible_truncation, clippy::cast_possible_wrap)]
 fn get_numstat_map(repo_path: &Path) -> HashMap<String, (i32, i32)> {
     let path_str = repo_path.to_str().unwrap_or(".");
     let mut map: HashMap<String, (i32, i32)> = HashMap::new();
 
     // Unstaged changes
-    if let Ok(output) = std::process::Command::new("git")
+    if let Ok(output) = local::exec("git")
         .args(["-C", path_str, "diff", "--numstat"])
         .output()
     {
@@ -429,7 +432,7 @@ fn get_numstat_map(repo_path: &Path) -> HashMap<String, (i32, i32)> {
     }
 
     // Staged changes
-    if let Ok(output) = std::process::Command::new("git")
+    if let Ok(output) = local::exec("git")
         .args(["-C", path_str, "diff", "--cached", "--numstat"])
         .output()
     {
@@ -645,5 +648,36 @@ mod tests {
         assert_eq!(diff.added[0].additions, 10);
         assert_eq!(diff.added[0].deletions, 4);
         assert!(diff.modified.is_empty());
+    }
+
+    /// 修改未暂存文件 → numstat 映射包含该文件与增删行数
+    #[test]
+    fn get_numstat_map_counts_unstaged() {
+        let (tmp, _repo) = create_repo_with_commit();
+        let path = tmp.path();
+        // 原内容 "# Test\n"（1 行）→ 改为替换首行 + 新增 1 行：
+        // git 行对齐 diff 删除原行、添加新行 → unstaged numstat = +2 -1
+        std::fs::write(path.join("README.md"), "# Changed\nline2\n").unwrap();
+
+        let map = get_numstat_map(path);
+        assert_eq!(map.get("README.md"), Some(&(2, 1)));
+    }
+
+    /// 暂存修改后 → cached diff 计入 numstat 映射
+    #[test]
+    fn get_numstat_map_counts_staged() {
+        let (tmp, repo) = create_repo_with_commit();
+        let path = tmp.path();
+        // 原内容 "# Test\n"（1 行）→ 改为替换首行 + 新增 1 行：
+        // staged diff = +2 -1
+        std::fs::write(path.join("README.md"), "# Changed\nline2\n").unwrap();
+        {
+            let mut index = repo.index().unwrap();
+            index.add_path(std::path::Path::new("README.md")).unwrap();
+            index.write().unwrap();
+        }
+
+        let map = get_numstat_map(path);
+        assert_eq!(map.get("README.md"), Some(&(2, 1)));
     }
 }

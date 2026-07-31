@@ -15,6 +15,17 @@ use std::{
 };
 use tauri::{AppHandle, Emitter};
 
+// ── Event 名称常量（单一事实源，前端经 shared/events.ts 同步引用）───────────
+
+/// 文件内容变更事件：`file-changed`
+pub const FILE_CHANGED_EVENT: &str = "file-changed";
+/// 文件树结构变更事件：`file-tree-changed`
+pub const FILE_TREE_CHANGED_EVENT: &str = "file-tree-changed";
+/// Git 增量 diff 事件：`git-status-diff`
+pub const GIT_STATUS_DIFF_EVENT: &str = "git-status-diff";
+/// Git 状态变更事件（兼容旧监听的全量刷新 fallback）：`git-changed`
+pub const GIT_CHANGED_EVENT: &str = "git-changed";
+
 // ── 文件变更事件 ──────────────────────────────────────────────────────────────
 
 /// 文件内容变更事件 payload，发送给前端用于刷新已打开的 tab
@@ -133,7 +144,7 @@ impl DebounceSender {
                                     project_id,
                                     event.paths.len()
                                 );
-                                let _ = app_handle.emit("file-changed", &event);
+                                let _ = app_handle.emit(FILE_CHANGED_EVENT, &event);
                             }
                             deadline = None;
                         }
@@ -183,9 +194,13 @@ impl TreeChangeDebounceSender {
                     }
 
                     // 窗口结束，emit 一次 file-tree-changed
-                    log::debug!("[TreeDebounce:{}] Emitting file-tree-changed", project_id);
+                    log::debug!(
+                        "[TreeDebounce:{}] Emitting {}",
+                        project_id,
+                        FILE_TREE_CHANGED_EVENT
+                    );
                     let _ = app_handle.emit(
-                        "file-tree-changed",
+                        FILE_TREE_CHANGED_EVENT,
                         &FileTreeChangedEvent {
                             project_id: project_id.clone(),
                         },
@@ -292,9 +307,9 @@ impl WatcherManager {
         let worker = GitStatusWorker::start(path.clone(), move |mut diff: GitStatusDiff| {
             diff.project_id = pid_emit.clone();
             // 增量 diff 事件
-            let _ = app_for_diff.emit("git-status-diff", &diff);
+            let _ = app_for_diff.emit(GIT_STATUS_DIFF_EVENT, &diff);
             // 同时发 git-changed 作为 fallback（兼容旧监听）
-            let _ = app_for_legacy.emit("git-changed", &pid_for_legacy);
+            let _ = app_for_legacy.emit(GIT_CHANGED_EVENT, &pid_for_legacy);
         });
 
         // 2. 创建 ThrottleScheduler -- 合并 notify 事件，驱动 worker.check()
@@ -385,41 +400,86 @@ impl WatcherManager {
         // 4b. 创建 HEAD watcher -- 单独监听 .git/HEAD（分支切换），
         // 绕过 should_ignore_path（该过滤会丢弃 .git 内事件，导致 checkout 后
         // git worker 无法感知分支变化，changes 列表残留旧分支数据）
+        // 同时监听 .git/worktrees 目录：linked worktree 内 checkout 会改写
+        // `.git/worktrees/<name>/HEAD`，主仓库 .git/HEAD 不变，需一并捕获。
         let head_watcher = resolve_git_head_path(&path).and_then(|head_path| {
+            // 判断是否存在 linked worktree（决定是否需要全量 emit 兜底）。
+            // 普通仓库无 worktree：主仓库 HEAD 变更走 worker 增量路径即可，
+            // 避免 git-changed 全量与 git-status-diff 增量双路径并发。
+            let has_worktrees = head_path
+                .parent()
+                .map(|d| d.join("worktrees").is_dir())
+                .unwrap_or(false);
             let head_scheduler_tx = scheduler.sender();
             let pid_head_log = project_id.clone();
             let pid_head_emit = project_id.clone();
+            let app_for_head = app_handle.clone();
             let head_result = RecommendedWatcher::new(
                 move |result: Result<Event, notify::Error>| {
                     if result.is_ok() {
                         log::debug!(
-                            "[Watcher:{}] .git/HEAD changed, triggering git status",
+                            "[Watcher:{}] HEAD changed, triggering git status",
                             pid_head_emit
                         );
                         let _ = head_scheduler_tx.send(());
+                        // worktree 场景：HEAD 变更无法区分来源（主仓库 / worktree），
+                        // 直接全量刷新兜底，避免 worktree 内切分支残留旧 changes。
+                        if has_worktrees {
+                            let _ = app_for_head.emit(GIT_CHANGED_EVENT, &pid_head_emit);
+                        }
                     }
                 },
                 Config::default(),
             );
             match head_result {
-                Ok(mut head) => match head.watch(&head_path, RecursiveMode::NonRecursive) {
-                    Ok(()) => {
-                        log::info!(
-                            "[Watcher] Watching HEAD {} for {}",
-                            head_path.display(),
-                            pid_head_log
-                        );
-                        Some(head)
+                Ok(mut head) => {
+                    let mut watch_ok = match head.watch(&head_path, RecursiveMode::NonRecursive) {
+                        Ok(()) => {
+                            log::info!(
+                                "[Watcher] Watching HEAD {} for {}",
+                                head_path.display(),
+                                pid_head_log
+                            );
+                            true
+                        }
+                        Err(e) => {
+                            log::warn!(
+                                "[Watcher] watch HEAD error for {}: {}",
+                                head_path.display(),
+                                e
+                            );
+                            false
+                        }
+                    };
+                    // linked worktree 的 HEAD 位于 `<git_dir>/worktrees/<name>/HEAD`
+                    if let Some(git_dir) = head_path.parent() {
+                        let wt_dir = git_dir.join("worktrees");
+                        if wt_dir.is_dir() {
+                            match head.watch(&wt_dir, RecursiveMode::Recursive) {
+                                Ok(()) => {
+                                    log::info!(
+                                        "[Watcher] Watching worktree HEAD dir {} for {}",
+                                        wt_dir.display(),
+                                        pid_head_log
+                                    );
+                                    watch_ok = true;
+                                }
+                                Err(e) => {
+                                    log::warn!(
+                                        "[Watcher] watch worktree HEAD dir error for {}: {}",
+                                        wt_dir.display(),
+                                        e
+                                    );
+                                }
+                            }
+                        }
                     }
-                    Err(e) => {
-                        log::warn!(
-                            "[Watcher] watch HEAD error for {}: {}",
-                            head_path.display(),
-                            e
-                        );
+                    if watch_ok {
+                        Some(head)
+                    } else {
                         None
                     }
-                },
+                }
                 Err(e) => {
                     log::warn!(
                         "[Watcher] create HEAD watcher error for {}: {}",
@@ -535,5 +595,59 @@ mod tests {
     fn resolve_git_head_path_not_a_repo() {
         let tmp = tempfile::tempdir().unwrap();
         assert!(resolve_git_head_path(tmp.path()).is_none());
+    }
+
+    /// 主仓库 + linked worktree 并存：
+    /// 主仓库 HEAD 解析到 `.git/HEAD`，且 `.git/worktrees` 目录存在
+    /// （HEAD watcher 据此判定需要全量 emit 兜底，覆盖 worktree 场景）。
+    #[test]
+    fn resolve_git_head_path_with_linked_worktrees() {
+        let tmp = tempfile::tempdir().unwrap();
+        let main = tmp.path().join("main");
+        let main_repo = git2::Repository::init(&main).unwrap();
+
+        // 需要至少一个 commit 才能添加 worktree
+        let sig = git2::Signature::now("Test", "test@test.com").unwrap();
+        std::fs::write(main.join("README.md"), "# Test\n").unwrap();
+        {
+            let mut index = main_repo.index().unwrap();
+            index.add_path(std::path::Path::new("README.md")).unwrap();
+            index.write().unwrap();
+            let tree_id = index.write_tree().unwrap();
+            let tree = main_repo.find_tree(tree_id).unwrap();
+            main_repo
+                .commit(Some("HEAD"), &sig, &sig, "Initial commit", &tree, &[])
+                .unwrap();
+        }
+
+        // 添加 linked worktree（git worktree add 等价操作）
+        let wt = tmp.path().join("wt");
+        main_repo
+            .worktree("dev", &wt, None)
+            .expect("should add worktree");
+
+        // 主仓库 HEAD 仍是 `.git/HEAD`
+        let main_head = resolve_git_head_path(&main).expect("should resolve main HEAD");
+        assert_eq!(main_head, main.join(".git").join("HEAD"));
+
+        // `.git/worktrees` 目录存在 → has_worktrees 判定为 true
+        let wt_dir = main.join(".git").join("worktrees");
+        assert!(
+            wt_dir.is_dir(),
+            "linked worktree 应创建 .git/worktrees 目录"
+        );
+
+        // linked worktree 的 HEAD 解析到 worktree 专属 gitdir。
+        // macOS 上 /var 是 /private/var 符号链接，git2 写入的 gitdir 为 realpath，
+        // 比较前先 canonicalize 归一化路径。
+        let wt_head = resolve_git_head_path(&wt).expect("should resolve worktree HEAD");
+        let wt_head_canon = wt_head.canonicalize().unwrap_or(wt_head.clone());
+        let wt_dir_canon = wt_dir.canonicalize().unwrap_or(wt_dir.clone());
+        assert!(
+            wt_head_canon.starts_with(&wt_dir_canon),
+            "worktree HEAD 应位于 .git/worktrees/<name>/HEAD，实际 {}",
+            wt_head.display()
+        );
+        assert!(wt_head.ends_with("HEAD"));
     }
 }

@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef } from 'react';
 
 // eslint-disable-next-line import/no-restricted-paths -- browser panel sends terminal commands via terminal feature
 import { sendToTerminal } from '@/features/terminal/components/terminalCommands';
+import { GIT_CHANGED_EVENT } from '@/shared/events';
 import { useFileChangedEvent } from '@/shared/hooks/useFileChangedEvent';
 import { useEditorStore } from '@/shared/store';
 import { useDockStore } from '@/shared/store/dockStore';
@@ -393,7 +394,7 @@ export function useBrowserPanel({ showToast }: UseBrowserPanelOptions) {
     let cancelled = false;
     let unlisten: (() => void) | null = null;
 
-    listen<string>('git-changed', (event) => {
+    listen<string>(GIT_CHANGED_EVENT, (event) => {
       // Only react when auto-refresh is armed
       if (pendingRefreshTimer.current === null) return;
       // Only refresh for the active project
