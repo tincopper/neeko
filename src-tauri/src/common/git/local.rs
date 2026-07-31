@@ -1,7 +1,10 @@
 //! Local git operations (status, log, diff, branch, worktree, etc.).
 
+use crate::common::executor::factory::ExecTarget;
+use crate::common::executor::SpawnOptions;
+use crate::common::executor::{ExecError, ExecOutput};
 use crate::common::git::types::{DiffHunk, DiffLine, DiffResult};
-use crate::common::utils::command::local::exec;
+use crate::core::exec::collect_blocking_with;
 use crate::project::types::{
     CommitDetail, CommitEntry, CommitFileChange, FileChange, FileDiffStats, FileStatus,
     GitBranchInfo, GitInfo, GitProvider, Worktree,
@@ -15,6 +18,26 @@ use super::parsers::{
     collapse_diff_context, extract_commit_hash_from_output, parse_commit_log_output,
     parse_numstat_line, parse_unified_diff,
 };
+
+/// 统一命令执行：在本地同步运行 `program`（git / wc 等），返回原始输出（含非零退出码）。
+///
+/// 本模块是纯本地仓库操作，固定使用 `ExecTarget::Local`，经 `core::exec`
+/// 统一接口执行（PATH 解析 / Windows `CREATE_NO_WINDOW` 语义与旧 `local::exec`
+/// 对齐）。`current_dir` 为 `None` 时通过 `git -C` 指定仓库目录。
+fn run_cmd_local(
+    current_dir: Option<&Path>,
+    program: &str,
+    args: &[&str],
+) -> Result<ExecOutput, ExecError> {
+    let mut opts = SpawnOptions::new(program, args);
+    if let Some(dir) = current_dir {
+        let dir_str = dir
+            .to_str()
+            .ok_or_else(|| ExecError::InvalidConfig("non-UTF8 path".to_string()))?;
+        opts = opts.with_current_dir(dir_str);
+    }
+    collect_blocking_with(&ExecTarget::Local, opts)
+}
 
 /// Get full git information for the repository at `repo_path`.
 pub fn get_git_info(repo_path: &Path) -> Result<GitInfo> {
@@ -108,10 +131,11 @@ pub fn get_changed_files_from_repo(repo: &Repository) -> Result<Vec<FileChange>>
         let mut numstat: std::collections::HashMap<String, (usize, usize)> =
             std::collections::HashMap::new();
 
-        if let Ok(output) = exec("git")
-            .args(["-C", repo_path.to_str().unwrap_or("."), "diff", "--numstat"])
-            .output()
-        {
+        if let Ok(output) = run_cmd_local(
+            None,
+            "git",
+            &["-C", repo_path.to_str().unwrap_or("."), "diff", "--numstat"],
+        ) {
             for line in String::from_utf8_lossy(&output.stdout).lines() {
                 if let Some((add, del, path)) = parse_numstat_line(line) {
                     let entry = numstat.entry(path).or_insert((0, 0));
@@ -121,16 +145,17 @@ pub fn get_changed_files_from_repo(repo: &Repository) -> Result<Vec<FileChange>>
             }
         }
 
-        if let Ok(output) = exec("git")
-            .args([
+        if let Ok(output) = run_cmd_local(
+            None,
+            "git",
+            &[
                 "-C",
                 repo_path.to_str().unwrap_or("."),
                 "diff",
                 "--cached",
                 "--numstat",
-            ])
-            .output()
-        {
+            ],
+        ) {
             for line in String::from_utf8_lossy(&output.stdout).lines() {
                 if let Some((add, del, path)) = parse_numstat_line(line) {
                     let entry = numstat.entry(path).or_insert((0, 0));
@@ -190,17 +215,12 @@ pub fn get_changed_files_diff_stats(repo_path: &Path) -> Result<Vec<FileDiffStat
     // 使用缓存
     super::cache::get_cached_diff_stats(repo_path, || {
         // 1. 使用 git diff --numstat 获取已跟踪文件的 diff 统计
-        let unstaged_output = exec("git")
-            .args(["diff", "--numstat"])
-            .current_dir(repo_path)
-            .output()
+        let unstaged_output = run_cmd_local(Some(repo_path), "git", &["diff", "--numstat"])
             .context("Failed to run git diff --numstat")?;
 
-        let staged_output = exec("git")
-            .args(["diff", "--cached", "--numstat"])
-            .current_dir(repo_path)
-            .output()
-            .context("Failed to run git diff --cached --numstat")?;
+        let staged_output =
+            run_cmd_local(Some(repo_path), "git", &["diff", "--cached", "--numstat"])
+                .context("Failed to run git diff --cached --numstat")?;
 
         let mut stats: Vec<FileDiffStats> = Vec::new();
         let mut tracked_paths: std::collections::HashSet<String> = std::collections::HashSet::new();
@@ -239,11 +259,12 @@ pub fn get_changed_files_diff_stats(repo_path: &Path) -> Result<Vec<FileDiffStat
         }
 
         // 2. 处理未跟踪文件（使用 git ls-files --others 获取列表，wc -l 计数）
-        let untracked_output = exec("git")
-            .args(["ls-files", "--others", "--exclude-standard"])
-            .current_dir(repo_path)
-            .output()
-            .context("Failed to run git ls-files --others")?;
+        let untracked_output = run_cmd_local(
+            Some(repo_path),
+            "git",
+            &["ls-files", "--others", "--exclude-standard"],
+        )
+        .context("Failed to run git ls-files --others")?;
 
         let untracked_files = String::from_utf8_lossy(&untracked_output.stdout);
         for file_path in untracked_files.lines() {
@@ -272,9 +293,7 @@ pub fn get_changed_files_diff_stats(repo_path: &Path) -> Result<Vec<FileDiffStat
 
 /// 使用 wc -l 计算文件行数
 fn count_lines_with_wc(path: &Path) -> usize {
-    let output = exec("wc")
-        .args(["-l", path.to_str().unwrap_or("")])
-        .output();
+    let output = run_cmd_local(None, "wc", &["-l", path.to_str().unwrap_or("")]);
 
     match output {
         Ok(output) => {
@@ -304,10 +323,11 @@ fn get_worktrees(repo: &Repository) -> Vec<Worktree> {
                 let path = wt.path().to_path_buf();
                 // Use git command to get branch and head info (avoids N+1 repo opens)
                 let wt_path_str = path.to_str().unwrap_or(".");
-                if let Ok(output) = exec("git")
-                    .args(["-C", wt_path_str, "rev-parse", "--abbrev-ref", "HEAD"])
-                    .output()
-                {
+                if let Ok(output) = run_cmd_local(
+                    None,
+                    "git",
+                    &["-C", wt_path_str, "rev-parse", "--abbrev-ref", "HEAD"],
+                ) {
                     let branch = String::from_utf8_lossy(&output.stdout).trim().to_string();
                     let branch = if branch.is_empty() {
                         "HEAD".to_string()
@@ -315,9 +335,8 @@ fn get_worktrees(repo: &Repository) -> Vec<Worktree> {
                         branch
                     };
 
-                    if let Ok(output) = exec("git")
-                        .args(["-C", wt_path_str, "rev-parse", "HEAD"])
-                        .output()
+                    if let Ok(output) =
+                        run_cmd_local(None, "git", &["-C", wt_path_str, "rev-parse", "HEAD"])
                     {
                         let head = String::from_utf8_lossy(&output.stdout).trim().to_string();
                         let head = if head.is_empty() {
@@ -529,13 +548,10 @@ pub fn create_worktree(
         args.push(branch_name);
     }
 
-    let output = exec("git")
-        .args(&args)
-        .current_dir(repo_path)
-        .output()
-        .context("Failed to run git worktree add")?;
+    let output =
+        run_cmd_local(Some(repo_path), "git", &args).context("Failed to run git worktree add")?;
 
-    if !output.status.success() {
+    if output.exit_code != 0 {
         let stderr = String::from_utf8_lossy(&output.stderr);
         anyhow::bail!("git worktree add failed: {}", stderr.trim());
     }
@@ -547,13 +563,14 @@ pub fn remove_worktree(repo_path: &Path, worktree_path: &Path) -> Result<()> {
     let wt_path_str = worktree_path
         .to_str()
         .ok_or_else(|| anyhow::anyhow!("Invalid path"))?;
-    let output = exec("git")
-        .args(["worktree", "remove", "--force", wt_path_str])
-        .current_dir(repo_path)
-        .output()
-        .context("Failed to run git worktree remove")?;
+    let output = run_cmd_local(
+        Some(repo_path),
+        "git",
+        &["worktree", "remove", "--force", wt_path_str],
+    )
+    .context("Failed to run git worktree remove")?;
 
-    if !output.status.success() {
+    if output.exit_code != 0 {
         let stderr = String::from_utf8_lossy(&output.stderr);
         anyhow::bail!("git worktree remove failed: {}", stderr.trim());
     }
@@ -621,33 +638,36 @@ pub fn is_worktree_dirty(_repo_path: &Path, worktree_path: &Path) -> Result<bool
         .ok_or_else(|| anyhow::anyhow!("Invalid path"))?;
 
     // 检查已跟踪文件的修改
-    let diff_output = exec("git")
-        .args(["diff", "--quiet", "--"])
-        .current_dir(wt_path_str)
-        .output()
-        .context("Failed to run git diff")?;
+    let diff_output = run_cmd_local(
+        Some(Path::new(wt_path_str)),
+        "git",
+        &["diff", "--quiet", "--"],
+    )
+    .context("Failed to run git diff")?;
 
-    if !diff_output.status.success() {
+    if diff_output.exit_code != 0 {
         return Ok(true);
     }
 
     // 检查暂存区
-    let cached_output = exec("git")
-        .args(["diff", "--cached", "--quiet", "--"])
-        .current_dir(wt_path_str)
-        .output()
-        .context("Failed to run git diff --cached")?;
+    let cached_output = run_cmd_local(
+        Some(Path::new(wt_path_str)),
+        "git",
+        &["diff", "--cached", "--quiet", "--"],
+    )
+    .context("Failed to run git diff --cached")?;
 
-    if !cached_output.status.success() {
+    if cached_output.exit_code != 0 {
         return Ok(true);
     }
 
     // 检查未跟踪文件
-    let untracked_output = exec("git")
-        .args(["ls-files", "--others", "--exclude-standard"])
-        .current_dir(wt_path_str)
-        .output()
-        .context("Failed to run git ls-files")?;
+    let untracked_output = run_cmd_local(
+        Some(Path::new(wt_path_str)),
+        "git",
+        &["ls-files", "--others", "--exclude-standard"],
+    )
+    .context("Failed to run git ls-files")?;
 
     if !untracked_output.stdout.is_empty() {
         return Ok(true);
@@ -659,13 +679,10 @@ pub fn is_worktree_dirty(_repo_path: &Path, worktree_path: &Path) -> Result<bool
 /// 删除本地分支
 pub fn delete_branch(repo_path: &Path, branch_name: &str, force: bool) -> Result<()> {
     let flag = if force { "-D" } else { "-d" };
-    let output = exec("git")
-        .args(["branch", flag, branch_name])
-        .current_dir(repo_path)
-        .output()
+    let output = run_cmd_local(Some(repo_path), "git", &["branch", flag, branch_name])
         .context("Failed to run git branch -D")?;
 
-    if !output.status.success() {
+    if output.exit_code != 0 {
         let stderr = String::from_utf8_lossy(&output.stderr);
         // 分支不存在时不报错
         if stderr.contains("not found") || stderr.contains("does not exist") {
@@ -709,13 +726,14 @@ pub fn rename_worktree(repo_path: &Path, worktree_path: &Path, new_name: &str) -
         .to_str()
         .ok_or_else(|| anyhow::anyhow!("Invalid new worktree path"))?;
 
-    let output = exec("git")
-        .args(["worktree", "move", wt_old_str, wt_new_str])
-        .current_dir(repo_path)
-        .output()
-        .context("Failed to run git worktree move")?;
+    let output = run_cmd_local(
+        Some(repo_path),
+        "git",
+        &["worktree", "move", wt_old_str, wt_new_str],
+    )
+    .context("Failed to run git worktree move")?;
 
-    if !output.status.success() {
+    if output.exit_code != 0 {
         let stderr = String::from_utf8_lossy(&output.stderr);
         anyhow::bail!("git worktree move failed: {}", stderr.trim());
     }
@@ -730,12 +748,8 @@ pub fn stage_files(repo_path: &Path, file_paths: &[String]) -> Result<()> {
     }
     let mut args = vec!["add", "--"];
     args.extend(file_paths.iter().map(|s| s.as_str()));
-    let output = exec("git")
-        .args(&args)
-        .current_dir(repo_path)
-        .output()
-        .context("Failed to run git add")?;
-    if !output.status.success() {
+    let output = run_cmd_local(Some(repo_path), "git", &args).context("Failed to run git add")?;
+    if output.exit_code != 0 {
         anyhow::bail!(
             "git add failed: {}",
             String::from_utf8_lossy(&output.stderr).trim()
@@ -751,20 +765,18 @@ pub fn unstage_files(repo_path: &Path, file_paths: &[String]) -> Result<()> {
         return Ok(());
     }
     for path in file_paths {
-        let output = exec("git")
-            .args(["reset", "HEAD", "--", path])
-            .current_dir(repo_path)
-            .output()
+        let output = run_cmd_local(Some(repo_path), "git", &["reset", "HEAD", "--", path])
             .context("Failed to run git reset HEAD")?;
-        if !output.status.success() {
+        if output.exit_code != 0 {
             let stderr = String::from_utf8_lossy(&output.stderr);
             if stderr.contains("unknown revision") || stderr.contains("ambiguous") {
-                let rm_output = exec("git")
-                    .args(["rm", "--cached", "-f", "--", path])
-                    .current_dir(repo_path)
-                    .output()
-                    .context("Failed to run git rm --cached")?;
-                if !rm_output.status.success() {
+                let rm_output = run_cmd_local(
+                    Some(repo_path),
+                    "git",
+                    &["rm", "--cached", "-f", "--", path],
+                )
+                .context("Failed to run git rm --cached")?;
+                if rm_output.exit_code != 0 {
                     anyhow::bail!(
                         "git rm --cached failed for '{}': {}",
                         path,
@@ -782,12 +794,9 @@ pub fn unstage_files(repo_path: &Path, file_paths: &[String]) -> Result<()> {
 
 /// Stage 所有变更
 pub fn stage_all(repo_path: &Path) -> Result<()> {
-    let output = exec("git")
-        .args(["add", "-A"])
-        .current_dir(repo_path)
-        .output()
+    let output = run_cmd_local(Some(repo_path), "git", &["add", "-A"])
         .context("Failed to run git add -A")?;
-    if !output.status.success() {
+    if output.exit_code != 0 {
         anyhow::bail!(
             "git add -A failed: {}",
             String::from_utf8_lossy(&output.stderr).trim()
@@ -799,20 +808,14 @@ pub fn stage_all(repo_path: &Path) -> Result<()> {
 
 /// Unstage 所有变更（兼容无 HEAD 的新仓库）
 pub fn unstage_all(repo_path: &Path) -> Result<()> {
-    let output = exec("git")
-        .args(["reset", "HEAD"])
-        .current_dir(repo_path)
-        .output()
+    let output = run_cmd_local(Some(repo_path), "git", &["reset", "HEAD"])
         .context("Failed to run git reset HEAD")?;
-    if !output.status.success() {
+    if output.exit_code != 0 {
         let stderr = String::from_utf8_lossy(&output.stderr);
         if stderr.contains("unknown revision") || stderr.contains("ambiguous") {
-            let rm_output = exec("git")
-                .args(["rm", "--cached", "-r", "."])
-                .current_dir(repo_path)
-                .output()
+            let rm_output = run_cmd_local(Some(repo_path), "git", &["rm", "--cached", "-r", "."])
                 .context("Failed to run git rm --cached -r .")?;
-            if !rm_output.status.success() {
+            if rm_output.exit_code != 0 {
                 anyhow::bail!(
                     "git rm --cached failed: {}",
                     String::from_utf8_lossy(&rm_output.stderr).trim()
@@ -831,11 +834,12 @@ pub fn unstage_all(repo_path: &Path) -> Result<()> {
 /// - 已暂存文件 → 先 unstage 再恢复工作区
 /// - 仅工作区修改 → 恢复到 index 版本
 pub fn discard_file(repo_path: &Path, file_path: &str) -> Result<()> {
-    let output = exec("git")
-        .args(["status", "--porcelain=1", "-z", "--", file_path])
-        .current_dir(repo_path)
-        .output()
-        .context("Failed to run git status")?;
+    let output = run_cmd_local(
+        Some(repo_path),
+        "git",
+        &["status", "--porcelain=1", "-z", "--", file_path],
+    )
+    .context("Failed to run git status")?;
 
     let stdout_bytes = &output.stdout;
     if stdout_bytes.is_empty() {
@@ -856,24 +860,22 @@ pub fn discard_file(repo_path: &Path, file_path: &str) -> Result<()> {
 
     // X (index) 有变更 → 先 reset HEAD 撤销暂存
     if x != b' ' && x != b'?' {
-        let reset = exec("git")
-            .args(["reset", "HEAD", "--", file_path])
-            .current_dir(repo_path)
-            .output()
+        let reset = run_cmd_local(Some(repo_path), "git", &["reset", "HEAD", "--", file_path])
             .context("Failed to run git reset HEAD")?;
-        if !reset.status.success() {
+        if reset.exit_code != 0 {
             let stderr = String::from_utf8_lossy(&reset.stderr);
             if !stderr.contains("unknown revision") && !stderr.contains("ambiguous") {
                 anyhow::bail!("git reset HEAD failed: {}", stderr.trim());
             }
             // 新仓库无 HEAD，尝试 git rm --cached
             if x == b'A' {
-                let rm_cached = exec("git")
-                    .args(["rm", "--cached", "-f", "--", file_path])
-                    .current_dir(repo_path)
-                    .output()
-                    .context("Failed to run git rm --cached")?;
-                if !rm_cached.status.success() {
+                let rm_cached = run_cmd_local(
+                    Some(repo_path),
+                    "git",
+                    &["rm", "--cached", "-f", "--", file_path],
+                )
+                .context("Failed to run git rm --cached")?;
+                if rm_cached.exit_code != 0 {
                     anyhow::bail!(
                         "git rm --cached failed: {}",
                         String::from_utf8_lossy(&rm_cached.stderr).trim()
@@ -885,12 +887,9 @@ pub fn discard_file(repo_path: &Path, file_path: &str) -> Result<()> {
 
     // y (worktree) 有变更 → checkout 恢复文件
     if y != b' ' && y != b'?' {
-        let checkout = exec("git")
-            .args(["checkout", "--", file_path])
-            .current_dir(repo_path)
-            .output()
+        let checkout = run_cmd_local(Some(repo_path), "git", &["checkout", "--", file_path])
             .context("Failed to run git checkout")?;
-        if !checkout.status.success() {
+        if checkout.exit_code != 0 {
             anyhow::bail!(
                 "git checkout failed: {}",
                 String::from_utf8_lossy(&checkout.stderr).trim()
@@ -904,23 +903,17 @@ pub fn discard_file(repo_path: &Path, file_path: &str) -> Result<()> {
 
 /// Discard 所有变更
 pub fn discard_all(repo_path: &Path) -> Result<()> {
-    let output = exec("git")
-        .args(["checkout", "--", "."])
-        .current_dir(repo_path)
-        .output()
+    let output = run_cmd_local(Some(repo_path), "git", &["checkout", "--", "."])
         .context("Failed to run git checkout -- .")?;
-    if !output.status.success() {
+    if output.exit_code != 0 {
         anyhow::bail!(
             "git checkout -- . failed: {}",
             String::from_utf8_lossy(&output.stderr).trim()
         );
     }
-    let output = exec("git")
-        .args(["clean", "-fd"])
-        .current_dir(repo_path)
-        .output()
+    let output = run_cmd_local(Some(repo_path), "git", &["clean", "-fd"])
         .context("Failed to run git clean -fd")?;
-    if !output.status.success() {
+    if output.exit_code != 0 {
         anyhow::bail!(
             "git clean -fd failed: {}",
             String::from_utf8_lossy(&output.stderr).trim()
@@ -932,17 +925,14 @@ pub fn discard_all(repo_path: &Path) -> Result<()> {
 
 /// Commit 暂存区变更
 pub fn commit(repo_path: &Path, message: &str) -> Result<CommitResult> {
-    let output = exec("git")
-        .args(["commit", "-m", message])
-        .current_dir(repo_path)
-        .output()
+    let output = run_cmd_local(Some(repo_path), "git", &["commit", "-m", message])
         .context("Failed to run git commit")?;
     let combined = format!(
         "{}\n{}",
         String::from_utf8_lossy(&output.stdout),
         String::from_utf8_lossy(&output.stderr)
     );
-    if !output.status.success() {
+    if output.exit_code != 0 {
         let stderr = String::from_utf8_lossy(&output.stderr);
         if stderr.contains("nothing to commit") || stderr.contains("nothing added") {
             anyhow::bail!(
@@ -972,12 +962,9 @@ pub fn commit_files(
 
 /// Fetch 远程更新
 pub fn fetch(repo_path: &Path) -> Result<()> {
-    let output = exec("git")
-        .args(["fetch"])
-        .current_dir(repo_path)
-        .output()
-        .context("Failed to run git fetch")?;
-    if !output.status.success() {
+    let output =
+        run_cmd_local(Some(repo_path), "git", &["fetch"]).context("Failed to run git fetch")?;
+    if output.exit_code != 0 {
         anyhow::bail!(
             "git fetch failed: {}",
             String::from_utf8_lossy(&output.stderr).trim()
@@ -994,25 +981,23 @@ pub fn pull(repo_path: &Path) -> Result<()> {
     let remote_branch = format!("origin/{}", branch);
 
     // Step 1: fetch
-    let output = exec("git")
-        .args(["fetch", "origin", &branch])
-        .current_dir(repo_path)
-        .output()
+    let output = run_cmd_local(Some(repo_path), "git", &["fetch", "origin", &branch])
         .context("Failed to run git fetch")?;
 
-    if !output.status.success() {
+    if output.exit_code != 0 {
         let stderr = String::from_utf8_lossy(&output.stderr);
         anyhow::bail!("git fetch origin {} failed: {}", branch, stderr.trim());
     }
 
     // Step 2: merge --ff-only (只允许快进，避免冲突)
-    let output = exec("git")
-        .args(["merge", "--ff-only", &remote_branch])
-        .current_dir(repo_path)
-        .output()
-        .context("Failed to run git merge")?;
+    let output = run_cmd_local(
+        Some(repo_path),
+        "git",
+        &["merge", "--ff-only", &remote_branch],
+    )
+    .context("Failed to run git merge")?;
 
-    if !output.status.success() {
+    if output.exit_code != 0 {
         let stdout = String::from_utf8_lossy(&output.stdout);
         let stderr = String::from_utf8_lossy(&output.stderr);
         // 过滤 remote: 信息行，只展示本地错误
@@ -1061,12 +1046,8 @@ pub fn get_commit_log(repo_path: &Path, count: usize, skip: usize) -> Result<Vec
     if let Some(ref s) = skip_str {
         args.push(s.as_str());
     }
-    let output = exec("git")
-        .args(&args)
-        .current_dir(repo_path)
-        .output()
-        .context("Failed to run git log")?;
-    if !output.status.success() {
+    let output = run_cmd_local(Some(repo_path), "git", &args).context("Failed to run git log")?;
+    if output.exit_code != 0 {
         anyhow::bail!(
             "git log failed: {}",
             String::from_utf8_lossy(&output.stderr).trim()
@@ -1091,16 +1072,17 @@ fn get_ahead_behind_uncached(repo_path: &Path) -> Result<AheadBehind> {
             behind: 0,
         });
     }
-    let output = exec("git")
-        .args([
+    let output = run_cmd_local(
+        Some(repo_path),
+        "git",
+        &[
             "rev-list",
             "--left-right",
             "--count",
             &format!("origin/{}...{}", branch, branch),
-        ])
-        .current_dir(repo_path)
-        .output()
-        .context("Failed to run git rev-list --left-right --count")?;
+        ],
+    )
+    .context("Failed to run git rev-list --left-right --count")?;
     let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
     let parts: Vec<&str> = stdout.split('\t').collect();
     Ok(AheadBehind {
@@ -1110,11 +1092,12 @@ fn get_ahead_behind_uncached(repo_path: &Path) -> Result<AheadBehind> {
 }
 
 fn get_current_branch_via_cli(repo_path: &Path) -> Result<String> {
-    let output = exec("git")
-        .args(["rev-parse", "--abbrev-ref", "HEAD"])
-        .current_dir(repo_path)
-        .output()
-        .context("Failed to get current branch")?;
+    let output = run_cmd_local(
+        Some(repo_path),
+        "git",
+        &["rev-parse", "--abbrev-ref", "HEAD"],
+    )
+    .context("Failed to get current branch")?;
     let branch = String::from_utf8_lossy(&output.stdout).trim().to_string();
     if branch == "HEAD" {
         anyhow::bail!(
@@ -1125,27 +1108,29 @@ fn get_current_branch_via_cli(repo_path: &Path) -> Result<String> {
 }
 
 fn check_upstream(repo_path: &Path, branch: &str) -> bool {
-    exec("git")
-        .args([
+    run_cmd_local(
+        Some(repo_path),
+        "git",
+        &[
             "rev-parse",
             "--abbrev-ref",
             &format!("{}@{{upstream}}", branch),
-        ])
-        .current_dir(repo_path)
-        .output()
-        .map(|o| o.status.success())
-        .unwrap_or(false)
+        ],
+    )
+    .map(|o| o.exit_code == 0)
+    .unwrap_or(false)
 }
 
 /// 获取单个 Commit 详细信息
 pub fn get_commit_detail(repo_path: &Path, commit_hash: &str) -> Result<CommitDetail> {
     let format = "--format=%H%x00%h%x00%an%x00%ae%x00%aI%x00%B%x00%P%x00%D";
-    let output = exec("git")
-        .args(["show", format, "--no-patch", commit_hash])
-        .current_dir(repo_path)
-        .output()
-        .context("Failed to run git show")?;
-    if !output.status.success() {
+    let output = run_cmd_local(
+        Some(repo_path),
+        "git",
+        &["show", format, "--no-patch", commit_hash],
+    )
+    .context("Failed to run git show")?;
+    if output.exit_code != 0 {
         anyhow::bail!(
             "git show failed: {}",
             String::from_utf8_lossy(&output.stderr).trim()
@@ -1181,18 +1166,19 @@ pub fn get_commit_detail(repo_path: &Path, commit_hash: &str) -> Result<CommitDe
 
 /// 获取某个 Commit 改动的文件列表
 pub fn get_commit_files(repo_path: &Path, commit_hash: &str) -> Result<Vec<CommitFileChange>> {
-    let output = exec("git")
-        .args([
+    let output = run_cmd_local(
+        Some(repo_path),
+        "git",
+        &[
             "diff-tree",
             "--no-commit-id",
             "-r",
             "--numstat",
             commit_hash,
-        ])
-        .current_dir(repo_path)
-        .output()
-        .context("Failed to run git diff-tree --numstat")?;
-    if !output.status.success() {
+        ],
+    )
+    .context("Failed to run git diff-tree --numstat")?;
+    if output.exit_code != 0 {
         anyhow::bail!(
             "git diff-tree --numstat failed: {}",
             String::from_utf8_lossy(&output.stderr).trim()
@@ -1200,17 +1186,18 @@ pub fn get_commit_files(repo_path: &Path, commit_hash: &str) -> Result<Vec<Commi
     }
     let stdout = String::from_utf8_lossy(&output.stdout);
 
-    let status_output = exec("git")
-        .args([
+    let status_output = run_cmd_local(
+        Some(repo_path),
+        "git",
+        &[
             "diff-tree",
             "--no-commit-id",
             "-r",
             "--name-status",
             commit_hash,
-        ])
-        .current_dir(repo_path)
-        .output()
-        .context("Failed to run git diff-tree --name-status")?;
+        ],
+    )
+    .context("Failed to run git diff-tree --name-status")?;
     let status_stdout = String::from_utf8_lossy(&status_output.stdout);
 
     let status_map: std::collections::HashMap<String, String> = status_stdout
@@ -1257,25 +1244,27 @@ pub fn get_commit_file_diff(
     commit_hash: &str,
     file_path: &str,
 ) -> Result<DiffResult> {
-    let output = exec("git")
-        .args([
+    let output = run_cmd_local(
+        Some(repo_path),
+        "git",
+        &[
             "diff",
             &format!("{}^", commit_hash),
             commit_hash,
             "--",
             file_path,
-        ])
-        .current_dir(repo_path)
-        .output()
-        .context("Failed to run git diff for commit file")?;
-    if !output.status.success() {
+        ],
+    )
+    .context("Failed to run git diff for commit file")?;
+    if output.exit_code != 0 {
         // For initial commit (no parent), try git show
-        let show_output = exec("git")
-            .args(["show", &format!("{}:{}", commit_hash, file_path)])
-            .current_dir(repo_path)
-            .output();
+        let show_output = run_cmd_local(
+            Some(repo_path),
+            "git",
+            &["show", &format!("{}:{}", commit_hash, file_path)],
+        );
         if let Ok(so) = show_output {
-            if so.status.success() {
+            if so.exit_code == 0 {
                 // Return empty diff for initial commit file content
                 return Ok(DiffResult {
                     hunks: vec![],
@@ -1296,12 +1285,9 @@ pub fn get_commit_file_diff(
 
 /// Cherry-pick 指定 commit（参考 Muxy GitRepositoryService.cherryPick）
 pub fn cherry_pick(repo_path: &Path, commit_hash: &str) -> Result<()> {
-    let output = exec("git")
-        .args(["cherry-pick", commit_hash])
-        .current_dir(repo_path)
-        .output()
+    let output = run_cmd_local(Some(repo_path), "git", &["cherry-pick", commit_hash])
         .context("Failed to run git cherry-pick")?;
-    if !output.status.success() {
+    if output.exit_code != 0 {
         anyhow::bail!(
             "git cherry-pick failed: {}",
             String::from_utf8_lossy(&output.stderr).trim()
@@ -1313,12 +1299,13 @@ pub fn cherry_pick(repo_path: &Path, commit_hash: &str) -> Result<()> {
 
 /// Revert 指定 commit（参考 Muxy GitRepositoryService.revert）
 pub fn revert(repo_path: &Path, commit_hash: &str) -> Result<()> {
-    let output = exec("git")
-        .args(["revert", "--no-edit", commit_hash])
-        .current_dir(repo_path)
-        .output()
-        .context("Failed to run git revert")?;
-    if !output.status.success() {
+    let output = run_cmd_local(
+        Some(repo_path),
+        "git",
+        &["revert", "--no-edit", commit_hash],
+    )
+    .context("Failed to run git revert")?;
+    if output.exit_code != 0 {
         anyhow::bail!(
             "git revert failed: {}",
             String::from_utf8_lossy(&output.stderr).trim()
@@ -1332,12 +1319,8 @@ pub fn revert(repo_path: &Path, commit_hash: &str) -> Result<()> {
 pub fn create_tag(repo_path: &Path, name: &str, message: Option<&str>) -> Result<()> {
     let mut args = vec!["tag", "-a", name, "-m"];
     args.push(message.unwrap_or(name));
-    let output = exec("git")
-        .args(&args)
-        .current_dir(repo_path)
-        .output()
-        .context("Failed to run git tag")?;
-    if !output.status.success() {
+    let output = run_cmd_local(Some(repo_path), "git", &args).context("Failed to run git tag")?;
+    if output.exit_code != 0 {
         anyhow::bail!(
             "git tag failed: {}",
             String::from_utf8_lossy(&output.stderr).trim()
@@ -1349,12 +1332,9 @@ pub fn create_tag(repo_path: &Path, name: &str, message: Option<&str>) -> Result
 
 /// Checkout detached HEAD（参考 Muxy GitRepositoryService.checkoutDetached）
 pub fn checkout_detached(repo_path: &Path, commit_hash: &str) -> Result<()> {
-    let output = exec("git")
-        .args(["checkout", commit_hash])
-        .current_dir(repo_path)
-        .output()
+    let output = run_cmd_local(Some(repo_path), "git", &["checkout", commit_hash])
         .context("Failed to run git checkout (detached)")?;
-    if !output.status.success() {
+    if output.exit_code != 0 {
         anyhow::bail!(
             "git checkout detached failed: {}",
             String::from_utf8_lossy(&output.stderr).trim()
@@ -1366,12 +1346,9 @@ pub fn checkout_detached(repo_path: &Path, commit_hash: &str) -> Result<()> {
 
 /// 创建并切换分支（参考 Muxy GitRepositoryService.createAndSwitchBranch）
 pub fn create_and_switch_branch(repo_path: &Path, branch_name: &str) -> Result<()> {
-    let output = exec("git")
-        .args(["checkout", "-b", branch_name])
-        .current_dir(repo_path)
-        .output()
+    let output = run_cmd_local(Some(repo_path), "git", &["checkout", "-b", branch_name])
         .context("Failed to run git checkout -b")?;
-    if !output.status.success() {
+    if output.exit_code != 0 {
         anyhow::bail!(
             "git checkout -b failed: {}",
             String::from_utf8_lossy(&output.stderr).trim()
@@ -1386,12 +1363,13 @@ pub fn default_branch(repo_path: &Path) -> Result<String> {
     let rp = repo_path.to_path_buf();
     super::cache::get_cached_default_branch(repo_path, || {
         // 优先从 refs/remotes/origin/HEAD 符号引用读取（纯本地）
-        let output = exec("git")
-            .args(["symbolic-ref", "refs/remotes/origin/HEAD"])
-            .current_dir(&rp)
-            .output()
-            .context("Failed to resolve origin/HEAD")?;
-        if output.status.success() {
+        let output = run_cmd_local(
+            Some(&rp),
+            "git",
+            &["symbolic-ref", "refs/remotes/origin/HEAD"],
+        )
+        .context("Failed to resolve origin/HEAD")?;
+        if output.exit_code == 0 {
             let full_ref = String::from_utf8_lossy(&output.stdout).trim().to_string();
             if let Some(branch) = full_ref.strip_prefix("refs/remotes/origin/") {
                 return Ok(branch.to_string());
@@ -1399,16 +1377,17 @@ pub fn default_branch(repo_path: &Path) -> Result<String> {
         }
         // 回退：检查本地是否有 origin/main 或 origin/master
         for candidate in &["main", "master"] {
-            if exec("git")
-                .args([
+            if run_cmd_local(
+                Some(&rp),
+                "git",
+                &[
                     "rev-parse",
                     "--verify",
                     &format!("refs/remotes/origin/{}", candidate),
-                ])
-                .current_dir(&rp)
-                .output()
-                .map(|o| o.status.success())
-                .unwrap_or(false)
+                ],
+            )
+            .map(|o| o.exit_code == 0)
+            .unwrap_or(false)
             {
                 return Ok(candidate.to_string());
             }
@@ -1435,11 +1414,8 @@ pub fn get_diff_for_files(
     let mut args = vec!["diff", "HEAD", "--"];
     args.extend(file_paths.iter().map(|s| s.as_str()));
 
-    let diff_output = exec("git")
-        .args(&args)
-        .current_dir(repo_path)
-        .output()
-        .context("Failed to run git diff HEAD")?;
+    let diff_output =
+        run_cmd_local(Some(repo_path), "git", &args).context("Failed to run git diff HEAD")?;
 
     let mut diff_text = String::from_utf8_lossy(&diff_output.stdout).to_string();
 
@@ -1467,10 +1443,7 @@ pub fn get_diff_for_files(
     // stat 摘要
     let mut stat_args = vec!["diff", "HEAD", "--stat", "--"];
     stat_args.extend(file_paths.iter().map(|s| s.as_str()));
-    let stat_output = exec("git")
-        .args(&stat_args)
-        .current_dir(repo_path)
-        .output()
+    let stat_output = run_cmd_local(Some(repo_path), "git", &stat_args)
         .context("Failed to run git diff HEAD --stat")?;
     let stat_text = String::from_utf8_lossy(&stat_output.stdout)
         .trim()
@@ -1492,19 +1465,13 @@ pub fn get_diff_for_files(
 /// 超过 `line_limit` 行时截断，并在末尾附加 `git diff --cached --stat` 摘要。
 pub fn get_staged_diff(repo_path: &Path, line_limit: usize) -> Result<String> {
     // 获取完整的 staged diff
-    let diff_output = exec("git")
-        .args(["diff", "--cached"])
-        .current_dir(repo_path)
-        .output()
+    let diff_output = run_cmd_local(Some(repo_path), "git", &["diff", "--cached"])
         .context("Failed to run git diff --cached")?;
 
     let diff_text = String::from_utf8_lossy(&diff_output.stdout).to_string();
 
     // 获取 stat 摘要（总是附加，无论是否截断）
-    let stat_output = exec("git")
-        .args(["diff", "--cached", "--stat"])
-        .current_dir(repo_path)
-        .output()
+    let stat_output = run_cmd_local(Some(repo_path), "git", &["diff", "--cached", "--stat"])
         .context("Failed to run git diff --cached --stat")?;
     let stat_text = String::from_utf8_lossy(&stat_output.stdout)
         .trim()
@@ -1531,13 +1498,14 @@ pub fn get_staged_diff(repo_path: &Path, line_limit: usize) -> Result<String> {
 /// 获取最近 N 条 commit message（仅 subject 行）。
 pub fn get_recent_commit_messages(repo_path: &Path, count: usize) -> Result<Vec<String>> {
     let count_str = format!("-{}", count);
-    let output = exec("git")
-        .args(["log", count_str.as_str(), "--format=%s"])
-        .current_dir(repo_path)
-        .output()
-        .context("Failed to run git log for recent messages")?;
+    let output = run_cmd_local(
+        Some(repo_path),
+        "git",
+        &["log", count_str.as_str(), "--format=%s"],
+    )
+    .context("Failed to run git log for recent messages")?;
 
-    if !output.status.success() {
+    if output.exit_code != 0 {
         // 空仓库或无提交记录时不报错，返回空列表
         return Ok(vec![]);
     }

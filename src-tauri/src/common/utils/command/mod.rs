@@ -9,20 +9,16 @@ pub mod wsl {
 
     /// Launch an IDE inside a WSL distribution (fire-and-forget).
     ///
-    /// Kept as a standalone utility since it doesn't fit the ExecChild model.
+    /// Runs `wsl.exe` on the host via the unified command executor
+    /// (`core::exec::spawn_detached`, `ExecTarget::Local`).
     #[cfg(target_os = "windows")]
     pub fn open_ide(distro: &str, project_path: &str, ide: &str) -> Result<()> {
-        use crate::common::utils::command::local;
-        let _child = local::exec("wsl.exe")
-            .arg("-d")
-            .arg(distro)
-            .arg("--cd")
-            .arg(project_path)
-            .arg("--")
-            .arg(ide)
-            .arg(".")
-            .spawn()
-            .map_err(|e| anyhow::anyhow!("Failed to launch IDE in WSL: {}", e))?;
+        crate::core::exec::spawn_detached(
+            &crate::common::executor::factory::ExecTarget::Local,
+            "wsl.exe",
+            &["-d", distro, "--cd", project_path, "--", ide, "."],
+        )
+        .map_err(|e| anyhow::anyhow!("Failed to launch IDE in WSL: {e}"))?;
         Ok(())
     }
 

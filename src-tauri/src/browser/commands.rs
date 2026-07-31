@@ -1,4 +1,5 @@
-use crate::common::utils::command::local;
+use crate::common::executor::factory::ExecTarget;
+use crate::core::exec::spawn_detached;
 use crate::AppError;
 use tauri::webview::{PageLoadEvent, WebviewBuilder};
 use tauri::{Emitter, Manager, WebviewUrl};
@@ -246,26 +247,20 @@ pub fn open_in_default_browser(url: String) -> Result<(), AppError> {
 
     #[cfg(target_os = "windows")]
     {
-        local::exec("cmd")
-            .args(["/c", "start", "", &url])
-            .spawn()
-            .map_err(|e| AppError::Io(format!("Failed to open URL: {}", e)))?;
+        spawn_detached(&ExecTarget::Local, "cmd", &["/c", "start", "", &url])
+            .map_err(|e| AppError::Io(format!("Failed to open URL: {e}")))?;
     }
 
     #[cfg(target_os = "macos")]
     {
-        local::exec("open")
-            .arg(&url)
-            .spawn()
-            .map_err(|e| AppError::Io(format!("Failed to open URL: {}", e)))?;
+        spawn_detached(&ExecTarget::Local, "open", &[&url])
+            .map_err(|e| AppError::Io(format!("Failed to open URL: {e}")))?;
     }
 
     #[cfg(target_os = "linux")]
     {
-        local::exec("xdg-open")
-            .arg(&url)
-            .spawn()
-            .map_err(|e| AppError::Io(format!("Failed to open URL: {}", e)))?;
+        spawn_detached(&ExecTarget::Local, "xdg-open", &[&url])
+            .map_err(|e| AppError::Io(format!("Failed to open URL: {e}")))?;
     }
 
     Ok(())

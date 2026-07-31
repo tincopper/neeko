@@ -144,6 +144,13 @@ impl CommandExecutor for SshExecutor {
         // Login shell so remote profile PATH applies (nvm/fnm/cargo, …).
         // First line prints remote PID for kill support; then exec the user command.
         let mut body = String::new();
+        for (key, value) in opts.env {
+            body.push_str("export ");
+            body.push_str(key);
+            body.push('=');
+            body.push_str(&quote_shell_arg(value));
+            body.push_str("; ");
+        }
         if let Some(dir) = opts.current_dir {
             body.push_str("cd ");
             body.push_str(&quote_shell_arg(dir));

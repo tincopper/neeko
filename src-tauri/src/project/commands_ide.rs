@@ -1,6 +1,7 @@
 //! Tauri commands for opening IDEs (local, remote SSH, and WSL).
 
-use crate::common::utils::command::local;
+use crate::common::executor::factory::ExecTarget;
+use crate::core::exec::{collect_blocking, spawn_detached};
 use crate::AppError;
 use crate::AppStateWrapper;
 use anyhow::Result;
@@ -52,16 +53,12 @@ pub fn open_ide(
         }
     };
 
-    #[cfg(windows)]
-    let mut cmd = local::exec_detached(&exe);
-    #[cfg(not(windows))]
-    let mut cmd = local::exec(&exe);
+    let mut launch_args = extra_args.clone();
+    launch_args.push(project_path.clone());
+    let arg_refs: Vec<&str> = launch_args.iter().map(String::as_str).collect();
 
-    cmd.args(&extra_args);
-    cmd.arg(&project_path);
-
-    match cmd.spawn() {
-        Ok(_) => Ok(()),
+    match spawn_detached(&ExecTarget::Local, &exe, &arg_refs) {
+        Ok(()) => Ok(()),
         Err(err) => {
             // macOS fallback：用户从 .dmg 装的 GUI 应用（GoLand/IntelliJ 等）
             // 没生成 Toolbox shell shim 时，裸命令不在 PATH。
@@ -70,7 +67,9 @@ pub fn open_ide(
             // 后者只对 bundle name == command 的产品（GoLand/PyCharm/Zed 等）有效，
             // IntelliJ IDEA 这类 bundle name "IntelliJ IDEA" ≠ command "idea" 的产品必须走 macAppName。
             #[cfg(target_os = "macos")]
-            if err.kind() == std::io::ErrorKind::NotFound && !exe.contains('/') {
+            if matches!(&err, crate::common::executor::ExecError::Io(io) if io.kind() == std::io::ErrorKind::NotFound)
+                && !exe.contains('/')
+            {
                 let target = mac_app_name.as_deref().unwrap_or(&exe);
                 return open_via_launch_services(target, &extra_args, &project_path);
             }
@@ -87,19 +86,20 @@ fn open_via_launch_services(
     extra_args: &[String],
     project_path: &str,
 ) -> Result<(), AppError> {
-    let mut cmd = std::process::Command::new("open");
-    cmd.arg("-a").arg(app_name).arg(project_path);
+    let mut args: Vec<&str> = vec!["-a", app_name, project_path];
     if !extra_args.is_empty() {
-        cmd.arg("--args");
-        cmd.args(extra_args);
+        args.push("--args");
+        for a in extra_args {
+            args.push(a);
+        }
     }
-    let output = cmd.output().map_err(|e| {
+    let output = collect_blocking(&ExecTarget::Local, "open", &args).map_err(|e| {
         format!(
             "Failed to launch '{}' via LaunchServices: {}. Install the app under /Applications or set the IDE command to the full executable path in Settings.",
             app_name, e
         )
     })?;
-    if !output.status.success() {
+    if output.exit_code != 0 {
         let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
         return Err(format!(
             "LaunchServices could not find '{}': {}. Install the app under /Applications or set the IDE command to the full executable path in Settings.",
@@ -199,33 +199,25 @@ fn spawn_ide_process(exe: &str, args: &[String]) -> Result<()> {
             .collect::<Vec<_>>()
             .join(" ");
 
-        local::exec_detached("cmd.exe")
-            .args(["/C", &full_command])
-            .spawn()
-            .map_err(|e| {
-                anyhow::anyhow!(
-                    "Failed to launch '{}': {}. Make sure it's installed and in PATH.",
-                    exe,
-                    e
-                )
-            })?;
+        spawn_detached(&ExecTarget::Local, "cmd", &["/C", &full_command]).map_err(|e| {
+            anyhow::anyhow!(
+                "Failed to launch '{}': {}. Make sure it's installed and in PATH.",
+                exe,
+                e
+            )
+        })?;
     }
 
     #[cfg(unix)]
     {
-        use std::os::unix::process::CommandExt;
-
-        local::exec(exe)
-            .args(args)
-            .process_group(0)
-            .spawn()
-            .map_err(|e| {
-                anyhow::anyhow!(
-                    "Failed to launch '{}': {}. Make sure it's installed and in PATH.",
-                    exe,
-                    e
-                )
-            })?;
+        let arg_refs: Vec<&str> = args.iter().map(String::as_str).collect();
+        spawn_detached(&ExecTarget::Local, exe, &arg_refs).map_err(|e| {
+            anyhow::anyhow!(
+                "Failed to launch '{}': {}. Make sure it's installed and in PATH.",
+                exe,
+                e
+            )
+        })?;
     }
 
     Ok(())

@@ -2,6 +2,7 @@
 
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
+use crate::core::exec::collect_blocking;
 use anyhow::Result;
 use std::path::{Path, PathBuf};
 
@@ -288,8 +289,10 @@ pub fn preview_git_install(
 
     // Clone using git CLI
     let branch_name = branch.unwrap_or("main");
-    let git_clone_result = crate::common::utils::command::local::exec("git")
-        .args([
+    let git_clone_result = collect_blocking(
+        &crate::common::executor::factory::ExecTarget::Local,
+        "git",
+        &[
             "clone",
             "--depth",
             "1",
@@ -297,15 +300,17 @@ pub fn preview_git_install(
             branch_name,
             clone_url,
             clone_path.to_str().unwrap_or("."),
-        ])
-        .output();
+        ],
+    );
 
     let repo = match git_clone_result {
-        Ok(output) if output.status.success() => Repository::open(&clone_path)?,
+        Ok(output) if output.exit_code == 0 => Repository::open(&clone_path)?,
         _ => {
             // Try 'master' branch if 'main' fails
-            crate::common::utils::command::local::exec("git")
-                .args([
+            let _ = collect_blocking(
+                &crate::common::executor::factory::ExecTarget::Local,
+                "git",
+                &[
                     "clone",
                     "--depth",
                     "1",
@@ -313,8 +318,8 @@ pub fn preview_git_install(
                     "master",
                     clone_url,
                     clone_path.to_str().unwrap_or("."),
-                ])
-                .output()?;
+                ],
+            )?;
             Repository::open(&clone_path)?
         }
     };
@@ -488,8 +493,10 @@ pub fn install_from_git(
 
     // Clone using git CLI
     let branch_name = branch.unwrap_or("main");
-    let git_clone_result = crate::common::utils::command::local::exec("git")
-        .args([
+    let git_clone_result = collect_blocking(
+        &crate::common::executor::factory::ExecTarget::Local,
+        "git",
+        &[
             "clone",
             "--depth",
             "1",
@@ -497,14 +504,16 @@ pub fn install_from_git(
             branch_name,
             clone_url,
             clone_path.to_str().unwrap_or("."),
-        ])
-        .output();
+        ],
+    );
 
     let _repo = match git_clone_result {
-        Ok(output) if output.status.success() => Repository::open(&clone_path)?,
+        Ok(output) if output.exit_code == 0 => Repository::open(&clone_path)?,
         _ => {
-            crate::common::utils::command::local::exec("git")
-                .args([
+            let _ = collect_blocking(
+                &crate::common::executor::factory::ExecTarget::Local,
+                "git",
+                &[
                     "clone",
                     "--depth",
                     "1",
@@ -512,8 +521,8 @@ pub fn install_from_git(
                     "master",
                     clone_url,
                     clone_path.to_str().unwrap_or("."),
-                ])
-                .output()?;
+                ],
+            )?;
             Repository::open(&clone_path)?
         }
     };
@@ -556,8 +565,10 @@ pub fn check_skill_update(skill: &super::types::SkillRecord) -> Result<super::ty
     let clone_path = temp_dir.path().to_path_buf();
 
     let branch_name = branch.unwrap_or("main");
-    let git_clone_result = crate::common::utils::command::local::exec("git")
-        .args([
+    let git_clone_result = collect_blocking(
+        &crate::common::executor::factory::ExecTarget::Local,
+        "git",
+        &[
             "clone",
             "--depth",
             "1",
@@ -565,14 +576,16 @@ pub fn check_skill_update(skill: &super::types::SkillRecord) -> Result<super::ty
             branch_name,
             source_ref,
             clone_path.to_str().unwrap_or("."),
-        ])
-        .output();
+        ],
+    );
 
     let repo = match git_clone_result {
-        Ok(output) if output.status.success() => Repository::open(&clone_path)?,
+        Ok(output) if output.exit_code == 0 => Repository::open(&clone_path)?,
         _ => {
-            crate::common::utils::command::local::exec("git")
-                .args([
+            let _ = collect_blocking(
+                &crate::common::executor::factory::ExecTarget::Local,
+                "git",
+                &[
                     "clone",
                     "--depth",
                     "1",
@@ -580,8 +593,8 @@ pub fn check_skill_update(skill: &super::types::SkillRecord) -> Result<super::ty
                     "master",
                     source_ref,
                     clone_path.to_str().unwrap_or("."),
-                ])
-                .output()?;
+                ],
+            )?;
             Repository::open(&clone_path)?
         }
     };
@@ -622,8 +635,10 @@ pub fn update_skill(skill: &super::types::SkillRecord) -> Result<super::types::S
     let clone_path = temp_dir.path().to_path_buf();
 
     let branch_name = branch.unwrap_or("main");
-    let git_clone_result = crate::common::utils::command::local::exec("git")
-        .args([
+    let git_clone_result = collect_blocking(
+        &crate::common::executor::factory::ExecTarget::Local,
+        "git",
+        &[
             "clone",
             "--depth",
             "1",
@@ -631,14 +646,16 @@ pub fn update_skill(skill: &super::types::SkillRecord) -> Result<super::types::S
             branch_name,
             source_ref,
             clone_path.to_str().unwrap_or("."),
-        ])
-        .output();
+        ],
+    );
 
     let repo = match git_clone_result {
-        Ok(output) if output.status.success() => Repository::open(&clone_path)?,
+        Ok(output) if output.exit_code == 0 => Repository::open(&clone_path)?,
         _ => {
-            crate::common::utils::command::local::exec("git")
-                .args([
+            let _ = collect_blocking(
+                &crate::common::executor::factory::ExecTarget::Local,
+                "git",
+                &[
                     "clone",
                     "--depth",
                     "1",
@@ -646,8 +663,8 @@ pub fn update_skill(skill: &super::types::SkillRecord) -> Result<super::types::S
                     "master",
                     source_ref,
                     clone_path.to_str().unwrap_or("."),
-                ])
-                .output()?;
+                ],
+            )?;
             Repository::open(&clone_path)?
         }
     };
