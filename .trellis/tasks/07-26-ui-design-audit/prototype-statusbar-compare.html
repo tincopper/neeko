@@ -1,0 +1,658 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Neeko · StatusBar 16px vs 22px 对比</title>
+<style>
+  :root, :root[data-theme="dark"] {
+    --bg-primary: oklch(0.178 0 0);
+    --bg-secondary: oklch(0.205 0 0);
+    --bg-tertiary: oklch(0.269 0 0);
+    --bg-hover: oklch(0.3 0 0);
+    --bg-selected: oklch(0.35 0 0);
+    --text-primary: oklch(0.985 0 0);
+    --text-secondary: oklch(0.85 0 0);
+    --text-muted: oklch(0.708 0 0);
+    --border: oklch(1 0 0 / 12%);
+    --accent: oklch(0.7 0.1 250);
+    --text-on-accent: oklch(0.205 0 0);
+    --success: oklch(0.7 0.15 150);
+    --warning: oklch(0.8 0.15 85);
+    --danger: oklch(0.704 0.191 22.216);
+    --page-bg: oklch(0.14 0 0);
+    --shadow: 0 16px 40px oklch(0 0 0 / 35%);
+    color-scheme: dark;
+  }
+  :root[data-theme="light"] {
+    --bg-primary: #ebecf0;
+    --bg-secondary: #ffffff;
+    --bg-tertiary: #f4f5f7;
+    --bg-hover: #dcdee3;
+    --bg-selected: #d2d4d9;
+    --text-primary: #1e1e1e;
+    --text-secondary: #6e6e6e;
+    --text-muted: #8a8a8a;
+    --border: #dadbdd;
+    --accent: #2f7cd3;
+    --text-on-accent: #ffffff;
+    --success: #4a9e3f;
+    --warning: #c49000;
+    --danger: #d32f2f;
+    --page-bg: #e5e7eb;
+    --shadow: 0 12px 32px rgba(0,0,0,.1);
+    color-scheme: light;
+  }
+  :root[data-theme="claude"] {
+    --bg-primary: #f0ebe2;
+    --bg-secondary: #faf7f2;
+    --bg-tertiary: #e6dfd6;
+    --bg-hover: #dcd4c8;
+    --bg-selected: #d5ccbe;
+    --text-primary: #2d1e14;
+    --text-secondary: #7a6555;
+    --text-muted: #a89282;
+    --border: #d8cdc0;
+    --accent: #c96442;
+    --text-on-accent: #f5f0e8;
+    --success: #5a8a5e;
+    --warning: #b8860b;
+    --danger: #c0392b;
+    --page-bg: #e8e0d4;
+    --shadow: 0 12px 32px rgba(45,30,20,.1);
+    color-scheme: light;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    background: var(--page-bg);
+    color: var(--text-primary);
+    font-size: 13px;
+    line-height: 1.45;
+    min-height: 100vh;
+  }
+  button { font: inherit; color: inherit; background: none; border: none; cursor: pointer; }
+  button:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 1px;
+  }
+  .mono { font-family: "JetBrains Mono", "SF Mono", ui-monospace, monospace; }
+  .muted { color: var(--text-muted); }
+
+  .page { max-width: 1200px; margin: 0 auto; padding: 20px 18px 40px; }
+  h1 { font-size: 18px; font-weight: 650; letter-spacing: -.01em; margin-bottom: 6px; }
+  .sub { color: var(--text-secondary); font-size: 12.5px; max-width: 95ch; }
+  .toolbar {
+    display: flex; flex-wrap: wrap; gap: 8px; align-items: center;
+    margin: 12px 0 16px;
+  }
+  .chip {
+    height: 22px; padding: 0 8px; border-radius: 999px;
+    border: 1px solid var(--border); background: var(--bg-secondary);
+    color: var(--text-secondary); font-size: 11px;
+    display: inline-flex; align-items: center; gap: 4px;
+  }
+  .chip.bad { color: var(--danger); border-color: color-mix(in srgb, var(--danger) 40%, var(--border)); }
+  .chip.good { color: var(--success); border-color: color-mix(in srgb, var(--success) 40%, var(--border)); }
+  .chip.ref { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 40%, var(--border)); }
+  .spacer { flex: 1; }
+  .ctrl {
+    height: 28px; padding: 0 10px; border-radius: 6px;
+    border: 1px solid var(--border); background: var(--bg-secondary);
+  }
+  .ctrl:hover { background: var(--bg-hover); }
+  .ctrl.active {
+    color: var(--accent);
+    border-color: color-mix(in srgb, var(--accent) 50%, var(--border));
+    background: color-mix(in srgb, var(--accent) 12%, var(--bg-secondary));
+  }
+  .ctrl[aria-pressed="true"] {
+    color: var(--accent);
+    border-color: color-mix(in srgb, var(--accent) 50%, var(--border));
+    background: color-mix(in srgb, var(--accent) 12%, var(--bg-secondary));
+  }
+
+  .metrics {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 10px;
+    margin-bottom: 16px;
+  }
+  @media (max-width: 800px) {
+    .metrics { grid-template-columns: 1fr 1fr; }
+  }
+  .metric {
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    background: var(--bg-secondary);
+    padding: 12px 14px;
+  }
+  .metric .label {
+    font-size: 10px; font-weight: 700; letter-spacing: .05em;
+    text-transform: uppercase; color: var(--text-muted); margin-bottom: 4px;
+  }
+  .metric .value { font-size: 20px; font-weight: 700; letter-spacing: -.02em; }
+  .metric .hint { font-size: 11px; color: var(--text-secondary); margin-top: 2px; }
+  .metric.bad .value { color: var(--danger); }
+  .metric.good .value { color: var(--success); }
+
+  .grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+  }
+  @media (max-width: 960px) { .grid { grid-template-columns: 1fr; } }
+
+  .col {
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    background: var(--bg-primary);
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    box-shadow: var(--shadow);
+  }
+  .col-head {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 8px; padding: 10px 12px;
+    border-bottom: 1px solid var(--border);
+    background: var(--bg-secondary);
+  }
+  .col-head h2 { font-size: 13px; font-weight: 650; }
+  .badge {
+    font-size: 10px; font-weight: 700; letter-spacing: .04em;
+    text-transform: uppercase; padding: 2px 7px; border-radius: 999px;
+  }
+  .badge.before { background: color-mix(in srgb, var(--danger) 16%, var(--bg-tertiary)); color: var(--danger); }
+  .badge.after { background: color-mix(in srgb, var(--success) 16%, var(--bg-tertiary)); color: var(--success); }
+
+  /* Mini app chrome */
+  .stage {
+    padding: 14px;
+    background:
+      linear-gradient(180deg, color-mix(in srgb, var(--bg-primary) 80%, black), var(--bg-primary));
+  }
+  .mini-app {
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    overflow: hidden;
+    background: var(--bg-secondary);
+    display: grid;
+    grid-template-rows: 28px minmax(120px, 1fr) var(--sb-h, 16px);
+    min-height: 220px;
+  }
+  .mini-tb {
+    border-bottom: 1px solid var(--border);
+    background: color-mix(in srgb, var(--bg-primary) 88%, var(--bg-secondary));
+    display: flex; align-items: center; padding: 0 10px; gap: 8px;
+    color: var(--text-secondary); font-size: 11px;
+  }
+  .mini-body {
+    display: grid;
+    grid-template-columns: 36px 1fr 36px;
+    gap: 6px;
+    padding: 6px;
+    background: var(--bg-primary);
+    min-height: 0;
+  }
+  .mini-dock {
+    border-radius: 6px;
+    background: transparent;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    padding-top: 4px;
+  }
+  .mini-dock span {
+    width: 18px; height: 18px; border-radius: 4px; background: var(--bg-tertiary);
+  }
+  .mini-island {
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    background: var(--bg-secondary);
+    min-height: 0;
+  }
+
+  /* Status bars */
+  .statusbar {
+    height: var(--sb-h);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 var(--sb-px, 8px);
+    border-top: 1px solid var(--border);
+    background: color-mix(in srgb, var(--bg-primary) 85%, var(--bg-secondary));
+    color: var(--text-secondary);
+    font-size: var(--sb-fs, 11px);
+    line-height: 1;
+    user-select: none;
+    position: relative;
+  }
+  .sb-side {
+    display: flex;
+    align-items: center;
+    gap: var(--sb-gap, 6px);
+    min-width: 0;
+    height: 100%;
+  }
+  .sb-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    height: var(--sb-item-h, 14px);
+    padding: 0 var(--sb-item-px, 3px);
+    border-radius: 3px;
+    color: var(--text-secondary);
+    white-space: nowrap;
+    max-width: 180px;
+  }
+  .sb-item:hover {
+    background: var(--bg-hover);
+    color: var(--text-primary);
+  }
+  .sb-item.active {
+    background: var(--bg-selected);
+    color: var(--text-primary);
+  }
+  .sb-dot {
+    width: var(--sb-dot, 5px);
+    height: var(--sb-dot, 5px);
+    border-radius: 50%;
+    background: var(--success);
+    flex-shrink: 0;
+  }
+  .sb-dot.warn { background: var(--warning); }
+  .sb-dot.err { background: var(--danger); }
+  .sb-item .label { overflow: hidden; text-overflow: ellipsis; }
+
+  /* Hit-area visualization */
+  .hit-overlay {
+    display: none;
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+  }
+  body.show-hits .hit-overlay { display: block; }
+  .hit-box {
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    height: var(--sb-item-h, 14px);
+    border: 1px dashed color-mix(in srgb, var(--accent) 70%, transparent);
+    background: color-mix(in srgb, var(--accent) 18%, transparent);
+    border-radius: 3px;
+  }
+
+  /* Ruler under statusbar */
+  .ruler-wrap {
+    margin-top: 10px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--bg-secondary);
+    overflow: hidden;
+  }
+  .ruler-label {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 8px 10px; border-bottom: 1px solid var(--border);
+    font-size: 11px; color: var(--text-secondary);
+  }
+  .ruler {
+    position: relative;
+    height: 56px;
+    display: flex;
+    align-items: flex-end;
+    padding: 0 12px 10px;
+    gap: 16px;
+  }
+  .bar-stack {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    flex: 1;
+  }
+  .bar {
+    width: 100%;
+    max-width: 220px;
+    border-radius: 4px;
+    border: 1px solid var(--border);
+    position: relative;
+  }
+  .bar.before {
+    height: 16px;
+    background: color-mix(in srgb, var(--danger) 22%, var(--bg-tertiary));
+  }
+  .bar.after {
+    height: 22px;
+    background: color-mix(in srgb, var(--success) 22%, var(--bg-tertiary));
+  }
+  .bar.ref {
+    height: 22px;
+    background: color-mix(in srgb, var(--accent) 18%, var(--bg-tertiary));
+    border-style: dashed;
+  }
+  .bar-cap {
+    font-size: 11px; color: var(--text-secondary); text-align: center;
+  }
+  .bar-cap strong { color: var(--text-primary); display: block; font-size: 12px; }
+
+  .issues {
+    padding: 10px 12px 14px;
+    border-top: 1px solid var(--border);
+    background: var(--bg-secondary);
+  }
+  .issues h3 {
+    font-size: 11px; text-transform: uppercase; letter-spacing: .04em;
+    color: var(--text-muted); font-weight: 700; margin-bottom: 6px;
+  }
+  .issue {
+    font-size: 12px; color: var(--text-secondary);
+    padding-left: 14px; position: relative; margin: 5px 0;
+  }
+  .issue::before {
+    content: ""; position: absolute; left: 0; top: 6px;
+    width: 6px; height: 6px; border-radius: 50%;
+  }
+  .issues.before .issue::before { background: var(--danger); }
+  .issues.after .issue::before { background: var(--success); }
+
+  .legend {
+    margin-top: 16px; padding: 12px 14px; border-radius: 10px;
+    border: 1px solid var(--border); background: var(--bg-secondary);
+    font-size: 12px; color: var(--text-secondary);
+  }
+  .legend strong { color: var(--text-primary); }
+  .legend code {
+    font-family: ui-monospace, monospace; font-size: 11px;
+    background: var(--bg-tertiary); padding: 1px 5px; border-radius: 4px;
+  }
+  .legend ul { margin: 8px 0 0 18px; }
+  .legend li { margin: 3px 0; }
+
+  /* Zoom mode: enlarge only status area */
+  body.zoom-sb .mini-app {
+    grid-template-rows: 20px 48px var(--sb-h, 16px);
+    min-height: 120px;
+  }
+  body.zoom-sb .mini-body { opacity: .35; }
+  body.zoom-sb .mini-tb { opacity: .35; font-size: 10px; }
+  body.zoom-sb .statusbar {
+    transform-origin: bottom center;
+  }
+</style>
+</head>
+<body>
+  <div class="page">
+    <header>
+      <h1>StatusBar · 16px vs 22px 对比</h1>
+      <p class="sub">
+        对应审计 <strong>P0-7 / P1 密度</strong>：现状
+        <code class="mono" style="font-size:12px">StatusBar.tsx</code> 使用
+        <code class="mono" style="font-size:12px">h-4</code>（16px）承载 LSP / Console / Debug 等可点控件。
+        目标态 22px 对齐 VS Code / JetBrains 可点热区下限，同时保持 IDE compact 气质。
+      </p>
+      <div class="toolbar">
+        <span class="chip bad">Before · 16px</span>
+        <span class="chip good">After · 22px</span>
+        <span class="chip ref">参考 · VS Code ~22</span>
+        <div class="spacer"></div>
+        <button class="ctrl" type="button" id="toggleHits" aria-pressed="false">显示点击热区</button>
+        <button class="ctrl" type="button" id="toggleZoom" aria-pressed="false">放大 Status 区</button>
+        <button class="ctrl active" type="button" data-theme="dark">Dark</button>
+        <button class="ctrl" type="button" data-theme="light">Light</button>
+        <button class="ctrl" type="button" data-theme="claude">Claude</button>
+      </div>
+    </header>
+
+    <section class="metrics" aria-label="对比指标">
+      <div class="metric bad">
+        <div class="label">现状高度</div>
+        <div class="value">16px</div>
+        <div class="hint">Tailwind h-4 · 行高≈文字</div>
+      </div>
+      <div class="metric good">
+        <div class="label">目标高度</div>
+        <div class="value">22px</div>
+        <div class="hint">--chrome-statusbar-h</div>
+      </div>
+      <div class="metric">
+        <div class="label">可点项高度</div>
+        <div class="value" style="font-size:16px">14 → 18</div>
+        <div class="hint">item hit target 提升 ~29%</div>
+      </div>
+      <div class="metric">
+        <div class="label">行业参考</div>
+        <div class="value" style="font-size:16px">~22px</div>
+        <div class="hint">VS Code / JetBrains 量级</div>
+      </div>
+    </section>
+
+    <div class="ruler-wrap">
+      <div class="ruler-label">
+        <span>高度标尺（同宽并排）</span>
+        <span class="muted mono">16 / 22 / 22(ref)</span>
+      </div>
+      <div class="ruler">
+        <div class="bar-stack">
+          <div class="bar before" title="16px"></div>
+          <div class="bar-cap"><strong>16px</strong>现状</div>
+        </div>
+        <div class="bar-stack">
+          <div class="bar after" title="22px"></div>
+          <div class="bar-cap"><strong>22px</strong>目标</div>
+        </div>
+        <div class="bar-stack">
+          <div class="bar ref" title="VS Code ~22"></div>
+          <div class="bar-cap"><strong>~22px</strong>VS Code 参考</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="grid" style="margin-top:16px">
+      <!-- BEFORE 16px -->
+      <section class="col">
+        <div class="col-head">
+          <h2>修复前 · 当前实现</h2>
+          <span class="badge before">h-4 · 16px</span>
+        </div>
+        <div class="stage">
+          <div class="mini-app" style="--sb-h:16px; --sb-fs:11px; --sb-item-h:14px; --sb-item-px:3px; --sb-gap:6px; --sb-dot:5px; --sb-px:8px">
+            <div class="mini-tb">
+              <span>Neeko</span>
+              <span class="muted">·</span>
+              <span class="muted mono">worktree-ui-design-audit</span>
+            </div>
+            <div class="mini-body">
+              <div class="mini-dock"><span></span><span></span></div>
+              <div class="mini-island"></div>
+              <div class="mini-dock"><span></span><span></span></div>
+            </div>
+            <footer class="statusbar" aria-label="StatusBar 16px">
+              <div class="sb-side">
+                <button class="sb-item" type="button">
+                  <span class="sb-dot"></span>
+                  <span class="label">rust-analyzer</span>
+                </button>
+                <button class="sb-item" type="button">
+                  <span class="mono" style="font-size:10px">⎇</span>
+                  <span class="label">worktree-ui-design-audit</span>
+                  <span style="color:var(--success)">↑1</span>
+                </button>
+              </div>
+              <div class="sb-side">
+                <button class="sb-item active" type="button">
+                  <span class="sb-dot warn"></span>
+                  <span>Console</span>
+                </button>
+                <button class="sb-item" type="button">Debug</button>
+                <span class="sb-item" style="cursor:default">Ln 46, Col 18</span>
+                <button class="sb-item" type="button">🔔 2</button>
+              </div>
+              <div class="hit-overlay" aria-hidden="true">
+                <!-- approximate hit boxes for left/right clusters -->
+                <div class="hit-box" style="left:8px;width:92px"></div>
+                <div class="hit-box" style="left:108px;width:150px"></div>
+                <div class="hit-box" style="right:118px;width:62px"></div>
+                <div class="hit-box" style="right:78px;width:36px"></div>
+                <div class="hit-box" style="right:8px;width:28px"></div>
+              </div>
+            </footer>
+          </div>
+        </div>
+        <div class="issues before">
+          <h3>问题</h3>
+          <div class="issue">整条仅 16px，文字与边框几乎贴死，视觉压迫</div>
+          <div class="issue">可点 item 约 14px 高，低于常见 18–22px 指针热区</div>
+          <div class="issue">LSP / Console / Debug 挤在同一细条，误点率高</div>
+          <div class="issue">状态点 5px + 11px 字，弱视/高分屏更难扫读</div>
+          <div class="issue">与 TitleBar 32 / PanelHeader 32 密度语言不一致</div>
+        </div>
+      </section>
+
+      <!-- AFTER 22px -->
+      <section class="col">
+        <div class="col-head">
+          <h2>修复后 · 目标态</h2>
+          <span class="badge after">22px token</span>
+        </div>
+        <div class="stage">
+          <div class="mini-app" style="--sb-h:22px; --sb-fs:11px; --sb-item-h:18px; --sb-item-px:5px; --sb-gap:8px; --sb-dot:6px; --sb-px:10px">
+            <div class="mini-tb">
+              <span>Neeko</span>
+              <span class="muted">·</span>
+              <span class="muted mono">worktree-ui-design-audit</span>
+            </div>
+            <div class="mini-body">
+              <div class="mini-dock"><span></span><span></span></div>
+              <div class="mini-island"></div>
+              <div class="mini-dock"><span></span><span></span></div>
+            </div>
+            <footer class="statusbar" aria-label="StatusBar 22px">
+              <div class="sb-side">
+                <button class="sb-item" type="button" title="LSP">
+                  <span class="sb-dot"></span>
+                  <span class="label">rust-analyzer</span>
+                </button>
+                <button class="sb-item" type="button" title="Git branch">
+                  <span class="mono" style="font-size:10px">⎇</span>
+                  <span class="label">worktree-ui-design-audit</span>
+                  <span style="color:var(--success)">↑1</span>
+                </button>
+              </div>
+              <div class="sb-side">
+                <button class="sb-item active" type="button" title="Task console">
+                  <span class="sb-dot warn"></span>
+                  <span>Console</span>
+                </button>
+                <button class="sb-item" type="button" title="Debug">Debug</button>
+                <span class="sb-item" style="cursor:default">Ln 46, Col 18</span>
+                <button class="sb-item" type="button" title="Notifications">🔔 2</button>
+              </div>
+              <div class="hit-overlay" aria-hidden="true">
+                <div class="hit-box" style="left:10px;width:100px"></div>
+                <div class="hit-box" style="left:120px;width:160px"></div>
+                <div class="hit-box" style="right:132px;width:72px"></div>
+                <div class="hit-box" style="right:88px;width:40px"></div>
+                <div class="hit-box" style="right:10px;width:32px"></div>
+              </div>
+            </footer>
+          </div>
+        </div>
+        <div class="issues after">
+          <h3>改进</h3>
+          <div class="issue">高度 22px：与 VS Code 同量级，仍偏 compact</div>
+          <div class="issue">item 高 18px + 水平 padding 5px，指针更好点</div>
+          <div class="issue">左右分区 gap 8、padding 10，扫描更稳</div>
+          <div class="issue">状态点 6px，running/warn/error 更易辨</div>
+          <div class="issue">用 <code class="mono">--chrome-statusbar-h</code> 一处可调，可回滚</div>
+        </div>
+      </section>
+    </div>
+
+    <!-- Super zoom strip: pure status bars -->
+    <section class="col" style="margin-top:16px">
+      <div class="col-head">
+        <h2>纯 StatusBar 并排（无干扰）</h2>
+        <span class="badge after">1:1 像素感</span>
+      </div>
+      <div style="padding:14px;display:flex;flex-direction:column;gap:14px;background:var(--bg-primary)">
+        <div>
+          <div class="muted" style="font-size:11px;margin-bottom:6px">Before · 16px · 近似 <span class="mono">h-4 items-center px-3 text-xs</span></div>
+          <div style="border:1px solid var(--border);border-radius:8px;overflow:hidden">
+            <footer class="statusbar" style="--sb-h:16px;--sb-fs:11px;--sb-item-h:14px;--sb-item-px:3px;--sb-gap:6px;--sb-dot:5px;--sb-px:8px">
+              <div class="sb-side">
+                <button class="sb-item" type="button"><span class="sb-dot"></span><span>rust-analyzer</span></button>
+                <button class="sb-item" type="button"><span class="mono" style="font-size:10px">⎇</span><span>ui-design-audit</span></button>
+              </div>
+              <div class="sb-side">
+                <button class="sb-item active" type="button"><span class="sb-dot warn"></span>Console</button>
+                <button class="sb-item" type="button">Debug</button>
+                <span class="sb-item" style="cursor:default">Ln 46, Col 18</span>
+                <button class="sb-item" type="button">🔔 2</button>
+              </div>
+            </footer>
+          </div>
+        </div>
+        <div>
+          <div class="muted" style="font-size:11px;margin-bottom:6px">After · 22px · 目标 <span class="mono">h-[var(--chrome-statusbar-h)]</span></div>
+          <div style="border:1px solid var(--border);border-radius:8px;overflow:hidden">
+            <footer class="statusbar" style="--sb-h:22px;--sb-fs:11px;--sb-item-h:18px;--sb-item-px:5px;--sb-gap:8px;--sb-dot:6px;--sb-px:10px">
+              <div class="sb-side">
+                <button class="sb-item" type="button"><span class="sb-dot"></span><span>rust-analyzer</span></button>
+                <button class="sb-item" type="button"><span class="mono" style="font-size:10px">⎇</span><span>ui-design-audit</span></button>
+              </div>
+              <div class="sb-side">
+                <button class="sb-item active" type="button"><span class="sb-dot warn"></span>Console</button>
+                <button class="sb-item" type="button">Debug</button>
+                <span class="sb-item" style="cursor:default">Ln 46, Col 18</span>
+                <button class="sb-item" type="button">🔔 2</button>
+              </div>
+            </footer>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <div class="legend">
+      <strong>实现建议（落地时）</strong>
+      <ul>
+        <li>在 <code>theme.css / index.css</code> 增加 <code>--chrome-statusbar-h: 22px</code></li>
+        <li><code>StatusBar.tsx</code>：容器 <code>h-4</code> → <code>h-[var(--chrome-statusbar-h)]</code> 或 <code>h-[22px]</code></li>
+        <li>可点 item 统一 <code>h-[18px] px-1.5 rounded</code> + <code>hover:bg-bg-hover</code></li>
+        <li>保持字号 11–12（meta），主要加的是垂直呼吸与热区，不是放大字号</li>
+        <li>详细 LSP 管理继续用菜单/面板，不把 Restart/Stop 塞进细条</li>
+      </ul>
+      <p style="margin-top:8px">
+        <strong>验收：</strong>Dark/Light 下 Console/Debug 连续点 10 次无明显误触；
+        与 TitleBar/PanelHeader 并排截图时不再「头重脚轻」。
+      </p>
+    </div>
+  </div>
+
+  <script>
+    function setTheme(theme) {
+      document.documentElement.setAttribute('data-theme', theme);
+      document.querySelectorAll('[data-theme]').forEach((b) => {
+        b.classList.toggle('active', b.getAttribute('data-theme') === theme);
+      });
+    }
+    document.querySelectorAll('[data-theme]').forEach((b) => {
+      b.addEventListener('click', () => setTheme(b.getAttribute('data-theme')));
+    });
+
+    const hitsBtn = document.getElementById('toggleHits');
+    hitsBtn.addEventListener('click', () => {
+      const on = document.body.classList.toggle('show-hits');
+      hitsBtn.setAttribute('aria-pressed', String(on));
+    });
+
+    const zoomBtn = document.getElementById('toggleZoom');
+    zoomBtn.addEventListener('click', () => {
+      const on = document.body.classList.toggle('zoom-sb');
+      zoomBtn.setAttribute('aria-pressed', String(on));
+    });
+  </script>
+</body>
+</html>

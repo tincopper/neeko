@@ -1,0 +1,1051 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Neeko · Projects 空态 / 多环境列表 / Docker 扩展</title>
+<style>
+  :root, :root[data-theme="dark"] {
+    --bg-primary: oklch(0.178 0 0);
+    --bg-secondary: oklch(0.205 0 0);
+    --bg-tertiary: oklch(0.269 0 0);
+    --bg-hover: oklch(0.3 0 0);
+    --bg-selected: oklch(0.35 0 0);
+    --text-primary: oklch(0.985 0 0);
+    --text-secondary: oklch(0.85 0 0);
+    --text-muted: oklch(0.708 0 0);
+    --border: oklch(1 0 0 / 12%);
+    --accent: oklch(0.7 0.1 250);
+    --text-on-accent: oklch(0.205 0 0);
+    --success: oklch(0.7 0.15 150);
+    --warning: oklch(0.8 0.15 85);
+    --danger: oklch(0.704 0.191 22.216);
+    --diff-add: oklch(0.7 0.15 150);
+    --diff-del: oklch(0.704 0.191 22.216);
+    --env-local: oklch(0.7 0.15 150);
+    --env-wsl: oklch(0.7 0.1 250);
+    --env-ssh: oklch(0.8 0.15 85);
+    --env-docker: oklch(0.72 0.12 220);
+    --page-bg: oklch(0.14 0 0);
+    --shadow: 0 16px 40px oklch(0 0 0 / 35%);
+    color-scheme: dark;
+  }
+  :root[data-theme="light"] {
+    --bg-primary: #ebecf0;
+    --bg-secondary: #ffffff;
+    --bg-tertiary: #f4f5f7;
+    --bg-hover: #dcdee3;
+    --bg-selected: #d2d4d9;
+    --text-primary: #1e1e1e;
+    --text-secondary: #6e6e6e;
+    --text-muted: #8a8a8a;
+    --border: #dadbdd;
+    --accent: #2f7cd3;
+    --text-on-accent: #ffffff;
+    --success: #4a9e3f;
+    --warning: #c49000;
+    --danger: #d32f2f;
+    --diff-add: #4a9e3f;
+    --diff-del: #d32f2f;
+    --env-local: #4a9e3f;
+    --env-wsl: #2f7cd3;
+    --env-ssh: #c49000;
+    --env-docker: #2496ed;
+    --page-bg: #e5e7eb;
+    --shadow: 0 12px 28px rgba(0,0,0,.08);
+    color-scheme: light;
+  }
+  :root[data-theme="claude"] {
+    --bg-primary: #f0ebe2;
+    --bg-secondary: #faf7f2;
+    --bg-tertiary: #e6dfd6;
+    --bg-hover: #dcd4c8;
+    --bg-selected: #d5ccbe;
+    --text-primary: #2d1e14;
+    --text-secondary: #7a6555;
+    --text-muted: #a89282;
+    --border: #d8cdc0;
+    --accent: #c96442;
+    --text-on-accent: #f5f0e8;
+    --success: #5a8a5e;
+    --warning: #b8860b;
+    --danger: #c0392b;
+    --diff-add: #5a8a5e;
+    --diff-del: #c0392b;
+    --env-local: #5a8a5e;
+    --env-wsl: #c96442;
+    --env-ssh: #b8860b;
+    --env-docker: #3d7ea6;
+    --page-bg: #e8e0d4;
+    --shadow: 0 12px 28px rgba(45,30,20,.08);
+    color-scheme: light;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    background: var(--page-bg);
+    color: var(--text-primary);
+    font-size: 12px;
+    line-height: 1.4;
+    min-height: 100vh;
+  }
+  button, input { font: inherit; color: inherit; background: none; border: none; }
+  button { cursor: pointer; }
+  button:focus-visible, input:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 1px;
+  }
+  .mono { font-family: "JetBrains Mono", "SF Mono", ui-monospace, monospace; }
+  .muted { color: var(--text-muted); }
+  .truncate { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  .page { max-width: 1320px; margin: 0 auto; padding: 18px 16px 36px; }
+  h1 { font-size: 18px; font-weight: 650; letter-spacing: -.01em; margin-bottom: 6px; }
+  .sub { color: var(--text-secondary); font-size: 12.5px; max-width: 110ch; }
+  .toolbar {
+    display: flex; flex-wrap: wrap; gap: 8px; align-items: center;
+    margin: 12px 0 16px;
+  }
+  .chip {
+    height: 22px; padding: 0 8px; border-radius: 999px; border: 1px solid var(--border);
+    background: var(--bg-secondary); color: var(--text-secondary); font-size: 11px;
+    display: inline-flex; align-items: center; gap: 4px;
+  }
+  .chip.bad { color: var(--danger); border-color: color-mix(in srgb, var(--danger) 40%, var(--border)); }
+  .chip.good { color: var(--success); border-color: color-mix(in srgb, var(--success) 40%, var(--border)); }
+  .chip.docker { color: var(--env-docker); border-color: color-mix(in srgb, var(--env-docker) 45%, var(--border)); }
+  .spacer { flex: 1; }
+  .ctrl {
+    height: 28px; padding: 0 10px; border-radius: 6px;
+    border: 1px solid var(--border); background: var(--bg-secondary);
+  }
+  .ctrl:hover { background: var(--bg-hover); }
+  .ctrl.active {
+    color: var(--accent);
+    border-color: color-mix(in srgb, var(--accent) 50%, var(--border));
+    background: color-mix(in srgb, var(--accent) 12%, var(--bg-secondary));
+  }
+
+  .grid-2 {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 14px;
+    margin-bottom: 16px;
+  }
+  .grid-3 {
+    display: grid;
+    grid-template-columns: 1fr 1.15fr 1.15fr;
+    gap: 14px;
+  }
+  @media (max-width: 1180px) {
+    .grid-3 { grid-template-columns: 1fr; }
+    .grid-2 { grid-template-columns: 1fr; }
+  }
+
+  .col {
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    background: var(--bg-primary);
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    min-height: 520px;
+    box-shadow: var(--shadow);
+  }
+  .col-head {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 8px; padding: 10px 12px;
+    border-bottom: 1px solid var(--border);
+    background: var(--bg-secondary);
+  }
+  .col-head h2 { font-size: 13px; font-weight: 650; }
+  .badge {
+    font-size: 10px; font-weight: 700; letter-spacing: .04em;
+    text-transform: uppercase; padding: 2px 7px; border-radius: 999px;
+  }
+  .badge.before { background: color-mix(in srgb, var(--danger) 16%, var(--bg-tertiary)); color: var(--danger); }
+  .badge.after { background: color-mix(in srgb, var(--success) 16%, var(--bg-tertiary)); color: var(--success); }
+  .badge.future { background: color-mix(in srgb, var(--env-docker) 16%, var(--bg-tertiary)); color: var(--env-docker); }
+
+  /* Panel chrome mimicking dock island */
+  .panel {
+    flex: 1; min-height: 0; display: flex; flex-direction: column;
+    margin: 10px; border: 1px solid var(--border); border-radius: 8px;
+    background: var(--bg-secondary); overflow: hidden;
+  }
+  .panel-header {
+    height: 32px; flex-shrink: 0; display: flex; align-items: center; gap: 6px;
+    padding: 0 8px 0 10px; border-bottom: 1px solid var(--border);
+    background: color-mix(in srgb, var(--bg-secondary) 88%, var(--bg-tertiary));
+  }
+  .panel-title { font-weight: 600; font-size: 12px; }
+  .panel-actions { margin-left: auto; display: flex; gap: 2px; }
+  .icon-btn {
+    width: 24px; height: 24px; border-radius: 5px; display: grid; place-items: center;
+    color: var(--text-secondary);
+  }
+  .icon-btn:hover { background: var(--bg-hover); color: var(--text-primary); }
+  .icon-btn svg { width: 13px; height: 13px; stroke: currentColor; fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+  .panel-body { flex: 1; min-height: 0; overflow: auto; }
+
+  /* BEFORE empty */
+  .empty-before {
+    padding: 20px; text-align: center; color: var(--text-muted); font-size: 0.86em;
+  }
+
+  /* AFTER empty */
+  .empty-after {
+    height: 100%; min-height: 280px;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 10px; padding: 24px 16px; text-align: center;
+  }
+  .empty-icon {
+    width: 40px; height: 40px; border-radius: 10px; display: grid; place-items: center;
+    background: var(--bg-tertiary); color: var(--text-muted); margin-bottom: 2px;
+  }
+  .empty-icon svg { width: 20px; height: 20px; stroke: currentColor; fill: none; stroke-width: 1.7; }
+  .empty-title { font-size: 14px; font-weight: 600; }
+  .empty-desc { color: var(--text-muted); font-size: 11px; max-width: 28ch; }
+  .empty-actions {
+    display: flex; flex-direction: column; gap: 6px; width: min(220px, 100%); margin-top: 6px;
+  }
+  .btn {
+    height: 30px; border-radius: 6px; padding: 0 12px;
+    display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+    font-size: 12px; font-weight: 550;
+  }
+  .btn svg { width: 14px; height: 14px; stroke: currentColor; fill: none; stroke-width: 1.7; }
+  .btn-primary { background: var(--accent); color: var(--text-on-accent); }
+  .btn-primary:hover { filter: brightness(1.06); }
+  .btn-secondary {
+    background: var(--bg-tertiary); border: 1px solid var(--border); color: var(--text-primary);
+  }
+  .btn-secondary:hover { background: var(--bg-hover); }
+  .btn-ghost { color: var(--text-secondary); height: 26px; font-weight: 500; }
+  .btn-ghost:hover { background: var(--bg-hover); color: var(--text-primary); }
+
+  /* Section headers */
+  .section-header {
+    display: flex; align-items: center; gap: 6px;
+    padding: 10px 10px 4px; user-select: none;
+  }
+  .section-header .kind {
+    font-size: 10px; font-weight: 700; letter-spacing: .14em;
+    text-transform: uppercase; color: var(--text-muted);
+  }
+  .section-header .name { font-size: 11px; color: var(--text-secondary); min-width: 0; }
+  .section-header .count { font-size: 10px; color: var(--text-muted); }
+  .section-header .actions {
+    margin-left: auto; display: flex; gap: 1px; opacity: 0; transition: opacity .12s ease;
+  }
+  .section-header:hover .actions { opacity: 1; }
+  .env-ico {
+    width: 14px; height: 14px; border-radius: 4px; flex-shrink: 0;
+    display: grid; place-items: center; font-size: 9px; font-weight: 800;
+    color: var(--text-on-accent);
+  }
+  .env-ico.local { background: var(--env-local); color: #0b1a10; }
+  .env-ico.wsl { background: var(--env-wsl); color: var(--text-on-accent); }
+  .env-ico.ssh { background: var(--env-ssh); color: #1a1200; }
+  .env-ico.docker { background: var(--env-docker); color: #fff; }
+
+  /* Project cards */
+  .project {
+    margin: 2px 6px 4px;
+    border-radius: 6px;
+    border: 1px solid transparent;
+    transition: background .12s ease, border-color .12s ease;
+  }
+  .project:hover { background: var(--bg-hover); }
+  .project.active {
+    background: color-mix(in srgb, var(--accent) 12%, var(--bg-secondary));
+    border-color: color-mix(in srgb, var(--accent) 28%, var(--border));
+  }
+  .project-row {
+    height: 28px;
+    display: grid;
+    grid-template-columns: 18px minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 6px;
+    padding: 0 8px;
+  }
+  .avatar {
+    width: 16px; height: 16px; border-radius: 4px;
+    display: grid; place-items: center;
+    font-size: 9px; font-weight: 700;
+    background: var(--bg-tertiary); color: var(--text-secondary);
+  }
+  .project-name { font-size: 12.5px; font-weight: 550; }
+  .sess-count {
+    height: 16px; min-width: 16px; padding: 0 5px; border-radius: 4px;
+    background: var(--bg-tertiary); color: var(--text-muted);
+    font-size: 10px; font-family: var(--mono, ui-monospace, monospace);
+    display: inline-flex; align-items: center; justify-content: center;
+  }
+  .meta-row {
+    display: flex; align-items: center; gap: 6px;
+    padding: 0 8px 6px 32px;
+    color: var(--text-muted); font-size: 10px;
+  }
+  .branch { font-family: ui-monospace, monospace; color: var(--text-secondary); }
+  .diff-add { color: var(--diff-add); font-weight: 650; }
+  .diff-del { color: var(--diff-del); font-weight: 650; }
+  .status-pill {
+    height: 15px; padding: 0 5px; border-radius: 999px; font-size: 9px; font-weight: 700;
+    background: color-mix(in srgb, var(--success) 14%, var(--bg-tertiary)); color: var(--success);
+  }
+  .status-pill.offline {
+    background: var(--bg-tertiary); color: var(--text-muted);
+  }
+  .status-pill.running {
+    background: color-mix(in srgb, var(--warning) 16%, var(--bg-tertiary)); color: var(--warning);
+  }
+
+  /* Worktree rows under project */
+  .wt-list { padding: 0 6px 6px 28px; display: flex; flex-direction: column; gap: 1px; }
+  .wt-row {
+    height: 24px; border-radius: 5px; padding: 0 6px;
+    display: grid; grid-template-columns: 14px minmax(0, 1fr) auto auto;
+    align-items: center; gap: 6px;
+    color: var(--text-secondary);
+  }
+  .wt-row:hover { background: var(--bg-hover); color: var(--text-primary); }
+  .wt-row.active {
+    background: var(--bg-selected); color: var(--text-primary);
+  }
+  .wt-row svg {
+    width: 12px; height: 12px; stroke: currentColor; fill: none; stroke-width: 1.7;
+  }
+  .wt-path { font-size: 11px; }
+  .wt-branch { font-family: ui-monospace, monospace; font-size: 10px; color: var(--text-muted); }
+  .wt-diff { font-size: 10px; display: flex; gap: 4px; }
+
+  .filter-bar {
+    display: flex; gap: 4px; padding: 6px 8px; border-bottom: 1px solid var(--border);
+    flex-wrap: wrap;
+  }
+  .filter-chip {
+    height: 22px; padding: 0 8px; border-radius: 999px; border: 1px solid var(--border);
+    background: var(--bg-tertiary); color: var(--text-secondary); font-size: 10px;
+  }
+  .filter-chip:hover { background: var(--bg-hover); color: var(--text-primary); }
+  .filter-chip.active {
+    background: color-mix(in srgb, var(--accent) 16%, var(--bg-tertiary));
+    border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
+    color: var(--accent);
+  }
+  .search-mini {
+    height: 22px; flex: 1; min-width: 80px; padding: 0 8px; border-radius: 5px;
+    border: 1px solid var(--border); background: var(--bg-primary); color: var(--text-primary);
+    font-size: 11px;
+  }
+  .search-mini::placeholder { color: var(--text-muted); }
+
+  .issues {
+    padding: 10px 12px 14px; border-top: 1px solid var(--border); background: var(--bg-secondary);
+  }
+  .issues h3 {
+    font-size: 11px; text-transform: uppercase; letter-spacing: .04em;
+    color: var(--text-muted); font-weight: 700; margin-bottom: 6px;
+  }
+  .issue {
+    font-size: 12px; color: var(--text-secondary);
+    padding-left: 14px; position: relative; margin: 5px 0;
+  }
+  .issue::before {
+    content: ""; position: absolute; left: 0; top: 6px;
+    width: 6px; height: 6px; border-radius: 50%;
+  }
+  .issues.before .issue::before { background: var(--danger); }
+  .issues.after .issue::before { background: var(--success); }
+  .issues.future .issue::before { background: var(--env-docker); }
+
+  .design-doc {
+    margin-top: 16px; border: 1px solid var(--border); border-radius: 12px;
+    background: var(--bg-secondary); overflow: hidden;
+  }
+  .design-doc header {
+    padding: 12px 14px; border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  }
+  .design-doc header h2 { font-size: 14px; font-weight: 650; }
+  .design-body {
+    display: grid; grid-template-columns: 1.1fr 1fr; gap: 0;
+  }
+  @media (max-width: 900px) { .design-body { grid-template-columns: 1fr; } }
+  .design-pane { padding: 14px 16px; }
+  .design-pane + .design-pane { border-left: 1px solid var(--border); }
+  @media (max-width: 900px) {
+    .design-pane + .design-pane { border-left: none; border-top: 1px solid var(--border); }
+  }
+  .design-pane h3 {
+    font-size: 11px; text-transform: uppercase; letter-spacing: .05em;
+    color: var(--text-muted); margin-bottom: 8px; font-weight: 700;
+  }
+  .design-pane p, .design-pane li {
+    font-size: 12.5px; color: var(--text-secondary); margin: 5px 0;
+  }
+  .design-pane ul { padding-left: 18px; }
+  .design-pane code {
+    font-family: ui-monospace, monospace; font-size: 11px;
+    background: var(--bg-tertiary); padding: 1px 5px; border-radius: 4px;
+    color: var(--text-primary);
+  }
+  .tree {
+    font-family: ui-monospace, monospace; font-size: 11.5px; line-height: 1.55;
+    background: var(--bg-primary); border: 1px solid var(--border); border-radius: 8px;
+    padding: 10px 12px; color: var(--text-secondary); white-space: pre;
+    overflow: auto;
+  }
+  .tree .hl { color: var(--env-docker); font-weight: 700; }
+  .tree .ok { color: var(--success); }
+  .tree .dim { color: var(--text-muted); }
+
+  .ia-table {
+    width: 100%; border-collapse: collapse; font-size: 12px;
+  }
+  .ia-table th, .ia-table td {
+    text-align: left; padding: 7px 8px; border-bottom: 1px solid var(--border);
+    vertical-align: top;
+  }
+  .ia-table th { color: var(--text-muted); font-size: 10px; text-transform: uppercase; letter-spacing: .04em; }
+  .ia-table td { color: var(--text-secondary); }
+  .ia-table code { font-size: 10.5px; }
+
+  .legend {
+    margin-top: 14px; padding: 12px 14px; border-radius: 10px;
+    border: 1px solid var(--border); background: var(--bg-secondary);
+    font-size: 12px; color: var(--text-secondary);
+  }
+  .legend strong { color: var(--text-primary); }
+
+  /* hidden filter helper */
+  .project[data-hidden="true"],
+  .section-block[data-hidden="true"] { display: none; }
+</style>
+</head>
+<body>
+  <div class="page">
+    <header>
+      <h1>Projects 面板 · 空态前后 / 多环境列表 / Docker 扩展</h1>
+      <p class="sub">
+        对齐现状信息架构：Local 扁平列表 + WSL 按 distro 分组 + SSH 按 host 分组；
+        项目下可展开多个 Git Worktree 会话。Docker 建议作为<strong>第四种 Environment</strong>，
+        分组键用 Docker context / host，而不是塞进 SSH。
+      </p>
+      <div class="toolbar">
+        <span class="chip bad">Empty before</span>
+        <span class="chip good">Empty after + filled list</span>
+        <span class="chip docker">Docker-ready IA</span>
+        <div class="spacer"></div>
+        <button class="ctrl active" type="button" data-theme="dark">Dark</button>
+        <button class="ctrl" type="button" data-theme="light">Light</button>
+        <button class="ctrl" type="button" data-theme="claude">Claude</button>
+      </div>
+    </header>
+
+    <!-- Empty before / after -->
+    <div class="grid-2">
+      <section class="col" style="min-height: 380px">
+        <div class="col-head">
+          <h2>空态 · 修复前</h2>
+          <span class="badge before">纯文案</span>
+        </div>
+        <div class="panel">
+          <div class="panel-header">
+            <span class="panel-title">Projects</span>
+          </div>
+          <div class="panel-body">
+            <div class="empty-before">No projects added</div>
+          </div>
+        </div>
+        <div class="issues before">
+          <h3>问题</h3>
+          <div class="issue">仅一句 muted 文案，无行动入口</div>
+          <div class="issue">用户不知道能加 Local / WSL / SSH</div>
+          <div class="issue">与中心 Welcome/Guide 能力重复但更弱</div>
+        </div>
+      </section>
+
+      <section class="col" style="min-height: 380px">
+        <div class="col-head">
+          <h2>空态 · 修复后</h2>
+          <span class="badge after">EmptyState + CTA</span>
+        </div>
+        <div class="panel">
+          <div class="panel-header">
+            <span class="panel-title">Projects</span>
+            <div class="panel-actions">
+              <button class="icon-btn" type="button" title="Add" aria-label="Add">
+                <svg viewBox="0 0 24 24"><path d="M12 5v14"/><path d="M5 12h14"/></svg>
+              </button>
+            </div>
+          </div>
+          <div class="panel-body">
+            <div class="empty-after">
+              <div class="empty-icon">
+                <svg viewBox="0 0 24 24"><path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7l-2-3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2z"/></svg>
+              </div>
+              <div class="empty-title">还没有项目</div>
+              <div class="empty-desc">把本地、WSL 或远程仓库加入 Neeko，为每个项目绑定 AI Agent 会话。</div>
+              <div class="empty-actions">
+                <button class="btn btn-primary" type="button">
+                  <svg viewBox="0 0 24 24"><path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7l-2-3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2z"/></svg>
+                  添加本地项目
+                </button>
+                <button class="btn btn-secondary" type="button">
+                  <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="14" rx="2"/><path d="M7 20h10"/></svg>
+                  连接 WSL
+                </button>
+                <button class="btn btn-secondary" type="button">
+                  <svg viewBox="0 0 24 24"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M6 9h.01M10 9h.01"/></svg>
+                  添加 SSH 远程
+                </button>
+                <button class="btn btn-ghost" type="button" title="未来">从 Docker 容器添加…</button>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="issues after">
+          <h3>改进</h3>
+          <div class="issue">主 CTA 覆盖现有三种环境；Docker 预留 ghost 入口</div>
+          <div class="issue">icon + 标题 + 描述 + 行动，符合 IDE 诚实空态</div>
+          <div class="issue">与 Add Project 菜单能力对齐，不只装饰</div>
+        </div>
+      </section>
+    </div>
+
+    <!-- Filled lists: current envs vs docker-ready -->
+    <div class="grid-2">
+      <section class="col">
+        <div class="col-head">
+          <h2>多环境列表 · 目标态（现有能力）</h2>
+          <span class="badge after">Local · WSL · SSH · Worktrees</span>
+        </div>
+        <div class="panel">
+          <div class="panel-header">
+            <span class="panel-title">Projects</span>
+            <div class="panel-actions">
+              <button class="icon-btn" type="button" title="Add project" aria-label="Add project">
+                <svg viewBox="0 0 24 24"><path d="M12 5v14"/><path d="M5 12h14"/></svg>
+              </button>
+            </div>
+          </div>
+          <div class="filter-bar">
+            <input class="search-mini" id="filterA" type="search" placeholder="Filter projects…" />
+            <button class="filter-chip active" type="button" data-filter-a="all">All</button>
+            <button class="filter-chip" type="button" data-filter-a="local">Local</button>
+            <button class="filter-chip" type="button" data-filter-a="wsl">WSL</button>
+            <button class="filter-chip" type="button" data-filter-a="ssh">SSH</button>
+          </div>
+          <div class="panel-body" id="listA">
+            <!-- Local -->
+            <div class="section-block" data-env="local">
+              <div class="section-header">
+                <span class="env-ico local">L</span>
+                <span class="kind">Local</span>
+                <span class="count">(2)</span>
+              </div>
+              <div class="project active" data-name="neeko" data-env="local">
+                <div class="project-row">
+                  <div class="avatar">N</div>
+                  <div class="project-name truncate">neeko</div>
+                  <span class="sess-count" title="sessions">3</span>
+                </div>
+                <div class="meta-row">
+                  <span class="branch truncate">worktree-ui-design-audit</span>
+                  <span class="diff-add">+24</span>
+                  <span class="diff-del">-8</span>
+                </div>
+                <div class="wt-list">
+                  <div class="wt-row active" title="main session">
+                    <svg viewBox="0 0 24 24"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
+                    <span class="wt-path truncate">Main session</span>
+                    <span class="wt-branch">main checkout</span>
+                    <span class="wt-diff"><span class="diff-add">+12</span><span class="diff-del">-3</span></span>
+                  </div>
+                  <div class="wt-row">
+                    <svg viewBox="0 0 24 24"><path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7l-2-3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2z"/></svg>
+                    <span class="wt-path truncate">../neeko-feat-dock</span>
+                    <span class="wt-branch">feat/dock</span>
+                    <span class="wt-diff"><span class="diff-add">+8</span></span>
+                  </div>
+                  <div class="wt-row">
+                    <svg viewBox="0 0 24 24"><path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7l-2-3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2z"/></svg>
+                    <span class="wt-path truncate">../neeko-fix-ssh</span>
+                    <span class="wt-branch">fix/ssh-auth</span>
+                    <span class="wt-diff"><span class="diff-add">+4</span><span class="diff-del">-5</span></span>
+                  </div>
+                </div>
+              </div>
+              <div class="project" data-name="agent-hub" data-env="local">
+                <div class="project-row">
+                  <div class="avatar">A</div>
+                  <div class="project-name truncate">agent-hub</div>
+                  <span class="sess-count">1</span>
+                </div>
+                <div class="meta-row">
+                  <span class="branch truncate">main</span>
+                  <span class="muted">clean</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- WSL -->
+            <div class="section-block" data-env="wsl">
+              <div class="section-header">
+                <span class="env-ico wsl">W</span>
+                <span class="kind">WSL</span>
+                <span class="name truncate">· Ubuntu-22.04</span>
+                <span class="count">(2)</span>
+                <div class="actions">
+                  <button class="icon-btn" type="button" title="Add WSL project" aria-label="Add WSL project">
+                    <svg viewBox="0 0 24 24"><path d="M12 5v14"/><path d="M5 12h14"/></svg>
+                  </button>
+                  <button class="icon-btn" type="button" title="Remove distro entry" aria-label="Remove">
+                    <svg viewBox="0 0 24 24"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/></svg>
+                  </button>
+                </div>
+              </div>
+              <div class="project" data-name="service-api" data-env="wsl">
+                <div class="project-row">
+                  <div class="avatar" style="color:var(--env-wsl)">S</div>
+                  <div class="project-name truncate">service-api</div>
+                  <span class="sess-count">2</span>
+                </div>
+                <div class="meta-row">
+                  <span class="branch truncate">feat/auth</span>
+                  <span class="diff-add">+3</span>
+                  <span class="status-pill">WSL</span>
+                </div>
+                <div class="wt-list">
+                  <div class="wt-row">
+                    <svg viewBox="0 0 24 24"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
+                    <span class="wt-path truncate">Main session</span>
+                    <span class="wt-branch">feat/auth</span>
+                    <span class="wt-diff"><span class="diff-add">+3</span></span>
+                  </div>
+                  <div class="wt-row">
+                    <svg viewBox="0 0 24 24"><path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7l-2-3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2z"/></svg>
+                    <span class="wt-path truncate">~/wt/service-api-review</span>
+                    <span class="wt-branch">review/pr-88</span>
+                    <span class="wt-diff"><span class="muted">clean</span></span>
+                  </div>
+                </div>
+              </div>
+              <div class="project" data-name="infra-scripts" data-env="wsl">
+                <div class="project-row">
+                  <div class="avatar">I</div>
+                  <div class="project-name truncate">infra-scripts</div>
+                  <span class="sess-count">1</span>
+                </div>
+                <div class="meta-row">
+                  <span class="branch truncate">main</span>
+                  <span class="status-pill">WSL</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- SSH -->
+            <div class="section-block" data-env="ssh">
+              <div class="section-header">
+                <span class="env-ico ssh">S</span>
+                <span class="kind">SSH</span>
+                <span class="name truncate">· prod-box · 22</span>
+                <span class="count">(1)</span>
+                <div class="actions">
+                  <button class="icon-btn" type="button" title="Add remote project" aria-label="Add">
+                    <svg viewBox="0 0 24 24"><path d="M12 5v14"/><path d="M5 12h14"/></svg>
+                  </button>
+                  <button class="icon-btn" type="button" title="Remove host" aria-label="Remove">
+                    <svg viewBox="0 0 24 24"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/></svg>
+                  </button>
+                </div>
+              </div>
+              <div class="project" data-name="deploy-tools" data-env="ssh">
+                <div class="project-row">
+                  <div class="avatar" style="color:var(--env-ssh)">D</div>
+                  <div class="project-name truncate">deploy-tools</div>
+                  <span class="sess-count">2</span>
+                </div>
+                <div class="meta-row">
+                  <span class="branch truncate">release/1.0</span>
+                  <span class="status-pill running">SSH · connected</span>
+                </div>
+                <div class="wt-list">
+                  <div class="wt-row">
+                    <svg viewBox="0 0 24 24"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
+                    <span class="wt-path truncate">Main session</span>
+                    <span class="wt-branch">release/1.0</span>
+                    <span class="wt-diff"><span class="muted">clean</span></span>
+                  </div>
+                  <div class="wt-row">
+                    <svg viewBox="0 0 24 24"><path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7l-2-3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2z"/></svg>
+                    <span class="wt-path truncate">/home/ops/wt/hotfix</span>
+                    <span class="wt-branch">hotfix/port</span>
+                    <span class="wt-diff"><span class="diff-add">+2</span><span class="diff-del">-1</span></span>
+                  </div>
+                </div>
+              </div>
+
+              <div class="section-header" style="padding-top:12px">
+                <span class="env-ico ssh">S</span>
+                <span class="kind">SSH</span>
+                <span class="name truncate">· dev-gpu · 22</span>
+                <span class="count">(1)</span>
+              </div>
+              <div class="project" data-name="train-lab" data-env="ssh">
+                <div class="project-row">
+                  <div class="avatar">T</div>
+                  <div class="project-name truncate">train-lab</div>
+                  <span class="sess-count">1</span>
+                </div>
+                <div class="meta-row">
+                  <span class="branch truncate">exp/lora</span>
+                  <span class="status-pill offline">SSH · needs auth</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="issues after">
+          <h3>列表规则（保持）</h3>
+          <div class="issue">分组：Local 无 host 头；WSL=distro；SSH=host</div>
+          <div class="issue">项目行：名 + 会话数；次行：分支 + diff + 环境状态</div>
+          <div class="issue">Worktree：缩进子行，主会话与 wt 路径可切换</div>
+          <div class="issue">过滤：环境 chip + 名称搜索（规模上来后必需）</div>
+        </div>
+      </section>
+
+      <section class="col">
+        <div class="col-head">
+          <h2>多环境列表 · 含 Docker（扩展预览）</h2>
+          <span class="badge future">+ Docker</span>
+        </div>
+        <div class="panel">
+          <div class="panel-header">
+            <span class="panel-title">Projects</span>
+            <div class="panel-actions">
+              <button class="icon-btn" type="button" title="Add" aria-label="Add">
+                <svg viewBox="0 0 24 24"><path d="M12 5v14"/><path d="M5 12h14"/></svg>
+              </button>
+            </div>
+          </div>
+          <div class="filter-bar">
+            <input class="search-mini" id="filterB" type="search" placeholder="Filter…" />
+            <button class="filter-chip active" type="button" data-filter-b="all">All</button>
+            <button class="filter-chip" type="button" data-filter-b="local">Local</button>
+            <button class="filter-chip" type="button" data-filter-b="wsl">WSL</button>
+            <button class="filter-chip" type="button" data-filter-b="ssh">SSH</button>
+            <button class="filter-chip" type="button" data-filter-b="docker">Docker</button>
+          </div>
+          <div class="panel-body" id="listB">
+            <div class="section-block" data-env="local">
+              <div class="section-header">
+                <span class="env-ico local">L</span>
+                <span class="kind">Local</span>
+                <span class="count">(1)</span>
+              </div>
+              <div class="project active" data-name="neeko" data-env="local">
+                <div class="project-row">
+                  <div class="avatar">N</div>
+                  <div class="project-name truncate">neeko</div>
+                  <span class="sess-count">2</span>
+                </div>
+                <div class="meta-row">
+                  <span class="branch truncate">worktree-ui-design-audit</span>
+                  <span class="diff-add">+24</span>
+                  <span class="diff-del">-8</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="section-block" data-env="wsl">
+              <div class="section-header">
+                <span class="env-ico wsl">W</span>
+                <span class="kind">WSL</span>
+                <span class="name truncate">· Ubuntu-22.04</span>
+                <span class="count">(1)</span>
+              </div>
+              <div class="project" data-name="service-api" data-env="wsl">
+                <div class="project-row">
+                  <div class="avatar">S</div>
+                  <div class="project-name truncate">service-api</div>
+                  <span class="sess-count">1</span>
+                </div>
+                <div class="meta-row">
+                  <span class="branch truncate">feat/auth</span>
+                  <span class="status-pill">WSL</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="section-block" data-env="ssh">
+              <div class="section-header">
+                <span class="env-ico ssh">S</span>
+                <span class="kind">SSH</span>
+                <span class="name truncate">· prod-box</span>
+                <span class="count">(1)</span>
+              </div>
+              <div class="project" data-name="deploy-tools" data-env="ssh">
+                <div class="project-row">
+                  <div class="avatar">D</div>
+                  <div class="project-name truncate">deploy-tools</div>
+                  <span class="sess-count">1</span>
+                </div>
+                <div class="meta-row">
+                  <span class="branch truncate">release/1.0</span>
+                  <span class="status-pill running">connected</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Docker groups -->
+            <div class="section-block" data-env="docker">
+              <div class="section-header">
+                <span class="env-ico docker">D</span>
+                <span class="kind">Docker</span>
+                <span class="name truncate">· desktop-linux</span>
+                <span class="count">(2)</span>
+                <div class="actions">
+                  <button class="icon-btn" type="button" title="Attach project in container" aria-label="Add">
+                    <svg viewBox="0 0 24 24"><path d="M12 5v14"/><path d="M5 12h14"/></svg>
+                  </button>
+                </div>
+              </div>
+              <div class="project" data-name="api-gateway" data-env="docker">
+                <div class="project-row">
+                  <div class="avatar" style="color:var(--env-docker)">G</div>
+                  <div class="project-name truncate">api-gateway</div>
+                  <span class="sess-count">2</span>
+                </div>
+                <div class="meta-row">
+                  <span class="branch truncate">main</span>
+                  <span class="status-pill running">container · up</span>
+                </div>
+                <div class="wt-list">
+                  <div class="wt-row">
+                    <svg viewBox="0 0 24 24"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
+                    <span class="wt-path truncate">Main session</span>
+                    <span class="wt-branch mono" style="font-size:10px">/workspace</span>
+                    <span class="wt-diff"><span class="diff-add">+1</span></span>
+                  </div>
+                  <div class="wt-row">
+                    <svg viewBox="0 0 24 24"><path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7l-2-3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2z"/></svg>
+                    <span class="wt-path truncate">wt/feature-rate-limit</span>
+                    <span class="wt-branch">feat/rate-limit</span>
+                    <span class="wt-diff"><span class="muted">clean</span></span>
+                  </div>
+                </div>
+              </div>
+              <div class="project" data-name="worker" data-env="docker">
+                <div class="project-row">
+                  <div class="avatar">W</div>
+                  <div class="project-name truncate">worker</div>
+                  <span class="sess-count">1</span>
+                </div>
+                <div class="meta-row">
+                  <span class="mono truncate" style="max-width:140px;color:var(--text-muted)">node:20-alpine</span>
+                  <span class="status-pill offline">exited</span>
+                </div>
+              </div>
+
+              <div class="section-header" style="padding-top:12px">
+                <span class="env-ico docker">D</span>
+                <span class="kind">Docker</span>
+                <span class="name truncate">· ssh://gpu-lab</span>
+                <span class="count">(1)</span>
+              </div>
+              <div class="project" data-name="train-runtime" data-env="docker">
+                <div class="project-row">
+                  <div class="avatar">R</div>
+                  <div class="project-name truncate">train-runtime</div>
+                  <span class="sess-count">1</span>
+                </div>
+                <div class="meta-row">
+                  <span class="branch truncate">exp/cuda12</span>
+                  <span class="status-pill running">remote context · up</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="issues future">
+          <h3>Docker 在列表中的形态</h3>
+          <div class="issue">分组键：Docker context（desktop-linux / ssh://host），类比 WSL distro</div>
+          <div class="issue">项目绑定：container（或 compose service）+ 容器内 path</div>
+          <div class="issue">状态：up / exited / restarting，比 SSH auth 更贴近容器生命周期</div>
+          <div class="issue">Worktree 仍是 Git 概念，挂在项目下，与容器无关</div>
+        </div>
+      </section>
+    </div>
+
+    <!-- Docker design doc -->
+    <section class="design-doc">
+      <header>
+        <h2>Docker 支持：建议信息架构</h2>
+        <span class="chip docker">Environment 第四型</span>
+        <span class="chip">不要做成 SSH 特例</span>
+      </header>
+      <div class="design-body">
+        <div class="design-pane">
+          <h3>1. 类型模型（与现有对称）</h3>
+          <div class="tree"><span class="dim">// 现有</span>
+ProjectEnvironment =
+  | { type: <span class="ok">"Local"</span> }
+  | { type: <span class="ok">"Wsl"</span>; distro: string }
+  | { type: <span class="ok">"Remote"</span>; host; port; username; auth }
+
+<span class="dim">// 建议扩展</span>
+  | { type: <span class="hl">"Docker"</span>;
+      context: string;      <span class="dim">// desktop-linux | ssh://gpu-lab</span>
+      containerId: string;
+      containerName: string;
+      workdir: string;       <span class="dim">// container path</span>
+      image?: string;
+      composeProject?: string;
+      composeService?: string;
+    }</div>
+          <p style="margin-top:10px">
+            列表分组顺序建议固定：
+            <code>Local → WSL → SSH → Docker</code>（或按用户最近使用置顶，但默认稳定排序）。
+          </p>
+
+          <h3 style="margin-top:14px">2. 三层对象，不要混层</h3>
+          <table class="ia-table">
+            <thead>
+              <tr><th>层</th><th>含义</th><th>UI</th></tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><strong>Connection / Context</strong></td>
+                <td>如何连上执行环境</td>
+                <td>SectionHeader：WSL distro / SSH host / Docker context</td>
+              </tr>
+              <tr>
+                <td><strong>Project</strong></td>
+                <td>某环境下的代码根</td>
+                <td>项目卡：name + path + agent/IDE</td>
+              </tr>
+              <tr>
+                <td><strong>Session / Worktree</strong></td>
+                <td>同一项目的并行工作区</td>
+                <td>缩进行：main session + git worktrees</td>
+              </tr>
+            </tbody>
+          </table>
+          <p>
+            Docker 的 container 属于 <strong>Connection 细节</strong>（或 Project.environment 字段），
+            不是第四层“再套一层 folder”。Compose 多服务时：一个 service ≈ 一个 project 绑定，或一个 container 入口。
+          </p>
+
+          <h3 style="margin-top:14px">3. 与 SSH / WSL 的边界</h3>
+          <ul>
+            <li><strong>WSL</strong>：Windows 上的 Linux distro，路径在 distro 文件系统</li>
+            <li><strong>SSH</strong>：远程机器 shell，认证是一等公民</li>
+            <li><strong>Docker</strong>：容器运行时；可能 local engine，也可能 <code>DOCKER_HOST</code> / context 指向远程</li>
+            <li>远程 Docker 若经 SSH 隧道，UI 仍显示 <strong>Docker</strong>，副标题写 context，避免用户以为是普通 SSH 项目</li>
+          </ul>
+        </div>
+        <div class="design-pane">
+          <h3>4. 添加流（Add 菜单）</h3>
+          <div class="tree">Add Project
+├─ Local folder…
+├─ WSL distro…
+├─ SSH remote…
+└─ <span class="hl">Docker…</span>
+   ├─ Pick context (desktop / remote)
+   ├─ Pick running container
+   │    └─ or Compose service
+   ├─ Pick workdir in container
+   └─ Bind default Agent / IDE</div>
+          <p style="margin-top:10px">
+            空态第四按钮用 ghost：「从 Docker 容器添加…」，未实现前可 disable + tooltip。
+          </p>
+
+          <h3 style="margin-top:14px">5. 状态与操作</h3>
+          <ul>
+            <li><strong>状态点/胶囊</strong>：up / paused / exited / not found</li>
+            <li><strong>容器退出</strong>：项目仍保留，点击时引导 Start container / 重选容器</li>
+            <li><strong>终端</strong>：<code>docker exec -it</code> 进 workdir（或 attach 策略可配置）</li>
+            <li><strong>Git</strong>：在容器内 git，或挂载 volume 后与本地 git 二选一（需产品定默认）</li>
+            <li><strong>IDE</strong>：优先 Dev Containers / 附加到容器；失败再 fallback 打开挂载路径</li>
+          </ul>
+
+          <h3 style="margin-top:14px">6. UI 细则（与现列表一致）</h3>
+          <ul>
+            <li>Section 色点：Local 绿 / WSL 蓝 / SSH 黄 / <strong>Docker 青</strong></li>
+            <li>禁止 emoji 当主图标；用简洁 glyph 或官方 Docker 单色标</li>
+            <li>副标题可显示 <code>image</code> 或 <code>compose/service</code>，避免和 branch 抢第一行</li>
+            <li>过滤 chip 增加 Docker；搜索匹配 name / container / context</li>
+            <li>规模大时 Section 可折叠，记忆每 context 的 collapsed 状态</li>
+          </ul>
+
+          <h3 style="margin-top:14px">7. 分阶段落地</h3>
+          <ul>
+            <li><strong>P0</strong>：只读发现 running containers + attach workdir + exec 终端</li>
+            <li><strong>P1</strong>：context 切换、容器状态刷新、exited 恢复</li>
+            <li><strong>P2</strong>：Compose 服务视图、Dev Container 元数据、远程 context</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <div class="legend">
+      <strong>设计原则一句话：</strong>
+      环境是「连接与执行面」，Worktree 是「同一仓库的并行检出」，Docker 是新的环境类型而不是新的项目树范式。
+      这样 Local / WSL / SSH / Docker 共用同一套 Section → Project → Session 组件，后续再加 Podman / DevPod 也只是 environment variant。
+    </div>
+  </div>
+
+  <script>
+    function setTheme(theme) {
+      document.documentElement.setAttribute('data-theme', theme);
+      document.querySelectorAll('[data-theme]').forEach((b) => {
+        b.classList.toggle('active', b.getAttribute('data-theme') === theme);
+      });
+    }
+    document.querySelectorAll('[data-theme]').forEach((b) => {
+      b.addEventListener('click', () => setTheme(b.getAttribute('data-theme')));
+    });
+
+    function wireFilter(listId, inputId, chipAttr) {
+      const list = document.getElementById(listId);
+      const input = document.getElementById(inputId);
+      let env = 'all';
+      const chips = document.querySelectorAll(`[${chipAttr}]`);
+      function apply() {
+        const q = (input.value || '').trim().toLowerCase();
+        list.querySelectorAll('.section-block').forEach((sec) => {
+          const secEnv = sec.getAttribute('data-env');
+          let any = false;
+          sec.querySelectorAll('.project').forEach((p) => {
+            const name = (p.getAttribute('data-name') || '').toLowerCase();
+            const envOk = env === 'all' || p.getAttribute('data-env') === env;
+            const textOk = !q || name.includes(q) || secEnv.includes(q);
+            const show = envOk && textOk;
+            p.setAttribute('data-hidden', show ? 'false' : 'true');
+            if (show) any = true;
+          });
+          // if filtering by env, hide whole other sections
+          const secOk = env === 'all' || secEnv === env;
+          sec.setAttribute('data-hidden', secOk && (any || !q) ? 'false' : (secOk && any ? 'false' : 'true'));
+          if (secOk && !q) sec.setAttribute('data-hidden', 'false');
+          if (!secOk) sec.setAttribute('data-hidden', 'true');
+        });
+      }
+      chips.forEach((c) => {
+        c.addEventListener('click', () => {
+          env = c.getAttribute(chipAttr);
+          chips.forEach((x) => x.classList.toggle('active', x === c));
+          apply();
+        });
+      });
+      input.addEventListener('input', apply);
+    }
+    wireFilter('listA', 'filterA', 'data-filter-a');
+    wireFilter('listB', 'filterB', 'data-filter-b');
+  </script>
+</body>
+</html>

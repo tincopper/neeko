@@ -1,0 +1,312 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Neeko · Settings → Integrations 原型</title>
+<style>
+  :root, :root[data-theme="dark"] {
+    --bg-primary: oklch(0.178 0 0);
+    --bg-secondary: oklch(0.205 0 0);
+    --bg-tertiary: oklch(0.269 0 0);
+    --bg-hover: oklch(0.3 0 0);
+    --bg-selected: oklch(0.35 0 0);
+    --text-primary: oklch(0.985 0 0);
+    --text-secondary: oklch(0.85 0 0);
+    --text-muted: oklch(0.708 0 0);
+    --border: oklch(1 0 0 / 12%);
+    --accent: oklch(0.7 0.1 250);
+    --text-on-accent: oklch(0.205 0 0);
+    --success: oklch(0.7 0.15 150);
+    --warning: oklch(0.8 0.15 85);
+    --danger: oklch(0.704 0.191 22.216);
+    --purple: oklch(0.7 0.14 300);
+    --page-bg: oklch(0.14 0 0);
+    --shadow: 0 16px 40px oklch(0 0 0 / 35%);
+    color-scheme: dark;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: var(--page-bg); color: var(--text-primary); font-size: 13px; line-height: 1.5; min-height: 100vh; }
+  button, input, select { font: inherit; color: inherit; background: none; border: none; cursor: pointer; }
+  button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .truncate { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  .app { max-width: 720px; margin: 0 auto; padding: 24px 16px 48px; }
+  h1 { font-size: 20px; font-weight: 650; margin-bottom: 16px; }
+
+  /* Settings nav tabs */
+  .settings-nav { display: flex; gap: 2px; border-bottom: 1px solid var(--border); margin-bottom: 20px; }
+  .settings-nav button {
+    padding: 8px 14px; font-size: 13px; color: var(--text-secondary);
+    border-bottom: 2px solid transparent; margin-bottom: -1px;
+  }
+  .settings-nav button:hover { color: var(--text-primary); }
+  .settings-nav button.active { color: var(--text-primary); border-bottom-color: var(--accent); }
+
+  /* Section */
+  .section { margin-bottom: 24px; }
+  .section-title { font-size: 11px; font-weight: 650; text-transform: uppercase; color: var(--text-muted); letter-spacing: 0.5px; margin-bottom: 10px; }
+
+  /* Provider card */
+  .provider-card {
+    border: 1px solid var(--border); border-radius: 10px; background: var(--bg-secondary);
+    margin-bottom: 10px; overflow: hidden;
+  }
+  .provider-card .card-header {
+    display: flex; align-items: center; gap: 12px; padding: 14px 16px;
+  }
+  .provider-card .card-header:hover { background: var(--bg-hover); }
+  .provider-card .card-header .icon {
+    width: 36px; height: 36px; border-radius: 8px; background: var(--bg-tertiary);
+    display: grid; place-items: center; font-size: 14px; font-weight: 700; flex-shrink: 0;
+  }
+  .provider-card .info { flex: 1; min-width: 0; }
+  .provider-card .name { font-size: 14px; font-weight: 600; }
+  .provider-card .desc { font-size: 12px; color: var(--text-muted); margin-top: 1px; }
+  .provider-card .status { font-size: 12px; font-weight: 500; flex-shrink: 0; }
+  .status.connected { color: var(--success); }
+  .status.error { color: var(--danger); }
+  .status.disconnected { color: var(--text-muted); }
+  .provider-card .actions { display: flex; gap: 6px; flex-shrink: 0; margin-left: 8px; }
+  .btn {
+    height: 28px; padding: 0 12px; border-radius: 6px; font-size: 12px;
+    border: 1px solid var(--border); background: var(--bg-tertiary); color: var(--text-primary);
+    display: inline-flex; align-items: center; gap: 4px;
+  }
+  .btn:hover { background: var(--bg-hover); }
+  .btn-primary { background: var(--accent); color: var(--text-on-accent); border-color: var(--accent); }
+  .btn-primary:hover { filter: brightness(1.1); }
+  .btn-ghost { background: transparent; border-color: transparent; color: var(--text-secondary); }
+  .btn-ghost:hover { background: var(--bg-hover); color: var(--text-primary); }
+  .btn-danger { color: var(--danger); border-color: color-mix(in srgb, var(--danger) 30%, var(--border)); }
+  .btn-danger:hover { background: color-mix(in srgb, var(--danger) 10%, var(--bg-hover)); }
+
+  /* Expandable details */
+  .card-details {
+    border-top: 1px solid var(--border); background: var(--bg-primary);
+    padding: 0 16px; max-height: 0; overflow: hidden; transition: max-height .25s ease, padding .25s ease;
+  }
+  .card-details.open { max-height: 400px; padding: 14px 16px; }
+  .detail-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 5px 0; font-size: 12px; }
+  .detail-row .label { color: var(--text-muted); }
+  .detail-row .value { color: var(--text-secondary); }
+  .bindings { margin-top: 10px; }
+  .bindings-title { font-size: 11px; font-weight: 650; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.3px; margin-bottom: 6px; }
+  .binding-row {
+    display: flex; align-items: center; gap: 8px; padding: 5px 0; font-size: 12px;
+  }
+  .binding-row .project { color: var(--text-primary); font-weight: 500; }
+  .binding-row .arrow { color: var(--text-muted); }
+  .binding-row .repo { color: var(--text-secondary); }
+  .binding-row .current { font-size: 10px; color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, var(--bg-primary)); padding: 1px 5px; border-radius: 4px; margin-left: 4px; }
+
+  /* Toast */
+  .toast { position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%) translateY(20px); padding: 8px 16px; border-radius: 8px; background: var(--bg-tertiary); color: var(--text-primary); font-size: 12px; border: 1px solid var(--border); opacity: 0; transition: opacity .2s, transform .2s; pointer-events: none; z-index: 100; }
+  .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+</style>
+</head>
+<body>
+<div class="app">
+  <h1>Settings</h1>
+  <div class="settings-nav">
+    <button type="button">General</button>
+    <button type="button">Appearance</button>
+    <button type="button" class="active">Integrations</button>
+    <button type="button">Launch</button>
+    <button type="button">Agent</button>
+  </div>
+
+  <div class="section">
+    <div class="section-title">Built-in Provider</div>
+    <div class="provider-card">
+      <div class="card-header" data-provider="local">
+        <div class="icon" style="color:var(--accent)">LO</div>
+        <div class="info">
+          <div class="name">Local Tasks</div>
+          <div class="desc">Always available. Stage workflows, assign, transition.</div>
+        </div>
+        <span class="status connected">Built-in</span>
+        <div class="actions">
+          <button class="btn btn-ghost" type="button">Configure workflow</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-title">Third-party Providers</div>
+
+    <!-- GitHub: connected -->
+    <div class="provider-card" id="card-github">
+      <div class="card-header" data-provider="github">
+        <div class="icon" style="color:var(--purple)">GH</div>
+        <div class="info">
+          <div class="name">GitHub</div>
+          <div class="desc">PR, Issue, Review</div>
+        </div>
+        <span class="status connected" id="status-github">Connected · tincopper</span>
+        <div class="actions" id="actions-github">
+          <button class="btn btn-ghost" type="button" data-act="expand">Manage</button>
+          <button class="btn btn-danger" type="button" data-act="disconnect">Disconnect</button>
+        </div>
+      </div>
+      <div class="card-details" id="details-github">
+        <div class="detail-row"><span class="label">Auth</span><span class="value">PAT ••••ghp_xxxx <button class="btn btn-ghost" style="height:22px;padding:0 6px" type="button">Edit</button></span></div>
+        <div class="detail-row"><span class="label">Default org</span><span class="value">tincopper</span></div>
+        <div class="detail-row"><span class="label">Polling</span><span class="value">60s <button class="btn btn-ghost" style="height:22px;padding:0 6px" type="button">Edit</button></span></div>
+        <div class="bindings">
+          <div class="bindings-title">Project bindings</div>
+          <div class="binding-row">
+            <span class="project">neeko<span class="current">current</span></span>
+            <span class="arrow">→</span>
+            <span class="repo">tincopper/neeko</span>
+            <button class="btn btn-ghost" style="height:22px;padding:0 6px;margin-left:auto" type="button">Unlink</button>
+          </div>
+          <div class="binding-row">
+            <span class="project">ci-templates</span>
+            <span class="arrow">→</span>
+            <span class="repo">neeko/ci-templates</span>
+            <button class="btn btn-ghost" style="height:22px;padding:0 6px;margin-left:auto" type="button">Unlink</button>
+          </div>
+          <div class="binding-row" style="padding-top:8px">
+            <button class="btn btn-ghost" style="height:26px" type="button">＋ Link another repository</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- GitLab: not connected -->
+    <div class="provider-card" id="card-gitlab">
+      <div class="card-header" data-provider="gitlab">
+        <div class="icon" style="color:var(--success)">GL</div>
+        <div class="info">
+          <div class="name">GitLab</div>
+          <div class="desc">MR, Issue</div>
+        </div>
+        <span class="status disconnected" id="status-gitlab">Not connected</span>
+        <div class="actions" id="actions-gitlab">
+          <button class="btn btn-primary" type="button" data-act="connect">Connect with GitLab</button>
+        </div>
+      </div>
+      <div class="card-details" id="details-gitlab">
+        <div style="padding:8px 0;color:var(--text-muted);font-size:12px">Connect to browse MRs and Issues from GitLab repositories.</div>
+      </div>
+    </div>
+
+    <!-- Linear: not connected -->
+    <div class="provider-card" id="card-linear">
+      <div class="card-header" data-provider="linear">
+        <div class="icon" style="color:var(--warning)">LN</div>
+        <div class="info">
+          <div class="name">Linear</div>
+          <div class="desc">Tickets, Cycles</div>
+        </div>
+        <span class="status disconnected" id="status-linear">Not connected</span>
+        <div class="actions" id="actions-linear">
+          <button class="btn btn-primary" type="button" data-act="connect">Connect with Linear</button>
+        </div>
+      </div>
+      <div class="card-details" id="details-linear">
+        <div style="padding:8px 0;color:var(--text-muted);font-size:12px">Connect to sync Linear tickets and cycles.</div>
+      </div>
+    </div>
+
+    <!-- Jira: not connected -->
+    <div class="provider-card" id="card-jira">
+      <div class="card-header" data-provider="jira">
+        <div class="icon" style="color:var(--accent)">JR</div>
+        <div class="info">
+          <div class="name">Jira</div>
+          <div class="desc">Tickets, Transitions</div>
+        </div>
+        <span class="status disconnected" id="status-jira">Not connected</span>
+        <div class="actions" id="actions-jira">
+          <button class="btn btn-primary" type="button" data-act="connect">Connect with Jira</button>
+        </div>
+      </div>
+      <div class="card-details" id="details-jira">
+        <div style="padding:8px 0;color:var(--text-muted);font-size:12px">Connect to sync Jira tickets and issue transitions.</div>
+      </div>
+    </div>
+  </div>
+
+  <button class="btn btn-ghost" type="button" style="opacity:.6">＋ Add custom provider（future）</button>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+  function showToast(msg) {
+    const t = document.getElementById('toast');
+    t.textContent = msg;
+    t.classList.add('show');
+    clearTimeout(showToast._timer);
+    showToast._timer = setTimeout(() => t.classList.remove('show'), 1600);
+  }
+
+  document.querySelectorAll('.card-header').forEach(header => {
+    header.addEventListener('click', (e) => {
+      if (e.target.closest('button')) return;
+      const prov = header.dataset.provider;
+      const details = document.getElementById('details-' + prov);
+      if (details) details.classList.toggle('open');
+    });
+  });
+
+  document.querySelectorAll('[data-act="expand"]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const prov = btn.closest('.provider-card').querySelector('.card-header').dataset.provider;
+      const details = document.getElementById('details-' + prov);
+      if (details) details.classList.toggle('open');
+    });
+  });
+
+  document.querySelectorAll('[data-act="disconnect"]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const card = btn.closest('.provider-card');
+      const prov = card.querySelector('.card-header').dataset.provider;
+      // Simulate disconnect
+      document.getElementById('status-' + prov).textContent = 'Not connected';
+      document.getElementById('status-' + prov).className = 'status disconnected';
+      document.getElementById('actions-' + prov).innerHTML = `<button class="btn btn-primary" type="button" data-act="connect">Connect with ${prov.charAt(0).toUpperCase() + prov.slice(1)}</button>`;
+      document.getElementById('details-' + prov).classList.remove('open');
+      showToast(`${prov} disconnected`);
+      // Re-bind connect buttons
+      bindConnectButtons();
+    });
+  });
+
+  function bindConnectButtons() {
+    document.querySelectorAll('[data-act="connect"]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const card = btn.closest('.provider-card');
+        const prov = card.querySelector('.card-header').dataset.provider;
+        showToast(`Connecting ${prov}…`);
+        setTimeout(() => {
+          document.getElementById('status-' + prov).textContent = 'Connected · tincopper';
+          document.getElementById('status-' + prov).className = 'status connected';
+          document.getElementById('actions-' + prov).innerHTML = `
+            <button class="btn btn-ghost" type="button" data-act="expand">Manage</button>
+            <button class="btn btn-danger" type="button" data-act="disconnect">Disconnect</button>`;
+          showToast(`${prov} connected`);
+          // Re-bind
+          document.querySelectorAll('[data-act="disconnect"]').forEach(b => {
+            b.addEventListener('click', () => {
+              const c = b.closest('.provider-card');
+              const p = c.querySelector('.card-header').dataset.provider;
+              document.getElementById('status-' + p).textContent = 'Not connected';
+              document.getElementById('status-' + p).className = 'status disconnected';
+              document.getElementById('actions-' + p).innerHTML = `<button class="btn btn-primary" type="button" data-act="connect">Connect with ${p.charAt(0).toUpperCase() + p.slice(1)}</button>`;
+              document.getElementById('details-' + p).classList.remove('open');
+              showToast(`${p} disconnected`);
+              bindConnectButtons();
+            });
+          });
+        }, 1200);
+      });
+    });
+  }
+  bindConnectButtons();
+</script>
+</body>
+</html>

@@ -1,0 +1,547 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Neeko · Tasks 统一原型（Board + List + Detail Tab）</title>
+<style>
+  :root, :root[data-theme="dark"] {
+    --bg-primary: oklch(0.178 0 0);
+    --bg-secondary: oklch(0.205 0 0);
+    --bg-tertiary: oklch(0.269 0 0);
+    --bg-hover: oklch(0.3 0 0);
+    --bg-selected: oklch(0.35 0 0);
+    --text-primary: oklch(0.985 0 0);
+    --text-secondary: oklch(0.85 0 0);
+    --text-muted: oklch(0.708 0 0);
+    --border: oklch(1 0 0 / 12%);
+    --accent: oklch(0.7 0.1 250);
+    --text-on-accent: oklch(0.205 0 0);
+    --success: oklch(0.7 0.15 150);
+    --warning: oklch(0.8 0.15 85);
+    --danger: oklch(0.704 0.191 22.216);
+    --purple: oklch(0.7 0.14 300);
+    --page-bg: oklch(0.14 0 0);
+    --shadow: 0 16px 40px oklch(0 0 0 / 35%);
+    color-scheme: dark;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: var(--page-bg); color: var(--text-primary); font-size: 12px; line-height: 1.4; min-height: 100vh; }
+  button, input, select { font: inherit; color: inherit; background: none; border: none; cursor: pointer; }
+  button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .mono { font-family: "JetBrains Mono", ui-monospace, monospace; }
+  .muted { color: var(--text-muted); }
+  .truncate { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  /* App shell simulating Neeko dock layout */
+  .app { display: flex; height: 100vh; min-height: 640px; gap: 6px; padding: 6px; }
+  .dock-bar { display: flex; flex-direction: column; align-items: center; gap: 4px; padding-top: 4px; width: 44px; flex-shrink: 0; }
+  .dock-btn { width: 34px; height: 34px; border-radius: 6px; display: grid; place-items: center; color: var(--text-secondary); font-size: 10px; font-weight: 700; }
+  .dock-btn:hover { background: var(--bg-hover); color: var(--text-primary); }
+  .dock-btn.active { background: var(--bg-selected); color: var(--text-primary); }
+  .zone { border-radius: 10px; border: 1px solid var(--border); background: var(--bg-secondary); display: flex; flex-direction: column; overflow: hidden; }
+  .left-zone { width: 220px; flex-shrink: 0; }
+  .right-zone { width: 360px; flex-shrink: 0; }
+  .center-zone { flex: 1; display: flex; flex-direction: column; min-width: 0; border-radius: 10px; border: 1px solid var(--border); background: var(--bg-secondary); overflow: hidden; }
+
+  /* Center zone: tab bar + editor */
+  .tab-bar { display: flex; align-items: center; gap: 2px; padding: 4px 6px 0; border-bottom: 1px solid var(--border); background: var(--bg-primary); flex-shrink: 0; min-height: 32px; }
+  .editor-tab { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 6px 6px 0 0; font-size: 11px; color: var(--text-secondary); border: 1px solid transparent; border-bottom: none; background: transparent; max-width: 200px; }
+  .editor-tab:hover { color: var(--text-primary); background: var(--bg-hover); }
+  .editor-tab.active { color: var(--text-primary); background: var(--bg-secondary); border-color: var(--border); }
+  .editor-tab .close { width: 14px; height: 14px; border-radius: 3px; display: grid; place-items: center; font-size: 11px; opacity: 0.6; }
+  .editor-tab .close:hover { opacity: 1; background: var(--bg-hover); }
+  .editor-content { flex: 1; overflow: auto; padding: 16px; }
+  .editor-welcome { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; gap: 8px; color: var(--text-muted); text-align: center; }
+
+  /* Panel header */
+  .panel-header { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-bottom: 1px solid var(--border); flex-shrink: 0; }
+  .panel-header h2 { font-size: 13px; font-weight: 650; }
+  .view-tabs { display: flex; gap: 2px; margin-left: auto; }
+  .view-tabs .tab { padding: 3px 10px; border-radius: 5px; font-size: 11px; color: var(--text-secondary); }
+  .view-tabs .tab:hover { background: var(--bg-hover); color: var(--text-primary); }
+  .view-tabs .tab.active { background: var(--bg-selected); color: var(--text-primary); }
+  .icon-btn { width: 24px; height: 24px; border-radius: 5px; display: grid; place-items: center; color: var(--text-secondary); font-size: 14px; }
+  .icon-btn:hover { background: var(--bg-hover); color: var(--text-primary); }
+
+  /* Connect banner */
+  .connect-banner { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 6px 10px; margin: 6px 8px 0; border-radius: 6px; border: 1px solid var(--border); background: var(--bg-primary); color: var(--text-secondary); font-size: 11px; }
+  .connect-banner strong { color: var(--text-primary); }
+  .btn { padding: 0 10px; height: 24px; border-radius: 5px; font-size: 11px; display: inline-flex; align-items: center; gap: 4px; border: 1px solid var(--border); background: var(--bg-tertiary); color: var(--text-primary); }
+  .btn:hover { background: var(--bg-hover); }
+  .btn-primary { background: var(--accent); color: var(--text-on-accent); border-color: var(--accent); }
+  .btn-primary:hover { filter: brightness(1.1); }
+  .btn-secondary { background: var(--bg-primary); }
+  .btn-ghost { background: transparent; border-color: transparent; color: var(--text-secondary); }
+  .btn-ghost:hover { background: var(--bg-hover); color: var(--text-primary); }
+
+  /* Filters */
+  .filters { display: flex; flex-wrap: wrap; gap: 6px; padding: 8px 10px; flex-shrink: 0; }
+  .search { flex: 1; min-width: 100px; height: 26px; padding: 0 8px; border-radius: 5px; border: 1px solid var(--border); background: var(--bg-primary); font-size: 11px; }
+  .select { height: 26px; padding: 0 6px; border-radius: 5px; border: 1px solid var(--border); background: var(--bg-primary); font-size: 11px; }
+  .chip { height: 20px; padding: 0 8px; border-radius: 999px; border: 1px solid var(--border); background: var(--bg-primary); color: var(--text-secondary); font-size: 10px; display: inline-flex; align-items: center; gap: 4px; cursor: pointer; }
+  .chip.ok { color: var(--success); border-color: color-mix(in srgb, var(--success) 40%, var(--border)); }
+  .chip:hover { background: var(--bg-hover); }
+  .chip.off { opacity: 0.4; }
+
+  /* Panel content area */
+  .panel-content { flex: 1; overflow: auto; min-height: 0; }
+
+  /* Board View */
+  .board-view { display: flex; gap: 8px; padding: 8px; height: 100%; overflow-x: auto; }
+  .board-col { min-width: 200px; max-width: 240px; flex: 1; display: flex; flex-direction: column; gap: 6px; }
+  .col-head { display: flex; align-items: center; justify-content: space-between; padding: 0 4px; font-size: 11px; font-weight: 650; color: var(--text-secondary); }
+  .col-head .count { font-size: 10px; color: var(--text-muted); }
+  .col-body { display: flex; flex-direction: column; gap: 6px; flex: 1; overflow-y: auto; }
+  .board-card {
+    padding: 8px; border-radius: 7px; border: 1px solid var(--border); background: var(--bg-primary);
+    cursor: pointer; display: flex; flex-direction: column; gap: 5px;
+  }
+  .board-card:hover { border-color: color-mix(in srgb, var(--accent) 40%, var(--border)); }
+  .board-card .card-top { display: flex; gap: 5px; align-items: center; flex-wrap: wrap; }
+  .board-card .card-title { font-size: 12px; font-weight: 500; line-height: 1.35; }
+  .board-card .card-meta { display: flex; gap: 5px; align-items: center; flex-wrap: wrap; font-size: 10px; color: var(--text-muted); }
+  .add-btn { padding: 6px; border-radius: 6px; border: 1px dashed var(--border); background: transparent; color: var(--text-muted); font-size: 11px; text-align: center; }
+  .add-btn:hover { background: var(--bg-hover); color: var(--text-primary); }
+
+  /* List View */
+  .list-view { display: flex; flex-direction: column; }
+  .group-label { padding: 6px 10px; font-size: 10px; font-weight: 650; text-transform: uppercase; color: var(--text-muted); letter-spacing: 0.3px; border-bottom: 1px solid var(--border); }
+  .list-row {
+    display: flex; gap: 8px; align-items: flex-start; padding: 7px 10px; border-bottom: 1px solid var(--border);
+    background: transparent; text-align: left; width: 100%; cursor: pointer;
+  }
+  .list-row:hover { background: var(--bg-hover); }
+  .list-row.active { background: var(--bg-selected); }
+  .list-row .row-top { display: flex; gap: 6px; align-items: center; }
+  .list-row .row-title { font-size: 12px; font-weight: 500; }
+  .list-row .row-meta { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; font-size: 10px; color: var(--text-muted); margin-top: 2px; }
+
+  /* Kind icon / provider badge */
+  .kind-ico { display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; border-radius: 4px; font-size: 8px; font-weight: 700; flex-shrink: 0; }
+  .kind-ico.pr { background: color-mix(in srgb, var(--purple) 20%, var(--bg-tertiary)); color: var(--purple); }
+  .kind-ico.issue { background: color-mix(in srgb, var(--success) 20%, var(--bg-tertiary)); color: var(--success); }
+  .kind-ico.local { background: color-mix(in srgb, var(--accent) 20%, var(--bg-tertiary)); color: var(--accent); }
+  .kind-ico.ticket { background: color-mix(in srgb, var(--warning) 20%, var(--bg-tertiary)); color: var(--warning); }
+  .prov { font-size: 9px; font-weight: 650; text-transform: uppercase; padding: 1px 5px; border-radius: 4px; background: var(--bg-tertiary); }
+  .prov.gh { color: var(--purple); }
+  .prov.gl { color: var(--success); }
+  .prov.linear { color: var(--warning); }
+  .prov.jira { color: var(--accent); }
+  .prov.local { color: var(--text-secondary); }
+  .status { font-size: 10px; padding: 1px 6px; border-radius: 999px; border: 1px solid var(--border); background: var(--bg-tertiary); }
+  .status.open { color: var(--text-secondary); }
+  .status.in_progress { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 35%, var(--border)); }
+  .status.blocked { color: var(--danger); border-color: color-mix(in srgb, var(--danger) 45%, var(--border)); }
+  .status.done, .status.merged { color: var(--success); border-color: color-mix(in srgb, var(--success) 40%, var(--border)); }
+  .status.draft { color: var(--text-muted); }
+  .label { font-size: 9px; padding: 0 5px; border-radius: 4px; border: 1px solid var(--border); background: var(--bg-primary); color: var(--text-muted); }
+  .avatar { width: 18px; height: 18px; border-radius: 50%; background: var(--bg-tertiary); display: inline-grid; place-items: center; font-size: 9px; font-weight: 700; color: var(--text-secondary); }
+  .priority { font-size: 9px; font-weight: 700; padding: 0 4px; border-radius: 3px; }
+  .priority.p1 { color: var(--danger); background: color-mix(in srgb, var(--danger) 12%, var(--bg-primary)); }
+  .priority.p2 { color: var(--warning); background: color-mix(in srgb, var(--warning) 12%, var(--bg-primary)); }
+  .priority.p3 { color: var(--text-muted); background: var(--bg-tertiary); }
+
+  /* Detail Tab in center */
+  .detail-kicker { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin-bottom: 8px; }
+  .detail-title { font-size: 16px; font-weight: 650; margin-bottom: 10px; line-height: 1.3; }
+  .detail-people { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; font-size: 11px; color: var(--text-secondary); margin-bottom: 14px; }
+  .actions { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 16px; padding-bottom: 12px; border-bottom: 1px solid var(--border); }
+  .section-title { font-size: 11px; font-weight: 650; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.3px; margin: 14px 0 8px; }
+  .desc { font-size: 12px; line-height: 1.55; color: var(--text-secondary); white-space: pre-wrap; }
+  .stage-rail { display: grid; grid-template-columns: repeat(5, 1fr); gap: 4px; margin-bottom: 8px; }
+  .stage { min-width: 0; height: 28px; border-radius: 6px; border: 1px solid var(--border); background: var(--bg-tertiary); color: var(--text-muted); display: grid; place-items: center; font-size: 10px; font-weight: 650; }
+  .stage.done { color: var(--success); border-color: color-mix(in srgb, var(--success) 35%, var(--border)); }
+  .stage.current { color: var(--text-on-accent); background: var(--accent); border-color: var(--accent); }
+  .transition-row { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+  .kv { display: grid; grid-template-columns: 100px 1fr; gap: 6px 12px; font-size: 11px; }
+  .kv dt { color: var(--text-muted); }
+  .kv dd { color: var(--text-secondary); }
+
+  /* Toast */
+  .toast { position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%) translateY(20px); padding: 8px 16px; border-radius: 8px; background: var(--bg-tertiary); color: var(--text-primary); font-size: 12px; border: 1px solid var(--border); opacity: 0; transition: opacity .2s, transform .2s; pointer-events: none; z-index: 100; }
+  .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+</style>
+</head>
+<body>
+<div class="app">
+  <!-- Left Dock Bar -->
+  <div class="dock-bar">
+    <div class="dock-btn" title="Projects">Pr</div>
+    <div class="dock-btn" title="Files">Fi</div>
+    <div class="dock-btn" title="Skills">Sk</div>
+    <div class="dock-btn active" title="Tasks">Tk</div>
+    <div class="dock-btn" title="History">Hi</div>
+  </div>
+
+  <!-- Left Zone -->
+  <div class="zone left-zone">
+    <div style="padding:10px;font-size:11px;color:var(--text-muted)">Projects</div>
+  </div>
+
+  <!-- Center Editor -->
+  <div class="center-zone">
+    <div class="tab-bar" id="tabBar">
+      <button class="editor-tab active" id="tabWelcome" type="button">
+        <span>Welcome</span>
+      </button>
+    </div>
+    <div class="editor-content" id="editorContent">
+      <div class="editor-welcome" id="welcomeView">
+        <div style="font-size:32px;opacity:.2">&#9874;</div>
+        <div style="font-size:14px;font-weight:500">Select a task to view details</div>
+        <div style="font-size:11px;max-width:40ch">Click any card in Board or row in List to open a detail tab here.</div>
+      </div>
+      <div id="detailView" style="display:none"></div>
+    </div>
+  </div>
+
+  <!-- Right Zone: Tasks Panel -->
+  <div class="zone right-zone">
+    <div class="panel-header">
+      <h2>Tasks</h2>
+      <div class="view-tabs" id="viewTabs">
+        <button class="tab active" type="button" data-view="board">Board</button>
+        <button class="tab" type="button" data-view="list">List</button>
+      </div>
+      <button class="icon-btn" type="button" title="Add task">+</button>
+    </div>
+    <div class="connect-banner">
+      <span>Connect GitHub, GitLab, Linear or Jira in <strong>Settings → Integrations</strong> to see third-party tasks.</span>
+      <button class="btn btn-secondary" type="button" style="height:22px;padding:0 8px">Open Settings</button>
+    </div>
+    <div class="filters">
+      <input class="search" id="search" type="search" placeholder="Search title, key…" />
+      <select class="select" id="statusFilter">
+        <option value="all">Status: All open-ish</option>
+        <option value="open">Open</option>
+        <option value="in_progress">In Progress</option>
+        <option value="blocked">Blocked</option>
+        <option value="done">Done</option>
+      </select>
+      <select class="select" id="sortFilter">
+        <option value="updated">Sort: Updated</option>
+        <option value="priority">Priority</option>
+      </select>
+    </div>
+    <div class="filters" style="padding-top:0">
+      <span class="chip ok" data-prov="local">Local</span>
+      <span class="chip" data-prov="github">GitHub</span>
+      <span class="chip" data-prov="gitlab">GitLab</span>
+      <span class="chip" data-prov="linear">Linear</span>
+      <span class="chip" data-prov="jira">Jira</span>
+    </div>
+    <div class="panel-content" id="panelContent">
+      <div class="board-view" id="boardView"></div>
+      <div class="list-view" id="listView" style="display:none"></div>
+    </div>
+  </div>
+
+  <!-- Right Dock Bar -->
+  <div class="dock-bar">
+    <div class="dock-btn" title="Files">Fi</div>
+    <div class="dock-btn active" title="Tasks">Tk</div>
+    <div class="dock-btn" title="Git">Gi</div>
+    <div class="dock-btn" title="Browser">Br</div>
+  </div>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+  const STAGES = ['Backlog', 'Ready', 'In Progress', 'Review', 'Done'];
+
+  const ITEMS = [
+    { id:'local:1', provider:'local', kind:'local_task', title:'完成 UI 设计 audit 原型更新', key:'T-1', status:{category:'in_progress',label:'In Progress'}, projectKey:'neeko-design', author:'tincopper', assignees:['tincopper'], labels:['design','prototype'], priority:1, stage:'In Progress', updatedAt:'2026-07-26T04:00:00Z', body:'更新 Tasks 原型：Local-first 设计、Provider 扩展卡片、状态流转可视化。', capabilities:['transition','assign','open'], workflow:{stages:['Backlog','Ready','In Progress','Review','Done'], currentIndex:2, transitions:[{from:'In Progress',to:'Review',label:'提交 Review'},{from:'In Progress',to:'Backlog',label:'退回 Backlog'}]} },
+    { id:'local:2', provider:'local', kind:'local_task', title:'设计 Docker 支持的项目卡片样式', key:'T-2', status:{category:'open',label:'Open'}, projectKey:'neeko-design', author:'tincopper', assignees:[], labels:['design','docker'], priority:2, stage:'Backlog', updatedAt:'2026-07-25T22:00:00Z', body:'Projects 面板需要预留 Docker 远程容器项目的展示样式。', capabilities:['transition','assign','open'], workflow:{stages:['Backlog','Ready','In Progress','Review','Done'], currentIndex:0, transitions:[{from:'Backlog',to:'Ready',label:'开始'}]} },
+    { id:'local:3', provider:'local', kind:'local_task', title:'补充 Tasks 看板首页原型', key:'T-3', status:{category:'in_progress',label:'In Progress'}, projectKey:'neeko-design', author:'tincopper', assignees:['tincopper'], labels:['design','prototype'], priority:1, stage:'Review', updatedAt:'2026-07-26T06:00:00Z', body:'Board View 原型：5 列 stage、卡片混排、+ Add task。', capabilities:['transition','assign','open'], workflow:{stages:['Backlog','Ready','In Progress','Review','Done'], currentIndex:3, transitions:[{from:'Review',to:'Done',label:'完成'}]} },
+    { id:'github:pr:128', provider:'github', kind:'pull_request', title:'Unify dock density tokens and StatusBar height', key:'#128', number:128, status:{category:'open',label:'Open'}, projectKey:'tincopper/neeko', author:'tincopper', assignees:['tincopper'], reviewers:['alice'], labels:['ui','polish'], priority:2, stage:'In Progress', updatedAt:'2026-07-26T02:10:00Z', body:'Align TitleBar/PanelHeader/StatusBar density.\n\n- StatusBar 16 -> 22\n- semantic tokens for git colors\n- no hardcoded One Dark in dialogs', capabilities:['merge','checkout','comment','review','open'], pr:{sourceBranch:'worktree-ui-design-audit',targetBranch:'main',isDraft:false,checks:{pass:4,fail:0,pending:1},reviewDecision:'Review required'} },
+    { id:'github:pr:119', provider:'github', kind:'pull_request', title:'Draft: Skills IA single surface', key:'#119', number:119, status:{category:'draft',label:'Draft'}, projectKey:'tincopper/neeko', author:'tincopper', assignees:[], reviewers:[], labels:['wip'], priority:3, stage:'Backlog', updatedAt:'2026-07-24T18:00:00Z', body:'Merge Skills panel into a single IA surface with sections.', capabilities:['checkout','comment','open'], pr:{sourceBranch:'feat/skills-ia',targetBranch:'main',isDraft:true,checks:{pass:2,fail:1,pending:0}} },
+    { id:'github:issue:88', provider:'github', kind:'issue', title:'GitCredentialDialog ignores theme tokens', key:'#88', number:88, status:{category:'open',label:'Open'}, projectKey:'tincopper/neeko', author:'bob', assignees:['tincopper'], labels:['bug','theme'], priority:1, stage:'Ready', updatedAt:'2026-07-25T14:00:00Z', body:'GitCredentialDialog uses hardcoded light-mode colors instead of theme tokens.', capabilities:['comment','close','open'] },
+    { id:'gitlab:mr:15', provider:'gitlab', kind:'pull_request', title:'ci: cache pnpm store on runners', key:'!15', number:15, status:{category:'merged',label:'Merged'}, projectKey:'neeko/ci-templates', author:'carol', assignees:['carol'], reviewers:['dave'], labels:['ci'], priority:4, stage:'Done', updatedAt:'2026-07-23T10:00:00Z', body:'Cache pnpm store across CI runners to reduce install time.', capabilities:['open'], pr:{sourceBranch:'ci/pnpm-cache',targetBranch:'main',isDraft:false,checks:{pass:6,fail:0,pending:0},reviewDecision:'Approved'} },
+    { id:'gitlab:issue:3', provider:'gitlab', kind:'issue', title:'Document remote Docker context setup', key:'#3', number:3, status:{category:'in_progress',label:'Doing'}, projectKey:'neeko/docs', author:'carol', assignees:['carol'], labels:['docs'], priority:3, stage:'In Progress', updatedAt:'2026-07-25T20:00:00Z', body:'Add step-by-step guide for connecting Docker remote context in Neeko.', capabilities:['comment','close','open'] },
+    { id:'linear:LIN-42', provider:'linear', kind:'ticket', title:'Ship Work Items hub MVP with GitHub provider', key:'LIN-42', status:{category:'in_progress',label:'In Progress'}, projectKey:'Neeko', author:'tincopper', assignees:['tincopper'], labels:['mvp','architecture'], priority:1, stage:'In Progress', updatedAt:'2026-07-26T01:00:00Z', body:'MVP scope: Shell UI + model + Local Tasks + GitHub PR migration.', capabilities:['transition','assign','link_vcs','open'], workflow:{stages:['Backlog','Ready','In Progress','Review','Done'], currentIndex:2, transitions:[{from:'In Progress',to:'Review',label:'Submit Review'}]} },
+    { id:'linear:LIN-55', provider:'linear', kind:'ticket', title:'Rename Task Runner UI to Launch', key:'LIN-55', status:{category:'open',label:'Todo'}, projectKey:'Neeko', author:'alice', assignees:[], labels:['naming'], priority:2, stage:'Backlog', updatedAt:'2026-07-24T12:00:00Z', body:'Update product copy: Task Runner -> Launch. Code rename is P2.', capabilities:['transition','assign','open'], workflow:{stages:['Backlog','Ready','In Progress','Review','Done'], currentIndex:0, transitions:[{from:'Backlog',to:'Ready',label:'Start'}]} },
+    { id:'jira:PROJ-88', provider:'jira', kind:'ticket', title:'Enterprise SSO for Integrations settings', key:'PROJ-88', status:{category:'blocked',label:'Blocked'}, projectKey:'PROJ', author:'eve', assignees:['tincopper','eve'], labels:['security','enterprise'], priority:1, stage:'In Progress', updatedAt:'2026-07-25T08:00:00Z', body:'SSO integration for Jira Cloud enterprise customers.', capabilities:['transition','assign','link_vcs','open'], workflow:{stages:['Backlog','Ready','In Progress','Review','Done'], currentIndex:2, transitions:[{from:'In Progress',to:'Review',label:'Submit'}]} },
+    { id:'jira:PROJ-91', provider:'jira', kind:'ticket', title:'Jira <-> GitHub PR link sync', key:'PROJ-91', status:{category:'open',label:'To Do'}, projectKey:'PROJ', author:'eve', assignees:[], labels:['integration'], priority:3, stage:'Backlog', updatedAt:'2026-07-24T10:00:00Z', body:'Bidirectional link sync between Jira tickets and GitHub PRs.', capabilities:['transition','assign','open'], workflow:{stages:['Backlog','Ready','In Progress','Review','Done'], currentIndex:0, transitions:[{from:'Backlog',to:'Ready',label:'Pick up'}]} },
+  ];
+
+  let currentView = 'board';
+  let selectedId = null;
+  let providerOn = { local:true, github:true, gitlab:true, linear:true, jira:true };
+  let statusFilter = 'all';
+  let searchText = '';
+  let openTabs = new Map(); // id -> {title, el}
+  let activeTabId = null;
+
+  function kindIcon(k) {
+    const map = { pull_request:['pr','PR'], issue:['issue','IS'], local_task:['local','LO'], ticket:['ticket','TK'] };
+    const r = map[k] || map.ticket;
+    return { cls:r[0], t:r[1] };
+  }
+  function providerClass(p) {
+    return { local:'local', github:'gh', gitlab:'gl', linear:'linear', jira:'jira' }[p] || '';
+  }
+  function statusClass(s) {
+    return { open:'open', in_progress:'in_progress', blocked:'blocked', done:'done', cancelled:'done', merged:'done', draft:'draft' }[s] || 'open';
+  }
+  function escapeHtml(s) { return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+  function relTime(d) {
+    const diff = (Date.now() - new Date(d).getTime()) / 1000;
+    if (diff < 3600) return Math.floor(diff/60) + 'm';
+    if (diff < 86400) return Math.floor(diff/3600) + 'h';
+    return Math.floor(diff/86400) + 'd';
+  }
+
+  function filtered() {
+    return ITEMS.filter(it => {
+      if (!providerOn[it.provider]) return false;
+      if (statusFilter !== 'all' && it.status.category !== statusFilter) return false;
+      if (searchText) {
+        const q = searchText.toLowerCase();
+        return it.title.toLowerCase().includes(q) || it.key.toLowerCase().includes(q);
+      }
+      return true;
+    });
+  }
+
+  function renderBoard() {
+    const el = document.getElementById('boardView');
+    const items = filtered();
+    const html = [];
+    for (const stage of STAGES) {
+      const stageItems = items.filter(it => it.stage === stage);
+      const cards = stageItems.map(it => {
+        const ki = kindIcon(it.kind);
+        const prio = it.priority ? `<span class="priority p${it.priority}">P${it.priority}</span>` : '';
+        const blocked = it.status.category === 'blocked' ? `<span style="color:var(--danger);font-size:9px;font-weight:700">BLOCKED</span>` : '';
+        return `
+          <div class="board-card" data-id="${it.id}">
+            <div class="card-top">
+              <span class="kind-ico ${ki.cls}">${ki.t}</span>
+              <span class="prov ${providerClass(it.provider)}">${it.provider}</span>
+              ${prio} ${blocked}
+            </div>
+            <div class="card-title">${escapeHtml(it.title)}</div>
+            <div class="card-meta">
+              <span class="mono">${escapeHtml(it.key)}</span>
+              ${it.labels.slice(0,2).map(l => `<span class="label">${escapeHtml(l)}</span>`).join('')}
+              <span style="flex:1"></span>
+              ${it.assignees.map(a => `<span class="avatar" title="@${a}">${a.slice(0,1).toUpperCase()}</span>`).join('')}
+            </div>
+          </div>`;
+      }).join('');
+      html.push(`
+        <div class="board-col">
+          <div class="col-head"><span>${stage}</span><span class="count">${stageItems.length}</span></div>
+          <div class="col-body">${cards}<button class="add-btn" data-stage="${stage}">+ Add task</button></div>
+        </div>`);
+    }
+    el.innerHTML = html.join('');
+    el.querySelectorAll('.board-card').forEach(card => {
+      card.addEventListener('click', () => openDetail(card.dataset.id));
+    });
+    el.querySelectorAll('.add-btn').forEach(btn => {
+      btn.addEventListener('click', () => showToast(`Add task to "${btn.dataset.stage}"`));
+    });
+  }
+
+  function renderList() {
+    const el = document.getElementById('listView');
+    const items = filtered();
+    if (!items.length) { el.innerHTML = '<div style="padding:20px;text-align:center;color:var(--text-muted)">No matching tasks</div>'; return; }
+    const groups = new Map();
+    for (const it of items) { if (!groups.has(it.provider)) groups.set(it.provider, []); groups.get(it.provider).push(it); }
+    const html = [];
+    for (const [prov, list] of groups) {
+      html.push(`<div class="group-label">${prov}</div>`);
+      for (const it of list) {
+        const ki = kindIcon(it.kind);
+        const branch = it.pr ? `<span class="mono truncate">${it.pr.sourceBranch} &rarr; ${it.pr.targetBranch}</span>` : '';
+        const checks = it.pr?.checks ? `<span style="color:${it.pr.checks.fail ? 'var(--danger)' : 'var(--success)'}">✓${it.pr.checks.pass}${it.pr.checks.fail ? ' ✗'+it.pr.checks.fail : ''}</span>` : '';
+        html.push(`
+          <button type="button" class="list-row ${selectedId === it.id ? 'active' : ''}" data-id="${it.id}">
+            <span class="kind-ico ${ki.cls}">${ki.t}</span>
+            <span style="min-width:0">
+              <span class="row-top">
+                <span class="row-title truncate">${escapeHtml(it.title)}</span>
+                <span class="status ${statusClass(it.status.category)}">${escapeHtml(it.status.label)}</span>
+              </span>
+              <span class="row-meta">
+                <span class="prov ${providerClass(it.provider)}">${it.provider}</span>
+                <span class="mono">${escapeHtml(it.key)}</span>
+                ${it.assignees.map(a => `<span>@${a}</span>`).join('')}
+                ${it.labels.slice(0,2).map(l => `<span class="label">${escapeHtml(l)}</span>`).join('')}
+                ${branch} ${checks}
+                <span>${relTime(it.updatedAt)}</span>
+              </span>
+            </span>
+          </button>`);
+      }
+    }
+    el.innerHTML = html.join('');
+    el.querySelectorAll('.list-row').forEach(row => {
+      row.addEventListener('click', () => {
+        selectedId = row.dataset.id;
+        renderList();
+        openDetail(selectedId);
+      });
+    });
+  }
+
+  function openDetail(id) {
+    selectedId = id;
+    const it = ITEMS.find(x => x.id === id);
+    if (!it) return;
+    // Create or activate tab
+    if (!openTabs.has(id)) {
+      createTab(id, it);
+    }
+    activateTab(id);
+    renderDetail(it);
+  }
+
+  function createTab(id, it) {
+    const ki = kindIcon(it.kind);
+    const tab = document.createElement('button');
+    tab.className = 'editor-tab';
+    tab.id = 'tab-' + id;
+    tab.type = 'button';
+    tab.innerHTML = `<span class="kind-ico ${ki.cls}" style="width:14px;height:14px;font-size:7px">${ki.t}</span><span class="truncate">${escapeHtml(it.key)}</span><span class="close">&times;</span>`;
+    tab.querySelector('.close').addEventListener('click', (e) => { e.stopPropagation(); closeTab(id); });
+    tab.addEventListener('click', () => { selectedId = id; activateTab(id); renderDetail(it); });
+    document.getElementById('tabBar').appendChild(tab);
+    openTabs.set(id, { tab, it });
+  }
+
+  function activateTab(id) {
+    activeTabId = id;
+    openTabs.forEach((v, k) => v.tab.classList.toggle('active', k === id));
+    if (id) {
+      document.getElementById('welcomeView').style.display = 'none';
+      document.getElementById('detailView').style.display = 'block';
+    }
+  }
+
+  function closeTab(id) {
+    const t = openTabs.get(id);
+    if (!t) return;
+    t.tab.remove();
+    openTabs.delete(id);
+    if (activeTabId === id) {
+      const next = openTabs.keys().next().value;
+      if (next) { activateTab(next); renderDetail(openTabs.get(next).it); }
+      else {
+        activeTabId = null; selectedId = null;
+        document.getElementById('welcomeView').style.display = 'flex';
+        document.getElementById('detailView').style.display = 'none';
+      }
+    }
+  }
+
+  function actionButtons(it) {
+    const caps = new Set(it.capabilities || []);
+    const btns = [];
+    btns.push(`<button class="btn btn-primary" data-act="agent" type="button">Open in Agent</button>`);
+    if (caps.has('open')) btns.push(`<button class="btn btn-secondary" data-act="browser" type="button">Open in browser</button>`);
+    if (caps.has('checkout')) btns.push(`<button class="btn btn-secondary" data-act="checkout" type="button">Checkout branch</button>`);
+    if (caps.has('merge') && it.status.category === 'open') btns.push(`<button class="btn btn-secondary" data-act="merge" type="button">Merge</button>`);
+    if (caps.has('transition')) btns.push(`<button class="btn btn-secondary" data-act="transition" type="button">Transition...</button>`);
+    if (caps.has('comment')) btns.push(`<button class="btn btn-ghost" data-act="comment" type="button">Comment</button>`);
+    if (caps.has('assign')) btns.push(`<button class="btn btn-ghost" data-act="assign" type="button">Assign me</button>`);
+    if (it.workflow && it.workflow.transitions) {
+      it.workflow.transitions.forEach((t, i) => btns.push(`<button class="btn btn-ghost" data-wf="${i}" type="button">→ ${escapeHtml(t.label || t.to)}</button>`));
+    }
+    return btns.join('');
+  }
+
+  function renderWorkflow(wf) {
+    const stages = wf.stages || [];
+    const idx = wf.currentIndex ?? -1;
+    const cells = stages.map((s, i) => {
+      let cls = 'stage';
+      if (i < idx) cls += ' done';
+      else if (i === idx) cls += ' current';
+      return `<div class="${cls}">${escapeHtml(s)}</div>`;
+    }).join('');
+    return `<div class="section-title">Status Flow</div><div class="stage-rail">${cells}</div>`;
+  }
+
+  function renderDetail(it) {
+    const el = document.getElementById('detailView');
+    const ki = kindIcon(it.kind);
+    el.innerHTML = `
+      <div class="detail-kicker">
+        <span class="kind-ico ${ki.cls}">${ki.t}</span>
+        <span class="prov ${providerClass(it.provider)}">${it.provider}</span>
+        <span class="mono">${escapeHtml(it.key)}</span>
+        <span class="status ${statusClass(it.status.category)}">${escapeHtml(it.status.label)}</span>
+      </div>
+      <div class="detail-title">${escapeHtml(it.title)}</div>
+      <div class="detail-people">
+        <span><span class="avatar">${it.author.slice(0,1).toUpperCase()}</span> ${escapeHtml(it.author)}</span>
+        <span>Assignees: ${it.assignees.length ? it.assignees.map(a=>'@'+a).join(', ') : '—'}</span>
+        ${it.reviewers?.length ? `<span>Reviewers: ${it.reviewers.map(r=>'@'+r).join(', ')}</span>` : ''}
+      </div>
+      <div class="actions">${actionButtons(it)}</div>
+      <div>
+        ${it.workflow ? renderWorkflow(it.workflow) : ''}
+        <div class="section-title">Description</div>
+        <div class="desc">${escapeHtml(it.body || '')}</div>
+        <div class="section-title">Metadata</div>
+        <dl class="kv">
+          <dt>Project</dt><dd>${escapeHtml(it.projectKey || '—')}</dd>
+          <dt>Updated</dt><dd>${escapeHtml(it.updatedAt)}</dd>
+          <dt>Priority</dt><dd>P${it.priority ?? '—'}</dd>
+          <dt>Labels</dt><dd>${(it.labels||[]).map(escapeHtml).join(', ') || '—'}</dd>
+          ${it.pr ? `<dt>Branches</dt><dd class="mono">${escapeHtml(it.pr.sourceBranch)} → ${escapeHtml(it.pr.targetBranch)}</dd>` : ''}
+          ${it.pr?.reviewDecision ? `<dt>Review</dt><dd>${escapeHtml(it.pr.reviewDecision)}</dd>` : ''}
+        </dl>
+      </div>`;
+    el.querySelectorAll('[data-act]').forEach(btn => {
+      btn.addEventListener('click', () => showToast(`${btn.dataset.act} · ${it.provider} ${it.key}`));
+    });
+    el.querySelectorAll('[data-wf]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const ti = parseInt(btn.dataset.wf, 10);
+        const tr = (it.workflow?.transitions || [])[ti];
+        if (tr) showToast(`Transition → ${tr.to} · ${it.key}`);
+      });
+    });
+  }
+
+  function showToast(msg) {
+    const t = document.getElementById('toast');
+    t.textContent = msg;
+    t.classList.add('show');
+    clearTimeout(showToast._timer);
+    showToast._timer = setTimeout(() => t.classList.remove('show'), 1600);
+  }
+
+  function switchView(view) {
+    currentView = view;
+    document.getElementById('boardView').style.display = view === 'board' ? 'flex' : 'none';
+    document.getElementById('listView').style.display = view === 'list' ? 'flex' : 'none';
+    document.querySelectorAll('#viewTabs .tab').forEach(t => t.classList.toggle('active', t.dataset.view === view));
+    if (view === 'board') renderBoard(); else renderList();
+  }
+
+  // Event wiring
+  document.querySelectorAll('#viewTabs .tab').forEach(t => {
+    t.addEventListener('click', () => switchView(t.dataset.view));
+  });
+  document.getElementById('search').addEventListener('input', e => { searchText = e.target.value; if (currentView === 'board') renderBoard(); else renderList(); });
+  document.getElementById('statusFilter').addEventListener('change', e => { statusFilter = e.target.value; if (currentView === 'board') renderBoard(); else renderList(); });
+  document.querySelectorAll('.chip[data-prov]').forEach(chip => {
+    chip.addEventListener('click', () => {
+      const p = chip.dataset.prov;
+      providerOn[p] = !providerOn[p];
+      chip.classList.toggle('off', !providerOn[p]);
+      if (currentView === 'board') renderBoard(); else renderList();
+    });
+  });
+
+  // Init
+  renderBoard();
+</script>
+</body>
+</html>
