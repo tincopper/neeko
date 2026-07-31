@@ -11,6 +11,7 @@ import {
   CloudDownload,
 } from '@/shared/components/icons';
 import { useGitStore } from '@/shared/store/gitStore';
+import { useWorktreeStore } from '@/shared/store/worktreeStore';
 import type { GitInfo, AheadBehind } from '@/shared/types';
 import { filterWorktreeBranches } from '@/shared/utils';
 
@@ -48,6 +49,15 @@ const BranchInfo: React.FC<BranchInfoProps> = ({
 
   const favoriteBranches = useGitStore(useShallow((s) => s.favoriteBranches[projectId] ?? []));
   const toggleFavorite = useGitStore((s) => s.toggleFavorite);
+
+  // Worktree 绑定独立分支，不允许在 changes 面板切换分支（与 BranchStatusBarWidget 一致）
+  const activeWorktreePath = useWorktreeStore((s) => s.activeWorktreePath);
+  const isWorktreeActive = activeWorktreePath !== null;
+
+  const handleToggleBranchDropdown = useCallback(() => {
+    if (isWorktreeActive) return;
+    setBranchDropdownOpen((v) => !v);
+  }, [isWorktreeActive]);
 
   // Close on outside click
   useEffect(() => {
@@ -106,13 +116,17 @@ const BranchInfo: React.FC<BranchInfoProps> = ({
             <span
               role="button"
               tabIndex={0}
-              className="flex items-center gap-1 text-[var(--font-size)] text-accent-blue font-mono bg-accent-blue/10 border border-accent-blue/20 rounded-full px-2 py-0.5 truncate cursor-pointer transition-colors duration-150 hover:bg-accent-blue/20 hover:border-accent-blue/40"
-              title={currentBranch}
-              onClick={() => setBranchDropdownOpen((v) => !v)}
+              className={`flex items-center gap-1 text-[var(--font-size)] text-accent-blue font-mono bg-accent-blue/10 border border-accent-blue/20 rounded-full px-2 py-0.5 truncate cursor-pointer transition-colors duration-150 hover:bg-accent-blue/20 hover:border-accent-blue/40 ${
+                isWorktreeActive ? 'opacity-70 cursor-default' : ''
+              }`}
+              title={
+                isWorktreeActive ? `Worktree branch: ${currentBranch} (read-only)` : currentBranch
+              }
+              onClick={handleToggleBranchDropdown}
               onKeyDown={(e) => {
                 if (e.key === 'Enter' || e.key === ' ') {
                   e.preventDefault();
-                  setBranchDropdownOpen((v) => !v);
+                  handleToggleBranchDropdown();
                 }
               }}
             >
