@@ -1112,6 +1112,30 @@ pub async fn get_worktree_changed_files(
     }
 }
 
+/// Get ignored files (from .gitignore / .git/info/exclude) for a worktree path.
+/// Uses `git status --porcelain --ignored` (directory-level collapsed), which works
+/// for local, WSL and SSH transports alike. Empty when the path is not a git repo.
+pub async fn get_ignored_files(
+    transport: &dyn GitTransport,
+    worktree_path: &str,
+) -> Result<Vec<String>> {
+    let output = transport
+        .run_git(&["status", "--porcelain", "--ignored"], worktree_path)
+        .await?;
+    Ok(parse_ignored_porcelain(&output))
+}
+
+/// Parse `git status --porcelain --ignored` output into relative paths.
+/// Ignored entries are prefixed with `!! `; directories end with a trailing `/`.
+fn parse_ignored_porcelain(output: &str) -> Vec<String> {
+    output
+        .lines()
+        .filter(|line| line.starts_with("!! "))
+        .map(|line| line[3..].trim_end_matches('/').to_string())
+        .filter(|p| !p.is_empty())
+        .collect()
+}
+
 /// Get changed files diff stats (additions/deletions).
 /// Uses git2 for local transports, local shell fallback otherwise.
 pub async fn get_changed_files_diff_stats(
@@ -1485,5 +1509,23 @@ mod tests {
         let transport = ResetErrorTransport;
         let result = discard_file(&transport, "/tmp", "base.txt").await;
         assert!(result.is_err(), "real reset error should propagate");
+    }
+
+    #[test]
+    fn parse_ignored_porcelain_extracts_ignored_paths() {
+        // `!! ` 前缀为忽略项；目录带尾斜杠；普通 porcelain 行应被过滤
+        let output = "!! .env\n!! dist/\n M src/main.rs\n?? new.txt\n";
+        let paths = parse_ignored_porcelain(output);
+        assert_eq!(paths, vec![".env", "dist"]);
+    }
+
+    #[test]
+    fn parse_ignored_porcelain_handles_edge_cases() {
+        assert!(parse_ignored_porcelain("").is_empty());
+        assert!(parse_ignored_porcelain(" M src/main.rs\n").is_empty());
+        assert_eq!(
+            parse_ignored_porcelain("!! node_modules/\n"),
+            vec!["node_modules"]
+        );
     }
 }

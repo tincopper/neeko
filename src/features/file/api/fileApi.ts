@@ -44,6 +44,44 @@ export function createNewFile(
   });
 }
 
+export function createDirectory(
+  projectId: string,
+  dirPath: string,
+  rootPath?: string | null,
+): Promise<void> {
+  return invoke<void>('create_directory', {
+    projectId,
+    dirPath,
+    rootPath: rootPath ?? null,
+  });
+}
+
+export function deletePath(
+  projectId: string,
+  path: string,
+  rootPath?: string | null,
+): Promise<void> {
+  return invoke<void>('delete_path', {
+    projectId,
+    path,
+    rootPath: rootPath ?? null,
+  });
+}
+
+export function renamePath(
+  projectId: string,
+  path: string,
+  newName: string,
+  rootPath?: string | null,
+): Promise<void> {
+  return invoke<void>('rename_path', {
+    projectId,
+    path,
+    newName,
+    rootPath: rootPath ?? null,
+  });
+}
+
 export function saveNewFile(
   projectId: string,
   directory: string,

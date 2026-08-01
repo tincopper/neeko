@@ -182,6 +182,7 @@ macro_rules! neeko_invoke_handler {
             $crate::git::commands::get_git_info,
             $crate::git::commands::get_git_branch_info,
             $crate::git::commands::get_worktree_changed_files,
+            $crate::git::commands::get_ignored_files,
             $crate::git::commands::get_changed_files_diff_stats,
             $crate::git::commands::get_file_diff,
             $crate::git::commands::is_git_repo,
@@ -225,6 +226,9 @@ macro_rules! neeko_invoke_handler {
             $crate::file::commands::write_file_content,
             $crate::file::commands::create_new_file,
             $crate::file::commands::save_new_file,
+            $crate::file::commands::create_directory,
+            $crate::file::commands::delete_path,
+            $crate::file::commands::rename_path,
             // ── task ─────────────────────────────────────────────────────────
             $crate::task::commands::get_task_configs,
             $crate::task::commands::discover_task_configs,

@@ -290,12 +290,14 @@ export function useFileView(
     // Untitled tab → trigger Save As dialog
     if (fileTab.data.isUntitled) {
       const projectPath = useProjectStore.getState().activeProject?.path ?? '';
+      // Worktree 激活时，Save As 默认目录应为 worktree 根目录，而非项目根目录
+      const defaultDirectory = worktreePathRef.current ?? projectPath;
       useSaveAsStore.getState().requestSaveAs({
         tabId: fileTab.id,
         tabKey: tk,
         projectId: fileTab.projectId,
         content,
-        defaultDirectory: projectPath,
+        defaultDirectory,
         defaultFilename: fileTab.data.untitledName ?? fileTab.data.fileName,
       });
       return false;

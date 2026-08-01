@@ -32,6 +32,8 @@ export interface GitInfo {
   changed_files: FileChange[];
   is_clean: boolean;
   git_provider: string;
+  /** 被 .gitignore 忽略的相对路径列表（用于文件树灰色显示） */
+  ignored_files?: string[];
 }
 
 export interface CommitEntry {

@@ -253,6 +253,13 @@ function EditorGroupPane({
     [tabKey, projectIdForCheck, tabs.length],
   );
 
+  // 双击 tab 栏空白区域快速新建文件
+  const handleNewFileTab = useCallback(() => {
+    if (projectIdForCheck) {
+      createUntitledFileTab(tabKey, projectIdForCheck);
+    }
+  }, [tabKey, projectIdForCheck]);
+
   const actionMenuCtx: ActionContext = useMemo(
     () => ({
       projectId: projectIdForCheck,
@@ -430,6 +437,7 @@ function EditorGroupPane({
                   onAddTerminalTab={onAddTerminalTab}
                   onActionMenuOpen={handleActionMenuOpen}
                   onContextMenu={handleTabContextMenu}
+                  onNewFileTab={handleNewFileTab}
                   reorderable={groupId !== 'pinned'}
                   onReorderTab={handleReorderTab}
                   agents={installedEnabledAgents}

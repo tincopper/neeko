@@ -8,8 +8,15 @@ import { useWorktreeStore } from '@/shared/store/worktreeStore';
 import type { FileChange, Worktree, GitStatusDiff } from '@/shared/types';
 import { aheadBehindKey } from '@/shared/utils/aheadBehindKey';
 
-// eslint-disable-next-line import/no-restricted-paths -- session bootstrap needs git API for reading git info
-import { getWorktreeChangedFiles, getGitBranchInfo, getAheadBehind } from '../../git/api/gitApi';
+/* eslint-disable import/no-restricted-paths -- session bootstrap needs git API for reading git info */
+import {
+  getIgnoredFiles,
+  getWorktreeChangedFiles,
+  getGitBranchInfo,
+  getAheadBehind,
+} from '../../git/api/gitApi';
+import { refreshGitFileStates } from '../../git/utils/gitStatus';
+/* eslint-enable import/no-restricted-paths */
 // eslint-disable-next-line import/no-restricted-paths -- session bootstrap needs project API for listing projects
 import { listProjects } from '../../project/api/projectApi';
 import { loadSession } from '../api/sessionApi';
@@ -50,6 +57,7 @@ export function useSessionBootstrap(deps: {
           changed_files: [] as FileChange[],
           is_clean: true,
           git_provider: '',
+          ignored_files: [] as string[],
         };
 
         const patchGitInfo = (projectId: string, patch: Partial<typeof defaultGitInfo>) => {
@@ -77,6 +85,13 @@ export function useSessionBootstrap(deps: {
                   changed_files: changedFiles,
                   is_clean: changedFiles.length === 0,
                 });
+              })
+              .catch(() => {});
+
+            // 忽略文件列表（.gitignore），供文件树灰色显示
+            getIgnoredFiles(p.id, '')
+              .then((ignoredFiles) => {
+                patchGitInfo(p.id, { ignored_files: ignoredFiles });
               })
               .catch(() => {});
 
@@ -195,12 +210,8 @@ export function useSessionBootstrap(deps: {
         });
       };
 
-      // 1. 获取变更文件列表（轻量）
-      getWorktreeChangedFiles(projectId, worktreePath)
-        .then((changedFiles) => {
-          updateGitInfo({ changed_files: changedFiles, is_clean: changedFiles.length === 0 });
-        })
-        .catch((e) => console.error('[SessionBootstrap] get_worktree_changed_files failed:', e));
+      // 1. 获取变更文件 + 忽略文件列表（轻量，同时 patch ignored_files 供文件树灰色显示）
+      void refreshGitFileStates(projectId, worktreePath);
 
       // 2. 获取分支信息（异步，不阻塞文件列表更新）
       getGitBranchInfo(projectId, worktreePath)

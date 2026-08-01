@@ -63,6 +63,10 @@ describe('OpenIdeButton', () => {
 
   it('行点击 → 调 setProjectIde（持久化），不调 openIde', async () => {
     render(<OpenIdeButton />);
+    // 等待 mount 后异步 load_config 完成（同时 flush 其 setState）
+    await waitFor(() => {
+      expect(screen.getByTitle('Select IDE')).toBeInTheDocument();
+    });
     openDropdown();
 
     // 找到 IntelliJ IDEA 行（不是 button，是 div）
@@ -74,8 +78,11 @@ describe('OpenIdeButton', () => {
     expect(openIdeSpy).not.toHaveBeenCalled();
   });
 
-  it('行右侧 ▶ 按钮点击 → 调 openIde（一次性），不调 setProjectIde', () => {
+  it('行右侧 ▶ 按钮点击 → 调 openIde（一次性），不调 setProjectIde', async () => {
     render(<OpenIdeButton />);
+    await waitFor(() => {
+      expect(screen.getByTitle('Select IDE')).toBeInTheDocument();
+    });
     openDropdown();
 
     const runButton = screen.getByLabelText('Open IntelliJ IDEA now');
@@ -85,8 +92,11 @@ describe('OpenIdeButton', () => {
     expect(setProjectIdeSpy).not.toHaveBeenCalled();
   });
 
-  it('▶ 按钮点击不会冒泡触发行的 setProjectIde', () => {
+  it('▶ 按钮点击不会冒泡触发行的 setProjectIde', async () => {
     render(<OpenIdeButton />);
+    await waitFor(() => {
+      expect(screen.getByTitle('Select IDE')).toBeInTheDocument();
+    });
     openDropdown();
 
     const runButton = screen.getByLabelText('Open GoLand now');
@@ -97,8 +107,11 @@ describe('OpenIdeButton', () => {
     expect(setProjectIdeSpy).toHaveBeenCalledTimes(0);
   });
 
-  it('主按钮（左侧 IDE 名）点击 → 用当前默认 selected_ide 调 openIde', () => {
+  it('主按钮（左侧 IDE 名）点击 → 用当前默认 selected_ide 调 openIde', async () => {
     render(<OpenIdeButton />);
+    await waitFor(() => {
+      expect(screen.getByTitle('Open in IDE (GoLand)')).toBeInTheDocument();
+    });
 
     // 主按钮 title 使用展示名（GoLand）
     const mainButton = screen.getByTitle('Open in IDE (GoLand)');
@@ -108,7 +121,7 @@ describe('OpenIdeButton', () => {
     expect(setProjectIdeSpy).not.toHaveBeenCalled();
   });
 
-  it('selected_ide 为预设 id vscode 时主按钮显示 VS Code 图标而非 default', () => {
+  it('selected_ide 为预设 id vscode 时主按钮显示 VS Code 图标而非 default', async () => {
     const project = makeProject({ selected_ide: 'vscode' });
     useProjectStore.setState({
       projects: [project],
@@ -119,6 +132,9 @@ describe('OpenIdeButton', () => {
     });
 
     render(<OpenIdeButton />);
+    await waitFor(() => {
+      expect(screen.getByTitle('Open in IDE (VS Code)')).toBeInTheDocument();
+    });
 
     const mainButton = screen.getByTitle('Open in IDE (VS Code)');
     const img = within(mainButton).queryByTestId('ide-icon');

@@ -169,6 +169,49 @@ pub async fn save_new_file(
         .await
 }
 
+/// Create a new directory (with parent directories).
+#[tauri::command]
+pub async fn create_directory(
+    project_id: String,
+    dir_path: String,
+    root_path: Option<String>,
+    state: State<'_, AppStateWrapper>,
+) -> Result<(), AppError> {
+    let (t, wd) = state.resolve_project(&project_id)?;
+    let target = t.exec_target();
+    let base = root_path.unwrap_or(wd);
+    crate::common::file::services::create_directory(&target, &base, &dir_path).await
+}
+
+/// Delete a file or directory (recursively for directories).
+#[tauri::command]
+pub async fn delete_path(
+    project_id: String,
+    path: String,
+    root_path: Option<String>,
+    state: State<'_, AppStateWrapper>,
+) -> Result<(), AppError> {
+    let (t, wd) = state.resolve_project(&project_id)?;
+    let target = t.exec_target();
+    let base = root_path.unwrap_or(wd);
+    crate::common::file::services::delete_path(&target, &base, &path).await
+}
+
+/// Rename a file or directory (within the same parent directory).
+#[tauri::command]
+pub async fn rename_path(
+    project_id: String,
+    path: String,
+    new_name: String,
+    root_path: Option<String>,
+    state: State<'_, AppStateWrapper>,
+) -> Result<(), AppError> {
+    let (t, wd) = state.resolve_project(&project_id)?;
+    let target = t.exec_target();
+    let base = root_path.unwrap_or(wd);
+    crate::common::file::services::rename_path(&target, &base, &path, &new_name).await
+}
+
 // ── Tests ────────────────────────────────────────────────────────────────────
 
 #[cfg(test)]

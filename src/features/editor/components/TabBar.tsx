@@ -32,6 +32,8 @@ interface TabBarProps {
   onCloseOtherTabs?: (tabId: string) => void;
   /** 关闭所有 tab */
   onCloseAllTabs?: () => void;
+  /** 双击 tab 栏空白区域快速新建文件 */
+  onNewFileTab?: () => void;
   /** 启用拖拽排序 */
   reorderable?: boolean;
   onReorderTab?: (tabId: string, overId: string) => void;
@@ -85,6 +87,7 @@ const TabBar: React.FC<TabBarProps> = React.memo(
     onAddTerminalTab,
     onActionMenuOpen,
     onContextMenu,
+    onNewFileTab,
     reorderable = false,
     onReorderTab,
     agents = [],
@@ -117,6 +120,16 @@ const TabBar: React.FC<TabBarProps> = React.memo(
         scrollRef.current.scrollLeft += e.deltaY;
       }
     }, []);
+
+    // 双击 tab 栏空白区域（非 tab 项、非按钮）快速新建文件
+    const handleTabBarDoubleClick = useCallback(
+      (e: React.MouseEvent) => {
+        const target = e.target as HTMLElement;
+        if (target.closest('[role="tab"]') || target.closest('button')) return;
+        onNewFileTab?.();
+      },
+      [onNewFileTab],
+    );
 
     // 终端 tab 数量
     const terminalTabCount = useMemo(
@@ -192,8 +205,11 @@ const TabBar: React.FC<TabBarProps> = React.memo(
         {/* Tab 列表 */}
         <div
           ref={scrollRef}
+          role="tablist"
+          tabIndex={-1}
           className="flex items-center gap-1 overflow-x-auto no-scrollbar"
           onWheel={handleWheel}
+          onDoubleClick={handleTabBarDoubleClick}
         >
           {renderTabs()}
 

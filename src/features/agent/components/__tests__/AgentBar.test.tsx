@@ -48,8 +48,12 @@ describe('AgentBar', () => {
     });
   });
 
-  it('should render agent buttons', () => {
+  it('should render agent buttons', async () => {
     render(<AgentBar agents={mockAgents} selectedAgentId={null} onSelectAgent={vi.fn()} />);
+    // 等待 mount 后异步安装状态检查完成（同时 flush 其 setState）
+    await waitFor(() => {
+      expect(screen.getByText('Claude Code')).toBeInTheDocument();
+    });
 
     // Should show enabled agents
     expect(screen.getByText('Claude Code')).toBeInTheDocument();
@@ -72,14 +76,17 @@ describe('AgentBar', () => {
     });
   });
 
-  it('should show selected agent as selected', () => {
+  it('should show selected agent as selected', async () => {
     render(<AgentBar agents={mockAgents} selectedAgentId="claude" onSelectAgent={vi.fn()} />);
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Claude Code' })).toBeInTheDocument();
+    });
 
     const selectedButton = screen.getByRole('button', { name: 'Claude Code' });
     expect(selectedButton).toHaveClass('selected');
   });
 
-  it('should render in compact mode', () => {
+  it('should render in compact mode', async () => {
     render(
       <AgentBar
         agents={mockAgents}
@@ -88,18 +95,20 @@ describe('AgentBar', () => {
         onSelectAgent={vi.fn()}
       />,
     );
-
-    // In compact mode, buttons should have 'compact' class
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Claude Code' })).toBeInTheDocument();
+    });
     const buttons = screen.getAllByRole('button');
     buttons.forEach((button) => {
       expect(button).toHaveClass('compact');
     });
   });
 
-  it('should show empty state when no enabled agents', () => {
+  it('should show empty state when no enabled agents', async () => {
     render(<AgentBar agents={[]} selectedAgentId={null} onSelectAgent={vi.fn()} />);
-
-    expect(screen.getByText('No enabled agents')).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByText('No enabled agents')).toBeInTheDocument();
+    });
   });
 
   it('should show not-installed state and toast for uninstalled agents', async () => {

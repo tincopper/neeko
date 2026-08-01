@@ -109,10 +109,13 @@ beforeEach(() => {
 });
 
 describe('ProjectSkillContent', () => {
-  it('shows empty state when no project selected', () => {
+  it('shows empty state when no project selected', async () => {
     useProjectStore.setState({ activeProjectId: null, activeProject: null });
     render(<ProjectSkillContent setDialog={vi.fn()} />);
-    expect(screen.getByText(/No project selected/i)).toBeInTheDocument();
+    // 等待 mount 后异步加载完成（同时 flush 其 setState）
+    await waitFor(() => {
+      expect(screen.getByText(/No project selected/i)).toBeInTheDocument();
+    });
   });
 
   it('shows empty project skills with add CTA', async () => {

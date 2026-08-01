@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 import ConnectionProjectCard from '@/features/connection/components/ConnectionProjectCard';
@@ -47,7 +47,7 @@ describe('ConnectionProjectCard (WSL)', () => {
     });
   });
 
-  it('展开后渲染 local 主终端行（branch + 聚合 +A -D）和 worktree 行', () => {
+  it('展开后渲染 local 主终端行（branch + 聚合 +A -D）和 worktree 行', async () => {
     const project = makeWslProject();
     render(
       <ConnectionProjectCard
@@ -59,6 +59,10 @@ describe('ConnectionProjectCard (WSL)', () => {
         onRemoveProject={vi.fn()}
       />,
     );
+    // 等待 mount 后异步 worktree/分支数据加载完成（同时 flush 其 setState）
+    await waitFor(() => {
+      expect(screen.getByText('local')).toBeInTheDocument();
+    });
 
     // git_info 存在 → 自动展开
     expect(screen.getByText('local')).toBeInTheDocument();
@@ -69,7 +73,7 @@ describe('ConnectionProjectCard (WSL)', () => {
     expect(screen.getByText('-1')).toBeInTheDocument();
   });
 
-  it('点击 local 行触发 onSelectProject (传入 distro + project)', () => {
+  it('点击 local 行触发 onSelectProject (传入 distro + project)', async () => {
     const project = makeWslProject();
     const onSelectProject = vi.fn();
     render(
@@ -82,12 +86,15 @@ describe('ConnectionProjectCard (WSL)', () => {
         onRemoveProject={vi.fn()}
       />,
     );
+    await waitFor(() => {
+      expect(screen.getByText('local')).toBeInTheDocument();
+    });
 
     fireEvent.click(screen.getByText('local'));
     expect(onSelectProject).toHaveBeenCalledWith(project.id);
   });
 
-  it('点击 worktree 行触发 onOpenWorktreeTerminal (传入 distro)', () => {
+  it('点击 worktree 行触发 onOpenWorktreeTerminal (传入 distro)', async () => {
     const project = makeWslProject();
     const onOpenWorktreeTerminal = vi.fn();
     render(
@@ -101,6 +108,9 @@ describe('ConnectionProjectCard (WSL)', () => {
         onOpenWorktreeTerminal={onOpenWorktreeTerminal}
       />,
     );
+    await waitFor(() => {
+      expect(screen.getByText('feature-x')).toBeInTheDocument();
+    });
 
     fireEvent.click(screen.getByText('feature-x'));
     expect(onOpenWorktreeTerminal).toHaveBeenCalledWith(
@@ -110,7 +120,7 @@ describe('ConnectionProjectCard (WSL)', () => {
     );
   });
 
-  it('active + 无 active worktree 时 local 行显示 ↑N（来自 store 的 aheadBehind）', () => {
+  it('active + 无 active worktree 时 local 行显示 ↑N（来自 store 的 aheadBehind）', async () => {
     const project = makeWslProject();
     useGitStore.setState({
       aheadBehind: { 'wsl:Ubuntu:wsl-p1': { ahead: 3, behind: 0 } },
@@ -125,11 +135,14 @@ describe('ConnectionProjectCard (WSL)', () => {
         onRemoveProject={vi.fn()}
       />,
     );
+    await waitFor(() => {
+      expect(screen.getByText('↑3')).toBeInTheDocument();
+    });
 
     expect(screen.getByText('↑3')).toBeInTheDocument();
   });
 
-  it('active worktree 与 isActive 都成立时 local 行不显示 ↑N', () => {
+  it('active worktree 与 isActive 都成立时 local 行不显示 ↑N', async () => {
     const project = makeWslProject();
     useWorktreeStore.setState({
       activeWorktreePath: '/home/user/wts/feature-x',
@@ -147,7 +160,8 @@ describe('ConnectionProjectCard (WSL)', () => {
         onRemoveProject={vi.fn()}
       />,
     );
-
-    expect(screen.queryByText('↑3')).not.toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.queryByText('↑3')).not.toBeInTheDocument();
+    });
   });
 });

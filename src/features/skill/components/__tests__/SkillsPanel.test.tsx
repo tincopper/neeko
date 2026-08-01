@@ -46,36 +46,47 @@ vi.mock('@/features/skill/api/skillApi', async (importOriginal) => {
 });
 
 describe('SkillsPanel — 导航', () => {
-  it('渲染两个视图切换按钮', () => {
+  it('渲染两个视图切换按钮', async () => {
     render(<SkillsPanel />);
-    expect(screen.getByText('Library')).toBeInTheDocument();
+    // 等待 mount 后异步加载完成（同时 flush 其 setState）
+    await waitFor(() => {
+      expect(screen.getByText('Library')).toBeInTheDocument();
+    });
     expect(screen.getByText('Marketplace')).toBeInTheDocument();
   });
 
-  it('点击 Marketplace 切换 activeSkillView', () => {
+  it('点击 Marketplace 切换 activeSkillView', async () => {
     useSkillStore.setState({ activeSkillView: 'local' });
     render(<SkillsPanel />);
+    await waitFor(() => {
+      expect(screen.getByText('Marketplace')).toBeInTheDocument();
+    });
     fireEvent.click(screen.getByText('Marketplace'));
     expect(useSkillStore.getState().activeSkillView).toBe('marketplace');
   });
 
-  it('点击 Library 切换 activeSkillView 并清除 tag', () => {
+  it('点击 Library 切换 activeSkillView 并清除 tag', async () => {
     useSkillStore.setState({
       activeSkillView: 'marketplace',
       activeTagGroupIds: ['tg1'],
     });
     render(<SkillsPanel />);
+    await waitFor(() => {
+      expect(screen.getByText('Library')).toBeInTheDocument();
+    });
     fireEvent.click(screen.getByText('Library'));
     expect(useSkillStore.getState().activeSkillView).toBe('local');
     expect(useSkillStore.getState().activeTagGroupIds).toEqual([]);
   });
 
-  it('skills 数量显示在 Library 旁边', () => {
+  it('skills 数量显示在 Library 旁边', async () => {
     useSkillStore.setState({
       skills: [createManagedSkill({ id: 's1' }), createManagedSkill({ id: 's2' })],
     });
     render(<SkillsPanel />);
-    expect(screen.getByText('2')).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByText('2')).toBeInTheDocument();
+    });
   });
 
   it('点击 Agents 中的 agent 设置 activeAgentId 和 activeSkillView', async () => {

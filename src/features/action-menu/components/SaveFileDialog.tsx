@@ -2,9 +2,12 @@ import { open as openDirectoryDialog } from '@tauri-apps/plugin-dialog';
 import React, { useState, useCallback, useRef, useEffect, startTransition } from 'react';
 
 import DirectoryPickerDialog from '@/features/action-menu/components/DirectoryPickerDialog';
-import { saveNewFile } from '@/features/file/api/fileApi';
+import { readDirTree, saveNewFile } from '@/features/file/api/fileApi';
+import { useFileStore } from '@/features/file/store';
+import { refreshGitFileStates } from '@/features/git';
 import { useEditorStore } from '@/shared/store';
 import { useProjectStore } from '@/shared/store/projectStore';
+import { useWorktreeStore } from '@/shared/store/worktreeStore';
 import type { FileContent } from '@/shared/types';
 import {
   Dialog,
@@ -21,6 +24,8 @@ const SaveFileDialog: React.FC = () => {
   const request = useSaveAsStore((s) => s.request);
   const clearSaveAs = useSaveAsStore((s) => s.clearSaveAs);
   const activeProject = useProjectStore((s) => s.activeProject);
+  // Worktree 激活时，保存目标根目录应为 worktree 路径
+  const activeWorktreePath = useWorktreeStore((s) => s.activeWorktreePath);
 
   const [filename, setFilename] = useState('');
   const [directory, setDirectory] = useState('');
@@ -72,6 +77,19 @@ const SaveFileDialog: React.FC = () => {
     setDirPickerOpen(false);
   }, []);
 
+  // 保存成功后刷新文件树，让新文件在 worktree/项目视图中立即可见；
+  // 同时显式刷新 git 状态（worktree 下 watcher 不监听，新文件需手动触发变色）
+  const refreshFileTree = useCallback(async () => {
+    if (!request) return;
+    try {
+      const tree = await readDirTree(request.projectId, null, activeWorktreePath ?? null);
+      useFileStore.setState({ fileTree: tree });
+      void refreshGitFileStates(request.projectId, activeWorktreePath ?? '');
+    } catch {
+      /* 树刷新失败不影响保存结果 */
+    }
+  }, [request, activeWorktreePath]);
+
   const handleSubmit = useCallback(async () => {
     if (!request || !activeProject) return;
 
@@ -86,7 +104,13 @@ const SaveFileDialog: React.FC = () => {
     setError(null);
 
     try {
-      const relPath = await saveNewFile(request.projectId, dir, fn, request.content);
+      const relPath = await saveNewFile(
+        request.projectId,
+        dir,
+        fn,
+        request.content,
+        activeWorktreePath ?? undefined,
+      );
       const store = useEditorStore.getState();
       store.updateTab(request.tabKey, request.tabId, {
         filePath: relPath,
@@ -102,6 +126,7 @@ const SaveFileDialog: React.FC = () => {
         } satisfies FileContent,
       });
       store.activateTab(request.tabKey, request.tabId);
+      void refreshFileTree();
       clearSaveAs();
     } catch (err) {
       setError(
@@ -110,7 +135,15 @@ const SaveFileDialog: React.FC = () => {
     } finally {
       setSubmitting(false);
     }
-  }, [request, activeProject, filename, directory, clearSaveAs]);
+  }, [
+    request,
+    activeProject,
+    filename,
+    directory,
+    clearSaveAs,
+    activeWorktreePath,
+    refreshFileTree,
+  ]);
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {

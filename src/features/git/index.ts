@@ -26,3 +26,6 @@ export { useGitStore } from './store';
 // Hooks
 export { useAheadBehindSync } from './hooks/useAheadBehindSync';
 export { useFileChangedEvent } from './hooks/useFileChangedEvent';
+
+// Utils
+export { refreshGitFileStates } from './utils/gitStatus';

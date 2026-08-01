@@ -6,9 +6,17 @@ import ConversationPanel from '@/features/conversation/components/ConversationPa
 import type { ConversationMeta } from '@/features/conversation/types';
 import { conversationTabTitle } from '@/features/conversation/utils/conversationTabTitle';
 import { useFileActionsContext } from '@/features/editor/FileActionsContext';
-import { revealInFileManager, readDirTree } from '@/features/file/api/fileApi';
+import {
+  createDirectory,
+  createNewFile,
+  deletePath,
+  readDirTree,
+  renamePath,
+  revealInFileManager,
+} from '@/features/file/api/fileApi';
 import FilesPanel from '@/features/file/components/FilesPanel';
 import { useFileStore } from '@/features/file/store';
+import { refreshGitFileStates } from '@/features/git';
 import GitCommitPanel from '@/features/git/components/GitCommitPanel';
 import GitControlPanel, { type GitControlTab } from '@/features/git/components/GitControlPanel';
 import GitLogPanel from '@/features/git/components/gitlog/GitLogPanel';
@@ -60,6 +68,7 @@ const FilesPanelWrapper: React.FC = React.memo(() => {
   const activeProjectId = useProjectStore((s) => s.activeProjectId);
   const projectPath = fileRootPath;
   const changedFiles = project?.gitInfo?.changed_files;
+  const ignoredFiles = project?.gitInfo?.ignored_files ?? [];
 
   // Compute projectId for use by child components (drag-and-drop, etc.)
   const projectId = project ? (project.type === 'Local' ? activeProjectId : project.id) : null;
@@ -216,6 +225,55 @@ const FilesPanelWrapper: React.FC = React.memo(() => {
     [projectPath],
   );
 
+  // 新建文件/目录/删除：统一走 file 域命令，root 使用 worktree 或项目根
+  // 错误向上抛给 FilesPanel 处理（弹通知），成功后静默刷新目录树
+  const handleCreate = useCallback(
+    async (dirPath: string, name: string, kind: 'file' | 'dir') => {
+      if (!projectId) return;
+      const relPath = dirPath ? `${dirPath}/${name}` : name;
+      if (kind === 'file') {
+        await createNewFile(projectId, relPath, fileRootPath ?? null);
+      } else {
+        await createDirectory(projectId, relPath, fileRootPath ?? null);
+      }
+      handleRefresh();
+      // watcher 只监听主项目路径，worktree 内新建文件不会自动刷新 git 状态，
+      // 显式刷新 changed_files 使新文件立即着色（Untracked）
+      void refreshGitFileStates(projectId, worktreePath ?? '');
+    },
+    [projectId, fileRootPath, handleRefresh, worktreePath],
+  );
+
+  const handleCreateFile = useCallback(
+    (dirPath: string, name: string) => handleCreate(dirPath, name, 'file'),
+    [handleCreate],
+  );
+
+  const handleCreateDirectory = useCallback(
+    (dirPath: string, name: string) => handleCreate(dirPath, name, 'dir'),
+    [handleCreate],
+  );
+
+  const handleDeletePath = useCallback(
+    async (path: string) => {
+      if (!projectId) return;
+      await deletePath(projectId, path, fileRootPath ?? null);
+      handleRefresh();
+      void refreshGitFileStates(projectId, worktreePath ?? '');
+    },
+    [projectId, fileRootPath, handleRefresh, worktreePath],
+  );
+
+  const handleRenamePath = useCallback(
+    async (path: string, newName: string) => {
+      if (!projectId) return;
+      await renamePath(projectId, path, newName, fileRootPath ?? null);
+      handleRefresh();
+      void refreshGitFileStates(projectId, worktreePath ?? '');
+    },
+    [projectId, fileRootPath, handleRefresh, worktreePath],
+  );
+
   return (
     <FilesPanel
       projectName={projectName}
@@ -231,7 +289,12 @@ const FilesPanelWrapper: React.FC = React.memo(() => {
       onOpenInBrowser={handleOpenInBrowser}
       onOpenInSystemBrowser={handleOpenInSystemBrowser}
       onRevealInExplorer={handleRevealInExplorer}
+      onCreateFile={handleCreateFile}
+      onCreateDirectory={handleCreateDirectory}
+      onDeletePath={handleDeletePath}
+      onRenamePath={handleRenamePath}
       changedFiles={changedFiles}
+      ignoredFiles={ignoredFiles}
     />
   );
 });

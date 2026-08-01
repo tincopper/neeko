@@ -450,6 +450,25 @@ pub async fn get_worktree_changed_files(
         .map_err(AppError::from)
 }
 
+/// Get ignored files (from .gitignore / .git/info/exclude) for a worktree path.
+#[tauri::command]
+pub async fn get_ignored_files(
+    project_id: String,
+    worktree_path: String,
+    state: State<'_, AppStateWrapper>,
+) -> Result<Vec<String>, AppError> {
+    let (backend, wd) = state.resolve_project(&project_id)?;
+    // When worktree_path is empty, use the main project path
+    let repo_path = if worktree_path.is_empty() {
+        &wd
+    } else {
+        &worktree_path
+    };
+    operations::get_ignored_files(&*backend, repo_path)
+        .await
+        .map_err(AppError::from)
+}
+
 /// Get diff statistics for changed files.
 #[tauri::command]
 pub async fn get_changed_files_diff_stats(

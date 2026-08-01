@@ -43,17 +43,22 @@ describe('useConversationList', () => {
     mockInvoke.mockReset();
   });
 
-  it('returns empty array when projectPath is null', () => {
+  it('returns empty array when projectPath is null', async () => {
     const { result } = renderHook(() => useConversationList(null, true));
+
+    // flush hook effect 内的 deferred setState（Promise.resolve().then）
+    await act(async () => {});
 
     expect(result.current.conversations).toEqual([]);
     expect(result.current.loading).toBe(false);
     expect(result.current.refreshing).toBe(false);
   });
 
-  it('starts in loading when active with a project (skeleton spine)', () => {
+  it('starts in loading when active with a project (skeleton spine)', async () => {
     mockInvoke.mockImplementation(async () => new Promise(() => {}));
     const { result } = renderHook(() => useConversationList('/tmp/project', true));
+    // flush hook effect 内的 deferred setState
+    await act(async () => {});
     expect(result.current.loading).toBe(true);
   });
 
@@ -298,8 +303,11 @@ describe('useConversationList', () => {
     expect(result.current.error).toBeTruthy();
   });
 
-  it('does not load when isActive is false', () => {
+  it('does not load when isActive is false', async () => {
     renderHook(() => useConversationList('/tmp/project', false));
+
+    // flush hook effect 内的 deferred setState（isActive=false 分支同样会 reset）
+    await act(async () => {});
 
     expect(mockInvoke).not.toHaveBeenCalled();
   });

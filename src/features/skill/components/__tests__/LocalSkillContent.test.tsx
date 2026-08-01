@@ -37,25 +37,35 @@ function renderComponent(setDialog = vi.fn<[SkillDialogState], void>()) {
 // ─── 测试 ────────────────────────────────────────────────────────────────────
 
 describe('LocalSkillContent', () => {
-  it('渲染 SkillHeader 中的操作按钮', () => {
+  it('渲染 SkillHeader 中的操作按钮', async () => {
     renderComponent();
-    expect(screen.getByText('Create')).toBeInTheDocument();
+    // 等待 mount 后异步加载完成（同时 flush 其 setState）
+    await waitFor(() => {
+      expect(screen.getByText('Create')).toBeInTheDocument();
+    });
     expect(screen.getByText('Install')).toBeInTheDocument();
     expect(screen.getByText('Scan')).toBeInTheDocument();
   });
 
-  it('渲染搜索框', () => {
+  it('渲染搜索框', async () => {
     renderComponent();
-    expect(screen.getByRole('textbox')).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByRole('textbox')).toBeInTheDocument();
+    });
   });
 
-  it('渲染 SkillListSection', () => {
+  it('渲染 SkillListSection', async () => {
     renderComponent();
-    expect(screen.getByTestId('skill-list-section')).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByTestId('skill-list-section')).toBeInTheDocument();
+    });
   });
 
-  it('点击 Create 按钮调用 setDialog({ type: "create" })', () => {
+  it('点击 Create 按钮调用 setDialog({ type: "create" })', async () => {
     const { setDialog } = renderComponent();
+    await waitFor(() => {
+      expect(screen.getByText('Create')).toBeInTheDocument();
+    });
     fireEvent.click(screen.getByText('Create'));
     expect(setDialog).toHaveBeenCalledWith({ type: 'create' });
   });
@@ -81,8 +91,10 @@ describe('LocalSkillContent', () => {
     });
   });
 
-  it('初始时不渲染 DiscoveredSkillsList', () => {
+  it('初始时不渲染 DiscoveredSkillsList', async () => {
     renderComponent();
-    expect(screen.queryByText(/Discovered/)).not.toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.queryByText(/Discovered/)).not.toBeInTheDocument();
+    });
   });
 });

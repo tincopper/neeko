@@ -641,7 +641,7 @@ mod tests {
     #[test]
     fn deploy_mcp_json_creates_config() {
         let tmp = tempdir().unwrap();
-        let deployer = make_test_deployer();
+        let _deployer = make_test_deployer();
 
         // Create a minimal plugin pointing at a temp config file
         let mut plugin = default_agent_plugins()
