@@ -4,7 +4,6 @@ import { getActionMenuItems } from '@/features/action-menu/actionRegistry';
 import ActionMenuDropdown from '@/features/action-menu/components/ActionMenuDropdown';
 import type { ActionRegistryItem, ActionContext } from '@/features/action-menu/types/actionMenu';
 import { checkAgentsInstalled } from '@/features/agent/api/agentApi';
-import AgentIcon from '@/features/agent/components/AgentIcon';
 import ConversationViewer from '@/features/conversation/components/ConversationViewer';
 import DiffView from '@/features/git/components/diff';
 import { PRDetailView } from '@/features/git/components/pr-detail';
@@ -29,6 +28,7 @@ import { buildDiffSource } from '@/shared/utils/diffSource';
 
 import { useEditorGroupLayout } from '../hooks/useEditorGroupLayout';
 
+import AgentBar from './AgentBar';
 import FileViewer from './FileViewer';
 import HtmlPreview from './HtmlPreview';
 import TabBar from './TabBar';
@@ -457,29 +457,14 @@ function EditorGroupPane({
             </div>
 
             {showAgentBarRow && (
-              <div className="h-8 px-2 pb-1 flex items-center gap-1">
+              <div className="px-2 py-1 flex flex-wrap items-center gap-1">
                 {showAgentBarContent && (
-                  <>
-                    <div className="relative shrink-0">
-                      <div className="flex items-center gap-1 overflow-x-auto flex-1 min-w-0 h-6">
-                        {installedEnabledAgents.map((agent) => {
-                          const selected = currentAgentId === agent.id;
-                          return (
-                            <button
-                              key={agent.id}
-                              className={`tb-icon-btn flex items-center gap-1.5 px-2 h-6 rounded-md transition-colors ${selected ? 'text-text-primary bg-bg-hover' : 'text-text-secondary hover:bg-bg-hover hover:text-text-primary'}`}
-                              style={{ fontSize: 'var(--terminal-font-size)' }}
-                              onClick={() => handleAgentClick(agent)}
-                              title={agent.name}
-                            >
-                              <AgentIcon icon={agent.icon} />
-                              {!compactMode && <span>{agent.name}</span>}
-                            </button>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  </>
+                  <AgentBar
+                    agents={installedEnabledAgents}
+                    selectedAgentId={currentAgentId}
+                    compactMode={compactMode}
+                    onAgentClick={handleAgentClick}
+                  />
                 )}
                 {!showAgentBarContent && <div className="flex-1" />}
                 <div className="flex items-center gap-0.5 shrink-0 ml-auto">
