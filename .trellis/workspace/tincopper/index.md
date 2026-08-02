@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-2.md`
-- **Total Sessions**: 111
-- **Last Active**: 2026-07-31
+- **Total Sessions**: 113
+- **Last Active**: 2026-08-02
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-2.md` | ~1825 | Active |
+| `journal-2.md` | ~1859 | Active |
 | `journal-1.md` | ~1986 | Archived |
 <!-- @@@/auto:active-documents -->
 
@@ -30,6 +30,8 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 113 | 2026-08-02 | Resource Library v7 redesign: center tab view + component split (review round 2) | `f398114e`, `b3a7717e`, `34d6d795` | `main` |
+| 112 | 2026-08-02 | Resource Library redesign: review fixes + component split | - | `main` |
 | 110 | 2026-07-31 | refactor: split CommitList into hooks + presentational components | `2da9ba4a` | `main` |
 | 109 | 2026-07-31 | Fix git graph line disconnections | `4c0da710` | `main` |
 | 108 | 2026-07-30 | Agent Configuration Schema system | `a167fd43` | `feature-commands` |

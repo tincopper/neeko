@@ -1791,3 +1791,69 @@ CommitList 599→180 行拆分：3 hooks + 4 展示组件 + 组合层；TDD 全�
 
 - None - task complete
 
+
+
+## Session 112: Resource Library redesign: review fixes + component split
+
+**Date**: 2026-08-02
+**Task**: Resource Library redesign: review fixes + component split
+**Branch**: `main`
+
+### Summary
+
+neeko-check code review round 2: (1) dockStore togglePanel refactored with isAppView guard + 8 unit tests; (2) LibraryDetail split 308->86 lines into LibraryToolbar + LibrarySearchBar; (3) deleted dead LibraryHeader.tsx; (4) synced component-guidelines spec (v7 two-column layout). type-check + 1005 tests pass.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+(No commits - planning session)
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
+
+
+## Session 113: Resource Library v7 redesign: center tab view + component split (review round 2)
+
+**Date**: 2026-08-02
+**Task**: Resource Library v7 redesign: center tab view + component split (review round 2)
+**Branch**: `main`
+
+### Summary
+
+neeko-check review round 2 fixes: (1) feat f398114e - library as center tab view via appViewStore, dockStore togglePanel refactor with isAppView guard, master-detail v7 layout (ActivityBar/NavTree/Detail/Toolbar/SearchBar), editorKind state machine; (2) refactor b3a7717e - delete dead LibraryHeader; (3) test 34d6d795 - dockStore tab toggle + guard tests. type-check + 1005 tests pass; trellis spec component-guidelines synced.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `f398114e` | (see git log) |
+| `b3a7717e` | (see git log) |
+| `34d6d795` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
