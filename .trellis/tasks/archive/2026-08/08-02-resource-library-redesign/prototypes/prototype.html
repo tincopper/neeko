@@ -1,0 +1,926 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Resource Library v7 · UI Design</title>
+<style>
+  :root {
+    /* ── Color System ── */
+    --bg-canvas: #14171c;
+    --bg-surface: #1a1e25;
+    --bg-surface-2: #1f242c;
+    --bg-elevated: #252a33;
+    --bg-hover: #2a3038;
+    --bg-active: #323a45;
+    --bg-selected: rgba(88, 166, 255, 0.10);
+
+    --text-primary: #e8edf3;
+    --text-secondary: #9ba5b2;
+    --text-muted: #6b7480;
+    --text-disabled: #4a525c;
+
+    --border-subtle: rgba(255,255,255,0.04);
+    --border-default: rgba(255,255,255,0.08);
+    --border-strong: rgba(255,255,255,0.14);
+
+    --accent: #58a6ff;
+    --accent-subtle: rgba(88, 166, 255, 0.12);
+    --accent-green: #3fb950;
+    --accent-red: #f85149;
+    --accent-orange: #d29922;
+
+    /* ── Typography ── */
+    --font-sans: -apple-system, "SF Pro Text", "Inter", "PingFang SC", sans-serif;
+    --font-mono: "JetBrains Mono", "SF Mono", Menlo, monospace;
+
+    /* ── Shape ── */
+    --radius-xs: 3px;
+    --radius-sm: 5px;
+    --radius-md: 7px;
+    --radius-lg: 10px;
+
+    /* ── Spacing ── */
+    --s1: 4px; --s2: 8px; --s3: 12px; --s4: 16px; --s5: 20px; --s6: 24px;
+
+    /* ── Shadows ── */
+    --shadow-sm: 0 1px 2px rgba(0,0,0,0.2);
+    --shadow-md: 0 4px 12px rgba(0,0,0,0.25);
+    --shadow-lg: 0 8px 24px rgba(0,0,0,0.35);
+
+    /* ── Motion ── */
+    --ease: cubic-bezier(0.4, 0, 0.2, 1);
+    --ease-out: cubic-bezier(0, 0, 0.2, 1);
+    --dur-fast: 0.1s;
+    --dur-normal: 0.15s;
+    --dur-slow: 0.25s;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: var(--font-sans);
+    font-size: 13px;
+    line-height: 1.5;
+    color: var(--text-primary);
+    background: var(--bg-canvas);
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  /* ── Demo Frame ── */
+  .demo-bar {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    gap: var(--s3);
+    padding: var(--s2) var(--s4);
+    background: linear-gradient(180deg, var(--bg-surface-2), var(--bg-surface));
+    border-bottom: 1px solid var(--border-subtle);
+    font-size: 12px;
+    color: var(--text-secondary);
+  }
+  .demo-bar .brand {
+    font-weight: 600;
+    color: var(--text-primary);
+    margin-right: var(--s2);
+    letter-spacing: -0.01em;
+  }
+  .demo-bar .pill {
+    padding: 2px 8px;
+    border-radius: 10px;
+    background: var(--accent-subtle);
+    font-size: 11px;
+    font-weight: 500;
+    color: var(--accent);
+    font-variant-numeric: tabular-nums;
+  }
+  .demo-bar .sep {
+    width: 1px;
+    height: 16px;
+    background: var(--border-default);
+    margin: 0 var(--s1);
+  }
+  .demo-bar select, .demo-bar button {
+    background: var(--bg-elevated);
+    color: var(--text-secondary);
+    border: 1px solid var(--border-default);
+    border-radius: var(--radius-sm);
+    padding: 4px 10px;
+    font-size: 12px;
+    cursor: pointer;
+    font-family: inherit;
+    transition: all var(--dur-normal) var(--ease);
+  }
+  .demo-bar select:hover, .demo-bar button:hover {
+    background: var(--bg-hover);
+    color: var(--text-primary);
+    border-color: var(--border-strong);
+  }
+  .demo-bar .note {
+    margin-left: auto;
+    color: var(--text-disabled);
+    font-size: 11px;
+  }
+
+  /* ── Shell ── */
+  .app {
+    flex: 1 1 auto;
+    display: flex;
+    min-height: 0;
+    background: var(--bg-canvas);
+  }
+
+  /* Dock */
+  .dock {
+    flex: 0 0 48px;
+    background: var(--bg-surface);
+    border-right: 1px solid var(--border-subtle);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: var(--s3) 0;
+    gap: var(--s1);
+  }
+  .dock .di {
+    width: 36px;
+    height: 36px;
+    border-radius: var(--radius-md);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--text-muted);
+    font-size: 15px;
+    cursor: pointer;
+    transition: all var(--dur-fast) var(--ease);
+  }
+  .dock .di:hover { background: var(--bg-hover); color: var(--text-secondary); }
+  .dock .di.active { background: var(--bg-active); color: var(--accent); }
+  .dock .divider { width: 20px; height: 1px; background: var(--border-subtle); margin: var(--s2) 0; }
+
+  /* ── Library Panel ── */
+  .lib {
+    flex: 1 1 auto;
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    background: var(--bg-canvas);
+  }
+
+  /* ── Layout: Two Columns ── */
+  .lib-body {
+    flex: 1 1 auto;
+    display: flex;
+    min-height: 0;
+  }
+
+  /* ── Master: Activity + Tree ── */
+  .lib-master {
+    flex: 0 0 240px;
+    min-width: 200px;
+    max-width: 320px;
+    background: var(--bg-surface);
+    border-right: 1px solid var(--border-subtle);
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* Activity Tabs */
+  .act-tabs {
+    flex: 0 0 auto;
+    padding: var(--s2);
+    border-bottom: 1px solid var(--border-subtle);
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+  }
+  .act-tab {
+    display: flex;
+    align-items: center;
+    gap: var(--s2);
+    padding: 6px var(--s3);
+    border-radius: var(--radius-sm);
+    border: none;
+    background: none;
+    cursor: pointer;
+    color: var(--text-secondary);
+    font-size: 12.5px;
+    font-weight: 500;
+    text-align: left;
+    transition: all var(--dur-fast) var(--ease);
+    position: relative;
+  }
+  .act-tab:hover {
+    background: var(--bg-hover);
+    color: var(--text-primary);
+  }
+  .act-tab.active {
+    background: var(--bg-selected);
+    color: var(--accent);
+  }
+  .act-tab .ic {
+    width: 18px;
+    height: 18px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 14px;
+    flex-shrink: 0;
+  }
+  .act-tab .lb { flex: 1; }
+  .act-tab .bd {
+    font-size: 10.5px;
+    font-weight: 500;
+    font-variant-numeric: tabular-nums;
+    color: var(--text-muted);
+    padding: 1px 6px;
+    border-radius: 8px;
+    background: var(--bg-elevated);
+    transition: all var(--dur-fast) var(--ease);
+  }
+  .act-tab.active .bd {
+    color: var(--accent);
+    background: rgba(88, 166, 255, 0.15);
+  }
+
+  /* Nav Tree */
+  .tree {
+    flex: 1 1 auto;
+    overflow-y: auto;
+    padding: var(--s2);
+  }
+  .tree-wrap { display: none; flex-direction: column; gap: 2px; }
+  .tree-wrap.active { display: flex; }
+  .tree-grp { margin-bottom: var(--s3); }
+  .tree-grp:last-child { margin-bottom: 0; }
+  .tree-grp-title {
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    padding: var(--s1) var(--s3);
+    margin-bottom: var(--s1);
+  }
+  .tree-item {
+    display: flex;
+    align-items: center;
+    gap: var(--s2);
+    padding: 5px var(--s3);
+    border-radius: var(--radius-xs);
+    border: none;
+    background: none;
+    cursor: pointer;
+    color: var(--text-secondary);
+    font-size: 12.5px;
+    text-align: left;
+    width: 100%;
+    transition: all var(--dur-fast) var(--ease);
+  }
+  .tree-item:hover { background: var(--bg-hover); color: var(--text-primary); }
+  .tree-item.active { background: var(--bg-selected); color: var(--text-primary); }
+  .tree-item .ic {
+    width: 16px;
+    height: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 13px;
+    opacity: 0.8;
+    flex-shrink: 0;
+  }
+  .tree-item .lb { flex: 1; }
+  .tree-item .cnt {
+    font-size: 10.5px;
+    font-weight: 500;
+    font-variant-numeric: tabular-nums;
+    color: var(--text-muted);
+  }
+  .tree-item.active .cnt { color: var(--accent); }
+
+  /* Collapse */
+  .collapse-hdr {
+    display: flex;
+    align-items: center;
+    gap: var(--s1);
+    padding: 5px var(--s3);
+    border-radius: var(--radius-xs);
+    border: none;
+    background: none;
+    cursor: pointer;
+    color: var(--text-muted);
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    width: 100%;
+    transition: color var(--dur-fast) var(--ease);
+  }
+  .collapse-hdr:hover { color: var(--text-secondary); }
+  .collapse-hdr .chev {
+    width: 12px;
+    height: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 9px;
+  }
+  .collapse-body { display: none; padding-left: var(--s4); }
+  .collapse-body.open { display: block; }
+
+  /* Filter */
+  .filter-item {
+    display: flex;
+    align-items: center;
+    gap: var(--s2);
+    padding: 5px var(--s3);
+    border-radius: var(--radius-xs);
+    border: none;
+    background: none;
+    cursor: pointer;
+    color: var(--text-secondary);
+    font-size: 12.5px;
+    text-align: left;
+    width: 100%;
+    transition: all var(--dur-fast) var(--ease);
+  }
+  .filter-item:hover { background: var(--bg-hover); color: var(--text-primary); }
+  .filter-item.active { background: var(--bg-selected); color: var(--text-primary); }
+  .filter-item .dot {
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    background: var(--text-muted);
+    flex-shrink: 0;
+  }
+  .filter-item.active .dot { background: var(--accent); }
+
+  .tree-empty {
+    padding: var(--s4);
+    text-align: center;
+    color: var(--text-disabled);
+    font-size: 11.5px;
+  }
+
+  /* ── Detail ── */
+  .lib-detail {
+    flex: 1 1 auto;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    background: var(--bg-canvas);
+  }
+
+  /* Toolbar */
+  .toolbar {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: var(--s3) var(--s5);
+    border-bottom: 1px solid var(--border-subtle);
+    background: var(--bg-surface);
+  }
+  .breadcrumb {
+    display: flex;
+    align-items: center;
+    gap: var(--s2);
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text-primary);
+  }
+  .breadcrumb .sep { color: var(--text-disabled); font-size: 11px; }
+  .toolbar-actions {
+    display: flex;
+    align-items: center;
+    gap: var(--s2);
+  }
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--s1);
+    padding: 5px 14px;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border-default);
+    background: var(--bg-elevated);
+    color: var(--text-secondary);
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all var(--dur-fast) var(--ease);
+    font-family: inherit;
+    white-space: nowrap;
+    position: relative;
+  }
+  .btn:hover {
+    background: var(--bg-hover);
+    color: var(--text-primary);
+    border-color: var(--border-strong);
+  }
+  .btn:active { transform: scale(0.98); }
+  .btn-primary {
+    background: var(--accent);
+    color: #fff;
+    border-color: var(--accent);
+    box-shadow: 0 1px 4px rgba(88, 166, 255, 0.25);
+  }
+  .btn-primary:hover {
+    background: #6cb0ff;
+    border-color: #6cb0ff;
+  }
+  .btn-icon {
+    width: 30px;
+    height: 30px;
+    padding: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 13px;
+  }
+
+  /* Search */
+  .search-bar {
+    flex: 0 0 auto;
+    padding: var(--s2) var(--s5);
+    border-bottom: 1px solid var(--border-subtle);
+    background: var(--bg-surface);
+  }
+  .search-wrap {
+    position: relative;
+    max-width: 380px;
+  }
+  .search-wrap .ic {
+    position: absolute;
+    left: 10px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--text-muted);
+    font-size: 13px;
+    pointer-events: none;
+  }
+  .search-input {
+    width: 100%;
+    height: 32px;
+    padding: 0 12px 0 32px;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border-default);
+    background: var(--bg-canvas);
+    color: var(--text-primary);
+    font-size: 12.5px;
+    font-family: inherit;
+    outline: none;
+    transition: all var(--dur-normal) var(--ease);
+  }
+  .search-input::placeholder { color: var(--text-muted); }
+  .search-input:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px rgba(88, 166, 255, 0.12);
+  }
+
+  /* Content */
+  .content {
+    flex: 1 1 auto;
+    overflow-y: auto;
+    padding: var(--s3) var(--s5);
+  }
+
+  .list {
+    display: flex;
+    flex-direction: column;
+    gap: var(--s1);
+  }
+
+  /* Card */
+  .card {
+    display: flex;
+    align-items: center;
+    gap: var(--s3);
+    padding: var(--s3) var(--s4);
+    border-radius: var(--radius-md);
+    border: 1px solid transparent;
+    background: var(--bg-surface);
+    cursor: pointer;
+    transition: all var(--dur-normal) var(--ease);
+  }
+  .card:hover {
+    background: var(--bg-hover);
+    border-color: var(--border-default);
+    box-shadow: var(--shadow-sm);
+  }
+  .card .av {
+    width: 36px;
+    height: 36px;
+    border-radius: var(--radius-sm);
+    background: linear-gradient(135deg, var(--bg-elevated), var(--bg-surface-2));
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 16px;
+    flex-shrink: 0;
+    border: 1px solid var(--border-subtle);
+  }
+  .card .bd { flex: 1; min-width: 0; }
+  .card .bd .t {
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text-primary);
+    margin-bottom: 2px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .card .bd .m {
+    font-size: 11px;
+    color: var(--text-muted);
+    display: flex;
+    align-items: center;
+    gap: var(--s2);
+  }
+  .card .bd .m .tag {
+    padding: 1px 6px;
+    border-radius: var(--radius-xs);
+    background: var(--bg-canvas);
+    font-size: 10.5px;
+    border: 1px solid var(--border-subtle);
+  }
+  .card .actions {
+    display: flex;
+    gap: var(--s1);
+    opacity: 0;
+    transform: translateX(4px);
+    transition: all var(--dur-normal) var(--ease);
+  }
+  .card:hover .actions {
+    opacity: 1;
+    transform: translateX(0);
+  }
+  .card .actions button {
+    padding: 4px 10px;
+    border-radius: var(--radius-xs);
+    border: 1px solid var(--border-default);
+    background: var(--bg-surface);
+    color: var(--text-secondary);
+    font-size: 11px;
+    cursor: pointer;
+    transition: all var(--dur-fast) var(--ease);
+    font-family: inherit;
+  }
+  .card .actions button:hover {
+    background: var(--bg-active);
+    color: var(--text-primary);
+  }
+  .card .actions button.primary {
+    background: var(--accent);
+    color: #fff;
+    border-color: var(--accent);
+  }
+
+  /* States */
+  .state-empty {
+    flex: 1 1 auto;
+    display: none;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: var(--s3);
+    padding: var(--s6);
+    text-align: center;
+  }
+  .state-empty.show { display: flex; }
+  .state-empty .ic { font-size: 44px; opacity: 0.3; }
+  .state-empty .t { font-size: 14px; font-weight: 500; color: var(--text-secondary); }
+  .state-empty .d { font-size: 12px; color: var(--text-muted); }
+
+  .state-loading {
+    flex: 1 1 auto;
+    display: none;
+    flex-direction: column;
+    gap: var(--s2);
+    padding: var(--s3) var(--s5);
+  }
+  .state-loading.show { display: flex; }
+  .skel {
+    height: 60px;
+    border-radius: var(--radius-md);
+    background: var(--bg-surface);
+    animation: pulse 1.8s var(--ease) infinite;
+  }
+  @keyframes pulse {
+    0%, 100% { opacity: 0.5; }
+    50% { opacity: 1; }
+  }
+
+  /* Toast */
+  .toast {
+    position: fixed;
+    bottom: 28px;
+    left: 50%;
+    transform: translateX(-50%) translateY(12px);
+    background: var(--bg-elevated);
+    color: var(--text-primary);
+    padding: 8px 16px;
+    border-radius: var(--radius-sm);
+    font-size: 12px;
+    border: 1px solid var(--border-default);
+    opacity: 0;
+    pointer-events: none;
+    transition: all var(--dur-slow) var(--ease);
+    box-shadow: var(--shadow-lg);
+    z-index: 100;
+  }
+  .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+  /* Legend */
+  .legend {
+    flex: 0 0 auto;
+    display: flex;
+    gap: var(--s5);
+    padding: var(--s2) var(--s4);
+    background: var(--bg-surface);
+    border-top: 1px solid var(--border-subtle);
+    color: var(--text-disabled);
+    font-size: 11px;
+    flex-wrap: wrap;
+  }
+  .legend b { color: var(--text-muted); font-weight: 600; }
+
+  /* Scrollbar */
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border-default); border-radius: 3px; }
+  ::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
+</style>
+</head>
+<body>
+
+  <div class="demo-bar">
+    <span class="brand">🧪 原型演示</span>
+    <span class="pill">v7</span>
+    <span style="color: var(--text-disabled);">Resource Library · 两栏 master-detail</span>
+    <span class="sep"></span>
+    <span style="color: var(--text-muted);">状态：</span>
+    <select id="stateSelect">
+      <option value="normal">正常列表</option>
+      <option value="empty">空态</option>
+      <option value="loading">加载</option>
+      <option value="error">错误</option>
+    </select>
+    <span class="sep"></span>
+    <button id="btnToast">演示插入反馈</button>
+    <span class="note">⚠ 静态设计稿，非应用代码</span>
+  </div>
+
+  <div class="app">
+    <div class="dock">
+      <div class="di">▤</div>
+      <div class="di">◆</div>
+      <div class="di">≡</div>
+      <div class="di active">📚</div>
+      <div class="di">⌘</div>
+      <div class="divider"></div>
+      <div class="di">⚙</div>
+    </div>
+
+    <div class="lib">
+      <div class="lib-body">
+        <!-- Master -->
+        <div class="lib-master">
+          <div class="act-tabs">
+            <button class="act-tab active" data-kind="skill">
+              <span class="ic">🧩</span><span class="lb">Skills</span><span class="bd">14</span>
+            </button>
+            <button class="act-tab" data-kind="prompt">
+              <span class="ic">💬</span><span class="lb">Prompts</span><span class="bd">32</span>
+            </button>
+            <button class="act-tab" data-kind="action">
+              <span class="ic">⚡</span><span class="lb">Actions</span><span class="bd">9</span>
+            </button>
+            <button class="act-tab" data-kind="mcp">
+              <span class="ic">🖧</span><span class="lb">MCP</span><span class="bd">3</span>
+            </button>
+            <button class="act-tab" data-kind="command">
+              <span class="ic">⌨️</span><span class="lb">Commands</span><span class="bd">7</span>
+            </button>
+          </div>
+
+          <div class="tree">
+            <nav class="tree-wrap active" data-nav="skill">
+              <div class="tree-grp">
+                <button class="tree-item active" data-sub="local">
+                  <span class="ic">📦</span><span class="lb">Installed</span><span class="cnt">14</span>
+                </button>
+                <button class="tree-item" data-sub="marketplace">
+                  <span class="ic">⬇</span><span class="lb">Marketplace</span>
+                </button>
+              </div>
+              <div class="tree-grp">
+                <div class="tree-grp-title">Tags</div>
+                <button class="tree-item" data-sub="tag">
+                  <span class="ic">#</span><span class="lb">Backend</span><span class="cnt">6</span>
+                </button>
+                <button class="tree-item" data-sub="tag">
+                  <span class="ic">#</span><span class="lb">Frontend</span><span class="cnt">4</span>
+                </button>
+              </div>
+              <div class="tree-grp">
+                <button class="collapse-hdr" data-collapse="agents">
+                  <span class="chev">▸</span><span>Agents</span>
+                </button>
+                <div class="collapse-body" id="agents">
+                  <button class="tree-item" data-sub="agents">
+                    <span class="ic">▸</span><span class="lb">opencode</span><span class="cnt">8</span>
+                  </button>
+                  <button class="tree-item" data-sub="agents">
+                    <span class="ic">▸</span><span class="lb">claude-code</span><span class="cnt">5</span>
+                  </button>
+                </div>
+              </div>
+              <div class="tree-grp">
+                <button class="collapse-hdr" data-collapse="projects">
+                  <span class="chev">▸</span><span>Projects</span>
+                </button>
+                <div class="collapse-body" id="projects">
+                  <button class="tree-item" data-sub="project">
+                    <span class="ic">◧</span><span class="lb">neeko</span><span class="cnt">3</span>
+                  </button>
+                </div>
+              </div>
+            </nav>
+            <nav class="tree-wrap" data-nav="prompt">
+              <div class="tree-grp">
+                <div class="tree-grp-title">Scope</div>
+                <button class="filter-item active"><span class="dot"></span>All</button>
+                <button class="filter-item"><span class="dot"></span>Global</button>
+                <button class="filter-item"><span class="dot"></span>Project</button>
+              </div>
+              <div class="tree-grp">
+                <div class="tree-grp-title">Tags</div>
+                <button class="filter-item active"><span class="dot"></span>#backend</button>
+                <button class="filter-item"><span class="dot"></span>#review</button>
+              </div>
+            </nav>
+            <nav class="tree-wrap" data-nav="action"><div class="tree-empty">无额外筛选</div></nav>
+            <nav class="tree-wrap" data-nav="mcp"><div class="tree-empty">无额外筛选</div></nav>
+            <nav class="tree-wrap" data-nav="command"><div class="tree-empty">无额外筛选</div></nav>
+          </div>
+        </div>
+
+        <!-- Detail -->
+        <div class="lib-detail">
+          <div class="toolbar">
+            <div class="breadcrumb">
+              <span id="bc">Skills</span>
+              <span class="sep">/</span>
+              <span id="bcSub">Installed</span>
+            </div>
+            <div class="toolbar-actions">
+              <button class="btn btn-primary">＋ 新建</button>
+              <button class="btn">⬇ 安装</button>
+              <button class="btn btn-icon" title="刷新">↻</button>
+            </div>
+          </div>
+
+          <div class="search-bar">
+            <div class="search-wrap">
+              <span class="ic">🔍</span>
+              <input type="text" class="search-input" placeholder="搜索 Skills…" />
+            </div>
+          </div>
+
+          <div class="content" id="content">
+            <div class="list" id="list"></div>
+            <div class="state-empty" id="stateEmpty">
+              <div class="ic">◎</div>
+              <div class="t">暂无内容</div>
+              <div class="d">新建一个或调整筛选条件</div>
+              <button class="btn btn-primary">＋ 新建</button>
+            </div>
+            <div class="state-loading" id="stateLoading">
+              <div class="skel"></div>
+              <div class="skel"></div>
+              <div class="skel"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="legend">
+    <span><b>两栏 master-detail</b> 左侧(活动栏+导航树) · 右侧(内容区)</span>
+    <span><b>活动栏</b> 图标+标签水平排列，切换资源类型</span>
+    <span><b>导航树</b> 根据资源类型动态切换</span>
+    <span><b>工具栏</b> 面包屑 + 操作按钮</span>
+    <span><b>搜索</b> 顶部搜索框实时过滤</span>
+  </div>
+
+  <div class="toast" id="toast"></div>
+
+<script>
+  const $ = (s) => document.querySelector(s);
+  const SUB = { local: 'Installed', marketplace: 'Marketplace', tag: 'Tag 组', agents: 'Agent 视图', project: '项目视图' };
+  const KIND = { skill: 'Skills', prompt: 'Prompts', action: 'Actions', mcp: 'MCP', command: 'Commands' };
+  const TOOLBAR = {
+    skill: '<button class="btn btn-primary">＋ 新建</button><button class="btn">⬇ 安装</button><button class="btn btn-icon">↻</button>',
+    prompt: '<button class="btn btn-primary">＋ 新建</button><button class="btn">⬆ 导入</button><button class="btn">⬇ 导出</button>',
+    action: '<button class="btn btn-primary">＋ 新建</button>',
+    mcp: '<button class="btn btn-primary">＋ 新建</button>',
+    command: '<button class="btn btn-primary">＋ 新建</button>',
+  };
+  const LIST = {
+    skill: `<div class="card"><div class="av">🧩</div><div class="bd"><div class="t">commit-msg lint</div><div class="m"><span class="tag">git</span><span>hooks</span></div></div><div class="actions"><button class="primary">安装</button></div></div>
+      <div class="card"><div class="av">🧩</div><div class="bd"><div class="t">neeko plugin scaffold</div><div class="m"><span class="tag">tauri</span><span>build</span></div></div><div class="actions"><button class="primary">安装</button></div></div>
+      <div class="card"><div class="av">🧩</div><div class="bd"><div class="t">tdd red-green-refactor</div><div class="m"><span class="tag">workflow</span></div></div><div class="actions"><button class="primary">安装</button></div></div>
+      <div class="card"><div class="av">🧩</div><div class="bd"><div class="t">release checklist</div><div class="m"><span class="tag">qa</span><span>release</span></div></div><div class="actions"><button class="primary">安装</button></div></div>`,
+    prompt: `<div class="card"><div class="av">💬</div><div class="bd"><div class="t">审阅 PR 提示词</div><div class="m"><span class="tag">code review</span></div></div><div class="actions"><button class="primary" onclick="demoInsert('审阅 PR 提示词')">插入</button></div></div>
+      <div class="card"><div class="av">💬</div><div class="bd"><div class="t">写单元测试</div><div class="m"><span class="tag">tdd</span></div></div><div class="actions"><button class="primary" onclick="demoInsert('写单元测试')">插入</button></div></div>`,
+    action: `<div class="card"><div class="av">⚡</div><div class="bd"><div class="t">git status 摘要</div><div class="m"><span class="tag">terminal</span></div></div><div class="actions"><button class="primary">运行</button><button>编辑</button></div></div>`,
+    mcp: `<div class="card"><div class="av">🖧</div><div class="bd"><div class="t">github-mcp</div><div class="m"><span class="tag">● 已连接</span><span>stdio</span></div></div><div class="actions"><button>测试</button><button>编辑</button></div></div>`,
+    command: `<div class="card"><div class="av">⌨️</div><div class="bd"><div class="t">/test</div><div class="m"><span class="tag">运行测试</span></div></div><div class="actions"><button class="primary" onclick="demoInsert('/test')">插入</button></div></div>`,
+  };
+
+  let activeKind = 'skill';
+  let demoState = 'normal';
+
+  document.querySelectorAll('.act-tab').forEach((tab) => {
+    tab.addEventListener('click', () => {
+      activeKind = tab.dataset.kind;
+      document.querySelectorAll('.act-tab').forEach((t) => t.classList.toggle('active', t === tab));
+      document.querySelectorAll('.tree-wrap').forEach((n) => n.classList.toggle('active', n.dataset.nav === activeKind));
+      const tree = document.querySelector(`.tree-wrap[data-nav="${activeKind}"]`);
+      if (tree) tree.querySelectorAll('.tree-item').forEach((item, idx) => item.classList.toggle('active', idx === 0));
+      updateToolbar();
+      updateList();
+      updateBreadcrumb();
+      applyState();
+    });
+  });
+
+  function updateToolbar() { $('.toolbar-actions').innerHTML = TOOLBAR[activeKind] || ''; }
+  function updateList() { $('#list').innerHTML = LIST[activeKind] || ''; }
+
+  function updateBreadcrumb() {
+    const kind = KIND[activeKind];
+    const item = document.querySelector(`.tree-wrap[data-nav="${activeKind}"] .tree-item.active`);
+    const sub = item ? item.querySelector('.lb').textContent : '';
+    $('#bc').textContent = kind;
+    $('#bcSub').textContent = sub || '';
+    $('#bcSub').style.display = sub ? '' : 'none';
+    $('.breadcrumb .sep').style.display = sub ? '' : 'none';
+  }
+
+  document.querySelectorAll('.tree-item').forEach((item) => {
+    item.addEventListener('click', () => {
+      const tree = item.closest('.tree-wrap');
+      if (!tree) return;
+      tree.querySelectorAll('.tree-item').forEach((i) => i.classList.toggle('active', i === item));
+      updateBreadcrumb();
+    });
+  });
+
+  document.querySelectorAll('.filter-item').forEach((item) => {
+    item.addEventListener('click', () => {
+      const grp = item.closest('.tree-grp');
+      if (!grp) return;
+      grp.querySelectorAll('.filter-item').forEach((i) => i.classList.toggle('active', i === item));
+    });
+  });
+
+  document.querySelectorAll('.collapse-hdr').forEach((hdr) => {
+    hdr.addEventListener('click', () => {
+      const body = document.getElementById(hdr.dataset.collapse);
+      if (!body) return;
+      body.classList.toggle('open');
+      hdr.querySelector('.chev').textContent = body.classList.contains('open') ? '▾' : '▸';
+    });
+  });
+
+  $('#stateSelect').addEventListener('change', (e) => { demoState = e.target.value; applyState(); });
+
+  function applyState() {
+    $('#list').style.display = demoState === 'normal' ? '' : 'none';
+    $('#stateEmpty').classList.toggle('show', demoState === 'empty');
+    $('#stateLoading').classList.toggle('show', demoState === 'loading');
+  }
+
+  let toastTimer;
+  function demoInsert(name) {
+    const t = $('#toast');
+    t.textContent = `已插入「${name}」到 Agent 输入框`;
+    t.classList.add('show');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => t.classList.remove('show'), 1800);
+  }
+  $('#btnToast').addEventListener('click', () => demoInsert('审阅 PR 提示词'));
+
+  // Init
+  updateToolbar();
+  updateList();
+  applyState();
+</script>
+</body>
+</html>

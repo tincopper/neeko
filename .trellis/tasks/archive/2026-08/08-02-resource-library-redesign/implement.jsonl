@@ -1,0 +1,14 @@
+{"file": ".trellis/tasks/08-02-resource-library-redesign/design.md", "reason": "核心修复方案：§2 核心修复（SkillsTabContent 并列渲染）、§3 布局方案（中央全宽+海面岛屿）、§3.6 v6 精致化设计（扁平Tab/去硬线/命名修正）、§6 实现任务拆分（S1-S5 执行顺序）"}
+{"file": ".trellis/tasks/08-02-resource-library-redesign/prototypes/prototype.html", "reason": "可交互高保真原型：验证 v6 视觉方案（扁平Tab、4px间隙、去硬线、Installed命名）"}
+{"file": ".trellis/tasks/08-02-resource-library-redesign/ui-alignment-analysis.md", "reason": "样式对齐基准：A部分样式对齐规范、B部分交互统一规范、C部分落实范围"}
+{"file": ".trellis/tasks/08-02-resource-library-redesign/prd.md", "reason": "需求与验收标准：FR-1~FR-15、AC-1~AC-18"}
+{"file": ".trellis/tasks/08-02-resource-library-redesign/acceptance.md", "reason": "验收过程文档：Step 0-4 验收流程、FR追踪表、遗留问题"}
+{"file": "src/features/library/components/LibraryPanel.tsx", "reason": "主面板组件：Tab条改造（扁平化）、海面容器间隙调整、Filters岛硬线去除"}
+{"file": "src/features/library/components/LibraryHeader.tsx", "reason": "工具栏组件：border-b硬线去除、count行合并、工具栏外壳统一（h-11 px-4）"}
+{"file": "src/features/library/components/SkillsTabContent.tsx", "reason": "Skills tab内容：双岛并列渲染、间隙调整"}
+{"file": "src/features/skill/components/SkillsPanel.tsx", "reason": "导航组件：重复标题行去除、agentsExpanded/projectsExpanded默认值false、Library→Installed命名修正"}
+{"file": "src/shared/dock/panelMeta.ts", "reason": "面板元数据：library的openAs:'tab'配置"}
+{"file": "src/shared/store/dockStore.ts", "reason": "Dock状态管理：tab-mode面板toggle逻辑、左栏收起/恢复"}
+{"file": "src/shared/store/appViewStore.ts", "reason": "应用视图状态：AppView类型含'library'"}
+{"file": "src/app/App.tsx", "reason": "应用根组件：appView==='library'时中央全宽渲染"}
+{"file": "src/app/components/DockBarButton.tsx", "reason": "Dock按钮：tab-mode面板激活态驱动"}

@@ -1,0 +1,109 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 900" font-family="Inter, -apple-system, 'PingFang SC', sans-serif">
+  <title>Resource Library 修复后结构与状态设计（水平 Tab 版 · 岛屿化）</title>
+  <rect width="720" height="900" fill="#26292F"/>
+  <text x="30" y="40" font-size="18" font-weight="700" fill="#ffffff">修复后面板：水平 Tab 岛 · 海面岛屿 · Agent/Projects 折叠</text>
+  <text x="30" y="60" font-size="12" fill="#999999">Tab 条为独立浮岛（rounded-lg border shadow），与内容岛同语言；中央全宽展示</text>
+
+  <!-- ═══ 面板主体（水平 Tab 版） ═══ -->
+  <rect x="30" y="80" width="420" height="620" rx="10" fill="#181A1C" stroke="#3b3b40"/>
+  <text x="46" y="104" font-size="11" font-weight="600" fill="#cccccc">Library 面板（中央全宽 · 编辑区隐藏）</text>
+
+  <!-- Tab 岛（浮岛样式） -->
+  <rect x="40" y="112" width="400" height="44" rx="8" fill="#26292F"/>
+  <rect x="42" y="114" width="396" height="40" rx="8" fill="#181A1C" stroke="#3b3b40"/>
+  <g font-size="10">
+    <rect x="50" y="122" width="56" height="24" rx="5" fill="#44444a"/><text x="60" y="138" fill="#ffffff">Skills</text>
+    <rect x="110" y="122" width="64" height="24" rx="5" fill="none"/><text x="120" y="138" fill="#999999">Prompts</text>
+    <rect x="178" y="122" width="60" height="24" rx="5" fill="none"/><text x="188" y="138" fill="#999999">Actions</text>
+    <rect x="242" y="122" width="46" height="24" rx="5" fill="none"/><text x="252" y="138" fill="#999999">MCP</text>
+    <rect x="292" y="122" width="70" height="24" rx="5" fill="none"/><text x="302" y="138" fill="#999999">Commands</text>
+  </g>
+  <text x="340" y="138" font-size="8" fill="#5c6370">Tab 岛</text>
+  <text x="44" y="166" font-size="8" fill="#5c6370">海面间隙环绕（非贴顶实底横条）</text>
+
+  <!-- Skills tab：导航 + 内容并列 -->
+  <rect x="40" y="172" width="400" height="290" rx="6" fill="#26292F"/>
+  <text x="52" y="192" font-size="9.5" font-weight="600" fill="#cccccc">Skills tab（修复后）</text>
+
+  <!-- 列表岛（SkillsPanel 导航） -->
+  <rect x="48" y="190" width="176" height="286" rx="8" fill="#181A1C" stroke="#3b3b40"/>
+  <rect x="48" y="190" width="176" height="286" rx="8" fill="none" stroke="#3b3b40"/>
+  <g font-size="9" fill="#cccccc">
+    <rect x="56" y="200" width="160" height="22" rx="5" fill="#44444a"/><text x="64" y="215" fill="#ffffff">Library</text>
+    <rect x="56" y="226" width="160" height="22" rx="5" fill="none"/><text x="64" y="241">Marketplace</text>
+    <text x="56" y="270" font-size="8" font-weight="700" fill="#5c6370">TAGS</text>
+    <rect x="56" y="276" width="160" height="22" rx="5" fill="none"/><text x="64" y="291">Backend</text>
+    <text x="56" y="314" font-size="8" font-weight="700" fill="#5c6370">▸ AGENTS（默认折叠）</text>
+    <text x="56" y="356" font-size="8" font-weight="700" fill="#5c6370">▸ PROJECTS（默认折叠）</text>
+    <rect x="56" y="362" width="160" height="22" rx="5" fill="none"/><text x="64" y="377">neeko</text>
+  </g>
+  <text x="48" y="462" font-size="8" fill="#30d158">列表岛：w-44 · rounded-lg · border · shadow</text>
+  <text x="48" y="474" font-size="8" fill="#5c6370">Agent / Projects 分组默认折叠为标题行（点击展开）</text>
+
+  <!-- 间隙（海面）标注 -->
+  <rect x="228" y="190" width="6" height="286" fill="#26292F"/>
+  <text x="226" y="472" font-size="7.5" fill="#30d158">gap</text>
+
+  <!-- 内容岛（SkillContent） -->
+  <rect x="238" y="190" width="194" height="286" rx="8" fill="#181A1C" stroke="#3b3b40"/>
+  <g font-size="9" fill="#cccccc">
+    <rect x="246" y="200" width="178" height="20" rx="4" fill="#333337"/>
+    <rect x="246" y="224" width="178" height="20" rx="4" fill="#333337"/>
+    <rect x="246" y="248" width="178" height="20" rx="4" fill="#333337"/>
+    <rect x="246" y="272" width="178" height="20" rx="4" fill="#333337"/>
+    <rect x="246" y="296" width="178" height="20" rx="4" fill="#333337"/>
+  </g>
+  <text x="238" y="330" font-size="8.5" fill="#30d158">LocalSkillContent 等子视图</text>
+  <text x="238" y="346" font-size="8.5" fill="#30d158">路由由 skillStore 驱动</text>
+  <text x="238" y="462" font-size="8" fill="#30d158">内容岛：flex-1 · rounded-lg · border · shadow</text>
+  <text x="238" y="474" font-size="8" fill="#5c6370">SkillContent 外包 flex-1 min-h-0 岛屿外壳</text>
+
+  <!-- 其余 4 个 tab 示意 -->
+  <text x="52" y="514" font-size="9.5" font-weight="600" fill="#cccccc">其余 4 个 tab（组件已完整，仅回归）</text>
+  <g font-size="8.5" fill="#999999">
+    <rect x="48" y="526" width="124" height="46" rx="5" fill="#21252b"/>
+    <text x="58" y="542">Prompts</text>
+    <text x="58" y="556">Filters 岛 + 内容岛 ✓</text>
+    <rect x="180" y="526" width="124" height="46" rx="5" fill="#21252b"/>
+    <text x="190" y="542">Actions</text>
+    <text x="190" y="556">列表 + 运行/编辑 ✓</text>
+    <rect x="312" y="526" width="120" height="46" rx="5" fill="#21252b"/>
+    <text x="322" y="542">MCP / Commands</text>
+    <text x="322" y="556">列表 + 操作 ✓</text>
+  </g>
+
+  <text x="52" y="596" font-size="8.5" fill="#5c6370">「海面」：bg-primary 在面板内充当背景，两岛间隙露出 → 与 DockLayout island 观感一致</text>
+  <text x="52" y="610" font-size="8.5" fill="#5c6370">Prompts 的 Filters 侧栏同样岛屿化（filters-side island），保持一致性</text>
+
+  <!-- ═══ 状态设计三态（沿用） ═══ -->
+  <text x="30" y="722" font-size="14" font-weight="700" fill="#ffffff">状态设计（沿用现有组件内置状态）</text>
+
+  <!-- 空态 -->
+  <rect x="30" y="736" width="200" height="150" rx="8" fill="#181A1C" stroke="#3b3b40"/>
+  <text x="46" y="756" font-size="10" font-weight="600" fill="#cccccc">空态 Empty</text>
+  <text x="90" y="800" font-size="22" fill="#5c6370">◎</text>
+  <text x="64" y="826" font-size="9" fill="#999999">暂无 Skill</text>
+  <text x="46" y="842" font-size="8" fill="#5c6370">从 Marketplace 安装或创建</text>
+  <rect x="66" y="852" width="128" height="20" rx="5" fill="#2997ff" opacity="0.35"/>
+  <text x="92" y="866" font-size="9" fill="#2997ff">＋ 新建 Skill</text>
+
+  <!-- 加载态 -->
+  <rect x="246" y="736" width="200" height="150" rx="8" fill="#181A1C" stroke="#3b3b40"/>
+  <text x="262" y="756" font-size="10" font-weight="600" fill="#cccccc">加载态 Loading</text>
+  <g fill="#333337">
+    <rect x="258" y="768" width="176" height="14" rx="4"/>
+    <rect x="258" y="790" width="176" height="14" rx="4"/>
+    <rect x="258" y="812" width="176" height="14" rx="4"/>
+    <rect x="258" y="834" width="176" height="14" rx="4"/>
+  </g>
+  <text x="258" y="866" font-size="8" fill="#5c6370">Loading… 文本 / 骨架</text>
+
+  <!-- 错误态 -->
+  <rect x="462" y="736" width="228" height="150" rx="8" fill="#181A1C" stroke="#3b3b40"/>
+  <text x="478" y="756" font-size="10" font-weight="600" fill="#cccccc">错误态 Error</text>
+  <rect x="478" y="766" width="196" height="26" rx="5" fill="#ff453a" opacity="0.15"/>
+  <text x="488" y="783" font-size="9" fill="#ff453a">⚠ 加载失败</text>
+  <text x="478" y="812" font-size="8.5" fill="#999999">显示错误信息 + 重试（不静默置空）</text>
+  <rect x="478" y="826" width="70" height="20" rx="5" fill="#44444a"/>
+  <text x="494" y="840" font-size="9" fill="#ffffff">重试 ↻</text>
+</svg>

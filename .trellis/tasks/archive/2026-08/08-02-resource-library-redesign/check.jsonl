@@ -1,0 +1,17 @@
+{"gate": "lint", "command": "pnpm lint", "description": "Rust fmt + clippy 检查"}
+{"gate": "type-check", "command": "pnpm type-check", "description": "TypeScript 类型检查"}
+{"gate": "fe-lint", "command": "pnpm lint:fe", "description": "ESLint + TypeScript + Test typecheck"}
+{"gate": "cargo-check", "command": "cargo check --manifest-path src-tauri/Cargo.toml", "description": "Rust 编译检查"}
+{"gate": "test-fe", "command": "pnpm test:run", "description": "前端 Vitest 测试"}
+{"gate": "test-rust", "command": "cargo test --manifest-path src-tauri/Cargo.toml", "description": "Rust 单元测试"}
+{"gate": "ac-1", "description": "打开资源管理，默认 Skills tab 立即显示「导航栏 + 技能内容列表」，无空白区", "verify": "pnpm tauri dev → Ctrl+Shift+L → 检查 Skills 内容可见"}
+{"gate": "ac-2", "description": "Skills 内点击导航项（Library/Marketplace/Agent/项目/Tag），内容区随之切换且正确", "verify": "SkillsPanel 各导航项点击切换验证"}
+{"gate": "ac-3", "description": "依次切换 Prompts/Actions/MCP/Commands Tab，内容区均正常显示", "verify": "5 tab 切换走查"}
+{"gate": "ac-5", "description": "水平 Tab 布局保持不变，改动不引入布局重构", "verify": "顶部横排 5 tab 布局确认"}
+{"gate": "ac-13", "description": "Library 中央全宽展示，中央编辑区隐藏，内容完整展示无截断", "verify": "打开 Library 时编辑区隐藏确认"}
+{"gate": "ac-14", "description": "关闭资源管理恢复编辑区，Library 不残留 Dock 左栏", "verify": "关闭 Library 行为验证"}
+{"gate": "ac-15", "description": "顶部 Tab 切换栏为扁平轻量设计（v6：无阴影、无浮岛感）", "verify": "Tab 条样式走查"}
+{"gate": "ac-16", "description": "打开 Library 时 Dock 左栏收起，关闭后恢复", "verify": "左栏收起/恢复行为验证"}
+{"gate": "ac-17", "description": "Library 内部样式对齐主题（岛屿无描边、间隙 4px、搜索框/工具栏/按钮与 Skills 一致）", "verify": "样式细节走查"}
+{"gate": "skills-collapse", "description": "Agent + Projects 分组默认折叠", "verify": "SkillsPanel 分组初始状态确认"}
+{"gate": "installed-rename", "description": "SkillsPanel 中 Library → Installed 命名修正", "verify": "导航项文本检查"}

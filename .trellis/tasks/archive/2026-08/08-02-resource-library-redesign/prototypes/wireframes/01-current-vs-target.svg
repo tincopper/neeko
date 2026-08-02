@@ -1,0 +1,100 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 600" font-family="Inter, -apple-system, 'PingFang SC', sans-serif">
+  <title>Resource Library 修复方案：现状 vs 目标（保留水平 Tab）</title>
+  <rect width="960" height="600" fill="#26292F"/>
+  <text x="30" y="42" font-size="20" font-weight="700" fill="#ffffff">资源管理交互修复：现状 vs 目标（保留水平 Tab 布局）</text>
+  <text x="30" y="64" font-size="12" fill="#999999">核心缺陷：SkillContent（内容区）未在 Library 内挂载 → 点 Skills 只见导航菜单、内容空白</text>
+
+  <!-- ══════════ 左：现状（水平 Tab + 内容区缺失） ══════════ -->
+  <rect x="20" y="86" width="440" height="494" rx="10" fill="#181A1C" stroke="#3b3b40"/>
+  <text x="40" y="114" font-size="14" font-weight="600" fill="#ff453a">现状：导航有 · 内容无</text>
+
+  <!-- Library 面板 -->
+  <rect x="40" y="128" width="400" height="420" rx="6" fill="#21252b" stroke="#3b3b40"/>
+  <!-- 水平 Tab 条（保留） -->
+  <rect x="40" y="128" width="400" height="30" rx="6" fill="#333337"/>
+  <rect x="40" y="146" width="400" height="12" fill="#333337"/>
+  <g font-size="9.5" fill="#999999">
+    <rect x="52" y="160" width="46" height="18" rx="4" fill="#44444a"/><text x="58" y="173" fill="#ffffff">Skills</text>
+    <rect x="102" y="160" width="54" height="18" rx="4" fill="none" stroke="#3b3b40"/><text x="108" y="173">Prompts</text>
+    <rect x="160" y="160" width="50" height="18" rx="4" fill="none" stroke="#3b3b40"/><text x="166" y="173">Actions</text>
+    <rect x="214" y="160" width="38" height="18" rx="4" fill="none" stroke="#3b3b40"/><text x="220" y="173">MCP</text>
+    <rect x="256" y="160" width="62" height="18" rx="4" fill="none" stroke="#3b3b40"/><text x="262" y="173">Cmds</text>
+  </g>
+  <text x="52" y="148" font-size="8" fill="#5c6370">水平 Tab 布局（保留不动）</text>
+
+  <!-- 只渲染了 SkillsPanel 导航栏（内容区缺失） -->
+  <rect x="52" y="190" width="376" height="346" rx="6" fill="#181A1C"/>
+  <g font-size="9" fill="#cccccc">
+    <rect x="60" y="200" width="80" height="20" rx="4" fill="#44444a"/><text x="68" y="214" fill="#ffffff">Library</text>
+    <rect x="60" y="224" width="80" height="20" rx="4" fill="none"/><text x="68" y="238">Marketplace</text>
+    <text x="60" y="268" font-size="8" font-weight="700" fill="#5c6370">TAGS</text>
+    <rect x="60" y="274" width="80" height="20" rx="4" fill="none"/><text x="68" y="288">Backend</text>
+    <text x="60" y="316" font-size="8" font-weight="700" fill="#5c6370">AGENTS</text>
+    <rect x="60" y="322" width="80" height="20" rx="4" fill="none"/><text x="68" y="336">opencode</text>
+    <text x="60" y="364" font-size="8" font-weight="700" fill="#5c6370">PROJECTS</text>
+    <rect x="60" y="370" width="80" height="20" rx="4" fill="none"/><text x="68" y="384">neeko</text>
+  </g>
+  <!-- 空白内容区 -->
+  <rect x="148" y="200" width="268" height="320" rx="4" fill="#21252b"/>
+  <text x="240" y="360" font-size="11" fill="#ff453a">内容区空白</text>
+  <text x="200" y="378" font-size="9" fill="#ff453a">SkillContent 未在此挂载</text>
+
+  <g font-size="10" fill="#ff453a">
+    <text x="40" y="536">✕ SkillContent 只挂在 App.tsx 中央区（zones.left.activePanelId==='skills'）</text>
+    <text x="40" y="552">✕ Library 内无内容组件 → 点导航项无反应</text>
+    <text x="40" y="568">✕ 其余 4 个 tab 有内容组件，但 Skills（默认 tab）缺失</text>
+  </g>
+
+  <!-- ══════════ 右：目标（水平 Tab 保留 + 内容区补齐） ══════════ -->
+  <rect x="500" y="86" width="440" height="494" rx="10" fill="#181A1C" stroke="#30d158" stroke-width="1.5"/>
+  <text x="520" y="114" font-size="14" font-weight="600" fill="#30d158">目标：水平 Tab 不变 · 补齐内容区（最小改动）</text>
+
+  <rect x="520" y="128" width="400" height="420" rx="6" fill="#21252b" stroke="#30d158"/>
+  <!-- 水平 Tab 条（原样保留） -->
+  <rect x="520" y="128" width="400" height="30" rx="6" fill="#333337"/>
+  <rect x="520" y="146" width="400" height="12" fill="#333337"/>
+  <g font-size="9.5" fill="#999999">
+    <rect x="532" y="160" width="46" height="18" rx="4" fill="#44444a"/><text x="538" y="173" fill="#ffffff">Skills</text>
+    <rect x="582" y="160" width="54" height="18" rx="4" fill="none" stroke="#3b3b40"/><text x="588" y="173">Prompts</text>
+    <rect x="640" y="160" width="50" height="18" rx="4" fill="none" stroke="#3b3b40"/><text x="646" y="173">Actions</text>
+    <rect x="694" y="160" width="38" height="18" rx="4" fill="none" stroke="#3b3b40"/><text x="700" y="173">MCP</text>
+    <rect x="736" y="160" width="62" height="18" rx="4" fill="none" stroke="#3b3b40"/><text x="742" y="173">Cmds</text>
+  </g>
+  <text x="532" y="148" font-size="8" fill="#5c6370">水平 Tab 布局（不变）</text>
+
+  <!-- 修复：导航 + 内容并列（复用 App.tsx 模式） -->
+  <rect x="532" y="190" width="120" height="346" rx="6" fill="#181A1C"/>
+  <g font-size="9" fill="#cccccc">
+    <rect x="540" y="200" width="104" height="20" rx="4" fill="#44444a"/><text x="548" y="214" fill="#ffffff">Library</text>
+    <rect x="540" y="224" width="104" height="20" rx="4" fill="none"/><text x="548" y="238">Marketplace</text>
+    <text x="540" y="268" font-size="8" font-weight="700" fill="#5c6370">TAGS</text>
+    <rect x="540" y="274" width="104" height="20" rx="4" fill="none"/><text x="548" y="288">Backend</text>
+    <text x="540" y="316" font-size="8" font-weight="700" fill="#5c6370">AGENTS</text>
+    <rect x="540" y="322" width="104" height="20" rx="4" fill="none"/><text x="548" y="336">opencode</text>
+    <text x="540" y="364" font-size="8" font-weight="700" fill="#5c6370">PROJECTS</text>
+    <rect x="540" y="370" width="104" height="20" rx="4" fill="none"/><text x="548" y="384">neeko</text>
+  </g>
+  <text x="532" y="520" font-size="8" fill="#30d158">SkillsPanel（复用）</text>
+
+  <!-- SkillContent 内容区 -->
+  <rect x="660" y="190" width="248" height="346" rx="6" fill="#181A1C"/>
+  <g font-size="9">
+    <rect x="668" y="200" width="232" height="16" rx="3" fill="#333337"/>
+    <rect x="668" y="224" width="232" height="16" rx="3" fill="#333337"/>
+    <rect x="668" y="248" width="232" height="16" rx="3" fill="#333337"/>
+    <rect x="668" y="272" width="232" height="16" rx="3" fill="#333337"/>
+    <text x="668" y="310" font-size="8.5" fill="#999999">├─ LocalSkillContent（当前）</text>
+    <text x="668" y="326" font-size="8.5" fill="#999999">├─ MarketplaceContent（marketplace）</text>
+    <text x="668" y="342" font-size="8.5" fill="#999999">├─ AgentSkillContent（agents）</text>
+    <text x="668" y="358" font-size="8.5" fill="#999999">└─ ProjectSkillContent（project）</text>
+    <text x="668" y="390" font-size="8.5" fill="#30d158">SkillContent 完整复用（含全部对话框）</text>
+    <text x="668" y="406" font-size="8.5" fill="#30d158">内部路由由 skillStore.activeSkillView 驱动</text>
+  </g>
+  <text x="660" y="520" font-size="8" fill="#30d158">SkillContent（复用 App.tsx 组件）</text>
+
+  <g font-size="10" fill="#30d158">
+    <text x="520" y="536">✓ 水平 Tab、槽位、store 全部不动，改动收敛到 SkillsTabContent</text>
+    <text x="520" y="552">✓ SkillsTabContent 改为 SkillsPanel + SkillContent 并列（复刻 App.tsx）</text>
+    <text x="520" y="568">✓ 其余 4 个 tab 组件已完整，仅回归验证</text>
+  </g>
+</svg>
