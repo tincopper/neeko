@@ -54,7 +54,7 @@ function buildPayload(type: FormState['payloadType'], form: FormState): ActionRe
 }
 
 const ActionEditorDialog: React.FC = React.memo(() => {
-  const open = useLibraryStore((s) => s.editorOpen);
+  const open = useLibraryStore((s) => s.editorOpen && s.editorKind === 'action');
   const editing = useLibraryStore((s) => s.editingAction);
   const closeEditor = useLibraryStore((s) => s.closeEditor);
   const createAction = useLibraryStore((s) => s.createAction);

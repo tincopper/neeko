@@ -8,7 +8,7 @@ import { getAllPromptTags } from '../api/libraryApi';
 
 const LibrarySidebar: React.FC = React.memo(() => {
   const tagFilter = useLibraryStore((s) => s.tagFilter);
-  const toggleTagFilter = useLibraryStore((s) => s.toggleTagFilter);
+  const setTagFilter = useLibraryStore((s) => s.setTagFilter);
   const scopeFilter = useLibraryStore((s) => s.scopeFilter);
   const setScopeFilter = useLibraryStore((s) => s.setScopeFilter);
 
@@ -113,7 +113,7 @@ const LibrarySidebar: React.FC = React.memo(() => {
                         ? 'bg-accent-blue/15 text-accent-blue border-accent-blue/30'
                         : 'bg-bg-primary text-text-secondary border-border hover:bg-bg-hover',
                     )}
-                    onClick={() => toggleTagFilter(tag)}
+                    onClick={() => setTagFilter(active ? [] : [tag])}
                   >
                     {tag}
                   </button>

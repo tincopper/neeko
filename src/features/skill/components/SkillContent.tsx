@@ -17,7 +17,7 @@ import ViewSkillDialog from './ViewSkillDialog';
  * Skill 内容区：路由子视图 + 统一管理对话框。
  * 必须占满父级高度，否则内部 overflow-y-auto 无法滚动。
  */
-const SkillContent: React.FC = React.memo(() => {
+const SkillContent: React.FC<{ titleless?: boolean }> = React.memo(({ titleless }) => {
   const activeSkillView = useSkillStore((s) => s.activeSkillView);
   const createSkill = useSkillStore((s) => s.createSkill);
   const updateSkillDocument = useSkillStore((s) => s.updateSkillDocument);
@@ -80,7 +80,7 @@ const SkillContent: React.FC = React.memo(() => {
       case 'local':
         return <LocalSkillContent setDialog={setDialog} />;
       case 'marketplace':
-        return <MarketplaceContent onSkillInstalled={openAssignDialog} />;
+        return <MarketplaceContent onSkillInstalled={openAssignDialog} titleless={titleless} />;
       case 'project':
         return <ProjectSkillContent setDialog={setDialog} />;
       case 'agents':

@@ -3,6 +3,8 @@ import { persist } from 'zustand/middleware';
 
 import { DOCK_PANEL_META } from '../dock/panelMeta';
 
+import { isAppView, useAppViewStore, type AppView } from './appViewStore';
+
 // -- Types --
 
 export interface DockZoneState {
@@ -28,6 +30,8 @@ export interface DockStore {
   leftPanelSize: number;
   /** Left sidebar runtime pixel width — set by DockLayout onLayout, consumed by TitleBar for drag region. */
   leftPanelWidth: number;
+  /** Left zone expanded state before Library center view opened (transient, restored on close). */
+  leftZoneExpandedBeforeLibrary: boolean | null;
   setLeftPanelWidth: (width: number) => void;
 
   togglePanel: (panelId: string) => void;
@@ -110,6 +114,32 @@ function findPanelZone(zones: Record<string, DockZoneState>, panelId: string): s
   return null;
 }
 
+/**
+ * Partial state for opening a tab (center) view: collapse the left zone and
+ * remember its previous expanded state so it can be restored on close.
+ */
+function openTabView(state: DockStore): Partial<DockStore> {
+  return {
+    leftZoneExpandedBeforeLibrary: state.zones.left?.expanded ?? true,
+    zones: {
+      ...state.zones,
+      left: state.zones.left ? { ...state.zones.left, expanded: false } : state.zones.left,
+    },
+  };
+}
+
+/** Partial state for leaving a tab (center) view: restore the left zone expanded state. */
+function restoreLeftZone(state: DockStore): Partial<DockStore> {
+  return {
+    zones: {
+      ...state.zones,
+      left: state.zones.left
+        ? { ...state.zones.left, expanded: state.leftZoneExpandedBeforeLibrary ?? true }
+        : state.zones.left,
+    },
+  };
+}
+
 // -- Store --
 
 export const useDockStore = create<DockStore>()(
@@ -123,9 +153,29 @@ export const useDockStore = create<DockStore>()(
         rightPanelSizes: { browser: 50 },
         leftPanelSize: 18,
         leftPanelWidth: 0,
+        leftZoneExpandedBeforeLibrary: null,
         setLeftPanelWidth: (width) => set({ leftPanelWidth: Math.max(0, width) }),
 
         togglePanel: (panelId: string) => {
+          // Tab-mode panels (e.g. library) are center views — toggle via appView,
+          // never dock them into a zone (avoids left-zone/center double render).
+          const def = DOCK_PANEL_META[panelId];
+          if (def?.openAs === 'tab') {
+            // Defensive guard: only real AppView values are valid tab targets.
+            if (!isAppView(panelId)) return;
+            const current = useAppViewStore.getState().appView;
+            const next: AppView = current === panelId ? 'normal' : panelId;
+            useAppViewStore.getState().setAppView(next);
+            set((state) => (next === panelId ? openTabView(state) : restoreLeftZone(state)));
+            return;
+          }
+          // Opening any dock panel exits the library center view back to workspace.
+          if (useAppViewStore.getState().appView === 'library') {
+            useAppViewStore.getState().setAppView('normal');
+            // 恢复左栏原展开态（Library 打开时被收起）
+            set((state) => restoreLeftZone(state));
+          }
+
           const { zones } = get();
           const currentZoneId = findPanelZone(zones, panelId);
 

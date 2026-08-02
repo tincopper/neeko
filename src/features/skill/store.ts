@@ -81,6 +81,8 @@ interface SkillStoreState {
   tagFilter: string[];
   /** Active agent detail view. */
   activeAgentId: string | null;
+  /** Marketplace item count (synced by MarketplaceContent for breadcrumbs). */
+  marketplaceTotalItems: number;
 }
 
 // ─── Actions ────────────────────────────────────────────────────────────────
@@ -148,11 +150,12 @@ interface SkillStoreActions {
   setSearchQuery: (q: string) => void;
   setSelectedSkillId: (id: string | null) => void;
   setActiveTagGroupIds: (ids: string[]) => void;
-  toggleActiveTagGroupId: (id: string) => void;
   setActiveAgentId: (id: string | null) => void;
   setSourceFilter: (source: 'all' | 'local' | 'git' | 'skillssh') => void;
   setTagFilter: (tags: string[]) => void;
   toggleTagFilter: (tag: string) => void;
+  /** Sync marketplace total item count for breadcrumb display. */
+  setMarketplaceTotalItems: (count: number) => void;
   /** Patch description after SKILL.md lazy parse (keeps list in sync). */
   patchSkillDescription: (skillId: string, description: string) => void;
 }
@@ -183,6 +186,7 @@ export const initialSkillState: SkillStoreState = {
   sourceFilter: 'all',
   tagFilter: [],
   activeAgentId: null,
+  marketplaceTotalItems: 0,
 };
 
 // ─── Store ──────────────────────────────────────────────────────────────────
@@ -518,15 +522,10 @@ export const useSkillStore = create<SkillStoreState & SkillStoreActions>()((set,
   setSearchQuery: (q: string) => set({ searchQuery: q }),
   setSelectedSkillId: (id: string | null) => set({ selectedSkillId: id }),
   setActiveTagGroupIds: (ids: string[]) => set({ activeTagGroupIds: ids }),
-  toggleActiveTagGroupId: (id: string) =>
-    set((state) => ({
-      activeTagGroupIds: state.activeTagGroupIds.includes(id)
-        ? state.activeTagGroupIds.filter((g) => g !== id)
-        : [...state.activeTagGroupIds, id],
-    })),
   setActiveAgentId: (id: string | null) => set({ activeAgentId: id }),
   setSourceFilter: (source: 'all' | 'local' | 'git' | 'skillssh') => set({ sourceFilter: source }),
   setTagFilter: (tags: string[]) => set({ tagFilter: tags }),
+  setMarketplaceTotalItems: (count) => set({ marketplaceTotalItems: count }),
   toggleTagFilter: (tag: string) => {
     set((state) => {
       const active = state.tagFilter.includes(tag);

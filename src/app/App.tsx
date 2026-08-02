@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from 'react';
+import { lazy, Suspense, useEffect, useMemo } from 'react';
 
 import DockBarButton from '@/app/components/DockBarButton';
 import OpenIdeButton from '@/app/components/OpenIdeButton';
@@ -21,6 +21,11 @@ import { useDockStore } from '@/shared/store/dockStore';
 
 import AppModals from './AppModals';
 import AppProviders from './AppProviders';
+
+/** Lazy LibraryPanelWrapper — same chunk-splitting as the dock registry. */
+const LazyLibraryPanel = lazy(() =>
+  import('@/app/dock/DockPanelWrappers').then((m) => ({ default: m.LibraryPanelWrapper })),
+);
 
 function App() {
   const { initializing, appProvidersProps, appLayoutProps, appModalsProps } = useAppShell();
@@ -50,6 +55,19 @@ function App() {
     appView === 'settings' ? (
       <div className="flex-1 flex flex-col overflow-hidden">
         <SettingsView />
+      </div>
+    ) : appView === 'library' ? (
+      // Resource Library 中央全宽展示（评审决策）：替换编辑区，隐藏 ProjectWorkspace
+      <div className="flex-1 flex flex-col overflow-hidden">
+        <Suspense
+          fallback={
+            <div className="flex-1 flex items-center justify-center text-sm text-text-muted">
+              Loading Library…
+            </div>
+          }
+        >
+          <LazyLibraryPanel />
+        </Suspense>
       </div>
     ) : (
       <div className="flex-1 flex flex-col overflow-hidden">

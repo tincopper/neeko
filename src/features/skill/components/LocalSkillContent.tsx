@@ -158,16 +158,19 @@ const LocalSkillContent: React.FC<LocalSkillContentProps> = React.memo(({ setDia
           refreshingMeta={refreshingMeta}
           filterLabel={activeGroupNames.join(', ')}
           count={filteredSkills.length}
-        />
-        <SkillSearchInput
-          value={searchQuery}
-          onChange={setSearchQuery}
-          placeholder={
-            activeGroupNames.length > 0
-              ? `Search skills in ${activeGroupNames.join(', ')}…`
-              : 'Search skills in the library…'
+          searchInput={
+            <SkillSearchInput
+              value={searchQuery}
+              onChange={setSearchQuery}
+              placeholder={
+                activeGroupNames.length > 0
+                  ? `Search skills in ${activeGroupNames.join(', ')}…`
+                  : 'Search skills in the library…'
+              }
+              clearable
+              inline
+            />
           }
-          clearable
         />
         <DiscoveredSkillsList
           skills={discoveredSkills}

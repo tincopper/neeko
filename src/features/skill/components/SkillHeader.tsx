@@ -29,6 +29,8 @@ interface SkillHeaderProps {
   refreshingMeta?: boolean;
   filterLabel?: string | null;
   count?: number;
+  /** Optional search field rendered inline between the title and the actions. */
+  searchInput?: React.ReactNode;
 }
 
 /**
@@ -45,10 +47,11 @@ const SkillHeader: React.FC<SkillHeaderProps> = React.memo(
     refreshingMeta,
     filterLabel,
     count,
+    searchInput,
   }) => {
     return (
       <div className="flex items-center gap-3 px-4 h-11 shrink-0 border-b border-border">
-        <div className="min-w-0 flex items-center gap-2 flex-1">
+        <div className="shrink-0 flex items-center gap-2 min-w-0">
           <h2 className="text-sm font-semibold text-text-primary truncate">
             {filterLabel ?? 'Library'}
           </h2>
@@ -58,6 +61,7 @@ const SkillHeader: React.FC<SkillHeaderProps> = React.memo(
             </span>
           )}
         </div>
+        <div className="flex-1 min-w-0">{searchInput}</div>
         <div className="flex items-center gap-0.5 shrink-0">
           <Button
             variant="ghost"

@@ -41,7 +41,6 @@ const SkillsPanel: React.FC = React.memo(() => {
   const activeAgentId = useSkillStore((s) => s.activeAgentId);
   const setActiveSkillView = useSkillStore((s) => s.setActiveSkillView);
   const setActiveTagGroupIds = useSkillStore((s) => s.setActiveTagGroupIds);
-  const toggleActiveTagGroupId = useSkillStore((s) => s.toggleActiveTagGroupId);
   const setActiveAgentId = useSkillStore((s) => s.setActiveAgentId);
   const deleteTagGroup = useSkillStore((s) => s.deleteTagGroup);
   const updateTagGroup = useSkillStore((s) => s.updateTagGroup);
@@ -58,8 +57,8 @@ const SkillsPanel: React.FC = React.memo(() => {
   const agentGroups = useSkillStore((s) => s.agentSkillGroups);
   const refreshAgentSkills = useSkillStore((s) => s.refreshAgentSkills);
 
-  const [projectsExpanded, setProjectsExpanded] = useState(true);
-  const [agentsExpanded, setAgentsExpanded] = useState(true);
+  const [projectsExpanded, setProjectsExpanded] = useState(false);
+  const [agentsExpanded, setAgentsExpanded] = useState(false);
   const [tagsExpanded, setTagsExpanded] = useState(true);
   const [creating, setCreating] = useState(false);
   const [newName, setNewName] = useState('');
@@ -100,7 +99,7 @@ const SkillsPanel: React.FC = React.memo(() => {
   }, [projectsKey, refreshProjectSkillCounts, refreshProjectTagGroupCounts, toast]);
 
   const navItems: NavItem[] = [
-    { key: 'local', label: 'Library', icon: Package, count: skills.length },
+    { key: 'local', label: 'Installed', icon: Package, count: skills.length },
     { key: 'marketplace', label: 'Marketplace', icon: Download },
   ];
 
@@ -119,11 +118,12 @@ const SkillsPanel: React.FC = React.memo(() => {
 
   const handleTagGroupSelect = useCallback(
     (id: string) => {
-      toggleActiveTagGroupId(id);
+      const wasActive = activeTagGroupIds.includes(id);
+      setActiveTagGroupIds(wasActive ? [] : [id]);
       setActiveSkillView('local');
       setActiveAgentId(null);
     },
-    [toggleActiveTagGroupId, setActiveSkillView, setActiveAgentId],
+    [activeTagGroupIds, setActiveTagGroupIds, setActiveSkillView, setActiveAgentId],
   );
 
   const selectAgent = useCallback(
@@ -224,12 +224,6 @@ const SkillsPanel: React.FC = React.memo(() => {
 
   return (
     <div className="flex flex-col h-full">
-      {/* Header */}
-      <div className="flex items-center gap-2 h-10 px-3 border-b border-border shrink-0">
-        <LayoutGrid className="h-4 w-4 text-text-secondary shrink-0" />
-        <span className="text-[var(--font-size)] font-semibold text-text-primary">Skills</span>
-      </div>
-
       <div className="flex-1 overflow-y-auto thin-scrollbar">
         {/* Primary nav */}
         <nav className="py-2 px-1.5" aria-label="Skill views">

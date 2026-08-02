@@ -50,7 +50,7 @@ describe('SkillsPanel — 导航', () => {
     render(<SkillsPanel />);
     // 等待 mount 后异步加载完成（同时 flush 其 setState）
     await waitFor(() => {
-      expect(screen.getByText('Library')).toBeInTheDocument();
+      expect(screen.getByText('Installed')).toBeInTheDocument();
     });
     expect(screen.getByText('Marketplace')).toBeInTheDocument();
   });
@@ -65,21 +65,20 @@ describe('SkillsPanel — 导航', () => {
     expect(useSkillStore.getState().activeSkillView).toBe('marketplace');
   });
 
-  it('点击 Library 切换 activeSkillView 并清除 tag', async () => {
+  it('点击 Installed 切换 activeSkillView 并清除 tag', async () => {
     useSkillStore.setState({
       activeSkillView: 'marketplace',
       activeTagGroupIds: ['tg1'],
     });
     render(<SkillsPanel />);
     await waitFor(() => {
-      expect(screen.getByText('Library')).toBeInTheDocument();
+      expect(screen.getByText('Installed')).toBeInTheDocument();
     });
-    fireEvent.click(screen.getByText('Library'));
-    expect(useSkillStore.getState().activeSkillView).toBe('local');
+    fireEvent.click(screen.getByText('Installed'));
     expect(useSkillStore.getState().activeTagGroupIds).toEqual([]);
   });
 
-  it('skills 数量显示在 Library 旁边', async () => {
+  it('skills 数量显示在 Installed 旁边', async () => {
     useSkillStore.setState({
       skills: [createManagedSkill({ id: 's1' }), createManagedSkill({ id: 's2' })],
     });
@@ -91,6 +90,8 @@ describe('SkillsPanel — 导航', () => {
 
   it('点击 Agents 中的 agent 设置 activeAgentId 和 activeSkillView', async () => {
     render(<SkillsPanel />);
+    // Agent 分组默认折叠：先点击标题展开
+    fireEvent.click(await screen.findByText('Agents'));
     const agentBtn = await screen.findByText('OpenCode');
     fireEvent.click(agentBtn);
     expect(useSkillStore.getState().activeAgentId).toBe('opencode');
@@ -112,21 +113,26 @@ describe('SkillsPanel — 导航', () => {
 
     render(<SkillsPanel />);
 
+    // Agent 分组默认折叠：先点击标题展开
+    fireEvent.click(await screen.findByText('Agents'));
+
     // Tag → Agent: clears tag
     fireEvent.click(await screen.findByText('OpenCode'));
     expect(useSkillStore.getState().activeSkillView).toBe('agents');
     expect(useSkillStore.getState().activeAgentId).toBe('opencode');
     expect(useSkillStore.getState().activeTagGroupIds).toEqual([]);
 
-    // Agent → Library: clears agent
-    fireEvent.click(screen.getByText('Library'));
+    // Agent → Installed: clears agent
+    fireEvent.click(screen.getByText('Installed'));
     expect(useSkillStore.getState().activeSkillView).toBe('local');
     expect(useSkillStore.getState().activeAgentId).toBeNull();
     expect(useSkillStore.getState().activeTagGroupIds).toEqual([]);
 
-    // Library tag + project: project clears tag & agent
+    // Installed tag + project: project clears tag & agent
     fireEvent.click(screen.getByText('Frontend'));
     expect(useSkillStore.getState().activeTagGroupIds).toContain('tg1');
+    // Projects 分组默认折叠：先点击标题展开
+    fireEvent.click(screen.getByText('Projects'));
     fireEvent.click(screen.getByText('neeko'));
     expect(useSkillStore.getState().activeSkillView).toBe('project');
     expect(useSkillStore.getState().activeTagGroupIds).toEqual([]);
@@ -143,6 +149,9 @@ describe('SkillsPanel — 导航', () => {
     mockGetAllProjectTagGroupCounts.mockResolvedValue([{ project_id: 'proj-1', group_count: 3 }]);
 
     render(<SkillsPanel />);
+
+    // Projects 分组默认折叠：先点击标题展开
+    fireEvent.click(await screen.findByText('Projects'));
 
     expect(screen.getByText('neeko')).toBeInTheDocument();
     await waitFor(() => {
@@ -166,6 +175,9 @@ describe('SkillsPanel — 导航', () => {
 
     render(<SkillsPanel />);
 
+    // Projects 分组默认折叠：先点击标题展开
+    fireEvent.click(await screen.findByText('Projects'));
+
     await waitFor(() => {
       expect(screen.getByTestId('project-disk-count-proj-1')).toHaveTextContent('0');
       expect(screen.getByTestId('project-group-count-proj-1')).toHaveTextContent('0g');
@@ -181,6 +193,9 @@ describe('SkillsPanel — 导航', () => {
     mockGetAllProjectSkillCounts.mockRejectedValue(new Error('scan failed'));
 
     render(<SkillsPanel />);
+
+    // Projects 分组默认折叠：先点击标题展开
+    fireEvent.click(await screen.findByText('Projects'));
 
     await waitFor(() => {
       expect(screen.getByTitle(/scan failed/i)).toHaveTextContent('!');

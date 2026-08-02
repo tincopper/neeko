@@ -1,0 +1,86 @@
+import React, { useCallback } from 'react';
+
+import ActionsTabContent from '@/features/library/components/ActionsTabContent';
+import CommandTabContent from '@/features/library/components/CommandTabContent';
+import McpTabContent from '@/features/library/components/McpTabContent';
+import PromptListSection from '@/features/library/components/PromptListSection';
+import { useLibraryStore } from '@/features/library/store/libraryStore';
+import SkillContent from '@/features/skill/components/SkillContent';
+import type { PromptInsertTarget, PromptResource, ResourceKind } from '@/shared/types/library';
+
+import LibrarySearchBar from './LibrarySearchBar';
+import LibraryToolbar from './LibraryToolbar';
+
+// ─── Constants ──────────────────────────────────────────────────────────────
+
+const SEARCH_PLACEHOLDERS: Record<ResourceKind, string> = {
+  skill: 'Search skills…',
+  prompt: 'Search prompts…',
+  action: 'Search actions…',
+  mcp: 'Search MCP servers…',
+  command: 'Search commands…',
+};
+
+// ─── Component ──────────────────────────────────────────────────────────────
+
+/**
+ * Resource Library v7 detail panel — toolbar + search + content for the
+ * active resource kind. Reads selection state from the relevant store.
+ */
+const LibraryDetail: React.FC<{
+  onInsertPrompt?: (prompt: PromptResource, target?: PromptInsertTarget) => void;
+}> = React.memo(({ onInsertPrompt }) => {
+  const activeKind = useLibraryStore((s) => s.activeKind);
+  const searchQuery = useLibraryStore((s) => s.searchQuery);
+  const setSearchQuery = useLibraryStore((s) => s.setSearchQuery);
+  const recordUsage = useLibraryStore((s) => s.recordUsage);
+  const detectVariables = useLibraryStore((s) => s.detectVariables);
+  const openVariableDialog = useLibraryStore((s) => s.openVariableDialog);
+
+  // ── Prompt insert handler ──────────────────────────────────────────────
+
+  const handleInsert = useCallback(
+    (prompt: PromptResource, target: PromptInsertTarget = 'agent') => {
+      void recordUsage(prompt.id);
+      if (target === 'agent') {
+        const variables = detectVariables(prompt.content);
+        if (variables.length > 0) {
+          void openVariableDialog(prompt.content).then((rendered) => {
+            onInsertPrompt?.({ ...prompt, content: rendered }, target);
+          });
+          return;
+        }
+      }
+      onInsertPrompt?.(prompt, target);
+    },
+    [recordUsage, detectVariables, openVariableDialog, onInsertPrompt],
+  );
+
+  return (
+    <div className="flex flex-col h-full min-h-0">
+      <LibraryToolbar />
+      {activeKind !== 'skill' && (
+        <LibrarySearchBar
+          value={searchQuery}
+          onChange={setSearchQuery}
+          placeholder={SEARCH_PLACEHOLDERS[activeKind]}
+        />
+      )}
+      <div className="flex-1 min-h-0 overflow-hidden">
+        {activeKind === 'skill' && <SkillContent titleless />}
+        {activeKind === 'prompt' && (
+          <div className="h-full overflow-y-auto overflow-x-hidden overscroll-contain thin-scrollbar">
+            <PromptListSection onInsert={handleInsert} />
+          </div>
+        )}
+        {activeKind === 'action' && <ActionsTabContent />}
+        {activeKind === 'mcp' && <McpTabContent />}
+        {activeKind === 'command' && <CommandTabContent />}
+      </div>
+    </div>
+  );
+});
+
+LibraryDetail.displayName = 'LibraryDetail';
+
+export default LibraryDetail;

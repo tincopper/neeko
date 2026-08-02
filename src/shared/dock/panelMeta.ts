@@ -22,8 +22,10 @@ export const DOCK_PANEL_META: Record<string, DockPanelMeta> = {
   },
   library: {
     id: 'library',
+    // 中央全宽展示（评审决策）：tab-mode 不入 dock zone，由 appViewStore 控制
     defaultZone: 'left',
     defaultOrder: 3,
+    openAs: 'tab',
   },
   gitControl: {
     id: 'gitControl',

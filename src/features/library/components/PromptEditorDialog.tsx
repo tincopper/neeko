@@ -57,7 +57,9 @@ function trimOr(s: string): string {
 }
 
 const PromptEditorDialog: React.FC = React.memo(() => {
-  const open = useLibraryStore((s) => s.editorOpen);
+  const open = useLibraryStore(
+    (s) => s.editorOpen && (s.editorKind === 'prompt' || s.editorKind === 'command'),
+  );
   const editing = useLibraryStore((s) => s.editingPrompt);
   const initialContent = useLibraryStore((s) => s.initialContent);
   const pendingKind = useLibraryStore((s) => s.pendingKind);

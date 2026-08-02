@@ -37,7 +37,7 @@ function parseTags(input: string): string[] {
 }
 
 const McpEditorDialog: React.FC = React.memo(() => {
-  const open = useLibraryStore((s) => s.editorOpen);
+  const open = useLibraryStore((s) => s.editorOpen && s.editorKind === 'mcp');
   const editing = useLibraryStore((s) => s.editingMcpServer);
   const closeEditor = useLibraryStore((s) => s.closeEditor);
   const closeMcpEditor = useLibraryStore((s) => s.closeMcpEditor);

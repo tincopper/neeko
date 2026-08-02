@@ -31,6 +31,9 @@ import {
 /** Sort mode for resource lists. */
 export type SortMode = 'recent' | 'frequent' | 'alphabetical';
 
+/** Which editor is open — lets the shared editorOpen flag drive the right dialog. */
+export type EditorKind = 'prompt' | 'command' | 'action' | 'mcp';
+
 /** Variable context for resolving `{{var}}` placeholders. */
 export interface VariableContext {
   branch?: string | null;
@@ -85,6 +88,8 @@ interface LibraryState {
 
   /** Editor dialog state. */
   editorOpen: boolean;
+  /** Which resource type the editor is for (disambiguates the shared open flag). */
+  editorKind: EditorKind | null;
   editingPrompt: PromptResource | null;
   /** Pre-filled content when opening the editor for a new prompt (e.g. "Save as Prompt"). */
   initialContent: string | null;
@@ -223,6 +228,7 @@ const initialState: LibraryState = {
   commandsError: null,
   editingMcpServer: null,
   editorOpen: false,
+  editorKind: null,
   editingPrompt: null,
   initialContent: null,
   pendingKind: 'prompt',
@@ -407,6 +413,7 @@ export const useLibraryStore = create<LibraryState & LibraryActions>()(
       openMcpEditor: (server) =>
         set({
           editorOpen: true,
+          editorKind: 'mcp',
           editingMcpServer: server ?? null,
           editingAction: null,
           editingPrompt: null,
@@ -415,6 +422,8 @@ export const useLibraryStore = create<LibraryState & LibraryActions>()(
       closeMcpEditor: () =>
         set({
           editingMcpServer: null,
+          editorOpen: false,
+          editorKind: null,
         }),
 
       getAgentCapabilities: async (agentId: string) => {
@@ -444,6 +453,7 @@ export const useLibraryStore = create<LibraryState & LibraryActions>()(
       openEditor: (prompt, defaultKind) =>
         set({
           editorOpen: true,
+          editorKind: defaultKind ?? 'prompt',
           editingPrompt: prompt ?? null,
           initialContent: null,
           editingAction: null,
@@ -452,6 +462,7 @@ export const useLibraryStore = create<LibraryState & LibraryActions>()(
       openEditorWithContent: (content) =>
         set({
           editorOpen: true,
+          editorKind: 'prompt',
           editingPrompt: null,
           initialContent: content,
           editingAction: null,
@@ -459,12 +470,19 @@ export const useLibraryStore = create<LibraryState & LibraryActions>()(
       openActionEditor: (action) =>
         set({
           editorOpen: true,
+          editorKind: 'action',
           editingAction: action ?? null,
           editingPrompt: null,
           initialContent: null,
         }),
       closeEditor: () =>
-        set({ editorOpen: false, editingPrompt: null, initialContent: null, editingAction: null }),
+        set({
+          editorOpen: false,
+          editorKind: null,
+          editingPrompt: null,
+          initialContent: null,
+          editingAction: null,
+        }),
       openInsert: () => set({ insertOpen: true }),
       closeInsert: () => set({ insertOpen: false }),
       openVariableDialog: (content) =>

@@ -142,26 +142,54 @@ const ProjectItem: React.FC<ProjectItemProps> = ({
 ### 模式结构
 
 ```tsx
-// LibraryPanel.tsx —— 壳层
+// LibraryPanel.tsx —— 壳层（v7 两栏 master-detail 布局）
 const LibraryPanel: React.FC = React.memo(() => {
   const activeKind = useLibraryStore((s) => s.activeKind);
   return (
-    <div className="library">
-      <LibraryHeader />          {/* Tabs + Search + ViewToggle + New */}
-      <div className="library-body">
-        <LibrarySidebar />       {/* 过滤侧栏 */}
-        <div className="content">
-          {activeKind === 'skill' && <SkillsTabContent />}     {/* 内嵌现有 */}
-          {activeKind === 'prompt' && <PromptListSection />}   {/* 新建 */}
-          {activeKind === 'action' && <ActionListSection />}   {/* P1 */}
+    <div className="flex flex-col h-full min-h-0 overflow-hidden bg-bg-primary">
+      <div className="flex-1 min-h-0 flex gap-0.5 p-0.5">
+        <div className="flex flex-col shrink-0 w-60 rounded-lg shadow-sm bg-bg-secondary overflow-hidden">
+          <LibraryActivityBar />   {/* 资源类型导航（Skills/Prompts/Actions/MCP/Commands） */}
+          <LibraryNavTree />       {/* 按 activeKind 切换导航树 */}
         </div>
+        <div className="flex-1 min-w-0 rounded-lg shadow-sm bg-bg-secondary overflow-hidden">
+          <LibraryDetail />        {/* 工具栏 + 搜索 + 内容路由 */}
+        </div>
+      </div>
+      <PromptEditorDialog />
+      <PromptInsertDialog onInsert={handleInsert} />
+      ...
+    </div>
+  );
+});
+
+// LibraryDetail.tsx —— 详情岛：面包屑 + 动作按钮 + 搜索 + 内容
+const LibraryDetail: React.FC = React.memo(() => {
+  return (
+    <div className="flex flex-col h-full min-h-0">
+      <LibraryToolbar />                          {/* 面包屑 + New/Import/Export */}
+      <LibrarySearchBar value={searchQuery} onChange={setSearchQuery} ... />
+      <div className="flex-1 min-h-0 overflow-hidden">
+        {activeKind === 'skill' && <SkillContent titleless />}
+        {activeKind === 'prompt' && <PromptListSection onInsert={handleInsert} />}
+        {activeKind === 'action' && <ActionsTabContent />}
+        ...
       </div>
     </div>
   );
 });
 
-// SkillsTabContent.tsx —— 内嵌现有面板（仅透传，不复制业务逻辑）
-const SkillsTabContent: React.FC = React.memo(() => <SkillsPanel />);
+// SkillsTabContent.tsx —— 内嵌现有面板（列表岛 + 内容岛，不复制业务逻辑）
+const SkillsTabContent: React.FC = React.memo(() => (
+  <div className="flex h-full min-h-0 overflow-hidden gap-1">
+    <div className="w-44 shrink-0 rounded-lg shadow-sm bg-bg-secondary overflow-hidden">
+      <SkillsPanel />
+    </div>
+    <div className="flex-1 min-w-0 rounded-lg shadow-sm bg-bg-secondary overflow-hidden">
+      <SkillContent />
+    </div>
+  </div>
+));
 ```
 
 ### 关键规则
