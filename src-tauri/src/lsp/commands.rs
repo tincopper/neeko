@@ -8,6 +8,14 @@ use crate::lsp::types::{LspSessionInfo, MAX_AUTO_OPEN_FILE_SIZE};
 use crate::AppError;
 use crate::AppStateWrapper;
 
+/// Extract the LSP `textDocument/uri` field from a request/notification params.
+///
+/// The same JSON pointer is read in several commands; centralising it keeps the
+/// lookup string in one spot and makes future LSP-schema drift local.
+fn text_document_uri(params: &serde_json::Value) -> Option<&str> {
+    params.pointer("/textDocument/uri").and_then(|v| v.as_str())
+}
+
 /// Resolve project execution environment and record it on the LSP manager
 /// before any session spawn / binary check.
 fn bind_project_exec_target(state: &AppStateWrapper, project_path: &str) -> Result<(), AppError> {
@@ -24,14 +32,19 @@ async fn ensure_session_async(
     state: &AppStateWrapper,
     project_path: &str,
     language_id: &str,
+    document_uri: Option<&str>,
 ) -> Result<(), AppError> {
     bind_project_exec_target(state, project_path)?;
     let manager = Arc::clone(&state.lsp_manager);
+    // Own the URI before entering `spawn_blocking` so the closure captures an
+    // `Option<String>` directly — avoids an extra per-call `.to_string()` inside
+    // the blocking closure and keeps the move list explicit.
+    let doc = document_uri.map(str::to_string);
+    let runtime = manager.runtime();
     let pp = project_path.to_string();
     let lid = language_id.to_string();
-    let runtime = manager.runtime();
     runtime
-        .spawn_blocking(move || manager.get_or_create_session(&pp, &lid))
+        .spawn_blocking(move || manager.get_or_create_session(&pp, &lid, doc.as_deref()))
         .await
         .map_err(|e| AppError::Lsp(format!("spawn_blocking join error: {}", e)))?
         .map(|_| ())
@@ -50,10 +63,13 @@ pub async fn lsp_request(
     params: Value,
     state: State<'_, AppStateWrapper>,
 ) -> Result<Value, AppError> {
-    ensure_session_async(&state, &project_path, &language_id).await?;
+    // Auto-open the document if needed — resolve the URI first so a fresh
+    // TypeScript session can be rooted at the document's own project.
+    let doc_uri = text_document_uri(&params);
+    ensure_session_async(&state, &project_path, &language_id, doc_uri).await?;
 
     // Ensure the document is known by the server before sending a document request.
-    if let Some(uri) = params.pointer("/textDocument/uri").and_then(|v| v.as_str()) {
+    if let Some(uri) = doc_uri {
         if !state
             .lsp_manager
             .is_document_open(&project_path, &language_id, uri)
@@ -114,7 +130,8 @@ pub async fn lsp_notification(
     params: Value,
     state: State<'_, AppStateWrapper>,
 ) -> Result<(), AppError> {
-    ensure_session_async(&state, &project_path, &language_id).await?;
+    let doc_uri = text_document_uri(&params);
+    ensure_session_async(&state, &project_path, &language_id, doc_uri).await?;
     state
         .lsp_manager
         .send_notification(&project_path, &language_id, &method, params)
@@ -133,7 +150,7 @@ pub fn lsp_open_document(
     bind_project_exec_target(&state, &project_path)?;
     state
         .lsp_manager
-        .get_or_create_session(&project_path, &language_id)?;
+        .get_or_create_session(&project_path, &language_id, Some(&uri))?;
 
     state
         .lsp_manager
@@ -239,7 +256,7 @@ pub async fn lsp_restart_session(
     // Re-create session (triggers lazy init + reopen docs on next request)
     let key = state
         .lsp_manager
-        .get_or_create_session(&project_path, &language_id)?;
+        .get_or_create_session(&project_path, &language_id, None)?;
 
     let sessions = state.lsp_manager.list_sessions();
     sessions
@@ -310,7 +327,7 @@ pub async fn lsp_restart_all_sessions(
         .session_language_ids_for_project(&project_path);
     for language_id in languages {
         let _ = state.lsp_manager.close_session(&project_path, &language_id);
-        ensure_session_async(&state, &project_path, &language_id).await?;
+        ensure_session_async(&state, &project_path, &language_id, None).await?;
     }
     Ok(())
 }
@@ -450,7 +467,8 @@ pub async fn lsp_transport(
     let id = parsed.get("id").cloned();
 
     // Ensure session exists (handles LSP process spawn + Rust-side init handshake)
-    ensure_session_async(&state, &project_path, &language_id).await?;
+    let doc_uri = text_document_uri(&params);
+    ensure_session_async(&state, &project_path, &language_id, doc_uri).await?;
 
     // ── initialize: return cached capabilities ─────────────────────────
     if method == "initialize" {
@@ -499,7 +517,7 @@ pub async fn lsp_transport(
     match method {
         "textDocument/didOpen" => {
             if let (Some(uri), Some(text), Some(version)) = (
-                params.pointer("/textDocument/uri").and_then(|v| v.as_str()),
+                text_document_uri(&params),
                 params
                     .pointer("/textDocument/text")
                     .and_then(|v| v.as_str()),
@@ -517,7 +535,7 @@ pub async fn lsp_transport(
             }
         }
         "textDocument/didClose" => {
-            if let Some(uri) = params.pointer("/textDocument/uri").and_then(|v| v.as_str()) {
+            if let Some(uri) = text_document_uri(&params) {
                 state
                     .lsp_manager
                     .unregister_open_document(&project_path, &language_id, uri);
@@ -545,7 +563,7 @@ pub async fn lsp_go_to_definition(
 ) -> Result<serde_json::Value, AppError> {
     let t0 = std::time::Instant::now();
 
-    ensure_session_async(&state, &project_path, &language_id).await?;
+    ensure_session_async(&state, &project_path, &language_id, Some(&uri)).await?;
     let t1 = t0.elapsed();
     log::info!("[perf] lsp_go_to_definition: session ready in {:?}", t1);
 
