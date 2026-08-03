@@ -108,13 +108,15 @@ export function createThemedCompletionSource(context: CompletionContext): Promis
  * Pass `{ override: true }` to replace all completion sources (same semantics
  * as `serverCompletion`).
  */
-export function createThemedServerCompletion(config: { override?: boolean } = {}): Extension {
+export function createThemedServerCompletion(): Extension {
   // The `serverCompletionSource` already handles capability checks, document
   // syncing, and the LSP request lifecycle — we only re-skin the produced DOM.
+  // Note: `override` is unconditionally set so our themed source is the only
+  // completion source — this is the same intent as the upstream
+  // `serverCompletion({ override: true })` behavior.
   return autocompletion({
     override: [createThemedCompletionSource],
     positionInfo: flipPositionInfo,
     closeOnBlur: true,
-    ...(config.override ? { override: [createThemedCompletionSource] } : {}),
   }) as Extension;
 }
