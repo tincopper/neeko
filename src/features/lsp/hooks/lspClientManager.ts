@@ -1,4 +1,4 @@
-import { LSPClient, serverDiagnostics } from '@codemirror/lsp-client';
+import { LSPClient, serverDiagnostics, signatureHelp } from '@codemirror/lsp-client';
 import type { Extension } from '@codemirror/state';
 
 import { IdleRefCountedCache } from '../idleRefCountedCache';
@@ -51,7 +51,12 @@ export function acquireLspPlugin(
   const bundle = pool.acquire(key, () => {
     // timeout: 15000ms covers slow LSP server startup (spawn + init handshake).
     const client = new LSPClient({
-      extensions: [createThemedServerCompletion(), createLspHoverTooltips(), serverDiagnostics()],
+      extensions: [
+        createThemedServerCompletion(),
+        createLspHoverTooltips(),
+        serverDiagnostics(),
+        signatureHelp(),
+      ],
       timeout: 15000,
     });
     const transport = new TauriLspTransport(projectPath, languageId);
