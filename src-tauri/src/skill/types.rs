@@ -171,16 +171,22 @@ pub struct McpServerRecord {
     pub description: Option<String>,
     /// Executable command to launch the MCP server.
     pub command: String,
+    /// Remote endpoint URL for http/sse transports.
+    pub url: Option<String>,
     /// Serialized JSON array of command arguments.
     pub args_json: String,
     /// Serialized JSON object of environment variables.
     pub env_json: String,
-    /// Transport type: "stdio" or "sse".
+    /// Transport type: "stdio", "sse", or "http".
     pub transport: String,
     /// Scope: "global" or "project".
     pub scope: String,
     /// Project id when scope = "project".
     pub project_id: Option<String>,
+    /// MCP Registry source (e.g. "registry.modelcontextprotocol.io") when installed from marketplace.
+    pub source_registry: Option<String>,
+    /// Registry-unique name (e.g. "io.github.modelcontextprotocol/filesystem") matching the source.
+    pub source_ref: Option<String>,
     /// Tag names.
     pub tags: Vec<String>,
     /// Whether the MCP server is enabled.

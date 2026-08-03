@@ -1857,3 +1857,36 @@ neeko-check review round 2 fixes: (1) feat f398114e - library as center tab view
 ### Next Steps
 
 - None - task complete
+
+
+## Session 114: refactor mcp_probe to unified executor
+
+**Date**: 2026-08-03
+**Task**: refactor mcp_probe to unified executor
+**Branch**: `main`
+
+### Summary
+
+(Add summary)
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `pending` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

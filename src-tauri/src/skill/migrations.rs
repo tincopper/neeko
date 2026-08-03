@@ -2,7 +2,7 @@ use anyhow::{bail, Context, Result};
 use rusqlite::Connection;
 
 /// Current schema version. Bump this when adding a new migration.
-const LATEST_VERSION: u32 = 7;
+const LATEST_VERSION: u32 = 9;
 
 /// Run all pending migrations on the database.
 pub fn run_migrations(conn: &Connection) -> Result<()> {
@@ -48,6 +48,8 @@ fn migrate_step(conn: &Connection, from_version: u32) -> Result<()> {
         4 => migrate_v4_to_v5(conn),
         5 => migrate_v5_to_v6(conn),
         6 => migrate_v6_to_v7(conn),
+        7 => migrate_v7_to_v8(conn),
+        8 => migrate_v8_to_v9(conn),
         _ => bail!("unknown migration version: {from_version}"),
     }
 }
@@ -270,6 +272,27 @@ fn migrate_v6_to_v7(conn: &Connection) -> Result<()> {
     Ok(())
 }
 
+/// v7 -> v8: Add MCP Registry source tracking columns to mcp_servers.
+fn migrate_v7_to_v8(conn: &Connection) -> Result<()> {
+    conn.execute_batch(
+        "
+        ALTER TABLE mcp_servers ADD COLUMN source_registry TEXT;
+        ALTER TABLE mcp_servers ADD COLUMN source_ref TEXT;
+        ",
+    )?;
+    Ok(())
+}
+
+/// v8 -> v9: Add url column to mcp_servers for remote (http/sse) transport.
+fn migrate_v8_to_v9(conn: &Connection) -> Result<()> {
+    conn.execute_batch(
+        "
+        ALTER TABLE mcp_servers ADD COLUMN url TEXT;
+        ",
+    )?;
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -320,6 +343,41 @@ mod tests {
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .unwrap();
         assert_eq!(version, LATEST_VERSION);
+    }
+
+    #[test]
+    fn test_v8_adds_mcp_source_columns() {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch("PRAGMA foreign_keys=ON;").unwrap();
+
+        run_migrations(&conn).unwrap();
+
+        let columns: Vec<String> = conn
+            .prepare("PRAGMA table_info(mcp_servers)")
+            .unwrap()
+            .query_map([], |row| row.get::<_, String>(1))
+            .unwrap()
+            .filter_map(|r| r.ok())
+            .collect();
+        assert!(columns.contains(&"source_registry".to_string()));
+        assert!(columns.contains(&"source_ref".to_string()));
+    }
+
+    #[test]
+    fn test_v9_adds_mcp_url_column() {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch("PRAGMA foreign_keys=ON;").unwrap();
+
+        run_migrations(&conn).unwrap();
+
+        let columns: Vec<String> = conn
+            .prepare("PRAGMA table_info(mcp_servers)")
+            .unwrap()
+            .query_map([], |row| row.get::<_, String>(1))
+            .unwrap()
+            .filter_map(|r| r.ok())
+            .collect();
+        assert!(columns.contains(&"url".to_string()));
     }
 
     #[test]

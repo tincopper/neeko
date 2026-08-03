@@ -10,6 +10,10 @@ pub mod content_hash;
 pub mod git_fetcher;
 /// Skill installation from local paths, archives, and git.
 pub mod installer;
+/// MCP connectivity probe (real initialize handshake).
+pub mod mcp_probe;
+/// MCP Registry (modelcontextprotocol.io) HTTP client and config generation.
+pub mod mcp_registry_api;
 /// Database schema migrations.
 pub mod migrations;
 /// Data model types for skill records.

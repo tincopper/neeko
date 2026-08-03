@@ -982,20 +982,23 @@ impl SkillRepository {
             .map_err(|e| anyhow::anyhow!("Database lock poisoned: {}", e))?;
         let tags_json = serde_json::to_string(&server.tags).unwrap_or_else(|_| "[]".to_string());
         conn.execute(
-            "INSERT INTO mcp_servers (id, name, description, command, args_json, env_json,
-             transport, scope, project_id, tags_json, enabled, usage_count, last_used_at,
-             created_at, updated_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)",
+            "INSERT INTO mcp_servers (id, name, description, command, url, args_json, env_json,
+             transport, scope, project_id, source_registry, source_ref, tags_json, enabled,
+             usage_count, last_used_at, created_at, updated_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18)",
             params![
                 server.id,
                 server.name,
                 server.description,
                 server.command,
+                server.url,
                 server.args_json,
                 server.env_json,
                 server.transport,
                 server.scope,
                 server.project_id,
+                server.source_registry,
+                server.source_ref,
                 tags_json,
                 i32::from(server.enabled),
                 server.usage_count,
@@ -1014,8 +1017,9 @@ impl SkillRepository {
             .lock()
             .map_err(|e| anyhow::anyhow!("Database lock poisoned: {}", e))?;
         let mut stmt = conn.prepare(
-            "SELECT id, name, description, command, args_json, env_json, transport, scope,
-             project_id, tags_json, enabled, usage_count, last_used_at, created_at, updated_at
+            "SELECT id, name, description, command, url, args_json, env_json, transport, scope,
+             project_id, source_registry, source_ref, tags_json, enabled, usage_count,
+             last_used_at, created_at, updated_at
              FROM mcp_servers ORDER BY name",
         )?;
         let rows = stmt.query_map([], map_mcp_row)?;
@@ -1032,8 +1036,9 @@ impl SkillRepository {
             .lock()
             .map_err(|e| anyhow::anyhow!("Database lock poisoned: {}", e))?;
         let mut stmt = conn.prepare(
-            "SELECT id, name, description, command, args_json, env_json, transport, scope,
-             project_id, tags_json, enabled, usage_count, last_used_at, created_at, updated_at
+            "SELECT id, name, description, command, url, args_json, env_json, transport, scope,
+             project_id, source_registry, source_ref, tags_json, enabled, usage_count,
+             last_used_at, created_at, updated_at
              FROM mcp_servers WHERE id = ?1",
         )?;
         let mut rows = stmt.query_map(params![id], map_mcp_row)?;
@@ -1049,18 +1054,22 @@ impl SkillRepository {
         let now = chrono::Utc::now().timestamp_millis();
         let tags_json = serde_json::to_string(&server.tags).unwrap_or_else(|_| "[]".to_string());
         conn.execute(
-            "UPDATE mcp_servers SET name = ?1, description = ?2, command = ?3, args_json = ?4,
-             env_json = ?5, transport = ?6, scope = ?7, project_id = ?8, tags_json = ?9,
-             enabled = ?10, usage_count = ?11, last_used_at = ?12, updated_at = ?13 WHERE id = ?14",
+            "UPDATE mcp_servers SET name = ?1, description = ?2, command = ?3, url = ?4,
+             args_json = ?5, env_json = ?6, transport = ?7, scope = ?8, project_id = ?9,
+             source_registry = ?10, source_ref = ?11, tags_json = ?12, enabled = ?13,
+             usage_count = ?14, last_used_at = ?15, updated_at = ?16 WHERE id = ?17",
             params![
                 server.name,
                 server.description,
                 server.command,
+                server.url,
                 server.args_json,
                 server.env_json,
                 server.transport,
                 server.scope,
                 server.project_id,
+                server.source_registry,
+                server.source_ref,
                 tags_json,
                 i32::from(server.enabled),
                 server.usage_count,
@@ -1316,24 +1325,27 @@ fn map_tag_group_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<TagGroupRecord
 }
 
 fn map_mcp_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<crate::skill::types::McpServerRecord> {
-    let tags_json: String = row.get(9)?;
+    let tags_json: String = row.get(12)?;
     let tags: Vec<String> = serde_json::from_str(&tags_json).unwrap_or_default();
     Ok(crate::skill::types::McpServerRecord {
         id: row.get(0)?,
         name: row.get(1)?,
         description: row.get(2)?,
         command: row.get(3)?,
-        args_json: row.get(4)?,
-        env_json: row.get(5)?,
-        transport: row.get(6)?,
-        scope: row.get(7)?,
-        project_id: row.get(8)?,
+        url: row.get(4)?,
+        args_json: row.get(5)?,
+        env_json: row.get(6)?,
+        transport: row.get(7)?,
+        scope: row.get(8)?,
+        project_id: row.get(9)?,
+        source_registry: row.get(10)?,
+        source_ref: row.get(11)?,
         tags,
-        enabled: row.get::<_, i32>(10)? != 0,
-        usage_count: row.get(11)?,
-        last_used_at: row.get(12)?,
-        created_at: row.get(13)?,
-        updated_at: row.get(14)?,
+        enabled: row.get::<_, i32>(13)? != 0,
+        usage_count: row.get(14)?,
+        last_used_at: row.get(15)?,
+        created_at: row.get(16)?,
+        updated_at: row.get(17)?,
     })
 }
 
@@ -1435,11 +1447,14 @@ mod tests {
             name: name.to_string(),
             description: Some("test mcp".to_string()),
             command: "npx".to_string(),
+            url: None,
             args_json: r#"["-y","fs-mcp"]"#.to_string(),
             env_json: "{}".to_string(),
             transport: "stdio".to_string(),
             scope: "global".to_string(),
             project_id: None,
+            source_registry: None,
+            source_ref: None,
             tags: vec!["fs".to_string()],
             enabled: true,
             usage_count: 0,
@@ -1483,6 +1498,52 @@ mod tests {
         let loaded = repo.get_mcp_server_by_id("mcp-1").unwrap().unwrap();
         assert_eq!(loaded.usage_count, 2);
         assert!(loaded.last_used_at.is_some());
+    }
+
+    #[test]
+    fn mcp_server_round_trip_preserves_source_fields() {
+        let repo = SkillRepository::open_in_memory().unwrap();
+        let mut server = sample_mcp("mcp-1", "fs-server");
+        server.source_registry = Some("registry.modelcontextprotocol.io".to_string());
+        server.source_ref = Some("io.github.x/fs".to_string());
+        server.transport = "http".to_string();
+        repo.insert_mcp_server(&server).unwrap();
+
+        let loaded = repo.get_mcp_server_by_id("mcp-1").unwrap().unwrap();
+        assert_eq!(
+            loaded.source_registry.as_deref(),
+            Some("registry.modelcontextprotocol.io")
+        );
+        assert_eq!(loaded.source_ref.as_deref(), Some("io.github.x/fs"));
+        assert_eq!(loaded.transport, "http");
+
+        // update round-trip
+        let mut updated = loaded;
+        updated.source_ref = Some("io.github.x/fs-v2".to_string());
+        repo.update_mcp_server(&updated).unwrap();
+        let reloaded = repo.get_mcp_server_by_id("mcp-1").unwrap().unwrap();
+        assert_eq!(reloaded.source_ref.as_deref(), Some("io.github.x/fs-v2"));
+        assert_eq!(reloaded.name, "fs-server");
+    }
+
+    #[test]
+    fn mcp_server_round_trip_preserves_url() {
+        let repo = SkillRepository::open_in_memory().unwrap();
+        let mut server = sample_mcp("mcp-1", "remote-server");
+        server.transport = "http".to_string();
+        server.url = Some("https://mcp.example.com/sse".to_string());
+        server.command = String::new();
+        repo.insert_mcp_server(&server).unwrap();
+
+        let loaded = repo.get_mcp_server_by_id("mcp-1").unwrap().unwrap();
+        assert_eq!(loaded.transport, "http");
+        assert_eq!(loaded.url.as_deref(), Some("https://mcp.example.com/sse"));
+
+        let mut updated = loaded;
+        updated.url = Some("https://mcp.example.com/v2".to_string());
+        repo.update_mcp_server(&updated).unwrap();
+        let reloaded = repo.get_mcp_server_by_id("mcp-1").unwrap().unwrap();
+        assert_eq!(reloaded.url.as_deref(), Some("https://mcp.example.com/v2"));
     }
 
     // ── Prompts kind tests ────────────────────────────────────────────────

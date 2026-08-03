@@ -1,0 +1,839 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>MCP Marketplace · Resource Library 原型（对齐 v7 外壳）</title>
+<style>
+  :root {
+    /* ── Color System（与 Resource Library v7 原型一致） ── */
+    --bg-canvas: #14171c;
+    --bg-surface: #1a1e25;
+    --bg-surface-2: #1f242c;
+    --bg-elevated: #252a33;
+    --bg-hover: #2a3038;
+    --bg-active: #323a45;
+    --bg-selected: rgba(88, 166, 255, 0.10);
+
+    --text-primary: #e8edf3;
+    --text-secondary: #9ba5b2;
+    --text-muted: #6b7480;
+    --text-disabled: #4a525c;
+
+    --border-subtle: rgba(255,255,255,0.04);
+    --border-default: rgba(255,255,255,0.08);
+    --border-strong: rgba(255,255,255,0.14);
+
+    --accent: #58a6ff;
+    --accent-subtle: rgba(88, 166, 255, 0.12);
+    --accent-green: #3fb950;
+    --accent-red: #f85149;
+    --accent-orange: #d29922;
+
+    /* ── Typography ── */
+    --font-sans: -apple-system, "SF Pro Text", "Inter", "PingFang SC", sans-serif;
+    --font-mono: "JetBrains Mono", "SF Mono", Menlo, monospace;
+
+    /* ── Shape ── */
+    --radius-xs: 3px;
+    --radius-sm: 5px;
+    --radius-md: 7px;
+    --radius-lg: 10px;
+
+    /* ── Spacing ── */
+    --s1: 4px; --s2: 8px; --s3: 12px; --s4: 16px; --s5: 20px; --s6: 24px;
+
+    /* ── Shadows ── */
+    --shadow-sm: 0 1px 2px rgba(0,0,0,0.2);
+    --shadow-md: 0 4px 12px rgba(0,0,0,0.25);
+    --shadow-lg: 0 8px 24px rgba(0,0,0,0.35);
+
+    /* ── Motion ── */
+    --ease: cubic-bezier(0.4, 0, 0.2, 1);
+    --ease-out: cubic-bezier(0, 0, 0.2, 1);
+    --dur-fast: 0.1s;
+    --dur-normal: 0.15s;
+    --dur-slow: 0.25s;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: var(--font-sans);
+    font-size: 13px;
+    line-height: 1.5;
+    color: var(--text-primary);
+    background: var(--bg-canvas);
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  /* ── Demo Bar ── */
+  .demo-bar {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    gap: var(--s3);
+    padding: var(--s2) var(--s4);
+    background: linear-gradient(180deg, var(--bg-surface-2), var(--bg-surface));
+    border-bottom: 1px solid var(--border-subtle);
+    font-size: 12px;
+    color: var(--text-secondary);
+  }
+  .demo-bar .brand { font-weight: 600; color: var(--text-primary); margin-right: var(--s2); letter-spacing: -0.01em; }
+  .demo-bar .pill {
+    padding: 2px 8px; border-radius: 10px; background: var(--accent-subtle);
+    font-size: 11px; font-weight: 500; color: var(--accent); font-variant-numeric: tabular-nums;
+  }
+  .demo-bar .sep { width: 1px; height: 16px; background: var(--border-default); margin: 0 var(--s1); }
+  .demo-bar select, .demo-bar button {
+    background: var(--bg-elevated); color: var(--text-secondary);
+    border: 1px solid var(--border-default); border-radius: var(--radius-sm);
+    padding: 4px 10px; font-size: 12px; cursor: pointer; font-family: inherit;
+    transition: all var(--dur-normal) var(--ease);
+  }
+  .demo-bar select:hover, .demo-bar button:hover { background: var(--bg-hover); color: var(--text-primary); border-color: var(--border-strong); }
+  .demo-bar .note { margin-left: auto; color: var(--text-disabled); font-size: 11px; }
+
+  /* ── App Shell ── */
+  .app { flex: 1 1 auto; display: flex; min-height: 0; background: var(--bg-canvas); }
+
+  /* Dock */
+  .dock {
+    flex: 0 0 48px; background: var(--bg-surface); border-right: 1px solid var(--border-subtle);
+    display: flex; flex-direction: column; align-items: center; padding: var(--s3) 0; gap: var(--s1);
+  }
+  .dock .di {
+    width: 36px; height: 36px; border-radius: var(--radius-md); display: flex; align-items: center;
+    justify-content: center; color: var(--text-muted); font-size: 15px; cursor: pointer;
+    transition: all var(--dur-fast) var(--ease);
+  }
+  .dock .di:hover { background: var(--bg-hover); color: var(--text-secondary); }
+  .dock .di.active { background: var(--bg-active); color: var(--accent); }
+  .dock .divider { width: 20px; height: 1px; background: var(--border-subtle); margin: var(--s2) 0; }
+
+  /* ── Library Panel ── */
+  .lib { flex: 1 1 auto; display: flex; flex-direction: column; min-width: 0; background: var(--bg-canvas); }
+  .lib-body { flex: 1 1 auto; display: flex; min-height: 0; }
+
+  /* ── Master: Activity Tabs + Tree ── */
+  .lib-master {
+    flex: 0 0 240px; min-width: 200px; max-width: 320px; background: var(--bg-surface);
+    border-right: 1px solid var(--border-subtle); display: flex; flex-direction: column;
+  }
+
+  /* Activity Tabs */
+  .act-tabs {
+    flex: 0 0 auto; padding: var(--s2); border-bottom: 1px solid var(--border-subtle);
+    display: flex; flex-direction: column; gap: 1px;
+  }
+  .act-tab {
+    display: flex; align-items: center; gap: var(--s2); padding: 6px var(--s3);
+    border-radius: var(--radius-sm); border: none; background: none; cursor: pointer;
+    color: var(--text-secondary); font-size: 12.5px; font-weight: 500; text-align: left;
+    transition: all var(--dur-fast) var(--ease); position: relative;
+  }
+  .act-tab:hover { background: var(--bg-hover); color: var(--text-primary); }
+  .act-tab.active { background: var(--bg-selected); color: var(--accent); }
+  .act-tab .ic { width: 18px; height: 18px; display: flex; align-items: center; justify-content: center; font-size: 14px; flex-shrink: 0; }
+  .act-tab .lb { flex: 1; }
+  .act-tab .bd {
+    font-size: 10.5px; font-weight: 500; font-variant-numeric: tabular-nums;
+    color: var(--text-muted); padding: 1px 6px; border-radius: 8px; background: var(--bg-elevated);
+    transition: all var(--dur-fast) var(--ease);
+  }
+  .act-tab.active .bd { color: var(--accent); background: rgba(88, 166, 255, 0.15); }
+
+  /* Nav Tree */
+  .tree { flex: 1 1 auto; overflow-y: auto; padding: var(--s2); }
+  .tree-wrap { display: none; flex-direction: column; gap: 2px; }
+  .tree-wrap.active { display: flex; }
+  .tree-grp { margin-bottom: var(--s3); }
+  .tree-grp:last-child { margin-bottom: 0; }
+  .tree-grp-title {
+    font-size: 10px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase;
+    color: var(--text-muted); padding: var(--s1) var(--s3); margin-bottom: var(--s1);
+  }
+  .tree-item {
+    display: flex; align-items: center; gap: var(--s2); padding: 5px var(--s3);
+    border-radius: var(--radius-xs); border: none; background: none; cursor: pointer;
+    color: var(--text-secondary); font-size: 12.5px; text-align: left; width: 100%;
+    transition: all var(--dur-fast) var(--ease);
+  }
+  .tree-item:hover { background: var(--bg-hover); color: var(--text-primary); }
+  .tree-item.active { background: var(--bg-selected); color: var(--text-primary); }
+  .tree-item .ic { width: 16px; height: 16px; display: flex; align-items: center; justify-content: center; font-size: 13px; opacity: 0.8; flex-shrink: 0; }
+  .tree-item .lb { flex: 1; }
+  .tree-item .cnt { font-size: 10.5px; font-weight: 500; font-variant-numeric: tabular-nums; color: var(--text-muted); }
+  .tree-item.active .cnt { color: var(--accent); }
+
+  .collapse-hdr {
+    display: flex; align-items: center; gap: var(--s1); padding: 5px var(--s3);
+    border-radius: var(--radius-xs); border: none; background: none; cursor: pointer;
+    color: var(--text-muted); font-size: 10px; font-weight: 600; letter-spacing: 0.06em;
+    text-transform: uppercase; width: 100%; transition: color var(--dur-fast) var(--ease);
+  }
+  .collapse-hdr:hover { color: var(--text-secondary); }
+  .collapse-hdr .chev { width: 12px; height: 12px; display: flex; align-items: center; justify-content: center; font-size: 9px; }
+  .collapse-body { display: none; padding-left: var(--s4); }
+  .collapse-body.open { display: block; }
+
+  .tree-empty {
+    padding: var(--s6) var(--s4); text-align: center; color: var(--text-disabled);
+    font-size: 11.5px;
+  }
+
+  /* ── Detail ── */
+  .lib-detail { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; background: var(--bg-canvas); }
+
+  /* Toolbar */
+  .toolbar {
+    flex: 0 0 auto; display: flex; align-items: center; justify-content: space-between;
+    padding: var(--s3) var(--s5); border-bottom: 1px solid var(--border-subtle); background: var(--bg-surface);
+  }
+  .breadcrumb { display: flex; align-items: center; gap: var(--s2); font-size: 13px; font-weight: 500; color: var(--text-primary); }
+  .breadcrumb .sep { color: var(--text-disabled); font-size: 11px; }
+  .breadcrumb .count {
+    display: inline-flex; align-items: center; justify-content: center; min-width: 1.25rem;
+    height: 18px; padding: 0 6px; border-radius: 9px; font-size: 10.5px; font-variant-numeric: tabular-nums;
+    background: var(--bg-hover); color: var(--text-muted); border: 1px solid var(--border-default);
+  }
+  .toolbar-actions { display: flex; align-items: center; gap: var(--s2); }
+
+  .btn {
+    display: inline-flex; align-items: center; gap: var(--s1); padding: 5px 14px;
+    border-radius: var(--radius-sm); border: 1px solid var(--border-default);
+    background: var(--bg-elevated); color: var(--text-secondary); font-size: 12px; font-weight: 500;
+    cursor: pointer; transition: all var(--dur-fast) var(--ease); font-family: inherit; white-space: nowrap;
+  }
+  .btn:hover { background: var(--bg-hover); color: var(--text-primary); border-color: var(--border-strong); }
+  .btn:active { transform: scale(0.98); }
+  .btn-primary { background: var(--accent); color: #fff; border-color: var(--accent); box-shadow: 0 1px 4px rgba(88, 166, 255, 0.25); }
+  .btn-primary:hover { background: #6cb0ff; border-color: #6cb0ff; }
+  .btn-icon { width: 30px; height: 30px; padding: 0; display: flex; align-items: center; justify-content: center; font-size: 13px; }
+  .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+  /* Search */
+  .search-bar {
+    flex: 0 0 auto; padding: var(--s2) var(--s5); border-bottom: 1px solid var(--border-subtle);
+    background: var(--bg-surface);
+  }
+  .search-wrap { position: relative; max-width: 380px; }
+  .search-wrap .ic { position: absolute; left: 10px; top: 50%; transform: translateY(-50%); color: var(--text-muted); font-size: 13px; pointer-events: none; }
+  .search-input {
+    width: 100%; height: 32px; padding: 0 12px 0 32px; border-radius: var(--radius-sm);
+    border: 1px solid var(--border-default); background: var(--bg-canvas); color: var(--text-primary);
+    font-size: 12.5px; font-family: inherit; outline: none; transition: all var(--dur-normal) var(--ease);
+  }
+  .search-input::placeholder { color: var(--text-muted); }
+  .search-input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(88, 166, 255, 0.12); }
+
+  /* Content */
+  .content { flex: 1 1 auto; overflow-y: auto; padding: var(--s3) var(--s5); }
+
+  /* Installed list (align .card) */
+  .list { display: flex; flex-direction: column; gap: var(--s1); }
+  .card {
+    display: flex; align-items: center; gap: var(--s3); padding: var(--s3) var(--s4);
+    border-radius: var(--radius-md); border: 1px solid transparent; background: var(--bg-surface);
+    cursor: pointer; transition: all var(--dur-normal) var(--ease);
+  }
+  .card:hover { background: var(--bg-hover); border-color: var(--border-default); box-shadow: var(--shadow-sm); }
+  .card .av {
+    width: 36px; height: 36px; border-radius: var(--radius-sm);
+    background: linear-gradient(135deg, var(--bg-elevated), var(--bg-surface-2));
+    display: flex; align-items: center; justify-content: center; font-size: 16px;
+    flex-shrink: 0; border: 1px solid var(--border-subtle);
+  }
+  .card .bd { flex: 1; min-width: 0; }
+  .card .bd .t { font-size: 13px; font-weight: 500; color: var(--text-primary); margin-bottom: 2px; display: flex; align-items: center; gap: var(--s2); }
+  .card .bd .t .manual { font-size: 10px; color: var(--text-disabled); }
+  .card .bd .t .tag {
+    padding: 1px 6px; border-radius: var(--radius-xs); background: var(--bg-canvas);
+    font-size: 10.5px; border: 1px solid var(--border-subtle); font-family: var(--font-mono);
+  }
+  .card .bd .t .tag.trans { background: var(--accent-subtle); color: var(--accent); border-color: rgba(88,166,255,0.2); }
+  .card .bd .m { font-size: 11px; color: var(--text-muted); }
+  .card .actions { display: flex; gap: var(--s1); opacity: 0; transform: translateX(4px); transition: all var(--dur-normal) var(--ease); }
+  .card:hover .actions { opacity: 1; transform: translateX(0); }
+  .card .actions button {
+    padding: 4px 10px; border-radius: var(--radius-xs); border: 1px solid var(--border-default);
+    background: var(--bg-surface); color: var(--text-secondary); font-size: 11px; cursor: pointer;
+    transition: all var(--dur-fast) var(--ease); font-family: inherit;
+  }
+  .card .actions button:hover { background: var(--bg-active); color: var(--text-primary); }
+  .card .actions button.primary { background: var(--accent-subtle); color: var(--accent); border-color: rgba(88,166,255,0.3); }
+
+  /* Marketplace grid */
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: var(--s2); margin-top: var(--s3); }
+  .mcard {
+    display: flex; flex-direction: column; gap: var(--s2); padding: var(--s3);
+    border-radius: var(--radius-md); border: 1px solid var(--border-default); background: var(--bg-surface);
+    transition: all var(--dur-normal) var(--ease);
+  }
+  .mcard:hover { background: var(--bg-hover); border-color: var(--border-strong); box-shadow: var(--shadow-sm); }
+  .mcard .top { display: flex; align-items: center; gap: var(--s2); }
+  .mcard .top .av {
+    width: 30px; height: 30px; border-radius: var(--radius-sm); flex-shrink: 0;
+    background: linear-gradient(135deg, var(--bg-elevated), var(--bg-surface-2));
+    display: flex; align-items: center; justify-content: center; font-size: 14px; border: 1px solid var(--border-subtle);
+  }
+  .mcard .top .tt { flex: 1; min-width: 0; }
+  .mcard .top .tt .t { font-size: 12.5px; font-weight: 600; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .mcard .top .tt .src { font-size: 10px; color: var(--text-disabled); font-family: var(--font-mono); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .mcard .desc { font-size: 11px; color: var(--text-secondary); line-height: 1.45; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; min-height: 32px; }
+  .mcard .meta { display: flex; align-items: center; gap: var(--s1); flex-wrap: wrap; }
+  .mcard .meta .chip { font-size: 10px; padding: 1px 6px; border-radius: var(--radius-xs); background: var(--bg-canvas); color: var(--text-muted); border: 1px solid var(--border-subtle); font-variant-numeric: tabular-nums; }
+  .mcard .meta .chip.trans { background: var(--accent-subtle); color: var(--accent); border-color: rgba(88,166,255,0.2); }
+  .mcard .meta .spacer { flex: 1; }
+  .mcard .meta .inst {
+    font-size: 10px; padding: 1px 6px; border-radius: var(--radius-xs);
+    background: rgba(63,185,80,0.12); color: var(--accent-green); border: 1px solid rgba(63,185,80,0.3);
+    display: inline-flex; align-items: center; gap: 3px;
+  }
+  .mcard .bottom { display: flex; justify-content: flex-end; gap: var(--s1); margin-top: auto; }
+
+  /* Pagination */
+  .pager { display: flex; align-items: center; gap: var(--s1); margin-top: var(--s4); }
+  .pager .pg {
+    width: 24px; height: 24px; display: inline-flex; align-items: center; justify-content: center;
+    border-radius: var(--radius-xs); border: 1px solid var(--border-default); background: var(--bg-surface);
+    color: var(--text-secondary); font-size: 11px; cursor: pointer; transition: all var(--dur-fast) var(--ease); font-family: inherit;
+  }
+  .pager .pg:hover { background: var(--bg-hover); }
+  .pager .pg.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+  .pager .info { margin-left: var(--s2); font-size: 11px; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+
+  /* Warning */
+  .warn {
+    display: flex; gap: var(--s2); align-items: flex-start; padding: var(--s3);
+    border-radius: var(--radius-md); border: 1px solid rgba(210,153,34,0.35);
+    background: rgba(210,153,34,0.07); color: var(--accent-orange); font-size: 11px; line-height: 1.5;
+    margin-bottom: var(--s3);
+  }
+  .warn .ic { flex-shrink: 0; }
+
+  /* States */
+  .state-empty {
+    flex: 1 1 auto; display: none; flex-direction: column; align-items: center; justify-content: center;
+    gap: var(--s3); padding: var(--s6); text-align: center;
+  }
+  .state-empty.show { display: flex; }
+  .state-empty .ic { font-size: 44px; opacity: 0.3; }
+  .state-empty .t { font-size: 14px; font-weight: 500; color: var(--text-secondary); }
+  .state-empty .d { font-size: 12px; color: var(--text-muted); }
+
+  .state-loading {
+    flex: 1 1 auto; display: none; flex-direction: column; gap: var(--s2); padding: var(--s3) var(--s5);
+  }
+  .state-loading.show { display: flex; }
+  .skel { height: 60px; border-radius: var(--radius-md); background: var(--bg-surface); animation: pulse 1.8s var(--ease) infinite; }
+  @keyframes pulse { 0%, 100% { opacity: 0.5; } 50% { opacity: 1; } }
+
+  /* Dialog */
+  .overlay {
+    position: fixed; inset: 0; background: rgba(0,0,0,0.5); display: none;
+    align-items: center; justify-content: center; z-index: 100;
+  }
+  .overlay.show { display: flex; }
+  .dialog {
+    width: 620px; max-width: 92vw; max-height: 84vh; overflow-y: auto; background: var(--bg-surface);
+    border: 1px solid var(--border-strong); border-radius: var(--radius-lg); box-shadow: var(--shadow-lg);
+  }
+  .dialog .dlg-hdr {
+    display: flex; align-items: center; gap: var(--s2); padding: var(--s3) var(--s4);
+    border-bottom: 1px solid var(--border-subtle); position: sticky; top: 0; background: var(--bg-surface);
+  }
+  .dialog .dlg-hdr .t { font-size: 13px; font-weight: 600; flex: 1; }
+  .dialog .dlg-hdr .x { border: none; background: none; color: var(--text-muted); cursor: pointer; font-size: 16px; line-height: 1; }
+  .dialog .dlg-hdr .x:hover { color: var(--text-primary); }
+  .dialog .dlg-body { padding: var(--s4); display: flex; flex-direction: column; gap: var(--s3); }
+  .fld label { display: block; font-size: 10.5px; font-weight: 500; color: var(--text-muted); margin-bottom: 3px; }
+  .fld input, .fld textarea {
+    width: 100%; padding: 5px 10px; border-radius: var(--radius-sm); border: 1px solid var(--border-default);
+    background: var(--bg-canvas); color: var(--text-primary); font-size: 12px; font-family: inherit; outline: none;
+  }
+  .fld input:focus, .fld textarea:focus { border-color: var(--accent); }
+  .fld textarea { font-family: var(--font-mono); font-size: 11px; resize: vertical; min-height: 44px; }
+  .fld .secret-hint { margin-top: 3px; font-size: 10.5px; color: var(--accent-orange); }
+  .fld-row { display: grid; grid-template-columns: 1fr 1fr; gap: var(--s3); }
+  .radios { display: flex; gap: var(--s2); }
+  .radios .r {
+    padding: 4px 12px; border-radius: var(--radius-xs); border: 1px solid var(--border-default);
+    background: var(--bg-canvas); color: var(--text-secondary); font-size: 12px; cursor: pointer;
+    transition: all var(--dur-fast) var(--ease); font-family: inherit;
+  }
+  .radios .r.active { background: var(--accent-subtle); color: var(--accent); border-color: rgba(88,166,255,0.3); }
+  .dlg-foot { display: flex; justify-content: flex-end; gap: var(--s2); padding: var(--s3) var(--s4); border-top: 1px solid var(--border-subtle); }
+
+  /* Toast */
+  .toast {
+    position: fixed; bottom: 28px; left: 50%; transform: translateX(-50%) translateY(12px);
+    background: var(--bg-elevated); color: var(--text-primary); padding: 8px 16px;
+    border-radius: var(--radius-sm); font-size: 12px; border: 1px solid var(--border-default);
+    opacity: 0; pointer-events: none; transition: all var(--dur-slow) var(--ease);
+    box-shadow: var(--shadow-lg); z-index: 200;
+  }
+  .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+  /* Legend */
+  .legend {
+    flex: 0 0 auto; display: flex; gap: var(--s5); padding: var(--s2) var(--s4);
+    background: var(--bg-surface); border-top: 1px solid var(--border-subtle);
+    color: var(--text-disabled); font-size: 11px; flex-wrap: wrap;
+  }
+  .legend b { color: var(--text-muted); font-weight: 600; }
+
+  /* Scrollbar */
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border-default); border-radius: 3px; }
+  ::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
+</style>
+</head>
+<body>
+
+  <div class="demo-bar">
+    <span class="brand">🧪 原型演示</span>
+    <span class="pill">MCP Marketplace</span>
+    <span style="color: var(--text-disabled);">Resource Library v7 外壳 · MCP 内容区</span>
+    <span class="sep"></span>
+    <span style="color: var(--text-muted);">状态：</span>
+    <select id="stateSelect">
+      <option value="normal">正常列表</option>
+      <option value="empty">空态</option>
+      <option value="loading">加载</option>
+      <option value="error">错误</option>
+    </select>
+    <span class="note">⚠ 静态设计稿，非应用代码</span>
+  </div>
+
+  <div class="app">
+    <!-- Dock -->
+    <div class="dock">
+      <div class="di">▤</div>
+      <div class="di">◆</div>
+      <div class="di">≡</div>
+      <div class="di active">📚</div>
+      <div class="di">⌘</div>
+      <div class="divider"></div>
+      <div class="di">⚙</div>
+    </div>
+
+    <div class="lib">
+      <div class="lib-body">
+        <!-- Master -->
+        <div class="lib-master">
+          <div class="act-tabs">
+            <button class="act-tab" data-kind="skill">
+              <span class="ic">🧩</span><span class="lb">Skills</span><span class="bd">14</span>
+            </button>
+            <button class="act-tab" data-kind="prompt">
+              <span class="ic">💬</span><span class="lb">Prompts</span><span class="bd">32</span>
+            </button>
+            <button class="act-tab" data-kind="action">
+              <span class="ic">⚡</span><span class="lb">Actions</span><span class="bd">9</span>
+            </button>
+            <button class="act-tab active" data-kind="mcp">
+              <span class="ic">🖧</span><span class="lb">MCP</span><span class="bd">3</span>
+            </button>
+            <button class="act-tab" data-kind="command">
+              <span class="ic">⌨️</span><span class="lb">Commands</span><span class="bd">7</span>
+            </button>
+          </div>
+
+          <div class="tree">
+            <nav class="tree-wrap" data-nav="skill">
+              <div class="tree-grp">
+                <button class="tree-item" data-sub="local"><span class="ic">📦</span><span class="lb">Installed</span><span class="cnt">14</span></button>
+                <button class="tree-item" data-sub="marketplace"><span class="ic">⬇</span><span class="lb">Marketplace</span></button>
+              </div>
+              <div class="tree-grp">
+                <div class="tree-grp-title">Tags</div>
+                <button class="tree-item"><span class="ic">#</span><span class="lb">Backend</span><span class="cnt">6</span></button>
+                <button class="tree-item"><span class="ic">#</span><span class="lb">Frontend</span><span class="cnt">4</span></button>
+              </div>
+              <div class="tree-grp">
+                <button class="collapse-hdr" data-collapse="agents"><span class="chev">▸</span><span>Agents</span></button>
+                <div class="collapse-body" id="agents">
+                  <button class="tree-item"><span class="ic">▸</span><span class="lb">opencode</span><span class="cnt">8</span></button>
+                  <button class="tree-item"><span class="ic">▸</span><span class="lb">claude-code</span><span class="cnt">5</span></button>
+                </div>
+              </div>
+            </nav>
+            <nav class="tree-wrap" data-nav="prompt">
+              <div class="tree-grp">
+                <div class="tree-grp-title">Scope</div>
+                <button class="filter-item"><span class="dot"></span>All</button>
+              </div>
+            </nav>
+            <nav class="tree-wrap" data-nav="action"><div class="tree-empty">无额外筛选</div></nav>
+            <!-- MCP：与 skills 一致，Installed / Marketplace 置于导航树 tree-grp -->
+            <nav class="tree-wrap active" data-nav="mcp">
+              <div class="tree-grp">
+                <button class="tree-item mcp-item active" data-sub="installed">
+                  <span class="ic">📦</span><span class="lb">Installed</span><span class="cnt">2</span>
+                </button>
+                <button class="tree-item mcp-item" data-sub="marketplace">
+                  <span class="ic">⬇</span><span class="lb">Marketplace</span>
+                </button>
+              </div>
+            </nav>
+            <nav class="tree-wrap" data-nav="command"><div class="tree-empty">无额外筛选</div></nav>
+          </div>
+        </div>
+
+        <!-- Detail -->
+        <div class="lib-detail">
+          <div class="toolbar">
+            <div class="breadcrumb">
+              <span id="bc">MCP</span>
+              <span class="sep">/</span>
+              <span id="bcSub">Installed</span>
+              <span id="bcCount" class="count" style="display:none">6</span>
+            </div>
+            <div class="toolbar-actions">
+              <button class="btn btn-primary" id="newBtn" style="display:none">＋ 新建</button>
+            </div>
+          </div>
+
+          <!-- 搜索行 -->
+          <div class="search-bar">
+            <div class="search-wrap">
+              <span class="ic">🔍</span>
+              <input type="text" class="search-input" id="searchInput" placeholder="搜索已安装的 MCP…" />
+            </div>
+          </div>
+
+          <div class="content" id="content">
+            <!-- 正常态：由 JS 填充 -->
+            <div class="list" id="list"></div>
+
+            <!-- 空态 -->
+            <div class="state-empty" id="stateEmpty">
+              <div class="ic">◎</div>
+              <div class="t">暂无内容</div>
+              <div class="d">搜索其它关键词或切换到 Marketplace</div>
+            </div>
+
+            <!-- 加载态 -->
+            <div class="state-loading" id="stateLoading">
+              <div class="skel"></div>
+              <div class="skel"></div>
+              <div class="skel"></div>
+            </div>
+
+            <!-- 错误态 -->
+            <div class="state-empty" id="stateError">
+              <div class="ic" style="font-size:28px">⚠</div>
+              <div class="t" style="color: var(--accent-red)">加载失败</div>
+              <div class="d">网络不可达或 Registry 暂不可用</div>
+              <button class="btn" onclick="toast('已触发重试')">重试 ↻</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 安装 / 新建编辑对话框（预填自 server.json） -->
+  <div class="overlay" id="dlgOverlay">
+    <div class="dialog">
+      <div class="dlg-hdr">
+        <span class="t" id="dlgTitle">Install · filesystem</span>
+        <button class="x" onclick="closeDlg()">✕</button>
+      </div>
+      <div class="dlg-body">
+        <div class="fld-row">
+          <div class="fld"><label>Name</label><input id="fName" /></div>
+          <div class="fld"><label>Version</label><input id="fVer" disabled style="opacity:0.6" /></div>
+        </div>
+        <div class="fld"><label>Description</label><input id="fDesc" /></div>
+        <div class="fld-row">
+          <div class="fld"><label>Command</label><input id="fCmd" /></div>
+          <div class="fld"><label>Transport</label>
+            <div class="radios" id="fTrans">
+              <button class="r active" data-t="stdio">stdio</button>
+              <button class="r" data-t="sse">sse</button>
+              <button class="r" data-t="http">http</button>
+            </div>
+          </div>
+        </div>
+        <div class="fld" id="fUrlRow" style="display:none"><label>Remote URL</label><input id="fUrl" /></div>
+        <div class="fld"><label>Args (JSON array)</label><textarea id="fArgs" rows="2"></textarea></div>
+        <div class="fld"><label>Environment (JSON object)</label><textarea id="fEnv" rows="3"></textarea></div>
+        <div class="fld"><label>Scope</label>
+          <div class="radios">
+            <button class="r active" data-t="g">Global</button>
+            <button class="r" data-t="p">Project</button>
+          </div>
+        </div>
+        <div class="warn" id="dlgWarn">
+          <span class="ic">⚠</span>
+          <span>MCP server 运行<b>任意代码</b>。仅从可信来源安装，保存前请审查 command / args / env。带 <b>【必填 secret】</b> 的环境变量需要你手动填写值。</span>
+        </div>
+        <div class="fld"><label>来源</label><input id="fSrc" disabled style="opacity:0.6" /></div>
+      </div>
+      <div class="dlg-foot">
+        <button class="btn" onclick="closeDlg()">取消</button>
+        <button class="btn btn-primary" onclick="saveMcp()">保存</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="legend">
+    <span><b>完整 Library 外壳</b> Dock + act-tabs 活动栏 + 导航树 + toolbar + search + content（对齐 v7 原型）</span>
+    <span><b>MCP 侧栏</b> Installed / Marketplace 置于导航树 tree-grp（与 skills 一致）</span>
+    <span><b>视图切换</b> 由左侧导航树驱动，非内容区 header</span>
+    <span><b>面包屑</b> MCP / Installed | Marketplace（count 徽标仅市场视图显示）</span>
+  </div>
+
+  <div class="toast" id="toast"></div>
+
+<script>
+  // ── 数据 ──
+  let view = 'installed';
+  let query = '';
+
+  const installed = [
+    { id: 'm1', name: 'filesystem', source_ref: 'io.github.modelcontextprotocol/filesystem',
+      command: 'npx', args: ['-y','@modelcontextprotocol/server-filesystem','/Users/me'], env: { LOG_LEVEL: 'info' }, transport: 'stdio', version: '1.0.2', desc: 'Filesystem read/write access for agents' },
+    { id: 'm2', name: 'brave-search', source_ref: null,
+      command: 'npx', args: ['-y','@modelcontextprotocol/server-brave-search'], env: { BRAVE_API_KEY: '********' }, transport: 'stdio', version: null, desc: 'Web search via Brave API（手动添加，无来源）' },
+  ];
+
+  const market = [
+    { name: 'io.github.modelcontextprotocol/filesystem', title: 'filesystem', version: '1.0.2',
+      desc: 'Filesystem read/write access for AI agents', transport: 'stdio', runtime: 'npx', identifier: '@modelcontextprotocol/server-filesystem',
+      args: ['-y','@modelcontextprotocol/server-filesystem','/Users/me'], env: [ {name:'LOG_LEVEL', default:'info', required:false, secret:false} ], installed: true },
+    { name: 'io.github.modelcontextprotocol/github', title: 'github-mcp', version: '0.3.1',
+      desc: 'GitHub repository, issues, PRs and code access', transport: 'stdio', runtime: 'npx', identifier: '@modelcontextprotocol/server-github',
+      args: ['-y','@modelcontextprotocol/server-github'], env: [ {name:'GITHUB_TOKEN', required:true, secret:true} ], installed: false },
+    { name: 'io.github.example/weather-mcp', title: 'weather-mcp', version: '0.5.0',
+      desc: 'Python MCP server for weather data access', transport: 'stdio', runtime: 'uvx', identifier: 'weather-mcp-server',
+      args: ['uvx','weather-mcp-server'], env: [ {name:'WEATHER_API_KEY', required:true, secret:true} ], installed: false },
+    { name: 'io.modelcontextprotocol.anonymous/mcp-fs', title: 'mcp-fs (remote)', version: '2.0.0',
+      desc: 'Cloud-hosted MCP filesystem server (streamable-http)', transport: 'http', url: 'https://mcp-fs.anonymous.modelcontextprotocol.io/http', runtime: null, identifier: null,
+      args: [], env: [], installed: false },
+    { name: 'io.github.example/postgres', title: 'postgres-mcp', version: '3.1.0',
+      desc: 'PostgreSQL database operations via MCP', transport: 'stdio', runtime: 'npx', identifier: '@modelcontextprotocol/server-postgres',
+      args: ['-y','@modelcontextprotocol/server-postgres'], env: [ {name:'PGHOST', required:true, secret:false}, {name:'PGPASSWORD', required:true, secret:true} ], installed: false },
+    { name: 'io.snyk/cli-mcp', title: 'snyk', version: '1.1298.0',
+      desc: 'MCP server provided by the Snyk CLI', transport: 'stdio', runtime: 'npx', identifier: 'snyk',
+      args: ['-y','snyk','mcp'], env: [ {name:'SNYK_TOKEN', required:true, secret:true} ], installed: false },
+  ];
+
+  let page = 1; const perPage = 6;
+  let demoState = 'normal';
+
+  // ── 视图：由左侧导航树 tree-item 驱动（对齐 skills） ──
+  function setView(v) {
+    view = v;
+    document.querySelectorAll('.mcp-item').forEach(b => b.classList.toggle('active', b.dataset.sub === v));
+    document.getElementById('bcSub').textContent = v === 'installed' ? 'Installed' : 'Marketplace';
+    document.getElementById('bcCount').style.display = v === 'marketplace' ? 'inline-flex' : 'none';
+    document.getElementById('bcCount').textContent = market.length;
+    document.getElementById('searchInput').placeholder = v === 'installed' ? '搜索已安装的 MCP…' : '搜索 MCP Registry…';
+    document.getElementById('newBtn').style.display = v === 'installed' ? 'inline-flex' : 'none';
+    page = 1;
+    applyState();
+  }
+
+  function renderInstalled() {
+    const q = query.toLowerCase();
+    const list = installed.filter(s => !q || s.name.toLowerCase().includes(q) || s.command.toLowerCase().includes(q));
+    if (list.length === 0) return '';
+    return `<div class="list">` + list.map(s => `
+      <div class="card">
+        <div class="av">🖧</div>
+        <div class="bd">
+          <div class="t">${esc(s.name)}
+            ${s.source_ref ? '' : `<span class="manual">manual</span>`}
+            <span class="tag">${esc(s.command)}</span>
+            <span class="tag trans">${s.transport}</span>
+          </div>
+          <div class="m">${esc(s.desc || '')}</div>
+        </div>
+        <div class="actions">
+          <button onclick="toast('测试连接：${esc(s.name)}')">测试</button>
+          <button onclick="editMcp('${s.id}')">编辑</button>
+          <button onclick="removeMcp('${s.id}')">删除</button>
+        </div>
+      </div>`).join('') + `</div>`;
+  }
+
+  function renderMarket() {
+    const q = query.toLowerCase();
+    const filtered = market.filter(s => !q || s.title.toLowerCase().includes(q) || s.desc.toLowerCase().includes(q));
+    const totalPages = Math.max(1, Math.ceil(filtered.length / perPage));
+    const safePage = Math.min(page, totalPages);
+    const slice = filtered.slice((safePage-1)*perPage, safePage*perPage);
+
+    if (filtered.length === 0) return '';
+
+    const warn = `<div class="warn"><span class="ic">⚠</span><span>MCP server 运行<b>任意代码</b>。仅从官方 MCP Registry（preview）等可信来源安装，安装前审查配置。含 <b>secret</b> 环境变量的服务器需在编辑对话框手动填写密钥。</span></div>`;
+
+    const grid = `<div class="grid">` + slice.map(s => {
+      const meta = s.transport === 'http'
+        ? `<span class="chip trans">http</span><span class="chip">${esc(s.version)}</span><span class="chip" style="max-width:120px;overflow:hidden;text-overflow:ellipsis">${esc(s.url)}</span>`
+        : `<span class="chip trans">${s.transport}</span><span class="chip">${esc(s.runtime)}</span><span class="chip">${esc(s.version)}</span>`;
+      const badge = s.installed ? `<span class="inst">✓ 已安装</span>` : `<span class="chip" style="visibility:hidden">·</span>`;
+      const btn = s.installed
+        ? `<button class="btn" disabled>Installed</button>`
+        : `<button class="btn btn-primary" onclick="installFrom('${s.name}')">Install</button>`;
+      return `<div class="mcard">
+        <div class="top">
+          <div class="av">🖧</div>
+          <div class="tt"><div class="t">${esc(s.title)}</div><div class="src">${esc(s.name)}</div></div>
+        </div>
+        <div class="desc">${esc(s.desc)}</div>
+        <div class="meta">${meta}<span class="spacer"></span>${badge}</div>
+        <div class="bottom">${btn}</div>
+      </div>`;
+    }).join('') + `</div>`;
+
+    const pager = `<div class="pager">
+      <button class="pg" onclick="changePage(-1)" ${safePage<=1?'disabled':''}>‹</button>
+      ${Array.from({length: totalPages}, (_,i) => `<button class="pg ${i+1===safePage?'active':''}" onclick="goPage(${i+1})">${i+1}</button>`).join('')}
+      <button class="pg" onclick="changePage(1)" ${safePage>=totalPages?'disabled':''}>›</button>
+      <span class="info">${filtered.length} items · ${perPage}/page</span>
+    </div>`;
+
+    return warn + grid + pager;
+  }
+
+  function applyState() {
+    document.getElementById('list').style.display = demoState === 'normal' ? '' : 'none';
+    document.getElementById('stateEmpty').classList.toggle('show', demoState === 'empty');
+    document.getElementById('stateLoading').classList.toggle('show', demoState === 'loading');
+    document.getElementById('stateError').classList.toggle('show', demoState === 'error');
+    if (demoState !== 'normal') return;
+    const content = view === 'installed' ? renderInstalled() : renderMarket();
+    document.getElementById('list').innerHTML = content;
+    document.getElementById('stateEmpty').classList.toggle('show', content === '');
+  }
+
+  // ── 安装：Install → 拉取 server.json → 预填编辑对话框 ──
+  function installFrom(name) {
+    const s = market.find(x => x.name === name);
+    if (!s) return;
+    document.getElementById('dlgTitle').textContent = `Install · ${s.title} v${s.version}`;
+    document.getElementById('fName').value = s.title;
+    document.getElementById('fVer').value = s.version;
+    document.getElementById('fDesc').value = s.desc;
+    document.getElementById('fCmd').value = s.transport === 'http' ? '' : (s.runtime || '');
+    document.getElementById('fArgs').value = s.transport === 'http' ? '[]' : JSON.stringify(s.args);
+    document.getElementById('fEnv').value = JSON.stringify(Object.fromEntries(
+      s.env.map(e => [e.name, e.secret ? `【必填 secret】` : (e.default ?? '')])), null, 2);
+    document.getElementById('fSrc').value = name;
+    setTransport(s.transport === 'http' ? 'http' : 'stdio');
+    document.getElementById('fUrlRow').style.display = s.transport === 'http' ? 'block' : 'none';
+    document.getElementById('fUrl').value = s.transport === 'http' ? (s.url || '') : '';
+    const hasSecret = s.env.some(e => e.secret && e.required);
+    document.getElementById('dlgWarn').style.display = hasSecret ? 'flex' : 'none';
+    document.getElementById('dlgOverlay').classList.add('show');
+  }
+
+  function editMcp(id) {
+    const s = installed.find(x => x.id === id);
+    if (!s) return;
+    document.getElementById('dlgTitle').textContent = `Edit · ${s.name}`;
+    document.getElementById('fName').value = s.name;
+    document.getElementById('fVer').value = s.version || '—';
+    document.getElementById('fDesc').value = s.desc || '';
+    document.getElementById('fCmd').value = s.command;
+    document.getElementById('fArgs').value = JSON.stringify(s.args);
+    document.getElementById('fEnv').value = JSON.stringify(s.env, null, 2);
+    document.getElementById('fSrc').value = s.source_ref || '—';
+    setTransport(s.transport);
+    document.getElementById('fUrlRow').style.display = s.transport === 'http' ? 'block' : 'none';
+    document.getElementById('fUrl').value = '';
+    document.getElementById('dlgWarn').style.display = 'none';
+    document.getElementById('dlgOverlay').classList.add('show');
+  }
+
+  function saveMcp() {
+    closeDlg();
+    toast('已保存：' + document.getElementById('fName').value + '（落库并携带 source 字段）');
+    const src = document.getElementById('fSrc').value;
+    const m = market.find(x => x.name === src);
+    if (m) m.installed = true;
+    applyState();
+  }
+
+  function closeDlg() { document.getElementById('dlgOverlay').classList.remove('show'); }
+
+  function setTransport(t) {
+    document.querySelectorAll('#fTrans .r').forEach(b => b.classList.toggle('active', b.dataset.t === t));
+  }
+
+  function removeMcp(id) {
+    installed.splice(installed.findIndex(x => x.id === id), 1);
+    toast('已删除');
+    applyState();
+  }
+
+  function changePage(d) { page += d; applyState(); }
+  function goPage(p) { page = p; applyState(); }
+
+  function esc(s) { return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+  function toast(msg) {
+    const t = document.getElementById('toast');
+    t.textContent = msg;
+    t.classList.add('show');
+    clearTimeout(t._t);
+    t._t = setTimeout(() => t.classList.remove('show'), 2200);
+  }
+
+  // ── 事件 ──
+  // 左侧导航树 MCP tree-item 切换视图（对齐 skills）
+  document.querySelectorAll('.mcp-item').forEach(item => {
+    item.addEventListener('click', () => setView(item.dataset.sub));
+  });
+  document.getElementById('searchInput').addEventListener('input', e => {
+    query = e.target.value;
+    page = 1;
+    applyState();
+  });
+  document.getElementById('stateSelect').addEventListener('change', e => { demoState = e.target.value; applyState(); });
+  document.getElementById('newBtn').addEventListener('click', () => {
+    document.getElementById('dlgTitle').textContent = 'New MCP Server';
+    document.getElementById('fName').value = ''; document.getElementById('fVer').value = '—';
+    document.getElementById('fDesc').value = ''; document.getElementById('fCmd').value = '';
+    document.getElementById('fArgs').value = '[]'; document.getElementById('fEnv').value = '{}';
+    document.getElementById('fSrc').value = '—';
+    setTransport('stdio');
+    document.getElementById('fUrlRow').style.display = 'none';
+    document.getElementById('dlgWarn').style.display = 'none';
+    document.getElementById('dlgOverlay').classList.add('show');
+  });
+  document.getElementById('dlgOverlay').addEventListener('click', e => { if (e.target === e.currentTarget) closeDlg(); });
+
+  // 其余 act-tab 只做激活态演示
+  document.querySelectorAll('.act-tab').forEach(tab => {
+    tab.addEventListener('click', () => {
+      document.querySelectorAll('.act-tab').forEach(t => t.classList.toggle('active', t === tab));
+      document.querySelectorAll('.tree-wrap').forEach(n => n.classList.toggle('active', n.dataset.nav === tab.dataset.kind));
+      if (tab.dataset.kind !== 'mcp') toast(`${tab.querySelector('.lb').textContent}：本原型聚焦 MCP 市场，此视图仅示意`);
+      if (tab.dataset.kind === 'mcp') setView(view);
+    });
+  });
+
+  document.querySelectorAll('.collapse-hdr').forEach(hdr => {
+    hdr.addEventListener('click', () => {
+      const body = document.getElementById(hdr.dataset.collapse);
+      if (!body) return;
+      body.classList.toggle('open');
+      hdr.querySelector('.chev').textContent = body.classList.contains('open') ? '▾' : '▸';
+    });
+  });
+
+  // Init
+  setView('installed');
+</script>
+</body>
+</html>

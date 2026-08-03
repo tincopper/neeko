@@ -305,11 +305,14 @@ interface McpServerDto {
   name: string;
   description: string | null;
   command: string;
+  url: string | null;
   args: unknown[];
   env: Record<string, string>;
   transport: string;
   scope: string;
   project_id: string | null;
+  source_registry: string | null;
+  source_ref: string | null;
   tags: string[];
   enabled: boolean;
   usage_count: number;
@@ -324,11 +327,14 @@ function dtoToMcpServer(dto: McpServerDto): McpServer {
     name: dto.name,
     description: dto.description,
     command: dto.command,
+    url: dto.url,
     args: dto.args,
     env: dto.env,
-    transport: dto.transport as 'stdio' | 'sse',
+    transport: dto.transport as 'stdio' | 'sse' | 'http',
     scope: dto.scope as 'global' | 'project',
     projectId: dto.project_id,
+    sourceRegistry: dto.source_registry,
+    sourceRef: dto.source_ref,
     tags: dto.tags,
     enabled: dto.enabled,
     usageCount: dto.usage_count,
@@ -342,22 +348,28 @@ function mcpServerToDto(input: McpServerInput): {
   name: string;
   description: string | null;
   command: string;
+  url: string | null;
   args: string[] | null;
   env: Record<string, string> | null;
   transport: string | null;
   scope: string | null;
   project_id: string | null;
+  source_registry: string | null;
+  source_ref: string | null;
   tags: string[] | null;
 } {
   return {
     name: input.name,
     description: input.description ?? null,
     command: input.command,
+    url: input.url ?? null,
     args: (input.args as string[]) ?? null,
     env: input.env ?? null,
     transport: input.transport ?? null,
     scope: input.scope ?? null,
     project_id: input.projectId ?? null,
+    source_registry: input.sourceRegistry ?? null,
+    source_ref: input.sourceRef ?? null,
     tags: input.tags ?? null,
   };
 }
@@ -496,6 +508,95 @@ export async function testMcpServer(id: string): Promise<McpTestResult> {
     command: result.command,
     message: result.message,
   };
+}
+
+// ─── MCP Registry (marketplace) ──────────────────────────────────────────────
+
+/** One row in the MCP Registry listing (what a marketplace card shows). */
+export interface McpRegistrySummary {
+  name: string;
+  title: string;
+  description: string | null;
+  version: string | null;
+  transports: string[];
+  repository: string | null;
+  /** GitHub stars (null when unavailable / rate-limited / not a GitHub repo). */
+  stars: number | null;
+  /** Package downloads (last month; null when unavailable / unsupported registry). */
+  downloads: number | null;
+  /** Server-declared configuration inputs (Argument schema) — drives dynamic form rendering. */
+  inputs: McpRegistryInput[];
+  /** Registry lifecycle status: "active" | "deprecated" | "deleted". */
+  status: string | null;
+  /** Registry last-updated timestamp (RFC3339). */
+  updatedAt: string | null;
+}
+
+/** A declared configuration input (matches the registry Argument schema). */
+export interface McpRegistryInput {
+  name: string;
+  /** "positional" | "named" (argument type). */
+  inputType: string | null;
+  /** "string" | "number" | "boolean" | "filepath". */
+  format: string | null;
+  isRequired: boolean;
+  isSecret: boolean;
+  isRepeated: boolean;
+  default: unknown;
+  placeholder: string | null;
+  choices: string[];
+  /** Positional-arg hint (used in remote URL variable substitution). */
+  valueHint: string | null;
+}
+
+/** Search response: current page + next pagination cursor. */
+export interface McpRegistrySearchResult {
+  servers: McpRegistrySummary[];
+  nextCursor: string | null;
+}
+
+/** An env var entry from server.json (secret values never filled). */
+export interface McpRegistryEnvVar {
+  name: string;
+  isSecret: boolean;
+  isRequired: boolean;
+  default: string | null;
+}
+
+/** Generated launch-config template prefilling the MCP editor. */
+export interface McpRegistryGeneratedConfig {
+  name: string;
+  description: string | null;
+  command: string;
+  args: string[];
+  env: McpRegistryEnvVar[];
+  transport: 'stdio' | 'sse' | 'http';
+  url: string | null;
+  /** Server-declared configuration inputs — drive dynamic form rendering. */
+  inputs: McpRegistryInput[];
+}
+
+/** Full detail for a single registry server. */
+export interface McpRegistryServerDetail {
+  summary: McpRegistrySummary;
+  generated: McpRegistryGeneratedConfig | null;
+  raw: unknown;
+}
+
+export function searchMcpRegistry(
+  query: string,
+  limit: number,
+  cursor?: string | null,
+): Promise<McpRegistrySearchResult> {
+  return invoke<McpRegistrySearchResult>('search_mcp_registry_cmd', {
+    query,
+    limit,
+    cursor: cursor ?? null,
+  });
+}
+
+export function fetchMcpRegistryServer(name: string): Promise<McpRegistryServerDetail> {
+  return invoke<McpRegistryServerDetail>('fetch_mcp_registry_server_cmd', { name });
 }
 
 export async function resolveSlashResource(

@@ -21,6 +21,11 @@ const SEARCH_PLACEHOLDERS: Record<ResourceKind, string> = {
   command: 'Search commands…',
 };
 
+const MCP_PLACEHOLDERS: Record<string, string> = {
+  installed: 'Search installed MCP servers…',
+  marketplace: 'Search MCP Registry…',
+};
+
 // ─── Component ──────────────────────────────────────────────────────────────
 
 /**
@@ -31,6 +36,7 @@ const LibraryDetail: React.FC<{
   onInsertPrompt?: (prompt: PromptResource, target?: PromptInsertTarget) => void;
 }> = React.memo(({ onInsertPrompt }) => {
   const activeKind = useLibraryStore((s) => s.activeKind);
+  const mcpView = useLibraryStore((s) => s.mcpView);
   const searchQuery = useLibraryStore((s) => s.searchQuery);
   const setSearchQuery = useLibraryStore((s) => s.setSearchQuery);
   const recordUsage = useLibraryStore((s) => s.recordUsage);
@@ -63,7 +69,9 @@ const LibraryDetail: React.FC<{
         <LibrarySearchBar
           value={searchQuery}
           onChange={setSearchQuery}
-          placeholder={SEARCH_PLACEHOLDERS[activeKind]}
+          placeholder={
+            activeKind === 'mcp' ? MCP_PLACEHOLDERS[mcpView] : SEARCH_PLACEHOLDERS[activeKind]
+          }
         />
       )}
       <div className="flex-1 min-h-0 overflow-hidden">

@@ -16,16 +16,22 @@ export interface McpServer {
   description?: string | null;
   /** Executable command to launch the MCP server. */
   command: string;
+  /** Remote endpoint URL (http/sse transports). */
+  url?: string | null;
   /** Command-line arguments. */
   args: unknown[];
   /** Environment variables. */
   env: Record<string, string>;
-  /** Transport type: "stdio" or "sse". */
-  transport: 'stdio' | 'sse';
+  /** Transport type: "stdio", "sse", or "http". */
+  transport: 'stdio' | 'sse' | 'http';
   /** Scope: "global" or "project". */
   scope: 'global' | 'project';
   /** Project id when scope = "project". */
   projectId?: string | null;
+  /** MCP Registry source (present when installed from the marketplace). */
+  sourceRegistry?: string | null;
+  /** Registry-unique name (matches the marketplace entry for "installed" marking). */
+  sourceRef?: string | null;
   /** Tag names. */
   tags: string[];
   /** Whether enabled. */

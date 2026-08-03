@@ -357,6 +357,23 @@ impl ResourceDeployer {
 
     // ── Internal helpers ────────────────────────────────────────────────────
 
+    /// Resolve the `(type, url)` pair for a remote (http/sse) MCP server,
+    /// returning an error when the URL is missing or empty.
+    fn remote_url(server: &McpServerRecord) -> Result<(String, String), AppError> {
+        let url = server
+            .url
+            .as_deref()
+            .map(str::trim)
+            .filter(|u| !u.is_empty())
+            .ok_or_else(|| {
+                AppError::InvalidInput(format!(
+                    "URL is required for {} transport server '{}'",
+                    server.transport, server.name
+                ))
+            })?;
+        Ok((server.transport.clone(), url.to_string()))
+    }
+
     /// Merge an MCP server into a JSON config file under the `mcpServers` key.
     fn merge_mcp_json(
         config_path: &Path,
@@ -391,11 +408,20 @@ impl ResourceDeployer {
         let env: serde_json::Map<String, serde_json::Value> =
             serde_json::from_str(&server.env_json).unwrap_or_default();
 
-        let server_def = serde_json::json!({
-            "command": server.command,
-            "args": args,
-            "env": env,
-        });
+        let server_def = if server.transport == "stdio" {
+            serde_json::json!({
+                "command": server.command,
+                "args": args,
+                "env": env,
+            })
+        } else {
+            let (transport_type, url) = Self::remote_url(server)?;
+            serde_json::json!({
+                "type": transport_type,
+                "url": url,
+                "env": env,
+            })
+        };
 
         mcp_servers.insert(server.name.clone(), server_def);
 
@@ -417,7 +443,8 @@ impl ResourceDeployer {
                 result.push(serde_json::json!({
                     "name": name,
                     "command": def.get("command").and_then(|v| v.as_str()).unwrap_or(""),
-                    "transport": "stdio",
+                    "transport": def.get("type").and_then(|v| v.as_str()).unwrap_or("stdio"),
+                    "url": def.get("url").and_then(|v| v.as_str()).unwrap_or(""),
                 }));
             }
         }
@@ -477,18 +504,21 @@ impl ResourceDeployer {
             .unwrap_or_default();
 
         let mut server_table = toml::value::Table::new();
-        server_table.insert(
-            "command".to_string(),
-            toml::Value::String(server.command.clone()),
-        );
-        if !args.is_empty() {
-            server_table.insert("args".to_string(), toml::Value::Array(args));
-        }
-        if server.transport == "sse" {
+        if server.transport == "stdio" {
             server_table.insert(
-                "transport".to_string(),
-                toml::Value::String("sse".to_string()),
+                "command".to_string(),
+                toml::Value::String(server.command.clone()),
             );
+            if !args.is_empty() {
+                server_table.insert("args".to_string(), toml::Value::Array(args));
+            }
+        } else {
+            let (transport_type, url) = Self::remote_url(server)?;
+            server_table.insert(
+                "type".to_string(),
+                toml::Value::String(transport_type.to_string()),
+            );
+            server_table.insert("url".to_string(), toml::Value::String(url.to_string()));
         }
 
         mcp.insert(server.name.clone(), toml::Value::Table(server_table));
@@ -515,7 +545,8 @@ impl ResourceDeployer {
                     result.push(serde_json::json!({
                         "name": name,
                         "command": table.get("command").and_then(|v| v.as_str()).unwrap_or(""),
-                        "transport": table.get("transport").and_then(|v| v.as_str()).unwrap_or("stdio"),
+                        "transport": table.get("type").and_then(|v| v.as_str()).unwrap_or("stdio"),
+                        "url": table.get("url").and_then(|v| v.as_str()).unwrap_or(""),
                     }));
                 }
             }
@@ -664,11 +695,14 @@ mod tests {
             name: "test-server".into(),
             description: Some("A test MCP server".into()),
             command: "npx".into(),
+            url: None,
             args_json: r#"["-y","@modelcontextprotocol/server-filesystem"]"#.into(),
             env_json: r#"{"HOME":"/home/user"}"#.into(),
             transport: "stdio".into(),
             scope: "global".into(),
             project_id: None,
+            source_registry: None,
+            source_ref: None,
             tags: vec!["fs".into()],
             enabled: true,
             usage_count: 0,
@@ -685,6 +719,111 @@ mod tests {
         let parsed: serde_json::Value = serde_json::from_str(&content).unwrap();
         assert!(parsed["mcpServers"]["test-server"].is_object());
         assert_eq!(parsed["mcpServers"]["test-server"]["command"], "npx");
+    }
+
+    #[test]
+    fn deploy_mcp_http_writes_url_config() {
+        let tmp = tempdir().unwrap();
+        let config_path = tmp.path().join("claude-settings.json");
+
+        let mut plugin = default_agent_plugins()
+            .into_iter()
+            .find(|p| p.id == "claude-code")
+            .unwrap();
+        plugin.paths.mcp = PathTemplate {
+            relative: config_path.to_string_lossy().to_string(),
+            format: "json".into(),
+            description: None,
+            project_level: false,
+        };
+
+        let mut deployer = ResourceDeployer::default();
+        deployer.upsert_plugin(plugin);
+
+        let server = McpServerRecord {
+            id: "mcp-http".into(),
+            name: "remote-server".into(),
+            description: None,
+            command: String::new(),
+            url: Some("https://mcp.example.com/mcp".into()),
+            args_json: "[]".into(),
+            env_json: "{}".into(),
+            transport: "http".into(),
+            scope: "global".into(),
+            project_id: None,
+            source_registry: None,
+            source_ref: None,
+            tags: vec![],
+            enabled: true,
+            usage_count: 0,
+            last_used_at: None,
+            created_at: 0,
+            updated_at: 0,
+        };
+
+        let result = deployer.deploy_mcp(&server, "claude-code", None).unwrap();
+        assert!(result.success);
+
+        let content = std::fs::read_to_string(&config_path).unwrap();
+        let parsed: serde_json::Value = serde_json::from_str(&content).unwrap();
+        let def = &parsed["mcpServers"]["remote-server"];
+        assert_eq!(def["type"], "http");
+        assert_eq!(def["url"], "https://mcp.example.com/mcp");
+        assert!(def.get("command").is_none());
+
+        // list_deployed_mcp surfaces the transport + url
+        let deployed = deployer.list_deployed_mcp("claude-code", None).unwrap();
+        assert_eq!(deployed.len(), 1);
+        assert_eq!(deployed[0]["name"], "remote-server");
+        assert_eq!(deployed[0]["transport"], "http");
+        assert_eq!(deployed[0]["url"], "https://mcp.example.com/mcp");
+    }
+
+    #[test]
+    fn deploy_mcp_http_without_url_errors() {
+        let tmp = tempdir().unwrap();
+        let config_path = tmp.path().join("claude-settings.json");
+
+        let mut plugin = default_agent_plugins()
+            .into_iter()
+            .find(|p| p.id == "claude-code")
+            .unwrap();
+        plugin.paths.mcp = PathTemplate {
+            relative: config_path.to_string_lossy().to_string(),
+            format: "json".into(),
+            description: None,
+            project_level: false,
+        };
+
+        let mut deployer = ResourceDeployer::default();
+        deployer.upsert_plugin(plugin);
+
+        let server = McpServerRecord {
+            id: "mcp-http".into(),
+            name: "remote-server".into(),
+            description: None,
+            command: String::new(),
+            url: None,
+            args_json: "[]".into(),
+            env_json: "{}".into(),
+            transport: "http".into(),
+            scope: "global".into(),
+            project_id: None,
+            source_registry: None,
+            source_ref: None,
+            tags: vec![],
+            enabled: true,
+            usage_count: 0,
+            last_used_at: None,
+            created_at: 0,
+            updated_at: 0,
+        };
+
+        let err = deployer
+            .deploy_mcp(&server, "claude-code", None)
+            .unwrap_err();
+        assert!(err.to_string().contains("URL is required"));
+        assert!(!config_path.exists());
     }
 
     #[test]

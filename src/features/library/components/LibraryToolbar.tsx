@@ -29,6 +29,7 @@ const KIND_LABELS: Record<ResourceKind, string> = {
 function deriveSubLabel(
   kind: ResourceKind,
   skillView: string,
+  mcpView: string,
   scopeFilter: string,
   tagFilter: string[],
   agentId: string | null,
@@ -53,8 +54,9 @@ function deriveSubLabel(
       if (scopeFilter === 'project') return 'Project';
       if (tagFilter.length > 0) return `#${tagFilter[0]}`;
       return 'All';
-    case 'action':
     case 'mcp':
+      return mcpView === 'marketplace' ? 'Marketplace' : 'Installed';
+    case 'action':
     case 'command':
     default:
       return 'All';
@@ -70,6 +72,7 @@ function deriveSubLabel(
 const LibraryToolbar: React.FC = React.memo(() => {
   // Library store
   const activeKind = useLibraryStore((s) => s.activeKind);
+  const mcpView = useLibraryStore((s) => s.mcpView);
   const scopeFilter = useLibraryStore((s) => s.scopeFilter);
   const tagFilter = useLibraryStore((s) => s.tagFilter);
   const openEditor = useLibraryStore((s) => s.openEditor);
@@ -80,6 +83,7 @@ const LibraryToolbar: React.FC = React.memo(() => {
   const activeSkillView = useSkillStore((s) => s.activeSkillView);
   const activeAgentId = useSkillStore((s) => s.activeAgentId);
   const marketplaceTotalItems = useSkillStore((s) => s.marketplaceTotalItems);
+  const mcpMarketplaceCount = useLibraryStore((s) => s.mcpMarketplaceCount);
 
   // Project store
   const activeProjectId = useProjectStore((s) => s.activeProjectId);
@@ -90,25 +94,28 @@ const LibraryToolbar: React.FC = React.memo(() => {
       deriveSubLabel(
         activeKind,
         activeSkillView,
+        mcpView,
         scopeFilter,
         tagFilter,
         activeAgentId,
         activeProjectId,
       ),
-    [activeKind, activeSkillView, scopeFilter, tagFilter, activeAgentId, activeProjectId],
+    [activeKind, activeSkillView, mcpView, scopeFilter, tagFilter, activeAgentId, activeProjectId],
   );
 
   const handleNew = useCallback(() => {
     if (activeKind === 'action') {
       openActionEditor(null);
     } else if (activeKind === 'mcp') {
-      openMcpEditor(null);
+      if (mcpView === 'installed') {
+        openMcpEditor(null);
+      }
     } else if (activeKind === 'command') {
       openEditor(null, 'command');
     } else {
       openEditor(null);
     }
-  }, [activeKind, openEditor, openActionEditor, openMcpEditor]);
+  }, [activeKind, mcpView, openEditor, openActionEditor, openMcpEditor]);
 
   const handleExport = useCallback(async () => {
     try {
@@ -188,8 +195,15 @@ const LibraryToolbar: React.FC = React.memo(() => {
             </button>
           </>
         );
-      case 'action':
       case 'mcp':
+        if (mcpView === 'marketplace') return null;
+        return (
+          <button type="button" className={btnPrimary} onClick={handleNew}>
+            <Plus className="h-3.5 w-3.5" />
+            <span>New</span>
+          </button>
+        );
+      case 'action':
       case 'command':
       default:
         return (
@@ -214,6 +228,11 @@ const LibraryToolbar: React.FC = React.memo(() => {
               {marketplaceTotalItems}
             </span>
           )}
+        {activeKind === 'mcp' && mcpView === 'marketplace' && mcpMarketplaceCount > 0 && (
+          <span className="inline-flex items-center justify-center min-w-[1.5rem] h-5 px-1.5 rounded-full text-[11px] tabular-nums bg-bg-hover text-text-muted border border-border">
+            {mcpMarketplaceCount}
+          </span>
+        )}
       </div>
       <div className="flex-1" />
       <div className="flex items-center gap-1.5 shrink-0">{renderActionButtons()}</div>

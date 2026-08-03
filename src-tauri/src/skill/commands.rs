@@ -2015,6 +2015,64 @@ mod project_skill_sync_tests {
     }
 }
 
+#[cfg(test)]
+mod mcp_registry_command_tests {
+    use super::*;
+
+    #[test]
+    fn mcp_registry_search_dto_cache_round_trip() {
+        let store = std::sync::Arc::new(SkillStore::new_in_memory().unwrap());
+
+        let dto = McpRegistrySearchDto {
+            servers: vec![crate::skill::mcp_registry_api::McpRegistryServerSummary {
+                name: "com.example/filesystem".to_string(),
+                title: "Filesystem".to_string(),
+                description: Some("local filesystem".to_string()),
+                version: Some("1.0.0".to_string()),
+                transports: vec!["stdio".to_string()],
+                repository: None,
+                stars: None,
+                downloads: None,
+                inputs: vec![],
+                status: None,
+                updated_at: None,
+                package_keys: vec![],
+            }],
+            next_cursor: Some("abc123".to_string()),
+        };
+
+        let key = "mcp_registry_search_test";
+        let json = serde_json::to_string(&dto).unwrap();
+        store.set_cache(key, &json).unwrap();
+
+        let cached = store.get_cache(key, 300).unwrap().unwrap();
+        let parsed: McpRegistrySearchDto = serde_json::from_str(&cached).unwrap();
+        assert_eq!(parsed.servers.len(), 1);
+        assert_eq!(parsed.servers[0].name, "com.example/filesystem");
+        assert_eq!(parsed.next_cursor.as_deref(), Some("abc123"));
+    }
+
+    #[test]
+    fn mcp_registry_search_dto_expired_cache_ignored() {
+        let store = std::sync::Arc::new(SkillStore::new_in_memory().unwrap());
+        let dto = McpRegistrySearchDto {
+            servers: vec![],
+            next_cursor: None,
+        };
+        store
+            .set_cache(
+                "mcp_registry_search_expired",
+                &serde_json::to_string(&dto).unwrap(),
+            )
+            .unwrap();
+        // A TTL of 0 makes the cached entry stale immediately.
+        assert!(store
+            .get_cache("mcp_registry_search_expired", 0)
+            .unwrap()
+            .is_none());
+    }
+}
+
 fn scan_skill_dir(
     dir: &std::path::Path,
     central: &std::path::Path,
@@ -3564,6 +3622,8 @@ pub struct McpServerDtoOut {
     pub description: Option<String>,
     /// Executable command.
     pub command: String,
+    /// Remote endpoint URL for http/sse transports.
+    pub url: Option<String>,
     /// Command arguments.
     pub args: Vec<serde_json::Value>,
     /// Environment variables.
@@ -3574,6 +3634,10 @@ pub struct McpServerDtoOut {
     pub scope: String,
     /// Project id when scope = "project".
     pub project_id: Option<String>,
+    /// MCP Registry source when installed from marketplace.
+    pub source_registry: Option<String>,
+    /// Registry-unique name matching the marketplace entry.
+    pub source_ref: Option<String>,
     /// Tag names.
     pub tags: Vec<String>,
     /// Whether enabled.
@@ -3597,11 +3661,14 @@ fn mcp_record_to_dto(s: super::types::McpServerRecord) -> McpServerDtoOut {
         name: s.name,
         description: s.description,
         command: s.command,
+        url: s.url,
         args,
         env,
         transport: s.transport,
         scope: s.scope,
         project_id: s.project_id,
+        source_registry: s.source_registry,
+        source_ref: s.source_ref,
         tags: s.tags,
         enabled: s.enabled,
         usage_count: s.usage_count,
@@ -3621,6 +3688,8 @@ pub struct CreateMcpServerInput {
     pub description: Option<String>,
     /// Executable command.
     pub command: String,
+    /// Remote endpoint URL for http/sse transports.
+    pub url: Option<String>,
     /// Command arguments.
     pub args: Option<Vec<String>>,
     /// Environment variables.
@@ -3631,6 +3700,10 @@ pub struct CreateMcpServerInput {
     pub scope: Option<String>,
     /// Project id when scope = "project".
     pub project_id: Option<String>,
+    /// MCP Registry source (e.g. "registry.modelcontextprotocol.io") when installed from marketplace.
+    pub source_registry: Option<String>,
+    /// Registry-unique name (e.g. "io.github.modelcontextprotocol/filesystem") matching the source.
+    pub source_ref: Option<String>,
     /// Tag names.
     pub tags: Option<Vec<String>>,
 }
@@ -3684,11 +3757,14 @@ pub async fn save_mcp_server(
             name: input.name.clone(),
             description: input.description.clone(),
             command: input.command.clone(),
+            url: input.url.clone(),
             args_json,
             env_json,
             transport: input.transport.unwrap_or_else(|| "stdio".to_string()),
             scope: input.scope.unwrap_or_else(|| "global".to_string()),
             project_id: input.project_id.clone(),
+            source_registry: input.source_registry.clone(),
+            source_ref: input.source_ref.clone(),
             tags: input.tags.unwrap_or_default(),
             enabled: true,
             usage_count: 0,
@@ -3718,6 +3794,9 @@ pub async fn update_mcp_server_cmd(
         server.name = input.name;
         server.description = input.description;
         server.command = input.command;
+        if let Some(url) = input.url {
+            server.url = Some(url);
+        }
         if let Some(args) = input.args {
             server.args_json = serde_json::to_string(&args).unwrap_or_else(|_| "[]".to_string());
         }
@@ -3731,6 +3810,8 @@ pub async fn update_mcp_server_cmd(
             server.scope = scope;
         }
         server.project_id = input.project_id;
+        server.source_registry = input.source_registry;
+        server.source_ref = input.source_ref;
         if let Some(tags) = input.tags {
             server.tags = tags;
         }
@@ -3748,6 +3829,146 @@ pub async fn delete_mcp_server_cmd(
 ) -> Result<(), AppError> {
     let store = store.inner().clone();
     run_blocking_result(move || store.delete_mcp_server(&id).map_err(AppError::from)).await
+}
+
+/// MCP Registry search result returned to the frontend.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct McpRegistrySearchDto {
+    /// Matching servers for the current page.
+    pub servers: Vec<crate::skill::mcp_registry_api::McpRegistryServerSummary>,
+    /// Next pagination cursor when more pages exist.
+    pub next_cursor: Option<String>,
+}
+
+/// Per-server metrics cache entry (GitHub stars + package downloads).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct McpRegistryMetricsCache {
+    stars: Option<u64>,
+    downloads: Option<u64>,
+}
+
+/// Search the MCP Registry marketplace (cached 5 minutes).
+#[tauri::command]
+pub async fn search_mcp_registry_cmd(
+    query: String,
+    limit: Option<usize>,
+    cursor: Option<String>,
+    store: tauri::State<'_, std::sync::Arc<super::skill_store::SkillStore>>,
+) -> Result<McpRegistrySearchDto, AppError> {
+    let store = store.inner().clone();
+    let store_for_search = store.clone();
+    let limit = limit.unwrap_or(20);
+    let cache_key = format!(
+        "mcp_registry_search_{}_{}_{}",
+        query,
+        limit,
+        cursor.clone().unwrap_or_default()
+    );
+
+    // Try cache first (5 minute TTL)
+    if let Ok(Some(cached)) = store.get_cache(&cache_key, 300) {
+        if let Ok(dto) = serde_json::from_str::<McpRegistrySearchDto>(&cached) {
+            return Ok(dto);
+        }
+    }
+
+    let (servers, next_cursor) = run_blocking_result(move || {
+        let proxy_url = store_for_search.get_setting("proxy_url").ok().flatten();
+        super::mcp_registry_api::search_registry(
+            &query,
+            limit,
+            cursor.as_deref(),
+            proxy_url.as_deref(),
+        )
+        .map_err(AppError::from)
+    })
+    .await?;
+
+    // Enrich each server with GitHub stars + package downloads (per-server cache,
+    // 1h TTL — GitHub unauthenticated API is rate-limited ~60/hr, so cache longer
+    // than the page cache and degrade to None on rate-limit/network failure).
+    // 并行拉取：每批 METRICS_CONCURRENCY 个 server 同时请求（thread::scope），
+    // 批间串行 —— 避免整页串行网络往返导致页面加载慢。
+    const METRICS_CONCURRENCY: usize = 8;
+    let store_for_metrics = store.clone();
+    let servers = run_blocking_result(move || {
+        let proxy_url = store_for_metrics.get_setting("proxy_url").ok().flatten();
+        let client = super::mcp_registry_api::build_http_client(proxy_url.as_deref())
+            .map_err(AppError::from)?;
+        let mut enriched = servers;
+        for chunk in enriched.chunks_mut(METRICS_CONCURRENCY) {
+            std::thread::scope(|scope| {
+                for s in chunk {
+                    scope.spawn(|| {
+                        let mkey = format!("mcp_registry_metrics_{}", s.name);
+                        if let Ok(Some(cached)) = store_for_metrics.get_cache(&mkey, 3600) {
+                            if let Ok(m) = serde_json::from_str::<McpRegistryMetricsCache>(&cached)
+                            {
+                                s.stars = m.stars;
+                                s.downloads = m.downloads;
+                                return;
+                            }
+                        }
+                        let (stars, downloads) =
+                            super::mcp_registry_api::fetch_server_metrics(s, &client);
+                        s.stars = stars;
+                        s.downloads = downloads;
+                        if let Ok(json) =
+                            serde_json::to_string(&McpRegistryMetricsCache { stars, downloads })
+                        {
+                            let _ = store_for_metrics.set_cache(&mkey, &json);
+                        }
+                    });
+                }
+            });
+        }
+        Ok::<_, AppError>(enriched)
+    })
+    .await?;
+
+    let dto = McpRegistrySearchDto {
+        servers,
+        next_cursor,
+    };
+
+    // Cache the result
+    if let Ok(json) = serde_json::to_string(&dto) {
+        let _ = store.set_cache(&cache_key, &json);
+    }
+
+    Ok(dto)
+}
+
+/// Fetch a single MCP Registry server's full detail (server.json + generated config).
+#[tauri::command]
+pub async fn fetch_mcp_registry_server_cmd(
+    name: String,
+    store: tauri::State<'_, std::sync::Arc<super::skill_store::SkillStore>>,
+) -> Result<super::mcp_registry_api::McpRegistryServerDetail, AppError> {
+    let store = store.inner().clone();
+    let store_for_fetch = store.clone();
+    let cache_key = format!("mcp_registry_server_{}", name);
+
+    if let Ok(Some(cached)) = store.get_cache(&cache_key, 300) {
+        if let Ok(detail) =
+            serde_json::from_str::<super::mcp_registry_api::McpRegistryServerDetail>(&cached)
+        {
+            return Ok(detail);
+        }
+    }
+
+    let detail = run_blocking_result(move || {
+        let proxy_url = store_for_fetch.get_setting("proxy_url").ok().flatten();
+        super::mcp_registry_api::fetch_server(&name, proxy_url.as_deref()).map_err(AppError::from)
+    })
+    .await?;
+
+    if let Ok(json) = serde_json::to_string(&detail) {
+        let _ = store.set_cache(&cache_key, &json);
+    }
+
+    Ok(detail)
 }
 
 /// Input for deploying an MCP server to an agent.
@@ -4014,18 +4235,103 @@ pub async fn test_mcp_server_cmd(
     .await
     .map_err(|e| AppError::Unknown(format!("blocking task join error: {e}")))??;
 
-    let found = which::which(&server.command).is_ok();
-    let message = if found {
-        format!("Command '{}' found in PATH", server.command)
+    test_mcp_connection_logic(server).await
+}
+
+/// Resolve the MCP connection test for a single server record.
+///
+/// Remote (http/sse) servers perform a real MCP initialize handshake over the
+/// network; stdio servers launch the command and perform the handshake via
+/// newline-delimited JSON-RPC.
+async fn test_mcp_connection_logic(
+    server: super::types::McpServerRecord,
+) -> Result<McpTestResult, AppError> {
+    let env: std::collections::HashMap<String, String> =
+        serde_json::from_str(&server.env_json).unwrap_or_default();
+    let args: Vec<String> = serde_json::from_str(&server.args_json).unwrap_or_default();
+
+    let outcome = if server.transport == "http" {
+        let url = server.url.as_deref().unwrap_or("");
+        super::mcp_probe::McpProbe::probe_http(url).await
+    } else if server.transport == "sse" {
+        let url = server.url.as_deref().unwrap_or("");
+        super::mcp_probe::McpProbe::probe_sse(url).await
     } else {
-        format!(
-            "Command '{}' not found in PATH — install it before deploying",
-            server.command
-        )
+        super::mcp_probe::McpProbe::probe_stdio(&server.command, &args, &env).await
     };
+
     Ok(McpTestResult {
-        command_found: found,
-        command: server.command,
-        message,
+        command_found: outcome.ok,
+        command: String::new(),
+        message: outcome.message,
     })
+}
+
+#[cfg(test)]
+mod mcp_test_logic_tests {
+    use super::*;
+
+    fn remote_server(url: Option<&str>, transport: &str) -> super::super::types::McpServerRecord {
+        super::super::types::McpServerRecord {
+            id: "mcp-test".to_string(),
+            name: "remote-server".to_string(),
+            description: None,
+            command: String::new(),
+            url: url.map(str::to_string),
+            args_json: "[]".to_string(),
+            env_json: "{}".to_string(),
+            transport: transport.to_string(),
+            scope: "global".to_string(),
+            project_id: None,
+            source_registry: None,
+            source_ref: None,
+            tags: vec![],
+            enabled: true,
+            usage_count: 0,
+            last_used_at: None,
+            created_at: 1,
+            updated_at: 1,
+        }
+    }
+
+    #[tokio::test]
+    async fn remote_http_server_with_url_reports_ready() {
+        let server = remote_server(Some("https://mcp.example.com/mcp"), "http");
+        let result = test_mcp_connection_logic(server).await.unwrap();
+        assert!(!result.command_found, "message: {}", result.message);
+    }
+
+    #[tokio::test]
+    async fn remote_sse_server_with_url_reports_ready() {
+        let server = remote_server(Some("https://mcp.example.com/sse"), "sse");
+        let result = test_mcp_connection_logic(server).await.unwrap();
+        assert!(!result.command_found);
+    }
+
+    #[tokio::test]
+    async fn remote_http_server_without_url_errors() {
+        let server = remote_server(None, "http");
+        let result = test_mcp_connection_logic(server).await.unwrap();
+        assert!(!result.command_found);
+        assert!(result.message.contains("URL is required"));
+    }
+
+    #[tokio::test]
+    async fn remote_http_server_with_non_http_url_errors() {
+        let server = remote_server(Some("ftp://example.com/mcp"), "http");
+        let result = test_mcp_connection_logic(server).await.unwrap();
+        assert!(!result.command_found);
+        assert!(result.message.contains("must start with"));
+    }
+
+    #[tokio::test]
+    async fn stdio_server_still_checks_command() {
+        let mut server = remote_server(None, "stdio");
+        server.command = "__neeko_definitely_missing_cmd__".to_string();
+        let result = test_mcp_connection_logic(server).await.unwrap();
+        assert!(!result.command_found);
+        assert!(
+            result.message.contains("Failed to launch") || result.message.contains("not found")
+        );
+    }
 }

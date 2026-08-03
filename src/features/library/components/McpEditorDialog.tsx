@@ -13,7 +13,8 @@ interface FormState {
   command: string;
   args: string;
   env: string;
-  transport: 'stdio' | 'sse';
+  transport: 'stdio' | 'sse' | 'http';
+  url: string;
   scope: 'global' | 'project';
   tags: string;
 }
@@ -25,6 +26,7 @@ const EMPTY_FORM: FormState = {
   args: '[]',
   env: '{}',
   transport: 'stdio',
+  url: '',
   scope: 'global',
   tags: '',
 };
@@ -44,11 +46,15 @@ const McpEditorDialog: React.FC = React.memo(() => {
   const createMcpServer = useLibraryStore((s) => s.createMcpServer);
   const updateMcpServer = useLibraryStore((s) => s.updateMcpServer);
   const refreshMcpServers = useLibraryStore((s) => s.refreshMcpServers);
+  const setMcpDraft = useLibraryStore((s) => s.setMcpDraft);
+  const setMcpView = useLibraryStore((s) => s.setMcpView);
   const activeProjectId = useProjectStore((s) => s.activeProjectId);
 
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const isRemote = form.transport === 'http' || form.transport === 'sse';
 
   useEffect(() => {
     if (!open) return;
@@ -60,6 +66,7 @@ const McpEditorDialog: React.FC = React.memo(() => {
         args: JSON.stringify(editing.args ?? [], null, 2),
         env: JSON.stringify(editing.env ?? {}, null, 2),
         transport: editing.transport,
+        url: editing.url ?? '',
         scope: editing.scope,
         tags: editing.tags.join(', '),
       });
@@ -75,17 +82,23 @@ const McpEditorDialog: React.FC = React.memo(() => {
 
   const handleSave = useCallback(async () => {
     const name = form.name.trim();
-    const command = form.command.trim();
     if (!name) {
       setError('Name is required');
       return;
     }
-    if (!command) {
-      setError('Command is required');
-      return;
+
+    if (isRemote) {
+      if (!form.url.trim()) {
+        setError('URL is required for remote transport');
+        return;
+      }
+    } else {
+      if (!form.command.trim()) {
+        setError('Command is required');
+        return;
+      }
     }
 
-    // Validate args/env JSON
     let args: unknown[];
     try {
       const parsed = JSON.parse(form.args.trim() || '[]');
@@ -123,7 +136,8 @@ const McpEditorDialog: React.FC = React.memo(() => {
         await updateMcpServer(editing.id, {
           name,
           description: form.description.trim() || null,
-          command,
+          command: isRemote ? '' : form.command,
+          url: isRemote ? form.url.trim() : null,
           args: args as string[],
           env,
           transport: form.transport,
@@ -135,7 +149,8 @@ const McpEditorDialog: React.FC = React.memo(() => {
         await createMcpServer({
           name,
           description: form.description.trim() || null,
-          command,
+          command: isRemote ? '' : form.command,
+          url: isRemote ? form.url.trim() : null,
           args: args as string[],
           env,
           transport: form.transport,
@@ -145,6 +160,8 @@ const McpEditorDialog: React.FC = React.memo(() => {
         });
       }
       await refreshMcpServers();
+      setMcpDraft(null);
+      setMcpView('installed');
       closeMcpEditor();
       closeEditor();
     } catch (e) {
@@ -155,18 +172,22 @@ const McpEditorDialog: React.FC = React.memo(() => {
   }, [
     form,
     editing,
+    isRemote,
     activeProjectId,
     closeEditor,
     closeMcpEditor,
     createMcpServer,
     updateMcpServer,
     refreshMcpServers,
+    setMcpDraft,
+    setMcpView,
   ]);
 
   const handleClose = useCallback(() => {
+    setMcpDraft(null);
     closeMcpEditor();
     closeEditor();
-  }, [closeEditor, closeMcpEditor]);
+  }, [closeEditor, closeMcpEditor, setMcpDraft]);
 
   return (
     <Dialog open={open} onOpenChange={(v) => !v && handleClose()}>
@@ -228,47 +249,74 @@ const McpEditorDialog: React.FC = React.memo(() => {
             />
           </div>
 
-          {/* Command */}
-          <div>
-            <label
-              htmlFor="mcp-command"
-              className="block text-[11px] font-medium text-text-muted mb-1"
-            >
-              Command
-            </label>
-            <input
-              id="mcp-command"
-              className={cn(
-                'w-full h-8 px-2.5 text-[var(--font-size)] rounded-md font-mono',
-                'bg-bg-primary border border-border text-text-primary',
-                'outline-none focus:border-accent-blue placeholder:text-text-muted',
-              )}
-              placeholder="e.g. npx"
-              value={form.command}
-              onChange={(e) => update('command', e.target.value)}
-            />
-          </div>
+          {/* Command (hidden for remote transport) */}
+          {!isRemote && (
+            <div>
+              <label
+                htmlFor="mcp-command"
+                className="block text-[11px] font-medium text-text-muted mb-1"
+              >
+                Command
+              </label>
+              <input
+                id="mcp-command"
+                className={cn(
+                  'w-full h-8 px-2.5 text-[var(--font-size)] rounded-md font-mono',
+                  'bg-bg-primary border border-border text-text-primary',
+                  'outline-none focus:border-accent-blue placeholder:text-text-muted',
+                )}
+                placeholder="e.g. npx"
+                value={form.command}
+                onChange={(e) => update('command', e.target.value)}
+              />
+            </div>
+          )}
 
-          {/* Args */}
-          <div>
-            <label
-              htmlFor="mcp-args"
-              className="block text-[11px] font-medium text-text-muted mb-1"
-            >
-              Args (JSON array)
-            </label>
-            <textarea
-              id="mcp-args"
-              className={cn(
-                'w-full min-h-[60px] px-2.5 py-2 text-[var(--font-size)] rounded-md resize-y font-mono',
-                'bg-bg-primary border border-border text-text-primary',
-                'outline-none focus:border-accent-blue placeholder:text-text-muted',
-              )}
-              placeholder='["-y", "@modelcontextprotocol/server-filesystem", "/path"]'
-              value={form.args}
-              onChange={(e) => update('args', e.target.value)}
-            />
-          </div>
+          {/* URL (shown only for remote transport) */}
+          {isRemote && (
+            <div>
+              <label
+                htmlFor="mcp-url"
+                className="block text-[11px] font-medium text-text-muted mb-1"
+              >
+                URL
+              </label>
+              <input
+                id="mcp-url"
+                className={cn(
+                  'w-full h-8 px-2.5 text-[var(--font-size)] rounded-md font-mono',
+                  'bg-bg-primary border border-border text-text-primary',
+                  'outline-none focus:border-accent-blue placeholder:text-text-muted',
+                )}
+                placeholder="https://example.com/mcp"
+                value={form.url}
+                onChange={(e) => update('url', e.target.value)}
+              />
+            </div>
+          )}
+
+          {/* Args (hidden for remote transport) */}
+          {!isRemote && (
+            <div>
+              <label
+                htmlFor="mcp-args"
+                className="block text-[11px] font-medium text-text-muted mb-1"
+              >
+                Args (JSON array)
+              </label>
+              <textarea
+                id="mcp-args"
+                className={cn(
+                  'w-full min-h-[60px] px-2.5 py-2 text-[var(--font-size)] rounded-md resize-y font-mono',
+                  'bg-bg-primary border border-border text-text-primary',
+                  'outline-none focus:border-accent-blue placeholder:text-text-muted',
+                )}
+                placeholder='["-y", "@modelcontextprotocol/server-filesystem", "/path"]'
+                value={form.args}
+                onChange={(e) => update('args', e.target.value)}
+              />
+            </div>
+          )}
 
           {/* Env */}
           <div>
@@ -297,7 +345,7 @@ const McpEditorDialog: React.FC = React.memo(() => {
               Transport
             </span>
             <div role="radiogroup" aria-labelledby="mcp-transport-label" className="flex gap-2">
-              {(['stdio', 'sse'] as const).map((t) => (
+              {(['stdio', 'sse', 'http'] as const).map((t) => (
                 <button
                   key={t}
                   type="button"

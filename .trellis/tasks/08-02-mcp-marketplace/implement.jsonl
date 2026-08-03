@@ -1,0 +1,8 @@
+{"file": ".trellis/spec/backend/index.md", "reason": "后端命令/Rust 代码规范入口"}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "AppError 与错误包装规范"}
+{"file": ".trellis/spec/backend/concurrency-guidelines.md", "reason": "async/blocking 隔离与 run_blocking_result 用法"}
+{"file": ".trellis/spec/backend/command-guidelines.md", "reason": "tauri command 注册与薄命令层约定"}
+{"file": ".trellis/spec/frontend/index.md", "reason": "前端规范入口"}
+{"file": ".trellis/spec/frontend/state-management.md", "reason": "zustand store 与状态就近原则"}
+{"file": ".trellis/spec/frontend/hook-guidelines.md", "reason": "hook 设计规范 (useMcpMarketplace 参考)"}
+{"file": ".trellis/spec/frontend/api-layer.md", "reason": "invoke/DTO 层约定"}

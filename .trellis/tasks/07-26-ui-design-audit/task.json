@@ -27,7 +27,9 @@
     "ui-nav-cleanup",
     "ui-quality-gate"
   ],
-  "children": [],
+  "children": [
+    "08-02-mcp-marketplace"
+  ],
   "parent": null,
   "relatedFiles": [
     "src/app/App.tsx",

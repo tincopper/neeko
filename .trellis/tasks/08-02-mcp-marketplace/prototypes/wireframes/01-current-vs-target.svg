@@ -1,0 +1,157 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 720" font-family="Inter, -apple-system, 'PingFang SC', sans-serif">
+  <title>MCP Marketplace：现状 vs 目标（对齐 Resource Library v7 完整外壳）</title>
+  <rect width="960" height="720" fill="#26292F"/>
+  <text x="30" y="40" font-size="20" font-weight="700" fill="#ffffff">MCP Marketplace：现状 vs 目标</text>
+  <text x="30" y="62" font-size="12" fill="#999999">完整 Library 外壳（Dock + act-tabs 活动栏 + 导航树 + toolbar + search + content），MCP 视图由侧栏导航树 tree-grp 驱动（与 skills 一致）</text>
+
+  <!-- ══════════ 左：现状 ══════════ -->
+  <rect x="20" y="86" width="450" height="600" rx="10" fill="#181A1C" stroke="#3b3b40"/>
+  <text x="40" y="114" font-size="14" font-weight="600" fill="#ff453a">现状：仅本地列表，无市场</text>
+
+  <!-- Dock -->
+  <rect x="24" y="126" width="30" height="520" rx="5" fill="#14171c" stroke="#3b3b40"/>
+  <rect x="29" y="134" width="20" height="20" rx="4" fill="#44444a"/><text x="34" y="148" font-size="9" fill="#fff">📚</text>
+
+  <!-- master：act-tabs + tree -->
+  <rect x="58" y="126" width="150" height="520" rx="5" fill="#1a1e25" stroke="#3b3b40"/>
+  <g font-size="9">
+    <rect x="64" y="132" width="138" height="24" rx="4" fill="none"/><text x="72" y="148" fill="#999">🧩 Skills <tspan fill="#666">14</tspan></text>
+    <rect x="64" y="158" width="138" height="24" rx="4" fill="none"/><text x="72" y="174" fill="#999">💬 Prompts <tspan fill="#666">32</tspan></text>
+    <rect x="64" y="184" width="138" height="24" rx="4" fill="none"/><text x="72" y="200" fill="#999">⚡ Actions <tspan fill="#666">9</tspan></text>
+    <rect x="64" y="210" width="138" height="24" rx="4" fill="#252a33"/><text x="72" y="226" fill="#58a6ff">🖧 MCP <tspan fill="#666">3</tspan></text>
+    <rect x="64" y="236" width="138" height="24" rx="4" fill="none"/><text x="72" y="252" fill="#999">⌨️ Commands <tspan fill="#666">7</tspan></text>
+  </g>
+  <text x="72" y="300" font-size="8" font-weight="700" fill="#5c6370">无额外筛选</text>
+  <text x="72" y="316" font-size="8" fill="#4a525c">（MCP 侧栏维持空态）</text>
+
+  <!-- detail -->
+  <rect x="212" y="126" width="250" height="520" rx="5" fill="#14171c" stroke="#3b3b40"/>
+  <!-- toolbar -->
+  <rect x="212" y="126" width="250" height="30" rx="5" fill="#1a1e25"/>
+  <text x="224" y="145" font-size="9.5" fill="#cccccc">MCP <tspan fill="#666">/</tspan> <tspan fill="#999">All</tspan></text>
+  <rect x="412" y="132" width="42" height="18" rx="4" fill="#44444a"/><text x="420" y="145" font-size="8" fill="#fff">+ New</text>
+  <!-- 外层搜索行 -->
+  <rect x="224" y="162" width="226" height="26" rx="4" fill="#14171c" stroke="#3b3b40"/>
+  <text x="234" y="179" font-size="8" fill="#5c6370">🔍 Search MCP servers…（外层通用）</text>
+  <!-- 列表 -->
+  <g font-size="9" fill="#cccccc">
+    <rect x="224" y="198" width="226" height="36" rx="4" fill="#1f242c"/>
+    <text x="232" y="212" fill="#fff">filesystem</text>
+    <text x="232" y="226" font-size="7.5" fill="#5c6370">npx · stdio</text>
+    <rect x="402" y="204" width="24" height="14" rx="3" fill="#333337"/><text x="408" y="215" font-size="7">✎</text>
+    <rect x="428" y="204" width="24" height="14" rx="3" fill="#333337"/><text x="434" y="215" font-size="7">✕</text>
+
+    <rect x="224" y="240" width="226" height="36" rx="4" fill="#1f242c"/>
+    <text x="232" y="254" fill="#fff">brave-search</text>
+    <text x="232" y="268" font-size="7.5" fill="#5c6370">npx · stdio</text>
+    <rect x="402" y="246" width="24" height="14" rx="3" fill="#333337"/><text x="408" y="257" font-size="7">✎</text>
+    <rect x="428" y="246" width="24" height="14" rx="3" fill="#333337"/><text x="434" y="257" font-size="7">✕</text>
+
+    <rect x="224" y="282" width="226" height="36" rx="4" fill="#1f242c"/>
+    <text x="232" y="296" fill="#fff">github-mcp</text>
+    <text x="232" y="310" font-size="7.5" fill="#5c6370">npx · stdio</text>
+    <rect x="402" y="288" width="24" height="14" rx="3" fill="#333337"/><text x="408" y="299" font-size="7">✎</text>
+    <rect x="428" y="288" width="24" height="14" rx="3" fill="#333337"/><text x="434" y="299" font-size="7">✕</text>
+  </g>
+
+  <g font-size="10" fill="#ff453a">
+    <text x="40" y="646">✕ 仅手动添加（New）+ 本地列表</text>
+    <text x="40" y="662">✕ 无市场发现 / registry 搜索 / 一键安装</text>
+    <text x="40" y="678">✕ 无来源跟踪（source_registry / source_ref）</text>
+  </g>
+
+  <!-- ══════════ 右：目标 ══════════ -->
+  <rect x="490" y="86" width="450" height="600" rx="10" fill="#181A1C" stroke="#30d158" stroke-width="1.5"/>
+  <text x="510" y="114" font-size="14" font-weight="600" fill="#30d158">目标：MCP 侧栏导航树切换 Installed / Marketplace</text>
+
+  <!-- Dock -->
+  <rect x="494" y="126" width="30" height="520" rx="5" fill="#14171c" stroke="#3b3b40"/>
+  <rect x="499" y="134" width="20" height="20" rx="4" fill="#44444a"/><text x="504" y="148" font-size="9" fill="#fff">📚</text>
+
+  <!-- master（MCP 选中 → 侧栏 tree-grp） -->
+  <rect x="528" y="126" width="150" height="520" rx="5" fill="#1a1e25" stroke="#3b3b40"/>
+  <g font-size="9">
+    <rect x="534" y="132" width="138" height="24" rx="4" fill="none"/><text x="542" y="148" fill="#999">🧩 Skills <tspan fill="#666">14</tspan></text>
+    <rect x="534" y="158" width="138" height="24" rx="4" fill="none"/><text x="542" y="174" fill="#999">💬 Prompts <tspan fill="#666">32</tspan></text>
+    <rect x="534" y="184" width="138" height="24" rx="4" fill="none"/><text x="542" y="200" fill="#999">⚡ Actions <tspan fill="#666">9</tspan></text>
+    <rect x="534" y="210" width="138" height="24" rx="4" fill="#252a33"/><text x="542" y="226" fill="#58a6ff">🖧 MCP <tspan fill="#666">3</tspan></text>
+    <rect x="534" y="236" width="138" height="24" rx="4" fill="none"/><text x="542" y="252" fill="#999">⌨️ Commands <tspan fill="#666">7</tspan></text>
+  </g>
+  <!-- MCP tree-grp（与 skills 一致） -->
+  <text x="542" y="282" font-size="8" font-weight="700" fill="#5c6370">MCP</text>
+  <rect x="536" y="290" width="132" height="24" rx="4" fill="#252a33"/>
+  <text x="544" y="307" font-size="8.5" fill="#58a6ff">📦 Installed <tspan fill="#666">14</tspan></text>
+  <rect x="536" y="318" width="132" height="24" rx="4" fill="none"/>
+  <text x="544" y="335" font-size="8.5" fill="#999">⬇ Marketplace</text>
+
+  <!-- detail -->
+  <rect x="682" y="126" width="250" height="520" rx="5" fill="#14171c" stroke="#30d158"/>
+  <!-- toolbar：面包屑（Marketplace 视图，count 徽标）+ 无 +New -->
+  <rect x="682" y="126" width="250" height="30" rx="5" fill="#1a1e25"/>
+  <text x="694" y="145" font-size="9.5" fill="#cccccc">MCP <tspan fill="#666">/</tspan> <tspan fill="#30d158">Marketplace</tspan> <tspan fill="#999">[24]</tspan></text>
+  <!-- 外层搜索行（保留，placeholder 按视图切换） -->
+  <rect x="694" y="162" width="226" height="26" rx="4" fill="#14171c" stroke="#3b3b40"/>
+  <text x="704" y="179" font-size="8" fill="#5c6370">🔍 Search MCP Registry…</text>
+
+  <!-- 安全警示 -->
+  <rect x="694" y="196" width="226" height="20" rx="4" fill="#3a2d24" stroke="#5c4633"/>
+  <text x="702" y="209" font-size="7" fill="#d29922">⚠ MCP server 运行任意代码，安装前审查配置</text>
+
+  <!-- 卡片网格 2x2 -->
+  <g font-size="8.5" fill="#cccccc">
+    <rect x="694" y="222" width="110" height="86" rx="5" fill="#1f242c" stroke="#2d333b"/>
+    <text x="702" y="236" fill="#fff">filesystem</text>
+    <rect x="788" y="226" width="16" height="10" rx="2" fill="#2d4d3a"/><text x="791" y="234" font-size="6" fill="#3fb950">✓</text>
+    <text x="702" y="250" font-size="7" fill="#5c6370">Filesystem ops</text>
+    <rect x="702" y="258" width="44" height="12" rx="3" fill="#333337"/><text x="706" y="267" font-size="6" fill="#999">npx stdio</text>
+    <rect x="702" y="278" width="60" height="16" rx="3" fill="#333337"/><text x="710" y="290" font-size="7" fill="#666">已安装</text>
+
+    <rect x="810" y="222" width="110" height="86" rx="5" fill="#1f242c" stroke="#2d333b"/>
+    <text x="818" y="236" fill="#fff">github-mcp</text>
+    <text x="818" y="250" font-size="7" fill="#5c6370">GitHub API</text>
+    <rect x="818" y="258" width="44" height="12" rx="3" fill="#333337"/><text x="822" y="267" font-size="6" fill="#999">npx stdio</text>
+    <rect x="818" y="278" width="60" height="16" rx="3" fill="#30d158"/><text x="828" y="290" font-size="7" fill="#081">Install</text>
+
+    <rect x="694" y="314" width="110" height="86" rx="5" fill="#1f242c" stroke="#2d333b"/>
+    <text x="702" y="328" fill="#fff">brave-search</text>
+    <text x="702" y="342" font-size="7" fill="#5c6370">Web search</text>
+    <rect x="702" y="350" width="44" height="12" rx="3" fill="#333337"/><text x="706" y="359" font-size="6" fill="#999">uvx stdio</text>
+    <rect x="702" y="370" width="60" height="16" rx="3" fill="#30d158"/><text x="712" y="382" font-size="7" fill="#081">Install</text>
+
+    <rect x="810" y="314" width="110" height="86" rx="5" fill="#1f242c" stroke="#2d333b"/>
+    <text x="818" y="328" fill="#fff">mcp-fs remote</text>
+    <text x="818" y="342" font-size="7" fill="#5c6370">Cloud FS</text>
+    <rect x="818" y="350" width="44" height="12" rx="3" fill="#333337"/><text x="822" y="359" font-size="6" fill="#999">http url</text>
+    <rect x="818" y="370" width="60" height="16" rx="3" fill="#30d158"/><text x="828" y="382" font-size="7" fill="#081">Install</text>
+  </g>
+
+  <!-- 分页 -->
+  <g font-size="8" fill="#999999">
+    <rect x="694" y="412" width="18" height="16" rx="3" fill="#333337"/><text x="700" y="424" fill="#fff">‹</text>
+    <rect x="716" y="412" width="18" height="16" rx="3" fill="#44444a"/><text x="722" y="424" fill="#fff">1</text>
+    <rect x="738" y="412" width="18" height="16" rx="3" fill="#333337"/><text x="744" y="424">2</text>
+    <rect x="760" y="412" width="18" height="16" rx="3" fill="#333337"/><text x="766" y="424">3</text>
+    <rect x="782" y="412" width="18" height="16" rx="3" fill="#333337"/><text x="788" y="424">›</text>
+    <text x="806" y="424">24 项 · 20/页</text>
+  </g>
+
+  <!-- 安装流：Install → 预填编辑对话框 -->
+  <text x="694" y="452" font-size="8.5" fill="#30d158">安装流：卡片 Install → 拉取 server.json 解析 → McpEditorDialog 预填 → 确认保存（带 source）</text>
+  <rect x="694" y="458" width="226" height="120" rx="5" fill="#1f242c" stroke="#2d333b"/>
+  <g font-size="8" fill="#cccccc">
+    <text x="702" y="474">Install · github-mcp v0.3.1（预填自 registry）</text>
+    <text x="702" y="490" font-size="7.5" fill="#5c6370">Name: github-mcp  ·  Version: 0.3.1</text>
+    <text x="702" y="506" font-size="7.5" fill="#5c6370">Command: npx  ·  Args: [-y @github/mcp]</text>
+    <text x="702" y="522" font-size="7.5" fill="#5c6370">Transport: stdio  ·  Scope: Global</text>
+    <text x="702" y="538" font-size="7.5" fill="#d29922">Env: GITHUB_TOKEN 【必填 secret】→ 需手动填写</text>
+    <text x="702" y="554" font-size="7" fill="#4a525c">Source: io.github.modelcontextprotocol/github</text>
+    <rect x="742" y="564" width="44" height="16" rx="3" fill="#333337"/><text x="752" y="576">取消</text>
+    <rect x="790" y="564" width="44" height="16" rx="3" fill="#30d158"/><text x="800" y="576" fill="#081">保存</text>
+  </g>
+
+  <g font-size="10" fill="#30d158">
+    <text x="510" y="646">✓ MCP 侧栏 tree-grp：Installed / Marketplace（与 skills 完全一致）</text>
+    <text x="510" y="662">✓ 视图切换由左侧导航树驱动；content 不再有 segmented tabs</text>
+    <text x="510" y="678">✓ 搜索行保留（placeholder 按视图切换）；＋新建 仅 Installed；count 徽标仅市场</text>
+  </g>
+</svg>

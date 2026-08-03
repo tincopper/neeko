@@ -125,6 +125,8 @@ macro_rules! neeko_invoke_handler {
             $crate::skill::commands::list_deployed_mcp,
             $crate::skill::commands::remove_deployed_mcp,
             $crate::skill::commands::test_mcp_server_cmd,
+            $crate::skill::commands::search_mcp_registry_cmd,
+            $crate::skill::commands::fetch_mcp_registry_server_cmd,
             // ── Commands (slash commands) ────────────────────────────────
             $crate::skill::commands::deploy_command_to_agent,
             $crate::skill::commands::list_deployed_commands,
