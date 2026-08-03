@@ -1,9 +1,10 @@
-import { LSPClient, serverCompletion, serverDiagnostics } from '@codemirror/lsp-client';
+import { LSPClient, serverDiagnostics } from '@codemirror/lsp-client';
 import type { Extension } from '@codemirror/state';
 
 import { IdleRefCountedCache } from '../idleRefCountedCache';
 import { TauriLspTransport } from '../transport/tauriLspTransport';
 
+import { createThemedServerCompletion } from './lspCompletionInfoRenderer';
 import { createLspHoverTooltips } from './lspHoverExtension';
 
 interface LspClientBundle {
@@ -50,7 +51,7 @@ export function acquireLspPlugin(
   const bundle = pool.acquire(key, () => {
     // timeout: 15000ms covers slow LSP server startup (spawn + init handshake).
     const client = new LSPClient({
-      extensions: [serverCompletion(), createLspHoverTooltips(), serverDiagnostics()],
+      extensions: [createThemedServerCompletion(), createLspHoverTooltips(), serverDiagnostics()],
       timeout: 15000,
     });
     const transport = new TauriLspTransport(projectPath, languageId);
