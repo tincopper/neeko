@@ -34,6 +34,9 @@ pub mod dap;
 pub mod file;
 /// Git integration (status, diff, branch, commit, PR).
 pub mod git;
+/// Skill management (install, configure, tag, sync).
+/// Library management (skills, MCP, prompts, actions).
+pub mod library;
 /// Language Server Protocol client management.
 pub mod lsp;
 /// Project management (add, remove, list, config).
@@ -42,9 +45,6 @@ pub mod project;
 pub mod session;
 /// Application settings management.
 pub mod settings;
-/// Skill management (install, configure, tag, sync).
-/// Library management (skills, MCP, prompts, actions).
-pub mod library;
 /// Task configuration and execution.
 pub mod task;
 /// Terminal emulation (local, WSL, remote).

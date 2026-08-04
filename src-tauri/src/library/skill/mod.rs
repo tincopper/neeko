@@ -12,14 +12,10 @@ pub mod git_fetcher;
 pub mod installer;
 /// Database schema migrations.
 pub mod model;
-/// Data model types for skill records.
-mod repository;
 /// Scanning tool directories for unmanaged skills.
 pub mod scanner;
 /// SKILL.md frontmatter parsing utilities.
 pub mod skill_metadata;
-/// High-level store wrapping the SQLite repository.
-
 /// skills.sh marketplace HTTP client.
 pub mod skillssh_api;
 /// Sync engine for deploying skills to tool directories.

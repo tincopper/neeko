@@ -283,7 +283,6 @@ pub struct SkillDocumentDto {
     pub content: String,
 }
 
-
 /// Update status for a skill
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "status")]

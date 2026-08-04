@@ -10,12 +10,12 @@ use std::path::Path;
 use std::sync::Mutex;
 
 // Re-export types from sub-modules for convenience
-pub use crate::library::skill::types::{
-    PromptRecord, PromptVariableRecord, SkillRecord, SkillTargetRecord,
-    TagGroupRecord, ToolToggleRecord,
-};
 pub use crate::library::mcp::types::{McpServerTargetRecord, McpTagGroupRecord};
 pub use crate::library::skill::types::McpServerRecord;
+pub use crate::library::skill::types::{
+    PromptRecord, PromptVariableRecord, SkillRecord, SkillTargetRecord, TagGroupRecord,
+    ToolToggleRecord,
+};
 
 /// Thread-safe facade over the library database.
 pub struct LibraryStore {
@@ -47,7 +47,10 @@ impl LibraryStore {
 
     /// Insert a new skill record.
     pub fn insert_skill(&self, skill: &SkillRecord) -> Result<()> {
-        let conn = self.conn.lock().map_err(|e| anyhow::anyhow!("Lock poisoned: {e}"))?;
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| anyhow::anyhow!("Lock poisoned: {e}"))?;
         conn.execute(
             "INSERT INTO skills (id, name, description, source_type, source_ref, source_ref_resolved,
              source_subpath, source_branch, source_revision, remote_revision, central_path,
@@ -67,7 +70,10 @@ impl LibraryStore {
 
     /// Get all skill records ordered by name.
     pub fn get_all_skills(&self) -> Result<Vec<SkillRecord>> {
-        let conn = self.conn.lock().map_err(|e| anyhow::anyhow!("Lock poisoned: {e}"))?;
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| anyhow::anyhow!("Lock poisoned: {e}"))?;
         let mut stmt = conn.prepare(
             "SELECT id, name, description, source_type, source_ref, source_ref_resolved,
              source_subpath, source_branch, source_revision, remote_revision, central_path,
@@ -80,7 +86,10 @@ impl LibraryStore {
 
     /// Get a skill by its ID.
     pub fn get_skill_by_id(&self, id: &str) -> Result<Option<SkillRecord>> {
-        let conn = self.conn.lock().map_err(|e| anyhow::anyhow!("Lock poisoned: {e}"))?;
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| anyhow::anyhow!("Lock poisoned: {e}"))?;
         let mut stmt = conn.prepare(
             "SELECT id, name, description, source_type, source_ref, source_ref_resolved,
              source_subpath, source_branch, source_revision, remote_revision, central_path,
@@ -93,7 +102,10 @@ impl LibraryStore {
 
     /// Get a skill by its central repository path.
     pub fn get_skill_by_central_path(&self, central_path: &str) -> Result<Option<SkillRecord>> {
-        let conn = self.conn.lock().map_err(|e| anyhow::anyhow!("Lock poisoned: {e}"))?;
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| anyhow::anyhow!("Lock poisoned: {e}"))?;
         let mut stmt = conn.prepare(
             "SELECT id, name, description, source_type, source_ref, source_ref_resolved,
              source_subpath, source_branch, source_revision, remote_revision, central_path,
@@ -106,7 +118,10 @@ impl LibraryStore {
 
     /// Update all fields of a skill record.
     pub fn update_skill(&self, skill: &SkillRecord) -> Result<()> {
-        let conn = self.conn.lock().map_err(|e| anyhow::anyhow!("Lock poisoned: {e}"))?;
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| anyhow::anyhow!("Lock poisoned: {e}"))?;
         let now = chrono::Utc::now().timestamp_millis();
         conn.execute(
             "UPDATE skills SET name = ?1, description = ?2, source_type = ?3, source_ref = ?4,
@@ -137,13 +152,25 @@ impl LibraryStore {
         content_hash: Option<&str>,
         update_status: &str,
     ) -> Result<()> {
-        let conn = self.conn.lock().map_err(|e| anyhow::anyhow!("Lock poisoned: {e}"))?;
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| anyhow::anyhow!("Lock poisoned: {e}"))?;
         let now = chrono::Utc::now().timestamp_millis();
         conn.execute(
             "UPDATE skills SET name = ?1, description = ?2, source_revision = ?3,
              remote_revision = ?4, content_hash = ?5, updated_at = ?6, update_status = ?7,
              last_checked_at = ?6, last_check_error = NULL WHERE id = ?8",
-            rusqlite::params![name, description, source_revision, remote_revision, content_hash, now, update_status, id],
+            rusqlite::params![
+                name,
+                description,
+                source_revision,
+                remote_revision,
+                content_hash,
+                now,
+                update_status,
+                id
+            ],
         )?;
         Ok(())
     }
@@ -156,7 +183,10 @@ impl LibraryStore {
         update_status: &str,
         last_check_error: Option<&str>,
     ) -> Result<()> {
-        let conn = self.conn.lock().map_err(|e| anyhow::anyhow!("Lock poisoned: {e}"))?;
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| anyhow::anyhow!("Lock poisoned: {e}"))?;
         let now = chrono::Utc::now().timestamp_millis();
         conn.execute(
             "UPDATE skills SET remote_revision = ?1, update_status = ?2, last_checked_at = ?3,
@@ -168,7 +198,10 @@ impl LibraryStore {
 
     /// Delete a skill and its associated targets and tags.
     pub fn delete_skill(&self, id: &str) -> Result<()> {
-        let conn = self.conn.lock().map_err(|e| anyhow::anyhow!("Lock poisoned: {e}"))?;
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| anyhow::anyhow!("Lock poisoned: {e}"))?;
         conn.execute("DELETE FROM skills WHERE id = ?1", rusqlite::params![id])?;
         Ok(())
     }
@@ -179,7 +212,10 @@ impl LibraryStore {
 
     /// Insert a skill target (deployment) record.
     pub fn insert_target(&self, target: &SkillTargetRecord) -> Result<()> {
-        let conn = self.conn.lock().map_err(|e| anyhow::anyhow!("Lock poisoned: {e}"))?;
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| anyhow::anyhow!("Lock poisoned: {e}"))?;
         conn.execute(
             "INSERT OR REPLACE INTO skill_targets (id, skill_id, tool, target_path, mode, status, synced_at, last_error)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
@@ -193,7 +229,10 @@ impl LibraryStore {
 
     /// Get all target records for a skill.
     pub fn get_targets_for_skill(&self, skill_id: &str) -> Result<Vec<SkillTargetRecord>> {
-        let conn = self.conn.lock().map_err(|e| anyhow::anyhow!("Lock poisoned: {e}"))?;
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| anyhow::anyhow!("Lock poisoned: {e}"))?;
         let mut stmt = conn.prepare(
             "SELECT id, skill_id, tool, target_path, mode, status, synced_at, last_error
              FROM skill_targets WHERE skill_id = ?1",
@@ -204,7 +243,10 @@ impl LibraryStore {
 
     /// Get all target records across all skills.
     pub fn get_all_targets(&self) -> Result<Vec<SkillTargetRecord>> {
-        let conn = self.conn.lock().map_err(|e| anyhow::anyhow!("Lock poisoned: {e}"))?;
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| anyhow::anyhow!("Lock poisoned: {e}"))?;
         let mut stmt = conn.prepare(
             "SELECT id, skill_id, tool, target_path, mode, status, synced_at, last_error FROM skill_targets",
         )?;
@@ -214,7 +256,10 @@ impl LibraryStore {
 
     /// Delete a target record by skill ID and tool key.
     pub fn delete_target(&self, skill_id: &str, tool: &str) -> Result<()> {
-        let conn = self.conn.lock().map_err(|e| anyhow::anyhow!("Lock poisoned: {e}"))?;
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| anyhow::anyhow!("Lock poisoned: {e}"))?;
         conn.execute(
             "DELETE FROM skill_targets WHERE skill_id = ?1 AND tool = ?2",
             rusqlite::params![skill_id, tool],
@@ -228,7 +273,10 @@ impl LibraryStore {
 
     /// Get all unique tag names across all skills.
     pub fn get_all_tags(&self) -> Result<Vec<String>> {
-        let conn = self.conn.lock().map_err(|e| anyhow::anyhow!("Lock poisoned: {e}"))?;
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| anyhow::anyhow!("Lock poisoned: {e}"))?;
         let mut stmt = conn.prepare("SELECT DISTINCT tag FROM skill_tags ORDER BY tag")?;
         let rows = stmt.query_map([], |row| row.get::<_, String>(0))?;
         Ok(rows.filter_map(|r| r.ok()).collect())
@@ -236,8 +284,14 @@ impl LibraryStore {
 
     /// Set tags for a skill (replaces existing tags).
     pub fn set_tags_for_skill(&self, skill_id: &str, tags: &[String]) -> Result<()> {
-        let conn = self.conn.lock().map_err(|e| anyhow::anyhow!("Lock poisoned: {e}"))?;
-        conn.execute("DELETE FROM skill_tags WHERE skill_id = ?1", rusqlite::params![skill_id])?;
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| anyhow::anyhow!("Lock poisoned: {e}"))?;
+        conn.execute(
+            "DELETE FROM skill_tags WHERE skill_id = ?1",
+            rusqlite::params![skill_id],
+        )?;
         for tag in tags {
             let trimmed = tag.trim();
             if !trimmed.is_empty() {
@@ -252,7 +306,10 @@ impl LibraryStore {
 
     /// Get a map of skill ID to its list of tag names.
     pub fn get_tags_map(&self) -> Result<HashMap<String, Vec<String>>> {
-        let conn = self.conn.lock().map_err(|e| anyhow::anyhow!("Lock poisoned: {e}"))?;
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| anyhow::anyhow!("Lock poisoned: {e}"))?;
         let mut stmt = conn.prepare("SELECT skill_id, tag FROM skill_tags ORDER BY tag")?;
         let rows = stmt.query_map([], |row| {
             Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
@@ -270,7 +327,10 @@ impl LibraryStore {
 
     /// Insert a new tag group.
     pub fn insert_tag_group(&self, tg: &TagGroupRecord) -> Result<()> {
-        let conn = self.conn.lock().map_err(|e| anyhow::anyhow!("Lock poisoned: {e}"))?;
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| anyhow::anyhow!("Lock poisoned: {e}"))?;
         conn.execute(
             "INSERT INTO tag_groups (id, name, description, icon, sort_order, created_at, updated_at)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
@@ -281,7 +341,10 @@ impl LibraryStore {
 
     /// Get all tag groups ordered by sort_order and creation time.
     pub fn get_all_tag_groups(&self) -> Result<Vec<TagGroupRecord>> {
-        let conn = self.conn.lock().map_err(|e| anyhow::anyhow!("Lock poisoned: {e}"))?;
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| anyhow::anyhow!("Lock poisoned: {e}"))?;
         let mut stmt = conn.prepare(
             "SELECT id, name, description, icon, sort_order, created_at, updated_at
              FROM tag_groups ORDER BY sort_order, created_at",
@@ -298,7 +361,10 @@ impl LibraryStore {
         description: Option<&str>,
         icon: Option<&str>,
     ) -> Result<()> {
-        let conn = self.conn.lock().map_err(|e| anyhow::anyhow!("Lock poisoned: {e}"))?;
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| anyhow::anyhow!("Lock poisoned: {e}"))?;
         let now = chrono::Utc::now().timestamp_millis();
         conn.execute(
             "UPDATE tag_groups SET name = ?1, description = ?2, icon = ?3, updated_at = ?4 WHERE id = ?5",
@@ -309,19 +375,28 @@ impl LibraryStore {
 
     /// Delete a tag group by ID.
     pub fn delete_tag_group(&self, id: &str) -> Result<()> {
-        let conn = self.conn.lock().map_err(|e| anyhow::anyhow!("Lock poisoned: {e}"))?;
-        conn.execute("DELETE FROM tag_groups WHERE id = ?1", rusqlite::params![id])?;
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| anyhow::anyhow!("Lock poisoned: {e}"))?;
+        conn.execute(
+            "DELETE FROM tag_groups WHERE id = ?1",
+            rusqlite::params![id],
+        )?;
         Ok(())
     }
 
     /// Reorder tag groups by providing a sorted list of IDs.
     pub fn reorder_tag_groups(&self, ids: &[String]) -> Result<()> {
-        let conn = self.conn.lock().map_err(|e| anyhow::anyhow!("Lock poisoned: {e}"))?;
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| anyhow::anyhow!("Lock poisoned: {e}"))?;
         let tx = conn.unchecked_transaction()?;
         for (i, id) in ids.iter().enumerate() {
             tx.execute(
                 "UPDATE tag_groups SET sort_order = ?1 WHERE id = ?2",
-                rusqlite::params![i as i32, id],
+                rusqlite::params![i32::try_from(i)?, id],
             )?;
         }
         tx.commit()?;
@@ -332,7 +407,10 @@ impl LibraryStore {
 
     /// Add a skill to a tag group.
     pub fn add_skill_to_tag_group(&self, tag_group_id: &str, skill_id: &str) -> Result<()> {
-        let conn = self.conn.lock().map_err(|e| anyhow::anyhow!("Lock poisoned: {e}"))?;
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| anyhow::anyhow!("Lock poisoned: {e}"))?;
         let now = chrono::Utc::now().timestamp_millis();
         conn.execute(
             "INSERT OR IGNORE INTO tag_group_skills (tag_group_id, skill_id, added_at) VALUES (?1, ?2, ?3)",
@@ -343,7 +421,10 @@ impl LibraryStore {
 
     /// Remove a skill from a tag group.
     pub fn remove_skill_from_tag_group(&self, tag_group_id: &str, skill_id: &str) -> Result<()> {
-        let conn = self.conn.lock().map_err(|e| anyhow::anyhow!("Lock poisoned: {e}"))?;
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| anyhow::anyhow!("Lock poisoned: {e}"))?;
         conn.execute(
             "DELETE FROM tag_group_skills WHERE tag_group_id = ?1 AND skill_id = ?2",
             rusqlite::params![tag_group_id, skill_id],
@@ -353,7 +434,10 @@ impl LibraryStore {
 
     /// Get all skills belonging to a tag group.
     pub fn get_skills_for_tag_group(&self, tag_group_id: &str) -> Result<Vec<SkillRecord>> {
-        let conn = self.conn.lock().map_err(|e| anyhow::anyhow!("Lock poisoned: {e}"))?;
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| anyhow::anyhow!("Lock poisoned: {e}"))?;
         let mut stmt = conn.prepare(
             "SELECT s.id, s.name, s.description, s.source_type, s.source_ref, s.source_ref_resolved,
              s.source_subpath, s.source_branch, s.source_revision, s.remote_revision, s.central_path,
@@ -367,7 +451,10 @@ impl LibraryStore {
 
     /// Count enabled skills in a tag group.
     pub fn count_skills_for_tag_group(&self, tag_group_id: &str) -> Result<i64> {
-        let conn = self.conn.lock().map_err(|e| anyhow::anyhow!("Lock poisoned: {e}"))?;
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| anyhow::anyhow!("Lock poisoned: {e}"))?;
         let count: i64 = conn.query_row(
             "SELECT COUNT(*) FROM tag_group_skills tgs INNER JOIN skills s ON s.id = tgs.skill_id
              WHERE tgs.tag_group_id = ?1 AND s.enabled = 1",
@@ -379,12 +466,15 @@ impl LibraryStore {
 
     /// Reorder skills within a tag group.
     pub fn reorder_tag_group_skills(&self, tag_group_id: &str, skill_ids: &[String]) -> Result<()> {
-        let conn = self.conn.lock().map_err(|e| anyhow::anyhow!("Lock poisoned: {e}"))?;
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| anyhow::anyhow!("Lock poisoned: {e}"))?;
         let tx = conn.unchecked_transaction()?;
         for (i, skill_id) in skill_ids.iter().enumerate() {
             tx.execute(
                 "UPDATE tag_group_skills SET sort_order = ?1 WHERE tag_group_id = ?2 AND skill_id = ?3",
-                rusqlite::params![i as i32, tag_group_id, skill_id],
+                rusqlite::params![i32::try_from(i)?, tag_group_id, skill_id],
             )?;
         }
         tx.commit()?;
@@ -399,7 +489,10 @@ impl LibraryStore {
         tool: &str,
         enabled: bool,
     ) -> Result<()> {
-        let conn = self.conn.lock().map_err(|e| anyhow::anyhow!("Lock poisoned: {e}"))?;
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| anyhow::anyhow!("Lock poisoned: {e}"))?;
         let now = chrono::Utc::now().timestamp_millis();
         conn.execute(
             "INSERT INTO tag_group_skill_tools (tag_group_id, skill_id, tool, enabled, updated_at)
@@ -416,7 +509,10 @@ impl LibraryStore {
         tag_group_id: &str,
         skill_id: &str,
     ) -> Result<Vec<ToolToggleRecord>> {
-        let conn = self.conn.lock().map_err(|e| anyhow::anyhow!("Lock poisoned: {e}"))?;
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| anyhow::anyhow!("Lock poisoned: {e}"))?;
         let mut stmt = conn.prepare(
             "SELECT tag_group_id, skill_id, tool, enabled, updated_at FROM tag_group_skill_tools
              WHERE tag_group_id = ?1 AND skill_id = ?2 ORDER BY tool",
@@ -439,7 +535,10 @@ impl LibraryStore {
         tag_group_id: &str,
         skill_id: &str,
     ) -> Result<Vec<String>> {
-        let conn = self.conn.lock().map_err(|e| anyhow::anyhow!("Lock poisoned: {e}"))?;
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| anyhow::anyhow!("Lock poisoned: {e}"))?;
         let mut stmt = conn.prepare(
             "SELECT tool FROM tag_group_skill_tools WHERE tag_group_id = ?1 AND skill_id = ?2 AND enabled = 1",
         )?;
@@ -451,8 +550,12 @@ impl LibraryStore {
 
     /// Get tag group IDs for a skill.
     pub fn get_tag_groups_for_skill(&self, skill_id: &str) -> Result<Vec<String>> {
-        let conn = self.conn.lock().map_err(|e| anyhow::anyhow!("Lock poisoned: {e}"))?;
-        let mut stmt = conn.prepare("SELECT tag_group_id FROM tag_group_skills WHERE skill_id = ?1")?;
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| anyhow::anyhow!("Lock poisoned: {e}"))?;
+        let mut stmt =
+            conn.prepare("SELECT tag_group_id FROM tag_group_skills WHERE skill_id = ?1")?;
         let rows = stmt.query_map(rusqlite::params![skill_id], |row| row.get::<_, String>(0))?;
         Ok(rows.filter_map(|r| r.ok()).collect())
     }
@@ -461,9 +564,15 @@ impl LibraryStore {
 
     /// Set the tag groups bound to a project (replaces existing).
     pub fn set_project_tag_groups(&self, project_id: &str, tag_group_ids: &[String]) -> Result<()> {
-        let conn = self.conn.lock().map_err(|e| anyhow::anyhow!("Lock poisoned: {e}"))?;
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| anyhow::anyhow!("Lock poisoned: {e}"))?;
         let tx = conn.unchecked_transaction()?;
-        tx.execute("DELETE FROM project_tag_groups WHERE project_id = ?1", rusqlite::params![project_id])?;
+        tx.execute(
+            "DELETE FROM project_tag_groups WHERE project_id = ?1",
+            rusqlite::params![project_id],
+        )?;
         for tg_id in tag_group_ids {
             tx.execute(
                 "INSERT OR IGNORE INTO project_tag_groups (project_id, tag_group_id, added_at) VALUES (?1, ?2, ?3)",
@@ -476,26 +585,38 @@ impl LibraryStore {
 
     /// Get tag group IDs bound to a project.
     pub fn get_project_tag_groups(&self, project_id: &str) -> Result<Vec<String>> {
-        let conn = self.conn.lock().map_err(|e| anyhow::anyhow!("Lock poisoned: {e}"))?;
-        let mut stmt = conn.prepare("SELECT tag_group_id FROM project_tag_groups WHERE project_id = ?1")?;
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| anyhow::anyhow!("Lock poisoned: {e}"))?;
+        let mut stmt =
+            conn.prepare("SELECT tag_group_id FROM project_tag_groups WHERE project_id = ?1")?;
         let rows = stmt.query_map(rusqlite::params![project_id], |row| row.get::<_, String>(0))?;
         Ok(rows.filter_map(|r| r.ok()).collect())
     }
 
     /// Get total skill counts for all projects that have tag group bindings.
     pub fn get_all_project_skill_counts(&self) -> Result<Vec<(String, i64)>> {
-        let conn = self.conn.lock().map_err(|e| anyhow::anyhow!("Lock poisoned: {e}"))?;
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| anyhow::anyhow!("Lock poisoned: {e}"))?;
         let mut stmt = conn.prepare(
             "SELECT ptg.project_id, COUNT(*) FROM project_tag_groups ptg INNER JOIN tag_group_skills tgs
              ON ptg.tag_group_id = tgs.tag_group_id GROUP BY ptg.project_id",
         )?;
-        let rows = stmt.query_map([], |row| Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?)))?;
+        let rows = stmt.query_map([], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
+        })?;
         Ok(rows.filter_map(|r| r.ok()).collect())
     }
 
     /// Add a tag group binding to a project.
     pub fn add_project_tag_group(&self, project_id: &str, tag_group_id: &str) -> Result<()> {
-        let conn = self.conn.lock().map_err(|e| anyhow::anyhow!("Lock poisoned: {e}"))?;
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| anyhow::anyhow!("Lock poisoned: {e}"))?;
         conn.execute(
             "INSERT OR IGNORE INTO project_tag_groups (project_id, tag_group_id, added_at) VALUES (?1, ?2, ?3)",
             rusqlite::params![project_id, tag_group_id, chrono::Utc::now().timestamp_millis()],
@@ -505,7 +626,10 @@ impl LibraryStore {
 
     /// Remove a tag group binding from a project.
     pub fn remove_project_tag_group(&self, project_id: &str, tag_group_id: &str) -> Result<()> {
-        let conn = self.conn.lock().map_err(|e| anyhow::anyhow!("Lock poisoned: {e}"))?;
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| anyhow::anyhow!("Lock poisoned: {e}"))?;
         conn.execute(
             "DELETE FROM project_tag_groups WHERE project_id = ?1 AND tag_group_id = ?2",
             rusqlite::params![project_id, tag_group_id],
@@ -519,9 +643,13 @@ impl LibraryStore {
 
     /// Insert a new prompt.
     pub fn insert_prompt(&self, prompt: &PromptRecord) -> Result<()> {
-        let conn = self.conn.lock().map_err(|e| anyhow::anyhow!("Lock poisoned: {e}"))?;
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| anyhow::anyhow!("Lock poisoned: {e}"))?;
         let tags_json = serde_json::to_string(&prompt.tags).unwrap_or_else(|_| "[]".to_string());
-        let variables_json = serde_json::to_string(&prompt.variables).unwrap_or_else(|_| "[]".to_string());
+        let variables_json =
+            serde_json::to_string(&prompt.variables).unwrap_or_else(|_| "[]".to_string());
         conn.execute(
             "INSERT INTO prompts (id, name, description, content, slash, tags_json, scope, project_id,
              variables_json, kind, favorite, usage_count, last_used_at, created_at, updated_at)
@@ -538,7 +666,10 @@ impl LibraryStore {
 
     /// Get all prompts ordered by updated_at descending.
     pub fn get_all_prompts(&self) -> Result<Vec<PromptRecord>> {
-        let conn = self.conn.lock().map_err(|e| anyhow::anyhow!("Lock poisoned: {e}"))?;
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| anyhow::anyhow!("Lock poisoned: {e}"))?;
         let mut stmt = conn.prepare(
             "SELECT id, name, description, content, slash, tags_json, scope, project_id, variables_json,
              kind, favorite, usage_count, last_used_at, created_at, updated_at FROM prompts ORDER BY updated_at DESC",
@@ -549,7 +680,10 @@ impl LibraryStore {
 
     /// Get a prompt by its ID.
     pub fn get_prompt_by_id(&self, id: &str) -> Result<Option<PromptRecord>> {
-        let conn = self.conn.lock().map_err(|e| anyhow::anyhow!("Lock poisoned: {e}"))?;
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| anyhow::anyhow!("Lock poisoned: {e}"))?;
         let mut stmt = conn.prepare(
             "SELECT id, name, description, content, slash, tags_json, scope, project_id, variables_json,
              kind, favorite, usage_count, last_used_at, created_at, updated_at FROM prompts WHERE id = ?1",
@@ -560,7 +694,10 @@ impl LibraryStore {
 
     /// Get prompts filtered by kind ('prompt' or 'command').
     pub fn get_prompts_by_kind(&self, kind: &str) -> Result<Vec<PromptRecord>> {
-        let conn = self.conn.lock().map_err(|e| anyhow::anyhow!("Lock poisoned: {e}"))?;
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| anyhow::anyhow!("Lock poisoned: {e}"))?;
         let mut stmt = conn.prepare(
             "SELECT id, name, description, content, slash, tags_json, scope, project_id, variables_json,
              kind, favorite, usage_count, last_used_at, created_at, updated_at FROM prompts WHERE kind = ?1",
@@ -575,7 +712,10 @@ impl LibraryStore {
         slash: &str,
         project_id: Option<&str>,
     ) -> Result<Option<PromptRecord>> {
-        let conn = self.conn.lock().map_err(|e| anyhow::anyhow!("Lock poisoned: {e}"))?;
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| anyhow::anyhow!("Lock poisoned: {e}"))?;
         let mut stmt = conn.prepare(
             "SELECT id, name, description, content, slash, tags_json, scope, project_id, variables_json,
              kind, favorite, usage_count, last_used_at, created_at, updated_at FROM prompts
@@ -588,10 +728,14 @@ impl LibraryStore {
 
     /// Update all fields of a prompt.
     pub fn update_prompt(&self, prompt: &PromptRecord) -> Result<()> {
-        let conn = self.conn.lock().map_err(|e| anyhow::anyhow!("Lock poisoned: {e}"))?;
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| anyhow::anyhow!("Lock poisoned: {e}"))?;
         let now = chrono::Utc::now().timestamp_millis();
         let tags_json = serde_json::to_string(&prompt.tags).unwrap_or_else(|_| "[]".to_string());
-        let variables_json = serde_json::to_string(&prompt.variables).unwrap_or_else(|_| "[]".to_string());
+        let variables_json =
+            serde_json::to_string(&prompt.variables).unwrap_or_else(|_| "[]".to_string());
         conn.execute(
             "UPDATE prompts SET name = ?1, description = ?2, content = ?3, slash = ?4, tags_json = ?5,
              scope = ?6, project_id = ?7, variables_json = ?8, kind = ?9, favorite = ?10,
@@ -607,14 +751,20 @@ impl LibraryStore {
 
     /// Delete a prompt by ID.
     pub fn delete_prompt(&self, id: &str) -> Result<()> {
-        let conn = self.conn.lock().map_err(|e| anyhow::anyhow!("Lock poisoned: {e}"))?;
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| anyhow::anyhow!("Lock poisoned: {e}"))?;
         conn.execute("DELETE FROM prompts WHERE id = ?1", rusqlite::params![id])?;
         Ok(())
     }
 
     /// Increment usage count and update last_used_at.
     pub fn record_prompt_usage(&self, id: &str) -> Result<()> {
-        let conn = self.conn.lock().map_err(|e| anyhow::anyhow!("Lock poisoned: {e}"))?;
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| anyhow::anyhow!("Lock poisoned: {e}"))?;
         let now = chrono::Utc::now().timestamp_millis();
         conn.execute(
             "UPDATE prompts SET usage_count = usage_count + 1, last_used_at = ?1, updated_at = ?1 WHERE id = ?2",
@@ -644,7 +794,10 @@ impl LibraryStore {
 
     /// Insert a new MCP server.
     pub fn insert_mcp_server(&self, server: &McpServerRecord) -> Result<()> {
-        let conn = self.conn.lock().map_err(|e| anyhow::anyhow!("Lock poisoned: {e}"))?;
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| anyhow::anyhow!("Lock poisoned: {e}"))?;
         let tags_json = serde_json::to_string(&server.tags).unwrap_or_else(|_| "[]".to_string());
         conn.execute(
             "INSERT INTO mcp_servers (id, name, description, command, url, args_json, env_json,
@@ -664,7 +817,10 @@ impl LibraryStore {
 
     /// Get all MCP servers ordered by name.
     pub fn get_all_mcp_servers(&self) -> Result<Vec<McpServerRecord>> {
-        let conn = self.conn.lock().map_err(|e| anyhow::anyhow!("Lock poisoned: {e}"))?;
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| anyhow::anyhow!("Lock poisoned: {e}"))?;
         let mut stmt = conn.prepare(
             "SELECT id, name, description, command, url, args_json, env_json, transport, scope,
              project_id, source_registry, source_ref, tags_json, enabled, usage_count,
@@ -676,7 +832,10 @@ impl LibraryStore {
 
     /// Get an MCP server by its ID.
     pub fn get_mcp_server_by_id(&self, id: &str) -> Result<Option<McpServerRecord>> {
-        let conn = self.conn.lock().map_err(|e| anyhow::anyhow!("Lock poisoned: {e}"))?;
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| anyhow::anyhow!("Lock poisoned: {e}"))?;
         let mut stmt = conn.prepare(
             "SELECT id, name, description, command, url, args_json, env_json, transport, scope,
              project_id, source_registry, source_ref, tags_json, enabled, usage_count,
@@ -688,7 +847,10 @@ impl LibraryStore {
 
     /// Update all fields of an MCP server.
     pub fn update_mcp_server(&self, server: &McpServerRecord) -> Result<()> {
-        let conn = self.conn.lock().map_err(|e| anyhow::anyhow!("Lock poisoned: {e}"))?;
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| anyhow::anyhow!("Lock poisoned: {e}"))?;
         let now = chrono::Utc::now().timestamp_millis();
         let tags_json = serde_json::to_string(&server.tags).unwrap_or_else(|_| "[]".to_string());
         conn.execute(
@@ -697,11 +859,23 @@ impl LibraryStore {
              source_registry = ?10, source_ref = ?11, tags_json = ?12, enabled = ?13,
              usage_count = ?14, last_used_at = ?15, updated_at = ?16 WHERE id = ?17",
             rusqlite::params![
-                server.name, server.description, server.command, server.url,
-                server.args_json, server.env_json, server.transport, server.scope, server.project_id,
-                server.source_registry, server.source_ref, tags_json,
-                i32::from(server.enabled), server.usage_count, server.last_used_at,
-                now, server.id,
+                server.name,
+                server.description,
+                server.command,
+                server.url,
+                server.args_json,
+                server.env_json,
+                server.transport,
+                server.scope,
+                server.project_id,
+                server.source_registry,
+                server.source_ref,
+                tags_json,
+                i32::from(server.enabled),
+                server.usage_count,
+                server.last_used_at,
+                now,
+                server.id,
             ],
         )?;
         Ok(())
@@ -709,8 +883,14 @@ impl LibraryStore {
 
     /// Delete an MCP server by ID.
     pub fn delete_mcp_server(&self, id: &str) -> Result<()> {
-        let conn = self.conn.lock().map_err(|e| anyhow::anyhow!("Lock poisoned: {e}"))?;
-        conn.execute("DELETE FROM mcp_servers WHERE id = ?1", rusqlite::params![id])?;
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| anyhow::anyhow!("Lock poisoned: {e}"))?;
+        conn.execute(
+            "DELETE FROM mcp_servers WHERE id = ?1",
+            rusqlite::params![id],
+        )?;
         Ok(())
     }
 
@@ -720,7 +900,10 @@ impl LibraryStore {
 
     /// Get a setting value by key.
     pub fn get_setting(&self, key: &str) -> Result<Option<String>> {
-        let conn = self.conn.lock().map_err(|e| anyhow::anyhow!("Lock poisoned: {e}"))?;
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| anyhow::anyhow!("Lock poisoned: {e}"))?;
         let mut stmt = conn.prepare("SELECT value FROM settings WHERE key = ?1")?;
         let mut rows = stmt.query_map(rusqlite::params![key], |row| row.get::<_, String>(0))?;
         Ok(rows.next().and_then(|r| r.ok()))
@@ -728,7 +911,10 @@ impl LibraryStore {
 
     /// Set a setting value.
     pub fn set_setting(&self, key: &str, value: &str) -> Result<()> {
-        let conn = self.conn.lock().map_err(|e| anyhow::anyhow!("Lock poisoned: {e}"))?;
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| anyhow::anyhow!("Lock poisoned: {e}"))?;
         conn.execute(
             "INSERT INTO settings (key, value) VALUES (?1, ?2) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
             rusqlite::params![key, value],
@@ -738,8 +924,12 @@ impl LibraryStore {
 
     /// Get cached data by key if within TTL.
     pub fn get_cache(&self, key: &str, ttl_secs: i64) -> Result<Option<String>> {
-        let conn = self.conn.lock().map_err(|e| anyhow::anyhow!("Lock poisoned: {e}"))?;
-        let mut stmt = conn.prepare("SELECT data, fetched_at FROM skillssh_cache WHERE cache_key = ?1")?;
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| anyhow::anyhow!("Lock poisoned: {e}"))?;
+        let mut stmt =
+            conn.prepare("SELECT data, fetched_at FROM skillssh_cache WHERE cache_key = ?1")?;
         let mut rows = stmt.query_map(rusqlite::params![key], |row| {
             Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
         })?;
@@ -756,7 +946,10 @@ impl LibraryStore {
 
     /// Cache data with a key.
     pub fn set_cache(&self, key: &str, data: &str) -> Result<()> {
-        let conn = self.conn.lock().map_err(|e| anyhow::anyhow!("Lock poisoned: {e}"))?;
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| anyhow::anyhow!("Lock poisoned: {e}"))?;
         let now = chrono::Utc::now().timestamp_millis();
         conn.execute(
             "INSERT INTO skillssh_cache (cache_key, data, fetched_at) VALUES (?1, ?2, ?3)
@@ -786,7 +979,10 @@ impl LibraryStore {
         paths_json: &str,
         lifecycle_json: Option<&str>,
     ) -> Result<()> {
-        let conn = self.conn.lock().map_err(|e| anyhow::anyhow!("Lock poisoned: {e}"))?;
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| anyhow::anyhow!("Lock poisoned: {e}"))?;
         let now = chrono::Utc::now().timestamp_millis();
         conn.execute(
             "INSERT INTO agent_plugins (id, name, icon, description, version, is_builtin, enabled,
@@ -794,9 +990,18 @@ impl LibraryStore {
              created_at, updated_at)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, 1, ?7, ?8, ?9, ?10, ?11, ?12, ?12)",
             rusqlite::params![
-                id, name, icon, description, version, i32::from(is_builtin),
-                execution_json, configuration_json, capabilities_json, paths_json,
-                lifecycle_json, now,
+                id,
+                name,
+                icon,
+                description,
+                version,
+                i32::from(is_builtin),
+                execution_json,
+                configuration_json,
+                capabilities_json,
+                paths_json,
+                lifecycle_json,
+                now,
             ],
         )?;
         Ok(())
@@ -804,7 +1009,10 @@ impl LibraryStore {
 
     /// Get all custom (non-built-in) agent plugins.
     pub fn get_custom_agent_plugins(&self) -> Result<Vec<serde_json::Value>> {
-        let conn = self.conn.lock().map_err(|e| anyhow::anyhow!("Lock poisoned: {e}"))?;
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| anyhow::anyhow!("Lock poisoned: {e}"))?;
         let mut stmt = conn.prepare(
             "SELECT id, name, icon, description, version, is_builtin, enabled,
              execution_json, configuration_json, capabilities_json, paths_json, lifecycle_json,
@@ -842,7 +1050,10 @@ impl LibraryStore {
 
     /// Get a custom agent plugin by ID.
     pub fn get_custom_agent_plugin_by_id(&self, id: &str) -> Result<Option<serde_json::Value>> {
-        let conn = self.conn.lock().map_err(|e| anyhow::anyhow!("Lock poisoned: {e}"))?;
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| anyhow::anyhow!("Lock poisoned: {e}"))?;
         let mut stmt = conn.prepare(
             "SELECT id, name, icon, description, version, is_builtin, enabled,
              execution_json, configuration_json, capabilities_json, paths_json, lifecycle_json,
@@ -880,16 +1091,28 @@ impl LibraryStore {
 
     /// Delete a custom agent plugin by ID.
     pub fn delete_custom_agent_plugin(&self, id: &str) -> Result<()> {
-        let conn = self.conn.lock().map_err(|e| anyhow::anyhow!("Lock poisoned: {e}"))?;
-        conn.execute("DELETE FROM agent_plugins WHERE id = ?1 AND is_builtin = 0", rusqlite::params![id])?;
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| anyhow::anyhow!("Lock poisoned: {e}"))?;
+        conn.execute(
+            "DELETE FROM agent_plugins WHERE id = ?1 AND is_builtin = 0",
+            rusqlite::params![id],
+        )?;
         Ok(())
     }
 
     /// Get all project tag group counts.
     pub fn get_all_project_tag_group_counts(&self) -> Result<Vec<(String, i64)>> {
-        let conn = self.conn.lock().map_err(|e| anyhow::anyhow!("Lock poisoned: {e}"))?;
-        let mut stmt = conn.prepare("SELECT project_id, COUNT(*) FROM project_tag_groups GROUP BY project_id")?;
-        let rows = stmt.query_map([], |row| Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?)))?;
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| anyhow::anyhow!("Lock poisoned: {e}"))?;
+        let mut stmt = conn
+            .prepare("SELECT project_id, COUNT(*) FROM project_tag_groups GROUP BY project_id")?;
+        let rows = stmt.query_map([], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
+        })?;
         Ok(rows.filter_map(|r| r.ok()).collect())
     }
 
@@ -899,7 +1122,10 @@ impl LibraryStore {
 
     /// Insert a new MCP tag group.
     pub fn insert_mcp_tag_group(&self, group: &McpTagGroupRecord) -> Result<()> {
-        let conn = self.conn.lock().map_err(|e| anyhow::anyhow!("Lock poisoned: {e}"))?;
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| anyhow::anyhow!("Lock poisoned: {e}"))?;
         conn.execute(
             "INSERT INTO mcp_tag_groups (id, name, description, icon, sort_order, created_at, updated_at)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
@@ -910,7 +1136,10 @@ impl LibraryStore {
 
     /// Get all MCP tag groups.
     pub fn get_all_mcp_tag_groups(&self) -> Result<Vec<McpTagGroupRecord>> {
-        let conn = self.conn.lock().map_err(|e| anyhow::anyhow!("Lock poisoned: {e}"))?;
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| anyhow::anyhow!("Lock poisoned: {e}"))?;
         let mut stmt = conn.prepare(
             "SELECT id, name, description, icon, sort_order, created_at, updated_at FROM mcp_tag_groups ORDER BY sort_order, created_at",
         )?;
@@ -920,7 +1149,10 @@ impl LibraryStore {
 
     /// Get an MCP tag group by ID.
     pub fn get_mcp_tag_group_by_id(&self, id: &str) -> Result<Option<McpTagGroupRecord>> {
-        let conn = self.conn.lock().map_err(|e| anyhow::anyhow!("Lock poisoned: {e}"))?;
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| anyhow::anyhow!("Lock poisoned: {e}"))?;
         let mut stmt = conn.prepare(
             "SELECT id, name, description, icon, sort_order, created_at, updated_at FROM mcp_tag_groups WHERE id = ?1",
         )?;
@@ -936,7 +1168,10 @@ impl LibraryStore {
         description: Option<&str>,
         icon: Option<&str>,
     ) -> Result<()> {
-        let conn = self.conn.lock().map_err(|e| anyhow::anyhow!("Lock poisoned: {e}"))?;
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| anyhow::anyhow!("Lock poisoned: {e}"))?;
         let now = chrono::Utc::now().timestamp_millis();
         conn.execute(
             "UPDATE mcp_tag_groups SET name = ?1, description = ?2, icon = ?3, updated_at = ?4 WHERE id = ?5",
@@ -947,19 +1182,28 @@ impl LibraryStore {
 
     /// Delete an MCP tag group.
     pub fn delete_mcp_tag_group(&self, id: &str) -> Result<()> {
-        let conn = self.conn.lock().map_err(|e| anyhow::anyhow!("Lock poisoned: {e}"))?;
-        conn.execute("DELETE FROM mcp_tag_groups WHERE id = ?1", rusqlite::params![id])?;
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| anyhow::anyhow!("Lock poisoned: {e}"))?;
+        conn.execute(
+            "DELETE FROM mcp_tag_groups WHERE id = ?1",
+            rusqlite::params![id],
+        )?;
         Ok(())
     }
 
     /// Reorder MCP tag groups.
     pub fn reorder_mcp_tag_groups(&self, ids: &[String]) -> Result<()> {
-        let conn = self.conn.lock().map_err(|e| anyhow::anyhow!("Lock poisoned: {e}"))?;
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| anyhow::anyhow!("Lock poisoned: {e}"))?;
         let tx = conn.unchecked_transaction()?;
         for (i, id) in ids.iter().enumerate() {
             tx.execute(
                 "UPDATE mcp_tag_groups SET sort_order = ?1 WHERE id = ?2",
-                rusqlite::params![i as i32, id],
+                rusqlite::params![i32::try_from(i)?, id],
             )?;
         }
         tx.commit()?;
@@ -968,15 +1212,24 @@ impl LibraryStore {
 
     /// Get server IDs for an MCP tag group.
     pub fn get_servers_for_mcp_tag_group(&self, tag_group_id: &str) -> Result<Vec<String>> {
-        let conn = self.conn.lock().map_err(|e| anyhow::anyhow!("Lock poisoned: {e}"))?;
-        let mut stmt = conn.prepare("SELECT server_id FROM mcp_tag_group_servers WHERE tag_group_id = ?1")?;
-        let rows = stmt.query_map(rusqlite::params![tag_group_id], |row| row.get::<_, String>(0))?;
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| anyhow::anyhow!("Lock poisoned: {e}"))?;
+        let mut stmt =
+            conn.prepare("SELECT server_id FROM mcp_tag_group_servers WHERE tag_group_id = ?1")?;
+        let rows = stmt.query_map(rusqlite::params![tag_group_id], |row| {
+            row.get::<_, String>(0)
+        })?;
         Ok(rows.filter_map(|r| r.ok()).collect())
     }
 
     /// Add a server to an MCP tag group.
     pub fn add_server_to_mcp_tag_group(&self, tag_group_id: &str, server_id: &str) -> Result<()> {
-        let conn = self.conn.lock().map_err(|e| anyhow::anyhow!("Lock poisoned: {e}"))?;
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| anyhow::anyhow!("Lock poisoned: {e}"))?;
         let now = chrono::Utc::now().timestamp_millis();
         conn.execute(
             "INSERT OR IGNORE INTO mcp_tag_group_servers (tag_group_id, server_id, added_at) VALUES (?1, ?2, ?3)",
@@ -986,8 +1239,15 @@ impl LibraryStore {
     }
 
     /// Remove a server from an MCP tag group.
-    pub fn remove_server_from_mcp_tag_group(&self, tag_group_id: &str, server_id: &str) -> Result<()> {
-        let conn = self.conn.lock().map_err(|e| anyhow::anyhow!("Lock poisoned: {e}"))?;
+    pub fn remove_server_from_mcp_tag_group(
+        &self,
+        tag_group_id: &str,
+        server_id: &str,
+    ) -> Result<()> {
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| anyhow::anyhow!("Lock poisoned: {e}"))?;
         conn.execute(
             "DELETE FROM mcp_tag_group_servers WHERE tag_group_id = ?1 AND server_id = ?2",
             rusqlite::params![tag_group_id, server_id],
@@ -1003,7 +1263,10 @@ impl LibraryStore {
         agent_id: &str,
         enabled: bool,
     ) -> Result<()> {
-        let conn = self.conn.lock().map_err(|e| anyhow::anyhow!("Lock poisoned: {e}"))?;
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| anyhow::anyhow!("Lock poisoned: {e}"))?;
         let now = chrono::Utc::now().timestamp_millis();
         conn.execute(
             "INSERT INTO mcp_tag_group_server_agents (tag_group_id, server_id, agent_id, enabled, updated_at)
@@ -1016,15 +1279,22 @@ impl LibraryStore {
 
     /// Get tag group IDs for an MCP server.
     pub fn get_tag_groups_for_mcp_server(&self, server_id: &str) -> Result<Vec<String>> {
-        let conn = self.conn.lock().map_err(|e| anyhow::anyhow!("Lock poisoned: {e}"))?;
-        let mut stmt = conn.prepare("SELECT tag_group_id FROM mcp_tag_group_servers WHERE server_id = ?1")?;
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| anyhow::anyhow!("Lock poisoned: {e}"))?;
+        let mut stmt =
+            conn.prepare("SELECT tag_group_id FROM mcp_tag_group_servers WHERE server_id = ?1")?;
         let rows = stmt.query_map(rusqlite::params![server_id], |row| row.get::<_, String>(0))?;
         Ok(rows.filter_map(|r| r.ok()).collect())
     }
 
     /// Insert a deployment target record.
     pub fn insert_mcp_server_target(&self, target: &McpServerTargetRecord) -> Result<()> {
-        let conn = self.conn.lock().map_err(|e| anyhow::anyhow!("Lock poisoned: {e}"))?;
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| anyhow::anyhow!("Lock poisoned: {e}"))?;
         conn.execute(
             "INSERT INTO mcp_server_targets (id, server_id, agent_id, target_path, status, deployed_at, last_error)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
@@ -1035,7 +1305,10 @@ impl LibraryStore {
 
     /// Get all deployment targets for a server.
     pub fn get_mcp_server_targets(&self, server_id: &str) -> Result<Vec<McpServerTargetRecord>> {
-        let conn = self.conn.lock().map_err(|e| anyhow::anyhow!("Lock poisoned: {e}"))?;
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| anyhow::anyhow!("Lock poisoned: {e}"))?;
         let mut stmt = conn.prepare(
             "SELECT id, server_id, agent_id, target_path, status, deployed_at, last_error FROM mcp_server_targets WHERE server_id = ?1",
         )?;
@@ -1045,7 +1318,10 @@ impl LibraryStore {
 
     /// Delete a deployment target.
     pub fn delete_mcp_server_target(&self, server_id: &str, agent_id: &str) -> Result<()> {
-        let conn = self.conn.lock().map_err(|e| anyhow::anyhow!("Lock poisoned: {e}"))?;
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| anyhow::anyhow!("Lock poisoned: {e}"))?;
         conn.execute(
             "DELETE FROM mcp_server_targets WHERE server_id = ?1 AND agent_id = ?2",
             rusqlite::params![server_id, agent_id],
@@ -1055,7 +1331,10 @@ impl LibraryStore {
 
     /// Insert a project MCP tag group binding.
     pub fn insert_project_mcp_tag_group(&self, project_id: &str, tag_group_id: &str) -> Result<()> {
-        let conn = self.conn.lock().map_err(|e| anyhow::anyhow!("Lock poisoned: {e}"))?;
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| anyhow::anyhow!("Lock poisoned: {e}"))?;
         let now = chrono::Utc::now().timestamp_millis();
         conn.execute(
             "INSERT OR IGNORE INTO project_mcp_tag_groups (project_id, tag_group_id, added_at) VALUES (?1, ?2, ?3)",
@@ -1066,7 +1345,10 @@ impl LibraryStore {
 
     /// Delete a project MCP tag group binding.
     pub fn delete_project_mcp_tag_group(&self, project_id: &str, tag_group_id: &str) -> Result<()> {
-        let conn = self.conn.lock().map_err(|e| anyhow::anyhow!("Lock poisoned: {e}"))?;
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| anyhow::anyhow!("Lock poisoned: {e}"))?;
         conn.execute(
             "DELETE FROM project_mcp_tag_groups WHERE project_id = ?1 AND tag_group_id = ?2",
             rusqlite::params![project_id, tag_group_id],
@@ -1076,17 +1358,31 @@ impl LibraryStore {
 
     /// Get all tag group IDs bound to a project.
     pub fn get_project_mcp_tag_groups(&self, project_id: &str) -> Result<Vec<String>> {
-        let conn = self.conn.lock().map_err(|e| anyhow::anyhow!("Lock poisoned: {e}"))?;
-        let mut stmt = conn.prepare("SELECT tag_group_id FROM project_mcp_tag_groups WHERE project_id = ?1")?;
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| anyhow::anyhow!("Lock poisoned: {e}"))?;
+        let mut stmt =
+            conn.prepare("SELECT tag_group_id FROM project_mcp_tag_groups WHERE project_id = ?1")?;
         let rows = stmt.query_map(rusqlite::params![project_id], |row| row.get::<_, String>(0))?;
         Ok(rows.filter_map(|r| r.ok()).collect())
     }
 
     /// Atomically replace all tag group bindings for a project.
-    pub fn set_project_mcp_tag_groups(&self, project_id: &str, tag_group_ids: &[String]) -> Result<()> {
-        let conn = self.conn.lock().map_err(|e| anyhow::anyhow!("Lock poisoned: {e}"))?;
+    pub fn set_project_mcp_tag_groups(
+        &self,
+        project_id: &str,
+        tag_group_ids: &[String],
+    ) -> Result<()> {
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| anyhow::anyhow!("Lock poisoned: {e}"))?;
         let tx = conn.unchecked_transaction()?;
-        tx.execute("DELETE FROM project_mcp_tag_groups WHERE project_id = ?1", rusqlite::params![project_id])?;
+        tx.execute(
+            "DELETE FROM project_mcp_tag_groups WHERE project_id = ?1",
+            rusqlite::params![project_id],
+        )?;
         for tg_id in tag_group_ids {
             tx.execute(
                 "INSERT OR IGNORE INTO project_mcp_tag_groups (project_id, tag_group_id, added_at) VALUES (?1, ?2, ?3)",
@@ -1099,11 +1395,16 @@ impl LibraryStore {
 
     /// Get per-project MCP tag group counts.
     pub fn get_all_project_mcp_tag_group_counts(&self) -> Result<Vec<(String, i64)>> {
-        let conn = self.conn.lock().map_err(|e| anyhow::anyhow!("Lock poisoned: {e}"))?;
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| anyhow::anyhow!("Lock poisoned: {e}"))?;
         let mut stmt = conn.prepare(
             "SELECT project_id, COUNT(*) FROM project_mcp_tag_groups GROUP BY project_id",
         )?;
-        let rows = stmt.query_map([], |row| Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?)))?;
+        let rows = stmt.query_map([], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
+        })?;
         Ok(rows.filter_map(|r| r.ok()).collect())
     }
 
@@ -1113,7 +1414,10 @@ impl LibraryStore {
         tag_group_id: &str,
         server_id: &str,
     ) -> Result<Vec<(String, bool)>> {
-        let conn = self.conn.lock().map_err(|e| anyhow::anyhow!("Lock poisoned: {e}"))?;
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| anyhow::anyhow!("Lock poisoned: {e}"))?;
         let mut stmt = conn.prepare(
             "SELECT agent_id, enabled FROM mcp_tag_group_server_agents WHERE tag_group_id = ?1 AND server_id = ?2",
         )?;
@@ -1140,7 +1444,10 @@ impl LibraryStore {
 
     /// Record MCP server usage.
     pub fn record_mcp_server_usage(&self, id: &str) -> Result<()> {
-        let conn = self.conn.lock().map_err(|e| anyhow::anyhow!("Lock poisoned: {e}"))?;
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| anyhow::anyhow!("Lock poisoned: {e}"))?;
         let now = chrono::Utc::now().timestamp_millis();
         conn.execute(
             "UPDATE mcp_servers SET usage_count = usage_count + 1, last_used_at = ?1, updated_at = ?1 WHERE id = ?2",
@@ -1205,21 +1512,12 @@ fn map_tag_group_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<TagGroupRecord
     })
 }
 
-fn map_tool_toggle_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<ToolToggleRecord> {
-    Ok(ToolToggleRecord {
-        tag_group_id: row.get(0)?,
-        skill_id: row.get(1)?,
-        tool: row.get(2)?,
-        enabled: row.get::<_, i32>(3)? != 0,
-        updated_at: row.get(4)?,
-    })
-}
-
 fn map_prompt_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<PromptRecord> {
     let tags_json: String = row.get(5)?;
     let tags: Vec<String> = serde_json::from_str(&tags_json).unwrap_or_default();
     let variables_json: String = row.get(8)?;
-    let variables: Vec<PromptVariableRecord> = serde_json::from_str(&variables_json).unwrap_or_default();
+    let variables: Vec<PromptVariableRecord> =
+        serde_json::from_str(&variables_json).unwrap_or_default();
     Ok(PromptRecord {
         id: row.get(0)?,
         name: row.get(1)?,
@@ -1310,7 +1608,7 @@ mod tests {
             name: "test-skill".into(),
             description: None,
             source_type: "git".into(),
-            source_ref: "https://example.com".into(),
+            source_ref: Some("https://example.com".into()),
             source_ref_resolved: None,
             source_subpath: None,
             source_branch: None,

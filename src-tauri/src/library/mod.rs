@@ -10,7 +10,7 @@ pub mod migrations;
 pub mod store;
 
 // Sub-modules (migrated from `skill/` and `mcp/`)
-pub mod skill;
 pub mod mcp;
+pub mod skill;
 
 pub use store::LibraryStore;

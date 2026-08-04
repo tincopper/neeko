@@ -6,9 +6,9 @@ use crate::common::git::transport::{GitTransport, GitTransportKind};
 use crate::common::runtime::AppRuntime;
 use crate::common::terminal::remote::RemoteTerminalManager;
 use crate::conversation::ConversationManager;
+use crate::library;
 use crate::project::ProjectManager;
 use crate::session::StorageManager;
-use crate::library;
 use crate::terminal::TerminalManager;
 use crate::AppError;
 use std::collections::HashMap;
@@ -388,14 +388,14 @@ impl AppStateWrapper {
     /// Create `AppStateWrapper` with an auto-initialized `LibraryStore`.
     #[allow(clippy::expect_used)]
     #[must_use]
-     pub fn new() -> Self {
-         library::db::ensure_db_ready().expect("Failed to prepare library database");
-         let store = Arc::new(
-             library::LibraryStore::open(&library::db::db_path())
-                 .expect("Failed to create library store"),
-         );
+    pub fn new() -> Self {
+        library::db::ensure_db_ready().expect("Failed to prepare library database");
+        let store = Arc::new(
+            library::LibraryStore::open(&library::db::db_path())
+                .expect("Failed to create library store"),
+        );
         Self::new_with_library_store(store)
-     }
+    }
 }
 
 impl Default for AppStateWrapper {

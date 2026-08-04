@@ -6,11 +6,11 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use tauri::State;
 
- use crate::library::LibraryStore;
-use super::types::{McpTagGroupRecord, McpServerTargetRecord};
-use crate::library::skill::types::McpServerRecord;
- use crate::agent::resource_deployer::ResourceDeployer;
+use super::types::McpTagGroupRecord;
+use crate::agent::resource_deployer::ResourceDeployer;
 use crate::common::runtime::{run_blocking, run_blocking_result};
+use crate::library::skill::types::McpServerRecord;
+use crate::library::LibraryStore;
 use crate::AppError;
 
 // ─── DTOs ─────────────────────────────────────────────────────────────────
@@ -94,8 +94,7 @@ pub struct McpServerDtoOut {
 
 fn mcp_record_to_dto(s: &McpServerRecord) -> McpServerDtoOut {
     let args: Vec<serde_json::Value> = serde_json::from_str(&s.args_json).unwrap_or_default();
-    let env: HashMap<String, String> =
-        serde_json::from_str(&s.env_json).unwrap_or_default();
+    let env: HashMap<String, String> = serde_json::from_str(&s.env_json).unwrap_or_default();
     McpServerDtoOut {
         id: s.id.clone(),
         name: s.name.clone(),
@@ -370,7 +369,14 @@ pub async fn update_mcp_tag_group_cmd(
         if let Some(i) = icon {
             group.icon = Some(i);
         }
-        store.update_mcp_tag_group(&id, &group.name, group.description.as_deref(), group.icon.as_deref()).map_err(AppError::from)?;
+        store
+            .update_mcp_tag_group(
+                &id,
+                &group.name,
+                group.description.as_deref(),
+                group.icon.as_deref(),
+            )
+            .map_err(AppError::from)?;
         let server_ids = store
             .get_servers_for_mcp_tag_group(&id)
             .map_err(AppError::from)?;
@@ -633,7 +639,8 @@ pub async fn apply_project_mcp_servers_cmd(
                         if let Err(e) = deployer.deploy_mcp(&server, agent_id, Some(&path)) {
                             log::error!(
                                 "Failed to deploy MCP server '{}' to agent '{}': {e}",
-                                server.name, agent_id
+                                server.name,
+                                agent_id
                             );
                         }
                     }
@@ -677,11 +684,8 @@ pub async fn test_mcp_server_cmd(
     test_mcp_connection_logic(server).await
 }
 
-async fn test_mcp_connection_logic(
-    server: McpServerRecord,
-) -> Result<McpTestResult, AppError> {
-    let env: HashMap<String, String> =
-        serde_json::from_str(&server.env_json).unwrap_or_default();
+async fn test_mcp_connection_logic(server: McpServerRecord) -> Result<McpTestResult, AppError> {
+    let env: HashMap<String, String> = serde_json::from_str(&server.env_json).unwrap_or_default();
     let args: Vec<String> = serde_json::from_str(&server.args_json).unwrap_or_default();
 
     let outcome = if server.transport == "http" {
@@ -817,8 +821,9 @@ pub async fn fetch_mcp_registry_server_cmd(
     let cache_key = format!("mcp_registry_server_{}", name);
 
     if let Ok(Some(cached)) = store.get_cache(&cache_key, 300) {
-        if let Ok(detail) =
-            serde_json::from_str::<crate::library::mcp::mcp_registry_api::McpRegistryServerDetail>(&cached)
+        if let Ok(detail) = serde_json::from_str::<
+            crate::library::mcp::mcp_registry_api::McpRegistryServerDetail,
+        >(&cached)
         {
             return Ok(detail);
         }
@@ -1169,7 +1174,7 @@ mod mcp_test_logic_tests {
     #[test]
     fn mcp_record_to_dto_preserves_all_fields() {
         let record = make_mcp_record();
-        let dto = mcp_record_to_dto(record);
+        let dto = mcp_record_to_dto(&record);
         assert_eq!(dto.id, "test-id");
         assert_eq!(dto.name, "test-server");
         assert_eq!(dto.description.as_deref(), Some("A test server"));
@@ -1187,7 +1192,7 @@ mod mcp_test_logic_tests {
     #[test]
     fn mcp_record_to_dto_parses_args_and_env() {
         let record = make_mcp_record();
-        let dto = mcp_record_to_dto(record);
+        let dto = mcp_record_to_dto(&record);
         assert_eq!(dto.args.len(), 2);
         assert_eq!(dto.args[0], "-y");
         assert_eq!(dto.args[1], "@modelcontextprotocol/server-filesystem");
@@ -1199,9 +1204,15 @@ mod mcp_test_logic_tests {
         let mut record = make_mcp_record();
         record.args_json = "not valid json".to_string();
         record.env_json = "also not valid".to_string();
-        let dto = mcp_record_to_dto(record);
-        assert!(dto.args.is_empty(), "invalid args_json should fall back to empty vec");
-        assert!(dto.env.is_empty(), "invalid env_json should fall back to empty map");
+        let dto = mcp_record_to_dto(&record);
+        assert!(
+            dto.args.is_empty(),
+            "invalid args_json should fall back to empty vec"
+        );
+        assert!(
+            dto.env.is_empty(),
+            "invalid env_json should fall back to empty map"
+        );
         // Other fields must still be preserved
         assert_eq!(dto.name, "test-server");
         assert_eq!(dto.command, "npx");
@@ -1212,7 +1223,7 @@ mod mcp_test_logic_tests {
         let mut record = make_mcp_record();
         record.args_json = "[]".to_string();
         record.env_json = "{}".to_string();
-        let dto = mcp_record_to_dto(record);
+        let dto = mcp_record_to_dto(&record);
         assert!(dto.args.is_empty());
         assert!(dto.env.is_empty());
     }
@@ -1220,7 +1231,7 @@ mod mcp_test_logic_tests {
     #[test]
     fn mcp_record_to_dto_preserves_timestamps() {
         let record = make_mcp_record();
-        let dto = mcp_record_to_dto(record);
+        let dto = mcp_record_to_dto(&record);
         assert_eq!(dto.created_at, 1000);
         assert_eq!(dto.updated_at, 2000);
     }
@@ -1265,14 +1276,34 @@ mod mcp_test_logic_tests {
         assert_eq!(input.name, "fs");
         assert_eq!(input.description.as_deref(), Some("Filesystem server"));
         assert_eq!(input.command, "npx");
-        assert_eq!(input.args.as_deref(), Some(&["-y".to_string(), "@modelcontextprotocol/server-filesystem".to_string()][..]));
-        assert_eq!(input.env.as_ref().unwrap().get("TOKEN").map(String::as_str), Some("abc"));
+        assert_eq!(
+            input.args.as_deref(),
+            Some(
+                &[
+                    "-y".to_string(),
+                    "@modelcontextprotocol/server-filesystem".to_string()
+                ][..]
+            )
+        );
+        assert_eq!(
+            input.env.as_ref().unwrap().get("TOKEN").map(String::as_str),
+            Some("abc")
+        );
         assert_eq!(input.transport.as_deref(), Some("stdio"));
         assert_eq!(input.scope.as_deref(), Some("project"));
         assert_eq!(input.project_id.as_deref(), Some("proj-123"));
-        assert_eq!(input.source_registry.as_deref(), Some("registry.modelcontextprotocol.io"));
-        assert_eq!(input.source_ref.as_deref(), Some("io.github.modelcontextprotocol/filesystem"));
-        assert_eq!(input.tags.as_deref(), Some(&["fs".to_string(), "local".to_string()][..]));
+        assert_eq!(
+            input.source_registry.as_deref(),
+            Some("registry.modelcontextprotocol.io")
+        );
+        assert_eq!(
+            input.source_ref.as_deref(),
+            Some("io.github.modelcontextprotocol/filesystem")
+        );
+        assert_eq!(
+            input.tags.as_deref(),
+            Some(&["fs".to_string(), "local".to_string()][..])
+        );
     }
 
     #[test]

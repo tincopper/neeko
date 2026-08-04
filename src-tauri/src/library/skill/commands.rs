@@ -6,13 +6,13 @@ use std::sync::Arc;
 use tauri::Emitter;
 use tauri::State;
 
-use crate::library::LibraryStore;
 #[allow(clippy::wildcard_imports)]
 use super::types::*;
 use crate::agent::path_resolver::PathResolver;
 use crate::agent::plugin::AgentPlugin;
 use crate::agent::registry::default_agent_plugins;
 use crate::common::runtime::{run_blocking, run_blocking_result};
+use crate::library::LibraryStore;
 use crate::AppError;
 
 /// Managed skill DTO returned to the frontend.
@@ -287,7 +287,9 @@ pub async fn refresh_skill_metadata(store: State<'_, Arc<LibraryStore>>) -> Resu
 
 /// Delete all managed skills and wipe the central skills directory (keeps tag groups).
 #[tauri::command]
-pub async fn clear_all_managed_skills(store: State<'_, Arc<LibraryStore>>) -> Result<u32, AppError> {
+pub async fn clear_all_managed_skills(
+    store: State<'_, Arc<LibraryStore>>,
+) -> Result<u32, AppError> {
     let store = store.inner().clone();
     run_blocking_result(move || {
         let skills = store.get_all_skills().map_err(AppError::from)?;
@@ -2018,26 +2020,29 @@ mod project_skill_sync_tests {
 #[cfg(test)]
 mod mcp_registry_command_tests {
     use super::*;
+    use crate::library::mcp::commands::McpRegistrySearchDto;
 
     #[test]
     fn mcp_registry_search_dto_cache_round_trip() {
         let store = std::sync::Arc::new(LibraryStore::open_in_memory().unwrap());
 
         let dto = McpRegistrySearchDto {
-            servers: vec![crate::library::mcp::mcp_registry_api::McpRegistryServerSummary {
-                name: "com.example/filesystem".to_string(),
-                title: "Filesystem".to_string(),
-                description: Some("local filesystem".to_string()),
-                version: Some("1.0.0".to_string()),
-                transports: vec!["stdio".to_string()],
-                repository: None,
-                stars: None,
-                downloads: None,
-                inputs: vec![],
-                status: None,
-                updated_at: None,
-                package_keys: vec![],
-            }],
+            servers: vec![
+                crate::library::mcp::mcp_registry_api::McpRegistryServerSummary {
+                    name: "com.example/filesystem".to_string(),
+                    title: "Filesystem".to_string(),
+                    description: Some("local filesystem".to_string()),
+                    version: Some("1.0.0".to_string()),
+                    transports: vec!["stdio".to_string()],
+                    repository: None,
+                    stars: None,
+                    downloads: None,
+                    inputs: vec![],
+                    status: None,
+                    updated_at: None,
+                    package_keys: vec![],
+                },
+            ],
             next_cursor: Some("abc123".to_string()),
         };
 
@@ -3147,4 +3152,3 @@ pub async fn get_all_prompt_tags_cmd(
     let store = store.inner().clone();
     run_blocking_result(move || store.get_all_prompt_tags().map_err(AppError::from)).await
 }
-

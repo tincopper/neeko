@@ -11,8 +11,8 @@ use std::path::PathBuf;
 #[must_use]
 pub fn base_dir() -> PathBuf {
     dirs::home_dir()
-        .expect("Cannot determine home directory")
-        .join(".neeko")
+        .map(|home| home.join(".neeko"))
+        .unwrap_or_else(|| PathBuf::from(".neeko"))
 }
 
 /// Current database path: `~/.neeko/neeko.db`.

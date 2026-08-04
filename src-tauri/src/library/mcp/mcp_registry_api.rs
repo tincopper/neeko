@@ -99,6 +99,7 @@ impl McpRegistryInput {
 
 /// Parse the GitHub owner/repo pair from a repository URL.
 /// Supports `https://github.com/owner/repo` and `https://github.com/owner/repo/tree/...`.
+#[must_use]
 pub fn github_repo_from_url(url: &str) -> Option<(String, String)> {
     let rest = url
         .strip_prefix("https://github.com/")
@@ -114,6 +115,7 @@ pub fn github_repo_from_url(url: &str) -> Option<(String, String)> {
 }
 
 /// GitHub API URL for a repository (unauthenticated read; rate-limited ~60/hr).
+#[must_use]
 pub fn github_repo_api_url(owner: &str, repo: &str) -> String {
     format!("https://api.github.com/repos/{owner}/{repo}")
 }
@@ -152,6 +154,7 @@ pub fn fetch_github_stars(
 }
 
 /// Build the downloads lookup URL for a package registry (npm/pypi).
+#[must_use]
 pub fn package_downloads_url(registry_type: &str, identifier: &str) -> Option<String> {
     match registry_type {
         // npm: last-month downloads from the public downloads API
@@ -194,6 +197,7 @@ pub fn fetch_package_downloads(
 
 /// Fetch both metrics (GitHub stars + package downloads) for a summary.
 /// Network only — the caller is responsible for caching. Both degrade to `None`.
+#[must_use]
 pub fn fetch_server_metrics(
     summary: &McpRegistryServerSummary,
     client: &reqwest::blocking::Client,

@@ -2,12 +2,9 @@ use anyhow::Result;
 use std::path::PathBuf;
 
 /// Base directory for the skill management system: ~/.neeko/
-#[allow(clippy::expect_used)]
 #[must_use]
 pub fn base_dir() -> PathBuf {
-    dirs::home_dir()
-        .expect("Cannot determine home directory")
-        .join(".neeko")
+    crate::library::db::base_dir()
 }
 
 /// Skills central repository: ~/.neeko/skills/

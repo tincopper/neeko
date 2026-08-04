@@ -406,7 +406,10 @@ mod tests {
             "project_mcp_tag_groups",
             "mcp_server_targets",
         ] {
-            assert!(tables.contains(&needed.to_string()), "missing table: {needed}");
+            assert!(
+                tables.contains(&needed.to_string()),
+                "missing table: {needed}"
+            );
         }
     }
 
