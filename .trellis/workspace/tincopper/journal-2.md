@@ -1890,3 +1890,36 @@ neeko-check review round 2 fixes: (1) feat f398114e - library as center tab view
 ### Next Steps
 
 - None - task complete
+
+
+## Session 115: refactor(mcp): split MCP from skill into independent module
+
+**Date**: 2026-08-04
+**Task**: refactor(mcp): split MCP from skill into independent module
+**Branch**: `main`
+
+### Summary
+
+MCP module extracted from skill/ into standalone mcp/ module. Migrations shared (skill v0-5, mcp v6-10). Frontend: mcpStore.ts created, components migrated.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `pending` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
