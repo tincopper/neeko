@@ -1,40 +1,15 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 
-import type {
-  ResourceKind,
-  ViewMode,
-  ScopeFilter,
-  PromptResource,
-} from '@/shared/types/library';
-import type { McpServer, AgentCapabilities } from '@/shared/types/mcpServer';
+import type { ResourceKind, ViewMode, ScopeFilter, PromptResource } from '@/shared/types/library';
 
-import {
-  listPrompts,
-  deletePrompt as deletePromptApi,
-  recordPromptUsage,
-  listMcpServers,
-  saveMcpServer as saveMcpServerApi,
-  updateMcpServer as updateMcpServerApi,
-  deleteMcpServer as deleteMcpServerApi,
-  testMcpServer as testMcpServerApi,
-  getAgentCapabilities,
-} from '../api/libraryApi';
-import type { McpRegistryGeneratedConfig } from '../api/libraryApi';
+import { listPrompts, deletePrompt as deletePromptApi, recordPromptUsage } from '../api/libraryApi';
 
 /** Sort mode for resource lists. */
 export type SortMode = 'recent' | 'frequent' | 'alphabetical';
 
 /** Which editor is open — lets the shared editorOpen flag drive the right dialog. */
 export type EditorKind = 'prompt' | 'mcp';
-
-/** Read-only registry summary shown in the marketplace install dialog header. */
-export interface McpInstallSummary {
-  name: string;
-  title: string;
-  version: string | null;
-  repository: string | null;
-}
 
 /** Variable context for resolving `{{var}}` placeholders. */
 export interface VariableContext {
@@ -67,27 +42,6 @@ interface LibraryState {
   prompts: PromptResource[];
   promptsLoading: boolean;
   promptsError: string | null;
-
-  /** MCP servers cache. */
-  mcpServers: McpServer[];
-  mcpServersLoading: boolean;
-  mcpServersError: string | null;
-
-  /** MCP server being edited (null = creating a new MCP server). */
-  editingMcpServer: McpServer | null;
-
-  /** MCP tab view — installed list vs marketplace. */
-  mcpView: 'installed' | 'marketplace';
-  /** MCP marketplace search query (independent of installed-list search). */
-  mcpRegistryQuery: string;
-  /** Pre-fill template for the MCP editor when installing from the marketplace. */
-  mcpDraft: McpRegistryGeneratedConfig | null;
-  /** MCP marketplace total count for toolbar badge. */
-  mcpMarketplaceCount: number;
-  /** Whether the marketplace install dialog is open. */
-  installOpen: boolean;
-  /** Read-only registry summary shown in the install dialog header. */
-  mcpInstallSummary: McpInstallSummary | null;
 
   /** Last active kind + viewMode remembered across panel close/reopen (both persisted). */
 
@@ -125,59 +79,6 @@ interface LibraryActions {
   deletePrompt: (id: string) => Promise<void>;
   recordUsage: (id: string) => Promise<void>;
 
-  refreshMcpServers: () => Promise<void>;
-  createMcpServer: (input: {
-    name: string;
-    description?: string | null;
-    command: string;
-    url?: string | null;
-    args?: unknown[];
-    env?: Record<string, string>;
-    transport?: 'stdio' | 'sse' | 'http';
-    scope?: 'global' | 'project';
-    projectId?: string | null;
-    sourceRegistry?: string | null;
-    sourceRef?: string | null;
-    tags?: string[];
-  }) => Promise<void>;
-  updateMcpServer: (
-    id: string,
-    input: {
-      name: string;
-      description?: string | null;
-      command: string;
-      url?: string | null;
-      args?: unknown[];
-      env?: Record<string, string>;
-      transport?: 'stdio' | 'sse' | 'http';
-      scope?: 'global' | 'project';
-      projectId?: string | null;
-      sourceRegistry?: string | null;
-      sourceRef?: string | null;
-      tags?: string[];
-      enabled?: boolean;
-    },
-  ) => Promise<void>;
-  deleteMcpServer: (id: string) => Promise<void>;
-  testMcpConnection: (id: string) => Promise<{
-    commandFound: boolean;
-    command: string;
-    message: string;
-  }>;
-
-  setMcpView: (view: 'installed' | 'marketplace') => void;
-  setMcpRegistryQuery: (query: string) => void;
-  setMcpDraft: (draft: McpRegistryGeneratedConfig | null) => void;
-  setMcpMarketplaceCount: (count: number) => void;
-  /** Open the lightweight marketplace install dialog with a generated config. */
-  openMcpInstall: (summary: McpInstallSummary, draft: McpRegistryGeneratedConfig) => void;
-  closeMcpInstall: () => void;
-
-  openMcpEditor: (server?: McpServer | null) => void;
-  closeMcpEditor: () => void;
-
-  getAgentCapabilities: (agentId: string) => Promise<AgentCapabilities | null>;
-
   /** Detect `{{variable}}` placeholders in content. */
   detectVariables: (content: string) => string[];
   /** Replace `{{variable}}` placeholders using provided values. */
@@ -207,16 +108,6 @@ const initialState: LibraryState = {
   prompts: [],
   promptsLoading: false,
   promptsError: null,
-  mcpServers: [],
-  mcpServersLoading: false,
-  mcpServersError: null,
-  editingMcpServer: null,
-  mcpView: 'installed',
-  mcpRegistryQuery: '',
-  mcpDraft: null,
-  mcpMarketplaceCount: 0,
-  installOpen: false,
-  mcpInstallSummary: null,
   editorOpen: false,
   editorKind: null,
   editingPrompt: null,
@@ -272,110 +163,6 @@ export const useLibraryStore = create<LibraryState & LibraryActions>()(
           await recordPromptUsage(id);
         } catch (e) {
           console.error('[libraryStore] recordUsage failed:', e);
-        }
-      },
-
-      refreshMcpServers: async () => {
-        set({ mcpServersLoading: true, mcpServersError: null });
-        try {
-          const mcpServers = await listMcpServers();
-          set({ mcpServers, mcpServersLoading: false });
-        } catch (e) {
-          const message = String(e);
-          console.error('[libraryStore] refreshMcpServers failed:', e);
-          set({ mcpServersLoading: false, mcpServersError: message });
-        }
-      },
-
-      createMcpServer: async (input) => {
-        await saveMcpServerApi({
-          name: input.name,
-          description: input.description,
-          command: input.command,
-          url: input.url ?? null,
-          args: input.args ?? [],
-          env: input.env ?? {},
-          transport: input.transport ?? 'stdio',
-          scope: input.scope ?? 'global',
-          projectId: input.projectId,
-          sourceRegistry: input.sourceRegistry,
-          sourceRef: input.sourceRef,
-          tags: input.tags ?? [],
-        });
-        await useLibraryStore.getState().refreshMcpServers();
-      },
-
-      updateMcpServer: async (id, input) => {
-        await updateMcpServerApi(id, {
-          name: input.name,
-          description: input.description,
-          command: input.command,
-          url: input.url ?? null,
-          args: input.args ?? [],
-          env: input.env ?? {},
-          transport: input.transport ?? 'stdio',
-          scope: input.scope ?? 'global',
-          projectId: input.projectId,
-          sourceRegistry: input.sourceRegistry,
-          sourceRef: input.sourceRef,
-          tags: input.tags ?? [],
-        });
-        await useLibraryStore.getState().refreshMcpServers();
-      },
-
-      deleteMcpServer: async (id: string) => {
-        await deleteMcpServerApi(id);
-        set((state) => ({
-          mcpServers: state.mcpServers.filter((s) => s.id !== id),
-        }));
-      },
-
-      testMcpConnection: async (id: string) => {
-        return testMcpServerApi(id);
-      },
-
-      setMcpView: (view) => set({ mcpView: view }),
-      setMcpRegistryQuery: (query: string) => set({ mcpRegistryQuery: query }),
-      setMcpDraft: (draft) => set({ mcpDraft: draft }),
-      setMcpMarketplaceCount: (count: number) => set({ mcpMarketplaceCount: count }),
-      openMcpInstall: (summary, draft) =>
-        set({
-          installOpen: true,
-          mcpDraft: draft,
-          mcpInstallSummary: summary,
-          editorOpen: false,
-          editorKind: null,
-        }),
-      closeMcpInstall: () =>
-        set({
-          installOpen: false,
-          mcpDraft: null,
-          mcpInstallSummary: null,
-        }),
-
-      openMcpEditor: (server) =>
-        set({
-          editorOpen: true,
-          editorKind: 'mcp',
-          editingMcpServer: server ?? null,
-          editingPrompt: null,
-          initialContent: null,
-          mcpDraft: null,
-        }),
-      closeMcpEditor: () =>
-        set({
-          editingMcpServer: null,
-          editorOpen: false,
-          editorKind: null,
-          mcpDraft: null,
-        }),
-
-      getAgentCapabilities: async (agentId: string) => {
-        try {
-          return await getAgentCapabilities(agentId);
-        } catch (e) {
-          console.error('[libraryStore] getAgentCapabilities failed:', e);
-          return null;
         }
       },
 

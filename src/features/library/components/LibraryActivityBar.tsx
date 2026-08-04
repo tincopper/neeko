@@ -2,6 +2,7 @@ import { Blocks, MessageSquare, Server } from 'lucide-react';
 import React from 'react';
 
 import { useLibraryStore } from '@/features/library/store/libraryStore';
+import { useMcpStore } from '@/features/library/store/mcpStore';
 import { useSkillStore } from '@/features/skill/store';
 import { cn } from '@/lib/utils';
 
@@ -21,7 +22,7 @@ const LibraryActivityBar: React.FC = React.memo(() => {
   const activeKind = useLibraryStore((s) => s.activeKind);
   const setActiveKind = useLibraryStore((s) => s.setActiveKind);
   const promptCount = useLibraryStore((s) => s.prompts.length);
-  const mcpCount = useLibraryStore((s) => s.mcpServers.length);
+  const mcpCount = useMcpStore((s) => s.mcpServers.length);
   const skillCount = useSkillStore((s) => s.skills.length);
 
   const counts: Record<string, number> = {

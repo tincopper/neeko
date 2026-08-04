@@ -2,6 +2,7 @@ import { Plus } from 'lucide-react';
 import React, { useCallback, useMemo } from 'react';
 
 import { useLibraryStore } from '@/features/library/store/libraryStore';
+import { useMcpStore } from '@/features/library/store/mcpStore';
 import { useSkillStore } from '@/features/skill/store';
 import { useProjectStore } from '@/shared/store/projectStore';
 import type { ResourceKind } from '@/shared/types/library';
@@ -43,12 +44,12 @@ function deriveSubLabel(
 
 const LibraryToolbar: React.FC = React.memo(() => {
   const activeKind = useLibraryStore((s) => s.activeKind);
-  const mcpView = useLibraryStore((s) => s.mcpView);
-  const mcpMarketplaceCount = useLibraryStore((s) => s.mcpMarketplaceCount);
+  const mcpView = useMcpStore((s) => s.mcpView);
+  const mcpMarketplaceCount = useMcpStore((s) => s.mcpMarketplaceCount);
   const scopeFilter = useLibraryStore((s) => s.scopeFilter);
   const tagFilter = useLibraryStore((s) => s.tagFilter);
   const openEditor = useLibraryStore((s) => s.openEditor);
-  const openMcpEditor = useLibraryStore((s) => s.openMcpEditor);
+  const openMcpEditor = useMcpStore((s) => s.openMcpEditor);
 
   const marketplaceTotalItems = useSkillStore((s) => s.marketplaceTotalItems);
 
