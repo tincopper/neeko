@@ -6,6 +6,7 @@ mod instance;
 mod log_ring_buffer;
 mod notify;
 mod request;
+pub(crate) mod root;
 mod status;
 mod utils;
 

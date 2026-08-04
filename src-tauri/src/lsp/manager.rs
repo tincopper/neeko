@@ -263,6 +263,7 @@ impl LspManager {
         &self,
         project_path: &str,
         language_id: &str,
+        document_uri: Option<&str>,
     ) -> Result<String, AppError> {
         let key = session_key(project_path, language_id);
 
@@ -292,10 +293,19 @@ impl LspManager {
         let diag_bus = Arc::new(self.diag_bus.clone());
         let transport: Arc<dyn LspTransport> = Arc::new(IpcTransport::new(app_handle.clone()));
         let exec_target = self.require_project_exec_target(project_path)?;
+        // For document-scoped languages (TypeScript family), root the session at
+        // the nearest TS project instead of the project root, so servers like
+        // typescript-language-server can locate the `typescript` library.
+        let workspace_root = crate::lsp::session::root::resolve_session_root(
+            project_path,
+            document_uri,
+            language_id,
+        );
 
         let session = LspSession::new(
             &plugin,
             project_path,
+            &workspace_root,
             app_handle,
             diag_bus,
             transport,
@@ -390,7 +400,7 @@ impl LspManager {
         let pp = project_path.to_string();
         let lid = language_id.to_string();
         self.runtime
-            .spawn_blocking(move || this.get_or_create_session(&pp, &lid))
+            .spawn_blocking(move || this.get_or_create_session(&pp, &lid, None))
             .await
             .map_err(|e| AppError::Lsp(format!("spawn_blocking join error: {}", e)))??;
 
@@ -565,12 +575,17 @@ impl LspManager {
 
         if let Some(ref primary) = profile.primary {
             let policy = self.plugin_manager.resolve_auto_start(&primary.language_id);
-            if policy == LspAutoStart::OnProjectSelect {
+            if policy == LspAutoStart::OnProjectSelect
+                && !crate::lsp::session::root::is_document_root_scoped(&primary.language_id)
+            {
+                // Document-scoped servers (TypeScript family) must wait for a
+                // document to be opened so the session root can be resolved
+                // from the document's own project directory.
                 let this = Arc::clone(self);
                 let pp = project_path.to_string();
                 let lid = primary.language_id.clone();
                 self.runtime.spawn_blocking(move || {
-                    if let Err(e) = this.get_or_create_session(&pp, &lid) {
+                    if let Err(e) = this.get_or_create_session(&pp, &lid, None) {
                         log::warn!(
                             "[LSP] onProjectSelect failed to start {} for {}: {}",
                             lid,
@@ -669,7 +684,7 @@ impl LspManager {
             .session_language_ids_for_project(project_path);
         for lid in languages {
             let _ = self.close_session(project_path, &lid);
-            self.get_or_create_session(project_path, &lid)?;
+            self.get_or_create_session(project_path, &lid, None)?;
         }
         Ok(())
     }

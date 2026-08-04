@@ -2,6 +2,7 @@
 
 use std::collections::HashMap;
 use std::io::{BufRead, BufReader};
+use std::path::Path;
 use std::sync::{Arc, Mutex};
 use std::thread;
 
@@ -65,6 +66,7 @@ impl LspSession {
     pub(crate) fn new(
         plugin: &LspPlugin,
         project_path: &str,
+        workspace_root: &Path,
         app_handle: tauri::AppHandle,
         diag_bus: Arc<DiagnosticBus>,
         transport: Arc<dyn LspTransport>,
@@ -72,6 +74,15 @@ impl LspSession {
     ) -> Result<Self> {
         let language_id = plugin.language_id.to_string();
         let server_name = plugin.server_binary.to_string();
+        // Non-UTF-8 segments are lossy-mapped to `�`; this mirrors how the
+        // existing code elsewhere in the codebase falls back to the project
+        // root on unrepresentable paths. `url::Url::from_directory_path` and
+        // the JSON `rootPath` field both need a `&str`, so we must pick a
+        // string representation here. Crucially, `workspace_root` (the `Path`)
+        // is still used for `from_directory_path` and `starts_with` checks,
+        // so lossy conversion only affects the textual `rootPath` the server
+        // sees — the on-disk resolution stays correct.
+        let workspace_root_str = workspace_root.to_string_lossy().into_owned();
 
         if !crate::lsp::installer::check_plugin_installed(plugin, &exec_target) {
             log::info!(
@@ -139,7 +150,7 @@ impl LspSession {
             &exec_target,
             &cmd[0],
             &args,
-            Some(project_path),
+            Some(&workspace_root_str),
         )
         .map_err(|e| anyhow::anyhow!("Failed to spawn LSP server {}: {}", server_name, e))?;
 
@@ -210,8 +221,8 @@ impl LspSession {
             })
             .ok();
 
-        let root_uri = url::Url::from_directory_path(project_path)
-            .map_err(|_| anyhow::anyhow!("Invalid project path: {}", project_path))?
+        let root_uri = url::Url::from_directory_path(workspace_root)
+            .map_err(|_| anyhow::anyhow!("Invalid workspace root: {}", workspace_root_str))?
             .to_string();
         let pending: Arc<Mutex<HashMap<RequestId, PendingSender>>> =
             Arc::new(Mutex::new(HashMap::new()));
@@ -219,6 +230,7 @@ impl LspSession {
         let reader_stream = BufReader::new(child_stdout);
         let pending_clone = Arc::clone(&pending);
         let pp_reader = project_path.to_string();
+        let ws_root_reader = workspace_root_str.to_string();
         let lang_id_clone = language_id.clone();
         let transport_clone = Arc::clone(&transport);
         let writer_for_reader = writer_tx.clone();
@@ -264,7 +276,7 @@ impl LspSession {
                             }
                         }
                         Message::Request(req) => {
-                            let root = url::Url::from_directory_path(&pp_reader)
+                            let root = url::Url::from_directory_path(&ws_root_reader)
                                 .ok()
                                 .map(|u| u.to_string());
                             let resp = crate::lsp::server_request::respond_to_server_request(
@@ -292,8 +304,8 @@ impl LspSession {
 
         let (init_tx, init_rx) = tokio::sync::oneshot::channel::<Message>();
         let mut init_params = serde_json::json!({
-            "processId": std::process::id(), "rootUri": root_uri, "rootPath": project_path,
-            "workspaceFolders": [{ "uri": root_uri, "name": std::path::Path::new(project_path).file_name().and_then(|n| n.to_str()).unwrap_or("workspace") }],
+            "processId": std::process::id(), "rootUri": root_uri, "rootPath": workspace_root_str,
+            "workspaceFolders": [{ "uri": root_uri, "name": Path::new(&workspace_root_str).file_name().and_then(|n| n.to_str()).unwrap_or("workspace") }],
             "capabilities": {
                 "textDocument": { "hover": { "contentFormat": ["markdown", "plaintext"] }, "definition": { "linkSupport": true }, "references": {}, "completion": { "completionItem": { "snippetSupport": false, "documentationFormat": ["markdown", "plaintext"] } }, "publishDiagnostics": { "relatedInformation": true } },
                 "workspace": { "workspaceFolders": true, "configuration": true, "didChangeConfiguration": { "dynamicRegistration": false } },
@@ -323,13 +335,7 @@ impl LspSession {
         let init_response = init_rx
             .blocking_recv()
             .context("LSP initialization: no response received")?;
-        let server_capabilities = match init_response {
-            Message::Response(ref resp) => resp
-                .result
-                .clone()
-                .ok_or_else(|| anyhow::anyhow!("LSP initialize response has no result")),
-            _ => anyhow::bail!("LSP initialization: unexpected message type"),
-        }?;
+        let server_capabilities = parse_initialize_response(init_response)?;
 
         log::info!("[LSP] {} initialized, capabilities received", server_name);
         transport.push_session_event(project_path, &language_id, "initializing", None, None);
@@ -487,5 +493,94 @@ impl LspSession {
             },
             progress_pct: None,
         }
+    }
+}
+
+/// Extract server capabilities from an `initialize` response.
+///
+/// When the server answered with an error (e.g. typescript-language-server
+/// failing to locate a TypeScript installation), the server's own message is
+/// surfaced instead of a bare "has no result", so the real cause is visible.
+pub(crate) fn parse_initialize_response(msg: Message) -> Result<Value> {
+    match msg {
+        Message::Response(resp) => {
+            if let Some(err) = resp.error {
+                anyhow::bail!(
+                    "LSP initialize failed: [{code}] {message}",
+                    code = err.code,
+                    message = err.message
+                );
+            }
+            resp.result
+                .ok_or_else(|| anyhow::anyhow!("LSP initialize response has no result"))
+        }
+        _ => anyhow::bail!("LSP initialization: unexpected message type"),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #![allow(clippy::unwrap_used, clippy::expect_used)]
+    use super::*;
+    use lsp_server::{RequestId, Response, ResponseError};
+    use serde_json::json;
+
+    fn err_response(message: &str) -> Message {
+        Message::Response(Response {
+            id: RequestId::from(1),
+            result: None,
+            error: Some(ResponseError {
+                code: -32603,
+                message: message.to_string(),
+                data: None,
+            }),
+        })
+    }
+
+    #[test]
+    fn surfaces_server_error_message() {
+        let err = parse_initialize_response(err_response(
+            "Could not find a valid TypeScript installation",
+        ))
+        .unwrap_err();
+        assert!(
+            err.to_string()
+                .contains("Could not find a valid TypeScript installation"),
+            "server error message must be surfaced, got: {err}"
+        );
+    }
+
+    #[test]
+    fn ok_response_returns_capabilities() {
+        let msg = Message::Response(Response::new_ok(
+            RequestId::from(1),
+            json!({"capabilities": {}}),
+        ));
+        let caps = parse_initialize_response(msg).unwrap();
+        assert_eq!(caps["capabilities"], json!({}));
+    }
+
+    #[test]
+    fn empty_response_reports_no_result() {
+        let msg = Message::Response(Response {
+            id: RequestId::from(1),
+            result: None,
+            error: None,
+        });
+        let err = parse_initialize_response(msg).unwrap_err();
+        assert!(err.to_string().contains("no result"), "got: {err}");
+    }
+
+    #[test]
+    fn non_response_message_is_rejected() {
+        let msg = Message::Notification(lsp_server::Notification::new(
+            "initialized".to_string(),
+            json!({}),
+        ));
+        let err = parse_initialize_response(msg).unwrap_err();
+        assert!(
+            err.to_string().contains("unexpected message type"),
+            "got: {err}"
+        );
     }
 }
