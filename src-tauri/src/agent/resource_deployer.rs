@@ -12,7 +12,8 @@ use serde::Serialize;
 
 use super::path_resolver::PathResolver;
 use super::plugin::{AgentPlugin, PathTemplate};
-use crate::skill::types::{McpServerRecord, PromptRecord};
+use crate::mcp::types::McpServerRecord;
+use crate::skill::types::PromptRecord;
 use crate::AppError;
 
 /// Supported resource kinds for deployment.

@@ -3,6 +3,7 @@ import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import { searchMcpRegistry } from '@/features/library/api/libraryApi';
 import type { McpRegistrySummary } from '@/features/library/api/libraryApi';
 import { useLibraryStore } from '@/features/library/store/libraryStore';
+import { useMcpStore } from '@/features/library/store/mcpStore';
 
 const DEFAULT_PAGE_SIZE = 20;
 export const MCP_PAGE_SIZE_OPTIONS = [20, 40, 80] as const;
@@ -14,10 +15,10 @@ interface CursorEntry {
 }
 
 export function useMcpMarketplace() {
-  const mcpServers = useLibraryStore((s) => s.mcpServers);
+  const mcpServers = useMcpStore((s) => s.mcpServers);
   const searchQuery = useLibraryStore((s) => s.searchQuery);
   const setSearchQuery = useLibraryStore((s) => s.setSearchQuery);
-  const setMcpMarketplaceCount = useLibraryStore((s) => s.setMcpMarketplaceCount);
+  const setMcpMarketplaceCount = useMcpStore((s) => s.setMcpMarketplaceCount);
 
   const [displayList, setDisplayList] = useState<McpRegistrySummary[]>([]);
   const [loading, setLoading] = useState(true);

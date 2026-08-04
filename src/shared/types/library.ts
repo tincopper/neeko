@@ -9,7 +9,7 @@
 import type { ManagedSkillDto } from './skill';
 
 /** Resource kinds managed by the Library. */
-export type ResourceKind = 'skill' | 'prompt' | 'action' | 'mcp' | 'command';
+export type ResourceKind = 'skill' | 'prompt' | 'mcp';
 
 /**
  * Insert target for a prompt. `agent` dispatches the custom event the agent

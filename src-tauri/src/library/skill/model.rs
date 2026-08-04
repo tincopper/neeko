@@ -107,57 +107,6 @@ pub struct ToolToggleRecord {
     pub updated_at: i64,
 }
 
-// -- Prompt Record --
-
-/// A reusable prompt resource stored in the SQLite database.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct PromptRecord {
-    /// Unique prompt identifier.
-    pub id: String,
-    /// Display name.
-    pub name: String,
-    /// Optional description.
-    pub description: Option<String>,
-    /// Prompt body (supports `{{var}}` templates).
-    pub content: String,
-    /// Slash command without the leading slash (e.g. "review" → /review).
-    pub slash: Option<String>,
-    /// Tag names.
-    pub tags: Vec<String>,
-    /// Scope: "global" or "project".
-    pub scope: String,
-    /// Project id when scope = "project".
-    pub project_id: Option<String>,
-    /// Template variables.
-    pub variables: Vec<PromptVariableRecord>,
-    /// Resource kind: "prompt" or "command". Commands are slash-triggered templates
-    /// that get deployed to agent-specific command directories.
-    pub kind: String,
-    /// Whether the prompt is favorited.
-    pub favorite: bool,
-    /// Usage counter.
-    pub usage_count: i64,
-    /// Timestamp of last use.
-    pub last_used_at: Option<i64>,
-    /// Creation timestamp.
-    pub created_at: i64,
-    /// Last update timestamp.
-    pub updated_at: i64,
-}
-
-/// A template variable inside a prompt (e.g. `{{branch}}`).
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct PromptVariableRecord {
-    /// Variable name without braces (e.g. "branch").
-    pub name: String,
-    /// Optional description shown in the variable form.
-    pub description: Option<String>,
-    /// Default value used when the user does not override.
-    pub default: Option<String>,
-    /// Whether the variable must be filled before insert.
-    pub required: bool,
-}
-
 // -- Skill Metadata --
 
 /// Parsed metadata from a SKILL.md file (frontmatter).
@@ -238,35 +187,6 @@ pub struct TagGroupDto {
 pub struct SkillDocumentDto {
     /// Raw markdown content of the document.
     pub content: String,
-}
-
-/// An action template stored in the SQLite database.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ActionRecord {
-    /// Unique action identifier.
-    pub id: String,
-    /// Display name.
-    pub name: String,
-    /// Optional description.
-    pub description: Option<String>,
-    /// Group: "terminal" | "agent" | "file" | "git" | "quick" | "custom".
-    pub group: String,
-    /// Serialized payload JSON.
-    pub payload_json: String,
-    /// Optional keyboard shortcut.
-    pub shortcut: Option<String>,
-    /// Tag names.
-    pub tags: Vec<String>,
-    /// Whether the action is enabled.
-    pub enabled: bool,
-    /// Usage counter.
-    pub usage_count: i64,
-    /// Timestamp of last use.
-    pub last_used_at: Option<i64>,
-    /// Creation timestamp.
-    pub created_at: i64,
-    /// Last update timestamp.
-    pub updated_at: i64,
 }
 
 /// Update status for a skill

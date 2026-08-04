@@ -650,6 +650,10 @@ fn agent_plugin_shell(
                 supported: true,
                 format: Some("skill.md".into()),
             }),
+            mcp: Some(super::plugin::McpCapability {
+                supported: true,
+                transports: Some(vec!["stdio".into(), "sse".into(), "http".into()]),
+            }),
             ..Default::default()
         },
         paths: super::plugin::AgentResourcePaths {

@@ -1,10 +1,9 @@
 import React, { useCallback } from 'react';
 
-import ActionsTabContent from '@/features/library/components/ActionsTabContent';
-import CommandTabContent from '@/features/library/components/CommandTabContent';
 import McpTabContent from '@/features/library/components/McpTabContent';
 import PromptListSection from '@/features/library/components/PromptListSection';
 import { useLibraryStore } from '@/features/library/store/libraryStore';
+import { useMcpStore } from '@/features/library/store/mcpStore';
 import SkillContent from '@/features/skill/components/SkillContent';
 import type { PromptInsertTarget, PromptResource, ResourceKind } from '@/shared/types/library';
 
@@ -16,9 +15,7 @@ import LibraryToolbar from './LibraryToolbar';
 const SEARCH_PLACEHOLDERS: Record<ResourceKind, string> = {
   skill: 'Search skills…',
   prompt: 'Search prompts…',
-  action: 'Search actions…',
   mcp: 'Search MCP servers…',
-  command: 'Search commands…',
 };
 
 const MCP_PLACEHOLDERS: Record<string, string> = {
@@ -36,7 +33,7 @@ const LibraryDetail: React.FC<{
   onInsertPrompt?: (prompt: PromptResource, target?: PromptInsertTarget) => void;
 }> = React.memo(({ onInsertPrompt }) => {
   const activeKind = useLibraryStore((s) => s.activeKind);
-  const mcpView = useLibraryStore((s) => s.mcpView);
+  const mcpView = useMcpStore((s) => s.mcpView);
   const searchQuery = useLibraryStore((s) => s.searchQuery);
   const setSearchQuery = useLibraryStore((s) => s.setSearchQuery);
   const recordUsage = useLibraryStore((s) => s.recordUsage);
@@ -81,9 +78,7 @@ const LibraryDetail: React.FC<{
             <PromptListSection onInsert={handleInsert} />
           </div>
         )}
-        {activeKind === 'action' && <ActionsTabContent />}
         {activeKind === 'mcp' && <McpTabContent />}
-        {activeKind === 'command' && <CommandTabContent />}
       </div>
     </div>
   );

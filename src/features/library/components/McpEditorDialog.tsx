@@ -1,6 +1,7 @@
 import { X } from 'lucide-react';
 import React, { useCallback, useEffect, useState } from 'react';
 
+import { useMcpStore } from '@/features/library/store/mcpStore';
 import { useLibraryStore } from '@/features/library/store/libraryStore';
 import { cn } from '@/lib/utils';
 import { useProjectStore } from '@/shared/store/projectStore';
@@ -39,15 +40,15 @@ function parseTags(input: string): string[] {
 }
 
 const McpEditorDialog: React.FC = React.memo(() => {
-  const open = useLibraryStore((s) => s.editorOpen && s.editorKind === 'mcp');
-  const editing = useLibraryStore((s) => s.editingMcpServer);
+  const open = useMcpStore((s) => s.editingMcpServer !== null);
+  const editing = useMcpStore((s) => s.editingMcpServer);
   const closeEditor = useLibraryStore((s) => s.closeEditor);
-  const closeMcpEditor = useLibraryStore((s) => s.closeMcpEditor);
-  const createMcpServer = useLibraryStore((s) => s.createMcpServer);
-  const updateMcpServer = useLibraryStore((s) => s.updateMcpServer);
-  const refreshMcpServers = useLibraryStore((s) => s.refreshMcpServers);
-  const setMcpDraft = useLibraryStore((s) => s.setMcpDraft);
-  const setMcpView = useLibraryStore((s) => s.setMcpView);
+  const closeMcpEditor = useMcpStore((s) => s.closeMcpEditor);
+  const createMcpServer = useMcpStore((s) => s.createMcpServer);
+  const updateMcpServer = useMcpStore((s) => s.updateMcpServer);
+  const refreshMcpServers = useMcpStore((s) => s.refreshMcpServers);
+  const setMcpDraft = useMcpStore((s) => s.setMcpDraft);
+  const setMcpView = useMcpStore((s) => s.setMcpView);
   const activeProjectId = useProjectStore((s) => s.activeProjectId);
 
   const [form, setForm] = useState<FormState>(EMPTY_FORM);

@@ -2,6 +2,7 @@ import { Download, Plus, Upload } from 'lucide-react';
 import React, { useCallback, useMemo } from 'react';
 
 import { useLibraryStore } from '@/features/library/store/libraryStore';
+import { useMcpStore } from '@/features/library/store/mcpStore';
 import { useSkillStore } from '@/features/skill/store';
 import { useNotificationStore } from '@/shared/store/notificationStore';
 import { useProjectStore } from '@/shared/store/projectStore';
@@ -14,9 +15,7 @@ import { exportLibraryBundle, importLibraryBundle } from '../api/libraryApi';
 const KIND_LABELS: Record<ResourceKind, string> = {
   skill: 'Skills',
   prompt: 'Prompts',
-  action: 'Actions',
   mcp: 'MCP',
-  command: 'Commands',
 };
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
@@ -56,8 +55,6 @@ function deriveSubLabel(
       return 'All';
     case 'mcp':
       return mcpView === 'marketplace' ? 'Marketplace' : 'Installed';
-    case 'action':
-    case 'command':
     default:
       return 'All';
   }
@@ -72,18 +69,17 @@ function deriveSubLabel(
 const LibraryToolbar: React.FC = React.memo(() => {
   // Library store
   const activeKind = useLibraryStore((s) => s.activeKind);
-  const mcpView = useLibraryStore((s) => s.mcpView);
+  const mcpView = useMcpStore((s) => s.mcpView);
   const scopeFilter = useLibraryStore((s) => s.scopeFilter);
   const tagFilter = useLibraryStore((s) => s.tagFilter);
   const openEditor = useLibraryStore((s) => s.openEditor);
-  const openActionEditor = useLibraryStore((s) => s.openActionEditor);
-  const openMcpEditor = useLibraryStore((s) => s.openMcpEditor);
+  const openMcpEditor = useMcpStore((s) => s.openMcpEditor);
 
   // Skill store
   const activeSkillView = useSkillStore((s) => s.activeSkillView);
   const activeAgentId = useSkillStore((s) => s.activeAgentId);
   const marketplaceTotalItems = useSkillStore((s) => s.marketplaceTotalItems);
-  const mcpMarketplaceCount = useLibraryStore((s) => s.mcpMarketplaceCount);
+  const mcpMarketplaceCount = useMcpStore((s) => s.mcpMarketplaceCount);
 
   // Project store
   const activeProjectId = useProjectStore((s) => s.activeProjectId);
@@ -104,18 +100,14 @@ const LibraryToolbar: React.FC = React.memo(() => {
   );
 
   const handleNew = useCallback(() => {
-    if (activeKind === 'action') {
-      openActionEditor(null);
-    } else if (activeKind === 'mcp') {
+    if (activeKind === 'mcp') {
       if (mcpView === 'installed') {
         openMcpEditor(null);
       }
-    } else if (activeKind === 'command') {
-      openEditor(null, 'command');
     } else {
       openEditor(null);
     }
-  }, [activeKind, mcpView, openEditor, openActionEditor, openMcpEditor]);
+  }, [activeKind, mcpView, openEditor, openMcpEditor]);
 
   const handleExport = useCallback(async () => {
     try {
@@ -203,8 +195,6 @@ const LibraryToolbar: React.FC = React.memo(() => {
             <span>New</span>
           </button>
         );
-      case 'action':
-      case 'command':
       default:
         return (
           <button type="button" className={btnPrimary} onClick={handleNew}>

@@ -20,7 +20,7 @@ impl SkillRepository {
     /// Open or create a skill database at the given path.
     pub fn open(db_path: &Path) -> Result<Self> {
         let conn = crate::common::db::open(db_path)?;
-        super::migrations::run_migrations(&conn)?;
+        crate::library::migrations::run_migrations(&conn)?;
         Ok(Self {
             conn: Mutex::new(conn),
         })
@@ -29,7 +29,7 @@ impl SkillRepository {
     /// Open an in-memory SQLite database (for testing).
     pub fn open_in_memory() -> Result<Self> {
         let conn = crate::common::db::open_in_memory()?;
-        super::migrations::run_migrations(&conn)?;
+        crate::library::migrations::run_migrations(&conn)?;
         Ok(Self {
             conn: Mutex::new(conn),
         })
@@ -850,119 +850,146 @@ impl SkillRepository {
         Ok(tags.into_iter().collect())
     }
 
-    // ── Actions ───────────────────────────────────────────────────────────
 
-    /// Insert a new action.
-    pub fn insert_action(&self, action: &super::types::ActionRecord) -> Result<()> {
+    // ── MCP Servers ───────────────────────────────────────────────────────
+
+    /// Insert a new MCP server record.
+    pub fn insert_mcp_server(&self, server: &crate::library::skill::types::McpServerRecord) -> Result<()> {
         let conn = self
             .conn
             .lock()
             .map_err(|e| anyhow::anyhow!("Database lock poisoned: {}", e))?;
-        let tags_json = serde_json::to_string(&action.tags).unwrap_or_else(|_| "[]".to_string());
+        let tags_json = serde_json::to_string(&server.tags).unwrap_or_else(|_| "[]".to_string());
         conn.execute(
-            "INSERT INTO actions (id, name, description, \"group\", payload_json, shortcut, tags_json, enabled, usage_count, last_used_at, created_at, updated_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
+            "INSERT INTO mcp_servers (id, name, description, command, url, args_json, env_json,
+             transport, scope, project_id, source_registry, source_ref, tags_json, enabled,
+             usage_count, last_used_at, created_at, updated_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18)",
             params![
-                action.id,
-                action.name,
-                action.description,
-                action.group,
-                action.payload_json,
-                action.shortcut,
+                server.id,
+                server.name,
+                server.description,
+                server.command,
+                server.url,
+                server.args_json,
+                server.env_json,
+                server.transport,
+                server.scope,
+                server.project_id,
+                server.source_registry,
+                server.source_ref,
                 tags_json,
-                i32::from(action.enabled),
-                action.usage_count,
-                action.last_used_at,
-                action.created_at,
-                action.updated_at,
+                i32::from(server.enabled),
+                server.usage_count,
+                server.last_used_at,
+                server.created_at,
+                server.updated_at,
             ],
         )?;
         Ok(())
     }
 
-    /// Get all actions ordered by updated_at descending.
-    pub fn get_all_actions(&self) -> Result<Vec<super::types::ActionRecord>> {
+    /// Get all MCP servers ordered by name.
+    pub fn get_all_mcp_servers(&self) -> Result<Vec<crate::library::skill::types::McpServerRecord>> {
         let conn = self
             .conn
             .lock()
             .map_err(|e| anyhow::anyhow!("Database lock poisoned: {}", e))?;
         let mut stmt = conn.prepare(
-            "SELECT id, name, description, \"group\", payload_json, shortcut, tags_json, enabled, usage_count, last_used_at, created_at, updated_at FROM actions ORDER BY updated_at DESC",
+            "SELECT id, name, description, command, url, args_json, env_json, transport, scope,
+             project_id, source_registry, source_ref, tags_json, enabled, usage_count,
+             last_used_at, created_at, updated_at
+             FROM mcp_servers ORDER BY name",
         )?;
-        let rows = stmt.query_map([], map_action_row)?;
+        let rows = stmt.query_map([], map_mcp_row)?;
         Ok(rows.filter_map(|r| r.ok()).collect())
     }
 
-    /// Get an action by its ID.
-    pub fn get_action_by_id(&self, id: &str) -> Result<Option<super::types::ActionRecord>> {
+    /// Get an MCP server by its ID.
+    pub fn get_mcp_server_by_id(
+        &self,
+        id: &str,
+    ) -> Result<Option<crate::library::skill::types::McpServerRecord>> {
         let conn = self
             .conn
             .lock()
             .map_err(|e| anyhow::anyhow!("Database lock poisoned: {}", e))?;
         let mut stmt = conn.prepare(
-            "SELECT id, name, description, \"group\", payload_json, shortcut, tags_json, enabled, usage_count, last_used_at, created_at, updated_at FROM actions WHERE id = ?1",
+            "SELECT id, name, description, command, url, args_json, env_json, transport, scope,
+             project_id, source_registry, source_ref, tags_json, enabled, usage_count,
+             last_used_at, created_at, updated_at
+             FROM mcp_servers WHERE id = ?1",
         )?;
-        let mut rows = stmt.query_map(params![id], map_action_row)?;
+        let mut rows = stmt.query_map(params![id], map_mcp_row)?;
         Ok(rows.next().and_then(|r| r.ok()))
     }
 
-    /// Update all fields of an action.
-    pub fn update_action(&self, action: &super::types::ActionRecord) -> Result<()> {
+    /// Update all fields of an MCP server record.
+    pub fn update_mcp_server(&self, server: &crate::library::skill::types::McpServerRecord) -> Result<()> {
         let conn = self
             .conn
             .lock()
             .map_err(|e| anyhow::anyhow!("Database lock poisoned: {}", e))?;
         let now = chrono::Utc::now().timestamp_millis();
-        let tags_json = serde_json::to_string(&action.tags).unwrap_or_else(|_| "[]".to_string());
+        let tags_json = serde_json::to_string(&server.tags).unwrap_or_else(|_| "[]".to_string());
         conn.execute(
-            "UPDATE actions SET name = ?1, description = ?2, \"group\" = ?3, payload_json = ?4, shortcut = ?5, tags_json = ?6, enabled = ?7, usage_count = ?8, last_used_at = ?9, updated_at = ?10 WHERE id = ?11",
+            "UPDATE mcp_servers SET name = ?1, description = ?2, command = ?3, url = ?4,
+             args_json = ?5, env_json = ?6, transport = ?7, scope = ?8, project_id = ?9,
+             source_registry = ?10, source_ref = ?11, tags_json = ?12, enabled = ?13,
+             usage_count = ?14, last_used_at = ?15, updated_at = ?16 WHERE id = ?17",
             params![
-                action.name,
-                action.description,
-                action.group,
-                action.payload_json,
-                action.shortcut,
+                server.name,
+                server.description,
+                server.command,
+                server.url,
+                server.args_json,
+                server.env_json,
+                server.transport,
+                server.scope,
+                server.project_id,
+                server.source_registry,
+                server.source_ref,
                 tags_json,
-                i32::from(action.enabled),
-                action.usage_count,
-                action.last_used_at,
+                i32::from(server.enabled),
+                server.usage_count,
+                server.last_used_at,
                 now,
-                action.id,
+                server.id,
             ],
         )?;
         Ok(())
     }
 
-    /// Delete an action by ID.
-    pub fn delete_action(&self, id: &str) -> Result<()> {
+    /// Delete an MCP server by ID.
+    pub fn delete_mcp_server(&self, id: &str) -> Result<()> {
         let conn = self
             .conn
             .lock()
             .map_err(|e| anyhow::anyhow!("Database lock poisoned: {}", e))?;
-        conn.execute("DELETE FROM actions WHERE id = ?1", params![id])?;
+        conn.execute("DELETE FROM mcp_servers WHERE id = ?1", params![id])?;
         Ok(())
     }
 
-    /// Increment usage count and update last_used_at.
-    pub fn record_action_usage(&self, id: &str) -> Result<()> {
+    /// Increment usage count and update last_used_at for an MCP server.
+    pub fn record_mcp_server_usage(&self, id: &str) -> Result<()> {
         let conn = self
             .conn
             .lock()
             .map_err(|e| anyhow::anyhow!("Database lock poisoned: {}", e))?;
         let now = chrono::Utc::now().timestamp_millis();
         conn.execute(
-            "UPDATE actions SET usage_count = usage_count + 1, last_used_at = ?1, updated_at = ?1 WHERE id = ?2",
+            "UPDATE mcp_servers SET usage_count = usage_count + 1, last_used_at = ?1, updated_at = ?1 WHERE id = ?2",
             params![now, id],
         )?;
         Ok(())
     }
 
-    /// Get all unique tag names across all actions.
-    pub fn get_all_action_tags(&self) -> Result<Vec<String>> {
-        let actions = self.get_all_actions()?;
+    /// Get all unique tag names across all MCP servers.
+    pub fn get_all_mcp_server_tags(&self) -> Result<Vec<String>> {
+        let servers = self.get_all_mcp_servers()?;
         let mut tags = std::collections::BTreeSet::new();
-        for a in &actions {
-            for t in &a.tags {
+        for s in &servers {
+            for t in &s.tags {
                 let trimmed = t.trim();
                 if !trimmed.is_empty() {
                     tags.insert(trimmed.to_string());
@@ -1176,25 +1203,31 @@ fn map_tag_group_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<TagGroupRecord
     })
 }
 
-
-fn map_action_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<super::types::ActionRecord> {
-    let tags_json: String = row.get(6)?;
+fn map_mcp_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<crate::library::skill::types::McpServerRecord> {
+    let tags_json: String = row.get(12)?;
     let tags: Vec<String> = serde_json::from_str(&tags_json).unwrap_or_default();
-    Ok(super::types::ActionRecord {
+    Ok(crate::library::skill::types::McpServerRecord {
         id: row.get(0)?,
         name: row.get(1)?,
         description: row.get(2)?,
-        group: row.get(3)?,
-        payload_json: row.get(4)?,
-        shortcut: row.get(5)?,
+        command: row.get(3)?,
+        url: row.get(4)?,
+        args_json: row.get(5)?,
+        env_json: row.get(6)?,
+        transport: row.get(7)?,
+        scope: row.get(8)?,
+        project_id: row.get(9)?,
+        source_registry: row.get(10)?,
+        source_ref: row.get(11)?,
         tags,
-        enabled: row.get::<_, i32>(7)? != 0,
-        usage_count: row.get(8)?,
-        last_used_at: row.get(9)?,
-        created_at: row.get(10)?,
-        updated_at: row.get(11)?,
+        enabled: row.get::<_, i32>(13)? != 0,
+        usage_count: row.get(14)?,
+        last_used_at: row.get(15)?,
+        created_at: row.get(16)?,
+        updated_at: row.get(17)?,
     })
 }
+
 
 fn map_prompt_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<PromptRecord> {
     let tags_json: String = row.get(5)?;
@@ -1267,10 +1300,117 @@ mod tests {
         assert!(counts.is_empty());
     }
 
+    // ── MCP server tests ──────────────────────────────────────────────────
+
+    fn sample_mcp(id: &str, name: &str) -> crate::library::skill::types::McpServerRecord {
+        crate::library::skill::types::McpServerRecord {
+            id: id.to_string(),
+            name: name.to_string(),
+            description: Some("test mcp".to_string()),
+            command: "npx".to_string(),
+            url: None,
+            args_json: r#"["-y","fs-mcp"]"#.to_string(),
+            env_json: "{}".to_string(),
+            transport: "stdio".to_string(),
+            scope: "global".to_string(),
+            project_id: None,
+            source_registry: None,
+            source_ref: None,
+            tags: vec!["fs".to_string()],
+            enabled: true,
+            usage_count: 0,
+            last_used_at: None,
+            created_at: 1,
+            updated_at: 1,
+        }
+    }
+
+    #[test]
+    fn mcp_server_round_trip() {
+        let repo = SkillRepository::open_in_memory().unwrap();
+        let server = sample_mcp("mcp-1", "fs-server");
+        repo.insert_mcp_server(&server).unwrap();
+
+        let loaded = repo.get_mcp_server_by_id("mcp-1").unwrap();
+        assert!(loaded.is_some());
+        let loaded = loaded.unwrap();
+        assert_eq!(loaded.name, "fs-server");
+        assert_eq!(loaded.command, "npx");
+        assert_eq!(loaded.transport, "stdio");
+
+        let all = repo.get_all_mcp_servers().unwrap();
+        assert_eq!(all.len(), 1);
+    }
+
+    #[test]
+    fn mcp_server_delete_then_not_found() {
+        let repo = SkillRepository::open_in_memory().unwrap();
+        repo.insert_mcp_server(&sample_mcp("mcp-1", "fs")).unwrap();
+        repo.delete_mcp_server("mcp-1").unwrap();
+        assert!(repo.get_mcp_server_by_id("mcp-1").unwrap().is_none());
+    }
+
+    #[test]
+    fn mcp_server_usage_increment() {
+        let repo = SkillRepository::open_in_memory().unwrap();
+        repo.insert_mcp_server(&sample_mcp("mcp-1", "fs")).unwrap();
+        repo.record_mcp_server_usage("mcp-1").unwrap();
+        repo.record_mcp_server_usage("mcp-1").unwrap();
+        let loaded = repo.get_mcp_server_by_id("mcp-1").unwrap().unwrap();
+        assert_eq!(loaded.usage_count, 2);
+        assert!(loaded.last_used_at.is_some());
+    }
+
+    #[test]
+    fn mcp_server_round_trip_preserves_source_fields() {
+        let repo = SkillRepository::open_in_memory().unwrap();
+        let mut server = sample_mcp("mcp-1", "fs-server");
+        server.source_registry = Some("registry.modelcontextprotocol.io".to_string());
+        server.source_ref = Some("io.github.x/fs".to_string());
+        server.transport = "http".to_string();
+        repo.insert_mcp_server(&server).unwrap();
+
+        let loaded = repo.get_mcp_server_by_id("mcp-1").unwrap().unwrap();
+        assert_eq!(
+            loaded.source_registry.as_deref(),
+            Some("registry.modelcontextprotocol.io")
+        );
+        assert_eq!(loaded.source_ref.as_deref(), Some("io.github.x/fs"));
+        assert_eq!(loaded.transport, "http");
+
+        // update round-trip
+        let mut updated = loaded;
+        updated.source_ref = Some("io.github.x/fs-v2".to_string());
+        repo.update_mcp_server(&updated).unwrap();
+        let reloaded = repo.get_mcp_server_by_id("mcp-1").unwrap().unwrap();
+        assert_eq!(reloaded.source_ref.as_deref(), Some("io.github.x/fs-v2"));
+        assert_eq!(reloaded.name, "fs-server");
+    }
+
+    #[test]
+    fn mcp_server_round_trip_preserves_url() {
+        let repo = SkillRepository::open_in_memory().unwrap();
+        let mut server = sample_mcp("mcp-1", "remote-server");
+        server.transport = "http".to_string();
+        server.url = Some("https://mcp.example.com/sse".to_string());
+        server.command = String::new();
+        repo.insert_mcp_server(&server).unwrap();
+
+        let loaded = repo.get_mcp_server_by_id("mcp-1").unwrap().unwrap();
+        assert_eq!(loaded.transport, "http");
+        assert_eq!(loaded.url.as_deref(), Some("https://mcp.example.com/sse"));
+
+        let mut updated = loaded;
+        updated.url = Some("https://mcp.example.com/v2".to_string());
+        repo.update_mcp_server(&updated).unwrap();
+        let reloaded = repo.get_mcp_server_by_id("mcp-1").unwrap().unwrap();
+        assert_eq!(reloaded.url.as_deref(), Some("https://mcp.example.com/v2"));
+    }
+
     // ── Prompts kind tests ────────────────────────────────────────────────
 
-    fn sample_prompt(id: &str, kind: &str) -> crate::skill::types::PromptRecord {
-        crate::skill::types::PromptRecord {
+    fn sample_prompt(id: &str, kind: &str) -> crate::library::skill::types::PromptRecord {
+        crate::library::skill::types::PromptRecord {
             id: id.to_string(),
             name: format!("prompt-{id}"),
             description: None,

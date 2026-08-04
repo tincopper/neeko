@@ -5,7 +5,7 @@ import type {
   McpRegistryGeneratedConfig,
   McpRegistryServerSummary,
 } from '@/features/library/api/libraryApi';
-import { useLibraryStore } from '@/features/library/store/libraryStore';
+import { useMcpStore } from '@/features/library/store/mcpStore';
 import { useProjectStore } from '@/shared/store/projectStore';
 import { invoke } from '@/testing/tauriCore';
 
@@ -49,7 +49,7 @@ function openStore() {
   const createMcpServer = vi.fn(async () => {});
   const closeMcpInstall = vi.fn();
   const setMcpView = vi.fn();
-  useLibraryStore.setState({
+  useMcpStore.setState({
     installOpen: true,
     mcpDraft: makeDraft(),
     mcpInstallSummary: {
@@ -76,7 +76,7 @@ beforeEach(() => {
 
 describe('McpInstallDialog — 精简安装对话框', () => {
   it('关闭状态不渲染', () => {
-    useLibraryStore.setState({ installOpen: false });
+    useMcpStore.setState({ installOpen: false });
     render(<McpInstallDialog />);
     expect(screen.queryByText(/Install from Marketplace/)).not.toBeInTheDocument();
   });
@@ -124,7 +124,7 @@ describe('McpInstallDialog — 精简安装对话框', () => {
   });
 
   it('remote（http）transport 显示 URL 摘要、不显示 command', () => {
-    useLibraryStore.setState({
+    useMcpStore.setState({
       installOpen: true,
       mcpDraft: {
         ...makeDraft(),
@@ -151,7 +151,7 @@ describe('McpInstallDialog — 精简安装对话框', () => {
 
   it('remote（http）transport 落库时传递 url 且 command 为空', async () => {
     const { createMcpServer } = openStore();
-    useLibraryStore.setState({
+    useMcpStore.setState({
       mcpDraft: {
         ...makeDraft(),
         command: '',

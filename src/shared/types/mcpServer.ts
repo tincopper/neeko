@@ -82,6 +82,34 @@ export interface McpTestResult {
   message: string;
 }
 
+/** MCP tag group (analogous to Skill tag groups). */
+export interface McpTagGroup {
+  id: string;
+  name: string;
+  description?: string | null;
+  icon?: string | null;
+  sortOrder: number;
+  serverCount: number;
+}
+
+/** Input for creating/updating an MCP tag group. */
+export interface McpTagGroupInput {
+  name: string;
+  description?: string | null;
+  icon?: string | null;
+}
+
+/** MCP server deployment target. */
+export interface McpServerTarget {
+  id: string;
+  serverId: string;
+  agentId: string;
+  targetPath: string;
+  status: string;
+  deployedAt?: number | null;
+  lastError?: string | null;
+}
+
 /** A resource resolved from a slash command (prompt or command). */
 export interface SlashResource {
   /** Resource kind: "prompt" or "command". */

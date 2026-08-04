@@ -36,6 +36,8 @@ pub mod file;
 pub mod git;
 /// Language Server Protocol client management.
 pub mod lsp;
+/// MCP (Model Context Protocol) management: servers, tag groups, registry.
+pub mod mcp;
 /// Project management (add, remove, list, config).
 pub mod project;
 /// Session persistence (save / load workspace state).
@@ -116,25 +118,44 @@ macro_rules! neeko_invoke_handler {
             $crate::agent::plugin_commands::get_agent_schema,
             $crate::agent::plugin_commands::validate_against_schema,
             // ── MCP server commands ──────────────────────────────────────
-            $crate::skill::commands::list_mcp_servers,
-            $crate::skill::commands::get_mcp_server,
-            $crate::skill::commands::save_mcp_server,
-            $crate::skill::commands::update_mcp_server_cmd,
-            $crate::skill::commands::delete_mcp_server_cmd,
-            $crate::skill::commands::deploy_mcp_to_agent,
-            $crate::skill::commands::list_deployed_mcp,
-            $crate::skill::commands::remove_deployed_mcp,
-            $crate::skill::commands::test_mcp_server_cmd,
-            $crate::skill::commands::search_mcp_registry_cmd,
-            $crate::skill::commands::fetch_mcp_registry_server_cmd,
+            $crate::mcp::commands::list_mcp_servers,
+            $crate::mcp::commands::get_mcp_server,
+            $crate::mcp::commands::save_mcp_server,
+            $crate::mcp::commands::update_mcp_server_cmd,
+            $crate::mcp::commands::delete_mcp_server_cmd,
+            $crate::mcp::commands::deploy_mcp_to_agent,
+            $crate::mcp::commands::list_deployed_mcp,
+            $crate::mcp::commands::remove_deployed_mcp,
+            $crate::mcp::commands::test_mcp_server_cmd,
+            $crate::mcp::commands::search_mcp_registry_cmd,
+            $crate::mcp::commands::fetch_mcp_registry_server_cmd,
+            // MCP tag groups
+            $crate::mcp::commands::get_mcp_tag_groups,
+            $crate::mcp::commands::create_mcp_tag_group,
+            $crate::mcp::commands::delete_mcp_tag_group_cmd,
+            $crate::mcp::commands::update_mcp_tag_group_cmd,
+            $crate::mcp::commands::reorder_mcp_tag_groups_cmd,
+            $crate::mcp::commands::add_server_to_mcp_tag_group_cmd,
+            $crate::mcp::commands::remove_server_from_mcp_tag_group_cmd,
+            $crate::mcp::commands::get_servers_for_mcp_tag_group_cmd,
+            $crate::mcp::commands::set_mcp_server_agent_toggle_cmd,
+            // MCP project bindings
+            $crate::mcp::commands::get_project_mcp_tag_groups_cmd,
+            $crate::mcp::commands::set_project_mcp_tag_groups_cmd,
+            $crate::mcp::commands::add_project_mcp_tag_group_cmd,
+            $crate::mcp::commands::remove_project_mcp_tag_group_cmd,
+            $crate::mcp::commands::get_all_project_mcp_tag_group_counts_cmd,
+            $crate::mcp::commands::apply_project_mcp_servers_cmd,
+            // MCP targets
+            $crate::mcp::commands::get_mcp_server_targets_cmd,
             // ── Commands (slash commands) ────────────────────────────────
-            $crate::skill::commands::deploy_command_to_agent,
-            $crate::skill::commands::list_deployed_commands,
-            $crate::skill::commands::remove_deployed_command,
-            $crate::skill::commands::resolve_slash_resource,
-            $crate::skill::commands::get_agent_capabilities,
-            $crate::skill::commands::list_agents_supporting,
-            // ── connection ───────────────────────────────────────────────────
+            $crate::mcp::commands::deploy_command_to_agent,
+            $crate::mcp::commands::list_deployed_commands,
+            $crate::mcp::commands::remove_deployed_command,
+            $crate::mcp::commands::resolve_slash_resource,
+            $crate::mcp::commands::get_agent_capabilities,
+            $crate::mcp::commands::list_agents_supporting,
+// ── connection ───────────────────────────────────────────────────
             $crate::connection::commands::get_wsl_distros,
             $crate::connection::commands::get_wsl_directories,
             $crate::connection::commands::get_wsl_home_dir,

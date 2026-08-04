@@ -10,6 +10,9 @@ import type {
   McpServer,
   McpServerInput,
   McpTestResult,
+  McpTagGroup,
+  McpTagGroupInput,
+  McpServerTarget,
   SlashResource,
   AgentCapabilities,
 } from '@/shared/types/mcpServer';
@@ -507,6 +510,155 @@ export async function testMcpServer(id: string): Promise<McpTestResult> {
     commandFound: result.command_found,
     command: result.command,
     message: result.message,
+  };
+}
+
+// ─── MCP Tag Groups ───────────────────────────────────────────────────────────
+
+export async function getMcpTagGroups(): Promise<McpTagGroup[]> {
+  const dtos = await invoke<McpTagGroupDto[]>('get_mcp_tag_groups');
+  return dtos.map(dtoToMcpTagGroup);
+}
+
+export async function createMcpTagGroup(input: McpTagGroupInput): Promise<McpTagGroup> {
+  const dto = await invoke<McpTagGroupDto>('create_mcp_tag_group', {
+    name: input.name,
+    description: input.description ?? null,
+    icon: input.icon ?? null,
+  });
+  return dtoToMcpTagGroup(dto);
+}
+
+export async function deleteMcpTagGroup(id: string): Promise<void> {
+  await invoke('delete_mcp_tag_group_cmd', { id });
+}
+
+export async function updateMcpTagGroup(
+  id: string,
+  input: Partial<McpTagGroupInput>,
+): Promise<McpTagGroup> {
+  const dto = await invoke<McpTagGroupDto>('update_mcp_tag_group_cmd', {
+    id,
+    name: input.name ?? null,
+    description: input.description ?? null,
+    icon: input.icon ?? null,
+  });
+  return dtoToMcpTagGroup(dto);
+}
+
+export async function reorderMcpTagGroups(ids: string[]): Promise<void> {
+  await invoke('reorder_mcp_tag_groups_cmd', { ids });
+}
+
+export async function addServerToMcpTagGroup(tagGroupId: string, serverId: string): Promise<void> {
+  await invoke('add_server_to_mcp_tag_group_cmd', { tagGroupId, serverId });
+}
+
+export async function removeServerFromMcpTagGroup(
+  tagGroupId: string,
+  serverId: string,
+): Promise<void> {
+  await invoke('remove_server_from_mcp_tag_group_cmd', { tagGroupId, serverId });
+}
+
+export async function getServersForMcpTagGroup(tagGroupId: string): Promise<McpServer[]> {
+  const dtos = await invoke<McpServerDto[]>('get_servers_for_mcp_tag_group_cmd', { tagGroupId });
+  return dtos.map(dtoToMcpServer);
+}
+
+export async function setMcpServerAgentToggle(
+  tagGroupId: string,
+  serverId: string,
+  agentId: string,
+  enabled: boolean,
+): Promise<void> {
+  await invoke('set_mcp_server_agent_toggle_cmd', { tagGroupId, serverId, agentId, enabled });
+}
+
+// ─── MCP Project Bindings ─────────────────────────────────────────────────────
+
+export async function getProjectMcpTagGroups(projectId: string): Promise<McpTagGroup[]> {
+  const dtos = await invoke<McpTagGroupDto[]>('get_project_mcp_tag_groups_cmd', { projectId });
+  return dtos.map(dtoToMcpTagGroup);
+}
+
+export async function setProjectMcpTagGroups(
+  projectId: string,
+  tagGroupIds: string[],
+): Promise<void> {
+  await invoke('set_project_mcp_tag_groups_cmd', { projectId, tagGroupIds });
+}
+
+export async function addProjectMcpTagGroup(projectId: string, tagGroupId: string): Promise<void> {
+  await invoke('add_project_mcp_tag_group_cmd', { projectId, tagGroupId });
+}
+
+export async function removeProjectMcpTagGroup(
+  projectId: string,
+  tagGroupId: string,
+): Promise<void> {
+  await invoke('remove_project_mcp_tag_group_cmd', { projectId, tagGroupId });
+}
+
+export async function getAllProjectMcpTagGroupCounts(): Promise<Array<[string, number]>> {
+  return invoke('get_all_project_mcp_tag_group_counts_cmd');
+}
+
+export async function applyProjectMcpServers(
+  projectId: string,
+  projectPath: string,
+): Promise<void> {
+  await invoke('apply_project_mcp_servers_cmd', { projectId, projectPath });
+}
+
+// ─── MCP Deployment Targets ───────────────────────────────────────────────────
+
+export async function getMcpServerTargets(serverId: string): Promise<McpServerTarget[]> {
+  const dtos = await invoke<McpServerTargetDto[]>('get_mcp_server_targets_cmd', { serverId });
+  return dtos.map(dtoToMcpServerTarget);
+}
+
+// ─── DTO helpers ──────────────────────────────────────────────────────────────
+
+interface McpTagGroupDto {
+  id: string;
+  name: string;
+  description: string | null;
+  icon: string | null;
+  sort_order: number;
+  server_count: number;
+}
+
+function dtoToMcpTagGroup(dto: McpTagGroupDto): McpTagGroup {
+  return {
+    id: dto.id,
+    name: dto.name,
+    description: dto.description,
+    icon: dto.icon,
+    sortOrder: dto.sort_order,
+    serverCount: dto.server_count,
+  };
+}
+
+interface McpServerTargetDto {
+  id: string;
+  server_id: string;
+  agent_id: string;
+  target_path: string;
+  status: string;
+  deployed_at: number | null;
+  last_error: string | null;
+}
+
+function dtoToMcpServerTarget(dto: McpServerTargetDto): McpServerTarget {
+  return {
+    id: dto.id,
+    serverId: dto.server_id,
+    agentId: dto.agent_id,
+    targetPath: dto.target_path,
+    status: dto.status,
+    deployedAt: dto.deployed_at,
+    lastError: dto.last_error,
   };
 }
 

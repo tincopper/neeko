@@ -1,7 +1,7 @@
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 
-import { useLibraryStore } from '@/features/library/store/libraryStore';
+import { useMcpStore } from '@/features/library/store/mcpStore';
 import { invoke } from '@/testing/tauriCore';
 
 import McpMarketplaceContent from '../McpMarketplaceContent';
@@ -33,7 +33,7 @@ function makePage(servers: string[], nextCursor: string | null) {
 }
 
 beforeEach(() => {
-  useLibraryStore.setState({
+  useMcpStore.setState({
     mcpView: 'marketplace',
     searchQuery: '',
     mcpMarketplaceCount: 0,
@@ -110,7 +110,7 @@ describe('McpMarketplaceContent — 翻页', () => {
 
 describe('McpMarketplaceContent — 安装流程', () => {
   it('点击 Install 打开精简安装对话框（而非完整编辑器）', async () => {
-    useLibraryStore.setState({ installOpen: false, editorOpen: false, mcpDraft: null });
+    useMcpStore.setState({ installOpen: false, editorOpen: false, mcpDraft: null });
     mockInvoke.mockResolvedValueOnce(makePage(['com.example/fs'], null)).mockResolvedValueOnce({
       summary: makeServer('com.example/fs'),
       generated: {
@@ -135,11 +135,11 @@ describe('McpMarketplaceContent — 安装流程', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Install' }));
 
     await waitFor(() => {
-      expect(useLibraryStore.getState().installOpen).toBe(true);
-      expect(useLibraryStore.getState().mcpDraft).not.toBeNull();
-      expect(useLibraryStore.getState().mcpInstallSummary?.title).toBe('fs');
+      expect(useMcpStore.getState().installOpen).toBe(true);
+      expect(useMcpStore.getState().mcpDraft).not.toBeNull();
+      expect(useMcpStore.getState().mcpInstallSummary?.title).toBe('fs');
     });
     // 安装走独立对话框，不再打开完整编辑表单
-    expect(useLibraryStore.getState().editorOpen).toBe(false);
+    expect(useMcpStore.getState().editorOpen).toBe(false);
   });
 });

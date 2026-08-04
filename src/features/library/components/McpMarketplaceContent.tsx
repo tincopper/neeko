@@ -5,7 +5,7 @@ import {
   MCP_PAGE_SIZE_OPTIONS,
   useMcpMarketplace,
 } from '@/features/library/hooks/useMcpMarketplace';
-import { useLibraryStore } from '@/features/library/store/libraryStore';
+import { useMcpStore } from '@/features/library/store/mcpStore';
 import { cn } from '@/lib/utils';
 
 import McpMarketCard from './McpMarketCard';
@@ -34,7 +34,7 @@ const McpMarketplaceContent: React.FC = React.memo(() => {
     setTransportFilter,
   } = useMcpMarketplace();
 
-  const openMcpInstall = useLibraryStore((s) => s.openMcpInstall);
+  const openMcpInstall = useMcpStore((s) => s.openMcpInstall);
 
   const handleInstall = useCallback(
     async (name: string) => {
@@ -47,7 +47,6 @@ const McpMarketplaceContent: React.FC = React.memo(() => {
             name: detail.summary.name,
             title: detail.summary.title,
             version: detail.summary.version,
-            repository: detail.summary.repository,
           },
           detail.generated,
         );

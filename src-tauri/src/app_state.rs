@@ -45,6 +45,8 @@ pub struct AppStateWrapper {
     pub watcher_manager: WatcherManager,
     /// Shared skill store (tag groups, installed skills).
     pub skill_store: Arc<skill::skill_store::SkillStore>,
+    /// Shared MCP store (MCP servers, tag groups, deployment targets).
+    pub mcp_store: Arc<crate::mcp::store::McpStore>,
     /// Language Server Protocol session manager.
     pub lsp_manager: Arc<crate::lsp::LspManager>,
     /// Debug Adapter Protocol session manager.
@@ -343,58 +345,61 @@ impl AppStateWrapper {
             None => log::warn!("[Terminal] Attempted to close unknown session: {session_id}"),
         }
     }
+/// Create `AppStateWrapper` with an external shared `SkillStore`.
+#[allow(clippy::expect_used)]
+#[must_use]
+pub fn new_with_skill_store(skill_store: Arc<skill::skill_store::SkillStore>) -> Self {
+    let storage_manager = StorageManager::new().expect("Failed to create storage manager");
 
-    /// Create `AppStateWrapper` with an external shared `SkillStore`.
-    #[allow(clippy::expect_used)]
-    #[must_use]
-    pub fn new_with_skill_store(skill_store: Arc<skill::skill_store::SkillStore>) -> Self {
-        let storage_manager = StorageManager::new().expect("Failed to create storage manager");
-
-        // Persist callback: auto-saves projects after every mutation
-        let persist = {
-            let sm_clone = storage_manager.clone();
-            move |projects: &[crate::project::types::Project]| {
-                let session = sm_clone.create_session_from_projects(projects, None);
-                if let Err(e) = sm_clone.save_session(&session) {
-                    log::error!("Auto-save session failed: {}", e);
-                }
+    // Persist callback: auto-saves projects after every mutation
+    let persist = {
+        let sm_clone = storage_manager.clone();
+        move |projects: &[crate::project::types::Project]| {
+            let session = sm_clone.create_session_from_projects(projects, None);
+            if let Err(e) = sm_clone.save_session(&session) {
+                log::error!("Auto-save session failed: {}", e);
             }
-        };
-
-        // Bind business runtime to Tauri's global Tokio handle (safe before/after setup).
-        let runtime = AppRuntime::shared_default();
-        let lsp_manager = Arc::new(crate::lsp::LspManager::new(Arc::clone(&runtime)));
-
-        Self {
-            runtime,
-            project_manager: Mutex::new(ProjectManager::new(persist)),
-            terminal_manager: TerminalManager::new(),
-            remote_terminal_manager: RemoteTerminalManager::new(),
-            agent_manager: Mutex::new(AgentManager::new()),
-            storage_manager,
-            active_project_id: Mutex::new(None),
-            watcher_manager: WatcherManager::new(),
-            skill_store,
-            lsp_manager,
-            dap_manager: crate::dap::DapManager::new(),
-            conversation_manager: ConversationManager::new(
-                crate::conversation::adapters::all_adapters(),
-            ),
-            session_owner: Mutex::new(HashMap::new()),
         }
-    }
+    };
 
-    /// Create `AppStateWrapper` with an auto-initialized `SkillStore`.
-    #[allow(clippy::expect_used)]
-    #[must_use]
-    pub fn new() -> Self {
-        skill::central_repo::ensure_central_repo().expect("Failed to create skill central repo");
-        let store = Arc::new(
-            skill::skill_store::SkillStore::new(&skill::central_repo::db_path())
-                .expect("Failed to create skill store"),
-        );
-        Self::new_with_skill_store(store)
+    // Bind business runtime to Tauri's global Tokio handle (safe before/after setup).
+    let runtime = AppRuntime::shared_default();
+    let lsp_manager = Arc::new(crate::lsp::LspManager::new(Arc::clone(&runtime)));
+
+    Self {
+        runtime,
+        project_manager: Mutex::new(ProjectManager::new(persist)),
+        terminal_manager: TerminalManager::new(),
+        remote_terminal_manager: RemoteTerminalManager::new(),
+        agent_manager: Mutex::new(AgentManager::new()),
+        storage_manager,
+        active_project_id: Mutex::new(None),
+        watcher_manager: WatcherManager::new(),
+        skill_store,
+        mcp_store: Arc::new(
+            crate::mcp::store::McpStore::new(&skill::central_repo::db_path())
+                .expect("Failed to create MCP store"),
+        ),
+        lsp_manager,
+        dap_manager: crate::dap::DapManager::new(),
+        conversation_manager: ConversationManager::new(
+            crate::conversation::adapters::all_adapters(),
+        ),
+        session_owner: Mutex::new(HashMap::new()),
     }
+}
+
+/// Create `AppStateWrapper` with an auto-initialized `SkillStore`.
+#[allow(clippy::expect_used)]
+#[must_use]
+pub fn new() -> Self {
+    skill::central_repo::ensure_central_repo().expect("Failed to create skill central repo");
+    let store = Arc::new(
+        skill::skill_store::SkillStore::new(&skill::central_repo::db_path())
+            .expect("Failed to create skill store"),
+    );
+    Self::new_with_skill_store(store)
+}
 }
 
 impl Default for AppStateWrapper {

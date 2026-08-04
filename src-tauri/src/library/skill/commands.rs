@@ -6,7 +6,7 @@ use std::sync::Arc;
 use tauri::Emitter;
 use tauri::State;
 
-use super::skill_store::SkillStore;
+use crate::library::LibraryStore;
 #[allow(clippy::wildcard_imports)]
 use super::types::*;
 use crate::agent::path_resolver::PathResolver;
@@ -117,7 +117,7 @@ pub struct SkillDocumentDtoOut {
 }
 
 /// Re-parse SKILL.md when DB description is empty; persist if found.
-fn enrich_skill_description(store: &SkillStore, mut s: SkillRecord) -> SkillRecord {
+fn enrich_skill_description(store: &LibraryStore, mut s: SkillRecord) -> SkillRecord {
     let needs_desc = s
         .description
         .as_ref()
@@ -169,7 +169,7 @@ fn skill_to_dto(s: SkillRecord, tags: Vec<String>) -> ManagedSkillDtoOut {
 /// and backfill the DB so the library card can show text.
 #[tauri::command]
 pub async fn get_managed_skills(
-    store: State<'_, Arc<SkillStore>>,
+    store: State<'_, Arc<LibraryStore>>,
 ) -> Result<Vec<ManagedSkillDtoOut>, AppError> {
     let store = store.inner().clone();
     run_blocking_result(move || {
@@ -191,7 +191,7 @@ pub async fn get_managed_skills(
 #[tauri::command]
 pub async fn get_skill_document(
     skill_id: String,
-    store: State<'_, Arc<SkillStore>>,
+    store: State<'_, Arc<LibraryStore>>,
 ) -> Result<SkillDocumentDtoOut, AppError> {
     let store = store.inner().clone();
     run_blocking_result(move || {
@@ -246,7 +246,7 @@ fn read_skill_doc_from_dir(dir: &std::path::Path) -> Result<SkillDocumentDtoOut,
 ///
 /// Returns how many skills received a non-empty description update.
 #[tauri::command]
-pub async fn refresh_skill_metadata(store: State<'_, Arc<SkillStore>>) -> Result<u32, AppError> {
+pub async fn refresh_skill_metadata(store: State<'_, Arc<LibraryStore>>) -> Result<u32, AppError> {
     let store = store.inner().clone();
     run_blocking_result(move || {
         let skills = store.get_all_skills().map_err(AppError::from)?;
@@ -287,7 +287,7 @@ pub async fn refresh_skill_metadata(store: State<'_, Arc<SkillStore>>) -> Result
 
 /// Delete all managed skills and wipe the central skills directory (keeps tag groups).
 #[tauri::command]
-pub async fn clear_all_managed_skills(store: State<'_, Arc<SkillStore>>) -> Result<u32, AppError> {
+pub async fn clear_all_managed_skills(store: State<'_, Arc<LibraryStore>>) -> Result<u32, AppError> {
     let store = store.inner().clone();
     run_blocking_result(move || {
         let skills = store.get_all_skills().map_err(AppError::from)?;
@@ -310,7 +310,7 @@ pub async fn clear_all_managed_skills(store: State<'_, Arc<SkillStore>>) -> Resu
 #[tauri::command]
 pub async fn delete_managed_skill(
     skill_id: String,
-    store: State<'_, Arc<SkillStore>>,
+    store: State<'_, Arc<LibraryStore>>,
 ) -> Result<(), AppError> {
     let store = store.inner().clone();
     run_blocking_result(move || {
@@ -330,7 +330,7 @@ pub async fn delete_managed_skill(
 /// Get all tag groups with skill counts.
 #[tauri::command]
 pub async fn get_tag_groups(
-    store: State<'_, Arc<SkillStore>>,
+    store: State<'_, Arc<LibraryStore>>,
 ) -> Result<Vec<TagGroupDtoOut>, AppError> {
     let store = store.inner().clone();
     run_blocking_result(move || {
@@ -361,7 +361,7 @@ pub async fn create_tag_group(
     name: String,
     description: Option<String>,
     icon: Option<String>,
-    store: State<'_, Arc<SkillStore>>,
+    store: State<'_, Arc<LibraryStore>>,
 ) -> Result<TagGroupDtoOut, AppError> {
     let store = store.inner().clone();
     run_blocking_result(move || {
@@ -395,7 +395,7 @@ pub async fn create_tag_group(
 #[tauri::command]
 pub async fn delete_tag_group_cmd(
     id: String,
-    store: State<'_, Arc<SkillStore>>,
+    store: State<'_, Arc<LibraryStore>>,
 ) -> Result<(), AppError> {
     let store = store.inner().clone();
     run_blocking_result(move || store.delete_tag_group(&id).map_err(AppError::from)).await
@@ -406,7 +406,7 @@ pub async fn delete_tag_group_cmd(
 pub async fn install_local_skill(
     source_path: String,
     name: Option<String>,
-    store: tauri::State<'_, std::sync::Arc<super::skill_store::SkillStore>>,
+    store: State<'_, Arc<LibraryStore>>,
 ) -> Result<ManagedSkillDtoOut, AppError> {
     let store = store.inner().clone();
     run_blocking_result(move || {
@@ -498,7 +498,7 @@ fn build_scan_plugins(state: &crate::AppStateWrapper) -> Vec<AgentPlugin> {
 /// Scan all tool directories for unmanaged skills.
 #[tauri::command]
 pub async fn scan_local_skills(
-    store: tauri::State<'_, std::sync::Arc<super::skill_store::SkillStore>>,
+    store: State<'_, Arc<LibraryStore>>,
     state: tauri::State<'_, crate::AppStateWrapper>,
 ) -> Result<Vec<DiscoveredSkillDto>, AppError> {
     let store = store.inner().clone();
@@ -526,7 +526,7 @@ pub async fn scan_local_skills(
 pub async fn import_discovered_skill(
     discovered_path: String,
     name: Option<String>,
-    store: tauri::State<'_, std::sync::Arc<super::skill_store::SkillStore>>,
+    store: State<'_, Arc<LibraryStore>>,
 ) -> Result<ManagedSkillDtoOut, AppError> {
     let store = store.inner().clone();
     run_blocking_result(move || {
@@ -652,7 +652,7 @@ pub struct ConfirmGitInstallInput {
 #[tauri::command]
 pub async fn confirm_git_install(
     input: ConfirmGitInstallInput,
-    store: tauri::State<'_, std::sync::Arc<super::skill_store::SkillStore>>,
+    store: State<'_, Arc<LibraryStore>>,
 ) -> Result<ManagedSkillDtoOut, AppError> {
     let store = store.inner().clone();
     run_blocking_result(move || {
@@ -730,7 +730,7 @@ pub struct CheckUpdateResult {
 #[tauri::command]
 pub async fn check_skill_update(
     skill_id: String,
-    store: tauri::State<'_, std::sync::Arc<super::skill_store::SkillStore>>,
+    store: State<'_, Arc<LibraryStore>>,
 ) -> Result<CheckUpdateResult, AppError> {
     let store = store.inner().clone();
     run_blocking_result(move || {
@@ -767,7 +767,7 @@ pub async fn check_skill_update(
 #[tauri::command]
 pub async fn update_skill(
     skill_id: String,
-    store: tauri::State<'_, std::sync::Arc<super::skill_store::SkillStore>>,
+    store: State<'_, Arc<LibraryStore>>,
 ) -> Result<ManagedSkillDtoOut, AppError> {
     let store = store.inner().clone();
     run_blocking_result(move || {
@@ -808,7 +808,7 @@ pub async fn update_tag_group_cmd(
     name: String,
     description: Option<String>,
     icon: Option<String>,
-    store: tauri::State<'_, std::sync::Arc<super::skill_store::SkillStore>>,
+    store: State<'_, Arc<LibraryStore>>,
 ) -> Result<(), AppError> {
     let store = store.inner().clone();
     run_blocking_result(move || {
@@ -823,7 +823,7 @@ pub async fn update_tag_group_cmd(
 #[tauri::command]
 pub async fn reorder_tag_groups_cmd(
     ids: Vec<String>,
-    store: tauri::State<'_, std::sync::Arc<super::skill_store::SkillStore>>,
+    store: State<'_, Arc<LibraryStore>>,
 ) -> Result<(), AppError> {
     let store = store.inner().clone();
     run_blocking_result(move || store.reorder_tag_groups(&ids).map_err(AppError::from)).await
@@ -834,7 +834,7 @@ pub async fn reorder_tag_groups_cmd(
 pub async fn add_skill_to_tag_group_cmd(
     tag_group_id: String,
     skill_id: String,
-    store: tauri::State<'_, std::sync::Arc<super::skill_store::SkillStore>>,
+    store: State<'_, Arc<LibraryStore>>,
 ) -> Result<(), AppError> {
     let store = store.inner().clone();
     run_blocking_result(move || {
@@ -850,7 +850,7 @@ pub async fn add_skill_to_tag_group_cmd(
 pub async fn remove_skill_from_tag_group_cmd(
     tag_group_id: String,
     skill_id: String,
-    store: tauri::State<'_, std::sync::Arc<super::skill_store::SkillStore>>,
+    store: State<'_, Arc<LibraryStore>>,
 ) -> Result<(), AppError> {
     let store = store.inner().clone();
     run_blocking_result(move || {
@@ -865,7 +865,7 @@ pub async fn remove_skill_from_tag_group_cmd(
 #[tauri::command]
 pub async fn get_skills_for_tag_group_cmd(
     tag_group_id: String,
-    store: tauri::State<'_, std::sync::Arc<super::skill_store::SkillStore>>,
+    store: State<'_, Arc<LibraryStore>>,
 ) -> Result<Vec<ManagedSkillDtoOut>, AppError> {
     let store = store.inner().clone();
     run_blocking_result(move || {
@@ -888,7 +888,7 @@ pub async fn get_skills_for_tag_group_cmd(
 /// Get all unique tag names across all skills.
 #[tauri::command]
 pub async fn get_all_tags_cmd(
-    store: tauri::State<'_, std::sync::Arc<super::skill_store::SkillStore>>,
+    store: State<'_, Arc<LibraryStore>>,
 ) -> Result<Vec<String>, AppError> {
     let store = store.inner().clone();
     run_blocking_result(move || store.get_all_tags().map_err(AppError::from)).await
@@ -899,7 +899,7 @@ pub async fn get_all_tags_cmd(
 pub async fn set_skill_tags_cmd(
     skill_id: String,
     tags: Vec<String>,
-    store: tauri::State<'_, std::sync::Arc<super::skill_store::SkillStore>>,
+    store: State<'_, Arc<LibraryStore>>,
 ) -> Result<(), AppError> {
     let store = store.inner().clone();
     run_blocking_result(move || {
@@ -918,7 +918,7 @@ pub async fn set_skill_tags_cmd(
 pub async fn set_managed_skill_enabled_cmd(
     skill_id: String,
     enabled: bool,
-    store: State<'_, Arc<SkillStore>>,
+    store: State<'_, Arc<LibraryStore>>,
 ) -> Result<ManagedSkillDtoOut, AppError> {
     let store = store.inner().clone();
     run_blocking_result(move || {
@@ -946,7 +946,7 @@ pub async fn set_skill_tool_toggle_cmd(
     skill_id: String,
     tool: String,
     enabled: bool,
-    store: tauri::State<'_, std::sync::Arc<super::skill_store::SkillStore>>,
+    store: State<'_, Arc<LibraryStore>>,
 ) -> Result<(), AppError> {
     let store = store.inner().clone();
     run_blocking_result(move || {
@@ -1032,7 +1032,7 @@ fn resolve_sync_targets(state: &crate::AppStateWrapper) -> Vec<SkillTargetDir> {
 
 /// Deploy a list of skills to all resolved agent skill directories (install-only, no remove).
 fn sync_skills_to_targets(
-    store: &SkillStore,
+    store: &LibraryStore,
     skills: &[SkillRecord],
     targets: &[SkillTargetDir],
     configured_mode: Option<&str>,
@@ -1090,7 +1090,7 @@ pub async fn sync_tag_group_cmd(
     tag_group_id: String,
     state: State<'_, crate::AppStateWrapper>,
 ) -> Result<(), AppError> {
-    let store = state.skill_store.clone();
+    let store = state.library_store.clone();
     let targets = resolve_sync_targets(state.inner());
     run_blocking_result(move || {
         let skills = store
@@ -1116,7 +1116,7 @@ pub async fn apply_project_skills_cmd(
     project_id: String,
     state: State<'_, crate::AppStateWrapper>,
 ) -> Result<(), AppError> {
-    let store = state.skill_store.clone();
+    let store = state.library_store.clone();
 
     // Resolve project path + selected_agents under project manager lock
     let (project_path, selected_agents): (Option<String>, Vec<String>) = {
@@ -1224,7 +1224,7 @@ pub async fn apply_project_skills_cmd(
 #[tauri::command]
 pub async fn unsync_tag_group_cmd(
     tag_group_id: String,
-    store: tauri::State<'_, std::sync::Arc<super::skill_store::SkillStore>>,
+    store: State<'_, Arc<LibraryStore>>,
 ) -> Result<(), AppError> {
     let store = store.inner().clone();
     run_blocking_result(move || {
@@ -1248,7 +1248,7 @@ pub async fn unsync_tag_group_cmd(
 #[tauri::command]
 pub async fn get_project_tag_groups_cmd(
     project_id: String,
-    store: tauri::State<'_, std::sync::Arc<super::skill_store::SkillStore>>,
+    store: State<'_, Arc<LibraryStore>>,
 ) -> Result<Vec<TagGroupDtoOut>, AppError> {
     let store = store.inner().clone();
     run_blocking_result(move || {
@@ -1289,7 +1289,7 @@ pub async fn set_project_tag_groups_cmd(
     project_path: Option<String>,
     state: State<'_, crate::AppStateWrapper>,
 ) -> Result<(), AppError> {
-    let store = state.skill_store.clone();
+    let store = state.library_store.clone();
     let agent_info: Vec<(String, Option<String>)> = state
         .agent_manager
         .lock()
@@ -1368,7 +1368,7 @@ pub async fn set_project_tag_groups_cmd(
 pub async fn add_project_tag_group_cmd(
     project_id: String,
     tag_group_id: String,
-    store: tauri::State<'_, std::sync::Arc<super::skill_store::SkillStore>>,
+    store: State<'_, Arc<LibraryStore>>,
 ) -> Result<(), AppError> {
     let store = store.inner().clone();
     run_blocking_result(move || {
@@ -1384,7 +1384,7 @@ pub async fn add_project_tag_group_cmd(
 pub async fn remove_project_tag_group_cmd(
     project_id: String,
     tag_group_id: String,
-    store: tauri::State<'_, std::sync::Arc<super::skill_store::SkillStore>>,
+    store: State<'_, Arc<LibraryStore>>,
 ) -> Result<(), AppError> {
     let store = store.inner().clone();
     run_blocking_result(move || {
@@ -1416,7 +1416,7 @@ pub struct ProjectTagGroupCountDto {
 /// Get bound tag-group counts for all projects that have at least one binding.
 #[tauri::command]
 pub async fn get_all_project_tag_group_counts(
-    store: tauri::State<'_, std::sync::Arc<super::skill_store::SkillStore>>,
+    store: State<'_, Arc<LibraryStore>>,
 ) -> Result<Vec<ProjectTagGroupCountDto>, AppError> {
     let store = store.inner().clone();
     run_blocking_result(move || {
@@ -1458,7 +1458,7 @@ pub async fn get_all_project_skill_counts(
         .map(|a| (a.id.clone(), a.skill_path.clone()))
         .collect();
 
-    let store = state.skill_store.clone();
+    let store = state.library_store.clone();
     run_blocking_result(move || {
         projects
             .into_iter()
@@ -1503,7 +1503,7 @@ pub async fn get_agent_skills_cmd(
         })
         .collect();
 
-    let store = state.skill_store.clone();
+    let store = state.library_store.clone();
     let central = super::central_repo::skills_dir();
 
     run_blocking_result(move || {
@@ -1609,7 +1609,7 @@ pub async fn import_skill_to_agent_cmd(
     agent_id: String,
     state: State<'_, crate::AppStateWrapper>,
 ) -> Result<(), AppError> {
-    let store = state.skill_store.clone();
+    let store = state.library_store.clone();
 
     let agent_skill_path = state
         .agent_manager
@@ -1692,7 +1692,7 @@ pub async fn remove_skill_from_agent_cmd(
     skill_id: Option<String>,
     state: State<'_, crate::AppStateWrapper>,
 ) -> Result<(), AppError> {
-    let store = state.skill_store.clone();
+    let store = state.library_store.clone();
 
     // Ensure the agent exists and path belongs to its skill directory when configured.
     let agent_skill_path = state
@@ -2015,6 +2015,64 @@ mod project_skill_sync_tests {
     }
 }
 
+#[cfg(test)]
+mod mcp_registry_command_tests {
+    use super::*;
+
+    #[test]
+    fn mcp_registry_search_dto_cache_round_trip() {
+        let store = std::sync::Arc::new(LibraryStore::open_in_memory().unwrap());
+
+        let dto = McpRegistrySearchDto {
+            servers: vec![crate::library::mcp::mcp_registry_api::McpRegistryServerSummary {
+                name: "com.example/filesystem".to_string(),
+                title: "Filesystem".to_string(),
+                description: Some("local filesystem".to_string()),
+                version: Some("1.0.0".to_string()),
+                transports: vec!["stdio".to_string()],
+                repository: None,
+                stars: None,
+                downloads: None,
+                inputs: vec![],
+                status: None,
+                updated_at: None,
+                package_keys: vec![],
+            }],
+            next_cursor: Some("abc123".to_string()),
+        };
+
+        let key = "mcp_registry_search_test";
+        let json = serde_json::to_string(&dto).unwrap();
+        store.set_cache(key, &json).unwrap();
+
+        let cached = store.get_cache(key, 300).unwrap().unwrap();
+        let parsed: McpRegistrySearchDto = serde_json::from_str(&cached).unwrap();
+        assert_eq!(parsed.servers.len(), 1);
+        assert_eq!(parsed.servers[0].name, "com.example/filesystem");
+        assert_eq!(parsed.next_cursor.as_deref(), Some("abc123"));
+    }
+
+    #[test]
+    fn mcp_registry_search_dto_expired_cache_ignored() {
+        let store = std::sync::Arc::new(LibraryStore::open_in_memory().unwrap());
+        let dto = McpRegistrySearchDto {
+            servers: vec![],
+            next_cursor: None,
+        };
+        store
+            .set_cache(
+                "mcp_registry_search_expired",
+                &serde_json::to_string(&dto).unwrap(),
+            )
+            .unwrap();
+        // A TTL of 0 makes the cached entry stale immediately.
+        assert!(store
+            .get_cache("mcp_registry_search_expired", 0)
+            .unwrap()
+            .is_none());
+    }
+}
+
 fn scan_skill_dir(
     dir: &std::path::Path,
     central: &std::path::Path,
@@ -2065,7 +2123,7 @@ fn scan_skill_dir(
 fn collect_project_disk_skills(
     project_path: &str,
     agent_info: &[(String, Option<String>)],
-    store: &SkillStore,
+    store: &LibraryStore,
 ) -> Result<Vec<ProjectDiskSkillDto>, AppError> {
     let managed_skills = store.get_all_skills().map_err(AppError::from)?;
     let central = super::central_repo::skills_dir();
@@ -2213,7 +2271,7 @@ pub async fn get_project_skills_cmd(
         .map(|a| (a.id.clone(), a.skill_path.clone()))
         .collect();
 
-    let store = state.skill_store.clone();
+    let store = state.library_store.clone();
 
     run_blocking_result(move || collect_project_disk_skills(&project_path, &agent_info, &store))
         .await
@@ -2237,7 +2295,7 @@ pub async fn import_skills_to_project_cmd(
         return Err(AppError::InvalidInput("No agents selected".into()));
     }
 
-    let store = state.skill_store.clone();
+    let store = state.library_store.clone();
     // Validate agents exist and collect skill_path for project dir resolution
     let agent_paths: std::collections::HashMap<String, Option<String>> = {
         let am = state.agent_manager.lock().map_err(AppError::from)?;
@@ -2330,7 +2388,7 @@ pub async fn set_project_skill_agent_enabled_cmd(
     enabled: bool,
     state: State<'_, crate::AppStateWrapper>,
 ) -> Result<(), AppError> {
-    let store = state.skill_store.clone();
+    let store = state.library_store.clone();
     let agent_skill_path = state
         .agent_manager
         .lock()
@@ -2433,7 +2491,7 @@ pub async fn remove_skill_from_project_cmd(
     skill_id: Option<String>,
     state: State<'_, crate::AppStateWrapper>,
 ) -> Result<(), AppError> {
-    let store = state.skill_store.clone();
+    let store = state.library_store.clone();
     let agent_paths: std::collections::HashMap<String, Option<String>> = state
         .agent_manager
         .lock()
@@ -2471,7 +2529,7 @@ pub async fn remove_skill_from_project_cmd(
 pub async fn create_skill(
     name: String,
     skill_content: String,
-    store: tauri::State<'_, std::sync::Arc<super::skill_store::SkillStore>>,
+    store: State<'_, Arc<LibraryStore>>,
 ) -> Result<ManagedSkillDtoOut, AppError> {
     let store = store.inner().clone();
     run_blocking_result(move || {
@@ -2565,7 +2623,7 @@ pub struct SkillsShSkillDto {
 #[tauri::command]
 pub async fn fetch_leaderboard(
     board: String,
-    store: tauri::State<'_, std::sync::Arc<super::skill_store::SkillStore>>,
+    store: State<'_, Arc<LibraryStore>>,
 ) -> Result<Vec<SkillsShSkillDto>, String> {
     let store = store.inner().clone();
     let cache_key = format!("leaderboard_{}", board);
@@ -2610,7 +2668,7 @@ pub async fn fetch_leaderboard(
 pub async fn search_skillssh(
     query: String,
     limit: Option<usize>,
-    store: tauri::State<'_, std::sync::Arc<super::skill_store::SkillStore>>,
+    store: State<'_, Arc<LibraryStore>>,
 ) -> Result<Vec<SkillsShSkillDto>, String> {
     let store = store.inner().clone();
     let cache_key = format!("search_{}_{}", query, limit.unwrap_or(20));
@@ -2655,7 +2713,7 @@ pub async fn search_skillssh(
 pub async fn install_from_skillssh(
     source: String,
     skill_id: String,
-    store: tauri::State<'_, std::sync::Arc<super::skill_store::SkillStore>>,
+    store: State<'_, Arc<LibraryStore>>,
     app_handle: tauri::AppHandle,
 ) -> Result<ManagedSkillDtoOut, String> {
     let store = store.inner().clone();
@@ -2958,7 +3016,7 @@ fn input_to_prompt_record(
 /// List all prompts.
 #[tauri::command]
 pub async fn list_prompts(
-    store: tauri::State<'_, std::sync::Arc<super::skill_store::SkillStore>>,
+    store: State<'_, Arc<LibraryStore>>,
 ) -> Result<Vec<PromptDtoOut>, AppError> {
     let store = store.inner().clone();
     run_blocking_result(move || {
@@ -2972,7 +3030,7 @@ pub async fn list_prompts(
 #[tauri::command]
 pub async fn get_prompt(
     id: String,
-    store: tauri::State<'_, std::sync::Arc<super::skill_store::SkillStore>>,
+    store: State<'_, Arc<LibraryStore>>,
 ) -> Result<PromptDtoOut, AppError> {
     let store = store.inner().clone();
     run_blocking_result(move || {
@@ -2989,7 +3047,7 @@ pub async fn get_prompt(
 #[tauri::command]
 pub async fn save_prompt(
     input: CreatePromptInput,
-    store: tauri::State<'_, std::sync::Arc<super::skill_store::SkillStore>>,
+    store: State<'_, Arc<LibraryStore>>,
 ) -> Result<PromptDtoOut, AppError> {
     let store = store.inner().clone();
     run_blocking_result(move || {
@@ -3007,7 +3065,7 @@ pub async fn save_prompt(
 pub async fn update_prompt_cmd(
     id: String,
     input: UpdatePromptInput,
-    store: tauri::State<'_, std::sync::Arc<super::skill_store::SkillStore>>,
+    store: State<'_, Arc<LibraryStore>>,
 ) -> Result<PromptDtoOut, AppError> {
     let store = store.inner().clone();
     run_blocking_result(move || {
@@ -3048,7 +3106,7 @@ pub async fn update_prompt_cmd(
 #[tauri::command]
 pub async fn delete_prompt_cmd(
     id: String,
-    store: tauri::State<'_, std::sync::Arc<super::skill_store::SkillStore>>,
+    store: State<'_, Arc<LibraryStore>>,
 ) -> Result<(), AppError> {
     let store = store.inner().clone();
     run_blocking_result(move || store.delete_prompt(&id).map_err(AppError::from)).await
@@ -3058,7 +3116,7 @@ pub async fn delete_prompt_cmd(
 #[tauri::command]
 pub async fn use_prompt_cmd(
     id: String,
-    store: tauri::State<'_, std::sync::Arc<super::skill_store::SkillStore>>,
+    store: State<'_, Arc<LibraryStore>>,
 ) -> Result<(), AppError> {
     let store = store.inner().clone();
     run_blocking_result(move || store.record_prompt_usage(&id).map_err(AppError::from)).await
@@ -3069,7 +3127,7 @@ pub async fn use_prompt_cmd(
 pub async fn resolve_slash_prompt(
     slash: String,
     project_id: Option<String>,
-    store: tauri::State<'_, std::sync::Arc<super::skill_store::SkillStore>>,
+    store: State<'_, Arc<LibraryStore>>,
 ) -> Result<Option<PromptDtoOut>, AppError> {
     let store = store.inner().clone();
     run_blocking_result(move || {
@@ -3084,470 +3142,9 @@ pub async fn resolve_slash_prompt(
 /// Get all unique tag names across all prompts.
 #[tauri::command]
 pub async fn get_all_prompt_tags_cmd(
-    store: tauri::State<'_, std::sync::Arc<super::skill_store::SkillStore>>,
+    store: State<'_, Arc<LibraryStore>>,
 ) -> Result<Vec<String>, AppError> {
     let store = store.inner().clone();
     run_blocking_result(move || store.get_all_prompt_tags().map_err(AppError::from)).await
-}
-
-// ─── Action Commands ─────────────────────────────────────────────────────────
-
-/// Action DTO returned to the frontend.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ActionDtoOut {
-    /// Unique action identifier.
-    pub id: String,
-    /// Display name.
-    pub name: String,
-    /// Optional description.
-    pub description: Option<String>,
-    /// Group: "terminal" | "agent" | "file" | "git" | "quick" | "custom".
-    pub group: String,
-    /// Serialized payload JSON string.
-    pub payload_json: String,
-    /// Optional keyboard shortcut.
-    pub shortcut: Option<String>,
-    /// Tag names.
-    pub tags: Vec<String>,
-    /// Whether the action is enabled.
-    pub enabled: bool,
-    /// Usage counter.
-    pub usage_count: i64,
-    /// Timestamp of last use.
-    pub last_used_at: Option<i64>,
-    /// Creation timestamp.
-    pub created_at: i64,
-    /// Last update timestamp.
-    pub updated_at: i64,
-}
-
-/// Input for creating an action.
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct CreateActionInput {
-    /// Display name.
-    pub name: String,
-    /// Optional description.
-    pub description: Option<String>,
-    /// Group.
-    pub group: Option<String>,
-    /// Serialized payload JSON string.
-    pub payload_json: String,
-    /// Optional keyboard shortcut.
-    pub shortcut: Option<String>,
-    /// Tag names.
-    pub tags: Vec<String>,
-}
-
-/// Input for updating an action.
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct UpdateActionInput {
-    /// Display name.
-    pub name: String,
-    /// Optional description.
-    pub description: Option<String>,
-    /// Group.
-    pub group: Option<String>,
-    /// Serialized payload JSON string.
-    pub payload_json: String,
-    /// Optional keyboard shortcut.
-    pub shortcut: Option<String>,
-    /// Tag names.
-    pub tags: Vec<String>,
-    /// Whether enabled.
-    pub enabled: Option<bool>,
-}
-
-fn action_to_dto(s: super::types::ActionRecord) -> ActionDtoOut {
-    ActionDtoOut {
-        id: s.id,
-        name: s.name,
-        description: s.description,
-        group: s.group,
-        payload_json: s.payload_json,
-        shortcut: s.shortcut,
-        tags: s.tags,
-        enabled: s.enabled,
-        usage_count: s.usage_count,
-        last_used_at: s.last_used_at,
-        created_at: s.created_at,
-        updated_at: s.updated_at,
-    }
-}
-
-/// List all actions.
-#[tauri::command]
-pub async fn list_actions(
-    store: tauri::State<'_, std::sync::Arc<super::skill_store::SkillStore>>,
-) -> Result<Vec<ActionDtoOut>, AppError> {
-    let store = store.inner().clone();
-    run_blocking_result(move || {
-        let actions = store.get_all_actions().map_err(AppError::from)?;
-        Ok(actions.into_iter().map(action_to_dto).collect())
-    })
-    .await
-}
-
-/// Get a single action by ID.
-#[tauri::command]
-pub async fn get_action(
-    id: String,
-    store: tauri::State<'_, std::sync::Arc<super::skill_store::SkillStore>>,
-) -> Result<ActionDtoOut, AppError> {
-    let store = store.inner().clone();
-    run_blocking_result(move || {
-        let action = store
-            .get_action_by_id(&id)
-            .map_err(AppError::from)?
-            .ok_or_else(|| AppError::NotFound(format!("Action not found: {id}")))?;
-        Ok(action_to_dto(action))
-    })
-    .await
-}
-
-/// Create a new action.
-#[tauri::command]
-pub async fn save_action(
-    input: CreateActionInput,
-    store: tauri::State<'_, std::sync::Arc<super::skill_store::SkillStore>>,
-) -> Result<ActionDtoOut, AppError> {
-    let store = store.inner().clone();
-    run_blocking_result(move || {
-        let now = chrono::Utc::now().timestamp_millis();
-        let id = uuid::Uuid::new_v4().to_string();
-        let record = super::types::ActionRecord {
-            id,
-            name: input.name,
-            description: input.description,
-            group: input.group.unwrap_or_else(|| "custom".to_string()),
-            payload_json: input.payload_json,
-            shortcut: input.shortcut,
-            tags: input.tags,
-            enabled: true,
-            usage_count: 0,
-            last_used_at: None,
-            created_at: now,
-            updated_at: now,
-        };
-        store.insert_action(&record).map_err(AppError::from)?;
-        Ok(action_to_dto(record))
-    })
-    .await
-}
-
-/// Update an existing action.
-#[tauri::command]
-pub async fn update_action_cmd(
-    id: String,
-    input: UpdateActionInput,
-    store: tauri::State<'_, std::sync::Arc<super::skill_store::SkillStore>>,
-) -> Result<ActionDtoOut, AppError> {
-    let store = store.inner().clone();
-    run_blocking_result(move || {
-        let mut record = store
-            .get_action_by_id(&id)
-            .map_err(AppError::from)?
-            .ok_or_else(|| AppError::NotFound(format!("Action not found: {id}")))?;
-        record.name = input.name;
-        record.description = input.description;
-        if let Some(group) = input.group {
-            record.group = group;
-        }
-        record.payload_json = input.payload_json;
-        record.shortcut = input.shortcut;
-        record.tags = input.tags;
-        if let Some(enabled) = input.enabled {
-            record.enabled = enabled;
-        }
-        store.update_action(&record).map_err(AppError::from)?;
-        Ok(action_to_dto(record))
-    })
-    .await
-}
-
-/// Delete an action.
-#[tauri::command]
-pub async fn delete_action_cmd(
-    id: String,
-    store: tauri::State<'_, std::sync::Arc<super::skill_store::SkillStore>>,
-) -> Result<(), AppError> {
-    let store = store.inner().clone();
-    run_blocking_result(move || store.delete_action(&id).map_err(AppError::from)).await
-}
-
-/// Record action usage (increments counter + last_used_at).
-#[tauri::command]
-pub async fn use_action_cmd(
-    id: String,
-    store: tauri::State<'_, std::sync::Arc<super::skill_store::SkillStore>>,
-) -> Result<(), AppError> {
-    let store = store.inner().clone();
-    run_blocking_result(move || store.record_action_usage(&id).map_err(AppError::from)).await
-}
-
-/// Result of running an action.
-#[derive(Debug, Serialize)]
-pub struct RunActionResult {
-    /// Whether the action was dispatched.
-    pub dispatched: bool,
-    /// The resolved prompt content (for insert-prompt type).
-    pub prompt_content: Option<String>,
-    /// The command to run (for run-command type).
-    pub command: Option<String>,
-    /// The panel id to toggle (for open-panel type).
-    pub panel_id: Option<String>,
-}
-
-/// Run an action by ID — dispatches by payload type.
-#[tauri::command]
-pub async fn run_action_cmd(
-    id: String,
-    store: tauri::State<'_, std::sync::Arc<super::skill_store::SkillStore>>,
-) -> Result<RunActionResult, AppError> {
-    let store = store.inner().clone();
-    run_blocking_result(move || {
-        let action = store
-            .get_action_by_id(&id)
-            .map_err(AppError::from)?
-            .ok_or_else(|| AppError::NotFound(format!("Action not found: {id}")))?;
-
-        // Record usage.
-        store.record_action_usage(&id).map_err(AppError::from)?;
-
-        // Parse payload and dispatch.
-        let payload: serde_json::Value =
-            serde_json::from_str(&action.payload_json).map_err(AppError::from)?;
-        let payload_type = payload.get("type").and_then(|v| v.as_str());
-
-        match payload_type {
-            Some("insert-prompt") => {
-                let prompt_id = payload
-                    .get("promptId")
-                    .and_then(|v| v.as_str())
-                    .ok_or_else(|| {
-                        AppError::InvalidInput("insert-prompt missing promptId".into())
-                    })?;
-                let prompt = store
-                    .get_prompt_by_id(prompt_id)
-                    .map_err(AppError::from)?
-                    .ok_or_else(|| AppError::NotFound(format!("Prompt not found: {prompt_id}")))?;
-                Ok(RunActionResult {
-                    dispatched: true,
-                    prompt_content: Some(prompt.content),
-                    command: None,
-                    panel_id: None,
-                })
-            }
-            Some("run-command") => {
-                let command = payload
-                    .get("command")
-                    .and_then(|v| v.as_str())
-                    .ok_or_else(|| AppError::InvalidInput("run-command missing command".into()))?;
-                Ok(RunActionResult {
-                    dispatched: true,
-                    prompt_content: None,
-                    command: Some(command.to_string()),
-                    panel_id: None,
-                })
-            }
-            Some("open-panel") => {
-                let panel_id = payload
-                    .get("panelId")
-                    .and_then(|v| v.as_str())
-                    .ok_or_else(|| AppError::InvalidInput("open-panel missing panelId".into()))?;
-                Ok(RunActionResult {
-                    dispatched: true,
-                    prompt_content: None,
-                    command: None,
-                    panel_id: Some(panel_id.to_string()),
-                })
-            }
-            Some("run-skill") => {
-                // run-skill is a future capability — acknowledged but not executed.
-                Ok(RunActionResult {
-                    dispatched: false,
-                    prompt_content: None,
-                    command: None,
-                    panel_id: None,
-                })
-            }
-            _ => Err(AppError::InvalidInput(format!(
-                "Unknown action payload type: {payload_type:?}"
-            ))),
-        }
-    })
-    .await
-}
-
-// ─── Library Bundle (import/export) ───────────────────────────────────────────
-
-/// Export bundle DTO.
-#[derive(Debug, Serialize, Deserialize)]
-pub struct LibraryBundleDto {
-    /// Bundle format version.
-    pub version: String,
-    /// Export timestamp.
-    pub exported_at: i64,
-    /// Prompts.
-    pub prompts: Vec<PromptDtoOut>,
-    /// Actions.
-    pub actions: Vec<ActionDtoOut>,
-}
-
-/// Import result DTO.
-#[derive(Debug, Serialize)]
-pub struct ImportResultDto {
-    /// Number of prompts imported.
-    pub prompts_imported: u32,
-    /// Number of prompts skipped.
-    pub prompts_skipped: u32,
-    /// Number of actions imported.
-    pub actions_imported: u32,
-    /// Number of actions skipped.
-    pub actions_skipped: u32,
-}
-
-/// Export the library (prompts + actions) to a JSON file.
-#[tauri::command]
-pub async fn export_library_bundle(
-    path: String,
-    store: tauri::State<'_, std::sync::Arc<super::skill_store::SkillStore>>,
-) -> Result<(), AppError> {
-    let store = store.inner().clone();
-    run_blocking_result(move || {
-        let prompts = store
-            .get_all_prompts()
-            .map_err(AppError::from)?
-            .into_iter()
-            .map(prompt_to_dto)
-            .collect::<Vec<_>>();
-        let actions = store
-            .get_all_actions()
-            .map_err(AppError::from)?
-            .into_iter()
-            .map(action_to_dto)
-            .collect::<Vec<_>>();
-        let bundle = LibraryBundleDto {
-            version: "1.0".to_string(),
-            exported_at: chrono::Utc::now().timestamp_millis(),
-            prompts,
-            actions,
-        };
-        let json = serde_json::to_string_pretty(&bundle).map_err(AppError::from)?;
-        std::fs::write(&path, json).map_err(AppError::from)?;
-        Ok(())
-    })
-    .await
-}
-
-/// Input for importing a library bundle.
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ImportBundleInput {
-    /// File path to import from.
-    pub path: String,
-    /// Conflict resolution mode: "skip" or "overwrite".
-    pub mode: String,
-}
-
-/// Import prompts + actions from a JSON bundle file.
-#[tauri::command]
-pub async fn import_library_bundle(
-    input: ImportBundleInput,
-    store: tauri::State<'_, std::sync::Arc<super::skill_store::SkillStore>>,
-) -> Result<ImportResultDto, AppError> {
-    let store = store.inner().clone();
-    run_blocking_result(move || {
-        let json = std::fs::read_to_string(&input.path).map_err(AppError::from)?;
-        let bundle: LibraryBundleDto = serde_json::from_str(&json).map_err(AppError::from)?;
-
-        let overwrite = input.mode == "overwrite";
-        let mut prompts_imported = 0u32;
-        let mut prompts_skipped = 0u32;
-
-        for prompt_dto in &bundle.prompts {
-            let existing = store
-                .get_prompt_by_id(&prompt_dto.id)
-                .map_err(AppError::from)?;
-            if existing.is_some() && !overwrite {
-                prompts_skipped += 1;
-                continue;
-            }
-            let record = super::types::PromptRecord {
-                id: prompt_dto.id.clone(),
-                name: prompt_dto.name.clone(),
-                description: prompt_dto.description.clone(),
-                content: prompt_dto.content.clone(),
-                slash: prompt_dto.slash.clone(),
-                tags: prompt_dto.tags.clone(),
-                scope: prompt_dto.scope.clone(),
-                project_id: prompt_dto.project_id.clone(),
-                kind: prompt_dto.kind.clone(),
-                favorite: prompt_dto.favorite,
-                usage_count: prompt_dto.usage_count,
-                last_used_at: prompt_dto.last_used_at,
-                created_at: prompt_dto.created_at,
-                updated_at: prompt_dto.updated_at,
-                variables: prompt_dto
-                    .variables
-                    .iter()
-                    .map(|v| super::types::PromptVariableRecord {
-                        name: v.name.clone(),
-                        description: v.description.clone(),
-                        default: v.default.clone(),
-                        required: v.required,
-                    })
-                    .collect(),
-            };
-            if existing.is_some() {
-                store.update_prompt(&record).map_err(AppError::from)?;
-            } else {
-                store.insert_prompt(&record).map_err(AppError::from)?;
-            }
-            prompts_imported += 1;
-        }
-
-        let mut actions_imported = 0u32;
-        let mut actions_skipped = 0u32;
-
-        for action_dto in &bundle.actions {
-            let existing = store
-                .get_action_by_id(&action_dto.id)
-                .map_err(AppError::from)?;
-            if existing.is_some() && !overwrite {
-                actions_skipped += 1;
-                continue;
-            }
-            let record = super::types::ActionRecord {
-                id: action_dto.id.clone(),
-                name: action_dto.name.clone(),
-                description: action_dto.description.clone(),
-                group: action_dto.group.clone(),
-                payload_json: action_dto.payload_json.clone(),
-                shortcut: action_dto.shortcut.clone(),
-                tags: action_dto.tags.clone(),
-                enabled: action_dto.enabled,
-                usage_count: action_dto.usage_count,
-                last_used_at: action_dto.last_used_at,
-                created_at: action_dto.created_at,
-                updated_at: action_dto.updated_at,
-            };
-            if existing.is_some() {
-                store.update_action(&record).map_err(AppError::from)?;
-            } else {
-                store.insert_action(&record).map_err(AppError::from)?;
-            }
-            actions_imported += 1;
-        }
-
-        Ok(ImportResultDto {
-            prompts_imported,
-            prompts_skipped,
-            actions_imported,
-            actions_skipped,
-        })
-    })
-    .await
 }
 

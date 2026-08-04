@@ -1,12 +1,13 @@
-import { Blocks, MessageSquare, Server, Terminal, Zap } from 'lucide-react';
+import { Blocks, MessageSquare, Server } from 'lucide-react';
 import React from 'react';
 
 import { useLibraryStore } from '@/features/library/store/libraryStore';
+import { useMcpStore } from '@/features/library/store/mcpStore';
 import { useSkillStore } from '@/features/skill/store';
 import { cn } from '@/lib/utils';
 
 interface ActivityItem {
-  key: 'skill' | 'prompt' | 'action' | 'mcp' | 'command';
+  key: 'skill' | 'prompt' | 'mcp';
   label: string;
   icon: React.ElementType;
 }
@@ -14,26 +15,20 @@ interface ActivityItem {
 const ITEMS: ActivityItem[] = [
   { key: 'skill', label: 'Skills', icon: Blocks },
   { key: 'prompt', label: 'Prompts', icon: MessageSquare },
-  { key: 'action', label: 'Actions', icon: Zap },
   { key: 'mcp', label: 'MCP', icon: Server },
-  { key: 'command', label: 'Commands', icon: Terminal },
 ];
 
 const LibraryActivityBar: React.FC = React.memo(() => {
   const activeKind = useLibraryStore((s) => s.activeKind);
   const setActiveKind = useLibraryStore((s) => s.setActiveKind);
   const promptCount = useLibraryStore((s) => s.prompts.length);
-  const actionCount = useLibraryStore((s) => s.actions.length);
-  const mcpCount = useLibraryStore((s) => s.mcpServers.length);
-  const commandCount = useLibraryStore((s) => s.commands.length);
+  const mcpCount = useMcpStore((s) => s.mcpServers.length);
   const skillCount = useSkillStore((s) => s.skills.length);
 
   const counts: Record<string, number> = {
     skill: skillCount,
     prompt: promptCount,
-    action: actionCount,
     mcp: mcpCount,
-    command: commandCount,
   };
 
   return (

@@ -1,7 +1,7 @@
 import { AlertTriangle, X } from 'lucide-react';
 import React, { useCallback, useEffect, useState } from 'react';
 
-import { useLibraryStore } from '@/features/library/store/libraryStore';
+import { useMcpStore } from '@/features/library/store/mcpStore';
 import { cn } from '@/lib/utils';
 import { useProjectStore } from '@/shared/store/projectStore';
 import { Button } from '@/ui/Button';
@@ -16,13 +16,13 @@ import McpConfigInputs from './McpConfigInputs';
  * intentionally distinct from the full create/edit form in McpEditorDialog.
  */
 const McpInstallDialog: React.FC = React.memo(() => {
-  const open = useLibraryStore((s) => s.installOpen);
-  const draft = useLibraryStore((s) => s.mcpDraft);
-  const summary = useLibraryStore((s) => s.mcpInstallSummary);
-  const createMcpServer = useLibraryStore((s) => s.createMcpServer);
-  const refreshMcpServers = useLibraryStore((s) => s.refreshMcpServers);
-  const closeMcpInstall = useLibraryStore((s) => s.closeMcpInstall);
-  const setMcpView = useLibraryStore((s) => s.setMcpView);
+  const open = useMcpStore((s) => s.installOpen);
+  const draft = useMcpStore((s) => s.mcpDraft);
+  const summary = useMcpStore((s) => s.mcpInstallSummary);
+  const createMcpServer = useMcpStore((s) => s.createMcpServer);
+  const refreshMcpServers = useMcpStore((s) => s.refreshMcpServers);
+  const closeMcpInstall = useMcpStore((s) => s.closeMcpInstall);
+  const setMcpView = useMcpStore((s) => s.setMcpView);
   const activeProjectId = useProjectStore((s) => s.activeProjectId);
 
   const [values, setValues] = useState<Record<string, string>>({});

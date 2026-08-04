@@ -37,6 +37,13 @@ pub fn run() {
         )
     };
 
+    let mcp_store: Arc<crate::mcp::store::McpStore> = {
+        Arc::new(
+            crate::mcp::store::McpStore::new(&crate::skill::central_repo::db_path())
+                .expect("Failed to create MCP store"),
+        )
+    };
+
     let cmd_w_flag = Arc::new(AtomicBool::new(false));
     let cmd_w_flag_win = cmd_w_flag.clone();
 
@@ -44,6 +51,7 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .register_uri_scheme_protocol("neeko", crate::browser::uri_scheme::create_handler())
         .manage(skill_store.clone())
+        .manage(mcp_store.clone())
         .manage(AppStateWrapper::new_with_skill_store(skill_store))
         .setup(|app| {
             let state = app.handle().state::<AppStateWrapper>();

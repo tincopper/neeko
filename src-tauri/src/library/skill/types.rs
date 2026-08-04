@@ -158,6 +158,49 @@ pub struct PromptVariableRecord {
     pub required: bool,
 }
 
+// -- MCP Server --
+
+/// An MCP (Model Context Protocol) server definition stored in the database.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct McpServerRecord {
+    /// Unique MCP server identifier.
+    pub id: String,
+    /// Display name.
+    pub name: String,
+    /// Optional description.
+    pub description: Option<String>,
+    /// Executable command to launch the MCP server.
+    pub command: String,
+    /// Remote endpoint URL for http/sse transports.
+    pub url: Option<String>,
+    /// Serialized JSON array of command arguments.
+    pub args_json: String,
+    /// Serialized JSON object of environment variables.
+    pub env_json: String,
+    /// Transport type: "stdio", "sse", or "http".
+    pub transport: String,
+    /// Scope: "global" or "project".
+    pub scope: String,
+    /// Project id when scope = "project".
+    pub project_id: Option<String>,
+    /// MCP Registry source (e.g. "registry.modelcontextprotocol.io") when installed from marketplace.
+    pub source_registry: Option<String>,
+    /// Registry-unique name (e.g. "io.github.modelcontextprotocol/filesystem") matching the source.
+    pub source_ref: Option<String>,
+    /// Tag names.
+    pub tags: Vec<String>,
+    /// Whether the MCP server is enabled.
+    pub enabled: bool,
+    /// Usage counter.
+    pub usage_count: i64,
+    /// Timestamp of last use.
+    pub last_used_at: Option<i64>,
+    /// Creation timestamp.
+    pub created_at: i64,
+    /// Last update timestamp.
+    pub updated_at: i64,
+}
+
 // -- Skill Metadata --
 
 /// Parsed metadata from a SKILL.md file (frontmatter).
@@ -240,34 +283,6 @@ pub struct SkillDocumentDto {
     pub content: String,
 }
 
-/// An action template stored in the SQLite database.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ActionRecord {
-    /// Unique action identifier.
-    pub id: String,
-    /// Display name.
-    pub name: String,
-    /// Optional description.
-    pub description: Option<String>,
-    /// Group: "terminal" | "agent" | "file" | "git" | "quick" | "custom".
-    pub group: String,
-    /// Serialized payload JSON.
-    pub payload_json: String,
-    /// Optional keyboard shortcut.
-    pub shortcut: Option<String>,
-    /// Tag names.
-    pub tags: Vec<String>,
-    /// Whether the action is enabled.
-    pub enabled: bool,
-    /// Usage counter.
-    pub usage_count: i64,
-    /// Timestamp of last use.
-    pub last_used_at: Option<i64>,
-    /// Creation timestamp.
-    pub created_at: i64,
-    /// Last update timestamp.
-    pub updated_at: i64,
-}
 
 /// Update status for a skill
 #[derive(Debug, Clone, Serialize, Deserialize)]
