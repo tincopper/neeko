@@ -51,6 +51,7 @@ pub(crate) fn is_document_root_scoped(language_id: &str) -> bool {
 ///
 /// To stay correct on all three platforms, [`file_url_to_path`] picks a
 /// dedicated branch per `#[cfg(target_os)]`.
+use std::collections::VecDeque;
 #[must_use]
 pub(crate) fn resolve_session_root(
     project_path: &str,
@@ -62,6 +63,12 @@ pub(crate) fn resolve_session_root(
         return project_root.to_path_buf();
     }
     let Some(doc) = document_path else {
+        // No document available (e.g. session restart / auto-start).
+        // For monorepos whose frontend lives in a subdirectory, the project
+        // root may not be the TS project. Scan subdirectories for a TS root.
+        if let Some(root) = scan_project_for_ts_root(project_root) {
+            return root;
+        }
         return project_root.to_path_buf();
     };
 
@@ -96,6 +103,62 @@ pub(crate) fn resolve_session_root(
             None => return project_root.to_path_buf(),
         }
     }
+}
+/// Maximum subdirectory scan depth when no document is available.
+const MAX_SCAN_DEPTH: u32 = 4;
+
+/// Skip common non-project directories during scan.
+fn is_skip_dir(name: &str) -> bool {
+    matches!(
+        name,
+        "node_modules"
+            | ".git"
+            | "target"
+            | "dist"
+            | "build"
+            | ".next"
+            | ".nuxt"
+            | "vendor"
+            | "out"
+    )
+}
+
+/// Scan `project_root` subdirectories (BFS) for the nearest directory
+/// containing a TS root marker. Used when no document is open — e.g. a
+/// monorepo whose frontend lives in a subdirectory with its own
+/// `tsconfig.json` + `node_modules`. Returns `None` when no marker is
+/// found within [`MAX_SCAN_DEPTH`] levels.
+#[must_use]
+fn scan_project_for_ts_root(project_root: &Path) -> Option<PathBuf> {
+    let mut queue: VecDeque<(PathBuf, u32)> = VecDeque::new();
+    queue.push_back((project_root.to_path_buf(), 0));
+
+    while let Some((dir, depth)) = queue.pop_front() {
+        if TS_ROOT_MARKERS.iter().any(|m| dir.join(m).is_file()) {
+            return Some(dir);
+        }
+        if depth >= MAX_SCAN_DEPTH {
+            continue;
+        }
+        let Ok(entries) = std::fs::read_dir(&dir) else {
+            continue;
+        };
+        for entry in entries.flatten() {
+            let Ok(ft) = entry.file_type() else { continue };
+            if !ft.is_dir() {
+                continue;
+            }
+            let name = entry.file_name();
+            let Some(name_str) = name.to_str() else {
+                continue;
+            };
+            if is_skip_dir(name_str) {
+                continue;
+            }
+            queue.push_back((entry.path(), depth + 1));
+        }
+    }
+    None
 }
 
 /// Convert the part of a `file://` URI *after* the scheme into a filesystem path.
@@ -299,5 +362,62 @@ mod tests {
         assert!(is_document_root_scoped("javascriptreact"));
         assert!(!is_document_root_scoped("rust"));
         assert!(!is_document_root_scoped("python"));
+    }
+    // ── scan_project_for_ts_root (no document available) ─────────────────────
+
+    #[test]
+    fn no_document_scans_subdir_for_ts_root() {
+        // Monorepo: frontend lives in a subdirectory with its own tsconfig.json
+        let root = tempdir().unwrap();
+        write(root.path(), "frontend/tsconfig.json", "{}");
+        write(root.path(), "frontend/src/a.ts", "export const a = 1;");
+        let resolved = resolve_session_root(root.path().to_str().unwrap(), None, "typescript");
+        assert_eq!(resolved, root.path().join("frontend"));
+    }
+
+    #[test]
+    fn no_document_finds_nested_ts_root() {
+        // Deeper nesting: packages/web/tsconfig.json
+        let root = tempdir().unwrap();
+        write(root.path(), "packages/web/tsconfig.json", "{}");
+        let resolved = resolve_session_root(root.path().to_str().unwrap(), None, "typescript");
+        assert_eq!(resolved, root.path().join("packages/web"));
+    }
+
+    #[test]
+    fn no_document_skips_node_modules() {
+        // node_modules should never be considered a TS root even if it has package.json
+        let root = tempdir().unwrap();
+        write(root.path(), "node_modules/some-pkg/package.json", "{}");
+        // No real TS root → falls back to project root
+        let resolved = resolve_session_root(root.path().to_str().unwrap(), None, "typescript");
+        assert_eq!(resolved, root.path());
+    }
+
+    #[test]
+    fn no_document_respects_max_depth() {
+        // Beyond MAX_SCAN_DEPTH → falls back to project root
+        let root = tempdir().unwrap();
+        write(root.path(), "a/b/c/d/e/frontend/tsconfig.json", "{}");
+        let resolved = resolve_session_root(root.path().to_str().unwrap(), None, "typescript");
+        // depth 6 > MAX_SCAN_DEPTH (4), so we fall back
+        assert_eq!(resolved, root.path());
+    }
+
+    #[test]
+    fn no_document_falls_back_when_no_marker() {
+        let root = tempdir().unwrap();
+        write(root.path(), "src/a.ts", "export const a = 1;");
+        let resolved = resolve_session_root(root.path().to_str().unwrap(), None, "typescript");
+        assert_eq!(resolved, root.path());
+    }
+
+    #[test]
+    fn no_document_non_ts_language_skips_scan() {
+        // For non-TS languages, no scan happens — returns project root immediately
+        let root = tempdir().unwrap();
+        write(root.path(), "frontend/tsconfig.json", "{}");
+        let resolved = resolve_session_root(root.path().to_str().unwrap(), None, "rust");
+        assert_eq!(resolved, root.path());
     }
 }
