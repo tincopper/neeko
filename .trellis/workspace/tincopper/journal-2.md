@@ -1923,3 +1923,38 @@ MCP module extracted from skill/ into standalone mcp/ module. Migrations shared 
 ### Next Steps
 
 - None - task complete
+
+
+## Session 116: MCP marketplace: library domain consolidation + group views
+
+**Date**: 2026-08-04
+**Task**: MCP marketplace: library domain consolidation + group views
+**Branch**: `main`
+
+### Summary
+
+refactor library: 合并 mcp/skill 模块到 library 域; feat: MCP tag/agent/project 分组视图; chore: lint 清理
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `2bad84e0` | (see git log) |
+| `9d0c2d1b` | (see git log) |
+| `0ae18a4d` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

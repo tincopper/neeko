@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-2.md`
-- **Total Sessions**: 115
+- **Total Sessions**: 116
 - **Last Active**: 2026-08-04
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-2.md` | ~1925 | Active |
+| `journal-2.md` | ~1960 | Active |
 | `journal-1.md` | ~1986 | Archived |
 <!-- @@@/auto:active-documents -->
 
@@ -30,6 +30,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 116 | 2026-08-04 | MCP marketplace: library domain consolidation + group views | `2bad84e0`, `9d0c2d1b`, `0ae18a4d` | `main` |
 | 115 | 2026-08-04 | refactor(mcp): split MCP from skill into independent module | pending | `main` |
 | 114 | 2026-08-03 | refactor mcp_probe to unified executor | pending | `main` |
 | 113 | 2026-08-02 | Resource Library v7 redesign: center tab view + component split (review round 2) | `f398114e`, `b3a7717e`, `34d6d795` | `main` |
