@@ -1,8 +1,8 @@
 import { X } from 'lucide-react';
 import React, { useCallback, useEffect, useState } from 'react';
 
-import { useMcpStore } from '@/features/library/store/mcpStore';
 import { useLibraryStore } from '@/features/library/store/libraryStore';
+import { useMcpStore } from '@/features/library/store/mcpStore';
 import { cn } from '@/lib/utils';
 import { useProjectStore } from '@/shared/store/projectStore';
 import { Button } from '@/ui/Button';

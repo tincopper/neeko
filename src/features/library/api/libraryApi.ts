@@ -1,10 +1,6 @@
 import { invoke } from '@tauri-apps/api/core';
 
-import type {
-  PromptResource,
-  PromptInput,
-  PromptVariable,
-} from '@/shared/types/library';
+import type { PromptResource, PromptInput, PromptVariable } from '@/shared/types/library';
 import type {
   McpServer,
   McpServerInput,
