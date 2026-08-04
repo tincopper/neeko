@@ -402,7 +402,7 @@ struct RemoteJson {
 
 /// Build a blocking HTTP client (reuses the skills.sh client builder).
 pub fn build_http_client(proxy_url: Option<&str>) -> Result<reqwest::blocking::Client> {
-    super::skillssh_api::build_http_client(proxy_url, REQUEST_TIMEOUT_SECS)
+    crate::library::skill::skillssh_api::build_http_client(proxy_url, REQUEST_TIMEOUT_SECS)
 }
 
 /// Search the registry for servers matching `query` (empty = all listings).

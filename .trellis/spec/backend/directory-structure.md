@@ -98,12 +98,21 @@ src-tauri/
     │   └── commands.rs       # get_system_fonts
     ├── skill/                # Skill 系统（自包含子系统）
     │   ├── mod.rs
-    │   ├── commands.rs       # 所有 Skill 命令（~25 个）
+    │   ├── commands.rs       # Skill 命令（~20 个）
     │   ├── content_hash.rs
     │   ├── installer.rs
     │   ├── skill_store.rs
     │   ├── types.rs
     │   └── ...
+    ├── mcp/                  # MCP 系统（自包含子系统，从 skill/ 拆分）
+    │   ├── mod.rs
+    │   ├── commands.rs       # MCP 命令（~25 个）
+    │   ├── mcp_registry_api.rs
+    │   ├── mcp_probe.rs
+    │   ├── store.rs
+    │   ├── repository.rs
+    │   ├── migrations.rs
+    │   └── types.rs
     ├── task/                 # 任务系统
     │   ├── mod.rs
     │   ├── commands.rs       # Tauri 命令（委派到 services）
@@ -154,6 +163,7 @@ pub mod project;
 pub mod session;
 pub mod settings;
 pub mod skill;
+pub mod mcp;
 pub mod task;
 pub mod terminal;
 pub mod theme;
@@ -188,6 +198,7 @@ pub struct AppStateWrapper {
     pub active_project_id: Mutex<Option<String>>,
     pub watcher_manager: file::WatcherManager,
     pub skill_store: Arc<skill::skill_store::SkillStore>,
+    pub mcp_store: Arc<mcp::store::McpStore>,   // MCP: server/tag group/target management
     pub lsp_manager: lsp::LspManager,           // Phase 1: LSP server lifecycle management
 }
 ```
@@ -224,7 +235,8 @@ pub struct AppStateWrapper {
 | `file/` | `commands.rs` | `reveal_in_file_manager` |
 | `settings/` | `commands.rs` | `get_system_fonts` |
 | `theme/` | `commands.rs` | `sync_agent_theme` |
-| `skill/` | `commands.rs` | 所有 Skill 操作（~25 个命令） |
+| `skill/` | `commands.rs` | Skill 操作（~20 个命令） |
+| `mcp/` | `commands.rs` | MCP 操作（~25 个命令）：server CRUD、tag group CRUD、project bindings、deployment targets、registry search/fetch、test connection、slash resource resolve |
 | `lsp/` | `commands.rs` | 6 个 LSP 命令：request/notification/open/change/close document + session list |
 
 ### 新代码应该放在哪里

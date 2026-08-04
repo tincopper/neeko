@@ -91,32 +91,6 @@ export type PromptInput = Omit<
   kind?: string;
 };
 
-/**
- * Action resource (P1 — data model only in MVP).
- *
- * Action templates are stored for future Palette integration. MVP registers a
- * few static actions; user-defined action templates land here in P1+.
- */
-export interface ActionResource {
-  id: string;
-  name: string;
-  description?: string | null;
-  group: 'terminal' | 'agent' | 'file' | 'git' | 'quick' | 'custom';
-  keywords?: string[];
-  payload:
-    | { type: 'insert-prompt'; promptId: string }
-    | { type: 'run-skill'; skillId: string }
-    | { type: 'run-command'; command: string }
-    | { type: 'open-panel'; panelId: string };
-  shortcut?: string | null;
-  tags: string[];
-  enabled: boolean;
-  usageCount: number;
-  lastUsedAt?: number | null;
-  createdAt: number;
-  updatedAt: number;
-}
-
 /** Adapter: managed skill DTO → resource summary for the Library list. */
 export function skillToResourceSummary(skill: ManagedSkillDto): ResourceSummary {
   return {

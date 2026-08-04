@@ -50,6 +50,7 @@ pub async fn create_remote_terminal_session(
 
 ### 关键规则
 
+0. **MCP 模块已从 skill/ 拆分**：MCP 相关命令（server CRUD、tag group、project bindings、registry、test）现位于独立的 `mcp/commands.rs`，不再与 skill 命令混合。参照此模式，后续新增资源类域（如 `prompt/`、`action/`）也应考虑独立模块。
 1. **命令实现按领域放在 `commands/` 子模块**，由 `commands/mod.rs` 聚合导出，并在 `neeko_invoke_handler!` 宏中集中注册
 2. **返回类型始终为 `Result<T, AppError>`** —— 不使用裸类型，不使用 `String`
 3. **状态访问** 通过 `state: State<AppStateWrapper>` 参数

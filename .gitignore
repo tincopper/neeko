@@ -27,6 +27,7 @@ build/
 .windsurf
 .reasonix
 .workbuddy
+.atomcode
 
 # OS
 .DS_Store

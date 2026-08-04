@@ -17,7 +17,6 @@ interface LibraryPanelProps {
 const LibraryPanel: React.FC<LibraryPanelProps> = React.memo(({ onInsertPrompt }) => {
   const refreshPrompts = useLibraryStore((s) => s.refreshPrompts);
   const recordUsage = useLibraryStore((s) => s.recordUsage);
-  const refreshActions = useLibraryStore((s) => s.refreshActions);
   const variableDialogOpen = useLibraryStore((s) => s.variableDialogOpen);
   const variableDialogContent = useLibraryStore((s) => s.variableDialogContent);
   const variableDialogResolve = useLibraryStore((s) => s.variableDialogResolve);
@@ -25,8 +24,7 @@ const LibraryPanel: React.FC<LibraryPanelProps> = React.memo(({ onInsertPrompt }
 
   useEffect(() => {
     void refreshPrompts();
-    void refreshActions();
-  }, [refreshPrompts, refreshActions]);
+  }, [refreshPrompts]);
 
   const handleInsert = useCallback(
     (prompt: PromptResource, target: PromptInsertTarget = 'agent') => {

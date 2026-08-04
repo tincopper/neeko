@@ -8,6 +8,7 @@ use tauri::{Emitter, Manager};
 
 use crate::app_state::AppStateWrapper;
 use crate::common::agent::types::AgentConfig;
+use crate::library;
 
 /// Run the Tauri application.
 #[allow(clippy::expect_used)]
@@ -16,7 +17,7 @@ pub fn run() {
     log::info!("Neeko starting");
 
     // Ensure skill central repo directories exist
-    if let Err(e) = crate::skill::central_repo::ensure_central_repo() {
+    if let Err(e) = crate::library::skill::central_repo::ensure_central_repo() {
         log::warn!("Failed to ensure skill central repo: {e}");
     }
 
@@ -28,19 +29,11 @@ pub fn run() {
     // LSP / agent detection match the interactive terminal environment.
     crate::core::exec_env::init_host_user_path();
 
-    let skill_store: Arc<crate::skill::skill_store::SkillStore> = {
-        crate::skill::central_repo::ensure_central_repo()
-            .expect("Failed to create skill central repo");
+    let library_store: Arc<library::LibraryStore> = {
+        library::db::ensure_db_ready().expect("Failed to prepare library database");
         Arc::new(
-            crate::skill::skill_store::SkillStore::new(&crate::skill::central_repo::db_path())
-                .expect("Failed to create skill store"),
-        )
-    };
-
-    let mcp_store: Arc<crate::mcp::store::McpStore> = {
-        Arc::new(
-            crate::mcp::store::McpStore::new(&crate::skill::central_repo::db_path())
-                .expect("Failed to create MCP store"),
+            library::LibraryStore::open(&library::db::db_path())
+                .expect("Failed to create library store"),
         )
     };
 
@@ -50,9 +43,8 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .register_uri_scheme_protocol("neeko", crate::browser::uri_scheme::create_handler())
-        .manage(skill_store.clone())
-        .manage(mcp_store.clone())
-        .manage(AppStateWrapper::new_with_skill_store(skill_store))
+        .manage(library_store.clone())
+        .manage(AppStateWrapper::new_with_library_store(library_store))
         .setup(|app| {
             let state = app.handle().state::<AppStateWrapper>();
             let mut active_id_from_session: Option<String> = None;
@@ -198,11 +190,11 @@ pub fn run() {
 
             // Auto-create Default tag group if none exist
             {
-                let store = state.skill_store.clone();
+                let store = state.library_store.clone();
                 if let Ok(groups) = store.get_all_tag_groups() {
                     if groups.is_empty() {
                         let now = chrono::Utc::now().timestamp_millis();
-                        let default_tg = crate::skill::types::TagGroupRecord {
+                        let default_tg = crate::library::skill::types::TagGroupRecord {
                             id: uuid::Uuid::new_v4().to_string(),
                             name: "Default".to_string(),
                             description: Some("Default skill group".to_string()),

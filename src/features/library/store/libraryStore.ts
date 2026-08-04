@@ -1,37 +1,47 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 
-import { useDockStore } from '@/shared/store/dockStore';
 import type {
-  ActionResource,
   ResourceKind,
   ViewMode,
   ScopeFilter,
   PromptResource,
 } from '@/shared/types/library';
+import type { McpServer, AgentCapabilities } from '@/shared/types/mcpServer';
 
 import {
   listPrompts,
   deletePrompt as deletePromptApi,
   recordPromptUsage,
-  listActions,
-  deleteAction as deleteActionApi,
-  saveAction as saveActionApi,
-  updateAction as updateActionApi,
-  runAction as runActionApi,
+  listMcpServers,
+  saveMcpServer as saveMcpServerApi,
+  updateMcpServer as updateMcpServerApi,
+  deleteMcpServer as deleteMcpServerApi,
+  testMcpServer as testMcpServerApi,
+  getAgentCapabilities,
 } from '../api/libraryApi';
+import type { McpRegistryGeneratedConfig } from '../api/libraryApi';
 
 /** Sort mode for resource lists. */
 export type SortMode = 'recent' | 'frequent' | 'alphabetical';
 
 /** Which editor is open — lets the shared editorOpen flag drive the right dialog. */
-export type EditorKind = 'prompt' | 'command' | 'action';
+export type EditorKind = 'prompt' | 'mcp';
+
+/** Read-only registry summary shown in the marketplace install dialog header. */
+export interface McpInstallSummary {
+  name: string;
+  title: string;
+  version: string | null;
+  repository: string | null;
+}
 
 /** Variable context for resolving `{{var}}` placeholders. */
 export interface VariableContext {
-  branch?: string;
-  filePath?: string;
-  project?: string;
+  branch?: string | null;
+  projectName?: string | null;
+  filePath?: string | null;
+  projectPath?: string | null;
 }
 
 // ─── State ──────────────────────────────────────────────────────────────────
@@ -58,15 +68,26 @@ interface LibraryState {
   promptsLoading: boolean;
   promptsError: string | null;
 
-  /** Actions cache. */
-  actions: ActionResource[];
-  actionsLoading: boolean;
-  actionsError: string | null;
+  /** MCP servers cache. */
+  mcpServers: McpServer[];
+  mcpServersLoading: boolean;
+  mcpServersError: string | null;
 
-  /** Commands cache (prompts with kind='command'). */
-  commands: PromptResource[];
-  commandsLoading: boolean;
-  commandsError: string | null;
+  /** MCP server being edited (null = creating a new MCP server). */
+  editingMcpServer: McpServer | null;
+
+  /** MCP tab view — installed list vs marketplace. */
+  mcpView: 'installed' | 'marketplace';
+  /** MCP marketplace search query (independent of installed-list search). */
+  mcpRegistryQuery: string;
+  /** Pre-fill template for the MCP editor when installing from the marketplace. */
+  mcpDraft: McpRegistryGeneratedConfig | null;
+  /** MCP marketplace total count for toolbar badge. */
+  mcpMarketplaceCount: number;
+  /** Whether the marketplace install dialog is open. */
+  installOpen: boolean;
+  /** Read-only registry summary shown in the install dialog header. */
+  mcpInstallSummary: McpInstallSummary | null;
 
   /** Last active kind + viewMode remembered across panel close/reopen (both persisted). */
 
@@ -77,10 +98,7 @@ interface LibraryState {
   editingPrompt: PromptResource | null;
   /** Pre-filled content when opening the editor for a new prompt (e.g. "Save as Prompt"). */
   initialContent: string | null;
-  /** Default kind for the next new-prompt creation (set when opening from Commands tab). */
-  pendingKind: 'prompt' | 'command';
-  /** Action being edited (null = creating a new action). */
-  editingAction: ActionResource | null;
+
   /** Insert dialog state. */
   insertOpen: boolean;
   /** Variable dialog state — content pending variable fill. */
@@ -107,42 +125,67 @@ interface LibraryActions {
   deletePrompt: (id: string) => Promise<void>;
   recordUsage: (id: string) => Promise<void>;
 
-  refreshActions: () => Promise<void>;
-  createAction: (input: {
+  refreshMcpServers: () => Promise<void>;
+  createMcpServer: (input: {
     name: string;
     description?: string | null;
-    group?: string;
-    payload: ActionResource['payload'];
-    shortcut?: string | null;
+    command: string;
+    url?: string | null;
+    args?: unknown[];
+    env?: Record<string, string>;
+    transport?: 'stdio' | 'sse' | 'http';
+    scope?: 'global' | 'project';
+    projectId?: string | null;
+    sourceRegistry?: string | null;
+    sourceRef?: string | null;
     tags?: string[];
   }) => Promise<void>;
-  updateAction: (
+  updateMcpServer: (
     id: string,
     input: {
       name: string;
       description?: string | null;
-      group?: string;
-      payload: ActionResource['payload'];
-      shortcut?: string | null;
+      command: string;
+      url?: string | null;
+      args?: unknown[];
+      env?: Record<string, string>;
+      transport?: 'stdio' | 'sse' | 'http';
+      scope?: 'global' | 'project';
+      projectId?: string | null;
+      sourceRegistry?: string | null;
+      sourceRef?: string | null;
       tags?: string[];
       enabled?: boolean;
     },
   ) => Promise<void>;
-  deleteAction: (id: string) => Promise<void>;
-  executeAction: (id: string) => Promise<void>;
+  deleteMcpServer: (id: string) => Promise<void>;
+  testMcpConnection: (id: string) => Promise<{
+    commandFound: boolean;
+    command: string;
+    message: string;
+  }>;
 
-  refreshCommands: () => Promise<void>;
+  setMcpView: (view: 'installed' | 'marketplace') => void;
+  setMcpRegistryQuery: (query: string) => void;
+  setMcpDraft: (draft: McpRegistryGeneratedConfig | null) => void;
+  setMcpMarketplaceCount: (count: number) => void;
+  /** Open the lightweight marketplace install dialog with a generated config. */
+  openMcpInstall: (summary: McpInstallSummary, draft: McpRegistryGeneratedConfig) => void;
+  closeMcpInstall: () => void;
+
+  openMcpEditor: (server?: McpServer | null) => void;
+  closeMcpEditor: () => void;
+
+  getAgentCapabilities: (agentId: string) => Promise<AgentCapabilities | null>;
 
   /** Detect `{{variable}}` placeholders in content. */
   detectVariables: (content: string) => string[];
   /** Replace `{{variable}}` placeholders using provided values. */
   resolveVariables: (content: string, values: Record<string, string>) => string;
 
-  openEditor: (prompt?: PromptResource | null, defaultKind?: 'prompt' | 'command') => void;
+  openEditor: (prompt?: PromptResource | null) => void;
   /** Open the editor for a new prompt with pre-filled content (e.g. "Save as Prompt"). */
   openEditorWithContent: (content: string) => void;
-  /** Open the action editor for a new or existing action. */
-  openActionEditor: (action?: ActionResource | null) => void;
   closeEditor: () => void;
   openInsert: () => void;
   closeInsert: () => void;
@@ -164,18 +207,20 @@ const initialState: LibraryState = {
   prompts: [],
   promptsLoading: false,
   promptsError: null,
-  actions: [],
-  actionsLoading: false,
-  actionsError: null,
-  commands: [],
-  commandsLoading: false,
-  commandsError: null,
+  mcpServers: [],
+  mcpServersLoading: false,
+  mcpServersError: null,
+  editingMcpServer: null,
+  mcpView: 'installed',
+  mcpRegistryQuery: '',
+  mcpDraft: null,
+  mcpMarketplaceCount: 0,
+  installOpen: false,
+  mcpInstallSummary: null,
   editorOpen: false,
   editorKind: null,
   editingPrompt: null,
   initialContent: null,
-  pendingKind: 'prompt',
-  editingAction: null,
   insertOpen: false,
   variableDialogOpen: false,
   variableDialogContent: null,
@@ -230,73 +275,107 @@ export const useLibraryStore = create<LibraryState & LibraryActions>()(
         }
       },
 
-      refreshActions: async () => {
-        set({ actionsLoading: true, actionsError: null });
+      refreshMcpServers: async () => {
+        set({ mcpServersLoading: true, mcpServersError: null });
         try {
-          const actions = await listActions();
-          set({ actions, actionsLoading: false });
+          const mcpServers = await listMcpServers();
+          set({ mcpServers, mcpServersLoading: false });
         } catch (e) {
           const message = String(e);
-          console.error('[libraryStore] refreshActions failed:', e);
-          set({ actionsLoading: false, actionsError: message });
+          console.error('[libraryStore] refreshMcpServers failed:', e);
+          set({ mcpServersLoading: false, mcpServersError: message });
         }
       },
 
-      createAction: async (input) => {
-        await saveActionApi(input);
-        await useLibraryStore.getState().refreshActions();
+      createMcpServer: async (input) => {
+        await saveMcpServerApi({
+          name: input.name,
+          description: input.description,
+          command: input.command,
+          url: input.url ?? null,
+          args: input.args ?? [],
+          env: input.env ?? {},
+          transport: input.transport ?? 'stdio',
+          scope: input.scope ?? 'global',
+          projectId: input.projectId,
+          sourceRegistry: input.sourceRegistry,
+          sourceRef: input.sourceRef,
+          tags: input.tags ?? [],
+        });
+        await useLibraryStore.getState().refreshMcpServers();
       },
 
-      updateAction: async (id, input) => {
-        await updateActionApi(id, input);
-        await useLibraryStore.getState().refreshActions();
+      updateMcpServer: async (id, input) => {
+        await updateMcpServerApi(id, {
+          name: input.name,
+          description: input.description,
+          command: input.command,
+          url: input.url ?? null,
+          args: input.args ?? [],
+          env: input.env ?? {},
+          transport: input.transport ?? 'stdio',
+          scope: input.scope ?? 'global',
+          projectId: input.projectId,
+          sourceRegistry: input.sourceRegistry,
+          sourceRef: input.sourceRef,
+          tags: input.tags ?? [],
+        });
+        await useLibraryStore.getState().refreshMcpServers();
       },
 
-      deleteAction: async (id: string) => {
-        await deleteActionApi(id);
-        set((state) => ({ actions: state.actions.filter((a) => a.id !== id) }));
+      deleteMcpServer: async (id: string) => {
+        await deleteMcpServerApi(id);
+        set((state) => ({
+          mcpServers: state.mcpServers.filter((s) => s.id !== id),
+        }));
       },
 
-      executeAction: async (id: string) => {
+      testMcpConnection: async (id: string) => {
+        return testMcpServerApi(id);
+      },
+
+      setMcpView: (view) => set({ mcpView: view }),
+      setMcpRegistryQuery: (query: string) => set({ mcpRegistryQuery: query }),
+      setMcpDraft: (draft) => set({ mcpDraft: draft }),
+      setMcpMarketplaceCount: (count: number) => set({ mcpMarketplaceCount: count }),
+      openMcpInstall: (summary, draft) =>
+        set({
+          installOpen: true,
+          mcpDraft: draft,
+          mcpInstallSummary: summary,
+          editorOpen: false,
+          editorKind: null,
+        }),
+      closeMcpInstall: () =>
+        set({
+          installOpen: false,
+          mcpDraft: null,
+          mcpInstallSummary: null,
+        }),
+
+      openMcpEditor: (server) =>
+        set({
+          editorOpen: true,
+          editorKind: 'mcp',
+          editingMcpServer: server ?? null,
+          editingPrompt: null,
+          initialContent: null,
+          mcpDraft: null,
+        }),
+      closeMcpEditor: () =>
+        set({
+          editingMcpServer: null,
+          editorOpen: false,
+          editorKind: null,
+          mcpDraft: null,
+        }),
+
+      getAgentCapabilities: async (agentId: string) => {
         try {
-          const result = await runActionApi(id);
-          if (result.dispatched) {
-            if (result.promptContent !== null) {
-              window.dispatchEvent(
-                new CustomEvent('neeko:insert-to-agent-input', {
-                  detail: { text: result.promptContent },
-                }),
-              );
-            }
-            if (result.command !== null) {
-              // Write to active terminal via the bridge exposed by ProjectWorkspace.
-              const insertToTerminal = (
-                window as unknown as { __neekoInsertToTerminal?: (text: string) => boolean }
-              ).__neekoInsertToTerminal;
-              insertToTerminal?.(result.command);
-            }
-            if (result.panelId !== null) {
-              useDockStore.getState().togglePanel(result.panelId);
-            }
-          }
+          return await getAgentCapabilities(agentId);
         } catch (e) {
-          console.error('[libraryStore] executeAction failed:', e);
-        }
-      },
-
-      refreshCommands: async () => {
-        set({ commandsLoading: true, commandsError: null });
-        try {
-          // Commands are prompts with kind='command'. We reuse listPrompts and filter.
-          const allPrompts = await listPrompts();
-          const commands = allPrompts.filter(
-            (p) => (p as PromptResource & { kind?: string }).kind === 'command',
-          );
-          set({ commands, commandsLoading: false });
-        } catch (e) {
-          const message = String(e);
-          console.error('[libraryStore] refreshCommands failed:', e);
-          set({ commandsLoading: false, commandsError: message });
+          console.error('[libraryStore] getAgentCapabilities failed:', e);
+          return null;
         }
       },
 
@@ -315,14 +394,12 @@ export const useLibraryStore = create<LibraryState & LibraryActions>()(
           name in values ? values[name] : `{{${name}}}`,
         ),
 
-      openEditor: (prompt, defaultKind) =>
+      openEditor: (prompt) =>
         set({
           editorOpen: true,
-          editorKind: defaultKind ?? 'prompt',
+          editorKind: 'prompt',
           editingPrompt: prompt ?? null,
           initialContent: null,
-          editingAction: null,
-          pendingKind: defaultKind ?? 'prompt',
         }),
       openEditorWithContent: (content) =>
         set({
@@ -330,15 +407,6 @@ export const useLibraryStore = create<LibraryState & LibraryActions>()(
           editorKind: 'prompt',
           editingPrompt: null,
           initialContent: content,
-          editingAction: null,
-        }),
-      openActionEditor: (action) =>
-        set({
-          editorOpen: true,
-          editorKind: 'action',
-          editingAction: action ?? null,
-          editingPrompt: null,
-          initialContent: null,
         }),
       closeEditor: () =>
         set({
@@ -346,7 +414,6 @@ export const useLibraryStore = create<LibraryState & LibraryActions>()(
           editorKind: null,
           editingPrompt: null,
           initialContent: null,
-          editingAction: null,
         }),
       openInsert: () => set({ insertOpen: true }),
       closeInsert: () => set({ insertOpen: false }),

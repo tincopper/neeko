@@ -8,6 +8,7 @@ import type {
 } from '@/features/library/api/libraryApi';
 import { useMcpMarketplace } from '@/features/library/hooks/useMcpMarketplace';
 import { useLibraryStore } from '@/features/library/store/libraryStore';
+import { useMcpStore } from '@/features/library/store/mcpStore';
 
 function makeSummary(name: string, title?: string): McpRegistrySummary {
   return {
@@ -35,11 +36,13 @@ function makeSearchResult(
 describe('useMcpMarketplace', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    useLibraryStore.setState({
+    useMcpStore.setState({
       mcpServers: [],
       mcpView: 'installed',
-      searchQuery: '',
       mcpDraft: null,
+    });
+    useLibraryStore.setState({
+      searchQuery: '',
     });
   });
 
@@ -60,7 +63,7 @@ describe('useMcpMarketplace', () => {
   });
 
   it('matches installed servers by sourceRef', async () => {
-    useLibraryStore.setState({
+    useMcpStore.setState({
       mcpServers: [
         {
           id: 'mcp-1' as any,

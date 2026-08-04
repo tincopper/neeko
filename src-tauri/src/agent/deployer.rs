@@ -150,7 +150,7 @@ impl ResourceDeployer for DefaultDeployer {
         );
 
         // Determine sync mode (Cursor defaults to copy, others symlink).
-        let mode = crate::skill::sync_engine::sync_mode_for_tool(&plugin.id, None);
+        let mode = crate::library::skill::sync_engine::sync_mode_for_tool(&plugin.id, None);
 
         // Ensure parent dir exists
         if let Some(parent) = dest.parent() {
@@ -159,7 +159,7 @@ impl ResourceDeployer for DefaultDeployer {
             })?;
         }
 
-        let actual_mode = crate::skill::sync_engine::sync_skill(source, &dest, mode)
+        let actual_mode = crate::library::skill::sync_engine::sync_skill(source, &dest, mode)
             .map_err(|e| crate::AppError::Skill(format!("Deploy failed: {e}")))?;
 
         Ok(DeployResult {
@@ -194,7 +194,7 @@ impl ResourceDeployer for DefaultDeployer {
         };
 
         let target_path = skills_dir.join(resource_name);
-        crate::skill::sync_engine::remove_target(&target_path)
+        crate::library::skill::sync_engine::remove_target(&target_path)
             .map_err(|e| crate::AppError::Skill(format!("Remove failed: {e}")))
     }
 }
@@ -203,7 +203,7 @@ impl ResourceDeployer for DefaultDeployer {
 mod tests {
     use super::*;
     use crate::agent::registry::default_agent_plugins;
-    use crate::skill::sync_engine::SyncMode;
+    use crate::library::skill::sync_engine::SyncMode;
     use std::fs;
     use tempfile::tempdir;
 
@@ -323,13 +323,13 @@ mod tests {
 
     #[test]
     fn sync_mode_for_cursor_is_copy() {
-        let mode = crate::skill::sync_engine::sync_mode_for_tool("cursor", None);
+        let mode = crate::library::skill::sync_engine::sync_mode_for_tool("cursor", None);
         assert!(matches!(mode, SyncMode::Copy));
     }
 
     #[test]
     fn sync_mode_for_claude_is_symlink() {
-        let mode = crate::skill::sync_engine::sync_mode_for_tool("claude-code", None);
+        let mode = crate::library::skill::sync_engine::sync_mode_for_tool("claude-code", None);
         assert!(matches!(mode, SyncMode::Symlink));
     }
 }

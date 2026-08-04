@@ -11,7 +11,7 @@ use crate::agent::plugin::AgentPlugin;
 use crate::agent::registry::default_agent_plugins;
 use crate::agent::schema_validator::validate_config;
 use crate::common::runtime::run_blocking_result;
-use crate::skill::skill_store::SkillStore;
+use crate::library::LibraryStore;
 use crate::AppError;
 use crate::AppStateWrapper;
 
@@ -24,7 +24,7 @@ pub fn list_agent_plugins() -> Result<Vec<AgentPlugin>, AppError> {
 /// List all custom (user-defined) AgentPlugin records from the database.
 #[tauri::command]
 pub async fn list_custom_plugins(
-    store: State<'_, Arc<SkillStore>>,
+    store: State<'_, Arc<LibraryStore>>,
 ) -> Result<Vec<serde_json::Value>, AppError> {
     let store = store.inner().clone();
     run_blocking_result(move || store.get_custom_agent_plugins().map_err(AppError::from)).await
@@ -127,7 +127,7 @@ pub async fn deploy_skill_to_agent(
     input: DeploySkillInput,
     state: State<'_, AppStateWrapper>,
 ) -> Result<(), AppError> {
-    let store = state.skill_store.clone();
+    let store = state.library_store.clone();
 
     let plugin = default_agent_plugins()
         .into_iter()
@@ -189,12 +189,12 @@ pub async fn deploy_skill_to_agent(
         std::os::unix::fs::symlink(&source, &dest).map_err(AppError::from)?;
         #[cfg(not(unix))]
         {
-            crate::skill::sync_engine::copy_dir_recursive(&source, &dest)
+            crate::library::skill::sync_engine::copy_dir_recursive(&source, &dest)
                 .map_err(AppError::from)?;
         }
 
         // Record in skill_targets
-        let target_rec = crate::skill::types::SkillTargetRecord {
+        let target_rec = crate::library::skill::types::SkillTargetRecord {
             id: uuid::Uuid::new_v4().to_string(),
             skill_id: skill.id,
             tool: input.agent_id,
@@ -262,7 +262,7 @@ pub struct SaveCustomPluginInput {
 #[tauri::command]
 pub async fn save_custom_plugin(
     input: SaveCustomPluginInput,
-    store: State<'_, Arc<SkillStore>>,
+    store: State<'_, Arc<LibraryStore>>,
 ) -> Result<(), AppError> {
     // Validate JSON blobs before persisting.
     serde_json::from_str::<serde_json::Value>(&input.execution_json)
@@ -309,7 +309,7 @@ pub async fn save_custom_plugin(
 #[tauri::command]
 pub async fn delete_custom_plugin(
     plugin_id: String,
-    store: State<'_, Arc<SkillStore>>,
+    store: State<'_, Arc<LibraryStore>>,
 ) -> Result<(), AppError> {
     let store = store.inner().clone();
     run_blocking_result(move || {

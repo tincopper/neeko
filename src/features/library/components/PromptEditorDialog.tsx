@@ -57,12 +57,9 @@ function trimOr(s: string): string {
 }
 
 const PromptEditorDialog: React.FC = React.memo(() => {
-  const open = useLibraryStore(
-    (s) => s.editorOpen && (s.editorKind === 'prompt' || s.editorKind === 'command'),
-  );
+  const open = useLibraryStore((s) => s.editorOpen && s.editorKind === 'prompt');
   const editing = useLibraryStore((s) => s.editingPrompt);
   const initialContent = useLibraryStore((s) => s.initialContent);
-  const pendingKind = useLibraryStore((s) => s.pendingKind);
   const closeEditor = useLibraryStore((s) => s.closeEditor);
   const refreshPrompts = useLibraryStore((s) => s.refreshPrompts);
   const activeProjectId = useProjectStore((s) => s.activeProjectId);
@@ -88,10 +85,10 @@ const PromptEditorDialog: React.FC = React.memo(() => {
       // Pre-filled from "Save as Prompt" — keep defaults for the rest.
       setForm({ ...EMPTY_FORM, content: initialContent });
     } else {
-      setForm({ ...EMPTY_FORM, kind: pendingKind });
+      setForm({ ...EMPTY_FORM });
     }
     setError(null);
-  }, [open, editing, initialContent, pendingKind]);
+  }, [open, editing, initialContent]);
 
   const update = useCallback(<K extends keyof FormState>(key: K, value: FormState[K]) => {
     setForm((prev) => ({ ...prev, [key]: value }));
@@ -145,8 +142,6 @@ const PromptEditorDialog: React.FC = React.memo(() => {
         });
       }
       await refreshPrompts();
-      // Also refresh commands list in case kind changed.
-      await useLibraryStore.getState().refreshCommands();
       closeEditor();
     } catch (e) {
       setError(String(e));
