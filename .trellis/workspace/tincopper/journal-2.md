@@ -1958,3 +1958,34 @@ refactor library: 合并 mcp/skill 模块到 library 域; feat: MCP tag/agent/pr
 ### Next Steps
 
 - None - task complete
+
+
+## Session 117: IntelliSense 自动补全组件重构 · 用户 review 多轮修复与收尾
+
+**Date**: 2026-08-05
+**Task**: IntelliSense 自动补全组件重构 · 用户 review 多轮修复与收尾
+**Branch**: `main`
+
+### Summary
+
+修复 info 面板遮挡/文档缺失/tooltip 被 dock 裁剪/Returns 多余示例行/图标全 v/列表项换行与多余前缀行；更新 LSP capability documentation:true；前端 1142 测试 + Rust 592 测试全绿；更新任务验收文档
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+(No commits - planning session)
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
