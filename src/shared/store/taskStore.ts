@@ -437,7 +437,8 @@ export const useTaskStore = create<TaskStoreState>((rawSet, get) => {
 
       const handle = processHandles.get(id);
       const processId = session.processId ?? handle?.processId ?? null;
-      handle?.dispose();
+      // Do NOT dispose the handle: the terminal-closed listener must stay active
+      // to fire finalizeRun (stopping → idle) when the process actually exits.
       processHandles.delete(id);
 
       if (processId) {
