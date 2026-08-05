@@ -393,6 +393,19 @@ export const useEditorStore = create<EditorStoreState>((set) => ({
           };
         }
 
+        // Ensure activeGroupId points to the group containing newActiveId.
+        // Without this, closing the last tab in the active group while tabs
+        // remain in the other group leaves a blank content area.
+        if (newActiveId && newLayout.isSplit) {
+          const leftHasTab = newLayout.groups.left.tabIds.includes(newActiveId);
+          const rightHasTab = newLayout.groups.right.tabIds.includes(newActiveId);
+          if (leftHasTab && !rightHasTab) {
+            newLayout = { ...newLayout, activeGroupId: 'left' };
+          } else if (rightHasTab && !leftHasTab) {
+            newLayout = { ...newLayout, activeGroupId: 'right' };
+          }
+        }
+
         newEditorLayout = { ...state.editorLayout, [projectId]: newLayout };
       }
 

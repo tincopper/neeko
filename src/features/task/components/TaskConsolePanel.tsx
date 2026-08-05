@@ -9,6 +9,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { Square, Terminal, X } from '@/shared/components/icons';
 import { useAppContext } from '@/shared/contexts/AppContext';
+import { useProjectStore } from '@/shared/store/projectStore';
 import { cn } from '@/shared/utils/cn';
 import { buildFontFamily } from '@/shared/utils/terminal';
 
@@ -44,7 +45,7 @@ function writeStored(key: string, value: number) {
 
 function TaskConsolePanel() {
   const panelOpen = useTaskStore((s) => s.consolePanelOpen);
-  const sessions = useTaskStore((s) => s.consoleSessions);
+  const allSessions = useTaskStore((s) => s.consoleSessions);
   const activeConsoleId = useTaskStore((s) => s.activeConsoleId);
   const setConsolePanelOpen = useTaskStore((s) => s.setConsolePanelOpen);
   const setActiveConsoleId = useTaskStore((s) => s.setActiveConsoleId);
@@ -52,6 +53,15 @@ function TaskConsolePanel() {
   const stopTask = useTaskStore((s) => s.stopTask);
   const refreshLspLogConsole = useTaskStore((s) => s.refreshLspLogConsole);
   const { config } = useAppContext();
+
+  // Filter sessions to only show those belonging to the active project
+  const activeProject = useProjectStore((s) => s.activeProject);
+  const currentProjectId = activeProject?.id ?? '';
+  const currentProjectPath = activeProject?.path ?? '';
+  const sessions = allSessions.filter((s) => {
+    if (s.source === 'lsp') return s.projectPath === currentProjectPath;
+    return s.projectId === currentProjectId;
+  });
   const terminalType = useMemo(
     () => ({
       fontSize: config.terminalFontSize ?? 14,

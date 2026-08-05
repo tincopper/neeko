@@ -6,13 +6,17 @@
  * Mount/unmount does not start or stop the task process.
  */
 import { FitAddon } from '@xterm/addon-fit';
+import { WebLinksAddon } from '@xterm/addon-web-links';
 import { Terminal } from '@xterm/xterm';
 import React, { useEffect, useRef } from 'react';
 
 import { useAppContext } from '@/shared/contexts/AppContext';
+import { useBrowserStore } from '@/shared/store/browserStore';
+import { useDockStore } from '@/shared/store/dockStore';
 import { buildFontFamily, buildTerminalTheme } from '@/shared/utils/terminal';
 
 import type { TaskRun } from '../types';
+import { setupConsoleLinks } from '../utils/consoleLinks';
 
 import '@xterm/xterm/css/xterm.css';
 
@@ -47,8 +51,17 @@ function TaskConsoleOutput({ run, active }: Props) {
     });
     const fit = new FitAddon();
     term.loadAddon(fit);
+
     term.open(el);
     fit.fit();
+
+    // Enable URL detection and file path links (must be after term.open)
+    const webLinksAddon = new WebLinksAddon((_event, uri) => {
+      useDockStore.getState().activatePanel('right', 'browser');
+      useBrowserStore.getState().navigateTo(uri);
+    });
+    term.loadAddon(webLinksAddon);
+    setupConsoleLinks(term, { projectPath: run.projectPath, projectId: run.projectId });
 
     termRef.current = term;
     fitRef.current = fit;
