@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<title>CM6 info panel position verify (pure DOM)</title>
+<style>
+  body { margin: 0; background: #0d1117; font-family: system-ui; padding: 16px; color: #e6edf3; }
+  h3 { margin: 8px 0; font-size: 13px; color: #8b949e; font-weight: 500; }
+  .row { display: flex; gap: 24px; align-items: flex-start; margin-bottom: 24px; }
+  .case { border: 1px dashed #30363d; border-radius: 8px; padding: 12px; min-width: 300px; }
+  .case .label { font-size: 11px; color: #6e7681; margin-bottom: 8px; }
+  /* 模拟 CM6 列表 tooltip：fixed 定位，视为视口 (400,300) 处 */
+  .cm-tooltip.cm-tooltip-autocomplete {
+    position: fixed; left: 400px; top: 300px;
+    width: 600px; background: #161b22; border: 1px solid #30363d;
+    border-radius: 11px; box-shadow: 0 8px 32px rgba(0,0,0,0.45);
+    color: #e6edf3; font-size: 13px;
+  }
+  .cm-tooltip.cm-tooltip-autocomplete ul { margin: 0; padding: 4px 0; list-style: none; }
+  .cm-tooltip.cm-tooltip-autocomplete li { padding: 8px 12px; }
+  .cm-tooltip.cm-tooltip-autocomplete li[aria-selected] { background: #1f6feb22; border-left: 2px solid #58a6ff; }
+  /* CM6 baseTheme 的 info 样式：absolute，相对列表 DOM */
+  .cm-tooltip.cm-completionInfo { position: absolute; box-sizing: border-box; width: 440px; background: #161b22; border: 1px solid #30363d; border-radius: 11px; box-shadow: 0 8px 32px rgba(0,0,0,0.45); padding: 10px 14px; font-size: 12px; }
+  pre#result { color: #8b949e; font-size: 11px; white-space: pre-wrap; }
+  .frame { position: relative; width: 1500px; height: 700px; border: 1px solid #21262d; background: repeating-linear-gradient(0deg, transparent, transparent 99px, #21262d 99px, #21262d 100px); }
+</style>
+</head>
+<body>
+<h3>模拟视口 1500x900。列表 tooltip 固定于视口 (400,300)，宽 600，高 320；选中项在 y=400。info 面板 440x200。</h3>
+<div class="row">
+  <div class="case">
+    <div class="label">CASE A — 新 flipPositionInfo（相对列表坐标）</div>
+    <div class="frame" id="frame-new"></div>
+  </div>
+  <div class="case">
+    <div class="label">CASE B — 旧 flipPositionInfo（视口坐标 bug）</div>
+    <div class="frame" id="frame-old"></div>
+  </div>
+</div>
+<pre id="result">measuring…</pre>
+<script>
+const gap = 4;
+
+// 新实现：相对列表 DOM 坐标 + 空间不足时收窄
+function flipNew(list, option, info, space) {
+  const infoW = info.right - info.left;
+  const infoH = info.bottom - info.top;
+  const listWidth = list.right - list.left;
+  const fitsRight = list.right + gap + infoW <= space.right;
+  const fitsLeft = list.left - gap - infoW >= space.left;
+  const side = fitsRight || !fitsLeft ? 'right' : 'left';
+  const optionTop = option?.top ?? list.top;
+  const listMinTop = list.top;
+  const listMaxTop = list.bottom - infoH;
+  const viewportMinTop = space.top;
+  const viewportMaxTop = space.bottom - infoH;
+  const clampedToList = listMaxTop >= listMinTop ? Math.max(listMinTop, Math.min(optionTop, listMaxTop)) : listMinTop;
+  const top = Math.max(viewportMinTop, Math.min(clampedToList, viewportMaxTop));
+  const available = side === 'right' ? space.right - (list.right + gap) : list.left - gap - space.left;
+  const panelWidth = Math.min(infoW, Math.max(160, available));
+  return {
+    style: [
+      `top: ${Math.max(0, top - list.top)}px`,
+      side === 'right' ? `left: ${listWidth + gap}px` : `right: ${listWidth + gap}px`,
+      `max-width: ${panelWidth}px`,
+      'max-height: 340px',
+      'overflow-y: auto',
+    ].join(';'),
+  };
+}
+
+// 旧实现：视口坐标（bug）
+function flipOld(list, option, info, space) {
+  const infoW = info.right - info.left;
+  const infoH = info.bottom - info.top;
+  const fitsRight = list.right + infoW <= space.right;
+  const fitsLeft = list.left - infoW >= space.left;
+  const side = fitsRight || !fitsLeft ? 'right' : 'left';
+  const optionTop = option?.top ?? list.top;
+  const listMinTop = list.top;
+  const listMaxTop = list.bottom - infoH;
+  const viewportMinTop = space.top;
+  const viewportMaxTop = space.bottom - infoH;
+  const clampedToList = listMaxTop >= listMinTop ? Math.max(listMinTop, Math.min(optionTop, listMaxTop)) : listMinTop;
+  const top = Math.max(viewportMinTop, Math.min(clampedToList, viewportMaxTop));
+  return {
+    style: [
+      'position: absolute',
+      `top: ${top}px`,
+      side === 'right' ? `left: ${list.right + gap}px` : `right: ${space.right - list.left + gap}px`,
+      'max-height: 340px',
+      'overflow-y: auto',
+    ].join(';'),
+  };
+}
+
+const list = { left: 400, right: 1000, top: 300, bottom: 620 };
+const option = { left: 400, right: 1000, top: 400, bottom: 420 };
+const info = { left: 0, right: 440, top: 0, bottom: 200 };
+const space = { left: 0, top: 0, right: 1500, bottom: 900 };
+
+function build(frameId, flipFn) {
+  const frame = document.getElementById(frameId);
+  const listEl = document.createElement('div');
+  listEl.className = 'cm-tooltip cm-tooltip-autocomplete';
+  const ul = document.createElement('ul');
+  for (let i = 0; i < 8; i++) {
+    const li = document.createElement('li');
+    li.textContent = `item ${i}`;
+    if (i === 1) li.setAttribute('aria-selected', 'true'); // 选中项在列表 y=400 附近
+    ul.appendChild(li);
+  }
+  listEl.appendChild(ul);
+
+  const infoEl = document.createElement('div');
+  infoEl.className = 'cm-tooltip cm-completionInfo';
+  infoEl.innerHTML = '<div style="font-family:monospace;border-bottom:1px solid #30363d;padding-bottom:6px;margin-bottom:6px">dispatch(ctx context.Context, opts Options, out io.Writer) error</div><p>Dispatch dispatches the event to the registered handler. Human-readable diagnostics include file, line, and severity.</p><pre><code>dispatch("name", 42)</code></pre>';
+  listEl.appendChild(infoEl);
+
+  frame.appendChild(listEl);
+
+  const pos = flipFn(list, option, info, space);
+  infoEl.style.cssText = pos.style;
+
+  const l = listEl.getBoundingClientRect();
+  const i = infoEl.getBoundingClientRect();
+  return {
+    style: pos.style,
+    list: { left: Math.round(l.left), right: Math.round(l.right), top: Math.round(l.top), bottom: Math.round(l.bottom) },
+    info: { left: Math.round(i.left), right: Math.round(i.right), top: Math.round(i.top), bottom: Math.round(i.bottom), width: Math.round(i.width) },
+    overlapWithList: !(i.right <= l.left + 1 || i.left >= l.right - 1),
+    insideViewport: i.left >= 0 && i.right <= 1500 + 1,
+  };
+}
+
+const rNew = build('frame-new', flipNew);
+const rOld = build('frame-old', flipOld);
+
+document.querySelector('#result').textContent = JSON.stringify(
+  { viewport: { w: 1500, h: 900 }, new: rNew, old: rOld },
+  null,
+  2,
+);
+</script>
+</body>
+</html>

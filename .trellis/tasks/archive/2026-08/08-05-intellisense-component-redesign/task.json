@@ -1,0 +1,33 @@
+{
+  "id": "intellisense-component-redesign",
+  "name": "intellisense-component-redesign",
+  "title": "IntelliSense 自动补全组件重构",
+  "description": "基于 design-taste-frontend 高级审美标准，重构 CodeMirror 6 自动补全 UI：双栏 master-detail 布局（左栏签名列表 + 右栏文档详情）、函数参数自动填充 snippet、主题样式统一（OKLCH + Apple tokens）。",
+  "status": "completed",
+  "dev_type": "frontend",
+  "scope": "feature",
+  "package": "neeko",
+  "priority": "P1",
+  "creator": "tincopper",
+  "assignee": "tincopper",
+  "createdAt": "2026-08-05",
+  "completedAt": "2026-08-05",
+  "branch": "main",
+  "base_branch": "main",
+  "worktree_path": null,
+  "commit": "21b0de3f",
+  "pr_url": null,
+  "subtasks": [],
+  "children": [],
+  "parent": null,
+  "relatedFiles": [
+    "src/features/lsp/hooks/completionRenderer.ts",
+    "src/features/lsp/hooks/completionTheme.ts",
+    "src/features/lsp/hooks/lspCompletionInfoRenderer.ts",
+    "src/features/editor/components/FileViewer.tsx",
+    "src/styles/index.css",
+    "src-tauri/src/lsp/session/instance.rs"
+  ],
+  "notes": "2026-08-05: 已完成 snippetSupport 启用、参数 snippet 兜底、双栏 info 面板、主题样式统一。\n用户 review 多轮修复（2026-08-05）: ① info 面板遮挡补全列表 → flipPositionInfo 改相对列表 DOM 坐标 + 移除容器 overflow:hidden；② 函数文档缺失 → capability 声明 documentation:true + 空文档不渲染；③ tooltip 被左右 dock 面板裁剪 → tooltips({parent: document.body}) 脱离 overflow 链；④ Returns 下方多出调用示例行 → 移除 buildExampleSnippet；⑤ 图标全为 v → buildListItem 优先使用 lsp-client 映射的 type；⑥ 列表项换行/多余前缀行 → label/detail 单行 + ul 水平滚动，去掉 . 前缀模块路径提取。\n验收: lint:fe 1142 通过 / typecheck 无错 / cargo test 592 通过。待用户 commit。\n2026-08-05: 代码已提交 commit 21b0de3f（lefthook lint + commitlint 通过），任务归档。",
+  "meta": {}
+}

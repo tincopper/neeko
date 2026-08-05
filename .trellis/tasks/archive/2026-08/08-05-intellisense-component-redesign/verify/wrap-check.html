@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<title>completion list item wrap check</title>
+<style>
+  :root {
+    --bg-primary: #0d1117; --bg-secondary: #161b22; --bg-tertiary: #21262d;
+    --bg-hover: #1f6feb22; --border-color: #30363d; --text-primary: #e6edf3;
+    --text-secondary: #8b949e; --text-muted: #6e7681; --accent-blue: #58a6ff;
+  }
+  body { background: var(--bg-primary); color: var(--text-primary); font-family: system-ui; padding: 24px; }
+  .row { display: flex; gap: 24px; align-items: flex-start; flex-wrap: wrap; }
+  .box { width: 620px; }
+  .label { font-size: 11px; color: var(--text-muted); margin-bottom: 6px; }
+  /* ===== completionTheme.ts 提取的列表样式（修复后） ===== */
+  .cm-tooltip.cm-tooltip-autocomplete {
+    background: var(--bg-secondary); border-radius: 11px; border: 1px solid var(--border-color);
+    box-shadow: 0 0 0 1px oklch(1 0 0 / 4%), 0 8px 32px oklch(0 0 0 / 45%); color: var(--text-primary);
+  }
+  .cm-tooltip.cm-tooltip-autocomplete > ul {
+    font-family: inherit; white-space: nowrap; overflow: auto;
+    max-width: min(700px, 95vw); min-width: 280px; max-height: 320px; height: 100%;
+    list-style: none; margin: 0; padding: 4px 0;
+  }
+  .cm-tooltip.cm-tooltip-autocomplete > ul > li {
+    padding: 8px 12px; line-height: 1.4; display: flex; flex-wrap: wrap;
+    align-items: flex-start; gap: 4px; overflow: hidden;
+    cursor: pointer; border-left: 2px solid transparent;
+    min-width: max-content;
+  }
+  .cm-completionIcon { width: 16px; height: 16px; font-size: 0; position: relative; flex-shrink: 0; margin-right: 8px; margin-top: 1px; vertical-align: middle; }
+  .cm-completionIcon::before { content: ""; position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; border-radius: 3px; font-size: 10px; font-weight: 700; line-height: 1; }
+  .cm-completionIcon-function::before { background: var(--accent-blue); color: #fff; content: "ƒ"; font-style: italic; }
+  .cm-completionLabel { color: var(--text-primary); font-size: 13px; font-weight: 500; white-space: nowrap; flex-shrink: 0; }
+  .cm-completionMatchedText { color: var(--accent-blue); font-weight: 600; text-decoration: none; }
+  .cm-completionDetail { color: var(--text-muted); font-size: 11px; font-style: normal; margin-left: auto; padding-left: 12px; flex-shrink: 0; white-space: nowrap; }
+  .cm-lsp-completion-module { font-family: monospace; font-size: 11px; color: var(--text-muted); flex-basis: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 2px; padding-left: 24px; }
+</style>
+</head>
+<body>
+<div class="row">
+  <div class="box">
+    <div class="label">A：长 label `run.Testxxx(ctx context.Context, opts Options, out io.Writer) error` + detail（修复后应单行 + 模块第二行）</div>
+    <div class="cm-tooltip cm-tooltip-autocomplete"><ul>
+      <li>
+        <span class="cm-completionIcon cm-completionIcon-function"></span>
+        <span class="cm-completionLabel"><span class="cm-completionMatchedText">run.Testxxx</span>(ctx context.Context, opts Options, out io.Writer) error</span>
+        <span class="cm-completionDetail">func(ctx, d *hooks)</span>
+        <div class="cm-lsp-completion-module">run/session.go</div>
+      </li>
+      <li>
+        <span class="cm-completionIcon cm-completionIcon-function"></span>
+        <span class="cm-completionLabel">dispatch(ctx, opts, out)</span>
+        <span class="cm-completionDetail">func</span>
+        <div class="cm-lsp-completion-module">event/dispatcher/dispatch.go</div>
+      </li>
+      <li>
+        <span class="cm-completionIcon cm-completionIcon-variable"></span>
+        <span class="cm-completionLabel">dispatcher</span>
+        <span class="cm-completionDetail">var</span>
+        <div class="cm-lsp-completion-module">github.com/larksuite/oapi-sdk-go/v3/event/dispatch</div>
+      </li>
+    </ul></div>
+  </div>
+</div>
+<pre id="result" style="position:fixed;bottom:8px;left:8px;z-index:99;background:rgba(0,0,0,.85);color:#8b949e;font-size:11px;padding:8px;border-radius:6px;white-space:pre;"></pre>
+<script>
+setTimeout(() => {
+  const lis = document.querySelectorAll('li');
+  const out = Array.from(lis).map((li, i) => {
+    const r = li.getBoundingClientRect();
+    const label = li.querySelector('.cm-completionLabel');
+    const detail = li.querySelector('.cm-completionDetail');
+    const module = li.querySelector('.cm-lsp-completion-module');
+    const lr = label.getBoundingClientRect();
+    const dr = detail.getBoundingClientRect();
+    const mr = module.getBoundingClientRect();
+    return `li${i}: height=${Math.round(r.height)}px | labelTop=${Math.round(lr.top)} detailTop=${Math.round(dr.top)} sameLine=${Math.abs(lr.top - dr.top) < 2} | moduleTop=${Math.round(mr.top)} moduleOnOwnLine=${Math.abs(mr.top - lr.top) >= Math.round(lr.height) - 2}`;
+  });
+    const ul = document.querySelector('ul');
+  out.push(`UL clientWidth=${Math.round(ul.clientWidth)} scrollWidth=${Math.round(ul.scrollWidth)} scrollable=${ul.scrollWidth > ul.clientWidth}`);
+  document.querySelector('#result').textContent = out.join('\n');
+}, 200);
+</script>
+</body>
+</html>

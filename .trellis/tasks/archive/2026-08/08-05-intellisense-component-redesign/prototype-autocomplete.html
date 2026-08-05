@@ -1,0 +1,463 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<title>Code Completion UI Prototype</title>
+<style>
+  :root {
+    --bg-primary: #0d1117;
+    --bg-secondary: #161b22;
+    --bg-tertiary: #21262d;
+    --bg-hover: #1f6feb22;
+    --border-color: #30363d;
+    --text-primary: #e6edf3;
+    --text-secondary: #8b949e;
+    --text-muted: #6e7681;
+    --accent-blue: #58a6ff;
+    --accent-purple: #bc8cff;
+    --accent-green: #3fb950;
+    --accent-orange: #d29922;
+    --accent-yellow: #e3b341;
+    --radius-apple-md: 11px;
+    --font-mono: "JetBrains Mono", "Fira Code", "SF Mono", Menlo, monospace;
+    --font-ui: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    font-family: var(--font-ui);
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 40px;
+  }
+
+  /* Fake editor background */
+  .editor-bg {
+    position: fixed;
+    inset: 0;
+    font-family: var(--font-mono);
+    font-size: 14px;
+    line-height: 1.6;
+    padding: 60px 80px;
+    opacity: 0.35;
+    pointer-events: none;
+    white-space: pre;
+    color: var(--text-secondary);
+  }
+  .editor-bg .kw { color: #ff7b72; }
+  .editor-bg .fn { color: #d2a8ff; }
+  .editor-bg .type { color: #79c0ff; }
+  .editor-bg .str { color: #a5d6ff; }
+  .editor-bg .cmt { color: #8b949e; font-style: italic; }
+
+  .prototype {
+    position: relative;
+    display: flex;
+    gap: 4px;
+    align-items: flex-start;
+    z-index: 10;
+  }
+
+  /* ── Left: completion list ────────────────────────────────────── */
+  .completion-list {
+    width: 420px;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-apple-md);
+    box-shadow:
+      0 0 0 1px rgba(255,255,255,0.04),
+      0 8px 32px rgba(0,0,0,0.45);
+    overflow: hidden;
+    animation: fadeIn 180ms ease-out;
+  }
+
+  @keyframes fadeIn {
+    from { opacity: 0; transform: translateY(-4px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
+  .completion-list ul {
+    list-style: none;
+    max-height: 380px;
+    overflow-y: auto;
+    overflow-x: auto;
+    padding: 4px 0;
+  }
+
+  .completion-list li {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 8px 12px;
+    cursor: pointer;
+    border-left: 2px solid transparent;
+    transition: background-color 120ms ease-out, border-color 120ms ease-out;
+  }
+
+  .completion-list li.selected {
+    background: var(--bg-hover);
+    border-left-color: var(--accent-blue);
+  }
+
+  .completion-icon {
+    width: 16px;
+    height: 16px;
+    flex-shrink: 0;
+    margin-top: 1px;
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 10px;
+    font-weight: 700;
+    font-family: var(--font-ui);
+    color: #fff;
+    line-height: 1;
+  }
+  .icon-function { background: var(--accent-blue); }
+  .icon-class    { background: var(--accent-purple); }
+  .icon-variable { background: var(--accent-green); }
+  .icon-method   { background: #79c0ff; }
+  .icon-constant { background: var(--accent-yellow); color: #1a1a1a; }
+
+  .item-content {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .item-main {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+  }
+
+  .item-label {
+    font-family: var(--font-mono);
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text-primary);
+    white-space: nowrap;
+  }
+  .item-label .match { color: var(--accent-blue); font-weight: 600; }
+
+  .item-detail {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--text-muted);
+    font-style: normal;
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+
+  .item-module {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--text-muted);
+    margin-top: 2px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    padding-left: 2px;
+  }
+
+  /* Scrollbar */
+  .completion-list ul::-webkit-scrollbar { width: 6px; height: 6px; }
+  .completion-list ul::-webkit-scrollbar-track { background: transparent; }
+  .completion-list ul::-webkit-scrollbar-thumb {
+    background: var(--bg-tertiary);
+    border-radius: 3px;
+  }
+
+  /* ── Right: info panel ───────────────────────────────────────── */
+  .info-panel {
+    width: 460px;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-apple-md);
+    box-shadow:
+      0 0 0 1px rgba(255,255,255,0.04),
+      0 8px 32px rgba(0,0,0,0.45);
+    padding: 12px 16px;
+    max-height: 380px;
+    overflow-y: auto;
+    font-size: 12.5px;
+    line-height: 1.6;
+    animation: fadeIn 200ms ease-out 40ms both;
+  }
+
+  .info-panel::-webkit-scrollbar { width: 6px; }
+  .info-panel::-webkit-scrollbar-track { background: transparent; }
+  .info-panel::-webkit-scrollbar-thumb {
+    background: var(--bg-tertiary);
+    border-radius: 3px;
+  }
+
+  .info-signature {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--text-secondary);
+    margin-bottom: 10px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid var(--border-color);
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+  .info-signature .fn-name { color: #d2a8ff; }
+  .info-signature .param { color: var(--accent-orange); font-weight: 600; }
+  .info-signature .type { color: #79c0ff; }
+
+  .info-docs {
+    color: var(--text-primary);
+    margin-bottom: 10px;
+  }
+  .info-docs p { margin-bottom: 6px; }
+  .info-docs p:last-child { margin-bottom: 0; }
+  .info-docs code {
+    background: var(--bg-tertiary);
+    color: var(--accent-orange);
+    padding: 1px 5px;
+    border-radius: 3px;
+    font-family: var(--font-mono);
+    font-size: 11px;
+  }
+
+  .info-params-title {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--text-muted);
+    font-weight: 600;
+    margin: 10px 0 4px;
+  }
+
+  .info-params-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 11.5px;
+  }
+  .info-params-table th {
+    text-align: left;
+    padding: 3px 8px;
+    border-bottom: 1px solid var(--border-color);
+    color: var(--text-muted);
+    font-weight: 600;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+  .info-params-table td {
+    padding: 4px 8px;
+    border-bottom: 1px solid var(--border-color);
+    vertical-align: top;
+  }
+  .param-name {
+    font-family: var(--font-mono);
+    color: #79c0ff;
+    white-space: nowrap;
+  }
+  .param-type {
+    font-family: var(--font-mono);
+    color: var(--accent-purple);
+    white-space: nowrap;
+  }
+  .param-desc { color: var(--text-secondary); }
+
+  .info-returns {
+    margin-top: 10px;
+    font-size: 11.5px;
+    color: var(--text-secondary);
+    display: flex;
+    gap: 8px;
+    align-items: center;
+  }
+  .info-returns .label {
+    color: var(--text-muted);
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    font-weight: 600;
+  }
+  .info-returns .type {
+    font-family: var(--font-mono);
+    color: var(--accent-green);
+  }
+
+  /* ── Label / caption ─────────────────────────────────────────── */
+  .caption {
+    position: fixed;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 11px;
+    color: var(--text-muted);
+    font-family: var(--font-ui);
+    z-index: 20;
+  }
+</style>
+</head>
+<body>
+
+<div class="editor-bg"><span class="kw">func</span> <span class="fn">TestDispatch</span>(t *<span class="type">testing</span>.T) {
+    t.<span class="fn">Setenv</span>(<span class="str">"NO_COLOR"</span>, <span class="str">"1"</span>)
+    <span class="cmt">// Ensure deterministic output</span>
+
+    <span class="kw">var</span> out, errOut bytes.Buffer
+    code := <span class="fn">dispatch</span>(ctx, opts, &amp;out, &amp;errOut)
+    <span class="kw">if</span> code != 0 {
+        t.Fatalf(<span class="str">"exit code = %d"</span>, code)
+    }
+    <span class="kw">if</span> !strings.Contains(errOut.String(), <span class="str">"error"</span>) {
+        t.Errorf(<span class="str">"expected error in output"</span>)
+    }
+}</div>
+
+<div class="prototype">
+
+  <!-- Left: completion list -->
+  <div class="completion-list">
+    <ul>
+      <li>
+        <div class="completion-icon icon-function">ƒ</div>
+        <div class="item-content">
+          <div class="item-main">
+            <span class="item-label"><span class="match">dispatch</span>(ctx, opts, out)</span>
+            <span class="item-detail">func</span>
+          </div>
+          <div class="item-module">event/dispatcher/dispatch.go</div>
+        </div>
+      </li>
+      <li>
+        <div class="completion-icon icon-variable">v</div>
+        <div class="item-content">
+          <div class="item-main">
+            <span class="item-label"><span class="match">dispatch</span>er</span>
+            <span class="item-detail">var</span>
+          </div>
+          <div class="item-module">github.com/larksuite/oapi-sdk-go/v3/event/dispatch</div>
+        </div>
+      </li>
+      <li class="selected">
+        <div class="completion-icon icon-function">ƒ</div>
+        <div class="item-content">
+          <div class="item-main">
+            <span class="item-label"><span class="match">TestDispatch</span>BadOutputFormat</span>
+            <span class="item-detail">func(t *testing.T)</span>
+          </div>
+          <div class="item-module">dispatch_test.go:42</div>
+        </div>
+      </li>
+      <li>
+        <div class="completion-icon icon-function">ƒ</div>
+        <div class="item-content">
+          <div class="item-main">
+            <span class="item-label"><span class="match">TestDispatch</span>ContinueNoSessions</span>
+            <span class="item-detail">func(t *testing.T)</span>
+          </div>
+          <div class="item-module">dispatch_test.go:78</div>
+        </div>
+      </li>
+      <li>
+        <div class="completion-icon icon-function">ƒ</div>
+        <div class="item-content">
+          <div class="item-main">
+            <span class="item-label"><span class="match">TestDispatch</span>ListSessionsEmpty</span>
+            <span class="item-detail">func(t *testing.T)</span>
+          </div>
+          <div class="item-module">dispatch_test.go:115</div>
+        </div>
+      </li>
+      <li>
+        <div class="completion-icon icon-function">ƒ</div>
+        <div class="item-content">
+          <div class="item-main">
+            <span class="item-label"><span class="match">TestDispatch</span>NoPromptNonTerminal</span>
+            <span class="item-detail">func(t *testing.T)</span>
+          </div>
+          <div class="item-module">dispatch_test.go:156</div>
+        </div>
+      </li>
+      <li>
+        <div class="completion-icon icon-function">ƒ</div>
+        <div class="item-content">
+          <div class="item-main">
+            <span class="item-label"><span class="match">TestDispatch</span>TUIGating</span>
+            <span class="item-detail">func(t *testing.T)</span>
+          </div>
+          <div class="item-module">dispatch_test.go:198</div>
+        </div>
+      </li>
+      <li>
+        <div class="completion-icon icon-function">ƒ</div>
+        <div class="item-content">
+          <div class="item-main">
+            <span class="item-label">run.Build<span class="match">Dispatch</span>er</span>
+            <span class="item-detail">func(...) *hooks</span>
+          </div>
+          <div class="item-module">run/dispatcher.go</div>
+        </div>
+      </li>
+      <li>
+        <div class="completion-icon icon-method">m</div>
+        <div class="item-content">
+          <div class="item-main">
+            <span class="item-label">run.<span class="match">Dispatch</span>SessionStart</span>
+            <span class="item-detail">func(ctx, d *hooks)</span>
+          </div>
+          <div class="item-module">run/session.go</div>
+        </div>
+      </li>
+      <li>
+        <div class="completion-icon icon-method">m</div>
+        <div class="item-content">
+          <div class="item-main">
+            <span class="item-label">run.<span class="match">Dispatch</span>UserPromptSubmit</span>
+            <span class="item-detail">func(ctx, d *hooks)</span>
+          </div>
+          <div class="item-module">run/prompt.go</div>
+        </div>
+      </li>
+    </ul>
+  </div>
+
+  <!-- Right: info panel -->
+  <div class="info-panel">
+    <div class="info-signature">
+<span class="fn-name">TestDispatchBadOutputFormat</span>(<span class="param">t</span> <span class="type">*testing.T</span>)</div>
+
+    <div class="info-docs">
+      <p>Verifies that the dispatcher produces correctly formatted error output when given malformed input.</p>
+      <p>Tests the <code>errOut</code> buffer against a golden file to ensure human-readable diagnostics include file, line, and severity.</p>
+    </div>
+
+    <div class="info-params-title">Parameters</div>
+    <table class="info-params-table">
+      <thead>
+        <tr><th>Name</th><th>Type</th><th>Description</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td class="param-name">t</td>
+          <td class="param-type">*testing.T</td>
+          <td class="param-desc">Test handle for assertions</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div class="info-returns">
+      <span class="label">Returns</span>
+      <span class="type">—</span>
+    </div>
+  </div>
+
+</div>
+
+<div class="caption">Code Completion UI Prototype · Dark Theme · IDEA-style two-line layout + side info panel</div>
+
+</body>
+</html>

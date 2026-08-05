@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<title>tooltip clipping repro (WKWebView makeAbsolute)</title>
+<style>
+  body { margin: 0; background: #0d1117; font-family: system-ui; color: #e6edf3; overflow: hidden; }
+  /* 模拟 Neeko DockLayout：bg-primary 为海，两侧为浮岛 */
+  .island { position: absolute; top: 8px; bottom: 8px; background: #161b22; border: 1px solid #30363d; border-radius: 11px; box-shadow: 0 8px 32px rgba(0,0,0,0.45); }
+  #left-island { left: 8px; width: 240px; }
+  #right-island { right: 8px; width: 300px; }
+  .island .title { padding: 10px; font-size: 12px; color: #8b949e; }
+  /* 模拟编辑器容器链：overflow-hidden（FileViewer / ResizablePanel） */
+  #editor-shell { position: absolute; left: 256px; right: 316px; top: 8px; bottom: 8px; overflow: hidden; border: 1px solid #30363d; border-radius: 11px; background: #0d1117; }
+  .cm-editor { position: relative; height: 100%; }
+  .cm-content { padding: 16px; font-family: monospace; font-size: 14px; line-height: 1.6; color: #8b949e; white-space: pre; }
+  /* CM6 tooltip：fixed（正常）或 absolute（WKWebView makeAbsolute 降级） */
+  .cm-tooltip { position: fixed; z-index: 5000; background: #161b22; border: 1px solid #30363d; border-radius: 11px; box-shadow: 0 8px 32px rgba(0,0,0,0.45); padding: 10px 14px; font-size: 12px; }
+  .cm-tooltip-abs { position: absolute; z-index: 5000; }
+  .cm-tooltip-body { position: fixed; z-index: 5000; }
+  .note { position: absolute; bottom: 16px; left: 16px; font-size: 11px; color: #6e7681; }
+  pre#result { position: absolute; bottom: 40px; left: 16px; font-size: 11px; color: #8b949e; white-space: pre-wrap; max-width: 90vw; }
+</style>
+</head>
+<body>
+<div class="island" id="left-island"><div class="title">Projects (左侧岛)</div></div>
+<div class="island" id="right-island"><div class="title">Assistant (右侧岛)</div></div>
+
+<div id="editor-shell">
+  <div class="cm-editor" id="cm-a">
+    <div class="cm-content">func TestDispatch(t *testing.T) {
+    code := dispatch(ctx, opts)
+    // 光标在编辑器中部，补全 tooltip 向右延伸，会越出编辑器区域
+}</div>
+    <!-- 场景 A：tooltip 作为 .cm-editor 子元素（CM6 默认挂载），absolute 定位（WKWebView makeAbsolute 降级） -->
+    <div class="cm-tooltip cm-tooltip-abs" id="tip-a">dispatch(ctx context.Context, opts Options, out io.Writer) error</div>
+  </div>
+</div>
+
+<!-- 场景 B：tooltip 挂到 body（tooltips({ parent: document.body })），fixed 定位 -->
+<div class="cm-tooltip cm-tooltip-body" id="tip-b">dispatch(ctx context.Context, opts Options, out io.Writer) error</div>
+
+<div class="note">场景 A：tooltip 在 .cm-editor 内（absolute，模拟 WKWebView makeAbsolute）→ 被 overflow-hidden 裁剪。场景 B：tooltip 挂 body（fixed）→ 不被裁剪。</div>
+<pre id="result">measuring…</pre>
+
+<script>
+  // 两个 tooltip 都定位在编辑器中部偏右（光标附近），向右延伸覆盖右侧岛区域
+  const shell = document.getElementById('editor-shell');
+  const shellRect = shell.getBoundingClientRect();
+  const left = shellRect.left + 620; // 编辑器中部偏右，明显越过编辑器右边界
+  const tipTop = shellRect.top + 160;
+
+  const tipA = document.getElementById('tip-a');
+  const tipB = document.getElementById('tip-b');
+
+  // A：absolute 相对 .cm-editor（relative），使用视口坐标 —— 模拟 makeAbsolute 后的表现
+  tipA.style.top = tipTop + 'px';
+  tipA.style.left = left + 'px';
+  // B：fixed 相对视口，同样位置
+  tipB.style.top = tipTop + 'px';
+  tipB.style.left = left + 'px';
+
+  setTimeout(() => {
+    const ra = tipA.getBoundingClientRect();
+    const rb = tipB.getBoundingClientRect();
+    const shellR = shell.getBoundingClientRect();
+    const rightIsland = document.getElementById('right-island').getBoundingClientRect();
+    document.querySelector('#result').textContent = JSON.stringify({
+      editorShell: { left: Math.round(shellR.left), right: Math.round(shellR.right), top: Math.round(shellR.top), bottom: Math.round(shellR.bottom) },
+      rightIslandLeft: Math.round(rightIsland.left),
+      tipA: { left: Math.round(ra.left), right: Math.round(ra.right), top: Math.round(ra.top), visibleWidth: Math.round(ra.width) },
+      tipB: { left: Math.round(rb.left), right: Math.round(rb.right), top: Math.round(rb.top), visibleWidth: Math.round(rb.width) },
+      aClippedByShell: ra.right > shellR.right,
+      aExtendsIntoRightIsland: ra.right > rightIsland.left,
+      bVisibleOverIsland: rb.right > rightIsland.left && rb.right <= innerWidth,
+    }, null, 2);
+  });
+</script>
+</body>
+</html>
