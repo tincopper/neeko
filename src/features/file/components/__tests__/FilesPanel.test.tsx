@@ -297,6 +297,17 @@ describe('FilesPanel 文件管理', () => {
     fireEvent.contextMenu(screen.getByText('b.ts'));
     expect(screen.getByText('Delete')).toBeInTheDocument();
   });
+
+  it('文件图标不使用半透明样式（浅色背景下保持彩色可见）', () => {
+    render(<FilesPanel {...baseProps} />);
+
+    // b.ts → /icons/typescript.svg（彩色 SVG；图标 alt="" 装饰性图片）
+    const fileIcon = screen
+      .getAllByAltText('')
+      .find((img) => img.getAttribute('src') === '/icons/typescript.svg');
+    expect(fileIcon).toBeDefined();
+    expect(fileIcon!.className).not.toMatch(/opacity/);
+  });
 });
 
 describe('displayHomePath', () => {

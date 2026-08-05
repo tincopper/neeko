@@ -49,7 +49,7 @@ function InlineNameInput({
         />
       ) : (
         <img
-          className="w-3.5 h-3.5 shrink-0 block opacity-70"
+          className="w-3.5 h-3.5 shrink-0 block"
           src={fileIconSrc(value || 'file.txt')}
           alt=""
           width={14}

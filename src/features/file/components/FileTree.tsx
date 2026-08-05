@@ -198,7 +198,7 @@ const FileTree: React.FC<FileTreeProps> = ({ nodes, projectId, onSelectFile, dep
             title={file.path}
           >
             <img
-              className="w-4 h-4 shrink-0 block opacity-70"
+              className="w-4 h-4 shrink-0 block"
               src={fileIconSrc(node.name)}
               alt=""
               width={16}
