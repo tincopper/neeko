@@ -28,6 +28,7 @@ build/
 .reasonix
 .workbuddy
 .atomcode
+.grok
 
 # OS
 .DS_Store
