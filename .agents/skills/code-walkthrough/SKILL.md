@@ -1,6 +1,7 @@
 ---
 name: code-walkthrough
 description: 与用户共同阅读 Neeko 代码，逐层讲解 Tauri 应用架构与跨端数据流。支持三域分层模式（Rust 后端 / React 前端 / 跨端桥接）和调用链追踪模式（含跨端追踪）。主动发现 dead code、设计偏差、类型不一致、迁移遗漏，但不修改代码。Use when user wants to walkthrough code, understand architecture, trace call chains, review a module's structure, or says "过代码" / "walkthrough" / "walk me through" / "zoom out".
+disable-model-invocation: true
 ---
 
 # Code Walkthrough

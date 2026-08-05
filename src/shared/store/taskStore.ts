@@ -124,7 +124,18 @@ function finalizeRun(runId: string, exitCode: number) {
   useTaskStore.setState((state) => ({
     consoleSessions: state.consoleSessions.map((s) => {
       if (s.id !== runId) return s;
-      // Already finalized (e.g. user Stop) — keep buffer, only fill exit metadata
+      // User already requested stop — finalize to idle (stopped is a graceful end).
+      if (s.status === 'stopping') {
+        return {
+          ...s,
+          status: 'idle' as const,
+          processId: null,
+          exitCode: s.exitCode ?? exitCode,
+          endedAt: s.endedAt ?? Date.now(),
+          output: s.output + `\r\n\x1b[90m[Stopped]\x1b[0m\r\n`,
+        };
+      }
+      // Already finalized by other path — keep buffer, only fill exit metadata.
       if (s.status !== 'running') {
         return {
           ...s,
@@ -403,7 +414,9 @@ export const useTaskStore = create<TaskStoreState>((rawSet, get) => {
       const id =
         runId ??
         state.activeConsoleId ??
-        state.consoleSessions.find((s) => s.status === 'running' && s.source !== 'lsp')?.id;
+        state.consoleSessions.find(
+          (s) => (s.status === 'running' || s.status === 'stopping') && s.source !== 'lsp',
+        )?.id;
       if (!id) {
         console.warn('[TaskStore] stopTask: no run');
         return;
@@ -411,7 +424,13 @@ export const useTaskStore = create<TaskStoreState>((rawSet, get) => {
 
       const session = state.consoleSessions.find((s) => s.id === id);
       // LSP log tabs have no process to stop — ignore.
-      if (!session || session.source === 'lsp' || session.status !== 'running') {
+      if (!session || session.source === 'lsp') {
+        console.warn('[TaskStore] stopTask: not a task run', id);
+        return;
+      }
+      // Idempotent: already stopping — do nothing.
+      if (session.status === 'stopping') return;
+      if (session.status !== 'running') {
         console.warn('[TaskStore] stopTask: run not running', id);
         return;
       }
@@ -425,17 +444,16 @@ export const useTaskStore = create<TaskStoreState>((rawSet, get) => {
         void stopTaskProcess(processId).catch((e) => console.error('Failed to stop task:', e));
       }
 
-      // Optimistic UI: mark stopped (exit event may still fire once)
+      // Mark stopping: process exit event will finalize to idle via finalizeRun.
       set({
         consoleSessions: state.consoleSessions.map((s) =>
           s.id === id
             ? {
                 ...s,
-                status: 'idle' as const,
+                status: 'stopping' as const,
                 processId: null,
-                exitCode: s.exitCode ?? -1,
                 endedAt: Date.now(),
-                output: s.output + `\r\n\x1b[90m[Stopped]\x1b[0m\r\n`,
+                output: s.output + `\r\n\x1b[90m[Stopping…]\x1b[0m\r\n`,
               }
             : s,
         ),

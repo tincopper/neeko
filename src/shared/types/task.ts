@@ -17,7 +17,7 @@ export interface DiscoveredTask {
   priority: number;
 }
 
-export type TaskRunStatus = 'running' | 'idle' | 'failed';
+export type TaskRunStatus = 'running' | 'stopping' | 'idle' | 'failed';
 
 /** Origin of a Console tab: task process output or LSP server logs. */
 export type ConsoleSessionSource = 'task' | 'lsp';

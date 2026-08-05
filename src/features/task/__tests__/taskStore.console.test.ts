@@ -150,7 +150,7 @@ describe('task store console / run lifecycle', () => {
     expect(useTaskStore.getState().consoleSessions[0].status).toBe('running');
   });
 
-  it('should_stop_running_task_without_removing_buffer', async () => {
+  it('should_mark_stopping_when_user_stops_task', async () => {
     useTaskStore.getState().runTask('pnpm build', 'cfg-build');
     await vi.waitFor(() => expect(mockStart).toHaveBeenCalledTimes(1));
     const onOutput = mockStart.mock.calls[0][0].onOutput as (c: string) => void;
@@ -159,9 +159,42 @@ describe('task store console / run lifecycle', () => {
     useTaskStore.getState().stopTask();
     expect(mockStop).toHaveBeenCalled();
     const session = useTaskStore.getState().consoleSessions[0];
-    expect(session.status).toBe('idle');
+    // New behavior: stop marks 'stopping', process exit finalizes to 'idle'.
+    expect(session.status).toBe('stopping');
     expect(session.output).toContain('partial');
+    expect(session.output).toContain('Stopping');
+  });
+
+  it('should_finalize_stopping_to_idle_on_process_exit', async () => {
+    useTaskStore.getState().runTask('pnpm build', 'cfg-build');
+    await vi.waitFor(() => expect(mockStart).toHaveBeenCalledTimes(1));
+
+    useTaskStore.getState().stopTask();
+    expect(useTaskStore.getState().consoleSessions[0].status).toBe('stopping');
+
+    // Simulate process exit after stop.
+    const onExit = mockStart.mock.calls[0][0].onExit as (code: number) => void;
+    onExit(0);
+
+    const session = useTaskStore.getState().consoleSessions[0];
+    expect(session.status).toBe('idle');
     expect(session.output).toContain('Stopped');
+  });
+
+  it('should_be_idempotent_when_stopping_already_stopping', async () => {
+    useTaskStore.getState().runTask('pnpm build', 'cfg-build');
+    await vi.waitFor(() => expect(mockStart).toHaveBeenCalledTimes(1));
+
+    useTaskStore.getState().stopTask();
+    const firstSession = useTaskStore.getState().consoleSessions[0];
+    expect(firstSession.status).toBe('stopping');
+
+    // Second stop should be a no-op.
+    useTaskStore.getState().stopTask();
+    const secondSession = useTaskStore.getState().consoleSessions[0];
+    expect(secondSession.status).toBe('stopping');
+    // Should not append a second [Stopping…] banner.
+    expect(secondSession.output.match(/Stopping/g)?.length).toBe(1);
   });
 
   it('should_open_lsp_log_console_tab_and_not_stop_process_on_close', async () => {

@@ -1,12 +1,62 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
-import { Play, Square, ChevronDown, Plus, Pencil, X, Download } from '@/shared/components/icons';
+import {
+  Play,
+  Square,
+  LoaderCircle,
+  ChevronDown,
+  Plus,
+  Pencil,
+  X,
+  Download,
+} from '@/shared/components/icons';
 import { useProjectStore } from '@/shared/store/projectStore';
 import type { DiscoveredTask, TaskConfig } from '@/shared/types/task';
 
 import { useTaskStore } from '../store';
 
 import TaskDialog from './TaskDialog';
+
+// ── StatusIcon ───────────────────────────────────────────────────────────────
+
+interface StatusIconProps {
+  configId: string;
+  runningConfigIds: Set<string>;
+  stoppingConfigIds: Set<string>;
+}
+
+function StatusIcon({ configId, runningConfigIds, stoppingConfigIds }: StatusIconProps) {
+  if (runningConfigIds.has(configId)) {
+    return (
+      <Square
+        size={12}
+        className="shrink-0 text-accent-red"
+        fill="currentColor"
+        strokeWidth={0}
+        data-testid="status-icon-square"
+      />
+    );
+  }
+  if (stoppingConfigIds.has(configId)) {
+    return (
+      <LoaderCircle
+        size={12}
+        className="shrink-0 text-accent-yellow animate-spin"
+        strokeWidth={2}
+        data-testid="status-icon-loader"
+      />
+    );
+  }
+  return (
+    <Play
+      size={12}
+      className="shrink-0 text-accent-green"
+      fill="currentColor"
+      strokeWidth={0}
+      data-testid="status-icon-play"
+    />
+  );
+}
 
 // ── TaskRunButton ────────────────────────────────────────────────────────────
 
@@ -58,6 +108,18 @@ function TaskRunButton() {
     }
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [dropdownOpen]);
+
+  // Set of configIds that are running / stopping in the current project — O(1) lookup per row
+  const { runningConfigIds, stoppingConfigIds } = useMemo(() => {
+    const running = new Set<string>();
+    const stopping = new Set<string>();
+    for (const s of consoleSessions) {
+      if (s.projectId !== currentProjectId) continue;
+      if (s.status === 'running') running.add(s.configId);
+      else if (s.status === 'stopping') stopping.add(s.configId);
+    }
+    return { runningConfigIds: running, stoppingConfigIds: stopping };
+  }, [consoleSessions, currentProjectId]);
 
   // Running if the selected task (or any project task) has an active console session
   const isRunning = useMemo(() => {
@@ -260,11 +322,10 @@ function TaskRunButton() {
                         }
                       }}
                     >
-                      <Play
-                        size={12}
-                        className="shrink-0 text-accent-green"
-                        fill="currentColor"
-                        strokeWidth={0}
+                      <StatusIcon
+                        configId={config.id}
+                        runningConfigIds={runningConfigIds}
+                        stoppingConfigIds={stoppingConfigIds}
                       />
                       <div className="flex-1 min-w-0">
                         <div className="text-[var(--font-size)] text-text-primary truncate">
@@ -329,11 +390,10 @@ function TaskRunButton() {
                             }
                           }}
                         >
-                          <Play
-                            size={12}
-                            className="shrink-0 text-accent-green"
-                            fill="currentColor"
-                            strokeWidth={0}
+                          <StatusIcon
+                            configId={task.id}
+                            runningConfigIds={runningConfigIds}
+                            stoppingConfigIds={stoppingConfigIds}
                           />
                           <div className="flex-1 min-w-0">
                             <div className="text-[var(--font-size)] text-text-primary truncate">
