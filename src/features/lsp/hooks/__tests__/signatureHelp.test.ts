@@ -29,7 +29,15 @@ vi.mock('@codemirror/lsp-client', () => {
   };
 });
 vi.mock('@codemirror/state', () => ({ type: {} }));
-vi.mock('@codemirror/view', () => ({ type: {} }));
+vi.mock('@codemirror/view', () => ({
+  EditorView: {
+    theme: (spec: unknown) => ({ type: 'theme', spec }),
+    baseTheme: (spec: unknown) => ({ type: 'baseTheme', spec }),
+    updateListener: { of: () => ({}) },
+  },
+  tooltips: (config: unknown) => ({ type: 'tooltips', config }),
+  type: {},
+}));
 vi.mock('@codemirror/autocomplete', () => ({
   autocompletion: () => ({}),
 }));

@@ -306,11 +306,7 @@ impl LspSession {
         let mut init_params = serde_json::json!({
             "processId": std::process::id(), "rootUri": root_uri, "rootPath": workspace_root_str,
             "workspaceFolders": [{ "uri": root_uri, "name": Path::new(&workspace_root_str).file_name().and_then(|n| n.to_str()).unwrap_or("workspace") }],
-            "capabilities": {
-                "textDocument": { "hover": { "contentFormat": ["markdown", "plaintext"] }, "definition": { "linkSupport": true }, "references": {}, "completion": { "completionItem": { "snippetSupport": false, "documentationFormat": ["markdown", "plaintext"] } }, "publishDiagnostics": { "relatedInformation": true } },
-                "workspace": { "workspaceFolders": true, "configuration": true, "didChangeConfiguration": { "dynamicRegistration": false } },
-                "window": { "workDoneProgress": true }
-            },
+            "capabilities": build_client_capabilities(),
             "clientInfo": { "name": "neeko", "version": env!("CARGO_PKG_VERSION") }
         });
         if let Some(opts) = plugin.initialization_options.clone() {
@@ -496,6 +492,30 @@ impl LspSession {
     }
 }
 
+/// Client capabilities advertised to the language server during `initialize`.
+///
+/// `completionItem.snippetSupport: true` lets servers return snippet-format
+/// `insertText` (e.g. `foo(${1:param1}, ${2:param2})`) so accepting a function
+/// completion auto-fills its parameters with tab-stop placeholders
+/// (IDEA-style), instead of inserting only the bare function name.
+///
+/// `completionItem.documentation: true` asks servers to include per-item
+/// documentation in completion responses — the info panel's docs section
+/// ("function documentation hints") depends on it.
+pub(crate) fn build_client_capabilities() -> Value {
+    serde_json::json!({
+        "textDocument": {
+            "hover": { "contentFormat": ["markdown", "plaintext"] },
+            "definition": { "linkSupport": true },
+            "references": {},
+            "completion": { "completionItem": { "snippetSupport": true, "documentation": true, "documentationFormat": ["markdown", "plaintext"] } },
+            "publishDiagnostics": { "relatedInformation": true }
+        },
+        "workspace": { "workspaceFolders": true, "configuration": true, "didChangeConfiguration": { "dynamicRegistration": false } },
+        "window": { "workDoneProgress": true }
+    })
+}
+
 /// Extract server capabilities from an `initialize` response.
 ///
 /// When the server answered with an error (e.g. typescript-language-server
@@ -581,6 +601,33 @@ mod tests {
         assert!(
             err.to_string().contains("unexpected message type"),
             "got: {err}"
+        );
+    }
+
+    #[test]
+    fn client_capabilities_advertise_snippet_support() {
+        let caps = build_client_capabilities();
+        assert_eq!(
+            caps["textDocument"]["completion"]["completionItem"]["snippetSupport"],
+            json!(true),
+            "snippetSupport must be advertised so servers return snippet insertText \
+             (function completions auto-fill parameters, IDEA-style)"
+        );
+        // Hover / documentation formats must be preserved.
+        assert_eq!(
+            caps["textDocument"]["hover"]["contentFormat"],
+            json!(["markdown", "plaintext"])
+        );
+        assert_eq!(
+            caps["textDocument"]["completion"]["completionItem"]["documentationFormat"],
+            json!(["markdown", "plaintext"])
+        );
+        // Completion items must carry documentation so the info panel can show
+        // function documentation hints (the master-detail right column).
+        assert_eq!(
+            caps["textDocument"]["completion"]["completionItem"]["documentation"],
+            json!(true),
+            "documentation must be advertised so servers include per-item docs"
         );
     }
 }

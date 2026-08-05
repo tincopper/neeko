@@ -1,9 +1,4 @@
-import {
-  closeBrackets,
-  closeBracketsKeymap,
-  autocompletion,
-  completionKeymap,
-} from '@codemirror/autocomplete';
+import { closeBrackets, closeBracketsKeymap, completionKeymap } from '@codemirror/autocomplete';
 import { history, historyKeymap, indentWithTab, defaultKeymap } from '@codemirror/commands';
 import { foldGutter, indentOnInput, bracketMatching } from '@codemirror/language';
 import { EditorSelection } from '@codemirror/state';
@@ -16,6 +11,7 @@ import {
   drawSelection,
   dropCursor,
   keymap,
+  tooltips,
 } from '@codemirror/view';
 import CodeMirror from '@uiw/react-codemirror';
 import React, { useState, useCallback, useEffect, useMemo, useRef, useLayoutEffect } from 'react';
@@ -692,7 +688,7 @@ function FileEditor({
 
   // Cmd/Ctrl held state — used for link highlight pointer cursor style
   const cmdHeld = useCmdHeld();
-  const cmClassName = cn('h-full overflow-auto', cmdHeld && 'cmd-held');
+  const cmClassName = cn('h-full overflow-hidden', cmdHeld && 'cmd-held');
 
   // Cmd+Click / Ctrl+Click — go to definition, clearing link highlight first
   useEffect(() => {
@@ -964,6 +960,19 @@ function FileEditor({
   const extensions = useMemo(() => {
     const exts: import('@codemirror/state').Extension[] = [];
 
+    // Tooltips (completion info panel, hover docs, signature help) are
+    // rendered as CHILDREN of the CodeMirror DOM by default, which sits
+    // inside `overflow-hidden` containers (FileViewer + ResizablePanel).
+    // When CM6 positions tooltips as `absolute` (iOS devices, or after its
+    // fixed→absolute fallback detection), `overflow: hidden` clips them at
+    // the editor edge — the completion popup gets cropped and looks
+    // "covered" by the left/right dock islands. Mounting the tooltip layer
+    // on `document.body` puts it outside that clipping chain; `fixed`
+    // positioning keeps it viewport-anchored with a top-level z-index.
+    // Must be registered FIRST so it wins the `tooltipConfig` facet
+    // (facet combine picks the first config with `parent`).
+    exts.push(tooltips({ position: 'fixed', parent: document.body }));
+
     // Order: breakpoint gutter (optional) → line numbers (always) → rest.
     // lineNumbers is ALWAYS registered here so debug sessions never remove it.
     if (bpGutterExt.length > 0) {
@@ -996,7 +1005,6 @@ function FileEditor({
       indentOnInput(),
       bracketMatching(),
       closeBrackets(),
-      autocompletion(),
       highlightActiveLine(),
       navigateCaretExtension,
       keymap.of([

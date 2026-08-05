@@ -527,12 +527,12 @@
   /* Border/background/border-radius live on the outer .cm-tooltip so
      rounded corners don't leave dark gaps against the square parent */
   .cm-tooltip:has(.cm-lsp-hover-tooltip) {
-    background: var(--bg-primary) !important;
-    border-radius: 8px !important;
+    background: var(--bg-secondary) !important;
+    border-radius: var(--radius-apple-md, 11px) !important;
     border: 1px solid var(--border-color) !important;
     box-shadow:
-      0 0 0 1px rgba(0, 0, 0, 0.15),
-      0 8px 24px rgba(0, 0, 0, 0.5) !important;
+      0 0 0 1px oklch(1 0 0 / 4%),
+      0 8px 32px oklch(0 0 0 / 45%) !important;
   }
 
   /* ── LSP hover tooltip content ──────────────────────────────────── */
@@ -681,108 +681,19 @@
 
 }
 
-  /* ── Completion detail panel ─────────────────────────────────────── */
-  /* @codemirror/lsp-client renders the selected item's resolved
-     `documentation` into a .cm-tooltip.cm-completionDetail layer next to the
-     autocomplete dropdown. Without styling it falls back to CodeMirror's
-     default light theme, which clashes with our dark `.cm-lsp-hover-tooltip`
-     hover popups. We give it the same glass treatment so code-completion and
-     mouse-hover produce a visually identical reading experience. */
-  .cm-tooltip.cm-completionDetail {
-    background: var(--bg-primary) !important;
-    border-radius: 8px !important;
-    border: 1px solid var(--border-color) !important;
-    box-shadow:
-      0 0 0 1px rgba(0, 0, 0, 0.15),
-      0 8px 24px rgba(0, 0, 0, 0.5) !important;
-    color: var(--text-primary);
-    max-width: 480px;
-    max-height: 340px;
-    overflow-y: auto;
-    overflow-x: hidden;
-    overflow-wrap: break-word;
-    padding: 10px 14px;
-    font-size: 12px;
-    line-height: 1.6;
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
-
-    &::-webkit-scrollbar { width: 6px; }
-    &::-webkit-scrollbar-track { background: transparent; }
-    &::-webkit-scrollbar-thumb {
-      background: var(--bg-hover);
-      border-radius: 3px;
-    }
-
-    & p {
-      margin: 0 0 0.5em 0;
-      color: var(--text-primary);
-      &:last-child { margin-bottom: 0; }
-    }
-
-    & a {
-      color: var(--accent-blue);
-      text-decoration: none;
-      &:hover { text-decoration: underline; }
-    }
-
-    & code:not(pre code) {
-      background: var(--bg-tertiary);
-      color: var(--accent-orange);
-      padding: 1px 5px;
-      border-radius: 3px;
-      font-family: var(--font-mono, "JetBrains Mono", "Fira Code", monospace);
-      font-size: 11px;
-    }
-
-    & pre {
-      background: var(--bg-secondary);
-      border: 1px solid var(--border-color);
-      border-radius: 5px;
-      padding: 8px 10px;
-      margin: 0.5em 0;
-      max-width: 100%;
-      overflow-x: auto;
-      white-space: pre-wrap;
-      word-break: break-word;
-    }
-    & pre code {
-      background: transparent;
-      color: var(--text-primary);
-      padding: 0;
-      border-radius: 0;
-      font-size: 11px;
-      line-height: 1.5;
-      font-family: var(--font-mono, "JetBrains Mono", "Fira Code", monospace);
-    }
-
-    & ul, & ol { padding-left: 1.5em; margin: 0.4em 0; }
-    & ul { list-style-type: disc; }
-    & ol { list-style-type: decimal; }
-    & li { margin-bottom: 0.15em; &:last-child { margin-bottom: 0; } }
-  }
-
-  /* Autocomplete dropdown itself — keep it visually lighter than the detail
-     panel but still on-theme so the two don't look like different products. */
-  .cm-tooltip.cm-autocomplete {
-    background: var(--bg-primary) !important;
-    border-radius: 8px !important;
-    border: 1px solid var(--border-color) !important;
-    box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.15), 0 8px 24px rgba(0, 0, 0, 0.5) !important;
-  }
-
-  /* ── Signature help tooltip ──────────────────────────────────────── */
+  /* ── Signature help tooltip ─────────────────────────────────────── */
   /* Default class from @codemirror/lsp-client is `.cm-lsp-signature-tooltip`.
      We give it the same dark glass treatment as `.cm-lsp-hover-tooltip` so
      signature help, hover docs, and completion detail all share a single
      visual language. The signature-specific layout lives in the child
      classes below. */
   .cm-tooltip.cm-lsp-signature-tooltip {
-    background: var(--bg-primary) !important;
-    border-radius: 8px !important;
+    background: var(--bg-secondary) !important;
+    border-radius: var(--radius-apple-md, 11px) !important;
     border: 1px solid var(--border-color) !important;
     box-shadow:
-      0 0 0 1px rgba(0, 0, 0, 0.15),
-      0 8px 24px rgba(0, 0, 0, 0.5) !important;
+      0 0 0 1px oklch(1 0 0 / 4%),
+      0 8px 32px oklch(0 0 0 / 45%) !important;
     color: var(--text-primary);
     max-width: 480px;
     max-height: 280px;
