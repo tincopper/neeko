@@ -125,7 +125,7 @@ function FilesPanel({
             onChange={state.setCreatingValue}
             onSubmit={state.submitCreating}
             onCancel={state.cancelCreating}
-            indent={16}
+            indent={4}
           />
         )}
         {isLoading ? (
