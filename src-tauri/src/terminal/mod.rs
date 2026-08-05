@@ -11,6 +11,7 @@ use portable_pty::{Child, CommandBuilder, PtySize};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use std::thread;
+use tauri::Emitter;
 use tauri::EventId;
 use uuid::Uuid;
 
@@ -211,6 +212,8 @@ impl TerminalManager {
     }
 
     /// Closes a terminal session asynchronously in a background thread.
+    /// Emits `terminal-closed-{id}` after the PTY is closed so the frontend
+    /// can finalize the run state (stopping → idle).
     pub fn close_session_in_background(&self, session_id: &str) {
         crate::terminal::services::log_info(&format!(
             "[PTY] Closing session {} in background",
@@ -218,9 +221,16 @@ impl TerminalManager {
         ));
         if let Some(handle) = self.take_session_handle(session_id) {
             let close_id = session_id.to_string();
+            let app_handle = handle.app_handle.clone();
             let thread_name = format!("pty-close-{}", &close_id[..8.min(close_id.len())]);
             if let Err(e) = thread::Builder::new().name(thread_name).spawn(move || {
                 crate::terminal::services::close_pty_handle(&close_id, handle);
+                // Emit close event after cleanup so the frontend listener fires.
+                let close_event = format!("terminal-closed-{}", close_id);
+                let _ = app_handle.emit(
+                    &close_event,
+                    crate::terminal::TerminalClosedPayload { exit_code: -1 },
+                );
             }) {
                 crate::terminal::services::log_error(&format!(
                     "[PTY] Failed to spawn close worker for {}: {}",
