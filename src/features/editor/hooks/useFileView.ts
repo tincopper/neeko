@@ -15,6 +15,12 @@ import { clearViewSnapshot, clearAllForTabKey } from '@/shared/utils/editorViewS
 import { mergeSubTree, getTabId, getFileName, isFileTab } from '@/shared/utils/fileTree';
 import { parseProjectIdFromTabKey, resolveTabKey } from '@/shared/utils/tabKey';
 
+/** 从 store 读取指定项目的 .gitignore 忽略列表（供文件树剪枝，undefined 表示不剪枝） */
+function getIgnoredFiles(projectId: string): string[] | undefined {
+  return useProjectStore.getState().projects.find((p) => p.id === projectId)?.git_info
+    ?.ignored_files;
+}
+
 /**
  * useFileView �?文件视图 hook
  *
@@ -104,12 +110,18 @@ export function useFileView(
     try {
       const cmds = externalCommandsRef.current;
       let tree: FileNode[];
+      const ignored = getIgnoredFiles(projectId);
       if (cmds) {
         // WSL/Remote 模式：通过 ProjectCommands 接口调用
-        tree = await cmds.readDirTree(worktreePath ?? undefined, undefined, DEFAULT_TREE_DEPTH);
+        tree = await cmds.readDirTree(
+          worktreePath ?? undefined,
+          undefined,
+          DEFAULT_TREE_DEPTH,
+          ignored,
+        );
       } else {
         // Local 模式：通过 unified 命令调用
-        tree = await readDirTree(projectId, '', worktreePath ?? null);
+        tree = await readDirTree(projectId, '', worktreePath ?? null, undefined, ignored);
       }
       useFileStore.setState({
         fileTree: tree,
@@ -135,12 +147,14 @@ export function useFileView(
 
     try {
       let subChildren: FileNode[];
+      // ignored 传入以剪枝子树中的其他被忽略目录（展开目标自身不受影响）
+      const ignored = getIgnoredFiles(projectId);
       if (cmds) {
         // WSL/Remote 模式
-        subChildren = await cmds.readDirTree(rootPath, dirPath, DEFAULT_TREE_DEPTH);
+        subChildren = await cmds.readDirTree(rootPath, dirPath, DEFAULT_TREE_DEPTH, ignored);
       } else {
         // Local 模式：通过 unified 命令
-        subChildren = await readDirTree(projectId, dirPath, rootPath ?? null);
+        subChildren = await readDirTree(projectId, dirPath, rootPath ?? null, undefined, ignored);
       }
 
       const currentTree = useFileStore.getState().fileTree;

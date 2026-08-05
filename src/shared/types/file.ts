@@ -1,4 +1,4 @@
-export const DEFAULT_TREE_DEPTH = 4;
+export const DEFAULT_TREE_DEPTH = 3;
 
 export interface FileNode {
   name: string;

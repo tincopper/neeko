@@ -6,26 +6,40 @@ use crate::common::git::parsers::build_file_tree_from_find;
 use crate::common::utils::command::local::safe_path;
 use crate::project::types::{FileContent, FileNode};
 use crate::AppError;
+use std::collections::HashSet;
 use std::path::Path;
 
-/// Directories to exclude from the file tree
-const EXCLUDED_DIRS: &[&str] = &[
-    ".git",
-    "node_modules",
-    "target",
-    "dist",
-    "build",
-    ".next",
-    ".idea",
-    ".vscode",
-];
-
 /// 文件树默认递归深度
-pub const DEFAULT_TREE_DEPTH: u32 = 4;
+pub const DEFAULT_TREE_DEPTH: u32 = 3;
 
 /// Maximum file size for editing (512 KB)
 #[allow(dead_code)]
 const MAX_EDIT_SIZE: u64 = 512 * 1024;
+
+/// 构建 WSL/Remote 文件树扫描命令。
+/// 仅排除 git 元数据目录 `.git`（`git status --ignored` 永不报告它，且不是用户工作文件）；
+/// `node_modules`、`target` 等改由前端基于 .gitignore 灰显，不再在后端硬编码排除。
+fn build_find_tree_command(safe_path: &str, max_depth: u32) -> String {
+    format!(
+        "find '{safe_path}' -maxdepth {max_depth} \
+         -not -path '*/.git/*' \
+         -not -name '.git' \
+          2>/dev/null | sort"
+    )
+}
+
+/// 剪枝被 .gitignore 忽略的目录：保留目录节点用于前端灰显，子节点置空。
+/// 剪枝只作用于 children 后代节点，被请求目录（树根）自身不受影响 ——
+/// 用户点击被忽略目录时可通过懒加载（read_dir_tree + sub_path）穿透获取完整内容。
+fn prune_ignored_dirs(nodes: &mut [FileNode], ignored: &HashSet<&str>) {
+    for node in nodes.iter_mut() {
+        if node.is_dir && ignored.contains(node.path.as_str()) {
+            node.children.clear();
+        } else if !node.children.is_empty() {
+            prune_ignored_dirs(&mut node.children, ignored);
+        }
+    }
+}
 
 /// 统一读取目录树，按 ExecTarget 类型分发。
 pub async fn read_dir_tree(
@@ -33,7 +47,9 @@ pub async fn read_dir_tree(
     root_path: &str,
     sub_path: Option<&str>,
     max_depth: u32,
+    ignored: &[String],
 ) -> Result<Vec<FileNode>, AppError> {
+    let ignored_set: HashSet<&str> = ignored.iter().map(String::as_str).collect();
     match target {
         ExecTarget::Local => {
             let base = Path::new(root_path);
@@ -42,7 +58,9 @@ pub async fn read_dir_tree(
                 None => base.to_path_buf(),
             };
             crate::common::utils::path_resolver::validate_within_root(&target_path, base)?;
-            read_dir_recursive(&target_path, base, max_depth)
+            let mut tree = read_dir_recursive(&target_path, base, max_depth)?;
+            prune_ignored_dirs(&mut tree, &ignored_set);
+            Ok(tree)
         }
         ExecTarget::Wsl { .. } | ExecTarget::Remote { .. } => {
             let effective_sub = sub_path.filter(|sp| !sp.is_empty());
@@ -51,15 +69,7 @@ pub async fn read_dir_tree(
                 None => root_path.to_string(),
             };
             let safe_ap = safe_path(&actual_path);
-
-            let cmd = format!(
-                "find '{safe_ap}' -maxdepth {max_depth} \
-                 -not -path '*/.git/*' \
-                 -not -path '*/node_modules/*' \
-                 -not -path '*/target/*' \
-                 -not -name '.git' \
-                  2>/dev/null | sort"
-            );
+            let cmd = build_find_tree_command(&safe_ap, max_depth);
             let shell = if matches!(target, ExecTarget::Wsl { .. }) {
                 "bash"
             } else {
@@ -73,6 +83,7 @@ pub async fn read_dir_tree(
             if let Some(sp) = effective_sub {
                 prefix_paths(&mut tree, sp);
             }
+            prune_ignored_dirs(&mut tree, &ignored_set);
             Ok(tree)
         }
     }
@@ -682,7 +693,9 @@ fn read_dir_recursive(
         let file_name = entry.file_name();
         let name = file_name.to_string_lossy().to_string();
 
-        if EXCLUDED_DIRS.iter().any(|&ex| ex == name) {
+        // git 元数据目录永不进入文件树：git status --ignored 不报告 .git（含 linked
+        // worktree 场景的 .git 文件），只能在此排除；node_modules 等改由前端 .gitignore 灰显。
+        if name == ".git" {
             continue;
         }
 
@@ -733,6 +746,7 @@ fn read_dir_recursive(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::collections::HashSet;
     use std::fs;
 
     #[test]
@@ -789,8 +803,155 @@ mod tests {
         dir
     }
 
+    #[test]
+    fn read_dir_tree_excludes_git_meta_directory() {
+        let root = temp_root("tree_git_exclude");
+        // .git 元数据目录：git status --ignored 永不报告它，必须由后端排除
+        fs::create_dir_all(root.join(".git/objects")).expect("创建 .git 测试目录失败");
+        fs::write(root.join(".git/HEAD"), "ref: refs/heads/main").expect("写入 .git/HEAD 失败");
+        // 普通文件与依赖目录应保留（node_modules 改由前端 .gitignore 灰显）
+        fs::write(root.join("a.txt"), "hello").expect("写入 a.txt 失败");
+        fs::create_dir_all(root.join("node_modules/pkg")).expect("创建 node_modules 测试目录失败");
+        fs::write(root.join("node_modules/pkg/index.js"), "x").expect("写入 index.js 失败");
+
+        let tree = read_dir_recursive(&root, &root, 3).expect("读取测试目录树失败");
+        let names: Vec<&str> = tree.iter().map(|n| n.name.as_str()).collect();
+        assert!(
+            !names.contains(&".git"),
+            ".git 元数据目录不应出现在文件树中: {:?}",
+            names
+        );
+        assert!(names.contains(&"a.txt"), "普通文件应保留");
+        assert!(
+            names.contains(&"node_modules"),
+            "node_modules 不再由后端硬编码排除，应保留供前端灰显: {:?}",
+            names
+        );
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn find_tree_command_excludes_git_but_keeps_others() {
+        let cmd = build_find_tree_command("/safe/path", 3);
+        assert!(
+            cmd.contains("-not -path '*/.git/*'"),
+            "find 应排除 .git 内部内容: {}",
+            cmd
+        );
+        assert!(
+            cmd.contains("-not -name '.git'"),
+            "find 应排除 .git 条目本身: {}",
+            cmd
+        );
+        assert!(
+            !cmd.contains("*/node_modules/*"),
+            "node_modules 不再由后端 find 排除: {}",
+            cmd
+        );
+        assert!(cmd.contains("-maxdepth 3"), "应保留最大深度: {}", cmd);
+    }
+
     fn block_on<F: std::future::Future>(future: F) -> F::Output {
         tokio::runtime::Runtime::new().unwrap().block_on(future)
+    }
+
+    fn dir_node(name: &str, path: &str, children: Vec<FileNode>) -> FileNode {
+        FileNode {
+            name: name.to_string(),
+            path: path.to_string(),
+            is_dir: true,
+            children,
+        }
+    }
+
+    fn file_node(name: &str, path: &str) -> FileNode {
+        FileNode {
+            name: name.to_string(),
+            path: path.to_string(),
+            is_dir: false,
+            children: vec![],
+        }
+    }
+
+    #[test]
+    fn prune_ignored_clears_children_but_keeps_dir_node() {
+        let mut tree = vec![dir_node(
+            "node_modules",
+            "node_modules",
+            vec![
+                dir_node(
+                    "lodash",
+                    "node_modules/lodash",
+                    vec![file_node("index.js", "node_modules/lodash/index.js")],
+                ),
+                dir_node(
+                    "react",
+                    "node_modules/react",
+                    vec![file_node("package.json", "node_modules/react/package.json")],
+                ),
+            ],
+        )];
+        let ignored = HashSet::from(["node_modules"]);
+        prune_ignored_dirs(&mut tree, &ignored);
+        let nm = &tree[0];
+        assert_eq!(nm.name, "node_modules", "目录节点应保留（供前端灰显）");
+        assert!(nm.children.is_empty(), "被忽略目录的子节点应被剪枝");
+    }
+
+    #[test]
+    fn prune_preserves_unignored_subtree() {
+        let mut tree = vec![dir_node(
+            "src",
+            "src",
+            vec![
+                file_node("a.ts", "src/a.ts"),
+                dir_node(
+                    "components",
+                    "src/components",
+                    vec![file_node("b.tsx", "src/components/b.tsx")],
+                ),
+            ],
+        )];
+        let ignored = HashSet::from(["node_modules"]);
+        prune_ignored_dirs(&mut tree, &ignored);
+        assert_eq!(tree[0].children.len(), 2, "未命中忽略的目录应完整保留");
+    }
+
+    #[test]
+    fn prune_partial_ignore_only_prunes_matched_dir() {
+        let mut tree = vec![dir_node(
+            "sub",
+            "sub",
+            vec![
+                dir_node(
+                    "deep",
+                    "sub/deep",
+                    vec![file_node("cache.dat", "sub/deep/cache.dat")],
+                ),
+                file_node("keep.txt", "sub/keep.txt"),
+            ],
+        )];
+        let ignored = HashSet::from(["sub/deep"]);
+        prune_ignored_dirs(&mut tree, &ignored);
+        let sub = &tree[0];
+        assert_eq!(sub.children.len(), 2, "sub 自身未命中，children 应保留");
+        assert!(sub.children[0].children.is_empty(), "sub/deep 命中 → 剪枝");
+        assert_eq!(sub.children[1].name, "keep.txt", "未忽略项保留");
+    }
+
+    #[test]
+    fn prune_does_not_affect_requested_dir_itself() {
+        // 模拟懒加载展开 node_modules：返回树以 node_modules 下内容为根，
+        // 剪枝只作用于 children，展开目标的内容必须完整可见（穿透语义）。
+        let mut tree = vec![dir_node(
+            "lodash",
+            "node_modules/lodash",
+            vec![file_node("index.js", "node_modules/lodash/index.js")],
+        )];
+        let ignored = HashSet::from(["node_modules"]);
+        prune_ignored_dirs(&mut tree, &ignored);
+        assert_eq!(tree[0].children.len(), 1, "展开目标目录的内容不应被剪枝");
+        assert_eq!(tree[0].children[0].name, "index.js");
     }
 
     #[test]

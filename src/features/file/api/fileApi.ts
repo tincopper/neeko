@@ -23,12 +23,14 @@ export function readDirTree(
   subPath?: string | null,
   rootPath?: string | null,
   maxDepth?: number | null,
+  ignoredFiles?: string[],
 ): Promise<FileNode[]> {
   return invoke<FileNode[]>('read_dir_tree', {
     projectId,
     rootPath: rootPath ?? null,
     subPath: subPath ?? null,
     maxDepth: maxDepth ?? null,
+    ignored: ignoredFiles ?? null,
   });
 }
 

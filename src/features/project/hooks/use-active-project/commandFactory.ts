@@ -2,7 +2,7 @@
 import { invoke } from '@tauri-apps/api/core';
 
 import type { ProjectCommands } from '@/shared/types/activeProject';
-import type { FileNode, FileContent } from '@/shared/types/file';
+import { DEFAULT_TREE_DEPTH, type FileNode, type FileContent } from '@/shared/types/file';
 import type {
   GitInfo,
   AheadBehind,
@@ -130,12 +130,18 @@ export function createProjectCommands(
       return invoke<void>('create_tag', { projectId, tagName, message });
     },
 
-    readDirTree(rootPath?: string, subPath?: string, maxDepth?: number): Promise<FileNode[]> {
+    readDirTree(
+      rootPath?: string,
+      subPath?: string,
+      maxDepth?: number,
+      ignoredFiles?: string[],
+    ): Promise<FileNode[]> {
       return invoke<FileNode[]>('read_dir_tree', {
         projectId,
         rootPath: rootPath ?? null,
         subPath: subPath ?? null,
-        maxDepth: maxDepth ?? 4,
+        maxDepth: maxDepth ?? DEFAULT_TREE_DEPTH,
+        ignored: ignoredFiles ?? null,
       });
     },
     readFileContent(filePath: string, rootPath?: string): Promise<FileContent> {

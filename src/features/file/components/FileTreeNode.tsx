@@ -45,6 +45,8 @@ interface FileTreeNodeProps {
   changedFilesMap?: Map<string, FileChange['status']>;
   /** 被 .gitignore 忽略的相对路径集合（灰色显示） */
   ignoredSet?: Set<string>;
+  /** 祖先目录是否被忽略（忽略状态沿树自顶向下传播） */
+  parentIgnored?: boolean;
 }
 
 function FileTreeNode({
@@ -70,14 +72,16 @@ function FileTreeNode({
   onRenamingCancel,
   changedFilesMap,
   ignoredSet,
+  parentIgnored = false,
 }: FileTreeNodeProps) {
   const isExpanded = expandedDirs.has(node.path);
   const isActive = activeFilePath === node.path;
   const isSelected = selectedPath === node.path;
   const isLoadingChildren = loadingDirs.has(node.path);
-  // git 状态色：变更文件优先；无变更且被 .gitignore 忽略 → 灰色
+  // git 状态色：变更文件优先；无变更且自身/祖先被 .gitignore 忽略 → 灰色
+  // 忽略状态是继承性谓词：被忽略目录内的所有后代均被忽略（git 折叠输出保证祖先一定在列表内）
   const statusColor = changedFilesMap?.get(node.path);
-  const isIgnored = !statusColor && (ignoredSet?.has(node.path) ?? false);
+  const isIgnored = !statusColor && (parentIgnored || (ignoredSet?.has(node.path) ?? false));
 
   const handleClick = useCallback(() => {
     onSelectNode?.(node.path, node.is_dir);
@@ -189,7 +193,7 @@ function FileTreeNode({
                     ? STATUS_TEXT_COLOR[statusColor]
                     : isIgnored
                       ? 'text-text-muted'
-                      : 'text-text-secondary'
+                      : 'text-text-primary'
               }`}
             >
               {node.name}
@@ -236,6 +240,7 @@ function FileTreeNode({
                   onRenamingCancel={onRenamingCancel}
                   changedFilesMap={changedFilesMap}
                   ignoredSet={ignoredSet}
+                  parentIgnored={isIgnored}
                 />
               ))
             : !isLoadingChildren && null}

@@ -4,6 +4,7 @@ vi.mock('@tauri-apps/api/core', () => ({
   invoke: vi.fn().mockResolvedValue(undefined),
 }));
 
+import { DEFAULT_TREE_DEPTH } from '@/shared/types/file';
 import { invoke } from '@/testing/tauriCore';
 
 import { createProjectCommands } from '../commandFactory';
@@ -212,7 +213,19 @@ describe('createProjectCommands (Local)', () => {
       ...payload(),
       rootPath: null,
       subPath: null,
-      maxDepth: 4,
+      maxDepth: DEFAULT_TREE_DEPTH,
+      ignored: null,
+    });
+  });
+
+  it('readDirTree should forward ignoredFiles for pruning', async () => {
+    await commands.readDirTree('root', 'src', 2, ['node_modules', 'dist']);
+    expect(mockInvoke).toHaveBeenCalledWith('read_dir_tree', {
+      ...payload(),
+      rootPath: 'root',
+      subPath: 'src',
+      maxDepth: 2,
+      ignored: ['node_modules', 'dist'],
     });
   });
 

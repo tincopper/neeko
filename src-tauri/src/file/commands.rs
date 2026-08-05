@@ -89,10 +89,6 @@ fn build_reveal_command(path: &Path) -> Option<Command> {
 
 // ── File operations ──────────────────────────────────────────────────────────
 
-/// 文件树默认递归深度
-/// Default maximum depth for directory tree traversal.
-const DEFAULT_TREE_DEPTH: u32 = 4;
-
 /// Read the directory tree.
 #[tauri::command]
 pub async fn read_dir_tree(
@@ -100,13 +96,24 @@ pub async fn read_dir_tree(
     root_path: Option<String>,
     sub_path: Option<String>,
     max_depth: Option<u32>,
+    ignored: Option<Vec<String>>,
     state: State<'_, AppStateWrapper>,
 ) -> Result<Vec<FileNode>, AppError> {
-    let depth = max_depth.unwrap_or(DEFAULT_TREE_DEPTH);
+    // 深度常量单一事实源：crate::common::file::services::DEFAULT_TREE_DEPTH
+    let depth = max_depth.unwrap_or(crate::common::file::services::DEFAULT_TREE_DEPTH);
     let (t, wd) = state.resolve_project(&project_id)?;
     let target = t.exec_target();
     let base = root_path.unwrap_or(wd);
-    crate::common::file::services::read_dir_tree(&target, &base, sub_path.as_deref(), depth).await
+    // 被 .gitignore 忽略的目录剪枝：保留目录节点，子节点由懒加载展开时按需返回
+    let ignored_list = ignored.unwrap_or_default();
+    crate::common::file::services::read_dir_tree(
+        &target,
+        &base,
+        sub_path.as_deref(),
+        depth,
+        &ignored_list,
+    )
+    .await
 }
 
 /// Read file content.

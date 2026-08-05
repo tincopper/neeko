@@ -183,12 +183,85 @@ describe('FilesPanel 文件管理', () => {
 
     expect(screen.getByText('.env')).toHaveClass('text-text-muted');
     // 普通文件不受影响
-    expect(screen.getByText('b.ts')).toHaveClass('text-text-secondary');
+    expect(screen.getByText('b.ts')).toHaveClass('text-text-primary');
   });
 
   it('被忽略的目录显示灰色', () => {
     render(<FilesPanel {...baseProps} ignoredFiles={['src']} />);
     expect(screen.getByText('src')).toHaveClass('text-text-muted');
+  });
+
+  it('被忽略目录的子文件也显示灰色（忽略状态沿树传播）', () => {
+    render(<FilesPanel {...baseProps} ignoredFiles={['src']} />);
+
+    // 展开 src 后，子文件应继承父目录的忽略状态
+    fireEvent.click(screen.getByText('src'));
+    expect(screen.getByText('a.ts')).toHaveClass('text-text-muted');
+  });
+
+  it('多级嵌套子目录继承忽略状态', () => {
+    const deepTree: FileNode[] = [
+      {
+        name: 'a',
+        path: 'a',
+        is_dir: true,
+        children: [
+          {
+            name: 'b',
+            path: 'a/b',
+            is_dir: true,
+            children: [{ name: 'c.txt', path: 'a/b/c.txt', is_dir: false, children: [] }],
+          },
+        ],
+      },
+    ];
+    render(<FilesPanel {...baseProps} fileTree={deepTree} ignoredFiles={['a']} />);
+
+    fireEvent.click(screen.getByText('a'));
+    fireEvent.click(screen.getByText('b'));
+    expect(screen.getByText('b')).toHaveClass('text-text-muted');
+    expect(screen.getByText('c.txt')).toHaveClass('text-text-muted');
+  });
+
+  it('部分忽略的目录自身不灰，仅被忽略的子项灰显', () => {
+    const partialTree: FileNode[] = [
+      {
+        name: 'sub',
+        path: 'sub',
+        is_dir: true,
+        children: [
+          {
+            name: 'deep',
+            path: 'sub/deep',
+            is_dir: true,
+            children: [
+              { name: 'cache.dat', path: 'sub/deep/cache.dat', is_dir: false, children: [] },
+            ],
+          },
+          { name: 'keep.txt', path: 'sub/keep.txt', is_dir: false, children: [] },
+        ],
+      },
+    ];
+    render(<FilesPanel {...baseProps} fileTree={partialTree} ignoredFiles={['sub/deep']} />);
+
+    fireEvent.click(screen.getByText('sub'));
+    // sub 只有部分内容被忽略 → 自身与未忽略项不灰
+    expect(screen.getByText('sub')).toHaveClass('text-text-primary');
+    expect(screen.getByText('keep.txt')).toHaveClass('text-text-primary');
+    // 被忽略的 deep 目录灰，展开后其子文件继承灰
+    fireEvent.click(screen.getByText('deep'));
+    expect(screen.getByText('deep')).toHaveClass('text-text-muted');
+    expect(screen.getByText('cache.dat')).toHaveClass('text-text-muted');
+  });
+
+  it('变更文件状态优先于继承的忽略状态', () => {
+    const changed: FileChange[] = [
+      { path: 'src/a.ts', status: 'Modified', additions: 1, deletions: 0 },
+    ];
+    render(<FilesPanel {...baseProps} ignoredFiles={['src']} changedFiles={changed} />);
+
+    fireEvent.click(screen.getByText('src'));
+    expect(screen.getByText('a.ts')).toHaveClass('text-accent-blue');
   });
 
   it('变更文件状态优先于忽略灰色', () => {

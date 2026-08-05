@@ -68,7 +68,11 @@ const FilesPanelWrapper: React.FC = React.memo(() => {
   const activeProjectId = useProjectStore((s) => s.activeProjectId);
   const projectPath = fileRootPath;
   const changedFiles = project?.gitInfo?.changed_files;
-  const ignoredFiles = project?.gitInfo?.ignored_files ?? [];
+  // 稳定引用：`?? []` 每次渲染生成新数组，会令下游 effect/callback 依赖抖动
+  const ignoredFiles = useMemo(
+    () => project?.gitInfo?.ignored_files ?? [],
+    [project?.gitInfo?.ignored_files],
+  );
 
   // Compute projectId for use by child components (drag-and-drop, etc.)
   const projectId = project ? (project.type === 'Local' ? activeProjectId : project.id) : null;
@@ -114,7 +118,7 @@ const FilesPanelWrapper: React.FC = React.memo(() => {
       // WSL/Remote: always load since there's no handleSelectProjectWithClear for them
       useFileStore.setState({ fileViewLoading: true });
       commands
-        .readDirTree(fileRootPath, undefined, DEFAULT_TREE_DEPTH)
+        .readDirTree(fileRootPath, undefined, DEFAULT_TREE_DEPTH, ignoredFiles)
         .then((tree) => {
           useFileStore.setState({ fileTree: tree, fileViewLoading: false });
         })
@@ -127,7 +131,7 @@ const FilesPanelWrapper: React.FC = React.memo(() => {
     prevProjectIdRef.current = projectId ?? null;
     prevIsActiveRef.current = isActive;
     prevFileRootPathRef.current = fileRootPath;
-  }, [isActive, project, activeProjectId, fileRootPath, commands, onLoadFileTree]);
+  }, [isActive, project, activeProjectId, fileRootPath, commands, onLoadFileTree, ignoredFiles]);
 
   // 监听后端 file-tree-changed 事件（文件新增/删除/重命名），静默刷新目录树
   // 静默刷新：不设 fileViewLoading，旧树保持展示直到新数据到达，避免闪烁
@@ -141,7 +145,7 @@ const FilesPanelWrapper: React.FC = React.memo(() => {
       if (!isActive || !fileRootPath) return;
       // 静默刷新：直接调用 API，不触发 loading 状态，旧树保持可见
       // 使用 fileRootPath 确保 worktree 激活时读 worktree 目录，而非主项目路径
-      readDirTree(activeProjectId!, null, fileRootPath, DEFAULT_TREE_DEPTH)
+      readDirTree(activeProjectId!, null, fileRootPath, DEFAULT_TREE_DEPTH, ignoredFiles)
         .then((tree) => {
           useFileStore.setState({ fileTree: tree });
         })
@@ -150,7 +154,7 @@ const FilesPanelWrapper: React.FC = React.memo(() => {
     return () => {
       unlistenPromise.then((unlisten) => unlisten());
     };
-  }, [activeProjectId, isActive, fileRootPath]);
+  }, [activeProjectId, isActive, fileRootPath, ignoredFiles]);
 
   // WSL/Remote: use commands.readDirTree directly for refresh, bypassing
   // useFileView.loadFileTree to avoid stale ref issues.
@@ -159,7 +163,7 @@ const FilesPanelWrapper: React.FC = React.memo(() => {
     if (project?.type !== 'Local' && commands && fileRootPath) {
       useFileStore.setState({ fileViewLoading: true });
       commands
-        .readDirTree(fileRootPath, undefined, DEFAULT_TREE_DEPTH)
+        .readDirTree(fileRootPath, undefined, DEFAULT_TREE_DEPTH, ignoredFiles)
         .then((tree) => {
           useFileStore.setState({ fileTree: tree, fileViewLoading: false });
         })
@@ -170,14 +174,20 @@ const FilesPanelWrapper: React.FC = React.memo(() => {
     } else {
       onFileRefresh();
     }
-  }, [project?.type, commands, fileRootPath, onFileRefresh]);
+  }, [project?.type, commands, fileRootPath, onFileRefresh, ignoredFiles]);
 
   // 懒加载子目录：WSL/Remote 直接通过 commands，Local 通过 context（useFileView.expandSubTree）
   const handleExpandDir = useCallback(
     async (dirPath: string) => {
       if (project?.type !== 'Local' && commands && fileRootPath) {
         // WSL/Remote：直接通过 commands.readDirTree 加载子树
-        const subChildren = await commands.readDirTree(fileRootPath, dirPath, DEFAULT_TREE_DEPTH);
+        // ignoredFiles 传入以剪枝子树中的其他被忽略目录（展开目标自身不受影响）
+        const subChildren = await commands.readDirTree(
+          fileRootPath,
+          dirPath,
+          DEFAULT_TREE_DEPTH,
+          ignoredFiles,
+        );
         const currentTree = useFileStore.getState().fileTree;
         const merged = mergeSubTree(currentTree, dirPath, subChildren);
         useFileStore.setState({ fileTree: merged });
@@ -186,7 +196,7 @@ const FilesPanelWrapper: React.FC = React.memo(() => {
         await onExpandDir(dirPath);
       }
     },
-    [project?.type, commands, fileRootPath, onExpandDir],
+    [project?.type, commands, fileRootPath, onExpandDir, ignoredFiles],
   );
 
   // 在 Browser Panel 中打开 HTML 文件（仅本地项目）
