@@ -11,3 +11,8 @@ pre-commit:
       glob: "src-tauri/**/*.rs"
       run: pnpm lint
 
+commit-msg:
+  commands:
+    commitlint:
+      run: pnpm commitlint --edit {1}
+
