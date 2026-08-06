@@ -246,6 +246,11 @@ export function useBrowserPanel({ showToast }: UseBrowserPanelOptions) {
     if (!activeProjectId || !isCreatedRef.current) return;
     try {
       await browserOpenDevtools(activeProjectId);
+      // DevTools 打开可能触发 webview reposition，立即重新吸附到容器
+      if (containerRef.current) {
+        const rect = containerRef.current.getBoundingClientRect();
+        await browserSetBounds(activeProjectId, rect.x, rect.y, rect.width, rect.height);
+      }
     } catch (err) {
       console.error('[Browser] Failed to open devtools:', err);
     }
@@ -256,6 +261,11 @@ export function useBrowserPanel({ showToast }: UseBrowserPanelOptions) {
     if (!activeProjectId || !isCreatedRef.current) return;
     try {
       await browserResetZoom(activeProjectId);
+      // 缩放重置后同步容器 bounds，防止 webview 错位
+      if (containerRef.current) {
+        const rect = containerRef.current.getBoundingClientRect();
+        await browserSetBounds(activeProjectId, rect.x, rect.y, rect.width, rect.height);
+      }
     } catch (err) {
       console.error('[Browser] Failed to reset zoom:', err);
     }
@@ -581,6 +591,16 @@ export function useBrowserPanel({ showToast }: UseBrowserPanelOptions) {
     const id = setInterval(checkReclaims, RECLAIM_CHECK_INTERVAL_MS);
     return () => clearInterval(id);
   }, []);
+
+  // 窗口重新获得焦点时同步 bounds(例如关闭 DevTools 独立窗口后回到主窗口)
+  useEffect(() => {
+    const handleFocus = () => {
+      if (!containerRef.current || !isCreatedRef.current) return;
+      updateBounds(containerRef.current.getBoundingClientRect());
+    };
+    window.addEventListener('focus', handleFocus);
+    return () => window.removeEventListener('focus', handleFocus);
+  }, [updateBounds]);
 
   // Hide webview on unmount instead of destroying it
   useEffect(() => {

@@ -254,17 +254,58 @@ pub async fn browser_set_bounds(
 
 /// 打开 DevTools
 ///
-/// 打开后立即将页面缩放重置为 100%——部分平台(如 WebKitGTK 附着式
-/// Inspector、WebView2 窗口切换)打开 DevTools 会改变 webview 缩放,
-/// 这里兜底恢复,避免"打开后页面放大且无法恢复"。
+/// 各平台默认行为:
+/// - Windows (WebView2):`OpenDevToolsWindow` 本来就是独立窗口。
+/// - Linux (WebKitGTK):Inspector 默认附着在页面底部,打开前调用
+///   `inspector.detach()` 强制独立窗口。
+/// - macOS (WKWebView):`_inspector show` 默认附着,此处探测私有 `detach`
+///   selector 强制独立窗口(不存在则安全降级为默认行为)。
+///
+/// 打开后立即将页面缩放重置为 100%——部分平台打开 DevTools 会改变 webview
+/// 缩放,这里兜底恢复,避免"打开后页面放大且无法恢复"。
 #[tauri::command]
 pub async fn browser_open_devtools(app: tauri::AppHandle, label: String) -> Result<(), AppError> {
     let webview = app
         .get_webview(&label)
         .ok_or_else(|| AppError::NotFound(format!("Browser webview not found: {}", label)))?;
 
-    #[cfg(debug_assertions)]
-    webview.open_devtools();
+    #[cfg(target_os = "macos")]
+    {
+        use objc2::msg_send;
+        use objc2::rc::Retained;
+        use objc2::runtime::AnyObject;
+        use objc2::sel;
+
+        // 通过私有 API 让 Web Inspector 以独立窗口显示:
+        // 探测 `detach`(存在则先调用强制独立),再 `show`。
+        let _ = webview.with_webview(move |platform| unsafe {
+            let wv: &objc2_web_kit::WKWebView = &*platform.inner().cast();
+            let tool: Retained<AnyObject> = msg_send![wv, _inspector];
+            let can_detach: bool = msg_send![&tool, respondsToSelector: sel!(detach)];
+            if can_detach {
+                let () = msg_send![&tool, detach];
+            }
+            let () = msg_send![&tool, show];
+        });
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    {
+        #[cfg(all(debug_assertions, target_os = "linux"))]
+        {
+            // 强制 WebKitGTK Inspector 以独立窗口(detached)形式打开
+            let _ = webview.with_webview(|platform| {
+                use webkit2gtk::{WebInspectorExt, WebViewExt};
+                let gtk_webview = platform.inner();
+                if let Some(inspector) = gtk_webview.inspector() {
+                    inspector.detach();
+                }
+            });
+        }
+
+        #[cfg(debug_assertions)]
+        webview.open_devtools();
+    }
 
     // 兜底:重置缩放为 100%(set_zoom 失败不影响 DevTools 打开)
     let _ = webview.set_zoom(1.0);
