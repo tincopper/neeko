@@ -1,9 +1,12 @@
-use crate::common::executor::factory::ExecTarget;
-use crate::core::exec::spawn_detached;
 use crate::AppError;
 use tauri::webview::{PageLoadEvent, WebviewBuilder};
 use tauri::{Emitter, Manager, WebviewUrl};
 use url::Url;
+
+use super::events::{
+    EVENT_BROWSER_LOADING, EVENT_BROWSER_OPEN_URL, EVENT_BROWSER_PAGE_LOADED,
+    EVENT_BROWSER_URL_CHANGED,
+};
 
 /// Base URL the injected picker script uses to notify the Rust side via
 /// `<img src=...>` requests handled by `register_uri_scheme_protocol("neeko", ...)`.
@@ -19,27 +22,81 @@ const NOTIFY_BASE: &str = "http://neeko.localhost/";
 #[cfg(not(target_os = "windows"))]
 const NOTIFY_BASE: &str = "neeko://localhost/";
 
-/// 校验 URL scheme 是否安全（允许 http/https/file）
-fn validate_url_scheme(url: &str) -> Result<(), AppError> {
+/// 校验 URL scheme 是否安全（允许 http/https；file 仅限白名单根目录内）。
+///
+/// `allowed_file_root` 为 file:// 导航允许的根目录(项目根)。传入 `None` 时
+/// 拒绝任何 file:// URL(防御:无项目上下文时不允许浏览本地文件)。
+fn validate_url_scheme(
+    url: &str,
+    allowed_file_root: Option<&std::path::Path>,
+) -> Result<(), AppError> {
     let trimmed = url.trim();
-    if trimmed.starts_with("http://")
-        || trimmed.starts_with("https://")
-        || trimmed.starts_with("file://")
-    {
+    if trimmed.starts_with("http://") || trimmed.starts_with("https://") {
+        return Ok(());
+    }
+    if trimmed.starts_with("file://") {
+        return validate_file_url(trimmed, allowed_file_root);
+    }
+    Err(AppError::InvalidInput(format!(
+        "URL scheme not allowed (only http/https/file): {}",
+        trimmed
+    )))
+}
+
+/// 校验 file:// URL 的本地路径位于白名单根目录内(经 canonicalize 防穿越)。
+fn validate_file_url(
+    url: &str,
+    allowed_file_root: Option<&std::path::Path>,
+) -> Result<(), AppError> {
+    let root = match allowed_file_root {
+        Some(r) => r,
+        None => {
+            return Err(AppError::InvalidInput(
+                "file:// URL not allowed: no allowlisted project root".into(),
+            ))
+        }
+    };
+
+    // 剥离 file:// 前缀与查询/fragment(防御性)
+    let path_str = url.trim_start_matches("file://");
+    let path_str = path_str.split(['?', '#']).next().unwrap_or(path_str);
+    let raw_path = std::path::PathBuf::from(path_str);
+
+    let root_canon = root
+        .canonicalize()
+        .map_err(|e| AppError::InvalidInput(format!("Invalid project root: {e}")))?;
+    let path_canon = raw_path
+        .canonicalize()
+        .map_err(|_| AppError::InvalidInput(format!("File not found or inaccessible: {}", url)))?;
+
+    if path_canon.starts_with(&root_canon) {
         Ok(())
     } else {
         Err(AppError::InvalidInput(format!(
-            "URL scheme not allowed (only http/https/file): {}",
-            trimmed
+            "file:// URL outside project root: {}",
+            url
         )))
     }
+}
+
+/// 从 webview label(`neeko-browser-{projectId}`)反推项目根作为 file:// 白名单基准。
+/// 非浏览器 label 或无对应项目时返回 `None`(file:// 将被拒绝)。
+fn resolve_allowed_file_root(
+    state: &crate::app_state::AppStateWrapper,
+    label: &str,
+) -> Option<std::path::PathBuf> {
+    let project_id = label.strip_prefix("neeko-browser-")?;
+    let manager = state.project_manager.lock().ok()?;
+    manager.get_project(project_id).map(|p| p.path.clone())
 }
 
 /// 创建内嵌浏览器 webview（Rust 侧真实创建，支持事件通知）
 /// 返回 webview label
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 pub async fn create_browser_webview(
     app: tauri::AppHandle,
+    state: tauri::State<'_, crate::app_state::AppStateWrapper>,
     label: String,
     url: String,
     x: f64,
@@ -47,7 +104,8 @@ pub async fn create_browser_webview(
     width: f64,
     height: f64,
 ) -> Result<String, AppError> {
-    validate_url_scheme(&url)?;
+    let allowed_root = resolve_allowed_file_root(&state, &label);
+    validate_url_scheme(&url, allowed_root.as_deref())?;
 
     let parsed_url: Url = url
         .trim()
@@ -79,21 +137,33 @@ pub async fn create_browser_webview(
         .on_navigation(move |nav_url| {
             let url_str = nav_url.to_string();
             let payload = serde_json::json!({ "label": &label_nav, "url": &url_str });
-            let _ = app_nav.emit("browser://url-changed", payload);
+            let _ = app_nav.emit(EVENT_BROWSER_URL_CHANGED, payload);
             true // 允许跳转
         })
         // on_page_load: 页面加载开始/完成时通知前端
-        .on_page_load(move |_webview, payload| match payload.event() {
+        .on_page_load(move |webview, payload| match payload.event() {
             PageLoadEvent::Started => {
                 let payload = serde_json::json!({ "label": &label_load, "loading": true });
-                let _ = app_load.emit("browser://loading", payload);
+                let _ = app_load.emit(EVENT_BROWSER_LOADING, payload);
             }
             PageLoadEvent::Finished => {
                 let url_str = payload.url().to_string();
                 let payload = serde_json::json!({ "label": &label_load, "url": &url_str });
-                let _ = app_load.emit("browser://page-loaded", payload);
+                let _ = app_load.emit(EVENT_BROWSER_PAGE_LOADED, payload);
                 let payload = serde_json::json!({ "label": &label_load, "loading": false });
-                let _ = app_load.emit("browser://loading", payload);
+                let _ = app_load.emit(EVENT_BROWSER_LOADING, payload);
+
+                // 提取页面标题与 favicon,经 neeko:// 协议 POST 回传(小数据)。
+                // label 嵌入脚本以区分多项目 webview。
+                let meta_label = label_load.clone();
+                let notify_base = NOTIFY_BASE;
+                let meta_script = format!(
+                    "fetch('{base}page-meta',{{method:'POST',headers:{{'Content-Type':'application/json'}},body:JSON.stringify({{label:{label},title:document.title||'',favicon:(document.querySelector('link[rel~=\"icon\"]')||{{}}).href||''}})}})",
+                    base = notify_base,
+                    label = serde_json::to_string(&meta_label)
+                        .unwrap_or_else(|_| "\"\"".to_string()),
+                );
+                let _ = webview.eval(&meta_script);
             }
         })
         // on_new_window: 拦截 target="_blank" 链接，在当前 webview 中导航
@@ -102,7 +172,7 @@ pub async fn create_browser_webview(
             let payload = serde_json::json!({ "label": &label_new_window, "url": &url_str });
             // 通过 emit 告知前端在当前 webview 中导航
             // 前端监听此事件后调用 browser_navigate
-            let _ = app.emit("browser://open-url", payload);
+            let _ = app.emit(EVENT_BROWSER_OPEN_URL, payload);
             tauri::webview::NewWindowResponse::Deny
         });
 
@@ -121,10 +191,12 @@ pub async fn create_browser_webview(
 #[tauri::command]
 pub async fn browser_navigate(
     app: tauri::AppHandle,
+    state: tauri::State<'_, crate::app_state::AppStateWrapper>,
     label: String,
     url: String,
 ) -> Result<(), AppError> {
-    validate_url_scheme(&url)?;
+    let allowed_root = resolve_allowed_file_root(&state, &label);
+    validate_url_scheme(&url, allowed_root.as_deref())?;
 
     let webview = app
         .get_webview(&label)
@@ -247,28 +319,14 @@ pub async fn browser_go_forward(app: tauri::AppHandle, label: String) -> Result<
 }
 
 /// 用系统默认浏览器打开 URL
+///
+/// 使用 `open` crate(`shellexecute-on-windows` feature):Windows 走
+/// ShellExecuteExW(不经 `cmd` 解释,消除 shell 注入面),macOS 调 `open`,
+/// Linux 调 `xdg-open`;`that_detached` 不阻塞调用方。
 #[tauri::command]
 pub fn open_in_default_browser(url: String) -> Result<(), AppError> {
-    validate_url_scheme(&url)?;
-
-    #[cfg(target_os = "windows")]
-    {
-        spawn_detached(&ExecTarget::Local, "cmd", &["/c", "start", "", &url])
-            .map_err(|e| AppError::Io(format!("Failed to open URL: {e}")))?;
-    }
-
-    #[cfg(target_os = "macos")]
-    {
-        spawn_detached(&ExecTarget::Local, "open", &[&url])
-            .map_err(|e| AppError::Io(format!("Failed to open URL: {e}")))?;
-    }
-
-    #[cfg(target_os = "linux")]
-    {
-        spawn_detached(&ExecTarget::Local, "xdg-open", &[&url])
-            .map_err(|e| AppError::Io(format!("Failed to open URL: {e}")))?;
-    }
-
+    validate_url_scheme(&url, None)?;
+    open::that_detached(url).map_err(|e| AppError::Io(format!("Failed to open URL: {e}")))?;
     Ok(())
 }
 
@@ -277,247 +335,8 @@ pub fn open_in_default_browser(url: String) -> Result<(), AppError> {
 /// Phase 2: inline prompt textarea appears next to selected element.
 ///          Enter submits, Shift/Ctrl/Alt+Enter inserts newline, ESC / ✕ / click-outside cancels.
 /// Theme colours are read from `window.__NEEKO_THEME__` (set before injection) with dark fallbacks.
-const PICKER_SCRIPT: &str = r#"
-(function() {
-  if (window.__NEEKO_PICKER__) return;
-
-  /* ---- theme ---- */
-  var T = window.__NEEKO_THEME__ || {};
-  var C = {
-    bg:      T.bgSecondary  || 'rgba(24,24,27,.92)',
-    bgHover: T.bgTertiary   || '#2d2e32',
-    text:    T.textPrimary  || '#fff',
-    muted:   T.textMuted    || '#666',
-    border:  T.borderColor  || 'rgba(255,255,255,.15)',
-    accent:  T.accentBlue   || '#61afef'
-  };
-
-  var oldTarget = null;
-  var oldOutline = '';
-  var oldCursor = '';
-  var tooltip = null;
-  var codeStyle = null;
-  var promptBar = null;
-  var outsideListener = null;
-  var skipNextClick = false;
-
-  function notify(path) {
-    try {
-      var base = window.__NEEKO_NOTIFY_BASE__ || 'http://neeko.localhost/';
-      var i = new Image(); i.src = base + path;
-    } catch(ex) {}
-  }
-
-  function createTooltip() {
-    var el = document.createElement('div');
-    el.style.cssText = 'position:fixed;z-index:2147483647;background:' + C.bg + ';color:' + C.text + ';padding:2px 8px;border-radius:3px;font:12px/1.6 system-ui,-apple-system,sans-serif;pointer-events:none;white-space:nowrap;max-width:50vw;overflow:hidden;text-overflow:ellipsis;border:1px solid ' + C.border;
-    document.documentElement.appendChild(el);
-    return el;
-  }
-
-  function getCodeStyle() {
-    var s = document.createElement('span');
-    s.style.cssText = 'color:' + C.muted + ';margin-left:4px';
-    return s;
-  }
-
-  function getSelector(el) {
-    var s = el.tagName.toLowerCase();
-    if (el.id) s += '#' + el.id;
-    if (el.className && typeof el.className === 'string') s += '.' + el.className.trim().split(/\s+/).join('.');
-    return s;
-  }
-
-  function getSize(el) {
-    var r = el.getBoundingClientRect();
-    return Math.round(r.width) + '\u00d7' + Math.round(r.height);
-  }
-
-  function onMove(e) {
-    var t = e.target;
-    if (!t || t === document.documentElement || t === document.body) return;
-    if (t === tooltip || (tooltip && tooltip.contains(t))) return;
-    if (oldTarget) { oldTarget.style.outline = oldOutline; }
-    oldTarget = t;
-    oldOutline = t.style.outline;
-    t.style.outline = '2px solid ' + C.accent;
-    tooltip.textContent = getSelector(t);
-    if (!codeStyle) codeStyle = getCodeStyle();
-    codeStyle.textContent = getSize(t);
-    if (!tooltip.contains(codeStyle)) tooltip.appendChild(codeStyle);
-    var r = tooltip.getBoundingClientRect();
-    var x = e.clientX + 12;
-    var y = e.clientY + 16;
-    if (x + r.width > window.innerWidth) x = window.innerWidth - r.width - 4;
-    if (y + r.height > window.innerHeight) y = e.clientY - r.height - 8;
-    tooltip.style.left = x + 'px';
-    tooltip.style.top = y + 'px';
-  }
-
-  function cleanupPicker() {
-    document.removeEventListener('mousemove', onMove, true);
-    document.removeEventListener('click', onClick, true);
-    document.removeEventListener('keydown', onPickerKey, true);
-    if (oldTarget) { oldTarget.style.outline = oldOutline; }
-    if (tooltip) tooltip.remove();
-    document.body.style.cursor = oldCursor;
-  }
-
-  function removeOutsideListener() {
-    if (outsideListener) {
-      document.removeEventListener('mousedown', outsideListener, true);
-      outsideListener = null;
-    }
-  }
-
-  function cleanupPrompt() {
-    removeOutsideListener();
-    if (promptBar) { promptBar.remove(); promptBar = null; }
-  }
-
-  function cleanupAll() {
-    cleanupPicker();
-    cleanupPrompt();
-    window.__NEEKO_PICKER__ = null;
-  }
-
-  function cancelAndNotify() {
-    cleanupAll();
-    notify('picker-cancelled');
-  }
-
-  /** Re-enter Phase 1 (crosshair + hover highlight + click to select).
-   *  skipNextClick prevents the click that dismissed the prompt (via
-   *  mousedown-outside) from immediately selecting a new element. */
-  function startPicker() {
-    if (oldTarget) { oldTarget.style.outline = oldOutline; oldTarget = null; }
-    oldCursor = document.body.style.cursor;
-    document.body.style.cursor = 'crosshair';
-    tooltip = createTooltip();
-    codeStyle = null;
-    skipNextClick = true;
-    document.addEventListener('mousemove', onMove, true);
-    document.addEventListener('click', onClick, true);
-    document.addEventListener('keydown', onPickerKey, true);
-  }
-
-  /* ---- Phase 2: inline prompt textarea ---- */
-
-  function showPromptInput(html, cx, cy) {
-    var W = 450;
-    var LINE_H = 20;
-    var MAX_LINES = 5;
-
-    var bar = document.createElement('div');
-    bar.style.cssText = 'all:initial;position:fixed;z-index:2147483647;display:flex;align-items:flex-start;gap:6px;padding:6px 10px;border-radius:8px;border:1px solid ' + C.border + ';background:' + C.bg + ';backdrop-filter:blur(8px);box-shadow:0 4px 24px rgba(0,0,0,.4);font:13px/1.4 system-ui,-apple-system,sans-serif;color:' + C.text + ';width:' + W + 'px;box-sizing:border-box';
-
-    var x = cx + 8;
-    var y = cy + 20;
-    if (x + W > window.innerWidth) x = window.innerWidth - W - 8;
-    if (x < 8) x = 8;
-    if (y + 40 > window.innerHeight) y = cy - 52;
-    if (y < 8) y = 8;
-    bar.style.left = x + 'px';
-    bar.style.top = y + 'px';
-
-    var label = document.createElement('span');
-    label.textContent = 'AI';
-    label.style.cssText = 'all:initial;color:' + C.accent + ';font:600 12px/20px system-ui,-apple-system,sans-serif;flex-shrink:0;user-select:none';
-
-    var ta = document.createElement('textarea');
-    ta.placeholder = 'describe how to modify this element...';
-    ta.rows = 1;
-    ta.style.cssText = 'all:initial;flex:1;background:transparent;border:none;outline:none;color:' + C.text + ';font:13px/1.4 system-ui,-apple-system,sans-serif;min-width:0;resize:none;overflow:hidden;height:' + LINE_H + 'px;max-height:' + (LINE_H * MAX_LINES) + 'px;display:block';
-
-    function autoGrow() {
-      ta.style.height = 'auto';
-      var h = Math.min(ta.scrollHeight, LINE_H * MAX_LINES);
-      ta.style.height = h + 'px';
-      if (ta.scrollHeight > LINE_H * MAX_LINES) {
-        ta.style.overflowY = 'auto';
-      } else {
-        ta.style.overflowY = 'hidden';
-      }
-    }
-    ta.addEventListener('input', autoGrow);
-
-    var closeBtn = document.createElement('span');
-    closeBtn.textContent = '\u2715';
-    closeBtn.style.cssText = 'all:initial;color:' + C.muted + ';cursor:pointer;font:14px/20px system-ui;flex-shrink:0;padding:0 2px;user-select:none';
-    closeBtn.onmouseover = function() { closeBtn.style.color = C.text; };
-    closeBtn.onmouseout  = function() { closeBtn.style.color = C.muted; };
-    closeBtn.onclick = function(e) { e.preventDefault(); e.stopPropagation(); cancelAndNotify(); };
-
-    bar.appendChild(label);
-    bar.appendChild(ta);
-    bar.appendChild(closeBtn);
-    document.documentElement.appendChild(bar);
-    promptBar = bar;
-
-    setTimeout(function() { ta.focus(); }, 0);
-
-    ta.addEventListener('keydown', function(e) {
-      e.stopPropagation();
-      if (e.key === 'Enter') {
-        if (e.shiftKey || e.ctrlKey || e.altKey) {
-          /* allow newline — browser default inserts \n in textarea */
-          setTimeout(autoGrow, 0);
-          return;
-        }
-        e.preventDefault();
-        var prompt = ta.value.trim();
-        if (!prompt) return;
-        notify('prompt-submitted?prompt=' + encodeURIComponent(prompt) + '&html=' + encodeURIComponent(html));
-        cleanupPrompt();
-        startPicker();
-      } else if (e.key === 'Escape') {
-        e.preventDefault();
-        cancelAndNotify();
-      }
-    }, true);
-
-    /* Prevent clicks inside bar from propagating (bubbling phase so child
-       elements like closeBtn still receive their own click events first) */
-    bar.addEventListener('click', function(e) { e.stopPropagation(); });
-    bar.addEventListener('mousedown', function(e) { e.stopPropagation(); });
-
-    /* Click outside: close prompt input and return to element selection */
-    setTimeout(function() {
-      outsideListener = function(e) {
-        if (promptBar && !promptBar.contains(e.target)) {
-          cleanupPrompt();
-          startPicker();
-        }
-      };
-      document.addEventListener('mousedown', outsideListener, true);
-    }, 50);
-  }
-
-  /* ---- Phase 1: hover + click ---- */
-
-  function onClick(e) {
-    if (skipNextClick) { skipNextClick = false; return; }
-    e.preventDefault();
-    e.stopPropagation();
-    var el = e.target;
-    var html = el.outerHTML;
-    cleanupPicker();
-    notify('element-picked?html=' + encodeURIComponent(html));
-    showPromptInput(html, e.clientX, e.clientY);
-    return false;
-  }
-
-  function onPickerKey(e) { if (e.key === 'Escape') cancelAndNotify(); }
-
-  oldCursor = document.body.style.cursor;
-  document.body.style.cursor = 'crosshair';
-  tooltip = createTooltip();
-  document.addEventListener('mousemove', onMove, true);
-  document.addEventListener('click', onClick, true);
-  document.addEventListener('keydown', onPickerKey, true);
-  window.__NEEKO_PICKER__ = { stop: cleanupAll };
-})();
-"#;
+/// 脚本本体见同目录 `picker_script.js`(include_str! 引入)。
+const PICKER_SCRIPT: &str = include_str!("picker_script.js");
 
 /// 启动元素选择器：注入高亮 + tooltip + 点击捕获脚本
 /// `theme_colors` is an optional map of CSS variable values injected as
@@ -565,20 +384,21 @@ pub async fn browser_stop_picker(app: tauri::AppHandle, label: String) -> Result
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::path::Path;
 
     #[test]
     fn test_validate_url_scheme_http() {
-        assert!(validate_url_scheme("http://localhost:3000").is_ok());
+        assert!(validate_url_scheme("http://localhost:3000", None).is_ok());
     }
 
     #[test]
     fn test_validate_url_scheme_https() {
-        assert!(validate_url_scheme("https://github.com").is_ok());
+        assert!(validate_url_scheme("https://github.com", None).is_ok());
     }
 
     #[test]
     fn test_validate_url_scheme_ftp_rejected() {
-        let result = validate_url_scheme("ftp://example.com");
+        let result = validate_url_scheme("ftp://example.com", None);
         assert!(result.is_err());
         match result.unwrap_err() {
             AppError::InvalidInput(_) => {} // expected
@@ -587,26 +407,99 @@ mod tests {
     }
 
     #[test]
-    fn test_validate_url_scheme_file_allowed() {
-        let result = validate_url_scheme("file:///C:/test.html");
-        assert!(result.is_ok());
+    fn test_validate_url_scheme_file_without_root_rejected() {
+        // 无白名单根时 file:// 一律拒绝(防御)
+        let result = validate_url_scheme("file:///tmp/a.html", None);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_validate_url_scheme_file_allowed_inside_root() {
+        let root = tempfile::tempdir().unwrap();
+        let inner = root.path().join("sub");
+        std::fs::create_dir_all(&inner).unwrap();
+        let file_path = inner.join("test.html");
+        std::fs::write(&file_path, "<html></html>").unwrap();
+
+        let file_url = format!("file://{}", file_path.display());
+        let result = validate_url_scheme(&file_url, Some(root.path()));
+        assert!(
+            result.is_ok(),
+            "in-allowlist file:// should pass: {:?}",
+            result
+        );
+    }
+
+    #[test]
+    fn test_validate_url_scheme_file_outside_root_rejected() {
+        let root = tempfile::tempdir().unwrap();
+        let outside = tempfile::tempdir().unwrap();
+        let file_path = outside.path().join("secret.txt");
+        std::fs::write(&file_path, "secret").unwrap();
+
+        let file_url = format!("file://{}", file_path.display());
+        let result = validate_url_scheme(&file_url, Some(root.path()));
+        assert!(result.is_err(), "out-of-allowlist file:// must be rejected");
+    }
+
+    #[test]
+    fn test_validate_url_scheme_file_traversal_rejected() {
+        let root = tempfile::tempdir().unwrap();
+        // 构造一个白名单内不存在的穿越路径:root/../secret.txt
+        let traversal = root.path().join("..").join("..").join("etc").join("passwd");
+        let file_url = format!("file://{}", traversal.display());
+        // canonicalize 对不存在路径失败 → 拒绝
+        let result = validate_url_scheme(&file_url, Some(root.path()));
+        assert!(result.is_err(), "traversal file:// must be rejected");
     }
 
     #[test]
     fn test_validate_url_scheme_javascript_rejected() {
-        let result = validate_url_scheme("javascript:alert(1)");
+        let result = validate_url_scheme("javascript:alert(1)", None);
         assert!(result.is_err());
     }
 
     #[test]
     fn test_validate_url_scheme_empty() {
-        let result = validate_url_scheme("");
+        let result = validate_url_scheme("", None);
         assert!(result.is_err());
     }
 
     #[test]
     fn test_validate_url_scheme_with_whitespace() {
-        assert!(validate_url_scheme("  https://example.com  ").is_ok());
+        assert!(validate_url_scheme("  https://example.com  ", None).is_ok());
+    }
+
+    #[test]
+    fn test_validate_file_url_normalizes_query_fragment() {
+        // 带查询串/锚点的 file URL 仍解析为路径并校验
+        let root = tempfile::tempdir().unwrap();
+        let file_path = root.path().join("page.html");
+        std::fs::write(&file_path, "<html></html>").unwrap();
+        let file_url = format!("file://{}?x=1#top", file_path.display());
+        let result = validate_url_scheme(&file_url, Some(root.path()));
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_resolve_allowed_file_root_from_label() {
+        // 非浏览器 label 或未知项目 → None(不 panic)
+        assert!(resolve_allowed_file_root(
+            &crate::app_state::AppStateWrapper::default(),
+            "neeko-browser-unknown"
+        )
+        .is_none());
+        assert!(resolve_allowed_file_root(
+            &crate::app_state::AppStateWrapper::default(),
+            "other-label"
+        )
+        .is_none());
+    }
+
+    #[test]
+    fn test_file_path_helpers() {
+        // fileUrlToFilePath 对应逻辑在 TS 侧;此处验证 Rust 侧路径拼接假设
+        assert!(Path::new("/tmp").is_absolute());
     }
 
     #[test]

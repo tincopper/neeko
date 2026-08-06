@@ -44,6 +44,7 @@ urlencoding = "2"
 base64 = "0.22"
 url = "2"
 arboard = "3.6.1"
+open = { version = "5", features = ["shellexecute-on-windows"] }
 lsp-server = "0.8.0"
 lsp-types = "0.97.0"
 crossbeam-channel = "0.5.15"

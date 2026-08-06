@@ -4,6 +4,12 @@
 //! - `prompt-submitted` — 用户提交 prompt + 选中元素 HTML
 //! - `picker-cancelled` — 用户取消元素选取
 //! - `element-picked`   — 元素选中，复制 outerHTML 到剪贴板
+//!
+//! 传输机制：
+//! - **POST body(主通道)**:页面 `fetch(base + type, { method: 'POST', body: JSON })`,
+//!   大体积 HTML 随请求体传输,不受 URL 长度限制。
+//! - **GET 查询字符串(兼容旧通道)**:保留 `img.src = base + path` 形态,
+//!   仅用于无需大体积数据的通知。
 
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
@@ -11,9 +17,74 @@ use std::sync::{Arc, Mutex};
 use std::time::Instant;
 use tauri::Emitter;
 
+use super::events::{
+    EVENT_BROWSER_PAGE_META, EVENT_BROWSER_PICKER_CANCELLED, EVENT_BROWSER_PROMPT_SUBMITTED,
+};
+
 /// 去重窗口（毫秒）。WebView2 在 Windows 上可能对同一次 img.src 赋值
 /// 触发两次协议回调，此窗口用于抑制重复事件。
 const DEDUP_WINDOW_MS: u128 = 500;
+
+/// 页面经自定义协议回传的 picker 消息。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum PickerMessage {
+    /// 用户提交修改 prompt + 选中元素 HTML。
+    PromptSubmitted {
+        /// 用户输入的修改要求。
+        prompt: String,
+        /// 选中元素的 outerHTML。
+        html: String,
+    },
+    /// 用户取消元素选取。
+    PickerCancelled,
+    /// 元素选中(写入剪贴板)。
+    ElementPicked {
+        /// 选中元素的 outerHTML。
+        html: String,
+    },
+}
+
+/// 解析 picker POST body(JSON)。
+///
+/// 期望格式：`{ "type": "prompt-submitted"|"picker-cancelled"|"element-picked", ... }`。
+/// 任一必需字段缺失或类型不符则返回 `None`。
+#[must_use]
+pub fn parse_picker_payload(body: &[u8]) -> Option<PickerMessage> {
+    let value: serde_json::Value = serde_json::from_slice(body).ok()?;
+    let kind = value.get("type")?.as_str()?;
+    match kind {
+        "prompt-submitted" => Some(PickerMessage::PromptSubmitted {
+            prompt: value.get("prompt")?.as_str()?.to_string(),
+            html: value.get("html")?.as_str()?.to_string(),
+        }),
+        "picker-cancelled" => Some(PickerMessage::PickerCancelled),
+        "element-picked" => Some(PickerMessage::ElementPicked {
+            html: value.get("html")?.as_str()?.to_string(),
+        }),
+        _ => None,
+    }
+}
+
+/// 解析页面元信息 POST body(标题/favicon)。
+///
+/// 期望格式：`{ "label": "...", "title": "...", "favicon": "..." }`。
+/// label 缺失则返回 `None`(title/favicon 可空)。
+#[must_use]
+pub fn parse_page_meta(body: &[u8]) -> Option<(String, String, String)> {
+    let value: serde_json::Value = serde_json::from_slice(body).ok()?;
+    let label = value.get("label")?.as_str()?.to_string();
+    let title = value
+        .get("title")
+        .and_then(|v| v.as_str())
+        .unwrap_or_default()
+        .to_string();
+    let favicon = value
+        .get("favicon")
+        .and_then(|v| v.as_str())
+        .unwrap_or_default()
+        .to_string();
+    Some((label, title, favicon))
+}
 
 /// 创建 `neeko://` 协议处理闭包，供 `register_uri_scheme_protocol` 使用。
 ///
@@ -28,15 +99,49 @@ pub fn create_handler() -> impl Fn(
     let last_prompt_emit: Arc<Mutex<Option<Instant>>> = Arc::new(Mutex::new(None));
 
     move |ctx, request| {
+        let method = request.method().to_string();
         let uri = request.uri().to_string();
-        let query = uri.split('?').nth(1).unwrap_or("");
 
+        // CORS preflight(fetch POST + JSON 需预检)
+        if method == "OPTIONS" {
+            return tauri::http::Response::builder()
+                .status(204)
+                .header("Access-Control-Allow-Origin", "*")
+                .header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+                .header("Access-Control-Allow-Headers", "content-type")
+                .body(Vec::<u8>::new())
+                .expect("infallible: static preflight response builder should not fail");
+        }
+
+        // POST body 主通道:大 HTML 随请求体传输,无 URL 长度限制
+        if method == "POST" {
+            let body = request.body().clone();
+            if let Some(message) = parse_picker_payload(&body) {
+                handle_picker_message(&ctx, message, &last_prompt_emit);
+            } else if let Some((label, title, favicon)) = parse_page_meta(&body) {
+                let payload =
+                    serde_json::json!({ "label": label, "title": title, "favicon": favicon });
+                let _ = ctx.app_handle().emit(EVENT_BROWSER_PAGE_META, payload);
+            } else {
+                log::warn!("[neeko://] picker POST body parse failed");
+            }
+            return tauri::http::Response::builder()
+                .status(200)
+                .header("Access-Control-Allow-Origin", "*")
+                .body(Vec::<u8>::new())
+                .expect("infallible: static response builder should not fail");
+        }
+
+        // 兼容旧 GET(img.src)通道:查询字符串传输
+        let query = uri.split('?').nth(1).unwrap_or("");
         if uri.contains("prompt-submitted") {
             handle_prompt_submitted(&ctx, query, &last_prompt_emit);
         } else if uri.contains("picker-cancelled") {
-            let _ = ctx.app_handle().emit("browser://picker-cancelled", ());
+            let _ = ctx.app_handle().emit(EVENT_BROWSER_PICKER_CANCELLED, ());
         } else if uri.contains("element-picked") {
-            handle_element_picked(query);
+            if let Some(html) = parse_element_picked_query(query) {
+                handle_element_picked(&html);
+            }
         }
 
         tauri::http::Response::builder()
@@ -47,49 +152,55 @@ pub fn create_handler() -> impl Fn(
     }
 }
 
-/// 处理 prompt-submitted 请求：解析参数并去重发射事件。
-fn handle_prompt_submitted(
+/// 分发 POST body 解析出的 picker 消息。
+fn handle_picker_message(
     ctx: &tauri::UriSchemeContext<'_, tauri::Wry>,
-    query: &str,
+    message: PickerMessage,
     last_prompt_emit: &Arc<Mutex<Option<Instant>>>,
 ) {
-    if let Some((prompt, html)) = parse_prompt_submitted_query(query) {
-        let should_emit = {
-            let mut last = last_prompt_emit
-                .lock()
-                .expect("infallible: prompt dedup lock should not be poisoned");
-            let now = Instant::now();
-            let emit = last
-                .map(|t| now.duration_since(t).as_millis() >= DEDUP_WINDOW_MS)
-                .unwrap_or(true);
-            if emit {
-                *last = Some(now);
+    match message {
+        PickerMessage::PromptSubmitted { prompt, html } => {
+            let should_emit = {
+                let mut last = last_prompt_emit
+                    .lock()
+                    .expect("infallible: prompt dedup lock should not be poisoned");
+                let now = Instant::now();
+                let emit = last
+                    .map(|t| now.duration_since(t).as_millis() >= DEDUP_WINDOW_MS)
+                    .unwrap_or(true);
+                if emit {
+                    *last = Some(now);
+                }
+                emit
+            };
+            if should_emit {
+                let payload = serde_json::json!({ "prompt": prompt, "html": html });
+                let _ = ctx
+                    .app_handle()
+                    .emit(EVENT_BROWSER_PROMPT_SUBMITTED, payload);
             }
-            emit
-        };
-
-        if should_emit {
-            let payload = serde_json::json!({ "prompt": prompt, "html": html });
-            let _ = ctx.app_handle().emit("browser://prompt-submitted", payload);
         }
-    } else {
-        log::warn!("[neeko://] prompt-submitted parse failed");
+        PickerMessage::PickerCancelled => {
+            let _ = ctx.app_handle().emit(EVENT_BROWSER_PICKER_CANCELLED, ());
+        }
+        PickerMessage::ElementPicked { html } => handle_element_picked(&html),
     }
 }
 
 /// 处理 element-picked 请求：解析 HTML 并复制到剪贴板。
-fn handle_element_picked(query: &str) {
-    if let Some(html) = parse_element_picked_query(query) {
-        if let Ok(mut cb) = arboard::Clipboard::new() {
-            if let Err(e) = cb.set_text(&html) {
-                log::warn!("[Picker] clipboard write failed: {e}");
-            }
+fn handle_element_picked(html: &str) {
+    if html.is_empty() {
+        return;
+    }
+    if let Ok(mut cb) = arboard::Clipboard::new() {
+        if let Err(e) = cb.set_text(html) {
+            log::warn!("[Picker] clipboard write failed: {e}");
         }
     }
 }
 
 // ---------------------------------------------------------------------------
-// 查询字符串解析
+// 兼容旧通道的查询字符串解析(GET img.src)
 // ---------------------------------------------------------------------------
 
 /// 解析 element-picked 查询字符串，提取 HTML 内容。
@@ -129,6 +240,38 @@ fn parse_prompt_submitted_query(query: &str) -> Option<(String, String)> {
     }
 }
 
+/// 处理 prompt-submitted 请求：解析参数并去重发射事件。
+fn handle_prompt_submitted(
+    ctx: &tauri::UriSchemeContext<'_, tauri::Wry>,
+    query: &str,
+    last_prompt_emit: &Arc<Mutex<Option<Instant>>>,
+) {
+    if let Some((prompt, html)) = parse_prompt_submitted_query(query) {
+        let should_emit = {
+            let mut last = last_prompt_emit
+                .lock()
+                .expect("infallible: prompt dedup lock should not be poisoned");
+            let now = Instant::now();
+            let emit = last
+                .map(|t| now.duration_since(t).as_millis() >= DEDUP_WINDOW_MS)
+                .unwrap_or(true);
+            if emit {
+                *last = Some(now);
+            }
+            emit
+        };
+
+        if should_emit {
+            let payload = serde_json::json!({ "prompt": prompt, "html": html });
+            let _ = ctx
+                .app_handle()
+                .emit(EVENT_BROWSER_PROMPT_SUBMITTED, payload);
+        }
+    } else {
+        log::warn!("[neeko://] prompt-submitted parse failed");
+    }
+}
+
 // ---------------------------------------------------------------------------
 // 单元测试
 // ---------------------------------------------------------------------------
@@ -136,6 +279,119 @@ fn parse_prompt_submitted_query(query: &str) -> Option<(String, String)> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // --- parse_picker_payload(POST body) ---
+
+    #[test]
+    fn test_parse_picker_payload_prompt_submitted() {
+        let body = br#"{"type":"prompt-submitted","prompt":"make it red","html":"<div></div>"}"#;
+        assert_eq!(
+            parse_picker_payload(body),
+            Some(PickerMessage::PromptSubmitted {
+                prompt: "make it red".into(),
+                html: "<div></div>".into(),
+            })
+        );
+    }
+
+    #[test]
+    fn test_parse_picker_payload_picker_cancelled() {
+        let body = br#"{"type":"picker-cancelled"}"#;
+        assert_eq!(
+            parse_picker_payload(body),
+            Some(PickerMessage::PickerCancelled)
+        );
+    }
+
+    #[test]
+    fn test_parse_picker_payload_element_picked() {
+        let body = br#"{"type":"element-picked","html":"<button>Hi</button>"}"#;
+        assert_eq!(
+            parse_picker_payload(body),
+            Some(PickerMessage::ElementPicked {
+                html: "<button>Hi</button>".into(),
+            })
+        );
+    }
+
+    #[test]
+    fn test_parse_picker_payload_invalid_json() {
+        assert!(parse_picker_payload(b"not json").is_none());
+    }
+
+    #[test]
+    fn test_parse_picker_payload_missing_type() {
+        assert!(parse_picker_payload(br#"{"prompt":"x"}"#).is_none());
+    }
+
+    #[test]
+    fn test_parse_picker_payload_unknown_type() {
+        let body = br#"{"type":"mystery"}"#;
+        assert!(parse_picker_payload(body).is_none());
+    }
+
+    #[test]
+    fn test_parse_picker_payload_missing_html() {
+        let body = br#"{"type":"prompt-submitted","prompt":"x"}"#;
+        assert!(parse_picker_payload(body).is_none());
+    }
+
+    /// >100KB HTML 经 POST body 完整往返(不截断)
+    #[test]
+    fn test_parse_picker_payload_large_html_round_trip() {
+        let large_html = format!("<div>{}</div>", "x".repeat(110_000));
+        let payload = serde_json::json!({
+            "type": "prompt-submitted",
+            "prompt": "改大一点",
+            "html": large_html,
+        });
+        let body = serde_json::to_vec(&payload).unwrap();
+
+        let parsed = parse_picker_payload(&body);
+        match parsed {
+            Some(PickerMessage::PromptSubmitted { prompt, html }) => {
+                assert_eq!(prompt, "改大一点");
+                assert_eq!(html.len(), large_html.len());
+                assert_eq!(html, large_html);
+            }
+            other => panic!("expected PromptSubmitted, got {:?}", other.is_some()),
+        }
+    }
+
+    // --- parse_page_meta ---
+
+    #[test]
+    fn test_parse_page_meta_full() {
+        let body = br#"{"label":"neeko-browser-p1","title":"GitHub","favicon":"https://github.com/favicon.ico"}"#;
+        assert_eq!(
+            parse_page_meta(body),
+            Some((
+                "neeko-browser-p1".into(),
+                "GitHub".into(),
+                "https://github.com/favicon.ico".into(),
+            ))
+        );
+    }
+
+    #[test]
+    fn test_parse_page_meta_empty_title_favicon() {
+        let body = br#"{"label":"neeko-browser-p1","title":"","favicon":""}"#;
+        assert_eq!(
+            parse_page_meta(body),
+            Some(("neeko-browser-p1".into(), String::new(), String::new()))
+        );
+    }
+
+    #[test]
+    fn test_parse_page_meta_missing_label() {
+        let body = br#"{"title":"x"}"#;
+        assert!(parse_page_meta(body).is_none());
+    }
+
+    #[test]
+    fn test_parse_page_meta_invalid_json() {
+        assert!(parse_page_meta(b"nope").is_none());
+    }
 
     // --- parse_element_picked_query ---
 

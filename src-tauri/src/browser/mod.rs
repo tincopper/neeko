@@ -2,8 +2,11 @@
 
 /// Tauri command handlers for browser operations.
 pub mod commands;
+/// Browser event name constants (single source of truth).
+pub mod events;
 /// URI scheme interception and custom protocol handling.
 pub mod uri_scheme;
 
 pub use commands::*;
+pub use events::*;
 pub use uri_scheme::*;
