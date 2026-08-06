@@ -1,0 +1,4 @@
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "质量门禁:pnpm type-check / lint:fe / test:run 全量通过(129 文件,1155 测试)"}
+{"file": ".trellis/spec/backend/command-guidelines.md", "reason": "Rust 命令层检查:cargo check 与 cargo fmt + clippy 通过"}
+{"file": ".trellis/tasks/08-05-browser-per-project/prd.md", "reason": "行为增强:项目未开启浏览器时切换不展示空浏览器面板;已开启的项目切回自动恢复浏览器面板并保持布局。新增 decideProjectSwitchDock 纯函数 + 8 测试,全量 130 文件 / 1163 测试通过"}
+
