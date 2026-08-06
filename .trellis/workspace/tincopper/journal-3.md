@@ -38,3 +38,36 @@
 ### Next Steps
 
 - None - task complete
+
+
+## Session 119: 浏览器按项目隔离 + dock 切换决策
+
+**Date**: 2026-08-06
+**Task**: 浏览器按项目隔离 + dock 切换决策
+**Branch**: `main`
+
+### Summary
+
+浏览器按项目隔离:每项目独立 webview(label=neeko-browser-{projectId})、事件 payload 带 label 过滤、store 按 projectId 索引;新增 decideProjectSwitchDock 纯函数,项目未开启浏览器时切换不展示空面板、已开启时切回自动恢复并保持布局;新增 20 个测试,修复 zustand action 命名冲突
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `4a84fd53` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

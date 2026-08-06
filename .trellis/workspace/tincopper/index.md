@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-3.md`
-- **Total Sessions**: 118
-- **Last Active**: 2026-08-05
+- **Total Sessions**: 119
+- **Last Active**: 2026-08-06
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-3.md` | ~40 | Active |
+| `journal-3.md` | ~73 | Active |
 | `journal-2.md` | ~1991 | Archived |
 | `journal-1.md` | ~1986 | Archived |
 <!-- @@@/auto:active-documents -->
@@ -31,6 +31,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 119 | 2026-08-06 | 浏览器按项目隔离 + dock 切换决策 | `4a84fd53` | `main` |
 | 118 | 2026-08-05 | fix: 根目录新建输入行缩进对齐 | `f54eb7c4` | `main` |
 | 117 | 2026-08-05 | IntelliSense 自动补全组件重构 · 用户 review 多轮修复与收尾 | - | `main` |
 | 116 | 2026-08-04 | MCP marketplace: library domain consolidation + group views | `2bad84e0`, `9d0c2d1b`, `0ae18a4d` | `main` |
