@@ -52,6 +52,10 @@ crossbeam-channel = "0.5.15"
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"
 
+[target.'cfg(target_os = "linux")'.dependencies]
+# 直接依赖以访问 tauri with_webview 暴露的 WebView 句柄(强制 Inspector 独立窗口)
+webkit2gtk = "2.0"
+
 [lints.clippy]
 # --- 正确性（Phase 4 完成：production unwrap 已消除，warn 保留给测试代码）---
 unwrap_used = "deny"

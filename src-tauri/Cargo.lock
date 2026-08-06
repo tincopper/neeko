@@ -2994,6 +2994,7 @@ dependencies = [
  "urlencoding",
  "uuid",
  "walkdir",
+ "webkit2gtk",
  "which",
  "windows-sys 0.52.0",
  "zip",

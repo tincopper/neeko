@@ -184,6 +184,19 @@ pub async fn create_browser_webview(
         )
         .map_err(|e| AppError::Unknown(format!("Failed to create browser webview: {}", e)))?;
 
+    // Linux (WebKitGTK):强制 DevTools/Inspector 以独立窗口显示。
+    // WebKitGTK 默认将 Inspector 附着在 webview 底部(占用页面区域),
+    // 连接 attach 信号并返回 false 可使其显示为独立窗口。
+    #[cfg(target_os = "linux")]
+    if let Some(webview) = app.get_webview(&label) {
+        use webkit2gtk::prelude::WebViewExt;
+        webview.with_webview(|inner| {
+            if let Some(inspector) = inner.inspector() {
+                let _ = inspector.connect_attach(|_| false);
+            }
+        });
+    }
+
     Ok(label)
 }
 
