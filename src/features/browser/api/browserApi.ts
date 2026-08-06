@@ -2,6 +2,13 @@ import { invoke } from '@tauri-apps/api/core';
 
 import { getProjectBrowserLabel } from '../hooks/useBrowserConstants';
 
+interface BrowserBounds {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
 export function createBrowserWebview(
   projectId: string,
   url: string,
@@ -30,9 +37,15 @@ export function browserSetBounds(
   return invoke<void>('browser_set_bounds', { label, x, y, width, height });
 }
 
-export function browserOpenDevtools(projectId: string): Promise<void> {
+export function browserOpenDevtools(projectId: string, bounds: BrowserBounds): Promise<void> {
   const label = getProjectBrowserLabel(projectId);
-  return invoke<void>('browser_open_devtools', { label });
+  return invoke<void>('browser_open_devtools', {
+    label,
+    x: bounds.x,
+    y: bounds.y,
+    width: bounds.width,
+    height: bounds.height,
+  });
 }
 
 export function browserResetZoom(projectId: string): Promise<void> {

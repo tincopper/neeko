@@ -30,7 +30,6 @@ import {
   browserGoBack,
   browserGoForward,
   browserOpenDevtools,
-  browserResetZoom,
   browserClose,
   browserSetVisible,
   browserSetBounds,
@@ -244,30 +243,19 @@ export function useBrowserPanel({ showToast }: UseBrowserPanelOptions) {
 
   const openDevTools = useCallback(async () => {
     if (!activeProjectId || !isCreatedRef.current) return;
+    // 提前取 rect 传给 Rust 命令,命令内部 detach 完成后立即恢复 bounds
+    const rect = containerRef.current?.getBoundingClientRect();
     try {
-      await browserOpenDevtools(activeProjectId);
-      // DevTools 打开可能触发 webview reposition，立即重新吸附到容器
-      if (containerRef.current) {
-        const rect = containerRef.current.getBoundingClientRect();
-        await browserSetBounds(activeProjectId, rect.x, rect.y, rect.width, rect.height);
-      }
+      // Rust 命令内部已处理 detach 后的 zoom 补偿与 bounds 恢复,
+      // 前端无需重复补偿。
+      await browserOpenDevtools(activeProjectId, {
+        x: rect?.x ?? 0,
+        y: rect?.y ?? 0,
+        width: rect?.width ?? 0,
+        height: rect?.height ?? 0,
+      });
     } catch (err) {
       console.error('[Browser] Failed to open devtools:', err);
-    }
-  }, [activeProjectId]);
-
-  // 重置页面缩放为 100%(恢复被 DevTools/误操作放大的页面)
-  const resetZoom = useCallback(async () => {
-    if (!activeProjectId || !isCreatedRef.current) return;
-    try {
-      await browserResetZoom(activeProjectId);
-      // 缩放重置后同步容器 bounds，防止 webview 错位
-      if (containerRef.current) {
-        const rect = containerRef.current.getBoundingClientRect();
-        await browserSetBounds(activeProjectId, rect.x, rect.y, rect.width, rect.height);
-      }
-    } catch (err) {
-      console.error('[Browser] Failed to reset zoom:', err);
     }
   }, [activeProjectId]);
 
@@ -293,11 +281,36 @@ export function useBrowserPanel({ showToast }: UseBrowserPanelOptions) {
     [activeProjectId],
   );
 
+  // 下一帧同步 bounds:布局未稳定(mount 恢复/窗口重新聚焦)时
+  // getBoundingClientRect() 可能返回旧值或 0,延迟到 rAF 后再采样,
+  // 避免 webview 错位/顶部被 toolbar 遮挡。
+  const syncBoundsNextFrame = useCallback(() => {
+    if (!containerRef.current || !isCreatedRef.current) return;
+    requestAnimationFrame(() => {
+      if (!containerRef.current || !isCreatedRef.current) return;
+      updateBounds(containerRef.current.getBoundingClientRect());
+    });
+  }, [updateBounds]);
+
   const setVisible = useCallback(
     async (visible: boolean) => {
       if (!activeProjectId || !isCreatedRef.current) return;
       try {
         await browserSetVisible(activeProjectId, visible);
+        // webview 从隐藏切回显示时,容器位置可能已变化(dock 展开/切换 panel)。
+        // 延迟到下一帧 layout 完成后再同步 bounds,避免 hidden→visible 切换时
+        // getBoundingClientRect() 返回旧值或 0,导致 webview 错位/顶部被遮挡。
+        if (visible) {
+          requestAnimationFrame(() => {
+            if (!containerRef.current || !isCreatedRef.current) return;
+            const rect = containerRef.current.getBoundingClientRect();
+            browserSetBounds(activeProjectId, rect.x, rect.y, rect.width, rect.height).catch(
+              (err) => {
+                console.error('[Browser] Failed to sync bounds after visible:', err);
+              },
+            );
+          });
+        }
       } catch (err) {
         console.error('[Browser] Failed to set visible:', err);
       }
@@ -537,9 +550,9 @@ export function useBrowserPanel({ showToast }: UseBrowserPanelOptions) {
       const zone = dockState.zones.right;
       const shouldBeVisible = zone?.expanded === true && zone?.activePanelId === 'browser';
       setVisible(shouldBeVisible);
-      if (shouldBeVisible && containerRef.current) {
-        const rect = containerRef.current.getBoundingClientRect();
-        updateBounds(rect);
+      if (shouldBeVisible) {
+        // 延迟到下一帧布局完成后采样,避免 mount 时 flex layout 未稳定
+        syncBoundsNextFrame();
       }
     } else {
       const { url: pendingUrl } = browserState ?? {};
@@ -595,12 +608,40 @@ export function useBrowserPanel({ showToast }: UseBrowserPanelOptions) {
   // 窗口重新获得焦点时同步 bounds(例如关闭 DevTools 独立窗口后回到主窗口)
   useEffect(() => {
     const handleFocus = () => {
-      if (!containerRef.current || !isCreatedRef.current) return;
-      updateBounds(containerRef.current.getBoundingClientRect());
+      syncBoundsNextFrame();
     };
     window.addEventListener('focus', handleFocus);
     return () => window.removeEventListener('focus', handleFocus);
-  }, [updateBounds]);
+  }, [syncBoundsNextFrame]);
+  // 容器尺寸变化时同步 bounds(替代定时轮询):ResizeObserver 在 layout 真正
+  // 变化时精准触发,无需每 5 秒盲目采样。差异 < 2px 时跳过,避免微小抖动。
+  const lastSyncedRectRef = useRef<{ x: number; y: number; w: number; h: number } | null>(null);
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el || !activeProjectId) return;
+    const DIFF_THRESHOLD_PX = 2;
+    const observer = new ResizeObserver(() => {
+      if (!isCreatedRef.current || !containerRef.current) return;
+      const rect = containerRef.current.getBoundingClientRect();
+      if (rect.width <= 0 || rect.height <= 0) return;
+      const last = lastSyncedRectRef.current;
+      if (
+        last &&
+        Math.abs(last.x - rect.x) < DIFF_THRESHOLD_PX &&
+        Math.abs(last.y - rect.y) < DIFF_THRESHOLD_PX &&
+        Math.abs(last.w - rect.width) < DIFF_THRESHOLD_PX &&
+        Math.abs(last.h - rect.height) < DIFF_THRESHOLD_PX
+      ) {
+        return;
+      }
+      lastSyncedRectRef.current = { x: rect.x, y: rect.y, w: rect.width, h: rect.height };
+      browserSetBounds(activeProjectId, rect.x, rect.y, rect.width, rect.height).catch((err) => {
+        console.error('[Browser] Failed to sync bounds on resize:', err);
+      });
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [activeProjectId]);
 
   // Hide webview on unmount instead of destroying it
   useEffect(() => {
@@ -627,7 +668,6 @@ export function useBrowserPanel({ showToast }: UseBrowserPanelOptions) {
     goBack,
     goForward,
     openDevTools,
-    resetZoom,
     openExternal,
     updateBounds,
     setVisible,

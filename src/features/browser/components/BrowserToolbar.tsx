@@ -1,3 +1,4 @@
+import { RefreshCw as RefreshCwIcon } from 'lucide-react';
 import React, { useCallback, useEffect, useState, type KeyboardEvent } from 'react';
 
 import {
@@ -5,9 +6,7 @@ import {
   ArrowRight,
   Bug,
   ExternalLink,
-  Maximize,
   MousePointerClick,
-  RefreshCw,
 } from '@/shared/components/icons';
 
 interface BrowserToolbarProps {
@@ -23,14 +22,12 @@ interface BrowserToolbarProps {
   onGoForward: () => void;
   onOpenExternal: () => void;
   onOpenDevTools: () => void;
-  onResetZoom: () => void;
   isPicking: boolean;
   onTogglePicker: () => void;
 }
 
 const BTN =
   'flex items-center justify-center w-6 h-6 rounded-md text-text-secondary hover:bg-bg-hover hover:text-text-primary transition-colors disabled:opacity-50 disabled:cursor-not-allowed';
-
 const BrowserToolbar: React.FC<BrowserToolbarProps> = ({
   url,
   title,
@@ -44,7 +41,6 @@ const BrowserToolbar: React.FC<BrowserToolbarProps> = ({
   onGoForward,
   onOpenExternal,
   onOpenDevTools,
-  onResetZoom,
   isPicking,
   onTogglePicker,
 }) => {
@@ -90,7 +86,7 @@ const BrowserToolbar: React.FC<BrowserToolbarProps> = ({
 
       {/* 刷新 */}
       <button onClick={onRefresh} disabled={isLoading || !url} className={BTN} title="Refresh">
-        <RefreshCw size={12} className={isLoading ? 'animate-spin' : ''} />
+        <RefreshCwIcon size={12} className={isLoading ? 'animate-spin' : ''} />
       </button>
 
       {/* 地址栏:有标题时显示标题 + favicon,否则降级显示 URL */}
@@ -136,11 +132,6 @@ const BrowserToolbar: React.FC<BrowserToolbarProps> = ({
         title="Open in default browser"
       >
         <ExternalLink size={12} />
-      </button>
-
-      {/* 重置缩放 */}
-      <button onClick={onResetZoom} disabled={!url} className={BTN} title="Reset zoom (100%)">
-        <Maximize size={12} />
       </button>
 
       {/* DevTools */}

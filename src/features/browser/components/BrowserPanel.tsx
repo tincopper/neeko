@@ -23,7 +23,6 @@ const BrowserPanel: React.FC = () => {
     goBack,
     goForward,
     openDevTools,
-    resetZoom,
     openExternal,
     updateBounds,
     isPicking,
@@ -36,8 +35,12 @@ const BrowserPanel: React.FC = () => {
   // Sync position when webview is created
   useEffect(() => {
     if (isCreated && containerRef.current) {
-      const rect = containerRef.current.getBoundingClientRect();
-      updateBounds(rect);
+      // 延迟到下一帧,确保 flex layout 完成后取到准确 rect
+      const id = requestAnimationFrame(() => {
+        if (!containerRef.current) return;
+        updateBounds(containerRef.current.getBoundingClientRect());
+      });
+      return () => cancelAnimationFrame(id);
     }
   }, [isCreated, containerRef, updateBounds]);
 
@@ -90,8 +93,8 @@ const BrowserPanel: React.FC = () => {
       {/* Toolbar */}
       <BrowserToolbar
         url={url}
-        title={title}
         favicon={favicon}
+        title={title}
         isLoading={isLoading}
         canGoBack={canGoBack}
         canGoForward={canGoForward}
@@ -101,7 +104,6 @@ const BrowserPanel: React.FC = () => {
         onGoForward={goForward}
         onOpenExternal={openExternal}
         onOpenDevTools={openDevTools}
-        onResetZoom={resetZoom}
         isPicking={isPicking}
         onTogglePicker={handleTogglePicker}
       />
