@@ -11,7 +11,11 @@ import {
 
 interface BrowserToolbarProps {
   url: string;
+  title: string;
+  favicon: string;
   isLoading: boolean;
+  canGoBack: boolean;
+  canGoForward: boolean;
   onNavigate: (url: string) => void;
   onRefresh: () => void;
   onGoBack: () => void;
@@ -27,7 +31,11 @@ const BTN =
 
 const BrowserToolbar: React.FC<BrowserToolbarProps> = ({
   url,
+  title,
+  favicon,
   isLoading,
+  canGoBack,
+  canGoForward,
   onNavigate,
   onRefresh,
   onGoBack,
@@ -68,12 +76,12 @@ const BrowserToolbar: React.FC<BrowserToolbarProps> = ({
   return (
     <div className="flex items-center gap-1 h-8 px-2 bg-bg-secondary shrink-0">
       {/* 后退 */}
-      <button onClick={onGoBack} disabled={!url} className={BTN} title="Back">
+      <button onClick={onGoBack} disabled={!canGoBack} className={BTN} title="Back">
         <ArrowLeft size={12} />
       </button>
 
       {/* 前进 */}
-      <button onClick={onGoForward} disabled={!url} className={BTN} title="Forward">
+      <button onClick={onGoForward} disabled={!canGoForward} className={BTN} title="Forward">
         <ArrowRight size={12} />
       </button>
 
@@ -82,15 +90,30 @@ const BrowserToolbar: React.FC<BrowserToolbarProps> = ({
         <RefreshCw size={12} className={isLoading ? 'animate-spin' : ''} />
       </button>
 
-      {/* 地址栏 */}
-      <input
-        type="text"
-        value={inputValue}
-        onChange={(e) => setInputValue(e.target.value)}
-        onKeyDown={handleKeyDown}
-        placeholder="Enter URL..."
-        className="flex-1 h-5 px-2 text-xs bg-bg-primary text-text-primary border border-border rounded focus:outline-none focus:border-accent-blue placeholder:text-text-muted"
-      />
+      {/* 地址栏:有标题时显示标题 + favicon,否则降级显示 URL */}
+      <div
+        className="flex flex-1 h-5 px-2 text-xs bg-bg-primary text-text-primary border border-border rounded focus-within:border-accent-blue items-center gap-1.5 min-w-0"
+        title={url}
+      >
+        {favicon && (
+          <img
+            src={favicon}
+            alt=""
+            className="w-3.5 h-3.5 shrink-0"
+            onError={(e) => {
+              e.currentTarget.style.display = 'none';
+            }}
+          />
+        )}
+        <input
+          type="text"
+          value={title || url}
+          onChange={(e) => setInputValue(e.target.value)}
+          onKeyDown={handleKeyDown}
+          placeholder="Enter URL..."
+          className="flex-1 min-w-0 bg-transparent border-none outline-none placeholder:text-text-muted"
+        />
+      </div>
 
       {/* 元素选择器 */}
       <button

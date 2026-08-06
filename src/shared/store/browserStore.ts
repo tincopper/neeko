@@ -1,5 +1,7 @@
 import { create } from 'zustand';
 
+import { createHistoryStack, type HistoryStack } from '@/shared/utils/historyStack';
+
 import { useProjectStore } from './projectStore';
 
 export interface BrowserPanelState {
@@ -7,6 +9,14 @@ export interface BrowserPanelState {
   url: string;
   isCreated: boolean;
   isLoading: boolean;
+  /** 每项目导航历史栈(驱动 canGoBack/canGoForward)。 */
+  history: HistoryStack;
+  /** 当前页面标题(空则地址栏降级显示 URL)。 */
+  title: string;
+  /** 当前页面 favicon URL(可能为空)。 */
+  favicon: string;
+  /** 最后活跃时间(epoch ms),项目切换到此项目时更新;驱动闲置回收。 */
+  lastActiveAt: number;
 }
 
 interface ProjectBrowserStore {
@@ -26,6 +36,10 @@ const defaultPanelState = (label: string): BrowserPanelState => ({
   url: '',
   isCreated: false,
   isLoading: false,
+  history: createHistoryStack(),
+  title: '',
+  favicon: '',
+  lastActiveAt: 0,
 });
 
 function deriveLabel(projectId: string): string {

@@ -1,15 +1,28 @@
-import { listen } from '@tauri-apps/api/event';
 import { useCallback, useEffect, useRef } from 'react';
 
 // eslint-disable-next-line import/no-restricted-paths -- browser panel sends terminal commands via terminal feature
 import { sendToTerminal } from '@/features/terminal/components/terminalCommands';
-import { GIT_CHANGED_EVENT } from '@/shared/events';
+import {
+  BROWSER_OPEN_URL_EVENT,
+  BROWSER_PAGE_LOADED_EVENT,
+  BROWSER_PAGE_META_EVENT,
+  BROWSER_PROMPT_SUBMITTED_EVENT,
+  BROWSER_URL_CHANGED_EVENT,
+  GIT_CHANGED_EVENT,
+} from '@/shared/events';
 import { useFileChangedEvent } from '@/shared/hooks/useFileChangedEvent';
+import { useTauriEvent } from '@/shared/hooks/useTauriEvent';
 import { useEditorStore, useProjectStore } from '@/shared/store';
 import { useProjectBrowserStore } from '@/shared/store/browserStore';
 import { useDockStore } from '@/shared/store/dockStore';
 import type { FileChangedEvent } from '@/shared/types';
 import { fileUrlToFilePath } from '@/shared/utils/browserUtils';
+import { canGoBack, canGoForward, recordNavigation } from '@/shared/utils/historyStack';
+import {
+  decideReclaims,
+  DEFAULT_RECLAIM_POLICY,
+  type WebviewUsage,
+} from '@/shared/utils/reclaimPolicy';
 
 import {
   createBrowserWebview,
@@ -30,6 +43,9 @@ import { useBrowserPicker } from './useBrowserPicker';
 
 /** Safety-net timeout: auto-refresh even if no git-changed event arrives */
 const AUTO_REFRESH_TIMEOUT_MS = 30_000;
+
+/** 闲置 webview 回收检查周期 */
+const RECLAIM_CHECK_INTERVAL_MS = 60_000;
 
 /** Payload emitted by Rust when user submits prompt from injected input */
 interface PromptSubmittedPayload {
@@ -281,136 +297,112 @@ export function useBrowserPanel({ showToast }: UseBrowserPanelOptions) {
     }
   }, [activeProjectId, removeBrowserState, disarmAutoRefresh]);
 
-  // Listen: URL changed (navigation started) — sync address bar
-  useEffect(() => {
-    let cancelled = false;
-    let unlisten: (() => void) | null = null;
+  // Listen: URL changed (navigation started) — sync address bar + history stack
+  useTauriEvent<{ label: string; url: string }>(
+    BROWSER_URL_CHANGED_EVENT,
+    useCallback(
+      ({ label: eventLabel, url }) => {
+        if (!activeProjectId) return;
+        if (eventLabel !== getProjectBrowserLabel(activeProjectId)) return;
+        const prevState = useProjectBrowserStore.getState().getPanelState(activeProjectId);
+        setBrowserState(activeProjectId, {
+          url,
+          isLoading: true,
+          history: recordNavigation(prevState.history, url),
+        });
+      },
+      [activeProjectId, setBrowserState],
+    ),
+  );
 
-    listen<{ label: string; url: string }>('browser://url-changed', (event) => {
-      const { label: eventLabel, url } = event.payload;
-      if (!activeProjectId) return;
-      if (eventLabel !== getProjectBrowserLabel(activeProjectId)) return;
-      setBrowserState(activeProjectId, { url, isLoading: true });
-    }).then((fn) => {
-      if (cancelled) fn();
-      else unlisten = fn;
-    });
-
-    return () => {
-      cancelled = true;
-      unlisten?.();
-    };
-  }, [activeProjectId, setBrowserState]);
+  // Listen: page meta (title/favicon) — surface in address bar
+  useTauriEvent<{ label: string; title: string; favicon: string }>(
+    BROWSER_PAGE_META_EVENT,
+    useCallback(
+      ({ label: eventLabel, title, favicon }) => {
+        if (!activeProjectId) return;
+        if (eventLabel !== getProjectBrowserLabel(activeProjectId)) return;
+        setBrowserState(activeProjectId, { title, favicon });
+      },
+      [activeProjectId, setBrowserState],
+    ),
+  );
 
   // Listen: page fully loaded — stop loading indicator
-  useEffect(() => {
-    let cancelled = false;
-    let unlisten: (() => void) | null = null;
-
-    listen<{ label: string; url: string }>('browser://page-loaded', (event) => {
-      const { label: eventLabel, url } = event.payload;
-      if (!activeProjectId) return;
-      if (eventLabel !== getProjectBrowserLabel(activeProjectId)) return;
-      disarmLoadingTimeout();
-      setBrowserState(activeProjectId, { url, isLoading: false });
-    }).then((fn) => {
-      if (cancelled) fn();
-      else unlisten = fn;
-    });
-
-    return () => {
-      cancelled = true;
-      unlisten?.();
-    };
-  }, [activeProjectId, setBrowserState, disarmLoadingTimeout]);
+  useTauriEvent<{ label: string; url: string }>(
+    BROWSER_PAGE_LOADED_EVENT,
+    useCallback(
+      ({ label: eventLabel, url }) => {
+        if (!activeProjectId) return;
+        if (eventLabel !== getProjectBrowserLabel(activeProjectId)) return;
+        disarmLoadingTimeout();
+        setBrowserState(activeProjectId, { url, isLoading: false });
+      },
+      [activeProjectId, setBrowserState, disarmLoadingTimeout],
+    ),
+  );
 
   // Listen: target="_blank" link — navigate in current webview
-  useEffect(() => {
-    let cancelled = false;
-    let unlisten: (() => void) | null = null;
-
-    listen<{ label: string; url: string }>('browser://open-url', (event) => {
-      const { label: eventLabel, url: eventUrl } = event.payload;
-      if (!activeProjectId) return;
-      if (eventLabel !== getProjectBrowserLabel(activeProjectId)) return;
-      if (isCreatedRef.current) {
-        browserNavigate(activeProjectId, eventUrl).catch((err) => {
-          console.error('[Browser] Failed to open new-window url:', err);
-        });
-        setBrowserState(activeProjectId, { url: eventUrl });
-      }
-    }).then((fn) => {
-      if (cancelled) fn();
-      else unlisten = fn;
-    });
-
-    return () => {
-      cancelled = true;
-      unlisten?.();
-    };
-  }, [activeProjectId, setBrowserState]);
+  useTauriEvent<{ label: string; url: string }>(
+    BROWSER_OPEN_URL_EVENT,
+    useCallback(
+      ({ label: eventLabel, url: eventUrl }) => {
+        if (!activeProjectId) return;
+        if (eventLabel !== getProjectBrowserLabel(activeProjectId)) return;
+        if (isCreatedRef.current) {
+          browserNavigate(activeProjectId, eventUrl).catch((err) => {
+            console.error('[Browser] Failed to open new-window url:', err);
+          });
+          setBrowserState(activeProjectId, { url: eventUrl });
+        }
+      },
+      [activeProjectId, setBrowserState],
+    ),
+  );
 
   // Listen: prompt submitted from injected input inside browser webview
-  useEffect(() => {
-    let cancelled = false;
-    let unlisten: (() => void) | null = null;
+  useTauriEvent<PromptSubmittedPayload>(
+    BROWSER_PROMPT_SUBMITTED_EVENT,
+    useCallback(
+      (payload) => {
+        const data: PromptSubmittedPayload =
+          typeof payload === 'string' ? JSON.parse(payload) : payload;
+        if (!data?.prompt || !data?.html) return;
 
-    listen<PromptSubmittedPayload>('browser://prompt-submitted', (event) => {
-      const payload = event.payload;
-      const data: PromptSubmittedPayload =
-        typeof payload === 'string' ? JSON.parse(payload) : payload;
-      if (!data?.prompt || !data?.html) return;
+        const projectState = useProjectStore.getState();
+        const editorState = useEditorStore.getState();
+        const projectId = projectState.activeProjectId;
+        if (!projectId) {
+          reinjectPicker();
+          return;
+        }
+        const projectTabs = editorState.tabs[projectId];
+        if (!isAgentCliTab(projectTabs, editorState.activeTabId)) {
+          showToastRef.current('Please switch to an Agent CLI tab', 'error');
+          reinjectPicker();
+          return;
+        }
 
-      const projectState = useProjectStore.getState();
-      const editorState = useEditorStore.getState();
-      const projectId = projectState.activeProjectId;
-      if (!projectId) {
+        const browserUrl = useProjectBrowserStore.getState().getPanelState(projectId)?.url ?? '';
+        const message = formatPickerMessage(data.prompt, data.html, browserUrl);
+        sendToTerminal(projectId, message + '\r', editorState.activeTabId);
+        armAutoRefresh();
         reinjectPicker();
-        return;
-      }
-      const projectTabs = editorState.tabs[projectId];
-      if (!isAgentCliTab(projectTabs, editorState.activeTabId)) {
-        showToastRef.current('Please switch to an Agent CLI tab', 'error');
-        reinjectPicker();
-        return;
-      }
-
-      const browserUrl = useProjectBrowserStore.getState().getPanelState(projectId)?.url ?? '';
-      const message = formatPickerMessage(data.prompt, data.html, browserUrl);
-      sendToTerminal(projectId, message + '\r', editorState.activeTabId);
-      armAutoRefresh();
-      reinjectPicker();
-    }).then((fn) => {
-      if (cancelled) fn();
-      else unlisten = fn;
-    });
-
-    return () => {
-      cancelled = true;
-      unlisten?.();
-    };
-  }, [reinjectPicker, armAutoRefresh]);
+      },
+      [reinjectPicker, armAutoRefresh],
+    ),
+  );
 
   // Listen: git-changed — auto-refresh browser when armed
-  useEffect(() => {
-    let cancelled = false;
-    let unlisten: (() => void) | null = null;
-
-    listen<string>(GIT_CHANGED_EVENT, (event) => {
+  useTauriEvent<string>(
+    GIT_CHANGED_EVENT,
+    useCallback((payload) => {
       if (pendingRefreshTimer.current === null) return;
       const activeProjectId = useProjectStore.getState().activeProjectId;
-      if (event.payload !== activeProjectId) return;
+      if (payload !== activeProjectId) return;
       refreshRef.current();
-    }).then((fn) => {
-      if (cancelled) fn();
-      else unlisten = fn;
-    });
-
-    return () => {
-      cancelled = true;
-      unlisten?.();
-    };
-  }, []);
+    }, []),
+  );
 
   // Listen: file-changed — auto-refresh browser when it has a file:// URL that matches
   useFileChangedEvent((event: FileChangedEvent) => {
@@ -496,6 +488,10 @@ export function useBrowserPanel({ showToast }: UseBrowserPanelOptions) {
       if (nextState.isCreated) {
         browserSetVisible(nextProjectId, true).catch(() => {});
       }
+      // 记录活跃时间,驱动闲置回收
+      useProjectBrowserStore.getState().setPanelState(nextProjectId, {
+        lastActiveAt: Date.now(),
+      });
     });
     return () => unsubscribe();
   }, []);
@@ -525,8 +521,9 @@ export function useBrowserPanel({ showToast }: UseBrowserPanelOptions) {
         updateBounds(rect);
       }
     } else {
-      const { url: pendingUrl, isLoading: pendingLoading } = browserState ?? {};
-      if (pendingUrl && pendingLoading) {
+      const { url: pendingUrl } = browserState ?? {};
+      if (pendingUrl) {
+        // 有 URL 但 webview 未创建:外部 navigateTo 或闲置回收后重建
         navigate(pendingUrl);
       } else {
         // No pending navigation — hide any orphaned webview
@@ -547,6 +544,33 @@ export function useBrowserPanel({ showToast }: UseBrowserPanelOptions) {
     return () => window.removeEventListener('beforeunload', handleBeforeUnload);
   }, [activeProjectId]);
 
+  // Idle webview reclaim: periodically close non-active webviews beyond the
+  // policy threshold. URL/history/title are kept in the store so switching
+  // back rebuilds the webview and navigates to the same URL.
+  useEffect(() => {
+    const checkReclaims = () => {
+      const activeProjectId = useProjectStore.getState().activeProjectId;
+      const { states } = useProjectBrowserStore.getState();
+      const usages: WebviewUsage[] = Object.entries(states).map(([projectId, s]) => ({
+        projectId,
+        lastActiveAt: s.lastActiveAt,
+        isCreated: s.isCreated,
+        isActive: projectId === activeProjectId,
+      }));
+      const reclaimIds = decideReclaims(usages, DEFAULT_RECLAIM_POLICY, Date.now());
+      for (const projectId of reclaimIds) {
+        browserClose(projectId).catch(() => {});
+        useProjectBrowserStore.getState().setPanelState(projectId, {
+          isCreated: false,
+          isLoading: false,
+        });
+      }
+    };
+
+    const id = setInterval(checkReclaims, RECLAIM_CHECK_INTERVAL_MS);
+    return () => clearInterval(id);
+  }, []);
+
   // Hide webview on unmount instead of destroying it
   useEffect(() => {
     return () => {
@@ -561,6 +585,10 @@ export function useBrowserPanel({ showToast }: UseBrowserPanelOptions) {
     url: browserState?.url ?? '',
     isCreated: browserState?.isCreated ?? false,
     isLoading: browserState?.isLoading ?? false,
+    title: browserState?.title ?? '',
+    favicon: browserState?.favicon ?? '',
+    canGoBack: browserState ? canGoBack(browserState.history) : false,
+    canGoForward: browserState ? canGoForward(browserState.history) : false,
     isPicking,
     containerRef,
     navigate,

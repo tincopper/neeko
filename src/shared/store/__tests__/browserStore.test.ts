@@ -22,6 +22,10 @@ describe('useProjectBrowserStore — per-project isolation', () => {
       url: '',
       isCreated: false,
       isLoading: false,
+      history: { entries: [], index: -1 },
+      title: '',
+      favicon: '',
+      lastActiveAt: 0,
     });
   });
 

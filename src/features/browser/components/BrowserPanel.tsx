@@ -11,8 +11,12 @@ const BrowserPanel: React.FC = () => {
   const { showToast } = useAppContext();
   const {
     url,
+    title,
+    favicon,
     isCreated,
     isLoading,
+    canGoBack,
+    canGoForward,
     containerRef,
     navigate,
     refresh,
@@ -85,7 +89,11 @@ const BrowserPanel: React.FC = () => {
       {/* Toolbar */}
       <BrowserToolbar
         url={url}
+        title={title}
+        favicon={favicon}
         isLoading={isLoading}
+        canGoBack={canGoBack}
+        canGoForward={canGoForward}
         onNavigate={handleNavigate}
         onRefresh={refresh}
         onGoBack={goBack}

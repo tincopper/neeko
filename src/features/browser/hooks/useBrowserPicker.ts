@@ -1,6 +1,7 @@
-import { listen } from '@tauri-apps/api/event';
 import { useState, useCallback, useEffect, type RefObject } from 'react';
 
+import { BROWSER_PICKER_CANCELLED_EVENT } from '@/shared/events';
+import { useTauriEvent } from '@/shared/hooks/useTauriEvent';
 import { useProjectStore } from '@/shared/store';
 
 import { browserStartPicker, browserStopPicker } from '../api/browserApi';
@@ -54,22 +55,7 @@ export function useBrowserPicker(params: {
   }, [activeProjectId, getThemeColors]);
 
   // Listen: picker cancelled (Escape / ×) — re-inject picker
-  useEffect(() => {
-    let cancelled = false;
-    let unlisten: (() => void) | null = null;
-
-    listen<void>('browser://picker-cancelled', () => {
-      if (!cancelled) reinjectPicker();
-    }).then((fn) => {
-      if (cancelled) fn();
-      else unlisten = fn;
-    });
-
-    return () => {
-      cancelled = true;
-      unlisten?.();
-    };
-  }, [reinjectPicker]);
+  useTauriEvent<void>(BROWSER_PICKER_CANCELLED_EVENT, reinjectPicker);
 
   // Fallback: periodically re-inject picker script while picker mode is active
   useEffect(() => {
