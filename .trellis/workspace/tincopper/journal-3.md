@@ -71,3 +71,36 @@
 ### Next Steps
 
 - None - task complete
+
+
+## Session 120: 浏览器模块审查修复(browser-module-audit-fixes)
+
+**Date**: 2026-08-06
+**Task**: 浏览器模块审查修复(browser-module-audit-fixes)
+**Branch**: `main`
+
+### Summary
+
+完成 9 个子任务:事件常量抽取、open-external 去除 cmd 注入面、file:// 白名单、picker fetch POST 通道(>100KB round-trip)、useTauriEvent 抽取、PICKER_SCRIPT 独立文件、历史栈/canGoBack、标题/favicon、webview 回收。质量套件全绿(前端 1184 测试 + Rust 688 测试),9/9 归档
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `f73762ac` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
