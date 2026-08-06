@@ -454,6 +454,94 @@ persist((set) => ({ ... }), {
 
 ---
 
+## 场景：浏览器按项目隔离 2026-08-06
+
+### 1. Scope / Trigger
+
+- Trigger：浏览器原本所有项目共用一个 webview（全局单 store），需要按项目隔离——每个项目独立 webview、切换项目时 show/hide、URL 保持。
+- Scope：`src-tauri/src/browser/commands.rs`、`src/shared/store/browserStore.ts`、`src/features/browser/`（api/hooks/utils）。
+
+### 2. Signatures
+
+```ts
+// src/features/browser/hooks/useBrowserConstants.ts
+export const getProjectBrowserLabel = (projectId: string): string =>
+  `neeko-browser-${projectId}`;
+
+// src/shared/store/browserStore.ts
+interface BrowserPanelState {
+  label: string;
+  url: string;
+  isCreated: boolean;
+  isLoading: boolean;
+}
+
+interface ProjectBrowserStore {
+  states: Record<string, BrowserPanelState>;              // 按 projectId 索引
+  getPanelState: (projectId: string) => BrowserPanelState; // 幂等创建默认态
+  setPanelState: (projectId: string, patch: Partial<BrowserPanelState>) => void;
+  removeState: (projectId: string) => void;
+  navigateTo: { (url: string): void; (projectId: string, url: string): void }; // 单参重载取 activeProjectId
+  reset: () => void;
+}
+```
+
+Rust 端事件 payload（`browser://url-changed` / `browser://page-loaded` / `browser://open-url` / `browser://loading`）：
+
+```rust
+serde_json::json!({ "label": &label, "url": &url_str })
+```
+
+### 3. Contracts
+
+1. **Label 契约**：webview label 恒为 `neeko-browser-{projectId}`，前端一律经 `getProjectBrowserLabel()` 派生，禁止手写拼接。
+2. **事件隔离契约**：Rust 事件 payload 必须携带 `label` 字段；前端监听后按 `eventLabel !== getProjectBrowserLabel(activeProjectId)` 过滤，忽略其他项目的事件。
+3. **Store 隔离契约**：`states` 按 `projectId` 索引，`setPanelState` 只 patch 目标项目，互不影响。
+4. **项目切换契约**：切换项目时隐藏旧项目 webview；新项目浏览器已开启（`isCreated`）则恢复其 webview 可见并激活 dock 浏览器面板（保持布局），未开启则把右侧 dock 从浏览器面板切到默认面板或收起——不展示空浏览器面板。决策逻辑收敛在 `decideProjectSwitchDock` 纯函数（`src/features/browser/utils/projectSwitchDock.ts`）。
+5. **URL 持久化**：仅内存（当前会话），不落盘。
+
+### 4. Validation & Error Matrix
+
+| 场景 | 输入 | 预期 |
+|------|------|------|
+| 首次 getPanelState | 新 projectId | 创建默认态（label 派生、url=''、isCreated=false） |
+| 切换项目（目标已开浏览器） | isCreated=true | dock 激活 browser 面板 + webview 可见 + bounds 恢复 |
+| 切换项目（目标未开浏览器） | isCreated=false | 右侧 dock 切到 zone 内第一个非 browser 面板；只剩 browser 则收起 |
+| 右侧 dock 收起 | expanded=false | 不打扰布局（decision 返回 none） |
+| 浏览器面板不在右侧 | panels 不含 browser | add-and-activate（togglePanel 重新加入） |
+
+### 5. Good/Base/Bad Cases
+
+- Good：项目 A 开浏览器访问 URL_X，切到项目 B（未开浏览器）右侧显示默认面板，切回 A 恢复浏览器面板 + URL_X + 布局。
+- Base：项目 B 浏览器已开启，切走再切回，webview 保持 URL_Y 与滚动位置。
+- Bad：事件 payload 不带 label——项目 A 的导航事件被项目 B 误收，地址栏串台。
+
+### 6. Tests Required
+
+- `useProjectBrowserStore`：getPanelState 幂等、项目隔离、navigateTo 单参重载、reset/removeState。
+- `decideProjectSwitchDock`：8 个决策分支（已开/未开 × 面板状态）。
+- `getProjectBrowserLabel`：label 派生格式。
+
+### 7. Wrong vs Correct
+
+#### Wrong
+
+```ts
+// selector 中调用带 set 副作用的 action（渲染期触发 setState）
+const browserState = useProjectBrowserStore((s) => s.getState(activeProjectId));
+```
+
+#### Correct
+
+```ts
+// selector 无副作用读取；写操作统一走 action
+const browserState = useProjectBrowserStore((s) =>
+  activeProjectId ? (s.states[activeProjectId] ?? null) : null,
+);
+```
+
+---
+
 ## 常见错误
 
 ### 1. 继续把跨域数据通过多层 Props 透传
@@ -555,3 +643,22 @@ interface SaveAsRequest {
   defaultFilename: string;
 }
 ```
+
+### 9. 自定义 zustand action 与内置 `getState` / `setState` 同名
+
+**问题**：在 store 内自定义 `getState(projectId)` / `setState(projectId, patch)` 会与 zustand 内置的 `useStore.getState()` / `useStore.setState()` 同名。调用方必须写 `useStore.getState().getState(projectId)` 这种绕口令式代码，极易混淆；且若在 selector 中调用自定义 `getState`（内部 `set()` 幂等创建默认态），会在 React 渲染期间触发 setState，违反纯函数原则。
+
+**正确模式**：自定义 action 用语义化命名（`getPanelState` / `setPanelState`），selector 只做无副作用读取：
+
+```ts
+// 正确：命名不冲突 + selector 无副作用
+const panelState = useProjectBrowserStore((s) => (id ? (s.states[id] ?? null) : null));
+const setPanelState = useProjectBrowserStore((s) => s.setPanelState);
+```
+
+```ts
+// 错误：与 zustand 内置 API 同名，selector 内调用带 set 副作用的 action
+const state = useStore((s) => s.getState(projectId));
+```
+
+**涉及文件**：`src/shared/store/browserStore.ts`（2026-08-06 修复）。
