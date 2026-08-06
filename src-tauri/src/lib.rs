@@ -263,6 +263,7 @@ macro_rules! neeko_invoke_handler {
             $crate::browser::commands::browser_navigate,
             $crate::browser::commands::browser_set_bounds,
             $crate::browser::commands::browser_open_devtools,
+            $crate::browser::commands::browser_reset_zoom,
             $crate::browser::commands::browser_close,
             $crate::browser::commands::browser_set_visible,
             $crate::browser::commands::browser_go_back,

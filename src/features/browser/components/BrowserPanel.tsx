@@ -23,6 +23,7 @@ const BrowserPanel: React.FC = () => {
     goBack,
     goForward,
     openDevTools,
+    resetZoom,
     openExternal,
     updateBounds,
     isPicking,
@@ -100,6 +101,7 @@ const BrowserPanel: React.FC = () => {
         onGoForward={goForward}
         onOpenExternal={openExternal}
         onOpenDevTools={openDevTools}
+        onResetZoom={resetZoom}
         isPicking={isPicking}
         onTogglePicker={handleTogglePicker}
       />

@@ -35,6 +35,11 @@ export function browserOpenDevtools(projectId: string): Promise<void> {
   return invoke<void>('browser_open_devtools', { label });
 }
 
+export function browserResetZoom(projectId: string): Promise<void> {
+  const label = getProjectBrowserLabel(projectId);
+  return invoke<void>('browser_reset_zoom', { label });
+}
+
 export function browserClose(projectId: string): Promise<void> {
   const label = getProjectBrowserLabel(projectId);
   return invoke<void>('browser_close', { label });

@@ -30,6 +30,7 @@ import {
   browserGoBack,
   browserGoForward,
   browserOpenDevtools,
+  browserResetZoom,
   browserClose,
   browserSetVisible,
   browserSetBounds,
@@ -247,6 +248,16 @@ export function useBrowserPanel({ showToast }: UseBrowserPanelOptions) {
       await browserOpenDevtools(activeProjectId);
     } catch (err) {
       console.error('[Browser] Failed to open devtools:', err);
+    }
+  }, [activeProjectId]);
+
+  // 重置页面缩放为 100%(恢复被 DevTools/误操作放大的页面)
+  const resetZoom = useCallback(async () => {
+    if (!activeProjectId || !isCreatedRef.current) return;
+    try {
+      await browserResetZoom(activeProjectId);
+    } catch (err) {
+      console.error('[Browser] Failed to reset zoom:', err);
     }
   }, [activeProjectId]);
 
@@ -596,6 +607,7 @@ export function useBrowserPanel({ showToast }: UseBrowserPanelOptions) {
     goBack,
     goForward,
     openDevTools,
+    resetZoom,
     openExternal,
     updateBounds,
     setVisible,

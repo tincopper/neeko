@@ -5,6 +5,7 @@ import {
   ArrowRight,
   Bug,
   ExternalLink,
+  Maximize,
   MousePointerClick,
   RefreshCw,
 } from '@/shared/components/icons';
@@ -22,6 +23,7 @@ interface BrowserToolbarProps {
   onGoForward: () => void;
   onOpenExternal: () => void;
   onOpenDevTools: () => void;
+  onResetZoom: () => void;
   isPicking: boolean;
   onTogglePicker: () => void;
 }
@@ -42,6 +44,7 @@ const BrowserToolbar: React.FC<BrowserToolbarProps> = ({
   onGoForward,
   onOpenExternal,
   onOpenDevTools,
+  onResetZoom,
   isPicking,
   onTogglePicker,
 }) => {
@@ -133,6 +136,11 @@ const BrowserToolbar: React.FC<BrowserToolbarProps> = ({
         title="Open in default browser"
       >
         <ExternalLink size={12} />
+      </button>
+
+      {/* 重置缩放 */}
+      <button onClick={onResetZoom} disabled={!url} className={BTN} title="Reset zoom (100%)">
+        <Maximize size={12} />
       </button>
 
       {/* DevTools */}

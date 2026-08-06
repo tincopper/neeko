@@ -240,6 +240,10 @@ pub async fn browser_set_bounds(
 }
 
 /// 打开 DevTools
+///
+/// 打开后立即将页面缩放重置为 100%——部分平台(如 WebKitGTK 附着式
+/// Inspector、WebView2 窗口切换)打开 DevTools 会改变 webview 缩放,
+/// 这里兜底恢复,避免"打开后页面放大且无法恢复"。
 #[tauri::command]
 pub async fn browser_open_devtools(app: tauri::AppHandle, label: String) -> Result<(), AppError> {
     let webview = app
@@ -248,6 +252,23 @@ pub async fn browser_open_devtools(app: tauri::AppHandle, label: String) -> Resu
 
     #[cfg(debug_assertions)]
     webview.open_devtools();
+
+    // 兜底:重置缩放为 100%(set_zoom 失败不影响 DevTools 打开)
+    let _ = webview.set_zoom(1.0);
+
+    Ok(())
+}
+
+/// 重置浏览器 webview 页面缩放为 100%(恢复被 DevTools/误操作放大的页面)
+#[tauri::command]
+pub async fn browser_reset_zoom(app: tauri::AppHandle, label: String) -> Result<(), AppError> {
+    let webview = app
+        .get_webview(&label)
+        .ok_or_else(|| AppError::NotFound(format!("Browser webview not found: {}", label)))?;
+
+    webview
+        .set_zoom(1.0)
+        .map_err(|e| AppError::Unknown(format!("Failed to reset zoom: {}", e)))?;
 
     Ok(())
 }
