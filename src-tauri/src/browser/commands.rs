@@ -5,9 +5,6 @@ use tauri::webview::{PageLoadEvent, WebviewBuilder};
 use tauri::{Emitter, Manager, WebviewUrl};
 use url::Url;
 
-/// 固定的浏览器 webview label（单实例）
-const BROWSER_LABEL: &str = "neeko-browser-panel";
-
 /// Base URL the injected picker script uses to notify the Rust side via
 /// `<img src=...>` requests handled by `register_uri_scheme_protocol("neeko", ...)`.
 ///
@@ -43,6 +40,7 @@ fn validate_url_scheme(url: &str) -> Result<(), AppError> {
 #[tauri::command]
 pub async fn create_browser_webview(
     app: tauri::AppHandle,
+    label: String,
     url: String,
     x: f64,
     y: f64,
@@ -57,7 +55,7 @@ pub async fn create_browser_webview(
         .map_err(|e: url::ParseError| AppError::InvalidInput(format!("Invalid URL: {}", e)))?;
 
     // 如果已经存在同 label 的 webview，先关闭
-    if let Some(existing) = app.get_webview(BROWSER_LABEL) {
+    if let Some(existing) = app.get_webview(&label) {
         let _ = existing.close();
         // 短暂等待关闭完成
         tokio::time::sleep(std::time::Duration::from_millis(50)).await;
@@ -69,34 +67,42 @@ pub async fn create_browser_webview(
 
     let tauri_url = WebviewUrl::External(parsed_url);
 
-    // 克隆 app handle 给 handler 内使用
+    // 克隆 app handle 和 label 给 handler 内使用
     let app_nav = app.clone();
     let app_load = app.clone();
+    let label_nav = label.clone();
+    let label_load = label.clone();
+    let label_new_window = label.clone();
 
-    let builder = WebviewBuilder::new(BROWSER_LABEL, tauri_url)
+    let builder = WebviewBuilder::new(&label, tauri_url)
         // on_navigation: 每次导航开始时通知前端新 URL（允许所有导航）
         .on_navigation(move |nav_url| {
             let url_str = nav_url.to_string();
-            let _ = app_nav.emit("browser://url-changed", url_str);
+            let payload = serde_json::json!({ "label": &label_nav, "url": &url_str });
+            let _ = app_nav.emit("browser://url-changed", payload);
             true // 允许跳转
         })
         // on_page_load: 页面加载开始/完成时通知前端
         .on_page_load(move |_webview, payload| match payload.event() {
             PageLoadEvent::Started => {
-                let _ = app_load.emit("browser://loading", true);
+                let payload = serde_json::json!({ "label": &label_load, "loading": true });
+                let _ = app_load.emit("browser://loading", payload);
             }
             PageLoadEvent::Finished => {
                 let url_str = payload.url().to_string();
-                let _ = app_load.emit("browser://page-loaded", url_str);
-                let _ = app_load.emit("browser://loading", false);
+                let payload = serde_json::json!({ "label": &label_load, "url": &url_str });
+                let _ = app_load.emit("browser://page-loaded", payload);
+                let payload = serde_json::json!({ "label": &label_load, "loading": false });
+                let _ = app_load.emit("browser://loading", payload);
             }
         })
         // on_new_window: 拦截 target="_blank" 链接，在当前 webview 中导航
         .on_new_window(move |new_url, _features| {
             let url_str = new_url.to_string();
+            let payload = serde_json::json!({ "label": &label_new_window, "url": &url_str });
             // 通过 emit 告知前端在当前 webview 中导航
             // 前端监听此事件后调用 browser_navigate
-            let _ = app.emit("browser://open-url", url_str);
+            let _ = app.emit("browser://open-url", payload);
             tauri::webview::NewWindowResponse::Deny
         });
 
@@ -108,7 +114,7 @@ pub async fn create_browser_webview(
         )
         .map_err(|e| AppError::Unknown(format!("Failed to create browser webview: {}", e)))?;
 
-    Ok(BROWSER_LABEL.to_string())
+    Ok(label)
 }
 
 /// 导航到新 URL
@@ -601,11 +607,6 @@ mod tests {
     #[test]
     fn test_validate_url_scheme_with_whitespace() {
         assert!(validate_url_scheme("  https://example.com  ").is_ok());
-    }
-
-    #[test]
-    fn test_browser_label_is_fixed() {
-        assert_eq!(BROWSER_LABEL, "neeko-browser-panel");
     }
 
     #[test]

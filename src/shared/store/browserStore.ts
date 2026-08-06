@@ -1,52 +1,75 @@
 import { create } from 'zustand';
 
-export interface BrowserState {
-  /** 当前 webview label（由后端返回） */
-  label: string | null;
-  /** 当前 URL */
-  url: string;
-  /** webview 是否已创建 */
-  isCreated: boolean;
-  /** 是否正在加载 */
-  isLoading: boolean;
+import { useProjectStore } from './projectStore';
 
-  // ── Actions ──
-  /** 设置 label（由 useBrowserPanel 调用） */
-  setLabel: (label: string | null) => void;
-  /** 设置 URL */
-  setUrl: (url: string) => void;
-  /** 设置已创建状态 */
-  setCreated: (created: boolean) => void;
-  /** 设置加载状态 */
-  setLoading: (loading: boolean) => void;
-  /**
-   * 导航到新 URL（由外部模块调用，如终端链接、Files Panel）。
-   * 只更新 store 状态；useBrowserPanel hook 在 mount 时检测
-   * url + isLoading 组合来执行实际导航。
-   */
-  navigateTo: (url: string) => void;
-  /** 重置状态 */
+export interface BrowserPanelState {
+  label: string;
+  url: string;
+  isCreated: boolean;
+  isLoading: boolean;
+}
+
+interface ProjectBrowserStore {
+  states: Record<string, BrowserPanelState>;
+  getPanelState: (projectId: string) => BrowserPanelState;
+  setPanelState: (projectId: string, patch: Partial<BrowserPanelState>) => void;
+  removeState: (projectId: string) => void;
+  navigateTo: {
+    (url: string): void;
+    (projectId: string, url: string): void;
+  };
   reset: () => void;
 }
 
-const initialState = {
-  label: null,
+const defaultPanelState = (label: string): BrowserPanelState => ({
+  label,
   url: '',
   isCreated: false,
   isLoading: false,
-};
+});
 
-export const useBrowserStore = create<BrowserState>()((set) => ({
-  ...initialState,
+function deriveLabel(projectId: string): string {
+  return `neeko-browser-${projectId}`;
+}
 
-  setLabel: (label) => set({ label }),
-  setUrl: (url) => set({ url }),
-  setCreated: (isCreated) => set({ isCreated }),
-  setLoading: (isLoading) => set({ isLoading }),
+export const useProjectBrowserStore = create<ProjectBrowserStore>()((set, get) => ({
+  states: {},
 
-  navigateTo: (url) => {
-    set({ url, isLoading: true });
+  getPanelState: (projectId) => {
+    const existing = get().states[projectId];
+    if (existing) return existing;
+    const newState = defaultPanelState(deriveLabel(projectId));
+    set((s) => ({ states: { ...s.states, [projectId]: newState } }));
+    return newState;
   },
 
-  reset: () => set(initialState),
+  setPanelState: (projectId, patch) =>
+    set((s) => ({
+      states: {
+        ...s.states,
+        [projectId]: { ...s.states[projectId], ...patch },
+      },
+    })),
+
+  removeState: (projectId) =>
+    set((s) => {
+      const rest = { ...s.states };
+      delete rest[projectId];
+      return { states: rest };
+    }),
+
+  navigateTo: (urlOrProjectId: string, maybeUrl?: string) => {
+    const projectId =
+      maybeUrl !== undefined ? urlOrProjectId : useProjectStore.getState().activeProjectId;
+    const url = maybeUrl ?? urlOrProjectId;
+    if (!projectId) return;
+    const state = get().getPanelState(projectId);
+    get().setPanelState(projectId, { url, isLoading: true, isCreated: state.isCreated });
+  },
+
+  reset: () => set({ states: {} }),
 }));
+
+// 向后兼容：旧 store 引用继续工作
+export const useBrowserStore = useProjectBrowserStore;
+export type { BrowserPanelState as BrowserState };

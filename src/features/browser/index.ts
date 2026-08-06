@@ -1,7 +1,7 @@
 // Hooks
 export { useBrowserPanel } from './hooks/useBrowserPanel';
 export { useBrowserPicker } from './hooks/useBrowserPicker';
-export { BROWSER_WEBVIEW_LABEL } from './hooks/useBrowserConstants';
+export { getProjectBrowserLabel } from './hooks/useBrowserConstants';
 
 // Types
 export type { BrowserState } from './types';

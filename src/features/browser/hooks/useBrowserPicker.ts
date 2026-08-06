@@ -1,10 +1,10 @@
 import { listen } from '@tauri-apps/api/event';
 import { useState, useCallback, useEffect, type RefObject } from 'react';
 
+import { useProjectStore } from '@/shared/store';
+
 import { browserStartPicker, browserStopPicker } from '../api/browserApi';
 import type { PickerThemeColors } from '../components/pickerUtils';
-
-import { BROWSER_WEBVIEW_LABEL } from './useBrowserConstants';
 
 /**
  * useBrowserPicker — manages the browser element picker lifecycle.
@@ -17,38 +17,41 @@ export function useBrowserPicker(params: {
   const { isCreatedRef, getThemeColors } = params;
   const [isPicking, setIsPicking] = useState(false);
 
+  const activeProjectId = useProjectStore((s) => s.activeProjectId);
+
   // Start element picker mode
   const startPicker = useCallback(async () => {
-    if (!isCreatedRef.current) return;
+    if (!activeProjectId || !isCreatedRef.current) return;
     try {
       await browserStartPicker(
-        BROWSER_WEBVIEW_LABEL,
+        activeProjectId,
         getThemeColors() as unknown as Record<string, string>,
       );
       setIsPicking(true);
     } catch (err) {
       console.error('[Browser] Failed to start picker:', err);
     }
-  }, [isCreatedRef, getThemeColors]);
+  }, [activeProjectId, isCreatedRef, getThemeColors]);
 
   // Stop element picker mode
   const stopPicker = useCallback(async () => {
-    if (!isCreatedRef.current) return;
+    if (!activeProjectId || !isCreatedRef.current) return;
     try {
-      await browserStopPicker(BROWSER_WEBVIEW_LABEL);
+      await browserStopPicker(activeProjectId);
     } catch (err) {
       console.error('[Browser] Failed to stop picker:', err);
     }
     setIsPicking(false);
-  }, [isCreatedRef]);
+  }, [activeProjectId, isCreatedRef]);
 
   // Re-inject picker script (called on navigation, prompt-submit, etc.)
   const reinjectPicker = useCallback(() => {
+    if (!activeProjectId) return;
     browserStartPicker(
-      BROWSER_WEBVIEW_LABEL,
+      activeProjectId,
       getThemeColors() as unknown as Record<string, string>,
     ).catch(() => {});
-  }, [getThemeColors]);
+  }, [activeProjectId, getThemeColors]);
 
   // Listen: picker cancelled (Escape / ×) — re-inject picker
   useEffect(() => {
