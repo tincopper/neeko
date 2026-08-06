@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
+import { useMeasure } from '@/shared/hooks';
+
 import { computeRowOffsets, getVirtualWindow } from './virtualScroll';
 
 export interface UseVirtualScrollOptions {
@@ -27,8 +29,8 @@ export function useVirtualScroll({
   onLoadMore,
 }: UseVirtualScrollOptions) {
   const [scrollTop, setScrollTop] = useState(0);
-  const [viewportHeight, setViewportHeight] = useState(0);
-  const containerRef = useRef<HTMLDivElement>(null);
+  // 视口测量复用 useMeasure：晚挂载/尺寸变化自动重测（callback ref + RO）
+  const { containerRef, node, height: viewportHeight } = useMeasure();
   const sentinelRef = useRef<HTMLDivElement>(null);
 
   // 无限滚动：sentinel 进入视口触发加载更多
@@ -45,22 +47,9 @@ export function useVirtualScroll({
   }, [hasMore, loadingMore, onLoadMore]);
 
   const handleScroll = useCallback(() => {
-    const el = containerRef.current;
-    if (!el) return;
-    setScrollTop(el.scrollTop);
-    setViewportHeight(el.clientHeight);
-  }, []);
-
-  // 视口高度测量（容器尺寸变化时）
-  useEffect(() => {
-    const el = containerRef.current;
-    if (!el) return;
-    const measure = () => setViewportHeight(el.clientHeight);
-    measure();
-    const ro = new ResizeObserver(measure);
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, []);
+    if (!node) return;
+    setScrollTop(node.scrollTop);
+  }, [node]);
 
   const rowOffsets = useMemo(
     () => computeRowOffsets(rowCount, selectedRowIndex, expandHeight),

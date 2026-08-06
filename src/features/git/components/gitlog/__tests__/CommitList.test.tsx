@@ -27,12 +27,15 @@ class IOMock {
 class ROMock {
   static instances: ROMock[] = [];
   callback: ResizeObserverCallback;
+  observed: Element[] = [];
   disconnected = false;
   constructor(callback: ResizeObserverCallback) {
     this.callback = callback;
     ROMock.instances.push(this);
   }
-  observe() {}
+  observe(el: Element) {
+    this.observed.push(el);
+  }
   unobserve() {}
   disconnect() {
     this.disconnected = true;
@@ -193,6 +196,32 @@ describe('CommitList 集成', () => {
       );
     });
     expect(onLoadMore).toHaveBeenCalledTimes(1);
+  });
+
+  it('回归：数据异步到达后容器才出现，仍须附着 ResizeObserver 测量视口（修复首屏空白需滚动）', async () => {
+    // 首帧骨架：容器未渲染，RO 不应创建
+    const { rerender } = render(<CommitList {...baseProps({ loading: true, commits: [] })} />);
+    expect(ROMock.instances).toHaveLength(0);
+    expect(screen.getByLabelText('Loading')).toBeInTheDocument();
+
+    // 数据到达 → 容器出现 → 必须创建 RO 并观察容器（此前依赖 [] 只在挂载时测量，容器晚到则永不测量）
+    rerender(<CommitList {...baseProps({ commits: makeCommits(20) })} />);
+    // flush useExpandPanel 的 Promise.resolve().then(setExpandHeight(0)) 微任务，避免 act 警告
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(ROMock.instances).toHaveLength(1);
+    const ro = ROMock.instances[0]!;
+    expect(ro.observed).toHaveLength(1);
+
+    // 模拟真实浏览器：容器有实际高度时 RO 回调 → 视口高度生效 → 窗口扩大补全列表
+    const container = ro.observed[0]!;
+    Object.defineProperty(container, 'clientHeight', { value: 400, configurable: true });
+    act(() => {
+      ro.callback([{} as ResizeObserverEntry], ro as unknown as ResizeObserver);
+    });
+    // 400px 视口 → 20 行全部渲染（不再只有 overscan 的 11 行，下方空白）
+    expect(screen.getAllByTestId('commit-row')).toHaveLength(20);
   });
 
   it('首屏加载显示骨架', () => {

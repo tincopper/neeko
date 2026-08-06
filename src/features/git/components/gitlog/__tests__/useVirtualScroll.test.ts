@@ -69,10 +69,13 @@ describe('useVirtualScroll', () => {
     expect(result.current.offsetY).toBe(0);
   });
 
-  it('handleScroll 更新 scrollTop/viewportHeight 并移动窗口', () => {
+  it('handleScroll 更新 scrollTop 并移动窗口', () => {
     const { result } = renderHook(() => useVirtualScroll(baseOptions));
+    // 挂载容器：视口测量由 useMeasure 接管（clientHeight 64 → viewportHeight 64）
+    act(() => {
+      result.current.containerRef({ scrollTop: 160, clientHeight: 64 } as HTMLDivElement);
+    });
     // 20 行均匀 32px；滚动到 160（第 5 行），视口 64px（2 行）
-    result.current.containerRef.current = { scrollTop: 160, clientHeight: 64 } as HTMLDivElement;
     act(() => {
       result.current.handleScroll();
     });
@@ -85,10 +88,12 @@ describe('useVirtualScroll', () => {
 
   it('窗口偏移随 startIndex 变化：offsetY = offsets[startIndex]', () => {
     const { result } = renderHook(() => useVirtualScroll({ ...baseOptions, rowCount: 100 }));
-    result.current.containerRef.current = {
-      scrollTop: 64 * 32, // 第 64 行
-      clientHeight: 32 * 3,
-    } as HTMLDivElement;
+    act(() => {
+      result.current.containerRef({
+        scrollTop: 64 * 32, // 第 64 行
+        clientHeight: 32 * 3,
+      } as HTMLDivElement);
+    });
     act(() => {
       result.current.handleScroll();
     });
@@ -102,7 +107,9 @@ describe('useVirtualScroll', () => {
     const { result } = renderHook(() =>
       useVirtualScroll({ ...baseOptions, selectedRowIndex: 2, expandHeight: 100 }),
     );
-    result.current.containerRef.current = { scrollTop: 200, clientHeight: 64 } as HTMLDivElement;
+    act(() => {
+      result.current.containerRef({ scrollTop: 200, clientHeight: 64 } as HTMLDivElement);
+    });
     act(() => {
       result.current.handleScroll();
     });
@@ -143,15 +150,13 @@ describe('useVirtualScroll', () => {
     expect(IOMock.instances).toHaveLength(0);
   });
 
-  it('视口测量：容器挂载后创建 ResizeObserver 观察容器（集成层覆盖）', () => {
-    // renderHook 无 DOM，mount 时 containerRef 为 null，RO 不创建——
-    // 创建/断开行为由 CommitList.test.tsx 集成测试覆盖。
-    const { result } = renderHook(() => useVirtualScroll(baseOptions));
+  it('视口测量：容器未挂载时不创建 ResizeObserver（挂载行为由 useMeasure 测试覆盖）', () => {
+    // renderHook 无 DOM，callback ref 未被调用 → node 为 null，RO 不创建
+    renderHook(() => useVirtualScroll(baseOptions));
     expect(ROMock.instances).toHaveLength(0);
-    expect(result.current.containerRef.current).toBeNull();
   });
 
-  it('卸载时清理 IntersectionObserver 与 ResizeObserver', () => {
+  it('卸载时清理 IntersectionObserver', () => {
     const { result, rerender, unmount } = renderHook((opts) => useVirtualScroll(opts), {
       initialProps: { ...baseOptions, hasMore: false },
     });
