@@ -117,3 +117,18 @@ CloseRequested → prevent_close() + emit "close-window"
 - [ ] 前端 `close-tab` 监听**永远不会**调用 `getCurrentWindow().destroy()`？
 - [ ] 菜单项 `CmdOrCtrl+W` 加速器已注册？
 - [ ] 新增关闭路径无需额外标记来区分来源？
+
+---
+
+## 诊断验证记录（2026-08-07：build 后 Cmd+W"完全无反应"排查）
+
+**结论**：诊断日志证实三条链路（Rust 菜单 `on_menu_event`、前端 `close-tab` 事件监听、前端 keydown 兜底）在干净 release build 下**全部工作正常**，tab 正常关闭、窗口保持。"完全无反应"疑为旧构建产物/初始化时序偶发问题，**非代码逻辑缺陷**。未做移除 accelerator 等激进改造（有"坑 1"系统 Window 菜单接管风险）。
+
+**经验**：
+1. 排查此类"dev 正常 / build 失效"问题时，先加三处临时诊断日志确认断点，再决定是否改动代码：
+   - `app.rs` `on_menu_event` 内 `log::info!`
+   - `useAppShell.ts` `close-tab` 监听内 `console.log`
+   - `useKeyboardShortcuts.ts` `closeTab` case 内 `console.log`
+2. macOS 菜单 accelerator 与 webview keydown 的双路径兜底设计有效：即使菜单路径在异常情况下失效，前端 `Ctrl+W→⌘` 映射（`shortcutRegistry.ts` `modifiersMatch`）仍是可靠第二路径。
+3. 诊断日志确认后必须移除，避免生产噪音。
+

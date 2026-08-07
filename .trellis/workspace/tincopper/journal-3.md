@@ -104,3 +104,36 @@
 ### Next Steps
 
 - None - task complete
+
+
+## Session 121: 修复 build 后 Cmd+W 关闭 tab 失效与 Agent 进程残留
+
+**Date**: 2026-08-07
+**Task**: 修复 build 后 Cmd+W 关闭 tab 失效与 Agent 进程残留
+**Branch**: `main`
+
+### Summary
+
+(Add summary)
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `638fceaf` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

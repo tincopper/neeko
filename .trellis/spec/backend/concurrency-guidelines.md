@@ -238,6 +238,45 @@ pub fn close_terminal_session(session_id: String, state: State<AppStateWrapper>)
 
 ---
 
+## Scenario: 进程树兜底（清理脱离进程组的 Agent 残留）
+
+### 1. Scope / Trigger
+
+- Trigger：关闭本地 Agent tab 后，对应 Agent 进程（或其派生子进程）仍残留不退出。
+- 根因：`portable-pty` 用 `setsid()` 让 shell 成为会话/进程组 leader（PGID==PID），`graceful_kill` 发信号到 `-PGID` 只能覆盖**仍在组内**的进程。部分 CLI（Agent、语言服务器、daemon）自行 `setsid()` 脱离进程组，成为孤儿。
+- Scope：`terminal::process_reaper`（枚举 + 终止）、`close_pty_handle` 的 Unix 分支。
+
+### 2. 判定规则
+
+进程属于某 PTY 会话（root 为 shell PID），满足任一即收编：
+
+1. `pid == shell_pid`（shell 自身）
+2. `sid == shell_pid`（同会话，未脱离）
+3. 从 `ppid` 向上递归可达 `shell_pid`（脱离组但仍是后代，覆盖 daemonize 前/未完全脱离的场景）
+
+### 3. Contracts
+
+1. `close_pty_handle` 先 `graceful_kill`（进程组 SIGTERM→2s→SIGKILL），随后调 `reap_session_tree(shell_pid)` 兜底。
+2. 兜底对命中进程 SIGTERM → 复用 `GRACEFUL_TIMEOUT_SECS` → SIGKILL；已死进程自动跳过（`kill(pid,0)` 检测）。
+3. 平台枚举：
+   - **macOS**：`libproc` crate（`pids_by_type(ProcFilter::All)` + `pidinfo::<BSDInfo>` 拿 `pbi_ppid` + `libc::getsid`）。
+   - **Linux**：遍历 `/proc/<pid>/stat`，按 `rsplit_once(')')` 后解析 ppid（fields[1]）与 session（fields[3]）。
+   - **Windows**：不参与——Job Object 已覆盖全树（`services.rs` `close_pty_handle` Windows 分支）。
+4. 全流程在 `pty-close-{id}` 独立 OS 线程执行，满足阻塞 I/O 隔离红线，不接触 tokio。
+
+### 4. Validation
+
+| 场景 | 预期 |
+|------|------|
+| shell 正常退出 | 兜底无可收编进程，跳过 |
+| Agent 子进程 setsid 脱离 | 通过 ppid 祖先链被收编并终止 |
+| 进程已死/竞态消失 | `kill(pid,0)` 失败即跳过，SIGKILL 无害 |
+| Windows | 走 Job Object，不编译 reaper 代码 |
+
+- 单元测试：`terminal::process_reaper::tests` 用真实 `fork`+`setsid` 构造脱离进程验证收集与终止（macOS/Linux）。
+
+---
+
 ## 常见错误
 
 ### 1. 跨 thread::spawn 或 await 持有 Mutex 锁
