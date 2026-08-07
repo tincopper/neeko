@@ -1,0 +1,2 @@
+{"file": ".trellis/spec/frontend/state-management.md", "reason": "refreshGitFileStates writes to zustand store; generation-token approach must preserve single-direction data flow and avoid redundant state."}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "watcher.rs should_ignore_path additions must follow existing component-name matching style and naming conventions."}
