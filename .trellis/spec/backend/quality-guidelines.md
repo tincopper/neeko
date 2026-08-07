@@ -287,6 +287,14 @@ impl ThemeStrategy {
 // 优势：无需 #[async_trait]，编译期 dispatch，新增 variant 所有 match 必须处理
 ```
 
+### 7. 文件监听器必须忽略构建产物目录
+
+`common/file/watcher.rs` 的 `should_ignore_path` 是项目级约定，新增多端通用产物目录时必须同步扩展。已在 ignore 列表：`.git`、`node_modules`、`target`、`.DS_Store`（原有）；`dist`、`build`、`.next`、`out`、`coverage`（2026-08-07 因 build 风暴新增）。
+
+**为什么**：`pnpm tauri build` / `pnpm run build` 期间这些目录在秒级产生数千个 Create/Modify 事件，notify watcher 全量转发会**放大**（不导致）`git-changed` 监听侧的竞态——陈旧 store 覆盖的概率与事件风暴成正比。ignore 是减载，不是治本；治本在调用方的 generation 守卫（见 `frontend/state-management.md` 场景 2026-08-07）。
+
+**新增约定**：每加一个项目根或 monorepo 包的构建产物目录名，先查 `should_ignore_path`，再加；不要让 watcher 转发构建产物事件。
+
 ---
 
 ## 构建与 CI

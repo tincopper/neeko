@@ -3,13 +3,14 @@
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
 use crate::common::git::status_worker::{GitStatusDiff, GitStatusWorker};
+use ignore::gitignore::{Gitignore, GitignoreBuilder};
 use notify::{Config, Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
 use std::{
     collections::HashMap,
     path::{Path, PathBuf},
     sync::{
         atomic::{AtomicBool, Ordering},
-        mpsc, Arc, Mutex,
+        mpsc, Arc, Mutex, RwLock,
     },
     time::{Duration, Instant},
 };
@@ -213,6 +214,91 @@ impl TreeChangeDebounceSender {
     }
 }
 
+// ── GitChangedDebounceSender：git-changed 全量刷新信号节流 ──────────────────────
+
+/// 收到信号后开启 500ms 滑动窗口，窗口内再无新信号则 emit 一次 `git-changed`。
+///
+/// 第一性原理：增量 diff（`git-status-diff`）已是轻量、完整的主数据源（前端直接
+/// patch store，无后端往返）。`git-changed` 只是兼容旧监听的全量刷新 fallback，
+/// 每个增量 diff 都触发它会造成 build 期间的全量刷新风暴。这里把全量 fallback
+/// 从「每次 diff 一次」降为「每段静默窗口一次」，从根上封顶刷新频率。
+#[derive(Clone)]
+struct GitChangedDebounceSender {
+    tx: Option<mpsc::Sender<()>>,
+    // spawn 失败时的降级直发路径（不建线程，避免 Panic 闪退；极端系统故障场景）
+    fallback: Option<(String, AppHandle)>,
+}
+
+impl GitChangedDebounceSender {
+    fn new(project_id: String, app_handle: AppHandle) -> Self {
+        let (tx, rx) = mpsc::channel::<()>();
+
+        // spawn 失败降级需要持有 project_id / app_handle（闭包 move 后无法取回）
+        let fallback_id = project_id.clone();
+        let fallback_handle = app_handle.clone();
+
+        let spawned = std::thread::Builder::new()
+            .name(format!("git-changed-debounce-{}", project_id))
+            .spawn(move || {
+                while let Ok(()) = rx.recv() {
+                    // 开始 500ms 滑动窗口：持续收信号就重置 deadline
+                    let mut deadline = Instant::now() + Duration::from_millis(500);
+                    loop {
+                        let now = Instant::now();
+                        if now >= deadline {
+                            break;
+                        }
+                        match rx.recv_timeout(deadline - now) {
+                            Ok(()) => {
+                                // 有新信号，重置窗口
+                                deadline = Instant::now() + Duration::from_millis(500);
+                            }
+                            Err(mpsc::RecvTimeoutError::Timeout) => break,
+                            Err(mpsc::RecvTimeoutError::Disconnected) => return,
+                        }
+                    }
+
+                    // 窗口结束，emit 一次 git-changed（全量刷新 fallback）
+                    log::debug!(
+                        "[GitChangedDebounce:{}] Emitting {}",
+                        project_id,
+                        GIT_CHANGED_EVENT
+                    );
+                    let _ = app_handle.emit(GIT_CHANGED_EVENT, &project_id);
+                }
+            });
+
+        match spawned {
+            Ok(_) => Self {
+                tx: Some(tx),
+                fallback: None,
+            },
+            Err(e) => {
+                // 线程 spawn 失败属极低概率系统级故障：降级为直发（无节流），
+                // 严禁 Panic 闪退——功能可用性优先于节流效果。
+                log::error!(
+                    "[GitChangedDebounce:{}] Failed to spawn thread: {e}; falling back to direct emit",
+                    fallback_id
+                );
+                Self {
+                    tx: None,
+                    fallback: Some((fallback_id, fallback_handle)),
+                }
+            }
+        }
+    }
+
+    /// 收到一个「有 git 变更」信号。线程正常时走滑动窗口节流；
+    /// spawn 失败降级模式下直接 emit（无节流，但保证 fallback 不丢）。
+    fn signal(&self) {
+        if let Some(tx) = &self.tx {
+            let _ = tx.send(());
+        } else if let Some((project_id, app_handle)) = &self.fallback {
+            let _ = app_handle.emit(GIT_CHANGED_EVENT, project_id);
+        }
+    }
+}
+
 // ── WatcherHandle & WatcherManager ───────────────────────────────────────────
 
 struct WatcherHandle {
@@ -220,12 +306,16 @@ struct WatcherHandle {
     _scheduler: ThrottleScheduler,
     // worker clone 保持 alive，与 scheduler 回调中的 clone 共享同一个 worker 线程
     _worker: GitStatusWorker,
-    // .git/HEAD 监听器（分支切换检测），单独 watch HEAD 文件绕过 should_ignore_path
+    // .git/HEAD 监听器（分支切换检测），单独 watch HEAD 文件绕过 git 忽略过滤
     _head_watcher: Option<RecommendedWatcher>,
     // file-changed debounce sender（drop 时关闭 channel，结束 debounce 线程）
     _debounce: DebounceSender,
     // file-tree-changed debounce sender（Create/Remove/Rename 事件触发）
     _tree_debounce: TreeChangeDebounceSender,
+    // git-changed 全量 fallback 节流 sender（drop 时关闭 channel，结束节流线程）
+    _git_changed_debounce: GitChangedDebounceSender,
+    // git 语义忽略过滤器（持有编译后的 .gitignore 规则）
+    _gitignore: GitIgnoreFilter,
     stop_signal: Arc<AtomicBool>,
     // 心跳线程：定期触发 git status 作为 notify 事件丢失时的兜底
     _heartbeat: std::thread::JoinHandle<()>,
@@ -247,21 +337,63 @@ impl Default for WatcherManager {
     }
 }
 
-/// 判断路径是否应该被忽略（.git / node_modules / target / .DS_Store 等）
-fn should_ignore_path(path: &Path) -> bool {
-    for component in path.components() {
-        if let std::path::Component::Normal(name) = component {
-            let name_str = name.to_string_lossy();
-            if name_str == ".git"
-                || name_str == "node_modules"
-                || name_str == "target"
-                || name_str == ".DS_Store"
-            {
-                return true;
-            }
+/// 判断路径是否应该被忽略。
+///
+/// 第一性原理：与 git 自身行为一致 —— 被 `.gitignore`（含 `.git/info/exclude`）
+/// 忽略的路径不产生事件，同时保留两类硬过滤：
+/// - `.git` 元数据目录（git 内部文件，HEAD watcher 单独绕过此过滤监听分支切换）
+/// - `.DS_Store`（macOS 平台噪声，不属于项目内容）
+///
+/// 规则在 watcher 启动时编译，`.gitignore` 文件变更时自动重载（见 `reload`）。
+#[derive(Clone)]
+struct GitIgnoreFilter {
+    root: PathBuf,
+    rules: Arc<RwLock<Gitignore>>,
+}
+
+impl GitIgnoreFilter {
+    fn new(root: PathBuf) -> Self {
+        let rules = Arc::new(RwLock::new(Gitignore::empty()));
+        let filter = Self { root, rules };
+        filter.reload();
+        filter
+    }
+
+    /// 重载忽略规则：读取项目根 `.gitignore` 与 `.git/info/exclude`。
+    /// `.gitignore` 自身变更（用户编辑）时由 notify 回调触发。
+    fn reload(&self) {
+        let mut builder = GitignoreBuilder::new(&self.root);
+        // 项目根 .gitignore
+        let root_gitignore = self.root.join(".gitignore");
+        if root_gitignore.is_file() {
+            let _ = builder.add(&root_gitignore);
+        }
+        // .git/info/exclude（仓库本地忽略规则）
+        let info_exclude = self.root.join(".git").join("info").join("exclude");
+        if info_exclude.is_file() {
+            let _ = builder.add(&info_exclude);
+        }
+        let built = builder.build().unwrap_or_else(|_| Gitignore::empty());
+        if let Ok(mut rules) = self.rules.write() {
+            *rules = built;
         }
     }
-    false
+
+    /// 路径是否应被忽略（git 语义 + 平台硬过滤）
+    fn should_ignore(&self, path: &Path) -> bool {
+        if path.components().any(
+            |c| matches!(c, std::path::Component::Normal(n) if n == ".git" || n == ".DS_Store"),
+        ) {
+            return true;
+        }
+        let is_dir = path.is_dir();
+        let matched = self
+            .rules
+            .read()
+            .map(|rules| rules.matched_path_or_any_parents(path, is_dir).is_ignore())
+            .unwrap_or(false);
+        matched
+    }
 }
 
 /// 解析仓库 HEAD 文件路径（分支切换检测用）。
@@ -298,18 +430,20 @@ impl WatcherManager {
 
     /// Start watching the given project directory for file changes.
     pub fn watch(&self, project_id: String, path: PathBuf, app_handle: AppHandle) {
-        let pid_for_legacy = project_id.clone();
         let app_for_diff = app_handle.clone();
-        let app_for_legacy = app_handle.clone();
 
         // 1. 创建 GitStatusWorker -- 有变化时发增量 diff 事件
         let pid_emit = project_id.clone();
+        // git-changed 全量 fallback 走 500ms 滑动窗口节流：增量 diff 仍是即时主路径
+        let git_changed_debounce =
+            GitChangedDebounceSender::new(project_id.clone(), app_handle.clone());
+        let git_changed_signal = git_changed_debounce.clone();
         let worker = GitStatusWorker::start(path.clone(), move |mut diff: GitStatusDiff| {
             diff.project_id = pid_emit.clone();
-            // 增量 diff 事件
+            // 增量 diff 事件（即时、轻量，前端直接 patch store）
             let _ = app_for_diff.emit(GIT_STATUS_DIFF_EVENT, &diff);
-            // 同时发 git-changed 作为 fallback（兼容旧监听）
-            let _ = app_for_legacy.emit(GIT_CHANGED_EVENT, &pid_for_legacy);
+            // 全量刷新 fallback：经节流器合并，静默 500ms 后才 emit 一次
+            git_changed_signal.signal();
         });
 
         // 2. 创建 ThrottleScheduler -- 合并 notify 事件，驱动 worker.check()
@@ -331,6 +465,10 @@ impl WatcherManager {
         let debounce_tx_for_notify = debounce.tx.clone();
         let tree_debounce_tx = tree_debounce.tx.clone();
         let pid_log = project_id.clone();
+        // git 语义忽略过滤器：编译 .gitignore / .git/info/exclude 规则，
+        // 与 git 自身行为一致（不再是硬编码目录名黑名单）
+        let gitignore_filter = GitIgnoreFilter::new(path.clone());
+        let gitignore_filter_for_notify = gitignore_filter.clone();
         let notify_result = RecommendedWatcher::new(
             move |result: Result<Event, notify::Error>| {
                 let event = match result {
@@ -341,11 +479,23 @@ impl WatcherManager {
                     }
                 };
 
-                // 过滤掉 .git / node_modules / target 等目录内的变更
+                // .gitignore / .git/info/exclude 自身变更时重载规则
+                // （用户编辑 .gitignore 后新规则立即生效）
+                // 注意：此检查在下方路径过滤之前执行——`.git/info/exclude` 的
+                // 变更事件虽然会被过滤出 relevant_paths，但仍需先触发 reload。
+                let rules_changed = event.paths.iter().any(|p| {
+                    let name = p.file_name().map(|n| n.to_string_lossy().to_string());
+                    matches!(name.as_deref(), Some(".gitignore") | Some("exclude"))
+                });
+                if rules_changed {
+                    gitignore_filter_for_notify.reload();
+                }
+
+                // 过滤：git 语义忽略（.gitignore 规则）+ .git/.DS_Store 平台硬过滤
                 let relevant_paths: Vec<PathBuf> = event
                     .paths
                     .iter()
-                    .filter(|p| !should_ignore_path(p))
+                    .filter(|p| !gitignore_filter_for_notify.should_ignore(p))
                     .cloned()
                     .collect();
 
@@ -385,7 +535,7 @@ impl WatcherManager {
         };
 
         // 递归监听：捕获深层文件变化（src/nested/file.rs 等）
-        // 通过 should_ignore_path 过滤掉不需要的目录
+        // 通过 git 语义忽略过滤（.gitignore 规则）滤掉不需要的目录
         if let Err(e) = watcher.watch(&path, RecursiveMode::Recursive) {
             log::warn!("[Watcher] watch error for {}: {}", path.display(), e);
             return;
@@ -398,7 +548,7 @@ impl WatcherManager {
         );
 
         // 4b. 创建 HEAD watcher -- 单独监听 .git/HEAD（分支切换），
-        // 绕过 should_ignore_path（该过滤会丢弃 .git 内事件，导致 checkout 后
+        // 绕过 git 忽略过滤（该过滤会丢弃 .git 内事件，导致 checkout 后
         // git worker 无法感知分支变化，changes 列表残留旧分支数据）
         // 同时监听 .git/worktrees 目录：linked worktree 内 checkout 会改写
         // `.git/worktrees/<name>/HEAD`，主仓库 .git/HEAD 不变，需一并捕获。
@@ -525,6 +675,8 @@ impl WatcherManager {
                     _head_watcher: head_watcher,
                     _debounce: debounce,
                     _tree_debounce: tree_debounce,
+                    _git_changed_debounce: git_changed_debounce,
+                    _gitignore: gitignore_filter,
                     stop_signal: stop,
                     _heartbeat: heartbeat,
                 },
@@ -649,5 +801,73 @@ mod tests {
             wt_head.display()
         );
         assert!(wt_head.ends_with("HEAD"));
+    }
+
+    /// 构建产物目录（dist / build / .next / out / coverage）在 .gitignore 中时
+    /// 应被忽略——过滤语义与 git 自身一致，而不是硬编码目录名黑名单。
+    #[test]
+    fn git_ignore_filter_filters_gitignored_build_output_dirs() {
+        let tmp = tempfile::tempdir().unwrap();
+        let base = tmp.path();
+        std::fs::write(
+            base.join(".gitignore"),
+            "dist/\nbuild/\n.next/\nout/\ncoverage/\n",
+        )
+        .unwrap();
+
+        let filter = GitIgnoreFilter::new(base.to_path_buf());
+        assert!(filter.should_ignore(&base.join("dist").join("foo.js")));
+        assert!(filter.should_ignore(&base.join("build").join("index.html")));
+        assert!(filter.should_ignore(&base.join(".next").join("cache.json")));
+        assert!(filter.should_ignore(&base.join("out").join("bundle.js")));
+        assert!(filter.should_ignore(&base.join("coverage").join("lcov.info")));
+
+        // 非忽略的兄弟路径仍应通过
+        assert!(!filter.should_ignore(&base.join("src").join("main.rs")));
+    }
+
+    /// 平台硬过滤：.git / .DS_Store 无论 .gitignore 内容如何都必须忽略。
+    #[test]
+    fn git_ignore_filter_always_ignores_git_meta_and_ds_store() {
+        let tmp = tempfile::tempdir().unwrap();
+        let base = tmp.path();
+        let filter = GitIgnoreFilter::new(base.to_path_buf());
+
+        assert!(filter.should_ignore(&base.join(".git").join("HEAD")));
+        assert!(filter.should_ignore(&base.join(".DS_Store")));
+    }
+
+    /// 根因修复：名为 dist / out / build 的真实源码目录（未被 .gitignore 忽略）
+    /// 不应再被硬编码黑名单误伤——git 语义过滤让它们正常产生事件。
+    #[test]
+    fn git_ignore_filter_does_not_hide_non_ignored_source_dirs() {
+        let tmp = tempfile::tempdir().unwrap();
+        let base = tmp.path();
+        // .gitignore 为空：没有任何忽略规则
+        std::fs::write(base.join(".gitignore"), "").unwrap();
+
+        let filter = GitIgnoreFilter::new(base.to_path_buf());
+        // 这些目录名过去被硬编码黑名单误过滤，现在按 git 语义不应被忽略
+        assert!(!filter.should_ignore(&base.join("dist").join("app.ts")));
+        assert!(!filter.should_ignore(&base.join("out").join("main.go")));
+        assert!(!filter.should_ignore(&base.join("build").join("CMakeLists.txt")));
+        // node_modules / target 同样只在 .gitignore 声明时忽略
+        assert!(!filter.should_ignore(&base.join("node_modules").join("react")));
+        assert!(!filter.should_ignore(&base.join("target").join("debug")));
+    }
+
+    /// 用户编辑 .gitignore 后 reload 立即生效。
+    #[test]
+    fn git_ignore_filter_reloads_after_gitignore_change() {
+        let tmp = tempfile::tempdir().unwrap();
+        let base = tmp.path();
+        std::fs::write(base.join(".gitignore"), "").unwrap();
+        let filter = GitIgnoreFilter::new(base.to_path_buf());
+        assert!(!filter.should_ignore(&base.join("dist").join("foo.js")));
+
+        // 模拟用户向 .gitignore 追加 dist/ 规则
+        std::fs::write(base.join(".gitignore"), "dist/\n").unwrap();
+        filter.reload();
+        assert!(filter.should_ignore(&base.join("dist").join("foo.js")));
     }
 }

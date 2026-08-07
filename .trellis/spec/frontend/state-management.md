@@ -308,6 +308,98 @@ useAppStore.setState({ fileTree: tree, fileViewLoading: false });
 
 ---
 
+## 场景：异步全量刷新防陈旧覆盖 (git status 竞态) 2026-08-07
+
+### 1. Scope / Trigger
+
+- Trigger：高频事件（如 `git-changed` 在 `pnpm tauri build` 期间每秒数十次触发）回调里以 fire-and-forget 调用全量刷新函数（`refreshGitFileStates`），后端响应不保证按入队顺序到达，晚到的陈旧响应覆盖新响应写入的 store 状态，文件列表的 git status 标记出现"已变更但仍显示旧状态"。
+- Scope：`src/features/git/utils/gitStatus.ts` 的 `refreshGitFileStates` 及其所有 fire-and-forget 调用方（`useSessionBootstrap` 的 `git-changed` 监听、`refreshGitInfo` 的 `changed_files` patch 路径）。
+
+### 2. Signatures
+
+```ts
+// src/features/git/utils/gitStatus.ts
+// 模块级 generation 计数器，跨调用方共享
+const refreshGenerations = new Map<string, number>();
+
+export async function refreshGitFileStates(
+  projectId: string,
+  worktreePath?: string,
+): Promise<void> {
+  const myGen = (refreshGenerations.get(projectId) ?? 0) + 1;
+  refreshGenerations.set(projectId, myGen);
+  const [changedFiles, ignoredFiles] = await Promise.all([
+    getWorktreeChangedFiles(projectId, worktreePath).catch(() => []),
+    getIgnoredFiles(projectId, worktreePath).catch(() => []),
+  ]);
+  // 写入前再读：陈旧响应直接 return
+  if (refreshGenerations.get(projectId) !== myGen) return;
+  useProjectStore.setState({ projects: nextProjects });
+}
+```
+
+### 3. Contracts
+
+1. **Generation 单调递增契约**：每次进入函数 `myGen = (prev ?? 0) + 1` 并写回 `refreshGenerations`；新调用必须使旧调用的 `myGen` 失效。
+2. **写入前再读契约**：拿到 `setState` 调用权时（无论在 `await` 前还是 `await` 后），必须 `refreshGenerations.get(projectId) === myGen`，否则放弃本次写入。
+3. **模块级共享契约**：counter 必须是模块级 `Map`（不是 hook 内 `useRef`），保证 `git-changed` 监听与显式调用走同一个 generation 域。
+4. **静默丢弃契约**：陈旧响应不抛错、不向 UI 报"陈旧"错误。
+
+### 4. Validation & Error Matrix
+
+| 场景 | 输入 | 预期 | 错误处理 |
+|------|------|------|---------|
+| 单次刷新 | 一次 `refreshGitFileStates` | generation 自增 1，正常写入 | 无 |
+| 并发 A→B，B 先 resolve | A 入队后 B 入队；B 先返回 | A 写入前发现 generation 改变，return | 无 |
+| 并发 A→B，A 先 resolve | A 写入后 B 再 resolve | B 写入前发现 generation 改变，return | 无 |
+| API reject | `getWorktreeChangedFiles` reject | 已提前 return，不进入守卫分支 | 静默忽略（保持原契约） |
+
+### 5. Good/Base/Bad Cases
+
+- Good：build 中 50 次 `git-changed` 事件只产生 1 次最终有效写入（最后一次），UI 不抖动。
+- Base：单次刷新，generation 1→2，写入正常。
+- Bad：不带 generation 守卫的 fire-and-forget，后端响应乱序到达导致 store 回退到旧 snapshot。
+
+### 6. Tests Required
+
+- `src/features/git/utils/__tests__/gitStatus.test.ts` 必须包含「并发刷新时仅最新一代的全量快照生效,陈旧请求的结果被丢弃」（或同义命名）。
+- **测试必须确定性暴露 bug**：不能用「`A` 的 `setState` 排在 `B` 之后」这种依赖 Node 微任务 FIFO 顺序的断言（`.catch()` 会为每个 promise 引入额外微任务跳，使未修复代码也碰巧通过——假 GREEN）。正确做法：让**先 `setState` 的回调主动 `resolve` 后入队的 promise**，把后者的 `setState` 强制排进下一轮微任务，确定性暴露顺序差异。
+- **回归验证**：提交前临时删除 `refreshGenerations` 守卫，测试必须 RED（最后写入非最新代）；恢复守卫后 GREEN。
+
+### 7. Wrong vs Correct
+
+#### Wrong
+
+```ts
+// 每次调用独立 setState，后到达的响应覆盖先到达的
+export async function refreshGitFileStates(projectId: string) {
+  const [changed, ignored] = await Promise.all([
+    getWorktreeChangedFiles(projectId).catch(() => []),
+    getIgnoredFiles(projectId).catch(() => []),
+  ]);
+  useProjectStore.setState({ projects: nextProjects });
+}
+```
+
+#### Correct
+
+```ts
+const refreshGenerations = new Map<string, number>();
+
+export async function refreshGitFileStates(projectId: string) {
+  const myGen = (refreshGenerations.get(projectId) ?? 0) + 1;
+  refreshGenerations.set(projectId, myGen);
+  const [changed, ignored] = await Promise.all([
+    getWorktreeChangedFiles(projectId).catch(() => []),
+    getIgnoredFiles(projectId).catch(() => []),
+  ]);
+  if (refreshGenerations.get(projectId) !== myGen) return;  // 陈旧响应丢弃
+  useProjectStore.setState({ projects: nextProjects });
+}
+```
+
+---
+
 ## 场景：跨域共用切片 + 复合 key 2026-05-18
 
 ### 1. Scope / Trigger

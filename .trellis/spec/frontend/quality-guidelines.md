@@ -160,6 +160,16 @@ const projects = await listProjects();
 
 ESLint 的 `no-restricted-imports` 规则会检测并报 error 拦截违反此约定的导入。
 
+### 6. 异步竞态测试依赖微任务顺序（假 GREEN）
+
+依赖「`A` 的 setState 排在 `B` 之后」这种微任务 FIFO 顺序来断言竞态保护，**不构成有效 RED 测试**。
+
+**陷阱**：`await Promise.all([...]).catch(...)` 或 `Promise.allSettled` 链中，`.catch()` / `.finally()` 为每个 promise 引入额外微任务跳，使未修复代码的 setState 顺序在 V8/Node 下碰巧与有修复时一致——测试在 unfixed 代码上**也通过**，无法暴露 bug。
+
+**正确做法**：让**先 `setState` 的回调主动 `resolve` 后入队的 promise**，把后者的 setState 强制排进下一轮微任务，确定性暴露顺序差异。
+
+**回归验证**：提交前临时删除被测守卫（generation 计数器 / 锁 / AbortController），测试必须 RED；恢复后 GREEN。
+
 ---
 
 ## 必需模式
