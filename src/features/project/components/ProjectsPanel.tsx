@@ -217,7 +217,7 @@ const ProjectsPanel: React.FC = () => {
 
   return (
     <>
-      <div className="flex flex-col flex-1">
+      <div className="flex flex-col h-full overflow-y-auto">
         {isEmpty ? (
           <div className="no-projects p-5 text-center text-text-muted text-[0.86em]">
             No projects added
