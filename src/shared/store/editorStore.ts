@@ -356,6 +356,29 @@ export const useEditorStore = create<EditorStoreState>((set) => ({
         if (layout.groups.right.tabIds.includes(tabId)) groupId = 'right';
 
         const updatedGroupIds = layout.groups[groupId].tabIds.filter((id) => id !== tabId);
+        const groupWasActive = layout.groups[groupId].activeTabId === tabId;
+        let groupNewActiveId = layout.groups[groupId].activeTabId;
+
+        if (groupWasActive) {
+          if (updatedGroupIds.length === 0) {
+            groupNewActiveId = null;
+          } else {
+            const oldIdx = layout.groups[groupId].tabIds.indexOf(tabId);
+            const prev = oldIdx > 0 ? layout.groups[groupId].tabIds[oldIdx - 1] : null;
+            const next =
+              oldIdx < layout.groups[groupId].tabIds.length - 1
+                ? layout.groups[groupId].tabIds[oldIdx + 1]
+                : null;
+            if (prev && updatedGroupIds.includes(prev)) {
+              groupNewActiveId = prev;
+            } else if (next && updatedGroupIds.includes(next)) {
+              groupNewActiveId = next;
+            } else {
+              groupNewActiveId = updatedGroupIds[updatedGroupIds.length - 1];
+            }
+          }
+        }
+
         let newLayout: EditorSplitLayout = {
           ...layout,
           groups: {
@@ -363,12 +386,7 @@ export const useEditorStore = create<EditorStoreState>((set) => ({
             [groupId]: {
               ...layout.groups[groupId],
               tabIds: updatedGroupIds,
-              activeTabId:
-                layout.groups[groupId].activeTabId === tabId
-                  ? updatedGroupIds.length > 0
-                    ? newActiveId
-                    : null
-                  : layout.groups[groupId].activeTabId,
+              activeTabId: groupNewActiveId,
             },
           },
         };
