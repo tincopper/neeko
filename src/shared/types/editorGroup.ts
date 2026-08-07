@@ -14,7 +14,10 @@ export interface EditorSplitLayout {
     left: EditorGroupState;
     right: EditorGroupState;
   };
-  pinnedTabId: string | null;
+  /** 已 pin 的 tab 列表（有序，多个）。 */
+  pinnedTabIds: string[];
+  /** pinned 面板当前激活的 tab id。 */
+  pinnedActiveTabId: string | null;
   pinnedPanelRatio: number;
 }
 
@@ -27,7 +30,8 @@ export function createDefaultEditorLayout(): EditorSplitLayout {
       left: { tabIds: [], activeTabId: null },
       right: { tabIds: [], activeTabId: null },
     },
-    pinnedTabId: null,
+    pinnedTabIds: [],
+    pinnedActiveTabId: null,
     pinnedPanelRatio: 0.35,
   };
 }

@@ -4,7 +4,7 @@
 
 export interface CycleTabLayoutSlice {
   activeGroupId?: 'left' | 'right';
-  pinnedTabId?: string | null;
+  pinnedTabIds?: string[];
   groups?: {
     left?: { tabIds?: string[]; activeTabId?: string | null };
     right?: { tabIds?: string[]; activeTabId?: string | null };
@@ -33,7 +33,7 @@ export function resolveNextTabId(opts: {
     const assigned = new Set([
       ...(layout.groups.left?.tabIds ?? []),
       ...(layout.groups.right?.tabIds ?? []),
-      ...(layout.pinnedTabId ? [layout.pinnedTabId] : []),
+      ...(layout.pinnedTabIds ?? []),
     ]);
     for (const id of tabIds) {
       if (!assigned.has(id) && !orderedIds.includes(id)) {

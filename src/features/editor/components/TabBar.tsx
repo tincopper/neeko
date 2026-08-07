@@ -21,8 +21,8 @@ import TabItem from './TabItem';
 interface TabBarProps {
   tabs: Tab[];
   activeTabId: string | null;
-  /** The id of the currently-pinned tab, if any. Used to render the pin indicator. */
-  pinnedTabId?: string | null;
+  /** 已 pin 的 tab id 列表（pinned 面板内多个）。用于渲染 Pin 指示。 */
+  pinnedTabIds?: string[];
   onActivateTab: (tabId: string) => void;
   onCloseTab: (tabId: string) => void;
   onAddTerminalTab?: () => void;
@@ -37,6 +37,11 @@ interface TabBarProps {
   /** 启用拖拽排序 */
   reorderable?: boolean;
   onReorderTab?: (tabId: string, overId: string) => void;
+  /**
+   * 外部已提供共享 DndContext（跨面板拖拽场景）。为 true 时 TabBar 不自建
+   * DndContext，仅渲染 SortableContext，依赖编辑布局层的共享 DndContext。
+   */
+  externalDnd?: boolean;
   // Agent Bar 相关（仅终端 tab 时显示）
   agents?: AgentConfig[];
   showAgentBar?: boolean;
@@ -81,7 +86,7 @@ const TabBar: React.FC<TabBarProps> = React.memo(
   ({
     tabs,
     activeTabId,
-    pinnedTabId = null,
+    pinnedTabIds = [],
     onActivateTab,
     onCloseTab,
     onAddTerminalTab,
@@ -90,6 +95,7 @@ const TabBar: React.FC<TabBarProps> = React.memo(
     onNewFileTab,
     reorderable = false,
     onReorderTab,
+    externalDnd = false,
     agents = [],
     showAgentBar = false,
     onAgentClick,
@@ -161,27 +167,36 @@ const TabBar: React.FC<TabBarProps> = React.memo(
 
     const renderTabs = () => {
       if (reorderable && tabs.length > 1) {
+        const sortableContent = (
+          <SortableContext items={tabItems} strategy={horizontalListSortingStrategy}>
+            {tabs.map((tab) => (
+              <TabItem
+                key={tab.id}
+                tab={tab}
+                isActive={tab.id === activeTabId}
+                isPinned={pinnedTabIds.includes(tab.id)}
+                reorderable
+                onActivate={onActivateTab}
+                onClose={onCloseTab}
+                onContextMenu={onContextMenu}
+                renderLeading={renderTabLeading}
+              />
+            ))}
+          </SortableContext>
+        );
+
+        // 外部共享 DndContext 场景：不自建，直接渲染 SortableContext。
+        if (externalDnd) {
+          return sortableContent;
+        }
+
         return (
           <DndContext
             sensors={sensors}
             collisionDetection={closestCenter}
             onDragEnd={handleDragEnd}
           >
-            <SortableContext items={tabItems} strategy={horizontalListSortingStrategy}>
-              {tabs.map((tab) => (
-                <TabItem
-                  key={tab.id}
-                  tab={tab}
-                  isActive={tab.id === activeTabId}
-                  isPinned={tab.id === pinnedTabId}
-                  reorderable
-                  onActivate={onActivateTab}
-                  onClose={onCloseTab}
-                  onContextMenu={onContextMenu}
-                  renderLeading={renderTabLeading}
-                />
-              ))}
-            </SortableContext>
+            {sortableContent}
           </DndContext>
         );
       }
@@ -191,7 +206,7 @@ const TabBar: React.FC<TabBarProps> = React.memo(
           key={tab.id}
           tab={tab}
           isActive={tab.id === activeTabId}
-          isPinned={tab.id === pinnedTabId}
+          isPinned={pinnedTabIds.includes(tab.id)}
           onActivate={onActivateTab}
           onClose={onCloseTab}
           onContextMenu={onContextMenu}

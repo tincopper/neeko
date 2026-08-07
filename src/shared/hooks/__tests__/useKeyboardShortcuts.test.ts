@@ -435,7 +435,8 @@ describe('useKeyboardShortcuts', () => {
           isSplit: false,
           ratio: 0.5,
           activeGroupId: 'left',
-          pinnedTabId: null,
+          pinnedTabIds: [],
+          pinnedActiveTabId: null,
           pinnedPanelRatio: 0.35,
           groups: {
             left: { tabIds: ['t0', 't1'], activeTabId: 't1' },

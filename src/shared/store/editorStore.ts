@@ -151,27 +151,13 @@ function mergeTabData(data: TabData, partial: Partial<TabData>): TabData {
   }
 }
 
-function clearPreviousPin(
-  layout: EditorSplitLayout,
-  prevPinnedId: string | null,
-  newTabId: string,
-): EditorSplitLayout {
-  if (!prevPinnedId || prevPinnedId === newTabId) return layout;
-  const leftIds = [prevPinnedId, ...layout.groups.left.tabIds.filter((id) => id !== prevPinnedId)];
-  return {
-    ...layout,
-    pinnedTabId: null,
-    groups: {
-      ...layout.groups,
-      left: {
-        tabIds: leftIds,
-        activeTabId: layout.groups.left.activeTabId ?? prevPinnedId,
-      },
-    },
-  };
-}
-
+/**
+ * 把 tab 从 left/right 组移除并追加到 pinnedTabIds 末尾（多 pinned tabs 语义）。
+ * 幂等：tab 已在 pinned 列表时直接返回原 layout。
+ */
 function applyPin(layout: EditorSplitLayout, tabId: string): EditorSplitLayout {
+  if (layout.pinnedTabIds.includes(tabId)) return layout;
+
   const newLeftIds = layout.groups.left.tabIds.filter((id) => id !== tabId);
   const newRightIds = layout.groups.right.tabIds.filter((id) => id !== tabId);
   const stillSplit = layout.isSplit && newRightIds.length > 0;
@@ -180,7 +166,8 @@ function applyPin(layout: EditorSplitLayout, tabId: string): EditorSplitLayout {
     ...layout,
     isSplit: stillSplit,
     activeGroupId: stillSplit ? layout.activeGroupId : 'left',
-    pinnedTabId: tabId,
+    pinnedTabIds: [...layout.pinnedTabIds, tabId],
+    pinnedActiveTabId: tabId,
     groups: {
       left: {
         tabIds: newLeftIds,
@@ -238,7 +225,7 @@ interface EditorStoreState {
   reorderTab: (tabKey: string, groupId: EditorGroupId, tabId: string, overId: string) => void;
 
   pinTab: (tabKey: string, tabId: string) => void;
-  unpinTab: (tabKey: string) => void;
+  unpinTab: (tabKey: string, tabId: string) => void;
   setPinnedPanelRatio: (tabKey: string, ratio: number) => void;
 
   setCursorPosition: (pos: { line: number; col: number } | null) => void;
@@ -317,7 +304,7 @@ export const useEditorStore = create<EditorStoreState>((set) => ({
       const idx = existing.tabs.findIndex((t) => t.id === tabId);
       if (idx === -1) return state;
 
-      if (state.editorLayout[projectId]?.pinnedTabId === tabId) return state;
+      if (state.editorLayout[projectId]?.pinnedTabIds.includes(tabId)) return state;
 
       const remaining = existing.tabs.filter((t) => t.id !== tabId);
       let newActiveId: string | null = existing.activeTabId;
@@ -444,23 +431,34 @@ export const useEditorStore = create<EditorStoreState>((set) => ({
       let newEditorLayout = state.editorLayout;
       const layout = state.editorLayout[projectId];
       if (layout) {
-        let groupId: EditorGroupId = layout.activeGroupId;
-        if (layout.groups.right.tabIds.includes(tabId)) groupId = 'right';
-        else if (layout.groups.left.tabIds.includes(tabId)) groupId = 'left';
-        newEditorLayout = {
-          ...state.editorLayout,
-          [projectId]: {
-            ...layout,
-            activeGroupId: groupId,
-            groups: {
-              ...layout.groups,
-              [groupId]: {
-                ...layout.groups[groupId],
-                activeTabId: tabId,
+        // pinned tab 激活：只更新 pinned 面板激活状态，不把 tab 加入 left/right 组
+        if (layout.pinnedTabIds.includes(tabId)) {
+          newEditorLayout = {
+            ...state.editorLayout,
+            [projectId]: {
+              ...layout,
+              pinnedActiveTabId: tabId,
+            },
+          };
+        } else {
+          let groupId: EditorGroupId = layout.activeGroupId;
+          if (layout.groups.right.tabIds.includes(tabId)) groupId = 'right';
+          else if (layout.groups.left.tabIds.includes(tabId)) groupId = 'left';
+          newEditorLayout = {
+            ...state.editorLayout,
+            [projectId]: {
+              ...layout,
+              activeGroupId: groupId,
+              groups: {
+                ...layout.groups,
+                [groupId]: {
+                  ...layout.groups[groupId],
+                  activeTabId: tabId,
+                },
               },
             },
-          },
-        };
+          };
+        }
       }
 
       // Notify listeners after state is applied (MRU / recent files).
@@ -758,30 +756,33 @@ export const useEditorStore = create<EditorStoreState>((set) => ({
         projectTabs.activeTabId,
       );
 
-      const newLayout = applyPin(clearPreviousPin(layout, layout.pinnedTabId, tabId), tabId);
+      const newLayout = applyPin(layout, tabId);
 
       return {
         editorLayout: { ...state.editorLayout, [tabKey]: newLayout },
       };
     }),
 
-  unpinTab: (tabKey) =>
+  unpinTab: (tabKey, tabId) =>
     set((state) => {
       const layout = state.editorLayout[tabKey];
-      if (!layout || !layout.pinnedTabId) return state;
+      if (!layout || !layout.pinnedTabIds.includes(tabId)) return state;
 
-      const pinnedId = layout.pinnedTabId;
-
-      const leftIds = [pinnedId, ...layout.groups.left.tabIds.filter((id) => id !== pinnedId)];
+      const remainingPinned = layout.pinnedTabIds.filter((id) => id !== tabId);
+      const leftIds = [tabId, ...layout.groups.left.tabIds.filter((id) => id !== tabId)];
 
       const newLayout: EditorSplitLayout = {
         ...layout,
-        pinnedTabId: null,
+        pinnedTabIds: remainingPinned,
+        pinnedActiveTabId:
+          layout.pinnedActiveTabId === tabId
+            ? (remainingPinned[0] ?? null)
+            : layout.pinnedActiveTabId,
         groups: {
           ...layout.groups,
           left: {
             tabIds: leftIds,
-            activeTabId: layout.groups.left.activeTabId ?? pinnedId,
+            activeTabId: layout.groups.left.activeTabId ?? tabId,
           },
         },
       };

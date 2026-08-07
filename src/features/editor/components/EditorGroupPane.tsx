@@ -1,3 +1,4 @@
+import { useDroppable } from '@dnd-kit/core';
 import React, { useCallback, useMemo, useState, useRef, useEffect } from 'react';
 
 import { getActionMenuItems } from '@/features/action-menu/actionRegistry';
@@ -26,6 +27,7 @@ import type { Tab } from '@/shared/types/tab';
 import { createUntitledFileTab } from '@/shared/utils/createUntitledFileTab';
 import { buildDiffSource } from '@/shared/utils/diffSource';
 
+import { PINNED_DROP_PREFIX } from '../dragDrop';
 import { useEditorGroupLayout } from '../hooks/useEditorGroupLayout';
 
 import AgentBar from './AgentBar';
@@ -74,7 +76,8 @@ function EditorGroupPane({
     rightTabs,
     leftActiveTabId,
     rightActiveTabId,
-    pinnedTab,
+    pinnedTabs,
+    pinnedActiveTab,
     activeGroupId,
     splitRight: onSplitRight,
     moveToRight: onMoveToRight,
@@ -85,19 +88,28 @@ function EditorGroupPane({
     unpinTab,
   } = layoutState;
 
+  // pinned 面板作为跨面板拖拽的 drop target：命中即触发 pin。
+  // droppable id 按 groupId 唯一（dnd-kit 注册表以 id 为 key、后注册覆盖先注册，
+  // 若三面板共用同一 id，left/right 的 disabled 注册会覆盖 pinned 的启用注册）。
+  // 仅 groupId === 'pinned' 时启用并挂载 ref，其余面板 disabled 且无节点。
+  const { setNodeRef: setPinnedPanelDropRef } = useDroppable({
+    id: `${PINNED_DROP_PREFIX}:${tabKey}:${groupId}`,
+    disabled: groupId !== 'pinned',
+  });
+
   // Build context menu extras inline based on groupId
   const resolveContextMenuExtras = useCallback(
     (tabId: string): ContextMenuItem[] => {
       if (groupId === 'pinned') {
-        return [{ label: 'Unpin Tab', action: () => unpinTab() }];
+        return [{ label: 'Unpin Tab', action: () => unpinTab(tabId) }];
       }
-      const isPinnedTab = tabId === layoutState.pinnedTab?.id;
+      const isPinnedTab = layoutState.pinnedTabs.some((t) => t.id === tabId);
       if (isPinnedTab) {
-        return [{ label: 'Unpin Tab', action: () => unpinTab() }];
+        return [{ label: 'Unpin Tab', action: () => unpinTab(tabId) }];
       }
       return [{ label: 'Pin Tab', action: () => pinTab(tabId) }];
     },
-    [groupId, layoutState.pinnedTab?.id, pinTab, unpinTab],
+    [groupId, layoutState.pinnedTabs, pinTab, unpinTab],
   );
 
   const contextMenuExtras = resolveContextMenuExtras;
@@ -106,16 +118,16 @@ function EditorGroupPane({
   const tabs = useMemo(() => {
     if (groupId === 'left') return leftTabs;
     if (groupId === 'right') return rightTabs;
-    if (groupId === 'pinned') return pinnedTab ? [pinnedTab] : [];
+    if (groupId === 'pinned') return pinnedTabs;
     return [];
-  }, [groupId, leftTabs, rightTabs, pinnedTab]);
+  }, [groupId, leftTabs, rightTabs, pinnedTabs]);
 
   const activeTabId = useMemo(() => {
     if (groupId === 'left') return leftActiveTabId;
     if (groupId === 'right') return rightActiveTabId;
-    if (groupId === 'pinned') return pinnedTab?.id ?? null;
+    if (groupId === 'pinned') return pinnedActiveTab?.id ?? null;
     return null;
-  }, [groupId, leftActiveTabId, rightActiveTabId, pinnedTab]);
+  }, [groupId, leftActiveTabId, rightActiveTabId, pinnedActiveTab]);
 
   const handleActivateTab = useCallback(
     (tabId: string) => {
@@ -410,6 +422,7 @@ function EditorGroupPane({
       <div
         role="region"
         tabIndex={-1}
+        ref={groupId === 'pinned' ? setPinnedPanelDropRef : undefined}
         className={cn(
           'flex-1 flex flex-col overflow-hidden min-h-0',
           activeGroupId === groupId ? 'ring-1 ring-[var(--border-color)]/30' : '',
@@ -431,7 +444,7 @@ function EditorGroupPane({
                 <TabBar
                   tabs={tabs}
                   activeTabId={activeTabId}
-                  pinnedTabId={pinnedTab?.id ?? null}
+                  pinnedTabIds={pinnedTabs.map((t) => t.id)}
                   onActivateTab={handleActivateTab}
                   onCloseTab={handleCloseTab}
                   onAddTerminalTab={onAddTerminalTab}
@@ -440,6 +453,7 @@ function EditorGroupPane({
                   onNewFileTab={handleNewFileTab}
                   reorderable={groupId !== 'pinned'}
                   onReorderTab={handleReorderTab}
+                  externalDnd={groupId !== 'pinned'}
                   agents={installedEnabledAgents}
                   renderTabLeading={renderTabLeading}
                 />

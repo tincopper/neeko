@@ -25,10 +25,12 @@ export interface EditorGroupLayoutResult {
   activateTabInGroup: (tabId: string) => void;
   getTabGroupId: (tabId: string) => EditorGroupId | null;
   // ── Pin ──
-  pinnedTab: Tab | null;
+  pinnedTabs: Tab[];
+  pinnedActiveTabId: string | null;
+  pinnedActiveTab: Tab | null;
   pinnedPanelRatio: number;
   pinTab: (tabId: string) => void;
-  unpinTab: () => void;
+  unpinTab: (tabId: string) => void;
   setPinnedPanelRatio: (ratio: number) => void;
   closeOtherTabs: (keepTabId: string) => void;
   closeAllTabs: () => void;
@@ -103,18 +105,26 @@ export function useEditorGroupLayout(tabKey: string): EditorGroupLayoutResult {
 
   const pinTab = useCallback((tabId: string) => storePinTab(tabKey, tabId), [storePinTab, tabKey]);
 
-  const unpinTab = useCallback(() => storeUnpinTab(tabKey), [storeUnpinTab, tabKey]);
+  const unpinTab = useCallback(
+    (tabId: string) => storeUnpinTab(tabKey, tabId),
+    [storeUnpinTab, tabKey],
+  );
 
   const setPinnedPanelRatio = useCallback(
     (ratio: number) => storeSetPinnedPanelRatio(tabKey, ratio),
     [storeSetPinnedPanelRatio, tabKey],
   );
 
-  const pinnedTab = useMemo(() => {
-    const pinnedId = layout.pinnedTabId;
+  const pinnedTabs = useMemo(
+    () => layout.pinnedTabIds.map((id) => tabsById.get(id)).filter(Boolean) as Tab[],
+    [layout.pinnedTabIds, tabsById],
+  );
+
+  const pinnedActiveTab = useMemo(() => {
+    const pinnedId = layout.pinnedActiveTabId;
     if (!pinnedId) return null;
     return tabsById.get(pinnedId) ?? null;
-  }, [layout.pinnedTabId, tabsById]);
+  }, [layout.pinnedActiveTabId, tabsById]);
 
   const pinnedPanelRatio = layout.pinnedPanelRatio ?? 0.35;
 
@@ -152,7 +162,9 @@ export function useEditorGroupLayout(tabKey: string): EditorGroupLayoutResult {
     setSplitRatio,
     activateTabInGroup,
     getTabGroupId,
-    pinnedTab,
+    pinnedTabs,
+    pinnedActiveTabId: layout.pinnedActiveTabId,
+    pinnedActiveTab,
     pinnedPanelRatio,
     pinTab,
     unpinTab,

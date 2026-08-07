@@ -1,8 +1,10 @@
+import { DndContext } from '@dnd-kit/core';
 import React, { useCallback, useEffect, useMemo, useRef } from 'react';
 
 import type { AuthMethod } from '@/shared/types';
 import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from '@/ui/Resizable';
 
+import { useEditorDnd } from '../hooks/useEditorDnd';
 import { useEditorGroupLayout } from '../hooks/useEditorGroupLayout';
 
 import EditorGroupPane from './EditorGroupPane';
@@ -35,11 +37,13 @@ function EditorGroupLayout({
     layout,
     isSplit,
     leftTabs,
+    rightTabs,
     leftActiveTabId,
     rightActiveTabId,
     setActiveGroup,
     setSplitRatio,
-    pinnedTab,
+    pinnedTabs,
+    pinnedActiveTab,
     pinnedPanelRatio,
     setPinnedPanelRatio,
   } = useEditorGroupLayout(tabKey);
@@ -49,8 +53,17 @@ function EditorGroupLayout({
   const leftPanelId = `left-${tabKey}`;
   const rightPanelId = `right-${tabKey}`;
 
+  // ── 共享 DndContext（multi-container 模式）──
+  // sensors / pinned droppable id / 碰撞检测 / dragEnd 分发收敛在
+  // useEditorDnd hook 内，组件保持薄；判定纯逻辑在 dragDrop.ts 可独立单测。
+  const { sensors, collisionDetection, handleDragEnd } = useEditorDnd({
+    tabKey,
+    leftTabs,
+    rightTabs,
+  });
+
   // ── defaultLayout: computed via useMemo, never mutated ──
-  const hasPinned = !!pinnedTab;
+  const hasPinned = pinnedTabs.length > 0;
   const groupKey = `${hasPinned ? 'p' : ''}${isSplit ? 's' : ''}-${tabKey}`;
 
   const defaultLayout = useMemo(() => {
@@ -140,11 +153,12 @@ function EditorGroupLayout({
   // Layout IDs used by EditorGroupPane internals
   const leftLayoutId = buildLayoutId('left', leftActiveTabId);
   const rightLayoutId = buildLayoutId('right', rightActiveTabId);
-  const pinnedLayoutId = buildLayoutId('pinned', pinnedTab?.id ?? null);
+  const pinnedLayoutId = buildLayoutId('pinned', pinnedActiveTab?.id ?? null);
 
   // ── Case A: no pin, no split — no ResizablePanelGroup needed ──
+  let content: React.ReactNode;
   if (!hasPinned && !isSplit) {
-    return (
+    content = (
       <EditorGroupPane
         tabKey={tabKey}
         onAddTerminalTab={onAddTerminalTab}
@@ -154,12 +168,10 @@ function EditorGroupLayout({
         layoutId={leftLayoutId}
       />
     );
-  }
-
-  // ── Case A2: pin only, no other tabs — pin pane fills the entire area ──
-  // Avoids rendering an empty left panel beside the pinned panel.
-  if (hasPinned && !isSplit && leftTabs.length === 0) {
-    return (
+  } else if (hasPinned && !isSplit && leftTabs.length === 0) {
+    // ── Case A2: pin only, no other tabs — pin pane fills the entire area ──
+    // Avoids rendering an empty left panel beside the pinned panel.
+    content = (
       <EditorGroupPane
         tabKey={tabKey}
         onAddTerminalTab={undefined}
@@ -169,82 +181,89 @@ function EditorGroupLayout({
         layoutId={pinnedLayoutId}
       />
     );
+  } else {
+    // ── Cases B / C / D — single ResizablePanelGroup, 2 or 3 panels ──
+    content = (
+      <ResizablePanelGroup
+        key={groupKey}
+        orientation="horizontal"
+        id={`editor-group-${tabKey}`}
+        defaultLayout={defaultLayout}
+        onLayoutChanged={handleLayoutChange}
+        className="flex-1 rounded-lg overflow-hidden bg-bg-primary"
+      >
+        {/* ── Pinned panel (leftmost, Cases B & C) ── */}
+        {hasPinned && (
+          <>
+            <ResizablePanel id={pinnedPanelId} minSize={10} className="py-0.5 pr-0.5 min-w-0">
+              <div className="flex-1 flex flex-col overflow-hidden min-w-0 rounded-lg shadow-sm bg-bg-secondary">
+                <EditorGroupPane
+                  tabKey={tabKey}
+                  onAddTerminalTab={undefined}
+                  remoteProject={remoteProject}
+                  groupId="pinned"
+                  onFocusGroup={() => {}}
+                  layoutId={pinnedLayoutId}
+                />
+              </div>
+            </ResizablePanel>
+            <ResizableHandle id={`pin-handle-${tabKey}`} />
+          </>
+        )}
+
+        {/* ── Left panel (always present in Cases B / C / D) ── */}
+        <ResizablePanel
+          id={leftPanelId}
+          minSize={10}
+          className="py-0.5 min-w-0"
+          // Add right padding only when there's no right panel
+          style={
+            isSplit
+              ? { paddingRight: '2px' }
+              : hasPinned
+                ? { paddingLeft: '2px' }
+                : { paddingLeft: '2px' }
+          }
+        >
+          <div className="flex-1 flex flex-col overflow-hidden min-w-0 rounded-lg shadow-sm bg-bg-secondary">
+            <EditorGroupPane
+              tabKey={tabKey}
+              onAddTerminalTab={onAddTerminalTab}
+              remoteProject={remoteProject}
+              groupId="left"
+              onFocusGroup={() => setActiveGroup('left')}
+              layoutId={leftLayoutId}
+            />
+          </div>
+        </ResizablePanel>
+
+        {/* ── Right panel (Cases C & D) ── */}
+        {isSplit && (
+          <>
+            <ResizableHandle id={`split-handle-${tabKey}`} />
+            <ResizablePanel id={rightPanelId} minSize={10} className="py-0.5 pl-0.5 min-w-0">
+              <div className="flex-1 flex flex-col overflow-hidden min-w-0 rounded-lg shadow-sm bg-bg-secondary">
+                <EditorGroupPane
+                  tabKey={tabKey}
+                  onAddTerminalTab={onAddTerminalTab}
+                  remoteProject={remoteProject}
+                  groupId="right"
+                  onFocusGroup={() => setActiveGroup('right')}
+                  layoutId={rightLayoutId}
+                />
+              </div>
+            </ResizablePanel>
+          </>
+        )}
+      </ResizablePanelGroup>
+    );
   }
 
-  // ── Cases B / C / D — single ResizablePanelGroup, 2 or 3 panels ──
+  // 共享 DndContext 包裹所有面板：left/right/pinned 在同一碰撞检测体系内。
   return (
-    <ResizablePanelGroup
-      key={groupKey}
-      orientation="horizontal"
-      id={`editor-group-${tabKey}`}
-      defaultLayout={defaultLayout}
-      onLayoutChanged={handleLayoutChange}
-      className="flex-1 rounded-lg overflow-hidden bg-bg-primary"
-    >
-      {/* ── Pinned panel (leftmost, Cases B & C) ── */}
-      {hasPinned && (
-        <>
-          <ResizablePanel id={pinnedPanelId} minSize={10} className="py-0.5 pr-0.5 min-w-0">
-            <div className="flex-1 flex flex-col overflow-hidden min-w-0 rounded-lg shadow-sm bg-bg-secondary">
-              <EditorGroupPane
-                tabKey={tabKey}
-                onAddTerminalTab={undefined}
-                remoteProject={remoteProject}
-                groupId="pinned"
-                onFocusGroup={() => {}}
-                layoutId={pinnedLayoutId}
-              />
-            </div>
-          </ResizablePanel>
-          <ResizableHandle id={`pin-handle-${tabKey}`} />
-        </>
-      )}
-
-      {/* ── Left panel (always present in Cases B / C / D) ── */}
-      <ResizablePanel
-        id={leftPanelId}
-        minSize={10}
-        className="py-0.5 min-w-0"
-        // Add right padding only when there's no right panel
-        style={
-          isSplit
-            ? { paddingRight: '2px' }
-            : hasPinned
-              ? { paddingLeft: '2px' }
-              : { paddingLeft: '2px' }
-        }
-      >
-        <div className="flex-1 flex flex-col overflow-hidden min-w-0 rounded-lg shadow-sm bg-bg-secondary">
-          <EditorGroupPane
-            tabKey={tabKey}
-            onAddTerminalTab={onAddTerminalTab}
-            remoteProject={remoteProject}
-            groupId="left"
-            onFocusGroup={() => setActiveGroup('left')}
-            layoutId={leftLayoutId}
-          />
-        </div>
-      </ResizablePanel>
-
-      {/* ── Right panel (Cases C & D) ── */}
-      {isSplit && (
-        <>
-          <ResizableHandle id={`split-handle-${tabKey}`} />
-          <ResizablePanel id={rightPanelId} minSize={10} className="py-0.5 pl-0.5 min-w-0">
-            <div className="flex-1 flex flex-col overflow-hidden min-w-0 rounded-lg shadow-sm bg-bg-secondary">
-              <EditorGroupPane
-                tabKey={tabKey}
-                onAddTerminalTab={onAddTerminalTab}
-                remoteProject={remoteProject}
-                groupId="right"
-                onFocusGroup={() => setActiveGroup('right')}
-                layoutId={rightLayoutId}
-              />
-            </div>
-          </ResizablePanel>
-        </>
-      )}
-    </ResizablePanelGroup>
+    <DndContext sensors={sensors} collisionDetection={collisionDetection} onDragEnd={handleDragEnd}>
+      {content}
+    </DndContext>
   );
 }
 
