@@ -137,3 +137,37 @@
 ### Next Steps
 
 - None - task complete
+
+
+## Session 122: fix: reap detached process trees on PTY close (cmd+w agent leak)
+
+**Date**: 2026-08-07
+**Task**: fix: reap detached process trees on PTY close (cmd+w agent leak)
+**Branch**: `main`
+
+### Summary
+
+新增 Unix 进程树收割器 process_reaper.rs（macOS libproc / Linux procfs），close_pty_handle 先快照后杀 shell 再收割脱离 setsid 的孤儿进程；发现并修复快照时序缺陷（shell reap 后 ppid 链断裂致收割失效），补回归测试；cargo check / clippy -D warnings / 全量 79 tests 通过；任务已归档至 archive/2026-08/
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `ba5b0b93` | (see git log) |
+| `7a6930ec` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

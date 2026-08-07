@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-3.md`
-- **Total Sessions**: 121
+- **Total Sessions**: 122
 - **Last Active**: 2026-08-07
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-3.md` | ~139 | Active |
+| `journal-3.md` | ~173 | Active |
 | `journal-2.md` | ~1991 | Archived |
 | `journal-1.md` | ~1986 | Archived |
 <!-- @@@/auto:active-documents -->
@@ -31,6 +31,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 122 | 2026-08-07 | fix: reap detached process trees on PTY close (cmd+w agent leak) | `ba5b0b93`, `7a6930ec` | `main` |
 | 121 | 2026-08-07 | 修复 build 后 Cmd+W 关闭 tab 失效与 Agent 进程残留 | `638fceaf` | `main` |
 | 120 | 2026-08-06 | 浏览器模块审查修复(browser-module-audit-fixes) | `f73762ac` | `main` |
 | 119 | 2026-08-06 | 浏览器按项目隔离 + dock 切换决策 | `4a84fd53` | `main` |
