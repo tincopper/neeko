@@ -16,6 +16,7 @@ import { TaskConsolePanel } from '@/features/task';
 import TaskRunButton from '@/features/task/components/TaskRunButton';
 import { AppLayout, DockRegistryProvider, TitleBar } from '@/layout';
 import { cn } from '@/lib/utils';
+import { useMenuPaste } from '@/shared/hooks/useMenuPaste';
 import { useAppViewStore } from '@/shared/store/appViewStore';
 import { useDockStore } from '@/shared/store/dockStore';
 
@@ -28,6 +29,8 @@ const LazyLibraryPanel = lazy(() =>
 );
 
 function App() {
+  useMenuPaste();
+
   const { initializing, appProvidersProps, appLayoutProps, appModalsProps } = useAppShell();
 
   const appView = useAppViewStore((s) => s.appView);

@@ -1,10 +1,9 @@
-//! Tauri application setup, menu, and window event handling.
+//! Tauri application setup and window event handling.
 
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
-use tauri::menu::{MenuBuilder, MenuItemBuilder, SubmenuBuilder};
-use tauri::{Emitter, Manager};
+use tauri::Manager;
 
 use crate::app_state::AppStateWrapper;
 use crate::common::agent::types::AgentConfig;
@@ -42,6 +41,7 @@ pub fn run() {
 
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_clipboard_manager::init())
         .register_uri_scheme_protocol("neeko", crate::browser::uri_scheme::create_handler())
         .manage(library_store.clone())
         .manage(AppStateWrapper::new_with_library_store(library_store))
@@ -213,22 +213,10 @@ pub fn run() {
             }
             Ok(())
         })
-        .menu(|handle| {
-            let close_tab = MenuItemBuilder::with_id("close_tab", "Close Tab")
-                .accelerator("CmdOrCtrl+W")
-                .build(handle)?;
-            let file = SubmenuBuilder::new(handle, "File")
-                .item(&close_tab)
-                .build()?;
-            MenuBuilder::new(handle).item(&file).build()
-        })
+        .menu(crate::app_menu::build_menu)
         .on_menu_event(move |app, event| {
-            if event.id().0 == "close_tab" {
-                cmd_w_flag.store(true, Ordering::SeqCst);
-                if let Some(window) = app.get_webview_window("main") {
-                    let _ = window.emit("close-tab", ());
-                }
-            }
+            let id = event.id().0.as_str();
+            crate::app_menu::handle_menu_event(app, id, &cmd_w_flag);
         })
         .on_window_event(move |window, event| match event {
             tauri::WindowEvent::CloseRequested { api, .. } => {

@@ -15,6 +15,9 @@ export const GIT_STATUS_DIFF_EVENT = 'git-status-diff';
 /** Git 状态变更事件（兼容旧监听的全量刷新 fallback）：`git-changed` */
 export const GIT_CHANGED_EVENT = 'git-changed';
 
+/** 菜单「粘贴」命令事件（macOS 自定义菜单转发）：`menu-paste` */
+export const MENU_PASTE_EVENT = 'menu-paste';
+
 // ── Browser 事件（与 src-tauri/src/browser/events.rs 常量保持同步）──
 
 /** 浏览器导航 URL 变化事件：`browser://url-changed` */

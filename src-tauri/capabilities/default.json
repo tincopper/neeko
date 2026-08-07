@@ -25,6 +25,7 @@
     "core:webview:allow-webview-close",
     "core:webview:allow-set-webview-focus",
     "dialog:allow-open",
+    "clipboard-manager:allow-read-text",
     "core:path:default"
   ]
 }

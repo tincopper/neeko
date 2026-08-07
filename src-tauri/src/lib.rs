@@ -17,6 +17,7 @@
 /// Agent lifecycle management, commands, and configuration.
 pub mod agent;
 mod app;
+mod app_menu;
 mod app_state;
 /// Browser webview management for UI-embedded browsing.
 pub mod browser;
