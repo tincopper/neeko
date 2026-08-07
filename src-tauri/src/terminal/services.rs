@@ -349,7 +349,22 @@ pub(super) fn close_pty_handle(session_id: &str, mut handle: PtyHandle) {
 
     // Unix path and Windows fallback: close ConPTY first, then kill.
     drop(handle.master);
+    let shell_pid = handle.child.process_id();
+    // Snapshot the process table BEFORE killing: some tools (CLI agents,
+    // language servers) call setsid() themselves and escape the process group
+    // killed by graceful_kill.  The snapshot must happen while the shell is
+    // still alive — once it is reaped, surviving children are reparented to
+    // launchd/init and can no longer be found by the ppid chain.
+    #[cfg(unix)]
+    let orphans =
+        shell_pid.map(|pid| super::process_reaper::collect_session_processes(pid.cast_signed()));
     graceful_kill(&mut *handle.child);
+    // Reap anything that was still a descendant of (or shares a session
+    // with) the shell.
+    #[cfg(unix)]
+    if let Some(orphans) = orphans {
+        super::process_reaper::reap_session_tree(&orphans);
+    }
     log_info(&format!(
         "[PTY] Session {} closed",
         &session_id[..8.min(session_id.len())]

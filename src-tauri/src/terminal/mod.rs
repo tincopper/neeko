@@ -1,6 +1,8 @@
 //! Terminal session and PTY management.
 
 pub mod commands;
+/// Process-tree reaping for PTY sessions (Unix).
+pub mod process_reaper;
 /// PTY creation, pipeline spawning, and terminal utilities.
 pub mod services;
 
