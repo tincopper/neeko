@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 
 import { cn } from '@/lib/utils';
+import { useImeSpaceGuard } from '@/shared/hooks/useImeSpaceGuard';
 
 interface PRCommentInputProps {
   onSubmit: (body: string) => void;
@@ -14,6 +15,7 @@ const PRCommentInput: React.FC<PRCommentInputProps> = ({
   isSubmitting = false,
 }) => {
   const [body, setBody] = useState('');
+  const guard = useImeSpaceGuard<HTMLTextAreaElement>();
 
   const handleSubmit = () => {
     if (body.trim() && !isSubmitting) {
@@ -38,6 +40,9 @@ const PRCommentInput: React.FC<PRCommentInputProps> = ({
           value={body}
           onChange={(e) => setBody(e.target.value)}
           onKeyDown={handleKeyDown}
+          onCompositionEnd={(e) => {
+            guard.onCompositionEnd(e);
+          }}
           placeholder={placeholder}
           disabled={isSubmitting}
         />

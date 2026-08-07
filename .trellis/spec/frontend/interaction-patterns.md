@@ -286,6 +286,76 @@ setTimeout(() => {
 
 ---
 
+## WKWebView 拼音缓冲区空格剥离（2026-08-07）
+
+### 背景
+
+macOS WKWebView（Tauri WebView）中，中文拼音输入法在组字中输入 `haihao` 后按中英文切换键放弃组字时，WebKit 会把未确认的拼音缓冲区以**分词空格**形式提交（`hai hao`）。原生 macOS app 走 `NSTextInputClient` 会自动去空格，WebView 不会，导致终端显示 `hai hao`。实现位于 `terminalInput.ts`。
+
+### 正确做法
+
+判定「被放弃的拼音缓冲区」（纯 ASCII 可打印 + 含空格 + 去空格后非空），对 `compositionend` 与 `onData` 两路径剥离空格发送；`compositionPendingText` 仍记录**原始带空格文本**，使 xterm 随后发出的 `onData('hai hao')` 被既有去重逻辑拦截。
+
+```ts
+/** 真实 CJK 提交含非 ASCII 字符，不匹配；正常单字符空格（' '）不匹配；
+ *  全角空格（\u3000）兼容：部分 WebView 平台可能以全角空格做分词分隔。 */
+export function isAbandonedImeAsciiBuffer(data: string): boolean {
+  return /^[\x21-\x7e \u3000]+$/.test(data) && /[ \u3000]/.test(data) && data.trim() !== '';
+}
+export function stripImeSegmentationSpaces(data: string): string {
+  return data.replace(/\s+/g, '');
+}
+```
+
+### 反模式
+
+❌ **无条件剥离空格**：xterm 会把**粘贴文本整段**通过 `onData` 发出（shell 未启用 bracketed paste 时），`git commit -m "hello world"` 会被误判为 abandoned buffer 而剥离成 `gitcommit-m"helloworld"`，破坏终端最常用操作。
+
+修复：capture 阶段 `paste` 事件置标记（仅当 `event.target === textarea`，避免多终端共享 document 监听互相污染），`onData` 消费该标记时原样转发；`dispose` 移除监听。该标记为单次消费，组字中粘贴的极端情况会残留为「本次不剥离」，仅退化为不修复，不破坏正确性。
+
+### 测试断言
+
+| 场景 | 期望行为 |
+|------|---------|
+| `compositionend('hai hao')` | `sendInput('haihao')`（空格剥离） |
+| 剥离后紧随 `onData('hai hao')` | 被去重，不重复发送 |
+| 无 compositionend，`onData('hai hao')` | `sendInput('haihao')` |
+| 粘贴 `git commit -m "hello world"` 后 `onData(同串)` | 原样转发，不剥离 |
+| 其他终端的 paste 事件 | 不影响本终端拼音剥离 |
+| 中文 `'中'` / 纯空格 `' '` / 空串 | 不匹配 abandoned buffer，不受影响 |
+| 全角空格分隔 `'hai\u3000hao'` | 判定命中，剥离为 `'haihao'` |
+
+### 共享工具与跨宿主扩展（2026-08-07）
+
+同一 WebView 级行为影响 **所有文本输入**（终端 textarea、CodeMirror contenteditable、普通 input/textarea）。判定与剥离函数已抽为共享模块，供三类宿主复用：
+
+**`src/shared/utils/ime.ts`**（单一事实源）：
+```ts
+export function isAbandonedImeAsciiBuffer(data: string): boolean;
+export function stripImeSegmentationSpaces(data: string): string;
+```
+`terminalInput.ts` 改为 `import` + 本地 `export { ... }`（re-export 保持测试对 `'../terminalInput'` 的 import 兼容）。
+
+**平台行为（三端一致性）**：该修复面向 WKWebView 系（macOS 与 Linux WebKitGTK，均可能产生半角/全角分词空格）。Windows WebView2 无此行为，但判定正则只匹配「纯 ASCII 可打印 + 半角/全角空格」，正常中文、单空格、空串均不命中，误伤面为零，无需平台门控。
+
+**CodeMirror 扩展 `imeSpaceGuard()`（`src/shared/utils/codemirrorIme.ts`）**：
+- 挂到 `EditorView.domEventHandlers` 的 `compositionend`。**签名是 `(event, view)`**（不是 `(view, e)`）。
+- compositionend 派发时从光标 head 回退 `data.length`，核对 `view.state.doc.sliceString(from, head) === data` 才替换为剥离版本；不匹配跳过（防误伤光标处恰好相同的既有文本）。
+- **时序坑**：`@codemirror/view` 内部 `observers.compositionend` 先执行且**只调度异步 flush**（不读 DOM），因此 handler 同步阶段 `view.state` 可能尚未包含 `data`。实现须先同步 `tryFix()`，失败则 `queueMicrotask` 延迟重试一次（在 flush 之后）；`tryFix` 内 try-catch 防御 view 销毁。
+- 接入点：`FileViewer.tsx`、`MarkdownEditor.tsx` 的 `extensions` useMemo；必须放在 useMemo 内（保持扩展引用稳定）。
+
+**通用 hook `useImeSpaceGuard<T>`（`src/shared/hooks/useImeSpaceGuard.ts`）**：
+- 返回 `onCompositionEnd`，挂到 input/textarea 上。命中 abandoned buffer 时以 `selectionStart` 为锚点回退 `data.length` 定位（IME 提交总是发生在光标处，与 CodeMirror 端 head 回退保持一致；**禁止用 `lastIndexOf`**——值中已存在的相同文本会导致修错位置），核对原文一致后替换 DOM value，再 `dispatchEvent(new InputEvent('input', { bubbles: true }))` 驱动 React 受控组件 `onChange` 同步 state（React onChange 监听冒泡的 input 事件）。
+- 接入约定：`ui/Input.tsx` 的 Input/Textarea 已内置（guard 先、父级 `onCompositionEnd` 后）。其他 raw textarea（Git commit、PR 评论、LSP 配置、MCP/Prompt 编辑等）逐个合并 guard 回调。
+
+### 扩展反模式
+
+❌ **假定 compositionend 时 CodeMirror 文档已包含 `data`**：真实 WKWebView 时序下内部 observers 尚未 flush，同步核对必失败，guard 静默失效。测试若预先构造「doc 已含 data」会恰好绕过该时序而假绿。
+
+❌ **为 CodeMirror 或 input 无条件剥离空格**：与终端一致，必须先用 `isAbandonedImeAsciiBuffer` 前置过滤（中文、单空格、空串、粘贴含空格文本均不命中），否则破坏正常输入。
+
+---
+
 ### 9. Modifiers 说明
 
 - `restrictToVerticalAxis`：锁定垂直轴，防止水平漂移

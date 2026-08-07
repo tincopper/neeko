@@ -73,6 +73,7 @@ import {
   createCmTheme,
   isMarkdownFile,
 } from '@/shared/utils/codemirror';
+import { imeSpaceGuard } from '@/shared/utils/codemirrorIme';
 import {
   getViewSnapshot,
   setViewSnapshot,
@@ -1017,6 +1018,7 @@ function FileEditor({
       saveKeymap,
       cmTheme,
       viewStateExt,
+      imeSpaceGuard(),
     );
 
     if (langExtension) exts.push(langExtension);

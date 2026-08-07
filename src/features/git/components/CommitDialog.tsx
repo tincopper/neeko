@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 
+import { useImeSpaceGuard } from '@/shared/hooks/useImeSpaceGuard';
 import { useProjectStore } from '@/shared/store/projectStore';
 import { useWorktreeStore } from '@/shared/store/worktreeStore';
 import type { FileChange } from '@/shared/types';
@@ -35,6 +36,7 @@ function CommitDialog({ projectId, onClose, onRefreshGit }: CommitDialogProps) {
   const [amend, setAmend] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const guard = useImeSpaceGuard<HTMLTextAreaElement>();
   // Reset message when amend changes to false
   useEffect(() => {
     if (!amend) {
@@ -206,6 +208,9 @@ function CommitDialog({ projectId, onClose, onRefreshGit }: CommitDialogProps) {
             if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
               handleCommit(false);
             }
+          }}
+          onCompositionEnd={(e) => {
+            guard.onCompositionEnd(e);
           }}
         />
 

@@ -4,6 +4,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { useLibraryStore } from '@/features/library/store/libraryStore';
 import { useMcpStore } from '@/features/library/store/mcpStore';
 import { cn } from '@/lib/utils';
+import { useImeSpaceGuard } from '@/shared/hooks/useImeSpaceGuard';
 import { useProjectStore } from '@/shared/store/projectStore';
 import { Button } from '@/ui/Button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/ui/Dialog';
@@ -54,6 +55,7 @@ const McpEditorDialog: React.FC = React.memo(() => {
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const guard = useImeSpaceGuard<HTMLTextAreaElement>();
 
   const isRemote = form.transport === 'http' || form.transport === 'sse';
 
@@ -315,6 +317,9 @@ const McpEditorDialog: React.FC = React.memo(() => {
                 placeholder='["-y", "@modelcontextprotocol/server-filesystem", "/path"]'
                 value={form.args}
                 onChange={(e) => update('args', e.target.value)}
+                onCompositionEnd={(e) => {
+                  guard.onCompositionEnd(e);
+                }}
               />
             </div>
           )}
@@ -334,6 +339,9 @@ const McpEditorDialog: React.FC = React.memo(() => {
               placeholder='{"API_KEY": "your-key"}'
               value={form.env}
               onChange={(e) => update('env', e.target.value)}
+              onCompositionEnd={(e) => {
+                guard.onCompositionEnd(e);
+              }}
             />
           </div>
 

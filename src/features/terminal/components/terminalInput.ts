@@ -1,5 +1,10 @@
 import type { Terminal } from '@xterm/xterm';
 
+import { isAbandonedImeAsciiBuffer, stripImeSegmentationSpaces } from '@/shared/utils/ime';
+
+// re-export 保持既有测试对 '../terminalInput' 的 import 兼容
+export { isAbandonedImeAsciiBuffer, stripImeSegmentationSpaces };
+
 export interface TerminalInputController {
   dispose: () => void;
 }
@@ -144,6 +149,18 @@ export function setupTerminalInput({
   let composing = false;
   let compositionPendingText: string | null = null;
 
+  // xterm 将粘贴文本整段通过 onData 发出（shell 未启用 bracketed paste 时）。
+  // 为避免粘贴含空格命令被 isAbandonedImeAsciiBuffer 误判为「被放弃的拼音缓冲区」，
+  // 用 capture 阶段 paste 事件标记粘贴上下文，onData 消费该标记时原样转发。
+  // 仅当粘贴目标是本终端 textarea 时置位，避免多终端共享 document 监听互相污染。
+  let pasteInProgress = false;
+  const handlePasteCapture = (event: Event) => {
+    if (textarea && event.target === textarea) {
+      pasteInProgress = true;
+    }
+  };
+  document.addEventListener('paste', handlePasteCapture, true);
+
   let compositionStartHandler: (() => void) | null = null;
   let compositionEndHandler: ((e: CompositionEvent) => void) | null = null;
 
@@ -158,7 +175,11 @@ export function setupTerminalInput({
       const text = e.data;
       if (text) {
         compositionPendingText = text;
-        sendInput(text);
+        if (isAbandonedImeAsciiBuffer(text)) {
+          sendInput(stripImeSegmentationSpaces(text));
+        } else {
+          sendInput(text);
+        }
       } else {
         compositionPendingText = null;
       }
@@ -171,6 +192,13 @@ export function setupTerminalInput({
   const disposable = term.onData((data) => {
     if (composing) return;
 
+    // 粘贴数据原样转发，不剥离空格
+    if (pasteInProgress) {
+      pasteInProgress = false;
+      sendInput(data);
+      return;
+    }
+
     if (compositionPendingText !== null) {
       if (data === compositionPendingText) {
         compositionPendingText = null;
@@ -179,7 +207,11 @@ export function setupTerminalInput({
       compositionPendingText = null;
     }
 
-    sendInput(data);
+    if (isAbandonedImeAsciiBuffer(data)) {
+      sendInput(stripImeSegmentationSpaces(data));
+    } else {
+      sendInput(data);
+    }
   });
 
   const disposeImeFallback = setupImeShiftSymbolFallback(term);
@@ -189,6 +221,7 @@ export function setupTerminalInput({
     dispose: () => {
       composing = false;
       compositionPendingText = null;
+      document.removeEventListener('paste', handlePasteCapture, true);
       if (textarea && compositionStartHandler && compositionEndHandler) {
         textarea.removeEventListener('compositionstart', compositionStartHandler);
         textarea.removeEventListener('compositionend', compositionEndHandler);

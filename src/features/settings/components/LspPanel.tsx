@@ -10,6 +10,7 @@ import type {
   LspAutoStart,
   LspConfig,
 } from '@/features/settings/types';
+import { useImeSpaceGuard } from '@/shared/hooks/useImeSpaceGuard';
 import { useLspStore } from '@/shared/store/lspStore';
 import {
   Button,
@@ -175,6 +176,7 @@ const LspPanel: React.FC<LspPanelProps> = ({ config, onConfigChange }) => {
   const [draft, setDraft] = useState<ServerDraftForm | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const guard = useImeSpaceGuard<HTMLTextAreaElement>();
 
   const persistLsp = useCallback(
     async (nextLsp: LspConfig) => {
@@ -499,6 +501,9 @@ const LspPanel: React.FC<LspPanelProps> = ({ config, onConfigChange }) => {
               <textarea
                 value={draft.initializationOptionsText}
                 onChange={(e) => setDraft({ ...draft, initializationOptionsText: e.target.value })}
+                onCompositionEnd={(e) => {
+                  guard.onCompositionEnd(e);
+                }}
                 placeholder='{"hoverKind": "FullDocumentation"}'
                 rows={3}
                 className="w-full min-h-[72px] rounded-md border border-border bg-bg-tertiary px-3 py-2 text-[0.86em] font-mono text-text-primary placeholder:text-text-muted focus:outline-none focus:ring-1 focus:ring-accent-blue resize-y"

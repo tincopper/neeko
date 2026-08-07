@@ -1,7 +1,7 @@
 import type { Terminal } from '@xterm/xterm';
 import { describe, expect, it, vi } from 'vitest';
 
-import { setupTerminalInput } from '../terminalInput';
+import { isAbandonedImeAsciiBuffer, setupTerminalInput } from '../terminalInput';
 
 type DataHandler = (data: string) => void;
 
@@ -53,6 +53,32 @@ function createKeyboardEvent(type: 'keydown' | 'keyup', init: KeyboardEventInit)
     ...init,
   });
 }
+
+describe('isAbandonedImeAsciiBuffer', () => {
+  it("判定 'hai hao' 为被放弃的拼音缓冲区", () => {
+    expect(isAbandonedImeAsciiBuffer('hai hao')).toBe(true);
+  });
+
+  it("判定 'a b c' 为被放弃的拼音缓冲区", () => {
+    expect(isAbandonedImeAsciiBuffer('a b c')).toBe(true);
+  });
+
+  it("判定 'haihao' 不是被放弃的拼音缓冲区（无空格）", () => {
+    expect(isAbandonedImeAsciiBuffer('haihao')).toBe(false);
+  });
+
+  it("判定 '中' 不是被放弃的拼音缓冲区（非 ASCII）", () => {
+    expect(isAbandonedImeAsciiBuffer('中')).toBe(false);
+  });
+
+  it("判定 ' ' 不是被放弃的拼音缓冲区（纯空格）", () => {
+    expect(isAbandonedImeAsciiBuffer(' ')).toBe(false);
+  });
+
+  it("判定 '' 不是被放弃的拼音缓冲区（空字符串）", () => {
+    expect(isAbandonedImeAsciiBuffer('')).toBe(false);
+  });
+});
 
 describe('setupTerminalInput', () => {
   it('转发 xterm onData 输入', () => {
@@ -435,6 +461,118 @@ describe('setupTerminalInput', () => {
       expect(sendInput).toHaveBeenCalledWith('中');
       expect(sendInput).toHaveBeenLastCalledWith(' ');
       expect(sendInput).toHaveBeenCalledTimes(2);
+    });
+
+    it('切换输入法提交的拼音 buffer 空格被剥离', () => {
+      const term = new MockTerminal();
+      const sendInput = vi.fn();
+
+      setupTerminalInput({
+        term: term as unknown as Terminal,
+        sendInput,
+      });
+
+      fireCompositionStart(term.textarea);
+      fireCompositionEnd(term.textarea, 'hai hao');
+
+      expect(sendInput).toHaveBeenCalledWith('haihao');
+    });
+
+    it('剥离后紧随 onData 原始文本被去重', () => {
+      const term = new MockTerminal();
+      const sendInput = vi.fn();
+
+      setupTerminalInput({
+        term: term as unknown as Terminal,
+        sendInput,
+      });
+
+      fireCompositionStart(term.textarea);
+      fireCompositionEnd(term.textarea, 'hai hao');
+      // xterm 随后从 textarea 提取整段文本触发 onData("hai hao")
+      term.emitData('hai hao');
+
+      expect(sendInput).toHaveBeenCalledTimes(1);
+    });
+
+    it('无 compositionend 时 onData 收到的拼音 buffer 空格被剥离', () => {
+      const term = new MockTerminal();
+      const sendInput = vi.fn();
+
+      setupTerminalInput({
+        term: term as unknown as Terminal,
+        sendInput,
+      });
+
+      term.emitData('hai hao');
+
+      expect(sendInput).toHaveBeenCalledWith('haihao');
+    });
+
+    it('粘贴含空格的 ASCII 文本不被剥离空格', () => {
+      const term = new MockTerminal();
+      const sendInput = vi.fn();
+
+      setupTerminalInput({
+        term: term as unknown as Terminal,
+        sendInput,
+      });
+
+      // xterm 粘贴整段文本走 onData；先触发 paste 事件标记粘贴上下文。
+      // textarea 需挂载到 DOM 才能让 paste 事件冒泡到 document（capture 监听）。
+      document.body.appendChild(term.textarea);
+      try {
+        term.textarea.dispatchEvent(new Event('paste', { bubbles: true, cancelable: true }));
+        term.emitData('git commit -m "hello world"');
+      } finally {
+        term.textarea.remove();
+      }
+
+      expect(sendInput).toHaveBeenCalledWith('git commit -m "hello world"');
+    });
+
+    it('粘贴事件后紧随的空格数据不被剥离（无 composition 上下文）', () => {
+      const term = new MockTerminal();
+      const sendInput = vi.fn();
+
+      setupTerminalInput({
+        term: term as unknown as Terminal,
+        sendInput,
+      });
+
+      document.body.appendChild(term.textarea);
+      try {
+        term.textarea.dispatchEvent(new Event('paste', { bubbles: true, cancelable: true }));
+        term.emitData('a b');
+      } finally {
+        term.textarea.remove();
+      }
+
+      expect(sendInput).toHaveBeenCalledWith('a b');
+    });
+
+    it('其他终端的 paste 事件不抑制本终端的拼音剥离', () => {
+      const term = new MockTerminal();
+      const otherTextarea = document.createElement('textarea');
+      const sendInput = vi.fn();
+
+      setupTerminalInput({
+        term: term as unknown as Terminal,
+        sendInput,
+      });
+
+      document.body.appendChild(term.textarea);
+      document.body.appendChild(otherTextarea);
+      try {
+        // 粘贴发生在其他终端的 textarea 上
+        otherTextarea.dispatchEvent(new Event('paste', { bubbles: true, cancelable: true }));
+        term.emitData('hai hao');
+
+        expect(sendInput).toHaveBeenCalledWith('haihao');
+      } finally {
+        term.textarea.remove();
+        otherTextarea.remove();
+      }
     });
 
     it('compositionend 后无后续 onData 时抑制状态正确清除', () => {

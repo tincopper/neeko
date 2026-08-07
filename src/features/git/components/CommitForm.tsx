@@ -1,6 +1,7 @@
 import React, { useRef } from 'react';
 
 import { GitCommitHorizontal, ArrowUp, Sparkles, Loader2 } from '@/shared/components/icons';
+import { useImeSpaceGuard } from '@/shared/hooks/useImeSpaceGuard';
 import { Button } from '@/ui/Button';
 
 interface CommitFormProps {
@@ -31,6 +32,7 @@ const CommitForm: React.FC<CommitFormProps> = ({
   textareaHeight,
 }) => {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const guard = useImeSpaceGuard<HTMLTextAreaElement>();
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
@@ -77,6 +79,9 @@ const CommitForm: React.FC<CommitFormProps> = ({
           value={message}
           onChange={(e) => onMessageChange(e.target.value)}
           onKeyDown={handleKeyDown}
+          onCompositionEnd={(e) => {
+            guard.onCompositionEnd(e);
+          }}
           disabled={aiGenerating}
         />
       </div>

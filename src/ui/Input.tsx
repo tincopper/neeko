@@ -1,8 +1,10 @@
 import * as React from 'react';
 
 import { cn } from '@/lib/utils';
+import { useImeSpaceGuard } from '@/shared/hooks/useImeSpaceGuard';
 
-function Input({ className, ...props }: React.ComponentProps<'input'>) {
+function Input({ className, onCompositionEnd, ...props }: React.ComponentProps<'input'>) {
+  const guard = useImeSpaceGuard<HTMLInputElement>();
   return (
     <input
       data-slot="input"
@@ -18,12 +20,17 @@ function Input({ className, ...props }: React.ComponentProps<'input'>) {
         '[&[type=number]]:[&::-webkit-outer-spin-button]:appearance-none',
         className,
       )}
+      onCompositionEnd={(e) => {
+        guard.onCompositionEnd(e);
+        onCompositionEnd?.(e);
+      }}
       {...props}
     />
   );
 }
 
-function Textarea({ className, ...props }: React.ComponentProps<'textarea'>) {
+function Textarea({ className, onCompositionEnd, ...props }: React.ComponentProps<'textarea'>) {
+  const guard = useImeSpaceGuard<HTMLTextAreaElement>();
   return (
     <textarea
       data-slot="textarea"
@@ -36,6 +43,10 @@ function Textarea({ className, ...props }: React.ComponentProps<'textarea'>) {
         'resize-y min-h-[80px]',
         className,
       )}
+      onCompositionEnd={(e) => {
+        guard.onCompositionEnd(e);
+        onCompositionEnd?.(e);
+      }}
       {...props}
     />
   );

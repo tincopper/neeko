@@ -3,6 +3,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 
 import { useLibraryStore } from '@/features/library/store/libraryStore';
 import { cn } from '@/lib/utils';
+import { useImeSpaceGuard } from '@/shared/hooks/useImeSpaceGuard';
 import { useProjectStore } from '@/shared/store/projectStore';
 import type { PromptResource } from '@/shared/types/library';
 import { Button } from '@/ui/Button';
@@ -67,6 +68,7 @@ const PromptEditorDialog: React.FC = React.memo(() => {
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const guard = useImeSpaceGuard<HTMLTextAreaElement>();
 
   useEffect(() => {
     if (!open) return;
@@ -232,6 +234,9 @@ const PromptEditorDialog: React.FC = React.memo(() => {
               placeholder="Prompt body — supports {{branch}}, {{project}}, {{path}} etc."
               value={form.content}
               onChange={(e) => update('content', e.target.value)}
+              onCompositionEnd={(e) => {
+                guard.onCompositionEnd(e);
+              }}
             />
           </div>
 
@@ -381,6 +386,9 @@ const PromptEditorDialog: React.FC = React.memo(() => {
               placeholder='[{"name":"branch","description":"Target branch","default":"main","required":false}]'
               value={form.variables}
               onChange={(e) => update('variables', e.target.value)}
+              onCompositionEnd={(e) => {
+                guard.onCompositionEnd(e);
+              }}
             />
           </details>
 

@@ -14,6 +14,7 @@ import React, { useCallback, useMemo } from 'react';
 
 import { useAppContext } from '@/shared/contexts';
 import { createCmTheme } from '@/shared/utils/codemirror';
+import { imeSpaceGuard } from '@/shared/utils/codemirrorIme';
 
 interface MarkdownEditorProps {
   value: string;
@@ -45,6 +46,7 @@ const MarkdownEditor: React.FC<MarkdownEditorProps> = React.memo(
         indentOnInput(),
         drawSelection(),
         keymap.of([...closeBracketsKeymap, ...defaultKeymap]),
+        imeSpaceGuard(),
         cmTheme,
       ];
 
