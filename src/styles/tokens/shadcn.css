@@ -1,4 +1,6 @@
-/* -- shadcn/ui CSS Variables (mapped to Neeko theme) -- */
+/* -- shadcn/ui CSS Variables (mapped to Neeko theme) --
+ * 高内聚：只做 shadcn 变量 ↔ Neeko 语义令牌的桥接，不写业务选择器。
+ */
 
 :root {
   --background: var(--bg-primary);
@@ -14,7 +16,7 @@
   --muted: var(--bg-tertiary);
   --muted-foreground: var(--text-muted);
   --accent: rgba(var(--accent-blue-rgb), 0.12);
-  --accent-foreground: #2997ff;
+  --accent-foreground: var(--accent-blue);
   --destructive: var(--accent-red);
   --destructive-foreground: var(--text-on-accent);
   --border: var(--border-color);

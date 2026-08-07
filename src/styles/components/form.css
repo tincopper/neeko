@@ -1,0 +1,14 @@
+/* -- Form controls -- 
+ * 高内聚：自定义表单控件（radio 等）。
+ */
+
+@layer components {
+  /* Custom radio */
+  .custom-radio { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; font-size: var(--font-size); color: var(--text-secondary); }
+  .custom-radio input[type="radio"] { position: absolute; opacity: 0; width: 0; height: 0; pointer-events: none; }
+  .custom-radio .radio-mark { width: 15px; height: 15px; border-radius: 50%; border: 1.5px solid var(--border-color); background: var(--bg-tertiary); display: flex; align-items: center; justify-content: center; flex-shrink: 0; transition: border-color 0.15s, background 0.15s; }
+  .custom-radio .radio-mark::after { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--accent-blue); transform: scale(0); transition: transform 0.15s; }
+  .custom-radio input:checked ~ .radio-mark { border-color: var(--accent-blue); }
+  .custom-radio input:checked ~ .radio-mark::after { transform: scale(1); }
+  .custom-radio:hover .radio-mark { border-color: var(--accent-blue); }
+}

@@ -1,0 +1,33 @@
+/* -- Onboarding / Quick actions -- 
+ * 高内聚：QuickActionBar 卡片与 Onboarding 步骤卡。
+ */
+
+@layer components {
+  /* Quick Actions — modern minimal card style */
+  .quick-action-card {
+    transition: border-color 0.15s ease, background 0.15s ease, transform 0.12s ease;
+  }
+  .quick-action-card:hover {
+    border-color: rgba(var(--accent-blue-rgb), 0.30);
+    background: var(--bg-hover);
+    transform: translateY(-1px);
+  }
+  .quick-action-card:active {
+    transform: translateY(0);
+  }
+
+  /* Onboarding step cards */
+  .step-card {
+    transition: border-color 0.15s ease, background 0.15s ease, transform 0.12s ease, box-shadow 0.15s ease;
+  }
+  .step-card:hover {
+    border-color: rgba(var(--accent-blue-rgb), 0.25);
+    background: var(--bg-hover);
+    transform: translateY(-1px);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+  }
+  .step-card:active {
+    transform: translateY(0);
+    box-shadow: none;
+  }
+}

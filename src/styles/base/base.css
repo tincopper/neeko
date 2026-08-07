@@ -1,0 +1,83 @@
+/* -- Global base -- 
+ * 高内聚：全局 reset 与平台 UI 基底（滚动条、Tauri 拖拽区、窗口控制按钮）。
+ * 低耦合：只引用 tokens/ 语义令牌。
+ */
+
+@layer base {
+  * {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+    /* Default border color for bare `border` utilities (shadcn/Radix surfaces) */
+    border-color: var(--border-color);
+  }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: var(--font-size);
+    line-height: 1.4;
+    color: var(--text-primary);
+    background-color: var(--bg-primary);
+    overflow: hidden;
+  }
+
+  #root { width: 100vw; height: 100vh; }
+
+  /* Tauri drag region */
+  .titlebar { -webkit-app-region: drag; }
+  .titlebar-left, .titlebar-right, .titlebar-appname, .titlebar-divider,
+  .titlebar-project-name, .titlebar-branch, .titlebar-placeholder, .tb-icon-btn {
+    -webkit-app-region: no-drag;
+  }
+
+  /* Window control buttons */
+  .wc-btn {
+    width: 28px;
+    height: 24px;
+    border: none;
+    background: transparent;
+    color: var(--text-secondary);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background-color 0.1s, color 0.1s;
+  }
+  .wc-btn:hover {
+    background-color: var(--bg-hover);
+    color: var(--text-primary);
+  }
+  .wc-close:hover {
+    background-color: var(--accent-red) !important;
+    color: #fff !important;
+  }
+
+  /* Scrollbars — theme tokens (match app chrome, not OS default black) */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--bg-hover) var(--bg-secondary);
+  }
+  ::-webkit-scrollbar { width: 10px; height: 10px; }
+  ::-webkit-scrollbar-track { background: var(--bg-secondary); }
+  ::-webkit-scrollbar-thumb { background: var(--bg-hover); border-radius: 5px; border: 2px solid transparent; background-clip: padding-box; }
+  ::-webkit-scrollbar-thumb:hover { background: var(--text-muted); background-clip: padding-box; }
+  ::-webkit-scrollbar-corner { background: var(--bg-secondary); }
+
+  .thin-scrollbar {
+    scrollbar-width: thin;
+    scrollbar-color: var(--bg-hover) var(--bg-secondary);
+  }
+  .thin-scrollbar::-webkit-scrollbar { width: 6px; height: 6px; }
+  .thin-scrollbar::-webkit-scrollbar-track { background: transparent; }
+  .thin-scrollbar::-webkit-scrollbar-thumb {
+    background: var(--bg-hover);
+    border-radius: 3px;
+  }
+  .thin-scrollbar::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
+  .thin-scrollbar::-webkit-scrollbar-corner { background: transparent; }
+
+  .settings-font-item.builtin .settings-font-name::after { content: " \2726"; font-size: 0.7em; color: var(--text-muted); opacity: 0.6; }
+
+  /* Placeholder styling */
+  .path-input::placeholder { color: var(--text-muted); }
+}

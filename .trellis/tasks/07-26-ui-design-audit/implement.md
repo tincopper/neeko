@@ -1,6 +1,19 @@
 # 实现路线图 — UI 设计优化（审计后）
 
 > 本任务本身 **不改代码**。本文件是审计后的执行路线图，用户确认优先级后再拆子任务实现。  
+
+## ✅ 已实施：CSS 架构优化（2026-08-07）
+
+基于高内聚/低耦合原则对 `src/styles/` 重构（用户收窄范围，仅 CSS）：
+
+- **分层**：`tokens/`（theme/shadcn/tailwind 桥接）→ `base/base.css` → `components/`（9 个单职责文件）；`index.css` 收敛为纯 `@import` 入口。
+- **tokens 修复**：补 `--accent-orange`（5 主题）与 `--font-mono`；修 `--accent-foreground` 硬编码蓝 → `var(--accent-blue)`；`@theme` 增 `--color-accent-orange`。
+- **硬编码消除**：`.word-diff-added/removed` → `color-mix(in srgb, var(--diff-added-text) 20%, transparent)`。
+- **DRY**：theme.css 5 块 hljs 覆盖（~200 行）收敛为 markdown.css 一组 `var(--cm-*)` 映射（值已逐一对齐）。
+- **layer 治理**：signature tooltip 等脱离 `@layer components` 的规则归位；`@layer base`/`components` 显式声明。
+- **测试同步**：`DiffNoWrap.test.tsx` 读取路径 → `components/diff.css`（红→绿验证）。
+- **验证**：`pnpm build` 无 CSS 警告（原 7 条消失）、`pnpm test:run` 1191 通过、`pnpm lint:fe` 全绿。
+
 > 权威方案见 [`design.md`](./design.md)：子任务清单 §10.1、依赖图 §10.3、v1 边界 §10.4、Decision Log §11、原型索引 §12、跨任务边界 §13、spec 大纲 §14、复测命令 §8.1。
 
 ## 未来实现阶段校验命令

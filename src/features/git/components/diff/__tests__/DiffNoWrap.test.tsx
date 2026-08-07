@@ -23,8 +23,8 @@ const diffResult: DiffResult = {
   ],
 };
 
-/** 真实 index.css 源码（行为级验证：不换行规则确实存在于仓库样式表） */
-const cssSource = readFileSync(resolve(__dirname, '../../../../../styles/index.css'), 'utf-8');
+/** 真实 diff.css 源码（行为级验证：不换行规则确实存在于仓库样式表） */
+const cssSource = readFileSync(resolve(process.cwd(), 'src/styles/components/diff.css'), 'utf-8');
 
 /** 从 CSS 源码提取指定选择器的规则体 */
 function extractRule(selector: string): string {

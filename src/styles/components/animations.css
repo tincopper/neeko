@@ -1,0 +1,33 @@
+/* -- Animations / keyframes -- 
+ * 高内聚：全部 @keyframes 与动画工具类集中于此。
+ */
+
+@layer components {
+  /* Worktree animations */
+  @keyframes wt-fade-out { 0%, 80% { opacity: 1; max-height: 40px; padding-top: 4px; padding-bottom: 4px; margin-bottom: 0; } 100% { opacity: 0; max-height: 0; padding-top: 0; padding-bottom: 0; margin-bottom: -2px; } }
+  .wt-deleting { animation: wt-fade-out 0.5s ease-in forwards; pointer-events: none; overflow: hidden; }
+  @keyframes wt-spin { to { transform: rotate(360deg); } }
+  .wt-spinner { display: inline-block; width: 14px; height: 14px; border: 2px solid var(--text-muted); border-top-color: var(--accent-yellow); border-radius: 50%; animation: wt-spin 0.6s linear infinite; flex-shrink: 0; }
+
+  /* Go-to-definition / nav history: flash destination line so the caret is obvious */
+  @keyframes cm-nav-flash {
+    0% { background-color: rgba(var(--accent-blue-rgb), 0.42); }
+    70% { background-color: rgba(var(--accent-blue-rgb), 0.22); }
+    100% { background-color: transparent; }
+  }
+
+  /* LSP installing spinner (smaller, fits status bar) */
+  @keyframes lsp-spin { to { transform: rotate(360deg); } }
+  /* LSP loading dots sweep */
+  @keyframes lsp-dots { 0% { opacity: 0.3; } 20% { opacity: 1; } 40% { opacity: 0.3; } 100% { opacity: 0.3; } }
+  .lsp-dot { animation: lsp-dots 1.4s ease-in-out infinite; }
+  .lsp-dot:nth-child(2) { animation-delay: 0.2s; }
+  .lsp-dot:nth-child(3) { animation-delay: 0.4s; }
+
+  /* Toast animation */
+  @keyframes toast-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+  @keyframes slide-up { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
+  .animate-slide-up { animation: slide-up 0.25s ease-out; }
+
+  @keyframes pop-in { from { opacity: 0; transform: scale(0.95); } to { opacity: 1; transform: scale(1); } }
+}

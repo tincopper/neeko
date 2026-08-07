@@ -1,0 +1,26 @@
+/* -- Editor (CodeMirror / LSP 指示) -- 
+ * 高内聚：编辑器光标、导航高亮、LSP 安装指示器。
+ */
+
+@layer components {
+  /* Cmd+Hover pointer cursor — when cmd-held class is on the editor wrapper */
+  .cmd-held .cm-content { cursor: pointer !important; }
+
+  /* Thicker caret so the insert point is easy to spot after jumps */
+  .cm-editor .cm-cursor,
+  .cm-editor .cm-dropCursor {
+    border-left-width: 2.5px !important;
+    border-left-color: var(--accent-blue) !important;
+  }
+
+  .cm-nav-flash-line {
+    background-color: rgba(var(--accent-blue-rgb), 0.28) !important;
+    animation: cm-nav-flash 1.4s ease-out forwards;
+  }
+  .cm-activeLine.cm-nav-flash-line {
+    background-color: rgba(var(--accent-blue-rgb), 0.32) !important;
+  }
+
+  /* LSP installing spinner (smaller, fits status bar) */
+  .lsp-spinner { display: inline-block; width: 8px; height: 8px; border: 1.5px solid var(--text-muted); border-top-color: var(--accent-blue); border-radius: 50%; animation: lsp-spin 0.7s linear infinite; flex-shrink: 0; }
+}
