@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-3.md`
-- **Total Sessions**: 124
+- **Total Sessions**: 125
 - **Last Active**: 2026-08-07
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-3.md` | ~239 | Active |
+| `journal-3.md` | ~296 | Active |
 | `journal-2.md` | ~1991 | Archived |
 | `journal-1.md` | ~1986 | Archived |
 <!-- @@@/auto:active-documents -->
@@ -31,6 +31,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 125 | 2026-08-07 | fix: git status list stale after build (race in full refresh) | - | `main` |
 | 124 | 2026-08-07 | feat(editor): multi pinned tabs — drag tab to pinned panel appends instead of replacing | `4169970f` | `main` |
 | 123 | 2026-08-07 | feat(editor): drag unpinned tab to pinned panel to pin | `4169970f` | `main` |
 | 122 | 2026-08-07 | fix: reap detached process trees on PTY close (cmd+w agent leak) | `ba5b0b93`, `7a6930ec` | `main` |

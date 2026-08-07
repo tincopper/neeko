@@ -237,3 +237,60 @@
 ### Next Steps
 
 - None - task complete
+
+
+## Session 125: fix: git status list stale after build (race in full refresh)
+
+**Date**: 2026-08-07
+**Task**: fix: git status list stale after build (race in full refresh)
+**Branch**: `main`
+
+### Summary
+
+Watcher now ignores build-output dirs (dist/build/.next/out/coverage); refreshGitFileStates gated by per-project generation token; race test rewritten to be deterministic. Specs updated (state-management scenario, FE vacuous-test forbidden pattern, backend watcher-ignore convention). Code uncommitted per safety (no work-commit hashes this session). Check sub-agent: PASS.
+
+### Main Changes
+
+# Session: fix: git status list stale after build (race in full refresh)
+
+## Bug
+After `pnpm tauri build` (or any heavy build), the file list's git-status indicators stop updating correctly. Cause had two layers:
+
+1. **Event flood**: notify watcher was forwarding thousands of Create/Modify events from build-output dirs (`dist/`, `build/`, `.next/`, `out/`, `coverage/`) during the build, amplifying the `git-changed` event rate.
+2. **Race in full refresh**: `refreshGitFileStates` was called fire-and-forget on every `git-changed`. Under the flood, backend responses arrived out of order; the later-arriving stale response called `useProjectStore.setState` with an old snapshot, overwriting the newer one — the file list's git status appeared to "regress" or go stale.
+
+## Fix
+- `src-tauri/src/common/file/watcher.rs` — extended `should_ignore_path` to also ignore build-output dirs (`dist`, `build`, `.next`, `out`, `coverage`) on top of the pre-existing `.git / node_modules / target / .DS_Store`. Mitigation (reduces event volume), not the root-cause fix.
+- `src/features/git/utils/gitStatus.ts` — `refreshGitFileStates` now uses a per-project monotonic generation counter (`refreshGenerations: Map<projectId, number>`). Each call bumps its generation, awaits the backend calls, and discards the result if the stored generation has moved on. Root-cause fix: stale out-of-order responses are dropped before they can `setState`.
+- `src/features/git/utils/__tests__/gitStatus.test.ts` — race test rewritten to be **deterministic**. The old test relied on microtask FIFO ordering (`A`'s setState after `B`), which is a vacuous test: `.catch()` / `.finally()` inject extra microtask hops so unfixed code coincidentally passes (false GREEN). New test makes the *earlier* setState callback actively resolve the later-arriving promise, forcing the later setState onto a subsequent microtask round and deterministically exposing the ordering bug. Regression gate: removing the generation guard must turn the test RED; restoring it returns it to GREEN.
+
+## Verification
+- `cargo test --manifest-path src-tauri/Cargo.toml watcher` — pass.
+- `pnpm test:run gitStatus` — pass (after rewrite: RED on unfixed code, GREEN on fixed code).
+- Sub-agent `trellis-check` — PASS (gated quality check across both layers, with recommended test rewrite applied).
+
+## Spec updates
+- `.trellis/spec/frontend/state-management.md` — new dated scenario **"异步全量刷新防陈旧覆盖 (git status 竞态) 2026-08-07"** (7 sections: Scope/Trigger, Signatures, Contracts, Validation/Error Matrix, Good/Base/Bad Cases, Tests Required, Wrong vs Correct). Documents the generation-token pattern as a reusable contract.
+- `.trellis/spec/frontend/quality-guidelines.md` — new forbidden pattern **"### 6. 异步竞态测试依赖微任务顺序(假 GREEN)"**. Captures the microtask-FIFO vacuous-test trap so future sessions don't repeat it.
+- `.trellis/spec/backend/quality-guidelines.md` — new required pattern **"### 7. 文件监听器必须忽略构建产物目录"**. Documents `should_ignore_path` as the project-wide convention for build-output dirs; when adding a new monorepo package's build dir, consult the function first.
+
+## Finish-work
+- `task.py archive 08-07-08-07-fix-git-status-race` → archived to `archive/2026-08/`, auto-committed `chore(task): archive ...`.
+- **Code commit (Phase 3.4) intentionally skipped** per global safety rule (禁止自动提交). The 6 modified files (3 spec MDs, `watcher.rs`, `gitStatus.ts`, `gitStatus.test.ts`) remain in the working tree for the user to review and commit. This session produced no work-commit hashes; the journal records the situation in --summary.
+
+
+### Git Commits
+
+(No commits - planning session)
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
