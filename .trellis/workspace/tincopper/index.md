@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-3.md`
-- **Total Sessions**: 122
+- **Total Sessions**: 124
 - **Last Active**: 2026-08-07
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-3.md` | ~173 | Active |
+| `journal-3.md` | ~239 | Active |
 | `journal-2.md` | ~1991 | Archived |
 | `journal-1.md` | ~1986 | Archived |
 <!-- @@@/auto:active-documents -->
@@ -31,6 +31,8 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 124 | 2026-08-07 | feat(editor): multi pinned tabs — drag tab to pinned panel appends instead of replacing | `4169970f` | `main` |
+| 123 | 2026-08-07 | feat(editor): drag unpinned tab to pinned panel to pin | `4169970f` | `main` |
 | 122 | 2026-08-07 | fix: reap detached process trees on PTY close (cmd+w agent leak) | `ba5b0b93`, `7a6930ec` | `main` |
 | 121 | 2026-08-07 | 修复 build 后 Cmd+W 关闭 tab 失效与 Agent 进程残留 | `638fceaf` | `main` |
 | 120 | 2026-08-06 | 浏览器模块审查修复(browser-module-audit-fixes) | `f73762ac` | `main` |

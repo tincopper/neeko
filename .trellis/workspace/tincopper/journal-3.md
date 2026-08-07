@@ -171,3 +171,69 @@
 ### Next Steps
 
 - None - task complete
+
+
+## Session 123: feat(editor): drag unpinned tab to pinned panel to pin
+
+**Date**: 2026-08-07
+**Task**: feat(editor): drag unpinned tab to pinned panel to pin
+**Branch**: `main`
+
+### Summary
+
+(Add summary)
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `4169970f` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
+
+
+## Session 124: feat(editor): multi pinned tabs — drag tab to pinned panel appends instead of replacing
+
+**Date**: 2026-08-07
+**Task**: feat(editor): multi pinned tabs — drag tab to pinned panel appends instead of replacing
+**Branch**: `main`
+
+### Summary
+
+(Add summary)
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `4169970f` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
