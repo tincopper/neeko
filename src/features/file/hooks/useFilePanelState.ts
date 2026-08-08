@@ -128,24 +128,30 @@ export function useFilePanelState(params: UseFilePanelStateParams) {
     onRefresh();
   }, [onRefresh]);
 
+  // 展开目标文件的所有父目录（定位/打开文件共用）。返回是否有新增展开。
+  const expandPathParents = useCallback((filePath: string): boolean => {
+    const parentPaths = getParentPaths(filePath);
+    let hasNew = false;
+    setExpandedDirs((prev) => {
+      const next = new Set(prev);
+      for (const p of parentPaths) {
+        if (!next.has(p)) {
+          next.add(p);
+          hasNew = true;
+        }
+      }
+      return hasNew ? next : prev;
+    });
+    return hasNew;
+  }, []);
+
   // Auto-expand parent directories when activeFilePath changes
   useEffect(() => {
     if (activeFilePath && activeFilePath !== prevActiveFilePathRef.current) {
-      const parentPaths = getParentPaths(activeFilePath);
-      setExpandedDirs((prev) => {
-        const next = new Set(prev);
-        let hasNew = false;
-        for (const p of parentPaths) {
-          if (!next.has(p)) {
-            next.add(p);
-            hasNew = true;
-          }
-        }
-        return hasNew ? next : prev;
-      });
+      expandPathParents(activeFilePath);
       prevActiveFilePathRef.current = activeFilePath;
     }
-  }, [activeFilePath]);
+  }, [activeFilePath, expandPathParents]);
 
   const handleToggleDir = useCallback(
     async (path: string) => {
@@ -215,6 +221,16 @@ export function useFilePanelState(params: UseFilePanelStateParams) {
   const handleSelectNode = useCallback((path: string, isDir: boolean) => {
     setSelectedNode({ path, isDir });
   }, []);
+
+  // 定位：复用「点击选中」逻辑（selectedNode → selectedPath → isSelected 高亮），
+  // 额外展开父目录。与手动点击文件的选中路径完全一致，不另起一套高亮。
+  const locateFile = useCallback(
+    (path: string) => {
+      handleSelectNode(path, false);
+      expandPathParents(path);
+    },
+    [handleSelectNode, expandPathParents],
+  );
 
   // 关闭删除确认对话框（不执行删除）
   const closeDeleteConfirm = useCallback(() => {
@@ -465,6 +481,7 @@ export function useFilePanelState(params: UseFilePanelStateParams) {
     collapseAll,
     closeContextMenu,
     handleSelectNode,
+    locateFile,
     getCreationDir,
     startCreating,
     submitCreating,

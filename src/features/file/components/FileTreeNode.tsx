@@ -1,4 +1,4 @@
-import React, { useCallback } from 'react';
+import React, { useCallback, useEffect, useRef } from 'react';
 
 import { ChevronRight } from '@/shared/components/icons';
 import type { FileChange, FileNode } from '@/shared/types';
@@ -78,6 +78,15 @@ function FileTreeNode({
   const isActive = activeFilePath === node.path;
   const isSelected = selectedPath === node.path;
   const isLoadingChildren = loadingDirs.has(node.path);
+
+  // 定位联动：复用「点击选中」同一状态 —— 节点被选中（selectedPath 命中）时
+  // 滚动到可见。定位按钮与手动点击都走 selectedNode → isSelected，样式一致。
+  const nodeRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (isSelected) {
+      nodeRef.current?.scrollIntoView({ block: 'nearest' });
+    }
+  }, [isSelected, node.path]);
   // git 状态色：变更文件优先；无变更且自身/祖先被 .gitignore 忽略 → 灰色
   // 忽略状态是继承性谓词：被忽略目录内的所有后代均被忽略（git 折叠输出保证祖先一定在列表内）
   const statusColor = changedFilesMap?.get(node.path);
@@ -131,6 +140,7 @@ function FileTreeNode({
   return (
     <>
       <div
+        ref={nodeRef}
         role="treeitem"
         tabIndex={-1}
         aria-selected={isActive || isSelected}

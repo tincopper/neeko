@@ -6,6 +6,7 @@ import ConversationPanel from '@/features/conversation/components/ConversationPa
 import type { ConversationMeta } from '@/features/conversation/types';
 import { conversationTabTitle } from '@/features/conversation/utils/conversationTabTitle';
 import { useFileActionsContext } from '@/features/editor/FileActionsContext';
+import { FilesPanel, useLocateFileInTree } from '@/features/file';
 import {
   createDirectory,
   createNewFile,
@@ -14,7 +15,6 @@ import {
   renamePath,
   revealInFileManager,
 } from '@/features/file/api/fileApi';
-import FilesPanel from '@/features/file/components/FilesPanel';
 import { useFileStore } from '@/features/file/store';
 import { refreshGitFileStates } from '@/features/git';
 import GitCommitPanel from '@/features/git/components/GitCommitPanel';
@@ -60,6 +60,7 @@ import { parseProjectIdFromTabKey, resolveTabKey } from '@/shared/utils/tabKey';
 const FilesPanelWrapper: React.FC = React.memo(() => {
   const { onFileSelect, onFileRefresh, onLoadFileTree, onExpandDir } = useFileActionsContext();
   const { project, commands, worktreePath } = useActiveProject();
+  const { config } = useAppContext();
   const projectName = project?.name ?? null;
   const fileRootPath = worktreePath ?? project?.path ?? null;
   const fileTree = useFileStore((s) => s.fileTree);
@@ -68,6 +69,9 @@ const FilesPanelWrapper: React.FC = React.memo(() => {
   const activeProjectId = useProjectStore((s) => s.activeProjectId);
   const projectPath = fileRootPath;
   const changedFiles = project?.gitInfo?.changed_files;
+  // 定位当前编辑器 file tab 到文件树（复用面板内「点击选中」逻辑）
+  const tabKey = project ? resolveTabKey(project.id, worktreePath) : '';
+  const { canLocateFile, filePath: locateTargetPath } = useLocateFileInTree(tabKey);
   // 稳定引用：`?? []` 每次渲染生成新数组，会令下游 effect/callback 依赖抖动
   const ignoredFiles = useMemo(
     () => project?.gitInfo?.ignored_files ?? [],
@@ -305,6 +309,9 @@ const FilesPanelWrapper: React.FC = React.memo(() => {
       onRenamePath={handleRenamePath}
       changedFiles={changedFiles}
       ignoredFiles={ignoredFiles}
+      locateTargetPath={locateTargetPath}
+      canLocateFile={canLocateFile}
+      autoLocateFileOnTabSwitch={config.autoLocateFileOnTabSwitch}
     />
   );
 });

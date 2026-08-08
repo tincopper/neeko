@@ -87,6 +87,10 @@ const SettingsPanel: React.FC<SettingsPanelProps> = React.memo(
             <EditorPanel
               editorFontSize={config.editorFontSize}
               onEditorFontSizeChange={state.setEditorFontSize}
+              autoLocateFileOnTabSwitch={config.autoLocateFileOnTabSwitch}
+              onAutoLocateFileOnTabSwitchChange={(enabled) =>
+                onConfigChange({ ...config, autoLocateFileOnTabSwitch: enabled })
+              }
             />
           );
 

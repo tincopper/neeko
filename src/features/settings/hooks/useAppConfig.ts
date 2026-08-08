@@ -43,6 +43,7 @@ const DEFAULT_CONFIG: AppConfig = {
   enablePiThemeSync: false,
   enableOpenCodeThemeSync: false,
   enableDevTools: false,
+  autoLocateFileOnTabSwitch: true,
   lsp: {
     autoStart: 'onFirstFile',
     deactivateStopMinutes: 30,
@@ -333,6 +334,10 @@ export function useAppConfig() {
               typeof saved.enableDevTools === 'boolean'
                 ? saved.enableDevTools
                 : DEFAULT_CONFIG.enableDevTools,
+            autoLocateFileOnTabSwitch:
+              typeof saved.autoLocateFileOnTabSwitch === 'boolean'
+                ? saved.autoLocateFileOnTabSwitch
+                : DEFAULT_CONFIG.autoLocateFileOnTabSwitch,
             lsp: mergeLspConfig(saved.lsp),
             favoriteBranches:
               saved.favoriteBranches && typeof saved.favoriteBranches === 'object'

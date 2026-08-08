@@ -6,6 +6,13 @@ afterEach(() => {
   cleanup();
 });
 
+// jsdom 未实现 scrollIntoView；文件树「选中即滚动」逻辑会调用它。
+// 全局 mock 为 no-op，避免组件内调用抛 "Not implemented" 错误。
+if (!HTMLElement.prototype.scrollIntoView) {
+  HTMLElement.prototype.scrollIntoView =
+    vi.fn() as unknown as typeof HTMLElement.prototype.scrollIntoView;
+}
+
 // 全局 mock：@tauri-apps/api/core
 vi.mock('@tauri-apps/api/core', () => ({
   invoke: vi.fn(),

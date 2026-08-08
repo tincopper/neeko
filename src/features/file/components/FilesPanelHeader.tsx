@@ -1,6 +1,6 @@
 import React from 'react';
 
-import { ChevronsDownUp } from '@/shared/components/icons';
+import { ChevronsDownUp, Crosshair } from '@/shared/components/icons';
 import { fileIconSrc } from '@/shared/utils/fileIcons';
 
 interface FilesPanelHeaderProps {
@@ -20,6 +20,10 @@ interface FilesPanelHeaderProps {
   /** 是否有可折叠的已展开目录 */
   canCollapse: boolean;
   onRefresh: () => void;
+  /** 定位当前编辑器 file tab 到文件树（刷新按钮左侧）。未提供则不渲染。 */
+  onLocateFile?: () => void;
+  /** 当前是否有 file tab 打开（无则按钮置灰） */
+  canLocateFile?: boolean;
 }
 
 /** 文件面板头部：第一行项目名/文件名 + 按钮组；第二行路径独占一行 */
@@ -34,6 +38,8 @@ function FilesPanelHeader({
   onCollapseAll,
   canCollapse,
   onRefresh,
+  onLocateFile,
+  canLocateFile = false,
 }: FilesPanelHeaderProps) {
   return (
     <div className="px-3 py-2 flex flex-col gap-1">
@@ -113,6 +119,17 @@ function FilesPanelHeader({
           >
             <ChevronsDownUp size={14} />
           </button>
+          {onLocateFile && (
+            <button
+              className="p-1 rounded hover:bg-bg-hover text-text-secondary hover:text-text-primary transition-colors disabled:opacity-40 disabled:hover:bg-transparent disabled:cursor-not-allowed"
+              onClick={onLocateFile}
+              disabled={!canLocateFile}
+              title="Locate current file"
+              aria-label="Locate current file"
+            >
+              <Crosshair size={14} />
+            </button>
+          )}
           <button
             className="p-1 rounded hover:bg-bg-hover text-text-secondary hover:text-text-primary transition-colors"
             onClick={onRefresh}

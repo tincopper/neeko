@@ -110,6 +110,10 @@ function SettingsView() {
           <EditorPanel
             editorFontSize={config.editorFontSize}
             onEditorFontSizeChange={state.setEditorFontSize}
+            autoLocateFileOnTabSwitch={config.autoLocateFileOnTabSwitch}
+            onAutoLocateFileOnTabSwitchChange={(enabled) =>
+              onConfigChange({ ...config, autoLocateFileOnTabSwitch: enabled })
+            }
           />
         );
 

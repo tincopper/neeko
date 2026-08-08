@@ -71,6 +71,8 @@ export interface AppConfig {
   enableOpenCodeThemeSync: boolean;
   /** 是否允许从 View 菜单打开 DevTools（release 构建需启用 devtools feature）。 */
   enableDevTools: boolean;
+  /** 切换 file tab 时自动在文件树中定位该文件。 */
+  autoLocateFileOnTabSwitch: boolean;
   /** Language server settings (profile soft-warm, custom servers, idle recycle). */
   lsp: LspConfig;
   /** Project-id → favorite branch names, persisted across sessions. */

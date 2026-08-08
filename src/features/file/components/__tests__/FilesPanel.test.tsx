@@ -308,6 +308,59 @@ describe('FilesPanel 文件管理', () => {
     expect(fileIcon).toBeDefined();
     expect(fileIcon!.className).not.toMatch(/opacity/);
   });
+
+  it('选中文件节点时滚动到可见（定位/点击复用同一选中逻辑）', () => {
+    const scrollIntoView = vi.fn();
+    const original = HTMLElement.prototype.scrollIntoView;
+    HTMLElement.prototype.scrollIntoView = scrollIntoView;
+    try {
+      render(<FilesPanel {...baseProps} />);
+      // 点击文件 → handleSelectNode → selectedPath 命中 → isSelected 滚动
+      fireEvent.click(screen.getByText('b.ts'));
+      expect(scrollIntoView).toHaveBeenCalled();
+    } finally {
+      HTMLElement.prototype.scrollIntoView = original;
+    }
+  });
+
+  it('切换 file tab（locateTargetPath 变化）时自动定位：展开父目录并选中目标文件', () => {
+    const { rerender } = render(
+      <FilesPanel {...baseProps} locateTargetPath="src/a.ts" canLocateFile />,
+    );
+
+    // 无需点击定位按钮：locateTargetPath 变化即自动执行定位（复用选中逻辑）
+    expect(screen.getByRole('treeitem', { selected: true })).toHaveTextContent('a.ts');
+
+    // 切换到另一个文件 tab → 自动定位到新目标
+    rerender(<FilesPanel {...baseProps} locateTargetPath="b.ts" canLocateFile />);
+    expect(screen.getByRole('treeitem', { selected: true })).toHaveTextContent('b.ts');
+  });
+
+  it('关闭 autoLocateFileOnTabSwitch 后切换 tab 不自动定位，定位按钮仍可用', () => {
+    const { rerender } = render(
+      <FilesPanel
+        {...baseProps}
+        locateTargetPath="src/a.ts"
+        canLocateFile
+        autoLocateFileOnTabSwitch={false}
+      />,
+    );
+
+    // 关闭自动定位：locateTargetPath 变化不选中任何节点
+    expect(screen.queryByRole('treeitem', { selected: true })).not.toBeInTheDocument();
+
+    // 手动点击定位按钮 → 仍可定位（按钮与自动定位共用同一选中逻辑）
+    rerender(
+      <FilesPanel
+        {...baseProps}
+        locateTargetPath="src/a.ts"
+        canLocateFile
+        autoLocateFileOnTabSwitch={false}
+      />,
+    );
+    fireEvent.click(screen.getByTitle('Locate current file'));
+    expect(screen.getByRole('treeitem', { selected: true })).toHaveTextContent('a.ts');
+  });
 });
 
 describe('displayHomePath', () => {

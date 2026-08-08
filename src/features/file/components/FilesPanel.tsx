@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useCallback, useEffect, useRef } from 'react';
 
 import ContextMenu from '@/shared/components/ContextMenu';
 import type { FileNode, FileChange } from '@/shared/types';
@@ -45,6 +45,12 @@ interface FilesPanelProps {
   onRenamePath?: (path: string, newName: string) => Promise<void> | void;
   /** 被 .gitignore 忽略的相对路径列表（文件树灰色显示） */
   ignoredFiles?: string[];
+  /** 定位目标：当前激活 file tab 的路径（null 表示无 file tab） */
+  locateTargetPath?: string | null;
+  /** 当前是否有 file tab 打开（无则按钮置灰） */
+  canLocateFile?: boolean;
+  /** 切换 file tab 时是否自动定位（默认开启；关闭后仅按钮可手动定位） */
+  autoLocateFileOnTabSwitch?: boolean;
 }
 
 function FilesPanel({
@@ -67,6 +73,9 @@ function FilesPanel({
   onRenamePath,
   ignoredFiles,
   changedFiles,
+  locateTargetPath,
+  canLocateFile,
+  autoLocateFileOnTabSwitch = true,
 }: FilesPanelProps) {
   const state = useFilePanelState({
     projectPath,
@@ -86,6 +95,30 @@ function FilesPanel({
     changedFiles,
     ignoredFiles,
   });
+
+  // 定位：复用「点击选中」同一流程（selectedNode → isSelected 高亮 + 展开父目录）。
+  // 与手动点击文件的选中/滚动完全一致，不单独维护一套高亮。
+  const { locateFile } = state;
+  const handleLocateFile = useCallback(() => {
+    if (locateTargetPath) {
+      locateFile(locateTargetPath);
+    }
+  }, [locateTargetPath, locateFile]);
+
+  // 切换 file tab（locateTargetPath 变化）时自动定位 —— 与点击定位按钮走同一
+  // 选中流程。用 ref 记住上一次目标，避免每次渲染重复定位。
+  // 关闭 autoLocateFileOnTabSwitch 后不做自动定位（按钮仍可手动定位）。
+  const prevLocateTargetRef = useRef<string | null | undefined>(null);
+  useEffect(() => {
+    if (
+      autoLocateFileOnTabSwitch &&
+      locateTargetPath &&
+      locateTargetPath !== prevLocateTargetRef.current
+    ) {
+      locateFile(locateTargetPath);
+    }
+    prevLocateTargetRef.current = locateTargetPath;
+  }, [autoLocateFileOnTabSwitch, locateTargetPath, locateFile]);
 
   if (!projectName) {
     return (
@@ -114,6 +147,8 @@ function FilesPanel({
         onCollapseAll={state.collapseAll}
         canCollapse={state.canCollapse}
         onRefresh={state.handleRefresh}
+        onLocateFile={handleLocateFile}
+        canLocateFile={canLocateFile}
       />
 
       <div className="flex-1 overflow-y-auto overflow-x-hidden py-1">

@@ -1,13 +1,21 @@
 import React from 'react';
 
-import { Separator } from '@/ui';
+import { Separator, Switch } from '@/ui';
 
 interface EditorPanelProps {
   editorFontSize: number;
   onEditorFontSizeChange: (size: number) => void;
+  /** 切换 file tab 时自动在文件树中定位该文件 */
+  autoLocateFileOnTabSwitch: boolean;
+  onAutoLocateFileOnTabSwitchChange: (enabled: boolean) => void;
 }
 
-const EditorPanel: React.FC<EditorPanelProps> = ({ editorFontSize, onEditorFontSizeChange }) => {
+const EditorPanel: React.FC<EditorPanelProps> = ({
+  editorFontSize,
+  onEditorFontSizeChange,
+  autoLocateFileOnTabSwitch,
+  onAutoLocateFileOnTabSwitchChange,
+}) => {
   return (
     <>
       <h3 className="text-base font-semibold text-text-primary mb-4">Editor</h3>
@@ -38,6 +46,20 @@ const EditorPanel: React.FC<EditorPanelProps> = ({ editorFontSize, onEditorFontS
             +
           </button>
         </div>
+      </div>
+      <div className="flex items-center justify-between py-3 border-b border-white/[0.04] gap-6 [&:last-child]:border-b-0">
+        <div className="flex-1 min-w-0">
+          <div className="text-[0.86em] text-text-primary font-medium mb-0.75">
+            Auto-locate file on tab switch
+          </div>
+          <div className="text-[0.79em] text-text-muted leading-relaxed">
+            When switching file tabs, automatically reveal the file in the file tree.
+          </div>
+        </div>
+        <Switch
+          checked={autoLocateFileOnTabSwitch}
+          onCheckedChange={onAutoLocateFileOnTabSwitchChange}
+        />
       </div>
     </>
   );
