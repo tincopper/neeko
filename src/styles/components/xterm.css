@@ -11,6 +11,28 @@
   .terminal-wrapper .xterm-screen { width: 100% !important; background-color: var(--terminal-bg) !important; }
   .terminal-wrapper .xterm .xterm-scrollable-element > .scrollbar { display: none !important; }
 
+  /* Reusable xterm scrollbar theme — attach `.xterm-themed-scrollbar` to any
+     container that hosts an xterm instance whose custom overlay scrollbar
+     should look like the app chrome (base.css global scrollbars): thin bar,
+     --bg-hover thumb, rounded, hover accent. Used by the Console panel
+     (TaskConsoleOutput) and reusable by future xterm-based surfaces.
+     xterm sets width via inline style and slider color via generated CSS,
+     so these need !important to win. */
+  .xterm-themed-scrollbar .xterm .xterm-scrollable-element > .scrollbar {
+    width: 6px !important;
+  }
+  .xterm-themed-scrollbar .xterm .xterm-scrollable-element > .scrollbar > .slider {
+    width: 6px !important;
+    background: var(--bg-hover) !important;
+    border-radius: 3px;
+  }
+  .xterm-themed-scrollbar .xterm .xterm-scrollable-element > .scrollbar > .slider:hover {
+    background: var(--text-muted) !important;
+  }
+  .xterm-themed-scrollbar .xterm .xterm-scrollable-element > .scrollbar > .slider:active {
+    background: var(--text-muted) !important;
+  }
+
   /* Side terminal grid :has() layout */
   .side-terminal-grid-container { display: grid; grid-template-columns: repeat(2, 1fr); grid-template-rows: repeat(2, 1fr); gap: 2px; }
   .side-terminal-grid-container:has(> :only-child) { grid-template-columns: 1fr; grid-template-rows: 1fr; }

@@ -83,6 +83,11 @@ export function buildTerminalTheme(): ITheme {
     cursor: cssVar('--accent-blue') || '#ffffff',
     selectionBackground: cssVar('--terminal-selection') || '#333333',
     selectionForeground: softFg,
+    // Theme xterm's overlay scrollbar with the same tokens as the app chrome
+    // (base.css global scrollbars) so the Console panel matches other panels.
+    scrollbarSliderBackground: cssVar('--bg-hover') || (isDark ? '#3e4451' : '#c9cdd4'),
+    scrollbarSliderHoverBackground: cssVar('--text-muted') || (isDark ? '#5c6370' : '#9a9ea5'),
+    scrollbarSliderActiveBackground: cssVar('--text-muted') || (isDark ? '#5c6370' : '#9a9ea5'),
     ...(isDark ? DARK_ANSI_COLORS : LIGHT_ANSI_COLORS),
   };
 }
