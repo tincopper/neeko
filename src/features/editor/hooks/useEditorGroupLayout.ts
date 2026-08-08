@@ -56,21 +56,84 @@ export function useEditorGroupLayout(tabKey: string): EditorGroupLayoutResult {
   const storeUnpinTab = useEditorStore((s) => s.unpinTab);
   const storeSetPinnedPanelRatio = useEditorStore((s) => s.setPinnedPanelRatio);
 
+  // Live tab id lookup set — O(1) membership checks for healing stale layouts
+  // (avoids O(n×m) `allTabs.some(...)` scans inside the heal callback).
+  const liveTabIdSet = useMemo(() => {
+    const set = new Set<string>();
+    for (const t of allTabs) set.add(t.id);
+    return set;
+  }, [allTabs]);
+
+  // Repair a group whose activeTabId is null or points at a tab that is no
+  // longer in the group. The layout can go stale through paths that write tabs
+  // without a layout (session restore) or through split juggling — and when it
+  // does, EditorGroupPane's `activeTab` lookup misses and the content area
+  // renders blank while the tab bar still shows the tabs.
+  // NOTE: the layout's own `tabIds` may itself list removed tabs (leftTabs
+  // filters them out), so only tabs that still exist in the store are
+  // candidates for the healed active id.
+  const healGroupActiveTabId = useCallback(
+    (tabIds: string[], currentActiveTabId: string | null): string | null => {
+      const liveTabIds = tabIds.filter((id) => liveTabIdSet.has(id));
+      if (currentActiveTabId && liveTabIds.includes(currentActiveTabId)) return currentActiveTabId;
+      if (liveTabIds.length === 0) return null;
+      // Prefer the store's active tab when it lives in this group, else the
+      // last remaining tab — mirrors the fallback branch below.
+      return projectActiveTabId && liveTabIds.includes(projectActiveTabId)
+        ? projectActiveTabId
+        : liveTabIds[liveTabIds.length - 1];
+    },
+    [projectActiveTabId, liveTabIdSet],
+  );
+
   const layout: EditorSplitLayout = useMemo(() => {
-    if (rawLayout) return rawLayout;
+    if (rawLayout) {
+      // A stored layout may reference tabs that were removed (blank content
+      // area bug). Heal each group without mutating the stored layout.
+      const leftActive = healGroupActiveTabId(
+        rawLayout.groups.left.tabIds,
+        rawLayout.groups.left.activeTabId,
+      );
+      const rightActive = healGroupActiveTabId(
+        rawLayout.groups.right.tabIds,
+        rawLayout.groups.right.activeTabId,
+      );
+      const livePinnedIds = rawLayout.pinnedTabIds.filter((id) => liveTabIdSet.has(id));
+      const pinnedActive =
+        rawLayout.pinnedActiveTabId && livePinnedIds.includes(rawLayout.pinnedActiveTabId)
+          ? rawLayout.pinnedActiveTabId
+          : livePinnedIds.length > 0
+            ? livePinnedIds[livePinnedIds.length - 1]
+            : null;
+      if (
+        rawLayout.groups.left.activeTabId === leftActive &&
+        rawLayout.groups.right.activeTabId === rightActive &&
+        rawLayout.pinnedActiveTabId === pinnedActive
+      ) {
+        return rawLayout;
+      }
+      return {
+        ...rawLayout,
+        groups: {
+          left: { ...rawLayout.groups.left, activeTabId: leftActive },
+          right: { ...rawLayout.groups.right, activeTabId: rightActive },
+        },
+        pinnedActiveTabId: pinnedActive,
+      };
+    }
     const l = createDefaultEditorLayout();
     l.groups.left.tabIds = allTabs.map((t) => t.id);
     // Prefer the store's active tab so the fallback (used before any layout is
     // created, e.g. right after session restore) never points at a removed tab
     // — otherwise closing the active tab leaves a blank content area.
     l.groups.left.activeTabId =
-      projectActiveTabId && allTabs.some((t) => t.id === projectActiveTabId)
+      projectActiveTabId && liveTabIdSet.has(projectActiveTabId)
         ? projectActiveTabId
         : allTabs.length > 0
           ? allTabs[allTabs.length - 1].id
           : null;
     return l;
-  }, [rawLayout, allTabs, projectActiveTabId]);
+  }, [rawLayout, allTabs, projectActiveTabId, healGroupActiveTabId, liveTabIdSet]);
 
   const tabsById = useMemo(() => {
     const map = new Map<string, Tab>();
