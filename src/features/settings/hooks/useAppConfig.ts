@@ -42,6 +42,7 @@ const DEFAULT_CONFIG: AppConfig = {
   terminalGpuAcceleration: false,
   enablePiThemeSync: false,
   enableOpenCodeThemeSync: false,
+  enableDevTools: false,
   lsp: {
     autoStart: 'onFirstFile',
     deactivateStopMinutes: 30,
@@ -328,6 +329,10 @@ export function useAppConfig() {
               typeof saved.enableOpenCodeThemeSync === 'boolean'
                 ? saved.enableOpenCodeThemeSync
                 : DEFAULT_CONFIG.enableOpenCodeThemeSync,
+            enableDevTools:
+              typeof saved.enableDevTools === 'boolean'
+                ? saved.enableDevTools
+                : DEFAULT_CONFIG.enableDevTools,
             lsp: mergeLspConfig(saved.lsp),
             favoriteBranches:
               saved.favoriteBranches && typeof saved.favoriteBranches === 'object'

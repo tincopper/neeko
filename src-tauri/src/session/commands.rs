@@ -9,6 +9,7 @@ use tauri::State;
 #[tauri::command]
 pub fn save_config(
     config: serde_json::Value,
+    app: tauri::AppHandle,
     state: State<AppStateWrapper>,
 ) -> Result<(), AppError> {
     state
@@ -17,6 +18,8 @@ pub fn save_config(
         .map_err(AppError::from)?;
     // Keep LSP registry / policies in sync with config.lsp
     state.lsp_manager.apply_settings_from_json(&config);
+    // View 菜单 DevTools 项 enabled 状态即时同步（无需重启）
+    crate::app_menu::sync_devtools_menu_item(&app, crate::app_menu::is_devtools_enabled(&config));
     Ok(())
 }
 

@@ -91,6 +91,7 @@ function SettingsView() {
             theme={config.theme}
             enablePiThemeSync={config.enablePiThemeSync}
             enableOpenCodeThemeSync={config.enableOpenCodeThemeSync}
+            enableDevTools={config.enableDevTools}
             customThemes={customThemes}
             onAppearanceFontSizeChange={state.setAppearanceFontSize}
             onThemeChange={(theme) => onConfigChange({ ...config, theme })}
@@ -100,6 +101,7 @@ function SettingsView() {
             onOpenCodeThemeSyncChange={(enabled) =>
               onConfigChange({ ...config, enableOpenCodeThemeSync: enabled })
             }
+            onDevToolsChange={(enabled) => onConfigChange({ ...config, enableDevTools: enabled })}
           />
         );
 

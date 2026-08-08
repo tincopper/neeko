@@ -9,11 +9,13 @@ interface AppearancePanelProps {
   theme: AppTheme;
   enablePiThemeSync: boolean;
   enableOpenCodeThemeSync: boolean;
+  enableDevTools: boolean;
   customThemes: ThemeListItem[];
   onAppearanceFontSizeChange: (size: number) => void;
   onThemeChange: (theme: AppTheme) => void;
   onPiThemeSyncChange: (enabled: boolean) => void;
   onOpenCodeThemeSyncChange: (enabled: boolean) => void;
+  onDevToolsChange: (enabled: boolean) => void;
 }
 
 const BUILTIN_THEME_SWATCHES: { id: string; label: string; bg: string; textColor: string }[] = [
@@ -29,11 +31,13 @@ const AppearancePanel: React.FC<AppearancePanelProps> = ({
   theme,
   enablePiThemeSync,
   enableOpenCodeThemeSync,
+  enableDevTools,
   customThemes,
   onAppearanceFontSizeChange,
   onThemeChange,
   onPiThemeSyncChange,
   onOpenCodeThemeSyncChange,
+  onDevToolsChange,
 }) => {
   return (
     <div className="flex flex-col">
@@ -143,6 +147,17 @@ const AppearancePanel: React.FC<AppearancePanelProps> = ({
           </div>
         </div>
         <Switch checked={enableOpenCodeThemeSync} onCheckedChange={onOpenCodeThemeSyncChange} />
+      </div>
+
+      {/* DevTools Toggle */}
+      <div className="flex items-center justify-between py-3">
+        <div className="flex-1 min-w-0">
+          <div className="text-[0.86em] text-text-primary font-medium mb-0.75">Enable DevTools</div>
+          <div className="text-[0.79em] text-text-muted leading-relaxed">
+            Allow opening the inspector from the View menu (Cmd+Alt+I / Ctrl+Alt+I).
+          </div>
+        </div>
+        <Switch checked={enableDevTools} onCheckedChange={onDevToolsChange} />
       </div>
     </div>
   );

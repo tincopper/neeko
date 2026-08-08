@@ -69,6 +69,8 @@ export interface AppConfig {
   terminalGpuAcceleration: boolean;
   enablePiThemeSync: boolean;
   enableOpenCodeThemeSync: boolean;
+  /** 是否允许从 View 菜单打开 DevTools（release 构建需启用 devtools feature）。 */
+  enableDevTools: boolean;
   /** Language server settings (profile soft-warm, custom servers, idle recycle). */
   lsp: LspConfig;
   /** Project-id → favorite branch names, persisted across sessions. */
