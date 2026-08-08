@@ -323,8 +323,21 @@ export const useEditorStore = create<EditorStoreState>((set) => ({
             newActiveId = groupIds![groupIdx - 1];
           } else if (groupIdx >= 0 && groupIds && groupIds.length > 1) {
             newActiveId = groupIds[groupIdx + 1];
-          } else {
+          } else if (layout) {
             newActiveId = remaining[remaining.length - 1].id;
+          } else {
+            // No layout yet (e.g. session-restored tabs): keep the tab-bar
+            // order so the adjacent tab is selected, mirroring the layout
+            // branch above. Without this the active tab jumps to the last
+            // remaining tab, which the UI fallback layout also misreads.
+            const origIdx = idx;
+            if (origIdx > 0) {
+              newActiveId = remaining[origIdx - 1].id;
+            } else if (remaining.length > 1) {
+              newActiveId = remaining[origIdx].id;
+            } else {
+              newActiveId = remaining[remaining.length - 1].id;
+            }
           }
         }
       }
@@ -412,6 +425,18 @@ export const useEditorStore = create<EditorStoreState>((set) => ({
         }
 
         newEditorLayout = { ...state.editorLayout, [projectId]: newLayout };
+      } else if (remaining.length > 0) {
+        // No layout yet (e.g. session-restored tabs or legacy state): create
+        // one in sync with the remaining tabs so the UI (useEditorGroupLayout)
+        // reads a real layout instead of deriving a fallback that ignores
+        // tabs[projectId].activeTabId — which left a blank content area.
+        const created = ensureLayout(
+          state.editorLayout,
+          projectId,
+          remaining.map((t) => t.id),
+          newActiveId,
+        );
+        newEditorLayout = { ...state.editorLayout, [projectId]: created };
       }
 
       return {
@@ -459,6 +484,18 @@ export const useEditorStore = create<EditorStoreState>((set) => ({
             },
           };
         }
+      } else {
+        // 与 closeTab 相同的兜底：layout 缺失时（session restore 等路径）创建
+        // 与 tabs 同步的 layout，否则 UI fallback 与 store 的 activeTabId 脱节。
+        newEditorLayout = {
+          ...state.editorLayout,
+          [projectId]: ensureLayout(
+            state.editorLayout,
+            projectId,
+            existing.tabs.map((t) => t.id),
+            tabId,
+          ),
+        };
       }
 
       // Notify listeners after state is applied (MRU / recent files).

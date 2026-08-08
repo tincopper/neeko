@@ -36,8 +36,14 @@ export interface EditorGroupLayoutResult {
   closeAllTabs: () => void;
 }
 
+// Stable empty array: returning a fresh `[]` from a zustand selector each call
+// makes useSyncExternalStore see a changed snapshot every render (infinite
+// loop risk in production builds); share one reference instead.
+const EMPTY_TABS: Tab[] = [];
+
 export function useEditorGroupLayout(tabKey: string): EditorGroupLayoutResult {
-  const allTabs = useEditorStore((s) => s.tabs[tabKey]?.tabs ?? []);
+  const allTabs = useEditorStore((s) => s.tabs[tabKey]?.tabs ?? EMPTY_TABS);
+  const projectActiveTabId = useEditorStore((s) => s.tabs[tabKey]?.activeTabId ?? null);
   const rawLayout = useEditorStore((s) => s.editorLayout[tabKey]);
   const storeSplitRight = useEditorStore((s) => s.splitRight);
   const storeMoveToRight = useEditorStore((s) => s.moveToRight);
@@ -54,9 +60,17 @@ export function useEditorGroupLayout(tabKey: string): EditorGroupLayoutResult {
     if (rawLayout) return rawLayout;
     const l = createDefaultEditorLayout();
     l.groups.left.tabIds = allTabs.map((t) => t.id);
-    l.groups.left.activeTabId = allTabs.length > 0 ? allTabs[allTabs.length - 1].id : null;
+    // Prefer the store's active tab so the fallback (used before any layout is
+    // created, e.g. right after session restore) never points at a removed tab
+    // — otherwise closing the active tab leaves a blank content area.
+    l.groups.left.activeTabId =
+      projectActiveTabId && allTabs.some((t) => t.id === projectActiveTabId)
+        ? projectActiveTabId
+        : allTabs.length > 0
+          ? allTabs[allTabs.length - 1].id
+          : null;
     return l;
-  }, [rawLayout, allTabs]);
+  }, [rawLayout, allTabs, projectActiveTabId]);
 
   const tabsById = useMemo(() => {
     const map = new Map<string, Tab>();
