@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useRef } from 'react';
 
 import { ChevronRight } from '@/shared/components/icons';
-import type { FileChange, FileNode } from '@/shared/types';
+import type { DirLoadState, FileChange, FileNode } from '@/shared/types';
 import { fileIconSrc } from '@/shared/utils/fileIcons';
 
 import { setDragFile } from '../hooks/useFileDrop';
@@ -22,10 +22,13 @@ interface FileTreeNodeProps {
   depth: number;
   activeFilePath: string | null;
   expandedDirs: Set<string>;
-  loadingDirs: Set<string>;
+  /** 目录加载状态机（来自 file store）：驱动 loading spinner 与 error 重试提示 */
+  dirLoadStates: Record<string, DirLoadState>;
   projectId: string | null;
   onSelectFile: (path: string) => void;
   onToggleDir: (path: string) => void;
+  /** 目录加载失败时点击重试（触发 store.loadDir 重新请求） */
+  onRetryDir?: (path: string) => void;
   onContextMenu?: (position: { x: number; y: number }, node: FileNode) => void;
   /** 选中节点（用于 Delete 按钮） */
   onSelectNode?: (path: string, isDir: boolean) => void;
@@ -54,10 +57,11 @@ function FileTreeNode({
   depth,
   activeFilePath,
   expandedDirs,
-  loadingDirs,
+  dirLoadStates,
   projectId,
   onSelectFile,
   onToggleDir,
+  onRetryDir,
   onContextMenu,
   onSelectNode,
   selectedPath,
@@ -77,7 +81,9 @@ function FileTreeNode({
   const isExpanded = expandedDirs.has(node.path);
   const isActive = activeFilePath === node.path;
   const isSelected = selectedPath === node.path;
-  const isLoadingChildren = loadingDirs.has(node.path);
+  const dirState = dirLoadStates[node.path];
+  const isLoadingChildren = dirState === 'loading';
+  const isLoadError = dirState === 'error';
 
   // 定位联动：复用「点击选中」同一状态 —— 节点被选中（selectedPath 命中）时
   // 滚动到可见。定位按钮与手动点击都走 selectedNode → isSelected，样式一致。
@@ -184,6 +190,19 @@ function FileTreeNode({
             {isLoadingChildren && (
               <span className="shrink-0 w-3 h-3 rounded-full border border-text-muted border-t-transparent animate-spin ml-1" />
             )}
+            {isLoadError && (
+              <button
+                type="button"
+                className="shrink-0 w-2 h-2 rounded-full bg-accent-red ml-1 p-0 border-0 cursor-pointer"
+                title="加载失败，点击重试"
+                aria-label={`重新加载 ${node.name}`}
+                onClick={(e) => {
+                  // 阻止冒泡到行级 toggle（避免收起/展开），红点只负责触发重试
+                  e.stopPropagation();
+                  onRetryDir?.(node.path);
+                }}
+              />
+            )}
           </>
         ) : (
           <>
@@ -232,10 +251,11 @@ function FileTreeNode({
                   depth={depth + 1}
                   activeFilePath={activeFilePath}
                   expandedDirs={expandedDirs}
-                  loadingDirs={loadingDirs}
+                  dirLoadStates={dirLoadStates}
                   projectId={projectId}
                   onSelectFile={onSelectFile}
                   onToggleDir={onToggleDir}
+                  onRetryDir={onRetryDir}
                   onContextMenu={onContextMenu}
                   onSelectNode={onSelectNode}
                   selectedPath={selectedPath}

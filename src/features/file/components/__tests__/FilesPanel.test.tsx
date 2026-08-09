@@ -1,7 +1,8 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import FilesPanel, { displayHomePath } from '@/features/file/components/FilesPanel';
+import { useFileStore } from '@/features/file/store';
 import type { FileChange, FileNode } from '@/shared/types';
 
 const tree: FileNode[] = [
@@ -14,12 +15,41 @@ const tree: FileNode[] = [
   { name: 'b.ts', path: 'b.ts', is_dir: false, children: [] },
 ];
 
+const OWNER = 'p1:/demo';
+
+/** 把嵌套树摊平成扁平目录缓存（dirPath → 一级条目），与 store 的 stripChildren 语义一致 */
+function flattenTree(nodes: FileNode[]): Record<string, FileNode[]> {
+  const dirs: Record<string, FileNode[]> = {};
+  const strip = (list: FileNode[]): FileNode[] => list.map((n) => ({ ...n, children: [] }));
+  dirs[''] = strip(nodes);
+  const walk = (list: FileNode[], prefix: string) => {
+    for (const n of list) {
+      if (!n.is_dir) continue;
+      const path = prefix ? `${prefix}/${n.name}` : n.name;
+      const kids = n['children'];
+      dirs[path] = strip(kids);
+      walk(kids, path);
+    }
+  };
+  walk(nodes, '');
+  return dirs;
+}
+
+/** 重置 store 并注入目录缓存（模拟根目录与子目录均已加载） */
+function seedDirs(nodes: FileNode[]) {
+  useFileStore.getState().reset();
+  const dirs = flattenTree(nodes);
+  useFileStore.setState({
+    owner: OWNER,
+    dirs,
+    loadStates: Object.fromEntries(Object.keys(dirs).map((k) => [k, 'loaded' as const])),
+  });
+}
+
 const baseProps = {
   projectName: 'demo',
   projectPath: '/demo',
   projectId: 'p1',
-  fileTree: tree,
-  isLoading: false,
   activeFilePath: null,
   onSelectFile: vi.fn(),
   onRefresh: vi.fn(),
@@ -28,6 +58,10 @@ const baseProps = {
 };
 
 describe('FilesPanel 文件管理', () => {
+  beforeEach(() => {
+    seedDirs(tree);
+  });
+
   it('头部按钮创建文件：输入文件名后回车提交到根目录', () => {
     const onCreateFile = vi.fn().mockResolvedValue(undefined);
     render(<FilesPanel {...baseProps} onCreateFile={onCreateFile} />);
@@ -179,7 +213,8 @@ describe('FilesPanel 文件管理', () => {
       ...tree,
       { name: '.env', path: '.env', is_dir: false, children: [] },
     ];
-    render(<FilesPanel {...baseProps} fileTree={treeWithIgnored} ignoredFiles={['.env']} />);
+    seedDirs(treeWithIgnored);
+    render(<FilesPanel {...baseProps} ignoredFiles={['.env']} />);
 
     expect(screen.getByText('.env')).toHaveClass('text-text-muted');
     // 普通文件不受影响
@@ -215,7 +250,8 @@ describe('FilesPanel 文件管理', () => {
         ],
       },
     ];
-    render(<FilesPanel {...baseProps} fileTree={deepTree} ignoredFiles={['a']} />);
+    seedDirs(deepTree);
+    render(<FilesPanel {...baseProps} ignoredFiles={['a']} />);
 
     fireEvent.click(screen.getByText('a'));
     fireEvent.click(screen.getByText('b'));
@@ -242,7 +278,8 @@ describe('FilesPanel 文件管理', () => {
         ],
       },
     ];
-    render(<FilesPanel {...baseProps} fileTree={partialTree} ignoredFiles={['sub/deep']} />);
+    seedDirs(partialTree);
+    render(<FilesPanel {...baseProps} ignoredFiles={['sub/deep']} />);
 
     fireEvent.click(screen.getByText('sub'));
     // sub 只有部分内容被忽略 → 自身与未忽略项不灰
@@ -272,14 +309,8 @@ describe('FilesPanel 文件管理', () => {
     const changed: FileChange[] = [
       { path: '.env', status: 'Modified', additions: 1, deletions: 0 },
     ];
-    render(
-      <FilesPanel
-        {...baseProps}
-        fileTree={treeWithIgnored}
-        ignoredFiles={['.env']}
-        changedFiles={changed}
-      />,
-    );
+    seedDirs(treeWithIgnored);
+    render(<FilesPanel {...baseProps} ignoredFiles={['.env']} changedFiles={changed} />);
 
     expect(screen.getByText('.env')).toHaveClass('text-accent-blue');
   });

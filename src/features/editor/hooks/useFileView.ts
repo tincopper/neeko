@@ -12,7 +12,7 @@ import type { FileNode, FileContent, Tab } from '@/shared/types';
 import type { ProjectCommands } from '@/shared/types/activeProject';
 import { DEFAULT_TREE_DEPTH } from '@/shared/types/file';
 import { clearViewSnapshot, clearAllForTabKey } from '@/shared/utils/editorViewState';
-import { mergeSubTree, getTabId, getFileName, isFileTab } from '@/shared/utils/fileTree';
+import { getTabId, getFileName, isFileTab } from '@/shared/utils/fileTree';
 import { parseProjectIdFromTabKey, resolveTabKey } from '@/shared/utils/tabKey';
 
 /** 从 store 读取指定项目的 .gitignore 忽略列表（供文件树剪枝，undefined 表示不剪枝） */
@@ -34,11 +34,9 @@ export function useFileView(
   externalCommands?: ProjectCommands | null,
   externalWorktreePath?: string | null,
 ) {
-  const fileTree = useFileStore(useShallow((state) => state.fileTree));
   const activeProject = useProjectStore((state) => state.activeProject);
   const activeProjectId = useProjectStore((state) => state.activeProjectId);
   const activeWorktreePath = useWorktreeStore((state) => state.activeWorktreePath);
-  const fileTreeLoading = useFileStore((state) => state.fileViewLoading);
   const [error, setError] = useState<string | null>(null);
 
   // Unified current project ID — covers local/WSL/remote via unified store
@@ -102,71 +100,53 @@ export function useFileView(
   }, [externalCommands]);
 
   /**
-   * Load the directory tree for a project
+   * 构造目录加载器：按项目类型分发（Local 走 readDirTree 命令，WSL/Remote 走 ProjectCommands），
+   * 供 store.loadDir 注入 —— store 只治理数据生命周期，不感知命令实现。
    */
-  const loadFileTree = useCallback(async (projectId: string, worktreePath?: string) => {
-    useFileStore.setState({ fileViewLoading: true });
-    setError(null);
-    try {
-      const cmds = externalCommandsRef.current;
-      let tree: FileNode[];
-      const ignored = getIgnoredFiles(projectId);
-      if (cmds) {
-        // WSL/Remote 模式：通过 ProjectCommands 接口调用
-        tree = await cmds.readDirTree(
-          worktreePath ?? undefined,
-          undefined,
-          DEFAULT_TREE_DEPTH,
-          ignored,
-        );
-      } else {
-        // Local 模式：通过 unified 命令调用
-        tree = await readDirTree(projectId, '', worktreePath ?? null, undefined, ignored);
-      }
-      useFileStore.setState({
-        fileTree: tree,
-        fileViewLoading: false,
-      });
-    } catch (e) {
-      setError(String(e));
-      useFileStore.setState({
-        fileTree: [],
-        fileViewLoading: false,
-      });
-    }
+  const makeDirLoader = useCallback((projectId: string, rootPath: string, dirPath: string) => {
+    const cmds = externalCommandsRef.current;
+    const ignored = getIgnoredFiles(projectId);
+    return (): Promise<FileNode[]> =>
+      cmds
+        ? cmds.readDirTree(rootPath, dirPath || undefined, DEFAULT_TREE_DEPTH, ignored)
+        : readDirTree(projectId, dirPath, rootPath, undefined, ignored);
+  }, []);
+
+  /** 解析当前 root 路径：外部（WSL/Remote worktree）优先，否则 activeProject.path */
+  const resolveRootPath = useCallback(() => {
+    return worktreePathRef.current ?? useProjectStore.getState().activeProject?.path ?? null;
   }, []);
 
   /**
-   * 懒加载子目录：展开超过初始深度的目录时，按需加载该目录的子树
+   * Load the directory tree for a project
    */
-  const expandSubTree = useCallback(async (dirPath: string) => {
-    const cmds = externalCommandsRef.current;
-    const projectId = useProjectStore.getState().activeProjectId ?? null;
-    if (!projectId) return;
-    const rootPath = worktreePathRef.current ?? undefined;
+  const loadFileTree = useCallback(
+    async (projectId: string, worktreePath?: string) => {
+      const rootPath = worktreePath ?? useProjectStore.getState().activeProject?.path ?? null;
+      if (!rootPath) return;
+      const owner = `${projectId}:${rootPath}`;
+      const loader = makeDirLoader(projectId, rootPath, '');
+      await useFileStore.getState().loadDir(owner, '', loader);
+    },
+    [makeDirLoader],
+  );
 
-    try {
-      let subChildren: FileNode[];
-      // ignored 传入以剪枝子树中的其他被忽略目录（展开目标自身不受影响）
-      const ignored = getIgnoredFiles(projectId);
-      if (cmds) {
-        // WSL/Remote 模式
-        subChildren = await cmds.readDirTree(rootPath, dirPath, DEFAULT_TREE_DEPTH, ignored);
-      } else {
-        // Local 模式：通过 unified 命令
-        subChildren = await readDirTree(projectId, dirPath, rootPath ?? null, undefined, ignored);
-      }
-
-      const currentTree = useFileStore.getState().fileTree;
-      const merged = mergeSubTree(currentTree, dirPath, subChildren);
-      useFileStore.setState({ fileTree: merged });
-    } catch (e) {
-      // Re-throw so the caller (FilesPanel.handleToggleDir) can handle it;
-      // at minimum its `finally` block will clear the loading spinner.
-      console.error('[useFileView] expandSubTree failed for', dirPath, e);
-      throw e;
-    }
-  }, []);
+  /**
+   * 懒加载子目录：展开超过初始深度的目录时，按需加载该目录的内容
+   * （store 幂等：已 loaded/loading 跳过；根刷新不影响已加载的子目录缓存）
+   */
+  const expandSubTree = useCallback(
+    async (dirPath: string) => {
+      const projectId = useProjectStore.getState().activeProjectId ?? null;
+      if (!projectId) return;
+      const rootPath = resolveRootPath();
+      if (!rootPath) return;
+      const owner = `${projectId}:${rootPath}`;
+      const loader = makeDirLoader(projectId, rootPath, dirPath);
+      await useFileStore.getState().loadDir(owner, dirPath, loader);
+    },
+    [makeDirLoader, resolveRootPath],
+  );
 
   /**
    * Open a file - adds a new tab or activates existing tab
@@ -213,7 +193,7 @@ export function useFileView(
       return;
     }
 
-    // Load file content �?do NOT touch fileTreeLoading
+    // Load file content — 不触碰文件树 loading 状态（树加载由 store.loadDir 独立治理）
     setError(null);
     try {
       const rootPath = worktreePathRef.current ?? undefined;
@@ -365,17 +345,12 @@ export function useFileView(
   const clearFileView = useCallback(() => {
     const tk = tabKeyRef.current;
     if (tk) clearAllForTabKey(tk);
-    useFileStore.setState({
-      fileTree: [],
-      activeFilePath: null,
-    });
+    useFileStore.getState().reset();
     setError(null);
   }, []);
 
   return {
-    fileTree,
     activeFilePath,
-    isLoading: fileTreeLoading,
     error,
     loadFileTree,
     expandSubTree,

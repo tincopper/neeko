@@ -79,16 +79,22 @@ const SaveFileDialog: React.FC = () => {
 
   // 保存成功后刷新文件树，让新文件在 worktree/项目视图中立即可见；
   // 同时显式刷新 git 状态（worktree 下 watcher 不监听，新文件需手动触发变色）
+  // 通过 store.loadDir 静默重载根目录：只替换根缓存，已展开的子目录缓存不受影响
   const refreshFileTree = useCallback(async () => {
-    if (!request) return;
+    if (!request || !activeProject) return;
     try {
-      const tree = await readDirTree(request.projectId, null, activeWorktreePath ?? null);
-      useFileStore.setState({ fileTree: tree });
+      const rootPath = activeWorktreePath ?? activeProject.path;
+      const owner = `${request.projectId}:${rootPath}`;
+      const loader = () => readDirTree(request.projectId, null, activeWorktreePath ?? null);
+      await useFileStore.getState().loadDir(owner, '', loader, {
+        force: true,
+        silent: true,
+      });
       void refreshGitFileStates(request.projectId, activeWorktreePath ?? '');
     } catch {
       /* 树刷新失败不影响保存结果 */
     }
-  }, [request, activeWorktreePath]);
+  }, [request, activeProject, activeWorktreePath]);
 
   const handleSubmit = useCallback(async () => {
     if (!request || !activeProject) return;

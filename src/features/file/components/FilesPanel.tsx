@@ -1,9 +1,11 @@
-import React, { useCallback, useEffect, useRef } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef } from 'react';
 
 import ContextMenu from '@/shared/components/ContextMenu';
-import type { FileNode, FileChange } from '@/shared/types';
+import type { FileChange } from '@/shared/types';
+import { buildFileTreeView } from '@/shared/utils/fileTree';
 
 import { useFilePanelState } from '../hooks/useFilePanelState';
+import { useFileStore } from '../store';
 import { displayHomePath } from '../utils/fileTreeUtils';
 
 import DeleteConfirmDialog from './DeleteConfirmDialog';
@@ -18,8 +20,6 @@ interface FilesPanelProps {
   projectPath?: string | null;
   /** 项目 ID — 用于拖拽文件时传给 sendToAgent */
   projectId: string | null;
-  fileTree: FileNode[];
-  isLoading: boolean;
   activeFilePath: string | null;
   onSelectFile: (filePath: string) => void;
   onRefresh: () => void;
@@ -57,8 +57,6 @@ function FilesPanel({
   projectName,
   projectPath,
   projectId,
-  fileTree,
-  isLoading,
   activeFilePath,
   onSelectFile,
   onRefresh,
@@ -77,9 +75,10 @@ function FilesPanel({
   canLocateFile,
   autoLocateFileOnTabSwitch = true,
 }: FilesPanelProps) {
+  const dirs = useFileStore((s) => s.dirs);
+  const loadStates = useFileStore((s) => s.loadStates);
   const state = useFilePanelState({
     projectPath,
-    fileTree,
     activeFilePath,
     onSelectFile,
     onRefresh,
@@ -95,6 +94,15 @@ function FilesPanel({
     changedFiles,
     ignoredFiles,
   });
+
+  // 视图树：由扁平目录缓存 + 展开状态实时组装（已展开目录内容来自各自缓存，根刷新不影响子树）
+  const viewTree = useMemo(
+    () => buildFileTreeView(dirs, state.expandedDirs),
+    [dirs, state.expandedDirs],
+  );
+  // 首次加载（根无内容且 loading）显示全面板 Loading；失败且无内容显示重试
+  const isLoading = loadStates[''] === 'loading' && !dirs[''];
+  const loadFailed = loadStates[''] === 'error' && !dirs[''];
 
   // 定位：复用「点击选中」同一流程（selectedNode → isSelected 高亮 + 展开父目录）。
   // 与手动点击文件的选中/滚动完全一致，不单独维护一套高亮。
@@ -167,22 +175,36 @@ function FilesPanel({
           <div className="flex items-center justify-center p-4">
             <span className="text-[var(--font-size)] text-text-secondary">Loading...</span>
           </div>
-        ) : fileTree.length === 0 ? (
+        ) : loadFailed ? (
+          <div className="flex flex-col items-center justify-center gap-2 p-4">
+            <span className="text-[var(--font-size)] text-text-secondary">
+              Failed to load files
+            </span>
+            <button
+              type="button"
+              onClick={onRefresh}
+              className="text-[var(--font-size)] text-accent hover:underline"
+            >
+              Retry
+            </button>
+          </div>
+        ) : viewTree.length === 0 ? (
           <div className="flex items-center justify-center p-4">
             <span className="text-[var(--font-size)] text-text-secondary">No files found</span>
           </div>
         ) : (
-          fileTree.map((node) => (
+          viewTree.map((node) => (
             <FileTreeNode
               key={node.path}
               node={node}
               depth={0}
               activeFilePath={activeFilePath}
               expandedDirs={state.expandedDirs}
-              loadingDirs={state.loadingDirs}
+              dirLoadStates={loadStates}
               projectId={projectId}
               onSelectFile={onSelectFile}
               onToggleDir={state.handleToggleDir}
+              onRetryDir={onExpandDir}
               onContextMenu={state.handleContextMenu}
               onSelectNode={state.handleSelectNode}
               selectedPath={state.selectedNode?.path ?? null}

@@ -44,7 +44,6 @@ import {
   resolveAbsolutePath,
 } from '@/shared/utils/browserUtils';
 import { buildDiffSource } from '@/shared/utils/diffSource';
-import { mergeSubTree } from '@/shared/utils/fileTree';
 import { mergeGitInfoForStore } from '@/shared/utils/git';
 import { parseProjectIdFromTabKey, resolveTabKey } from '@/shared/utils/tabKey';
 
@@ -63,8 +62,6 @@ const FilesPanelWrapper: React.FC = React.memo(() => {
   const { config } = useAppContext();
   const projectName = project?.name ?? null;
   const fileRootPath = worktreePath ?? project?.path ?? null;
-  const fileTree = useFileStore((s) => s.fileTree);
-  const fileViewLoading = useFileStore((s) => s.fileViewLoading);
   const activeFilePath = useFileStore((s) => s.activeFilePath);
   const activeProjectId = useProjectStore((s) => s.activeProjectId);
   const projectPath = fileRootPath;
@@ -76,6 +73,27 @@ const FilesPanelWrapper: React.FC = React.memo(() => {
   const ignoredFiles = useMemo(
     () => project?.gitInfo?.ignored_files ?? [],
     [project?.gitInfo?.ignored_files],
+  );
+
+  // 目录加载器：封装「本地命令」与「WSL/Remote 命令」两种实现，注入 store（store 不感知命令差异）
+  const makeLocalLoader = useCallback(
+    (pid: string, dirPath: string) => () =>
+      readDirTree(pid, dirPath, fileRootPath, DEFAULT_TREE_DEPTH, ignoredFiles),
+    [fileRootPath, ignoredFiles],
+  );
+  const makeWslRemoteLoader = useCallback(
+    (dirPath: string) => () => {
+      if (!commands || !fileRootPath) {
+        return Promise.reject(new Error('commands unavailable'));
+      }
+      return commands.readDirTree(
+        fileRootPath,
+        dirPath || undefined,
+        DEFAULT_TREE_DEPTH,
+        ignoredFiles,
+      );
+    },
+    [commands, fileRootPath, ignoredFiles],
   );
 
   // Compute projectId for use by child components (drag-and-drop, etc.)
@@ -120,25 +138,26 @@ const FilesPanelWrapper: React.FC = React.memo(() => {
       }
     } else if (project.type !== 'Local' && commands) {
       // WSL/Remote: always load since there's no handleSelectProjectWithClear for them
-      useFileStore.setState({ fileViewLoading: true });
-      commands
-        .readDirTree(fileRootPath, undefined, DEFAULT_TREE_DEPTH, ignoredFiles)
-        .then((tree) => {
-          useFileStore.setState({ fileTree: tree, fileViewLoading: false });
-        })
-        .catch((err) => {
-          console.error('[FilesPanelWrapper] Failed to load WSL/Remote file tree:', err);
-          useFileStore.setState({ fileTree: [], fileViewLoading: false });
-        });
+      const owner = `${project.id}:${fileRootPath}`;
+      const loader = makeWslRemoteLoader('');
+      void useFileStore.getState().loadDir(owner, '', loader);
     }
 
     prevProjectIdRef.current = projectId ?? null;
     prevIsActiveRef.current = isActive;
     prevFileRootPathRef.current = fileRootPath;
-  }, [isActive, project, activeProjectId, fileRootPath, commands, onLoadFileTree, ignoredFiles]);
+  }, [
+    isActive,
+    project,
+    activeProjectId,
+    fileRootPath,
+    commands,
+    onLoadFileTree,
+    makeWslRemoteLoader,
+  ]);
 
   // 监听后端 file-tree-changed 事件（文件新增/删除/重命名），静默刷新目录树
-  // 静默刷新：不设 fileViewLoading，旧树保持展示直到新数据到达，避免闪烁
+  // 静默刷新：不切换 loading 态，旧树保持展示直到新数据到达，避免闪烁
   // 仅本地项目响应此事件（WSL/Remote 不经过本地 notify watcher）
   useEffect(() => {
     const unlistenPromise = listen<FileTreeChangedEvent>(FILE_TREE_CHANGED_EVENT, (event) => {
@@ -147,60 +166,42 @@ const FilesPanelWrapper: React.FC = React.memo(() => {
       if (!activeProjectId || project_id !== activeProjectId) return;
       // panel 未激活时跳过（下次激活时 justBecameActive 逻辑会自动加载）
       if (!isActive || !fileRootPath) return;
-      // 静默刷新：直接调用 API，不触发 loading 状态，旧树保持可见
-      // 使用 fileRootPath 确保 worktree 激活时读 worktree 目录，而非主项目路径
-      readDirTree(activeProjectId!, null, fileRootPath, DEFAULT_TREE_DEPTH, ignoredFiles)
-        .then((tree) => {
-          useFileStore.setState({ fileTree: tree });
-        })
-        .catch(console.error);
+      // 静默刷新：只重载根目录，已展开的子目录缓存不受影响（根治展开目录被整树覆盖）。
+      // 后台刷新不切换 loading 态，旧树保持可见直到新数据到达。
+      const owner = `${activeProjectId}:${fileRootPath}`;
+      const loader = makeLocalLoader(activeProjectId, '');
+      void useFileStore.getState().loadDir(owner, '', loader, { force: true, silent: true });
     });
     return () => {
       unlistenPromise.then((unlisten) => unlisten());
     };
-  }, [activeProjectId, isActive, fileRootPath, ignoredFiles]);
+  }, [activeProjectId, isActive, fileRootPath, ignoredFiles, makeLocalLoader]);
 
-  // WSL/Remote: use commands.readDirTree directly for refresh, bypassing
-  // useFileView.loadFileTree to avoid stale ref issues.
+  // WSL/Remote: 通过 store.loadDir 强制重载根目录（失败保留旧内容 + error 态，不置空）。
   // Local: delegate to onFileRefresh (context → useFileView.loadFileTree).
   const handleRefresh = useCallback(() => {
-    if (project?.type !== 'Local' && commands && fileRootPath) {
-      useFileStore.setState({ fileViewLoading: true });
-      commands
-        .readDirTree(fileRootPath, undefined, DEFAULT_TREE_DEPTH, ignoredFiles)
-        .then((tree) => {
-          useFileStore.setState({ fileTree: tree, fileViewLoading: false });
-        })
-        .catch((err) => {
-          console.error('[FilesPanelWrapper] Refresh failed:', err);
-          useFileStore.setState({ fileTree: [], fileViewLoading: false });
-        });
+    if (project && project.type !== 'Local' && commands && fileRootPath) {
+      const owner = `${project.id}:${fileRootPath}`;
+      const loader = makeWslRemoteLoader('');
+      void useFileStore.getState().loadDir(owner, '', loader, { force: true });
     } else {
       onFileRefresh();
     }
-  }, [project?.type, commands, fileRootPath, onFileRefresh, ignoredFiles]);
+  }, [project, commands, fileRootPath, onFileRefresh, makeWslRemoteLoader]);
 
-  // 懒加载子目录：WSL/Remote 直接通过 commands，Local 通过 context（useFileView.expandSubTree）
+  // 懒加载子目录：WSL/Remote 通过 store.loadDir（幂等），Local 通过 context（useFileView.expandSubTree）
   const handleExpandDir = useCallback(
     async (dirPath: string) => {
-      if (project?.type !== 'Local' && commands && fileRootPath) {
-        // WSL/Remote：直接通过 commands.readDirTree 加载子树
-        // ignoredFiles 传入以剪枝子树中的其他被忽略目录（展开目标自身不受影响）
-        const subChildren = await commands.readDirTree(
-          fileRootPath,
-          dirPath,
-          DEFAULT_TREE_DEPTH,
-          ignoredFiles,
-        );
-        const currentTree = useFileStore.getState().fileTree;
-        const merged = mergeSubTree(currentTree, dirPath, subChildren);
-        useFileStore.setState({ fileTree: merged });
+      if (project && project.type !== 'Local' && commands && fileRootPath) {
+        const owner = `${project.id}:${fileRootPath}`;
+        const loader = makeWslRemoteLoader(dirPath);
+        await useFileStore.getState().loadDir(owner, dirPath, loader);
       } else {
         // Local：委托给 context（→ useFileView.expandSubTree）
         await onExpandDir(dirPath);
       }
     },
-    [project?.type, commands, fileRootPath, onExpandDir, ignoredFiles],
+    [project, commands, fileRootPath, onExpandDir, makeWslRemoteLoader],
   );
 
   // 在 Browser Panel 中打开 HTML 文件（仅本地项目）
@@ -293,8 +294,6 @@ const FilesPanelWrapper: React.FC = React.memo(() => {
       projectName={projectName}
       projectPath={projectPath}
       projectId={projectId}
-      fileTree={fileTree}
-      isLoading={fileViewLoading}
       activeFilePath={activeFilePath}
       onSelectFile={onFileSelect}
       onRefresh={handleRefresh}

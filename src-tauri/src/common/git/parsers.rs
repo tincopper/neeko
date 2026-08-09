@@ -457,3 +457,68 @@ pub(crate) fn parse_numstat_line(line: &str) -> Option<(usize, usize, String)> {
     };
     Some((additions, deletions, parts[2].to_string()))
 }
+
+#[cfg(test)]
+mod file_tree_tests {
+    use super::*;
+
+    fn names(nodes: &[FileNode]) -> Vec<&str> {
+        nodes.iter().map(|n| n.name.as_str()).collect()
+    }
+
+    #[test]
+    fn builds_nested_tree_with_relative_paths() {
+        let out = "/proj\n/proj/src\n/proj/src/a.ts\n/proj/src/utils\n/proj/src/utils/b.ts\n/proj/README.md\n";
+        let tree = build_file_tree_from_find(out, "/proj");
+
+        // 目录优先、名称不区分大小写排序
+        assert_eq!(names(&tree), ["src", "README.md"]);
+
+        let src = &tree[0];
+        assert!(src.is_dir);
+        assert_eq!(src.path, "src");
+        assert_eq!(names(&src.children), ["utils", "a.ts"]);
+
+        let utils = &src.children[0];
+        assert!(utils.is_dir);
+        assert_eq!(utils.path, "src/utils");
+        assert_eq!(names(&utils.children), ["b.ts"]);
+        assert_eq!(utils.children[0].path, "src/utils/b.ts");
+        assert!(!utils.children[0].is_dir);
+    }
+
+    #[test]
+    fn partial_output_still_builds_tree() {
+        // 模拟 find 非零退出（个别目录无权限）：stdout 仍包含已扫描路径，整树不应被丢弃
+        let out = "/proj\n/proj/src\n/proj/src/ok.ts\n/proj/src/locked\n/proj/README.md\n";
+        let tree = build_file_tree_from_find(out, "/proj");
+
+        assert_eq!(names(&tree), ["src", "README.md"]);
+        let src = &tree[0];
+        // locked 在输出中出现但没有子路径：解析器无法判定其目录身份，按叶子文件处理
+        assert_eq!(names(&src.children), ["locked", "ok.ts"]);
+        assert!(!src.children[0].is_dir);
+        assert!(src.children[0].children.is_empty());
+    }
+
+    #[test]
+    fn skips_root_path_and_blank_lines() {
+        let out = "\n/proj\n/proj/a.txt\n\n";
+        let tree = build_file_tree_from_find(out, "/proj");
+        assert_eq!(names(&tree), ["a.txt"]);
+    }
+
+    #[test]
+    fn empty_output_yields_empty_tree() {
+        assert!(build_file_tree_from_find("", "/proj").is_empty());
+        assert!(build_file_tree_from_find("/proj\n", "/proj").is_empty());
+    }
+
+    #[test]
+    fn sorts_dirs_first_then_names_case_insensitive() {
+        // bravo 带子路径 → 判定为目录，排最前；文件按名称不区分大小写（alpha < Zeta）
+        let out = "/proj\n/proj/Zeta.txt\n/proj/alpha.txt\n/proj/bravo\n/proj/bravo/x.txt\n";
+        let tree = build_file_tree_from_find(out, "/proj");
+        assert_eq!(names(&tree), ["bravo", "alpha.txt", "Zeta.txt"]);
+    }
+}

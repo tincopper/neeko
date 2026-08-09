@@ -1,22 +1,32 @@
 import type { FileNode, Tab, FileTabData } from '@/shared/types';
 
 /**
- * Merge new children into a file tree at a specific directory path.
+ * 从扁平目录缓存组装嵌套视图树。
+ * 仅沿「已展开路径」向下组装 children；未展开目录的 children 截断为空。
+ * 数据源 `dirs[path]` 只含一级条目，子目录内容由各自的 `dirs[path]` key 提供 ——
+ * 根刷新替换 `dirs['']` 不会影响任何已展开子目录的缓存，根治「展开目录被整树覆盖截断」。
  */
-export function mergeSubTree(
-  tree: FileNode[],
-  dirPath: string,
-  newChildren: FileNode[],
+export function buildFileTreeView(
+  dirs: Record<string, FileNode[]>,
+  expandedDirs: Set<string>,
 ): FileNode[] {
-  return tree.map((node) => {
-    if (node.path === dirPath) {
-      return { ...node, children: newChildren };
-    }
-    if (node.is_dir && node.children.length > 0 && dirPath.startsWith(node.path + '/')) {
-      return { ...node, children: mergeSubTree(node.children, dirPath, newChildren) };
-    }
-    return node;
-  });
+  const root = dirs[''] ?? [];
+  return root.map((node) => attachChildren(node, dirs, expandedDirs));
+}
+
+function attachChildren(
+  node: FileNode,
+  dirs: Record<string, FileNode[]>,
+  expandedDirs: Set<string>,
+): FileNode {
+  if (!node.is_dir || !expandedDirs.has(node.path)) {
+    return { ...node, children: [] };
+  }
+  const children = dirs[node.path] ?? [];
+  return {
+    ...node,
+    children: children.map((child) => attachChildren(child, dirs, expandedDirs)),
+  };
 }
 
 /** Generate a unique tab ID from project ID and file path */

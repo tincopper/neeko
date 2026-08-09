@@ -1,7 +1,7 @@
 //! File-system service functions for listing, reading, and searching files.
 
 use crate::common::executor::factory::ExecTarget;
-use crate::common::executor::sync::exec_on;
+use crate::common::executor::sync::{collect_output, exec_on};
 use crate::common::git::parsers::build_file_tree_from_find;
 use crate::common::utils::command::local::safe_path;
 use crate::project::types::{FileContent, FileNode};
@@ -75,11 +75,14 @@ pub async fn read_dir_tree(
             } else {
                 "sh"
             };
-            let output = exec_on(target, shell, &["-c", &cmd])
+            let output = collect_output(target, shell, &["-c", &cmd])
                 .await
                 .map_err(|e| AppError::File(format!("Failed to read dir tree: {}", e)))?;
 
-            let mut tree = build_file_tree_from_find(&output, &actual_path);
+            // find 非零退出（如个别目录无权限）不代表整树失败：stdout 仍包含已扫描路径。
+            // 故用 collect_output（保留非零退出）而非 exec_on（非零即 Err），避免整树被丢弃。
+            let find_output = String::from_utf8_lossy(&output.stdout);
+            let mut tree = build_file_tree_from_find(&find_output, &actual_path);
             if let Some(sp) = effective_sub {
                 prefix_paths(&mut tree, sp);
             }

@@ -18,11 +18,10 @@ import { useNotificationStore } from '@/shared/store/notificationStore';
 import type { FileNode, FileChange } from '@/shared/types';
 import { resolveAbsolutePath } from '@/shared/utils/browserUtils';
 
-import { displayHomePath, findNode, getParentPath, getParentPaths } from '../utils/fileTreeUtils';
+import { displayHomePath, getParentPath, getParentPaths } from '../utils/fileTreeUtils';
 
 export interface UseFilePanelStateParams {
   projectPath?: string | null;
-  fileTree: FileNode[];
   activeFilePath: string | null;
   onSelectFile: (filePath: string) => void;
   onRefresh: () => void;
@@ -46,7 +45,6 @@ export interface UseFilePanelStateParams {
 export function useFilePanelState(params: UseFilePanelStateParams) {
   const {
     projectPath,
-    fileTree,
     activeFilePath,
     onSelectFile,
     onRefresh,
@@ -64,10 +62,6 @@ export function useFilePanelState(params: UseFilePanelStateParams) {
   } = params;
 
   const [expandedDirs, setExpandedDirs] = useState<Set<string>>(new Set());
-  // 正在加载中的目录
-  const [loadingDirs, setLoadingDirs] = useState<Set<string>>(new Set());
-  // 已懒加载过的空目录（避免重复请求真正的空目录）
-  const [loadedEmptyDirs, setLoadedEmptyDirs] = useState<Set<string>>(new Set());
   const prevActiveFilePathRef = useRef<string | null>(null);
   // 用户 home 目录（用于路径展示时替换为 ~）
   const [homeDirPath, setHomeDirPath] = useState('');
@@ -121,10 +115,8 @@ export function useFilePanelState(params: UseFilePanelStateParams) {
     null,
   );
 
-  // 刷新时清空懒加载记录
+  // 刷新：展开状态保留（内容刷新由 store.loadDir 幂等处理）
   const handleRefresh = useCallback(() => {
-    setLoadedEmptyDirs(new Set());
-    setLoadingDirs(new Set());
     onRefresh();
   }, [onRefresh]);
 
@@ -155,7 +147,7 @@ export function useFilePanelState(params: UseFilePanelStateParams) {
 
   const handleToggleDir = useCallback(
     async (path: string) => {
-      // 收起：直接 toggle，无需懒加载
+      // 收起：直接 toggle，无需加载
       if (expandedDirs.has(path)) {
         setExpandedDirs((prev) => {
           const next = new Set(prev);
@@ -165,41 +157,13 @@ export function useFilePanelState(params: UseFilePanelStateParams) {
         return;
       }
 
-      // 展开：检查是否需要懒加载
-      const node = findNode(fileTree, path);
-      const needsLazyLoad =
-        node && node.is_dir && node.children.length === 0 && !loadedEmptyDirs.has(path);
-
-      if (needsLazyLoad) {
-        // 先展开，显示 loading spinner
-        setExpandedDirs((prev) => new Set(prev).add(path));
-        setLoadingDirs((prev) => new Set(prev).add(path));
-        try {
-          await onExpandDir(path);
-          // 标记已加载（成功后），防止重复请求真正的空目录
-          setLoadedEmptyDirs((prev) => new Set(prev).add(path));
-        } catch (e) {
-          // Lazy-load failed: collapse the directory so the UI doesn't show an
-          // empty expanded folder. The error is logged by expandSubTree.
-          console.error('[FilesPanel] Failed to expand directory:', path, e);
-          setExpandedDirs((prev) => {
-            const next = new Set(prev);
-            next.delete(path);
-            return next;
-          });
-        } finally {
-          setLoadingDirs((prev) => {
-            const next = new Set(prev);
-            next.delete(path);
-            return next;
-          });
-        }
-      } else {
-        // children 已存在，或已知为真空目录：直接展开
-        setExpandedDirs((prev) => new Set(prev).add(path));
-      }
+      // 展开：先展开（内容由扁平缓存 + loadStates 驱动），再触发懒加载。
+      // store.loadDir 幂等：已 loaded/loading 跳过，idle/error 发起请求；
+      // 失败由 store 置 error 态（红点提示，可重试），不再由面板折叠目录。
+      setExpandedDirs((prev) => new Set(prev).add(path));
+      await onExpandDir(path);
     },
-    [fileTree, expandedDirs, loadedEmptyDirs, onExpandDir],
+    [expandedDirs, onExpandDir],
   );
 
   // 右键菜单处理
@@ -211,7 +175,6 @@ export function useFilePanelState(params: UseFilePanelStateParams) {
   // 折叠全部：一键收起所有已展开目录
   const collapseAll = useCallback(() => {
     setExpandedDirs(new Set());
-    setLoadingDirs(new Set());
   }, []);
 
   const closeContextMenu = useCallback(() => {
@@ -463,7 +426,6 @@ export function useFilePanelState(params: UseFilePanelStateParams) {
 
   return {
     expandedDirs,
-    loadingDirs,
     displayPath,
     changedFilesMap,
     ignoredSet,
