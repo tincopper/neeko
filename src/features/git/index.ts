@@ -20,12 +20,14 @@ export type {
   GitStatusDiff,
 } from './types';
 
-// Store
-export { useGitStore } from './store';
-
 // Hooks
 export { useAheadBehindSync } from './hooks/useAheadBehindSync';
 export { useFileChangedEvent } from './hooks/useFileChangedEvent';
 
 // Utils
 export { refreshGitFileStates } from './utils/gitStatus';
+
+// Components
+export { default as BranchStatusBarWidget } from './components/BranchStatusBarWidget';
+export { default as DiffView } from './components/diff';
+export { PRDetailView } from './components/pr-detail';

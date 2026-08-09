@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useMemo } from 'react';
 
-import AgentIcon from '@/features/agent/components/AgentIcon';
+import { AgentIcon } from '@/features/agent';
 import { cn } from '@/lib/utils';
 
 import { useActionMenu } from '../hooks/useActionMenu';

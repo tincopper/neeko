@@ -1,8 +1,5 @@
 // ─── Skill Feature Barrel ────────────────────────────────────────────────────
 
-// Store
-export { useSkillStore, initialSkillState } from './store';
-
 // Domain Types
 export type {
   SkillRecord,

@@ -1,7 +1,8 @@
 import { Info, CircleCheckBig, CircleAlert, CircleX, X } from 'lucide-react';
 import { useState, useEffect, useRef, useCallback } from 'react';
 
-import { useNotificationStore } from '../notificationStore';
+import { useNotificationStore } from '@/shared/store/notificationStore';
+
 import type { NotificationType } from '../notificationTypes';
 
 interface NotificationToastProps {

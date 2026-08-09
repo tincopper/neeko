@@ -3,13 +3,12 @@
  */
 import { create } from 'zustand';
 
+import { fromFileUri } from '@/features/lsp';
 import { lspRequest } from '@/features/lsp/api/lspApi';
-import { fromFileUri } from '@/features/lsp/languageMap';
 import type { LspLocation } from '@/features/lsp/types';
-import { fuzzyFilter } from '@/features/quick-open/fuzzy';
-import { openProjectFile } from '@/features/quick-open/openFile';
+import { fuzzyFilter, openProjectFile } from '@/features/quick-open';
 
-import { flattenDocumentSymbols, symbolKindLabel, type FlatSymbol } from './documentSymbols';
+import { flattenDocumentSymbols, symbolKindLabel, type FlatSymbol } from '../documentSymbols';
 
 export type SymbolNavMode = 'structure' | 'findUsages';
 

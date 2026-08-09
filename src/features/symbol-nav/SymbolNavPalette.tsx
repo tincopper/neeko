@@ -6,7 +6,7 @@ import React, { useEffect, useRef } from 'react';
 import { cn } from '@/lib/utils';
 import { Dialog, DialogContent, DialogTitle } from '@/ui/Dialog';
 
-import { useSymbolNavStore } from './symbolNavStore';
+import { useSymbolNavStore } from './store/symbolNavStore';
 
 export function SymbolNavPalette() {
   const open = useSymbolNavStore((s) => s.open);

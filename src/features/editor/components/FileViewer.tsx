@@ -18,33 +18,32 @@ import React, { useState, useCallback, useEffect, useMemo, useRef, useLayoutEffe
 import { useShallow } from 'zustand/shallow';
 
 import { openInDefaultBrowser } from '@/features/browser/api/browserApi';
-import { useBreakpointGutterExtensions } from '@/features/debug/hooks/useBreakpointGutter';
 import {
   applyDebugCurrentLine,
   resolveDebugHighlightLine,
+  useBreakpointGutterExtensions,
   useCurrentLineHighlight,
-} from '@/features/debug/hooks/useCurrentLineHighlight';
+} from '@/features/debug';
 import { EMPTY_BP_LINES, useDebugStore } from '@/features/debug/store/debugStore';
 import { applyNavigateCaret, navigateCaretExtension } from '@/features/editor/navigateCaret';
 import { readFileContent } from '@/features/file/api/fileApi';
-import { acquireLspPlugin, releaseLspClient } from '@/features/lsp/hooks/lspClientManager';
-import { useCmdHeld } from '@/features/lsp/hooks/useCmdHeld';
-import { useLspDefinition } from '@/features/lsp/hooks/useLspDefinition';
 import {
-  useLspLinkHighlightExtension,
+  acquireLspPlugin,
   clearLinkHighlight,
-} from '@/features/lsp/hooks/useLspLinkHighlight';
-import {
   fromFileUri,
   getLspLanguageId,
+  releaseLspClient,
   resolveLspLanguageId,
+  resolveLspPositionFromOffset,
   toFileUri,
-} from '@/features/lsp/languageMap';
-import { resolveLspPositionFromOffset } from '@/features/lsp/position';
+  useCmdHeld,
+  useLspDefinition,
+  useLspLinkHighlightExtension,
+} from '@/features/lsp';
 import type { LspLocation } from '@/features/lsp/types';
-import { useActiveProject } from '@/features/project/hooks/use-active-project';
-import { useSymbolNavStore } from '@/features/symbol-nav';
-import { useTerminalTabs } from '@/features/terminal/hooks/useTerminalTabs';
+import { useActiveProject } from '@/features/project';
+import { useSymbolNavStore } from '@/features/symbol-nav/store/symbolNavStore';
+import { useTerminalTabs } from '@/features/terminal';
 import { cn } from '@/lib/utils';
 import { Eye, Save, FileCode, Globe, ExternalLink } from '@/shared/components/icons';
 import { useEditorContext } from '@/shared/contexts';
@@ -782,7 +781,7 @@ function FileEditor({
     const tab = addTerminalTab(currentProjectIdForToolbar, agentId, agentId);
     if (tab && pending) {
       setTimeout(() => {
-        import('@/features/terminal/components/terminalCommands').then(({ sendToTerminal }) => {
+        import('@/features/terminal').then(({ sendToTerminal }) => {
           sendToTerminal(currentProjectIdForToolbar, `${pending.message}\r`);
           clearPending();
           setSelectionLines(null);

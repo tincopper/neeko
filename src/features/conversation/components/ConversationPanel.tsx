@@ -1,7 +1,7 @@
 import { ChevronDown, RefreshCw, Search, X } from 'lucide-react';
 import React, { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react';
 
-import AgentIcon from '@/features/agent/components/AgentIcon';
+import { AgentIcon } from '@/features/agent';
 import type { AgentConfig } from '@/features/agent/types';
 import { cn } from '@/lib/utils';
 import { Button } from '@/ui/Button';

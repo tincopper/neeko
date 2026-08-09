@@ -3,7 +3,6 @@
  * UI and other features should import from here (or api/hooks), not from deep internals.
  */
 
-export { useLspStore, type LspSessionState } from './store/lspStore';
 export {
   lspRequest,
   lspNotification,
@@ -24,4 +23,5 @@ export { useLspDefinition } from './hooks/useLspDefinition';
 export { useLspLinkHighlightExtension, clearLinkHighlight } from './hooks/useLspLinkHighlight';
 export { resolveLspPositionFromOffset } from './position';
 export { resolveLspLanguageId, setCustomLspExtensionMap } from './languageMap';
+export { fromFileUri, getLspLanguageId, toFileUri } from './languageMap';
 export type { LspLocation, LspDiagnostic, ProjectLanguageProfile, LspSessionInfo } from './types';

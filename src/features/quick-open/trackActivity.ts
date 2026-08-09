@@ -4,8 +4,8 @@
  */
 import { onTabActivated } from '@/shared/utils/editorActivity';
 
-import { useMruTabsStore } from './mruTabsStore';
-import { useRecentFilesStore } from './recentFilesStore';
+import { useMruTabsStore } from './store/mruTabsStore';
+import { useRecentFilesStore } from './store/recentFilesStore';
 
 let started = false;
 

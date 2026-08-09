@@ -17,9 +17,6 @@ export type {
 // Component Types
 export type { ConnectionSource, ConnectionProjectCardProps } from './components/types';
 
-// Store
-export { useConnectionStore } from './store';
-
 // Hooks (re-exported for backwards compatibility; prefer the unified versions from project/)
 /** @deprecated Use useConnectionProjects from features/project/hooks instead */
 export { useWslProjects } from './hooks/useWslProjects';

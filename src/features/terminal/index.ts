@@ -55,7 +55,7 @@ export {
 // New unified exports
 export { launchAgentInAnyTerminal, switchAgentInAnyTerminal } from './components/terminalCache';
 
-export { default as SplitLayout } from './components/SplitLayout';
+export { default as SplitLayout, type SplitStateInfo } from './components/SplitLayout';
 export { updateAllTerminalThemes } from './components/index';
 export type { TerminalTab } from './types';
 export { useTerminalTabs } from './hooks/useTerminalTabs';

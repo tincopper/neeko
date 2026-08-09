@@ -1,7 +1,6 @@
 import React from 'react';
 
-import SkillContent from '@/features/skill/components/SkillContent';
-import SkillsPanel from '@/features/skill/components/SkillsPanel';
+import { SkillContent, SkillsPanel } from '@/features/skill';
 
 /**
  * Library Skills tab — 列表岛（SkillsPanel 导航）+ 内容岛（SkillContent）。

@@ -1,7 +1,7 @@
 import { Bell } from 'lucide-react';
 import { useState, useRef, useEffect, useCallback } from 'react';
 
-import { useNotificationStore } from '../notificationStore';
+import { useNotificationStore } from '@/shared/store/notificationStore';
 
 import { NotificationList } from './NotificationList';
 import { NotificationToast } from './NotificationToast';

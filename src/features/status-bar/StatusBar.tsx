@@ -3,10 +3,10 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 import { useShallow } from 'zustand/shallow';
 
 import { useDebugStore } from '@/features/debug/store/debugStore';
-import BranchStatusBarWidget from '@/features/git/components/BranchStatusBarWidget';
+import { BranchStatusBarWidget } from '@/features/git';
 import { lspListSessions } from '@/features/lsp/api/lspApi';
-import { NotificationButton } from '@/features/notification/components/NotificationButton';
-import { useActiveProject } from '@/features/project/hooks/use-active-project';
+import { NotificationButton } from '@/features/notification';
+import { useActiveProject } from '@/features/project';
 import { Bug, Terminal } from '@/shared/components/icons';
 import { useEditorStore } from '@/shared/store';
 import { useLspStore, type LspSessionState } from '@/shared/store/lspStore';

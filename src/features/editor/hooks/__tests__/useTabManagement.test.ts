@@ -1,15 +1,26 @@
 import { act, renderHook } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { closeEditorTab } from '@/features/terminal/components/terminalTabCleanup';
+import { closeEditorTab } from '@/features/terminal';
 import { useEditorStore } from '@/shared/store';
 import type { Tab } from '@/shared/types/tab';
 
 import { useTabManagement } from '../useTabManagement';
 
+// 只 mock useTabManagement 实际依赖的底层模块，而非整个门面：
+// 门面保持真实，未来新增门面导出不会因 mock 缺失而静默变 undefined。
 vi.mock('@/features/terminal/components/terminalTabCleanup', () => ({
   closeEditorTab: vi.fn(),
   closeAllEditorTabs: vi.fn(),
+}));
+vi.mock('@/features/terminal/hooks/useTerminalTabs', () => ({
+  useTerminalTabs: () => ({
+    getTabs: () => [],
+    addTab: vi.fn(),
+    activateTab: vi.fn(),
+    updateTabStatus: vi.fn(),
+    handleAgentClick: vi.fn(),
+  }),
 }));
 
 const mockCloseEditorTab = vi.mocked(closeEditorTab);

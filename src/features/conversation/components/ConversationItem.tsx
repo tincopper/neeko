@@ -1,7 +1,7 @@
 import { SquareTerminal, Eye } from 'lucide-react';
 import React, { useMemo } from 'react';
 
-import AgentIcon from '@/features/agent/components/AgentIcon';
+import { AgentIcon } from '@/features/agent';
 import type { AgentConfig } from '@/features/agent/types';
 import { cn } from '@/lib/utils';
 

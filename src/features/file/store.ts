@@ -111,7 +111,9 @@ export const useFileStore = create<FileStoreState>((set, get) => ({
         [dirPath]: 'loaded',
       };
       for (const [p, entries] of Object.entries(nested)) {
-        if (!(p in latest.dirs)) {
+        // 仅填补「从未加载且不在途」的目录：已加载目录保留（p in dirs），
+        // 正在请求的目录不打断（loading 由该请求自己收尾）——根刷新不得干扰展开中的目录。
+        if (!(p in latest.dirs) && latest.loadStates[p] !== 'loading') {
           dirs[p] = entries;
           loadStates[p] = 'loaded';
         }

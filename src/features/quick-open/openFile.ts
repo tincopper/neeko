@@ -9,7 +9,7 @@ import { preloadLanguageExtension } from '@/shared/utils/codemirror';
 import { getFileName, getTabId } from '@/shared/utils/fileTree';
 import { resolveTabKey } from '@/shared/utils/tabKey';
 
-import { useRecentFilesStore } from './recentFilesStore';
+import { useRecentFilesStore } from './store/recentFilesStore';
 
 export async function openProjectFile(opts: {
   projectId: string;

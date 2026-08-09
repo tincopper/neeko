@@ -1,3 +1,28 @@
+// Import/Export Firewall: 跨 feature 仅允许导入公开面（index 门面 + store/types 直导）。
+// zone 语义：target 目录内的文件不得从 from 目录导入（except 豁免），见
+// eslint-plugin-import/no-restricted-paths。
+const FEATURE_DIRS = [
+  'action-menu', 'agent', 'browser', 'connection', 'conversation', 'debug',
+  'editor', 'file', 'git', 'library', 'lsp', 'notification', 'project',
+  'quick-open', 'session', 'settings', 'skill', 'status-bar', 'symbol-nav',
+  'task', 'terminal', 'theme',
+];
+// except 相对 from（feature 根）解析。store/types/api 兼容单文件与目录形态。
+const FIREWALL_EXCEPT = [
+  './index.ts', './store.ts', './store', './types.ts', './types',
+  './api.ts', './api',
+];
+const firewallZones = FEATURE_DIRS.map((name) => ({
+  target: FEATURE_DIRS.filter((other) => other !== name).map(
+    (other) => `./src/features/${other}`,
+  ),
+  from: `./src/features/${name}`,
+  except: FIREWALL_EXCEPT,
+  message:
+    `Import/Export Firewall: 跨 feature 仅允许导入公开面 (index/store/types)。` +
+    `私有实现请经 @/features/${name} 门面导入。`,
+}));
+
 module.exports = {
   root: true,
   env: {
@@ -50,22 +75,8 @@ module.exports = {
           'error',
           {
             zones: [
-              { target: './src/features/agent', from: './src/features', except: ['./agent'] },
-              { target: './src/features/browser', from: './src/features', except: ['./browser'] },
-              {
-                target: './src/features/connection',
-                from: './src/features',
-                except: ['./connection'],
-              },
+              ...firewallZones,
               { target: './src/app/editor', from: './src/app', except: ['./editor'] },
-              { target: './src/features/file', from: './src/features', except: ['./file'] },
-              { target: './src/features/git', from: './src/features', except: ['./git', './file'] },
-              { target: './src/features/project', from: './src/features', except: ['./project'] },
-              { target: './src/features/session', from: './src/features', except: ['./session'] },
-              { target: './src/features/settings', from: './src/features', except: ['./settings'] },
-              { target: './src/features/skill', from: './src/features', except: ['./skill'] },
-              { target: './src/features/task', from: './src/features', except: ['./task'] },
-              { target: './src/features/terminal', from: './src/features', except: ['./terminal'] },
               { target: './src/features', from: './src/app', except: ['./app/editor'] },
               {
                 target: './src/layout',
@@ -176,22 +187,8 @@ module.exports = {
           'error',
           {
             zones: [
-              { target: './src/features/agent', from: './src/features', except: ['./agent'] },
-              { target: './src/features/browser', from: './src/features', except: ['./browser'] },
-              {
-                target: './src/features/connection',
-                from: './src/features',
-                except: ['./connection'],
-              },
+              ...firewallZones,
               { target: './src/app/editor', from: './src/app', except: ['./editor'] },
-              { target: './src/features/file', from: './src/features', except: ['./file'] },
-              { target: './src/features/git', from: './src/features', except: ['./git', './file'] },
-              { target: './src/features/project', from: './src/features', except: ['./project'] },
-              { target: './src/features/session', from: './src/features', except: ['./session'] },
-              { target: './src/features/settings', from: './src/features', except: ['./settings'] },
-              { target: './src/features/skill', from: './src/features', except: ['./skill'] },
-              { target: './src/features/task', from: './src/features', except: ['./task'] },
-              { target: './src/features/terminal', from: './src/features', except: ['./terminal'] },
               { target: './src/features', from: './src/app', except: ['./app/editor'] },
               {
                 target: './src/layout',

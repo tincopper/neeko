@@ -1,21 +1,21 @@
 import { useDroppable } from '@dnd-kit/core';
 import React, { useCallback, useMemo, useState, useRef, useEffect } from 'react';
 
-import { getActionMenuItems } from '@/features/action-menu/actionRegistry';
-import ActionMenuDropdown from '@/features/action-menu/components/ActionMenuDropdown';
+import { ActionMenuDropdown, getActionMenuItems } from '@/features/action-menu';
 import type { ActionRegistryItem, ActionContext } from '@/features/action-menu/types/actionMenu';
 import { checkAgentsInstalled } from '@/features/agent/api/agentApi';
-import ConversationViewer from '@/features/conversation/components/ConversationViewer';
-import DiffView from '@/features/git/components/diff';
-import { PRDetailView } from '@/features/git/components/pr-detail';
-import ContextMenu from '@/features/project/components/ContextMenu';
-import type { ContextMenuItem } from '@/features/project/components/ContextMenu';
-import { useQuickOpenStore } from '@/features/quick-open';
-import { useRecentFilesStore } from '@/features/quick-open/recentFilesStore';
-import type { SplitStateInfo } from '@/features/terminal/components/SplitLayout';
-import SplitLayout from '@/features/terminal/components/SplitLayout';
-import { closeEditorTab } from '@/features/terminal/components/terminalTabCleanup';
-import TerminalView from '@/features/terminal/components/TerminalView';
+import { ConversationViewer } from '@/features/conversation';
+import { DiffView, PRDetailView } from '@/features/git';
+import { ContextMenu } from '@/features/project';
+import type { ContextMenuItem } from '@/features/project';
+import { useQuickOpenStore } from '@/features/quick-open/store/quickOpenStore';
+import { useRecentFilesStore } from '@/features/quick-open/store/recentFilesStore';
+import {
+  SplitLayout,
+  TerminalView,
+  closeEditorTab,
+  type SplitStateInfo,
+} from '@/features/terminal';
 import { cn } from '@/lib/utils';
 import { useEditorContext, EditorProvider } from '@/shared/contexts';
 import { useAppContext } from '@/shared/contexts/AppContext';

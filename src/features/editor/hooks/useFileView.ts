@@ -4,7 +4,7 @@ import { useShallow } from 'zustand/shallow';
 import { useSaveAsStore } from '@/features/action-menu/store/saveAsStore';
 import { readDirTree, readFileContent, writeFileContent } from '@/features/file/api/fileApi';
 import { useFileStore } from '@/features/file/store';
-import { closeEditorTab } from '@/features/terminal/components/terminalTabCleanup';
+import { closeEditorTab } from '@/features/terminal';
 import { useEditorStore } from '@/shared/store';
 import { useProjectStore } from '@/shared/store/projectStore';
 import { useWorktreeStore } from '@/shared/store/worktreeStore';

@@ -107,6 +107,39 @@ describe('useFileStore 扁平目录缓存', () => {
     expect(s.loadStates['locked']).toBeUndefined();
   });
 
+  it('seed 不打断加载中的目录：根刷新不覆盖在途请求的 loading 态', async () => {
+    // 1. 建立 owner + 根缓存
+    await useFileStore
+      .getState()
+      .loadDir(OWNER, '', () => Promise.resolve([dirNode('src', 'src')]));
+
+    // 2. 展开 src 发起在途请求（loading、无缓存）
+    const srcDeferred = deferred<FileNode[]>();
+    const pSrc = useFileStore.getState().loadDir(OWNER, 'src', () => srcDeferred.promise);
+    expect(useFileStore.getState().loadStates['src']).toBe('loading');
+
+    // 3. 根刷新返回嵌套树（src 的旧快照，含子项）
+    await useFileStore
+      .getState()
+      .loadDir(
+        OWNER,
+        '',
+        () => Promise.resolve([dirNode('src', 'src', [fileNode('old.ts', 'src/old.ts')])]),
+        { force: true, silent: true },
+      );
+
+    // seed 不应把在途请求的 src 置 loaded，也不写入旧快照
+    expect(useFileStore.getState().loadStates['src']).toBe('loading');
+    expect(useFileStore.getState().dirs['src']).toBeUndefined();
+
+    // 4. src 请求返回真实内容：最终一致
+    srcDeferred.resolve([fileNode('new.ts', 'src/new.ts')]);
+    await pSrc;
+    const finalState = useFileStore.getState();
+    expect(finalState.dirs['src']).toEqual([fileNode('new.ts', 'src/new.ts')]);
+    expect(finalState.loadStates['src']).toBe('loaded');
+  });
+
   it('加载期间标记 loading', async () => {
     const d = deferred<FileNode[]>();
     const p = useFileStore.getState().loadDir(OWNER, '', () => d.promise);

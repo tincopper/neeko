@@ -16,16 +16,8 @@ export type { EditorGroupLayoutResult } from './hooks/useEditorGroupLayout';
 export { useSplitLayout, clampRatio, countPanes, updateSplitRatio } from '@/shared/hooks';
 
 // Navigation history (IDEA-like Back / Forward)
-export {
-  useNavHistoryStore,
-  captureCurrentNavLocation,
-  recordNavigationJump,
-} from './navigationHistoryStore';
 export type { NavLocation } from './navigationHistory';
 export { createNavigationHistory } from './navigationHistory';
-
-// Store
-export { useEditorStore } from '@/shared/store';
 
 // Types
 export type {

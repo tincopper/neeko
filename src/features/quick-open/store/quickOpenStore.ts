@@ -9,10 +9,11 @@ import { useProjectStore } from '@/shared/store/projectStore';
 import { useWorktreeStore } from '@/shared/store/worktreeStore';
 import { resolveTabKey } from '@/shared/utils/tabKey';
 
-import { flattenFilePaths } from './fileIndex';
-import { fuzzyFilter } from './fuzzy';
+import { flattenFilePaths } from '../fileIndex';
+import { fuzzyFilter } from '../fuzzy';
+import { openProjectFile } from '../openFile';
+
 import { useMruTabsStore } from './mruTabsStore';
-import { openProjectFile } from './openFile';
 import { useRecentFilesStore } from './recentFilesStore';
 
 export type QuickOpenMode = 'gotoFile' | 'recentFiles' | 'tabSwitcher';

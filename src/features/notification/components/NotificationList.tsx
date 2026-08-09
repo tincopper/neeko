@@ -3,7 +3,8 @@ import { useState, useLayoutEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { useShallow } from 'zustand/shallow';
 
-import { useNotificationStore } from '../notificationStore';
+import { useNotificationStore } from '@/shared/store/notificationStore';
+
 import type { NotificationType } from '../notificationTypes';
 
 import { NotificationDetail } from './NotificationDetail';

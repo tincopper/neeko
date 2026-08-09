@@ -4,7 +4,7 @@
 // store/layout invariants are checked directly.
 import { beforeEach, describe, expect, it } from 'vitest';
 
-import { closeEditorTab } from '@/features/terminal/components/terminalTabCleanup';
+import { closeEditorTab } from '@/features/terminal';
 import { useEditorStore } from '@/shared/store';
 import type { Tab } from '@/shared/types';
 

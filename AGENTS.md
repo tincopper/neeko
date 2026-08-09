@@ -236,6 +236,16 @@ cargo test --manifest-path src-tauri/Cargo.toml
 3. **低耦合**：模块间依赖必须通过明确定义的接口（API wrapper / `pub use` re-export / props/context），禁止跨域直接引用内部实现。
 4. **依赖倒置（DIP）**：高层模块不依赖低层实现细节，两者都应依赖抽象（interface / trait / props）。
 
+### 模块导入/导出规范（Import/Export Firewall）
+
+> 遵循业界主流（Meta/Google 反对 barrel），明确「什么走门面、什么直导」。
+
+1. **禁止全局 barrel**：严禁 `@/components/index.ts`、`@/stores/index.ts` 之类的根级聚合导出 —— 破坏 tree-shaking、引发循环依赖。
+2. **store 目录化直导**：跨 feature 使用 store 一律直接导入具体文件（如 `import { useFileStore } from '@/features/file/store'`），禁止经 feature `index.ts` re-export store。zustand store 是 feature 的公开状态接口，不是门面内容。**store 文件统一放在 `store/` 目录（或根级 `store.ts`）**，与防火墙白名单（`./store` / `./store.ts`）对齐 —— 这是「约定式公开面」：跨 feature 能直导的只有 `store/`、`types/`、`api/`，其余路径一律视为内部实现。禁止把 store 散落在 feature 根级命名（如 `quickOpenStore.ts`），否则直导会被防火墙拦截、又只能退回门面导入，陷入规范自相矛盾。
+3. **类型直导或豁免**：`export type` 编译期擦除、无 tree-shaking 影响；共享类型统一放 `src/shared/types/`，feature 内类型就近定义并直接导入。
+4. **feature `index.ts` 仅为门面**：feature 根 `index.ts` 只允许 re-export 公开组件与公开 hooks（如 `FilesPanel`、`useLocateFileInTree`），用作对外防火墙；禁止把 store、内部工具函数纳入。
+5. **同 feature 内部禁止自环门面**：同一 feature 内模块之间直接导入具体文件，不得通过本目录 `index.ts` 互相引用。
+
 ### 开闭原则（OCP）
 
 1. 对扩展开放，对修改封闭。新增功能通过添加新代码（新 variant、新 strategy、新组件）实现，而非修改已有代码。

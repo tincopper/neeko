@@ -10,7 +10,7 @@ import {
 import { SortableContext, horizontalListSortingStrategy } from '@dnd-kit/sortable';
 import React, { useCallback, useRef, useMemo } from 'react';
 
-import AgentIcon from '@/features/agent/components/AgentIcon';
+import { AgentIcon } from '@/features/agent';
 import { cn } from '@/lib/utils';
 import { Plus } from '@/shared/components/icons';
 import type { AgentConfig } from '@/shared/types';

@@ -2,12 +2,9 @@ import { Terminal, Bot, Layers, FilePlus } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState, memo } from 'react';
 
 /* eslint-disable import/no-restricted-paths -- guide binds project tag groups via skill domain */
-import {
-  resolveProjectTargetAgentIds,
-  useBindProjectTagGroups,
-  useSkillStore,
-} from '@/features/skill';
+import { resolveProjectTargetAgentIds, useBindProjectTagGroups } from '@/features/skill';
 /* eslint-enable import/no-restricted-paths */
+import { useSkillStore } from '@/features/skill/store';
 import AgentIcon from '@/shared/components/AgentIcon';
 import { useAppContext } from '@/shared/contexts/AppContext';
 import type { AgentConfig } from '@/shared/types';

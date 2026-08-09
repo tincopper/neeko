@@ -1,7 +1,6 @@
 import { useCallback } from 'react';
 
-import { closeEditorTab } from '@/features/terminal/components/terminalTabCleanup';
-import { useTerminalTabs } from '@/features/terminal/hooks/useTerminalTabs';
+import { closeEditorTab, useTerminalTabs } from '@/features/terminal';
 import { useEditorStore } from '@/shared/store';
 import { resolveTabKey } from '@/shared/utils/tabKey';
 

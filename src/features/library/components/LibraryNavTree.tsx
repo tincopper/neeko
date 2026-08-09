@@ -1,7 +1,7 @@
 import React from 'react';
 
 import { useLibraryStore } from '@/features/library/store/libraryStore';
-import SkillsPanel from '@/features/skill/components/SkillsPanel';
+import { SkillsPanel } from '@/features/skill';
 
 import LibrarySidebar from './LibrarySidebar';
 import McpNavPanel from './McpNavPanel';

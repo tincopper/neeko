@@ -1,5 +1,5 @@
 // Components
-export { default as ContextMenu } from './components/ContextMenu';
+export { default as ContextMenu, type ContextMenuItem } from './components/ContextMenu';
 export { default as ProjectSettingsDialog } from './components/ProjectSettingsDialog';
 export { default as ProjectItem } from './components/ProjectItem';
 export { default as ProjectGitSection } from './components/ProjectGitSection';
@@ -27,10 +27,6 @@ export { useCrossTypeSelection } from './hooks/useCrossTypeSelection';
 export { useWorktreeActions } from './hooks/useWorktreeActions';
 export { useWorktreeState, type WorktreeItem } from './hooks/useWorktreeState';
 export { useActiveProject } from './hooks/use-active-project';
-
-// Store
-export { useProjectStore } from './store';
-export { useWorktreeStore, type WorktreeSnapshotItem } from './worktreeStore';
 
 // Types
 export type {

@@ -5,7 +5,7 @@ import { useActionPaletteStore } from '@/features/action-menu/store/actionPalett
 // eslint-disable-next-line import/no-restricted-paths -- keyboard shortcuts reference project list types
 import type { ProjectListItem } from '@/features/project/hooks/useProjectList';
 // eslint-disable-next-line import/no-restricted-paths -- keyboard shortcuts reference quick open store
-import { useQuickOpenStore } from '@/features/quick-open';
+import { useQuickOpenStore } from '@/features/quick-open/store/quickOpenStore';
 // eslint-disable-next-line import/no-restricted-paths -- keyboard shortcuts need terminal cache for refresh
 import { refreshTerminal, terminalCacheKey } from '@/features/terminal/components/terminalCache';
 // eslint-disable-next-line import/no-restricted-paths

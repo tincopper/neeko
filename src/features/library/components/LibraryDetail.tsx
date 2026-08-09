@@ -4,7 +4,7 @@ import McpTabContent from '@/features/library/components/McpTabContent';
 import PromptListSection from '@/features/library/components/PromptListSection';
 import { useLibraryStore } from '@/features/library/store/libraryStore';
 import { useMcpStore } from '@/features/library/store/mcpStore';
-import SkillContent from '@/features/skill/components/SkillContent';
+import { SkillContent } from '@/features/skill';
 import type { PromptInsertTarget, PromptResource, ResourceKind } from '@/shared/types/library';
 
 import LibrarySearchBar from './LibrarySearchBar';

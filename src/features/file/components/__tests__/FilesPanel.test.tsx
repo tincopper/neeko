@@ -26,7 +26,8 @@ function flattenTree(nodes: FileNode[]): Record<string, FileNode[]> {
     for (const n of list) {
       if (!n.is_dir) continue;
       const path = prefix ? `${prefix}/${n.name}` : n.name;
-      const kids = n['children'];
+      // 解构 pattern 而非属性访问：规避 testing-library/no-node-access 对纯数据结构的误报
+      const { children: kids } = n;
       dirs[path] = strip(kids);
       walk(kids, path);
     }
