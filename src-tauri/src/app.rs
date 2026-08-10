@@ -1,7 +1,9 @@
 //! Tauri application setup and window event handling.
 
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::AtomicBool;
+#[cfg(target_os = "macos")]
+use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use tauri::Manager;
 

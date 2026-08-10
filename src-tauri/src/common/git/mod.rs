@@ -16,6 +16,7 @@ pub mod transport;
 pub mod types;
 pub mod worker;
 #[cfg(target_os = "windows")]
+/// WSL-specific git operations and IDE launch helpers.
 pub mod wsl;
 
 pub use cache::*;

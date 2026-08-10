@@ -1,7 +1,9 @@
 //! Tauri commands for opening IDEs (local, remote SSH, and WSL).
 
 use crate::common::executor::factory::ExecTarget;
-use crate::core::exec::{collect_blocking, spawn_detached};
+#[cfg(target_os = "macos")]
+use crate::core::exec::collect_blocking;
+use crate::core::exec::spawn_detached;
 use crate::AppError;
 use crate::AppStateWrapper;
 use anyhow::Result;

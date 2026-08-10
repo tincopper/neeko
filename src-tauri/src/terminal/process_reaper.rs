@@ -16,6 +16,7 @@
 // reparented to launchd/init and the ppid chain used by collect_from_maps is
 // broken — a post-kill snapshot returns nothing.
 
+#[cfg(unix)]
 use std::time::{Duration, Instant};
 
 const GRACEFUL_TIMEOUT_SECS: u64 = 2;
@@ -194,6 +195,7 @@ pub fn reap_session_tree(orphans: &[i32]) {
 mod tests {
     use super::*;
 
+    #[cfg(unix)]
     fn wait_ms(ms: u64) {
         std::thread::sleep(Duration::from_millis(ms));
     }

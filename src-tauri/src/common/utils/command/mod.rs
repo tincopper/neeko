@@ -5,7 +5,9 @@ pub mod local;
 
 /// Thin re-export: fire-and-forget IDE launch in WSL.
 pub mod wsl {
-    use anyhow::{bail, Result};
+    #[cfg(not(target_os = "windows"))]
+    use anyhow::bail;
+    use anyhow::Result;
 
     /// Launch an IDE inside a WSL distribution (fire-and-forget).
     ///
