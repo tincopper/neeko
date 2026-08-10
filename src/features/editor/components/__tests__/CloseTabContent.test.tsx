@@ -2,7 +2,7 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { EditorProvider } from '@/shared/contexts';
-import { useEditorStore } from '@/shared/store';
+import { useEditorStore } from '@/shared/store/editorStore';
 import type { Tab } from '@/shared/types';
 import { createDefaultEditorLayout } from '@/shared/types/editorGroup';
 

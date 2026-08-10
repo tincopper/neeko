@@ -2,7 +2,7 @@ import { act, renderHook } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { closeEditorTab } from '@/features/terminal';
-import { useEditorStore } from '@/shared/store';
+import { useEditorStore } from '@/shared/store/editorStore';
 import type { Tab } from '@/shared/types/tab';
 
 import { useTabManagement } from '../useTabManagement';

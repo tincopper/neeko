@@ -1,7 +1,7 @@
 import { useCallback } from 'react';
 
 import { closeEditorTab, useTerminalTabs } from '@/features/terminal';
-import { useEditorStore } from '@/shared/store';
+import { useEditorStore } from '@/shared/store/editorStore';
 import { resolveTabKey } from '@/shared/utils/tabKey';
 
 const APP_SETTINGS_PROJECT_ID = '__app__';

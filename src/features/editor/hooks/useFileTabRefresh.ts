@@ -1,6 +1,6 @@
 import { readFileContent } from '@/features/file/api/fileApi';
 import { useFileChangedEvent } from '@/features/git';
-import { useEditorStore } from '@/shared/store';
+import { useEditorStore } from '@/shared/store/editorStore';
 import type { FileChangedEvent, FileContent } from '@/shared/types';
 
 interface FileRefreshCommands {

@@ -5,7 +5,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 
 import { closeEditorTab } from '@/features/terminal';
-import { useEditorStore } from '@/shared/store';
+import { useEditorStore } from '@/shared/store/editorStore';
 import type { Tab } from '@/shared/types';
 
 function makeTab(id: string): Tab {

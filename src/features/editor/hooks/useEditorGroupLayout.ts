@@ -1,7 +1,7 @@
 import { useCallback, useMemo } from 'react';
 
 import { closeAllEditorTabs, closeEditorTab } from '@/features/terminal';
-import { useEditorStore } from '@/shared/store';
+import { useEditorStore } from '@/shared/store/editorStore';
 import type { EditorGroupId, EditorSplitLayout, Tab } from '@/shared/types';
 import { createDefaultEditorLayout, findGroupIdForTab } from '@/shared/types/editorGroup';
 

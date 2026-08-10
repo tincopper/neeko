@@ -27,3 +27,6 @@ export type {
   PaneNode,
   SplitState,
 } from '@/shared/types/split';
+
+/** Editor preview toggle state (markdown/html preview vs source) */
+export type PreviewMode = 'preview' | 'source';

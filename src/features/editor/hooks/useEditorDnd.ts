@@ -10,7 +10,7 @@ import {
 } from '@dnd-kit/core';
 import { useCallback } from 'react';
 
-import { useEditorStore } from '@/shared/store';
+import { useEditorStore } from '@/shared/store/editorStore';
 import type { Tab } from '@/shared/types/tab';
 
 import { PINNED_DROP_PREFIX, resolveCollision, resolveDropAction } from '../dragDrop';

@@ -43,3 +43,9 @@ export function getFileName(filePath: string): string {
 export function isFileTab(tab: Tab): tab is Tab & { data: FileTabData } {
   return tab.data.kind === 'file';
 }
+
+/** 检查文件是否为 HTML 文件 */
+export function isHtmlFile(filePath: string): boolean {
+  const ext = filePath.split('.').pop()?.toLowerCase();
+  return ext === 'html' || ext === 'htm';
+}
