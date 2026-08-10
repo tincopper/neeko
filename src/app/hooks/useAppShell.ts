@@ -197,7 +197,10 @@ export function useAppShell(): UseAppShellResult {
       useWorktreeStore.getState().activeWorktreePath ??
       useProjectStore.getState().activeProject?.path ??
       undefined;
-    fileView.loadFileTree(projectId, rootPath);
+    // force = true: manual refresh must bypass the "already loaded" idempotency
+    // check, otherwise a loaded tree would never re-fetch (the root cause of
+    // "refresh button does nothing after file changes").
+    fileView.loadFileTree(projectId, rootPath, true);
   }, [fileView]);
   const handleWslDiffBack = useCallback(() => {
     wslActionsWrap.setWslDiffState?.(null);

@@ -4,6 +4,7 @@
 
 use crate::common::git::status_worker::{GitStatusDiff, GitStatusWorker};
 use ignore::gitignore::{Gitignore, GitignoreBuilder};
+use notify::event::ModifyKind;
 use notify::{Config, Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
 use std::{
     collections::HashMap,
@@ -515,9 +516,14 @@ impl WatcherManager {
                     for p in &relevant_paths {
                         let _ = debounce_tx_for_notify.send(p.clone());
                     }
-                    // 文件树结构变更（新增/删除/重命名）时额外触发 tree-changed 防抖
-                    let is_structure_change =
-                        matches!(event.kind, EventKind::Create(_) | EventKind::Remove(_));
+                    // 文件树结构变更（新增/删除/重命名）时额外触发 tree-changed 防抖。
+                    // notify 6.x 中 Rename 表现为 Modify(Name(_))，必须包含否则文件移动不会触发刷新。
+                    let is_structure_change = matches!(
+                        event.kind,
+                        EventKind::Create(_)
+                            | EventKind::Remove(_)
+                            | EventKind::Modify(ModifyKind::Name(_))
+                    );
                     if is_structure_change {
                         let _ = tree_debounce_tx.send(());
                     }

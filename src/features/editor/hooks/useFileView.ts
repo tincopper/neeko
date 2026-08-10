@@ -117,15 +117,28 @@ export function useFileView(
   }, []);
 
   /**
-   * Load the directory tree for a project
+   * Load the directory tree for a project.
+   *
+   * @param force - When true, bypasses the "already loaded" idempotency check and
+   *   always re-fetches. Defaults to false to mirror store.loadDir semantics: manual
+   *   refresh should pass `force = true`; activation / project switch are idempotent
+   *   (a fresh owner still loads because loadDir resets the cache on owner change).
    */
   const loadFileTree = useCallback(
-    async (projectId: string, worktreePath?: string) => {
+    async (projectId: string, worktreePath?: string, force = false) => {
       const rootPath = worktreePath ?? useProjectStore.getState().activeProject?.path ?? null;
       if (!rootPath) return;
       const owner = `${projectId}:${rootPath}`;
-      const loader = makeDirLoader(projectId, rootPath, '');
-      await useFileStore.getState().loadDir(owner, '', loader);
+      // force（手动/自动刷新）：全树刷新，重载根 + 所有已展开子目录，保证
+      // 移动/删除文件后展开目录缓存同步更新；否则只做根加载（幂等/首载）。
+      if (force) {
+        await useFileStore
+          .getState()
+          .refreshTree(owner, (dirPath) => makeDirLoader(projectId, rootPath, dirPath));
+      } else {
+        const loader = makeDirLoader(projectId, rootPath, '');
+        await useFileStore.getState().loadDir(owner, '', loader);
+      }
     },
     [makeDirLoader],
   );

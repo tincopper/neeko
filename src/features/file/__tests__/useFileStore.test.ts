@@ -288,4 +288,88 @@ describe('useFileStore 扁平目录缓存', () => {
     expect(s.loadStates).toEqual({});
     expect(s.requests).toEqual({});
   });
+
+  it('refreshTree 强制重载根目录（root 缓存更新）', async () => {
+    await useFileStore
+      .getState()
+      .loadDir(OWNER, '', () => Promise.resolve([fileNode('old.ts', 'old.ts')]));
+
+    await useFileStore
+      .getState()
+      .refreshTree(OWNER, () => () => Promise.resolve([fileNode('new.ts', 'new.ts')]));
+
+    const s = useFileStore.getState();
+    expect(s.loadStates['']).toBe('loaded');
+    expect(s.dirs['']).toEqual([fileNode('new.ts', 'new.ts')]);
+  });
+
+  it('refreshTree 重载根 + 所有已加载子目录（移动文件在两处缓存都反映）', async () => {
+    // 先加载根 + 展开目录 src（旧内容 a.ts）
+    await useFileStore
+      .getState()
+      .loadDir(OWNER, '', () => Promise.resolve([dirNode('src', 'src'), fileNode('b.ts', 'b.ts')]));
+    await useFileStore
+      .getState()
+      .loadDir(OWNER, 'src', () => Promise.resolve([fileNode('a.ts', 'src/a.ts')]));
+
+    // 移动 a.ts → b.ts：新树根无变化，src 内容变化；旧目录 src/old 删除
+    const loaderFor = (dirPath: string) => () =>
+      Promise.resolve(
+        dirPath === 'src'
+          ? [fileNode('moved.ts', 'src/moved.ts')]
+          : [dirNode('src', 'src'), fileNode('b.ts', 'b.ts')],
+      );
+
+    await useFileStore.getState().refreshTree(OWNER, loaderFor);
+
+    const s = useFileStore.getState();
+    // 根与已加载子目录都被刷新
+    expect(s.dirs['src']).toEqual([fileNode('moved.ts', 'src/moved.ts')]);
+    expect(s.dirs['']).toEqual([dirNode('src', 'src'), fileNode('b.ts', 'b.ts')]);
+    expect(s.loadStates['src']).toBe('loaded');
+  });
+
+  it('refreshTree 跳过在途 loading 目录，不覆盖其请求', async () => {
+    // 建立根缓存
+    await useFileStore
+      .getState()
+      .loadDir(OWNER, '', () => Promise.resolve([dirNode('src', 'src')]));
+
+    // 展开 src 发起在途请求
+    const srcDeferred = deferred<FileNode[]>();
+    const pSrc = useFileStore.getState().loadDir(OWNER, 'src', () => srcDeferred.promise);
+    expect(useFileStore.getState().loadStates['src']).toBe('loading');
+
+    // refreshTree 只应刷新根，跳过 loading 的 src
+    const rootLoader = () => () =>
+      Promise.resolve([dirNode('src', 'src'), fileNode('x.ts', 'x.ts')]);
+    await useFileStore.getState().refreshTree(OWNER, rootLoader);
+
+    // src 仍为 loading、未被 rootLoader 返回覆盖
+    expect(useFileStore.getState().loadStates['src']).toBe('loading');
+    expect(useFileStore.getState().dirs['src']).toBeUndefined();
+
+    // 在途请求完成：最终一致
+    srcDeferred.resolve([fileNode('new.ts', 'src/new.ts')]);
+    await pSrc;
+    expect(useFileStore.getState().dirs['src']).toEqual([fileNode('new.ts', 'src/new.ts')]);
+    expect(useFileStore.getState().loadStates['src']).toBe('loaded');
+  });
+
+  it('refreshTree silent 后台刷新：不切换 loading 态，新数据到达前保留旧内容', async () => {
+    await useFileStore
+      .getState()
+      .loadDir(OWNER, '', () => Promise.resolve([fileNode('old.ts', 'old.ts')]));
+
+    const p = useFileStore
+      .getState()
+      .refreshTree(OWNER, () => () => Promise.resolve([fileNode('new.ts', 'new.ts')]), {
+        silent: true,
+      });
+    // silent 刷新不进入 loading
+    expect(useFileStore.getState().loadStates['']).toBe('loaded');
+    await p;
+    // 数据到达后更新
+    expect(useFileStore.getState().dirs['']).toEqual([fileNode('new.ts', 'new.ts')]);
+  });
 });

@@ -37,6 +37,19 @@ interface FileStoreState {
     loader: () => Promise<FileNode[]>,
     opts?: LoadDirOptions,
   ) => Promise<void>;
+  /**
+   * 全树刷新：重载根目录 + 所有当前已加载的目录，逐个替换缓存。
+   * 解决「移动/删除文件后展开目录缓存不更新」——根刷新（loadDir force）只刷根，
+   * 展开的子目录缓存因「seed 不覆盖已加载」语义而保留旧数据；此操作显式刷新全部已加载目录。
+   * - 跳过正在 loading 的目录（让在途请求自己收尾，避免 token 竞争）
+   * - 未加载（折叠未展开）的子目录下次展开仍懒加载新数据，无需处理
+   * - silent：后台刷新，新数据到达前保留旧内容、不切换 loading 态
+   */
+  refreshTree: (
+    owner: FileTreeOwner,
+    loaderFor: (dirPath: DirPath) => () => Promise<FileNode[]>,
+    opts?: { silent?: boolean },
+  ) => Promise<void>;
   /** 切换项目/root 时清空全部缓存与归属 */
   reset: () => void;
 }
@@ -125,6 +138,20 @@ export const useFileStore = create<FileStoreState>((set, get) => ({
       // 失败保留旧内容，标记 error 供 UI 重试
       set({ loadStates: { ...latest.loadStates, [dirPath]: 'error' } });
     }
+  },
+
+  async refreshTree(owner, loaderFor, opts) {
+    const { silent = false } = opts ?? {};
+    // 快照当前已加载目录（dirs 的 key），避免刷新过程中新增目录影响遍历
+    const loadedPaths = Object.keys(get().dirs);
+    // 跳过正在 loading 的目录：让在途请求自己收尾，避免 token 竞争覆盖最新响应
+    const target = loadedPaths.filter((p) => get().loadStates[p] !== 'loading');
+    // 并发发起各目录强制重载；loadDir 内部 owner/token 校验会丢弃过期写入
+    await Promise.all(
+      target.map((dirPath) =>
+        get().loadDir(owner, dirPath, loaderFor(dirPath), { force: true, silent }),
+      ),
+    );
   },
 
   reset: () => set({ owner: null, dirs: {}, loadStates: {}, requests: {}, activeFilePath: null }),

@@ -163,28 +163,33 @@ const FilesPanelWrapper: React.FC = React.memo(() => {
   useEffect(() => {
     const unlistenPromise = listen<FileTreeChangedEvent>(FILE_TREE_CHANGED_EVENT, (event) => {
       const { project_id } = event.payload;
-      // 只响应当前活动项目的事件
+      // 只响应当前活动项目的事件 + 仅本地项目（WSL/Remote 不经过本地 notify watcher）
       if (!activeProjectId || project_id !== activeProjectId) return;
-      // panel 未激活时跳过（下次激活时 justBecameActive 逻辑会自动加载）
-      if (!isActive || !fileRootPath) return;
-      // 静默刷新：只重载根目录，已展开的子目录缓存不受影响（根治展开目录被整树覆盖）。
-      // 后台刷新不切换 loading 态，旧树保持可见直到新数据到达。
+      if (!project || project.type !== 'Local') return;
+      // 移除 isActive 限制：即使文件面板未激活，文件变更仍应触发刷新，
+      // 确保用户切换到文件面板时看到的是最新状态。
+      if (!fileRootPath) return;
+      // 静默刷新：全树刷新，重载根 + 所有已展开子目录（根治展开目录被整树覆盖，
+      // 并保证移动/删除文件后展开目录缓存同步更新）。后台刷新不切换 loading 态，
+      // 旧树保持可见直到新数据到达。
       const owner = `${activeProjectId}:${fileRootPath}`;
-      const loader = makeLocalLoader(activeProjectId, '');
-      void useFileStore.getState().loadDir(owner, '', loader, { force: true, silent: true });
+      void useFileStore
+        .getState()
+        .refreshTree(owner, (dirPath) => makeLocalLoader(activeProjectId, dirPath), {
+          silent: true,
+        });
     });
     return () => {
       unlistenPromise.then((unlisten) => unlisten());
     };
-  }, [activeProjectId, isActive, fileRootPath, ignoredFiles, makeLocalLoader]);
+  }, [activeProjectId, project, fileRootPath, ignoredFiles, makeLocalLoader]);
 
-  // WSL/Remote: 通过 store.loadDir 强制重载根目录（失败保留旧内容 + error 态，不置空）。
-  // Local: delegate to onFileRefresh (context → useFileView.loadFileTree).
+  // WSL/Remote: 通过 store.refreshTree 强制全树重载（失败保留旧内容 + error 态，不置空）。
+  // Local: delegate to onFileRefresh (context → useFileView.loadFileTree, force 全树刷新)。
   const handleRefresh = useCallback(() => {
     if (project && project.type !== 'Local' && commands && fileRootPath) {
       const owner = `${project.id}:${fileRootPath}`;
-      const loader = makeWslRemoteLoader('');
-      void useFileStore.getState().loadDir(owner, '', loader, { force: true });
+      void useFileStore.getState().refreshTree(owner, (dirPath) => makeWslRemoteLoader(dirPath));
     } else {
       onFileRefresh();
     }
