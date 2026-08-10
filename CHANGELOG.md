@@ -2,20 +2,25 @@
 
 All notable changes to this project will be documented in this file.
 
-## [unreleased]
+## [1.0.5] - 2026-08-10
 
 ### 🚀 Features
 
-- Project avatar 颜色支持自定义：新建项目时从 10 色调色板随机分配（取代易撞色的 DJB2 hash），用户可在全局 Settings → Project 子面板的 Appearance section 自由切换颜色或重置回默认（hash 兜底）；三端 Local / WSL / SSH schema 与后端命令均已对齐（WSL/SSH UI 入口待后续接入）
-
-### 🎨 Styling
-
-- ProjectsPanel 视觉重设计：Local / WSL / SSH 三端统一为 V1 Reference Faithful 风格（字母色块头像、双行 session、行尾 ↑N / +A -D / ⌘N chip、WSL/SSH 外层 lightweight section header）；下线侧边栏内嵌的 Worktree Changes 文件树（变更明细仍走 DiffView）
-
-## [1.0.4] - 2026-04-11
-
-### 🚀 Features
-
+- Complete Neeko MVP with terminal, diff, git management and agent integration
+- Add custom app icon with blue-purple gradient N on dark background
+- Add shell selector in settings panel
+- Redesign settings as full dialog with left-nav + right-content layout
+- Add font family selector in settings with system font discovery
+- Set Cascadia Code as default terminal font on Linux
+- Add SideTerminalView with Ctrl+Alt+T / Ctrl+W shortcuts
+- Add OpenIDE, toast notifications, draggable side terminal divider, and UI polish
+- Add side terminal button to project header, fix always-visible buttons
+- Improve terminal resize handling and add file logging
+- Add EULA, publisher info, and hide console window on Windows
+- Enhance DiffView with syntax highlighting, block navigation, and fast git2 diff
+- Auto-refresh sidebar when project files change
+- Worktree terminals, inline rename, file watch, diff improvements + cleanup
+- 项目折叠状态持久化 - 记住每个项目的折叠状态
 - Add WSL terminal support (Phase 1)
 - Add SSH remote terminal support (Phase 2)
 - Add dropdown menu for WSL and SSH options
@@ -51,9 +56,251 @@ All notable changes to this project will be documented in this file.
 - Use switchAgentInRemoteTerminal in handleSelectRemoteAgent
 - Filter .neeko/ paths from sidebar file tree
 - Add quick worktree creation mode and improve worktree deletion flow
+- **worktree**: Worktree-diff-preview
+- Replace hand-written Add dropdown with shadcn DropdownMenu
+- 重构 TitleBar 布局并添加多 Tab 终端支持
+- **theme**: Add One Dark Pro and Claude themes
+- **files**: Add Files panel with multi-tab editor, syntax highlighting, and markdown preview
+- **agent**: Add gear button to manage agent visibility in bar
+- **settings**: Split fontSize into appearanceFontSize, editorFontSize, terminalFontSize
+- **settings**: Merge font-size-split - split fontSize into Appearance/Editor/Terminal
+- **trellis**: Add markdown-preview-enhancement task with technical plan
+- **ui**: Add MarkdownPreview component with GFM and diagram support
+- **sidebar**: Restructure project sidebar to grouped display with local/worktree sections
+- **codemirror**: Extend language support with common file types
+- **skill**: Add skill data model and tool adapter foundation
+- **terminal**: Add split pane layout with PTY resize fix
+- **skill**: Add installer, scanner, and content hash modules
+- **skill**: Add tag system commands and auto-create Default group
+- **skill**: Add sync engine for deploying skills to agent tools
+- **skill**: Add SkillsPanel frontend UI with component architecture
+- **skill**: Add project-tag-group binding with migration v2
+- **skill**: Refactor SkillsPanel to three-column navigation layout
+- **skill**: Add create skill command and dialog
+- **skill**: Replace description input with CodeMirror markdown editor for create skill
+- **editor**: Add custom CodeMirror syntax highlighting that follows app theme
+- **agents**: Add Skill Path configuration UI
+- **skills**: Add resizable panel for skill dialogs
+- **skills**: Implement marketplace backend for Skills.sh integration
+- Add Ctrl+W shortcut to close active terminal tab
+- **skills**: Implement marketplace UI with leaderboard and search
+- **connections**: Add worktree support and fix branch switching for WSL/SSH projects
+- **skill**: Redesign marketplace card with avatar and grid layout
+- **skill**: Add source filtering and pagination to marketplace
+- **skill**: Remove tool status feature and related UI components
+- Replace auto-start agent with project guide page
+- **settings**: Convert settings panel from modal to full-page view
+- **opencode**: Sync Neeko theme to OpenCode configuration
+- **ssh**: Add Enter Credentials button and improve auth error handling
+- **worktree**: Change default worktree path to home directory
+- **theme**: Sync application theme to OpenCode TUI config for WSL projects
+- **git**: Add full git operations panel and bug fixes
+- **project-list**: Add drag-and-drop sorting with cursor following for local, WSL, and SSH projects
+- **shortcuts**: Add customizable keyboard shortcuts with settings panel UI
+- **git**: Open diff tab on file click in commit panel with dedup
+- **tabs**: Show agent icon in terminal tab when bound to an agent
+- **dock**: Replace fixed layout with IntelliJ-style docking framework
+- **ui**: Adopt IDEA 2026 Islands floating panel design with gradient background
+- **settings**: Open settings as a tab instead of replacing center content
+- **guide**: Add Settings button to project guide page
+- **git**: Add git log viewer with commit detail panel and graph visualization
+- **files**: Add HTML file preview with iframe sandbox
+- **git-panel**: Add stage buttons for unversioned files
+- **git**: Add AI-powered commit message generation via agent CLI
+- **panel**: Add unified Active Project Context for WSL/SSH panel support
+- **commit**: Pass agentId and agentCommandOverride to generateCommitMessage
+- **ai-commit**: Support WSL and SSH remote AI commit message generation
+- **shortcut**: Add Alt+Arrow and Ctrl+Tab for tab cycling
+- Support native macOS title bar with overlay style and custom icon placement
+- Fix cross-platform title bar issues and optimize macOS overlay placement
+- **editor**: Add left/right editor group split for tabs
+- **agent**: Add default pi CLI agent and fix settings theme switching
+- **theme**: Add Pi CLI agent theme sync support alongside OpenCode themes
+- **task-runner**: Add task runner with terminal integration and project avatar
+- **titlebar**: Add branch switcher to title bar with shared dropdown component
+- **task**: Support task tab reuse with exit code propagation and clean terminal rebuild
+- **terminal**: Add Ctrl+Enter and Alt+Enter newline support
+- 支持鼠标中键关闭 tab，启用 macOSPrivateApi
+- **ui**: Replace hardcoded Chinese strings with English
+- **terminal**: Add WebGL accelerated rendering
+- Make WebGL terminal renderer a user config option
+- 添加 Nerd Font Symbols fallback 支持终端图标渲染
+- Optimize exit cleanup - background parallel shutdown for terminal/remote/watcher
+- Add expand chevron arrow indicator to Files panel directories
+- Make Pi/OpenCode theme sync configurable with user toggles
+- **browser**: Add embedded browser panel with terminal link support
+- **browser**: Support file:// URLs and improve layout
+- **browser**: Add element picker with prompt submission and auto-refresh
+- Return GitInfo from refresh_git_info and sync to frontend store
+- Elevate Settings from tab to app-level view with appViewStore
+- **settings**: Add Project panel and source built-in agents from backend
+- **panel**: Redesign projects panel as V1 Reference Faithful
+- **project**: Customizable avatar color per project
+- **browser**: Add open-in-browser for html files in files panel
+- **dock**: Animate right zone resize on panel switch
+- **watcher**: Emit file-changed event with debounce for tab refresh
+- **editor**: Add pinned tab panel with resizable layout
+- **dock**: Persist left panel width across sessions
+- **ide**: Split IDE dropdown into "set default" (row) and "open now" (▶)
+- **files**: Auto-reload HTML preview and browser on file change
+- **watcher**: Emit file-tree-changed event on create/remove
+- **files**: Color file names by git status
+- **files**: Color file names by git status in Files panel
+- **ui**: Add file icons to changes list
+- **ui**: Support per-project task state tracking
+- **tooling**: Phase 1 — ESLint + Clippy quality gates
+- **core**: Phase 2 backend layering — core module, services extraction, empty stubs cleanup
+- **skill**: Fill repository.rs with real SQL, SkillStore delegates to SkillRepository
+- **frontend**: Phase 3 frontend layering — per-feature api/ wrappers + import isolation
+- Phase 4 — eliminate 55 unwrap() calls in production code
+- Spec compliance — editor to app/, invoke isolation, ESLint no-restricted-imports error
+- **core**: Phase A — extract cross-domain logic to core/services/commit and core/watcher
+- **core**: Phase B — core/db.rs, naming conventions, module visibility
+- Phase C — ESLint rules to error, lib.rs deny sync, spec alignment
+- Custom theme support via ~/.neeko/themes/*.json
+- **theme**: Refresh dark theme palette to Apple-inspired colors
+- **styles**: Introduce Apple design tokens + refresh shadcn variables
+- **theme**: Adjust dark theme base + panel colors to #181A1C / #272A30
+- **theme**: Add OKLCH dark theme as new default, rename old dark to classic-dark
+- **ui**: 添加 ConfirmDialog 组件并统一删除确认弹窗
+- **terminal**: Add scroll-to-bottom floating button
+- **editor**: Support code selection and AI agent interaction in editor and diff
+- **lsp**: Auto-position cursor on cross-file go-to-definition
+- **lsp**: Phase 1 — LSP engine, StatusBar, diagnostics integration
+- **editor**: Add drag-and-drop tab reordering
+- **file**: Add drag-and-drop file path to active terminal tab
+- **conversation**: Add backend core — Adapter trait, Manager, Tauri commands
+- **conversation**: Implement 7 agent session adapters
+- **conversation**: Add frontend UI — Panel, List, Viewer, Resume
+- **conversation**: Add OpenCode resume support via --session flag
+- **conversation**: Add Pi resume support via --session flag
+- **conversation**: Render messages as Markdown with syntax highlighting + chat bubble style
+- **conversation**: Redesign viewer as chat-style with bubbles, auto-scroll, max-width layout
+- **conversation**: Normalize titles with orca-aligned pipeline
+- **conversation**: View page UX optimization
+- **conversation**: Strip tool calls from preview, move buttons to first row
+- **conversation**: Compact list item layout, strip think tags
+- **markdown**: Add diff block rendering via InlineDiffBlock
+- **lsp**: Stability fixes, session lifecycle, and hover tooltip improvements
+- **terminal**: File path click to open in editor tab
+- **pr**: Load all repo labels and authors for filter dropdowns
+- **pr**: Add search input in author/label filter dropdowns
+- **pr**: Show assignee in PR list
+- **pr**: Add assignee filter dropdown
+- **pr**: Show user avatars in PR list and detail page
+- **pr**: Use GitHub avatar images instead of colored initials
+- **git**: In-app HTTPS git login via credential subsystem
+- **git**: 支持 HTTPS 凭据交互式提交（exec_with_credentials + PushOutcome）
+- **git**: 同步 ahead/behind 到全局 store
+- Add notification system (StatusBar bell icon + toast + list + detail)
+- Bridge showToast to notification system
+- **pr**: Redesigned PR detail header and list state badge
+- **git**: Detect Git provider from remote URL (GitHub/GitLab/Bitbucket/Gitee)
+- **agent**: Add omp/reasonix presets, custom icon upload, installed-only agent bar
+- Add LSP error toast notifications, URI parsing fix, TSX/JSX language map support
+- Unified CommandExecutor trait (local/WSL/SSH) + LSP PATH resolution fix
+- **executor**: Async structured output collection + WSL consolidation
+- **lsp**: Project profile, flood control, and faster go-to-definition
+- **lsp**: Settings, custom servers, and file_extensions routing
+- **lsp**: Project-level primary language override
+- **lsp**: InitializationOptions and extension conflict warnings
+- **agents**: Add Grok agent icon
+- **debug**: Add DAP debug sessions with island-style panel UI
+- **keymap**: Make all app shortcuts user-configurable
+- **editor**: IDEA-like navigate back/forward and rebind tab keys
+- **quick-open**: Goto File, Recent Files, and MRU Ctrl+Tab switcher
+- **editor**: File Structure, Find Usages UI, split keys, IDEA preset
+- **task**: Auto-discover package.json scripts as runnable tasks
+- **task**: Discover Go/Rust/Python/Node main entry points for Run
+- **task**: Discover Java main entries for Maven/Gradle/Spring Boot
+- **task**: Run tasks in bottom Console panel instead of editor tabs
+- **skill**: Close install→tag→project→agent loop (install-only)
+- **skill**: Git install, market assign, and update checks
+- **skill**: Library source/tag filter, card layout reorg, marketplace API fix, Scan/Meta loading feedback
+- **skill**: Source info in ViewSkillDialog, quick View/Edit on card, expand panel
+- **skill**: Opencode default path, dynamic agent strip, custom agent scan
+- Add project skill import and binding controls
+- **skill**: Complete project skill relation management
+- **skill**: Add source filter on project and agent skill lists
+- **skill**: Fold overflow project agent chips with wrap and icon collapse
+- **skill**: Wire library enable and enrich agent skill actions
+- **conversation**: Extensible multi-agent history adapters
+- **conversation**: Search, agent filter, and themed history icons
+- **conversation**: Modernize history list UI
+- **conversation**: Fishbone history load with skeleton and faster scan
+- **conversation**: Project-scoped paged history with infinite scroll
+- **conversation**: Scoped discovery, disk index, and scan progress
+- **conversation**: Truncate long conversation tab titles with ellipsis
+- **git-log**: Refactor to dock panel with diff singleton, inline expand, and compact graph
+- **git-log**: Polish commit list UI with scope, path layout, and graph alignment
+- **diff**: Combined multi-file diff view with selectable lines and AI review
+- **git**: Merge Commit and Git Log into Git Control panel
+- 文件上下文菜单新增「在系统浏览器中打开」HTML 文件选项
+- FileViewer 编辑器头部新增「打开系统浏览器」按钮
+- **git**: Add discard all changes action with confirmation dialog
+- **action-menu**: Unified action menu with dropdown, palette, and untitled save-as flow
+- **dock**: Add reorderPanelsInZone action
+- **git**: Support remote branch checkout and display in branch dropdown
+- **ui**: Redesign branch switcher dropdown with Hallmark audit fixes
+- **skill**: Redesign AssignTagGroupDialog with inline tag group creation
+- **skill**: Multi-select tag groups in AssignTagGroupDialog
+- **skill**: Confirm before deleting tag with bound skills
+- **statusbar**: Show worktree branch and disable branch switching
+- **statusbar**: Redesign LSP status menu with nested submenu and server info
+- **library**: Add Resource Library with Prompts CRUD and Action integration
+- **library**: Add Action templates, import/export, variable fill, dynamic palette
+- **agent**: Add Agent Plugin system as unified provider abstraction
+- **library**: Add MCP server and Commands resource management
+- **agent**: Add Agent Configuration Schema system
+- **git**: Add curve sampling helpers and text-column separation spec
+- **file**: File management and git status display
+- **editor**: Collapsible agent bar with adaptive wrap
+- **library**: Library as center tab view + master-detail v7 layout
+- **mcp**: Implement MCP marketplace with registry search and install
+- **library**: 合并 wip-before-lsp-merge 的 tags/agents/projects 功能
+- **library**: Add MCP group view switcher with tags/agents/projects
+- **lsp**: Unify completion-detail rendering + flip-to-left positioning
+- **lsp**: Wire signature help with themed styling + keymap
+- **task**: Add stopping state with per-row status icons in dropdown
+- **lsp**: 重构 CodeMirror 补全 UI 为双栏 master-detail 布局
+- **browser**: Isolate browser webview per project and restore/hide panel on project switch
+- **browser**: Harden url validation and picker channel, extract event constants
+- **browser**: Add history stack, title/favicon, useTauriEvent hook, and webview reclaim
+- **editor**: Support multi-pin tabs via cross-panel drag
+- **app**: Forward macOS Edit menu commands with no-callout paste
+- **menu**: Add config-gated DevTools menu item
+- **console**: Theme xterm scrollbar to match app chrome
+- **file**: Locate active file in tree
+- **browser**: Add project-scoped file:// allowlist to open_in_default_browser
+- **search**: Add find-in-files content search panel
 
 ### 🐛 Bug Fixes
 
+- Add missing icon.icns and fix tauri.conf.json schema URL
+- Improve terminal reliability and UI dropdown layering
+- Resolve Linux PTY and IME compatibility issues
+- Add -ExecutionPolicy Bypass to PowerShell on Windows to allow script execution
+- Auto-apply -ExecutionPolicy Bypass for PowerShell regardless of how it is configured
+- Detect shell exit and auto-restart terminal session
+- Graceful process cleanup to prevent subprocess memory leaks
+- Resolve Linux Chinese IME duplicate input issue
+- Font selector now closes after selection with proper dropdown UI
+- SideTerminalView passes real project.id to backend instead of cache key
+- Resolve build errors (TS unused vars, CSS brace imbalance, tsconfig references)
+- Use async pick_folder to fix Add Project dialog on macOS
+- Reorder pnpm setup before node setup in CI workflow
+- Remove pnpm version override to avoid conflict with packageManager
+- Add contents write permission for release creation
+- MacOS dialog not opening + upgrade tauri to stable
+- Update pnpm-lock.yaml for stable tauri deps
+- 修复编译错误 - 所有权和可变借用问题
+- 删除项目时持久化会话 + 项目默认折叠 + 消除dead_code警告
+- Enable log file creation with create(true) flag
+- Resolve terminal backspace deletion and build errors
+- Show new files in DiffView by reading file content when diff is empty
+- Use JavaScript API for directory dialog to fix macOS compatibility
+- Add ad-hoc signing for macOS and update release notes with installation instructions
+- Disable hardenedRuntime to fix macOS unexpected exit issue
 - Suppress terminal resize during sidebar/side-terminal drag to eliminate flicker
 - Restore sidebar width from session on app startup
 - Eliminate terminal flash on Settings panel interaction
@@ -85,6 +332,267 @@ All notable changes to this project will be documented in this file.
 - Delay terminal rebuild on None selection to ensure selected_agent=null is applied
 - Update selected_agent state when selecting agent, not just for None
 - Recover terminal on switchAgentInTerminal failure
+- Improve agent installation detection by using sh -c which and async detection at startup
+- **worktree**: Close diff view when switching terminals
+- **terminal**: Add min-width to terminal-wrapper for proper flex resize
+- Add ResizeObserver to WorktreeTerminalView so main terminal resizes when side terminal is dragged
+- Replace HTML5 Drag API with Pointer Events for cross-platform drag sorting
+- Reduce startup white screen and fix terminal layout corruption on side panel resize
+- Resolve merge conflicts and platform compilation errors
+- Resolve user PATH from login shell for agent detection on macOS/Linux
+- Restore configured agent on project open, prevent agent re-fire on tab switch, fill terminal width
+- **ui**: Fix gear icon, dropdown clipping, and flatten bar button styles
+- **appearance**: Apply --font-size CSS var to sidebar project names, file tree, and file tabs
+- **skill**: Register 24 skill commands and fix state injection
+- **skill**: Use getCmFontStyle for MarkdownEditor theming
+- **terminal**: Use paneId in cacheKey for split panes to create独立 PTY 会话
+- Use theme border-color for split pane active border
+- **agent**: Add Windows support for command existence check
+- **skills**: Resolve scan button no response issue
+- WSL/SSH terminal tab switching and auto-start agent logic
+- **skill**: Adapt marketplace parser to skills.sh RSC format
+- **terminal**: Allow closing the last terminal tab
+- **terminal**: Let xterm own IME composition lifecycle
+- **terminal**: Fix invisible text in light theme and sync terminal theme on switch
+- **terminal**: Prevent agent auto-relaunch on tab close and new tab creation
+- **terminal**: Unify terminal background and fix layout overflow
+- **terminal**: Handle IME shift symbol input
+- **terminal**: Close PTY session in background to prevent IPC hanging
+- **file-tree**: Remove .trellis from excluded dirs to show it in file tree panel
+- **remote**: Restore SSH auth from saved credentials on app restart
+- **terminal**: Add terminal-wrapper class to SSH/WSL/Worktree views
+- **worktree**: Unify worktree terminal with TerminalView and fix related issues
+- Show ProjectGuidePage for local projects instead of auto-creating terminal tab
+- **deps**: Add missing @lezer/highlight dependency
+- **terminal**: Set overviewRuler width to 0 to disable scrollbar ruler
+- **dock**: Default only Projects panel selected, right panels require manual activation
+- **dock**: Rework panel toggle behavior and improve guide page visuals
+- **ui**: Hide agent bar on non-terminal tabs, remove diff back button
+- **theme**: Improve Islands contrast and align panel backgrounds
+- Theme real-time update, Files panel load, OpenCode colors, git actions hover
+- **ui**: Double default height of commit message textarea
+- **ui**: Add padding to diff view content area
+- **ui**: Only highlight git log button when tab is open in active project
+- **ui**: Align font sizes, file icons, and button styles across panels
+- **ui**: Reduce file status badge size, remove border, fix ahead/behind swap
+- **ui**: Make toast message width adaptive to content length
+- **files**: Use invoke to read HTML file content instead of fetch
+- **files**: Prevent iframe stealing focus so Ctrl+W works on preview tab
+- **worktree**: Create terminal tab on worktree branch click
+- **worktree**: Give worktrees independent tab space like project switching
+- **git**: Sync commit panel branch display with worktree selection
+- **sidebar**: Highlight active worktree and deselect local on switch
+- **files**: Show worktree directory in files panel when worktree active
+- **files**: Show project path in panel and fix local/worktree file tree reload
+- **file-view**: Use composite tab key and worktree root path for file operations
+- **settings**: Allow opening settings tab before project is selected
+- **html-preview**: Remove overlay blocking mouse interaction with iframe
+- **html-preview**: Enable asset protocol to fix connection refused error
+- **html-preview**: Switch from blob URL to srcdoc and inject anchor navigation interceptor to fix sidebar link clicks showing blank page
+- **diff**: Show content for untracked and added files
+- **panel**: Eliminate flickering and fix WSL/SSH file operations
+- **diff**: Open WSL/SSH diff tab correctly from Commit Panel
+- **theme**: Write OpenCode theme files to WSL and SSH environments
+- **gitlog**: Enable commit diff view for WSL and SSH projects in Git Log
+- **theme**: Sync OpenCode theme across local/WSL/SSH on theme change
+- **files**: Support lazy loading for deep directories in file panel
+- **git**: Refresh ahead/behind after commit and use brightness for button hover states
+- **session-bootstrap**: Sync git info to store after refresh on startup
+- **editor**: Fix white screen crash from Rules of Hooks violation in EditorGroupLayout
+- **editor**: Fix split panel content sync, duplicate keys and terminal resize
+- **terminal**: Fix task tab status dot and status update bugs
+- Resolve rust fmt and settings panel test failures
+- **markdown**: Resolve local image paths via asset protocol
+- Avoid app reload when opening terminal in dev
+- Remove misleading Clone impl, fix close_all_sessions deadlock, remove dead code
+- **opener**: Extract build_reveal_command to prevent opening explorer in tests
+- **terminal**: Eliminate garbled output caused by duplicate resize events
+- Prevent duplicate IME input on Linux by aligning event loop timing with xterm.js
+- **watcher**: Fix throttle drain logic and replace eprintln with log::warn
+- **opener**: Merge /select, arg and fix copy path logic
+- **agent**: Use $SHELL not bash for interactive PATH lookup
+- **ide**: MacOS open -a fallback when IDE shell shim is absent
+- **watcher**: Add heartbeat, fallback for --no-optional-locks
+- **editor**: Handle pin-only layout and empty left group collapse
+- **dock**: Remove right panel resize animation to fix drag lag
+- **terminal**: Only destroy task cache on explicit rebuild key bump
+- Use local::exec for IDE process spawning
+- **ide**: Pass CFBundleName to macOS LaunchServices fallback
+- **browser**: Cross-platform picker notify base URL
+- Add timeouts and cleanup guards for IPC and drag state
+- **terminal**: Kill full process tree on Windows and Unix
+- **dock**: Use collapsible panels instead of key-based remount
+- **dock**: Clamp right panel size to minSize floor
+- **worktree**: Clear worktree state on deactivate
+- **file-viewer**: Preserve scroll and cursor when switching tabs
+- Eliminate flash-black on skill panel switch by always-mounting content with CSS visibility toggle
+- Align 3 IPC command names between frontend invoke and Rust commands
+- Add h-full to main content container for full height layout
+- **git**: Skip symlinks/junctions and handle typechange status
+- 修改配色
+- Replace unwrap() panics with Result, return errors from void commands
+- Replace hardcoded Local transport in GitCommitPanel, use capabilities in FileViewer
+- Startup crash — defer getCurrentWindow to effect, remove context dep from useUnifiedProjectList
+- Agent list not refreshing and tab name showing custom: prefix
+- **tests**: Update broken imports after stub cleanup
+- Resolve import errors from types relocation
+- Install missing transitive deps (picomatch, @rolldown/pluginutils, d3)
+- Resolve d3 dependency version conflict via pnpm overrides
+- _lruCache is not a constructor — corrupted pnpm symlink
+- **layout**: Align center editor panel with dock zones (rounded corners + height)
+- **ui**: Add overflow-hidden to rounded containers to clip inner content
+- **watcher**: Offload watch() to spawn_blocking to avoid IPC freeze
+- **theme**: Extract isDarkTheme as single source of truth, fix Mermaid and terminal dark/light checks
+- **project**: Add activationConstraint to dnd-kit sensors to restore click events
+- **test**: Update type imports to use common:: paths after refactor
+- **editor**: Toolbar position below selection, add close button, fix accent color
+- Normalize LocationLink responses and fix snake_case IPC params
+- Use camelCase for Tauri 2 invoke parameter keys
+- **lsp**: Reduce latency, fix cursor position with StrictMode, center scroll
+- **git**: Fall back to project path when worktree_path is empty
+- **macOS**: Cmd+W closes current tab instead of quitting the app
+- **editor**: Tab cursor style — remove grab cursor, add pointer on title span
+- **macOS**: Replace prevent_close infinite loop with menu API + window.destroy
+- **editor**: Add missing 'conversation' case in getTabIcon to fix TS build error
+- **conversation**: Wire all_adapters() into ConversationManager at startup
+- **conversation**: Wire adapters at startup + fix glob pattern and project_path matching
+- **conversation**: Fix Claude Code adapter for real file format + glob matching
+- **conversation**: Clean conversation titles + move time to bottom of item
+- **conversation**: Add serde camelCase rename to fix JS field mismatch + defensive agent check
+- **conversation**: Rewrite resume flow — create new terminal tab instead of sending to existing
+- **conversation**: Enable Claude Code native resume via --resume flag
+- **conversation**: Don't drop first resume arg — join all resumeCmd args
+- **conversation**: Use taskCommand to launch resume agent directly in PTY, not via shell typing
+- **conversation**: Auto-refresh conversation list 2s after resume to reflect updated timestamps
+- **conversation**: Sort by updated_at instead of started_at for resumed sessions
+- **conversation**: Display updated_at instead of started_at in conversation item time
+- **conversation**: Capture thinking and tool_use blocks in Claude Code message parser
+- **conversation**: Use char-safe truncate for tool_use preview to avoid unicode panic
+- **conversation**: Replace scroll-to-top flash with always-visible nav button
+- **macOS**: Cmd+W closes tab only, never the window
+- **conversation**: Rewrite OpenCode adapter with correct schema and multi-session support
+- **conversation**: Reuse MarkdownPreview for text blocks
+- Resolve clippy cast errors and apply cargo fmt
+- **conversation**: Skip rendering empty sub-messages
+- **editor**: Sync tab order after drag reorder for keyboard navigation
+- **pr**: Add missing rename_all to PRComment and CommentReaction structs
+- **pr**: Merge PR reviews into comment list
+- **pr**: Show comment count and add loading skeleton
+- **pr**: Use camelCase field name for commentCount
+- **pr**: Replace blank screen with skeleton while checking gh CLI
+- **pr**: Render full page skeleton immediately instead of blank screen
+- **macos**: Shift Neeko icon left in fullscreen to reclaim traffic-light space
+- **macos**: Red close button now closes app without breaking Cmd+W
+- **git**: Uncommitted changes count now shows real +A/-D and auto-updates
+- **git**: Get_worktree_changed_files now returns correct additions/deletions
+- **git**: Local projects also get correct +A/-D from get_changed_files_from_repo
+- **pr**: Improve avatar rendering with larger size and fallback
+- **pr**: Show user avatar in timeline events
+- **pr**: Resolve PR detail data loading issues
+- **git**: Resolve nested tokio Runtime panic and stale closure
+- **notification**: Polish icons, colors, dialog behavior, remove test buttons
+- **git**: Move hooks before early return to fix conditional hook order
+- **editor**: Sync layout group activeTabId with project-level newActiveId on close
+- Remove nested button DOM warning + drop unused provider label
+- **ssh**: PID framing with suffix preservation + bridge half-close
+- **git**: Migrate AI Commit WSL from sync wsl.exe to async tokio process
+- **diff**: Remove transport-based fallback in useDiffData, unify to projectId
+- **executor**: Complete remaining ACs (AC9, AC12, AC14)
+- **executor**: Seal abstraction leaks
+- Adjust layout heights, spacing, centering and pass projectId to DiffView
+- Re-read file content from disk when opening existing tab
+- **settings**: Wire LspPanel into SettingsView
+- **lsp**: Persist settings through global config.json reliably
+- **lsp**: Avoid tokio spawn outside runtime in project activate
+- **settings**: Allow spaces and commas in custom LSP form fields
+- **shortcuts**: Ignore global keys in settings and text inputs
+- **git**: Show friendly PR list load errors
+- **editor**: Show custom agent icons in terminal tabs
+- **project**: Hover Ctrl+N hints and sync ahead/behind on git refresh
+- **exec**: Resolve PATH and run tools per project environment
+- **debug**: Default stopOnEntry off and skip runtime-only stops
+- **keymap**: Align tab/nav chords with IDEA on macOS
+- **keymap**: Keep app shortcuts working when CodeMirror is focused
+- **editor**: Focus caret and flash line after navigation jumps
+- **ide**: Resolve preset ids like vscode for toolbar icons
+- **debug**: Clean delve bins, simplify status bar, drop start toast
+- Resolve all remaining cargo warnings — unused imports, dead code, unused mut, glob re-export
+- Migrate pnpm config from package.json to pnpm-workspace.yaml
+- Align Console panel empty state with DebugPanel style
+- **console**: Unify Debug and Task Console default text colors
+- **console**: Unify empty-state and line typography for both consoles
+- **ui**: Make Debug and Task Console bottom panels mutually exclusive
+- **skill**: Restore scroll chain and reference card styling
+- **skill**: Parse and backfill missing skill descriptions
+- **skill**: Recover descriptions from SKILL.md and market subtitles
+- **skill**: Open skills.sh links via system browser
+- **skill**: Use skills.sh JSON API for search instead of HTML scraping
+- **skill**: Use resolveAgentIconSrc for custom agent icons in AgentSkillContent
+- **skill**: Agent toggle and tag-group unlink now refresh skill card list
+- **skill**: Highlight project skill agents from disk link, not selected_agents
+- **project**: Portal Git actions menu above row hover overlays
+- **terminal**: Recycle PTY caches on editor tab close
+- **conversation**: Use --resume=<value> form for reasonix pflag
+- **conversation**: Use island secondary background in history viewer
+- **ui**: Align sidebar tooltips and theme surfaces
+- **ui**: Use themed empty-state icons
+- **ui**: Update dock panel icons
+- **lint**: Resolve 14 clippy cast errors and split lint script
+- Resolve lint warnings and test failures
+- Worktree 下 Git 操作（commit/stage/push/pull/fetch/diff）现在使用正确的 worktree 路径
+- Worktree 切换后 file-tree-changed 事件读回主项目路径覆盖文件树
+- Show notification when context menu copy fails
+- Space key swallowed by container div onKeyDown handlers
+- **notification**: Add copy failure feedback and selectable message text
+- **git-control**: Refresh changes list on worktree branch switch
+- **ui**: Restore file type icons in ChangesList
+- **ui**: Align checkbox in ChangesList and enforce single diff tab
+- **editor**: Isolate close button pointer from dnd-kit drag
+- **diff**: Enable syntax highlighting in unified view and enhance diff styles
+- **git**: Break infinite refresh loop in GitControlPanel history loading
+- **skill**: Remove skill from tag group instead of deleting from library
+- **skill**: Refresh tag group skill list after remove/add operations
+- **skill**: Clear tag group skills on switch to prevent badge mismatch
+- Address code-review findings
+- **statusbar**: Use prefix ellipsis for long branch names
+- **statusbar**: Clean up LSP server display in status bar
+- **lsp**: Prevent hover tooltip horizontal scrollbar from covering text
+- **onboarding**: Remove unimplemented import-sessions CTA, add tests
+- Remove unused i variable in DiagnosticsPanel
+- **lsp**: Clean up clippy warnings - remove unused const, add must_use, simplify match
+- Resolve exhaustive-deps warnings in BranchStatusBarWidget
+- **lsp,agent,skill**: Resolve all clippy warnings to achieve zero warnings
+- **git**: Resolve graph line disconnections in commit history
+- **git**: Discard untracked files and remove dead code in local.rs
+- **git**: Refresh changed files on branch switch
+- **git**: Disable branch switching in changes panel when worktree active
+- **git**: Open diff tabs in the worktree tab group
+- **git**: Worktree branch display, diff tab isolation, tab key dedup
+- **git**: Keep diff tab projectId as real project id in worktrees
+- **git**: No-wrap diff lines with synced horizontal scrolling
+- **git**: Keep local entry branch name stable when worktree active
+- **git**: Watch worktree HEAD changes and centralize event names
+- **lsp**: Resolve TS session root from opened document + cross-platform file:// parsing
+- **lsp**: Unify completion-detail styling with hover tooltips + drop dead code
+- **lsp**: Remove duplicate override key + strengthen signatureHelp tests
+- **lsp**: Scan subdir for TS root when no document is open
+- **task**: Keep event listeners alive during stop to finalize state
+- **terminal**: Emit terminal-closed event when forcibly closing session
+- Console project filter, tab closing blank, console link navigation
+- **file**: Show full-color file icons on light backgrounds
+- **file**: 修复根目录新建输入行缩进不对齐
+- **browser**: Reset webview zoom after opening devtools and add reset-zoom control
+- **browser**: Show devtools as detached window on linux
+- **browser**: Open devtools as detached window on macOS too
+- **gitlog**: Fix blank commit list until scroll
+- **ime**: Strip abandoned pinyin buffer spaces on WKWebView
+- **terminal**: Reap detached trees on PTY close
+- **project**: Make projects list scrollable
+- **editor**: Keep split group on adjacent tab when closing active tab
+- **git**: Prevent stale git status from refresh storms
+- **editor**: Keep active tab valid after close
+- **editor**: Heal stale layout activeTabId to avoid blank pane
+- **file**: Refresh expanded dir caches on file move/delete
 
 ### 🚜 Refactor
 
@@ -109,9 +617,179 @@ All notable changes to this project will be documented in this file.
 - Remove unused FileIcon import
 - Extract 4 orchestration hooks from App.tsx
 - Use conditional rendering for main terminal instead of display:none
+- **worktree**: Extract WorktreeList component from ProjectItem
+- Move Tab/Agent bar from TitleBar to MainContent top area
+- Simplify title bar, migrate add menu to activity bar, adopt dark black theme
+- **agent**: Use which crate for cross-platform command detection
+- Slim AppLayout props with domain contexts
+- Split settings panel into modular components
+- Split remote items into focused components
+- Complete god-component split and context decomposition
+- Replace cross-domain refs with zustand snapshots
+- Eliminate prop drilling in main content
+- Split app callbacks into domain hooks
+- **frontend**: Migrate project/file state to store and split file actions context
+- **frontend**: 收敛文件域边界并拆分共享类型
+- 合并 src/context 到 src/contexts 统一目录
+- **tauri**: Consolidate command handler registration
+- **connections**: Support deferred git info loading for WSL/Remote projects
+- **agents**: Remove built-in qwen agent support
+- **terminal**: Extract cache/helper to standalone modules for Fast Refresh compatibility
+- **command**: Unify command execution functions into command/ module
+- Move command module to utils/command for better organization
+- **frontend**: Eliminate code duplication, remove dead code, and optimize build
+- **terminal**: Merge all cache modules into terminalCache.ts and delete separate modules
+- **tab**: Unified tab system
+- **settings**: Integrate settings tab into current project's tab system
+- **ui**: Add --bg-selected variable, move split buttons to agent bar, fix SettingsPanel text color
+- Clean up unused git props, fix worktree display and island panel gap
+- **ui**: Add icons to worktree remove dialog buttons
+- **commands**: Replace std::process::Command with local::exec utility
+- **uri-scheme**: Extract neeko:// protocol handler from app.rs into dedicated module
+- **command**: Extract process creation into local::exec_detached
+- **skills**: Redesign skill panel component architecture
+- Inline remote project into editor layout
+- Consolidate SSH auth and theme modules (Phase 1A + 1B)
+- **theme**: Unify theme orchestration into service.rs with enum strategy pattern
+- **frontend**: Collapse EditorGroupPane props from 30+ to 13 via context/store
+- **frontend**: Extract useAppContainer into 3 focused hooks
+- **frontend**: Unify WSL/Remote terminal views with strategy pattern
+- **frontend**: Collapse EditorGroupPane props 13→6, delete sharedPaneProps
+- **store**: Add domain comment separators to appStore.ts
+- **backend**: Extract git parsers into dedicated parsers.rs
+- **backend**: Add GitTransport enum for unified git execution
+- **backend**: Add git/operations.rs with 11 shared shell operations
+- **backend**: Expand operations.rs with branching + worktree ops
+- **backend**: Add unified git commands via GitTransportKind
+- **backend**: Migrate stage_files commands to use operations.rs
+- **backend**: Batch-migrate 42 git commands to use operations.rs
+- **backend**: Migrate stage_all/unstage_all/discard_all to operations.rs
+- **frontend**: Add local terminal strategy + enhance TerminalViewBase
+- Reorganize Rust backend by domain modules
+- Split appStore monolith into 6 domain stores
+- **git**: Unify git commands into GitTransport-based dispatch
+- **git**: Dedup AI commit cmd, extract useProjectSelection hook
+- Decompose useAppContainer god hook, extract useRefreshGitInfo from DockPanelWrappers
+- **terminal**: Unify TerminalView — route local through TerminalViewBase strategy pattern
+- **git**: Remove dead git ops from wsl/remote, consolidate duplicate parsers
+- Inline useRefreshGitInfo pass-through hook
+- **panel**: Introduce useUnifiedProjectList hook, simplify ProjectsPanel
+- Migrate crate::models imports to canonical domain paths, remove models shim
+- Simplify useKeyboardShortcuts — targeted store reads, use unified project list
+- Simplify useAheadBehindSync — use unified commands.getAheadBehind()
+- Centralize file-changed event listeners into shared useFileChangedEvent hook
+- Delete useDelayedInit, extract shared fileTree utils; fix useFileTabRefresh WSL/Remote support
+- Flatten AppModals props, delete useAppModalsProps adapter
+- Extract useBrowserPicker from useBrowserPanel god hook
+- Add unified path to useDiffData, add getFileDiff to ProjectCommands
+- **git**: Consolidate command modules and remove unified_ prefix
+- **agent**: Extract AgentManager to dedicated module and improve error handling
+- Unify design tokens and clean up legacy CSS
+- **workspace**: Restructure command modules and extract services
+- **workspace**: Eliminate workspace module, split into domain-aligned modules
+- Unify command registration and transport patterns
+- **frontend**: B0 - 创建目录骨架 + ui/ 层迁移
+- **frontend**: B1 - shared/ 基础层迁移
+- **frontend**: B2 - shared/store/ 迁移 appViewStore + dockStore
+- **frontend**: B3 - shared/hooks/ 迁移 useKeyboardShortcuts + useToast
+- **frontend**: B4 - shared/contexts/ 迁移 app-context + sidebar-context
+- **frontend**: B5 - layout layer migration
+- **frontend**: B6 - features/browser/ migration
+- **frontend**: B7 - features/skill/ migration
+- **frontend**: B8 - features/task/ migration
+- **frontend**: B9 - features/file/ migration
+- **frontend**: B10 - features/terminal/ migration
+- **frontend**: B11 - features/git/ migration
+- **frontend**: B12 - features/settings/ migration
+- **frontend**: B13 - features/editor/ migration
+- **frontend**: B14 - features/agent/ migration
+- **frontend**: B15 - features/connection/ migration
+- **frontend**: B16 - features/project/ migration
+- **frontend**: B17 - features/session/ migration
+- **frontend**: B18 - app/ layer migration
+- **frontend**: B19 - cleanup compatibility stubs
+- **frontend**: B19 — complete feature-based migration cleanup
+- **trellis**: Architecture-compliance-refactor
+- Move cross-domain editor state from app/ to shared/ to fix feature→app violations
+- Move src/types/ into shared/types/ for FSD layer alignment
+- Split src-tauri into common/ (infrastructure) and root (business domain)
+- Move editor from app/ back to features/editor/
+- Rename UnifiedTabBar/Item to TabBar/Item (drop redundant prefix)
+- Rename UnifiedDiffTable → DiffTable, useUnifiedProjectList → useProjectList
+- Drop Unified prefix from domain types and functions
+- **watcher**: Only watch active project; improve exit diagnostics
+- **project**: 简化 Add Local Project 流程，选完目录直接添加
+- **project**: Replace custom drag with @dnd-kit
+- **lsp**: Redesign LSP architecture with plugin system and @codemirror/lsp-client
+- **conversation**: Remove divider line between sub-messages
+- **pr**: Remove Write/Preview tabs from comment input
+- Remove old AppToast, notifications now only through new system
+- 统一 ahead/behind 数据源为 useGitStore，消除侧边栏与 commit panel 不同步
+- **pr**: Trait-based multi-provider PR backend + GhCli utility
+- **executor**: Replace exec_local/wsl/ssh with ExecTarget factory + exec_on
+- **git**: Async GhCli/PrProvider/PR dispatch + cache helpers
+- **transport**: Async Git stdin + remote helpers
+- **theme**: Async WSL theme helpers + service + terminal commands
+- **git**: Unify Git stdin execution path, remove Base64 pipeline
+- Unify project selection + eliminate dual-track WSL/Remote state
+- Env-scatter-cleanup C1-C4
+- Env-scatter-cleanup C5 - naming cleanup
+- Move gh.rs from common/utils/command to common/git
+- **terminal**: 9 commands → 3, single create/resize/close routed by project env
+- Move StatusBar to features/status-bar and fix ESLint issues
+- **runtime**: Introduce AppRuntime business executor (Scheme C)
+- **lsp**: AppRuntime scheduling and live open-file resolve
+- **runtime**: Migrate skill and agent spawn_blocking to AppRuntime
+- **dap,exec**: Layered DAP plugins and target-scoped checks
+- **exec,lsp**: Require project env and drop host-only shortcuts
+- **lsp**: Split session from manager and unify install recipes
+- **lsp**: Extensible language plugins and layered session modules
+- **skill**: Rename 'Install Skills' to 'Marketplace'
+- **agent**: Unify agent skill path into customAgents, remove agentSkillPathOverrides
+- **task**: Make Console a read-only output view over task runs
+- **conversation**: Unify message layout and polish viewer chrome
+- **ui**: Share add project menu
+- **layout**: Move feature coordination out of layout into app
+- **dock**: Split panel registry to break shared/layout cycle
+- **conversation**: Format adapters and manager
+- **diff-toolbar**: Remove 'Combined' label, IDEA-style flat layout
+- **diff**: Rename History single-file Diff tab to 'History Diff'
+- **lint**: Eliminate unwrap_used and expect_used clippy warnings
+- **lint**: Resolve must_use_candidate across the codebase
+- **lint**: Resolve all remaining clippy warnings
+- **lint**: Auto-fix Phase 1 - import/order, no-duplicates, prettier, no-useless-escape, prefer-const
+- **lint**: Phase 2 - 295 ESLint errors fixed
+- **lint**: Phase 4a - partial React 19 + test fixes
+- **lint**: Phase 4b - remaining React 19 + test fixes
+- **lint**: Phase 3a - store migration to shared/
+- **lint**: Phase 3b - remaining architecture violations
+- **rust**: Split file operation commands from git::commands into file::commands
+- **ui**: Optimize ChangesList file display with modern style
+- **editor**: Genericize TabItem and extract editor leading renderer
+- **editor**: Scope handleCloseTab to tabKey context
+- **dock**: Remove dead DockZoneTabs and drag-to-re-dock code
+- **lsp**: Complete SRP split and review fixes
+- Completely replace ToolAdapter with AgentPlugin
+- **git**: Split CommitList into hooks + presentational components
+- **git**: Unify type imports via feature facade
+- **exec**: Unify command execution across Local/WSL/SSH
+- **library**: Remove dead LibraryHeader component
+- **library**: Consolidate mcp/skill modules into library domain
+- **browser**: Extract service modules and remove redundant compensation
+- **styles**: Split monolithic CSS into layered tokens/base/components
+- **file**: Rebuild file tree as flat dir cache to stop root refresh clobbering
+- **features**: Enforce import/export firewall and store direct-import convention
+- **editor**: Decompose FileEditor and extract tab ops hooks
+- **store**: Remove shared store barrel, import stores directly
+- **test**: Isolate url_validator tests from real user data
 
 ### 📚 Documentation
 
+- Update README license to Apache 2.0 and trim redundant sections
+- Rewrite README header with better project description and badges
+- Add chinese-input-fix.md
+- Update README and REQUIREMENTS to reflect current feature set
+- Switch README to English as primary, add Chinese version and preview images
 - Update SESSION_CONTEXT.md with session 3 discoveries and completed work
 - Add frontend development conventions and session 4 context
 - Update SESSION_CONTEXT.md with session 5 agent icons and SVG icon system
@@ -120,17 +798,102 @@ All notable changes to this project will be documented in this file.
 - Sync REQUIREMENTS.md with codebase, add AGENTS.md, update SESSION_CONTEXT
 - Add Tauri 2 security and API layer specs
 - Add main terminal management design spec and implementation plan
+- Add sidecar sidebar redesign spec
+- Update PR#9 prd.md and task.json to reflect actual implementation
+- Update skill panel PRD and add copilot agent icon
+- **spec**: Add activeTabId sync invariant to state management spec
+- **spec**: Update backend directory structure spec with uri_scheme and browser modules
+- **spec**: Capture trust-discriminating fields and FE/BE list drift
+- **spec**: Capture cross-domain shared slice + adapter wrapper patterns
+- **spec**: Capture per-project metadata extension + save semantics patterns
+- Add unified domain model language (CONTEXT.md)
+- Add Chinese translation of domain model (CONTEXT_CN.md)
+- Add architecture optimization plan
+- Add architecture optimization implementation plan
+- Update backend directory structure spec for Phase 1 changes
+- Setup agent skills config, rewrite CONTEXT.md as domain glossary, add ARCHITECTURE.md
+- Add development spec with ESLint/arch constraints and project structure guides
+- Sync spec with codebase — ESLint config, naming convention, directory tree
+- Sync spec with backend common/ architecture refactor
+- Rewrite §8 as normative specification for backend three-layer architecture
+- Sync ARCHITECTURE.md with backend common/ split and frontend shared/ migration
+- **spec**: Add conversation adapter spec
+- Add trellis task - git provider detection
+- Update trellis task artifacts for git-provider-detection
+- Update LSP build fix task — document root cause, exec_from_path plan, and WSL/SSH gap
+- Add executor-optimization task planning artifacts
+- Complete SSH executor state machine task artifacts
+- Update remaining child task planning artifacts
+- Record session 86 - project selection unification
+- **task**: Add PR list error UX trellis task
+- Add Rust doc comments to all backend modules — eliminate missing_documentation warnings
+- **conversation**: Document multi-agent history adapter contracts
+- **spec**: Record Git Control Diff tab title convention
+- **spec**: Record Git Control tabbed shell pattern and keyboard shortcut scoping
+- **spec**: Record TabItem pointer isolation and generic pattern
+- Sync AGENTS.md and CLAUDE.md with actual project structure
+- Add architecture principles and TDD development mode to guidelines
+- Update trellis-check skill and agents with LSP review findings
+- **spec**: Record browser per-project isolation contract and zustand action naming lesson
+- **trellis**: Track cmd+w tab close agent leak task
+- **trellis**: Track drag tab to pin task
+- Add bilingual contributing guide
+- Add license, code of conduct, and issue/pr templates
 
 ### ⚡ Performance
 
+- Non-recursive watcher + 10s polling for deep file changes
 - Optimize React memoization, Rust I/O, Git diff, CSS, and Vite config
 - Add React.memo, replace any types, extract inline styles to CSS
+- Optimize startup by lazy-loading git info, async agent check, fix diff indentation
+- Optimize commit panel loading with async diff stats and split refresh
+- Replace debouncer with throttle scheduler and git status worker
+- Commit panel instant load
+- 项目/worktree 切换从多轮渲染优化为单轮渲染
+- **store**: Add useShallow to 11 high-frequency object/array selectors
+- **lsp**: Async requests, shared client pool, skip double-serialization
+- **pr**: Lazy-load pull requests only when panel is activated
+- Optimize PR files changed tab loading
 
 ### 🎨 Styling
 
 - Add WSL and Remote dialog styles
 - Show sidebar action buttons on hover instead of always visible
 - Unify branch badge style, add hover title for truncated names
+- Apply cargo fmt to git_fetcher.rs
+- **ui**: Narrow toolbar width from 48px to 36px, IDEA 2026 style
+- **git-panel**: Use CSS variable font size in commit and log panels
+- **dock**: Adjust island gaps and toolbar width for better visual balance
+- **browser**: Remove bottom border from browser toolbar
+- **uri-scheme**: Apply cargo fmt to uri_scheme.rs
+- **ui**: Replace RefreshCw with CloudDownload in BranchInfo fetch button
+- **ui**: Replace hardcoded opacity values with design tokens
+- **lsp**: Redesign hover tooltip UI with rounded corners fix and full markdown styling
+- **diff**: Convert AI buttons to icons and fix accent color
+- **conversation**: Icon-only buttons with title tooltip
+- Cargo fmt — inline function signatures, flatten single-element vecs, reorder module exports
+- **settings**: Restyle Language Servers panel to match theme
+- **editor**: Thicken CodeMirror caret for easier visibility
+- **layout**: Tighten island gaps between dock and editor panes
+- **debug**: Use muted gray for default Debug Console output
+- **debug**: Use terminal font family in Debug Console
+- **debug**: Apply terminalFontSize from config to Debug Console lines
+- **debug**: Show Bug icon before Debug panel title
+- **skill**: Align Skills UI with IDE density and theme
+- **skill**: Skills Manager layout with themed card grid
+- **skill**: Align library cards with Skills Manager reference
+- **skill**: Compact market grid, uninstall, and theme-aligned accents
+- **skill**: Polish skill dropdown menus to match app chrome
+- **rust**: Apply rustfmt formatting
+- **git**: CommitList file row flex layout with tooltips
+- **lint**: Apply prettier --fix to all src/ files
+- **lint**: Apply eslint --fix for import/order
+- 系统浏览器图标改为 ExternalLink
+- Fix import order and prettier formatting across frontend
+- **skill**: Fix prettier formatting
+- **skill**: Fix prettier formatting in SkillCard
+- **skill**: Fix prettier formatting
+- **skill**: Fix prettier formatting
 
 ### 🧪 Testing
 
@@ -138,9 +901,23 @@ All notable changes to this project will be documented in this file.
 - Add backend unit test scaffolding and testability improvements
 - Add frontend unit test scaffolding with 126 test cases
 - Add P3 component tests for FileTree, DiffView, SettingsPanel
+- **hooks**: Add remote/wsl agent and terminal tab tests
+- Add tests for editorStore and useUnifiedProjectList
+- **conversation**: Add integration test for real Claude Code directory structure
+- **conversation**: Add resume command tests for all 7 agents + fix adapter consistency
+- **project**: Add coverage for agent split button
+- **store**: Cover dockStore tab toggle + isAppView guard
 
 ### ⚙️ Miscellaneous Tasks
 
+- Remove accidental canvas dev dependency
+- Update Cargo.lock with libc dependency
+- Add GitHub Actions workflow for multi-platform builds (Windows/macOS/Linux)
+- Only trigger build on tag push, add separate CI check for PRs
+- Update tauri-action to v0.6.2 to fix release upload
+- Add releaseAssetNamePattern to include version in release file names
+- Bump version to 1.0.2
+- Bump version to 1.0.3
 - Remove dead code and suppress false positive warnings
 - Remove accidental .bak file
 - **task**: Archive 00-bootstrap-guidelines
@@ -167,120 +944,461 @@ All notable changes to this project will be documented in this file.
 - Add tag trigger and auto-generate release notes for GitHub Releases
 - **task**: Archive 04-11-quick-worktree
 - Record journal
+- Remove unused css_classes.txt
+- **task**: Archive 04-12-worktree-diff-preview
+- Record journal
+- Update .gitignore
+- **task**: Archive 04-12-enhance-titlebar-tabs
+- Record journal
+- **task**: Archive 04-13-fix-agent-compile
+- **task**: Archive 04-13-04-13-agent-detect-macos
+- Record journal
+- Merge main branch and add shadcn/ui components
+- Record journal
+- **task**: Archive 04-13-resolve-merge-conflicts
+- Record journal
+- **task**: Archive 04-13-one-dark-pro-theme
+- Record journal
+- **task**: Create 04-14-files-panel task with PRD and context
+- **task**: Archive 04-14-files-panel
+- Record journal
+- **task**: Archive 04-14-agent-visibility
+- Record journal
+- **task**: Create 04-15-font-size-split task with PRD
+- **task**: Update 04-15-font-size-split task context and mark completed
+- **task**: Archive 04-15-font-size-split
+- Record journal
+- **task**: Archive 04-15-markdown-preview-enhancement
+- Record journal
+- Record journal
+- **task**: Create git commit panel feature task
+- **task**: Create skill management feature tasks
+- Mark PR#01 skill data model as completed
+- **task**: Archive 04-15-skill-pr01-data-model
+- **task**: Archive 04-16-skill-pr09-local-skill-panel
+- Record journal
+- **task**: Archive 04-15-skill-pr02-skill-store
+- Record journal
+- Record journal
+- **task**: Create skill card display feature tasks
+- Add .snow to gitignore
+- **task**: Archive 04-17-terminal-split
+- Record journal
+- Archive task and record session
+- **task**: Archive 04-20-god-component-refactor
+- Record journal
+- **task**: Finalize archived phase metadata
+- Record session and archive task
+- Record session and archive task
+- Record session and archive task
+- Record session progress
+- **task**: Archive 04-21-context-splitting
+- Record session progress
+- Record journal
+- **task**: Archive 04-15-skill-pr03-scanner-installer
+- Record journal
+- **task**: Archive 04-16-skill-pr12-marketplace-backend
+- Record journal
+- **task**: Archive 04-16-skill-pr13-marketplace-ui
+- Record journal
+- Remove unused skill migration and installer code
+- **task**: Archive 04-21-04-21-backend-directory-refactor
+- Record journal
+- **task**: Archive 04-22-lib-commands-refactor
+- Record journal
+- **task**: Archive 04-23-merge-conflict-resolve
+- Record journal
+- **task**: Archive 04-23-wsl-ssh-changes-layout
+- Record journal
+- Update .gitignore with common IDE directories
+- Record journal
+- **task**: Archive 04-23-fix-last-tab-close
+- Record journal
+- **task**: Archive 04-07-ime-cursor-position
+- Record journal
+- **task**: Archive 04-26-settings-full-page
+- Record journal
+- Record journal
+- **task**: Archive 04-27-terminal-fast-refresh-exports
+- Record journal
+- Record journal
+- **task**: Archive 04-28-fix-ssh-auth-on-restart
+- Record journal
+- **docs**: Update index.png preview screenshot
+- **task**: Archive 05-03-refactor-command-exec
+- Record journal
+- **task**: Archive 05-07-project-drag-sort
+- Record journal
+- Update pnpm version to 10.33.4 and add .pi / .pnpm-store to gitignore
+- **trellis**: Migrate from 0.4.x to 0.5.4
+- **task**: Archive 05-07-migrate-to-0.5.4
+- Record journal
+- Record journal
+- **task**: Archive 05-08-unified-tab-01-types-store
+- **task**: Archive 05-08-unified-tab-02-tabbar
+- **task**: Archive 05-08-unified-tab-03-file-migration
+- **task**: Archive 05-08-unified-tab-04-terminal-migration
+- **task**: Archive 05-08-unified-tab-05-diff-integration
+- **task**: Archive 05-08-unified-tab-06-cleanup
+- **task**: Archive 05-08-unified-tab-system
+- **task**: Archive 05-08-fix-auto-terminal-activate
+- Record journal
+- Record journal
+- **task**: Complete and archive 04-05-frontend-unit-test-plan
+- **trellis**: Update to v0.5.10 - add inline dispatch mode support and safe commit
+- **task**: Archive 05-09-dock-layout-design
+- Record journal
+- Archive task 05-09-dock-layout-design and record session
+- **task**: Add trellis task for html-preview feature
+- Delete task
+- **task**: Archive 05-14-task-runner
+- Record journal
+- **task**: Archive 05-16-nerd-font-fallback
+- Record journal
+- **task**: Archive 05-15-exit-cleanup-optimization
+- Record journal
+- **task**: Archive 05-16-files
+- Record journal
+- Record journal
+- **task**: Archive 05-16-pi-theme-settings-pi-settings-json-theme
+- Record journal
+- **task**: Archive 05-16-commit-diff-refresh-watcher
+- Record journal
+- **task**: Archive 05-17-realtime-git-watcher
+- **task**: Archive 05-17-realtime-git-watcher-v2
+- Record journal
+- **task**: Update commit-panel-instant-load prd with 10 slices
+- **task**: Archive 05-17-commit-panel-instant-load
+- Record journal
+- **task**: Archive 05-17-project-worktree-switch-optimization
+- Record journal
+- Mark task 05-15-terminal-links-browser as completed
+- **task**: Archive 05-15-terminal-links-browser
+- **task**: Archive 05-15-browser-element-picker
+- Record journal
+- **task**: Clean up archived task source files
+- **task**: Archive 05-18-settings-panel-app-level-view
+- Record journal
+- **task**: Archive 05-18-settings-project-panel
+- Record journal
+- **task**: Archive 05-18-project-list-redesign-v1-reference
+- Record journal
+- **task**: Archive 05-19-project-avatar-color-customization
+- Record journal
+- Restrict CI trigger to tag pushes only
+- **task**: Archive 05-21-phase-0-5-implementation-plan
+- Record journal
+- **task**: Archive 05-25-phase-1b-theme
+- Record journal
+- **task**: Archive 05-25-phase-2a-prop-phase-1-2
+- Record journal
+- **task**: Archive 05-25-phase-2b-useappcontainer-bag-1-bag-3-bag-4
+- Record journal
+- **task**: Archive 05-25-phase-3a-terminal-wsl-remote
+- Record journal
+- **task**: Archive 05-25-phase-3b-prop-phase-3-4-sharedpaneprops
+- Record journal
+- **task**: Archive 05-25-phase-4-store-appstore-822-6-slice
+- Record journal
+- Record journal
+- Record journal
+- Record journal
+- Record journal
+- Record journal
+- Record journal
+- **task**: Archive 05-25-phase-5-git-transport-trait-commands
+- **task**: Archive 05-26-phase-5-followup-git-operations-rs
+- Record journal
+- Record journal
+- **task**: Archive 05-26-phase-3a-2-local-terminalview-terminalviewbase
+- Record journal
+- **task**: Archive 05-26-phase-4-retry-zustand-5-store-useshallow
+- Record journal
+- **task**: Archive 05-27-git-unification-delete-old-commands-switch-frontend-to-unified
+- Record journal
+- **task**: Archive 05-27-decompose-god-hook
+- Record journal
+- **task**: Archive 05-27-unify-terminalview
+- Record journal
+- **task**: Archive 05-27-dedup-git-impl
+- Record journal
+- **task**: Archive 05-27-inline-refresh-git
+- Record journal
+- **task**: Archive 05-27-unify-projects-panel
+- Record journal
+- **task**: Archive 05-27-migrate-models-imports
+- Record journal
+- Delete dead code — orphaned useConnectionWorktreeState hook and unused define_unified_command macro
+- **task**: Archive 05-27-dead-code-cleanup
+- **task**: Archive 05-27-error-handling-gaps
+- Record journal
+- **task**: Archive 05-27-fix-keyboard-shortcuts
+- Record journal
+- **task**: Archive 05-27-aheadbehind-unified
+- Record journal
+- **task**: Archive 05-27-centralize-file-events
+- Record journal
+- **task**: Archive 05-27-add-critical-tests
+- Record journal
+- **task**: Archive 05-27-quick-wins-round3
+- **task**: Archive 05-27-fix-file-tab-refresh
+- Record journal
+- **task**: Archive 05-27-flatten-appmodals
+- **task**: Archive 05-27-shared-agent-skeleton
+- Record journal
+- **task**: Archive 05-27-extract-browser-picker
+- Record journal
+- **task**: Archive 05-27-fix-transport-bypass
+- Record journal
+- **task**: Archive 05-27-simplify-diffdata
+- Record journal
+- Remove all dead code — 15 Rust warnings fixed, 14 frontend items removed
+- **task**: Archive 05-27-remove-dead-code
+- Record journal
+- Remove temp fix-imports scripts
+- **spec**: Update quality guidelines for ESLint + Clippy setup
+- **task**: Archive 05-29-phase1-quality-gates
+- **task**: Archive 05-29-phase2-backend-layering
+- **task**: Archive Phase 3 tasks
+- Record journal
+- **task**: Archive 05-29-architecture-compliance-refactor
+- **task**: Archive Phase 4
+- Record journal
+- **task**: Archive 05-29-feature-based-b18-b19-types-test
+- **task**: Archive 05-29-fix-imports-for-project-feature-migration
+- **task**: Archive 05-29-fix-imports-for-session-feature-migration
+- **task**: Archive 05-29-fix-skill-imports
+- **task**: Archive 05-29-phase4-eliminate-unwrap
+- **task**: Delete expired task
+- **task**: Archive 05-30-spec-compliance-audit
+- Record journal
+- Move main.tsx and vite-env.d.ts to src/ root
+- **task**: Archive 05-31-phase-a-cross-domain-rust-cleanup-git-agent-and-file-git
+- **task**: Archive 05-31-phase-b-infrastructure-cleanup-core-db-rs-naming-visibility
+- **task**: Archive 05-31-phase-c-eslint-rules-lib-rs-deny-spec-alignment
+- Record journal
+- Align codebase with dev-spec — barrel files, ESLint zones, dead code cleanup
+- Merge shared/types into src/types, delete orphan directory
+- **claude**: Add design-md skill (Apple design language reference)
+- **trellis**: Record work-in-progress for 06-01 dark theme + editor group layout tasks
+- **trellis**: Record 06-01-watcher-only-active-project task
+- Record journal
+- **task**: Archive 06-01-watcher-only-active-project
+- Record journal
+- **trellis+ui**: Record 06-01 task progress; simplify TitleBar; align dark theme
+- **task**: Archive 06-01-align-dark-theme-with-apple-design-md-color-system
+- **task**: Archive 06-01-dark
+- **task**: Archive 06-01-editorgrouplayout
+- **task**: Archive 06-01-panel
+- **task**: Archive 06-01-remove-project-name-and-branch-name-from-titlebar
+- **task**: Archive 06-01-set-active-project-watcher-watch
+- **task**: Archive add-project-delete-confirmation and replace-worktree-confirm-dialog
+- Record journal
+- **task**: Archive 06-02-add-local-project-modal
+- **task**: Archive 06-02-terminal-scroll-to-bottom-button
+- Record journal
+- **task**: Archive 06-02-replace-custom-drag-with-dnd-kit
+- Record journal
+- **task**: Archive 06-03-fix-dnd-kit-blocking-project-item-clicks
+- Record journal
+- **task**: Archive 07-03-editor-diff-ai-selection
+- Record journal
+- **task**: Archive 07-06-lsp-phase
+- Record journal
+- **trellis**: Add task tracking for conversation history feature
+- **task**: Archive 07-08-conversation-backend
+- Record journal
+- **task**: Archive 07-08-conversation-adapters
+- Record journal
+- **task**: Archive 07-08-conversation-frontend
+- Record journal
+- **task**: Archive 07-08-conversation-integration
+- **task**: Archive 07-08-conversation-history
+- Record journal
+- **task**: Archive 07-09-conversation-title-normalize
+- Record session 76 - conversation title normalization
+- Finalize task archive
+- **task**: Archive 07-09-view-page-ux
+- Record session 77 - view page UX optimization
+- Session record 78 - fix OpenCode adapter rewrite
+- **task**: Archive 07-09-07-09-fix-opencode-adapter
+- Record journal
+- **task**: Archive 07-10-lsp-stability-fix
+- Record journal
+- Clean up stale lsp-stability-fix task files from tracking
+- **task**: Archive 07-10-terminal-file-links
+- Record journal
+- Clean up prototype files and update .gitignore
+- **task**: Archive 07-13-git-push-https-auth
+- **task**: Archive 07-12-git-push-auth-handling
+- Record journal
+- Reduce push/network timeout from 60s/180s to 30s
+- Record journal
+- **task**: Archive 07-13-notification-system
+- Record journal
+- Record journal
+- **task**: Archive 07-13-git-provider-detection
+- Record journal
+- Add mimo agent icon asset
+- Record journal
+- **task**: Archive 07-16-c1-session-schema-flatten
+- **task**: Archive 07-16-c2-backend-fileio-unify
+- **task**: Archive 07-16-c5-naming-boundary-cleanup
+- **task**: Archive remaining env-scatter tasks (C3, C4, parent)
+- **task**: Archive 07-15-p6-consumer-migration
+- **task**: Archive 07-15-project-unification
+- **task**: Archive 07-15-async-executor-contract
+- **task**: Archive 07-15-migrate-executor-callers
+- **task**: Archive completed tasks (project-unification, pr-detail-tabs, executor children)
+- **task**: Delete abandoned tasks (dap-phase, async-gh-pr-chain, migrate-ai-commit-wsl)
+- **task**: Archive 07-14-07-14-lsp-build-fix
+- **task**: Archive 07-14-lsp-build-fix (completed)
+- **task**: Archive 07-15-unify-git-stdin-execution
+- **task**: Archive executor tasks
+- **task**: Archive editor-lsp-dap (all children resolved)
+- **task**: Archive 07-17-pr-list-error-ux
+- Record journal
+- **task**: Archive 07-22-project-skills-relation-ui
+- Record journal
+- **trellis**: Archive agent-conversation-history-extensibility task
+- Record journal
+- **task**: Archive 07-20-skill-usable-closed-loop
+- **task**: Archive 07-24-layout-architecture-cleanup
+- Record journal for layout architecture cleanup
+- **task**: Archive 07-24-dock-registry-architecture
+- Record journal
+- **task**: Init 07-24-git-log-panel-refactor
+- **task**: Archive 07-24-git-log-panel-refactor
+- Record journal for git-log-panel-refactor
+- Record journal
+- Archive task 07-25-diff-tab-ui-modernization
+- Record journal session 95 (Git Control Diff Tab 标题前缀微调)
+- **task**: Archive 07-25-07-25-git-control-panel
+- Record journal session 96 (Git Control Panel spec update + quality verification)
+- **task**: Archive 07-26-terminal-space-fix
+- Record journal
+- **task**: Archive 07-26-git-changes-undo-support
+- Record journal
+- Record journal
+- **task**: Archive 07-26-07-26-notification-copy-fix
+- Add lefthook pre-commit checks for frontend and rust
+- **task**: Archive 07-26-new-action-menu
+- Record journal (session 100)
+- **task**: Archive 07-27-split-file-commands-from-git
+- **task**: Archive 07-27-optimize-changes-list-style
+- **task**: Archive 07-27-unify-tab-system
+- Record journal
+- Record branch-switcher session and mark task completed
+- **task**: Archive 07-27-branch-switcher
+- Record journal session 106
+- Rustfmt fix
+- **task**: Archive 07-29-lsp-status-redesign
+- **task**: Archive 07-28-agent-split-button
+- **task**: Archive 07-28-redesign-project-onboarding-guide-pages
+- **task**: Archive 07-30-lsp-critical-stability
+- **task**: Archive 07-30-lsp-review-fixes
+- **task**: Archive 07-30-lsp-review-remediation
+- **task**: Archive 07-30-lsp-frontend-cleanup
+- **task**: Archive remaining LSP subtasks
+- Record journal
+- Archive LSP polish and robustness tasks
+- **task**: Archive 07-29-resource-library
+- Record journal
+- **task**: Archive 07-30-resource-library-p2
+- Record journal
+- **task**: Archive 07-30-agent-plugin-system
+- Record journal
+- **task**: Archive 07-30-mcp-commands-resources
+- Record journal
+- **task**: Archive 07-30-tooladapter-replace-schema
+- Record journal
+- **task**: Archive 07-30-agent-config-schema
+- Record journal
+- **task**: Add ui-design-audit and unified-task-hub plans
+- **task**: Archive 07-31-git-history-virtual-scroll
+- Record session 109
+- **task**: Archive 07-31-git-history-virtual-scroll
+- **task**: Archive 07-31-refactor-split-commitlist-into-hooks-presentational-component
+- Record session 110 + spec testing pitfalls
+- **task**: Archive 08-02-resource-library-redesign
+- Record journal
+- **gitignore**: Ignore .workbuddy and fix missing trailing newline
+- Record journal
+- **lint**: Fix import order and formatting in library files
+- Record journal session 116
+- **task**: Archive 08-02-mcp-marketplace
+- **task**: Archive 08-03-mcp-tag-agent-project
+- 忽略 .grok 本地会话数据目录
+- Add commitlint with lefthook for commit message validation
+- Add neeko-check and neeko-commit skills
+- **task**: Archive 08-05-intellisense-component-redesign
+- **trellis**: 记录 IntelliSense 补全重构会话日志
+- **task**: Archive 08-05-root-create-no-indent
+- **task**: Archive 08-05-browser-per-project
+- **trellis**: Record browser per-project isolation session log
+- **task**: Archive 08-06 browser-module-audit-fixes subtasks
+- **task**: Archive 08-06-browser-module-audit-fixes parent
+- **trellis**: Record browser module audit fixes session log
+- **task**: Archive 08-07-fix-cmdw-tab-close-agent-leak
+- **trellis**: Record PTY reaper session log
+- **task**: Archive 08-07-08-07-fix-git-status-race
+- Record journal
+- **task**: Track find-in-files search task
+- **task**: Archive 08-10-search-find-in-files
+- Ignore .zcode tool directory
+- Add license field to Cargo.toml
 
 ### ◀️ Revert
 
 - Remove Ctrl+C interception from main terminal
 
+### del
+
+- Todo
+
+### enhance
+
+- AgentSelector
+- .claude
+
+### format
+
+- Normalize quotes and indent in ActivityBar and AppLayout
+
+### merge
+
+- Resolve conflicts between enhance/ui_clean_code and main
+- Resolve conflicts with upstream/main
+- Unify command execution across Local/WSL/SSH into main
+
+### release
+
+- V1.0.4
+
+### skill
+
+- Add ui-ux-pro-max skill
+
 ### spec
 
 - Trellis init
 - Bootstrap frontend/backend/unit-test development guidelines
+- **backend**: Add window lifecycle guide documenting Cmd+W fix
 
-## [1.0.3] - 2026-03-25
+### update
 
-### 🐛 Bug Fixes
+- Trellis
 
-- Disable hardenedRuntime to fix macOS unexpected exit issue
+### wip
 
-### ⚙️ Miscellaneous Tasks
+- Original-before-lsp-merge (temp)
 
-- Bump version to 1.0.3
+### ﻿fix
 
-## [1.0.2] - 2026-03-25
+- **terminal**: Adapt selection and tab colors to app theme
 
-### 🐛 Bug Fixes
+### ﻿refactor
 
-- Show new files in DiffView by reading file content when diff is empty
-- Use JavaScript API for directory dialog to fix macOS compatibility
-- Add ad-hoc signing for macOS and update release notes with installation instructions
-
-### ⚙️ Miscellaneous Tasks
-
-- Update tauri-action to v0.6.2 to fix release upload
-- Add releaseAssetNamePattern to include version in release file names
-- Bump version to 1.0.2
-
-## [0.1.1] - 2026-03-24
-
-### 🚀 Features
-
-- 项目折叠状态持久化 - 记住每个项目的折叠状态
-
-### 🐛 Bug Fixes
-
-- Add contents write permission for release creation
-- MacOS dialog not opening + upgrade tauri to stable
-- Update pnpm-lock.yaml for stable tauri deps
-- 修复编译错误 - 所有权和可变借用问题
-- 删除项目时持久化会话 + 项目默认折叠 + 消除dead_code警告
-- Enable log file creation with create(true) flag
-- Resolve terminal backspace deletion and build errors
-
-### ⚡ Performance
-
-- Non-recursive watcher + 10s polling for deep file changes
-
-### ⚙️ Miscellaneous Tasks
-
-- Only trigger build on tag push, add separate CI check for PRs
-
-## [0.1.0] - 2026-03-24
-
-### 🚀 Features
-
-- Enhance DiffView with syntax highlighting, block navigation, and fast git2 diff
-- Auto-refresh sidebar when project files change
-- Worktree terminals, inline rename, file watch, diff improvements + cleanup
-
-### 🐛 Bug Fixes
-
-- Use async pick_folder to fix Add Project dialog on macOS
-- Reorder pnpm setup before node setup in CI workflow
-- Remove pnpm version override to avoid conflict with packageManager
-
-## [0.1.0] - 2026-03-22
-
-### 🚀 Features
-
-- Complete Neeko MVP with terminal, diff, git management and agent integration
-- Add custom app icon with blue-purple gradient N on dark background
-- Add shell selector in settings panel
-- Redesign settings as full dialog with left-nav + right-content layout
-- Add font family selector in settings with system font discovery
-- Set Cascadia Code as default terminal font on Linux
-- Add SideTerminalView with Ctrl+Alt+T / Ctrl+W shortcuts
-- Add OpenIDE, toast notifications, draggable side terminal divider, and UI polish
-- Add side terminal button to project header, fix always-visible buttons
-- Improve terminal resize handling and add file logging
-- Add EULA, publisher info, and hide console window on Windows
-
-### 🐛 Bug Fixes
-
-- Add missing icon.icns and fix tauri.conf.json schema URL
-- Improve terminal reliability and UI dropdown layering
-- Resolve Linux PTY and IME compatibility issues
-- Add -ExecutionPolicy Bypass to PowerShell on Windows to allow script execution
-- Auto-apply -ExecutionPolicy Bypass for PowerShell regardless of how it is configured
-- Detect shell exit and auto-restart terminal session
-- Graceful process cleanup to prevent subprocess memory leaks
-- Resolve Linux Chinese IME duplicate input issue
-- Font selector now closes after selection with proper dropdown UI
-- SideTerminalView passes real project.id to backend instead of cache key
-- Resolve build errors (TS unused vars, CSS brace imbalance, tsconfig references)
-
-### 📚 Documentation
-
-- Update README license to Apache 2.0 and trim redundant sections
-- Rewrite README header with better project description and badges
-- Add chinese-input-fix.md
-- Update README and REQUIREMENTS to reflect current feature set
-- Switch README to English as primary, add Chinese version and preview images
-
-### ⚙️ Miscellaneous Tasks
-
-- Remove accidental canvas dev dependency
-- Update Cargo.lock with libc dependency
-- Add GitHub Actions workflow for multi-platform builds (Windows/macOS/Linux)
+- **codemirror**: Use createTheme for dynamic theme switching
 
 

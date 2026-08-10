@@ -76,7 +76,7 @@ try {
 
   // Git commit + tag
   run("git add .");
-  run(`git commit -m "release: ${tag}"`);
+  run(`git commit -m "chore: release ${tag}"`);
   run(`git tag ${tag}`);
 
   console.log(`\n✅ Released ${tag}`);
