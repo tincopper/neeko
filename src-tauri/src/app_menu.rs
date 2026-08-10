@@ -31,6 +31,7 @@ pub fn is_devtools_enabled(config: &serde_json::Value) -> bool {
 const CLOSE_TAB_EVENT: &str = "close-tab";
 
 /// 菜单「粘贴」事件名（macOS 自定义菜单转发），与前端 `src/shared/events.ts` `MENU_PASTE_EVENT` 同步。
+#[cfg(target_os = "macos")]
 const MENU_PASTE_EVENT: &str = "menu-paste";
 
 /// macOS Edit 菜单项 id（构建与分发共用，单一事实源）。

@@ -39,6 +39,7 @@ pub fn run() {
     };
 
     let cmd_w_flag = Arc::new(AtomicBool::new(false));
+    #[cfg(target_os = "macos")]
     let cmd_w_flag_win = cmd_w_flag.clone();
 
     tauri::Builder::default()
@@ -235,6 +236,8 @@ pub fn run() {
                 }
                 // On Windows/Linux, CloseRequested fires only for
                 // Alt+F4 / native close button → let it proceed.
+                #[cfg(not(target_os = "macos"))]
+                let _ = api;
             }
             tauri::WindowEvent::Destroyed => {
                 let state = window.state::<AppStateWrapper>();

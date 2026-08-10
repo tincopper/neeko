@@ -107,7 +107,7 @@ pub async fn create_webview(
     #[cfg(target_os = "linux")]
     {
         use webkit2gtk::{WebInspectorExt, WebViewExt};
-        webview.with_webview(|platform| {
+        let _ = webview.with_webview(|platform| {
             let inner = platform.inner();
             if let Some(inspector) = inner.inspector() {
                 let _ = inspector.connect_attach(|_| false);
