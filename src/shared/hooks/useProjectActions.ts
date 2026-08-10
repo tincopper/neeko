@@ -1,7 +1,7 @@
 import { useCallback, useMemo, useState } from 'react';
 
-import { useEditorStore } from '@/shared/store';
 import { useConnectionStore } from '@/shared/store/connectionStore';
+import { useEditorStore } from '@/shared/store/editorStore';
 import { useProjectStore } from '@/shared/store/projectStore';
 import { useWorktreeStore } from '@/shared/store/worktreeStore';
 import type { AgentConfig, AppConfig, RemoteEntrySession, Tab } from '@/shared/types';

@@ -17,9 +17,9 @@ import { terminalCache, terminalCacheKey } from '@/features/terminal/components/
 import { sendToTerminal } from '@/features/terminal/components/terminalCommands';
 import { KeyRound } from '@/shared/components/icons';
 import { useEditorContext, useAppContext } from '@/shared/contexts';
-import { useEditorStore } from '@/shared/store';
 import { useConnectionStore } from '@/shared/store/connectionStore';
 import { useDockStore } from '@/shared/store/dockStore';
+import { useEditorStore } from '@/shared/store/editorStore';
 import { useProjectStore } from '@/shared/store/projectStore';
 import { useWorktreeStore } from '@/shared/store/worktreeStore';
 import type { AgentConfig, Tab } from '@/shared/types';

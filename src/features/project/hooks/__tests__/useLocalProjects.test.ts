@@ -3,7 +3,7 @@ import { renderHook, waitFor, act } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 import { useLocalProjects } from '@/features/project/hooks/useLocalProjects';
-import { useEditorStore } from '@/shared/store';
+import { useEditorStore } from '@/shared/store/editorStore';
 import { createProject } from '@/testing/factories';
 import { invoke } from '@/testing/tauriCore';
 

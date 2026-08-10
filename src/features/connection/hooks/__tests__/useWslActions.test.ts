@@ -8,8 +8,8 @@ import {
   refreshWslTerminal,
 } from '@/features/terminal/components/terminalCache';
 /* eslint-enable import/no-restricted-paths */
-import { useEditorStore } from '@/shared/store';
 import { useConnectionStore } from '@/shared/store/connectionStore';
+import { useEditorStore } from '@/shared/store/editorStore';
 import { useProjectStore } from '@/shared/store/projectStore';
 import { useWorktreeStore } from '@/shared/store/worktreeStore';
 import type { WSLEntrySession } from '@/shared/types';

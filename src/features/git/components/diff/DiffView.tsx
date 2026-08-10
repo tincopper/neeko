@@ -3,7 +3,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { cn } from '@/lib/utils';
 import { ChevronRight, Sparkles, CloseIcon } from '@/shared/components/icons';
 import { useEditorAgentActions } from '@/shared/hooks/useEditorAgentActions';
-import { useEditorStore } from '@/shared/store';
+import { useEditorStore } from '@/shared/store/editorStore';
 import { useNotificationStore } from '@/shared/store/notificationStore';
 import { buildDiffMessage } from '@/shared/utils/agentPrompt';
 import { fileIconSrc } from '@/shared/utils/fileIcons';

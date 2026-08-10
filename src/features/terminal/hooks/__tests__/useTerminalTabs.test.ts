@@ -2,10 +2,10 @@ import { renderHook, act } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 import { useTerminalTabs } from '@/features/terminal/hooks/useTerminalTabs';
-import { useEditorStore } from '@/shared/store';
+import { useEditorStore } from '@/shared/store/editorStore';
 
 vi.mock('@/features/terminal/components/terminalTabCleanup', async () => {
-  const { useEditorStore } = await import('@/shared/store');
+  const { useEditorStore } = await import('@/shared/store/editorStore');
   return {
     closeEditorTab: vi.fn((projectId: string, tabId: string) => {
       useEditorStore.getState().closeTab(projectId, tabId);

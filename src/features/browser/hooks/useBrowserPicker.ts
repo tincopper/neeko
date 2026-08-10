@@ -2,7 +2,7 @@ import { useState, useCallback, useEffect, type RefObject } from 'react';
 
 import { BROWSER_PICKER_CANCELLED_EVENT } from '@/shared/events';
 import { useTauriEvent } from '@/shared/hooks/useTauriEvent';
-import { useProjectStore } from '@/shared/store';
+import { useProjectStore } from '@/shared/store/projectStore';
 
 import { browserStartPicker, browserStopPicker } from '../api/browserApi';
 import type { PickerThemeColors } from '../components/pickerUtils';

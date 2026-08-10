@@ -34,7 +34,7 @@ vi.mock('../terminalCache', () => ({
   remoteTerminalCache,
 }));
 
-vi.mock('@/shared/store', () => ({
+vi.mock('@/shared/store/editorStore', () => ({
   useEditorStore: {
     getState: () => ({
       closeTab: closeTabMock,

@@ -1,6 +1,6 @@
 import { useCallback, useMemo } from 'react';
 
-import { useEditorStore } from '@/shared/store';
+import { useEditorStore } from '@/shared/store/editorStore';
 
 /**
  * useLocateFileInTree — "locate current file in the file tree" wiring.

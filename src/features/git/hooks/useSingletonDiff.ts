@@ -1,7 +1,7 @@
 import { useCallback } from 'react';
 
 import type { DiffSource } from '@/features/git/components/diff/types';
-import { useEditorStore } from '@/shared/store';
+import { useEditorStore } from '@/shared/store/editorStore';
 import { useProjectStore } from '@/shared/store/projectStore';
 import type { CommitFileChange, ConnectionContext } from '@/shared/types';
 import { parseProjectIdFromTabKey, resolveTabKey } from '@/shared/utils/tabKey';

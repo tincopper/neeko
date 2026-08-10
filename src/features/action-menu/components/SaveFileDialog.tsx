@@ -5,7 +5,7 @@ import DirectoryPickerDialog from '@/features/action-menu/components/DirectoryPi
 import { readDirTree, saveNewFile } from '@/features/file/api/fileApi';
 import { useFileStore } from '@/features/file/store';
 import { refreshGitFileStates } from '@/features/git';
-import { useEditorStore } from '@/shared/store';
+import { useEditorStore } from '@/shared/store/editorStore';
 import { useProjectStore } from '@/shared/store/projectStore';
 import { useWorktreeStore } from '@/shared/store/worktreeStore';
 import type { FileContent } from '@/shared/types';

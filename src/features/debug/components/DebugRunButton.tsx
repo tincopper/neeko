@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 
 import { Play, Square, ChevronDown, Bug, Plus, Pencil, X } from '@/shared/components/icons';
-import { useEditorStore } from '@/shared/store';
+import { useEditorStore } from '@/shared/store/editorStore';
 import { useProjectStore } from '@/shared/store/projectStore';
 
 import { useDebugStore } from '../store/debugStore';

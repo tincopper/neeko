@@ -4,7 +4,7 @@
 import { create } from 'zustand';
 
 import { readDirTree } from '@/features/file/api/fileApi';
-import { useEditorStore } from '@/shared/store';
+import { useEditorStore } from '@/shared/store/editorStore';
 import { useProjectStore } from '@/shared/store/projectStore';
 import { useWorktreeStore } from '@/shared/store/worktreeStore';
 import { resolveTabKey } from '@/shared/utils/tabKey';

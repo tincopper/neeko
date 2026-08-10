@@ -2,7 +2,7 @@
  * Open a project-relative file in the editor (shared by Goto File / Recent / history).
  */
 import { readFileContent } from '@/features/file/api/fileApi';
-import { useEditorStore } from '@/shared/store';
+import { useEditorStore } from '@/shared/store/editorStore';
 import { useWorktreeStore } from '@/shared/store/worktreeStore';
 import type { Tab } from '@/shared/types';
 import { preloadLanguageExtension } from '@/shared/utils/codemirror';

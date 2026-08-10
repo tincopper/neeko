@@ -12,7 +12,7 @@ import { useEffect } from 'react';
 
 // eslint-disable-next-line import/no-restricted-paths -- file drop sends commands to terminal via terminal feature
 import { sendToTerminal } from '@/features/terminal/components/terminalCommands';
-import { useEditorStore } from '@/shared/store';
+import { useEditorStore } from '@/shared/store/editorStore';
 
 // ---------------------------------------------------------------------------
 // Module-level state

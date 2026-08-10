@@ -12,9 +12,10 @@ import {
 } from '@/shared/events';
 import { useFileChangedEvent } from '@/shared/hooks/useFileChangedEvent';
 import { useTauriEvent } from '@/shared/hooks/useTauriEvent';
-import { useEditorStore, useProjectStore } from '@/shared/store';
 import { useProjectBrowserStore } from '@/shared/store/browserStore';
 import { useDockStore } from '@/shared/store/dockStore';
+import { useEditorStore } from '@/shared/store/editorStore';
+import { useProjectStore } from '@/shared/store/projectStore';
 import type { FileChangedEvent } from '@/shared/types';
 import { fileUrlToFilePath } from '@/shared/utils/browserUtils';
 import { canGoBack, canGoForward, recordNavigation } from '@/shared/utils/historyStack';

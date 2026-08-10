@@ -3,7 +3,7 @@
  * Mirrors go-to-definition navigation using editor store + file IPC.
  */
 import { readFileContent } from '@/features/file/api/fileApi';
-import { useEditorStore } from '@/shared/store';
+import { useEditorStore } from '@/shared/store/editorStore';
 import {
   captureCurrentNavLocation,
   recordNavigationJump,

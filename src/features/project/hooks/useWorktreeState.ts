@@ -1,7 +1,7 @@
 import { useCallback } from 'react';
 import { useShallow } from 'zustand/shallow';
 
-import { useEditorStore } from '@/shared/store';
+import { useEditorStore } from '@/shared/store/editorStore';
 import { useWorktreeStore } from '@/shared/store/worktreeStore';
 import { resolveTabKey } from '@/shared/utils/tabKey';
 

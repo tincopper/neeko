@@ -1,4 +1,4 @@
-import { useEditorStore } from '@/shared/store';
+import { useEditorStore } from '@/shared/store/editorStore';
 import { parseProjectIdFromTabKey } from '@/shared/utils/tabKey';
 
 import {

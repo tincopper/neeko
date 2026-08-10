@@ -1,7 +1,7 @@
 import { useCallback } from 'react';
 import { useShallow } from 'zustand/shallow';
 
-import { useEditorStore } from '@/shared/store';
+import { useEditorStore } from '@/shared/store/editorStore';
 import type { TerminalTab, AgentConfig, Tab, TerminalTabData } from '@/shared/types';
 
 import { closeAllEditorTabs, closeEditorTab } from '../components/terminalTabCleanup';

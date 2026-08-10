@@ -12,9 +12,9 @@
  */
 import type { ILinkProvider, Terminal } from '@xterm/xterm';
 
-import { useEditorStore } from '@/shared/store';
 import { useBrowserStore } from '@/shared/store/browserStore';
 import { useDockStore } from '@/shared/store/dockStore';
+import { useEditorStore } from '@/shared/store/editorStore';
 import type { Tab } from '@/shared/types';
 import { getFileName, getTabId } from '@/shared/utils/fileTree';
 

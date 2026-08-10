@@ -2,8 +2,8 @@ import { renderHook } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 import { useKeyboardShortcuts } from '@/shared/hooks/useKeyboardShortcuts';
-import { useEditorStore } from '@/shared/store';
 import { useConnectionStore } from '@/shared/store/connectionStore';
+import { useEditorStore } from '@/shared/store/editorStore';
 import { useProjectStore } from '@/shared/store/projectStore';
 import { useWorktreeStore } from '@/shared/store/worktreeStore';
 import { createProject } from '@/testing/factories';

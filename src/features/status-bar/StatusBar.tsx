@@ -8,7 +8,7 @@ import { lspListSessions } from '@/features/lsp/api/lspApi';
 import { NotificationButton } from '@/features/notification';
 import { useActiveProject } from '@/features/project';
 import { Bug, Terminal } from '@/shared/components/icons';
-import { useEditorStore } from '@/shared/store';
+import { useEditorStore } from '@/shared/store/editorStore';
 import { useLspStore, type LspSessionState } from '@/shared/store/lspStore';
 import { useProjectStore } from '@/shared/store/projectStore';
 import { useTaskStore } from '@/shared/store/taskStore';

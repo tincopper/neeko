@@ -9,8 +9,8 @@ import { useQuickOpenStore } from '@/features/quick-open/store/quickOpenStore';
 // eslint-disable-next-line import/no-restricted-paths -- keyboard shortcuts need terminal cache for refresh
 import { refreshTerminal, terminalCacheKey } from '@/features/terminal/components/terminalCache';
 // eslint-disable-next-line import/no-restricted-paths
-import { useEditorStore } from '@/shared/store';
 import { useDockStore } from '@/shared/store/dockStore';
+import { useEditorStore } from '@/shared/store/editorStore';
 import { useNavHistoryStore } from '@/shared/store/navigationHistoryStore';
 import { useProjectStore } from '@/shared/store/projectStore';
 import { useWorktreeStore } from '@/shared/store/worktreeStore';
