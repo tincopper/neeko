@@ -2,6 +2,7 @@
 name = "neeko"
 version = "1.0.4"
 edition = "2021"
+license = "Apache-2.0"
 
 [lib]
 name = "neeko_lib"
