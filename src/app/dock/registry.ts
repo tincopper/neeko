@@ -7,6 +7,7 @@ import {
   Globe,
   Library,
   MessagesSquare,
+  Search,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { lazy } from 'react';
@@ -25,6 +26,7 @@ export const dockPanelIcons: Record<string, LucideIcon> = {
   Globe,
   Library,
   MessagesSquare,
+  Search,
 };
 
 // ── Lazy-loaded panel components ────────────────────────────────────────────
@@ -71,6 +73,12 @@ const LazyConversationsPanelWrapper = lazy(() =>
 const LazyPullRequestsPanelWrapper = lazy(() =>
   import('@/app/dock/DockPanelWrappers').then((m) => ({
     default: m.PullRequestsPanelWrapper,
+  })),
+);
+
+const LazySearchPanelWrapper = lazy(() =>
+  import('@/app/dock/DockPanelWrappers').then((m) => ({
+    default: m.SearchPanelWrapper,
   })),
 );
 
@@ -140,6 +148,14 @@ const UI_BINDINGS: Record<string, UiBinding> = {
       React.ComponentType<Record<string, unknown>>
     >,
     minPanelSize: 260,
+  },
+  search: {
+    title: 'Search',
+    icon: 'Search',
+    component: LazySearchPanelWrapper as React.LazyExoticComponent<
+      React.ComponentType<Record<string, unknown>>
+    >,
+    minPanelSize: 240,
   },
 };
 

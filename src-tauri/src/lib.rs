@@ -42,6 +42,8 @@ pub mod library;
 pub mod lsp;
 /// Project management (add, remove, list, config).
 pub mod project;
+/// Search domain (content full-text search across local / WSL / SSH).
+pub mod search;
 /// Session persistence (save / load workspace state).
 pub mod session;
 /// Application settings management.
@@ -168,6 +170,9 @@ macro_rules! neeko_invoke_handler {
             $crate::conversation::commands::update_conversation,
             $crate::conversation::commands::get_resume_command,
             $crate::conversation::commands::export_conversation,
+            // ── search ────────────────────────────────────────────────────────
+            $crate::search::commands::search_run,
+            $crate::search::commands::search_stop,
             // ── git ──────────────────────────────────────────────────────────
             // staging
             $crate::git::commands::stage_files,

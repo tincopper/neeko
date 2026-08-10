@@ -46,6 +46,7 @@ const GLOBAL_ACTION_IDS = new Set([
   'toggleDockProjects',
   'toggleDockSkills',
   'toggleDockLibrary',
+  'toggleDockSearch',
   'navigateBack',
   'navigateForward',
   'gotoFile',
@@ -230,6 +231,12 @@ export function useKeyboardShortcuts({
           case 'toggleDockLibrary': {
             e.preventDefault();
             useDockStore.getState().togglePanel('library');
+            break;
+          }
+
+          case 'toggleDockSearch': {
+            e.preventDefault();
+            useDockStore.getState().togglePanel('search');
             break;
           }
 

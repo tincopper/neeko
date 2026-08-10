@@ -48,6 +48,11 @@ export const DOCK_PANEL_META: Record<string, DockPanelMeta> = {
     defaultZone: 'right',
     defaultOrder: 4,
   },
+  search: {
+    id: 'search',
+    defaultZone: 'right',
+    defaultOrder: 5,
+  },
 };
 
 export type DockPanelId =
@@ -58,4 +63,5 @@ export type DockPanelId =
   | 'gitControl'
   | 'pullRequests'
   | 'browser'
-  | 'conversations';
+  | 'conversations'
+  | 'search';

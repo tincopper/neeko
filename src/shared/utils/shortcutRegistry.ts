@@ -232,6 +232,12 @@ export const SHORTCUT_ACTIONS: ShortcutAction[] = [
     defaultBinding: 'Ctrl+Shift+L',
     category: 'dock',
   },
+  {
+    id: 'toggleDockSearch',
+    label: 'Toggle Search Panel',
+    defaultBinding: 'Ctrl+Shift+F',
+    category: 'dock',
+  },
 ];
 
 const ACTION_BY_ID = new Map(SHORTCUT_ACTIONS.map((a) => [a.id, a]));
@@ -268,6 +274,7 @@ export const IDEA_SHORTCUT_PRESET: Record<string, string> = {
   refreshTerminal: 'Ctrl+Alt+R',
   toggleDockProjects: 'Ctrl+Shift+1',
   toggleDockSkills: 'Ctrl+Shift+2',
+  toggleDockSearch: 'Ctrl+Shift+F',
 };
 
 /** Build a full override map from the IDEA preset (merges onto current defaults). */

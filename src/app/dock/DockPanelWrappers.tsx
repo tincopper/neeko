@@ -26,6 +26,7 @@ import PullRequestsPanel from '@/features/git/components/PullRequestsPanel';
 import { useSingletonDiff } from '@/features/git/hooks/useSingletonDiff';
 import LibraryPanel from '@/features/library/components/LibraryPanel';
 import { useActiveProject } from '@/features/project/hooks/use-active-project';
+import { SearchPanel } from '@/features/search';
 import SkillsPanel from '@/features/skill/components/SkillsPanel';
 import { useAppContext } from '@/shared/contexts';
 import { FILE_TREE_CHANGED_EVENT } from '@/shared/events';
@@ -1273,6 +1274,32 @@ const GitControlPanelWrapper: React.FC = React.memo(() => {
 });
 GitControlPanelWrapper.displayName = 'GitControlPanelWrapper';
 
+// ── SearchPanelWrapper ──
+
+/**
+ * Reads the active project and passes its id to SearchPanel. Handles the
+ * worktree case by preferring the worktree path when one is active.
+ */
+const SearchPanelWrapper: React.FC = React.memo(() => {
+  const { project, worktreePath } = useActiveProject();
+  const activeProjectId = useProjectStore((s) => s.activeProjectId);
+
+  const projectId = useMemo(() => {
+    if (!project) return null;
+    // Local projects use the store's active id (worktree-aware tab keys);
+    // WSL/Remote projects always use the unified project id.
+    if (project.type === 'Local') {
+      return activeProjectId ?? project.id;
+    }
+    return project.id;
+  }, [project, activeProjectId]);
+
+  void worktreePath; // search targets the whole project root regardless of worktree
+
+  return <SearchPanel projectId={projectId} />;
+});
+SearchPanelWrapper.displayName = 'SearchPanelWrapper';
+
 export {
   FilesPanelWrapper,
   // Kept for rollback; registry uses GitControlPanelWrapper
@@ -1283,4 +1310,5 @@ export {
   PullRequestsPanelWrapper,
   GitLogPanelWrapper,
   GitControlPanelWrapper,
+  SearchPanelWrapper,
 };
