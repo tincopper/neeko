@@ -317,14 +317,15 @@ impl GitTransport for GitTransportKind {
                 parts.push("--".to_string()); // 隔离 git 参数
                 parts.extend(args.iter().map(|a| shell_quote(a)));
                 let cmd = format!("cd '{sp}' && {}git {}", env_prefix, parts.join(" "));
-                let out = exec_on(
+                exec_on(
                     &ExecTarget::Wsl {
                         distro: distro.clone(),
                     },
                     "bash",
                     &["-c", &cmd],
-                );
-                out.map_err(|e| {
+                )
+                .await
+                .map_err(|e| {
                     GitExecError {
                         kind: classify_stderr(&e.to_string()),
                         stderr: e.to_string(),
@@ -514,6 +515,7 @@ impl GitTransport for GitTransportKind {
                     "bash",
                     &["-c", &cmd],
                 )
+                .await
                 .is_ok()
             }
             GitTransportKind::Remote {

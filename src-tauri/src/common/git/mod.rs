@@ -16,7 +16,7 @@ pub mod transport;
 pub mod types;
 pub mod worker;
 #[cfg(target_os = "windows")]
-mod wsl;
+pub mod wsl;
 
 pub use cache::*;
 pub use local::*;

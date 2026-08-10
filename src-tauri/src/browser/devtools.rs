@@ -113,18 +113,20 @@ async fn compensate_side_effects(
 /// 打开 DevTools(独立窗口)并补偿副作用。
 ///
 /// 调用者负责获取 webview 并传入 panel rect 用于 bounds 恢复。
+/// `x/y/width/height` 仅在非 Windows 平台用于 bounds 补偿(Windows 的
+/// WebView2 原生独立窗口无此副作用),故以 `_` 前缀声明避免未使用警告。
 pub async fn open_devtools_detached(
     webview: &tauri::Webview,
-    x: f64,
-    y: f64,
-    width: f64,
-    height: f64,
+    _x: f64,
+    _y: f64,
+    _width: f64,
+    _height: f64,
 ) {
     ensure_detached_devtools(webview).await;
 
     // Windows WebView2 原生独立窗口,无 zoom/bounds 副作用,无需补偿。
     #[cfg(not(target_os = "windows"))]
     {
-        compensate_side_effects(webview, x, y, width, height).await;
+        compensate_side_effects(webview, _x, _y, _width, _height).await;
     }
 }

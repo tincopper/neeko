@@ -106,8 +106,9 @@ pub async fn create_webview(
     // 连接 attach 信号并返回 false 可使其显示为独立窗口。
     #[cfg(target_os = "linux")]
     {
-        use webkit2gtk::prelude::WebViewExt;
-        webview.with_webview(|inner| {
+        use webkit2gtk::WebViewExt;
+        webview.with_webview(|platform| {
+            let inner = platform.inner();
             if let Some(inspector) = inner.inspector() {
                 let _ = inspector.connect_attach(|_| false);
             }
