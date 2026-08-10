@@ -1,27 +1,21 @@
 name: CI
 
-#on:
-#  push:
-#  pull_request:
-#    branches:
-#      - main
-# 临时先只在打tag时才触发
+# PR 和 main 分支 push 时触发，前置发现质量问题
 on:
+  pull_request:
+    branches: [main]
   push:
-    tags:
-      - 'v*'
+    branches: [main]
 
 env:
   CARGO_TERM_COLOR: always
 
 jobs:
+  # ──────────────────────────────────────────────
+  # 前端检查：单平台即可（TypeScript/Vitest 无平台差异）
+  # ──────────────────────────────────────────────
   frontend-check:
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
-
-    runs-on: ${{ matrix.os }}
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -43,12 +37,7 @@ jobs:
 
   frontend-test:
     needs: frontend-check
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
-
-    runs-on: ${{ matrix.os }}
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -68,6 +57,9 @@ jobs:
       - name: Unit tests
         run: pnpm test
 
+  # ──────────────────────────────────────────────
+  # 后端检查：全平台 check（发现跨平台编译问题）
+  # ──────────────────────────────────────────────
   backend-check:
     strategy:
       fail-fast: false
@@ -100,6 +92,10 @@ jobs:
 
       - name: Rust check
         run: cargo check
+        working-directory: ./src-tauri
+
+      - name: Rust clippy
+        run: cargo clippy -- -D warnings
         working-directory: ./src-tauri
 
   backend-test:

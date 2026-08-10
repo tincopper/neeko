@@ -1,5 +1,6 @@
 name: Build Neeko
 
+# 只在打 tag 时触发发布构建（CI 已在 PR 阶段验证过编译）
 on:
   push:
     tags:
