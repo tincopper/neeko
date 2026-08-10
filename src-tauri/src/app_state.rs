@@ -350,7 +350,29 @@ impl AppStateWrapper {
     #[must_use]
     pub fn new_with_library_store(library_store: Arc<library::LibraryStore>) -> Self {
         let storage_manager = StorageManager::new().expect("Failed to create storage manager");
+        Self::new_with_storage_and_library(storage_manager, library_store)
+    }
 
+    /// Create `AppStateWrapper` with an explicit storage manager (config dir) and
+    /// an external shared `LibraryStore`.  Tests MUST pass an isolated storage
+    /// (e.g. `StorageManager::with_dir(tempdir)`) so that project mutations never
+    /// touch the real `~/.neeko/sessions.json`.
+    ///
+    /// # Why `#[allow(clippy::expect_used)]` is safe
+    ///
+    /// This constructor only composes already-constructed values into `Self`;
+    /// it performs no fallible operations itself. The `expect` allowance exists
+    /// solely so that the *caller* (`new_with_library_store`) can propagate a
+    /// `StorageManager::new()` failure as a hard panic — which is intentional
+    /// for the production path (a missing config dir is unrecoverable). Test
+    /// code bypasses this by calling `new_with_storage_and_library` directly
+    /// with an isolated `StorageManager`.
+    #[allow(clippy::expect_used)]
+    #[must_use]
+    pub fn new_with_storage_and_library(
+        storage_manager: StorageManager,
+        library_store: Arc<library::LibraryStore>,
+    ) -> Self {
         // Persist callback: auto-saves projects after every mutation
         let persist = {
             let sm_clone = storage_manager.clone();

@@ -84,6 +84,16 @@ pub fn resolve_allowed_file_root(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::session::StorageManager;
+    use std::sync::Arc;
+
+    /// 构造隔离的 AppStateWrapper：StorageManager 指向临时目录，
+    /// 严禁使用默认 `~/.neeko`（否则 add_project 的 auto-save 会覆盖用户数据）。
+    fn isolated_state(tmp: &tempfile::TempDir) -> crate::app_state::AppStateWrapper {
+        let storage = StorageManager::with_dir(tmp.path().join(".neeko")).unwrap();
+        let store = Arc::new(crate::library::LibraryStore::open_in_memory().unwrap());
+        crate::app_state::AppStateWrapper::new_with_storage_and_library(storage, store)
+    }
 
     #[test]
     fn test_validate_url_scheme_http() {
@@ -183,11 +193,9 @@ mod tests {
     #[test]
     fn test_resolve_project_root_unknown_id_returns_none() {
         // 未知项目 ID -> None(不 panic)
-        assert!(resolve_project_root(
-            &crate::app_state::AppStateWrapper::default(),
-            "unknown-project"
-        )
-        .is_none());
+        let tmp = tempfile::tempdir().unwrap();
+        let state = isolated_state(&tmp);
+        assert!(resolve_project_root(&state, "unknown-project").is_none());
     }
 
     #[test]
@@ -197,7 +205,7 @@ mod tests {
         let file_path = tmp.path().join("page.html");
         std::fs::write(&file_path, "<html></html>").unwrap();
 
-        let state = crate::app_state::AppStateWrapper::default();
+        let state = isolated_state(&tmp);
         let project = state
             .project_manager
             .lock()
@@ -216,16 +224,10 @@ mod tests {
     #[test]
     fn test_resolve_allowed_file_root_from_label() {
         // 非浏览器 label 或未知项目 -> None(不 panic)
-        assert!(resolve_allowed_file_root(
-            &crate::app_state::AppStateWrapper::default(),
-            "neeko-browser-unknown"
-        )
-        .is_none());
-        assert!(resolve_allowed_file_root(
-            &crate::app_state::AppStateWrapper::default(),
-            "other-label"
-        )
-        .is_none());
+        let tmp = tempfile::tempdir().unwrap();
+        let state = isolated_state(&tmp);
+        assert!(resolve_allowed_file_root(&state, "neeko-browser-unknown").is_none());
+        assert!(resolve_allowed_file_root(&state, "other-label").is_none());
     }
 
     #[test]
