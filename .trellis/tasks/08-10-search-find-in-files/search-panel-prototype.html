@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Search Panel Prototype</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            bg: {
+              primary: '#0d1117',
+              secondary: '#161b22',
+              tertiary: '#1c2128',
+              hover: '#21262d',
+              selected: '#1f6feb20',
+            },
+            text: {
+              primary: '#e6edf3',
+              secondary: '#8b949e',
+              muted: '#6e7681',
+            },
+            border: '#30363d',
+            accent: {
+              blue: '#58a6ff',
+              green: '#3fb950',
+              yellow: '#d29922',
+              red: '#f85149',
+            },
+          },
+        },
+      },
+    };
+  </script>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
+    .font-mono { font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, monospace; }
+    .code-text { font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, monospace; font-size: 12px; }
+    .line-number { font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, monospace; font-size: 11px; }
+    .match-highlight { background: rgba(210, 153, 34, 0.25); border-radius: 2px; padding: 0 1px; }
+    .scrollbar-thin::-webkit-scrollbar { width: 8px; }
+    .scrollbar-thin::-webkit-scrollbar-track { background: transparent; }
+    .scrollbar-thin::-webkit-scrollbar-thumb { background: #30363d; border-radius: 4px; }
+    .scrollbar-thin::-webkit-scrollbar-thumb:hover { background: #484f58; }
+  </style>
+</head>
+<body class="bg-bg-primary h-screen flex items-center justify-center p-8">
+  <div class="w-full max-w-2xl h-[600px] flex flex-col overflow-hidden rounded-lg border border-border bg-bg-secondary shadow-2xl">
+
+    <!-- Search Input Area -->
+    <div class="shrink-0 border-b border-border p-3">
+      <div class="flex items-center gap-2">
+        <svg class="size-4 shrink-0 text-text-muted" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="11" cy="11" r="8"/><path d="m21 21-4.34-4.34"/>
+        </svg>
+        <input
+          type="text"
+          value="parseConfigCommand"
+          placeholder="Search files…"
+          class="flex-1 bg-transparent text-sm text-text-primary outline-none placeholder:text-text-muted"
+        />
+        <span class="text-xs text-text-muted px-1.5">24 results</span>
+        <button class="shrink-0 rounded p-1 text-text-muted hover:bg-bg-hover hover:text-text-primary transition-colors" aria-label="Clear search">
+          <svg class="size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M18 6 6 18"/><path d="m6 6 12 12"/>
+          </svg>
+        </button>
+      </div>
+      <!-- Search Options -->
+      <div class="flex items-center gap-1 mt-2">
+        <button class="px-2 py-0.5 rounded text-xs bg-bg-tertiary text-text-secondary hover:text-text-primary border border-border/50 transition-colors" title="Match case">
+          Aa
+        </button>
+        <button class="px-2 py-0.5 rounded text-xs bg-bg-tertiary text-text-secondary hover:text-text-primary border border-border/50 transition-colors" title="Match whole word">
+          W
+        </button>
+        <button class="px-2 py-0.5 rounded text-xs bg-accent-blue/15 text-accent-blue border border-accent-blue/30 transition-colors" title="Use regex">
+          .*
+        </button>
+        <div class="flex-1"></div>
+        <span class="text-xs text-text-muted">Case-insensitive</span>
+      </div>
+    </div>
+
+    <!-- Results Area -->
+    <div class="flex-1 overflow-y-auto scrollbar-thin">
+
+      <!-- File Group 1 (Expanded) -->
+      <div class="mb-0.5">
+        <!-- File Header -->
+        <div class="flex items-center gap-2 px-3 py-1.5 hover:bg-bg-hover cursor-pointer group select-none sticky top-0 bg-bg-secondary z-10 border-b border-border/30">
+          <svg class="size-3.5 shrink-0 text-text-muted transition-transform duration-150 rotate-90" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="m9 18 6-6-6-6"/>
+          </svg>
+          <!-- File Icon (Go) -->
+          <svg class="size-4 shrink-0 text-accent-blue" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M1.811 10.231c-.047 0-.058-.023-.035-.059l.246-.315c.023-.035.081-.058.128-.058h4.172c.046 0 .058.035.035.07l-.199.303c-.023.036-.082.07-.117.07zM.047 11.306c-.047 0-.059-.023-.035-.058l.245-.316c.023-.035.082-.058.129-.058h5.328c.047 0 .07.035.058.07l-.093.28c-.012.047-.058.07-.105.07zm2.828 1.075c-.047 0-.059-.035-.035-.07l.163-.292c.023-.035.07-.07.117-.07h2.337c.047 0 .07.035.07.082l-.023.28c0 .047-.047.082-.094.082zm12.129-2.36c-.736.187-1.239.327-1.963.514-.176.046-.187.058-.34-.117-.174-.199-.303-.327-.548-.444-.737-.362-1.45-.257-2.115.175-.789.514-1.195 1.261-1.183 2.18.012.908.654 1.655 1.543 1.77.736.093 1.372-.152 1.89-.69.105-.116.199-.245.304-.374H9.513c-.246 0-.304-.152-.222-.35.152-.362.432-.97.596-1.274a.315.315 0 0 1 .292-.187h6.194c-.023.316-.023.631-.046.947-.07.97-.257 1.905-.654 2.782-.86 1.882-2.26 3.19-4.25 3.784-1.618.478-3.144.257-4.5-.737-.836-.62-1.372-1.443-1.59-2.448-.258-1.205-.047-2.339.584-3.394.677-1.136 1.655-1.928 2.92-2.339 1.532-.49 3.028-.292 4.392.631.871.584 1.43 1.384 1.687 2.39.07.292.046.362-.234.419z"/>
+          </svg>
+          <span class="text-sm text-text-primary font-medium truncate">config_cmd.go</span>
+          <span class="text-xs text-text-muted truncate">cmd/agent/</span>
+          <span class="ml-auto shrink-0 text-xs text-accent-blue bg-accent-blue/10 px-1.5 py-0.5 rounded-full font-medium">3</span>
+        </div>
+        <!-- Match Lines -->
+        <div class="pl-4">
+          <button class="w-full flex items-start gap-0 px-3 py-0.5 hover:bg-bg-hover text-left group/line">
+            <span class="line-number shrink-0 w-8 text-right text-text-muted group-hover/line:text-text-secondary select-none">14</span>
+            <span class="code-text text-text-primary truncate">
+              <span class="text-text-muted">//</span> <span class="match-highlight">parseConfigCommand</span> 检测 os.Args 是否为 config 子命令。
+            </span>
+          </button>
+          <button class="w-full flex items-start gap-0 px-3 py-0.5 hover:bg-bg-hover text-left group/line">
+            <span class="line-number shrink-0 w-8 text-right text-text-muted group-hover/line:text-text-secondary select-none">16</span>
+            <span class="code-text text-text-primary truncate">
+              func <span class="match-highlight">parseConfigCommand</span>(args []string) (string, bool) {
+            </span>
+          </button>
+          <button class="w-full flex items-start gap-0 px-3 py-0.5 hover:bg-bg-hover text-left group/line">
+            <span class="line-number shrink-0 w-8 text-right text-text-muted group-hover/line:text-text-secondary select-none">21</span>
+            <span class="code-text text-text-primary truncate">
+              got, ok := <span class="match-highlight">parseConfigCommand</span>(tt.args)
+            </span>
+          </button>
+        </div>
+      </div>
+
+      <!-- File Group 2 (Expanded) -->
+      <div class="mb-0.5">
+        <!-- File Header -->
+        <div class="flex items-center gap-2 px-3 py-1.5 hover:bg-bg-hover cursor-pointer group select-none sticky top-0 bg-bg-secondary z-10 border-b border-border/30">
+          <svg class="size-3.5 shrink-0 text-text-muted transition-transform duration-150 rotate-90" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="m9 18 6-6-6-6"/>
+          </svg>
+          <!-- File Icon (Go) -->
+          <svg class="size-4 shrink-0 text-accent-blue" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M1.811 10.231c-.047 0-.058-.023-.035-.059l.246-.315c.023-.035.081-.058.128-.058h4.172c.046 0 .058.035.035.07l-.199.303c-.023.036-.082.07-.117.07zM.047 11.306c-.047 0-.059-.023-.035-.058l.245-.316c.023-.035.082-.058.129-.058h5.328c.047 0 .07.035.058.07l-.093.28c-.012.047-.058.07-.105.07zm2.828 1.075c-.047 0-.059-.035-.035-.07l.163-.292c.023-.035.07-.07.117-.07h2.337c.047 0 .07.035.07.082l-.023.28c0 .047-.047.082-.094.082zm12.129-2.36c-.736.187-1.239.327-1.963.514-.176.046-.187.058-.34-.117-.174-.199-.303-.327-.548-.444-.737-.362-1.45-.257-2.115.175-.789.514-1.195 1.261-1.183 2.18.012.908.654 1.655 1.543 1.77.736.093 1.372-.152 1.89-.69.105-.116.199-.245.304-.374H9.513c-.246 0-.304-.152-.222-.35.152-.362.432-.97.596-1.274a.315.315 0 0 1 .292-.187h6.194c-.023.316-.023.631-.046.947-.07.97-.257 1.905-.654 2.782-.86 1.882-2.26 3.19-4.25 3.784-1.618.478-3.144.257-4.5-.737-.836-.62-1.372-1.443-1.59-2.448-.258-1.205-.047-2.339.584-3.394.677-1.136 1.655-1.928 2.92-2.339 1.532-.49 3.028-.292 4.392.631.871.584 1.43 1.384 1.687 2.39.07.292.046.362-.234.419z"/>
+          </svg>
+          <span class="text-sm text-text-primary font-medium truncate">main.go</span>
+          <span class="text-xs text-text-muted truncate">cmd/agent/</span>
+          <span class="ml-auto shrink-0 text-xs text-accent-blue bg-accent-blue/10 px-1.5 py-0.5 rounded-full font-medium">1</span>
+        </div>
+        <!-- Match Lines -->
+        <div class="pl-4">
+          <button class="w-full flex items-start gap-0 px-3 py-0.5 hover:bg-bg-hover text-left group/line">
+            <span class="line-number shrink-0 w-8 text-right text-text-muted group-hover/line:text-text-secondary select-none">16</span>
+            <span class="code-text text-text-primary truncate">
+              if sub, ok := <span class="match-highlight">parseConfigCommand</span>(os.Args); ok {
+            </span>
+          </button>
+        </div>
+      </div>
+
+      <!-- File Group 3 (Collapsed) -->
+      <div class="mb-0.5">
+        <!-- File Header (Collapsed) -->
+        <div class="flex items-center gap-2 px-3 py-1.5 hover:bg-bg-hover cursor-pointer group select-none border-b border-border/30">
+          <svg class="size-3.5 shrink-0 text-text-muted transition-transform duration-150" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="m9 18 6-6-6-6"/>
+          </svg>
+          <!-- File Icon (HTML) -->
+          <svg class="size-4 shrink-0 text-accent-red" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M1.5 0h21l-1.91 21.563L11.977 24l-8.564-2.438L1.5 0zm7.031 9.75l-.232-2.718 10.059.003.23-2.622L5.412 4.41l.698 8.01h9.126l-.326 3.426-2.91.804-2.955-.81-.188-2.11H6.248l.33 4.171L12 19.351l5.379-1.443.744-8.157H8.531z"/>
+          </svg>
+          <span class="text-sm text-text-primary font-medium truncate">architecture-walkthrough.html</span>
+          <span class="text-xs text-text-muted truncate"></span>
+          <span class="ml-auto shrink-0 text-xs text-accent-blue bg-accent-blue/10 px-1.5 py-0.5 rounded-full font-medium">2</span>
+        </div>
+        <!-- Match Lines hidden when collapsed -->
+      </div>
+
+      <!-- File Group 4 (Collapsed) -->
+      <div class="mb-0.5">
+        <!-- File Header (Collapsed) -->
+        <div class="flex items-center gap-2 px-3 py-1.5 hover:bg-bg-hover cursor-pointer group select-none border-b border-border/30">
+          <svg class="size-3.5 shrink-0 text-text-muted transition-transform duration-150" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="m9 18 6-6-6-6"/>
+          </svg>
+          <!-- File Icon (Go Test) -->
+          <svg class="size-4 shrink-0 text-accent-green" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M1.811 10.231c-.047 0-.058-.023-.035-.059l.246-.315c.023-.035.081-.058.128-.058h4.172c.046 0 .058.035.035.07l-.199.303c-.023.036-.082.07-.117.07zM.047 11.306c-.047 0-.059-.023-.035-.058l.245-.316c.023-.035.082-.058.129-.058h5.328c.047 0 .07.035.058.07l-.093.28c-.012.047-.058.07-.105.07zm2.828 1.075c-.047 0-.059-.035-.035-.07l.163-.292c.023-.035.07-.07.117-.07h2.337c.047 0 .07.035.07.082l-.023.28c0 .047-.047.082-.094.082zm12.129-2.36c-.736.187-1.239.327-1.963.514-.176.046-.187.058-.34-.117-.174-.199-.303-.327-.548-.444-.737-.362-1.45-.257-2.115.175-.789.514-1.195 1.261-1.183 2.18.012.908.654 1.655 1.543 1.77.736.093 1.372-.152 1.89-.69.105-.116.199-.245.304-.374H9.513c-.246 0-.304-.152-.222-.35.152-.362.432-.97.596-1.274a.315.315 0 0 1 .292-.187h6.194c-.023.316-.023.631-.046.947-.07.97-.257 1.905-.654 2.782-.86 1.882-2.26 3.19-4.25 3.784-1.618.478-3.144.257-4.5-.737-.836-.62-1.372-1.443-1.59-2.448-.258-1.205-.047-2.339.584-3.394.677-1.136 1.655-1.928 2.92-2.339 1.532-.49 3.028-.292 4.392.631.871.584 1.43 1.384 1.687 2.39.07.292.046.362-.234.419z"/>
+          </svg>
+          <span class="text-sm text-text-primary font-medium truncate">main_test.go</span>
+          <span class="text-xs text-text-muted truncate">cmd/agent/</span>
+          <span class="ml-auto shrink-0 text-xs text-accent-blue bg-accent-blue/10 px-1.5 py-0.5 rounded-full font-medium">3</span>
+        </div>
+      </div>
+
+      <!-- Truncated Notice -->
+      <div class="flex items-center justify-center gap-2 py-3 text-xs text-text-muted">
+        <svg class="size-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="10"/><path d="M12 8v4"/><path d="M12 16h.01"/>
+        </svg>
+        Results truncated — refine your query
+      </div>
+
+    </div>
+
+    <!-- Status Bar -->
+    <div class="shrink-0 flex items-center justify-between px-3 py-1.5 border-t border-border bg-bg-tertiary/50">
+      <span class="text-xs text-text-muted">5 files</span>
+      <span class="text-xs text-text-muted">24 matches total</span>
+    </div>
+
+  </div>
+</body>
+</html>
