@@ -29,6 +29,7 @@ build/
 .workbuddy
 .atomcode
 .grok
+.zcode
 
 # OS
 .DS_Store
