@@ -4,6 +4,7 @@ import { useCallback, useMemo } from 'react';
 import { openInDefaultBrowser } from '@/features/browser/api/browserApi';
 import { readFileContent } from '@/features/file/api/fileApi';
 import { useActiveProject } from '@/features/project';
+import { useAppContext } from '@/shared/contexts';
 import { useCodeMirrorBinding } from '@/shared/hooks/useResolvedShortcuts';
 import { useEditorStore } from '@/shared/store/editorStore';
 import type { FileTab } from '@/shared/types';
@@ -55,7 +56,8 @@ export function useEditorSave({
   }, [currentContent, onSave, setIsSaving]);
 
   // 获取 capabilities（用于判断是否显示 Open in Browser）
-  const { capabilities } = useActiveProject();
+  const { project, capabilities } = useActiveProject();
+  const { showToast } = useAppContext();
   const canOpenInBrowser = capabilities?.canEditFiles ?? false;
 
   // 在 Browser Panel 中打开 HTML 文件
@@ -69,10 +71,11 @@ export function useEditorSave({
     if (!projectPath || !canOpenInBrowser) return;
     const absPath = resolveAbsolutePath(projectPath, tab.filePath);
     const fileUrl = filePathToFileUrl(absPath);
-    openInDefaultBrowser(fileUrl).catch((err) => {
+    openInDefaultBrowser(fileUrl, project?.id).catch((err) => {
       console.error('[FileViewer] Failed to open in system browser:', err);
+      showToast('Failed to open in system browser', 'error');
     });
-  }, [tab.filePath, projectPath, canOpenInBrowser]);
+  }, [tab.filePath, projectPath, canOpenInBrowser, project?.id, showToast]);
 
   // Save shortcut — from user-configurable shortcut registry (default Ctrl+S).
   const saveCmKey = useCodeMirrorBinding('saveFile');

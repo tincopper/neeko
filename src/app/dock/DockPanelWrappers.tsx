@@ -59,7 +59,7 @@ import { parseProjectIdFromTabKey, resolveTabKey } from '@/shared/utils/tabKey';
 const FilesPanelWrapper: React.FC = React.memo(() => {
   const { onFileSelect, onFileRefresh, onLoadFileTree, onExpandDir } = useFileActionsContext();
   const { project, commands, worktreePath } = useActiveProject();
-  const { config } = useAppContext();
+  const { config, showToast } = useAppContext();
   const projectName = project?.name ?? null;
   const fileRootPath = worktreePath ?? project?.path ?? null;
   const activeFilePath = useFileStore((s) => s.activeFilePath);
@@ -221,12 +221,13 @@ const FilesPanelWrapper: React.FC = React.memo(() => {
       if (project?.type === 'Local' && projectPath) {
         const absPath = resolveAbsolutePath(projectPath, filePath);
         const fileUrl = filePathToFileUrl(absPath);
-        openInDefaultBrowser(fileUrl).catch((err) => {
+        openInDefaultBrowser(fileUrl, project.id).catch((err) => {
           console.error('[FilesPanelWrapper] Failed to open in system browser:', err);
+          showToast('Failed to open in system browser', 'error');
         });
       }
     },
-    [project?.type, projectPath],
+    [project, projectPath, showToast],
   );
 
   // 在系统文件管理器中显示文件（确保传绝对路径）

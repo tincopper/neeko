@@ -15,7 +15,7 @@ use crate::AppError;
 
 use super::devtools::open_devtools_detached;
 use super::scripts::build_picker_script;
-use super::url_validator::{resolve_allowed_file_root, validate_url_scheme};
+use super::url_validator::{resolve_allowed_file_root, resolve_project_root, validate_url_scheme};
 use super::webview_ops::{create_webview, set_webview_bounds};
 
 /// 创建内嵌浏览器 webview（Rust 侧真实创建，支持事件通知）
@@ -173,9 +173,19 @@ pub async fn browser_go_forward(app: tauri::AppHandle, label: String) -> Result<
 /// 使用 `open` crate(`shellexecute-on-windows` feature):Windows 走
 /// ShellExecuteExW(不经 `cmd` 解释,消除 shell 注入面),macOS 调 `open`,
 /// Linux 调 `xdg-open`;`that_detached` 不阻塞调用方。
+///
+/// `project_id` 提供 file:// 白名单上下文:有项目时仅允许打开项目根内的
+/// 本地文件(与 webview 导航同一套校验);无项目时只允许 http/https。
 #[tauri::command]
-pub fn open_in_default_browser(url: String) -> Result<(), AppError> {
-    validate_url_scheme(&url, None)?;
+pub fn open_in_default_browser(
+    state: tauri::State<'_, crate::app_state::AppStateWrapper>,
+    url: String,
+    project_id: Option<String>,
+) -> Result<(), AppError> {
+    let allowed_root = project_id
+        .as_deref()
+        .and_then(|id| resolve_project_root(&state, id));
+    validate_url_scheme(&url, allowed_root.as_deref())?;
     open::that_detached(url).map_err(|e| AppError::Io(format!("Failed to open URL: {e}")))?;
     Ok(())
 }

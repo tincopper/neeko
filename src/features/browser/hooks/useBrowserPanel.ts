@@ -264,11 +264,12 @@ export function useBrowserPanel({ showToast }: UseBrowserPanelOptions) {
     const currentUrl = browserState?.url;
     if (!currentUrl) return;
     try {
-      await openInDefaultBrowser(currentUrl);
+      await openInDefaultBrowser(currentUrl, activeProjectId ?? undefined);
     } catch (err) {
       console.error('[Browser] Failed to open in external browser:', err);
+      showToast('Failed to open in external browser', 'error');
     }
-  }, [browserState?.url]);
+  }, [browserState?.url, activeProjectId, showToast]);
 
   const updateBounds = useCallback(
     async (rect: DOMRect) => {

@@ -61,6 +61,16 @@ fn validate_file_url(
     }
 }
 
+/// 从项目 ID 解析项目根作为 file:// 白名单基准。
+/// 无对应项目时返回 `None`(file:// 将被拒绝)。
+pub fn resolve_project_root(
+    state: &crate::app_state::AppStateWrapper,
+    project_id: &str,
+) -> Option<std::path::PathBuf> {
+    let manager = state.project_manager.lock().ok()?;
+    manager.get_project(project_id).map(|p| p.path.clone())
+}
+
 /// 从 webview label(`neeko-browser-{projectId}`)反推项目根作为 file:// 白名单基准。
 /// 非浏览器 label 或无对应项目时返回 `None`(file:// 将被拒绝)。
 pub fn resolve_allowed_file_root(
@@ -68,8 +78,7 @@ pub fn resolve_allowed_file_root(
     label: &str,
 ) -> Option<std::path::PathBuf> {
     let project_id = label.strip_prefix("neeko-browser-")?;
-    let manager = state.project_manager.lock().ok()?;
-    manager.get_project(project_id).map(|p| p.path.clone())
+    resolve_project_root(state, project_id)
 }
 
 #[cfg(test)]
@@ -169,6 +178,39 @@ mod tests {
         let file_url = format!("file://{}?x=1#top", file_path.display());
         let result = validate_url_scheme(&file_url, Some(root.path()));
         assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_resolve_project_root_unknown_id_returns_none() {
+        // 未知项目 ID -> None(不 panic)
+        assert!(resolve_project_root(
+            &crate::app_state::AppStateWrapper::default(),
+            "unknown-project"
+        )
+        .is_none());
+    }
+
+    #[test]
+    fn test_resolve_project_root_returns_registered_project_path() {
+        // 已注册项目 -> 返回项目根,且 file:// 校验可据此放行根内文件
+        let tmp = tempfile::tempdir().unwrap();
+        let file_path = tmp.path().join("page.html");
+        std::fs::write(&file_path, "<html></html>").unwrap();
+
+        let state = crate::app_state::AppStateWrapper::default();
+        let project = state
+            .project_manager
+            .lock()
+            .unwrap()
+            .add_project(tmp.path().to_path_buf(), None, None, None)
+            .expect("add_project should succeed");
+
+        let root = resolve_project_root(&state, &project.id);
+        assert_eq!(root.as_deref(), Some(tmp.path()));
+
+        // 与 open_in_default_browser 相同的调用链:project_id -> root -> 校验
+        let file_url = format!("file://{}", file_path.display());
+        assert!(validate_url_scheme(&file_url, root.as_deref()).is_ok());
     }
 
     #[test]

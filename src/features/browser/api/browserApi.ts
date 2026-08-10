@@ -86,6 +86,6 @@ export function browserStopPicker(projectId: string): Promise<void> {
   return invoke<void>('browser_stop_picker', { label });
 }
 
-export function openInDefaultBrowser(url: string): Promise<void> {
-  return invoke<void>('open_in_default_browser', { url });
+export function openInDefaultBrowser(url: string, projectId?: string): Promise<void> {
+  return invoke<void>('open_in_default_browser', { url, projectId });
 }
