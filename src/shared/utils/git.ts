@@ -24,6 +24,11 @@ export function mergeGitInfoForStore(
   incoming: GitInfo,
   worktreeActive: boolean,
 ): GitInfo {
-  if (!worktreeActive) return incoming;
-  return { ...incoming, current_branch: existing?.current_branch ?? incoming.current_branch };
+  // incoming（get_git_info）不返回 ignored_files；从 existing 继承，
+  // 避免 Git 面板刷新后文件树的忽略灰色状态丢失。
+  const merged = { ...existing, ...incoming };
+  if (!worktreeActive) return merged;
+  // worktree 激活时保留主分支（local 入口）的 current_branch，
+  // 避免 store 中项目的 current_branch 被 worktree 分支名污染。
+  return { ...merged, current_branch: existing?.current_branch ?? incoming.current_branch };
 }
