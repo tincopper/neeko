@@ -126,6 +126,7 @@ pub fn reap_session_tree(orphans: &[i32]) {
 
 #[cfg(test)]
 mod tests {
+    #[cfg(unix)]
     use super::*;
 
     #[cfg(unix)]
