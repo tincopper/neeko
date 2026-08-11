@@ -1,5 +1,6 @@
 import { useCallback, useMemo, useState } from 'react';
 
+import { bumpGitRefresh } from '@/shared/hooks/useGitRefresh';
 import { useConnectionStore } from '@/shared/store/connectionStore';
 import { useEditorStore } from '@/shared/store/editorStore';
 import { useProjectStore } from '@/shared/store/projectStore';
@@ -151,6 +152,8 @@ export function useProjectActions({
 
   const handleRefreshGit = useCallback(
     async (connectionId: string, projectId: string) => {
+      // 通知 diff 等依赖 Git 状态的缓存失效
+      bumpGitRefresh(projectId);
       await refreshGit(connectionId, projectId);
     },
     [refreshGit],

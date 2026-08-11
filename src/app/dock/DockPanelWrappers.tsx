@@ -30,6 +30,7 @@ import { SearchPanel } from '@/features/search';
 import SkillsPanel from '@/features/skill/components/SkillsPanel';
 import { useAppContext } from '@/shared/contexts';
 import { FILE_TREE_CHANGED_EVENT } from '@/shared/events';
+import { bumpGitRefresh } from '@/shared/hooks/useGitRefresh';
 import { useDockStore } from '@/shared/store/dockStore';
 import { useEditorStore } from '@/shared/store/editorStore';
 import { useGitStore } from '@/shared/store/gitStore';
@@ -1033,9 +1034,10 @@ const GitControlPanelWrapper: React.FC = React.memo(() => {
   }, [activeWorktreePath, baseRefreshGit]);
 
   const handleRefreshGit = useCallback(async () => {
+    if (project) bumpGitRefresh(project.id);
     await baseRefreshGit();
     refresh();
-  }, [baseRefreshGit, refresh]);
+  }, [baseRefreshGit, refresh, project]);
 
   // 从全局 useGitStore 读取 ahead/behind（单数据源），传入 commit panel
   const aheadBehindMap = useGitStore((s) => s.aheadBehind);

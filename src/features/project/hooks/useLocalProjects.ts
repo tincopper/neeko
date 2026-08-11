@@ -5,6 +5,7 @@ import { useShallow } from 'zustand/shallow';
 
 // eslint-disable-next-line import/no-restricted-paths -- useLocalProjects cleans terminal caches on project close
 import { destroyTerminalCachesByPrefix } from '@/features/terminal/components/terminalCache';
+import { bumpGitRefresh } from '@/shared/hooks/useGitRefresh';
 import { useEditorStore } from '@/shared/store/editorStore';
 import { useGitStore } from '@/shared/store/gitStore';
 import { useProjectStore } from '@/shared/store/projectStore';
@@ -216,6 +217,8 @@ export function useLocalProjects() {
 
   const handleRefreshGit = useCallback(
     async (projectId: string) => {
+      // 通知 diff 等依赖 Git 状态的缓存失效
+      bumpGitRefresh(projectId);
       const defaultGitInfo = {
         current_branch: '',
         branches: [] as string[],

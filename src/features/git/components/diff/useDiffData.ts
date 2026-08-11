@@ -1,5 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
+import { useFileChangedEvent } from '@/shared/hooks/useFileChangedEvent';
+import { useGitRefresh } from '@/shared/hooks/useGitRefresh';
+import type { FileChangedEvent } from '@/shared/types';
 import type { ProjectCommands } from '@/shared/types/activeProject';
 
 import type { DiffResult, DiffSource, DiffLine } from './types';
@@ -24,6 +27,9 @@ export function useDiffData({ projectId, diffSource, filePath, commands }: UseDi
   const [error, setError] = useState<string | null>(null);
   const [currentBlockIndex, setCurrentBlockIndex] = useState(0);
   const lastLoadKeyRef = useRef<string>('');
+  // 强制刷新版本号：file-changed / Git 刷新信号命中时递增，驱动 useEffect 重新加载
+  const [refreshTick, setRefreshTick] = useState(0);
+  const lastRefreshTickRef = useRef(0);
 
   const loadDiff = useCallback(async () => {
     // Empty path = intentionally idle (combined parent or collapsed section).
@@ -95,14 +101,46 @@ export function useDiffData({ projectId, diffSource, filePath, commands }: UseDi
     }
   }, [projectId, diffSource, filePath, commands]);
 
+  // 文件内容变更 → 递增 refreshTick（缓存失效统一在下方 useEffect 处理）
+  useFileChangedEvent(
+    useCallback(
+      (ev: FileChangedEvent) => {
+        if (!filePath) return;
+        if (ev.project_id !== projectId) return;
+        if (!ev.paths.includes(filePath)) return;
+        setRefreshTick((t) => t + 1);
+      },
+      [projectId, filePath],
+    ),
+  );
+
+  // Git 面板刷新按钮 → 递增 refreshTick（该项目的 diff 缓存失效）
+  useGitRefresh(
+    useCallback(
+      (pid: string) => {
+        if (!projectId || pid !== projectId) return;
+        setRefreshTick((t) => t + 1);
+      },
+      [projectId],
+    ),
+  );
+
   useEffect(() => {
     const key = getCacheKey(projectId, diffSource, filePath);
-    if (key === lastLoadKeyRef.current) {
+    const isKeyChange = key !== lastLoadKeyRef.current;
+    // 刷新信号（file-changed / Git 刷新按钮）变化
+    const isRefresh = refreshTick !== lastRefreshTickRef.current;
+    if (!isKeyChange && !isRefresh) {
       return;
     }
+    // 仅「内容刷新」时绕过缓存；切换文件（key 变化）保留缓存命中优化
+    if (isRefresh && !isKeyChange) {
+      diffCache.delete(key);
+    }
     lastLoadKeyRef.current = key;
+    lastRefreshTickRef.current = refreshTick;
     void loadDiff();
-  }, [projectId, diffSource, filePath, loadDiff]);
+  }, [projectId, diffSource, filePath, loadDiff, refreshTick]);
 
   const changeStats = useMemo(() => {
     if (!diffResult) {
