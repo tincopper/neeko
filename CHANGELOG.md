@@ -2,6 +2,46 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.0.6] - 2026-08-11
+
+### 🚀 Features
+
+- **git**: Spin refresh button while git info reloads
+- **app**: Add crash recovery, terminal leak fix and log rotation
+
+### 🐛 Bug Fixes
+
+- Resolve cross-platform compilation issues
+- Gate platform-specific imports behind cfg to fix unused warnings
+- Resolve Linux clippy warnings and unused Result error
+- **clippy**: Resolve lint errors failing Windows CI
+- **windows**: Make cargo test pass on Windows CI
+- **tauri**: Embed Common-Controls v6 manifest for test binaries
+- **git**: Invalidate diff cache on git panel refresh
+- **git**: Preserve ignored files state after Git panel refresh
+
+### 🚜 Refactor
+
+- **platform**: Centralize platform-difference logic
+- **git**: Consolidate exec-target triple enum into single ExecTarget
+- **exec**: Remove deprecated command helpers and clean platform code
+
+### 🎨 Styling
+
+- Place module doc comments before cfg attributes
+
+### 🧪 Testing
+
+- Fix 8 Windows-only test failures
+
+### ⚙️ Miscellaneous Tasks
+
+- **ci**: Optimize CI/CD pipeline for faster feedback
+- **task**: Archive 08-10-platform-diff-centralization
+- Record journal
+- **task**: Archive 08-11-exec-target-consolidation
+- Record journal
+
 ## [1.0.5] - 2026-08-10
 
 ### 🚀 Features
@@ -1347,6 +1387,7 @@ All notable changes to this project will be documented in this file.
 - **task**: Archive 08-10-search-find-in-files
 - Ignore .zcode tool directory
 - Add license field to Cargo.toml
+- Release v1.0.5
 
 ### ◀️ Revert
 
