@@ -1,0 +1,4 @@
+{"file": ".trellis/spec/backend/index.md", "reason": "后端开发指南入口，Pre-Development Checklist + Quality Check"}
+{"file": ".trellis/spec/backend/directory-structure.md", "reason": "模块布局、mod.rs 仅声明、services.rs 模式——平台模块需遵循"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "平台特定代码约定、模块可见性、Enum vs Trait、mod.rs 极薄规范"}
+{"file": ".trellis/spec/unit-test/backend-testing.md", "reason": "Rust 单元测试模式（TDD 红绿重构）"}

@@ -30,7 +30,7 @@ const GRACEFUL_TIMEOUT_SECS: u64 = 2;
 #[cfg(unix)]
 #[must_use]
 pub fn collect_session_processes(shell_pid: i32) -> Vec<i32> {
-    let (ppid_map, sid_map) = snapshot_process_tree();
+    let (ppid_map, sid_map) = crate::platform::process_tree::snapshot_process_tree();
     collect_from_maps(shell_pid, &ppid_map, &sid_map)
 }
 
@@ -76,76 +76,8 @@ fn collect_from_maps(
     sorted
 }
 
-/// Snapshot `(pid → ppid, pid → sid)` for every live process on this host.
-#[cfg(target_os = "macos")]
-fn snapshot_process_tree() -> (
-    std::collections::HashMap<i32, i32>,
-    std::collections::HashMap<i32, i32>,
-) {
-    use libproc::libproc::bsd_info::BSDInfo;
-    use libproc::libproc::proc_pid::pidinfo;
-    use libproc::processes::{pids_by_type, ProcFilter};
-
-    let mut ppid_map = std::collections::HashMap::new();
-    let mut sid_map = std::collections::HashMap::new();
-
-    let Ok(pids) = pids_by_type(ProcFilter::All) else {
-        return (ppid_map, sid_map);
-    };
-    for pid in pids {
-        let pid = pid.cast_signed();
-        if let Ok(info) = pidinfo::<BSDInfo>(pid, 0) {
-            ppid_map.insert(pid, info.pbi_ppid.cast_signed());
-            let sid = unsafe { libc::getsid(pid) };
-            if sid >= 0 {
-                sid_map.insert(pid, sid);
-            }
-        }
-    }
-    (ppid_map, sid_map)
-}
-
-/// Snapshot `(pid → ppid, pid → sid)` on Linux via procfs.
-#[cfg(target_os = "linux")]
-fn snapshot_process_tree() -> (
-    std::collections::HashMap<i32, i32>,
-    std::collections::HashMap<i32, i32>,
-) {
-    use std::collections::HashMap;
-    use std::fs;
-
-    let mut ppid_map = HashMap::new();
-    let mut sid_map = HashMap::new();
-
-    let Ok(entries) = fs::read_dir("/proc") else {
-        return (ppid_map, sid_map);
-    };
-    for entry in entries.flatten() {
-        let name = entry.file_name();
-        let Some(name) = name.to_str() else { continue };
-        let Ok(pid) = name.parse::<i32>() else {
-            continue;
-        };
-        // /proc/<pid>/stat format: pid (comm) state ppid pgrp session ...
-        // comm may contain spaces/parens, so split after the LAST ')'.
-        let Ok(stat) = fs::read_to_string(entry.path().join("stat")) else {
-            continue;
-        };
-        let Some((_, rest)) = stat.rsplit_once(')') else {
-            continue;
-        };
-        let fields: Vec<&str> = rest.split_whitespace().collect();
-        if fields.len() >= 4 {
-            if let Ok(ppid) = fields[1].parse::<i32>() {
-                ppid_map.insert(pid, ppid);
-            }
-            if let Ok(sid) = fields[3].parse::<i32>() {
-                sid_map.insert(pid, sid);
-            }
-        }
-    }
-    (ppid_map, sid_map)
-}
+// 进程树快照平台差异已集中到 `crate::platform::process_tree`
+//（macOS 用 libproc，Linux 用 procfs）。
 
 /// SIGTERM every pid, wait up to [`GRACEFUL_TIMEOUT_SECS`], then SIGKILL
 /// the survivors.  Silently ignores already-dead processes.

@@ -161,30 +161,11 @@ fn scan_project_for_ts_root(project_root: &Path) -> Option<PathBuf> {
     None
 }
 
-/// Convert the part of a `file://` URI *after* the scheme into a filesystem path.
+/// Convert the part of a `file://` URI *after* the scheme into a filesystem path。
 ///
-/// `rest` is the slice following `"file://"`. For example, both
-/// `file:///unix/path` (non-Windows) and `file:///C:/repo` (Windows) hand us a
-/// `rest` of `"/unix/path"` and `"/C:/repo"` respectively.
-///
-/// Returns `None` when the rest cannot be decoded into a valid native path
-/// (e.g. malformed percent-encoding). Callers fall back to the project root.
+/// 平台差异集中化于 `crate::platform::file_url`。
 pub(crate) fn file_url_to_path(rest: &str) -> Option<PathBuf> {
-    #[cfg(target_os = "windows")]
-    {
-        // Drop the leading slash so "/C:/repo" becomes "C:/repo", then
-        // percent-decode to support spaces and non-ASCII filenames.
-        let trimmed = rest.strip_prefix('/').unwrap_or(rest);
-        let decoded = urlencoding::decode(trimmed).ok()?;
-        Some(PathBuf::from(decoded.as_ref()))
-    }
-    #[cfg(not(target_os = "windows"))]
-    {
-        // Re-parse the full URL so `url` can validate the structure, then ask
-        // it for the native path. The full URL is `file://{rest}` by construction.
-        let url = url::Url::parse(&format!("file://{}", rest)).ok()?;
-        url.to_file_path().ok()
-    }
+    crate::platform::file_url::file_url_to_path(rest)
 }
 
 #[cfg(test)]

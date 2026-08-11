@@ -10,13 +10,8 @@
 /// - Windows (WebView2): `http://<scheme>.localhost/<path>`
 /// - macOS (WKWebView) / Linux (WebKitGTK): `<scheme>://localhost/<path>`
 ///
-/// Hardcoding the Windows form previously broke picker -> Rust notifications
-/// (prompt-submitted / picker-cancelled / element-picked) on macOS and Linux.
-#[cfg(target_os = "windows")]
-pub const NOTIFY_BASE: &str = "http://neeko.localhost/";
-/// Base URL (non-Windows):`neeko://localhost/`(WKWebView / WebKitGTK)。
-#[cfg(not(target_os = "windows"))]
-pub const NOTIFY_BASE: &str = "neeko://localhost/";
+/// 通知基地址(平台差异集中化于 `crate::platform::notify_base`)。
+pub use crate::platform::notify_base::notify_base;
 
 /// Element picker injection script.
 /// Phase 1: highlight + tooltip on hover, click to select.
@@ -39,7 +34,7 @@ pub fn build_meta_script(label: &str) -> String {
     let label_json = serde_json::to_string(label).unwrap_or_else(|_| "\"\"".to_string());
     format!(
         "fetch('{base}page-meta',{{method:'POST',headers:{{'Content-Type':'application/json'}},body:JSON.stringify({{label:{label},title:document.title||'',favicon:(document.querySelector('link[rel~=\"icon\"]')||{{}}).href||''}})}})",
-        base = NOTIFY_BASE,
+        base = notify_base(),
         label = label_json,
     )
 }
@@ -56,8 +51,8 @@ pub fn build_picker_script(
 ) -> Result<String, crate::AppError> {
     let theme_json = serde_json::to_string(&theme_colors.unwrap_or_default())
         .unwrap_or_else(|_| "{}".to_string());
-    let notify_base_json = serde_json::to_string(NOTIFY_BASE)
-        .map_err(|e| crate::AppError::Unknown(format!("Failed to serialize NOTIFY_BASE: {}", e)))?;
+    let notify_base_json = serde_json::to_string(notify_base())
+        .map_err(|e| crate::AppError::Unknown(format!("Failed to serialize notify_base: {}", e)))?;
     Ok(format!(
         "window.__NEEKO_THEME__ = {};\nwindow.__NEEKO_NOTIFY_BASE__ = {};\n{}",
         theme_json, notify_base_json, PICKER_SCRIPT
@@ -73,9 +68,9 @@ mod tests {
         // The picker script concatenates `base + path`, so a missing trailing
         // slash would silently produce a malformed URL on every notify().
         assert!(
-            NOTIFY_BASE.ends_with('/'),
-            "NOTIFY_BASE must end with '/': {}",
-            NOTIFY_BASE
+            notify_base().ends_with('/'),
+            "notify_base must end with '/': {}",
+            notify_base()
         );
     }
 
@@ -84,7 +79,7 @@ mod tests {
     fn notify_base_uses_localhost_http_form_on_windows() {
         // WebView2 routes register_uri_scheme_protocol("neeko", ...) via
         // http://neeko.localhost/<path>.
-        assert_eq!(NOTIFY_BASE, "http://neeko.localhost/");
+        assert_eq!(notify_base(), "http://neeko.localhost/");
     }
 
     #[cfg(not(target_os = "windows"))]
@@ -92,16 +87,16 @@ mod tests {
     fn notify_base_uses_custom_scheme_off_windows() {
         // WKWebView / WebKitGTK route register_uri_scheme_protocol via
         // <scheme>://localhost/<path>.
-        assert_eq!(NOTIFY_BASE, "neeko://localhost/");
+        assert_eq!(notify_base(), "neeko://localhost/");
     }
 
     #[test]
     fn notify_base_serializes_as_json_string_literal() {
-        // The injected script depends on serde_json wrapping NOTIFY_BASE in
+        // The injected script depends on serde_json wrapping notify_base in
         // double quotes so it becomes a valid JS string literal.
-        let json = serde_json::to_string(NOTIFY_BASE).unwrap();
+        let json = serde_json::to_string(notify_base()).unwrap();
         assert!(json.starts_with('"') && json.ends_with('"'));
-        assert!(json.contains(NOTIFY_BASE));
+        assert!(json.contains(notify_base()));
     }
 
     #[test]

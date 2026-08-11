@@ -1,9 +1,5 @@
 //! Tauri commands for opening IDEs (local, remote SSH, and WSL).
 
-use crate::common::executor::factory::ExecTarget;
-#[cfg(target_os = "macos")]
-use crate::core::exec::collect_blocking;
-use crate::core::exec::spawn_detached;
 use crate::AppError;
 use crate::AppStateWrapper;
 use anyhow::Result;
@@ -55,62 +51,13 @@ pub fn open_ide(
         }
     };
 
-    let mut launch_args = extra_args.clone();
-    launch_args.push(project_path.clone());
-    let arg_refs: Vec<&str> = launch_args.iter().map(String::as_str).collect();
-
-    match spawn_detached(&ExecTarget::Local, &exe, &arg_refs) {
-        Ok(()) => Ok(()),
-        Err(err) => {
-            // macOS fallback：用户从 .dmg 装的 GUI 应用（GoLand/IntelliJ 等）
-            // 没生成 Toolbox shell shim 时，裸命令不在 PATH。
-            // 走 LaunchServices `open -a <app>` 按 app name 查找 /Applications/*.app。
-            // 优先用前端传过来的 macAppName（CFBundleName），命中不到再 fallback 到裸命令名——
-            // 后者只对 bundle name == command 的产品（GoLand/PyCharm/Zed 等）有效，
-            // IntelliJ IDEA 这类 bundle name "IntelliJ IDEA" ≠ command "idea" 的产品必须走 macAppName。
-            #[cfg(target_os = "macos")]
-            if matches!(&err, crate::common::executor::ExecError::Io(io) if io.kind() == std::io::ErrorKind::NotFound)
-                && !exe.contains('/')
-            {
-                let target = mac_app_name.as_deref().unwrap_or(&exe);
-                return open_via_launch_services(target, &extra_args, &project_path);
-            }
-            #[cfg(not(target_os = "macos"))]
-            let _ = mac_app_name;
-            Err(format!("Failed to launch '{}': {}", exe, err).into())
-        }
-    }
-}
-
-#[cfg(target_os = "macos")]
-fn open_via_launch_services(
-    app_name: &str,
-    extra_args: &[String],
-    project_path: &str,
-) -> Result<(), AppError> {
-    let mut args: Vec<&str> = vec!["-a", app_name, project_path];
-    if !extra_args.is_empty() {
-        args.push("--args");
-        for a in extra_args {
-            args.push(a);
-        }
-    }
-    let output = collect_blocking(&ExecTarget::Local, "open", &args).map_err(|e| {
-        format!(
-            "Failed to launch '{}' via LaunchServices: {}. Install the app under /Applications or set the IDE command to the full executable path in Settings.",
-            app_name, e
-        )
-    })?;
-    if output.exit_code != 0 {
-        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
-        return Err(format!(
-            "LaunchServices could not find '{}': {}. Install the app under /Applications or set the IDE command to the full executable path in Settings.",
-            app_name,
-            if stderr.is_empty() { "no such application".to_string() } else { stderr }
-        )
-        .into());
-    }
-    Ok(())
+    // 平台差异(macOS LaunchServices 降级 / Windows cmd /C)集中化于 crate::platform::ide_launch。
+    crate::platform::ide_launch::launch_ide_with_fallback(
+        &exe,
+        &extra_args,
+        &project_path,
+        mac_app_name.as_deref(),
+    )
 }
 
 fn split_command(s: &str) -> Vec<String> {
@@ -194,35 +141,8 @@ fn open_remote_ide_impl(
 }
 
 fn spawn_ide_process(exe: &str, args: &[String]) -> Result<()> {
-    #[cfg(windows)]
-    {
-        let full_command = std::iter::once(exe.to_string())
-            .chain(args.iter().cloned())
-            .collect::<Vec<_>>()
-            .join(" ");
-
-        spawn_detached(&ExecTarget::Local, "cmd", &["/C", &full_command]).map_err(|e| {
-            anyhow::anyhow!(
-                "Failed to launch '{}': {}. Make sure it's installed and in PATH.",
-                exe,
-                e
-            )
-        })?;
-    }
-
-    #[cfg(unix)]
-    {
-        let arg_refs: Vec<&str> = args.iter().map(String::as_str).collect();
-        spawn_detached(&ExecTarget::Local, exe, &arg_refs).map_err(|e| {
-            anyhow::anyhow!(
-                "Failed to launch '{}': {}. Make sure it's installed and in PATH.",
-                exe,
-                e
-            )
-        })?;
-    }
-
-    Ok(())
+    // 平台差异(Windows cmd /C vs Unix 直接 spawn)集中化于 crate::platform::ide_launch。
+    crate::platform::ide_launch::spawn_ide_process(exe, args)
 }
 
 /// Opens an IDE inside a WSL distribution.

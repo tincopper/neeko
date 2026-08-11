@@ -1,8 +1,8 @@
+use crate::platform::reveal::{build_reveal_command, normalize_path};
 use crate::project::types::{FileContent, FileNode};
 use crate::AppError;
 use crate::AppStateWrapper;
 use std::path::Path;
-use std::process::Command;
 use tauri::State;
 
 // ── Opener Command ───────────────────────────────────────────────────────────
@@ -26,65 +26,6 @@ pub fn reveal_in_file_manager(path: String) -> Result<(), AppError> {
     }
 
     Ok(())
-}
-
-/// 规范化路径：将正斜杠统一为反斜杠（Windows）
-fn normalize_path(path: &str) -> String {
-    #[cfg(target_os = "windows")]
-    {
-        path.replace('/', "\\")
-    }
-    #[cfg(not(target_os = "windows"))]
-    {
-        path.to_string()
-    }
-}
-
-/// 构建在系统文件管理器中 reveal 指定路径的命令（不执行）
-fn build_reveal_command(path: &Path) -> Option<Command> {
-    let path_str = path.to_str()?;
-    let normalized = normalize_path(path_str);
-
-    #[cfg(target_os = "windows")]
-    {
-        if path.is_dir() {
-            let mut cmd = Command::new("explorer");
-            cmd.arg(&normalized);
-            Some(cmd)
-        } else {
-            let mut cmd = Command::new("explorer");
-            cmd.arg(format!("/select,{}", normalized));
-            Some(cmd)
-        }
-    }
-
-    #[cfg(target_os = "macos")]
-    {
-        if path.is_dir() {
-            let mut cmd = Command::new("open");
-            cmd.arg(&normalized);
-            Some(cmd)
-        } else {
-            let mut cmd = Command::new("open");
-            cmd.arg("-R").arg(&normalized);
-            Some(cmd)
-        }
-    }
-
-    #[cfg(target_os = "linux")]
-    {
-        if path.is_dir() {
-            let mut cmd = Command::new("xdg-open");
-            cmd.arg(&normalized);
-            Some(cmd)
-        } else {
-            path.parent().map(|parent| {
-                let mut cmd = Command::new("xdg-open");
-                cmd.arg(parent);
-                cmd
-            })
-        }
-    }
 }
 
 // ── File operations ──────────────────────────────────────────────────────────
@@ -224,6 +165,9 @@ pub async fn rename_path(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::platform::reveal::build_reveal_command;
+    #[cfg(target_os = "windows")]
+    use crate::platform::reveal::normalize_path;
     use std::fs;
 
     #[test]

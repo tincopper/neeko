@@ -184,14 +184,8 @@ pub async fn deploy_skill_to_agent(
             let _ = std::fs::remove_file(&dest);
         }
 
-        // Create symlink (or copy on non-unix)
-        #[cfg(unix)]
-        std::os::unix::fs::symlink(&source, &dest).map_err(AppError::from)?;
-        #[cfg(not(unix))]
-        {
-            crate::library::skill::sync_engine::copy_dir_recursive(&source, &dest)
-                .map_err(AppError::from)?;
-        }
+        // 创建链接:Unix 用 symlink,非 Unix 用目录复制(平台差异集中化)。
+        crate::platform::symlink::create_link(&source, &dest)?;
 
         // Record in skill_targets
         let target_rec = crate::library::skill::types::SkillTargetRecord {

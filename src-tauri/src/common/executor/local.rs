@@ -35,12 +35,8 @@ impl CommandExecutor for LocalExecutor {
             .stdin(std::process::Stdio::piped())
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped());
-        #[cfg(target_os = "windows")]
-        {
-            use std::os::windows::process::CommandExt;
-            // 与旧 `common::utils::command::local::exec` 对齐：隐藏控制台窗口。
-            command.creation_flags(crate::common::utils::command::local::flags::CREATE_NO_WINDOW);
-        }
+        // 平台差异(Windows CREATE_NO_WINDOW)集中化于 crate::platform::process_spawn。
+        crate::platform::process_spawn::apply_child_flags(&mut command);
         if let Some(dir) = opts.current_dir {
             command.current_dir(dir);
         }
@@ -95,18 +91,8 @@ impl CommandExecutor for LocalExecutor {
             .stdin(std::process::Stdio::null())
             .stdout(std::process::Stdio::null())
             .stderr(std::process::Stdio::null());
-        #[cfg(target_os = "windows")]
-        {
-            use crate::common::utils::command::local::flags;
-            use std::os::windows::process::CommandExt;
-            command.creation_flags(
-                flags::CREATE_NO_WINDOW | flags::DETACHED_PROCESS | flags::CREATE_NEW_PROCESS_GROUP,
-            );
-        }
-        #[cfg(unix)]
-        {
-            command.process_group(0);
-        }
+        // 平台差异(Windows 分离进程 / Unix 新进程组)集中化于 crate::platform::process_spawn。
+        crate::platform::process_spawn::apply_detached_flags(&mut command);
 
         command.spawn().map_err(ExecError::Io)?;
         Ok(())

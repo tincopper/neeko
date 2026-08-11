@@ -136,6 +136,45 @@ fn no_window_cmd(program: &str) -> Command {
 }
 ```
 
+### 平台差异集中化（Platform Adapter 分层）—— 强制
+
+> 适用：**同一接口需在 3 个及以上平台（macOS/Linux/Windows）分别实现**的场景。
+> 目标：把「每个平台必须有实现」从约定变为**编译期强制**——缺一个平台 impl，`mod.rs` 的 `pub use` 在本机直接报错，而非换平台构建才暴露。
+
+**反模式**：在单个函数体内用 `#[cfg]` 块堆叠多平台实现（如 `browser/devtools.rs`、`file/commands.rs`、`lsp/session/utils.rs`、`terminal/process_reaper.rs` 的历史写法）。遗漏某平台时当前平台编译不报错，只有换平台构建才暴露。
+
+**正确模式**：按「主题优先、平台次之」抽到 `src-tauri/src/platform/<theme>/`：
+
+```rust
+// platform/reveal/mod.rs —— 统一接口 + cfg 选择（编译期强制完整性）
+#[cfg(target_os = "macos")]
+mod macos;
+#[cfg(target_os = "macos")]
+pub use macos::*;
+
+#[cfg(target_os = "linux")]
+mod linux;
+#[cfg(target_os = "linux")]
+pub use linux::*;
+
+#[cfg(target_os = "windows")]
+mod windows;
+#[cfg(target_os = "windows")]
+pub use windows::*;
+
+/// 统一接口（对外只暴露这一个签名）
+pub fn build_reveal_command(path: &Path) -> Option<Command>;
+```
+
+- 每个主题一个目录，目录内每平台一个实现文件（`macos.rs` / `linux.rs` / `windows.rs` / `unix.rs`）。
+- `mod` 声明与 `pub use` **必须同时 cfg 门控**：非活动平台的模块不编译，避免 `dead_code` 警告（clippy `-D warnings` 会拦截）。各平台实现由 CI 三平台矩阵分别编译验证。
+- 业务代码只依赖 `platform::<theme>::` 统一接口，删除原函数体内的 `#[cfg]` 块。
+- 平台差异是**编译期确定**的，坚持编译期 cfg + 每平台文件，**不**用运行期 `Box<dyn Trait>`（与「有限策略集用 Enum+match」原则一致：平台差异不是运行期策略）。
+- 纯移动迁移：不改变平台逻辑实现，仅移动位置、统一接口。
+- 行为正确性由 CI 三平台矩阵（`.github/workflows/ci.yml` 的 `backend-check`/`backend-test`）兜底；本约定只保证「每个平台有实现且能编译」。
+
+**边界**：平台专属独立模块（如 `job_object`、`wsl`）、macOS 菜单（`app_menu.rs`，与 Tauri Menu API 深度绑定）、简单 shell 选择策略，无需抽入 `platform/`。
+
 ---
 
 ## 禁止模式

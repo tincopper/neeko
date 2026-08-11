@@ -129,16 +129,8 @@ pub async fn resolve_credential_helper(
     if !trimmed.is_empty() {
         return Ok(trimmed);
     }
-    // 回退平台默认
-    let platform_default = if cfg!(target_os = "macos") {
-        "osxkeychain"
-    } else if cfg!(windows) {
-        "manager"
-    } else {
-        // Linux：探测 libsecret 是否可用；否则回退 store（明文）并 warn
-        // 这里简单返回 "libsecret"，运行时若不可用 git 会 fallback
-        "libsecret"
-    };
+    // 回退平台默认(集中化于平台适配层)
+    let platform_default = crate::platform::git_credential::platform_default();
     Ok(platform_default.to_string())
 }
 

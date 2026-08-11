@@ -71,6 +71,16 @@ disable-model-invocation: true
 14. 🔀 【模块控制枢纽与零业务逻辑规范 (Slim Mod Hub)】
     - 【开发硬指标】：严禁在 `mod.rs`（或与目录同名的根文件，如 `terminal.rs`）内部平铺任何具体的 `fn`（业务函数）、`impl` 块或复杂的结构体字段实现。此文件只允许存在编译器声明（`mod xxx;`）和重新导出（`pub use xxx::*;`）。一旦发现业务实体大括号 `{...}` 必须立刻抽离到同级独立文件（如 `service.rs`、`types.rs`）中。
 
+15. 🧩 【跨平台组织集中化 (Platform Adapter Centralization)】
+    - 【第一性原理】：Neeko 是多端桌面应用，平台差异（macOS/Linux/Windows）是**编译期确定**的。若在单个函数体内用 `#[cfg]` 块堆叠多平台实现，遗漏某平台时当前平台编译不报错，只有换平台构建才暴露——这是「换平台才炸」的根因。平台差异必须集中到统一门面，把「每个平台必须有实现」变成**编译期强制**。
+    - 【审查硬指标】：
+        * **触发条件**：同一接口需在 3 个及以上平台（macOS/Linux/Windows）分别实现时，**必须**抽到 `src-tauri/src/platform/<theme>/`，按「主题优先、平台次之」组织（每个主题一个目录，目录内每平台一个实现文件 `macos.rs`/`linux.rs`/`windows.rs`/`unix.rs`）。
+        * **门面强制完整性**：主题 `mod.rs` 必须用 `#[cfg(target_os = "...")] mod xxx;` + `#[cfg(target_os = "...")] pub use xxx::*;` 选择平台实现（`mod` 与 `pub use` **必须同时 cfg 门控**，避免非活动平台模块触发 `dead_code` 警告）。缺一个平台 impl 时，`pub use` 在本机直接报错（而非换平台才暴露）。
+        * **业务代码解耦**：业务代码只允许依赖 `platform::<theme>::` 统一接口，**禁止**在函数体内平铺多平台 `#[cfg]` 实现块。
+        * **编译期而非运行期**：平台差异坚持编译期 cfg + 每平台文件，**禁止**用运行期 `Box<dyn Trait>` 抽象平台差异（与 pillar 3「跨平台物理对齐」一致，平台差异不是运行期策略）。
+        * **纯移动迁移**：迁移只移动位置、统一接口，不改变平台逻辑实现；行为正确性由 CI 三平台矩阵（`.github/workflows/ci.yml` 的 `backend-check`/`backend-test`）兜底。
+        * **边界豁免**：平台专属独立模块（`job_object`、`wsl`）、macOS 菜单（`app_menu.rs`）、简单 shell 选择策略，无需抽入 `platform/`。
+
 # 最少样本对照组 (Few-Shot Neeko Exemplar)
 AI 在开发或审查 Neeko 项目时，必须严格对照以下演进范式编写代码：
 

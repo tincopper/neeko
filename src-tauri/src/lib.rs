@@ -40,6 +40,8 @@ pub mod git;
 pub mod library;
 /// Language Server Protocol client management.
 pub mod lsp;
+/// Platform difference centralization (Platform Adapter).
+pub mod platform;
 /// Project management (add, remove, list, config).
 pub mod project;
 /// Search domain (content full-text search across local / WSL / SSH).

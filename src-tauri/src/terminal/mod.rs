@@ -98,30 +98,16 @@ impl TerminalManager {
                 "[PTY] Task command mode: {}",
                 task_command
             ));
-            #[cfg(target_os = "windows")]
-            {
-                let mut c = CommandBuilder::new("cmd");
-                c.args(["/c", task_command]);
-                c
-            }
-            #[cfg(not(target_os = "windows"))]
-            {
-                let mut c = CommandBuilder::new("sh");
-                c.args(["-c", task_command]);
-                c
-            }
+            // 平台差异(Windows cmd /c vs Unix sh -c)集中化于 crate::platform::shell_launch。
+            crate::platform::shell_launch::build_task_command(task_command)
         } else {
             crate::terminal::services::build_local_shell_cmd(&shell_override)
         };
 
         cmd.env("TERM", "xterm-256color");
         cmd.env("COLORTERM", "truecolor");
-        #[cfg(unix)]
-        {
-            cmd.env("LANG", "en_US.UTF-8");
-            cmd.env("LC_ALL", "en_US.UTF-8");
-            cmd.env("LC_CTYPE", "en_US.UTF-8");
-        }
+        // 平台差异(Unix locale 环境变量)集中化于 crate::platform::shell_launch。
+        crate::platform::shell_launch::apply_locale_env(&mut cmd);
         cmd.cwd(cwd);
 
         let child = pair.slave.spawn_command(cmd)?;
