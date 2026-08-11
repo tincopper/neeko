@@ -210,6 +210,8 @@ export interface WslTerminalCache {
   element: HTMLElement;
   sessionId: string | null;
   unlisten: (() => void) | null;
+  unlistenOutput: (() => void) | null;
+  unlistenClosed: (() => void) | null;
   inputController: TerminalInputController | null;
 }
 
@@ -303,6 +305,8 @@ export async function switchAgentInWslTerminal(
   const oldCache = wslTerminalCache.get(resolved);
   if (oldCache) {
     oldCache.unlisten?.();
+    oldCache.unlistenOutput?.();
+    oldCache.unlistenClosed?.();
     oldCache.inputController?.dispose();
   }
 
@@ -330,6 +334,8 @@ export interface RemoteTerminalCache {
   element: HTMLElement;
   sessionId: string | null;
   unlisten: (() => void) | null;
+  unlistenOutput: (() => void) | null;
+  unlistenClosed: (() => void) | null;
   inputController: TerminalInputController | null;
 }
 
@@ -384,6 +390,8 @@ export async function switchAgentInRemoteTerminal(
   const oldCache = remoteTerminalCache.get(resolved);
   if (oldCache) {
     oldCache.unlisten?.();
+    oldCache.unlistenOutput?.();
+    oldCache.unlistenClosed?.();
     oldCache.inputController?.dispose();
   }
 
@@ -460,10 +468,11 @@ export async function switchAgentInAnyTerminal(
     return;
   }
 
-  // Destroy old cache entry
   const oldCache = bk.cache.get(resolved) as CacheEntry | undefined;
   if (oldCache) {
     oldCache.unlisten?.();
+    oldCache.unlistenOutput?.();
+    oldCache.unlistenClosed?.();
     oldCache.inputController?.dispose();
   }
 

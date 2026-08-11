@@ -96,6 +96,8 @@ macro_rules! neeko_invoke_handler {
             $crate::session::commands::load_config,
             $crate::session::commands::save_vcs_settings_command,
             $crate::session::commands::load_vcs_settings_command,
+            // ── app lifecycle ────────────────────────────────────────────────
+            $crate::app_state::heartbeat,
             // ── terminal ─────────────────────────────────────────────────────
             $crate::terminal::commands::create_terminal_session,
             $crate::terminal::commands::close_terminal_session,

@@ -214,6 +214,10 @@ pub fn run() {
                     }
                 }
             }
+
+            // WebView crash detection: reload the window if the renderer stops
+            // heartbeating (crashed / frozen) — recovers from a black screen.
+            spawn_heartbeat_monitor(app.handle().clone());
             Ok(())
         })
         .menu(crate::app_menu::build_menu)
@@ -248,6 +252,48 @@ pub fn run() {
         .invoke_handler(crate::neeko_invoke_handler!())
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+/// Periodically check the frontend heartbeat and reload the main window if the
+/// renderer has gone silent (crashed / frozen), recovering from a black screen.
+///
+/// Runs on Tauri's async runtime; never blocks. The `heartbeat` command is
+/// invoked by the frontend every few seconds to keep the timestamp fresh.
+///
+/// Only a *visible* window is reloaded: a hidden / minimized one may be under
+/// macOS App Nap (JS timers paused), which would otherwise cause a
+/// false-positive reload of a perfectly healthy renderer.
+fn spawn_heartbeat_monitor(app_handle: tauri::AppHandle) {
+    const CHECK_INTERVAL: std::time::Duration = std::time::Duration::from_secs(10);
+    const STALE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
+
+    tauri::async_runtime::spawn(async move {
+        let mut ticker = tokio::time::interval(CHECK_INTERVAL);
+        ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+        loop {
+            ticker.tick().await;
+            let state = app_handle.state::<AppStateWrapper>();
+            if !state.heartbeat_stale(STALE_TIMEOUT) {
+                continue;
+            }
+            let Some(window) = app_handle.get_webview_window("main") else {
+                continue;
+            };
+            if !window.is_visible().unwrap_or(false) {
+                log::debug!(
+                    "[Heartbeat] Renderer silent but window hidden — skipping reload (App Nap?)"
+                );
+                continue;
+            }
+            log::warn!(
+                "[Heartbeat] Frontend renderer silent for >{}s — reloading window to recover from black screen",
+                STALE_TIMEOUT.as_secs()
+            );
+            if let Err(e) = window.reload() {
+                log::error!("[Heartbeat] Failed to reload window: {e}");
+            }
+        }
+    });
 }
 
 /// Read legacy `agentSkillPathOverrides` map from config (pre skill_path-on-agent).

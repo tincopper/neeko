@@ -501,7 +501,9 @@ impl WatcherManager {
                     .collect();
 
                 let relevant = !relevant_paths.is_empty();
-                log::debug!(
+                // 每个 FS 事件都会触发，高频；降为 trace 避免刷爆日志
+                // （Debug 级别下 watcher 曾单次会话产生数十万行）
+                log::trace!(
                     "[Watcher:{}] FS event {:?}, paths={:?}, relevant={}",
                     pid_log,
                     event.kind,
