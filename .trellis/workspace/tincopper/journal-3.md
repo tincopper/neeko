@@ -294,3 +294,36 @@ After `pnpm tauri build` (or any heavy build), the file list's git-status indica
 ### Next Steps
 
 - None - task complete
+
+
+## Session 126: 平台差异集中化重构：neeko-check 审查 + 三项优化 + 提交
+
+**Date**: 2026-08-11
+**Task**: 平台差异集中化重构：neeko-check 审查 + 三项优化 + 提交
+**Branch**: `main`
+
+### Summary
+
+对平台差异集中化重构执行 neeko-check 审查（PASS）；落实三项优化：notify_base 命名改回函数式、ProcessTree 类型别名抽离至 types.rs、shell_launch 补充单元测试；全量测试/clippy/fmt 通过；英文 Conventional Commits 提交；任务归档。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `7ea9ae42` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

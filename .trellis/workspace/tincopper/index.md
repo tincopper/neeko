@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-3.md`
-- **Total Sessions**: 125
-- **Last Active**: 2026-08-07
+- **Total Sessions**: 126
+- **Last Active**: 2026-08-11
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-3.md` | ~296 | Active |
+| `journal-3.md` | ~329 | Active |
 | `journal-2.md` | ~1991 | Archived |
 | `journal-1.md` | ~1986 | Archived |
 <!-- @@@/auto:active-documents -->
@@ -31,6 +31,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 126 | 2026-08-11 | 平台差异集中化重构：neeko-check 审查 + 三项优化 + 提交 | `7ea9ae42` | `main` |
 | 125 | 2026-08-07 | fix: git status list stale after build (race in full refresh) | - | `main` |
 | 124 | 2026-08-07 | feat(editor): multi pinned tabs — drag tab to pinned panel appends instead of replacing | `4169970f` | `main` |
 | 123 | 2026-08-07 | feat(editor): drag unpinned tab to pinned panel to pin | `4169970f` | `main` |
