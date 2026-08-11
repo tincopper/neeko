@@ -327,3 +327,36 @@ After `pnpm tauri build` (or any heavy build), the file list's git-status indica
 ### Next Steps
 
 - None - task complete
+
+
+## Session 127: 收敛命令执行三重枚举（GitTransportKind/ExecTarget/ProjectEnvironment）
+
+**Date**: 2026-08-11
+**Task**: 收敛命令执行三重枚举（GitTransportKind/ExecTarget/ProjectEnvironment）
+**Branch**: `main`
+
+### Summary
+
+删除 GitTransportKind，GitTransport 直接 impl for ExecTarget，删除 exec_target() 泄漏方法与 to_git_transport() 双向转换，resolve_project 返回 ExecTarget。三重枚举收敛为二重，行为零变化，677+79 测试全绿。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `e45d9b57` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
