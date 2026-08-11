@@ -104,12 +104,19 @@ mod inner {
                 PeakJobMemoryUsed: 0,
             };
 
+            let info_size =
+                u32::try_from(std::mem::size_of::<JOBOBJECT_EXTENDED_LIMIT_INFORMATION>())
+                    .map_err(|_| {
+                        io::Error::new(
+                            io::ErrorKind::InvalidInput,
+                            "JOBOBJECT_EXTENDED_LIMIT_INFORMATION size exceeds u32",
+                        )
+                    })?;
             let ok = SetInformationJobObject(
                 job,
                 JobObjectExtendedLimitInformation,
                 &mut info as *mut _ as *mut _,
-                u32::try_from(std::mem::size_of::<JOBOBJECT_EXTENDED_LIMIT_INFORMATION>())
-                    .expect("JOBOBJECT_EXTENDED_LIMIT_INFORMATION size fits in u32"),
+                info_size,
             );
             if ok == FALSE {
                 let err = io::Error::last_os_error();
