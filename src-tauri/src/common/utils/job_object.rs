@@ -108,7 +108,8 @@ mod inner {
                 job,
                 JobObjectExtendedLimitInformation,
                 &mut info as *mut _ as *mut _,
-                std::mem::size_of::<JOBOBJECT_EXTENDED_LIMIT_INFORMATION>() as u32,
+                u32::try_from(std::mem::size_of::<JOBOBJECT_EXTENDED_LIMIT_INFORMATION>())
+                    .expect("JOBOBJECT_EXTENDED_LIMIT_INFORMATION size fits in u32"),
             );
             if ok == FALSE {
                 let err = io::Error::last_os_error();

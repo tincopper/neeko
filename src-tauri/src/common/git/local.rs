@@ -22,8 +22,8 @@ use super::parsers::{
 /// 统一命令执行：在本地同步运行 `program`（git / wc 等），返回原始输出（含非零退出码）。
 ///
 /// 本模块是纯本地仓库操作，固定使用 `ExecTarget::Local`，经 `core::exec`
-/// 统一接口执行（PATH 解析 / Windows `CREATE_NO_WINDOW` 语义与旧 `local::exec`
-/// 对齐）。`current_dir` 为 `None` 时通过 `git -C` 指定仓库目录。
+/// 统一接口执行（PATH 解析 / Windows `CREATE_NO_WINDOW` 语义由统一接口保证）。
+/// `current_dir` 为 `None` 时通过 `git -C` 指定仓库目录。
 fn run_cmd_local(
     current_dir: Option<&Path>,
     program: &str,

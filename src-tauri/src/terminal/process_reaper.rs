@@ -19,6 +19,7 @@
 #[cfg(unix)]
 use std::time::{Duration, Instant};
 
+#[cfg(unix)]
 const GRACEFUL_TIMEOUT_SECS: u64 = 2;
 
 /// Enumerate all PIDs belonging to the PTY session rooted at `shell_pid`.

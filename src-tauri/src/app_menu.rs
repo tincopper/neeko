@@ -170,7 +170,6 @@ pub fn handle_menu_event(app: &tauri::AppHandle, id: &str, cmd_w_flag: &AtomicBo
                 window.open_devtools();
             }
         }
-        return;
     }
 
     // Forward Edit menu commands to the focused webview so copy/paste/

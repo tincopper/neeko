@@ -1,3 +1,4 @@
+#[cfg(target_os = "windows")]
 use std::process::Command;
 
 /// Windows process creation flag constants.
@@ -11,46 +12,16 @@ pub mod flags {
     pub const CREATE_NEW_PROCESS_GROUP: u32 = 0x00000200;
 }
 
-/// Create a `Command` that runs without a visible console window on Windows.
+/// Build a `std::process::Command` that hides the Windows console window.
 ///
-/// # Deprecated
-/// 业务代码禁止直接调用 —— 命令执行必须走 `crate::core::exec` /
-/// `crate::common::executor` 统一接口（见 AGENTS.md Review Gate #1）。
-/// 保留仅用于历史兼容，避免误用复活。
-#[deprecated(
-    note = "use crate::core::exec / crate::common::executor unified interface instead (AGENTS.md Review Gate #1)"
-)]
-#[cfg_attr(not(target_os = "windows"), allow(unused_mut))]
-#[must_use]
-pub fn exec(program: &str) -> Command {
-    let mut cmd = Command::new(program);
-    #[cfg(target_os = "windows")]
-    {
-        use std::os::windows::process::CommandExt;
-        cmd.creation_flags(flags::CREATE_NO_WINDOW);
-    }
-    cmd
-}
-
-/// Create a detached process with no window (Windows only).
-///
-/// Suitable for launching GUI applications (e.g. IDE): no console inheritance,
-/// not tied to parent process lifetime.
-///
-/// # Deprecated
-/// 业务代码禁止直接调用 —— 使用 `crate::core::exec::spawn_detached`
-/// （`ExecTarget::Local`）替代，其内部已携带相同 flags
-/// （见 AGENTS.md Review Gate #1）。
-#[deprecated(note = "use crate::core::exec::spawn_detached instead (AGENTS.md Review Gate #1)")]
+/// 私有辅助：供本模块纯工具函数（`resolve_command_path` / `resolve_full_path` 的
+/// Windows 分支）内部使用，等价于已删除的历史 `exec` 包装。业务命令执行统一走
+/// `crate::core::exec` / `crate::common::executor`（AGENTS.md Review Gate #1）。
 #[cfg(target_os = "windows")]
-pub fn exec_detached(program: &str) -> Command {
+fn windows_command(program: &str) -> Command {
+    use std::os::windows::process::CommandExt;
     let mut cmd = Command::new(program);
-    {
-        use std::os::windows::process::CommandExt;
-        cmd.creation_flags(
-            flags::CREATE_NO_WINDOW | flags::DETACHED_PROCESS | flags::CREATE_NEW_PROCESS_GROUP,
-        );
-    }
+    cmd.creation_flags(flags::CREATE_NO_WINDOW);
     cmd
 }
 
@@ -92,7 +63,7 @@ pub fn resolve_command_path(command: &str, path_env: &str) -> String {
 
     #[cfg(target_os = "windows")]
     {
-        let output = exec("where.exe")
+        let output = windows_command("where.exe")
             .arg(command)
             .env("PATH", path_env)
             .output();
@@ -221,7 +192,7 @@ pub fn resolve_full_path() -> String {
 /// Read user-level PATH from Windows registry (HKCU\Environment).
 #[cfg(target_os = "windows")]
 fn read_registry_path_windows() -> String {
-    let output = exec("reg")
+    let output = windows_command("reg")
         .args(["query", "HKCU\\Environment", "/v", "PATH"])
         .output();
 
@@ -253,7 +224,7 @@ fn expand_env_vars_windows(s: &str) -> String {
     if !result.contains('%') {
         return result;
     }
-    let output = exec("cmd.exe")
+    let output = windows_command("cmd.exe")
         .args(["/C", &format!("echo {}", s)])
         .output();
     if let Ok(o) = output {

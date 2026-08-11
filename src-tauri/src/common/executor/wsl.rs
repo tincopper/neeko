@@ -42,7 +42,7 @@ pub struct WslExecutor {
 #[cfg(target_os = "windows")]
 impl WslExecutor {
     /// Create a new `WslExecutor` for the given distribution.
-    pub fn new(distro: String) -> Self {
+    pub const fn new(distro: String) -> Self {
         Self {
             distro: Some(distro),
         }

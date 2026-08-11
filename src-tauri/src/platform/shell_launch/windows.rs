@@ -11,7 +11,7 @@ pub fn build_task_command(task_command: &str) -> CommandBuilder {
 }
 
 /// Windows 无需 locale 环境变量。
-pub fn apply_locale_env(_cmd: &mut CommandBuilder) {}
+pub const fn apply_locale_env(_cmd: &mut CommandBuilder) {}
 
 #[cfg(test)]
 mod tests {

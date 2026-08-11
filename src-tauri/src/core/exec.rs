@@ -1,7 +1,7 @@
 //! Cross-environment command execution facade.
 //!
-//! Business code should prefer this module over calling
-//! [`crate::common::utils::command::local`] spawn helpers or constructing
+//! Business code should prefer this module over legacy
+//! `crate::common::utils::command` helpers or constructing
 //! environment-specific shells by hand. All runs go through
 //! [`crate::common::executor`].
 //!
