@@ -513,8 +513,13 @@ const GitCommitPanel: React.FC<GitCommitPanelProps> = ({
         onFetch={handleFetch}
         onPull={handlePull}
         onPush={handlePush}
-        onRefresh={() => {
-          onRefreshGit().catch(console.error);
+        onRefresh={async () => {
+          setLoading(true);
+          try {
+            await onRefreshGit();
+          } finally {
+            setLoading(false);
+          }
         }}
         onNewBranch={handleNewBranch}
         onNewWorktree={handleNewWorktree}
