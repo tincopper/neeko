@@ -402,7 +402,9 @@ impl ConversationManager {
                         }
                     }
                 };
-                let rel_str = rel_path.to_string_lossy();
+                // Windows 上 rel_path 用 `\` 分隔,而 glob pattern 约定 `/` 分隔;
+                // 统一转成 `/` 后再匹配,否则 `**/sessions/*.jsonl` 在 Windows 上永远命中不了。
+                let rel_str = rel_path.to_string_lossy().replace('\\', "/");
 
                 if !pattern_regex.is_match(&rel_str) {
                     continue;

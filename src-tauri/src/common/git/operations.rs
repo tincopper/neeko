@@ -1361,6 +1361,9 @@ mod tests {
             vec!["init", "-q"],
             vec!["config", "user.email", "t@t"],
             vec!["config", "user.name", "t"],
+            // Windows 上 git 默认 autocrlf=true 会把检出内容转成 CRLF,
+            // 导致 discard 恢复后内容与写入的 `base\n` 不一致;关闭以保证跨平台一致。
+            vec!["config", "core.autocrlf", "false"],
         ];
         for cmd in &commands {
             let out = git_local(&path, cmd).await;

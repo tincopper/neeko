@@ -237,17 +237,24 @@ mod tests {
 
     #[test]
     fn collect_blocking_with_sets_current_dir_and_env() {
-        let dir = std::env::temp_dir().canonicalize().unwrap();
-        let dir_str = dir.to_str().unwrap();
+        // Windows 上 Git Bash 的 pwd 输出 MSYS 路径(/c/Users/...),与 Windows
+        // 路径(C:\Users\...)格式不同,不能直接 contains 全路径;改用唯一目录名
+        // 验证 current_dir 已生效。
+        let dir = tempfile::tempdir().expect("create temp dir");
+        let dir_name = dir.path().file_name().unwrap().to_string_lossy();
         let output = collect_blocking_with(
             &ExecTarget::Local,
             SpawnOptions::new("sh", &["-c", "pwd; [ \"$NEEKO_TEST_ENV\" = \"42\" ]"])
-                .with_current_dir(dir_str)
+                .with_current_dir(dir.path().to_str().unwrap())
                 .with_env(&[("NEEKO_TEST_ENV", "42")]),
         )
         .unwrap();
         assert_eq!(output.exit_code, 0);
-        assert!(String::from_utf8_lossy(&output.stdout).contains(dir_str));
+        assert!(
+            String::from_utf8_lossy(&output.stdout).contains(dir_name.as_ref()),
+            "stdout should mention the working dir: {}",
+            String::from_utf8_lossy(&output.stdout)
+        );
     }
 
     #[test]

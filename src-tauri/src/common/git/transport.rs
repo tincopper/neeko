@@ -587,7 +587,12 @@ mod tests {
         // 通过 GIT_AUTHOR_NAME 环境变量，git var GIT_AUTHOR_IDENT 返回该作者信息
         let transport = ExecTarget::Local;
         let opts = GitExecOptions {
-            env: &[("GIT_AUTHOR_NAME", "Neeko Test")],
+            // `git var GIT_AUTHOR_IDENT` 需要 name + email 同时存在;
+            // CI 上可能未配置全局 git 身份,必须全部注入才能保证测试独立于机器环境。
+            env: &[
+                ("GIT_AUTHOR_NAME", "Neeko Test"),
+                ("GIT_AUTHOR_EMAIL", "neeko@test.local"),
+            ],
             extra_config: &[],
         };
         let out = transport

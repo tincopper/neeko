@@ -233,6 +233,11 @@ mod tests {
     #[test]
     fn test_file_path_helpers() {
         // fileUrlToFilePath 对应逻辑在 TS 侧;此处验证 Rust 侧路径拼接假设
-        assert!(std::path::Path::new("/tmp").is_absolute());
+        // Windows 上 `/tmp` 是无盘符的根相对路径,is_absolute() 为 false,按平台取绝对路径样例
+        #[cfg(windows)]
+        let absolute = std::path::Path::new(r"C:\tmp");
+        #[cfg(not(windows))]
+        let absolute = std::path::Path::new("/tmp");
+        assert!(absolute.is_absolute());
     }
 }
