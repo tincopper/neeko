@@ -1,8 +1,8 @@
 //! Central application state container and terminal dispatch routing.
 
 use crate::agent::AgentManager;
+use crate::common::executor::factory::ExecTarget;
 use crate::common::file::watcher::WatcherManager;
-use crate::common::git::transport::{GitTransport, GitTransportKind};
 use crate::common::runtime::AppRuntime;
 use crate::common::terminal::remote::RemoteTerminalManager;
 use crate::conversation::ConversationManager;
@@ -113,19 +113,16 @@ impl AppStateWrapper {
         });
     }
 
-    /// Resolve project path and a matching GitTransport by project ID.
-    pub fn resolve_project(
-        &self,
-        project_id: &str,
-    ) -> Result<(Arc<dyn GitTransport>, String), AppError> {
+    /// Resolve project path and a matching ExecTarget by project ID.
+    pub fn resolve_project(&self, project_id: &str) -> Result<(ExecTarget, String), AppError> {
         let manager = self.project_manager.lock().map_err(AppError::from)?;
         let project = manager
             .get_project(project_id)
             .ok_or_else(|| AppError::NotFound(format!("Project not found: {project_id}")))?;
 
         let path = project.path.to_string_lossy().to_string();
-        let kind: GitTransportKind = project.environment.to_git_transport(&path).0;
-        Ok((Arc::new(kind), path))
+        let target = project.environment.to_exec_target();
+        Ok((target, path))
     }
 
     /// Resolve a project's execution environment.

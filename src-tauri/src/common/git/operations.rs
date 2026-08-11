@@ -1342,7 +1342,7 @@ fn extract_username_hint(url: &str) -> Option<String> {
 mod tests {
     use super::*;
     use crate::common::executor::factory::ExecTarget;
-    use crate::common::git::transport::{GitExecOptions, GitTransportKind};
+    use crate::common::git::transport::{GitExecOptions, GitTransport};
     use async_trait::async_trait;
     use tempfile::tempdir;
 
@@ -1386,7 +1386,7 @@ mod tests {
         let (dir, path) = init_repo().await;
         std::fs::write(dir.path().join("test_structure.html"), "new\n").expect("write untracked");
 
-        let transport = GitTransportKind::Local;
+        let transport = ExecTarget::Local;
         discard_file(&transport, &path, "test_structure.html")
             .await
             .expect("discard untracked file should not fail");
@@ -1403,7 +1403,7 @@ mod tests {
         let (dir, path) = init_repo().await;
         std::fs::write(dir.path().join("base.txt"), "modified\n").expect("modify tracked");
 
-        let transport = GitTransportKind::Local;
+        let transport = ExecTarget::Local;
         discard_file(&transport, &path, "base.txt")
             .await
             .expect("discard tracked file should succeed");
@@ -1420,7 +1420,7 @@ mod tests {
         let out = git_local(&path, &["add", "base.txt"]).await;
         assert!(out.exit_code == 0, "git add failed");
 
-        let transport = GitTransportKind::Local;
+        let transport = ExecTarget::Local;
         discard_file(&transport, &path, "base.txt")
             .await
             .expect("discard staged file should succeed");
@@ -1475,10 +1475,6 @@ mod tests {
         async fn is_git_repo(&self, _path: &str) -> bool {
             true
         }
-
-        fn exec_target(&self) -> ExecTarget {
-            ExecTarget::Local
-        }
     }
 
     #[tokio::test]
@@ -1492,7 +1488,7 @@ mod tests {
         let out = git_local(&path, &["add", "new.txt"]).await;
         assert!(out.exit_code == 0, "git add failed");
 
-        let transport = GitTransportKind::Local;
+        let transport = ExecTarget::Local;
         discard_file(&transport, &path, "new.txt")
             .await
             .expect("discard staged add in no-HEAD repo should succeed");

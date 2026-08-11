@@ -6,7 +6,6 @@ use anyhow::Result;
 use async_trait::async_trait;
 use tokio::io::AsyncWriteExt;
 
-use crate::common::connection::types::AuthMethod;
 use crate::common::executor::factory::{create_executor, ExecTarget};
 use crate::common::executor::sync::{collect_child_output, exec_on};
 use crate::common::utils::command::local::safe_path;
@@ -184,40 +183,12 @@ pub trait GitTransport: Send + Sync {
 
     /// Check if a directory is a git repo.
     async fn is_git_repo(&self, path: &str) -> bool;
-
-    /// Return the ExecTarget corresponding to this transport.
-    fn exec_target(&self) -> ExecTarget;
-}
-
-// ── Concrete enum ──────────────────────────────────────────────────────────
-
-/// Concrete transport kinds. Implements [`GitTransport`].
-pub enum GitTransportKind {
-    /// Execute git commands on the local host.
-    Local,
-    /// Execute git commands inside a WSL distribution (Windows only).
-    #[cfg(target_os = "windows")]
-    Wsl {
-        /// WSL distribution name.
-        distro: String,
-    },
-    /// Execute git commands on a remote host via SSH.
-    Remote {
-        /// Remote host address.
-        host: String,
-        /// SSH port.
-        port: u16,
-        /// Remote username.
-        username: String,
-        /// Authentication method.
-        auth: AuthMethod,
-    },
 }
 
 // ── Trait implementation ───────────────────────────────────────────────────
 
 #[async_trait]
-impl GitTransport for GitTransportKind {
+impl GitTransport for ExecTarget {
     /// Execute a raw git command, returning stdout. 旧签名保留，委托默认选项。
     async fn run_git(&self, args: &[&str], work_dir: &str) -> Result<String> {
         self.run_git_opts(args, work_dir, GitExecOptions::default())
@@ -251,8 +222,8 @@ impl GitTransport for GitTransportKind {
         let config_args = opts.config_args();
 
         match self {
-            GitTransportKind::Local => {
-                let executor = create_executor(&ExecTarget::Local);
+            ExecTarget::Local => {
+                let executor = create_executor(self);
 
                 let mut full_args: Vec<String> = config_args;
                 full_args.extend(args.iter().map(|s| s.to_string()));
@@ -306,8 +277,7 @@ impl GitTransport for GitTransportKind {
                 }
                 Ok(stdout)
             }
-            #[cfg(target_os = "windows")]
-            GitTransportKind::Wsl { distro } => {
+            ExecTarget::Wsl { .. } => {
                 let sp = safe_path(work_dir);
                 let env_prefix: String = env
                     .iter()
@@ -317,15 +287,7 @@ impl GitTransport for GitTransportKind {
                 parts.push("--".to_string()); // 隔离 git 参数
                 parts.extend(args.iter().map(|a| shell_quote(a)));
                 let cmd = format!("cd '{sp}' && {}git {}", env_prefix, parts.join(" "));
-                exec_on(
-                    &ExecTarget::Wsl {
-                        distro: distro.clone(),
-                    },
-                    "bash",
-                    &["-c", &cmd],
-                )
-                .await
-                .map_err(|e| {
+                exec_on(self, "bash", &["-c", &cmd]).await.map_err(|e| {
                     GitExecError {
                         kind: classify_stderr(&e.to_string()),
                         stderr: e.to_string(),
@@ -335,12 +297,7 @@ impl GitTransport for GitTransportKind {
                     .into()
                 })
             }
-            GitTransportKind::Remote {
-                host,
-                port,
-                username,
-                auth,
-            } => {
+            ExecTarget::Remote { .. } => {
                 let sp = safe_path(work_dir);
                 let env_prefix: String = env
                     .iter()
@@ -351,18 +308,7 @@ impl GitTransport for GitTransportKind {
                 parts.extend(args.iter().map(|a| shell_quote(a)));
                 let git_cmd = format!("{}git {}", env_prefix, parts.join(" "));
                 let cmd = format!("cd '{sp}' && {git_cmd}");
-                exec_on(
-                    &ExecTarget::Remote {
-                        host: host.clone(),
-                        port: *port,
-                        username: username.clone(),
-                        auth: auth.clone(),
-                    },
-                    "sh",
-                    &["-c", &cmd],
-                )
-                .await
-                .map_err(|e| {
+                exec_on(self, "sh", &["-c", &cmd]).await.map_err(|e| {
                     GitExecError {
                         kind: classify_stderr(&e.to_string()),
                         stderr: e.to_string(),
@@ -393,8 +339,8 @@ impl GitTransport for GitTransportKind {
         let command = format!("git {}", full_args.join(" "));
 
         match self {
-            GitTransportKind::Local => {
-                let executor = create_executor(&ExecTarget::Local);
+            ExecTarget::Local => {
+                let executor = create_executor(self);
 
                 // Build env prefix: ENV=VAL ENV2=VAL2 ...
                 // (always includes GIT_TERMINAL_PROMPT=0 from above)
@@ -455,36 +401,11 @@ impl GitTransport for GitTransportKind {
                 }
                 Ok(stdout_str)
             }
-            #[cfg(target_os = "windows")]
-            GitTransportKind::Wsl { distro } => {
-                exec_git_with_stdin_remote(
-                    &ExecTarget::Wsl {
-                        distro: distro.clone(),
-                    },
-                    &full_args,
-                    &command,
-                    stdin,
-                )
-                .await
+            ExecTarget::Wsl { .. } => {
+                exec_git_with_stdin_remote(self, &full_args, &command, stdin).await
             }
-            GitTransportKind::Remote {
-                host,
-                port,
-                username,
-                auth,
-            } => {
-                exec_git_with_stdin_remote(
-                    &ExecTarget::Remote {
-                        host: host.clone(),
-                        port: *port,
-                        username: username.clone(),
-                        auth: auth.clone(),
-                    },
-                    &full_args,
-                    &command,
-                    stdin,
-                )
-                .await
+            ExecTarget::Remote { .. } => {
+                exec_git_with_stdin_remote(self, &full_args, &command, stdin).await
             }
         }
     }
@@ -493,73 +414,26 @@ impl GitTransport for GitTransportKind {
     /// Returns None for non-Local transports.
     fn open_repo(&self, path: &str) -> Option<git2::Repository> {
         match self {
-            GitTransportKind::Local => git2::Repository::open(path).ok(),
-            #[cfg(target_os = "windows")]
-            GitTransportKind::Wsl { .. } => None,
-            GitTransportKind::Remote { .. } => None,
+            ExecTarget::Local => git2::Repository::open(path).ok(),
+            ExecTarget::Wsl { .. } => None,
+            ExecTarget::Remote { .. } => None,
         }
     }
 
     /// Check if a directory is a git repo
     async fn is_git_repo(&self, path: &str) -> bool {
         match self {
-            GitTransportKind::Local => std::path::Path::new(path).join(".git").exists(),
-            #[cfg(target_os = "windows")]
-            GitTransportKind::Wsl { distro } => {
+            ExecTarget::Local => std::path::Path::new(path).join(".git").exists(),
+            ExecTarget::Wsl { .. } => {
                 let sp = safe_path(path);
                 let cmd = format!("test -d '{sp}/.git'");
-                exec_on(
-                    &ExecTarget::Wsl {
-                        distro: distro.clone(),
-                    },
-                    "bash",
-                    &["-c", &cmd],
-                )
-                .await
-                .is_ok()
+                exec_on(self, "bash", &["-c", &cmd]).await.is_ok()
             }
-            GitTransportKind::Remote {
-                host,
-                port,
-                username,
-                auth,
-            } => {
+            ExecTarget::Remote { .. } => {
                 let sp = safe_path(path);
                 let cmd = format!("test -d '{sp}/.git'");
-                exec_on(
-                    &ExecTarget::Remote {
-                        host: host.clone(),
-                        port: *port,
-                        username: username.clone(),
-                        auth: auth.clone(),
-                    },
-                    "sh",
-                    &["-c", &cmd],
-                )
-                .await
-                .is_ok()
+                exec_on(self, "sh", &["-c", &cmd]).await.is_ok()
             }
-        }
-    }
-
-    fn exec_target(&self) -> ExecTarget {
-        match self {
-            GitTransportKind::Local => ExecTarget::Local,
-            #[cfg(target_os = "windows")]
-            GitTransportKind::Wsl { distro } => ExecTarget::Wsl {
-                distro: distro.clone(),
-            },
-            GitTransportKind::Remote {
-                host,
-                port,
-                username,
-                auth,
-            } => ExecTarget::Remote {
-                host: host.clone(),
-                port: *port,
-                username: username.clone(),
-                auth: auth.clone(),
-            },
         }
     }
 }
@@ -711,7 +585,7 @@ mod tests {
     #[tokio::test]
     async fn should_inject_env_into_git() {
         // 通过 GIT_AUTHOR_NAME 环境变量，git var GIT_AUTHOR_IDENT 返回该作者信息
-        let transport = GitTransportKind::Local;
+        let transport = ExecTarget::Local;
         let opts = GitExecOptions {
             env: &[("GIT_AUTHOR_NAME", "Neeko Test")],
             extra_config: &[],
@@ -728,7 +602,7 @@ mod tests {
     #[tokio::test]
     async fn should_feed_stdin_to_git_hash_object() {
         // git hash-object --stdin 对输入字节计算 blob hash
-        let transport = GitTransportKind::Local;
+        let transport = ExecTarget::Local;
         let opts = GitExecOptions::default();
         let out = transport
             .run_git_with_stdin(&["hash-object", "--stdin"], ".", opts, b"hello\n")
@@ -746,7 +620,7 @@ mod tests {
     async fn should_return_classified_error_on_auth_failure() {
         // git push 到一个不存在的本地路径会失败；这里用一个必失败的命令触发 GitExecError
         // 用 `git --no-such-flag` 触发非零退出，stderr 不含鉴权模式 → Other
-        let transport = GitTransportKind::Local;
+        let transport = ExecTarget::Local;
         let result = transport
             .run_git_opts(&["--no-such-flag"], ".", GitExecOptions::default())
             .await;
@@ -759,7 +633,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_local_run_git() {
-        let transport = GitTransportKind::Local;
+        let transport = ExecTarget::Local;
         let result = transport.run_git(&["--version"], ".").await;
         assert!(result.is_ok());
         assert!(result.unwrap().contains("git version"));
@@ -767,7 +641,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_local_is_git_repo() {
-        let transport = GitTransportKind::Local;
+        let transport = ExecTarget::Local;
         assert!(!transport.is_git_repo("/tmp").await);
     }
 }

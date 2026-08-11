@@ -1,5 +1,6 @@
 use crate::common::connection::types::AuthMethod;
 use crate::common::git::operations;
+use crate::common::git::transport::GitTransport;
 use crate::common::git::types::{DiffResult, PushOutcome};
 use crate::project::types::{
     AheadBehind, CommitDetail, CommitEntry, CommitFileChange, CommitResult, FileChange,
@@ -22,7 +23,7 @@ pub async fn stage_files(
 ) -> Result<(), AppError> {
     let (t, wd) = state.resolve_project(&project_id)?;
     let repo_path = worktree_path.as_deref().unwrap_or(&wd);
-    operations::stage_files(&*t, repo_path, &file_paths)
+    operations::stage_files(&t, repo_path, &file_paths)
         .await
         .map_err(AppError::from)
 }
@@ -37,7 +38,7 @@ pub async fn unstage_files(
 ) -> Result<(), AppError> {
     let (t, wd) = state.resolve_project(&project_id)?;
     let repo_path = worktree_path.as_deref().unwrap_or(&wd);
-    operations::unstage_files(&*t, repo_path, &file_paths)
+    operations::unstage_files(&t, repo_path, &file_paths)
         .await
         .map_err(AppError::from)
 }
@@ -51,7 +52,7 @@ pub async fn stage_all(
 ) -> Result<(), AppError> {
     let (t, wd) = state.resolve_project(&project_id)?;
     let repo_path = worktree_path.as_deref().unwrap_or(&wd);
-    operations::stage_all(&*t, repo_path)
+    operations::stage_all(&t, repo_path)
         .await
         .map_err(AppError::from)
 }
@@ -65,7 +66,7 @@ pub async fn unstage_all(
 ) -> Result<(), AppError> {
     let (t, wd) = state.resolve_project(&project_id)?;
     let repo_path = worktree_path.as_deref().unwrap_or(&wd);
-    operations::unstage_all(&*t, repo_path)
+    operations::unstage_all(&t, repo_path)
         .await
         .map_err(AppError::from)
 }
@@ -80,7 +81,7 @@ pub async fn discard_file(
 ) -> Result<(), AppError> {
     let (t, wd) = state.resolve_project(&project_id)?;
     let repo_path = worktree_path.as_deref().unwrap_or(&wd);
-    operations::discard_file(&*t, repo_path, &file_path)
+    operations::discard_file(&t, repo_path, &file_path)
         .await
         .map_err(AppError::from)
 }
@@ -94,7 +95,7 @@ pub async fn discard_all(
 ) -> Result<(), AppError> {
     let (t, wd) = state.resolve_project(&project_id)?;
     let repo_path = worktree_path.as_deref().unwrap_or(&wd);
-    operations::discard_all(&*t, repo_path)
+    operations::discard_all(&t, repo_path)
         .await
         .map_err(AppError::from)
 }
@@ -110,7 +111,7 @@ pub async fn fetch(
 ) -> Result<PushOutcome, AppError> {
     let (t, wd) = state.resolve_project(&project_id)?;
     let repo_path = worktree_path.as_deref().unwrap_or(&wd);
-    operations::fetch(&*t, repo_path)
+    operations::fetch(&t, repo_path)
         .await
         .map_err(AppError::from)
 }
@@ -124,7 +125,7 @@ pub async fn pull(
 ) -> Result<PushOutcome, AppError> {
     let (t, wd) = state.resolve_project(&project_id)?;
     let repo_path = worktree_path.as_deref().unwrap_or(&wd);
-    operations::pull(&*t, repo_path)
+    operations::pull(&t, repo_path)
         .await
         .map_err(AppError::from)
 }
@@ -139,7 +140,7 @@ pub async fn push(
 ) -> Result<PushOutcome, AppError> {
     let (t, wd) = state.resolve_project(&project_id)?;
     let repo_path = worktree_path.as_deref().unwrap_or(&wd);
-    operations::push(&*t, repo_path, set_upstream.unwrap_or(false))
+    operations::push(&t, repo_path, set_upstream.unwrap_or(false))
         .await
         .map_err(AppError::from)
 }
@@ -155,7 +156,7 @@ pub async fn fetch_with_credentials(
 ) -> Result<PushOutcome, AppError> {
     let (t, wd) = state.resolve_project(&project_id)?;
     let repo_path = worktree_path.as_deref().unwrap_or(&wd);
-    operations::fetch_with_credentials(&*t, repo_path, &username, &password)
+    operations::fetch_with_credentials(&t, repo_path, &username, &password)
         .await
         .map_err(AppError::from)
 }
@@ -171,7 +172,7 @@ pub async fn pull_with_credentials(
 ) -> Result<PushOutcome, AppError> {
     let (t, wd) = state.resolve_project(&project_id)?;
     let repo_path = worktree_path.as_deref().unwrap_or(&wd);
-    operations::pull_with_credentials(&*t, repo_path, &username, &password)
+    operations::pull_with_credentials(&t, repo_path, &username, &password)
         .await
         .map_err(AppError::from)
 }
@@ -189,7 +190,7 @@ pub async fn push_with_credentials(
     let (t, wd) = state.resolve_project(&project_id)?;
     let repo_path = worktree_path.as_deref().unwrap_or(&wd);
     operations::push_with_credentials(
-        &*t,
+        &t,
         repo_path,
         set_upstream.unwrap_or(false),
         &username,
@@ -210,7 +211,7 @@ pub async fn commit_files(
 ) -> Result<CommitResult, AppError> {
     let (t, wd) = state.resolve_project(&project_id)?;
     let repo_path = worktree_path.as_deref().unwrap_or(&wd);
-    operations::commit_files(&*t, repo_path, &file_paths, &message)
+    operations::commit_files(&t, repo_path, &file_paths, &message)
         .await
         .map_err(AppError::from)
 }
@@ -225,7 +226,7 @@ pub async fn cherry_pick(
     state: State<'_, AppStateWrapper>,
 ) -> Result<(), AppError> {
     let (t, wd) = state.resolve_project(&project_id)?;
-    operations::cherry_pick(&*t, &wd, &commit_hash)
+    operations::cherry_pick(&t, &wd, &commit_hash)
         .await
         .map_err(AppError::from)
 }
@@ -238,7 +239,7 @@ pub async fn revert(
     state: State<'_, AppStateWrapper>,
 ) -> Result<(), AppError> {
     let (t, wd) = state.resolve_project(&project_id)?;
-    operations::revert(&*t, &wd, &commit_hash)
+    operations::revert(&t, &wd, &commit_hash)
         .await
         .map_err(AppError::from)
 }
@@ -252,7 +253,7 @@ pub async fn create_tag(
     state: State<'_, AppStateWrapper>,
 ) -> Result<(), AppError> {
     let (t, wd) = state.resolve_project(&project_id)?;
-    operations::create_tag(&*t, &wd, &name, &message)
+    operations::create_tag(&t, &wd, &name, &message)
         .await
         .map_err(AppError::from)
 }
@@ -267,7 +268,7 @@ pub async fn checkout_branch(
     state: State<'_, AppStateWrapper>,
 ) -> Result<(), AppError> {
     let (t, wd) = state.resolve_project(&project_id)?;
-    operations::checkout_branch(&*t, &wd, &branch_name)
+    operations::checkout_branch(&t, &wd, &branch_name)
         .await
         .map_err(AppError::from)
 }
@@ -281,7 +282,7 @@ pub async fn create_branch(
     state: State<'_, AppStateWrapper>,
 ) -> Result<(), AppError> {
     let (t, wd) = state.resolve_project(&project_id)?;
-    operations::create_branch(&*t, &wd, &branch_name, start_point.as_deref())
+    operations::create_branch(&t, &wd, &branch_name, start_point.as_deref())
         .await
         .map_err(AppError::from)
 }
@@ -295,7 +296,7 @@ pub async fn delete_branch(
     state: State<'_, AppStateWrapper>,
 ) -> Result<(), AppError> {
     let (t, wd) = state.resolve_project(&project_id)?;
-    operations::delete_branch(&*t, &wd, &branch_name, force.unwrap_or(false))
+    operations::delete_branch(&t, &wd, &branch_name, force.unwrap_or(false))
         .await
         .map_err(AppError::from)
 }
@@ -309,7 +310,7 @@ pub async fn rename_branch(
     state: State<'_, AppStateWrapper>,
 ) -> Result<(), AppError> {
     let (t, wd) = state.resolve_project(&project_id)?;
-    operations::rename_branch(&*t, &wd, &old_name, &new_name)
+    operations::rename_branch(&t, &wd, &old_name, &new_name)
         .await
         .map_err(AppError::from)
 }
@@ -322,7 +323,7 @@ pub async fn create_and_switch_branch(
     state: State<'_, AppStateWrapper>,
 ) -> Result<(), AppError> {
     let (t, wd) = state.resolve_project(&project_id)?;
-    operations::create_and_switch_branch(&*t, &wd, &branch_name)
+    operations::create_and_switch_branch(&t, &wd, &branch_name)
         .await
         .map_err(AppError::from)
 }
@@ -335,7 +336,7 @@ pub async fn checkout_detached(
     state: State<'_, AppStateWrapper>,
 ) -> Result<(), AppError> {
     let (t, wd) = state.resolve_project(&project_id)?;
-    operations::checkout_detached(&*t, &wd, &commit_hash)
+    operations::checkout_detached(&t, &wd, &commit_hash)
         .await
         .map_err(AppError::from)
 }
@@ -356,7 +357,7 @@ pub async fn create_worktree(
     if let Some(parent) = std::path::Path::new(&worktree_path).parent() {
         let _ = std::fs::create_dir_all(parent);
     }
-    operations::create_worktree(&*t, &wd, &worktree_path, &branch_name, new_branch)
+    operations::create_worktree(&t, &wd, &worktree_path, &branch_name, new_branch)
         .await
         .map_err(AppError::from)
 }
@@ -369,7 +370,7 @@ pub async fn remove_worktree(
     state: State<'_, AppStateWrapper>,
 ) -> Result<(), AppError> {
     let (t, wd) = state.resolve_project(&project_id)?;
-    operations::remove_worktree(&*t, &wd, &worktree_path)
+    operations::remove_worktree(&t, &wd, &worktree_path)
         .await
         .map_err(AppError::from)
 }
@@ -383,7 +384,7 @@ pub async fn rename_worktree(
     state: State<'_, AppStateWrapper>,
 ) -> Result<(), AppError> {
     let (t, wd) = state.resolve_project(&project_id)?;
-    operations::rename_worktree(&*t, &wd, &old_path, &new_path)
+    operations::rename_worktree(&t, &wd, &old_path, &new_path)
         .await
         .map_err(AppError::from)
 }
@@ -396,7 +397,7 @@ pub async fn is_worktree_dirty(
     state: State<'_, AppStateWrapper>,
 ) -> Result<bool, AppError> {
     let (t, _wd) = state.resolve_project(&project_id)?;
-    operations::is_worktree_dirty(&*t, &worktree_path)
+    operations::is_worktree_dirty(&t, &worktree_path)
         .await
         .map_err(AppError::from)
 }
@@ -412,7 +413,7 @@ pub async fn get_git_info(
 ) -> Result<GitInfo, AppError> {
     let (backend, wd) = state.resolve_project(&project_id)?;
     let repo_path = worktree_path.as_deref().unwrap_or(&wd);
-    operations::get_git_info(&*backend, repo_path)
+    operations::get_git_info(&backend, repo_path)
         .await
         .map_err(AppError::from)
 }
@@ -426,7 +427,7 @@ pub async fn get_git_branch_info(
 ) -> Result<GitBranchInfo, AppError> {
     let (backend, wd) = state.resolve_project(&project_id)?;
     let repo_path = worktree_path.as_deref().unwrap_or(&wd);
-    operations::get_git_branch_info(&*backend, repo_path)
+    operations::get_git_branch_info(&backend, repo_path)
         .await
         .map_err(AppError::from)
 }
@@ -445,7 +446,7 @@ pub async fn get_worktree_changed_files(
     } else {
         &worktree_path
     };
-    operations::get_worktree_changed_files(&*backend, repo_path)
+    operations::get_worktree_changed_files(&backend, repo_path)
         .await
         .map_err(AppError::from)
 }
@@ -464,7 +465,7 @@ pub async fn get_ignored_files(
     } else {
         &worktree_path
     };
-    operations::get_ignored_files(&*backend, repo_path)
+    operations::get_ignored_files(&backend, repo_path)
         .await
         .map_err(AppError::from)
 }
@@ -478,7 +479,7 @@ pub async fn get_changed_files_diff_stats(
 ) -> Result<Vec<FileDiffStats>, AppError> {
     let (backend, wd) = state.resolve_project(&project_id)?;
     let repo_path = worktree_path.as_deref().unwrap_or(&wd);
-    operations::get_changed_files_diff_stats(&*backend, repo_path)
+    operations::get_changed_files_diff_stats(&backend, repo_path)
         .await
         .map_err(AppError::from)
 }
@@ -494,7 +495,7 @@ pub async fn get_file_diff(
     let t0 = std::time::Instant::now();
     let (backend, wd) = state.resolve_project(&project_id)?;
     let repo_path = worktree_path.as_deref().unwrap_or(&wd);
-    let result = operations::get_file_diff(&*backend, repo_path, &file_path)
+    let result = operations::get_file_diff(&backend, repo_path, &file_path)
         .await
         .map_err(AppError::from);
     let elapsed_ms = t0.elapsed().as_millis();
@@ -523,7 +524,7 @@ pub async fn get_commit_log(
     state: State<'_, AppStateWrapper>,
 ) -> Result<Vec<CommitEntry>, AppError> {
     let (t, wd) = state.resolve_project(&project_id)?;
-    operations::get_commit_log(&*t, &wd, count, skip.unwrap_or(0))
+    operations::get_commit_log(&t, &wd, count, skip.unwrap_or(0))
         .await
         .map_err(AppError::from)
 }
@@ -536,7 +537,7 @@ pub async fn get_commit_detail(
     state: State<'_, AppStateWrapper>,
 ) -> Result<CommitDetail, AppError> {
     let (t, wd) = state.resolve_project(&project_id)?;
-    operations::get_commit_detail(&*t, &wd, &commit_hash)
+    operations::get_commit_detail(&t, &wd, &commit_hash)
         .await
         .map_err(AppError::from)
 }
@@ -549,7 +550,7 @@ pub async fn get_commit_files(
     state: State<'_, AppStateWrapper>,
 ) -> Result<Vec<CommitFileChange>, AppError> {
     let (t, wd) = state.resolve_project(&project_id)?;
-    operations::get_commit_files(&*t, &wd, &commit_hash)
+    operations::get_commit_files(&t, &wd, &commit_hash)
         .await
         .map_err(AppError::from)
 }
@@ -563,7 +564,7 @@ pub async fn get_commit_file_diff(
     state: State<'_, AppStateWrapper>,
 ) -> Result<DiffResult, AppError> {
     let (t, wd) = state.resolve_project(&project_id)?;
-    operations::get_commit_file_diff(&*t, &wd, &commit_hash, &file_path)
+    operations::get_commit_file_diff(&t, &wd, &commit_hash, &file_path)
         .await
         .map_err(AppError::from)
 }
@@ -577,7 +578,7 @@ pub async fn get_ahead_behind(
 ) -> Result<AheadBehind, AppError> {
     let (t, wd) = state.resolve_project(&project_id)?;
     let repo_path = worktree_path.as_deref().unwrap_or(&wd);
-    operations::get_ahead_behind(&*t, repo_path)
+    operations::get_ahead_behind(&t, repo_path)
         .await
         .map_err(AppError::from)
 }
@@ -591,7 +592,7 @@ pub async fn default_branch(
     state: State<'_, AppStateWrapper>,
 ) -> Result<String, AppError> {
     let (t, wd) = state.resolve_project(&project_id)?;
-    operations::default_branch(&*t, &wd)
+    operations::default_branch(&t, &wd)
         .await
         .map_err(AppError::from)
 }
@@ -642,7 +643,7 @@ pub async fn list_prs_command(
 ) -> Result<Vec<PRListItem>, AppError> {
     let (t, wd) = state_w.resolve_project(&project_id)?;
     let wd_path = std::path::Path::new(&wd);
-    let target = t.exec_target();
+    let target = t;
     crate::git::list_prs(wd_path, &target, &state, limit)
         .await
         .map_err(|e| AppError::Git(e.to_string()))
@@ -656,7 +657,7 @@ pub async fn list_repo_labels_command(
 ) -> Result<Vec<PrLabel>, AppError> {
     let (t, wd) = state.resolve_project(&project_id)?;
     let wd_path = std::path::Path::new(&wd);
-    let target = t.exec_target();
+    let target = t;
     crate::git::list_repo_labels(wd_path, &target)
         .await
         .map_err(|e| AppError::Git(e.to_string()))
@@ -670,7 +671,7 @@ pub async fn list_repo_authors_command(
 ) -> Result<Vec<String>, AppError> {
     let (t, wd) = state.resolve_project(&project_id)?;
     let wd_path = std::path::Path::new(&wd);
-    let target = t.exec_target();
+    let target = t;
     crate::git::list_repo_authors(wd_path, &target)
         .await
         .map_err(|e| AppError::Git(e.to_string()))
@@ -685,7 +686,7 @@ pub async fn view_pr_command(
 ) -> Result<PRInfo, AppError> {
     let (t, wd) = state.resolve_project(&project_id)?;
     let wd_path = std::path::Path::new(&wd);
-    let target = t.exec_target();
+    let target = t;
     crate::git::view_pr(wd_path, &target, pr_number)
         .await
         .map_err(|e| AppError::Git(e.to_string()))
@@ -703,7 +704,7 @@ pub async fn create_pr_command(
 ) -> Result<u64, AppError> {
     let (t, wd) = state.resolve_project(&project_id)?;
     let wd_path = std::path::Path::new(&wd);
-    let target = t.exec_target();
+    let target = t;
     crate::git::create_pr(wd_path, &target, &title, &body, base.as_deref(), draft)
         .await
         .map_err(|e| AppError::Git(e.to_string()))
@@ -719,7 +720,7 @@ pub async fn merge_pr_command(
 ) -> Result<PRMergeResult, AppError> {
     let (t, wd) = state.resolve_project(&project_id)?;
     let wd_path = std::path::Path::new(&wd);
-    let target = t.exec_target();
+    let target = t;
     crate::git::merge_pr(wd_path, &target, pr_number, &method)
         .await
         .map_err(|e| AppError::Git(e.to_string()))
@@ -734,7 +735,7 @@ pub async fn close_pr_command(
 ) -> Result<(), AppError> {
     let (t, wd) = state.resolve_project(&project_id)?;
     let wd_path = std::path::Path::new(&wd);
-    let target = t.exec_target();
+    let target = t;
     crate::git::close_pr(wd_path, &target, pr_number)
         .await
         .map_err(|e| AppError::Git(e.to_string()))
@@ -749,7 +750,7 @@ pub async fn list_pr_files_command(
 ) -> Result<Vec<PRFileChange>, AppError> {
     let (t, wd) = state.resolve_project(&project_id)?;
     let wd_path = std::path::Path::new(&wd);
-    let target = t.exec_target();
+    let target = t;
     crate::git::list_pr_files(wd_path, &target, pr_number)
         .await
         .map_err(|e| AppError::Git(e.to_string()))
@@ -764,7 +765,7 @@ pub async fn list_pr_commits_command(
 ) -> Result<Vec<PRCommit>, AppError> {
     let (t, wd) = state.resolve_project(&project_id)?;
     let wd_path = std::path::Path::new(&wd);
-    let target = t.exec_target();
+    let target = t;
     crate::git::list_pr_commits(wd_path, &target, pr_number)
         .await
         .map_err(|e| AppError::Git(e.to_string()))
@@ -783,7 +784,7 @@ pub async fn add_pr_review_comment_command(
 ) -> Result<PRReviewComment, AppError> {
     let (t, wd) = state.resolve_project(&project_id)?;
     let wd_path = std::path::Path::new(&wd);
-    let target = t.exec_target();
+    let target = t;
     crate::git::add_pr_review_comment(wd_path, &target, pr_number, &body, &file_path, line, &side)
         .await
         .map_err(|e| AppError::Git(e.to_string()))
@@ -799,7 +800,7 @@ pub async fn list_pr_review_comments_command(
     let t0 = std::time::Instant::now();
     let (t, wd) = state.resolve_project(&project_id)?;
     let wd_path = std::path::Path::new(&wd);
-    let target = t.exec_target();
+    let target = t;
     let result = crate::git::list_pr_review_comments(wd_path, &target, pr_number)
         .await
         .map_err(|e| AppError::Git(e.to_string()))?;
@@ -822,7 +823,7 @@ pub async fn list_pr_comments_command(
 ) -> Result<Vec<PRComment>, AppError> {
     let (t, wd) = state.resolve_project(&project_id)?;
     let wd_path = std::path::Path::new(&wd);
-    let target = t.exec_target();
+    let target = t;
     crate::git::list_pr_comments(wd_path, &target, pr_number)
         .await
         .map_err(|e| AppError::Git(e.to_string()))
@@ -838,7 +839,7 @@ pub async fn add_pr_comment_command(
 ) -> Result<PRComment, AppError> {
     let (t, wd) = state.resolve_project(&project_id)?;
     let wd_path = std::path::Path::new(&wd);
-    let target = t.exec_target();
+    let target = t;
     crate::git::add_pr_comment(wd_path, &target, pr_number, &body)
         .await
         .map_err(|e| AppError::Git(e.to_string()))
@@ -855,7 +856,7 @@ pub async fn edit_pr_comment_command(
 ) -> Result<PRComment, AppError> {
     let (t, wd) = state.resolve_project(&project_id)?;
     let wd_path = std::path::Path::new(&wd);
-    let target = t.exec_target();
+    let target = t;
     crate::git::edit_pr_comment(wd_path, &target, pr_number, &comment_id, &body)
         .await
         .map_err(|e| AppError::Git(e.to_string()))
@@ -871,7 +872,7 @@ pub async fn delete_pr_comment_command(
 ) -> Result<(), AppError> {
     let (t, wd) = state.resolve_project(&project_id)?;
     let wd_path = std::path::Path::new(&wd);
-    let target = t.exec_target();
+    let target = t;
     crate::git::delete_pr_comment(wd_path, &target, pr_number, &comment_id)
         .await
         .map_err(|e| AppError::Git(e.to_string()))
@@ -888,7 +889,7 @@ pub async fn add_comment_reaction_command(
 ) -> Result<(), AppError> {
     let (t, wd) = state.resolve_project(&project_id)?;
     let wd_path = std::path::Path::new(&wd);
-    let target = t.exec_target();
+    let target = t;
     crate::git::add_comment_reaction(wd_path, &target, pr_number, &comment_id, &emoji)
         .await
         .map_err(|e| AppError::Git(e.to_string()))

@@ -24,7 +24,7 @@ pub async fn generate_commit_message(
     let (t, wd) = state.resolve_project(&project_id)?;
     let repo_path = worktree_path.as_deref().unwrap_or(&wd).to_string();
 
-    let output = match t.exec_target() {
+    let output = match &t {
         ExecTarget::Local => {
             run_agent_local(
                 &state,
@@ -36,10 +36,10 @@ pub async fn generate_commit_message(
             .await?
         }
         ExecTarget::Remote {
-            ref host,
+            host,
             port,
-            ref username,
-            ref auth,
+            username,
+            auth,
         } => {
             run_agent_remote(
                 &repo_path,
@@ -48,13 +48,13 @@ pub async fn generate_commit_message(
                 &post_prompt_args,
                 &prompt,
                 host.as_str(),
-                port,
+                *port,
                 username.as_str(),
                 auth,
             )
             .await?
         }
-        ExecTarget::Wsl { ref distro } => {
+        ExecTarget::Wsl { distro } => {
             run_agent_wsl(
                 &repo_path,
                 &agent_cmd,

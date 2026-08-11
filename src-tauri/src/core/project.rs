@@ -4,7 +4,6 @@ use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
 use crate::common::connection::types::AuthMethod;
-use crate::common::git::transport::GitTransportKind;
 use crate::common::terminal::types::TerminalSession;
 use crate::common::types::GitInfo;
 
@@ -41,35 +40,6 @@ impl Default for ProjectEnvironment {
 }
 
 impl ProjectEnvironment {
-    /// Convert the environment into a Git transport kind with the project path.
-    #[must_use]
-    pub fn to_git_transport<'a>(&'a self, project_path: &'a str) -> (GitTransportKind, &'a str) {
-        match self {
-            Self::Local => (GitTransportKind::Local, project_path),
-            #[cfg(target_os = "windows")]
-            Self::Wsl { distro } => (
-                GitTransportKind::Wsl {
-                    distro: distro.clone(),
-                },
-                project_path,
-            ),
-            Self::Remote {
-                host,
-                port,
-                username,
-                auth,
-            } => (
-                GitTransportKind::Remote {
-                    host: host.clone(),
-                    port: *port,
-                    username: username.clone(),
-                    auth: auth.clone(),
-                },
-                project_path,
-            ),
-        }
-    }
-
     /// Convert the environment into an executor target.
     #[must_use]
     pub fn to_exec_target(&self) -> crate::common::executor::factory::ExecTarget {

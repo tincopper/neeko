@@ -286,3 +286,30 @@ pub fn add_agent(mut agent: AgentConfig, ...) -> Result<(), AppError> {
 - 单测：构造一个 `is_builtin: true` 的伪造 AgentConfig 调 `add_agent`，断言入库后 `is_builtin == false`
 - 单测：构造一份带伪造字段的 customAgents JSON 字符串，触发启动加载，断言反序列化后 `is_builtin == false`
 - 集成：`get_agents()` 返回列表中，只有 `add_default_agents()` 注册的 agent 满足 `is_builtin == true`
+
+---
+
+## 执行环境单一事实源（ExecTarget）
+
+命令执行环境（Local / WSL / SSH）是贯穿项目的高频概念。**只保留一个规范运行时类型 `ExecTarget`**（`common/executor/factory.rs`），领域抽象直接 `impl` 在它上面，不再包一层同字段的平行 enum。
+
+### 原则
+
+1. **单一规范类型**：运行时执行环境统一用 `ExecTarget`（`Local` / `Wsl{distro}` / `Remote{host,port,username,auth}`）。业务代码通过 `resolve_project()` 拿到 `ExecTarget`。
+2. **领域抽象直接 impl**：`GitTransport` 直接 `impl GitTransport for ExecTarget`（`common/git/transport.rs`），内部复用 `create_executor(self)`。禁止再定义一个字段相同的包装 enum 来承载 trait 实现——`GitTransportKind` 已因此被删除。
+3. **持久化与运行时分离**：`ProjectEnvironment`（`core/project.rs`，serde 持久化模型）与 `ExecTarget`（运行时）职责不同，保持**单向转换** `ProjectEnvironment::to_exec_target()`，不合并。
+4. **不通过抽象反掏**：禁止 `GitTransport::exec_target()` 这类「从领域抽象里掏回运行时类型」的泄漏方法——transport 本身就是 `ExecTarget`，无需再掏。
+
+### 目标依赖方向
+
+```
+ProjectEnvironment ──to_exec_target()──▶ ExecTarget
+                                              ├──create_executor──▶ CommandExecutor
+                                              └──impl GitTransport──▶ git 操作
+```
+
+### 禁止模式
+
+- 定义与 `ExecTarget` 字段完全相同的平行 enum 来承载 trait 实现（反例：旧 `GitTransportKind`）。
+- 在领域抽象接口上暴露「返回运行时类型」的方法（反例：旧 `GitTransport::exec_target()`）。
+- 领域类型 `ProjectEnvironment` 同时反向依赖多个基础设施类型做双向转换。

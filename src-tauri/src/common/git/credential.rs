@@ -201,7 +201,7 @@ pub async fn credential_reject(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::common::git::transport::GitTransportKind;
+    use crate::common::executor::factory::ExecTarget;
 
     // ── Credential::from_url ───────────────────────────────────────────────
 
@@ -285,7 +285,7 @@ mod tests {
     #[tokio::test]
     #[cfg(target_os = "macos")]
     async fn should_return_osxkeychain_on_macos_when_no_config() {
-        let transport = GitTransportKind::Local;
+        let transport = ExecTarget::Local;
         let helper = resolve_credential_helper(&transport, ".").await.unwrap();
         assert_eq!(helper, "osxkeychain");
     }
@@ -293,7 +293,7 @@ mod tests {
     #[tokio::test]
     #[cfg(windows)]
     async fn should_return_manager_on_windows_when_no_config() {
-        let transport = GitTransportKind::Local;
+        let transport = ExecTarget::Local;
         let helper = resolve_credential_helper(&transport, ".").await.unwrap();
         assert_eq!(helper, "manager");
     }
@@ -301,7 +301,7 @@ mod tests {
     #[tokio::test]
     #[cfg(all(not(target_os = "macos"), not(windows)))]
     async fn should_return_libsecret_on_linux_when_no_config() {
-        let transport = GitTransportKind::Local;
+        let transport = ExecTarget::Local;
         let helper = resolve_credential_helper(&transport, ".").await.unwrap();
         assert_eq!(helper, "libsecret");
     }

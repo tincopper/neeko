@@ -43,7 +43,7 @@ pub async fn read_dir_tree(
     // 深度常量单一事实源：crate::common::file::services::DEFAULT_TREE_DEPTH
     let depth = max_depth.unwrap_or(crate::common::file::services::DEFAULT_TREE_DEPTH);
     let (t, wd) = state.resolve_project(&project_id)?;
-    let target = t.exec_target();
+    let target = t;
     let base = root_path.unwrap_or(wd);
     // 被 .gitignore 忽略的目录剪枝：保留目录节点，子节点由懒加载展开时按需返回
     let ignored_list = ignored.unwrap_or_default();
@@ -66,7 +66,7 @@ pub async fn read_file_content(
     state: State<'_, AppStateWrapper>,
 ) -> Result<FileContent, AppError> {
     let (t, wd) = state.resolve_project(&project_id)?;
-    let target = t.exec_target();
+    let target = t;
     let base = root_path.unwrap_or(wd);
     crate::common::file::services::read_file_content(&target, &base, &file_path).await
 }
@@ -81,7 +81,7 @@ pub async fn write_file_content(
     state: State<'_, AppStateWrapper>,
 ) -> Result<(), AppError> {
     let (t, wd) = state.resolve_project(&project_id)?;
-    let target = t.exec_target();
+    let target = t;
     let base = root_path.unwrap_or(wd);
     crate::common::file::services::write_file_content(&target, &base, &file_path, &content).await
 }
@@ -95,7 +95,7 @@ pub async fn create_new_file(
     state: State<'_, AppStateWrapper>,
 ) -> Result<(), AppError> {
     let (t, wd) = state.resolve_project(&project_id)?;
-    let target = t.exec_target();
+    let target = t;
     let base = root_path.unwrap_or(wd);
     crate::common::file::services::create_new_file(&target, &base, &file_path).await
 }
@@ -111,7 +111,7 @@ pub async fn save_new_file(
     state: State<'_, AppStateWrapper>,
 ) -> Result<String, AppError> {
     let (t, wd) = state.resolve_project(&project_id)?;
-    let target = t.exec_target();
+    let target = t;
     let base = root_path.unwrap_or(wd);
     crate::common::file::services::save_new_file(&target, &base, &directory, &filename, &content)
         .await
@@ -126,7 +126,7 @@ pub async fn create_directory(
     state: State<'_, AppStateWrapper>,
 ) -> Result<(), AppError> {
     let (t, wd) = state.resolve_project(&project_id)?;
-    let target = t.exec_target();
+    let target = t;
     let base = root_path.unwrap_or(wd);
     crate::common::file::services::create_directory(&target, &base, &dir_path).await
 }
@@ -140,7 +140,7 @@ pub async fn delete_path(
     state: State<'_, AppStateWrapper>,
 ) -> Result<(), AppError> {
     let (t, wd) = state.resolve_project(&project_id)?;
-    let target = t.exec_target();
+    let target = t;
     let base = root_path.unwrap_or(wd);
     crate::common::file::services::delete_path(&target, &base, &path).await
 }
@@ -155,7 +155,7 @@ pub async fn rename_path(
     state: State<'_, AppStateWrapper>,
 ) -> Result<(), AppError> {
     let (t, wd) = state.resolve_project(&project_id)?;
-    let target = t.exec_target();
+    let target = t;
     let base = root_path.unwrap_or(wd);
     crate::common::file::services::rename_path(&target, &base, &path, &new_name).await
 }
