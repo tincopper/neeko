@@ -7,6 +7,7 @@ import type {
   ProjectCommands,
   ProjectCapabilities,
 } from '@/shared/types/activeProject';
+import { reportFrontendError } from '@/shared/utils/errorReporting';
 import { withTimeout } from '@/shared/utils/withTimeout';
 import { Button } from '@/ui/Button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/ui/Dialog';
@@ -173,7 +174,7 @@ const GitCommitPanel: React.FC<GitCommitPanelProps> = ({
         }
         setDiffStats(map);
       })
-      .catch(() => {});
+      .catch((err) => reportFrontendError('git.diffStats', err));
     return () => {
       cancelled = true;
     };

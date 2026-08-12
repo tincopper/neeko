@@ -1,6 +1,7 @@
 import { useState, useRef, useCallback } from 'react';
 
 import type { SaveSessionFn } from '@/shared/hooks/useConnectionProjects';
+import { reportFrontendError } from '@/shared/utils/errorReporting';
 
 import { saveSession as saveSessionApi } from '../api/sessionApi';
 
@@ -19,7 +20,7 @@ export function useSessionPersistence(): UseSessionPersistenceResult {
   const persistWorktreeState = useCallback((next: Record<string, string>) => {
     if (wtSaveTimerRef.current) clearTimeout(wtSaveTimerRef.current);
     wtSaveTimerRef.current = setTimeout(() => {
-      saveSessionApi(null, next).catch(() => {});
+      saveSessionApi(null, next).catch((err) => reportFrontendError('session.save', err));
     }, 500);
   }, []);
 

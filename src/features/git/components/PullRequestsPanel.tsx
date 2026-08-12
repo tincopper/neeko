@@ -6,6 +6,7 @@ import { cn } from '@/lib/utils';
 import { SearchIcon, MessageSquare, ChevronDown, GitMerge, X } from '@/shared/components/icons';
 import { useEditorStore } from '@/shared/store/editorStore';
 import type { PRListItem } from '@/shared/types';
+import { reportFrontendError } from '@/shared/utils/errorReporting';
 
 import {
   closePr,
@@ -158,10 +159,10 @@ const PullRequestsPanel: React.FC<PullRequestsPanelProps> = ({
     if (!ghInstalled || !ghAuthenticated) return;
     listRepoLabels(projectId)
       .then(setRepoLabels)
-      .catch(() => {});
+      .catch((err) => reportFrontendError('git.repoLabels', err));
     listRepoAuthors(projectId)
       .then(setRepoAuthors)
-      .catch(() => {});
+      .catch((err) => reportFrontendError('git.repoAuthors', err));
   }, [projectId, ghInstalled, ghAuthenticated]);
 
   // Use repo-level data for filter dropdowns, fall back to deriving from prList

@@ -98,6 +98,7 @@ export default React.memo(function TerminalViewBase({
         if (currentKeyRef.current !== cacheKey) return;
         entry.fitAddon.fit();
         if (entry.sessionId) {
+          // 静默豁免：高频 resize，尽力而为，失败无需上报
           resize(entry.sessionId, entry.term.cols, entry.term.rows).catch(() => {});
         }
         entry.term.focus();
@@ -196,6 +197,7 @@ export default React.memo(function TerminalViewBase({
                 const cmd = cmdOverride ?? agent.command;
                 const cmdStr = [cmd, ...agent.args].join(' ') + '\r';
                 const bytes = Array.from(new TextEncoder().encode(cmdStr));
+                // 静默豁免：终端输入，尽力而为，失败无需上报
                 emit(`terminal-input-${entry.sessionId}`, bytes).catch(() => {});
                 onStatusChange?.('Running');
               } catch (err) {
@@ -216,6 +218,7 @@ export default React.memo(function TerminalViewBase({
             sendInput: (text: string) => {
               if (!entry.sessionId) return;
               const bytes = Array.from(new TextEncoder().encode(text));
+              // 静默豁免：终端输入，尽力而为，失败无需上报
               emit(`terminal-input-${entry.sessionId}`, bytes).catch(() => {});
             },
           });
@@ -223,6 +226,7 @@ export default React.memo(function TerminalViewBase({
           requestAnimationFrame(() => {
             if (currentKeyRef.current !== cacheKey) return;
             fitAddon.fit();
+            // 静默豁免：高频 resize，尽力而为，失败无需上报
             resize(sessionId, term.cols, term.rows).catch(() => {});
             term.focus();
           });
@@ -247,6 +251,7 @@ export default React.memo(function TerminalViewBase({
         if (c.sessionId && (c.term.cols !== prevCols || c.term.rows !== prevRows)) {
           prevCols = c.term.cols;
           prevRows = c.term.rows;
+          // 静默豁免：高频 resize，尽力而为，失败无需上报
           resize(c.sessionId, c.term.cols, c.term.rows).catch(() => {});
         }
       });

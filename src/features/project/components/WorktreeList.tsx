@@ -7,6 +7,7 @@ import ConfirmDialog from '@/shared/components/ConfirmDialog';
 import { BranchIcon, TrashIcon, FolderGitIcon } from '@/shared/components/icons';
 import { useWorktreeStore } from '@/shared/store/worktreeStore';
 import { Worktree } from '@/shared/types';
+import { reportFrontendError } from '@/shared/utils/errorReporting';
 
 /* eslint-disable import/no-restricted-paths -- WorktreeList needs git/terminal APIs for worktree management */
 import {
@@ -108,7 +109,9 @@ const WorktreeList: React.FC<WorktreeListProps> = ({
         const wtCacheKey = `${projectId}:wt:${worktreePath}`;
         const wtCache = terminalCache.get(wtCacheKey);
         if (wtCache?.sessionId) {
-          await closeTerminalSession(wtCache.sessionId).catch(() => {});
+          await closeTerminalSession(wtCache.sessionId).catch((err) =>
+            reportFrontendError('project.closeTerminal', err),
+          );
         }
         destroyTerminalCache(wtCacheKey);
         await removeWorktree(projectId, worktreePath);

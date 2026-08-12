@@ -10,6 +10,7 @@ import { useProjectStore } from '@/shared/store/projectStore';
 import { useTaskStore } from '@/shared/store/taskStore';
 import type { Project } from '@/shared/types';
 import type { TaskConfig } from '@/shared/types/task';
+import { reportFrontendError } from '@/shared/utils/errorReporting';
 import { IDE_PRESETS } from '@/shared/utils/idePresets';
 import { AVATAR_COLORS } from '@/shared/utils/projectAvatar';
 import {
@@ -68,7 +69,7 @@ const ProjectPanel: React.FC<ProjectPanelProps> = ({ projectId, customIdes, onPr
   useEffect(() => {
     listAgents()
       .then((list) => setAgents(list.filter((a) => a.enabled)))
-      .catch(() => {});
+      .catch((err) => reportFrontendError('settings.listAgents', err));
   }, []);
 
   useEffect(() => {

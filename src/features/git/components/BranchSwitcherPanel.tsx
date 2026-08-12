@@ -202,6 +202,7 @@ function BranchSwitcherPanel({
         case 'delete':
           break;
         case 'copy-name':
+          // 静默豁免：剪贴板写入失败浏览器已静默兜底，无需上报
           navigator.clipboard.writeText(branch).catch(() => {});
           break;
         default:

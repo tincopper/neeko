@@ -4,6 +4,7 @@ import { useImeSpaceGuard } from '@/shared/hooks/useImeSpaceGuard';
 import { useProjectStore } from '@/shared/store/projectStore';
 import { useWorktreeStore } from '@/shared/store/worktreeStore';
 import type { FileChange } from '@/shared/types';
+import { reportFrontendError } from '@/shared/utils/errorReporting';
 import { withTimeout } from '@/shared/utils/withTimeout';
 import { Button } from '@/ui/Button';
 import { Checkbox } from '@/ui/Checkbox';
@@ -62,7 +63,7 @@ function CommitDialog({ projectId, onClose, onRefreshGit }: CommitDialogProps) {
       .then((entries) => {
         if (entries.length > 0) setMessage(entries[0].message);
       })
-      .catch(() => {});
+      .catch((err) => reportFrontendError('git.commitLog', err));
   }, [amend, projectId]);
 
   /** Convert a PushOutcome into an error message string if it's AuthRequired, or return undefined for Success. */

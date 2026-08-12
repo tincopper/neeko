@@ -2,6 +2,7 @@ import { create } from 'zustand';
 
 import { runSearch, stopSearch } from '@/features/search/api/searchApi';
 import type { SearchFileGroup, SearchOptions } from '@/shared/types/search';
+import { reportFrontendError } from '@/shared/utils/errorReporting';
 
 /** Lifecycle of the active search run. */
 export type SearchStatus = 'idle' | 'running' | 'error';
@@ -153,7 +154,7 @@ export const useSearchStore = create<SearchState>((set, get) => ({
   stop: async () => {
     const { requestId } = get();
     if (requestId) {
-      await stopSearch(requestId).catch(() => {});
+      await stopSearch(requestId).catch((err) => reportFrontendError('search.stop', err));
     }
     set({ requestId: null, status: 'idle' });
   },

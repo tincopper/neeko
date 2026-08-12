@@ -2,6 +2,8 @@
 import type { FitAddon } from '@xterm/addon-fit';
 import type { Terminal } from '@xterm/xterm';
 
+import { reportFrontendError } from '@/shared/utils/errorReporting';
+
 // eslint-disable-next-line import/no-restricted-paths -- terminal cache needs agent API for agent config
 import { getAgent } from '../../agent/api/agentApi';
 import { closeTerminalSession } from '../api/terminalApi';
@@ -78,7 +80,9 @@ export function createTerminalCacheBackend<TCache extends CacheEntry>(
     entry.term.dispose();
 
     if (entry.sessionId) {
-      closeSession(entry.sessionId).catch(() => {});
+      closeSession(entry.sessionId).catch((err) =>
+        reportFrontendError('terminal.closeSession', err),
+      );
     }
 
     cache.delete(key);
@@ -113,7 +117,9 @@ export function createTerminalCacheBackend<TCache extends CacheEntry>(
     entry.inputController?.dispose();
 
     if (entry.sessionId) {
-      closeSession(entry.sessionId).catch(() => {});
+      closeSession(entry.sessionId).catch((err) =>
+        reportFrontendError('terminal.closeSession', err),
+      );
     }
 
     entry.term.dispose();
@@ -137,11 +143,13 @@ export function createTerminalCacheBackend<TCache extends CacheEntry>(
 
     const sessionId = entry.sessionId;
     const ctrlC = Array.from(new TextEncoder().encode('\x03'));
+    // 静默豁免：终端高频输入，尽力而为，失败无需上报
     emit(`terminal-input-${sessionId}`, ctrlC).catch(() => {});
 
     setTimeout(() => {
       const cmdStr = [command, ...args].join(' ') + '\r';
       const bytes = Array.from(new TextEncoder().encode(cmdStr));
+      // 静默豁免：终端高频输入，尽力而为，失败无需上报
       emit(`terminal-input-${sessionId}`, bytes).catch(() => {});
     }, 50);
   }
@@ -319,7 +327,9 @@ export async function switchAgentInWslTerminal(
   wslRebuildCallbacks.get(resolved)?.();
 
   if (oldCache?.sessionId) {
-    closeTerminalSession(oldCache.sessionId).catch(() => {});
+    closeTerminalSession(oldCache.sessionId).catch((err) =>
+      reportFrontendError('terminal.closeSession', err),
+    );
   }
   oldCache?.term.dispose();
 }
@@ -404,7 +414,9 @@ export async function switchAgentInRemoteTerminal(
   remoteRebuildCallbacks.get(resolved)?.();
 
   if (oldCache?.sessionId) {
-    closeTerminalSession(oldCache.sessionId).catch(() => {});
+    closeTerminalSession(oldCache.sessionId).catch((err) =>
+      reportFrontendError('terminal.closeSession', err),
+    );
   }
   oldCache?.term.dispose();
 }
@@ -484,7 +496,9 @@ export async function switchAgentInAnyTerminal(
   bk.rebuildCallbacks.get(resolved)?.();
 
   if (oldCache?.sessionId) {
-    closeTerminalSession(oldCache.sessionId).catch(() => {});
+    closeTerminalSession(oldCache.sessionId).catch((err) =>
+      reportFrontendError('terminal.closeSession', err),
+    );
   }
   oldCache?.term.dispose();
 }

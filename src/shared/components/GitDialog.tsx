@@ -2,6 +2,7 @@ import { homeDir } from '@tauri-apps/api/path';
 import React, { useState, useEffect } from 'react';
 
 import { cn } from '@/lib/utils';
+import { reportFrontendError } from '@/shared/utils/errorReporting';
 import { Button } from '@/ui/Button';
 import { Checkbox } from '@/ui/Checkbox';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/ui/Dialog';
@@ -74,11 +75,11 @@ const GitDialog: React.FC<GitDialogProps> = ({
     if (src?.type === 'wsl' && src.distro) {
       getWslHomeDir(src.distro)
         .then(setHomeDirPath)
-        .catch(() => {});
+        .catch((err) => reportFrontendError('git.wslHomeDir', err));
     } else if (src?.type !== 'remote') {
       homeDir()
         .then(setHomeDirPath)
-        .catch(() => {});
+        .catch((err) => reportFrontendError('git.homeDir', err));
     }
     // Remote case handled during render above — no sync setState in effect
   }, [dialog, remoteHomeDir]);

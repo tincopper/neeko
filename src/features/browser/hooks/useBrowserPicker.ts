@@ -3,6 +3,7 @@ import { useState, useCallback, useEffect, type RefObject } from 'react';
 import { BROWSER_PICKER_CANCELLED_EVENT } from '@/shared/events';
 import { useTauriEvent } from '@/shared/hooks/useTauriEvent';
 import { useProjectStore } from '@/shared/store/projectStore';
+import { reportFrontendError } from '@/shared/utils/errorReporting';
 
 import { browserStartPicker, browserStopPicker } from '../api/browserApi';
 import type { PickerThemeColors } from '../components/pickerUtils';
@@ -51,7 +52,7 @@ export function useBrowserPicker(params: {
     browserStartPicker(
       activeProjectId,
       getThemeColors() as unknown as Record<string, string>,
-    ).catch(() => {});
+    ).catch((err) => reportFrontendError('browser.pickerReinject', err));
   }, [activeProjectId, getThemeColors]);
 
   // Listen: picker cancelled (Escape / ×) — re-inject picker

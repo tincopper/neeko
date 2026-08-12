@@ -59,6 +59,8 @@ export async function saveOnboardingState(
   });
   // Keep the chain moving even if one save fails so that subsequent saves are
   // not permanently blocked. The returned promise still rejects to the caller.
+  // 保持链式写入继续推进（否则一次失败永久阻塞后续保存）；
+  // 错误仍通过下方 `await task` 抛给调用方，此处仅吞内部链，非静默吞错。
   saveChain = task.catch(() => {});
   await task;
 }

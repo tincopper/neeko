@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { cn } from '@/lib/utils';
 import { ChevronRightIcon } from '@/shared/components/icons';
+import { reportFrontendError } from '@/shared/utils/errorReporting';
 import { fileIconSrc } from '@/shared/utils/fileIcons';
 
 import { readFileContent, listPrReviewComments, addPrReviewComment } from '../../api/gitApi';
@@ -432,7 +433,7 @@ const DiffBody: React.FC<DiffBodyProps> = ({
         setComments(all.filter((c) => c.path === filePath));
         commentsLoaded.current = true;
       })
-      .catch(() => {})
+      .catch((err) => reportFrontendError('git.reviewComments', err))
       .finally(() => setCommentsLoading(false));
   }, [projectId, prNumber, filePath]);
 

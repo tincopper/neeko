@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import { checkAgentsInstalled } from '@/features/agent/api/agentApi';
 import type { AgentConfig } from '@/shared/types';
+import { reportFrontendError } from '@/shared/utils/errorReporting';
 
 interface UsePaneAgentsParams {
   agents: AgentConfig[];
@@ -28,7 +29,7 @@ export function usePaneAgents({
     const agentIds = agents.map((a) => a.id);
     checkAgentsInstalled(agentIds, projectIdForCheck)
       .then((result) => setInstalledMap(new Map(Object.entries(result))))
-      .catch(() => {});
+      .catch((err) => reportFrontendError('editor.checkAgentsInstalled', err));
   }, [agents, projectIdForCheck]);
 
   const handleAgentClick = useCallback(

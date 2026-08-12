@@ -3,6 +3,7 @@ import { useCallback } from 'react';
 import { useEditorStore } from '@/shared/store/editorStore';
 import { useProjectStore } from '@/shared/store/projectStore';
 import { useWorktreeStore } from '@/shared/store/worktreeStore';
+import { reportFrontendError } from '@/shared/utils/errorReporting';
 import { isActiveWorktree } from '@/shared/utils/git';
 
 import { loadOnboardingState } from '../api/onboardingApi';
@@ -32,7 +33,9 @@ export function useWorktreeActions({
         setActiveWorktreePath(null);
         setActiveWorktreeBranch('');
         saveWorktreeState(projectId, null);
-        setViewTerminal(projectId).catch(() => {});
+        setViewTerminal(projectId).catch((err) =>
+          reportFrontendError('project.setViewTerminal', err),
+        );
       }
     },
     [activeWorktreePath, setActiveWorktreePath, setActiveWorktreeBranch, saveWorktreeState],
@@ -71,7 +74,9 @@ export function useWorktreeActions({
       // Only auto-create terminal tab if this is not the first visit
       // First visit shows the onboarding page instead
       if (!isFirstVisit) {
-        setViewTerminal(projectId).catch(() => {});
+        setViewTerminal(projectId).catch((err) =>
+          reportFrontendError('project.setViewTerminal', err),
+        );
       }
     },
     [

@@ -23,6 +23,7 @@ import {
   exclusiveOpenTaskConsole,
   registerTaskConsoleCloser,
 } from '@/shared/utils/bottomPanelExclusive';
+import { reportFrontendError } from '@/shared/utils/errorReporting';
 
 /** Active process handles keyed by run id — outside React so hide/show never touches them. */
 const processHandles = new Map<string, TaskProcessHandle>();
@@ -163,7 +164,9 @@ async function launchProcessForRun(run: TaskRun) {
     prev.dispose();
     processHandles.delete(run.id);
     if (prev.processId) {
-      void stopTaskProcess(prev.processId).catch(() => {});
+      void stopTaskProcess(prev.processId).catch((err) =>
+        reportFrontendError('task.stopProcess', err),
+      );
     }
   }
 
@@ -481,7 +484,9 @@ export const useTaskStore = create<TaskStoreState>((rawSet, get) => {
         processHandles.delete(id);
         const processId = session?.processId ?? handle?.processId ?? null;
         if (processId) {
-          void stopTaskProcess(processId).catch(() => {});
+          void stopTaskProcess(processId).catch((err) =>
+            reportFrontendError('task.stopProcess', err),
+          );
         }
       }
       set((state) => {

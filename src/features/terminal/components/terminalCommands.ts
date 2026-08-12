@@ -1,6 +1,8 @@
 import { emit } from '@tauri-apps/api/event';
 
 // eslint-disable-next-line import/no-restricted-paths -- terminal commands need agent API for agent config
+import { reportFrontendError } from '@/shared/utils/errorReporting';
+
 import { getAgent } from '../../agent/api/agentApi';
 import { resizeTerminal, closeTerminalSession } from '../api/terminalApi';
 
@@ -115,13 +117,16 @@ export async function switchAgentInTerminal(
     requestAnimationFrame(() => {
       newCache.fitAddon.fit();
       if (newCache.sessionId) {
+        // 静默豁免：高频 resize，尽力而为，失败无需上报
         resizeTerminal(newCache.sessionId, newCache.term.cols, newCache.term.rows).catch(() => {});
       }
       newCache.term.focus();
     });
 
     if (oldCache?.sessionId) {
-      closeTerminalSession(oldCache.sessionId).catch(() => {});
+      closeTerminalSession(oldCache.sessionId).catch((err) =>
+        reportFrontendError('terminal.closeSession', err),
+      );
     }
     oldCache?.term.dispose();
   } catch (err) {

@@ -7,6 +7,7 @@ import { useProjectStore } from '@/shared/store/projectStore';
 import { useWorktreeStore } from '@/shared/store/worktreeStore';
 import type { FileChange, Worktree, GitStatusDiff } from '@/shared/types';
 import { aheadBehindKey } from '@/shared/utils/aheadBehindKey';
+import { reportFrontendError } from '@/shared/utils/errorReporting';
 
 /* eslint-disable import/no-restricted-paths -- session bootstrap needs git API for reading git info */
 import {
@@ -86,14 +87,14 @@ export function useSessionBootstrap(deps: {
                   is_clean: changedFiles.length === 0,
                 });
               })
-              .catch(() => {});
+              .catch((err) => reportFrontendError('session.gitChangedFiles', err));
 
             // 忽略文件列表（.gitignore），供文件树灰色显示
             getIgnoredFiles(p.id, '')
               .then((ignoredFiles) => {
                 patchGitInfo(p.id, { ignored_files: ignoredFiles });
               })
-              .catch(() => {});
+              .catch((err) => reportFrontendError('session.gitIgnoredFiles', err));
 
             getGitBranchInfo(p.id)
               .then((branchInfo) => {
@@ -103,7 +104,7 @@ export function useSessionBootstrap(deps: {
                   worktrees: branchInfo.worktrees,
                 });
               })
-              .catch(() => {});
+              .catch((err) => reportFrontendError('session.gitBranchInfo', err));
           }
         }
       } catch {
@@ -161,7 +162,7 @@ export function useSessionBootstrap(deps: {
               .then((changedFiles) => {
                 patchGitInfo({ changed_files: changedFiles, is_clean: changedFiles.length === 0 });
               })
-              .catch(() => {});
+              .catch((err) => reportFrontendError('session.gitChangedFiles', err));
             getGitBranchInfo(activeId)
               .then((branchInfo) => {
                 patchGitInfo({
@@ -170,7 +171,7 @@ export function useSessionBootstrap(deps: {
                   worktrees: branchInfo.worktrees,
                 });
               })
-              .catch(() => {});
+              .catch((err) => reportFrontendError('session.gitBranchInfo', err));
           }
         }
 

@@ -18,6 +18,7 @@ import { useEditorStore } from '@/shared/store/editorStore';
 import { useProjectStore } from '@/shared/store/projectStore';
 import type { FileChangedEvent } from '@/shared/types';
 import { fileUrlToFilePath } from '@/shared/utils/browserUtils';
+import { reportFrontendError } from '@/shared/utils/errorReporting';
 import { canGoBack, canGoForward, recordNavigation } from '@/shared/utils/historyStack';
 import {
   decideReclaims,
@@ -489,7 +490,9 @@ export function useBrowserPanel({ showToast }: UseBrowserPanelOptions) {
 
       // Hide previous project's webview
       if (prev.activeProjectId) {
-        browserSetVisible(prev.activeProjectId, false).catch(() => {});
+        browserSetVisible(prev.activeProjectId, false).catch((err) =>
+          reportFrontendError('browser.setVisible', err),
+        );
       }
 
       const nextProjectId = state.activeProjectId;
@@ -522,7 +525,9 @@ export function useBrowserPanel({ showToast }: UseBrowserPanelOptions) {
 
       // Show the new project's webview (if created)
       if (nextState.isCreated) {
-        browserSetVisible(nextProjectId, true).catch(() => {});
+        browserSetVisible(nextProjectId, true).catch((err) =>
+          reportFrontendError('browser.setVisible', err),
+        );
       }
       // 记录活跃时间,驱动闲置回收
       useProjectBrowserStore.getState().setPanelState(nextProjectId, {
@@ -563,7 +568,9 @@ export function useBrowserPanel({ showToast }: UseBrowserPanelOptions) {
         navigate(pendingUrl);
       } else {
         // No pending navigation — hide any orphaned webview
-        browserSetVisible(activeProjectId, false).catch(() => {});
+        browserSetVisible(activeProjectId, false).catch((err) =>
+          reportFrontendError('browser.setVisible', err),
+        );
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -573,7 +580,7 @@ export function useBrowserPanel({ showToast }: UseBrowserPanelOptions) {
   useEffect(() => {
     const handleBeforeUnload = () => {
       if (activeProjectId) {
-        browserClose(activeProjectId).catch(() => {});
+        browserClose(activeProjectId).catch((err) => reportFrontendError('browser.close', err));
       }
     };
     window.addEventListener('beforeunload', handleBeforeUnload);
@@ -595,7 +602,7 @@ export function useBrowserPanel({ showToast }: UseBrowserPanelOptions) {
       }));
       const reclaimIds = decideReclaims(usages, DEFAULT_RECLAIM_POLICY, Date.now());
       for (const projectId of reclaimIds) {
-        browserClose(projectId).catch(() => {});
+        browserClose(projectId).catch((err) => reportFrontendError('browser.close', err));
         useProjectBrowserStore.getState().setPanelState(projectId, {
           isCreated: false,
           isLoading: false,

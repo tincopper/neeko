@@ -76,6 +76,7 @@ export async function bindProjectTagGroups(
       } catch (syncError) {
         // Rollback the binding declaration so the next attempt still sees
         // these groups as newly added and tries to sync again.
+        // 静默豁免：回滚本身尽力而为；主错误 syncError 已 re-throw 给调用方处理
         await deps.setProjectTagGroups(projectId, previousBoundIds, projectPath).catch(() => {});
         throw syncError;
       }
