@@ -1,12 +1,20 @@
-import { logFrontendError } from '@/app/api/errorApi';
 import { useNotificationStore } from '@/shared/store/notificationStore';
+import {
+  reportFrontendError,
+  resetFrontendErrorThrottle,
+  setErrorNotifier,
+} from '@/shared/utils/errorReporting';
 
-/** 同 source 错误上报的最小间隔（ms），防止一次崩溃风暴刷爆日志与提示。 */
-const THROTTLE_MS = 5000;
-/** 错误提示消息的最大长度，避免海量堆栈刷屏通知。 */
-const MAX_MESSAGE_LENGTH = 200;
+export { reportFrontendError, resetFrontendErrorThrottle };
 
-const lastReportAt: Record<string, number> = {};
+// 模块加载即注册 toast 提示：上报链路与用户提示解耦，shared/utils 不依赖 store
+setErrorNotifier((message) => {
+  useNotificationStore.getState().addNotification({
+    type: 'error',
+    title: '前端错误',
+    message,
+  });
+});
 
 /**
  * 全局错误兜底：捕获 window 级未处理错误与未处理 Promise rejection，
@@ -35,45 +43,4 @@ export function registerGlobalErrorHandlers(): () => void {
     window.removeEventListener('error', onError);
     window.removeEventListener('unhandledrejection', onRejection);
   };
-}
-
-/**
- * 重置节流状态。主要用于测试隔离；真实场景中亦可由设置面板调用以清空
- * 错误上报频率限制。
- */
-export function resetFrontendErrorThrottle(): void {
-  Object.keys(lastReportAt).forEach((key) => {
-    delete lastReportAt[key];
-  });
-}
-
-/**
- * 将前端错误上报到 Rust 日志 + 通知中心。带 source 级节流，
- * 上报链路的自身失败一律静默（避免二次崩溃）。
- */
-export function reportFrontendError(source: string, error: unknown): void {
-  const message =
-    error instanceof Error ? error.message : typeof error === 'string' ? error : String(error);
-  const stack = error instanceof Error ? error.stack : undefined;
-
-  const now = Date.now();
-  const last = lastReportAt[source] ?? -Infinity;
-  if (now - last < THROTTLE_MS) {
-    return;
-  }
-  lastReportAt[source] = now;
-
-  logFrontendError({
-    source,
-    message,
-    stack: stack ?? null,
-  }).catch(() => {
-    // 上报链路自身失败必须静默，避免错误处理引发二次错误
-  });
-
-  useNotificationStore.getState().addNotification({
-    type: 'error',
-    title: '前端错误',
-    message: message.slice(0, MAX_MESSAGE_LENGTH) || '发生未捕获错误',
-  });
 }

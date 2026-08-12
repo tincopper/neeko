@@ -1,21 +1,23 @@
+// eslint-disable-next-line no-restricted-imports -- 测试需直接断言 invoke 被调用（setup 已全局 mock）
+import { invoke } from '@tauri-apps/api/core';
 import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest';
 
-import { logFrontendError } from '@/app/api/errorApi';
+// invoke 由 testing/setup.ts 全局 mock（返回 undefined）；此处设置返回 Promise，
+// 保证 errorReporting 内部 invoke(...).catch 链可用。
+
 import {
   registerGlobalErrorHandlers,
   resetFrontendErrorThrottle,
 } from '@/app/registerGlobalErrorHandlers';
 import { useNotificationStore } from '@/shared/store/notificationStore';
 
-vi.mock('@/app/api/errorApi', () => ({
-  logFrontendError: vi.fn(() => Promise.resolve()),
-}));
-
+const mockedInvoke = vi.mocked(invoke);
 const mockAddNotification = vi.fn();
 
 describe('registerGlobalErrorHandlers', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockedInvoke.mockResolvedValue(undefined);
     // 重置模块级节流状态，避免跨用例污染
     resetFrontendErrorThrottle();
     // 替换 notification store 的 addNotification
@@ -48,7 +50,8 @@ describe('registerGlobalErrorHandlers', () => {
     const err = new Error('render boom');
     fireError(err, 'render boom');
 
-    expect(vi.mocked(logFrontendError)).toHaveBeenCalledWith(
+    expect(mockedInvoke).toHaveBeenCalledWith(
+      'log_frontend_error',
       expect.objectContaining({ source: 'window.error', message: 'render boom' }),
     );
     cleanup();
@@ -62,7 +65,8 @@ describe('registerGlobalErrorHandlers', () => {
       new PromiseRejectionEvent('unhandledrejection', { promise: Promise.resolve(), reason }),
     );
 
-    expect(vi.mocked(logFrontendError)).toHaveBeenCalledWith(
+    expect(mockedInvoke).toHaveBeenCalledWith(
+      'log_frontend_error',
       expect.objectContaining({ source: 'unhandledrejection', message: 'async boom' }),
     );
     cleanup();
@@ -84,7 +88,7 @@ describe('registerGlobalErrorHandlers', () => {
     window.dispatchEvent(new ErrorEvent('error', { error: new Error('a'), message: 'a' }));
     window.dispatchEvent(new ErrorEvent('error', { error: new Error('b'), message: 'b' }));
 
-    expect(vi.mocked(logFrontendError)).toHaveBeenCalledTimes(1);
+    expect(mockedInvoke).toHaveBeenCalledTimes(1);
     cleanup();
   });
 
@@ -96,6 +100,6 @@ describe('registerGlobalErrorHandlers', () => {
     window.dispatchEvent(new Event('error'));
 
     expect(consoleSpy).not.toHaveBeenCalled();
-    expect(vi.mocked(logFrontendError)).not.toHaveBeenCalled();
+    expect(mockedInvoke).not.toHaveBeenCalled();
   });
 });
