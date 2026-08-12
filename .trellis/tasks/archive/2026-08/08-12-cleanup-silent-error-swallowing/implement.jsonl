@@ -1,0 +1,5 @@
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "import 防火墙 (no-restricted-paths)、API 封装 (no-restricted-imports)、单向依赖、错误处理红线 —— 本任务 16 文件改造必须对照"}
+{"file": ".trellis/spec/frontend/hook-guidelines.md", "reason": "feature hook 改造 .catch 时的 hooks 顺序/依赖约束"}
+{"file": ".trellis/spec/frontend/state-management.md", "reason": "store 目录化直导（taskStore/searchStore 改造时）"}
+{"file": ".trellis/spec/unit-test/mock-strategies.md", "reason": "global mock 不覆盖 setup、模块级节流状态跨用例污染 —— errorReporting 迁移/测试相关"}
+{"file": ".trellis/spec/unit-test/frontend-testing.md", "reason": "vitest 配置与测试约束，改造后回归测试依据"}
