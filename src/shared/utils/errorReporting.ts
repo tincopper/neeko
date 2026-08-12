@@ -30,8 +30,20 @@ const MAX_MESSAGE_LENGTH = 200;
 const lastReportAt: Record<string, number> = {};
 
 /**
+ * 已知良性警告前缀。这类由浏览器/WebView 规范发出的诊断信息不是应用缺陷
+ * （如 ResizeObserver loop），只落日志、不打扰用户。
+ */
+const BENIGN_WARNING_PREFIXES = ['ResizeObserver loop'];
+
+/** 判定是否为无需 toast 的良性警告。 */
+export function isBenignWarning(message: string): boolean {
+  return BENIGN_WARNING_PREFIXES.some((prefix) => message.startsWith(prefix));
+}
+
+/**
  * 将前端错误上报到 Rust 日志（`~/.neeko/neeko.log`）+ 用户提示 toast。
  * 带 source 级节流，防刷屏；上报链路自身失败一律静默（避免二次崩溃）。
+ * 良性警告（见 isBenignWarning）仅落日志、不弹 toast。
  */
 export function reportFrontendError(source: string, error: unknown): void {
   const message =
@@ -51,6 +63,11 @@ export function reportFrontendError(source: string, error: unknown): void {
     message,
     stack: stack ?? null,
   });
+
+  // 良性警告不打扰用户（仅已记日志）
+  if (isBenignWarning(message)) {
+    return;
+  }
 
   try {
     notifier?.(message.slice(0, MAX_MESSAGE_LENGTH) || '发生未捕获错误');

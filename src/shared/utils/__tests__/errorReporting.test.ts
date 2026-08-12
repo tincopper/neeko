@@ -3,6 +3,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest';
 
 import {
+  isBenignWarning,
   reportFrontendError,
   resetFrontendErrorThrottle,
   setErrorNotifier,
@@ -101,5 +102,42 @@ describe('reportFrontendError', () => {
 
     expect(() => reportFrontendError('test.source', 'boom')).not.toThrow();
     expect(mockedInvoke).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('isBenignWarning', () => {
+  it('识别 ResizeObserver loop 前缀为良性警告', () => {
+    expect(isBenignWarning('ResizeObserver loop completed with undelivered notifications.')).toBe(
+      true,
+    );
+  });
+
+  it('普通错误非良性警告', () => {
+    expect(isBenignWarning('render boom')).toBe(false);
+  });
+});
+
+describe('reportFrontendError 良性警告豁免', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockedInvoke.mockResolvedValue(undefined);
+    resetFrontendErrorThrottle();
+    setErrorNotifier(mockNotify);
+  });
+
+  afterEach(() => {
+    resetFrontendErrorThrottle();
+    setErrorNotifier(null);
+    vi.restoreAllMocks();
+  });
+
+  it('良性警告仍落日志但不弹 toast', () => {
+    reportFrontendError(
+      'window.error',
+      'ResizeObserver loop completed with undelivered notifications.',
+    );
+
+    expect(mockedInvoke).toHaveBeenCalledTimes(1);
+    expect(mockNotify).not.toHaveBeenCalled();
   });
 });
