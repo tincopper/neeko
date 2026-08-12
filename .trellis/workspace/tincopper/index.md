@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-3.md`
-- **Total Sessions**: 128
+- **Total Sessions**: 129
 - **Last Active**: 2026-08-12
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-3.md` | ~395 | Active |
+| `journal-3.md` | ~429 | Active |
 | `journal-2.md` | ~1991 | Archived |
 | `journal-1.md` | ~1986 | Archived |
 <!-- @@@/auto:active-documents -->
@@ -31,6 +31,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 129 | 2026-08-12 | 清理前端静态吞错并接入全局错误上报 | `9bf3546b`, `5ee2bf2a` | `main` |
 | 128 | 2026-08-12 | Fix markdown link crash + global error guard | `7e0acd41` | `main` |
 | 127 | 2026-08-11 | 收敛命令执行三重枚举（GitTransportKind/ExecTarget/ProjectEnvironment） | `e45d9b57` | `main` |
 | 126 | 2026-08-11 | 平台差异集中化重构：neeko-check 审查 + 三项优化 + 提交 | `7ea9ae42` | `main` |

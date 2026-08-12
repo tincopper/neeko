@@ -393,3 +393,37 @@ Fixed MarkdownPreview internal-link webview navigation crash (preventDefault + r
 ### Next Steps
 
 - None - task complete
+
+
+## Session 129: 清理前端静态吞错并接入全局错误上报
+
+**Date**: 2026-08-12
+**Task**: 清理前端静态吞错并接入全局错误上报
+**Branch**: `main`
+
+### Summary
+
+将 reportFrontendError 下沉至 shared/utils/errorReporting.ts（setErrorNotifier 解耦 + async 内部吞错），删除 errorApi.ts；改造 16 文件 36 处 .catch(() => {}) 接入日志上报，11 处高频/剪贴板/链保活/回滚保留静默并加豁免注释。lint:fe/type-check/cargo lint 全绿，1438 测试通过。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `9bf3546b` | (see git log) |
+| `5ee2bf2a` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
