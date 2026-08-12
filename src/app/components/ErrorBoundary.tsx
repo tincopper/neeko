@@ -1,5 +1,7 @@
 import { Component, type ErrorInfo, type ReactNode } from 'react';
 
+import { reportFrontendError } from '@/app/registerGlobalErrorHandlers';
+
 interface ErrorBoundaryProps {
   children: ReactNode;
   /** 自定义 fallback；缺省时使用内置错误页 */
@@ -26,6 +28,7 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
 
   componentDidCatch(error: Error, info: ErrorInfo) {
     console.error('[ErrorBoundary] Uncaught render error:', error, info);
+    reportFrontendError('render', error);
     this.props.onError?.(error, info);
   }
 

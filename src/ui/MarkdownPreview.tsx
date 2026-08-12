@@ -7,7 +7,9 @@ import rehypeHighlight from 'rehype-highlight';
 import rehypeRaw from 'rehype-raw';
 import remarkGfm from 'remark-gfm';
 
+import { useNotificationStore } from '@/shared/store/notificationStore';
 import type { AppTheme } from '@/shared/types';
+import { resolveInternalHref } from '@/shared/utils/markdownLinks';
 import { isDarkTheme } from '@/shared/utils/theme';
 
 import { InlineDiffBlock } from './InlineDiffBlock';
@@ -210,6 +212,8 @@ interface MarkdownPreviewProps {
   theme: AppTheme;
   className?: string;
   basePath?: string;
+  /** 点击内部相对链接时的回调（resolve 为绝对路径后调用）；不传则走 toast 兜底提示 */
+  onInternalLinkClick?: (absPath: string) => void;
 }
 
 function extractCodeText(children: React.ReactNode): string {
@@ -226,7 +230,13 @@ function extractCodeText(children: React.ReactNode): string {
   return '';
 }
 
-function MarkdownPreviewImpl({ content, theme, className, basePath }: MarkdownPreviewProps) {
+function MarkdownPreviewImpl({
+  content,
+  theme,
+  className,
+  basePath,
+  onInternalLinkClick,
+}: MarkdownPreviewProps) {
   return (
     <div className={`markdown-preview${className ? ` ${className}` : ''}`}>
       <ReactMarkdown
@@ -269,13 +279,33 @@ function MarkdownPreviewImpl({ content, theme, className, basePath }: MarkdownPr
             return <ImageBlock src={src} alt={alt} basePath={basePath} />;
           },
           a({ href, children, ...props }) {
+            // 保持浏览器默认行为的链接：外链（http/https/协议相对）、邮件/电话协议、同页锚点。
+            // 其余（内部相对路径）一律 preventDefault 阻断 webview 页面导航（闪退根因）。
+            const isDefaultLink =
+              !!href &&
+              (/^(https?:)?\/\//.test(href) ||
+                /^(mailto|tel):/i.test(href) ||
+                href.startsWith('#'));
             const isExternal = href && /^(https?:)?\/\//.test(href);
+            const handleLinkClick = (e: React.MouseEvent<HTMLAnchorElement>) => {
+              if (isDefaultLink) return;
+              e.preventDefault();
+              const abs = href ? resolveInternalHref(href, basePath) : '';
+              if (abs && onInternalLinkClick) {
+                onInternalLinkClick(abs);
+                return;
+              }
+              useNotificationStore
+                .getState()
+                .addNotification({ type: 'error', title: '链接无法打开', message: href ?? '' });
+            };
             return (
               <a
                 href={href}
                 target={isExternal ? '_blank' : undefined}
                 rel={isExternal ? 'noopener noreferrer' : undefined}
                 {...props}
+                onClick={handleLinkClick}
               >
                 {children}
               </a>

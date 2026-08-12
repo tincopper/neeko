@@ -1,12 +1,14 @@
 import type { EditorView } from '@codemirror/view';
 import CodeMirror from '@uiw/react-codemirror';
-import React, { useMemo, useRef, useState } from 'react';
+import React, { useCallback, useMemo, useRef, useState } from 'react';
 
 import { useCmdHeld } from '@/features/lsp';
 import { cn } from '@/lib/utils';
+import { useNotificationStore } from '@/shared/store/notificationStore';
 import type { AppTheme, FileTab } from '@/shared/types';
 import { MarkdownPreview } from '@/ui';
 
+import { useFileActionsContext } from '../FileActionsContext';
 import { useEditorBreakpoints } from '../hooks/useEditorBreakpoints';
 import { useEditorExtensions } from '../hooks/useEditorExtensions';
 import { useEditorSave } from '../hooks/useEditorSave';
@@ -166,6 +168,21 @@ function FileEditor({
   const cmdHeld = useCmdHeld();
   const cmClassName = cn('h-full overflow-hidden', cmdHeld && 'cmd-held');
 
+  // Markdown / HTML preview 模式下点击内部链接时打开目标文件
+  const { onFileSelect } = useFileActionsContext();
+  const handleInternalLinkClick = useCallback(
+    async (absPath: string) => {
+      if (!onFileSelect) return;
+      const ok = await onFileSelect(absPath);
+      if (!ok) {
+        useNotificationStore
+          .getState()
+          .addNotification({ type: 'error', title: '无法打开文件', message: absPath });
+      }
+    },
+    [onFileSelect],
+  );
+
   // Breadcrumb path segments
   const pathSegments = tab.filePath.replace(/\\/g, '/').split('/');
 
@@ -227,7 +244,12 @@ function FileEditor({
         {showPreview ? (
           isMd ? (
             <MarkdownScrollContainer tabKey={tabKey} tabId={tabId} content={currentContent}>
-              <MarkdownPreview content={currentContent} theme={theme} basePath={basePath} />
+              <MarkdownPreview
+                content={currentContent}
+                theme={theme}
+                basePath={basePath}
+                onInternalLinkClick={handleInternalLinkClick}
+              />
             </MarkdownScrollContainer>
           ) : (
             <InlineHtmlPreview

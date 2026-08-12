@@ -186,7 +186,7 @@ export function useAppShell(): UseAppShellResult {
   });
   const handleFileSelect = useCallback(
     (filePath: string) => {
-      fileView.openFile(filePath);
+      return fileView.openFile(filePath);
     },
     [fileView],
   );

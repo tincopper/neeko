@@ -1,7 +1,7 @@
 import React, { createContext, useContext } from 'react';
 
 export interface FileActionsContextValue {
-  onFileSelect: (filePath: string) => void;
+  onFileSelect: (filePath: string) => Promise<boolean>;
   onFileRefresh: () => void;
   onFileCloseTab: (tabId: string) => void;
   onFileActivateTab: (tabId: string) => void;

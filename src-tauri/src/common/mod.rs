@@ -5,6 +5,7 @@
 //! types that are consumed by both backend and frontend-facing code.
 
 pub mod agent;
+pub mod commands;
 pub mod connection;
 pub mod db;
 /// Application error types and conversions.

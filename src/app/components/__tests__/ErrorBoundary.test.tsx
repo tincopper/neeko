@@ -1,13 +1,28 @@
 import { render, screen, fireEvent } from '@testing-library/react';
-import { describe, it, expect, vi, afterEach } from 'vitest';
+import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest';
 
 import { ErrorBoundary } from '@/app/components/ErrorBoundary';
+import { reportFrontendError } from '@/app/registerGlobalErrorHandlers';
+
+vi.mock('@/app/registerGlobalErrorHandlers', async () => {
+  const actual = await vi.importActual<typeof import('@/app/registerGlobalErrorHandlers')>(
+    '@/app/registerGlobalErrorHandlers',
+  );
+  return {
+    ...actual,
+    reportFrontendError: vi.fn(),
+  };
+});
 
 function Bomb(): never {
   throw new Error('boom');
 }
 
 describe('ErrorBoundary', () => {
+  beforeEach(() => {
+    vi.mocked(reportFrontendError).mockClear();
+  });
+
   afterEach(() => {
     vi.restoreAllMocks();
   });
@@ -31,6 +46,18 @@ describe('ErrorBoundary', () => {
     expect(screen.getByRole('alert')).toBeInTheDocument();
     expect(screen.getByText(/boom/)).toBeInTheDocument();
     expect(consoleSpy).toHaveBeenCalled();
+  });
+
+  it('渲染抛错时调用前端错误上报', () => {
+    render(
+      <ErrorBoundary>
+        <Bomb />
+      </ErrorBoundary>,
+    );
+    expect(vi.mocked(reportFrontendError)).toHaveBeenCalledWith(
+      'render',
+      expect.objectContaining({ message: 'boom' }),
+    );
   });
 
   it('支持自定义 fallback 与 onError 回调', () => {

@@ -312,3 +312,26 @@ expect(mockInvoke.mock.calls[1][0]).toBe('load_session');
 expect(mockInvoke).toHaveBeenCalledWith('load_config');
 expect(mockInvoke).toHaveBeenCalledWith('load_session');
 ```
+
+### 4. 重复 `vi.mock` 不会覆盖 `setup.ts` 的全局 mock
+
+同一模块路径只被 mock 一次（`setup.ts` 先注册的生效），测试文件里的 `vi.mock(factory)` 不会覆盖它，结果是「实现代码用的 mock 实例」与「测试断言的 mock 实例」分裂成两套 `vi.fn()`，表现为断言 0 次调用。
+
+```typescript
+// 错误 —— 覆盖无效，两套 vi.fn 实例
+vi.mock('@tauri-apps/api/core', () => ({ invoke: vi.fn(() => Promise.resolve()) }));
+expect(vi.mocked(invoke)).toHaveBeenCalled(); // 0 calls
+
+// 正确 —— 复用 setup 的全局 mock，仅按需设置返回值
+import { invoke } from '@tauri-apps/api/core';
+beforeEach(() => {
+  vi.clearAllMocks();
+  vi.mocked(invoke).mockResolvedValue(undefined);
+});
+```
+
+或更贴近系统边界：mock **应用层 API wrapper**（`src/app/api/*.ts`、`src/features/*/api/*.ts`），断言 wrapper 调用参数，与 `no-restricted-imports` 的解耦一致。
+
+### 5. 模块级节流/缓存状态会跨用例污染
+
+模块级 `Map`/`Record`（如错误上报节流 `lastReportAt`）在 `beforeEach` 不会被重置，后续用例会被前面的节流状态挡住。需导出 reset 函数并在 `beforeEach`/`afterEach` 清理；用 fake timers 固定时间时初值应为 `-Infinity` 而非 `0`（否则 `now=0` 时 `now - 0 < threshold` 误判为节流中）。

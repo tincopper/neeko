@@ -33,9 +33,9 @@ export function useFileViewTabOps({
    * Open a file - adds a new tab or activates existing tab
    */
   const openFile = useCallback(
-    async (filePath: string) => {
+    async (filePath: string): Promise<boolean> => {
       const tk = tabKeyRef.current;
-      if (!tk) return;
+      if (!tk) return false;
 
       const projectId = parseProjectIdFromTabKey(tk);
       const tabId = getTabId(tk, filePath);
@@ -72,7 +72,7 @@ export function useFileViewTabOps({
           }
         }
         useEditorStore.getState().activateTab(tk, tabId);
-        return;
+        return true;
       }
 
       // Load file content — 不触碰文件树 loading 状态（树加载由 store.loadDir 独立治理）
@@ -104,8 +104,10 @@ export function useFileViewTabOps({
         };
 
         useEditorStore.getState().addTab(tk, newTab);
+        return true;
       } catch (e) {
         setError(String(e));
+        return false;
       }
     },
     [setError, tabKeyRef, worktreePathRef, externalCommandsRef],
