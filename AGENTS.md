@@ -368,6 +368,12 @@ cargo test --manifest-path src-tauri/Cargo.toml
 8. **路径安全校验**：前端传入的路径（IDE 路径、项目 Root、文件操作路径）在 Rust 端消费前必须 `canonicalize()`，严防路径穿越。`capabilities` 配置禁止放开 `fs:allow-all`、`shell:allow-all`。
 9. **mod.rs 保持极薄**：`mod.rs`（或同名根文件）只允许 `mod` 声明与 `pub use` re-export。业务 `fn`、`impl` 块、结构体字段实现必须抽离到同级独立文件（`services.rs`、`manager.rs`、`types.rs`）。
 
+### 业界最佳实践（React / Rust 通用底线）
+
+> 供 `neeko-check` 审核时对齐。业界通用最佳实践独立成文件、按需扩展，索引见
+> [`docs/best-practices/index.md`](docs/best-practices/index.md)（含 React / Rust / 通用工程实践）。
+> 与项目特有规范（`.trellis/spec/`）互补，涉及项目特有时直接链接到对应 spec 文件。
+
 ## Important Files
 
 | 文件 | 作用 |
