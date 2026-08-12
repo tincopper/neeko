@@ -18,6 +18,22 @@ use super::scripts::build_picker_script;
 use super::url_validator::{resolve_allowed_file_root, resolve_project_root, validate_url_scheme};
 use super::webview_ops::{create_webview, set_webview_bounds};
 
+/// 幂等缺失决策：webview 缺失时按操作语义决定返回值。
+///
+/// `needs_instance = true`（如显示/导航，必须操作真实实例）→ 返回 `NotFound`；
+/// `needs_instance = false`（如隐藏/关闭，声明式清理）→ 目标不存在即已达成交付，
+/// 返回 `Ok`。这样切换/回收等清理路径不产生假错误，而真实异常仍被暴露。
+fn resolve_missing_webview(needs_instance: bool, label: &str) -> Result<(), AppError> {
+    if needs_instance {
+        Err(AppError::NotFound(format!(
+            "Browser webview not found: {}",
+            label
+        )))
+    } else {
+        Ok(())
+    }
+}
+
 /// 创建内嵌浏览器 webview（Rust 侧真实创建，支持事件通知）
 /// 返回 webview label
 #[tauri::command]
@@ -111,11 +127,14 @@ pub async fn browser_reset_zoom(app: tauri::AppHandle, label: String) -> Result<
 }
 
 /// 关闭/销毁浏览器 webview
+///
+/// 幂等：webview 已不存在时视为"已关闭"成功返回（调用方为切换/回收/卸载等
+/// 声明式清理，目标不存在即已达成交付），不报 NotFound。
 #[tauri::command]
 pub async fn browser_close(app: tauri::AppHandle, label: String) -> Result<(), AppError> {
-    let webview = app
-        .get_webview(&label)
-        .ok_or_else(|| AppError::NotFound(format!("Browser webview not found: {}", label)))?;
+    let Some(webview) = app.get_webview(&label) else {
+        return resolve_missing_webview(false, &label);
+    };
     webview
         .close()
         .map_err(|e| AppError::Unknown(format!("Failed to close webview: {}", e)))?;
@@ -123,15 +142,19 @@ pub async fn browser_close(app: tauri::AppHandle, label: String) -> Result<(), A
 }
 
 /// 显示/隐藏浏览器 webview
+///
+/// 幂等语义：`visible=false` 时 webview 不存在视为"已隐藏"成功返回（切换/回收
+/// 等声明式隐藏，目标不存在即已达成交付）；`visible=true` 时 webview 不存在是
+/// 真实异常（前端认为应显示但实例缺失），仍返回 NotFound。
 #[tauri::command]
 pub async fn browser_set_visible(
     app: tauri::AppHandle,
     label: String,
     visible: bool,
 ) -> Result<(), AppError> {
-    let webview = app
-        .get_webview(&label)
-        .ok_or_else(|| AppError::NotFound(format!("Browser webview not found: {}", label)))?;
+    let Some(webview) = app.get_webview(&label) else {
+        return resolve_missing_webview(visible, &label);
+    };
     if visible {
         webview
             .show()
@@ -217,4 +240,28 @@ pub async fn browser_stop_picker(app: tauri::AppHandle, label: String) -> Result
         .eval("window.__NEEKO_PICKER__ && window.__NEEKO_PICKER__.stop()")
         .map_err(|e| AppError::Unknown(format!("Failed to stop picker: {}", e)))?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::resolve_missing_webview;
+    use crate::AppError;
+
+    #[test]
+    fn missing_webview_for_idempotent_cleanup_is_ok() {
+        // 隐藏/关闭属声明式清理：webview 缺失即目标已达成，不报错
+        assert!(resolve_missing_webview(false, "neeko-browser-x").is_ok());
+    }
+
+    #[test]
+    fn missing_webview_for_action_needing_instance_is_not_found() {
+        // 显示/导航必须操作真实实例：webview 缺失是真实异常
+        let err = resolve_missing_webview(true, "neeko-browser-x").unwrap_err();
+        match err {
+            AppError::NotFound(msg) => {
+                assert!(msg.contains("neeko-browser-x"));
+            }
+            other => panic!("expected NotFound, got {:?}", other),
+        }
+    }
 }
