@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-3.md`
-- **Total Sessions**: 127
-- **Last Active**: 2026-08-11
+- **Total Sessions**: 128
+- **Last Active**: 2026-08-12
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-3.md` | ~362 | Active |
+| `journal-3.md` | ~395 | Active |
 | `journal-2.md` | ~1991 | Archived |
 | `journal-1.md` | ~1986 | Archived |
 <!-- @@@/auto:active-documents -->
@@ -31,6 +31,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 128 | 2026-08-12 | Fix markdown link crash + global error guard | `7e0acd41` | `main` |
 | 127 | 2026-08-11 | 收敛命令执行三重枚举（GitTransportKind/ExecTarget/ProjectEnvironment） | `e45d9b57` | `main` |
 | 126 | 2026-08-11 | 平台差异集中化重构：neeko-check 审查 + 三项优化 + 提交 | `7ea9ae42` | `main` |
 | 125 | 2026-08-07 | fix: git status list stale after build (race in full refresh) | - | `main` |

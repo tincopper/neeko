@@ -360,3 +360,36 @@ After `pnpm tauri build` (or any heavy build), the file list's git-status indica
 ### Next Steps
 
 - None - task complete
+
+
+## Session 128: Fix markdown link crash + global error guard
+
+**Date**: 2026-08-12
+**Task**: Fix markdown link crash + global error guard
+**Branch**: `main`
+
+### Summary
+
+Fixed MarkdownPreview internal-link webview navigation crash (preventDefault + resolveInternalHref + open via onFileSelect; mailto/tel/anchor defaults preserved). Added global error guard: window.onerror/unhandledrejection/ErrorBoundary throttled toast + log_frontend_error to ~/.neeko/neeko.log. Reviewed via neeko-check, optimized findings (Rust test authenticity, link protocol handling), all quality gates passed.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `7e0acd41` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
