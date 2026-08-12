@@ -1,4 +1,5 @@
 export * from './agent';
+export * from './app';
 export * from './connection';
 export * from './editorGroup';
 export * from './file';

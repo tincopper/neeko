@@ -14,6 +14,8 @@
 //   the elided_lifetimes_in_paths sub-lint fires ~46 times across the codebase,
 //   requiring a separate cleanup pass before promoting to deny.
 
+/// Application about information (version & metadata).
+pub mod about;
 /// Agent lifecycle management, commands, and configuration.
 pub mod agent;
 mod app;
@@ -98,6 +100,7 @@ macro_rules! neeko_invoke_handler {
             $crate::session::commands::load_vcs_settings_command,
             // ── app lifecycle ────────────────────────────────────────────────
             $crate::app_state::heartbeat,
+            $crate::about::commands::get_app_info,
             // ── terminal ─────────────────────────────────────────────────────
             $crate::terminal::commands::create_terminal_session,
             $crate::terminal::commands::close_terminal_session,

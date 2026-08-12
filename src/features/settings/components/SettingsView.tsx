@@ -10,6 +10,7 @@ import type { AgentConfig, AppConfig } from '@/shared/types';
 // eslint-disable-next-line import/no-restricted-paths -- settings view lists agents via agent API
 import { listAgents } from '../../agent/api/agentApi';
 
+import AboutPanel from './AboutPanel';
 import AgentsPanel from './AgentsPanel';
 import AppearancePanel from './AppearancePanel';
 import { NAV_ITEMS, type SettingsNavId } from './constants';
@@ -213,6 +214,9 @@ function SettingsView() {
 
       case 'shortcuts':
         return <ShortcutPanel config={config} onConfigChange={onConfigChange} />;
+
+      case 'about':
+        return <AboutPanel />;
 
       default:
         return null;

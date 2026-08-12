@@ -8,6 +8,7 @@ import type { AgentConfig, AppConfig, DiffMode } from '@/shared/types';
 // eslint-disable-next-line import/no-restricted-paths -- settings panel lists agents via agent API
 import { listAgents } from '../../agent/api/agentApi';
 
+import AboutPanel from './AboutPanel';
 import AgentsPanel from './AgentsPanel';
 import AppearancePanel from './AppearancePanel';
 import { NAV_ITEMS, BUILTIN_FONTS, PRESET_SHELLS, type NavCategory } from './constants';
@@ -190,6 +191,9 @@ const SettingsPanel: React.FC<SettingsPanelProps> = React.memo(
 
         case 'shortcuts':
           return <ShortcutPanel config={config} onConfigChange={onConfigChange} />;
+
+        case 'about':
+          return <AboutPanel />;
 
         default:
           return null;

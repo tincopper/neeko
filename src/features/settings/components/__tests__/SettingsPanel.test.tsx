@@ -78,6 +78,7 @@ describe('SettingsPanel', () => {
       expect(screen.getByRole('button', { name: 'Agents' })).toBeInTheDocument();
       expect(screen.getByRole('button', { name: 'IDE' })).toBeInTheDocument();
       expect(screen.getByRole('button', { name: 'Git' })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'About' })).toBeInTheDocument();
     });
   });
 
@@ -235,6 +236,34 @@ describe('SettingsPanel', () => {
       await user.click(fontTrigger);
       expect(screen.getByText('Fira Code')).toBeInTheDocument();
       expect(screen.getByText('JetBrains Mono')).toBeInTheDocument();
+    });
+  });
+
+  describe('About 导航', () => {
+    it('点击 About 导航展示版本信息面板', async () => {
+      mockInvoke.mockImplementation(async (cmd: string) => {
+        if (cmd === 'get_app_info') {
+          return {
+            name: 'Neeko',
+            version: '1.0.6',
+            identifier: 'com.neeko.desktop',
+            description: null,
+            authors: null,
+            license: 'Apache-2.0',
+            tauriVersion: '2.10.3',
+            os: 'macos',
+            arch: 'aarch64',
+            copyright: null,
+          };
+        }
+        return [];
+      });
+      const user = userEvent.setup();
+      renderPanel();
+      await user.click(screen.getByRole('button', { name: 'About' }));
+      expect(await screen.findByText('Neeko')).toBeInTheDocument();
+      expect(screen.getByText('1.0.6')).toBeInTheDocument();
+      expect(mockInvoke).toHaveBeenCalledWith('get_app_info');
     });
   });
 

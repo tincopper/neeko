@@ -6,6 +6,7 @@ import {
   EditorIcon,
   GitLogoIcon,
   GridIcon,
+  InfoCircleIcon,
   KeyboardIcon,
   TerminalIcon,
 } from '@/shared/components/icons';
@@ -18,7 +19,8 @@ export type NavCategory =
   | 'git'
   | 'shortcuts'
   | 'appearance'
-  | 'lsp';
+  | 'lsp'
+  | 'about';
 
 export type SettingsNavId = NavCategory | `project:${string}`;
 
@@ -68,6 +70,11 @@ export const NAV_ITEMS: NavItem[] = [
     id: 'shortcuts',
     label: 'Shortcuts',
     icon: React.createElement(KeyboardIcon, { size: 16 }),
+  },
+  {
+    id: 'about',
+    label: 'About',
+    icon: React.createElement(InfoCircleIcon, { size: 16 }),
   },
 ];
 
