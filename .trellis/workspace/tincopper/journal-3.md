@@ -458,3 +458,36 @@ DiffView review integration (popover/anchors/selection), ReviewPanel dock panel,
 ### Next Steps
 
 - None - task complete
+
+
+## Session 131: Diff AI Review 重构：headless 评审闭环
+
+**Date**: 2026-08-13
+**Task**: Diff AI Review 重构：headless 评审闭环
+**Branch**: `main`
+
+### Summary
+
+后端 review 域(collect/filter/prompt/parse/run) + 前端 review feature(panel/store/api/锚点) + DiffView 集成。四个质量门全绿：pnpm lint(零警告)、lint:fe(1546测试无类型错)、type-check、cargo test(全量+clippy clean)。trellis-check PASS(修 serde tagged-enum camelCase CRITICAL + ⌘/Ctrl+Enter 提交)。冒烟：tauri dev 启动正常。沉淀 .trellis/spec/backend/review.md。未 commit(等用户决定)。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `143a2a4f` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

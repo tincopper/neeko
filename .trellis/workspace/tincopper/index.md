@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-3.md`
-- **Total Sessions**: 130
+- **Total Sessions**: 131
 - **Last Active**: 2026-08-13
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-3.md` | ~460 | Active |
+| `journal-3.md` | ~493 | Active |
 | `journal-2.md` | ~1991 | Archived |
 | `journal-1.md` | ~1986 | Archived |
 <!-- @@@/auto:active-documents -->
@@ -31,6 +31,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 131 | 2026-08-13 | Diff AI Review 重构：headless 评审闭环 | `143a2a4f` | `main` |
 | 130 | 2026-08-13 | 08-13 AI diff review: frontend integration stages 5-6 | - | `main` |
 | 129 | 2026-08-12 | 清理前端静态吞错并接入全局错误上报 | `9bf3546b`, `5ee2bf2a` | `main` |
 | 128 | 2026-08-12 | Fix markdown link crash + global error guard | `7e0acd41` | `main` |
