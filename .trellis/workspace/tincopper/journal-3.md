@@ -427,3 +427,34 @@ Fixed MarkdownPreview internal-link webview navigation crash (preventDefault + r
 ### Next Steps
 
 - None - task complete
+
+
+## Session 130: 08-13 AI diff review: frontend integration stages 5-6
+
+**Date**: 2026-08-13
+**Task**: 08-13 AI diff review: frontend integration stages 5-6
+**Branch**: `main`
+
+### Summary
+
+DiffView review integration (popover/anchors/selection), ReviewPanel dock panel, reviewStore instruction extension, type fixes (selectionMapping feature DiffHunk, dock barrel REVIEW_PANEL_ID, ReviewPhase/iconClass cleanup, progress payload reviewId); 30 scoped tests green; tsc clean.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+(No commits - planning session)
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
