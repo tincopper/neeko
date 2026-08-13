@@ -3,6 +3,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Play, Square, ChevronDown, Bug, Plus, Pencil, X } from '@/shared/components/icons';
 import { useEditorStore } from '@/shared/store/editorStore';
 import { useProjectStore } from '@/shared/store/projectStore';
+import { safeUnlisten } from '@/shared/utils/safeUnlisten';
 
 import { useDebugStore } from '../store/debugStore';
 import type { EntryPoint, LaunchConfig } from '../types';
@@ -57,10 +58,10 @@ function DebugRunButton() {
     let unlisten: (() => void) | undefined;
     void subscribeEvents().then((u) => {
       if (cancelled) {
-        u();
+        safeUnlisten(u)();
         return;
       }
-      unlisten = u;
+      unlisten = safeUnlisten(u);
     });
     return () => {
       cancelled = true;

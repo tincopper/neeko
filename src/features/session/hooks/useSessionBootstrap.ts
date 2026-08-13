@@ -8,6 +8,7 @@ import { useWorktreeStore } from '@/shared/store/worktreeStore';
 import type { FileChange, Worktree, GitStatusDiff } from '@/shared/types';
 import { aheadBehindKey } from '@/shared/utils/aheadBehindKey';
 import { reportFrontendError } from '@/shared/utils/errorReporting';
+import { safeUnlisten } from '@/shared/utils/safeUnlisten';
 
 /* eslint-disable import/no-restricted-paths -- session bootstrap needs git API for reading git info */
 import {
@@ -270,8 +271,8 @@ export function useSessionBootstrap(deps: {
     });
 
     return () => {
-      unlistenPromise.then((unlisten) => unlisten());
-      unlistenDiffPromise.then((unlisten) => unlisten());
+      unlistenPromise.then((unlisten) => safeUnlisten(unlisten)());
+      unlistenDiffPromise.then((unlisten) => safeUnlisten(unlisten)());
       // 清除 pending 的全量刷新调度，避免卸载后执行 setState
       gitChangedDebounce.clear();
     };

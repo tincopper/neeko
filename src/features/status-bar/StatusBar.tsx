@@ -13,6 +13,7 @@ import { useLspStore, type LspSessionState } from '@/shared/store/lspStore';
 import { useProjectStore } from '@/shared/store/projectStore';
 import { useTaskStore } from '@/shared/store/taskStore';
 import { cn } from '@/shared/utils/cn';
+import { safeUnlisten } from '@/shared/utils/safeUnlisten';
 
 import { LspStatusSection, serverName } from './LspStatusSection';
 
@@ -115,7 +116,7 @@ export function StatusBar() {
         setInstallProgress({ language_id, phase, message });
       });
       if (!cancelled) {
-        unlisten = fn;
+        unlisten = safeUnlisten(fn);
       }
     };
 

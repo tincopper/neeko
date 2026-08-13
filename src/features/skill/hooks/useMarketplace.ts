@@ -2,6 +2,7 @@ import { listen } from '@tauri-apps/api/event';
 import { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 
 import type { SkillsShSkill, InstallProgress, LeaderboardType } from '@/shared/types';
+import { safeUnlisten } from '@/shared/utils/safeUnlisten';
 
 import {
   fetchLeaderboard as fetchLeaderboardApi,
@@ -144,7 +145,7 @@ export function useMarketplace({ installedSkills, onSkillInstalled }: UseMarketp
     });
 
     return () => {
-      unlisten.then((fn) => fn());
+      unlisten.then((fn) => safeUnlisten(fn)());
     };
   }, []);
 

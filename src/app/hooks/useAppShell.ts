@@ -27,6 +27,7 @@ import { useProjectStore } from '@/shared/store/projectStore';
 import { useWorktreeStore } from '@/shared/store/worktreeStore';
 import type { AuthMethod, RemoteEntrySession, WSLEntrySession } from '@/shared/types';
 import { isActiveWorktree } from '@/shared/utils/git';
+import { safeUnlisten } from '@/shared/utils/safeUnlisten';
 
 import type AppModals from '../../app/AppModals';
 import type AppProviders from '../../app/AppProviders';
@@ -272,7 +273,7 @@ export function useAppShell(): UseAppShellResult {
       }
     });
     return () => {
-      unlistenPromise.then((fn) => fn());
+      unlistenPromise.then((fn) => safeUnlisten(fn)());
     };
   }, [activeTabId, handleCloseTab]);
 

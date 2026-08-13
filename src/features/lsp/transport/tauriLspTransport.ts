@@ -4,6 +4,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 
 import { useNotificationStore } from '@/shared/store/notificationStore';
+import { safeUnlisten } from '@/shared/utils/safeUnlisten';
 
 /**
  * Bridges @codemirror/lsp-client to Neeko's Rust LSP backend via Tauri IPC.
@@ -96,9 +97,13 @@ export class TauriLspTransport implements Transport {
   /** Clean up all event listeners. */
   destroy(): void {
     this.handlers.clear();
-    this.unlistenDiag?.();
-    this.unlistenDiag = null;
-    this.unlistenProgress?.();
-    this.unlistenProgress = null;
+    if (this.unlistenDiag) {
+      safeUnlisten(this.unlistenDiag)();
+      this.unlistenDiag = null;
+    }
+    if (this.unlistenProgress) {
+      safeUnlisten(this.unlistenProgress)();
+      this.unlistenProgress = null;
+    }
   }
 }

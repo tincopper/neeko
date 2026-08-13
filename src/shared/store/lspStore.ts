@@ -14,6 +14,7 @@ import { setCustomLspExtensionMap } from '@/features/lsp/languageMap';
 import type { ProjectLanguageProfile } from '@/features/lsp/types';
 /* eslint-enable import/no-restricted-paths */
 import { preloadLanguageExtension } from '@/shared/utils/codemirror';
+import { safeUnlisten } from '@/shared/utils/safeUnlisten';
 
 export interface LspSessionState {
   languageId: string;
@@ -151,8 +152,8 @@ export const useLspStore = create<LspStoreState>((set, get) => ({
     });
 
     return () => {
-      unlistenSession();
-      unlistenProfile();
+      safeUnlisten(unlistenSession)();
+      safeUnlisten(unlistenProfile)();
     };
   },
 

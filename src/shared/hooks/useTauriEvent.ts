@@ -1,6 +1,8 @@
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import { useEffect } from 'react';
 
+import { safeUnlisten } from '@/shared/utils/safeUnlisten';
+
 /**
  * 订阅一个 Tauri 全局事件,自动管理 listen/unlisten 生命周期。
  *
@@ -16,8 +18,8 @@ export function useTauriEvent<T>(event: string, handler: (payload: T) => void): 
     listen<T>(event, (e) => {
       handler(e.payload);
     }).then((fn) => {
-      if (cancelled) fn();
-      else unlisten = fn;
+      if (cancelled) safeUnlisten(fn)();
+      else unlisten = safeUnlisten(fn);
     });
 
     return () => {
