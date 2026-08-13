@@ -50,7 +50,8 @@ function WindowControls() {
           <Square size={14} strokeWidth={1.2} />
         )}
       </button>
-      <button className="wc-btn wc-close" onClick={() => appWindow.destroy()} title="Close">
+      {/* close() 走 CloseRequested 流程 → 后端阻止并弹出「确认退出」；destroy() 会绕过确认 */}
+      <button className="wc-btn wc-close" onClick={() => appWindow.close()} title="Close">
         <X size={14} strokeWidth={1.5} />
       </button>
     </div>

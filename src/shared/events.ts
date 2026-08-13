@@ -18,6 +18,9 @@ export const GIT_CHANGED_EVENT = 'git-changed';
 /** 菜单「粘贴」命令事件（macOS 自定义菜单转发）：`menu-paste` */
 export const MENU_PASTE_EVENT = 'menu-paste';
 
+/** 应用关闭请求事件（后端阻止关闭后通知前端弹「确认退出」框）：`app-close-requested` */
+export const APP_CLOSE_REQUESTED_EVENT = 'app-close-requested';
+
 // ── Browser 事件（与 src-tauri/src/browser/events.rs 常量保持同步）──
 
 /** 浏览器导航 URL 变化事件：`browser://url-changed` */

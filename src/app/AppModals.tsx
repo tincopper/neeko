@@ -3,6 +3,7 @@ import React from 'react';
 import { RemoteAuthDialog } from '@/features/connection/components/RemoteAuthDialog';
 import { RemoteDialog } from '@/features/connection/components/RemoteDialog';
 import { WSLDialog } from '@/features/connection/components/WSLDialog';
+import ConfirmDialog from '@/shared/components/ConfirmDialog';
 import type { AuthMethod, RemoteEntrySession, WSLEntrySession } from '@/shared/types';
 import { IS_WINDOWS } from '@/shared/utils/platform';
 
@@ -28,6 +29,10 @@ interface AppModalsProps {
   pendingAuthEntry: RemoteEntrySession | null;
   onRemoteAuthCancel: () => void;
   onRemoteAuthSuccess: (auth: AuthMethod, saved_auth?: string | null) => void;
+
+  confirmExitOpen: boolean;
+  onConfirmExit: () => void;
+  onCancelExit: () => void;
 }
 
 function AppModals({
@@ -45,6 +50,9 @@ function AppModals({
   pendingAuthEntry,
   onRemoteAuthCancel,
   onRemoteAuthSuccess,
+  confirmExitOpen,
+  onConfirmExit,
+  onCancelExit,
 }: AppModalsProps) {
   return (
     <>
@@ -78,6 +86,21 @@ function AppModals({
           onSuccess={onRemoteAuthSuccess}
         />
       )}
+
+      <ConfirmDialog
+        open={confirmExitOpen}
+        onOpenChange={onCancelExit}
+        title="Exit Neeko?"
+        description={
+          <>
+            Any running terminals and background processes will be stopped.
+            <br />
+            Are you sure you want to quit?
+          </>
+        }
+        confirmLabel="Exit"
+        onConfirm={onConfirmExit}
+      />
     </>
   );
 }

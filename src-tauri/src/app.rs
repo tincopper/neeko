@@ -5,11 +5,16 @@ use std::sync::atomic::AtomicBool;
 #[cfg(target_os = "macos")]
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
-use tauri::Manager;
+use tauri::{Emitter, Manager};
 
 use crate::app_state::AppStateWrapper;
 use crate::common::agent::types::AgentConfig;
+use crate::common::error::AppError;
 use crate::library;
+
+/// 应用关闭请求事件名（后端阻止关闭后通知前端弹「确认退出」框），
+/// 与前端 `src/shared/events.ts` `APP_CLOSE_REQUESTED_EVENT` 同步。
+const APP_CLOSE_REQUESTED_EVENT: &str = "app-close-requested";
 
 /// Run the Tauri application.
 #[allow(clippy::expect_used)]
@@ -224,21 +229,25 @@ pub fn run() {
         })
         .on_window_event(move |window, event| match event {
             tauri::WindowEvent::CloseRequested { api, .. } => {
-                // macOS: both Cmd+W and the red close button fire
-                // CloseRequested.  The menu handler for close_tab
-                // (Cmd+W) sets cmd_w_flag beforehand — when the
-                // flag is set we prevent close (the tab was already
-                // closed) and reset the flag.  When the flag is
-                // clear the user clicked the red button → let the
-                // window close naturally.
+                // 任何关闭请求（macOS 红点 / Cmd+W、Windows·Linux
+                // Alt+F4 / 原生关闭按钮 / 自绘标题栏 X）都先阻止，
+                // 再按决策处理：
+                // - macOS Cmd+W（关闭标签页）：菜单处理器已置位
+                //   cmd_w_flag → 静默阻止（标签页已由前端关闭）。
+                // - 其余原生关闭 → 通知前端弹出「确认退出」对话框；
+                //   用户确认后由 `confirm_app_exit` 销毁窗口
+                //   （destroy 跳过 CloseRequested，直接触发
+                //   Destroyed → shutdown_background_and_exit）。
+                api.prevent_close();
+                // 仅 macOS 上 Cmd+W 会同时触发菜单事件与 CloseRequested；
+                // Windows/Linux 上 CloseRequested 只来自 Alt+F4 / 原生关闭。
                 #[cfg(target_os = "macos")]
-                if cmd_w_flag_win.swap(false, Ordering::SeqCst) {
-                    api.prevent_close();
-                }
-                // On Windows/Linux, CloseRequested fires only for
-                // Alt+F4 / native close button → let it proceed.
+                let cmd_w_flag = cmd_w_flag_win.swap(false, Ordering::SeqCst);
                 #[cfg(not(target_os = "macos"))]
-                let _ = api;
+                let cmd_w_flag = false;
+                if decide_close_action(cmd_w_flag) == CloseRequestAction::PreventAndAsk {
+                    let _ = window.emit(APP_CLOSE_REQUESTED_EVENT, ());
+                }
             }
             tauri::WindowEvent::Destroyed => {
                 let state = window.state::<AppStateWrapper>();
@@ -249,6 +258,17 @@ pub fn run() {
         .invoke_handler(crate::neeko_invoke_handler!())
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+/// 用户确认退出：销毁主窗口。
+///
+/// 使用 `destroy` 而非 `close`：destroy 跳过 CloseRequested（避免与
+/// 确认弹框循环），直接触发 `Destroyed` → `shutdown_background_and_exit`。
+#[tauri::command]
+pub fn confirm_app_exit(window: tauri::Window) -> Result<(), AppError> {
+    window
+        .destroy()
+        .map_err(|e| AppError::Unknown(format!("Failed to destroy window: {e}")))
 }
 
 /// Read legacy `agentSkillPathOverrides` map from config (pre skill_path-on-agent).
@@ -282,6 +302,24 @@ fn normalize_skill_path_str(path: &str) -> String {
         return format!("~{rest}");
     }
     trimmed.to_string()
+}
+
+/// 窗口关闭请求的处理决策：区分 macOS Cmd+W「关闭标签页」与真正的窗口关闭。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CloseRequestAction {
+    /// Cmd+W 关闭标签页：静默阻止窗口关闭（标签页已由前端关闭）。
+    PreventSilently,
+    /// 原生关闭（macOS 红点 / Windows·Linux Alt+F4 / 自绘标题栏 X）：阻止并询问确认退出。
+    PreventAndAsk,
+}
+
+/// 根据 macOS Cmd+W 标志位决定关闭请求的处理方式。
+pub const fn decide_close_action(cmd_w_flag_set: bool) -> CloseRequestAction {
+    if cmd_w_flag_set {
+        CloseRequestAction::PreventSilently
+    } else {
+        CloseRequestAction::PreventAndAsk
+    }
 }
 
 #[cfg(test)]
@@ -320,5 +358,21 @@ mod tests {
             Some("~/.mimo/skills")
         );
         assert!(!map.contains_key("empty"));
+    }
+
+    #[test]
+    fn cmd_w_flag_set_prevents_window_close_silently() {
+        assert_eq!(
+            decide_close_action(true),
+            CloseRequestAction::PreventSilently
+        );
+    }
+
+    #[test]
+    fn native_close_prevents_and_asks_user() {
+        assert_eq!(
+            decide_close_action(false),
+            CloseRequestAction::PreventAndAsk
+        );
     }
 }

@@ -12,6 +12,11 @@ export function getAppInfo(): Promise<AppInfo> {
   return invoke<AppInfo>('get_app_info');
 }
 
+/** 用户确认退出应用：销毁主窗口（关闭确认流程的最终动作）。 */
+export function confirmAppExit(): Promise<void> {
+  return invoke<void>('confirm_app_exit');
+}
+
 export function saveConfig(config: Record<string, unknown>): Promise<void> {
   return invoke<void>('save_config', { config });
 }

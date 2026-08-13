@@ -32,6 +32,8 @@ import type AppModals from '../../app/AppModals';
 import type AppProviders from '../../app/AppProviders';
 import type AppLayout from '../../layout/AppLayout';
 
+import { useConfirmExit } from './useConfirmExit';
+
 type AppProvidersProps = Omit<React.ComponentProps<typeof AppProviders>, 'children'>;
 type AppLayoutProps = React.ComponentProps<typeof AppLayout>;
 type AppModalsProps = React.ComponentProps<typeof AppModals>;
@@ -408,7 +410,12 @@ export function useAppShell(): UseAppShellResult {
     [handleRemoteEntryAdd, remoteAuthStore, remoteActionsWrap],
   );
 
+  const { confirmExitOpen, closeExitDialog, confirmExit } = useConfirmExit();
+
   const appModalsProps: AppModalsProps = {
+    confirmExitOpen,
+    onConfirmExit: confirmExit,
+    onCancelExit: closeExitDialog,
     wslDialogOpen,
     wslAddToEntryId,
     wslEntries,
