@@ -6,7 +6,6 @@ import ProjectWorkspace from '@/app/components/ProjectWorkspace';
 import { SplashScreen } from '@/app/components/SplashScreen';
 import { dockPanelRegistry } from '@/app/dock/registry';
 import { useAppShell } from '@/app/hooks';
-import { useHeartbeat } from '@/app/hooks/useHeartbeat';
 import { DebugPanel, DebugRunButton } from '@/features/debug';
 import { QuickOpenPalette, startQuickOpenActivityTracking } from '@/features/quick-open';
 import SettingsView from '@/features/settings/components/SettingsView';
@@ -31,8 +30,6 @@ const LazyLibraryPanel = lazy(() =>
 
 function App() {
   useMenuPaste();
-  // WebView 崩溃检测心跳：定期上报存活，后端超时后自动 reload 恢复黑屏。
-  useHeartbeat();
 
   const { initializing, appProvidersProps, appLayoutProps, appModalsProps } = useAppShell();
 

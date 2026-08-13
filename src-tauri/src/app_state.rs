@@ -54,10 +54,6 @@ pub struct AppStateWrapper {
     pub conversation_manager: ConversationManager,
     /// Tracks which backend (PTY / SSH) owns each terminal session.
     session_owner: Mutex<HashMap<String, SessionOwner>>,
-    /// Last time the frontend reported itself alive (heartbeat).
-    /// Used to detect a crashed / frozen WebView renderer so the window can be
-    /// reloaded automatically instead of leaving the user on a black screen.
-    last_heartbeat: Mutex<Option<Instant>>,
 }
 
 impl AppStateWrapper {
@@ -346,29 +342,6 @@ impl AppStateWrapper {
         }
     }
 
-    // ── WebView heartbeat ─────────────────────────────────────────────────
-
-    /// Record that the frontend renderer is alive (called by the `heartbeat`
-    /// command on a fixed interval).
-    pub fn record_heartbeat(&self) {
-        if let Ok(mut last) = self.last_heartbeat.lock() {
-            *last = Some(Instant::now());
-        }
-    }
-
-    /// Whether the frontend has been silent for longer than `timeout`.
-    ///
-    /// A `None` value (never heartbeated) is treated as stale only if the
-    /// window has had a chance to start reporting — the constructor seeds the
-    /// timestamp, so a fresh app is never immediately considered crashed.
-    pub fn heartbeat_stale(&self, timeout: std::time::Duration) -> bool {
-        let last = self.last_heartbeat.lock().ok().and_then(|l| *l);
-        match last {
-            Some(ts) => ts.elapsed() > timeout,
-            None => false,
-        }
-    }
-
     /// Create `AppStateWrapper` with an external shared `LibraryStore`.
     #[allow(clippy::expect_used)]
     #[must_use]
@@ -428,7 +401,6 @@ impl AppStateWrapper {
                 crate::conversation::adapters::all_adapters(),
             ),
             session_owner: Mutex::new(HashMap::new()),
-            last_heartbeat: Mutex::new(Some(Instant::now())),
         }
     }
 
@@ -451,59 +423,8 @@ impl Default for AppStateWrapper {
     }
 }
 
-/// Frontend liveness probe. The renderer calls this on a fixed interval; the
-/// crash-detection task in `app.rs` reloads the window if it goes silent.
-#[tauri::command]
-pub fn heartbeat(state: tauri::State<'_, AppStateWrapper>) {
-    state.record_heartbeat();
-}
-
 /// Loose path equality for project environment lookup.
 fn paths_equal_for_env(a: &str, b: &str) -> bool {
     let norm = |s: &str| s.replace('\\', "/").trim_end_matches('/').to_string();
     norm(a) == norm(b)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::session::StorageManager;
-    use std::sync::Arc;
-    use std::time::Duration;
-
-    /// 构造隔离的 AppStateWrapper（StorageManager 指向临时目录，避免污染 ~/.neeko）。
-    fn isolated_state(tmp: &tempfile::TempDir) -> AppStateWrapper {
-        let storage = StorageManager::with_dir(tmp.path().join(".neeko")).unwrap();
-        let store = Arc::new(crate::library::LibraryStore::open_in_memory().unwrap());
-        AppStateWrapper::new_with_storage_and_library(storage, store)
-    }
-
-    #[test]
-    fn fresh_state_is_not_stale() {
-        let tmp = tempfile::tempdir().unwrap();
-        let state = isolated_state(&tmp);
-        // 构造时已播种心跳时间，刚创建不应被判为崩溃。
-        assert!(!state.heartbeat_stale(Duration::from_secs(30)));
-    }
-
-    #[test]
-    fn heartbeat_keeps_state_alive() {
-        let tmp = tempfile::tempdir().unwrap();
-        let state = isolated_state(&tmp);
-        // 反复心跳，每次心跳后短暂等待（远小于阈值）都不应 stale。
-        for _ in 0..5 {
-            state.record_heartbeat();
-            std::thread::sleep(Duration::from_millis(2));
-            assert!(!state.heartbeat_stale(Duration::from_millis(100)));
-        }
-    }
-
-    #[test]
-    fn silent_state_becomes_stale() {
-        let tmp = tempfile::tempdir().unwrap();
-        let state = isolated_state(&tmp);
-        // 不心跳，等待超过阈值后应被判为 stale。
-        std::thread::sleep(Duration::from_millis(30));
-        assert!(state.heartbeat_stale(Duration::from_millis(10)));
-    }
 }
