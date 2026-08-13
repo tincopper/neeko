@@ -180,6 +180,17 @@ describe('createProjectCommands (Local)', () => {
       ...payload(),
       commitHash: 'abc123',
       filePath: 'src/foo.ts',
+      collapse: true,
+    });
+  });
+
+  it('getCommitFileDiff should pass collapse=false when requested', async () => {
+    await commands.getCommitFileDiff('abc123', 'src/foo.ts', false);
+    expect(mockInvoke).toHaveBeenCalledWith('get_commit_file_diff', {
+      ...payload(),
+      commitHash: 'abc123',
+      filePath: 'src/foo.ts',
+      collapse: false,
     });
   });
 

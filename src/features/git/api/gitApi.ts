@@ -234,9 +234,15 @@ export function getFileDiff(
   projectId: string,
   filePath: string,
   worktreePath?: string | null,
+  collapse?: boolean,
 ): Promise<DiffResult> {
   const t0 = performance.now();
-  return invoke<DiffResult>('get_file_diff', { projectId, filePath, worktreePath }).then((r) => {
+  return invoke<DiffResult>('get_file_diff', {
+    projectId,
+    filePath,
+    worktreePath,
+    collapse: collapse ?? true,
+  }).then((r) => {
     console.debug(
       '[perf] invoke get_file_diff:',
       filePath,
@@ -272,8 +278,14 @@ export function getCommitFileDiff(
   projectId: string,
   commitHash: string,
   filePath: string,
+  collapse?: boolean,
 ): Promise<DiffResult> {
-  return invoke<DiffResult>('get_commit_file_diff', { projectId, commitHash, filePath });
+  return invoke<DiffResult>('get_commit_file_diff', {
+    projectId,
+    commitHash,
+    filePath,
+    collapse: collapse ?? true,
+  });
 }
 
 export function getAheadBehind(

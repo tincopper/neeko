@@ -622,21 +622,27 @@ pub async fn get_commit_file_diff(
     work_dir: &str,
     commit_hash: &str,
     file_path: &str,
+    collapse: bool,
 ) -> Result<DiffResult> {
-    let output = transport
-        .run_git(
-            &[
-                "diff",
-                &format!("{}^", commit_hash),
-                commit_hash,
-                "--",
-                file_path,
-            ],
-            work_dir,
-        )
-        .await?;
+    let mut args = vec!["diff".to_string()];
+    if !collapse {
+        // 全量护栏：按文件字节数生成 -U 参数，防止 IPC JSON 超 2MB
+        let file_bytes = tokio::fs::metadata(std::path::Path::new(work_dir).join(file_path))
+            .await
+            .map(|m| m.len())
+            .unwrap_or(0);
+        args.push(super::parsers::full_diff_context_arg(file_bytes));
+    }
+    args.push(format!("{}^", commit_hash));
+    args.push(commit_hash.to_string());
+    args.push("--".to_string());
+    args.push(file_path.to_string());
+    let arg_refs: Vec<&str> = args.iter().map(String::as_str).collect();
+    let output = transport.run_git(&arg_refs, work_dir).await?;
     let mut result = super::parsers::parse_unified_diff(&output);
-    super::parsers::collapse_diff_context(&mut result.hunks, 12);
+    if collapse {
+        super::parsers::collapse_diff_context(&mut result.hunks, 12);
+    }
     Ok(result)
 }
 
@@ -946,10 +952,23 @@ async fn get_file_diff_shell(
     transport: &dyn GitTransport,
     work_dir: &str,
     file_path: &str,
+    collapse: bool,
 ) -> Result<DiffResult> {
-    let output = transport
-        .run_git(&["diff", "-U3", "--", file_path], work_dir)
-        .await?;
+    let mut args = vec!["diff".to_string()];
+    if collapse {
+        args.push("-U3".to_string());
+    } else {
+        // 全量护栏：按文件字节数生成 -U 参数，防止 IPC JSON 超 2MB
+        let file_bytes = tokio::fs::metadata(std::path::Path::new(work_dir).join(file_path))
+            .await
+            .map(|m| m.len())
+            .unwrap_or(0);
+        args.push(super::parsers::full_diff_context_arg(file_bytes));
+    }
+    args.push("--".to_string());
+    args.push(file_path.to_string());
+    let arg_refs: Vec<&str> = args.iter().map(String::as_str).collect();
+    let output = transport.run_git(&arg_refs, work_dir).await?;
     let mut result = super::parsers::parse_unified_diff(&output);
     if result.hunks.is_empty() {
         let full_path = std::path::Path::new(work_dir).join(file_path);
@@ -972,7 +991,9 @@ async fn get_file_diff_shell(
             }
         }
     }
-    super::parsers::collapse_diff_context(&mut result.hunks, 12);
+    if collapse {
+        super::parsers::collapse_diff_context(&mut result.hunks, 12);
+    }
     Ok(result)
 }
 
@@ -1160,17 +1181,22 @@ pub async fn get_file_diff(
     transport: &dyn GitTransport,
     work_dir: &str,
     file_path: &str,
+    collapse: bool,
 ) -> Result<DiffResult> {
     if let Some(_repo) = transport.open_repo(work_dir) {
         let work_dir_owned = work_dir.to_string();
         let file_path_owned = file_path.to_string();
         tokio::task::spawn_blocking(move || {
-            super::local::get_file_diff(std::path::Path::new(&work_dir_owned), &file_path_owned)
+            super::local::get_file_diff(
+                std::path::Path::new(&work_dir_owned),
+                &file_path_owned,
+                collapse,
+            )
         })
         .await
         .map_err(|e| anyhow::anyhow!("git file diff task join error: {e}"))?
     } else {
-        get_file_diff_shell(transport, work_dir, file_path).await
+        get_file_diff_shell(transport, work_dir, file_path, collapse).await
     }
 }
 
@@ -1525,6 +1551,161 @@ mod tests {
         assert_eq!(
             parse_ignored_porcelain("!! node_modules/\n"),
             vec!["node_modules"]
+        );
+    }
+
+    // ── collapse 参数：false 时跳过上下文折叠、返回完整上下文 ────────────────
+
+    /// 脚本化 mock transport：返回带长连续 context 的 diff 文本。
+    struct DiffTextTransport {
+        output: String,
+        captured_args: std::sync::Mutex<Vec<String>>,
+    }
+
+    impl DiffTextTransport {
+        fn new(output: String) -> Self {
+            Self {
+                output,
+                captured_args: std::sync::Mutex::new(Vec::new()),
+            }
+        }
+
+        fn last_args(&self) -> Vec<String> {
+            self.captured_args.lock().unwrap().clone()
+        }
+    }
+
+    #[async_trait]
+    impl GitTransport for DiffTextTransport {
+        async fn run_git(&self, args: &[&str], _work_dir: &str) -> Result<String> {
+            self.captured_args.lock().unwrap().push(
+                args.iter()
+                    .map(|s| s.to_string())
+                    .collect::<Vec<_>>()
+                    .join(" "),
+            );
+            Ok(self.output.clone())
+        }
+
+        async fn run_git_opts(
+            &self,
+            _args: &[&str],
+            _work_dir: &str,
+            _opts: GitExecOptions<'_>,
+        ) -> Result<String> {
+            Ok(self.output.clone())
+        }
+
+        async fn run_git_with_stdin(
+            &self,
+            _args: &[&str],
+            _work_dir: &str,
+            _opts: GitExecOptions<'_>,
+            _stdin: &[u8],
+        ) -> Result<String> {
+            unimplemented!()
+        }
+
+        fn open_repo(&self, _path: &str) -> Option<git2::Repository> {
+            None
+        }
+
+        async fn is_git_repo(&self, _path: &str) -> bool {
+            true
+        }
+    }
+
+    /// 构造一段含 20 行连续 context 的 diff 文本（超过 collapse 阈值 12）。
+    fn long_context_diff() -> String {
+        let mut out = String::from("diff --git a/a.txt b/a.txt\n@@ -1,25 +1,26 @@\n");
+        for i in 1..=20 {
+            out.push_str(&format!(" context{i}\n"));
+        }
+        out.push_str("-old\n+new\n");
+        for i in 21..=25 {
+            out.push_str(&format!(" context{i}\n"));
+        }
+        out
+    }
+
+    #[tokio::test]
+    async fn get_commit_file_diff_collapse_true_keeps_markers() {
+        let transport = DiffTextTransport::new(long_context_diff());
+        let result = get_commit_file_diff(&transport, "/tmp", "abc123", "a.txt", true)
+            .await
+            .expect("parse diff");
+        let has_collapsed = result
+            .hunks
+            .iter()
+            .flat_map(|h| &h.lines)
+            .any(|l| matches!(l, DiffLine::Collapsed(_)));
+        assert!(has_collapsed, "collapse=true should keep Collapsed markers");
+        // 20 行连续 context → 前 3 保留 + 1 折叠标记 + 后 3 保留；随后变更行；
+        // 尾部 5 行 context 未达阈值 12 全部保留 → 3+1+3+1+1+5 = 14
+        let kept: Vec<&DiffLine> = result.hunks[0].lines.iter().collect();
+        assert_eq!(
+            kept.len(),
+            14,
+            "3 kept + collapsed + 3 kept + removed + added + 5 tail"
+        );
+        // collapse=true 不传 -U 全量参数
+        assert!(
+            !transport.last_args()[0].contains("-U100000"),
+            "collapse=true should not pass -U100000"
+        );
+    }
+
+    #[tokio::test]
+    async fn get_commit_file_diff_collapse_false_expands_full_context() {
+        let transport = DiffTextTransport::new(long_context_diff());
+        let result = get_commit_file_diff(&transport, "/tmp", "abc123", "a.txt", false)
+            .await
+            .expect("parse diff");
+        let has_collapsed = result
+            .hunks
+            .iter()
+            .flat_map(|h| &h.lines)
+            .any(|l| matches!(l, DiffLine::Collapsed(_)));
+        assert!(
+            !has_collapsed,
+            "collapse=false should drop Collapsed markers"
+        );
+        let context_count = result.hunks[0]
+            .lines
+            .iter()
+            .filter(|l| matches!(l, DiffLine::Context(_)))
+            .count();
+        assert_eq!(context_count, 25, "all 25 context lines should be kept");
+        assert!(
+            transport.last_args()[0].contains("-U100000"),
+            "collapse=false should pass -U100000, got: {}",
+            transport.last_args()[0]
+        );
+    }
+
+    #[tokio::test]
+    async fn get_file_diff_shell_collapse_false_passes_full_context_arg() {
+        let transport = DiffTextTransport::new(long_context_diff());
+        // shell 路径（open_repo=None）不会走 git2，直接使用 shell 实现
+        let _ = get_file_diff(&transport, "/tmp", "a.txt", false)
+            .await
+            .expect("parse diff");
+        let args = transport.last_args();
+        assert!(
+            args[0].contains("-U100000"),
+            "collapse=false should pass -U100000, got: {}",
+            args[0]
+        );
+        let collapsed = get_file_diff(&transport, "/tmp", "a.txt", true)
+            .await
+            .expect("parse diff");
+        assert!(
+            collapsed
+                .hunks
+                .iter()
+                .flat_map(|h| &h.lines)
+                .any(|l| matches!(l, DiffLine::Collapsed(_))),
+            "collapse=true should keep markers in shell path"
         );
     }
 }

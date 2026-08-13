@@ -5,7 +5,7 @@ import type { FileChangedEvent } from '@/shared/types';
 import type { ProjectCommands } from '@/shared/types/project';
 
 import type { DiffResult } from '../types';
-import { useDiffData } from '../useDiffData';
+import { DIFF_CACHE_MAX, diffCache, setDiffCache, useDiffData } from '../useDiffData';
 
 // 捕获 useFileChangedEvent 注册的回调（模拟其共享订阅的 Set 去重语义）
 const { fileChangedCallbacks } = vi.hoisted(() => ({
@@ -57,6 +57,52 @@ describe('useDiffData file-changed refresh', () => {
     fileChangedCallbacks.length = 0;
     gitRefreshCallbacks.length = 0;
     getFileDiff.mockReset();
+  });
+
+  it('reloads with collapse=false when full content is requested', async () => {
+    getFileDiff.mockResolvedValueOnce(makeDiff('full-content'));
+    const { result } = renderHook(() =>
+      useDiffData({
+        projectId: 'p1',
+        diffSource: DIFF_SOURCE,
+        filePath: 'src/a.ts',
+        commands,
+        collapse: false,
+      }),
+    );
+    await waitFor(() =>
+      expect(result.current.diffResult?.hunks[0].lines[0].Context).toBe('full-content'),
+    );
+    // collapse=false 应透传给后端命令
+    expect(getFileDiff).toHaveBeenCalledWith('src/a.ts', false);
+  });
+
+  it('isolates cache entries by collapse flag', async () => {
+    // 独立文件路径，避免与上一条用例共享模块级 diffCache
+    const filePath = 'src/cache-isolation.ts';
+    // 先加载折叠版（collapse 默认 true）
+    getFileDiff.mockResolvedValueOnce(makeDiff('collapsed'));
+    const { result, rerender } = renderHook(
+      ({ collapse }: { collapse?: boolean }) =>
+        useDiffData({
+          projectId: 'p1',
+          diffSource: DIFF_SOURCE,
+          filePath,
+          commands,
+          collapse,
+        }),
+      { initialProps: { collapse: true } },
+    );
+    await waitFor(() =>
+      expect(result.current.diffResult?.hunks[0].lines[0].Context).toBe('collapsed'),
+    );
+
+    // 切到全量（collapse=false）：缓存 key 不同 → 应重新请求
+    getFileDiff.mockResolvedValueOnce(makeDiff('full'));
+    rerender({ collapse: false });
+    await waitFor(() => expect(result.current.diffResult?.hunks[0].lines[0].Context).toBe('full'));
+    expect(getFileDiff).toHaveBeenCalledTimes(2);
+    expect(getFileDiff).toHaveBeenLastCalledWith(filePath, false);
   });
 
   it('reloads diff content when the file changes on disk', async () => {
@@ -173,5 +219,36 @@ describe('useDiffData file-changed refresh', () => {
     await new Promise((r) => setTimeout(r, 20));
     expect(getFileDiff).toHaveBeenCalledTimes(1);
     expect(result.current.diffResult?.hunks[0].lines[0].Context).toBe('old-content');
+  });
+});
+
+describe('diffCache 容量上限与淘汰', () => {
+  beforeEach(() => {
+    diffCache.clear();
+  });
+
+  it('超过容量时淘汰最旧条目', () => {
+    for (let i = 0; i < DIFF_CACHE_MAX; i++) {
+      setDiffCache(`k${i}`, makeDiff(`v${i}`));
+    }
+    expect(diffCache.size).toBe(DIFF_CACHE_MAX);
+    expect(diffCache.has('k0')).toBe(true);
+
+    // 再写一条 → 最旧的 k0 被淘汰
+    setDiffCache('k-new', makeDiff('new'));
+    expect(diffCache.size).toBe(DIFF_CACHE_MAX);
+    expect(diffCache.has('k0')).toBe(false);
+    expect(diffCache.has('k-new')).toBe(true);
+    expect(diffCache.has('k1')).toBe(true);
+  });
+
+  it('更新已有 key 不触发淘汰', () => {
+    for (let i = 0; i < DIFF_CACHE_MAX; i++) {
+      setDiffCache(`k${i}`, makeDiff(`v${i}`));
+    }
+    // 更新已有 key：仅覆盖，容量不变
+    setDiffCache('k0', makeDiff('v0-updated'));
+    expect(diffCache.size).toBe(DIFF_CACHE_MAX);
+    expect(diffCache.get('k0')?.hunks[0].lines[0].Context).toBe('v0-updated');
   });
 });

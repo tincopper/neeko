@@ -1,11 +1,14 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 
 import { cn } from '@/lib/utils';
 
 import { computeWordDiff } from './diffAlgorithm';
+import type { SelectionMode } from './diffViewUtils';
+import ExpandedSectionRows from './ExpandedSectionRows';
 import { renderHighlightedHtml, renderWordDiffHtml } from './highlight';
-import type { DiffResult } from './types';
+import type { DiffHunk, DiffResult } from './types';
 import { getLineContent, getLineType } from './useDiffData';
+import { useDiffDragSelect } from './useDiffDragSelect';
 
 interface DiffTableProps {
   diffResult: DiffResult;
@@ -14,12 +17,20 @@ interface DiffTableProps {
   languageReady?: boolean;
   selectedLines?: Set<string>;
   onToggleLine?: (blockIdx: number, lineIdx: number) => void;
+  /** 拖拽结束时提交选区（AI review 多行选择）。 */
+  onDragCommit?: (keys: Set<string>, mode: SelectionMode) => void;
   /** Prefix for change-block element ids (default `cb`). Combined mode scopes per file. */
   blockIdPrefix?: string;
   // Optional comment support (for PR review)
   onCommentLine?: (lineNum: number) => void;
   renderCommentArea?: (lineNum: number) => React.ReactNode;
   commentCounts?: Map<number, number>;
+  /** 全量（未折叠）diff，用于单段展开。 */
+  fullHunks?: DiffHunk[];
+  /** 已展开的折叠段（key 为 `hunkIdx:lineIdx`）。 */
+  expandedSections?: Set<string>;
+  /** 点击折叠占位行切换单段展开。 */
+  onToggleSection?: (hunkIdx: number, lineIdx: number) => void;
 }
 
 const DiffTable: React.FC<DiffTableProps> = ({
@@ -27,11 +38,27 @@ const DiffTable: React.FC<DiffTableProps> = ({
   language,
   selectedLines,
   onToggleLine,
+  onDragCommit,
   blockIdPrefix = 'cb',
   onCommentLine,
   renderCommentArea,
   commentCounts,
+  fullHunks,
+  expandedSections,
+  onToggleSection,
 }) => {
+  // unified 模式下选区 key 与 hunk.lines 一一对应
+  const hunkLineCounts = useMemo(() => diffResult.hunks.map((h) => h.lines.length), [diffResult]);
+  const { dragPreview, onRowMouseDown, onRowMouseEnter, shouldSuppressClick } = useDiffDragSelect(
+    hunkLineCounts,
+    onDragCommit,
+  );
+
+  const handleRowClick = (hunkIdx: number, lineIdx: number) => {
+    if (shouldSuppressClick()) return;
+    onToggleLine?.(hunkIdx, lineIdx);
+  };
+
   return (
     // overflow-x-auto 紧贴表格：长行撑宽表格后出现水平滚动条，
     // 不被外层 DiffFileCard 的 overflow-hidden 裁剪
@@ -58,10 +85,35 @@ const DiffTable: React.FC<DiffTableProps> = ({
                     const curNew = newNum;
 
                     if (lineType === 'collapsed') {
+                      const sectionKey = `${hunkIndex}:${lineIndex}`;
+                      if (expandedSections?.has(sectionKey)) {
+                        return (
+                          <ExpandedSectionRows
+                            key={`${hunkIndex}-${lineIndex}-expanded`}
+                            hunk={hunk}
+                            hunkIdx={hunkIndex}
+                            sourceLineIdx={lineIndex}
+                            keyLineIdx={lineIndex}
+                            fullHunks={fullHunks}
+                            variant="unified"
+                            language={language}
+                            onRowMouseDown={onRowMouseDown}
+                            onRowMouseEnter={onRowMouseEnter}
+                            onClickLine={handleRowClick}
+                            onToggleSection={(h, l) => onToggleSection?.(h, l)}
+                          />
+                        );
+                      }
                       return (
                         <tr
                           key={`${hunkIndex}-${lineIndex}`}
-                          className="bg-bg-secondary/60 text-text-muted text-center italic"
+                          className="bg-bg-secondary/60 text-text-muted text-center italic cursor-pointer hover:bg-bg-hover"
+                          onMouseDown={(e) =>
+                            onRowMouseDown(e, { hunk: hunkIndex, line: lineIndex })
+                          }
+                          onMouseEnter={() => onRowMouseEnter({ hunk: hunkIndex, line: lineIndex })}
+                          onClick={() => onToggleSection?.(hunkIndex, lineIndex)}
+                          title="Expand section"
                         >
                           <td colSpan={4} className="py-1 px-2 text-[12px]">
                             {content}
@@ -102,7 +154,9 @@ const DiffTable: React.FC<DiffTableProps> = ({
                     }
 
                     const lineKey = `${hunkIndex}:${lineIndex}`;
-                    const isSelected = selectedLines?.has(lineKey) ?? false;
+                    const isSelected =
+                      (selectedLines?.has(lineKey) ?? false) ||
+                      (dragPreview?.has(lineKey) ?? false);
                     const canComment =
                       onCommentLine && (lineType === 'added' || lineType === 'context');
                     const commentCount = commentCounts?.get(curNew) ?? 0;
@@ -118,13 +172,17 @@ const DiffTable: React.FC<DiffTableProps> = ({
                             lineType === 'removed' && 'bg-diff-removed',
                             isSelected && 'diff-line-selected',
                           )}
+                          onMouseDown={(e) =>
+                            onRowMouseDown(e, { hunk: hunkIndex, line: lineIndex })
+                          }
+                          onMouseEnter={() => onRowMouseEnter({ hunk: hunkIndex, line: lineIndex })}
                         >
                           <td
                             className={cn(
                               'w-[40px] text-right text-text-muted select-none cursor-pointer hover:bg-bg-hover relative group',
                               isSelected && 'text-accent-blue',
                             )}
-                            onClick={() => onToggleLine?.(hunkIndex, lineIndex)}
+                            onClick={() => handleRowClick(hunkIndex, lineIndex)}
                             title={isSelected ? 'Deselect line' : 'Select line for AI review'}
                           >
                             {lineType !== 'added' ? curOld : ''}
@@ -146,7 +204,7 @@ const DiffTable: React.FC<DiffTableProps> = ({
                               'w-[40px] text-right text-text-muted select-none cursor-pointer hover:bg-bg-hover relative',
                               isSelected && 'text-accent-blue',
                             )}
-                            onClick={() => onToggleLine?.(hunkIndex, lineIndex)}
+                            onClick={() => handleRowClick(hunkIndex, lineIndex)}
                             title={isSelected ? 'Deselect line' : 'Select line for AI review'}
                           >
                             {lineType !== 'removed' ? curNew : ''}
@@ -161,7 +219,7 @@ const DiffTable: React.FC<DiffTableProps> = ({
                           </td>
                           <td
                             className="line-content whitespace-pre"
-                            onClick={() => onToggleLine?.(hunkIndex, lineIndex)}
+                            onClick={() => handleRowClick(hunkIndex, lineIndex)}
                             title={isSelected ? 'Deselect line' : 'Select line for AI review'}
                             dangerouslySetInnerHTML={{ __html: view }}
                           />

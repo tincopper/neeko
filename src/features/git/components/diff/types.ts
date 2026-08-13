@@ -42,7 +42,7 @@ export interface DiffViewProps {
 }
 
 export interface SplitRow {
-  type: 'hunk-header' | 'change' | 'context';
+  type: 'hunk-header' | 'change' | 'context' | 'collapsed';
   hunkHeader?: string;
   oldLineNum?: number;
   newLineNum?: number;
@@ -50,4 +50,8 @@ export interface SplitRow {
   newContent?: string;
   oldType?: 'removed' | 'context' | 'empty';
   newType?: 'added' | 'context' | 'empty';
+  /** 折叠段占位文本（type=collapsed，形如 "N unmodified lines"）。 */
+  collapsedText?: string;
+  /** 该行在源 hunk.lines 中的索引（展开折叠段时用于对齐全量 diff）。 */
+  sourceIndex?: number;
 }

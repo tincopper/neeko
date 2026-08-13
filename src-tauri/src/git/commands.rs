@@ -490,12 +490,14 @@ pub async fn get_file_diff(
     project_id: String,
     file_path: String,
     worktree_path: Option<String>,
+    collapse: Option<bool>,
     state: State<'_, AppStateWrapper>,
 ) -> Result<DiffResult, AppError> {
     let t0 = std::time::Instant::now();
     let (backend, wd) = state.resolve_project(&project_id)?;
     let repo_path = worktree_path.as_deref().unwrap_or(&wd);
-    let result = operations::get_file_diff(&backend, repo_path, &file_path)
+    let collapse = collapse.unwrap_or(true);
+    let result = operations::get_file_diff(&backend, repo_path, &file_path, collapse)
         .await
         .map_err(AppError::from);
     let elapsed_ms = t0.elapsed().as_millis();
@@ -561,10 +563,11 @@ pub async fn get_commit_file_diff(
     project_id: String,
     commit_hash: String,
     file_path: String,
+    collapse: Option<bool>,
     state: State<'_, AppStateWrapper>,
 ) -> Result<DiffResult, AppError> {
     let (t, wd) = state.resolve_project(&project_id)?;
-    operations::get_commit_file_diff(&t, &wd, &commit_hash, &file_path)
+    operations::get_commit_file_diff(&t, &wd, &commit_hash, &file_path, collapse.unwrap_or(true))
         .await
         .map_err(AppError::from)
 }

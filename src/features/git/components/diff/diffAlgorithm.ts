@@ -129,6 +129,20 @@ export function buildSplitRows(hunk: DiffHunk): SplitRow[] {
 
   while (i < hunk.lines.length) {
     const line = hunk.lines[i];
+
+    if (line.Collapsed !== undefined) {
+      // 折叠段占位行：保留在 split 视图中，供单段展开
+      rows.push({
+        type: 'collapsed',
+        collapsedText: line.Collapsed,
+        oldLineNum: oldNum,
+        newLineNum: newNum,
+        sourceIndex: i,
+      });
+      i++;
+      continue;
+    }
+
     const type = getLineType(line);
 
     if (type === 'context') {

@@ -4,11 +4,13 @@ import { cn } from '@/lib/utils';
 import {
   ChevronsDownUp,
   ChevronsUpDown,
+  Expand,
   MoreHorizontal,
   MoveDown,
   MoveLeft,
   MoveRight,
   MoveUp,
+  Shrink,
   Sparkles,
 } from '@/shared/components/icons';
 
@@ -38,6 +40,9 @@ interface DiffToolbarProps {
   showFoldToggle?: boolean;
   allCollapsed?: boolean;
   onToggleFoldAll?: () => void;
+  /** 全文模式（未折叠 diff）切换。 */
+  fullMode?: boolean;
+  onToggleFull?: () => void;
   onReview?: () => void;
 }
 
@@ -65,6 +70,8 @@ const DiffToolbar: React.FC<DiffToolbarProps> = ({
   showFoldToggle,
   allCollapsed,
   onToggleFoldAll,
+  fullMode,
+  onToggleFull,
   onReview,
 }) => {
   const [menuOpen, setMenuOpen] = React.useState(false);
@@ -229,6 +236,19 @@ const DiffToolbar: React.FC<DiffToolbarProps> = ({
           </button>
         </div>
 
+        {onToggleFull ? (
+          <button
+            type="button"
+            className={flatBtnClass}
+            onClick={onToggleFull}
+            title={fullMode ? 'Collapse full diff' : 'Expand full diff'}
+            aria-label={fullMode ? 'Collapse full diff' : 'Expand full diff'}
+            aria-pressed={fullMode}
+          >
+            {fullMode ? <Shrink size={14} /> : <Expand size={14} />}
+          </button>
+        ) : null}
+
         {showFoldToggle ? (
           <button
             type="button"
@@ -294,6 +314,19 @@ const DiffToolbar: React.FC<DiffToolbarProps> = ({
                 >
                   {allCollapsed ? <ChevronsUpDown size={12} /> : <ChevronsDownUp size={12} />}
                   {allCollapsed ? 'Expand all' : 'Collapse all'}
+                </button>
+              ) : null}
+              {onToggleFull ? (
+                <button
+                  type="button"
+                  className="flex w-full items-center gap-2 px-2 py-1.5 text-left text-[var(--font-size)] text-text-secondary hover:bg-bg-hover hover:text-text-primary"
+                  onClick={() => {
+                    setMenuOpen(false);
+                    onToggleFull();
+                  }}
+                >
+                  {fullMode ? <Shrink size={12} /> : <Expand size={12} />}
+                  {fullMode ? 'Collapse full diff' : 'Expand full diff'}
                 </button>
               ) : null}
               <button

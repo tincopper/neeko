@@ -14,11 +14,13 @@ import {
   fileBlockId,
   indexOfPath,
   initialExpandedPaths,
+  mergeSelection,
   splitFilePath,
   statusBadgeClass,
   statusLetter,
   sumFileStats,
 } from './diffViewUtils';
+import type { SelectionMode } from './diffViewUtils';
 import { detectLanguage, ensureLanguageRegistered } from './highlight';
 import SplitDiffTable from './SplitDiffTable';
 import type { DiffViewProps, ViewMode } from './types';
@@ -168,6 +170,13 @@ interface FileDiffSectionProps {
   onToggle: () => void;
   selectedLines: Set<string>;
   onToggleLine: (hunkIdx: number, lineIdx: number) => void;
+  /** 全文模式（collapse=false）。 */
+  collapse: boolean;
+  /** 拖拽选区提交（key 已带文件前缀）。 */
+  onDragCommit: (keys: Set<string>, mode: SelectionMode) => void;
+  /** 单段展开（key 已带文件前缀）。 */
+  expandedSections: Set<string>;
+  onToggleSection: (hunkIdx: number, lineIdx: number) => void;
 }
 
 const FileDiffSection: React.FC<FileDiffSectionProps> = React.memo(
@@ -184,12 +193,17 @@ const FileDiffSection: React.FC<FileDiffSectionProps> = React.memo(
     onToggle,
     selectedLines,
     onToggleLine,
+    collapse,
+    onDragCommit,
+    expandedSections,
+    onToggleSection,
   }) => {
     // Gate data loading until expanded (D2 performance).
-    const { diffResult, loading, error, loadDiff } = useDiffData({
+    const { diffResult, fullHunks, loadFullHunks, loading, error, loadDiff } = useDiffData({
       projectId,
       diffSource,
       filePath: expanded ? filePath : '',
+      collapse,
     });
 
     const language = useMemo(() => detectLanguage(filePath), [filePath]);
@@ -206,6 +220,17 @@ const FileDiffSection: React.FC<FileDiffSectionProps> = React.memo(
         cancelled = true;
       };
     }, [expanded, language]);
+
+    const handleToggleSection = useCallback(
+      (hunkIdx: number, lineIdx: number) => {
+        // 仅在真正展开时由本文件实例按需加载全量 hunks（收起跳过，避免冗余请求）
+        const key = `${hunkIdx}:${lineIdx}`;
+        const expanding = !expandedSections.has(key);
+        onToggleSection(hunkIdx, lineIdx);
+        if (expanding) void loadFullHunks();
+      },
+      [onToggleSection, expandedSections, loadFullHunks],
+    );
 
     return (
       <DiffFileCard
@@ -242,7 +267,11 @@ const FileDiffSection: React.FC<FileDiffSectionProps> = React.memo(
               languageReady={languageReady}
               selectedLines={selectedLines}
               onToggleLine={onToggleLine}
+              onDragCommit={onDragCommit}
               blockIdPrefix={`cb-${blockId}`}
+              fullHunks={fullHunks ?? undefined}
+              expandedSections={expandedSections}
+              onToggleSection={handleToggleSection}
             />
           ) : (
             <SplitDiffTable
@@ -251,7 +280,11 @@ const FileDiffSection: React.FC<FileDiffSectionProps> = React.memo(
               languageReady={languageReady}
               selectedLines={selectedLines}
               onToggleLine={onToggleLine}
+              onDragCommit={onDragCommit}
               blockIdPrefix={`cb-${blockId}`}
+              fullHunks={fullHunks ?? undefined}
+              expandedSections={expandedSections}
+              onToggleSection={handleToggleSection}
             />
           )
         ) : (
@@ -276,6 +309,10 @@ const DiffView: React.FC<DiffViewProps> = React.memo(
   }) => {
     const [viewMode, setViewMode] = useState<ViewMode>(initialMode ?? 'unified');
     const [selectedLines, setSelectedLines] = useState<Set<string>>(new Set());
+    // 全文模式：collapse=false 拉取未折叠的完整 diff
+    const [fullMode, setFullMode] = useState(false);
+    // 单段展开：已展开的 Collapsed 占位行（key 与 selectedLines 一致，含 combined 前缀）
+    const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set());
     const { sendToAgent, clearPending } = useEditorAgentActions();
     const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -303,13 +340,26 @@ const DiffView: React.FC<DiffViewProps> = React.memo(
       const idx = indexOfPath(fileList, scrollToPath ?? filePath);
       setCurrentFileIdx(idx >= 0 ? idx : 0);
       setSelectedLines(new Set());
+      setExpandedSections(new Set());
+      setFullMode(false);
       setCombinedChangeIndex(0);
       // Only when the file set changes — not on every scrollToPath (handled below).
       // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [filesKey, combined]);
 
+    // 单文件模式：切换文件时重置选区与展开状态
+    useEffect(() => {
+      if (combined) return;
+      setSelectedLines(new Set());
+      setExpandedSections(new Set());
+      setFullMode(false);
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [filePath, diffSource, combined]);
+
     const {
       diffResult,
+      fullHunks,
+      loadFullHunks,
       loading,
       error,
       loadDiff,
@@ -322,6 +372,7 @@ const DiffView: React.FC<DiffViewProps> = React.memo(
       diffSource,
       // Skip single-file fetch noise in combined mode (each section loads itself).
       filePath: combined ? '' : filePath,
+      collapse: !fullMode,
     });
 
     const language = useMemo(() => detectLanguage(filePath), [filePath]);
@@ -642,6 +693,48 @@ const DiffView: React.FC<DiffViewProps> = React.memo(
       setSelectedLines(new Set());
     }, []);
 
+    /** 拖拽选区提交：replace=替换、append=追加（Shift）。 */
+    const commitDragRange = useCallback((keys: Set<string>, mode: SelectionMode, path?: string) => {
+      const prefix = path ? `${path}\0` : '';
+      const prefixed = new Set<string>();
+      for (const key of keys) {
+        prefixed.add(`${prefix}${key}`);
+      }
+      setSelectedLines((prev) => mergeSelection(prev, prefixed, mode));
+    }, []);
+
+    /** 单段展开/收起：仅在真正展开时按需加载全量 hunks（收起无需全量）。 */
+    const toggleSection = useCallback(
+      (hunkIdx: number, lineIdx: number, path?: string) => {
+        const key = path ? `${path}\0${hunkIdx}:${lineIdx}` : `${hunkIdx}:${lineIdx}`;
+        const expanding = !expandedSections.has(key);
+        setExpandedSections((prev) => {
+          const next = new Set(prev);
+          if (next.has(key)) {
+            next.delete(key);
+          } else {
+            next.add(key);
+          }
+          return next;
+        });
+        if (expanding) void loadFullHunks();
+      },
+      [expandedSections, loadFullHunks],
+    );
+
+    /** 切换全文模式（工具栏「展开全文 / 收起全文」）。 */
+    const toggleFullMode = useCallback(() => {
+      setFullMode((prev) => !prev);
+      setExpandedSections(new Set());
+    }, []);
+
+    /** 切换视图模式时清空选区与展开态（unified/split 的 key 语义不同，防错位）。 */
+    const handleViewModeChange = useCallback((mode: ViewMode) => {
+      setViewMode(mode);
+      setSelectedLines(new Set());
+      setExpandedSections(new Set());
+    }, []);
+
     const selectedCount = selectedLines.size;
 
     const selectedFilePaths = useMemo(() => {
@@ -664,6 +757,19 @@ const DiffView: React.FC<DiffViewProps> = React.memo(
         return out;
       },
       [selectedLines],
+    );
+
+    /** combined 模式下某文件的已展开折叠段（key 去掉文件前缀）。 */
+    const expandedSectionsForPath = useCallback(
+      (path: string) => {
+        const prefix = `${path}\0`;
+        const out = new Set<string>();
+        for (const key of expandedSections) {
+          if (key.startsWith(prefix)) out.add(key.slice(prefix.length));
+        }
+        return out;
+      },
+      [expandedSections],
     );
 
     const notifyNoAgentTerminal = useCallback(() => {
@@ -728,7 +834,7 @@ const DiffView: React.FC<DiffViewProps> = React.memo(
             additions={combinedStats.additions}
             deletions={combinedStats.deletions}
             viewMode={viewMode}
-            onViewModeChange={setViewMode}
+            onViewModeChange={handleViewModeChange}
             changeIndex={changeNavIndex}
             changeTotal={changeNavTotal}
             onChangePrev={() => navigateBlock('prev')}
@@ -741,6 +847,8 @@ const DiffView: React.FC<DiffViewProps> = React.memo(
             showFoldToggle
             allCollapsed={allCollapsed}
             onToggleFoldAll={toggleFoldAll}
+            fullMode={fullMode}
+            onToggleFull={toggleFullMode}
             onReview={fileList.length > 0 ? handleReviewFull : undefined}
           />
 
@@ -800,6 +908,10 @@ const DiffView: React.FC<DiffViewProps> = React.memo(
                 onToggle={() => toggleFile(f.path)}
                 selectedLines={selectedLinesForPath(f.path)}
                 onToggleLine={(hunkIdx, lineIdx) => toggleLine(hunkIdx, lineIdx, f.path)}
+                collapse={!fullMode}
+                onDragCommit={(keys, mode) => commitDragRange(keys, mode, f.path)}
+                expandedSections={expandedSectionsForPath(f.path)}
+                onToggleSection={(hunkIdx, lineIdx) => toggleSection(hunkIdx, lineIdx, f.path)}
               />
             ))}
           </div>
@@ -817,11 +929,13 @@ const DiffView: React.FC<DiffViewProps> = React.memo(
         additions={loading || error ? 0 : changeStats.additions}
         deletions={loading || error ? 0 : changeStats.deletions}
         viewMode={viewMode}
-        onViewModeChange={setViewMode}
+        onViewModeChange={handleViewModeChange}
         changeIndex={!loading && !error && totalChangeBlocks > 0 ? currentBlockIndex : 0}
         changeTotal={!loading && !error ? totalChangeBlocks : 0}
         onChangePrev={() => navigateBlock('prev')}
         onChangeNext={() => navigateBlock('next')}
+        fullMode={fullMode}
+        onToggleFull={toggleFullMode}
         onReview={loading || error ? undefined : handleReviewFull}
       />
     );
@@ -863,6 +977,10 @@ const DiffView: React.FC<DiffViewProps> = React.memo(
             languageReady={singleLanguageReady}
             selectedLines={selectedLines}
             onToggleLine={toggleLine}
+            onDragCommit={(keys, mode) => commitDragRange(keys, mode)}
+            fullHunks={fullHunks ?? undefined}
+            expandedSections={expandedSections}
+            onToggleSection={(hunkIdx, lineIdx) => toggleSection(hunkIdx, lineIdx)}
           />
         ) : (
           <SplitDiffTable
@@ -871,6 +989,10 @@ const DiffView: React.FC<DiffViewProps> = React.memo(
             languageReady={singleLanguageReady}
             selectedLines={selectedLines}
             onToggleLine={toggleLine}
+            onDragCommit={(keys, mode) => commitDragRange(keys, mode)}
+            fullHunks={fullHunks ?? undefined}
+            expandedSections={expandedSections}
+            onToggleSection={(hunkIdx, lineIdx) => toggleSection(hunkIdx, lineIdx)}
           />
         );
     } else {

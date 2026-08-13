@@ -106,7 +106,7 @@ export interface ProjectCommands {
   getChangedFilesDiffStats(): Promise<
     Array<{ path: string; additions: number; deletions: number }>
   >;
-  getFileDiff(filePath: string): Promise<DiffResult>;
+  getFileDiff(filePath: string, collapse?: boolean): Promise<DiffResult>;
   stageFiles(filePaths: string[]): Promise<void>;
   unstageFiles(filePaths: string[]): Promise<void>;
   discardFile(filePath: string): Promise<void>;
@@ -128,7 +128,7 @@ export interface ProjectCommands {
   getCommitLog(count: number, skip?: number): Promise<CommitEntry[]>;
   getCommitDetail(commitHash: string): Promise<CommitDetail>;
   getCommitFiles(commitHash: string): Promise<CommitFileChange[]>;
-  getCommitFileDiff(commitHash: string, filePath: string): Promise<DiffResult>;
+  getCommitFileDiff(commitHash: string, filePath: string, collapse?: boolean): Promise<DiffResult>;
   cherryPick(commitHash: string): Promise<void>;
   revert(commitHash: string): Promise<void>;
   createTag(tagName: string, message?: string): Promise<void>;

@@ -9,6 +9,30 @@ use crate::project::types::{
 
 // ─── Diff parsers (originally from local.rs) ─────────────────────────────────
 
+/// 全量 diff 的上下文行数（git2 `context_lines` 使用，u32 与 git2 API 对齐）。
+pub const DIFF_FULL_CONTEXT_LINES: u32 = 100_000;
+/// 全量 diff 允许的单文件字节上限：超过该值后上下文被限制，
+/// 防止 `-U100000` 对超大文件产生超过 IPC 2MB 红线的 JSON 输出。
+pub const DIFF_FULL_MAX_FILE_BYTES: u64 = 400_000;
+/// 超大文件全量模式回退的上下文行数（仍远大于折叠模式的 3 行）。
+pub const DIFF_FULL_FALLBACK_CONTEXT_LINES: u32 = 500;
+
+/// 根据单文件字节数决定全量上下文行数：小文件完整上下文，超大文件受限上下文。
+#[must_use]
+pub fn full_diff_context_lines(file_bytes: u64) -> u32 {
+    if file_bytes <= DIFF_FULL_MAX_FILE_BYTES {
+        DIFF_FULL_CONTEXT_LINES
+    } else {
+        DIFF_FULL_FALLBACK_CONTEXT_LINES
+    }
+}
+
+/// 根据单文件字节数生成全量 diff 的 `-U` 参数（shell 路径使用）。
+#[must_use]
+pub fn full_diff_context_arg(file_bytes: u64) -> String {
+    format!("-U{}", full_diff_context_lines(file_bytes))
+}
+
 /// Parse git diff --unified=3 text output into DiffResult
 #[must_use]
 pub fn parse_unified_diff(output: &str) -> DiffResult {
@@ -520,5 +544,34 @@ mod file_tree_tests {
         let out = "/proj\n/proj/Zeta.txt\n/proj/alpha.txt\n/proj/bravo\n/proj/bravo/x.txt\n";
         let tree = build_file_tree_from_find(out, "/proj");
         assert_eq!(names(&tree), ["bravo", "alpha.txt", "Zeta.txt"]);
+    }
+}
+
+#[cfg(test)]
+mod diff_context_guard_tests {
+    use super::*;
+
+    #[test]
+    fn small_file_gets_full_context() {
+        assert_eq!(full_diff_context_lines(0), DIFF_FULL_CONTEXT_LINES);
+        assert_eq!(
+            full_diff_context_lines(DIFF_FULL_MAX_FILE_BYTES),
+            DIFF_FULL_CONTEXT_LINES
+        );
+        assert_eq!(full_diff_context_arg(100_000), "-U100000");
+    }
+
+    #[test]
+    fn oversized_file_gets_fallback_context() {
+        assert_eq!(
+            full_diff_context_lines(DIFF_FULL_MAX_FILE_BYTES + 1),
+            DIFF_FULL_FALLBACK_CONTEXT_LINES
+        );
+        assert_eq!(
+            full_diff_context_arg(DIFF_FULL_MAX_FILE_BYTES + 1),
+            format!("-U{DIFF_FULL_FALLBACK_CONTEXT_LINES}")
+        );
+        // 回退上下文仍远大于折叠模式的 3 行
+        assert!(DIFF_FULL_FALLBACK_CONTEXT_LINES > 3);
     }
 }

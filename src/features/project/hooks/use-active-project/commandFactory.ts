@@ -33,8 +33,13 @@ export function createProjectCommands(
         { projectId, worktreePath },
       );
     },
-    getFileDiff(filePath: string): Promise<DiffResult> {
-      return invoke<DiffResult>('get_file_diff', { projectId, filePath, worktreePath });
+    getFileDiff(filePath: string, collapse?: boolean): Promise<DiffResult> {
+      return invoke<DiffResult>('get_file_diff', {
+        projectId,
+        filePath,
+        worktreePath,
+        collapse: collapse ?? true,
+      });
     },
 
     stageFiles(filePaths: string[]): Promise<void> {
@@ -116,8 +121,17 @@ export function createProjectCommands(
     getCommitFiles(commitHash: string): Promise<CommitFileChange[]> {
       return invoke<CommitFileChange[]>('get_commit_files', { projectId, commitHash });
     },
-    getCommitFileDiff(commitHash: string, filePath: string): Promise<DiffResult> {
-      return invoke<DiffResult>('get_commit_file_diff', { projectId, commitHash, filePath });
+    getCommitFileDiff(
+      commitHash: string,
+      filePath: string,
+      collapse?: boolean,
+    ): Promise<DiffResult> {
+      return invoke<DiffResult>('get_commit_file_diff', {
+        projectId,
+        commitHash,
+        filePath,
+        collapse: collapse ?? true,
+      });
     },
 
     cherryPick(commitHash: string): Promise<void> {

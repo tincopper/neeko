@@ -194,7 +194,7 @@ fn get_file_diff_on_modified_file() {
     let (tmp, _repo) = create_test_repo();
     std::fs::write(tmp.path().join("README.md"), "# Modified\n").unwrap();
 
-    let diff = git::get_file_diff(tmp.path(), "README.md").unwrap();
+    let diff = git::get_file_diff(tmp.path(), "README.md", true).unwrap();
     assert!(!diff.hunks.is_empty());
 }
 
@@ -203,7 +203,7 @@ fn get_file_diff_on_new_file() {
     let (tmp, _repo) = create_test_repo();
     std::fs::write(tmp.path().join("brand_new.txt"), "line1\nline2\n").unwrap();
 
-    let diff = git::get_file_diff(tmp.path(), "brand_new.txt").unwrap();
+    let diff = git::get_file_diff(tmp.path(), "brand_new.txt", true).unwrap();
     assert!(!diff.hunks.is_empty());
     let all_added = diff.hunks[0]
         .lines

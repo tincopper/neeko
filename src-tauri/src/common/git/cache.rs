@@ -157,8 +157,13 @@ fn repo_key_prefix(repo_path: &Path) -> String {
     repo_path.to_string_lossy().to_string()
 }
 
-fn diff_cache_key(repo_path: &Path, file_path: &str) -> String {
-    format!("{}:{}", repo_path.to_string_lossy(), file_path)
+fn diff_cache_key(repo_path: &Path, file_path: &str, collapse: bool) -> String {
+    format!(
+        "{}:{}:collapse={}",
+        repo_path.to_string_lossy(),
+        file_path,
+        collapse
+    )
 }
 
 // ─── Public API ───────────────────────────────────────────────────────────
@@ -308,9 +313,10 @@ pub fn set_gh_authenticated_cache(val: bool) {
 pub fn get_cached_diff(
     repo_path: &Path,
     file_path: &str,
+    collapse: bool,
     fetch: impl FnOnce() -> anyhow::Result<DiffResult>,
 ) -> anyhow::Result<DiffResult> {
-    let key = diff_cache_key(repo_path, file_path);
+    let key = diff_cache_key(repo_path, file_path, collapse);
     if let Some(cached) = DIFF_CACHE.get(&key) {
         return Ok(cached);
     }

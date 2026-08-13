@@ -420,8 +420,8 @@ pub fn create_branch(repo_path: &Path, branch_name: &str, start_point: Option<&s
 }
 
 /// Get the diff for a single file (working tree vs HEAD).
-pub fn get_file_diff(repo_path: &Path, file_path: &str) -> Result<DiffResult> {
-    super::cache::get_cached_diff(repo_path, file_path, || {
+pub fn get_file_diff(repo_path: &Path, file_path: &str, collapse: bool) -> Result<DiffResult> {
+    super::cache::get_cached_diff(repo_path, file_path, collapse, || {
         let t_open = std::time::Instant::now();
         let repo = Repository::open(repo_path).context("Failed to open git repository")?;
         log::debug!(
@@ -430,8 +430,18 @@ pub fn get_file_diff(repo_path: &Path, file_path: &str) -> Result<DiffResult> {
         );
 
         let mut opts = git2::DiffOptions::new();
+        let (context_lines, truncated) = if collapse {
+            (3, false)
+        } else {
+            // 全量护栏：超过单文件字节上限时回退受限上下文，防止 IPC JSON 超 2MB
+            let file_bytes = std::fs::metadata(repo_path.join(file_path))
+                .map(|m| m.len())
+                .unwrap_or(0);
+            let lines = super::parsers::full_diff_context_lines(file_bytes);
+            (lines, lines < super::parsers::DIFF_FULL_CONTEXT_LINES)
+        };
         opts.pathspec(file_path)
-            .context_lines(3)
+            .context_lines(context_lines)
             .ignore_whitespace_eol(false);
 
         let old_tree = repo
@@ -523,7 +533,7 @@ pub fn get_file_diff(repo_path: &Path, file_path: &str) -> Result<DiffResult> {
 
         Ok(DiffResult {
             hunks: result_hunks,
-            truncated: false,
+            truncated,
         })
     })
 }
@@ -1243,19 +1253,23 @@ pub fn get_commit_file_diff(
     repo_path: &Path,
     commit_hash: &str,
     file_path: &str,
+    collapse: bool,
 ) -> Result<DiffResult> {
-    let output = run_cmd_local(
-        Some(repo_path),
-        "git",
-        &[
-            "diff",
-            &format!("{}^", commit_hash),
-            commit_hash,
-            "--",
-            file_path,
-        ],
-    )
-    .context("Failed to run git diff for commit file")?;
+    let mut args: Vec<String> = vec!["diff".to_string()];
+    if !collapse {
+        // 全量护栏：按文件字节数生成 -U 参数，防止 IPC JSON 超 2MB
+        let file_bytes = std::fs::metadata(repo_path.join(file_path))
+            .map(|m| m.len())
+            .unwrap_or(0);
+        args.push(super::parsers::full_diff_context_arg(file_bytes));
+    }
+    args.push(format!("{}^", commit_hash));
+    args.push(commit_hash.to_string());
+    args.push("--".to_string());
+    args.push(file_path.to_string());
+    let arg_refs: Vec<&str> = args.iter().map(String::as_str).collect();
+    let output = run_cmd_local(Some(repo_path), "git", &arg_refs)
+        .context("Failed to run git diff for commit file")?;
     if output.exit_code != 0 {
         // For initial commit (no parent), try git show
         let show_output = run_cmd_local(
@@ -1279,7 +1293,9 @@ pub fn get_commit_file_diff(
     }
     let stdout = String::from_utf8_lossy(&output.stdout);
     let mut result = parse_unified_diff(&stdout);
-    collapse_diff_context(&mut result.hunks, 12);
+    if collapse {
+        collapse_diff_context(&mut result.hunks, 12);
+    }
     Ok(result)
 }
 
@@ -1722,7 +1738,7 @@ mod tests {
         std::fs::write(&file_path, "line1\nmodified\nline3\n").unwrap();
 
         // Get diff
-        let diff_result = get_file_diff(repo_path, "test.txt").unwrap();
+        let diff_result = get_file_diff(repo_path, "test.txt", true).unwrap();
         assert!(!diff_result.hunks.is_empty(), "Should have hunks");
         // Should have removed and added lines
         let has_removed = diff_result
@@ -1735,6 +1751,120 @@ mod tests {
             .any(|h| h.lines.iter().any(|l| matches!(l, DiffLine::Added(_))));
         assert!(has_removed, "Should have removed lines");
         assert!(has_added, "Should have added lines");
+    }
+
+    #[test]
+    fn collapse_false_returns_full_context_in_file_diff() {
+        // 30 行文件，修改第 5 行与第 25 行：collapse=true 只保留少量上下文，
+        // collapse=false 应返回完整文件上下文（git2 context_lines 放大）。
+        let dir = tempfile::tempdir().unwrap();
+        let repo_path = dir.path();
+
+        let repo = Repository::init(repo_path).unwrap();
+        let mut config = repo.config().unwrap();
+        config.set_str("user.name", "test").unwrap();
+        config.set_str("user.email", "test@test.com").unwrap();
+
+        let content: String = (1..=30).map(|i| format!("line{i}\n")).collect();
+        let file_path = repo_path.join("test.txt");
+        std::fs::write(&file_path, &content).unwrap();
+        let mut index = repo.index().unwrap();
+        index.add_path(std::path::Path::new("test.txt")).unwrap();
+        index.write().unwrap();
+        let tree_id = index.write_tree().unwrap();
+        let tree = repo.find_tree(tree_id).unwrap();
+        let sig = git2::Signature::now("test", "test@test.com").unwrap();
+        repo.commit(Some("HEAD"), &sig, &sig, "initial", &tree, &[])
+            .unwrap();
+
+        let mut lines: Vec<String> = (1..=30).map(|i| format!("line{i}")).collect();
+        lines[4] = "line5-modified".to_string();
+        lines[24] = "line25-modified".to_string();
+        std::fs::write(&file_path, format!("{}\n", lines.join("\n"))).unwrap();
+
+        let collapsed = get_file_diff(repo_path, "test.txt", true).unwrap();
+        let full = get_file_diff(repo_path, "test.txt", false).unwrap();
+
+        let collapsed_lines: usize = collapsed.hunks.iter().map(|h| h.lines.len()).sum();
+        let full_lines: usize = full.hunks.iter().map(|h| h.lines.len()).sum();
+        assert!(
+            collapsed_lines > 0,
+            "collapse=true should still show changes"
+        );
+        assert!(
+            full_lines > collapsed_lines,
+            "collapse=false should return more context lines (full={full_lines} > collapsed={collapsed_lines})"
+        );
+        // 全量视图应包含被折叠掉的中间行（如 line10、line15）
+        let full_text: Vec<String> = full
+            .hunks
+            .iter()
+            .flat_map(|h| &h.lines)
+            .filter_map(|l| match l {
+                DiffLine::Context(c) | DiffLine::Added(c) | DiffLine::Removed(c) => Some(c.clone()),
+                _ => None,
+            })
+            .collect();
+        assert!(
+            full_text.iter().any(|l| l == "line10"),
+            "full diff should include middle lines"
+        );
+        assert!(
+            !collapsed
+                .hunks
+                .iter()
+                .flat_map(|h| &h.lines)
+                .any(|l| matches!(l, DiffLine::Context(c) if c == "line10")),
+            "collapsed diff should drop middle context lines"
+        );
+    }
+
+    #[test]
+    fn oversized_file_full_diff_is_truncated() {
+        // 超过 DIFF_FULL_MAX_FILE_BYTES 的文件：collapse=false 时上下文被护栏限制，
+        // truncated=true，避免 IPC JSON 超 2MB 红线。
+        let dir = tempfile::tempdir().unwrap();
+        let repo_path = dir.path();
+
+        let repo = Repository::init(repo_path).unwrap();
+        let mut config = repo.config().unwrap();
+        config.set_str("user.name", "test").unwrap();
+        config.set_str("user.email", "test@test.com").unwrap();
+
+        // 构造 12k 行长文件（远超 400KB 阈值）
+        let content: String = (0..12_000)
+            .map(|i| format!("line{i:05} padding-padding-padding\n"))
+            .collect();
+        assert!(content.len() as u64 > crate::common::git::parsers::DIFF_FULL_MAX_FILE_BYTES);
+        let file_path = repo_path.join("big.txt");
+        std::fs::write(&file_path, &content).unwrap();
+        let mut index = repo.index().unwrap();
+        index.add_path(std::path::Path::new("big.txt")).unwrap();
+        index.write().unwrap();
+        let tree_id = index.write_tree().unwrap();
+        let tree = repo.find_tree(tree_id).unwrap();
+        let sig = git2::Signature::now("test", "test@test.com").unwrap();
+        repo.commit(Some("HEAD"), &sig, &sig, "initial", &tree, &[])
+            .unwrap();
+
+        // 修改首尾两行
+        let mut lines: Vec<String> = content.lines().map(String::from).collect();
+        lines[0] = "line00000 modified".to_string();
+        lines[11999] = "line11999 modified".to_string();
+        std::fs::write(&file_path, format!("{}\n", lines.join("\n"))).unwrap();
+
+        let result = get_file_diff(repo_path, "big.txt", false).unwrap();
+        assert!(result.truncated, "oversized full diff should be truncated");
+        // 护栏回退上下文（500 行）应远小于全量 12k 行
+        let full_lines: usize = result.hunks.iter().map(|h| h.lines.len()).sum();
+        assert!(
+            full_lines < 12_000,
+            "truncated context should be bounded (got {full_lines})"
+        );
+        // 小文件仍返回全量、不截断
+        std::fs::write(repo_path.join("small.txt"), "a\nb\nc\n").unwrap();
+        let small = get_file_diff(repo_path, "small.txt", false).unwrap();
+        assert!(!small.truncated);
     }
 
     #[test]
