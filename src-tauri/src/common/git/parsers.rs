@@ -19,7 +19,7 @@ pub const DIFF_FULL_FALLBACK_CONTEXT_LINES: u32 = 500;
 
 /// 根据单文件字节数决定全量上下文行数：小文件完整上下文，超大文件受限上下文。
 #[must_use]
-pub fn full_diff_context_lines(file_bytes: u64) -> u32 {
+pub const fn full_diff_context_lines(file_bytes: u64) -> u32 {
     if file_bytes <= DIFF_FULL_MAX_FILE_BYTES {
         DIFF_FULL_CONTEXT_LINES
     } else {
