@@ -3,7 +3,7 @@ import React, { useMemo } from 'react';
 import { cn } from '@/lib/utils';
 
 import { computeWordDiff } from './diffAlgorithm';
-import type { SelectionMode } from './diffViewUtils';
+import { lastSelectedKeyOf, type SelectionMode } from './diffViewUtils';
 import ExpandedSectionRows from './ExpandedSectionRows';
 import { renderHighlightedHtml, renderWordDiffHtml } from './highlight';
 import type { DiffHunk, DiffResult } from './types';
@@ -31,6 +31,8 @@ interface DiffTableProps {
   expandedSections?: Set<string>;
   /** 点击折叠占位行切换单段展开。 */
   onToggleSection?: (hunkIdx: number, lineIdx: number) => void;
+  /** 选中块末尾的浮动工具条内容（跨列行渲染，随选中行滚动）。 */
+  selectionActionBar?: () => React.ReactNode;
 }
 
 const DiffTable: React.FC<DiffTableProps> = ({
@@ -46,6 +48,7 @@ const DiffTable: React.FC<DiffTableProps> = ({
   fullHunks,
   expandedSections,
   onToggleSection,
+  selectionActionBar,
 }) => {
   // unified 模式下选区 key 与 hunk.lines 一一对应
   const hunkLineCounts = useMemo(() => diffResult.hunks.map((h) => h.lines.length), [diffResult]);
@@ -58,6 +61,9 @@ const DiffTable: React.FC<DiffTableProps> = ({
     if (shouldSuppressClick()) return;
     onToggleLine?.(hunkIdx, lineIdx);
   };
+
+  // 全局最后一个选中行的 key（仅在该行末尾渲染 inline 输入条，避免多段选区出现多个输入条）
+  const lastSelectedKey = useMemo(() => lastSelectedKeyOf(selectedLines), [selectedLines]);
 
   return (
     // overflow-x-auto 紧贴表格：长行撑宽表格后出现水平滚动条，
@@ -115,7 +121,7 @@ const DiffTable: React.FC<DiffTableProps> = ({
                           onClick={() => onToggleSection?.(hunkIndex, lineIndex)}
                           title="Expand section"
                         >
-                          <td colSpan={4} className="py-1 px-2 text-[12px]">
+                          <td colSpan={3} className="py-1 px-2 text-[12px]">
                             {content}
                           </td>
                         </tr>
@@ -157,6 +163,8 @@ const DiffTable: React.FC<DiffTableProps> = ({
                     const isSelected =
                       (selectedLines?.has(lineKey) ?? false) ||
                       (dragPreview?.has(lineKey) ?? false);
+                    // 选中块末尾：仅在全局最后一个选中行渲染 inline 输入条
+                    const isSelectionEnd = lineKey === lastSelectedKey;
                     const canComment =
                       onCommentLine && (lineType === 'added' || lineType === 'context');
                     const commentCount = commentCounts?.get(curNew) ?? 0;
@@ -214,9 +222,6 @@ const DiffTable: React.FC<DiffTableProps> = ({
                               </span>
                             )}
                           </td>
-                          <td className="w-5 text-center select-none">
-                            {lineType === 'added' ? '+' : lineType === 'removed' ? '-' : ' '}
-                          </td>
                           <td
                             className="line-content whitespace-pre"
                             onClick={() => handleRowClick(hunkIndex, lineIndex)}
@@ -227,13 +232,20 @@ const DiffTable: React.FC<DiffTableProps> = ({
                         {utils && (
                           <tr>
                             <td
-                              colSpan={4}
+                              colSpan={3}
                               className="py-2 px-4 bg-bg-secondary border-t border-border"
                             >
                               {utils}
                             </td>
                           </tr>
                         )}
+                        {isSelectionEnd && selectionActionBar ? (
+                          <tr>
+                            <td colSpan={3} className="p-0">
+                              {selectionActionBar()}
+                            </td>
+                          </tr>
+                        ) : null}
                       </React.Fragment>
                     );
                   })}

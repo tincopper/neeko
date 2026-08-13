@@ -37,4 +37,45 @@ describe('buildDiffMessage', () => {
       }),
     ).toBe('review the selected changes across src/a.ts, src/b.ts (7 lines)');
   });
+
+  it('should_review_single_full_diff_with_instruction_and_diff_text', () => {
+    const msg = buildDiffMessage('review', {
+      filePath: 'src/a.ts',
+      isFullDiff: true,
+      instruction: 'focus on edge cases',
+      diffText: '@@ -1,2 +1,2 @@\n  1| a',
+    });
+    expect(msg).toBe(
+      [
+        'review the changes in src/a.ts',
+        'Custom instruction (highest priority):\nfocus on edge cases',
+        'Diff:\n@@ -1,2 +1,2 @@\n  1| a',
+      ].join('\n\n'),
+    );
+  });
+
+  it('should_review_combined_selection_with_instruction_and_diff_text', () => {
+    const msg = buildDiffMessage('review', {
+      filePath: 'combined',
+      lineCount: 3,
+      combined: true,
+      fileCount: 1,
+      filePaths: ['src/a.ts'],
+      instruction: 'check test coverage',
+      diffText: '## file: src/a.ts\n@@ -1,1 +1,1 @@\n  1| x',
+    });
+    expect(msg).toBe(
+      [
+        'review the selected changes across src/a.ts (3 lines)',
+        'Custom instruction (highest priority):\ncheck test coverage',
+        'Diff:\n## file: src/a.ts\n@@ -1,1 +1,1 @@\n  1| x',
+      ].join('\n\n'),
+    );
+  });
+
+  it('should_omit_instruction_and_diff_blocks_when_absent', () => {
+    expect(buildDiffMessage('review', { filePath: 'src/a.ts', isFullDiff: true })).toBe(
+      'review the changes in src/a.ts',
+    );
+  });
 });

@@ -4,14 +4,16 @@ import { cn } from '@/lib/utils';
 import {
   ChevronsDownUp,
   ChevronsUpDown,
-  Expand,
+  FoldVertical,
   MoreHorizontal,
   MoveDown,
   MoveLeft,
   MoveRight,
   MoveUp,
-  Shrink,
   Sparkles,
+  SquareSplitHorizontal,
+  SquareSplitVertical,
+  UnfoldVertical,
 } from '@/shared/components/icons';
 
 import type { ViewMode } from './types';
@@ -200,41 +202,21 @@ const DiffToolbar: React.FC<DiffToolbarProps> = ({
 
       {/* ── Right: controls ────────────────────────────────────────── */}
       <div className="flex items-center gap-px shrink-0">
-        {/* View mode — keep segmented group for selection affordance */}
-        <div
-          className="flex items-center rounded-md border border-border/30 bg-bg-tertiary/40 p-0.5"
-          role="group"
-          aria-label="Diff view mode"
+        {/* View mode toggle */}
+        <button
+          type="button"
+          className={flatBtnClass}
+          onClick={() => onViewModeChange(viewMode === 'unified' ? 'split' : 'unified')}
+          title={viewMode === 'unified' ? 'Switch to split view' : 'Switch to unified view'}
+          aria-label={viewMode === 'unified' ? 'Switch to split view' : 'Switch to unified view'}
+          aria-pressed={viewMode === 'split'}
         >
-          <button
-            type="button"
-            className={cn(
-              'px-1.5 py-0.5 rounded text-[calc(var(--font-size)-2px)] font-medium transition-colors duration-150',
-              viewMode === 'unified'
-                ? 'bg-accent-blue/15 text-accent-blue'
-                : 'text-text-muted hover:text-text-secondary',
-            )}
-            onClick={() => onViewModeChange('unified')}
-            title="Unified view"
-          >
-            <span className="hidden @[420px]:inline">Unified</span>
-            <span className="@[420px]:hidden">U</span>
-          </button>
-          <button
-            type="button"
-            className={cn(
-              'px-1.5 py-0.5 rounded text-[calc(var(--font-size)-2px)] font-medium transition-colors duration-150',
-              viewMode === 'split'
-                ? 'bg-accent-blue/15 text-accent-blue'
-                : 'text-text-muted hover:text-text-secondary',
-            )}
-            onClick={() => onViewModeChange('split')}
-            title="Split view"
-          >
-            <span className="hidden @[420px]:inline">Split</span>
-            <span className="@[420px]:hidden">S</span>
-          </button>
-        </div>
+          {viewMode === 'unified' ? (
+            <SquareSplitVertical size={14} />
+          ) : (
+            <SquareSplitHorizontal size={14} />
+          )}
+        </button>
 
         {onToggleFull ? (
           <button
@@ -245,7 +227,7 @@ const DiffToolbar: React.FC<DiffToolbarProps> = ({
             aria-label={fullMode ? 'Collapse full diff' : 'Expand full diff'}
             aria-pressed={fullMode}
           >
-            {fullMode ? <Shrink size={14} /> : <Expand size={14} />}
+            {fullMode ? <FoldVertical size={14} /> : <UnfoldVertical size={14} />}
           </button>
         ) : null}
 
@@ -325,29 +307,24 @@ const DiffToolbar: React.FC<DiffToolbarProps> = ({
                     onToggleFull();
                   }}
                 >
-                  {fullMode ? <Shrink size={12} /> : <Expand size={12} />}
+                  {fullMode ? <FoldVertical size={12} /> : <UnfoldVertical size={12} />}
                   {fullMode ? 'Collapse full diff' : 'Expand full diff'}
                 </button>
               ) : null}
               <button
                 type="button"
-                className="flex w-full px-2 py-1.5 text-left text-[var(--font-size)] text-text-secondary hover:bg-bg-hover hover:text-text-primary"
+                className="flex w-full items-center gap-2 px-2 py-1.5 text-left text-[var(--font-size)] text-text-secondary hover:bg-bg-hover hover:text-text-primary"
                 onClick={() => {
                   setMenuOpen(false);
-                  onViewModeChange('unified');
+                  onViewModeChange(viewMode === 'unified' ? 'split' : 'unified');
                 }}
               >
-                Unified view
-              </button>
-              <button
-                type="button"
-                className="flex w-full px-2 py-1.5 text-left text-[var(--font-size)] text-text-secondary hover:bg-bg-hover hover:text-text-primary"
-                onClick={() => {
-                  setMenuOpen(false);
-                  onViewModeChange('split');
-                }}
-              >
-                Split view
+                {viewMode === 'unified' ? (
+                  <SquareSplitVertical size={12} />
+                ) : (
+                  <SquareSplitHorizontal size={12} />
+                )}
+                {viewMode === 'unified' ? 'Switch to split view' : 'Switch to unified view'}
               </button>
             </div>
           ) : null}

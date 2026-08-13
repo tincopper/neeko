@@ -14,6 +14,7 @@ import {
   collapsedSectionRanges,
   spliceFullHunkSection,
   findFullHunkForOldLine,
+  lastSelectedKeyOf,
 } from '../diffViewUtils';
 import type { CommitFileChange, DiffHunk, DiffLine } from '../types';
 
@@ -243,5 +244,20 @@ describe('findFullHunkForOldLine', () => {
   it('should_return_null_when_not_found', () => {
     const h1: DiffHunk = { old_start: 1, old_lines: 10, new_start: 1, new_lines: 10, lines: [] };
     expect(findFullHunkForOldLine([h1], 99)).toBeNull();
+  });
+});
+
+describe('lastSelectedKeyOf', () => {
+  it('should_return_last_selected_line_key_across_hunks', () => {
+    expect(lastSelectedKeyOf(new Set(['0:2', '1:0', '0:5']))).toBe('1:0');
+  });
+
+  it('should_return_last_line_within_same_hunk', () => {
+    expect(lastSelectedKeyOf(new Set(['2:1', '2:4', '2:3']))).toBe('2:4');
+  });
+
+  it('should_return_null_for_empty_or_undefined_selection', () => {
+    expect(lastSelectedKeyOf(new Set())).toBeNull();
+    expect(lastSelectedKeyOf(undefined)).toBeNull();
   });
 });

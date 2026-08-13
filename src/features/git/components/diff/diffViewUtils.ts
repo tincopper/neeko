@@ -1,5 +1,8 @@
 import type { CommitFileChange, DiffHunk, DiffLine } from './types';
 
+/** 自定义评审指令长度上限（SelectionActionBar / ReviewInstructionPopover 共用单一来源）。 */
+export const REVIEW_INSTRUCTION_MAX = 2000;
+
 /** Split a file path into basename + directory. */
 export function splitFilePath(filePath: string): { name: string; dir: string } {
   const normalized = filePath.replace(/\\/g, '/');
@@ -212,4 +215,19 @@ export function findFullHunkForOldLine(hunks: DiffHunk[], oldLine: number): Diff
     }
   }
   return null;
+}
+
+/** 计算选区中“最后一个选中行”的 key（`hunkIdx:lineIdx`），空选区返回 null。 */
+export function lastSelectedKeyOf(selectedLines: ReadonlySet<string> | undefined): string | null {
+  if (!selectedLines || selectedLines.size === 0) return null;
+  let lastHunk = -1;
+  let lastLine = -1;
+  for (const key of selectedLines) {
+    const [h, l] = key.split(':').map(Number);
+    if (h > lastHunk || (h === lastHunk && l > lastLine)) {
+      lastHunk = h;
+      lastLine = l;
+    }
+  }
+  return lastHunk >= 0 ? `${lastHunk}:${lastLine}` : null;
 }

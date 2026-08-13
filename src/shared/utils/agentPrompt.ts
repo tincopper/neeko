@@ -16,6 +16,10 @@ export interface DiffContext {
   fileCount?: number;
   /** Distinct files involved in a selection (combined mode). */
   filePaths?: string[];
+  /** 用户自定义评审指令（可选），拼入消息并声明为最高优先级。 */
+  instruction?: string;
+  /** 实际 diff 内容（带行号文本），拼入消息供 agent 直接阅读。 */
+  diffText?: string;
 }
 
 export function buildCodeMessage(
@@ -57,18 +61,23 @@ export function buildDiffMessage(
           : `${selectedFiles.slice(0, 3).join(', ')} (+${selectedFiles.length - 3} more)`;
 
   switch (action) {
-    case 'review':
+    case 'review': {
+      let base: string;
       if (ctx.isFullDiff) {
-        if (isCombined) {
-          return `review this commit diff across ${fileCount || 'multiple'} files`;
-        }
-        return `review the changes in ${filePath}`;
-      }
-      if (isCombined) {
+        base = isCombined
+          ? `review this commit diff across ${fileCount || 'multiple'} files`
+          : `review the changes in ${filePath}`;
+      } else if (isCombined) {
         const filesPart = selectedFilesLabel || `${fileCount || 'multiple'} files`;
-        return `review the selected changes across ${filesPart} (${ctx.lineCount ?? 0} lines)`;
+        base = `review the selected changes across ${filesPart} (${ctx.lineCount ?? 0} lines)`;
+      } else {
+        base = `review the selected changes in ${filePath} (${ctx.lineCount} lines)`;
       }
-      return `review the selected changes in ${filePath} (${ctx.lineCount} lines)`;
+      const parts = [base];
+      if (ctx.instruction) parts.push(`Custom instruction (highest priority):\n${ctx.instruction}`);
+      if (ctx.diffText) parts.push(`Diff:\n${ctx.diffText}`);
+      return parts.join('\n\n');
+    }
     case 'explain':
       if (ctx.isFullDiff) {
         if (isCombined) {

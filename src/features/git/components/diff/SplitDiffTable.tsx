@@ -3,7 +3,7 @@ import React, { useMemo } from 'react';
 import { cn } from '@/lib/utils';
 
 import { buildSplitRows, computeWordDiff } from './diffAlgorithm';
-import type { SelectionMode } from './diffViewUtils';
+import { lastSelectedKeyOf, type SelectionMode } from './diffViewUtils';
 import ExpandedSectionRows from './ExpandedSectionRows';
 import { renderHighlightedHtml, renderWordDiffHtml } from './highlight';
 import type { DiffHunk, DiffResult } from './types';
@@ -30,6 +30,8 @@ interface SplitDiffTableProps {
   expandedSections?: Set<string>;
   /** 点击折叠占位行切换单段展开。 */
   onToggleSection?: (hunkIdx: number, lineIdx: number) => void;
+  /** 选中块末尾的浮动工具条内容（跨列行渲染，随选中行滚动）。 */
+  selectionActionBar?: () => React.ReactNode;
 }
 
 const SplitDiffTable: React.FC<SplitDiffTableProps> = ({
@@ -45,6 +47,7 @@ const SplitDiffTable: React.FC<SplitDiffTableProps> = ({
   fullHunks,
   expandedSections,
   onToggleSection,
+  selectionActionBar,
 }) => {
   // split 模式下选区 key 与 buildSplitRows 产出的行一一对应
   const hunkLineCounts = useMemo(
@@ -60,6 +63,9 @@ const SplitDiffTable: React.FC<SplitDiffTableProps> = ({
     if (shouldSuppressClick()) return;
     onToggleLine?.(hunkIdx, lineIdx);
   };
+
+  // 全局最后一个选中行的 key（仅在该行末尾渲染 inline 输入条，避免多段选区出现多个输入条）
+  const lastSelectedKey = useMemo(() => lastSelectedKeyOf(selectedLines), [selectedLines]);
 
   return (
     // overflow-x-auto 紧贴表格：长行撑宽表格后出现水平滚动条，
@@ -162,6 +168,8 @@ const SplitDiffTable: React.FC<SplitDiffTableProps> = ({
                 const lineKey = `${hunkIndex}:${rowIndex}`;
                 const isSelected =
                   (selectedLines?.has(lineKey) ?? false) || (dragPreview?.has(lineKey) ?? false);
+                // 选中块末尾：仅在全局最后一个选中行渲染 inline 输入条
+                const isSelectionEnd = lineKey === lastSelectedKey;
                 const isRemoved = row.type === 'change' && row.oldType === 'removed';
                 const isAdded = row.type === 'change' && row.newType === 'added';
                 const newLineNum = row.newLineNum;
@@ -251,6 +259,13 @@ const SplitDiffTable: React.FC<SplitDiffTableProps> = ({
                         </td>
                       </tr>
                     )}
+                    {isSelectionEnd && selectionActionBar ? (
+                      <tr>
+                        <td colSpan={4} className="p-0">
+                          {selectionActionBar()}
+                        </td>
+                      </tr>
+                    ) : null}
                   </React.Fragment>
                 );
               });

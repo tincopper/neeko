@@ -1,14 +1,14 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
-import { cn } from '@/lib/utils';
-import { ChevronRight, Sparkles, CloseIcon } from '@/shared/components/icons';
 import { useEditorAgentActions } from '@/shared/hooks/useEditorAgentActions';
 import { useEditorStore } from '@/shared/store/editorStore';
 import { useNotificationStore } from '@/shared/store/notificationStore';
 import { buildDiffMessage } from '@/shared/utils/agentPrompt';
 import { fileIconSrc } from '@/shared/utils/fileIcons';
 
+import CombinedDiffView from './CombinedDiffView';
 import DiffTable from './DiffTable';
+import { capDiffText, hunksToDiffText, hunksToSelectedDiffText } from './diffText';
 import DiffToolbar from './DiffToolbar';
 import {
   fileBlockId,
@@ -16,14 +16,15 @@ import {
   initialExpandedPaths,
   mergeSelection,
   splitFilePath,
-  statusBadgeClass,
-  statusLetter,
   sumFileStats,
 } from './diffViewUtils';
 import type { SelectionMode } from './diffViewUtils';
+import { DiffFileCard } from './FileDiffSection';
 import { detectLanguage, ensureLanguageRegistered } from './highlight';
+import ReviewInstructionPopover from './ReviewInstructionPopover';
+import SelectionActionBar from './SelectionActionBar';
 import SplitDiffTable from './SplitDiffTable';
-import type { DiffViewProps, ViewMode } from './types';
+import type { DiffHunk, DiffViewProps, ViewMode } from './types';
 import { useDiffData } from './useDiffData';
 
 function getProjectIdFromTab(): string | null {
@@ -33,268 +34,6 @@ function getProjectIdFromTab(): string | null {
   }
   return null;
 }
-
-/** Shared chrome for single + combined file blocks (rounded card + optional header). */
-interface DiffFileCardProps {
-  filePath: string;
-  status?: string;
-  additions?: number;
-  deletions?: number;
-  expanded: boolean;
-  active?: boolean;
-  /**
-   * Combined mode shows the file header (name/dir/stats/toggle).
-   * Single mode hides it — toolbar already carries that identity (avoids double chrome).
-   */
-  showHeader?: boolean;
-  /** When set, header is a toggle control. */
-  onToggle?: () => void;
-  children?: React.ReactNode;
-  className?: string;
-  id?: string;
-}
-
-const DiffFileCard: React.FC<DiffFileCardProps> = React.memo(
-  ({
-    filePath,
-    status,
-    additions = 0,
-    deletions = 0,
-    expanded,
-    active = false,
-    showHeader = true,
-    onToggle,
-    children,
-    className,
-    id,
-  }) => {
-    const { name, dir } = useMemo(() => splitFilePath(filePath), [filePath]);
-    const letter = status ? statusLetter(status) : '';
-    const interactive = typeof onToggle === 'function';
-
-    const headerClass = cn(
-      'sticky top-0 z-10 w-full grid grid-cols-[14px_16px_minmax(0,auto)_minmax(0,1fr)_auto_auto] items-center gap-1.5 px-3 py-1.5 text-left transition-colors',
-      'bg-bg-secondary',
-      interactive && 'hover:bg-bg-hover/50 cursor-pointer',
-      expanded && 'border-b border-border/35',
-      active && 'bg-bg-selected/40',
-    );
-
-    const headerInner = (
-      <>
-        <ChevronRight
-          size={12}
-          className={cn(
-            'text-text-secondary shrink-0 transition-transform duration-150',
-            expanded && 'rotate-90 text-text-primary',
-            !interactive && 'opacity-50',
-          )}
-        />
-        <img
-          src={fileIconSrc(name)}
-          alt=""
-          width={14}
-          height={14}
-          className="shrink-0 opacity-90"
-        />
-        <span className="truncate max-w-[12rem] text-[var(--font-size)] font-semibold text-text-primary">
-          {name}
-        </span>
-        <span className="min-w-0 truncate font-mono text-[calc(var(--font-size)-2px)] text-text-secondary">
-          {dir}
-        </span>
-        {letter ? (
-          <span
-            className={cn(
-              'shrink-0 text-[calc(var(--font-size)-3px)] font-semibold px-1.5 py-px rounded-full leading-none',
-              statusBadgeClass(letter),
-            )}
-          >
-            {letter}
-          </span>
-        ) : (
-          <span className="shrink-0 w-0 overflow-hidden" />
-        )}
-        <span className="shrink-0 flex items-center gap-1 text-[calc(var(--font-size)-2px)] tabular-nums font-medium">
-          <span className="text-accent-green">+{additions}</span>
-          <span className="text-accent-red">−{deletions}</span>
-        </span>
-      </>
-    );
-
-    return (
-      <section
-        id={id}
-        className={cn(
-          // Same surface as tab chrome; soft rounded card for single + combined.
-          'mx-2 my-1.5 overflow-hidden rounded-lg border bg-bg-secondary',
-          active ? 'border-border' : 'border-border/40',
-          className,
-        )}
-      >
-        {showHeader ? (
-          interactive ? (
-            <button
-              type="button"
-              className={headerClass}
-              onClick={onToggle}
-              aria-expanded={expanded}
-              title={filePath}
-            >
-              {headerInner}
-            </button>
-          ) : (
-            <div className={headerClass} title={filePath}>
-              {headerInner}
-            </div>
-          )
-        ) : null}
-
-        {expanded ? <div className="bg-bg-secondary px-2 py-1.5">{children}</div> : null}
-      </section>
-    );
-  },
-);
-DiffFileCard.displayName = 'DiffFileCard';
-
-interface FileDiffSectionProps {
-  projectId: string;
-  diffSource: NonNullable<DiffViewProps['diffSource']>;
-  filePath: string;
-  status: string;
-  additions: number;
-  deletions: number;
-  viewMode: ViewMode;
-  expanded: boolean;
-  active: boolean;
-  onToggle: () => void;
-  selectedLines: Set<string>;
-  onToggleLine: (hunkIdx: number, lineIdx: number) => void;
-  /** 全文模式（collapse=false）。 */
-  collapse: boolean;
-  /** 拖拽选区提交（key 已带文件前缀）。 */
-  onDragCommit: (keys: Set<string>, mode: SelectionMode) => void;
-  /** 单段展开（key 已带文件前缀）。 */
-  expandedSections: Set<string>;
-  onToggleSection: (hunkIdx: number, lineIdx: number) => void;
-}
-
-const FileDiffSection: React.FC<FileDiffSectionProps> = React.memo(
-  ({
-    projectId,
-    diffSource,
-    filePath,
-    status,
-    additions,
-    deletions,
-    viewMode,
-    expanded,
-    active,
-    onToggle,
-    selectedLines,
-    onToggleLine,
-    collapse,
-    onDragCommit,
-    expandedSections,
-    onToggleSection,
-  }) => {
-    // Gate data loading until expanded (D2 performance).
-    const { diffResult, fullHunks, loadFullHunks, loading, error, loadDiff } = useDiffData({
-      projectId,
-      diffSource,
-      filePath: expanded ? filePath : '',
-      collapse,
-    });
-
-    const language = useMemo(() => detectLanguage(filePath), [filePath]);
-    const blockId = fileBlockId(filePath);
-    const [languageReady, setLanguageReady] = useState(false);
-
-    useEffect(() => {
-      if (!expanded) return;
-      let cancelled = false;
-      void ensureLanguageRegistered(language).then(() => {
-        if (!cancelled) setLanguageReady(true);
-      });
-      return () => {
-        cancelled = true;
-      };
-    }, [expanded, language]);
-
-    const handleToggleSection = useCallback(
-      (hunkIdx: number, lineIdx: number) => {
-        // 仅在真正展开时由本文件实例按需加载全量 hunks（收起跳过，避免冗余请求）
-        const key = `${hunkIdx}:${lineIdx}`;
-        const expanding = !expandedSections.has(key);
-        onToggleSection(hunkIdx, lineIdx);
-        if (expanding) void loadFullHunks();
-      },
-      [onToggleSection, expandedSections, loadFullHunks],
-    );
-
-    return (
-      <DiffFileCard
-        id={blockId}
-        filePath={filePath}
-        status={status}
-        additions={additions}
-        deletions={deletions}
-        expanded={expanded}
-        active={active}
-        onToggle={onToggle}
-      >
-        {loading ? (
-          <div className="text-text-muted text-[var(--font-size)] py-4 text-center">Loading…</div>
-        ) : error ? (
-          <div className="text-accent-red text-[var(--font-size)] py-4 text-center">
-            {error}
-            <button
-              type="button"
-              className="ml-2 text-accent-blue underline bg-transparent border-none cursor-pointer"
-              onClick={(e) => {
-                e.stopPropagation();
-                void loadDiff();
-              }}
-            >
-              Retry
-            </button>
-          </div>
-        ) : diffResult && diffResult.hunks.length > 0 ? (
-          viewMode === 'unified' ? (
-            <DiffTable
-              diffResult={diffResult}
-              language={language}
-              languageReady={languageReady}
-              selectedLines={selectedLines}
-              onToggleLine={onToggleLine}
-              onDragCommit={onDragCommit}
-              blockIdPrefix={`cb-${blockId}`}
-              fullHunks={fullHunks ?? undefined}
-              expandedSections={expandedSections}
-              onToggleSection={handleToggleSection}
-            />
-          ) : (
-            <SplitDiffTable
-              diffResult={diffResult}
-              language={language}
-              languageReady={languageReady}
-              selectedLines={selectedLines}
-              onToggleLine={onToggleLine}
-              onDragCommit={onDragCommit}
-              blockIdPrefix={`cb-${blockId}`}
-              fullHunks={fullHunks ?? undefined}
-              expandedSections={expandedSections}
-              onToggleSection={handleToggleSection}
-            />
-          )
-        ) : (
-          <div className="text-text-muted text-[var(--font-size)] py-4 text-center">No changes</div>
-        )}
-      </DiffFileCard>
-    );
-  },
-);
-FileDiffSection.displayName = 'FileDiffSection';
 
 const DiffView: React.FC<DiffViewProps> = React.memo(
   ({
@@ -315,6 +54,15 @@ const DiffView: React.FC<DiffViewProps> = React.memo(
     const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set());
     const { sendToAgent, clearPending } = useEditorAgentActions();
     const scrollRef = useRef<HTMLDivElement>(null);
+    // AI review 自定义指令弹层（全文 review，右上角浮层）。
+    const [reviewPopover, setReviewPopover] = useState(false);
+    // combined 数据提升：FileDiffSection 经 onDiffResult 上报渲染 hunks，review 拼 diff 文本用。
+    const hunksByPathRef = useRef<Record<string, DiffHunk[]>>({});
+    const reportDiffResult = useCallback((path: string, hunks: DiffHunk[] | null) => {
+      const ref = hunksByPathRef.current;
+      if (hunks && hunks.length > 0) ref[path] = hunks;
+      else delete ref[path];
+    }, []);
 
     // Combined-mode structure state
     const fileList = useMemo(() => files ?? [], [files]);
@@ -336,6 +84,8 @@ const DiffView: React.FC<DiffViewProps> = React.memo(
     );
     useEffect(() => {
       if (!combined) return;
+      // 文件集变更时清空数据提升缓存，防止旧提交的 hunks 残留进 review 消息
+      hunksByPathRef.current = {};
       setExpandedPaths(initialExpandedPaths(fileList, scrollToPath ?? filePath));
       const idx = indexOfPath(fileList, scrollToPath ?? filePath);
       setCurrentFileIdx(idx >= 0 ? idx : 0);
@@ -747,6 +497,25 @@ const DiffView: React.FC<DiffViewProps> = React.memo(
       return Array.from(paths);
     }, [combined, selectedLines, filePath]);
 
+    /** 全局最后一个选中行所属文件（combined 模式按 hunk/行号取最大）。 */
+    const lastSelectedPath = useMemo(() => {
+      if (selectedLines.size === 0) return null;
+      let bestPath: string | null = null;
+      let bestHunk = -1;
+      let bestLine = -1;
+      for (const key of selectedLines) {
+        const sep = key.indexOf('\0');
+        const local = sep >= 0 ? key.slice(sep + 1) : key;
+        const [h, l] = local.split(':').map(Number);
+        if (h > bestHunk || (h === bestHunk && l > bestLine)) {
+          bestHunk = h;
+          bestLine = l;
+          bestPath = sep >= 0 ? key.slice(0, sep) : null;
+        }
+      }
+      return bestPath;
+    }, [selectedLines]);
+
     const selectedLinesForPath = useCallback(
       (path: string) => {
         const prefix = `${path}\0`;
@@ -794,128 +563,150 @@ const DiffView: React.FC<DiffViewProps> = React.memo(
     );
 
     const handleReviewFull = useCallback(() => {
-      const message = combined
-        ? buildDiffMessage('review', {
-            filePath: 'combined',
-            isFullDiff: true,
-            combined: true,
-            fileCount: fileList.length,
-          })
-        : buildDiffMessage('review', { filePath, isFullDiff: true });
-      sendReview(message, false);
-    }, [combined, fileList.length, filePath, sendReview]);
+      setReviewPopover(true);
+    }, []);
 
-    const handleReviewSelection = useCallback(() => {
-      if (selectedCount === 0) return;
-      const message = combined
-        ? buildDiffMessage('review', {
-            filePath: 'combined',
-            lineCount: selectedCount,
-            combined: true,
-            fileCount: selectedFilePaths.length,
-            filePaths: selectedFilePaths,
-          })
-        : buildDiffMessage('review', { filePath, lineCount: selectedCount });
-      sendReview(message, true);
-    }, [combined, selectedCount, selectedFilePaths, filePath, sendReview]);
+    /** combined 模式：把已展开文件的渲染 hunks 拼成带行号的 diff 文本。 */
+    const combinedDiffText = useCallback((paths?: string[]): string => {
+      const ref = hunksByPathRef.current;
+      const targetPaths = paths && paths.length > 0 ? paths : Object.keys(ref);
+      const sections: string[] = [];
+      for (const p of targetPaths) {
+        const hunks = ref[p];
+        if (hunks && hunks.length > 0) {
+          sections.push(`## file: ${p}\n${hunksToDiffText(hunks)}`);
+        }
+      }
+      return sections.join('\n\n');
+    }, []);
+
+    /** combined 模式：把选中文件的选中行拼成带行号的 diff 文本。 */
+    const combinedSelectedDiffText = useCallback((): string => {
+      const ref = hunksByPathRef.current;
+      const sections: string[] = [];
+      for (const p of selectedFilePaths) {
+        const hunks = ref[p];
+        if (hunks && hunks.length > 0) {
+          const text = hunksToSelectedDiffText(hunks, selectedLinesForPath(p));
+          if (text) sections.push(`## file: ${p}\n${text}`);
+        }
+      }
+      return sections.join('\n\n');
+    }, [selectedFilePaths, selectedLinesForPath]);
+
+    /** 提交选区 review（从 inline 输入条）。 */
+    const submitSelectionReview = useCallback(
+      (instruction?: string) => {
+        const message = combined
+          ? buildDiffMessage('review', {
+              filePath: 'combined',
+              lineCount: selectedCount,
+              combined: true,
+              fileCount: selectedFilePaths.length,
+              filePaths: selectedFilePaths,
+              instruction,
+              diffText: capDiffText(combinedSelectedDiffText()),
+            })
+          : buildDiffMessage('review', {
+              filePath,
+              lineCount: selectedCount,
+              instruction,
+              diffText: capDiffText(
+                hunksToSelectedDiffText(diffResult?.hunks ?? [], selectedLines),
+              ),
+            });
+        sendReview(message, true);
+      },
+      [
+        combined,
+        filePath,
+        diffResult,
+        selectedCount,
+        selectedFilePaths,
+        combinedSelectedDiffText,
+        selectedLines,
+        sendReview,
+      ],
+    );
+
+    /** 选中块末尾的 inline 输入条（VSCode 风格，嵌在 diff 表格里随选中行滚动）。 */
+    const selectionActionBar = useCallback(
+      () => (
+        <SelectionActionBar
+          selectedCount={selectedCount}
+          onSubmit={submitSelectionReview}
+          onClose={clearSelection}
+        />
+      ),
+      [selectedCount, submitSelectionReview, clearSelection],
+    );
+
+    /** 提交全文 review：组装消息 → 发送到 agent 终端。 */
+    const submitFullReview = useCallback(
+      (instruction?: string) => {
+        setReviewPopover(false);
+        const message = combined
+          ? buildDiffMessage('review', {
+              filePath: 'combined',
+              isFullDiff: true,
+              combined: true,
+              fileCount: fileList.length,
+              instruction,
+              diffText: capDiffText(combinedDiffText()),
+            })
+          : buildDiffMessage('review', {
+              filePath,
+              isFullDiff: true,
+              instruction,
+              diffText: capDiffText(hunksToDiffText(diffResult?.hunks ?? [])),
+            });
+        sendReview(message, false);
+      },
+      [combined, fileList.length, filePath, diffResult, combinedDiffText, sendReview],
+    );
+
+    // 弹层在 combined / single 分支各渲染一次（同一变量，只会有一处返回挂载）。
+    const reviewPopoverEl = reviewPopover ? (
+      <ReviewInstructionPopover
+        open
+        onSubmit={submitFullReview}
+        onClose={() => setReviewPopover(false)}
+      />
+    ) : null;
 
     // ── Combined multi-file view ──────────────────────────────────────────
     if (combined && files && diffSource) {
-      const pid = projectId || '';
-      const activePath = fileList[currentFileIdx]?.path;
       return (
-        <div
-          className="flex-1 flex flex-col overflow-hidden min-w-0 bg-bg-secondary"
-          ref={scrollRef}
-        >
-          <DiffToolbar
-            title={activePath || `${fileList.length} files`}
-            titleTooltip={activePath || `${fileList.length} files`}
-            additions={combinedStats.additions}
-            deletions={combinedStats.deletions}
-            viewMode={viewMode}
-            onViewModeChange={handleViewModeChange}
-            changeIndex={changeNavIndex}
-            changeTotal={changeNavTotal}
-            onChangePrev={() => navigateBlock('prev')}
-            onChangeNext={() => navigateBlock('next')}
-            showFileNav
-            fileIndex={currentFileIdx}
-            fileTotal={fileList.length}
-            onFilePrev={() => navigateFile('prev')}
-            onFileNext={() => navigateFile('next')}
-            showFoldToggle
-            allCollapsed={allCollapsed}
-            onToggleFoldAll={toggleFoldAll}
-            fullMode={fullMode}
-            onToggleFull={toggleFullMode}
-            onReview={fileList.length > 0 ? handleReviewFull : undefined}
-          />
-
-          {selectedCount > 0 ? (
-            <div
-              className="flex items-center gap-2 px-3 py-2 shrink-0 border-b border-accent-blue/35 bg-accent-blue/12"
-              role="status"
-              aria-live="polite"
-            >
-              <span className="inline-flex items-center justify-center min-w-[1.5rem] h-5 px-1.5 rounded-full bg-accent-blue text-[calc(var(--font-size)-2px)] font-bold text-white tabular-nums">
-                {selectedCount}
-              </span>
-              <span className="text-[var(--font-size)] text-text-primary font-medium">
-                line{selectedCount > 1 ? 's' : ''} selected
-                {selectedFilePaths.length > 1
-                  ? ` across ${selectedFilePaths.length} files`
-                  : selectedFilePaths.length === 1
-                    ? ` in ${selectedFilePaths[0].split('/').pop()}`
-                    : ''}{' '}
-                for review
-              </span>
-              <div className="flex-1" />
-              <button
-                type="button"
-                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-accent-blue text-white text-[calc(var(--font-size)-1px)] font-medium hover:opacity-90 transition shadow-sm"
-                onClick={handleReviewSelection}
-                title={`Review ${selectedCount} selected line${selectedCount > 1 ? 's' : ''} with AI`}
-              >
-                <Sparkles size={14} />
-                Review with AI
-              </button>
-              <button
-                type="button"
-                className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-[calc(var(--font-size)-1px)] text-text-secondary hover:text-text-primary hover:bg-bg-hover/80 transition border border-border/50"
-                onClick={clearSelection}
-                title="Clear selection"
-              >
-                <CloseIcon size={14} />
-                Clear
-              </button>
-            </div>
-          ) : null}
-
-          <div className="flex-1 overflow-auto min-w-0 bg-bg-secondary py-0.5">
-            {fileList.map((f, idx) => (
-              <FileDiffSection
-                key={f.path}
-                projectId={pid}
-                diffSource={diffSource}
-                filePath={f.path}
-                status={f.status}
-                additions={f.additions}
-                deletions={f.deletions}
-                viewMode={viewMode}
-                expanded={expandedPaths.has(f.path)}
-                active={idx === currentFileIdx}
-                onToggle={() => toggleFile(f.path)}
-                selectedLines={selectedLinesForPath(f.path)}
-                onToggleLine={(hunkIdx, lineIdx) => toggleLine(hunkIdx, lineIdx, f.path)}
-                collapse={!fullMode}
-                onDragCommit={(keys, mode) => commitDragRange(keys, mode, f.path)}
-                expandedSections={expandedSectionsForPath(f.path)}
-                onToggleSection={(hunkIdx, lineIdx) => toggleSection(hunkIdx, lineIdx, f.path)}
-              />
-            ))}
-          </div>
-        </div>
+        <CombinedDiffView
+          projectId={projectId}
+          diffSource={diffSource}
+          fileList={fileList}
+          currentFileIdx={currentFileIdx}
+          expandedPaths={expandedPaths}
+          combinedStats={combinedStats}
+          viewMode={viewMode}
+          fullMode={fullMode}
+          allCollapsed={allCollapsed}
+          changeNavIndex={changeNavIndex}
+          changeNavTotal={changeNavTotal}
+          scrollRef={scrollRef}
+          onNavigateBlock={navigateBlock}
+          onNavigateFile={navigateFile}
+          onToggleFile={toggleFile}
+          onToggleFoldAll={toggleFoldAll}
+          onToggleFull={toggleFullMode}
+          onViewModeChange={handleViewModeChange}
+          onReview={handleReviewFull}
+          selectedLinesForPath={selectedLinesForPath}
+          onToggleLine={toggleLine}
+          onDragCommit={commitDragRange}
+          expandedSectionsForPath={expandedSectionsForPath}
+          onToggleSection={toggleSection}
+          onDiffResult={reportDiffResult}
+          lastSelectedPath={lastSelectedPath}
+          selectionActionBar={selectionActionBar}
+          reviewPopoverEl={reviewPopoverEl}
+        />
       );
     }
 
@@ -981,6 +772,7 @@ const DiffView: React.FC<DiffViewProps> = React.memo(
             fullHunks={fullHunks ?? undefined}
             expandedSections={expandedSections}
             onToggleSection={(hunkIdx, lineIdx) => toggleSection(hunkIdx, lineIdx)}
+            selectionActionBar={selectionActionBar}
           />
         ) : (
           <SplitDiffTable
@@ -993,6 +785,7 @@ const DiffView: React.FC<DiffViewProps> = React.memo(
             fullHunks={fullHunks ?? undefined}
             expandedSections={expandedSections}
             onToggleSection={(hunkIdx, lineIdx) => toggleSection(hunkIdx, lineIdx)}
+            selectionActionBar={selectionActionBar}
           />
         );
     } else {
@@ -1004,42 +797,10 @@ const DiffView: React.FC<DiffViewProps> = React.memo(
     }
 
     return (
-      <div className="flex-1 flex flex-col overflow-hidden min-w-0 bg-bg-secondary">
+      <div className="relative flex-1 flex flex-col overflow-hidden min-w-0 bg-bg-secondary">
         {singleToolbar}
 
-        {selectedCount > 0 && !loading && !error ? (
-          <div
-            className="flex items-center gap-2 px-3 py-2 shrink-0 border-b border-accent-blue/35 bg-accent-blue/12"
-            role="status"
-            aria-live="polite"
-          >
-            <span className="inline-flex items-center justify-center min-w-[1.5rem] h-5 px-1.5 rounded-full bg-accent-blue text-[calc(var(--font-size)-2px)] font-bold text-white tabular-nums">
-              {selectedCount}
-            </span>
-            <span className="text-[var(--font-size)] text-text-primary font-medium">
-              line{selectedCount > 1 ? 's' : ''} selected for review
-            </span>
-            <div className="flex-1" />
-            <button
-              type="button"
-              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-accent-blue text-white text-[calc(var(--font-size)-1px)] font-medium hover:opacity-90 transition shadow-sm"
-              onClick={handleReviewSelection}
-              title={`Review ${selectedCount} selected line${selectedCount > 1 ? 's' : ''} with AI`}
-            >
-              <Sparkles size={14} />
-              Review with AI
-            </button>
-            <button
-              type="button"
-              className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-[calc(var(--font-size)-1px)] text-text-secondary hover:text-text-primary hover:bg-bg-hover/80 transition border border-border/50"
-              onClick={clearSelection}
-              title="Clear selection"
-            >
-              <CloseIcon size={14} />
-              Clear
-            </button>
-          </div>
-        ) : null}
+        {reviewPopoverEl}
 
         <div className="flex-1 overflow-auto min-w-0 bg-bg-secondary py-0.5">
           {/*
