@@ -1,0 +1,411 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>Diff Toolbar — AI Review Dropdown Prototype</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: #1e1e1e;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    color: #d4d4d4;
+    padding: 60px 40px;
+    display: flex;
+    flex-direction: column;
+    gap: 80px;
+  }
+
+  .section-label {
+    font-size: 12px;
+    color: #6e7681;
+    margin-bottom: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+
+  /* ── Diff toolbar (mock) ─────────────────────────────────────── */
+  .diff-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    background: #252526;
+    border: 1px solid #3c3c3c;
+    border-radius: 6px;
+    max-width: 720px;
+  }
+
+  .toolbar-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: #cccccc;
+    margin-right: auto;
+  }
+
+  .toolbar-stats {
+    font-size: 12px;
+    color: #858585;
+    font-family: "SF Mono", Menlo, monospace;
+  }
+  .toolbar-stats .add { color: #4ec9b0; }
+  .toolbar-stats .del { color: #f48771; }
+
+  .icon-btn {
+    width: 28px;
+    height: 28px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: transparent;
+    border: none;
+    border-radius: 4px;
+    color: #cccccc;
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s;
+  }
+  .icon-btn:hover {
+    background: rgba(255, 255, 255, 0.08);
+  }
+  .icon-btn svg {
+    width: 15px;
+    height: 15px;
+  }
+
+  /* ── AI Review button (split dropdown) ──────────────────────── */
+  .ai-review-btn {
+    display: inline-flex;
+    align-items: stretch;
+    height: 28px;
+    border-radius: 4px;
+    overflow: hidden;
+    background: transparent;
+    border: 1px solid transparent;
+    transition: background 0.15s, border-color 0.15s;
+  }
+  .ai-review-btn:hover {
+    background: rgba(255, 255, 255, 0.06);
+  }
+  .ai-review-btn.open {
+    background: rgba(0, 127, 212, 0.12);
+    border-color: rgba(0, 127, 212, 0.35);
+  }
+
+  .ai-review-btn .main-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 0 8px;
+    background: transparent;
+    border: none;
+    color: #007fd4;
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+  }
+  .ai-review-btn .main-btn svg {
+    width: 14px;
+    height: 14px;
+  }
+
+  .ai-review-btn .split-btn {
+    width: 20px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: transparent;
+    border: none;
+    border-left: 1px solid rgba(0, 127, 212, 0.2);
+    color: #007fd4;
+    cursor: pointer;
+  }
+  .ai-review-btn .split-btn:hover {
+    background: rgba(0, 127, 212, 0.1);
+  }
+  .ai-review-btn .split-btn svg {
+    width: 12px;
+    height: 12px;
+  }
+
+  /* ── Dropdown panel ─────────────────────────────────────────── */
+  .dropdown-wrap {
+    position: relative;
+    display: inline-block;
+  }
+
+  .dropdown-panel {
+    position: absolute;
+    top: calc(100% + 4px);
+    right: 0;
+    width: 320px;
+    background: #252526;
+    border: 1px solid #454545;
+    border-radius: 6px;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+    padding: 8px 0;
+    z-index: 100;
+  }
+
+  .dropdown-section {
+    padding: 4px 0;
+  }
+  .dropdown-section + .dropdown-section {
+    border-top: 1px solid #3c3c3c;
+    margin-top: 4px;
+  }
+
+  .dropdown-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 6px 12px;
+    cursor: pointer;
+    font-size: 13px;
+    color: #cccccc;
+    transition: background 0.1s;
+  }
+  .dropdown-item:hover {
+    background: #2a2d2e;
+  }
+  .dropdown-item .item-icon {
+    width: 16px;
+    height: 16px;
+    color: #007fd4;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .dropdown-item .item-icon svg {
+    width: 15px;
+    height: 15px;
+  }
+  .dropdown-item .item-label {
+    flex: 1;
+  }
+  .dropdown-item .item-shortcut {
+    font-size: 11px;
+    color: #858585;
+    font-family: "SF Mono", Menlo, monospace;
+  }
+
+  .dropdown-header {
+    padding: 6px 12px 4px;
+    font-size: 11px;
+    font-weight: 600;
+    color: #858585;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+
+  /* ── Variant 2: Simple icon button + dropdown (current style ref) ── */
+  .variant-label {
+    font-size: 11px;
+    color: #6e7681;
+    margin-bottom: 6px;
+    font-style: italic;
+  }
+
+  /* ── Variant 3: Inline input in dropdown ────────────────────── */
+  .dropdown-input-row {
+    padding: 8px 12px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    border-bottom: 1px solid #3c3c3c;
+  }
+  .dropdown-input-row svg {
+    width: 14px;
+    height: 14px;
+    color: #007fd4;
+    flex-shrink: 0;
+  }
+  .dropdown-input-row input {
+    flex: 1;
+    background: transparent;
+    border: none;
+    outline: none;
+    color: #d4d4d4;
+    font-size: 13px;
+  }
+  .dropdown-input-row input::placeholder {
+    color: #6e7681;
+  }
+  .dropdown-input-row .send-btn {
+    width: 22px;
+    height: 22px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: transparent;
+    border: none;
+    border-radius: 3px;
+    color: #858585;
+    cursor: pointer;
+  }
+  .dropdown-input-row .send-btn:hover {
+    background: rgba(0, 127, 212, 0.15);
+    color: #007fd4;
+  }
+  .dropdown-input-row .send-btn svg {
+    width: 13px;
+    height: 13px;
+  }
+</style>
+</head>
+<body>
+
+  <!-- Variant 1: Split button + dropdown menu -->
+  <div>
+    <div class="section-label">Variant 1 — Split Button Dropdown</div>
+    <div class="diff-toolbar">
+      <div class="toolbar-title">src/app.tsx</div>
+      <div class="toolbar-stats">
+        <span class="add">+12</span>
+        <span class="del">−3</span>
+      </div>
+
+      <button class="icon-btn" title="Previous change">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+      </button>
+      <button class="icon-btn" title="Next change">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+      </button>
+
+      <div class="dropdown-wrap">
+        <div class="ai-review-btn open">
+          <button class="main-btn">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M11.017 2.814a1 1 0 0 1 1.966 0l1.051 5.558a2 2 0 0 0 1.594 1.594l5.558 1.051a1 1 0 0 1 0 1.966l-5.558 1.051a2 2 0 0 0-1.594 1.594l-1.051 5.558a1 1 0 0 1-1.966 0l-1.051-5.558a2 2 0 0 0-1.594-1.594l-5.558-1.051a1 1 0 0 1 0-1.966l5.558-1.051a2 2 0 0 0 1.594-1.594z"/>
+            </svg>
+            Review
+          </button>
+          <button class="split-btn">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+          </button>
+        </div>
+
+        <div class="dropdown-panel">
+          <div class="dropdown-section">
+            <div class="dropdown-item">
+              <div class="item-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M11.017 2.814a1 1 0 0 1 1.966 0l1.051 5.558a2 2 0 0 0 1.594 1.594l5.558 1.051a1 1 0 0 1 0 1.966l-5.558 1.051a2 2 0 0 0-1.594 1.594l-1.051 5.558a1 1 0 0 1-1.966 0l-1.051-5.558a2 2 0 0 0-1.594-1.594l-5.558-1.051a1 1 0 0 1 0-1.966l5.558-1.051a2 2 0 0 0 1.594-1.594z"/>
+                </svg>
+              </div>
+              <span class="item-label">Review this change</span>
+              <span class="item-shortcut">⌘↵</span>
+            </div>
+          </div>
+
+          <div class="dropdown-section">
+            <div class="dropdown-header">Quick actions</div>
+            <div class="dropdown-item">
+              <div class="item-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+              </div>
+              <span class="item-label">Explain the changes</span>
+            </div>
+            <div class="dropdown-item">
+              <div class="item-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+              </div>
+              <span class="item-label">Find potential bugs</span>
+            </div>
+            <div class="dropdown-item">
+              <div class="item-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+              </div>
+              <span class="item-label">Generate commit message</span>
+            </div>
+          </div>
+
+          <div class="dropdown-section">
+            <div class="dropdown-item">
+              <div class="item-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+              </div>
+              <span class="item-label">Switch model</span>
+              <span class="item-shortcut">Auto</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Variant 2: Icon button + dropdown with inline input -->
+  <div>
+    <div class="section-label">Variant 2 — Icon Button + Inline Input Dropdown</div>
+    <div class="diff-toolbar">
+      <div class="toolbar-title">src/app.tsx</div>
+      <div class="toolbar-stats">
+        <span class="add">+12</span>
+        <span class="del">−3</span>
+      </div>
+
+      <button class="icon-btn" title="Previous change">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+      </button>
+      <button class="icon-btn" title="Next change">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+      </button>
+
+      <div class="dropdown-wrap">
+        <button class="icon-btn" style="color: #007fd4;" title="Review this change">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M11.017 2.814a1 1 0 0 1 1.966 0l1.051 5.558a2 2 0 0 0 1.594 1.594l5.558 1.051a1 1 0 0 1 0 1.966l-5.558 1.051a2 2 0 0 0-1.594 1.594l-1.051 5.558a1 1 0 0 1-1.966 0l-1.051-5.558a2 2 0 0 0-1.594-1.594l-5.558-1.051a1 1 0 0 1 0-1.966l5.558-1.051a2 2 0 0 0 1.594-1.594z"/>
+          </svg>
+        </button>
+
+        <div class="dropdown-panel">
+          <div class="dropdown-input-row">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M11.017 2.814a1 1 0 0 1 1.966 0l1.051 5.558a2 2 0 0 0 1.594 1.594l5.558 1.051a1 1 0 0 1 0 1.966l-5.558 1.051a2 2 0 0 0-1.594 1.594l-1.051 5.558a1 1 0 0 1-1.966 0l-1.051-5.558a2 2 0 0 0-1.594-1.594l-5.558-1.051a1 1 0 0 1 0-1.966l5.558-1.051a2 2 0 0 0 1.594-1.594z"/>
+            </svg>
+            <input type="text" placeholder="Review change with AI…" autofocus />
+            <button class="send-btn" title="Submit (Enter)">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="12" y1="19" x2="12" y2="5"/>
+                <polyline points="5 12 12 5 19 12"/>
+              </svg>
+            </button>
+          </div>
+
+          <div class="dropdown-section">
+            <div class="dropdown-header">Quick actions</div>
+            <div class="dropdown-item">
+              <div class="item-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+              </div>
+              <span class="item-label">Explain the changes</span>
+            </div>
+            <div class="dropdown-item">
+              <div class="item-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+              </div>
+              <span class="item-label">Find potential bugs</span>
+            </div>
+            <div class="dropdown-item">
+              <div class="item-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+              </div>
+              <span class="item-label">Generate commit message</span>
+            </div>
+          </div>
+
+          <div class="dropdown-section">
+            <div class="dropdown-item">
+              <div class="item-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+              </div>
+              <span class="item-label">Model: Auto</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</body>
+</html>

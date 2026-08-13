@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>Diff Inline AI Input — Prototype</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: #1e1e1e;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    color: #d4d4d4;
+    padding: 40px 0;
+  }
+
+  /* ── Diff context (mock) ─────────────────────────────────────── */
+  .diff-mock {
+    max-width: 960px;
+    margin: 0 auto;
+    font-family: "SF Mono", Menlo, Consolas, monospace;
+    font-size: 13px;
+    line-height: 1.6;
+  }
+  .diff-mock .row {
+    display: grid;
+    grid-template-columns: 48px 1fr;
+    align-items: stretch;
+  }
+  .diff-mock .ln {
+    text-align: right;
+    padding-right: 12px;
+    color: #6e7681;
+    user-select: none;
+  }
+  .diff-mock .code {
+    padding-left: 12px;
+    white-space: pre;
+  }
+  .diff-mock .selected .code {
+    background: rgba(212, 212, 212, 0.08);
+  }
+
+  /* ── Inline AI input bar (the prototype) ─────────────────────── */
+  .ai-inline {
+    position: relative;
+    background: #1e1e1e;
+    border-top: 1px solid #007fd4;
+    border-bottom: 1px solid #007fd4;
+    padding: 10px 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  /* 左侧蓝色竖线（按钮组与输入区之间的指示线） */
+  .ai-inline::before {
+    content: "";
+    position: absolute;
+    left: 44px;
+    top: 10px;
+    bottom: 10px;
+    width: 2px;
+    background: #007fd4;
+    border-radius: 1px;
+  }
+
+  .ai-inline-main {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+  }
+
+  .ai-inline-input {
+    flex: 1;
+    background: transparent;
+    border: none;
+    outline: none;
+    color: #d4d4d4;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    font-size: 14px;
+    line-height: 1.5;
+    caret-color: #007fd4;
+  }
+  .ai-inline-input::placeholder {
+    color: #6e7681;
+  }
+
+  .ai-inline-actions {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+  }
+
+  .icon-btn {
+    width: 28px;
+    height: 28px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: transparent;
+    border: none;
+    border-radius: 4px;
+    color: #858585;
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s;
+  }
+  .icon-btn:hover {
+    background: rgba(255, 255, 255, 0.08);
+    color: #d4d4d4;
+  }
+  .icon-btn svg {
+    width: 16px;
+    height: 16px;
+  }
+
+  /* 底部辅助行：+ / 模型选择 */
+  .ai-inline-footer {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    height: 20px;
+    margin-left: 48px;
+  }
+  .ai-inline-footer .icon-btn {
+    width: 22px;
+    height: 22px;
+  }
+  .ai-inline-footer .model {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    color: #cccccc;
+    font-size: 13px;
+    cursor: pointer;
+    padding: 2px 6px;
+    border-radius: 4px;
+  }
+  .ai-inline-footer .model:hover {
+    background: rgba(255, 255, 255, 0.06);
+  }
+  .ai-inline-footer .model svg {
+    width: 14px;
+    height: 14px;
+    color: #858585;
+  }
+</style>
+</head>
+<body>
+
+<div class="diff-mock">
+  <!-- 上方代码行 -->
+  <div class="row">
+    <div class="ln">8</div>
+    <div class="code">// some code above</div>
+  </div>
+
+  <!-- 选中行（高亮背景） -->
+  <div class="row selected">
+    <div class="ln">9</div>
+    <div class="code">// SecretStore 是密钥存储抽象层。所有实现必须并发安全。</div>
+  </div>
+
+  <!-- AI inline 输入条（插入在选中行下方） -->
+  <div class="row" style="display: block;">
+    <div class="ai-inline">
+      <div class="ai-inline-main">
+        <div class="ai-inline-actions">
+          <button class="icon-btn" title="Submit (Enter)" aria-label="Submit">
+            <!-- Arrow up (submit) -->
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="12" y1="19" x2="12" y2="5"></line>
+              <polyline points="5 12 12 5 19 12"></polyline>
+            </svg>
+          </button>
+          <button class="icon-btn" title="Close (Esc)" aria-label="Close">
+            <!-- X -->
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="18" y1="6" x2="6" y2="18"></line>
+              <line x1="6" y1="6" x2="18" y2="18"></line>
+            </svg>
+          </button>
+        </div>
+        <input
+          class="ai-inline-input"
+          type="text"
+          placeholder="Review selected code"
+          autofocus
+        />
+      </div>
+      <div class="ai-inline-footer">
+        <button class="icon-btn" title="Add context" aria-label="Add context">
+          <!-- Plus -->
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="12" y1="5" x2="12" y2="19"></line>
+            <line x1="5" y1="12" x2="19" y2="12"></line>
+          </svg>
+        </button>
+        <div class="model" title="Switch model">
+          <!-- Sparkles / bot icon -->
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 2a3 3 0 0 1 3 3v1a3 3 0 0 1-3 3 3 3 0 0 1-3-3V5a3 3 0 0 1 3-3z"></path>
+            <path d="M19 11a3 3 0 0 1 3 3 3 3 0 0 1-3 3 3 3 0 0 1-3-3 3 3 0 0 1 3-3z"></path>
+            <path d="M5 11a3 3 0 0 1 3 3 3 3 0 0 1-3 3 3 3 0 0 1-3-3 3 3 0 0 1 3-3z"></path>
+            <path d="M12 15a3 3 0 0 1 3 3v1a3 3 0 0 1-3 3 3 3 0 0 1-3-3v-1a3 3 0 0 1 3-3z"></path>
+          </svg>
+          <span>Auto</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 下方代码行 -->
+  <div class="row">
+    <div class="ln">10</div>
+    <div class="code"><span style="color:#c586c0;">type</span> <span style="color:#dcdcaa;">SecretStore</span> <span style="color:#c586c0;">interface</span> {'{'}</div>
+  </div>
+  <div class="row">
+    <div class="ln">11</div>
+    <div class="code">  <span style="color:#9cdcfe;">get</span>(key: <span style="color:#4ec9b0;">string</span>): <span style="color:#4ec9b0;">string</span> | <span style="color:#569cd6;">null</span>;</div>
+  </div>
+</div>
+
+</body>
+</html>
