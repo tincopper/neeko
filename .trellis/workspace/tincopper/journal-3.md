@@ -524,3 +524,39 @@ DiffView review integration (popover/anchors/selection), ReviewPanel dock panel,
 ### Next Steps
 
 - None - task complete
+
+
+## Session 133: Git 历史展示域重构（LogScope + refs 分类）与剪贴板权限修复
+
+**Date**: 2026-08-14
+**Task**: Git 历史展示域重构（LogScope + refs 分类）与剪贴板权限修复
+**Branch**: `main`
+
+### Summary
+
+完成 git-history-log-scope 任务：get_commit_log 移除 --all 固定 HEAD，refs 按 branch/remote/tag/stash/tool 分类（tool 不渲染，synara 等私有 refs 排除），Git Control 新增 Stash tab（列表/展开文件/单文件 diff/Apply/Pop），复制统一走 useCopyToClipboard hook + capabilities 补 write-text。质量门禁全绿：pnpm lint / lint:fe / type-check / test:run（1592 通过）/ cargo test（91 通过）。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `e663d023` | (see git log) |
+| `e37a0bc9` | (see git log) |
+| `78494143` | (see git log) |
+| `46efe698` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
