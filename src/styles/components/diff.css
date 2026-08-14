@@ -6,9 +6,10 @@
 @layer components {
   /* Diff split columns */
   /* 单一 table 内左右两侧并排：水平滚动随外层 overflow-auto 整体滚动，天然同步 */
+  /* --linenum-w 由 SplitDiffTable 内联覆盖（行号列宽度随最大行号位数自适应） */
   .diff-table-split { table-layout: auto; width: max-content; min-width: 100%; }
-  .diff-table-split .col-linenum { width: 48px; }
-  .diff-table-split .col-code { min-width: calc(50% - 48px); }
+  .diff-table-split .col-linenum { width: var(--linenum-w, 24px); }
+  .diff-table-split .col-code { min-width: calc(50% - var(--linenum-w, 24px)); }
 
   /* Diff split cell content - preserve whitespace/indentation, no auto wrap */
   .split-cell { white-space: pre; }

@@ -3,7 +3,7 @@ import React, { useMemo } from 'react';
 import { cn } from '@/lib/utils';
 
 import { buildSplitRows, computeWordDiff } from './diffAlgorithm';
-import { lastSelectedKeyOf, type SelectionMode } from './diffViewUtils';
+import { lastSelectedKeyOf, lineNumColumnWidth, type SelectionMode } from './diffViewUtils';
 import ExpandedSectionRows from './ExpandedSectionRows';
 import { renderHighlightedHtml, renderWordDiffHtml } from './highlight';
 import type { DiffHunk, DiffResult } from './types';
@@ -54,6 +54,16 @@ const SplitDiffTable: React.FC<SplitDiffTableProps> = ({
     () => diffResult.hunks.map((h) => buildSplitRows(h).length),
     [diffResult],
   );
+  // 行号列宽度随最大行号位数自适应（ch = 等宽字符宽，+6px 容纳选中指示条/呼吸）
+  const linenumWidth = useMemo(() => lineNumColumnWidth(diffResult.hunks), [diffResult]);
+  const tableStyle = useMemo(
+    () =>
+      ({
+        fontSize: 'var(--font-size)',
+        '--linenum-w': linenumWidth,
+      }) as React.CSSProperties,
+    [linenumWidth],
+  );
   const { dragPreview, onRowMouseDown, onRowMouseEnter, shouldSuppressClick } = useDiffDragSelect(
     hunkLineCounts,
     onDragCommit,
@@ -73,7 +83,7 @@ const SplitDiffTable: React.FC<SplitDiffTableProps> = ({
     <div className="overflow-x-auto">
       <table
         className="w-max min-w-full border-collapse font-mono diff-table-split"
-        style={{ fontSize: 'var(--font-size)' }}
+        style={tableStyle}
       >
         <colgroup>
           <col className="col-linenum" />
@@ -107,6 +117,7 @@ const SplitDiffTable: React.FC<SplitDiffTableProps> = ({
                         keyLineIdx={rowIndex}
                         fullHunks={fullHunks}
                         variant="split"
+                        linenumWidth={linenumWidth}
                         language={language}
                         onRowMouseDown={onRowMouseDown}
                         onRowMouseEnter={onRowMouseEnter}
@@ -187,7 +198,7 @@ const SplitDiffTable: React.FC<SplitDiffTableProps> = ({
                     >
                       <td
                         className={cn(
-                          'line-number old split-linenum',
+                          'line-number old split-linenum text-right',
                           row.oldType,
                           'cursor-pointer hover:bg-bg-hover',
                           isSelected && 'text-accent-blue font-semibold',
@@ -199,7 +210,7 @@ const SplitDiffTable: React.FC<SplitDiffTableProps> = ({
                       </td>
                       <td
                         className={cn(
-                          'line-content split-cell whitespace-pre',
+                          'line-content split-cell whitespace-pre pl-2',
                           row.oldType,
                           isSelected && isRemoved && 'bg-diff-removed',
                         )}
@@ -210,7 +221,7 @@ const SplitDiffTable: React.FC<SplitDiffTableProps> = ({
                       />
                       <td
                         className={cn(
-                          'line-number new split-linenum',
+                          'line-number new split-linenum text-right',
                           row.newType,
                           'cursor-pointer hover:bg-bg-hover relative group',
                           isSelected && 'text-accent-blue font-semibold',
@@ -221,7 +232,7 @@ const SplitDiffTable: React.FC<SplitDiffTableProps> = ({
                         {row.newLineNum ?? ''}
                         {canComment && (
                           <button
-                            className="absolute left-0 top-1/2 -translate-y-1/2 w-4 h-4 flex items-center justify-center text-[11px] font-bold text-text-muted hover:text-accent-blue hover:bg-bg-hover rounded opacity-0 group-hover:opacity-100 transition-opacity border-none bg-transparent cursor-pointer"
+                            className="absolute right-0 top-1/2 -translate-y-1/2 w-3 h-3 flex items-center justify-center text-[11px] font-bold text-text-muted hover:text-accent-blue hover:bg-bg-hover rounded opacity-0 group-hover:opacity-100 transition-opacity border-none bg-transparent cursor-pointer"
                             onClick={(e) => {
                               e.stopPropagation();
                               if (newLineNum) onCommentLine(newLineNum);
@@ -239,7 +250,7 @@ const SplitDiffTable: React.FC<SplitDiffTableProps> = ({
                       </td>
                       <td
                         className={cn(
-                          'line-content split-cell whitespace-pre',
+                          'line-content split-cell whitespace-pre pl-2',
                           row.newType,
                           isSelected && isAdded && 'bg-diff-added',
                         )}

@@ -299,3 +299,110 @@ describe('折叠段单段展开', () => {
     expect(cellText).not.toContain('c4');
   });
 });
+
+describe('行号列宽度自适应（方案 B）', () => {
+  it('unified 行号列宽度随最大行号位数自适应', () => {
+    const { container } = render(<DiffTable diffResult={simpleResult} language="plaintext" />);
+    // simpleResult 最大行号为 3（1 位）
+    const oldNumTd = rowAt(container, 0).querySelector('td') as Element;
+    expect(oldNumTd).toHaveStyle('width: calc(1ch + 6px)');
+  });
+
+  it('unified 多位数行号列宽度随之加宽', () => {
+    const largeResult: DiffResult = {
+      hunks: [
+        {
+          old_start: 95,
+          old_lines: 6,
+          new_start: 95,
+          new_lines: 6,
+          lines: [
+            { Context: 'c1' },
+            { Context: 'c2' },
+            { Context: 'c3' },
+            { Context: 'c4' },
+            { Context: 'c5' },
+            { Context: 'c6' },
+          ],
+        },
+      ],
+    };
+    const { container } = render(<DiffTable diffResult={largeResult} language="plaintext" />);
+    // 95..100 → 100 是 3 位
+    const oldNumTd = rowAt(container, 0).querySelector('td') as Element;
+    expect(oldNumTd).toHaveStyle('width: calc(3ch + 6px)');
+  });
+
+  it('split 行号列（--linenum-w）宽度随最大行号位数自适应', () => {
+    const { container } = render(<SplitDiffTable diffResult={simpleResult} language="plaintext" />);
+    // 宽度经 table 上的 CSS 变量 --linenum-w 下发到 col-linenum
+    const table = container.querySelector('table') as Element;
+    expect(table).toHaveStyle({ '--linenum-w': 'calc(1ch + 6px)' });
+  });
+
+  it('split 行号列右对齐（数字紧贴代码列，间隙由代码列 padding 提供）', () => {
+    const { container } = render(<SplitDiffTable diffResult={simpleResult} language="plaintext" />);
+    const firstLinenum = rowAt(container, 0).querySelector('.split-linenum') as Element;
+    expect(firstLinenum.className).toContain('text-right');
+  });
+
+  it('代码列左侧保留 8px 间隙（数字与代码之间）', () => {
+    const { container } = render(<DiffTable diffResult={simpleResult} language="plaintext" />);
+    const codeTd = rowAt(container, 0).querySelector('.line-content') as Element;
+    // pl-2 = 8px（Tailwind class，jsdom 不解析样式，断言 class 而非 computed style）
+    expect(codeTd.className).toContain('pl-2');
+  });
+
+  it('评论按钮定位在行号右侧（覆盖式，hover 显示）', () => {
+    const onCommentLine = vi.fn();
+    const { container } = render(
+      <SplitDiffTable
+        diffResult={simpleResult}
+        language="plaintext"
+        onCommentLine={onCommentLine}
+      />,
+    );
+    // split 模式 Removed+Added 合并为一行（change 行），新行号列有评论按钮
+    const changeRow = rowAt(container, 1);
+    const btn = changeRow.querySelector('.split-linenum button') as Element;
+    expect(btn.className).toContain('right-0');
+    expect(btn.className).toContain('group-hover:opacity-100');
+  });
+
+  it('unified 折叠段展开后行号列保持自适应宽度（与普通行一致，不回落固定 40px）', () => {
+    // expandedSections key 使用 hunk.lines 索引（Collapsed 占位行在索引 3）
+    const expandedSections = new Set(['0:3']);
+    const { container } = render(
+      <DiffTable
+        diffResult={collapsedResult}
+        language="plaintext"
+        fullHunks={fullHunks}
+        expandedSections={expandedSections}
+      />,
+    );
+    // 找到展开段第一行（含被隐藏的 c4）
+    const rows = container.querySelectorAll('tbody tr');
+    const expandedRow = [...rows].find((r) => r.textContent?.includes('c4')) as Element;
+    const oldNumTd = expandedRow.querySelector('td') as Element;
+    // 与普通行号列同一宽度公式（collapsedResult 最大行号 1 位）
+    expect(oldNumTd).toHaveStyle('width: calc(1ch + 6px)');
+    // 不应残留固定 40px 类
+    expect(oldNumTd.className).not.toContain('w-[40px]');
+  });
+
+  it('unified 折叠段展开行与普通行同列数（不残留多余占位列）', () => {
+    const expandedSections = new Set(['0:3']);
+    const { container } = render(
+      <DiffTable
+        diffResult={collapsedResult}
+        language="plaintext"
+        fullHunks={fullHunks}
+        expandedSections={expandedSections}
+      />,
+    );
+    const rows = container.querySelectorAll('tbody tr');
+    const expandedRow = [...rows].find((r) => r.textContent?.includes('c4')) as Element;
+    // unified 普通行 3 列（old-linenum / new-linenum / code），展开行应一致
+    expect(expandedRow.querySelectorAll('td').length).toBe(3);
+  });
+});

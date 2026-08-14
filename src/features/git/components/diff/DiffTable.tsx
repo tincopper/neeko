@@ -3,7 +3,7 @@ import React, { useMemo } from 'react';
 import { cn } from '@/lib/utils';
 
 import { computeWordDiff } from './diffAlgorithm';
-import { lastSelectedKeyOf, type SelectionMode } from './diffViewUtils';
+import { lastSelectedKeyOf, lineNumColumnWidth, type SelectionMode } from './diffViewUtils';
 import ExpandedSectionRows from './ExpandedSectionRows';
 import { renderHighlightedHtml, renderWordDiffHtml } from './highlight';
 import type { DiffHunk, DiffResult } from './types';
@@ -52,6 +52,8 @@ const DiffTable: React.FC<DiffTableProps> = ({
 }) => {
   // unified 模式下选区 key 与 hunk.lines 一一对应
   const hunkLineCounts = useMemo(() => diffResult.hunks.map((h) => h.lines.length), [diffResult]);
+  // 行号列宽度随最大行号位数自适应（ch = 等宽字符宽，+6px 容纳选中指示条/呼吸）
+  const linenumWidth = useMemo(() => lineNumColumnWidth(diffResult.hunks), [diffResult]);
   const { dragPreview, onRowMouseDown, onRowMouseEnter, shouldSuppressClick } = useDiffDragSelect(
     hunkLineCounts,
     onDragCommit,
@@ -102,6 +104,7 @@ const DiffTable: React.FC<DiffTableProps> = ({
                             keyLineIdx={lineIndex}
                             fullHunks={fullHunks}
                             variant="unified"
+                            linenumWidth={linenumWidth}
                             language={language}
                             onRowMouseDown={onRowMouseDown}
                             onRowMouseEnter={onRowMouseEnter}
@@ -187,16 +190,17 @@ const DiffTable: React.FC<DiffTableProps> = ({
                         >
                           <td
                             className={cn(
-                              'w-[40px] text-right text-text-muted select-none cursor-pointer hover:bg-bg-hover relative group',
+                              'text-right text-text-muted select-none cursor-pointer hover:bg-bg-hover relative group',
                               isSelected && 'text-accent-blue',
                             )}
+                            style={{ width: linenumWidth }}
                             onClick={() => handleRowClick(hunkIndex, lineIndex)}
                             title={isSelected ? 'Deselect line' : 'Select line for AI review'}
                           >
                             {lineType !== 'added' ? curOld : ''}
                             {canComment && (
                               <button
-                                className="absolute left-0 top-1/2 -translate-y-1/2 w-4 h-4 flex items-center justify-center text-[11px] font-bold text-text-muted hover:text-accent-blue hover:bg-bg-hover rounded opacity-0 group-hover:opacity-100 transition-opacity border-none bg-transparent cursor-pointer"
+                                className="absolute right-0 top-1/2 -translate-y-1/2 w-3 h-3 flex items-center justify-center text-[11px] font-bold text-text-muted hover:text-accent-blue hover:bg-bg-hover rounded opacity-0 group-hover:opacity-100 transition-opacity border-none bg-transparent cursor-pointer"
                                 onClick={(e) => {
                                   e.stopPropagation();
                                   onCommentLine(curNew);
@@ -209,9 +213,10 @@ const DiffTable: React.FC<DiffTableProps> = ({
                           </td>
                           <td
                             className={cn(
-                              'w-[40px] text-right text-text-muted select-none cursor-pointer hover:bg-bg-hover relative',
+                              'text-right text-text-muted select-none cursor-pointer hover:bg-bg-hover relative',
                               isSelected && 'text-accent-blue',
                             )}
+                            style={{ width: linenumWidth }}
                             onClick={() => handleRowClick(hunkIndex, lineIndex)}
                             title={isSelected ? 'Deselect line' : 'Select line for AI review'}
                           >
@@ -223,7 +228,7 @@ const DiffTable: React.FC<DiffTableProps> = ({
                             )}
                           </td>
                           <td
-                            className="line-content whitespace-pre"
+                            className="line-content whitespace-pre pl-2"
                             onClick={() => handleRowClick(hunkIndex, lineIndex)}
                             title={isSelected ? 'Deselect line' : 'Select line for AI review'}
                             dangerouslySetInnerHTML={{ __html: view }}

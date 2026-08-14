@@ -19,6 +19,8 @@ interface ExpandedSectionRowsProps {
   fullHunks?: DiffHunk[];
   /** 布局：unified 单栏 / split 双栏。 */
   variant: 'unified' | 'split';
+  /** 行号列宽度（unified 展开行与普通行共用同一自适应宽度）。 */
+  linenumWidth: string;
   language: string;
   onRowMouseDown: (e: React.MouseEvent, pos: DiffPos) => void;
   onRowMouseEnter: (pos: DiffPos) => void;
@@ -38,6 +40,7 @@ const ExpandedSectionRows: React.FC<ExpandedSectionRowsProps> = ({
   keyLineIdx,
   fullHunks,
   variant,
+  linenumWidth,
   language,
   onRowMouseDown,
   onRowMouseEnter,
@@ -59,7 +62,7 @@ const ExpandedSectionRows: React.FC<ExpandedSectionRowsProps> = ({
         const view = renderHighlightedHtml(line.Context ?? '', language);
         const numClass = isSplit
           ? 'line-number split-linenum context cursor-pointer hover:bg-bg-hover'
-          : 'w-[40px] text-right text-text-muted select-none cursor-pointer hover:bg-bg-hover';
+          : 'text-right text-text-muted select-none cursor-pointer hover:bg-bg-hover';
         return (
           <tr
             key={`${hunkIdx}-${keyLineIdx}-${i}`}
@@ -67,6 +70,7 @@ const ExpandedSectionRows: React.FC<ExpandedSectionRowsProps> = ({
           >
             <td
               className={numClass}
+              style={isSplit ? undefined : { width: linenumWidth }}
               onMouseDown={(e) => onRowMouseDown(e, dragPos)}
               onMouseEnter={() => onRowMouseEnter(dragPos)}
               onClick={() => onClickLine(hunkIdx, keyLineIdx)}
@@ -80,7 +84,8 @@ const ExpandedSectionRows: React.FC<ExpandedSectionRowsProps> = ({
               />
             ) : (
               <td
-                className="w-[40px] text-right text-text-muted select-none cursor-pointer hover:bg-bg-hover"
+                className="text-right text-text-muted select-none cursor-pointer hover:bg-bg-hover"
+                style={{ width: linenumWidth }}
                 onMouseDown={(e) => onRowMouseDown(e, dragPos)}
                 onMouseEnter={() => onRowMouseEnter(dragPos)}
                 onClick={() => onClickLine(hunkIdx, keyLineIdx)}
@@ -97,9 +102,7 @@ const ExpandedSectionRows: React.FC<ExpandedSectionRowsProps> = ({
               >
                 {range.newStart + i}
               </td>
-            ) : (
-              <td className="w-5 text-center select-none"> </td>
-            )}
+            ) : null}
             <td
               className={
                 isSplit
