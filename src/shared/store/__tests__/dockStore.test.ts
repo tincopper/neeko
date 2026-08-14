@@ -101,6 +101,72 @@ describe('dockStore togglePanel — tab (center) views', () => {
   });
 });
 
+describe('dockStore togglePanel — center-coupled dock panels (skills ↔ appView)', () => {
+  beforeEach(() => {
+    localStorage.clear();
+    resetStores();
+  });
+
+  it('activating skills dock panel switches appView to skills', () => {
+    useDockStore.getState().togglePanel('skills');
+    expect(useAppViewStore.getState().appView).toBe('skills');
+    const state = useDockStore.getState();
+    expect(state.zones.left?.activePanelId).toBe('skills');
+    expect(state.zones.left?.expanded).toBe(true);
+  });
+
+  it('collapsing an already-active skills panel keeps skills view', () => {
+    useDockStore.setState((state) => ({
+      zones: {
+        ...state.zones,
+        left: state.zones.left
+          ? { ...state.zones.left, activePanelId: 'skills' }
+          : state.zones.left,
+      },
+    }));
+    useAppViewStore.setState({ appView: 'skills' });
+
+    useDockStore.getState().togglePanel('skills'); // active → collapse
+
+    expect(useAppViewStore.getState().appView).toBe('skills');
+    expect(useDockStore.getState().zones.left?.expanded).toBe(false);
+  });
+
+  it('opening another dock panel exits the skills view back to normal', () => {
+    useDockStore.getState().togglePanel('skills');
+    expect(useAppViewStore.getState().appView).toBe('skills');
+
+    useDockStore.getState().togglePanel('files');
+
+    expect(useAppViewStore.getState().appView).toBe('normal');
+  });
+
+  it('activatePanel on skills syncs appView, on other panels exits skills', () => {
+    useDockStore.getState().activatePanel('left', 'skills');
+    expect(useAppViewStore.getState().appView).toBe('skills');
+
+    useDockStore.getState().activatePanel('left', 'projects');
+    expect(useAppViewStore.getState().appView).toBe('normal');
+  });
+
+  it('closePanel on skills exits the skills view', () => {
+    useDockStore.getState().togglePanel('skills');
+    expect(useAppViewStore.getState().appView).toBe('skills');
+
+    useDockStore.getState().closePanel('skills');
+    expect(useAppViewStore.getState().appView).toBe('normal');
+  });
+
+  it('library and skills views are independent: opening library from skills exits skills', () => {
+    useDockStore.getState().togglePanel('skills');
+    expect(useAppViewStore.getState().appView).toBe('skills');
+
+    useDockStore.getState().togglePanel('library');
+
+    expect(useAppViewStore.getState().appView).toBe('library');
+  });
+});
+
 describe('appViewStore isAppView guard', () => {
   it('accepts real AppView values', () => {
     expect(isAppView('normal')).toBe(true);

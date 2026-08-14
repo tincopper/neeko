@@ -18,8 +18,12 @@ export interface StashListData {
   popStash: (selector: string) => Promise<StashActionResult | null>;
 }
 
-/** 加载 git stash 列表；点击某条展开其文件变更，支持 apply/pop。点击文件在编辑器打开 diff tab。 */
-export function useStashList(commands: ProjectCommands | null): StashListData {
+/**
+ * 加载 git stash 列表；点击某条展开其文件变更，支持 apply/pop。点击文件在编辑器打开 diff tab。
+ * @param enabled 激活门控：false 时不发起请求；切换为 true 时（重新）加载。
+ *                commands 切换时清空旧列表（避免跨项目数据残留）。
+ */
+export function useStashList(commands: ProjectCommands | null, enabled = true): StashListData {
   const [stashes, setStashes] = useState<StashEntry[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -50,13 +54,19 @@ export function useStashList(commands: ProjectCommands | null): StashListData {
     }
   }, [commands]);
 
-  // commands 切换时清空旧列表并重新加载（面板挂载即加载，供 tab 徽章计数）
+  // 激活门控：enabled 首次为 true（或 commands 变化）时清空并加载。
+  // enabled 切换为 true 时重新拉取（stash 状态可能已变化）；disabled 期间不清空已有数据。
+  const loadedForCommandsRef = useRef<ProjectCommands | null>(null);
   useEffect(() => {
-    if (!commands) return;
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- 外部 commands 变化时同步重置本地列表（项目既有模式）
-    setStashes([]);
+    if (!commands || !enabled) return;
+    if (loadedForCommandsRef.current !== commands) {
+      loadedForCommandsRef.current = commands;
+      // commands 切换时清空旧列表（避免显示上一个项目的 stash），重新加载
+      setStashes([]);
+    }
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- 外部 commands/enabled 变化时同步重置本地列表（项目既有模式）
     void loadStashes();
-  }, [commands, loadStashes]);
+  }, [commands, enabled, loadStashes]);
 
   // 展开/收起都会递增序号，使更早的 getStashFiles 响应过期（防止慢响应覆盖新选择）
   const requestSeq = useRef(0);

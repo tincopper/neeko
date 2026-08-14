@@ -16,12 +16,16 @@ import { useProjectList } from '@/features/project/hooks/useProjectList';
 import { useProjectSelection } from '@/features/project/hooks/useProjectSelection';
 import { useWorktreeActions } from '@/features/project/hooks/useWorktreeActions';
 import { useWorktreeState } from '@/features/project/hooks/useWorktreeState';
+import { startQuickOpenActivityTracking } from '@/features/quick-open';
 import { useSessionBootstrap } from '@/features/session/hooks/useSessionBootstrap';
 import { useSessionPersistence } from '@/features/session/hooks/useSessionPersistence';
 import { useAppConfig } from '@/features/settings/hooks/useAppConfig';
 import { useApplyProjectSkills } from '@/features/skill/hooks/useApplyProjectSkills';
 import { useAppLayoutProps } from '@/layout/hooks/useAppLayoutProps';
 import { useKeyboardShortcuts } from '@/shared/hooks/useKeyboardShortcuts';
+import { useMenuPaste } from '@/shared/hooks/useMenuPaste';
+import { useAppViewStore } from '@/shared/store/appViewStore';
+import { useDockStore } from '@/shared/store/dockStore';
 import { useNotificationStore } from '@/shared/store/notificationStore';
 import { useProjectStore } from '@/shared/store/projectStore';
 import { useWorktreeStore } from '@/shared/store/worktreeStore';
@@ -47,6 +51,20 @@ interface UseAppShellResult {
 }
 
 export function useAppShell(): UseAppShellResult {
+  // 应用级全局副作用（paste 监听、quick-open 活动跟踪）集中在 shell 层，保持 App.tsx 为纯组合
+  useMenuPaste();
+  useEffect(() => {
+    startQuickOpenActivityTracking();
+  }, []);
+
+  // dockStore 持久化、appViewStore 不持久化：启动时把左 zone 的 skills 激活态同步到 appView（单一路由源）
+  useEffect(() => {
+    const leftActive = useDockStore.getState().zones.left?.activePanelId;
+    if (leftActive === 'skills' && useAppViewStore.getState().appView === 'normal') {
+      useAppViewStore.getState().setAppView('skills');
+    }
+  }, []);
+
   const { config, saveConfig, customThemes } = useAppConfig();
   const showToast = useCallback((message: string, type: 'info' | 'error' = 'info') => {
     useNotificationStore.getState().addNotification({

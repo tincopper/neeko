@@ -1,121 +1,148 @@
-import React from 'react';
+import React, { useCallback, useState } from 'react';
 
 import { cn } from '@/lib/utils';
-import type {
-  AheadBehind,
-  CommitEntry,
-  CommitDetail,
-  CommitFileChange,
-  StashActionResult,
-  StashEntry,
-} from '@/shared/types';
+import type { AheadBehind, ConnectionContext } from '@/shared/types';
 import type {
   ProjectView,
   ProjectCommands,
   ProjectCapabilities,
 } from '@/shared/types/activeProject';
 
+import { useGitHistoryDiffActions } from '../hooks/useGitHistoryDiffActions';
+import { useGitHistorySelection } from '../hooks/useGitHistorySelection';
+import { useGitLogKeyboardNav } from '../hooks/useGitLogKeyboardNav';
+import { useOpenDiffTab } from '../hooks/useOpenDiffTab';
+import { useOpenStashDiff } from '../hooks/useOpenStashDiff';
+import { useSingletonDiff } from '../hooks/useSingletonDiff';
+import { useStashList } from '../hooks/useStashList';
+
 import GitCommitPanel from './GitCommitPanel';
 import GitLogPanel from './gitlog/GitLogPanel';
+import { useCommitDetail } from './gitlog/useCommitDetail';
+import { useGitLog } from './gitlog/useGitLog';
 import StashPanel from './StashPanel';
 
 export type GitControlTab = 'changes' | 'history' | 'stash';
 
+/**
+ * Git Control 容器：owns 全部数据 hooks 与 tab/键盘状态。
+ *
+ * - 数据 hooks 内聚于此（feature 容器），wrapper 保持薄适配；
+ * - 激活门控：History tab 可见才拉 commit log；面板可见才拉 stash（徽章计数）；
+ * - 键盘导航（J/K/j/k/c）仅在 History tab 激活时注册；
+ * - 子面板保持展示型（props 输入），便于独立测试。
+ */
 interface GitControlPanelProps {
-  // Changes tab
   project: ProjectView;
   commands: ProjectCommands;
   capabilities: ProjectCapabilities;
+  connectionContext: ConnectionContext | null;
+  /** worktree 激活时使用 worktree 专属 tab key（diff tab / stash diff） */
+  activeWorktreePath?: string | null;
+  /** 面板在 dock 中是否可见（激活门控数据加载） */
+  active: boolean;
   onRefreshGit: () => Promise<void>;
-  onSelectFile?: (filePath: string) => void;
   onShowToast?: (message: string, type?: 'info' | 'error') => void;
-  onOpenDialog?: (type: 'new-branch' | 'new-worktree', e: React.MouseEvent) => void;
   aheadBehind: AheadBehind | null;
   changedFileCount: number;
-  // History tab
-  commits: CommitEntry[];
-  logLoading: boolean;
-  hasMore: boolean;
-  loadMore: () => void;
-  loadingMore: boolean;
-  onRefreshLog: () => void;
-  selectedHash: string | null;
-  selectedExpanded: boolean;
-  searchQuery: string;
-  combined: boolean;
-  detail: CommitDetail | null;
-  logFiles: CommitFileChange[];
-  detailLoading: boolean;
-  detailError: string | null;
-  onSelectCommit: (hash: string) => void;
-  onOpenDiff: (filePath: string) => void;
-  onPinFile: (filePath: string) => void;
-  onSearchChange: (query: string) => void;
-  onToggleCombined: (combined: boolean) => void;
-  focusedFileIndex?: number;
-  // Stash tab
-  stashes: StashEntry[];
-  stashLoading: boolean;
-  stashError: string | null;
-  stashExpandedSelector: string | null;
-  stashExpandedFiles: CommitFileChange[];
-  stashFilesLoading: boolean;
-  stashFilesError: string | null;
-  onToggleStash: (selector: string) => void;
-  actionLoading: boolean;
-  onApply: (selector: string) => Promise<StashActionResult | null>;
-  onPop: (selector: string) => Promise<StashActionResult | null>;
-  onOpenStashDiff: (selector: string, filePath: string) => void;
-  // Tab state (lifted for keyboard gating in wrapper)
-  activeTab: GitControlTab;
-  onTabChange: (tab: GitControlTab) => void;
 }
 
 const GitControlPanel: React.FC<GitControlPanelProps> = ({
   project,
   commands,
   capabilities,
+  connectionContext,
+  activeWorktreePath,
+  active,
   onRefreshGit,
-  onSelectFile,
   onShowToast,
-  onOpenDialog,
   aheadBehind,
   changedFileCount,
-  commits,
-  logLoading,
-  hasMore,
-  loadMore,
-  loadingMore,
-  onRefreshLog,
-  selectedHash,
-  selectedExpanded,
-  searchQuery,
-  combined,
-  detail,
-  logFiles,
-  detailLoading,
-  detailError,
-  onSelectCommit,
-  onOpenDiff,
-  onPinFile,
-  onSearchChange,
-  onToggleCombined,
-  focusedFileIndex,
-  stashes,
-  stashLoading,
-  stashError,
-  stashExpandedSelector,
-  stashExpandedFiles,
-  stashFilesLoading,
-  stashFilesError,
-  onToggleStash,
-  actionLoading,
-  onApply,
-  onPop,
-  onOpenStashDiff,
-  activeTab,
-  onTabChange,
 }) => {
+  const [tab, setTab] = useState<GitControlTab>('changes');
+
+  // History 选区本地状态（纯 state + handleSelectCommit）
+  const {
+    selectedHash,
+    selectedExpanded,
+    searchQuery,
+    combined,
+    currentFileIdx,
+    handleSelectCommit,
+    setSearchQuery,
+    setCombined,
+    setCurrentFileIdx,
+  } = useGitHistorySelection();
+
+  // 激活门控：History tab 可见才拉 commit log；面板可见才拉 stash（供徽章计数）
+  const { commits, loading, hasMore, loadMore, refresh, loadingMore } = useGitLog(
+    commands,
+    active && tab === 'history',
+  );
+
+  const {
+    detail,
+    files,
+    loading: detailLoading,
+    error: detailError,
+  } = useCommitDetail(commands, selectedHash);
+
+  const {
+    stashes,
+    loading: stashLoading,
+    error: stashError,
+    expandedSelector: stashExpandedSelector,
+    expandedFiles: stashExpandedFiles,
+    filesLoading: stashFilesLoading,
+    filesError: stashFilesError,
+    toggleExpand: toggleStash,
+    actionLoading: stashActionLoading,
+    applyStash,
+    popStash,
+  } = useStashList(commands, active);
+
+  const { openFileInDiff, openCombined, pinFile, scrollToFile, refreshOpenDiff, hasSingleton } =
+    useSingletonDiff(project?.id, selectedHash, files, connectionContext, activeWorktreePath);
+
+  const openStashDiff = useOpenStashDiff(project?.id, activeWorktreePath, stashes);
+
+  const openCommitDiffTab = useOpenDiffTab(connectionContext, activeWorktreePath, project?.id);
+
+  // Changes 提交 / stash apply/pop 后：刷新 git info（wrapper） + 日志
+  const handleRefreshAll = useCallback(async () => {
+    await onRefreshGit();
+    refresh();
+  }, [onRefreshGit, refresh]);
+
+  // Diff singleton 处理器（combined 切换 / 文件导航 / pin + 联动刷新）
+  const { handleToggleCombined, handleOpenDiff, handlePinFile } = useGitHistoryDiffActions({
+    selectedHash,
+    files,
+    combined,
+    currentFileIdx,
+    openFileInDiff,
+    openCombined,
+    pinFile,
+    scrollToFile,
+    refreshOpenDiff,
+    hasSingleton,
+    setCombined,
+    setCurrentFileIdx,
+  });
+
+  // J/K/j/k/c 快捷键仅在 History tab 激活时生效
+  useGitLogKeyboardNav({
+    enabled: tab === 'history',
+    commits,
+    selectedHash,
+    files,
+    currentFileIdx,
+    combined,
+    onSelectCommit: handleSelectCommit,
+    onOpenFileDiff: openFileInDiff,
+    onToggleCombined: handleToggleCombined,
+  });
+
   return (
     <div className="flex h-full min-h-0 flex-col">
       {/* Underline tabs — same pattern as Settings / Debug panel */}
@@ -127,21 +154,21 @@ const GitControlPanel: React.FC<GitControlPanelProps> = ({
         <button
           type="button"
           role="tab"
-          aria-selected={activeTab === 'changes'}
+          aria-selected={tab === 'changes'}
           className={cn(
             'inline-flex h-8 items-center gap-1.5 border-b-2 px-3 text-[calc(var(--font-size)-1px)] font-medium transition-colors duration-100',
-            activeTab === 'changes'
+            tab === 'changes'
               ? 'border-accent-blue text-text-primary'
               : 'border-transparent text-text-muted hover:text-text-primary',
           )}
-          onClick={() => onTabChange('changes')}
+          onClick={() => setTab('changes')}
         >
           Changes
           {changedFileCount > 0 ? (
             <span
               className={cn(
                 'min-w-[1.1rem] rounded-full px-1 text-center text-[calc(var(--font-size)-3px)] leading-4 tabular-nums',
-                activeTab === 'changes'
+                tab === 'changes'
                   ? 'bg-accent-blue/15 text-accent-blue'
                   : 'bg-bg-tertiary text-text-muted',
               )}
@@ -153,35 +180,35 @@ const GitControlPanel: React.FC<GitControlPanelProps> = ({
         <button
           type="button"
           role="tab"
-          aria-selected={activeTab === 'history'}
+          aria-selected={tab === 'history'}
           className={cn(
             'inline-flex h-8 items-center border-b-2 px-3 text-[calc(var(--font-size)-1px)] font-medium transition-colors duration-100',
-            activeTab === 'history'
+            tab === 'history'
               ? 'border-accent-blue text-text-primary'
               : 'border-transparent text-text-muted hover:text-text-primary',
           )}
-          onClick={() => onTabChange('history')}
+          onClick={() => setTab('history')}
         >
           History
         </button>
         <button
           type="button"
           role="tab"
-          aria-selected={activeTab === 'stash'}
+          aria-selected={tab === 'stash'}
           className={cn(
             'inline-flex h-8 items-center gap-1.5 border-b-2 px-3 text-[calc(var(--font-size)-1px)] font-medium transition-colors duration-100',
-            activeTab === 'stash'
+            tab === 'stash'
               ? 'border-accent-blue text-text-primary'
               : 'border-transparent text-text-muted hover:text-text-primary',
           )}
-          onClick={() => onTabChange('stash')}
+          onClick={() => setTab('stash')}
         >
           Stash
           {stashes.length > 0 ? (
             <span
               className={cn(
                 'min-w-[1.1rem] rounded-full px-1 text-center text-[calc(var(--font-size)-3px)] leading-4 tabular-nums',
-                activeTab === 'stash'
+                tab === 'stash'
                   ? 'bg-accent-blue/15 text-accent-blue'
                   : 'bg-bg-tertiary text-text-muted',
               )}
@@ -194,44 +221,43 @@ const GitControlPanel: React.FC<GitControlPanelProps> = ({
 
       {/* Keep both panels mounted so draft commit message / selection survive tab switches. */}
       <div className="min-h-0 flex-1">
-        <div className={cn('h-full min-h-0', activeTab !== 'changes' && 'hidden')}>
+        <div className={cn('h-full min-h-0', tab !== 'changes' && 'hidden')}>
           <GitCommitPanel
             project={project}
             commands={commands}
             capabilities={capabilities}
-            onRefreshGit={onRefreshGit}
-            onSelectFile={onSelectFile}
+            onRefreshGit={handleRefreshAll}
+            onSelectFile={openCommitDiffTab}
             onShowToast={onShowToast}
-            onOpenDialog={onOpenDialog}
             aheadBehind={aheadBehind}
           />
         </div>
-        <div className={cn('h-full min-h-0', activeTab !== 'history' && 'hidden')}>
+        <div className={cn('h-full min-h-0', tab !== 'history' && 'hidden')}>
           <GitLogPanel
             commits={commits}
-            loading={logLoading}
+            loading={loading}
             hasMore={hasMore}
             loadMore={loadMore}
             loadingMore={loadingMore}
-            refresh={onRefreshLog}
+            refresh={refresh}
             selectedHash={selectedHash}
             selectedExpanded={selectedExpanded}
             searchQuery={searchQuery}
             combined={combined}
             detail={detail}
-            files={logFiles}
+            files={files}
             detailLoading={detailLoading}
             detailError={detailError}
-            onSelectCommit={onSelectCommit}
-            onOpenDiff={onOpenDiff}
-            onPinFile={onPinFile}
-            onSearchChange={onSearchChange}
-            onRefresh={onRefreshLog}
-            onToggleCombined={onToggleCombined}
-            focusedFileIndex={focusedFileIndex}
+            onSelectCommit={handleSelectCommit}
+            onOpenDiff={handleOpenDiff}
+            onPinFile={handlePinFile}
+            onSearchChange={setSearchQuery}
+            onRefresh={refresh}
+            onToggleCombined={handleToggleCombined}
+            focusedFileIndex={currentFileIdx}
           />
         </div>
-        <div className={cn('h-full min-h-0', activeTab !== 'stash' && 'hidden')}>
+        <div className={cn('h-full min-h-0', tab !== 'stash' && 'hidden')}>
           <StashPanel
             stashes={stashes}
             loading={stashLoading}
@@ -240,13 +266,13 @@ const GitControlPanel: React.FC<GitControlPanelProps> = ({
             expandedFiles={stashExpandedFiles}
             filesLoading={stashFilesLoading}
             filesError={stashFilesError}
-            onToggle={onToggleStash}
-            actionLoading={actionLoading}
-            onApply={onApply}
-            onPop={onPop}
-            onOpenStashDiff={onOpenStashDiff}
+            onToggle={toggleStash}
+            actionLoading={stashActionLoading}
+            onApply={applyStash}
+            onPop={popStash}
+            onOpenStashDiff={openStashDiff}
             onShowToast={onShowToast}
-            onRefreshGit={onRefreshGit}
+            onRefreshGit={handleRefreshAll}
           />
         </div>
       </div>

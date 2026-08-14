@@ -54,10 +54,14 @@ layout/DockRegistryContext ← app 用 DockRegistryProvider 注入；DockLayout/
 新增 panel checklist：
 1. `shared/dock/panelMeta.ts` 增加 meta
 2. `app/dock/registry.ts` 增加 UI binding（title/icon/lazy/minPanelSize）
-3. 需要 props 胶水时改 `app/dock/DockPanelWrappers.tsx`
+3. 需要 props 胶水时改 `app/dock/wrappers/<Panel>Wrapper.tsx`（每面板一文件，独立 lazy chunk；业务编排下沉到 feature hooks）
 4. **不要**在 `layout/` 增加 feature/app import
 
 ESLint：`import/no-restricted-paths` 禁止 layout→features/app；**无** dockPanels 文件级例外。
+
+**禁止模式**：
+- 禁止 `window.__neeko*` 全局函数桥接跨层通信（改用 Context，如 `TerminalInsertContext`：Provider + register/unregister + 消费方降级）
+- 禁止 dock wrapper 内嵌业务编排（git 刷新、tab 创建等）——下沉 feature 域 hooks（`useRefreshGitInfo` / `useOpenDiffTab` / `useGitLogKeyboardNav`）
 `shared/` 不得 import `layout/`（dockStore 只依赖 `shared/dock`）。
 
 当前 Git 相关 dock panel 只有 **`gitControl`**（title: Git Control）。旧的 `gitCommit` / `gitLog` 已合并进其内部 Changes | History tabs，不要再注册为独立 dock panel。

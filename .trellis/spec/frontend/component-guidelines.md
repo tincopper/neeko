@@ -698,36 +698,49 @@ const [confirmRemove, setConfirmRemove] = useState(false);
 ### 架构
 
 ```
-DockPanelWrappers (GitControlPanelWrapper)
-├── useActiveProject()       ← 单次读取，避免重复调用
-├── tab state ('changes' | 'history')
-├── handleRefreshGit()       ← 合并原两个面板的刷新逻辑
-└── GitControlPanel (Shell)
-    ├── TabBar (Changes | History) + badge
+GitControlPanelWrapper（app/dock/wrappers/，薄适配层）
+├── useActiveProject() / useDockStore(isActive)   ← dock/上下文适配
+├── useRefreshGitInfo()                            ← git info 刷新编排（feature hook）
+└── GitControlPanel (feature 容器，owns 数据 hooks)
+    ├── tab state ('changes' | 'history' | 'stash')
+    ├── useGitLog(commands, active && tab==='history')   ← 激活门控
+    ├── useStashList(commands, active)                   ← 徽章计数
+    ├── useSingletonDiff / useCommitDetail / useOpenStashDiff / useOpenDiffTab
+    ├── useGitLogKeyboardNav({ enabled: tab==='history' })
+    ├── TabBar (Changes | History | Stash) + badge
     ├── GitCommitPanel       ← hidden={tab !== 'changes'} 保持挂载
-    └── GitLogPanel          ← hidden={tab !== 'history'}
+    ├── GitLogPanel          ← hidden={tab !== 'history'}
+    └── StashPanel           ← hidden={tab !== 'stash'}
 ```
 
 ### 关键约定
 
 1. **两个面板同时挂载**：使用 `hidden` 而非条件渲染，避免切换 Tab 时丢失提交表单等草稿状态
-2. **`useActiveProject()` 提升到 Wrapper 层**：只需调用一次，通过 props 下传
-3. **Tab 默认值为 `'changes'`**（操作频率更高的面板在前）
-4. **刷新联动**：`handleRefreshGit` 同时触发两个面板的刷新，确保 commit 后切换 History 能看到新 commit
+2. **数据 hooks 内聚在 Shell 组件（feature 容器）**：wrapper 只做 dock/上下文适配（isActive 门控、project 视图转换），不持有业务编排
+3. **激活门控**：`useGitLog` / `useStashList` 带 `enabled` 参数，面板/tab 不可见时不发起 IPC；数据在切换间保留
+4. **Tab 默认值为 `'changes'`**（操作频率更高的面板在前）
+5. **刷新联动**：GitControlPanel 组合 `onRefreshGit`（wrapper）+ log `refresh()`，commit 后切换 History 能看到新 commit
 
 ### 完成示例
 
 ```tsx
-// src/app/dock/DockPanelWrappers.tsx
-const GitControlPanelWrapper: React.FC = () => {
-  const { activeProject, baseRefreshGit } = useActiveProject();
-  const [tab, setTab] = useState<'changes' | 'history'>('changes');
-  const refreshRef = useRef<() => void>(() => {});
+// src/app/dock/wrappers/GitControlPanelWrapper.tsx（薄适配层）
+const GitControlPanelWrapper: React.FC = React.memo(() => {
+  const { project, commands, capabilities, connectionContext } = useActiveProject();
+  const isPanelActive = useDockStore(/* gitControl 激活且展开 */);
+  const refreshGit = useRefreshGitInfo(project, commands, connectionContext);
 
-  const handleRefreshGit = useCallback(() => {
-    baseRefreshGit();
-    refreshRef.current();
-  }, [baseRefreshGit]);
+  return (
+    <GitControlPanel
+      project={effectiveProject}
+      commands={commands}
+      capabilities={capabilities}
+      connectionContext={connectionContext}
+      active={isPanelActive}
+      onRefreshGit={handleRefreshGit}
+      ...
+    />
+  );
 
   const handleKeyDown = useCallback((e: KeyboardEvent) => {
     if (tab !== 'history') return;

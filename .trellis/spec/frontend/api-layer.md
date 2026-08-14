@@ -262,7 +262,7 @@ export function getGitInfo(transport: GitTransportKind): Promise<GitInfo> {
 |---|---|
 | `app/components/ProjectWorkspace.tsx` | `agentApi`、`libraryApi`（openLibrary + insertToAgentInput） |
 | `app/components/OpenIdeButton.tsx` | `sessionApi` |
-| `app/dock/DockPanelWrappers.tsx` | `fileApi` |
+| `app/dock/wrappers/FilesPanelWrapper.tsx` | `fileApi` |
 
 ---
 

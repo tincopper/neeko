@@ -13,10 +13,10 @@ import { ProjectGuidePage } from '@/features/project/components/ProjectGuidePage
 import { useProjectActionsContext } from '@/features/project/ProjectContext';
 import { useQuickOpenStore } from '@/features/quick-open/store/quickOpenStore';
 import { useRecentFilesStore } from '@/features/quick-open/store/recentFilesStore';
-import { terminalCache, terminalCacheKey } from '@/features/terminal/components/terminalCache';
 import { sendToTerminal } from '@/features/terminal/components/terminalCommands';
 import { KeyRound } from '@/shared/components/icons';
-import { useEditorContext, useAppContext } from '@/shared/contexts';
+import { useEditorContext, useAppContext, useTerminalInsert } from '@/shared/contexts';
+import { INSERT_TO_AGENT_INPUT_EVENT } from '@/shared/events';
 import { useConnectionStore } from '@/shared/store/connectionStore';
 import { useDockStore } from '@/shared/store/dockStore';
 import { useEditorStore } from '@/shared/store/editorStore';
@@ -266,83 +266,36 @@ function ProjectWorkspace() {
     [handleAddTerminalTab, activeProject, currentProjectId, tabKey, agents],
   );
 
-  // Wire insert-to-agent-input for the library panel (set on window so the
-  // dock panel wrapper can reach it without prop drilling through the layout).
+  // ── Terminal / agent-input 插入能力注册 ─────────────────────────────────
+  // 通过 TerminalInsertContext 向 dock 面板（LibraryPanel 等）暴露插入能力，
+  // 替代此前的 window 全局函数桥接（__neekoInsertTo*）：显式类型契约 +
+  // 挂载/卸载生命周期管理。
+  const { register } = useTerminalInsert();
+
   useEffect(() => {
-    const w = window as unknown as { __neekoInsertToAgentInput?: (text: string) => void };
-    w.__neekoInsertToAgentInput = (text: string) => {
+    const unregister = register({
       // Best-effort: emit an event the agent input listens to.
-      window.dispatchEvent(new CustomEvent('neeko:insert-to-agent-input', { detail: { text } }));
-    };
-    return () => {
-      delete (window as unknown as { __neekoInsertToAgentInput?: unknown })
-        .__neekoInsertToAgentInput;
-    };
-  }, []);
-
-  // ── Terminal PTY bridge ──────────────────────────────────────────────────
-  // Expose helpers so the Library panel (rendered in the dock) can read the
-  // current agent input and write to the active terminal without prop drilling.
-
-  /** Read the current line from the active terminal (the "agent input"). */
-  useEffect(() => {
-    const w = window as unknown as { __neekoReadAgentInput?: () => string | null };
-    w.__neekoReadAgentInput = () => {
-      const editorState = useEditorStore.getState();
-      const activeTabId = editorState.activeTabId;
-      if (!activeTabId) return null;
-
-      const proj = useProjectStore.getState();
-      const activeProjectId = proj.activeProjectId;
-      if (!activeProjectId) return null;
-
-      // Resolve the terminal cache entry for the active tab.
-      const cacheKey = terminalCacheKey(activeProjectId, activeTabId);
-      const entry = terminalCache.get(cacheKey);
-      if (!entry) {
-        // Fallback: first terminal entry under this project.
-        for (const [key, val] of terminalCache.entries()) {
-          if (key.startsWith(`${activeProjectId}:`)) {
-            const cursorY = val.term.buffer.active.cursorY;
-            const baseY = val.term.buffer.active.baseY;
-            const line = val.term.buffer.active.getLine(baseY + cursorY);
-            return line?.translateToString().trim() ?? null;
-          }
+      insertToAgentInput: (text: string) => {
+        window.dispatchEvent(new CustomEvent(INSERT_TO_AGENT_INPUT_EVENT, { detail: { text } }));
+      },
+      /** Write text to the active terminal's PTY (secondary insert target). */
+      insertToTerminal: (text: string) => {
+        const editorState = useEditorStore.getState();
+        const activeTabId = editorState.activeTabId;
+        const proj = useProjectStore.getState();
+        const activeProjectId = proj.activeProjectId;
+        if (!activeProjectId) return false;
+        try {
+          sendToTerminal(activeProjectId, text, activeTabId);
+          return true;
+        } catch (err) {
+          console.error('[ProjectWorkspace] insertToTerminal failed:', err);
+          return false;
         }
-        return null;
-      }
-
-      const cursorY = entry.term.buffer.active.cursorY;
-      const baseY = entry.term.buffer.active.baseY;
-      const line = entry.term.buffer.active.getLine(baseY + cursorY);
-      return line?.translateToString().trim() ?? null;
-    };
-    return () => {
-      delete (window as unknown as { __neekoReadAgentInput?: unknown }).__neekoReadAgentInput;
-    };
-  }, []);
-
-  /** Write text to the active terminal's PTY (secondary insert target). */
-  useEffect(() => {
-    const w = window as unknown as { __neekoInsertToTerminal?: (text: string) => boolean };
-    w.__neekoInsertToTerminal = (text: string) => {
-      const editorState = useEditorStore.getState();
-      const activeTabId = editorState.activeTabId;
-      const proj = useProjectStore.getState();
-      const activeProjectId = proj.activeProjectId;
-      if (!activeProjectId) return false;
-      try {
-        sendToTerminal(activeProjectId, text, activeTabId);
-        return true;
-      } catch (err) {
-        console.error('[ProjectWorkspace] __neekoInsertToTerminal failed:', err);
-        return false;
-      }
-    };
-    return () => {
-      delete (window as unknown as { __neekoInsertToTerminal?: unknown }).__neekoInsertToTerminal;
-    };
-  }, []);
+      },
+    });
+    return unregister;
+  }, [register]);
 
   const paletteCtx: ActionContext = useMemo(
     () => ({
@@ -357,7 +310,7 @@ function ProjectWorkspace() {
         : [],
       closeMenu: () => {},
       insertToAgentInput: (text: string) => {
-        window.dispatchEvent(new CustomEvent('neeko:insert-to-agent-input', { detail: { text } }));
+        window.dispatchEvent(new CustomEvent(INSERT_TO_AGENT_INPUT_EVENT, { detail: { text } }));
       },
       openLibrary: (opts) => {
         const kind = opts?.kind ?? 'skill';

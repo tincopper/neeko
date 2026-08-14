@@ -37,50 +37,29 @@ const ProjectsPanel = lazy(() => import('@/features/project/components/ProjectsP
  * Wrapper components bridge the gap between dock panel instantiation
  * (which expects zero-props components) and existing panels that require
  * context-derived props.
+ *
+ * 每个 wrapper 独立文件 + 独立 lazy chunk：打开任一面板只加载该面板的代码，
+ * 避免单文件聚合导致全部面板代码同 chunk 加载。
  */
-const LazyFilesPanelWrapper = lazy(() =>
-  import('@/app/dock/DockPanelWrappers').then((m) => ({
-    default: m.FilesPanelWrapper,
-  })),
-);
+const LazyFilesPanelWrapper = lazy(() => import('@/app/dock/wrappers/FilesPanelWrapper'));
 
-const LazySkillsPanelWrapper = lazy(() =>
-  import('@/app/dock/DockPanelWrappers').then((m) => ({
-    default: m.SkillsPanelWrapper,
-  })),
-);
+const LazySkillsPanelWrapper = lazy(() => import('@/app/dock/wrappers/SkillsPanelWrapper'));
 
-const LazyLibraryPanelWrapper = lazy(() =>
-  import('@/app/dock/DockPanelWrappers').then((m) => ({
-    default: m.LibraryPanelWrapper,
-  })),
-);
+const LazyLibraryPanelWrapper = lazy(() => import('@/app/dock/wrappers/LibraryPanelWrapper'));
 
-const LazyGitControlPanelWrapper = lazy(() =>
-  import('@/app/dock/DockPanelWrappers').then((m) => ({
-    default: m.GitControlPanelWrapper,
-  })),
-);
+const LazyGitControlPanelWrapper = lazy(() => import('@/app/dock/wrappers/GitControlPanelWrapper'));
 
 const LazyBrowserPanel = lazy(() => import('@/features/browser/components/BrowserPanel'));
 
-const LazyConversationsPanelWrapper = lazy(() =>
-  import('@/app/dock/DockPanelWrappers').then((m) => ({
-    default: m.ConversationsPanelWrapper,
-  })),
+const LazyConversationsPanelWrapper = lazy(
+  () => import('@/app/dock/wrappers/ConversationsPanelWrapper'),
 );
 
-const LazyPullRequestsPanelWrapper = lazy(() =>
-  import('@/app/dock/DockPanelWrappers').then((m) => ({
-    default: m.PullRequestsPanelWrapper,
-  })),
+const LazyPullRequestsPanelWrapper = lazy(
+  () => import('@/app/dock/wrappers/PullRequestsPanelWrapper'),
 );
 
-const LazySearchPanelWrapper = lazy(() =>
-  import('@/app/dock/DockPanelWrappers').then((m) => ({
-    default: m.SearchPanelWrapper,
-  })),
-);
+const LazySearchPanelWrapper = lazy(() => import('@/app/dock/wrappers/SearchPanelWrapper'));
 
 type UiBinding = Pick<DockPanelViewDef, 'title' | 'icon' | 'component' | 'minPanelSize'>;
 

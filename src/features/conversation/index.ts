@@ -19,3 +19,6 @@ export { default as ConversationList } from './components/ConversationList';
 export { default as ConversationItem } from './components/ConversationItem';
 export { default as ConversationViewer } from './components/ConversationViewer';
 export { default as ConversationMsg } from './components/ConversationMessage';
+
+// Utils
+export { conversationTabTitle } from './utils/conversationTabTitle';

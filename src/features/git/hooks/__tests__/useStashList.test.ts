@@ -352,4 +352,67 @@ describe('useStashList', () => {
     expect(outcome?.message).toBe('conflict');
     expect(result.current.actionLoading).toBe(false);
   });
+
+  describe('enabled gating', () => {
+    it('should_not_fetch_when_disabled', async () => {
+      const getStashList = vi.fn().mockResolvedValue([]);
+      const commands = createCommands({ getStashList });
+
+      renderHook(() => useStashList(commands, false));
+      await new Promise((r) => setTimeout(r, 20));
+      expect(getStashList).not.toHaveBeenCalled();
+    });
+
+    it('should_fetch_when_enabled_flips_true', async () => {
+      const getStashList = vi.fn().mockResolvedValue([
+        {
+          selector: 'stash@{0}',
+          hash: 'abc',
+          message: 'On main: wip',
+          branch: 'main',
+          timestamp: '2026-08-14T10:00:00',
+        },
+      ]);
+      const commands = createCommands({ getStashList });
+
+      const { result, rerender } = renderHook(
+        ({ enabled }: { enabled: boolean }) => useStashList(commands, enabled),
+        { initialProps: { enabled: false } },
+      );
+      expect(getStashList).not.toHaveBeenCalled();
+
+      rerender({ enabled: true });
+      await waitFor(() => expect(result.current.loading).toBe(false));
+      expect(getStashList).toHaveBeenCalledTimes(1);
+      expect(result.current.stashes).toHaveLength(1);
+    });
+
+    it('should_keep_data_while_disabled_and_reload_when_reenabled', async () => {
+      const stash = {
+        selector: 'stash@{0}',
+        hash: 'abc',
+        message: 'On main: wip',
+        branch: 'main',
+        timestamp: '2026-08-14T10:00:00',
+      };
+      const getStashList = vi.fn().mockResolvedValue([stash]);
+      const commands = createCommands({ getStashList });
+
+      const { result, rerender } = renderHook(
+        ({ enabled }: { enabled: boolean }) => useStashList(commands, enabled),
+        { initialProps: { enabled: true } },
+      );
+      await waitFor(() => expect(result.current.stashes).toHaveLength(1));
+
+      // disabled：数据保留，不发请求
+      rerender({ enabled: false });
+      expect(result.current.stashes).toHaveLength(1);
+      expect(getStashList).toHaveBeenCalledTimes(1);
+
+      // 重新启用：重新拉取（stash 状态可能已变化）
+      rerender({ enabled: true });
+      await waitFor(() => expect(getStashList).toHaveBeenCalledTimes(2));
+      expect(result.current.stashes).toHaveLength(1);
+    });
+  });
 });

@@ -15,18 +15,19 @@ Neeko 是一个基于 **Tauri v2** 的桌面应用，前端使用 **React 18 + T
 ```
 src/
 ├── app/                     # 应用壳层与组合层（组装 layout slots + 协调 features）
-│   ├── App.tsx              # 根组件：TitleBar.actions / AppLayout children&buttons / 视图路由
+│   ├── App.tsx              # 组合根：TitleBar.actions / AppLayout slots / 壳层编排（无业务视图路由）
 │   ├── AppProviders.tsx     # Provider 组合层
 │   ├── AppModals.tsx        # 模态框组合层
 │   ├── components/          # app 级协调组件（可 import features）
+│   │   ├── AppCenter.tsx         # 中心视图路由（单一数据源 appViewStore）
 │   │   ├── ProjectWorkspace.tsx  # 项目工作区协调器（原 layout/MainContent）
 │   │   ├── DockBarButton.tsx     # Dock 栏按钮（读 feature store）
 │   │   ├── OpenIdeButton.tsx     # IDE 打开按钮
 │   │   └── SplashScreen.tsx
 │   ├── dock/                # Dock 面板胶水 + UI 注册表
 │   │   ├── registry.ts      # title/icon/lazy component 绑定（合并 DOCK_PANEL_META）
-│   │   └── DockPanelWrappers.tsx # feature store/context → panel 注入
-│   └── hooks/               # app 级共享 hooks（useAppShell 等）
+│   │   └── wrappers/        # 每面板一文件的薄适配层（store/context → panel，独立 lazy chunk）
+│   └── hooks/               # app 级共享 hooks（useAppShell 编排、UseDockBarButtons 装配）
 │
 ├── main.tsx                 # 入口文件（ReactDOM.createRoot）
 ├── vite-env.d.ts            # 资源模块声明
@@ -186,19 +187,19 @@ src-tauri/
 | 文件 / 目录（旧） | 文件 / 目录（新） | 说明 |
 |------|------|------|
 | `layout/MainContent.tsx` | `app/components/ProjectWorkspace.tsx` | app 层项目工作区协调器 |
-| `layout/dock-layout/DockPanelWrappers.tsx` | `app/dock/DockPanelWrappers.tsx` | feature store/context 注入到 panel |
+| `layout/dock-layout/DockPanelWrappers.tsx` | `app/dock/wrappers/`（每面板一文件） | feature store/context 注入到 panel |
 | `layout/OpenIdeButton.tsx` | `app/components/OpenIdeButton.tsx` | 业务按钮 |
 | `layout/dock-layout/DockBarButton.tsx` | `app/components/DockBarButton.tsx` | 依赖 feature store 的 Dock 按钮 |
-| `AppLayout` 直接 import settings/skill | `AppLayout` 仅 `children` + slots | 视图路由上移到 `app/App.tsx` |
+| `AppLayout` 直接 import settings/skill | `AppLayout` 仅 `children` + slots | 视图路由收敛到 `app/components/AppCenter.tsx`（单一数据源 appViewStore） |
 | `TitleBar` 硬编码 Task/Debug 按钮 | `TitleBar.actions` slot | 由 `app/App.tsx` 注入 |
-| `DockBar` 内部构造按钮 | `DockBar.buttons` prop | 由 `app/App.tsx` 注入 `DockBarButton` 列表 |
+| `DockBar` 内部构造按钮 | `DockBar.buttons` prop | 由 `app/hooks/UseDockBarButtons` 装配 `DockBarButton` 列表 |
 
 依赖方向（目标）：
 
 ```
 ui/          ← layout/     (纯骨架：DockLayout、TitleBar slot、ActivityBar)
 shared/      ← features/   (各自独立业务域)
-features/    ← app/        (协调层：ProjectWorkspace、DockPanelWrappers、slot 填充)
+features/    ← app/        (协调层：ProjectWorkspace、app/dock/wrappers/、slot 填充)
 layout/      ← app/        (app 组装骨架并填充 slot)
 ```
 
@@ -231,7 +232,7 @@ layout/      ← app/        (app 组装骨架并填充 slot)
 | `layout/` | 窗口边框（纯骨架） | ActivityBar、AppLayout、TitleBar、PanelArea、DockRegistryContext |
 | `layout/dock-layout/` | Dock 布局框架 | DockBar、DockLayout、DockZone、拖拽 Hook 等 |
 | `app/components/` | app 协调组件 | ProjectWorkspace、DockBarButton、OpenIdeButton、SplashScreen |
-| `app/dock/` | Dock UI 注册表 + 胶水 | registry、DockPanelWrappers |
+| `app/dock/` | Dock UI 注册表 + 胶水 | registry、wrappers/（每面板一文件） |
 | `shared/dock/` | Dock 纯 meta | DOCK_PANEL_META（供 dockStore） |
 | `ui/` | UI 基元 | ContextMenu、DropdownMenu、ResizablePanel、ScrollArea、ToggleGroup |
 | `features/project/components/` | 项目管理 | 项目卡片壳层 + Git 区段 + 拖拽/菜单 Hook |
@@ -365,6 +366,6 @@ const tabs = useAppStore((s) => s.fileTabs);
 ## 示例
 
 - 纯布局骨架：`src/layout/` —— AppLayout/TitleBar/DockLayout 只暴露 slots，不 import features
-- app 协调层：`src/app/components/ProjectWorkspace.tsx` + `src/app/dock/DockPanelWrappers.tsx`
+- app 协调层：`src/app/components/ProjectWorkspace.tsx` + `src/app/dock/wrappers/`（每面板一文件）
 - Hook 模式：`src/shared/hooks/` 与 `src/app/hooks/useAppShell.ts`
 - 工具模式：`src/shared/utils/platform.ts`

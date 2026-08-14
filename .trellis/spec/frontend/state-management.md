@@ -102,6 +102,24 @@ await saveConfig(config);
 await saveSession(session);
 ```
 
+### 8. 中心视图路由（单一数据源 `appViewStore`）
+
+中心区域（`app/components/AppCenter.tsx`）只读 `useAppViewStore.appView` 决定渲染：
+
+- `settings` / `library`：条件渲染（切走即卸载）
+- `skills`：`SkillContent` 激活才挂载（消灭「启动即取数」）；`ProjectWorkspace` 保持挂载（hidden 切换）
+- `normal`：`ProjectWorkspace`
+
+**写入方（禁止绕过）**：
+
+- `settings`：`useAppLayoutProps`（工具栏） / `SettingsView`（关闭）
+- `library`：dockStore tab-mode 面板（`openAs: 'tab'`）
+- `skills`：dockStore 中心耦合 dock 面板（`DOCK_PANEL_TO_APP_VIEW`，激活同步）
+- `normal`：上述视图退出后的兜底
+
+注意：`dockStore` 持久化、`appViewStore` 不持久化 → 启动时 `useAppShell` 把左 zone 的
+`skills` 激活态同步回 `appView`。禁止在 App.tsx / 业务组件里直接用 `dockStore.zones.*.activePanelId` 判断中心视图。
+
 ---
 
 ## 何时使用全局状态

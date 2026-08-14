@@ -115,6 +115,13 @@ function findPanelZone(zones: Record<string, DockZoneState>, panelId: string): s
 }
 
 /**
+ * Dock 面板 → 中心视图映射：激活这些 dock 面板时同步切换 appView。
+ * 与 tab-mode 面板（library）一起构成「单一中心路由源」（appViewStore），
+ * 避免中心区域被 dockStore 与 appViewStore 双源控制。
+ */
+const DOCK_PANEL_TO_APP_VIEW: Partial<Record<string, AppView>> = { skills: 'skills' };
+
+/**
  * Partial state for opening a tab (center) view: collapse the left zone and
  * remember its previous expanded state so it can be restored on close.
  */
@@ -176,6 +183,13 @@ export const useDockStore = create<DockStore>()(
             set((state) => restoreLeftZone(state));
           }
 
+          // 中心耦合面板（skills）：激活时同步 appView，单一路由源
+          const centerView = DOCK_PANEL_TO_APP_VIEW[panelId];
+          // 打开其他 dock 面板：退出 skills 中心视图
+          if (!centerView && useAppViewStore.getState().appView === 'skills') {
+            useAppViewStore.getState().setAppView('normal');
+          }
+
           const { zones } = get();
           const currentZoneId = findPanelZone(zones, panelId);
 
@@ -205,6 +219,7 @@ export const useDockStore = create<DockStore>()(
                   },
                 },
               }));
+              if (centerView) useAppViewStore.getState().setAppView(centerView);
             }
           } else {
             // Panel is not in any zone → add to its default zone alongside existing panels
@@ -229,6 +244,7 @@ export const useDockStore = create<DockStore>()(
                 ),
               };
             });
+            if (centerView) useAppViewStore.getState().setAppView(centerView);
           }
         },
 
@@ -243,6 +259,13 @@ export const useDockStore = create<DockStore>()(
               },
             };
           });
+          // 中心耦合面板：激活同步 appView；激活其他面板退出 skills 中心视图
+          const centerView = DOCK_PANEL_TO_APP_VIEW[panelId];
+          if (centerView) {
+            useAppViewStore.getState().setAppView(centerView);
+          } else if (useAppViewStore.getState().appView === 'skills') {
+            useAppViewStore.getState().setAppView('normal');
+          }
         },
 
         movePanel: (panelId: string, targetZoneId: string, index?: number) => {
@@ -295,6 +318,9 @@ export const useDockStore = create<DockStore>()(
 
             return { zones, barItems };
           });
+          // 中心耦合面板移动到新 zone 时同步 appView
+          const centerView = DOCK_PANEL_TO_APP_VIEW[panelId];
+          if (centerView) useAppViewStore.getState().setAppView(centerView);
         },
 
         closePanel: (panelId: string) => {
@@ -316,6 +342,11 @@ export const useDockStore = create<DockStore>()(
               },
             };
           });
+          // 关闭中心耦合面板时退出对应中心视图
+          const centerView = DOCK_PANEL_TO_APP_VIEW[panelId];
+          if (centerView && useAppViewStore.getState().appView === centerView) {
+            useAppViewStore.getState().setAppView('normal');
+          }
         },
 
         setRightPanelSize: (panelId: string, size: number) => {
