@@ -58,6 +58,37 @@
   `get_stash_files(project_id, selector, worktree_path)`，保持极薄；注册于 `neeko_invoke_handler!`。
 - 三态（本地 / WSL / SSH）一律走 `GitTransport` 统一接口，禁止裸 `std::process::Command`。
 
+### 4b. Stash 内容查看与操作命令
+
+- `operations::get_stash_file_diff`：**`git stash show -p <selector> -- <path>` 不支持路径参数**
+  （报 "Too many revisions specified"），必须用 `git diff <selector>^ <selector> -- <path>`（带
+  `full_diff_context_arg` 上下文行数），解析复用 `parse_unified_diff` + `collapse_diff_context`。
+- `operations::stash_apply`：`git stash apply <selector>`，**条目保留**；成功返回
+  `StashActionResult { success: true }`。
+- `operations::stash_pop`：`git stash pop <selector>`，**条目移除**；冲突时 git 返回非零，
+  **条目保留**并返回 `success: false` + stderr 消息。
+- **错误分流（`operations::stash_action_result`）**：`downcast_ref::<GitExecError>` 后按
+  `ErrorKind` + 操作级 marker（`STASH_OP_FAILURE_MARKERS`：`CONFLICT (content):` /
+  `would be overwritten by merge` / `log for 'stash' only has` / `No stash entries found.` 等，
+  同时检查 stderr 与 stdout）判定 —— 操作级失败 → `success: false` + git 原始消息；系统级错误
+  （Auth / AuthSsh / Network / Ambiguous / NoUpstream）与非 `GitExecError`（spawn 失败、timeout）
+  → 原样上抛 `Err`，走 `AppError` 传导，禁止伪装成 `success: false`。
+- **冲突消息源**：真实 3-way 冲突的 `CONFLICT (content): ...` 落在 **stdout**（stderr 为空），
+  本地改动冲突（`would be overwritten by merge`）在 stderr；`stash_action_result` 在 stderr 为空时
+  从 stdout 提取首个 CONFLICT 行作为 `message`，避免 toast 空消息。
+- `StashActionResult { success: bool, message: String }`：前端据此决定 toast 文案与是否刷新。
+- 命令层透传：`get_stash_file_diff(project_id, selector, path, collapse)` /
+  `stash_apply(project_id, selector, worktree_path)` / `stash_pop(project_id, selector, worktree_path)`。
+
+### 4c. Stash diff 前端复用
+
+- `DiffSource` 增 stash 变体 `{ type: 'stash'; projectId: string; selector: string }`；
+  `useDiffData.fetchDiff` 对 stash 分支优先走 `ProjectCommands.getStashFileDiff`（`DiffView` 透传
+  `commands` prop），无 commands 时回退 `gitApi.getStashFileDiff`。
+- `StashPanel` 点击文件**打开 diff tab**（复用 history 打开 diff 文件的机制：git feature 域 hook
+  `useOpenStashDiff` → `addTab` + `activateTab`，diffSource 为 stash 变体），tab 标题 `stash@{n}: <message>`；
+  Apply / Pop 在底部操作栏（列表视图），操作中 loading 禁用，成功后刷新列表 + 触发 Git 面板刷新。
+
 ## 5. 测试要求
 
 - `parse_decorate_refs`：branch/remote/tag/stash/HEAD 用例；`refs/synara/checkpoints` 被丢弃；
