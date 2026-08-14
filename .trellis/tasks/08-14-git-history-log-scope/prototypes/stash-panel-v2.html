@@ -1,0 +1,476 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Stash 面板 v2 — 交互原型</title>
+<style>
+  :root {
+    --bg: #17181c;
+    --bg-2: #1d1f25;
+    --bg-3: #262931;
+    --border: #333741;
+    --text: #e6e8ee;
+    --text-2: #9ba1af;
+    --text-3: #6b7280;
+    --blue: #60a5fa;
+    --green: #4ade80;
+    --yellow: #facc15;
+    --purple: #c084fc;
+    --red: #f87171;
+    --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", sans-serif;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: var(--sans); font-size: 13px; line-height: 1.5; padding: 20px 24px 60px; }
+  .wrap { max-width: 920px; margin: 0 auto; }
+
+  header h1 { font-size: 15px; font-weight: 600; }
+  header .sub { color: var(--text-3); font-size: 12px; margin-top: 2px; }
+
+  .panel { margin-top: 18px; background: var(--bg-2); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+
+  /* tabs（对齐 history-scope 原型） */
+  .tabs { display: flex; align-items: stretch; border-bottom: 1px solid var(--border); }
+  .tabs button { border: 0; background: transparent; color: var(--text-3); cursor: pointer; border-bottom: 2px solid transparent; padding: 8px 14px; font-size: 12px; font-weight: 500; }
+  .tabs button:hover { color: var(--text); }
+  .tabs button.active { border-bottom-color: var(--blue); color: var(--text); }
+  .tabs .count { min-width: 18px; border-radius: 999px; padding: 0 5px; font-size: 10px; background: var(--bg-3); color: var(--text-3); margin-left: 4px; display: inline-block; text-align: center; }
+
+  /* stash 列表 */
+  .stash-list { padding: 4px; min-height: 320px; }
+  .stash-item { border-radius: 6px; margin: 0 2px; }
+  .stash-item:hover { background: var(--bg-3); }
+  .stash-item.selected { background: var(--bg-3); box-shadow: inset 2px 0 0 var(--blue); }
+  .stash-line { display: flex; align-items: baseline; gap: 8px; padding: 8px 12px; cursor: pointer; min-width: 0; }
+  .stash-line .sel { font-family: var(--mono); font-size: 11px; color: var(--purple); font-weight: 600; flex-shrink: 0; }
+  .stash-line .msg { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; color: var(--text); }
+  .stash-line .meta { flex-shrink: 0; font-size: 10px; color: var(--text-3); }
+  .stash-line .meta .add { color: var(--green); } .stash-line .meta .del { color: var(--red); }
+  .stash-empty { padding: 36px 16px; text-align: center; color: var(--text-3); font-size: 12px; }
+
+  /* 选中详情（对齐 gitlog CommitExpandPanel：头部 + 文件列表） */
+  .stash-detail { padding: 8px 12px 10px; border-top: 1px dashed var(--border); margin: 0 6px; }
+  .detail-head { display: flex; align-items: baseline; gap: 6px; flex-wrap: wrap; }
+  .detail-head .sel { font-family: var(--mono); font-size: 11px; color: var(--purple); font-weight: 600; }
+  .detail-head .msg { font-size: 12px; color: var(--text); }
+  .detail-meta { display: flex; align-items: center; gap: 6px; font-size: 10px; color: var(--text-3); margin: 3px 0 6px; flex-wrap: wrap; }
+  .detail-meta .add { color: var(--green); } .detail-meta .del { color: var(--red); }
+  .file-list { display: flex; flex-direction: column; }
+  .file-row { display: flex; align-items: center; gap: 6px; padding: 4px 6px; border-radius: 5px; cursor: pointer; min-width: 0; }
+  .file-row:hover { background: var(--bg); }
+  .file-row .f-icon { flex-shrink: 0; display: inline-flex; }
+  .f-icon.M { color: var(--blue); } .f-icon.A { color: var(--green); } .f-icon.D { color: var(--red); } .f-icon.R { color: var(--yellow); }
+  .file-row .f-name { flex-shrink: 0; max-width: 9rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--mono); font-size: 11px; color: var(--text); }
+  .file-row .f-dir { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--mono); font-size: 10px; color: var(--text-3); }
+  .file-row .f-stat { flex-shrink: 0; display: flex; align-items: center; gap: 6px; font-family: var(--mono); font-size: 10px; }
+  .file-row .f-stat .add { color: var(--green); } .file-row .f-stat .del { color: var(--red); }
+
+  /* diff 视图（复用 gitlog diff tab：DiffToolbar + 文件区块） */
+  .diff-view { border-top: 1px solid var(--border); }
+  .diff-toolbar { display: flex; align-items: center; gap: 8px; padding: 6px 10px; border-bottom: 1px solid var(--border); background: var(--bg-2); }
+  .diff-toolbar .back { border: 0; background: transparent; color: var(--text-3); cursor: pointer; width: 22px; height: 22px; border-radius: 4px; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; }
+  .diff-toolbar .back:hover { background: var(--bg-3); color: var(--text); }
+  .diff-toolbar .d-title { font-family: var(--mono); font-size: 11px; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .diff-toolbar .d-title .sel { color: var(--purple); font-weight: 600; }
+  .diff-toolbar .d-title .msg { color: var(--text-2); }
+  .diff-toolbar .d-stats { display: flex; gap: 8px; font-family: var(--mono); font-size: 10px; flex-shrink: 0; }
+  .diff-toolbar .d-stats .add { color: var(--green); } .diff-toolbar .d-stats .del { color: var(--red); }
+  .mode-toggle { display: flex; border: 1px solid var(--border); border-radius: 5px; overflow: hidden; flex-shrink: 0; }
+  .mode-toggle button { border: 0; background: transparent; color: var(--text-3); padding: 2px 8px; font-size: 10px; cursor: pointer; }
+  .mode-toggle button:hover { color: var(--text); }
+  .mode-toggle button.active { background: rgba(96,165,250,.15); color: var(--blue); }
+  .file-nav { display: flex; align-items: center; gap: 4px; flex-shrink: 0; }
+  .file-nav button { border: 1px solid var(--border); background: var(--bg-3); color: var(--text-2); width: 20px; height: 20px; border-radius: 4px; cursor: pointer; font-size: 10px; line-height: 1; }
+  .file-nav button:hover:not(:disabled) { background: var(--bg); color: var(--text); }
+  .file-nav button:disabled { opacity: .4; cursor: not-allowed; }
+  .file-nav .idx { font-size: 10px; color: var(--text-3); min-width: 26px; text-align: center; }
+
+  .diff-body { padding: 6px 10px; background: var(--bg); max-height: 320px; overflow: auto; }
+  .diff-line { display: flex; font-family: var(--mono); font-size: 11px; line-height: 1.55; }
+  .code { flex: 1; padding-left: 10px; white-space: pre; overflow-x: auto; }
+  .diff-line.add { background: rgba(74,222,128,.08); } .diff-line.add .code { color: #a7f3c0; }
+  .diff-line.del { background: rgba(248,113,113,.08); } .diff-line.del .code { color: #fca5a5; }
+  .diff-line.ctx .code { color: var(--text-2); }
+  .diff-line.hunk { background: rgba(96,165,250,.08); } .diff-line.hunk .code { color: var(--blue); }
+  .diff-line .dl-sign { width: 18px; flex-shrink: 0; text-align: center; color: var(--text-3); user-select: none; }
+  .diff-file-block { border-bottom: 1px solid var(--border); }
+  .diff-file-block:last-child { border-bottom: 0; }
+  .diff-file-head { display: flex; align-items: center; gap: 6px; padding: 6px 10px; background: var(--bg-2); position: sticky; top: 0; }
+  .diff-file-head .f-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--mono); font-size: 11px; color: var(--text); }
+  .diff-file-head .f-stat { flex-shrink: 0; display: flex; align-items: center; gap: 6px; font-family: var(--mono); font-size: 10px; }
+  .diff-file-head .f-stat .add { color: var(--green); } .diff-file-head .f-stat .del { color: var(--red); }
+
+  /* 底部统一操作栏 */
+  .action-bar { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-top: 1px solid var(--border); background: var(--bg-2); }
+  .action-bar .sel { font-family: var(--mono); font-size: 11px; color: var(--purple); flex-shrink: 0; }
+  .action-bar .hint { font-size: 11px; color: var(--text-3); flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .action-bar .spacer { flex: 1; }
+  .act-btn { padding: 4px 12px; border-radius: 5px; border: 1px solid var(--border); background: var(--bg-3); color: var(--text-2); font-size: 12px; cursor: pointer; transition: background .15s ease, color .15s ease; flex-shrink: 0; }
+  .act-btn:hover:not(:disabled) { background: var(--bg); color: var(--text); }
+  .act-btn.apply { border-color: rgba(74,222,128,.35); color: var(--green); }
+  .act-btn.apply:hover:not(:disabled) { background: rgba(74,222,128,.12); }
+  .act-btn.pop { border-color: rgba(248,113,113,.4); color: var(--red); }
+  .act-btn.pop:hover:not(:disabled) { background: rgba(248,113,113,.12); }
+  .act-btn:disabled { opacity: .45; cursor: not-allowed; }
+
+  .toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%) translateY(20px); opacity: 0; pointer-events: none; transition: all .18s ease; background: var(--bg-3); border: 1px solid var(--border); border-radius: 8px; padding: 9px 16px; font-size: 12px; box-shadow: 0 6px 24px rgba(0,0,0,.5); display: flex; align-items: center; gap: 8px; z-index: 30; }
+  .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+  .toast .t-icon { font-weight: 700; }
+  .toast.ok .t-icon { color: var(--green); } .toast.err .t-icon { color: var(--red); }
+
+  .notes { margin-top: 16px; display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .note { background: var(--bg-2); border: 1px solid var(--border); border-radius: 8px; padding: 12px 14px; }
+  .note h3 { font-size: 12px; margin-bottom: 8px; }
+  .note p, .note li { color: var(--text-2); font-size: 12px; }
+  .note ul { padding-left: 16px; margin-top: 4px; }
+  .note code { font-family: var(--mono); background: var(--bg-3); padding: 0 4px; border-radius: 3px; font-size: 11px; color: var(--yellow); }
+  @media (max-width: 720px) { .notes { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <h1>Stash 面板 v2 — 交互原型</h1>
+    <p class="sub">文件列表复用 gitlog 的 diff 文件列表样式（状态图标 + 文件名 + 目录 + 增删行数）；点击文件打开 diff tab，标题为 <code>stash@{0}: &lt;message&gt;</code>；底部操作栏统一放置 Apply / Pop。</p>
+  </header>
+
+  <div class="panel">
+    <div class="tabs">
+      <button class="tab">Changes</button>
+      <button class="tab">History</button>
+      <button class="tab active">Stash <span class="count" id="stashCount">0</span></button>
+    </div>
+
+    <!-- 列表视图 -->
+    <div class="stash-list" id="stashList"></div>
+
+    <!-- 底部操作栏 -->
+    <div class="action-bar" id="actionBar"></div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+
+  <div class="notes">
+    <div class="note">
+      <h3>交互说明</h3>
+      <ul>
+        <li>点击 stash 条目展开内容：<code>stash@{n}: &lt;message&gt;</code> 头部 + 元信息 + gitlog 风格文件列表。</li>
+        <li>点击文件行打开 diff tab：标题为 <code>stash@{0}: &lt;message&gt;</code>，含返回按钮、增删统计、Single/All 切换、文件导航 <code>1/N</code>。</li>
+        <li>底部操作栏：<span class="sw green">Apply</span> 保留条目，<span class="sw red">Pop</span> 应用并移除条目。</li>
+        <li>未选中条目时 Apply / Pop 置灰并提示先选择。</li>
+      </ul>
+    </div>
+    <div class="note">
+      <h3>边界与实现约束</h3>
+      <ul>
+        <li>diff 按文件按需加载（<code>git stash show -p &lt;selector&gt; -- &lt;file&gt;</code>），规避单次 IPC 2MB 上限。</li>
+        <li>Pop 冲突：报错 toast，列表不刷新；成功才移除条目并更新徽标。</li>
+        <li>Apply 成功：条目保留，toast 提示已应用。</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<script>
+const STASHES = [
+  {
+    sel: 'stash@{0}',
+    msg: 'WIP on feature/stash-panel: stash content view + apply/pop',
+    branch: 'feature/stash-panel',
+    time: '2 小时前',
+    files: [
+      { st: 'M', path: 'src/features/git/components/stash/StashPanel.tsx', add: 24, del: 6, diff: [
+        { t: 'ctx', s: '@@ -42,11 +42,29 @@ export function StashPanel() {' },
+        { t: 'ctx', s: '   const { stashes, refresh } = useStashList();' },
+        { t: 'del', s: '-  const [expanded, setExpanded] = useState(null);' },
+        { t: 'add', s: '+  const [selected, setSelected] = useState(null);' },
+        { t: 'add', s: '+  const [view, setView] = useState(\'list\');' },
+        { t: 'ctx', s: '   const handleApply = async () => {' },
+        { t: 'add', s: '+    const res = await stashApply(projectId, selected.sel);' },
+        { t: 'add', s: '+    toast(res.success ? \'已应用，条目保留\' : res.message);' },
+        { t: 'del', s: '-    // TODO: apply 逻辑待实现' },
+        { t: 'ctx', s: '   };' },
+        { t: 'ctx', s: '   const handlePop = async () => {' },
+        { t: 'add', s: '+    const res = await stashPop(projectId, selected.sel);' },
+        { t: 'add', s: '+    if (res.success) { refresh(); toast(\'已弹出，条目移除\'); }' },
+        { t: 'add', s: '+    else toast(res.message);' },
+        { t: 'del', s: '-    // TODO: pop 逻辑待实现' },
+        { t: 'ctx', s: '   };' },
+        { t: 'ctx', s: '   return (' },
+        { t: 'add', s: '+    <div className="stash-panel">' },
+        { t: 'add', s: '+      <FileList files={selected?.files} onOpen={openDiff} />' },
+        { t: 'add', s: '+      <ActionBar onApply={handleApply} onPop={handlePop} />' },
+        { t: 'add', s: '+    </div>' },
+        { t: 'ctx', s: '   );' },
+      ] },
+      { st: 'A', path: 'src/features/git/components/stash/StashDiffView.tsx', add: 86, del: 0, diff: [
+        { t: 'ctx', s: '@@ -0,0 +1,86 @@' },
+        { t: 'add', s: '+import { DiffToolbar } from \'../diff/DiffToolbar\';' },
+        { t: 'add', s: '+import { DiffView } from \'../diff/DiffView\';' },
+        { t: 'add', s: '+import { parse_unified_diff } from \'@/shared/utils/diff\';' },
+        { t: 'ctx', s: '+' },
+        { t: 'add', s: '+export function StashDiffView({ stash, file, onBack }) {' },
+        { t: 'add', s: '+  const { data } = useStashFileDiff(stash.sel, file.path);' },
+        { t: 'add', s: '+  const hunks = useMemo(() => parse_unified_diff(data), [data]);' },
+        { t: 'ctx', s: '+' },
+        { t: 'add', s: '+  return (' },
+        { t: 'add', s: '+    <div className="stash-diff">' },
+        { t: 'add', s: '+      <DiffToolbar' },
+        { t: 'add', s: '+        title={`${stash.sel}: ${stash.msg}`}' },
+        { t: 'add', s: '+        additions={file.add} deletions={file.del}' },
+        { t: 'add', s: '+        onBack={onBack} />' },
+        { t: 'add', s: '+      <DiffView hunks={hunks} />' },
+        { t: 'add', s: '+    </div>' },
+        { t: 'add', s: '+  );' },
+        { t: 'add', s: '+}' },
+      ] },
+      { st: 'D', path: 'src/features/git/components/stash/StashPanel.old.tsx', add: 0, del: 42, diff: [
+        { t: 'ctx', s: '@@ -1,42 +0,0 @@' },
+        { t: 'del', s: '-import { StashList } from \'./StashList\';' },
+        { t: 'del', s: '-import { useStashList } from \'../../hooks/useStashList\';' },
+        { t: 'ctx', s: '-' },
+        { t: 'del', s: '-// 旧版：仅展示列表，无内容查看与操作' },
+        { t: 'del', s: '-export function StashPanel() {' },
+        { t: 'del', s: '-  const { stashes } = useStashList();' },
+        { t: 'del', s: '-  return <StashList items={stashes} />;' },
+        { t: 'del', s: '-}' },
+      ] },
+    ],
+  },
+  {
+    sel: 'stash@{1}',
+    msg: 'WIP on main: refactor git transport to unified trait',
+    branch: 'main',
+    time: '昨天 18:20',
+    files: [
+      { st: 'M', path: 'src-tauri/src/common/git/transport.rs', add: 18, del: 5, diff: [
+        { t: 'ctx', s: '@@ -88,7 +88,20 @@ impl GitTransport for LocalTransport {' },
+        { t: 'ctx', s: '   async fn run_git(&self, args: &[String]) -> Result<Output> {' },
+        { t: 'del', s: '-    let cmd = std::process::Command::new("git")' },
+        { t: 'del', s: '-      .args(args).output().await;' },
+        { t: 'add', s: '+    let cmd = crate::core::exec::run("git", args).await;' },
+        { t: 'add', s: '+    Ok(cmd)' },
+        { t: 'ctx', s: '   }' },
+        { t: 'add', s: '+  // 统一命令执行接口：Local/WSL/SSH 共用' },
+        { t: 'add', s: '+  async fn collect_in_dir(&self, dir, args) -> Result<Vec<u8>> {' },
+        { t: 'add', s: '+    crate::core::exec::collect_in_dir(dir, args).await' },
+        { t: 'add', s: '+  }' },
+      ] },
+      { st: 'M', path: 'src-tauri/src/git/services/stash.rs', add: 12, del: 2, diff: [
+        { t: 'ctx', s: '@@ -15,6 +15,16 @@ pub async fn get_stash_list(t: &dyn GitTransport) -> Vec<StashEntry> {' },
+        { t: 'ctx', s: '   let out = t.collect(&["stash", "list", "--format=..."]).await;' },
+        { t: 'del', s: '-  // TODO: 解析分支与时间' },
+        { t: 'add', s: '+  // 解析 stash@{n} 索引、分支、时间' },
+        { t: 'add', s: '+  for line in out.lines() {' },
+        { t: 'add', s: '+    let (sel, rest) = line.split_once(": ")?;' },
+        { t: 'add', s: '+    entries.push(StashEntry { sel, msg: rest });' },
+        { t: 'add', s: '+  }' },
+      ] },
+    ],
+  },
+  {
+    sel: 'stash@{2}',
+    msg: 'WIP on main: stash apply conflict test',
+    branch: 'main',
+    time: '3 天前',
+    files: [
+      { st: 'M', path: 'src/features/git/hooks/useStashList.ts', add: 9, del: 3, diff: [
+        { t: 'ctx', s: '@@ -20,7 +20,13 @@ export function useStashList() {' },
+        { t: 'ctx', s: '   const refresh = useCallback(async () => {' },
+        { t: 'add', s: '+    const list = await getStashList(projectId);' },
+        { t: 'add', s: '+    setStashes(list);' },
+        { t: 'add', s: '+    setBadge(list.length);' },
+        { t: 'del', s: '-    setStashes(await getStashList(projectId));' },
+        { t: 'ctx', s: '   }, [projectId]);' },
+        { t: 'add', s: '+  // Pop 冲突时由调用方捕获，列表不刷新' },
+      ] },
+    ],
+  },
+];
+const state = {
+  selected: null,      // 当前选中的 stash 条目
+  busy: false,         // 操作进行中
+  view: 'list',        // 'list' | 'diff'
+  diffIdx: 0,          // diff tab 当前文件索引
+  combined: false,     // Single / All 模式
+};
+
+const $ = (id) => document.getElementById(id);
+
+function toast(msg, type) {
+  const el = $('toast');
+  el.textContent = msg;
+  el.className = 'toast show ' + (type || '');
+  clearTimeout(el._t);
+  el._t = setTimeout(() => { el.className = 'toast'; }, 2400);
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+const STATUS_ICONS = {
+  M: { color: 'var(--blue)',  d: 'M12 3l7 3v6c0 4.4-3 7.4-7 9-4-1.6-7-4.6-7-9V6l7-3z' }, // 修改
+  A: { color: 'var(--green)', d: 'M12 5v14M5 12h14' },                                       // 新增
+  D: { color: 'var(--red)',   d: 'M5 12h14' },                                               // 删除
+  R: { color: 'var(--orange)', d: 'M4 12l5-5v3h6v4H9v3l-5-5z' },                              // 重命名
+};
+
+function statusIcon(st) {
+  const ic = STATUS_ICONS[st] || STATUS_ICONS.M;
+  return `<svg class="f-icon" style="color:${ic.color}" viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="${ic.d}"/></svg>`;
+}
+
+function fileRow(f, idx, active) {
+  const i = f.path.lastIndexOf('/');
+  const name = i >= 0 ? f.path.slice(i + 1) : f.path;
+  const dir = i >= 0 ? f.path.slice(0, i) : '';
+  return `<div class="file-row${active ? ' active' : ''}" data-idx="${idx}" title="点击查看 diff">
+    ${statusIcon(f.st)}
+    <span class="f-name">${escapeHtml(name)}</span>
+    <span class="f-dir">${escapeHtml(dir)}</span>
+    <span class="f-stat">
+      <span class="add">+${f.add}</span><span class="del">−${f.del}</span>
+    </span>
+  </div>`;
+}
+function diffLines(f) {
+  return f.diff.map((l) => {
+    const cls = l.t === 'add' ? 'add' : l.t === 'del' ? 'del' : 'ctx';
+    const sign = l.t === 'add' ? '+' : l.t === 'del' ? '-' : ' ';
+    return `<div class="diff-line ${cls}"><span class="dl-sign">${sign}</span><span class="code">${escapeHtml(l.s)}</span></div>`;
+  }).join('');
+}
+
+function renderDiff() {
+  const st = state.selected;
+  const f = st.files[state.diffIdx];
+  const total = st.files.length;
+  const addTotal = st.files.reduce((a, x) => a + x.add, 0);
+  const delTotal = st.files.reduce((a, x) => a + x.del, 0);
+  const title = `${st.sel}: ${st.msg}`;
+
+  const rows = state.combined
+    ? st.files.map((x, i) => `<div class="diff-file-block"><div class="diff-file-head">${statusIcon(x.st)}<span class="f-name">${escapeHtml(x.path)}</span><span class="f-stat"><span class="add">+${x.add}</span><span class="del">−${x.del}</span></span></div>${diffLines(x)}</div>`).join('')
+    : diffLines(f);
+
+  return `<div class="diff-view">
+    <div class="diff-toolbar">
+      <button class="back" onclick="closeDiff()">‹ 返回</button>
+      <div class="d-title" title="${escapeHtml(title)}"><span class="sel">${escapeHtml(st.sel)}:</span> <span class="msg">${escapeHtml(st.msg)}</span></div>
+      <div class="d-stats"><span class="add">+${addTotal}</span><span class="del">−${delTotal}</span></div>
+      <div class="mode-toggle">
+        <button class="${!state.combined ? 'on' : ''}" onclick="toggleMode(false)">Single</button>
+        <button class="${state.combined ? 'on' : ''}" onclick="toggleMode(true)">All</button>
+      </div>
+      <div class="file-nav">
+        <button class="nav" onclick="navFile(-1)" ${state.combined || total <= 1 ? 'disabled' : ''}>‹</button>
+        <span class="idx">${state.diffIdx + 1}/${total}</span>
+        <button class="nav" onclick="navFile(1)" ${state.combined || total <= 1 ? 'disabled' : ''}>›</button>
+      </div>
+    </div>
+    <div class="diff-body">${rows}</div>
+  </div>`;
+}
+
+function renderActionBar() {
+  const has = !!state.selected;
+  const disabled = !has || state.busy;
+  return `<button class="act-btn apply" onclick="doApply()" ${disabled ? 'disabled' : ''}>Apply</button>
+    <button class="act-btn pop" onclick="doPop()" ${disabled ? 'disabled' : ''}>Pop</button>
+    <span class="hint">${has ? '' : '请先选择一条 stash'}</span>`;
+}
+function stashItem(st, i) {
+  const addTotal = st.files.reduce((a, x) => a + x.add, 0);
+  const delTotal = st.files.reduce((a, x) => a + x.del, 0);
+  const isSel = state.selected === st;
+  const rows = isSel
+    ? `<div class="stash-detail">
+        <div class="detail-head"><span class="sel">${escapeHtml(st.sel)}:</span> <span class="msg">${escapeHtml(st.msg)}</span></div>
+        <div class="detail-meta">${escapeHtml(st.branch)} · ${escapeHtml(st.time)} · ${st.files.length} 个文件 · <span class="add">+${addTotal}</span> <span class="del">−${delTotal}</span></div>
+        <div class="file-list">${st.files.map((f, fi) => fileRow(f, fi)).join('')}</div>
+      </div>`
+    : '';
+  return `<div class="stash-item${isSel ? ' selected' : ''}" data-i="${i}">
+    <div class="stash-line">
+      <span class="sel">${escapeHtml(st.sel)}</span>
+      <span class="msg">${escapeHtml(st.msg)}</span>
+      <span class="meta">${st.files.length} 个文件 · <span class="add">+${addTotal}</span> <span class="del">−${delTotal}</span></span>
+    </div>
+    ${rows}
+  </div>`;
+}
+
+function render() {
+  $('stashCount').textContent = STASHES.length;
+  const listEl = $('stashList');
+  const barEl = $('actionBar');
+
+  if (state.view === 'diff') {
+    listEl.innerHTML = renderDiff();
+    barEl.innerHTML = '';
+    return;
+  }
+
+  if (STASHES.length === 0) {
+    listEl.innerHTML = '<div class="stash-empty">暂无 stash，工作区干净</div>';
+    barEl.innerHTML = renderActionBar();
+    return;
+  }
+
+  listEl.innerHTML = STASHES.map(stashItem).join('');
+  barEl.innerHTML = renderActionBar();
+}
+document.getElementById('stashList').addEventListener('click', (e) => {
+  const row = e.target.closest('.file-row');
+  if (row) {
+    const st = state.selected;
+    state.diffIdx = Number(row.dataset.idx);
+    state.view = 'diff';
+    render();
+    return;
+  }
+  const item = e.target.closest('.stash-item');
+  if (!item) return;
+  const st = STASHES[Number(item.dataset.i)];
+  state.selected = state.selected === st ? null : st;
+  state.diffIdx = 0;
+  render();
+});
+
+function closeDiff() { state.view = 'list'; render(); }
+function navFile(d) {
+  const n = state.selected.files.length;
+  state.diffIdx = (state.diffIdx + d + n) % n;
+  render();
+}
+function toggleMode(v) { state.combined = v; render(); }
+
+function doApply() {
+  if (!state.selected || state.busy) return;
+  state.busy = true; render();
+  setTimeout(() => {
+    state.busy = false;
+    toast(`已应用 ${state.selected.sel}，条目保留`);
+    render();
+  }, 500);
+}
+
+function doPop() {
+  if (!state.selected || state.busy) return;
+  state.busy = true; render();
+  setTimeout(() => {
+    state.busy = false;
+    const idx = STASHES.indexOf(state.selected);
+    STASHES.splice(idx, 1);
+    state.selected = null;
+    toast('已弹出，条目移除');
+    render();
+  }, 500);
+}
+
+render();
+</script>
+</body>
+</html>

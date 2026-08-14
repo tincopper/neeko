@@ -1,0 +1,429 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Git 历史展示域重构 — 交互式原型</title>
+<style>
+  :root {
+    --bg: #17181c;
+    --bg-2: #1d1f25;
+    --bg-3: #262931;
+    --border: #333741;
+    --text: #e6e8ee;
+    --text-2: #9ba1af;
+    --text-3: #6b7280;
+    --blue: #60a5fa;
+    --green: #4ade80;
+    --yellow: #facc15;
+    --purple: #c084fc;
+    --red: #f87171;
+    --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", sans-serif;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--sans);
+    font-size: 13px;
+    line-height: 1.5;
+    padding: 20px 24px 60px;
+  }
+  .wrap { max-width: 920px; margin: 0 auto; }
+
+  header h1 { font-size: 15px; font-weight: 600; }
+  header .sub { color: var(--text-3); font-size: 12px; margin-top: 2px; }
+  .legend { display: flex; gap: 14px; flex-wrap: wrap; margin: 14px 0 0; color: var(--text-2); font-size: 12px; }
+  .legend .item { display: inline-flex; align-items: center; gap: 6px; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+
+  .panel {
+    margin-top: 18px;
+    background: var(--bg-2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    overflow: hidden;
+  }
+  .toolbar {
+    display: flex; align-items: center; gap: 8px;
+    padding: 8px 10px;
+    border-bottom: 1px solid var(--border);
+    background: var(--bg-2);
+  }
+  .toolbar .search {
+    flex: 1; max-width: 240px;
+    background: var(--bg-3); border: 1px solid var(--border);
+    border-radius: 5px; color: var(--text); padding: 4px 8px; font-size: 12px; outline: none;
+  }
+  .spacer { flex: 1; }
+  .btn-icon {
+    border: 0; background: transparent; color: var(--text-3); cursor: pointer;
+    width: 26px; height: 26px; border-radius: 5px; display: inline-flex; align-items: center; justify-content: center;
+  }
+  .btn-icon:hover { background: var(--bg-3); color: var(--text); }
+
+  /* tabs */
+  .tabs { display: flex; align-items: stretch; border-bottom: 1px solid var(--border); }
+  .tabs button {
+    border: 0; background: transparent; color: var(--text-3); cursor: pointer;
+    border-bottom: 2px solid transparent;
+    padding: 8px 14px; font-size: 12px; font-weight: 500;
+  }
+  .tabs button:hover { color: var(--text); }
+  .tabs button.active { border-bottom-color: var(--blue); color: var(--text); }
+  .tabs .count {
+    min-width: 18px; border-radius: 999px; padding: 0 5px; font-size: 10px;
+    background: var(--bg-3); color: var(--text-3); margin-left: 4px;
+    display: inline-block; text-align: center;
+  }
+  .pane { display: none; }
+  .pane.active { display: block; }
+
+  .branch-badge {
+    display: inline-flex; align-items: center; gap: 6px;
+    background: rgba(96,165,250,.1); border: 1px solid rgba(96,165,250,.2);
+    color: var(--blue); font-family: var(--mono); font-size: 12px;
+    border-radius: 999px; padding: 3px 10px; cursor: pointer;
+  }
+  .branch-badge:hover { background: rgba(96,165,250,.2); border-color: rgba(96,165,250,.4); }
+  .branch-menu {
+    position: absolute; top: calc(100% + 4px); left: 0; z-index: 20;
+    background: var(--bg-3); border: 1px solid var(--border); border-radius: 8px;
+    min-width: 220px; padding: 4px; box-shadow: 0 8px 24px rgba(0,0,0,.4);
+  }
+  .branch-menu .head { font-size: 11px; color: var(--text-3); padding: 4px 8px; }
+  .branch-menu .opt {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 5px 8px; border-radius: 5px; cursor: pointer; font-family: var(--mono); font-size: 12px;
+  }
+  .branch-menu .opt:hover { background: var(--bg-2); }
+  .branch-menu .opt.cur { color: var(--blue); }
+  .branch-menu .opt .mark { color: var(--green); font-size: 11px; }
+
+  /* 提交列表 */
+  .commit-list { padding: 4px 0; min-height: 320px; }
+  .commit-row { display: flex; align-items: flex-start; gap: 6px; padding: 5px 10px; border-radius: 6px; margin: 0 4px; }
+  .commit-row:hover { background: var(--bg-3); }
+  .commit-row .graph { position: relative; width: 14px; height: 44px; flex-shrink: 0; }
+  .commit-row .graph .ln { position: absolute; left: 6px; top: 0; bottom: 0; width: 2px; background: var(--border); }
+  .commit-row .graph .node {
+    position: absolute; left: 2px; top: 12px; width: 10px; height: 10px; border-radius: 50%;
+    border: 2px solid var(--blue); background: var(--bg-2);
+  }
+  .commit-row .body { flex: 1; min-width: 0; }
+  .commit-row .line1 { display: flex; align-items: center; gap: 6px; min-width: 0; }
+  .badge { font-size: 10px; padding: 0 5px; border-radius: 4px; font-weight: 500; white-space: nowrap; }
+  .b-feat { background: rgba(96,165,250,.15); color: var(--blue); }
+  .b-fix  { background: rgba(248,113,113,.15); color: var(--red); }
+  .b-ref  { background: rgba(74,222,128,.15); color: var(--green); }
+  .b-other{ background: rgba(107,114,128,.15); color: var(--text-3); }
+  .subject { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .copier {
+    border: 0; background: transparent; color: var(--text-3); cursor: pointer;
+    width: 22px; height: 22px; border-radius: 4px; flex-shrink: 0;
+    display: none; align-items: center; justify-content: center; position: relative;
+  }
+  .commit-row:hover .copier { display: inline-flex; }
+  .copier:hover { background: var(--bg-2); color: var(--text); }
+  .copier svg { width: 12px; height: 12px; }
+  .copier .tip {
+    position: absolute; bottom: 24px; right: 0; background: var(--bg-3); border: 1px solid var(--border);
+    padding: 2px 8px; border-radius: 4px; font-size: 11px; white-space: nowrap; color: var(--green); display: none;
+  }
+  .copier .tip.show { display: block; }
+  .line2 { display: flex; align-items: center; gap: 6px; margin-top: 2px; color: var(--text-3); font-size: 11px; }
+  .line2 .hash { font-family: var(--mono); }
+  .pill { margin-left: auto; font-size: 10px; padding: 1px 6px; border-radius: 4px; font-weight: 500; white-space: nowrap; }
+  .p-branch { background: rgba(96,165,250,.15); color: var(--blue); }
+  .p-remote { background: rgba(74,222,128,.15); color: var(--green); }
+  .p-tag    { background: rgba(250,204,21,.12); color: var(--yellow); }
+  .p-stash  { background: rgba(192,132,252,.15); color: var(--purple); }
+  .p-tool   { background: rgba(107,114,128,.15); color: var(--text-3); text-decoration: line-through; }
+
+  /* Stash tab */
+  .stash-list { padding: 4px; min-height: 320px; }
+  .stash-item { border-radius: 6px; margin: 0 2px; }
+  .stash-item:hover { background: var(--bg-3); }
+  .stash-item.open { background: var(--bg-3); }
+  .stash-summary { padding: 8px 10px; cursor: pointer; }
+  .stash-summary .sel { font-family: var(--mono); font-size: 11px; color: var(--purple); }
+  .stash-summary .msg { font-size: 12px; color: var(--text); margin-top: 2px; }
+  .stash-summary .meta { font-size: 10px; color: var(--text-3); margin-top: 2px; }
+  .stash-files { padding: 2px 12px 10px; border-top: 1px dashed var(--border); margin: 0 6px; }
+  .stash-files .frow { display: flex; align-items: center; gap: 6px; padding: 3px 0; font-size: 11px; }
+  .stash-files .fpath { font-family: var(--mono); color: var(--text-2); flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .stash-files .fs { font-size: 10px; padding: 0 5px; border-radius: 3px; font-weight: 500; }
+  .fs-M { background: rgba(250,204,21,.12); color: var(--yellow); }
+  .fs-A { background: rgba(74,222,128,.12); color: var(--green); }
+  .fs-D { background: rgba(248,113,113,.12); color: var(--red); }
+  .fs-R { background: rgba(96,165,250,.12); color: var(--blue); }
+  .stash-empty, .changes-placeholder { padding: 36px 16px; text-align: center; color: var(--text-3); font-size: 12px; }
+  .changes-placeholder code { font-family: var(--mono); background: var(--bg-3); padding: 0 4px; border-radius: 3px; font-size: 11px; color: var(--yellow); }
+
+  .empty { padding: 40px; text-align: center; color: var(--text-3); font-size: 12px; }
+
+  .notes { margin-top: 16px; display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .note { background: var(--bg-2); border: 1px solid var(--border); border-radius: 8px; padding: 12px 14px; }
+  .note h3 { font-size: 12px; margin-bottom: 8px; }
+  .note p, .note li { color: var(--text-2); font-size: 12px; }
+  .note ul { padding-left: 16px; margin-top: 4px; }
+  .note code { font-family: var(--mono); background: var(--bg-3); padding: 0 4px; border-radius: 3px; font-size: 11px; color: var(--yellow); }
+  .classify { margin-top: 10px; font-family: var(--mono); font-size: 11px; background: var(--bg-3); border-radius: 6px; padding: 8px 10px; }
+  .classify .row { display: flex; align-items: center; gap: 8px; margin-top: 4px; flex-wrap: wrap; }
+  .classify .raw { color: var(--text-3); word-break: break-all; }
+  .tag-dropped { color: var(--red); font-size: 10px; background: rgba(248,113,113,.12); padding: 0 6px; border-radius: 4px; }
+  @media (max-width: 720px) { .notes { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Git 历史展示域重构 — 交互式原型</h1>
+    <div class="sub">Git Control 面板 · Stash 为独立 tab（位于 History 右侧）· 历史展示范围 = 当前分支 · refs 分类渲染 · 工具私有 refs 排除</div>
+    <div class="legend">
+      <span class="item"><span class="dot" style="background:var(--blue)"></span>branch</span>
+      <span class="item"><span class="dot" style="background:var(--green)"></span>remote</span>
+      <span class="item"><span class="dot" style="background:var(--yellow)"></span>tag</span>
+      <span class="item"><span class="dot" style="background:var(--purple)"></span>stash</span>
+      <span class="item"><span class="dot" style="background:var(--text-3)"></span>tool（<code style="font-size:11px">refs/synara/*</code> 等，排除）</span>
+    </div>
+  </header>
+
+  <div class="panel">
+    <div class="toolbar">
+      <div style="position:relative">
+        <span class="branch-badge" id="branchBadge" role="button" tabindex="0">
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="6" y1="3" x2="6" y2="15"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/></svg>
+          <span id="branchName">main</span>
+        </span>
+        <div class="branch-menu" id="branchMenu" style="display:none"></div>
+      </div>
+      <input class="search" placeholder="搜索提交…（原型为静态演示）" disabled />
+      <div class="spacer"></div>
+      <button class="btn-icon" id="refreshBtn" title="刷新" onclick="refresh()">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.64-6.36M21 3v6h-6"/></svg>
+      </button>
+    </div>
+
+    <div class="tabs" id="tabs" role="tablist">
+      <button role="tab" data-tab="changes">Changes <span class="count" id="changeCount">3</span></button>
+      <button role="tab" data-tab="history" class="active">History</button>
+      <button role="tab" data-tab="stash">Stash <span class="count" id="stashCount">2</span></button>
+    </div>
+
+    <!-- Changes 面板（分支在此切换） -->
+    <div class="pane" id="pane-changes">
+      <div class="changes-placeholder">
+        分支切换在 Changes 面板（BranchSwitcherPanel / 分支徽章）。<br/>
+        原型中点击左上角蓝色分支徽章（<code>main</code>）模拟切换，History 历史立即跟随新分支。
+      </div>
+    </div>
+
+    <!-- History 面板（当前分支提交） -->
+    <div class="pane active" id="pane-history">
+      <div class="commit-list" id="commitList"></div>
+    </div>
+
+    <!-- Stash 面板（独立 tab，位于 History 右侧） -->
+    <div class="pane" id="pane-stash">
+      <div class="stash-list" id="stashList"></div>
+    </div>
+  </div>
+
+  <div class="notes">
+    <div class="note">
+      <h3>▸ 展示范围 = 当前选择的分支</h3>
+      <p>History 只展示<b>当前 checkout 分支</b>的提交（<code>git log HEAD</code>）。分支在 Changes 面板切换，历史自动跟随。<code>git log --all</code> 的“所有 refs 混排”不再使用——第三方工具（Synara 等）的孤立 checkpoint ref 因此不会出现。</p>
+      <p style="margin-top:6px">若 <code>refs/synara/checkpoints</code> 恰是分支祖先，会作为普通提交存在，但其 <code>synara/checkpoints</code> 标签会被过滤、不渲染。</p>
+    </div>
+    <div class="note">
+      <h3>▸ Stash 独立 tab + refs 分类</h3>
+      <ul>
+        <li><b>Stash</b> 是 Git Control 面板第三个 tab（位于 History 右侧），点击展示 <code>git stash list</code> 内容，展开查看文件变更（只读，无 apply/pop/drop）</li>
+        <li><b>refs 分类</b>：branch/remote/tag/stash 渲染；其余非 heads/remotes/tags/stash 前缀归 <code>tool</code> 丢弃，未来新工具自动被排除</li>
+        <li>复制 hash 改用插件 <code>writeText</code>，失败有反馈，不再抛 <code>NotAllowedError</code></li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<script>
+// ── 数据：每个分支各自的历史（git log <branch>），refs_list 为分类结果 ──
+const HISTORY = {
+  main: [
+    { hash: '9f3c1a2e', type: 'feat', scope: 'git', subject: 'feat(git): 历史面板跟随当前分支', author: 'tincopper', time: '2h ago', short: '9f3c1a2', refs_list: [{ kind: 'branch', name: 'main' }, { kind: 'remote', name: 'origin/main' }] },
+    { hash: '8b7d94f1', type: 'fix', subject: 'fix: 复制 full hash 增加错误兜底', author: 'tincopper', time: '5h ago', short: '8b7d94f', refs_list: [{ kind: 'tag', name: 'v1.0.4' }] },
+    { hash: '77ea203c', type: 'refactor', scope: 'git', subject: 'refactor(git): refs 分类抽纯函数', author: 'tincopper', time: '1d ago', short: '77ea203', refs_list: [] },
+    { hash: '5a1e9b8d', type: 'fix', subject: 'fix: 会话恢复竞态', author: 'tomgs', time: '2d ago', short: '5a1e9b8', refs_list: [] },
+    { hash: '31fc0d6a', type: 'feat', subject: 'feat: 终端缓存支持 worktree', author: 'tomgs', time: '3d ago', short: '31fc0d6', refs_list: [] },
+  ],
+  'feature/skill-catalog': [
+    { hash: 'c2d81f4b', type: 'feat', scope: 'skill', subject: 'feat(skill): 跨 provider 技能目录', author: 'alice', time: '4h ago', short: 'c2d81f4', refs_list: [{ kind: 'branch', name: 'feature/skill-catalog' }, { kind: 'remote', name: 'origin/feature/skill-catalog' }] },
+    { hash: 'b3a7c90e', type: 'docs', subject: 'docs: 更新技能文档', author: 'alice', time: '1d ago', short: 'b3a7c90', refs_list: [] },
+    { hash: '5a1e9b8d', type: 'fix', subject: 'fix: 会话恢复竞态', author: 'tomgs', time: '2d ago', short: '5a1e9b8', refs_list: [] },
+    { hash: '31fc0d6a', type: 'feat', subject: 'feat: 终端缓存支持 worktree', author: 'tomgs', time: '3d ago', short: '31fc0d6', refs_list: [] },
+  ],
+};
+
+// ── Stash 数据（git stash list + 文件变更）────────────────────────────────
+const STASHES = [
+  {
+    selector: 'stash@{0}', hash: 'e51f2ab7',
+    message: 'WIP on main: 9f3c1a2 feat(git): 历史面板跟随当前分支', branch: 'main', time: '3h ago',
+    files: [
+      { path: 'src/features/git/components/GitControlPanel.tsx', status: 'M', add: 14, del: 2 },
+      { path: 'src/features/git/api/gitApi.ts', status: 'M', add: 6, del: 0 },
+      { path: 'src/shared/hooks/useCopyToClipboard.ts', status: 'A', add: 42, del: 0 },
+    ],
+  },
+  {
+    selector: 'stash@{1}', hash: 'c04d8f31',
+    message: 'On feature/skill-catalog: b3a7c90 docs: 更新技能文档', branch: 'feature/skill-catalog', time: '1d ago',
+    files: [
+      { path: 'src/features/skill/catalog.ts', status: 'M', add: 9, del: 4 },
+      { path: 'docs/skill.md', status: 'D', add: 0, del: 18 },
+    ],
+  },
+];
+
+// ── refs 分类演示 ─────────────────────────────────────────────────────────
+const KIND_META = {
+  branch: { label: 'branch', cls: 'p-branch', keep: true },
+  remote: { label: 'remote', cls: 'p-remote', keep: true },
+  tag:    { label: 'tag',    cls: 'p-tag',    keep: true },
+  stash:  { label: 'stash',  cls: 'p-stash',  keep: true },
+  tool:   { label: 'tool',   cls: 'p-tool',   keep: false },
+};
+function classify(raw) {
+  const r = raw.replace(/^HEAD\s*->\s*/, '');
+  if (/^refs\/heads\//.test(r)) return { kind: 'branch', name: r.replace(/^refs\/heads\//, '') };
+  if (/^refs\/remotes\//.test(r)) return { kind: 'remote', name: r.replace(/^refs\/remotes\//, '') };
+  if (/^refs\/tags\//.test(r)) return { kind: 'tag', name: r.replace(/^refs\/tags\//, '') };
+  if (r === 'refs/stash') return { kind: 'stash', name: 'stash@{0}' };
+  return { kind: 'tool', name: r };
+}
+function renderClassify() {
+  const el = document.getElementById('classifyBox');
+  const rows = ['refs/heads/main', 'refs/remotes/origin/main', 'refs/tags/v1.0.4', 'refs/stash', 'refs/synara/checkpoints'];
+  el.innerHTML = rows.map(raw => {
+    const c = classify(raw);
+    const meta = KIND_META[c.kind];
+    const verdict = meta.keep
+      ? `<span class="pill ${meta.cls}">→ ${c.kind}（展示）</span>`
+      : `<span class="pill ${meta.cls}">→ ${c.kind}</span><span class="tag-dropped">丢弃，不渲染</span>`;
+    return `<div class="row"><span class="raw">${raw}</span><span>→</span>${verdict}</div>`;
+  }).join('');
+}
+
+// ── 渲染 ──────────────────────────────────────────────────────────────────
+const BADGE_CLS = { feat: 'b-feat', fix: 'b-fix', refactor: 'b-ref', docs: 'b-other', wip: 'b-other' };
+const FS_CLS = { M: 'fs-M', A: 'fs-A', D: 'fs-D', R: 'fs-R' };
+function pillHtml(ref) {
+  const meta = KIND_META[ref.kind];
+  if (!meta) return '';
+  return `<span class="pill ${meta.cls}" title="${ref.kind}">${ref.name}</span>`;
+}
+function renderList(branch) {
+  const list = HISTORY[branch] || [];
+  const el = document.getElementById('commitList');
+  document.getElementById('branchName').textContent = branch;
+  if (list.length === 0) { el.innerHTML = `<div class="empty">当前分支没有提交</div>`; return; }
+  el.innerHTML = list.map((c, i) => `
+    <div class="commit-row">
+      <div class="graph"><span class="ln" style="bottom:${i === list.length - 1 ? 12 : -8}px"></span><span class="node"></span></div>
+      <div class="body">
+        <div class="line1">
+          ${c.type ? `<span class="badge ${BADGE_CLS[c.type] || 'b-other'}">${c.scope ? c.type + '(' + c.scope + ')' : c.type}</span>` : ''}
+          <span class="subject" title="${c.subject}">${c.subject}</span>
+          <button class="copier" title="Copy full hash" onclick="copyHash(event)">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+            <span class="tip">Copied ✓</span>
+          </button>
+        </div>
+        <div class="line2">
+          <span>${c.author}</span><span>·</span><span>${c.time}</span><span>·</span><span class="hash">${c.short}</span>
+          ${(c.refs_list || []).map(pillHtml).join('') || ''}
+        </div>
+      </div>
+    </div>
+  `).join('');
+}
+
+let openStash = null;
+function renderStashes() {
+  document.getElementById('stashCount').textContent = STASHES.length;
+  const list = document.getElementById('stashList');
+  if (STASHES.length === 0) { list.innerHTML = `<div class="stash-empty">No stashes</div>`; return; }
+  list.innerHTML = STASHES.map((s) => `
+    <div class="stash-item ${openStash === s.selector ? 'open' : ''}">
+      <div class="stash-summary" onclick="toggleStash('${s.selector}')">
+        <div class="sel">${s.selector}</div>
+        <div class="msg" title="${s.message}">${s.message}</div>
+        <div class="meta">${s.branch} · ${s.time}</div>
+      </div>
+      ${openStash === s.selector ? `
+        <div class="stash-files">
+          ${s.files.map(f => `
+            <div class="frow">
+              <span class="fs ${FS_CLS[f.status] || 'fs-M'}">${f.status}</span>
+              <span class="fpath" title="${f.path}">${f.path}</span>
+              <span style="color:var(--text-3);font-family:var(--mono);font-size:10px">+${f.add} -${f.del}</span>
+            </div>`).join('')}
+        </div>` : ''}
+    </div>
+  `).join('');
+}
+function toggleStash(sel) { openStash = openStash === sel ? null : sel; renderStashes(); }
+
+// ── 交互 ──────────────────────────────────────────────────────────────────
+let branch = 'main';
+let activeTab = 'history';
+const badge = document.getElementById('branchBadge');
+const menu = document.getElementById('branchMenu');
+function renderMenu() {
+  menu.innerHTML = `<div class="head">选择分支（模拟 Changes 面板切换）</div>` +
+    Object.keys(HISTORY).map(b =>
+      `<div class="opt ${b === branch ? 'cur' : ''}" data-branch="${b}">
+         <span>${b}</span>${b === branch ? '<span class="mark">✓ current</span>' : ''}
+       </div>`).join('');
+  menu.style.display = 'block';
+}
+badge.addEventListener('click', (e) => { e.stopPropagation(); renderMenu(); });
+document.addEventListener('click', () => { menu.style.display = 'none'; });
+menu.addEventListener('click', (e) => {
+  const opt = e.target.closest('.opt[data-branch]');
+  if (!opt) return;
+  branch = opt.dataset.branch;
+  menu.style.display = 'none';
+  renderList(branch);
+});
+
+document.getElementById('tabs').addEventListener('click', (e) => {
+  const btn = e.target.closest('button[data-tab]');
+  if (!btn) return;
+  activeTab = btn.dataset.tab;
+  document.querySelectorAll('#tabs button').forEach(b => b.classList.toggle('active', b === btn));
+  document.querySelectorAll('.pane').forEach(p => p.classList.toggle('active', p.id === 'pane-' + activeTab));
+});
+
+function refresh() {
+  renderList(branch);
+  renderStashes();
+  const el = document.getElementById('refreshBtn');
+  el.style.color = 'var(--green)';
+  setTimeout(() => el.style.color = '', 600);
+}
+function copyHash(e) {
+  e.stopPropagation();
+  const tip = e.currentTarget.querySelector('.tip');
+  tip.classList.add('show');
+  setTimeout(() => tip.classList.remove('show'), 900);
+}
+
+renderClassify();
+renderList(branch);
+renderStashes();
+</script>
+</body>
+</html>
