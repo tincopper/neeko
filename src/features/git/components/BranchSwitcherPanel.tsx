@@ -1,6 +1,8 @@
 import { SearchIcon, Plus, FolderGit2, ArrowUp, ArrowDown } from 'lucide-react';
 import React, { useRef, useEffect, useMemo, useState, useCallback } from 'react';
 
+import { useCopyToClipboard } from '@/shared/hooks/useCopyToClipboard';
+
 export interface BranchSwitcherPanelProps {
   branches: string[];
   currentBranch: string;
@@ -48,6 +50,7 @@ function BranchSwitcherPanel({
     x: number;
     y: number;
   } | null>(null);
+  const copyToClipboard = useCopyToClipboard();
 
   useEffect(() => {
     searchRef.current?.focus();
@@ -202,14 +205,14 @@ function BranchSwitcherPanel({
         case 'delete':
           break;
         case 'copy-name':
-          // 静默豁免：剪贴板写入失败浏览器已静默兜底，无需上报
-          navigator.clipboard.writeText(branch).catch(() => {});
+          // 静默豁免：复制失败由共享 hook 兜底 toast，调用方不额外反馈
+          void copyToClipboard(branch, 'branch name');
           break;
         default:
           break;
       }
     },
-    [contextMenu, currentBranch, onCheckout, onClose],
+    [contextMenu, currentBranch, onCheckout, onClose, copyToClipboard],
   );
 
   const hasItems = totalItems > 0;

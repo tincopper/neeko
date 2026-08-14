@@ -4,6 +4,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { NotificationDetail } from '@/features/notification/components/NotificationDetail';
 import { useNotificationStore } from '@/shared/store/notificationStore';
 import type { Notification } from '@/shared/types';
+import { createAppProviderWrapper } from '@/testing/AppProviderTestUtils';
 
 const mockNotification: Notification = {
   id: 'n1',
@@ -31,7 +32,9 @@ describe('NotificationDetail', () => {
 
   it('copies notification content to clipboard when Copy is clicked', async () => {
     writeTextMock.mockResolvedValue(undefined);
-    render(<NotificationDetail notification={mockNotification} onClose={vi.fn()} />);
+    render(<NotificationDetail notification={mockNotification} onClose={vi.fn()} />, {
+      wrapper: createAppProviderWrapper(),
+    });
 
     fireEvent.click(screen.getByRole('button', { name: /Copy/i }));
 
@@ -47,7 +50,9 @@ describe('NotificationDetail', () => {
     writeTextMock.mockRejectedValue(new Error('denied'));
     const addSpy = vi.spyOn(useNotificationStore.getState(), 'addNotification');
 
-    render(<NotificationDetail notification={mockNotification} onClose={vi.fn()} />);
+    render(<NotificationDetail notification={mockNotification} onClose={vi.fn()} />, {
+      wrapper: createAppProviderWrapper(),
+    });
     fireEvent.click(screen.getByRole('button', { name: /Copy/i }));
 
     await waitFor(() => {

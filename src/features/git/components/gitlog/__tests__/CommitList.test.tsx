@@ -1,9 +1,14 @@
-import { render, screen, fireEvent, act } from '@testing-library/react';
+import { render as renderRTL, screen, fireEvent, act } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 import type { CommitDetail, CommitEntry, CommitFileChange } from '@/features/git/types';
+import { createAppProviderWrapper } from '@/testing/AppProviderTestUtils';
 
 import CommitList from '../CommitList';
+
+/** CommitListItem 内复制按钮依赖 useAppContext（useCopyToClipboard） */
+const render = (ui: Parameters<typeof renderRTL>[0]) =>
+  renderRTL(ui, { wrapper: createAppProviderWrapper() });
 
 // jsdom 无 IO/RO，测试内 stub（afterEach 会恢复全局，故放 beforeEach）
 class IOMock {

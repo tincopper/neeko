@@ -3,6 +3,7 @@ import { describe, it, expect, vi, beforeEach, afterEach, beforeAll } from 'vite
 
 import { useWorktreeStore } from '@/shared/store/worktreeStore';
 import type { GitInfo } from '@/shared/types';
+import { createAppProviderWrapper } from '@/testing/AppProviderTestUtils';
 
 import BranchInfo from '../BranchInfo';
 
@@ -34,7 +35,9 @@ const defaultProps = {
 };
 
 function renderBranchInfo(props: Partial<typeof defaultProps> = {}) {
-  return render(<BranchInfo {...defaultProps} {...props} />);
+  return render(<BranchInfo {...defaultProps} {...props} />, {
+    wrapper: createAppProviderWrapper(),
+  });
 }
 
 describe('BranchInfo worktree 分支切换限制', () => {

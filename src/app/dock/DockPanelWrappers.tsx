@@ -31,6 +31,7 @@ import { SearchPanel } from '@/features/search';
 import SkillsPanel from '@/features/skill/components/SkillsPanel';
 import { useAppContext } from '@/shared/contexts';
 import { FILE_TREE_CHANGED_EVENT } from '@/shared/events';
+import { useCopyToClipboard } from '@/shared/hooks/useCopyToClipboard';
 import { bumpGitRefresh } from '@/shared/hooks/useGitRefresh';
 import { useDockStore } from '@/shared/store/dockStore';
 import { useEditorStore } from '@/shared/store/editorStore';
@@ -487,6 +488,7 @@ SkillsPanelWrapper.displayName = 'SkillsPanelWrapper';
  */
 const LibraryPanelWrapper: React.FC = React.memo(() => {
   const { showToast } = useAppContext();
+  const copyToClipboard = useCopyToClipboard();
 
   const handleInsertPrompt = useCallback(
     (
@@ -511,12 +513,12 @@ const LibraryPanelWrapper: React.FC = React.memo(() => {
         insert(prompt.content);
       } else {
         // Fallback: copy to clipboard.
-        void navigator.clipboard.writeText(prompt.content).then(() => {
-          showToast('Prompt copied to clipboard', 'info');
+        void copyToClipboard(prompt.content, 'prompt').then((ok) => {
+          if (ok) showToast('Prompt copied to clipboard', 'info');
         });
       }
     },
-    [showToast],
+    [showToast, copyToClipboard],
   );
 
   return <LibraryPanel onInsertPrompt={handleInsertPrompt} />;

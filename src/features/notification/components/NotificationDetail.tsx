@@ -2,6 +2,7 @@ import * as Dialog from '@radix-ui/react-dialog';
 import { Info, CircleCheckBig, CircleAlert, CircleX, Copy, Check } from 'lucide-react';
 import { useState, useCallback } from 'react';
 
+import { useCopyToClipboard } from '@/shared/hooks/useCopyToClipboard';
 import { useNotificationStore } from '@/shared/store/notificationStore';
 
 import type { Notification, NotificationType } from '../notificationTypes';
@@ -40,23 +41,25 @@ function formatDateTime(ts: number): string {
 export function NotificationDetail({ notification, onClose }: NotificationDetailProps) {
   const [copied, setCopied] = useState(false);
   const addNotification = useNotificationStore((s) => s.addNotification);
+  const copyToClipboard = useCopyToClipboard();
 
   const handleCopy = useCallback(async () => {
     if (!notification) return;
-    try {
-      await navigator.clipboard.writeText(
-        `[${notification.title}]\n${notification.message}\n\n${formatDateTime(notification.timestamp)}`,
-      );
+    const ok = await copyToClipboard(
+      `[${notification.title}]\n${notification.message}\n\n${formatDateTime(notification.timestamp)}`,
+      'notification',
+    );
+    if (ok) {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
-    } catch {
+    } else {
       addNotification({
         type: 'error',
         title: 'Copy failed',
         message: 'Clipboard is not available. Please select and copy the text manually.',
       });
     }
-  }, [notification, addNotification]);
+  }, [notification, addNotification, copyToClipboard]);
 
   if (!notification) return null;
 

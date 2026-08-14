@@ -3,6 +3,7 @@ import type { KeyboardEvent, MouseEvent, RefObject } from 'react';
 import type { CommitDetail, CommitEntry, CommitFileChange } from '@/features/git/types';
 import { cn } from '@/lib/utils';
 import { Copy, MoreHorizontal } from '@/shared/components/icons';
+import { useCopyToClipboard } from '@/shared/hooks/useCopyToClipboard';
 
 import { CommitExpandPanel } from './CommitExpandPanel';
 import {
@@ -42,7 +43,7 @@ export interface CommitListItemProps {
 }
 
 /**
- * 单条 commit 行（纯展示：data-in, events-out，无任何 hook）。
+ * 单条 commit 行（data-in, events-out；复制反馈经共享 hook 处理）。
  * dot 由 CommitGraph 绘制；hover 状态由组合层持有并下传。
  */
 export function CommitListItem({
@@ -74,6 +75,7 @@ export function CommitListItem({
   const refPillStyle = refs?.kind ? refStyle(refs.kind) : 'bg-accent-yellow/10 text-accent-yellow';
   const absTime = formatAbsoluteTime(commit.timestamp);
   const relTime = formatRelativeTime(commit.timestamp);
+  const copyToClipboard = useCopyToClipboard();
 
   const handleRowClick = (e: MouseEvent) => {
     if ((e.target as HTMLElement).closest('.commit-expand')) return;
@@ -132,7 +134,7 @@ export function CommitListItem({
             title="Copy full hash"
             onClick={(e) => {
               e.stopPropagation();
-              void navigator.clipboard.writeText(commit.hash);
+              void copyToClipboard(commit.hash, 'commit hash');
             }}
           >
             <Copy size={10} />

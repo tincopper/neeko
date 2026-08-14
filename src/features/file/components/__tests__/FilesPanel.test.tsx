@@ -1,9 +1,14 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render as renderRTL, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import FilesPanel, { displayHomePath } from '@/features/file/components/FilesPanel';
 import { useFileStore } from '@/features/file/store';
 import type { FileChange, FileNode } from '@/shared/types';
+import { createAppProviderWrapper } from '@/testing/AppProviderTestUtils';
+
+/** FilesPanel 内部 hook（useFilePanelState）依赖 useAppContext 的 toast */
+const render = (ui: Parameters<typeof renderRTL>[0]) =>
+  renderRTL(ui, { wrapper: createAppProviderWrapper() });
 
 const tree: FileNode[] = [
   {

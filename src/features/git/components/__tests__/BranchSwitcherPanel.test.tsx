@@ -1,7 +1,17 @@
 import { render, screen, fireEvent } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach, beforeAll } from 'vitest';
 
+import { createAppProviderWrapper } from '@/testing/AppProviderTestUtils';
+
 import BranchSwitcherPanel from '../BranchSwitcherPanel';
+
+// copy-name 走 useCopyToClipboard（插件优先）；此处 mock 插件 writeText
+const pluginWriteText = vi.fn();
+
+vi.mock('@tauri-apps/plugin-clipboard-manager', () => ({
+  writeText: (...args: unknown[]) => pluginWriteText(...args),
+  readText: vi.fn(),
+}));
 
 beforeAll(() => {
   Element.prototype.scrollIntoView = vi.fn();
@@ -20,7 +30,9 @@ const defaultProps = {
 };
 
 function renderPanel(props = {}) {
-  return render(<BranchSwitcherPanel {...defaultProps} {...props} />);
+  return render(<BranchSwitcherPanel {...defaultProps} {...props} />, {
+    wrapper: createAppProviderWrapper(),
+  });
 }
 
 describe('BranchSwitcherPanel', () => {
@@ -217,12 +229,11 @@ describe('BranchSwitcherPanel', () => {
   });
 
   it('右键菜单 copy name 调用 clipboard', async () => {
-    const writeText = vi.fn().mockResolvedValue(undefined);
-    Object.assign(navigator, { clipboard: { writeText } });
+    pluginWriteText.mockResolvedValue(undefined);
     renderPanel();
     fireEvent.contextMenu(screen.getByText('dev'));
     fireEvent.click(screen.getByText('Copy Name'));
-    expect(writeText).toHaveBeenCalledWith('dev');
+    expect(pluginWriteText).toHaveBeenCalledWith('dev');
   });
 
   it('显示 ahead/behind 指示器（焦点行可见）', () => {

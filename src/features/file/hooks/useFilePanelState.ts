@@ -14,6 +14,7 @@ import {
   ClipboardCopy,
   ExternalLink,
 } from '@/shared/components/icons';
+import { useCopyToClipboard } from '@/shared/hooks/useCopyToClipboard';
 import { useNotificationStore } from '@/shared/store/notificationStore';
 import type { FileNode, FileChange } from '@/shared/types';
 import { resolveAbsolutePath } from '@/shared/utils/browserUtils';
@@ -65,6 +66,7 @@ export function useFilePanelState(params: UseFilePanelStateParams) {
   const prevActiveFilePathRef = useRef<string | null>(null);
   // 用户 home 目录（用于路径展示时替换为 ~）
   const [homeDirPath, setHomeDirPath] = useState('');
+  const copyToClipboard = useCopyToClipboard();
 
   useEffect(() => {
     let cancelled = false;
@@ -330,13 +332,7 @@ export function useFilePanelState(params: UseFilePanelStateParams) {
         icon: Copy,
         action: () => {
           const absPath = projectPath ? resolveAbsolutePath(projectPath, node.path) : node.path;
-          navigator.clipboard.writeText(absPath).catch(() => {
-            useNotificationStore.getState().addNotification({
-              type: 'error',
-              title: 'Copy Path',
-              message: 'Failed to copy path to clipboard',
-            });
-          });
+          void copyToClipboard(absPath, 'path');
         },
       });
 
@@ -346,13 +342,7 @@ export function useFilePanelState(params: UseFilePanelStateParams) {
           icon: ClipboardCopy,
           // node.path 已经是相对于项目根的相对路径，直接复制
           action: () => {
-            navigator.clipboard.writeText(node.path).catch(() => {
-              useNotificationStore.getState().addNotification({
-                type: 'error',
-                title: 'Copy Relative Path',
-                message: 'Failed to copy path to clipboard',
-              });
-            });
+            void copyToClipboard(node.path, 'path');
           },
         });
       }
@@ -416,6 +406,7 @@ export function useFilePanelState(params: UseFilePanelStateParams) {
       onDeletePath,
       onRenamePath,
       startCreating,
+      copyToClipboard,
     ],
   );
 

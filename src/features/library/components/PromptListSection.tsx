@@ -3,6 +3,7 @@ import React, { useCallback, useMemo } from 'react';
 
 import { useLibraryStore } from '@/features/library/store/libraryStore';
 import ConfirmDialog from '@/shared/components/ConfirmDialog';
+import { useCopyToClipboard } from '@/shared/hooks/useCopyToClipboard';
 import { useNotificationStore } from '@/shared/store/notificationStore';
 import type { PromptInsertTarget, PromptResource } from '@/shared/types/library';
 
@@ -23,6 +24,7 @@ const PromptListSection: React.FC<PromptListSectionProps> = React.memo(({ onInse
   const deletePrompt = useLibraryStore((s) => s.deletePrompt);
 
   const [pendingDeleteId, setPendingDeleteId] = React.useState<string | null>(null);
+  const copyToClipboard = useCopyToClipboard();
 
   const filtered = useMemo(() => {
     let list = prompts;
@@ -55,15 +57,20 @@ const PromptListSection: React.FC<PromptListSectionProps> = React.memo(({ onInse
     return list;
   }, [prompts, scopeFilter, tagFilter, searchQuery, sortMode]);
 
-  const handleCopy = useCallback((content: string) => {
-    void navigator.clipboard.writeText(content).then(() => {
-      useNotificationStore.getState().addNotification({
-        type: 'info',
-        title: 'Copied',
-        message: 'Prompt copied to clipboard',
+  const handleCopy = useCallback(
+    (content: string) => {
+      void copyToClipboard(content, 'prompt').then((ok) => {
+        if (ok) {
+          useNotificationStore.getState().addNotification({
+            type: 'info',
+            title: 'Copied',
+            message: 'Prompt copied to clipboard',
+          });
+        }
       });
-    });
-  }, []);
+    },
+    [copyToClipboard],
+  );
 
   const handleDelete = useCallback(
     async (id: string) => {

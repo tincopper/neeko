@@ -15,6 +15,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { AgentIcon } from '@/features/agent';
 import type { AgentConfig } from '@/features/agent/types';
 import { cn } from '@/lib/utils';
+import { useCopyToClipboard } from '@/shared/hooks/useCopyToClipboard';
 import { useProjectStore } from '@/shared/store/projectStore';
 import { Button } from '@/ui/Button';
 
@@ -118,6 +119,7 @@ const ConversationViewer: React.FC<ConversationViewerProps> = React.memo(
     const scrollRef = useRef<HTMLDivElement>(null);
     const bottomRef = useRef<HTMLDivElement>(null);
     const groupRefs = useRef<Map<number, HTMLDivElement>>(new Map());
+    const copyToClipboard = useCopyToClipboard();
 
     const agent = useMemo(() => agents.find((a) => a.id === agentId) ?? null, [agents, agentId]);
 
@@ -217,15 +219,15 @@ const ConversationViewer: React.FC<ConversationViewerProps> = React.memo(
       setExporting(true);
       try {
         const markdown = await exportConversation(conversationId);
-        await navigator.clipboard.writeText(markdown);
-        showToast?.('Conversation exported to clipboard', 'info');
+        const ok = await copyToClipboard(markdown, 'conversation');
+        if (ok) showToast?.('Conversation exported to clipboard', 'info');
       } catch (err) {
         console.error('[ConversationViewer] Export failed:', err);
         showToast?.('Failed to export conversation', 'error');
       } finally {
         setExporting(false);
       }
-    }, [conversationId, showToast]);
+    }, [conversationId, showToast, copyToClipboard]);
 
     const scrollToMessage = useCallback(
       (msgIdx: number) => {
