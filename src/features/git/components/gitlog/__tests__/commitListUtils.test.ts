@@ -5,6 +5,8 @@ import {
   commitBodyPreview,
   typeStyle,
   formatRefs,
+  formatRefsList,
+  refStyle,
   formatAbsoluteTime,
   formatRelativeTime,
   graphWidthForCols,
@@ -83,6 +85,61 @@ describe('formatRefs', () => {
   it('should_return_null_when_refs_empty', () => {
     expect(formatRefs('')).toBeNull();
     expect(formatRefs('   ')).toBeNull();
+  });
+});
+
+describe('formatRefsList', () => {
+  it('should_use_first_unique_ref_as_primary_with_kind', () => {
+    const r = formatRefsList([
+      { kind: 'branch', name: 'main' },
+      { kind: 'remote', name: 'origin/main' },
+      { kind: 'tag', name: 'v1.0.4' },
+    ]);
+    expect(r).toEqual({
+      primary: 'main',
+      kind: 'branch',
+      extraCount: 2,
+      title: 'main, origin/main, v1.0.4',
+    });
+  });
+
+  it('should_deduplicate_and_cap_extra_count', () => {
+    const r = formatRefsList([
+      { kind: 'branch', name: 'main' },
+      { kind: 'branch', name: 'main' },
+      { kind: 'tag', name: 'v1.0.4' },
+    ]);
+    expect(r).toEqual({
+      primary: 'main',
+      kind: 'branch',
+      extraCount: 1,
+      title: 'main, v1.0.4',
+    });
+  });
+
+  it('should_return_null_for_empty_list_or_empty_names', () => {
+    expect(formatRefsList([])).toBeNull();
+    expect(formatRefsList([{ kind: 'branch', name: '' }])).toBeNull();
+  });
+
+  it('should_preserve_stash_kind_for_primary_label', () => {
+    const r = formatRefsList([{ kind: 'stash', name: 'stash' }]);
+    expect(r?.kind).toBe('stash');
+  });
+});
+
+describe('refStyle', () => {
+  it('should_map_each_kind_to_a_distinct_accent_class', () => {
+    expect(refStyle('branch')).toContain('accent-blue');
+    expect(refStyle('remote')).toContain('accent-green');
+    expect(refStyle('tag')).toContain('accent-yellow');
+    expect(refStyle('stash')).toContain('accent-purple');
+  });
+
+  it('should_use_neutral_style_for_unknown_kind', () => {
+    expect(refStyle('branch')).not.toBe('');
+    // unknown 分支走 default 中性样式（防御性，前端不会收到 tool refs）
+    expect(refStyle('stash')).not.toBe(refStyle('branch'));
   });
 });
 

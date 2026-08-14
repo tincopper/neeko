@@ -1044,7 +1044,7 @@ pub fn get_commit_log(repo_path: &Path, count: usize, skip: usize) -> Result<Vec
     } else {
         None
     };
-    let mut args = vec!["log", format, "--decorate=full", "--all", "--topo-order"];
+    let mut args = vec!["log", format, "--decorate=full", "--topo-order", "HEAD"];
     let count_arg = if count > 0 {
         Some(format!("-{}", count))
     } else {
@@ -1210,42 +1210,10 @@ pub fn get_commit_files(repo_path: &Path, commit_hash: &str) -> Result<Vec<Commi
     .context("Failed to run git diff-tree --name-status")?;
     let status_stdout = String::from_utf8_lossy(&status_output.stdout);
 
-    let status_map: std::collections::HashMap<String, String> = status_stdout
-        .lines()
-        .filter_map(|line| {
-            let parts: Vec<&str> = line.split('\t').collect();
-            if parts.len() >= 2 {
-                Some((parts[1].to_string(), parts[0].to_string()))
-            } else {
-                None
-            }
-        })
-        .collect();
-
-    let files: Vec<CommitFileChange> = stdout
-        .lines()
-        .filter_map(|line| {
-            let parts: Vec<&str> = line.split('\t').collect();
-            if parts.len() >= 3 {
-                let path = parts[2].to_string();
-                let additions = parts[0].parse::<usize>().unwrap_or(0);
-                let deletions = parts[1].parse::<usize>().unwrap_or(0);
-                let status = status_map
-                    .get(&path)
-                    .cloned()
-                    .unwrap_or_else(|| "M".to_string());
-                Some(CommitFileChange {
-                    path,
-                    status,
-                    additions,
-                    deletions,
-                })
-            } else {
-                None
-            }
-        })
-        .collect();
-    Ok(files)
+    Ok(super::parsers::parse_numstat_with_status(
+        &stdout,
+        &status_stdout,
+    ))
 }
 
 /// 获取某个 Commit 中某个文件的 diff

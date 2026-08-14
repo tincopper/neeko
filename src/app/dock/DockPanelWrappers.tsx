@@ -24,6 +24,7 @@ import { useCommitDetail } from '@/features/git/components/gitlog/useCommitDetai
 import { useGitLog } from '@/features/git/components/gitlog/useGitLog';
 import PullRequestsPanel from '@/features/git/components/PullRequestsPanel';
 import { useSingletonDiff } from '@/features/git/hooks/useSingletonDiff';
+import { useStashList } from '@/features/git/hooks/useStashList';
 import LibraryPanel from '@/features/library/components/LibraryPanel';
 import { useActiveProject } from '@/features/project/hooks/use-active-project';
 import { SearchPanel } from '@/features/search';
@@ -975,6 +976,17 @@ const GitControlPanelWrapper: React.FC = React.memo(() => {
     error: detailError,
   } = useCommitDetail(commands, selectedHash);
 
+  const {
+    stashes,
+    loading: stashLoading,
+    error: stashError,
+    expandedSelector: stashExpandedSelector,
+    expandedFiles: stashExpandedFiles,
+    filesLoading: stashFilesLoading,
+    filesError: stashFilesError,
+    toggleExpand: toggleStash,
+  } = useStashList(commands);
+
   const { openFileInDiff, openCombined, pinFile, scrollToFile, refreshOpenDiff, hasSingleton } =
     useSingletonDiff(project?.id, selectedHash, files, connectionContext, activeWorktreePath);
 
@@ -1274,6 +1286,14 @@ const GitControlPanelWrapper: React.FC = React.memo(() => {
       onSearchChange={setSearchQuery}
       onToggleCombined={handleToggleCombined}
       focusedFileIndex={currentFileIdx}
+      stashes={stashes}
+      stashLoading={stashLoading}
+      stashError={stashError}
+      stashExpandedSelector={stashExpandedSelector}
+      stashExpandedFiles={stashExpandedFiles}
+      stashFilesLoading={stashFilesLoading}
+      stashFilesError={stashFilesError}
+      onToggleStash={toggleStash}
       activeTab={tab}
       onTabChange={setTab}
     />

@@ -44,6 +44,23 @@ export interface CommitEntry {
   message: string;
   refs: string;
   parents: string[];
+  /** 结构化 refs 分类（仅 branch/remote/tag/stash；tool refs 已由后端过滤） */
+  refs_list?: ParsedRef[];
+}
+
+export type ParsedRefKind = 'branch' | 'remote' | 'tag' | 'stash';
+
+export interface ParsedRef {
+  kind: ParsedRefKind;
+  name: string;
+}
+
+export interface StashEntry {
+  selector: string;
+  hash: string;
+  message: string;
+  branch: string;
+  timestamp: string;
 }
 
 export interface CommitDetail {

@@ -1,7 +1,13 @@
 import React from 'react';
 
 import { cn } from '@/lib/utils';
-import type { AheadBehind, CommitEntry, CommitDetail, CommitFileChange } from '@/shared/types';
+import type {
+  AheadBehind,
+  CommitEntry,
+  CommitDetail,
+  CommitFileChange,
+  StashEntry,
+} from '@/shared/types';
 import type {
   ProjectView,
   ProjectCommands,
@@ -10,8 +16,9 @@ import type {
 
 import GitCommitPanel from './GitCommitPanel';
 import GitLogPanel from './gitlog/GitLogPanel';
+import StashPanel from './StashPanel';
 
-export type GitControlTab = 'changes' | 'history';
+export type GitControlTab = 'changes' | 'history' | 'stash';
 
 interface GitControlPanelProps {
   // Changes tab
@@ -45,6 +52,15 @@ interface GitControlPanelProps {
   onSearchChange: (query: string) => void;
   onToggleCombined: (combined: boolean) => void;
   focusedFileIndex?: number;
+  // Stash tab
+  stashes: StashEntry[];
+  stashLoading: boolean;
+  stashError: string | null;
+  stashExpandedSelector: string | null;
+  stashExpandedFiles: CommitFileChange[];
+  stashFilesLoading: boolean;
+  stashFilesError: string | null;
+  onToggleStash: (selector: string) => void;
   // Tab state (lifted for keyboard gating in wrapper)
   activeTab: GitControlTab;
   onTabChange: (tab: GitControlTab) => void;
@@ -80,6 +96,14 @@ const GitControlPanel: React.FC<GitControlPanelProps> = ({
   onSearchChange,
   onToggleCombined,
   focusedFileIndex,
+  stashes,
+  stashLoading,
+  stashError,
+  stashExpandedSelector,
+  stashExpandedFiles,
+  stashFilesLoading,
+  stashFilesError,
+  onToggleStash,
   activeTab,
   onTabChange,
 }) => {
@@ -131,6 +155,32 @@ const GitControlPanel: React.FC<GitControlPanelProps> = ({
         >
           History
         </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={activeTab === 'stash'}
+          className={cn(
+            'inline-flex h-8 items-center gap-1.5 border-b-2 px-3 text-[calc(var(--font-size)-1px)] font-medium transition-colors duration-100',
+            activeTab === 'stash'
+              ? 'border-accent-blue text-text-primary'
+              : 'border-transparent text-text-muted hover:text-text-primary',
+          )}
+          onClick={() => onTabChange('stash')}
+        >
+          Stash
+          {stashes.length > 0 ? (
+            <span
+              className={cn(
+                'min-w-[1.1rem] rounded-full px-1 text-center text-[calc(var(--font-size)-3px)] leading-4 tabular-nums',
+                activeTab === 'stash'
+                  ? 'bg-accent-blue/15 text-accent-blue'
+                  : 'bg-bg-tertiary text-text-muted',
+              )}
+            >
+              {stashes.length}
+            </span>
+          ) : null}
+        </button>
       </div>
 
       {/* Keep both panels mounted so draft commit message / selection survive tab switches. */}
@@ -170,6 +220,18 @@ const GitControlPanel: React.FC<GitControlPanelProps> = ({
             onRefresh={onRefreshLog}
             onToggleCombined={onToggleCombined}
             focusedFileIndex={focusedFileIndex}
+          />
+        </div>
+        <div className={cn('h-full min-h-0', activeTab !== 'stash' && 'hidden')}>
+          <StashPanel
+            stashes={stashes}
+            loading={stashLoading}
+            error={stashError}
+            expandedSelector={stashExpandedSelector}
+            expandedFiles={stashExpandedFiles}
+            filesLoading={stashFilesLoading}
+            filesError={stashFilesError}
+            onToggle={onToggleStash}
           />
         </div>
       </div>

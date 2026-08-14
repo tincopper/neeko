@@ -1,5 +1,7 @@
 /** Pure helpers for Git Log commit list presentation. */
 
+import type { ParsedRef, ParsedRefKind } from '@/features/git/types';
+
 export function parseCommitMessage(message: string): {
   type: string;
   scope: string;
@@ -58,8 +60,39 @@ export function typeStyle(type: string): string {
 
 export interface RefPills {
   primary: string;
+  /** 主标签分类（branch/remote/tag/stash）；仅 `formatRefsList` 填充 */
+  kind?: ParsedRefKind;
   extraCount: number;
   title: string;
+}
+
+/** 分类标签样式（对齐既有 accent token）。 */
+export function refStyle(kind: ParsedRefKind): string {
+  switch (kind) {
+    case 'branch':
+      return 'bg-accent-blue/15 text-accent-blue';
+    case 'remote':
+      return 'bg-accent-green/15 text-accent-green';
+    case 'tag':
+      return 'bg-accent-yellow/15 text-accent-yellow';
+    case 'stash':
+      return 'bg-accent-purple/15 text-accent-purple';
+    default:
+      return 'bg-bg-tertiary text-text-muted';
+  }
+}
+
+/** 结构化 refs_list → 标签 pill（primary + kind + 数量汇总）。 */
+export function formatRefsList(refsList: ParsedRef[]): RefPills | null {
+  if (refsList.length === 0) return null;
+  const unique = Array.from(new Set(refsList.map((r) => r.name).filter(Boolean)));
+  if (unique.length === 0) return null;
+  return {
+    primary: unique[0],
+    kind: refsList[0].kind,
+    extraCount: Math.max(0, unique.length - 1),
+    title: unique.join(', '),
+  };
 }
 
 /** Prefer HEAD target, then local branch, then tag, then remote. */

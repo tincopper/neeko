@@ -10,6 +10,7 @@ pub use crate::common::git::cache::*;
 pub use crate::common::git::local::*;
 pub use crate::common::git::parsers::*;
 pub use crate::common::git::pr::*;
+pub use crate::common::git::refs::*;
 pub use crate::common::git::remote::*;
 pub use crate::common::git::types::*;
 pub use crate::common::git::worker::*;

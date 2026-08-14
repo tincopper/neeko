@@ -8,8 +8,10 @@ import { CommitExpandPanel } from './CommitExpandPanel';
 import {
   formatAbsoluteTime,
   formatRefs,
+  formatRefsList,
   formatRelativeTime,
   parseCommitMessage,
+  refStyle,
   typeStyle,
 } from './commitListUtils';
 import { CommitRowMenu } from './CommitRowMenu';
@@ -64,7 +66,12 @@ export function CommitListItem({
   onToggleMenu,
 }: CommitListItemProps) {
   const { type, scope, subject, header } = parseCommitMessage(commit.message);
-  const refs = commit.refs ? formatRefs(commit.refs) : null;
+  const refs = commit.refs_list?.length
+    ? formatRefsList(commit.refs_list)
+    : commit.refs
+      ? formatRefs(commit.refs)
+      : null;
+  const refPillStyle = refs?.kind ? refStyle(refs.kind) : 'bg-accent-yellow/10 text-accent-yellow';
   const absTime = formatAbsoluteTime(commit.timestamp);
   const relTime = formatRelativeTime(commit.timestamp);
 
@@ -170,7 +177,7 @@ export function CommitListItem({
           </span>
           {refs ? (
             <span
-              className="ml-auto shrink-0 text-[calc(var(--font-size)-3px)] font-medium px-1 py-px rounded leading-none bg-accent-yellow/10 text-accent-yellow truncate max-w-[96px]"
+              className={`ml-auto shrink-0 text-[calc(var(--font-size)-3px)] font-medium px-1 py-px rounded leading-none truncate max-w-[96px] ${refPillStyle}`}
               title={refs.title}
             >
               {refs.primary}

@@ -22,4 +22,7 @@ export type {
   PrLabel,
   PRFileChange,
   PRCommit,
+  ParsedRef,
+  ParsedRefKind,
+  StashEntry,
 } from '@/shared/types/git';

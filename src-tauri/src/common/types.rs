@@ -1,5 +1,6 @@
 //! Shared types for file changes, git branches, commits, PRs, and worktrees.
 
+use crate::common::git::refs::ParsedRef;
 use serde::{Deserialize, Serialize};
 use serde_json;
 use std::path::PathBuf;
@@ -140,6 +141,9 @@ pub struct CommitEntry {
     pub message: String,
     /// git ref names (branches, tags) pointing to this commit.
     pub refs: String,
+    /// Structured ref classification (branch/remote/tag/stash only; tool refs filtered out).
+    #[serde(default)]
+    pub refs_list: Vec<ParsedRef>,
     /// Parent commit hashes.
     #[serde(default)]
     pub parents: Vec<String>,
@@ -177,6 +181,21 @@ pub struct CommitFileChange {
     pub additions: usize,
     /// Number of deleted lines.
     pub deletions: usize,
+}
+
+/// A single stash entry from `git stash list`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StashEntry {
+    /// Reflog selector, e.g. `stash@{0}`.
+    pub selector: String,
+    /// Full stash commit hash.
+    pub hash: String,
+    /// Stash subject, e.g. `WIP on main: 9f3c1a2 feat: xyz`.
+    pub message: String,
+    /// Source branch parsed from the message prefix (`WIP on <b>:` / `On <b>:`).
+    pub branch: String,
+    /// ISO 8601 author timestamp.
+    pub timestamp: String,
 }
 
 /// Result of a commit operation.

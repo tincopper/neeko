@@ -2,9 +2,11 @@
 
 use std::path::PathBuf;
 
+use crate::common::git::refs::parse_decorate_refs;
 use crate::common::git::types::{DiffHunk, DiffLine, DiffResult};
 use crate::project::types::{
-    CommitEntry, FileChange, FileNode, FileStatus, GitInfo, GitProvider, Worktree,
+    CommitEntry, CommitFileChange, FileChange, FileNode, FileStatus, GitInfo, GitProvider,
+    StashEntry, Worktree,
 };
 
 // ─── Diff parsers (originally from local.rs) ─────────────────────────────────
@@ -300,14 +302,101 @@ pub(crate) fn parse_commit_log_output(output: &str) -> Vec<CommitEntry> {
                             .collect::<Vec<_>>()
                     })
                     .unwrap_or_default();
+                let refs_list = parse_decorate_refs(parts.get(5).copied().unwrap_or(""));
+                let refs = refs_list
+                    .iter()
+                    .map(|r| r.name.as_str())
+                    .collect::<Vec<_>>()
+                    .join(", ");
                 Some(CommitEntry {
                     hash: parts[0].to_string(),
                     short_hash: parts[1].to_string(),
                     author: parts[2].to_string(),
                     timestamp: parts[3].to_string(),
                     message: parts[4].to_string(),
-                    refs: parts.get(5).map(|s| s.to_string()).unwrap_or_default(),
+                    refs,
+                    refs_list,
                     parents,
+                })
+            } else {
+                None
+            }
+        })
+        .collect()
+}
+
+/// Parse NUL-separated `git stash list --format` output into StashEntry list.
+///
+/// 每条记录以 NUL 结尾（`...%aI%x00`），按 NUL 切分后每 4 个字段为一组，
+/// 因此消息字段内的换行不会破坏记录边界。
+#[must_use]
+pub fn parse_stash_list(output: &str) -> Vec<StashEntry> {
+    output
+        .split('\0')
+        .collect::<Vec<_>>()
+        .chunks(4)
+        .filter_map(|chunk| {
+            if chunk.len() < 4 {
+                return None;
+            }
+            let message = chunk[1].to_string();
+            let branch = parse_stash_branch(&message);
+            Some(StashEntry {
+                selector: chunk[0].trim_start_matches('\n').to_string(),
+                hash: chunk[2].to_string(),
+                message,
+                branch,
+                timestamp: chunk[3].to_string(),
+            })
+        })
+        .collect()
+}
+
+/// Extract the source branch from a stash message (`WIP on <b>:` / `On <b>:`).
+#[must_use]
+pub fn parse_stash_branch(message: &str) -> String {
+    for prefix in ["WIP on ", "On "] {
+        if let Some(rest) = message.strip_prefix(prefix) {
+            if let Some(end) = rest.find(':') {
+                return rest[..end].to_string();
+            }
+        }
+    }
+    String::new()
+}
+
+/// Merge `--numstat` output with `--name-status` output into CommitFileChange list.
+#[must_use]
+pub fn parse_numstat_with_status(numstat: &str, status_output: &str) -> Vec<CommitFileChange> {
+    let status_map: std::collections::HashMap<String, String> = status_output
+        .lines()
+        .filter_map(|line| {
+            let parts: Vec<&str> = line.split('\t').collect();
+            if parts.len() >= 2 {
+                Some((parts[1].to_string(), parts[0].to_string()))
+            } else {
+                None
+            }
+        })
+        .collect();
+
+    numstat
+        .lines()
+        .filter_map(|line| {
+            let parts: Vec<&str> = line.split('\t').collect();
+            if parts.len() >= 3 {
+                let path = parts[2].to_string();
+                let additions = parts[0].parse::<usize>().unwrap_or(0);
+                let deletions = parts[1].parse::<usize>().unwrap_or(0);
+                let status = status_map
+                    .get(&path)
+                    .cloned()
+                    .unwrap_or_else(|| "M".to_string());
+                Some(CommitFileChange {
+                    path,
+                    status,
+                    additions,
+                    deletions,
                 })
             } else {
                 None
@@ -573,5 +662,87 @@ mod diff_context_guard_tests {
         );
         // 回退上下文仍远大于折叠模式的 3 行
         assert!(DIFF_FULL_FALLBACK_CONTEXT_LINES > 3);
+    }
+}
+
+#[cfg(test)]
+mod stash_parse_tests {
+    use super::*;
+
+    #[test]
+    fn parse_stash_list_parses_nul_separated_rows() {
+        let output = "stash@{0}\u{0}WIP on main: 9f3c1a2 feat: xyz\u{0}abc123\u{0}2026-08-01T10:00:00+08:00\u{0}\nstash@{1}\u{0}On feature: fix typo\u{0}def456\u{0}2026-07-30T09:00:00Z\u{0}\n";
+        let stashes = parse_stash_list(output);
+        assert_eq!(stashes.len(), 2);
+        assert_eq!(stashes[0].selector, "stash@{0}");
+        assert_eq!(stashes[0].message, "WIP on main: 9f3c1a2 feat: xyz");
+        assert_eq!(stashes[0].branch, "main");
+        assert_eq!(stashes[0].hash, "abc123");
+        assert_eq!(stashes[0].timestamp, "2026-08-01T10:00:00+08:00");
+        assert_eq!(stashes[1].selector, "stash@{1}");
+        assert_eq!(stashes[1].branch, "feature");
+        assert_eq!(stashes[1].hash, "def456");
+    }
+
+    #[test]
+    fn parse_stash_list_handles_multiline_messages() {
+        // 消息字段内含换行（不依赖 git 压平换行的内部行为）也不破坏记录边界。
+        let output = "stash@{0}\u{0}On main: line1\nline2\nline3\u{0}abc123\u{0}2026-08-01T10:00:00+08:00\u{0}\nstash@{1}\u{0}On feature: fix typo\u{0}def456\u{0}2026-07-30T09:00:00Z\u{0}\n";
+        let stashes = parse_stash_list(output);
+        assert_eq!(stashes.len(), 2);
+        assert_eq!(stashes[0].selector, "stash@{0}");
+        assert_eq!(stashes[0].message, "On main: line1\nline2\nline3");
+        assert_eq!(stashes[0].hash, "abc123");
+        assert_eq!(stashes[1].selector, "stash@{1}");
+        assert_eq!(stashes[1].message, "On feature: fix typo");
+        assert_eq!(stashes[1].hash, "def456");
+    }
+
+    #[test]
+    fn parse_stash_list_handles_empty_message_field() {
+        // 空消息字段（`%gs` 为空）不会导致后续字段错位。
+        let output = "stash@{0}\u{0}\u{0}abc123\u{0}2026-08-01T10:00:00+08:00\u{0}\n";
+        let stashes = parse_stash_list(output);
+        assert_eq!(stashes.len(), 1);
+        assert_eq!(stashes[0].selector, "stash@{0}");
+        assert_eq!(stashes[0].message, "");
+        assert_eq!(stashes[0].hash, "abc123");
+        assert_eq!(stashes[0].timestamp, "2026-08-01T10:00:00+08:00");
+    }
+
+    #[test]
+    fn parse_stash_list_empty_output_yields_empty_list() {
+        assert!(parse_stash_list("").is_empty());
+    }
+
+    #[test]
+    fn parse_stash_branch_falls_back_to_empty_when_no_prefix() {
+        assert_eq!(parse_stash_branch("WIP on main: x"), "main");
+        assert_eq!(parse_stash_branch("On develop: x"), "develop");
+        assert_eq!(parse_stash_branch("just a message"), "");
+        assert_eq!(parse_stash_branch(""), "");
+    }
+
+    #[test]
+    fn parse_numstat_with_status_merges_status_map() {
+        let numstat = "3\t1\tREADME.md\n1\t0\tsrc/new.ts\n";
+        let status = "M\tREADME.md\nA\tsrc/new.ts\n";
+        let files = parse_numstat_with_status(numstat, status);
+        assert_eq!(files.len(), 2);
+        assert_eq!(files[0].path, "README.md");
+        assert_eq!(files[0].status, "M");
+        assert_eq!(files[0].additions, 3);
+        assert_eq!(files[0].deletions, 1);
+        assert_eq!(files[1].path, "src/new.ts");
+        assert_eq!(files[1].status, "A");
+        assert_eq!(files[1].additions, 1);
+    }
+
+    #[test]
+    fn parse_numstat_with_status_defaults_missing_status_to_modified() {
+        let files = parse_numstat_with_status("1\t0\tonly_numstat.txt\n", "");
+        assert_eq!(files.len(), 1);
+        assert_eq!(files[0].path, "only_numstat.txt");
+        assert_eq!(files[0].status, "M");
     }
 }

@@ -1,4 +1,7 @@
 use git2::{Repository, Signature};
+use neeko_lib::common::executor::factory::ExecTarget;
+use neeko_lib::common::git::operations;
+use neeko_lib::common::git::refs::RefKind;
 use neeko_lib::common::git::types::DiffLine;
 use neeko_lib::git;
 use std::path::PathBuf;
@@ -317,4 +320,164 @@ fn rename_nonexistent_branch_fails() {
     let (tmp, _repo) = create_test_repo();
     let result = git::rename_branch(tmp.path(), "no-such-branch", "new-name");
     assert!(result.is_err());
+}
+
+// --- parse_decorate_refs (pure function) ---
+
+#[test]
+fn parse_decorate_refs_classifies_common_kinds() {
+    let refs = git::parse_decorate_refs(
+        "HEAD -> refs/heads/main, refs/remotes/origin/main, tag: refs/tags/v1.0.4, refs/stash",
+    );
+    assert_eq!(refs.len(), 4);
+    assert_eq!(refs[0].kind, RefKind::Branch);
+    assert_eq!(refs[0].name, "main");
+    assert_eq!(refs[1].kind, RefKind::Remote);
+    assert_eq!(refs[1].name, "origin/main");
+    assert_eq!(refs[2].kind, RefKind::Tag);
+    assert_eq!(refs[2].name, "v1.0.4");
+    assert_eq!(refs[3].kind, RefKind::Stash);
+    assert_eq!(refs[3].name, "stash");
+}
+
+#[test]
+fn parse_decorate_refs_discards_tool_private_namespaces() {
+    let refs = git::parse_decorate_refs(
+        "HEAD -> refs/heads/main, refs/synara/checkpoints/abc, refs/aider/session, refs/bisect/bad",
+    );
+    assert_eq!(refs.len(), 1);
+    assert_eq!(refs[0].name, "main");
+}
+
+#[test]
+fn parse_decorate_refs_treats_detached_head_as_branch() {
+    let refs = git::parse_decorate_refs("HEAD");
+    assert_eq!(refs.len(), 1);
+    assert_eq!(refs[0].kind, RefKind::Branch);
+    assert_eq!(refs[0].name, "HEAD");
+}
+
+// --- get_commit_log scoped to HEAD (integration) ---
+
+#[test]
+fn get_commit_log_scoped_to_head_excludes_isolated_tool_refs() {
+    let (tmp, repo) = create_test_repo();
+    let head_id = repo.head().unwrap().peel_to_commit().unwrap().id();
+
+    // 孤立提交仅被 refs/synara/checkpoints/isolated 引用 —— --all 会展示，HEAD 不应展示
+    let sig = Signature::now("Test", "test@test.com").unwrap();
+    let blob_oid = repo.blob(b"synara checkpoint\n").unwrap();
+    let mut tree_builder = repo.treebuilder(None).unwrap();
+    tree_builder
+        .insert("synara.txt", blob_oid, 0o100644)
+        .unwrap();
+    let tree_oid = tree_builder.write().unwrap();
+    let orphan_id = repo
+        .commit(
+            None,
+            &sig,
+            &sig,
+            "synara checkpoint",
+            &repo.find_tree(tree_oid).unwrap(),
+            &[],
+        )
+        .unwrap();
+    repo.reference(
+        "refs/synara/checkpoints/isolated",
+        orphan_id,
+        true,
+        "synara",
+    )
+    .unwrap();
+
+    // 将另一个工具 ref 指向 HEAD 提交：验证 decorate 中的 tool ref 被过滤
+    repo.reference(
+        "refs/synara/checkpoints/head-marker",
+        head_id,
+        true,
+        "synara",
+    )
+    .unwrap();
+
+    let log = git::get_commit_log(tmp.path(), 0, 0).unwrap();
+    assert!(
+        log.iter().all(|c| c.hash != orphan_id.to_string()),
+        "isolated synara-only commit must not appear in HEAD-scoped log"
+    );
+
+    let head_entry = log
+        .iter()
+        .find(|c| c.hash == head_id.to_string())
+        .expect("HEAD commit should be in log");
+    assert!(
+        !head_entry.refs.contains("synara"),
+        "refs string must not contain tool refs, got: {}",
+        head_entry.refs
+    );
+    assert!(
+        head_entry
+            .refs_list
+            .iter()
+            .all(|r| r.name != "synara/checkpoints/head-marker"),
+        "refs_list must not contain tool refs"
+    );
+    assert!(
+        head_entry
+            .refs_list
+            .iter()
+            .any(|r| r.kind == RefKind::Branch),
+        "HEAD commit should still expose its branch ref"
+    );
+}
+
+// --- stash list / files (integration) ---
+
+#[tokio::test]
+async fn get_stash_list_and_files_roundtrip() {
+    let (tmp, _repo) = create_test_repo();
+    std::fs::write(tmp.path().join("README.md"), "# Stashed change\n").unwrap();
+
+    // 准备 stash 前置状态：走统一命令执行接口（与业务代码一致，避免裸 std::process::Command）
+    let path = tmp.path().to_string_lossy().to_string();
+    let out = neeko_lib::core::exec::collect_in_dir(
+        &ExecTarget::Local,
+        "git",
+        &["stash", "push", "-m", "wip stash"],
+        Some(&path),
+    )
+    .await
+    .expect("run git stash push");
+    assert!(out.exit_code == 0, "git stash push failed");
+
+    let transport = ExecTarget::Local;
+    let stashes = operations::get_stash_list(&transport, &path)
+        .await
+        .expect("get_stash_list should succeed");
+    assert_eq!(stashes.len(), 1);
+    assert_eq!(stashes[0].selector, "stash@{0}");
+    assert!(!stashes[0].hash.is_empty());
+    assert!(
+        stashes[0].message.contains("wip stash"),
+        "stash message should be preserved: {}",
+        stashes[0].message
+    );
+    assert!(!stashes[0].branch.is_empty());
+
+    let files = operations::get_stash_files(&transport, &path, &stashes[0].selector)
+        .await
+        .expect("get_stash_files should succeed");
+    assert_eq!(files.len(), 1);
+    assert_eq!(files[0].path, "README.md");
+    assert!(!files[0].status.is_empty());
+}
+
+#[tokio::test]
+async fn get_stash_list_empty_repo_yields_empty_list() {
+    let (tmp, _repo) = create_test_repo();
+    let transport = ExecTarget::Local;
+    let path = tmp.path().to_string_lossy().to_string();
+    let stashes = operations::get_stash_list(&transport, &path)
+        .await
+        .expect("get_stash_list on repo without stashes should succeed");
+    assert!(stashes.is_empty());
 }

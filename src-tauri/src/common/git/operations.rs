@@ -14,7 +14,7 @@ use crate::common::git::types::{DiffHunk, DiffLine, DiffResult};
 use crate::core::exec::collect_in_dir;
 use crate::project::types::{
     AheadBehind, CommitDetail, CommitEntry, CommitFileChange, CommitResult, FileChange,
-    FileDiffStats, FileStatus, GitBranchInfo, GitInfo, GitProvider, Worktree,
+    FileDiffStats, FileStatus, GitBranchInfo, GitInfo, GitProvider, StashEntry, Worktree,
 };
 
 /// Stage specific files: `git add -- <files>`
@@ -497,8 +497,8 @@ pub async fn get_commit_log(
         "log".to_string(),
         format.to_string(),
         "--decorate=full".to_string(),
-        "--all".to_string(),
         "--topo-order".to_string(),
+        "HEAD".to_string(),
     ];
     if count > 0 {
         args.push(format!("-{}", count));
@@ -578,42 +578,42 @@ pub async fn get_commit_files(
         )
         .await?;
 
-    let status_map: std::collections::HashMap<String, String> = status_output
-        .lines()
-        .filter_map(|line| {
-            let parts: Vec<&str> = line.split('\t').collect();
-            if parts.len() >= 2 {
-                Some((parts[1].to_string(), parts[0].to_string()))
-            } else {
-                None
-            }
-        })
-        .collect();
+    Ok(super::parsers::parse_numstat_with_status(
+        &numstat,
+        &status_output,
+    ))
+}
 
-    let files: Vec<CommitFileChange> = numstat
-        .lines()
-        .filter_map(|line| {
-            let parts: Vec<&str> = line.split('\t').collect();
-            if parts.len() >= 3 {
-                let path = parts[2].to_string();
-                let additions = parts[0].parse::<usize>().unwrap_or(0);
-                let deletions = parts[1].parse::<usize>().unwrap_or(0);
-                let status = status_map
-                    .get(&path)
-                    .cloned()
-                    .unwrap_or_else(|| "M".to_string());
-                Some(CommitFileChange {
-                    path,
-                    status,
-                    additions,
-                    deletions,
-                })
-            } else {
-                None
-            }
-        })
-        .collect();
-    Ok(files)
+/// List stashes: `git stash list --format=%gd%x00%gs%x00%H%x00%aI%x00`
+pub async fn get_stash_list(
+    transport: &dyn GitTransport,
+    work_dir: &str,
+) -> Result<Vec<StashEntry>> {
+    let output = transport
+        .run_git(
+            &["stash", "list", "--format=%gd%x00%gs%x00%H%x00%aI%x00"],
+            work_dir,
+        )
+        .await?;
+    Ok(super::parsers::parse_stash_list(&output))
+}
+
+/// Get files changed in a stash entry: `git stash show --numstat/--name-status <selector>`
+pub async fn get_stash_files(
+    transport: &dyn GitTransport,
+    work_dir: &str,
+    selector: &str,
+) -> Result<Vec<CommitFileChange>> {
+    let numstat = transport
+        .run_git(&["stash", "show", "--numstat", selector], work_dir)
+        .await?;
+    let status_output = transport
+        .run_git(&["stash", "show", "--name-status", selector], work_dir)
+        .await?;
+    Ok(super::parsers::parse_numstat_with_status(
+        &numstat,
+        &status_output,
+    ))
 }
 
 /// Get file diff for a commit: `git diff <hash>^ <hash> -- <file>`

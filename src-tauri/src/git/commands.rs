@@ -5,7 +5,7 @@ use crate::common::git::types::{DiffResult, PushOutcome};
 use crate::project::types::{
     AheadBehind, CommitDetail, CommitEntry, CommitFileChange, CommitResult, FileChange,
     FileDiffStats, GitBranchInfo, GitInfo, PRComment, PRCommit, PRFileChange, PRInfo, PRListItem,
-    PRMergeResult, PRReviewComment, PrLabel,
+    PRMergeResult, PRReviewComment, PrLabel, StashEntry,
 };
 use crate::AppError;
 use crate::AppStateWrapper;
@@ -553,6 +553,35 @@ pub async fn get_commit_files(
 ) -> Result<Vec<CommitFileChange>, AppError> {
     let (t, wd) = state.resolve_project(&project_id)?;
     operations::get_commit_files(&t, &wd, &commit_hash)
+        .await
+        .map_err(AppError::from)
+}
+
+/// List stash entries.
+#[tauri::command]
+pub async fn get_stash_list(
+    project_id: String,
+    worktree_path: Option<String>,
+    state: State<'_, AppStateWrapper>,
+) -> Result<Vec<StashEntry>, AppError> {
+    let (t, wd) = state.resolve_project(&project_id)?;
+    let repo_path = worktree_path.as_deref().unwrap_or(&wd);
+    operations::get_stash_list(&t, repo_path)
+        .await
+        .map_err(AppError::from)
+}
+
+/// Get files changed in a stash entry.
+#[tauri::command]
+pub async fn get_stash_files(
+    project_id: String,
+    selector: String,
+    worktree_path: Option<String>,
+    state: State<'_, AppStateWrapper>,
+) -> Result<Vec<CommitFileChange>, AppError> {
+    let (t, wd) = state.resolve_project(&project_id)?;
+    let repo_path = worktree_path.as_deref().unwrap_or(&wd);
+    operations::get_stash_files(&t, repo_path, &selector)
         .await
         .map_err(AppError::from)
 }

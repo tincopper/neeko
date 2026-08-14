@@ -12,6 +12,7 @@ import type {
   CommitResult,
   DiffResult,
   PushOutcome,
+  StashEntry,
 } from '@/shared/types/git';
 
 export function createProjectCommands(
@@ -120,6 +121,12 @@ export function createProjectCommands(
     },
     getCommitFiles(commitHash: string): Promise<CommitFileChange[]> {
       return invoke<CommitFileChange[]>('get_commit_files', { projectId, commitHash });
+    },
+    getStashList(): Promise<StashEntry[]> {
+      return invoke<StashEntry[]>('get_stash_list', { projectId, worktreePath });
+    },
+    getStashFiles(selector: string): Promise<CommitFileChange[]> {
+      return invoke<CommitFileChange[]>('get_stash_files', { projectId, selector, worktreePath });
     },
     getCommitFileDiff(
       commitHash: string,

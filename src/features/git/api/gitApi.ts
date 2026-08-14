@@ -13,6 +13,7 @@ import type {
   CommitResult,
   AheadBehind,
   PushOutcome,
+  StashEntry,
 } from '../types';
 export type { PushOutcome };
 
@@ -293,6 +294,21 @@ export function getAheadBehind(
   worktreePath?: string | null,
 ): Promise<AheadBehind> {
   return invoke<AheadBehind>('get_ahead_behind', { projectId, worktreePath });
+}
+
+export function getStashList(
+  projectId: string,
+  worktreePath?: string | null,
+): Promise<StashEntry[]> {
+  return invoke<StashEntry[]>('get_stash_list', { projectId, worktreePath });
+}
+
+export function getStashFiles(
+  projectId: string,
+  selector: string,
+  worktreePath?: string | null,
+): Promise<CommitFileChange[]> {
+  return invoke<CommitFileChange[]>('get_stash_files', { projectId, selector, worktreePath });
 }
 
 // ─── Default branch ──────────────────────────────────────────────────────────

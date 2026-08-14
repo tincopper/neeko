@@ -10,6 +10,7 @@ import type {
   DiffResult,
   GitInfo,
   PushOutcome,
+  StashEntry,
 } from '@/shared/types/git';
 
 export type ProjectEnvironment =
@@ -128,6 +129,8 @@ export interface ProjectCommands {
   getCommitLog(count: number, skip?: number): Promise<CommitEntry[]>;
   getCommitDetail(commitHash: string): Promise<CommitDetail>;
   getCommitFiles(commitHash: string): Promise<CommitFileChange[]>;
+  getStashList(): Promise<StashEntry[]>;
+  getStashFiles(selector: string): Promise<CommitFileChange[]>;
   getCommitFileDiff(commitHash: string, filePath: string, collapse?: boolean): Promise<DiffResult>;
   cherryPick(commitHash: string): Promise<void>;
   revert(commitHash: string): Promise<void>;
