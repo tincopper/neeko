@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-3.md`
-- **Total Sessions**: 131
-- **Last Active**: 2026-08-13
+- **Total Sessions**: 132
+- **Last Active**: 2026-08-14
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-3.md` | ~493 | Active |
+| `journal-3.md` | ~526 | Active |
 | `journal-2.md` | ~1991 | Archived |
 | `journal-1.md` | ~1986 | Archived |
 <!-- @@@/auto:active-documents -->
@@ -31,6 +31,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 132 | 2026-08-14 | Stash 面板内容查看与 Apply/Pop 实现 | `6099419d` | `main` |
 | 131 | 2026-08-13 | Diff AI Review 重构：headless 评审闭环 | `143a2a4f` | `main` |
 | 130 | 2026-08-13 | 08-13 AI diff review: frontend integration stages 5-6 | - | `main` |
 | 129 | 2026-08-12 | 清理前端静态吞错并接入全局错误上报 | `9bf3546b`, `5ee2bf2a` | `main` |

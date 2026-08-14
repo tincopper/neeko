@@ -491,3 +491,36 @@ DiffView review integration (popover/anchors/selection), ReviewPanel dock panel,
 ### Next Steps
 
 - None - task complete
+
+
+## Session 132: Stash 面板内容查看与 Apply/Pop 实现
+
+**Date**: 2026-08-14
+**Task**: Stash 面板内容查看与 Apply/Pop 实现
+**Branch**: `main`
+
+### Summary
+
+扩展 Stash 面板：列表展示、展开文件列表（gitlog 风格）、单文件 diff 复用 DiffView（stash@{n}: message 标题）、底部操作栏 Apply/Pop、冲突保留条目并报错。后端新增 get_stash_file_diff（git diff <sel>^ <sel> -- <path>）、stash_apply、stash_pop。TDD 全绿：前端 1588 通过、Rust 91 通过。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `6099419d` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
