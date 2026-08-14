@@ -228,6 +228,9 @@ macro_rules! neeko_invoke_handler {
             $crate::git::commands::get_ahead_behind,
             $crate::git::commands::get_stash_list,
             $crate::git::commands::get_stash_files,
+            $crate::git::commands::get_stash_file_diff,
+            $crate::git::commands::stash_apply,
+            $crate::git::commands::stash_pop,
             // default branch
             $crate::git::commands::default_branch,
             // unified commit message

@@ -23,6 +23,7 @@ import GitLogPanel from '@/features/git/components/gitlog/GitLogPanel';
 import { useCommitDetail } from '@/features/git/components/gitlog/useCommitDetail';
 import { useGitLog } from '@/features/git/components/gitlog/useGitLog';
 import PullRequestsPanel from '@/features/git/components/PullRequestsPanel';
+import { useOpenStashDiff } from '@/features/git/hooks/useOpenStashDiff';
 import { useSingletonDiff } from '@/features/git/hooks/useSingletonDiff';
 import { useStashList } from '@/features/git/hooks/useStashList';
 import LibraryPanel from '@/features/library/components/LibraryPanel';
@@ -987,10 +988,15 @@ const GitControlPanelWrapper: React.FC = React.memo(() => {
     filesLoading: stashFilesLoading,
     filesError: stashFilesError,
     toggleExpand: toggleStash,
+    actionLoading: stashActionLoading,
+    applyStash,
+    popStash,
   } = useStashList(commands);
 
   const { openFileInDiff, openCombined, pinFile, scrollToFile, refreshOpenDiff, hasSingleton } =
     useSingletonDiff(project?.id, selectedHash, files, connectionContext, activeWorktreePath);
+
+  const openStashDiff = useOpenStashDiff(project?.id, activeWorktreePath, stashes);
 
   // Use refs to break the dependency cycle: baseRefreshGit updates the store
   // which changes activeProject → commands reference → baseRefreshGit reference
@@ -1296,6 +1302,10 @@ const GitControlPanelWrapper: React.FC = React.memo(() => {
       stashFilesLoading={stashFilesLoading}
       stashFilesError={stashFilesError}
       onToggleStash={toggleStash}
+      actionLoading={stashActionLoading}
+      onApply={applyStash}
+      onPop={popStash}
+      onOpenStashDiff={openStashDiff}
       activeTab={tab}
       onTabChange={setTab}
     />

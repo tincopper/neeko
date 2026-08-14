@@ -26,6 +26,7 @@ const DiffView: React.FC<DiffViewProps> = React.memo(
     files,
     scrollToPath,
     onScrollToPathChange,
+    commands,
   }) => {
     const [viewMode, setViewMode] = useState<ViewMode>(initialMode ?? 'unified');
     const [selectedLines, setSelectedLines] = useState<Set<string>>(new Set());
@@ -66,6 +67,7 @@ const DiffView: React.FC<DiffViewProps> = React.memo(
       // Skip single-file fetch noise in combined mode (each section loads itself).
       filePath: combined ? '' : filePath,
       collapse: !fullMode,
+      commands,
     });
 
     const {

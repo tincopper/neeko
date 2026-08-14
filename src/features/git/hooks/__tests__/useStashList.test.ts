@@ -1,6 +1,7 @@
 import { renderHook, act, waitFor } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
+import type { StashActionResult } from '@/features/git/types';
 import type { ProjectCommands } from '@/shared/types/activeProject';
 
 import { useStashList } from '../useStashList';
@@ -261,5 +262,94 @@ describe('useStashList', () => {
     const { result } = renderHook(() => useStashList(commands));
     await waitFor(() => expect(result.current.loading).toBe(false));
     expect('loadStashes' in result.current).toBe(false);
+  });
+
+  // --- apply / pop ---
+
+  it('should_apply_stash_and_report_result', async () => {
+    const stashApply = vi.fn().mockResolvedValue({ success: true, message: '' });
+    const commands = createCommands({ stashApply });
+
+    const { result } = renderHook(() => useStashList(commands));
+
+    let outcome: StashActionResult | null = null;
+    await act(async () => {
+      outcome = await result.current.applyStash('stash@{0}');
+    });
+    expect(stashApply).toHaveBeenCalledWith('stash@{0}');
+    expect(outcome?.success).toBe(true);
+    expect(result.current.actionLoading).toBe(false);
+  });
+
+  it('should_pop_stash_and_refresh_list', async () => {
+    const getStashList = vi.fn().mockResolvedValue([
+      {
+        selector: 'stash@{0}',
+        hash: 'abc123',
+        message: 'On main: wip stash',
+        branch: 'main',
+        timestamp: '2026-08-14T10:00:00',
+      },
+    ]);
+    const stashPop = vi.fn().mockResolvedValue({ success: true, message: '' });
+    const commands = createCommands({ getStashList, stashPop });
+
+    const { result } = renderHook(() => useStashList(commands));
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(getStashList).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      await result.current.popStash('stash@{0}');
+    });
+    expect(stashPop).toHaveBeenCalledWith('stash@{0}');
+    // pop 成功后刷新列表（条目被移除）
+    await waitFor(() => expect(getStashList).toHaveBeenCalledTimes(2));
+  });
+
+  it('should_guard_concurrent_actions', async () => {
+    let resolveApply: ((value: unknown) => void) | undefined;
+    const stashApply = vi.fn().mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveApply = resolve;
+        }),
+    );
+    const commands = createCommands({ stashApply });
+
+    const { result } = renderHook(() => useStashList(commands));
+
+    let first: Promise<StashActionResult | null> = Promise.resolve(null);
+    act(() => {
+      first = result.current.applyStash('stash@{0}');
+    });
+    expect(result.current.actionLoading).toBe(true);
+
+    // 并发操作被守卫拒绝
+    let second: StashActionResult | null = null;
+    await act(async () => {
+      second = await result.current.applyStash('stash@{1}');
+    });
+    expect(second).toBeNull();
+    expect(stashApply).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      resolveApply?.({ success: true, message: '' });
+      await first;
+    });
+    expect(result.current.actionLoading).toBe(false);
+  });
+
+  it('should_surface_action_failure_without_throwing', async () => {
+    const stashPop = vi.fn().mockResolvedValue({ success: false, message: 'conflict' });
+    const commands = createCommands({ stashPop });
+
+    const { result } = renderHook(() => useStashList(commands));
+    let outcome: StashActionResult | null = null;
+    await act(async () => {
+      outcome = await result.current.popStash('stash@{0}');
+    });
+    expect(outcome?.success).toBe(false);
+    expect(outcome?.message).toBe('conflict');
+    expect(result.current.actionLoading).toBe(false);
   });
 });

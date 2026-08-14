@@ -14,7 +14,8 @@ use crate::common::git::types::{DiffHunk, DiffLine, DiffResult};
 use crate::core::exec::collect_in_dir;
 use crate::project::types::{
     AheadBehind, CommitDetail, CommitEntry, CommitFileChange, CommitResult, FileChange,
-    FileDiffStats, FileStatus, GitBranchInfo, GitInfo, GitProvider, StashEntry, Worktree,
+    FileDiffStats, FileStatus, GitBranchInfo, GitInfo, GitProvider, StashActionResult, StashEntry,
+    Worktree,
 };
 
 /// Stage specific files: `git add -- <files>`
@@ -616,11 +617,126 @@ pub async fn get_stash_files(
     ))
 }
 
+/// Get diff for a single file in a stash entry: `git diff <selector>^ <selector> -- <file>`
+pub async fn get_stash_file_diff(
+    transport: &dyn GitTransport,
+    work_dir: &str,
+    selector: &str,
+    file_path: &str,
+    collapse: bool,
+) -> Result<DiffResult> {
+    get_revision_file_diff(transport, work_dir, selector, file_path, collapse).await
+}
+
+/// Apply a stash entry to the working tree: `git stash apply <selector>`.
+/// Operation-level failures (conflicts, etc.) are reported as `success: false`
+/// with the git stderr message; system-level errors (auth/network/spawn) propagate.
+pub async fn stash_apply(
+    transport: &dyn GitTransport,
+    work_dir: &str,
+    selector: &str,
+) -> Result<StashActionResult> {
+    match transport
+        .run_git(&["stash", "apply", selector], work_dir)
+        .await
+    {
+        Ok(_) => Ok(StashActionResult {
+            success: true,
+            message: String::new(),
+        }),
+        Err(e) => stash_action_result(e),
+    }
+}
+
+/// Pop (apply + drop) a stash entry: `git stash pop <selector>`.
+/// On conflict git keeps the entry; reported as `success: false`.
+/// System-level errors (auth/network/spawn) propagate instead of being masked.
+pub async fn stash_pop(
+    transport: &dyn GitTransport,
+    work_dir: &str,
+    selector: &str,
+) -> Result<StashActionResult> {
+    match transport
+        .run_git(&["stash", "pop", selector], work_dir)
+        .await
+    {
+        Ok(_) => Ok(StashActionResult {
+            success: true,
+            message: String::new(),
+        }),
+        Err(e) => stash_action_result(e),
+    }
+}
+
+/// Operation-level stash apply/pop failure markers. Git reports merge conflicts and
+/// invalid selectors as ordinary operation failures, not system faults. Real 3-way
+/// conflicts surface on **stdout** ("CONFLICT (content): ..."), while local-change
+/// conflicts ("would be overwritten by merge") and bad selectors land on **stderr**.
+const STASH_OP_FAILURE_MARKERS: &[&str] = &[
+    "CONFLICT (content):",
+    "CONFLICT (rename",
+    "CONFLICT (modify/delete)",
+    "would be overwritten by merge",
+    "log for 'stash' only has",
+    "No stash entries found.",
+];
+
+/// Classify a stash apply/pop failure into a result:
+/// - operation-level failures (merge conflicts, local-change conflicts, invalid
+///   selector, no stash entries) → `success: false` with the raw git message;
+/// - system-level errors (auth / network / ambiguous / no-upstream) and
+///   non-`GitExecError` failures (spawn, timeout) → propagate as `Err`.
+fn stash_action_result(err: anyhow::Error) -> Result<StashActionResult> {
+    match err.downcast_ref::<GitExecError>() {
+        Some(ge)
+            if ge.kind == ErrorKind::Other
+                && STASH_OP_FAILURE_MARKERS
+                    .iter()
+                    .any(|m| ge.stderr.contains(m) || ge.stdout.contains(m)) =>
+        {
+            // 冲突信息可能落在 stderr（本地改动冲突）或 stdout（真实 3-way 冲突）；
+            // stderr 为空时从 stdout 提取 CONFLICT 行，避免 toast 空消息。
+            let message = if ge.stderr.trim().is_empty() {
+                stash_conflict_message_from_stdout(&ge.stdout)
+            } else {
+                ge.stderr.clone()
+            };
+            Ok(StashActionResult {
+                success: false,
+                message,
+            })
+        }
+        _ => Err(err),
+    }
+}
+
+/// Extract the first conflict line from stdout (real 3-way conflicts land here,
+/// not on stderr).
+fn stash_conflict_message_from_stdout(stdout: &str) -> String {
+    stdout
+        .lines()
+        .find(|l| l.contains("CONFLICT"))
+        .unwrap_or_else(|| stdout.trim())
+        .to_string()
+}
+
 /// Get file diff for a commit: `git diff <hash>^ <hash> -- <file>`
 pub async fn get_commit_file_diff(
     transport: &dyn GitTransport,
     work_dir: &str,
     commit_hash: &str,
+    file_path: &str,
+    collapse: bool,
+) -> Result<DiffResult> {
+    get_revision_file_diff(transport, work_dir, commit_hash, file_path, collapse).await
+}
+
+/// Shared implementation for diffing one file against a revision's parent:
+/// `git diff <revision>^ <revision> -- <file>` (used by commit and stash diffs).
+async fn get_revision_file_diff(
+    transport: &dyn GitTransport,
+    work_dir: &str,
+    revision: &str,
     file_path: &str,
     collapse: bool,
 ) -> Result<DiffResult> {
@@ -633,8 +749,8 @@ pub async fn get_commit_file_diff(
             .unwrap_or(0);
         args.push(super::parsers::full_diff_context_arg(file_bytes));
     }
-    args.push(format!("{}^", commit_hash));
-    args.push(commit_hash.to_string());
+    args.push(format!("{}^", revision));
+    args.push(revision.to_string());
     args.push("--".to_string());
     args.push(file_path.to_string());
     let arg_refs: Vec<&str> = args.iter().map(String::as_str).collect();
@@ -1707,5 +1823,101 @@ mod tests {
                 .any(|l| matches!(l, DiffLine::Collapsed(_))),
             "collapse=true should keep markers in shell path"
         );
+    }
+
+    // ── stash apply/pop 错误分流（P3） ────────────────────────────────────
+
+    fn git_exec_err(kind: ErrorKind, stderr: &str) -> anyhow::Error {
+        git_exec_err_full(kind, stderr, "")
+    }
+
+    fn git_exec_err_full(kind: ErrorKind, stderr: &str, stdout: &str) -> anyhow::Error {
+        GitExecError {
+            kind,
+            stderr: stderr.to_string(),
+            stdout: stdout.to_string(),
+            command: "git stash apply stash@{0}".to_string(),
+        }
+        .into()
+    }
+
+    #[test]
+    fn stash_action_conflict_on_stderr_returns_success_false() {
+        // 本地改动冲突：stderr 携带 "would be overwritten by merge"（classify_stderr → Other）
+        let result = stash_action_result(git_exec_err(
+            ErrorKind::Other,
+            "error: Your local changes to the following files would be overwritten by merge:\n\tf.txt\nAborting",
+        ))
+        .expect("local-change conflict should be reported as success:false");
+        assert!(!result.success, "conflict must not be reported as success");
+        assert!(
+            result.message.contains("would be overwritten by merge"),
+            "stderr should be surfaced, got: {}",
+            result.message
+        );
+    }
+
+    #[test]
+    fn stash_action_conflict_on_stdout_extracts_conflict_line() {
+        // 真实 3-way 冲突：git 把 "CONFLICT (content): ..." 写到 stdout，stderr 为空
+        let result = stash_action_result(git_exec_err_full(
+            ErrorKind::Other,
+            "",
+            "Auto-merging f.txt\nCONFLICT (content): Merge conflict in f.txt\nOn branch main",
+        ))
+        .expect("stdout conflict should be reported as success:false");
+        assert!(!result.success);
+        assert_eq!(
+            result.message, "CONFLICT (content): Merge conflict in f.txt",
+            "stdout conflict line should be extracted, got: {}",
+            result.message
+        );
+    }
+
+    #[test]
+    fn stash_action_invalid_selector_is_operation_failure() {
+        // 无效 selector（stderr 无 CONFLICT 关键字，仍属操作级）
+        let result = stash_action_result(git_exec_err(
+            ErrorKind::Other,
+            "fatal: log for 'stash' only has 1 entries",
+        ))
+        .expect("invalid selector should be reported as success:false");
+        assert!(!result.success);
+        assert!(result.message.contains("only has 1 entries"));
+    }
+
+    #[test]
+    fn stash_action_unrecognized_other_propagates() {
+        // 收紧：未命中操作级 marker 的 Other（如 config 损坏）不再伪装成 success:false
+        let err = git_exec_err(ErrorKind::Other, "fatal: bad config file line 1");
+        assert!(
+            stash_action_result(err).is_err(),
+            "unrecognized Other failure must propagate, not be masked as success:false"
+        );
+    }
+
+    #[test]
+    fn stash_action_system_kinds_propagate() {
+        // 系统级错误（认证/网络/上游等）必须上抛 Err，不允许伪装成 success:false
+        for kind in [
+            ErrorKind::Auth,
+            ErrorKind::AuthSsh,
+            ErrorKind::Network,
+            ErrorKind::Ambiguous,
+            ErrorKind::NoUpstream,
+        ] {
+            let err = git_exec_err(kind, "fatal: unable to access");
+            assert!(
+                stash_action_result(err).is_err(),
+                "{kind:?} is a system-level error and must propagate"
+            );
+        }
+    }
+
+    #[test]
+    fn stash_action_non_git_error_propagates() {
+        // 非 GitExecError（spawn 失败、timeout 等）同样上抛
+        let err = anyhow::anyhow!("git command failed to spawn: No such file or directory");
+        assert!(stash_action_result(err).is_err());
     }
 }

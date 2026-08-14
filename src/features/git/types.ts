@@ -25,4 +25,5 @@ export type {
   ParsedRef,
   ParsedRefKind,
   StashEntry,
+  StashActionResult,
 } from '@/shared/types/git';

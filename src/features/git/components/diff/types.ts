@@ -1,3 +1,4 @@
+import type { ProjectCommands } from '@/shared/types/activeProject';
 import type { ViewMode, DiffSource } from '@/shared/types/git';
 
 export type { ViewMode, DiffSource } from '@/shared/types/git';
@@ -39,6 +40,8 @@ export interface DiffViewProps {
   files?: CommitFileChange[];
   scrollToPath?: string;
   onScrollToPathChange?: (path: string) => void;
+  /** 项目命令门面：透传给 useDiffData，stash 等 diff 加载优先走 commands。 */
+  commands?: ProjectCommands | null;
 }
 
 export interface SplitRow {

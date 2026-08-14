@@ -12,6 +12,7 @@ import type {
   CommitResult,
   DiffResult,
   PushOutcome,
+  StashActionResult,
   StashEntry,
 } from '@/shared/types/git';
 
@@ -127,6 +128,21 @@ export function createProjectCommands(
     },
     getStashFiles(selector: string): Promise<CommitFileChange[]> {
       return invoke<CommitFileChange[]>('get_stash_files', { projectId, selector, worktreePath });
+    },
+    getStashFileDiff(selector: string, filePath: string, collapse?: boolean): Promise<DiffResult> {
+      return invoke<DiffResult>('get_stash_file_diff', {
+        projectId,
+        selector,
+        filePath,
+        collapse: collapse ?? true,
+        worktreePath,
+      });
+    },
+    stashApply(selector: string): Promise<StashActionResult> {
+      return invoke<StashActionResult>('stash_apply', { projectId, selector, worktreePath });
+    },
+    stashPop(selector: string): Promise<StashActionResult> {
+      return invoke<StashActionResult>('stash_pop', { projectId, selector, worktreePath });
     },
     getCommitFileDiff(
       commitHash: string,

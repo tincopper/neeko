@@ -5,7 +5,7 @@ use crate::common::git::types::{DiffResult, PushOutcome};
 use crate::project::types::{
     AheadBehind, CommitDetail, CommitEntry, CommitFileChange, CommitResult, FileChange,
     FileDiffStats, GitBranchInfo, GitInfo, PRComment, PRCommit, PRFileChange, PRInfo, PRListItem,
-    PRMergeResult, PRReviewComment, PrLabel, StashEntry,
+    PRMergeResult, PRReviewComment, PrLabel, StashActionResult, StashEntry,
 };
 use crate::AppError;
 use crate::AppStateWrapper;
@@ -582,6 +582,59 @@ pub async fn get_stash_files(
     let (t, wd) = state.resolve_project(&project_id)?;
     let repo_path = worktree_path.as_deref().unwrap_or(&wd);
     operations::get_stash_files(&t, repo_path, &selector)
+        .await
+        .map_err(AppError::from)
+}
+
+/// Get the diff for a single file in a stash entry.
+#[tauri::command]
+pub async fn get_stash_file_diff(
+    project_id: String,
+    selector: String,
+    file_path: String,
+    collapse: Option<bool>,
+    worktree_path: Option<String>,
+    state: State<'_, AppStateWrapper>,
+) -> Result<DiffResult, AppError> {
+    let (t, wd) = state.resolve_project(&project_id)?;
+    let repo_path = worktree_path.as_deref().unwrap_or(&wd);
+    operations::get_stash_file_diff(
+        &t,
+        repo_path,
+        &selector,
+        &file_path,
+        collapse.unwrap_or(true),
+    )
+    .await
+    .map_err(AppError::from)
+}
+
+/// Apply a stash entry to the working tree.
+#[tauri::command]
+pub async fn stash_apply(
+    project_id: String,
+    selector: String,
+    worktree_path: Option<String>,
+    state: State<'_, AppStateWrapper>,
+) -> Result<StashActionResult, AppError> {
+    let (t, wd) = state.resolve_project(&project_id)?;
+    let repo_path = worktree_path.as_deref().unwrap_or(&wd);
+    operations::stash_apply(&t, repo_path, &selector)
+        .await
+        .map_err(AppError::from)
+}
+
+/// Pop (apply + drop) a stash entry.
+#[tauri::command]
+pub async fn stash_pop(
+    project_id: String,
+    selector: String,
+    worktree_path: Option<String>,
+    state: State<'_, AppStateWrapper>,
+) -> Result<StashActionResult, AppError> {
+    let (t, wd) = state.resolve_project(&project_id)?;
+    let repo_path = worktree_path.as_deref().unwrap_or(&wd);
+    operations::stash_pop(&t, repo_path, &selector)
         .await
         .map_err(AppError::from)
 }

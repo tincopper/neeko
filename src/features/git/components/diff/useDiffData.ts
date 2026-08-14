@@ -69,6 +69,13 @@ export function useDiffData({
         const { getCommitFileDiff } = await import('../../api/gitApi');
         return getCommitFileDiff(projectId ?? '', ds.commitHash, filePath, collapseMode);
       }
+      if (ds?.type === 'stash') {
+        if (commands) {
+          return commands.getStashFileDiff(ds.selector, filePath, collapseMode);
+        }
+        const { getStashFileDiff } = await import('../../api/gitApi');
+        return getStashFileDiff(projectId ?? '', ds.selector, filePath, collapseMode);
+      }
       if (commands) {
         return commands.getFileDiff(filePath, collapseMode);
       }

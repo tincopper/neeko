@@ -198,6 +198,15 @@ pub struct StashEntry {
     pub timestamp: String,
 }
 
+/// Result of a stash apply/pop operation.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StashActionResult {
+    /// Whether the operation succeeded.
+    pub success: bool,
+    /// Human-readable message (empty on success, git stderr on conflict/failure).
+    pub message: String,
+}
+
 /// Result of a commit operation.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CommitResult {

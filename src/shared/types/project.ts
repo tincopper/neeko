@@ -10,6 +10,7 @@ import type {
   DiffResult,
   GitInfo,
   PushOutcome,
+  StashActionResult,
   StashEntry,
 } from '@/shared/types/git';
 
@@ -131,6 +132,9 @@ export interface ProjectCommands {
   getCommitFiles(commitHash: string): Promise<CommitFileChange[]>;
   getStashList(): Promise<StashEntry[]>;
   getStashFiles(selector: string): Promise<CommitFileChange[]>;
+  getStashFileDiff(selector: string, filePath: string, collapse?: boolean): Promise<DiffResult>;
+  stashApply(selector: string): Promise<StashActionResult>;
+  stashPop(selector: string): Promise<StashActionResult>;
   getCommitFileDiff(commitHash: string, filePath: string, collapse?: boolean): Promise<DiffResult>;
   cherryPick(commitHash: string): Promise<void>;
   revert(commitHash: string): Promise<void>;

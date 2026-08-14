@@ -6,6 +6,7 @@ import type {
   CommitEntry,
   CommitDetail,
   CommitFileChange,
+  StashActionResult,
   StashEntry,
 } from '@/shared/types';
 import type {
@@ -61,6 +62,10 @@ interface GitControlPanelProps {
   stashFilesLoading: boolean;
   stashFilesError: string | null;
   onToggleStash: (selector: string) => void;
+  actionLoading: boolean;
+  onApply: (selector: string) => Promise<StashActionResult | null>;
+  onPop: (selector: string) => Promise<StashActionResult | null>;
+  onOpenStashDiff: (selector: string, filePath: string) => void;
   // Tab state (lifted for keyboard gating in wrapper)
   activeTab: GitControlTab;
   onTabChange: (tab: GitControlTab) => void;
@@ -104,6 +109,10 @@ const GitControlPanel: React.FC<GitControlPanelProps> = ({
   stashFilesLoading,
   stashFilesError,
   onToggleStash,
+  actionLoading,
+  onApply,
+  onPop,
+  onOpenStashDiff,
   activeTab,
   onTabChange,
 }) => {
@@ -232,6 +241,12 @@ const GitControlPanel: React.FC<GitControlPanelProps> = ({
             filesLoading={stashFilesLoading}
             filesError={stashFilesError}
             onToggle={onToggleStash}
+            actionLoading={actionLoading}
+            onApply={onApply}
+            onPop={onPop}
+            onOpenStashDiff={onOpenStashDiff}
+            onShowToast={onShowToast}
+            onRefreshGit={onRefreshGit}
           />
         </div>
       </div>

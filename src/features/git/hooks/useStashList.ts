@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
-import type { CommitFileChange, StashEntry } from '@/features/git/types';
+import type { CommitFileChange, StashActionResult, StashEntry } from '@/features/git/types';
 import type { ProjectCommands } from '@/shared/types/activeProject';
 
 export interface StashListData {
@@ -12,9 +12,13 @@ export interface StashListData {
   filesLoading: boolean;
   filesError: string | null;
   toggleExpand: (selector: string) => Promise<void>;
+  // apply / pop 操作
+  actionLoading: boolean;
+  applyStash: (selector: string) => Promise<StashActionResult | null>;
+  popStash: (selector: string) => Promise<StashActionResult | null>;
 }
 
-/** 加载 git stash 列表；点击某条展开其文件变更（只读）。 */
+/** 加载 git stash 列表；点击某条展开其文件变更，支持 apply/pop。点击文件在编辑器打开 diff tab。 */
 export function useStashList(commands: ProjectCommands | null): StashListData {
   const [stashes, setStashes] = useState<StashEntry[]>([]);
   const [loading, setLoading] = useState(false);
@@ -23,6 +27,9 @@ export function useStashList(commands: ProjectCommands | null): StashListData {
   const [expandedFiles, setExpandedFiles] = useState<CommitFileChange[]>([]);
   const [filesLoading, setFilesLoading] = useState(false);
   const [filesError, setFilesError] = useState<string | null>(null);
+
+  // apply/pop 状态
+  const [actionLoading, setActionLoading] = useState(false);
 
   // 列表加载序号：commands 切换时递增，使旧项目的慢响应过期（防止覆盖新项目数据）
   const loadSeq = useRef(0);
@@ -82,6 +89,52 @@ export function useStashList(commands: ProjectCommands | null): StashListData {
     [commands, expandedSelector],
   );
 
+  // apply/pop 互斥守卫：ref 同步判断，防止 state 异步更新期间并发操作
+  const actionBusy = useRef(false);
+
+  const runAction = useCallback(
+    async (
+      selector: string,
+      run: (sel: string) => Promise<StashActionResult>,
+    ): Promise<StashActionResult | null> => {
+      if (actionBusy.current) return null;
+      actionBusy.current = true;
+      setActionLoading(true);
+      try {
+        return await run(selector);
+      } catch (err) {
+        return { success: false, message: String(err) };
+      } finally {
+        actionBusy.current = false;
+        setActionLoading(false);
+      }
+    },
+    [],
+  );
+
+  const applyStash = useCallback(
+    async (selector: string) => {
+      if (!commands) return null;
+      return runAction(selector, (sel) => commands.stashApply(sel));
+    },
+    [commands, runAction],
+  );
+
+  const popStash = useCallback(
+    async (selector: string) => {
+      if (!commands) return null;
+      return runAction(selector, async (sel) => {
+        const result = await commands.stashPop(sel);
+        if (result.success) {
+          // pop 会移除条目：刷新列表
+          void loadStashes();
+        }
+        return result;
+      });
+    },
+    [commands, runAction, loadStashes],
+  );
+
   return {
     stashes,
     loading,
@@ -91,5 +144,8 @@ export function useStashList(commands: ProjectCommands | null): StashListData {
     filesLoading,
     filesError,
     toggleExpand,
+    actionLoading,
+    applyStash,
+    popStash,
   };
 }

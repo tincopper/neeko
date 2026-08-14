@@ -87,6 +87,11 @@ export interface CommitResult {
   message: string;
 }
 
+export interface StashActionResult {
+  success: boolean;
+  message: string;
+}
+
 export interface AheadBehind {
   ahead: number;
   behind: number;
@@ -234,7 +239,8 @@ export type DiffSource =
       auth: AuthMethod;
       projectPath: string;
       commitHash: string;
-    };
+    }
+  | { type: 'stash'; projectId: string; selector: string };
 
 // ─── PR Comment Types ───────────────────────────────────────────────────────
 

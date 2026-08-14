@@ -481,3 +481,180 @@ async fn get_stash_list_empty_repo_yields_empty_list() {
         .expect("get_stash_list on repo without stashes should succeed");
     assert!(stashes.is_empty());
 }
+
+// --- stash file diff / apply / pop (integration) ---
+
+async fn create_stash(repo_path: &str, message: &str) {
+    let out = neeko_lib::core::exec::collect_in_dir(
+        &ExecTarget::Local,
+        "git",
+        &["stash", "push", "-m", message],
+        Some(repo_path),
+    )
+    .await
+    .expect("run git stash push");
+    assert_eq!(out.exit_code, 0, "git stash push failed");
+}
+
+#[tokio::test]
+async fn get_stash_file_diff_parses_single_file() {
+    let (tmp, _repo) = create_test_repo();
+    let path = tmp.path().to_string_lossy().to_string();
+    std::fs::write(tmp.path().join("README.md"), "# Stashed change\n").unwrap();
+    create_stash(&path, "wip stash").await;
+
+    let transport = ExecTarget::Local;
+    let result =
+        operations::get_stash_file_diff(&transport, &path, "stash@{0}", "README.md", false)
+            .await
+            .expect("get_stash_file_diff should succeed");
+    assert!(!result.hunks.is_empty(), "stash diff should have hunks");
+    let added: Vec<_> = result.hunks[0]
+        .lines
+        .iter()
+        .filter(|l| matches!(l, DiffLine::Added(_)))
+        .collect();
+    assert!(!added.is_empty(), "stash diff should contain added lines");
+    let removed: Vec<_> = result.hunks[0]
+        .lines
+        .iter()
+        .filter(|l| matches!(l, DiffLine::Removed(_)))
+        .collect();
+    assert!(
+        !removed.is_empty(),
+        "stash diff should contain removed lines"
+    );
+}
+
+#[tokio::test]
+async fn get_stash_file_diff_collapse_limits_context() {
+    let (tmp, _repo) = create_test_repo();
+    let path = tmp.path().to_string_lossy().to_string();
+
+    // 构造 50 行大文件并提交
+    let mut content = String::new();
+    for i in 0..50 {
+        content.push_str(&format!("line {}\n", i));
+    }
+    std::fs::write(tmp.path().join("big.txt"), &content).unwrap();
+    {
+        let repo = Repository::open(tmp.path()).unwrap();
+        let mut index = repo.index().unwrap();
+        index.add_path(std::path::Path::new("big.txt")).unwrap();
+        index.write().unwrap();
+        let sig = Signature::now("Test", "test@test.com").unwrap();
+        let tree_id = index.write_tree().unwrap();
+        let tree = repo.find_tree(tree_id).unwrap();
+        let parent = repo.head().unwrap().peel_to_commit().unwrap();
+        repo.commit(Some("HEAD"), &sig, &sig, "Add big", &tree, &[&parent])
+            .unwrap();
+    }
+
+    // 修改第 25 行并 stash
+    let mut modified = String::new();
+    for i in 0..50 {
+        if i == 25 {
+            modified.push_str("line 25 CHANGED\n");
+        } else {
+            modified.push_str(&format!("line {}\n", i));
+        }
+    }
+    std::fs::write(tmp.path().join("big.txt"), &modified).unwrap();
+    create_stash(&path, "wip big").await;
+
+    let transport = ExecTarget::Local;
+    let collapsed =
+        operations::get_stash_file_diff(&transport, &path, "stash@{0}", "big.txt", true)
+            .await
+            .expect("collapsed stash diff should succeed");
+    let ctx = collapsed.hunks[0]
+        .lines
+        .iter()
+        .filter(|l| matches!(l, DiffLine::Context(_)))
+        .count();
+    assert!(
+        ctx <= 6,
+        "collapse should keep at most 6 context lines, got {}",
+        ctx
+    );
+}
+
+#[tokio::test]
+async fn get_stash_file_diff_unknown_file_returns_empty() {
+    let (tmp, _repo) = create_test_repo();
+    let path = tmp.path().to_string_lossy().to_string();
+    std::fs::write(tmp.path().join("README.md"), "# Stashed change\n").unwrap();
+    create_stash(&path, "wip stash").await;
+
+    let transport = ExecTarget::Local;
+    let result = operations::get_stash_file_diff(&transport, &path, "stash@{0}", "NOPE.txt", false)
+        .await
+        .expect("unknown file diff should succeed with empty result");
+    assert!(result.hunks.is_empty());
+}
+
+#[tokio::test]
+async fn stash_apply_restores_changes_keeps_entry() {
+    let (tmp, _repo) = create_test_repo();
+    let path = tmp.path().to_string_lossy().to_string();
+    std::fs::write(tmp.path().join("README.md"), "# Stashed change\n").unwrap();
+    create_stash(&path, "wip stash").await;
+
+    let transport = ExecTarget::Local;
+    let result = operations::stash_apply(&transport, &path, "stash@{0}")
+        .await
+        .expect("stash_apply should succeed");
+    assert!(result.success, "apply should report success");
+
+    // apply 后工作区恢复 stash 中的变更
+    let content = std::fs::read_to_string(tmp.path().join("README.md")).unwrap();
+    assert_eq!(content, "# Stashed change\n");
+
+    // stash 条目仍然保留
+    let stashes = operations::get_stash_list(&transport, &path).await.unwrap();
+    assert_eq!(stashes.len(), 1);
+}
+
+#[tokio::test]
+async fn stash_pop_restores_and_drops_entry() {
+    let (tmp, _repo) = create_test_repo();
+    let path = tmp.path().to_string_lossy().to_string();
+    std::fs::write(tmp.path().join("README.md"), "# Stashed change\n").unwrap();
+    create_stash(&path, "wip stash").await;
+
+    let transport = ExecTarget::Local;
+    let result = operations::stash_pop(&transport, &path, "stash@{0}")
+        .await
+        .expect("stash_pop should succeed");
+    assert!(result.success, "pop should report success");
+
+    // pop 后 stash 条目被移除
+    let stashes = operations::get_stash_list(&transport, &path).await.unwrap();
+    assert!(stashes.is_empty(), "pop should drop the stash entry");
+}
+
+#[tokio::test]
+async fn stash_pop_conflict_keeps_entry_and_reports_failure() {
+    let (tmp, _repo) = create_test_repo();
+    let path = tmp.path().to_string_lossy().to_string();
+    std::fs::write(tmp.path().join("README.md"), "# Stashed change\n").unwrap();
+    create_stash(&path, "wip stash").await;
+
+    // 制造冲突：stash 之后在同一文件上做了不同修改
+    std::fs::write(tmp.path().join("README.md"), "# Different change\n").unwrap();
+
+    let transport = ExecTarget::Local;
+    let result = operations::stash_pop(&transport, &path, "stash@{0}")
+        .await
+        .expect("stash_pop should return a result even on conflict");
+    assert!(!result.success, "conflicting pop should report failure");
+    assert!(
+        result.message.contains("overwritten by merge") || result.message.contains("CONFLICT"),
+        "conflict message should surface the git conflict marker, got: {}",
+        result.message
+    );
+
+    // 冲突时 stash 条目保留
+    let stashes = operations::get_stash_list(&transport, &path).await.unwrap();
+    assert_eq!(stashes.len(), 1, "stash entry should be kept on conflict");
+}

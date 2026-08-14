@@ -77,6 +77,24 @@ describe('useDiffData file-changed refresh', () => {
     expect(getFileDiff).toHaveBeenCalledWith('src/a.ts', false);
   });
 
+  it('loads stash file diff via commands.getStashFileDiff', async () => {
+    const getStashFileDiff = vi.fn().mockResolvedValue(makeDiff('stash-content'));
+    const stashCommands = { getStashFileDiff } as unknown as ProjectCommands;
+    const { result } = renderHook(() =>
+      useDiffData({
+        projectId: 'p1',
+        diffSource: { type: 'stash', projectId: 'p1', selector: 'stash@{0}' },
+        filePath: 'src/a.ts',
+        commands: stashCommands,
+      }),
+    );
+    await waitFor(() =>
+      expect(result.current.diffResult?.hunks[0].lines[0].Context).toBe('stash-content'),
+    );
+    // stash diff 应走 getStashFileDiff（selector + filePath + collapse 透传）
+    expect(getStashFileDiff).toHaveBeenCalledWith('stash@{0}', 'src/a.ts', true);
+  });
+
   it('isolates cache entries by collapse flag', async () => {
     // 独立文件路径，避免与上一条用例共享模块级 diffCache
     const filePath = 'src/cache-isolation.ts';

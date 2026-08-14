@@ -13,6 +13,7 @@ import type {
   CommitResult,
   AheadBehind,
   PushOutcome,
+  StashActionResult,
   StashEntry,
 } from '../types';
 export type { PushOutcome };
@@ -309,6 +310,38 @@ export function getStashFiles(
   worktreePath?: string | null,
 ): Promise<CommitFileChange[]> {
   return invoke<CommitFileChange[]>('get_stash_files', { projectId, selector, worktreePath });
+}
+
+export function getStashFileDiff(
+  projectId: string,
+  selector: string,
+  filePath: string,
+  collapse?: boolean,
+  worktreePath?: string | null,
+): Promise<DiffResult> {
+  return invoke<DiffResult>('get_stash_file_diff', {
+    projectId,
+    selector,
+    filePath,
+    collapse: collapse ?? true,
+    worktreePath,
+  });
+}
+
+export function stashApply(
+  projectId: string,
+  selector: string,
+  worktreePath?: string | null,
+): Promise<StashActionResult> {
+  return invoke<StashActionResult>('stash_apply', { projectId, selector, worktreePath });
+}
+
+export function stashPop(
+  projectId: string,
+  selector: string,
+  worktreePath?: string | null,
+): Promise<StashActionResult> {
+  return invoke<StashActionResult>('stash_pop', { projectId, selector, worktreePath });
 }
 
 // ─── Default branch ──────────────────────────────────────────────────────────
