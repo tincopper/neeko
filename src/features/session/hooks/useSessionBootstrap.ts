@@ -171,6 +171,38 @@ export function useSessionBootstrap(deps: {
                   branches: branchInfo.branches,
                   worktrees: branchInfo.worktrees,
                 });
+                // 恢复上次激活的 worktree（session 只持久化了 path）：
+                // worktrees 此刻已加载，可校验 worktree 仍存在；且校验 effect
+                // 对空 worktrees 不再清理激活态，避免「先清后加载」竞态。
+                const restoredWtPath = wtState?.[activeId];
+                if (restoredWtPath) {
+                  const wt = branchInfo.worktrees.find((w) => w.path === restoredWtPath);
+                  if (wt) {
+                    useWorktreeStore.setState((s) => {
+                      const prev = s.worktreeStateMap[activeId] ?? {
+                        activePath: null,
+                        activeBranch: '',
+                        opened: [] as { path: string; branch: string }[],
+                      };
+                      const opened = prev.opened.some((o) => o.path === wt.path)
+                        ? prev.opened
+                        : [...prev.opened, { path: wt.path, branch: wt.branch }];
+                      return {
+                        worktreeStateMap: {
+                          ...s.worktreeStateMap,
+                          [activeId]: {
+                            activePath: wt.path,
+                            activeBranch: wt.branch,
+                            opened,
+                          },
+                        },
+                        activeWorktreePath: wt.path,
+                        activeWorktreeBranch: wt.branch,
+                        openedWorktrees: opened,
+                      };
+                    });
+                  }
+                }
               })
               .catch((err) => reportFrontendError('session.gitBranchInfo', err));
           }
@@ -222,8 +254,11 @@ export function useSessionBootstrap(deps: {
         // 1. 获取变更文件 + 忽略文件列表（轻量，同时 patch ignored_files 供文件树灰色显示）
         void refreshGitFileStates(projectId, latestWorktreePath);
 
-        // 2. 获取分支信息（异步，不阻塞文件列表更新）
-        getGitBranchInfo(projectId, latestWorktreePath)
+        // 2. 获取分支信息（异步，不阻塞文件列表更新）。
+        // 无激活 worktree 时 latestWorktreePath 为 ''，需转成 null 发送，
+        // 否则 Rust 端会把 "" 当字面路径、落到 shell 回退在 app CWD 跑 git（回归）。
+        const repoPathArg = latestWorktreePath || null;
+        getGitBranchInfo(projectId, repoPathArg)
           .then((branchInfo) => {
             // worktree 激活时保留 local 主分支名，避免 local 入口分支名跟随 worktree 变动
             const currentBranch = latestWorktreePath
@@ -239,7 +274,7 @@ export function useSessionBootstrap(deps: {
           .catch((e) => console.error('[SessionBootstrap] get_git_branch_info_command failed:', e));
 
         // 3. 同步 ahead/behind（待 push / 待 pull 数量），与 changed_files 一并刷新
-        getAheadBehind(projectId, latestWorktreePath)
+        getAheadBehind(projectId, repoPathArg)
           .then((ab) => {
             useGitStore
               .getState()

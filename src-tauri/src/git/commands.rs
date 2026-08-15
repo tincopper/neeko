@@ -1,5 +1,6 @@
 use crate::common::connection::types::AuthMethod;
 use crate::common::git::operations;
+use crate::common::git::operations::resolve_worktree_path;
 use crate::common::git::transport::GitTransport;
 use crate::common::git::types::{DiffResult, PushOutcome};
 use crate::project::types::{
@@ -22,7 +23,7 @@ pub async fn stage_files(
     state: State<'_, AppStateWrapper>,
 ) -> Result<(), AppError> {
     let (t, wd) = state.resolve_project(&project_id)?;
-    let repo_path = worktree_path.as_deref().unwrap_or(&wd);
+    let repo_path = resolve_worktree_path(&worktree_path, &wd);
     operations::stage_files(&t, repo_path, &file_paths)
         .await
         .map_err(AppError::from)
@@ -37,7 +38,7 @@ pub async fn unstage_files(
     state: State<'_, AppStateWrapper>,
 ) -> Result<(), AppError> {
     let (t, wd) = state.resolve_project(&project_id)?;
-    let repo_path = worktree_path.as_deref().unwrap_or(&wd);
+    let repo_path = resolve_worktree_path(&worktree_path, &wd);
     operations::unstage_files(&t, repo_path, &file_paths)
         .await
         .map_err(AppError::from)
@@ -51,7 +52,7 @@ pub async fn stage_all(
     state: State<'_, AppStateWrapper>,
 ) -> Result<(), AppError> {
     let (t, wd) = state.resolve_project(&project_id)?;
-    let repo_path = worktree_path.as_deref().unwrap_or(&wd);
+    let repo_path = resolve_worktree_path(&worktree_path, &wd);
     operations::stage_all(&t, repo_path)
         .await
         .map_err(AppError::from)
@@ -65,7 +66,7 @@ pub async fn unstage_all(
     state: State<'_, AppStateWrapper>,
 ) -> Result<(), AppError> {
     let (t, wd) = state.resolve_project(&project_id)?;
-    let repo_path = worktree_path.as_deref().unwrap_or(&wd);
+    let repo_path = resolve_worktree_path(&worktree_path, &wd);
     operations::unstage_all(&t, repo_path)
         .await
         .map_err(AppError::from)
@@ -80,7 +81,7 @@ pub async fn discard_file(
     state: State<'_, AppStateWrapper>,
 ) -> Result<(), AppError> {
     let (t, wd) = state.resolve_project(&project_id)?;
-    let repo_path = worktree_path.as_deref().unwrap_or(&wd);
+    let repo_path = resolve_worktree_path(&worktree_path, &wd);
     operations::discard_file(&t, repo_path, &file_path)
         .await
         .map_err(AppError::from)
@@ -94,7 +95,7 @@ pub async fn discard_all(
     state: State<'_, AppStateWrapper>,
 ) -> Result<(), AppError> {
     let (t, wd) = state.resolve_project(&project_id)?;
-    let repo_path = worktree_path.as_deref().unwrap_or(&wd);
+    let repo_path = resolve_worktree_path(&worktree_path, &wd);
     operations::discard_all(&t, repo_path)
         .await
         .map_err(AppError::from)
@@ -110,7 +111,7 @@ pub async fn fetch(
     state: State<'_, AppStateWrapper>,
 ) -> Result<PushOutcome, AppError> {
     let (t, wd) = state.resolve_project(&project_id)?;
-    let repo_path = worktree_path.as_deref().unwrap_or(&wd);
+    let repo_path = resolve_worktree_path(&worktree_path, &wd);
     operations::fetch(&t, repo_path)
         .await
         .map_err(AppError::from)
@@ -124,7 +125,7 @@ pub async fn pull(
     state: State<'_, AppStateWrapper>,
 ) -> Result<PushOutcome, AppError> {
     let (t, wd) = state.resolve_project(&project_id)?;
-    let repo_path = worktree_path.as_deref().unwrap_or(&wd);
+    let repo_path = resolve_worktree_path(&worktree_path, &wd);
     operations::pull(&t, repo_path)
         .await
         .map_err(AppError::from)
@@ -139,7 +140,7 @@ pub async fn push(
     state: State<'_, AppStateWrapper>,
 ) -> Result<PushOutcome, AppError> {
     let (t, wd) = state.resolve_project(&project_id)?;
-    let repo_path = worktree_path.as_deref().unwrap_or(&wd);
+    let repo_path = resolve_worktree_path(&worktree_path, &wd);
     operations::push(&t, repo_path, set_upstream.unwrap_or(false))
         .await
         .map_err(AppError::from)
@@ -155,7 +156,7 @@ pub async fn fetch_with_credentials(
     state: State<'_, AppStateWrapper>,
 ) -> Result<PushOutcome, AppError> {
     let (t, wd) = state.resolve_project(&project_id)?;
-    let repo_path = worktree_path.as_deref().unwrap_or(&wd);
+    let repo_path = resolve_worktree_path(&worktree_path, &wd);
     operations::fetch_with_credentials(&t, repo_path, &username, &password)
         .await
         .map_err(AppError::from)
@@ -171,7 +172,7 @@ pub async fn pull_with_credentials(
     state: State<'_, AppStateWrapper>,
 ) -> Result<PushOutcome, AppError> {
     let (t, wd) = state.resolve_project(&project_id)?;
-    let repo_path = worktree_path.as_deref().unwrap_or(&wd);
+    let repo_path = resolve_worktree_path(&worktree_path, &wd);
     operations::pull_with_credentials(&t, repo_path, &username, &password)
         .await
         .map_err(AppError::from)
@@ -188,7 +189,7 @@ pub async fn push_with_credentials(
     state: State<'_, AppStateWrapper>,
 ) -> Result<PushOutcome, AppError> {
     let (t, wd) = state.resolve_project(&project_id)?;
-    let repo_path = worktree_path.as_deref().unwrap_or(&wd);
+    let repo_path = resolve_worktree_path(&worktree_path, &wd);
     operations::push_with_credentials(
         &t,
         repo_path,
@@ -210,7 +211,7 @@ pub async fn commit_files(
     state: State<'_, AppStateWrapper>,
 ) -> Result<CommitResult, AppError> {
     let (t, wd) = state.resolve_project(&project_id)?;
-    let repo_path = worktree_path.as_deref().unwrap_or(&wd);
+    let repo_path = resolve_worktree_path(&worktree_path, &wd);
     operations::commit_files(&t, repo_path, &file_paths, &message)
         .await
         .map_err(AppError::from)
@@ -412,7 +413,7 @@ pub async fn get_git_info(
     state: State<'_, AppStateWrapper>,
 ) -> Result<GitInfo, AppError> {
     let (backend, wd) = state.resolve_project(&project_id)?;
-    let repo_path = worktree_path.as_deref().unwrap_or(&wd);
+    let repo_path = resolve_worktree_path(&worktree_path, &wd);
     operations::get_git_info(&backend, repo_path)
         .await
         .map_err(AppError::from)
@@ -426,7 +427,7 @@ pub async fn get_git_branch_info(
     state: State<'_, AppStateWrapper>,
 ) -> Result<GitBranchInfo, AppError> {
     let (backend, wd) = state.resolve_project(&project_id)?;
-    let repo_path = worktree_path.as_deref().unwrap_or(&wd);
+    let repo_path = resolve_worktree_path(&worktree_path, &wd);
     operations::get_git_branch_info(&backend, repo_path)
         .await
         .map_err(AppError::from)
@@ -478,7 +479,7 @@ pub async fn get_changed_files_diff_stats(
     state: State<'_, AppStateWrapper>,
 ) -> Result<Vec<FileDiffStats>, AppError> {
     let (backend, wd) = state.resolve_project(&project_id)?;
-    let repo_path = worktree_path.as_deref().unwrap_or(&wd);
+    let repo_path = resolve_worktree_path(&worktree_path, &wd);
     operations::get_changed_files_diff_stats(&backend, repo_path)
         .await
         .map_err(AppError::from)
@@ -495,7 +496,7 @@ pub async fn get_file_diff(
 ) -> Result<DiffResult, AppError> {
     let t0 = std::time::Instant::now();
     let (backend, wd) = state.resolve_project(&project_id)?;
-    let repo_path = worktree_path.as_deref().unwrap_or(&wd);
+    let repo_path = resolve_worktree_path(&worktree_path, &wd);
     let collapse = collapse.unwrap_or(true);
     let result = operations::get_file_diff(&backend, repo_path, &file_path, collapse)
         .await
@@ -565,7 +566,7 @@ pub async fn get_stash_list(
     state: State<'_, AppStateWrapper>,
 ) -> Result<Vec<StashEntry>, AppError> {
     let (t, wd) = state.resolve_project(&project_id)?;
-    let repo_path = worktree_path.as_deref().unwrap_or(&wd);
+    let repo_path = resolve_worktree_path(&worktree_path, &wd);
     operations::get_stash_list(&t, repo_path)
         .await
         .map_err(AppError::from)
@@ -580,7 +581,7 @@ pub async fn get_stash_files(
     state: State<'_, AppStateWrapper>,
 ) -> Result<Vec<CommitFileChange>, AppError> {
     let (t, wd) = state.resolve_project(&project_id)?;
-    let repo_path = worktree_path.as_deref().unwrap_or(&wd);
+    let repo_path = resolve_worktree_path(&worktree_path, &wd);
     operations::get_stash_files(&t, repo_path, &selector)
         .await
         .map_err(AppError::from)
@@ -597,7 +598,7 @@ pub async fn get_stash_file_diff(
     state: State<'_, AppStateWrapper>,
 ) -> Result<DiffResult, AppError> {
     let (t, wd) = state.resolve_project(&project_id)?;
-    let repo_path = worktree_path.as_deref().unwrap_or(&wd);
+    let repo_path = resolve_worktree_path(&worktree_path, &wd);
     operations::get_stash_file_diff(
         &t,
         repo_path,
@@ -618,7 +619,7 @@ pub async fn stash_apply(
     state: State<'_, AppStateWrapper>,
 ) -> Result<StashActionResult, AppError> {
     let (t, wd) = state.resolve_project(&project_id)?;
-    let repo_path = worktree_path.as_deref().unwrap_or(&wd);
+    let repo_path = resolve_worktree_path(&worktree_path, &wd);
     operations::stash_apply(&t, repo_path, &selector)
         .await
         .map_err(AppError::from)
@@ -633,7 +634,7 @@ pub async fn stash_pop(
     state: State<'_, AppStateWrapper>,
 ) -> Result<StashActionResult, AppError> {
     let (t, wd) = state.resolve_project(&project_id)?;
-    let repo_path = worktree_path.as_deref().unwrap_or(&wd);
+    let repo_path = resolve_worktree_path(&worktree_path, &wd);
     operations::stash_pop(&t, repo_path, &selector)
         .await
         .map_err(AppError::from)
@@ -662,7 +663,7 @@ pub async fn get_ahead_behind(
     state: State<'_, AppStateWrapper>,
 ) -> Result<AheadBehind, AppError> {
     let (t, wd) = state.resolve_project(&project_id)?;
-    let repo_path = worktree_path.as_deref().unwrap_or(&wd);
+    let repo_path = resolve_worktree_path(&worktree_path, &wd);
     operations::get_ahead_behind(&t, repo_path)
         .await
         .map_err(AppError::from)

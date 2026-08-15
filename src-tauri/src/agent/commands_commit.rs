@@ -22,7 +22,8 @@ pub async fn generate_commit_message(
     let (agent_cmd, prompt_args, post_prompt_args) = resolve_agent_for_remote(&state, &agent_id);
     let prompt = ai_svc::build_simple_commit_prompt(&file_paths);
     let (t, wd) = state.resolve_project(&project_id)?;
-    let repo_path = worktree_path.as_deref().unwrap_or(&wd).to_string();
+    let repo_path =
+        crate::common::git::operations::resolve_worktree_path(&worktree_path, &wd).to_string();
 
     let output = match &t {
         ExecTarget::Local => {

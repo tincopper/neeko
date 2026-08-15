@@ -18,6 +18,20 @@ use crate::project::types::{
     Worktree,
 };
 
+/// 解析 worktree_path：空字符串视为「未指定 worktree」，回落项目根目录。
+///
+/// 与 `get_worktree_changed_files`/`get_ignored_files` 的空串处理保持一致。
+/// 前端在无激活 worktree 时会传空字符串（`activeWorktreePath ?? ''`），若把 `''`
+/// 当作字面路径，`git2::Repository::open("")` 失败后会落入 shell 回退，在 app 启动
+/// CWD 执行 git，用错误仓库的数据污染真实项目的 git 信息。
+#[must_use]
+pub fn resolve_worktree_path<'a>(worktree_path: &'a Option<String>, wd: &'a str) -> &'a str {
+    match worktree_path.as_deref() {
+        Some(p) if !p.trim().is_empty() => p,
+        _ => wd,
+    }
+}
+
 /// Stage specific files: `git add -- <files>`
 pub async fn stage_files(
     transport: &dyn GitTransport,
@@ -1485,6 +1499,36 @@ mod tests {
     use super::*;
     use crate::common::executor::factory::ExecTarget;
     use crate::common::git::transport::{GitExecOptions, GitTransport};
+
+    // ── resolve_worktree_path ─────────────────────────────────────────────
+
+    #[test]
+    fn resolve_worktree_path_none_falls_back_to_project_root() {
+        let wd = "/repo/main".to_string();
+        assert_eq!(resolve_worktree_path(&None, &wd), "/repo/main");
+    }
+
+    #[test]
+    fn resolve_worktree_path_empty_string_falls_back_to_project_root() {
+        // 回归：前端 git-changed 在无激活 worktree 时传空字符串，
+        // 不能把 "" 当字面路径，否则 shell 回退会在 app 启动 CWD 跑 git。
+        let wd = "/repo/main".to_string();
+        assert_eq!(
+            resolve_worktree_path(&Some(String::new()), &wd),
+            "/repo/main"
+        );
+        assert_eq!(
+            resolve_worktree_path(&Some("   ".to_string()), &wd),
+            "/repo/main"
+        );
+    }
+
+    #[test]
+    fn resolve_worktree_path_uses_worktree_path_when_provided() {
+        let wd = "/repo/main".to_string();
+        let wt = Some("/repo/wt".to_string());
+        assert_eq!(resolve_worktree_path(&wt, &wd), "/repo/wt");
+    }
     use async_trait::async_trait;
     use tempfile::tempdir;
 

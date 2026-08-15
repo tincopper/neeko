@@ -126,7 +126,10 @@ export function useAppShellData(): UseAppShellDataResult {
   } = useWorktreeState(activeProjectId);
   useEffect(() => {
     if (!activeWorktreePath || !activeProject?.git_info) return;
-    if (!activeProject.git_info.worktrees.some((wt) => wt.path === activeWorktreePath)) {
+    const worktrees = activeProject.git_info.worktrees;
+    // worktrees 为空可能是「尚未加载完成」而非「确实没有」，此时不清理激活态，
+    // 避免启动恢复 activeWorktreePath 与 worktree 列表加载之间的竞态。
+    if (worktrees.length > 0 && !worktrees.some((wt) => wt.path === activeWorktreePath)) {
       setActiveWorktreePath(null);
       setActiveWorktreeBranch('');
     }

@@ -223,6 +223,14 @@ impl GitTransport for ExecTarget {
 
         match self {
             ExecTarget::Local => {
+                // 纵深防御：空工作目录会让 `cd ''` 停在进程当前目录（macOS sh 行为），
+                // 导致 git 在错误仓库执行、污染真实项目数据。命令层已把空串回落项目
+                // 根目录（resolve_repo_path），这里兜底拒绝，杜绝静默在错误 CWD 跑 git。
+                if work_dir.trim().is_empty() {
+                    return Err(anyhow::anyhow!(
+                        "git command called with empty work directory"
+                    ));
+                }
                 let executor = create_executor(self);
 
                 let mut full_args: Vec<String> = config_args;
@@ -485,6 +493,26 @@ fn shell_quote(v: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // ── run_git_opts 空 work_dir 纵深防御 ─────────────────────────────────
+
+    #[tokio::test]
+    async fn local_run_git_opts_rejects_empty_work_dir() {
+        // 回归：空 work_dir 会让 `cd ''` 停在进程当前目录（macOS sh 行为），
+        // 导致 git 在错误仓库执行；必须显式报错而非静默污染数据。
+        let err = ExecTarget::Local
+            .run_git_opts(
+                &["rev-parse", "--abbrev-ref", "HEAD"],
+                "",
+                GitExecOptions::default(),
+            )
+            .await
+            .expect_err("empty work_dir must be rejected");
+        assert!(
+            err.to_string().contains("empty work directory"),
+            "unexpected error: {err}"
+        );
+    }
 
     // ── classify_stderr ────────────────────────────────────────────────────
 
