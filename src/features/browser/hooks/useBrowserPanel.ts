@@ -37,7 +37,12 @@ import {
   browserSetBounds,
   openInDefaultBrowser,
 } from '../api/browserApi';
-import { isAgentCliTab, formatPickerMessage, getThemeColors } from '../components/pickerUtils';
+import {
+  isAgentCliTab,
+  formatPickerMessage,
+  getThemeColors,
+  type PickerElement,
+} from '../components/pickerUtils';
 import { BROWSER_PANEL_ID, decideProjectSwitchDock } from '../utils/projectSwitchDock';
 
 import { getProjectBrowserLabel } from './useBrowserConstants';
@@ -52,7 +57,8 @@ const RECLAIM_CHECK_INTERVAL_MS = 60_000;
 /** Payload emitted by Rust when user submits prompt from injected input */
 interface PromptSubmittedPayload {
   prompt: string;
-  html: string;
+  /** 选中元素（单选长度 1，多选长度 N）。 */
+  elements: PickerElement[];
 }
 
 /** Options injected by the consuming component */
@@ -404,7 +410,7 @@ export function useBrowserPanel({ showToast }: UseBrowserPanelOptions) {
       (payload) => {
         const data: PromptSubmittedPayload =
           typeof payload === 'string' ? JSON.parse(payload) : payload;
-        if (!data?.prompt || !data?.html) return;
+        if (!data?.prompt || !Array.isArray(data.elements) || data.elements.length === 0) return;
 
         const projectState = useProjectStore.getState();
         const editorState = useEditorStore.getState();
@@ -421,7 +427,7 @@ export function useBrowserPanel({ showToast }: UseBrowserPanelOptions) {
         }
 
         const browserUrl = useProjectBrowserStore.getState().getPanelState(projectId)?.url ?? '';
-        const message = formatPickerMessage(data.prompt, data.html, browserUrl);
+        const message = formatPickerMessage(data.prompt, data.elements, browserUrl);
         sendToTerminal(projectId, message + '\r', editorState.activeTabId);
         armAutoRefresh();
         reinjectPicker();

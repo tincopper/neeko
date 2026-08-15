@@ -119,29 +119,74 @@ describe('isAgentCliTab', () => {
 // ---------------------------------------------------------------------------
 
 describe('formatPickerMessage', () => {
-  it('produces correctly formatted message', () => {
+  it('produces correctly formatted message for a single element', () => {
     const result = formatPickerMessage(
       'Make this button red',
-      '<button class="btn">Submit</button>',
+      [{ html: '<button class="btn">Submit</button>', selector: 'button.btn' }],
       'http://localhost:3000/dashboard',
     );
 
     expect(result).toContain('Please modify the following page element:');
     expect(result).toContain('@http://localhost:3000/dashboard');
     expect(result).toContain('Requirement: Make this button red');
+    expect(result).toContain('Element HTML:');
     expect(result).toContain('```html');
     expect(result).toContain('<button class="btn">Submit</button>');
     expect(result).toContain('```');
+    expect(result).not.toContain('page elements:');
+    expect(result).not.toContain('Element 1');
+  });
+
+  it('numbers each element for multi-select', () => {
+    const result = formatPickerMessage(
+      'Make them bigger',
+      [
+        { html: '<button id="navCta">Go</button>', selector: 'button#navCta' },
+        { html: '<div class="card">x</div>', selector: 'div.card' },
+      ],
+      'http://localhost:3000/dashboard',
+    );
+
+    expect(result).toContain('Please modify the following page elements:');
+    expect(result).toContain('Element 1 (button#navCta):');
+    expect(result).toContain('<button id="navCta">Go</button>');
+    expect(result).toContain('Element 2 (div.card):');
+    expect(result).toContain('<div class="card">x</div>');
+    expect(result).not.toContain('page element:');
+    expect(result).not.toContain('Element HTML:');
+  });
+
+  it('falls back to unknown selector when selector is empty', () => {
+    const result = formatPickerMessage(
+      'fix',
+      [
+        { html: '<span>a</span>', selector: '' },
+        { html: '<span>b</span>', selector: 'span.b' },
+      ],
+      'http://example.com',
+    );
+    expect(result).toContain('Element 1 (unknown):');
+    expect(result).toContain('Element 2 (span.b):');
+  });
+
+  it('handles empty elements list without crashing (guard rejects earlier)', () => {
+    const result = formatPickerMessage('nope', [], 'http://example.com');
+    expect(result).toContain('Please modify the following page element:');
+    expect(result).not.toContain('```html');
   });
 
   it('does not include trailing \\r (caller is responsible)', () => {
-    const result = formatPickerMessage('test', '<div/>', 'http://example.com');
+    const result = formatPickerMessage(
+      'test',
+      [{ html: '<div/>', selector: 'div' }],
+      'http://example.com',
+    );
     expect(result.endsWith('\r')).toBe(false);
   });
 
   it('preserves multi-line HTML', () => {
     const html = '<div>\n  <span>hello</span>\n</div>';
-    const result = formatPickerMessage('fix it', html, 'http://example.com');
+    const result = formatPickerMessage('fix it', [{ html, selector: 'div' }], 'http://example.com');
     expect(result).toContain(html);
   });
 });

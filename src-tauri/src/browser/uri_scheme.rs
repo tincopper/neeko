@@ -4,6 +4,8 @@
 //! - `prompt-submitted` — 用户提交 prompt + 选中元素 HTML
 //! - `picker-cancelled` — 用户取消元素选取
 //! - `element-picked`   — 元素选中，复制 outerHTML 到剪贴板
+//! - `picker-focused` / `picker-blurred` — 选择器输入框聚焦状态（macOS 菜单
+//!   Edit 命令转发到浏览器子 webview 用）
 //!
 //! 传输机制：
 //! - **POST body(主通道)**:页面 `fetch(base + type, { method: 'POST', body: JSON })`,
@@ -13,6 +15,7 @@
 
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 use tauri::Emitter;
@@ -21,6 +24,24 @@ use super::events::{
     EVENT_BROWSER_PAGE_META, EVENT_BROWSER_PICKER_CANCELLED, EVENT_BROWSER_PROMPT_SUBMITTED,
 };
 
+/// 选择器输入框（AI Composer textarea）是否聚焦。
+///
+/// macOS 下 Cmd+C/V/A/X 被应用菜单 Edit 加速键在 OS 层截获，原始 keydown
+/// 不会到达任何 webview，菜单 handler 需据此判断把 Edit 命令转发到
+/// 浏览器子 webview（聚焦）还是主 webview（未聚焦）。
+static PICKER_INPUT_FOCUSED: AtomicBool = AtomicBool::new(false);
+
+/// 选择器输入框当前是否聚焦（`app_menu` 菜单 Edit 转发用）。
+#[must_use]
+pub fn picker_input_focused() -> bool {
+    PICKER_INPUT_FOCUSED.load(Ordering::Relaxed)
+}
+
+/// 重置选择器输入框聚焦标记（picker 启动/停止时调用，避免跨会话残留）。
+pub fn reset_picker_focus() {
+    PICKER_INPUT_FOCUSED.store(false, Ordering::Relaxed);
+}
+
 /// 去重窗口（毫秒）。WebView2 在 Windows 上可能对同一次 img.src 赋值
 /// 触发两次协议回调，此窗口用于抑制重复事件。
 const DEDUP_WINDOW_MS: u128 = 500;
@@ -28,12 +49,12 @@ const DEDUP_WINDOW_MS: u128 = 500;
 /// 页面经自定义协议回传的 picker 消息。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PickerMessage {
-    /// 用户提交修改 prompt + 选中元素 HTML。
+    /// 用户提交修改 prompt + 一组选中元素（单选长度 1，多选长度 N）。
     PromptSubmitted {
         /// 用户输入的修改要求。
         prompt: String,
-        /// 选中元素的 outerHTML。
-        html: String,
+        /// 选中的元素（含 outerHTML 与简写 selector）。
+        elements: Vec<PickerElement>,
     },
     /// 用户取消元素选取。
     PickerCancelled,
@@ -42,6 +63,43 @@ pub enum PickerMessage {
         /// 选中元素的 outerHTML。
         html: String,
     },
+    /// 选择器输入框聚焦状态（macOS 菜单 Edit 命令转发判断）。
+    PickerFocus {
+        /// true = 输入框聚焦；false = 失焦。
+        focused: bool,
+    },
+}
+
+/// 单个被选中元素。`selector` 由注入脚本生成（如 `button#navCta`），
+/// 多选时按选择顺序排列。
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct PickerElement {
+    /// 选中元素的 outerHTML。
+    pub html: String,
+    /// 简写 selector（tag + #id + 前两个 class）。
+    pub selector: String,
+}
+
+/// 解析 `elements` JSON 数组。
+///
+/// 期望格式：`[{ "html": "...", "selector": "..." }, ...]`。
+/// 数组缺失 / 为空 / 任一元素缺 `html` 均返回 `None`；`selector` 可缺省（空串）。
+fn parse_elements(value: &serde_json::Value) -> Option<Vec<PickerElement>> {
+    let arr = value.as_array()?;
+    if arr.is_empty() {
+        return None;
+    }
+    let mut out = Vec::with_capacity(arr.len());
+    for item in arr {
+        let html = item.get("html")?.as_str()?.to_string();
+        let selector = item
+            .get("selector")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default()
+            .to_string();
+        out.push(PickerElement { html, selector });
+    }
+    Some(out)
 }
 
 /// 解析 picker POST body(JSON)。
@@ -55,12 +113,14 @@ pub fn parse_picker_payload(body: &[u8]) -> Option<PickerMessage> {
     match kind {
         "prompt-submitted" => Some(PickerMessage::PromptSubmitted {
             prompt: value.get("prompt")?.as_str()?.to_string(),
-            html: value.get("html")?.as_str()?.to_string(),
+            elements: parse_elements(value.get("elements")?)?,
         }),
         "picker-cancelled" => Some(PickerMessage::PickerCancelled),
         "element-picked" => Some(PickerMessage::ElementPicked {
             html: value.get("html")?.as_str()?.to_string(),
         }),
+        "picker-focused" => Some(PickerMessage::PickerFocus { focused: true }),
+        "picker-blurred" => Some(PickerMessage::PickerFocus { focused: false }),
         _ => None,
     }
 }
@@ -159,7 +219,7 @@ fn handle_picker_message(
     last_prompt_emit: &Arc<Mutex<Option<Instant>>>,
 ) {
     match message {
-        PickerMessage::PromptSubmitted { prompt, html } => {
+        PickerMessage::PromptSubmitted { prompt, elements } => {
             let should_emit = {
                 let mut last = last_prompt_emit
                     .lock()
@@ -174,7 +234,7 @@ fn handle_picker_message(
                 emit
             };
             if should_emit {
-                let payload = serde_json::json!({ "prompt": prompt, "html": html });
+                let payload = serde_json::json!({ "prompt": prompt, "elements": elements });
                 let _ = ctx
                     .app_handle()
                     .emit(EVENT_BROWSER_PROMPT_SUBMITTED, payload);
@@ -184,6 +244,9 @@ fn handle_picker_message(
             let _ = ctx.app_handle().emit(EVENT_BROWSER_PICKER_CANCELLED, ());
         }
         PickerMessage::ElementPicked { html } => handle_element_picked(&html),
+        PickerMessage::PickerFocus { focused } => {
+            PICKER_INPUT_FOCUSED.store(focused, Ordering::Relaxed);
+        }
     }
 }
 
@@ -262,7 +325,12 @@ fn handle_prompt_submitted(
         };
 
         if should_emit {
-            let payload = serde_json::json!({ "prompt": prompt, "html": html });
+            // 旧 GET 通道仅携带单个 html，包装为单元素数组以兼容新前端 payload。
+            let element = PickerElement {
+                html,
+                selector: String::new(),
+            };
+            let payload = serde_json::json!({ "prompt": prompt, "elements": [element] });
             let _ = ctx
                 .app_handle()
                 .emit(EVENT_BROWSER_PROMPT_SUBMITTED, payload);
@@ -283,15 +351,86 @@ mod tests {
     // --- parse_picker_payload(POST body) ---
 
     #[test]
-    fn test_parse_picker_payload_prompt_submitted() {
-        let body = br#"{"type":"prompt-submitted","prompt":"make it red","html":"<div></div>"}"#;
+    fn test_parse_picker_payload_prompt_submitted_single() {
+        let body = br#"{"type":"prompt-submitted","prompt":"make it red","elements":[{"html":"<div></div>","selector":"div"}]}"#;
         assert_eq!(
             parse_picker_payload(body),
             Some(PickerMessage::PromptSubmitted {
                 prompt: "make it red".into(),
-                html: "<div></div>".into(),
+                elements: vec![PickerElement {
+                    html: "<div></div>".into(),
+                    selector: "div".into(),
+                }],
             })
         );
+    }
+
+    #[test]
+    fn test_parse_picker_payload_prompt_submitted_multi() {
+        let body = br#"{"type":"prompt-submitted","prompt":"make it bigger","elements":[
+            {"html":"<button id=\"navCta\">Go</button>","selector":"button#navCta"},
+            {"html":"<div class=\"card\">x</div>","selector":"div.card"}
+        ]}"#;
+        assert_eq!(
+            parse_picker_payload(body),
+            Some(PickerMessage::PromptSubmitted {
+                prompt: "make it bigger".into(),
+                elements: vec![
+                    PickerElement {
+                        html: "<button id=\"navCta\">Go</button>".into(),
+                        selector: "button#navCta".into(),
+                    },
+                    PickerElement {
+                        html: "<div class=\"card\">x</div>".into(),
+                        selector: "div.card".into(),
+                    },
+                ],
+            })
+        );
+    }
+
+    #[test]
+    fn test_parse_picker_payload_element_missing_selector_defaults_empty() {
+        // selector 可缺省，默认空串
+        let body =
+            br#"{"type":"prompt-submitted","prompt":"x","elements":[{"html":"<span>a</span>"}]}"#;
+        assert_eq!(
+            parse_picker_payload(body),
+            Some(PickerMessage::PromptSubmitted {
+                prompt: "x".into(),
+                elements: vec![PickerElement {
+                    html: "<span>a</span>".into(),
+                    selector: String::new(),
+                }],
+            })
+        );
+    }
+
+    #[test]
+    fn test_parse_picker_payload_missing_elements() {
+        // prompt 存在但无 elements → None
+        let body = br#"{"type":"prompt-submitted","prompt":"x"}"#;
+        assert!(parse_picker_payload(body).is_none());
+    }
+
+    #[test]
+    fn test_parse_picker_payload_empty_elements() {
+        // elements 为空数组 → None
+        let body = br#"{"type":"prompt-submitted","prompt":"x","elements":[]}"#;
+        assert!(parse_picker_payload(body).is_none());
+    }
+
+    #[test]
+    fn test_parse_picker_payload_element_missing_html() {
+        // 任一元素缺 html → None
+        let body = br#"{"type":"prompt-submitted","prompt":"x","elements":[{"selector":"div"}]}"#;
+        assert!(parse_picker_payload(body).is_none());
+    }
+
+    #[test]
+    fn test_parse_picker_payload_element_html_not_string() {
+        let body = br#"{"type":"prompt-submitted","prompt":"x","elements":[{"html":42}]}"#;
+        assert!(parse_picker_payload(body).is_none());
     }
 
     #[test]
@@ -315,6 +454,32 @@ mod tests {
     }
 
     #[test]
+    fn test_parse_picker_payload_picker_focused() {
+        let body = br#"{"type":"picker-focused"}"#;
+        assert_eq!(
+            parse_picker_payload(body),
+            Some(PickerMessage::PickerFocus { focused: true })
+        );
+    }
+
+    #[test]
+    fn test_parse_picker_payload_picker_blurred() {
+        let body = br#"{"type":"picker-blurred"}"#;
+        assert_eq!(
+            parse_picker_payload(body),
+            Some(PickerMessage::PickerFocus { focused: false })
+        );
+    }
+
+    #[test]
+    fn test_reset_picker_focus_clears_flag() {
+        // 静态标记：置 true 后 reset 应回 false（幂等）。
+        PICKER_INPUT_FOCUSED.store(true, Ordering::Relaxed);
+        reset_picker_focus();
+        assert!(!picker_input_focused());
+    }
+
+    #[test]
     fn test_parse_picker_payload_invalid_json() {
         assert!(parse_picker_payload(b"not json").is_none());
     }
@@ -330,12 +495,6 @@ mod tests {
         assert!(parse_picker_payload(body).is_none());
     }
 
-    #[test]
-    fn test_parse_picker_payload_missing_html() {
-        let body = br#"{"type":"prompt-submitted","prompt":"x"}"#;
-        assert!(parse_picker_payload(body).is_none());
-    }
-
     /// >100KB HTML 经 POST body 完整往返(不截断)
     #[test]
     fn test_parse_picker_payload_large_html_round_trip() {
@@ -343,16 +502,18 @@ mod tests {
         let payload = serde_json::json!({
             "type": "prompt-submitted",
             "prompt": "改大一点",
-            "html": large_html,
+            "elements": [{ "html": large_html, "selector": "div" }],
         });
         let body = serde_json::to_vec(&payload).unwrap();
 
         let parsed = parse_picker_payload(&body);
         match parsed {
-            Some(PickerMessage::PromptSubmitted { prompt, html }) => {
+            Some(PickerMessage::PromptSubmitted { prompt, elements }) => {
                 assert_eq!(prompt, "改大一点");
-                assert_eq!(html.len(), large_html.len());
-                assert_eq!(html, large_html);
+                assert_eq!(elements.len(), 1);
+                assert_eq!(elements[0].html.len(), large_html.len());
+                assert_eq!(elements[0].html, large_html);
+                assert_eq!(elements[0].selector, "div");
             }
             other => panic!("expected PromptSubmitted, got {:?}", other.is_some()),
         }

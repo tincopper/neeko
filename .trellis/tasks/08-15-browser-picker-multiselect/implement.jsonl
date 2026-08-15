@@ -1,0 +1,8 @@
+{"file": ".trellis/tasks/08-15-browser-picker-multiselect/design.md", "reason": "技术设计：协议变更/状态模型/交互规则/测试计划"}
+{"file": ".trellis/tasks/08-15-browser-picker-multiselect/browser-picker-prototype.html", "reason": "交互原型参照（UX 唯一事实源）"}
+{"file": ".trellis/spec/backend/command-guidelines.md", "reason": "Rust 命令/协议层约定（Command 薄层、错误转换）"}
+{"file": ".trellis/spec/frontend/interaction-patterns.md", "reason": "前端交互与事件模式约束"}
+{"file": ".trellis/spec/frontend/type-safety.md", "reason": "共享类型放置规范（PickerElement 落位）"}
+{"file": ".trellis/spec/unit-test/backend-testing.md", "reason": "Rust 协议单测规范（TDD Red-Green）"}
+{"file": ".trellis/spec/unit-test/frontend-testing.md", "reason": "前端 pickerUtils/行为测试规范"}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "跨层（Rust 协议 + 注入脚本 + React）一致性检查"}

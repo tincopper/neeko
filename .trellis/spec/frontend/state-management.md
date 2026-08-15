@@ -602,6 +602,18 @@ Rust 端事件 payload（`browser://url-changed` / `browser://page-loaded` / `br
 serde_json::json!({ "label": &label, "url": &url_str })
 ```
 
+**元素选择器协议**（`browser://prompt-submitted` / `browser://picker-cancelled` / `browser://element-picked`）：注入脚本经 `neeko://` 自定义协议 POST 回传，Rust `uri_scheme.rs` 解析后转事件。`prompt-submitted` 载荷为**元素数组**（单选长度 1，多选长度 N）：
+
+```ts
+// 前端 PromptSubmittedPayload（src/features/browser/hooks/useBrowserPanel.ts）
+{
+  prompt: string;
+  elements: Array<{ html: string; selector: string }>; // selector 为注入脚本简写（tag+#id+前两个 class）
+}
+```
+
+前端校验 `Array.isArray(data.elements) && length > 0` 后才组装 `formatPickerMessage`；未选中 Agent CLI tab 时 toast + 重新注入。
+
 ### 3. Contracts
 
 1. **Label 契约**：webview label 恒为 `neeko-browser-{projectId}`，前端一律经 `getProjectBrowserLabel()` 派生，禁止手写拼接。

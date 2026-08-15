@@ -1,0 +1,936 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Neeko Browser Element Picker · Prototype (Multi-select)</title>
+<style>
+/* ============ Design Tokens (Neeko 主题对齐) ============ */
+:root {
+  --bg-primary: #111315;
+  --bg-secondary: #181A1C;
+  --bg-tertiary: #333337;
+  --bg-hover: #232527;
+  --text-primary: #f2f4f6;
+  --text-secondary: #b6bcc4;
+  --text-muted: #999999;
+  --border-color: #3b3b40;
+  --accent: #2997ff;
+  --accent-rgb: 41, 151, 255;
+  --success: #4cc38a;
+  --danger: #f16a6a;
+  --font-size: 13px;
+  --radius: 8px;
+  --shadow-lg: 0 12px 40px rgba(0,0,0,.45);
+  --shadow-sm: 0 1px 3px rgba(0,0,0,.3);
+}
+html[data-theme="light"] {
+  --bg-primary: #ffffff;
+  --bg-secondary: #faf7f2;
+  --bg-tertiary: #ece6dc;
+  --bg-hover: #f1ece4;
+  --text-primary: #2b2926;
+  --text-secondary: #5f5a52;
+  --text-muted: #a89282;
+  --border-color: #e4dccf;
+  --accent: #c96442;
+  --accent-rgb: 201, 100, 66;
+  --shadow-lg: 0 12px 40px rgba(60,40,20,.18);
+  --shadow-sm: 0 1px 3px rgba(60,40,20,.12);
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html, body { height: 100%; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang SC", "Microsoft YaHei", sans-serif;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-size: var(--font-size);
+  overflow: hidden;
+}
+
+/* ============ 顶层提示条 ============ */
+#hintbar {
+  height: 30px;
+  display: flex; align-items: center; gap: 12px;
+  padding: 0 12px;
+  background: linear-gradient(90deg, rgba(var(--accent-rgb), .12), transparent 55%);
+  border-bottom: 1px solid var(--border-color);
+  color: var(--text-secondary);
+  font-size: 12px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+#hintbar b { color: var(--accent); font-weight: 600; }
+
+/* ============ Host Toolbar（模拟 Neeko 浏览器工具栏） ============ */
+#toolbar {
+  height: 34px; display: flex; align-items: center; gap: 4px;
+  padding: 0 8px; background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border-color);
+  user-select: none;
+}
+.tb-btn {
+  width: 26px; height: 26px; border: none; border-radius: 6px;
+  background: transparent; color: var(--text-secondary);
+  display: inline-flex; align-items: center; justify-content: center;
+  cursor: pointer; transition: background .15s, color .15s;
+  flex-shrink: 0;
+}
+.tb-btn:hover { background: var(--bg-hover); color: var(--text-primary); }
+.tb-btn:disabled { opacity: .4; cursor: not-allowed; }
+.tb-btn.active {
+  background: rgba(var(--accent-rgb), .12);
+  color: var(--accent);
+  box-shadow: inset 0 0 0 1px rgba(var(--accent-rgb), .35);
+}
+#addr {
+  flex: 1; min-width: 0; height: 22px; display: flex; align-items: center; gap: 6px;
+  margin: 0 4px; padding: 0 8px;
+  background: var(--bg-primary); border: 1px solid var(--border-color);
+  border-radius: 6px; color: var(--text-secondary); font-size: 12px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+#addr .lock { color: var(--text-muted); }
+#addr .favicon { width: 14px; height: 14px; border-radius: 3px; background: var(--accent); flex-shrink: 0;
+  display: inline-flex; align-items: center; justify-content: center; color: #fff; font-size: 9px; font-weight: 700; }
+#themeToggle { margin-left: 2px; }
+
+/* ============ 被浏览的"页面" ============ */
+#pageWrap { position: relative; height: calc(100% - 30px - 34px); overflow: auto; }
+#page { max-width: 1080px; margin: 0 auto; padding: 0 24px 120px; }
+#page.picking { cursor: crosshair; }
+
+/* --- 演示页面内容 --- */
+.site-nav { display: flex; align-items: center; gap: 22px; padding: 18px 0 14px; border-bottom: 1px solid var(--border-color); }
+.logo { font-weight: 800; font-size: 16px; letter-spacing: -.3px; }
+.logo i { font-style: normal; color: var(--accent); }
+.nav-links { display: flex; gap: 18px; color: var(--text-secondary); font-size: 13px; }
+.nav-links span { cursor: pointer; }
+.nav-links span:hover { color: var(--text-primary); }
+.nav-spacer { flex: 1; }
+.btn { border: none; border-radius: 8px; padding: 7px 14px; font-size: 13px; cursor: pointer;
+  background: var(--bg-tertiary); color: var(--text-primary); transition: filter .15s, transform .1s; }
+.btn:hover { filter: brightness(1.12); }
+.btn:active { transform: translateY(1px); }
+.btn-primary { background: var(--accent); color: #fff; font-weight: 600; }
+.btn-ghost { background: transparent; border: 1px solid var(--border-color); color: var(--text-secondary); }
+.btn-ghost:hover { color: var(--text-primary); border-color: var(--text-muted); }
+
+.hero { padding: 56px 0 32px; text-align: center; }
+.hero h1 { font-size: 34px; line-height: 1.2; letter-spacing: -.5px; }
+.hero h1 em { font-style: normal; color: var(--accent); }
+.hero p { margin: 14px auto 0; max-width: 560px; color: var(--text-secondary); font-size: 15px; line-height: 1.7; }
+.hero-cta { margin-top: 26px; display: flex; gap: 12px; justify-content: center; }
+
+.section-title { margin: 40px 0 16px; font-size: 18px; font-weight: 700; }
+.cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; }
+.card {
+  background: var(--bg-secondary); border: 1px solid var(--border-color);
+  border-radius: 12px; padding: 18px; cursor: pointer; transition: transform .15s, border-color .15s, box-shadow .15s;
+}
+.card:hover { transform: translateY(-2px); border-color: rgba(var(--accent-rgb), .5); box-shadow: var(--shadow-sm); }
+.card .ico { width: 34px; height: 34px; border-radius: 9px; background: rgba(var(--accent-rgb), .14);
+  color: var(--accent); display: flex; align-items: center; justify-content: center; font-size: 16px; margin-bottom: 12px; }
+.card h3 { font-size: 14px; margin-bottom: 6px; }
+.card p { color: var(--text-secondary); font-size: 12.5px; line-height: 1.6; }
+
+.table-box { overflow: hidden; border: 1px solid var(--border-color); border-radius: 12px; }
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+th, td { text-align: left; padding: 11px 16px; border-bottom: 1px solid var(--border-color); }
+th { background: var(--bg-secondary); color: var(--text-muted); font-weight: 600; font-size: 12px; }
+td:last-child, th:last-child { text-align: right; }
+tr:last-child td { border-bottom: none; }
+td .pill { display: inline-block; padding: 2px 8px; border-radius: 99px; font-size: 11px; font-weight: 600; }
+.pill-green { background: rgba(76,195,138,.16); color: var(--success); }
+.pill-blue { background: rgba(var(--accent-rgb), .16); color: var(--accent); }
+.pill-muted { background: var(--bg-tertiary); color: var(--text-muted); }
+
+.newsletter { margin-top: 40px; display: flex; gap: 10px; align-items: center;
+  background: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: 12px; padding: 16px 18px; }
+.newsletter .nl-label { font-weight: 700; white-space: nowrap; }
+.newsletter input { flex: 1; min-width: 0; height: 34px; padding: 0 12px; border-radius: 8px;
+  border: 1px solid var(--border-color); background: var(--bg-primary); color: var(--text-primary); font-size: 13px; outline: none; }
+.newsletter input:focus { border-color: var(--accent); box-shadow: 0 0 0 2px rgba(var(--accent-rgb), .18); }
+.newsletter input::placeholder { color: var(--text-muted); }
+
+.site-footer { margin-top: 44px; padding-top: 18px; border-top: 1px solid var(--border-color);
+  color: var(--text-muted); font-size: 12px; display: flex; justify-content: space-between; }
+
+/* ================================================================
+   PICKER OVERLAY（优化后的元素选择器 UI）
+   ================================================================ */
+
+/* --- 模式指示 Pill（顶部居中，含单选/多选切换） --- */
+#modePill {
+  position: fixed; top: 12px; left: 50%; transform: translateX(-50%) translateY(-8px);
+  z-index: 2147483646; display: none; align-items: center; gap: 9px;
+  padding: 6px 12px; border-radius: 999px;
+  background: var(--bg-secondary); border: 1px solid rgba(var(--accent-rgb), .45);
+  box-shadow: var(--shadow-lg);
+  color: var(--text-primary); font-size: 12px; user-select: none;
+  opacity: 0; transition: opacity .18s, transform .18s;
+  pointer-events: none;
+}
+#modePill.show { display: flex; opacity: 1; transform: translateX(-50%) translateY(0); }
+#modePill .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); animation: blink 1.2s ease-in-out infinite; }
+@keyframes blink { 0%,100% { opacity: 1; } 50% { opacity: .35; } }
+#modePill kbd { font-family: inherit; font-size: 11px; padding: 1px 6px; border-radius: 4px;
+  background: var(--bg-tertiary); border: 1px solid var(--border-color); color: var(--text-secondary); }
+/* 单选/多选切换：单颗左右药丸开关（Composer 底部，发送按钮左侧） */
+.mode-switch {
+  flex-shrink: 0; display: inline-flex; align-items: center; gap: 5px;
+  border: 1px solid rgba(var(--accent-rgb), .4); border-radius: 999px;
+  padding: 5px 11px; background: var(--bg-tertiary); color: var(--text-primary);
+  font: 600 11.5px/1.4 system-ui, sans-serif; cursor: pointer;
+  transition: border-color .15s, background .15s, filter .15s, transform .1s;
+}
+.mode-switch:hover { border-color: var(--accent); filter: brightness(1.12); }
+.mode-switch:active { transform: translateY(1px); }
+.mode-switch .ms-ico { color: var(--accent); font-size: 11px; line-height: 1; }
+.mode-switch .ms-label { display: inline-block; min-width: 26px; text-align: center; }
+/* 左右滑动动画：切到多选从左侧滑入，切到单选从右侧滑入 */
+.mode-switch.to-multi .ms-label { animation: msSlideL .18s ease-out; }
+.mode-switch.to-single .ms-label { animation: msSlideR .18s ease-out; }
+@keyframes msSlideL { from { transform: translateX(-8px); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+@keyframes msSlideR { from { transform: translateX(8px); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+#modePill .mode-text { white-space: nowrap; }
+
+/* --- Hover 高亮（外圈 + 半透明着色，任何背景下都清晰） --- */
+.neeko-hover {
+  outline: 2px dashed var(--accent) !important;
+  outline-offset: 2px !important;
+  box-shadow: 0 0 0 4px rgba(var(--accent-rgb), .16), 0 0 18px rgba(var(--accent-rgb), .28) !important;
+  transition: none !important;
+}
+/* --- 选中态（单选：实线；多选：实线 + 编号徽标） --- */
+.neeko-selected {
+  outline: 2px solid var(--accent) !important;
+  outline-offset: 2px !important;
+  box-shadow: 0 0 0 3px rgba(var(--accent-rgb), .32), 0 0 22px rgba(var(--accent-rgb), .35) !important;
+  transition: none !important;
+}
+
+/* --- 跟随鼠标的 Tooltip Chip --- */
+#pickTip {
+  position: fixed; z-index: 2147483645; display: none; pointer-events: none;
+  align-items: center; gap: 7px; padding: 4px 9px; border-radius: 7px;
+  background: var(--bg-secondary); border: 1px solid var(--border-color);
+  box-shadow: var(--shadow-sm);
+  font: 600 12px/1.5 system-ui, -apple-system, sans-serif; color: var(--text-primary);
+  white-space: nowrap; max-width: 60vw; overflow: hidden;
+}
+#pickTip .pt-tag { color: var(--accent); font-weight: 800; }
+#pickTip .pt-sel { color: var(--text-secondary); font-weight: 500; overflow: hidden; text-overflow: ellipsis; }
+#pickTip .pt-size { color: var(--text-muted); font-weight: 400; }
+#pickTip .pt-size::before { content: "· "; }
+#pickTip .pt-hint { color: var(--text-muted); font-weight: 400; }
+#pickTip .pt-hint::before { content: "· "; }
+
+/* --- 徽标（单选四角 / 多选编号） --- */
+.cornerBadge, .numBadge {
+  position: fixed; z-index: 2147483644; pointer-events: none;
+  display: flex; align-items: center; gap: 5px;
+  background: var(--accent); color: #fff; border-radius: 4px;
+  font: 600 10.5px/1.5 system-ui, sans-serif; padding: 2px 7px;
+  box-shadow: var(--shadow-sm); white-space: nowrap;
+}
+.cornerBadge .cb-dim { opacity: .85; font-weight: 400; }
+.numBadge { min-width: 18px; justify-content: center; font-weight: 800; font-size: 11px; border-radius: 5px; padding: 1px 6px; }
+
+/* --- 单选：选中后的快捷操作条（父级 / 子级 / 复制） --- */
+#selBar {
+  position: fixed; z-index: 2147483646; display: none;
+  gap: 4px; padding: 4px; border-radius: 8px;
+  background: var(--bg-secondary); border: 1px solid var(--border-color);
+  box-shadow: var(--shadow-lg);
+}
+#selBar.show { display: flex; }
+.sb-btn {
+  border: none; border-radius: 6px; padding: 5px 9px;
+  background: transparent; color: var(--text-secondary); cursor: pointer;
+  font: 500 12px/1.4 system-ui, sans-serif;
+  display: inline-flex; align-items: center; gap: 4px;
+  transition: background .12s, color .12s;
+}
+.sb-btn:hover { background: var(--bg-hover); color: var(--text-primary); }
+.sb-btn.disabled { opacity: .35; pointer-events: none; }
+
+/* ================================================================
+   AI COMPOSER（优化后的 AI 输入框 —— 底部居中浮层）
+   多选元素以 chips 直接内嵌显示在输入区上方，无需独立托盘
+   ================================================================ */
+#composer {
+  position: fixed; left: 50%; bottom: 22px; transform: translateX(-50%) translateY(16px);
+  z-index: 2147483647; display: none; width: min(560px, calc(100vw - 32px));
+  flex-direction: column; gap: 10px; padding: 12px 12px 10px;
+  border-radius: 14px;
+  background: var(--bg-secondary);
+  border: 1px solid rgba(var(--accent-rgb), .35);
+  box-shadow: var(--shadow-lg), 0 0 0 1px rgba(0,0,0,.05);
+  backdrop-filter: blur(12px);
+  opacity: 0; transition: opacity .2s, transform .2s;
+}
+#composer.show { display: flex; opacity: 1; transform: translateX(-50%) translateY(0); }
+
+/* 顶部：所选元素 chips 行（单选 1 个 / 多选 N 个） */
+#composer .cc-head { display: flex; align-items: flex-start; gap: 8px; }
+.cc-chips { flex: 1; min-width: 0; display: flex; flex-wrap: wrap; gap: 6px; max-height: 96px; overflow-y: auto; }
+.cc-chip {
+  display: flex; align-items: center; gap: 6px; padding: 3px 6px 3px 3px;
+  border-radius: 7px; background: rgba(var(--accent-rgb), .10);
+  border: 1px solid rgba(var(--accent-rgb), .25);
+}
+.cc-chip-num { width: 18px; height: 18px; border-radius: 5px; background: var(--accent); color: #fff;
+  font: 800 11px/18px system-ui, sans-serif; text-align: center; flex-shrink: 0; }
+.cc-chip-sel { font: 600 11.5px/1.5 system-ui, sans-serif; color: var(--text-primary); }
+.cc-chip-dim { font: 400 11px/1.5 system-ui, sans-serif; color: var(--text-muted); }
+.cc-chip-x { border: none; background: transparent; color: var(--text-muted); cursor: pointer;
+  font-size: 12px; padding: 2px; border-radius: 4px; line-height: 1; }
+.cc-chip-x:hover { color: var(--danger); background: var(--bg-hover); }
+.cc-close {
+  flex-shrink: 0; width: 24px; height: 24px; border: none; border-radius: 6px;
+  background: transparent; color: var(--text-muted); cursor: pointer;
+  font-size: 15px; line-height: 1; transition: background .12s, color .12s;
+}
+.cc-close:hover { background: var(--bg-hover); color: var(--text-primary); }
+
+/* 文本域 */
+#composer textarea {
+  width: 100%; min-height: 40px; max-height: 150px; resize: none; overflow-y: auto;
+  padding: 4px 2px; border: none; outline: none; background: transparent;
+  color: var(--text-primary); font: 14px/1.6 system-ui, -apple-system, sans-serif;
+}
+#composer textarea::placeholder { color: var(--text-muted); }
+
+/* 底部：模式切换 + 提示 + 发送按钮 */
+.cc-foot { display: flex; align-items: center; gap: 8px; }
+.cc-hint { flex: 1; color: var(--text-muted); font: 400 11px/1.5 system-ui, sans-serif; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cc-hint kbd { font-family: inherit; font-size: 10.5px; padding: 1px 5px; border-radius: 4px;
+  background: var(--bg-tertiary); border: 1px solid var(--border-color); color: var(--text-secondary); }
+.cc-send {
+  flex-shrink: 0; display: inline-flex; align-items: center; gap: 6px;
+  border: none; border-radius: 8px; padding: 7px 14px;
+  background: var(--accent); color: #fff; font: 600 12.5px/1.4 system-ui, sans-serif;
+  cursor: pointer; transition: filter .15s, opacity .15s, transform .1s;
+}
+.cc-send:hover { filter: brightness(1.1); }
+.cc-send:active { transform: translateY(1px); }
+.cc-send:disabled { opacity: .45; cursor: not-allowed; }
+.cc-send svg { width: 13px; height: 13px; }
+
+/* --- 发送成功反馈 Pill --- */
+#successPill {
+  position: fixed; top: 14px; left: 50%; transform: translateX(-50%) translateY(-10px);
+  z-index: 2147483647; display: flex; align-items: center; gap: 8px;
+  padding: 8px 16px; border-radius: 999px;
+  background: var(--bg-secondary); border: 1px solid rgba(76,195,138,.5);
+  box-shadow: var(--shadow-lg); color: var(--text-primary); font-size: 12.5px;
+  opacity: 0; transition: opacity .2s, transform .2s; pointer-events: none;
+}
+#successPill.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+#successPill .ok { width: 16px; height: 16px; border-radius: 50%; background: var(--success); color: #fff;
+  display: inline-flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 800; }
+
+/* 页面上选择器自身覆盖层的点击保护 */
+#selBar, #composer, #composer *, #selBar * { pointer-events: auto; }
+</style>
+</head>
+<body>
+
+<!-- 顶部提示 -->
+<div id="hintbar">
+  <span><b>● Prototype (multi-select)</b></span>
+  <span>1️⃣ Click <b>🎯</b> in the toolbar to pick; toggle <b>Single / Multi</b> with the pill switch at the Composer footer</span>
+  <span>2️⃣ Multi: click to add (click again to cancel); selected elements <b>show as chips inside the input box</b>, removable one by one</span>
+  <span>3️⃣ Single: click to lock + refine via ← Parent / Child</span>
+</div>
+
+<!-- Host Toolbar -->
+<div id="toolbar">
+  <button class="tb-btn" id="backBtn" title="Back" disabled>‹</button>
+  <button class="tb-btn" id="fwdBtn" title="Forward" disabled>›</button>
+  <button class="tb-btn" id="reloadBtn" title="Reload">⟳</button>
+  <div id="addr"><span class="lock">🔒</span><span class="favicon">A</span><span id="addrText">acme.example.com/dashboard</span></div>
+  <button class="tb-btn" id="pickerBtn" title="Element picker">🎯</button>
+  <button class="tb-btn" id="extBtn" title="Open in default browser">↗</button>
+  <button class="tb-btn" id="themeToggle" title="Toggle theme">◐</button>
+</div>
+
+<!-- 被浏览的页面 -->
+<div id="pageWrap">
+<div id="page">
+
+  <nav class="site-nav">
+    <div class="logo"><i>A</i>cme<span>.</span></div>
+    <div class="nav-links"><span>Features</span><span>Pricing</span><span>Docs</span><span>Blog</span></div>
+    <div class="nav-spacer"></div>
+    <button class="btn btn-ghost" id="navSignin">Sign in</button>
+    <button class="btn btn-primary" id="navCta">Get Started</button>
+  </nav>
+
+  <section class="hero">
+    <h1>Build faster with <em>Acme Cloud</em></h1>
+    <p>Ship production-grade apps in minutes. Deploy globally with a single command, scale automatically, and never worry about infrastructure again.</p>
+    <div class="hero-cta">
+      <button class="btn btn-primary" id="heroCta">Start free trial</button>
+      <button class="btn btn-ghost" id="heroDemo">▶ Watch demo</button>
+    </div>
+  </section>
+
+  <div class="section-title">Why teams choose Acme</div>
+  <div class="cards">
+    <div class="card" id="card1">
+      <div class="ico">⚡</div>
+      <h3>Instant deploys</h3>
+      <p>Push to deploy. Global edge network with zero config and sub-second cold starts.</p>
+    </div>
+    <div class="card" id="card2">
+      <div class="ico">📊</div>
+      <h3>Built-in analytics</h3>
+      <p>Real-time dashboards for traffic, errors, and performance — no extra tools needed.</p>
+    </div>
+    <div class="card" id="card3">
+      <div class="ico">🔐</div>
+      <h3>Security first</h3>
+      <p>Automatic TLS, DDoS protection, and SOC 2 compliance baked into every plan.</p>
+    </div>
+  </div>
+
+  <div class="section-title">Usage this month</div>
+  <div class="table-box">
+    <table>
+      <thead>
+        <tr><th>Project</th><th>Region</th><th>Requests</th><th>Status</th><th>Cost</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>neeko-app</td><td>ap-southeast</td><td>1.2M</td><td><span class="pill pill-green">Healthy</span></td><td>$42.10</td></tr>
+        <tr><td>docs-site</td><td>us-east</td><td>820K</td><td><span class="pill pill-blue">Deploying</span></td><td>$18.60</td></tr>
+        <tr><td>api-gateway</td><td>eu-west</td><td>2.4M</td><td><span class="pill pill-green">Healthy</span></td><td>$96.00</td></tr>
+        <tr><td>legacy-app</td><td>us-west</td><td>35K</td><td><span class="pill pill-muted">Idle</span></td><td>$4.20</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="newsletter">
+    <span class="nl-label">Newsletter</span>
+    <input type="text" id="nlInput" placeholder="you@example.com">
+    <button class="btn btn-primary" id="nlBtn">Subscribe</button>
+  </div>
+
+  <footer class="site-footer">
+    <span>© 2025 Acme Cloud, Inc.</span>
+    <span>Terms · Privacy · Status</span>
+  </footer>
+
+</div>
+</div>
+
+<!-- ============ Picker 覆盖层 ============ -->
+<!-- 顶部 Pill：纯被动指示（当前模式 + Esc 提示），单选/多选切换已下移到 Composer 底部 -->
+<div id="modePill">
+  <span class="dot"></span>
+  <span class="mode-text" id="modeText">Click to pick · Esc to exit</span>
+</div>
+<div id="pickTip"><span class="pt-tag"></span><span class="pt-sel"></span><span class="pt-size"></span><span class="pt-hint"></span></div>
+<div id="selBar">
+  <button class="sb-btn" id="sbUp">↖ Parent</button>
+  <button class="sb-btn" id="sbDown">↘ Child</button>
+  <button class="sb-btn" id="sbCopy">⧉ Copy HTML</button>
+</div>
+<div id="composer">
+  <div class="cc-head">
+    <div class="cc-chips" id="ccChips"></div>
+    <button class="cc-close" id="ccClose" title="Close">✕</button>
+  </div>
+  <textarea id="ccInput" rows="1" placeholder="Describe how to modify these elements…"></textarea>
+  <div class="cc-foot">
+    <span class="cc-hint"><kbd>Enter</kbd> send · <kbd>Shift+Enter</kbd> newline · <kbd>Esc</kbd> cancel</span>
+    <button class="mode-switch" id="modeSwitch" title="Toggle: Single ⇄ Multi">
+      <span class="ms-ico">⇄</span>
+      <span class="ms-label" id="modeSwitchLabel">Single</span>
+    </button>
+    <button class="cc-send" id="ccSend" disabled>
+      <span>Send</span>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2 11 13"/><path d="M22 2 15 22l-4-9-9-4 20-7z"/></svg>
+    </button>
+  </div>
+</div>
+<div id="successPill"><span class="ok">✓</span><span id="successText">Sent to Agent — the page will refresh automatically</span></div>
+
+<script>
+(function () {
+  'use strict';
+
+  /* ---------- 工具 ---------- */
+  var $ = function (id) { return document.getElementById(id); };
+  var isUIEl = function (el) {
+    return el && (el.closest('#modePill, #pickTip, #selBar, #composer, #successPill'));
+  };
+  function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
+  }
+  /* 注入类（选中/悬停）不得泄漏进 selector 与 HTML */
+  function getSelector(el) {
+    var s = el.tagName.toLowerCase();
+    if (el.id) s += '#' + el.id;
+    if (el.className && typeof el.className === 'string' && el.className.trim()) {
+      var cls = el.className.trim().split(/\s+/).filter(function (c) { return c !== 'neeko-selected' && c !== 'neeko-hover'; });
+      if (cls.length) s += '.' + cls.slice(0, 2).join('.');
+    }
+    return s;
+  }
+  function getSize(el) {
+    var r = el.getBoundingClientRect();
+    return Math.round(r.width) + '×' + Math.round(r.height);
+  }
+  function isPinnable(el) {
+    if (!el) return false;
+    if (el === document.body || el === document.documentElement) return false;
+    if (isUIEl(el)) return false;
+    return true;
+  }
+  function truncate(s, n) { return s.length > n ? s.slice(0, n) + '…' : s; }
+
+  var pageWrap = $('pageWrap');
+
+  /* ---------- 状态 ---------- */
+  var S = {
+    picking: false,
+    mode: 'single',       // 'single' | 'multi'
+    hoverEl: null,
+    selectedEl: null,     // 单选锁定元素
+    multiSel: [],         // 多选列表（按点击顺序）
+    mouseX: 0, mouseY: 0,
+    rAF: 0,
+  };
+
+  /* ---------- 模式切换 ---------- */
+  var modeText = $('modeText');
+  var modeSwitch = $('modeSwitch');
+  var modeSwitchLabel = $('modeSwitchLabel');
+  function updateModeText() {
+    modeText.textContent = S.mode === 'single'
+      ? 'Click to pick · Esc to exit'
+      : 'Click to add / click again to cancel · Esc to exit';
+  }
+  // 渲染药丸开关：显示当前模式 + 按切换方向左右滑入动画
+  function renderModeSwitch() {
+    var single = S.mode === 'single';
+    modeSwitchLabel.textContent = single ? 'Single' : 'Multi';
+    modeSwitch.classList.remove('to-multi', 'to-single');
+    void modeSwitch.offsetWidth; // 重启动画
+    modeSwitch.classList.add(single ? 'to-single' : 'to-multi');
+  }
+  function setMode(m) {
+    if (S.mode === m) return;
+    var prev = S.mode;
+    S.mode = m;
+    renderModeSwitch();
+    var prompt = ccInput.value;
+
+    if (prev === 'single' && m === 'multi') {
+      // 单→多：把当前锁定元素带入多选（第 1 个），Composer 保持打开显示，可继续累加
+      if (S.selectedEl && S.multiSel.indexOf(S.selectedEl) < 0) S.multiSel.push(S.selectedEl);
+      clearSingle();
+      S.multiSel.forEach(function (el) { el.classList.add('neeko-selected'); });
+      renderNumBadges();
+      flashSuccess('Switched to Multi — click to keep adding');
+    } else if (prev === 'multi' && m === 'single') {
+      // 多→单：保留最后一个选中元素为单选锁定
+      if (S.multiSel.length > 0) {
+        var last = S.multiSel[S.multiSel.length - 1];
+        clearMulti();
+        lockSelection(last);
+      } else {
+        clearMulti();
+      }
+      flashSuccess('Switched to Single — click to lock');
+    } else {
+      clearSelected();
+      flashSuccess(m === 'multi' ? 'Switched to Multi mode' : 'Switched to Single mode');
+    }
+
+    renderChips();
+    // Composer 保持/重新打开（不丢已输入内容）
+    if (S.mode === 'single' ? S.selectedEl : S.multiSel.length > 0) {
+      if (!composer.classList.contains('show')) {
+        composer.classList.add('show');
+        setTimeout(function () { ccInput.focus(); autoGrow(); }, 40);
+      }
+      ccInput.value = prompt;
+      ccSend.disabled = prompt.trim().length === 0;
+    } else {
+      closeComposer();
+    }
+    updateModeText();
+  }
+  modeSwitch.addEventListener('click', function (e) {
+    e.stopPropagation();
+    setMode(S.mode === 'single' ? 'multi' : 'single');
+  });
+
+  /* ---------- Tooltip Chip ---------- */
+  var tip = $('pickTip');
+  var tipTag = tip.querySelector('.pt-tag');
+  var tipSel = tip.querySelector('.pt-sel');
+  var tipSize = tip.querySelector('.pt-size');
+  var tipHint = tip.querySelector('.pt-hint');
+
+  function positionTip() {
+    var r = tip.getBoundingClientRect();
+    var x = S.mouseX + 14, y = S.mouseY + 18;
+    if (x + r.width > window.innerWidth - 8) x = S.mouseX - r.width - 14;
+    if (y + r.height > window.innerHeight - 8) y = S.mouseY - r.height - 14;
+    if (x < 8) x = 8; if (y < 8) y = 8;
+    tip.style.left = x + 'px'; tip.style.top = y + 'px';
+  }
+  function showTip(el) {
+    tipTag.textContent = el.tagName.toLowerCase();
+    tipSel.textContent = getSelector(el);
+    tipSize.textContent = getSize(el);
+    tipHint.textContent = S.mode === 'single' ? 'Click to pick' : (S.multiSel.indexOf(el) >= 0 ? 'Click to cancel' : 'Click to add');
+    tip.style.display = 'flex';
+    positionTip();
+  }
+  function hideTip() { tip.style.display = 'none'; }
+
+  /* ---------- 高亮 ---------- */
+  function clearHover() {
+    if (S.hoverEl) { S.hoverEl.classList.remove('neeko-hover'); S.hoverEl = null; }
+  }
+  function onMove(e) {
+    if (!S.picking) return;
+    S.mouseX = e.clientX; S.mouseY = e.clientY;
+    if (S.rAF) return;
+    S.rAF = requestAnimationFrame(function () {
+      S.rAF = 0;
+      var t = e.target;
+      if (!t || !isPinnable(t) || t === S.selectedEl || S.multiSel.indexOf(t) >= 0) {
+        if (t === S.selectedEl || S.multiSel.indexOf(t) >= 0) { hideTip(); return; }
+        clearHover(); hideTip(); return;
+      }
+      if (t !== S.hoverEl) { clearHover(); S.hoverEl = t; }
+      t.classList.add('neeko-hover');
+      showTip(t); positionTip();
+    });
+  }
+
+  /* ---------- 徽标 ---------- */
+  var badges = [];
+  function makeBadge(text, cls) {
+    var b = document.createElement('div');
+    b.className = (cls || 'cornerBadge');
+    b.textContent = text;
+    document.body.appendChild(b);
+    badges.push(b);
+    return b;
+  }
+  function removeBadges() { badges.forEach(function (b) { b.remove(); }); badges = []; }
+
+  /* --- 单选：四角徽标 --- */
+  function updateCornerBadges(el) {
+    removeBadges();
+    if (!el) return;
+    var r = el.getBoundingClientRect();
+    var tl = makeBadge(el.tagName.toLowerCase() + (el.id ? ' #' + el.id : ''));
+    var br = makeBadge(Math.round(r.width) + '×' + Math.round(r.height), 'cornerBadge cb-dim');
+    tl.style.left = (r.left - 2) + 'px'; tl.style.top = (r.top - 2 - 22) + 'px';
+    br.style.left = (r.right - 2 - br.offsetWidth) + 'px'; br.style.top = (r.bottom + 4) + 'px';
+  }
+  /* --- 多选：编号徽标 --- */
+  function renderNumBadges() {
+    removeBadges();
+    S.multiSel.forEach(function (el, i) {
+      var r = el.getBoundingClientRect();
+      var b = makeBadge(String(i + 1), 'numBadge');
+      b.style.left = (r.left - 2) + 'px'; b.style.top = (r.top - 2) + 'px';
+    });
+  }
+
+  /* ---------- 单选：锁定 + 操作条 ---------- */
+  function positionSelBar(el) {
+    var r = el.getBoundingClientRect();
+    var bar = $('selBar');
+    var x = r.left, y = r.bottom + 8;
+    if (y + bar.offsetHeight > window.innerHeight - 8) y = r.top - bar.offsetHeight - 8;
+    if (x + bar.offsetWidth > window.innerWidth - 8) x = window.innerWidth - bar.offsetWidth - 8;
+    bar.style.left = x + 'px'; bar.style.top = y + 'px';
+    bar.classList.add('show');
+  }
+  function applySelection(el) {
+    clearHover(); hideTip();
+    S.selectedEl = el;
+    el.classList.add('neeko-selected');
+    updateCornerBadges(el);
+    positionSelBar(el);
+    $('sbUp').classList.toggle('disabled', !isPinnable(el.parentElement));
+    $('sbDown').classList.toggle('disabled', !el.firstElementChild);
+    renderChips();
+  }
+  function lockSelection(el) {
+    clearSelected();
+    applySelection(el);
+  }
+  function refine(direction) {
+    if (!S.selectedEl) return;
+    var next = direction === 'up' ? S.selectedEl.parentElement : S.selectedEl.firstElementChild;
+    if (!next || !isPinnable(next)) return;
+    // 切换锁定元素：保持 Composer 打开并同步 chip（不丢已输入内容）
+    S.selectedEl.classList.remove('neeko-selected');
+    applySelection(next);
+  }
+  function copySelected() {
+    if (!S.selectedEl) return;
+    // 拷贝时临时摘掉注入类，保证复制出的 HTML 干净
+    var el = S.selectedEl;
+    el.classList.remove('neeko-selected');
+    (navigator.clipboard ? navigator.clipboard.writeText(el.outerHTML) : Promise.reject()).catch(function () {});
+    el.classList.add('neeko-selected');
+    flashSuccess('Copied element HTML to clipboard');
+  }
+
+  /* ---------- 多选（元素直接显示在 Composer 输入区上方，无独立托盘） ---------- */
+  function currentElements() {
+    if (S.mode === 'single') return S.selectedEl ? [S.selectedEl] : [];
+    return S.multiSel.slice();
+  }
+  function toggleMulti(el) {
+    var idx = S.multiSel.indexOf(el);
+    if (idx >= 0) {
+      S.multiSel.splice(idx, 1);
+      el.classList.remove('neeko-selected');
+      renderNumBadges();
+    } else {
+      S.multiSel.push(el);
+      el.classList.add('neeko-selected');
+      renderNumBadges();
+    }
+    renderChips();
+    if (S.multiSel.length === 0) closeComposer();
+  }
+  function clearMulti() {
+    S.multiSel.forEach(function (el) { el.classList.remove('neeko-selected'); });
+    S.multiSel = [];
+    removeBadges();
+    renderChips();
+  }
+  function clearSingle() {
+    if (S.selectedEl) { S.selectedEl.classList.remove('neeko-selected'); S.selectedEl = null; }
+    removeBadges();
+    $('selBar').classList.remove('show');
+    renderChips();
+  }
+  function clearSelected() { clearSingle(); clearMulti(); closeComposer(); }
+
+  /* ---------- AI Composer ---------- */
+  var composer = $('composer');
+  var ccInput = $('ccInput');
+  var ccSend = $('ccSend');
+  var ccChips = $('ccChips');
+  var ccClose = $('ccClose');
+
+  function autoGrow() {
+    ccInput.style.height = 'auto';
+    var h = Math.min(ccInput.scrollHeight, 150);
+    ccInput.style.height = h + 'px';
+    ccInput.style.overflowY = ccInput.scrollHeight > 150 ? 'auto' : 'hidden';
+  }
+  // 在输入区上方渲染选中元素 chips（单选 1 个 / 多选 N 个）
+  function renderChips() {
+    ccChips.innerHTML = '';
+    var els = currentElements();
+    els.forEach(function (el, i) {
+      var chip = document.createElement('div');
+      chip.className = 'cc-chip';
+      chip.innerHTML =
+        '<span class="cc-chip-num">' + (i + 1) + '</span>' +
+        '<span class="cc-chip-sel">' + escapeHtml(getSelector(el)) + '</span>' +
+        '<span class="cc-chip-dim">' + getSize(el) + '</span>' +
+        '<button class="cc-chip-x" title="Remove">✕</button>';
+      chip.querySelector('.cc-chip-x').addEventListener('click', function (ev) {
+        ev.stopPropagation();
+        removeChip(i);
+      });
+      ccChips.appendChild(chip);
+    });
+    ccClose.title = S.mode === 'multi' && els.length > 0 ? 'Clear selection & close' : 'Close (back to picking)';
+  }
+  function removeChip(i) {
+    if (S.mode === 'single') { clearSingle(); closeComposer(); return; }
+    var el = S.multiSel[i];
+    if (el) {
+      S.multiSel.splice(i, 1);
+      el.classList.remove('neeko-selected');
+      renderNumBadges();
+      renderChips();
+    }
+    if (S.multiSel.length === 0) closeComposer();
+  }
+  function openComposer() {
+    if (S.mode === 'single' && !S.selectedEl) return;
+    if (S.mode === 'multi' && S.multiSel.length === 0) return;
+    var first = !composer.classList.contains('show');
+    renderChips();
+    if (first) {
+      ccInput.value = '';
+      ccSend.disabled = true;
+      composer.classList.add('show');
+      setTimeout(function () { ccInput.focus(); autoGrow(); }, 40);
+    }
+  }
+  function closeComposer() {
+    composer.classList.remove('show');
+  }
+  function sendPrompt() {
+    var text = ccInput.value.trim();
+    if (!text) return;
+    var els = S.mode === 'single' ? [S.selectedEl] : S.multiSel.slice();
+    composer.classList.remove('show');
+    // 立即清理选中态：之前用 setTimeout 延迟 1.5s 清理，用户发送后立刻开始
+    // 新一轮选取时，会被延迟回调一起清掉，导致"数量不变化/被重置"。
+    if (S.mode === 'single') clearSingle(); else clearMulti();
+    // 真实实现中：将每个元素的 outerHTML 全部嵌入消息发送给 Agent
+    flashSuccess('Sent to Agent: ' + els.length + ' element' + (els.length > 1 ? 's' : '') + ' — “' + truncate(text, 36) + '”');
+    els.forEach(function (el, i) {
+      if (el && typeof el.animate === 'function') el.animate([
+        { boxShadow: '0 0 0 0 rgba(var(--accent-rgb), .6)' },
+        { boxShadow: '0 0 0 8px rgba(var(--accent-rgb), 0)' }
+      ], { duration: 700, delay: i * 130 });
+    });
+  }
+
+  /* ---------- 成功反馈 ---------- */
+  var successPill = $('successPill');
+  var successTimer = 0;
+  function flashSuccess(msg) {
+    $('successText').textContent = msg;
+    successPill.classList.add('show');
+    clearTimeout(successTimer);
+    successTimer = setTimeout(function () { successPill.classList.remove('show'); }, 2200);
+  }
+
+  /* ---------- 进入 / 退出选择模式 ---------- */
+  function enterPicking() {
+    if (S.picking) return;
+    S.picking = true;
+    closeComposer();
+    pageWrap.classList.add('picking');
+    $('modePill').classList.add('show');
+    $('pickerBtn').classList.add('active');
+    document.addEventListener('mousemove', onMove, true);
+    document.addEventListener('click', onClick, true);
+    document.addEventListener('keydown', onKey, true);
+    document.addEventListener('scroll', onScroll, true);
+  }
+  function exitPicking() {
+    if (!S.picking) return;
+    S.picking = false;
+    pageWrap.classList.remove('picking');
+    $('modePill').classList.remove('show');
+    $('pickerBtn').classList.remove('active');
+    document.removeEventListener('mousemove', onMove, true);
+    document.removeEventListener('click', onClick, true);
+    document.removeEventListener('keydown', onKey, true);
+    document.removeEventListener('scroll', onScroll, true);
+    clearHover(); hideTip(); clearSelected(); closeComposer();
+  }
+
+  function onClick(e) {
+    if (!S.picking) return;
+    var t = e.target;
+    // 覆盖层（Pill、Composer、操作条等）点击交由各自的
+    // handler 处理；不能 stopPropagation，否则 capture 阶段会截断
+    // 事件、导致按钮永远收不到点击。
+    if (isUIEl(t)) return;
+    e.preventDefault(); e.stopPropagation();
+    if (!isPinnable(t)) return;
+    clearHover(); hideTip();
+    if (S.mode === 'single') {
+      lockSelection(t);
+      openComposer();
+    } else {
+      toggleMulti(t);
+      // 首个元素选中即打开 Composer，后续点击实时更新 chips（不丢已输入内容）
+      if (S.multiSel.length > 0) openComposer();
+    }
+  }
+
+  function onKey(e) {
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      if (composer.classList.contains('show')) {
+        // 多选：Esc 清空选择并关闭（避免关掉后无法重新打开的死路）
+        if (S.mode === 'multi' && S.multiSel.length > 0) clearMulti();
+        closeComposer();
+        return;
+      }
+      if (S.picking) { exitPicking(); }
+      return;
+    }
+    if (S.picking && composer.classList.contains('show') && e.target === ccInput) {
+      if (e.key === 'Enter' && !e.shiftKey && !e.ctrlKey && !e.altKey) {
+        e.preventDefault();
+        sendPrompt();
+      }
+    }
+  }
+
+  function onScroll() {
+    if (!S.picking) return;
+    if (S.mode === 'single' && S.selectedEl) {
+      var r = S.selectedEl.getBoundingClientRect();
+      if (r.bottom < 0 || r.top > window.innerHeight) { clearSingle(); }
+      else { updateCornerBadges(S.selectedEl); positionSelBar(S.selectedEl); }
+    }
+    if (S.mode === 'multi') { renderNumBadges(); }
+    clearHover(); hideTip();
+  }
+
+  /* ---------- 控件绑定 ---------- */
+  $('pickerBtn').addEventListener('click', function () {
+    S.picking ? exitPicking() : enterPicking();
+  });
+  $('themeToggle').addEventListener('click', function () {
+    var root = document.documentElement;
+    var next = root.getAttribute('data-theme') === 'light' ? 'dark' : 'light';
+    root.setAttribute('data-theme', next);
+    if (S.mode === 'single' && S.selectedEl) { updateCornerBadges(S.selectedEl); positionSelBar(S.selectedEl); }
+    if (S.mode === 'multi') { renderNumBadges(); }
+  });
+  $('sbUp').addEventListener('click', function () { refine('up'); });
+  $('sbDown').addEventListener('click', function () { refine('down'); });
+  $('sbCopy').addEventListener('click', copySelected);
+  $('ccClose').addEventListener('click', function () {
+    // 多选：清空选择并关闭（避免关掉后无法重新打开的死路）
+    if (S.mode === 'multi' && S.multiSel.length > 0) clearMulti();
+    closeComposer();
+  });
+  ccInput.addEventListener('input', function () {
+    autoGrow();
+    ccSend.disabled = ccInput.value.trim().length === 0;
+  });
+  ccInput.addEventListener('keydown', function (e) { e.stopPropagation(); });
+  ccSend.addEventListener('click', sendPrompt);
+  // 覆盖层点击不穿透到页面
+  composer.addEventListener('click', function (e) { e.stopPropagation(); });
+  composer.addEventListener('mousedown', function (e) { e.stopPropagation(); });
+  $('selBar').addEventListener('mousedown', function (e) { e.stopPropagation(); });
+  $('selBar').addEventListener('click', function (e) { e.stopPropagation(); });
+
+  // 工具栏其余按钮仅示意
+  ['backBtn', 'fwdBtn', 'reloadBtn', 'extBtn'].forEach(function (id) {
+    $(id).addEventListener('click', function () { flashSuccess('Demo: button for illustration only'); });
+  });
+  // 演示页面按钮示意
+  ['navSignin', 'navCta', 'heroCta', 'heroDemo', 'nlBtn'].forEach(function (id) {
+    var el = $(id);
+    if (el) el.addEventListener('click', function () { flashSuccess('Demo: page interaction paused (element picking first)'); });
+  });
+
+  flashSuccess('Prototype ready — click 🎯 in the toolbar to enter pick mode');
+  renderModeSwitch();
+})();
+</script>
+</body>
+</html>

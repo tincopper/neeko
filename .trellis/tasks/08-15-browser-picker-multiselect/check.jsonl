@@ -1,0 +1,7 @@
+{"file": ".trellis/tasks/08-15-browser-picker-multiselect/prd.md", "reason": "验收标准（Acceptance Criteria）"}
+{"file": ".trellis/tasks/08-15-browser-picker-multiselect/design.md", "reason": "协议变更/兼容性/边界限制检查"}
+{"file": ".trellis/tasks/08-15-browser-picker-multiselect/browser-picker-prototype.html", "reason": "交互原型参照（UX 验收）"}
+{"file": ".trellis/spec/backend/command-guidelines.md", "reason": "Rust 协议层约定合规检查"}
+{"file": ".trellis/spec/frontend/interaction-patterns.md", "reason": "前端交互模式合规检查"}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "跨层一致性审计"}
+{"file": ".trellis/spec/unit-test/frontend-testing.md", "reason": "测试覆盖要求核对"}

@@ -176,6 +176,29 @@ pub fn handle_menu_event(app: &tauri::AppHandle, id: &str, cmd_w_flag: &AtomicBo
     // cut/select-all reach the terminal, editor and input fields.
     #[cfg(target_os = "macos")]
     if let Some(action) = resolve_edit_menu_action(id) {
+        // 选择器输入框聚焦 → 转发到浏览器子 webview。否则浏览器 webview 永远
+        // 收不到 Cmd+C/V/A：macOS 菜单加速键在 OS 层截获原始 keydown，菜单
+        // handler 是唯一入口；而 get_webview_window("main") 只够到主 webview。
+        if crate::browser::uri_scheme::picker_input_focused() {
+            if let Some(wv) = app
+                .webviews()
+                .values()
+                .find(|w| w.label().starts_with("neeko-browser-"))
+            {
+                match action {
+                    EditMenuAction::EvalJs(js) => {
+                        let _ = wv.eval(js);
+                    }
+                    EditMenuAction::EmitPaste => {
+                        // 浏览器 webview 无 Tauri 事件监听器（加载外部页面），
+                        // 直接用 execCommand 粘贴（与主 webview 相同：WKWebView
+                        // 可能弹原生粘贴确认）。
+                        let _ = wv.eval("document.execCommand('paste')");
+                    }
+                }
+                return;
+            }
+        }
         if let Some(window) = app.get_webview_window("main") {
             match action {
                 EditMenuAction::EvalJs(js) => {
