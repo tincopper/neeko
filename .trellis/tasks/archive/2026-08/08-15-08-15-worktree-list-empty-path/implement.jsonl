@@ -1,0 +1,4 @@
+{"_example": "Fill with {\"file\": \"<path>\", \"reason\": \"<why>\"}. Put spec/research files only — no code paths. Run `python3 .trellis/scripts/get_context.py --mode packages` to list available specs. Delete this line once real entries are added."}
+{"file": ".trellis/spec/backend/command-guidelines.md", "reason": "命令层极薄 + 参数解析规范：resolve_repo_path 属于命令层路径解析"}
+{"file": ".trellis/spec/backend/git-domain.md", "reason": "git 命令域结构：commands.rs 与 operations/transport 的分层"}
+{"file": ".trellis/spec/frontend/hook-guidelines.md", "reason": "前端 hooks 约定：store 直导、useSessionBootstrap 组合层职责"}
