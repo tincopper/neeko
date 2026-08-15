@@ -25,7 +25,16 @@ Use this skill during Phase 1 planning to turn the user's request into clear req
 
 ## Preconditions
 
-Use this skill only after task-creation consent has been given and the user is ready to enter Trellis planning.
+Use this skill **only for L2 complex tasks** (per the complexity classification in `workflow.md` Request Triage). L1 simple/lightweight tasks must NOT create a Trellis task — implement them inline with `trellis-before-dev` and quality checks.
+
+Before creating a task, classify the request:
+
+| 级别 | 判定条件 | 行动 |
+|---|---|---|
+| **L1 简单/轻量** | 单一关注点；改动 ≤ 3 个文件且在同一层/同一 feature；无跨层；无设计/API 决策；单次会话可完成 | **不创建任务**。不要加载本 skill；直接内联实现。 |
+| **L2 复杂** | 多关注点/多交付物；跨层或多包；新功能或需设计权衡；API/契约/迁移变更；高风险长周期 | 先确认用户同意创建任务，再进入本 skill。 |
+
+Use this skill only after task-creation consent has been given (for an L2 task) and the user is ready to enter Trellis planning.
 
 If no task exists yet, create one:
 
@@ -168,6 +177,13 @@ Before declaring planning ready:
 - Remaining open questions are genuinely about user intent or scope.
 - Complex tasks have `design.md` and `implement.md`.
 - Sub-agent-dispatch tasks have real curated entries in both `implement.jsonl` and `check.jsonl`; seed-only manifests are not ready.
-- The user has reviewed the final planning artifacts or explicitly approved proceeding.
 
-Do not start implementation until the user approves or asks for implementation.
+## Hard Gate Before Implementation
+
+Do NOT write any code, run `task.py start`, or dispatch an implement sub-agent until **all three** hold:
+
+1. **文档完成**：本任务级别要求的全部规划文档完成并经 review（复杂任务：`prd.md` + `design.md` + `implement.md` 齐备）。
+2. **用户明确确认**：向用户呈现「文档已完成」摘要，并明确请求确认「可以开始实现吗？」—— 必须得到用户明确的同意（"可以/开始吧/执行"等）。仅"同意创建任务"或默认沉默不算确认。
+3. **任务激活**：`task.py start` 已执行（status = `in_progress`）。
+
+If the user pushes to start coding while docs are incomplete or unconfirmed, do not comply — complete the planning artifacts, present them, and ask for explicit confirmation first.

@@ -7,6 +7,12 @@ Read the relevant development guidelines before starting your task.
 
 Execute these steps:
 
+0. **写码前预检（改码硬闸门，不可跳过）**：在修改任何代码之前，先确认以下三条：
+   1. **文档完成**：当前任务的规划文档是否齐全——复杂任务需 `prd.md` + `design.md` + `implement.md` 全部完成并经 review（简单/轻量任务无需任务文档，直接内联实现）。
+   2. **用户确认**：用户是否已明确确认「文档已完成、可以开始实现」。仅"同意创建任务"或默认沉默不算。
+   3. **任务激活**：任务状态是否为 `in_progress`（`python3 ./.trellis/scripts/task.py current`）。
+   任一未满足 → **停止写代码**，先补完规划文档、向用户请求明确确认，再回来。即使被催促也不要提前改码。
+
 1. **Read current task artifacts**:
    - `prd.md` for requirements and acceptance criteria
    - `design.md` if present for technical design

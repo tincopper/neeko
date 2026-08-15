@@ -144,16 +144,22 @@ python3 ./.trellis/scripts/get_context.py --mode phase --step <X.Y>  # detailed 
 ## Phase Index
 
 ```
-Phase 1: Plan    → classify, get task-creation consent, then write planning artifacts
-Phase 2: Execute → implement only after task status is in_progress
+Phase 1: Plan    → classify complexity (simple → no task), get consent for complex, write planning artifacts
+Phase 2: Execute → implement only after docs complete + user confirmed + task status is in_progress
 Phase 3: Finish  → verify, update spec, commit, and wrap up
 ```
 
 ### Request Triage
 
-- Simple conversation or small task: ask only whether this turn should create a Trellis task. If the user says no, skip Trellis for this session.
-- Complex task: ask whether you may create a Trellis task and enter planning. If the user says no, do not do broad inline implementation; explain, clarify scope, or suggest a smaller split.
-- User approval to create a task is not approval to start implementation. Planning still happens first.
+**先分级，再决定是否创建任务。** 每个请求先按「复杂度分级」判定为 L1（简单/轻量）或 L2（复杂），再按分级行动：
+
+| 级别 | 判定条件 | 行动 |
+|---|---|---|
+| **L1 简单/轻量** | 满足**全部**：单一关注点（单个 bug / 单处 UI / 文案或配置调整）；改动 ≤ 3 个文件且都在同一层、同一 feature；无跨层（不同时动 backend + frontend + docs）；无架构或设计决策、无 API/契约/存储格式变更、无迁移；单次会话可完成、风险低 | **不创建 Trellis 任务**。直接内联实现：先读相关 spec（`trellis-before-dev`），改完跑对应质量命令。不要问「要不要建任务」。 |
+| **L2 复杂** | 命中**任一**：多关注点 / 多个可独立验收的交付物；跨层或多包；新功能，或需要设计决策、权衡、兼容性分析；API/契约/存储格式变更或迁移；高风险、长周期 | 先**询问**是否允许创建 Trellis 任务并进入规划。用户同意才创建；用户拒绝则不要大范围内联实现，先澄清范围或建议拆小。 |
+
+- 无法判定（边界情况）→ 按 L2 复杂处理，或直接问用户。
+- **创建任务 ≠ 允许实现**：无论 L1/L2，改代码前都必须满足「文档完成 + 用户确认 + `task.py start`」的硬闸门（见 Phase 1.4 / 2.1）。
 
 ### Planning Artifacts
 
@@ -174,9 +180,10 @@ Create new children with `task.py create "<title>" --slug <name> --parent <paren
 <!-- Per-turn breadcrumb: shown when there is no active task (before Phase 1) -->
 
 [workflow-state:no_task]
-No active task. First classify the current turn and ask for task-creation consent before creating any Trellis task.
-Simple conversation / small task: ask only whether this turn should create a Trellis task. If the user says no, skip Trellis for this session.
-Complex task: ask the user if you can create a Trellis task and enter the planning phase. If the user says no, explain, clarify scope, or suggest a smaller split.
+No active task. First classify this turn's complexity, then act:
+- L1 simple/lightweight (single concern, <= 3 files in one layer, no design decisions): do NOT create a Trellis task — implement directly and run quality checks.
+- L2 complex (multi-deliverable, cross-layer, new feature, design/API decisions): ask consent before creating a Trellis task and entering planning.
+Writing code is never allowed until planning docs are complete and the user explicitly confirms.
 [/workflow-state:no_task]
 
 ### Phase 1: Plan
@@ -184,16 +191,17 @@ Complex task: ask the user if you can create a Trellis task and enter the planni
 - 1.1 Requirement exploration `[required · repeatable]` (`prd.md`; complex tasks also need `design.md` + `implement.md`)
 - 1.2 Research `[optional · repeatable]`
 - 1.3 Configure context `[required · once]` — Claude Code, Cursor, OpenCode, Codex, Kiro, Gemini, Qoder, CodeBuddy, Copilot, Droid, Pi, ZCode, Reasonix (sub-agent-dispatch platforms only; inline platforms skip)
-- 1.4 Activate task `[required · once]` (review gate, then `task.py start`; status → in_progress)
+- 1.4 Activate task `[required · once]` (hard gate: docs complete + user confirmed, then `task.py start`; status → in_progress)
 - 1.5 Completion criteria
 
 <!-- Per-turn breadcrumb: shown throughout Phase 1 (status='planning') -->
 
 [workflow-state:planning]
-Load `trellis-brainstorm`; stay in planning.
-Lightweight: `prd.md` can be enough. Complex: finish `prd.md`, `design.md`, and `implement.md`; ask for review before `task.py start`.
+Load `trellis-brainstorm`; stay in planning. Do NOT write code.
+Complex: finish `prd.md`, `design.md`, and `implement.md`, review them, then present a summary and WAIT for the user's explicit confirmation (e.g. "文档已完成，是否开始实现？") before running `task.py start`.
 Multi-deliverable scope: consider a parent task plus independently verifiable child tasks; dependencies must be written in child artifacts, not implied by tree position.
 Sub-agent mode: curate `implement.jsonl` and `check.jsonl` as spec/research manifests before start.
+No code modification is allowed while status='planning'.
 [/workflow-state:planning]
 
 <!-- Per-turn breadcrumb: shown throughout Phase 1 when codex.dispatch_mode=inline.
@@ -203,10 +211,11 @@ Sub-agent mode: curate `implement.jsonl` and `check.jsonl` as spec/research mani
      into a sub-agent. -->
 
 [workflow-state:planning-inline]
-Load `trellis-brainstorm`; stay in planning.
-Lightweight: `prd.md` can be enough. Complex: finish `prd.md`, `design.md`, and `implement.md`; ask for review before `task.py start`.
+Load `trellis-brainstorm`; stay in planning. Do NOT write code.
+Complex: finish `prd.md`, `design.md`, and `implement.md`; present a summary and WAIT for the user's explicit confirmation before `task.py start`.
 Multi-deliverable scope: consider a parent task plus independently verifiable child tasks; dependencies must be written in child artifacts, not implied by tree position.
 Inline mode: skip jsonl curation; Phase 2 reads artifacts/specs via `trellis-before-dev`.
+No code modification is allowed while status='planning'.
 [/workflow-state:planning-inline]
 
 ### Phase 2: Execute
@@ -225,6 +234,7 @@ Sub-agent dispatch protocol applies to all platforms and all sub-agents, includi
 [workflow-state:in_progress]
 Tools: `trellis-implement` / `trellis-research` are sub-agent types only (Task/Agent tool, NOT Skill; there is no skill by these names). `trellis-update-spec` is a skill. `trellis-check` exists as both; prefer the Agent form when verifying after code changes.
 Flow: `trellis-implement` -> `trellis-check` -> `trellis-update-spec` -> commit (Phase 3.4) -> `/trellis:finish-work`.
+Reaching this state means the hard gate passed: docs complete + user confirmed + `task.py start` ran. If any of those is missing, stop and return to Phase 1 before writing code.
 Main-session default: dispatch implement/check sub-agents. Sub-agent self-exemption: if already running as `trellis-implement`, do NOT spawn another `trellis-implement` or `trellis-check`; if already running as `trellis-check`, do NOT spawn another `trellis-check` or `trellis-implement`. Dispatch is main session only.
 Dispatch prompt starts with `Active task: <task path from task.py current>`. Read context: jsonl entries -> `prd.md` -> `design.md if present` -> `implement.md if present`.
 [/workflow-state:in_progress]
@@ -238,6 +248,7 @@ Dispatch prompt starts with `Active task: <task path from task.py current>`. Rea
 Flow: `trellis-before-dev` -> edit -> `trellis-check` -> validation -> `trellis-update-spec` -> commit (Phase 3.4) -> `/trellis:finish-work`.
 Do not dispatch implement/check sub-agents in inline mode.
 Read context: `prd.md` -> `design.md if present` -> `implement.md if present`, plus relevant spec/research loaded by skills.
+Reaching this state means the hard gate passed (docs complete + user confirmed + `task.py start`); if any is missing, stop and return to Phase 1.
 [/workflow-state:in_progress-inline]
 
 ### Phase 3: Finish
@@ -267,6 +278,7 @@ Code committed. Run `/trellis:finish-work`; if dirty, return to Phase 3.4 first.
 3. Phases can roll back (e.g., Execute reveals a prd defect → return to Plan to fix, then re-enter Execute)
 4. Steps tagged `[once]` are skipped if the output already exists; don't re-run
 5. Artifact presence informs the next step; missing `design.md` / `implement.md` is valid for lightweight tasks and incomplete planning for complex tasks.
+6. **改码硬闸门**：只要规划文档未完成、或用户未明确确认「文档已完成、可以开始实现」、或 `task.py start` 未执行（status 非 `in_progress`），就禁止修改任何代码。被催促时也不要提前改码——先补文档并请求确认。
 
 ### Active Task Routing
 
@@ -290,6 +302,8 @@ When a user request matches one of these intents inside an active task, route fi
 
 ### Guardrails
 
+- **复杂度分级先行**：L1 简单任务**不创建** Trellis 任务，直接内联实现；只有 L2 复杂任务才创建任务并进入规划。
+- **改码硬闸门（不可绕过）**：修改任何代码前必须同时满足 —— ① 该级别要求的规划文档全部完成并经 review；② 用户**明确确认**「文档已完成、可以开始实现」；③ `task.py start` 已执行（status = `in_progress`）。三者缺一，禁止写代码；即使被催促也不得提前改码，应先补完文档并请求确认。
 - Task creation approval is not implementation approval; implementation waits for `task.py start` after artifact review.
 - PRD-only is valid for lightweight tasks; complex tasks need `design.md` + `implement.md`.
 - Planning must be persisted to task artifacts; checks must run before reporting completion.
@@ -433,13 +447,21 @@ Skip this step. Context is loaded directly by the `trellis-before-dev` skill in 
 
 [/codex-inline, Kilo, Antigravity, Devin]
 
-#### 1.4 Activate task `[required · once]`
+#### 1.4 Activate task `[required · once]` —— 改码硬闸门
 
-After artifact review, flip the task status to `in_progress`:
+这是**规划 → 实现的唯一入口**。只有同时满足以下三条，才允许进入 Phase 2 修改代码：
+
+1. **文档完成**：该复杂度级别要求的规划文档全部完成并经 review。
+   - L1 简单任务不建任务、不走此步（内联实现）。
+   - L2 复杂任务：`prd.md`、`design.md`、`implement.md` 必须齐备且已 review；子代理分发平台还需 `implement.jsonl` / `check.jsonl` 都有真实条目。
+2. **用户明确确认**：向用户呈现「文档已完成」摘要，并**明确请求确认**「可以开始实现吗？」—— 只有得到用户明确的同意（如"可以/开始吧/执行"）才算通过。仅"创建任务同意"或默认沉默**不算**。
+3. **执行 start**：运行 `task.py start` 使 status = `in_progress`：
 
 ```bash
 python3 ./.trellis/scripts/task.py start <task-dir>
 ```
+
+在三条全部满足前，**禁止修改任何代码**。如果用户催促先改码，不要照做——先把文档补完、再请求确认。
 
 For lightweight tasks, `prd.md` can be enough. For complex tasks, `prd.md`, `design.md`, and `implement.md` must exist and be reviewed before start. On sub-agent-dispatch platforms, `implement.jsonl` and `check.jsonl` must both have real curated entries before start. Runtime consumers tolerate missing or seed-only manifests for compatibility, but that tolerance is not a planning-ready state.
 
@@ -451,9 +473,10 @@ If `task.py start` errors with a session-identity message (no context key from h
 
 | Condition | Required |
 |------|:---:|
+| **改码硬闸门①**：该级别要求的规划文档全部完成并经 review | ✅ |
+| **改码硬闸门②**：用户明确确认「文档已完成、可以开始实现」 | ✅ |
+| **改码硬闸门③**：`task.py start` 已运行（status = in_progress） | ✅ |
 | `prd.md` exists | ✅ |
-| User confirms task should enter implementation | ✅ |
-| `task.py start` has been run (status = in_progress) | ✅ |
 | `research/` has artifacts (complex tasks) | recommended |
 | `design.md` exists (complex tasks) | ✅ |
 | `implement.md` exists (complex tasks) | ✅ |
@@ -471,6 +494,8 @@ If `task.py start` errors with a session-identity message (no context key from h
 Goal: turn reviewed planning artifacts into code that passes quality checks.
 
 #### 2.1 Implement `[required · repeatable]`
+
+**进入前提（硬闸门复核）**：进入本步前，先确认 Phase 1.4 的三条闸门已满足（文档完成 + 用户明确确认 + `task.py start` 已执行）。任一缺失 → 立即回到 Phase 1 补文档并请求确认，**不要开始改代码**。
 
 [Claude Code, Cursor, OpenCode, CodeBuddy, Droid, Pi]
 
@@ -650,8 +675,9 @@ This section is for developers who want to modify the Trellis workflow itself. A
 ### Changing what a step means
 
 Edit the corresponding step's walkthrough body in the Phase 1 / 2 / 3 sections above. Critical invariants:
-- No active task must triage first and ask for task-creation consent before creating a Trellis task.
+- No active task must classify complexity first: L1 simple tasks must NOT create a Trellis task (implement inline); L2 complex tasks must ask for task-creation consent before creating one.
 - Planning must distinguish lightweight PRD-only tasks from complex tasks that require `prd.md`, `design.md`, and `implement.md` before start.
+- No code modification before all three hold: planning docs complete + user explicitly confirms + `task.py start` has run.
 - Every required execution path must keep the Phase 3.4 commit reminder reachable before `/trellis:finish-work`.
 
 All tag blocks live in the `## Phase Index` section above, immediately after each phase summary:
