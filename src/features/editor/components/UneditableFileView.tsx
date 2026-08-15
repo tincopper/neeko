@@ -11,7 +11,8 @@ function formatFileSize(bytes: number): string {
 }
 
 interface UneditableFileViewProps {
-  pathSegments: string[];
+  filePath: string;
+  projectPath: string | null;
   size: number;
   message: string;
 }
@@ -19,18 +20,16 @@ interface UneditableFileViewProps {
 /**
  * 不可编辑文件（binary / 超大文件）只读占位视图。
  */
-function UneditableFileView({ pathSegments, size, message }: UneditableFileViewProps) {
+function UneditableFileView({ filePath, projectPath, size, message }: UneditableFileViewProps) {
   return (
     <div className="flex-1 flex flex-col">
       <EditorHeader
-        pathSegments={pathSegments}
+        filePath={filePath}
+        projectPath={projectPath}
         isDirty={false}
-        canEdit={false}
         isMd={false}
         isHtml={false}
         previewMode="preview"
-        isSaving={false}
-        onSave={() => {}}
         onTogglePreview={() => {}}
       />
       <div className="flex-1 flex items-center justify-center">

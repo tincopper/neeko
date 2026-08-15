@@ -1,9 +1,11 @@
+import { closeSearchPanel, openSearchPanel, searchPanelOpen } from '@codemirror/search';
 import type { EditorView } from '@codemirror/view';
 import CodeMirror from '@uiw/react-codemirror';
 import React, { useCallback, useMemo, useRef, useState } from 'react';
 
 import { useCmdHeld } from '@/features/lsp';
 import { cn } from '@/lib/utils';
+import { useAppContext } from '@/shared/contexts';
 import { useNotificationStore } from '@/shared/store/notificationStore';
 import type { AppTheme, FileTab } from '@/shared/types';
 import { MarkdownPreview } from '@/ui';
@@ -71,7 +73,6 @@ function FileEditor({
   const {
     previewMode,
     setPreviewMode,
-    isSaving,
     setIsSaving,
     langExtension,
     setSelectionLines,
@@ -130,7 +131,6 @@ function FileEditor({
 
   const {
     handleEditorChange,
-    handleSave,
     handleReload,
     handleKeepEdits,
     saveKeymap,
@@ -183,8 +183,19 @@ function FileEditor({
     [onFileSelect],
   );
 
-  // Breadcrumb path segments
-  const pathSegments = tab.filePath.replace(/\\/g, '/').split('/');
+  // 页内内容搜索：标题栏「搜索」按钮开合 CodeMirror 查找面板（Ctrl+F 由 searchKeymap 承担）
+  const handleOpenSearch = useCallback(() => {
+    const view = editorViewRef.current;
+    if (!view) return;
+    if (searchPanelOpen(view.state)) closeSearchPanel(view);
+    else openSearchPanel(view);
+  }, []);
+
+  // AI 助手：占位入口，后续接入 Agent 选择器
+  const { showToast } = useAppContext();
+  const handleOpenAI = useCallback(() => {
+    showToast('AI 助手功能即将接入', 'info');
+  }, [showToast]);
 
   // Determine if file can be edited
   const canEdit = !tab.content.is_binary && tab.content.size <= 512 * 1024;
@@ -193,7 +204,8 @@ function FileEditor({
   if (tab.content.is_binary) {
     return (
       <UneditableFileView
-        pathSegments={pathSegments}
+        filePath={tab.filePath}
+        projectPath={projectPath}
         size={tab.content.size}
         message="Binary file — cannot be displayed"
       />
@@ -204,7 +216,8 @@ function FileEditor({
   if (tab.content.size > 512 * 1024) {
     return (
       <UneditableFileView
-        pathSegments={pathSegments}
+        filePath={tab.filePath}
+        projectPath={projectPath}
         size={tab.content.size}
         message="File too large to edit (> 500 KB)"
       />
@@ -226,18 +239,18 @@ function FileEditor({
       )}
 
       <EditorHeader
-        pathSegments={pathSegments}
+        filePath={tab.filePath}
+        projectPath={projectPath}
         isDirty={tab.isDirty}
-        canEdit={canEdit}
         isMd={isMd}
         isHtml={isHtml}
         previewMode={previewMode}
-        isSaving={isSaving}
-        onSave={handleSave}
         onTogglePreview={() => setPreviewMode((m) => (m === 'preview' ? 'source' : 'preview'))}
         onOpenInBrowser={handleOpenInBrowser}
         onOpenInSystemBrowser={handleOpenInSystemBrowser}
         canOpenInBrowser={canOpenInBrowser}
+        onSearch={showPreview ? undefined : handleOpenSearch}
+        onAI={handleOpenAI}
       />
 
       <div className="flex-1 min-h-0 overflow-hidden">

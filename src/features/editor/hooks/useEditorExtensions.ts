@@ -1,6 +1,7 @@
 import { closeBrackets, closeBracketsKeymap, completionKeymap } from '@codemirror/autocomplete';
 import { history, historyKeymap, indentWithTab, defaultKeymap } from '@codemirror/commands';
 import { foldGutter, indentOnInput, bracketMatching } from '@codemirror/language';
+import { highlightSelectionMatches, searchKeymap } from '@codemirror/search';
 import type { Extension } from '@codemirror/state';
 import {
   EditorView,
@@ -16,6 +17,7 @@ import {
 import { useMemo } from 'react';
 
 import { navigateCaretExtension } from '@/features/editor/navigateCaret';
+import { neekoSearchExtension } from '@/features/editor/searchPanel';
 import { createCmTheme } from '@/shared/utils/codemirror';
 import { imeSpaceGuard } from '@/shared/utils/codemirrorIme';
 
@@ -114,6 +116,10 @@ export function useEditorExtensions({
         indentWithTab,
       ]),
       saveKeymap,
+      // 页内内容搜索：查找面板 + Ctrl+F / Ctrl+G / Esc + 高亮所有选中匹配
+      neekoSearchExtension(),
+      highlightSelectionMatches(),
+      keymap.of(searchKeymap),
       cmTheme,
       viewStateExt,
       imeSpaceGuard(),

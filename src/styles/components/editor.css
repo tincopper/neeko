@@ -22,5 +22,137 @@
   }
 
   /* LSP installing spinner (smaller, fits status bar) */
+  /* LSP installing spinner (smaller, fits status bar) */
   .lsp-spinner { display: inline-block; width: 8px; height: 8px; border: 1.5px solid var(--text-muted); border-top-color: var(--accent-blue); border-radius: 50%; animation: lsp-spin 0.7s linear infinite; flex-shrink: 0; }
+
+  /* ── 页内查找面板（@codemirror/search）── 匹配 Neeko 深色主题
+   * CM 通过运行时注入无 layer 样式，@layer 内普通规则会被其覆盖，
+   * 故关键颜色/背景用 !important（与既有 .cm-* 覆盖一致）。 */
+  .cm-editor .cm-panel.cm-search {
+    background: var(--bg-secondary) !important;
+    color: var(--text-secondary) !important;
+    /* 分割线弱化（20% 透明度），与编辑器头部/预览工具栏底边一致 */
+    border-bottom: 1px solid color-mix(in srgb, var(--border-color) 20%, transparent) !important;
+    padding: 8px 12px !important;
+    font-size: 12px !important;
+    z-index: 10;
+  }
+  .cm-editor .cm-panel.cm-search input.cm-textfield {
+    background: var(--bg-tertiary) !important;
+    border: none !important;
+    border-radius: 3px !important;
+    color: var(--text-primary) !important;
+    padding: 3px 8px !important;
+    font-family: inherit !important;
+    font-size: 13px !important;
+  }
+  .cm-editor .cm-panel.cm-search input.cm-textfield:focus {
+    outline: none !important;
+    box-shadow: 0 0 0 1px var(--accent-blue) inset !important;
+  }
+  .cm-editor .cm-panel.cm-search .cm-button {
+    background: transparent !important;
+    border: none !important;
+    border-radius: 3px !important;
+    color: var(--text-secondary) !important;
+    font-size: 12px !important;
+    padding: 1px 8px !important;
+    cursor: pointer !important;
+  }
+  .cm-editor .cm-panel.cm-search .cm-button:hover {
+    background: color-mix(in srgb, var(--bg-hover) 50%, transparent) !important;
+    color: var(--text-primary) !important;
+  }
+  .cm-editor .cm-panel.cm-search input[type='checkbox'] {
+    accent-color: var(--accent-blue) !important;
+  }
+
+  /* ── VS Code 风格查找面板（自定义 createPanel，replace 默认折叠）──
+   * 基础 .cm-search 规则带 !important，此处同类属性必须同样 !important 才能覆盖，
+   * 否则按钮 padding/颜色/圆角 会被压掉（图标错位、激活态不显示）。 */
+  .cm-editor .cm-panel.cm-search.neeko-search {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 8px 12px !important;
+  }
+  .neeko-search .ns-row {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+  }
+  /* 替换行：左侧让出 chevron(28) + gap(5)，替换框与查找框左对齐 */
+  .neeko-search .ns-row.ns-replace-row {
+    padding-left: 33px;
+  }
+  .neeko-search .ns-input {
+    /* 固定宽度：保证「查找/替换」两个输入框等长对齐（窄面板下可收缩） */
+    flex: 0 1 260px;
+    width: 260px;
+    min-width: 160px;
+    height: 26px;
+  }
+  .neeko-search .ns-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 auto;
+    height: 26px;
+    border-radius: 5px !important;
+    white-space: nowrap;
+    line-height: 1;
+  }
+  /* 图标按钮：扁平无边框（VS Code 查找控件风格），hover 时才显示浅色底 */
+  .neeko-search .ns-btn.ns-icon {
+    width: 28px;
+    height: 28px;
+    background: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+    color: var(--text-secondary) !important;
+  }
+  .neeko-search .ns-btn.ns-icon:hover {
+    background: color-mix(in srgb, var(--bg-hover) 50%, transparent) !important;
+    color: var(--text-primary) !important;
+  }
+  /* 覆盖 baseTheme 的非对称 margin（.2em .6em .2em 0）—— 否则按钮间距参差、图标错位 */
+  .neeko-search .ns-input,
+  .neeko-search .ns-btn {
+    margin: 0 !important;
+  }
+  /* 覆盖 baseTheme 给 [name=close] 的 position:absolute（会把关闭按钮吸到右上角） */
+  .neeko-search .ns-btn[name='close'] {
+    position: static !important;
+  }
+  .neeko-search .ns-opt {
+    width: 26px;
+    padding: 0 !important;
+  }
+  .neeko-search .ns-text {
+    padding: 0 8px !important;
+    font-size: 12px !important;
+  }
+  /* 分隔线：把右侧的选项组推到最右（VS Code 布局） */
+  .neeko-search .ns-sep {
+    margin-left: auto;
+    width: 1px;
+    height: 18px;
+    background: var(--border-color);
+    flex: 0 0 auto;
+  }
+  /* 选项开关激活态（大小写 / 正则 / 全词） */
+  .neeko-search .ns-opt.ns-on {
+    background: color-mix(in srgb, var(--accent-blue) 32%, transparent) !important;
+    color: var(--text-primary) !important;
+  }
+  /* 「全部替换」二次确认危险态 */
+  .neeko-search .ns-btn.ns-danger {
+    background: color-mix(in srgb, var(--accent-red) 28%, transparent) !important;
+    color: var(--text-primary) !important;
+  }
+
+  /* 高亮所有选中文本的匹配（VS Code 风格） */
+  .cm-editor .cm-selectionMatch {
+    background-color: color-mix(in srgb, var(--accent-yellow) 22%, transparent) !important;
+  }
 }

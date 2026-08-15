@@ -144,7 +144,7 @@ function HtmlPreview({ projectId, filePath, fileName }: HtmlPreviewProps) {
   if (error) {
     return (
       <div className="flex-1 flex flex-col h-full">
-        <div className="flex items-center gap-2 px-3 py-1.5 border-b border-border bg-bg-secondary/50">
+        <div className="flex items-center gap-2 px-3 py-1.5 border-b border-border/20 bg-bg-secondary/50">
           <Globe size={12} className="text-text-secondary" />
           <span className="text-[var(--font-size)] text-text-secondary truncate">{fileName}</span>
           <div className="flex-1" />
