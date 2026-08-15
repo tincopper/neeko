@@ -591,3 +591,36 @@ DiffView review integration (popover/anchors/selection), ReviewPanel dock panel,
 ### Next Steps
 
 - None - task complete
+
+
+## Session 135: 浏览器元素选择器支持多选（协议升级 + Composer 重构）
+
+**Date**: 2026-08-15
+**Task**: 浏览器元素选择器支持多选（协议升级 + Composer 重构）
+**Branch**: `main`
+
+### Summary
+
+元素选择器多选支持：neeko:// prompt-submitted 由单 html 升级为 elements[{html,selector}]（Rust 与前端原子升级）；注入脚本重构为单颗 ⇄ Single/Multi 药丸开关 + 多选元素 chips 内嵌 Composer（无独立托盘）+ 英文文案；修复 Parent/Child 微调关闭 Composer、注入类泄漏进 selector/HTML、odd class 误过滤；macOS 菜单 Edit 命令按聚焦位转发到浏览器子 webview（Cmd+C/V/A 作用于选择器输入框，复制粘贴后续再针对性深化）。测试：uri_scheme 730、pickerScript 5、pickerUtils 17、全量前端 1716 全绿；lefthook lint-rust/lint-frontend/commitlint 通过。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `e843bed3` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
