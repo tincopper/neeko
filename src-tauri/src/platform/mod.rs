@@ -19,6 +19,7 @@
 //! | `shell_launch` | `build_task_command` / `apply_locale_env` | `terminal/mod.rs` |
 //! | `process_spawn` | `apply_child_flags` / `apply_detached_flags` | `common/executor/local.rs` |
 //! | `ide_launch` | `launch_ide_with_fallback` / `spawn_ide_process` | `project/commands_ide.rs` |
+//! | `menu` | `build_edit_submenu` | `app_menu.rs` |
 //! | `symlink` | `create_link` | `agent/plugin_commands.rs` |
 //! | `file_url` | `file_url_to_path` | `lsp/session/root.rs` |
 //! | `notify_base` | `notify_base` | `browser/scripts.rs` |
@@ -28,6 +29,7 @@ pub mod file_url;
 pub mod git_credential;
 pub mod host_path;
 pub mod ide_launch;
+pub mod menu;
 pub mod notify_base;
 pub mod process_memory;
 pub mod process_spawn;

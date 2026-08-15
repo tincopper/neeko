@@ -1,7 +1,7 @@
 //! 应用菜单构建与菜单事件转发（Cmd+W 关闭标签页 / macOS Edit 命令原生处理）。
 
 use std::sync::atomic::{AtomicBool, Ordering};
-use tauri::menu::{MenuBuilder, MenuItemBuilder, MenuItemKind, PredefinedMenuItem, SubmenuBuilder};
+use tauri::menu::{MenuBuilder, MenuItemBuilder, MenuItemKind, SubmenuBuilder};
 use tauri::{Emitter, Manager};
 
 /// File 菜单「关闭标签页」项 id（菜单构建与事件分发共用）。
@@ -30,33 +30,6 @@ pub fn is_devtools_enabled(config: &serde_json::Value) -> bool {
 /// 关闭标签页事件名（Cmd+W 菜单转发），与前端 `src/shared/events.ts` `CLOSE_TAB_EVENT` 同步。
 const CLOSE_TAB_EVENT: &str = "close-tab";
 
-/// 构建 macOS Edit 子菜单（Cut/Copy/Paste/Select All）。
-///
-/// 使用标准角色项 `PredefinedMenuItem`（muda 映射到 Cocoa 标准 selector
-/// `cut:`/`copy:`/`paste:`/`selectAll:` 并自动绑定 Cmd+X/C/V/A），由 macOS 的
-/// NSResponder chain 派发给**当前聚焦的 webview**（主界面 / 浏览器子 webview /
-/// 远程页面），在其自身文档内原生执行 —— 无需任何手动转发、eval 或聚焦判定，
-/// 也不会触发 WKWebView 的程序化粘贴确认气泡。
-///
-/// 跨平台护栏：此菜单必须保持 `#[cfg(target_os = "macos")]`。Windows/Linux 无此
-/// 菜单、无加速键拦截，Ctrl+C/V/A 原生直达 webview，本已一致；若在 Win/Linux 添加
-/// 带编辑快捷键的菜单项，Win32/GTK 加速键同样会先于 webview 截获按键，重演 macOS
-/// 的同类问题（详见任务 design.md §8）。
-#[cfg(target_os = "macos")]
-fn build_edit_submenu(
-    handle: &tauri::AppHandle,
-) -> tauri::Result<tauri::menu::Submenu<tauri::Wry>> {
-    let cut = PredefinedMenuItem::cut(handle, None)?;
-    let copy = PredefinedMenuItem::copy(handle, None)?;
-    let paste = PredefinedMenuItem::paste(handle, None)?;
-    let select_all = PredefinedMenuItem::select_all(handle, None)?;
-    SubmenuBuilder::new(handle, "Edit")
-        .items(&[&cut, &copy, &paste])
-        .separator()
-        .item(&select_all)
-        .build()
-}
-
 /// 构建应用主菜单：File（Cmd+W 关闭标签页）+ macOS Edit（剪贴板命令）。
 ///
 /// macOS delivers webview copy/paste/cut/select-all as native Edit menu
@@ -64,7 +37,7 @@ fn build_edit_submenu(
 /// submenu silently breaks Cmd+C/V/X/A in every focus context (terminal,
 /// editor, input fields). Restore the standard items as `PredefinedMenuItem`
 /// roles so the macOS responder chain delivers them to the focused webview
-/// natively (see [`build_edit_submenu`]).
+/// natively (see [`crate::platform::menu::build_edit_submenu`]).
 pub fn build_menu(handle: &tauri::AppHandle) -> tauri::Result<tauri::menu::Menu<tauri::Wry>> {
     let close_tab = MenuItemBuilder::with_id(MENU_CLOSE_TAB_ID, "Close Tab")
         .accelerator("CmdOrCtrl+W")
@@ -90,9 +63,8 @@ pub fn build_menu(handle: &tauri::AppHandle) -> tauri::Result<tauri::menu::Menu<
         .build()?;
     menu = menu.item(&view);
 
-    #[cfg(target_os = "macos")]
-    {
-        menu = menu.item(&build_edit_submenu(handle)?);
+    if let Some(edit) = crate::platform::menu::build_edit_submenu(handle)? {
+        menu = menu.item(&edit);
     }
 
     menu.build()
@@ -118,7 +90,7 @@ pub fn sync_devtools_menu_item(app: &tauri::AppHandle, enabled: bool) {
 ///
 /// macOS Edit 命令（Cut/Copy/Paste/Select All）**不经过这里**：它们由
 /// `PredefinedMenuItem` 标准角色经 NSResponder chain 原生派发给聚焦的 webview
-/// （见 `build_edit_submenu`），无需手动转发。
+/// （见 `crate::platform::menu::build_edit_submenu`），无需手动转发。
 pub fn handle_menu_event(app: &tauri::AppHandle, id: &str, cmd_w_flag: &AtomicBool) {
     if id == MENU_CLOSE_TAB_ID {
         cmd_w_flag.store(true, Ordering::SeqCst);
