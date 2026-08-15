@@ -28,6 +28,7 @@ import { safeUnlisten } from '@/shared/utils/safeUnlisten';
 import type AppLayout from '../../layout/AppLayout';
 
 import { type AppShellData } from './buildAppShellValues';
+import { closeActiveTabCommand } from './closeActiveTabCommand';
 import { useAppEntryAddRefresh } from './useAppEntryAddRefresh';
 import { useAppInitialGitRefresh } from './useAppInitialGitRefresh';
 import { useAppStoreSync } from './useAppStoreSync';
@@ -253,17 +254,16 @@ export function useAppShellData(): UseAppShellDataResult {
   });
 
   // Cmd+W / Ctrl+W → close active tab only, never close the window.
+  // 只订阅一次（不随 activeTabId/tabKey 变化重订阅），避免重订阅竞态：
+  // 事件到达时由 closeActiveTabCommand 现取项目/worktree/tab 最新状态。
   useEffect(() => {
     const unlistenPromise = listen('close-tab', () => {
-      const currentTabId = activeTabId;
-      if (currentTabId) {
-        handleCloseTab(currentTabId);
-      }
+      closeActiveTabCommand();
     });
     return () => {
       unlistenPromise.then((fn) => safeUnlisten(fn)());
     };
-  }, [activeTabId, handleCloseTab]);
+  }, []);
 
   const { handleAgentClick } = useAgentClickHandler({
     tabKey,
