@@ -30,6 +30,7 @@ build/
 .atomcode
 .grok
 .zcode
+.dsh
 
 # OS
 .DS_Store
