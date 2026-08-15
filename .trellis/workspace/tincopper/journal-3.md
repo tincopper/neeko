@@ -560,3 +560,34 @@ DiffView review integration (popover/anchors/selection), ReviewPanel dock panel,
 ### Next Steps
 
 - None - task complete
+
+
+## Session 134: refactor: 架构债务清理收尾 — useAppShell 30 行 + 全库深导入门面化
+
+**Date**: 2026-08-15
+**Task**: refactor: 架构债务清理收尾 — useAppShell 30 行 + 全库深导入门面化
+**Branch**: `main`
+
+### Summary
+
+完成 08-14-08-15-architecture-debt-cleanup 任务收尾：useAppShell 455→30 行（拆 useAppShellData 数据编排 + buildAppShellValues 纯装配，35 个新测试全过）；ProjectWorkspace 432→278 行；全库 47 处跨 feature 深导入改门面（补 useFileDrop/CommitDialog/ConnectionProjectContextValue 导出），shared 反向引用 3 处按 pre-existing 豁免；lint:fe 全绿、test:run 1687 通过、cargo test 通过；spec 同步 quality-guidelines/directory-structure；任务已归档。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+(No commits - planning session)
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
