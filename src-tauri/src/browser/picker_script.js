@@ -525,6 +525,13 @@
   }
   function closeComposer() {
     composer.style.display = 'none';
+    // 隐藏聚焦的输入框后若无元素持有焦点，WKWebView 可能失去 first responder，
+    // 后续 Esc（退出选择器）等按键将到不了本 webview document 的 onKey。
+    // 把焦点留在 body，确保键盘焦点保持在浏览器 webview。
+    if (document.body) {
+      document.body.tabIndex = -1;
+      document.body.focus();
+    }
   }
   function sendPrompt() {
     var text = ccInput.value.trim();

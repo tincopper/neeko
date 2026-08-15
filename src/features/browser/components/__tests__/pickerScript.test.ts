@@ -264,4 +264,38 @@ describe('picker_script.js (injected element picker)', () => {
 
     expect(notified.some((n) => n.type === 'picker-cancelled')).toBe(true);
   });
+
+  it('Esc first closes composer keeping webview focus, second Esc exits', async () => {
+    notified = [];
+    document.body.innerHTML = '<div id="app"><button id="b">x</button></div>';
+    // eslint-disable-next-line @typescript-eslint/no-implied-eval
+    new Function(scriptSource).call(window);
+
+    // 选中元素 → Composer 打开、输入框聚焦
+    document
+      .getElementById('b')!
+      .dispatchEvent(
+        new MouseEvent('click', { bubbles: true, cancelable: true, clientX: 50, clientY: 50 }),
+      );
+    await new Promise((r) => setTimeout(r, 10));
+    const ccInput = document.querySelector<HTMLTextAreaElement>('.neeko-ui-root textarea');
+    expect(ccInput).not.toBeNull();
+    const composer = ccInput!.closest('div') as HTMLElement;
+    expect(composer.style.display).toBe('flex');
+
+    // 第一次 Esc：关闭 Composer，且焦点保留在 body —— 浏览器 webview 不丢键盘焦点，
+    // 否则第二次 Esc（退出选择器）到不了本 webview 的 onKey
+    document.dispatchEvent(
+      new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }),
+    );
+    expect(composer.style.display).not.toBe('flex');
+    expect(document.activeElement).toBe(document.body);
+
+    // 第二次 Esc：退出选择器 → picker-cancelled
+    document.dispatchEvent(
+      new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }),
+    );
+    await new Promise((r) => setTimeout(r, 10));
+    expect(notified.some((n) => n.type === 'picker-cancelled')).toBe(true);
+  });
 });
