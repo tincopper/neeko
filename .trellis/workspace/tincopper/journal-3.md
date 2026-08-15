@@ -624,3 +624,38 @@ DiffView review integration (popover/anchors/selection), ReviewPanel dock panel,
 ### Next Steps
 
 - None - task complete
+
+
+## Session 136: 浏览器选择器编辑快捷键原生化 + Esc/Cmd+W 稳定修复
+
+**Date**: 2026-08-15
+**Task**: 浏览器选择器编辑快捷键原生化 + Esc/Cmd+W 稳定修复
+**Branch**: `main`
+
+### Summary
+
+D0: macOS Edit 菜单 PredefinedMenuItem 原生化（A1-A3 通过，含浏览器 child webview/xterm）。Esc 退出选择器根治（picker-cancelled→stop + 主 webview 兜底 + composer 关闭后焦点保持）。Cmd+W 关 tab 间歇性失效根治（监听器只订阅一次 + 事件时现取 per-tabKey 激活位，消除重订阅竞态与全局 activeTabId 脱节；新增 9 回归测试）。全量门禁绿：cargo 724+91 / FE 1728。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `1351df43` | (see git log) |
+| `9cf605a3` | (see git log) |
+| `946c7694` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
