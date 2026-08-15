@@ -4,8 +4,6 @@
 //! - `prompt-submitted` — 用户提交 prompt + 选中元素 HTML
 //! - `picker-cancelled` — 用户取消元素选取
 //! - `element-picked`   — 元素选中，复制 outerHTML 到剪贴板
-//! - `picker-focused` / `picker-blurred` — 选择器输入框聚焦状态（macOS 菜单
-//!   Edit 命令转发到浏览器子 webview 用）
 //!
 //! 传输机制：
 //! - **POST body(主通道)**:页面 `fetch(base + type, { method: 'POST', body: JSON })`,
@@ -15,7 +13,6 @@
 
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 use tauri::Emitter;
@@ -23,24 +20,6 @@ use tauri::Emitter;
 use super::events::{
     EVENT_BROWSER_PAGE_META, EVENT_BROWSER_PICKER_CANCELLED, EVENT_BROWSER_PROMPT_SUBMITTED,
 };
-
-/// 选择器输入框（AI Composer textarea）是否聚焦。
-///
-/// macOS 下 Cmd+C/V/A/X 被应用菜单 Edit 加速键在 OS 层截获，原始 keydown
-/// 不会到达任何 webview，菜单 handler 需据此判断把 Edit 命令转发到
-/// 浏览器子 webview（聚焦）还是主 webview（未聚焦）。
-static PICKER_INPUT_FOCUSED: AtomicBool = AtomicBool::new(false);
-
-/// 选择器输入框当前是否聚焦（`app_menu` 菜单 Edit 转发用）。
-#[must_use]
-pub fn picker_input_focused() -> bool {
-    PICKER_INPUT_FOCUSED.load(Ordering::Relaxed)
-}
-
-/// 重置选择器输入框聚焦标记（picker 启动/停止时调用，避免跨会话残留）。
-pub fn reset_picker_focus() {
-    PICKER_INPUT_FOCUSED.store(false, Ordering::Relaxed);
-}
 
 /// 去重窗口（毫秒）。WebView2 在 Windows 上可能对同一次 img.src 赋值
 /// 触发两次协议回调，此窗口用于抑制重复事件。
@@ -62,11 +41,6 @@ pub enum PickerMessage {
     ElementPicked {
         /// 选中元素的 outerHTML。
         html: String,
-    },
-    /// 选择器输入框聚焦状态（macOS 菜单 Edit 命令转发判断）。
-    PickerFocus {
-        /// true = 输入框聚焦；false = 失焦。
-        focused: bool,
     },
 }
 
@@ -119,8 +93,6 @@ pub fn parse_picker_payload(body: &[u8]) -> Option<PickerMessage> {
         "element-picked" => Some(PickerMessage::ElementPicked {
             html: value.get("html")?.as_str()?.to_string(),
         }),
-        "picker-focused" => Some(PickerMessage::PickerFocus { focused: true }),
-        "picker-blurred" => Some(PickerMessage::PickerFocus { focused: false }),
         _ => None,
     }
 }
@@ -244,9 +216,6 @@ fn handle_picker_message(
             let _ = ctx.app_handle().emit(EVENT_BROWSER_PICKER_CANCELLED, ());
         }
         PickerMessage::ElementPicked { html } => handle_element_picked(&html),
-        PickerMessage::PickerFocus { focused } => {
-            PICKER_INPUT_FOCUSED.store(focused, Ordering::Relaxed);
-        }
     }
 }
 
@@ -451,32 +420,6 @@ mod tests {
                 html: "<button>Hi</button>".into(),
             })
         );
-    }
-
-    #[test]
-    fn test_parse_picker_payload_picker_focused() {
-        let body = br#"{"type":"picker-focused"}"#;
-        assert_eq!(
-            parse_picker_payload(body),
-            Some(PickerMessage::PickerFocus { focused: true })
-        );
-    }
-
-    #[test]
-    fn test_parse_picker_payload_picker_blurred() {
-        let body = br#"{"type":"picker-blurred"}"#;
-        assert_eq!(
-            parse_picker_payload(body),
-            Some(PickerMessage::PickerFocus { focused: false })
-        );
-    }
-
-    #[test]
-    fn test_reset_picker_focus_clears_flag() {
-        // 静态标记：置 true 后 reset 应回 false（幂等）。
-        PICKER_INPUT_FOCUSED.store(true, Ordering::Relaxed);
-        reset_picker_focus();
-        assert!(!picker_input_focused());
     }
 
     #[test]

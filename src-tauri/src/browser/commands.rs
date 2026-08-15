@@ -223,8 +223,6 @@ pub async fn browser_start_picker(
     let webview = app
         .get_webview(&label)
         .ok_or_else(|| AppError::NotFound(format!("Browser webview not found: {}", label)))?;
-    // 新会话开始：重置聚焦标记，避免上一会话残留（macOS 菜单 Edit 转发判断）
-    super::uri_scheme::reset_picker_focus();
     let script = build_picker_script(theme_colors)?;
     webview
         .eval(&script)
@@ -241,8 +239,6 @@ pub async fn browser_stop_picker(app: tauri::AppHandle, label: String) -> Result
     webview
         .eval("window.__NEEKO_PICKER__ && window.__NEEKO_PICKER__.stop()")
         .map_err(|e| AppError::Unknown(format!("Failed to stop picker: {}", e)))?;
-    // 停止后清除聚焦标记，避免菜单 Edit 误转发到已不存在的选择器输入框
-    super::uri_scheme::reset_picker_focus();
     Ok(())
 }
 

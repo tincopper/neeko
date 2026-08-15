@@ -450,10 +450,6 @@
     // 阻止事件冒泡到页面/其他 handler，回车处理统一走 document 的 onKey
     e.stopPropagation();
   });
-  // 聚焦/失焦 → 通知 Rust（macOS 菜单 Edit 命令据此转发到本浏览器 webview，
-  // 否则 Cmd+C/V/A 被菜单加速键在 OS 层截获、永远到不了这个输入框）
-  ccInput.addEventListener('focusin', function () { notify('picker-focused'); });
-  ccInput.addEventListener('focusout', function () { notify('picker-blurred'); });
   composer.addEventListener('mousedown', function (e) { e.stopPropagation(); });
   selBar.addEventListener('mousedown', function (e) { e.stopPropagation(); });
 

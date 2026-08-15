@@ -1,7 +1,7 @@
-//! 应用菜单构建与菜单事件转发（Cmd+W 关闭标签页 / macOS Edit 命令）。
+//! 应用菜单构建与菜单事件转发（Cmd+W 关闭标签页 / macOS Edit 命令原生处理）。
 
 use std::sync::atomic::{AtomicBool, Ordering};
-use tauri::menu::{MenuBuilder, MenuItemBuilder, MenuItemKind, SubmenuBuilder};
+use tauri::menu::{MenuBuilder, MenuItemBuilder, MenuItemKind, PredefinedMenuItem, SubmenuBuilder};
 use tauri::{Emitter, Manager};
 
 /// File 菜单「关闭标签页」项 id（菜单构建与事件分发共用）。
@@ -30,58 +30,26 @@ pub fn is_devtools_enabled(config: &serde_json::Value) -> bool {
 /// 关闭标签页事件名（Cmd+W 菜单转发），与前端 `src/shared/events.ts` `CLOSE_TAB_EVENT` 同步。
 const CLOSE_TAB_EVENT: &str = "close-tab";
 
-/// 菜单「粘贴」事件名（macOS 自定义菜单转发），与前端 `src/shared/events.ts` `MENU_PASTE_EVENT` 同步。
-#[cfg(target_os = "macos")]
-const MENU_PASTE_EVENT: &str = "menu-paste";
-
-/// macOS Edit 菜单项 id（构建与分发共用，单一事实源）。
-#[cfg(target_os = "macos")]
-mod edit_menu {
-    pub const CUT: &str = "cut";
-    pub const COPY: &str = "copy";
-    pub const PASTE: &str = "paste";
-    pub const SELECT_ALL: &str = "select_all";
-}
-
-/// macOS Edit 菜单命令的转发动作（纯逻辑，可独立单测）。
-#[cfg(target_os = "macos")]
-#[derive(Debug, PartialEq, Eq)]
-enum EditMenuAction {
-    /// 在 webview 中执行的 JS 片段。
-    EvalJs(&'static str),
-    /// 转发粘贴事件到前端。
-    EmitPaste,
-}
-
-/// 菜单项 id → 转发动作。非 Edit 菜单项返回 `None`。
-#[cfg(target_os = "macos")]
-fn resolve_edit_menu_action(id: &str) -> Option<EditMenuAction> {
-    match id {
-        edit_menu::CUT => Some(EditMenuAction::EvalJs("document.execCommand('cut')")),
-        edit_menu::COPY => Some(EditMenuAction::EvalJs("document.execCommand('copy')")),
-        edit_menu::SELECT_ALL => Some(EditMenuAction::EvalJs("document.execCommand('selectAll')")),
-        edit_menu::PASTE => Some(EditMenuAction::EmitPaste),
-        _ => None,
-    }
-}
-
-/// 构建 macOS Edit 子菜单（Cut/Copy/Paste/Select All），事件转发见 `handle_menu_event`。
+/// 构建 macOS Edit 子菜单（Cut/Copy/Paste/Select All）。
+///
+/// 使用标准角色项 `PredefinedMenuItem`（muda 映射到 Cocoa 标准 selector
+/// `cut:`/`copy:`/`paste:`/`selectAll:` 并自动绑定 Cmd+X/C/V/A），由 macOS 的
+/// NSResponder chain 派发给**当前聚焦的 webview**（主界面 / 浏览器子 webview /
+/// 远程页面），在其自身文档内原生执行 —— 无需任何手动转发、eval 或聚焦判定，
+/// 也不会触发 WKWebView 的程序化粘贴确认气泡。
+///
+/// 跨平台护栏：此菜单必须保持 `#[cfg(target_os = "macos")]`。Windows/Linux 无此
+/// 菜单、无加速键拦截，Ctrl+C/V/A 原生直达 webview，本已一致；若在 Win/Linux 添加
+/// 带编辑快捷键的菜单项，Win32/GTK 加速键同样会先于 webview 截获按键，重演 macOS
+/// 的同类问题（详见任务 design.md §8）。
 #[cfg(target_os = "macos")]
 fn build_edit_submenu(
     handle: &tauri::AppHandle,
 ) -> tauri::Result<tauri::menu::Submenu<tauri::Wry>> {
-    let cut = MenuItemBuilder::with_id(edit_menu::CUT, "Cut")
-        .accelerator("CmdOrCtrl+X")
-        .build(handle)?;
-    let copy = MenuItemBuilder::with_id(edit_menu::COPY, "Copy")
-        .accelerator("CmdOrCtrl+C")
-        .build(handle)?;
-    let paste = MenuItemBuilder::with_id(edit_menu::PASTE, "Paste")
-        .accelerator("CmdOrCtrl+V")
-        .build(handle)?;
-    let select_all = MenuItemBuilder::with_id(edit_menu::SELECT_ALL, "Select All")
-        .accelerator("CmdOrCtrl+A")
-        .build(handle)?;
+    let cut = PredefinedMenuItem::cut(handle, None)?;
+    let copy = PredefinedMenuItem::copy(handle, None)?;
+    let paste = PredefinedMenuItem::paste(handle, None)?;
+    let select_all = PredefinedMenuItem::select_all(handle, None)?;
     SubmenuBuilder::new(handle, "Edit")
         .items(&[&cut, &copy, &paste])
         .separator()
@@ -94,8 +62,9 @@ fn build_edit_submenu(
 /// macOS delivers webview copy/paste/cut/select-all as native Edit menu
 /// accelerators, not as raw key events. A custom menu without an Edit
 /// submenu silently breaks Cmd+C/V/X/A in every focus context (terminal,
-/// editor, input fields). Restore the standard items here and forward them
-/// to the webview in [`handle_menu_event`].
+/// editor, input fields). Restore the standard items as `PredefinedMenuItem`
+/// roles so the macOS responder chain delivers them to the focused webview
+/// natively (see [`build_edit_submenu`]).
 pub fn build_menu(handle: &tauri::AppHandle) -> tauri::Result<tauri::menu::Menu<tauri::Wry>> {
     let close_tab = MenuItemBuilder::with_id(MENU_CLOSE_TAB_ID, "Close Tab")
         .accelerator("CmdOrCtrl+W")
@@ -145,18 +114,18 @@ pub fn sync_devtools_menu_item(app: &tauri::AppHandle, enabled: bool) {
     }
 }
 
-/// 处理菜单事件：Cmd+W 关闭标签页（全平台）+ Edit 命令转发（macOS）。
+/// 处理菜单事件：Cmd+W 关闭标签页（全平台）+ DevTools 切换。
 ///
-/// `paste` is routed to the frontend (menu-paste) instead of
-/// document.execCommand('paste'): triggering a programmatic paste makes
-/// WKWebView show the native paste callout. The frontend reads the clipboard
-/// via the clipboard-manager plugin and inserts it with
-/// execCommand('insertText') (no callout, keeps undo).
+/// macOS Edit 命令（Cut/Copy/Paste/Select All）**不经过这里**：它们由
+/// `PredefinedMenuItem` 标准角色经 NSResponder chain 原生派发给聚焦的 webview
+/// （见 `build_edit_submenu`），无需手动转发。
 pub fn handle_menu_event(app: &tauri::AppHandle, id: &str, cmd_w_flag: &AtomicBool) {
     if id == MENU_CLOSE_TAB_ID {
         cmd_w_flag.store(true, Ordering::SeqCst);
         if let Some(window) = app.get_webview_window("main") {
             let _ = window.emit(CLOSE_TAB_EVENT, ());
+        } else {
+            log::warn!("[menu] main webview window not found; close-tab event not emitted");
         }
         return;
     }
@@ -168,45 +137,6 @@ pub fn handle_menu_event(app: &tauri::AppHandle, id: &str, cmd_w_flag: &AtomicBo
         if crate::theme::common::read_config_bool(CONFIG_KEY_ENABLE_DEVTOOLS) {
             if let Some(window) = app.get_webview_window("main") {
                 window.open_devtools();
-            }
-        }
-    }
-
-    // Forward Edit menu commands to the focused webview so copy/paste/
-    // cut/select-all reach the terminal, editor and input fields.
-    #[cfg(target_os = "macos")]
-    if let Some(action) = resolve_edit_menu_action(id) {
-        // 选择器输入框聚焦 → 转发到浏览器子 webview。否则浏览器 webview 永远
-        // 收不到 Cmd+C/V/A：macOS 菜单加速键在 OS 层截获原始 keydown，菜单
-        // handler 是唯一入口；而 get_webview_window("main") 只够到主 webview。
-        if crate::browser::uri_scheme::picker_input_focused() {
-            if let Some(wv) = app
-                .webviews()
-                .values()
-                .find(|w| w.label().starts_with("neeko-browser-"))
-            {
-                match action {
-                    EditMenuAction::EvalJs(js) => {
-                        let _ = wv.eval(js);
-                    }
-                    EditMenuAction::EmitPaste => {
-                        // 浏览器 webview 无 Tauri 事件监听器（加载外部页面），
-                        // 直接用 execCommand 粘贴（与主 webview 相同：WKWebView
-                        // 可能弹原生粘贴确认）。
-                        let _ = wv.eval("document.execCommand('paste')");
-                    }
-                }
-                return;
-            }
-        }
-        if let Some(window) = app.get_webview_window("main") {
-            match action {
-                EditMenuAction::EvalJs(js) => {
-                    let _ = window.eval(js);
-                }
-                EditMenuAction::EmitPaste => {
-                    let _ = window.emit(MENU_PASTE_EVENT, ());
-                }
             }
         }
     }
@@ -239,38 +169,5 @@ mod tests {
         assert!(!is_devtools_enabled(
             &serde_json::json!({ "enableDevTools": 1 })
         ));
-    }
-
-    #[cfg(target_os = "macos")]
-    #[test]
-    fn resolves_edit_menu_cut_copy_select_all_to_eval_js() {
-        assert_eq!(
-            resolve_edit_menu_action(edit_menu::CUT),
-            Some(EditMenuAction::EvalJs("document.execCommand('cut')"))
-        );
-        assert_eq!(
-            resolve_edit_menu_action(edit_menu::COPY),
-            Some(EditMenuAction::EvalJs("document.execCommand('copy')"))
-        );
-        assert_eq!(
-            resolve_edit_menu_action(edit_menu::SELECT_ALL),
-            Some(EditMenuAction::EvalJs("document.execCommand('selectAll')"))
-        );
-    }
-
-    #[cfg(target_os = "macos")]
-    #[test]
-    fn resolves_edit_menu_paste_to_emit_paste() {
-        assert_eq!(
-            resolve_edit_menu_action(edit_menu::PASTE),
-            Some(EditMenuAction::EmitPaste)
-        );
-    }
-
-    #[cfg(target_os = "macos")]
-    #[test]
-    fn rejects_unknown_and_close_tab_menu_ids() {
-        assert_eq!(resolve_edit_menu_action(MENU_CLOSE_TAB_ID), None);
-        assert_eq!(resolve_edit_menu_action("bogus"), None);
     }
 }

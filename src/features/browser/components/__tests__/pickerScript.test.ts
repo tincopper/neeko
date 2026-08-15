@@ -87,12 +87,6 @@ describe('picker_script.js (injected element picker)', () => {
       'neeko-selected',
     );
 
-    // 聚焦/失焦 → 通知 Rust（macOS 菜单 Edit 命令据此转发到浏览器 webview）
-    ccInput!.dispatchEvent(new Event('focusin', { bubbles: true }));
-    expect(notified.some((n) => n.type === 'picker-focused')).toBe(true);
-    ccInput!.dispatchEvent(new Event('focusout', { bubbles: true }));
-    expect(notified.some((n) => n.type === 'picker-blurred')).toBe(true);
-
     // 输入后发送按钮启用，点击发送
     ccInput!.value = 'make it red';
     ccInput!.dispatchEvent(new Event('input', { bubbles: true }));

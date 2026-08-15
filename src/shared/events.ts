@@ -15,9 +15,6 @@ export const GIT_STATUS_DIFF_EVENT = 'git-status-diff';
 /** Git 状态变更事件（兼容旧监听的全量刷新 fallback）：`git-changed` */
 export const GIT_CHANGED_EVENT = 'git-changed';
 
-/** 菜单「粘贴」命令事件（macOS 自定义菜单转发）：`menu-paste` */
-export const MENU_PASTE_EVENT = 'menu-paste';
-
 /** 应用关闭请求事件（后端阻止关闭后通知前端弹「确认退出」框）：`app-close-requested` */
 export const APP_CLOSE_REQUESTED_EVENT = 'app-close-requested';
 
