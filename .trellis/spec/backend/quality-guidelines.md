@@ -138,10 +138,14 @@ fn no_window_cmd(program: &str) -> Command {
 
 ### 平台差异集中化（Platform Adapter 分层）—— 强制
 
-> 适用：**同一接口需在 3 个及以上平台（macOS/Linux/Windows）分别实现**的场景。
+> 适用：**所有平台专属代码**，含两类：
+> 1. 多平台实现：同一接口需在 2 个及以上平台（macOS/Linux/Windows）分别实现；
+> 2. 单平台专属：仅 macOS / 仅 Windows / 仅 Linux 生效的代码（含 macOS-only 菜单）。
 > 目标：把「每个平台必须有实现」从约定变为**编译期强制**——缺一个平台 impl，`mod.rs` 的 `pub use` 在本机直接报错，而非换平台构建才暴露。
 
-**反模式**：在单个函数体内用 `#[cfg]` 块堆叠多平台实现（如 `browser/devtools.rs`、`file/commands.rs`、`lsp/session/utils.rs`、`terminal/process_reaper.rs` 的历史写法）。遗漏某平台时当前平台编译不报错，只有换平台构建才暴露。
+**反模式**：
+- 在单个函数体内用 `#[cfg]` 块堆叠多平台实现（如 `browser/devtools.rs`、`file/commands.rs`、`lsp/session/utils.rs`、`terminal/process_reaper.rs` 的历史写法）。遗漏某平台时当前平台编译不报错，只有换平台构建才暴露。
+- 单平台专属代码内联在通用文件且平台专属 import 未门控（`app_menu.rs` 历史写法：`#[cfg(target_os = "macos")]` 函数 + 顶层未门控 `use tauri::menu::PredefinedMenuItem`）。未门控的平台专属 import 在非目标平台触发 `unused_imports`，被 clippy `-D warnings` 升级为编译错误，2026-08 曾致 Linux/Windows CI 全红。
 
 **正确模式**：按「主题优先、平台次之」抽到 `src-tauri/src/platform/<theme>/`：
 
@@ -166,14 +170,54 @@ pub use windows::*;
 pub fn build_reveal_command(path: &Path) -> Option<Command>;
 ```
 
+**单平台专属主题**（仅 macOS / 仅 Windows / 仅 Linux 生效）同样抽入 `platform/<theme>/`，非目标平台在独立 stub 文件提供**同签名默认实现**（返回 `Ok(None)` / no-op），`mod.rs` 保持纯声明，业务代码无条件调用：
+
+```rust
+// platform/menu/mod.rs —— 单平台专属主题（macOS-only Edit 菜单）
+#[cfg(target_os = "macos")]
+mod macos;
+#[cfg(target_os = "macos")]
+pub use macos::*;
+
+#[cfg(not(target_os = "macos"))]
+mod default;
+#[cfg(not(target_os = "macos"))]
+pub use default::*;
+```
+
+```rust
+// platform/menu/macos.rs —— 平台专属实现
+// 平台专属 import（如 `use tauri::menu::PredefinedMenuItem`）只允许出现在此文件，
+// 结构上杜绝其他平台的 unused_imports
+pub fn build_edit_submenu(
+    handle: &tauri::AppHandle,
+) -> tauri::Result<Option<tauri::menu::Submenu<tauri::Wry>>> {
+    // ...
+}
+```
+
+```rust
+// platform/menu/default.rs —— 非目标平台默认 stub（与 macOS 实现同签名）
+pub fn build_edit_submenu(
+    _handle: &tauri::AppHandle,
+) -> tauri::Result<Option<tauri::menu::Submenu<tauri::Wry>>> {
+    Ok(None)
+}
+```
+
 - 每个主题一个目录，目录内每平台一个实现文件（`macos.rs` / `linux.rs` / `windows.rs` / `unix.rs`）。
 - `mod` 声明与 `pub use` **必须同时 cfg 门控**：非活动平台的模块不编译，避免 `dead_code` 警告（clippy `-D warnings` 会拦截）。各平台实现由 CI 三平台矩阵分别编译验证。
+- **平台专属 import 只允许出现在专属实现文件内**（如 `macos.rs` 的 `use tauri::menu::PredefinedMenuItem`）；`mod.rs` 门面与业务代码禁止引入任何平台专属 import，否则非目标平台触发 `unused_imports`。
 - 业务代码只依赖 `platform::<theme>::` 统一接口，删除原函数体内的 `#[cfg]` 块。
+- 单平台专属主题（macOS-only / Windows-only / Linux-only）同样适用本模式：非目标平台在独立 stub 文件（如 `default.rs`）提供同签名默认实现（返回 `Ok(None)` / no-op），`mod.rs` 保持纯声明，业务代码无条件调用。
 - 平台差异是**编译期确定**的，坚持编译期 cfg + 每平台文件，**不**用运行期 `Box<dyn Trait>`（与「有限策略集用 Enum+match」原则一致：平台差异不是运行期策略）。
 - 纯移动迁移：不改变平台逻辑实现，仅移动位置、统一接口。
 - 行为正确性由 CI 三平台矩阵（`.github/workflows/ci.yml` 的 `backend-check`/`backend-test`）兜底；本约定只保证「每个平台有实现且能编译」。
 
-**边界**：平台专属独立模块（如 `job_object`、`wsl`）、macOS 菜单（`app_menu.rs`，与 Tauri Menu API 深度绑定）、简单 shell 选择策略，无需抽入 `platform/`。
+**边界**（豁免场景必须同时遵守「import 跟随 cfg」纪律：平台专属 import 必须与其使用点同 cfg 门控，禁止未门控的平台专属 import）：
+- 平台专属独立模块（如 `job_object`、`wsl`）——整个模块本身就是平台隔离，等效于 `platform/<theme>/`，无需二次抽取；
+- 简单 shell 选择策略——实现仅一行分支且无平台专属 import 时，允许 `#[cfg]` 分支；
+- 其余一律抽入 `platform/<theme>/`。**历史豁免撤销**：macOS 菜单（`app_menu.rs`）原豁免理由「与 Tauri Menu API 深度绑定」不成立——Tauri Menu API 全平台可用，仅 `PredefinedMenuItem` 角色语义为 macOS 专属，恰是平台适配器最佳适用场景，已于 2026-08 迁入 `platform/menu/` 作为正例。
 
 ---
 
