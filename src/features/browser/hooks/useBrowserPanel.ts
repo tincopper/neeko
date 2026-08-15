@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef } from 'react';
 
 // eslint-disable-next-line import/no-restricted-paths -- browser panel sends terminal commands via terminal feature
-import { sendToTerminal } from '@/features/terminal/components/terminalCommands';
+import { sendToTerminal } from '@/features/terminal';
 import {
   BROWSER_OPEN_URL_EVENT,
   BROWSER_PAGE_LOADED_EVENT,

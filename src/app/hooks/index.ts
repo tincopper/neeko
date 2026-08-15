@@ -1,2 +1,9 @@
 export { useAppShell } from './useAppShell';
 export { useDockBarButtons } from './UseDockBarButtons';
+export { useAppGlobalEffects } from './useAppGlobalEffects';
+export { useAppStoreSync } from './useAppStoreSync';
+export { useAppEntryAddRefresh } from './useAppEntryAddRefresh';
+export { useAppInitialGitRefresh } from './useAppInitialGitRefresh';
+export { useProjectAgents } from './useProjectAgents';
+export { useTerminalTabs } from './useTerminalTabs';
+export { useRemoteProjectSession } from './useRemoteProjectSession';

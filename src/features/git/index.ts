@@ -30,6 +30,7 @@ export { refreshGitFileStates } from './utils/gitStatus';
 
 // Components
 export { default as BranchStatusBarWidget } from './components/BranchStatusBarWidget';
+export { default as CommitDialog } from './components/CommitDialog';
 export { default as DiffView } from './components/diff';
 export { default as GitControlPanel } from './components/GitControlPanel';
 export { default as PullRequestsPanel } from './components/PullRequestsPanel';

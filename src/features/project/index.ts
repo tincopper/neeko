@@ -27,6 +27,8 @@ export { useCrossTypeSelection } from './hooks/useCrossTypeSelection';
 export { useWorktreeActions } from './hooks/useWorktreeActions';
 export { useWorktreeState, type WorktreeItem } from './hooks/useWorktreeState';
 export { useActiveProject } from './hooks/use-active-project';
+export { useConnectionProjects } from './hooks/useConnectionProjects';
+export { useProjectActions } from './hooks/useProjectActions';
 
 // Types
 export type {
@@ -48,3 +50,5 @@ export {
   useProjectActionsContext,
   type ProjectActionsContextValue,
 } from './ProjectContext';
+export { ConnectionProjectProvider } from './contexts/ConnectionProjectContext';
+export type { ConnectionProjectContextValue } from './contexts/ConnectionProjectContext';

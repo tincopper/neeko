@@ -12,9 +12,9 @@ import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import React, { useCallback, useState, useEffect, useMemo } from 'react';
 
 // eslint-disable-next-line import/no-restricted-paths -- projects panel renders connection project cards
-import ConnectionProjectCard from '@/features/connection/components/ConnectionProjectCard';
+import { ConnectionProjectCard } from '@/features/connection';
 // eslint-disable-next-line import/no-restricted-paths -- projects panel renders git commit dialog
-import CommitDialog from '@/features/git/components/CommitDialog';
+import { CommitDialog } from '@/features/git';
 import ProjectItem from '@/features/project/components/ProjectItem';
 import { SectionHeader } from '@/features/project/components/SectionHeader';
 import { useActiveProject } from '@/features/project/hooks/use-active-project';

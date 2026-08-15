@@ -1,8 +1,6 @@
 import React from 'react';
 
-import { RemoteAuthDialog } from '@/features/connection/components/RemoteAuthDialog';
-import { RemoteDialog } from '@/features/connection/components/RemoteDialog';
-import { WSLDialog } from '@/features/connection/components/WSLDialog';
+import { RemoteAuthDialog, RemoteDialog, WSLDialog } from '@/features/connection';
 import ConfirmDialog from '@/shared/components/ConfirmDialog';
 import type { AuthMethod, RemoteEntrySession, WSLEntrySession } from '@/shared/types';
 import { IS_WINDOWS } from '@/shared/utils/platform';

@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 
 // eslint-disable-next-line import/no-restricted-paths -- WorktreeList needs terminal cache for tab cleanup
-import { terminalCache, destroyTerminalCache } from '@/features/terminal/components/terminalCache';
+import { terminalCache, destroyTerminalCache } from '@/features/terminal';
 import { cn } from '@/lib/utils';
 import ConfirmDialog from '@/shared/components/ConfirmDialog';
 import { BranchIcon, TrashIcon, FolderGitIcon } from '@/shared/components/icons';

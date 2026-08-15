@@ -62,6 +62,7 @@ ESLint：`import/no-restricted-paths` 禁止 layout→features/app；**无** doc
 **禁止模式**：
 - 禁止 `window.__neeko*` 全局函数桥接跨层通信（改用 Context，如 `TerminalInsertContext`：Provider + register/unregister + 消费方降级）
 - 禁止 dock wrapper 内嵌业务编排（git 刷新、tab 创建等）——下沉 feature 域 hooks（`useRefreshGitInfo` / `useOpenDiffTab` / `useGitLogKeyboardNav`）
+- **禁止跨 feature 深导入**：`@/features/<f>/components|hooks|utils|contexts/...` 一律走 feature `index.ts` 门面（白名单 `store/` `types/` `api/` 可直导，`export type` 类型直导豁免）；门面缺符号时先行补导出再改消费方。`shared/` 层反向引用 features 为 pre-existing 豁免（带 `import/no-restricted-paths` disable 注释），不得门面化（会引入循环依赖）。
 `shared/` 不得 import `layout/`（dockStore 只依赖 `shared/dock`）。
 
 当前 Git 相关 dock panel 只有 **`gitControl`**（title: Git Control）。旧的 `gitCommit` / `gitLog` 已合并进其内部 Changes | History tabs，不要再注册为独立 dock panel。

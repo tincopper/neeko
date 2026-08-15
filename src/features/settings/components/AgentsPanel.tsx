@@ -1,9 +1,7 @@
 import React, { useState, useCallback } from 'react';
 
-// eslint-disable-next-line import/no-restricted-paths -- settings UI displays agent plugin cards via agent components
-import { AgentPluginCard, AgentPluginDetails } from '@/features/agent';
-// eslint-disable-next-line import/no-restricted-paths -- settings UI uses agent plugin hook
-import { useAgentPlugins } from '@/features/agent/hooks/useAgentPlugins';
+// eslint-disable-next-line import/no-restricted-paths -- settings UI displays agent plugin cards + hook
+import { AgentPluginCard, AgentPluginDetails, useAgentPlugins } from '@/features/agent';
 import type { JsonSchema } from '@/lib/schemaValidator';
 import type { AgentConfig, AppConfig } from '@/shared/types';
 import { Switch } from '@/ui';

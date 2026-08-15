@@ -2,7 +2,7 @@ import { open } from '@tauri-apps/plugin-dialog';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 
 // eslint-disable-next-line import/no-restricted-paths -- settings project panel uses task dialog
-import TaskDialog from '@/features/task/components/TaskDialog';
+import { TaskDialog } from '@/features/task';
 import { cn } from '@/lib/utils';
 import { Pencil, Trash2, Plus } from '@/shared/components/icons';
 import { useLspStore } from '@/shared/store/lspStore';

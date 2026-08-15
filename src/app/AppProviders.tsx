@@ -1,7 +1,7 @@
 import React from 'react';
 
 import { FileActionsProvider } from '@/features/editor/FileActionsContext';
-import { ConnectionProjectProvider } from '@/features/project/contexts/ConnectionProjectContext';
+import { ConnectionProjectProvider } from '@/features/project';
 import { ProjectActionsProvider } from '@/features/project/ProjectContext';
 import { AppProvider, SidebarProvider, EditorProvider } from '@/shared/contexts';
 

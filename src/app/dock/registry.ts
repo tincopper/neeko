@@ -31,7 +31,9 @@ export const dockPanelIcons: Record<string, LucideIcon> = {
 
 // ── Lazy-loaded panel components ────────────────────────────────────────────
 
-const ProjectsPanel = lazy(() => import('@/features/project/components/ProjectsPanel'));
+const ProjectsPanel = lazy(() =>
+  import('@/features/project').then((m) => ({ default: m.ProjectsPanel })),
+);
 
 /**
  * Wrapper components bridge the gap between dock panel instantiation
@@ -49,7 +51,9 @@ const LazyLibraryPanelWrapper = lazy(() => import('@/app/dock/wrappers/LibraryPa
 
 const LazyGitControlPanelWrapper = lazy(() => import('@/app/dock/wrappers/GitControlPanelWrapper'));
 
-const LazyBrowserPanel = lazy(() => import('@/features/browser/components/BrowserPanel'));
+const LazyBrowserPanel = lazy(() =>
+  import('@/features/browser').then((m) => ({ default: m.BrowserPanel })),
+);
 
 const LazyConversationsPanelWrapper = lazy(
   () => import('@/app/dock/wrappers/ConversationsPanelWrapper'),

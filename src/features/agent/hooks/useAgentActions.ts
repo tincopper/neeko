@@ -1,9 +1,7 @@
 import { useCallback } from 'react';
 
-// eslint-disable-next-line import/no-restricted-paths -- agent actions need terminal cache for refresh
-import { refreshTerminal } from '@/features/terminal/components/terminalCache';
-// eslint-disable-next-line import/no-restricted-paths -- agent actions need terminal command for switching
-import { switchAgentInTerminal } from '@/features/terminal/components/terminalCommands';
+// eslint-disable-next-line import/no-restricted-paths -- agent actions need terminal cache + command for refresh/switch
+import { refreshTerminal, switchAgentInTerminal } from '@/features/terminal';
 import type { SaveSessionFn } from '@/shared/hooks/useConnectionProjects';
 import { useProjectStore } from '@/shared/store/projectStore';
 import type { AgentConfig } from '@/shared/types';

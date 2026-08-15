@@ -27,7 +27,7 @@ src/
 │   ├── dock/                # Dock 面板胶水 + UI 注册表
 │   │   ├── registry.ts      # title/icon/lazy component 绑定（合并 DOCK_PANEL_META）
 │   │   └── wrappers/        # 每面板一文件的薄适配层（store/context → panel，独立 lazy chunk）
-│   └── hooks/               # app 级共享 hooks（useAppShell 编排、UseDockBarButtons 装配）
+│   └── hooks/               # app 级共享 hooks（useAppShell 薄组合器 = useAppShellData 编排 + buildAppShellValues 纯装配）
 │
 ├── main.tsx                 # 入口文件（ReactDOM.createRoot）
 ├── vite-env.d.ts            # 资源模块声明

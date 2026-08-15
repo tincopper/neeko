@@ -1,41 +1,36 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo } from 'react';
 import { useShallow } from 'zustand/shallow';
 
-import ActionPalette from '@/features/action-menu/components/ActionPalette';
-import SaveFileDialog from '@/features/action-menu/components/SaveFileDialog';
+import { useProjectAgents } from '@/app/hooks/useProjectAgents';
+import { useRemoteProjectSession } from '@/app/hooks/useRemoteProjectSession';
+import { useTerminalTabs } from '@/app/hooks/useTerminalTabs';
+import { buildLayoutId } from '@/app/utils/layoutId';
+import { ActionPalette, SaveFileDialog } from '@/features/action-menu';
 import type { ActionRegistryItem, ActionContext } from '@/features/action-menu/types/actionMenu';
-import { checkAgentsInstalled, setProjectAgents } from '@/features/agent/api/agentApi';
-import { useRemoteContext } from '@/features/connection/contexts/RemoteContext';
-import EditorGroupLayout from '@/features/editor/components/EditorGroupLayout';
-import { useFileDrop } from '@/features/file/hooks/useFileDrop';
+import { setProjectAgents } from '@/features/agent/api/agentApi';
+import { useRemoteContext } from '@/features/connection';
+import { EditorGroupLayout } from '@/features/editor';
+import { useFileDrop } from '@/features/file';
 import { useLibraryStore } from '@/features/library/store/libraryStore';
-import { ProjectGuidePage } from '@/features/project/components/ProjectGuidePage';
+import { ProjectGuidePage } from '@/features/project';
 import { useProjectActionsContext } from '@/features/project/ProjectContext';
 import { useQuickOpenStore } from '@/features/quick-open/store/quickOpenStore';
 import { useRecentFilesStore } from '@/features/quick-open/store/recentFilesStore';
-import { sendToTerminal } from '@/features/terminal/components/terminalCommands';
+import { sendToTerminal } from '@/features/terminal';
 import { KeyRound } from '@/shared/components/icons';
 import { useEditorContext, useAppContext, useTerminalInsert } from '@/shared/contexts';
 import { INSERT_TO_AGENT_INPUT_EVENT } from '@/shared/events';
-import { useConnectionStore } from '@/shared/store/connectionStore';
 import { useDockStore } from '@/shared/store/dockStore';
 import { useEditorStore } from '@/shared/store/editorStore';
 import { useProjectStore } from '@/shared/store/projectStore';
 import { useWorktreeStore } from '@/shared/store/worktreeStore';
-import type { AgentConfig, Tab } from '@/shared/types';
+import type { AgentConfig } from '@/shared/types';
 import { createUntitledFileTab } from '@/shared/utils/createUntitledFileTab';
 import { resolveTabKey } from '@/shared/utils/tabKey';
 import { Button } from '@/ui/Button';
 
 import { WelcomeScreen } from './WelcomeScreen';
 const APP_SETTINGS_PROJECT_ID = '__app__';
-
-// Module-level cache: `${projectId}::${agentId}` — status is environment-specific.
-const agentInstalledCache = new Map<string, boolean>();
-
-function agentInstallCacheKey(projectId: string | null, agentId: string): string {
-  return `${projectId ?? '__none__'}::${agentId}`;
-}
 
 function ProjectWorkspace() {
   const { showToast } = useAppContext();
@@ -63,104 +58,30 @@ function ProjectWorkspace() {
   );
 
   const tabs = projectTabs?.tabs ?? [];
-
   const hasActiveProject = !!activeProject;
 
   // Wire up file drag-to-agent: on dragend, paste the stored file path into
   // the agent terminal without auto-submitting (no \r).
   useFileDrop();
 
-  const handleAddTerminalTab = useCallback(() => {
-    if (!tabKey || !currentProjectId) return;
-    const existingTabs = useEditorStore.getState().tabs[tabKey];
-    const terminalCount = (existingTabs?.tabs ?? []).filter(
-      (t) => t.data.kind === 'terminal',
-    ).length;
-    if (terminalCount >= 10) return;
-
-    const tabId = `tab_${crypto.randomUUID()}`;
-    const tab: Tab = {
-      id: tabId,
-      projectId: currentProjectId,
-      title: `Terminal ${terminalCount + 1}`,
-      order: existingTabs?.tabs.length ?? 0,
-      data: {
-        kind: 'terminal',
-        agentId: null,
-        status: 'Idle',
-      },
-    };
-    useEditorStore.getState().addTab(tabKey, tab);
-    useEditorStore.getState().activateTab(tabKey, tabId);
-  }, [tabKey, currentProjectId]);
+  const { handleAddTerminalTab, handleAddAgentTab } = useTerminalTabs(tabKey, currentProjectId);
 
   // Agent installed status — re-check when agents or active project change
   // (Local / WSL / SSH each have their own PATH).
-  const agentIdFingerprint = useMemo(
-    () =>
-      agents
-        .map((a) => a.id)
-        .sort()
-        .join(','),
-    [agents],
-  );
-  // Seed installed status from cache when agents change
-  const [installedMap, setInstalledMap] = useState<Map<string, boolean>>(new Map());
-  useEffect(() => {
-    // Defer to avoid sync setState in effect (can trigger cascading renders)
-    Promise.resolve().then(() => {
-      const ids = agents.map((a) => a.id);
-      const allCached = ids.every((id) =>
-        agentInstalledCache.has(agentInstallCacheKey(currentProjectId, id)),
-      );
-      if (allCached) {
-        const map = new Map<string, boolean>();
-        for (const id of ids) {
-          map.set(id, agentInstalledCache.get(agentInstallCacheKey(currentProjectId, id)) ?? true);
-        }
-        setInstalledMap(map);
-      } else {
-        setInstalledMap(new Map());
-      }
-    });
-  }, [agentIdFingerprint, currentProjectId, agents]);
+  const { installedMap, handleAgentClick } = useProjectAgents({
+    agents,
+    projectId: currentProjectId,
+    showToast,
+    onAgentClick,
+  });
 
-  useEffect(() => {
-    const ids = agents.map((a) => a.id);
-    if (ids.length === 0) return;
-
-    const missing = ids.filter(
-      (id) => !agentInstalledCache.has(agentInstallCacheKey(currentProjectId, id)),
-    );
-    if (missing.length === 0) return;
-
-    checkAgentsInstalled(missing, currentProjectId)
-      .then((result) => {
-        for (const [id, installed] of Object.entries(result)) {
-          agentInstalledCache.set(agentInstallCacheKey(currentProjectId, id), installed);
-        }
-        const map = new Map<string, boolean>();
-        for (const id of ids) {
-          map.set(id, agentInstalledCache.get(agentInstallCacheKey(currentProjectId, id)) ?? true);
-        }
-        setInstalledMap(map);
-      })
-      .catch((err) => console.error('[ProjectWorkspace] Failed to check agents installed:', err));
-  }, [agentIdFingerprint, currentProjectId, agents]);
-
-  const handleAgentClick = useCallback(
-    (agent: AgentConfig) => {
-      const installed = installedMap.size === 0 || (installedMap.get(agent.id) ?? true);
-      if (!installed) {
-        showToast(`${agent.name} (${agent.command}) is not installed`, 'error');
-        return false;
-      }
-      if (!agent.enabled) return false;
-      onAgentClick(agent);
-      return true;
-    },
-    [installedMap, onAgentClick, showToast],
-  );
+  const { needsRemoteAuth, remoteProjectProp, handleEnterCredentials } = useRemoteProjectSession({
+    activeProject,
+    remoteAuthStore,
+    activeRemoteWorktreePath,
+    setRemoteOpenSessions,
+    setPendingAuthEntry,
+  });
 
   const selectedAgent = useMemo(() => {
     const agentId = activeProject?.selected_agents?.[0];
@@ -194,20 +115,10 @@ function ProjectWorkspace() {
     [handleAgentClick, currentProjectId],
   );
 
-  const buildLayoutId = useCallback((groupId: string, tabId: string | null) => {
-    const p = useProjectStore.getState().activeProject;
-    if (!p) return `none:${groupId}:${tabId ?? 'default'}`;
-    const env = p.environment;
-    let base: string;
-    if (env.type === 'Wsl') {
-      base = `wsl:${env.distro}:${p.id}`;
-    } else if (env.type === 'Remote') {
-      base = `remote:${env.host}:${p.id}`;
-    } else {
-      base = `local:${p.id}`;
-    }
-    return `${base}:${groupId}:${tabId ?? 'default'}`;
-  }, []);
+  const handleBuildLayoutId = useCallback(
+    (groupId: string, tabId: string | null) => buildLayoutId(activeProject, groupId, tabId),
+    [activeProject],
+  );
 
   // ── Action Palette ──
   const handlePaletteExecute = useCallback(
@@ -224,23 +135,8 @@ function ProjectWorkspace() {
           break;
         case 'new-terminal-with-agent': {
           if (currentProjectId) {
-            const enabled = agents.filter((a) => a.enabled);
-            const first = enabled[0];
-            if (first) {
-              const tabId = `tab_${crypto.randomUUID()}`;
-              useEditorStore.getState().addTab(tabKey, {
-                id: tabId,
-                projectId: currentProjectId,
-                title: first.name,
-                order: 0,
-                data: {
-                  kind: 'terminal' as const,
-                  agentId: first.id,
-                  status: 'Idle' as const,
-                },
-              });
-              useEditorStore.getState().activateTab(tabKey, tabId);
-            }
+            const first = agents.find((a) => a.enabled);
+            if (first) handleAddAgentTab(first);
           }
           break;
         }
@@ -263,7 +159,7 @@ function ProjectWorkspace() {
         }
       }
     },
-    [handleAddTerminalTab, activeProject, currentProjectId, tabKey, agents],
+    [handleAddTerminalTab, handleAddAgentTab, activeProject, currentProjectId, tabKey, agents],
   );
 
   // ── Terminal / agent-input 插入能力注册 ─────────────────────────────────
@@ -327,46 +223,6 @@ function ProjectWorkspace() {
     [currentProjectId, tabKey, agents],
   );
 
-  const onRemoteSessionReady = useCallback(
-    (pid: string) => {
-      setRemoteOpenSessions((prev) => new Set(prev).add(pid));
-    },
-    [setRemoteOpenSessions],
-  );
-
-  // Remote project needs authentication but has no credentials yet
-  const needsRemoteAuth = (() => {
-    if (!activeProject || activeProject.environment.type !== 'Remote') return false;
-    const env = activeProject.environment;
-    const entry = useConnectionStore.getState().remoteEntries.find((e) => e.host === env.host);
-    return !!entry && !remoteAuthStore.get(entry.id);
-  })();
-
-  const remoteProjectProp = useMemo(() => {
-    if (!activeProject || activeProject.environment.type !== 'Remote') return null;
-    const env = activeProject.environment;
-    const entry = useConnectionStore.getState().remoteEntries.find((e) => e.host === env.host);
-    if (!entry) return null;
-    const auth = remoteAuthStore.get(entry.id);
-    if (!auth) return null;
-    const projectPath = activeRemoteWorktreePath ?? activeProject.path;
-    const cacheKeySuffix = activeRemoteWorktreePath
-      ? `:wt:${btoa(activeRemoteWorktreePath).replace(/=/g, '')}`
-      : '';
-    return {
-      entryId: entry.id,
-      projectId: activeProject.id,
-      projectName: activeProject.name,
-      projectPath,
-      host: entry.host,
-      port: entry.port,
-      username: entry.username,
-      auth,
-      cacheKeySuffix,
-      onSessionReady: onRemoteSessionReady,
-    };
-  }, [activeProject, remoteAuthStore, activeRemoteWorktreePath, onRemoteSessionReady]);
-
   return (
     <div className="main-content flex-1 flex flex-col overflow-hidden min-h-0 h-full">
       {needsRemoteAuth ? (
@@ -380,17 +236,7 @@ function ProjectWorkspace() {
             <h2 className="text-2xl font-semibold text-text-primary">Authentication required</h2>
             <Button
               variant="primary"
-              onClick={() => {
-                const p = useProjectStore.getState().activeProject;
-                if (!p) return;
-                const env = p.environment;
-                if (env.type === 'Remote') {
-                  const entry = useConnectionStore
-                    .getState()
-                    .remoteEntries.find((e) => e.host === env.host);
-                  if (entry) setPendingAuthEntry(entry);
-                }
-              }}
+              onClick={handleEnterCredentials}
               style={{ color: 'var(--text-on-accent)' }}
             >
               Enter Credentials
@@ -402,7 +248,7 @@ function ProjectWorkspace() {
           tabKey={tabKey}
           onAddTerminalTab={handleAddTerminalTab}
           remoteProject={remoteProjectProp}
-          buildLayoutId={buildLayoutId}
+          buildLayoutId={handleBuildLayoutId}
         />
       ) : hasActiveProject && activeProject ? (
         <ProjectGuidePage

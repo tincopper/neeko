@@ -4,7 +4,7 @@ import { useState, useCallback } from 'react';
 import { useShallow } from 'zustand/shallow';
 
 // eslint-disable-next-line import/no-restricted-paths -- useLocalProjects cleans terminal caches on project close
-import { destroyTerminalCachesByPrefix } from '@/features/terminal/components/terminalCache';
+import { destroyTerminalCachesByPrefix } from '@/features/terminal';
 import { bumpGitRefresh } from '@/shared/hooks/useGitRefresh';
 import { useEditorStore } from '@/shared/store/editorStore';
 import { useGitStore } from '@/shared/store/gitStore';
