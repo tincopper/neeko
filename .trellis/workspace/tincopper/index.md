@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-3.md`
-- **Total Sessions**: 136
+- **Total Sessions**: 137
 - **Last Active**: 2026-08-15
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-3.md` | ~661 | Active |
+| `journal-3.md` | ~694 | Active |
 | `journal-2.md` | ~1991 | Archived |
 | `journal-1.md` | ~1986 | Archived |
 <!-- @@@/auto:active-documents -->
@@ -31,6 +31,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 137 | 2026-08-15 | 修复 worktree 列表因空路径被错误仓库数据覆盖的问题 | `8ccbaaae` | `main` |
 | 136 | 2026-08-15 | 浏览器选择器编辑快捷键原生化 + Esc/Cmd+W 稳定修复 | `1351df43`, `9cf605a3`, `946c7694` | `main` |
 | 135 | 2026-08-15 | 浏览器元素选择器支持多选（协议升级 + Composer 重构） | `e843bed3` | `main` |
 | 134 | 2026-08-15 | refactor: 架构债务清理收尾 — useAppShell 30 行 + 全库深导入门面化 | - | `main` |

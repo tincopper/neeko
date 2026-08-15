@@ -659,3 +659,36 @@ D0: macOS Edit 菜单 PredefinedMenuItem 原生化（A1-A3 通过，含浏览器
 ### Next Steps
 
 - None - task complete
+
+
+## Session 137: 修复 worktree 列表因空路径被错误仓库数据覆盖的问题
+
+**Date**: 2026-08-15
+**Task**: 修复 worktree 列表因空路径被错误仓库数据覆盖的问题
+**Branch**: `main`
+
+### Summary
+
+根因：前端 git-changed 在无激活 worktree 时传空字符串，Rust 端把它当字面路径，shell 回退在 app CWD 跑 git，用错误仓库数据覆盖真实 worktree 列表。后端统一 resolve_worktree_path（空/空白回落项目根）+ 空 work_dir 守卫；前端 git-changed 传 null、启动恢复 session 激活 worktree、校验 effect 不清空未加载态；8 个回归测试。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `8ccbaaae` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
