@@ -1,34 +1,13 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { listen } from '@tauri-apps/api/event';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 
+import { GIT_STATUS_DIFF_EVENT } from '@/shared/events';
 import { useFileChangedEvent } from '@/shared/hooks/useFileChangedEvent';
 import { useGitRefresh } from '@/shared/hooks/useGitRefresh';
 import type { FileChangedEvent } from '@/shared/types';
 import type { ProjectCommands } from '@/shared/types/activeProject';
 
 import type { DiffResult, DiffSource, DiffLine } from './types';
-
-// ── 模块级 Diff 结果缓存（避免在文件间切换时重复加载） ──────────────────
-// 容量上限：全量 diff 体积大，无上限会让常驻应用内存无限增长（Pillar 6）。
-export const DIFF_CACHE_MAX = 50;
-export const diffCache = new Map<string, DiffResult>();
-
-/** 写入缓存并淘汰最旧条目（Map 保持插入序，删除首个 key）。 */
-export function setDiffCache(key: string, result: DiffResult) {
-  if (diffCache.size >= DIFF_CACHE_MAX && !diffCache.has(key)) {
-    const oldest = diffCache.keys().next().value;
-    if (oldest !== undefined) diffCache.delete(oldest);
-  }
-  diffCache.set(key, result);
-}
-
-function getCacheKey(
-  projectId?: string,
-  diffSource?: DiffSource,
-  filePath?: string,
-  collapse?: boolean,
-): string {
-  return `${projectId ?? ''}|${JSON.stringify(diffSource ?? '')}|${filePath ?? ''}|collapse:${collapse ?? true}`;
-}
 
 interface UseDiffDataParams {
   projectId?: string;
@@ -51,10 +30,8 @@ export function useDiffData({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [currentBlockIndex, setCurrentBlockIndex] = useState(0);
-  const lastLoadKeyRef = useRef<string>('');
-  // 强制刷新版本号：file-changed / Git 刷新信号命中时递增，驱动 useEffect 重新加载
+  // 刷新信号版本号：file-changed / git-status-diff / Git 刷新按钮命中时递增，驱动重新拉取
   const [refreshTick, setRefreshTick] = useState(0);
-  const lastRefreshTickRef = useRef(0);
 
   /** 按 collapse 模式拉取 diff（loadDiff / loadFullHunks 共用）。 */
   const fetchDiff = useCallback(
@@ -86,43 +63,24 @@ export function useDiffData({
     [projectId, diffSource, filePath, commands],
   );
 
-  /** 按需加载全量（未折叠）hunks，供单段展开使用；结果进模块级缓存。 */
+  /** 按需加载全量（未折叠）hunks，供单段展开使用；无状态，直接请求后端。 */
   const loadFullHunks = useCallback(async () => {
     if (!filePath) {
       setFullHunks(null);
       return;
     }
-    const key = getCacheKey(projectId, diffSource, filePath, false);
-    const cached = diffCache.get(key);
-    if (cached) {
-      setFullHunks(cached.hunks);
-      return;
-    }
     try {
       const result = await fetchDiff(false);
-      setDiffCache(key, result);
       setFullHunks(result.hunks);
     } catch {
       // 全量加载失败时保留现状（单段展开静默降级）
     }
-  }, [projectId, diffSource, filePath, fetchDiff]);
+  }, [filePath, fetchDiff]);
 
   const loadDiff = useCallback(async () => {
     // Empty path = intentionally idle (combined parent or collapsed section).
     if (!filePath) {
       setDiffResult(null);
-      setLoading(false);
-      setError(null);
-      setCurrentBlockIndex(0);
-      return;
-    }
-
-    const cacheKey = getCacheKey(projectId, diffSource, filePath, collapse);
-
-    // 命中缓存则跳过 fetch，立即返回
-    const cached = diffCache.get(cacheKey);
-    if (cached) {
-      setDiffResult(cached);
       setLoading(false);
       setError(null);
       setCurrentBlockIndex(0);
@@ -147,7 +105,6 @@ export function useDiffData({
         result.hunks.length,
       );
 
-      setDiffCache(cacheKey, result);
       setDiffResult(result);
       setCurrentBlockIndex(0);
     } catch (err) {
@@ -157,9 +114,9 @@ export function useDiffData({
     } finally {
       setLoading(false);
     }
-  }, [projectId, diffSource, filePath, collapse, fetchDiff]);
+  }, [filePath, collapse, fetchDiff]);
 
-  // 文件内容变更 → 递增 refreshTick（缓存失效统一在下方 useEffect 处理）
+  // 文件内容变更（精确路径）→ 递增 refreshTick，驱动当前文件重新拉取
   useFileChangedEvent(
     useCallback(
       (ev: FileChangedEvent) => {
@@ -172,7 +129,28 @@ export function useDiffData({
     ),
   );
 
-  // Git 面板刷新按钮 → 递增 refreshTick（该项目的 diff 缓存失效）
+  // 仓库状态事件（git-status-diff，路径无关）→ 该项目的任意文件状态变化
+  // 都触发当前 diff 重新拉取；后端指纹校验保证未变文件命中缓存（廉价）。
+  useEffect(() => {
+    if (!projectId) return;
+    let cancelled = false;
+    let unlisten: (() => void) | undefined;
+    void listen<{ project_id: string }>(GIT_STATUS_DIFF_EVENT, (event) => {
+      if (cancelled) return;
+      if (event.payload.project_id === projectId) {
+        setRefreshTick((t) => t + 1);
+      }
+    }).then((un) => {
+      if (cancelled) un();
+      else unlisten = un;
+    });
+    return () => {
+      cancelled = true;
+      unlisten?.();
+    };
+  }, [projectId]);
+
+  // Git 面板刷新按钮 → 递增 refreshTick（该项目的 diff 重新拉取）
   useGitRefresh(
     useCallback(
       (pid: string) => {
@@ -183,22 +161,12 @@ export function useDiffData({
     ),
   );
 
+  // 无状态消费者：挂载 / 文件或折叠模式变化 / 任意刷新信号 → 直接重新拉取。
+  // loadDiff 依赖含 filePath/collapse/diffSource，其变化即重建 → effect 重跑 → 重拉。
   useEffect(() => {
-    const key = getCacheKey(projectId, diffSource, filePath, collapse);
-    const isKeyChange = key !== lastLoadKeyRef.current;
-    // 刷新信号（file-changed / Git 刷新按钮）变化
-    const isRefresh = refreshTick !== lastRefreshTickRef.current;
-    if (!isKeyChange && !isRefresh) {
-      return;
-    }
-    // 仅「内容刷新」时绕过缓存；切换文件/展开全文（key 变化）保留缓存命中优化
-    if (isRefresh && !isKeyChange) {
-      diffCache.delete(key);
-    }
-    lastLoadKeyRef.current = key;
-    lastRefreshTickRef.current = refreshTick;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- 挂载/信号驱动重拉（项目既有模式）
     void loadDiff();
-  }, [projectId, diffSource, filePath, collapse, loadDiff, refreshTick]);
+  }, [loadDiff, refreshTick]);
 
   const changeStats = useMemo(() => {
     if (!diffResult) {

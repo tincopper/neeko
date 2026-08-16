@@ -89,17 +89,37 @@
   `useOpenStashDiff` → `addTab` + `activateTab`，diffSource 为 stash 变体），tab 标题 `stash@{n}: <message>`；
   Apply / Pop 在底部操作栏（列表视图），操作中 loading 禁用，成功后刷新列表 + 触发 Git 面板刷新。
 
-## 5. 测试要求
+## 5. Diff 缓存正确性契约（`common/git/cache.rs`）
+
+**原则**：diff 是派生值 `f(HEAD, index, 工作区文件)`，缓存正确性靠**输入指纹自洽**，
+不依赖任何事件失效（notify 会丢事件；事件只影响前端"何时重拉"的新鲜度，不影响正确性）。
+
+- **唯一缓存所有者 = 后端**：`DIFF_CACHE`（LRU，cap 50）是 diff 内容唯一缓存；前端是**无状态消费者**，
+  每次展示/聚焦直接 `get_file_diff`，不得持有跨挂载的模块级 diff 缓存。
+- **工作区 diff**（`get_cached_worktree_diff`）：命中时重新 `stat` 文件，指纹 `(mtime_ns, size)` 一致
+  才返回缓存，不一致即重算并刷新；文件删除/新增（`None↔Some`）同样触发重算。
+- **键隔离**：`{repo}:{path}:collapse={bool}`，collapse 不同各自缓存。
+- **失效**：`invalidate_repo_caches` 仅覆盖 git 写操作（branch 切换 / commit / stash 等 HEAD 或 index 变化）；
+  普通文件编辑**不**清缓存——由指纹校验兜底，保证"后端永远返回当前磁盘真相"。
+- **远程/WSL**：`open_repo` 仅 `ExecTarget::Local` 返回 `Some`，其余走 shell 分支**不缓存**（每次现算）；
+  前端靠"显示即拉 + 手动刷新"保证新鲜。
+- **阻塞 I/O**：`capture_file_fingerprint` 内含 `std::fs::metadata`，只能在 `spawn_blocking` 内调用
+  （`operations::get_file_diff` 已包裹）。
+
+## 6. 测试要求
 
 - `parse_decorate_refs`：branch/remote/tag/stash/HEAD 用例；`refs/synara/checkpoints` 被丢弃；
   `HEAD -> refs/synara/*` 被丢弃；空 decorate。
 - `parse_stash_list`：selector/hash/message/branch/timestamp 解析；空输出。
 - 集成：临时仓库含孤立 `refs/synara/checkpoints` 提交时，`get_commit_log`（HEAD）不包含该提交；
   decorate 含 tool refs 的提交其 `refs`/`refs_list` 不含 tool 项；stash list/files roundtrip。
+- 缓存（`cache.rs` tests）：未变命中（fetch 仅一次）；文件修改/删除后重算；collapse 键隔离。
 
 ## 相关文件
 
 - `src-tauri/src/common/git/refs.rs` — refs 分类纯函数
 - `src-tauri/src/common/git/parsers.rs` — `parse_commit_log_output` / `parse_stash_list` / `parse_numstat_with_status`
-- `src-tauri/src/common/git/operations.rs` + `local.rs` — `get_commit_log` / `get_stash_list` / `get_stash_files`
+- `src-tauri/src/common/git/cache.rs` — `get_cached_worktree_diff` / `FileFingerprint` / LRU diff 缓存
+- `src-tauri/src/common/git/operations.rs` + `local.rs` — `get_commit_log` / `get_stash_list` / `get_stash_files` / `get_file_diff`
 - `src-tauri/src/git/commands.rs` + `src-tauri/src/lib.rs` — 命令透传与注册
+- `src/features/git/components/diff/useDiffData.ts` — 前端无状态 diff 消费者（git-status-diff / file-changed / 手动刷新驱动重拉）

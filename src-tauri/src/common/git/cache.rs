@@ -61,12 +61,47 @@ static GH_INSTALLED_CACHE: Mutex<Option<(Instant, bool)>> = Mutex::new(None);
 static GH_AUTHENTICATED_CACHE: Mutex<Option<(Instant, bool)>> = Mutex::new(None);
 
 // ─── LRU Diff Cache (参考 Muxy DiffCache) ─────────────────────────────────
+// 正确性靠「输入指纹」自洽：工作区 diff 命中时校验文件 mtime+size，
+// 不一致即重算，不依赖任何事件失效（事件只影响新鲜度，不影响正确性）。
 
 const DIFF_CACHE_CAP: usize = 50;
 
+/// 工作区文件输入指纹：mtime（纳秒）+ 大小。
+/// 缓存命中时重新 stat 当前文件并对比，决定是否仍新鲜。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FileFingerprint {
+    /// 文件修改时间（UNIX epoch 以来的纳秒数）。
+    pub mtime_ns: u64,
+    /// 文件字节大小。
+    pub size: u64,
+}
+
+/// 捕获当前文件的 (mtime_ns, size) 指纹；文件不存在返回 None。
+#[must_use]
+pub fn capture_file_fingerprint(repo_path: &Path, file_path: &str) -> Option<FileFingerprint> {
+    let meta = std::fs::metadata(repo_path.join(file_path)).ok()?;
+    let mtime_ns = meta
+        .modified()
+        .ok()
+        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+        .map(|d| u64::try_from(d.as_nanos()).unwrap_or(u64::MAX))
+        .unwrap_or(0);
+    Some(FileFingerprint {
+        mtime_ns,
+        size: meta.len(),
+    })
+}
+
+/// 缓存条目：指纹为 None 表示「计算时文件不存在」（None↔Some 变化同样触发重算）。
+#[derive(Debug, Clone)]
+struct DiffEntry {
+    result: DiffResult,
+    fingerprint: Option<FileFingerprint>,
+}
+
 struct LruCache {
     map: Mutex<HashMap<String, usize>>,
-    queue: Mutex<VecDeque<(String, DiffResult)>>,
+    queue: Mutex<VecDeque<(String, DiffEntry)>>,
 }
 
 impl LruCache {
@@ -77,7 +112,7 @@ impl LruCache {
         }
     }
 
-    fn get(&self, key: &str) -> Option<DiffResult> {
+    fn get(&self, key: &str) -> Option<DiffEntry> {
         let mut queue = self.queue.lock().ok()?;
         let mut map = self.map.lock().ok()?;
         if let Some(&idx) = map.get(key) {
@@ -94,7 +129,7 @@ impl LruCache {
         None
     }
 
-    fn set(&self, key: String, val: DiffResult) {
+    fn set(&self, key: String, val: DiffEntry) {
         let mut queue = self
             .queue
             .lock()
@@ -137,7 +172,7 @@ impl LruCache {
     fn rebuild_indices(
         &self,
         map: &mut HashMap<String, usize>,
-        queue: &VecDeque<(String, DiffResult)>,
+        queue: &VecDeque<(String, DiffEntry)>,
     ) {
         let _ = self;
         map.clear();
@@ -309,19 +344,32 @@ pub fn set_gh_authenticated_cache(val: bool) {
     }
 }
 
-/// Get cached diff or compute
-pub fn get_cached_diff(
+/// Get cached worktree diff or compute — 输入指纹校验版。
+///
+/// 命中时重新 stat 当前文件，指纹（mtime+size）一致才返回缓存；不一致则重算并刷新。
+/// 正确性自洽，不依赖任何事件失效；文件删除/新增（Some↔None）同样触发重算。
+/// 仅在 `spawn_blocking` 内调用（内部含 `std::fs::metadata` 阻塞 I/O）。
+pub fn get_cached_worktree_diff(
     repo_path: &Path,
     file_path: &str,
     collapse: bool,
     fetch: impl FnOnce() -> anyhow::Result<DiffResult>,
 ) -> anyhow::Result<DiffResult> {
     let key = diff_cache_key(repo_path, file_path, collapse);
-    if let Some(cached) = DIFF_CACHE.get(&key) {
-        return Ok(cached);
+    if let Some(entry) = DIFF_CACHE.get(&key) {
+        if capture_file_fingerprint(repo_path, file_path) == entry.fingerprint {
+            return Ok(entry.result);
+        }
     }
+    let fingerprint = capture_file_fingerprint(repo_path, file_path);
     let result = fetch()?;
-    DIFF_CACHE.set(key, result.clone());
+    DIFF_CACHE.set(
+        key,
+        DiffEntry {
+            result: result.clone(),
+            fingerprint,
+        },
+    );
     Ok(result)
 }
 
@@ -413,4 +461,143 @@ pub fn invalidate_repo_caches(repo_path: &Path) {
     DIFF_CACHE.invalidate_repo(repo_path);
     DIFF_STATS_CACHE.invalidate_repo(repo_path);
     AHEAD_BEHIND_CACHE.invalidate_repo(repo_path);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::{Arc, Mutex};
+
+    /// 返回一个 fetch 闭包：每次真正执行都会记录 label，命中缓存时不执行（不记录）。
+    fn fetch_with_label(
+        computed: Arc<Mutex<Vec<String>>>,
+        label: &'static str,
+    ) -> impl FnOnce() -> anyhow::Result<DiffResult> {
+        move || {
+            computed.lock().unwrap().push(label.to_string());
+            Ok(DiffResult {
+                hunks: vec![],
+                truncated: label.is_empty(),
+            })
+        }
+    }
+
+    #[test]
+    fn worktree_diff_hits_cache_when_unchanged() {
+        let dir = tempfile::tempdir().unwrap();
+        let repo = dir.path();
+        let file = "a.txt";
+        std::fs::write(repo.join(file), "hello").unwrap();
+        let computed = Arc::new(Mutex::new(Vec::new()));
+
+        get_cached_worktree_diff(
+            repo,
+            file,
+            true,
+            fetch_with_label(computed.clone(), "first"),
+        )
+        .unwrap();
+        get_cached_worktree_diff(
+            repo,
+            file,
+            true,
+            fetch_with_label(computed.clone(), "second"),
+        )
+        .unwrap();
+
+        assert_eq!(
+            *computed.lock().unwrap(),
+            vec!["first".to_string()],
+            "文件未变时第二次调用必须命中缓存（fetch 只执行一次）"
+        );
+    }
+
+    #[test]
+    fn worktree_diff_recomputes_when_file_changed() {
+        let dir = tempfile::tempdir().unwrap();
+        let repo = dir.path();
+        let file = "a.txt";
+        std::fs::write(repo.join(file), "hello").unwrap();
+        let computed = Arc::new(Mutex::new(Vec::new()));
+
+        get_cached_worktree_diff(
+            repo,
+            file,
+            true,
+            fetch_with_label(computed.clone(), "hello"),
+        )
+        .unwrap();
+        // 修改文件（内容 + 尺寸都变，保证指纹变化与 mtime 粒度无关）
+        std::fs::write(repo.join(file), "much longer content").unwrap();
+        get_cached_worktree_diff(repo, file, true, fetch_with_label(computed.clone(), "new"))
+            .unwrap();
+
+        assert_eq!(
+            *computed.lock().unwrap(),
+            vec!["hello".to_string(), "new".to_string()],
+            "文件已修改时指纹不一致必须重算（回归：旧实现命中旧缓存）"
+        );
+    }
+
+    #[test]
+    fn worktree_diff_recomputes_when_file_removed() {
+        let dir = tempfile::tempdir().unwrap();
+        let repo = dir.path();
+        let file = "a.txt";
+        let path = repo.join(file);
+        std::fs::write(&path, "hello").unwrap();
+        let computed = Arc::new(Mutex::new(Vec::new()));
+
+        get_cached_worktree_diff(
+            repo,
+            file,
+            true,
+            fetch_with_label(computed.clone(), "exists"),
+        )
+        .unwrap();
+        std::fs::remove_file(&path).unwrap();
+        get_cached_worktree_diff(
+            repo,
+            file,
+            true,
+            fetch_with_label(computed.clone(), "removed"),
+        )
+        .unwrap();
+
+        assert_eq!(
+            *computed.lock().unwrap(),
+            vec!["exists".to_string(), "removed".to_string()],
+            "文件被删除后指纹变化（Some→None）必须重算"
+        );
+    }
+
+    #[test]
+    fn worktree_diff_collapse_is_separate_key() {
+        let dir = tempfile::tempdir().unwrap();
+        let repo = dir.path();
+        let file = "a.txt";
+        std::fs::write(repo.join(file), "hello").unwrap();
+        let computed = Arc::new(Mutex::new(Vec::new()));
+
+        get_cached_worktree_diff(
+            repo,
+            file,
+            true,
+            fetch_with_label(computed.clone(), "collapsed"),
+        )
+        .unwrap();
+        get_cached_worktree_diff(
+            repo,
+            file,
+            false,
+            fetch_with_label(computed.clone(), "full"),
+        )
+        .unwrap();
+
+        assert_eq!(
+            *computed.lock().unwrap(),
+            vec!["collapsed".to_string(), "full".to_string()],
+            "collapse 不同应各自缓存（键隔离）"
+        );
+    }
 }

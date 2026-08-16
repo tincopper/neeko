@@ -421,7 +421,7 @@ pub fn create_branch(repo_path: &Path, branch_name: &str, start_point: Option<&s
 
 /// Get the diff for a single file (working tree vs HEAD).
 pub fn get_file_diff(repo_path: &Path, file_path: &str, collapse: bool) -> Result<DiffResult> {
-    super::cache::get_cached_diff(repo_path, file_path, collapse, || {
+    super::cache::get_cached_worktree_diff(repo_path, file_path, collapse, || {
         let t_open = std::time::Instant::now();
         let repo = Repository::open(repo_path).context("Failed to open git repository")?;
         log::debug!(
