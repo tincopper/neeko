@@ -260,7 +260,28 @@ mod tests {
 
 **不要 mock git2。** 创建真实的临时 git 仓库——操作快速且测试更准确。
 
-### 辅助函数：创建测试仓库
+### 辅助函数：创建测试仓库（确定性）
+
+**必须使用确定性测试仓库**（见 `AGENTS.md` 红线 11「换行边界」）：Windows 上 git 默认
+`core.autocrlf=true`，会把 stash/checkout/discard 等 git 写操作落盘的工作区内容转成 CRLF，
+导致字节级内容断言在 Windows CI 必挂。双保险 = 仓库级 `core.autocrlf=false` + 提交
+`.gitattributes * -text`。
+
+集成侧统一收敛到 `tests/unit/support.rs::TestRepo`（git2 创建）：
+
+```rust
+#[path = "unit/support.rs"]
+mod support;
+
+fn create_test_repo() -> (TempDir, Repository) {
+    // 确定性测试仓库：autocrlf=false + 提交 `.gitattributes * -text`，见 support.rs 头注释
+    support::TestRepo::init().into_parts()
+}
+```
+
+lib 侧（`operations.rs::init_repo`）用 CLI 收敛到同一套钉死（`git config core.autocrlf false`
++ 写入并提交 `.gitattributes`）。断言工作区字节一律走行尾无关比较（`support::assert_content_eq` /
+`assert_worktree_eq`），或优先在 git 归一化视图（status/diff）上断言。
 
 ```rust
 #[cfg(test)]
@@ -269,26 +290,6 @@ mod tests {
     use git2::{Repository, Signature};
     use tempfile::TempDir;
     use std::fs;
-
-    /// 创建带有初始化 git 仓库和一次提交的临时目录。
-    fn create_test_repo() -> (TempDir, Repository) {
-        let tmp = TempDir::new().unwrap();
-        let repo = Repository::init(tmp.path()).unwrap();
-
-        // 创建初始提交
-        let sig = Signature::now("Test", "test@test.com").unwrap();
-        fs::write(tmp.path().join("README.md"), "# Test").unwrap();
-
-        let mut index = repo.index().unwrap();
-        index.add_path(std::path::Path::new("README.md")).unwrap();
-        index.write().unwrap();
-        let tree_id = index.write_tree().unwrap();
-        let tree = repo.find_tree(tree_id).unwrap();
-
-        repo.commit(Some("HEAD"), &sig, &sig, "Initial commit", &tree, &[]).unwrap();
-
-        (tmp, repo)
-    }
 
     #[test]
     fn get_git_info_on_clean_repo() {
@@ -491,3 +492,24 @@ let mock_repo = MockRepository::new();
 // 正确 —— 真实临时仓库，快速且准确
 let (tmp, repo) = create_test_repo();
 ```
+
+### 5. 对工作区换行做字节级精确断言（Windows CI 必挂）
+
+```rust
+// 错误 —— Windows 上 git 默认 autocrlf=true 会把 git 写操作落盘的内容转成 CRLF，
+// 此处断言 `\n` 在 Windows CI 必然失败（回归：git_test::stash_apply_restores_changes_keeps_entry）
+let content = std::fs::read_to_string(tmp.path().join("README.md")).unwrap();
+assert_eq!(content, "# Stashed change\n");
+
+// 正确 —— 用确定性测试仓库（TestRepo / init_repo）+ 行尾无关比较
+support::assert_content_eq(tmp.path(), "README.md", "# Stashed change\n");
+
+// 或优先在 git 归一化视图（status/diff）上断言（行尾天然无关）
+let info = operations::get_git_info(&transport, &path).await.unwrap();
+assert!(info.changed_files.iter().any(|f| f.path == "README.md"));
+```
+
+> 注意：`operations::get_git_info` 的同步版走 `core::exec` 同步桥，**禁止在 `#[tokio::test]`
+> 体内调用**（AGENTS.md 红线 1）；async 测试里用 `operations::get_git_info(...).await` 版本。
+> 护栏脚本 `.trellis/scripts/check_worktree_byte_assertions.py` 会检出该模式（已接入
+> `pnpm lint` 与 CI）。

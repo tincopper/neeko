@@ -7,24 +7,12 @@ use neeko_lib::git;
 use std::path::PathBuf;
 use tempfile::TempDir;
 
+use super::support;
+
 fn create_test_repo() -> (TempDir, Repository) {
-    let tmp = TempDir::new().unwrap();
-    let repo = Repository::init(tmp.path()).unwrap();
-
-    let sig = Signature::now("Test", "test@test.com").unwrap();
-    std::fs::write(tmp.path().join("README.md"), "# Test\n").unwrap();
-
-    {
-        let mut index = repo.index().unwrap();
-        index.add_path(std::path::Path::new("README.md")).unwrap();
-        index.write().unwrap();
-        let tree_id = index.write_tree().unwrap();
-        let tree = repo.find_tree(tree_id).unwrap();
-        repo.commit(Some("HEAD"), &sig, &sig, "Initial commit", &tree, &[])
-            .unwrap();
-    }
-
-    (tmp, repo)
+    // 确定性测试仓库：仓库级 core.autocrlf=false + 提交 `.gitattributes * -text`，
+    // 见 support.rs 头注释（Windows 上 autocrlf=true 会把 git 写操作后的工作区内容转成 CRLF）。
+    support::TestRepo::init().into_parts()
 }
 
 // --- parse_unified_diff (pure function) ---
@@ -47,6 +35,24 @@ fn parse_unified_diff_single_hunk() {
     assert_eq!(result.hunks[0].old_start, 1);
     assert_eq!(result.hunks[0].old_lines, 3);
     assert_eq!(result.hunks[0].lines.len(), 4); // 1 context + 1 added + 2 context
+}
+
+#[test]
+fn parse_unified_diff_crlf_input_strips_carriage_returns() {
+    // L4 换行边界：diff 解析必须 CRLF 兼容（`\r` 不得泄漏进行内容）。
+    let diff =
+        "diff --git a/f b/f\r\n--- a/f\r\n+++ b/f\r\n@@ -0,0 +1,2 @@\r\n+line1\r\n+line2\r\n";
+    let result = git::parse_unified_diff(diff);
+    assert_eq!(result.hunks.len(), 1);
+    let added: Vec<&str> = result.hunks[0]
+        .lines
+        .iter()
+        .filter_map(|l| match l {
+            DiffLine::Added(s) => Some(s.as_str()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(added, vec!["line1", "line2"], "CRLF 行尾不应泄漏 \\r");
 }
 
 #[test]
@@ -213,6 +219,32 @@ fn get_file_diff_on_new_file() {
         .iter()
         .all(|l| matches!(l, DiffLine::Added(_)));
     assert!(all_added);
+}
+
+#[tokio::test]
+async fn file_diff_new_crlf_file_strips_carriage_returns() {
+    // L4 换行边界：工作区字节是不透明平台数据（Windows/autocrlf 下可能是 CRLF）。
+    // 新文件（untracked）diff 无 hunk，走 fallback 读工作区字节构建 Added 行，
+    // 必须用 `.lines()` 等 CRLF 兼容解析，禁止把 `\r` 泄漏进 diff 视图。
+    let (tmp, _repo) = create_test_repo();
+    let path = tmp.path().to_string_lossy().to_string();
+    std::fs::write(tmp.path().join("crlf.txt"), "line1\r\nline2\r\n").unwrap();
+
+    let transport = ExecTarget::Local;
+    let result = operations::get_file_diff(&transport, &path, "crlf.txt", false)
+        .await
+        .expect("file diff on new CRLF file should succeed");
+
+    let added: Vec<&str> = result
+        .hunks
+        .iter()
+        .flat_map(|h| h.lines.iter())
+        .filter_map(|l| match l {
+            DiffLine::Added(s) => Some(s.as_str()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(added, vec!["line1", "line2"], "CRLF 行尾不应泄漏 \\r");
 }
 
 // --- get_changed_files_diff_stats (numstat) ---
@@ -606,9 +638,21 @@ async fn stash_apply_restores_changes_keeps_entry() {
         .expect("stash_apply should succeed");
     assert!(result.success, "apply should report success");
 
-    // apply 后工作区恢复 stash 中的变更
-    let content = std::fs::read_to_string(tmp.path().join("README.md")).unwrap();
-    assert_eq!(content, "# Stashed change\n");
+    // 语义层断言：apply 后 stash 中的变更恢复到工作区。
+    // 1) git 归一化视图（status）为 oracle：README.md 相对 HEAD 应为修改状态。
+    //    status 基于归一化 blob 比较，行尾无关，不受平台 autocrlf 影响；
+    //    必须用 async 版本（operations::get_git_info），同步版走同步桥，禁止在 #[tokio::test] 调用。
+    let info = operations::get_git_info(&transport, &path).await.unwrap();
+    assert!(!info.is_clean, "apply 后工作区应非 clean");
+    assert!(
+        info.changed_files
+            .iter()
+            .any(|f| f.path == PathBuf::from("README.md")),
+        "apply 后 README.md 应处于修改状态"
+    );
+    // 2) 工作区字节做行尾无关比较：git smudge 可能把 LF 转成平台 CRLF，
+    //    工作区字节是不透明平台数据，禁止字节级精确断言。
+    support::assert_content_eq(tmp.path(), "README.md", "# Stashed change\n");
 
     // stash 条目仍然保留
     let stashes = operations::get_stash_list(&transport, &path).await.unwrap();

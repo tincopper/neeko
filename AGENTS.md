@@ -368,6 +368,9 @@ cargo test --manifest-path src-tauri/Cargo.toml
 8. **路径安全校验**：前端传入的路径（IDE 路径、项目 Root、文件操作路径）在 Rust 端消费前必须 `canonicalize()`，严防路径穿越。`capabilities` 配置禁止放开 `fs:allow-all`、`shell:allow-all`。
 9. **mod.rs 保持极薄**：`mod.rs`（或同名根文件）只允许 `mod` 声明与 `pub use` re-export。业务 `fn`、`impl` 块、结构体字段实现必须抽离到同级独立文件（`services.rs`、`manager.rs`、`types.rs`）。
 10. **平台代码规范化（Platform Adapter）**：跨平台差异与单平台专属代码（macOS-only / Windows-only / Linux-only）必须抽入 `src-tauri/src/platform/<theme>/` —— `mod.rs` 用 `#[cfg]` 门控 + `pub use`（保持纯声明），非目标平台提供同签名默认 stub（`Ok(None)` / no-op，**必须为 `const fn`** 以满足 clippy `missing_const_for_fn`），业务代码无条件调用统一接口。禁止在通用文件（`commands.rs` / `manager.rs` / 根级模块）内平铺 `#[cfg]` 块或保留未门控的平台专属 import（平台专属 import 必须与其使用点同 cfg 门控，否则在非目标平台触发 `unused_imports`，被 clippy `-D warnings` 拦截）。细则见 `.trellis/spec/backend/quality-guidelines.md`「平台差异集中化」。
+11. **换行边界（Line-Ending Boundary）**：Git 客户端同时面对「git 归一化视图」（blob/diff/status，受 `text`/`core.autocrlf` 影响时统一 LF，确定）与「工作区物化字节」（由平台 + git 配置决定，Windows 默认 `autocrlf=true` 会转 CRLF，**不确定**）。因此：
+    - **测试**：禁止对工作区换行做字节级精确断言（`read_to_string` + `assert_eq!(content, "...")` 模式在 Windows CI 必挂）。测试仓库必须用确定性 builder（集成侧 `tests/unit/support.rs::TestRepo`、lib 侧 `operations.rs::init_repo`：仓库级 `core.autocrlf=false` + 提交 `.gitattributes * -text` 双保险）；必须断言工作区字节时走行尾无关比较（`support::assert_content_eq` / `assert_worktree_eq`），或优先在 git 归一化视图（status/diff）上断言。CI 护栏：`.trellis/scripts/check_worktree_byte_assertions.py`（已接入 `pnpm lint` 与 CI）。
+    - **生产**：禁止向 git 调用注入 `-c core.autocrlf=...` / 强制换行语义改变用户仓库行为 —— 必须尊重用户仓库的换行设置。工作区字节按不透明平台数据处理（解析走 `.lines()` 等 CRLF 兼容路径）。
 
 ### 业界最佳实践（React / Rust 通用底线）
 

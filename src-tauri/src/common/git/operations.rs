@@ -1539,6 +1539,17 @@ mod tests {
             .expect("run git command")
     }
 
+    /// 行尾无关地断言工作区文件内容（git smudge 可能把 LF 转成平台 CRLF，
+    /// 工作区字节是不透明平台数据，禁止字节级精确断言）。
+    fn assert_worktree_eq(dir: &std::path::Path, rel: &str, expected: &str) {
+        let content = std::fs::read_to_string(dir.join(rel)).expect("read worktree file");
+        assert_eq!(
+            content.replace("\r\n", "\n"),
+            expected,
+            "worktree content mismatch: {rel}"
+        );
+    }
+
     /// 初始化一个含单个提交的临时 git 仓库，返回 (TempDir, 路径)。
     async fn init_repo() -> (tempfile::TempDir, String) {
         let dir = tempdir().expect("create temp dir");
@@ -1547,8 +1558,10 @@ mod tests {
             vec!["init", "-q"],
             vec!["config", "user.email", "t@t"],
             vec!["config", "user.name", "t"],
-            // Windows 上 git 默认 autocrlf=true 会把检出内容转成 CRLF,
-            // 导致 discard 恢复后内容与写入的 `base\n` 不一致;关闭以保证跨平台一致。
+            // 换行语义钉死（与 tests/unit/support.rs 的 TestRepo 同一套双保险）：
+            // Windows 上 git 默认 autocrlf=true 会把检出内容转成 CRLF，
+            // 导致 discard 恢复后内容与写入的 `base\n` 不一致。
+            // 仓库级 autocrlf=false + `.gitattributes * -text` 保证跨平台一致。
             vec!["config", "core.autocrlf", "false"],
         ];
         for cmd in &commands {
@@ -1561,6 +1574,8 @@ mod tests {
             );
         }
         std::fs::write(dir.path().join("base.txt"), "base\n").expect("write base");
+        std::fs::write(dir.path().join(".gitattributes"), "* -text\n")
+            .expect("write .gitattributes");
         let out = git_local(&path, &["add", "-A"]).await;
         assert!(out.exit_code == 0, "git add failed");
         let out = git_local(&path, &["commit", "-qm", "init"]).await;
@@ -1597,8 +1612,7 @@ mod tests {
             .await
             .expect("discard tracked file should succeed");
 
-        let content = std::fs::read_to_string(dir.path().join("base.txt")).expect("read base");
-        assert_eq!(content, "base\n", "tracked file should be restored");
+        assert_worktree_eq(dir.path(), "base.txt", "base\n");
     }
 
     #[tokio::test]
@@ -1614,8 +1628,7 @@ mod tests {
             .await
             .expect("discard staged file should succeed");
 
-        let content = std::fs::read_to_string(dir.path().join("base.txt")).expect("read base");
-        assert_eq!(content, "base\n", "staged file should be restored");
+        assert_worktree_eq(dir.path(), "base.txt", "base\n");
     }
 
     /// 脚本化 mock transport：status 返回已暂存修改，reset 返回真实错误（非 unknown revision）。
@@ -1694,6 +1707,69 @@ mod tests {
         let transport = ResetErrorTransport;
         let result = discard_file(&transport, "/tmp", "base.txt").await;
         assert!(result.is_err(), "real reset error should propagate");
+    }
+
+    /// 脚本化 mock transport：open_repo=None 强制走 shell 分支；run_git 返回空 diff，
+    /// 使 `get_file_diff_shell` 的 fallback 读工作区字节。
+    struct NoHunkShellTransport;
+
+    #[async_trait]
+    impl GitTransport for NoHunkShellTransport {
+        async fn run_git(&self, args: &[&str], work_dir: &str) -> Result<String> {
+            self.run_git_opts(args, work_dir, GitExecOptions::default())
+                .await
+        }
+
+        async fn run_git_opts(
+            &self,
+            _args: &[&str],
+            _work_dir: &str,
+            _opts: GitExecOptions<'_>,
+        ) -> Result<String> {
+            Ok(String::new())
+        }
+
+        async fn run_git_with_stdin(
+            &self,
+            _args: &[&str],
+            _work_dir: &str,
+            _opts: GitExecOptions<'_>,
+            _stdin: &[u8],
+        ) -> Result<String> {
+            unimplemented!()
+        }
+
+        fn open_repo(&self, _path: &str) -> Option<git2::Repository> {
+            None
+        }
+
+        async fn is_git_repo(&self, _path: &str) -> bool {
+            true
+        }
+    }
+
+    #[tokio::test]
+    async fn file_diff_shell_fallback_crlf_file_strips_carriage_returns() {
+        // L4 换行边界（shell 分支）：WSL/SSH transport 无 git2 repo（open_repo=None），
+        // 走 `get_file_diff_shell` 的 fallback 读工作区字节构建 Added 行。
+        // 必须用 `.lines()` 等 CRLF 兼容解析，禁止把 `\r` 泄漏进 diff 视图。
+        let (dir, path) = init_repo().await;
+        std::fs::write(dir.path().join("crlf.txt"), "line1\r\nline2\r\n").expect("write crlf file");
+
+        let result = get_file_diff(&NoHunkShellTransport, &path, "crlf.txt", false)
+            .await
+            .expect("shell fallback diff on CRLF file should succeed");
+
+        let added: Vec<&str> = result
+            .hunks
+            .iter()
+            .flat_map(|h| h.lines.iter())
+            .filter_map(|l| match l {
+                DiffLine::Added(s) => Some(s.as_str()),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(added, vec!["line1", "line2"], "CRLF 行尾不应泄漏 \\r");
     }
 
     #[test]

@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
-    "lint": "cargo fmt --manifest-path src-tauri/Cargo.toml --all -- --check && cargo clippy --manifest-path src-tauri/Cargo.toml 2>&1",
+    "lint": "cargo fmt --manifest-path src-tauri/Cargo.toml --all -- --check && cargo clippy --manifest-path src-tauri/Cargo.toml -- -D warnings 2>&1 && python3 .trellis/scripts/check_worktree_byte_assertions.py",
     "lint:fe": "eslint src/ && pnpm tsc --noEmit && vitest run --typecheck",
     "lint:all": "pnpm lint && pnpm lint:fe",
     "commitlint": "commitlint",

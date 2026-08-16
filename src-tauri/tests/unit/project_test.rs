@@ -5,6 +5,8 @@ use neeko_lib::session::types::ProjectSession;
 use std::path::PathBuf;
 use tempfile::TempDir;
 
+use super::support;
+
 #[test]
 fn new_manager_is_empty() {
     let pm = ProjectManager::new(|_| {});
@@ -67,21 +69,10 @@ fn add_project_default_state() {
 
 #[test]
 fn add_project_from_git_repo() {
-    let tmp = TempDir::new().unwrap();
-    let repo = git2::Repository::init(tmp.path()).unwrap();
-    let sig = git2::Signature::now("Test", "test@test.com").unwrap();
-    std::fs::write(tmp.path().join("README.md"), "# Test\n").unwrap();
-    let mut index = repo.index().unwrap();
-    index.add_path(std::path::Path::new("README.md")).unwrap();
-    index.write().unwrap();
-    let tree_id = index.write_tree().unwrap();
-    let tree = repo.find_tree(tree_id).unwrap();
-    repo.commit(Some("HEAD"), &sig, &sig, "Init", &tree, &[])
-        .unwrap();
-
+    let trepo = support::TestRepo::init();
     let mut pm = ProjectManager::new(|_| {});
     let project = pm
-        .add_project(tmp.path().to_path_buf(), None, None, None)
+        .add_project(trepo.path().to_path_buf(), None, None, None)
         .unwrap();
     assert!(project.git_info.is_some());
 }
@@ -315,23 +306,13 @@ fn add_project_from_session_nonexistent_path_fails() {
 
 #[test]
 fn list_projects_returns_empty_changed_files() {
-    let tmp = TempDir::new().unwrap();
-    let repo = git2::Repository::init(tmp.path()).unwrap();
-    let sig = git2::Signature::now("Test", "test@test.com").unwrap();
-    std::fs::write(tmp.path().join("README.md"), "# Test\n").unwrap();
-    let mut index = repo.index().unwrap();
-    index.add_path(std::path::Path::new("README.md")).unwrap();
-    index.write().unwrap();
-    let tree_id = index.write_tree().unwrap();
-    let tree = repo.find_tree(tree_id).unwrap();
-    repo.commit(Some("HEAD"), &sig, &sig, "Init", &tree, &[])
-        .unwrap();
+    let trepo = support::TestRepo::init();
 
     // 添加一个修改的文件
-    std::fs::write(tmp.path().join("README.md"), "# Modified\n").unwrap();
+    std::fs::write(trepo.path().join("README.md"), "# Modified\n").unwrap();
 
     let mut pm = ProjectManager::new(|_| {});
-    pm.add_project(tmp.path().to_path_buf(), None, None, None)
+    pm.add_project(trepo.path().to_path_buf(), None, None, None)
         .unwrap();
 
     // list_projects 返回的项目 changed_files 应该为空

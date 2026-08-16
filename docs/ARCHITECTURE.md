@@ -752,3 +752,32 @@ commands.<method>()  ────────► └─────────�
 | 12 | Theme sync: Pi .theme.css → OpenCode theme.json → Tauri theme | Two-directional: Pi's theme CSS is extracted into Tauri color vars. OpenCode theme format cached locally for runtime theme switching. |
 | 13 | Git infrastructure split: `common/git/` (operations) + `git/` (commands) | Operations, transport, parsers live in infrastructure layer. Command glue stays at root level. |
 | 14 | Session store: window_state removed, sidebar_width + worktree_state added | Session evolved to persist sidebar and worktree state alongside project list. Same JSON file, backward-compatible via `#[serde(default)]`. |
+
+### 6.1 Line-Ending Boundary (换行边界契约)
+
+**数据面约定**：Git 客户端同时面对两个内容视图，二者必须显式区分——
+
+- **git 归一化视图（唯一确定性数据面）**：blob / diff / status 的输出。受 `text`/`core.autocrlf`
+  影响时统一 LF，平台无关。**凡可在此层断言/取数的逻辑，一律用 git 输出做 oracle。**
+- **工作区物化字节（不透明平台数据）**：磁盘真实字节，由平台 + git 配置（Windows 默认
+  `autocrlf=true` 转 CRLF）+ 环境注入共同决定。**读取时按不透明数据处理，解析一律走
+  `.lines()` / `trim_end_matches('\r')` 等 CRLF 兼容路径，禁止做 `\n` 字节级假设。**
+
+**规则**：
+1. **生产**：禁止向 git 调用注入 `-c core.autocrlf=...` 或强制换行语义——必须尊重用户仓库的
+   换行设置。工作区变更一律经 git CLI（由 git 按其 smudge/clean 规则落盘），应用不直接写
+   工作区字节。
+2. **测试**：禁止对工作区换行做字节级精确断言。测试仓库用确定性 builder
+   （`tests/unit/support.rs::TestRepo` / `operations.rs::init_repo`：
+   `core.autocrlf=false` + 提交 `.gitattributes * -text`），断言工作区字节走行尾无关比较
+   （`support::assert_content_eq` / `assert_worktree_eq`）。
+
+**生产审计结论（L4，2026）**：`common/git/` 5 处工作区字节读点全部 CRLF 兼容——
+`operations.rs:1106`（`get_file_diff` fallback）、`operations.rs:1193`（untracked 行数）、
+`local.rs:310`（行数 fallback，主路径 `wc -l` 按 `\n` 计数）、`local.rs:514`（git2 fallback，
+其 diff 行内容另有 `trim_end_matches('\r')`）、`local.rs:1412`（untracked diff fallback）——
+均走 `.lines()`。`transport.rs` 的 `write_all(stdin)` 写入 git 子进程 stdin（如 `git apply
+--stdin`），非工作区字节。无任何生产 autocrlf 注入。回归测试：`git_test` 中
+`file_diff_new_crlf_file_strips_carriage_returns`（git2 分支）、`operations` 中
+`file_diff_shell_fallback_crlf_file_strips_carriage_returns`（shell 分支，WSL/SSH）、
+`parse_unified_diff_crlf_input_strips_carriage_returns`（解析器）。

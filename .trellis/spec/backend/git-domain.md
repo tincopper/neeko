@@ -115,6 +115,39 @@
   decorate 含 tool refs 的提交其 `refs`/`refs_list` 不含 tool 项；stash list/files roundtrip。
 - 缓存（`cache.rs` tests）：未变命中（fetch 仅一次）；文件修改/删除后重算；collapse 键隔离。
 
+## 7. 换行边界契约（git 归一化视图 vs 工作区字节）
+
+**第一性原理**：Git 客户端同时面对两个内容视图——
+
+| 视图 | 含义 | 确定性 |
+|---|---|---|
+| git 归一化视图 | blob / diff / status 输出 | 受 `text`/`core.autocrlf` 影响时统一 LF，平台无关、**确定** |
+| 工作区物化字节 | 磁盘上的真实字节 | 由平台 + git 配置（Windows 默认 `autocrlf=true` 转 CRLF）+ 环境注入共同决定，**不确定** |
+
+**规则**：
+
+- **测试**：禁止对工作区换行做字节级精确断言（`read_to_string` + `assert_eq!(content, "...")` 在
+  Windows CI 必挂，回归样例 `git_test::stash_apply_restores_changes_keeps_entry`）。测试仓库必须用
+  确定性 builder：集成侧 `tests/unit/support.rs::TestRepo`、lib 侧 `operations.rs::init_repo`，
+  双保险 = 仓库级 `core.autocrlf=false` + 提交 `.gitattributes * -text`（属性级钉死、随仓库走、
+  抵抗全局配置与环境注入）。必须断言工作区字节时走行尾无关比较（`support::assert_content_eq` /
+  `assert_worktree_eq`），或优先在 git 归一化视图（status/diff）上断言。
+- **生产**：禁止向 git 调用注入 `-c core.autocrlf=...` 或强制换行语义——必须尊重用户仓库的换行
+  设置。工作区字节按不透明平台数据处理（解析走 `.lines()` 等 CRLF 兼容路径，如
+  `operations.rs::get_file_diff` 的 fallback）。
+- **护栏**：`.trellis/scripts/check_worktree_byte_assertions.py` 检出「read_to_string 绑定变量被
+  assert_eq! 字节级引用」模式，已接入 `pnpm lint` 与 CI（backend-check ubuntu）。
+
+**生产审计（L4）**：`common/git/` 5 处工作区字节读点全部 CRLF 兼容——`operations.rs:1106`
+（`get_file_diff` fallback）、`operations.rs:1193`（untracked 行数）、`local.rs:310`（行数
+fallback，主路径 `wc -l` 按 `\n` 计数）、`local.rs:514`（git2 fallback，其 diff 行内容另有
+`trim_end_matches('\r')`）、`local.rs:1412`（untracked diff fallback）——均走 `.lines()`。
+`transport.rs` 的 `write_all(stdin)` 写入 git 子进程 stdin（如 `git apply --stdin`），非工作区
+字节。无任何生产 autocrlf 注入。回归测试：`git_test::file_diff_new_crlf_file_strips_carriage_returns`
+（git2 分支）`operations::file_diff_shell_fallback_crlf_file_strips_carriage_returns`（shell 分支，
+WSL/SSH）+ `parse_unified_diff_crlf_input_strips_carriage_returns`（解析器）。约定详见
+`docs/ARCHITECTURE.md` 6.1。
+
 ## 相关文件
 
 - `src-tauri/src/common/git/refs.rs` — refs 分类纯函数
