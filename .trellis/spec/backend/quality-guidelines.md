@@ -198,7 +198,9 @@ pub fn build_edit_submenu(
 
 ```rust
 // platform/menu/default.rs —— 非目标平台默认 stub（与 macOS 实现同签名）
-pub fn build_edit_submenu(
+// 必须为 `const fn`：clippy `missing_const_for_fn` 在 `-D warnings` 下强制，
+// 且本文件在 macOS 本地不编译，仅 CI 平台矩阵能验证（不可见失败域）
+pub const fn build_edit_submenu(
     _handle: &tauri::AppHandle,
 ) -> tauri::Result<Option<tauri::menu::Submenu<tauri::Wry>>> {
     Ok(None)
@@ -210,6 +212,7 @@ pub fn build_edit_submenu(
 - **平台专属 import 只允许出现在专属实现文件内**（如 `macos.rs` 的 `use tauri::menu::PredefinedMenuItem`）；`mod.rs` 门面与业务代码禁止引入任何平台专属 import，否则非目标平台触发 `unused_imports`。
 - 业务代码只依赖 `platform::<theme>::` 统一接口，删除原函数体内的 `#[cfg]` 块。
 - 单平台专属主题（macOS-only / Windows-only / Linux-only）同样适用本模式：非目标平台在独立 stub 文件（如 `default.rs`）提供同签名默认实现（返回 `Ok(None)` / no-op），`mod.rs` 保持纯声明，业务代码无条件调用。
+- 非目标平台默认 stub **必须声明为 `const fn`**（体为纯 `Ok(None)` / no-op 的常量函数），否则 clippy `missing_const_for_fn` 在 `-D warnings` 下拦截 CI；stub 文件在开发机（macOS）本地不编译，属不可见失败域，由 CI 平台矩阵兜底。
 - 平台差异是**编译期确定**的，坚持编译期 cfg + 每平台文件，**不**用运行期 `Box<dyn Trait>`（与「有限策略集用 Enum+match」原则一致：平台差异不是运行期策略）。
 - 纯移动迁移：不改变平台逻辑实现，仅移动位置、统一接口。
 - 行为正确性由 CI 三平台矩阵（`.github/workflows/ci.yml` 的 `backend-check`/`backend-test`）兜底；本约定只保证「每个平台有实现且能编译」。

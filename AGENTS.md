@@ -367,7 +367,7 @@ cargo test --manifest-path src-tauri/Cargo.toml
 7. **if-let 嵌套不超过 3 层**：连续 3 层及以上 `if let` / `if let else if` 必须拍平为单个 `match`。反之，仅有 1-2 个 Happy Path 的解构优先用 `if let`，禁止写出带 `_ => {}` 占位的 `match`。
 8. **路径安全校验**：前端传入的路径（IDE 路径、项目 Root、文件操作路径）在 Rust 端消费前必须 `canonicalize()`，严防路径穿越。`capabilities` 配置禁止放开 `fs:allow-all`、`shell:allow-all`。
 9. **mod.rs 保持极薄**：`mod.rs`（或同名根文件）只允许 `mod` 声明与 `pub use` re-export。业务 `fn`、`impl` 块、结构体字段实现必须抽离到同级独立文件（`services.rs`、`manager.rs`、`types.rs`）。
-10. **平台代码规范化（Platform Adapter）**：跨平台差异与单平台专属代码（macOS-only / Windows-only / Linux-only）必须抽入 `src-tauri/src/platform/<theme>/` —— `mod.rs` 用 `#[cfg]` 门控 + `pub use`，非目标平台提供同签名默认 stub（`Ok(None)` / no-op），业务代码无条件调用统一接口。禁止在通用文件（`commands.rs` / `manager.rs` / 根级模块）内平铺 `#[cfg]` 块或保留未门控的平台专属 import（平台专属 import 必须与其使用点同 cfg 门控，否则在非目标平台触发 `unused_imports`，被 clippy `-D warnings` 拦截）。细则见 `.trellis/spec/backend/quality-guidelines.md`「平台差异集中化」。
+10. **平台代码规范化（Platform Adapter）**：跨平台差异与单平台专属代码（macOS-only / Windows-only / Linux-only）必须抽入 `src-tauri/src/platform/<theme>/` —— `mod.rs` 用 `#[cfg]` 门控 + `pub use`（保持纯声明），非目标平台提供同签名默认 stub（`Ok(None)` / no-op，**必须为 `const fn`** 以满足 clippy `missing_const_for_fn`），业务代码无条件调用统一接口。禁止在通用文件（`commands.rs` / `manager.rs` / 根级模块）内平铺 `#[cfg]` 块或保留未门控的平台专属 import（平台专属 import 必须与其使用点同 cfg 门控，否则在非目标平台触发 `unused_imports`，被 clippy `-D warnings` 拦截）。细则见 `.trellis/spec/backend/quality-guidelines.md`「平台差异集中化」。
 
 ### 业界最佳实践（React / Rust 通用底线）
 
