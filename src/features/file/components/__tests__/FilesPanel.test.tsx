@@ -2,6 +2,12 @@ import { fireEvent, render as renderRTL, screen, waitFor } from '@testing-librar
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import FilesPanel, { displayHomePath } from '@/features/file/components/FilesPanel';
+// Mock setDragFile to verify it's called for directories
+vi.mock('@/features/file/hooks/useFileDrop', () => ({
+  setDragFile: vi.fn(),
+  useFileDrop: vi.fn(),
+}));
+import { setDragFile } from '@/features/file/hooks/useFileDrop';
 import { useFileStore } from '@/features/file/store';
 import type { FileChange, FileNode } from '@/shared/types';
 import { createAppProviderWrapper } from '@/testing/AppProviderTestUtils';
@@ -423,5 +429,76 @@ describe('displayHomePath', () => {
 
   it('home 目录未知时保持完整路径', () => {
     expect(displayHomePath('/Users/tomgs/x', '', false)).toBe('/Users/tomgs/x');
+  });
+});
+
+describe('FileTreeNode draggable（目录拖拽）', () => {
+  beforeEach(() => {
+    seedDirs(tree);
+    vi.clearAllMocks();
+  });
+
+  /**
+   * 获取 treeitem 节点：通过文本找到 span，再向上找到 [role="treeitem"]。
+   * 使用 getByRole('treeitem') + 文本匹配，避免 testing-library/no-node-access。
+   */
+  function getTreeitemByText(text: string): HTMLElement {
+    const allItems = screen.getAllByRole('treeitem');
+    const found = allItems.find((el) => el.textContent?.includes(text));
+    if (!found) throw new Error(`treeitem containing "${text}" not found`);
+    return found;
+  }
+
+  it('目录节点应具有 draggable 属性', () => {
+    render(<FilesPanel {...baseProps} />);
+
+    // 展开 src 目录
+    fireEvent.click(screen.getByText('src'));
+
+    // src 目录节点应可拖拽
+    const srcNode = getTreeitemByText('src');
+    expect(srcNode).toHaveAttribute('draggable', 'true');
+  });
+
+  it('拖拽目录时应调用 setDragFile', () => {
+    render(<FilesPanel {...baseProps} />);
+
+    // 展开 src 目录
+    fireEvent.click(screen.getByText('src'));
+
+    const srcNode = getTreeitemByText('src');
+
+    // 模拟 dragStart 事件
+    fireEvent.dragStart(srcNode, {
+      dataTransfer: { effectAllowed: 'copy', setData: vi.fn() },
+    });
+
+    // 验证 setDragFile 被调用，传入目录路径
+    expect(setDragFile).toHaveBeenCalledWith('src', 'p1');
+  });
+
+  it('文件节点拖拽时也应调用 setDragFile', () => {
+    render(<FilesPanel {...baseProps} />);
+
+    // 展开 src 目录
+    fireEvent.click(screen.getByText('src'));
+
+    const fileNode = getTreeitemByText('a.ts');
+
+    fireEvent.dragStart(fileNode, {
+      dataTransfer: { effectAllowed: 'copy', setData: vi.fn() },
+    });
+
+    expect(setDragFile).toHaveBeenCalledWith('src/a.ts', 'p1');
+  });
+
+  it('projectId 为空时节点不可拖拽', () => {
+    render(<FilesPanel {...baseProps} projectId={null} />);
+
+    // 展开 src 目录
+    fireEvent.click(screen.getByText('src'));
+
+    const srcNode = getTreeitemByText('src');
+    expect(srcNode).toHaveAttribute('draggable', 'false');
   });
 });

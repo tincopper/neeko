@@ -399,3 +399,151 @@ export function stripImeSegmentationSpaces(data: string): string;
 |------|---------|
 | reorderable 模式下点 `×` | `onClose` 被调用，不触发拖拽 |
 | `×` 上 pointerdown 后移动 | 不触发 reorder |
+
+---
+
+## 文件/目录拖拽到输入框（HTML5 dragend + 双目标分发，2026-08-17）
+
+### 1. 背景
+
+文件树中的节点（文件 + 目录）支持拖拽到输入框：松开后将被拖拽的路径粘贴到目标输入框。与 dnd-kit 拖拽排序不同，此场景使用原生 HTML5 `draggable` + `dragend` 事件（不冲突、无需 `preventDefault`、保证 fire）。
+
+### 2. 核心架构
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│  FileTreeNode                                                │
+│  draggable={!!projectId}                                    │
+│  onDragStart → setDragFile(path, projectId)                 │
+│  （文件 + 目录均触发，is_dir 不再门控）                        │
+└──────────────────────┬──────────────────────────────────────┘
+                       │ 模块级 pendingDrag: { path, projectId }
+                       ▼
+┌─────────────────────────────────────────────────────────────┐
+│  useFileDrop hook（ProjectWorkspace 顶层挂载）                │
+│  document.addEventListener('dragend', handleDragEnd)         │
+│                                                              │
+│  Priority 1: document.activeElement 是 textarea /            │
+│              contenteditable / text input →                  │
+│              dispatchEvent(INSERT_TO_AGENT_INPUT_EVENT)       │
+│                                                              │
+│  Priority 2: editorStore 激活 tab 是 terminal →              │
+│              sendToTerminal(projectId, path + ' ', tabId)     │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### 3. 设计要点
+
+1. **`dragend` 而非 `drop`**：`dragend` 保证在源元素上 fire（无论落点在哪），无需 `preventDefault`，无 `data-tauri-drag-region` 冲突。
+2. **模块级 `pendingDrag`**：`setDragFile` 写入、`handleDragEnd` 消费并清零，天然配对。
+3. **双目标分发**：优先判断焦点是否在文本输入元素（agent input），否则回退到 terminal tab。复用既有 `INSERT_TO_AGENT_INPUT_EVENT` 事件机制，agent 输入组件监听该事件接收路径。
+4. **路径格式化**：统一 `path + ' '`（尾部空格，方便继续输入），不自动提交（无 `\r`），不额外加引号/转义。
+5. **isTextInputElement 判定**：`TEXTAREA` → true；`INPUT` → 仅 `text`/`search`/`url`/空类型；`contenteditable=true` → true；其他（`checkbox`/`radio`/`button` 等）→ false。
+
+### 4. 组件契约
+
+```ts
+// FileTreeNode.tsx
+// 文件 + 目录均可拖动，is_dir 不再门控
+const handleDragStart = useCallback(
+  (e: React.DragEvent) => {
+    if (!projectId) return;  // 仅 projectId 缺失时阻止
+    e.dataTransfer.effectAllowed = 'copy';
+    setDragFile(node.path, projectId);
+  },
+  [node.path, projectId],  // 依赖不含 node.is_dir
+);
+
+// JSX
+<div
+  draggable={!!projectId}  // 文件 + 目录均 true
+  onDragStart={handleDragStart}
+  ...
+/>
+```
+
+```ts
+// useFileDrop.ts
+// 模块级 pendingDrag 存储
+export function setDragFile(path: string, projectId: string): void {
+  pendingDrag = { path, projectId };
+}
+
+// hook 内部分发
+export function useFileDrop(): void {
+  useEffect(() => {
+    const handleDragEnd = () => {
+      if (!pendingDrag) return;
+      const { path, projectId } = pendingDrag;
+      pendingDrag = null;
+
+      // Priority 1: agent input（textarea / contenteditable）
+      const activeEl = document.activeElement;
+      if (activeEl && isTextInputElement(activeEl)) {
+        window.dispatchEvent(
+          new CustomEvent(INSERT_TO_AGENT_INPUT_EVENT, { detail: { text: path + ' ' } }),
+        );
+        return;
+      }
+
+      // Priority 2: terminal tab
+      const entry = useEditorStore.getState().tabs[projectId];
+      if (!entry) return;
+      const activeTab = entry.tabs.find((t) => t.id === entry.activeTabId);
+      if (!activeTab || activeTab.data.kind !== 'terminal') return;
+      sendToTerminal(projectId, path + ' ', activeTab.id);
+    };
+
+    document.addEventListener('dragend', handleDragEnd);
+    return () => document.removeEventListener('dragend', handleDragEnd);
+  }, []);
+}
+```
+
+### 5. 反模式
+
+#### ❌ 用 `drop` / `onDrop` 替代 `dragend`
+
+```tsx
+// 不要这样做 — drop 在源元素上不 fire（落点不在同一元素时丢失事件）
+<div onDrop={handleDrop} onDragOver={(e) => e.preventDefault()} />
+```
+
+#### ❌ 在 handleDragStart 中区分文件/目录
+
+```ts
+// 不要这样做 — 目录与文件应同等对待
+if (node.is_dir) return;
+```
+
+路径是 opaque 字符串，终端与 agent input 对文件/目录路径的处理一致（无需 shell 转义，直接写 PTY / 插入文本）。
+
+#### ❌ 在 dispatchEvent 中硬编码事件名
+
+```ts
+// 不要这样做 — 事件名必须来自 @/shared/events 常量
+window.dispatchEvent(new CustomEvent('neeko:insert-to-agent-input', ...));
+```
+
+#### ❌ 路径加引号或尾部斜杠
+
+```ts
+// 不要这样做 — 破坏用户连续输入
+sendToTerminal(projectId, `"${path}" `, tabId);  // 多余引号
+sendToTerminal(projectId, `${path}/`, tabId);   // 多余斜杠（目录）
+```
+
+### 6. 测试断言
+
+| 场景 | 期望行为 |
+|------|---------|
+| 文件节点 `draggable` 属性 | `draggable="true"`（projectId 非空时） |
+| 目录节点 `draggable` 属性 | `draggable="true"`（与文件一致） |
+| 拖拽目录 → `setDragFile` 调用 | `setDragFile('/dir/path', projectId)` |
+| `dragend` 时 textarea 聚焦 | `INSERT_TO_AGENT_INPUT_EVENT` 被 dispatch，`sendToTerminal` 不调用 |
+| `dragend` 时 contenteditable 聚焦 | `INSERT_TO_AGENT_INPUT_EVENT` 被 dispatch |
+| `dragend` 时 checkbox 聚焦 | 不走 agent input，回退到 terminal（非文本 input） |
+| `dragend` 时 terminal tab 激活 | `sendToTerminal` 被调用，带 `path + ' '` |
+| `dragend` 时无 pendingDrag | 不调用任何分发 |
+| 第二次 `dragend`（pendingDrag 已清空） | 不重复分发 |
+| `projectId` 为空 | 节点 `draggable="false"`，不触发 `setDragFile` |

@@ -120,11 +120,11 @@ function FileTreeNode({
 
   const handleDragStart = useCallback(
     (e: React.DragEvent) => {
-      if (node.is_dir || !projectId) return;
+      if (!projectId) return;
       e.dataTransfer.effectAllowed = 'copy';
       setDragFile(node.path, projectId);
     },
-    [node.path, node.is_dir, projectId],
+    [node.path, projectId],
   );
 
   // 重命名模式：节点行替换为内联输入框（所有 hooks 之后，避免提前 return 破坏 hooks 顺序）
@@ -154,7 +154,7 @@ function FileTreeNode({
           isActive || isSelected ? 'bg-bg-selected' : 'hover:bg-bg-hover'
         }`}
         style={{ paddingLeft: indent }}
-        draggable={!node.is_dir}
+        draggable={!!projectId}
         onDragStart={handleDragStart}
         onClick={handleClick}
         onKeyDown={(e) => {
