@@ -44,6 +44,16 @@ export function isFileTab(tab: Tab): tab is Tab & { data: FileTabData } {
   return tab.data.kind === 'file';
 }
 
+/** Type guard: file tab with unsaved changes（关闭确认 / 退出警示共用） */
+export function isDirtyFileTab(tab: Tab): tab is Tab & { data: FileTabData } {
+  return isFileTab(tab) && tab.data.isDirty;
+}
+
+/** 文件 tab 展示名：untitled 用 untitledName，否则 fileName，兜底 Untitled */
+export function getTabDisplayName(tab: Tab & { data: FileTabData }): string {
+  return tab.data.untitledName ?? tab.data.fileName ?? 'Untitled';
+}
+
 /** 检查文件是否为 HTML 文件 */
 export function isHtmlFile(filePath: string): boolean {
   const ext = filePath.split('.').pop()?.toLowerCase();

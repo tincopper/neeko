@@ -8,6 +8,7 @@ function makeData(): AppShellData {
     closeTab: vi.fn(),
     activateTab: vi.fn(),
     saveFile: vi.fn(),
+    saveTabById: vi.fn(),
     updateTabContent: vi.fn(),
     loadFileTree: vi.fn(),
     expandSubTree: vi.fn(),
@@ -91,6 +92,7 @@ function makeData(): AppShellData {
     handleAgentClick: fn,
     handleToggleHiddenAgent: fn,
     confirmExitOpen: true,
+    unsavedFileNames: ['a.ts'],
     onConfirmExit: fn,
     onCancelExit: fn,
     onRemoteAuthCancel: fn,
@@ -124,6 +126,7 @@ describe('buildAppShellValues', () => {
     expect(fileActionsValue.onFileCloseTab).toBe(data.fileView.closeTab);
     expect(fileActionsValue.onFileActivateTab).toBe(data.fileView.activateTab);
     expect(fileActionsValue.onFileSave).toBe(data.fileView.saveFile);
+    expect(fileActionsValue.onFileSaveTab).toBe(data.fileView.saveTabById);
     expect(fileActionsValue.onFileContentChange).toBe(data.fileView.updateTabContent);
     expect(fileActionsValue.onLoadFileTree).toBe(data.fileView.loadFileTree);
     expect(fileActionsValue.onExpandDir).toBe(data.fileView.expandSubTree);
@@ -221,6 +224,7 @@ describe('buildAppShellValues', () => {
     const { appModalsProps } = buildAppShellValues(data);
 
     expect(appModalsProps.confirmExitOpen).toBe(true);
+    expect(appModalsProps.unsavedFileNames).toEqual(['a.ts']);
     expect(appModalsProps.onConfirmExit).toBe(data.onConfirmExit);
     expect(appModalsProps.onCancelExit).toBe(data.onCancelExit);
     expect(appModalsProps.wslDialogOpen).toBe(true);

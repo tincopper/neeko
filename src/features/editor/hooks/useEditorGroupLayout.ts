@@ -4,6 +4,7 @@ import { closeAllEditorTabs, closeEditorTab } from '@/features/terminal';
 import { useEditorStore } from '@/shared/store/editorStore';
 import type { EditorGroupId, EditorSplitLayout, Tab } from '@/shared/types';
 import { createDefaultEditorLayout, findGroupIdForTab } from '@/shared/types/editorGroup';
+import { getTabDisplayName, isDirtyFileTab } from '@/shared/utils/fileTree';
 
 export interface EditorGroupLayoutResult {
   layout: EditorSplitLayout;
@@ -33,12 +34,21 @@ export interface EditorGroupLayoutResult {
   closeAllTabs: () => void;
 }
 
+/**
+ * 批量关闭前如有未保存文件，先询问用户。`dirtyNames` 为待关闭的未保存文件名，
+ * 用户确认后调用 `doClose` 执行实际关闭。
+ */
+type RequestCloseDirty = (dirtyNames: string[], doClose: () => void) => void;
+
 // Stable empty array: returning a fresh `[]` from a zustand selector each call
 // makes useSyncExternalStore see a changed snapshot every render (infinite
 // loop risk in production builds); share one reference instead.
 const EMPTY_TABS: Tab[] = [];
 
-export function useEditorGroupLayout(tabKey: string): EditorGroupLayoutResult {
+export function useEditorGroupLayout(
+  tabKey: string,
+  onRequestCloseDirty?: RequestCloseDirty,
+): EditorGroupLayoutResult {
   const allTabs = useEditorStore((s) => s.tabs[tabKey]?.tabs ?? EMPTY_TABS);
   const projectActiveTabId = useEditorStore((s) => s.tabs[tabKey]?.activeTabId ?? null);
   const rawLayout = useEditorStore((s) => s.editorLayout[tabKey]);
@@ -202,23 +212,44 @@ export function useEditorGroupLayout(tabKey: string): EditorGroupLayoutResult {
 
   const pinnedPanelRatio = layout.pinnedPanelRatio ?? 0.35;
 
+  const dirtyNamesOf = useCallback(
+    (tabsToCheck: Tab[]): string[] => tabsToCheck.filter(isDirtyFileTab).map(getTabDisplayName),
+    [],
+  );
+
   const closeOtherTabs = useCallback(
     (keepTabId: string) => {
       const store = useEditorStore.getState();
       const projectTabs = store.tabs[tabKey];
       if (!projectTabs) return;
-      for (const tab of projectTabs.tabs) {
-        if (tab.id !== keepTabId) {
+      const targets = projectTabs.tabs.filter((t) => t.id !== keepTabId);
+      const dirty = dirtyNamesOf(targets);
+      const doClose = () => {
+        for (const tab of targets) {
           closeEditorTab(tabKey, tab.id);
         }
+      };
+      if (dirty.length > 0 && onRequestCloseDirty) {
+        onRequestCloseDirty(dirty, doClose);
+      } else {
+        doClose();
       }
     },
-    [tabKey],
+    [tabKey, dirtyNamesOf, onRequestCloseDirty],
   );
 
   const closeAllTabs = useCallback(() => {
-    closeAllEditorTabs(tabKey);
-  }, [tabKey]);
+    const store = useEditorStore.getState();
+    const projectTabs = store.tabs[tabKey];
+    if (!projectTabs) return;
+    const dirty = dirtyNamesOf(projectTabs.tabs);
+    const doClose = () => closeAllEditorTabs(tabKey);
+    if (dirty.length > 0 && onRequestCloseDirty) {
+      onRequestCloseDirty(dirty, doClose);
+    } else {
+      doClose();
+    }
+  }, [tabKey, dirtyNamesOf, onRequestCloseDirty]);
 
   return {
     layout,

@@ -31,6 +31,8 @@ interface AppModalsProps {
   confirmExitOpen: boolean;
   onConfirmExit: () => void;
   onCancelExit: () => void;
+  /** 退出时仍未保存的文件名列表（用于退出确认框警示） */
+  unsavedFileNames?: string[];
 }
 
 function AppModals({
@@ -51,7 +53,10 @@ function AppModals({
   confirmExitOpen,
   onConfirmExit,
   onCancelExit,
+  unsavedFileNames = [],
 }: AppModalsProps) {
+  const unsavedCount = unsavedFileNames.length;
+  const unsavedPreview = unsavedFileNames.slice(0, 3).join(', ');
   return (
     <>
       {IS_WINDOWS && (
@@ -91,6 +96,13 @@ function AppModals({
         title="Exit Neeko?"
         description={
           <>
+            {unsavedCount > 0 ? (
+              <p className="mb-2 text-red-500">
+                You have unsaved changes in {unsavedCount} file{unsavedCount > 1 ? 's' : ''} (
+                {unsavedPreview}
+                {unsavedCount > 3 ? ', etc.' : ''}). Quitting will lose these changes.
+              </p>
+            ) : null}
             Any running terminals and background processes will be stopped.
             <br />
             Are you sure you want to quit?

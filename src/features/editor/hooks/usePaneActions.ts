@@ -7,28 +7,27 @@ import { closeEditorTab } from '@/features/terminal';
 import { useDockStore } from '@/shared/store/dockStore';
 import { useEditorStore } from '@/shared/store/editorStore';
 import { useProjectStore } from '@/shared/store/projectStore';
-import type { AgentConfig, EditorGroupId } from '@/shared/types';
+import type { AgentConfig, EditorGroupId, Tab } from '@/shared/types';
 import { createUntitledFileTab } from '@/shared/utils/createUntitledFileTab';
+import { getTabDisplayName, isDirtyFileTab } from '@/shared/utils/fileTree';
 
 interface UsePaneActionsParams {
   tabKey: string;
   groupId: EditorGroupId | 'pinned';
-  tabs: {
-    id: string;
-    data: {
-      kind: string;
-      isUntitled?: boolean;
-      isDirty?: boolean;
-      untitledName?: string;
-      fileName?: string;
-    };
-  }[];
+  tabs: Tab[];
   projectIdForCheck: string | null;
   agents: AgentConfig[];
   onAddTerminalTab?: () => void;
   onActionMenuClose: () => void;
-  /** 未保存关闭确认回调：返回 true 表示用户确认关闭 */
-  onRequestCloseTab?: (fileName: string) => Promise<boolean>;
+  /**
+   * 未保存关闭确认回调：返回用户的选择。
+   * - 'save'    → 先保存再关闭
+   * - 'discard' → 不保存直接关闭
+   * - 'cancel'  → 取消关闭
+   */
+  onRequestCloseTab?: (tabId: string, fileName: string) => Promise<'save' | 'discard' | 'cancel'>;
+  /** 保存指定 tab（关闭确认中用户选择「保存」时调用）。返回 true 表示保存成功。 */
+  onSaveTab?: (tabId: string) => Promise<boolean>;
 }
 
 /**
@@ -43,6 +42,7 @@ export function usePaneActions({
   onAddTerminalTab,
   onActionMenuClose,
   onRequestCloseTab,
+  onSaveTab,
 }: UsePaneActionsParams) {
   const handleActivateTab = useCallback(
     (tabId: string) => {
@@ -55,16 +55,22 @@ export function usePaneActions({
     async (tabId: string) => {
       if (groupId === 'pinned') return;
       const tab = tabs.find((t) => t.id === tabId);
-      if (tab?.data.kind === 'file' && tab.data.isUntitled && tab.data.isDirty) {
-        const fileName = tab.data.untitledName ?? tab.data.fileName ?? 'Untitled';
+      if (tab && isDirtyFileTab(tab)) {
+        const fileName = getTabDisplayName(tab);
         if (onRequestCloseTab) {
-          const confirmed = await onRequestCloseTab(fileName);
-          if (!confirmed) return;
+          const action = await onRequestCloseTab(tabId, fileName);
+          if (action === 'cancel') return;
+          if (action === 'save') {
+            const saved = onSaveTab ? await onSaveTab(tabId) : false;
+            // 保存失败（含 untitled 的 Save As 取消/失败）→ 不关闭
+            if (!saved) return;
+          }
+          // 'discard' → 直接关闭
         }
       }
       closeEditorTab(tabKey, tabId);
     },
-    [tabKey, groupId, tabs, onRequestCloseTab],
+    [tabKey, groupId, tabs, onRequestCloseTab, onSaveTab],
   );
 
   const handleReorderTab = useCallback(

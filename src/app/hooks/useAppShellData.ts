@@ -295,7 +295,7 @@ export function useAppShellData(): UseAppShellDataResult {
     remoteActionsWrap,
   });
 
-  const { confirmExitOpen, closeExitDialog, confirmExit } = useConfirmExit();
+  const { confirmExitOpen, unsavedFileNames, closeExitDialog, confirmExit } = useConfirmExit();
 
   const appLayoutProps = useAppLayoutProps({
     onAddProject: handleAddProject,
@@ -372,6 +372,7 @@ export function useAppShellData(): UseAppShellDataResult {
     handleAgentClick,
     handleToggleHiddenAgent,
     confirmExitOpen,
+    unsavedFileNames,
     onConfirmExit: confirmExit,
     onCancelExit: closeExitDialog,
     onRemoteAuthCancel: remoteAuthActions.handleRemoteAuthCancel,

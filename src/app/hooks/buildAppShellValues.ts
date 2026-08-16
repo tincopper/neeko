@@ -46,6 +46,7 @@ export interface AppShellData {
     closeTab: FileActionsContextValue['onFileCloseTab'];
     activateTab: FileActionsContextValue['onFileActivateTab'];
     saveFile: FileActionsContextValue['onFileSave'];
+    saveTabById: FileActionsContextValue['onFileSaveTab'];
     updateTabContent: FileActionsContextValue['onFileContentChange'];
     loadFileTree: FileActionsContextValue['onLoadFileTree'];
     expandSubTree: FileActionsContextValue['onExpandDir'];
@@ -102,6 +103,7 @@ export interface AppShellData {
   handleToggleHiddenAgent: EditorContextValue['onToggleHiddenAgent'];
   // modals
   confirmExitOpen: AppModalsProps['confirmExitOpen'];
+  unsavedFileNames: AppModalsProps['unsavedFileNames'];
   onConfirmExit: AppModalsProps['onConfirmExit'];
   onCancelExit: AppModalsProps['onCancelExit'];
   onRemoteAuthCancel: AppModalsProps['onRemoteAuthCancel'];
@@ -177,6 +179,7 @@ export function buildAppShellValues(data: AppShellData) {
     handleAgentClick,
     handleToggleHiddenAgent,
     confirmExitOpen,
+    unsavedFileNames,
     onConfirmExit,
     onCancelExit,
     onRemoteAuthCancel,
@@ -201,6 +204,7 @@ export function buildAppShellValues(data: AppShellData) {
     onFileCloseTab: fileView.closeTab,
     onFileActivateTab: fileView.activateTab,
     onFileSave: fileView.saveFile,
+    onFileSaveTab: fileView.saveTabById,
     onFileContentChange: fileView.updateTabContent,
     onLoadFileTree: fileView.loadFileTree,
     onExpandDir: fileView.expandSubTree,
@@ -273,6 +277,7 @@ export function buildAppShellValues(data: AppShellData) {
 
   const appModalsProps: AppModalsProps = {
     confirmExitOpen,
+    unsavedFileNames,
     onConfirmExit,
     onCancelExit,
     wslDialogOpen,

@@ -162,20 +162,23 @@ export function useFileViewTabOps({
   );
 
   /**
-   * Save file content
+   * Save file content.
+   * 传入 `tabId` 时保存指定 tab（关闭确认等场景）；否则保存当前激活的文件 tab。
    */
   const saveFile = useCallback(
-    async (content: string): Promise<boolean> => {
+    async (content: string, tabId?: string): Promise<boolean> => {
       const tk = tabKeyRef.current;
       if (!tk) return false;
 
       const projTabs = useEditorStore.getState().tabs[tk];
       if (!projTabs) return false;
 
-      // Find the active file tab
-      const active = projTabs.tabs.find((t) => t.id === projTabs.activeTabId);
+      // Find the active file tab (or the tab specified by tabId)
+      const target = tabId
+        ? projTabs.tabs.find((t) => t.id === tabId)
+        : projTabs.tabs.find((t) => t.id === projTabs.activeTabId);
       const fileTab =
-        active && active.data.kind === 'file' ? active : projTabs.tabs.find(isFileTab);
+        target && target.data.kind === 'file' ? target : projTabs.tabs.find(isFileTab);
       if (!fileTab || fileTab.data.kind !== 'file') return false;
 
       // Untitled tab → trigger Save As dialog
@@ -220,6 +223,24 @@ export function useFileViewTabOps({
   );
 
   /**
+   * Save a specific file tab by its id (used by the unsaved-close confirmation).
+   * Reads the tab's current content from the store and saves it.
+   */
+  const saveTabById = useCallback(
+    async (tabId: string): Promise<boolean> => {
+      const tk = tabKeyRef.current;
+      if (!tk) return false;
+
+      const projTabs = useEditorStore.getState().tabs[tk];
+      const tab = projTabs?.tabs.find((t) => t.id === tabId);
+      if (!tab || tab.data.kind !== 'file') return false;
+
+      return saveFile(tab.data.content.content, tabId);
+    },
+    [tabKeyRef, saveFile],
+  );
+
+  /**
    * Mark tab as dirty
    */
   const setTabDirty = useCallback(
@@ -257,6 +278,7 @@ export function useFileViewTabOps({
     activateTab,
     updateTabContent,
     saveFile,
+    saveTabById,
     setTabDirty,
     clearFileView,
   };

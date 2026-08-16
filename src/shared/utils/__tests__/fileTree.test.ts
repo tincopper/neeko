@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
-import type { FileNode } from '@/shared/types';
-import { buildFileTreeView } from '@/shared/utils/fileTree';
+import type { FileNode, Tab, FileTabData } from '@/shared/types';
+import { buildFileTreeView, getTabDisplayName, isDirtyFileTab } from '@/shared/utils/fileTree';
 
 function dirNode(name: string, path: string, children: FileNode[] = []): FileNode {
   return { name, path, is_dir: true, children };
@@ -77,5 +77,51 @@ describe('buildFileTreeView 扁平缓存 → 嵌套视图', () => {
       fileNode('new.md', 'new.md'),
     ]);
     expect(before).not.toEqual(after);
+  });
+});
+
+describe('isDirtyFileTab / getTabDisplayName', () => {
+  function fileTab(overrides: Partial<FileTabData> = {}): Tab {
+    return {
+      id: 't1',
+      projectId: 'p1',
+      title: 't1',
+      order: 0,
+      data: {
+        kind: 'file',
+        filePath: 'a.ts',
+        fileName: 'a.ts',
+        content: { path: 'a.ts', content: '', size: 0, is_binary: false },
+        isDirty: false,
+        ...overrides,
+      },
+    };
+  }
+
+  function terminalTab(): Tab {
+    return {
+      id: 'term',
+      projectId: 'p1',
+      title: 'term',
+      order: 0,
+      data: { kind: 'terminal', agentId: null, status: 'Idle' },
+    };
+  }
+
+  it('isDirtyFileTab：仅 dirty 文件 tab 为 true', () => {
+    expect(isDirtyFileTab(fileTab())).toBe(false);
+    expect(isDirtyFileTab(fileTab({ isDirty: true }))).toBe(true);
+    expect(isDirtyFileTab(terminalTab())).toBe(false);
+  });
+
+  it('getTabDisplayName：untitledName 优先，其次 fileName', () => {
+    expect(getTabDisplayName(fileTab())).toBe('a.ts');
+    expect(getTabDisplayName(fileTab({ untitledName: 'Untitled-1' }))).toBe('Untitled-1');
+  });
+
+  it('getTabDisplayName：fileName 缺失（undefined）时兜底 Untitled', () => {
+    expect(getTabDisplayName(fileTab({ fileName: undefined as unknown as string }))).toBe(
+      'Untitled',
+    );
   });
 });

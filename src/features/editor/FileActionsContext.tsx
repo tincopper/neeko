@@ -6,6 +6,8 @@ export interface FileActionsContextValue {
   onFileCloseTab: (tabId: string) => void;
   onFileActivateTab: (tabId: string) => void;
   onFileSave: (content: string) => Promise<boolean>;
+  /** 保存指定 tab（未保存关闭确认等场景）。返回 true 表示保存成功。 */
+  onFileSaveTab: (tabId: string) => Promise<boolean>;
   onFileContentChange: (tabId: string, content: string) => void;
   onLoadFileTree: (projectId: string, worktreePath?: string) => void;
   /** 懒加载：按需加载超过初始深度的子目录 */

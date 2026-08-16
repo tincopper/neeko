@@ -166,6 +166,7 @@ export function useFileView(
     activateTab,
     updateTabContent,
     saveFile,
+    saveTabById,
     setTabDirty,
     clearFileView,
   } = useFileViewTabOps({
@@ -185,6 +186,7 @@ export function useFileView(
     activateTab,
     updateTabContent,
     saveFile,
+    saveTabById,
     setTabDirty,
     clearFileView,
   };

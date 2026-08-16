@@ -9,29 +9,24 @@ vi.mock('@/features/terminal', () => ({
 
 import { closeEditorTab } from '@/features/terminal';
 import { useEditorStore } from '@/shared/store/editorStore';
+import type { FileTabData, Tab } from '@/shared/types';
 
 import { usePaneActions } from '../usePaneActions';
 
-function makeFileTab(
-  id: string,
-  overrides = {},
-): {
-  id: string;
-  data: {
-    kind: string;
-    isUntitled?: boolean;
-    isDirty?: boolean;
-    untitledName?: string;
-    fileName?: string;
-  };
-} {
+type CloseAction = 'save' | 'discard' | 'cancel';
+
+function makeFileTab(id: string, overrides: Partial<FileTabData> = {}): Tab {
   return {
     id,
+    projectId: 'p1',
+    title: id,
+    order: 0,
     data: {
       kind: 'file',
-      isUntitled: false,
-      isDirty: false,
+      filePath: id,
       fileName: id,
+      content: { path: id, content: '', size: 0, is_binary: false },
+      isDirty: false,
       ...overrides,
     },
   };
@@ -46,7 +41,8 @@ describe('usePaneActions', () => {
     agents: [{ id: 'opencode', name: 'OpenCode', enabled: true, command: 'opencode' }] as [],
     onAddTerminalTab: vi.fn(),
     onActionMenuClose: vi.fn(),
-    onRequestCloseTab: vi.fn().mockResolvedValue(true),
+    onRequestCloseTab: vi.fn().mockResolvedValue('discard' as CloseAction),
+    onSaveTab: vi.fn().mockResolvedValue(true),
   };
 
   beforeEach(() => {
@@ -79,6 +75,7 @@ describe('usePaneActions', () => {
     });
 
     expect(closeEditorTab).toHaveBeenCalledWith('p1', 'tab1');
+    expect(defaultParams.onRequestCloseTab).not.toHaveBeenCalled();
   });
 
   it('handleCloseTab skips confirmation for pinned group', async () => {
@@ -103,13 +100,28 @@ describe('usePaneActions', () => {
       await result.current.handleCloseTab('tab1');
     });
 
-    expect(defaultParams.onRequestCloseTab).toHaveBeenCalledWith('Untitled-1');
+    expect(defaultParams.onRequestCloseTab).toHaveBeenCalledWith('tab1', 'Untitled-1');
+    // 'discard' → proceed to close
     expect(closeEditorTab).toHaveBeenCalledWith('p1', 'tab1');
+  });
+
+  it('handleCloseTab requests confirmation for dirty NAMED files (not just untitled)', async () => {
+    const tabs = [
+      makeFileTab('tab1', { isUntitled: false, isDirty: true, fileName: 'src/index.ts' }),
+    ];
+    const params = { ...defaultParams, tabs };
+    const { result } = renderHook(() => usePaneActions(params));
+
+    await act(async () => {
+      await result.current.handleCloseTab('tab1');
+    });
+
+    expect(defaultParams.onRequestCloseTab).toHaveBeenCalledWith('tab1', 'src/index.ts');
   });
 
   it('handleCloseTab aborts when user cancels confirmation', async () => {
     const tabs = [makeFileTab('tab1', { isUntitled: true, isDirty: true })];
-    const onRequestCloseTab = vi.fn().mockResolvedValue(false);
+    const onRequestCloseTab = vi.fn().mockResolvedValue('cancel' as CloseAction);
     const params = { ...defaultParams, tabs, onRequestCloseTab };
     const { result } = renderHook(() => usePaneActions(params));
 
@@ -119,6 +131,48 @@ describe('usePaneActions', () => {
 
     expect(onRequestCloseTab).toHaveBeenCalled();
     expect(closeEditorTab).not.toHaveBeenCalled();
+  });
+
+  it('handleCloseTab saves the tab first when user chooses save', async () => {
+    const tabs = [makeFileTab('tab1', { isDirty: true, fileName: 'a.ts' })];
+    const onRequestCloseTab = vi.fn().mockResolvedValue('save' as CloseAction);
+    const onSaveTab = vi.fn().mockResolvedValue(true);
+    const params = { ...defaultParams, tabs, onRequestCloseTab, onSaveTab };
+    const { result } = renderHook(() => usePaneActions(params));
+
+    await act(async () => {
+      await result.current.handleCloseTab('tab1');
+    });
+
+    expect(onSaveTab).toHaveBeenCalledWith('tab1');
+    expect(closeEditorTab).toHaveBeenCalledWith('p1', 'tab1');
+  });
+
+  it('handleCloseTab aborts close when save fails', async () => {
+    const tabs = [makeFileTab('tab1', { isDirty: true, fileName: 'a.ts' })];
+    const onRequestCloseTab = vi.fn().mockResolvedValue('save' as CloseAction);
+    const onSaveTab = vi.fn().mockResolvedValue(false);
+    const params = { ...defaultParams, tabs, onRequestCloseTab, onSaveTab };
+    const { result } = renderHook(() => usePaneActions(params));
+
+    await act(async () => {
+      await result.current.handleCloseTab('tab1');
+    });
+
+    expect(onSaveTab).toHaveBeenCalledWith('tab1');
+    expect(closeEditorTab).not.toHaveBeenCalled();
+  });
+
+  it('handleCloseTab closes directly when no onRequestCloseTab provided', async () => {
+    const tabs = [makeFileTab('tab1', { isDirty: true, fileName: 'a.ts' })];
+    const params = { ...defaultParams, tabs, onRequestCloseTab: undefined };
+    const { result } = renderHook(() => usePaneActions(params));
+
+    await act(async () => {
+      await result.current.handleCloseTab('tab1');
+    });
+
+    expect(closeEditorTab).toHaveBeenCalledWith('p1', 'tab1');
   });
 
   it('handleActionMenuExecute: new-terminal calls onAddTerminalTab', () => {
