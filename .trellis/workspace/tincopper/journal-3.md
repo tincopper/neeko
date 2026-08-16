@@ -692,3 +692,36 @@ D0: macOS Edit 菜单 PredefinedMenuItem 原生化（A1-A3 通过，含浏览器
 ### Next Steps
 
 - None - task complete
+
+
+## Session 138: Fix stale diff content: backend fingerprint cache + stateless frontend
+
+**Date**: 2026-08-16
+**Task**: Fix stale diff content: backend fingerprint cache + stateless frontend
+**Branch**: `main`
+
+### Summary
+
+双层缓存陈旧 bug 修复：后端 DIFF_CACHE 输入指纹校验（mtime+size），前端删除模块级 diffCache 变无状态消费者并订阅 git-status-diff 自动重拉；spec git-domain.md 新增 §5 Diff 缓存正确性契约。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `399a0f4d` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

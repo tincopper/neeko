@@ -1,0 +1,5 @@
+{"_example": "Fill with {\"file\": \"<path>\", \"reason\": \"<why>\"}. Put spec/research files only — no code paths. Run `python3 .trellis/scripts/get_context.py --mode packages` to list available specs. Delete this line once real entries are added."}
+{"file": ".trellis/spec/backend/git-domain.md", "reason": "后端 git 域（common/git + commands）可执行契约，diff/cache 改动须对齐"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "后端质量红线：Command 极薄、阻塞 I/O 隔离、IPC 2MB 护栏"}
+{"file": ".trellis/spec/frontend/api-layer.md", "reason": "前端 Feature API Wrapper 模式：IPC 只走 api/ 目录"}
+{"file": ".trellis/spec/frontend/hook-guidelines.md", "reason": "前端 hook 规范：useDiffData 改动的行为准则"}
