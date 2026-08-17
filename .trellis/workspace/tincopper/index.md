@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-3.md`
-- **Total Sessions**: 138
-- **Last Active**: 2026-08-16
+- **Total Sessions**: 139
+- **Last Active**: 2026-08-17
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-3.md` | ~727 | Active |
+| `journal-3.md` | ~760 | Active |
 | `journal-2.md` | ~1991 | Archived |
 | `journal-1.md` | ~1986 | Archived |
 <!-- @@@/auto:active-documents -->
@@ -31,6 +31,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 139 | 2026-08-17 | feat(browser): Browser as editor tab (Route A) — stages 1-6 | `8450ae7d97448a2543cd37994871cf479c097445` | `main` |
 | 138 | 2026-08-16 | Fix stale diff content: backend fingerprint cache + stateless frontend | `399a0f4d` | `main` |
 | 137 | 2026-08-15 | 修复 worktree 列表因空路径被错误仓库数据覆盖的问题 | `8ccbaaae` | `main` |
 | 136 | 2026-08-15 | 浏览器选择器编辑快捷键原生化 + Esc/Cmd+W 稳定修复 | `1351df43`, `9cf605a3`, `946c7694` | `main` |
