@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-3.md`
-- **Total Sessions**: 139
+- **Total Sessions**: 143
 - **Last Active**: 2026-08-17
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-3.md` | ~760 | Active |
+| `journal-3.md` | ~892 | Active |
 | `journal-2.md` | ~1991 | Archived |
 | `journal-1.md` | ~1986 | Archived |
 <!-- @@@/auto:active-documents -->
@@ -31,6 +31,10 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 143 | 2026-08-17 | fix(browser): panel crash 'stack.index' — setPanelState partial state w/o history; harden store+historyStack | `d3682a3e1ae50bb394ad4f897f8f65b16b965478` | `main` |
+| 142 | 2026-08-17 | fix(browser): tab close leaves webview embedded — harden cleanup (eager+hide-before-close+tabExists guard) | `d3682a3e1ae50bb394ad4f897f8f65b16b965478` | `main` |
+| 141 | 2026-08-17 | feat(browser): tab title/favicon follow website name+icon | `d3682a3e1ae50bb394ad4f897f8f65b16b965478` | `main` |
+| 140 | 2026-08-17 | fix(browser): address bar cannot be typed — controlled-input revert in BrowserToolbar | `d3682a3e1ae50bb394ad4f897f8f65b16b965478` | `main` |
 | 139 | 2026-08-17 | feat(browser): Browser as editor tab (Route A) — stages 1-6 | `8450ae7d97448a2543cd37994871cf479c097445` | `main` |
 | 138 | 2026-08-16 | Fix stale diff content: backend fingerprint cache + stateless frontend | `399a0f4d` | `main` |
 | 137 | 2026-08-15 | 修复 worktree 列表因空路径被错误仓库数据覆盖的问题 | `8ccbaaae` | `main` |

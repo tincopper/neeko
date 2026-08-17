@@ -758,3 +758,135 @@ D0: macOS Edit 菜单 PredefinedMenuItem 原生化（A1-A3 通过，含浏览器
 ### Next Steps
 
 - None - task complete
+
+
+## Session 140: fix(browser): address bar cannot be typed — controlled-input revert in BrowserToolbar
+
+**Date**: 2026-08-17
+**Task**: fix(browser): address bar cannot be typed — controlled-input revert in BrowserToolbar
+**Branch**: `main`
+
+### Summary
+
+(Add summary)
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `d3682a3e1ae50bb394ad4f897f8f65b16b965478` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
+
+
+## Session 141: feat(browser): tab title/favicon follow website name+icon
+
+**Date**: 2026-08-17
+**Task**: feat(browser): tab title/favicon follow website name+icon
+**Branch**: `main`
+
+### Summary
+
+(Add summary)
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `d3682a3e1ae50bb394ad4f897f8f65b16b965478` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
+
+
+## Session 142: fix(browser): tab close leaves webview embedded — harden cleanup (eager+hide-before-close+tabExists guard)
+
+**Date**: 2026-08-17
+**Task**: fix(browser): tab close leaves webview embedded — harden cleanup (eager+hide-before-close+tabExists guard)
+**Branch**: `main`
+
+### Summary
+
+(Add summary)
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `d3682a3e1ae50bb394ad4f897f8f65b16b965478` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
+
+
+## Session 143: fix(browser): panel crash 'stack.index' — setPanelState partial state w/o history; harden store+historyStack
+
+**Date**: 2026-08-17
+**Task**: fix(browser): panel crash 'stack.index' — setPanelState partial state w/o history; harden store+historyStack
+**Branch**: `main`
+
+### Summary
+
+(Add summary)
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `d3682a3e1ae50bb394ad4f897f8f65b16b965478` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
