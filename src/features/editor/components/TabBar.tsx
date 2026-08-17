@@ -137,12 +137,6 @@ const TabBar: React.FC<TabBarProps> = React.memo(
       [onNewFileTab],
     );
 
-    // 终端 tab 数量
-    const terminalTabCount = useMemo(
-      () => tabs.filter((t) => t.data.kind === 'terminal').length,
-      [tabs],
-    );
-
     // 当前激活 tab 是否为终端
     const activeTab = useMemo(() => tabs.find((t) => t.id === activeTabId), [tabs, activeTabId]);
     const isActiveTerminal = activeTab?.data.kind === 'terminal';
@@ -228,8 +222,8 @@ const TabBar: React.FC<TabBarProps> = React.memo(
         >
           {renderTabs()}
 
-          {/* 新增终端 / 动作菜单按钮 */}
-          {terminalTabCount < 10 && (onAddTerminalTab || onActionMenuOpen) && (
+          {/* 新增动作按钮：New Terminal / New Browser / …（始终显示，不受终端数量门控） */}
+          {(onAddTerminalTab || onActionMenuOpen) && (
             <button
               className="tb-icon-btn w-6 h-6 rounded-md flex items-center justify-center text-text-secondary hover:bg-bg-hover hover:text-text-primary transition-colors"
               onClick={(e) => {

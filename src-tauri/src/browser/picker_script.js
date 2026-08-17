@@ -541,6 +541,9 @@
     // 立即清理选中态（不用延迟清理，避免清掉发送后的新一轮选择）
     if (S.mode === 'single') clearSingle(); else clearMulti();
     notify('prompt-submitted', {
+      // label 由注入时嵌入(window.__NEEKO_BROWSER_LABEL__),前端据此将 prompt
+      // 路由到对应项目/ tab 的 Agent CLI 终端;旧二进制无此字段时前端回退。
+      label: window.__NEEKO_BROWSER_LABEL__ || '',
       prompt: text,
       elements: els.map(function (el) {
         // 发送前已清类，此处 cleanOuterHTML 为显式兜底，确保 HTML 无注入类

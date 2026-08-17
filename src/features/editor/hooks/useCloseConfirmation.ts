@@ -1,4 +1,9 @@
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+
+import { useOverlayStore } from '@/shared/store/overlayStore';
+
+/** 未保存关闭确认对话框浮层 id（z-order 专项）。 */
+const CLOSE_CONFIRM_OVERLAY_ID = 'close-confirm';
 
 /** 未保存关闭确认对话框的用户选择 */
 export type CloseAction = 'save' | 'discard' | 'cancel';
@@ -25,7 +30,15 @@ export function useCloseConfirmation(): CloseConfirmationResult {
   const [fileName, setFileName] = useState('');
   const resolverRef = useRef<((action: CloseAction) => void) | null>(null);
 
+  // 兜底：对话框所属 pane 在打开状态下被卸载（切项目/关 pane）时清除 overlay id，
+  // 避免 overlayStore.count 永久 >0 导致 Browser webview 一直隐藏。
+  useEffect(() => {
+    return () => useOverlayStore.getState().setOverlayOpen(CLOSE_CONFIRM_OVERLAY_ID, false);
+  }, []);
+
   const requestCloseConfirmation = useCallback((name: string): Promise<CloseAction> => {
+    // 浮层上报：对话框打开期间隐藏内容区 Browser webview（z-order 专项）
+    useOverlayStore.getState().setOverlayOpen(CLOSE_CONFIRM_OVERLAY_ID, true);
     setFileName(name);
     setOpen(true);
     return new Promise<CloseAction>((resolve) => {
@@ -34,6 +47,7 @@ export function useCloseConfirmation(): CloseConfirmationResult {
   }, []);
 
   const resolveCloseConfirmation = useCallback((action: CloseAction) => {
+    useOverlayStore.getState().setOverlayOpen(CLOSE_CONFIRM_OVERLAY_ID, false);
     setOpen(false);
     resolverRef.current?.(action);
     resolverRef.current = null;

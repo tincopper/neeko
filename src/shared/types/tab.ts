@@ -3,7 +3,14 @@ import type { FileContent } from './file';
 import type { DiffSource, ViewMode, CommitFileChange } from './git';
 import type { ConversationMeta } from './session';
 
-export type TabKind = 'terminal' | 'file' | 'diff' | 'html-preview' | 'conversation' | 'prDetail';
+export type TabKind =
+  | 'terminal'
+  | 'file'
+  | 'diff'
+  | 'html-preview'
+  | 'conversation'
+  | 'prDetail'
+  | 'browser';
 
 export interface TerminalTabData {
   kind: 'terminal';
@@ -66,13 +73,22 @@ export interface PRDetailTabData {
   comments?: import('./git').PRComment[];
 }
 
+export interface BrowserTabData {
+  kind: 'browser';
+  /** 初始导航 URL（空 = 等待用户在地址栏输入）。 */
+  url: string;
+  /** 当前页面 favicon URL（用于 tab 图标展示；可能为空）。 */
+  favicon?: string;
+}
+
 export type TabData =
   | TerminalTabData
   | FileTabData
   | DiffTabData
   | HtmlPreviewTabData
   | ConversationTabData
-  | PRDetailTabData;
+  | PRDetailTabData
+  | BrowserTabData;
 
 export interface Tab {
   id: string;

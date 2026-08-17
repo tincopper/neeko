@@ -58,12 +58,18 @@ export const useProjectBrowserStore = create<ProjectBrowserStore>()((set, get) =
   },
 
   setPanelState: (projectId, patch) =>
-    set((s) => ({
-      states: {
-        ...s.states,
-        [projectId]: { ...s.states[projectId], ...patch },
-      },
-    })),
+    set((s) => {
+      // 防御：state 不存在时先初始化完整默认状态（含 history），再应用 patch。
+      // 否则 `{ ...undefined, ...patch }` 会生成缺 history/url/label 的残缺状态，
+      // 渲染时 canGoBack(browserState.history) → "undefined is not an object"。
+      const base = s.states[projectId] ?? defaultPanelState(deriveLabel(projectId));
+      return {
+        states: {
+          ...s.states,
+          [projectId]: { ...base, ...patch },
+        },
+      };
+    }),
 
   removeState: (projectId) =>
     set((s) => {

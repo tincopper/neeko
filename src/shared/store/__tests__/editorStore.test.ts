@@ -202,3 +202,47 @@ describe('editorStore.activateTab — pinned tab 激活', () => {
     expect(next.groups.right.tabIds).toEqual([]);
   });
 });
+
+describe('editorStore.updateTab — browser 标题/favicon 同步', () => {
+  beforeEach(() => {
+    useEditorStore.setState({ tabs: {}, editorLayout: {}, activeTabId: null });
+  });
+
+  function seedBrowserTab() {
+    useEditorStore.getState().addTab('p1', {
+      id: 'tb1',
+      projectId: 'p1',
+      title: 'Browser',
+      order: 0,
+      data: { kind: 'browser', url: 'https://a.com' },
+    });
+  }
+
+  it('同时更新浏览器 tab 顶层标题与 data.favicon', () => {
+    seedBrowserTab();
+    useEditorStore.getState().updateTab('p1', 'tb1', {
+      title: 'GitHub',
+      favicon: 'https://a.com/favicon.ico',
+    });
+
+    const tab = useEditorStore.getState().tabs['p1']!.tabs.find((t) => t.id === 'tb1')!;
+    expect(tab.title).toBe('GitHub');
+    expect(tab.data).toMatchObject({
+      kind: 'browser',
+      url: 'https://a.com',
+      favicon: 'https://a.com/favicon.ico',
+    });
+  });
+
+  it('仅更新 favicon 时保留 url', () => {
+    seedBrowserTab();
+    useEditorStore.getState().updateTab('p1', 'tb1', { favicon: 'https://a.com/fav.png' });
+
+    const tab = useEditorStore.getState().tabs['p1']!.tabs.find((t) => t.id === 'tb1')!;
+    expect(tab.data).toMatchObject({
+      kind: 'browser',
+      url: 'https://a.com',
+      favicon: 'https://a.com/fav.png',
+    });
+  });
+});

@@ -58,6 +58,24 @@ export function isAgentCliTab(
 }
 
 /**
+ * 在项目的 tab 列表中寻找一个 Agent CLI 终端 tab。
+ *
+ * Browser tab 的 picker prompt 需要路由到 Agent CLI 终端，但此时激活的往往是
+ * Browser tab 本身。优先返回当前激活的 Agent CLI tab（面板场景），否则返回
+ * `order` 最大（最近新增）的 Agent CLI tab。
+ */
+export function findAgentCliTab(projectTabs: ProjectTabs | undefined): string | null {
+  if (!projectTabs) return null;
+  const agentTabs = projectTabs.tabs.filter(
+    (t) => t.data.kind === 'terminal' && t.data.agentId !== null,
+  );
+  if (agentTabs.length === 0) return null;
+  const active = agentTabs.find((t) => t.id === projectTabs.activeTabId);
+  if (active) return active.id;
+  return [...agentTabs].sort((a, b) => b.order - a.order)[0]?.id ?? null;
+}
+
+/**
  * Format the message sent to the Agent CLI terminal when the user
  * picks one or more browser elements and enters a modification prompt.
  *

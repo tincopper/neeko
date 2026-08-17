@@ -4,9 +4,9 @@ import { decideReclaims, DEFAULT_RECLAIM_POLICY, type WebviewUsage } from '../re
 
 const NOW = 1_000_000_000_000;
 
-function usage(projectId: string, over: Partial<WebviewUsage> = {}): WebviewUsage {
+function usage(key: string, over: Partial<WebviewUsage> = {}): WebviewUsage {
   return {
-    projectId,
+    key,
     lastActiveAt: NOW,
     isCreated: true,
     isActive: false,

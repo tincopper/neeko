@@ -28,6 +28,8 @@ function getTabIcon(kind: Tab['data']['kind']) {
       return MessageSquareText;
     case 'prDetail':
       return GitPullRequest;
+    case 'browser':
+      return Globe;
   }
 }
 
@@ -45,6 +47,7 @@ export function renderEditorTabLeading(tab: Tab, agents: AgentConfig[]): ReactNo
       ? resolveAgentIconSrc(agents.find((a) => a.id === data.agentId)?.icon)
       : null;
   const fileIcon = data.kind === 'file' ? fileIconSrc(data.fileName) : null;
+  const browserFavicon = data.kind === 'browser' ? data.favicon : null;
 
   const terminalStatus = data.kind === 'terminal' ? data.status : null;
   const showStatusDot = terminalStatus === 'Running' || terminalStatus === 'Failed';
@@ -53,7 +56,16 @@ export function renderEditorTabLeading(tab: Tab, agents: AgentConfig[]): ReactNo
 
   return (
     <>
-      {agentIconSrc ? (
+      {browserFavicon ? (
+        <img
+          data-testid="browser-favicon"
+          src={browserFavicon}
+          width={12}
+          height={12}
+          className="shrink-0 opacity-70"
+          alt=""
+        />
+      ) : agentIconSrc ? (
         <img
           data-testid="agent-icon"
           src={agentIconSrc}

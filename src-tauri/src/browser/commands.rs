@@ -223,7 +223,7 @@ pub async fn browser_start_picker(
     let webview = app
         .get_webview(&label)
         .ok_or_else(|| AppError::NotFound(format!("Browser webview not found: {}", label)))?;
-    let script = build_picker_script(theme_colors)?;
+    let script = build_picker_script(theme_colors, &label)?;
     webview
         .eval(&script)
         .map_err(|e| AppError::Unknown(format!("Failed to inject picker script: {}", e)))?;

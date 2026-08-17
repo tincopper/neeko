@@ -5,6 +5,7 @@ import {
   ExternalLink,
   FileIcon,
   FolderOpen,
+  Globe,
   History,
   SplitSquareVertical,
   TerminalIcon,
@@ -30,6 +31,15 @@ const ACTION_ITEMS: ActionRegistryItem[] = [
     icon: Bot,
     keywords: ['agent', 'terminal', 'ai', 'assistant'],
     visible: (ctx) => ctx.agents.some((a) => a.enabled),
+    execute: (ctx) => ctx.closeMenu(),
+  },
+  {
+    id: 'new-browser',
+    group: 'browser',
+    label: 'New Browser',
+    description: 'Open a new browser tab in the editor',
+    icon: Globe,
+    keywords: ['browser', 'web', 'internet', 'url'],
     execute: (ctx) => ctx.closeMenu(),
   },
   {

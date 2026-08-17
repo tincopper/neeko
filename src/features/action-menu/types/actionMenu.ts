@@ -3,6 +3,7 @@ import type { LucideIcon } from 'lucide-react';
 export type ActionId =
   | 'new-terminal'
   | 'new-terminal-with-agent'
+  | 'new-browser'
   | 'new-file'
   | 'open-file'
   | 'recent-files'
@@ -13,7 +14,7 @@ export type ActionId =
   | 'insert-prompt'
   | string;
 
-export type ActionGroup = 'terminal' | 'agent' | 'file' | 'quick' | 'library';
+export type ActionGroup = 'terminal' | 'agent' | 'browser' | 'file' | 'quick' | 'library';
 
 export interface ActionContext {
   projectId: string | null;

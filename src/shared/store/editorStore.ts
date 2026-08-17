@@ -10,8 +10,33 @@ import type {
   DiffTabData,
   HtmlPreviewTabData,
   PRDetailTabData,
+  BrowserTabData,
+  TabKind,
 } from '@/shared/types/tab';
 import { emitTabActivated } from '@/shared/utils/editorActivity';
+
+/**
+ * Tab 关闭清理注册表（feature 解耦的按 kind 分发）。
+ *
+ * 各 feature 通过 `registerTabCleanup(kind, fn)` 注册其 tab 的销毁清理
+ * （如 terminal 的 PTY cache 回收、browser 的 webview destroy + 状态移除）。
+ * `closeTab` / `clearProjectTabs` 在移除 tab 后调用对应 handler。
+ * 以此避免 feature 间（terminal ↔ browser）互相导入造成的循环依赖。
+ */
+type TabCleanupFn = (tabKey: string, tab: Tab) => void;
+const tabCleanupRegistry = new Map<TabKind, TabCleanupFn>();
+
+export function registerTabCleanup(kind: TabKind, fn: TabCleanupFn): void {
+  tabCleanupRegistry.set(kind, fn);
+}
+
+export function unregisterTabCleanup(kind: TabKind): void {
+  tabCleanupRegistry.delete(kind);
+}
+
+function runTabCleanup(tabKey: string, tab: Tab): void {
+  tabCleanupRegistry.get(tab.data.kind)?.(tabKey, tab);
+}
 
 function ensureLayout(
   layouts: Record<string, EditorSplitLayout>,
@@ -144,6 +169,15 @@ function mergeTabData(data: TabData, partial: Partial<TabData>): TabData {
         prUrl: p.prUrl !== undefined ? (p.prUrl as string) : d.prUrl,
         prHeadRef: p.prHeadRef !== undefined ? (p.prHeadRef as string) : d.prHeadRef,
         prBaseRef: p.prBaseRef !== undefined ? (p.prBaseRef as string) : d.prBaseRef,
+      };
+    }
+    case 'browser': {
+      const p = partial as Record<string, unknown>;
+      const d = data as BrowserTabData;
+      return {
+        kind: 'browser' as const,
+        url: 'url' in p ? (p.url as string) : d.url,
+        favicon: 'favicon' in p ? (p.favicon as string | undefined) : d.favicon,
       };
     }
     default:
@@ -296,7 +330,12 @@ export const useEditorStore = create<EditorStoreState>((set) => ({
       };
     }),
 
-  closeTab: (projectId, tabId) =>
+  closeTab: (projectId, tabId) => {
+    // 预取将被移除的 tab，用于按 kind 触发清理（browser 销毁 webview 等）。
+    const current = useEditorStore.getState();
+    const removed = current.tabs[projectId]?.tabs.find((t) => t.id === tabId);
+    const pinned = current.editorLayout[projectId]?.pinnedTabIds.includes(tabId) ?? false;
+
     set((state) => {
       const existing = state.tabs[projectId];
       if (!existing) return state;
@@ -444,7 +483,10 @@ export const useEditorStore = create<EditorStoreState>((set) => ({
         activeTabId: globalActiveId,
         editorLayout: newEditorLayout,
       };
-    }),
+    });
+
+    if (removed && !pinned) runTabCleanup(projectId, removed);
+  },
 
   activateTab: (projectId, tabId) =>
     set((state) => {
@@ -541,12 +583,14 @@ export const useEditorStore = create<EditorStoreState>((set) => ({
       };
     }),
 
-  clearProjectTabs: (projectId) =>
-    set((state) => {
-      const existing = state.tabs[projectId];
-      if (!existing) return state;
+  clearProjectTabs: (projectId) => {
+    const existing = useEditorStore.getState().tabs[projectId];
 
-      const globalActiveId = existing.tabs.some((t) => t.id === state.activeTabId)
+    set((state) => {
+      const existingTabs = state.tabs[projectId];
+      if (!existingTabs) return state;
+
+      const globalActiveId = existingTabs.tabs.some((t) => t.id === state.activeTabId)
         ? null
         : state.activeTabId;
 
@@ -555,7 +599,14 @@ export const useEditorStore = create<EditorStoreState>((set) => ({
       // eslint-disable-next-line @typescript-eslint/no-unused-vars
       const { [projectId]: _tmp2, ...restLayouts } = state.editorLayout;
       return { tabs: rest, activeTabId: globalActiveId, editorLayout: restLayouts };
-    }),
+    });
+
+    if (existing) {
+      for (const tab of existing.tabs) {
+        runTabCleanup(projectId, tab);
+      }
+    }
+  },
 
   splitRight: (tabKey, tabId) =>
     set((state) => {

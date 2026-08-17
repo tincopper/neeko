@@ -1,4 +1,9 @@
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+
+import { useOverlayStore } from '@/shared/store/overlayStore';
+
+/** 批量关闭确认对话框浮层 id（z-order 专项）。 */
+const BULK_CLOSE_OVERLAY_ID = 'bulk-close-confirm';
 
 export interface BulkCloseConfirmationResult {
   bulkCloseOpen: boolean;
@@ -24,7 +29,15 @@ export function useBulkCloseConfirmation(): BulkCloseConfirmationResult {
   const [dirtyPreview, setDirtyPreview] = useState('');
   const doCloseRef = useRef<(() => void) | null>(null);
 
+  // 兜底：对话框所属 pane 在打开状态下被卸载（切项目/关 pane）时清除 overlay id，
+  // 避免 overlayStore.count 永久 >0 导致 Browser webview 一直隐藏。
+  useEffect(() => {
+    return () => useOverlayStore.getState().setOverlayOpen(BULK_CLOSE_OVERLAY_ID, false);
+  }, []);
+
   const requestBulkCloseConfirmation = useCallback((dirtyNames: string[], doClose: () => void) => {
+    // 浮层上报：对话框打开期间隐藏内容区 Browser webview（z-order 专项）
+    useOverlayStore.getState().setOverlayOpen(BULK_CLOSE_OVERLAY_ID, true);
     setDirtyCount(dirtyNames.length);
     setDirtyPreview(dirtyNames.slice(0, 3).join(', '));
     setOpen(true);
@@ -32,12 +45,14 @@ export function useBulkCloseConfirmation(): BulkCloseConfirmationResult {
   }, []);
 
   const confirmBulkClose = useCallback(() => {
+    useOverlayStore.getState().setOverlayOpen(BULK_CLOSE_OVERLAY_ID, false);
     setOpen(false);
     doCloseRef.current?.();
     doCloseRef.current = null;
   }, []);
 
   const cancelBulkClose = useCallback(() => {
+    useOverlayStore.getState().setOverlayOpen(BULK_CLOSE_OVERLAY_ID, false);
     setOpen(false);
     doCloseRef.current = null;
   }, []);

@@ -616,11 +616,14 @@ serde_json::json!({ "label": &label, "url": &url_str })
 
 ### 3. Contracts
 
-1. **Label 契约**：webview label 恒为 `neeko-browser-{projectId}`，前端一律经 `getProjectBrowserLabel()` 派生，禁止手写拼接。
-2. **事件隔离契约**：Rust 事件 payload 必须携带 `label` 字段；前端监听后按 `eventLabel !== getProjectBrowserLabel(activeProjectId)` 过滤，忽略其他项目的事件。
-3. **Store 隔离契约**：`states` 按 `projectId` 索引，`setPanelState` 只 patch 目标项目，互不影响。
+1. **Label 契约**：dock 面板 webview label 恒为 `neeko-browser-{projectId}`；编辑器 Browser tab webview label 恒为 `neeko-browser-tab-{tabId}`。前端一律经 `getProjectBrowserLabel()` / `getBrowserTabLabel()` 派生，禁止手写拼接。
+2. **事件隔离契约**：Rust 事件 payload 必须携带 `label` 字段；前端监听后按 `eventLabel !== getProjectBrowserLabel(activeProjectId)`（面板）或 `data.label !== label`（tab）过滤，忽略其他 webview 的事件。
+3. **Store 隔离契约**：`states` 按 `projectId`（面板）或 `tabId`（tab）索引，`setPanelState` / `setTabState` 只 patch 目标，互不影响。
+   - **禁止部分写入残缺状态**：`set{Panel,Tab}State(id, patch)` 在 `states[id]` 不存在时必须先用 `default{Panel,Tab}State(label)` 完整初始化再合并 patch。若直接 `{ ...states[id], ...patch }`（对 undefined 展开），会生成缺 `history`/`label`/`url` 的残缺状态，渲染时 `canGoBack(browserState.history)` → `undefined is not an object (stack.index)` 整个应用崩溃（2025 实测）。
+   - 调用方若在无状态时写 store（如 panel 的 `navigate` 直接 `setPanelState`），也必须依赖此完整初始化语义，不得假设状态已由 `getPanelState` 创建。
 4. **项目切换契约**：切换项目时隐藏旧项目 webview；新项目浏览器已开启（`isCreated`）则恢复其 webview 可见并激活 dock 浏览器面板（保持布局），未开启则把右侧 dock 从浏览器面板切到默认面板或收起——不展示空浏览器面板。决策逻辑收敛在 `decideProjectSwitchDock` 纯函数（`src/features/browser/utils/projectSwitchDock.ts`）。
 5. **URL 持久化**：仅内存（当前会话），不落盘。
+6. **浮层 z-order 契约**（`overlayStore`）：DOM 浮层（action 菜单 / quick-open / 右键菜单 / 确认对话框）打开时 `setOverlayOpen(id, true)`，关闭时 `setOverlayOpen(id, false)`，`useBrowserTab` 据此在浮层期间隐藏悬浮 webview。**浮层所属组件必须在 unmount 时兜底清除自身 overlay id**（`useEffect(() => () => setOverlayOpen(id, false), [])`）：否则 pane 在浮层打开状态下被卸载（切项目/关 pane）会让 `count` 永久 >0，Browser webview 一直隐藏直到其他浮层开关。
 
 ### 4. Validation & Error Matrix
 

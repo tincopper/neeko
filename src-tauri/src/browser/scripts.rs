@@ -45,17 +45,22 @@ pub const fn scrollbar_script() -> &'static str {
     SCROLLBAR_SCRIPT
 }
 
-/// 构建元素选择器注入脚本:设置主题变量 + notify base + picker 脚本本体。
+/// 构建元素选择器注入脚本:设置主题变量 + notify base + label + picker 脚本本体。
+///
+/// `label` 嵌入脚本供 picker 提交 payload 携带(webview 唯一标识,前端据此将
+/// prompt 路由到对应项目/ tab 的 Agent CLI 终端)。
 pub fn build_picker_script(
     theme_colors: Option<std::collections::HashMap<String, String>>,
+    label: &str,
 ) -> Result<String, crate::AppError> {
     let theme_json = serde_json::to_string(&theme_colors.unwrap_or_default())
         .unwrap_or_else(|_| "{}".to_string());
     let notify_base_json = serde_json::to_string(notify_base())
         .map_err(|e| crate::AppError::Unknown(format!("Failed to serialize notify_base: {}", e)))?;
+    let label_json = serde_json::to_string(label).unwrap_or_else(|_| "\"\"".to_string());
     Ok(format!(
-        "window.__NEEKO_THEME__ = {};\nwindow.__NEEKO_NOTIFY_BASE__ = {};\n{}",
-        theme_json, notify_base_json, PICKER_SCRIPT
+        "window.__NEEKO_THEME__ = {};\nwindow.__NEEKO_NOTIFY_BASE__ = {};\nwindow.__NEEKO_BROWSER_LABEL__ = {};\n{}",
+        theme_json, notify_base_json, label_json, PICKER_SCRIPT
     ))
 }
 
@@ -105,6 +110,20 @@ mod tests {
         assert!(script.contains("page-meta"));
         assert!(script.contains("neeko-browser-test"));
         assert!(script.contains("document.title"));
+    }
+
+    #[test]
+    fn build_picker_script_embeds_label_for_routing() {
+        let script = build_picker_script(None, "neeko-browser-tab-t1").unwrap();
+        assert!(script.contains("__NEEKO_BROWSER_LABEL__"));
+        assert!(script.contains("neeko-browser-tab-t1"));
+    }
+
+    #[test]
+    fn build_picker_script_quotes_label_as_json() {
+        // label 必须以 JSON 字符串字面量嵌入,避免破坏注入脚本语法
+        let script = build_picker_script(None, "neeko-browser-\"x\"").unwrap();
+        assert!(script.contains("__NEEKO_BROWSER_LABEL__ = \"neeko-browser-\\\"x\\\"\";"));
     }
 
     #[test]

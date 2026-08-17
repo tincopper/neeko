@@ -46,6 +46,24 @@ describe('useProjectBrowserStore — per-project isolation', () => {
     expect(state.label).toBe('neeko-browser-p1');
   });
 
+  it('setPanelState 对不存在的项目也初始化完整状态（含 history），避免渲染崩溃', () => {
+    // 回归：useBrowserPanel 的 navigate/createWebview 会直接 setPanelState 而不先
+    // getPanelState。若 state 不存在，旧实现会生成缺 history 的残缺状态，
+    // 渲染时 canGoBack(browserState.history) → "undefined is not an object (stack.index)"。
+    useProjectBrowserStore.getState().setPanelState('p9', {
+      url: 'https://a.com',
+      isLoading: true,
+    });
+
+    const s = useProjectBrowserStore.getState().states['p9'];
+    expect(s).toBeDefined();
+    expect(s?.label).toBe('neeko-browser-p9');
+    expect(s?.history).toEqual({ entries: [], index: -1 });
+    expect(s?.url).toBe('https://a.com');
+    expect(s?.isLoading).toBe(true);
+    expect(s?.title).toBe('');
+  });
+
   it('projects are physically isolated: patching one leaves the other untouched', () => {
     useProjectBrowserStore.getState().getPanelState('p1');
     useProjectBrowserStore.getState().getPanelState('p2');

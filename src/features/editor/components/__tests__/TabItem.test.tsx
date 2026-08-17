@@ -66,6 +66,43 @@ describe('TabItem agent icon', () => {
   });
 });
 
+describe('TabItem browser favicon', () => {
+  it('有 favicon 时显示网站图标而非 Globe', () => {
+    const browserTab: Tab = {
+      id: 'tab-b1',
+      projectId: 'p1',
+      title: 'GitHub',
+      order: 0,
+      data: {
+        kind: 'browser',
+        url: 'https://github.com',
+        favicon: 'https://github.com/favicon.ico',
+      },
+    };
+
+    renderTabItem(browserTab);
+
+    const img = screen.getByTestId('browser-favicon');
+    expect(img).toBeInTheDocument();
+    expect(img).toHaveAttribute('src', 'https://github.com/favicon.ico');
+    expect(screen.getByText('GitHub')).toBeInTheDocument();
+  });
+
+  it('无 favicon 时回退到 Globe 图标', () => {
+    const browserTab: Tab = {
+      id: 'tab-b2',
+      projectId: 'p1',
+      title: 'Browser',
+      order: 0,
+      data: { kind: 'browser', url: '' },
+    };
+
+    renderTabItem(browserTab);
+
+    expect(screen.queryByTestId('browser-favicon')).not.toBeInTheDocument();
+  });
+});
+
 describe('TabItem close button pointer isolation', () => {
   const terminalTab: Tab = {
     id: 'tab-1',

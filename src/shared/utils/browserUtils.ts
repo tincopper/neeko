@@ -61,3 +61,17 @@ export function openHtmlInBrowserPanel(filePath: string): void {
   useBrowserStore.getState().navigateTo(fileUrl);
   useDockStore.getState().activatePanel('right', 'browser');
 }
+
+/**
+ * 提取 URL 的 host（tab 标题在页面 meta 到达前的兜底显示）。
+ * 解析失败或 host 为空（如 file://）时回退为原始 URL。
+ */
+export function hostFromUrl(url: string): string {
+  if (!url) return '';
+  try {
+    const u = new URL(url);
+    return u.hostname || url;
+  } catch {
+    return url;
+  }
+}

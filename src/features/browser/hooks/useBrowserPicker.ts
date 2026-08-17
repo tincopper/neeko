@@ -2,7 +2,6 @@ import { useState, useCallback, useEffect, type RefObject } from 'react';
 
 import { BROWSER_PICKER_CANCELLED_EVENT } from '@/shared/events';
 import { useTauriEvent } from '@/shared/hooks/useTauriEvent';
-import { useProjectStore } from '@/shared/store/projectStore';
 import { reportFrontendError } from '@/shared/utils/errorReporting';
 
 import { browserStartPicker, browserStopPicker } from '../api/browserApi';
@@ -13,47 +12,43 @@ import type { PickerThemeColors } from '../components/pickerUtils';
  * Extracted from useBrowserPanel.
  */
 export function useBrowserPicker(params: {
+  /** webview label（panel 用 `neeko-browser-{projectId}`，tab 用 `neeko-browser-tab-{tabId}`）。 */
+  label: string | null;
   isCreatedRef: RefObject<boolean>;
   getThemeColors: () => PickerThemeColors;
 }) {
-  const { isCreatedRef, getThemeColors } = params;
+  const { label, isCreatedRef, getThemeColors } = params;
   const [isPicking, setIsPicking] = useState(false);
-
-  const activeProjectId = useProjectStore((s) => s.activeProjectId);
 
   // Start element picker mode
   const startPicker = useCallback(async () => {
-    if (!activeProjectId || !isCreatedRef.current) return;
+    if (!label || !isCreatedRef.current) return;
     try {
-      await browserStartPicker(
-        activeProjectId,
-        getThemeColors() as unknown as Record<string, string>,
-      );
+      await browserStartPicker(label, getThemeColors() as unknown as Record<string, string>);
       setIsPicking(true);
     } catch (err) {
       console.error('[Browser] Failed to start picker:', err);
     }
-  }, [activeProjectId, isCreatedRef, getThemeColors]);
+  }, [label, isCreatedRef, getThemeColors]);
 
   // Stop element picker mode
   const stopPicker = useCallback(async () => {
-    if (!activeProjectId || !isCreatedRef.current) return;
+    if (!label || !isCreatedRef.current) return;
     try {
-      await browserStopPicker(activeProjectId);
+      await browserStopPicker(label);
     } catch (err) {
       console.error('[Browser] Failed to stop picker:', err);
     }
     setIsPicking(false);
-  }, [activeProjectId, isCreatedRef]);
+  }, [label, isCreatedRef]);
 
   // Re-inject picker script (called on navigation, prompt-submit, etc.)
   const reinjectPicker = useCallback(() => {
-    if (!activeProjectId) return;
-    browserStartPicker(
-      activeProjectId,
-      getThemeColors() as unknown as Record<string, string>,
-    ).catch((err) => reportFrontendError('browser.pickerReinject', err));
-  }, [activeProjectId, getThemeColors]);
+    if (!label) return;
+    browserStartPicker(label, getThemeColors() as unknown as Record<string, string>).catch((err) =>
+      reportFrontendError('browser.pickerReinject', err),
+    );
+  }, [label, getThemeColors]);
 
   // Listen: picker cancelled (Esc without composer) — exit picker mode.
   // 设计意图（design.md）：Esc 在无 Composer 打开时退出整个选择模式。此处必须

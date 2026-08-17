@@ -1,10 +1,15 @@
 import { act, renderHook } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it } from 'vitest';
+
+import { useOverlayStore } from '@/shared/store/overlayStore';
 
 import type { CloseAction } from '../useCloseConfirmation';
 import { useCloseConfirmation } from '../useCloseConfirmation';
 
 describe('useCloseConfirmation', () => {
+  beforeEach(() => {
+    useOverlayStore.getState().reset();
+  });
   it('request 打开对话框并记录文件名，用户操作前 Promise 未决', () => {
     const { result } = renderHook(() => useCloseConfirmation());
     let resolved: CloseAction | undefined;
@@ -68,5 +73,19 @@ describe('useCloseConfirmation', () => {
     expect(result.current.closeConfirmFileName).toBe('b.ts');
     expect(secondResolved).toBe('discard');
     expect(firstSettled).toBe(false);
+  });
+
+  it('打开状态下卸载 hook：清除自身 overlay id，count 归零（防 Browser webview 卡隐藏）', () => {
+    const { result, unmount } = renderHook(() => useCloseConfirmation());
+    act(() => {
+      result.current.requestCloseConfirmation('a.ts');
+    });
+    expect(useOverlayStore.getState().count).toBe(1);
+
+    // 模拟对话框所属 pane 在打开状态下被卸载（切项目/关 pane）
+    act(() => {
+      unmount();
+    });
+    expect(useOverlayStore.getState().count).toBe(0);
   });
 });

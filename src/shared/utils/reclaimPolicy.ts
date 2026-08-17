@@ -17,12 +17,13 @@ export interface WebviewReclaimPolicy {
 }
 
 export interface WebviewUsage {
-  projectId: string;
-  /** 最后活跃时间(epoch ms),项目切换到此项目时更新。 */
+  /** webview 的唯一标识（如 `panel:{projectId}` / `tab:{tabId}`）。 */
+  key: string;
+  /** 最后活跃时间(epoch ms),切换到该 webview 时更新。 */
   lastActiveAt: number;
   /** webview 是否已创建(存在渲染资源)。 */
   isCreated: boolean;
-  /** 是否为当前活跃项目。 */
+  /** 是否为当前活跃 webview。 */
   isActive: boolean;
 }
 
@@ -33,9 +34,9 @@ export const DEFAULT_RECLAIM_POLICY: WebviewReclaimPolicy = {
 };
 
 /**
- * 决策哪些项目的 webview 应被回收,返回 projectId 列表。
+ * 决策哪些 webview 应被回收,返回 key 列表。
  *
- * @param usages 所有浏览器项目的使用快照
+ * @param usages 所有浏览器 webview 的使用快照
  * @param policy 回收策略
  * @param now 当前时间(epoch ms),便于测试注入
  */
@@ -44,13 +45,13 @@ export function decideReclaims(
   policy: WebviewReclaimPolicy,
   now: number,
 ): string[] {
-  // 活跃项目永不回收;未创建的跳过
+  // 活跃 webview 永不回收;未创建的跳过
   const reclaimable = usages.filter((u) => u.isCreated && !u.isActive);
 
   // 1) 闲置超时回收
   const idleReclaims = reclaimable
     .filter((u) => now - u.lastActiveAt >= policy.maxIdleMs)
-    .map((u) => u.projectId);
+    .map((u) => u.key);
 
   // 2) 总数超限:从剩余(未超闲置)中回收最久未用,直到不超过上限
   const remaining = reclaimable.filter((u) => now - u.lastActiveAt < policy.maxIdleMs);
@@ -62,7 +63,7 @@ export function decideReclaims(
     extraReclaims = [...remaining]
       .sort((a, b) => a.lastActiveAt - b.lastActiveAt)
       .slice(0, overage)
-      .map((u) => u.projectId);
+      .map((u) => u.key);
   }
 
   return [...idleReclaims, ...extraReclaims];

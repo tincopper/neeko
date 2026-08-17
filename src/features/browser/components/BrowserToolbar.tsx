@@ -45,12 +45,29 @@ const BrowserToolbar: React.FC<BrowserToolbarProps> = ({
   onTogglePicker,
 }) => {
   const [inputValue, setInputValue] = useState(url);
+  // 编辑态：用户聚焦地址栏后，输入框展示可编辑的 URL；失焦后恢复标题/URL 展示。
+  const [editing, setEditing] = useState(false);
 
-  // Sync input value when URL changes
+  // Sync input value when URL changes (仅非编辑态，避免打断用户输入)
   useEffect(() => {
+    if (editing) return;
     // Defer to avoid sync setState in effect
     Promise.resolve().then(() => setInputValue(url));
-  }, [url]);
+  }, [url, editing]);
+
+  const handleFocus = useCallback(
+    (e: React.FocusEvent<HTMLInputElement>) => {
+      setEditing(true);
+      setInputValue(url);
+      // 类浏览器地址栏：聚焦即全选，输入直接替换旧 URL
+      e.target.select();
+    },
+    [url],
+  );
+
+  const handleBlur = useCallback(() => {
+    setEditing(false);
+  }, []);
 
   const handleKeyDown = useCallback(
     (e: KeyboardEvent<HTMLInputElement>) => {
@@ -106,8 +123,10 @@ const BrowserToolbar: React.FC<BrowserToolbarProps> = ({
         )}
         <input
           type="text"
-          value={title || url}
+          value={editing ? inputValue : title || url}
+          onFocus={handleFocus}
           onChange={(e) => setInputValue(e.target.value)}
+          onBlur={handleBlur}
           onKeyDown={handleKeyDown}
           placeholder="Enter URL..."
           className="flex-1 min-w-0 bg-transparent border-none outline-none placeholder:text-text-muted"

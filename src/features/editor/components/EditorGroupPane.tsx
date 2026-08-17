@@ -255,6 +255,8 @@ function EditorGroupPane({
             agents={enabledAgents}
             diffMode={config.diffMode}
             layoutId={layoutId}
+            // pinned 面板只要渲染即视为激活组；left/right 需为当前激活组。
+            isActiveGroup={groupId === 'pinned' || activeGroupId === groupId}
             remoteProject={remoteProject}
             onCloseTab={handleCloseTab}
             showToast={showToast}

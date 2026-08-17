@@ -2,7 +2,12 @@ import { describe, it, expect, beforeEach } from 'vitest';
 
 import type { ProjectTabs, Tab } from '@/shared/types/tab';
 
-import { isAgentCliTab, formatPickerMessage, getThemeColors } from '../pickerUtils';
+import {
+  findAgentCliTab,
+  isAgentCliTab,
+  formatPickerMessage,
+  getThemeColors,
+} from '../pickerUtils';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -111,6 +116,42 @@ describe('isAgentCliTab', () => {
       makeTab({ id: 'tab-1', data: { kind: 'terminal', agentId: 'claude', status: 'Running' } }),
     ]);
     expect(isAgentCliTab(tabs, 'nonexistent')).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// findAgentCliTab
+// ---------------------------------------------------------------------------
+
+describe('findAgentCliTab', () => {
+  const agentTab = (id: string, order: number) =>
+    makeTab({ id, order, data: { kind: 'terminal', agentId: 'claude', status: 'Idle' } });
+  const plainTab = (id: string, order: number) =>
+    makeTab({ id, order, data: { kind: 'terminal', agentId: null, status: 'Idle' } });
+
+  it('returns null when there are no agent CLI tabs', () => {
+    const tabs = makeProjectTabs([plainTab('t-plain', 0)], 't-plain');
+    expect(findAgentCliTab(tabs)).toBeNull();
+  });
+
+  it('returns null when projectTabs is undefined', () => {
+    expect(findAgentCliTab(undefined)).toBeNull();
+  });
+
+  it('prefers the active agent CLI tab', () => {
+    const tabs = makeProjectTabs([agentTab('t1', 0), agentTab('t2', 1)], 't2');
+    expect(findAgentCliTab(tabs)).toBe('t2');
+  });
+
+  it('falls back to the highest-order agent CLI tab when none is active', () => {
+    const tabs = makeProjectTabs([agentTab('t-old', 0), agentTab('t-new', 3), plainTab('t-x', 2)]);
+    expect(findAgentCliTab(tabs)).toBe('t-new');
+  });
+
+  it('ignores plain terminal tabs (agentId === null)', () => {
+    const tabs = makeProjectTabs([plainTab('t-plain', 5), agentTab('t-agent', 1)], 't-plain');
+    // 激活的 t-plain 不是 agent CLI → 回退到 t-agent
+    expect(findAgentCliTab(tabs)).toBe('t-agent');
   });
 });
 

@@ -109,4 +109,15 @@ describe('canGoBack / canGoForward', () => {
     expect(s2.index).toBe(0);
     expect(s2.entries).not.toContain('https://p1.com/b');
   });
+
+  it('残缺/undefined 栈防御：不崩溃、视为不可前进后退', () => {
+    // 回归：残缺 panel 状态（缺 history）曾导致
+    // canGoBack(undefined) → "undefined is not an object (stack.index)" 应用崩溃。
+    expect(canGoBack(undefined as never)).toBe(false);
+    expect(canGoForward(undefined as never)).toBe(false);
+    expect(recordNavigation(undefined as never, 'https://a.com')).toEqual({
+      entries: ['https://a.com'],
+      index: 0,
+    });
+  });
 });

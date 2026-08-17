@@ -235,4 +235,29 @@ describe('usePaneActions', () => {
     const tabs = s.tabs['p1']?.tabs ?? [];
     expect(tabs.length).toBe(1);
   });
+
+  it('handleActionMenuExecute: new-browser creates a browser tab and activates it', () => {
+    const { result } = renderHook(() => usePaneActions(defaultParams));
+
+    act(() => {
+      result.current.handleActionMenuExecute({ id: 'new-browser' } as never);
+    });
+
+    const s = useEditorStore.getState();
+    const tabs = s.tabs['p1']?.tabs ?? [];
+    expect(tabs.length).toBe(1);
+    expect(tabs[0]?.data).toMatchObject({ kind: 'browser', url: '' });
+    expect(s.activeTabId).toBe(tabs[0]?.id);
+  });
+
+  it('handleActionMenuExecute: new-browser is a no-op without a project', () => {
+    const params = { ...defaultParams, projectIdForCheck: null };
+    const { result } = renderHook(() => usePaneActions(params));
+
+    act(() => {
+      result.current.handleActionMenuExecute({ id: 'new-browser' } as never);
+    });
+
+    expect(useEditorStore.getState().tabs['p1']).toBeUndefined();
+  });
 });

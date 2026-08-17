@@ -31,7 +31,11 @@ function setup() {
   useProjectStore.setState({ activeProjectId: 'p1' });
   const isCreatedRef = { current: true };
   const { result } = renderHook(() =>
-    useBrowserPicker({ isCreatedRef, getThemeColors: () => THEME }),
+    useBrowserPicker({
+      label: 'neeko-browser-p1',
+      isCreatedRef,
+      getThemeColors: () => THEME,
+    }),
   );
   return result;
 }

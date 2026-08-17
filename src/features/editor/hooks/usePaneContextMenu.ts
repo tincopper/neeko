@@ -1,7 +1,11 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import type { ContextMenuItem } from '@/features/project';
+import { useOverlayStore } from '@/shared/store/overlayStore';
 import type { EditorGroupId } from '@/shared/types';
+
+/** tab 右键菜单浮层 id（z-order 专项）。 */
+const CONTEXT_MENU_OVERLAY_ID = 'tab-context-menu';
 
 interface UsePaneContextMenuParams {
   groupId: EditorGroupId | 'pinned';
@@ -37,7 +41,16 @@ export function usePaneContextMenu({
     null,
   );
 
-  const closeContextMenu = useCallback(() => setContextMenu(null), []);
+  // 兜底：pane 在菜单打开状态下被卸载（切项目/关 pane）时清除自身 overlay id，
+  // 避免 overlayStore.count 永久 >0 导致 Browser webview 一直隐藏。
+  useEffect(() => {
+    return () => useOverlayStore.getState().setOverlayOpen(CONTEXT_MENU_OVERLAY_ID, false);
+  }, []);
+
+  const closeContextMenu = useCallback(() => {
+    useOverlayStore.getState().setOverlayOpen(CONTEXT_MENU_OVERLAY_ID, false);
+    setContextMenu(null);
+  }, []);
 
   // Build context menu extras inline based on groupId
   const resolveContextMenuExtras = useCallback(
@@ -57,6 +70,8 @@ export function usePaneContextMenu({
   const handleTabContextMenu = useCallback(
     (tabId: string, e: React.MouseEvent) => {
       e.preventDefault();
+      // 浮层上报：菜单打开期间隐藏内容区 Browser webview（z-order 专项）
+      useOverlayStore.getState().setOverlayOpen(CONTEXT_MENU_OVERLAY_ID, true);
       setContextMenu({ tabId, x: e.clientX, y: e.clientY });
       onFocusGroup();
     },

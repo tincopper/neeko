@@ -7,6 +7,7 @@
 import { create } from 'zustand';
 
 import { readDirTree } from '@/features/file/api/fileApi';
+import { useOverlayStore } from '@/shared/store/overlayStore';
 import { useProjectStore } from '@/shared/store/projectStore';
 
 import { flattenFilePaths } from '../fileIndex';
@@ -14,6 +15,9 @@ import { fuzzyFilter } from '../fuzzy';
 import { openProjectFile } from '../openFile';
 
 import { useRecentFilesStore } from './recentFilesStore';
+
+/** Quick-open palette 浮层 id（z-order 专项）。 */
+export const QUICK_OPEN_OVERLAY_ID = 'quick-open';
 
 export type QuickOpenMode = 'gotoFile' | 'recentFiles';
 
@@ -108,6 +112,8 @@ export const useQuickOpenStore = create<QuickOpenState>((set, get) => ({
     const projectId = useProjectStore.getState().activeProjectId;
     const fileIndex = get().fileIndex;
     const items = recomputeItems(mode, '', fileIndex, projectId);
+    // 浮层上报：palette 打开期间隐藏内容区 Browser webview（z-order 专项）
+    useOverlayStore.getState().setOverlayOpen(QUICK_OPEN_OVERLAY_ID, true);
     set({
       open: true,
       mode,
@@ -128,7 +134,10 @@ export const useQuickOpenStore = create<QuickOpenState>((set, get) => ({
     }
   },
 
-  closePalette: () => set({ open: false, query: '', selectedIndex: 0, loading: false }),
+  closePalette: () => {
+    useOverlayStore.getState().setOverlayOpen(QUICK_OPEN_OVERLAY_ID, false);
+    set({ open: false, query: '', selectedIndex: 0, loading: false });
+  },
 
   setQuery: (q) => {
     const projectId = useProjectStore.getState().activeProjectId;

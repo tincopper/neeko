@@ -18,6 +18,14 @@ const makeTab = (id: string, title: string): Tab => ({
   },
 });
 
+const makeTerminalTab = (id: string, title: string): Tab => ({
+  id,
+  projectId: 'p1',
+  title,
+  order: 0,
+  data: { kind: 'terminal', agentId: null, status: 'Idle' },
+});
+
 const renderTabBar = (onNewFileTab?: () => void) =>
   render(
     <TabBar
@@ -50,5 +58,35 @@ describe('TabBar 双击新建文件', () => {
     renderTabBar();
 
     expect(() => fireEvent.doubleClick(screen.getByRole('tablist'))).not.toThrow();
+  });
+});
+
+describe('TabBar + 按钮（New action）', () => {
+  it('终端 tab 达到 10 个时 + 按钮仍然显示（不再受数量门控）', () => {
+    const tabs = Array.from({ length: 10 }, (_, i) =>
+      makeTerminalTab(`t${i}`, `Terminal ${i + 1}`),
+    );
+    const onActionMenuOpen = vi.fn();
+
+    render(
+      <TabBar
+        tabs={tabs}
+        activeTabId="t0"
+        onActivateTab={vi.fn()}
+        onCloseTab={vi.fn()}
+        onActionMenuOpen={onActionMenuOpen}
+      />,
+    );
+
+    const addBtn = screen.getByLabelText('New action');
+    expect(addBtn).toBeInTheDocument();
+    fireEvent.click(addBtn);
+    expect(onActionMenuOpen).toHaveBeenCalledTimes(1);
+  });
+
+  it('未提供 onAddTerminalTab / onActionMenuOpen 时不渲染 + 按钮', () => {
+    renderTabBar();
+
+    expect(screen.queryByLabelText('New action')).not.toBeInTheDocument();
   });
 });

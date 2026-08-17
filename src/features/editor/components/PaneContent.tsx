@@ -1,5 +1,6 @@
 import React from 'react';
 
+import { BrowserTabView } from '@/features/browser';
 import { ConversationViewer } from '@/features/conversation';
 import { DiffView, PRDetailView } from '@/features/git';
 import { SplitLayout, TerminalView } from '@/features/terminal';
@@ -18,6 +19,8 @@ interface PaneContentProps {
   agents: AgentConfig[];
   diffMode: DiffMode;
   layoutId: string;
+  /** 本 pane 是否为当前激活组（left/right/pinned 中只有一个为 true）。 */
+  isActiveGroup: boolean;
   remoteProject?: {
     entryId: string;
     projectId: string;
@@ -39,7 +42,7 @@ interface PaneContentProps {
 }
 
 /**
- * 编辑器面板内容区：按 activeTab 类型分发会话 / 终端 / Diff / 文件 / HTML 预览 / PR 详情。
+ * 编辑器面板内容区：按 activeTab 类型分发会话 / 终端 / Diff / 文件 / HTML 预览 / PR 详情 / Browser。
  */
 function PaneContent({
   tabKey,
@@ -47,6 +50,7 @@ function PaneContent({
   agents,
   diffMode,
   layoutId,
+  isActiveGroup,
   remoteProject,
   onCloseTab,
   showToast,
@@ -148,6 +152,15 @@ function PaneContent({
           prBaseRef={activeTab.data.prBaseRef}
           onClose={() => onCloseTab(activeTab.id)}
           onOpenDiff={handleOpenDiff}
+        />
+      );
+    case 'browser':
+      return (
+        <BrowserTabView
+          tabKey={tabKey}
+          tabId={activeTab.id}
+          projectId={activeTab.projectId}
+          isActive={isActiveGroup}
         />
       );
     default:

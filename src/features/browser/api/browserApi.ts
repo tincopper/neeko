@@ -1,7 +1,5 @@
 import { invoke } from '@tauri-apps/api/core';
 
-import { getProjectBrowserLabel } from '../hooks/useBrowserConstants';
-
 interface BrowserBounds {
   x: number;
   y: number;
@@ -9,36 +7,36 @@ interface BrowserBounds {
   height: number;
 }
 
+/**
+ * 创建内嵌浏览器 webview（Rust 侧真实创建）。
+ * @param label webview 唯一标识（panel 用 `neeko-browser-{projectId}`，tab 用 `neeko-browser-tab-{tabId}`）。
+ */
 export function createBrowserWebview(
-  projectId: string,
+  label: string,
   url: string,
   x: number,
   y: number,
   width: number,
   height: number,
 ): Promise<string> {
-  const label = getProjectBrowserLabel(projectId);
   return invoke<string>('create_browser_webview', { label, url, x, y, width, height });
 }
 
-export function browserNavigate(projectId: string, url: string): Promise<void> {
-  const label = getProjectBrowserLabel(projectId);
+export function browserNavigate(label: string, url: string): Promise<void> {
   return invoke<void>('browser_navigate', { label, url });
 }
 
 export function browserSetBounds(
-  projectId: string,
+  label: string,
   x: number,
   y: number,
   width: number,
   height: number,
 ): Promise<void> {
-  const label = getProjectBrowserLabel(projectId);
   return invoke<void>('browser_set_bounds', { label, x, y, width, height });
 }
 
-export function browserOpenDevtools(projectId: string, bounds: BrowserBounds): Promise<void> {
-  const label = getProjectBrowserLabel(projectId);
+export function browserOpenDevtools(label: string, bounds: BrowserBounds): Promise<void> {
   return invoke<void>('browser_open_devtools', {
     label,
     x: bounds.x,
@@ -48,41 +46,34 @@ export function browserOpenDevtools(projectId: string, bounds: BrowserBounds): P
   });
 }
 
-export function browserResetZoom(projectId: string): Promise<void> {
-  const label = getProjectBrowserLabel(projectId);
+export function browserResetZoom(label: string): Promise<void> {
   return invoke<void>('browser_reset_zoom', { label });
 }
 
-export function browserClose(projectId: string): Promise<void> {
-  const label = getProjectBrowserLabel(projectId);
+export function browserClose(label: string): Promise<void> {
   return invoke<void>('browser_close', { label });
 }
 
-export function browserSetVisible(projectId: string, visible: boolean): Promise<void> {
-  const label = getProjectBrowserLabel(projectId);
+export function browserSetVisible(label: string, visible: boolean): Promise<void> {
   return invoke<void>('browser_set_visible', { label, visible });
 }
 
-export function browserGoBack(projectId: string): Promise<void> {
-  const label = getProjectBrowserLabel(projectId);
+export function browserGoBack(label: string): Promise<void> {
   return invoke<void>('browser_go_back', { label });
 }
 
-export function browserGoForward(projectId: string): Promise<void> {
-  const label = getProjectBrowserLabel(projectId);
+export function browserGoForward(label: string): Promise<void> {
   return invoke<void>('browser_go_forward', { label });
 }
 
 export function browserStartPicker(
-  projectId: string,
+  label: string,
   themeColors?: Record<string, string>,
 ): Promise<void> {
-  const label = getProjectBrowserLabel(projectId);
   return invoke<void>('browser_start_picker', { label, themeColors });
 }
 
-export function browserStopPicker(projectId: string): Promise<void> {
-  const label = getProjectBrowserLabel(projectId);
+export function browserStopPicker(label: string): Promise<void> {
   return invoke<void>('browser_stop_picker', { label });
 }
 

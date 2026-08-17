@@ -13,6 +13,7 @@
 
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
+use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 use tauri::Emitter;
@@ -25,6 +26,26 @@ use super::events::{
 /// 触发两次协议回调，此窗口用于抑制重复事件。
 const DEDUP_WINDOW_MS: u128 = 500;
 
+/// 旧 GET 通道无 label，使用统一哨兵键（退化回全局窗口）。
+const LEGACY_PROMPT_KEY: &str = "__legacy__";
+
+/// 按 label 判断本次 prompt 提交是否应发射（去重窗口按 webview 隔离，
+/// 避免多 tab 快速提交时第二个被全局窗口误抑制）。
+fn should_emit_prompt(map: &Mutex<HashMap<String, Instant>>, key: &str) -> bool {
+    let mut map = map
+        .lock()
+        .expect("infallible: prompt dedup lock should not be poisoned");
+    let now = Instant::now();
+    let emit = map
+        .get(key)
+        .map(|t| now.duration_since(*t).as_millis() >= DEDUP_WINDOW_MS)
+        .unwrap_or(true);
+    if emit {
+        map.insert(key.to_string(), now);
+    }
+    emit
+}
+
 /// 页面经自定义协议回传的 picker 消息。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PickerMessage {
@@ -34,6 +55,8 @@ pub enum PickerMessage {
         prompt: String,
         /// 选中的元素（含 outerHTML 与简写 selector）。
         elements: Vec<PickerElement>,
+        /// 提交方 webview 的 label（区分多项目/多 tab）；旧版注入脚本无此字段。
+        label: Option<String>,
     },
     /// 用户取消元素选取。
     PickerCancelled,
@@ -88,6 +111,10 @@ pub fn parse_picker_payload(body: &[u8]) -> Option<PickerMessage> {
         "prompt-submitted" => Some(PickerMessage::PromptSubmitted {
             prompt: value.get("prompt")?.as_str()?.to_string(),
             elements: parse_elements(value.get("elements")?)?,
+            label: value
+                .get("label")
+                .and_then(|v| v.as_str())
+                .map(str::to_string),
         }),
         "picker-cancelled" => Some(PickerMessage::PickerCancelled),
         "element-picked" => Some(PickerMessage::ElementPicked {
@@ -128,7 +155,8 @@ pub fn create_handler() -> impl Fn(
        + Send
        + Sync
        + 'static {
-    let last_prompt_emit: Arc<Mutex<Option<Instant>>> = Arc::new(Mutex::new(None));
+    let last_prompt_emit: Arc<Mutex<HashMap<String, Instant>>> =
+        Arc::new(Mutex::new(HashMap::new()));
 
     move |ctx, request| {
         let method = request.method().to_string();
@@ -188,25 +216,21 @@ pub fn create_handler() -> impl Fn(
 fn handle_picker_message(
     ctx: &tauri::UriSchemeContext<'_, tauri::Wry>,
     message: PickerMessage,
-    last_prompt_emit: &Arc<Mutex<Option<Instant>>>,
+    last_prompt_emit: &Arc<Mutex<HashMap<String, Instant>>>,
 ) {
     match message {
-        PickerMessage::PromptSubmitted { prompt, elements } => {
-            let should_emit = {
-                let mut last = last_prompt_emit
-                    .lock()
-                    .expect("infallible: prompt dedup lock should not be poisoned");
-                let now = Instant::now();
-                let emit = last
-                    .map(|t| now.duration_since(t).as_millis() >= DEDUP_WINDOW_MS)
-                    .unwrap_or(true);
-                if emit {
-                    *last = Some(now);
+        PickerMessage::PromptSubmitted {
+            prompt,
+            elements,
+            label,
+        } => {
+            let key = label.as_deref().unwrap_or(LEGACY_PROMPT_KEY);
+            if should_emit_prompt(last_prompt_emit, key) {
+                // label 可选：旧版注入脚本无 label 字段 → 前端回退到当前项目路由
+                let mut payload = serde_json::json!({ "prompt": prompt, "elements": elements });
+                if let Some(label) = label {
+                    payload["label"] = serde_json::Value::String(label);
                 }
-                emit
-            };
-            if should_emit {
-                let payload = serde_json::json!({ "prompt": prompt, "elements": elements });
                 let _ = ctx
                     .app_handle()
                     .emit(EVENT_BROWSER_PROMPT_SUBMITTED, payload);
@@ -276,24 +300,11 @@ fn parse_prompt_submitted_query(query: &str) -> Option<(String, String)> {
 fn handle_prompt_submitted(
     ctx: &tauri::UriSchemeContext<'_, tauri::Wry>,
     query: &str,
-    last_prompt_emit: &Arc<Mutex<Option<Instant>>>,
+    last_prompt_emit: &Arc<Mutex<HashMap<String, Instant>>>,
 ) {
     if let Some((prompt, html)) = parse_prompt_submitted_query(query) {
-        let should_emit = {
-            let mut last = last_prompt_emit
-                .lock()
-                .expect("infallible: prompt dedup lock should not be poisoned");
-            let now = Instant::now();
-            let emit = last
-                .map(|t| now.duration_since(t).as_millis() >= DEDUP_WINDOW_MS)
-                .unwrap_or(true);
-            if emit {
-                *last = Some(now);
-            }
-            emit
-        };
-
-        if should_emit {
+        // 旧 GET 通道无 label → 使用哨兵键（退化回全局去重窗口）。
+        if should_emit_prompt(last_prompt_emit, LEGACY_PROMPT_KEY) {
             // 旧 GET 通道仅携带单个 html，包装为单元素数组以兼容新前端 payload。
             let element = PickerElement {
                 html,
@@ -330,6 +341,7 @@ mod tests {
                     html: "<div></div>".into(),
                     selector: "div".into(),
                 }],
+                label: None,
             })
         );
     }
@@ -354,6 +366,7 @@ mod tests {
                         selector: "div.card".into(),
                     },
                 ],
+                label: None,
             })
         );
     }
@@ -371,6 +384,30 @@ mod tests {
                     html: "<span>a</span>".into(),
                     selector: String::new(),
                 }],
+                label: None,
+            })
+        );
+    }
+
+    #[test]
+    fn test_parse_picker_payload_prompt_submitted_with_label() {
+        // 新版注入脚本携带 label（webview 标识），用于前端按 tab/项目路由
+        let payload = serde_json::json!({
+            "type": "prompt-submitted",
+            "label": "neeko-browser-tab-t1",
+            "prompt": "改红",
+            "elements": [{ "html": "<div></div>", "selector": "div" }],
+        });
+        let body = serde_json::to_vec(&payload).unwrap();
+        assert_eq!(
+            parse_picker_payload(&body),
+            Some(PickerMessage::PromptSubmitted {
+                prompt: "改红".into(),
+                elements: vec![PickerElement {
+                    html: "<div></div>".into(),
+                    selector: "div".into(),
+                }],
+                label: Some("neeko-browser-tab-t1".into()),
             })
         );
     }
@@ -451,12 +488,17 @@ mod tests {
 
         let parsed = parse_picker_payload(&body);
         match parsed {
-            Some(PickerMessage::PromptSubmitted { prompt, elements }) => {
+            Some(PickerMessage::PromptSubmitted {
+                prompt,
+                elements,
+                label,
+            }) => {
                 assert_eq!(prompt, "改大一点");
                 assert_eq!(elements.len(), 1);
                 assert_eq!(elements[0].html.len(), large_html.len());
                 assert_eq!(elements[0].html, large_html);
                 assert_eq!(elements[0].selector, "div");
+                assert_eq!(label, None);
             }
             other => panic!("expected PromptSubmitted, got {:?}", other.is_some()),
         }
@@ -558,5 +600,30 @@ mod tests {
         let (prompt, html) = parse_prompt_submitted_query(q).unwrap();
         assert_eq!(prompt, "把按钮改成红色");
         assert_eq!(html, "<button>Hi</button>");
+    }
+
+    // --- should_emit_prompt（按 label 隔离的去重窗口） ---
+
+    #[test]
+    fn test_prompt_dedup_is_per_label() {
+        let map: Mutex<HashMap<String, Instant>> = Mutex::new(HashMap::new());
+
+        // 两个不同 webview 在窗口内各自提交：均允许发射（互不抑制）。
+        assert!(should_emit_prompt(&map, "neeko-browser-tab-a"));
+        assert!(should_emit_prompt(&map, "neeko-browser-tab-b"));
+
+        // 同一 webview 窗口内重复提交：被抑制。
+        assert!(!should_emit_prompt(&map, "neeko-browser-tab-a"));
+        // 另一 webview 不受影响。
+        assert!(should_emit_prompt(&map, "neeko-browser-p1"));
+    }
+
+    #[test]
+    fn test_prompt_dedup_legacy_shared_key() {
+        let map: Mutex<HashMap<String, Instant>> = Mutex::new(HashMap::new());
+
+        assert!(should_emit_prompt(&map, LEGACY_PROMPT_KEY));
+        // 窗口内重复（旧 GET 通道）被抑制；哨兵键互相抑制。
+        assert!(!should_emit_prompt(&map, LEGACY_PROMPT_KEY));
     }
 }

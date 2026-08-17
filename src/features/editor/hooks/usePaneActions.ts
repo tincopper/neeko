@@ -115,6 +115,23 @@ export function usePaneActions({
           }
           break;
         }
+        case 'new-browser': {
+          if (projectIdForCheck) {
+            const tabId = `tab_${crypto.randomUUID()}`;
+            useEditorStore.getState().addTab(tabKey, {
+              id: tabId,
+              projectId: projectIdForCheck,
+              title: 'Browser',
+              order: tabs.length,
+              data: {
+                kind: 'browser' as const,
+                url: '',
+              },
+            });
+            useEditorStore.getState().activateTab(tabKey, tabId);
+          }
+          break;
+        }
         case 'new-file': {
           if (projectIdForCheck) {
             createUntitledFileTab(tabKey, projectIdForCheck);

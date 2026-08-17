@@ -4,9 +4,10 @@
 import React, { useEffect, useRef } from 'react';
 
 import { cn } from '@/lib/utils';
+import { useOverlayStore } from '@/shared/store/overlayStore';
 import { Dialog, DialogContent, DialogTitle } from '@/ui/Dialog';
 
-import { quickOpenTitle, useQuickOpenStore } from './store/quickOpenStore';
+import { QUICK_OPEN_OVERLAY_ID, quickOpenTitle, useQuickOpenStore } from './store/quickOpenStore';
 
 export function QuickOpenPalette() {
   const open = useQuickOpenStore((s) => s.open);
@@ -22,6 +23,12 @@ export function QuickOpenPalette() {
 
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
+
+  // 兜底：palette 在打开状态下被卸载（HMR/未来条件渲染）时清除自身 overlay id，
+  // 避免 overlayStore.count 永久 >0 导致 Browser webview 一直隐藏。
+  useEffect(() => {
+    return () => useOverlayStore.getState().setOverlayOpen(QUICK_OPEN_OVERLAY_ID, false);
+  }, []);
 
   useEffect(() => {
     if (open) {

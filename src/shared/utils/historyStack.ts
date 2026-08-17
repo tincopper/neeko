@@ -25,6 +25,7 @@ export function createHistoryStack(initialUrl?: string): HistoryStack {
  * - 否则为全新导航 → 截断当前指针之后的前进分支,追加 url。
  */
 export function recordNavigation(stack: HistoryStack, url: string): HistoryStack {
+  if (!stack) return createHistoryStack(url);
   if (stack.entries.length === 0) return { entries: [url], index: 0 };
   if (stack.entries[stack.index] === url) return stack;
 
@@ -35,12 +36,12 @@ export function recordNavigation(stack: HistoryStack, url: string): HistoryStack
   return { entries, index: entries.length - 1 };
 }
 
-/** 当前指针之前是否存在历史条目(可后退)。 */
+/** 当前指针之前是否存在历史条目(可后退)。残缺栈视为不可后退(防御,不崩溃)。 */
 export function canGoBack(stack: HistoryStack): boolean {
-  return stack.index > 0;
+  return !!stack && stack.index > 0;
 }
 
-/** 当前指针之后是否存在前进条目(可前进)。 */
+/** 当前指针之后是否存在前进条目(可前进)。残缺栈视为不可前进(防御,不崩溃)。 */
 export function canGoForward(stack: HistoryStack): boolean {
-  return stack.index < stack.entries.length - 1;
+  return !!stack && stack.index < stack.entries.length - 1;
 }

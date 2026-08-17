@@ -20,6 +20,7 @@ interface ActionMenuDropdownProps {
 const GROUP_LABELS: Record<ActionGroup, string> = {
   terminal: 'Terminal',
   agent: 'Agent',
+  browser: 'Browser',
   file: 'File',
   quick: 'Quick Actions',
   library: 'Library',
