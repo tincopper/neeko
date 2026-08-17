@@ -63,27 +63,33 @@ export const SHORTCUT_ACTIONS: ShortcutAction[] = [
   {
     id: 'prevTab',
     label: 'Previous Tab',
-    // IDEA: Alt+Left / Option+Left — cycle editor tabs
-    defaultBinding: 'Alt+Left',
+    // 默认不绑定：Alt/Option+方向键在 macOS 上是原生「按词移动」，不该被全局抢占。
+    // Ctrl+Tab (switchTabNext) 是唯一、标准的 tab 切换入口。
+    // 想要 IDEA 手感可走「Apply IDEA Preset」（Alt+Left）；启用后 allowInEditable
+    // 使其在终端 textarea 聚焦时也生效。
+    defaultBinding: '',
     category: 'tabs',
+    allowInEditable: true,
   },
   {
     id: 'nextTab',
     label: 'Next Tab',
-    // IDEA: Alt+Right / Option+Right
-    defaultBinding: 'Alt+Right',
+    // 同上：默认未绑定；IDEA 预设绑定 Alt+Right。
+    defaultBinding: '',
     category: 'tabs',
+    allowInEditable: true,
   },
   {
     id: 'switchTabNext',
-    label: 'Switcher: Next Tab',
+    // 按下即切换到 MRU 上一个 tab；连按继续按 MRU 轮转。不再弹切换面板。
+    label: 'Next Tab (MRU)',
     defaultBinding: 'Ctrl+Tab',
     category: 'tabs',
     allowInEditable: true,
   },
   {
     id: 'switchTabPrev',
-    label: 'Switcher: Previous Tab',
+    label: 'Previous Tab (MRU)',
     defaultBinding: 'Ctrl+Shift+Tab',
     category: 'tabs',
     allowInEditable: true,

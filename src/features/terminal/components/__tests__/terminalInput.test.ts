@@ -389,6 +389,160 @@ describe('setupTerminalInput', () => {
     expect(sendInput).not.toHaveBeenCalled();
   });
 
+  describe('Option/Alt + 左右方向键 → 按词移动 (Alt+b / Alt+f)', () => {
+    it('Alt+ArrowLeft 发送 \\x1bb 并抑制 xterm 默认处理', () => {
+      const term = new MockTerminal();
+      const sendInput = vi.fn();
+
+      setupTerminalInput({
+        term: term as unknown as Terminal,
+        sendInput,
+      });
+
+      const handled = term.simulateKeyEvent(
+        createKeyboardEvent('keydown', {
+          key: 'ArrowLeft',
+          code: 'ArrowLeft',
+          altKey: true,
+        }),
+      );
+
+      expect(handled).toBe(false);
+      expect(sendInput).toHaveBeenCalledWith('\x1bb');
+    });
+
+    it('Alt+ArrowRight 发送 \\x1bf 并抑制 xterm 默认处理', () => {
+      const term = new MockTerminal();
+      const sendInput = vi.fn();
+
+      setupTerminalInput({
+        term: term as unknown as Terminal,
+        sendInput,
+      });
+
+      const handled = term.simulateKeyEvent(
+        createKeyboardEvent('keydown', {
+          key: 'ArrowRight',
+          code: 'ArrowRight',
+          altKey: true,
+        }),
+      );
+
+      expect(handled).toBe(false);
+      expect(sendInput).toHaveBeenCalledWith('\x1bf');
+    });
+
+    it('Alt+ArrowUp / Alt+ArrowDown 不拦截', () => {
+      const term = new MockTerminal();
+      const sendInput = vi.fn();
+
+      setupTerminalInput({
+        term: term as unknown as Terminal,
+        sendInput,
+      });
+
+      for (const code of ['ArrowUp', 'ArrowDown']) {
+        const handled = term.simulateKeyEvent(
+          createKeyboardEvent('keydown', {
+            key: code,
+            code,
+            altKey: true,
+          }),
+        );
+        expect(handled).toBe(true);
+      }
+      expect(sendInput).not.toHaveBeenCalled();
+    });
+
+    it('Ctrl+Alt+ArrowLeft 不拦截（保留 Ctrl+Alt+方向键导航）', () => {
+      const term = new MockTerminal();
+      const sendInput = vi.fn();
+
+      setupTerminalInput({
+        term: term as unknown as Terminal,
+        sendInput,
+      });
+
+      const handled = term.simulateKeyEvent(
+        createKeyboardEvent('keydown', {
+          key: 'ArrowLeft',
+          code: 'ArrowLeft',
+          altKey: true,
+          ctrlKey: true,
+        }),
+      );
+
+      expect(handled).toBe(true);
+      expect(sendInput).not.toHaveBeenCalled();
+    });
+
+    it('Shift+Alt+ArrowLeft 不拦截（保留选区相关组合）', () => {
+      const term = new MockTerminal();
+      const sendInput = vi.fn();
+
+      setupTerminalInput({
+        term: term as unknown as Terminal,
+        sendInput,
+      });
+
+      const handled = term.simulateKeyEvent(
+        createKeyboardEvent('keydown', {
+          key: 'ArrowLeft',
+          code: 'ArrowLeft',
+          altKey: true,
+          shiftKey: true,
+        }),
+      );
+
+      expect(handled).toBe(true);
+      expect(sendInput).not.toHaveBeenCalled();
+    });
+
+    it('keyup 事件中的 Alt+ArrowLeft 不触发发送', () => {
+      const term = new MockTerminal();
+      const sendInput = vi.fn();
+
+      setupTerminalInput({
+        term: term as unknown as Terminal,
+        sendInput,
+      });
+
+      const handled = term.simulateKeyEvent(
+        createKeyboardEvent('keyup', {
+          key: 'ArrowLeft',
+          code: 'ArrowLeft',
+          altKey: true,
+        }),
+      );
+
+      expect(handled).toBe(true);
+      expect(sendInput).not.toHaveBeenCalled();
+    });
+
+    it('dispose 后 Alt+ArrowLeft 不再拦截', () => {
+      const term = new MockTerminal();
+      const sendInput = vi.fn();
+
+      const controller = setupTerminalInput({
+        term: term as unknown as Terminal,
+        sendInput,
+      });
+
+      controller.dispose();
+
+      const handled = term.simulateKeyEvent(
+        createKeyboardEvent('keydown', {
+          key: 'ArrowLeft',
+          code: 'ArrowLeft',
+          altKey: true,
+        }),
+      );
+
+      expect(handled).toBe(true);
+      expect(sendInput).not.toHaveBeenCalled();
+    });
+  });
+
   describe('IME 组字防重复', () => {
     function fireCompositionStart(textarea: HTMLTextAreaElement) {
       textarea.dispatchEvent(new CompositionEvent('compositionstart'));

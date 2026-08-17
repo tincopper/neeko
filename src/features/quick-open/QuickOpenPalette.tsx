@@ -1,5 +1,5 @@
 /**
- * IDEA-like Quick Open palette (Goto File / Recent Files / Tab Switcher).
+ * IDEA-like Quick Open palette (Goto File / Recent Files).
  */
 import React, { useEffect, useRef } from 'react';
 
@@ -19,11 +19,9 @@ export function QuickOpenPalette() {
   const moveSelection = useQuickOpenStore((s) => s.moveSelection);
   const confirm = useQuickOpenStore((s) => s.confirm);
   const closePalette = useQuickOpenStore((s) => s.closePalette);
-  const confirmTabSwitcher = useQuickOpenStore((s) => s.confirmTabSwitcher);
 
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
-  const ctrlHeldRef = useRef(false);
 
   useEffect(() => {
     if (open) {
@@ -36,31 +34,6 @@ export function QuickOpenPalette() {
     const el = listRef.current?.querySelector(`[data-idx="${selectedIndex}"]`);
     el?.scrollIntoView({ block: 'nearest' });
   }, [selectedIndex]);
-
-  // Tab switcher: release Ctrl/Meta → confirm selection (IDEA-like)
-  useEffect(() => {
-    if (!open || mode !== 'tabSwitcher') return;
-
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Control' || e.key === 'Meta') {
-        ctrlHeldRef.current = true;
-      }
-    };
-    const onKeyUp = (e: KeyboardEvent) => {
-      if (e.key === 'Control' || e.key === 'Meta') {
-        if (ctrlHeldRef.current && useQuickOpenStore.getState().open) {
-          confirmTabSwitcher();
-        }
-        ctrlHeldRef.current = false;
-      }
-    };
-    window.addEventListener('keydown', onKeyDown, true);
-    window.addEventListener('keyup', onKeyUp, true);
-    return () => {
-      window.removeEventListener('keydown', onKeyDown, true);
-      window.removeEventListener('keyup', onKeyUp, true);
-    };
-  }, [open, mode, confirmTabSwitcher]);
 
   const onKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'ArrowDown') {
@@ -102,13 +75,7 @@ export function QuickOpenPalette() {
             ref={inputRef}
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder={
-              mode === 'gotoFile'
-                ? 'Type a file name…'
-                : mode === 'recentFiles'
-                  ? 'Filter recent files…'
-                  : 'Filter tabs…'
-            }
+            placeholder={mode === 'gotoFile' ? 'Type a file name…' : 'Filter recent files…'}
             className={cn(
               'w-full px-3 py-2 rounded-md text-[13px]',
               'bg-bg-primary border border-border text-text-primary',
@@ -157,7 +124,6 @@ export function QuickOpenPalette() {
           <span>↑↓ navigate</span>
           <span>↵ open</span>
           <span>esc close</span>
-          {mode === 'tabSwitcher' ? <span>release Ctrl to switch</span> : null}
         </div>
       </DialogContent>
     </Dialog>

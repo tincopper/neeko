@@ -280,7 +280,7 @@ const ShortcutPanel: React.FC<ShortcutPanelProps> = ({ config, onConfigChange })
                                   : 'bg-bg-hover text-text-secondary'
                             }`}
                           >
-                            {binding}
+                            {binding || 'Unbound'}
                           </div>
                         )}
 

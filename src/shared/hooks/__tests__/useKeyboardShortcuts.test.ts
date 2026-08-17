@@ -1,6 +1,10 @@
 import { renderHook } from '@testing-library/react';
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { afterEach, describe, it, expect, vi, beforeEach } from 'vitest';
 
+// eslint-disable-next-line import/no-restricted-paths -- tests seed the MRU store for Ctrl+Tab
+import { useMruTabsStore } from '@/features/quick-open/store/mruTabsStore';
+// eslint-disable-next-line import/no-restricted-paths -- tests assert the quick-open palette stays closed
+import { useQuickOpenStore } from '@/features/quick-open/store/quickOpenStore';
 import { useKeyboardShortcuts } from '@/shared/hooks/useKeyboardShortcuts';
 import { useConnectionStore } from '@/shared/store/connectionStore';
 import { useEditorStore } from '@/shared/store/editorStore';
@@ -90,6 +94,71 @@ function dispatchKey(code: string, opts: { ctrlKey?: boolean; altKey?: boolean }
   return { event, preventSpy };
 }
 
+/** Seed an editor store with two file tabs (t0 / t1) where t1 is active. */
+function seedTwoTabEditor() {
+  useEditorStore.setState({
+    tabs: {
+      p1: {
+        tabs: [
+          {
+            id: 't0',
+            projectId: 'p1',
+            title: 'a',
+            order: 0,
+            data: {
+              kind: 'file',
+              filePath: 'a.ts',
+              fileName: 'a.ts',
+              content: { path: 'a.ts', content: '', size: 0, is_binary: false },
+              isDirty: false,
+            },
+          },
+          {
+            id: 't1',
+            projectId: 'p1',
+            title: 'b',
+            order: 1,
+            data: {
+              kind: 'file',
+              filePath: 'b.ts',
+              fileName: 'b.ts',
+              content: { path: 'b.ts', content: '', size: 0, is_binary: false },
+              isDirty: false,
+            },
+          },
+        ],
+        activeTabId: 't1',
+      },
+    },
+    editorLayout: {
+      p1: {
+        isSplit: false,
+        ratio: 0.5,
+        activeGroupId: 'left',
+        pinnedTabIds: [],
+        pinnedActiveTabId: null,
+        pinnedPanelRatio: 0.35,
+        groups: {
+          left: { tabIds: ['t0', 't1'], activeTabId: 't1' },
+          right: { tabIds: [], activeTabId: null },
+        },
+      },
+    },
+  });
+  seedStore({
+    activeProjectId: 'p1',
+    activeProject: createProject({ id: 'p1' }),
+  });
+}
+
+/** Dispatch a keydown whose target is `target` (as if focus were there). */
+function dispatchKeyAt(target: HTMLElement, init: KeyboardEventInit): KeyboardEvent {
+  const event = new KeyboardEvent('keydown', { bubbles: true, cancelable: true, ...init });
+  Object.defineProperty(event, 'target', { value: target });
+  window.dispatchEvent(event);
+  return event;
+}
+
 describe('useKeyboardShortcuts', () => {
   let params: ReturnType<typeof createDefaultParams>;
   let storeState: ReturnType<typeof seedStore>;
@@ -97,6 +166,16 @@ describe('useKeyboardShortcuts', () => {
   beforeEach(() => {
     params = createDefaultParams();
     storeState = seedStore();
+    useMruTabsStore.setState({ byTabKey: {} });
+    useQuickOpenStore.setState({ open: false, mode: 'gotoFile' });
+  });
+
+  afterEach(() => {
+    // Remove any nodes leaked by failed/partial tests so the global keydown
+    // handler's document.querySelector guards stay clean between tests.
+    document
+      .querySelectorAll('[data-quick-open], [data-modal], [data-settings-view], .cm-editor')
+      .forEach((el) => el.remove());
   });
 
   it('注册后不崩溃', () => {
@@ -394,61 +473,10 @@ describe('useKeyboardShortcuts', () => {
     cm.remove();
   });
 
-  it('CodeMirror 聚焦时 Alt+Left 切换到上一个 tab', () => {
+  it('绑定 Alt+Left 后，CodeMirror 聚焦时切换到上一个 tab', () => {
     params.activeTabId = 't1';
-    useEditorStore.setState({
-      tabs: {
-        p1: {
-          tabs: [
-            {
-              id: 't0',
-              projectId: 'p1',
-              title: 'a',
-              order: 0,
-              data: {
-                kind: 'file',
-                filePath: 'a.ts',
-                fileName: 'a.ts',
-                content: { path: 'a.ts', content: '', size: 0, is_binary: false },
-                isDirty: false,
-              },
-            },
-            {
-              id: 't1',
-              projectId: 'p1',
-              title: 'b',
-              order: 1,
-              data: {
-                kind: 'file',
-                filePath: 'b.ts',
-                fileName: 'b.ts',
-                content: { path: 'b.ts', content: '', size: 0, is_binary: false },
-                isDirty: false,
-              },
-            },
-          ],
-          activeTabId: 't1',
-        },
-      },
-      editorLayout: {
-        p1: {
-          isSplit: false,
-          ratio: 0.5,
-          activeGroupId: 'left',
-          pinnedTabIds: [],
-          pinnedActiveTabId: null,
-          pinnedPanelRatio: 0.35,
-          groups: {
-            left: { tabIds: ['t0', 't1'], activeTabId: 't1' },
-            right: { tabIds: [], activeTabId: null },
-          },
-        },
-      },
-    });
-    seedStore({
-      activeProjectId: 'p1',
-      activeProject: createProject({ id: 'p1' }),
-    });
+    params.shortcuts = { prevTab: 'Alt+Left' };
+    seedTwoTabEditor();
     renderHook(() => useKeyboardShortcuts(params));
 
     const cm = document.createElement('div');
@@ -460,6 +488,22 @@ describe('useKeyboardShortcuts', () => {
     cm.appendChild(content);
     document.body.appendChild(cm);
 
+    dispatchKeyAt(content, { code: 'ArrowLeft', key: 'ArrowLeft', altKey: true });
+
+    expect(useEditorStore.getState().tabs.p1?.activeTabId).toBe('t0');
+    cm.remove();
+  });
+
+  it('绑定 Alt+Left 后，终端 textarea 聚焦时切换到上一个 tab（并阻止事件泄漏到 xterm）', () => {
+    params.activeTabId = 't1';
+    params.shortcuts = { prevTab: 'Alt+Left' };
+    seedTwoTabEditor();
+    renderHook(() => useKeyboardShortcuts(params));
+
+    // xterm.js 的隐藏辅助 textarea 是终端聚焦时的真实目标。
+    const textarea = document.createElement('textarea');
+    document.body.appendChild(textarea);
+
     const event = new KeyboardEvent('keydown', {
       code: 'ArrowLeft',
       key: 'ArrowLeft',
@@ -467,11 +511,61 @@ describe('useKeyboardShortcuts', () => {
       bubbles: true,
       cancelable: true,
     });
-    Object.defineProperty(event, 'target', { value: content });
+    Object.defineProperty(event, 'target', { value: textarea });
+    const stopSpy = vi.spyOn(event, 'stopPropagation');
     window.dispatchEvent(event);
 
     expect(useEditorStore.getState().tabs.p1?.activeTabId).toBe('t0');
+    // 阻止事件继续到达 xterm，避免同时向 shell 发送转义序列。
+    expect(stopSpy).toHaveBeenCalled();
+    textarea.remove();
+  });
+
+  it('默认未绑定 Alt+Left 时不切换 tab（保留 macOS Option+方向键按词移动语义）', () => {
+    params.activeTabId = 't1';
+    seedTwoTabEditor();
+    renderHook(() => useKeyboardShortcuts(params));
+
+    const cm = document.createElement('div');
+    cm.className = 'cm-editor';
+    const content = document.createElement('div');
+    content.className = 'cm-content';
+    cm.appendChild(content);
+    document.body.appendChild(cm);
+
+    dispatchKeyAt(content, { code: 'ArrowLeft', key: 'ArrowLeft', altKey: true });
+
+    expect(useEditorStore.getState().tabs.p1?.activeTabId).toBe('t1');
     cm.remove();
+  });
+
+  it('Ctrl+Tab 切换到 MRU 上一个 tab，且不打开 QuickOpen 面板', () => {
+    params.activeTabId = 't1';
+    useMruTabsStore.setState({ byTabKey: { p1: ['t0'] } });
+    seedTwoTabEditor(); // t0 / t1, active t1
+    renderHook(() => useKeyboardShortcuts(params));
+
+    dispatchKey('Tab', { ctrlKey: true });
+
+    expect(useEditorStore.getState().tabs.p1?.activeTabId).toBe('t0');
+    expect(useQuickOpenStore.getState().open).toBe(false);
+  });
+
+  it('QuickOpen 面板打开时 Ctrl+Tab 不触发 tab 切换', () => {
+    params.activeTabId = 't1';
+    useMruTabsStore.setState({ byTabKey: { p1: ['t0'] } });
+    seedTwoTabEditor();
+    renderHook(() => useKeyboardShortcuts(params));
+
+    const root = document.createElement('div');
+    root.setAttribute('data-quick-open', '');
+    document.body.appendChild(root);
+
+    dispatchKey('Tab', { ctrlKey: true });
+
+    expect(useEditorStore.getState().tabs.p1?.activeTabId).toBe('t1');
+    expect(useQuickOpenStore.getState().mode).toBe('gotoFile');
+    root.remove();
   });
 
   it('设置页打开时不触发快捷键', () => {

@@ -6,6 +6,8 @@ import { useActionPaletteStore } from '@/features/action-menu/store/actionPalett
 import type { ProjectListItem } from '@/features/project/hooks/useProjectList';
 // eslint-disable-next-line import/no-restricted-paths -- keyboard shortcuts reference quick open store
 import { useQuickOpenStore } from '@/features/quick-open/store/quickOpenStore';
+// eslint-disable-next-line import/no-restricted-paths -- keyboard shortcuts need MRU tab cycle
+import { useTabCycleStore } from '@/features/quick-open/store/tabCycleStore';
 // eslint-disable-next-line import/no-restricted-paths -- keyboard shortcuts need terminal cache for refresh
 import { refreshTerminal, terminalCacheKey } from '@/features/terminal/components/terminalCache';
 // eslint-disable-next-line import/no-restricted-paths
@@ -84,13 +86,14 @@ export function useKeyboardShortcuts({
 
       const bindings = resolveBindings(shortcutsRef.current);
       const inEditable = isEditableKeyboardTarget(e.target);
-      // Quick Open is not data-modal so Ctrl+Tab can keep cycling the switcher.
+      // Any open palette (Goto File / Recent Files / Symbol Nav) owns the keyboard,
+      // including Ctrl+Tab — no tab cycling underneath it.
       const quickOpenOpen = !!document.querySelector('[data-quick-open]');
 
       for (const action of SHORTCUT_ACTIONS) {
         if (!GLOBAL_ACTION_IDS.has(action.id)) continue;
 
-        if (quickOpenOpen && action.id !== 'switchTabNext' && action.id !== 'switchTabPrev') {
+        if (quickOpenOpen) {
           continue;
         }
 
@@ -156,12 +159,16 @@ export function useKeyboardShortcuts({
 
           case 'prevTab': {
             e.preventDefault();
+            // 终端聚焦时若绑定生效，须阻止事件继续到达 xterm，避免同时向 shell
+            // 发送转义序列（与 switchTabNext/Prev 的处理一致）。
+            e.stopPropagation();
             cycleTab(-1);
             break;
           }
 
           case 'nextTab': {
             e.preventDefault();
+            e.stopPropagation();
             cycleTab(1);
             break;
           }
@@ -169,14 +176,14 @@ export function useKeyboardShortcuts({
           case 'switchTabNext': {
             e.preventDefault();
             e.stopPropagation();
-            useQuickOpenStore.getState().cycleTabSwitcher(1);
+            useTabCycleStore.getState().cycleTab(1);
             break;
           }
 
           case 'switchTabPrev': {
             e.preventDefault();
             e.stopPropagation();
-            useQuickOpenStore.getState().cycleTabSwitcher(-1);
+            useTabCycleStore.getState().cycleTab(-1);
             break;
           }
 

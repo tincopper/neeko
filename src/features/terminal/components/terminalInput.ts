@@ -104,29 +104,52 @@ function setupImeShiftSymbolFallback(term: Terminal): () => void {
 }
 
 /**
- * Intercept Ctrl+Enter and Alt+Enter, sending a newline character (\n, LF)
- * to the PTY instead of the default carriage return (\r) that xterm.js would
- * emit for a plain Enter. This allows CLI programs (e.g. Pi Agent) that treat
- * \n as "insert a new line" and \r as "execute" to support multi-line input.
+ * Intercept keys where we want app-controlled behavior instead of xterm's default:
+ *
+ * 1. Ctrl+Enter / Alt+Enter → send a newline character (\n, LF) to the PTY instead
+ *    of the default carriage return (\r) that xterm.js would emit for a plain Enter.
+ *    This allows CLI programs (e.g. Pi Agent) that treat \n as "insert a new line"
+ *    and \r as "execute" to support multi-line input.
+ *
+ * 2. Option/Alt + ←/→ → send Alt+b / Alt+f (`\x1bb` / `\x1bf`) so bash readline and
+ *    zsh line editors move the cursor by word — matching macOS text-field behavior.
+ *    xterm's default for these is the unbound CSI sequence `\x1b[1;3D` / `\x1b[1;3C`,
+ *    which shells echo as literal `;3D` / `;3C` garbage. Only the sole-modifier
+ *    combination is remapped, so Ctrl+Alt+方向键 (navigate history) stays intact.
  *
  * Returns a cleanup function that removes the handler.
  */
-function setupNewlineEnterHandler(term: Terminal, sendInput: (text: string) => void): () => void {
+function setupTerminalKeyHandler(term: Terminal, sendInput: (text: string) => void): () => void {
   // attachCustomKeyEventHandler returns boolean:
   //   true  → let xterm.js process the key normally
   //   false → suppress xterm.js default handling
   term.attachCustomKeyEventHandler((event: KeyboardEvent) => {
-    if (event.type !== 'keydown' || event.key !== 'Enter') {
+    if (event.type !== 'keydown') {
       return true;
     }
 
-    const ctrl = event.ctrlKey && !event.shiftKey && !event.altKey && !event.metaKey;
-    const alt = event.altKey && !event.shiftKey && !event.ctrlKey && !event.metaKey;
+    if (event.key === 'Enter') {
+      const ctrl = event.ctrlKey && !event.shiftKey && !event.altKey && !event.metaKey;
+      const alt = event.altKey && !event.shiftKey && !event.ctrlKey && !event.metaKey;
 
-    if (ctrl || alt) {
-      sendInput('\n');
-      return false;
+      if (ctrl || alt) {
+        sendInput('\n');
+        return false;
+      }
+      return true;
     }
+
+    if (event.altKey && !event.ctrlKey && !event.shiftKey && !event.metaKey) {
+      if (event.code === 'ArrowLeft') {
+        sendInput('\x1bb'); // Alt+b → backward-word
+        return false;
+      }
+      if (event.code === 'ArrowRight') {
+        sendInput('\x1bf'); // Alt+f → forward-word
+        return false;
+      }
+    }
+
     return true;
   });
 
@@ -215,7 +238,7 @@ export function setupTerminalInput({
   });
 
   const disposeImeFallback = setupImeShiftSymbolFallback(term);
-  const disposeCtrlEnter = setupNewlineEnterHandler(term, sendInput);
+  const disposeKeyHandler = setupTerminalKeyHandler(term, sendInput);
 
   return {
     dispose: () => {
@@ -226,7 +249,7 @@ export function setupTerminalInput({
         textarea.removeEventListener('compositionstart', compositionStartHandler);
         textarea.removeEventListener('compositionend', compositionEndHandler);
       }
-      disposeCtrlEnter();
+      disposeKeyHandler();
       disposeImeFallback();
       disposable.dispose();
     },

@@ -1,30 +1,28 @@
 /**
- * Quick Open palette state (Goto File / Recent Files / Tab Switcher).
+ * Quick Open palette state (Goto File / Recent Files).
+ *
+ * Tab switching no longer uses a palette: Ctrl+Tab / Ctrl+Shift+Tab perform a
+ * direct MRU cycle via `tabCycleStore` (press-to-switch, no overlay).
  */
 import { create } from 'zustand';
 
 import { readDirTree } from '@/features/file/api/fileApi';
-import { useEditorStore } from '@/shared/store/editorStore';
 import { useProjectStore } from '@/shared/store/projectStore';
-import { useWorktreeStore } from '@/shared/store/worktreeStore';
-import { resolveTabKey } from '@/shared/utils/tabKey';
 
 import { flattenFilePaths } from '../fileIndex';
 import { fuzzyFilter } from '../fuzzy';
 import { openProjectFile } from '../openFile';
 
-import { useMruTabsStore } from './mruTabsStore';
 import { useRecentFilesStore } from './recentFilesStore';
 
-export type QuickOpenMode = 'gotoFile' | 'recentFiles' | 'tabSwitcher';
+export type QuickOpenMode = 'gotoFile' | 'recentFiles';
 
 export interface QuickOpenItem {
   id: string;
   label: string;
   description?: string;
-  /** file path or tab id depending on mode */
+  /** File path to open. */
   payload: string;
-  kind: 'file' | 'tab';
 }
 
 interface QuickOpenState {
@@ -38,19 +36,10 @@ interface QuickOpenState {
   items: QuickOpenItem[];
 
   openPalette: (mode: QuickOpenMode) => void;
-  /** Ctrl+Tab while already open: move selection without closing. */
-  cycleTabSwitcher: (direction: 1 | -1) => void;
   closePalette: () => void;
   setQuery: (q: string) => void;
   moveSelection: (delta: number) => void;
   confirm: () => Promise<void>;
-  /** Activate selected tab (tab switcher on Ctrl release). */
-  confirmTabSwitcher: () => void;
-}
-
-function currentTabKey(projectId: string): string {
-  const wt = useWorktreeStore.getState().activeWorktreePath;
-  return resolveTabKey(projectId, wt);
 }
 
 function buildFileItems(paths: string[], query: string): QuickOpenItem[] {
@@ -62,7 +51,6 @@ function buildFileItems(paths: string[], query: string): QuickOpenItem[] {
       label: base,
       description: p,
       payload: p,
-      kind: 'file' as const,
     };
   });
 }
@@ -78,50 +66,8 @@ function buildRecentItems(projectId: string, query: string): QuickOpenItem[] {
       label: base,
       description: p,
       payload: p,
-      kind: 'file' as const,
     };
   });
-}
-
-function buildTabItems(projectId: string, query: string): QuickOpenItem[] {
-  const tabKey = currentTabKey(projectId);
-  const projectTabs = useEditorStore.getState().tabs[tabKey];
-  if (!projectTabs) return [];
-
-  const byId = new Map(projectTabs.tabs.map((t) => [t.id, t]));
-  let order = useMruTabsStore.getState().list(tabKey);
-  // Ensure all tabs present
-  for (const t of projectTabs.tabs) {
-    if (!order.includes(t.id)) order = [...order, t.id];
-  }
-  // Skip current active as first so first Ctrl+Tab goes to previous
-  const active = projectTabs.activeTabId;
-  if (active && order[0] === active && order.length > 1) {
-    order = [...order.slice(1), active];
-  }
-
-  const items: QuickOpenItem[] = [];
-  for (const id of order) {
-    const tab = byId.get(id);
-    if (!tab) continue;
-    const label = tab.title;
-    const desc =
-      tab.data.kind === 'file'
-        ? tab.data.filePath
-        : tab.data.kind === 'terminal'
-          ? 'Terminal'
-          : tab.data.kind;
-    items.push({
-      id: `tab:${id}`,
-      label,
-      description: typeof desc === 'string' ? desc : String(desc),
-      payload: id,
-      kind: 'tab',
-    });
-  }
-
-  if (!query.trim()) return items;
-  return fuzzyFilter(items, query, (i) => `${i.label} ${i.description ?? ''}`, 40);
 }
 
 function recomputeItems(
@@ -136,8 +82,6 @@ function recomputeItems(
       return buildFileItems(fileIndex, query);
     case 'recentFiles':
       return buildRecentItems(projectId, query);
-    case 'tabSwitcher':
-      return buildTabItems(projectId, query);
   }
 }
 
@@ -162,10 +106,6 @@ export const useQuickOpenStore = create<QuickOpenState>((set, get) => ({
 
   openPalette: (mode) => {
     const projectId = useProjectStore.getState().activeProjectId;
-    if (!projectId && mode !== 'tabSwitcher') {
-      // Still allow if we have project for tabs
-    }
-    const pid = projectId ?? '';
     const fileIndex = get().fileIndex;
     const items = recomputeItems(mode, '', fileIndex, projectId);
     set({
@@ -186,30 +126,6 @@ export const useQuickOpenStore = create<QuickOpenState>((set, get) => ({
     } else {
       set({ loading: false });
     }
-
-    // Refresh tab list immediately for switcher
-    if (mode === 'tabSwitcher' && projectId) {
-      set({
-        items: recomputeItems('tabSwitcher', '', fileIndex, projectId),
-        selectedIndex: 0,
-      });
-    }
-    void pid;
-  },
-
-  cycleTabSwitcher: (direction) => {
-    const { open, mode } = get();
-    if (!open || mode !== 'tabSwitcher') {
-      get().openPalette('tabSwitcher');
-      // After open, selection is 0 (first non-active in MRU)
-      if (direction < 0) {
-        // move to last
-        const items = get().items;
-        if (items.length > 0) set({ selectedIndex: items.length - 1 });
-      }
-      return;
-    }
-    get().moveSelection(direction);
   },
 
   closePalette: () => set({ open: false, query: '', selectedIndex: 0, loading: false }),
@@ -229,7 +145,7 @@ export const useQuickOpenStore = create<QuickOpenState>((set, get) => ({
   },
 
   confirm: async () => {
-    const { items, selectedIndex, mode } = get();
+    const { items, selectedIndex } = get();
     const item = items[selectedIndex];
     if (!item) {
       get().closePalette();
@@ -241,31 +157,12 @@ export const useQuickOpenStore = create<QuickOpenState>((set, get) => ({
       return;
     }
 
-    if (item.kind === 'file') {
-      get().closePalette();
-      try {
-        await openProjectFile({ projectId, filePath: item.payload });
-      } catch (e) {
-        console.error('[quick-open] open failed', e);
-      }
-      return;
-    }
-
-    if (item.kind === 'tab') {
-      get().confirmTabSwitcher();
-    }
-    void mode;
-  },
-
-  confirmTabSwitcher: () => {
-    const { items, selectedIndex } = get();
-    const item = items[selectedIndex];
     get().closePalette();
-    if (!item || item.kind !== 'tab') return;
-    const projectId = useProjectStore.getState().activeProjectId;
-    if (!projectId) return;
-    const tabKey = currentTabKey(projectId);
-    useEditorStore.getState().activateTab(tabKey, item.payload);
+    try {
+      await openProjectFile({ projectId, filePath: item.payload });
+    } catch (e) {
+      console.error('[quick-open] open failed', e);
+    }
   },
 }));
 
@@ -276,7 +173,5 @@ export function quickOpenTitle(mode: QuickOpenMode): string {
       return 'Go to File';
     case 'recentFiles':
       return 'Recent Files';
-    case 'tabSwitcher':
-      return 'Switch Tab';
   }
 }
