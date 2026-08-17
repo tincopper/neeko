@@ -890,3 +890,36 @@ D0: macOS Edit 菜单 PredefinedMenuItem 原生化（A1-A3 通过，含浏览器
 ### Next Steps
 
 - None - task complete
+
+
+## Session 144: fix(browser): neeko-check findings — panel reclaim coverage, overlay unmount cleanup, render-phase store init, bounds-sync DRY, per-label prompt dedup
+
+**Date**: 2026-08-17
+**Task**: fix(browser): neeko-check findings — panel reclaim coverage, overlay unmount cleanup, render-phase store init, bounds-sync DRY, per-label prompt dedup
+**Branch**: `main`
+
+### Summary
+
+(Add summary)
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `59455bc807e0b8873281b2b59d40ba441e499d23` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
