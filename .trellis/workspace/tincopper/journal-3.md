@@ -923,3 +923,36 @@ D0: macOS Edit 菜单 PredefinedMenuItem 原生化（A1-A3 通过，含浏览器
 ### Next Steps
 
 - None - task complete
+
+
+## Session 145: feat(browser): browser as editor tab — per-tab webviews + hardening + neeko-check compliance
+
+**Date**: 2026-08-17
+**Task**: feat(browser): browser as editor tab — per-tab webviews + hardening + neeko-check compliance
+**Branch**: `main`
+
+### Summary
+
+Delivered browser-as-editor-tab (Route A per-tab webviews, '+' Browser option). Fixed address-bar input, tab title/favicon, close-embedded webview (hardened cleanup), stack.index crash (setPanelState partial-state). neeko-check: panel reclaim coverage, overlay unmount cleanup, render-phase store init, useBrowserBoundsSync DRY, per-label prompt dedup. Quality gates green; committed c2c8efd8; task archived.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `c2c8efd8` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

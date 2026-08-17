@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-3.md`
-- **Total Sessions**: 144
+- **Total Sessions**: 145
 - **Last Active**: 2026-08-17
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-3.md` | ~925 | Active |
+| `journal-3.md` | ~958 | Active |
 | `journal-2.md` | ~1991 | Archived |
 | `journal-1.md` | ~1986 | Archived |
 <!-- @@@/auto:active-documents -->
@@ -31,6 +31,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 145 | 2026-08-17 | feat(browser): browser as editor tab — per-tab webviews + hardening + neeko-check compliance | `c2c8efd8` | `main` |
 | 144 | 2026-08-17 | fix(browser): neeko-check findings — panel reclaim coverage, overlay unmount cleanup, render-phase store init, bounds-sync DRY, per-label prompt dedup | `59455bc807e0b8873281b2b59d40ba441e499d23` | `main` |
 | 143 | 2026-08-17 | fix(browser): panel crash 'stack.index' — setPanelState partial state w/o history; harden store+historyStack | `d3682a3e1ae50bb394ad4f897f8f65b16b965478` | `main` |
 | 142 | 2026-08-17 | fix(browser): tab close leaves webview embedded — harden cleanup (eager+hide-before-close+tabExists guard) | `d3682a3e1ae50bb394ad4f897f8f65b16b965478` | `main` |
