@@ -84,6 +84,7 @@
   --accent-blue:       #2997ff;
   --accent-blue-rgb:   41, 151, 255;
   --accent-green:  #30d158;
+  --accent-green-rgb: 48, 209, 88;
   --accent-yellow: #ffd60a;
   --accent-red:    #ff453a;
   --accent-red-rgb: 255, 69, 58;
@@ -153,6 +154,7 @@
   --accent-blue:       #61afef;
   --accent-blue-rgb:   97, 175, 239;
   --accent-green:  #98c379;
+  --accent-green-rgb: 152, 195, 121;
   --accent-yellow: #e5c07b;
   --accent-red:    #e06c75;
   --accent-red-rgb: 224, 108, 117;
@@ -222,6 +224,7 @@
   --accent-blue:       #c96442;
   --accent-blue-rgb:   201, 100, 66;
   --accent-green:  #5a8a5e;
+  --accent-green-rgb: 90, 138, 94;
   --accent-yellow: #b8860b;
   --accent-red:    #c0392b;
   --accent-red-rgb: 192, 57, 43;
@@ -292,6 +295,7 @@
   --accent-blue:       oklch(0.7 0.1 250);
   --accent-blue-rgb:   120, 160, 220;
   --accent-green:  oklch(0.7 0.15 150);
+  --accent-green-rgb: 76, 184, 106;
   --accent-yellow: oklch(0.8 0.15 85);
   --accent-red:    oklch(0.704 0.191 22.216);
   --accent-red-rgb: 255, 100, 103;
@@ -361,6 +365,7 @@
   --accent-blue:       #2f7cd3;
   --accent-blue-rgb:   47, 124, 211;
   --accent-green:  #4a9e3f;
+  --accent-green-rgb: 74, 158, 63;
   --accent-yellow: #c49000;
   --accent-red:    #d32f2f;
   --accent-red-rgb: 211, 47, 47;

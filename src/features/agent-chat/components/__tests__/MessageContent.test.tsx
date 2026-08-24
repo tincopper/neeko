@@ -1,14 +1,20 @@
 import { render, screen } from '@testing-library/react';
+import type { ComponentProps } from 'react';
 import { describe, expect, it, vi } from 'vitest';
-
-import * as messageContent from '@/features/agent-chat/utils/messageContent';
 
 import MessageContent from '../MessageContent';
 
-// 包装 parseMessageBlocks 以统计调用次数：验证 React.memo + useMemo 的缓存行为。
-vi.mock('@/features/agent-chat/utils/messageContent', async (importOriginal) => {
-  const actual = await importOriginal();
-  return { ...actual, parseMessageBlocks: vi.fn(actual.parseMessageBlocks) };
+// 包装 react-markdown 以统计实际渲染次数：验证 React.memo 在 props 不变时
+// 跳过重渲染（不触发 markdown 解析），text 变化时才放行。
+let markdownParseCount = 0;
+vi.mock('react-markdown', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('react-markdown')>();
+  return {
+    default: (props: ComponentProps<typeof actual.default>) => {
+      markdownParseCount += 1;
+      return actual.default(props);
+    },
+  };
 });
 
 describe('MessageContent', () => {
@@ -40,9 +46,37 @@ describe('MessageContent', () => {
     expect(screen.getAllByRole('listitem')).toHaveLength(2);
   });
 
+  it('标题 / 链接 / 引用 / 表格 / 有序列表（完整 markdown）', () => {
+    render(
+      <MessageContent
+        text={
+          '# 标题一\n\n> 引用内容\n\n[链接](https://example.com)\n\n1. 第一\n2. 第二\n\n| A | B |\n|---|---|\n| 1 | 2 |'
+        }
+      />,
+    );
+    expect(screen.getByRole('heading', { level: 1, name: '标题一' })).toBeInTheDocument();
+    expect(screen.getByText('引用内容')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: '链接' })).toHaveAttribute(
+      'href',
+      'https://example.com',
+    );
+    expect(screen.getAllByRole('listitem')).toHaveLength(2);
+    expect(screen.getByRole('table')).toBeInTheDocument();
+    expect(screen.getByRole('cell', { name: '1' })).toBeInTheDocument();
+  });
+
   it('围栏代码块渲染为 <pre><code>', () => {
     render(<MessageContent text={'```\nfn main() {}\n```'} />);
     expect(screen.getByText('fn main() {}').tagName).toBe('CODE');
+  });
+
+  it('带语言围栏代码块渲染 cb-head + <pre><code>（语法高亮拆分后按 textContent 断言）', () => {
+    render(<MessageContent text={'```rust\nfn main() {}\n```'} />);
+    expect(screen.getByText('rust')).toBeInTheDocument();
+    // 语法高亮会把 code children 拆成 hljs span，getByText 无法整段匹配；
+    // 用 textContent 聚合断言内容完整（cb-head 已由上方断言覆盖）。
+    expect(screen.getByText('fn', { selector: 'span' })).toBeInTheDocument();
+    expect(screen.getByText(/main/)).toBeInTheDocument();
   });
 
   it('空内容围栏不渲染 <pre>（流式切块/异常中断留下的空壳不再显示为空白盒）', () => {
@@ -84,20 +118,19 @@ describe('MessageContent', () => {
     expect(container).toBeEmptyDOMElement();
   });
 
-  it('props 不变时 React.memo 跳过重渲染（parseMessageBlocks 不重复执行）', () => {
-    const spy = vi.mocked(messageContent.parseMessageBlocks);
-    spy.mockClear();
-
+  it('props 不变时 React.memo 跳过重渲染（text 变化才触发 markdown 解析）', () => {
     const { rerender } = render(<MessageContent text="hello world" />);
-    const callsAfterFirst = spy.mock.calls.length;
-    expect(callsAfterFirst).toBeGreaterThan(0);
+    const parseCountAfterFirst = markdownParseCount;
+    expect(parseCountAfterFirst).toBeGreaterThan(0);
 
-    // 相同 text 重渲染 → memo 命中，不再解析
+    // 相同 text 重渲染 → memo 命中，react-markdown 不再执行
     rerender(<MessageContent text="hello world" />);
-    expect(spy.mock.calls.length).toBe(callsAfterFirst);
+    expect(markdownParseCount).toBe(parseCountAfterFirst);
 
-    // text 变化 → memo 放行，重新解析
+    // text 变化 → memo 放行，重新解析并渲染新内容
     rerender(<MessageContent text="hello world!" />);
-    expect(spy.mock.calls.length).toBeGreaterThan(callsAfterFirst);
+    expect(markdownParseCount).toBeGreaterThan(parseCountAfterFirst);
+    expect(screen.getByText('hello world!')).toBeInTheDocument();
+    expect(screen.queryByText('hello world')).not.toBeInTheDocument();
   });
 });

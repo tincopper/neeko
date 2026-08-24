@@ -1,3 +1,4 @@
+import { ChevronRight } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { readFileContent, readDirTree } from '@/features/file/api/fileApi';
@@ -68,7 +69,6 @@ export default function AgentChatTabView({
     resumableLoading,
     loadResumableList,
     restoreConversation,
-    startFreshSession,
   } = useAgentChat({ tabKey, tabId, projectId, data, mockMode });
 
   const activeWorktreePath = useWorktreeStore((s) => s.activeWorktreePath);
@@ -105,6 +105,17 @@ export default function AgentChatTabView({
   useEffect(() => {
     if (emptyChat) void loadResumableList();
   }, [emptyChat, loadResumableList]);
+
+  /// 「恢复上次对话」列表展开状态 —— 开关并入 wa-sys 状态栏行（右侧按钮）。
+  /// 默认折叠：新建 agent chat / 重新进入空会话态时保持收起。
+  /// 用 render 期状态调整（React 官方模式）替代 effect，避免 setState-in-effect
+  /// 级联渲染：仅在 emptyChat 由 false → true 时重置收起。
+  const [resumeOpen, setResumeOpen] = useState(false);
+  const [prevEmptyChat, setPrevEmptyChat] = useState(emptyChat);
+  if (prevEmptyChat !== emptyChat) {
+    setPrevEmptyChat(emptyChat);
+    if (emptyChat) setResumeOpen(false);
+  }
 
   /** 点击 read_file 路径 → 在编辑器打开该文件（复用 editorStore + readFileContent，对齐 terminalLinks）。 */
   const openAgentFile = useCallback(
@@ -183,7 +194,7 @@ export default function AgentChatTabView({
         <div className="wa-inner">
           <div className="wa-sys" title={ctxInfo?.projectPath ?? ''}>
             <span className="sys-dot" />
-            <span>
+            <span className="wa-sys-text">
               会话已开始 · 已注入上下文：{ctxInfo?.projectName ?? projectId}（
               {ctxInfo?.env ?? '本地'}）
               {ctxInfo?.projectPath ? (
@@ -194,16 +205,31 @@ export default function AgentChatTabView({
               ) : null}
               {attachments.length > 0 ? ` + ${skillCount} skills + ${fileCount} 文件附件` : ''}
             </span>
+            {emptyChat && (
+              <button
+                type="button"
+                className="resume-toggle"
+                onClick={() => setResumeOpen((v) => !v)}
+                aria-expanded={resumeOpen}
+                aria-controls="resume-list"
+                title={resumeOpen ? '收起最近会话' : '展开最近会话'}
+              >
+                <ChevronRight
+                  size={12}
+                  className={`resume-toggle-chevron${resumeOpen ? ' open' : ''}`}
+                />
+                <span>恢复上次对话</span>
+              </button>
+            )}
           </div>
 
           <MessageList messages={messages} onOpenFile={openAgentFile} scrollRef={chatScrollRef} />
 
-          {emptyChat && (
+          {emptyChat && resumeOpen && (
             <ResumeList
               items={resumableList}
               loading={resumableLoading}
               onRestore={(meta) => void restoreConversation(meta)}
-              onNewSession={startFreshSession}
             />
           )}
 

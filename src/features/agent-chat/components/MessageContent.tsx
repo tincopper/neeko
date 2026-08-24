@@ -1,29 +1,13 @@
-import { memo, useMemo, type ReactNode } from 'react';
-
-import { parseMessageBlocks } from '../utils/messageContent';
+import { Children, memo, type ReactElement, type ReactNode } from 'react';
+import ReactMarkdown from 'react-markdown';
+import rehypeHighlight from 'rehype-highlight';
+import remarkGfm from 'remark-gfm';
 
 interface MessageContentProps {
-  /** 消息文本（含轻量 markdown：围栏代码块 / `行内 code` / **加粗** / - 列表）。 */
+  /** 消息文本（完整 markdown：标题/链接/表格/引用/列表/围栏代码块/行内 code/加粗）。 */
   text: string;
   /** 本话轮已展示过的工具输出。正文代码块若与任一输出重复则不重复渲染。 */
   toolOutputs?: string[];
-}
-
-/**
- * 把行内标记（`code` / **bold**）拆分为 React 节点序列。
- * 反引号 code 优先于加粗匹配。
- */
-function renderInline(text: string): ReactNode[] {
-  const parts = text.split(/(`[^`]+`|\*\*[^*]+\*\*)/g);
-  return parts.map((part, i) => {
-    if (part.startsWith('`') && part.endsWith('`') && part.length > 2) {
-      return <code key={i}>{part.slice(1, -1)}</code>;
-    }
-    if (part.startsWith('**') && part.endsWith('**') && part.length > 4) {
-      return <strong key={i}>{part.slice(2, -2)}</strong>;
-    }
-    return part;
-  });
 }
 
 /**
@@ -59,51 +43,65 @@ function isDuplicateOutput(code: string, outputs: string[]): boolean {
 }
 
 /**
- * 消息正文内容块 —— 轻量 markdown 渲染（纯段落 / 列表 / 代码块）。
+ * 递归提取 ReactNode 的纯文本（语法高亮会把 code children 拆成
+ * hljs span 元素数组，去重/空判需要纯文本，显示保留原节点）。
+ */
+function nodeToText(node: ReactNode): string {
+  if (node == null || typeof node === 'boolean') return '';
+  if (typeof node === 'string' || typeof node === 'number') return String(node);
+  if (Array.isArray(node)) return node.map(nodeToText).join('');
+  if (typeof node === 'object' && 'props' in node) {
+    return nodeToText((node as ReactElement).props?.children);
+  }
+  return '';
+}
+
+/**
+ * 消息正文 —— 完整 markdown 渲染（react-markdown + GFM + 语法高亮）。
  *
  * 设计要点：
- * - `React.memo` + `useMemo`：text 不变时不重复解析（流式追加场景下
- *   每帧 flush 都会携带新 text，memo 保证未变化的既有消息不重解析）。
- * - 正文代码块与工具输出（CommandCard 已展示）重复时跳过，避免同一份
+ * - `React.memo`：text 不变时不重复解析（流式追加场景下每帧 flush 都会
+ *   携带新 text，memo 保证未变化的既有消息不重渲染）。
+ * - 代码块与工具输出（CommandCard 等已展示）重复时跳过，避免同一份
  *   输出在消息流里出现两次。
+ * - 不启用 rehype-raw：agent 文本按纯 markdown 解析，规避 raw HTML 注入。
  */
 function MessageContent({ text, toolOutputs }: MessageContentProps) {
-  const blocks = useMemo(() => parseMessageBlocks(text), [text]);
-
-  if (!text || blocks.length === 0) return null;
+  if (!text) return null;
 
   return (
     <div className="rich">
-      {blocks.map((block, i) => {
-        if (block.type === 'code') {
-          const code = block.code;
-          const skip =
-            toolOutputs && toolOutputs.length > 0 && isDuplicateOutput(code, toolOutputs);
-          if (skip || code.trim() === '') return null;
-          return (
-            <div className="codeblock" key={i}>
-              {block.lang && <div className="cb-head">{block.lang}</div>}
-              <pre>
-                <code>{code}</code>
-              </pre>
-            </div>
-          );
-        }
-        if (block.type === 'list') {
-          return (
-            <ul key={i}>
-              {block.items.map((item, j) => (
-                <li key={j}>{renderInline(item)}</li>
-              ))}
-            </ul>
-          );
-        }
-        // text：按空行分段
-        return block.text
-          .split(/\n{2,}/)
-          .filter((seg) => seg.trim() !== '')
-          .map((seg, j) => <p key={`${i}-${j}`}>{renderInline(seg)}</p>);
-      })}
+      <ReactMarkdown
+        remarkPlugins={[remarkGfm]}
+        rehypePlugins={[rehypeHighlight]}
+        components={{
+          // 代码块：去重 + codeblock 结构（cb-head 语言标签 / pre / code），保留语法高亮节点
+          pre({ children }) {
+            // react-markdown 恒产出单个 code 子节点；防御性取首个，避免 Children.only 抛异常
+            const first = Children.toArray(children)[0];
+            if (!first || typeof first !== 'object' || !('props' in first)) return null;
+            const child = first as ReactElement<{
+              children?: ReactNode;
+              className?: string;
+            }>;
+            const codeText = nodeToText(child.props?.children).replace(/\n$/, '');
+            const skip =
+              toolOutputs && toolOutputs.length > 0 && isDuplicateOutput(codeText, toolOutputs);
+            if (skip || codeText.trim() === '') return null;
+            const lang = /language-(\w+)/.exec(String(child.props?.className ?? ''))?.[1];
+            return (
+              <div className="codeblock">
+                {lang && <div className="cb-head">{lang}</div>}
+                <pre>
+                  <code className={child.props?.className}>{child.props?.children}</code>
+                </pre>
+              </div>
+            );
+          },
+        }}
+      >
+        {text}
+      </ReactMarkdown>
     </div>
   );
 }

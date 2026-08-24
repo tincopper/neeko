@@ -37,12 +37,11 @@ const STATUS_ICON = {
 
 /**
  * Codex 风格命令执行块 —— 头部（命令单行截断 + 状态 + 尾部 chevron hover 显示）+
- * 展开体（完整命令 + 嵌套 Result 子行 + 输出）。
+ * 展开体（完整命令回显 + 输出，直接展示、无中间 Result 层）。
  * 由 `command_run` / `bash` 工具卡片驱动。
  */
 export default function CommandCard({ tool, scriptName, scriptPath }: CommandCardProps) {
   const [open, setOpen] = useState(tool.status === 'failed');
-  const [resultOpen, setResultOpen] = useState(true);
   const hasOutput = Boolean(tool.output);
   const commandText = extractCommand(tool);
 
@@ -97,26 +96,7 @@ export default function CommandCard({ tool, scriptName, scriptPath }: CommandCar
       {hasOutput && open && (
         <div className="cmd-body">
           <div className="cmd-full">$ {commandText}</div>
-          <button
-            type="button"
-            className="result-bar"
-            aria-expanded={resultOpen}
-            onClick={() => setResultOpen((v) => !v)}
-          >
-            <span className={`result-icon ${tool.status === 'failed' ? 'err' : 'ok'}`}>
-              {tool.status === 'failed' ? <X size={11} /> : <Check size={11} />}
-            </span>
-            <span className="result-label">{tool.status === 'failed' ? 'Error' : 'Result'}</span>
-            {tool.output && (
-              <span className="result-preview">
-                {tool.output.slice(0, 80)}
-                {tool.output.length > 80 ? '…' : ''}
-              </span>
-            )}
-          </button>
-          {resultOpen && (
-            <OutputScroll text={tool.output!} className="cmd-output" testId="command-output" />
-          )}
+          <OutputScroll text={tool.output!} className="cmd-output" testId="command-output" />
         </div>
       )}
     </div>

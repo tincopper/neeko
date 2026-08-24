@@ -731,17 +731,6 @@ export function useAgentChat({ tabKey, tabId, projectId, data, mockMode }: UseAg
     [selectedAgent.id, projectId, tabKey, tabId],
   );
 
-  /** 放弃恢复/清空当前会话，从零开始一个新会话。 */
-  const startFreshSession = useCallback(() => {
-    setMessages([]);
-    setPendingApproval(null);
-    setPendingUserInput(null);
-    sessionIdRef.current = undefined;
-    useEditorStore
-      .getState()
-      .updateTab(tabKey, tabId, { sessionId: undefined } as Partial<AgentChatTabData>);
-  }, [tabKey, tabId]);
-
   // ── Histor 面板入口恢复：tab data 携带 resume 目标时自动执行一次 ──────
   const { resumeConversationId, resumeNativeSessionId } = data;
   const historResumeDoneRef = useRef(false);
@@ -821,6 +810,5 @@ export function useAgentChat({ tabKey, tabId, projectId, data, mockMode }: UseAg
     resumableLoading,
     loadResumableList,
     restoreConversation,
-    startFreshSession,
   };
 }

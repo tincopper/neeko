@@ -28,6 +28,30 @@ export function isDiffLine(kind: DiffLineKind): boolean {
   return kind === 'add' || kind === 'rem' || kind === 'hunk';
 }
 
+/**
+ * 判断整段输出是否为 unified diff（供输出区按内容分流渲染）。
+ * 强信号：hunk 头 / `diff --git` / `--- a|b` 文件头；
+ * 弱信号：无强信号时，`+`/`-` 后紧跟非空格的变更行占比 > 40% 视为 diff
+ * （`- `/`+ ` 后跟空格的行是 markdown 列表项，不计为 diff 行，避免误判）。
+ * 水平线 `---`（markdown，整行无后续路径）不计为文件头。
+ */
+export function isDiffOutput(output: string): boolean {
+  const lines = output.split('\n');
+  if (
+    lines.some(
+      (l) =>
+        l.startsWith('@@') ||
+        l.startsWith('diff --git') ||
+        /^---\s+[ab]\//.test(l) ||
+        /^\+\+\+\s+[ab]\//.test(l),
+    )
+  ) {
+    return true;
+  }
+  const changed = lines.filter((l) => /^[+-](?!\s)/.test(l)).length;
+  return changed / lines.length > 0.4;
+}
+
 /** 统计一份 unified diff 的新增/删除行数（文件头 `---`/`+++` 不计）。 */
 export function diffStats(diff: string): { add: number; del: number } {
   let add = 0;

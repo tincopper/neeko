@@ -53,6 +53,25 @@ describe('DiffCard', () => {
     expect(screen.queryByTestId('diff-output')).not.toBeInTheDocument();
   });
 
+  it('非 diff 输出（错误信息）走 markdown 渲染', () => {
+    render(
+      <DiffCard
+        tool={makeTool({
+          output:
+            '**Error**: could not find `oldString` in the file.\n\n- check whitespace\n- check indentation',
+        })}
+      />,
+    );
+    const output = screen.getByTestId('diff-output');
+    // markdown：加粗、行内 code、列表
+    expect(within(output).getByText('Error')).toBeInTheDocument();
+    expect(within(output).getByText('oldString')).toBeInTheDocument();
+    expect(within(output).getByText('check whitespace')).toBeInTheDocument();
+    expect(within(output).getByText('check indentation')).toBeInTheDocument();
+    // 不渲染 .dl diff 行
+    expect(within(output).queryByText(/^@@/)).not.toBeInTheDocument();
+  });
+
   it('按状态打 running / done / failed 类', () => {
     const { rerender } = render(<DiffCard tool={makeTool({ status: 'running' })} />);
     expect(screen.getByTestId('diff-card')).toHaveClass('running');

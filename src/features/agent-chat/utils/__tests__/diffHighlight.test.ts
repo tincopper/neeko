@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { classifyDiffLine, isDiffLine, type DiffLineKind } from '../diffHighlight';
+import { classifyDiffLine, isDiffLine, isDiffOutput, type DiffLineKind } from '../diffHighlight';
 
 describe('classifyDiffLine', () => {
   it('classifies hunk headers', () => {
@@ -40,5 +40,37 @@ describe('isDiffLine', () => {
     for (const [kind, expected] of cases) {
       expect(isDiffLine(kind)).toBe(expected);
     }
+  });
+});
+
+describe('isDiffOutput', () => {
+  it('强信号：hunk 头 / diff --git 文件头判定为 diff', () => {
+    expect(isDiffOutput('@@ -12,3 +12,7 @@\n+foo\n-bar')).toBe(true);
+    expect(isDiffOutput('diff --git a/src/a.ts b/src/a.ts')).toBe(true);
+    expect(isDiffOutput('--- a/src/a.ts\n+++ b/src/a.ts\n+line')).toBe(true);
+  });
+
+  it('弱信号：变更行占比 > 40% 判定为 diff', () => {
+    expect(isDiffOutput('+a\n+b\n+c\n+d\n ctx')).toBe(true);
+    expect(isDiffOutput('-a\n-b\n-c\n ctx\n ctx')).toBe(true);
+  });
+
+  it('弱信号：变更行占比 <= 40% 判定为非 diff', () => {
+    expect(isDiffOutput('+a\n ctx\n ctx\n ctx')).toBe(false);
+  });
+
+  it('markdown 列表 `- `/`+ `（后跟空格）不计为 diff 行', () => {
+    expect(isDiffOutput('- item1\n- item2\n- item3\n- item4')).toBe(false);
+    expect(isDiffOutput('+ item1\n+ item2\n+ item3\n+ item4')).toBe(false);
+  });
+
+  it('markdown 水平线 `---` 整行不计为文件头', () => {
+    expect(isDiffOutput('---\n\n正文段落')).toBe(false);
+  });
+
+  it('空输出 / 纯文本返回 false', () => {
+    expect(isDiffOutput('')).toBe(false);
+    expect(isDiffOutput('**Error**: could not find oldString.')).toBe(false);
+    expect(isDiffOutput('普通说明文本\n没有变更行')).toBe(false);
   });
 });

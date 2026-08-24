@@ -1,4 +1,4 @@
-import { Check, ChevronRight, Eye, Loader2, Pencil, Terminal, X } from 'lucide-react';
+import { ChevronRight, Eye, Loader2, Pencil, Terminal, X } from 'lucide-react';
 import { useState, type ReactNode } from 'react';
 
 import type { ToolCard } from '../types';
@@ -106,8 +106,8 @@ function ToolRow({
 
 /**
  * 通用工具行的一体化折叠形态：命令/标题（头部，含状态）+ 可折叠输出（body）。
- * 命令、执行状态、输出内容同属一个块 —— 与 CommandCard 同构，消灭
- * 「命令一行、输出一行」的分离渲染。failed 默认展开便于立即看到错误。
+ * 命令、执行状态、输出内容同属一个块 —— 与 CommandCard 同构，展开时
+ * 输出直接展示（无中间 Result 层）。failed 默认展开便于立即看到错误。
  */
 function CollapsibleToolRow({
   tool,
@@ -117,7 +117,6 @@ function CollapsibleToolRow({
   onOpenFile?: (filePath: string) => void;
 }) {
   const [open, setOpen] = useState(tool.status === 'failed' && Boolean(tool.output));
-  const [resultOpen, setResultOpen] = useState(true);
   const hasOutput = Boolean(tool.output);
   void onOpenFile;
   return (
@@ -146,26 +145,7 @@ function CollapsibleToolRow({
       </button>
       {hasOutput && open && (
         <div className="cmd-body">
-          <button
-            type="button"
-            className="result-bar"
-            aria-expanded={resultOpen}
-            onClick={() => setResultOpen((v) => !v)}
-          >
-            <span className={`result-icon ${tool.status === 'failed' ? 'err' : 'ok'}`}>
-              {tool.status === 'failed' ? <X size={11} /> : <Check size={11} />}
-            </span>
-            <span className="result-label">{tool.status === 'failed' ? 'Error' : 'Result'}</span>
-            {tool.output && (
-              <span className="result-preview">
-                {tool.output.slice(0, 80)}
-                {tool.output.length > 80 ? '…' : ''}
-              </span>
-            )}
-          </button>
-          {resultOpen && tool.output && (
-            <OutputScroll text={tool.output} className="cmd-output" testId="work-row-output" />
-          )}
+          <OutputScroll text={tool.output!} className="cmd-output" testId="work-row-output" />
         </div>
       )}
     </div>

@@ -2,20 +2,24 @@ import { Check, ChevronRight, Loader2, Pencil, X } from 'lucide-react';
 import { useState } from 'react';
 
 import type { ToolCard } from '../types';
-import { classifyDiffLine, isDiffLine } from '../utils/diffHighlight';
+import { classifyDiffLine, isDiffLine, isDiffOutput } from '../utils/diffHighlight';
+
+import MessageContent from './MessageContent';
 
 export interface DiffCardProps {
   tool: ToolCard;
 }
 
 /**
- * Diff 工具卡片 —— edit_file / write_file 的改动以独立 diff 卡片展示，
- * 带对比高亮（add/rem/hunk 行着色）。默认展开，可折叠。
- * 由 `edit_file` / `write_file` 工具卡片驱动。
+ * Diff 工具卡片 —— edit_file / write_file 的改动以独立 diff 卡片展示。
+ * 输出按内容分流：unified diff → 对比高亮（add/rem/hunk 行着色）；
+ * 非 diff 输出（错误信息/说明文本）→ markdown 渲染（复用 MessageContent）。
+ * 默认展开，可折叠。由 `edit_file` / `write_file` 工具卡片驱动。
  */
 export default function DiffCard({ tool }: DiffCardProps) {
   const [open, setOpen] = useState(true);
   const hasOutput = Boolean(tool.output);
+  const isDiff = hasOutput && isDiffOutput(tool.output!);
 
   const statusIcon =
     tool.status === 'running' ? (
@@ -63,19 +67,27 @@ export default function DiffCard({ tool }: DiffCardProps) {
       </div>
       {open && hasOutput && (
         <div className="diff-expand" data-testid="diff-output">
-          <div className="diff-expand-head">{tool.title}</div>
-          <pre>
-            <code>
-              {tool.output!.split('\n').map((line, i) => {
-                const kind = classifyDiffLine(line);
-                return (
-                  <span key={i} className={`dl${isDiffLine(kind) ? ` ${kind}` : ''}`}>
-                    {line}
-                  </span>
-                );
-              })}
-            </code>
-          </pre>
+          {isDiff ? (
+            <>
+              <div className="diff-expand-head">{tool.title}</div>
+              <pre>
+                <code>
+                  {tool.output!.split('\n').map((line, i) => {
+                    const kind = classifyDiffLine(line);
+                    return (
+                      <span key={i} className={`dl${isDiffLine(kind) ? ` ${kind}` : ''}`}>
+                        {line}
+                      </span>
+                    );
+                  })}
+                </code>
+              </pre>
+            </>
+          ) : (
+            <div className="diff-expand-markdown">
+              <MessageContent text={tool.output!} />
+            </div>
+          )}
         </div>
       )}
     </div>
