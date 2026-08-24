@@ -199,23 +199,142 @@ export function useMockEventSchedule({
       status: 'done',
     });
 
-    // 穿插4: 最终文本总结
-    schedule(4200, {
+    // 穿插4: 工具分组 + skill + task + todos（覆盖全部工具卡组件）
+    schedule(4100, {
       seq: seq++,
       type: 'reasoning_delta',
       session_id: sid,
-      delta: '编译通过。让我总结本次处理的结果。',
+      delta: '接下来并行检查两个配置文件，并加载 codebase-design skill 辅助分析。',
     });
-    schedule(4400, {
+    schedule(4300, {
+      seq: seq++,
+      type: 'text_delta',
+      session_id: sid,
+      delta: '我再并行读取两个配置文件，并加载一个 skill。\n\n',
+    });
+    // 工具分组：连续两个 read_file → 自动聚合为分组摘要（WorkRows 分组折叠）
+    schedule(4500, {
+      seq: seq++,
+      type: 'tool_start',
+      session_id: sid,
+      call_id: 'read_2',
+      name: 'read_file',
+      title: 'Cargo.toml',
+    });
+    schedule(4700, {
+      seq: seq++,
+      type: 'tool_output',
+      session_id: sid,
+      call_id: 'read_2',
+      output: '[package]\nname = "neeko"\nversion = "1.0.4"\nedition = "2021"',
+    });
+    schedule(4900, {
+      seq: seq++,
+      type: 'tool_end',
+      session_id: sid,
+      call_id: 'read_2',
+      status: 'done',
+    });
+    schedule(5100, {
+      seq: seq++,
+      type: 'tool_start',
+      session_id: sid,
+      call_id: 'read_3',
+      name: 'read_file',
+      title: 'src-tauri/Cargo.toml',
+    });
+    schedule(5300, {
+      seq: seq++,
+      type: 'tool_output',
+      session_id: sid,
+      call_id: 'read_3',
+      output:
+        '[dependencies]\nserde = { version = "1", features = ["derive"] }\ntokio = { version = "1", features = ["full"] }',
+    });
+    schedule(5500, {
+      seq: seq++,
+      type: 'tool_end',
+      session_id: sid,
+      call_id: 'read_3',
+      status: 'done',
+    });
+    // SkillCard（load_skill）
+    schedule(5700, {
+      seq: seq++,
+      type: 'tool_start',
+      session_id: sid,
+      call_id: 'skill_1',
+      name: 'load_skill',
+      title: 'skill: codebase-design (.grok/skills/codebase-design/SKILL.md)',
+    });
+    schedule(5900, {
+      seq: seq++,
+      type: 'tool_output',
+      session_id: sid,
+      call_id: 'skill_1',
+      output:
+        '<skill_content name="codebase-design"># Codebase Design\n\n- 高内聚低耦合，feature 边界清晰\n- 组件 ≤300 行，模块间通过明确定义的接口协作\n</skill_content>',
+    });
+    schedule(6100, {
+      seq: seq++,
+      type: 'tool_end',
+      session_id: sid,
+      call_id: 'skill_1',
+      status: 'done',
+    });
+    // TaskCard（task）
+    schedule(6300, {
+      seq: seq++,
+      type: 'tool_start',
+      session_id: sid,
+      call_id: 'task_1',
+      name: 'task',
+      title: '重构 AgentChatTabView 组件拆分',
+    });
+    schedule(6500, {
+      seq: seq++,
+      type: 'tool_output',
+      session_id: sid,
+      call_id: 'task_1',
+      output:
+        'Step 1: 抽离 messageModel / messageCache\nStep 2: 抽离 useAgentChat hook\nStep 3: 瘦身组件至 ≤300 行',
+    });
+    schedule(6700, {
+      seq: seq++,
+      type: 'tool_end',
+      session_id: sid,
+      call_id: 'task_1',
+      status: 'done',
+    });
+    // TodoListCard（todo_updated）
+    schedule(6900, {
+      seq: seq++,
+      type: 'todo_updated',
+      session_id: sid,
+      todos: [
+        { content: '读取 Cargo.toml 确认依赖', status: 'completed', priority: 'high' },
+        { content: '加载 codebase-design skill', status: 'completed', priority: 'medium' },
+        { content: '重构组件拆分', status: 'in_progress', priority: 'high' },
+      ],
+    });
+
+    // 穿插5: 最终文本总结
+    schedule(7100, {
+      seq: seq++,
+      type: 'reasoning_delta',
+      session_id: sid,
+      delta: '所有检查完成。让我总结本次处理的结果。',
+    });
+    schedule(7300, {
       seq: seq++,
       type: 'text_delta',
       session_id: sid,
       delta:
-        '✅ 编译通过。\n\n本轮处理完成！以上就是 mockAgent 的完整模拟流程，包括：\n\n• 文件读取（tool_start → tool_output → tool_end）\n• 文件编辑（带 diff 预览）\n• 命令执行\n\n你可以继续发送消息进行多轮对话。',
+        '✅ 全部完成。\n\n本轮 mockAgent 模拟了完整的工具调用链：\n\n• 文件读取（read_file，连续调用自动分组）\n• 文件编辑（带 diff 预览）\n• 命令执行（command_run）\n• skill 加载（load_skill）\n• 任务执行（task）\n• 实时清单（todo_updated）\n\n你可以继续发送消息进行多轮对话。',
     });
 
     // Token 用量遥测
-    schedule(4700, {
+    schedule(7600, {
       seq: seq++,
       type: 'meta',
       session_id: sid,
@@ -224,7 +343,7 @@ export function useMockEventSchedule({
     });
 
     // Turn end
-    schedule(5000, {
+    schedule(7900, {
       seq: seq++,
       type: 'turn_end',
       session_id: sid,
@@ -233,7 +352,7 @@ export function useMockEventSchedule({
     });
 
     // Session done
-    schedule(5200, {
+    schedule(8100, {
       seq: seq++,
       type: 'session_done',
       session_id: sid,

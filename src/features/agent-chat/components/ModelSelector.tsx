@@ -1,10 +1,11 @@
-import { Brain, Check, ChevronDown } from 'lucide-react';
+import { ChevronDown } from 'lucide-react';
 import { useCallback, useRef, useState } from 'react';
 
 import { useEditorStore } from '@/shared/store/editorStore';
 import type { AgentConfig } from '@/shared/types/agent';
 
-import { agentColor, agentTag } from './constants';
+import { AgentBadge } from './AgentBadge';
+import { displayName } from './constants';
 
 function ModelSelector({
   chatAgents,
@@ -13,7 +14,7 @@ function ModelSelector({
   tabId,
 }: {
   chatAgents: AgentConfig[];
-  selectedAgent: { id: string; name: string; tag: string; color: string };
+  selectedAgent: { id: string; name: string; icon: string | null };
   tabKey: string;
   tabId: string;
 }) {
@@ -43,9 +44,9 @@ function ModelSelector({
         }}
       >
         <span className="model-icon">
-          <Brain size={14} />
+          <AgentBadge icon={selectedAgent.icon} name={selectedAgent.name} id={selectedAgent.id} />
         </span>
-        <span className="model-name">{selectedAgent.name}</span>
+        <span className="model-name">{displayName(selectedAgent.name)}</span>
         <span className="model-chevron">
           <ChevronDown size={12} />
         </span>
@@ -78,14 +79,9 @@ function ModelSelector({
                     setOpen(false);
                   }}
                 >
-                  <span className="model-opt-icon" style={{ background: agentColor(a.id) }}>
-                    {agentTag(a.name)}
-                  </span>
+                  <AgentBadge icon={a.icon} name={a.name} id={a.id} />
                   <span className="model-opt-info">
-                    <span className="model-opt-name">{a.name}</span>
-                  </span>
-                  <span className="model-opt-check">
-                    <Check size={12} />
+                    <span className="model-opt-name">{displayName(a.name)}</span>
                   </span>
                 </button>
               ))

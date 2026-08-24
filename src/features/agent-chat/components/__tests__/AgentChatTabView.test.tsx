@@ -15,6 +15,8 @@ vi.mock('@/features/agent/api/agentApi', () => ({
     ]),
   ),
   listAgentModels: vi.fn(() => Promise.resolve([])),
+  // AgentBadge 渲染 agent CLI 图标时消费
+  resolveAgentIconSrc: vi.fn(() => null),
 }));
 
 vi.mock('@/features/file/api/fileApi', () => ({

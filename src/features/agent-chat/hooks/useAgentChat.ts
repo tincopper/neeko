@@ -24,7 +24,6 @@ import {
   startAgentChat,
   supportsAgentChatResume,
 } from '../api/agentChatApi';
-import { agentColor, agentTag } from '../components/constants';
 import { loadCachedMessages, saveCachedMessages } from '../components/messageCache';
 import {
   appendDelta,
@@ -167,15 +166,10 @@ export function useAgentChat({ tabKey, tabId, projectId, data, mockMode }: UseAg
   const selectedAgent = useMemo(() => {
     const found = agentId ? chatAgents.find((a) => a.id === agentId) : undefined;
     if (found) {
-      return {
-        id: found.id,
-        name: found.name,
-        tag: agentTag(found.name),
-        color: agentColor(found.id),
-      };
+      return { id: found.id, name: found.name, icon: found.icon };
     }
     const fallback = agentId ?? AGENT_IDS.mockAgent;
-    return { id: fallback, name: fallback, tag: agentTag(fallback), color: agentColor(fallback) };
+    return { id: fallback, name: fallback, icon: null };
   }, [chatAgents, agentId]);
 
   const fileCount = attachments.filter((a) => a.type === 'FILE').length;

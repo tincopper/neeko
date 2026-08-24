@@ -35,8 +35,10 @@
 
   /* ── 消息行 ───────────────────────────────────────────────────────────── */
   .msg { display:flex; gap:10px; margin-bottom:14px; }
-  .msg.user { justify-content:flex-end; }
+  .msg.user { justify-content:flex-end; flex-wrap:wrap; }
   .msg.user .bubble { max-width:82%; }
+  /* 用户消息底部（时间+复制）：位于气泡外下方，换行后右对齐 */
+  .msg.user .msg-footer { width:100%; }
   .msg.system { justify-content:center; }
   .msg-body { flex:1; min-width:0; }
   .msg-block { margin-bottom:8px; }
@@ -122,9 +124,9 @@
   .work-row-head:hover .chevron { opacity:1; }
   .work-row.open .chevron { transform:rotate(90deg); }
 
-  /* ── CommandCard ──────────────────────────────────────────────────────── */
-  .cmd-card { border-radius:var(--radius); background:var(--bg-tertiary); overflow:hidden; }
-  .cmd-card.failed { background:rgba(var(--accent-red-rgb),.04); background:color-mix(in srgb, var(--accent-red) 4%, var(--bg-tertiary)); }
+  /* ── CommandCard（bash）─ 蓝色淡边框（显式声明，不再依赖 agent.css 隐式生效） */
+  .cmd-card { border-radius:var(--radius); background:var(--bg-tertiary); border:1px solid color-mix(in srgb, var(--accent-blue) 25%, transparent); overflow:hidden; }
+  .cmd-card.failed { border-color:color-mix(in srgb, var(--accent-red) 30%, transparent); background:color-mix(in srgb, var(--accent-red) 4%, var(--bg-tertiary)); }
   .cmd-card.failed .cmd-status { color:var(--accent-red); }
   .cmd-head, .cmd-head-btn { display:flex; align-items:center; gap:8px; width:100%; padding:6px 10px; border:none; background:transparent; font-size:12px; color:var(--text-secondary); cursor:pointer; transition:background 120ms; }
   .cmd-head-btn:hover { background:var(--bg-hover); }
@@ -141,9 +143,9 @@
   .cmd-full { padding:7px 12px; font-family:var(--font-mono); font-size:12px; color:var(--text-secondary); white-space:pre-wrap; word-break:break-all; }
   .cmd-output { padding:9px 12px; font-family:var(--font-mono); font-size:11.5px; color:var(--text-muted); white-space:pre-wrap; word-break:break-word; max-height:240px; overflow-y:auto; line-height:1.7; margin:0; }
 
-  /* ── ReadCard ─────────────────────────────────────────────────────────── */
-  .file-card { border-radius:var(--radius); background:var(--bg-tertiary); overflow:hidden; }
-  .file-card.failed { background:rgba(var(--accent-red-rgb),.04); background:color-mix(in srgb, var(--accent-red) 4%, var(--bg-tertiary)); }
+  /* ── ReadCard ─ 外边框对齐 bash card（蓝色淡边框） */
+  .file-card { border-radius:var(--radius); background:var(--bg-tertiary); border:1px solid color-mix(in srgb, var(--accent-blue) 25%, transparent); overflow:hidden; }
+  .file-card.failed { border-color:color-mix(in srgb, var(--accent-red) 30%, transparent); background:color-mix(in srgb, var(--accent-red) 4%, var(--bg-tertiary)); }
   .file-card.failed .file-status { color:var(--accent-red); }
   .file-head-btn { display:flex; align-items:center; gap:8px; width:100%; padding:6px 10px; border:none; background:transparent; font-size:12px; color:var(--text-secondary); cursor:pointer; transition:background 120ms; }
   .file-head-btn:hover { background:var(--bg-hover); }
@@ -159,12 +161,12 @@
   .file-body { background:var(--bg-secondary); }
   .read-content { margin:0; padding:9px 12px; font-family:var(--font-mono); font-size:11.5px; line-height:1.65; color:var(--text-muted); white-space:pre-wrap; word-break:break-word; max-height:280px; overflow-y:auto; }
 
-  /* ── DiffCard / FilesChangedCard ──────────────────────────────────────── */
-  .diff-card { border-radius:var(--radius); overflow:hidden; background:var(--bg-tertiary); }
-  .diff-header { display:flex; align-items:center; justify-content:space-between; gap:8px; width:100%; padding:6px 10px; border:none; background:transparent; font-size:12px; color:var(--text-secondary); }
+  /* ── DiffCard / FilesChangedCard ─ 外边框对齐 bash card（蓝色淡边框） */
+  .diff-card { border-radius:var(--radius); overflow:hidden; background:var(--bg-tertiary); border:1px solid color-mix(in srgb, var(--accent-blue) 25%, transparent); }
+  .diff-header { display:flex; align-items:center; gap:8px; width:100%; padding:6px 10px; border:none; background:transparent; font-size:12px; color:var(--text-secondary); }
   .diff-header-btn { cursor:pointer; transition:background 120ms; }
   .diff-header-btn:hover { background:var(--bg-hover); }
-  .diff-head-left { display:flex; align-items:center; gap:7px; min-width:0; }
+  .diff-head-left { display:flex; align-items:center; gap:7px; min-width:0; flex:1; }
   .diff-icon { display:flex; flex:0 0 auto; color:var(--accent-blue); }
   .diff-path { flex:1; min-width:0; font-family:var(--font-mono); font-size:12px; color:var(--text-primary); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
   .diff-header .chevron { color:var(--text-muted); flex:0 0 auto; transition:transform 150ms, opacity 150ms; opacity:.55; }
@@ -192,8 +194,8 @@
   .dl.add { color:var(--accent-green); background:rgba(var(--accent-green-rgb),.09); background:color-mix(in srgb, var(--accent-green) 9%, transparent); }
   .dl.hunk { color:var(--accent-blue); }
 
-  /* ── SkillCard ────────────────────────────────────────────────────────── */
-  .skill-card { border-radius:var(--radius); background:var(--bg-tertiary); overflow:hidden; }
+  /* ── SkillCard ─ 蓝色淡边框（对齐 bash card） */
+  .skill-card { border-radius:var(--radius); background:var(--bg-tertiary); border:1px solid color-mix(in srgb, var(--accent-blue) 25%, transparent); overflow:hidden; }
   .skill-header { display:flex; align-items:center; gap:8px; width:100%; padding:6px 10px; border:none; background:transparent; color:var(--text-secondary); font-size:12px; text-align:left; cursor:pointer; transition:background 120ms; }
   .skill-header:hover { background:var(--bg-hover); }
   .skill-card .chevron { color:var(--text-muted); transition:transform 150ms; }
@@ -206,9 +208,9 @@
   .skill-body { background:var(--bg-secondary); }
   .skill-body pre { margin:0; padding:9px 12px; font-family:var(--font-mono); font-size:11.5px; color:var(--text-muted); white-space:pre-wrap; word-break:break-word; max-height:240px; overflow-y:auto; }
 
-  /* ── TaskCard ─────────────────────────────────────────────────────────── */
-  .task-card { border-radius:var(--radius); background:var(--bg-tertiary); overflow:hidden; }
-  .task-card.failed { background:rgba(var(--accent-red-rgb),.04); background:color-mix(in srgb, var(--accent-red) 4%, var(--bg-tertiary)); }
+  /* ── TaskCard ─ 蓝色淡边框（对齐 bash card）；failed 红边框 + 淡红底 */
+  .task-card { border-radius:var(--radius); background:var(--bg-tertiary); border:1px solid color-mix(in srgb, var(--accent-blue) 25%, transparent); overflow:hidden; }
+  .task-card.failed { border-color:color-mix(in srgb, var(--accent-red) 30%, transparent); background:color-mix(in srgb, var(--accent-red) 4%, var(--bg-tertiary)); }
   .task-card.failed .task-status { color:var(--accent-red); }
   .task-header, .task-header-static { display:flex; align-items:center; gap:8px; width:100%; padding:6px 10px; border:none; background:transparent; color:var(--text-secondary); font-size:12px; text-align:left; cursor:pointer; transition:background 120ms; }
   .task-header:hover { background:var(--bg-hover); }
@@ -222,8 +224,8 @@
   .task-body { background:var(--bg-secondary); }
   .task-body pre { margin:0; padding:9px 12px; font-family:var(--font-mono); font-size:11.5px; color:var(--text-muted); white-space:pre-wrap; word-break:break-word; max-height:240px; overflow-y:auto; }
 
-  /* ── TodoListCard ─────────────────────────────────────────────────────── */
-  .todo-card { background:var(--bg-tertiary); border-radius:var(--radius); padding:4px 0; }
+  /* ── TodoListCard ─ 蓝色淡边框（对齐 bash card） */
+  .todo-card { background:var(--bg-tertiary); border-radius:var(--radius); border:1px solid color-mix(in srgb, var(--accent-blue) 25%, transparent); padding:4px 0; }
   .todo-row { display:flex; align-items:center; gap:8px; padding:4px 10px; font-size:12px; color:var(--text-secondary); }
   .todo-glyph { flex:0 0 auto; width:14px; text-align:center; font-family:var(--font-mono); color:var(--text-muted); }
   .todo-row.completed .todo-glyph { color:var(--accent-green); }
@@ -236,7 +238,7 @@
   .todo-priority.low { color:var(--accent-green); background:rgba(var(--accent-green-rgb),.1); background:color-mix(in srgb, var(--accent-green) 10%, var(--bg-secondary)); }
 
   /* ── WorkedCard ───────────────────────────────────────────────────────── */
-  .worked-card { border-radius:var(--radius); background:var(--bg-tertiary); overflow:hidden; }
+  .worked-card { border-radius:var(--radius); background:var(--bg-tertiary); border:1px solid color-mix(in srgb, var(--accent-blue) 25%, transparent); overflow:hidden; }
   .worked-header { display:flex; align-items:center; gap:8px; width:100%; padding:7px 10px; border:none; background:transparent; color:var(--text-secondary); font-size:12px; font-weight:500; text-align:left; cursor:pointer; transition:background 120ms; }
   .worked-header:hover { background:var(--bg-hover); }
   .worked-card .chevron { color:var(--text-muted); transition:transform 150ms; }
@@ -247,8 +249,8 @@
   .worked-btn:hover:not(:disabled) { background:var(--bg-hover); color:var(--text-primary); }
   .worked-btn:disabled { opacity:.4; cursor:not-allowed; }
 
-  /* 工具分组折叠 */
-  .tool-group { border-radius:var(--radius); background:var(--bg-tertiary); overflow:hidden; }
+  /* 工具分组折叠 ─ 蓝色淡边框（对齐 bash card） */
+  .tool-group { border-radius:var(--radius); background:var(--bg-tertiary); border:1px solid color-mix(in srgb, var(--accent-blue) 25%, transparent); overflow:hidden; }
   .tool-group-header { display:flex; align-items:center; gap:8px; width:100%; padding:6px 10px; border:none; background:transparent; color:var(--text-secondary); font-size:12px; text-align:left; cursor:pointer; transition:background 120ms; }
   .tool-group-header:hover { background:var(--bg-hover); }
   .tool-group .chevron { color:var(--text-muted); transition:transform 150ms; }
@@ -273,9 +275,9 @@
 
   /* ── Composer ─────────────────────────────────────────────────────────── */
   .wa-composer { flex:0 0 auto; padding:0 16px 14px; }
-  /* 输入框：无外框，focus 用主题光晕 */
-  .wa-box { max-width:760px; margin:0 auto; background:var(--bg-tertiary); border:none; border-radius:20px; transition:box-shadow 180ms ease; }
-  .wa-box:focus-within { box-shadow:0 0 0 3px var(--ring); }
+  /* 输入框：大圆角 + 柔和双层阴影（参考 WorkBuddy 输入框）；聚焦不高亮边框，仅阴影加深 */
+  .wa-box { max-width:760px; margin:0 auto; background:var(--card); border:1px solid var(--border); border-radius:20px; box-shadow:0 2px 12px rgba(0,0,0,.10), 0 1px 2px rgba(0,0,0,.06); transition:box-shadow 180ms ease; }
+  .wa-box:focus-within { box-shadow:0 4px 16px rgba(0,0,0,.14), 0 1px 2px rgba(0,0,0,.06); }
   .wa-at { display:flex; flex-wrap:wrap; gap:6px; padding:8px 20px 0; }
   /* 附件 chip：无边框无背景，与输入框同色 */
   .attach-chip { display:inline-flex; align-items:center; gap:5px; padding:2px 8px; font-size:10.5px; background:transparent; border:none; border-radius:999px; color:var(--text-secondary); }
@@ -287,41 +289,59 @@
   .composer-textarea::placeholder { color:var(--text-muted); }
 
   .composer-footer { display:flex; align-items:center; gap:6px; padding:6px 12px 10px; }
-  .composer-left { display:flex; align-items:center; gap:6px; min-width:0; flex:1; }
+  .composer-left { display:flex; align-items:center; gap:6px; row-gap:4px; min-width:0; flex:1; flex-wrap:wrap; }
   .composer-right { display:flex; align-items:center; gap:6px; flex:0 0 auto; }
   .composer-divider { width:1px; height:16px; background:var(--border); margin:0 2px; }
   .composer-btn { display:flex; align-items:center; justify-content:center; width:26px; height:26px; background:transparent; border:none; border-radius:6px; color:var(--text-secondary); cursor:pointer; transition:background 120ms, color 120ms; }
   .composer-btn:hover { background:var(--bg-hover); color:var(--text-primary); }
   /* 发送按钮：默认透明（disabled/stop），可发送时实心蓝（主题化 hover） */
-  .send-btn { display:flex; align-items:center; justify-content:center; width:26px; height:26px; border:none; border-radius:50%; background:transparent; color:var(--text-muted); cursor:pointer; opacity:.5; transition:background 150ms, transform 100ms, opacity 150ms; }
-  .send-btn:not(:disabled) { background:var(--accent-blue); color:var(--text-on-accent); cursor:pointer; opacity:1; }
-  .send-btn:not(:disabled):hover { background:rgba(var(--accent-blue-rgb),.86); background:color-mix(in srgb, var(--accent-blue) 86%, #000); }
+  /* 发送按钮：可发送时实心蓝 + 光晕（主行动按钮），禁用/停止态安静 */
+  .send-btn { display:flex; align-items:center; justify-content:center; width:30px; height:30px; border:none; border-radius:50%; background:transparent; color:var(--text-muted); cursor:pointer; opacity:.5; transition:background 150ms, transform 100ms, opacity 150ms, box-shadow 150ms; }
+  .send-btn:not(:disabled) { background:var(--accent-blue); color:var(--text-on-accent); cursor:pointer; opacity:1; box-shadow:0 2px 8px rgba(var(--accent-blue-rgb),.35); }
+  .send-btn:not(:disabled):hover { background:color-mix(in srgb, var(--accent-blue) 86%, #000); box-shadow:0 2px 12px rgba(var(--accent-blue-rgb),.5); }
   .send-btn:not(:disabled):active { transform:scale(.95); }
   .send-btn.stop { background:transparent; color:var(--accent-red); cursor:pointer; opacity:1; }
   .composer-meta { margin-top:4px; font-size:11px; color:var(--text-muted); }
 
   /* ── 选择器（Agent / 模型 / 模式 / 思考） ─────────────────────────────── */
   .model-selector-wrap, .param-selector-wrap { position:relative; }
-  /* 无边框无背景，hover 背景反馈 */
-  .model-selector-btn, .param-selector-btn { display:flex; align-items:center; gap:6px; height:26px; padding:0 8px 0 6px; background:transparent; border:none; border-radius:var(--radius-sm); font-size:12px; color:var(--text-primary); transition:background 150ms; cursor:pointer; }
+  /* 无边框无背景，hover 背景反馈（shadcn ghost） */
+  .model-selector-btn, .param-selector-btn { display:flex; align-items:center; gap:6px; height:28px; padding:0 8px 0 6px; background:transparent; border:none; border-radius:var(--radius-sm); font-size:12px; color:var(--text-primary); transition:background 150ms; cursor:pointer; }
   .model-selector-btn:hover, .param-selector-btn:hover { background:var(--bg-hover); }
-  .model-icon, .param-icon { display:flex; color:var(--accent-blue); }
+  .model-icon { display:flex; color:var(--accent-blue); }
+  /* param 选择器（build/plan、思考强度）收起态图标跟随文字色，与按钮文字一致 */
+  .param-icon { display:flex; color:var(--text-primary); }
+  /* Agent CLI 图标徽标（AgentBadge）：真实图标图 + 两字母兜底 */
+  .agent-badge-img { object-fit:contain; border-radius:4px; display:block; }
+  .model-icon .agent-badge-img, .param-icon .agent-badge-img { width:16px; height:16px; }
   .model-name { max-width:90px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   .param-name { max-width:90px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   .model-selector-btn.model { font-family:var(--font-mono); font-size:11px; }
   .model-chevron, .param-chevron { color:var(--text-muted); display:flex; }
+
+  /* 键盘焦点可见性（shadcn ring 惯例）—— 覆盖 composer 与消息流全部可交互元素 */
+  .model-selector-btn:focus-visible, .param-selector-btn:focus-visible,
+  .composer-btn:focus-visible, .send-btn:focus-visible,
+  .attach-chip .at-close:focus-visible, .resume-toggle:focus-visible, .resume-item:focus-visible,
+  .msg-copy:focus-visible, .card-head:focus-visible, .cmd-head-btn:focus-visible,
+  .file-head-btn:focus-visible, .diff-header-btn:focus-visible, .skill-header:focus-visible,
+  .task-header:focus-visible, .worked-header:focus-visible, .tool-group-header:focus-visible,
+  .approval-choice:focus-visible, .uip-option:focus-visible, .plan-action:focus-visible,
+  .output-collapsed-toggle:focus-visible, .worked-btn:focus-visible {
+    outline:none; box-shadow:0 0 0 2px var(--ring);
+  }
 
   .drop-overlay { position:fixed; inset:0; z-index:50; background:transparent; }
   .model-dropdown, .param-dropdown { position:fixed; z-index:60; min-width:200px; background:var(--bg-secondary); border:1px solid var(--border); border-radius:var(--radius); box-shadow:0 12px 32px rgba(0,0,0,.4); padding:4px; }
   .model-dropdown-scroll { max-height:300px; overflow-y:auto; }
   .model-option, .param-option { display:flex; align-items:center; gap:8px; width:100%; border:none; background:transparent; color:var(--text-secondary); font-size:12px; padding:6px 8px; border-radius:var(--radius-sm); text-align:left; cursor:pointer; }
   .model-option:hover, .param-option:hover { background:var(--bg-hover); color:var(--text-primary); }
-  .model-option.selected, .param-option.selected { color:var(--text-primary); }
-  .model-opt-icon, .param-opt-icon { width:18px; height:18px; border-radius:5px; display:flex; align-items:center; justify-content:center; font-size:9px; font-weight:700; color:var(--text-on-accent); flex:0 0 18px; }
+  /* 选项图标跟随文字色（lucide 用 currentColor stroke；不用 --text-on-accent，其在部分主题下为纯白）。
+     选中态无特殊样式：不背景、不变色，与未选中一致，图标跟随文字默认色。 */
+  .model-opt-icon, .param-opt-icon { width:18px; height:18px; border-radius:5px; display:flex; align-items:center; justify-content:center; font-size:9px; font-weight:700; color:var(--text-secondary); flex:0 0 18px; }
   .model-opt-info, .param-opt-info { flex:1; min-width:0; display:flex; flex-direction:column; }
   .model-opt-name, .param-opt-name { font-size:12px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
   .param-opt-desc { font-size:10px; color:var(--text-muted); }
-  .model-opt-check, .param-opt-check { margin-left:auto; color:var(--accent-green); display:flex; }
 
   .model-search-wrap { position:relative; display:flex; align-items:center; margin-bottom:4px; }
   .model-search-icon { position:absolute; left:8px; color:var(--text-muted); }

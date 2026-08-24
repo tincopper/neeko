@@ -130,15 +130,15 @@ export default function MessageList({ messages, onOpenFile, scrollRef }: Message
   return (
     <div className="msg-list" data-testid="message-list">
       {messages.map((m) => {
-        // 用户消息：右对齐气泡 + 底部（时间 + 复制）
+        // 用户消息：右对齐气泡 + 底部（时间 + 复制，位于气泡外下方）
         if (m.role === 'user') {
           const userText = messageText(m);
           return (
             <div className="msg user" key={m.id} data-testid="msg-user">
               <div className="bubble u">
                 <MessageContent text={userText} />
-                <MessageFooter ts={m.ts} text={userText} />
               </div>
+              <MessageFooter ts={m.ts} text={userText} />
             </div>
           );
         }

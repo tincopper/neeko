@@ -1,7 +1,10 @@
-import { Brain, Check, ChevronDown, Search, X, Zap } from 'lucide-react';
+import { ChevronDown, Search, X } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import type { ModelInfo } from '@/features/agent/api/agentApi';
+
+import { AgentBadge } from './AgentBadge';
+import { displayName } from './constants';
 
 // ─── 模型搜索 Hook ───
 // 高内聚：只负责搜索状态和过滤逻辑
@@ -73,6 +76,8 @@ interface ModelListProps {
   models: ModelInfo[];
   selectedId: string | undefined;
   onSelect: (model: ModelInfo) => void;
+  /** 当前所选 agent（用于列表项图标展示）。 */
+  agent: { id: string; name: string; icon: string | null };
   emptyMessage?: string;
 }
 
@@ -80,6 +85,7 @@ function ModelList({
   models,
   selectedId,
   onSelect,
+  agent,
   emptyMessage = 'No models available',
 }: ModelListProps) {
   if (models.length === 0) {
@@ -95,17 +101,16 @@ function ModelList({
           onClick={() => onSelect(m)}
         >
           <span className="param-opt-icon">
-            {m.is_free ? <Zap size={14} /> : <Brain size={14} />}
+            <AgentBadge icon={agent.icon} name={agent.name} id={agent.id} />
           </span>
           <span className="param-opt-info">
-            <span className="param-opt-name">{m.name}</span>
+            <span className="param-opt-name">{displayName(m.name)}</span>
             <span className="param-opt-desc">
               {m.provider_name ?? m.provider_id ?? 'unknown'}
               {m.context_window ? ` · ${(m.context_window / 1000).toFixed(0)}k ctx` : ''}
               {m.is_free ? ' · free' : ''}
             </span>
           </span>
-          <span className="param-opt-check">{selectedId === m.id && <Check size={12} />}</span>
         </button>
       ))}
     </>
@@ -119,10 +124,13 @@ function ModelPicker({
   models,
   selected,
   onChange,
+  agent,
 }: {
   models: ModelInfo[];
   selected: ModelInfo | null;
   onChange: (model: ModelInfo) => void;
+  /** 当前所选 agent（按钮与列表项图标展示）。 */
+  agent: { id: string; name: string; icon: string | null };
 }) {
   const [open, setOpen] = useState(false);
   const btnRef = useRef<HTMLButtonElement>(null);
@@ -162,10 +170,10 @@ function ModelPicker({
   );
 
   const current = selected ?? null;
-  const displayName = current
-    ? current.name.length > 20
-      ? `${current.name.slice(0, 18)}…`
-      : current.name
+  const displayNameLabel = current
+    ? displayName(current.name).length > 20
+      ? `${displayName(current.name).slice(0, 18)}…`
+      : displayName(current.name)
     : 'Select model';
 
   return (
@@ -188,9 +196,9 @@ function ModelPicker({
         }
       >
         <span className="param-icon">
-          <Brain size={14} />
+          <AgentBadge icon={agent.icon} name={agent.name} id={agent.id} />
         </span>
-        <span className="param-name">{displayName}</span>
+        <span className="param-name">{displayNameLabel}</span>
         <span className="param-chevron">
           <ChevronDown size={12} />
         </span>
@@ -222,6 +230,7 @@ function ModelPicker({
               models={filteredModels}
               selectedId={current?.id}
               onSelect={handleSelect}
+              agent={agent}
               emptyMessage={models.length === 0 ? 'No models available' : 'No matching models'}
             />
           </div>

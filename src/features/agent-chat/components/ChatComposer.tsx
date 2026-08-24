@@ -20,7 +20,7 @@ interface ChatComposerProps {
   chatAgents: AgentConfig[];
   models: ModelInfo[];
   selectedModel: ModelInfo | null;
-  selectedAgent: { id: string; name: string; tag: string; color: string };
+  selectedAgent: { id: string; name: string; icon: string | null };
   contextWindow: { used: number; total: number; model: string } | null;
   tabKey: string;
   tabId: string;
@@ -105,7 +105,12 @@ export default function ChatComposer({
               tabKey={tabKey}
               tabId={tabId}
             />
-            <ModelPicker models={models} selected={selectedModel} onChange={onModelChange} />
+            <ModelPicker
+              models={models}
+              selected={selectedModel}
+              onChange={onModelChange}
+              agent={selectedAgent}
+            />
             <div className="composer-divider" />
             <AgentModeSelector
               modes={AGENT_MODES}

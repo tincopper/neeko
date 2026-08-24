@@ -1,4 +1,4 @@
-import { Check, ChevronDown } from 'lucide-react';
+import { ChevronDown } from 'lucide-react';
 import { useCallback, useRef, useState } from 'react';
 
 import { AGENT_MODES, THINKING_LEVELS } from './constants';
@@ -81,9 +81,6 @@ function AgentModeSelector({
                   <span className="param-opt-info">
                     <span className="param-opt-name">{m.name}</span>
                     <span className="param-opt-desc">{m.desc}</span>
-                  </span>
-                  <span className="param-opt-check">
-                    <Check size={12} />
                   </span>
                 </button>
               );
@@ -173,9 +170,6 @@ function ThinkingLevelSelector({
                   <span className="param-opt-info">
                     <span className="param-opt-name">{l.name}</span>
                     <span className="param-opt-desc">{l.desc}</span>
-                  </span>
-                  <span className="param-opt-check">
-                    <Check size={12} />
                   </span>
                 </button>
               );
