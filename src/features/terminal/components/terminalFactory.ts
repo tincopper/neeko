@@ -5,6 +5,12 @@ import { Terminal } from '@xterm/xterm';
 
 import type { AgentConfig } from '@/shared/types';
 import { buildFontFamily, buildTerminalTheme } from '@/shared/utils/terminal';
+import {
+  terminalClosedEvent,
+  terminalInputEvent,
+  terminalOutputEvent,
+} from '@/shared/utils/terminalEvents';
+import { setupTerminalInput } from '@/shared/utils/terminalInput';
 
 // eslint-disable-next-line import/no-restricted-paths -- terminal factory needs agent API for agent config
 import { getAgent } from '../../agent/api/agentApi';
@@ -17,7 +23,6 @@ import {
   executedAgentKeys,
   log,
 } from './terminalCache';
-import { setupTerminalInput } from './terminalInput';
 import { setupTerminalLinks } from './terminalLinks';
 import type { TerminalCache } from './terminalTypes';
 
@@ -117,7 +122,7 @@ export async function createTerminalForProject(
     // bottom Task Console no longer mounts through this factory.
     void taskConfigId;
 
-    const unlistenOutput = await listen<number[]>(`terminal-output-${sid}`, (event) => {
+    const unlistenOutput = await listen<number[]>(terminalOutputEvent(sid), (event) => {
       const bytes = new Uint8Array(event.payload);
       const filtered = bytes.filter((b) => b !== 0x7f);
       if (filtered.length > 0) {
@@ -127,7 +132,7 @@ export async function createTerminalForProject(
     cache.unlistenOutput = unlistenOutput;
 
     const unlistenClosed = await listen<{ exit_code: number }>(
-      `terminal-closed-${sid}`,
+      terminalClosedEvent(sid),
       async (event) => {
         log(`Session ${sid} closed by backend (exit_code=${event.payload?.exit_code ?? -1})`);
         unlistenClosed();
@@ -146,7 +151,7 @@ export async function createTerminalForProject(
 
     const sendInput = (text: string) => {
       const bytes = Array.from(new TextEncoder().encode(text));
-      emit(`terminal-input-${sid}`, bytes).catch((err) => {
+      emit(terminalInputEvent(sid), bytes).catch((err) => {
         log(`Input emit error: ${err}`);
       });
     };

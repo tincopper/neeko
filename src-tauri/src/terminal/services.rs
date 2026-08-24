@@ -6,6 +6,9 @@
 // Types still live in mod.rs (PtyHandle, PipelineConfig, etc.) because they
 // are closely coupled to TerminalManager.
 
+use crate::common::terminal::events::{
+    terminal_closed_event, terminal_input_event, terminal_output_event,
+};
 use anyhow::Result;
 use portable_pty::{native_pty_system, Child, CommandBuilder, PtyPair, PtySize};
 use std::collections::HashMap;
@@ -131,7 +134,7 @@ fn spawn_writer_listener(
     let prefix_owned = prefix.to_string();
 
     app_handle.listen(
-        format!("terminal-input-{}", id),
+        terminal_input_event(id),
         move |event| match serde_json::from_str::<Vec<u8>>(event.payload()) {
             Ok(data) => {
                 if let Ok(mut w) = writer_clone.lock() {
@@ -231,7 +234,7 @@ fn spawn_watcher_thread(
                     if let Ok(mut sessions) = watch_sessions.lock() {
                         sessions.remove(&watch_id);
                     }
-                    let close_event = format!("terminal-closed-{}", watch_id);
+                    let close_event = terminal_closed_event(&watch_id);
                     if let Err(e) = watch_handle.emit(
                         &close_event,
                         super::TerminalClosedPayload { exit_code: code },
@@ -281,7 +284,7 @@ fn spawn_reader_thread(
                     }
                     Ok(n) => {
                         let data = buf[..n].to_vec();
-                        let event_name = format!("terminal-output-{}", read_id);
+                        let event_name = terminal_output_event(&read_id);
                         if let Err(e) = read_handle.emit(&event_name, &data) {
                             log_error(&format!("{}-READER Emit error: {}", prefix, e));
                             break;

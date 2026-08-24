@@ -1,7 +1,7 @@
 import { FitAddon } from '@xterm/addon-fit';
 import { Terminal } from '@xterm/xterm';
 
-import type { TerminalInputController } from './terminalInput';
+import type { TerminalInputController } from '@/shared/utils/terminalInput';
 
 export interface TerminalViewProps {
   paneId: string;

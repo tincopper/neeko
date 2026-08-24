@@ -5,13 +5,14 @@ import { Terminal } from '@xterm/xterm';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 
 import { buildFontFamily, buildTerminalTheme } from '@/shared/utils/terminal';
+import { terminalInputEvent, terminalOutputEvent } from '@/shared/utils/terminalEvents';
+import { setupTerminalInput } from '@/shared/utils/terminalInput';
 
 // eslint-disable-next-line import/no-restricted-paths -- terminal view needs agent API for agent config lookup
 import { getAgent } from '../../agent/api/agentApi';
 import type { TerminalStrategy, CacheEntry } from '../strategies/types';
 
 import { tryLoadWebgl } from './terminalFactory';
-import { setupTerminalInput } from './terminalInput';
 
 interface TerminalViewBaseProps {
   strategy: TerminalStrategy;
@@ -198,7 +199,7 @@ export default React.memo(function TerminalViewBase({
                 const cmdStr = [cmd, ...agent.args].join(' ') + '\r';
                 const bytes = Array.from(new TextEncoder().encode(cmdStr));
                 // 静默豁免：终端输入，尽力而为，失败无需上报
-                emit(`terminal-input-${entry.sessionId}`, bytes).catch(() => {});
+                emit(terminalInputEvent(entry.sessionId), bytes).catch(() => {});
                 onStatusChange?.('Running');
               } catch (err) {
                 console.error('[Terminal] Auto-launch agent failed:', err);
@@ -206,7 +207,7 @@ export default React.memo(function TerminalViewBase({
             }, agentDelayMsVal);
           }
 
-          const unlisten = await listen<number[]>(`terminal-output-${sessionId}`, (event) => {
+          const unlisten = await listen<number[]>(terminalOutputEvent(sessionId), (event) => {
             let bytes: Uint8Array = new Uint8Array(event.payload);
             if (outputFilterVal) bytes = outputFilterVal(bytes) as Uint8Array;
             term.write(bytes);
@@ -219,7 +220,7 @@ export default React.memo(function TerminalViewBase({
               if (!entry.sessionId) return;
               const bytes = Array.from(new TextEncoder().encode(text));
               // 静默豁免：终端输入，尽力而为，失败无需上报
-              emit(`terminal-input-${entry.sessionId}`, bytes).catch(() => {});
+              emit(terminalInputEvent(entry.sessionId), bytes).catch(() => {});
             },
           });
 

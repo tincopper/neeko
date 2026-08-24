@@ -1,5 +1,6 @@
 /**
- * Bottom Console panel — read-only task / LSP log output viewer.
+ * Bottom Console panel — task / LSP log output viewer. Live task runs accept
+ * keyboard input so command prompts (for example y/n confirmation) can be answered.
  *
  * Does not own process lifecycle. Hide/show only toggles visibility; runs and
  * their output buffers live in the task store until the tab is closed.

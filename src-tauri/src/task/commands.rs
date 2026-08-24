@@ -1,5 +1,6 @@
 //! Tauri commands for task configuration CRUD and execution.
 
+use crate::common::terminal::events::terminal_input_event;
 use crate::task::{DiscoveredTask, TaskConfig};
 use crate::AppError;
 use crate::AppStateWrapper;
@@ -82,7 +83,7 @@ pub fn run_task(
     let session_id = session.id.clone();
 
     // Send the command + Enter to the PTY via the event system
-    let input_event = format!("terminal-input-{}", session_id);
+    let input_event = terminal_input_event(&session_id);
     let mut payload = command.into_bytes();
     payload.push(b'\r');
     let _ = app_handle.emit(&input_event, &payload);

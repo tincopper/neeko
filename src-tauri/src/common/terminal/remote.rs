@@ -2,6 +2,7 @@
 
 use crate::common::connection::types::AuthMethod;
 use crate::common::executor::ssh_auth;
+use crate::common::terminal::events::{terminal_input_event, terminal_output_event};
 use crate::common::terminal::types::{TerminalSession, TerminalStatus};
 use crate::theme::common;
 use anyhow::Result;
@@ -125,20 +126,22 @@ impl RemoteTerminalManager {
 
         // 监听前端输入事件，把数据放入 mpsc
         let tx_clone = input_tx.clone();
-        let input_listener_id = app_handle.listen(format!("terminal-input-{}", id), move |event| {
-            match serde_json::from_str::<Vec<u8>>(event.payload()) {
-                Ok(data) => {
-                    let _ = tx_clone.send(data);
-                }
-                Err(e) => {
-                    log_error(&format!(
-                        "[SSH-WRITER] Parse error: {} payload={}",
-                        e,
-                        event.payload()
-                    ));
-                }
-            }
-        });
+        let input_listener_id =
+            app_handle.listen(
+                terminal_input_event(&id),
+                move |event| match serde_json::from_str::<Vec<u8>>(event.payload()) {
+                    Ok(data) => {
+                        let _ = tx_clone.send(data);
+                    }
+                    Err(e) => {
+                        log_error(&format!(
+                            "[SSH-WRITER] Parse error: {} payload={}",
+                            e,
+                            event.payload()
+                        ));
+                    }
+                },
+            );
 
         // 保存 handle（包含 resize_tx，供 resize_session 调用）
         if let Ok(mut handles) = self.ssh_handles.lock() {
@@ -200,7 +203,7 @@ impl RemoteTerminalManager {
                             msg = channel.wait() => {
                                 match msg {
                                     Some(ChannelMsg::Data { data }) => {
-                                        let event_name = format!("terminal-output-{}", io_id);
+                                        let event_name = terminal_output_event(&io_id);
                                         let data_vec = data.to_vec();
                                         if let Err(e) = read_handle.emit(&event_name, &data_vec) {
                                             log_error(&format!("[SSH-IO] Emit error: {}", e));

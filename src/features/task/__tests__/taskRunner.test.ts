@@ -1,6 +1,46 @@
-import { describe, it, expect } from 'vitest';
+import { emit } from '@tauri-apps/api/event';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { formatTaskExit, formatTaskHeader } from '../taskRunner';
+const mockReportFrontendError = vi.hoisted(() => vi.fn());
+
+vi.mock('@/shared/utils/errorReporting', () => ({
+  reportFrontendError: mockReportFrontendError,
+}));
+
+import { terminalInputEvent } from '@/shared/utils/terminalEvents';
+
+import { formatTaskExit, formatTaskHeader, writeTaskInput } from '../taskRunner';
+
+describe('writeTaskInput', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('should emit UTF-8 bytes to the task terminal-input event', () => {
+    writeTaskInput('pty-1', 'y\r');
+
+    expect(emit).toHaveBeenCalledWith(terminalInputEvent('pty-1'), [121, 13]);
+  });
+
+  it('should encode unicode task input as UTF-8 bytes', () => {
+    writeTaskInput('pty-1', '是');
+
+    expect(emit).toHaveBeenCalledWith(terminalInputEvent('pty-1'), [230, 152, 175]);
+  });
+
+  it('should report input emit failures', async () => {
+    vi.mocked(emit).mockRejectedValueOnce(new Error('emit failed'));
+
+    writeTaskInput('pty-1', 'y\r');
+
+    await vi.waitFor(() => {
+      expect(mockReportFrontendError).toHaveBeenCalledWith(
+        'task.writeTaskInput',
+        expect.any(Error),
+      );
+    });
+  });
+});
 
 describe('formatTaskHeader', () => {
   it('should_include_command_and_cwd', () => {

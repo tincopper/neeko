@@ -1,7 +1,7 @@
 import type { FitAddon } from '@xterm/addon-fit';
 import type { Terminal } from '@xterm/xterm';
 
-import type { TerminalInputController } from '../components/terminalInput';
+import type { TerminalInputController } from '@/shared/utils/terminalInput';
 
 export interface CacheEntry {
   term: Terminal;

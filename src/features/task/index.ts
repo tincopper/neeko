@@ -10,4 +10,10 @@ export type {
 export { default as TaskDialog } from './components/TaskDialog';
 export { default as TaskRunButton } from './components/TaskRunButton';
 export { default as TaskConsolePanel } from './components/TaskConsolePanel';
-export { startTaskProcess, stopTaskProcess, formatTaskHeader, formatTaskExit } from './taskRunner';
+export {
+  startTaskProcess,
+  stopTaskProcess,
+  writeTaskInput,
+  formatTaskHeader,
+  formatTaskExit,
+} from './taskRunner';

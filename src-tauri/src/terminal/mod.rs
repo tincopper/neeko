@@ -8,6 +8,7 @@ pub mod services;
 
 pub use crate::common::terminal::types::*;
 
+use crate::common::terminal::events::terminal_closed_event;
 use anyhow::Result;
 use portable_pty::{Child, CommandBuilder, PtySize};
 use std::collections::HashMap;
@@ -214,7 +215,7 @@ impl TerminalManager {
             if let Err(e) = thread::Builder::new().name(thread_name).spawn(move || {
                 crate::terminal::services::close_pty_handle(&close_id, handle);
                 // Emit close event after cleanup so the frontend listener fires.
-                let close_event = format!("terminal-closed-{}", close_id);
+                let close_event = terminal_closed_event(&close_id);
                 let _ = app_handle.emit(
                     &close_event,
                     crate::terminal::TerminalClosedPayload { exit_code: -1 },

@@ -2,6 +2,7 @@ import { emit } from '@tauri-apps/api/event';
 
 // eslint-disable-next-line import/no-restricted-paths -- terminal commands need agent API for agent config
 import { reportFrontendError } from '@/shared/utils/errorReporting';
+import { terminalInputEvent } from '@/shared/utils/terminalEvents';
 
 import { getAgent } from '../../agent/api/agentApi';
 import { resizeTerminal, closeTerminalSession } from '../api/terminalApi';
@@ -43,7 +44,7 @@ export function sendToTerminal(projectId: string, text: string, tabId?: string |
   }
 
   const bytes = Array.from(new TextEncoder().encode(text));
-  emit(`terminal-input-${sessionId}`, bytes).catch((err) => {
+  emit(terminalInputEvent(sessionId), bytes).catch((err) => {
     log(`sendToTerminal error: ${err}`);
   });
 }

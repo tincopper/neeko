@@ -1,7 +1,8 @@
 import type { Terminal } from '@xterm/xterm';
 import { describe, expect, it, vi } from 'vitest';
 
-import { isAbandonedImeAsciiBuffer, setupTerminalInput } from '../terminalInput';
+import { isAbandonedImeAsciiBuffer } from '@/shared/utils/ime';
+import { setupTerminalInput } from '@/shared/utils/terminalInput';
 
 type DataHandler = (data: string) => void;
 

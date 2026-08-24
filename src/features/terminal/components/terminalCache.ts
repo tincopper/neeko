@@ -3,12 +3,13 @@ import type { FitAddon } from '@xterm/addon-fit';
 import type { Terminal } from '@xterm/xterm';
 
 import { reportFrontendError } from '@/shared/utils/errorReporting';
+import { terminalInputEvent } from '@/shared/utils/terminalEvents';
+import type { TerminalInputController } from '@/shared/utils/terminalInput';
 
 // eslint-disable-next-line import/no-restricted-paths -- terminal cache needs agent API for agent config
 import { getAgent } from '../../agent/api/agentApi';
 import { closeTerminalSession } from '../api/terminalApi';
 
-import type { TerminalInputController } from './terminalInput';
 import type { TerminalCache } from './terminalTypes';
 
 // =============================================================================
@@ -144,13 +145,13 @@ export function createTerminalCacheBackend<TCache extends CacheEntry>(
     const sessionId = entry.sessionId;
     const ctrlC = Array.from(new TextEncoder().encode('\x03'));
     // 静默豁免：终端高频输入，尽力而为，失败无需上报
-    emit(`terminal-input-${sessionId}`, ctrlC).catch(() => {});
+    emit(terminalInputEvent(sessionId), ctrlC).catch(() => {});
 
     setTimeout(() => {
       const cmdStr = [command, ...args].join(' ') + '\r';
       const bytes = Array.from(new TextEncoder().encode(cmdStr));
       // 静默豁免：终端高频输入，尽力而为，失败无需上报
-      emit(`terminal-input-${sessionId}`, bytes).catch(() => {});
+      emit(terminalInputEvent(sessionId), bytes).catch(() => {});
     }, 50);
   }
 

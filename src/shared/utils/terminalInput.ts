@@ -1,9 +1,6 @@
 import type { Terminal } from '@xterm/xterm';
 
-import { isAbandonedImeAsciiBuffer, stripImeSegmentationSpaces } from '@/shared/utils/ime';
-
-// re-export 保持既有测试对 '../terminalInput' 的 import 兼容
-export { isAbandonedImeAsciiBuffer, stripImeSegmentationSpaces };
+import { isAbandonedImeAsciiBuffer, stripImeSegmentationSpaces } from './ime';
 
 export interface TerminalInputController {
   dispose: () => void;

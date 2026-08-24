@@ -1,11 +1,18 @@
 /**
  * Task process runner — owns process lifecycle and output collection.
  *
- * High cohesion: start / stop / stream only.
+ * High cohesion: start / stop / stream / write input only.
  * Low coupling: no React, no Console panel, no xterm, no terminal feature imports.
  * Extensible: swap backends via taskApi without touching the UI.
  */
-import { listen, type UnlistenFn } from '@tauri-apps/api/event';
+import { emit, listen, type UnlistenFn } from '@tauri-apps/api/event';
+
+import { reportFrontendError } from '@/shared/utils/errorReporting';
+import {
+  terminalClosedEvent,
+  terminalInputEvent,
+  terminalOutputEvent,
+} from '@/shared/utils/terminalEvents';
 
 import { startTaskProcessSession, stopTaskProcessSession } from './api/taskApi';
 
@@ -60,7 +67,7 @@ export async function startTaskProcess(opts: StartTaskProcessOptions): Promise<T
   };
 
   try {
-    unlistenOutput = await listen<number[]>(`terminal-output-${processId}`, (event) => {
+    unlistenOutput = await listen<number[]>(terminalOutputEvent(processId), (event) => {
       if (disposed) return;
       const bytes = new Uint8Array(event.payload);
       // Drop DEL noise (same filter as interactive terminals)
@@ -70,7 +77,7 @@ export async function startTaskProcess(opts: StartTaskProcessOptions): Promise<T
     });
 
     unlistenClosed = await listen<{ exit_code: number }>(
-      `terminal-closed-${processId}`,
+      terminalClosedEvent(processId),
       (event) => {
         if (disposed) return;
         const code = event.payload?.exit_code ?? -1;
@@ -100,6 +107,14 @@ export async function startTaskProcess(opts: StartTaskProcessOptions): Promise<T
 /** Stop a running task process. Safe if already exited. */
 export async function stopTaskProcess(processId: string): Promise<void> {
   await stopTaskProcessSession(processId);
+}
+
+/** Send keyboard input to a live task PTY session. */
+export function writeTaskInput(processId: string, text: string): void {
+  const bytes = Array.from(new TextEncoder().encode(text));
+  void emit(terminalInputEvent(processId), bytes).catch((error) => {
+    reportFrontendError('task.writeTaskInput', error);
+  });
 }
 
 /** Format a banner written into the output buffer (not a shell). */

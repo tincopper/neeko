@@ -1,9 +1,9 @@
 /**
- * Read-only output view for one TaskRun.
+ * Output view for one TaskRun.
  *
- * Renders the run's accumulated `output` buffer into an xterm instance used only
- * as a terminal emulator (ANSI, scrollback) — never as a PTY host.
- * Mount/unmount does not start or stop the task process.
+ * Renders the run's accumulated `output` buffer into xterm. Live task runs also
+ * forward keyboard input to the backend PTY so command prompts (for example
+ * y/n confirmation) can be answered. LSP log tabs stay read-only.
  */
 import { FitAddon } from '@xterm/addon-fit';
 import { WebLinksAddon } from '@xterm/addon-web-links';
@@ -14,7 +14,9 @@ import { useAppContext } from '@/shared/contexts/AppContext';
 import { useBrowserStore } from '@/shared/store/browserStore';
 import { useDockStore } from '@/shared/store/dockStore';
 import { buildFontFamily, buildTerminalTheme } from '@/shared/utils/terminal';
+import { setupTerminalInput, type TerminalInputController } from '@/shared/utils/terminalInput';
 
+import { writeTaskInput } from '../taskRunner';
 import type { TaskRun } from '../types';
 import { setupConsoleLinks } from '../utils/consoleLinks';
 
@@ -30,8 +32,11 @@ function TaskConsoleOutput({ run, active }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const termRef = useRef<Terminal | null>(null);
   const fitRef = useRef<FitAddon | null>(null);
+  const inputControllerRef = useRef<TerminalInputController | null>(null);
   /** How much of `run.output` has already been written to the terminal. */
   const writtenLenRef = useRef(0);
+
+  const readOnly = run.source === 'lsp' || run.status !== 'running';
 
   // Create / dispose terminal once per run id
   useEffect(() => {
@@ -40,7 +45,7 @@ function TaskConsoleOutput({ run, active }: Props) {
 
     const term = new Terminal({
       convertEol: true,
-      disableStdin: true,
+      disableStdin: readOnly,
       cursorBlink: false,
       cursorStyle: 'underline',
       fontSize: config.terminalFontSize ?? 14,
@@ -84,15 +89,40 @@ function TaskConsoleOutput({ run, active }: Props) {
     ro.observe(el);
 
     return () => {
+      inputControllerRef.current?.dispose();
+      inputControllerRef.current = null;
       ro.disconnect();
       term.dispose();
       termRef.current = null;
       fitRef.current = null;
       writtenLenRef.current = 0;
     };
-    // Only recreate when run identity changes — not when output grows
+    // Only recreate when run identity / read-only mode changes — not when output grows
     // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: buffer streamed via second effect
-  }, [run.id, config.terminalFontSize, config.fontFamily]);
+  }, [run.id, readOnly, config.terminalFontSize, config.fontFamily]);
+
+  // Attach input only while the backend session id exists and the run is live.
+  // Font config changes recreate xterm above, so input must be reattached afterward.
+  useEffect(() => {
+    const term = termRef.current;
+    const processId = run.processId;
+    inputControllerRef.current?.dispose();
+    inputControllerRef.current = null;
+
+    if (!term || run.source === 'lsp' || run.status !== 'running' || !processId) {
+      return;
+    }
+
+    inputControllerRef.current = setupTerminalInput({
+      term,
+      sendInput: (text) => writeTaskInput(processId, text),
+    });
+
+    return () => {
+      inputControllerRef.current?.dispose();
+      inputControllerRef.current = null;
+    };
+  }, [run.source, run.status, run.processId, config.terminalFontSize, config.fontFamily]);
 
   // Stream new output chunks without rewriting the whole buffer
   useEffect(() => {
@@ -126,6 +156,7 @@ function TaskConsoleOutput({ run, active }: Props) {
         /* ignore */
       }
       termRef.current?.scrollToBottom();
+      termRef.current?.focus();
     });
   }, [active, run.id]);
 
