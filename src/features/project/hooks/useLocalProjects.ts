@@ -245,6 +245,10 @@ export function useLocalProjects() {
       };
 
       try {
+        // 非 git 项目跳过所有 git 命令
+        const proj = useProjectStore.getState().projects.find((p) => p.id === projectId);
+        if (proj?.git_info === null) return;
+
         const changedFiles = await getWorktreeChangedFiles(projectId, activeWorktreePath ?? '');
         updateProjectGitInfo({ changed_files: changedFiles, is_clean: changedFiles.length === 0 });
 

@@ -1,0 +1,572 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Neeko Agent Chat x Agent CLI 对接学习文档</title>
+<style>
+  :root {
+    --bg: #0d1117; --surface: #161b22; --surface2: #1c2128;
+    --border: #30363d; --text: #e6edf3; --text-muted: #8b949e;
+    --accent: #58a6ff; --accent2: #7ee787; --accent3: #d2a8ff; --accent4: #ffa657;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: var(--bg); color: var(--text); line-height: 1.7; }
+  .hero { background: linear-gradient(135deg, #1a1040 0%, #0d1117 50%, #0a1628 100%); border-bottom: 1px solid var(--border); padding: 60px 40px 50px; text-align: center; }
+  .hero h1 { font-size: 2.4em; font-weight: 700; margin-bottom: 12px; }
+  .hero h1 span { color: var(--accent); }
+  .hero p { color: var(--text-muted); font-size: 1.1em; max-width: 640px; margin: 0 auto; }
+  .hero .badge { display: inline-block; background: var(--surface2); border: 1px solid var(--border); border-radius: 20px; padding: 4px 14px; font-size: 0.82em; color: var(--accent3); margin-top: 16px; }
+  .container { max-width: 960px; margin: 0 auto; padding: 40px 24px 80px; }
+  .toc { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 28px 32px; margin-bottom: 48px; }
+  .toc h2 { font-size: 1.1em; color: var(--accent); margin-bottom: 14px; text-transform: uppercase; letter-spacing: 1px; }
+  .toc ol { padding-left: 22px; }
+  .toc li { margin-bottom: 6px; }
+  .toc a { color: var(--text); text-decoration: none; }
+  .toc a:hover { color: var(--accent); }
+  .step { position: relative; margin-bottom: 56px; padding-left: 48px; }
+  .step::before { content: ''; position: absolute; left: 18px; top: 44px; bottom: -56px; width: 2px; background: var(--border); }
+  .step:last-child::before { display: none; }
+  .step-num { position: absolute; left: 0; top: 0; width: 38px; height: 38px; background: var(--accent); color: var(--bg); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 700; }
+  .step h2 { font-size: 1.5em; margin-bottom: 8px; }
+  .step h3 { font-size: 1.15em; margin: 24px 0 10px; color: var(--accent2); }
+  .step h4 { font-size: 1em; margin: 18px 0 8px; color: var(--accent4); }
+  .step p, .step li { font-size: 0.95em; }
+  .step ul, .step ol { padding-left: 22px; margin: 8px 0; }
+  .step li { margin-bottom: 4px; }
+  pre { background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 16px 20px; overflow-x: auto; margin: 12px 0 16px; font-size: 0.85em; line-height: 1.55; }
+  code { font-family: 'SF Mono', 'Fira Code', Consolas, monospace; font-size: 0.92em; }
+  :not(pre) > code { background: var(--surface2); padding: 2px 7px; border-radius: 4px; color: var(--accent3); border: 1px solid var(--border); }
+  .kw { color: #ff7b72; } .ty { color: #79c0ff; } .str { color: #a5d6ff; } .cm { color: #8b949e; font-style: italic; }
+  .diagram { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 24px; margin: 16px 0; overflow-x: auto; }
+  .diagram pre { border: none; padding: 0; margin: 0; background: transparent; }
+  .info-box { background: rgba(88,166,255,0.08); border-left: 3px solid var(--accent); padding: 14px 18px; border-radius: 0 8px 8px 0; margin: 14px 0; font-size: 0.92em; }
+  .info-box.warn { background: rgba(255,166,87,0.08); border-left-color: var(--accent4); }
+  .info-box strong { color: var(--accent); }
+  .info-box.warn strong { color: var(--accent4); }
+  table { width: 100%; border-collapse: collapse; margin: 14px 0; font-size: 0.9em; }
+  th, td { padding: 10px 14px; text-align: left; border: 1px solid var(--border); }
+  th { background: var(--surface2); color: var(--accent); font-weight: 600; }
+  td { background: var(--surface); }
+</style>
+</head>
+<body>
+
+<div class="hero">
+  <h1>Agent Chat <span>x</span> Agent CLI 对接</h1>
+  <p>基于 Neeko 项目的完整架构分析 —— 从 Rust 后端适配器矩阵到 React 前端事件渲染，Step by Step 拆解 Agent CLI 对接的每一个环节。</p>
+  <div class="badge">Neeko v1.0.4 / Tauri 2.0 + React 18 / Rust Edition 2021</div>
+</div>
+
+<div class="container">
+
+<div class="toc">
+  <h2>目录</h2>
+  <ol>
+    <li><a href="#s1">架构总览：Agent Chat 的定位</a></li>
+    <li><a href="#s2">Agent 配置注册：AgentConfig 与 AgentManager</a></li>
+    <li><a href="#s3">适配器工厂：adapter_for 的分派逻辑</a></li>
+    <li><a href="#s4">三种传输协议：ACP / Serve / JSON-Lines</a></li>
+    <li><a href="#s5">统一事件协议：StreamEvent (Contract C1)</a></li>
+    <li><a href="#s6">会话生命周期：从创建到销毁</a></li>
+    <li><a href="#s7">Bridge 与 Manager：事件泵与会话路由</a></li>
+    <li><a href="#s8">Tauri 命令层：前端调用入口</a></li>
+    <li><a href="#s9">前端集成：React 调用链路</a></li>
+    <li><a href="#s10">实战：如何对接一个新的 Agent CLI</a></li>
+  </ol>
+</div>
+
+<!-- Step 1 -->
+<div class="step" id="s1">
+  <div class="step-num">1</div>
+  <h2>架构总览：Agent Chat 的定位</h2>
+  <p>Neeko 的 Agent Chat 不是简单的"终端包裹"——它是一个<strong>多 Agent 统一会话层</strong>，将不同 Agent CLI 的原生 IO 形态 (stdio JSON-Lines、JSON-RPC、HTTP SSE) 统一翻译为前端可渲染的 <code>StreamEvent</code> 协议。</p>
+
+  <h3>核心设计原则</h3>
+  <ul>
+    <li><strong>IO 形态正交</strong>：Adapter 内部自行决定 Spawn / Connect / SSE / ACP，契约不绑定 stdout/JSON-Lines</li>
+    <li><strong>开闭原则 (OCP)</strong>：新增 Agent = 新增 Adapter，协议层和页面不动</li>
+    <li><strong>薄命令层</strong>：Tauri Command 只做反序列化 + 调度，核心逻辑在 Adapter/Bridge</li>
+  </ul>
+
+  <div class="diagram">
+<pre>
++-----------------------------------------------------------------------+
+|                       <span style="color:#58a6ff">React Frontend</span>                                |
+|   useAgentChat -> invoke("agent_stream") -> listen("agent-chat://..") |
++----------------------------+------------------------------------------+
+                             | Tauri IPC
++----------------------------v------------------------------------------+
+|                      <span style="color:#58a6ff">Tauri Command Layer</span>                            |
+|   agent_stream / agent_approve / agent_input / agent_stream_cancel    |
++----------------------------+------------------------------------------+
+                             |
++----------------------------v------------------------------------------+
+|                      <span style="color:#58a6ff">Chat Manager</span>                                   |
+|   Session Registry (session_id -> request_tx) + SessionStore          |
++----------------------------+------------------------------------------+
+                             |
++----------------------------v------------------------------------------+
+|                    <span style="color:#58a6ff">AgentChatBridge</span>                                  |
+|   session.next() -> assign seq -> emit(SequencedEvent)                |
++----------------------------+------------------------------------------+
+                             |
++----------------------------v------------------------------------------+
+|                      <span style="color:#58a6ff">Adapter Matrix</span>                                 |
+|   +------------+   +---------------+   +----------------+            |
+|   |<span style="color:#7ee787">AcpAdapter</span> |   |<span style="color:#7ee787">ServeAdapter</span>  |   |<span style="color:#7ee787">DeepSeekAdapter</span> |            |
+|   | JSON-RPC   |   | REST + SSE    |   | JSON-Lines     |            |
+|   | stdio      |   | HTTP          |   | stdio          |            |
+|   +-----+------+   +-------+-------+   +--------+-------+            |
++---------|-----------------|-------------------|-----------------------+
+          |                 |                   |
+    +-----v------+   +-----v------+   +--------v-------+
+    | <span style="color:#7ee787">opencode</span>   |   | <span style="color:#7ee787">opencode</span>   |   | <span style="color:#7ee787">deepseek-      </span> |
+    | <span style="color:#7ee787">claude</span>     |   | <span style="color:#7ee787">serve</span>      |   |  <span style="color:#7ee787">harness</span>      |
+    | <span style="color:#7ee787">gemini</span>     |   | (HTTP+SSE) |   |  (stdio)      |
+    | (stdio)    |   +------------+   +----------------+
+    +------------+
+</pre>
+  </div>
+</div>
+
+<!-- Step 2 -->
+<div class="step" id="s2">
+  <div class="step-num">2</div>
+  <h2>Agent 配置注册：AgentConfig 与 AgentManager</h2>
+  <p>每个 Agent 在系统中以 <code>AgentConfig</code> 结构体注册，由 <code>AgentManager</code> 统一管理。</p>
+
+  <h3>AgentConfig 关键字段</h3>
+<pre><code><span class="cm">// src-tauri/src/common/agent/types.rs</span>
+<span class="kw">pub struct</span> <span class="ty">AgentConfig</span> {
+    <span class="kw">pub</span> id: <span class="ty">String</span>,              <span class="cm">// 唯一标识: "opencode", "claude-code", ...</span>
+    <span class="kw">pub</span> command: <span class="ty">String</span>,          <span class="cm">// 可执行命令: "opencode", "claude", ...</span>
+    <span class="kw">pub</span> prompt_args: <span class="ty">Option</span>&lt;<span class="ty">Vec</span>&lt;<span class="ty">String</span>&gt;&gt;, <span class="cm">// 前置参数: ["run", "--pure"]</span>
+    <span class="kw">pub</span> post_prompt_args: <span class="ty">Option</span>&lt;<span class="ty">Vec</span>&lt;<span class="ty">String</span>&gt;&gt;, <span class="cm">// 后置参数</span>
+    <span class="kw">pub</span> chat_transport: <span class="ty">Option</span>&lt;<span class="ty">String</span>&gt;, <span class="cm">// 传输协议: "acp" | "serve" | "jsonl"</span>
+    <span class="kw">pub</span> models: <span class="ty">Vec</span>&lt;<span class="ty">String</span>&gt;,     <span class="cm">// 支持的模型 ID 列表</span>
+    <span class="kw">pub</span> skill_path: <span class="ty">Option</span>&lt;<span class="ty">String</span>&gt;, <span class="cm">// Skill 目录路径</span>
+}</code></pre>
+
+  <h3>内置 Agent 注册示例 (manager.rs)</h3>
+<pre><code><span class="cm">// opencode 使用 ServeAdapter (REST + SSE 传输)</span>
+<span class="ty">AgentConfig</span> {
+    id: <span class="str">"opencode"</span>.into(),
+    command: <span class="str">"opencode"</span>.into(),
+    chat_transport: <span class="ty">Some</span>(<span class="str">"serve"</span>.into()),  <span class="cm">// 指定传输协议</span>
+    ..Default::default()
+}
+
+<span class="cm">// claude-code / gemini / codex 仅终端 TUI, 无 chat_transport</span>
+<span class="cm">// -> 不会出现在 Agent Chat 列表中</span>
+
+<span class="cm">// deepseek-harness 使用 JSON-Lines stdio 传输</span>
+<span class="ty">AgentConfig</span> {
+    id: <span class="str">"deepseek-harness"</span>.into(),
+    command: <span class="str">"deepseek-harness"</span>.into(),
+    chat_transport: <span class="ty">Some</span>(<span class="str">"jsonl"</span>.into()),
+    ..Default::default()
+}
+
+<span class="cm">// mockAgent 使用 ACP (进程内模拟, 无需可执行命令)</span>
+<span class="ty">AgentConfig</span> {
+    id: <span class="str">"mockAgent"</span>.into(),
+    command: <span class="ty">String</span>::new(),
+    chat_transport: <span class="ty">Some</span>(<span class="str">"acp"</span>.into()),
+    ..Default::default()
+}</code></pre>
+
+  <div class="info-box">
+    <strong>关键洞察：</strong><code>chat_transport</code> 字段是 Agent Chat 的"能力声明" —— 只有声明了该字段的 Agent 才会出现在前端的 Agent Chat 选择器中 (<code>list_chat_agents</code> 命令过滤 <code>chat_transport.is_some()</code>)。
+  </div>
+
+  <h3>内置 Agent 全景</h3>
+  <table>
+    <tr><th>Agent ID</th><th>CLI 命令</th><th>chat_transport</th><th>适配器</th></tr>
+    <tr><td><code>opencode</code></td><td><code>opencode</code></td><td><code>serve</code></td><td>ServeAdapter (REST+SSE)</td></tr>
+    <tr><td><code>claude-code</code></td><td><code>claude</code></td><td><em>无 (仅 TUI)</em></td><td>-</td></tr>
+    <tr><td><code>gemini</code></td><td><code>gemini</code></td><td><em>无 (仅 TUI)</em></td><td>-</td></tr>
+    <tr><td><code>codex</code></td><td><code>codex</code></td><td><em>无 (仅 TUI)</em></td><td>-</td></tr>
+    <tr><td><code>deepseek-harness</code></td><td><code>deepseek-harness</code></td><td><code>jsonl</code></td><td>DeepSeekHarnessAdapter</td></tr>
+    <tr><td><code>mockAgent</code></td><td><em>无 (进程内)</em></td><td><code>acp</code></td><td>AcpAdapter (mock)</td></tr>
+  </table>
+</div>
+
+<!-- Step 3 -->
+<div class="step" id="s3">
+  <div class="step-num">3</div>
+  <h2>适配器工厂：adapter_for 的分派逻辑</h2>
+  <p><code>adapter_for()</code> 是整个对接触发的核心分派函数, 根据 Agent ID 和 <code>chat_transport</code> 选择对应的 Adapter。</p>
+<pre><code><span class="cm">// src-tauri/src/agent/chat/adapter.rs</span>
+<span class="kw">pub fn</span> <span class="fn">adapter_for</span>(
+    agent_id: &amp;<span class="ty">str</span>,
+    transport: <span class="ty">Option</span>&lt;&amp;<span class="ty">str</span>&gt;,
+    cmd: <span class="ty">Vec</span>&lt;<span class="ty">String</span>&gt;,
+) -&gt; <span class="ty">Result</span>&lt;<span class="ty">Box</span>&lt;<span class="kw">dyn</span> <span class="ty">AgentAdapter</span>&gt;, <span class="ty">AppError</span>&gt; {
+    <span class="cm">// 1. mockAgent -> 进程内 ACP 模拟</span>
+    <span class="kw">if</span> agent_id == <span class="str">"mockAgent"</span> {
+        <span class="kw">return</span> <span class="ty">Ok</span>(<span class="ty">Box</span>::new(<span class="ty">AcpAdapter</span>::mock()));
+    }
+    <span class="cm">// 2. 按 chat_transport 分派</span>
+    <span class="kw">match</span> transport {
+        <span class="ty">Some</span>(<span class="str">"acp"</span>)  =&gt; <span class="ty">Ok</span>(<span class="ty">Box</span>::new(<span class="ty">AcpAdapter</span>::new(cmd))),
+        <span class="ty">Some</span>(<span class="str">"serve"</span>) =&gt; <span class="ty">Ok</span>(<span class="ty">Box</span>::new(<span class="ty">ServeAdapter</span>::new())),
+        <span class="cm">// 3. 兜底: 按 agent id 硬编码</span>
+        _ =&gt; <span class="kw">match</span> <span class="ty">AgentKind</span>::from_agent_id(agent_id) {
+            <span class="ty">AgentKind</span>::DeepSeekHarness =&gt; <span class="ty">Ok</span>(<span class="ty">Box</span>::new(<span class="ty">DeepSeekHarnessAdapter</span>::new(cmd))),
+            <span class="cm">// ...</span>
+        }
+    }
+}</code></pre>
+
+  <div class="info-box warn">
+    <strong>扩展点：</strong>新增 Agent 只需在此函数新增一个分支 (或注册到 ProviderRegistry)，返回新的 Adapter 实现即可。协议层和前端页面无需修改 (OCP)。
+  </div>
+</div>
+
+<!-- Step 4 -->
+<div class="step" id="s4">
+  <div class="step-num">4</div>
+  <h2>三种传输协议：ACP / Serve / JSON-Lines</h2>
+
+  <h3>4.1 AcpAdapter — Agent Client Protocol (JSON-RPC stdio)</h3>
+  <p>通用互操作协议, 通过 stdin/stdout 传输 JSON-RPC 消息。支持两种线路格式:</p>
+  <ul>
+    <li><strong>Content-Length</strong> (LSP 风格): DeepSeek Harness, Zed agents</li>
+    <li><strong>NDJSON</strong> (换行分隔): OpenCode</li>
+  </ul>
+<pre><code><span class="cm">// ACP 握手流程 (adapter/acp.rs)</span>
+1. <span class="str">"initialize"</span>    -&gt; 发送协议版本 + 客户端能力
+2. 等待 initialize response
+3. <span class="str">"session/new"</span>   -&gt; 创建会话 (传入 cwd, mcpServers)
+4. 等待 session/new response (获取 server 侧 session id)
+5. <span class="str">"session/prompt"</span> -&gt; 发送用户 prompt
+6. 启动 event pump: 读取 stdout -> 翻译 notification -> StreamEvent</code></pre>
+
+  <h3>4.2 ServeAdapter — opencode serve (REST + SSE)</h3>
+  <p>OpenCode 独有的高性能传输: 一个共享的 <code>opencode serve</code> 进程, 通过 HTTP API 创建会话, 通过 SSE 接收流式事件。</p>
+<pre><code><span class="cm">// Serve 传输流程 (adapter/serve.rs)</span>
+1. 懒启动: 首次使用时 spawn <span class="str">"opencode serve --hostname 127.0.0.1 --port 0"</span>
+2. POST /session         -&gt; 创建会话
+3. POST /session/{id}/prompt_async  -&gt; 发送 prompt (支持 per-turn 模型选择)
+4. GET /event (SSE)      -&gt; 接收流式事件 (message.part.delta, permission.asked, ...)
+5. POST /session/{id}/permissions/{pid}  -&gt; 审批回执</code></pre>
+
+  <div class="info-box">
+    <strong>Serve 优势：</strong>支持 per-session / per-turn 模型切换 (ACP 上游不支持)。共享进程模型减少启动开销。
+  </div>
+
+  <h3>4.3 DeepSeekHarnessAdapter — JSON-Lines stdio</h3>
+  <p>参考适配器, 通过 stdin/stdout 传输 JSON-Lines (每行一个 JSON 对象)。</p>
+<pre><code><span class="cm">// JSON-Lines 传输流程 (adapter/deepseek.rs)</span>
+1. spawn CLI 进程 (通过 core::exec 统一接口)
+2. 写入 <span class="str">"init"</span> 行 (项目上下文: project, env, skills, files)
+3. 写入 <span class="str">"turn"</span> 行 (用户 prompt)
+4. 读取 stdout JSON-Lines -> translate_line() -> StreamEvent</code></pre>
+</div>
+
+<!-- Step 5 -->
+<div class="step" id="s5">
+  <div class="step-num">5</div>
+  <h2>统一事件协议：StreamEvent (Contract C1)</h2>
+  <p>所有 Adapter 将原生输出翻译为 <code>StreamEvent</code> 枚举, 前端只消费这一种格式。这是整个系统的"契约 C1"。</p>
+
+<pre><code><span class="cm">// src-tauri/src/agent/chat/events.rs</span>
+<span class="kw">pub enum</span> <span class="ty">StreamEvent</span> {
+    <span class="cm">// 会话生命周期</span>
+    SessionStart { session_id, agent, model, capabilities },
+    ContextInit  { session_id, manifest },
+    SessionDone  { session_id, reason },
+
+    <span class="cm">// 话轮边界</span>
+    TurnStart { session_id, turn_id },
+    TurnEnd   { session_id, turn_id, reason },
+
+    <span class="cm">// 流式文本</span>
+    TextDelta     { session_id, delta },
+    ReasoningDelta { session_id, delta },
+
+    <span class="cm">// 工具调用生命周期</span>
+    ToolStart { session_id, call_id, name, title },
+    ToolOutput { session_id, call_id, output },
+    ToolEnd   { session_id, call_id, status },
+
+    <span class="cm">// 审批 Gate</span>
+    RequestApproval { session_id, call_id, tool, title, prompt, diff, cmd },
+    UserInput       { session_id, turn_id, prompt },
+
+    <span class="cm">// 其他</span>
+    CommandRun  { session_id, call_id, cwd, cmd },
+    TodoUpdated { session_id, todos },
+    FileDiff    { session_id, call_id, path, diff },
+    Meta        { session_id, model, usage },
+    Error       { session_id, kind, code, message },
+}</code></pre>
+
+  <h3>Page -> Agent 反向通道 (SessionRequest)</h3>
+<pre><code><span class="kw">pub enum</span> <span class="ty">SessionRequest</span> {
+    Cancel,
+    Approve { call_id, allow },
+    Input   { turn_id, prompt },
+    Turn    { prompt, model },  <span class="cm">// 多轮对话 + per-turn 模型切换</span>
+    ContextSet { manifest },   <span class="cm">// 项目切换时重绑上下文</span>
+    Pause,
+    Resume,
+}</code></pre>
+</div>
+
+<!-- Step 6 -->
+<div class="step" id="s6">
+  <div class="step-num">6</div>
+  <h2>会话生命周期：从创建到销毁</h2>
+
+  <h3>完整生命周期</h3>
+<pre>
+Frontend                    Backend                    Agent CLI
+   |                           |                          |
+   |-- invoke("agent_stream") ->|                          |
+   |                           |-- adapter_for() --------->|
+   |                           |-- adapter.create(ctx) --->|
+   |                           |   (spawn / connect)       |
+   |                           |<-- session ---------------|
+   |                           |                          |
+   |                           |-- register(session_id)    |
+   |                           |-- spawn(bridge pump)      |
+   |                           |                          |
+   |<-- Ok(session_id) ---------|                          |
+   |                           |                          |
+   |   (listen to "agent-chat://event")                   |
+   |                           |                          |
+   |<-- SequencedEvent ---------|-- session.next() --------|
+   |   (TextDelta, ToolStart,  |   (read stdout/SSE/ACP)  |
+   |    RequestApproval, ...)   |                          |
+   |                           |                          |
+   |-- invoke("agent_approve")>|                          |
+   |                           |-- req_tx.send(Approve) -->|
+   |                           |                          |
+   |<-- SessionDone ------------|-- session ends ----------|
+   |                           |-- unregister(session_id)  |
+</pre>
+
+  <h3>多轮对话</h3>
+  <p>当 <code>StreamRequest.session_id</code> 有值时, 命令层直接将 prompt 路由到已有会话:</p>
+<pre><code><span class="cm">// commands.rs: agent_stream()</span>
+<span class="kw">if</span> <span class="kw">let</span> <span class="ty">Some</span>(sid) = &amp;req.session_id {
+    <span class="cm">// 路由到已有会话, 不创建新的</span>
+    state.agent_chat_manager
+        .send(sid, <span class="ty">SessionRequest</span>::Turn { prompt, model })
+        .<span class="kw">await</span>?;
+    <span class="kw">return</span> <span class="ty">Ok</span>(sid.clone());
+}</code></pre>
+</div>
+
+<!-- Step 7 -->
+<div class="step" id="s7">
+  <div class="step-num">7</div>
+  <h2>Bridge 与 Manager：事件泵与会话路由</h2>
+
+  <h3>AgentChatBridge — 事件泵</h3>
+  <p>Bridge 的职责极简: 拉取 <code>session.next()</code>, 分配单调递增序列号, 通过 <code>emit</code> 发送到前端。</p>
+<pre><code><span class="cm">// bridge.rs</span>
+<span class="kw">pub async fn</span> <span class="fn">run</span>(
+    session_id: <span class="ty">String</span>,
+    <span class="kw">mut</span> session: <span class="ty">Box</span>&lt;<span class="kw">dyn</span> <span class="ty">AgentSession</span>&gt;,
+    emit: <span class="kw">impl</span> <span class="ty">Fn</span>(<span class="ty">SequencedEvent</span>) + <span class="ty">Send</span> + <span class="str">'static</span>,
+) -&gt; <span class="ty">Result</span>&lt;(), <span class="ty">AppError</span>&gt; {
+    <span class="kw">let</span> seq = <span class="ty">Arc</span>::new(<span class="ty">AtomicU64</span>::new(0));
+    <span class="kw">loop</span> {
+        <span class="kw">match</span> session.<span class="fn">next</span>().<span class="kw">await</span> {
+            <span class="ty">Some</span>(<span class="ty">Ok</span>(event)) =&gt; {
+                <span class="kw">let</span> seq_num = seq.<span class="fn">fetch_add</span>(1, <span class="ty">Ordering</span>::SeqCst);
+                <span class="fn">emit</span>(<span class="ty">SequencedEvent</span> { seq: seq_num, event });
+            }
+            <span class="ty">Some</span>(<span class="ty">Err</span>(e)) =&gt; { <span class="cm">/* emit Error, break */</span> }
+            <span class="ty">None</span> =&gt; <span class="kw">break</span>,
+        }
+    }
+}</code></pre>
+
+  <h3>AgentChatManager — 会话路由</h3>
+  <p>维护 <code>session_id -> SessionHandle</code> 映射, 支持:</p>
+  <ul>
+    <li><code>register()</code>: 注册会话 + 持久化 ResumeCursor</li>
+    <li><code>send()</code>: 将 <code>SessionRequest</code> 路由到对应会话的 request channel</li>
+    <li><code>unregister()</code>: 注销已结束会话 + 标记 store 状态</li>
+  </ul>
+</div>
+
+<!-- Step 8 -->
+<div class="step" id="s8">
+  <div class="step-num">8</div>
+  <h2>Tauri 命令层：前端调用入口</h2>
+  <p>命令注册在 <code>lib.rs</code> 的 <code>neeko_invoke_handler!</code> 宏中:</p>
+<pre><code><span class="cm">// lib.rs</span>
+agent::chat::commands::agent_stream,
+agent::chat::commands::agent_stream_cancel,
+agent::chat::commands::agent_approve,
+agent::chat::commands::agent_input,
+agent::chat::commands::agent_context_set,</code></pre>
+
+  <h3>命令一览</h3>
+  <table>
+    <tr><th>Tauri 命令</th><th>请求体</th><th>作用</th></tr>
+    <tr><td><code>agent_stream</code></td><td>StreamRequest (agentId, projectId, prompt, model, sessionId...)</td><td>启动/续写流式会话</td></tr>
+    <tr><td><code>agent_approve</code></td><td>sessionId, callId, allow</td><td>审批回执 (Gate)</td></tr>
+    <tr><td><code>agent_input</code></td><td>sessionId, turnId, prompt</td><td>发送澄清输入</td></tr>
+    <tr><td><code>agent_stream_cancel</code></td><td>sessionId</td><td>取消流</td></tr>
+    <tr><td><code>agent_context_set</code></td><td>sessionId, ContextManifest</td><td>重绑上下文 (项目切换)</td></tr>
+  </table>
+
+  <div class="info-box">
+    <strong>命令层极薄:</strong>所有命令只做反序列化 + 调度, 不包含业务逻辑。核心逻辑在 Adapter/Manager/Bridge 中。
+  </div>
+</div>
+
+<!-- Step 9 -->
+<div class="step" id="s9">
+  <div class="step-num">9</div>
+  <h2>前端集成：React 调用链路</h2>
+
+  <h3>API 门面 (agentChatApi.ts)</h3>
+<pre><code><span class="cm">// src/features/agent-chat/api/agentChatApi.ts</span>
+<span class="kw">import</span> { invoke } <span class="kw">from</span> <span class="str">'@tauri-apps/api/core'</span>;
+
+<span class="cm">// 启动/续写会话</span>
+<span class="kw">export function</span> <span class="fn">startAgentChat</span>(req: <span class="ty">StreamChatRequest</span>): <span class="ty">Promise</span>&lt;<span class="ty">string</span>&gt; {
+    <span class="kw">return</span> invoke&lt;<span class="ty">string</span>&gt;(<span class="str">'agent_stream'</span>, { req });
+}
+
+<span class="cm">// 审批回执</span>
+<span class="kw">export function</span> <span class="fn">approveAgentCall</span>(
+    sessionId: <span class="ty">string</span>, callId: <span class="ty">string</span>, allow: <span class="ty">boolean</span>
+): <span class="ty">Promise</span>&lt;<span class="ty">void</span>&gt; {
+    <span class="kw">return</span> invoke&lt;<span class="ty">void</span>&gt;(<span class="str">'agent_approve'</span>, { sessionId, callId, allow });
+}
+
+<span class="cm">// 取消流</span>
+<span class="kw">export function</span> <span class="fn">cancelAgentStream</span>(sessionId: <span class="ty">string</span>): <span class="ty">Promise</span>&lt;<span class="ty">void</span>&gt; {
+    <span class="kw">return</span> invoke&lt;<span class="ty">void</span>&gt;(<span class="str">'agent_stream_cancel'</span>, { sessionId });
+}</code></pre>
+
+  <h3>前端数据流</h3>
+<pre>
+1. 用户输入 prompt -> startAgentChat({ agentId, projectId, prompt, model })
+2. 后端返回 sessionId
+3. 前端 listen("agent-chat://event") -> 接收 SequencedEvent 流
+4. 事件 reducer 根据 type 累积状态:
+   - TextDelta -> 追加到消息文本
+   - ToolStart/ToolOutput/ToolEnd -> 更新 ToolCard
+   - RequestApproval -> 显示审批面板
+   - TurnEnd -> 计算 "Worked for Xs" 摘要
+   - SessionDone -> 标记会话结束
+5. 用户点击审批 -> approveAgentCall(sessionId, callId, allow)
+6. 用户发新消息 -> startAgentChat({ ...existingSessionId, prompt })</code></pre>
+</div>
+
+<!-- Step 10 -->
+<div class="step" id="s10">
+  <div class="step-num">10</div>
+  <h2>实战：如何对接一个新的 Agent CLI</h2>
+  <p>以对接一个假设的 <code>my-agent</code> CLI 为例, 完整走一遍对接流程。</p>
+
+  <h3>Step A: 在 AgentManager 中注册</h3>
+<pre><code><span class="cm">// manager.rs: default_agents() 中新增</span>
+<span class="ty">AgentConfig</span> {
+    id: <span class="str">"my-agent"</span>.into(),
+    name: <span class="str">"My Agent"</span>.into(),
+    command: <span class="str">"my-agent"</span>.into(),
+    icon: <span class="ty">Some</span>(<span class="str">"my-agent.png"</span>.into()),
+    enabled: <span class="kw">true</span>,
+    chat_transport: <span class="ty">Some</span>(<span class="str">"jsonl"</span>.into()), <span class="cm">// 选择传输协议</span>
+    is_builtin: <span class="kw">true</span>,
+    skill_path: <span class="ty">Some</span>(<span class="str">"~/.my-agent/skills"</span>.into()),
+    ..Default::default()
+}</code></pre>
+
+  <h3>Step B: 实现 Adapter (以 JSON-Lines 为例)</h3>
+<pre><code><span class="cm">// adapter/my_agent.rs (新建文件)</span>
+<span class="kw">use</span> async_trait::async_trait;
+<span class="kw">use</span> crate::agent::chat::adapter::{AgentAdapter, AgentContext, AgentKind, AgentSession};
+<span class="kw">use</span> crate::agent::chat::events::{StreamEvent, ...};
+
+<span class="kw">pub struct</span> <span class="ty">MyAgentAdapter</span> { cmd: <span class="ty">Vec</span>&lt;<span class="ty">String</span>&gt; }
+
+<span class="kw">impl</span> <span class="ty">MyAgentAdapter</span> {
+    <span class="kw">pub fn</span> <span class="fn">new</span>(cmd: <span class="ty">Vec</span>&lt;<span class="ty">String</span>&gt;) -&gt; <span class="ty">Self</span> { <span class="ty">Self</span> { cmd } }
+}
+
+<span class="at">#[async_trait]</span>
+<span class="kw">impl</span> <span class="ty">AgentAdapter</span> <span class="kw">for</span> <span class="ty">MyAgentAdapter</span> {
+    <span class="kw">fn</span> <span class="fn">kind</span>(&amp;<span class="kw">self</span>) -&gt; <span class="ty">AgentKind</span> { <span class="ty">AgentKind</span>::Custom }
+
+    <span class="kw">async fn</span> <span class="fn">create</span>(&amp;<span class="kw">self</span>, ctx: &amp;<span class="ty">AgentContext</span>)
+        -&gt; <span class="ty">Result</span>&lt;<span class="ty">Box</span>&lt;<span class="kw">dyn</span> <span class="ty">AgentSession</span>&gt;, <span class="ty">AppError</span>&gt;
+    {
+        <span class="cm">// 1. spawn CLI (通过 core::exec 统一接口)</span>
+        <span class="kw">let</span> child = <span class="fn">exec::spawn</span>(&amp;<span class="ty">ExecTarget</span>::Local, &amp;<span class="self">self</span>.cmd[0], &amp;args).<span class="kw">await</span>?;
+
+        <span class="cm">// 2. 设置 event channel</span>
+        <span class="kw">let</span> (event_tx, event_rx) = mpsc::channel(64);
+
+        <span class="cm">// 3. 发送 SessionStart + ContextInit</span>
+        <span class="cm">// 4. 写 init 上下文到 stdin</span>
+        <span class="cm">// 5. 写 prompt 到 stdin</span>
+        <span class="cm">// 6. 启动 pump task: read stdout -> translate_line -> event_tx</span>
+        <span class="cm">// 7. 启动 request channel task: req_rx -> write to stdin</span>
+
+        <span class="ty">Ok</span>(<span class="ty">Box</span>::new(<span class="ty">MyAgentSession</span> { event_rx, request_tx }))
+    }
+}</code></pre>
+
+  <h3>Step C: 在 adapter_for 中注册</h3>
+<pre><code><span class="cm">// adapter.rs: adapter_for()</span>
+<span class="cm">// 新增 AgentKind 变体</span>
+<span class="kw">pub enum</span> <span class="ty">AgentKind</span> {
+    <span class="cm">// ... existing ...</span>
+    MyAgent,
+}
+
+<span class="cm">// 在 from_agent_id 中映射</span>
+<span class="str">"my-agent"</span> =&gt; <span class="ty">AgentKind</span>::MyAgent,
+
+<span class="cm">// 在 adapter_for 的 match 中新增</span>
+<span class="ty">AgentKind</span>::MyAgent =&gt; <span class="ty">Ok</span>(<span class="ty">Box</span>::new(<span class="ty">MyAgentAdapter</span>::new(cmd))),</code></pre>
+
+  <h3>Step D: 注册 Tauri 命令 (已有的即可)</h3>
+  <p>无需新增命令! <code>agent_stream</code> 会根据 <code>agentId</code> 自动分派到你的 Adapter。前端只需在 Agent 选择器中展示新 Agent。</p>
+
+  <h3>核心对接清单</h3>
+  <table>
+    <tr><th>#</th><th>步骤</th><th>文件</th></tr>
+    <tr><td>1</td><td>注册 AgentConfig</td><td><code>agent/manager.rs</code></td></tr>
+    <tr><td>2</td><td>实现 AgentAdapter + AgentSession</td><td><code>agent/chat/adapter/my_agent.rs</code></td></tr>
+    <tr><td>3</td><td>注册 AgentKind 变体</td><td><code>agent/chat/adapter.rs</code></td></tr>
+    <tr><td>4</td><td>在 adapter_for 中新增分支</td><td><code>agent/chat/adapter.rs</code></td></tr>
+    <tr><td>5</td><td>mod.rs 导出</td><td><code>agent/chat/adapter/mod.rs</code></td></tr>
+    <tr><td>6</td><td>编写 translate_* 翻译函数 (纯函数, 易测试)</td><td><code>agent/chat/adapter/my_agent.rs</code></td></tr>
+  </table>
+
+  <div class="info-box">
+    <strong>测试策略：</strong>translate 函数是纯函数, 可以用 TDD 直接写单元测试。Adapter 的 IO 层用 <code>tokio::io::duplex</code> 模拟进程管道, 无需真实 CLI 进程。参考 <code>adapter/acp.rs</code> 中 <code>AcpIo::Mock</code> 的实现。
+  </div>
+</div>
+
+<!-- Summary -->
+<div style="background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 28px 32px; margin-top: 48px;">
+  <h2 style="color: var(--accent); margin-bottom: 16px;">总结：对接流程 30 秒速览</h2>
+  <ol style="padding-left: 22px;">
+    <li style="margin-bottom: 8px;"><strong>注册</strong>: 在 <code>AgentManager::default_agents()</code> 中添加 <code>AgentConfig</code>, 设置 <code>chat_transport</code></li>
+    <li style="margin-bottom: 8px;"><strong>适配器</strong>: 实现 <code>AgentAdapter</code> trait (<code>kind()</code> + <code>create()</code>), 内部 spawn CLI 并翻译为 <code>StreamEvent</code></li>
+    <li style="margin-bottom: 8px;"><strong>分派</strong>: 在 <code>adapter_for()</code> 中新增 match 分支</li>
+    <li style="margin-bottom: 8px;"><strong>测试</strong>: 翻译函数纯函数 TDD, IO 层用 duplex mock</li>
+    <li><strong>完成</strong>: 前端自动可用, 无需新增 Tauri 命令</li>
+  </ol>
+</div>
+
+<p style="text-align: center; color: var(--text-muted); margin-top: 48px; font-size: 0.85em;">
+  Generated from Neeko v1.0.4 source code analysis &middot; Key files: agent/chat/adapter.rs, events.rs, commands.rs, bridge.rs, manager.rs
+</p>
+
+</div>
+</body>
+</html>

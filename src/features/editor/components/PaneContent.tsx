@@ -1,5 +1,6 @@
 import React from 'react';
 
+import { AgentChatTabView } from '@/features/agent-chat';
 import { BrowserTabView } from '@/features/browser';
 import { ConversationViewer } from '@/features/conversation';
 import { DiffView, PRDetailView } from '@/features/git';
@@ -152,6 +153,16 @@ function PaneContent({
           prBaseRef={activeTab.data.prBaseRef}
           onClose={() => onCloseTab(activeTab.id)}
           onOpenDiff={handleOpenDiff}
+        />
+      );
+    case 'agent-chat':
+      return (
+        <AgentChatTabView
+          key={activeTab.id}
+          tabKey={tabKey}
+          tabId={activeTab.id}
+          projectId={activeTab.projectId}
+          data={activeTab.data}
         />
       );
     case 'browser':

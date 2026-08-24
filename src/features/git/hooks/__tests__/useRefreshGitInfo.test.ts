@@ -176,4 +176,32 @@ describe('useRefreshGitInfo', () => {
     rerender({ project: makeView({ name: 'Renamed' }) });
     await waitFor(() => expect(result.current).toBe(first));
   });
+
+  // ── 非 git 项目守卫（TDD Red）──────────────────────────────────────────────
+
+  it('should_skip_git_commands_for_non_git_project', async () => {
+    // 非 git 项目：store 中 git_info 为 null
+    const nonGitProject = makeProject({ git_info: null });
+    useProjectStore.setState({
+      projects: [nonGitProject],
+      activeProjectId: nonGitProject.id,
+      activeProject: nonGitProject,
+    });
+    const commands = makeCommands();
+    // view.gitInfo 为 null 表示非 git 项目
+    const view = makeView({ gitInfo: null });
+    const { result } = renderHook(() =>
+      useRefreshGitInfo(view, commands, { type: 'local', projectId: nonGitProject.id }),
+    );
+
+    await act(async () => {
+      await result.current();
+    });
+
+    // 非 git 项目不应调用 refreshGitInfo / getAheadBehind
+    expect(commands.refreshGitInfo).not.toHaveBeenCalled();
+    expect(commands.getAheadBehind).not.toHaveBeenCalled();
+    // store 中 git_info 保持 null
+    expect(useProjectStore.getState().projects[0]?.git_info).toBeNull();
+  });
 });

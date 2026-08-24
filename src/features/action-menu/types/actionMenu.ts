@@ -4,6 +4,7 @@ export type ActionId =
   | 'new-terminal'
   | 'new-terminal-with-agent'
   | 'new-browser'
+  | 'new-agent-chat'
   | 'new-file'
   | 'open-file'
   | 'recent-files'

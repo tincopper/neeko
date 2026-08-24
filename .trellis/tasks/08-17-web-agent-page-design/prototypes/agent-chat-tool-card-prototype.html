@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Agent Chat 工具卡片原型</title>
+<style>
+  :root {
+    --bg-primary: #1e1e2e;
+    --bg-secondary: #181825;
+    --bg-tertiary: #313244;
+    --bg-hover: #45475a;
+    --text-primary: #cdd6f4;
+    --text-secondary: #a6adc8;
+    --text-muted: #6c7086;
+    --border: #45475a;
+    --accent-blue: #89b4fa;
+    --accent-green: #a6e3a1;
+    --accent-red: #f38ba8;
+    --accent-yellow: #f9e2af;
+    --font-mono: 'SF Mono', 'Cascadia Code', 'Fira Code', monospace;
+    --radius-sm: 6px;
+    --radius-md: 8px;
+    --radius-lg: 10px;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', sans-serif; background: var(--bg-primary); color: var(--text-primary); padding: 24px; max-width: 780px; margin: 0 auto; line-height: 1.6; }
+  h2 { font-size: 13px; color: var(--text-muted); margin: 28px 0 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; }
+  .msg { margin-bottom: 10px; }
+
+  /* 用户气泡 */
+  .user-bubble { display: flex; justify-content: flex-end; }
+  .user-bubble .bubble { background: color-mix(in srgb, var(--accent-blue) 12%, var(--bg-secondary)); border: 1px solid color-mix(in srgb, var(--accent-blue) 20%, transparent); border-radius: var(--radius-lg) var(--radius-lg) 2px var(--radius-lg); padding: 10px 14px; max-width: 88%; font-size: 14px; }
+
+  /* 思考条 */
+  .thinking-bar { display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px; border-radius: var(--radius-sm); font-size: 11px; color: var(--text-muted); cursor: pointer; transition: background 120ms; }
+  .thinking-bar:hover { background: var(--bg-hover); color: var(--text-secondary); }
+  .thinking-bar svg { width: 12px; height: 12px; }
+  .thinking-bar .preview { color: color-mix(in srgb, var(--text-muted) 60%, transparent); }
+
+  /* ── 命令卡片（核心） ── */
+  .tool-card { border: 1px solid color-mix(in srgb, var(--accent-blue) 25%, transparent); border-radius: var(--radius-md); background: color-mix(in srgb, var(--accent-blue) 4%, transparent); overflow: hidden; margin: 4px 0; }
+  .tool-card.failed { border-color: color-mix(in srgb, var(--accent-red) 30%, transparent); background: color-mix(in srgb, var(--accent-red) 4%, transparent); }
+
+  .tool-card-head { display: flex; align-items: center; gap: 8px; padding: 7px 12px; cursor: pointer; transition: background 120ms; user-select: none; }
+  .tool-card-head:hover { background: color-mix(in srgb, var(--accent-blue) 8%, transparent); }
+  .tool-card.failed .tool-card-head:hover { background: color-mix(in srgb, var(--accent-red) 8%, transparent); }
+
+  .tool-card svg { width: 14px; height: 14px; flex: 0 0 auto; }
+  .tool-card .icon { color: var(--accent-blue); }
+  .tool-card.failed .icon { color: var(--accent-red); }
+
+  .tool-card .name { flex: 0 0 auto; font-size: 12px; font-weight: 500; color: var(--accent-blue); font-family: var(--font-mono); }
+  .tool-card.failed .name { color: var(--accent-red); }
+
+  .tool-card .cmd { flex: 1; min-width: 0; font-family: var(--font-mono); font-size: 12.5px; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+  .tool-card .status { flex: 0 0 auto; display: flex; align-items: center; gap: 4px; font-size: 11px; color: var(--text-muted); }
+  .tool-card .status-dot { width: 6px; height: 6px; border-radius: 50%; }
+  .tool-card .status-dot.done { background: var(--accent-green); }
+  .tool-card .status-dot.failed { background: var(--accent-red); }
+  .tool-card .status-dot.running { background: var(--accent-yellow); animation: pulse 1.2s infinite; }
+  @keyframes pulse { 0%,100% { opacity:1; } 50% { opacity:0.3; } }
+
+  /* chevron：尾部，默认隐藏，hover 才显示；无输出的卡不渲染 chevron */
+  .tool-card .chevron { color: var(--text-muted); transition: transform 0.15s, opacity 0.15s; opacity: 0; }
+  .tool-card.open .chevron { transform: rotate(90deg); }
+  .tool-card-head:hover .chevron { opacity: 1; }
+  .tool-card:not(:has(.cmd-body)) .chevron { display: none; }
+
+  /* 展开体 */
+  .tool-card .cmd-body { border-top: 1px solid color-mix(in srgb, var(--border) 50%, transparent); }
+  .tool-card .cmd-full { padding: 8px 12px; font-family: var(--font-mono); font-size: 12px; color: var(--text-secondary); background: var(--bg-secondary); white-space: pre-wrap; word-break: break-all; border-bottom: 1px solid color-mix(in srgb, var(--border) 30%, transparent); }
+  .tool-card .cmd-output { padding: 10px 12px; font-family: var(--font-mono); font-size: 11.5px; color: var(--text-muted); background: var(--bg-secondary); white-space: pre-wrap; word-break: break-word; max-height: 240px; overflow-y: auto; line-height: 1.7; }
+
+  /* 嵌套 result 分隔条 */
+  .result-bar { display: flex; align-items: center; gap: 8px; padding: 6px 12px; cursor: pointer; font-size: 12px; border-top: 1px solid color-mix(in srgb, var(--border) 30%, transparent); transition: background 120ms; }
+  .result-bar:hover { background: var(--bg-hover); }
+  .result-bar .result-icon { flex: 0 0 auto; width: 16px; height: 16px; display: flex; align-items: center; justify-content: center; border-radius: 50%; }
+  .result-bar .result-icon svg { width: 11px; height: 11px; }
+  .result-bar .result-icon.ok { background: color-mix(in srgb, var(--accent-green) 15%, transparent); color: var(--accent-green); }
+  .result-bar .result-icon.err { background: color-mix(in srgb, var(--accent-red) 15%, transparent); color: var(--accent-red); }
+  .result-bar .result-label { flex: 0 0 auto; color: var(--text-secondary); font-weight: 500; }
+  .result-bar .result-preview { flex: 1; min-width: 0; color: color-mix(in srgb, var(--text-muted) 60%, transparent); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-align: right; }
+
+  /* 工具摘要行 */
+  .tool-summary { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; font-size: 12px; color: var(--text-secondary); cursor: pointer; border-radius: var(--radius-sm); transition: background 120ms; }
+  .tool-summary:hover { background: var(--bg-hover); }
+  .tool-summary svg { width: 12px; height: 12px; }
+</style>
+</head>
+<body>
+
+<h2>场景 1 · 命令执行成功（单行头部 + 折叠输出）</h2>
+<div class="msg">
+  <div class="tool-card open">
+    <div class="tool-card-head">
+      <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
+      <span class="name">bash</span>
+      <span class="cmd" title="pnpm test:run 2>&1 | grep -E 'Test Files|Tests '">pnpm test:run 2>&1 | grep -E 'Test Files|Tests '</span>
+      <span class="status"><span class="status-dot done"></span>done</span>
+      <svg class="chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+    </div>
+    <div class="cmd-body">
+      <div class="cmd-full">$ pnpm test:run 2>&1 | grep -E 'Test Files|Tests '</div>
+      <div class="result-bar">
+        <span class="result-icon ok"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span>
+        <span class="result-label">Result</span>
+        <span class="result-preview">265 files · 2144 tests passed</span>
+      </div>
+      <div class="cmd-output">Test Files  265 passed (265)
+  Tests  2144 passed | 1 skipped (2145)
+  OK: 未发现对工作区换行做字节级精确断言的测试。</div>
+    </div>
+  </div>
+</div>
+
+<h2>场景 2 · 长命令截断（无输出）</h2>
+<div class="msg">
+  <div class="tool-card">
+    <div class="tool-card-head">
+      <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
+      <span class="name">bash</span>
+      <span class="cmd" title="cat /Users/tomgs/RustroverProjects/neeko/.codex/skills/trellis-start/SKILL.md 2>/dev/null || find /Users/tomgs/RustroverProjects/neeko/.codex/skills -name '*.md'">cat /Users/tomgs/RustroverProjects/neeko/.codex/skills/trellis-start/SKILL.md 2>/dev/null || find /Users/tomgs/RustroverProjects/neeko/.codex/skills -name '*.md'</span>
+      <span class="status"><span class="status-dot done"></span>done</span>
+    </div>
+  </div>
+</div>
+
+<h2>场景 3 · 失败命令（自动展开）</h2>
+<div class="msg">
+  <div class="tool-card failed open">
+    <div class="tool-card-head">
+      <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
+      <span class="name">bash</span>
+      <span class="cmd">cargo build --release</span>
+      <span class="status"><span class="status-dot failed"></span>failed</span>
+      <svg class="chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+    </div>
+    <div class="cmd-body">
+      <div class="cmd-full">$ cargo build --release</div>
+      <div class="result-bar">
+        <span class="result-icon err"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></span>
+        <span class="result-label">Error</span>
+        <span class="result-preview">could not compile `neeko`</span>
+      </div>
+      <div class="cmd-output">error: could not compile `neeko` (lib) due to 1 previous error
+  error[E0405]: cannot find trait `AgentSession` in this scope</div>
+    </div>
+  </div>
+</div>
+
+<h2>场景 4 · 多工具组折叠</h2>
+<div class="msg">
+  <div class="tool-summary"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg> Ran 2 commands · Read 1 file</div>
+</div>
+
+<h2>场景 5 · 完整对话流</h2>
+<div class="user-bubble"><div class="bubble">帮我跑一下测试，看看有没有问题</div></div>
+<div class="msg"><div class="thinking-bar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9.172 16.172a4 4 0 015.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg> Thinking <span class="preview">用户要求运行测试并分析结果…</span></div></div>
+
+<div class="msg">
+  <div class="tool-card open">
+    <div class="tool-card-head">
+      <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
+      <span class="name">bash</span>
+      <span class="cmd">pnpm test:run 2>&1 | tail -20</span>
+      <span class="status"><span class="status-dot done"></span>done</span>
+      <svg class="chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+    </div>
+    <div class="cmd-body">
+      <div class="cmd-full">$ pnpm test:run 2>&1 | tail -20</div>
+      <div class="result-bar">
+        <span class="result-icon ok"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span>
+        <span class="result-label">Result</span>
+        <span class="result-preview">265 files · 2144 tests passed</span>
+      </div>
+      <div class="cmd-output">Test Files  265 passed (265)
+  Tests  2144 passed | 1 skipped (2145)</div>
+    </div>
+  </div>
+</div>
+
+<div class="msg">
+  <div class="tool-card">
+    <div class="tool-card-head">
+      <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+      <span class="name">read_file</span>
+      <span class="cmd">src-tauri/src/agent/chat/adapter/serve.rs</span>
+      <span class="status"><span class="status-dot done"></span>done</span>
+    </div>
+  </div>
+</div>
+
+<div class="msg">
+  <div class="tool-card open">
+    <div class="tool-card-head">
+      <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
+      <span class="name">bash</span>
+      <span class="cmd">cargo clippy -- -D warnings 2>&1 | head -30</span>
+      <span class="status"><span class="status-dot done"></span>done</span>
+      <svg class="chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+    </div>
+    <div class="cmd-body">
+      <div class="cmd-full">$ cargo clippy -- -D warnings 2>&1 | head -30</div>
+      <div class="result-bar">
+        <span class="result-icon ok"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span>
+        <span class="result-label">Result</span>
+        <span class="result-preview">Finished in 0.45s · 0 warnings</span>
+      </div>
+      <div class="cmd-output">    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.45s
+  OK: 未发现对工作区换行做字节级精确断言的测试。</div>
+    </div>
+  </div>
+</div>
+
+<div class="msg" style="font-size:13px; color:var(--text-secondary);">
+  ✅ 全部通过。265 个测试文件、2144 个用例全部绿灯，clippy 也无警告。
+</div>
+
+<p style="margin-top:24px; font-size:12px; color:var(--text-muted);">点击卡片头部展开/折叠 · chevron hover 才显示 · 失败自动展开</p>
+</body>
+</html>

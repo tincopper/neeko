@@ -3,6 +3,7 @@ name = "neeko"
 version = "1.0.6"
 edition = "2021"
 license = "Apache-2.0"
+default-run = "neeko"
 
 [lib]
 name = "neeko_lib"

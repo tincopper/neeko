@@ -54,9 +54,9 @@ Neeko 把所有项目的 Agent 终端整合进一个桌面应用：左侧边栏�
 
 ### 前置要求
 
-- [Node.js](https://nodejs.org/) 18+
+- [Node.js](https://nodejs.org/) 22+
 - [Rust](https://rustup.rs/) 1.70+
-- [pnpm](https://pnpm.io/)（推荐）
+- [pnpm](https://pnpm.io/) 11+（推荐）
 
 ### Linux 系统依赖
 

@@ -219,6 +219,14 @@ impl AgentSessionAdapter for OpenCodeAdapter {
                                 });
                             }
                         }
+                        // opencode 的思考部件（Claude Code 对应 "thinking"）
+                        "reasoning" => {
+                            if let Some(text) = part.get("text").and_then(|v| v.as_str()) {
+                                blocks.push(MessageBlock::Thinking {
+                                    thinking: text.to_string(),
+                                });
+                            }
+                        }
                         "tool_use" => {
                             let id = part
                                 .get("id")
@@ -252,6 +260,60 @@ impl AgentSessionAdapter for OpenCodeAdapter {
                                 content: text.to_string(),
                                 is_error,
                             });
+                        }
+                        // opencode 的工具部件：单个 part 自带调用与终态，拆成
+                        // ToolUse + ToolResult 成对块，复用前端按 callId 配对
+                        // 回填输出/状态的既有管线（historyConvert.pushToolResult）。
+                        "tool" => {
+                            let call_id = part
+                                .get("callID")
+                                .and_then(|v| v.as_str())
+                                .unwrap_or_default();
+                            if call_id.is_empty() {
+                                continue;
+                            }
+                            let name = part
+                                .get("tool")
+                                .and_then(|v| v.as_str())
+                                .unwrap_or("unknown");
+                            let state = part.get("state");
+                            let input = state
+                                .and_then(|s| s.get("input"))
+                                .cloned()
+                                .unwrap_or(serde_json::Value::Null);
+                            blocks.push(MessageBlock::ToolUse {
+                                id: call_id.to_string(),
+                                name: name.to_string(),
+                                input,
+                            });
+                            let status =
+                                state.and_then(|s| s.get("status")).and_then(|v| v.as_str());
+                            match status {
+                                Some("completed") => {
+                                    let output = state
+                                        .and_then(|s| s.get("output"))
+                                        .and_then(|v| v.as_str())
+                                        .unwrap_or_default();
+                                    blocks.push(MessageBlock::ToolResult {
+                                        tool_use_id: call_id.to_string(),
+                                        content: output.to_string(),
+                                        is_error: false,
+                                    });
+                                }
+                                Some("error") => {
+                                    let err = state
+                                        .and_then(|s| s.get("error"))
+                                        .and_then(|v| v.as_str())
+                                        .unwrap_or_default();
+                                    blocks.push(MessageBlock::ToolResult {
+                                        tool_use_id: call_id.to_string(),
+                                        content: err.to_string(),
+                                        is_error: true,
+                                    });
+                                }
+                                // pending/running：快照无终态输出，仅保留 ToolUse
+                                _ => {}
+                            }
                         }
                         _ => {}
                     }
@@ -826,5 +888,181 @@ mod tests {
         let syn_path = Path::new("/tmp/opencode.db#ses-001");
         let id = OpenCodeAdapter.extract_session_id(syn_path);
         assert_eq!(id, Some("ses-001".to_string()));
+    }
+
+    /// 真实 opencode 部件形状的 fixture（部件 JSON 逐字取自本地
+    /// `~/.local/share/opencode/opencode.db` 实测数据）。
+    ///
+    /// 回归背景：旧实现只映射 Claude Code 约定的 `text`/`tool_use`/`tool_result`
+    /// 三种类型，opencode 实际的 `reasoning`/`tool`/`step-*`/`patch` 全部落入
+    /// `_ => {}` 被静默丢弃 —— 恢复会话后工具卡片与思考过程渲染成空白。
+    fn create_parts_fixture(dir: &TempDir) -> PathBuf {
+        let db_path = dir.path().join("opencode-parts.db");
+        let conn = rusqlite::Connection::open(&db_path).expect("Failed to create DB");
+
+        conn.execute_batch(
+            "
+            CREATE TABLE IF NOT EXISTS session (
+                id TEXT PRIMARY KEY,
+                title TEXT,
+                directory TEXT,
+                time_created INTEGER,
+                time_updated INTEGER,
+                model TEXT,
+                parent_id TEXT,
+                time_archived INTEGER
+            );
+            CREATE TABLE IF NOT EXISTS message (
+                id TEXT PRIMARY KEY,
+                session_id TEXT NOT NULL,
+                time_created INTEGER,
+                time_updated INTEGER,
+                data TEXT NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS part (
+                id TEXT PRIMARY KEY,
+                message_id TEXT NOT NULL,
+                session_id TEXT NOT NULL,
+                time_created INTEGER,
+                time_updated INTEGER,
+                data TEXT NOT NULL
+            );
+            INSERT INTO session (id, title, directory, time_created, time_updated)
+            VALUES ('ses-parts', 'parts fixture', '/projects/test', 1736935200000, 1736938800000);
+
+            INSERT INTO message (id, session_id, time_created, data)
+            VALUES ('ma', 'ses-parts', 1736935202000, '{\"role\":\"assistant\"}');
+            ",
+        )
+        .expect("Failed to insert parts fixture");
+
+        // 部件按 time_created 升序插入，模拟一次真实回复的到达顺序。
+        let parts: &[(&str, &str)] = &[
+            ("pa1", r#"{"type":"step-start","snapshot":"307f33e0"}"#),
+            (
+                "pa2",
+                r#"{"type":"reasoning","text":"先分析根因再动手。","time":{"start":1787368960000,"end":1787368970000}}"#,
+            ),
+            (
+                "pa3",
+                r#"{"type":"text","text":"开始执行。**红灯**：补 `exec_command` 用例：","time":{"start":1787368970223,"end":1787368979910}}"#,
+            ),
+            (
+                "pa4",
+                r#"{"type":"tool","callID":"call_edit1","tool":"edit","state":{"status":"completed","input":{"filePath":"/projects/test/src/lib.rs","oldString":"fn old() {}","newString":"fn new() {}"},"output":"+ fn new() {}\n- fn old() {}"}}"#,
+            ),
+            (
+                "pa5",
+                r#"{"type":"patch","hash":"f198039c","files":["/projects/test/src/lib.rs"]}"#,
+            ),
+            (
+                "pa6",
+                r#"{"type":"tool","callID":"call_bash1","tool":"bash","state":{"status":"error","input":{"command":"cargo test"},"error":"compile error"}}"#,
+            ),
+        ];
+        for (i, (pid, data)) in parts.iter().enumerate() {
+            conn.execute(
+                "INSERT INTO part (id, message_id, session_id, time_created, time_updated, data)
+                 VALUES (?1, 'ma', 'ses-parts', ?2, ?2, ?3)",
+                rusqlite::params![pid, 1736935202000 + i as i64, data],
+            )
+            .expect("insert part");
+        }
+
+        db_path
+    }
+
+    #[test]
+    fn should_map_reasoning_part_to_thinking_block() {
+        let dir = TempDir::new().unwrap();
+        let db_path = create_parts_fixture(&dir);
+        let adapter = OpenCodeAdapter;
+        let synthetic_path = PathBuf::from(format!("{}#ses-parts", db_path.display()));
+
+        let messages = adapter.parse_messages(&synthetic_path).unwrap();
+        assert_eq!(messages.len(), 1);
+        assert!(
+            messages[0]
+                .blocks
+                .iter()
+                .any(|b| matches!(b, MessageBlock::Thinking { thinking } if thinking == "先分析根因再动手。")),
+            "reasoning part must map to Thinking block, got {:?}",
+            messages[0].blocks
+        );
+    }
+
+    #[test]
+    fn should_map_tool_part_to_paired_use_and_result() {
+        let dir = TempDir::new().unwrap();
+        let db_path = create_parts_fixture(&dir);
+        let adapter = OpenCodeAdapter;
+        let synthetic_path = PathBuf::from(format!("{}#ses-parts", db_path.display()));
+
+        let messages = adapter.parse_messages(&synthetic_path).unwrap();
+        let blocks = &messages[0].blocks;
+
+        // completed 工具 → ToolUse(callID/tool/state.input) + ToolResult(output) 成对出现
+        let use_at = blocks
+            .iter()
+            .position(|b| matches!(b, MessageBlock::ToolUse { id, .. } if id == "call_edit1"))
+            .expect("edit tool part must produce ToolUse with callID as id");
+        match &blocks[use_at] {
+            MessageBlock::ToolUse { name, input, .. } => {
+                assert_eq!(name, "edit");
+                assert_eq!(
+                    input.get("filePath").and_then(|v| v.as_str()),
+                    Some("/projects/test/src/lib.rs")
+                );
+            }
+            other => panic!("expected ToolUse, got {other:?}"),
+        }
+
+        let result_at = blocks
+            .iter()
+            .position(|b| matches!(b, MessageBlock::ToolResult { tool_use_id, .. } if tool_use_id == "call_edit1"))
+            .expect("completed tool part must synthesize ToolResult for pairing");
+        match &blocks[result_at] {
+            MessageBlock::ToolResult {
+                content, is_error, ..
+            } => {
+                assert_eq!(content, "+ fn new() {}\n- fn old() {}");
+                assert!(!is_error);
+            }
+            other => panic!("expected ToolResult, got {other:?}"),
+        }
+        // 配对块保持时序相邻（前端 WorkRows 卡片依赖该顺序）
+        assert_eq!(result_at, use_at + 1);
+    }
+
+    #[test]
+    fn should_map_failed_tool_to_error_result() {
+        let dir = TempDir::new().unwrap();
+        let db_path = create_parts_fixture(&dir);
+        let adapter = OpenCodeAdapter;
+        let synthetic_path = PathBuf::from(format!("{}#ses-parts", db_path.display()));
+
+        let messages = adapter.parse_messages(&synthetic_path).unwrap();
+        assert!(
+            messages[0].blocks.iter().any(|b| matches!(
+                b,
+                MessageBlock::ToolResult { tool_use_id, content, is_error }
+                    if tool_use_id == "call_bash1" && content == "compile error" && *is_error
+            )),
+            "error tool part must produce failed ToolResult, got {:?}",
+            messages[0].blocks
+        );
+    }
+
+    #[test]
+    fn should_ignore_step_and_patch_parts() {
+        let dir = TempDir::new().unwrap();
+        let db_path = create_parts_fixture(&dir);
+        let adapter = OpenCodeAdapter;
+        let synthetic_path = PathBuf::from(format!("{}#ses-parts", db_path.display()));
+
+        let messages = adapter.parse_messages(&synthetic_path).unwrap();
+        // step-start/step-finish/patch 是生命周期元数据，不产生内容块；
+        // 总块数 = Thinking(1) + Text(1) + ToolUse(2) + ToolResult(2) = 6
+        assert_eq!(messages[0].blocks.len(), 6, "{:?}", messages[0].blocks);
     }
 }

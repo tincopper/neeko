@@ -10,6 +10,8 @@ export type TabKind =
   | 'html-preview'
   | 'conversation'
   | 'prDetail'
+  | 'web-agent'
+  | 'agent-chat'
   | 'browser';
 
 export interface TerminalTabData {
@@ -81,6 +83,18 @@ export interface BrowserTabData {
   favicon?: string;
 }
 
+export interface AgentChatTabData {
+  kind: 'agent-chat';
+  /** 当前选中的 agent ID（如 deepseek-harness、opencode）。 */
+  agentId?: string;
+  /** 会话 ID（用于恢复）。 */
+  sessionId?: string;
+  /** Histor 恢复目标：conversation 域的会话 id（拉取历史渲染）。 */
+  resumeConversationId?: string;
+  /** Histor 恢复目标：agent 原生会话 id（agent_chat_resume 接续写入）。 */
+  resumeNativeSessionId?: string;
+}
+
 export type TabData =
   | TerminalTabData
   | FileTabData
@@ -88,7 +102,8 @@ export type TabData =
   | HtmlPreviewTabData
   | ConversationTabData
   | PRDetailTabData
-  | BrowserTabData;
+  | BrowserTabData
+  | AgentChatTabData;
 
 export interface Tab {
   id: string;

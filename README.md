@@ -54,9 +54,9 @@ Neeko consolidates all project Agent terminals into a single desktop application
 
 ### Prerequisites
 
-- [Node.js](https://nodejs.org/) 18+
+- [Node.js](https://nodejs.org/) 22+
 - [Rust](https://rustup.rs/) 1.70+
-- [pnpm](https://pnpm.io/) (recommended)
+- [pnpm](https://pnpm.io/) 11+ (recommended)
 
 ### Linux System Dependencies
 

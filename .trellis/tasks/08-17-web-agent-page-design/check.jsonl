@@ -1,0 +1,5 @@
+{"_example": "Fill with {\"file\": \"<path>\", \"reason\": \"<why>\"}. Put spec/research files only — no code paths. Run `python3 .trellis/scripts/get_context.py --mode packages` to list available specs. Delete this line once real entries are added."}
+{"file": "src-tauri/src/agent/chat/adapter/serve.rs", "reason": "trellis-check 审查通过：无阻塞问题；修复续写轮次丢 model 缺陷（Turn 增加 model 字段，serve 每轮传递）；5 项门禁全绿（cargo test 813+99 / clippy / type-check / test:run 2052 / lint）"}
+{"file": "src/features/agent-chat/components/WorkRows.tsx", "reason": "工具输出渲染：默认工具行展示 t.output（work-row-output），FileCard 展示文件内容/diff（file-body）"}
+{"file": "src/features/agent-chat/components/AgentChatTabView.tsx", "reason": "消息内渲染顺序调整为 text → tools → reasoning（原 tools → reasoning → text）"}
+{"file": "src/features/agent-chat/components/__tests__/AgentChatTabView.test.tsx", "reason": "新增3个测试：工具输出渲染、FileCard 输出、渲染顺序"}

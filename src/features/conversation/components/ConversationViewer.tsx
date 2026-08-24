@@ -1,29 +1,31 @@
 import {
   ArrowLeft,
-  Download,
   ChevronDown,
   ChevronUp,
-  File,
-  Terminal,
-  Search,
-  Edit,
-  SquareTerminal,
+  Download,
   PanelRight,
+  Search,
+  SquareTerminal,
+  X,
 } from 'lucide-react';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { AgentIcon } from '@/features/agent';
 import type { AgentConfig } from '@/features/agent/types';
 import { cn } from '@/lib/utils';
+import { VirtualList, type VirtualListHandle } from '@/shared/components/VirtualList';
 import { useCopyToClipboard } from '@/shared/hooks/useCopyToClipboard';
 import { useProjectStore } from '@/shared/store/projectStore';
 import { Button } from '@/ui/Button';
 
 import { getConversationMessages, exportConversation } from '../api/conversationApi';
+import { useConversationSearch } from '../hooks/useConversationSearch';
 import type { ConversationMessage as ConversationMessageType, ConversationMeta } from '../types';
+import { messageToText } from '../utils/messageToText';
+import { getToolSummary } from '../utils/toolPresentation';
 
 import ConversationMessage from './ConversationMessage';
-import { MessageBlockRenderer } from './MessageBlocks';
+import { MessageBlockList, ToolIcon } from './MessageBlocks';
 import MessageBubble from './MessageBubble';
 
 interface ConversationViewerProps {
@@ -40,16 +42,6 @@ interface ConversationViewerProps {
 const INITIAL_LOAD = 100;
 const LOAD_MORE = 50;
 
-// 工具图标映射
-const TOOL_ICONS: Record<string, React.FC<{ className?: string }>> = {
-  Read: File,
-  Write: Edit,
-  Edit: Edit,
-  Bash: Terminal,
-  Grep: Search,
-  Glob: Search,
-};
-
 // 工具调用侧边栏项
 interface ToolCallItem {
   msgIdx: number;
@@ -62,26 +54,6 @@ interface MessageGroup {
   role: 'user' | 'assistant';
   messages: ConversationMessageType[];
   indices: number[];
-}
-
-// 提取工具摘要
-function getToolSummary(name: string, input: unknown): string {
-  if (!input || typeof input !== 'object') return '';
-  const obj = input as Record<string, unknown>;
-
-  switch (name) {
-    case 'Read':
-    case 'Write':
-    case 'Edit':
-      return (obj.file_path ?? obj.path ?? '') as string;
-    case 'Bash':
-      return (obj.command ?? '') as string;
-    case 'Grep':
-    case 'Glob':
-      return (obj.pattern ?? '') as string;
-    default:
-      return '';
-  }
 }
 
 function groupMessages(messages: ConversationMessageType[], startIdx: number): MessageGroup[] {
@@ -116,10 +88,28 @@ const ConversationViewer: React.FC<ConversationViewerProps> = React.memo(
     const [exporting, setExporting] = useState(false);
     const [sidebarOpen, setSidebarOpen] = useState(false);
     const [atTop, setAtTop] = useState(true);
-    const scrollRef = useRef<HTMLDivElement>(null);
-    const bottomRef = useRef<HTMLDivElement>(null);
-    const groupRefs = useRef<Map<number, HTMLDivElement>>(new Map());
+    const [copiedGroup, setCopiedGroup] = useState<number | null>(null);
+    const [searchOpen, setSearchOpen] = useState(false);
+    const listHandleRef = useRef<VirtualListHandle | null>(null);
     const copyToClipboard = useCopyToClipboard();
+
+    const search = useConversationSearch(messages);
+
+    const handleCopyGroup = useCallback(
+      async (msgs: ConversationMessageType[], firstIdx: number) => {
+        const text = msgs
+          .map((m) => messageToText(m))
+          .filter(Boolean)
+          .join('\n\n');
+        if (!text) return;
+        const ok = await copyToClipboard(text, 'message');
+        if (ok) {
+          setCopiedGroup(firstIdx);
+          window.setTimeout(() => setCopiedGroup(null), 1500);
+        }
+      },
+      [copyToClipboard],
+    );
 
     const agent = useMemo(() => agents.find((a) => a.id === agentId) ?? null, [agents, agentId]);
 
@@ -149,18 +139,9 @@ const ConversationViewer: React.FC<ConversationViewerProps> = React.memo(
       };
     }, [conversationId]);
 
-    // Jump to bottom on first load (instant — smooth animation janks on long transcripts)
-    useEffect(() => {
-      if (!loading && messages.length > 0) {
-        bottomRef.current?.scrollIntoView({ behavior: 'auto' });
-      }
-    }, [loading, messages.length]);
-
     // Track scroll position for nav button
-    const handleScroll = useCallback(() => {
-      const el = scrollRef.current;
-      if (!el) return;
-      setAtTop(el.scrollTop < 60);
+    const handleScroll = useCallback((scrollTop: number) => {
+      setAtTop(scrollTop < 60);
     }, []);
 
     // 计算统计信息和分组
@@ -205,12 +186,20 @@ const ConversationViewer: React.FC<ConversationViewerProps> = React.memo(
       [visibleMessages, visibleStartIdx],
     );
 
+    // Jump to bottom on first load (instant — smooth animation janks on long transcripts)
+    useEffect(() => {
+      if (!loading && messages.length > 0 && groups.length > 0) {
+        listHandleRef.current?.scrollToIndex(groups.length - 1, 'end');
+      }
+    }, [loading, messages.length, groups.length]);
+
     const handleLoadMore = useCallback(() => {
-      const prevHeight = scrollRef.current?.scrollHeight ?? 0;
+      const prevHeight = listHandleRef.current?.getScrollElement()?.scrollHeight ?? 0;
       setDisplayCount((prev) => prev + LOAD_MORE);
       requestAnimationFrame(() => {
-        if (scrollRef.current) {
-          scrollRef.current.scrollTop = scrollRef.current.scrollHeight - prevHeight;
+        const el = listHandleRef.current?.getScrollElement();
+        if (el) {
+          el.scrollTop = el.scrollHeight - prevHeight;
         }
       });
     }, []);
@@ -231,23 +220,29 @@ const ConversationViewer: React.FC<ConversationViewerProps> = React.memo(
 
     const scrollToMessage = useCallback(
       (msgIdx: number) => {
-        const group = groups.find((g) => g.indices.includes(msgIdx));
-        if (group) {
-          const firstIdx = group.indices[0];
-          const el = groupRefs.current.get(firstIdx);
-          el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        const groupIdx = groups.findIndex((g) => g.indices.includes(msgIdx));
+        if (groupIdx >= 0) {
+          listHandleRef.current?.scrollToIndex(groupIdx, 'center');
         }
       },
       [groups],
     );
 
     const scrollToTop = useCallback(() => {
-      scrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
+      listHandleRef.current?.getScrollElement()?.scrollTo({ top: 0, behavior: 'smooth' });
     }, []);
 
     const scrollToBottom = useCallback(() => {
-      bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
-    }, []);
+      listHandleRef.current?.scrollToIndex(groups.length - 1, 'end');
+    }, [groups.length]);
+
+    // 搜索导航：当前匹配变化时滚动到对应消息
+    useEffect(() => {
+      if (search.current >= 0) {
+        scrollToMessage(search.current);
+      }
+      // eslint-disable-next-line react-hooks/exhaustive-deps -- search 为自定义 hook 返回对象，仅需监听 current 变化
+    }, [search.current, scrollToMessage]);
 
     const agentName = agent?.name ?? agentId ?? 'Conversation';
     const modelLabel = conversationMeta?.model;
@@ -308,6 +303,72 @@ const ConversationViewer: React.FC<ConversationViewerProps> = React.memo(
           </div>
 
           <div className="flex items-center gap-0.5 shrink-0">
+            {searchOpen ? (
+              <div className="flex items-center gap-1 pl-2 pr-1 py-0.5 rounded-md border border-border bg-bg-secondary/60 mr-1">
+                <input
+                  ref={(el) => el?.focus()}
+                  type="text"
+                  value={search.query}
+                  onChange={(e) => search.setQuery(e.target.value)}
+                  placeholder="Search messages…"
+                  aria-label="Search messages"
+                  className="w-40 bg-transparent text-xs text-text-primary outline-none placeholder:text-text-muted/60"
+                />
+                {search.matches.length > 0 ? (
+                  <span
+                    className="shrink-0 text-[10px] text-text-muted tabular-nums"
+                    data-testid="search-count"
+                  >
+                    {search.activeIndex + 1} / {search.matches.length}
+                  </span>
+                ) : search.query ? (
+                  <span className="shrink-0 text-[10px] text-text-muted/60">0 / 0</span>
+                ) : null}
+                <button
+                  type="button"
+                  className="p-1 rounded-md text-text-muted hover:text-text-primary transition-colors"
+                  onClick={search.goToPrev}
+                  title="Previous match"
+                  aria-label="Previous match"
+                  disabled={search.matches.length === 0}
+                >
+                  <ChevronUp className="w-3.5 h-3.5" />
+                </button>
+                <button
+                  type="button"
+                  className="p-1 rounded-md text-text-muted hover:text-text-primary transition-colors"
+                  onClick={search.goToNext}
+                  title="Next match"
+                  aria-label="Next match"
+                  disabled={search.matches.length === 0}
+                >
+                  <ChevronDown className="w-3.5 h-3.5" />
+                </button>
+                <button
+                  type="button"
+                  className="p-1 rounded-md text-text-muted hover:text-text-primary transition-colors"
+                  onClick={() => {
+                    search.clear();
+                    setSearchOpen(false);
+                  }}
+                  title="Close search"
+                  aria-label="Close search"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            ) : (
+              <Button
+                variant="ghost"
+                size="icon"
+                className="w-7 h-7 text-text-muted hover:text-text-primary"
+                onClick={() => setSearchOpen(true)}
+                title="Search in conversation"
+                aria-label="Search in conversation"
+              >
+                <Search className="w-4 h-4" />
+              </Button>
+            )}
             <Button
               variant="ghost"
               size="icon"
@@ -347,7 +408,19 @@ const ConversationViewer: React.FC<ConversationViewerProps> = React.memo(
         {/* Main content area */}
         <div className="flex-1 flex overflow-hidden relative">
           {/* Messages */}
-          <div ref={scrollRef} className="flex-1 overflow-y-auto" onScroll={handleScroll}>
+          <div className="flex-1 flex flex-col min-w-0">
+            {hasMore && (
+              <div className="flex justify-center pt-2 pb-1 shrink-0">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="text-xs text-text-secondary/60"
+                  onClick={handleLoadMore}
+                >
+                  Load older messages
+                </Button>
+              </div>
+            )}
             {loading ? (
               <div className="flex items-center justify-center py-16 text-xs text-text-secondary/40">
                 Loading...
@@ -357,36 +430,28 @@ const ConversationViewer: React.FC<ConversationViewerProps> = React.memo(
                 No messages in this conversation
               </div>
             ) : (
-              <div className="max-w-3xl mx-auto py-4">
-                {hasMore && (
-                  <div className="flex justify-center pb-3">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="text-xs text-text-secondary/60"
-                      onClick={handleLoadMore}
-                    >
-                      Load older messages
-                    </Button>
-                  </div>
-                )}
-                {groups.map((group) => {
+              <VirtualList
+                className="flex-1"
+                items={groups}
+                getKey={(g) => g.indices[0]}
+                estimateSize={96}
+                overscan={6}
+                handleRef={listHandleRef}
+                onScroll={handleScroll}
+                renderItem={(group) => {
                   const firstIdx = group.indices[0];
                   if (group.role === 'assistant') {
                     const firstMsg = group.messages[0];
                     return (
-                      <div
-                        key={`g-${firstIdx}`}
-                        ref={(el) => {
-                          if (el) groupRefs.current.set(firstIdx, el);
-                        }}
-                      >
+                      <div data-group-row className="max-w-3xl mx-auto px-4">
                         <MessageBubble
                           kind="assistant"
                           label={agent?.name ?? agentId ?? 'Assistant'}
                           icon={agent ? <AgentIcon icon={agent.icon} size={14} /> : undefined}
                           timestamp={firstMsg.timestamp}
                           model={firstMsg.model}
+                          onCopy={() => handleCopyGroup(group.messages, firstIdx)}
+                          copied={copiedGroup === firstIdx}
                         >
                           {/* Sub-messages */}
                           {group.messages.map((msg, msgIdx) => {
@@ -409,14 +474,14 @@ const ConversationViewer: React.FC<ConversationViewerProps> = React.memo(
                                   </span>
                                 )}
                                 {msg.blocks && msg.blocks.length > 0 ? (
-                                  <div className="space-y-0.5">
-                                    {msg.blocks.map((block, bIdx) => (
-                                      <MessageBlockRenderer key={bIdx} block={block} />
-                                    ))}
-                                  </div>
+                                  <MessageBlockList
+                                    blocks={msg.blocks}
+                                    highlightQuery={search.query}
+                                  />
                                 ) : (
-                                  <MessageBlockRenderer
-                                    block={{ type: 'text', text: msg.content }}
+                                  <MessageBlockList
+                                    blocks={[{ type: 'text', text: msg.content }]}
+                                    highlightQuery={search.query}
                                   />
                                 )}
                               </React.Fragment>
@@ -428,23 +493,21 @@ const ConversationViewer: React.FC<ConversationViewerProps> = React.memo(
                   }
 
                   // user messages — render individually
-                  return group.messages.map((msg) => (
-                    <div
-                      key={`${msg.seq}`}
-                      ref={(el) => {
-                        if (el) groupRefs.current.set(firstIdx, el);
-                      }}
-                    >
-                      <ConversationMessage
-                        message={msg}
-                        projectName={projectName}
-                        projectColor={projectColor}
-                      />
+                  return (
+                    <div data-group-row className="max-w-3xl mx-auto px-4">
+                      {group.messages.map((msg) => (
+                        <ConversationMessage
+                          key={msg.seq}
+                          message={msg}
+                          projectName={projectName}
+                          projectColor={projectColor}
+                          highlightQuery={search.query}
+                        />
+                      ))}
                     </div>
-                  ));
-                })}
-                <div ref={bottomRef} />
-              </div>
+                  );
+                }}
+              />
             )}
           </div>
 
@@ -467,7 +530,6 @@ const ConversationViewer: React.FC<ConversationViewerProps> = React.memo(
               </div>
               <div className="p-1">
                 {stats.toolCallList.map((call, idx) => {
-                  const Icon = TOOL_ICONS[call.name] ?? Terminal;
                   const summary = getToolSummary(call.name, call.input);
                   return (
                     <button
@@ -476,7 +538,10 @@ const ConversationViewer: React.FC<ConversationViewerProps> = React.memo(
                       className="flex items-start gap-2 w-full px-2 py-1.5 text-xs hover:bg-bg-hover rounded transition-colors text-left"
                       onClick={() => scrollToMessage(call.msgIdx)}
                     >
-                      <Icon className="w-3.5 h-3.5 text-accent-blue shrink-0 mt-0.5" />
+                      <ToolIcon
+                        name={call.name}
+                        className="w-3.5 h-3.5 text-accent-blue shrink-0 mt-0.5"
+                      />
                       <div className="min-w-0">
                         <div className="font-medium text-text-primary">{call.name}</div>
                         {summary && (

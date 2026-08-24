@@ -1,0 +1,21 @@
+# dsh-neeko bundle patch: the two rows that turn a profile into the Neeko
+# bridge — the CLI/daemon startup provider and the bridge runtime itself.
+#
+# The `neeko` runtime row injects the `neekoStartup` service so its config is
+# resolved from this invocation's flags (`dsh --profile neeko [daemon] ...`),
+# with the integration design's defaults applied here.
+
+- insert:
+    - id: neeko-startup
+      name: 'dsh-neeko/startup'
+
+    - id: neeko
+      name: 'dsh-neeko'
+      inject: [neekoStartup]
+      config:
+        daemon: !!js ctx.neekoStartup.daemon ?? false
+        host: !!js ctx.neekoStartup.host ?? '127.0.0.1'
+        port: !!js ctx.neekoStartup.port ?? 3081
+        sessionId: !!js ctx.neekoStartup.sessionId
+        autoSpawn: !!js ctx.neekoStartup.autoSpawn ?? true
+        spawnCommand: !!js ctx.neekoStartup.spawnCommand

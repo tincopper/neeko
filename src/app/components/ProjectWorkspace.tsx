@@ -98,6 +98,24 @@ function ProjectWorkspace() {
     handleAgentClick(selectedAgent);
   }, [selectedAgent, handleAgentClick]);
 
+  const handleGuideOpenAgentChat = useCallback(() => {
+    if (!tabKey || !currentProjectId) return;
+    const tabId = `tab_${crypto.randomUUID()}`;
+    const tabs = useEditorStore.getState().tabs[tabKey]?.tabs ?? [];
+    useEditorStore.getState().addTab(tabKey, {
+      id: tabId,
+      projectId: currentProjectId,
+      title: 'Agent Chat',
+      order: tabs.length,
+      data: {
+        kind: 'agent-chat' as const,
+        agentId: undefined,
+        sessionId: undefined,
+      },
+    });
+    useEditorStore.getState().activateTab(tabKey, tabId);
+  }, [tabKey, currentProjectId]);
+
   const handleGuideNewFile = useCallback(() => {
     if (!tabKey || !currentProjectId) return;
     createUntitledFileTab(tabKey, currentProjectId);
@@ -260,6 +278,7 @@ function ProjectWorkspace() {
           worktreePath={activeWorktreePath}
           onOpenTerminal={handleGuideOpenTerminal}
           onOpenAgent={handleGuideOpenAgent}
+          onOpenAgentChat={handleGuideOpenAgentChat}
           onNewFile={handleGuideNewFile}
           agents={agents}
           installedMap={installedMap}

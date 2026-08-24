@@ -24,4 +24,5 @@
 @import "./components/markdown.css";
 @import "./components/diff.css";
 @import "./components/editor.css";
+@import "./components/agent-chat.css";
 @import "./components/lsp.css";

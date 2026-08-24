@@ -396,11 +396,58 @@ interface SessionRowProps {
 
 ---
 
-## 无障碍
+## 大文本输出统一容器模式（OutputScroll）
 
-- 装饰性图片使用 `alt=""`
-- 图标按钮使用 `title` 属性提供悬停提示
-- 加载中状态使用 `disabled` 禁用按钮
+**问题**：agent 工具输出（bash 命令输出、文件 diff 等）可能达数千行。直接 `<pre>` 渲染 + `white-space: pre-wrap` 会在长文本上产生严重卡顿（布局、换行、滚动全量）。
+
+**解决方案**：统一封装 `OutputScroll`（`src/features/agent-chat/components/OutputScroll.tsx`），按行数分级：
+
+| 行数 | 策略 |
+|------|------|
+| < `OUTPUT_VIRTUALIZE_THRESHOLD`(500) | 直接渲染（小文本零开销） |
+| ≥ 500 | `@tanstack/react-virtual` 按行虚拟化（固定 `OUTPUT_LINE_HEIGHT`=20px、视口 `OUTPUT_VIEWPORT_HEIGHT`=320） |
+| ≥ `OUTPUT_COLLAPSE_THRESHOLD`(1000) | 默认折叠 + 展开按钮（用户主动才渲染） |
+
+**关键约定**：
+1. 阈值/行高/视口导出为**模块级常量**（`OUTPUT_*`），测试按常量断言，禁止硬编码魔法数。
+2. 虚拟化按固定行高计算（`rowVirtualizer` + `estimateSize: () => OUTPUT_LINE_HEIGHT`），jsdom 无 `getBoundingClientRect` 结果时用 `initialRect` 兜底，避免测试环境崩溃。
+3. 大文本所有 `<pre>` 输出消费方（命令卡、文件卡、通用行）统一走 `OutputScroll`，不各自写 `<pre>` —— DRY。
+
+> **测试要点**：边界行数必须精确覆盖（499 直渲 / 500 虚拟化、999 不折叠 / 1000 折叠）；断言语义而非字节（`toHaveTextContent`）。
+
+## 分组渲染禁止二次分组（递归陷阱）
+
+**问题**：工具行列表按「连续同类工具」分组折叠（如 `chunkToolGroups`）。若分组**展开**时递归渲染 `<WorkRows tools={group.tools} />`，组内 ≥2 个连续同类工具会再次被分组 → 无限递归，最终栈溢出崩溃。原有单组测试不覆盖「连续同类」场景，缺陷潜伏。
+
+**正确做法**：分组内直接渲染**原始工具行**，绝不二次分组。抽离单行组件 `ToolRow`，分组展开与单工具路径共用：
+
+```tsx
+// Correct —— 单行组件 + 直接渲染原始行，不二次 chunk
+function ToolRow({ tool, onOpenFile }) {
+  if (tool.name === 'run_command' || tool.name === 'bash') return <CommandCard tool={tool} />;
+  if (tool.name === 'read_file' || tool.name === 'edit_file' || tool.name === 'write_file')
+    return <FileCard tool={tool} onOpenFile={onOpenFile} />;
+  // ...
+}
+// 分组展开
+<ToolGroupSummaryRow summary={group.summary} defaultOpen={group.hasRunning}>
+  {group.tools.map((t) => <ToolRow key={t.callId} tool={t} onOpenFile={onOpenFile} />)}
+</ToolGroupSummaryRow>
+```
+
+**检查清单**：
+- [ ] 分组展开路径是否可能再次进入分组逻辑？
+- [ ] 测试是否覆盖「≥2 连续同类工具」的分组场景？
+- [ ] 分组内的回调（`onOpenFile` 等）是否透传？
+
+## 回调透传链完整性
+
+**问题**：容器给子组件注入回调（如 `onOpenFile`）时，若某一层子组件内部又渲染了同一消费组件（如 `WorkedCard` 内部渲染 `WorkRows`），遗漏透传会导致**同一类卡片在不同上下文表现不一致**（消息级可点、话轮摘要不可点），用户需求未完全打通。
+
+**规则**：
+1. 容器层回调下发给**所有**渲染该消费组件的路径（`WorkRows` 与 `WorkedCard` 内嵌的 `WorkRows` 都要传 `onOpenFile`）。
+2. 中间层组件把回调列为**可选 props**（`onOpenFile?:`）并透传，消费方组件做**无回调回退**（如路径退化为不可点击 span），保持向后兼容。
+3. 测试同时覆盖「消息级链路」与「内嵌上下文链路」两条透传路径。
 
 ---
 

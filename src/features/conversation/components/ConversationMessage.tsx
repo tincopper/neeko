@@ -1,10 +1,12 @@
-import React from 'react';
+import React, { useCallback, useState } from 'react';
 
 import ProjectAvatar from '@/shared/components/ProjectAvatar';
+import { useCopyToClipboard } from '@/shared/hooks/useCopyToClipboard';
 
 import type { ConversationMessage as ConversationMessageType } from '../types';
+import { messageToText } from '../utils/messageToText';
 
-import { MessageBlockRenderer, TextBlock } from './MessageBlocks';
+import { MessageBlockList, TextBlock } from './MessageBlocks';
 import MessageBubble from './MessageBubble';
 
 interface ConversationMessageProps {
@@ -13,12 +15,26 @@ interface ConversationMessageProps {
   projectName?: string | null;
   /** Project avatar_color override. */
   projectColor?: string | null;
+  /** Search query; matching text is highlighted. */
+  highlightQuery?: string;
 }
 
 const ConversationMessage: React.FC<ConversationMessageProps> = React.memo(
-  ({ message, projectName, projectColor }) => {
+  ({ message, projectName, projectColor, highlightQuery }) => {
     const isUser = message.role === 'user';
     const isSystem = message.role === 'system';
+    const copyToClipboard = useCopyToClipboard();
+    const [copied, setCopied] = useState(false);
+
+    const handleCopy = useCallback(async () => {
+      const text = messageToText(message);
+      if (!text) return;
+      const ok = await copyToClipboard(text, 'message');
+      if (ok) {
+        setCopied(true);
+        window.setTimeout(() => setCopied(false), 1500);
+      }
+    }, [message, copyToClipboard]);
 
     if (isSystem) {
       return (
@@ -41,15 +57,13 @@ const ConversationMessage: React.FC<ConversationMessageProps> = React.memo(
         }
         timestamp={message.timestamp}
         dense={!hasBlocks}
+        onCopy={handleCopy}
+        copied={copied}
       >
         {hasBlocks ? (
-          <div className="space-y-0.5">
-            {message.blocks.map((block, idx) => (
-              <MessageBlockRenderer key={idx} block={block} />
-            ))}
-          </div>
+          <MessageBlockList blocks={message.blocks} highlightQuery={highlightQuery} />
         ) : (
-          <TextBlock text={message.content} />
+          <TextBlock text={message.content} highlightQuery={highlightQuery} />
         )}
       </MessageBubble>
     );

@@ -778,6 +778,7 @@ async fn get_revision_file_diff(
 
 /// Get ahead/behind counts: `git rev-list --left-right --count`
 pub async fn get_ahead_behind(transport: &dyn GitTransport, work_dir: &str) -> Result<AheadBehind> {
+    super::local::assert_git_repo(std::path::Path::new(work_dir))?;
     let branch = transport
         .run_git(&["rev-parse", "--abbrev-ref", "HEAD"], work_dir)
         .await?;
@@ -1207,6 +1208,7 @@ pub async fn get_changed_files_diff_stats_local(work_dir: &str) -> Result<Vec<Fi
 
 /// Get git info. Uses git2 for local transports, shell fallback otherwise.
 pub async fn get_git_info(transport: &dyn GitTransport, work_dir: &str) -> Result<GitInfo> {
+    super::local::assert_git_repo(std::path::Path::new(work_dir))?;
     if let Some(repo) = transport.open_repo(work_dir) {
         tokio::task::spawn_blocking(move || {
             let branch_info = super::local::get_git_branch_info_from_repo(&repo)?;
@@ -1239,6 +1241,7 @@ pub async fn get_git_branch_info(
     transport: &dyn GitTransport,
     work_dir: &str,
 ) -> Result<GitBranchInfo> {
+    super::local::assert_git_repo(std::path::Path::new(work_dir))?;
     if let Some(repo) = transport.open_repo(work_dir) {
         tokio::task::spawn_blocking(move || super::local::get_git_branch_info_from_repo(&repo))
             .await
@@ -1254,6 +1257,7 @@ pub async fn get_worktree_changed_files(
     transport: &dyn GitTransport,
     worktree_path: &str,
 ) -> Result<Vec<FileChange>> {
+    super::local::assert_git_repo(std::path::Path::new(worktree_path))?;
     if let Some(repo) = transport.open_repo(worktree_path) {
         tokio::task::spawn_blocking(move || super::local::get_changed_files_from_repo(&repo))
             .await

@@ -1,6 +1,6 @@
 //! Tauri commands for agent CRUD and installation checks.
 
-use crate::common::agent::types::AgentConfig;
+use crate::common::agent::types::{AgentConfig, ModelInfo};
 use crate::AppError;
 use crate::AppStateWrapper;
 use std::collections::HashMap;
@@ -27,6 +27,52 @@ pub fn get_agent(agent_id: String, state: State<AppStateWrapper>) -> Result<Agen
         .get_agent(&agent_id)
         .cloned()
         .ok_or_else(|| AppError::NotFound(format!("Agent not found: {}", agent_id)))
+}
+
+/// List agents that support Agent Chat (declared `chat_transport`).
+///
+/// 前端 Agent Chat 页面的 agent 列表单一事实源：只有声明了 chat 传输能力的
+/// agent 才会出现，避免把仅终端 TUI 的 agent 误展示在页面选择器里。
+#[tauri::command]
+pub fn list_chat_agents(state: State<AppStateWrapper>) -> Result<Vec<AgentConfig>, AppError> {
+    state
+        .agent_manager
+        .lock()
+        .map_err(AppError::from)
+        .map(|am| {
+            am.get_agents()
+                .iter()
+                .filter(|a| a.chat_transport.is_some())
+                .cloned()
+                .collect()
+        })
+}
+
+/// List model IDs an agent supports in Agent Chat.
+///
+/// For OpenCode, this dynamically discovers models by executing
+/// `opencode models --verbose`. For other agents, returns the statically
+/// configured model list.
+#[tauri::command]
+pub async fn list_agent_models(
+    agent_id: String,
+    state: State<'_, AppStateWrapper>,
+) -> Result<Vec<ModelInfo>, AppError> {
+    // For OpenCode, dynamically discover models.
+    if agent_id == crate::agent::ids::AGENT_OPENCODE {
+        return crate::agent::model_discovery::discover_opencode_models(None).await;
+    }
+
+    // For other agents, return the statically configured model list.
+    let models = state
+        .agent_manager
+        .lock()
+        .map_err(AppError::from)?
+        .get_agent(&agent_id)
+        .map(|a| crate::agent::model_discovery::models_from_ids(&a.models))
+        .ok_or_else(|| AppError::NotFound(format!("Agent not found: {}", agent_id)))?;
+
+    Ok(models)
 }
 
 /// Add or update an agent and persist to config.
@@ -220,4 +266,16 @@ pub async fn import_agent_icon(
     );
 
     Ok(dest_path.to_string_lossy().to_string())
+}
+
+/// Discover models supported by OpenCode.
+///
+/// Thin wrapper over [`crate::agent::model_discovery::discover_opencode_models`]:
+/// executes `opencode models --verbose` and parses the JSON output to extract
+/// model information. The actual execution + parsing lives in the domain layer.
+#[tauri::command]
+pub async fn discover_opencode_models(
+    binary_path: Option<String>,
+) -> Result<Vec<ModelInfo>, AppError> {
+    crate::agent::model_discovery::discover_opencode_models(binary_path).await
 }

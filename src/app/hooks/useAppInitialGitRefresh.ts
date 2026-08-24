@@ -40,13 +40,17 @@ export function useAppInitialGitRefresh({
     doneRef.current = true;
     for (const entry of wslEntries) {
       for (const project of entry.projects) {
-        if (!project.git_info) void wslActionsWrap.handleRefreshGit(entry.distro, project.id);
+        // 仅对缺少 git_info（undefined）的项目补刷新；
+        // null 表示非 git 项目、已有值表示已刷新，均跳过。
+        if (project.git_info !== undefined) continue;
+        void wslActionsWrap.handleRefreshGit(entry.distro, project.id);
       }
     }
     for (const entry of remoteEntries) {
       if (!remoteAuthStore.has(entry.id)) continue;
       for (const project of entry.projects) {
-        if (!project.git_info) void remoteActionsWrap.handleRefreshGit(entry.id, project.id);
+        if (project.git_info !== undefined) continue;
+        void remoteActionsWrap.handleRefreshGit(entry.id, project.id);
       }
     }
   }, [initializing, wslEntries, remoteEntries, remoteAuthStore, wslActionsWrap, remoteActionsWrap]);

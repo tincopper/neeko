@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import { useTerminalTabs } from '@/features/terminal';
+import { AGENT_IDS } from '@/shared/constants/agentIds';
 import { useProjectStore } from '@/shared/store/projectStore';
 import type { FileTab } from '@/shared/types';
 import type { EditorAction } from '@/shared/utils/agentPrompt';
@@ -103,7 +104,8 @@ export function useFileEditorState({ tab, projectPath }: UseFileEditorStateParam
   const { addTab: addTerminalTab } = useTerminalTabs();
 
   const handleCreateTab = useCallback(() => {
-    const agentId = useProjectStore.getState().activeProject?.selected_agents?.[0] ?? 'opencode';
+    const agentId =
+      useProjectStore.getState().activeProject?.selected_agents?.[0] ?? AGENT_IDS.opencode;
     const tabCreated = addTerminalTab(currentProjectIdForToolbar, agentId, agentId);
     if (tabCreated && pending) {
       setTimeout(() => {

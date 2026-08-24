@@ -13,6 +13,17 @@ if (!HTMLElement.prototype.scrollIntoView) {
     vi.fn() as unknown as typeof HTMLElement.prototype.scrollIntoView;
 }
 
+// jsdom 未实现 ResizeObserver；@tanstack/react-virtual（OutputScroll 虚拟滚动）测量容器时依赖它。
+// 全局 mock 为 no-op，避免组件挂载时抛 "ResizeObserver is not defined" 错误。
+if (typeof globalThis.ResizeObserver === 'undefined') {
+  class ResizeObserverStub {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  }
+  globalThis.ResizeObserver = ResizeObserverStub as unknown as typeof ResizeObserver;
+}
+
 // 全局 mock：@tauri-apps/api/core
 vi.mock('@tauri-apps/api/core', () => ({
   invoke: vi.fn(),

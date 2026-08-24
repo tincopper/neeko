@@ -113,4 +113,199 @@
     transition: background 0.12s ease, color 0.12s ease;
   }
   .quick-agent-toggle:hover { background: var(--bg-hover); color: var(--accent-blue); }
+
+/* ─── Agent Chat 消息流 ─────────────────────────────────────────────────────── */
+/* 严格对齐原型 prototypes/agent-chat-tool-card-prototype.html */
+/* 颜色一律使用主题 token，圆角/阴影对齐应用惯例（--radius-apple-*）。 */
+
+@layer components {
+  /* ── Messages ── */
+  .msg { display:flex; gap:10px; margin-bottom:10px; position:relative; }
+  .msg-body { flex:1; min-width:0; display:flex; flex-direction:column; gap:6px; }
+
+  /* 用户气泡 */
+  .msg.user { justify-content:flex-end; }
+  .msg.user .msg-body { align-items:flex-end; }
+  .msg.user .msg-content { background:color-mix(in srgb, var(--accent-blue) 7%, var(--bg-primary)); border-radius:var(--radius-apple-lg); padding:10px 14px; display:inline-block; max-width:92%; }
+
+  /* ── Reasoning / Thinking（轻量折叠条） ── */
+  .msg-reasoning { margin:0; border:none; border-radius:var(--radius-apple-xs); background:transparent; overflow:hidden; }
+  .msg-reasoning summary { padding:3px 8px; font-size:11px; font-weight:500; color:var(--text-muted); cursor:pointer; user-select:none; list-style:none; display:inline-flex; align-items:center; gap:6px; border-radius:var(--radius-apple-xs); transition:background 120ms ease; }
+  .msg-reasoning summary::-webkit-details-marker { display:none; }
+  .msg-reasoning summary:hover { background:var(--bg-hover); color:var(--text-secondary); }
+  .msg-reasoning .reasoning-preview { color:color-mix(in srgb, var(--text-muted) 60%, transparent); }
+  .msg-reasoning[open] .reasoning-preview { display:none; }
+  .msg-reasoning .reasoning-content { margin-top:2px; padding:6px 10px; font-size:12px; line-height:1.6; color:var(--text-muted); white-space:pre-wrap; word-break:break-word; max-height:200px; overflow-y:auto; background:var(--bg-tertiary); border-radius:var(--radius-apple-xs); }
+
+  /* ── Work Rows ── */
+  .work-rows { display:flex; flex-direction:column; gap:2px; margin:4px 0; }
+  .work-row { display:flex; align-items:center; gap:8px; padding:5px 10px; border-radius:var(--radius-apple-xs); font-size:12.5px; color:var(--text-secondary); border:1px solid transparent; transition:all 0.15s; }
+  .work-row .w-icon { width:16px; height:16px; display:flex; align-items:center; justify-content:center; flex-shrink:0; font-size:11px; }
+  .work-row .w-text { flex:1; min-width:0; font-family:var(--font-mono); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .work-row .w-meta { font-size:11px; color:var(--text-muted); }
+  .work-row .w-name { flex:0 0 auto; font-size:12.5px; font-weight:500; color:var(--accent-blue); }
+  .work-row.running .w-icon { color:var(--accent-blue); }
+  .work-row.done .w-icon, .work-row.completed .w-icon { color:var(--accent-green); }
+  .work-row.failed .w-icon { color:var(--accent-red); }
+
+  /* 一体化折叠行（fallback）：accent 微染容器 + chevron 尾部 hover */
+  .work-row.collapsible { padding:0; border:1px solid color-mix(in srgb, var(--accent-blue) 25%, transparent); border-radius:var(--radius-apple-sm); background:color-mix(in srgb, var(--accent-blue) 4%, transparent); overflow:hidden; }
+  .work-row.collapsible .work-row-head { display:flex; align-items:center; gap:8px; width:100%; padding:6px 12px; background:none; border:none; font:inherit; color:inherit; cursor:pointer; text-align:left; transition:background 120ms ease; }
+  .work-row.collapsible .work-row-head:hover { background:color-mix(in srgb, var(--accent-blue) 10%, transparent); }
+  .work-row.collapsible .w-icon { color:var(--accent-blue); }
+  .work-row .chevron { flex:0 0 auto; color:var(--text-muted); transition:transform 0.15s, opacity 0.15s; opacity:0; }
+  .work-row.open > .work-row-head .chevron { transform:rotate(90deg); }
+  .work-row .work-row-head:hover .chevron { opacity:1; }
+  .work-row:not(:has(.cmd-body)) .chevron { display:none; }
+
+  /* ── Command Card ── */
+  .cmd-card { margin:4px 0; border:1px solid color-mix(in srgb, var(--accent-blue) 25%, transparent); border-radius:var(--radius-apple-sm); background:color-mix(in srgb, var(--accent-blue) 4%, transparent); overflow:hidden; font-family:var(--terminal-font-family); }
+  .cmd-card.failed { border-color:color-mix(in srgb, var(--accent-red) 30%, transparent); background:color-mix(in srgb, var(--accent-red) 4%, transparent); }
+  .cmd-card .cmd-head { display:flex; align-items:center; gap:8px; padding:7px 12px; }
+  .cmd-card .cmd-head-btn { display:flex; align-items:center; gap:8px; width:100%; padding:7px 12px; background:none; border:none; cursor:pointer; text-align:left; font:inherit; color:inherit; }
+  .cmd-card .cmd-head-btn:hover { background:color-mix(in srgb, var(--accent-blue) 8%, transparent); }
+  .cmd-card.failed .cmd-head-btn:hover { background:color-mix(in srgb, var(--accent-red) 8%, transparent); }
+  .cmd-card .cmd-prompt { flex:0 0 auto; color:var(--accent-blue); font-size:12px; font-weight:600; }
+  .cmd-card.failed .cmd-prompt { color:var(--accent-red); }
+  .cmd-card .cmd-script-name { flex:0 0 auto; color:var(--text-primary); font-weight:500; font-size:12.5px; }
+  .cmd-card .cmd-script-path { flex:1; min-width:0; color:var(--text-muted); font-size:11px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .cmd-card .cmd-text { flex:1; min-width:0; color:var(--text-primary); font-size:12.5px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .cmd-card .cmd-status { flex:0 0 auto; display:flex; align-items:center; gap:4px; }
+  .cmd-card .cmd-status-icon { flex:0 0 auto; }
+  .cmd-card.running .cmd-status-icon { color:var(--accent-blue); }
+  .cmd-card.done .cmd-status-icon { color:var(--accent-green); }
+  .cmd-card.failed .cmd-status-icon { color:var(--accent-red); }
+  .cmd-card .cmd-status-label { flex:0 0 auto; font-size:10px; color:var(--text-muted); }
+  .cmd-card .chevron { flex:0 0 auto; color:var(--text-muted); transition:transform 0.15s, opacity 0.15s; opacity:0; }
+  .cmd-card.open .chevron { transform:rotate(90deg); }
+  .cmd-card .cmd-head-btn:hover .chevron { opacity:1; }
+  .cmd-card:not(:has(.cmd-body)) .chevron { display:none; }
+  .cmd-card .cmd-body { border-top:1px solid color-mix(in srgb, var(--border) 50%, transparent); }
+  .cmd-card .cmd-full { padding:8px 12px; font-size:12px; color:var(--text-secondary); background:var(--bg-secondary); white-space:pre-wrap; word-break:break-all; border-bottom:1px solid color-mix(in srgb, var(--border) 30%, transparent); }
+  .cmd-card .cmd-output { padding:10px 12px; font-size:11.5px; color:var(--text-muted); background:var(--bg-secondary); white-space:pre-wrap; word-break:break-word; max-height:240px; overflow-y:auto; line-height:1.7; }
+
+  /* 嵌套 result 分隔条（CommandCard + fallback 行共用） */
+  .result-bar { display:flex; align-items:center; gap:8px; padding:6px 12px; cursor:pointer; font-size:12px; border-top:1px solid color-mix(in srgb, var(--border) 30%, transparent); transition:background 120ms; }
+  .result-bar:hover { background:var(--bg-hover); }
+  .result-bar .result-icon { flex:0 0 auto; width:16px; height:16px; display:flex; align-items:center; justify-content:center; border-radius:50%; font-size:10px; }
+  .result-bar .result-icon.ok { background:color-mix(in srgb, var(--accent-green) 15%, transparent); color:var(--accent-green); }
+  .result-bar .result-icon.err { background:color-mix(in srgb, var(--accent-red) 15%, transparent); color:var(--accent-red); }
+  .result-bar .result-label { flex:0 0 auto; color:var(--text-secondary); font-weight:500; }
+  .result-bar .result-preview { flex:1; min-width:0; color:color-mix(in srgb, var(--text-muted) 60%, transparent); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; text-align:right; }
+
+  /* ── System Banner ── */
+  .wa-sys { display:flex; align-items:center; gap:8px; margin:0 0 14px; padding:4px 10px; background:transparent; border:none; border-radius:var(--radius-apple-sm); font-size:10.5px; color:var(--text-muted); opacity:0.75; }
+  .wa-sys .sys-dot { width:5px; height:5px; border-radius:50%; background:var(--accent-green); flex:0 0 auto; }
+
+  /* ── Timestamp ── */
+  .msg-timestamp { font-size:10px; color:var(--text-muted); white-space:nowrap; margin-top:3px; opacity:0; transition:opacity 0.15s; }
+  .msg:hover .msg-timestamp { opacity:1; }
+
+  /* ── Tool Group Summary ── */
+  .tool-group { margin:2px 0; border:1px solid transparent; border-radius:var(--radius-apple-xs); transition:all 0.15s; }
+  .tool-group-header { display:flex; align-items:center; gap:8px; width:100%; padding:5px 10px; background:none; border:none; font-size:12px; color:var(--text-muted); cursor:pointer; text-align:left; }
+  .tool-group-header:hover { color:var(--text-secondary); }
+  .tool-group-header .chevron { font-size:10px; transition:transform 0.15s; }
+  .tool-group.open .chevron { transform:rotate(90deg); }
+  .tool-group-body { padding:0 0 0 16px; }
+}
+
+
+/* ─── Agent Chat 消息流 ─────────────────────────────────────────────────────── */
+/* 严格对齐原型 prototypes/agent-chat-tool-card-prototype.html */
+/* 颜色一律使用主题 token，圆角/阴影对齐应用惯例（--radius-apple-*）。 */
+
+@layer components {
+  /* ── Messages ── */
+  .msg { display:flex; gap:10px; margin-bottom:10px; position:relative; }
+  .msg-body { flex:1; min-width:0; display:flex; flex-direction:column; gap:6px; }
+
+  /* 用户气泡 */
+  .msg.user { justify-content:flex-end; }
+  .msg.user .msg-body { align-items:flex-end; }
+  .msg.user .msg-content { background:color-mix(in srgb, var(--accent-blue) 7%, var(--bg-primary)); border-radius:var(--radius-apple-lg); padding:10px 14px; display:inline-block; max-width:92%; }
+
+  /* ── Reasoning / Thinking（轻量折叠条） ── */
+  .msg-reasoning { margin:0; border:none; border-radius:var(--radius-apple-xs); background:transparent; overflow:hidden; }
+  .msg-reasoning summary { padding:3px 8px; font-size:11px; font-weight:500; color:var(--text-muted); cursor:pointer; user-select:none; list-style:none; display:inline-flex; align-items:center; gap:6px; border-radius:var(--radius-apple-xs); transition:background 120ms ease; }
+  .msg-reasoning summary::-webkit-details-marker { display:none; }
+  .msg-reasoning summary:hover { background:var(--bg-hover); color:var(--text-secondary); }
+  .msg-reasoning .reasoning-preview { color:color-mix(in srgb, var(--text-muted) 60%, transparent); }
+  .msg-reasoning[open] .reasoning-preview { display:none; }
+  .msg-reasoning .reasoning-content { margin-top:2px; padding:6px 10px; font-size:12px; line-height:1.6; color:var(--text-muted); white-space:pre-wrap; word-break:break-word; max-height:200px; overflow-y:auto; background:var(--bg-tertiary); border-radius:var(--radius-apple-xs); }
+
+  /* ── Work Rows ── */
+  .work-rows { display:flex; flex-direction:column; gap:2px; margin:4px 0; }
+  .work-row { display:flex; align-items:center; gap:8px; padding:5px 10px; border-radius:var(--radius-apple-xs); font-size:12.5px; color:var(--text-secondary); border:1px solid transparent; transition:all 0.15s; }
+  .work-row .w-icon { width:16px; height:16px; display:flex; align-items:center; justify-content:center; flex-shrink:0; font-size:11px; }
+  .work-row .w-text { flex:1; min-width:0; font-family:var(--font-mono); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .work-row .w-meta { font-size:11px; color:var(--text-muted); }
+  .work-row .w-name { flex:0 0 auto; font-size:12.5px; font-weight:500; color:var(--accent-blue); }
+  .work-row.running .w-icon { color:var(--accent-blue); }
+  .work-row.done .w-icon, .work-row.completed .w-icon { color:var(--accent-green); }
+  .work-row.failed .w-icon { color:var(--accent-red); }
+
+  /* 一体化折叠行（fallback）：accent 微染容器 + chevron 尾部 hover */
+  .work-row.collapsible { padding:0; border:1px solid color-mix(in srgb, var(--accent-blue) 25%, transparent); border-radius:var(--radius-apple-sm); background:color-mix(in srgb, var(--accent-blue) 4%, transparent); overflow:hidden; }
+  .work-row.collapsible .work-row-head { display:flex; align-items:center; gap:8px; width:100%; padding:6px 12px; background:none; border:none; font:inherit; color:inherit; cursor:pointer; text-align:left; transition:background 120ms ease; }
+  .work-row.collapsible .work-row-head:hover { background:color-mix(in srgb, var(--accent-blue) 10%, transparent); }
+  .work-row.collapsible .w-icon { color:var(--accent-blue); }
+  .work-row .chevron { flex:0 0 auto; color:var(--text-muted); transition:transform 0.15s, opacity 0.15s; opacity:0; }
+  .work-row.open > .work-row-head .chevron { transform:rotate(90deg); }
+  .work-row .work-row-head:hover .chevron { opacity:1; }
+  .work-row:not(:has(.cmd-body)) .chevron { display:none; }
+
+  /* ── Command Card ── */
+  .cmd-card { margin:4px 0; border:1px solid color-mix(in srgb, var(--accent-blue) 25%, transparent); border-radius:var(--radius-apple-sm); background:color-mix(in srgb, var(--accent-blue) 4%, transparent); overflow:hidden; font-family:var(--terminal-font-family); }
+  .cmd-card.failed { border-color:color-mix(in srgb, var(--accent-red) 30%, transparent); background:color-mix(in srgb, var(--accent-red) 4%, transparent); }
+  .cmd-card .cmd-head { display:flex; align-items:center; gap:8px; padding:7px 12px; }
+  .cmd-card .cmd-head-btn { display:flex; align-items:center; gap:8px; width:100%; padding:7px 12px; background:none; border:none; cursor:pointer; text-align:left; font:inherit; color:inherit; }
+  .cmd-card .cmd-head-btn:hover { background:color-mix(in srgb, var(--accent-blue) 8%, transparent); }
+  .cmd-card.failed .cmd-head-btn:hover { background:color-mix(in srgb, var(--accent-red) 8%, transparent); }
+  .cmd-card .cmd-prompt { flex:0 0 auto; color:var(--accent-blue); font-size:12px; font-weight:600; }
+  .cmd-card.failed .cmd-prompt { color:var(--accent-red); }
+  .cmd-card .cmd-script-name { flex:0 0 auto; color:var(--text-primary); font-weight:500; font-size:12.5px; }
+  .cmd-card .cmd-script-path { flex:1; min-width:0; color:var(--text-muted); font-size:11px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .cmd-card .cmd-text { flex:1; min-width:0; color:var(--text-primary); font-size:12.5px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .cmd-card .cmd-status { flex:0 0 auto; display:flex; align-items:center; gap:4px; }
+  .cmd-card .cmd-status-icon { flex:0 0 auto; }
+  .cmd-card.running .cmd-status-icon { color:var(--accent-blue); }
+  .cmd-card.done .cmd-status-icon { color:var(--accent-green); }
+  .cmd-card.failed .cmd-status-icon { color:var(--accent-red); }
+  .cmd-card .cmd-status-label { flex:0 0 auto; font-size:10px; color:var(--text-muted); }
+  .cmd-card .chevron { flex:0 0 auto; color:var(--text-muted); transition:transform 0.15s, opacity 0.15s; opacity:0; }
+  .cmd-card.open .chevron { transform:rotate(90deg); }
+  .cmd-card .cmd-head-btn:hover .chevron { opacity:1; }
+  .cmd-card:not(:has(.cmd-body)) .chevron { display:none; }
+  .cmd-card .cmd-body { border-top:1px solid color-mix(in srgb, var(--border) 50%, transparent); }
+  .cmd-card .cmd-full { padding:8px 12px; font-size:12px; color:var(--text-secondary); background:var(--bg-secondary); white-space:pre-wrap; word-break:break-all; border-bottom:1px solid color-mix(in srgb, var(--border) 30%, transparent); }
+  .cmd-card .cmd-output { padding:10px 12px; font-size:11.5px; color:var(--text-muted); background:var(--bg-secondary); white-space:pre-wrap; word-break:break-word; max-height:240px; overflow-y:auto; line-height:1.7; }
+
+  /* 嵌套 result 分隔条（CommandCard + fallback 行共用） */
+  .result-bar { display:flex; align-items:center; gap:8px; padding:6px 12px; cursor:pointer; font-size:12px; border-top:1px solid color-mix(in srgb, var(--border) 30%, transparent); transition:background 120ms; }
+  .result-bar:hover { background:var(--bg-hover); }
+  .result-bar .result-icon { flex:0 0 auto; width:16px; height:16px; display:flex; align-items:center; justify-content:center; border-radius:50%; font-size:10px; }
+  .result-bar .result-icon.ok { background:color-mix(in srgb, var(--accent-green) 15%, transparent); color:var(--accent-green); }
+  .result-bar .result-icon.err { background:color-mix(in srgb, var(--accent-red) 15%, transparent); color:var(--accent-red); }
+  .result-bar .result-label { flex:0 0 auto; color:var(--text-secondary); font-weight:500; }
+  .result-bar .result-preview { flex:1; min-width:0; color:color-mix(in srgb, var(--text-muted) 60%, transparent); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; text-align:right; }
+
+  /* ── System Banner ── */
+  .wa-sys { display:flex; align-items:center; gap:8px; margin:0 0 14px; padding:4px 10px; background:transparent; border:none; border-radius:var(--radius-apple-sm); font-size:10.5px; color:var(--text-muted); opacity:0.75; }
+  .wa-sys .sys-dot { width:5px; height:5px; border-radius:50%; background:var(--accent-green); flex:0 0 auto; }
+
+  /* ── Timestamp ── */
+  .msg-timestamp { font-size:10px; color:var(--text-muted); white-space:nowrap; margin-top:3px; opacity:0; transition:opacity 0.15s; }
+  .msg:hover .msg-timestamp { opacity:1; }
+
+  /* ── Tool Group Summary ── */
+  .tool-group { margin:2px 0; border:1px solid transparent; border-radius:var(--radius-apple-xs); transition:all 0.15s; }
+  .tool-group-header { display:flex; align-items:center; gap:8px; width:100%; padding:5px 10px; background:none; border:none; font-size:12px; color:var(--text-muted); cursor:pointer; text-align:left; }
+  .tool-group-header:hover { color:var(--text-secondary); }
+  .tool-group-header .chevron { font-size:10px; transition:transform 0.15s; }
+  .tool-group.open .chevron { transform:rotate(90deg); }
+  .tool-group-body { padding:0 0 0 16px; }
+}
+
+
 }

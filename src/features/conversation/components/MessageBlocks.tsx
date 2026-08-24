@@ -1,46 +1,13 @@
-import { ChevronDown, ChevronRight, File, Terminal, Search, Edit, Check, X } from 'lucide-react';
+import { Check, ChevronDown, ChevronRight, X } from 'lucide-react';
 import React, { useState } from 'react';
 
 import { cn } from '@/lib/utils';
 import { MarkdownPreview } from '@/ui/MarkdownPreview';
 
 import type { MessageBlock } from '../types';
-
-// 工具图标映射
-const TOOL_ICONS: Record<string, React.FC<{ className?: string }>> = {
-  Read: File,
-  Write: Edit,
-  Edit: Edit,
-  Bash: Terminal,
-  Grep: Search,
-  Glob: Search,
-  GlobSearch: Search,
-  LS: File,
-  Cat: File,
-};
-
-// 工具摘要提取
-function getToolSummary(name: string, input: unknown): string {
-  if (!input || typeof input !== 'object') return '';
-  const obj = input as Record<string, unknown>;
-
-  switch (name) {
-    case 'Read':
-    case 'Write':
-    case 'Edit':
-    case 'LS':
-    case 'Cat':
-      return (obj.file_path ?? obj.path ?? '') as string;
-    case 'Bash':
-      return (obj.command ?? '') as string;
-    case 'Grep':
-    case 'Glob':
-    case 'GlobSearch':
-      return (obj.pattern ?? '') as string;
-    default:
-      return JSON.stringify(input).slice(0, 60);
-  }
-}
+import { HighlightedText } from '../utils/HighlightedText';
+import { pairToolBlocks, type PairedBlock } from '../utils/pairToolBlocks';
+import { getToolIcon, getToolSummary } from '../utils/toolPresentation';
 
 // ─── Text Block ──────────────────────────────────────────────────────────────
 
@@ -66,8 +33,14 @@ function normalizeMarkdown(text: string): string {
   return result.join('\n');
 }
 
-export const TextBlock: React.FC<{ text: string }> = ({ text }) => {
+export const TextBlock: React.FC<{ text: string; highlightQuery?: string }> = ({
+  text,
+  highlightQuery,
+}) => {
   const normalizedText = normalizeMarkdown(text);
+  if (highlightQuery && normalizedText.toLowerCase().includes(highlightQuery.toLowerCase())) {
+    return <HighlightedText text={normalizedText} query={highlightQuery} />;
+  }
   const theme = document.documentElement.getAttribute('data-theme') || 'classic-dark';
   return <MarkdownPreview content={normalizedText} theme={theme} />;
 };
@@ -105,9 +78,12 @@ const ThinkingBlock: React.FC<{ thinking: string }> = ({ thinking }) => {
 
 // ─── Tool Use Block ──────────────────────────────────────────────────────────
 
+/** 稳定工具图标组件（避免渲染期创建组件触发 static-components）。 */
+export const ToolIcon: React.FC<{ name: string; className?: string }> = ({ name, className }) =>
+  React.createElement(getToolIcon(name), { className });
+
 const ToolUseBlock: React.FC<{ name: string; input: unknown }> = ({ name, input }) => {
   const [expanded, setExpanded] = useState(false);
-  const Icon = TOOL_ICONS[name] ?? Terminal;
   const summary = getToolSummary(name, input);
 
   return (
@@ -122,7 +98,7 @@ const ToolUseBlock: React.FC<{ name: string; input: unknown }> = ({ name, input 
         ) : (
           <ChevronRight className="w-3 h-3 shrink-0" />
         )}
-        <Icon className="w-3.5 h-3.5 text-accent-blue shrink-0" />
+        <ToolIcon name={name} className="w-3.5 h-3.5 text-accent-blue shrink-0" />
         <span className="font-medium text-accent-blue">{name}</span>
         {summary && <span className="text-text-secondary/60 truncate ml-1">{summary}</span>}
       </button>
@@ -179,12 +155,88 @@ const ToolResultBlock: React.FC<{ content: string; isError: boolean }> = ({ cont
   );
 };
 
+// ─── Tool Group Block（toolUse + toolResult 配对）─────────────────────────────
+
+const ToolGroupBlock: React.FC<{
+  toolUse: Extract<MessageBlock, { type: 'toolUse' }>;
+  toolResult: Extract<MessageBlock, { type: 'toolResult' }> | null;
+}> = ({ toolUse, toolResult }) => {
+  const [expanded, setExpanded] = useState(false);
+  const [resultExpanded, setResultExpanded] = useState(false);
+  const summary = getToolSummary(toolUse.name, toolUse.input);
+
+  // 错误结果默认展开；成功结果默认折叠
+  const resultOpen = toolResult?.isError ? true : resultExpanded;
+
+  return (
+    <div className="my-2 border border-accent-blue/30 rounded-lg overflow-hidden bg-accent-blue/5">
+      <button
+        type="button"
+        className="flex items-center gap-2 w-full px-3 py-2 text-xs hover:bg-accent-blue/10 transition-colors"
+        onClick={() => setExpanded(!expanded)}
+      >
+        {expanded ? (
+          <ChevronDown className="w-3 h-3 shrink-0" />
+        ) : (
+          <ChevronRight className="w-3 h-3 shrink-0" />
+        )}
+        <ToolIcon name={toolUse.name} className="w-3.5 h-3.5 text-accent-blue shrink-0" />
+        <span className="font-medium text-accent-blue">{toolUse.name}</span>
+        {summary && <span className="text-text-secondary/60 truncate ml-1">{summary}</span>}
+      </button>
+      {expanded && (
+        <div className="border-t border-border/50">
+          <div className="px-3 py-2 text-xs bg-bg-secondary/50">
+            <pre className="overflow-x-auto text-text-secondary/70 text-[11px] leading-relaxed">
+              {JSON.stringify(toolUse.input, null, 2)}
+            </pre>
+          </div>
+          {toolResult && (
+            <button
+              type="button"
+              className="flex items-center gap-2 w-full px-3 py-2 text-xs hover:bg-bg-hover transition-colors border-t border-border/50"
+              onClick={() => setResultExpanded(!resultExpanded)}
+            >
+              {resultOpen ? (
+                <ChevronDown className="w-3 h-3 shrink-0" />
+              ) : (
+                <ChevronRight className="w-3 h-3 shrink-0" />
+              )}
+              {toolResult.isError ? (
+                <X className="w-3.5 h-3.5 text-red-400 shrink-0" />
+              ) : (
+                <Check className="w-3.5 h-3.5 text-green-400 shrink-0" />
+              )}
+              <span className="font-medium">{toolResult.isError ? 'Error' : 'Result'}</span>
+              {!resultOpen && (
+                <span className="text-text-secondary/60 truncate ml-1">
+                  {toolResult.content.slice(0, 100)}...
+                </span>
+              )}
+            </button>
+          )}
+          {resultOpen && toolResult && (
+            <div className="px-3 py-2 text-xs bg-bg-secondary/50 border-t border-border/50">
+              <pre className="overflow-x-auto text-text-secondary/70 whitespace-pre-wrap text-[11px] leading-relaxed">
+                {toolResult.content}
+              </pre>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+};
+
 // ─── Main Export ─────────────────────────────────────────────────────────────
 
-export const MessageBlockRenderer: React.FC<{ block: MessageBlock }> = ({ block }) => {
+export const MessageBlockRenderer: React.FC<{
+  block: MessageBlock;
+  highlightQuery?: string;
+}> = ({ block, highlightQuery }) => {
   switch (block.type) {
     case 'text':
-      return <TextBlock text={block.text} />;
+      return <TextBlock text={block.text} highlightQuery={highlightQuery} />;
     case 'thinking':
       return <ThinkingBlock thinking={block.thinking} />;
     case 'toolUse':
@@ -194,6 +246,32 @@ export const MessageBlockRenderer: React.FC<{ block: MessageBlock }> = ({ block 
     default:
       return null;
   }
+};
+
+/** 渲染单个 PairedBlock（含 toolUse+toolResult 合并组）。 */
+const PairedBlockRenderer: React.FC<{
+  block: PairedBlock;
+  highlightQuery?: string;
+}> = ({ block, highlightQuery }) => {
+  if (block.type === 'tool') {
+    return <ToolGroupBlock toolUse={block.toolUse} toolResult={block.toolResult} />;
+  }
+  return <MessageBlockRenderer block={block} highlightQuery={highlightQuery} />;
+};
+
+/** 接收 blocks 数组，先做 toolUse/toolResult 配对再渲染。 */
+export const MessageBlockList: React.FC<{
+  blocks: MessageBlock[];
+  highlightQuery?: string;
+}> = ({ blocks, highlightQuery }) => {
+  const paired = pairToolBlocks(blocks);
+  return (
+    <div className="space-y-0.5">
+      {paired.map((block, idx) => (
+        <PairedBlockRenderer key={idx} block={block} highlightQuery={highlightQuery} />
+      ))}
+    </div>
+  );
 };
 
 export default MessageBlockRenderer;

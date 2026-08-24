@@ -79,7 +79,9 @@ export function useSessionBootstrap(deps: {
         };
 
         for (const p of projects) {
-          if (!p.git_info?.changed_files?.length) {
+          // 非 git 项目（git_info 为 null）跳过所有 git 命令
+          if (p.git_info === null) continue;
+          if (!p.git_info.changed_files?.length) {
             // split 轻量路径：与 watcher git-changed 处理一致，避免重量级 refresh_git_info
             getWorktreeChangedFiles(p.id, '')
               .then((changedFiles) => {
@@ -129,6 +131,11 @@ export function useSessionBootstrap(deps: {
           const state = useProjectStore.getState();
           const activeProj = state.projects.find((p) => p.id === activeId) ?? null;
           if (activeProj) {
+            // 非 git 项目跳过所有 git 命令
+            if (activeProj.git_info === null) {
+              setInitializing(false);
+              return;
+            }
             useProjectStore.setState({
               activeProjectId: activeId,
               activeProject: activeProj,

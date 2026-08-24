@@ -16,7 +16,9 @@
 
 /// Application about information (version & metadata).
 pub mod about;
-/// Agent lifecycle management, commands, and configuration.
+/// Agent lifecycle management, commands, configuration, and plugin system.
+///
+/// Agent Chat (multi-agent conversation surface) lives in the `chat` submodule.
 pub mod agent;
 mod app;
 mod app_menu;
@@ -108,11 +110,14 @@ macro_rules! neeko_invoke_handler {
             // ── agent ────────────────────────────────────────────────────────
             $crate::agent::commands::list_agents,
             $crate::agent::commands::get_agent,
+            $crate::agent::commands::list_chat_agents,
+            $crate::agent::commands::list_agent_models,
             $crate::agent::commands::add_agent,
             $crate::agent::commands::remove_agent,
             $crate::agent::commands::set_project_agents,
             $crate::agent::commands::check_agents_installed,
             $crate::agent::commands::import_agent_icon,
+            $crate::agent::commands::discover_opencode_models,
             // ── agent plugin system ──────────────────────────────────────
             $crate::agent::plugin_commands::list_agent_plugins,
             $crate::agent::plugin_commands::get_agent_plugin,
@@ -177,6 +182,15 @@ macro_rules! neeko_invoke_handler {
             $crate::conversation::commands::update_conversation,
             $crate::conversation::commands::get_resume_command,
             $crate::conversation::commands::export_conversation,
+            // ── agent chat ───────────────────────────────────────────────────
+            $crate::agent::chat::commands::agent_stream,
+            $crate::agent::chat::commands::agent_chat_resume,
+            $crate::agent::chat::commands::agent_chat_supports_resume,
+            $crate::agent::chat::commands::agent_stream_cancel,
+            $crate::agent::chat::commands::agent_approve,
+            $crate::agent::chat::commands::agent_input,
+            $crate::agent::chat::commands::agent_context_set,
+            $crate::agent::chat::commands::agent_chat_context,
             // ── search ────────────────────────────────────────────────────────
             $crate::search::commands::search_run,
             $crate::search::commands::search_stop,

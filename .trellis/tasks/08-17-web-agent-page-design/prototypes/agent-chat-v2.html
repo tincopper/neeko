@@ -1,0 +1,1747 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Neeko Agent Chat — Redesign</title>
+<script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+<style>
+  :root {
+    /* Neeko 主题 token */
+    --bg-primary: #26292F;
+    --bg-secondary: #181A1C;
+    --bg-tertiary: #333337;
+    --bg-bubble-user: #3a3b40;
+    --bg-bubble-assistant: transparent;
+    --bg-card: #1e1f22;
+    --bg-input: #1e1f22;
+    --bg-hover: #3b3b40;
+    --bg-selected: #44444a;
+    --bg-elevated: #2a2b2f;
+
+    --border: #3b3b40;
+    --border-light: #4a4a4f;
+
+    --text-primary: #ffffff;
+    --text-secondary: #c9d1d9;
+    --text-muted: #8b949e;
+
+    --accent-blue: #2997ff;
+    --accent-blue-rgb: 41, 151, 255;
+    --accent-green: #30d158;
+    --accent-yellow: #ffd60a;
+    --accent-orange: #ff9f0a;
+    --accent-red: #ff453a;
+    --accent-purple: #8b5cf6;
+
+    --added: #30d158;
+    --deleted: #ff453a;
+    --info: #2997ff;
+    --warning: #ffd60a;
+
+    --radius-sm: 6px;
+    --radius-md: 10px;
+    --radius-lg: 16px;
+    --radius-xl: 24px;
+
+    --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+    --font-sans: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", Roboto, "PingFang SC", "Microsoft YaHei", sans-serif;
+
+    --header-h: 48px;
+    --composer-h: 120px;
+    --right-dock-w: 380px;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: var(--font-sans);
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    height: 100vh;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* ── App Shell ── */
+  .app-shell {
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    position: relative;
+  }
+
+  /* ── Header ── */
+  .header {
+    height: var(--header-h);
+    background: var(--bg-secondary);
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    padding: 0 12px;
+    gap: 8px;
+    flex-shrink: 0;
+    z-index: 10;
+  }
+  .header-btn {
+    width: 32px; height: 32px;
+    border-radius: var(--radius-sm);
+    display: flex; align-items: center; justify-content: center;
+    color: var(--text-secondary);
+    cursor: pointer;
+    font-size: 16px;
+    background: transparent;
+    border: none;
+  }
+  .header-btn:hover { background: var(--bg-hover); color: var(--text-primary); }
+  .header-title {
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text-primary);
+    flex: 1;
+    text-align: center;
+  }
+  .header-controls { display: flex; gap: 4px; }
+  .header-chip {
+    height: 28px;
+    padding: 0 10px;
+    border-radius: 14px;
+    border: 1px solid var(--border-light);
+    background: var(--bg-elevated);
+    font-size: 11px;
+    color: var(--text-secondary);
+    display: flex; align-items: center; gap: 4px;
+    cursor: pointer;
+  }
+  .header-chip:hover { border-color: var(--accent-blue); color: var(--text-primary); }
+
+  /* ── Main Area ── */
+  .main-area {
+    display: flex;
+    flex: 1;
+    overflow: hidden;
+    position: relative;
+  }
+
+  /* ── Transcript ── */
+  .transcript {
+    flex: 1;
+    overflow-y: auto;
+    padding: 0 0 80px 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    position: relative;
+  }
+  .transcript-inner {
+    max-width: 720px;
+    margin: 0 auto;
+    width: 100%;
+    padding: 24px 24px 120px 24px;
+  }
+
+  /* ── Message Bubbles ── */
+  .msg {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 16px;
+    position: relative;
+  }
+  .msg-avatar {
+    width: 28px; height: 28px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 13px;
+    margin-top: 2px;
+    font-weight: 600;
+  }
+  .msg-avatar.user { background: #3b4a6b; }
+  .msg-avatar.assistant { background: #1a3a2a; }
+  .msg-body { flex: 1; min-width: 0; }
+  .msg-header {
+    display: flex; align-items: center; gap: 8px;
+    margin-bottom: 4px;
+    font-size: 12px;
+    color: var(--text-muted);
+  }
+  .msg-role { font-weight: 500; color: var(--text-secondary); }
+  .msg-content {
+    font-size: 14px;
+    line-height: 1.7;
+    color: var(--text-primary);
+  }
+  .msg-content p { margin-bottom: 8px; }
+  .msg-content p:last-child { margin-bottom: 0; }
+  .msg-content code {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    background: var(--bg-elevated);
+    padding: 2px 6px;
+    border-radius: 4px;
+    border: 1px solid var(--border);
+  }
+  .msg-content pre {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    padding: 12px 16px;
+    overflow-x: auto;
+    margin: 8px 0;
+  }
+  .msg-content pre code {
+    background: none; border: none; padding: 0;
+  }
+
+  /* ── User Bubble ── */
+  .msg.user {
+    justify-content: flex-end;
+    padding-left: 33%;
+  }
+  .msg.user .msg-body {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+  }
+  .msg.assistant .msg-body {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  .msg.user .msg-content {
+    background: var(--bg-bubble-user);
+    border-radius: var(--radius-lg);
+    padding: 10px 14px;
+    display: inline-block;
+    max-width: 85%;
+  }
+  .msg-timestamp {
+    font-size: 10px;
+    color: var(--text-muted);
+    white-space: nowrap;
+    margin-top: 3px;
+  }
+  .msg.user .msg-timestamp {
+    text-align: right;
+  }
+  .msg.assistant .msg-timestamp {
+    text-align: left;
+  }
+
+  /* ── Work Entry Rows ── */
+  .work-rows {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    margin: 4px 0;
+  }
+  .work-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 5px 10px;
+    border-radius: var(--radius-sm);
+    font-size: 12.5px;
+    color: var(--text-secondary);
+    cursor: pointer;
+    border: 1px solid transparent;
+    transition: all 0.15s;
+  }
+  .work-row:hover {
+    background: var(--bg-hover);
+    border-color: var(--border);
+  }
+  .work-row .w-icon {
+    width: 16px; height: 16px;
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+    font-size: 11px;
+  }
+  .work-row .w-text { flex: 1; font-family: var(--font-mono); }
+  .work-row .w-meta { font-size: 11px; color: var(--text-muted); }
+  .work-row.running .w-icon { animation: spin 1s linear infinite; }
+  .work-row.completed .w-icon { color: var(--accent-green); }
+  .work-row.failed .w-icon { color: var(--accent-red); }
+  .work-row.pending .w-icon { color: var(--accent-yellow); }
+
+  /* ── Collapsed Tool Group ── */
+  .tool-group {
+    margin: 4px 0;
+  }
+  .tool-group-header {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 3px 8px;
+    border-radius: var(--radius-sm);
+    font-size: 12px;
+    color: var(--text-muted);
+    cursor: pointer;
+    transition: color 0.15s;
+  }
+  .tool-group-header:hover { color: var(--text-secondary); }
+  .tool-group-header .chevron {
+    font-size: 10px;
+    transition: transform 0.2s;
+  }
+  .tool-group.open .chevron { transform: rotate(90deg); }
+
+  /* ── "Worked for Xs" Disclosure ── */
+  .worked-card {
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    margin: 6px 0;
+    overflow: hidden;
+  }
+  .worked-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    cursor: pointer;
+    font-size: 12.5px;
+    color: var(--text-secondary);
+    user-select: none;
+  }
+  .worked-header:hover { background: var(--bg-hover); }
+  .worked-header .chevron { font-size: 10px; transition: transform 0.2s; }
+  .worked-card.open .chevron { transform: rotate(90deg); }
+  .worked-body { padding: 0 12px 8px 12px; }
+  .worked-actions {
+    display: flex;
+    gap: 8px;
+    margin-top: 8px;
+  }
+  .worked-btn {
+    height: 26px;
+    padding: 0 10px;
+    border-radius: 13px;
+    border: 1px solid var(--border-light);
+    background: transparent;
+    font-size: 11px;
+    color: var(--text-secondary);
+    cursor: pointer;
+    display: flex; align-items: center; gap: 4px;
+  }
+  .worked-btn:hover { border-color: var(--accent-blue); color: var(--text-primary); }
+
+  /* ── Diff Card ── */
+  .diff-card {
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    margin: 8px 0;
+    overflow: hidden;
+  }
+  .diff-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 12px;
+    font-size: 12.5px;
+    color: var(--text-secondary);
+    border-bottom: 1px solid var(--border);
+  }
+  .diff-files {
+    padding: 6px 0;
+  }
+  .diff-file {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 12px;
+    font-size: 12px;
+    font-family: var(--font-mono);
+  }
+  .diff-file .path { flex: 1; color: var(--text-primary); }
+  .diff-file .stat { font-size: 11px; }
+  .stat-add { color: var(--added); }
+  .stat-del { color: var(--deleted); }
+  .diff-review-btn {
+    height: 24px;
+    padding: 0 8px;
+    border-radius: 12px;
+    border: 1px solid var(--border-light);
+    background: transparent;
+    font-size: 11px;
+    color: var(--text-secondary);
+    cursor: pointer;
+  }
+  .diff-review-btn:hover { border-color: var(--accent-blue); }
+
+  /* ── Proposed Plan Card ── */
+  .plan-card {
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius-xl);
+    padding: 16px 20px;
+    margin: 8px 0;
+    background: var(--bg-card);
+  }
+  .plan-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 12px;
+  }
+  .plan-title-wrap { display: flex; align-items: center; gap: 8px; }
+  .plan-badge {
+    height: 20px;
+    padding: 0 8px;
+    border-radius: 10px;
+    background: var(--bg-elevated);
+    font-size: 11px;
+    color: var(--text-secondary);
+    display: flex; align-items: center;
+  }
+  .plan-title { font-size: 13px; font-weight: 500; }
+  .plan-actions { display: flex; gap: 6px; }
+  .plan-content {
+    font-size: 13px;
+    line-height: 1.7;
+    color: var(--text-secondary);
+  }
+  .plan-content h3 { font-size: 13px; color: var(--text-primary); margin: 8px 0 4px; }
+  .plan-content ul { padding-left: 18px; }
+  .plan-content li { margin-bottom: 2px; }
+
+  /* ── Approval Panel ── */
+  .approval-panel {
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    background: var(--bg-card);
+    padding: 14px 16px;
+    margin: 8px 0;
+  }
+  .approval-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 10px;
+  }
+  .approval-title {
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text-primary);
+  }
+  .approval-count {
+    height: 18px;
+    padding: 0 6px;
+    border-radius: 9px;
+    background: var(--bg-elevated);
+    font-size: 10px;
+    color: var(--text-secondary);
+    display: flex; align-items: center;
+  }
+  .approval-detail {
+    font-family: var(--font-mono);
+    font-size: 11.5px;
+    color: var(--text-muted);
+    background: var(--bg-secondary);
+    border-radius: var(--radius-sm);
+    padding: 8px 10px;
+    margin-bottom: 10px;
+    max-height: 80px;
+    overflow: hidden;
+  }
+  .approval-actions { display: flex; flex-direction: column; gap: 4px; }
+  .approval-choice {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 10px;
+    border-radius: var(--radius-sm);
+    border: 1px solid transparent;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .approval-choice:hover { background: var(--bg-hover); border-color: var(--border); }
+  .choice-num {
+    width: 18px; height: 18px;
+    border-radius: 50%;
+    border: 1px solid var(--border-light);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 10px;
+    color: var(--text-muted);
+    flex-shrink: 0;
+  }
+  .choice-label { font-size: 12.5px; color: var(--text-primary); }
+  .choice-desc { font-size: 11px; color: var(--text-muted); }
+  .choice-primary .choice-label { color: var(--info); }
+  .choice-destructive .choice-label { color: var(--deleted); }
+
+  /* ── User Input Panel ── */
+  .user-input-panel {
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    background: var(--bg-card);
+    padding: 14px 16px;
+    margin: 8px 0;
+  }
+  .uinput-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 10px;
+  }
+  .uinput-title { font-size: 13px; font-weight: 500; }
+  .uinput-nav { display: flex; gap: 4px; }
+  .uinput-nav-btn {
+    width: 24px; height: 24px;
+    border-radius: 6px;
+    border: 1px solid var(--border-light);
+    background: transparent;
+    color: var(--text-muted);
+    display: flex; align-items: center; justify-content: center;
+    cursor: pointer; font-size: 12px;
+  }
+  .uinput-nav-btn:hover { color: var(--text-primary); }
+  .uinput-question { font-size: 13px; color: var(--text-primary); margin-bottom: 10px; }
+  .uinput-options { display: flex; flex-direction: column; gap: 4px; }
+  .uinput-option {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 10px;
+    border-radius: var(--radius-sm);
+    border: 1px solid transparent;
+    cursor: pointer;
+  }
+  .uinput-option:hover { background: var(--bg-hover); }
+  .uinput-option.selected { border-color: var(--accent-blue); background: rgba(41,151,255,0.08); }
+  .option-radio {
+    width: 14px; height: 14px;
+    border-radius: 50%;
+    border: 1.5px solid var(--border-light);
+    flex-shrink: 0;
+  }
+  .uinput-option.selected .option-radio {
+    border-color: var(--accent-blue);
+    background: var(--accent-blue);
+    box-shadow: inset 0 0 0 2px var(--bg-card);
+  }
+  .uinput-footer {
+    display: flex;
+    justify-content: space-between;
+    margin-top: 12px;
+  }
+
+  /* ── Worktree Setup Card ── */
+  .worktree-card {
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius-md);
+    background: var(--bg-elevated);
+    padding: 14px 16px;
+    margin: 8px 0;
+    width: fit-content;
+    max-width: 100%;
+  }
+  .worktree-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 10px;
+  }
+  .worktree-icon { font-size: 14px; }
+  .worktree-title { font-size: 13px; font-weight: 500; color: var(--text-secondary); }
+  .worktree-steps { list-style: none; }
+  .worktree-step {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 3px 0;
+    font-size: 12.5px;
+    position: relative;
+  }
+  .step-glyph {
+    width: 14px; height: 14px;
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+    font-size: 10px;
+  }
+  .step-done { color: var(--text-primary); }
+  .step-active { color: var(--text-primary); }
+  .step-error { color: var(--deleted); }
+  .step-pending { color: var(--text-muted); }
+  .step-line {
+    position: absolute;
+    left: 6.5px;
+    top: 50%;
+    width: 1px;
+    height: calc(100% + 4px);
+    background: var(--border);
+  }
+  .worktree-actions {
+    display: flex;
+    gap: 8px;
+    margin-top: 10px;
+  }
+
+  /* ── Working Indicator ── */
+  .working-indicator {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 0;
+    font-size: 12.5px;
+    color: var(--text-muted);
+  }
+  .working-dot {
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: var(--accent-blue);
+    animation: pulse 1.5s ease-in-out infinite;
+  }
+
+  /* ── Composer ── */
+  .composer-area {
+    border-top: 1px solid var(--border);
+    background: var(--bg-secondary);
+    padding: 12px 16px;
+    flex-shrink: 0;
+    position: relative;
+  }
+  .composer-card {
+    max-width: 720px;
+    margin: 0 auto;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    background: var(--bg-input);
+    overflow: hidden;
+  }
+  .composer-input {
+    padding: 12px 14px;
+    min-height: 48px;
+    font-size: 14px;
+    color: var(--text-primary);
+    outline: none;
+    line-height: 1.5;
+    background: transparent;
+    border: none;
+    width: 100%;
+    resize: none;
+    font-family: var(--font-sans);
+  }
+  .composer-input::placeholder {
+    color: var(--text-muted);
+  }
+  .composer-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 12px;
+    border-top: 1px solid var(--border);
+  }
+  .composer-left { display: flex; gap: 4px; }
+  .composer-btn {
+    width: 30px; height: 30px;
+    border-radius: var(--radius-sm);
+    display: flex; align-items: center; justify-content: center;
+    color: var(--text-muted);
+    cursor: pointer;
+    font-size: 14px;
+    background: transparent;
+    border: none;
+  }
+  .composer-btn:hover { background: var(--bg-hover); color: var(--text-secondary); }
+  .composer-right { display: flex; gap: 6px; }
+  .send-btn {
+    width: 30px; height: 30px;
+    border-radius: 50%;
+    background: var(--accent-blue);
+    color: white;
+    display: flex; align-items: center; justify-content: center;
+    cursor: pointer;
+    font-size: 13px;
+    border: none;
+  }
+  .send-btn:hover { background: #1f6feb; }
+  .send-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+  .composer-meta {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    max-width: 720px;
+    margin: 6px auto 0;
+    font-size: 11px;
+    color: var(--text-muted);
+  }
+  .ctx-meter {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    cursor: pointer;
+  }
+  .ctx-ring {
+    width: 16px; height: 16px;
+    border-radius: 50%;
+    border: 2px solid var(--border);
+    border-top-color: var(--accent-blue);
+  }
+  .ctx-cost { color: var(--text-muted); }
+
+  /* ── Right Dock ── */
+  .right-dock {
+    width: var(--right-dock-w);
+    border-left: 1px solid var(--border);
+    background: var(--bg-secondary);
+    display: flex;
+    flex-direction: column;
+    flex-shrink: 0;
+  }
+  .dock-tabs {
+    display: flex;
+    border-bottom: 1px solid var(--border);
+    padding: 0 8px;
+  }
+  .dock-tab {
+    height: 36px;
+    padding: 0 10px;
+    font-size: 12px;
+    color: var(--text-muted);
+    display: flex; align-items: center; gap: 4px;
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    background: transparent;
+    border-top: none;
+    border-left: none;
+    border-right: none;
+  }
+  .dock-tab.active { color: var(--text-primary); border-bottom-color: var(--accent-blue); }
+  .dock-tab:hover { color: var(--text-secondary); }
+  .dock-content {
+    flex: 1;
+    overflow-y: auto;
+    padding: 12px;
+  }
+  .diff-view {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    line-height: 1.6;
+  }
+  .diff-line {
+    display: flex;
+    padding: 0 8px;
+  }
+  .diff-line-num {
+    width: 36px;
+    color: var(--text-muted);
+    text-align: right;
+    padding-right: 12px;
+    user-select: none;
+    flex-shrink: 0;
+  }
+  .diff-line-add { background: rgba(48,209,88,0.08); }
+  .diff-line-add .diff-line-content { color: var(--added); }
+  .diff-line-del { background: rgba(255,69,58,0.08); }
+  .diff-line-del .diff-line-content { color: var(--deleted); }
+  .diff-line-content { flex: 1; white-space: pre-wrap; word-break: break-all; }
+
+  /* ── Scrollbar ── */
+  ::-webkit-scrollbar { width: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border-light); border-radius: 3px; }
+  ::-webkit-scrollbar-thumb:hover { background: #555; }
+
+  /* ── Animations ── */
+  @keyframes spin { to { transform: rotate(360deg); } }
+  @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+
+  /* ── Section Labels (for prototype demo) ── */
+  .section-label {
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--accent-blue);
+    margin: 20px 0 8px;
+    padding-bottom: 4px;
+    border-bottom: 1px dashed rgba(41,151,255,0.3);
+  }
+
+  /* ── Thread marker highlight ── */
+  .marker-highlight {
+    background: rgba(255,214,10,0.2);
+    border-bottom: 2px solid var(--warning);
+    padding: 0 1px;
+  }
+  .marker-underline {
+    border-bottom: 2px solid var(--info);
+    padding: 0 1px;
+  }
+
+  /* ── Message trail ── */
+  .msg-trail {
+    position: absolute;
+    left: -16px;
+    top: 0;
+    bottom: 0;
+    width: 3px;
+    background: var(--border);
+    border-radius: 2px;
+  }
+  .msg-trail.active { background: var(--accent-blue); }
+
+  /* ── Model Selector ── */
+  .model-selector-wrap { position: relative; }
+  .model-selector-btn {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    height: 30px;
+    padding: 0 8px 0 6px;
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: var(--radius-sm);
+    color: var(--text-primary);
+    font-size: 12px;
+    cursor: pointer;
+    transition: background 150ms ease, border-color 150ms ease;
+    white-space: nowrap;
+  }
+  .model-selector-btn:hover {
+    background: var(--bg-hover);
+    border-color: var(--border);
+  }
+  .model-selector-btn .model-icon {
+    width: 18px; height: 18px;
+    border-radius: 4px;
+    background: var(--accent-purple);
+    color: white;
+    font-size: 10px;
+    font-weight: 700;
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+  }
+  .model-selector-btn .model-name {
+    font-weight: 500;
+    max-width: 140px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .model-selector-btn .model-chevron {
+    font-size: 10px;
+    color: var(--text-muted);
+    transition: transform 150ms ease;
+  }
+  .model-selector-btn.open .model-chevron {
+    transform: rotate(180deg);
+  }
+  .composer-divider {
+    width: 1px;
+    height: 20px;
+    background: var(--border);
+    margin: 0 4px;
+  }
+
+  /* ── Model Dropdown ── */
+  .model-dropdown {
+    position: fixed;
+    min-width: 280px;
+    max-height: 360px;
+    overflow-y: auto;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    box-shadow: 0 12px 32px rgba(0,0,0,.5), 0 2px 8px rgba(0,0,0,.3);
+    padding: 6px;
+    z-index: 1000;
+    display: none;
+    animation: dropIn 160ms ease;
+  }
+  .model-dropdown.show { display: block; }
+  @keyframes dropIn {
+    from { opacity: 0; transform: translateY(4px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  .model-group { padding: 4px 0; }
+  .model-group:not(:last-child) {
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 4px;
+    padding-bottom: 8px;
+  }
+  .model-group-label {
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--text-muted);
+    padding: 4px 8px 6px;
+  }
+  .model-option {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    padding: 8px 10px;
+    background: transparent;
+    border: none;
+    border-radius: var(--radius-sm);
+    text-align: left;
+    cursor: pointer;
+    transition: background 120ms ease;
+  }
+  .model-option:hover { background: var(--bg-hover); }
+  .model-option.selected { background: rgba(41,151,255,0.08); }
+  .model-opt-icon {
+    width: 22px; height: 22px;
+    border-radius: 5px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 11px;
+    font-weight: 700;
+    color: white;
+    flex-shrink: 0;
+  }
+  .model-opt-info {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+  }
+  .model-opt-name {
+    font-size: 12.5px;
+    font-weight: 500;
+    color: var(--text-primary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .model-opt-desc {
+    font-size: 11px;
+    color: var(--text-muted);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .model-opt-check {
+    color: var(--accent-blue);
+    font-size: 12px;
+    opacity: 0;
+    flex-shrink: 0;
+  }
+  .model-option.selected .model-opt-check { opacity: 1; }
+
+  /* ── Parameter Selectors (Agent Mode, Thinking) ── */
+  .param-selector-wrap { position: relative; }
+  .param-selector-btn {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    height: 30px;
+    padding: 0 8px 0 6px;
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: var(--radius-sm);
+    color: var(--text-secondary);
+    font-size: 12px;
+    cursor: pointer;
+    transition: background 150ms ease, border-color 150ms ease;
+    white-space: nowrap;
+  }
+  .param-selector-btn:hover {
+    background: var(--bg-hover);
+    border-color: var(--border);
+  }
+  .param-selector-btn .param-icon {
+    width: 16px; height: 16px;
+    font-size: 12px;
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+  }
+  .param-selector-btn .param-name {
+    font-weight: 500;
+    max-width: 80px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .param-selector-btn .param-chevron {
+    font-size: 10px;
+    color: var(--text-muted);
+    transition: transform 150ms ease;
+  }
+  .param-selector-btn.open .param-chevron {
+    transform: rotate(180deg);
+  }
+
+  /* ── Parameter Dropdown ── */
+  .param-dropdown {
+    position: fixed;
+    min-width: 220px;
+    max-height: 280px;
+    overflow-y: auto;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    box-shadow: 0 12px 32px rgba(0,0,0,.5), 0 2px 8px rgba(0,0,0,.3);
+    padding: 6px;
+    z-index: 1000;
+    display: none;
+    animation: dropIn 160ms ease;
+  }
+  .param-dropdown.show { display: block; }
+  .param-option {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    padding: 8px 10px;
+    background: transparent;
+    border: none;
+    border-radius: var(--radius-sm);
+    text-align: left;
+    cursor: pointer;
+    transition: background 120ms ease;
+  }
+  .param-option:hover { background: var(--bg-hover); }
+  .param-option.selected { background: rgba(41,151,255,0.08); }
+  .param-opt-icon {
+    width: 18px; height: 18px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 12px;
+    color: var(--text-muted);
+    flex-shrink: 0;
+  }
+  .param-option.selected .param-opt-icon { color: var(--accent-blue); }
+  .param-opt-info {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+  }
+  .param-opt-name {
+    font-size: 12.5px;
+    font-weight: 500;
+    color: var(--text-primary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .param-opt-desc {
+    font-size: 11px;
+    color: var(--text-muted);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .param-opt-check {
+    color: var(--accent-blue);
+    font-size: 12px;
+    opacity: 0;
+    flex-shrink: 0;
+  }
+  .param-option.selected .param-opt-check { opacity: 1; }
+
+  /* ── Focus visible ── */
+  :focus-visible { outline: 2px solid var(--accent-blue); outline-offset: 2px; border-radius: 6px; }
+
+  /* ── Reduced motion ── */
+  @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
+</style>
+</head>
+<body>
+
+<div class="app-shell">
+
+  <!-- ═══ MAIN AREA ═══ -->
+  <div class="main-area">
+
+    <!-- ── TRANSCRIPT ── -->
+    <div class="transcript">
+      <div class="transcript-inner">
+
+        <!-- Section: User Message -->
+        <div class="section-label"><i data-lucide="user" width="10" height="10"></i> User Message (Bubble, 右对齐, 时间戳在下方右侧)</div>
+        <div class="msg user">
+          <div class="msg-body">
+            <div class="msg-content">
+              Can you refactor the auth module to use JWT tokens instead of session cookies?
+            </div>
+            <div class="msg-timestamp">10:32 AM</div>
+          </div>
+        </div>
+
+        <!-- Section: Assistant Response with Tool Calls -->
+        <div class="section-label"><i data-lucide="bot" width="10" height="10"></i> Assistant Response + Tool Calls</div>
+        <div class="msg assistant">
+          <div class="msg-body">
+            <div class="msg-content">
+              <p>I'll refactor the auth module to use JWT tokens. Let me first explore the current implementation.</p>
+            </div>
+
+            <!-- Tool Call Rows -->
+            <div class="work-rows">
+              <div class="work-row completed">
+                <span class="w-icon" style="color:var(--info)"><i data-lucide="terminal" width="14" height="14"></i></span>
+                <span class="w-text">find src/auth -type f -name "*.ts"</span>
+                <span class="w-meta">completed</span>
+              </div>
+              <div class="work-row completed">
+                <span class="w-icon" style="color:var(--info)"><i data-lucide="eye" width="14" height="14"></i></span>
+                <span class="w-text">src/auth/session.ts</span>
+                <span class="w-meta">completed</span>
+              </div>
+              <div class="work-row completed">
+                <span class="w-icon" style="color:var(--info)"><i data-lucide="eye" width="14" height="14"></i></span>
+                <span class="w-text">src/auth/middleware.ts</span>
+                <span class="w-meta">completed</span>
+              </div>
+              <div class="work-row completed">
+                <span class="w-icon" style="color:var(--info)"><i data-lucide="pencil" width="14" height="14"></i></span>
+                <span class="w-text">src/auth/session.ts</span>
+                <span class="w-meta">completed</span>
+              </div>
+              <div class="work-row completed">
+                <span class="w-icon" style="color:var(--info)"><i data-lucide="pencil" width="14" height="14"></i></span>
+                <span class="w-text">src/auth/middleware.ts</span>
+                <span class="w-meta">completed</span>
+              </div>
+            </div>
+
+            <div class="msg-content" style="margin-top:8px">
+              <p>I've refactored the auth module. Here's what changed:</p>
+              <ul style="padding-left:18px;margin-top:4px;">
+                <li>Replaced session cookie logic with JWT token generation/verification</li>
+                <li>Added refresh token mechanism</li>
+                <li>Updated middleware to validate Bearer tokens</li>
+              </ul>
+            </div>
+            <div class="msg-timestamp">10:32 AM</div>
+          </div>
+        </div>
+
+        <!-- Section: Diff Card -->
+        <div class="section-label"><i data-lucide="git-commit-horizontal" width="10" height="10"></i> Files Changed Card</div>
+        <div class="diff-card">
+          <div class="diff-header">
+            <span>Files changed</span>
+            <button class="diff-review-btn">Review <i data-lucide="arrow-right" width="12" height="12"></i></button>
+          </div>
+          <div class="diff-files">
+            <div class="diff-file">
+              <span class="path">src/auth/session.ts</span>
+              <span class="stat stat-add">+45</span>
+              <span class="stat stat-del">-32</span>
+            </div>
+            <div class="diff-file">
+              <span class="path">src/auth/middleware.ts</span>
+              <span class="stat stat-add">+28</span>
+              <span class="stat stat-del">-15</span>
+            </div>
+            <div class="diff-file">
+              <span class="path">src/types/auth.ts</span>
+              <span class="stat stat-add">+12</span>
+              <span class="stat stat-del">-0</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Section: Collapsed "Worked for Xs" -->
+        <div class="section-label"><i data-lucide="timer" width="10" height="10"></i> Collapsed Turn Summary ("Worked for Xs")</div>
+        <div class="worked-card open">
+          <div class="worked-header">
+            <span class="chevron"><i data-lucide="chevron-right" width="12" height="12"></i></span>
+            <span>Worked for 12s</span>
+          </div>
+          <div class="worked-body">
+            <div class="tool-group open">
+              <div class="tool-group-header">
+                <span class="chevron"><i data-lucide="chevron-right" width="12" height="12"></i></span>
+                <span>Ran 3 commands · Edited 2 files · Searched 1 file</span>
+              </div>
+              <div class="work-rows" style="padding-left:16px;">
+                <div class="work-row">
+                  <span class="w-icon" style="color:var(--info)"><i data-lucide="terminal" width="14" height="14"></i></span>
+                  <span class="w-text">find src/auth -type f -name "*.ts"</span>
+                </div>
+                <div class="work-row">
+                  <span class="w-icon" style="color:var(--info)"><i data-lucide="pencil" width="14" height="14"></i></span>
+                  <span class="w-text">src/auth/session.ts</span>
+                </div>
+                <div class="work-row">
+                  <span class="w-icon" style="color:var(--info)"><i data-lucide="pencil" width="14" height="14"></i></span>
+                  <span class="w-text">src/auth/middleware.ts</span>
+                </div>
+              </div>
+            </div>
+            <div class="worked-actions">
+              <button class="worked-btn"><i data-lucide="undo-2" width="12" height="12"></i> Undo</button>
+              <button class="worked-btn">Review changes</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Section: Approval Panel -->
+        <div class="section-label"><i data-lucide="shield-check" width="10" height="10"></i> Approval Panel (Tool Approval)</div>
+        <div class="approval-panel">
+          <div class="approval-header">
+            <div class="approval-title"><i data-lucide="shield-alert" width="14" height="14" style="color:var(--warning);margin-right:6px;"></i> Approve this command? <span style="font-size:11px;color:var(--text-muted);margin-left:6px;">Bash</span></div>
+            <div class="approval-count">1/2</div>
+          </div>
+          <div class="approval-detail">
+            rm -rf node_modules && npm install
+          </div>
+          <div class="approval-actions">
+            <div class="approval-choice choice-primary">
+              <div class="choice-num">1</div>
+              <div>
+                <div class="choice-label">Approve once</div>
+                <div class="choice-desc">Allow just this request</div>
+              </div>
+            </div>
+            <div class="approval-choice">
+              <div class="choice-num">2</div>
+              <div>
+                <div class="choice-label">Always allow this session</div>
+                <div class="choice-desc">Don't ask again this session</div>
+              </div>
+            </div>
+            <div class="approval-choice choice-destructive">
+              <div class="choice-num">3</div>
+              <div>
+                <div class="choice-label">Decline</div>
+                <div class="choice-desc">Reject and let the agent continue</div>
+              </div>
+            </div>
+            <div class="approval-choice">
+              <div class="choice-num">4</div>
+              <div>
+                <div class="choice-label">Cancel turn</div>
+                <div class="choice-desc">Stop the current turn</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Section: User Input Panel -->
+        <div class="section-label"><i data-lucide="help-circle" width="10" height="10"></i> User Input Panel (AskUserQuestion)</div>
+        <div class="user-input-panel">
+          <div class="uinput-header">
+            <div class="uinput-title">Which approach should we use?</div>
+            <div class="uinput-nav">
+              <button class="uinput-nav-btn"><i data-lucide="chevron-left" width="14" height="14"></i></button>
+              <button class="uinput-nav-btn"><i data-lucide="chevron-right" width="14" height="14"></i></button>
+            </div>
+          </div>
+          <div class="uinput-question">How should the refresh token be stored?</div>
+          <div class="uinput-options">
+            <div class="uinput-option selected">
+              <div class="option-radio"></div>
+              <span>HttpOnly cookie (recommended)</span>
+            </div>
+            <div class="uinput-option">
+              <div class="option-radio"></div>
+              <span>localStorage</span>
+            </div>
+            <div class="uinput-option">
+              <div class="option-radio"></div>
+              <span>In-memory only</span>
+            </div>
+          </div>
+          <div class="uinput-footer">
+            <button class="worked-btn">Cancel</button>
+            <button class="worked-btn" style="background:var(--accent-blue);color:white;border-color:var(--accent-blue);">Next <i data-lucide="arrow-right" width="12" height="12"></i></button>
+          </div>
+        </div>
+
+        <!-- Section: Proposed Plan Card -->
+        <div class="section-label"><i data-lucide="clipboard-list" width="10" height="10"></i> Proposed Plan Card (Plan Mode)</div>
+        <div class="plan-card">
+          <div class="plan-header">
+            <div class="plan-title-wrap">
+              <div class="plan-badge"><i data-lucide="list-checks" width="12" height="12" style="margin-right:4px;"></i> Plan</div>
+              <div class="plan-title">Refactoring the auth system</div>
+            </div>
+            <div class="plan-actions">
+              <button class="worked-btn"><i data-lucide="play" width="12" height="12"></i> Implement in new thread</button>
+              <button class="worked-btn"><i data-lucide="copy" width="12" height="12"></i> Copy</button>
+            </div>
+          </div>
+          <div class="plan-content">
+            <h3>Summary</h3>
+            <p>We'll refactor the auth module to use JWT tokens with a refresh mechanism, improving security and statelessness.</p>
+            <h3>Changes</h3>
+            <ul>
+              <li>Replace session middleware with JWT verification</li>
+              <li>Add token refresh endpoint</li>
+              <li>Update client-side token storage</li>
+            </ul>
+            <h3>Testing</h3>
+            <ul>
+              <li>Unit tests for token generation/verification</li>
+              <li>Integration tests for auth flow</li>
+            </ul>
+          </div>
+        </div>
+
+        <!-- Section: Worktree Setup Card -->
+        <div class="section-label"><i data-lucide="git-branch" width="10" height="10"></i> Worktree Setup Card</div>
+        <div class="worktree-card">
+          <div class="worktree-header">
+            <span class="worktree-icon"><i data-lucide="git-branch" width="16" height="16"></i></span>
+            <span class="worktree-title">Preparing worktree...</span>
+          </div>
+          <ul class="worktree-steps">
+            <li class="worktree-step">
+              <span class="step-glyph step-done"><i data-lucide="check" width="12" height="12"></i></span>
+              <span style="color:var(--text-primary)">Creating branch</span>
+              <span class="step-line" style="background:var(--text-primary)"></span>
+            </li>
+            <li class="worktree-step">
+              <span class="step-glyph step-active"><i data-lucide="loader-2" width="12" height="12"></i></span>
+              <span style="color:var(--text-primary)">Creating worktree</span>
+              <span class="step-line"></span>
+            </li>
+            <li class="worktree-step">
+              <span class="step-glyph step-pending"><i data-lucide="circle" width="12" height="12"></i></span>
+              <span>Copying local changes</span>
+              <span class="step-line"></span>
+            </li>
+            <li class="worktree-step">
+              <span class="step-glyph step-pending"><i data-lucide="circle" width="12" height="12"></i></span>
+              <span>Preparing thread</span>
+              <span class="step-line"></span>
+            </li>
+            <li class="worktree-step">
+              <span class="step-glyph step-pending"><i data-lucide="circle" width="12" height="12"></i></span>
+              <span>Running setup action</span>
+              <span class="step-line"></span>
+            </li>
+            <li class="worktree-step">
+              <span class="step-glyph step-pending"><i data-lucide="circle" width="12" height="12"></i></span>
+              <span>Starting session</span>
+            </li>
+          </ul>
+          <div class="worktree-actions">
+            <button class="worked-btn"><i data-lucide="monitor" width="12" height="12"></i> Work locally</button>
+            <button class="worked-btn"><i data-lucide="x" width="12" height="12"></i> Cancel</button>
+          </div>
+        </div>
+
+        <!-- Section: Live Turn (Thinking) -->
+        <div class="section-label"><i data-lucide="loader-2" width="10" height="10"></i> Live Turn (Thinking...)</div>
+        <div class="msg assistant">
+          <div class="msg-body">
+            <div class="msg-content">
+              <p>I'll help you add rate limiting to the auth endpoints. Let me first check the current middleware structure.</p>
+            </div>
+            <div class="work-rows">
+              <div class="work-row running">
+                <span class="w-icon" style="color:var(--info)"><i data-lucide="loader-2" width="14" height="14"></i></span>
+                <span class="w-text">Reading src/middleware/rateLimit.ts...</span>
+                <span class="w-meta">running</span>
+              </div>
+              <div class="work-row completed">
+                <span class="w-icon" style="color:var(--info)"><i data-lucide="check" width="14" height="14"></i></span>
+                <span class="w-text">Read src/auth/index.ts</span>
+                <span class="w-meta">completed</span>
+              </div>
+            </div>
+            <div class="working-indicator">
+              <div class="working-dot"></div>
+              <span>Thinking...</span>
+            </div>
+            <div class="msg-timestamp">10:35 AM</div>
+          </div>
+        </div>
+
+        <!-- Section: Thread Markers -->
+        <div class="section-label"><i data-lucide="highlighter" width="10" height="10"></i> Thread Markers (Highlight + Underline)</div>
+        <div class="msg assistant">
+          <div class="msg-body">
+            <div class="msg-content">
+              <p>The key change is replacing the <span class="marker-highlight">session-based authentication</span> with JWT tokens. The middleware now validates the <span class="marker-underline">Bearer token</span> from the Authorization header.</p>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+
+
+  </div>
+
+  <!-- ═══ COMPOSER ═══ -->
+  <div class="composer-area">
+    <div class="composer-card">
+      <textarea class="composer-input" placeholder="Type a message..." rows="1"></textarea>
+      <div class="composer-footer">
+        <div class="composer-left">
+          <!-- Model Selector Dropdown -->
+          <div class="model-selector-wrap" id="modelSelectorWrap">
+            <button class="model-selector-btn" id="modelSelectorBtn" aria-haspopup="listbox" aria-label="Select model">
+              <span class="model-icon"><i data-lucide="brain" width="14" height="14"></i></span>
+              <span class="model-name" id="modelName">claude-sonnet-4</span>
+              <span class="model-chevron"><i data-lucide="chevron-down" width="12" height="12"></i></span>
+            </button>
+            <div class="model-dropdown" id="modelDropdown" role="listbox">
+              <div class="model-group">
+                <div class="model-group-label">Claude</div>
+                <button class="model-option selected" role="option" data-model="claude-sonnet-4" data-provider="anthropic">
+                  <span class="model-opt-icon" style="background:#d97757">C</span>
+                  <span class="model-opt-info">
+                    <span class="model-opt-name">claude-sonnet-4</span>
+                    <span class="model-opt-desc">Balanced speed and intelligence</span>
+                  </span>
+                  <span class="model-opt-check"><i data-lucide="check" width="12" height="12"></i></span>
+                </button>
+                <button class="model-option" role="option" data-model="claude-opus-4" data-provider="anthropic">
+                  <span class="model-opt-icon" style="background:#d97757">C</span>
+                  <span class="model-opt-info">
+                    <span class="model-opt-name">claude-opus-4</span>
+                    <span class="model-opt-desc">Most capable for complex tasks</span>
+                  </span>
+                  <span class="model-opt-check"><i data-lucide="check" width="12" height="12"></i></span>
+                </button>
+              </div>
+              <div class="model-group">
+                <div class="model-group-label">OpenAI</div>
+                <button class="model-option" role="option" data-model="gpt-4o" data-provider="openai">
+                  <span class="model-opt-icon" style="background:#10b981">G</span>
+                  <span class="model-opt-info">
+                    <span class="model-opt-name">GPT-4o</span>
+                    <span class="model-opt-desc">Fast, intelligent, multimodal</span>
+                  </span>
+                  <span class="model-opt-check"><i data-lucide="check" width="12" height="12"></i></span>
+                </button>
+                <button class="model-option" role="option" data-model="gpt-4-turbo" data-provider="openai">
+                  <span class="model-opt-icon" style="background:#10b981">G</span>
+                  <span class="model-opt-info">
+                    <span class="model-opt-name">GPT-4 Turbo</span>
+                    <span class="model-opt-desc">Large context window</span>
+                  </span>
+                  <span class="model-opt-check"><i data-lucide="check" width="12" height="12"></i></span>
+                </button>
+              </div>
+              <div class="model-group">
+                <div class="model-group-label">Google</div>
+                <button class="model-option" role="option" data-model="gemini-2.5-pro" data-provider="google">
+                  <span class="model-opt-icon" style="background:#4285f4">G</span>
+                  <span class="model-opt-info">
+                    <span class="model-opt-name">Gemini 2.5 Pro</span>
+                    <span class="model-opt-desc">Advanced reasoning</span>
+                  </span>
+                  <span class="model-opt-check"><i data-lucide="check" width="12" height="12"></i></span>
+                </button>
+              </div>
+              <div class="model-group">
+                <div class="model-group-label">DeepSeek</div>
+                <button class="model-option" role="option" data-model="deepseek-v4-flash" data-provider="deepseek">
+                  <span class="model-opt-icon" style="background:#ff9f0a">D</span>
+                  <span class="model-opt-info">
+                    <span class="model-opt-name">DeepSeek V4 Flash Free</span>
+                    <span class="model-opt-desc">Fast and capable</span>
+                  </span>
+                  <span class="model-opt-check"><i data-lucide="check" width="12" height="12"></i></span>
+                </button>
+              </div>
+            </div>
+          </div>
+          <div class="composer-divider"></div>
+
+          <!-- Agent Mode Selector -->
+          <div class="param-selector-wrap" id="agentModeWrap">
+            <button class="param-selector-btn" id="agentModeBtn" aria-haspopup="listbox" aria-label="Agent mode">
+              <span class="param-icon"><i data-lucide="settings" width="14" height="14"></i></span>
+              <span class="param-name" id="agentModeName">Build</span>
+              <span class="param-chevron"><i data-lucide="chevron-down" width="12" height="12"></i></span>
+            </button>
+            <div class="param-dropdown" id="agentModeDropdown" role="listbox">
+              <button class="param-option selected" role="option" data-mode="build">
+                <span class="param-opt-icon"><i data-lucide="hammer" width="14" height="14"></i></span>
+                <span class="param-opt-info">
+                  <span class="param-opt-name">Build</span>
+                  <span class="param-opt-desc">Execute changes directly</span>
+                </span>
+                <span class="param-opt-check"><i data-lucide="check" width="12" height="12"></i></span>
+              </button>
+              <button class="param-option" role="option" data-mode="plan">
+                <span class="param-opt-icon"><i data-lucide="clipboard-list" width="14" height="14"></i></span>
+                <span class="param-opt-info">
+                  <span class="param-opt-name">Plan</span>
+                  <span class="param-opt-desc">Plan only, don't execute</span>
+                </span>
+                <span class="param-opt-check"><i data-lucide="check" width="12" height="12"></i></span>
+              </button>
+            </div>
+          </div>
+
+          <!-- Thinking Level Selector -->
+          <div class="param-selector-wrap" id="thinkingWrap">
+            <button class="param-selector-btn" id="thinkingBtn" aria-haspopup="listbox" aria-label="Thinking level">
+              <span class="param-icon"><i data-lucide="lightbulb" width="14" height="14"></i></span>
+              <span class="param-name" id="thinkingName">High</span>
+              <span class="param-chevron"><i data-lucide="chevron-down" width="12" height="12"></i></span>
+            </button>
+            <div class="param-dropdown" id="thinkingDropdown" role="listbox">
+              <button class="param-option" role="option" data-level="low">
+                <span class="param-opt-icon"><i data-lucide="minus-circle" width="14" height="14"></i></span>
+                <span class="param-opt-info">
+                  <span class="param-opt-name">Low</span>
+                  <span class="param-opt-desc">Fast responses</span>
+                </span>
+                <span class="param-opt-check"><i data-lucide="check" width="12" height="12"></i></span>
+              </button>
+              <button class="param-option" role="option" data-level="medium">
+                <span class="param-opt-icon"><i data-lucide="circle" width="14" height="14"></i></span>
+                <span class="param-opt-info">
+                  <span class="param-opt-name">Medium</span>
+                  <span class="param-opt-desc">Balanced thinking</span>
+                </span>
+                <span class="param-opt-check"><i data-lucide="check" width="12" height="12"></i></span>
+              </button>
+              <button class="param-option selected" role="option" data-level="high">
+                <span class="param-opt-icon"><i data-lucide="zap" width="14" height="14"></i></span>
+                <span class="param-opt-info">
+                  <span class="param-opt-name">High</span>
+                  <span class="param-opt-desc">Deep reasoning</span>
+                </span>
+                <span class="param-opt-check"><i data-lucide="check" width="12" height="12"></i></span>
+              </button>
+              <button class="param-option" role="option" data-level="max">
+                <span class="param-opt-icon"><i data-lucide="flame" width="14" height="14"></i></span>
+                <span class="param-opt-info">
+                  <span class="param-opt-name">Max</span>
+                  <span class="param-opt-desc">Maximum reasoning effort</span>
+                </span>
+                <span class="param-opt-check"><i data-lucide="check" width="12" height="12"></i></span>
+              </button>
+            </div>
+          </div>
+          <div class="composer-divider"></div>
+          <button class="composer-btn" title="Attach files">
+            <i data-lucide="paperclip" width="16" height="16"></i>
+          </button>
+          <button class="composer-btn" title="Add image">
+            <i data-lucide="image" width="16" height="16"></i>
+          </button>
+          <button class="composer-btn" title="Add folder">
+            <i data-lucide="folder" width="16" height="16"></i>
+          </button>
+          <button class="composer-btn" title="Mention">
+            <i data-lucide="at-sign" width="16" height="16"></i>
+          </button>
+        </div>
+        <div class="composer-right">
+          <button class="composer-btn" title="Voice note">
+            <i data-lucide="mic" width="16" height="16"></i>
+          </button>
+          <button class="send-btn" title="Send (⌘↵)">
+            <i data-lucide="arrow-up" width="14" height="14"></i>
+          </button>
+        </div>
+      </div>
+    </div>
+    <div class="composer-meta">
+      <div class="ctx-meter">
+        <div class="ctx-ring"></div>
+        <span>68% used</span>
+      </div>
+      <span class="ctx-cost">$0.024</span>
+      <span>·</span>
+      <span>⌘↵ to send · ⌘⇧M for models</span>
+    </div>
+  </div>
+
+</div>
+
+<script>
+  // Auto-grow textarea
+  const textarea = document.querySelector('.composer-input');
+  textarea.addEventListener('input', () => {
+    textarea.style.height = 'auto';
+    textarea.style.height = Math.min(textarea.scrollHeight, 200) + 'px';
+  });
+
+  // Enter to send, Shift+Enter for newline
+  textarea.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      // Demo: just clear
+      textarea.value = '';
+      textarea.style.height = 'auto';
+    }
+  });
+
+  // Worked card toggle
+  document.querySelectorAll('.worked-header').forEach(header => {
+    header.addEventListener('click', () => {
+      header.closest('.worked-card').classList.toggle('open');
+    });
+  });
+
+  // Tool group toggle
+  document.querySelectorAll('.tool-group-header').forEach(header => {
+    header.addEventListener('click', () => {
+      header.closest('.tool-group').classList.toggle('open');
+    });
+  });
+
+  // Approval choice selection
+  document.querySelectorAll('.approval-choice').forEach(choice => {
+    choice.addEventListener('click', () => {
+      document.querySelectorAll('.approval-choice').forEach(c => c.style.background = '');
+      choice.style.background = 'var(--bg-hover)';
+    });
+  });
+
+  // User input option selection
+  document.querySelectorAll('.uinput-option').forEach(option => {
+    option.addEventListener('click', () => {
+      document.querySelectorAll('.uinput-option').forEach(o => o.classList.remove('selected'));
+      option.classList.add('selected');
+    });
+  });
+
+  // Dock tab switching
+  document.querySelectorAll('.dock-tab').forEach(tab => {
+    tab.addEventListener('click', () => {
+      document.querySelectorAll('.dock-tab').forEach(t => t.classList.remove('active'));
+      tab.classList.add('active');
+    });
+  });
+
+  // Diff review button
+  document.querySelector('.diff-review-btn').addEventListener('click', () => {
+    document.querySelector('.right-dock').scrollIntoView({ behavior: 'smooth' });
+  });
+
+  // ── Model Selector Dropdown ──
+  const modelSelectorWrap = document.getElementById('modelSelectorWrap');
+  const modelSelectorBtn = document.getElementById('modelSelectorBtn');
+  const modelDropdown = document.getElementById('modelDropdown');
+  const modelNameEl = document.getElementById('modelName');
+  let currentModel = 'claude-sonnet-4';
+
+  const positionDropdown = () => {
+    const rect = modelSelectorBtn.getBoundingClientRect();
+    modelDropdown.style.bottom = (window.innerHeight - rect.top + 8) + 'px';
+    modelDropdown.style.left = rect.left + 'px';
+  };
+
+  const closeModelDropdown = () => {
+    modelDropdown.classList.remove('show');
+    modelSelectorBtn.classList.remove('open');
+  };
+
+  const openModelDropdown = () => {
+    modelDropdown.classList.add('show');
+    modelSelectorBtn.classList.add('open');
+    positionDropdown();
+  };
+
+  modelSelectorBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    if (modelDropdown.classList.contains('show')) {
+      closeModelDropdown();
+    } else {
+      openModelDropdown();
+    }
+  });
+
+  // Model option selection
+  modelDropdown.querySelectorAll('.model-option').forEach(option => {
+    option.addEventListener('click', () => {
+      const modelName = option.dataset.model;
+      currentModel = modelName;
+      modelNameEl.textContent = modelName;
+
+      // Update selected state
+      modelDropdown.querySelectorAll('.model-option').forEach(o => o.classList.remove('selected'));
+      option.classList.add('selected');
+
+      closeModelDropdown();
+    });
+  });
+
+  // Close on outside click
+  document.addEventListener('click', (e) => {
+    if (!modelSelectorWrap.contains(e.target)) {
+      closeModelDropdown();
+    }
+  });
+
+  // Close on Escape
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && modelDropdown.classList.contains('show')) {
+      closeModelDropdown();
+    }
+  });
+
+  // ── Parameter Selectors (Agent Mode, Thinking) ──
+  const paramSelectors = [
+    { wrapId: 'agentModeWrap', btnId: 'agentModeBtn', dropdownId: 'agentModeDropdown', nameId: 'agentModeName', defaultVal: 'Build' },
+    { wrapId: 'thinkingWrap', btnId: 'thinkingBtn', dropdownId: 'thinkingDropdown', nameId: 'thinkingName', defaultVal: 'High' },
+  ];
+
+  paramSelectors.forEach(({ wrapId, btnId, dropdownId, nameId, defaultVal }) => {
+    const wrap = document.getElementById(wrapId);
+    const btn = document.getElementById(btnId);
+    const dropdown = document.getElementById(dropdownId);
+    const nameEl = document.getElementById(nameId);
+
+    const positionParamDropdown = () => {
+      const rect = btn.getBoundingClientRect();
+      dropdown.style.bottom = (window.innerHeight - rect.top + 8) + 'px';
+      dropdown.style.left = rect.left + 'px';
+    };
+
+    const closeDropdown = () => {
+      dropdown.classList.remove('show');
+      btn.classList.remove('open');
+    };
+
+    const openDropdown = () => {
+      dropdown.classList.add('show');
+      btn.classList.add('open');
+      positionParamDropdown();
+    };
+
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (dropdown.classList.contains('show')) {
+        closeDropdown();
+      } else {
+        openDropdown();
+      }
+    });
+
+    // Option selection
+    dropdown.querySelectorAll('.param-option').forEach(option => {
+      option.addEventListener('click', () => {
+        const value = option.querySelector('.param-opt-name').textContent;
+        nameEl.textContent = value;
+
+        // Update selected state
+        dropdown.querySelectorAll('.param-option').forEach(o => o.classList.remove('selected'));
+        option.classList.add('selected');
+
+        closeDropdown();
+      });
+    });
+
+    // Close on outside click
+    document.addEventListener('click', (e) => {
+      if (!wrap.contains(e.target)) {
+        closeDropdown();
+      }
+    });
+
+    // Close on Escape
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && dropdown.classList.contains('show')) {
+        closeDropdown();
+      }
+    });
+  });
+
+  // Initialize Lucide icons
+  lucide.createIcons();
+</script>
+
+</body>
+</html>

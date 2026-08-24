@@ -11,6 +11,7 @@ import type {
   HtmlPreviewTabData,
   PRDetailTabData,
   BrowserTabData,
+  AgentChatTabData,
   TabKind,
 } from '@/shared/types/tab';
 import { emitTabActivated } from '@/shared/utils/editorActivity';
@@ -178,6 +179,15 @@ function mergeTabData(data: TabData, partial: Partial<TabData>): TabData {
         kind: 'browser' as const,
         url: 'url' in p ? (p.url as string) : d.url,
         favicon: 'favicon' in p ? (p.favicon as string | undefined) : d.favicon,
+      };
+    }
+    case 'agent-chat': {
+      const p = partial as Record<string, unknown>;
+      const d = data as AgentChatTabData;
+      return {
+        kind: 'agent-chat' as const,
+        agentId: 'agentId' in p ? (p.agentId as string | undefined) : d.agentId,
+        sessionId: 'sessionId' in p ? (p.sessionId as string | undefined) : d.sessionId,
       };
     }
     default:

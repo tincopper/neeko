@@ -8,6 +8,7 @@ import {
   Globe,
   MessageSquareText,
   GitPullRequest,
+  Bot,
 } from '@/shared/components/icons';
 import type { AgentConfig } from '@/shared/types';
 import type { Tab } from '@/shared/types/tab';
@@ -30,6 +31,8 @@ function getTabIcon(kind: Tab['data']['kind']) {
       return GitPullRequest;
     case 'browser':
       return Globe;
+    case 'agent-chat':
+      return Bot;
   }
 }
 

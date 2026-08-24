@@ -702,3 +702,70 @@ async fn stash_pop_conflict_keeps_entry_and_reports_failure() {
     let stashes = operations::get_stash_list(&transport, &path).await.unwrap();
     assert_eq!(stashes.len(), 1, "stash entry should be kept on conflict");
 }
+
+// ── 非 git 仓库守卫（TDD Red）──────────────────────────────────────────────
+
+/// 创建普通临时目录（非 git 仓库），用于验证守卫路径。
+fn create_plain_dir() -> TempDir {
+    TempDir::new().expect("create temp dir")
+}
+
+#[tokio::test]
+async fn get_git_info_rejects_non_git_repo() {
+    let tmp = create_plain_dir();
+    let path = tmp.path().to_string_lossy().to_string();
+    let transport = ExecTarget::Local;
+    let err = operations::get_git_info(&transport, &path)
+        .await
+        .unwrap_err();
+    assert!(
+        err.chain()
+            .any(|e| e.to_string().contains("not a git repository")),
+        "应返回 not a git repository 错误，实际: {err:?}"
+    );
+}
+
+#[tokio::test]
+async fn get_git_branch_info_rejects_non_git_repo() {
+    let tmp = create_plain_dir();
+    let path = tmp.path().to_string_lossy().to_string();
+    let transport = ExecTarget::Local;
+    let err = operations::get_git_branch_info(&transport, &path)
+        .await
+        .unwrap_err();
+    assert!(
+        err.chain()
+            .any(|e| e.to_string().contains("not a git repository")),
+        "应返回 not a git repository 错误，实际: {err:?}"
+    );
+}
+
+#[tokio::test]
+async fn get_ahead_behind_rejects_non_git_repo() {
+    let tmp = create_plain_dir();
+    let path = tmp.path().to_string_lossy().to_string();
+    let transport = ExecTarget::Local;
+    let err = operations::get_ahead_behind(&transport, &path)
+        .await
+        .unwrap_err();
+    assert!(
+        err.chain()
+            .any(|e| e.to_string().contains("not a git repository")),
+        "应返回 not a git repository 错误，实际: {err:?}"
+    );
+}
+
+#[tokio::test]
+async fn get_worktree_changed_files_rejects_non_git_repo() {
+    let tmp = create_plain_dir();
+    let path = tmp.path().to_string_lossy().to_string();
+    let transport = ExecTarget::Local;
+    let err = operations::get_worktree_changed_files(&transport, &path)
+        .await
+        .unwrap_err();
+    assert!(
+        err.chain()
+            .any(|e| e.to_string().contains("not a git repository")),
+        "应返回 not a git repository 错误，实际: {err:?}"
+    );
+}

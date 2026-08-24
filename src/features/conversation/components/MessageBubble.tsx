@@ -1,3 +1,4 @@
+import { Check, Copy } from 'lucide-react';
 import React from 'react';
 
 import { cn } from '@/lib/utils';
@@ -13,6 +14,10 @@ interface MessageBubbleProps {
   timestamp: number;
   /** Optional model tag shown after the time. */
   model?: string;
+  /** When provided, renders a hover copy button. Parent owns the actual copy logic. */
+  onCopy?: () => void;
+  /** Shows the copied check state on the copy button. */
+  copied?: boolean;
   /** Vertical padding preset — blocks use a bit more room than plain text. */
   dense?: boolean;
   children: React.ReactNode;
@@ -29,10 +34,10 @@ function formatTime(ts: number): string {
  * from the flat assistant blocks.
  */
 const MessageBubble: React.FC<MessageBubbleProps> = React.memo(
-  ({ kind, label, icon, timestamp, model, dense = false, children }) => {
+  ({ kind, label, icon, timestamp, model, onCopy, copied = false, dense = false, children }) => {
     const isUser = kind === 'user';
     return (
-      <div className={cn('px-4', dense ? 'py-3' : 'py-4')}>
+      <div className={cn('px-4 group', dense ? 'py-3' : 'py-4')}>
         <div
           data-testid="message-strip"
           className={cn(
@@ -57,6 +62,23 @@ const MessageBubble: React.FC<MessageBubbleProps> = React.memo(
             </span>
             {model ? (
               <span className="text-[10px] font-mono text-text-secondary/40">· {model}</span>
+            ) : null}
+            <span className="flex-1" />
+            {onCopy ? (
+              <button
+                type="button"
+                onClick={onCopy}
+                aria-label={copied ? 'Copied' : 'Copy message'}
+                title={copied ? 'Copied' : 'Copy message'}
+                className={cn(
+                  'opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity',
+                  'w-5 h-5 inline-flex items-center justify-center rounded-md',
+                  'text-text-muted hover:text-text-primary hover:bg-bg-hover',
+                  copied && 'text-accent-green opacity-100',
+                )}
+              >
+                {copied ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
+              </button>
             ) : null}
           </div>
           {children}

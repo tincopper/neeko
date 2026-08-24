@@ -80,7 +80,7 @@ impl AgentManager {
 fn default_agents() -> Vec<AgentConfig> {
     vec![
         AgentConfig {
-            id: "opencode".into(),
+            id: crate::agent::ids::AGENT_OPENCODE.into(),
             name: "opencode".into(),
             command: "opencode".into(),
             icon: Some("opencode.png".into()),
@@ -93,6 +93,9 @@ fn default_agents() -> Vec<AgentConfig> {
             ]),
             is_builtin: true,
             skill_path: Some("~/.config/opencode/skills".into()),
+            // opencode 通过 ServeAdapter 接入（opencode serve + HTTP + SSE），
+            // 支持按会话/按轮次选择模型；ACP 能力保留（显式配置 "acp" 仍可用）。
+            chat_transport: Some("serve".into()),
             ..Default::default()
         },
         AgentConfig {
@@ -196,6 +199,37 @@ fn default_agents() -> Vec<AgentConfig> {
             skill_path: Some("~/.grok/skills".into()),
             ..Default::default()
         },
+        AgentConfig {
+            id: crate::agent::ids::AGENT_DEEPSEEK_HARNESS.into(),
+            name: "deepseek-harness".into(),
+            command: "deepseek-harness".into(),
+            icon: Some("deepseek.png".into()),
+            enabled: true,
+            // Reference adapter (v3): speaks JSON-Lines over stdio.
+            prompt_args: None,
+            is_builtin: true,
+            skill_path: Some("~/.deepseek-harness/skills".into()),
+            // Reference adapter (v3): 后端功能未实现，暂不配置模型（空列表）。
+            chat_transport: Some("jsonl".into()),
+            ..Default::default()
+        },
+        AgentConfig {
+            id: crate::agent::ids::AGENT_MOCK.into(),
+            name: "mockAgent".into(),
+            // 进程内运行（adapter_for 对 mockAgent 返回 AcpAdapter::mock()），
+            // 无需可执行命令。
+            command: String::new(),
+            icon: Some("mock.png".into()),
+            enabled: true,
+            // ACP is one of its capabilities: mockAgent speaks Agent Client
+            // Protocol over JSON-RPC stdio — same path as DeepSeek Harness ACP.
+            prompt_args: None,
+            is_builtin: true,
+            skill_path: Some("~/.mock-agent/skills".into()),
+            chat_transport: Some("acp".into()),
+            models: vec!["mock-default".into()],
+            ..Default::default()
+        },
     ]
 }
 
@@ -204,9 +238,9 @@ mod tests {
     use super::*;
 
     #[test]
-    fn should_initialize_with_ten_presets() {
+    fn should_initialize_with_twelve_presets() {
         let manager = AgentManager::new();
-        assert_eq!(manager.get_agents().len(), 10);
+        assert_eq!(manager.get_agents().len(), 12);
     }
 
     #[test]

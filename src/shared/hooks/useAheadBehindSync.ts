@@ -23,6 +23,9 @@ export function useAheadBehindSync(commands?: AheadBehindCommands | null) {
   useEffect(() => {
     if (!commands || !activeProjectId || !activeProject) return;
 
+    // 非 git 项目（git_info 为 null）跳过 ahead/behind 查询
+    if (activeProject.git_info === null) return;
+
     const env = activeProject.environment;
     const kind = env.type === 'Local' ? 'local' : env.type === 'Wsl' ? 'wsl' : 'remote';
     const entryId =

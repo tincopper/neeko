@@ -73,6 +73,8 @@ fn add_custom_agent() {
         post_prompt_args: None,
         is_builtin: false,
         skill_path: None,
+        chat_transport: None,
+        models: vec![],
     });
 
     assert_eq!(manager.get_agents().len(), initial + 1);
@@ -98,6 +100,8 @@ fn add_agent_with_duplicate_id() {
         post_prompt_args: None,
         is_builtin: false,
         skill_path: None,
+        chat_transport: None,
+        models: vec![],
     });
 
     // duplicates are allowed — both entries exist
@@ -119,6 +123,8 @@ fn remove_agent() {
         post_prompt_args: None,
         is_builtin: false,
         skill_path: None,
+        chat_transport: None,
+        models: vec![],
     });
     assert!(manager.get_agent("temp").is_some());
 

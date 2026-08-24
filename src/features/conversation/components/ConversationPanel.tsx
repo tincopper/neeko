@@ -20,6 +20,8 @@ interface ConversationPanelProps {
   showToast: (message: string, type?: 'info' | 'error') => void;
   onOpenConversationTab: (meta: ConversationMeta) => void;
   onResumeConversation: (meta: ConversationMeta) => Promise<void>;
+  /** 恢复为 Agent Chat（可选；未传时入口隐藏）。 */
+  onChatResumeConversation?: (meta: ConversationMeta) => void;
 }
 
 function matchesSearch(meta: ConversationMeta, query: string): boolean {
@@ -40,6 +42,7 @@ const ConversationPanel: React.FC<ConversationPanelProps> = React.memo(
     showToast,
     onOpenConversationTab,
     onResumeConversation,
+    onChatResumeConversation,
   }) => {
     const [searchQuery, setSearchQuery] = useState('');
     const [agentFilter, setAgentFilter] = useState<string | null>(null);
@@ -346,8 +349,10 @@ const ConversationPanel: React.FC<ConversationPanelProps> = React.memo(
               loadingMore={loadingMore}
               onLoadMore={loadMore}
               activeId={activeId}
+              highlightQuery={searchQuery}
               onView={handleView}
               onResume={handleResume}
+              onChatResume={onChatResumeConversation}
             />
           )}
         </div>

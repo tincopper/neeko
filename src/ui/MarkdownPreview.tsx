@@ -1,5 +1,6 @@
 // eslint-disable-next-line no-restricted-imports -- convertFileSrc is needed for resolving local image paths in markdown
 import { convertFileSrc } from '@tauri-apps/api/core';
+import { Check, Copy } from 'lucide-react';
 import plantumlEncoder from 'plantuml-encoder';
 import React, { useState, useEffect, useRef, useMemo, useCallback, useId } from 'react';
 import ReactMarkdown from 'react-markdown';
@@ -7,6 +8,8 @@ import rehypeHighlight from 'rehype-highlight';
 import rehypeRaw from 'rehype-raw';
 import remarkGfm from 'remark-gfm';
 
+import { cn } from '@/lib/utils';
+import { useCopyToClipboard } from '@/shared/hooks/useCopyToClipboard';
 import { useNotificationStore } from '@/shared/store/notificationStore';
 import type { AppTheme } from '@/shared/types';
 import { resolveInternalHref } from '@/shared/utils/markdownLinks';
@@ -230,6 +233,53 @@ function extractCodeText(children: React.ReactNode): string {
   return '';
 }
 
+interface FencedCodeBlockProps {
+  lang: string;
+  code: string;
+  codeClassName?: string;
+  children: React.ReactNode;
+}
+
+function FencedCodeBlock({ lang, code, codeClassName, children }: FencedCodeBlockProps) {
+  const copyToClipboard = useCopyToClipboard();
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = useCallback(async () => {
+    const ok = await copyToClipboard(code, 'code block');
+    if (ok) {
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1500);
+    }
+  }, [code, copyToClipboard]);
+
+  return (
+    <div className="group relative my-4">
+      {lang ? (
+        <span className="absolute top-0 left-0 translate-y-[-100%] px-2 py-0.5 text-[10px] uppercase tracking-wider text-text-muted bg-bg-tertiary rounded-t">
+          {lang}
+        </span>
+      ) : null}
+      <pre className="relative">
+        <button
+          type="button"
+          onClick={handleCopy}
+          aria-label={copied ? 'Copied' : 'Copy code'}
+          title={copied ? 'Copied' : 'Copy code'}
+          className={cn(
+            'absolute top-2 right-2 w-6 h-6 inline-flex items-center justify-center rounded-md',
+            'opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity',
+            'text-text-muted hover:text-text-primary hover:bg-bg-hover',
+            copied && 'text-accent-green opacity-100',
+          )}
+        >
+          {copied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+        </button>
+        <code className={codeClassName}>{children}</code>
+      </pre>
+    </div>
+  );
+}
+
 function MarkdownPreviewImpl({
   content,
   theme,
@@ -266,6 +316,14 @@ function MarkdownPreviewImpl({
                   className="my-4 flex justify-center"
                   dangerouslySetInnerHTML={{ __html: codeString }}
                 />
+              );
+            }
+
+            if (lang) {
+              return (
+                <FencedCodeBlock lang={lang} code={codeString} codeClassName={codeClassName}>
+                  {children}
+                </FencedCodeBlock>
               );
             }
 

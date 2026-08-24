@@ -40,3 +40,8 @@ export const BROWSER_PICKER_CANCELLED_EVENT = 'browser://picker-cancelled';
 export const BROWSER_PROMPT_SUBMITTED_EVENT = 'browser://prompt-submitted';
 /** 浏览器页面元信息事件（标题/favicon）：`browser://page-meta` */
 export const BROWSER_PAGE_META_EVENT = 'browser://page-meta';
+
+// ── Agent Chat 事件（与 src-tauri/src/agent_chat/events.rs 常量保持同步）──
+
+/** Agent Chat 流式事件通道（StreamEvent 统一协议）：`agent-chat://event` */
+export const AGENT_CHAT_EVENT = 'agent-chat://event';

@@ -705,9 +705,33 @@ pub fn delete_branch(repo_path: &Path, branch_name: &str, force: bool) -> Result
 }
 
 /// Check whether the given path is a valid git repository.
+///
+/// 轻量判定：`.git` 条目存在即视为 git 仓库（目录 = 普通仓库 / linked worktree，
+/// 文件 = worktree / submodule 的 gitdir 指针）。与 `transport.rs` 的
+/// `ExecTarget::is_git_repo` 保持同一语义，避免多端判定漂移。
+/// 注意：bare repo（无 `.git` 条目）判定为 false —— Neeko 项目均为工作区仓库，
+/// 不支持 bare repo 作为项目根。
 #[must_use]
 pub fn is_git_repo(path: &Path) -> bool {
-    Repository::open(path).is_ok()
+    path.join(".git").exists()
+}
+
+/// Guard: bail with an explicit error if `path` is not a git repository.
+///
+/// All git read operations (`get_git_info`, `get_git_branch_info`, `get_ahead_behind`,
+/// `get_worktree_changed_files`) must call this before spawning any git subprocess, so
+/// that non-git projects (where `git_info` is `null`) produce a clean, early error
+/// instead of executing `git rev-parse` etc. and surfacing a raw `fatal: not a git repository`.
+///
+/// 与 [`is_git_repo`] 共用同一轻量判定（`.git` 目录或文件存在），避免调用方
+/// `transport.open_repo()` 内部 git2 open 与守卫判定不一致导致的误判
+/// （bare repo / submodule / worktree），同时省去守卫自身的 git2 open 开销。
+pub fn assert_git_repo(path: &Path) -> Result<()> {
+    if is_git_repo(path) {
+        Ok(())
+    } else {
+        anyhow::bail!("not a git repository: {}", path.display())
+    }
 }
 
 /// 重命名本地分支（不能重命名当前 checkout 的分支以外的情况需特殊处理）

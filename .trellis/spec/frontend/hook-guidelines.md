@@ -382,6 +382,52 @@ const saveWorktreeState = useCallback((projectId: string, wtPath: string | null)
 
 ---
 
+## 流式增量 rAF 批处理模式（useDeltaBatcher）
+
+**问题**：流式增量事件（如 agent 的 `text_delta` / `reasoning_delta`）逐 token 到达，若每个事件都 `setState` 全量追加，高频率下（尤其是长回复）会触发海量重渲染，把页面卡死。
+
+**解决方案**：把增量累积到 ref buffer，由 `requestAnimationFrame` 每动画帧合并一次 flush 到 state；同时提供 `flush()` 供「话轮边界」等强一致时刻立即落盘。
+
+```tsx
+// src/features/agent-chat/hooks/useDeltaBatcher.ts（要点）
+export interface PendingDelta { kind: 'text' | 'reasoning'; delta: string }
+
+export function useDeltaBatcher(onFlush: (deltas: PendingDelta[]) => void) {
+  const bufferRef = useRef<PendingDelta[]>([]);
+  const rafRef = useRef<number | null>(null);
+  const onFlushRef = useRef(onFlush);
+  onFlushRef.current = onFlush; // 始终读取最新回调，避免闭包过期
+
+  const push = useCallback((kind, delta) => {
+    bufferRef.current.push({ kind, delta });
+    if (rafRef.current == null) {
+      rafRef.current = requestAnimationFrame(flush);
+    }
+  }, []);
+
+  const flush = useCallback(() => {
+    if (rafRef.current != null) { cancelAnimationFrame(rafRef.current); rafRef.current = null; }
+    const deltas = bufferRef.current;
+    bufferRef.current = [];
+    if (deltas.length > 0) onFlushRef.current(deltas);
+  }, []);
+
+  useEffect(() => () => { // 卸载清理
+    if (rafRef.current != null) cancelAnimationFrame(rafRef.current);
+  }, []);
+
+  return { push, flush };
+}
+```
+
+**消费方契约**：
+1. **flush 顺序即渲染顺序**：`appendDelta` 必须按 buffer 到达顺序逐条应用，思考/文本相对顺序保持事件真实时序。
+2. **话轮边界必须 `flush()`**：`turn_start` / `turn_end` / `session_done` / `error` 事件处理时先 flush，避免边界后残留半帧增量。
+3. **清理**：卸载时取消挂起的 rAF。
+4. **单帧多 delta 合并**：测试断言「N 个 delta 只调度一次 rAF」与「flush 后完整拼接」。
+
+> **测试要点**：jsdom 下用可控 rAF stub（`vi.stubGlobal('requestAnimationFrame', stub)`）收集回调、手动 `flushRaf()` 执行，才能断言「批处理窗口内未渲染 / flush 后才渲染」的中间态。
+
 ## 常见错误
 
 ### 1. 作为 Props 或 Context value 传递的回调忘记用 `useCallback`

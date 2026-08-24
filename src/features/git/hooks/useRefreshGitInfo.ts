@@ -36,6 +36,11 @@ export function useRefreshGitInfo(
     const cc = connectionContextRef.current;
     if (!proj || !cmds) return;
 
+    // 非 git 项目（store 中 git_info 为 null）跳过所有 git 命令，
+    // 避免对非 git 仓库执行 git rev-parse / git status 等命令。
+    const storeProject = useProjectStore.getState().projects.find((p) => p.id === proj.id);
+    if (storeProject?.git_info === null) return;
+
     const gitInfo = await cmds.refreshGitInfo();
     // worktree 激活时保留 local 主分支名，避免 store 中 current_branch 被 worktree 分支污染
     const worktreeActive = useWorktreeStore.getState().activeWorktreePath != null;

@@ -103,10 +103,6 @@ function displayPath(path: string | undefined | null): string {
 const ProjectSkillContent: React.FC<ProjectSkillContentProps> = React.memo(({ setDialog }) => {
   const activeProjectId = useProjectStore((s) => s.activeProjectId);
   const activeProject = useProjectStore((s) => s.activeProject);
-  const selectedAgentIds = useMemo(
-    () => new Set(activeProject?.selected_agents ?? []),
-    [activeProject?.selected_agents],
-  );
   const librarySkills = useSkillStore((s) => s.skills);
   const tagGroups = useSkillStore((s) => s.tagGroups);
   const projectTagGroups = useSkillStore((s) => s.projectTagGroups);
@@ -1277,7 +1273,6 @@ const ProjectSkillContent: React.FC<ProjectSkillContentProps> = React.memo(({ se
                   agents={agents}
                   tagGroups={tagGroupsForSkill(skill)}
                   targetAgentId={activeProject.selected_agents?.[0] ?? null}
-                  selectedAgentIds={selectedAgentIds}
                   onView={() => openView(skill)}
                   onRemove={() => setPendingRemove(skill)}
                   onToggleAgent={(agentId, enabled) =>

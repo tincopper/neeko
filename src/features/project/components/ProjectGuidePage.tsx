@@ -25,6 +25,7 @@ interface ProjectGuidePageProps {
   worktreePath?: string | null;
   onOpenTerminal: () => void;
   onOpenAgent: () => void;
+  onOpenAgentChat: () => void;
   onNewFile: () => void;
   agents?: AgentConfig[];
   installedMap?: Map<string, boolean>;
@@ -40,6 +41,7 @@ function ProjectGuidePageImpl({
   worktreePath,
   onOpenTerminal,
   onOpenAgent,
+  onOpenAgentChat,
   onNewFile,
   agents = [],
   installedMap = new Map(),
@@ -140,6 +142,15 @@ function ProjectGuidePageImpl({
       },
       {
         type: 'default',
+        id: 'agent-chat',
+        title: 'Agent Chat',
+        description: 'Start a multi-turn conversation with an AI agent in a chat interface',
+        icon: <Bot size={18} />,
+        actionLabel: 'Open Chat',
+        recommended: true,
+      },
+      {
+        type: 'default',
         id: 'new-file',
         title: 'New File',
         description: 'Create an empty file and edit it; save when ready',
@@ -168,6 +179,10 @@ function ProjectGuidePageImpl({
           onOpenAgent();
           void markStepComplete(stepId);
           break;
+        case 'agent-chat':
+          onOpenAgentChat();
+          void markStepComplete(stepId);
+          break;
         case 'new-file':
           onNewFile();
           void markStepComplete(stepId);
@@ -179,7 +194,7 @@ function ProjectGuidePageImpl({
           break;
       }
     },
-    [onOpenTerminal, onOpenAgent, onNewFile, markStepComplete],
+    [onOpenTerminal, onOpenAgent, onOpenAgentChat, onNewFile, markStepComplete],
   );
 
   const handleApplyTagBinding = useCallback(() => {

@@ -22,8 +22,12 @@ interface ConversationListProps {
   /** Request next page when sentinel is visible. */
   onLoadMore?: () => void;
   activeId?: string | null;
+  /** Search query; matching titles are highlighted. */
+  highlightQuery?: string;
   onView: (meta: ConversationMeta) => void;
   onResume: (meta: ConversationMeta) => void;
+  /** 恢复为 Agent Chat（可选；仅支持 chat-resume 的 agent 显示入口）。 */
+  onChatResume?: (meta: ConversationMeta) => void;
 }
 
 const ConversationList: React.FC<ConversationListProps> = React.memo(
@@ -36,8 +40,10 @@ const ConversationList: React.FC<ConversationListProps> = React.memo(
     loadingMore = false,
     onLoadMore,
     activeId,
+    highlightQuery,
     onView,
     onResume,
+    onChatResume,
   }) => {
     const handleView = useCallback(
       (meta: ConversationMeta) => {
@@ -126,8 +132,10 @@ const ConversationList: React.FC<ConversationListProps> = React.memo(
                   meta={meta}
                   agents={agents}
                   active={activeId === meta.id}
+                  highlightQuery={highlightQuery}
                   onView={handleView}
                   onResume={handleResume}
+                  onChatResume={onChatResume}
                 />
               ))}
             </div>

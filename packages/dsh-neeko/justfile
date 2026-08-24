@@ -1,0 +1,11 @@
+dsh := env_var_or_default("DSH_BIN", "dsh")
+
+# Link this checkout into the DSH Neeko profile and boot the bridge.
+install:
+    {{dsh}} plugin --profile neeko add "{{justfile_directory()}}"
+
+run:
+    {{dsh}} --profile neeko
+
+daemon:
+    {{dsh}} --profile neeko daemon

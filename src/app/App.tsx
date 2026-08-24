@@ -71,9 +71,10 @@ function App() {
             <SymbolNavPalette />
           </DockRegistryProvider>
         </TerminalInsertProvider>
+        {/* StatusBar 必须渲染在 AppProvider 内：NotificationDetail 经
+            useCopyToClipboard 调用 useAppContext()，在 Provider 外会抛错导致崩溃。 */}
+        <StatusBar />
       </AppProviders>
-
-      <StatusBar />
     </div>
   );
 }

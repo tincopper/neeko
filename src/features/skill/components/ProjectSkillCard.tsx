@@ -49,12 +49,6 @@ interface ProjectSkillCardProps {
   tagGroups?: TagGroupChip[];
   /** Project target agent id (`selected_agent`) — ring highlight when present. */
   targetAgentId?: string | null;
-  /**
-   * @deprecated No longer used for icon dimming. Linked+enabled agents always
-   * render full-color; only paused (disabled) links are dimmed.
-   * Kept optional for call-site compatibility.
-   */
-  selectedAgentIds?: Set<string>;
   isSelected?: boolean;
   onView?: () => void;
   onRemove?: () => void;

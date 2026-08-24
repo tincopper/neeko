@@ -102,6 +102,32 @@ const ConversationsPanelWrapper: React.FC = React.memo(() => {
     [currentProjectId, tabKey, showToast],
   );
 
+  const handleChatResumeConversation = useCallback(
+    (meta: ConversationMeta) => {
+      if (!currentProjectId || !tabKey || !meta.nativeSessionId) return;
+      const editorState = useEditorStore.getState();
+      const existingTabs = editorState.tabs[tabKey];
+      const tabId = `tab_${crypto.randomUUID()}`;
+      const tab: Tab = {
+        id: tabId,
+        projectId: currentProjectId,
+        title: `${meta.userTitle ?? meta.title ?? 'Agent Chat'}`,
+        order: existingTabs?.tabs.length ?? 0,
+        data: {
+          kind: 'agent-chat',
+          agentId: meta.agentId,
+          sessionId: undefined,
+          resumeConversationId: meta.id,
+          resumeNativeSessionId: meta.nativeSessionId,
+        },
+      };
+      editorState.addTab(tabKey, tab);
+      editorState.activateTab(tabKey, tabId);
+      showToast(`Restoring "${meta.userTitle ?? meta.title}" in Agent Chat…`, 'info');
+    },
+    [currentProjectId, tabKey, showToast],
+  );
+
   const handleOpenConversationTab = useCallback(
     (meta: ConversationMeta) => {
       const editorState = useEditorStore.getState();
@@ -137,6 +163,7 @@ const ConversationsPanelWrapper: React.FC = React.memo(() => {
       showToast={showToast}
       onOpenConversationTab={handleOpenConversationTab}
       onResumeConversation={handleResumeConversation}
+      onChatResumeConversation={handleChatResumeConversation}
     />
   );
 });

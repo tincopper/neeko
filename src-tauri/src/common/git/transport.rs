@@ -434,12 +434,14 @@ impl GitTransport for ExecTarget {
             ExecTarget::Local => std::path::Path::new(path).join(".git").exists(),
             ExecTarget::Wsl { .. } => {
                 let sp = safe_path(path);
-                let cmd = format!("test -d '{sp}/.git'");
+                // -e 同时匹配目录（普通仓库）与文件（worktree/submodule 的 gitdir 指针），
+                // 与 Local 分支 `Path::exists()` 语义保持一致。
+                let cmd = format!("test -e '{sp}/.git'");
                 exec_on(self, "bash", &["-c", &cmd]).await.is_ok()
             }
             ExecTarget::Remote { .. } => {
                 let sp = safe_path(path);
-                let cmd = format!("test -d '{sp}/.git'");
+                let cmd = format!("test -e '{sp}/.git'");
                 exec_on(self, "sh", &["-c", &cmd]).await.is_ok()
             }
         }

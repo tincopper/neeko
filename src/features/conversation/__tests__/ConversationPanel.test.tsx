@@ -96,7 +96,9 @@ describe('ConversationPanel', () => {
     fireEvent.change(screen.getByRole('searchbox'), { target: { value: 'ship' } });
 
     expect(screen.queryByText('Auth refactor')).not.toBeInTheDocument();
-    expect(screen.getByText('Ship release')).toBeInTheDocument();
+    // Title is split by <mark> highlight, match against element textContent.
+    const titleEls = screen.getAllByText((content, el) => el?.textContent === 'Ship release');
+    expect(titleEls.length).toBeGreaterThan(0);
   });
 
   it('filters list by agent chip', async () => {

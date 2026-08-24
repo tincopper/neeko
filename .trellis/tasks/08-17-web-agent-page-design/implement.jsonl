@@ -1,0 +1,8 @@
+{"file": ".trellis/tasks/08-17-web-agent-page-design/design/web-agent-architecture.md", "reason": "架构设计文档 v2：Tab 集成模型（TabKind 'agent-chat'）+ 后端多 Agent 适配层（StreamEvent 统一事件协议）+ 打通项目/文件/Skills + M0-M5 路线图"}
+{"file": ".trellis/tasks/08-17-web-agent-page-design/prototypes/web-agent-tab.html", "reason": "Tab 集成 mockup：Agent Chat Tab 与 opencode TUI 终端在 Neeko 窗口内并存（jsdom 8 项自检通过）。agent-chat-page.html 已由用户删除（不再需要）"}
+{"file": ".trellis/tasks/08-17-web-agent-page-design/design/first-principles-review.md", "reason": "第一性原理 + 元认知审查（v3 增量）：契约补全（双向通道 RequestApproval/agent_approve、话轮 TurnStart/End、上下文协议化 ContextInit）+ DeepSeek Harness 首个参考接入示范（Spawn+stdio JSON-Lines+Gate 闭环）"}
+{"file": ".trellis/tasks/08-17-web-agent-page-design/implement-p0-p3.md", "reason": "Conversation 查看器 UI 优化 P0-P3 实现计划（TDD）"}
+{"file": ".trellis/tasks/08-17-web-agent-page-design/design/opencode-serve-migration.md", "reason": "opencode serve 迁移设计文档（用户确认方案）"}
+{"file": ".trellis/tasks/08-17-web-agent-page-design/implement-opencode-serve.md", "reason": "opencode serve 迁移实现计划"}
+{"file": "src-tauri/src/agent/chat/adapter/serve.rs", "reason": "ServeAdapter 实现完成：opencode serve+HTTP+SSE，模型 per-prompt 传递，审批/取消/resume 闭环，事件转换纯函数+单测+真实集成测"}
+{"file": "src/features/agent-chat/api/agentChatApi.ts", "reason": "M1 模型传递链路：StreamChatRequest.model 贯通前端"}

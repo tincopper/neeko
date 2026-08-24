@@ -115,6 +115,24 @@ export function usePaneActions({
           }
           break;
         }
+        case 'new-agent-chat': {
+          if (projectIdForCheck) {
+            const tabId = `tab_${crypto.randomUUID()}`;
+            useEditorStore.getState().addTab(tabKey, {
+              id: tabId,
+              projectId: projectIdForCheck,
+              title: 'Agent Chat',
+              order: tabs.length,
+              data: {
+                kind: 'agent-chat' as const,
+                agentId: undefined,
+                sessionId: undefined,
+              },
+            });
+            useEditorStore.getState().activateTab(tabKey, tabId);
+          }
+          break;
+        }
         case 'new-browser': {
           if (projectIdForCheck) {
             const tabId = `tab_${crypto.randomUUID()}`;

@@ -143,6 +143,11 @@ describe('useSessionBootstrap — 启动恢复 session 激活 worktree', () => {
     });
 
     setup();
+    // setup() 默认给非 git 项目（git_info=null）；恢复激活 worktree 需要 git
+    // 项目路径（hook 对非 git 项目跳过所有 git 操作），这里显式覆盖。
+    useProjectStore.setState((s) => ({
+      projects: s.projects.map((p) => (p.id === 'p1' ? { ...p, git_info: {} } : p)),
+    }));
     await act(async () => {});
 
     expect(useWorktreeStore.getState().activeWorktreePath).toBe('/repo/wt/Test');

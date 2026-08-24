@@ -34,6 +34,15 @@ const ACTION_ITEMS: ActionRegistryItem[] = [
     execute: (ctx) => ctx.closeMenu(),
   },
   {
+    id: 'new-agent-chat',
+    group: 'agent',
+    label: 'New Agent Chat',
+    description: 'Open a new Agent Chat tab (图形界面使用 agent)',
+    icon: Bot,
+    keywords: ['web', 'agent', 'chat', 'ai', 'assistant', '图形'],
+    execute: (ctx) => ctx.closeMenu(),
+  },
+  {
     id: 'new-browser',
     group: 'browser',
     label: 'New Browser',

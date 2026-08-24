@@ -1,4 +1,4 @@
-import { SquareTerminal, Eye } from 'lucide-react';
+import { SquareTerminal, Eye, MessageSquare } from 'lucide-react';
 import React, { useMemo } from 'react';
 
 import { AgentIcon } from '@/features/agent';
@@ -6,13 +6,18 @@ import type { AgentConfig } from '@/features/agent/types';
 import { cn } from '@/lib/utils';
 
 import type { ConversationMeta } from '../types';
+import { HighlightedText } from '../utils/HighlightedText';
 
 interface ConversationItemProps {
   meta: ConversationMeta;
   agents: AgentConfig[];
   active?: boolean;
+  /** Search query; matched title text is highlighted. */
+  highlightQuery?: string;
   onView: (meta: ConversationMeta) => void;
   onResume: (meta: ConversationMeta) => void;
+  /** 恢复为 Agent Chat（可选；仅支持 chat-resume 的 agent 传入）。 */
+  onChatResume?: (meta: ConversationMeta) => void;
 }
 
 function formatRelativeTime(ts: number): string {
@@ -30,7 +35,7 @@ function formatRelativeTime(ts: number): string {
 }
 
 const ConversationItem: React.FC<ConversationItemProps> = React.memo(
-  ({ meta, agents, active = false, onView, onResume }) => {
+  ({ meta, agents, active = false, highlightQuery, onView, onResume, onChatResume }) => {
     const agent = useMemo(
       () => agents.find((a) => a.id === meta.agentId) ?? null,
       [agents, meta.agentId],
@@ -59,7 +64,11 @@ const ConversationItem: React.FC<ConversationItemProps> = React.memo(
         {/* Title + hover actions */}
         <div className="flex items-center gap-2">
           <span className="flex-1 min-w-0 text-[13px] text-text-primary font-medium truncate leading-tight">
-            {meta.userTitle ?? meta.title}
+            {highlightQuery ? (
+              <HighlightedText text={meta.userTitle ?? meta.title} query={highlightQuery} />
+            ) : (
+              (meta.userTitle ?? meta.title)
+            )}
           </span>
           <div
             className={cn(
@@ -68,17 +77,32 @@ const ConversationItem: React.FC<ConversationItemProps> = React.memo(
             )}
           >
             {meta.supportsResume === true ? (
-              <button
-                type="button"
-                className="p-1 rounded-md text-text-muted hover:text-accent-green hover:bg-accent-green/10 transition-colors"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onResume(meta);
-                }}
-                title="Resume"
-              >
-                <SquareTerminal className="w-3.5 h-3.5" />
-              </button>
+              <>
+                {onChatResume && meta.nativeSessionId ? (
+                  <button
+                    type="button"
+                    className="p-1 rounded-md text-text-muted hover:text-accent-blue hover:bg-accent-blue/10 transition-colors"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onChatResume(meta);
+                    }}
+                    title="Open in Agent Chat"
+                  >
+                    <MessageSquare className="w-3.5 h-3.5" />
+                  </button>
+                ) : null}
+                <button
+                  type="button"
+                  className="p-1 rounded-md text-text-muted hover:text-accent-green hover:bg-accent-green/10 transition-colors"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onResume(meta);
+                  }}
+                  title="Resume"
+                >
+                  <SquareTerminal className="w-3.5 h-3.5" />
+                </button>
+              </>
             ) : null}
             <button
               type="button"

@@ -12,6 +12,7 @@ use crate::session::StorageManager;
 use crate::terminal::TerminalManager;
 use crate::AppError;
 use std::collections::HashMap;
+use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Instant;
@@ -37,6 +38,10 @@ pub struct AppStateWrapper {
     pub remote_terminal_manager: RemoteTerminalManager,
     /// AI agent registration and configuration.
     pub agent_manager: Mutex<AgentManager>,
+    /// Agent Chat live session registry (session_id → request channel).
+    pub agent_chat_manager: Arc<crate::agent::chat::manager::AgentChatManager>,
+    /// Agent Chat session persistence (SQLite-backed cursors + events).
+    pub session_store: Arc<dyn crate::agent::chat::session_store::SessionStore>,
     /// Session and config file persistence.
     pub storage_manager: StorageManager,
     /// Currently active project ID, if any.
@@ -385,12 +390,32 @@ impl AppStateWrapper {
         let runtime = AppRuntime::shared_default();
         let lsp_manager = Arc::new(crate::lsp::LspManager::new(Arc::clone(&runtime)));
 
+        // Open the agent session store (SQLite at ~/.neeko/agent_sessions.db).
+        // Falls back to in-memory if the file cannot be opened.
+        let session_store: Arc<dyn crate::agent::chat::session_store::SessionStore> = Arc::new(
+            crate::agent::chat::session_store::SqliteSessionStore::open(
+                &dirs::home_dir()
+                    .unwrap_or_else(|| PathBuf::from("."))
+                    .join(".neeko")
+                    .join("agent_sessions.db"),
+            )
+            .unwrap_or_else(|e| {
+                log::error!("Failed to open agent session store, falling back to in-memory: {e}");
+                crate::agent::chat::session_store::SqliteSessionStore::open_in_memory()
+                    .expect("failed to open in-memory session store")
+            }),
+        );
+
         Self {
             runtime,
             project_manager: Mutex::new(ProjectManager::new(persist)),
             terminal_manager: TerminalManager::new(),
             remote_terminal_manager: RemoteTerminalManager::new(),
             agent_manager: Mutex::new(AgentManager::new()),
+            agent_chat_manager: Arc::new(
+                crate::agent::chat::manager::AgentChatManager::with_store(session_store.clone()),
+            ),
+            session_store,
             storage_manager,
             active_project_id: Mutex::new(None),
             watcher_manager: WatcherManager::new(),
