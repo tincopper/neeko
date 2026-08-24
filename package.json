@@ -122,6 +122,9 @@
     "vitest": "^4.1.2"
   },
   "packageManager": "pnpm@11.19.0",
+  "engines": {
+    "node": ">=24"
+  },
   "overrides": {
     "d3-array": "^3.2.4",
     "d3-shape": "^3.2.0"

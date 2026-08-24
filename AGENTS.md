@@ -16,7 +16,7 @@
 - **标识符**: `com.neeko.app`
 - **许可证**: Apache 2.0
 - **包管理器**: pnpm `9.12.2`
-- **Node**: 18+
+- **Node**: 24+
 - **Rust edition**: 2021
 - **前端端口**: 1420（与 `tauri.conf.json` 中 `devUrl` 对齐）
 
