@@ -55,6 +55,15 @@ pub fn run() {
         .manage(AppStateWrapper::new_with_library_store(library_store))
         .setup(|app| {
             let state = app.handle().state::<AppStateWrapper>();
+            // 注入主窗口句柄：菜单/事件统一从 AppState 取，避免运行时查找依赖
+            // Tauri 内部 is_webview_window 判定（浏览器子 webview 会使其失效）。
+            if let Some(main_win) = app.get_webview_window("main") {
+                state.set_main_window(main_win);
+            } else {
+                log::warn!(
+                    "[setup] main webview window not found at setup; close-tab menu events will fall back to runtime lookup"
+                );
+            }
             let mut active_id_from_session: Option<String> = None;
             if let Ok(session) = state.storage_manager.load_session() {
                 active_id_from_session = session.active_project_id;

@@ -5,6 +5,7 @@ import {
   ArrowLeft,
   ArrowRight,
   Bug,
+  CloseIcon,
   ExternalLink,
   MousePointerClick,
 } from '@/shared/components/icons';
@@ -22,12 +23,16 @@ interface BrowserToolbarProps {
   onGoForward: () => void;
   onOpenExternal: () => void;
   onOpenDevTools: () => void;
+  onClosePage: () => void;
   isPicking: boolean;
   onTogglePicker: () => void;
 }
 
-const BTN =
-  'flex items-center justify-center w-6 h-6 rounded-md text-text-secondary hover:bg-bg-hover hover:text-text-primary transition-colors disabled:opacity-50 disabled:cursor-not-allowed';
+const BTN_BASE =
+  'flex items-center justify-center w-6 h-6 rounded-md text-text-secondary transition-colors disabled:opacity-50 disabled:cursor-not-allowed';
+const BTN = `${BTN_BASE} hover:bg-bg-hover hover:text-text-primary`;
+// 关闭按钮 hover 变红（危险操作语义），与普通按钮区分
+const CLOSE_BTN = `${BTN_BASE} hover:bg-bg-hover hover:text-[var(--accent-red)]`;
 const BrowserToolbar: React.FC<BrowserToolbarProps> = ({
   url,
   title,
@@ -41,6 +46,7 @@ const BrowserToolbar: React.FC<BrowserToolbarProps> = ({
   onGoForward,
   onOpenExternal,
   onOpenDevTools,
+  onClosePage,
   isPicking,
   onTogglePicker,
 }) => {
@@ -156,6 +162,11 @@ const BrowserToolbar: React.FC<BrowserToolbarProps> = ({
       {/* DevTools */}
       <button onClick={onOpenDevTools} disabled={!url} className={BTN} title="Open DevTools">
         <Bug size={12} />
+      </button>
+
+      {/* 关闭页面：回收 webview 资源 */}
+      <button onClick={onClosePage} disabled={!url} className={CLOSE_BTN} title="Close page">
+        <CloseIcon size={12} />
       </button>
     </div>
   );

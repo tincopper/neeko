@@ -245,6 +245,27 @@ export function useBrowserTab({
     }
   }, [browserState?.url, projectId, showToast]);
 
+  // 稳定引用：useBrowserWebview 每次 render 返回新对象字面量，直接解构出稳定回调
+  // （destroy 是 useCallback），避免 closePage 依赖整个 webview 对象导致引用漂移
+  // —— 漂移会让 React.memo(BrowserToolbar) 永久失效。
+  const destroy = webview.destroy;
+
+  // 关闭当前页面：销毁 webview 回收资源 + 重置 per-tab 状态（tab 本身保留，可再输入 URL）。
+  // 项目级自动刷新不在此解除——其他 Browser tab 可能仍在使用。
+  const closePage = useCallback(async () => {
+    if (!isCreatedRef.current) return;
+    await destroy();
+    // destroy 内部吞错（browserClose 失败时不删除状态）：此处无条件兜底清理，
+    // 保证失败后 per-tab 状态仍与 UI 一致（幂等，成功路径重复删除无害）。
+    removeTabState();
+    // destroy 仅清理 browserTabsStore；同步清理编辑器 tab 头部的 url/title/favicon
+    useEditorStore.getState().updateTab(tabKey, tabId, {
+      url: '',
+      title: '',
+      favicon: '',
+    });
+  }, [tabKey, tabId, destroy, removeTabState]);
+
   return {
     label,
     url: browserState?.url ?? '',
@@ -262,6 +283,7 @@ export function useBrowserTab({
     goForward: webview.goForward,
     openDevTools: webview.openDevTools,
     openExternal,
+    closePage,
     updateBounds: webview.updateBounds,
     startPicker,
     stopPicker,

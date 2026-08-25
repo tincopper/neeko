@@ -45,3 +45,8 @@ export const BROWSER_PAGE_META_EVENT = 'browser://page-meta';
 
 /** Agent Chat 流式事件通道（StreamEvent 统一协议）：`agent-chat://event` */
 export const AGENT_CHAT_EVENT = 'agent-chat://event';
+
+// ── 菜单/标签页事件（与 src-tauri/src/app_menu.rs 常量保持同步）──
+
+/** 关闭当前标签页事件（Cmd+W / Ctrl+W 菜单触发，前端关闭激活 tab）：`close-tab` */
+export const CLOSE_TAB_EVENT = 'close-tab';

@@ -4,6 +4,8 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use tauri::menu::{MenuBuilder, MenuItemBuilder, MenuItemKind, SubmenuBuilder};
 use tauri::{Emitter, Manager};
 
+use crate::app_state::AppStateWrapper;
+
 /// File 菜单「关闭标签页」项 id（菜单构建与事件分发共用）。
 const MENU_CLOSE_TAB_ID: &str = "close_tab";
 
@@ -86,6 +88,34 @@ pub fn sync_devtools_menu_item(app: &tauri::AppHandle, enabled: bool) {
     }
 }
 
+/// 向主窗口发出 close-tab 事件。
+///
+/// 主路径 = setup 注入的 `WebviewWindow` 句柄（AppState 持有，运行时零查找）；
+/// 兜底 = 按 webview label 查找 `get_webview("main")`——按 webview 注册表查，
+/// 不受 `is_webview_window` 判定影响（浏览器 panel/tab 的子 webview 常驻也安全）。
+fn emit_close_tab(app: &tauri::AppHandle) {
+    if let Some(window) = app.state::<AppStateWrapper>().main_window() {
+        let _ = window.emit(CLOSE_TAB_EVENT, ());
+        return;
+    }
+    if let Some(webview) = app.get_webview("main") {
+        let _ = webview.emit(CLOSE_TAB_EVENT, ());
+        return;
+    }
+    log::warn!("[menu] main webview unavailable; close-tab event not emitted");
+}
+
+/// 在主窗口打开 DevTools（release 构建需启用 `devtools` feature 才生效）。
+fn open_main_devtools(app: &tauri::AppHandle) {
+    if let Some(window) = app.state::<AppStateWrapper>().main_window() {
+        window.open_devtools();
+        return;
+    }
+    if let Some(webview) = app.get_webview("main") {
+        webview.open_devtools();
+    }
+}
+
 /// 处理菜单事件：Cmd+W 关闭标签页（全平台）+ DevTools 切换。
 ///
 /// macOS Edit 命令（Cut/Copy/Paste/Select All）**不经过这里**：它们由
@@ -94,22 +124,16 @@ pub fn sync_devtools_menu_item(app: &tauri::AppHandle, enabled: bool) {
 pub fn handle_menu_event(app: &tauri::AppHandle, id: &str, cmd_w_flag: &AtomicBool) {
     if id == MENU_CLOSE_TAB_ID {
         cmd_w_flag.store(true, Ordering::SeqCst);
-        if let Some(window) = app.get_webview_window("main") {
-            let _ = window.emit(CLOSE_TAB_EVENT, ());
-        } else {
-            log::warn!("[menu] main webview window not found; close-tab event not emitted");
-        }
+        emit_close_tab(app);
         return;
     }
 
     if id == MENU_TOGGLE_DEVTOOLS_ID {
-        // 门控：仅当设置中开启 enableDevTools 时才打开 DevTools（release 构建
-        // 需启用 `devtools` feature，否则 open_devtools 为 no-op）。与 build_menu
-        // 同源读取 read_config_bool，菜单处理器不依赖 AppStateWrapper。
+        // 门控：仅当设置中开启 enableDevTools 时才打开 DevTools。门控走
+        // read_config_bool 与 build_menu 同源；窗口句柄经 AppState 注入获取
+        // （与 emit_close_tab 同一兜底链）。
         if crate::theme::common::read_config_bool(CONFIG_KEY_ENABLE_DEVTOOLS) {
-            if let Some(window) = app.get_webview_window("main") {
-                window.open_devtools();
-            }
+            open_main_devtools(app);
         }
     }
 }

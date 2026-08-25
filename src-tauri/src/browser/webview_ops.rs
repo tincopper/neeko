@@ -1,4 +1,4 @@
-//! Webview 生命周期操作:创建、bounds 规范化与设置。
+//! Webview 生命周期操作:创建、关闭、bounds 规范化与设置。
 //!
 //! 所有 bounds 写入均经过 [`normalize_bounds`] 规范化,抵消 wry 在 macOS
 //! child webview 上的 i32 截断问题。这是唯一的规范化层,前端无需重复处理。
@@ -105,6 +105,32 @@ pub async fn create_webview(
     crate::platform::devtools::configure_inspector(&webview);
 
     Ok(label.to_string())
+}
+
+/// 关闭失败后重试前的等待时长(毫秒)。
+const CLOSE_RETRY_DELAY_MS: u64 = 50;
+
+/// 关闭浏览器 webview(带一次性重试)。
+///
+/// 幂等:webview 不存在时视为"已关闭"成功返回。首次 close 失败(平台侧瞬时
+/// 繁忙等)时,短暂等待后重试一次——残留 webview 会让主窗口 `is_webview_window`
+/// 判定持续失败(Cmd+W 关闭标签页失效的根因之一),且造成 webview 资源泄漏。
+pub async fn close_webview(app: &tauri::AppHandle, label: &str) -> Result<(), AppError> {
+    let Some(webview) = app.get_webview(label) else {
+        return Ok(());
+    };
+    if let Err(e) = webview.close() {
+        log::warn!("[browser] first close attempt failed for {label}: {e}; retrying");
+        tokio::time::sleep(std::time::Duration::from_millis(CLOSE_RETRY_DELAY_MS)).await;
+        // 重试前已被移除,视为已关闭(幂等语义)。
+        let Some(webview) = app.get_webview(label) else {
+            return Ok(());
+        };
+        webview
+            .close()
+            .map_err(|e| AppError::Unknown(format!("Failed to close webview: {}", e)))?;
+    }
+    Ok(())
 }
 
 /// 规范化浏览器 webview 的 bounds(唯一规范化层):抵消 wry 在 macOS child

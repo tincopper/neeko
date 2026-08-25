@@ -17,6 +17,7 @@ function makeProps(overrides: Partial<Parameters<typeof BrowserToolbar>[0]> = {}
     onGoForward: vi.fn(),
     onOpenExternal: vi.fn(),
     onOpenDevTools: vi.fn(),
+    onClosePage: vi.fn(),
     isPicking: false,
     onTogglePicker: vi.fn(),
     ...overrides,
@@ -81,5 +82,27 @@ describe('BrowserToolbar — 地址栏可编辑', () => {
     rerender(<BrowserToolbar {...makeProps({ url: 'https://a.com' })} />);
 
     expect(getInput().value).toBe('https://a.com');
+  });
+});
+
+describe('BrowserToolbar — 关闭页面按钮', () => {
+  it('有 URL 时点击关闭按钮触发 onClosePage', () => {
+    const onClosePage = vi.fn();
+    render(<BrowserToolbar {...makeProps({ onClosePage })} />);
+
+    fireEvent.click(screen.getByTitle('Close page'));
+
+    expect(onClosePage).toHaveBeenCalledTimes(1);
+  });
+
+  it('无 URL 时关闭按钮禁用（无页面可关）', () => {
+    const onClosePage = vi.fn();
+    render(<BrowserToolbar {...makeProps({ url: '', onClosePage })} />);
+
+    const btn = screen.getByTitle('Close page') as HTMLButtonElement;
+    expect(btn).toBeDisabled();
+
+    fireEvent.click(btn);
+    expect(onClosePage).not.toHaveBeenCalled();
   });
 });

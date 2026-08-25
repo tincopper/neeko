@@ -24,6 +24,7 @@ const BrowserPanel: React.FC = () => {
     goForward,
     openDevTools,
     openExternal,
+    closePage,
     updateBounds,
     isPicking,
     startPicker,
@@ -104,6 +105,7 @@ const BrowserPanel: React.FC = () => {
         onGoForward={goForward}
         onOpenExternal={openExternal}
         onOpenDevTools={openDevTools}
+        onClosePage={closePage}
         isPicking={isPicking}
         onTogglePicker={handleTogglePicker}
       />

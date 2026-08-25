@@ -16,7 +16,7 @@ use crate::AppError;
 use super::devtools::open_devtools_detached;
 use super::scripts::build_picker_script;
 use super::url_validator::{resolve_allowed_file_root, resolve_project_root, validate_url_scheme};
-use super::webview_ops::{create_webview, set_webview_bounds};
+use super::webview_ops::{close_webview, create_webview, set_webview_bounds};
 
 /// 幂等缺失决策：webview 缺失时按操作语义决定返回值。
 ///
@@ -128,17 +128,10 @@ pub async fn browser_reset_zoom(app: tauri::AppHandle, label: String) -> Result<
 
 /// 关闭/销毁浏览器 webview
 ///
-/// 幂等：webview 已不存在时视为"已关闭"成功返回（调用方为切换/回收/卸载等
-/// 声明式清理，目标不存在即已达成交付），不报 NotFound。
+/// 幂等 + 失败一次性重试语义见 [`close_webview`]。
 #[tauri::command]
 pub async fn browser_close(app: tauri::AppHandle, label: String) -> Result<(), AppError> {
-    let Some(webview) = app.get_webview(&label) else {
-        return resolve_missing_webview(false, &label);
-    };
-    webview
-        .close()
-        .map_err(|e| AppError::Unknown(format!("Failed to close webview: {}", e)))?;
-    Ok(())
+    close_webview(&app, &label).await
 }
 
 /// 显示/隐藏浏览器 webview

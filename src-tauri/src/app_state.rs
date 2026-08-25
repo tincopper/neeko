@@ -13,7 +13,7 @@ use crate::terminal::TerminalManager;
 use crate::AppError;
 use std::collections::HashMap;
 use std::path::PathBuf;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, RwLock};
 use std::thread;
 use std::time::Instant;
 
@@ -59,6 +59,12 @@ pub struct AppStateWrapper {
     pub conversation_manager: ConversationManager,
     /// Tracks which backend (PTY / SSH) owns each terminal session.
     session_owner: Mutex<HashMap<String, SessionOwner>>,
+    /// 主窗口句柄（setup 阶段注入；菜单/事件统一从此取）。
+    ///
+    /// 避免运行时 `get_webview_window("main")` 查找——其内部 `is_webview_window`
+    /// 判定要求窗口上所有 webview 的 label 都等于窗口 label，浏览器子 webview
+    /// （label = browser-xxx）会使其失效（Cmd+W 关闭标签页失效的根因）。
+    main_window: RwLock<Option<tauri::WebviewWindow>>,
 }
 
 impl AppStateWrapper {
@@ -116,6 +122,23 @@ impl AppStateWrapper {
             );
             std::process::exit(0);
         });
+    }
+
+    /// 注入主窗口句柄（setup 阶段调用一次；菜单事件等从此取，见 [`Self::main_window`]）。
+    pub fn set_main_window(&self, window: tauri::WebviewWindow) {
+        *self
+            .main_window
+            .write()
+            .unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(window);
+    }
+
+    /// 取主窗口句柄（None = 尚未注入）。
+    #[must_use]
+    pub fn main_window(&self) -> Option<tauri::WebviewWindow> {
+        self.main_window
+            .read()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .clone()
     }
 
     /// Resolve project path and a matching ExecTarget by project ID.
@@ -426,6 +449,7 @@ impl AppStateWrapper {
                 crate::conversation::adapters::all_adapters(),
             ),
             session_owner: Mutex::new(HashMap::new()),
+            main_window: RwLock::new(None),
         }
     }
 

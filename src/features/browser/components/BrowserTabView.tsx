@@ -38,6 +38,7 @@ const BrowserTabView: React.FC<BrowserTabViewProps> = ({ tabKey, tabId, projectI
     goForward,
     openDevTools,
     openExternal,
+    closePage,
     updateBounds,
     isPicking,
     startPicker,
@@ -85,6 +86,7 @@ const BrowserTabView: React.FC<BrowserTabViewProps> = ({ tabKey, tabId, projectI
         onGoForward={goForward}
         onOpenExternal={openExternal}
         onOpenDevTools={openDevTools}
+        onClosePage={closePage}
         isPicking={isPicking}
         onTogglePicker={handleTogglePicker}
       />

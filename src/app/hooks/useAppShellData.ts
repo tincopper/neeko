@@ -19,6 +19,7 @@ import { useSessionBootstrap, useSessionPersistence } from '@/features/session';
 import { useAppConfig } from '@/features/settings';
 import { useApplyProjectSkills } from '@/features/skill';
 import { useAppLayoutProps } from '@/layout/hooks/useAppLayoutProps';
+import { CLOSE_TAB_EVENT } from '@/shared/events';
 import { useKeyboardShortcuts } from '@/shared/hooks/useKeyboardShortcuts';
 import { useNotificationStore } from '@/shared/store/notificationStore';
 import { useProjectStore } from '@/shared/store/projectStore';
@@ -260,7 +261,7 @@ export function useAppShellData(): UseAppShellDataResult {
   // 只订阅一次（不随 activeTabId/tabKey 变化重订阅），避免重订阅竞态：
   // 事件到达时由 closeActiveTabCommand 现取项目/worktree/tab 最新状态。
   useEffect(() => {
-    const unlistenPromise = listen('close-tab', () => {
+    const unlistenPromise = listen(CLOSE_TAB_EVENT, () => {
       closeActiveTabCommand();
     });
     return () => {
