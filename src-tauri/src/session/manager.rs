@@ -1,5 +1,6 @@
 //! Persistent storage for sessions, configs, and VCS settings.
 
+use crate::common::agent::types::AgentConfig;
 use crate::project::types::Project;
 use crate::session::types::{ProjectSession, SessionStore};
 use anyhow::Result;
@@ -151,5 +152,55 @@ impl StorageManager {
         let json = fs::read_to_string(config_file)?;
         let config: serde_json::Value = serde_json::from_str(&json)?;
         Ok(config)
+    }
+
+    /// Load user-defined custom agents（config.json `customAgents` 数组，缺省为空）。
+    #[must_use]
+    pub fn load_custom_agents(&self) -> Vec<serde_json::Value> {
+        self.load_config()
+            .ok()
+            .and_then(|c| c.get("customAgents").cloned())
+            .and_then(|v| v.as_array().cloned())
+            .unwrap_or_default()
+    }
+
+    /// Persist user-defined custom agents（upsert 整个 `customAgents` 数组）。
+    pub fn save_custom_agents(&self, agents: &[serde_json::Value]) -> Result<()> {
+        let mut config = self.load_config()?;
+        if let Some(obj) = config.as_object_mut() {
+            obj.insert("customAgents".into(), serde_json::json!(agents));
+        }
+        self.save_config(&config)
+    }
+
+    /// Load built-in agent overrides（config.json `agentOverrides` 对象，缺省为空）。
+    #[must_use]
+    pub fn load_agent_overrides(&self) -> serde_json::Map<String, serde_json::Value> {
+        self.load_config()
+            .ok()
+            .and_then(|c| c.get("agentOverrides").cloned())
+            .and_then(|v| v.as_object().cloned())
+            .unwrap_or_default()
+    }
+
+    /// Upsert a single built-in agent override into `agentOverrides`（空值 = 删除）。
+    pub fn save_agent_override(&self, agent_id: &str, agent: Option<&AgentConfig>) -> Result<()> {
+        let mut config = self.load_config()?;
+        if let Some(obj) = config.as_object_mut() {
+            let overrides = obj
+                .entry("agentOverrides")
+                .or_insert_with(|| serde_json::json!({}));
+            if let Some(overrides_obj) = overrides.as_object_mut() {
+                match agent {
+                    Some(a) => {
+                        overrides_obj.insert(agent_id.into(), serde_json::to_value(a)?);
+                    }
+                    None => {
+                        overrides_obj.remove(agent_id);
+                    }
+                }
+            }
+        }
+        self.save_config(&config)
     }
 }

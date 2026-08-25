@@ -8,6 +8,7 @@ use async_trait::async_trait;
 use tokio::sync::mpsc;
 
 use crate::agent::chat::events::{SessionRequest, StreamEvent};
+use crate::common::agent::types::{AgentConfig, ChatStart};
 pub mod acp;
 pub mod deepseek;
 pub mod serve;
@@ -19,6 +20,7 @@ pub use serve::ServeAdapter;
 use crate::common::error::AppError;
 
 /// Identifies an agent kind. `custom` covers user-defined commands.
+/// 会话持久化用（ResumeCursor.agent_kind）。
 #[derive(Clone, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum AgentKind {
     /// opencode agent.
@@ -33,9 +35,7 @@ pub enum AgentKind {
     Qoder,
     /// codebuddy agent.
     Codebuddy,
-    /// DeepSeek Harness — first reference adapter (v3).
-    DeepSeekHarness,
-    /// User-defined custom agent.
+    /// User-defined custom agent（含 mockAgent 等未枚举 id）。
     Custom,
 }
 
@@ -43,83 +43,49 @@ impl AgentKind {
     /// Map an agent id (as registered in `AgentManager`) to a kind.
     #[must_use]
     pub fn from_agent_id(agent_id: &str) -> Self {
-        use crate::agent::ids::{AGENT_DEEPSEEK_HARNESS, AGENT_OPENCODE};
         match agent_id {
-            AGENT_OPENCODE => Self::Opencode,
+            "opencode" => Self::Opencode,
             "claude-code" => Self::ClaudeCode,
             "gemini" => Self::Gemini,
             "codex" => Self::Codex,
             "qoder" => Self::Qoder,
             "codebuddy" => Self::Codebuddy,
-            AGENT_DEEPSEEK_HARNESS => Self::DeepSeekHarness,
-            // mockAgent 不走 kind 分派（adapter_for 前置分支直接返回 AcpAdapter::mock）
             _ => Self::Custom,
         }
     }
 }
 
-/// Build the adapter for an agent.
+/// Build the adapter for an agent from its `AgentConfig`。
 ///
-/// IO 形态正交：adapter 内部自行选择如何获得事件源（Spawn / Connect / SSE / ACP
-/// 等流式能力），契约不绑定 stdout / JSON-Lines —— 并非所有 agent 都是 CLI 形态。
-/// 分派规则：
-/// - `mockAgent` → [`AcpAdapter::mock`]（进程内 ACP 模拟，无需子进程）；
-/// - `chat_transport == "acp"` → [`AcpAdapter`]（Agent Client Protocol over
-///   JSON-RPC stdio，通用互操作传输，如 DeepSeek Harness ACP / Zed agents）；
-/// - `chat_transport == "serve"` → [`ServeAdapter`]（opencode serve 的
-///   REST + SSE 传输，支持按会话/按轮次选择模型）；
-/// - 其余按 agent id：`deepseek-harness` → [`DeepSeekHarnessAdapter`]
-///   （stdio JSON-Lines 参考适配器）；
-/// - `opencode` 默认回退 → [`AcpAdapter`]（旧配置未声明 `chat_transport`
-///   时保持 ACP 兼容）；
-/// - 其余返回 `Unsupported`，待各自 adapter 实现后在此扩展（OCP：新增 = 新分支）。
-pub fn adapter_for(
-    agent_id: &str,
-    transport: Option<&str>,
-    cmd: Vec<String>,
-) -> Result<Box<dyn AgentAdapter>, AppError> {
-    use crate::agent::ids::AGENT_OPENCODE;
-    if agent_id == crate::agent::ids::AGENT_MOCK {
-        return Ok(Box::new(AcpAdapter::mock()));
-    }
-    match transport {
-        Some("acp") => {
-            // For OpenCode, always use the fixed "opencode acp" command
-            // because the cmd parameter only contains the binary name.
-            if agent_id == AGENT_OPENCODE {
-                Ok(Box::new(AcpAdapter::new(vec![
-                    AGENT_OPENCODE.into(),
-                    "acp".into(),
-                ])))
-            } else {
-                Ok(Box::new(AcpAdapter::new(cmd)))
-            }
+/// 分派依据 `config.chat`（CHAT 能力数据，自包含启动方式，零 id 特判）：
+/// - `None` → 该 agent 无 CHAT 能力（返回 `Unsupported`）；
+/// - `Mock` → [`AcpAdapter::mock`]（进程内，无子进程）；
+/// - `Acp { args }` → [`AcpAdapter`]（`command + args` 启动，opencode 的
+///   `["opencode","acp"]` 由内置定义提供）；
+/// - `Serve` → [`ServeAdapter`]（opencode serve 的 REST + SSE 传输）；
+/// - `Jsonl` → [`DeepSeekHarnessAdapter`]（stdio JSON-Lines）。
+pub fn adapter_for(config: &AgentConfig) -> Result<Box<dyn AgentAdapter>, AppError> {
+    match &config.chat {
+        None => Err(AppError::Unsupported(format!(
+            "agent '{}' 无 CHAT 能力（仅终端/Headless 形态）",
+            config.id
+        ))),
+        Some(ChatStart::Mock) => Ok(Box::new(AcpAdapter::mock())),
+        Some(ChatStart::Acp { args }) => {
+            let mut cmd = config.cmd_vec();
+            cmd.extend(args.iter().cloned());
+            Ok(Box::new(AcpAdapter::new(cmd)))
         }
-        Some("serve") => {
-            if agent_id == AGENT_OPENCODE {
-                Ok(Box::new(ServeAdapter::new()))
-            } else {
-                Err(AppError::Unsupported(format!(
-                    "serve transport not implemented for: {agent_id}"
-                )))
-            }
-        }
-        _ => match AgentKind::from_agent_id(agent_id) {
-            AgentKind::DeepSeekHarness => Ok(Box::new(DeepSeekHarnessAdapter::new(cmd))),
-            AgentKind::Opencode => Ok(Box::new(AcpAdapter::new(vec![
-                AGENT_OPENCODE.into(),
-                "acp".into(),
-            ]))),
-            _ => Err(AppError::Unsupported(format!(
-                "agent chat adapter not implemented for: {agent_id}"
-            ))),
-        },
+        Some(ChatStart::Serve) => Ok(Box::new(ServeAdapter::new())),
+        Some(ChatStart::Jsonl) => Ok(Box::new(DeepSeekHarnessAdapter::new(config.cmd_vec()))),
     }
 }
 
 /// Binds a session to its working context (A4 — protocolised G4).
 #[derive(Clone, Debug)]
 pub struct AgentContext {
+    /// Agent identifier（真实 id，来自 AgentManager；adapter 用于 SessionStart.agent）。
+    pub agent_id: String,
     /// Opaque session identifier (generated by the command layer; must match
     /// the id used in events and the session registry).
     pub session_id: String,
@@ -201,6 +167,7 @@ mod tests {
 
     fn ctx() -> AgentContext {
         AgentContext {
+            agent_id: "opencode".into(),
             session_id: "ac_test".into(),
             project_id: "/tmp/demo".into(),
             project_name: "demo".into(),

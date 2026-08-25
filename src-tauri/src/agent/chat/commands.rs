@@ -15,6 +15,7 @@ use crate::agent::chat::events::{
 
 use crate::agent::chat::manager::SessionHandle;
 use crate::agent::chat::session_store::{ResumeCursor, SessionStatus};
+use crate::common::agent::types::AgentConfig;
 use crate::core::project::ProjectEnvironment;
 use crate::AppError;
 use crate::AppStateWrapper;
@@ -56,6 +57,60 @@ fn env_label(env: &ProjectEnvironment) -> String {
         #[cfg(target_os = "windows")]
         ProjectEnvironment::Wsl { .. } => "wsl".into(),
         ProjectEnvironment::Remote { .. } => "ssh".into(),
+    }
+}
+
+/// Resolve the agent config（数据对象）from the agent manager（clone 快照）。
+fn resolve_agent_config(state: &AppStateWrapper, agent_id: &str) -> Result<AgentConfig, AppError> {
+    let am = state.agent_manager.lock().map_err(AppError::from)?;
+    am.get_agent(agent_id)
+        .cloned()
+        .ok_or_else(|| AppError::NotFound(format!("agent not found: {agent_id}")))
+}
+
+/// Resolve project display name + environment + path.
+fn resolve_project_ctx(
+    state: &AppStateWrapper,
+    project_id: &str,
+) -> Result<(String, String, String), AppError> {
+    let pm = state.project_manager.lock().map_err(AppError::from)?;
+    Ok(match pm.get_project(project_id) {
+        Some(p) => (
+            p.name.clone(),
+            env_label(&p.environment),
+            p.path.display().to_string(),
+        ),
+        None => (
+            project_id.to_string(),
+            "local".into(),
+            project_id.to_string(),
+        ),
+    })
+}
+
+/// Generate a session id: `ac_{project_prefix}_{nanos:hex}`.
+fn new_session_id(project_id: &str) -> String {
+    use std::time::{SystemTime, UNIX_EPOCH};
+    let nanos = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or(0);
+    format!("ac_{}_{:x}", &project_id[..8.min(project_id.len())], nanos)
+}
+
+/// Build the shared `AgentContext` for a stream request.
+fn build_context(req: &StreamRequest, project_path: &str, session_id: &str) -> AgentContext {
+    AgentContext {
+        agent_id: req.agent_id.clone(),
+        session_id: session_id.to_string(),
+        project_id: project_path.to_string(),
+        project_name: String::new(), // 由调用方覆盖
+        env: String::new(),
+        skills: req.skills.clone(),
+        files: req.files.clone(),
+        mode: req.mode.clone().unwrap_or_else(|| "auto".into()),
+        prompt: req.prompt.clone(),
+        model_id: req.model_id.clone(),
     }
 }
 
@@ -104,64 +159,26 @@ pub async fn agent_stream(
         );
     }
 
-    // Resolve agent command + chat transport from AgentManager.
-    let (agent_cmd, agent_transport) = {
-        let am = state.agent_manager.lock().map_err(AppError::from)?;
-        let agent = am
-            .get_agent(&req.agent_id)
-            .ok_or_else(|| AppError::NotFound(format!("agent not found: {}", req.agent_id)))?;
-        log::info!(
-            "[agent_stream] Agent: command={}, chat_transport={:?}",
-            agent.command,
-            agent.chat_transport
-        );
-        (vec![agent.command.clone()], agent.chat_transport.clone())
-    };
-
-    // Resolve project display name + environment + path.
-    let (project_name, env, project_path) = {
-        let pm = state.project_manager.lock().map_err(AppError::from)?;
-        match pm.get_project(&req.project_id) {
-            Some(p) => (
-                p.name.clone(),
-                env_label(&p.environment),
-                p.path.display().to_string(),
-            ),
-            None => (
-                req.project_id.clone(),
-                "local".into(),
-                req.project_id.clone(),
-            ),
-        }
-    };
-
-    let session_id = format!(
-        "ac_{}_{:x}",
-        &req.project_id[..8.min(req.project_id.len())],
-        {
-            use std::time::{SystemTime, UNIX_EPOCH};
-            SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .map(|d| d.as_nanos())
-                .unwrap_or(0)
-        }
+    // Resolve agent config（数据对象：command + chat_transport 等）。
+    let agent = resolve_agent_config(&state, &req.agent_id)?;
+    log::info!(
+        "[agent_stream] Agent: command={}, chat={:?}",
+        agent.command,
+        agent.chat
     );
 
-    let context = AgentContext {
-        session_id: session_id.clone(),
-        project_id: project_path,
-        project_name,
-        env,
-        skills: req.skills.clone(),
-        files: req.files.clone(),
-        mode: req.mode.clone().unwrap_or_else(|| "auto".into()),
-        prompt: req.prompt.clone(),
-        model_id: req.model_id.clone(),
-    };
+    // Resolve project display name + environment + path.
+    let (project_name, env, project_path) = resolve_project_ctx(&state, &req.project_id)?;
+
+    let session_id = new_session_id(&req.project_id);
+
+    let mut context = build_context(&req, &project_path, &session_id);
+    context.project_name = project_name;
+    context.env = env;
 
     // Create adapter + session via the factory (IO shape chosen inside the
     // adapter: Spawn / Connect / SSE / ACP — not bound to stdout/JSON-Lines).
-    let adapter = adapter_for(&req.agent_id, agent_transport.as_deref(), agent_cmd)?;
+    let adapter = adapter_for(&agent)?;
     let session = adapter.create(&context).await?;
     spawn_session_pipeline(&state, &app_handle, &req, session_id.clone(), session);
 
@@ -193,63 +210,27 @@ pub async fn agent_chat_resume(
         req.project_id
     );
 
-    // Resolve project display name + environment + path (same as agent_stream).
-    let (project_name, env, project_path) = {
-        let pm = state.project_manager.lock().map_err(AppError::from)?;
-        match pm.get_project(&req.project_id) {
-            Some(p) => (
-                p.name.clone(),
-                env_label(&p.environment),
-                p.path.display().to_string(),
-            ),
-            None => (
-                req.project_id.clone(),
-                "local".into(),
-                req.project_id.clone(),
-            ),
-        }
-    };
-
-    let (agent_cmd, agent_transport) = {
-        let am = state.agent_manager.lock().map_err(AppError::from)?;
-        match am.get_agent(&req.agent_id) {
-            Some(agent) => (vec![agent.command.clone()], agent.chat_transport.clone()),
-            None => {
-                return Err(AppError::NotFound(format!(
-                    "agent not found: {}",
-                    req.agent_id
-                )))
-            }
-        }
-    };
-
-    let session_id = format!(
-        "ac_{}_{:x}",
-        &req.project_id[..8.min(req.project_id.len())],
-        {
-            use std::time::{SystemTime, UNIX_EPOCH};
-            SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .map(|d| d.as_nanos())
-                .unwrap_or(0)
-        }
+    // Resolve agent config（数据对象）。
+    let agent = resolve_agent_config(&state, &req.agent_id)?;
+    log::info!(
+        "[agent_chat_resume] Agent: command={}, chat={:?}",
+        agent.command,
+        agent.chat
     );
+
+    // Resolve project display name + environment + path.
+    let (project_name, env, project_path) = resolve_project_ctx(&state, &req.project_id)?;
+
+    let session_id = new_session_id(&req.project_id);
 
     // Silent start: resume never auto-sends a prompt; history comes from the
     // conversation store and the next user turn flows via agent_stream.
-    let context = AgentContext {
-        session_id: session_id.clone(),
-        project_id: project_path,
-        project_name,
-        env,
-        skills: req.skills.clone(),
-        files: req.files.clone(),
-        mode: req.mode.clone().unwrap_or_else(|| "auto".into()),
-        prompt: String::new(),
-        model_id: req.model_id.clone(),
-    };
+    let mut context = build_context(&req, &project_path, &session_id);
+    context.project_name = project_name;
+    context.env = env;
+    context.prompt = String::new();
 
-    let adapter = adapter_for(&req.agent_id, agent_transport.as_deref(), agent_cmd)?;
+    let adapter = adapter_for(&agent)?;
     if !adapter.supports_chat_resume() {
         return Err(AppError::Agent(format!(
             "agent {} does not support resuming into Agent Chat",
@@ -389,8 +370,10 @@ pub async fn agent_chat_context(
 // Tauri command（IPC 边界），返回值经 serde 序列化而非直接消费 —— 不适用 must_use。
 #[allow(clippy::must_use_candidate)]
 #[tauri::command]
-pub fn agent_chat_supports_resume(agent_id: String) -> bool {
-    adapter_for(&agent_id, None, Vec::new())
+pub fn agent_chat_supports_resume(agent_id: String, state: State<'_, AppStateWrapper>) -> bool {
+    resolve_agent_config(&state, &agent_id)
+        .ok()
+        .and_then(|c| adapter_for(&c).ok())
         .map(|a| a.supports_chat_resume())
         .unwrap_or(false)
 }

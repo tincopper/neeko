@@ -224,8 +224,8 @@ mod tests {
     fn make_cursor(id: &str) -> ResumeCursor {
         ResumeCursor {
             session_id: id.into(),
-            agent_kind: AgentKind::DeepSeekHarness,
-            agent_id: "deepseek-harness".into(),
+            agent_kind: AgentKind::Custom,
+            agent_id: "opencode".into(),
             cwd: "/tmp/project".into(),
             model: "default".into(),
             runtime_mode: "auto".into(),
@@ -243,7 +243,7 @@ mod tests {
 
         let loaded = store.load_cursor("s1").unwrap();
         assert_eq!(loaded.session_id, "s1");
-        assert_eq!(loaded.agent_kind, AgentKind::DeepSeekHarness);
+        assert_eq!(loaded.agent_kind, AgentKind::Custom);
         assert_eq!(loaded.status, SessionStatus::Ready);
     }
 

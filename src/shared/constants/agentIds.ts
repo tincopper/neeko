@@ -1,13 +1,12 @@
 /**
  * Built-in agent ID constants.
  *
- * 双端契约的单一事实源：后端（`src-tauri/src/agent/ids.rs`）与前端所有 agent id
- * 字面量分派（action-menu 过滤、composer fallback、终端默认 agent 等）必须引用
- * 此常量表，禁止在业务代码中散落字符串。
+ * 前端 agent id 字面量的单一事实源（后端 id 定义在 `src-tauri/src/agent/builtin/`
+ * 内置表中）。业务代码中 agent id 分派应引用此常量表，禁止散落字符串。
+ * 注意：deepseek-harness 已移除（仅保留 Jsonl 传输供未来自定义 agent 声明）。
  */
 export const AGENT_IDS = {
   opencode: 'opencode',
-  deepseekHarness: 'deepseek-harness',
   mockAgent: 'mockAgent',
 } as const;
 

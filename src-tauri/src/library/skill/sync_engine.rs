@@ -24,15 +24,13 @@ impl SyncMode {
 }
 
 /// Determine the sync mode for a tool based on configuration and defaults.
+///
+/// 显式配置优先（copy/symlink）；未配置时默认 symlink。
 #[must_use]
-pub fn sync_mode_for_tool(tool_key: &str, configured_mode: Option<&str>) -> SyncMode {
+pub fn sync_mode_for_tool(configured_mode: Option<&str>) -> SyncMode {
     match configured_mode {
         Some("copy") => SyncMode::Copy,
-        Some("symlink") => SyncMode::Symlink,
-        _ => match tool_key {
-            "cursor" => SyncMode::Copy,
-            _ => SyncMode::Symlink,
-        },
+        _ => SyncMode::Symlink,
     }
 }
 
@@ -106,25 +104,14 @@ mod tests {
 
     #[test]
     fn sync_mode_defaults_to_symlink() {
-        assert!(matches!(
-            sync_mode_for_tool("claude-code", None),
-            SyncMode::Symlink
-        ));
-    }
-
-    #[test]
-    fn sync_mode_cursor_defaults_to_copy() {
-        assert!(matches!(sync_mode_for_tool("cursor", None), SyncMode::Copy));
+        assert!(matches!(sync_mode_for_tool(None), SyncMode::Symlink));
     }
 
     #[test]
     fn sync_mode_explicit_overrides() {
+        assert!(matches!(sync_mode_for_tool(Some("copy")), SyncMode::Copy));
         assert!(matches!(
-            sync_mode_for_tool("claude-code", Some("copy")),
-            SyncMode::Copy
-        ));
-        assert!(matches!(
-            sync_mode_for_tool("cursor", Some("symlink")),
+            sync_mode_for_tool(Some("symlink")),
             SyncMode::Symlink
         ));
     }

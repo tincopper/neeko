@@ -20,7 +20,6 @@
 //! | `process_spawn` | `apply_child_flags` / `apply_detached_flags` | `common/executor/local.rs` |
 //! | `ide_launch` | `launch_ide_with_fallback` / `spawn_ide_process` | `project/commands_ide.rs` |
 //! | `menu` | `build_edit_submenu` | `app_menu.rs` |
-//! | `symlink` | `create_link` | `agent/plugin_commands.rs` |
 //! | `file_url` | `file_url_to_path` | `lsp/session/root.rs` |
 //! | `notify_base` | `notify_base` | `browser/scripts.rs` |
 
@@ -36,4 +35,3 @@ pub mod process_spawn;
 pub mod process_tree;
 pub mod reveal;
 pub mod shell_launch;
-pub mod symlink;

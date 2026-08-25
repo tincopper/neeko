@@ -35,7 +35,8 @@ impl DeepSeekHarnessAdapter {
 #[async_trait]
 impl AgentAdapter for DeepSeekHarnessAdapter {
     fn kind(&self) -> AgentKind {
-        AgentKind::DeepSeekHarness
+        // Jsonl 传输无专属 kind（会话持久化按 agent_id 字符串即可）。
+        AgentKind::Custom
     }
 
     async fn create(&self, ctx: &AgentContext) -> Result<Box<dyn AgentSession>, AppError> {
@@ -54,13 +55,14 @@ impl AgentAdapter for DeepSeekHarnessAdapter {
             .ok_or_else(|| AppError::Io("harness child has no stdin".into()))?;
         let (event_tx, event_rx) = mpsc::channel(64);
         let session_id = ctx.session_id.clone();
+        let ctx_agent_id = ctx.agent_id.clone();
 
         // 会话生命周期事件：不等 harness 回包，立即发 SessionStart（能力声明）
         // + ContextInit（上下文清单），前端据此即时渲染「会话已开始」。
         let _ = event_tx
             .send(StreamEvent::SessionStart {
                 session_id: session_id.clone(),
-                agent: "deepseek-harness".into(),
+                agent: ctx_agent_id,
                 model: None,
                 capabilities: Capabilities {
                     approvals: true,

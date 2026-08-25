@@ -68,24 +68,6 @@ pub async fn discover_opencode_models(
     Ok(models)
 }
 
-/// Build `ModelInfo` entries from a statically configured model ID list
-/// (agents that do not support dynamic discovery).
-#[must_use]
-pub fn models_from_ids(ids: &[String]) -> Vec<ModelInfo> {
-    ids.iter()
-        .map(|id| ModelInfo {
-            id: id.clone(),
-            name: id.clone(),
-            provider_id: None,
-            provider_name: None,
-            supported_reasoning_efforts: Vec::new(),
-            default_reasoning_effort: None,
-            context_window: None,
-            is_free: false,
-        })
-        .collect()
-}
-
 /// Parse the output of `opencode models --verbose`.
 ///
 /// The output format is NDJSON with optional slug prefixes:
@@ -314,17 +296,6 @@ opencode/claude-fable-5
 
         assert_eq!(model.id, "opencode/test-model");
         assert_eq!(model.supported_reasoning_efforts, vec!["high".to_string()]);
-    }
-
-    #[test]
-    fn models_from_ids_keeps_id_as_name_and_defaults() {
-        let models = models_from_ids(&["a".into(), "b".into()]);
-        assert_eq!(models.len(), 2);
-        assert_eq!(models[0].id, "a");
-        assert_eq!(models[0].name, "a");
-        assert!(models[0].supported_reasoning_efforts.is_empty());
-        assert!(!models[0].is_free);
-        assert_eq!(models[1].id, "b");
     }
 
     /// Integration test: actually executes `opencode models --verbose`.

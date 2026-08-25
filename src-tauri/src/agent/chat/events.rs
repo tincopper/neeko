@@ -325,7 +325,7 @@ mod tests {
     fn session_start_roundtrip() {
         let ev = StreamEvent::SessionStart {
             session_id: "s1".into(),
-            agent: "deepseek-harness".into(),
+            agent: "opencode".into(),
             model: Some("deepseek-v4-flash".into()),
             capabilities: Capabilities {
                 approvals: true,
@@ -339,7 +339,7 @@ mod tests {
             json.contains(r#""type":"session_start"#),
             "missing type tag: {json}"
         );
-        assert!(json.contains(r#""agent":"deepseek-harness"#));
+        assert!(json.contains(r#""agent":"opencode"#));
         assert!(json.contains(r#""approvals":true"#));
 
         let back: StreamEvent = serde_json::from_str(&json).expect("deserialize");
@@ -486,7 +486,7 @@ mod sequenced_event_tests {
             seq: 42,
             event: StreamEvent::SessionStart {
                 session_id: "s1".into(),
-                agent: "deepseek-harness".into(),
+                agent: "opencode".into(),
                 model: None,
                 capabilities: Capabilities::default(),
             },

@@ -77,7 +77,7 @@ interface ModelListProps {
   selectedId: string | undefined;
   onSelect: (model: ModelInfo) => void;
   /** 当前所选 agent（用于列表项图标展示）。 */
-  agent: { id: string; name: string; icon: string | null };
+  agent: { id: string; name: string; icon?: string | null };
   emptyMessage?: string;
 }
 
@@ -130,7 +130,7 @@ function ModelPicker({
   selected: ModelInfo | null;
   onChange: (model: ModelInfo) => void;
   /** 当前所选 agent（按钮与列表项图标展示）。 */
-  agent: { id: string; name: string; icon: string | null };
+  agent: { id: string; name: string; icon?: string | null };
 }) {
   const [open, setOpen] = useState(false);
   const btnRef = useRef<HTMLButtonElement>(null);

@@ -93,28 +93,6 @@ export function usePaneActions({
         case 'recent-files':
           useQuickOpenStore.getState().openPalette('recentFiles');
           break;
-        case 'new-terminal-with-agent': {
-          if (projectIdForCheck) {
-            const enabled = agents.filter((a) => a.enabled);
-            const first = enabled[0];
-            if (first) {
-              const tabId = `tab_${crypto.randomUUID()}`;
-              useEditorStore.getState().addTab(tabKey, {
-                id: tabId,
-                projectId: projectIdForCheck,
-                title: first.name,
-                order: tabs.length,
-                data: {
-                  kind: 'terminal' as const,
-                  agentId: first.id,
-                  status: 'Idle' as const,
-                },
-              });
-              useEditorStore.getState().activateTab(tabKey, tabId);
-            }
-          }
-          break;
-        }
         case 'new-agent-chat': {
           if (projectIdForCheck) {
             const tabId = `tab_${crypto.randomUUID()}`;
@@ -170,7 +148,7 @@ export function usePaneActions({
         }
       }
     },
-    [onAddTerminalTab, agents, projectIdForCheck, tabKey, tabs.length],
+    [onAddTerminalTab, projectIdForCheck, tabKey, tabs.length],
   );
 
   const handleActionMenuAgentTerminal = useCallback(

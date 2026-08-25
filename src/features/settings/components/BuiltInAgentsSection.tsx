@@ -1,5 +1,8 @@
-import React from 'react';
+import { Pencil } from 'lucide-react';
+import React, { useState } from 'react';
 
+// eslint-disable-next-line import/no-restricted-paths -- settings UI displays agent capability badges + edit form
+import { AgentForm, CapabilityBadges } from '@/features/agent';
 import { cn } from '@/lib/utils';
 import { FolderIcon } from '@/shared/components/icons';
 import type { AgentConfig, AppConfig } from '@/shared/types';
@@ -20,6 +23,12 @@ interface BuiltInAgentsSectionProps {
   onSaveAgentOverride: (agentId: string) => void;
   onCancelPresetEdit: () => void;
   getEffectiveAgentCommand: (agent: AgentConfig) => string;
+  /** 内置 agent 的有效配置（覆盖层优先）。 */
+  getEffectiveAgent: (agent: AgentConfig) => AgentConfig;
+  /** 保存内置覆盖（agentOverrides + 后端覆盖层）。 */
+  onSaveBuiltinAgent: (agent: AgentConfig) => void;
+  /** 重置内置覆盖（恢复出厂）。 */
+  onResetBuiltinAgent: (agentId: string) => void;
   onSelectSkillPath: (agent: AgentConfig) => void;
   onStartEditSkillPath: (agentId: string, currentPath: string) => void;
   onSaveSkillPath: (agent: AgentConfig) => void;
@@ -39,27 +48,57 @@ const BuiltInAgentsSection: React.FC<BuiltInAgentsSectionProps> = ({
   onSaveAgentOverride,
   onCancelPresetEdit,
   getEffectiveAgentCommand,
+  getEffectiveAgent,
+  onSaveBuiltinAgent,
+  onResetBuiltinAgent,
   onSelectSkillPath,
   onStartEditSkillPath,
   onSaveSkillPath,
   onCancelSkillPathEdit,
 }) => {
+  /** 正在通过 AgentForm 编辑的内置 agent（null = 未在编辑）。 */
+  const [editingBuiltin, setEditingBuiltin] = useState<AgentConfig | null>(null);
+
+  const handleReset = (agent: AgentConfig) => {
+    const overrides = { ...(config.agentOverrides || {}) };
+    delete overrides[agent.id];
+    const cmdOverrides = { ...(config.agentCommandOverrides || {}) };
+    delete cmdOverrides[agent.id];
+    onConfigChange({ ...config, agentOverrides: overrides, agentCommandOverrides: cmdOverrides });
+    onResetBuiltinAgent(agent.id);
+  };
+
   return (
     <div className="flex flex-col items-start gap-3 py-3 border-b border-white/[0.04] [&:last-child]:border-b-0">
       <div className="flex-1 min-w-0">
         <div className="text-[0.86em] text-text-primary font-medium mb-0.75">Built-in Agents</div>
         <div className="text-[0.79em] text-text-muted leading-relaxed">
-          Pre-configured AI agent CLIs. Select one when adding a project or from the title bar.
+          Pre-configured AI agent CLIs. Edit saves an override; Reset restores the factory default.
         </div>
       </div>
 
+      {editingBuiltin && (
+        <div className="w-full border border-border rounded-lg bg-bg-primary overflow-hidden">
+          <AgentForm
+            initial={getEffectiveAgent(editingBuiltin)}
+            onSaved={(agent) => {
+              onSaveBuiltinAgent(agent);
+              setEditingBuiltin(null);
+            }}
+            onCancel={() => setEditingBuiltin(null)}
+          />
+        </div>
+      )}
+
       <div className="w-full border border-border rounded overflow-hidden bg-bg-primary">
         {builtinAgents.map((agent) => {
-          const iconSrc = getAgentIconSrc(agent.icon);
+          const effectiveAgent = getEffectiveAgent(agent);
+          const iconSrc = getAgentIconSrc(effectiveAgent.icon);
           const isEditing = editingPresetId === agent.id;
           const effectiveCmd = getEffectiveAgentCommand(agent);
-          const isOverridden = !!config.agentCommandOverrides?.[agent.id];
-          const skillPathValue = agent.skill_path ?? '';
+          const isOverridden =
+            !!config.agentOverrides?.[agent.id] || !!config.agentCommandOverrides?.[agent.id];
+          const skillPathValue = effectiveAgent.skill_path ?? '';
           const hasSkillPath = !!skillPathValue;
 
           return (
@@ -78,7 +117,7 @@ const BuiltInAgentsSection: React.FC<BuiltInAgentsSectionProps> = ({
                 )}
 
                 <span className="text-text-primary font-medium min-w-[100px] shrink-0">
-                  {agent.name}
+                  {effectiveAgent.name}
                 </span>
 
                 {isEditing ? (
@@ -109,15 +148,23 @@ const BuiltInAgentsSection: React.FC<BuiltInAgentsSectionProps> = ({
                   </span>
                 )}
 
+                {!isEditing && <CapabilityBadges agent={effectiveAgent} className="shrink-0" />}
+
+                {!isEditing && (
+                  <button
+                    className="bg-none border-none text-text-muted cursor-pointer p-1 rounded shrink-0 transition-colors duration-150 hover:text-accent-blue hover:bg-bg-hover"
+                    onClick={() => setEditingBuiltin(agent)}
+                    title="Edit built-in agent"
+                  >
+                    <Pencil size={13} />
+                  </button>
+                )}
+
                 {isOverridden && !isEditing && (
                   <button
                     className="bg-none border-none text-text-muted cursor-pointer text-[0.93em] py-0.5 px-1 rounded shrink-0 transition-colors duration-150 leading-none hover:text-accent-blue"
                     title="Reset to default"
-                    onClick={() => {
-                      const overrides = { ...(config.agentCommandOverrides || {}) };
-                      delete overrides[agent.id];
-                      onConfigChange({ ...config, agentCommandOverrides: overrides });
-                    }}
+                    onClick={() => handleReset(agent)}
                   >
                     &#x21BA;
                   </button>
@@ -169,7 +216,7 @@ const BuiltInAgentsSection: React.FC<BuiltInAgentsSectionProps> = ({
                       }
                     }}
                   >
-                    {hasSkillPath ? skillPathValue : agent.skill_path || 'Not set'}
+                    {hasSkillPath ? skillPathValue : effectiveAgent.skill_path || 'Not set'}
                   </span>
                 )}
               </div>

@@ -50,7 +50,6 @@ function makeWrapper(showToast: (message: string, type?: 'info' | 'error') => vo
             enableOpenCodeThemeSync: false,
             lsp: { autoStart: 'onFirstFile', deactivateStopMinutes: 30, customServers: [] },
             favoriteBranches: {},
-            agentPluginConfigs: {},
           },
           customThemes: [],
           agents: [],

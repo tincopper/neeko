@@ -8,9 +8,9 @@ use tauri::State;
 
 #[allow(clippy::wildcard_imports)]
 use super::types::*;
+use crate::agent::builtin::builtin_configs;
 use crate::agent::path_resolver::PathResolver;
-use crate::agent::plugin::AgentPlugin;
-use crate::agent::registry::default_agent_plugins;
+use crate::common::agent::types::AgentConfig;
 use crate::common::runtime::{run_blocking, run_blocking_result};
 use crate::library::LibraryStore;
 use crate::AppError;
@@ -476,25 +476,26 @@ pub struct DiscoveredSkillDto {
     pub name_guess: Option<String>,
 }
 
-/// Build the list of AgentPlugins to scan, applying custom path overrides from config.
-fn build_scan_plugins(state: &crate::AppStateWrapper) -> Vec<AgentPlugin> {
-    let mut plugins = default_agent_plugins();
+/// Build the list of agents to scan, applying custom path overrides from config.
+fn build_scan_agents(state: &crate::AppStateWrapper) -> Vec<AgentConfig> {
+    let mut agents = builtin_configs();
 
-    // Apply custom path overrides from config (legacy `customToolPathOverrides`).
+    // Apply custom path overrides from config (legacy `customToolPathOverrides` →
+    // 覆盖全局 skill_path，即扫描目标)。
     if let Ok(config) = state.storage_manager.load_config() {
         if let Some(overrides) = config
             .get("customToolPathOverrides")
             .and_then(|v| v.as_object())
         {
-            for plugin in &mut plugins {
-                if let Some(path) = overrides.get(&plugin.id).and_then(|v| v.as_str()) {
-                    plugin.paths.skills.relative = path.to_string();
+            for agent in &mut agents {
+                if let Some(path) = overrides.get(&agent.id).and_then(|v| v.as_str()) {
+                    agent.skill_path = Some(path.to_string());
                 }
             }
         }
     }
 
-    plugins
+    agents
 }
 
 /// Scan all tool directories for unmanaged skills.
@@ -504,12 +505,12 @@ pub async fn scan_local_skills(
     state: tauri::State<'_, crate::AppStateWrapper>,
 ) -> Result<Vec<DiscoveredSkillDto>, AppError> {
     let store = store.inner().clone();
-    let plugins = build_scan_plugins(state.inner());
+    let agents = build_scan_agents(state.inner());
     run_blocking_result(move || {
         let skills = store.get_all_skills().map_err(AppError::from)?;
         let managed_paths: Vec<String> = skills.iter().map(|s| s.central_path.clone()).collect();
         let discovered =
-            super::scanner::scan_local_skills(&managed_paths, &plugins).map_err(AppError::from)?;
+            super::scanner::scan_local_skills(&managed_paths, &agents).map_err(AppError::from)?;
         Ok(discovered
             .into_iter()
             .map(|d| DiscoveredSkillDto {
@@ -962,7 +963,7 @@ pub async fn set_skill_tool_toggle_cmd(
 /// A resolved skill deploy target: agent key + absolute skills directory.
 #[derive(Debug, Clone)]
 struct SkillTargetDir {
-    /// Agent / tool key (e.g. "claude-code", "cursor").
+    /// Agent / tool key (e.g. "claude-code", "opencode").
     key: String,
     /// Absolute path to the skills directory.
     dir: PathBuf,
@@ -1020,12 +1021,13 @@ fn resolve_sync_targets(state: &crate::AppStateWrapper) -> Vec<SkillTargetDir> {
             "reasonix",
         ];
         let resolver = PathResolver::new(None);
-        targets = default_agent_plugins()
+        targets = builtin_configs()
             .into_iter()
-            .filter(|p| FALLBACK_KEYS.contains(&p.id.as_str()))
-            .map(|p| {
-                let dir = resolver.resolve_home_skills_dir(&p);
-                SkillTargetDir { key: p.id, dir }
+            .filter(|c| FALLBACK_KEYS.contains(&c.id.as_str()))
+            .filter_map(|c| {
+                // 全局 skills 目录（skill_path）作为扫描/同步目标。
+                let dir = resolver.resolve_str(c.skill_path.as_deref()?);
+                Some(SkillTargetDir { key: c.id, dir })
             })
             .collect();
     }
@@ -1054,7 +1056,7 @@ fn sync_skills_to_targets(
         }
         for target in targets {
             let dest = target.dir.join(&skill.name);
-            let mode = super::sync_engine::sync_mode_for_tool(&target.key, configured_mode);
+            let mode = super::sync_engine::sync_mode_for_tool(configured_mode);
             match super::sync_engine::sync_skill(&source, &dest, mode) {
                 Ok(actual_mode) => {
                     let now = chrono::Utc::now().timestamp_millis();
@@ -1878,9 +1880,18 @@ fn relative_skills_from_agent_path(skill_path: &str) -> Option<String> {
     None
 }
 
+/// 从 `deploy.skills` 模板剥 `{{projectPath}}/` 前缀（如 `{{projectPath}}/.claude/skills`
+/// → `.claude/skills`）。
+fn relative_skills_from_deploy(template: &str) -> Option<String> {
+    template
+        .strip_prefix("{{projectPath}}/")
+        .or_else(|| template.strip_prefix("{{projectPath}}\\"))
+        .map(str::to_string)
+}
+
 /// Resolve the project-relative skills directory for an agent.
 ///
-/// 1. Built-in AgentPlugin `relative_skills_dir` (e.g. `.claude/skills`)
+/// 1. Built-in config `deploy.skills` 项目级模板（e.g. `.claude/skills`）
 /// 2. Else derive from the agent's configured `skill_path` under `$HOME`
 /// 3. Else for custom agents: `.agents/{sanitized_id}/skills`
 fn project_agent_skills_dir(
@@ -1889,11 +1900,11 @@ fn project_agent_skills_dir(
     agent_skill_path: Option<&str>,
 ) -> Option<PathBuf> {
     let key = agent_id.strip_prefix("custom:").unwrap_or(agent_id);
-    if let Some(plugin) = default_agent_plugins()
+    if let Some(config) = builtin_configs()
         .into_iter()
-        .find(|p| p.id == agent_id || p.id == key)
+        .find(|c| c.id == agent_id || c.id == key)
     {
-        if let Some(rel) = plugin.relative_skills_dir() {
+        if let Some(rel) = relative_skills_from_deploy(&config.deploy.skills) {
             return Some(project_path.join(rel));
         }
     }

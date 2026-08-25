@@ -34,6 +34,7 @@ const DEFAULT_CONFIG: AppConfig = {
   customIdes: [],
   ideCommandOverrides: {},
   agentCommandOverrides: {},
+  agentOverrides: {},
   customAgents: [],
   agentSelectorShowPresetBar: true,
   agentSelectorCompactMode: false,
@@ -50,7 +51,6 @@ const DEFAULT_CONFIG: AppConfig = {
     customServers: [],
   },
   favoriteBranches: {},
-  agentPluginConfigs: {},
 };
 
 type PartialLoadedConfig = Partial<AppConfig> & {
@@ -300,6 +300,10 @@ export function useAppConfig() {
               saved.agentCommandOverrides && typeof saved.agentCommandOverrides === 'object'
                 ? saved.agentCommandOverrides
                 : DEFAULT_CONFIG.agentCommandOverrides,
+            agentOverrides:
+              saved.agentOverrides && typeof saved.agentOverrides === 'object'
+                ? saved.agentOverrides
+                : DEFAULT_CONFIG.agentOverrides,
             customAgents: Array.isArray(saved.customAgents)
               ? saved.customAgents
               : DEFAULT_CONFIG.customAgents,
@@ -343,10 +347,6 @@ export function useAppConfig() {
               saved.favoriteBranches && typeof saved.favoriteBranches === 'object'
                 ? saved.favoriteBranches
                 : DEFAULT_CONFIG.favoriteBranches,
-            agentPluginConfigs:
-              saved.agentPluginConfigs && typeof saved.agentPluginConfigs === 'object'
-                ? saved.agentPluginConfigs
-                : DEFAULT_CONFIG.agentPluginConfigs,
           });
         }
       } catch (e) {

@@ -960,8 +960,6 @@ impl LibraryStore {
     }
 
     // ═══════════════════════════════════════════════════════════════════════
-    // Agent Plugins (custom)
-    // ═══════════════════════════════════════════════════════════════════════
 
     /// Insert a custom agent plugin.
     #[allow(clippy::too_many_arguments)]
@@ -978,6 +976,8 @@ impl LibraryStore {
         capabilities_json: &str,
         paths_json: &str,
         lifecycle_json: Option<&str>,
+        chat_transports_json: &str,
+        default_chat_transport: Option<&str>,
     ) -> Result<()> {
         let conn = self
             .conn
@@ -987,8 +987,8 @@ impl LibraryStore {
         conn.execute(
             "INSERT INTO agent_plugins (id, name, icon, description, version, is_builtin, enabled,
              execution_json, configuration_json, capabilities_json, paths_json, lifecycle_json,
-             created_at, updated_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, 1, ?7, ?8, ?9, ?10, ?11, ?12, ?12)",
+             chat_transports_json, default_chat_transport, created_at, updated_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, 1, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?14)",
             rusqlite::params![
                 id,
                 name,
@@ -1001,6 +1001,8 @@ impl LibraryStore {
                 capabilities_json,
                 paths_json,
                 lifecycle_json,
+                chat_transports_json,
+                default_chat_transport,
                 now,
             ],
         )?;
@@ -1016,7 +1018,7 @@ impl LibraryStore {
         let mut stmt = conn.prepare(
             "SELECT id, name, icon, description, version, is_builtin, enabled,
              execution_json, configuration_json, capabilities_json, paths_json, lifecycle_json,
-             created_at, updated_at
+             chat_transports_json, default_chat_transport, created_at, updated_at
              FROM agent_plugins WHERE is_builtin = 0 ORDER BY created_at DESC",
         )?;
         let rows = stmt.query_map([], |row| {
@@ -1032,8 +1034,10 @@ impl LibraryStore {
             let capabilities_json: String = row.get(9)?;
             let paths_json: String = row.get(10)?;
             let lifecycle_json: Option<String> = row.get(11)?;
-            let created_at: i64 = row.get(12)?;
-            let updated_at: i64 = row.get(13)?;
+            let chat_transports_json: String = row.get(12)?;
+            let default_chat_transport: Option<String> = row.get(13)?;
+            let created_at: i64 = row.get(14)?;
+            let updated_at: i64 = row.get(15)?;
             Ok(serde_json::json!({
                 "id": id, "name": name, "icon": icon, "description": description,
                 "version": version, "is_builtin": is_builtin, "enabled": enabled,
@@ -1042,6 +1046,8 @@ impl LibraryStore {
                 "capabilities": serde_json::from_str::<serde_json::Value>(&capabilities_json).unwrap_or_default(),
                 "paths": serde_json::from_str::<serde_json::Value>(&paths_json).unwrap_or_default(),
                 "lifecycle": lifecycle_json.and_then(|s| serde_json::from_str::<serde_json::Value>(&s).ok()),
+                "chat_transports": serde_json::from_str::<serde_json::Value>(&chat_transports_json).unwrap_or_else(|_| serde_json::json!([])),
+                "default_chat_transport": default_chat_transport,
                 "created_at": created_at, "updated_at": updated_at,
             }))
         })?;
@@ -1057,7 +1063,7 @@ impl LibraryStore {
         let mut stmt = conn.prepare(
             "SELECT id, name, icon, description, version, is_builtin, enabled,
              execution_json, configuration_json, capabilities_json, paths_json, lifecycle_json,
-             created_at, updated_at
+             chat_transports_json, default_chat_transport, created_at, updated_at
              FROM agent_plugins WHERE is_builtin = 0 AND id = ?1",
         )?;
         let mut rows = stmt.query_map(rusqlite::params![id], |row| {
@@ -1073,8 +1079,10 @@ impl LibraryStore {
             let capabilities_json: String = row.get(9)?;
             let paths_json: String = row.get(10)?;
             let lifecycle_json: Option<String> = row.get(11)?;
-            let created_at: i64 = row.get(12)?;
-            let updated_at: i64 = row.get(13)?;
+            let chat_transports_json: String = row.get(12)?;
+            let default_chat_transport: Option<String> = row.get(13)?;
+            let created_at: i64 = row.get(14)?;
+            let updated_at: i64 = row.get(15)?;
             Ok(serde_json::json!({
                 "id": id, "name": name, "icon": icon, "description": description,
                 "version": version, "is_builtin": is_builtin, "enabled": enabled,
@@ -1083,6 +1091,8 @@ impl LibraryStore {
                 "capabilities": serde_json::from_str::<serde_json::Value>(&capabilities_json).unwrap_or_default(),
                 "paths": serde_json::from_str::<serde_json::Value>(&paths_json).unwrap_or_default(),
                 "lifecycle": lifecycle_json.and_then(|s| serde_json::from_str::<serde_json::Value>(&s).ok()),
+                "chat_transports": serde_json::from_str::<serde_json::Value>(&chat_transports_json).unwrap_or_else(|_| serde_json::json!([])),
+                "default_chat_transport": default_chat_transport,
                 "created_at": created_at, "updated_at": updated_at,
             }))
         })?;

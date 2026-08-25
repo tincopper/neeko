@@ -545,13 +545,14 @@ impl AcpAdapter {
         let ctx_skills = ctx.skills.clone();
         let ctx_files = ctx.files.clone();
         let ctx_mode = ctx.mode.clone();
+        let ctx_agent_id = ctx.agent_id.clone();
         tokio::spawn(async move {
             // SessionStart + ContextInit emitted immediately by the adapter
             // (lifecycle contract, independent of the agent's own output).
             let _ = event_tx
                 .send(StreamEvent::SessionStart {
                     session_id: sid.clone(),
-                    agent: "acp".into(),
+                    agent: ctx_agent_id,
                     model: None,
                     capabilities: Capabilities {
                         approvals: true,

@@ -3,7 +3,7 @@
  *
  * MCP servers are launched by agents as child processes (stdio) or connected
  * to over HTTP (sse). Neeko manages their definitions in a central library and
- * deploys them to agent-specific configuration files via AgentPlugin paths.
+ * deploys them to agent-specific configuration files via `AgentConfig.deploy`.
  */
 
 /** MCP server resource. */

@@ -24,16 +24,6 @@ const ACTION_ITEMS: ActionRegistryItem[] = [
     execute: (ctx) => ctx.closeMenu(),
   },
   {
-    id: 'new-terminal-with-agent',
-    group: 'agent',
-    label: 'New Terminal with Agent',
-    description: 'Open a new terminal tab with an AI agent',
-    icon: Bot,
-    keywords: ['agent', 'terminal', 'ai', 'assistant'],
-    visible: (ctx) => ctx.agents.some((a) => a.enabled),
-    execute: (ctx) => ctx.closeMenu(),
-  },
-  {
     id: 'new-agent-chat',
     group: 'agent',
     label: 'New Agent Chat',

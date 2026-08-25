@@ -80,8 +80,6 @@ const PROJECT_CAPABLE_AGENT_KEYS = new Set([
   'pi',
   'omp',
   'reasonix',
-  'cursor',
-  'windsurf',
 ]);
 
 /** Target agents must expose a non-empty skill_path, matching the backend sync contract. */

@@ -153,28 +153,22 @@ function SettingsView() {
             editingValue={state.editingValue}
             skillPathEditingAgentId={state.skillPathEditingAgentId}
             skillPathInputValue={state.skillPathInputValue}
-            newAgentName={state.newAgentName}
-            newAgentCommand={state.newAgentCommand}
-            newAgentArgs={state.newAgentArgs}
-            newAgentSkillPath={state.newAgentSkillPath}
-            newAgentIcon={state.newAgentIcon}
             onConfigChange={onConfigChange}
             onEditingValueChange={state.setEditingValue}
             onSkillPathInputValueChange={state.setSkillPathInputValue}
-            onNewAgentNameChange={state.setNewAgentName}
-            onNewAgentCommandChange={state.setNewAgentCommand}
-            onNewAgentArgsChange={state.setNewAgentArgs}
-            onNewAgentSkillPathChange={state.setNewAgentSkillPath}
-            onNewAgentIconChange={state.setNewAgentIcon}
-            onAddCustomAgent={() => {
-              void state.addCustomAgent();
+            onSaveAgent={(agent) => {
+              void state.saveCustomAgent(agent);
             }}
-            onRemoveCustomAgent={(index) => {
-              void state.removeCustomAgent(index);
+            onRemoveAgent={(agentId) => {
+              void state.removeCustomAgentById(agentId);
             }}
-            onUploadAgentIcon={() => {
-              void state.uploadAgentIcon();
+            onSaveBuiltinAgent={(agent) => {
+              void state.saveBuiltinOverride(agent);
             }}
+            onResetBuiltinAgent={(agentId) => {
+              void state.resetBuiltinOverride(agentId);
+            }}
+            getEffectiveAgent={state.getEffectiveAgent}
             onStartEditAgent={state.startEditAgent}
             onSaveAgentOverride={state.saveAgentOverride}
             onCancelPresetEdit={state.cancelPresetEdit}

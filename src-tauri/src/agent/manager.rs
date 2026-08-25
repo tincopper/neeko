@@ -5,6 +5,10 @@ use crate::common::executor::factory::ExecTarget;
 use std::collections::HashMap;
 
 /// Registry of AI agent configurations.
+///
+/// 数据源为 [`crate::agent::builtin::default_configs`]（内置 11 个）+ 用户自定义。
+/// 内置 agent 支持**覆盖**：`add_agent` 对内置 id 原位替换（不产生重复条目），
+/// `remove_agent` 对内置 id 恢复出厂值（清除覆盖）；用户自定义走追加/去重。
 pub struct AgentManager {
     agents: Vec<AgentConfig>,
 }
@@ -20,9 +24,29 @@ impl AgentManager {
     /// Create a new `AgentManager` with the default built-in agents.
     #[must_use]
     pub fn new() -> Self {
-        let mut manager = Self { agents: Vec::new() };
-        manager.agents = default_agents();
-        manager
+        Self {
+            agents: crate::agent::builtin::default_configs(),
+        }
+    }
+
+    /// 启动时恢复内置 agent 的用户覆盖（config.json `agentOverrides`）。
+    ///
+    /// 覆盖值原位替换对应 builtin 元素；未知 id 忽略（防御）。覆盖不改变
+    /// agent 的内置身份（`is_builtin` 恒保持 true，防止前端列表过滤丢失）。
+    pub fn restore_overrides(&mut self, overrides: &HashMap<String, AgentConfig>) {
+        for (id, cfg) in overrides {
+            if let Some(slot) = self.agents.iter_mut().find(|a| a.id == *id && a.is_builtin) {
+                let mut applied = cfg.clone();
+                applied.is_builtin = true;
+                *slot = applied;
+            }
+        }
+    }
+
+    /// 是否为内置 agent id。
+    #[must_use]
+    pub fn is_builtin_id(&self, agent_id: &str) -> bool {
+        self.agents.iter().any(|a| a.id == agent_id && a.is_builtin)
     }
 
     /// Return all registered agents.
@@ -37,13 +61,44 @@ impl AgentManager {
         self.agents.iter().find(|a| a.id == agent_id)
     }
 
-    /// Register a new agent.
+    /// Register an agent.
+    ///
+    /// 内置 id → 原位替换（覆盖，不产生重复条目，`is_builtin` 身份保留）；
+    /// 自定义 id → 去重后追加。
     pub fn add_agent(&mut self, agent: AgentConfig) {
+        if let Some(slot) = self
+            .agents
+            .iter_mut()
+            .find(|a| a.id == agent.id && a.is_builtin)
+        {
+            let mut applied = agent;
+            applied.is_builtin = true;
+            *slot = applied;
+            return;
+        }
+        self.agents.retain(|a| a.id != agent.id);
         self.agents.push(agent);
     }
 
     /// Unregister an agent by ID.
+    ///
+    /// 内置 id → 恢复出厂值（清除覆盖）；自定义 id → 移除。
     pub fn remove_agent(&mut self, agent_id: &str) {
+        if self.is_builtin_id(agent_id) {
+            let default = crate::agent::builtin::default_configs()
+                .into_iter()
+                .find(|a| a.id == agent_id);
+            if let Some(d) = default {
+                if let Some(slot) = self
+                    .agents
+                    .iter_mut()
+                    .find(|a| a.id == agent_id && a.is_builtin)
+                {
+                    *slot = d;
+                }
+                return;
+            }
+        }
         self.agents.retain(|a| a.id != agent_id);
     }
 
@@ -76,171 +131,14 @@ impl AgentManager {
     }
 }
 
-/// Return the list of built-in default agents.
-fn default_agents() -> Vec<AgentConfig> {
-    vec![
-        AgentConfig {
-            id: crate::agent::ids::AGENT_OPENCODE.into(),
-            name: "opencode".into(),
-            command: "opencode".into(),
-            icon: Some("opencode.png".into()),
-            enabled: true,
-            prompt_args: Some(vec![
-                "run".into(),
-                "--pure".into(),
-                "--dangerously-skip-permissions=true".into(),
-                "-f".into(),
-            ]),
-            is_builtin: true,
-            skill_path: Some("~/.config/opencode/skills".into()),
-            // opencode 通过 ServeAdapter 接入（opencode serve + HTTP + SSE），
-            // 支持按会话/按轮次选择模型；ACP 能力保留（显式配置 "acp" 仍可用）。
-            chat_transport: Some("serve".into()),
-            ..Default::default()
-        },
-        AgentConfig {
-            id: "claude-code".into(),
-            name: "claude-code".into(),
-            command: "claude".into(),
-            icon: Some("claude-code.png".into()),
-            enabled: true,
-            prompt_args: Some(vec!["--bare".into(), "-p".into()]),
-            post_prompt_args: Some(vec!["--dangerously-skip-permissions".into()]),
-            is_builtin: true,
-            skill_path: Some("~/.claude/skills".into()),
-            ..Default::default()
-        },
-        AgentConfig {
-            id: "gemini".into(),
-            name: "gemini".into(),
-            command: "gemini".into(),
-            icon: Some("gemini.png".into()),
-            enabled: true,
-            prompt_args: Some(vec!["--prompt".into()]),
-            is_builtin: true,
-            skill_path: Some("~/.gemini/skills".into()),
-            ..Default::default()
-        },
-        AgentConfig {
-            id: "codex".into(),
-            name: "codex".into(),
-            command: "codex".into(),
-            icon: Some("codex.png".into()),
-            enabled: true,
-            prompt_args: Some(vec![]),
-            is_builtin: true,
-            skill_path: Some("~/.codex/skills".into()),
-            ..Default::default()
-        },
-        AgentConfig {
-            id: "qoder".into(),
-            name: "qoder".into(),
-            command: "qodercli".into(),
-            icon: Some("qoder.svg".into()),
-            enabled: true,
-            prompt_args: Some(vec!["--prompt".into()]),
-            is_builtin: true,
-            skill_path: Some("~/.qoder/skills".into()),
-            ..Default::default()
-        },
-        AgentConfig {
-            id: "codebuddy".into(),
-            name: "codebuddy".into(),
-            command: "codebuddy".into(),
-            icon: Some("codebuddy.svg".into()),
-            enabled: true,
-            prompt_args: Some(vec!["--prompt".into()]),
-            is_builtin: true,
-            skill_path: Some("~/.codebuddy/skills".into()),
-            ..Default::default()
-        },
-        AgentConfig {
-            id: "pi".into(),
-            name: "pi".into(),
-            command: "pi".into(),
-            icon: Some("pi.svg".into()),
-            enabled: true,
-            prompt_args: Some(vec!["-p".into()]),
-            is_builtin: true,
-            skill_path: Some("~/.pi/skills".into()),
-            ..Default::default()
-        },
-        AgentConfig {
-            id: "omp".into(),
-            name: "omp".into(),
-            command: "omp".into(),
-            icon: Some("omp.svg".into()),
-            enabled: true,
-            prompt_args: Some(vec!["-p".into()]),
-            is_builtin: true,
-            skill_path: Some("~/.omp/skills".into()),
-            ..Default::default()
-        },
-        AgentConfig {
-            id: "reasonix".into(),
-            name: "reasonix".into(),
-            command: "reasonix".into(),
-            icon: Some("reasonix.svg".into()),
-            enabled: true,
-            prompt_args: Some(vec!["run".into(), "--yolo".into()]),
-            is_builtin: true,
-            skill_path: Some("~/.reasonix/skills".into()),
-            ..Default::default()
-        },
-        AgentConfig {
-            id: "grok".into(),
-            name: "grok".into(),
-            command: "grok".into(),
-            icon: Some("grok.ico".into()),
-            enabled: true,
-            // headless single-turn: `grok -p "<prompt>"`
-            prompt_args: Some(vec!["-p".into()]),
-            is_builtin: true,
-            skill_path: Some("~/.grok/skills".into()),
-            ..Default::default()
-        },
-        AgentConfig {
-            id: crate::agent::ids::AGENT_DEEPSEEK_HARNESS.into(),
-            name: "deepseek-harness".into(),
-            command: "deepseek-harness".into(),
-            icon: Some("deepseek.png".into()),
-            enabled: true,
-            // Reference adapter (v3): speaks JSON-Lines over stdio.
-            prompt_args: None,
-            is_builtin: true,
-            skill_path: Some("~/.deepseek-harness/skills".into()),
-            // Reference adapter (v3): 后端功能未实现，暂不配置模型（空列表）。
-            chat_transport: Some("jsonl".into()),
-            ..Default::default()
-        },
-        AgentConfig {
-            id: crate::agent::ids::AGENT_MOCK.into(),
-            name: "mockAgent".into(),
-            // 进程内运行（adapter_for 对 mockAgent 返回 AcpAdapter::mock()），
-            // 无需可执行命令。
-            command: String::new(),
-            icon: Some("mock.png".into()),
-            enabled: true,
-            // ACP is one of its capabilities: mockAgent speaks Agent Client
-            // Protocol over JSON-RPC stdio — same path as DeepSeek Harness ACP.
-            prompt_args: None,
-            is_builtin: true,
-            skill_path: Some("~/.mock-agent/skills".into()),
-            chat_transport: Some("acp".into()),
-            models: vec!["mock-default".into()],
-            ..Default::default()
-        },
-    ]
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
-    fn should_initialize_with_twelve_presets() {
+    fn should_initialize_with_eleven_presets() {
         let manager = AgentManager::new();
-        assert_eq!(manager.get_agents().len(), 12);
+        assert_eq!(manager.get_agents().len(), 11);
     }
 
     #[test]
@@ -276,7 +174,8 @@ mod tests {
         let manager = AgentManager::new();
         let agent = manager.get_agent("opencode");
         assert!(agent.is_some());
-        assert_eq!(agent.unwrap().name, "opencode");
+        // name 为 display name（provider 提供），非 id。
+        assert_eq!(agent.unwrap().name, "OpenCode");
     }
 
     #[test]
@@ -301,12 +200,19 @@ mod tests {
     }
 
     #[test]
-    fn should_remove_agent() {
+    fn should_remove_custom_agent() {
         let mut manager = AgentManager::new();
         let before = manager.get_agents().len();
-        manager.remove_agent("opencode");
-        assert_eq!(manager.get_agents().len(), before - 1);
-        assert!(manager.get_agent("opencode").is_none());
+        manager.add_agent(AgentConfig {
+            id: "temp".into(),
+            name: "Temp".into(),
+            command: "temp".into(),
+            ..Default::default()
+        });
+        assert!(manager.get_agent("temp").is_some());
+        manager.remove_agent("temp");
+        assert_eq!(manager.get_agents().len(), before);
+        assert!(manager.get_agent("temp").is_none());
     }
 
     #[test]
@@ -383,19 +289,73 @@ mod tests {
     }
 
     #[test]
-    fn should_allow_duplicate_ids_on_add() {
+    fn should_override_builtin_agent_in_place() {
         let mut manager = AgentManager::new();
         let before = manager.get_agents().len();
-        let dup = AgentConfig {
+        let overridden = AgentConfig {
             id: "opencode".into(),
-            name: "dup".into(),
-            command: "dup".into(),
+            name: "OpenCode (custom)".into(),
+            command: "my-opencode".into(),
             ..Default::default()
         };
-        manager.add_agent(dup);
-        // Current behavior: allows duplicates, get_agent returns first match
-        assert_eq!(manager.get_agent("opencode").unwrap().name, "opencode");
-        assert_eq!(manager.get_agents().len(), before + 1);
+        manager.add_agent(overridden);
+        // 原位替换：长度不变、取回的是覆盖值、内置身份保留
+        assert_eq!(manager.get_agents().len(), before);
+        let agent = manager.get_agent("opencode").unwrap();
+        assert_eq!(agent.command, "my-opencode");
+        assert_eq!(agent.name, "OpenCode (custom)");
+        assert!(agent.is_builtin, "override must keep is_builtin identity");
+    }
+
+    #[test]
+    fn should_reset_builtin_agent_to_factory_default() {
+        let mut manager = AgentManager::new();
+        let overridden = AgentConfig {
+            id: "opencode".into(),
+            name: "OpenCode (custom)".into(),
+            command: "my-opencode".into(),
+            ..Default::default()
+        };
+        manager.add_agent(overridden);
+        assert_eq!(
+            manager.get_agent("opencode").unwrap().command,
+            "my-opencode"
+        );
+
+        manager.remove_agent("opencode");
+        // 恢复出厂：仍在列表（未删除），值为内置原值
+        assert!(manager.get_agent("opencode").is_some());
+        let agent = manager.get_agent("opencode").unwrap();
+        assert_eq!(agent.command, "opencode");
+        assert_eq!(agent.name, "OpenCode");
+    }
+
+    #[test]
+    fn should_restore_overrides_from_config() {
+        let mut manager = AgentManager::new();
+        let overrides = HashMap::from([(
+            "gemini".to_string(),
+            AgentConfig {
+                id: "gemini".into(),
+                name: "Gemini Custom".into(),
+                command: "gemini-custom".into(),
+                ..Default::default()
+            },
+        )]);
+        manager.restore_overrides(&overrides);
+        let agent = manager.get_agent("gemini").unwrap();
+        assert_eq!(agent.command, "gemini-custom");
+        assert!(agent.is_builtin);
+        // 未知 id 忽略
+        let bad = HashMap::from([(
+            "nonexistent".to_string(),
+            AgentConfig {
+                id: "nonexistent".into(),
+                ..Default::default()
+            },
+        )]);
+        manager.restore_overrides(&bad);
+        assert!(manager.get_agent("nonexistent").is_none());
     }
 
     #[test]

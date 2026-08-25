@@ -20,7 +20,7 @@ interface ChatComposerProps {
   chatAgents: AgentConfig[];
   models: ModelInfo[];
   selectedModel: ModelInfo | null;
-  selectedAgent: { id: string; name: string; icon: string | null };
+  selectedAgent: { id: string; name: string; icon?: string | null };
   contextWindow: { used: number; total: number; model: string } | null;
   tabKey: string;
   tabId: string;

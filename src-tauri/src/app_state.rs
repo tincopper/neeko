@@ -411,7 +411,7 @@ impl AppStateWrapper {
             project_manager: Mutex::new(ProjectManager::new(persist)),
             terminal_manager: TerminalManager::new(),
             remote_terminal_manager: RemoteTerminalManager::new(),
-            agent_manager: Mutex::new(AgentManager::new()),
+            agent_manager: Mutex::new(agent_manager_with_overrides(&storage_manager)),
             agent_chat_manager: Arc::new(
                 crate::agent::chat::manager::AgentChatManager::with_store(session_store.clone()),
             ),
@@ -446,6 +446,24 @@ impl Default for AppStateWrapper {
     fn default() -> Self {
         Self::new()
     }
+}
+
+/// 构造 AgentManager 并从 config.json `agentOverrides` 恢复内置覆盖。
+fn agent_manager_with_overrides(
+    storage_manager: &crate::session::manager::StorageManager,
+) -> AgentManager {
+    let mut manager = AgentManager::new();
+    let overrides = storage_manager
+        .load_agent_overrides()
+        .into_iter()
+        .filter_map(|(id, v)| {
+            serde_json::from_value::<crate::common::agent::types::AgentConfig>(v)
+                .ok()
+                .map(|cfg| (id, cfg))
+        })
+        .collect::<std::collections::HashMap<_, _>>();
+    manager.restore_overrides(&overrides);
+    manager
 }
 
 /// Loose path equality for project environment lookup.

@@ -3,7 +3,7 @@
 use anyhow::Result;
 
 use crate::agent::path_resolver::PathResolver;
-use crate::agent::plugin::AgentPlugin;
+use crate::common::agent::types::{AgentConfig, Detection};
 
 use super::content_hash;
 use super::skill_metadata;
@@ -23,23 +23,38 @@ pub struct DiscoveredSkill {
     pub fingerprint: Option<String>,
 }
 
-/// Scan given plugins' home-level skills directories for unmanaged skill directories.
+/// 本地同步安装检测（Command → which；Directory → 目录存在；None → 恒已安装）。
+fn agent_installed_local(config: &AgentConfig) -> bool {
+    match &config.detection {
+        None => true,
+        Some(Detection::Command { target }) => which::which(target).is_ok(),
+        Some(Detection::Directory { target }) => {
+            let p = PathResolver::new(None).resolve_str(target);
+            p.exists() && p.is_dir()
+        }
+    }
+}
+
+/// Scan given agents' global skills directories（`config.skill_path`）for unmanaged
+/// skill directories.
 pub fn scan_local_skills(
     managed_paths: &[String],
-    plugins: &[AgentPlugin],
+    agents: &[AgentConfig],
 ) -> Result<Vec<DiscoveredSkill>> {
     let mut discovered = Vec::new();
-    let resolver = PathResolver::new(None);
 
-    for plugin in plugins {
-        if !resolver.is_installed(plugin) {
+    for config in agents {
+        if !agent_installed_local(config) {
             continue;
         }
-        let skills_dir = resolver.resolve_home_skills_dir(plugin);
+        let Some(skill_path) = &config.skill_path else {
+            continue;
+        };
+        let skills_dir = PathResolver::new(None).resolve_str(skill_path);
         if !skills_dir.exists() {
             continue;
         }
-        scan_skill_dir(&skills_dir, &mut discovered, managed_paths, &plugin.id);
+        scan_skill_dir(&skills_dir, &mut discovered, managed_paths, &config.id);
     }
     Ok(discovered)
 }
@@ -126,69 +141,30 @@ mod tests {
         fs::write(managed_dir.join("SKILL.md"), "# Managed").unwrap();
         fs::write(unmanaged_dir.join("SKILL.md"), "# Unmanaged").unwrap();
 
-        // Build a minimal plugin pointing at our temp skills dir
-        let plugin = crate::agent::plugin::AgentPlugin {
+        // Build a minimal agent pointing at our temp skills dir（全局 skill_path）
+        let agent = crate::common::agent::types::AgentConfig {
             id: "test-agent".into(),
             name: "Test Agent".into(),
             icon: None,
-            description: None,
-            version: "1.0".into(),
-            is_builtin: false,
             enabled: true,
-            execution: crate::agent::plugin::AgentExecution {
-                command: "test".into(),
-                args: vec![],
-                env: std::collections::HashMap::new(),
-                prompt_args: None,
-                post_prompt_args: None,
-                detection: None,
+            is_builtin: false,
+            command: "test".into(),
+            args: vec![],
+            env: std::collections::HashMap::new(),
+            chat: None,
+            prompt_args: None,
+            post_prompt_args: None,
+            skill_path: Some(skills_dir.to_string_lossy().to_string()),
+            detection: None,
+            deploy: crate::common::agent::types::DeploySpec {
+                skills: "{{projectPath}}/.test/skills".into(),
+                commands: None,
+                mcp_config: None,
             },
-            configuration: crate::agent::plugin::AgentConfiguration::default(),
-            capabilities: crate::agent::plugin::AgentCapabilities::default(),
-            paths: crate::agent::plugin::AgentResourcePaths {
-                config: crate::agent::plugin::PathTemplate {
-                    relative: skills_dir.to_string_lossy().to_string(),
-                    format: "directory".into(),
-                    description: None,
-                    project_level: false,
-                },
-                skills: crate::agent::plugin::PathTemplate {
-                    relative: skills_dir.to_string_lossy().to_string(),
-                    format: "directory".into(),
-                    description: None,
-                    project_level: false,
-                },
-                commands: crate::agent::plugin::PathTemplate {
-                    relative: skills_dir.to_string_lossy().to_string(),
-                    format: "markdown".into(),
-                    description: None,
-                    project_level: false,
-                },
-                mcp: crate::agent::plugin::PathTemplate {
-                    relative: skills_dir.to_string_lossy().to_string(),
-                    format: "json".into(),
-                    description: None,
-                    project_level: false,
-                },
-                hooks: crate::agent::plugin::PathTemplate {
-                    relative: skills_dir.to_string_lossy().to_string(),
-                    format: "script".into(),
-                    description: None,
-                    project_level: false,
-                },
-                plugins: crate::agent::plugin::PathTemplate {
-                    relative: skills_dir.to_string_lossy().to_string(),
-                    format: "directory".into(),
-                    description: None,
-                    project_level: false,
-                },
-                secrets: None,
-            },
-            lifecycle: None,
         };
 
         let managed_paths = vec![managed_dir.to_string_lossy().to_string()];
-        let discovered = scan_local_skills(&managed_paths, &[plugin]).unwrap();
+        let discovered = scan_local_skills(&managed_paths, &[agent]).unwrap();
         assert_eq!(discovered.len(), 1);
         assert_eq!(discovered[0].tool, "test-agent");
         assert!(discovered[0].found_path.contains("unmanaged-skill"));

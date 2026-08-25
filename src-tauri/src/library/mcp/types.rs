@@ -30,7 +30,7 @@ pub struct McpServerTargetRecord {
     pub id: String,
     /// MCP server identifier.
     pub server_id: String,
-    /// Target agent key (e.g. "claude-code", "cursor").
+    /// Target agent key (e.g. "claude-code", "opencode").
     pub agent_id: String,
     /// Absolute path to the agent's config file.
     pub target_path: String,

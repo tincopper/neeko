@@ -175,8 +175,9 @@ fn agent_config_serde_roundtrip() {
         post_prompt_args: None,
         is_builtin: false,
         skill_path: None,
-        chat_transport: None,
-        models: vec![],
+        chat: None,
+        detection: None,
+        deploy: Default::default(),
     };
     let json = serde_json::to_string(&config).unwrap();
     let back: AgentConfig = serde_json::from_str(&json).unwrap();

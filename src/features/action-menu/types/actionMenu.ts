@@ -2,7 +2,6 @@ import type { LucideIcon } from 'lucide-react';
 
 export type ActionId =
   | 'new-terminal'
-  | 'new-terminal-with-agent'
   | 'new-browser'
   | 'new-agent-chat'
   | 'new-file'
@@ -20,7 +19,8 @@ export type ActionGroup = 'terminal' | 'agent' | 'browser' | 'file' | 'quick' | 
 export interface ActionContext {
   projectId: string | null;
   tabKey: string;
-  agents: { id: string; name: string; icon?: string | null; enabled: boolean }[];
+  /** Agent 列表（command 非空 = 支持 CLI，可开终端 Tab）。 */
+  agents: { id: string; name: string; icon?: string | null; enabled: boolean; command?: string }[];
   recentFiles: string[];
   closeMenu: () => void;
   /** Insert text into the active agent input (when available). */

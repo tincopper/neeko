@@ -64,7 +64,7 @@ function ProjectWorkspace() {
   // the agent terminal without auto-submitting (no \r).
   useFileDrop();
 
-  const { handleAddTerminalTab, handleAddAgentTab } = useTerminalTabs(tabKey, currentProjectId);
+  const { handleAddTerminalTab } = useTerminalTabs(tabKey, currentProjectId);
 
   // Agent installed status — re-check when agents or active project change
   // (Local / WSL / SSH each have their own PATH).
@@ -151,13 +151,6 @@ function ProjectWorkspace() {
         case 'recent-files':
           useQuickOpenStore.getState().openPalette('recentFiles');
           break;
-        case 'new-terminal-with-agent': {
-          if (currentProjectId) {
-            const first = agents.find((a) => a.enabled);
-            if (first) handleAddAgentTab(first);
-          }
-          break;
-        }
         case 'new-file': {
           if (currentProjectId) {
             createUntitledFileTab(tabKey, currentProjectId);
@@ -177,7 +170,7 @@ function ProjectWorkspace() {
         }
       }
     },
-    [handleAddTerminalTab, handleAddAgentTab, activeProject, currentProjectId, tabKey, agents],
+    [handleAddTerminalTab, activeProject, currentProjectId, tabKey],
   );
 
   // ── Terminal / agent-input 插入能力注册 ─────────────────────────────────

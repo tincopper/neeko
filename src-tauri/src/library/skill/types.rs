@@ -56,7 +56,7 @@ pub struct SkillTargetRecord {
     pub id: String,
     /// ID of the deployed skill.
     pub skill_id: String,
-    /// Target tool key (e.g. "cursor", "claude_code").
+    /// Target tool key (e.g. "claude-code", "opencode").
     pub tool: String,
     /// Filesystem path of the deployed skill.
     pub target_path: String,

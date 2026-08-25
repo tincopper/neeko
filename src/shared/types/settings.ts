@@ -60,7 +60,10 @@ export interface AppConfig {
   fontFamily: string;
   customIdes: { name: string; command: string }[];
   ideCommandOverrides: Record<string, string>;
+  /** 内置 agent 的 command 覆盖（旧字段，已由 `agentOverrides` 取代，保留兼容读取）。 */
   agentCommandOverrides: Record<string, string>;
+  /** 内置 agent 完整字段覆盖（id → 覆盖后的 AgentConfig；reset = 删除条目恢复出厂）。 */
+  agentOverrides?: Record<string, AgentConfig>;
   customAgents: AgentConfig[];
   agentSelectorShowPresetBar: boolean;
   agentSelectorCompactMode: boolean;
@@ -77,6 +80,4 @@ export interface AppConfig {
   lsp: LspConfig;
   /** Project-id → favorite branch names, persisted across sessions. */
   favoriteBranches: Record<string, string[]>;
-  /** Plugin-id → schema-validated configuration object, persisted across sessions. */
-  agentPluginConfigs?: Record<string, Record<string, unknown>>;
 }

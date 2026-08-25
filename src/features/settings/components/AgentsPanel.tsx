@@ -1,14 +1,10 @@
-import React, { useState, useCallback } from 'react';
+import React from 'react';
 
-// eslint-disable-next-line import/no-restricted-paths -- settings UI displays agent plugin cards + hook
-import { AgentPluginCard, AgentPluginDetails, useAgentPlugins } from '@/features/agent';
-import type { JsonSchema } from '@/lib/schemaValidator';
 import type { AgentConfig, AppConfig } from '@/shared/types';
 import { Switch } from '@/ui';
 
 import BuiltInAgentsSection from './BuiltInAgentsSection';
 import CustomAgentsSection from './CustomAgentsSection';
-import SchemaForm from './SchemaForm';
 
 interface AgentsPanelProps {
   config: AppConfig;
@@ -17,22 +13,14 @@ interface AgentsPanelProps {
   editingValue: string;
   skillPathEditingAgentId: string | null;
   skillPathInputValue: string;
-  newAgentName: string;
-  newAgentCommand: string;
-  newAgentArgs: string;
-  newAgentSkillPath: string;
-  newAgentIcon: string;
   onConfigChange: (next: AppConfig) => void;
   onEditingValueChange: (value: string) => void;
   onSkillPathInputValueChange: (value: string) => void;
-  onNewAgentNameChange: (value: string) => void;
-  onNewAgentCommandChange: (value: string) => void;
-  onNewAgentArgsChange: (value: string) => void;
-  onNewAgentSkillPathChange: (value: string) => void;
-  onNewAgentIconChange: (value: string) => void;
-  onAddCustomAgent: () => void;
-  onRemoveCustomAgent: (index: number) => void;
-  onUploadAgentIcon: () => void;
+  onSaveAgent: (agent: AgentConfig) => void;
+  onRemoveAgent: (agentId: string) => void;
+  onSaveBuiltinAgent: (agent: AgentConfig) => void;
+  onResetBuiltinAgent: (agentId: string) => void;
+  getEffectiveAgent: (agent: AgentConfig) => AgentConfig;
   onStartEditAgent: (agent: AgentConfig) => void;
   onSaveAgentOverride: (agentId: string) => void;
   onCancelPresetEdit: () => void;
@@ -50,22 +38,14 @@ const AgentsPanel: React.FC<AgentsPanelProps> = ({
   editingValue,
   skillPathEditingAgentId,
   skillPathInputValue,
-  newAgentName,
-  newAgentCommand,
-  newAgentArgs,
-  newAgentSkillPath,
-  newAgentIcon,
   onConfigChange,
   onEditingValueChange,
   onSkillPathInputValueChange,
-  onNewAgentNameChange,
-  onNewAgentCommandChange,
-  onNewAgentArgsChange,
-  onNewAgentSkillPathChange,
-  onNewAgentIconChange,
-  onAddCustomAgent,
-  onRemoveCustomAgent,
-  onUploadAgentIcon,
+  onSaveAgent,
+  onRemoveAgent,
+  onSaveBuiltinAgent,
+  onResetBuiltinAgent,
+  getEffectiveAgent,
   onStartEditAgent,
   onSaveAgentOverride,
   onCancelPresetEdit,
@@ -75,18 +55,6 @@ const AgentsPanel: React.FC<AgentsPanelProps> = ({
   onSaveSkillPath,
   onCancelSkillPathEdit,
 }) => {
-  // ── Agent Plugin System state ────────────────────────────────────────────
-  const { plugins, detectionResults, loading: pluginsLoading } = useAgentPlugins(null);
-  const [selectedPluginId, setSelectedPluginId] = useState<string | null>(null);
-
-  const selectedPlugin = selectedPluginId
-    ? (plugins.find((p) => p.id === selectedPluginId) ?? null)
-    : null;
-
-  const handleSelectPlugin = useCallback((id: string) => {
-    setSelectedPluginId((prev) => (prev === id ? null : id));
-  }, []);
-
   return (
     <>
       <h3 className="text-base font-semibold text-text-primary mb-4">Agents</h3>
@@ -127,66 +95,7 @@ const AgentsPanel: React.FC<AgentsPanelProps> = ({
         />
       </div>
 
-      {/* ── Agent Plugin Cards ──────────────────────────────────────────── */}
-      <div className="py-3 border-b border-white/[0.04]">
-        <div className="text-[0.86em] text-text-primary font-medium mb-2">
-          Agent Plugins
-          {!pluginsLoading && (
-            <span className="text-[0.78em] text-text-muted ml-1.5">({plugins.length})</span>
-          )}
-        </div>
-        <div className="text-[0.75em] text-text-muted mb-2 leading-relaxed">
-          Supported agent providers and their resource contracts.
-        </div>
-        {pluginsLoading ? (
-          <div className="text-[0.78em] text-text-muted">Loading plugins...</div>
-        ) : (
-          <div className="grid grid-cols-2 gap-1.5">
-            {plugins.map((plugin) => (
-              <AgentPluginCard
-                key={plugin.id}
-                plugin={plugin}
-                installed={detectionResults[plugin.id]?.installed}
-                isSelected={selectedPluginId === plugin.id}
-                onClick={() => handleSelectPlugin(plugin.id)}
-              />
-            ))}
-          </div>
-        )}
-        {selectedPlugin && (
-          <div className="mt-2 border border-border rounded-lg overflow-hidden">
-            <AgentPluginDetails plugin={selectedPlugin} />
-            {/* Schema-generated configuration form */}
-            {selectedPlugin.configuration?.schema &&
-              selectedPlugin.configuration.schema.type === 'object' && (
-                <div className="border-t border-border">
-                  <div className="px-3 py-1.5 text-[0.75em] text-text-muted font-medium bg-bg-secondary/30">
-                    Configuration
-                  </div>
-                  <SchemaForm
-                    schema={selectedPlugin.configuration.schema as JsonSchema}
-                    initialValue={
-                      (config.agentPluginConfigs?.[selectedPlugin.id] as Record<string, unknown>) ||
-                      (selectedPlugin.configuration.defaults as Record<string, unknown>) ||
-                      {}
-                    }
-                    onChange={(value) => {
-                      const next = {
-                        ...config,
-                        agentPluginConfigs: {
-                          ...(config.agentPluginConfigs || {}),
-                          [selectedPlugin.id]: value,
-                        },
-                      };
-                      onConfigChange(next);
-                    }}
-                  />
-                </div>
-              )}
-          </div>
-        )}
-      </div>
-
+      {/* ── Built-in Agents ───────────────────────────────────────────── */}
       <BuiltInAgentsSection
         config={config}
         builtinAgents={builtinAgents}
@@ -201,6 +110,9 @@ const AgentsPanel: React.FC<AgentsPanelProps> = ({
         onSaveAgentOverride={onSaveAgentOverride}
         onCancelPresetEdit={onCancelPresetEdit}
         getEffectiveAgentCommand={getEffectiveAgentCommand}
+        getEffectiveAgent={getEffectiveAgent}
+        onSaveBuiltinAgent={onSaveBuiltinAgent}
+        onResetBuiltinAgent={onResetBuiltinAgent}
         onSelectSkillPath={onSelectSkillPath}
         onStartEditSkillPath={onStartEditSkillPath}
         onSaveSkillPath={onSaveSkillPath}
@@ -211,20 +123,9 @@ const AgentsPanel: React.FC<AgentsPanelProps> = ({
         config={config}
         skillPathEditingAgentId={skillPathEditingAgentId}
         skillPathInputValue={skillPathInputValue}
-        newAgentName={newAgentName}
-        newAgentCommand={newAgentCommand}
-        newAgentArgs={newAgentArgs}
-        newAgentSkillPath={newAgentSkillPath}
-        newAgentIcon={newAgentIcon}
         onSkillPathInputValueChange={onSkillPathInputValueChange}
-        onNewAgentNameChange={onNewAgentNameChange}
-        onNewAgentCommandChange={onNewAgentCommandChange}
-        onNewAgentArgsChange={onNewAgentArgsChange}
-        onNewAgentSkillPathChange={onNewAgentSkillPathChange}
-        onNewAgentIconChange={onNewAgentIconChange}
-        onAddCustomAgent={onAddCustomAgent}
-        onRemoveCustomAgent={onRemoveCustomAgent}
-        onUploadAgentIcon={onUploadAgentIcon}
+        onSaveAgent={onSaveAgent}
+        onRemoveAgent={onRemoveAgent}
         onSelectSkillPath={onSelectSkillPath}
         onStartEditSkillPath={onStartEditSkillPath}
         onSaveSkillPath={onSaveSkillPath}

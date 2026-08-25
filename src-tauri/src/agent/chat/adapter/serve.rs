@@ -689,6 +689,7 @@ async fn attach_streaming(
     let pump_base = conn.base_url.clone();
     let pump_serve_sid = serve_sid.clone();
     let inner_sid = ctx.session_id.clone();
+    let ctx_agent_id = ctx.agent_id.clone();
     let ctx_project_id = ctx.project_id.clone();
     let ctx_project_name = ctx.project_name.clone();
     let ctx_env = ctx.env.clone();
@@ -702,7 +703,7 @@ async fn attach_streaming(
         let _ = pump_event_tx
             .send(StreamEvent::SessionStart {
                 session_id: inner_sid.clone(),
-                agent: "opencode".into(),
+                agent: ctx_agent_id,
                 model: pump_model_id,
                 capabilities: Capabilities {
                     approvals: true,
@@ -1028,6 +1029,7 @@ mod tests {
 
     fn serve_ctx(project_id: &str) -> AgentContext {
         AgentContext {
+            agent_id: "opencode".into(),
             session_id: "ac_test".into(),
             project_id: project_id.into(),
             project_name: "demo".into(),
@@ -1499,6 +1501,7 @@ mod integration_tests {
             return;
         }
         let ctx = AgentContext {
+            agent_id: "opencode".into(),
             session_id: "serve-integration".into(),
             project_id: std::env::temp_dir().display().to_string(),
             project_name: "serve-integration".into(),

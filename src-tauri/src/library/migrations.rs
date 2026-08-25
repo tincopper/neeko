@@ -15,12 +15,14 @@
 //! - v7 -> v8: Add MCP Registry source tracking columns.
 //! - v8 -> v9: Add url column to mcp_servers.
 //! - v9 -> v10: Add MCP tag groups, project bindings, deployment targets.
+//! - v10 -> v11: agent_plugins 支持 Agent Chat 传输声明（自定义 provider 的 chat 能力）。
+//! - v11 -> v12: 移除 agent_plugins 表（provider 概念已精简为 AgentConfig）。
 
 use anyhow::{bail, Context, Result};
 use rusqlite::Connection;
 
 /// Current schema version. Bump this when adding a new migration.
-pub const LATEST_VERSION: u32 = 10;
+pub const LATEST_VERSION: u32 = 12;
 
 /// Run all pending migrations on the database.
 pub fn run_migrations(conn: &Connection) -> Result<()> {
@@ -69,6 +71,8 @@ fn migrate_step(conn: &Connection, from_version: u32) -> Result<()> {
         7 => migrate_v7_to_v8(conn),
         8 => migrate_v8_to_v9(conn),
         9 => migrate_v9_to_v10(conn),
+        10 => migrate_v10_to_v11(conn),
+        11 => migrate_v11_to_v12(conn),
         _ => bail!("unknown migration version: {from_version}"),
     }
 }
@@ -364,6 +368,24 @@ fn migrate_v9_to_v10(conn: &Connection) -> Result<()> {
     Ok(())
 }
 
+/// v10 -> v11: agent_plugins 支持 Agent Chat 传输声明（自定义 provider 的 chat 能力）。
+fn migrate_v10_to_v11(conn: &Connection) -> Result<()> {
+    conn.execute_batch(
+        "
+        ALTER TABLE agent_plugins ADD COLUMN chat_transports_json TEXT NOT NULL DEFAULT '[]';
+        ALTER TABLE agent_plugins ADD COLUMN default_chat_transport TEXT;
+        ",
+    )?;
+    Ok(())
+}
+
+/// v11 -> v12: 移除 agent_plugins 表（provider 概念已精简为 `AgentConfig`，
+/// 自定义 agent 统一存 `customAgents` 配置）。
+fn migrate_v11_to_v12(conn: &Connection) -> Result<()> {
+    conn.execute_batch("DROP TABLE IF EXISTS agent_plugins;")?;
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -398,7 +420,6 @@ mod tests {
             "skillssh_cache",
             "prompts",
             "actions",
-            "agent_plugins",
             "mcp_servers",
             "mcp_tag_groups",
             "mcp_tag_group_servers",

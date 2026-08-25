@@ -6,9 +6,7 @@
 //! RequestApproval (edit gate) → Approve → RequestApproval (command gate) →
 //! Approve → TextDelta → TurnEnd → Cancel → SessionDone.
 
-use neeko_lib::agent::chat::adapter::{
-    AcpAdapter, AgentAdapter, AgentContext, AgentKind, AgentSession,
-};
+use neeko_lib::agent::chat::adapter::{AcpAdapter, AgentAdapter, AgentContext, AgentSession};
 use neeko_lib::agent::chat::events::{SessionRequest, StreamEvent};
 use neeko_lib::common::executor::factory::ExecTarget;
 
@@ -33,6 +31,7 @@ async fn drain_to_gate(session: &mut dyn AgentSession) -> String {
 async fn acp_full_flow_with_in_process_mock() {
     let adapter = AcpAdapter::mock();
     let ctx = AgentContext {
+        agent_id: "mockAgent".into(),
         session_id: "acp-test-1".into(),
         project_id: "p1".into(),
         project_name: "mock-project".into(),
@@ -135,6 +134,7 @@ async fn acp_opencode_real_roundtrip() {
 
     let adapter = AcpAdapter::new(vec!["opencode".into(), "acp".into()]);
     let ctx = AgentContext {
+        agent_id: "opencode".into(),
         session_id: "acp-opencode-test".into(),
         project_id: "/tmp".into(),
         project_name: "opencode-test".into(),

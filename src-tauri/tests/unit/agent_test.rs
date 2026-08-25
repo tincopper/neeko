@@ -73,8 +73,9 @@ fn add_custom_agent() {
         post_prompt_args: None,
         is_builtin: false,
         skill_path: None,
-        chat_transport: None,
-        models: vec![],
+        chat: None,
+        detection: None,
+        deploy: Default::default(),
     });
 
     assert_eq!(manager.get_agents().len(), initial + 1);
@@ -84,7 +85,7 @@ fn add_custom_agent() {
 }
 
 #[test]
-fn add_agent_with_duplicate_id() {
+fn add_agent_with_builtin_id_overrides_in_place() {
     let mut manager = AgentManager::new();
     let initial = manager.get_agents().len();
 
@@ -100,12 +101,17 @@ fn add_agent_with_duplicate_id() {
         post_prompt_args: None,
         is_builtin: false,
         skill_path: None,
-        chat_transport: None,
-        models: vec![],
+        chat: None,
+        detection: None,
+        deploy: Default::default(),
     });
 
-    // duplicates are allowed — both entries exist
-    assert_eq!(manager.get_agents().len(), initial + 1);
+    // 内置 id → 原位覆盖：长度不变、取回覆盖值、内置身份保留（不产生重复条目）
+    assert_eq!(manager.get_agents().len(), initial);
+    let agent = manager.get_agent("claude-code").expect("still present");
+    assert_eq!(agent.command, "dup");
+    assert_eq!(agent.name, "Duplicate");
+    assert!(agent.is_builtin, "override keeps builtin identity");
 }
 
 #[test]
@@ -123,8 +129,9 @@ fn remove_agent() {
         post_prompt_args: None,
         is_builtin: false,
         skill_path: None,
-        chat_transport: None,
-        models: vec![],
+        chat: None,
+        detection: None,
+        deploy: Default::default(),
     });
     assert!(manager.get_agent("temp").is_some());
 
@@ -133,13 +140,38 @@ fn remove_agent() {
 }
 
 #[test]
-fn remove_default_agent() {
+fn remove_default_agent_resets_to_factory() {
     let mut manager = AgentManager::new();
     let initial = manager.get_agents().len();
 
+    // 先覆盖，再 remove → 恢复出厂（内置不会被删除）
+    manager.add_agent(AgentConfig {
+        id: "claude-code".into(),
+        name: "Custom Claude".into(),
+        command: "my-claude".into(),
+        args: vec![],
+        env: HashMap::new(),
+        icon: None,
+        enabled: true,
+        prompt_args: None,
+        post_prompt_args: None,
+        is_builtin: false,
+        skill_path: None,
+        chat: None,
+        detection: None,
+        deploy: Default::default(),
+    });
+    assert_eq!(
+        manager.get_agent("claude-code").unwrap().command,
+        "my-claude"
+    );
+
     manager.remove_agent("claude-code");
-    assert_eq!(manager.get_agents().len(), initial - 1);
-    assert!(manager.get_agent("claude-code").is_none());
+    // 恢复出厂：仍在列表，值为内置原值
+    assert_eq!(manager.get_agents().len(), initial);
+    let agent = manager.get_agent("claude-code").expect("still present");
+    assert_eq!(agent.command, "claude");
+    assert!(agent.is_builtin);
 }
 
 #[test]

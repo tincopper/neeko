@@ -2,7 +2,6 @@ import React, { useEffect, useRef, useMemo } from 'react';
 
 import { AgentIcon } from '@/features/agent';
 import { cn } from '@/lib/utils';
-import { AGENT_IDS } from '@/shared/constants/agentIds';
 
 import { useActionMenu } from '../hooks/useActionMenu';
 import type { ActionContext, ActionRegistryItem, ActionGroup } from '../types/actionMenu';
@@ -98,10 +97,10 @@ const ActionMenuDropdown: React.FC<ActionMenuDropdownProps> = ({
     onClose();
   };
 
-  // deepseek-harness 为 Agent Chat 参考适配器（后端对应功能未实现），
-  // 不在 action-menu 的 agent 列表展示。
+  // 终端 Tab 新增入口：只显示支持 CLI 的 agent（command 非空，如 mockAgent
+  // 这类仅 CHAT 的进程内 agent 不在此列出）。
   const agentItems = useMemo(
-    () => ctx.agents.filter((a) => a.enabled && a.id !== AGENT_IDS.deepseekHarness),
+    () => ctx.agents.filter((a) => a.enabled && !!a.command),
     [ctx.agents],
   );
 

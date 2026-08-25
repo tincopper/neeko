@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Neeko Agent 系统现状流程图</title>
+<style>
+  :root {
+    --bg: #1e1e2e; --surface: #313244; --surface2: #45475a; --mantle: #181825;
+    --text: #cdd6f4; --subtext: #a6adc8; --overlay: #6c7086;
+    --blue: #89b4fa; --green: #a6e3a1; --red: #f38ba8; --yellow: #f9e2af;
+    --mauve: #cba6f7; --teal: #94e2d5; --lavender: #b4befe; --peach: #fab387;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--bg); color: var(--text);
+    font-family: -apple-system, "PingFang SC", "Microsoft YaHei", "Segoe UI", sans-serif;
+    padding: 32px 24px 60px; line-height: 1.6;
+  }
+  h1 { font-size: 22px; font-weight: 600; margin-bottom: 6px; }
+  .sub { color: var(--subtext); font-size: 13px; margin-bottom: 28px; }
+  .legend { display: flex; gap: 16px; flex-wrap: wrap; margin-bottom: 28px; font-size: 12px; color: var(--subtext); }
+  .legend span { display: flex; align-items: center; gap: 6px; }
+  .dot { width: 10px; height: 10px; border-radius: 3px; display: inline-block; }
+  .stage { margin-bottom: 40px; }
+  .stage-title { font-size: 15px; font-weight: 600; margin-bottom: 14px; display: flex; align-items: center; gap: 8px; }
+  .stage-title .num {
+    width: 22px; height: 22px; border-radius: 6px; background: var(--blue); color: var(--mantle);
+    display: inline-flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 700;
+  }
+  .row { display: flex; align-items: stretch; gap: 0; flex-wrap: wrap; }
+  .card {
+    background: var(--surface); border: 1px solid var(--surface2); border-radius: 10px;
+    padding: 12px 16px; min-width: 150px; max-width: 260px; position: relative;
+  }
+  .card .t { font-size: 13px; font-weight: 600; }
+  .card .d { font-size: 11.5px; color: var(--subtext); margin-top: 2px; }
+  .card code { font-family: "JetBrains Mono", ui-monospace, monospace; font-size: 11px; background: var(--mantle); padding: 1px 5px; border-radius: 4px; color: var(--teal); }
+  .arrow { align-self: center; color: var(--overlay); font-size: 16px; padding: 0 6px; }
+  .arrow.down { display: block; text-align: center; padding: 2px 0; }
+  .b-blue { border-color: var(--blue); } .b-blue .t { color: var(--blue); }
+  .b-green { border-color: var(--green); } .b-green .t { color: var(--green); }
+  .b-red { border-color: var(--red); } .b-red .t { color: var(--red); }
+  .b-yellow { border-color: var(--yellow); } .b-yellow .t { color: var(--yellow); }
+  .b-mauve { border-color: var(--mauve); } .b-mauve .t { color: var(--mauve); }
+  .b-teal { border-color: var(--teal); } .b-teal .t { color: var(--teal); }
+  .b-lavender { border-color: var(--lavender); } .b-lavender .t { color: var(--lavender); }
+  .b-peach { border-color: var(--peach); } .b-peach .t { color: var(--peach); }
+  .cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px; }
+  .panel {
+    background: var(--mantle); border: 1px solid var(--surface2); border-radius: 12px; padding: 16px;
+  }
+  .panel h3 { font-size: 14px; font-weight: 600; margin-bottom: 12px; display: flex; align-items: center; gap: 8px; }
+  .panel .flow { display: flex; flex-direction: column; gap: 0; }
+  .panel .card { width: 100%; max-width: none; margin-bottom: 0; }
+  .branch-tag { font-size: 10.5px; padding: 2px 8px; border-radius: 20px; font-weight: 600; }
+  .tag-cli { background: rgba(137,180,250,.15); color: var(--blue); }
+  .tag-chat { background: rgba(166,227,161,.15); color: var(--green); }
+  .tag-headless { background: rgba(249,226,175,.15); color: var(--yellow); }
+  .tag-deploy { background: rgba(203,166,247,.15); color: var(--mauve); }
+  .tag-meta { background: rgba(108,112,134,.2); color: var(--subtext); }
+  .tag-slim { background: rgba(243,139,168,.15); color: var(--red); }
+  .note {
+    background: rgba(243,139,168,.08); border: 1px dashed var(--red); border-radius: 10px;
+    padding: 10px 14px; font-size: 12px; color: var(--red); margin-top: 16px;
+  }
+  .note.ok { background: rgba(166,227,161,.08); border-color: var(--green); color: var(--green); }
+  .matrix { width: 100%; border-collapse: collapse; font-size: 12px; margin-top: 8px; }
+  .matrix th, .matrix td { border: 1px solid var(--surface2); padding: 8px 10px; text-align: left; }
+  .matrix th { background: var(--surface); color: var(--subtext); font-weight: 600; }
+  .matrix td code { font-family: ui-monospace, monospace; font-size: 11px; background: var(--mantle); padding: 1px 5px; border-radius: 4px; }
+  .ok { color: var(--green); } .no { color: var(--red); } .mut { color: var(--yellow); }
+  footer { margin-top: 40px; font-size: 11.5px; color: var(--overlay); }
+</style>
+</head>
+<body>
+
+<h1>Neeko · Agent 系统现状流程图</h1>
+<div class="sub">基于 src-tauri/src/agent 与前端 agent-chat / action-menu 当前实现 · 2026-08-25 · 供精简设计前置参考</div>
+
+<div class="legend">
+  <span><span class="dot" style="background:var(--blue)"></span>定义/注册</span>
+  <span><span class="dot" style="background:var(--green)"></span>CLI 形态</span>
+  <span><span class="dot" style="background:var(--teal)"></span>CHAT 形态</span>
+  <span><span class="dot" style="background:var(--yellow)"></span>Headless 形态</span>
+  <span><span class="dot" style="background:var(--mauve)"></span>部署/检测体系</span>
+  <span><span class="dot" style="background:var(--red)"></span>精简候选（待 grill 收敛）</span>
+</div>
+
+<!-- ============ 阶段 1：定义与注册 ============ -->
+<div class="stage">
+  <div class="stage-title"><span class="num">1</span>Agent 定义与注册（单一事实源 builtin）</div>
+  <div class="row">
+    <div class="card b-blue">
+      <div class="t">builtin/providers.rs</div>
+      <div class="d">12 个 <code>AgentProvider</code>（能力契约）：claude-code 手写全量 + 11 个 <code>agent_plugin_shell</code></div>
+    </div>
+    <div class="arrow">→</div>
+    <div class="card b-blue">
+      <div class="t"><code>default_config()</code> 派生</div>
+      <div class="d">provider 字段复制 → AgentConfig（command / prompt_args / chat_transport / …）</div>
+    </div>
+    <div class="arrow">→</div>
+    <div class="card b-blue">
+      <div class="t">builtin/providers.rs <code>default_configs()</code></div>
+      <div class="d">12 个 <code>AgentConfig</code> + <span class="mut">特例补丁</span>：skill_path（opencode/claude-code/mockAgent）、mockAgent.models</div>
+    </div>
+    <div class="arrow">→</div>
+    <div class="card b-blue">
+      <div class="t"><code>AgentManager::new()</code></div>
+      <div class="d">内存 <code>Vec&lt;AgentConfig&gt;</code> ← default_configs()</div>
+    </div>
+  </div>
+  <div class="row" style="margin-top:10px">
+    <div class="card b-peach">
+      <div class="t">用户自定义（add/remove_agent）</div>
+      <div class="d">命令层 → <code>StorageManager.load/save_custom_agents()</code> → config.json <code>customAgents</code></div>
+    </div>
+    <div class="arrow">→</div>
+    <div class="card b-peach">
+      <div class="t">agent_plugins 表（SQLite）</div>
+      <div class="d">自定义 provider（<code>save_custom_plugin</code> JSON blob 存储），经 <code>list_providers</code> 合并展示</div>
+    </div>
+  </div>
+  <div class="note">精简候选：AgentProvider / AgentConfig 双层 + registry 转发 + plugin 别名 + provider_registry —— 概念层数偏多，正在 grill 分支 1 是否合一。</div>
+</div>
+
+<!-- ============ 阶段 2：三种形态 ============ -->
+<div class="stage">
+  <div class="stage-title"><span class="num">2</span>使用形态：一个 Agent，三路消费（共用 AgentManager 里的 AgentConfig）</div>
+  <div class="cols">
+
+    <!-- CLI 形态 -->
+    <div class="panel">
+      <h3><span class="branch-tag tag-cli">形态 A · 终端 CLI</span></h3>
+      <div class="flow">
+        <div class="card b-green"><div class="t">ActionMenu / AgentBar 点选 agent</div>
+          <div class="d"><code>onAddAgentTerminal(agentId)</code></div></div>
+        <div class="arrow down">↓</div>
+        <div class="card b-green"><div class="t">打开 <code>kind:'terminal'</code> Tab</div>
+          <div class="d">携带 agentId · title = agent.name</div></div>
+        <div class="arrow down">↓</div>
+        <div class="card b-green"><div class="t">TerminalViewBase 启动 PTY</div>
+          <div class="d">命令 = <code>cmdOverride ?? agent.command</code> · 跑 agent 自带 TUI · Neeko 不解析输出</div></div>
+      </div>
+    </div>
+
+    <!-- CHAT 形态 -->
+    <div class="panel">
+      <h3><span class="branch-tag tag-chat">形态 B · Agent Chat 页面</span></h3>
+      <div class="flow">
+        <div class="card b-teal"><div class="t">AgentChatTabView → useAgentChat</div>
+          <div class="d">agent 列表 = <code>list_chat_agents</code>（chat_transport 非空）· 模型列表 = <code>list_agent_models</code></div></div>
+        <div class="arrow down">↓</div>
+        <div class="card b-teal"><div class="t">发送 → <code>agent_stream</code></div>
+          <div class="d">resolve_agent_config（clone AgentConfig）→ <code>adapter_for(&AgentConfig)</code></div></div>
+        <div class="arrow down">↓</div>
+        <div class="card b-teal"><div class="t">adapter 分派（按 chat_transport）</div>
+          <div class="d"><code>Acp</code>→AcpAdapter（opencode 附加 "acp" 子命令 / mockAgent 进程内）· <code>Serve</code>→ServeAdapter · <code>Jsonl</code>→DeepSeekHarnessAdapter · <code>None</code>→仅终端</div></div>
+        <div class="arrow down">↓</div>
+        <div class="card b-teal"><div class="t">create() → spawn_session_pipeline</div>
+          <div class="d">AgentChatBridge pump → <code>SequencedEvent{seq}</code> → emit <code>agent-chat://event</code> → 前端流式渲染</div></div>
+      </div>
+    </div>
+
+    <!-- Headless + 部署 -->
+    <div class="panel">
+      <h3><span class="branch-tag tag-headless">形态 C · Headless / 部署 / 检测</span></h3>
+      <div class="flow">
+        <div class="card b-yellow"><div class="t">Headless · AI commit</div>
+          <div class="d"><code>generate_commit_message</code> → command + prompt_args + post_prompt_args → Local(run_blocking) / Remote·WSL(exec_on)</div></div>
+        <div class="card b-mauve" style="margin-top:10px"><div class="t">部署 · skill/mcp/command</div>
+          <div class="d">从 <code>AgentProvider.paths / capabilities</code> 取数：resource_deployer / path_resolver / deploy_skill_to_agent / schema_validator</div></div>
+        <div class="card b-mauve" style="margin-top:10px"><div class="t">检测</div>
+          <div class="d"><code>check_agents_installed</code>（config.command → command_exists）· <code>detect_installed_agents</code>（provider.detection）</div></div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ============ 阶段 3：内置 agent 分派矩阵 ============ -->
+<div class="stage">
+  <div class="stage-title"><span class="num">3</span>12 个内置 Agent 的三形态能力矩阵</div>
+  <table class="matrix">
+    <thead>
+      <tr><th>agent</th><th>command</th><th>CLI 形态</th><th>CHAT 形态</th><th>Headless</th><th>skill_path（特例）</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>opencode</td><td>opencode</td><td class="ok">✓ TUI</td><td class="ok">✓ serve（默认）/ acp</td><td class="ok">✓ run --pure …</td><td>~/.config/opencode/skills</td></tr>
+      <tr><td>claude-code</td><td>claude</td><td class="ok">✓ TUI</td><td class="no">✗</td><td class="ok">✓ --bare -p</td><td>~/.claude/skills</td></tr>
+      <tr><td>gemini</td><td>gemini</td><td class="ok">✓ TUI</td><td class="no">✗</td><td class="ok">✓ --prompt</td><td>~/.gemini/skills</td></tr>
+      <tr><td>codex</td><td>codex</td><td class="ok">✓ TUI</td><td class="no">✗</td><td class="ok">✓</td><td>~/.codex/skills</td></tr>
+      <tr><td>qoder</td><td>qodercli</td><td class="ok">✓ TUI</td><td class="no">✗</td><td class="ok">✓ --prompt</td><td>~/.qoder/skills</td></tr>
+      <tr><td>codebuddy</td><td>codebuddy</td><td class="ok">✓ TUI</td><td class="no">✗</td><td class="ok">✓ --prompt</td><td>~/.codebuddy/skills</td></tr>
+      <tr><td>omp / pi / reasonix / grok</td><td>各自 CLI</td><td class="ok">✓ TUI</td><td class="no">✗</td><td class="ok">✓ -p / run --yolo</td><td>~/.{id}/skills</td></tr>
+      <tr><td>deepseek-harness</td><td>deepseek-harness</td><td class="no">✗</td><td class="ok">✓ jsonl</td><td class="no">✗</td><td>~/.deepseek-harness/skills</td></tr>
+      <tr><td>mockAgent</td><td>（进程内）</td><td class="no">✗</td><td class="ok">✓ acp（mock）</td><td class="no">✗</td><td>~/.mock-agent/skills + models=[mock-default]</td></tr>
+    </tbody>
+  </table>
+  <div class="note ok">关键结论：CLI 形态是天然能力（有 command 即支持）；CHAT 形态仅 3 个（opencode/deepseek-harness/mockAgent）；Headless 由 prompt_args 声明。三形态由 AgentConfig 的 3 组字段正交驱动。</div>
+</div>
+
+<!-- ============ 阶段 4：精简候选标注 ============ -->
+<div class="stage">
+  <div class="stage-title"><span class="num">4</span>精简候选热点（与 grill-me 分支对应）</div>
+  <table class="matrix">
+    <thead><tr><th>分支</th><th>当前复杂度</th><th>候选动作</th></tr></thead>
+    <tbody>
+      <tr><td>1 · 概念模型</td><td>AgentProvider + AgentConfig 双层 + registry 转发 + AgentPlugin 别名 + provider_registry 注册表</td><td class="mut">合一为单层 AgentConfig？（待确认）</td></tr>
+      <tr><td>2 · 模型</td><td>models 字段 + ModelInfo + list_agent_models + discover_opencode_models + 前端 ModelPicker/ModelSelector + serve per-turn model_id</td><td class="mut">按产品定位「不管模型」全砍？（待确认边界）</td></tr>
+      <tr><td>3 · 部署能力</td><td>paths 六元组 + capabilities + schema(表单) + detection + lifecycle + secrets</td><td class="mut">保留 paths/capabilities/detection（skill 库依赖），schema/lifecycle/secrets 可能砍</td></tr>
+      <tr><td>4 · chat 传输</td><td>ChatTransport 枚举(Acp/Serve/Jsonl/Custom) + opencode 特判 + mockAgent 特判</td><td class="mut">保留枚举；特判可内聚</td></tr>
+      <tr><td>5 · 存储命令</td><td>customAgents(config.json) + agent_plugins(SQLite) 两套；list_providers / list_agent_plugins 并存</td><td class="mut">合一；退役旧 plugin 命令（待确认）</td></tr>
+    </tbody>
+  </table>
+  <div class="note">这些红框即"过于复杂"的部分——当前全部按昨天的双轨方案实现，等 grill 分支决策后统一精简。</div>
+</div>
+
+<footer>生成于 2026-08-25 · 对应代码：src-tauri/src/agent/{builtin,plugin,manager,registry,commands,commands_commit,chat} · 前端 src/features/{agent,agent-chat,action-menu}</footer>
+
+</body>
+</html>

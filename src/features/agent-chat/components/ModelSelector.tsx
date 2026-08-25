@@ -14,7 +14,7 @@ function ModelSelector({
   tabId,
 }: {
   chatAgents: AgentConfig[];
-  selectedAgent: { id: string; name: string; icon: string | null };
+  selectedAgent: { id: string; name: string; icon?: string | null };
   tabKey: string;
   tabId: string;
 }) {

@@ -11,12 +11,10 @@ pub mod commands;
 pub mod events;
 pub mod manager;
 pub mod mock;
-pub mod provider_registry;
 pub mod session_store;
 
 pub use events::{
     Capabilities, ContextManifest, DoneReason, ErrorKind, SessionRequest, StreamEvent,
     TurnEndReason, Usage,
 };
-pub use provider_registry::{ModelSwitchMode, ProviderCapabilities, ProviderRegistry};
 pub use session_store::{ResumeCursor, SessionStatus, SessionStore, SqliteSessionStore};

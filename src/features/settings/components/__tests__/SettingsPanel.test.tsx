@@ -34,7 +34,6 @@ const defaultConfig: AppConfig = {
     customServers: [],
   },
   favoriteBranches: {},
-  agentPluginConfigs: {},
 };
 
 function renderPanel(overrides: Partial<AppConfig> = {}) {

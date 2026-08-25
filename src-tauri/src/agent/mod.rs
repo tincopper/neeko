@@ -1,22 +1,17 @@
-//! Agent lifecycle management, commands, configuration, and plugin system.
+//! Agent lifecycle management, commands, configuration, and chat.
 //!
-//! Chat is one interaction mode of an agent (alongside the terminal TUI); the
-//! `chat` submodule holds the adapters, event protocol, and session registry that
-//! power the Agent Chat surface.
+//! Chat 是 agent 的一种能力（`AgentConfig.chat`），与终端 TUI 正交；`chat`
+//! 子模块持有 adapters、事件协议与会话注册表，服务 Agent Chat 页面。
 
+pub mod builtin;
 pub mod chat;
 
 pub mod commands;
 pub mod commands_commit;
-pub mod deployer;
-pub mod ids;
 pub mod manager;
 pub mod model_discovery;
 pub mod path_resolver;
 pub mod plugin;
-pub mod plugin_commands;
-pub mod registry;
 pub mod resource_deployer;
-pub mod schema_validator;
 
 pub use manager::AgentManager;

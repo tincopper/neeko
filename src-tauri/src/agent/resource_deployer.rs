@@ -1,17 +1,17 @@
 //! Unified resource deployer for MCP servers and Commands.
 //!
-//! Resolves target paths through AgentPlugin path templates and writes
+//! Resolves target paths through `AgentConfig.deploy`（DeploySpec 模板）and writes
 //! resources in the format each agent expects (JSON, TOML, or markdown).
 //!
-//! Core principle: **no hardcoded paths** — everything goes through AgentPlugin.
+//! Core principle: **no hardcoded paths** — everything goes through DeploySpec.
 
-use std::collections::HashMap;
 use std::path::Path;
 
 use serde::Serialize;
 
-use super::path_resolver::PathResolver;
-use super::plugin::{AgentPlugin, PathTemplate};
+use super::plugin::AgentProvider;
+use crate::agent::builtin::builtin_configs;
+use crate::common::agent::types::AgentConfig;
 use crate::library::skill::types::{McpServerRecord, PromptRecord};
 use crate::AppError;
 
@@ -51,36 +51,69 @@ pub struct ResourceDeployResult {
 
 /// Unified deployer for MCP servers and Commands.
 ///
-/// Resolves paths through AgentPlugin templates and handles format-specific
-/// writing (JSON merge for MCP, file write for commands).
+/// 目标路径来自 `AgentConfig.deploy`（DeploySpec 模板），经 `AgentProvider`
+/// 解析；格式（JSON/TOML）由目标文件扩展名推断。
 pub struct ResourceDeployer {
-    /// Cache of built-in plugins (refreshed per call to allow test overrides).
-    plugins: HashMap<String, AgentPlugin>,
+    /// 部署目标 config 列表（默认内置，可注入供测试）。
+    agents: Vec<AgentConfig>,
 }
 
 impl ResourceDeployer {
-    /// Create a new ResourceDeployer with the default built-in plugins.
+    /// 按 id 解析部署目标 config。
+    fn agent_config(&self, agent_id: &str) -> Result<AgentConfig, AppError> {
+        self.agents
+            .iter()
+            .find(|c| c.id == agent_id)
+            .cloned()
+            .ok_or_else(|| AppError::NotFound(format!("Agent not found: {agent_id}")))
+    }
+}
+
+/// 解析 MCP 配置文件路径（None = 不支持 MCP 部署）。
+fn mcp_path(
+    config: &AgentConfig,
+    project_path: Option<&Path>,
+) -> Result<std::path::PathBuf, AppError> {
+    AgentProvider::from(config)
+        .resolve_mcp_path(project_path)
+        .ok_or_else(|| {
+            AppError::InvalidInput(format!("Agent '{}' does not support MCP", config.id))
+        })
+}
+
+/// 由文件扩展名推断 MCP 配置格式（.toml → toml，其余 json）。
+fn mcp_format(path: &Path) -> &'static str {
+    match path.extension().and_then(|e| e.to_str()) {
+        Some("toml") => "toml",
+        _ => "json",
+    }
+}
+
+/// 解析 slash commands 目录（None = 不支持 command 部署）。
+fn command_dir(
+    config: &AgentConfig,
+    project_path: Option<&Path>,
+) -> Result<std::path::PathBuf, AppError> {
+    AgentProvider::from(config)
+        .resolve_commands_dir(project_path)
+        .ok_or_else(|| {
+            AppError::InvalidInput(format!("Agent '{}' does not support commands", config.id))
+        })
+}
+
+impl ResourceDeployer {
+    /// Create a new ResourceDeployer（内置 agent 作为部署目标）。
     #[must_use]
     pub fn new() -> Self {
         Self {
-            plugins: super::registry::plugin_map(),
+            agents: builtin_configs(),
         }
     }
 
-    /// Create a ResourceDeployer with a custom plugin map (for testing).
+    /// Create a ResourceDeployer with custom agent configs（供测试注入）。
     #[must_use]
-    pub const fn with_plugins(plugins: HashMap<String, AgentPlugin>) -> Self {
-        Self { plugins }
-    }
-    /// Get a plugin by ID.
-    #[must_use]
-    pub fn plugin(&self, agent_id: &str) -> Option<&AgentPlugin> {
-        self.plugins.get(agent_id)
-    }
-
-    /// Register or override a plugin (used by tests and for custom plugins).
-    pub fn upsert_plugin(&mut self, plugin: AgentPlugin) {
-        self.plugins.insert(plugin.id.clone(), plugin);
+    pub const fn with_agents(agents: Vec<AgentConfig>) -> Self {
+        Self { agents }
     }
 
     // ── MCP Deployment ─────────────────────────────────────────────────────
@@ -95,20 +128,16 @@ impl ResourceDeployer {
         agent_id: &str,
         project_path: Option<&Path>,
     ) -> Result<ResourceDeployResult, AppError> {
-        let plugin = self
-            .plugins
-            .get(agent_id)
-            .ok_or_else(|| AppError::NotFound(format!("Plugin not found: {agent_id}")))?;
+        let config = self.agent_config(agent_id)?;
 
-        if !plugin.supports("mcp") {
+        if !config.deploy.supports_mcp() {
             return Err(AppError::InvalidInput(format!(
                 "Agent '{agent_id}' does not support MCP"
             )));
         }
 
-        let resolver = PathResolver::new(project_path).with_agent_id(agent_id);
-        let config_path = resolver.resolve(&plugin.paths.mcp);
-        let format = plugin.paths.mcp.format.as_str();
+        let config_path = mcp_path(&config, project_path)?;
+        let format = mcp_format(&config_path);
 
         // Ensure parent directory exists
         if let Some(parent) = config_path.parent() {
@@ -121,8 +150,8 @@ impl ResourceDeployer {
         }
 
         match format {
-            "toml" => Self::merge_mcp_toml(&config_path, server, plugin),
-            _ => Self::merge_mcp_json(&config_path, server, plugin),
+            "toml" => Self::merge_mcp_toml(&config_path, server),
+            _ => Self::merge_mcp_json(&config_path, server),
         }?;
 
         Ok(ResourceDeployResult {
@@ -140,20 +169,15 @@ impl ResourceDeployer {
         agent_id: &str,
         project_path: Option<&Path>,
     ) -> Result<Vec<serde_json::Value>, AppError> {
-        let plugin = self
-            .plugins
-            .get(agent_id)
-            .ok_or_else(|| AppError::NotFound(format!("Plugin not found: {agent_id}")))?;
-
-        let resolver = PathResolver::new(project_path).with_agent_id(agent_id);
-        let config_path = resolver.resolve(&plugin.paths.mcp);
+        let config = self.agent_config(agent_id)?;
+        let config_path = mcp_path(&config, project_path)?;
 
         if !config_path.exists() {
             return Ok(Vec::new());
         }
 
         let content = std::fs::read_to_string(&config_path).map_err(AppError::from)?;
-        let format = plugin.paths.mcp.format.as_str();
+        let format = mcp_format(&config_path);
 
         match format {
             "toml" => Self::read_mcp_toml(&content),
@@ -168,20 +192,15 @@ impl ResourceDeployer {
         agent_id: &str,
         project_path: Option<&Path>,
     ) -> Result<(), AppError> {
-        let plugin = self
-            .plugins
-            .get(agent_id)
-            .ok_or_else(|| AppError::NotFound(format!("Plugin not found: {agent_id}")))?;
-
-        let resolver = PathResolver::new(project_path).with_agent_id(agent_id);
-        let config_path = resolver.resolve(&plugin.paths.mcp);
+        let config = self.agent_config(agent_id)?;
+        let config_path = mcp_path(&config, project_path)?;
 
         if !config_path.exists() {
             return Ok(());
         }
 
         let content = std::fs::read_to_string(&config_path).map_err(AppError::from)?;
-        let format = plugin.paths.mcp.format.as_str();
+        let format = mcp_format(&config_path);
 
         let updated = match format {
             "toml" => Self::remove_mcp_toml(&content, server_name),
@@ -204,19 +223,15 @@ impl ResourceDeployer {
         agent_id: &str,
         project_path: Option<&Path>,
     ) -> Result<ResourceDeployResult, AppError> {
-        let plugin = self
-            .plugins
-            .get(agent_id)
-            .ok_or_else(|| AppError::NotFound(format!("Plugin not found: {agent_id}")))?;
+        let config = self.agent_config(agent_id)?;
 
-        if !plugin.supports("commands") {
+        if !config.deploy.supports_commands() {
             return Err(AppError::InvalidInput(format!(
                 "Agent '{agent_id}' does not support commands"
             )));
         }
 
-        let resolver = PathResolver::new(project_path).with_agent_id(agent_id);
-        let commands_dir = resolver.resolve(&plugin.paths.commands);
+        let commands_dir = command_dir(&config, project_path)?;
 
         // Ensure commands directory exists
         std::fs::create_dir_all(&commands_dir).map_err(|e| {
@@ -258,13 +273,8 @@ impl ResourceDeployer {
         agent_id: &str,
         project_path: Option<&Path>,
     ) -> Result<Vec<String>, AppError> {
-        let plugin = self
-            .plugins
-            .get(agent_id)
-            .ok_or_else(|| AppError::NotFound(format!("Plugin not found: {agent_id}")))?;
-
-        let resolver = PathResolver::new(project_path).with_agent_id(agent_id);
-        let commands_dir = resolver.resolve(&plugin.paths.commands);
+        let config = self.agent_config(agent_id)?;
+        let commands_dir = command_dir(&config, project_path)?;
 
         if !commands_dir.exists() {
             return Ok(Vec::new());
@@ -296,13 +306,8 @@ impl ResourceDeployer {
         agent_id: &str,
         project_path: Option<&Path>,
     ) -> Result<(), AppError> {
-        let plugin = self
-            .plugins
-            .get(agent_id)
-            .ok_or_else(|| AppError::NotFound(format!("Plugin not found: {agent_id}")))?;
-
-        let resolver = PathResolver::new(project_path).with_agent_id(agent_id);
-        let commands_dir = resolver.resolve(&plugin.paths.commands);
+        let config = self.agent_config(agent_id)?;
+        let commands_dir = command_dir(&config, project_path)?;
 
         // Try file form first: {name}.md
         let file_path = commands_dir.join(format!("{command_name}.md"));
@@ -321,37 +326,33 @@ impl ResourceDeployer {
     }
 
     // ── Agent capabilities ──────────────────────────────────────────────────
-    /// Get the capabilities of a plugin (what resource types it supports).
+    /// Get the capabilities of an agent（部署能力，来自 `config.deploy`）。
     #[must_use]
     pub fn agent_capabilities(&self, agent_id: &str) -> Option<AgentCapabilitiesDto> {
-        self.plugins.get(agent_id).map(|p| AgentCapabilitiesDto {
-            agent_id: p.id.clone(),
-            agent_name: p.name.clone(),
-            supports_mcp: p.supports("mcp"),
-            supports_commands: p.supports("commands"),
-            mcp_transports: p
-                .capabilities
-                .mcp
-                .as_ref()
-                .and_then(|m| m.transports.clone())
-                .unwrap_or_default(),
-            commands_format: p
-                .capabilities
-                .commands
-                .as_ref()
-                .and_then(|c| c.format.clone()),
-            mcp_path: p.paths.mcp.relative.clone(),
-            commands_path: p.paths.commands.relative.clone(),
+        let config = self.agent_config(agent_id).ok()?;
+        Some(AgentCapabilitiesDto {
+            agent_id: config.id.clone(),
+            agent_name: config.name.clone(),
+            supports_mcp: config.deploy.supports_mcp(),
+            supports_commands: config.deploy.supports_commands(),
+            mcp_transports: vec!["stdio".into(), "sse".into(), "http".into()],
+            commands_format: Some("markdown".into()),
+            mcp_path: config.deploy.mcp_config.clone().unwrap_or_default(),
+            commands_path: config.deploy.commands.clone().unwrap_or_default(),
         })
     }
 
     /// List all agent IDs that support a given capability.
     #[must_use]
     pub fn agents_supporting(&self, capability: &str) -> Vec<String> {
-        self.plugins
-            .values()
-            .filter(|p| p.supports(capability))
-            .map(|p| p.id.clone())
+        builtin_configs()
+            .into_iter()
+            .filter(|c| match capability {
+                "mcp" => c.deploy.supports_mcp(),
+                "commands" => c.deploy.supports_commands(),
+                _ => false,
+            })
+            .map(|c| c.id)
             .collect()
     }
 
@@ -375,11 +376,7 @@ impl ResourceDeployer {
     }
 
     /// Merge an MCP server into a JSON config file under the `mcpServers` key.
-    fn merge_mcp_json(
-        config_path: &Path,
-        server: &McpServerRecord,
-        _plugin: &AgentPlugin,
-    ) -> Result<(), AppError> {
+    fn merge_mcp_json(config_path: &Path, server: &McpServerRecord) -> Result<(), AppError> {
         let mut root: serde_json::Value = if config_path.exists() {
             let content = std::fs::read_to_string(config_path).map_err(AppError::from)?;
             if content.trim().is_empty() {
@@ -465,11 +462,7 @@ impl ResourceDeployer {
     }
 
     /// Merge an MCP server into a TOML config file.
-    fn merge_mcp_toml(
-        config_path: &Path,
-        server: &McpServerRecord,
-        _plugin: &AgentPlugin,
-    ) -> Result<(), AppError> {
+    fn merge_mcp_toml(config_path: &Path, server: &McpServerRecord) -> Result<(), AppError> {
         let mut root: toml::Value = if config_path.exists() {
             let content = std::fs::read_to_string(config_path).map_err(AppError::from)?;
             if content.trim().is_empty() {
@@ -631,64 +624,66 @@ pub struct AgentCapabilitiesDto {
     pub commands_path: String,
 }
 
-/// Resolve a path template for a given plugin and resource type.
+/// Resolve a resource path for an agent config（按 `config.deploy`）。
 pub fn resolve_resource_path(
-    plugin: &AgentPlugin,
+    config: &AgentConfig,
     resource_type: &str,
     project_path: Option<&Path>,
 ) -> Result<std::path::PathBuf, AppError> {
-    let resolver = PathResolver::new(project_path).with_agent_id(&plugin.id);
-    let template: &PathTemplate = match resource_type {
-        "config" => &plugin.paths.config,
-        "skills" => &plugin.paths.skills,
-        "commands" => &plugin.paths.commands,
-        "mcp" => &plugin.paths.mcp,
-        "hooks" => &plugin.paths.hooks,
-        "plugins" => &plugin.paths.plugins,
-        other => {
-            return Err(AppError::InvalidInput(format!(
-                "Unknown resource type: {other}"
-            )));
-        }
-    };
-    Ok(resolver.resolve(template))
+    let provider = AgentProvider::from(config);
+    match resource_type {
+        "skills" => Ok(provider.resolve_skill_dir(project_path)),
+        "commands" => provider.resolve_commands_dir(project_path).ok_or_else(|| {
+            AppError::InvalidInput(format!("Agent '{}' does not support commands", config.id))
+        }),
+        "mcp" => provider.resolve_mcp_path(project_path).ok_or_else(|| {
+            AppError::InvalidInput(format!("Agent '{}' does not support MCP", config.id))
+        }),
+        other => Err(AppError::InvalidInput(format!(
+            "Unknown resource type: {other} (expected skills|commands|mcp)"
+        ))),
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::agent::registry::default_agent_plugins;
+    use crate::common::agent::types::{AgentConfig, DeploySpec};
     use tempfile::tempdir;
 
-    fn make_test_deployer() -> ResourceDeployer {
-        ResourceDeployer::with_plugins(
-            default_agent_plugins()
-                .into_iter()
-                .map(|p| (p.id.clone(), p))
-                .collect(),
-        )
+    /// 构造一个指向临时目录的测试 agent（注入 deploy 目标）。
+    fn test_agent(id: &str, mcp: Option<&str>, commands: Option<&str>) -> AgentConfig {
+        AgentConfig {
+            id: id.into(),
+            name: id.into(),
+            icon: None,
+            enabled: true,
+            is_builtin: false,
+            command: "test".into(),
+            args: vec![],
+            env: std::collections::HashMap::new(),
+            chat: None,
+            prompt_args: None,
+            post_prompt_args: None,
+            skill_path: None,
+            detection: None,
+            deploy: DeploySpec {
+                skills: "{{projectPath}}/.test/skills".into(),
+                commands: commands.map(String::from),
+                mcp_config: mcp.map(String::from),
+            },
+        }
     }
 
     #[test]
     fn deploy_mcp_json_creates_config() {
         let tmp = tempdir().unwrap();
-        let _deployer = make_test_deployer();
-
-        // Create a minimal plugin pointing at a temp config file
-        let mut plugin = default_agent_plugins()
-            .into_iter()
-            .find(|p| p.id == "claude-code")
-            .unwrap();
         let config_path = tmp.path().join("claude-settings.json");
-        plugin.paths.mcp = PathTemplate {
-            relative: config_path.to_string_lossy().to_string(),
-            format: "json".into(),
-            description: None,
-            project_level: false,
-        };
-
-        let mut deployer = ResourceDeployer::default();
-        deployer.upsert_plugin(plugin);
+        let deployer = ResourceDeployer::with_agents(vec![test_agent(
+            "claude-code",
+            Some(config_path.to_str().unwrap()),
+            None,
+        )]);
 
         let server = McpServerRecord {
             id: "mcp-1".into(),
@@ -724,21 +719,12 @@ mod tests {
     #[test]
     fn deploy_mcp_http_writes_url_config() {
         let tmp = tempdir().unwrap();
-        let config_path = tmp.path().join("claude-settings.json");
-
-        let mut plugin = default_agent_plugins()
-            .into_iter()
-            .find(|p| p.id == "claude-code")
-            .unwrap();
-        plugin.paths.mcp = PathTemplate {
-            relative: config_path.to_string_lossy().to_string(),
-            format: "json".into(),
-            description: None,
-            project_level: false,
-        };
-
-        let mut deployer = ResourceDeployer::default();
-        deployer.upsert_plugin(plugin);
+        let config_path = tmp.path().join("settings.json");
+        let deployer = ResourceDeployer::with_agents(vec![test_agent(
+            "claude-code",
+            Some(config_path.to_str().unwrap()),
+            None,
+        )]);
 
         let server = McpServerRecord {
             id: "mcp-http".into(),
@@ -771,32 +757,21 @@ mod tests {
         assert_eq!(def["url"], "https://mcp.example.com/mcp");
         assert!(def.get("command").is_none());
 
-        // list_deployed_mcp surfaces the transport + url
         let deployed = deployer.list_deployed_mcp("claude-code", None).unwrap();
         assert_eq!(deployed.len(), 1);
         assert_eq!(deployed[0]["name"], "remote-server");
         assert_eq!(deployed[0]["transport"], "http");
-        assert_eq!(deployed[0]["url"], "https://mcp.example.com/mcp");
     }
 
     #[test]
     fn deploy_mcp_http_without_url_errors() {
         let tmp = tempdir().unwrap();
-        let config_path = tmp.path().join("claude-settings.json");
-
-        let mut plugin = default_agent_plugins()
-            .into_iter()
-            .find(|p| p.id == "claude-code")
-            .unwrap();
-        plugin.paths.mcp = PathTemplate {
-            relative: config_path.to_string_lossy().to_string(),
-            format: "json".into(),
-            description: None,
-            project_level: false,
-        };
-
-        let mut deployer = ResourceDeployer::default();
-        deployer.upsert_plugin(plugin);
+        let config_path = tmp.path().join("settings.json");
+        let deployer = ResourceDeployer::with_agents(vec![test_agent(
+            "claude-code",
+            Some(config_path.to_str().unwrap()),
+            None,
+        )]);
 
         let server = McpServerRecord {
             id: "mcp-http".into(),
@@ -836,19 +811,11 @@ mod tests {
         )
         .unwrap();
 
-        let mut plugin = default_agent_plugins()
-            .into_iter()
-            .find(|p| p.id == "claude-code")
-            .unwrap();
-        plugin.paths.mcp = PathTemplate {
-            relative: config_path.to_string_lossy().to_string(),
-            format: "json".into(),
-            description: None,
-            project_level: false,
-        };
-
-        let mut deployer = ResourceDeployer::default();
-        deployer.upsert_plugin(plugin);
+        let deployer = ResourceDeployer::with_agents(vec![test_agent(
+            "claude-code",
+            Some(config_path.to_str().unwrap()),
+            None,
+        )]);
 
         let deployed = deployer.list_deployed_mcp("claude-code", None).unwrap();
         assert_eq!(deployed.len(), 1);
@@ -858,20 +825,12 @@ mod tests {
     #[test]
     fn deploy_command_writes_markdown_file() {
         let tmp = tempdir().unwrap();
-        let mut plugin = default_agent_plugins()
-            .into_iter()
-            .find(|p| p.id == "claude-code")
-            .unwrap();
         let cmd_dir = tmp.path().join("commands");
-        plugin.paths.commands = PathTemplate {
-            relative: cmd_dir.to_string_lossy().to_string(),
-            format: "markdown".into(),
-            description: None,
-            project_level: true,
-        };
-
-        let mut deployer = ResourceDeployer::default();
-        deployer.upsert_plugin(plugin);
+        let deployer = ResourceDeployer::with_agents(vec![test_agent(
+            "claude-code",
+            None,
+            Some(cmd_dir.to_str().unwrap()),
+        )]);
 
         let command = PromptRecord {
             id: "cmd-1".into(),
@@ -905,9 +864,41 @@ mod tests {
 
     #[test]
     fn agents_supporting_filters_by_capability() {
-        let deployer = make_test_deployer();
+        let deployer = ResourceDeployer::new();
         let mcp_agents = deployer.agents_supporting("mcp");
         assert!(mcp_agents.contains(&"claude-code".to_string()));
-        assert!(mcp_agents.contains(&"cursor".to_string()));
+        assert!(mcp_agents.contains(&"opencode".to_string()));
+    }
+
+    #[test]
+    fn mcp_unsupported_agent_errors() {
+        let deployer = ResourceDeployer::new();
+        let err = deployer
+            .deploy_mcp(
+                &McpServerRecord {
+                    id: "m".into(),
+                    name: "s".into(),
+                    description: None,
+                    command: "npx".into(),
+                    url: None,
+                    args_json: "[]".into(),
+                    env_json: "{}".into(),
+                    transport: "stdio".into(),
+                    scope: "global".into(),
+                    project_id: None,
+                    source_registry: None,
+                    source_ref: None,
+                    tags: vec![],
+                    enabled: true,
+                    usage_count: 0,
+                    last_used_at: None,
+                    created_at: 0,
+                    updated_at: 0,
+                },
+                "mockAgent",
+                None,
+            )
+            .unwrap_err();
+        assert!(err.to_string().contains("does not support MCP"));
     }
 }

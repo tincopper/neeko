@@ -29,9 +29,9 @@ pub fn get_agent(agent_id: String, state: State<AppStateWrapper>) -> Result<Agen
         .ok_or_else(|| AppError::NotFound(format!("Agent not found: {}", agent_id)))
 }
 
-/// List agents that support Agent Chat (declared `chat_transport`).
+/// List agents that support Agent Chat（声明了 CHAT 能力）。
 ///
-/// 前端 Agent Chat 页面的 agent 列表单一事实源：只有声明了 chat 传输能力的
+/// 前端 Agent Chat 页面的 agent 列表单一事实源：只有 `chat: Some(_)` 的
 /// agent 才会出现，避免把仅终端 TUI 的 agent 误展示在页面选择器里。
 #[tauri::command]
 pub fn list_chat_agents(state: State<AppStateWrapper>) -> Result<Vec<AgentConfig>, AppError> {
@@ -42,45 +42,51 @@ pub fn list_chat_agents(state: State<AppStateWrapper>) -> Result<Vec<AgentConfig
         .map(|am| {
             am.get_agents()
                 .iter()
-                .filter(|a| a.chat_transport.is_some())
+                .filter(|a| a.chat.is_some())
                 .cloned()
                 .collect()
         })
 }
 
-/// List model IDs an agent supports in Agent Chat.
+/// List model IDs an agent supports in Agent Chat（运行时动态发现，不持久化）。
 ///
-/// For OpenCode, this dynamically discovers models by executing
-/// `opencode models --verbose`. For other agents, returns the statically
-/// configured model list.
+/// OpenCode 执行 `opencode models --verbose` 动态发现；其他 agent 返回空列表
+/// （模型是 agent 自己的事，Neeko 不管理模型配置）。
 #[tauri::command]
 pub async fn list_agent_models(
     agent_id: String,
-    state: State<'_, AppStateWrapper>,
+    _state: State<'_, AppStateWrapper>,
 ) -> Result<Vec<ModelInfo>, AppError> {
-    // For OpenCode, dynamically discover models.
-    if agent_id == crate::agent::ids::AGENT_OPENCODE {
+    if agent_id == "opencode" {
         return crate::agent::model_discovery::discover_opencode_models(None).await;
     }
-
-    // For other agents, return the statically configured model list.
-    let models = state
-        .agent_manager
-        .lock()
-        .map_err(AppError::from)?
-        .get_agent(&agent_id)
-        .map(|a| crate::agent::model_discovery::models_from_ids(&a.models))
-        .ok_or_else(|| AppError::NotFound(format!("Agent not found: {}", agent_id)))?;
-
-    Ok(models)
+    Ok(Vec::new())
 }
 
 /// Add or update an agent and persist to config.
 ///
-/// If an agent with the same ID already exists (built-in or custom),
-/// it is replaced. The change is persisted to the `customAgents` config array.
+/// 内置 agent → 内存原位覆盖 + 持久化到 config.json `agentOverrides`（不写
+/// `customAgents`，避免产生内置副本）；
+/// 自定义 agent → 现状（`customAgents` 数组 upsert）。
 #[tauri::command]
 pub fn add_agent(agent: AgentConfig, state: State<AppStateWrapper>) -> Result<(), AppError> {
+    let is_builtin = {
+        let am = state.agent_manager.lock().map_err(AppError::from)?;
+        am.is_builtin_id(&agent.id)
+    };
+    if is_builtin {
+        // 内置：内存原位覆盖（AgentManager 保留 is_builtin 身份）+ 持久化覆盖层。
+        state
+            .agent_manager
+            .lock()
+            .map_err(AppError::from)?
+            .add_agent(agent.clone());
+        return state
+            .storage_manager
+            .save_agent_override(&agent.id, Some(&agent))
+            .map_err(|e| AppError::Storage(format!("Failed to persist agent override: {e}")));
+    }
+
     {
         let mut am = state.agent_manager.lock().map_err(AppError::from)?;
         if am.get_agent(&agent.id).is_some() {
@@ -88,67 +94,55 @@ pub fn add_agent(agent: AgentConfig, state: State<AppStateWrapper>) -> Result<()
         }
         am.add_agent(agent.clone());
     }
-    let mut config = state
-        .storage_manager
-        .load_config()
-        .map_err(|e| AppError::Storage(format!("Failed to load config: {e}")))?;
-    let custom_agents = config
-        .as_object_mut()
-        .and_then(|m| {
-            m.entry("customAgents")
-                .or_insert(serde_json::json!([]))
-                .as_array_mut()
-        })
-        .ok_or_else(|| AppError::Storage("Failed to access config".to_string()))?;
     // Upsert: replace existing entry with same ID, or append
-    if let Some(pos) = custom_agents
+    let mut custom = state.storage_manager.load_custom_agents();
+    if let Some(pos) = custom
         .iter()
         .position(|a| a.get("id").and_then(|v| v.as_str()) == Some(&agent.id))
     {
-        custom_agents[pos] = serde_json::to_value(&agent).map_err(AppError::from)?;
+        custom[pos] = serde_json::to_value(&agent).map_err(AppError::from)?;
     } else {
-        custom_agents.push(serde_json::to_value(&agent).map_err(AppError::from)?);
+        custom.push(serde_json::to_value(&agent).map_err(AppError::from)?);
     }
     state
         .storage_manager
-        .save_config(&config)
-        .map_err(AppError::from)
+        .save_custom_agents(&custom)
+        .map_err(|e| AppError::Storage(format!("Failed to persist custom agents: {e}")))
 }
 
-/// Remove a custom agent and persist the change.
+/// Remove an agent and persist the change.
+///
+/// 内置 agent → 内存恢复出厂 + 清除 config.json `agentOverrides` 覆盖（不是删除）；
+/// 自定义 agent → 现状（从内存与 `customAgents` 移除）。
 #[tauri::command]
 pub fn remove_agent(agent_id: String, state: State<AppStateWrapper>) -> Result<(), AppError> {
-    {
+    let is_builtin = {
         let am = state.agent_manager.lock().map_err(AppError::from)?;
-        if let Some(agent) = am.get_agent(&agent_id) {
-            if agent.is_builtin {
-                return Err(AppError::InvalidInput(format!(
-                    "Cannot remove builtin agent: {}",
-                    agent_id
-                )));
-            }
-        }
+        am.is_builtin_id(&agent_id)
+    };
+    if is_builtin {
+        // 内置：恢复出厂（清除覆盖）。
+        state
+            .agent_manager
+            .lock()
+            .map_err(AppError::from)?
+            .remove_agent(&agent_id);
+        return state
+            .storage_manager
+            .save_agent_override(&agent_id, None)
+            .map_err(|e| AppError::Storage(format!("Failed to clear agent override: {e}")));
     }
     state
         .agent_manager
         .lock()
         .map_err(AppError::from)?
         .remove_agent(&agent_id);
-    let mut config = state
-        .storage_manager
-        .load_config()
-        .map_err(|e| AppError::Storage(format!("Failed to load config: {e}")))?;
-    if let Some(custom_agents) = config
-        .as_object_mut()
-        .and_then(|m| m.get_mut("customAgents"))
-        .and_then(|v| v.as_array_mut())
-    {
-        custom_agents.retain(|a| a.get("id").and_then(|v| v.as_str()) != Some(&agent_id));
-    }
+    let mut custom = state.storage_manager.load_custom_agents();
+    custom.retain(|a| a.get("id").and_then(|v| v.as_str()) != Some(&agent_id));
     state
         .storage_manager
-        .save_config(&config)
-        .map_err(AppError::from)
+        .save_custom_agents(&custom)
+        .map_err(|e| AppError::Storage(format!("Failed to persist custom agents: {e}")))
 }
 
 /// Set the selected agents for a project.

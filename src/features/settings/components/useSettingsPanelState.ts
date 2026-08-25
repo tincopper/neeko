@@ -2,12 +2,11 @@ import { open } from '@tauri-apps/plugin-dialog';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import type { AgentConfig, AppConfig, DiffMode } from '@/shared/types';
-import { DEFAULT_AGENT_ICON } from '@/shared/utils/agents';
 import { IDE_PRESETS, getIdeCommand } from '@/shared/utils/idePresets';
 import type { IdePreset } from '@/shared/utils/idePresets';
 
 // eslint-disable-next-line import/no-restricted-paths -- settings panel state management needs agent API
-import { addAgent, removeAgent, importAgentIcon } from '../../agent/api/agentApi';
+import { addAgent, removeAgent } from '../../agent/api/agentApi';
 import { getSystemFonts } from '../api/settingsApi';
 
 import { BUILTIN_FONTS, PRESET_SHELLS, type SettingsNavId } from './constants';
@@ -43,12 +42,6 @@ export function useSettingsPanelState({
 
   const [newIdeName, setNewIdeName] = useState('');
   const [newIdeCommand, setNewIdeCommand] = useState('');
-
-  const [newAgentName, setNewAgentName] = useState('');
-  const [newAgentCommand, setNewAgentCommand] = useState('');
-  const [newAgentArgs, setNewAgentArgs] = useState('');
-  const [newAgentSkillPath, setNewAgentSkillPath] = useState('');
-  const [newAgentIcon, setNewAgentIcon] = useState(DEFAULT_AGENT_ICON);
 
   const [editingPresetId, setEditingPresetId] = useState<string | null>(null);
   const [editingValue, setEditingValue] = useState('');
@@ -164,93 +157,74 @@ export function useSettingsPanelState({
     onConfigChange({ ...config, customIdes: next });
   };
 
-  const uploadAgentIcon = useCallback(async () => {
-    try {
-      const selected = await open({
-        multiple: false,
-        filters: [
-          {
-            name: 'Images',
-            extensions: ['png', 'jpg', 'jpeg', 'svg', 'gif', 'webp', 'ico', 'bmp'],
-          },
-        ],
-      });
-      if (!selected) return;
-      const path = typeof selected === 'string' ? selected : selected;
-      const iconPath = await importAgentIcon(path);
-      setNewAgentIcon(iconPath);
-    } catch (e) {
-      console.error('[Settings] Failed to upload agent icon:', e);
+  /** Upsert an agent into the customAgents array by matching ID. */
+  function upsertCustomAgent(agents: AgentConfig[], updated: AgentConfig): AgentConfig[] {
+    const idx = agents.findIndex((a) => a.id === updated.id);
+    if (idx >= 0) {
+      const next = [...agents];
+      next[idx] = updated;
+      return next;
     }
-  }, []);
+    return [...agents, updated];
+  }
 
-  const addCustomAgent = async () => {
-    const name = newAgentName.trim();
-    const command = newAgentCommand.trim();
-    if (!name || !command) {
-      return;
-    }
-    const id = `custom:${name.toLowerCase().replace(/\s+/g, '-')}`;
-    const exists = (config.customAgents || []).some((agent) => agent.id === id);
-    if (exists) {
-      return;
-    }
+  /** 新建/编辑自定义 Agent（AgentForm 提交）：更新 customAgents + 持久化 add_agent。 */
+  const saveCustomAgent = useCallback(
+    async (agent: AgentConfig) => {
+      const nextCustom = upsertCustomAgent(config.customAgents ?? [], agent);
+      onConfigChange({ ...config, customAgents: nextCustom });
+      try {
+        await addAgent(agent);
+      } catch (e) {
+        console.error('[Settings] Failed to save agent:', e);
+      }
+    },
+    [config, onConfigChange],
+  );
 
-    const args = newAgentArgs.trim()
-      ? newAgentArgs
-          .trim()
-          .split(',')
-          .map((arg) => arg.trim())
-          .filter(Boolean)
-      : [];
+  /** 删除自定义 Agent（按 id）：更新 customAgents + 持久化 remove_agent。 */
+  const removeCustomAgentById = useCallback(
+    async (agentId: string) => {
+      const nextCustom = (config.customAgents ?? []).filter((a) => a.id !== agentId);
+      onConfigChange({ ...config, customAgents: nextCustom });
+      try {
+        await removeAgent(agentId);
+      } catch (e) {
+        console.error('[Settings] Failed to remove agent:', e);
+      }
+    },
+    [config, onConfigChange],
+  );
 
-    const skillPath = newAgentSkillPath.trim() || undefined;
+  /** 保存内置 Agent 覆盖（AgentForm 提交）：更新 config.agentOverrides + 后端 add_agent（覆盖层）。 */
+  const saveBuiltinOverride = useCallback(
+    async (agent: AgentConfig) => {
+      const withIdentity: AgentConfig = { ...agent, is_builtin: true };
+      const next = { ...(config.agentOverrides || {}), [agent.id]: withIdentity };
+      onConfigChange({ ...config, agentOverrides: next });
+      try {
+        await addAgent(withIdentity);
+      } catch (e) {
+        console.error('[Settings] Failed to save built-in override:', e);
+      }
+    },
+    [config, onConfigChange],
+  );
 
-    const newAgent: AgentConfig = {
-      id,
-      name,
-      command,
-      args,
-      env: {},
-      icon: newAgentIcon,
-      enabled: true,
-      skill_path: skillPath,
-    };
-
-    const nextCustom = [...(config.customAgents || []), newAgent];
-
-    onConfigChange({
-      ...config,
-      customAgents: nextCustom,
-    });
-
-    try {
-      await addAgent(newAgent);
-    } catch (e) {
-      console.error('[Settings] Failed to add agent:', e);
-    }
-
-    setNewAgentName('');
-    setNewAgentCommand('');
-    setNewAgentArgs('');
-    setNewAgentSkillPath('');
-    setNewAgentIcon(DEFAULT_AGENT_ICON);
-  };
-
-  const removeCustomAgent = async (idx: number) => {
-    const agent = (config.customAgents || [])[idx];
-    if (!agent) {
-      return;
-    }
-    const nextCustom = [...(config.customAgents || [])];
-    nextCustom.splice(idx, 1);
-    onConfigChange({ ...config, customAgents: nextCustom });
-    try {
-      await removeAgent(agent.id);
-    } catch (e) {
-      console.error('[Settings] Failed to remove agent:', e);
-    }
-  };
+  /** 重置内置 Agent 覆盖（恢复出厂）：删除 config.agentOverrides 条目 + 后端 remove_agent。 */
+  const resetBuiltinOverride = useCallback(
+    async (agentId: string) => {
+      const next = { ...(config.agentOverrides || {}) };
+      delete next[agentId];
+      onConfigChange({ ...config, agentOverrides: next });
+      try {
+        await removeAgent(agentId);
+      } catch (e) {
+        console.error('[Settings] Failed to reset built-in agent:', e);
+      }
+    },
+    [config, onConfigChange],
+  );
 
   const startEditAgent = (agent: AgentConfig) => {
     const current = config.agentCommandOverrides?.[agent.id] ?? agent.command;
@@ -272,15 +246,26 @@ export function useSettingsPanelState({
     setEditingPresetId(null);
   };
 
+  /** 内置 agent 的有效 command：完整覆盖优先 → 旧 command 覆盖兼容 → 出厂值。 */
   const getEffectiveAgentCommand = (agent: AgentConfig) =>
-    config.agentCommandOverrides?.[agent.id] ?? agent.command;
+    config.agentOverrides?.[agent.id]?.command ??
+    config.agentCommandOverrides?.[agent.id] ??
+    agent.command;
+
+  /** 内置 agent 的有效配置（覆盖层优先，用于设置页展示与 AgentForm 编辑初始值）。 */
+  const getEffectiveAgent = (agent: AgentConfig) => config.agentOverrides?.[agent.id] ?? agent;
 
   const updateAgentSkillPath = async (agent: AgentConfig, newPath: string) => {
     const trimmed = newPath.trim();
     const updated: AgentConfig = {
-      ...agent,
+      ...getEffectiveAgent(agent),
       skill_path: trimmed || undefined,
     };
+    if (agent.is_builtin) {
+      // 内置：走覆盖层（不污染 customAgents）。
+      await saveBuiltinOverride(updated);
+      return;
+    }
     onConfigChange({
       ...config,
       customAgents: upsertCustomAgent(config.customAgents, updated),
@@ -319,17 +304,6 @@ export function useSettingsPanelState({
   const cancelSkillPathEdit = () => {
     setSkillPathEditingAgentId(null);
   };
-
-  /** Upsert an agent into the customAgents array by matching ID. */
-  function upsertCustomAgent(agents: AgentConfig[], updated: AgentConfig): AgentConfig[] {
-    const idx = agents.findIndex((a) => a.id === updated.id);
-    if (idx >= 0) {
-      const next = [...agents];
-      next[idx] = updated;
-      return next;
-    }
-    return [...agents, updated];
-  }
 
   const startEditPreset = (ide: IdePreset) => {
     const current = config.ideCommandOverrides?.[ide.id] ?? getIdeCommand(ide);
@@ -398,16 +372,6 @@ export function useSettingsPanelState({
     setNewIdeName,
     newIdeCommand,
     setNewIdeCommand,
-    newAgentName,
-    setNewAgentName,
-    newAgentCommand,
-    setNewAgentCommand,
-    newAgentArgs,
-    setNewAgentArgs,
-    newAgentSkillPath,
-    setNewAgentSkillPath,
-    newAgentIcon,
-    setNewAgentIcon,
     isCustomShell,
     filteredFonts,
 
@@ -421,13 +385,15 @@ export function useSettingsPanelState({
 
     addCustomIde,
     removeCustomIde,
-    addCustomAgent,
-    removeCustomAgent,
-    uploadAgentIcon,
+    saveCustomAgent,
+    removeCustomAgentById,
+    saveBuiltinOverride,
+    resetBuiltinOverride,
 
     startEditAgent,
     saveAgentOverride,
     getEffectiveAgentCommand,
+    getEffectiveAgent,
 
     selectSkillPath,
     startEditSkillPath,

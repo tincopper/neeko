@@ -42,27 +42,31 @@ pub async fn generate_commit_message(
             username,
             auth,
         } => {
-            run_agent_remote(
+            run_agent_exec(
+                ExecTarget::Remote {
+                    host: host.clone(),
+                    port: *port,
+                    username: username.clone(),
+                    auth: auth.clone(),
+                },
                 &repo_path,
                 &agent_cmd,
                 &prompt_args,
                 &post_prompt_args,
                 &prompt,
-                host.as_str(),
-                *port,
-                username.as_str(),
-                auth,
             )
             .await?
         }
         ExecTarget::Wsl { distro } => {
-            run_agent_wsl(
+            run_agent_exec(
+                ExecTarget::Wsl {
+                    distro: distro.clone(),
+                },
                 &repo_path,
                 &agent_cmd,
                 &prompt_args,
                 &post_prompt_args,
                 &prompt,
-                distro,
             )
             .await?
         }
@@ -96,73 +100,44 @@ async fn run_agent_local(
     .await?
 }
 
-/// Run the agent on a remote host to generate a commit message.
-#[allow(clippy::too_many_arguments)]
-async fn run_agent_remote(
-    wd: &str,
-    agent_cmd: &str,
-    prompt_args: &[String],
-    post_prompt_args: &[String],
-    prompt: &str,
-    host: &str,
-    port: u16,
-    username: &str,
-    auth: &crate::common::connection::types::AuthMethod,
-) -> Result<String, AppError> {
-    let sp = crate::common::utils::command::local::safe_path(wd);
-    let actual_cmd =
-        ai_svc::build_agent_commit_cmd(&sp, agent_cmd, prompt_args, post_prompt_args, prompt);
-
-    log::info!("[AI commit Remote] agent_cmd='{}'", agent_cmd);
-
-    // PATH/profile loading is handled by SshExecutor (login shell).
-    let target = ExecTarget::Remote {
-        host: host.to_string(),
-        port,
-        username: username.to_string(),
-        auth: auth.clone(),
-    };
-    match exec_on(&target, "bash", &["-c", &actual_cmd]).await {
-        Ok(o) => {
-            log::info!("[AI commit Remote] success, stdout_len={}", o.len());
-            Ok(o)
-        }
-        Err(e) => {
-            log::error!("[AI commit Remote] exec failed: {}", e);
-            Err(AppError::InvalidInput(format!(
-                "Failed to run agent on remote: {}",
-                e
-            )))
-        }
+/// 执行环境标签（日志用，避免依赖 `ExecTarget: Debug`）。
+const fn exec_target_label(target: &ExecTarget) -> &'static str {
+    match target {
+        ExecTarget::Local => "Local",
+        ExecTarget::Wsl { .. } => "WSL",
+        ExecTarget::Remote { .. } => "Remote",
     }
 }
 
-/// Run the agent inside a WSL distro to generate a commit message.
-async fn run_agent_wsl(
+/// Run the agent on a remote host or inside a WSL distro to generate a commit
+/// message（两种 ExecTarget 执行逻辑一致，仅 target 构造不同）。
+///
+/// PATH/profile loading is handled by the target executor (login shell).
+#[allow(clippy::too_many_arguments)]
+async fn run_agent_exec(
+    target: ExecTarget,
     wd: &str,
     agent_cmd: &str,
     prompt_args: &[String],
     post_prompt_args: &[String],
     prompt: &str,
-    distro: &str,
 ) -> Result<String, AppError> {
+    let label = exec_target_label(&target);
     let sp = crate::common::utils::command::local::safe_path(wd);
     let actual_cmd =
         ai_svc::build_agent_commit_cmd(&sp, agent_cmd, prompt_args, post_prompt_args, prompt);
 
-    // PATH/profile loading is handled by WslExecutor (login shell).
-    let target = ExecTarget::Wsl {
-        distro: distro.to_string(),
-    };
+    log::info!("[AI commit {label}] agent_cmd='{}'", agent_cmd);
+
     match exec_on(&target, "bash", &["-c", &actual_cmd]).await {
         Ok(o) => {
-            log::info!("[AI commit WSL] success, stdout_len={}", o.len());
+            log::info!("[AI commit {label}] success, stdout_len={}", o.len());
             Ok(o)
         }
         Err(e) => {
-            log::error!("[AI commit WSL] exec failed: {}", e);
+            log::error!("[AI commit {label}] exec failed: {}", e);
             Err(AppError::InvalidInput(format!(
-                "Failed to run agent in WSL: {}",
+                "Failed to run agent on {label}: {}",
                 e
             )))
         }

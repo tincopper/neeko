@@ -198,19 +198,6 @@ describe('usePaneActions', () => {
     expect(tabs[0]?.data.kind).toBe('file');
   });
 
-  it('handleActionMenuExecute: new-terminal-with-agent creates terminal tab', () => {
-    const { result } = renderHook(() => usePaneActions(defaultParams));
-
-    act(() => {
-      result.current.handleActionMenuExecute({ id: 'new-terminal-with-agent' } as never);
-    });
-
-    const s = useEditorStore.getState();
-    const tabs = s.tabs['p1']?.tabs ?? [];
-    expect(tabs.length).toBe(1);
-    expect(tabs[0]?.data.kind).toBe('terminal');
-  });
-
   it('handleActionMenuAgentTerminal creates agent terminal tab', () => {
     const { result } = renderHook(() => usePaneActions(defaultParams));
 
