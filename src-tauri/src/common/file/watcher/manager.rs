@@ -25,7 +25,7 @@ use tauri::{AppHandle, Emitter};
 
 struct WatcherHandle {
     _watcher: RecommendedWatcher,
-    // scheduler / worker / git_changed_debounce / heartbeat：仅 git 项目持有，非 git 项目为 None
+    // scheduler / worker / heartbeat：仅 git 项目持有，非 git 项目为 None
     _scheduler: Option<ThrottleScheduler>,
     _worker: Option<GitStatusWorker>,
     // .git 元数据监听器（HEAD 分支切换 + index 暂存/取消暂存 + worktree HEAD），
@@ -34,8 +34,6 @@ struct WatcherHandle {
     _debounce: DebounceSender,
     // file-tree-changed debounce sender（Create/Remove/Rename 事件触发）
     _tree_debounce: TreeChangeDebounceSender,
-    // git-changed 全量 fallback 节流 sender（仅 git 项目）
-    _git_changed_debounce: Option<GitChangedDebounceSender>,
     // git 语义忽略过滤器（仅 git 项目）
     _gitignore: Option<GitIgnoreFilter>,
     stop_signal: Arc<AtomicBool>,
@@ -78,10 +76,12 @@ impl WatcherManager {
 
         // 1. 创建 GitStatusWorker -- 有变化时发增量 diff 事件
         // 非 git 项目跳过：避免对非 git 仓库启动 git status worker 执行 git rev-parse 等命令
-        let (worker, scheduler, git_changed_debounce) = if git_repo {
+        let (worker, scheduler) = if git_repo {
             let pid_emit = project_id.clone();
-            let debounce = GitChangedDebounceSender::new(project_id.clone(), app_handle.clone());
-            let git_changed_signal = debounce.clone();
+            // git-changed 全量 fallback 节流 sender：worker 闭包持有其 clone 即可
+            // 保证 channel 存活，原始 sender 无需在 WatcherHandle 中冗余保存。
+            let git_changed_signal =
+                GitChangedDebounceSender::new(project_id.clone(), app_handle.clone());
             let worker = GitStatusWorker::start(path.clone(), move |mut diff: GitStatusDiff| {
                 diff.project_id = pid_emit.clone();
                 // 增量 diff 事件（即时、轻量，前端直接 patch store）
@@ -99,14 +99,14 @@ impl WatcherManager {
             // 立即触发一次 git status 检查，获取初始状态
             worker.check();
 
-            (Some(worker), Some(scheduler), Some(debounce))
+            (Some(worker), Some(scheduler))
         } else {
             log::info!(
                 "[Watcher] Skipping git status worker for non-git project {} at {}",
                 project_id,
                 path.display()
             );
-            (None, None, None)
+            (None, None)
         };
 
         // 3. 创建 file-changed debounce sender
@@ -232,7 +232,6 @@ impl WatcherManager {
         // 4b. 创建 git 元数据 watcher -- 单独监听 .git（HEAD / index / worktrees），
         // 绕过 git 忽略过滤（该过滤会丢弃 .git 内事件，导致 checkout 后
         // git worker 无法感知分支变化，changes 列表残留旧分支数据）。
-        // 非 git 项目跳过。
         let head_watcher = if git_repo {
             resolve_git_meta_paths(&path).and_then(|meta| {
                 let scheduler_tx = scheduler.as_ref().map(|s| s.sender());
@@ -240,25 +239,26 @@ impl WatcherManager {
                 let pid_index = project_id.clone();
                 let pid_head = project_id.clone();
                 let app_for_head = app_handle.clone();
-                let git_changed_signal_for_meta = git_changed_debounce.clone();
                 create_git_meta_watcher(
                     project_id.clone(),
                     &meta,
                     move || {
+                        // 公理1（信号≠事实）：index 写入只作为查询调度提示，
+                        // 交由 worker 查询-比较后决定是否通知——不再无条件触发
+                        // 全量刷新。此前无条件 `signal()` 会与 git 命令写 index
+                        // 形成自反馈回路（git-changed → 前端刷新命令写 index →
+                        // index 事件 → 再 git-changed）。
                         log::debug!(
-                            "[Watcher:{}] git index changed, triggering git status",
+                            "[Watcher:{}] git index changed, hinting git status check",
                             pid_index
                         );
-                        if let Some(ref tx) = scheduler_tx {
+                        if let Some(tx) = &scheduler_tx {
                             let _ = tx.send(());
-                        }
-                        if let Some(ref signal) = git_changed_signal_for_meta {
-                            signal.signal();
                         }
                     },
                     move |has_wt| {
                         log::debug!("[Watcher:{}] HEAD changed, triggering git status", pid_head);
-                        if let Some(ref tx) = scheduler_tx_for_head {
+                        if let Some(tx) = &scheduler_tx_for_head {
                             let _ = tx.send(());
                         }
                         if has_wt {
@@ -324,7 +324,6 @@ impl WatcherManager {
                     _head_watcher: head_watcher,
                     _debounce: debounce,
                     _tree_debounce: tree_debounce,
-                    _git_changed_debounce: git_changed_debounce,
                     _gitignore: gitignore_filter,
                     stop_signal: stop,
                     _heartbeat: heartbeat,

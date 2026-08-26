@@ -3,7 +3,8 @@
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
 use crate::common::executor::factory::ExecTarget;
-use crate::core::exec::collect_blocking;
+use crate::common::executor::SpawnOptions;
+use crate::core::exec::{collect_blocking, collect_blocking_with};
 use std::collections::HashMap;
 use std::{path::Path, path::PathBuf, sync::mpsc, thread};
 
@@ -414,11 +415,15 @@ fn get_numstat_map(repo_path: &Path) -> HashMap<String, (i32, i32)> {
     let path_str = repo_path.to_str().unwrap_or(".");
     let mut map: HashMap<String, (i32, i32)> = HashMap::new();
 
+    // 只读查询统一注入 GIT_OPTIONAL_LOCKS=0：`git diff` 不支持 `--no-optional-locks`
+    // 参数，但该环境变量等价且对所有 git 命令生效——跳过 stat-refresh 写
+    // `.git/index`，否则查询自身制造 index 事件，与 watcher 形成自反馈回路（公理2）。
+    const READONLY_ENV: &[(&str, &str)] = &[("GIT_OPTIONAL_LOCKS", "0")];
+
     // Unstaged changes
-    if let Ok(output) = collect_blocking(
+    if let Ok(output) = collect_blocking_with(
         &ExecTarget::Local,
-        "git",
-        &["-C", path_str, "diff", "--numstat"],
+        SpawnOptions::new("git", &["-C", path_str, "diff", "--numstat"]).with_env(READONLY_ENV),
     ) {
         for line in String::from_utf8_lossy(&output.stdout).lines() {
             if let Some((add, del, path)) = super::parsers::parse_numstat_line(line) {
@@ -430,10 +435,10 @@ fn get_numstat_map(repo_path: &Path) -> HashMap<String, (i32, i32)> {
     }
 
     // Staged changes
-    if let Ok(output) = collect_blocking(
+    if let Ok(output) = collect_blocking_with(
         &ExecTarget::Local,
-        "git",
-        &["-C", path_str, "diff", "--cached", "--numstat"],
+        SpawnOptions::new("git", &["-C", path_str, "diff", "--cached", "--numstat"])
+            .with_env(READONLY_ENV),
     ) {
         for line in String::from_utf8_lossy(&output.stdout).lines() {
             if let Some((add, del, path)) = super::parsers::parse_numstat_line(line) {
@@ -678,5 +683,38 @@ mod tests {
 
         let map = get_numstat_map(path);
         assert_eq!(map.get("README.md"), Some(&(2, 1)));
+    }
+
+    // ── 公理1：无事实变化不通知（worker 查询-比较后才 emit）────────────────
+
+    /// 两次 check 之间工作区无变化 → on_change 不得被再次调用（index 假信号
+    /// 不会穿透 worker 的结果比较）。
+    #[test]
+    fn worker_does_not_emit_when_status_unchanged() {
+        use std::sync::mpsc;
+        use std::time::Duration;
+
+        let (tmp, _repo) = create_repo_with_commit();
+        // 脏工作区（一次真实变化，首次 check 会 emit 初始 diff）
+        std::fs::write(tmp.path().join("README.md"), "# Changed\n").unwrap();
+
+        let (emit_tx, emit_rx) = mpsc::channel::<GitStatusDiff>();
+        let worker = GitStatusWorker::start(tmp.path().to_path_buf(), move |diff| {
+            let _ = emit_tx.send(diff);
+        });
+
+        // 首次 check：初始状态 → 应 emit 一次
+        worker.check();
+        emit_rx
+            .recv_timeout(Duration::from_secs(5))
+            .expect("initial check should emit the first diff");
+
+        // 再次 check（无任何变化）→ 结果比较无差异 → 不得再 emit
+        worker.check();
+        match emit_rx.recv_timeout(Duration::from_millis(800)) {
+            Ok(_) => panic!("unchanged status must not emit another diff"),
+            Err(mpsc::RecvTimeoutError::Timeout) => {}
+            Err(e) => panic!("unexpected recv error: {e}"),
+        }
     }
 }

@@ -17,6 +17,25 @@ use crate::project::types::{
     FileDiffStats, FileStatus, GitBranchInfo, GitInfo, GitProvider, StashActionResult, StashEntry,
     Worktree,
 };
+/// 只读 git 查询的执行环境（公理2：查询无副作用）。
+///
+/// `GIT_OPTIONAL_LOCKS=0` 是 git 官方的「跳过全部可选锁」开关：`git status` /
+/// `git diff` / `git diff --numstat` 等只读命令默认会 stat-refresh 并改写
+/// `.git/index`，index 写入又会触发 `.git` 元数据 watcher 事件，与「事件 →
+/// 再查询 → 再写 index」形成自反馈回路（2026-08-26 实测 18.9G/2.5min 内存
+/// 暴涨根因）。该环境变量对**所有** git 命令生效（包括不支持
+/// `--no-optional-locks` 参数的 `git diff`），且对 WSL/SSH transport 同样透传。
+/// 只读查询统一走 `run_git_opts(..., readonly_opts())`；写操作（add/commit/
+/// checkout 等）不传。
+const READONLY_ENV: &[(&str, &str)] = &[("GIT_OPTIONAL_LOCKS", "0")];
+
+/// 构造只读查询的 [`GitExecOptions`]（env 为静态切片，可安全跨 await 借用）。
+const fn readonly_opts() -> super::transport::GitExecOptions<'static> {
+    super::transport::GitExecOptions {
+        env: READONLY_ENV,
+        extra_config: &[],
+    }
+}
 
 /// 解析 worktree_path：空字符串视为「未指定 worktree」，回落项目根目录。
 ///
@@ -840,17 +859,17 @@ pub async fn get_staged_diff(
     work_dir: &str,
     line_limit: usize,
 ) -> Result<String> {
-    let diff_text = transport.run_git(&["diff", "--cached"], work_dir).await?;
-    if diff_text.trim().is_empty() {
-        return Ok(String::new());
-    }
+    // 只读查询：GIT_OPTIONAL_LOCKS=0 防止 stat-refresh 写 .git/index（自反馈回路公理2）
+    let diff_text = transport
+        .run_git_opts(&["diff", "--cached"], work_dir, readonly_opts())
+        .await?;
     let lines: Vec<&str> = diff_text.lines().collect();
     if lines.len() <= line_limit {
         Ok(diff_text)
     } else {
         let truncated: String = lines[..line_limit].join("\n");
         let stat = transport
-            .run_git(&["diff", "--cached", "--stat"], work_dir)
+            .run_git_opts(&["diff", "--cached", "--stat"], work_dir, readonly_opts())
             .await?;
         Ok(format!(
             "{}\n\n[diff truncated at {} lines]\n\nFile change summary:\n{}",
@@ -1028,7 +1047,7 @@ async fn get_worktree_changed_files_shell(
     worktree_path: &str,
 ) -> Result<Vec<FileChange>> {
     let output = transport
-        .run_git(&["status", "--porcelain"], worktree_path)
+        .run_git_opts(&["status", "--porcelain"], worktree_path, readonly_opts())
         .await?;
     let mut files = parse_porcelain_status(&output);
 
@@ -1039,7 +1058,7 @@ async fn get_worktree_changed_files_shell(
 
         // Unstaged changes
         if let Ok(unstaged) = transport
-            .run_git(&["diff", "--numstat"], worktree_path)
+            .run_git_opts(&["diff", "--numstat"], worktree_path, readonly_opts())
             .await
         {
             for line in unstaged.lines() {
@@ -1053,7 +1072,11 @@ async fn get_worktree_changed_files_shell(
 
         // Staged changes
         if let Ok(staged) = transport
-            .run_git(&["diff", "--cached", "--numstat"], worktree_path)
+            .run_git_opts(
+                &["diff", "--cached", "--numstat"],
+                worktree_path,
+                readonly_opts(),
+            )
             .await
         {
             for line in staged.lines() {
@@ -1099,7 +1122,9 @@ async fn get_file_diff_shell(
     args.push("--".to_string());
     args.push(file_path.to_string());
     let arg_refs: Vec<&str> = args.iter().map(String::as_str).collect();
-    let output = transport.run_git(&arg_refs, work_dir).await?;
+    let output = transport
+        .run_git_opts(&arg_refs, work_dir, readonly_opts())
+        .await?;
     let mut result = super::parsers::parse_unified_diff(&output);
     if result.hunks.is_empty() {
         let full_path = std::path::Path::new(work_dir).join(file_path);
@@ -1275,7 +1300,11 @@ pub async fn get_ignored_files(
     worktree_path: &str,
 ) -> Result<Vec<String>> {
     let output = transport
-        .run_git(&["status", "--porcelain", "--ignored"], worktree_path)
+        .run_git_opts(
+            &["status", "--porcelain", "--ignored"],
+            worktree_path,
+            readonly_opts(),
+        )
         .await?;
     Ok(parse_ignored_porcelain(&output))
 }
@@ -1796,10 +1825,12 @@ mod tests {
 
     // ── collapse 参数：false 时跳过上下文折叠、返回完整上下文 ────────────────
 
-    /// 脚本化 mock transport：返回带长连续 context 的 diff 文本。
+    /// 脚本化 mock transport：返回带长连续 context 的 diff 文本，并捕获
+    /// args 与 opts.env（供只读查询契约断言）。
     struct DiffTextTransport {
         output: String,
         captured_args: std::sync::Mutex<Vec<String>>,
+        captured_env: std::sync::Mutex<Vec<(String, String)>>,
     }
 
     impl DiffTextTransport {
@@ -1807,11 +1838,16 @@ mod tests {
             Self {
                 output,
                 captured_args: std::sync::Mutex::new(Vec::new()),
+                captured_env: std::sync::Mutex::new(Vec::new()),
             }
         }
 
         fn last_args(&self) -> Vec<String> {
             self.captured_args.lock().unwrap().clone()
+        }
+
+        fn last_env(&self) -> Vec<(String, String)> {
+            self.captured_env.lock().unwrap().clone()
         }
     }
 
@@ -1829,10 +1865,22 @@ mod tests {
 
         async fn run_git_opts(
             &self,
-            _args: &[&str],
+            args: &[&str],
             _work_dir: &str,
-            _opts: GitExecOptions<'_>,
+            opts: GitExecOptions<'_>,
         ) -> Result<String> {
+            self.captured_args.lock().unwrap().push(
+                args.iter()
+                    .map(|s| s.to_string())
+                    .collect::<Vec<_>>()
+                    .join(" "),
+            );
+            self.captured_env.lock().unwrap().push(
+                opts.env
+                    .iter()
+                    .map(|(k, v)| (k.to_string(), v.to_string()))
+                    .collect(),
+            );
             Ok(self.output.clone())
         }
 
@@ -1923,29 +1971,77 @@ mod tests {
         );
     }
 
+    // ── 公理2契约：只读查询必须携带 GIT_OPTIONAL_LOCKS=0（不写 .git/index）──
+
+    /// 高频只读查询（changed_files / ignored_files / file_diff / staged_diff）
+    /// 必须经 `readonly_opts()` 注入 `GIT_OPTIONAL_LOCKS=0`——缺 env 时 git
+    /// 可能 stat-refresh 写 index，与 .git 元数据 watcher 形成自反馈回路。
     #[tokio::test]
-    async fn get_file_diff_shell_collapse_false_passes_full_context_arg() {
+    async fn readonly_queries_inject_git_optional_locks() {
         let transport = DiffTextTransport::new(long_context_diff());
-        // shell 路径（open_repo=None）不会走 git2，直接使用 shell 实现
-        let _ = get_file_diff(&transport, "/tmp", "a.txt", false)
+
+        let _ = get_worktree_changed_files(&transport, "/tmp").await;
+        let _ = get_ignored_files(&transport, "/tmp").await;
+        let _ = get_file_diff(&transport, "/tmp", "a.txt", true).await;
+        let _ = get_staged_diff(&transport, "/tmp", 100).await;
+
+        let envs = transport.last_env();
+        assert!(!envs.is_empty(), "只读查询必须携带 env");
+        for env in envs {
+            assert_eq!(
+                env,
+                ("GIT_OPTIONAL_LOCKS".to_string(), "0".to_string()),
+                "只读查询必须注入 GIT_OPTIONAL_LOCKS=0（公理2：查询无副作用）"
+            );
+        }
+    }
+
+    // ── shell 路径（WSL/SSH transport）collapse 契约 ──────────────────────
+
+    /// `get_file_diff_shell`（open_repo=None → shell 实现）的 collapse 参数映射：
+    /// collapse=false → 全量 `-U100000` 上下文参数、不产生 Collapsed 标记；
+    /// collapse=true → `-U3` 并将超阈 context 折叠为 Collapsed 标记。
+    /// 该契约随旧测试被 env 契约测试替换而丢失，这里补回（P2）。
+    #[tokio::test]
+    async fn get_file_diff_shell_collapse_contract() {
+        let transport = DiffTextTransport::new(long_context_diff());
+
+        // collapse=false：全量上下文参数 + 无折叠标记
+        let expanded = get_file_diff(&transport, "/tmp", "a.txt", false)
             .await
-            .expect("parse diff");
+            .expect("parse expanded diff");
         let args = transport.last_args();
         assert!(
-            args[0].contains("-U100000"),
-            "collapse=false should pass -U100000, got: {}",
-            args[0]
+            args.last().unwrap().contains("-U100000"),
+            "collapse=false should pass -U100000, got: {:?}",
+            args.last()
         );
+        assert!(
+            !expanded
+                .hunks
+                .iter()
+                .flat_map(|h| &h.lines)
+                .any(|l| matches!(l, DiffLine::Collapsed(_))),
+            "collapse=false should not produce Collapsed markers"
+        );
+
+        // collapse=true：-U3 + Collapsed 标记
         let collapsed = get_file_diff(&transport, "/tmp", "a.txt", true)
             .await
-            .expect("parse diff");
+            .expect("parse collapsed diff");
+        let args = transport.last_args();
+        assert!(
+            args.last().unwrap().contains("-U3"),
+            "collapse=true should pass -U3, got: {:?}",
+            args.last()
+        );
         assert!(
             collapsed
                 .hunks
                 .iter()
                 .flat_map(|h| &h.lines)
                 .any(|l| matches!(l, DiffLine::Collapsed(_))),
-            "collapse=true should keep markers in shell path"
+            "collapse=true should keep Collapsed markers"
         );
     }
 
