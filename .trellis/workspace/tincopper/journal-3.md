@@ -1022,3 +1022,36 @@ Delivered browser-as-editor-tab (Route A per-tab webviews, '+' Browser option). 
 ### Next Steps
 
 - None - task complete
+
+
+## Session 148: hermetic opencode+command_exists
+
+**Date**: 2026-08-26
+**Task**: hermetic opencode+command_exists
+**Branch**: `main`
+
+### Summary
+
+(Add summary)
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `c7456b4349c44e5e4ff95b7fb6227539eab4cc06` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

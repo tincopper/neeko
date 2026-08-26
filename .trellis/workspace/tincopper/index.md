@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-3.md`
-- **Total Sessions**: 147
+- **Total Sessions**: 148
 - **Last Active**: 2026-08-26
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-3.md` | ~1024 | Active |
+| `journal-3.md` | ~1057 | Active |
 | `journal-2.md` | ~1991 | Archived |
 | `journal-1.md` | ~1986 | Archived |
 <!-- @@@/auto:active-documents -->
@@ -31,6 +31,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 148 | 2026-08-26 | hermetic opencode+command_exists | `c7456b4349c44e5e4ff95b7fb6227539eab4cc06` | `main` |
 | 147 | 2026-08-26 | agent-chat/task bounded caches | `7eeddb8a` | `main` |
 | 146 | 2026-08-26 | terminal-memory-governance bounded pump + drain | `60a28d21` | `main` |
 | 145 | 2026-08-17 | feat(browser): browser as editor tab — per-tab webviews + hardening + neeko-check compliance | `c2c8efd8` | `main` |
