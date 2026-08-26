@@ -1,8 +1,10 @@
 /**
  * Credit-pull consumer protocol for terminal output (内存治理协议前端半场).
  *
- * 后端把输出写入有界 SessionDrain 并发送零载荷唤醒事件；消费侧通过
- * `terminal_drain` 命令拉取二进制块，直到后端报告为空。
+ * 后端把输出写入有界 SessionDrain；消费侧通过 `terminal_drain` 命令拉取
+ * 二进制块，直到后端报告为空。触发源为全局共享轮询器
+ * （`createPollingDrainScheduler`，100ms tick，方案 B 去 eval 化）；历史
+ * 的 `terminal-drain-{id}` 唤醒事件已退役，`onWake` 语义保留供轮询复用。
  *
  * 背压闸门：xterm 仍在消化的在途 write 达到阈值时提前退出循环 —— 队列中
  * 的剩余数据由调度器的闩锁/续拉机制保证最终被拉取，字节永不丢失。
@@ -62,7 +64,7 @@ export interface DrainSchedulerDeps extends DrainLoopDeps {
 }
 
 export interface DrainScheduler {
-  /** Wake event handler (`terminal-drain-{id}` listener body). */
+  /** Wake trigger: schedules a drain run (poll tick or wake event). */
   onWake(): void;
   /** Parse-callback hook: resumes pulling after xterm digests when residual data may exist. */
   onWriteDigested(): void;
@@ -115,6 +117,94 @@ export function createDrainScheduler(deps: DrainSchedulerDeps): DrainScheduler {
       if (!maybePending) return;
       if (deps.pendingWrites() >= MAX_IN_FLIGHT_WRITES) return;
       startLoop();
+    },
+  };
+}
+
+/**
+ * 轮询驱动（方案 B：去 eval 化，内存治理根治）。
+ *
+ * 背景：macOS 上 Tauri 事件送达 = 每次 evaluateJavaScript；WebKit 无条件对
+ * eval 完成值做「结构化克隆 + JSON.stringify」，高吞吐终端输出（agent 流式
+ * CLI）下每秒数百次，JSC libpas mapped 内存只增不减 → WebContent RSS 暴涨
+ * （实测 22GB+，JS live 堆却零增长——泄漏在引擎层/分配器层，不在对象图）。
+ *
+ * 本驱动以「前端全局共享轮询器」替代 `terminal-drain-{id}` 唤醒事件：
+ * `terminal_drain` invoke 在 macOS 走 custom protocol fetch（二进制响应，
+ * 零 eval、零克隆），从源头消灭引擎层序列化开销。轮询拉空为止的语义与
+ * createDrainScheduler 的 pendingWake 闩锁 / maybePending 续拉完全兼容
+ * （字节永不丢失）。
+ *
+ * 所有活跃 session 共用一个 interval；空闲 session 每次 tick 仅一次空
+ * invoke（微秒级），远轻于原事件风暴。
+ *
+ * 并发安全：注册表为「sessionId → 订阅者集合」，同一 sessionId 可承载多个
+ * 调度器实例（重建竞态），各自 dispose 只移除自己的 tick —— 不会误删
+ * 同 key 的其他订阅者（旧实例 dispose 不会让新实例永久停摆）。
+ */
+export const DRAIN_POLL_INTERVAL_MS = 100;
+
+const pollSubscribers = new Map<string, Set<() => void>>();
+let pollTimer: ReturnType<typeof setInterval> | null = null;
+
+function ensurePollTimer(): void {
+  if (pollTimer !== null) return;
+  pollTimer = setInterval(() => {
+    for (const ticks of pollSubscribers.values()) {
+      for (const tick of ticks) tick();
+    }
+  }, DRAIN_POLL_INTERVAL_MS);
+}
+
+function stopPollTimerIfIdle(): void {
+  if (pollSubscribers.size === 0 && pollTimer !== null) {
+    clearInterval(pollTimer);
+    pollTimer = null;
+  }
+}
+
+// HMR 卫生：dev 下模块重载会遗留孤儿 interval（生产无影响），重载时清表。
+// 项目 tsconfig 未引入 vite/client 全局类型，故用内联类型断言访问 hot。
+const hot = (import.meta as ImportMeta & { hot?: { dispose(cb: () => void): void } }).hot;
+if (hot) {
+  hot.dispose(() => {
+    if (pollTimer !== null) {
+      clearInterval(pollTimer);
+      pollTimer = null;
+    }
+    pollSubscribers.clear();
+  });
+}
+
+export interface PollingDrainScheduler extends DrainScheduler {
+  /** Unregister from the shared poller. Idempotent — safe to call twice. */
+  dispose(): void;
+}
+
+/**
+ * 创建轮询驱动的 drain 调度器：注册到全局共享轮询器，tick 等价于一次
+ * onWake（draining 期间置 pendingWake 闩锁，循环退出后自动续拉）。
+ */
+export function createPollingDrainScheduler(deps: DrainSchedulerDeps): PollingDrainScheduler {
+  const inner = createDrainScheduler(deps);
+  const tick = () => inner.onWake();
+  let ticks = pollSubscribers.get(deps.sessionId);
+  if (!ticks) {
+    ticks = new Set();
+    pollSubscribers.set(deps.sessionId, ticks);
+  }
+  ticks.add(tick);
+  ensurePollTimer();
+  return {
+    ...inner,
+    dispose() {
+      const current = pollSubscribers.get(deps.sessionId);
+      if (!current) return;
+      current.delete(tick);
+      if (current.size === 0) {
+        pollSubscribers.delete(deps.sessionId);
+        stopPollTimerIfIdle();
+      }
     },
   };
 }

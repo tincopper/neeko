@@ -2,7 +2,7 @@
 
 use crate::common::connection::types::AuthMethod;
 use crate::common::executor::ssh_auth;
-use crate::common::terminal::events::{terminal_drain_event, terminal_input_event};
+use crate::common::terminal::events::terminal_input_event;
 use crate::common::terminal::types::{TerminalSession, TerminalStatus};
 use crate::theme::common;
 use anyhow::Result;
@@ -11,7 +11,7 @@ use russh::*;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use std::thread;
-use tauri::{Emitter, EventId, Listener};
+use tauri::{EventId, Listener};
 use tokio::io::AsyncWriteExt;
 use tokio::sync::mpsc;
 use uuid::Uuid;
@@ -180,7 +180,6 @@ impl RemoteTerminalManager {
 
         // IO 任务：在独立 tokio 线程里同时处理读写和 resize，消除锁竞争
         let io_id = id.clone();
-        let read_handle = app_handle.clone();
         thread::Builder::new()
             .name(format!("ssh-io-{}", &id[..8]))
             .spawn(move || {
@@ -223,8 +222,9 @@ impl RemoteTerminalManager {
                             msg = channel.wait() => {
                                 match msg {
                                     Some(ChannelMsg::Data { data }) => {
-                                        // 内存治理：写入有界 drain 队列并发零载荷
-                                        // 唤醒，前端经 terminal_drain 拉二进制块。
+                                        // 内存治理：写入有界 drain 队列，前端经
+                                        // terminal_drain 拉二进制块（全局共享轮询器
+                                        // 100ms tick 驱动，wake hint 事件已退役）。
                                         // Mutex 临界区极短，不违反阻塞红线。
                                         //
                                         // 背压契约对齐本地泵（design.md §8.2）：
@@ -233,23 +233,11 @@ impl RemoteTerminalManager {
                                         // channel 不丢失；会话已关闭（closed）
                                         // 时 push 黑洞吸收，循环自然结束。
                                         let session_drain = io_drain.clone();
-                                        let wake_handle = read_handle.clone();
-                                        let wake_id = io_id.clone();
-                                        while !session_drain.push(&data, {
-                                            let wake_handle = wake_handle.clone();
-                                            let wake_id = wake_id.clone();
-                                            move || {
-                                                let event_name =
-                                                    terminal_drain_event(&wake_id);
-                                                if let Err(e) =
-                                                    wake_handle.emit(&event_name, ())
-                                                {
-                                                    log_error(&format!(
-                                                        "[SSH-IO] Wake emit error: {}", e
-                                                    ));
-                                                }
-                                            }
-                                        }) {
+                                        // Wake hint 退役（方案 B 去 eval 化）：
+                                        // 前端改为全局轮询器驱动 credit-pull，
+                                        // `terminal-drain-{id}` 不再被监听；即使
+                                        // 无 listener 也应避免无意义 IPC 往返。
+                                        while !session_drain.push(&data, || {}) {
                                             std::thread::sleep(std::time::Duration::from_millis(2));
                                         }
                                     }
@@ -344,15 +332,8 @@ impl RemoteTerminalManager {
             .ok()
             .and_then(|m| m.get(session_id).cloned())?;
         Some(drain.take_and_rearm(|| {
-            // 竞态补发：若 take 期间生产者 slipped 数据，立即补发 wake；与
-            // TerminalManager::take_drain 保持同构。SSH 复用同一 Drain 协议，
-            // 仅 handle 来源不同（ssh_handles vs pty_handles）。
-            if let Ok(handles) = self.ssh_handles.lock() {
-                if let Some(h) = handles.get(session_id) {
-                    let event_name = terminal_drain_event(session_id);
-                    let _ = h.app_handle.emit(&event_name, ());
-                }
-            }
+            // Wake hint 退役（方案 B 去 eval 化）：前端全局轮询器拉空为止，
+            // 竞态补发闭包为空，语义保留（参见 TerminalManager::take_drain）。
         }))
     }
 

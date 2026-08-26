@@ -7,13 +7,9 @@
  */
 import { emit, listen, type UnlistenFn } from '@tauri-apps/api/event';
 
-import { createDrainScheduler } from '@/shared/utils/drainLoop';
+import { createPollingDrainScheduler } from '@/shared/utils/drainLoop';
 import { reportFrontendError } from '@/shared/utils/errorReporting';
-import {
-  terminalClosedEvent,
-  terminalDrainEvent,
-  terminalInputEvent,
-} from '@/shared/utils/terminalEvents';
+import { terminalClosedEvent, terminalInputEvent } from '@/shared/utils/terminalEvents';
 
 import {
   drainTaskProcessOutput,
@@ -59,24 +55,29 @@ export async function startTaskProcess(opts: StartTaskProcessOptions): Promise<T
 
   const decoder = new TextDecoder('utf-8', { fatal: false });
   let disposed = false;
-  let unlistenOutput: UnlistenFn | null = null;
   let unlistenClosed: UnlistenFn | null = null;
+  // scheduler 需在 dispose 中注销轮询，故提升到外层作用域。
+  let scheduler: ReturnType<typeof createPollingDrainScheduler> | null = null;
 
   const dispose = () => {
     if (disposed) return;
     disposed = true;
-    unlistenOutput?.();
     unlistenClosed?.();
-    unlistenOutput = null;
+    scheduler?.dispose();
     unlistenClosed = null;
+    scheduler = null;
   };
 
   try {
-    // credit-pull 输出协议（内存治理）：后端输出汇入有界 SessionDrain，仅发
-    // 零载荷 wake hint；此处经调度器拉取二进制块并解码为文本。无 xterm 门闸
-    // （pendingWrites 恒 0），循环拉到空为止；下游 onOutput 由 taskStore 的
-    // 输出截断兜底（MAX_TASK_OUTPUT_CHARS）。
-    const scheduler = createDrainScheduler({
+    // credit-pull 输出协议（内存治理）：后端输出汇入有界 SessionDrain，前端
+    // 经调度器拉取二进制块并解码为文本。无 xterm 门闸（pendingWrites 恒 0），
+    // 循环拉到空为止；下游 onOutput 由 taskStore 的输出截断兜底
+    // （MAX_TASK_OUTPUT_CHARS）。
+    // 方案 B（去 eval 化）：触发源由 terminal-drain-{id} 事件改为全局共享
+    // 轮询器——macOS 上事件送达 = 每次 evaluateJavaScript（WebKit 无条件
+    // 克隆+stringify 完成值 → WebContent RSS 只增不减）；invoke 走 custom
+    // protocol fetch，零 eval 零克隆。
+    scheduler = createPollingDrainScheduler({
       sessionId: processId,
       drain: drainTaskProcessOutput,
       write: (chunk) => {
@@ -85,10 +86,6 @@ export async function startTaskProcess(opts: StartTaskProcessOptions): Promise<T
         opts.onOutput(decoder.decode(filtered, { stream: true }));
       },
       pendingWrites: () => 0,
-    });
-
-    unlistenOutput = await listen(terminalDrainEvent(processId), () => {
-      scheduler.onWake();
     });
 
     unlistenClosed = await listen<{ exit_code: number }>(

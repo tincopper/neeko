@@ -7,9 +7,7 @@
 // are closely coupled to TerminalManager.
 
 use crate::common::terminal::drain::SessionDrainMap;
-use crate::common::terminal::events::{
-    terminal_closed_event, terminal_drain_event, terminal_input_event,
-};
+use crate::common::terminal::events::{terminal_closed_event, terminal_input_event};
 use anyhow::Result;
 use portable_pty::{native_pty_system, Child, CommandBuilder, PtyPair, PtySize};
 use std::collections::HashMap;
@@ -133,9 +131,9 @@ pub(super) fn spawn_pty_pipeline(
 
     spawn_watcher_thread(id, config, pty_handles, sessions, drains, app_handle)?;
     #[cfg(unix)]
-    spawn_reader_thread(id, reader, config, drains, app_handle, master_fd)?;
+    spawn_reader_thread(id, reader, config, drains, master_fd)?;
     #[cfg(not(unix))]
-    spawn_reader_thread(id, reader, config, drains, app_handle)?;
+    spawn_reader_thread(id, reader, config, drains)?;
 
     log_info(&format!("{} Session {} ready", config.prefix, &id[..8]));
     Ok(session)
@@ -281,9 +279,10 @@ fn spawn_watcher_thread(
 }
 
 /// Spawn a reader thread that coalesces PTY output through the bounded
-/// [`pump::OutputPump`] into the session's [`SessionDrain`], emitting
-/// zero-payload `terminal-drain-{id}` wake hints for the frontend to pull
-/// binary chunks via the `terminal_drain` command.
+/// [`pump::OutputPump`] into the session's [`SessionDrain`]. The frontend
+/// pulls binary chunks via the `terminal_drain` command, driven by a global
+/// shared poller (`createPollingDrainScheduler`, 100ms tick) — no wake-hint
+/// events are emitted (方案 B 去 eval 化).
 ///
 /// 内存治理（任务 08-25-terminal-memory-governance）：旧实现每次 4KB read 直接
 /// JSON emit，事件频率等于设备吞吐频率，前端 writeBuffer 无界积压。
@@ -296,11 +295,9 @@ fn spawn_reader_thread(
     reader: Box<dyn Read + Send>,
     config: &PipelineConfig,
     drains: &crate::common::terminal::drain::SessionDrainMap,
-    app_handle: &tauri::AppHandle,
     #[cfg(unix)] master_fd: Option<std::os::fd::RawFd>,
 ) -> Result<()> {
     let read_id = id.to_string();
-    let read_handle = app_handle.clone();
     let prefix = config.prefix.to_string();
     let reader = reader;
     let session_drain = drains
@@ -318,20 +315,13 @@ fn spawn_reader_thread(
                 prefix,
                 &read_id[..8]
             ));
-            let wake_handle = read_handle.clone();
-            let wake_id = read_id.clone();
-            let wake_prefix = prefix.clone();
             let started = std::time::Instant::now();
-            // 同一 flush 语义复用于两个 pump 变体：有界推入 SessionDrain，
-            // 首次成功入队时补发至多一个零负载 wake。
-            let mut flush = |data: &[u8]| {
-                session_drain.push(data, || {
-                    let event_name = terminal_drain_event(&wake_id);
-                    if let Err(e) = wake_handle.emit(&event_name, ()) {
-                        log_error(&format!("{}-READER Wake emit error: {}", wake_prefix, e));
-                    }
-                })
-            };
+            // 同一 flush 语义复用于两个 pump 变体：有界推入 SessionDrain。
+            // Wake hint 已退役（方案 B 去 eval 化）：前端改为全局轮询器驱动
+            // credit-pull，`terminal-drain-{id}` 不再被监听；macOS 上事件送达
+            // = 每次 evaluateJavaScript，即使无 listener 也避免无意义 IPC。
+            // push 的 wake 回调传空闭包，协议签名与 wake_in_flight 状态机保留。
+            let mut flush = |data: &[u8]| session_drain.push(data, || {});
             #[cfg(unix)]
             let outcome = match master_fd {
                 Some(fd) => super::pump::run_polling(

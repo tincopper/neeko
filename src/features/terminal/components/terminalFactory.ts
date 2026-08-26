@@ -4,13 +4,9 @@ import { Unicode11Addon } from '@xterm/addon-unicode11';
 import { Terminal } from '@xterm/xterm';
 
 import type { AgentConfig } from '@/shared/types';
-import { createDrainScheduler } from '@/shared/utils/drainLoop';
+import { createPollingDrainScheduler } from '@/shared/utils/drainLoop';
 import { buildFontFamily, buildTerminalTheme, TERMINAL_SCROLLBACK } from '@/shared/utils/terminal';
-import {
-  terminalClosedEvent,
-  terminalDrainEvent,
-  terminalInputEvent,
-} from '@/shared/utils/terminalEvents';
+import { terminalClosedEvent, terminalInputEvent } from '@/shared/utils/terminalEvents';
 import { setupTerminalInput } from '@/shared/utils/terminalInput';
 
 // eslint-disable-next-line import/no-restricted-paths -- terminal factory needs agent API for agent config
@@ -123,10 +119,14 @@ export async function createTerminalForProject(
     // bottom Task Console no longer mounts through this factory.
     void taskConfigId;
 
-    // credit-pull 输出协议（内存治理）：wake hint 驱动二进制拉取。无在途
+    // credit-pull 输出协议（内存治理）：轮询驱动二进制拉取。无在途
     // 门闸（pendingWrites 恒 0），循环拉到空为止 —— 与旧推送语义等价，
     // 但消除了 JSON 膨胀与事件洪泛。
-    const scheduler = createDrainScheduler({
+    // 方案 B（去 eval 化）：触发源由 terminal-drain-{id} 事件改为全局共享
+    // 轮询器（createPollingDrainScheduler）——macOS 上事件送达 = 每次
+    // evaluateJavaScript，WebKit 无条件克隆+stringify 完成值导致 WebContent
+    // RSS 只增不减；invoke 走 custom protocol fetch，零 eval 零克隆。
+    const scheduler = createPollingDrainScheduler({
       sessionId: sid,
       drain: drainTerminal,
       write: (chunk) => {
@@ -137,10 +137,11 @@ export async function createTerminalForProject(
       },
       pendingWrites: () => 0,
     });
-    const unlistenOutput = await listen(terminalDrainEvent(sid), () => {
-      scheduler.onWake();
-    });
-    cache.unlistenOutput = unlistenOutput;
+    // dispose 挂到 unlistenOutput 槽位：terminalCache 销毁/重建统一经
+    // entry.unlistenOutput?.() 清理，轮询注销幂等安全。
+    cache.unlistenOutput = () => {
+      scheduler.dispose();
+    };
 
     const unlistenClosed = await listen<{ exit_code: number }>(
       terminalClosedEvent(sid),

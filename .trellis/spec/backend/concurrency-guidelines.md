@@ -303,9 +303,9 @@ pub(crate) type SessionDrainMap = Arc<Mutex<HashMap<String, Arc<SessionDrain>>>>
 
 1. **合流**：`flush_interval 16ms`内多段read合并为一次`flush_fn`，事件频率≤60Hz；`max_buffer 256KB`达阈立即flush。
 2. **有界**：`DrainBuffer 512KB`（> pump 256KB，数学上排除单批死锁）；`push`在非空且`len+bytes>512KB`时返回`false`，泵`sleep(pause_poll)`重试，不丢字节。
-3. **背压**：`false`时泵停读，内核PTY缓冲承压→前台`write`阻塞（终端正确语义）；前端`MAX_IN_FLIGHT_WRITES=8`门闸，`pendingWrites>=8`时`runDrainLoop`提前退出，余量由下次wake续拉。
-4. **二进制**：`terminal_drain`返回`Response::new(Vec<u8>)`，前端`invoke<ArrayBuffer>`零JSON，`terminal-drain-{id}`仅零载荷hint。
-5. **竞态闭合**：`push`以`swap(true)`确保至多一wake在飞；`take_and_rearm`取空后`store(false)`，若期间又有`push`立即`swap(true)`补发，永不丢wake。
+3. **背压**：`false`时泵停读，内核PTY缓冲承压→前台`write`阻塞（终端正确语义）；前端`MAX_IN_FLIGHT_WRITES=8`门闸，`pendingWrites>=8`时`runDrainLoop`提前退出，余量由下次轮询 tick 续拉。
+4. **二进制**：`terminal_drain`返回`Response::new(Vec<u8>)`，前端`invoke<ArrayBuffer>`零JSON，走 custom protocol fetch（零 eval）。
+5. **去事件化（方案 B）**：`terminal-drain-{id}` wake hint 已退役——调用点（`services.rs` reader flush、`remote.rs` SSH-IO push、双端 `take_and_rearm` 竞态补发）均传空闭包，不再 `emit`。原因：macOS 上 Tauri 事件送达 = 每次 `evaluateJavaScript`，WebKit 无条件对完成值克隆+stringify，高吞吐下 JSC libpas mapped 内存只增不减（WebContent RSS 实测 22GB+，JS live 堆零增长）。前端改为全局共享轮询器（`drainLoop.ts` `createPollingDrainScheduler`，100ms tick）驱动 credit-pull，invoke 走 fetch 零 eval 零克隆。`push`/`take_and_rearm` 的 wake 参数与 `wake_in_flight` 状态机保留（协议签名与测试不动），闭包为空即退役。
 6. **Unix及时性**：`run_polling`用`poll(fd, timeout=flush_interval剩余)`，超时回到循环顶部评估flush，消除阻塞读的“静默期不flush”折衷；Windows回退`run`阻塞读。
 7. **生命周期**：`SessionDrain`随`TerminalManager`/`RemoteTerminalManager`的`take_session_handle`与`watcher`退出路径同步清理；`close()`使孤儿泵的push黑洞化，避免永久背压。
 
@@ -314,8 +314,8 @@ pub(crate) type SessionDrainMap = Arc<Mutex<HashMap<String, Arc<SessionDrain>>>>
 | 场景 | 预期 | 风险 |
 |---|---|---|
 | agent CLI全速输出 | 合流后`flushes`≈`bytes/avgBatch`，`backpressure_pauses`可观测增长，footprint稳态<800MB | 无 |
-| 前端慢消费(xterm未消化) | `push`返回`false`→泵停读→PTY缓冲→前端`pendingWrites>=8`暂停拉取，下次wake续拉不丢 | 若阈值过低会误限流 |
-| 512KB满载 | 新`push`拒收，`wake_in_flight`仍保证单wake，消费端`take_and_rearm`后补发 | 单批>512KB时空缓冲特例直接接收（最坏512KB+256KB） |
+| 前端慢消费(xterm未消化) | `push`返回`false`→泵停读→PTY缓冲→前端`pendingWrites>=8`暂停拉取，轮询 tick 续拉不丢 | 若阈值过低会误限流 |
+| 512KB满载 | 新`push`拒收，`wake_in_flight`状态机仍保留，消费端`take_and_rearm`后继续 | 单批>512KB时空缓冲特例直接接收（最坏512KB+256KB） |
 | 会话关闭后孤儿push | `close()`后`push`黑洞`true`不缓冲不唤醒，`take_and_rearm`空且不重臂 | 若未close会永久停泊 |
 | SSH backpressure期间输入/resize | `remote.rs`专用`tokio::time::sleep.await`非`std::thread::sleep`，select不饿死 | 误用`thread::sleep`会饿死2ms*N |
 

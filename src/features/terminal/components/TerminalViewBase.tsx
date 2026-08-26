@@ -1,12 +1,12 @@
-import { listen, emit } from '@tauri-apps/api/event';
+import { emit, listen } from '@tauri-apps/api/event';
 import { FitAddon } from '@xterm/addon-fit';
 import { Unicode11Addon } from '@xterm/addon-unicode11';
 import { Terminal } from '@xterm/xterm';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 
-import { createDrainScheduler } from '@/shared/utils/drainLoop';
+import { createPollingDrainScheduler } from '@/shared/utils/drainLoop';
 import { buildFontFamily, buildTerminalTheme, TERMINAL_SCROLLBACK } from '@/shared/utils/terminal';
-import { terminalDrainEvent, terminalInputEvent } from '@/shared/utils/terminalEvents';
+import { terminalClosedEvent, terminalInputEvent } from '@/shared/utils/terminalEvents';
 import { setupTerminalInput } from '@/shared/utils/terminalInput';
 
 // eslint-disable-next-line import/no-restricted-paths -- terminal view needs agent API for agent config lookup
@@ -289,11 +289,14 @@ export default React.memo(function TerminalViewBase({
           }
 
           // credit-pull 输出协议（内存治理）：后端把 PTY 输出汇入有界
-          // SessionDrain，只发零载荷 terminal-drain-{id} wake hint；前端经
-          // createDrainScheduler 调度拉取：draining 期间的 wake 记 pendingWake
-          // 闩锁、门闸早退置 maybePending 残留证据、parse 回调经
-          // onWriteDigested 续拉 —— 闭合全部唤醒丢失路径（冻结故障回炉，
+          // SessionDrain；前端经调度器拉取：draining 期间的新数据记
+          // pendingWake 闩锁、门闸早退置 maybePending 残留证据、parse 回调经
+          // onWriteDigested 续拉 —— 闭合全部丢失路径（冻结故障回炉，
           // 见任务 design.md §8）。事件队列不再无界积压。
+          // 方案 B（去 eval 化）：触发源由 terminal-drain-{id} 事件改为全局
+          // 共享轮询器（createPollingDrainScheduler）——macOS 上事件送达 =
+          // 每次 evaluateJavaScript，WebKit 无条件克隆+stringify 完成值导致
+          // WebContent RSS 只增不减；invoke 走 custom protocol fetch，零 eval。
           const pendingWrites = { current: 0 };
 
           const rebuildTerminal = (key: string): void => {
@@ -349,16 +352,28 @@ export default React.memo(function TerminalViewBase({
             armStallWatch();
           };
 
-          const scheduler = createDrainScheduler({
+          const scheduler = createPollingDrainScheduler({
             sessionId,
             drain: drainTerminal,
             write: writeChunk,
             pendingWrites: () => pendingWrites.current,
           });
 
-          entry.unlisten = await listen(terminalDrainEvent(sessionId), () => {
-            scheduler.onWake();
+          // 会话自然退出（shell exit）后后端已移除 drain 条目并 close：
+          // 若轮询器不注销，死会话每 100ms 一次 NotFound 错误 invoke 空转
+          // （方案 B 引入的行为退化，neeko-check 审查项）。closed 后无数据
+          // 可拉，注销绝对安全。
+          const unlistenClosed = await listen(terminalClosedEvent(sessionId), () => {
+            scheduler.dispose();
           });
+
+          // 轮询注销挂到 entry.unlisten 槽位：terminalCache 销毁/重建统一经
+          // entry.unlisten?.() 清理，幂等安全。closed 监听一并收口，避免
+          // Tauri 事件注册表残留死闭包。
+          entry.unlisten = () => {
+            scheduler.dispose();
+            unlistenClosed();
+          };
 
           entry.inputController = setupTerminalInput({
             term,

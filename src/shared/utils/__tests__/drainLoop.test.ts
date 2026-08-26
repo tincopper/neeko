@@ -1,6 +1,12 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import { MAX_IN_FLIGHT_WRITES, createDrainScheduler, runDrainLoop } from '../drainLoop';
+import {
+  DRAIN_POLL_INTERVAL_MS,
+  MAX_IN_FLIGHT_WRITES,
+  createDrainScheduler,
+  createPollingDrainScheduler,
+  runDrainLoop,
+} from '../drainLoop';
 
 function makeArrayBuffer(bytes: number[]): ArrayBuffer {
   return Uint8Array.from(bytes).buffer;
@@ -232,5 +238,125 @@ describe('createDrainScheduler', () => {
     // which breaks at the gate check WITHOUT issuing another invoke (pending
     // is still maxed) — zero idle invokes is exactly the desired behavior.
     expect(drain).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('createPollingDrainScheduler', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('pulls on the shared poll interval', async () => {
+    const drain = vi.fn().mockResolvedValue(new ArrayBuffer(0));
+    const scheduler = createPollingDrainScheduler({
+      sessionId: 'poll-1',
+      drain,
+      write: () => {},
+      pendingWrites: () => 0,
+    });
+    await vi.advanceTimersByTimeAsync(DRAIN_POLL_INTERVAL_MS);
+    expect(drain).toHaveBeenCalledWith('poll-1');
+    scheduler.dispose();
+  });
+
+  it('stops pulling after dispose (idempotent)', async () => {
+    const drain = vi.fn().mockResolvedValue(new ArrayBuffer(0));
+    const scheduler = createPollingDrainScheduler({
+      sessionId: 'poll-2',
+      drain,
+      write: () => {},
+      pendingWrites: () => 0,
+    });
+    scheduler.dispose();
+    scheduler.dispose(); // 二次注销应安全
+    await vi.advanceTimersByTimeAsync(DRAIN_POLL_INTERVAL_MS * 3);
+    expect(drain).not.toHaveBeenCalled();
+  });
+
+  it('drains until empty inside one tick (bytes never lost)', async () => {
+    const drain = vi
+      .fn()
+      .mockResolvedValueOnce(makeArrayBuffer([1, 2, 3]))
+      .mockResolvedValueOnce(makeArrayBuffer([4]))
+      .mockResolvedValue(new ArrayBuffer(0));
+    const write = vi.fn();
+    const scheduler = createPollingDrainScheduler({
+      sessionId: 'poll-3',
+      drain,
+      write,
+      pendingWrites: () => 0,
+    });
+    await vi.advanceTimersByTimeAsync(DRAIN_POLL_INTERVAL_MS);
+    // 同一 tick 内连续拉取：2 块数据 + 1 次空探针
+    expect(drain).toHaveBeenCalledTimes(3);
+    expect(write).toHaveBeenCalledTimes(2);
+    scheduler.dispose();
+  });
+
+  it('idle sessions cost one empty probe per tick', async () => {
+    const drain = vi.fn().mockResolvedValue(new ArrayBuffer(0));
+    const scheduler = createPollingDrainScheduler({
+      sessionId: 'poll-4',
+      drain,
+      write: () => {},
+      pendingWrites: () => 0,
+    });
+    await vi.advanceTimersByTimeAsync(DRAIN_POLL_INTERVAL_MS * 2);
+    expect(drain).toHaveBeenCalledTimes(2);
+    scheduler.dispose();
+  });
+});
+
+describe('createPollingDrainScheduler — sessionId 冲突/重复注册', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('旧实例 dispose 不影响同 sessionId 的新实例（重建竞态安全）', async () => {
+    // 场景：同 sessionId 先后注册 A（旧）→ B（新），随后旧 A.dispose()。
+    // 若注册表是「key→单回调」，A.dispose 会误删 B 的条目 → B 永久停摆。
+    const drainA = vi.fn().mockResolvedValue(new ArrayBuffer(0));
+    const drainB = vi.fn().mockResolvedValue(new ArrayBuffer(0));
+    const schedulerA = createPollingDrainScheduler({
+      sessionId: 'same-id',
+      drain: drainA,
+      write: () => {},
+      pendingWrites: () => 0,
+    });
+    const schedulerB = createPollingDrainScheduler({
+      sessionId: 'same-id',
+      drain: drainB,
+      write: () => {},
+      pendingWrites: () => 0,
+    });
+
+    schedulerA.dispose(); // 旧实例先注销 —— 不得波及 B
+    schedulerA.dispose(); // 幂等：二次注销安全
+
+    await vi.advanceTimersByTimeAsync(DRAIN_POLL_INTERVAL_MS * 2);
+    expect(drainB).toHaveBeenCalledTimes(2); // B 仍在轮询
+    expect(drainA).toHaveBeenCalledTimes(0); // A 已停
+    schedulerB.dispose();
+  });
+
+  it('全部注销后共享轮询器停止空转', async () => {
+    const drain = vi.fn().mockResolvedValue(new ArrayBuffer(0));
+    const scheduler = createPollingDrainScheduler({
+      sessionId: 'stop-id',
+      drain,
+      write: () => {},
+      pendingWrites: () => 0,
+    });
+    await vi.advanceTimersByTimeAsync(DRAIN_POLL_INTERVAL_MS);
+    expect(drain).toHaveBeenCalledTimes(1);
+    scheduler.dispose();
+    await vi.advanceTimersByTimeAsync(DRAIN_POLL_INTERVAL_MS * 3);
+    expect(drain).toHaveBeenCalledTimes(1); // 不再空转
   });
 });

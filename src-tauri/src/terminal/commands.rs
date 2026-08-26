@@ -52,7 +52,8 @@ pub fn resize_terminal(
 /// Drains all buffered terminal output for a session as raw bytes.
 ///
 /// 内存治理（credit-pull 协议）：数据走二进制 Response（前端得 ArrayBuffer），
-/// 零 JSON 序列化开销；唤醒事件仅是零载荷 hint。
+/// 零 JSON 序列化开销。前端由全局共享轮询器（`createPollingDrainScheduler`，
+/// 100ms tick）定期拉取 —— 无 wake-hint 事件（方案 B 去 eval 化）。
 ///
 /// 必须保持 async：同步命令在 Tauri 主线程执行，多会话并发输出时 drain
 /// invoke 洪泛会挤占主线程，饿死 create_terminal_session 等全部命令

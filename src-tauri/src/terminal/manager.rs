@@ -74,15 +74,11 @@ impl TerminalManager {
             .ok()
             .and_then(|m| m.get(session_id).cloned())?;
         Some(drain.take_and_rearm(|| {
-            // Re-arm wake: producer may have slipped data in during the race
-            // window; the frontend drain loop will pick it up on next hint.
-            if let Ok(handles) = self.pty_handles.lock() {
-                if let Some(h) = handles.get(session_id) {
-                    let event_name =
-                        crate::common::terminal::events::terminal_drain_event(session_id);
-                    let _ = h.app_handle.emit(&event_name, ());
-                }
-            }
+            // Wake hint 退役（方案 B 去 eval 化）：前端已改为全局轮询器驱动
+            // credit-pull，`terminal-drain-{id}` 事件不再被监听。macOS 上事件
+            // 送达 = 每次 evaluateJavaScript，即使无 listener 也应避免无意义
+            // 的 IPC 消息往返。take_and_rearm 的竞态补发语义保留（闭包为空），
+            // 字节安全由轮询「拉空为止」保证。
         }))
     }
 
