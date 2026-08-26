@@ -7,9 +7,17 @@ import type { ChatMessage } from './messageModel';
  */
 const messageCache = new Map<string, ChatMessage[]>();
 
+/** 缓存的最大会话数：超出后移除最早条目（近似 LRU，按 Map 插入序）。 */
+const MAX_CACHED_SESSIONS = 12;
+
 /** 清空消息缓存（测试用）。 */
 export function clearMessageCache(): void {
   messageCache.clear();
+}
+
+/** 移除指定 tab 的消息缓存（tab 关闭时调用，防只增不删的内存残留）。 */
+export function removeCachedMessages(tabId: string): void {
+  messageCache.delete(tabId);
 }
 
 /** 从缓存读取消息（深拷贝避免引用共享）。 */
@@ -32,4 +40,10 @@ export function saveCachedMessages(tabId: string, messages: ChatMessage[]): void
       blocks: m.blocks.map((b) => (b.kind === 'tool' ? { ...b, tool: { ...b.tool } } : { ...b })),
     })),
   );
+  // 容量治理：超出上限移除最早插入的条目
+  while (messageCache.size > MAX_CACHED_SESSIONS) {
+    const oldest = messageCache.keys().next().value;
+    if (oldest === undefined) break;
+    messageCache.delete(oldest);
+  }
 }

@@ -112,11 +112,26 @@ function resolveTaskName(get: () => TaskStoreState, configId: string, command: s
   );
 }
 
+/** Task 输出字符上限：超过后保留尾部窗口，杜绝无界拼接与巨型 DOM 渲染。 */
+const MAX_TASK_OUTPUT_CHARS = 512 * 1024;
+/** 截断标记（仅首次截断时注入一次）。 */
+const OUTPUT_TRUNCATED_MARK = '\r\n\x1b[33m[output truncated - showing tail]\x1b[0m\r\n';
+
 function appendOutput(runId: string, chunk: string) {
   useTaskStore.setState((state) => ({
-    consoleSessions: state.consoleSessions.map((s) =>
-      s.id === runId ? { ...s, output: s.output + chunk } : s,
-    ),
+    consoleSessions: state.consoleSessions.map((s) => {
+      if (s.id !== runId) return s;
+      const next = s.output + chunk;
+      if (next.length <= MAX_TASK_OUTPUT_CHARS) {
+        return { ...s, output: next };
+      }
+      // 超限：保留尾部窗口，标记只注入一次
+      const alreadyMarked = s.output.startsWith(OUTPUT_TRUNCATED_MARK);
+      return {
+        ...s,
+        output: (alreadyMarked ? '' : OUTPUT_TRUNCATED_MARK) + next.slice(-MAX_TASK_OUTPUT_CHARS),
+      };
+    }),
   }));
 }
 

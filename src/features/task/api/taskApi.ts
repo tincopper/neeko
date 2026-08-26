@@ -81,3 +81,13 @@ export function stopTaskProcessSession(sessionId: string): Promise<void> {
   // Same manager as interactive terminals; stop_task closes the session.
   return invoke<void>('stop_task', { sessionId });
 }
+
+/**
+ * Pulls buffered process output as raw bytes (credit-pull protocol).
+ * Mirrors the terminal feature's `terminal_drain` command — kept local so
+ * task does not import the terminal feature (same rationale as
+ * {@link TaskProcessSession}).
+ */
+export function drainTaskProcessOutput(sessionId: string): Promise<ArrayBuffer> {
+  return invoke<ArrayBuffer>('terminal_drain', { sessionId });
+}

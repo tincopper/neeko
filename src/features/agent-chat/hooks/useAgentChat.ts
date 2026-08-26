@@ -43,6 +43,20 @@ import { appendBlock, appendCommandBlock, attachFileDiff, findToolBlock } from '
 import { useDeltaBatcher, type PendingDelta } from './useDeltaBatcher';
 import { useMockEventSchedule } from './useMockEventSchedule';
 
+/** 单个 tool 输出字符上限：超过后保留尾部窗口，防无界拼接（内存治理 P2）。 */
+const MAX_TOOL_OUTPUT_CHARS = 128 * 1024;
+/** tool 输出截断标记。 */
+const TOOL_OUTPUT_TRUNCATED_MARK = '\n[output truncated - showing tail]\n';
+
+/** 追加 tool 输出并限制上限：超限后滑动保留尾部窗口，标记仅注入一次。 */
+function clipToolOutput(existing: string | undefined, delta: string): string {
+  const next = (existing ?? '') + delta;
+  if (next.length <= MAX_TOOL_OUTPUT_CHARS) return next;
+  const tail = next.slice(-MAX_TOOL_OUTPUT_CHARS);
+  const alreadyMarked = (existing ?? '').includes(TOOL_OUTPUT_TRUNCATED_MARK);
+  return (alreadyMarked ? '' : TOOL_OUTPUT_TRUNCATED_MARK) + tail;
+}
+
 export interface UseAgentChatParams {
   tabKey: string;
   tabId: string;
@@ -253,7 +267,10 @@ export function useAgentChat({ tabKey, tabId, projectId, data, mockMode }: UseAg
                     ...m,
                     blocks: m.blocks.map((b, j) =>
                       j === found.blockIndex && b.kind === 'tool'
-                        ? { ...b, tool: { ...b.tool, output: (b.tool.output ?? '') + ev.output } }
+                        ? {
+                            ...b,
+                            tool: { ...b.tool, output: clipToolOutput(b.tool.output, ev.output) },
+                          }
                         : b,
                     ),
                   }

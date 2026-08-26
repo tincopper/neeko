@@ -7,14 +7,19 @@
  */
 import { emit, listen, type UnlistenFn } from '@tauri-apps/api/event';
 
+import { createDrainScheduler } from '@/shared/utils/drainLoop';
 import { reportFrontendError } from '@/shared/utils/errorReporting';
 import {
   terminalClosedEvent,
+  terminalDrainEvent,
   terminalInputEvent,
-  terminalOutputEvent,
 } from '@/shared/utils/terminalEvents';
 
-import { startTaskProcessSession, stopTaskProcessSession } from './api/taskApi';
+import {
+  drainTaskProcessOutput,
+  startTaskProcessSession,
+  stopTaskProcessSession,
+} from './api/taskApi';
 
 export interface TaskProcessHandle {
   processId: string;
@@ -67,13 +72,23 @@ export async function startTaskProcess(opts: StartTaskProcessOptions): Promise<T
   };
 
   try {
-    unlistenOutput = await listen<number[]>(terminalOutputEvent(processId), (event) => {
-      if (disposed) return;
-      const bytes = new Uint8Array(event.payload);
-      // Drop DEL noise (same filter as interactive terminals)
-      const filtered = bytes.filter((b) => b !== 0x7f);
-      if (filtered.length === 0) return;
-      opts.onOutput(decoder.decode(filtered, { stream: true }));
+    // credit-pull 输出协议（内存治理）：后端输出汇入有界 SessionDrain，仅发
+    // 零载荷 wake hint；此处经调度器拉取二进制块并解码为文本。无 xterm 门闸
+    // （pendingWrites 恒 0），循环拉到空为止；下游 onOutput 由 taskStore 的
+    // 输出截断兜底（MAX_TASK_OUTPUT_CHARS）。
+    const scheduler = createDrainScheduler({
+      sessionId: processId,
+      drain: drainTaskProcessOutput,
+      write: (chunk) => {
+        const filtered = new Uint8Array(chunk).filter((b) => b !== 0x7f);
+        if (filtered.length === 0) return;
+        opts.onOutput(decoder.decode(filtered, { stream: true }));
+      },
+      pendingWrites: () => 0,
+    });
+
+    unlistenOutput = await listen(terminalDrainEvent(processId), () => {
+      scheduler.onWake();
     });
 
     unlistenClosed = await listen<{ exit_code: number }>(
