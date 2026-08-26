@@ -3,6 +3,7 @@
 use crate::common::agent::types::AgentConfig;
 use crate::common::executor::factory::ExecTarget;
 use std::collections::HashMap;
+use std::future::Future;
 
 /// Registry of AI agent configurations.
 ///
@@ -119,10 +120,29 @@ impl AgentManager {
         commands: &[(String, Option<String>)],
         target: &ExecTarget,
     ) -> HashMap<String, bool> {
+        let target = target.clone();
+        Self::check_installed_with(commands, move |cmd: String| {
+            let target = target.clone();
+            async move { crate::core::exec::command_exists(&target, &cmd).await }
+        })
+        .await
+    }
+
+    /// Injectable core of [`check_installed`]: caller supplies existence check.
+    ///
+    /// 生产代码传入 `|cmd| command_exists(target, cmd)`，单测传入闭包返回固定值，
+    pub async fn check_installed_with<F, Fut>(
+        commands: &[(String, Option<String>)],
+        checker: F,
+    ) -> HashMap<String, bool>
+    where
+        F: Fn(String) -> Fut,
+        Fut: Future<Output = bool>,
+    {
         let mut result = HashMap::new();
         for (id, cmd) in commands {
             let installed = match cmd.as_deref() {
-                Some(c) => crate::core::exec::command_exists(target, c).await,
+                Some(c) => checker(c.to_string()).await,
                 None => false,
             };
             result.insert(id.clone(), installed);
@@ -258,8 +278,11 @@ mod tests {
         let manager = AgentManager::new();
         let ids = vec!["opencode".to_string()];
         let commands = manager.resolve_commands(&ids);
-        let result = AgentManager::check_installed(&commands, &ExecTarget::Local).await;
-        assert!(result.contains_key("opencode"));
+        // hermetic：注入假 checker，不触文件系统
+        let result =
+            AgentManager::check_installed_with(&commands, |cmd| async move { cmd == "opencode" })
+                .await;
+        assert_eq!(result.get("opencode"), Some(&true));
     }
 
     #[tokio::test]
@@ -268,14 +291,30 @@ mod tests {
         let ids = vec!["nonexistent".to_string()];
         let commands = manager.resolve_commands(&ids);
         assert_eq!(commands[0].1, None);
-        let result = AgentManager::check_installed(&commands, &ExecTarget::Local).await;
+        let result = AgentManager::check_installed_with(&commands, |_| async { true }).await;
+        // None command → false，不调用 checker
         assert_eq!(result.get("nonexistent"), Some(&false));
     }
 
     #[tokio::test]
     async fn should_check_installed_empty_input() {
-        let result = AgentManager::check_installed(&[], &ExecTarget::Local).await;
+        let result = AgentManager::check_installed_with(&[], |_| async { true }).await;
         assert!(result.is_empty());
+    }
+
+    #[tokio::test]
+    async fn should_check_installed_with_injected_checker() {
+        let commands = vec![
+            ("a".to_string(), Some("exists".to_string())),
+            ("b".to_string(), Some("missing".to_string())),
+            ("c".to_string(), None),
+        ];
+        let result =
+            AgentManager::check_installed_with(&commands, |cmd| async move { cmd == "exists" })
+                .await;
+        assert_eq!(result.get("a"), Some(&true));
+        assert_eq!(result.get("b"), Some(&false));
+        assert_eq!(result.get("c"), Some(&false));
     }
 
     #[test]

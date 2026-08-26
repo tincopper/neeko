@@ -259,4 +259,86 @@ mod tests {
             "'echo' 'hello world'"
         );
     }
+
+    // ── hermetic: command_exists_on_path 显式 PATH（零全局状态）─────────────
+
+    #[test]
+    fn command_exists_on_path_finds_fake_binary_in_temp_dir() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let bin_name = if cfg!(target_os = "windows") {
+            "fake_cmd.exe"
+        } else {
+            "fake_cmd"
+        };
+        let bin_path = dir.path().join(bin_name);
+        std::fs::write(&bin_path, b"#!/bin/sh\necho hi").expect("write fake bin");
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mut perm = std::fs::metadata(&bin_path)
+                .expect("metadata")
+                .permissions();
+            perm.set_mode(0o755);
+            std::fs::set_permissions(&bin_path, perm).expect("chmod");
+        }
+        let fake_name = if cfg!(target_os = "windows") {
+            "fake_cmd.exe"
+        } else {
+            "fake_cmd"
+        };
+        // 显式 PATH 指向 tempdir → 命中
+        assert!(command_exists_on_path(
+            fake_name,
+            &dir.path().to_string_lossy()
+        ));
+        // 显式空 PATH → 不命中（不读全局 PATH）
+        assert!(!command_exists_on_path(fake_name, ""));
+        // 显式无关 PATH → 不命中
+        assert!(!command_exists_on_path(
+            fake_name,
+            "/tmp/definitely-not-exist-987654"
+        ));
+    }
+
+    #[test]
+    fn command_exists_on_path_missing_returns_false() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        assert!(!command_exists_on_path(
+            "definitely-not-a-real-command-987654",
+            &dir.path().to_string_lossy()
+        ));
+        assert!(!command_exists_on_path(
+            "definitely-not-a-real-command-987654",
+            ""
+        ));
+    }
+
+    #[test]
+    fn resolve_command_path_respects_explicit_path() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let bin_name = if cfg!(target_os = "windows") {
+            "mytool.exe"
+        } else {
+            "mytool"
+        };
+        let bin_path = dir.path().join(bin_name);
+        std::fs::write(&bin_path, b"bin").expect("write");
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mut perm = std::fs::metadata(&bin_path)
+                .expect("metadata")
+                .permissions();
+            perm.set_mode(0o755);
+            std::fs::set_permissions(&bin_path, perm).expect("chmod");
+        }
+        let resolved = resolve_command_path(bin_name, &dir.path().to_string_lossy());
+        assert!(
+            resolved.contains("mytool"),
+            "should resolve to temp binary, got {resolved}"
+        );
+        // 不在 PATH 中 → 回退原名
+        let miss = resolve_command_path("not-exist-xyz-123", &dir.path().to_string_lossy());
+        assert_eq!(miss, "not-exist-xyz-123");
+    }
 }

@@ -292,4 +292,34 @@ mod tests {
             "definitely-not-a-real-command-987654"
         ));
     }
+
+    #[test]
+    fn command_exists_hermetic_via_explicit_path() {
+        use crate::common::utils::command::local::command_exists_on_path;
+        let dir = tempfile::tempdir().expect("tempdir");
+        let bin_name = if cfg!(target_os = "windows") {
+            "hermetic_exec_bin.exe"
+        } else {
+            "hermetic_exec_bin"
+        };
+        let bin_path = dir.path().join(bin_name);
+        std::fs::write(&bin_path, b"#!/bin/sh\necho hi").expect("write");
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mut perm = std::fs::metadata(&bin_path)
+                .expect("metadata")
+                .permissions();
+            perm.set_mode(0o755);
+            std::fs::set_permissions(&bin_path, perm).expect("chmod");
+        }
+        let path = dir.path().to_string_lossy().to_string();
+        // 显式 PATH 隔离：与全局 PATH / 是否装 sh/opencode 无关
+        assert!(command_exists_on_path(bin_name, &path));
+        assert!(!command_exists_on_path(bin_name, ""));
+        assert!(!command_exists_on_path(
+            "definitely-not-a-real-command-987654",
+            &path
+        ));
+    }
 }

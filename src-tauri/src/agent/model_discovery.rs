@@ -7,7 +7,9 @@
 //! is independently testable without a webview runtime.
 
 use crate::common::agent::types::ModelInfo;
+use crate::common::executor::{ExecError, ExecOutput};
 use crate::AppError;
+use std::future::Future;
 
 /// Execute `opencode models --verbose` and return the discovered models.
 ///
@@ -26,13 +28,22 @@ pub async fn discover_opencode_models(
         path
     );
 
-    // Execute `opencode models --verbose` to get model information.
-    let output = exec::collect(&target, &path, &["models", "--verbose"])
-        .await
-        .map_err(|e| {
-            log::error!("[discover_opencode_models] Failed to execute: {e}");
-            AppError::Io(format!("failed to execute opencode models: {e}"))
-        })?;
+    discover_opencode_models_with(|| exec::collect(&target, &path, &["models", "--verbose"])).await
+}
+
+/// Injectable core of [`discover_opencode_models`]: the caller supplies how to fetch `ExecOutput`.
+///
+/// 生产代码传入 `|| exec::collect(...)`，单测传入返回固定 `ExecOutput` 的闭包，
+/// 类型上杜绝单测触达真实二进制（纯核/脏壳分离）。
+pub async fn discover_opencode_models_with<F, Fut>(fetch: F) -> Result<Vec<ModelInfo>, AppError>
+where
+    F: FnOnce() -> Fut,
+    Fut: Future<Output = Result<ExecOutput, ExecError>>,
+{
+    let output = fetch().await.map_err(|e| {
+        log::error!("[discover_opencode_models] Failed to execute: {e}");
+        AppError::Io(format!("failed to execute opencode models: {e}"))
+    })?;
 
     log::info!(
         "[discover_opencode_models] Exit code: {}, stdout length: {}, stderr length: {}",
@@ -41,6 +52,13 @@ pub async fn discover_opencode_models(
         output.stderr.len()
     );
 
+    models_from_exec_output(output)
+}
+
+/// Pure: turn a collected `ExecOutput` into `ModelInfo` list.
+///
+/// 处理非零退出码 + 解析 stdout NDJSON。单测直接构造 `ExecOutput`，零进程。
+pub fn models_from_exec_output(output: ExecOutput) -> Result<Vec<ModelInfo>, AppError> {
     if output.exit_code != 0 {
         let stderr = String::from_utf8_lossy(&output.stderr);
         log::error!(
@@ -58,7 +76,6 @@ pub async fn discover_opencode_models(
     let stdout = String::from_utf8_lossy(&output.stdout);
     log::debug!("[discover_opencode_models] stdout: {}", stdout);
 
-    // Parse the NDJSON output (one JSON object per line, with optional slug prefix).
     let models = parse_opencode_models_output(&stdout)?;
     log::info!(
         "[discover_opencode_models] Discovered {} models",
@@ -297,33 +314,89 @@ opencode/claude-fable-5
         assert_eq!(model.id, "opencode/test-model");
         assert_eq!(model.supported_reasoning_efforts, vec!["high".to_string()]);
     }
+    // ── 纯核：ExecOutput → ModelInfo（零进程，不触二进制）─────────────────────
 
-    /// Integration test: actually executes `opencode models --verbose`.
-    /// Only runs if opencode is installed and authenticated.
+    #[test]
+    fn models_from_exec_output_success() {
+        let output = ExecOutput {
+            stdout: b"opencode/big-pickle\n{\"id\":\"big-pickle\",\"providerID\":\"opencode\",\"name\":\"Big Pickle\",\"cost\":{\"input\":0,\"output\":0},\"limit\":{\"context\":200000},\"variants\":{}}".to_vec(),
+            stderr: vec![],
+            exit_code: 0,
+        };
+        let models = models_from_exec_output(output).expect("should succeed");
+        assert_eq!(models.len(), 1);
+        assert_eq!(models[0].id, "opencode/big-pickle");
+        assert!(models[0].is_free);
+    }
+
+    #[test]
+    fn models_from_exec_output_empty_stdout() {
+        let output = ExecOutput {
+            stdout: vec![],
+            stderr: vec![],
+            exit_code: 0,
+        };
+        let models = models_from_exec_output(output).expect("should succeed");
+        assert!(models.is_empty());
+    }
+
+    #[test]
+    fn models_from_exec_output_nonzero_fails() {
+        let output = ExecOutput {
+            stdout: vec![],
+            stderr: b"auth required".to_vec(),
+            exit_code: 1,
+        };
+        let err = models_from_exec_output(output).expect_err("should fail on nonzero");
+        assert!(err.to_string().contains("code 1"));
+        assert!(err.to_string().contains("auth required"));
+    }
+
+    // ── 注入核：discover_with（单测注入 fake fetch，类型上杜绝真实二进制）───
+
     #[tokio::test]
-    async fn discover_opencode_models_integration() {
-        use crate::common::executor::factory::ExecTarget;
-        use crate::core::exec;
+    async fn discover_with_success() {
+        let fake_stdout = b"opencode/stub\n{\"id\":\"stub\",\"providerID\":\"opencode\",\"name\":\"Stub\",\"cost\":{\"input\":10,\"output\":20},\"limit\":{\"context\":100},\"variants\":{}}".to_vec();
+        let result = discover_opencode_models_with(|| async {
+            Ok(ExecOutput {
+                stdout: fake_stdout.clone(),
+                stderr: vec![],
+                exit_code: 0,
+            })
+        })
+        .await
+        .expect("should succeed");
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].id, "opencode/stub");
+    }
 
-        // Check if opencode is available.
-        if !exec::command_exists(&ExecTarget::Local, "opencode").await {
-            println!("Skipping integration test: opencode not found");
-            return;
-        }
+    #[tokio::test]
+    async fn discover_with_fetch_error_maps_to_io() {
+        let result = discover_opencode_models_with(|| async {
+            Err(ExecError::Io(std::io::Error::new(
+                std::io::ErrorKind::NotFound,
+                "not found",
+            )))
+        })
+        .await;
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("failed to execute"));
+    }
 
-        let result = discover_opencode_models(None).await;
-        match result {
-            Ok(models) => {
-                println!("Discovered {} models", models.len());
-                assert!(models.len() > 0, "Should discover at least one model");
-                for model in &models {
-                    println!("  - {} ({})", model.name, model.id);
-                }
-            }
-            Err(e) => {
-                println!("discover_opencode_models failed: {e}");
-                // Don't fail the test if opencode is not authenticated.
-            }
-        }
+    #[tokio::test]
+    async fn discover_with_nonzero_propagates() {
+        let result = discover_opencode_models_with(|| async {
+            Ok(ExecOutput {
+                stdout: vec![],
+                stderr: b"boom".to_vec(),
+                exit_code: 2,
+            })
+        })
+        .await;
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("code 2"));
     }
 }

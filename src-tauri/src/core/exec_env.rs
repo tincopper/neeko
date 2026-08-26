@@ -67,4 +67,32 @@ mod tests {
         #[cfg(not(windows))]
         assert!(local_command_exists("sh") || local_command_exists("bash"));
     }
+
+    // ── hermetic: 显式 PATH 隔离（不依赖本机是否装 opencode/sh）──────
+
+    #[test]
+    fn hermetic_command_exists_on_path_with_temp_binary() {
+        use crate::common::utils::command::local::command_exists_on_path;
+        let dir = tempfile::tempdir().expect("tempdir");
+        let bin_name = if cfg!(target_os = "windows") {
+            "hermetic_bin.exe"
+        } else {
+            "hermetic_bin"
+        };
+        let bin_path = dir.path().join(bin_name);
+        std::fs::write(&bin_path, b"#!/bin/sh\necho hi").expect("write");
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mut perm = std::fs::metadata(&bin_path)
+                .expect("metadata")
+                .permissions();
+            perm.set_mode(0o755);
+            std::fs::set_permissions(&bin_path, perm).expect("chmod");
+        }
+        let path = dir.path().to_string_lossy().to_string();
+        assert!(command_exists_on_path(bin_name, &path));
+        assert!(!command_exists_on_path(bin_name, ""));
+        assert!(!command_exists_on_path("not-exist-xyz-987654", &path));
+    }
 }
