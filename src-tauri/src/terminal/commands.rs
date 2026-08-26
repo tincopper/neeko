@@ -48,3 +48,19 @@ pub fn resize_terminal(
 ) -> Result<(), AppError> {
     state.resize_session(&session_id, cols, rows)
 }
+
+/// Drains all buffered terminal output for a session as raw bytes.
+///
+/// 内存治理（credit-pull 协议）：数据走二进制 Response（前端得 ArrayBuffer），
+/// 零 JSON 序列化开销；唤醒事件仅是零载荷 hint。
+///
+/// 必须保持 async：同步命令在 Tauri 主线程执行，多会话并发输出时 drain
+/// invoke 洪泛会挤占主线程，饿死 create_terminal_session 等全部命令
+/// （冻结故障回炉，任务 design.md §8.1 放大器 A）。
+#[tauri::command]
+pub async fn terminal_drain(
+    session_id: String,
+    state: State<'_, AppStateWrapper>,
+) -> Result<tauri::ipc::Response, AppError> {
+    state.terminal_drain(&session_id)
+}

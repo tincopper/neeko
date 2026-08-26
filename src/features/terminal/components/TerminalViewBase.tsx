@@ -4,15 +4,32 @@ import { Unicode11Addon } from '@xterm/addon-unicode11';
 import { Terminal } from '@xterm/xterm';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 
-import { buildFontFamily, buildTerminalTheme } from '@/shared/utils/terminal';
-import { terminalInputEvent, terminalOutputEvent } from '@/shared/utils/terminalEvents';
+import { createDrainScheduler } from '@/shared/utils/drainLoop';
+import { buildFontFamily, buildTerminalTheme, TERMINAL_SCROLLBACK } from '@/shared/utils/terminal';
+import { terminalDrainEvent, terminalInputEvent } from '@/shared/utils/terminalEvents';
 import { setupTerminalInput } from '@/shared/utils/terminalInput';
 
 // eslint-disable-next-line import/no-restricted-paths -- terminal view needs agent API for agent config lookup
 import { getAgent } from '../../agent/api/agentApi';
+import { drainTerminal } from '../api/terminalApi';
 import type { TerminalStrategy, CacheEntry } from '../strategies/types';
 
+import { refreshTerminal, refreshRemoteTerminal, refreshWslTerminal } from './terminalCache';
 import { tryLoadWebgl } from './terminalFactory';
+
+/**
+ * Write 流水线哨兵：最后一次 write 下发后超过该时长仍无 parse 回调，
+ * 判定渲染流水线疑似卡死（WebContent 忙死/渲染器 wedge），重建终端自愈。
+ * 参照 orca terminal-write-pipeline-health 的 stall-watch 设计。
+ */
+const TERMINAL_WRITE_STALL_MS = 12000;
+
+/**
+ * 哨兵重建冷却闸：同一 cacheKey 两次哨兵重建的最小间隔。防止「重建后再次
+ * 触发 → 无限重建风暴」（每次重建含 WebGL 上下文创建，风暴会拖死共享
+ * WebContent 的渲染管线 —— 全部 tab 一起黑屏的放大器）。
+ */
+const TERMINAL_REBUILD_COOLDOWN_MS = 30000;
 
 interface TerminalViewBaseProps {
   strategy: TerminalStrategy;
@@ -44,6 +61,76 @@ export default React.memo(function TerminalViewBase({
   const [rebuildCount, setRebuildCount] = useState(0);
   const [ready, setReady] = useState(false);
   const [isAtBottom, setIsAtBottom] = useState(true);
+  const fitRafRef = useRef<number | null>(null);
+  const fitTrailingRef = useRef<number | undefined>(undefined);
+  const lastFitColsRef = useRef<number>(-1);
+  const lastFitRowsRef = useRef<number>(-1);
+  const pendingFitColsRef = useRef<number | null>(null);
+  const pendingFitRowsRef = useRef<number | null>(null);
+  // 哨兵定时器句柄：提升到组件作用域，effect cleanup 必须清除 —— 否则卸载/
+  // 重建后僵尸定时器仍会在废弃闭包上触发 rebuildTerminal（重建风暴源头之一）。
+  const stallTimerRef = useRef<number | undefined>(undefined);
+  // 哨兵重建冷却时间戳：跨 effect 重跑存活（rebuild 会触发 effect 重入，
+  // 局部变量冷却会被重置导致风暴）。
+  const lastRebuildAtRef = useRef(0);
+
+  const doFit = useCallback(() => {
+    const key = currentKeyRef.current;
+    if (!key) return;
+    const c = strategyRef.current.cache.get(key);
+    if (!c) return;
+    const colsBefore = c.term.cols;
+    const rowsBefore = c.term.rows;
+    try {
+      c.fitAddon.fit();
+    } catch {
+      return;
+    }
+    const colsAfter = c.term.cols;
+    const rowsAfter = c.term.rows;
+    const converged = colsAfter === colsBefore && rowsAfter === rowsBefore;
+    // 收敛且无待重试 → 无需 resize
+    if (converged && pendingFitColsRef.current === null) return;
+    // 去重：与上次成功 resize 相同且无待重试 → 跳过
+    if (
+      colsAfter === lastFitColsRef.current &&
+      rowsAfter === lastFitRowsRef.current &&
+      pendingFitColsRef.current === null
+    )
+      return;
+    if (!c.sessionId) {
+      pendingFitColsRef.current = colsAfter;
+      pendingFitRowsRef.current = rowsAfter;
+      return;
+    }
+    const targetCols = colsAfter;
+    const targetRows = rowsAfter;
+    strategyRef.current.resize(c.sessionId, targetCols, targetRows).then(
+      () => {
+        lastFitColsRef.current = targetCols;
+        lastFitRowsRef.current = targetRows;
+        pendingFitColsRef.current = null;
+        pendingFitRowsRef.current = null;
+      },
+      () => {
+        pendingFitColsRef.current = targetCols;
+        pendingFitRowsRef.current = targetRows;
+      },
+    );
+  }, []);
+
+  const scheduleFit = useCallback(() => {
+    if (fitTrailingRef.current !== undefined) window.clearTimeout(fitTrailingRef.current);
+    fitTrailingRef.current = window.setTimeout(() => {
+      fitTrailingRef.current = undefined;
+      doFit();
+    }, 120);
+    if (fitRafRef.current !== null) return;
+    fitRafRef.current = requestAnimationFrame(() => {
+      fitRafRef.current = null;
+      doFit();
+    });
+  }, [doFit]);
 
   const handleScrollToBottom = useCallback(() => {
     const term = currentTermRef.current;
@@ -52,15 +139,14 @@ export default React.memo(function TerminalViewBase({
     term.focus();
   }, []);
 
-  // Sync font changes to existing instance
+  // Sync font changes to existing instance — unified via scheduleFit (trigger source 1)
   useEffect(() => {
     const c = strategyRef.current.cache.get(cacheKey);
     if (!c) return;
     c.term.options.fontSize = strategyRef.current.fontSize;
     c.term.options.fontFamily = buildFontFamily(strategyRef.current.fontFamily);
-    c.fitAddon.fit();
-  }, [fontSize, fontFamilyProp, cacheKey, cache]);
-
+    scheduleFit();
+  }, [fontSize, fontFamilyProp, cacheKey, cache, scheduleFit]);
   useEffect(() => {
     const wrapper = wrapperRef.current;
     if (!wrapper) return;
@@ -69,7 +155,6 @@ export default React.memo(function TerminalViewBase({
       cache,
       rebuildCallbacks,
       wrapperRefs,
-      resize,
       fontSize: fontSizeVal,
       fontFamily: fontFamilyVal,
       gpuAccel: gpuAccelVal,
@@ -95,13 +180,10 @@ export default React.memo(function TerminalViewBase({
       if (!wrapper.contains(entry.element)) {
         wrapper.appendChild(entry.element);
       }
+      // attach 触发源（2）：统一经 scheduleFit 合帧，避免与 RO 竞态
+      scheduleFit();
       requestAnimationFrame(() => {
         if (currentKeyRef.current !== cacheKey) return;
-        entry.fitAddon.fit();
-        if (entry.sessionId) {
-          // 静默豁免：高频 resize，尽力而为，失败无需上报
-          resize(entry.sessionId, entry.term.cols, entry.term.rows).catch(() => {});
-        }
         entry.term.focus();
       });
     };
@@ -142,11 +224,10 @@ export default React.memo(function TerminalViewBase({
         fontSize: fontSizeVal,
         fontFamily: buildFontFamily(fontFamilyVal),
         theme: buildTerminalTheme(),
-        scrollback: 10000,
+        scrollback: TERMINAL_SCROLLBACK,
         overviewRuler: { width: 0 },
         allowProposedApi: true,
       });
-
       const fitAddon = new FitAddon();
       term.loadAddon(fitAddon);
       const unicode11 = new Unicode11Addon();
@@ -207,12 +288,77 @@ export default React.memo(function TerminalViewBase({
             }, agentDelayMsVal);
           }
 
-          const unlisten = await listen<number[]>(terminalOutputEvent(sessionId), (event) => {
-            let bytes: Uint8Array = new Uint8Array(event.payload);
-            if (outputFilterVal) bytes = outputFilterVal(bytes) as Uint8Array;
-            term.write(bytes);
+          // credit-pull 输出协议（内存治理）：后端把 PTY 输出汇入有界
+          // SessionDrain，只发零载荷 terminal-drain-{id} wake hint；前端经
+          // createDrainScheduler 调度拉取：draining 期间的 wake 记 pendingWake
+          // 闩锁、门闸早退置 maybePending 残留证据、parse 回调经
+          // onWriteDigested 续拉 —— 闭合全部唤醒丢失路径（冻结故障回炉，
+          // 见任务 design.md §8）。事件队列不再无界积压。
+          const pendingWrites = { current: 0 };
+
+          const rebuildTerminal = (key: string): void => {
+            // 冷却闸：风暴防护。冷却期内放弃本次自愈（下个哨兵周期再试）。
+            const now = Date.now();
+            if (now - lastRebuildAtRef.current < TERMINAL_REBUILD_COOLDOWN_MS) {
+              console.warn('[Terminal] rebuild skipped (cooldown)', key);
+              return;
+            }
+            lastRebuildAtRef.current = now;
+            if (key.startsWith('wsl:')) refreshWslTerminal(key);
+            else if (key.startsWith('remote:')) refreshRemoteTerminal(key);
+            else refreshTerminal(key);
+          };
+
+          const clearStallWatch = () => {
+            if (stallTimerRef.current !== undefined) {
+              window.clearTimeout(stallTimerRef.current);
+              stallTimerRef.current = undefined;
+            }
+          };
+
+          // 哨兵收紧：仅在「存在未完成 parse 的在途 write」时警戒；parse 有
+          // 进展即撤销。避免 rAF/渲染繁忙导致的误报重建风暴。
+          const armStallWatch = () => {
+            if (pendingWrites.current <= 0) return;
+            if (stallTimerRef.current !== undefined) window.clearTimeout(stallTimerRef.current);
+            stallTimerRef.current = window.setTimeout(() => {
+              stallTimerRef.current = undefined;
+              if (pendingWrites.current <= 0) return;
+              // 有在途 write 且长时间无 parse 回调 → 渲染流水线疑似卡死
+              // （WebContent 忙死/WKWebView wedge）→ 销毁重建终端缓存自愈。
+              console.error('[Terminal] write pipeline stalled, rebuilding terminal', sessionId);
+              rebuildTerminal(cacheKey);
+            }, TERMINAL_WRITE_STALL_MS);
+          };
+
+          const writeChunk = (chunk: ArrayBuffer) => {
+            const raw = new Uint8Array(chunk);
+            const bytes = outputFilterVal ? (outputFilterVal(raw) as Uint8Array) : raw;
+            pendingWrites.current += 1;
+            try {
+              term.write(bytes, () => {
+                pendingWrites.current = Math.max(0, pendingWrites.current - 1);
+                clearStallWatch();
+                scheduler.onWriteDigested();
+              });
+            } catch {
+              // 终端已 dispose（重建竞态）→ 静默释放计数，写入失败无害
+              pendingWrites.current = Math.max(0, pendingWrites.current - 1);
+              clearStallWatch();
+            }
+            armStallWatch();
+          };
+
+          const scheduler = createDrainScheduler({
+            sessionId,
+            drain: drainTerminal,
+            write: writeChunk,
+            pendingWrites: () => pendingWrites.current,
           });
-          entry.unlisten = unlisten;
+
+          entry.unlisten = await listen(terminalDrainEvent(sessionId), () => {
+            scheduler.onWake();
+          });
 
           entry.inputController = setupTerminalInput({
             term,
@@ -223,12 +369,10 @@ export default React.memo(function TerminalViewBase({
               emit(terminalInputEvent(entry.sessionId), bytes).catch(() => {});
             },
           });
-
+          // session-ready 触发源（3）：统一经 scheduleFit
+          scheduleFit();
           requestAnimationFrame(() => {
             if (currentKeyRef.current !== cacheKey) return;
-            fitAddon.fit();
-            // 静默豁免：高频 resize，尽力而为，失败无需上报
-            resize(sessionId, term.cols, term.rows).catch(() => {});
             term.focus();
           });
         } catch (err) {
@@ -239,28 +383,40 @@ export default React.memo(function TerminalViewBase({
       })();
     }
 
-    let resizeRafId: number | null = null;
-    let prevCols = 0;
-    let prevRows = 0;
-    const ro = new ResizeObserver(() => {
-      if (resizeRafId !== null) cancelAnimationFrame(resizeRafId);
-      resizeRafId = requestAnimationFrame(() => {
-        resizeRafId = null;
-        const c = cache.get(cacheKey);
-        if (!c) return;
-        c.fitAddon.fit();
-        if (c.sessionId && (c.term.cols !== prevCols || c.term.rows !== prevRows)) {
-          prevCols = c.term.cols;
-          prevRows = c.term.rows;
-          // 静默豁免：高频 resize，尽力而为，失败无需上报
-          resize(c.sessionId, c.term.cols, c.term.rows).catch(() => {});
-        }
-      });
+    // ── ResizeObserver 断自激改造 ─────────────────────────────────────
+    // 原实现：RO 回调无条件 fit()。wrapper 的子元素（xterm canvas）尺寸
+    // 变化同样会触发 RO，而 fit() 又改写 canvas 尺寸 → 尺寸反馈环 →
+    // WebKit 每帧 full layout/paint 风暴（Jetsam 实锤：WebContent 超
+    // 2GB soft limit 被处决导致白屏）。统一入口 scheduleFit：
+    //   - contentRect 守卫：wrapper 自身尺寸未变（子元素噪声）→ 不调度
+    //   - scheduleFit 内：RAF 合帧 + 120ms trailing 兜底 + 收敛去重 + 失败 pending 重试
+    // 四触发源（RO/attach/字体/session-ready）均经此入口。
+    let lastContentW = -1;
+    let lastContentH = -1;
+    const ro = new ResizeObserver((entries) => {
+      const entry = entries[0];
+      if (!entry) return;
+      const { width, height } = entry.contentRect;
+      // wrapper 自身尺寸变化不足 1px（多为子元素噪声）→ 直接忽略，断反馈环
+      if (Math.abs(width - lastContentW) < 1 && Math.abs(height - lastContentH) < 1) return;
+      lastContentW = width;
+      lastContentH = height;
+      // RO 触发源（4）：统一经 scheduleFit
+      scheduleFit();
     });
     ro.observe(wrapper);
 
     return () => {
-      if (resizeRafId !== null) cancelAnimationFrame(resizeRafId);
+      if (fitRafRef.current !== null) cancelAnimationFrame(fitRafRef.current);
+      if (fitTrailingRef.current !== undefined) window.clearTimeout(fitTrailingRef.current);
+      fitRafRef.current = null;
+      fitTrailingRef.current = undefined;
+      // 哨兵卫生：清除未决的 stall 定时器，防止僵尸定时器在废弃闭包上触发
+      // rebuildTerminal（重建风暴源头之一，任务 design.md §8.1 放大器 B）。
+      if (stallTimerRef.current !== undefined) {
+        window.clearTimeout(stallTimerRef.current);
+        stallTimerRef.current = undefined;
+      }
       ro.disconnect();
       detachAll();
       rebuildCallbacks.delete(cacheKey);
@@ -277,6 +433,7 @@ export default React.memo(function TerminalViewBase({
     taskConfigId,
     agentCommandOverride,
     onStatusChange,
+    scheduleFit,
     // Strategy values (via strategyRef to avoid unnecessary re-runs)
   ]);
 

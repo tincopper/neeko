@@ -2,12 +2,14 @@ import type { ITheme } from '@xterm/xterm';
 
 import { isDarkTheme } from './theme';
 
+/** xterm scrollback 行数预算：控制 WebContent 常驻 DOM/内存上限（原 10000）。 */
+export const TERMINAL_SCROLLBACK = 5000;
+
 const IS_LINUX = navigator.platform.toLowerCase().startsWith('linux');
 
 export const DEFAULT_FONT_FAMILY = IS_LINUX
   ? "'Cascadia Code', 'JetBrains Mono', 'Fira Code', monospace"
   : "'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace";
-
 export function buildFontFamily(fontFamily: string): string {
   const base = fontFamily ? `'${fontFamily}', ${DEFAULT_FONT_FAMILY}` : DEFAULT_FONT_FAMILY;
   // NerdFontSymbols 作为 PUA 码点最终 fallback（CSS @font-face 通过

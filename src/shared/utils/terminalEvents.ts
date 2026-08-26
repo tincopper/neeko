@@ -5,6 +5,8 @@
 export const TERMINAL_INPUT_EVENT = 'terminal-input';
 export const TERMINAL_OUTPUT_EVENT = 'terminal-output';
 export const TERMINAL_CLOSED_EVENT = 'terminal-closed';
+/** Zero-payload wake hint: buffered output exists, pull via `terminal_drain`. */
+export const TERMINAL_DRAIN_EVENT = 'terminal-drain';
 
 export function terminalInputEvent(sessionId: string): string {
   return `${TERMINAL_INPUT_EVENT}-${sessionId}`;
@@ -16,4 +18,8 @@ export function terminalOutputEvent(sessionId: string): string {
 
 export function terminalClosedEvent(sessionId: string): string {
   return `${TERMINAL_CLOSED_EVENT}-${sessionId}`;
+}
+
+export function terminalDrainEvent(sessionId: string): string {
+  return `${TERMINAL_DRAIN_EVENT}-${sessionId}`;
 }

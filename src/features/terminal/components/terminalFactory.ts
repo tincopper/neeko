@@ -4,17 +4,18 @@ import { Unicode11Addon } from '@xterm/addon-unicode11';
 import { Terminal } from '@xterm/xterm';
 
 import type { AgentConfig } from '@/shared/types';
-import { buildFontFamily, buildTerminalTheme } from '@/shared/utils/terminal';
+import { createDrainScheduler } from '@/shared/utils/drainLoop';
+import { buildFontFamily, buildTerminalTheme, TERMINAL_SCROLLBACK } from '@/shared/utils/terminal';
 import {
   terminalClosedEvent,
+  terminalDrainEvent,
   terminalInputEvent,
-  terminalOutputEvent,
 } from '@/shared/utils/terminalEvents';
 import { setupTerminalInput } from '@/shared/utils/terminalInput';
 
 // eslint-disable-next-line import/no-restricted-paths -- terminal factory needs agent API for agent config
 import { getAgent } from '../../agent/api/agentApi';
-import { createTerminalSession } from '../api/terminalApi';
+import { createTerminalSession, drainTerminal } from '../api/terminalApi';
 
 import {
   terminalCache,
@@ -62,7 +63,7 @@ export async function createTerminalForProject(
     fontSize,
     fontFamily: buildFontFamily(fontFamily),
     theme: buildTerminalTheme(),
-    scrollback: 10000,
+    scrollback: TERMINAL_SCROLLBACK,
     overviewRuler: { width: 0 },
     allowProposedApi: true,
   });
@@ -122,12 +123,22 @@ export async function createTerminalForProject(
     // bottom Task Console no longer mounts through this factory.
     void taskConfigId;
 
-    const unlistenOutput = await listen<number[]>(terminalOutputEvent(sid), (event) => {
-      const bytes = new Uint8Array(event.payload);
-      const filtered = bytes.filter((b) => b !== 0x7f);
-      if (filtered.length > 0) {
-        term.write(new Uint8Array(filtered));
-      }
+    // credit-pull 输出协议（内存治理）：wake hint 驱动二进制拉取。无在途
+    // 门闸（pendingWrites 恒 0），循环拉到空为止 —— 与旧推送语义等价，
+    // 但消除了 JSON 膨胀与事件洪泛。
+    const scheduler = createDrainScheduler({
+      sessionId: sid,
+      drain: drainTerminal,
+      write: (chunk) => {
+        const filtered = new Uint8Array(chunk).filter((b) => b !== 0x7f);
+        if (filtered.length > 0) {
+          term.write(filtered);
+        }
+      },
+      pendingWrites: () => 0,
+    });
+    const unlistenOutput = await listen(terminalDrainEvent(sid), () => {
+      scheduler.onWake();
     });
     cache.unlistenOutput = unlistenOutput;
 

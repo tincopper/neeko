@@ -275,7 +275,82 @@ pub fn close_terminal_session(session_id: String, state: State<AppStateWrapper>)
 
 - 单元测试：`terminal::process_reaper::tests` 用真实 `fork`+`setsid` 构造脱离进程验证收集与终止（macOS/Linux）。
 
----
+## Scenario: 终端输出信用拉取与有界合流泵（08-25 内存治理）
+
+### 1. Scope / Trigger
+
+- Trigger：旧链路 `PTY 4KB read → emit(Vec<u8>) → JSON number[] (~6x) → listen → term.write()` 全链路无界，WebContent 8.7min 膨胀至5.2GB，microtask 68% `arrayPush+realloc`。
+- Scope：`terminal/pump.rs`（合流泵）、`common/terminal/drain.rs`（有界信用队列）、`terminal/services.rs`（reader泵接入）、`terminal/manager.rs`与`terminal/remote.rs`（双后端同构）、前端`shared/utils/drainLoop.ts`/`fitScheduler.ts` + `TerminalViewBase`。
+
+### 2. Signatures
+
+```rust
+pub(crate) struct PumpConfig { pub max_buffer: usize, pub flush_interval: Duration, pub pause_poll: Duration }
+impl Default for PumpConfig { fn default() -> Self { Self { max_buffer: 256*1024, flush_interval: 16ms, pause_poll: 2ms } } }
+pub(crate) fn run(reader: Box<dyn Read+Send>, cfg: &PumpConfig, flush_fn: impl FnMut(&[u8])->bool) -> PumpOutcome
+#[cfg(unix)] pub(crate) fn run_polling(fd: RawFd, reader: Box<dyn Read+Send>, cfg: &PumpConfig, flush_fn: impl FnMut(&[u8])->bool) -> PumpOutcome
+pub(crate) struct SessionDrain { buffer: Mutex<DrainBuffer>, wake_in_flight: AtomicBool, closed: AtomicBool }
+impl SessionDrain {
+    pub(crate) fn push(&self, bytes: &[u8], wake: impl FnOnce()) -> bool // 满载返回false（泵停读），closed时黑洞返回true
+    pub(crate) fn take_and_rearm(&self, wake: impl FnOnce()) -> Vec<u8> // 取空并补发竞态wake，closed时永不重臂
+    pub(crate) fn close(&self)
+}
+pub(crate) type SessionDrainMap = Arc<Mutex<HashMap<String, Arc<SessionDrain>>>>;
+#[tauri::command] pub async fn terminal_drain(session_id: String, state: State<'_, AppStateWrapper>) -> Result<tauri::ipc::Response, AppError>
+```
+
+### 3. Contracts
+
+1. **合流**：`flush_interval 16ms`内多段read合并为一次`flush_fn`，事件频率≤60Hz；`max_buffer 256KB`达阈立即flush。
+2. **有界**：`DrainBuffer 512KB`（> pump 256KB，数学上排除单批死锁）；`push`在非空且`len+bytes>512KB`时返回`false`，泵`sleep(pause_poll)`重试，不丢字节。
+3. **背压**：`false`时泵停读，内核PTY缓冲承压→前台`write`阻塞（终端正确语义）；前端`MAX_IN_FLIGHT_WRITES=8`门闸，`pendingWrites>=8`时`runDrainLoop`提前退出，余量由下次wake续拉。
+4. **二进制**：`terminal_drain`返回`Response::new(Vec<u8>)`，前端`invoke<ArrayBuffer>`零JSON，`terminal-drain-{id}`仅零载荷hint。
+5. **竞态闭合**：`push`以`swap(true)`确保至多一wake在飞；`take_and_rearm`取空后`store(false)`，若期间又有`push`立即`swap(true)`补发，永不丢wake。
+6. **Unix及时性**：`run_polling`用`poll(fd, timeout=flush_interval剩余)`，超时回到循环顶部评估flush，消除阻塞读的“静默期不flush”折衷；Windows回退`run`阻塞读。
+7. **生命周期**：`SessionDrain`随`TerminalManager`/`RemoteTerminalManager`的`take_session_handle`与`watcher`退出路径同步清理；`close()`使孤儿泵的push黑洞化，避免永久背压。
+
+### 4. Validation & Error Matrix
+
+| 场景 | 预期 | 风险 |
+|---|---|---|
+| agent CLI全速输出 | 合流后`flushes`≈`bytes/avgBatch`，`backpressure_pauses`可观测增长，footprint稳态<800MB | 无 |
+| 前端慢消费(xterm未消化) | `push`返回`false`→泵停读→PTY缓冲→前端`pendingWrites>=8`暂停拉取，下次wake续拉不丢 | 若阈值过低会误限流 |
+| 512KB满载 | 新`push`拒收，`wake_in_flight`仍保证单wake，消费端`take_and_rearm`后补发 | 单批>512KB时空缓冲特例直接接收（最坏512KB+256KB） |
+| 会话关闭后孤儿push | `close()`后`push`黑洞`true`不缓冲不唤醒，`take_and_rearm`空且不重臂 | 若未close会永久停泊 |
+| SSH backpressure期间输入/resize | `remote.rs`专用`tokio::time::sleep.await`非`std::thread::sleep`，select不饿死 | 误用`thread::sleep`会饿死2ms*N |
+
+### 5. Good/Base/Bad Cases
+
+- Good：10段4KB burst在16ms窗口内→1次flush，byte序完整，`stats.bytes`准确。
+- Base：`DRAIN 512KB`满载时`push` 300KB→`false`→泵等待`pause_poll 2ms`→`take`后恢复。
+- Bad：在`async` SSH select内用`std::thread::sleep`→输入/resize分支饿死；或单次`emit(Vec<u8>)` JSON导致6x膨胀。
+
+### 6. Tests Required
+
+- `pump::tests::coalesces_burst_into_single_flush_in_order` / `backpressure_pauses_then_delivers_everything` / `run_polling`超时flush
+- `drain::tests::closed_drain_*` 黑洞与永不重臂 / `concurrent_push_take` 50KB乱序不丢
+- `fitScheduler.test` RAF合帧+trailing+失败重试 / `drainLoop.test` latch/maybePending/digest 闭环
+- 集成：`terminal_drain`往返`Vec<u8>`与`ArrayBuffer`一致性
+
+### 7. Wrong vs Correct
+
+#### Wrong
+
+```rust
+let mut buf=[0u8;4096]; loop{ let n=reader.read(&mut buf)?; app.emit("terminal-output-{id}", &buf[..n])?; }
+// 前端 listen<number[]>: term.write() 无界积压，IPC JSON 6x
+// SSH: std::thread::sleep(2ms) 在 tokio select 内
+```
+
+#### Correct
+
+```rust
+let drain: Arc<SessionDrain>=...;
+run_polling(fd, reader, &PumpConfig::default(), |batch| drain.push(batch, || app.emit("terminal-drain-{id}",())?));
+// 前端: listen("terminal-drain")→ while { chunk=await invoke<ArrayBuffer>("terminal_drain"); if empty break; term.write(chunk, ()=>pending--) }
+// SSH backpressure: tokio::time::sleep(2ms).await
+```
+
 
 ## 常见错误
 

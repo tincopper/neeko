@@ -6,8 +6,9 @@
 // Types still live in mod.rs (PtyHandle, PipelineConfig, etc.) because they
 // are closely coupled to TerminalManager.
 
+use crate::common::terminal::drain::SessionDrainMap;
 use crate::common::terminal::events::{
-    terminal_closed_event, terminal_input_event, terminal_output_event,
+    terminal_closed_event, terminal_drain_event, terminal_input_event,
 };
 use anyhow::Result;
 use portable_pty::{native_pty_system, Child, CommandBuilder, PtyPair, PtySize};
@@ -18,12 +19,13 @@ use std::thread;
 use std::time::{Duration, Instant};
 use tauri::{Emitter, EventId, Listener};
 
-use super::{PipelineConfig, PtyHandle};
+use super::manager::{PipelineConfig, PtyHandle, TerminalClosedPayload};
 
 // ─── Pipeline Orchestration ───────────────────────────────────────────────
 
 /// Spawn the full PTY pipeline: reader, writer, watcher threads and emit
 /// the initial session state.
+#[allow(clippy::too_many_arguments)] // pipeline spawn: 8 deps are a stable unit, grouping adds ceremony
 pub(super) fn spawn_pty_pipeline(
     id: &str,
     pair: PtyPair,
@@ -31,6 +33,7 @@ pub(super) fn spawn_pty_pipeline(
     config: &PipelineConfig,
     sessions: &Arc<Mutex<HashMap<String, crate::common::terminal::types::TerminalSession>>>,
     pty_handles: &Arc<Mutex<HashMap<String, PtyHandle>>>,
+    drains: &SessionDrainMap,
     app_handle: &tauri::AppHandle,
 ) -> Result<crate::common::terminal::types::TerminalSession> {
     let pid = child.process_id();
@@ -98,7 +101,20 @@ pub(super) fn spawn_pty_pipeline(
         .map_err(|e| anyhow::anyhow!("Lock poisoned: {}", e))?
         .insert(id.to_string(), session.clone());
 
+    drains
+        .lock()
+        .map_err(|e| anyhow::anyhow!("Lock poisoned: {}", e))?
+        .insert(
+            id.to_string(),
+            Arc::new(crate::common::terminal::drain::SessionDrain::default()),
+        );
+
     let input_listener_id = spawn_writer_listener(id, writer, app_handle, config.prefix);
+
+    // Unix：在 master 被 move 进 PtyHandle 之前取出 fd，交给 poll 泵
+    // （及时 flush，消除交互 TUI「静默期不 flush」导致的输出延迟）。
+    #[cfg(unix)]
+    let master_fd = pair.master.as_raw_fd();
 
     pty_handles
         .lock()
@@ -115,8 +131,11 @@ pub(super) fn spawn_pty_pipeline(
             },
         );
 
-    spawn_watcher_thread(id, config, pty_handles, sessions, app_handle)?;
-    spawn_reader_thread(id, reader, config, app_handle)?;
+    spawn_watcher_thread(id, config, pty_handles, sessions, drains, app_handle)?;
+    #[cfg(unix)]
+    spawn_reader_thread(id, reader, config, drains, app_handle, master_fd)?;
+    #[cfg(not(unix))]
+    spawn_reader_thread(id, reader, config, drains, app_handle)?;
 
     log_info(&format!("{} Session {} ready", config.prefix, &id[..8]));
     Ok(session)
@@ -163,11 +182,13 @@ fn spawn_watcher_thread(
     config: &PipelineConfig,
     pty_handles: &Arc<Mutex<HashMap<String, PtyHandle>>>,
     sessions: &Arc<Mutex<HashMap<String, crate::common::terminal::types::TerminalSession>>>,
+    drains: &SessionDrainMap,
     app_handle: &tauri::AppHandle,
 ) -> Result<()> {
     let watch_id = id.to_string();
     let watch_pty_handles = pty_handles.clone();
     let watch_sessions = sessions.clone();
+    let watch_drains = drains.clone();
     let watch_handle = app_handle.clone();
     let prefix = config.prefix.to_string();
     let prefix_w = prefix.clone();
@@ -234,11 +255,16 @@ fn spawn_watcher_thread(
                     if let Ok(mut sessions) = watch_sessions.lock() {
                         sessions.remove(&watch_id);
                     }
+                    if let Ok(mut drains) = watch_drains.lock() {
+                        // 先 close 再移除（孤儿泵黑洞语义，见 take_session_handle）。
+                        if let Some(d) = drains.remove(&watch_id) {
+                            d.close();
+                        }
+                    }
                     let close_event = terminal_closed_event(&watch_id);
-                    if let Err(e) = watch_handle.emit(
-                        &close_event,
-                        super::TerminalClosedPayload { exit_code: code },
-                    ) {
+                    if let Err(e) =
+                        watch_handle.emit(&close_event, TerminalClosedPayload { exit_code: code })
+                    {
                         log_error(&format!(
                             "{}-WATCHER Failed to emit close event: {}",
                             prefix_w, e
@@ -254,18 +280,35 @@ fn spawn_watcher_thread(
     Ok(())
 }
 
-/// Spawn a reader thread that reads PTY output and emits `terminal-output-{id}`
-/// events for the frontend.
+/// Spawn a reader thread that coalesces PTY output through the bounded
+/// [`pump::OutputPump`] into the session's [`SessionDrain`], emitting
+/// zero-payload `terminal-drain-{id}` wake hints for the frontend to pull
+/// binary chunks via the `terminal_drain` command.
+///
+/// 内存治理（任务 08-25-terminal-memory-governance）：旧实现每次 4KB read 直接
+/// JSON emit，事件频率等于设备吞吐频率，前端 writeBuffer 无界积压。
+///
+/// Unix 平台使用 `run_polling`（poll 超时 flush）：交互式 TUI 输出一批后
+/// 停顿等待时，积压数据不再滞留到下一次 read/EOF，窗口内必达 —— 消除
+/// 阻塞读泵的「静默期不 flush」折衷导致的终端延迟/卡顿。
 fn spawn_reader_thread(
     id: &str,
     reader: Box<dyn Read + Send>,
     config: &PipelineConfig,
+    drains: &crate::common::terminal::drain::SessionDrainMap,
     app_handle: &tauri::AppHandle,
+    #[cfg(unix)] master_fd: Option<std::os::fd::RawFd>,
 ) -> Result<()> {
     let read_id = id.to_string();
     let read_handle = app_handle.clone();
     let prefix = config.prefix.to_string();
-    let mut reader = reader;
+    let reader = reader;
+    let session_drain = drains
+        .lock()
+        .map_err(|e| anyhow::anyhow!("Lock poisoned: {}", e))?
+        .get(id)
+        .cloned()
+        .ok_or_else(|| anyhow::anyhow!("Drain queue missing for session {id}"))?;
 
     thread::Builder::new()
         .name(format!("{}-reader-{}", config.thread_prefix, &id[..8]))
@@ -275,26 +318,43 @@ fn spawn_reader_thread(
                 prefix,
                 &read_id[..8]
             ));
-            let mut buf = [0u8; 4096];
-            loop {
-                match reader.read(&mut buf) {
-                    Ok(0) => {
-                        log_info(&format!("{}-READER EOF", prefix));
-                        break;
+            let wake_handle = read_handle.clone();
+            let wake_id = read_id.clone();
+            let wake_prefix = prefix.clone();
+            let started = std::time::Instant::now();
+            // 同一 flush 语义复用于两个 pump 变体：有界推入 SessionDrain，
+            // 首次成功入队时补发至多一个零负载 wake。
+            let mut flush = |data: &[u8]| {
+                session_drain.push(data, || {
+                    let event_name = terminal_drain_event(&wake_id);
+                    if let Err(e) = wake_handle.emit(&event_name, ()) {
+                        log_error(&format!("{}-READER Wake emit error: {}", wake_prefix, e));
                     }
-                    Ok(n) => {
-                        let data = buf[..n].to_vec();
-                        let event_name = terminal_output_event(&read_id);
-                        if let Err(e) = read_handle.emit(&event_name, &data) {
-                            log_error(&format!("{}-READER Emit error: {}", prefix, e));
-                            break;
-                        }
-                    }
-                    Err(e) => {
-                        log_info(&format!("{}-READER Read ended: {}", prefix, e));
-                        break;
-                    }
-                }
+                })
+            };
+            #[cfg(unix)]
+            let outcome = match master_fd {
+                Some(fd) => super::pump::run_polling(
+                    fd,
+                    reader,
+                    &super::pump::PumpConfig::default(),
+                    &mut flush,
+                ),
+                None => super::pump::run(reader, &super::pump::PumpConfig::default(), &mut flush),
+            };
+            #[cfg(not(unix))]
+            let outcome = super::pump::run(reader, &super::pump::PumpConfig::default(), flush);
+            log_info(&format!(
+                "{}-READER finished for {} in {:?}: {} flushes / {} bytes / {} backpressure pauses",
+                prefix,
+                &read_id[..8],
+                started.elapsed(),
+                outcome.stats.flushes,
+                outcome.stats.bytes,
+                outcome.stats.backpressure_pauses,
+            ));
+            if let Some(e) = outcome.error {
+                log_info(&format!("{}-READER Read ended: {}", prefix, e));
             }
             log_info(&format!(
                 "{}-READER Thread exiting for {}",

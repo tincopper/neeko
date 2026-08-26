@@ -46,3 +46,12 @@ export function closeTerminalSession(sessionId: string): Promise<void> {
 export function resizeTerminal(sessionId: string, cols: number, rows: number): Promise<void> {
   return invoke<void>('resize_terminal', { sessionId, cols, rows });
 }
+
+/**
+ * Pulls all buffered terminal output for a session as raw bytes (credit-pull
+ * protocol). Backend returns a binary `tauri::ipc::Response` — zero JSON
+ * serialization overhead; empty ArrayBuffer means "queue drained".
+ */
+export function drainTerminal(sessionId: string): Promise<ArrayBuffer> {
+  return invoke<ArrayBuffer>('terminal_drain', { sessionId });
+}

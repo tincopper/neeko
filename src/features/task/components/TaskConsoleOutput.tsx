@@ -13,7 +13,7 @@ import React, { useEffect, useRef } from 'react';
 import { useAppContext } from '@/shared/contexts/AppContext';
 import { useBrowserStore } from '@/shared/store/browserStore';
 import { useDockStore } from '@/shared/store/dockStore';
-import { buildFontFamily, buildTerminalTheme } from '@/shared/utils/terminal';
+import { buildFontFamily, buildTerminalTheme, TERMINAL_SCROLLBACK } from '@/shared/utils/terminal';
 import { setupTerminalInput, type TerminalInputController } from '@/shared/utils/terminalInput';
 
 import { writeTaskInput } from '../taskRunner';
@@ -51,7 +51,7 @@ function TaskConsoleOutput({ run, active }: Props) {
       fontSize: config.terminalFontSize ?? 14,
       fontFamily: buildFontFamily(config.fontFamily ?? ''),
       theme: buildTerminalTheme(),
-      scrollback: 10000,
+      scrollback: TERMINAL_SCROLLBACK,
       allowProposedApi: true,
     });
     const fit = new FitAddon();

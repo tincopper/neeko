@@ -2,7 +2,7 @@
 
 use crate::common::connection::types::AuthMethod;
 use crate::common::executor::ssh_auth;
-use crate::common::terminal::events::{terminal_input_event, terminal_output_event};
+use crate::common::terminal::events::{terminal_drain_event, terminal_input_event};
 use crate::common::terminal::types::{TerminalSession, TerminalStatus};
 use crate::theme::common;
 use anyhow::Result;
@@ -36,6 +36,8 @@ pub struct RemoteTerminalManager {
     sessions: Arc<Mutex<HashMap<String, TerminalSession>>>,
     /// Internal SSH handles indexed by session ID.
     ssh_handles: Arc<Mutex<HashMap<String, SSHHandle>>>,
+    /// Bounded output queues (credit-pull protocol), keyed by session ID.
+    drains: crate::common::terminal::drain::SessionDrainMap,
 }
 
 impl Default for RemoteTerminalManager {
@@ -51,6 +53,7 @@ impl RemoteTerminalManager {
         Self {
             sessions: Arc::new(Mutex::new(HashMap::new())),
             ssh_handles: Arc::new(Mutex::new(HashMap::new())),
+            drains: crate::common::terminal::drain::new_drain_map(),
         }
     }
 
@@ -119,6 +122,14 @@ impl RemoteTerminalManager {
             .map_err(|e| anyhow::anyhow!("Sessions lock poisoned: {}", e))?
             .insert(id.clone(), terminal_session.clone());
 
+        self.drains
+            .lock()
+            .map_err(|e| anyhow::anyhow!("Drains lock poisoned: {}", e))?
+            .insert(
+                id.clone(),
+                Arc::new(crate::common::terminal::drain::SessionDrain::default()),
+            );
+
         // mpsc channel：input listener → IO 任务
         let (input_tx, mut input_rx) = mpsc::unbounded_channel::<Vec<u8>>();
         // mpsc channel：resize 请求 (cols, rows) → IO 任务
@@ -156,6 +167,14 @@ impl RemoteTerminalManager {
             );
         }
 
+        let session_drain = self
+            .drains
+            .lock()
+            .map_err(|e| anyhow::anyhow!("Drains lock poisoned: {}", e))?
+            .get(&id)
+            .cloned()
+            .ok_or_else(|| anyhow::anyhow!("Drain queue missing for session {id}"))?;
+
         // 用 make_writer() 分离读写端，避免 select! 中的可变借用冲突
         let mut writer = channel.make_writer();
 
@@ -172,6 +191,7 @@ impl RemoteTerminalManager {
                         return;
                     }
                 };
+                let io_drain = session_drain.clone();
                 rt.block_on(async move {
                     log_info(&format!("[SSH-IO] Thread started for {}", &io_id[..8]));
                     loop {
@@ -203,11 +223,34 @@ impl RemoteTerminalManager {
                             msg = channel.wait() => {
                                 match msg {
                                     Some(ChannelMsg::Data { data }) => {
-                                        let event_name = terminal_output_event(&io_id);
-                                        let data_vec = data.to_vec();
-                                        if let Err(e) = read_handle.emit(&event_name, &data_vec) {
-                                            log_error(&format!("[SSH-IO] Emit error: {}", e));
-                                            break;
+                                        // 内存治理：写入有界 drain 队列并发零载荷
+                                        // 唤醒，前端经 terminal_drain 拉二进制块。
+                                        // Mutex 临界区极短，不违反阻塞红线。
+                                        //
+                                        // 背压契约对齐本地泵（design.md §8.2）：
+                                        // 满载停泊重试，绝不丢字节。期间
+                                        // input/resize 消息暂存于 unbounded
+                                        // channel 不丢失；会话已关闭（closed）
+                                        // 时 push 黑洞吸收，循环自然结束。
+                                        let session_drain = io_drain.clone();
+                                        let wake_handle = read_handle.clone();
+                                        let wake_id = io_id.clone();
+                                        while !session_drain.push(&data, {
+                                            let wake_handle = wake_handle.clone();
+                                            let wake_id = wake_id.clone();
+                                            move || {
+                                                let event_name =
+                                                    terminal_drain_event(&wake_id);
+                                                if let Err(e) =
+                                                    wake_handle.emit(&event_name, ())
+                                                {
+                                                    log_error(&format!(
+                                                        "[SSH-IO] Wake emit error: {}", e
+                                                    ));
+                                                }
+                                            }
+                                        }) {
+                                            std::thread::sleep(std::time::Duration::from_millis(2));
                                         }
                                     }
                                     Some(ChannelMsg::Eof) => {
@@ -282,6 +325,35 @@ impl RemoteTerminalManager {
                 // input_tx drop 后，IO 任务的 recv() 会返回 None，任务自然退出
             }
         }
+
+        // 先 close 再移除：孤儿 IO 任务的后续 push 被黑洞吸收，读到 EOF/Close
+        // 自然退出（对齐本地 TerminalManager::take_session_handle 语义）。
+        if let Ok(mut drains) = self.drains.lock() {
+            if let Some(d) = drains.remove(session_id) {
+                d.close();
+            }
+        }
+    }
+
+    /// Takes all buffered output bytes for a session (credit-pull protocol).
+    #[must_use]
+    pub fn take_drain(&self, session_id: &str) -> Option<Vec<u8>> {
+        let drain = self
+            .drains
+            .lock()
+            .ok()
+            .and_then(|m| m.get(session_id).cloned())?;
+        Some(drain.take_and_rearm(|| {
+            // 竞态补发：若 take 期间生产者 slipped 数据，立即补发 wake；与
+            // TerminalManager::take_drain 保持同构。SSH 复用同一 Drain 协议，
+            // 仅 handle 来源不同（ssh_handles vs pty_handles）。
+            if let Ok(handles) = self.ssh_handles.lock() {
+                if let Some(h) = handles.get(session_id) {
+                    let event_name = terminal_drain_event(session_id);
+                    let _ = h.app_handle.emit(&event_name, ());
+                }
+            }
+        }))
     }
 
     /// Test whether an SSH connection can be established with the given parameters.

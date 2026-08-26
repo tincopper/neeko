@@ -4,11 +4,11 @@ use crate::agent::AgentManager;
 use crate::common::executor::factory::ExecTarget;
 use crate::common::file::watcher::WatcherManager;
 use crate::common::runtime::AppRuntime;
-use crate::common::terminal::remote::RemoteTerminalManager;
 use crate::conversation::ConversationManager;
 use crate::library;
 use crate::project::ProjectManager;
 use crate::session::StorageManager;
+use crate::terminal::remote::RemoteTerminalManager;
 use crate::terminal::TerminalManager;
 use crate::AppError;
 use std::collections::HashMap;
@@ -348,6 +348,34 @@ impl AppStateWrapper {
                 .remote_terminal_manager
                 .resize_session(session_id, cols, rows)
                 .map_err(AppError::from),
+            None => Err(AppError::NotFound(format!(
+                "Terminal session not found: {session_id}"
+            ))),
+        }
+    }
+
+    /// Drain buffered terminal output, dispatching to the correct backend.
+    pub fn terminal_drain(&self, session_id: &str) -> Result<tauri::ipc::Response, AppError> {
+        let owner = self
+            .session_owner
+            .lock()
+            .ok()
+            .and_then(|m| m.get(session_id).cloned());
+        match owner {
+            Some(SessionOwner::Pty) => self
+                .terminal_manager
+                .take_drain(session_id)
+                .map(tauri::ipc::Response::new)
+                .ok_or_else(|| {
+                    AppError::NotFound(format!("Terminal drain queue not found: {session_id}"))
+                }),
+            Some(SessionOwner::Ssh) => self
+                .remote_terminal_manager
+                .take_drain(session_id)
+                .map(tauri::ipc::Response::new)
+                .ok_or_else(|| {
+                    AppError::NotFound(format!("Terminal drain queue not found: {session_id}"))
+                }),
             None => Err(AppError::NotFound(format!(
                 "Terminal session not found: {session_id}"
             ))),
