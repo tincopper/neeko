@@ -1,0 +1,6 @@
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "Rust 侧红线：命令极薄/mod.rs 纯声明/平台门控/阻塞 IO 隔离"}
+{"file": ".trellis/spec/backend/concurrency-guidelines.md", "reason": "reader 线程与 Mutex DrainQueue 的并发规范"}
+{"file": ".trellis/spec/backend/command-guidelines.md", "reason": "新增 terminal_drain 命令的注册与错误处理约定"}
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "前端质量红线：导入防火墙/性能模式"}
+{"file": ".trellis/spec/frontend/hook-guidelines.md", "reason": "TerminalViewBase effect/listener 清理与 hook 设计约定"}
+{"file": ".trellis/spec/frontend/api-layer.md", "reason": "drainOutput api 封装层级约定"}
