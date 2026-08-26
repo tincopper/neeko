@@ -956,3 +956,36 @@ Delivered browser-as-editor-tab (Route A per-tab webviews, '+' Browser option). 
 ### Next Steps
 
 - None - task complete
+
+
+## Session 146: terminal-memory-governance bounded pump + drain
+
+**Date**: 2026-08-26
+**Task**: terminal-memory-governance bounded pump + drain
+**Branch**: `main`
+
+### Summary
+
+(Add summary)
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `60a28d21` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
