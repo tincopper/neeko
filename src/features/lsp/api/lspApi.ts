@@ -154,12 +154,20 @@ export interface LspGoToDefinitionResult {
   fileContent: string | null;
 }
 
+/**
+ * Optimized go-to-definition with preloaded target content.
+ *
+ * `probe` marks best-effort decoration lookups (the Cmd/Ctrl+hover
+ * link-highlight): probes are single-flight among themselves on the backend
+ * but can never cancel an explicit jump. Defaults to `false` (user jump).
+ */
 export function lspGoToDefinition(
   projectPath: string,
   languageId: string,
   uri: string,
   line: number,
   character: number,
+  probe = false,
 ): Promise<LspGoToDefinitionResult | null> {
   return invoke<LspGoToDefinitionResult | null>('lsp_go_to_definition', {
     projectPath,
@@ -167,6 +175,7 @@ export function lspGoToDefinition(
     uri,
     line,
     character,
+    probe,
   });
 }
 

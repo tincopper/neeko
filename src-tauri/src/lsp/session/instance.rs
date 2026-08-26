@@ -51,7 +51,6 @@ pub(crate) struct LspSession {
     /// Child process handle for lifecycle management (kill on close).
     pub(crate) child: Option<crate::lsp::process::LspProcess>,
     /// OS / remote process id for memory sampling (when available).
-    #[allow(dead_code)]
     pub(crate) process_pid: Option<u32>,
     /// Version metadata parsed from `--version` at spawn (memory filled on demand).
     pub(crate) server_info: LspServerInfo,
@@ -387,6 +386,7 @@ impl LspSession {
             Arc::clone(&self.inflight),
             method,
             params,
+            false,
         )
         .await
     }
@@ -456,7 +456,6 @@ impl LspSession {
     }
 
     /// Snapshot server metadata; refreshes RSS when a process pid is known.
-    #[allow(dead_code)]
     pub(crate) fn snapshot_server_info(&self) -> LspServerInfo {
         let mut info = self.server_info.clone();
         info.memory_mb = self
@@ -628,6 +627,48 @@ mod tests {
             caps["textDocument"]["completion"]["completionItem"]["documentation"],
             json!(true),
             "documentation must be advertised so servers include per-item docs"
+        );
+    }
+
+    /// No-op transport for tests that do not touch IPC.
+    struct NoopTransport;
+
+    impl LspTransport for NoopTransport {
+        fn push_diagnostics(&self, _: &str, _: &str, _: serde_json::Value) {}
+    }
+
+    /// Regression: `snapshot_server_info` must sample live RSS, not return the
+    /// static spawn-time metadata (`memory_mb` was always 0.0 before the fix).
+    #[test]
+    fn snapshot_server_info_refreshes_live_memory() {
+        let (writer_tx, _writer_rx) = crossbeam_channel::unbounded::<Message>();
+        let session = LspSession {
+            language_id: "rust".into(),
+            project_path: "/test/project".into(),
+            server_name: "rust-analyzer".into(),
+            writer: writer_tx,
+            pending: Arc::new(Mutex::new(HashMap::new())),
+            inflight: Arc::new(Mutex::new(InflightRequestTracker::new())),
+            reader: None,
+            stderr_logger: None,
+            restart_count: 0,
+            server_capabilities: serde_json::json!({}),
+            status: LspSessionStatus::Ready,
+            child: None,
+            // Our own test process is alive, so RSS sampling must succeed.
+            process_pid: Some(std::process::id()),
+            server_info: LspServerInfo::unknown(),
+            log_buffer: Arc::new(Mutex::new(LogRingBuffer::new())),
+            transport: Arc::new(NoopTransport),
+        };
+
+        let info = session.snapshot_server_info();
+        // Windows stub returns None by design (v1 skips memory sampling there).
+        #[cfg(not(target_os = "windows"))]
+        assert!(
+            info.memory_mb > 0.0,
+            "expected live RSS sample, got {}",
+            info.memory_mb
         );
     }
 }

@@ -46,23 +46,37 @@ function setCachedDefinition(key: string, data: LspGoToDefinitionResult): void {
   }
 }
 
+/** @internal test helper — clears module-level caches between tests. */
+export function __resetDefinitionCachesForTests(): void {
+  defCache.clear();
+  pendingCache.clear();
+}
+
 /**
  * Fetch a definition result, deduplicating in-flight requests.
  * If a request for the same key is already pending, returns that promise.
  * If a cached result exists (within TTL), returns it immediately.
+ *
+ * `skipPending` bypasses the in-flight dedup: an explicit jump must not wait
+ * on a hover probe's pending promise. Probes are best-effort decoration
+ * lookups (possibly issued against an older document version); a jump wants a
+ * fresh result for the user's actual gesture.
  */
 export function getOrFetchDefinition(
   key: string,
   fetchFn: () => Promise<LspGoToDefinitionResult | null>,
+  options?: { skipPending?: boolean },
 ): Promise<LspGoToDefinitionResult | null> {
   const cached = getCachedDefinition(key);
   if (cached) {
     return Promise.resolve(cached);
   }
 
-  const pending = pendingCache.get(key);
-  if (pending && Date.now() - pending.ts < PENDING_TTL_MS) {
-    return pending.promise;
+  if (!options?.skipPending) {
+    const pending = pendingCache.get(key);
+    if (pending && Date.now() - pending.ts < PENDING_TTL_MS) {
+      return pending.promise;
+    }
   }
 
   const promise = fetchFn()

@@ -50,6 +50,22 @@ async fn ensure_session_async(
         .map(|_| ())
 }
 
+/// Read a file on the OS blocking pool — async commands must never call
+/// `std::fs` directly on a tokio worker thread.
+///
+/// The path is canonicalized before reading, so a frontend-supplied `file://`
+/// URI is resolved to its physical location first (path-safety red line).
+async fn read_file_blocking(path: &str) -> Option<String> {
+    let path = path.to_string();
+    tokio::task::spawn_blocking(move || {
+        std::fs::canonicalize(&path)
+            .ok()
+            .and_then(|p| std::fs::read_to_string(p).ok())
+    })
+    .await
+    .unwrap_or(None)
+}
+
 // ═══════════════════════════════════════════════════════════════════════
 // Core LSP commands
 // ═══════════════════════════════════════════════════════════════════════
@@ -81,7 +97,7 @@ pub async fn lsp_request(
                 uri,
                 file_path
             );
-            if let Ok(text) = std::fs::read_to_string(file_path) {
+            if let Some(text) = read_file_blocking(file_path).await {
                 if text.len() > MAX_AUTO_OPEN_FILE_SIZE {
                     log::warn!(
                         "[LSP] File too large for auto-open: {} ({} bytes)",
@@ -117,7 +133,7 @@ pub async fn lsp_request(
 
     state
         .lsp_manager
-        .send_request_async(&project_path, &language_id, &method, params)
+        .send_request_async(&project_path, &language_id, &method, params, false)
         .await
 }
 
@@ -503,7 +519,7 @@ pub async fn lsp_transport(
     if id.is_some() && !id.as_ref().map(|v| v.is_null()).unwrap_or(false) {
         let result = state
             .lsp_manager
-            .send_request_async(&project_path, &language_id, method, params)
+            .send_request_async(&project_path, &language_id, method, params, false)
             .await?;
         return serde_json::to_string(&serde_json::json!({
             "jsonrpc": "2.0",
@@ -552,6 +568,10 @@ pub async fn lsp_transport(
 
 /// Optimized go-to-definition: returns the LSP result plus preloaded target file content
 /// so the frontend avoids a second `readFileContent` IPC round trip.
+///
+/// `probe` distinguishes best-effort decoration lookups (the Cmd/Ctrl+hover
+/// link-highlight) from explicit user jumps: probes are single-flight among
+/// themselves but can never cancel a real jump.
 #[tauri::command]
 pub async fn lsp_go_to_definition(
     project_path: String,
@@ -559,6 +579,7 @@ pub async fn lsp_go_to_definition(
     uri: String,
     line: u32,
     character: u32,
+    probe: bool,
     state: State<'_, AppStateWrapper>,
 ) -> Result<serde_json::Value, AppError> {
     let t0 = std::time::Instant::now();
@@ -573,7 +594,7 @@ pub async fn lsp_go_to_definition(
         .is_document_open(&project_path, &language_id, &uri)
     {
         let file_path = uri.strip_prefix("file://").unwrap_or(&uri);
-        if let Ok(text) = std::fs::read_to_string(file_path) {
+        if let Some(text) = read_file_blocking(file_path).await {
             let open_params = serde_json::json!({
                 "textDocument": {
                     "uri": &uri,
@@ -606,6 +627,7 @@ pub async fn lsp_go_to_definition(
             &language_id,
             "textDocument/definition",
             params,
+            probe,
         )
         .await?;
     let t2 = t0.elapsed();
@@ -616,10 +638,13 @@ pub async fn lsp_go_to_definition(
     );
 
     // Preload target file content using UnifiedLocation
-    let file_content = UnifiedLocation::first_target_uri(&lsp_result).and_then(|target_uri| {
-        let path = target_uri.strip_prefix("file://").unwrap_or(&target_uri);
-        std::fs::read_to_string(path).ok()
-    });
+    let file_content = match UnifiedLocation::first_target_uri(&lsp_result) {
+        Some(target_uri) => {
+            let path = target_uri.strip_prefix("file://").unwrap_or(&target_uri);
+            read_file_blocking(path).await
+        }
+        None => None,
+    };
     let t3 = t0.elapsed();
     log::info!(
         "[perf] lsp_go_to_definition: total {:?} (file read {:?})",

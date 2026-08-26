@@ -343,12 +343,17 @@ impl LspManager {
     }
 
     /// Send an LSP request asynchronously, restarting the session if needed.
+    ///
+    /// `is_probe` marks best-effort decoration lookups (e.g. the link-highlight
+    /// probe that reuses `textDocument/definition`): probes are single-flight
+    /// under a dedicated bucket, while explicit navigation is never cancelled.
     pub async fn send_request_async(
         self: &Arc<Self>,
         project_path: &str,
         language_id: &str,
         method: &str,
         params: Value,
+        is_probe: bool,
     ) -> Result<Value, AppError> {
         let key = session_key(project_path, language_id);
 
@@ -361,7 +366,9 @@ impl LspManager {
                     Arc::clone(&s.inflight),
                 )
             }) {
-                match do_send_request(pending, writer, inflight, method, params.clone()).await {
+                match do_send_request(pending, writer, inflight, method, params.clone(), is_probe)
+                    .await
+                {
                     Ok(val) => return Ok(val),
                     Err(e) => {
                         log::warn!(
@@ -415,7 +422,7 @@ impl LspManager {
                 Arc::clone(&s.inflight),
             )
         }) {
-            do_send_request(pending, writer, inflight, method, params)
+            do_send_request(pending, writer, inflight, method, params, is_probe)
                 .await
                 .map_err(|e| AppError::Lsp(e.to_string()))
         } else {
@@ -639,7 +646,7 @@ impl LspManager {
     ) -> Result<LspServerInfo, AppError> {
         let key = session_key(project_path, language_id);
         self.session_store
-            .with_session(&key, |s| s.server_info.clone())
+            .with_session(&key, |s| s.snapshot_server_info())
             .ok_or_else(|| AppError::Lsp(format!("No LSP session for: {}", key)))
     }
 

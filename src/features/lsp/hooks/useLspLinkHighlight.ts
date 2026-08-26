@@ -63,7 +63,9 @@ type LinkProbeHit = {
  * Flood control:
  * - 150ms debounce on mousemove
  * - latest-wins: only the newest probe may update decorations
- * - backend cancels prior textDocument/definition via $/cancelRequest
+ * - probes are single-flight *among themselves* on the backend (dedicated
+ *   `definition#probe` bucket) so moving across symbols cancels the previous
+ *   probe, while an explicit jump (F12 / Cmd+Click) is never cancelled
  */
 export function useLspLinkHighlightExtension(
   projectPath: string | null,
@@ -113,7 +115,14 @@ export function useLspLinkHighlightExtension(
 
                 const key = definitionCacheKey(projectPath, uri, lspPos.line, lspPos.character);
                 const wrapped = await getOrFetchDefinition(key, () =>
-                  lspGoToDefinition(projectPath!, languageId!, uri, lspPos.line, lspPos.character),
+                  lspGoToDefinition(
+                    projectPath!,
+                    languageId!,
+                    uri,
+                    lspPos.line,
+                    lspPos.character,
+                    true, // probe: best-effort decoration, never cancels a jump
+                  ),
                 );
 
                 if (!wrapped?.lspResult) return false;
