@@ -242,9 +242,9 @@ export function useLspNavigation({
   ]);
   /* eslint-enable react-hooks/refs */
 
-  // Cmd+Click / Ctrl+Click — go to definition, clearing link highlight first
-  useCmdClickGoToDefinition({
-    editorViewRef,
+  // Cmd+Click / Ctrl+Click — go to definition, clearing link highlight first.
+  // Bound as a CodeMirror domEventHandlers extension (view-lifetime binding).
+  const cmdClickExt = useCmdClickGoToDefinition({
     projectPath,
     tabKey,
     tab,
@@ -253,5 +253,5 @@ export function useLspNavigation({
     navigateToLocation,
   });
 
-  return { lspKeymap };
+  return { lspKeymap, cmdClickExt };
 }

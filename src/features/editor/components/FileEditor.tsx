@@ -108,7 +108,7 @@ function FileEditor({
     filePath: tab.filePath,
   });
 
-  const { lspKeymap } = useLspNavigation({
+  const { lspKeymap, cmdClickExt } = useLspNavigation({
     projectPath,
     tabKey,
     tab,
@@ -157,6 +157,7 @@ function FileEditor({
     viewStateExt,
     lspClientExt,
     lspKeymap,
+    cmdClickExt,
     linkHighlightExt,
     bpGutterExt,
     handleLnClick,

@@ -29,6 +29,7 @@ interface UseEditorExtensionsParams {
   viewStateExt: Extension;
   lspClientExt: Extension[];
   lspKeymap: Extension;
+  cmdClickExt: Extension;
   linkHighlightExt: Extension;
   bpGutterExt: Extension[];
   handleLnClick: (view: EditorView, lineFrom: number) => boolean;
@@ -48,6 +49,7 @@ export function useEditorExtensions({
   viewStateExt,
   lspClientExt,
   lspKeymap,
+  cmdClickExt,
   linkHighlightExt,
   bpGutterExt,
   handleLnClick,
@@ -128,9 +130,11 @@ export function useEditorExtensions({
     if (langExtension) exts.push(langExtension);
 
     // LSP: @codemirror/lsp-client plugin (hover, diagnostics, completion, document sync)
-    // + custom keybinding (F12/Shift+F12) + link highlight (Cmd/Ctrl+hover underline)
+    // + custom keybinding (F12/Shift+F12) + Cmd+Click jump + link highlight
+    // (Cmd/Ctrl+hover underline)
     exts.push(...lspClientExt);
     exts.push(lspKeymap);
+    exts.push(cmdClickExt);
     exts.push(linkHighlightExt);
 
     return exts;
@@ -141,6 +145,7 @@ export function useEditorExtensions({
     viewStateExt,
     lspClientExt,
     lspKeymap,
+    cmdClickExt,
     linkHighlightExt,
     bpGutterExt,
     handleLnClick,
