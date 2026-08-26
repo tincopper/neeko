@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-3.md`
-- **Total Sessions**: 146
+- **Total Sessions**: 147
 - **Last Active**: 2026-08-26
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-3.md` | ~991 | Active |
+| `journal-3.md` | ~1024 | Active |
 | `journal-2.md` | ~1991 | Archived |
 | `journal-1.md` | ~1986 | Archived |
 <!-- @@@/auto:active-documents -->
@@ -31,6 +31,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 147 | 2026-08-26 | agent-chat/task bounded caches | `7eeddb8a` | `main` |
 | 146 | 2026-08-26 | terminal-memory-governance bounded pump + drain | `60a28d21` | `main` |
 | 145 | 2026-08-17 | feat(browser): browser as editor tab — per-tab webviews + hardening + neeko-check compliance | `c2c8efd8` | `main` |
 | 144 | 2026-08-17 | fix(browser): neeko-check findings — panel reclaim coverage, overlay unmount cleanup, render-phase store init, bounds-sync DRY, per-label prompt dedup | `59455bc807e0b8873281b2b59d40ba441e499d23` | `main` |

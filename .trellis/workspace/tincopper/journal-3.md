@@ -989,3 +989,36 @@ Delivered browser-as-editor-tab (Route A per-tab webviews, '+' Browser option). 
 ### Next Steps
 
 - None - task complete
+
+
+## Session 147: agent-chat/task bounded caches
+
+**Date**: 2026-08-26
+**Task**: agent-chat/task bounded caches
+**Branch**: `main`
+
+### Summary
+
+(Add summary)
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `7eeddb8a` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
