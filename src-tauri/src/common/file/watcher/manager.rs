@@ -5,7 +5,9 @@ use super::debounce::{
 };
 use super::git_meta::{create_git_meta_watcher, resolve_git_meta_paths, GitMetaWatcherHandle};
 use super::gitignore::GitIgnoreFilter;
-use super::types::{GIT_CHANGED_EVENT, GIT_STATUS_DIFF_EVENT};
+use super::types::{
+    FileTreeChangedEvent, FILE_TREE_CHANGED_EVENT, GIT_CHANGED_EVENT, GIT_STATUS_DIFF_EVENT,
+};
 use crate::common::git::local::is_git_repo;
 use crate::common::git::status_worker::{GitStatusDiff, GitStatusWorker};
 use notify::event::ModifyKind;
@@ -112,8 +114,10 @@ impl WatcherManager {
         // 3. 创建 file-changed debounce sender
         let debounce = DebounceSender::new(project_id.clone(), path.clone(), app_handle.clone());
 
-        // 3b. 创建 file-tree-changed debounce sender（专门处理 Create/Remove/Rename）
-        let tree_debounce = TreeChangeDebounceSender::new(project_id.clone(), app_handle.clone());
+        // 3b. 创建 file-tree-changed debounce sender（专门处理 Create/Remove/Rename，
+        // S2-1：收集变更路径的父目录集合，前端只重载命中桶）
+        let tree_debounce =
+            TreeChangeDebounceSender::new(project_id.clone(), path.clone(), app_handle.clone());
 
         // 4. 创建 notify watcher -- 递归监听 + 路径过滤
         // 从 scheduler 克隆 Sender 传给 notify 闭包（非 git 项目时为 None）
@@ -121,6 +125,7 @@ impl WatcherManager {
         let debounce_tx_for_notify = debounce.tx.clone();
         let tree_debounce_tx = tree_debounce.tx.clone();
         let pid_log = project_id.clone();
+        let app_for_watcher_error = app_handle.clone();
         // git 语义忽略过滤器：编译 .gitignore / .git/info/exclude 规则，
         // 与 git 自身行为一致（不再是硬编码目录名黑名单）。
         // 非 git 项目时为 None，不做 gitignore 过滤。
@@ -137,6 +142,16 @@ impl WatcherManager {
                     Ok(ev) => ev,
                     Err(e) => {
                         log::warn!("[Watcher:{}] notify error: {}", pid_log, e);
+                        // S2-2 正确性兜底：watcher 异常（overflow 等）意味着可能丢失事件，
+                        // 无法保证目录缓存一致 —— 发送空 dirs 的 tree-changed，
+                        // 通知前端退回全树刷新（orca 同款 overflow→full refresh 语义）。
+                        let _ = app_for_watcher_error.emit(
+                            FILE_TREE_CHANGED_EVENT,
+                            &FileTreeChangedEvent {
+                                project_id: pid_log.clone(),
+                                dirs: Vec::new(),
+                            },
+                        );
                         return;
                     }
                 };
@@ -194,7 +209,8 @@ impl WatcherManager {
                 for p in &relevant_paths {
                     let _ = debounce_tx_for_notify.send(p.clone());
                 }
-                // 文件树结构变更（新增/删除/重命名）时额外触发 tree-changed 防抖。
+                // 文件树结构变更（新增/删除/重命名）时把变更路径发给 tree-debounce，
+                // 由其聚合父目录集合后定向通知前端（S2-1/S2-2）
                 let is_structure_change = matches!(
                     event.kind,
                     EventKind::Create(_)
@@ -202,7 +218,9 @@ impl WatcherManager {
                         | EventKind::Modify(ModifyKind::Name(_))
                 );
                 if is_structure_change {
-                    let _ = tree_debounce_tx.send(());
+                    for p in &relevant_paths {
+                        let _ = tree_debounce_tx.send(p.clone());
+                    }
                 }
             },
             Config::default(),

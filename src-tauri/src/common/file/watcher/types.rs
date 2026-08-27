@@ -27,4 +27,9 @@ pub struct FileChangedEvent {
 pub struct FileTreeChangedEvent {
     /// 项目 ID
     pub project_id: String,
+    /// 受影响的目录相对路径集合（以 `/` 分隔，'' 表示项目根）。
+    /// 前端只需重载这些已展开目录的缓存；**空集合 = 未知范围的变更**，
+    /// 应退回全树刷新兜底（watcher overflow / 异常恢复场景）。
+    #[serde(default)]
+    pub dirs: Vec<String>,
 }

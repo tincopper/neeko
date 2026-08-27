@@ -101,14 +101,17 @@ export function useFileView(
   /**
    * 构造目录加载器：按项目类型分发（Local 走 readDirTree 命令，WSL/Remote 走 ProjectCommands），
    * 供 store.loadDir 注入 —— store 只治理数据生命周期，不感知命令实现。
+   * S2-0 单层化：非根目录 depth=1 只读一级条目（展开懒加载 + 定向刷新 O(变更)）；
+   * 根保留默认深度做一次性初始结构预扫。
    */
   const makeDirLoader = useCallback((projectId: string, rootPath: string, dirPath: string) => {
     const cmds = externalCommandsRef.current;
     const ignored = getIgnoredFiles(projectId);
+    const depth = dirPath ? 1 : DEFAULT_TREE_DEPTH;
     return (): Promise<FileNode[]> =>
       cmds
-        ? cmds.readDirTree(rootPath, dirPath || undefined, DEFAULT_TREE_DEPTH, ignored)
-        : readDirTree(projectId, dirPath, rootPath, undefined, ignored);
+        ? cmds.readDirTree(rootPath, dirPath || undefined, depth, ignored)
+        : readDirTree(projectId, dirPath || null, rootPath, depth, ignored);
   }, []);
 
   /** 解析当前 root 路径：外部（WSL/Remote worktree）优先，否则 activeProject.path */

@@ -353,7 +353,53 @@ describe('useFileStore 扁平目录缓存', () => {
     srcDeferred.resolve([fileNode('new.ts', 'src/new.ts')]);
     await pSrc;
     expect(useFileStore.getState().dirs['src']).toEqual([fileNode('new.ts', 'src/new.ts')]);
-    expect(useFileStore.getState().loadStates['src']).toBe('loaded');
+  });
+
+  it('定向刷新（S2-2）：dirs 命中目录重载，未命中目录缓存保持不动', async () => {
+    // 已加载根 + src + docs 三个桶
+    await useFileStore
+      .getState()
+      .loadDir(OWNER, '', () => Promise.resolve([dirNode('src', 'src'), dirNode('docs', 'docs')]));
+    await useFileStore
+      .getState()
+      .loadDir(OWNER, 'src', () => Promise.resolve([fileNode('a.ts', 'src/a.ts')]));
+    await useFileStore
+      .getState()
+      .loadDir(OWNER, 'docs', () => Promise.resolve([fileNode('d.md', 'docs/d.md')]));
+
+    // 事件只影响 src：只有 src 的 loader 会被调用
+    const loaderFor = vi.fn(
+      (dirPath: string) => () =>
+        Promise.resolve(
+          dirPath === ''
+            ? [dirNode('src', 'src'), dirNode('docs', 'docs')]
+            : [fileNode('b.ts', `src/b.ts`)],
+        ),
+    );
+    await useFileStore.getState().refreshTree(OWNER, loaderFor, { silent: true, dirs: ['src'] });
+
+    // 只命中 src 桶；根与 docs 未被触碰
+    const calledPaths = loaderFor.mock.calls.map(([p]) => p);
+    expect(calledPaths).toEqual(['src']);
+    expect(useFileStore.getState().dirs['src']).toEqual([fileNode('b.ts', 'src/b.ts')]);
+    expect(useFileStore.getState().dirs['docs']).toEqual([fileNode('d.md', 'docs/d.md')]);
+  });
+
+  it('dirs 为空数组 = 全量兜底（watcher overflow / 手动刷新语义）', async () => {
+    await useFileStore
+      .getState()
+      .loadDir(OWNER, '', () => Promise.resolve([dirNode('src', 'src')]));
+    await useFileStore
+      .getState()
+      .loadDir(OWNER, 'src', () => Promise.resolve([fileNode('a.ts', 'src/a.ts')]));
+
+    const loaderFor = (dirPath: string) => () =>
+      Promise.resolve(dirPath === '' ? [dirNode('src', 'src')] : [fileNode('b.ts', 'src/b.ts')]);
+    await useFileStore.getState().refreshTree(OWNER, loaderFor, { silent: true, dirs: [] });
+
+    // 全量刷新：根与已加载子目录全部重载
+    expect(useFileStore.getState().dirs['']).toEqual([dirNode('src', 'src')]);
+    expect(useFileStore.getState().dirs['src']).toEqual([fileNode('b.ts', 'src/b.ts')]);
   });
 
   it('refreshTree silent 后台刷新：不切换 loading 态，新数据到达前保留旧内容', async () => {

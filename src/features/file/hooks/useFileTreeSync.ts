@@ -47,7 +47,15 @@ export function useFileTreeSync({
 }: UseFileTreeSyncOptions) {
   const makeLocalLoader = useCallback(
     (pid: string, dirPath: string) => () =>
-      readDirTree(pid, dirPath, fileRootPath, DEFAULT_TREE_DEPTH, ignoredFiles),
+      readDirTree(
+        pid,
+        dirPath || null,
+        fileRootPath,
+        // S2-0：非根目录单层读取 —— 刷新成本 O(变更)，与 dirCache 一级条目语义一致；
+        // 根目录保留 depth=3 预扫语义（初始结构一次性成型）
+        dirPath ? 1 : DEFAULT_TREE_DEPTH,
+        ignoredFiles,
+      ),
     [fileRootPath, ignoredFiles],
   );
   const makeWslRemoteLoader = useCallback(
@@ -119,21 +127,21 @@ export function useFileTreeSync({
   // 仅本地项目响应此事件（WSL/Remote 不经过本地 notify watcher）
   useEffect(() => {
     const unlistenPromise = listen<FileTreeChangedEvent>(FILE_TREE_CHANGED_EVENT, (event) => {
-      const { project_id } = event.payload;
+      const { project_id, dirs } = event.payload;
       // 只响应当前活动项目的事件 + 仅本地项目（WSL/Remote 不经过本地 notify watcher）
       if (!activeProjectId || project_id !== activeProjectId) return;
       if (!project || project.type !== 'Local') return;
       // 移除 isActive 限制：即使文件面板未激活，文件变更仍应触发刷新，
       // 确保用户切换到文件面板时看到的是最新状态。
       if (!fileRootPath) return;
-      // 静默刷新：全树刷新，重载根 + 所有已展开子目录（根治展开目录被整树覆盖，
-      // 并保证移动/删除文件后展开目录缓存同步更新）。后台刷新不切换 loading 态，
-      // 旧树保持可见直到新数据到达。
+      // 静默刷新：后端携带受影响目录集合时定向重载命中桶（S2-2，成本 O(变更)）；
+      // dirs 为空 = 变更范围未知（watcher overflow），退回全量兜底。
       const owner = `${activeProjectId}:${fileRootPath}`;
       void useFileStore
         .getState()
         .refreshTree(owner, (dirPath) => makeLocalLoader(activeProjectId, dirPath), {
           silent: true,
+          dirs,
         });
     });
     return () => {

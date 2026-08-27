@@ -42,4 +42,10 @@ export interface FileChangedEvent {
 
 export interface FileTreeChangedEvent {
   project_id: string;
+  /**
+   * 受影响的目录相对路径集合（'' 表示项目根）。
+   * 非空：前端只需重载命中这些路径的已展开目录缓存（S2-2 定向刷新）；
+   * 空 / 缺失（旧后端）：变更范围未知，退回全树刷新兜底。
+   */
+  dirs?: string[];
 }
