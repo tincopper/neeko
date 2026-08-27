@@ -457,16 +457,24 @@ export function useAgentChat({ tabKey, tabId, projectId, data, mockMode }: UseAg
   useEffect(() => {
     let disposed = false;
     void (async () => {
-      const unlisten = await listen<SequencedEvent>(AGENT_CHAT_EVENT, (event) => {
-        const seqEv = event.payload;
-        const ev = seqEv;
-        const sid = sessionIdRef.current;
-        if (sid) {
-          if (ev.session_id === sid) applyEvent(seqEv);
-        } else {
-          pendingEventsRef.current.push(seqEv);
-        }
-      });
+      // 方案 B1（合帧）：Rust 侧 bridge 按 16ms 窗口聚合 emit 数组（一次事件
+      // = 一次 evaluateJavaScript，macOS 上 Tauri 事件送达即 eval），payload
+      // 可能为 SequencedEvent[]（合帧）或单条 SequencedEvent（错误/边界），
+      // 这里统一归一为数组顺序应用（reducer 按 seq 幂等，顺序即正确时序）。
+      const unlisten = await listen<SequencedEvent[] | SequencedEvent>(
+        AGENT_CHAT_EVENT,
+        (event) => {
+          const evs = Array.isArray(event.payload) ? event.payload : [event.payload];
+          for (const seqEv of evs) {
+            const sid = sessionIdRef.current;
+            if (sid) {
+              if (seqEv.session_id === sid) applyEvent(seqEv);
+            } else {
+              pendingEventsRef.current.push(seqEv);
+            }
+          }
+        },
+      );
       if (disposed) {
         unlisten();
       } else {

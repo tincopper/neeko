@@ -277,12 +277,15 @@ fn spawn_session_pipeline(
     }
 
     // Start bridge pump (emits to frontend via app_handle); unregister on exit.
+    // 方案 B1（合帧）：bridge 按 16ms 窗口聚合成批 emit —— 一次 emit = 一次
+    // evaluateJavaScript（macOS 上 Tauri 事件送达），batch 内事件一次送达，
+    // eval 频率从「每增量一次」降到「每帧一次」。
     let handle = app_handle.clone();
     let manager = state.agent_chat_manager.clone();
     let sid = session_id.clone();
     tauri::async_runtime::spawn(async move {
-        let emit = move |seq_ev: SequencedEvent| {
-            let _ = handle.emit(AGENT_CHAT_EVENT, seq_ev);
+        let emit = move |seq_evs: Vec<SequencedEvent>| {
+            let _ = handle.emit(AGENT_CHAT_EVENT, &seq_evs);
         };
         let _ = AgentChatBridge::run(sid.clone(), session, emit).await;
         manager.unregister(&sid);
