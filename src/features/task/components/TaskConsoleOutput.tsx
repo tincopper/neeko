@@ -13,7 +13,12 @@ import React, { useEffect, useRef } from 'react';
 import { useAppContext } from '@/shared/contexts/AppContext';
 import { useBrowserStore } from '@/shared/store/browserStore';
 import { useDockStore } from '@/shared/store/dockStore';
-import { buildFontFamily, buildTerminalTheme, TERMINAL_SCROLLBACK } from '@/shared/utils/terminal';
+import {
+  buildFontFamily,
+  buildTerminalTheme,
+  TERMINAL_SCROLLBACK,
+  tryLoadCanvas,
+} from '@/shared/utils/terminal';
 import { setupTerminalInput, type TerminalInputController } from '@/shared/utils/terminalInput';
 
 import { writeTaskInput } from '../taskRunner';
@@ -59,6 +64,10 @@ function TaskConsoleOutput({ run, active }: Props) {
 
     term.open(el);
     fit.fit();
+
+    // 渲染器：Canvas（xterm 6 默认 DOM renderer 在 TUI/高频输出下内存爆炸，
+    // 见 shared/utils/terminal.tryLoadCanvas 注释；task 输出可能高吞吐）。
+    void tryLoadCanvas(term);
 
     // Enable URL detection and file path links (must be after term.open)
     const webLinksAddon = new WebLinksAddon((_event, uri) => {

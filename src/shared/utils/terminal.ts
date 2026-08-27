@@ -1,9 +1,29 @@
-import type { ITheme } from '@xterm/xterm';
+import type { Terminal, ITheme } from '@xterm/xterm';
 
 import { isDarkTheme } from './theme';
 
 /** xterm scrollback 行数预算：控制 WebContent 常驻 DOM/内存上限（原 10000）。 */
 export const TERMINAL_SCROLLBACK = 5000;
+
+/**
+ * 按需加载 Canvas 渲染器（TUI 内存风暴根治）。
+ *
+ * xterm 6.0 起默认渲染器改为 DOM renderer（每格一个 span，`xterm-fg-/xterm-bg-`
+ * 类着色）；codebuddy 等 TUI 高频全屏重绘时每帧创建/更新数万个 span 节点，
+ * WebCore 层对象堆积 → WebContent RSS 几秒暴涨数 GB（JS 堆与 DOM 计数均不涨）。
+ * Canvas renderer 把绘制移到单个 canvas，DOM 节点固定，重绘只更新像素。
+ *
+ * 放在 shared/utils：终端与 task console 两个域共用，且动态 import 不进静态
+ * 依赖图（失败时静默回退默认 DOM renderer，罕见环境）。
+ */
+export async function tryLoadCanvas(term: Terminal): Promise<void> {
+  try {
+    const { CanvasAddon } = await import('@xterm/addon-canvas');
+    term.loadAddon(new CanvasAddon());
+  } catch {
+    /* Canvas 不可用时回退 xterm 默认 DOM renderer（罕见环境） */
+  }
+}
 
 const IS_LINUX = navigator.platform.toLowerCase().startsWith('linux');
 

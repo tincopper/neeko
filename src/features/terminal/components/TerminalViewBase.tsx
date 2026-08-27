@@ -5,7 +5,12 @@ import { Terminal } from '@xterm/xterm';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 
 import { createPollingDrainScheduler } from '@/shared/utils/drainLoop';
-import { buildFontFamily, buildTerminalTheme, TERMINAL_SCROLLBACK } from '@/shared/utils/terminal';
+import {
+  buildFontFamily,
+  buildTerminalTheme,
+  TERMINAL_SCROLLBACK,
+  tryLoadCanvas,
+} from '@/shared/utils/terminal';
 import { terminalClosedEvent, terminalInputEvent } from '@/shared/utils/terminalEvents';
 import { setupTerminalInput } from '@/shared/utils/terminalInput';
 
@@ -236,7 +241,10 @@ export default React.memo(function TerminalViewBase({
 
       wrapper.appendChild(element);
       term.open(element);
+      // 渲染器：GPU 配置开启时 WebGL 优先，否则 Canvas（xterm 6 默认 DOM
+      // renderer 在 TUI 高频重绘下内存爆炸，见 shared/utils/terminal.tryLoadCanvas）。
       if (gpuAccelVal) void tryLoadWebgl(term);
+      else void tryLoadCanvas(term);
       if (setupFileLinksVal) setupFileLinksVal(term);
       fitAddon.fit();
 
