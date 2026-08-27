@@ -88,16 +88,35 @@ function TaskConsoleOutput({ run, active }: Props) {
       term.scrollToBottom();
     }
 
-    const ro = new ResizeObserver(() => {
-      try {
-        fit.fit();
-      } catch {
-        /* ignore */
-      }
+    // RO 断自激（对齐 TerminalViewBase 守卫模式）：xterm fit 会调整 canvas/
+    // 容器尺寸 → 若内容尺寸随之变化会再次触发 RO → 无条件 fit 形成反馈循环
+    // （WebKit 报 "ResizeObserver loop completed with undelivered notifications"
+    // + 布局风暴 + 内存上升，窗口 resize 时尤其明显）。contentRect 守卫
+    // （<1px 忽略）+ rAF 合帧，尺寸稳定后循环自然终止。
+    let lastW = -1;
+    let lastH = -1;
+    let rafId: number | null = null;
+    const ro = new ResizeObserver((entries) => {
+      const entry = entries[0];
+      if (!entry) return;
+      const { width, height } = entry.contentRect;
+      if (Math.abs(width - lastW) < 1 && Math.abs(height - lastH) < 1) return;
+      lastW = width;
+      lastH = height;
+      if (rafId !== null) cancelAnimationFrame(rafId);
+      rafId = requestAnimationFrame(() => {
+        rafId = null;
+        try {
+          fit.fit();
+        } catch {
+          /* ignore */
+        }
+      });
     });
     ro.observe(el);
 
     return () => {
+      if (rafId !== null) cancelAnimationFrame(rafId);
       inputControllerRef.current?.dispose();
       inputControllerRef.current = null;
       ro.disconnect();

@@ -238,9 +238,15 @@ function TaskConsolePanel() {
                 Run a task from the Run menu to stream output here.
               </div>
             ) : (
-              sessions.map((s) => (
-                <TaskConsoleOutput key={s.id} run={s} active={s.id === (active?.id ?? '')} />
-              ))
+              // 只挂载 active session 的 xterm 实例：非活跃会话不渲染组件
+              // （切回时由 TaskConsoleOutput 从 run.output 重放）。此前对
+              // 每个 session 常驻一个 TaskConsoleOutput（inactive 仅 display
+              // 隐藏），每次跑任务就累积一个完整 xterm 实例（buffer + canvas
+              // + ResizeObserver）→ 实例只增不减 + 窗口 resize 时全部 RO 触发
+              // fit 反馈循环 → WebContent 内存上升（RO loop 报错同源）。
+              sessions.map((s) =>
+                s.id === active?.id ? <TaskConsoleOutput key={s.id} run={s} active /> : null,
+              )
             )}
           </div>
         </div>
