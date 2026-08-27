@@ -58,7 +58,9 @@ pub async fn read_dir_tree(
                 None => base.to_path_buf(),
             };
             crate::common::utils::path_resolver::validate_within_root(&target_path, base)?;
-            let mut tree = read_dir_recursive(&target_path, base, max_depth)?;
+            // 读前剪枝（S1-2）：进入 ignored 目录前即停止递归 —— 大仓库的
+            // node_modules/target 在 depth 内可能有数千条目，先扫后剪等于白付全部 IO。
+            let mut tree = read_dir_recursive(&target_path, base, max_depth, Some(&ignored_set))?;
             prune_ignored_dirs(&mut tree, &ignored_set);
             Ok(tree)
         }
@@ -682,6 +684,7 @@ fn read_dir_recursive(
     dir: &Path,
     project_root: &Path,
     depth: u32,
+    ignored: Option<&HashSet<&str>>,
 ) -> Result<Vec<FileNode>, AppError> {
     if depth == 0 {
         return Ok(vec![]);
@@ -714,7 +717,17 @@ fn read_dir_recursive(
             .replace('\\', "/");
 
         if file_type.is_dir() {
-            let children = read_dir_recursive(&full_path, project_root, depth - 1)?;
+            // 读前剪枝：ignored 目录保留节点（前端灰显）但不再递归 children。
+            if ignored.is_some_and(|set| set.contains(relative_path.as_str())) {
+                nodes.push(FileNode {
+                    name,
+                    path: relative_path,
+                    is_dir: true,
+                    children: vec![],
+                });
+                continue;
+            }
+            let children = read_dir_recursive(&full_path, project_root, depth - 1, ignored)?;
             nodes.push(FileNode {
                 name,
                 path: relative_path,
@@ -817,7 +830,7 @@ mod tests {
         fs::create_dir_all(root.join("node_modules/pkg")).expect("创建 node_modules 测试目录失败");
         fs::write(root.join("node_modules/pkg/index.js"), "x").expect("写入 index.js 失败");
 
-        let tree = read_dir_recursive(&root, &root, 3).expect("读取测试目录树失败");
+        let tree = read_dir_recursive(&root, &root, 3, None).expect("读取测试目录树失败");
         let names: Vec<&str> = tree.iter().map(|n| n.name.as_str()).collect();
         assert!(
             !names.contains(&".git"),
@@ -829,6 +842,46 @@ mod tests {
             names.contains(&"node_modules"),
             "node_modules 不再由后端硬编码排除，应保留供前端灰显: {:?}",
             names
+        );
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    /// 回归（S1-2 读前剪枝）：ignored 目录只保留灰显节点，不再递归 children ——
+    /// 大仓库的 node_modules/target 在 depth 内可能有数千条目，
+    /// 先扫后剪等于白付全部 IO 与内存。
+    #[test]
+    fn read_dir_tree_prunes_ignored_dirs_before_descending() {
+        let root = temp_root("tree_prune_before_descend");
+        fs::create_dir_all(root.join("target/debug/deps")).expect("创建 target 深层目录失败");
+        for i in 0..5 {
+            fs::write(root.join(format!("target/debug/deps/lib_{i}.o")), "x")
+                .expect("写入深层文件失败");
+        }
+        fs::write(root.join("src.rs"), "fn main() {}").expect("写入 src.rs 失败");
+
+        let mut ignored: HashSet<&str> = HashSet::new();
+        ignored.insert("target");
+
+        let tree = read_dir_recursive(&root, &root, 3, Some(&ignored)).expect("读取目录树失败");
+
+        assert_eq!(
+            tree.len(),
+            2,
+            "应恰好有 target（灰显）与 src.rs 两个顶层节点"
+        );
+        let target_node = tree.iter().find(|n| n.name == "target").unwrap();
+        assert!(
+            target_node.is_dir && target_node.children.is_empty(),
+            "ignored 目录节点必须保留但 children 为空（不递归进入），实际: {:?}",
+            target_node.children
+        );
+
+        // 对照：不带 ignored 时深层内容正常展开
+        let full = read_dir_recursive(&root, &root, 3, None).unwrap();
+        let target_full = full.iter().find(|n| n.name == "target").unwrap();
+        assert!(
+            !target_full.children.is_empty(),
+            "无 ignored 时深层内容应正常展开"
         );
         let _ = fs::remove_dir_all(&root);
     }
