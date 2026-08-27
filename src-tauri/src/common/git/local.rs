@@ -71,10 +71,16 @@ pub fn get_git_info(repo_path: &Path) -> Result<GitInfo> {
 
 /// Get changed files from an already-open git2 Repository
 pub fn get_changed_files_from_repo(repo: &Repository) -> Result<Vec<FileChange>> {
+    // 封顶（S1-1，公理：一切随输入规模增长的结构必须有界）：变更列表超过上限时
+    // 截断并告警。S0 已让 untracked 折叠为目录条目，此处防御的是「一次性修改大量
+    // 已跟踪文件」的极端场景（如手工 merge），避免把数万条 FileChange 推过 IPC。
+    const MAX_CHANGED_FILES: usize = 500;
+
     let mut opts = StatusOptions::new();
-    opts.include_untracked(true)
-        .recurse_untracked_dirs(true)
-        .include_ignored(false);
+    // untracked 目录保持折叠语义（与 CLI `git status --porcelain` 一致）：
+    // 不得开启 recurse_untracked_dirs —— 它会把未忽略目录展开到每一个文件，
+    // 大仓库下（构建产物误入 untracked）会产生数十万条目直至内存爆炸。
+    opts.include_untracked(true).include_ignored(false);
 
     let statuses = repo.statuses(Some(&mut opts))?;
     let mut files = Vec::new();
@@ -172,6 +178,15 @@ pub fn get_changed_files_from_repo(repo: &Repository) -> Result<Vec<FileChange>>
                 file.deletions = *del;
             }
         }
+    }
+
+    if files.len() > MAX_CHANGED_FILES {
+        log::warn!(
+            "changed_files exceeded cap: {} entries truncated to {}",
+            files.len(),
+            MAX_CHANGED_FILES
+        );
+        files.truncate(MAX_CHANGED_FILES);
     }
 
     Ok(files)
@@ -1675,6 +1690,57 @@ mod tests {
         let files = get_changed_files_from_repo(&repo).unwrap();
         assert!(!files.is_empty(), "Should detect changed file");
         assert_eq!(files[0].status, FileStatus::Modified);
+    }
+
+    /// 回归（内存暴涨根因）：untracked 目录必须保持折叠语义，
+    /// 不得递归展开到每一个文件 —— recurse_untracked_dirs(true) 在
+    /// 大仓库未忽略目录场景下曾产生数十万条目直至内存爆炸。
+    #[test]
+    fn should_collapse_untracked_dir_to_single_entry() {
+        let dir = tempfile::tempdir().unwrap();
+        let repo_path = dir.path();
+
+        let repo = Repository::init(repo_path).unwrap();
+        let mut config = repo.config().unwrap();
+        config.set_str("user.name", "test").unwrap();
+        config.set_str("user.email", "test@test.com").unwrap();
+
+        // 初始提交保证工作区基线干净
+        std::fs::write(repo_path.join("initial.txt"), "initial\n").unwrap();
+        let mut index = repo.index().unwrap();
+        index.add_path(std::path::Path::new("initial.txt")).unwrap();
+        index.write().unwrap();
+        let tree_id = index.write_tree().unwrap();
+        let tree = repo.find_tree(tree_id).unwrap();
+        let sig = git2::Signature::now("test", "test@test.com").unwrap();
+        repo.commit(Some("HEAD"), &sig, &sig, "initial", &tree, &[])
+            .unwrap();
+
+        // 生成一个含多文件的 untracked 未忽略目录
+        let bulk = repo_path.join("generated");
+        std::fs::create_dir_all(&bulk).unwrap();
+        for i in 0..50 {
+            std::fs::write(bulk.join(format!("file_{i}.txt")), format!("content {i}\n")).unwrap();
+        }
+        std::fs::write(repo_path.join("top_untracked.txt"), "top\n").unwrap();
+
+        let files = get_changed_files_from_repo(&repo).unwrap();
+
+        assert_eq!(
+            files.len(),
+            2,
+            "untracked 目录应折叠为 1 条目录条目 + 1 条顶层文件"
+        );
+        assert!(
+            files
+                .iter()
+                .any(|f| f.path == std::path::PathBuf::from("generated")),
+            "折叠条目应为目录路径本身（如 generated/），而不是其中的文件"
+        );
+        assert!(!files.iter().any(|f| {
+            f.path.starts_with(std::path::Path::new("generated/"))
+                && f.path != std::path::Path::new("generated")
+        }));
     }
 
     #[test]

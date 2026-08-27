@@ -130,9 +130,19 @@ fn worker_loop(
         let current = git_status_porcelain(&repo_path, &mut supports_no_optional_locks);
         let current_branch = get_current_branch(&repo_path);
 
+        // 快速路径：porcelain 输出与分支均未变化 → 跳过 numstat 两个子进程。
+        // 心跳兜底与 index 假信号场景下大量轮询走此路径，
+        // 无变化轮的子进程开销从 4 个降为 2 个。
+        if current == last_status && current_branch == last_branch {
+            continue;
+        }
+
         // Parse porcelain output and enrich with additions/deletions from --numstat
         let mut current_files = parse_porcelain(&current);
-        if !current_files.is_empty() {
+        // 封顶：变更条目过多时跳过行数统计（numstat 需读全部 blob，代价与变更数线性），
+        // 列表仍正常上报但增删行数显示为 0。
+        const MAX_NUMSTAT_FILES: usize = 200;
+        if !current_files.is_empty() && current_files.len() <= MAX_NUMSTAT_FILES {
             let numstat = get_numstat_map(&repo_path);
             for file in &mut current_files {
                 if let Some((add, del)) = numstat.get(&file.path) {

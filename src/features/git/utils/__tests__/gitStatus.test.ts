@@ -44,7 +44,7 @@ describe('refreshGitFileStates', () => {
     vi.clearAllMocks();
   });
 
-  it('获取 changed_files 与 ignored_files 并 patch 到指定项目', async () => {
+  it('includeIgnored: true 时获取 changed_files 与 ignored_files 并 patch 到指定项目', async () => {
     mockGetWorktreeChangedFiles.mockResolvedValue([
       { path: 'new.ts', status: 'Untracked', additions: 0, deletions: 0 },
     ]);
@@ -70,21 +70,48 @@ describe('refreshGitFileStates', () => {
       expect(next.activeProject?.id).toBe('p1');
     });
 
-    await refreshGitFileStates('p1', '');
+    await refreshGitFileStates('p1', '', { includeIgnored: true });
     expect(mockGetWorktreeChangedFiles).toHaveBeenCalledWith('p1', '');
     expect(mockGetIgnoredFiles).toHaveBeenCalledWith('p1', '');
     expect(mockSetState).toHaveBeenCalledTimes(1);
   });
 
-  it('worktree 路径透传给两个 API', async () => {
+  it('默认（轻量模式）不拉取 ignored_files，且不覆盖既有灰显集合', async () => {
+    mockGetWorktreeChangedFiles.mockResolvedValue([
+      { path: 'a.ts', status: 'Modified', additions: 1, deletions: 0 },
+    ]);
+    mockSetState.mockImplementation((updater) => {
+      const state = {
+        projects: [
+          {
+            id: 'p1',
+            git_info: { ...makeGitInfo(), ignored_files: ['.env'] },
+          },
+        ],
+        activeProjectId: 'p1',
+        activeProject: null,
+      };
+      const next = updater(state) as typeof state;
+      // 关键回归（S0-2）：常规刷新不得清掉启动时加载的 ignored 集合
+      expect(next.projects[0].git_info.ignored_files).toEqual(['.env']);
+      expect(next.projects[0].git_info.changed_files).toHaveLength(1);
+    });
+
+    await refreshGitFileStates('p1', '');
+    expect(mockGetWorktreeChangedFiles).toHaveBeenCalledWith('p1', '');
+    expect(mockGetIgnoredFiles).not.toHaveBeenCalled();
+    expect(mockSetState).toHaveBeenCalledTimes(1);
+  });
+
+  it('worktree 路径透传给两个 API（includeIgnored: true）', async () => {
     mockGetWorktreeChangedFiles.mockResolvedValue([]);
     mockGetIgnoredFiles.mockResolvedValue([]);
-    await refreshGitFileStates('p1', '/wt/path');
+    await refreshGitFileStates('p1', '/wt/path', { includeIgnored: true });
     expect(mockGetWorktreeChangedFiles).toHaveBeenCalledWith('p1', '/wt/path');
     expect(mockGetIgnoredFiles).toHaveBeenCalledWith('p1', '/wt/path');
   });
 
-  it('get_ignored_files 失败时回退为空列表（非 git 仓库）', async () => {
+  it('get_ignored_files 失败时回退为空列表（非 git 仓库，仅 includeIgnored: true 时相关）', async () => {
     mockGetWorktreeChangedFiles.mockResolvedValue([]);
     mockGetIgnoredFiles.mockRejectedValue(new Error('not a repo'));
     mockSetState.mockImplementation((updater) => {
@@ -92,7 +119,7 @@ describe('refreshGitFileStates', () => {
       const next = updater(state as never) as typeof state;
       expect(next.projects[0].git_info.ignored_files).toEqual([]);
     });
-    await refreshGitFileStates('p1', '');
+    await refreshGitFileStates('p1', '', { includeIgnored: true });
     expect(mockSetState).toHaveBeenCalledTimes(1);
   });
 
