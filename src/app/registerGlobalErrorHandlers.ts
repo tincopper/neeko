@@ -26,6 +26,15 @@ setErrorNotifier((message) => {
 export function registerGlobalErrorHandlers(): () => void {
   const onError = (event: ErrorEvent) => {
     event.preventDefault();
+    // ResizeObserver loop：WebKit 对「RO 通知投递后同帧又修改尺寸」的检测。
+    // 复杂布局应用在拖动 panel / resize 场景即使无泄漏也会偶发（React
+    // 社区共识为无害告警）。应用侧 RO 循环源已修复：TaskConsoleOutput RO
+    // 守卫、TaskConsolePanel 只挂载 active、react-resizable-panels 升级
+    // （lockfile 锁定 4.11.2）。此处仅静音该特定错误，不吞其他错误。
+    const msg = event.message ?? '';
+    if (/ResizeObserver loop (completed with undelivered notifications|limit exceeded)/.test(msg)) {
+      return;
+    }
     const error = event.error ?? new Error(event.message);
     console.error('[Global] Uncaught error:', error);
     reportFrontendError('window.error', error);
