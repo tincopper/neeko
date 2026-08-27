@@ -20,26 +20,17 @@ export function removeCachedMessages(tabId: string): void {
   messageCache.delete(tabId);
 }
 
-/** 从缓存读取消息（深拷贝避免引用共享）。 */
+/** 从缓存读取消息（共享引用，调用方禁止就地修改返回值）。
+ * @readonly — ChatMessage 全链路为不可变更新（appendDelta/appendBlock 均纯函数，
+ * 从不就地修改），直接共享引用即可 —— 旧实现每次读都深拷贝整个数组，
+ * 长会话下 GC 压力显著。若需修改请先展开拷贝。 */
 export function loadCachedMessages(tabId: string): ChatMessage[] | undefined {
-  const cached = messageCache.get(tabId);
-  return cached
-    ? cached.map((m) => ({
-        ...m,
-        blocks: m.blocks.map((b) => (b.kind === 'tool' ? { ...b, tool: { ...b.tool } } : { ...b })),
-      }))
-    : undefined;
+  return messageCache.get(tabId);
 }
 
-/** 将消息写入缓存。 */
+/** 将消息写入缓存（共享引用，不拷贝：写入的是不可变的 React state 快照）。 */
 export function saveCachedMessages(tabId: string, messages: ChatMessage[]): void {
-  messageCache.set(
-    tabId,
-    messages.map((m) => ({
-      ...m,
-      blocks: m.blocks.map((b) => (b.kind === 'tool' ? { ...b, tool: { ...b.tool } } : { ...b })),
-    })),
-  );
+  messageCache.set(tabId, messages);
   // 容量治理：超出上限移除最早插入的条目
   while (messageCache.size > MAX_CACHED_SESSIONS) {
     const oldest = messageCache.keys().next().value;
