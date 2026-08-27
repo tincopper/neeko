@@ -1,0 +1,13 @@
+diff --git a/package.json b/package.json
+index f9c3cc24b54952a5f558462d22a98343db78a3cb..e96e6b53b4ff576a6d5c84da4c96ad8ea77a32fd 100644
+--- a/package.json
++++ b/package.json
+@@ -6,7 +6,7 @@
+     "url": "https://xtermjs.org/"
+   },
+   "main": "lib/addon-canvas.js",
+-  "module": "lib/addon-canvas.mjs",
++  "module": "lib/xterm-addon-canvas.mjs",
+   "types": "typings/addon-canvas.d.ts",
+   "repository": "https://github.com/xtermjs/xterm.js/tree/master/addons/addon-canvas",
+   "license": "MIT",
