@@ -1055,3 +1055,36 @@ Delivered browser-as-editor-tab (Route A per-tab webviews, '+' Browser option). 
 ### Next Steps
 
 - None - task complete
+
+
+## Session 149: 08-27 file-tree-git-decoration: 修复审计 Warning/Nit（W1/W2/N1/N2/N3/N5/N6）
+
+**Date**: 2026-08-28
+**Task**: 08-27 file-tree-git-decoration: 修复审计 Warning/Nit（W1/W2/N1/N2/N3/N5/N6）
+**Branch**: `main`
+
+### Summary
+
+审计无 Block；用户确认修复。W1 删 FileTree 死代码；W2 ChangesList Section 抽 ChangesSection.tsx（376→188行）；N1 修 get_untracked_files doc；N2 删 ignored 继承过时注释；N3 ProjectManager 抽 manager.rs（mod.rs 9行）；N5 git 事件监听抽 useGitStatusEventsSync（useSessionBootstrap 334→213行）；N6 get_ignored_files 加500截断+测试。前后端并行 trellis-implement + trellis-check 全量门绿：tsc/lint:fe/eslint 0错、vitest 282files 2252tests、cargo test 855+107、fmt/clippy 0告警。spec 补 ≤300行 组件/hook 红线。N4 tauri-specta 系统级迁移不修（超出范围）。
+
+### Main Changes
+
+- 前端：删 FileTree 死代码（W1）；ChangesList Section 抽 ChangesSection.tsx（W2）；git 事件监听抽 useGitStatusEventsSync（N5）
+- 后端：get_untracked_files doc 修正（N1）；ignored 继承注释删除（N2）；ProjectManager 抽 manager.rs（N3）；get_ignored_files 500 截断 + 测试（N6）
+- spec：component/hook-guidelines 补 ≤300 行红线
+
+### Git Commits
+
+- `59804e4e` feat(file): file-tree git decoration completion + audit Warning/Nit fixes
+
+### Testing
+
+- [OK] tsc/lint:fe/eslint 0 错；vitest 282 files / 2252 tests 0 failed；cargo check/fmt/clippy 0 告警；cargo test 855 lib + 107 unit 0 failed
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
