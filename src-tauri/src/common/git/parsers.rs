@@ -251,29 +251,50 @@ pub fn parse_git_info_output(output: &str) -> GitInfo {
     }
 }
 
-/// Parse a single line from `git status --porcelain` into a FileChange
+/// Parse a single line from `git status --porcelain` into a FileChange.
+///
+/// porcelain v1 的唯一解析入口（status_worker / operations / remote 共用，
+/// AGENTS.md DRY：三处曾各有一套语义不一致的实现）。
+///
+/// 语义（X=index 状态，Y=worktree 状态）：
+/// - `??` → Untracked
+/// - rename（`R`）：`old -> new` 取 new 作为路径
+/// - unmerged（任一 `U`，或 `AA`/`DD`）与 typechange（`T`）：归入 Modified ——
+///   关键约束是**冲突文件必须出现在变更列表**（曾因 `_ => continue` 在
+///   WSL/SSH 链路把 `UU` 丢弃）；FileStatus 暂无 Conflict 变体
+/// - `A` → Added（Y 位 `M`/`?` 不改变 index 语义）、任一 `D` → Deleted、
+///   其余 → Modified
 pub(crate) fn parse_status_line(line: &str) -> Option<FileChange> {
-    let trimmed = line.trim();
-    if trimmed.is_empty() {
+    // porcelain 行形如 `XY<space>path`：前 3 字节恒为 ASCII，可安全切片
+    let bytes = line.as_bytes();
+    if bytes.len() < 4 || bytes[2] != b' ' {
+        return None;
+    }
+    let xy = &line[..2];
+    let raw_path = &line[3..];
+    if raw_path.trim().is_empty() {
         return None;
     }
 
-    let status_chars = &trimmed[..2.min(trimmed.len())];
-    let file_path = trimmed[2.min(trimmed.len())..].trim();
+    let file_path = match raw_path.find(" -> ") {
+        Some(idx) => &raw_path[idx + 4..],
+        None => raw_path,
+    };
 
-    if file_path.is_empty() {
-        return None;
-    }
-
-    let file_status = if status_chars.contains('?') {
+    let x = xy.as_bytes()[0];
+    let y = xy.as_bytes()[1];
+    let file_status = if x == b'?' && y == b'?' {
         FileStatus::Untracked
-    } else if status_chars.contains('A') {
+    } else if x == b'A' && y != b'A' {
+        // AA 属于 unmerged，落入下方 Modified 分支
         FileStatus::Added
-    } else if status_chars.contains('D') {
+    } else if x == b'D' || y == b'D' {
+        // DD 属于 unmerged，但作为 Deleted 呈现同样成立（双方都删）
         FileStatus::Deleted
-    } else if status_chars.contains('R') {
+    } else if x == b'R' {
         FileStatus::Renamed
     } else {
+        // 含 unmerged（U*、AA）、typechange（T）、其余未知码
         FileStatus::Modified
     };
 
@@ -744,5 +765,101 @@ mod stash_parse_tests {
         assert_eq!(files.len(), 1);
         assert_eq!(files[0].path, "only_numstat.txt");
         assert_eq!(files[0].status, "M");
+    }
+}
+
+#[cfg(test)]
+mod porcelain_status_tests {
+    use super::*;
+    use crate::common::types::FileStatus;
+
+    #[test]
+    fn unmerged_uu_line_must_not_be_dropped() {
+        // 回归（operations.rs `_ => continue` 曾丢弃冲突文件，WSL/SSH 上 UI 消失）：
+        // 冲突行必须出现；FileStatus 暂无 Conflict 变体，统一映射为 Modified。
+        let fc = parse_status_line("UU conflicted.txt").expect("UU line must parse");
+        assert_eq!(fc.path, std::path::PathBuf::from("conflicted.txt"));
+        assert!(matches!(fc.status, FileStatus::Modified));
+    }
+
+    #[test]
+    fn both_added_and_both_deleted_are_conflicts_not_silent_drops() {
+        assert!(parse_status_line("AA both-added.txt").is_some());
+        assert!(parse_status_line("DD both-deleted.txt").is_some());
+        assert!(parse_status_line("AU added-by-us.txt").is_some());
+        assert!(parse_status_line("UA added-by-them.txt").is_some());
+        assert!(parse_status_line("UD deleted-by-them.txt").is_some());
+        assert!(parse_status_line("DU deleted-by-us.txt").is_some());
+    }
+
+    #[test]
+    fn typechange_maps_to_modified() {
+        let fc = parse_status_line("T  symlink.txt").expect("T line must parse");
+        assert!(matches!(fc.status, FileStatus::Modified));
+        let fc = parse_status_line(" T symlink.txt").expect(" T line must parse");
+        assert!(matches!(fc.status, FileStatus::Modified));
+    }
+
+    #[test]
+    fn rename_arrow_takes_new_path() {
+        let fc = parse_status_line("R  old.txt -> new.txt").expect("rename line must parse");
+        assert_eq!(fc.path, std::path::PathBuf::from("new.txt"));
+        assert!(matches!(fc.status, FileStatus::Renamed));
+    }
+
+    #[test]
+    fn staged_rename_arrow_takes_new_path() {
+        let fc = parse_status_line("RM old.txt -> new.txt").expect("rename line must parse");
+        assert_eq!(fc.path, std::path::PathBuf::from("new.txt"));
+        assert!(matches!(fc.status, FileStatus::Renamed));
+    }
+
+    #[test]
+    fn staged_added_worktree_modified_is_added() {
+        let fc = parse_status_line("AM partial.txt").expect("AM line must parse");
+        assert!(matches!(fc.status, FileStatus::Added));
+    }
+
+    #[test]
+    fn staged_deleted_is_deleted() {
+        let fc = parse_status_line("D  gone.txt").expect("D line must parse");
+        assert!(matches!(fc.status, FileStatus::Deleted));
+        let fc = parse_status_line(" D gone.txt").expect(" D line must parse");
+        assert!(matches!(fc.status, FileStatus::Deleted));
+    }
+
+    #[test]
+    fn modified_variants() {
+        for line in ["M  a.txt", " M a.txt", "MM a.txt"] {
+            let fc = parse_status_line(line).expect(line);
+            assert!(matches!(fc.status, FileStatus::Modified), "{line}");
+            assert_eq!(fc.path, std::path::PathBuf::from("a.txt"));
+        }
+    }
+
+    #[test]
+    fn untracked_only_double_question_mark() {
+        let fc = parse_status_line("?? new dir/file.txt").expect("?? line must parse");
+        assert!(matches!(fc.status, FileStatus::Untracked));
+        assert_eq!(fc.path, std::path::PathBuf::from("new dir/file.txt"));
+    }
+
+    #[test]
+    fn junk_lines_are_rejected() {
+        assert!(parse_status_line("").is_none());
+        assert!(parse_status_line("   ").is_none());
+        assert!(parse_status_line("ab").is_none(), "no path part");
+        assert!(parse_status_line("XY").is_none(), "no path part");
+        assert!(
+            parse_status_line("M a.txt").is_none(),
+            "single-letter code is not porcelain XY"
+        );
+    }
+
+    #[test]
+    fn full_output_parse() {
+        let out = "?? a.txt\n M b.txt\nUU c.txt\nR  d.txt -> e.txt\n";
+        let files: Vec<FileChange> = out.lines().filter_map(parse_status_line).collect();
+        assert_eq!(files.len(), 4, "every valid line must survive");
     }
 }

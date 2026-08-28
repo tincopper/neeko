@@ -53,3 +53,23 @@ pub async fn list_remote_directories(
         .await
         .map_err(AppError::from)
 }
+
+/// Get the home directory on a remote host.
+#[tauri::command]
+pub async fn get_remote_home_dir(
+    host: String,
+    port: u16,
+    username: String,
+    auth: crate::common::connection::types::AuthMethod,
+) -> Result<String, AppError> {
+    let target = crate::common::executor::factory::ExecTarget::Remote {
+        host: host.clone(),
+        port,
+        username: username.clone(),
+        auth: auth.clone(),
+    };
+    crate::common::executor::sync::exec_on(&target, "sh", &["-c", "echo $HOME"])
+        .await
+        .map(|s| s.trim().to_string())
+        .map_err(|e| AppError::from(anyhow::anyhow!("{}", e)))
+}

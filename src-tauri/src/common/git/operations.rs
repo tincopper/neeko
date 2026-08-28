@@ -8,14 +8,13 @@ use super::credential::{
 use super::transport::{ErrorKind, GitExecError, GitTransport};
 use super::types::PushOutcome;
 use crate::common::executor::factory::ExecTarget;
-use crate::common::git::parsers::parse_numstat_line;
+use crate::common::git::parsers::{parse_numstat_line, parse_status_line};
 use crate::common::git::provider::detect_provider;
 use crate::common::git::types::{DiffHunk, DiffLine, DiffResult};
 use crate::core::exec::collect_in_dir;
 use crate::project::types::{
     AheadBehind, CommitDetail, CommitEntry, CommitFileChange, CommitResult, FileChange,
-    FileDiffStats, FileStatus, GitBranchInfo, GitInfo, GitProvider, StashActionResult, StashEntry,
-    Worktree,
+    FileDiffStats, GitBranchInfo, GitInfo, GitProvider, StashActionResult, StashEntry, Worktree,
 };
 /// 只读 git 查询的执行环境（公理2：查询无副作用）。
 ///
@@ -35,6 +34,12 @@ const fn readonly_opts() -> super::transport::GitExecOptions<'static> {
         env: READONLY_ENV,
         extra_config: &[],
     }
+}
+
+/// 写操作成功后失效该仓库的全部内存缓存（AGENTS.md：缓存失效不得散落调用点
+/// 遗漏 —— 曾因 local.rs 写函数收缩后无人失效，Local 项目 diff 统计永久陈旧）。
+fn invalidate_caches(work_dir: &str) {
+    super::cache::invalidate_repo_caches(std::path::Path::new(work_dir));
 }
 
 /// 解析 worktree_path：空字符串视为「未指定 worktree」，回落项目根目录。
@@ -62,6 +67,7 @@ pub async fn stage_files(
         args.push(f);
     }
     transport.run_git(&args, work_dir).await?;
+    invalidate_caches(work_dir);
     Ok(())
 }
 
@@ -76,12 +82,14 @@ pub async fn unstage_files(
         args.push(f);
     }
     transport.run_git(&args, work_dir).await?;
+    invalidate_caches(work_dir);
     Ok(())
 }
 
 /// Stage all changes: `git add -A`
 pub async fn stage_all(transport: &dyn GitTransport, work_dir: &str) -> Result<()> {
     transport.run_git(&["add", "-A"], work_dir).await?;
+    invalidate_caches(work_dir);
     Ok(())
 }
 
@@ -90,6 +98,7 @@ pub async fn unstage_all(transport: &dyn GitTransport, work_dir: &str) -> Result
     transport
         .run_git(&["restore", "--staged", "."], work_dir)
         .await?;
+    invalidate_caches(work_dir);
     Ok(())
 }
 
@@ -160,6 +169,7 @@ pub async fn discard_file(
             .await?;
     }
 
+    invalidate_caches(work_dir);
     Ok(())
 }
 
@@ -211,7 +221,10 @@ pub async fn discard_all(transport: &dyn GitTransport, work_dir: &str) -> Result
 pub async fn fetch(transport: &dyn GitTransport, work_dir: &str) -> Result<PushOutcome> {
     let result = transport.run_git(&["fetch", "--all"], work_dir).await;
     match result {
-        Ok(_) => Ok(PushOutcome::Success {}),
+        Ok(_) => {
+            invalidate_caches(work_dir);
+            Ok(PushOutcome::Success {})
+        }
         Err(e) => classify_git_error(transport, work_dir, e).await,
     }
 }
@@ -223,7 +236,9 @@ pub async fn fetch_with_credentials(
     username: &str,
     password: &str,
 ) -> Result<PushOutcome> {
-    exec_with_credentials(transport, work_dir, &["fetch", "--all"], username, password).await
+    exec_with_credentials(transport, work_dir, &["fetch", "--all"], username, password).await?;
+    invalidate_caches(work_dir);
+    Ok(PushOutcome::Success {})
 }
 
 /// Push to remote: `git push [--set-upstream [-o origin <branch>]]`
@@ -236,7 +251,10 @@ pub async fn push(
     let args: Vec<&str> = owned.iter().map(|s| s.as_str()).collect();
     let result = transport.run_git(&args, work_dir).await;
     match result {
-        Ok(_) => Ok(PushOutcome::Success {}),
+        Ok(_) => {
+            invalidate_caches(work_dir);
+            Ok(PushOutcome::Success {})
+        }
         Err(e) => classify_git_error(transport, work_dir, e).await,
     }
 }
@@ -251,7 +269,9 @@ pub async fn push_with_credentials(
 ) -> Result<PushOutcome> {
     let owned = push_args(transport, work_dir, set_upstream).await;
     let args: Vec<&str> = owned.iter().map(|s| s.as_str()).collect();
-    exec_with_credentials(transport, work_dir, &args, username, password).await
+    exec_with_credentials(transport, work_dir, &args, username, password).await?;
+    invalidate_caches(work_dir);
+    Ok(PushOutcome::Success {})
 }
 
 /// Pull: fetch + merge --ff-only
@@ -268,7 +288,10 @@ pub async fn pull(transport: &dyn GitTransport, work_dir: &str) -> Result<PushOu
         .run_git(&["merge", "--ff-only", &remote_branch], work_dir)
         .await;
     match result {
-        Ok(_) => Ok(PushOutcome::Success {}),
+        Ok(_) => {
+            invalidate_caches(work_dir);
+            Ok(PushOutcome::Success {})
+        }
         Err(e) => classify_git_error(transport, work_dir, e).await,
     }
 }
@@ -297,7 +320,10 @@ pub async fn pull_with_credentials(
         .run_git(&["merge", "--ff-only", &remote_branch], work_dir)
         .await;
     match result {
-        Ok(_) => Ok(PushOutcome::Success {}),
+        Ok(_) => {
+            invalidate_caches(work_dir);
+            Ok(PushOutcome::Success {})
+        }
         Err(e) => classify_git_error(transport, work_dir, e).await,
     }
 }
@@ -315,6 +341,7 @@ pub async fn commit_files(
     let output = transport
         .run_git(&["commit", "-m", message], work_dir)
         .await?;
+    invalidate_caches(work_dir);
     let hash = super::parsers::extract_commit_hash_from_output(&output);
     Ok(CommitResult {
         success: true,
@@ -332,6 +359,7 @@ pub async fn cherry_pick(
     transport
         .run_git(&["cherry-pick", commit_hash], work_dir)
         .await?;
+    invalidate_caches(work_dir);
     Ok(())
 }
 
@@ -353,6 +381,7 @@ pub async fn create_tag(
     transport
         .run_git(&["tag", "-a", name, "-m", message], work_dir)
         .await?;
+    invalidate_caches(work_dir);
     Ok(())
 }
 
@@ -367,6 +396,7 @@ pub async fn checkout_branch(
     transport
         .run_git(&["checkout", branch_name], work_dir)
         .await?;
+    invalidate_caches(work_dir);
     Ok(())
 }
 
@@ -382,6 +412,7 @@ pub async fn create_branch(
         args.push(sp);
     }
     transport.run_git(&args, work_dir).await?;
+    invalidate_caches(work_dir);
     Ok(())
 }
 
@@ -396,6 +427,7 @@ pub async fn delete_branch(
     transport
         .run_git(&["branch", flag, branch_name], work_dir)
         .await?;
+    invalidate_caches(work_dir);
     Ok(())
 }
 
@@ -409,6 +441,7 @@ pub async fn rename_branch(
     transport
         .run_git(&["branch", "-m", old_name, new_name], work_dir)
         .await?;
+    invalidate_caches(work_dir);
     Ok(())
 }
 
@@ -421,6 +454,7 @@ pub async fn create_and_switch_branch(
     transport
         .run_git(&["checkout", "-b", branch_name], work_dir)
         .await?;
+    invalidate_caches(work_dir);
     Ok(())
 }
 
@@ -433,6 +467,7 @@ pub async fn checkout_detached(
     transport
         .run_git(&["checkout", commit_hash], work_dir)
         .await?;
+    invalidate_caches(work_dir);
     Ok(())
 }
 
@@ -447,6 +482,8 @@ pub async fn remove_worktree(
     transport
         .run_git(&["worktree", "remove", "--force", worktree_path], work_dir)
         .await?;
+    invalidate_caches(work_dir);
+    invalidate_caches(worktree_path);
     Ok(())
 }
 
@@ -460,6 +497,9 @@ pub async fn rename_worktree(
     transport
         .run_git(&["worktree", "move", old_path, new_path], work_dir)
         .await?;
+    invalidate_caches(work_dir);
+    invalidate_caches(old_path);
+    invalidate_caches(new_path);
     Ok(())
 }
 
@@ -489,6 +529,8 @@ pub async fn create_worktree(
         args.push(branch_name);
     }
     transport.run_git(&args, work_dir).await?;
+    invalidate_caches(work_dir);
+    invalidate_caches(worktree_path);
     Ok(())
 }
 
@@ -673,11 +715,18 @@ pub async fn stash_apply(
         .run_git(&["stash", "apply", selector], work_dir)
         .await
     {
-        Ok(_) => Ok(StashActionResult {
-            success: true,
-            message: String::new(),
-        }),
-        Err(e) => stash_action_result(e),
+        Ok(_) => {
+            invalidate_caches(work_dir);
+            Ok(StashActionResult {
+                success: true,
+                message: String::new(),
+            })
+        }
+        // 冲突（success: false）时 git 可能已部分应用到工作区，同样需要失效
+        Err(e) => {
+            invalidate_caches(work_dir);
+            stash_action_result(e)
+        }
     }
 }
 
@@ -693,11 +742,18 @@ pub async fn stash_pop(
         .run_git(&["stash", "pop", selector], work_dir)
         .await
     {
-        Ok(_) => Ok(StashActionResult {
-            success: true,
-            message: String::new(),
-        }),
-        Err(e) => stash_action_result(e),
+        Ok(_) => {
+            invalidate_caches(work_dir);
+            Ok(StashActionResult {
+                success: true,
+                message: String::new(),
+            })
+        }
+        // pop 冲突时 git 已 apply（改动在工作区）但保留条目，同样需要失效
+        Err(e) => {
+            invalidate_caches(work_dir);
+            stash_action_result(e)
+        }
     }
 }
 
@@ -892,7 +948,10 @@ pub async fn get_git_info_shell(transport: &dyn GitTransport, work_dir: &str) ->
     let files = if is_clean {
         vec![]
     } else {
-        parse_porcelain_status(&changed_files)
+        changed_files
+            .lines()
+            .filter_map(parse_status_line)
+            .collect()
     };
 
     // 检测 Git 提供商
@@ -1011,36 +1070,6 @@ fn parse_worktree_list(output: &str) -> Vec<Worktree> {
     worktrees
 }
 
-fn parse_porcelain_status(output: &str) -> Vec<FileChange> {
-    let mut files = Vec::new();
-    for line in output.lines() {
-        let line = line.trim();
-        if line.is_empty() || line.len() < 3 {
-            continue;
-        }
-        let (xy, rest) = line.split_at(2);
-        let path = rest.trim();
-        if path.is_empty() {
-            continue;
-        }
-        let status = match xy.trim() {
-            "??" => FileStatus::Untracked,
-            "A " | "AM" | "A?" => FileStatus::Added,
-            "M " | " M" | "MM" => FileStatus::Modified,
-            "D " | " D" => FileStatus::Deleted,
-            "R " | " R" => FileStatus::Renamed,
-            _ => continue,
-        };
-        files.push(FileChange {
-            path: std::path::PathBuf::from(path),
-            status,
-            additions: 0,
-            deletions: 0,
-        });
-    }
-    files
-}
-
 /// Get changed files for a worktree path (shell-based) with additions/deletions
 async fn get_worktree_changed_files_shell(
     transport: &dyn GitTransport,
@@ -1049,7 +1078,7 @@ async fn get_worktree_changed_files_shell(
     let output = transport
         .run_git_opts(&["status", "--porcelain"], worktree_path, readonly_opts())
         .await?;
-    let mut files = parse_porcelain_status(&output);
+    let mut files: Vec<FileChange> = output.lines().filter_map(parse_status_line).collect();
 
     // Enrich with additions/deletions from git diff --numstat
     if !files.is_empty() {
@@ -2192,5 +2221,197 @@ mod tests {
         // 非 GitExecError（spawn 失败、timeout 等）同样上抛
         let err = anyhow::anyhow!("git command failed to spawn: No such file or directory");
         assert!(stash_action_result(err).is_err());
+    }
+
+    // ── Branch operations（自 local.rs 收缩后迁移，行为等价）─────────────
+
+    #[tokio::test]
+    async fn write_operation_invalidates_diff_stats_cache() {
+        // 回归：local.rs 写函数删除后，Local 项目的 shell 写操作是唯一失效入口；
+        // 若写后不清缓存，diff 统计（get_cached_diff_stats）将永久陈旧。
+        let (dir, path) = init_repo().await;
+        let transport = ExecTarget::Local;
+
+        // 1. 修改文件 → 首次统计（填充 DIFF_STATS_CACHE）。
+        // local 版是同步 fn（内部走同步桥），必须经 spawn_blocking 调用。
+        std::fs::write(dir.path().join("base.txt"), "modified\n").expect("modify");
+        let path_clone = path.clone();
+        let before = tokio::task::spawn_blocking(move || {
+            crate::common::git::local::get_changed_files_diff_stats(std::path::Path::new(
+                &path_clone,
+            ))
+        })
+        .await
+        .unwrap()
+        .unwrap();
+        assert_eq!(before.len(), 1, "precondition: one modified file");
+
+        // 2. shell 写操作恢复文件
+        discard_file(&transport, &path, "base.txt")
+            .await
+            .expect("discard");
+
+        // 3. 再取统计：缓存若未失效会返回修改态（Bug）
+        let path_clone = path.clone();
+        let after = tokio::task::spawn_blocking(move || {
+            crate::common::git::local::get_changed_files_diff_stats(std::path::Path::new(
+                &path_clone,
+            ))
+        })
+        .await
+        .unwrap()
+        .unwrap();
+        assert!(
+            after.is_empty(),
+            "cache must be invalidated after discard_file, got {after:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn create_branch_then_checkout_switches_head() {
+        let (_dir, path) = init_repo().await;
+        let transport = ExecTarget::Local;
+
+        create_branch(&transport, &path, "feature-1", None)
+            .await
+            .expect("create branch");
+        checkout_branch(&transport, &path, "feature-1")
+            .await
+            .expect("checkout branch");
+
+        let out = git_local(&path, &["rev-parse", "--abbrev-ref", "HEAD"]).await;
+        assert_eq!(String::from_utf8_lossy(&out.stdout).trim(), "feature-1");
+    }
+
+    #[tokio::test]
+    async fn create_branch_from_start_point() {
+        let (_dir, path) = init_repo().await;
+        let transport = ExecTarget::Local;
+
+        // 制造第二个提交
+        std::fs::write(std::path::Path::new(&path).join("file2.txt"), "hello\n")
+            .expect("write file2");
+        let out = git_local(&path, &["add", "-A"]).await;
+        assert!(out.exit_code == 0, "git add failed");
+        let out = git_local(&path, &["commit", "-qm", "Second"]).await;
+        assert!(out.exit_code == 0, "git commit failed");
+
+        create_branch(&transport, &path, "from-first", Some("HEAD~1"))
+            .await
+            .expect("create branch from HEAD~1");
+
+        let out = git_local(&path, &["rev-parse", "--abbrev-ref", "from-first"]).await;
+        assert_eq!(String::from_utf8_lossy(&out.stdout).trim(), "from-first");
+        // from-first 应指向第一个提交，而非 HEAD
+        let out = git_local(&path, &["rev-parse", "from-first"]).await;
+        let from_first = String::from_utf8_lossy(&out.stdout).trim().to_string();
+        let out = git_local(&path, &["rev-parse", "HEAD"]).await;
+        assert_ne!(from_first, String::from_utf8_lossy(&out.stdout).trim());
+    }
+
+    #[tokio::test]
+    async fn checkout_nonexistent_branch_fails() {
+        let (_dir, path) = init_repo().await;
+        let transport = ExecTarget::Local;
+        assert!(checkout_branch(&transport, &path, "nonexistent")
+            .await
+            .is_err());
+    }
+
+    #[tokio::test]
+    async fn rename_current_branch() {
+        let (_dir, path) = init_repo().await;
+        let transport = ExecTarget::Local;
+
+        let out = git_local(&path, &["rev-parse", "--abbrev-ref", "HEAD"]).await;
+        let current = String::from_utf8_lossy(&out.stdout).trim().to_string();
+
+        rename_branch(&transport, &path, &current, "renamed-branch")
+            .await
+            .expect("rename current branch");
+
+        let out = git_local(&path, &["rev-parse", "--abbrev-ref", "HEAD"]).await;
+        assert_eq!(
+            String::from_utf8_lossy(&out.stdout).trim(),
+            "renamed-branch"
+        );
+    }
+
+    #[tokio::test]
+    async fn rename_nonexistent_branch_fails() {
+        let (_dir, path) = init_repo().await;
+        let transport = ExecTarget::Local;
+        assert!(
+            rename_branch(&transport, &path, "no-such-branch", "new-name")
+                .await
+                .is_err()
+        );
+    }
+
+    #[tokio::test]
+    async fn get_commit_log_scoped_to_head_excludes_isolated_tool_refs() {
+        // 孤立提交仅被 refs/synara/checkpoints/isolated 引用 —— 不应出现在 HEAD-scoped log
+        let (_dir, path) = init_repo().await;
+        let transport = ExecTarget::Local;
+
+        // 空树孤立提交
+        let out = git_local(&path, &["hash-object", "-t", "tree", "--stdin"]).await;
+        assert!(out.exit_code == 0, "hash-object failed");
+        let empty_tree = String::from_utf8_lossy(&out.stdout).trim().to_string();
+        let out = git_local(
+            &path,
+            &["commit-tree", &empty_tree, "-m", "synara checkpoint"],
+        )
+        .await;
+        assert!(out.exit_code == 0, "commit-tree failed");
+        let orphan = String::from_utf8_lossy(&out.stdout).trim().to_string();
+        assert_ne!(orphan, "", "orphan commit id must not be empty");
+
+        let out = git_local(
+            &path,
+            &["update-ref", "refs/synara/checkpoints/isolated", &orphan],
+        )
+        .await;
+        assert!(out.exit_code == 0, "update-ref isolated failed");
+        let out = git_local(
+            &path,
+            &["update-ref", "refs/synara/checkpoints/head-marker", "HEAD"],
+        )
+        .await;
+        assert!(out.exit_code == 0, "update-ref head-marker failed");
+
+        let head_out = git_local(&path, &["rev-parse", "HEAD"]).await;
+        let head_id = String::from_utf8_lossy(&head_out.stdout).trim().to_string();
+
+        let log = get_commit_log(&transport, &path, 0, 0)
+            .await
+            .expect("get commit log");
+        assert!(
+            log.iter().all(|c| c.hash != orphan),
+            "isolated synara-only commit must not appear in HEAD-scoped log"
+        );
+        let head_entry = log
+            .iter()
+            .find(|c| c.hash == head_id)
+            .expect("HEAD commit should be in log");
+        assert!(
+            !head_entry.refs.contains("synara"),
+            "refs string must not contain tool refs, got: {}",
+            head_entry.refs
+        );
+        assert!(
+            head_entry
+                .refs_list
+                .iter()
+                .all(|r| r.name != "synara/checkpoints/head-marker"),
+            "refs_list must not contain tool refs"
+        );
+        assert!(
+            head_entry
+                .refs_list
+                .iter()
+                .any(|r| r.kind == crate::common::git::refs::RefKind::Branch),
+            "HEAD commit should still expose its branch ref"
+        );
     }
 }

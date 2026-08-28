@@ -239,7 +239,7 @@ macro_rules! neeko_invoke_handler {
             // unified commit message
             $crate::agent::commands_commit::generate_commit_message,
             // remote utilities
-            $crate::git::commands::get_remote_home_dir,
+            $crate::connection::commands::get_remote_home_dir,
             // PR commands
             $crate::git::commands::is_gh_installed_command,
             $crate::git::commands::is_gh_authenticated_command,

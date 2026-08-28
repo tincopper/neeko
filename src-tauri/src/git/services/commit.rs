@@ -29,8 +29,13 @@ pub fn generate_commit_message(
     file_paths: &[String],
 ) -> Result<String, AppError> {
     let diff = get_selected_diff(project_path, file_paths)?;
+    // 显式走 common::git::local（仅 Local 语义）：本函数只被
+    // agent/commands_commit::run_agent_local 在 ExecTarget::Local 分支调用。
+    // 不经 `crate::git::*` 门面 —— 该门面曾同时 glob 再导出 local 与 operations
+    // 的同名函数，易误选非目标实现。local 版 get_diff_for_files 含 untracked
+    // 文件内容回退（operations 版无此处理），是此处选它的决定性原因。
     let recent_messages =
-        crate::git::get_recent_commit_messages(project_path, 5).unwrap_or_default();
+        crate::common::git::local::get_recent_commit_messages(project_path, 5).unwrap_or_default();
     let prompt_content = build_commit_prompt(&diff, &recent_messages);
 
     log::info!(
@@ -58,8 +63,8 @@ pub fn get_selected_diff(project_path: &Path, file_paths: &[String]) -> Result<S
         ));
     }
 
-    let diff =
-        crate::git::get_diff_for_files(project_path, file_paths, 500).map_err(AppError::from)?;
+    let diff = crate::common::git::local::get_diff_for_files(project_path, file_paths, 500)
+        .map_err(AppError::from)?;
 
     if diff.trim().is_empty() {
         return Err(AppError::InvalidInput(

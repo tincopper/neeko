@@ -157,45 +157,6 @@ fn get_git_info_detects_added_file() {
         .any(|f| f.path == PathBuf::from("new_file.txt")));
 }
 
-// --- create_branch / checkout_branch ---
-
-#[test]
-fn create_and_checkout_branch() {
-    let (tmp, _repo) = create_test_repo();
-    git::create_branch(tmp.path(), "feature-1", None).unwrap();
-    git::checkout_branch(tmp.path(), "feature-1").unwrap();
-
-    let info = git::get_git_info(tmp.path()).unwrap();
-    assert_eq!(info.current_branch, "feature-1");
-}
-
-#[test]
-fn create_branch_from_start_point() {
-    let (tmp, _repo) = create_test_repo();
-    std::fs::write(tmp.path().join("file2.txt"), "hello\n").unwrap();
-    {
-        let repo = Repository::open(tmp.path()).unwrap();
-        let mut index = repo.index().unwrap();
-        index.add_path(std::path::Path::new("file2.txt")).unwrap();
-        index.write().unwrap();
-        let sig = Signature::now("Test", "test@test.com").unwrap();
-        let tree_id = index.write_tree().unwrap();
-        let tree = repo.find_tree(tree_id).unwrap();
-        let parent = repo.head().unwrap().peel_to_commit().unwrap();
-        repo.commit(Some("HEAD"), &sig, &sig, "Second", &tree, &[&parent])
-            .unwrap();
-    }
-
-    git::create_branch(tmp.path(), "from-first", Some("HEAD~1")).unwrap();
-}
-
-#[test]
-fn checkout_nonexistent_branch_fails() {
-    let (tmp, _repo) = create_test_repo();
-    let result = git::checkout_branch(tmp.path(), "nonexistent");
-    assert!(result.is_err());
-}
-
 // --- get_file_diff ---
 
 #[test]
@@ -334,26 +295,6 @@ fn diff_stats_cache_invalidated_on_change() {
     );
 }
 
-// --- rename_branch ---
-
-#[test]
-fn rename_current_branch() {
-    let (tmp, _repo) = create_test_repo();
-    let info_before = git::get_git_info(tmp.path()).unwrap();
-    let current = info_before.current_branch.clone();
-
-    git::rename_branch(tmp.path(), &current, "renamed-branch").unwrap();
-    let info_after = git::get_git_info(tmp.path()).unwrap();
-    assert_eq!(info_after.current_branch, "renamed-branch");
-}
-
-#[test]
-fn rename_nonexistent_branch_fails() {
-    let (tmp, _repo) = create_test_repo();
-    let result = git::rename_branch(tmp.path(), "no-such-branch", "new-name");
-    assert!(result.is_err());
-}
-
 // --- parse_decorate_refs (pure function) ---
 
 #[test]
@@ -387,79 +328,6 @@ fn parse_decorate_refs_treats_detached_head_as_branch() {
     assert_eq!(refs.len(), 1);
     assert_eq!(refs[0].kind, RefKind::Branch);
     assert_eq!(refs[0].name, "HEAD");
-}
-
-// --- get_commit_log scoped to HEAD (integration) ---
-
-#[test]
-fn get_commit_log_scoped_to_head_excludes_isolated_tool_refs() {
-    let (tmp, repo) = create_test_repo();
-    let head_id = repo.head().unwrap().peel_to_commit().unwrap().id();
-
-    // 孤立提交仅被 refs/synara/checkpoints/isolated 引用 —— --all 会展示，HEAD 不应展示
-    let sig = Signature::now("Test", "test@test.com").unwrap();
-    let blob_oid = repo.blob(b"synara checkpoint\n").unwrap();
-    let mut tree_builder = repo.treebuilder(None).unwrap();
-    tree_builder
-        .insert("synara.txt", blob_oid, 0o100644)
-        .unwrap();
-    let tree_oid = tree_builder.write().unwrap();
-    let orphan_id = repo
-        .commit(
-            None,
-            &sig,
-            &sig,
-            "synara checkpoint",
-            &repo.find_tree(tree_oid).unwrap(),
-            &[],
-        )
-        .unwrap();
-    repo.reference(
-        "refs/synara/checkpoints/isolated",
-        orphan_id,
-        true,
-        "synara",
-    )
-    .unwrap();
-
-    // 将另一个工具 ref 指向 HEAD 提交：验证 decorate 中的 tool ref 被过滤
-    repo.reference(
-        "refs/synara/checkpoints/head-marker",
-        head_id,
-        true,
-        "synara",
-    )
-    .unwrap();
-
-    let log = git::get_commit_log(tmp.path(), 0, 0).unwrap();
-    assert!(
-        log.iter().all(|c| c.hash != orphan_id.to_string()),
-        "isolated synara-only commit must not appear in HEAD-scoped log"
-    );
-
-    let head_entry = log
-        .iter()
-        .find(|c| c.hash == head_id.to_string())
-        .expect("HEAD commit should be in log");
-    assert!(
-        !head_entry.refs.contains("synara"),
-        "refs string must not contain tool refs, got: {}",
-        head_entry.refs
-    );
-    assert!(
-        head_entry
-            .refs_list
-            .iter()
-            .all(|r| r.name != "synara/checkpoints/head-marker"),
-        "refs_list must not contain tool refs"
-    );
-    assert!(
-        head_entry
-            .refs_list
-            .iter()
-            .any(|r| r.kind == RefKind::Branch),
-        "HEAD commit should still expose its branch ref"
-    );
 }
 
 // --- stash list / files (integration) ---

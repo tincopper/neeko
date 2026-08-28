@@ -306,49 +306,31 @@ fn git_status_porcelain(repo_path: &Path, supports_no_optional_locks: &mut bool)
     }
 }
 
-/// 解析 git status --porcelain 输出，返回 (path, status) 列表
+/// 解析 git status --porcelain 输出，返回 (path, status) 列表。
+///
+/// 行级解析统一走 `parsers::parse_status_line`（与 operations/remote 共用同一
+/// 语义；曾各自实现导致 UU 冲突文件被误判/丢弃）。
 fn parse_porcelain(output: &str) -> Vec<GitStatusFile> {
-    let mut files = Vec::new();
-    for line in output.lines() {
-        // git status --porcelain 格式: XY path
-        // XY 是两个字符的状态码，后面跟一个空格，然后是路径
-        // 跳过空行和非 porcelain 格式的行
-        if line.len() < 3 {
-            continue;
-        }
-        let xy = &line[..2];
-        let path_part = &line[3..];
-
-        // 处理 rename: "old_path -> new_path"
-        let path = if let Some(idx) = path_part.find(" -> ") {
-            path_part[idx + 4..].to_string()
-        } else {
-            path_part.to_string()
-        };
-
-        let status = xy_to_status(xy);
-        files.push(GitStatusFile::new(path, status));
-    }
-    files
+    output
+        .lines()
+        .filter_map(crate::common::git::parsers::parse_status_line)
+        .map(|fc| {
+            GitStatusFile::new(
+                fc.path.to_string_lossy().to_string(),
+                status_label(fc.status).to_string(),
+            )
+        })
+        .collect()
 }
 
-/// 将 porcelain 状态码映射为可读状态
-fn xy_to_status(xy: &str) -> String {
-    let x = xy.as_bytes()[0];
-    let y = xy.as_bytes()[1];
-
-    if x == b'?' && y == b'?' {
-        "Untracked".to_string()
-    } else if x == b'A' {
-        "Added".to_string()
-    } else if x == b'D' || y == b'D' {
-        "Deleted".to_string()
-    } else if x == b'T' || y == b'T' {
-        "Modified".to_string()
-    } else if x == b'R' {
-        "Renamed".to_string()
-    } else {
-        "Modified".to_string()
+/// FileStatus → 前端状态字符串（GitStatusFile.status 的既有契约，勿改字面量）。
+const fn status_label(status: crate::common::types::FileStatus) -> &'static str {
+    match status {
+        crate::common::types::FileStatus::Modified => "Modified",
+        crate::common::types::FileStatus::Added => "Added",
+        crate::common::types::FileStatus::Deleted => "Deleted",
+        crate::common::types::FileStatus::Renamed => "Renamed",
+        crate::common::types::FileStatus::Untracked => "Untracked",
     }
 }
 

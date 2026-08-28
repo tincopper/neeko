@@ -23,7 +23,8 @@ pub async fn generate_commit_message(
     let prompt = ai_svc::build_simple_commit_prompt(&file_paths);
     let (t, wd) = state.resolve_project(&project_id)?;
     let repo_path =
-        crate::common::git::operations::resolve_worktree_path(&worktree_path, &wd).to_string();
+        crate::common::git::path_guard::resolve_validated_work_dir(&t, &worktree_path, &wd)?
+            .to_string();
 
     let output = match &t {
         ExecTarget::Local => {

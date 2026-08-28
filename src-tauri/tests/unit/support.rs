@@ -81,16 +81,6 @@ impl TestRepo {
         self.dir.path()
     }
 
-    /// 仓库工作目录（字符串形式，便于传给 git 命令层）。
-    pub fn path_str(&self) -> String {
-        self.dir.path().to_string_lossy().to_string()
-    }
-
-    /// git2 仓库句柄。
-    pub fn repo(&self) -> &Repository {
-        &self.repo
-    }
-
     /// 拆分为 `(TempDir, Repository)`，兼容既有 `create_test_repo` 风格的调用方。
     pub fn into_parts(self) -> (TempDir, Repository) {
         (self.dir, self.repo)
