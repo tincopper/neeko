@@ -9,6 +9,14 @@ interface GitStoreState {
   favoriteBranches: Record<string, string[]>;
   setFavoriteBranches: (projectId: string, branches: string[]) => void;
   toggleFavorite: (projectId: string, branchName: string) => void;
+
+  /**
+   * 各项目被 .gitignore 忽略的路径集合（文件树灰色显示的装饰输入）。
+   * 独立于 Project.git_info 存储：git_info 会被项目列表刷新等路径用 Rust 返回值
+   * 整体重建（Rust GitInfo 无此字段），寄生其中会被随时洗掉（补拉成果不可靠的根因）。
+   */
+  ignoredByProject: Record<string, string[]>;
+  setIgnoredFiles: (projectId: string, files: string[]) => void;
 }
 
 export const useGitStore = create<GitStoreState>((set) => ({
@@ -29,6 +37,17 @@ export const useGitStore = create<GitStoreState>((set) => ({
     }),
 
   favoriteBranches: {},
+
+  ignoredByProject: {},
+
+  setIgnoredFiles: (projectId, files) =>
+    set((state) => {
+      const current = state.ignoredByProject[projectId];
+      if (current && current.length === files.length && current.every((v, i) => v === files[i])) {
+        return state;
+      }
+      return { ignoredByProject: { ...state.ignoredByProject, [projectId]: files } };
+    }),
 
   setFavoriteBranches: (projectId, branches) =>
     set((state) => ({

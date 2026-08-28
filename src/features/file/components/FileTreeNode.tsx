@@ -1,21 +1,13 @@
 import React, { useCallback, useEffect, useRef } from 'react';
 
 import { ChevronRight } from '@/shared/components/icons';
-import type { DirLoadState, FileChange, FileNode } from '@/shared/types';
+import type { DirLoadState, FileNode } from '@/shared/types';
 import { fileIconSrc } from '@/shared/utils/fileIcons';
+import type { Decoration, ResolveNodeDecoration } from '@/shared/utils/gitFileDecoration';
 
 import { setDragFile } from '../hooks/useFileDrop';
 
 import InlineNameInput from './InlineNameInput';
-
-/** git status 与文件名颜色 class */
-const STATUS_TEXT_COLOR: Record<FileChange['status'], string> = {
-  Modified: 'text-accent-blue',
-  Added: 'text-accent-green',
-  Deleted: 'text-accent-red',
-  Renamed: 'text-accent-blue',
-  Untracked: 'text-accent-red',
-};
 
 interface FileTreeNodeProps {
   node: FileNode;
@@ -45,11 +37,16 @@ interface FileTreeNodeProps {
   onRenamingChange?: (value: string) => void;
   onRenamingSubmit?: () => void;
   onRenamingCancel?: () => void;
-  changedFilesMap?: Map<string, FileChange['status']>;
-  /** 被 .gitignore 忽略的相对路径集合（灰色显示） */
-  ignoredSet?: Set<string>;
-  /** 祖先目录是否被忽略（忽略状态沿树自顶向下传播） */
-  parentIgnored?: boolean;
+  /**
+   * 当前节点的 git 状态装饰（由父级解析后传入，P3 下传策略）。
+   * 结构等值时沿用上一实例：未受影响节点在 git 高频刷新期间不重渲染。
+   */
+  decoration?: Decoration | null;
+  /**
+   * 单节点装饰解析回调（身份恒定）：展开目录时为每个直接子节点解析后逐一传入。
+   * 不再下传整张 map 或祖先谓词 —— memo 按「单节点装饰值」粒度生效。
+   */
+  resolveDecorationFor?: ResolveNodeDecoration;
 }
 
 function FileTreeNode({
@@ -74,9 +71,8 @@ function FileTreeNode({
   onRenamingChange,
   onRenamingSubmit,
   onRenamingCancel,
-  changedFilesMap,
-  ignoredSet,
-  parentIgnored = false,
+  decoration,
+  resolveDecorationFor,
 }: FileTreeNodeProps) {
   const isExpanded = expandedDirs.has(node.path);
   const isActive = activeFilePath === node.path;
@@ -93,10 +89,6 @@ function FileTreeNode({
       nodeRef.current?.scrollIntoView({ block: 'nearest' });
     }
   }, [isSelected, node.path]);
-  // git 状态色：变更文件优先；无变更且自身/祖先被 .gitignore 忽略 → 灰色
-  // 忽略状态是继承性谓词：被忽略目录内的所有后代均被忽略（git 折叠输出保证祖先一定在列表内）
-  const statusColor = changedFilesMap?.get(node.path);
-  const isIgnored = !statusColor && (parentIgnored || (ignoredSet?.has(node.path) ?? false));
 
   const handleClick = useCallback(() => {
     onSelectNode?.(node.path, node.is_dir);
@@ -126,6 +118,9 @@ function FileTreeNode({
     },
     [node.path, projectId],
   );
+
+  // 装饰色：color 字段已编码最终 class（激活/状态/忽略/默认的优先级在模块内收敛）
+  const nameColorClass = decoration?.color ?? 'text-text-primary';
 
   // 重命名模式：节点行替换为内联输入框（所有 hooks 之后，避免提前 return 破坏 hooks 顺序）
   if (renaming?.path === node.path) {
@@ -180,13 +175,7 @@ function FileTreeNode({
               width={16}
               height={16}
             />
-            <span
-              className={`flex-1 font-medium truncate ${
-                isIgnored ? 'text-text-muted' : 'text-text-primary'
-              }`}
-            >
-              {node.name}
-            </span>
+            <span className={`flex-1 font-medium truncate ${nameColorClass}`}>{node.name}</span>
             {isLoadingChildren && (
               <span className="shrink-0 w-3 h-3 rounded-full border border-text-muted border-t-transparent animate-spin ml-1" />
             )}
@@ -203,6 +192,7 @@ function FileTreeNode({
                 }}
               />
             )}
+            {/* 目录 git 状态仅以名字着色表达（需求演进：不再渲染行尾徽标） */}
           </>
         ) : (
           <>
@@ -214,17 +204,7 @@ function FileTreeNode({
               width={14}
               height={14}
             />
-            <span
-              className={`flex-1 truncate ${
-                isActive
-                  ? 'text-accent font-medium'
-                  : statusColor
-                    ? STATUS_TEXT_COLOR[statusColor]
-                    : isIgnored
-                      ? 'text-text-muted'
-                      : 'text-text-primary'
-              }`}
-            >
+            <span className={`flex-1 truncate ${isActive ? 'font-medium ' : ''}${nameColorClass}`}>
               {node.name}
             </span>
           </>
@@ -268,9 +248,14 @@ function FileTreeNode({
                   onRenamingChange={onRenamingChange}
                   onRenamingSubmit={onRenamingSubmit}
                   onRenamingCancel={onRenamingCancel}
-                  changedFilesMap={changedFilesMap}
-                  ignoredSet={ignoredSet}
-                  parentIgnored={isIgnored}
+                  decoration={
+                    resolveDecorationFor?.(
+                      child.path,
+                      child.is_dir,
+                      activeFilePath === child.path,
+                    ) ?? null
+                  }
+                  resolveDecorationFor={resolveDecorationFor}
                 />
               ))
             : !isLoadingChildren && null}

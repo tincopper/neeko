@@ -83,6 +83,13 @@ export default React.memo(TitleBar);
 ---
 
 ## Props 约定
+### 组件规模红线（≤300 行）
+
+**开发硬指标**：组件文件严禁超过 300 行（neeko-check P10）。超线时按职责抽取子组件到独立文件（同目录），抽取不改变公开 API：
+
+- 列表分区、行块等内嵌展示块 → 独立组件文件，如 `ChangesList` 的 `Section` 抽为 `ChangesSection.tsx`
+- 纯展示子块用 `React.memo` 包裹保持引用稳定
+- 抽取仅迁移 JSX 与依赖（`cn`/icons/类型），行为零漂移——用 `git diff -w` 对照抽取前后验证语义一致
 
 ### 规则
 

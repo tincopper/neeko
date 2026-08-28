@@ -343,6 +343,19 @@ const GitCommitPanel: React.FC<GitCommitPanelProps> = ({
     }
   }, [changedFiles, commands, onRefreshGit, onShowToast]);
 
+  // 展开折叠的 untracked 目录条目：按需拉取目录下的 untracked 文件列表
+  const handleExpandUntrackedDir = useCallback(
+    async (dirPath: string) => {
+      try {
+        return await commands.listUntrackedFiles(dirPath);
+      } catch (e: unknown) {
+        onShowToast?.(String(e), 'error');
+        return [];
+      }
+    },
+    [commands, onShowToast],
+  );
+
   const handleCommit = useCallback(
     async (message: string) => {
       const files = Array.from(selectedFiles);
@@ -565,6 +578,7 @@ const GitCommitPanel: React.FC<GitCommitPanelProps> = ({
             onStageFile={handleStageFile}
             onStageAllUntracked={handleStageAllUntracked}
             onFileSelect={(path) => onSelectFile?.(path)}
+            onExpandUntrackedDir={handleExpandUntrackedDir}
             loading={loading}
           />
         )}

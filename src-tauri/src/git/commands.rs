@@ -471,6 +471,28 @@ pub async fn get_ignored_files(
         .map_err(AppError::from)
 }
 
+/// List untracked files under a directory (expands a collapsed untracked-dir
+/// entry shown in the changes list). Returns an error when the path is not a
+/// git repository; the UI expand handler catches it.
+#[tauri::command]
+pub async fn get_untracked_files(
+    project_id: String,
+    worktree_path: String,
+    dir_path: String,
+    state: State<'_, AppStateWrapper>,
+) -> Result<Vec<String>, AppError> {
+    let (backend, wd) = state.resolve_project(&project_id)?;
+    // When worktree_path is empty, use the main project path
+    let repo_path = if worktree_path.is_empty() {
+        &wd
+    } else {
+        &worktree_path
+    };
+    operations::get_untracked_files(&backend, repo_path, &dir_path)
+        .await
+        .map_err(AppError::from)
+}
+
 /// Get diff statistics for changed files.
 #[tauri::command]
 pub async fn get_changed_files_diff_stats(

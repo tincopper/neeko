@@ -1,3 +1,4 @@
+import { useGitStore } from '@/shared/store/gitStore';
 import { useProjectStore } from '@/shared/store/projectStore';
 import type { GitInfo } from '@/shared/types';
 
@@ -93,6 +94,10 @@ export async function refreshGitFileStates(
     ]);
     // 等待期间若同 projectId 有更新的调用，则本代陈旧，setState 被跳过
     if (refreshGenerations.get(projectId) !== myGen) return;
+    // ignored 拉取成功时写入独立 gitStore（不寄生于 git_info —— 会被项目列表刷新洗掉）
+    if (includeIgnored && ignoredFiles) {
+      useGitStore.getState().setIgnoredFiles(projectId, ignoredFiles);
+    }
     useProjectStore.setState((state) => {
       const nextProjects = state.projects.map((p) =>
         p.id === projectId
@@ -102,7 +107,6 @@ export async function refreshGitFileStates(
                 ...(p.git_info ?? defaultGitInfo),
                 changed_files: changedFiles,
                 is_clean: changedFiles.length === 0,
-                ...(includeIgnored ? { ignored_files: ignoredFiles ?? [] } : {}),
               },
             }
           : p,

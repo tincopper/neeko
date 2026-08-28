@@ -4,6 +4,7 @@ import { useShallow } from 'zustand/shallow';
 import { readDirTree } from '@/features/file/api/fileApi';
 import { useFileStore } from '@/features/file/store';
 import { useEditorStore } from '@/shared/store/editorStore';
+import { useGitStore } from '@/shared/store/gitStore';
 import { useProjectStore } from '@/shared/store/projectStore';
 import { useWorktreeStore } from '@/shared/store/worktreeStore';
 import type { FileNode } from '@/shared/types';
@@ -14,10 +15,9 @@ import { resolveTabKey } from '@/shared/utils/tabKey';
 
 import { useFileViewTabOps } from './useFileViewTabOps';
 
-/** 从 store 读取指定项目的 .gitignore 忽略列表（供文件树剪枝，undefined 表示不剪枝） */
+/** 从 gitStore 读取指定项目的 .gitignore 忽略列表（供文件树剪枝，undefined 表示不剪枝） */
 function getIgnoredFiles(projectId: string): string[] | undefined {
-  return useProjectStore.getState().projects.find((p) => p.id === projectId)?.git_info
-    ?.ignored_files;
+  return useGitStore.getState().ignoredByProject[projectId];
 }
 
 /**

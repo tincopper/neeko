@@ -76,6 +76,7 @@ export function useAgentActions(params: {
 - 编排 Hook 按领域命名，避免“全局回调大杂烩”
 - 优先从 `useAppStore` 读取跨域状态，减少参数数量
 - 仅暴露本领域回调，使用 `useCallback` 保持引用稳定
+- Hook 文件规模以 ≤300 行为红线：超线时按职责拆出独立 hook（如 `useSessionBootstrap` 的 git 事件监听块抽为 `useGitStatusEventsSync`，监听注册/清理与恢复逻辑解耦）
 
 ### Store 快照模式
 

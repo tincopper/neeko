@@ -44,6 +44,14 @@ export function createProjectCommands(
       });
     },
 
+    listUntrackedFiles(dirPath: string): Promise<string[]> {
+      return invoke<string[]>('get_untracked_files', {
+        projectId,
+        worktreePath: worktreePath ?? '',
+        dirPath,
+      });
+    },
+
     stageFiles(filePaths: string[]): Promise<void> {
       return invoke<void>('stage_files', { projectId, filePaths, worktreePath });
     },

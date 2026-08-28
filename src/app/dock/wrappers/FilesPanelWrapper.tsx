@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo } from 'react';
+import React, { useCallback } from 'react';
 
 import { openInDefaultBrowser } from '@/features/browser/api/browserApi';
 import { useFileActionsContext } from '@/features/editor';
@@ -15,6 +15,7 @@ import { refreshGitFileStates } from '@/features/git';
 import { useActiveProject } from '@/features/project';
 import { useAppContext } from '@/shared/contexts';
 import { useDockStore } from '@/shared/store/dockStore';
+import { useGitStore } from '@/shared/store/gitStore';
 import { useProjectStore } from '@/shared/store/projectStore';
 import {
   filePathToFileUrl,
@@ -28,6 +29,9 @@ import { resolveTabKey } from '@/shared/utils/tabKey';
  * 目录加载/刷新/展开/事件刷新编排由 useFileTreeSync 承担（feature hook），
  * 本层只做 dock 适配（isActive）与文件 CRUD / 浏览器打开等展示侧动作。
  */
+/** 空忽略列表常量：保证引用稳定，避免下游 effect/callback 依赖抖动 */
+const EMPTY_IGNORED: string[] = [];
+
 const FilesPanelWrapper: React.FC = React.memo(() => {
   const { onFileSelect, onFileRefresh, onLoadFileTree, onExpandDir } = useFileActionsContext();
   const { project, commands, worktreePath } = useActiveProject();
@@ -41,14 +45,16 @@ const FilesPanelWrapper: React.FC = React.memo(() => {
   // 定位当前编辑器 file tab 到文件树（复用面板内「点击选中」逻辑）
   const tabKey = project ? resolveTabKey(project.id, worktreePath) : '';
   const { canLocateFile, filePath: locateTargetPath } = useLocateFileInTree(tabKey);
-  // 稳定引用：`?? []` 每次渲染生成新数组，会令下游 effect/callback 依赖抖动
-  const ignoredFiles = useMemo(
-    () => project?.gitInfo?.ignored_files ?? [],
-    [project?.gitInfo?.ignored_files],
-  );
 
   // Compute projectId for use by child components (drag-and-drop, etc.)
   const projectId = project ? (project.type === 'Local' ? activeProjectId : project.id) : null;
+
+  // 忽略列表读独立 gitStore（不寄生于 git_info —— 会被项目列表刷新整体重建洗掉）。
+  // EMPTY 模块级常量保引用稳定，避免下游 effect/callback 依赖抖动。
+  const ignoredFilesRaw = useGitStore((s) =>
+    projectId ? s.ignoredByProject[projectId] : undefined,
+  );
+  const ignoredFiles = ignoredFilesRaw ?? EMPTY_IGNORED;
 
   // 面板在 dock 中激活（任一 zone 激活且展开）才发起首次加载
   const isActive = useDockStore((s) => {

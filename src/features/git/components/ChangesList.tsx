@@ -1,21 +1,12 @@
-import React, { useMemo, useState, useCallback } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 
 import { cn } from '@/lib/utils';
-import { ChevronRightIcon, Undo2, Plus, Minus, ListPlus } from '@/shared/components/icons';
+import { Undo2, ListPlus } from '@/shared/components/icons';
 import type { FileChange } from '@/shared/types';
-import { fileIconSrc } from '@/shared/utils/fileIcons';
-import { Checkbox } from '@/ui/Checkbox';
 
-// ── Path utilities ───────────────────────────────────────────────────────────
+import { useUntrackedDirExpansion } from '../hooks/useUntrackedDirExpansion';
 
-function splitFilePath(path: string): { name: string; directory: string } {
-  const lastSlash = path.lastIndexOf('/');
-  if (lastSlash === -1) return { name: path, directory: '' };
-  return {
-    name: path.slice(lastSlash + 1),
-    directory: path.slice(0, lastSlash + 1),
-  };
-}
+import Section from './ChangesSection';
 
 interface ChangesListProps {
   files: FileChange[];
@@ -26,6 +17,11 @@ interface ChangesListProps {
   onStageFile?: (path: string) => void;
   onStageAllUntracked?: () => void;
   onFileSelect?: (path: string) => void;
+  /**
+   * 展开折叠的 untracked 目录条目（后端 `git status` 折叠语义，条目 path 带尾斜杠）：
+   * 返回目录下的 untracked 文件相对路径列表。缺省时目录条目退化为纯展示行。
+   */
+  onExpandUntrackedDir?: (dirPath: string) => Promise<string[]>;
   loading: boolean;
 }
 
@@ -48,6 +44,7 @@ const ChangesList: React.FC<ChangesListProps> = ({
   onStageFile,
   onStageAllUntracked,
   onFileSelect,
+  onExpandUntrackedDir,
   loading,
 }) => {
   const [changesExpanded, setChangesExpanded] = useState(true);
@@ -56,7 +53,8 @@ const ChangesList: React.FC<ChangesListProps> = ({
 
   const trackedFiles = useMemo(() => files.filter((f) => f.status !== 'Untracked'), [files]);
 
-  const untrackedFiles = useMemo(() => files.filter((f) => f.status === 'Untracked'), [files]);
+  // 折叠 untracked 目录条目 → 平铺为文件行（按需拉取 + 占位，见 useUntrackedDirExpansion）
+  const { flattenedUntracked } = useUntrackedDirExpansion(files, onExpandUntrackedDir);
 
   const filteredTrackedFiles = useMemo(() => {
     if (filter === 'all') return trackedFiles;
@@ -152,16 +150,16 @@ const ChangesList: React.FC<ChangesListProps> = ({
       )}
 
       {/* ── Unversioned (untracked files) ── */}
-      {untrackedFiles.length > 0 && (
+      {flattenedUntracked.length > 0 && (
         <Section
           title="Unversioned"
-          count={untrackedFiles.length}
+          count={flattenedUntracked.length}
           expanded={unversionedExpanded}
           onToggle={() => setUnversionedExpanded((v) => !v)}
-          files={untrackedFiles}
+          files={flattenedUntracked}
           selectedFiles={selectedFiles}
-          allSelected={isAllSelected(untrackedFiles)}
-          onSelectAll={() => handleSelectGroup(untrackedFiles)}
+          allSelected={isAllSelected(flattenedUntracked)}
+          onSelectAll={() => handleSelectGroup(flattenedUntracked)}
           onToggleFile={onToggleFile}
           onFileSelect={onFileSelect}
           onDiscardFile={onDiscardFile}
@@ -183,181 +181,6 @@ const ChangesList: React.FC<ChangesListProps> = ({
             )
           }
         />
-      )}
-    </div>
-  );
-};
-
-// ── Reusable collapsible section ──
-
-interface SectionProps {
-  title: string;
-  count: number;
-  additions?: number;
-  deletions?: number;
-  expanded: boolean;
-  onToggle: () => void;
-  files: FileChange[];
-  selectedFiles: Set<string>;
-  allSelected: boolean;
-  onSelectAll: () => void;
-  onToggleFile: (path: string) => void;
-  onFileSelect?: (path: string) => void;
-  onDiscardFile: (path: string) => void;
-  onStageFile?: (path: string) => void;
-  loading: boolean;
-  filter?: React.ReactNode;
-  headerAction?: React.ReactNode;
-}
-
-const Section: React.FC<SectionProps> = ({
-  title,
-  count,
-  additions,
-  deletions,
-  expanded,
-  onToggle,
-  files,
-  selectedFiles,
-  allSelected,
-  onSelectAll,
-  onToggleFile,
-  onFileSelect,
-  onDiscardFile,
-  onStageFile,
-  loading,
-  filter,
-  headerAction,
-}) => {
-  return (
-    <div className="flex flex-col shrink-0 mb-1">
-      {/* Header: Chevron �?Checkbox �?Title �?Count �?Stats �?Filter */}
-      <div className="flex items-center gap-1 px-2.5 py-1 rounded-md transition-colors duration-100 hover:bg-bg-hover select-none shrink-0">
-        <ChevronRightIcon
-          size={9}
-          className={cn(
-            'text-[0.6em] w-2.5 shrink-0 transition-transform duration-150 text-text-muted cursor-pointer',
-            expanded && 'rotate-90',
-          )}
-          onClick={onToggle}
-        />
-        <Checkbox checked={allSelected} onCheckedChange={onSelectAll} />
-        <span
-          role="button"
-          tabIndex={0}
-          className="text-[calc(var(--font-size)-2px)] font-semibold uppercase tracking-[0.06em] text-text-muted cursor-pointer hover:text-text-secondary"
-          onClick={onToggle}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' || e.key === ' ') {
-              e.preventDefault();
-              onToggle();
-            }
-          }}
-        >
-          {title} ({count})
-        </span>
-        {additions != null && additions > 0 && (
-          <span className="text-[#3fb950] text-[calc(var(--font-size)-2px)] font-semibold">
-            +{additions}
-          </span>
-        )}
-        {deletions != null && deletions > 0 && (
-          <span className="text-[#f85149] text-[calc(var(--font-size)-2px)] font-semibold">
-            -{deletions}
-          </span>
-        )}
-        {filter && <span className="ml-auto">{filter}</span>}
-        {headerAction && <span className={cn(!filter && 'ml-auto')}>{headerAction}</span>}
-      </div>
-
-      {/* File list */}
-      {expanded && (
-        <div className="flex flex-col">
-          {files.map((file) => {
-            const isSelected = selectedFiles.has(file.path);
-            const { name, directory } = splitFilePath(file.path);
-            return (
-              <div
-                key={file.path}
-                role="option"
-                tabIndex={-1}
-                aria-selected={isSelected}
-                className={cn(
-                  'flex items-center gap-x-1.5 pl-[23px] pr-1.5 py-1 rounded cursor-pointer min-w-0 w-full overflow-hidden transition-colors duration-100 group',
-                  isSelected ? 'bg-bg-selected text-text-primary' : 'hover:bg-bg-hover/60',
-                )}
-                onClick={() => onFileSelect?.(file.path)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' || e.key === ' ') {
-                    e.preventDefault();
-                    onFileSelect?.(file.path);
-                  }
-                }}
-                title={`${file.path}  ${file.additions > 0 ? `+${file.additions}` : ''} ${file.deletions > 0 ? `-${file.deletions}` : ''}`}
-              >
-                <Checkbox
-                  checked={isSelected}
-                  onCheckedChange={() => onToggleFile(file.path)}
-                  onClick={(e: React.MouseEvent) => e.stopPropagation()}
-                  className="shrink-0"
-                />
-                <img
-                  className="w-3.5 h-3.5 shrink-0 block opacity-70"
-                  src={fileIconSrc(file.path)}
-                  alt=""
-                  width={14}
-                  height={14}
-                />
-                <span className="shrink-0 max-w-[9rem] truncate text-[calc(var(--font-size)-1px)] font-mono text-text-primary">
-                  {name}
-                </span>
-                <span className="flex-1 min-w-0 truncate text-[calc(var(--font-size)-3px)] font-mono text-text-muted">
-                  {directory}
-                </span>
-                <span className="shrink-0 flex items-center gap-1 justify-end tabular-nums">
-                  {file.additions > 0 && (
-                    <span className="flex items-center gap-px text-accent-green whitespace-nowrap">
-                      <Plus size={9} />
-                      <span className="text-[calc(var(--font-size)-2px)]">{file.additions}</span>
-                    </span>
-                  )}
-                  {file.deletions > 0 && (
-                    <span className="flex items-center gap-px text-accent-red whitespace-nowrap">
-                      <Minus size={9} />
-                      <span className="text-[calc(var(--font-size)-2px)]">{file.deletions}</span>
-                    </span>
-                  )}
-                </span>
-                <span className="shrink-0 flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity duration-100">
-                  <button
-                    className="p-0.5 rounded text-text-muted hover:text-accent-red hover:bg-bg-hover transition-colors duration-100"
-                    title="Discard changes"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onDiscardFile(file.path);
-                    }}
-                    disabled={loading}
-                  >
-                    <Undo2 size={12} />
-                  </button>
-                  {onStageFile && (
-                    <button
-                      className="p-0.5 rounded text-text-muted hover:text-accent-green hover:bg-bg-hover transition-colors duration-100"
-                      title="Stage file (git add)"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onStageFile(file.path);
-                      }}
-                      disabled={loading}
-                    >
-                      <Plus size={12} />
-                    </button>
-                  )}
-                </span>
-              </div>
-            );
-          })}
-        </div>
       )}
     </div>
   );

@@ -89,6 +89,9 @@
   --accent-red:    #ff453a;
   --accent-red-rgb: 255, 69, 58;
   --accent-orange: #ff9f0a;
+  /* 砖红（JetBrains Unversioned）：与 accent-red 区分冲突态 */
+  --accent-brick:  #d1675a;
+  --accent-brick-rgb: 209, 103, 90;
 
   /* Text on accent backgrounds */
   --text-on-accent: #ffffff;
@@ -159,6 +162,9 @@
   --accent-red:    #e06c75;
   --accent-red-rgb: 224, 108, 117;
   --accent-orange: #d19a66;
+  /* 砖红（JetBrains Unversioned） */
+  --accent-brick:  #cd6a60;
+  --accent-brick-rgb: 205, 106, 96;
 
   /* Text on accent backgrounds */
   --text-on-accent: #111111;
@@ -229,6 +235,9 @@
   --accent-red:    #c0392b;
   --accent-red-rgb: 192, 57, 43;
   --accent-orange: #c96442;
+  /* 砖红（JetBrains Unversioned） */
+  --accent-brick:  #a85248;
+  --accent-brick-rgb: 168, 82, 72;
 
   /* Text on accent backgrounds */
   --text-on-accent: #f5f0e8;
@@ -300,6 +309,8 @@
   --accent-red:    oklch(0.704 0.191 22.216);
   --accent-red-rgb: 255, 100, 103;
   --accent-orange: oklch(0.75 0.15 65);
+  --accent-brick:  oklch(0.66 0.125 22);
+  --accent-brick-rgb: 209, 103, 90;
 
   /* Text on accent backgrounds */
   --text-on-accent: oklch(0.205 0 0);
@@ -370,6 +381,8 @@
   --accent-red:    #d32f2f;
   --accent-red-rgb: 211, 47, 47;
   --accent-orange: #d9730d;
+  --accent-brick:  #a85248;
+  --accent-brick-rgb: 168, 82, 72;
 
   /* Text on accent backgrounds */
   --text-on-accent: #ffffff;

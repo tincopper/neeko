@@ -222,6 +222,14 @@ export function getIgnoredFiles(projectId: string, worktreePath: string): Promis
   return invoke<string[]>('get_ignored_files', { projectId, worktreePath });
 }
 
+export function getUntrackedFiles(
+  projectId: string,
+  worktreePath: string,
+  dirPath: string,
+): Promise<string[]> {
+  return invoke<string[]>('get_untracked_files', { projectId, worktreePath, dirPath });
+}
+
 export function getChangedFilesDiffStats(
   projectId: string,
   worktreePath?: string | null,

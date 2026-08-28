@@ -303,7 +303,7 @@ describe('FilesPanel 文件管理', () => {
     expect(screen.getByText('cache.dat')).toHaveClass('text-text-muted');
   });
 
-  it('变更文件状态优先于继承的忽略状态', () => {
+  it('变更文件状态优先于继承的忽略状态（Modified→blue，词表唯一源）', () => {
     const changed: FileChange[] = [
       { path: 'src/a.ts', status: 'Modified', additions: 1, deletions: 0 },
     ];
@@ -313,7 +313,7 @@ describe('FilesPanel 文件管理', () => {
     expect(screen.getByText('a.ts')).toHaveClass('text-accent-blue');
   });
 
-  it('变更文件状态优先于忽略灰色', () => {
+  it('变更文件状态优先于忽略灰色（Modified→blue）', () => {
     const treeWithIgnored: FileNode[] = [
       ...tree,
       { name: '.env', path: '.env', is_dir: false, children: [] },
@@ -403,6 +403,61 @@ describe('FilesPanel 文件管理', () => {
     );
     fireEvent.click(screen.getByTitle('Locate current file'));
     expect(screen.getByRole('treeitem', { selected: true })).toHaveTextContent('a.ts');
+  });
+});
+
+describe('目录 git 状态装饰（P1：目录级着色；需求演进：不渲染行尾徽标）', () => {
+  const fc = (path: string, status: FileChange['status']): FileChange => ({
+    path,
+    status,
+    additions: 0,
+    deletions: 0,
+  });
+
+  it('折叠目录显示聚合状态：深层变更文件的祖先目录着色（无需展开）', () => {
+    // 变更位于未加载的深层路径：folderSummary 基于 changed 全集而非展开态
+    render(<FilesPanel {...baseProps} changedFiles={[fc('src/features/git/a.ts', 'Modified')]} />);
+
+    expect(screen.getByText('src')).toHaveClass('text-accent-blue');
+  });
+
+  it('Untracked 聚合为砖红（JetBrains Unversioned）', () => {
+    render(<FilesPanel {...baseProps} changedFiles={[fc('src/new-file.ts', 'Untracked')]} />);
+
+    expect(screen.getByText('src')).toHaveClass('text-accent-brick');
+  });
+
+  it('Renamed 聚合为黄色', () => {
+    render(<FilesPanel {...baseProps} changedFiles={[fc('src/moved.ts', 'Renamed')]} />);
+
+    expect(screen.getByText('src')).toHaveClass('text-accent-blue');
+  });
+
+  it('deleted 文件不向目录传播：父目录无着色', () => {
+    render(<FilesPanel {...baseProps} changedFiles={[fc('src/gone.ts', 'Deleted')]} />);
+
+    expect(screen.getByText('src')).toHaveClass('text-text-primary');
+  });
+
+  it('多状态共存时 modified 优先于 added', () => {
+    // 目录摘要同时含 Added + Modified → 主导状态取 modified（黄色）
+    render(
+      <FilesPanel
+        {...baseProps}
+        changedFiles={[fc('src/a.ts', 'Added'), fc('src/deep/other.ts', 'Modified')]}
+      />,
+    );
+
+    expect(screen.getByText('src')).toHaveClass('text-accent-blue');
+  });
+
+  it('展开后子文件按自身 status 着色，且无变更的目录不携带徽标', () => {
+    render(<FilesPanel {...baseProps} changedFiles={[fc('src/a.ts', 'Modified')]} />);
+
+    fireEvent.click(screen.getByText('src'));
+    expect(screen.getByText('a.ts')).toHaveClass('text-accent-blue');
+    // b.ts 所在根列表无目录徽标污染：普通文件保持默认色
+    expect(screen.getByText('b.ts')).toHaveClass('text-text-primary');
   });
 });
 

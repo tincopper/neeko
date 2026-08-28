@@ -32,7 +32,13 @@ vi.mock('../../api/sessionApi', () => ({
 }));
 
 vi.mock('@/shared/store/gitStore', () => ({
-  useGitStore: { getState: () => ({ setAheadBehind: vi.fn() }) },
+  useGitStore: {
+    getState: () => ({
+      setAheadBehind: vi.fn(),
+      ignoredByProject: {},
+      setIgnoredFiles: vi.fn(),
+    }),
+  },
 }));
 
 import { GIT_CHANGED_EVENT } from '@/shared/events';

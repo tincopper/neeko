@@ -16,7 +16,7 @@ import {
 } from '@/shared/components/icons';
 import { useCopyToClipboard } from '@/shared/hooks/useCopyToClipboard';
 import { useNotificationStore } from '@/shared/store/notificationStore';
-import type { FileNode, FileChange } from '@/shared/types';
+import type { FileNode } from '@/shared/types';
 import { resolveAbsolutePath } from '@/shared/utils/browserUtils';
 
 import { displayHomePath, getParentPath, getParentPaths } from '../utils/fileTreeUtils';
@@ -35,8 +35,6 @@ export interface UseFilePanelStateParams {
   onCreateDirectory?: (dirPath: string, name: string) => Promise<void> | void;
   onDeletePath?: (path: string, isDir: boolean) => Promise<void> | void;
   onRenamePath?: (path: string, newName: string) => Promise<void> | void;
-  changedFiles?: FileChange[];
-  ignoredFiles?: string[];
 }
 
 /**
@@ -58,8 +56,6 @@ export function useFilePanelState(params: UseFilePanelStateParams) {
     onCreateDirectory,
     onDeletePath,
     onRenamePath,
-    changedFiles,
-    ignoredFiles,
   } = params;
 
   const [expandedDirs, setExpandedDirs] = useState<Set<string>>(new Set());
@@ -88,17 +84,6 @@ export function useFilePanelState(params: UseFilePanelStateParams) {
     const isWindows = /win/i.test(navigator.userAgent);
     return displayHomePath(projectPath, homeDirPath, isWindows);
   }, [projectPath, homeDirPath]);
-
-  // git 变更文件路径与 status 映射（用于文件名着色）
-  const changedFilesMap = useMemo(() => {
-    if (!changedFiles || changedFiles.length === 0) return undefined;
-    return new Map(changedFiles.map((f) => [f.path, f.status]));
-  }, [changedFiles]);
-  // .gitignore 忽略路径集合（灰色显示）
-  const ignoredSet = useMemo(() => {
-    if (!ignoredFiles || ignoredFiles.length === 0) return undefined;
-    return new Set(ignoredFiles);
-  }, [ignoredFiles]);
 
   // 右键上下文菜单状态
   const [contextMenu, setContextMenu] = useState<{
@@ -418,8 +403,6 @@ export function useFilePanelState(params: UseFilePanelStateParams) {
   return {
     expandedDirs,
     displayPath,
-    changedFilesMap,
-    ignoredSet,
     contextMenu,
     creating,
     creatingValue,

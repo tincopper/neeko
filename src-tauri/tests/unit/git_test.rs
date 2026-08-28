@@ -769,3 +769,113 @@ async fn get_worktree_changed_files_rejects_non_git_repo() {
         "应返回 not a git repository 错误，实际: {err:?}"
     );
 }
+
+// ── get_untracked_files（折叠 untracked 目录按需展开）───────────────────────
+
+#[tokio::test]
+async fn get_untracked_files_lists_files_under_dir() {
+    let (tmp, _repo) = create_test_repo();
+    let path = tmp.path().to_string_lossy().to_string();
+    std::fs::create_dir_all(tmp.path().join("assets")).unwrap();
+    std::fs::write(tmp.path().join("assets/logo.png"), "png").unwrap();
+    std::fs::write(tmp.path().join("assets/notes.md"), "notes").unwrap();
+
+    let transport = ExecTarget::Local;
+    let mut files = operations::get_untracked_files(&transport, &path, "assets/")
+        .await
+        .expect("list untracked files under assets");
+    files.sort();
+    assert_eq!(files, vec!["assets/logo.png", "assets/notes.md"]);
+}
+
+#[tokio::test]
+async fn get_untracked_files_respects_gitignore() {
+    let (tmp, _repo) = create_test_repo();
+    let path = tmp.path().to_string_lossy().to_string();
+    std::fs::write(tmp.path().join(".gitignore"), "secret/\n").unwrap();
+    std::fs::create_dir_all(tmp.path().join("secret")).unwrap();
+    std::fs::write(tmp.path().join("secret/hidden.txt"), "hidden").unwrap();
+    std::fs::create_dir_all(tmp.path().join("visible")).unwrap();
+    std::fs::write(tmp.path().join("visible/kept.txt"), "kept").unwrap();
+
+    let transport = ExecTarget::Local;
+    // --exclude-standard 尊重 .gitignore：secret/ 被排除
+    let secret = operations::get_untracked_files(&transport, &path, "secret")
+        .await
+        .expect("list under gitignored dir");
+    assert!(secret.is_empty(), "gitignore 排除项不应返回: {secret:?}");
+
+    let visible = operations::get_untracked_files(&transport, &path, "visible")
+        .await
+        .expect("list under visible dir");
+    assert_eq!(visible, vec!["visible/kept.txt"]);
+}
+
+#[tokio::test]
+async fn get_untracked_files_empty_dir_path_returns_empty() {
+    let (tmp, _repo) = create_test_repo();
+    let path = tmp.path().to_string_lossy().to_string();
+    std::fs::write(tmp.path().join("root.txt"), "x").unwrap();
+
+    let transport = ExecTarget::Local;
+    // 空串与纯斜杠路径（trim 后为空）都应返回空列表，不做全库列举
+    for dir in ["", "/", "///"] {
+        let files = operations::get_untracked_files(&transport, &path, dir)
+            .await
+            .expect("empty dir should return empty vec");
+        assert!(files.is_empty(), "dir {dir:?} 应返回空列表");
+    }
+}
+
+#[tokio::test]
+async fn get_untracked_files_caps_at_500_entries() {
+    let (tmp, _repo) = create_test_repo();
+    let path = tmp.path().to_string_lossy().to_string();
+    std::fs::create_dir_all(tmp.path().join("bulk")).unwrap();
+    for i in 0..520 {
+        std::fs::write(tmp.path().join(format!("bulk/file-{i:03}.txt")), "x").unwrap();
+    }
+
+    let transport = ExecTarget::Local;
+    let files = operations::get_untracked_files(&transport, &path, "bulk")
+        .await
+        .expect("capped list");
+    assert_eq!(files.len(), 500, "应封顶 500 条，实际 {}", files.len());
+}
+
+#[tokio::test]
+async fn get_ignored_files_caps_at_500_entries() {
+    let (tmp, _repo) = create_test_repo();
+    let path = tmp.path().to_string_lossy().to_string();
+    // 根级通配忽略：整目录被忽略时 git 折叠为单条 `!! dir/`，故文件必须放在根目录
+    // 逐条列出，才能产生超过 cap 的条目数触发截断。
+    std::fs::write(tmp.path().join(".gitignore"), "ignored-*\n").unwrap();
+    for i in 0..520 {
+        std::fs::write(tmp.path().join(format!("ignored-{i:03}.txt")), "x").unwrap();
+    }
+
+    let transport = ExecTarget::Local;
+    let files = operations::get_ignored_files(&transport, &path)
+        .await
+        .expect("capped ignored list");
+    assert_eq!(files.len(), 500, "应封顶 500 条，实际 {}", files.len());
+    assert!(
+        files.iter().all(|p| p.starts_with("ignored-")),
+        "截断后条目应全部是 ignored- 文件，实际: {files:?}"
+    );
+}
+
+#[tokio::test]
+async fn get_untracked_files_rejects_non_git_repo() {
+    let tmp = create_plain_dir();
+    let path = tmp.path().to_string_lossy().to_string();
+    let transport = ExecTarget::Local;
+    let err = operations::get_untracked_files(&transport, &path, "dir")
+        .await
+        .unwrap_err();
+    assert!(
+        err.chain()
+            .any(|e| e.to_string().contains("not a git repository")),
+        "应返回 not a git repository 错误，实际: {err:?}"
+    );
+}

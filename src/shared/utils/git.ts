@@ -18,14 +18,15 @@ export function isActiveWorktree(path: string | null | undefined): boolean {
  * worktree 激活时保留主分支（local 入口）的 current_branch，
  * 避免 store 中项目的 current_branch 被 worktree 分支名污染。
  * 其余字段（changed_files 等）仍使用 worktree 的最新数据。
+ *
+ * 注：ignored（忽略列表）已迁移至 gitStore.ignoredByProject 独立状态，
+ * 不再经由 GitInfo 传递；此函数仅负责 changed/branch/worktree 字段的合并。
  */
 export function mergeGitInfoForStore(
   existing: GitInfo | null | undefined,
   incoming: GitInfo,
   worktreeActive: boolean,
 ): GitInfo {
-  // incoming（get_git_info）不返回 ignored_files；从 existing 继承，
-  // 避免 Git 面板刷新后文件树的忽略灰色状态丢失。
   const merged = { ...existing, ...incoming };
   if (!worktreeActive) return merged;
   // worktree 激活时保留主分支（local 入口）的 current_branch，

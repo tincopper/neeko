@@ -13,7 +13,7 @@ describe('buildChangeTree', () => {
     expect(tree).toHaveLength(1);
     expect(tree[0].name).toBe('main.ts');
     expect(tree[0].isDir).toBe(false);
-    expect(tree[0].file).toBeDefined();
+    expect(tree[0].path).toBe('main.ts');
   });
 
   it('groups files into directories', () => {

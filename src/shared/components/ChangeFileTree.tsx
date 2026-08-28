@@ -1,7 +1,10 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useMemo } from 'react';
 
 import { cn } from '@/lib/utils';
+import type { FileChange } from '@/shared/types';
 import { fileIconSrc } from '@/shared/utils/fileIcons';
+import { buildFileSummaryMap, resolveDecoration } from '@/shared/utils/gitFileDecoration';
+import type { Decoration, GitStatusSummary } from '@/shared/utils/gitFileDecoration';
 import { Badge } from '@/ui/Badge';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -27,7 +30,6 @@ export interface ChangeTreeNode {
   path: string;
   isDir: boolean;
   children: ChangeTreeNode[];
-  file?: ChangeFileItem;
 }
 
 // ─── Tree Building ────────────────────────────────────────────────────────────
@@ -48,7 +50,6 @@ export function buildChangeTree(files: ChangeFileItem[]): ChangeTreeNode[] {
           path: parts.slice(0, i + 1).join('/'),
           isDir: !isLast,
           children: [],
-          file: isLast ? file : undefined,
         };
         node.children.push(child);
       }
@@ -69,40 +70,39 @@ export function buildChangeTree(files: ChangeFileItem[]): ChangeTreeNode[] {
   return root.children;
 }
 
-// ─── Status Config ────────────────────────────────────────────────────────────
+// ─── 装饰投影（词表唯一源：gitFileDecoration；组件不再私持颜色/徽标对照表）────
 
-const STATUS_BADGE: Record<
-  FileStatus,
-  { label: string; variant: 'modified' | 'added' | 'deleted' | 'default' }
-> = {
-  added: { label: 'A', variant: 'added' },
-  removed: { label: 'D', variant: 'deleted' },
-  modified: { label: 'M', variant: 'modified' },
-  renamed: { label: 'R', variant: 'default' },
-  modified_count: { label: 'M', variant: 'modified' },
-  added_count: { label: 'A', variant: 'added' },
-  removed_count: { label: 'D', variant: 'deleted' },
-};
+/** ChangeFileItem 的 lowercase 同义词 → FileChange 状态词表（词表归一由模块承接） */
+function toFileChangeStatus(status: FileStatus): FileChange['status'] {
+  switch (status) {
+    case 'added':
+    case 'added_count':
+      return 'Added';
+    case 'modified':
+    case 'modified_count':
+      return 'Modified';
+    case 'renamed':
+      return 'Renamed';
+    default:
+      // removed | removed_count
+      return 'Deleted';
+  }
+}
 
-const STATUS_DOT_COLOR: Record<FileStatus, string> = {
-  added: 'bg-accent-green',
-  removed: 'bg-accent-red',
-  modified: 'bg-accent-blue',
-  renamed: 'bg-accent-yellow',
-  modified_count: 'bg-accent-blue',
-  added_count: 'bg-accent-green',
-  removed_count: 'bg-accent-red',
-};
+/** 目录摘要恒为空：目录行不参与状态展示（展示语义与收敛前保持一致） */
+const EMPTY_FOLDER_SUMMARIES: Map<string, GitStatusSummary> = new Map();
 
-const STATUS_TEXT_COLOR: Record<FileStatus, string> = {
-  added: 'text-accent-green',
-  removed: 'text-accent-red',
-  modified: 'text-text-primary',
-  renamed: 'text-text-primary',
-  modified_count: 'text-text-primary',
-  added_count: 'text-accent-green',
-  removed_count: 'text-accent-red',
-};
+/** 输入列表 → path 摘要 map（monoid 合并由模块处理） */
+function buildChangeSummaries(files: ChangeFileItem[]): Map<string, GitStatusSummary> {
+  return buildFileSummaryMap(
+    files.map((f) => ({
+      path: f.path,
+      status: toFileChangeStatus(f.status),
+      additions: f.additions ?? 0,
+      deletions: f.deletions ?? 0,
+    })),
+  );
+}
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
@@ -123,7 +123,9 @@ const ChangeFileTree: React.FC<ChangeFileTreeProps> = ({
   showBadge = true,
   className,
 }) => {
-  const tree = React.useMemo(() => buildChangeTree(files), [files]);
+  const tree = useMemo(() => buildChangeTree(files), [files]);
+  // 装饰派生：叶子行按 path 从投影取色/徽标/圆点（统一词表，与主 Explorer 一致）
+  const summaries = useMemo(() => buildChangeSummaries(files), [files]);
 
   if (files.length === 0) {
     return (
@@ -140,6 +142,7 @@ const ChangeFileTree: React.FC<ChangeFileTreeProps> = ({
           key={node.path}
           node={node}
           depth={0}
+          summaries={summaries}
           onFileClick={onFileClick}
           selectedPath={selectedPath}
           showStatusDot={showStatusDot}
@@ -159,10 +162,12 @@ interface TreeNodeComponentProps {
   selectedPath?: string | null;
   showStatusDot: boolean;
   showBadge: boolean;
+  /** path → 状态摘要：叶子装饰解析输入（引用稳定，memo 友好） */
+  summaries: Map<string, GitStatusSummary>;
 }
 
 const TreeNodeComponent: React.FC<TreeNodeComponentProps> = React.memo(
-  ({ node, depth, onFileClick, selectedPath, showStatusDot, showBadge }) => {
+  ({ node, depth, onFileClick, selectedPath, showStatusDot, showBadge, summaries }) => {
     const [expanded, setExpanded] = useState(true);
     const indent = 6 + depth * 12;
 
@@ -173,10 +178,10 @@ const TreeNodeComponent: React.FC<TreeNodeComponentProps> = React.memo(
     const handleClick = useCallback(() => {
       if (node.isDir) {
         handleToggle();
-      } else if (node.file && onFileClick) {
-        onFileClick(node.file.path);
+      } else if (onFileClick) {
+        onFileClick(node.path);
       }
-    }, [node, handleToggle, onFileClick]);
+    }, [node.isDir, node.path, handleToggle, onFileClick]);
 
     if (node.isDir) {
       return (
@@ -218,17 +223,22 @@ const TreeNodeComponent: React.FC<TreeNodeComponentProps> = React.memo(
                 selectedPath={selectedPath}
                 showStatusDot={showStatusDot}
                 showBadge={showBadge}
+                summaries={summaries}
               />
             ))}
         </div>
       );
     }
 
-    const file = node.file!;
-    const badge = STATUS_BADGE[file.status];
-    const dotColor = STATUS_DOT_COLOR[file.status];
-    const textColor = STATUS_TEXT_COLOR[file.status];
-    const isSelected = selectedPath === file.path;
+    const decoration: Decoration | null = resolveDecoration(
+      node.path,
+      false,
+      summaries,
+      EMPTY_FOLDER_SUMMARIES,
+      undefined,
+      false,
+    );
+    const isSelected = selectedPath === node.path;
 
     return (
       <div
@@ -247,7 +257,7 @@ const TreeNodeComponent: React.FC<TreeNodeComponentProps> = React.memo(
             handleClick();
           }
         }}
-        title={file.path}
+        title={node.path}
       >
         <img
           className="w-4 h-4 shrink-0 block opacity-70"
@@ -256,16 +266,18 @@ const TreeNodeComponent: React.FC<TreeNodeComponentProps> = React.memo(
           width={16}
           height={16}
         />
-        <span className={`flex-1 truncate group-hover:text-text-primary ${textColor}`}>
+        <span className={`flex-1 truncate ${decoration?.color ?? 'group-hover:text-text-primary'}`}>
           {node.name}
         </span>
-        {showStatusDot && (
+        {showStatusDot && decoration?.dot && (
           <span
             data-testid="status-dot"
-            className={cn('w-1.5 h-1.5 rounded-full shrink-0', dotColor)}
+            className={cn('w-1.5 h-1.5 rounded-full shrink-0', decoration.dot)}
           />
         )}
-        {showBadge && <Badge variant={badge.variant}>{badge.label}</Badge>}
+        {showBadge && decoration?.badge && (
+          <Badge variant={decoration.variant ?? 'default'}>{decoration.badge}</Badge>
+        )}
       </div>
     );
   },

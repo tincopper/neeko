@@ -254,6 +254,56 @@ fn add_project_from_session() {
 }
 
 #[test]
+fn add_project_from_session_git_repo_restores_git_info() {
+    // 回归：session 恢复必须重建 git_info。持久化类型不含 git_info，若恢复时留 None，
+    // 前端 bootstrap 会把 null 误判为非 git 项目，跳过 changed/ignored 拉取，
+    // 导致文件树 git 状态色与忽略灰化失效。
+    let trepo = support::TestRepo::init();
+    let mut pm = ProjectManager::new(|_| {});
+
+    let ps = ProjectSession {
+        id: "session-git".into(),
+        name: "repo".into(),
+        path: trepo.path().to_path_buf(),
+        environment: ProjectEnvironment::Local,
+        selected_agents: vec![],
+        selected_ide: None,
+        terminal_history: vec![],
+        last_status: TerminalStatus::Idle,
+        collapsed: true,
+        avatar_color: None,
+        primary_language: None,
+    };
+    let project = pm.add_project_from_session(&ps).unwrap();
+    assert!(
+        project.git_info.is_some(),
+        "git repo session restore must populate git_info"
+    );
+}
+
+#[test]
+fn add_project_from_session_non_git_keeps_git_info_none() {
+    let tmp = TempDir::new().unwrap();
+    let mut pm = ProjectManager::new(|_| {});
+
+    let ps = ProjectSession {
+        id: "session-plain".into(),
+        name: "plain".into(),
+        path: tmp.path().to_path_buf(),
+        environment: ProjectEnvironment::Local,
+        selected_agents: vec![],
+        selected_ide: None,
+        terminal_history: vec![],
+        last_status: TerminalStatus::Idle,
+        collapsed: true,
+        avatar_color: None,
+        primary_language: None,
+    };
+    let project = pm.add_project_from_session(&ps).unwrap();
+    assert!(project.git_info.is_none());
+}
+
+#[test]
 fn set_primary_language_persists_on_project() {
     let tmp = TempDir::new().unwrap();
     let mut pm = ProjectManager::new(|_| {});

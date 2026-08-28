@@ -109,6 +109,8 @@ export interface ProjectCommands {
     Array<{ path: string; additions: number; deletions: number }>
   >;
   getFileDiff(filePath: string, collapse?: boolean): Promise<DiffResult>;
+  /** 展开折叠的 untracked 目录条目：列出目录下的 untracked 文件（changes list 按需调用） */
+  listUntrackedFiles(dirPath: string): Promise<string[]>;
   stageFiles(filePaths: string[]): Promise<void>;
   unstageFiles(filePaths: string[]): Promise<void>;
   discardFile(filePath: string): Promise<void>;

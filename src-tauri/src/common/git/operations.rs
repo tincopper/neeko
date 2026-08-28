@@ -1299,6 +1299,7 @@ pub async fn get_ignored_files(
     transport: &dyn GitTransport,
     worktree_path: &str,
 ) -> Result<Vec<String>> {
+    const MAX_IGNORED_FILES: usize = 500;
     let output = transport
         .run_git_opts(
             &["status", "--porcelain", "--ignored"],
@@ -1306,7 +1307,59 @@ pub async fn get_ignored_files(
             readonly_opts(),
         )
         .await?;
-    Ok(parse_ignored_porcelain(&output))
+    let mut entries = parse_ignored_porcelain(&output);
+    if entries.len() > MAX_IGNORED_FILES {
+        // 与 get_untracked_files 截断惯例一致：超限必须留痕，避免静默丢数据
+        log::warn!(
+            "get_ignored_files({}) exceeded cap: {} entries truncated to {}",
+            worktree_path,
+            entries.len(),
+            MAX_IGNORED_FILES
+        );
+        entries.truncate(MAX_IGNORED_FILES);
+    }
+    Ok(entries)
+}
+
+/// List untracked files under `dir_path`, expanding a collapsed untracked-dir
+/// entry from `get_worktree_changed_files` (changes list shows `dir/` as a single
+/// row; the UI expands it on demand). `git ls-files --others --exclude-standard`
+/// respects .gitignore and works for all transports; result is capped to guard
+/// IPC size on huge untracked directories (公理：随输入规模增长的结构必须有界).
+pub async fn get_untracked_files(
+    transport: &dyn GitTransport,
+    worktree_path: &str,
+    dir_path: &str,
+) -> Result<Vec<String>> {
+    const MAX_UNTRACKED_FILES: usize = 500;
+    let dir = dir_path.trim_end_matches('/');
+    if dir.is_empty() {
+        return Ok(Vec::new());
+    }
+    let output = transport
+        .run_git_opts(
+            &["ls-files", "--others", "--exclude-standard", "--", dir],
+            worktree_path,
+            readonly_opts(),
+        )
+        .await?;
+    let mut entries: Vec<String> = output
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .map(str::to_string)
+        .collect();
+    if entries.len() > MAX_UNTRACKED_FILES {
+        // 与 local.rs MAX_CHANGED_FILES 截断惯例一致：超限必须留痕，避免静默丢数据
+        log::warn!(
+            "get_untracked_files({}) exceeded cap: {} entries truncated to {}",
+            dir,
+            entries.len(),
+            MAX_UNTRACKED_FILES
+        );
+        entries.truncate(MAX_UNTRACKED_FILES);
+    }
+    Ok(entries)
 }
 
 /// Parse `git status --porcelain --ignored` output into relative paths.

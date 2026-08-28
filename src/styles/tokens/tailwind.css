@@ -17,6 +17,7 @@
   --color-accent-yellow: var(--accent-yellow);
   --color-accent-red: var(--accent-red);
   --color-accent-orange: var(--accent-orange);
+  --color-accent-brick: var(--accent-brick);
   --color-status-idle: var(--status-idle);
   --color-status-running: var(--status-running);
   --color-status-failed: var(--status-failed);
