@@ -1,0 +1,5 @@
+{"_example": "Fill with {\"file\": \"<path>\", \"reason\": \"<why>\"}. Put spec/research files only — no code paths. Run `python3 .trellis/scripts/get_context.py --mode packages` to list available specs. Delete this line once real entries are added."}
+{"file": "src/features/file/components/FileTreeNode.tsx", "reason": "主 explorer 节点渲染：当前收 changedFilesMap+ignoredSet 逐节点查表，改为接收解析好的 decoration；内部重复 STATUS_TEXT_COLOR 待删"}
+{"file": "src/features/file/hooks/useFilePanelState.ts", "reason": "god hook：git 派生逻辑（changedFilesMap/ignoredSet useMemo）移出到 decoration 模块调用"}
+{"file": "src/features/file/components/FileTree.tsx", "reason": "PR 变更树：buildTree 把 FileChange 融进 TreeNode（反模式）+ STATUS_BADGE/STATUS_TEXT_COLOR 重复定义，改用装饰投影"}
+{"file": "src/features/file/store.ts", "reason": "结构层参照：dirs 扁平缓存 + buildFileTreeView 已是正确形态，本次不动"}
