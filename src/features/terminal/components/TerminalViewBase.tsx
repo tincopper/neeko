@@ -6,10 +6,10 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 
 import { createPollingDrainScheduler } from '@/shared/utils/drainLoop';
 import {
+  applyRenderer,
   buildFontFamily,
   buildTerminalTheme,
   TERMINAL_SCROLLBACK,
-  tryLoadCanvas,
 } from '@/shared/utils/terminal';
 import { terminalClosedEvent, terminalInputEvent } from '@/shared/utils/terminalEvents';
 import { setupTerminalInput } from '@/shared/utils/terminalInput';
@@ -20,7 +20,6 @@ import { drainTerminal } from '../api/terminalApi';
 import type { TerminalStrategy, CacheEntry } from '../strategies/types';
 
 import { refreshTerminal, refreshRemoteTerminal, refreshWslTerminal } from './terminalCache';
-import { tryLoadWebgl } from './terminalFactory';
 
 /**
  * Write 流水线哨兵：最后一次 write 下发后超过该时长仍无 parse 回调，
@@ -241,10 +240,10 @@ export default React.memo(function TerminalViewBase({
 
       wrapper.appendChild(element);
       term.open(element);
-      // 渲染器：GPU 配置开启时 WebGL 优先，否则 Canvas（xterm 6 默认 DOM
-      // renderer 在 TUI 高频重绘下内存爆炸，见 shared/utils/terminal.tryLoadCanvas）。
-      if (gpuAccelVal) void tryLoadWebgl(term);
-      else void tryLoadCanvas(term);
+      // 渲染器：确定性 RendererPlan 选型（启动期探测 + 预热，见 shared/utils/terminal）。
+      // GPU 配置开启且 webgl 可用 → WebGL，否则 Canvas（xterm 6 默认 DOM renderer
+      // 在 TUI 高频重绘下内存爆炸）。
+      void applyRenderer(term, gpuAccelVal);
       if (setupFileLinksVal) setupFileLinksVal(term);
       fitAddon.fit();
 

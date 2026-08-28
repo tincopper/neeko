@@ -3,6 +3,7 @@ import type { FitAddon } from '@xterm/addon-fit';
 import type { Terminal } from '@xterm/xterm';
 
 import { reportFrontendError } from '@/shared/utils/errorReporting';
+import { safeDisposeTerminal } from '@/shared/utils/terminal';
 import { terminalInputEvent } from '@/shared/utils/terminalEvents';
 import type { TerminalInputController } from '@/shared/utils/terminalInput';
 
@@ -78,7 +79,7 @@ export function createTerminalCacheBackend<TCache extends CacheEntry>(
     if (entry.unlistenClosed) entry.unlistenClosed();
 
     entry.inputController?.dispose();
-    entry.term.dispose();
+    safeDisposeTerminal(entry.term);
 
     if (entry.sessionId) {
       closeSession(entry.sessionId).catch((err) =>
@@ -123,7 +124,7 @@ export function createTerminalCacheBackend<TCache extends CacheEntry>(
       );
     }
 
-    entry.term.dispose();
+    safeDisposeTerminal(entry.term);
 
     cache.delete(resolved);
     rebuildCallbacks.delete(resolved);
@@ -332,7 +333,7 @@ export async function switchAgentInWslTerminal(
       reportFrontendError('terminal.closeSession', err),
     );
   }
-  oldCache?.term.dispose();
+  if (oldCache?.term) safeDisposeTerminal(oldCache.term);
 }
 
 // =============================================================================
@@ -419,7 +420,7 @@ export async function switchAgentInRemoteTerminal(
       reportFrontendError('terminal.closeSession', err),
     );
   }
-  oldCache?.term.dispose();
+  if (oldCache?.term) safeDisposeTerminal(oldCache.term);
 }
 
 // =============================================================================
@@ -501,5 +502,5 @@ export async function switchAgentInAnyTerminal(
       reportFrontendError('terminal.closeSession', err),
     );
   }
-  oldCache?.term.dispose();
+  if (oldCache?.term) safeDisposeTerminal(oldCache.term);
 }

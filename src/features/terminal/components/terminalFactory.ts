@@ -6,10 +6,10 @@ import { Terminal } from '@xterm/xterm';
 import type { AgentConfig } from '@/shared/types';
 import { createPollingDrainScheduler } from '@/shared/utils/drainLoop';
 import {
+  applyRenderer,
   buildFontFamily,
   buildTerminalTheme,
   TERMINAL_SCROLLBACK,
-  tryLoadCanvas,
 } from '@/shared/utils/terminal';
 import { terminalClosedEvent, terminalInputEvent } from '@/shared/utils/terminalEvents';
 import { setupTerminalInput } from '@/shared/utils/terminalInput';
@@ -27,16 +27,6 @@ import {
 } from './terminalCache';
 import { setupTerminalLinks } from './terminalLinks';
 import type { TerminalCache } from './terminalTypes';
-
-/** 按需加载 WebGL 渲染器，失败时静默回退到 Canvas */
-export async function tryLoadWebgl(term: Terminal): Promise<void> {
-  try {
-    const { WebglAddon } = await import('@xterm/addon-webgl');
-    term.loadAddon(new WebglAddon());
-  } catch {
-    /* GPU 不可用 */
-  }
-}
 
 export async function createTerminalForProject(
   cacheKey: string,
@@ -78,10 +68,10 @@ export async function createTerminalForProject(
 
   wrapper.appendChild(element);
   term.open(element);
-  // 渲染器：GPU 配置开启时 WebGL 优先，否则 Canvas（xterm 6 默认 DOM
-  // renderer 在 TUI 高频重绘下内存爆炸，见 tryLoadCanvas 注释）。
-  if (gpuAcceleration) await tryLoadWebgl(term);
-  else await tryLoadCanvas(term);
+  // 渲染器：确定性 RendererPlan 选型（启动期探测 + 预热，见 shared/utils/terminal）。
+  // GPU 配置开启且 webgl 可用 → WebGL；否则 Canvas（xterm 6 默认 DOM renderer
+  // 在 TUI 高频重绘下内存爆炸）。降级仅发生在真实能力边界且已打点。
+  await applyRenderer(term, !!gpuAcceleration);
   fitAddon.fit();
 
   // Setup terminal link handling (URL -> embedded browser, file paths -> file manager / editor tab)

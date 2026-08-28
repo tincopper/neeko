@@ -2,6 +2,7 @@ import { emit } from '@tauri-apps/api/event';
 
 // eslint-disable-next-line import/no-restricted-paths -- terminal commands need agent API for agent config
 import { reportFrontendError } from '@/shared/utils/errorReporting';
+import { safeDisposeTerminal } from '@/shared/utils/terminal';
 import { terminalInputEvent } from '@/shared/utils/terminalEvents';
 
 import { getAgent } from '../../agent/api/agentApi';
@@ -129,7 +130,7 @@ export async function switchAgentInTerminal(
         reportFrontendError('terminal.closeSession', err),
       );
     }
-    oldCache?.term.dispose();
+    if (oldCache?.term) safeDisposeTerminal(oldCache.term);
   } catch (err) {
     log(`switchAgentInTerminal: createTerminalForProject failed: ${err}`);
     terminalRebuildCallbacks.get(cacheKey)?.();
