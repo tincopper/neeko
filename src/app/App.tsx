@@ -1,12 +1,9 @@
-import OpenIdeButton from '@/app/components/OpenIdeButton';
 import { SplashScreen } from '@/app/components/SplashScreen';
 import { dockPanelRegistry } from '@/app/dock/registry';
 import { useAppShell, useDockBarButtons } from '@/app/hooks';
-import { DebugPanel, DebugRunButton } from '@/features/debug';
 import { QuickOpenPalette } from '@/features/quick-open';
 import { StatusBar } from '@/features/status-bar';
 import { SymbolNavPalette } from '@/features/symbol-nav';
-import { TaskConsolePanel, TaskRunButton } from '@/features/task';
 import { AppLayout, DockRegistryProvider, TitleBar } from '@/layout';
 import { TerminalInsertProvider } from '@/shared/contexts';
 import { useAppViewStore } from '@/shared/store/appViewStore';
@@ -14,12 +11,15 @@ import { useAppViewStore } from '@/shared/store/appViewStore';
 import AppModals from './AppModals';
 import AppProviders from './AppProviders';
 import AppCenter from './components/AppCenter';
+import FixedPanelsHost from './panels/FixedPanelsHost';
+import TitleBarActions from './panels/TitleBarActions';
 
 /**
  * 组合根：hooks + JSX 编排（AGENTS.md「组合层」）。
  * 应用级副作用（paste 监听、quick-open 跟踪）在 useAppShell 内；
  * 中心视图路由在 AppCenter（单一数据源 appViewStore）；
- * dock 栏按钮装配在 useDockBarButtons。本文件只做组装。
+ * dock 栏按钮装配在 useDockBarButtons；固定面板/TitleBar 入口收敛在
+ * src/app/panels/（registry 单一事实源，本文件对面板清单零感知）。本文件只做组装。
  */
 function App() {
   const { initializing, appProvidersProps, appLayoutProps, appModalsProps } = useAppShell();
@@ -39,15 +39,7 @@ function App() {
         background: `linear-gradient(to bottom, var(--bg-gradient-start), var(--bg-gradient-end))`,
       }}
     >
-      <TitleBar
-        actions={
-          <>
-            <OpenIdeButton />
-            <TaskRunButton />
-            <DebugRunButton />
-          </>
-        }
-      />
+      <TitleBar actions={<TitleBarActions />} />
 
       <AppProviders {...appProvidersProps}>
         <TerminalInsertProvider>
@@ -63,8 +55,7 @@ function App() {
                   <AppCenter />
                 </AppLayout>
               </div>
-              <TaskConsolePanel />
-              <DebugPanel />
+              <FixedPanelsHost />
             </div>
             <AppModals {...appModalsProps} />
             <QuickOpenPalette />
