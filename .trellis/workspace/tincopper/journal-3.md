@@ -1088,3 +1088,39 @@ Delivered browser-as-editor-tab (Route A per-tab webviews, '+' Browser option). 
 ### Next Steps
 
 - None - task complete
+
+
+## Session 150: Git domain large files decomposition
+
+**Date**: 2026-08-28
+**Task**: Git domain large files decomposition
+**Branch**: `main`
+
+### Summary
+
+Decomposed 7 God Files (local, parsers, transport, cache, status_worker, git commands, commit service) plus operations reference via services.rs pattern; all mod.rs thin hubs, cargo check/clippy/test and pnpm lint:fe green.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `f49b34ea` | (see git log) |
+| `a166c92b` | (see git log) |
+| `ca7fa0cf` | (see git log) |
+| `7d2502d6` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
