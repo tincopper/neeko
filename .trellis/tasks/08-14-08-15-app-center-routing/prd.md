@@ -37,3 +37,29 @@
 - [x] dockStore.test（+6）、UseDockBarButtons.test（+3）、AppCenter.test（+5）全绿
 - [x] pnpm lint / lint:fe / type-check / test:run 全绿
 - [x] spec 同步：directory-structure / state-management 更新
+
+## Follow-ups（后续 scope 观察项）
+
+### 固定面板与 TitleBar actions 收敛到统一 panel 组织（方案 C）
+
+**现状不对称**：dock 侧 8 面板已走 `dockPanelRegistry`（集中注册 + lazy chunk + `DockZone` 渲染），App.tsx 零感知；但固定底部面板与 TitleBar 入口仍直接编排 ——
+
+- App.tsx 直接 `import { TaskConsolePanel, DebugPanel }` + 手工渲染在布局底部；
+- `<TitleBar actions>` 直接塞 `OpenIdeButton / TaskRunButton / DebugRunButton`。
+
+**问题本质**（OCP）：每加一个固定面板（unified task hub 任务面板、agent chat 等）需改组合根三处（import + JSX + TitleBar 按钮）；dock 侧加面板只改 `registry.ts` 一处，两套心智模型。价值是变更隔离而非行数（App.tsx 仅 ~75 行）。
+
+**目标形态**（与 dock wrapper 重构模式对称）：
+
+```
+src/app/panels/
+  registry.tsx          # fixedPanelRegistry：集中声明 + lazy(() => import(...))
+  FixedPanelsHost.tsx   # 按 registry 渲染（挂载点：布局底部 flex 槽位）
+  titleBarRegistry.tsx  # 入口按钮注册（或并入同一 registry，slot 字段区分）
+```
+
+- 新增固定面板 = registry 加一项，组合根零改动；
+- 顺带收益：TaskConsole / Debug 面板代码 lazy 化（现直接 import 在主 chunk，对齐 dock「打开才加载」原则）；
+- **边界**：全局浮层（QuickOpenPalette / SymbolNavPalette / AppModals）为 keyboard 触发 overlay、无固定槽位，保持 App.tsx 直接挂载，不强行 registry 化 —— 「组装结构」（Providers/Layout/StatusBar 层级）仍属组合根职责。
+
+**触发时机**：下一次新增固定面板或 TitleBar 入口时实施；实施时更新本 AC（FixedPanelsHost 单测：registry 渲染 + lazy 加载断言）。

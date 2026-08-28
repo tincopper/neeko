@@ -40,3 +40,4 @@
 - `neeko:insert-to-agent-input` 事件目前无监听方（历史遗留），迁移时保持事件派发语义不变，不扩大范围修复。
 - Stash 徽章计数：面板可见时加载 stash list（一次 git 命令），面板不可见时不加载。
 - GitLogPanel 的 refresh 由 GitControlPanel 组合（onRefreshGit + log refresh）。
+- **DockLayout.tsx 观察项（后续实施遵循）**：现为 305 行（组件体 ≈262 行，未超 300 红线；文件含 imports/注释/interface 样板微超 5 行）。职责仍单一（布局编排）。作为 dock 系统交汇点，若后续新增 zone 逻辑或组件体逼近 300，应将 5 个 zone 几何 effects（left/right expand-collapse + 双 rAF resize、right active panel 切换 resize、`handleLayoutChanged` 持久化、ResizeObserver 宽度上报）抽为 `useDockZoneResize`（+可选 `useDockPanelSizeObserver`）hook，放 `src/layout/dock-layout/` 同级目录（就近管理，非 shared/hooks）。
