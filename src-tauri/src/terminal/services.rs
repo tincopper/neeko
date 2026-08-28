@@ -321,16 +321,13 @@ fn spawn_reader_thread(
             // credit-pull，`terminal-drain-{id}` 不再被监听；macOS 上事件送达
             // = 每次 evaluateJavaScript，即使无 listener 也避免无意义 IPC。
             // push 的 wake 回调传空闭包，协议签名与 wake_in_flight 状态机保留。
-            let mut flush = |data: &[u8]| session_drain.push(data, || {});
+            let flush = |data: &[u8]| session_drain.push(data, || {});
             #[cfg(unix)]
             let outcome = match master_fd {
-                Some(fd) => super::pump::run_polling(
-                    fd,
-                    reader,
-                    &super::pump::PumpConfig::default(),
-                    &mut flush,
-                ),
-                None => super::pump::run(reader, &super::pump::PumpConfig::default(), &mut flush),
+                Some(fd) => {
+                    super::pump::run_polling(fd, reader, &super::pump::PumpConfig::default(), flush)
+                }
+                None => super::pump::run(reader, &super::pump::PumpConfig::default(), flush),
             };
             #[cfg(not(unix))]
             let outcome = super::pump::run(reader, &super::pump::PumpConfig::default(), flush);
