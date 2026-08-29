@@ -39,15 +39,6 @@ export {
 } from './DropdownMenu';
 export { Checkbox } from './Checkbox';
 export { Badge, badgeVariants } from './Badge';
-export {
-  Sidebar,
-  SidebarHeader,
-  SidebarContent,
-  SidebarFooter,
-  SidebarMenu,
-  SidebarMenuItem,
-  SidebarMenuButton,
-} from './Sidebar';
 export { MarkdownPreview } from './MarkdownPreview';
 export {
   Card,
