@@ -40,7 +40,7 @@
 
 ## Follow-ups（后续 scope 观察项）
 
-### 固定面板与 TitleBar actions 收敛到统一 panel 组织（方案 C）
+### 固定面板与 TitleBar actions 收敛到统一 panel 组织（方案 C）✅ 已实施
 
 **现状不对称**：dock 侧 8 面板已走 `dockPanelRegistry`（集中注册 + lazy chunk + `DockZone` 渲染），App.tsx 零感知；但固定底部面板与 TitleBar 入口仍直接编排 ——
 
@@ -53,13 +53,66 @@
 
 ```
 src/app/panels/
-  registry.tsx          # fixedPanelRegistry：集中声明 + lazy(() => import(...))
-  FixedPanelsHost.tsx   # 按 registry 渲染（挂载点：布局底部 flex 槽位）
-  titleBarRegistry.tsx  # 入口按钮注册（或并入同一 registry，slot 字段区分）
+  registry.ts          # fixedPanelRegistry：集中声明 + lazy(() => import(...))
+  FixedPanelsHost.tsx  # 按 registry 渲染（挂载点：布局底部 flex 槽位）
+  TitleBarActions.tsx  # 入口按钮收敛（轻组件直接 import，不 lazy 避免闪烁）
 ```
 
-- 新增固定面板 = registry 加一项，组合根零改动；
-- 顺带收益：TaskConsole / Debug 面板代码 lazy 化（现直接 import 在主 chunk，对齐 dock「打开才加载」原则）；
+**已实施（2026-08-28）**：
+- [x] `src/app/panels/registry.ts` + `FixedPanelsHost.tsx` + `TitleBarActions.tsx` 落地；App.tsx 移除全部固定面板/入口按钮 import
+- [x] 固定面板 lazy 化（TaskConsole/Debug 不再进主 chunk，对齐 dock「打开才加载」）；按钮保持直接 import（轻组件）
+- [x] `FixedPanelsHost.test`（3 用例：registry 渲染 + 清单唯一 + 定义完整）+ `TitleBarActions.test`（1 用例）全绿
+- [x] 新增固定面板 = registry 加一项，组合根零改动
 - **边界**：全局浮层（QuickOpenPalette / SymbolNavPalette / AppModals）为 keyboard 触发 overlay、无固定槽位，保持 App.tsx 直接挂载，不强行 registry 化 —— 「组装结构」（Providers/Layout/StatusBar 层级）仍属组合根职责。
 
-**触发时机**：下一次新增固定面板或 TitleBar 入口时实施；实施时更新本 AC（FixedPanelsHost 单测：registry 渲染 + lazy 加载断言）。
+### 布局架构设计说明：岛屿是视觉语言，不是架构原则（设计决策）
+
+**背景**：DockLayout 注释定位为「IDEA 2026 Islands design」（bg-primary 作海、面板作浮岛：圆角 + 边框 + 间距）。分析发现「怪」的深层来源 —— 岛屿是**视觉/皮肤层**（决定看起来像什么），却被实现成了**结构层**（每个岛独立挂载），导致布局骨架缺失、面板双体系割裂。
+
+**现状布局树（双体系割裂）**：
+
+```
+App (组合根)
+├── TitleBar (Provider 外)              ← 窗口框架①
+├── AppProviders
+│   └── DockRegistryProvider
+│       ├── AppLayout → DockLayout       ← 主工作区：三栏 Grid（left/center/right）
+│       │     └── DockZone(left/right)  ← dock 面板：可拖拽/收起/宽度记忆
+│       ├── FixedPanelsHost              ← 底部外挂（DockLayout 外，无 zone 能力）
+│       └── StatusBar                    ← 窗口框架②
+```
+
+**核心判断（视觉模式 ≠ 架构原则，需正交）**：
+- 布局架构（怎么管）：Shell 分区 / zone·panel 宿主 / registry·生命周期
+- 视觉语言（长什么样）：岛屿皮肤（圆角 / 间距 / 悬浮）
+- 正确公式：**「区域即岛屿」** —— 布局骨架定义 4 分区（left/center/right/bottom），每个分区渲染成岛屿外观；面板进分区即获得岛的外观 + zone 能力。岛屿只是皮肤，分区管理仍归统一骨架。参照：Linear / Zed / IDEA 2026 均浮岛视觉 + 统一 shell grid。
+- **反例（当前）**：岛屿直觉「每个面板独立悬浮」→ 每个岛独立挂载 → 无统一骨架、底部面板像布局外的一块砖。
+
+**三个根因**：
+1. **无 AppShell 概念**：窗口骨架（TitleBar/工作区/StatusBar）散落，无单一组件描述「窗口长什么样」；App.tsx 同时做 Provider 装配 + 手写骨架。
+2. **面板双体系割裂**：dock 面板（registry + zone + 拖拽/收起）vs 底部固定面板（registry 化但无 zone 能力、钉在布局外）—— 同为工具面板，能力不一致。
+3. **布局能力未扩展为全分区 Grid**：DockLayout 已是正确雏形（zone + 拖拽 + 折叠）但只覆盖左右；bottom 被排除在布局引擎外。
+
+**理想目标形态（业界对齐）**：
+
+```
+src/app/shell/          # 窗口骨架层：AppShell = TitleBar + Workspace + StatusBar
+src/app/panels/         # 统一面板体系：registry [{ id, placement: 'left'|'right'|'bottom' }]
+                        # PanelHost 按 placement 渲染；面板可跨区移动（VS Code view container）
+```
+
+```
+App = 装配 Provider + <AppShell/>
+└── AppShell
+    ├── TitleBar
+    ├── Workspace → DockLayout 演化：4 分区 Grid（left/center/right/bottom）
+    │     └── 每区 = PanelHost(placement)（bottom 区收纳 TaskConsole/Debug，享受收起/拖拽）
+    └── StatusBar
+```
+
+**分阶段落地**（不必一次到位）：
+- 阶段 1 ✅ 已完成：面板清单 registry 化（FixedPanelsHost / TitleBarActions）—— 解决 OCP，但未消除双体系割裂
+- 阶段 2 ⭐ 推荐下一步：底部并入 DockLayout（加 bottom 区域，FixedPanelsHost 从「App 根外挂」变「bottom zone host」）—— 消除怪感；与 `07-26-unified-task-hub`（任务面板进 bottom）契合，也复用 `useDockZoneResize` 观察项
+- 阶段 3 远期：统一 panelRegistry（placement）+ 面板跨区移动（VS Code 级）
+
+**教训固化**：后续加面板时，先问「这个面板属于哪个区域（placement）」，再问「它长什么样（岛屿皮肤）」—— 区域由布局骨架管理，皮肤由区域样式提供，二者不得混淆。

@@ -48,9 +48,8 @@ export function useAppContainer() {
 | Context | 作用范围 | 典型消费者 |
 |--------|---------|-----------|
 | `AppContext` | 全局配置、agents、toast | `ProjectsPanel`、`ProjectWorkspace` |
-| `SidebarContext` | 左侧面板切换与宽度 | `ActivityBar`、`PanelArea` |
 | `ProjectActionsContext` | 项目与 worktree 副作用动作（含 local/WSL/Remote） | `ProjectsPanel`、`ProjectWorkspace` |
-| `FileActionsContext` | 文件树加载、文件保存与 Tab 操作动作 | `AppLayout`、`FileViewer` |
+| `FileActionsContext` | 文件树加载、文件保存与 Tab 操作动作 | `FileViewer` |
 | `WslContext` (legacy) | WSL 项目状态 + 操作（deprecated，使用 ProjectActionsContext） | `ProjectsPanel`、`ProjectWorkspace` |
 | `RemoteContext` (legacy) | SSH 项目状态 + 操作（deprecated，使用 ProjectActionsContext） | `ProjectsPanel`、`ProjectWorkspace` |
 | `EditorContext` | 终端 tabs 与 agent bar | `ProjectWorkspace` |
@@ -112,7 +111,7 @@ await saveSession(session);
 
 **写入方（禁止绕过）**：
 
-- `settings`：`useAppLayoutProps`（工具栏） / `SettingsView`（关闭）
+- `settings`：`useToolbarFooterProps`（工具栏） / `SettingsView`（关闭）
 - `library`：dockStore tab-mode 面板（`openAs: 'tab'`）
 - `skills`：dockStore 中心耦合 dock 面板（`DOCK_PANEL_TO_APP_VIEW`，激活同步）
 - `normal`：上述视图退出后的兜底
@@ -182,7 +181,7 @@ const debouncedSave = useCallback(() => {
 ```
 ┌────────────────────────────────────────────────┐
 │ App.tsx 壳层                                    │
-│  TitleBar + AppProviders + AppLayout + AppModals│
+│  TitleBar + AppProviders + AppShell + AppModals│
 └────────────────────────────────────────────────┘
                     │
                     ▼
@@ -202,14 +201,14 @@ const debouncedSave = useCallback(() => {
                     ▼
 ┌────────────────────────────────────────────────┐
 │ Providers                                       │
-│  App + Sidebar + ProjectActions + FileActions  │
+│  App + ProjectActions + FileActions            │
 │  Wsl (legacy) + Remote (legacy) + Editor + Skill│
 └────────────────────────────────────────────────┘
                     │
                     ▼
 ┌────────────────────────────────────────────────┐
 │ Consumer Components / Hooks / Stores           │
-│  AppLayout / ProjectsPanel / useActiveProject  │
+│  DockLayout / ProjectsPanel / useActiveProject  │
 └────────────────────────────────────────────────┘
                     │
                     ▼

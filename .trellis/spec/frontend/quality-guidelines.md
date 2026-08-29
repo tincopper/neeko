@@ -191,6 +191,8 @@ ESLint 的 `no-restricted-imports` 规则会检测并报 error 拦截违反此�
 export default React.memo(MyComponent);
 ```
 
+> **豁免（2026-08-29）**：纯装配组件可不包 memo —— 其 props 为每次渲染恒新的对象/数组字面量（如 `app/utils/ComposeProviders.tsx` 接收 providers 数组），memo 比较永不命中，属死重。判定标准：**props 引用有可能稳定时才包 memo**；新增此类豁免组件时在此处登记。
+
 ### 3. 所有回调 Props 使用 `useCallback`
 
 任何作为 prop 传递的函数都必须用 `useCallback` 包裹：

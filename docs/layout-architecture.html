@@ -1,0 +1,473 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Neeko 布局架构图解</title>
+<style>
+  :root {
+    --bg: #fafaf9; --surface: #ffffff; --text: #1c1917; --muted: #78716c;
+    --border: #e7e5e4; --accent: #2563eb; --accent-light: #eff6ff;
+    --sea: #e7ecf3; --island: #ffffff; --island-border: #d4dbe5;
+    --success: #16a34a; --warning: #d97706; --purple: #7c3aed;
+    --radius: 8px; --shadow: 0 1px 3px rgba(0,0,0,0.08);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #1c1917; --surface: #292524; --text: #fafaf9; --muted: #a8a29e;
+      --border: #44403c; --accent: #60a5fa; --accent-light: #1e3a5f;
+      --sea: #0f1722; --island: #1e293b; --island-border: #334155;
+      --accent-light: #1e3a5f;
+    }
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: var(--bg); color: var(--text); line-height: 1.6;
+    padding: 2rem 1.5rem 4rem; max-width: 1180px; margin: 0 auto;
+  }
+  h1 { font-size: 1.7rem; margin-bottom: .25rem; }
+  .subtitle { color: var(--muted); margin-bottom: 2rem; font-size: .95rem; }
+  h2 { font-size: 1.2rem; margin: 2.5rem 0 .75rem; padding-top: 1.5rem; border-top: 1px solid var(--border); }
+  h2:first-of-type { border-top: none; padding-top: 0; }
+  code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: .82em; background: var(--accent-light); color: var(--accent);
+    padding: 1px 5px; border-radius: 4px;
+  }
+  .note { color: var(--muted); font-size: .88rem; margin-bottom: 1rem; }
+
+  /* ── 窗口视觉还原 ─────────────────────────────── */
+  .window {
+    display: grid; gap: 4px; background: var(--sea);
+    border: 1px solid var(--border); border-radius: 12px; padding: 6px;
+    grid-template-columns: 44px 1fr 1.6fr 1fr 44px;
+    grid-template-rows: 34px minmax(340px, 1fr) auto 26px;
+    grid-template-areas:
+      "tb tb tb tb tb"
+      "lb lz cz rz rb"
+      "bp bp bp bp bp"
+      "sb sb sb sb sb";
+    font-size: .78rem;
+  }
+  .region {
+    background: var(--island); border: 1px solid var(--island-border);
+    border-radius: 8px; padding: 6px 8px; cursor: pointer;
+    display: flex; flex-direction: column; gap: 4px;
+    transition: box-shadow 150ms ease, border-color 150ms ease, transform 150ms ease;
+    position: relative; overflow: hidden;
+  }
+  .region:hover { transform: translateY(-1px); box-shadow: 0 3px 10px rgba(0,0,0,.14); }
+  .region.active { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent); }
+  .region .rname { font-weight: 650; font-size: .74rem; }
+  .region .rfile { color: var(--muted); font-family: ui-monospace, Menlo, monospace; font-size: .68rem; }
+  .region .rbody { flex: 1; display: flex; flex-direction: column; gap: 4px; min-height: 0; }
+  .region.selected-outline { outline: 2px dashed var(--purple); outline-offset: 2px; }
+  .tb { grid-area: tb; flex-direction: row; align-items: center; gap: 8px; background: var(--island); }
+  .tb .drag { flex: 1; text-align: center; color: var(--muted); font-size: .7rem; }
+  .pill {
+    border: 1px solid var(--island-border); border-radius: 5px; padding: 1px 6px;
+    font-size: .66rem; color: var(--muted); white-space: nowrap;
+  }
+  .lb, .rb { align-items: center; justify-content: flex-start; gap: 6px; }
+  .lb { grid-area: lb; } .rb { grid-area: rb; }
+  .icon-dot { width: 22px; height: 22px; border-radius: 6px; background: var(--sea); border: 1px solid var(--island-border); }
+  .icon-dot.on { background: var(--accent-light); border-color: var(--accent); }
+  .lz { grid-area: lz; } .cz { grid-area: cz; } .rz { grid-area: rz; }
+  .handle {
+    position: absolute; top: 0; bottom: 0; width: 5px; cursor: col-resize;
+  }
+  .zone-strip { display: flex; flex-direction: column; gap: 3px; flex: 1; min-height: 0; }
+  .zone-panel {
+    border: 1px solid var(--island-border); border-radius: 6px; padding: 3px 6px;
+    font-size: .68rem; color: var(--muted); background: var(--surface);
+    display: flex; justify-content: space-between; align-items: center;
+  }
+  .zone-panel.on { border-color: var(--accent); color: var(--text); }
+  .zone-panel.hidden-p { opacity: .45; border-style: dashed; }
+  .center-route { display: flex; gap: 4px; flex-wrap: wrap; }
+  .route-tag {
+    border-radius: 5px; padding: 1px 7px; font-size: .66rem;
+    background: var(--sea); border: 1px solid var(--island-border); color: var(--muted);
+  }
+  .route-tag.hot { background: var(--accent-light); border-color: var(--accent); color: var(--accent); font-weight: 600; }
+  .bp { grid-area: bp; flex-direction: row; align-items: center; gap: 6px; min-height: 30px; }
+  .bp .ghost {
+    flex: 1; border: 1px dashed var(--island-border); border-radius: 6px;
+    padding: 2px 8px; color: var(--muted); font-size: .68rem; text-align: center;
+  }
+  .bp .ghost.on { border-style: solid; border-color: var(--accent); color: var(--text); }
+  .sb { grid-area: sb; flex-direction: row; align-items: center; gap: 6px; background: var(--island); }
+  .legend { display: flex; gap: 1.25rem; flex-wrap: wrap; margin: .75rem 0 0; font-size: .78rem; color: var(--muted); }
+  .legend span { display: inline-flex; align-items: center; gap: .4rem; }
+  .sw { width: 14px; height: 14px; border-radius: 4px; display: inline-block; border: 1px solid var(--island-border); }
+  .sw.sea { background: var(--sea); } .sw.island { background: var(--island); }
+  .sw.out { background: transparent; border-style: dashed; }
+
+  /* ── 详情卡 ─────────────────────────────── */
+  .detail {
+    margin-top: 1rem; background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 1.1rem 1.25rem; box-shadow: var(--shadow);
+    min-height: 130px;
+  }
+  .detail h3 { font-size: 1rem; margin-bottom: .15rem; }
+  .detail .path { font-family: ui-monospace, Menlo, monospace; font-size: .78rem; color: var(--accent); margin-bottom: .6rem; display: block; }
+  .detail ul { padding-left: 1.1rem; font-size: .88rem; }
+  .detail li { margin: .2rem 0; }
+  .detail .tagrow { display: flex; gap: .4rem; flex-wrap: wrap; margin-top: .6rem; }
+
+  /* ── 通用卡片/网格 ─────────────────────────────── */
+  .grid { display: grid; gap: 1rem; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); }
+  .card {
+    background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+    padding: 1rem 1.1rem; box-shadow: var(--shadow);
+    transition: transform 150ms ease, box-shadow 150ms ease;
+  }
+  .card:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,.12); }
+  .card h3 { font-size: .95rem; margin-bottom: .4rem; }
+  .card p, .card li { font-size: .86rem; }
+  .card ul { padding-left: 1.1rem; }
+  .layer { display: flex; flex-direction: column; gap: .45rem; }
+  .layer .lrow {
+    display: flex; align-items: center; gap: .6rem; flex-wrap: wrap;
+    border: 1px solid var(--border); border-radius: 7px; padding: .5rem .7rem; background: var(--surface);
+  }
+  .layer .lrow b { font-size: .84rem; }
+  .layer .lrow span { color: var(--muted); font-size: .76rem; }
+  .arrow { text-align: center; color: var(--muted); font-size: .8rem; }
+  .arrow b { color: var(--accent); }
+  .badge {
+    display: inline-block; padding: 1px 8px; border-radius: 5px; font-size: .7rem; font-weight: 600;
+  }
+  .b-green { background: #dcfce7; color: #166534; }
+  .b-amber { background: #fef3c7; color: #92400e; }
+  .b-blue { background: var(--accent-light); color: var(--accent); }
+  .b-purple { background: #f3e8ff; color: #6b21a8; }
+  details { margin-top: .5rem; }
+  summary { cursor: pointer; color: var(--accent); font-size: .85rem; user-select: none; }
+  details[open] summary { margin-bottom: .4rem; }
+
+  /* ── 状态表 ─────────────────────────────── */
+  table { width: 100%; border-collapse: collapse; font-size: .85rem; background: var(--surface); border-radius: var(--radius); overflow: hidden; }
+  th, td { text-align: left; padding: .55rem .8rem; border-bottom: 1px solid var(--border); vertical-align: top; }
+  th { background: var(--accent-light); font-size: .78rem; }
+  td code { white-space: nowrap; }
+  tr:last-child td { border-bottom: none; }
+
+  .dep {
+    display: flex; align-items: center; justify-content: center; gap: .6rem;
+    flex-wrap: wrap; font-family: ui-monospace, Menlo, monospace; font-size: .95rem;
+    background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+    padding: 1.1rem; margin-bottom: 1rem;
+  }
+  .dep b { color: var(--accent); }
+  .dep .rule { flex-basis: 100%; text-align: center; font-family: inherit; font-size: .8rem; color: var(--muted); }
+
+  footer { margin-top: 3rem; color: var(--muted); font-size: .78rem; text-align: center; }
+  @media print {
+    body { padding: 1rem; }
+    .window { min-height: 420px; }
+  }
+</style>
+</head>
+<body>
+  <h1>Neeko 布局架构</h1>
+  <p class="subtitle">App 组合根 → AppShell 骨架 → DockLayout 三栏可调区 + PanelHost 底部宿主 · 双 registry 单一事实源 · 2026-08 现状</p>
+
+  <!-- ═══ 1. 窗口视觉还原 ═══ -->
+  <h2>① 窗口骨架：点任一区域查看对应实现</h2>
+  <p class="note">下方是应用窗口的结构还原——「海 + 浮岛」视觉语言：深色底是海（bg-primary），每个圆角块是浮岛。点击任意岛屿查看职责、文件与状态来源。</p>
+
+  <div class="window" id="win">
+    <div class="region tb" data-k="titlebar">
+      <span style="font-size:.8rem">🐾</span>
+      <span class="rname">TitleBar</span>
+      <span class="drag">拖拽区 data-tauri-drag-region</span>
+      <span class="pill">actions: OpenIde · TaskRun · DebugRun</span>
+      <span class="pill">WindowControls（非 macOS）</span>
+    </div>
+
+    <div class="region lb" data-k="dockbar">
+      <div class="icon-dot on"></div><div class="icon-dot"></div><div class="icon-dot"></div>
+      <div class="icon-dot"></div><div class="icon-dot"></div>
+      <span class="rname" style="margin-top:4px">左 DockBar</span>
+    </div>
+
+    <div class="region lz" data-k="leftzone">
+      <span class="rname">left-zone <span class="pill">18% · 12–35%</span></span>
+      <span class="rfile">DockZone zoneId="left"</span>
+      <div class="zone-strip">
+        <div class="zone-panel on"><span>projects</span><span>默认激活</span></div>
+        <div class="zone-panel hidden-p"><span>skills</span><span>hidden 保持挂载</span></div>
+      </div>
+    </div>
+
+    <div class="region cz" data-k="center">
+      <span class="rname">center-area <span class="pill">min 20%</span></span>
+      <span class="rfile">AppCenter ← appViewStore</span>
+      <div class="center-route">
+        <span class="route-tag hot">normal · ProjectWorkspace</span>
+        <span class="route-tag">skills</span>
+        <span class="route-tag">settings</span>
+        <span class="route-tag">library</span>
+      </div>
+      <div style="flex:1;border:1px dashed var(--island-border);border-radius:6px;margin-top:4px;display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:.7rem">终端 / 编辑器 / Agent 工作区</div>
+    </div>
+
+    <div class="region rz" data-k="rightzone">
+      <span class="rname">right-zone <span class="pill">默认收起</span></span>
+      <span class="rfile">DockZone zoneId="right"</span>
+      <div class="zone-strip">
+        <div class="zone-panel on"><span>files</span><span>记忆宽度</span></div>
+        <div class="zone-panel hidden-p"><span>gitControl</span></div>
+        <div class="zone-panel hidden-p"><span>browser · 50%</span></div>
+        <div class="zone-panel hidden-p"><span>conversations · search …</span></div>
+      </div>
+    </div>
+
+    <div class="region rb" data-k="dockbar">
+      <div class="icon-dot"></div><div class="icon-dot"></div><div class="icon-dot on"></div>
+      <div class="icon-dot"></div>
+      <span class="rname" style="margin-top:4px">右 DockBar</span>
+    </div>
+
+    <div class="region bp" data-k="bottom">
+      <span class="rname">PanelHost bottom</span>
+      <div class="ghost on">Task Console（taskStore 自管显隐 + 高度）</div>
+      <div class="ghost">Debug Panel（debugStore 自管）</div>
+    </div>
+
+    <div class="region sb" data-k="statusbar">
+      <span class="rname">StatusBar</span>
+      <span class="pill">必须在 AppProvider 内（回归测试守护）</span>
+    </div>
+  </div>
+
+  <div class="legend">
+    <span><span class="sw island"></span>浮岛（island）</span>
+    <span><span class="sw sea"></span>海（sea / bg-primary）</span>
+    <span><span class="sw out"></span>骨架内 · 布局外（Step 3 将并入）</span>
+    <span>浮层未画出：AppModals · QuickOpenPalette · SymbolNavPalette（AppShell 直挂）</span>
+  </div>
+
+  <div class="detail" id="detail" aria-live="polite"></div>
+
+  <!-- ═══ 2. 组件树 ═══ -->
+  <h2>② 组件树（挂载层级）</h2>
+  <div class="card">
+    <pre style="font-size:.8rem;line-height:1.75;overflow-x:auto"><code>&lt;App&gt;                                            <span style="color:var(--muted)">src/app/App.tsx — 只做装配，零布局编排</span>
+└─ &lt;AppProviders&gt;                                <span style="color:var(--muted)">ComposeProviders 平铺 7 个 Provider</span>
+   │   AppProvider → ProjectActions → FileActions → ConnectionProject
+   │   → Editor → TerminalInsert → DockRegistryProvider(registry 注入)
+   └─ &lt;AppShell&gt;                                <span style="color:var(--muted)">src/app/shell/ — 窗口骨架单一来源</span>
+      ├─ &lt;TitleBar actions={&lt;TitleBarActions/&&gt;}/&gt;
+      ├─ 工作区
+      │  └─ &lt;DockLayout&gt;                         <span style="color:var(--muted)">src/layout/dock-layout/ — 纯骨架，禁 import features/app</span>
+      │     ├─ toolbarFooterLeft = &lt;ToolbarFooter/&gt; <span style="color:var(--muted)">app/components/ — app 层业务经 slot 注入</span>
+      │        ├─ 左 DockBar（buttons 由 app 注入 slot）
+      │        ├─ ResizablePanelGroup "neeko-main"（水平）
+      │        │   ├─ left-zone  → &lt;DockZone zoneId="left"/&gt;
+      │        │   ├─ center-area → {children = &lt;AppCenter/&gt;}
+      │        │   └─ right-zone → &lt;DockZone zoneId="right"/&gt;
+      │        └─ 右 DockBar
+      ├─ &lt;PanelHost placement="bottom"/&gt;         <span style="color:var(--muted)">骨架内兄弟槽位（布局外）</span>
+      ├─ AppModals / QuickOpenPalette / SymbolNavPalette
+      └─ &lt;StatusBar/&gt;</code></pre>
+  </div>
+
+  <!-- ═══ 3. Registry 数据流 ═══ -->
+  <h2>③ 双 registry 三层体系（面板如何被找到）</h2>
+  <div class="grid">
+    <div class="card layer">
+      <h3>Dock 面板（左右区）</h3>
+      <div class="lrow"><b>shared/dock/panelMeta.ts</b><span>纯数据：defaultZone / order / defaultZoneSize + MIN_ZONE_SIZE_PERCENT</span></div>
+      <div class="arrow">↓ <b>纯 meta，store 直接依赖</b></div>
+      <div class="lrow"><b>app/dock/registry.ts</b><span>title / icon / lazy 组件 / wrappers 胶水</span></div>
+      <div class="arrow">↓ <b>DockRegistryProvider 注入 context</b></div>
+      <div class="lrow"><b>layout/DockRegistryContext.tsx</b><span>useDockRegistry() 消费 —— layout 对面板清单零感知</span></div>
+      <div class="tagrow">
+        <span class="badge b-blue">OCP：新面板不触碰 layout</span>
+        <span class="badge b-green">ESLint 强制 layout 纯度</span>
+      </div>
+    </div>
+    <div class="card layer">
+      <h3>固定面板（底部）</h3>
+      <div class="lrow"><b>app/panels/registry.ts</b><span>{ id, placement: 'left'|'right'|'bottom', lazy Component }</span></div>
+      <div class="arrow">↓ <b>PanelHost 按 placement 过滤渲染</b></div>
+      <div class="lrow"><b>app/panels/PanelHost.tsx</b><span>Suspense fallback=null；显示状态由各面板 store 自管</span></div>
+      <div class="arrow">↓ </div>
+      <div class="lrow"><b>AppShell 底部槽位</b><span>&lt;PanelHost placement="bottom"/&gt; — Task Console + Debug</span></div>
+      <div class="tagrow">
+        <span class="badge b-blue">placement 是 Step 3 统一面板体系的接缝</span>
+        <span class="badge b-amber">mock registry 单测护栏</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ 4. 状态源 ═══ -->
+  <h2>④ 状态源：谁管什么</h2>
+  <table>
+    <thead><tr><th>状态源</th><th>职责</th><th>关键事实</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><code>dockStore</code></td>
+        <td>左右 zone：面板清单 / 激活 / 展开 / 宽度记忆</td>
+        <td>zustand persist；merge 从 registry 重建面板清单，<b>activePanelId 仍有效才恢复</b>（防悬挂引用），左区展开态重启强制 true</td>
+      </tr>
+      <tr>
+        <td><code>appViewStore</code></td>
+        <td>中心视图路由（normal/skills/settings/library）</td>
+        <td>不持久化；启动时由 useAppShell 把左区 skills 激活态同步回 appView —— <b>单一中心路由源</b></td>
+      </tr>
+      <tr>
+        <td><code>taskStore / debugStore</code></td>
+        <td>底部面板显隐（consolePanelOpen / panelOpen）</td>
+        <td>宿主不感知；面板高度各自 localStorage（neeko.task.consoleHeight 等）—— Step 3 时收编进 zone 体系</td>
+      </tr>
+      <tr>
+        <td><code>useZoneExpandCollapse</code></td>
+        <td>zone 展开/收起 + 双 rAF resize</td>
+        <td>防「pin tab 后开面板 0 宽」历史竞态；挂起 rAF 随 effect 清理取消（快速展开→折叠不复发）</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- ═══ 5. 依赖方向 ═══ -->
+  <h2>⑤ 依赖方向（编译期强制）</h2>
+  <div class="dep">
+    <b>ui</b> ← <b>layout</b> ← <b>app</b> ← <b>features</b> → <b>shared</b>
+    <span class="rule">layout/ 禁止 import features/* 与 app/*（ESLint import/no-restricted-paths）；app 通过 DockRegistryProvider 注入 registry —— 骨架与业务只经 context 相遇</span>
+  </div>
+
+  <!-- ═══ 6. 扩展指南 ═══ -->
+  <h2>⑥ 扩展指南：加一个面板要改几处？</h2>
+  <div class="grid">
+    <div class="card">
+      <h3>新增 Dock 面板（进左右区）</h3>
+      <ul>
+        <li><code>shared/dock/panelMeta.ts</code> — 加 meta（zone/order）</li>
+        <li><code>app/dock/registry.ts</code> — 加 title/icon/lazy 绑定</li>
+        <li>需要 props 胶水时：<code>app/dock/wrappers/</code> 每面板一文件</li>
+      </ul>
+      <details><summary>为什么这样</summary>registry 建表缺失绑定会抛错（buildDockPanelRegistry fail-fast）；layout 与 dockStore 完全不动。</details>
+    </div>
+    <div class="card">
+      <h3>新增底部固定面板</h3>
+      <ul>
+        <li>只改 <code>app/panels/registry.ts</code>：加 <code>{ id, placement:'bottom', Component: lazy(...) }</code></li>
+        <li>组合根 / AppShell / PanelHost 零改动</li>
+        <li>显隐由面板自己的 store 驱动</li>
+      </ul>
+      <details><summary>护栏</summary>PanelHost 过滤逻辑有 mock registry 单测；registry.test 守护 id 唯一 / placement 合法 / Component 存在。</details>
+    </div>
+    <div class="card">
+      <h3>未来 Step 3：bottom 进布局</h3>
+      <ul>
+        <li>DockLayout 顶层加垂直嵌套 Group，bottom-zone 入布局</li>
+        <li>dockStore 加 bottom zone 独立状态；复用 <code>useZoneExpandCollapse</code></li>
+        <li>触发条件：unified-task-hub 面板进底部，或底部需要拖拽/收起</li>
+      </ul>
+      <details><summary>已知风险</summary>react-resizable-panels 嵌套 Group 有历史 bug（pin tab → handle 失效）；实施时必须回归 pin-then-open 路径。ZoneId 联合类型已就绪（'left' | 'right'，届时扩展 'bottom'）。</details>
+    </div>
+  </div>
+
+  <footer>Neeko 布局架构图解 · 由代码库实测生成（src/app/shell · src/layout · src/app/panels · src/shared/dock）· 自包含 HTML，可离线打开</footer>
+
+<script>
+  const DETAILS = {
+    titlebar: {
+      name: 'TitleBar', path: 'src/layout/TitleBar.tsx',
+      points: [
+        '纯骨架：drag region + actions slot + WindowControls，业务按钮由 app 以 <code>TitleBarActions</code>（单一事实源）注入',
+        'macOS 未全屏时预留红绿灯位（pl-[72px]）；IS_MACOS 门控窗口控制按钮',
+        'memo 包裹；useFullscreen 驱动拖拽区 padding 切换',
+      ],
+      tags: [['layout 纯骨架', 'b-green'], ['slot 注入', 'b-blue']],
+    },
+    dockbar: {
+      name: 'DockBar（左 / 右）', path: 'src/layout/dock-layout/DockBar.tsx',
+      points: [
+        'w-11 工具条，role="toolbar"；buttons 是 ReactNode[] prop',
+        '按钮装配在 <code>app/hooks/UseDockBarButtons</code>（读 feature store），经 AppShell slot 传入',
+        '按钮点击 → dockStore.togglePanel —— 骨架不认识任何具体面板',
+      ],
+      tags: [['slot 注入', 'b-blue'], ['OCP', 'b-green']],
+    },
+    leftzone: {
+      name: 'left-zone（左停靠区）', path: 'src/layout/dock-layout/DockZone.tsx + DockLayout.tsx',
+      points: [
+        'ResizablePanel：默认 18%（dockStore.leftPanelSize），min 12%（MIN_ZONE_SIZE_PERCENT 单源）max 35%，可折叠',
+        'DockZone 渲染该区<b>全部</b>面板，非活跃用 CSS hidden —— 切换不卸载，state / lazy chunk 不丢',
+        '展开/收起走 <code>useZoneExpandCollapse</code>：expand → 双 rAF → resize(记忆宽度)；rAF 随 effect 清理取消',
+        '默认面板：projects（激活）+ skills；library 是 tab-mode 不入 zone',
+      ],
+      tags: [['宽度记忆', 'b-blue'], ['状态保持', 'b-green']],
+    },
+    center: {
+      name: 'center-area（中心工作区）', path: 'src/app/components/AppCenter.tsx',
+      points: [
+        '只读 <code>appViewStore.appView</code> 决定渲染 —— 单一中心路由源',
+        'normal → ProjectWorkspace（终端/编辑器/Agent）；skills 激活挂载；settings/library 条件渲染',
+        '写入方受控：toolbar / dockStore 耦合面板（skills）/ tab-mode（library），禁止业务组件直读 zone 状态判断视图',
+        'min 20%，永不折叠',
+      ],
+      tags: [['单一数据源', 'b-green'], ['路由', 'b-blue']],
+    },
+    rightzone: {
+      name: 'right-zone（右停靠区）', path: 'src/layout/dock-layout/DockZone.tsx + dockStore.rightPanelSizes',
+      points: [
+        '默认收起；面板级宽度记忆（rightPanelSizes，browser 默认 50%），min 12% max 80%',
+        '拖动只在 pointer-up 持久化（Group onLayoutChanged + isUserInteraction 过滤），拖动期间零 store 写入 —— 无去抖、无负反馈',
+        '激活面板切换时立即 resize 到目标宽度；默认面板：files / gitControl / pullRequests / browser / conversations / search',
+      ],
+      tags: [['宽度记忆', 'b-blue'], ['pointer-up 持久化', 'b-purple']],
+    },
+    bottom: {
+      name: 'PanelHost placement="bottom"（底部宿主）', path: 'src/app/panels/PanelHost.tsx + registry.ts',
+      points: [
+        '挂在 AppShell 骨架内、DockLayout 布局外（兄弟槽位）—— <b>Step 3 将迁入布局内 bottom zone</b>',
+        '按 fixedPanelRegistry 的 placement 过滤渲染，Suspense fallback=null（隐藏态本就不占位）',
+        'Task Console / Debug 各自 store 管显隐、各自 localStorage 管高度 —— 宿主对面板清单零感知',
+        '新增底部面板只改 registry 一处（组合根零改动）',
+      ],
+      tags: [['布局外（现状）', 'b-amber'], ['registry 单一事实源', 'b-green']],
+    },
+    statusbar: {
+      name: 'StatusBar', path: 'src/features/status-bar/StatusBar.tsx',
+      points: [
+        '窗口框架底部：分支 / 通知 / 任务 / Debug 开关（读 taskStore / debugStore / git 状态）',
+        '<b>必须渲染在 AppProvider 内</b>：NotificationDetail 经 useCopyToClipboard 调 useAppContext，Provider 外会崩 —— App.test 回归守护',
+      ],
+      tags: [['回归测试守护', 'b-purple']],
+    },
+  };
+
+  const detail = document.getElementById('detail');
+  const regions = document.querySelectorAll('.region[data-k]');
+  let activeBtn = null;
+
+  function show(key, el) {
+    const d = DETAILS[key];
+    if (!d) return;
+    regions.forEach(r => r.classList.remove('active'));
+    if (el) el.classList.add('active');
+    detail.innerHTML =
+      '<h3>' + d.name + '</h3>' +
+      '<span class="path">' + d.path + '</span>' +
+      '<ul>' + d.points.map(p => '<li>' + p + '</li>').join('') + '</ul>' +
+      '<div class="tagrow">' + d.tags.map(([t, c]) => '<span class="badge ' + c + '">' + t + '</span>').join('') + '</div>';
+  }
+
+  regions.forEach(r => {
+    r.setAttribute('role', 'button');
+    r.setAttribute('tabindex', '0');
+    r.addEventListener('click', () => show(r.dataset.k, r));
+    r.addEventListener('keydown', e => {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); show(r.dataset.k, r); }
+    });
+  });
+
+  show('center', document.querySelector('.region.cz'));
+</script>
+</body>
+</html>

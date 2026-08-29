@@ -15,18 +15,23 @@ Neeko 是一个基于 **Tauri v2** 的桌面应用，前端使用 **React 18 + T
 ```
 src/
 ├── app/                     # 应用壳层与组合层（组装 layout slots + 协调 features）
-│   ├── App.tsx              # 组合根：TitleBar.actions / AppLayout slots / 壳层编排（无业务视图路由）
-│   ├── AppProviders.tsx     # Provider 组合层
+│   ├── App.tsx              # 组合根：Provider 装配 + <AppShell/>（零布局/面板编排）
+│   ├── AppProviders.tsx     # Provider 组合层（ComposeProviders 平铺装配，含 DockRegistryProvider 注入）
 │   ├── AppModals.tsx        # 模态框组合层
+│   ├── shell/               # 窗口骨架单一来源（AppShell：TitleBar + 工作区 + StatusBar + 浮层）
+│   ├── panels/              # 固定面板体系（registry placement 单一事实源 + PanelHost 按 placement 渲染 + TitleBarActions）
 │   ├── components/          # app 级协调组件（可 import features）
 │   │   ├── AppCenter.tsx         # 中心视图路由（单一数据源 appViewStore）
 │   │   ├── ProjectWorkspace.tsx  # 项目工作区协调器（原 layout/MainContent）
+│   │   ├── ToolbarFooter.tsx     # 左 DockBar 底部按钮簇（Add Project + Settings，经 toolbarFooterLeft slot 注入）
+│   │   ├── AddProjectMenu.tsx    # 添加项目菜单（原 layout/）
 │   │   ├── DockBarButton.tsx     # Dock 栏按钮（读 feature store）
 │   │   ├── OpenIdeButton.tsx     # IDE 打开按钮
 │   │   └── SplashScreen.tsx
 │   ├── dock/                # Dock 面板胶水 + UI 注册表
 │   │   ├── registry.ts      # title/icon/lazy component 绑定（合并 DOCK_PANEL_META）
 │   │   └── wrappers/        # 每面板一文件的薄适配层（store/context → panel，独立 lazy chunk）
+│   ├── utils/               # app 级工具（ComposeProviders 平铺 Provider 组合、layoutId 等）
 │   └── hooks/               # app 级共享 hooks（useAppShell 薄组合器 = useAppShellData 编排 + buildAppShellValues 纯装配）
 │
 ├── main.tsx                 # 入口文件（ReactDOM.createRoot）
@@ -91,13 +96,8 @@ src/
 │       └── api/themeApi.ts
 │
 ├── layout/                  # 窗口边框 & 导航（纯骨架：不 import features/ 或 app/）
-│   ├── ActivityBar.tsx      # 左侧活动栏（projects/files/skills 切换）
-│   ├── AppLayout.tsx        # 纯骨架：children + leftButtons/rightButtons + isSettingsOpen
 │   ├── TitleBar.tsx         # 标题栏（actions slot，由 app 注入业务按钮）
-│   ├── PanelArea.tsx
-│   ├── RightPanel.tsx
 │   ├── WindowControls.tsx
-│   ├── AddProjectMenu.tsx
 │   ├── useFullscreen.ts
 │   ├── DockRegistryContext.tsx  # 注册表 Context（由 app 注入，layout 只消费）
 │   ├── dock-layout/         # Dock 布局系统（纯框架，useDockRegistry）
@@ -105,24 +105,21 @@ src/
 │   │   ├── DockBar.tsx      # 工具栏（buttons: ReactNode[] prop）
 │   │   ├── DockLayout.tsx
 │   │   ├── DockZone.tsx
-│   │   ├── DockZoneTabs.tsx
-│   │   └── useDragToReDock.ts
-│   ├── hooks/               # Layout hooks（useAppLayoutProps 等）
-│   └── index.ts
+│   │   └── useZoneExpandCollapse.ts  # zone 展开/收起 + 双 rAF resize（防 pin-tab 0 宽竞态，rAF 随 effect 清理取消）
+│   └── index.ts             # barrel：TitleBar / WindowControls / DockLayout / DockRegistry
 │
 ├── ui/                      # UI 基元组件（shadcn-styled）
 │   ├── index.ts
 │   ├── ContextMenu.tsx
 │   ├── DropdownMenu.tsx
-│   ├── ResizablePanel.tsx
+│   ├── OverlayPanel.tsx     # 覆盖层可调宽面板（Resizable.tsx 为分栏基元封装，注意区分）
 │   ├── ScrollArea.tsx
 │   └── ToggleGroup.tsx
 │
 ├── shared/                  # 共享层（contexts/hooks/store/utils/types）
-│   ├── contexts/            # 基础 Context（全局配置、侧栏、技能）
+│   ├── contexts/            # 基础 Context（全局配置、技能、编辑器、终端插入等）
 │   │   ├── index.ts
 │   │   ├── AppContext.tsx
-│   │   ├── SidebarContext.tsx
 │   │   └── skill-context.tsx
 │   ├── components/          # 共享组件
 │   │   ├── AppToast.tsx
@@ -197,7 +194,7 @@ src-tauri/
 依赖方向（目标）：
 
 ```
-ui/          ← layout/     (纯骨架：DockLayout、TitleBar slot、ActivityBar)
+ui/          ← layout/     (纯骨架：DockLayout、TitleBar slot)
 shared/      ← features/   (各自独立业务域)
 features/    ← app/        (协调层：ProjectWorkspace、app/dock/wrappers/、slot 填充)
 layout/      ← app/        (app 组装骨架并填充 slot)
@@ -225,16 +222,31 @@ layout/      ← app/        (app 组装骨架并填充 slot)
 | `components/terminal/` | `features/terminal/components/` | 按 feature 域分布 |
 | `components/settings/` | `features/settings/components/` | 按 feature 域分布 |
 
+2026-08-29（layout-dead-code-cleanup）：清除 Phase 3 侧栏迁移残留，统一布局常量单源。
+
+| 文件 / 目录（旧） | 文件 / 目录（新） | 说明 |
+|------|------|------|
+| `layout/ActivityBar.tsx`、`layout/PanelArea.tsx`、`layout/RightPanel.tsx` | 删除 | Phase 3 后零外部消费的死代码集群 |
+| `shared/contexts/SidebarContext.tsx` | 删除 | 仅被上述死组件消费；AppProviders 同步移除 SidebarProvider 槽位 |
+| `ui/Sidebar.tsx` | 删除 | shadcn Sidebar 全家桶，仅被上述死组件消费 |
+| `ui/ResizablePanel.tsx` | `ui/OverlayPanel.tsx` | 消除与 `ui/Resizable` 分栏基元 `ResizablePanel` 的同名陷阱；4 个 skill 对话框同步更新 |
+| `DockLayout` 局部 `MIN_RIGHT_ZONE_SIZE` + JSX `"12%"` + store clamp 魔法数 | `shared/dock/panelMeta.ts` 的 `MIN_ZONE_SIZE_PERCENT` | zone 最小尺寸单源 |
+| `shared/dock` 的 `DockPanelId` 手工联合类型 | 删除 | 零使用且与 `DOCK_PANEL_META` keys 重复 |
+| `dockStore.leftPanelWidth` + DockLayout ResizeObserver effect | 删除 | 注释宣称 TitleBar 消费，实际无人读取 |
+| `layout/AppLayout.tsx`（近纯透传层，内含 ToolbarFooter） | 删除；`ToolbarFooter`/`AddProjectMenu` 迁 `app/components/` | AppShell 直用 DockLayout，挂载树少一层；视图状态由叶子组件自订阅（ToolbarFooter 读 appViewStore 高亮 Settings），AppShell 零 store 订阅 |
+| `layout/hooks/useAppLayoutProps.ts` | `app/hooks/useToolbarFooterProps.ts` | appView 路由决策归 app 层 |
+| `dockStore.movePanel` + stringly `zones: Record<string, DockZoneState>` | 删除 movePanel；`ZoneId = 'left' \| 'right'` 联合类型 | movePanel 零调用（useDragToReDock 已删除）；非法 zone 编译期拦截 |
+
 ### 组件子目录按领域/功能组织
 
 | 目录 | 领域 | 包含内容 |
 |------|------|---------|
-| `layout/` | 窗口边框（纯骨架） | ActivityBar、AppLayout、TitleBar、PanelArea、DockRegistryContext |
+| `layout/` | 窗口边框（纯骨架） | AppLayout、TitleBar、WindowControls、AddProjectMenu、DockRegistryContext |
 | `layout/dock-layout/` | Dock 布局框架 | DockBar、DockLayout、DockZone、拖拽 Hook 等 |
 | `app/components/` | app 协调组件 | ProjectWorkspace、DockBarButton、OpenIdeButton、SplashScreen |
 | `app/dock/` | Dock UI 注册表 + 胶水 | registry、wrappers/（每面板一文件） |
 | `shared/dock/` | Dock 纯 meta | DOCK_PANEL_META（供 dockStore） |
-| `ui/` | UI 基元 | ContextMenu、DropdownMenu、ResizablePanel、ScrollArea、ToggleGroup |
+| `ui/` | UI 基元 | ContextMenu、DropdownMenu、Resizable（分栏基元）、OverlayPanel、ScrollArea、ToggleGroup |
 | `features/project/components/` | 项目管理 | 项目卡片壳层 + Git 区段 + 拖拽/菜单 Hook |
 | `features/terminal/components/` | 终端视图 | React 终端组件 + 缓存/工厂/命令 API |
 | `features/connection/components/` | 远程连接 | SSH/WSL 对话框 |
@@ -250,7 +262,7 @@ layout/      ← app/        (app 组装骨架并填充 slot)
 // ui/index.ts
 export { default as ContextMenu } from "./ContextMenu";
 export { default as DropdownMenu } from "./DropdownMenu";
-export { default as ResizablePanel } from "./ResizablePanel";
+export { ScrollArea, ScrollBar } from "./ScrollArea";
 ```
 
 Feature 桶文件还会导出工具函数和缓存：
@@ -293,7 +305,7 @@ export { createTerminalForProject } from "./terminalFactory";
 ### 2. Signatures
 
 ```text
-src/context/         基础 UI 上下文（App / Sidebar / Skill）
+src/context/         基础 UI 上下文（App / Skill / Editor / TerminalInsert）
 src/contexts/        领域动作上下文（ProjectActions / FileActions / Wsl / Remote / Editor）
 src/store/           共享状态单源（useAppStore）
 src/hooks/           动作封装、IPC 调用、状态写入协调

@@ -1,0 +1,5 @@
+{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "组件规模红线（≤300 行）、React.memo、Props interface 约定 —— AppShell/PanelHost/DockLayout 审核依据"}
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "layout 纯度边界（不 import features/app）与 dock registry 三层分层强制规则"}
+{"file": ".trellis/spec/frontend/hook-guidelines.md", "reason": "自定义 hook 模式与命名（useZoneExpandCollapse 抽取依据）"}
+{"file": ".trellis/spec/frontend/state-management.md", "reason": "appViewStore 单一中心路由源、dockStore 持久化 —— 骨架收敛不得绕过"}
+{"file": ".trellis/spec/unit-test/frontend-testing.md", "reason": "vitest mock 策略（vi.mock 路径相对测试文件解析）与 hook 测试模式"}

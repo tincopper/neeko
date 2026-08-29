@@ -1,0 +1,4 @@
+{"file": ".trellis/tasks/08-14-08-15-app-center-routing/prd.md", "reason": "上游任务：AppShell 收敛与面板双体系问题的根因分析（本任务承接其「布局架构设计说明」）"}
+{"file": ".trellis/tasks/08-14-08-15-dock-wrapper-refactor/prd.md", "reason": "useDockZoneResize 观察项出处（useZoneExpandCollapse 抽取依据）"}
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "嵌套 Group 历史 bug（pin tab 后 handle 失效）与行为保持优先约束"}
+{"file": ".trellis/spec/frontend/directory-structure.md", "reason": "依赖方向目标（ui ← layout ← app）与 dock registry 分层"}
