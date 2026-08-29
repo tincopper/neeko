@@ -1,12 +1,12 @@
 import React, { Suspense } from 'react';
 
 import { cn } from '@/lib/utils';
-import { useDockStore } from '@/shared/store/dockStore';
+import { useDockStore, type ZoneId } from '@/shared/store/dockStore';
 
 import { useDockRegistry } from '../DockRegistryContext';
 
 interface DockZoneProps {
-  zoneId: string;
+  zoneId: ZoneId;
 }
 
 /** Docking zone container -- renders active panel as a floating "island".

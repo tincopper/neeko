@@ -1,10 +1,10 @@
-import type { DockStore, DockZoneState } from '@/shared/store/dockStore';
+import type { DockStore, DockZoneState, ZoneId } from '@/shared/store/dockStore';
 
 type DockSnapshot = Pick<DockStore, 'zones' | 'togglePanel' | 'activatePanel'>;
 
-function findPanelZone(zones: Record<string, DockZoneState>, panelId: string): string | null {
-  for (const [zoneId, zone] of Object.entries(zones)) {
-    if (zone.panels.includes(panelId)) return zoneId;
+function findPanelZone(zones: Record<ZoneId, DockZoneState>, panelId: string): ZoneId | null {
+  for (const zoneId of Object.keys(zones) as ZoneId[]) {
+    if (zones[zoneId].panels.includes(panelId)) return zoneId;
   }
   return null;
 }

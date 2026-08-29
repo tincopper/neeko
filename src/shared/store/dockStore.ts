@@ -1,14 +1,17 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 
-import { DOCK_PANEL_META } from '../dock/panelMeta';
+import { DOCK_PANEL_META, MIN_ZONE_SIZE_PERCENT } from '../dock/panelMeta';
 
 import { isAppView, useAppViewStore, type AppView } from './appViewStore';
 
 // -- Types --
 
+/** Zone 标识联合类型：非法 zone 在编译期拦截（Step 3 加 bottom 时在此扩展）。 */
+export type ZoneId = 'left' | 'right';
+
 export interface DockZoneState {
-  id: string;
+  id: ZoneId;
   panels: string[];
   activePanelId: string | null;
   expanded: boolean;
@@ -22,21 +25,17 @@ export interface DockBarItem {
 }
 
 export interface DockStore {
-  zones: Record<string, DockZoneState>;
+  zones: Record<ZoneId, DockZoneState>;
   barItems: DockBarItem[];
   /** Per-panel remembered zone width percentage (0-100). Only panels with non-default widths are stored. */
   rightPanelSizes: Record<string, number>;
   /** Left sidebar width as a percentage (0-100). Default 18. */
   leftPanelSize: number;
-  /** Left sidebar runtime pixel width — set by DockLayout onLayout, consumed by TitleBar for drag region. */
-  leftPanelWidth: number;
   /** Left zone expanded state before Library center view opened (transient, restored on close). */
   leftZoneExpandedBeforeLibrary: boolean | null;
-  setLeftPanelWidth: (width: number) => void;
 
   togglePanel: (panelId: string) => void;
-  activatePanel: (zoneId: string, panelId: string) => void;
-  movePanel: (panelId: string, targetZoneId: string, index?: number) => void;
+  activatePanel: (zoneId: ZoneId, panelId: string) => void;
   closePanel: (panelId: string) => void;
   setRightPanelSize: (panelId: string, size: number) => void;
   setLeftPanelSize: (size: number) => void;
@@ -44,7 +43,7 @@ export interface DockStore {
 
 // -- Defaults --
 
-const DEFAULT_ZONES: Record<string, Omit<DockZoneState, 'panels' | 'activePanelId'>> = {
+const DEFAULT_ZONES: Record<ZoneId, Omit<DockZoneState, 'panels' | 'activePanelId'>> = {
   left: { id: 'left', expanded: true },
   right: { id: 'right', expanded: false },
 };
@@ -85,31 +84,24 @@ function buildDefaultBarItems(): DockBarItem[] {
 
 function createInitialState() {
   const panelMap = buildDefaultPanels();
-  const zones: Record<string, DockZoneState> = {};
-  for (const [zoneId, defaults] of Object.entries(DEFAULT_ZONES)) {
+  const buildZone = (zoneId: ZoneId): DockZoneState => {
     const panels = panelMap[zoneId] ?? [];
-    zones[zoneId] = {
-      ...defaults,
+    return {
+      ...DEFAULT_ZONES[zoneId],
       panels,
       activePanelId: panels.length > 0 ? panels[0] : null,
     };
-  }
-  for (const zoneId of ['left', 'right'] as const) {
-    if (!zones[zoneId]) {
-      zones[zoneId] = {
-        id: zoneId,
-        panels: [],
-        activePanelId: null,
-        expanded: false,
-      };
-    }
-  }
-  return { zones, barItems: buildDefaultBarItems() };
+  };
+  // 显式枚举 ZoneId：新增 zone（Step 3 bottom）时编译器强制回到这里补全
+  return {
+    zones: { left: buildZone('left'), right: buildZone('right') },
+    barItems: buildDefaultBarItems(),
+  };
 }
 
-function findPanelZone(zones: Record<string, DockZoneState>, panelId: string): string | null {
-  for (const [zoneId, zone] of Object.entries(zones)) {
-    if (zone.panels.includes(panelId)) return zoneId;
+function findPanelZone(zones: Record<ZoneId, DockZoneState>, panelId: string): ZoneId | null {
+  for (const zoneId of Object.keys(zones) as ZoneId[]) {
+    if (zones[zoneId].panels.includes(panelId)) return zoneId;
   }
   return null;
 }
@@ -147,6 +139,35 @@ function restoreLeftZone(state: DockStore): Partial<DockStore> {
   };
 }
 
+/**
+ * 从持久化快照恢复 zones：面板清单按 registry 重建（registry 变更后防悬挂），
+ * expanded / activePanelId 尽力恢复 —— activePanelId 仅在仍属于重建后面板清单时
+ * 生效，否则回退 panels[0]。
+ */
+function restoreZones(
+  savedZones: Partial<Record<ZoneId, DockZoneState>> | undefined,
+  defaults: Record<ZoneId, DockZoneState>,
+): Record<ZoneId, DockZoneState> {
+  const buildZone = (zoneId: ZoneId): DockZoneState => {
+    const defaultZone = defaults[zoneId];
+    const savedZone = savedZones?.[zoneId];
+    const panels = defaultZone.panels;
+    const restoredActivePanelId =
+      savedZone?.activePanelId && panels.includes(savedZone.activePanelId)
+        ? savedZone.activePanelId
+        : panels.length > 0
+          ? panels[0]
+          : null;
+    return {
+      ...defaultZone,
+      expanded: zoneId === 'left' ? true : (savedZone?.expanded ?? defaultZone.expanded),
+      activePanelId: restoredActivePanelId,
+    };
+  };
+  // 显式枚举 ZoneId：新增 zone（Step 3 bottom）时编译器强制回到这里补全
+  return { left: buildZone('left'), right: buildZone('right') };
+}
+
 // -- Store --
 
 export const useDockStore = create<DockStore>()(
@@ -159,9 +180,7 @@ export const useDockStore = create<DockStore>()(
         barItems: initial.barItems,
         rightPanelSizes: { browser: 50 },
         leftPanelSize: 18,
-        leftPanelWidth: 0,
         leftZoneExpandedBeforeLibrary: null,
-        setLeftPanelWidth: (width) => set({ leftPanelWidth: Math.max(0, width) }),
 
         togglePanel: (panelId: string) => {
           // Tab-mode panels (e.g. library) are center views — toggle via appView,
@@ -248,7 +267,7 @@ export const useDockStore = create<DockStore>()(
           }
         },
 
-        activatePanel: (zoneId: string, panelId: string) => {
+        activatePanel: (zoneId: ZoneId, panelId: string) => {
           set((state) => {
             const zone = state.zones[zoneId];
             if (!zone || !zone.panels.includes(panelId)) return state;
@@ -266,61 +285,6 @@ export const useDockStore = create<DockStore>()(
           } else if (useAppViewStore.getState().appView === 'skills') {
             useAppViewStore.getState().setAppView('normal');
           }
-        },
-
-        movePanel: (panelId: string, targetZoneId: string, index?: number) => {
-          set((state) => {
-            const zones = { ...state.zones };
-            const sourceZoneId = findPanelZone(zones, panelId);
-            if (sourceZoneId === null) return state;
-
-            const sourceZone = { ...zones[sourceZoneId] };
-            const sourceIndex = sourceZone.panels.indexOf(panelId);
-            const sourcePanels = sourceZone.panels.filter((p) => p !== panelId);
-            const sourceActive =
-              sourceZone.activePanelId === panelId
-                ? sourcePanels.length > 0
-                  ? sourcePanels[Math.min(sourceIndex, sourcePanels.length - 1)]
-                  : null
-                : sourceZone.activePanelId;
-
-            zones[sourceZoneId] = {
-              ...sourceZone,
-              panels: sourcePanels,
-              activePanelId: sourceActive,
-              expanded: sourcePanels.length > 0,
-            };
-
-            const targetZone = zones[targetZoneId] ?? {
-              id: targetZoneId,
-              panels: [],
-              activePanelId: null,
-              expanded: false,
-            };
-
-            const targetPanels = [...targetZone.panels];
-            const insertAt = index !== undefined ? index : targetPanels.length;
-            targetPanels.splice(insertAt, 0, panelId);
-
-            zones[targetZoneId] = {
-              ...targetZone,
-              panels: targetPanels,
-              activePanelId: panelId,
-              expanded: true,
-            };
-
-            const barItems = state.barItems.map((item) => {
-              if (item.panelId !== panelId) return item;
-              const newSide =
-                targetZoneId === 'left' || targetZoneId === 'right' ? targetZoneId : item.side;
-              return { ...item, side: newSide as 'left' | 'right' };
-            });
-
-            return { zones, barItems };
-          });
-          // 中心耦合面板移动到新 zone 时同步 appView
-          const centerView = DOCK_PANEL_TO_APP_VIEW[panelId];
-          if (centerView) useAppViewStore.getState().setAppView(centerView);
         },
 
         closePanel: (panelId: string) => {
@@ -350,7 +314,7 @@ export const useDockStore = create<DockStore>()(
         },
 
         setRightPanelSize: (panelId: string, size: number) => {
-          const clamped = Math.max(size, 12);
+          const clamped = Math.max(size, MIN_ZONE_SIZE_PERCENT);
           set((state) => ({
             rightPanelSizes: { ...state.rightPanelSizes, [panelId]: clamped },
           }));
@@ -380,19 +344,7 @@ export const useDockStore = create<DockStore>()(
             }
           | undefined;
         const defaults = createInitialState();
-        // Rebuild zone panels from registry defaultZone, then restore
-        // expanded / activePanelId from persisted state where possible.
-        const zones: Record<string, DockZoneState> = {};
-        for (const [zoneId, defaultZone] of Object.entries(defaults.zones)) {
-          const savedZone = saved?.zones?.[zoneId];
-          const panels = defaultZone.panels;
-          const restoredActivePanelId = panels.length > 0 ? panels[0] : null;
-          zones[zoneId] = {
-            ...defaultZone,
-            expanded: zoneId === 'left' ? true : (savedZone?.expanded ?? defaultZone.expanded),
-            activePanelId: restoredActivePanelId,
-          };
-        }
+        const zones = restoreZones(saved?.zones, defaults.zones);
         // Rebuild barItems from registry to pick up side/order changes
         const barItems = defaults.barItems.map((defaultItem) => {
           const savedItem = saved?.barItems?.find((b) => b.panelId === defaultItem.panelId);

@@ -32,7 +32,6 @@ function resetStores() {
     barItems: [],
     rightPanelSizes: {},
     leftPanelSize: 18,
-    leftPanelWidth: 0,
     leftZoneExpandedBeforeLibrary: null,
   });
 }
@@ -164,6 +163,56 @@ describe('dockStore togglePanel — center-coupled dock panels (skills ↔ appVi
     useDockStore.getState().togglePanel('library');
 
     expect(useAppViewStore.getState().appView).toBe('library');
+  });
+});
+
+describe('dockStore persist merge — activePanelId 恢复', () => {
+  beforeEach(() => {
+    localStorage.clear();
+    resetStores();
+  });
+
+  it('rehydrate 恢复仍属于注册表面板清单的持久化 activePanelId', async () => {
+    localStorage.setItem(
+      'neeko-dock-layout',
+      JSON.stringify({
+        state: {
+          zones: {
+            right: { id: 'right', panels: ['files'], activePanelId: 'gitControl', expanded: true },
+          },
+        },
+        version: 5,
+      }),
+    );
+
+    await useDockStore.persist.rehydrate();
+
+    expect(useDockStore.getState().zones.right?.activePanelId).toBe('gitControl');
+    expect(useDockStore.getState().zones.right?.expanded).toBe(true);
+  });
+
+  it('持久化的 activePanelId 已不在注册表面板清单内时回退 panels[0]（防悬挂引用）', async () => {
+    localStorage.setItem(
+      'neeko-dock-layout',
+      JSON.stringify({
+        state: {
+          zones: {
+            right: { id: 'right', panels: ['files'], activePanelId: 'ghostPanel', expanded: true },
+          },
+        },
+        version: 5,
+      }),
+    );
+
+    await useDockStore.persist.rehydrate();
+
+    expect(useDockStore.getState().zones.right?.activePanelId).toBe('files');
+  });
+
+  it('无持久化数据时保持默认 activePanelId（panels[0]）', async () => {
+    await useDockStore.persist.rehydrate();
+
+    expect(useDockStore.getState().zones.right?.activePanelId).toBe('files');
   });
 });
 
