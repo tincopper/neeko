@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useRef } from 'react';
 import { usePanelRef, type Layout, type LayoutChangedMeta } from 'react-resizable-panels';
 
+import { MIN_ZONE_SIZE_PERCENT } from '@/shared/dock/panelMeta';
 import { useDockStore } from '@/shared/store/dockStore';
 import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from '@/ui/Resizable';
 
@@ -8,9 +9,7 @@ import { useDockRegistry } from '../DockRegistryContext';
 
 import DockBar from './DockBar';
 import DockZone from './DockZone';
-
-/** must match the ResizablePanel minSize below */
-const MIN_RIGHT_ZONE_SIZE = 12;
+import { useZoneExpandCollapse } from './useZoneExpandCollapse';
 
 /** Right zone fallback width when no size is known for the active panel. */
 const DEFAULT_RIGHT_ZONE_SIZE = 18;
@@ -69,15 +68,15 @@ const DockLayout: React.FC<DockLayoutProps> = ({
   const rightVisible = rightPanelIds.length > 0 && rightExpanded;
 
   /** Resolve target zone width for a given panel: store value → registry default → DEFAULT_RIGHT_ZONE_SIZE.
-   *  Always returns at least MIN_RIGHT_ZONE_SIZE to match the panel's minSize constraint,
+   *  Always returns at least MIN_ZONE_SIZE_PERCENT to match the panel's minSize constraint,
    *  preventing the zone from appearing invisible after first expand. */
   const getRightPanelSize = useCallback(
     (panelId: string | null): number => {
       if (!panelId) return DEFAULT_RIGHT_ZONE_SIZE;
       if (rightPanelSizes[panelId] != null)
-        return Math.max(rightPanelSizes[panelId], MIN_RIGHT_ZONE_SIZE);
+        return Math.max(rightPanelSizes[panelId], MIN_ZONE_SIZE_PERCENT);
       const def = dockPanelRegistry[panelId];
-      return Math.max(def?.defaultZoneSize ?? DEFAULT_RIGHT_ZONE_SIZE, MIN_RIGHT_ZONE_SIZE);
+      return Math.max(def?.defaultZoneSize ?? DEFAULT_RIGHT_ZONE_SIZE, MIN_ZONE_SIZE_PERCENT);
     },
     [rightPanelSizes, dockPanelRegistry],
   );
@@ -88,61 +87,13 @@ const DockLayout: React.FC<DockLayoutProps> = ({
   const prevRightPanelIdRef = useRef<string | null>(rightActivePanelId);
 
   // -- Left panel: collapse/expand imperatively instead of key-based remount --
-  const leftExpandedRef = useRef(leftExpanded);
-  useEffect(() => {
-    const prev = leftExpandedRef.current;
-    leftExpandedRef.current = leftExpanded;
-    if (prev === leftExpanded) return;
-
-    const panel = leftZonePanelRef.current;
-    if (!panel) return;
-
-    if (leftExpanded) {
-      panel.expand();
-      // 确定性恢复：显式 resize 到 store 记忆尺寸，不依赖库内部
-      // 「最近展开尺寸」记忆 —— defaultSize 直绑 store 后，拖动持久化触发的
-      // 约束重排会污染该内部记忆，导致重展开回退到初始默认宽度。
-      // 双 rAF 对齐右栏模式：等 expand() 内部布局 settle + 并发 remount
-      // 完成 first paint 后再执行 resize。
-      const targetSize = leftPanelSize;
-      requestAnimationFrame(() => {
-        requestAnimationFrame(() => {
-          leftZonePanelRef.current?.resize(`${targetSize}%`);
-        });
-      });
-    } else {
-      panel.collapse();
-    }
-  }, [leftExpanded, leftZonePanelRef, leftPanelSize]);
+  // 确定性恢复：显式 resize 到 store 记忆尺寸，不依赖库内部「最近展开尺寸」记忆 ——
+  // defaultSize 直绑 store 后，拖动持久化触发的约束重排会污染该内部记忆，导致
+  // 重展开回退到初始默认宽度（双 rAF 时序见 useZoneExpandCollapse）。
+  useZoneExpandCollapse(leftZonePanelRef, leftExpanded, leftPanelSize);
 
   // -- Right panel: collapse/expand imperatively instead of key-based remount --
-  const rightVisibleRef = useRef(rightVisible);
-  useEffect(() => {
-    const prev = rightVisibleRef.current;
-    rightVisibleRef.current = rightVisible;
-    if (prev === rightVisible) return;
-
-    const panel = rightPanelRef.current;
-    if (!panel) return;
-
-    if (rightVisible) {
-      panel.expand();
-      // After expand, resize to the target size for the active panel.
-      // Use double-rAF: the first frame lets expand() settle its internal
-      // layout state; the second frame executes the resize after any
-      // concurrent EditorGroupLayout remount (triggered by pin/unpin) has
-      // also completed its first paint — preventing a race that left the
-      // panel at 0 width when opening a side panel right after pinning a tab.
-      const targetSize = getRightPanelSize(rightActivePanelId);
-      requestAnimationFrame(() => {
-        requestAnimationFrame(() => {
-          rightPanelRef.current?.resize(`${targetSize}%`);
-        });
-      });
-    } else {
-      panel.collapse();
-    }
-  }, [rightVisible, rightPanelRef, getRightPanelSize, rightActivePanelId]);
+  useZoneExpandCollapse(rightPanelRef, rightVisible, getRightPanelSize(rightActivePanelId));
 
   // Resize right zone to target size when active panel changes (instant, no CSS transition)
   useEffect(() => {
@@ -181,7 +132,7 @@ const DockLayout: React.FC<DockLayoutProps> = ({
         rightVisible &&
         rightActivePanelId &&
         right &&
-        right.asPercentage >= MIN_RIGHT_ZONE_SIZE
+        right.asPercentage >= MIN_ZONE_SIZE_PERCENT
       ) {
         setRightPanelSize(rightActivePanelId, right.asPercentage);
       }
@@ -196,30 +147,6 @@ const DockLayout: React.FC<DockLayoutProps> = ({
       setRightPanelSize,
     ],
   );
-
-  const setLeftPanelWidth = useDockStore((s) => s.setLeftPanelWidth);
-
-  const leftPanelElRef = useRef<HTMLDivElement>(null);
-
-  // ResizeObserver: fires on mount (initial size) + every resize drag.
-  // Re-runs when leftExpanded toggles so the observer re-attaches after expand.
-  useEffect(() => {
-    if (!leftExpanded) {
-      setLeftPanelWidth(0);
-      return;
-    }
-    const el = leftPanelElRef.current;
-    if (!el) return;
-
-    const observer = new ResizeObserver((entries) => {
-      const width = entries[0]?.contentRect.width ?? 0;
-      setLeftPanelWidth(width);
-    });
-    observer.observe(el);
-    return () => observer.disconnect();
-  }, [leftExpanded, setLeftPanelWidth]);
-
-  // Dock panel toggle shortcuts: see shortcutRegistry + useKeyboardShortcuts.
 
   return (
     <div className="flex flex-1 min-h-0 bg-bg-primary">
@@ -252,10 +179,9 @@ const DockLayout: React.FC<DockLayoutProps> = ({
           defaultSize={leftExpanded ? `${leftPanelSize}%` : '0%'}
           collapsible
           collapsedSize="0%"
-          minSize="12%"
+          minSize={`${MIN_ZONE_SIZE_PERCENT}%`}
           maxSize="35%"
           className="py-0.5 pr-px"
-          elementRef={leftPanelElRef}
           panelRef={leftZonePanelRef}
         >
           <DockZone zoneId="left" />
@@ -285,7 +211,7 @@ const DockLayout: React.FC<DockLayoutProps> = ({
           defaultSize={rightVisible ? `${getRightPanelSize(rightActivePanelId)}%` : '0%'}
           collapsible
           collapsedSize="0%"
-          minSize="12%"
+          minSize={`${MIN_ZONE_SIZE_PERCENT}%`}
           maxSize="80%"
           className="py-0.5 pl-px"
           panelRef={rightPanelRef}

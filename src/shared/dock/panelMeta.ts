@@ -1,6 +1,12 @@
 import type { DockPanelMeta } from './types';
 
 /**
+ * Zone 最小宽度/高度百分比单源：DockLayout 的 ResizablePanel minSize 与
+ * dockStore 的尺寸 clamp 必须引用同一常量（避免「must match」手工同步）。
+ */
+export const MIN_ZONE_SIZE_PERCENT = 12;
+
+/**
  * Single source of structural defaults for dock panels.
  * UI bindings (title/icon/component) live in app/dock/registry.ts.
  */
@@ -54,14 +60,3 @@ export const DOCK_PANEL_META: Record<string, DockPanelMeta> = {
     defaultOrder: 5,
   },
 };
-
-export type DockPanelId =
-  | 'projects'
-  | 'files'
-  | 'skills'
-  | 'library'
-  | 'gitControl'
-  | 'pullRequests'
-  | 'browser'
-  | 'conversations'
-  | 'search';
