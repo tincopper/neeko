@@ -59,7 +59,7 @@ export function ConnectionProjectProvider({
   children,
 }: {
   value: ConnectionProjectContextValue;
-  children: React.ReactNode;
+  children?: React.ReactNode;
 }) {
   return (
     <ConnectionProjectContext.Provider value={value}>{children}</ConnectionProjectContext.Provider>

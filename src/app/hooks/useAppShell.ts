@@ -12,7 +12,7 @@ import { useAppShellData } from './useAppShellData';
 export function useAppShell(): {
   initializing: boolean;
   appProvidersProps: ReturnType<typeof buildAppShellValues>['appProvidersProps'];
-  appLayoutProps: ReturnType<typeof useAppShellData>['appLayoutProps'];
+  toolbarProps: ReturnType<typeof useAppShellData>['toolbarProps'];
   appModalsProps: ReturnType<typeof buildAppShellValues>['appModalsProps'];
 } {
   // 应用级全局副作用（paste 监听、quick-open 跟踪、skills→appView 启动同步）
@@ -24,7 +24,7 @@ export function useAppShell(): {
   return {
     initializing: data.initializing,
     appProvidersProps: values.appProvidersProps,
-    appLayoutProps: data.appLayoutProps,
+    toolbarProps: data.toolbarProps,
     appModalsProps: values.appModalsProps,
   };
 }

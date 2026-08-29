@@ -21,7 +21,7 @@ export function AppProvider({
   children,
 }: {
   value: AppContextValue;
-  children: React.ReactNode;
+  children?: React.ReactNode;
 }) {
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;
 }

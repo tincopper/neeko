@@ -26,7 +26,7 @@ interface TerminalInsertContextValue {
 
 const TerminalInsertContext = createContext<TerminalInsertContextValue | null>(null);
 
-export function TerminalInsertProvider({ children }: { children: ReactNode }) {
+export function TerminalInsertProvider({ children }: { children?: ReactNode }) {
   const [api, setApi] = useState<TerminalInsertApi>({});
 
   const register = useCallback((next: TerminalInsertApi) => {

@@ -24,7 +24,7 @@ export function ProjectActionsProvider({
   children,
 }: {
   value: ProjectActionsContextValue;
-  children: React.ReactNode;
+  children?: React.ReactNode;
 }) {
   return <ProjectActionsContext.Provider value={value}>{children}</ProjectActionsContext.Provider>;
 }

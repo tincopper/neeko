@@ -30,7 +30,7 @@ vi.mock('@/app/hooks', () => ({
       connectionProjectValue: {} as never,
       editorValue: {} as never,
     },
-    appLayoutProps: {
+    toolbarProps: {
       onAddProject: vi.fn(),
       onAddWsl: vi.fn(),
       onAddRemote: vi.fn(),
@@ -42,7 +42,7 @@ vi.mock('@/app/hooks', () => ({
 }));
 vi.mock('@/layout', () => ({
   TitleBar: () => null,
-  AppLayout: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+  DockLayout: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
   DockRegistryProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
 }));
 vi.mock('@/app/components/AppCenter', () => ({ default: () => <div /> }));

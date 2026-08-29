@@ -1,30 +1,20 @@
 import { SplashScreen } from '@/app/components/SplashScreen';
-import { dockPanelRegistry } from '@/app/dock/registry';
 import { useAppShell, useDockBarButtons } from '@/app/hooks';
-import { QuickOpenPalette } from '@/features/quick-open';
-import { StatusBar } from '@/features/status-bar';
-import { SymbolNavPalette } from '@/features/symbol-nav';
-import { AppLayout, DockRegistryProvider, TitleBar } from '@/layout';
-import { TerminalInsertProvider } from '@/shared/contexts';
-import { useAppViewStore } from '@/shared/store/appViewStore';
 
-import AppModals from './AppModals';
 import AppProviders from './AppProviders';
-import AppCenter from './components/AppCenter';
-import FixedPanelsHost from './panels/FixedPanelsHost';
-import TitleBarActions from './panels/TitleBarActions';
+import AppShell from './shell/AppShell';
 
 /**
- * 组合根：hooks + JSX 编排（AGENTS.md「组合层」）。
+ * 组合根：Provider 装配 + <AppShell/>（AGENTS.md「组合层」）。
  * 应用级副作用（paste 监听、quick-open 跟踪）在 useAppShell 内；
- * 中心视图路由在 AppCenter（单一数据源 appViewStore）；
- * dock 栏按钮装配在 useDockBarButtons；固定面板/TitleBar 入口收敛在
- * src/app/panels/（registry 单一事实源，本文件对面板清单零感知）。本文件只做组装。
+ * 全部 Provider（业务 Context + 终端插入 + dock registry）收口在 AppProviders；
+ * 窗口骨架（TitleBar/工作区/StatusBar）与面板组织收敛在 src/app/shell/ +
+ * src/app/panels/（registry 单一事实源）。本文件只做装配，不做任何布局/面板编排，
+ * 也不持有 store 订阅（中心路由等派生状态由 AppShell 内部读取）。
  */
 function App() {
-  const { initializing, appProvidersProps, appLayoutProps, appModalsProps } = useAppShell();
+  const { initializing, appProvidersProps, toolbarProps, appModalsProps } = useAppShell();
 
-  const appView = useAppViewStore((s) => s.appView);
   const leftButtons = useDockBarButtons('left');
   const rightButtons = useDockBarButtons('right');
 
@@ -33,40 +23,14 @@ function App() {
   }
 
   return (
-    <div
-      className="w-screen h-screen flex flex-col"
-      style={{
-        background: `linear-gradient(to bottom, var(--bg-gradient-start), var(--bg-gradient-end))`,
-      }}
-    >
-      <TitleBar actions={<TitleBarActions />} />
-
-      <AppProviders {...appProvidersProps}>
-        <TerminalInsertProvider>
-          <DockRegistryProvider registry={dockPanelRegistry}>
-            <div className="flex-1 flex flex-col min-h-0 bg-bg-primary">
-              <div className="flex-1 min-h-0 flex flex-col">
-                <AppLayout
-                  {...appLayoutProps}
-                  isSettingsOpen={appView === 'settings'}
-                  leftButtons={leftButtons}
-                  rightButtons={rightButtons}
-                >
-                  <AppCenter />
-                </AppLayout>
-              </div>
-              <FixedPanelsHost />
-            </div>
-            <AppModals {...appModalsProps} />
-            <QuickOpenPalette />
-            <SymbolNavPalette />
-          </DockRegistryProvider>
-        </TerminalInsertProvider>
-        {/* StatusBar 必须渲染在 AppProvider 内：NotificationDetail 经
-            useCopyToClipboard 调用 useAppContext()，在 Provider 外会抛错导致崩溃。 */}
-        <StatusBar />
-      </AppProviders>
-    </div>
+    <AppProviders {...appProvidersProps}>
+      <AppShell
+        toolbarProps={toolbarProps}
+        appModalsProps={appModalsProps}
+        leftButtons={leftButtons}
+        rightButtons={rightButtons}
+      />
+    </AppProviders>
   );
 }
 

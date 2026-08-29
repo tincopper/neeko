@@ -21,7 +21,7 @@ export function FileActionsProvider({
   children,
 }: {
   value: FileActionsContextValue;
-  children: React.ReactNode;
+  children?: React.ReactNode;
 }) {
   return <FileActionsContext.Provider value={value}>{children}</FileActionsContext.Provider>;
 }

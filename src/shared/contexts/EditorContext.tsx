@@ -24,7 +24,7 @@ export function EditorProvider({
   children,
 }: {
   value: EditorContextValue;
-  children: React.ReactNode;
+  children?: React.ReactNode;
 }) {
   return <EditorContext.Provider value={value}>{children}</EditorContext.Provider>;
 }

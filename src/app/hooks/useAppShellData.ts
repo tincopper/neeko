@@ -18,7 +18,6 @@ import {
 import { useSessionBootstrap, useSessionPersistence } from '@/features/session';
 import { useAppConfig } from '@/features/settings';
 import { useApplyProjectSkills } from '@/features/skill';
-import { useAppLayoutProps } from '@/layout/hooks/useAppLayoutProps';
 import { CLOSE_TAB_EVENT } from '@/shared/events';
 import { useKeyboardShortcuts } from '@/shared/hooks/useKeyboardShortcuts';
 import { useNotificationStore } from '@/shared/store/notificationStore';
@@ -26,7 +25,7 @@ import { useProjectStore } from '@/shared/store/projectStore';
 import { useWorktreeStore } from '@/shared/store/worktreeStore';
 import { safeUnlisten } from '@/shared/utils/safeUnlisten';
 
-import type AppLayout from '../../layout/AppLayout';
+import type { ToolbarFooterProps } from '../components/ToolbarFooter';
 
 import { type AppShellData } from './buildAppShellValues';
 import { closeActiveTabCommand } from './closeActiveTabCommand';
@@ -34,12 +33,11 @@ import { useAppEntryAddRefresh } from './useAppEntryAddRefresh';
 import { useAppInitialGitRefresh } from './useAppInitialGitRefresh';
 import { useAppStoreSync } from './useAppStoreSync';
 import { useConfirmExit } from './useConfirmExit';
-
-type AppLayoutProps = React.ComponentProps<typeof AppLayout>;
+import { useToolbarFooterProps } from './useToolbarFooterProps';
 
 export interface UseAppShellDataResult extends AppShellData {
   initializing: boolean;
-  appLayoutProps: AppLayoutProps;
+  toolbarProps: ToolbarFooterProps;
 }
 
 /**
@@ -298,7 +296,7 @@ export function useAppShellData(): UseAppShellDataResult {
 
   const { confirmExitOpen, unsavedFileNames, closeExitDialog, confirmExit } = useConfirmExit();
 
-  const appLayoutProps = useAppLayoutProps({
+  const toolbarProps = useToolbarFooterProps({
     onAddProject: handleAddProject,
     onOpenWslDialog: () => setWslDialogOpen(true),
     onOpenRemoteDialog: () => setRemoteDialogOpen(true),
@@ -378,6 +376,6 @@ export function useAppShellData(): UseAppShellDataResult {
     onCancelExit: closeExitDialog,
     onRemoteAuthCancel: remoteAuthActions.handleRemoteAuthCancel,
     onRemoteAuthSuccess: remoteAuthActions.handleRemoteAuthSuccess,
-    appLayoutProps,
+    toolbarProps,
   };
 }

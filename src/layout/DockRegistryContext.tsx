@@ -19,7 +19,7 @@ const DockRegistryContext = createContext<DockPanelRegistry | null>(null);
 
 export interface DockRegistryProviderProps {
   registry: DockPanelRegistry;
-  children: React.ReactNode;
+  children?: React.ReactNode;
 }
 
 export function DockRegistryProvider({ registry, children }: DockRegistryProviderProps) {
