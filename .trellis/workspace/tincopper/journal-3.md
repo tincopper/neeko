@@ -1124,3 +1124,36 @@ Decomposed 7 God Files (local, parsers, transport, cache, status_worker, git com
 ### Next Steps
 
 - None - task complete
+
+
+## Session 151: Fix CodeMirror posAtCoords crash and LSP probe promise leak
+
+**Date**: 2026-08-29
+**Task**: Fix CodeMirror posAtCoords crash and LSP probe promise leak
+**Branch**: `main`
+
+### Summary
+
+(Add summary)
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `9eaab8ff` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

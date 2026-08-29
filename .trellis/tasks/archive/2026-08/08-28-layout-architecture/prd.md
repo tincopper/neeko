@@ -71,7 +71,7 @@ App (组合根)
 - 本任务与 `08-14-08-15-app-center-routing`（AppShell 收敛）、`08-14-08-15-dock-wrapper-refactor`（useDockZoneResize）承接
 - 依赖风险：react-resizable-panels 嵌套 Group 的全局状态污染（历史 bug 曾致拖拽 handle 失效）—— 新增垂直 Group 时需验证嵌套 Group 交互
 
-## Implemented（2026-08-28，未提交，保留工作区）
+## Implemented（2026-08-28，已提交：c2ef0b0f / 246ae1e4 / 579b19e7 / 86b20b93）
 
 已完成 Step 1 / 2 / 4（消除根因 1「无 AppShell」+ 根因 2 的 registry 归位语义）：
 
