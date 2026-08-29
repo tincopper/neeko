@@ -2,7 +2,7 @@ import React, { useState, useCallback } from 'react';
 
 import { X } from '@/shared/components/icons';
 import { Button, Input } from '@/ui';
-import { ResizablePanel } from '@/ui/ResizablePanel';
+import { OverlayPanel } from '@/ui/OverlayPanel';
 
 import MarkdownEditor from './MarkdownEditor';
 
@@ -77,7 +77,7 @@ const CreateSkillDialog: React.FC<CreateSkillDialogProps> = React.memo(
     }, [onOpenChange]);
 
     return (
-      <ResizablePanel open={open} onClose={handleClose}>
+      <OverlayPanel open={open} onClose={handleClose}>
         {/* Header */}
         <div className="flex items-center justify-between px-4 py-3 border-b border-border">
           <span className="text-sm font-semibold text-text-primary">Create New Skill</span>
@@ -143,7 +143,7 @@ const CreateSkillDialog: React.FC<CreateSkillDialogProps> = React.memo(
             {submitting ? 'Creating...' : 'Create'}
           </Button>
         </div>
-      </ResizablePanel>
+      </OverlayPanel>
     );
   },
 );

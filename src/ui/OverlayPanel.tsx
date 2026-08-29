@@ -3,7 +3,11 @@ import React, { useState, useCallback, useRef, useEffect } from 'react';
 
 import { cn } from '@/lib/utils';
 
-interface ResizablePanelProps {
+/**
+ * 覆盖层可调宽面板（fixed inset-0 + 右缘拖拽 + 可选展开）。
+ * 命名与 ui/Resizable 的分栏 ResizablePanel（react-resizable-panels 封装）区分。
+ */
+interface OverlayPanelProps {
   open: boolean;
   onClose: () => void;
   minWidth?: number;
@@ -20,7 +24,7 @@ const MIN_WIDTH = 400;
 const MAX_WIDTH_RATIO = 0.8;
 const DEFAULT_WIDTH = 672;
 
-export function ResizablePanel({
+export function OverlayPanel({
   open,
   onClose,
   minWidth = MIN_WIDTH,
@@ -31,7 +35,7 @@ export function ResizablePanel({
   className,
   expanded,
   onToggleExpand,
-}: ResizablePanelProps) {
+}: OverlayPanelProps) {
   const [width, setWidth] = useState(defaultWidth);
   const panelRef = useRef<HTMLDivElement>(null);
 

@@ -8,7 +8,7 @@ import {
 } from '@/features/skill/api/skillApi';
 import { cn } from '@/lib/utils';
 import { Button, Input } from '@/ui';
-import { ResizablePanel } from '@/ui/ResizablePanel';
+import { OverlayPanel } from '@/ui/OverlayPanel';
 
 export interface GitSkillOption {
   name: string;
@@ -148,7 +148,7 @@ const GitInstallDialog: React.FC<GitInstallDialogProps> = React.memo(
     if (!open) return null;
 
     return (
-      <ResizablePanel open={open} onClose={() => void handleClose()}>
+      <OverlayPanel open={open} onClose={() => void handleClose()}>
         <div className="flex items-center justify-between px-4 py-3 border-b border-border">
           <div className="flex items-center gap-2">
             <GitBranch className="h-4 w-4 text-text-secondary" />
@@ -311,7 +311,7 @@ const GitInstallDialog: React.FC<GitInstallDialogProps> = React.memo(
             </>
           )}
         </div>
-      </ResizablePanel>
+      </OverlayPanel>
     );
   },
 );

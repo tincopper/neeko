@@ -22,7 +22,7 @@ import { cn } from '@/lib/utils';
 import type { AgentDiskSkill, ManagedSkillDto } from '@/shared/types';
 import { Button, Badge } from '@/ui';
 import { MarkdownPreview } from '@/ui/MarkdownPreview';
-import { ResizablePanel } from '@/ui/ResizablePanel';
+import { OverlayPanel } from '@/ui/OverlayPanel';
 
 interface ViewSkillDialogProps {
   open: boolean;
@@ -130,7 +130,7 @@ const ViewSkillDialog: React.FC<ViewSkillDialogProps> = React.memo(
     const sourceKind = active?.source_type ?? diskSourceType;
 
     return (
-      <ResizablePanel
+      <OverlayPanel
         open={open}
         onClose={handleClose}
         expanded={panelExpanded}
@@ -318,7 +318,7 @@ const ViewSkillDialog: React.FC<ViewSkillDialogProps> = React.memo(
             Close
           </Button>
         </div>
-      </ResizablePanel>
+      </OverlayPanel>
     );
   },
 );

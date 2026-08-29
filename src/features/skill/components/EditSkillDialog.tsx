@@ -4,7 +4,7 @@ import { useSkillStore } from '@/features/skill/store';
 import { X } from '@/shared/components/icons';
 import type { ManagedSkillDto } from '@/shared/types';
 import { Button, Input } from '@/ui';
-import { ResizablePanel } from '@/ui/ResizablePanel';
+import { OverlayPanel } from '@/ui/OverlayPanel';
 
 import MarkdownEditor from './MarkdownEditor';
 
@@ -73,7 +73,7 @@ const EditSkillDialog: React.FC<EditSkillDialogProps> = React.memo(
     }, [onClose]);
 
     return (
-      <ResizablePanel open={open} onClose={handleClose}>
+      <OverlayPanel open={open} onClose={handleClose}>
         {/* Header */}
         <div className="flex items-center justify-between px-4 py-3 border-b border-border">
           <span className="text-sm font-semibold text-text-primary">Edit Skill</span>
@@ -138,7 +138,7 @@ const EditSkillDialog: React.FC<EditSkillDialogProps> = React.memo(
             {submitting ? 'Saving...' : 'Save'}
           </Button>
         </div>
-      </ResizablePanel>
+      </OverlayPanel>
     );
   },
 );
