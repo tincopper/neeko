@@ -166,10 +166,9 @@ export function useLspHoverExtension(
 
         timerState.current = setTimeout(() => {
           timerState.current = null;
-          const rect = view.dom.getBoundingClientRect();
-          const x = event.clientX - rect.left;
-          const y = event.clientY - rect.top;
-          const pos = view.posAtCoords({ x, y });
+          // posAtCoords 期望 client 坐标（内部直接与 getClientRects 比较），
+          // 不能减去 rect.left/top 换成 view 相对坐标。
+          const pos = view.posAtCoords({ x: event.clientX, y: event.clientY });
           if (pos === null) return;
 
           const lineObj = view.state.doc.lineAt(pos);

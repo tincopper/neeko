@@ -74,6 +74,38 @@ describe('createDebouncedLatestRunner', () => {
     expect(calls).toEqual([3]);
   });
 
+  // 回归测试：work 抛错时 schedule 的 promise 必须降级 resolve(null)，
+  // 而不是泄漏 unhandled rejection 并让外层 promise 永远 pending
+  //（真实场景：CodeMirror posAtCoords 在编辑器被隐藏时抛 TypeError，
+  // 见 ~/.neeko/neeko.log 2026-08-29 "d.top" 报错）。
+  it('should_resolve_null_when_work_rejects_instead_of_leaking_rejection', async () => {
+    const runner = createDebouncedLatestRunner<number>({ debounceMs: 100 });
+
+    const p = runner.schedule(1, async () => {
+      throw new Error('posAtCoords crash');
+    });
+
+    await vi.advanceTimersByTimeAsync(100);
+
+    await expect(p).resolves.toBeNull();
+  }, 2000);
+
+  it('should_keep_runner_usable_after_a_failing_work', async () => {
+    const runner = createDebouncedLatestRunner<number>({ debounceMs: 100 });
+
+    const failing = runner.schedule(1, async () => {
+      throw new Error('boom');
+    });
+
+    await vi.advanceTimersByTimeAsync(100);
+    await expect(failing).resolves.toBeNull();
+
+    const next = runner.schedule(2, async (v) => v);
+    await vi.advanceTimersByTimeAsync(100);
+
+    await expect(next).resolves.toBe(2);
+  }, 2000);
+
   it('should_cancel_pending_debounce_on_cancel', async () => {
     const calls: number[] = [];
     const runner = createDebouncedLatestRunner<number>({ debounceMs: 100 });

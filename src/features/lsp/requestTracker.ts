@@ -79,7 +79,10 @@ export function createDebouncedLatestRunner<TArg>(options: DebouncedLatestRunner
             return;
           }
 
-          void tracker.runIfCurrent(token, () => work(arg)).then(resolve);
+          // work 抛错（如编辑器隐藏时 posAtCoords 崩溃）必须降级为 null：
+          // 与「superseded」同语义，且只挂 fulfillment handler 会让 rejection
+          // 泄漏为 unhandledrejection、外层 promise 永远 pending。
+          void tracker.runIfCurrent(token, () => work(arg)).then(resolve, () => resolve(null));
         }, debounceMs);
       });
     },
