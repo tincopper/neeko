@@ -1157,3 +1157,36 @@ Decomposed 7 God Files (local, parsers, transport, cache, status_worker, git com
 ### Next Steps
 
 - None - task complete
+
+
+## Session 152: Archive layout & dock refactor tasks (08-28 / 08-14-08-15 x2)
+
+**Date**: 2026-08-29
+**Task**: Archive layout & dock refactor tasks (08-28 / 08-14-08-15 x2)
+**Branch**: `main`
+
+### Summary
+
+Verified completion of 08-28-layout-architecture (Step 1/2/4 done, Step 3 consciously trimmed to follow-up), 08-14-08-15-app-center-routing and 08-14-08-15-dock-wrapper-refactor (both closed out with green gates and spec sync). Fixed outdated 'uncommitted' wording in layout PRD, then archived all three to archive/2026-08/ via task.py. Also this session: fixed the d.top frontend error (CodeMirror 6.43.9 upgrade + requestTracker rejection handler + hover client coords) committed as 9eaab8ff.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `9eaab8ff` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

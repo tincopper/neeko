@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-3.md`
-- **Total Sessions**: 151
+- **Total Sessions**: 152
 - **Last Active**: 2026-08-29
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-3.md` | ~1159 | Active |
+| `journal-3.md` | ~1192 | Active |
 | `journal-2.md` | ~1991 | Archived |
 | `journal-1.md` | ~1986 | Archived |
 <!-- @@@/auto:active-documents -->
@@ -31,6 +31,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 152 | 2026-08-29 | Archive layout & dock refactor tasks (08-28 / 08-14-08-15 x2) | `9eaab8ff` | `main` |
 | 151 | 2026-08-29 | Fix CodeMirror posAtCoords crash and LSP probe promise leak | `9eaab8ff` | `main` |
 | 150 | 2026-08-28 | Git domain large files decomposition | `f49b34ea`, `a166c92b`, `ca7fa0cf`, `7d2502d6` | `main` |
 | 149 | 2026-08-28 | 08-27 file-tree-git-decoration: 修复审计 Warning/Nit（W1/W2/N1/N2/N3/N5/N6） | - | `main` |
