@@ -14,6 +14,12 @@ import { useGitStatusEventsSync } from '../../git/hooks/useGitStatusEventsSync';
 import { listProjects } from '../../project/api/projectApi';
 import { loadSession } from '../api/sessionApi';
 
+/**
+ * 初始化硬超时：任何 bootstrap 环节挂起（IPC 卡死、promise 永不 settle）时，
+ * 超时强制退出 splash——应用骨架可用性优先于完整恢复。
+ */
+const BOOTSTRAP_HARD_TIMEOUT_MS = 10_000;
+
 export function useSessionBootstrap(deps: {
   loadProjects: () => Promise<void>;
   restoreWorktreeState: (worktreeState: Record<string, string>) => void;
@@ -28,6 +34,9 @@ export function useSessionBootstrap(deps: {
   useGitStatusEventsSync();
 
   useEffect(() => {
+    // 超时兜底：无论初始化链路结局如何，splash 必须退出
+    const hardTimeout = setTimeout(() => setInitializing(false), BOOTSTRAP_HARD_TIMEOUT_MS);
+
     loadProjects().then(async () => {
       try {
         const projects = await listProjects();
@@ -206,7 +215,15 @@ export function useSessionBootstrap(deps: {
 
         setInitializing(false);
       })
-      .catch(console.error);
+      .catch((err) => {
+        // load_session 失败（纯浏览器环境 / session 文件损坏 / IPC 错误）：
+        // 必须同样退出 splash，否则 initializing 永远为 true（splash 永挂）
+        console.error('[Bootstrap] load_session failed:', err);
+        reportFrontendError('session.loadSession', err);
+        setInitializing(false);
+      });
+
+    return () => clearTimeout(hardTimeout);
   }, [loadProjects, restoreWorktreeState]);
 
   return { initialSidebarWidth, initializing };

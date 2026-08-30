@@ -182,3 +182,51 @@ describe('useSessionBootstrap — 启动恢复 session 激活 worktree', () => {
     expect(useWorktreeStore.getState().worktreeStateMap['p1']?.activePath).toBeUndefined();
   });
 });
+
+describe('useSessionBootstrap — 初始化兜底（splash 退出保证）', () => {
+  function setupCaptureInitializing() {
+    let initializing: boolean | undefined;
+    useProjectStore.setState({
+      projects: [{ id: 'p1', name: 'P1', path: '/repo/p1', git_info: null } as never],
+      activeProjectId: 'p1',
+      activeProject: null,
+    });
+    useWorktreeStore.setState({
+      activeWorktreePath: null,
+      activeWorktreeBranch: '',
+      openedWorktrees: [],
+      worktreeStateMap: {},
+    });
+    renderHook(() => {
+      const r = useSessionBootstrap({
+        loadProjects: () => Promise.resolve(),
+        restoreWorktreeState: () => {},
+      });
+      initializing = r.initializing;
+    });
+    return () => initializing;
+  }
+
+  it('loadSession 失败也要退出 splash（否则纯浏览器/损坏 session 永久卡死）', async () => {
+    mockLoadSession.mockRejectedValue(new Error('load_session unavailable'));
+    const getInitializing = setupCaptureInitializing();
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+
+    expect(getInitializing()).toBe(false);
+  });
+
+  it('初始化挂起时超时兜底退出 splash', async () => {
+    // 永不 settle 的 loadSession
+    mockLoadSession.mockImplementation(() => new Promise(() => {}));
+    const getInitializing = setupCaptureInitializing();
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(10_000);
+    });
+
+    expect(getInitializing()).toBe(false);
+  });
+});
