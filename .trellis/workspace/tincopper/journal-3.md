@@ -1323,3 +1323,36 @@ Collapsed three overlapping file-read implementations into common/file/reader.rs
 ### Next Steps
 
 - None - task complete
+
+
+## Session 157: Archive file-reader-unification (AccessScope core, WSL/SSH preauth parity)
+
+**Date**: 2026-08-30
+**Task**: Archive file-reader-unification (AccessScope core, WSL/SSH preauth parity)
+**Branch**: `main`
+
+### Summary
+
+Archived 08-30-file-reader-unification: single read_file core (FileAccessScope InProject/Trusted + ExecTarget channel + guards) replacing three overlapping implementations; WSL/SSH out-of-root preauth reads via shell channel (local-only special case removed); frontend preauth fallback unconditional with whitelist as authoritative decision. Reader 9 + lsp 82 Rust tests, clippy clean, 296 files / 2359 passed. Leftovers: remote InProject realpath check, read-only tab badge.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `31a7d1d2` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
