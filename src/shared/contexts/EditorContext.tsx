@@ -1,13 +1,13 @@
 import React, { createContext, useContext } from 'react';
 
-import type { AgentConfig, TerminalTab } from '@/shared/types';
+import type { EditorGroupId, AgentConfig, TerminalTab } from '@/shared/types';
 
 export interface EditorContextValue {
   tabs: TerminalTab[];
   activeTabId: string | null;
   onActivateTab: (tabId: string) => void;
   onCloseTab: (tabId: string) => void;
-  onAddTab: () => void;
+  onAddTab: (targetGroup?: EditorGroupId | 'pinned') => void;
   onTabStatusChange?: (tabId: string, status: 'Idle' | 'Running' | 'Failed') => void;
   agents: AgentConfig[];
   compactMode: boolean;

@@ -7,9 +7,10 @@ vi.mock('@/features/terminal', () => ({
   closeEditorTab: vi.fn(),
 }));
 
+import type { ActionRegistryItem } from '@/features/action-menu/types/actionMenu';
 import { closeEditorTab } from '@/features/terminal';
 import { useEditorStore } from '@/shared/store/editorStore';
-import type { FileTabData, Tab } from '@/shared/types';
+import type { AgentConfig, FileTabData, Tab } from '@/shared/types';
 
 import { usePaneActions } from '../usePaneActions';
 
@@ -179,7 +180,9 @@ describe('usePaneActions', () => {
     const { result } = renderHook(() => usePaneActions(defaultParams));
 
     act(() => {
-      result.current.handleActionMenuExecute({ id: 'new-terminal' } as never);
+      result.current.handleActionMenuExecute({
+        id: 'new-terminal',
+      } as unknown as ActionRegistryItem);
     });
 
     expect(defaultParams.onAddTerminalTab).toHaveBeenCalled();
@@ -189,7 +192,7 @@ describe('usePaneActions', () => {
     const { result } = renderHook(() => usePaneActions(defaultParams));
 
     act(() => {
-      result.current.handleActionMenuExecute({ id: 'new-file' } as never);
+      result.current.handleActionMenuExecute({ id: 'new-file' } as unknown as ActionRegistryItem);
     });
 
     const s = useEditorStore.getState();
@@ -227,7 +230,9 @@ describe('usePaneActions', () => {
     const { result } = renderHook(() => usePaneActions(defaultParams));
 
     act(() => {
-      result.current.handleActionMenuExecute({ id: 'new-browser' } as never);
+      result.current.handleActionMenuExecute({
+        id: 'new-browser',
+      } as unknown as ActionRegistryItem);
     });
 
     const s = useEditorStore.getState();
@@ -242,9 +247,75 @@ describe('usePaneActions', () => {
     const { result } = renderHook(() => usePaneActions(params));
 
     act(() => {
-      result.current.handleActionMenuExecute({ id: 'new-browser' } as never);
+      result.current.handleActionMenuExecute({
+        id: 'new-browser',
+      } as unknown as ActionRegistryItem);
     });
 
     expect(useEditorStore.getState().tabs['p1']).toBeUndefined();
+  });
+});
+
+describe('usePaneActions — pinned pane 内创建跟随落组', () => {
+  function setup(groupId: 'pinned') {
+    const onAddTerminalTab = vi.fn();
+    const params = {
+      tabKey: 'p1',
+      groupId,
+      tabs: [makeFileTab('tab1')],
+      projectIdForCheck: 'p1',
+      agents: [
+        { id: 'opencode', name: 'OpenCode', enabled: true, command: 'opencode' },
+      ] as unknown as AgentConfig[],
+      onAddTerminalTab,
+      onActionMenuClose: vi.fn(),
+    };
+    return { params, onAddTerminalTab };
+  }
+
+  beforeEach(() => {
+    useEditorStore.setState({ tabs: {}, editorLayout: {}, activeTabId: null });
+  });
+
+  it('new-agent-chat → 落 pinned 组（pinnedTabIds 追加）', () => {
+    const { params } = setup('pinned');
+    const { result } = renderHook(() => usePaneActions(params));
+
+    act(() => {
+      result.current.handleActionMenuExecute({
+        id: 'new-agent-chat',
+      } as unknown as ActionRegistryItem);
+    });
+
+    const layout = useEditorStore.getState().editorLayout['p1'];
+    expect(layout?.pinnedTabIds).toHaveLength(1);
+    expect(layout?.groups.left.tabIds).toEqual([]);
+  });
+
+  it('new-browser → 落 pinned 组', () => {
+    const { params } = setup('pinned');
+    const { result } = renderHook(() => usePaneActions(params));
+
+    act(() => {
+      result.current.handleActionMenuExecute({
+        id: 'new-browser',
+      } as unknown as ActionRegistryItem);
+    });
+
+    const layout = useEditorStore.getState().editorLayout['p1'];
+    expect(layout?.pinnedTabIds).toHaveLength(1);
+  });
+
+  it("new-terminal → onAddTerminalTab 收到 'pinned'", () => {
+    const { params, onAddTerminalTab } = setup('pinned');
+    const { result } = renderHook(() => usePaneActions(params));
+
+    act(() => {
+      result.current.handleActionMenuExecute({
+        id: 'new-terminal',
+      } as unknown as ActionRegistryItem);
+    });
+
+    expect(onAddTerminalTab).toHaveBeenCalledWith('pinned');
   });
 });

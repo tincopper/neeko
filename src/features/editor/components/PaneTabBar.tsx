@@ -16,9 +16,8 @@ interface PaneTabBarProps {
   pinnedTabIds: string[];
   onActivateTab: (tabId: string) => void;
   onCloseTab: (tabId: string) => void;
-  onAddTerminalTab?: () => void;
+  onAddTerminalTab?: (targetGroup?: EditorGroupId | 'pinned') => void;
   onNewFileTab: () => void;
-  onReorderTab: (tabId: string, overId: string) => void;
   onTabContextMenu: (tabId: string, e: React.MouseEvent) => void;
   onActionMenuOpen: (rect: DOMRect) => void;
   agents: AgentConfig[];
@@ -55,7 +54,6 @@ function PaneTabBar({
   onCloseTab,
   onAddTerminalTab,
   onNewFileTab,
-  onReorderTab,
   onTabContextMenu,
   onActionMenuOpen,
   agents,
@@ -86,13 +84,13 @@ function PaneTabBar({
             pinnedTabIds={pinnedTabIds}
             onActivateTab={onActivateTab}
             onCloseTab={onCloseTab}
-            onAddTerminalTab={onAddTerminalTab}
+            onAddTerminalTab={() => onAddTerminalTab?.(groupId)}
             onActionMenuOpen={onActionMenuOpen}
             onContextMenu={onTabContextMenu}
             onNewFileTab={onNewFileTab}
-            reorderable={groupId !== 'pinned'}
-            onReorderTab={onReorderTab}
-            externalDnd={groupId !== 'pinned'}
+            // pinned 面板同样可发起拖拽（拖出 = unpin 移动）；pinned 内部
+            // 排序由 resolveDropAction 判 none 拒绝，视觉上弹回原位。
+            reorderable
             agents={agents}
             renderTabLeading={renderTabLeading}
           />

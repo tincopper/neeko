@@ -17,7 +17,8 @@ interface UsePaneActionsParams {
   tabs: Tab[];
   projectIdForCheck: string | null;
   agents: AgentConfig[];
-  onAddTerminalTab?: () => void;
+  /** 新建终端 tab；targetGroup 由发起 pane 决定（pinned pane 内创建落 pinned）。 */
+  onAddTerminalTab?: (targetGroup?: EditorGroupId | 'pinned') => void;
   onActionMenuClose: () => void;
   /**
    * 未保存关闭确认回调：返回用户的选择。
@@ -73,19 +74,12 @@ export function usePaneActions({
     [tabKey, groupId, tabs, onRequestCloseTab, onSaveTab],
   );
 
-  const handleReorderTab = useCallback(
-    (tabId: string, overId: string) => {
-      if (groupId === 'pinned') return;
-      useEditorStore.getState().reorderTab(tabKey, groupId, tabId, overId);
-    },
-    [tabKey, groupId],
-  );
-
   const handleActionMenuExecute = useCallback(
     (item: ActionRegistryItem) => {
       switch (item.id) {
         case 'new-terminal':
-          onAddTerminalTab?.();
+          // 新建 tab 落组跟随发起 pane（pinned pane 内创建落 pinned）
+          onAddTerminalTab?.(groupId);
           break;
         case 'open-file':
           useQuickOpenStore.getState().openPalette('gotoFile');
@@ -96,17 +90,22 @@ export function usePaneActions({
         case 'new-agent-chat': {
           if (projectIdForCheck) {
             const tabId = `tab_${crypto.randomUUID()}`;
-            useEditorStore.getState().addTab(tabKey, {
-              id: tabId,
-              projectId: projectIdForCheck,
-              title: 'Agent Chat',
-              order: tabs.length,
-              data: {
-                kind: 'agent-chat' as const,
-                agentId: undefined,
-                sessionId: undefined,
+            // 新建 tab 落组跟随发起 pane（pinned pane 内创建落 pinned）
+            useEditorStore.getState().addTab(
+              tabKey,
+              {
+                id: tabId,
+                projectId: projectIdForCheck,
+                title: 'Agent Chat',
+                order: tabs.length,
+                data: {
+                  kind: 'agent-chat' as const,
+                  agentId: undefined,
+                  sessionId: undefined,
+                },
               },
-            });
+              groupId,
+            );
             useEditorStore.getState().activateTab(tabKey, tabId);
           }
           break;
@@ -114,23 +113,27 @@ export function usePaneActions({
         case 'new-browser': {
           if (projectIdForCheck) {
             const tabId = `tab_${crypto.randomUUID()}`;
-            useEditorStore.getState().addTab(tabKey, {
-              id: tabId,
-              projectId: projectIdForCheck,
-              title: 'Browser',
-              order: tabs.length,
-              data: {
-                kind: 'browser' as const,
-                url: '',
+            useEditorStore.getState().addTab(
+              tabKey,
+              {
+                id: tabId,
+                projectId: projectIdForCheck,
+                title: 'Browser',
+                order: tabs.length,
+                data: {
+                  kind: 'browser' as const,
+                  url: '',
+                },
               },
-            });
+              groupId,
+            );
             useEditorStore.getState().activateTab(tabKey, tabId);
           }
           break;
         }
         case 'new-file': {
           if (projectIdForCheck) {
-            createUntitledFileTab(tabKey, projectIdForCheck);
+            createUntitledFileTab(tabKey, projectIdForCheck, groupId);
           }
           break;
         }
@@ -148,35 +151,39 @@ export function usePaneActions({
         }
       }
     },
-    [onAddTerminalTab, projectIdForCheck, tabKey, tabs.length],
+    [groupId, onAddTerminalTab, projectIdForCheck, tabKey, tabs.length],
   );
 
   const handleActionMenuAgentTerminal = useCallback(
     (agentId: string, agentName: string) => {
       if (!projectIdForCheck) return;
       const tabId = `tab_${crypto.randomUUID()}`;
-      useEditorStore.getState().addTab(tabKey, {
-        id: tabId,
-        projectId: projectIdForCheck,
-        title: agentName,
-        order: tabs.length,
-        data: {
-          kind: 'terminal' as const,
-          agentId,
-          status: 'Idle' as const,
+      useEditorStore.getState().addTab(
+        tabKey,
+        {
+          id: tabId,
+          projectId: projectIdForCheck,
+          title: agentName,
+          order: tabs.length,
+          data: {
+            kind: 'terminal' as const,
+            agentId,
+            status: 'Idle' as const,
+          },
         },
-      });
+        groupId,
+      );
       useEditorStore.getState().activateTab(tabKey, tabId);
     },
-    [tabKey, projectIdForCheck, tabs.length],
+    [groupId, tabKey, projectIdForCheck, tabs.length],
   );
 
   // 双击 tab 栏空白区域快速新建文件
   const handleNewFileTab = useCallback(() => {
     if (projectIdForCheck) {
-      createUntitledFileTab(tabKey, projectIdForCheck);
+      createUntitledFileTab(tabKey, projectIdForCheck, groupId);
     }
-  }, [tabKey, projectIdForCheck]);
+  }, [groupId, tabKey, projectIdForCheck]);
 
   const actionMenuCtx: ActionContext = useMemo(
     () => ({
@@ -197,7 +204,6 @@ export function usePaneActions({
   return {
     handleActivateTab,
     handleCloseTab,
-    handleReorderTab,
     handleActionMenuExecute,
     handleActionMenuAgentTerminal,
     handleNewFileTab,

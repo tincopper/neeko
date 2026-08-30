@@ -1,12 +1,16 @@
 import { useEditorStore } from '@/shared/store/editorStore';
-import type { Tab } from '@/shared/types';
+import type { EditorGroupId, Tab } from '@/shared/types';
 
 /**
  * Create and activate an untitled file tab for the given project tab key.
  * Centralises the logic that was duplicated in ProjectWorkspace and
- * EditorGroupPane.
+ * EditorGroupPane. `targetGroup` 指定落组（缺省走 addTab 既有落组逻辑）。
  */
-export function createUntitledFileTab(tabKey: string, projectId: string): void {
+export function createUntitledFileTab(
+  tabKey: string,
+  projectId: string,
+  targetGroup?: EditorGroupId | 'pinned',
+): void {
   const store = useEditorStore.getState();
   const projTabs = store.tabs[tabKey]?.tabs ?? [];
   const untitledCount = projTabs.filter((t) => t.data.kind === 'file' && t.data.isUntitled).length;
@@ -31,6 +35,6 @@ export function createUntitledFileTab(tabKey: string, projectId: string): void {
     },
   };
 
-  store.addTab(tabKey, tab);
+  store.addTab(tabKey, tab, targetGroup);
   store.activateTab(tabKey, tabId);
 }

@@ -1,12 +1,11 @@
-import { DndContext } from '@dnd-kit/core';
 import React, { useCallback, useEffect, useMemo, useRef } from 'react';
 
 import type { AuthMethod } from '@/shared/types';
 import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from '@/ui/Resizable';
 
-import { useEditorDnd } from '../hooks/useEditorDnd';
 import { useEditorGroupLayout } from '../hooks/useEditorGroupLayout';
 
+import EditorDndShell from './EditorDndShell';
 import EditorGroupPane from './EditorGroupPane';
 
 interface EditorGroupLayoutProps {
@@ -52,15 +51,6 @@ function EditorGroupLayout({
   const pinnedPanelId = `pinned-${tabKey}`;
   const leftPanelId = `left-${tabKey}`;
   const rightPanelId = `right-${tabKey}`;
-
-  // ── 共享 DndContext（multi-container 模式）──
-  // sensors / pinned droppable id / 碰撞检测 / dragEnd 分发收敛在
-  // useEditorDnd hook 内，组件保持薄；判定纯逻辑在 dragDrop.ts 可独立单测。
-  const { sensors, collisionDetection, handleDragEnd } = useEditorDnd({
-    tabKey,
-    leftTabs,
-    rightTabs,
-  });
 
   // ── defaultLayout: computed via useMemo, never mutated ──
   const hasPinned = pinnedTabs.length > 0;
@@ -174,7 +164,7 @@ function EditorGroupLayout({
     content = (
       <EditorGroupPane
         tabKey={tabKey}
-        onAddTerminalTab={undefined}
+        onAddTerminalTab={onAddTerminalTab}
         remoteProject={remoteProject}
         groupId="pinned"
         onFocusGroup={() => {}}
@@ -199,7 +189,7 @@ function EditorGroupLayout({
               <div className="flex-1 flex flex-col overflow-hidden min-w-0 rounded-lg shadow-sm bg-bg-secondary">
                 <EditorGroupPane
                   tabKey={tabKey}
-                  onAddTerminalTab={undefined}
+                  onAddTerminalTab={onAddTerminalTab}
                   remoteProject={remoteProject}
                   groupId="pinned"
                   onFocusGroup={() => {}}
@@ -259,11 +249,18 @@ function EditorGroupLayout({
     );
   }
 
-  // 共享 DndContext 包裹所有面板：left/right/pinned 在同一碰撞检测体系内。
+  // 共享 DndContext 装配壳：拖拽事件 / DragOverlay / 动态 pin zone 收敛在
+  // EditorDndShell，本组件只保留布局骨架。
   return (
-    <DndContext sensors={sensors} collisionDetection={collisionDetection} onDragEnd={handleDragEnd}>
+    <EditorDndShell
+      tabKey={tabKey}
+      leftTabs={leftTabs}
+      rightTabs={rightTabs}
+      pinnedTabs={pinnedTabs}
+      hasPinned={hasPinned}
+    >
       {content}
-    </DndContext>
+    </EditorDndShell>
   );
 }
 

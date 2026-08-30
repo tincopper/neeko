@@ -1,12 +1,3 @@
-import {
-  DndContext,
-  closestCenter,
-  PointerSensor,
-  KeyboardSensor,
-  useSensor,
-  useSensors,
-  type DragEndEvent,
-} from '@dnd-kit/core';
 import { SortableContext, horizontalListSortingStrategy } from '@dnd-kit/sortable';
 import React, { useCallback, useRef, useMemo } from 'react';
 
@@ -34,14 +25,8 @@ interface TabBarProps {
   onCloseAllTabs?: () => void;
   /** 双击 tab 栏空白区域快速新建文件 */
   onNewFileTab?: () => void;
-  /** 启用拖拽排序 */
+  /** 启用拖拽排序（运行在 EditorGroupLayout 的共享 DndContext 内） */
   reorderable?: boolean;
-  onReorderTab?: (tabId: string, overId: string) => void;
-  /**
-   * 外部已提供共享 DndContext（跨面板拖拽场景）。为 true 时 TabBar 不自建
-   * DndContext，仅渲染 SortableContext，依赖编辑布局层的共享 DndContext。
-   */
-  externalDnd?: boolean;
   // Agent Bar 相关（仅终端 tab 时显示）
   agents?: AgentConfig[];
   showAgentBar?: boolean;
@@ -94,8 +79,6 @@ const TabBar: React.FC<TabBarProps> = React.memo(
     onContextMenu,
     onNewFileTab,
     reorderable = false,
-    onReorderTab,
-    externalDnd = false,
     agents = [],
     showAgentBar = false,
     onAgentClick,
@@ -104,21 +87,6 @@ const TabBar: React.FC<TabBarProps> = React.memo(
     renderTabLeading,
   }) => {
     const scrollRef = useRef<HTMLDivElement>(null);
-
-    const sensors = useSensors(
-      useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
-      useSensor(KeyboardSensor),
-    );
-
-    const handleDragEnd = useCallback(
-      (event: DragEndEvent) => {
-        const { active, over } = event;
-        if (over && active.id !== over.id) {
-          onReorderTab?.(String(active.id), String(over.id));
-        }
-      },
-      [onReorderTab],
-    );
 
     // 鼠标滚轮横向滚动
     const handleWheel = useCallback((e: React.WheelEvent) => {
@@ -160,8 +128,12 @@ const TabBar: React.FC<TabBarProps> = React.memo(
     if (tabs.length === 0) return null;
 
     const renderTabs = () => {
-      if (reorderable && tabs.length > 1) {
-        const sortableContent = (
+      // 不设 tabs.length 下限：单 tab 面板也要可发起跨面板拖拽
+      //（left 单 tab → pinned、pinned 最后一个 tab 拖出 unpin）。
+      if (reorderable) {
+        // 可排序分支必须运行在 EditorGroupLayout 的共享 DndContext 内
+        //（跨面板碰撞检测）；TabBar 自身不自建 DndContext。
+        return (
           <SortableContext items={tabItems} strategy={horizontalListSortingStrategy}>
             {tabs.map((tab) => (
               <TabItem
@@ -177,21 +149,6 @@ const TabBar: React.FC<TabBarProps> = React.memo(
               />
             ))}
           </SortableContext>
-        );
-
-        // 外部共享 DndContext 场景：不自建，直接渲染 SortableContext。
-        if (externalDnd) {
-          return sortableContent;
-        }
-
-        return (
-          <DndContext
-            sensors={sensors}
-            collisionDetection={closestCenter}
-            onDragEnd={handleDragEnd}
-          >
-            {sortableContent}
-          </DndContext>
         );
       }
 

@@ -3,13 +3,12 @@ import React, { useCallback, useMemo } from 'react';
 
 import { getActionMenuItems } from '@/features/action-menu';
 import { ContextMenu } from '@/features/project';
-import { cn } from '@/lib/utils';
 import { useEditorContext, EditorProvider } from '@/shared/contexts';
 import { useAppContext } from '@/shared/contexts/AppContext';
 import type { AuthMethod, EditorGroupId } from '@/shared/types';
 import type { Tab } from '@/shared/types/tab';
 
-import { PINNED_DROP_PREFIX } from '../dragDrop';
+import { PINNED_DROP_PREFIX, editorPaneRegionClass } from '../dragDrop';
 import { useFileActionsContext } from '../FileActionsContext';
 import { useActionMenu } from '../hooks/useActionMenu';
 import { useBulkCloseConfirmation } from '../hooks/useBulkCloseConfirmation';
@@ -42,7 +41,7 @@ interface EditorGroupPaneProps {
   groupId: EditorGroupId | 'pinned';
   /** Composite tab key — used by the pane to lookup layout & store state */
   tabKey: string;
-  onAddTerminalTab?: () => void;
+  onAddTerminalTab?: (targetGroup?: EditorGroupId | 'pinned') => void;
   onFocusGroup: () => void;
   remoteProject?: {
     entryId: string;
@@ -106,7 +105,7 @@ function EditorGroupPane({
 
   // pinned 面板作为跨面板拖拽的 drop target：droppable id 按 groupId 唯一，
   // 避免 left/right 的 disabled 注册覆盖 pinned 的启用注册。
-  const { setNodeRef: setPinnedPanelDropRef } = useDroppable({
+  const { setNodeRef: setPinnedPanelDropRef, isOver: isOverPinnedDrop } = useDroppable({
     id: `${PINNED_DROP_PREFIX}:${tabKey}:${groupId}`,
     disabled: groupId !== 'pinned',
   });
@@ -124,7 +123,6 @@ function EditorGroupPane({
   const {
     handleActivateTab,
     handleCloseTab,
-    handleReorderTab,
     handleActionMenuExecute,
     handleActionMenuAgentTerminal,
     handleNewFileTab,
@@ -206,10 +204,11 @@ function EditorGroupPane({
         role="region"
         tabIndex={-1}
         ref={groupId === 'pinned' ? setPinnedPanelDropRef : undefined}
-        className={cn(
-          'flex-1 flex flex-col overflow-hidden min-h-0',
-          activeGroupId === groupId ? 'ring-1 ring-[var(--border-color)]/30' : '',
-        )}
+        className={editorPaneRegionClass({
+          groupId,
+          activeGroupId,
+          isOverDropTarget: isOverPinnedDrop,
+        })}
         onClick={onFocusGroup}
         onKeyDown={(e) => handlePaneKeyDown(e, onFocusGroup)}
       >
@@ -224,7 +223,6 @@ function EditorGroupPane({
             onCloseTab={handleCloseTab}
             onAddTerminalTab={onAddTerminalTab}
             onNewFileTab={handleNewFileTab}
-            onReorderTab={handleReorderTab}
             onTabContextMenu={handleTabContextMenu}
             onActionMenuOpen={openActionMenu}
             onActionMenuClose={closeActionMenu}

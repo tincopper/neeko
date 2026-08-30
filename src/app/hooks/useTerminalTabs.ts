@@ -1,7 +1,7 @@
 import { useCallback } from 'react';
 
 import { useEditorStore } from '@/shared/store/editorStore';
-import type { AgentConfig, Tab } from '@/shared/types';
+import type { AgentConfig, EditorGroupId, Tab } from '@/shared/types';
 
 const MAX_TERMINAL_TABS = 10;
 
@@ -13,35 +13,38 @@ export function useTerminalTabs(
   tabKey: string | null,
   projectId: string | null,
 ): {
-  handleAddTerminalTab: () => void;
-  handleAddAgentTab: (agent: AgentConfig) => void;
+  handleAddTerminalTab: (targetGroup?: EditorGroupId | 'pinned') => void;
+  handleAddAgentTab: (agent: AgentConfig, targetGroup?: EditorGroupId | 'pinned') => void;
 } {
-  const handleAddTerminalTab = useCallback(() => {
-    if (!tabKey || !projectId) return;
-    const existingTabs = useEditorStore.getState().tabs[tabKey];
-    const terminalCount = (existingTabs?.tabs ?? []).filter(
-      (t) => t.data.kind === 'terminal',
-    ).length;
-    if (terminalCount >= MAX_TERMINAL_TABS) return;
+  const handleAddTerminalTab = useCallback(
+    (targetGroup?: EditorGroupId | 'pinned') => {
+      if (!tabKey || !projectId) return;
+      const existingTabs = useEditorStore.getState().tabs[tabKey];
+      const terminalCount = (existingTabs?.tabs ?? []).filter(
+        (t) => t.data.kind === 'terminal',
+      ).length;
+      if (terminalCount >= MAX_TERMINAL_TABS) return;
 
-    const tabId = `tab_${crypto.randomUUID()}`;
-    const tab: Tab = {
-      id: tabId,
-      projectId,
-      title: `Terminal ${terminalCount + 1}`,
-      order: existingTabs?.tabs.length ?? 0,
-      data: {
-        kind: 'terminal',
-        agentId: null,
-        status: 'Idle',
-      },
-    };
-    useEditorStore.getState().addTab(tabKey, tab);
-    useEditorStore.getState().activateTab(tabKey, tabId);
-  }, [tabKey, projectId]);
+      const tabId = `tab_${crypto.randomUUID()}`;
+      const tab: Tab = {
+        id: tabId,
+        projectId,
+        title: `Terminal ${terminalCount + 1}`,
+        order: existingTabs?.tabs.length ?? 0,
+        data: {
+          kind: 'terminal',
+          agentId: null,
+          status: 'Idle',
+        },
+      };
+      useEditorStore.getState().addTab(tabKey, tab, targetGroup);
+      useEditorStore.getState().activateTab(tabKey, tabId);
+    },
+    [tabKey, projectId],
+  );
 
   const handleAddAgentTab = useCallback(
-    (agent: AgentConfig) => {
+    (agent: AgentConfig, targetGroup?: EditorGroupId | 'pinned') => {
       if (!tabKey || !projectId) return;
       const tabId = `tab_${crypto.randomUUID()}`;
       const tab: Tab = {
@@ -55,7 +58,7 @@ export function useTerminalTabs(
           status: 'Idle',
         },
       };
-      useEditorStore.getState().addTab(tabKey, tab);
+      useEditorStore.getState().addTab(tabKey, tab, targetGroup);
       useEditorStore.getState().activateTab(tabKey, tabId);
     },
     [tabKey, projectId],

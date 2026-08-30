@@ -235,6 +235,22 @@ function applyPin(layout: EditorSplitLayout, tabId: string): EditorSplitLayout {
   };
 }
 
+/**
+ * 从 pinned 列表移除 tab 并交接 pinnedActiveTabId（unpinTab / unpinTabTo 共用）。
+ * 被移除的 tab 是当前 pinned 激活项时，激活权交给剩余第一个（无剩余则为 null）。
+ */
+function releaseFromPinned(
+  layout: EditorSplitLayout,
+  tabId: string,
+): { remainingPinned: string[]; pinnedActiveTabId: string | null } {
+  const remainingPinned = layout.pinnedTabIds.filter((id) => id !== tabId);
+  return {
+    remainingPinned,
+    pinnedActiveTabId:
+      layout.pinnedActiveTabId === tabId ? (remainingPinned[0] ?? null) : layout.pinnedActiveTabId,
+  };
+}
+
 interface PendingNavigateTarget {
   tabKey: string;
   tabId: string;
@@ -249,7 +265,12 @@ interface EditorStoreState {
   cursorPosition: { line: number; col: number } | null;
   pendingNavigateTarget: PendingNavigateTarget | null;
 
-  addTab: (projectId: string, tab: Tab) => void;
+  /**
+   * 新增 tab。`targetGroup` 指定落组（pane 内 + 创建跟随发起面板）：
+   * 'pinned' 落 pinned 列表并激活 pinned；'left'/'right' 落对应组并组内激活；
+   * 缺省保持既有行为（落到布局当前激活组）。
+   */
+  addTab: (projectId: string, tab: Tab, targetGroup?: EditorGroupId | 'pinned') => void;
   closeTab: (projectId: string, tabId: string) => void;
   activateTab: (projectId: string, tabId: string) => void;
   updateTab: (
@@ -270,6 +291,13 @@ interface EditorStoreState {
 
   pinTab: (tabKey: string, tabId: string) => void;
   unpinTab: (tabKey: string, tabId: string) => void;
+  /** 拖拽 unpin：从 pinned 移除并插入目标组（overId 之前；null 追加尾部），目标组激活该 tab。 */
+  unpinTabTo: (
+    tabKey: string,
+    tabId: string,
+    groupId: EditorGroupId,
+    overId: string | null,
+  ) => void;
   setPinnedPanelRatio: (tabKey: string, ratio: number) => void;
 
   setCursorPosition: (pos: { line: number; col: number } | null) => void;
@@ -283,7 +311,7 @@ export const useEditorStore = create<EditorStoreState>((set) => ({
   cursorPosition: null,
   pendingNavigateTarget: null,
 
-  addTab: (projectId, tab) =>
+  addTab: (projectId, tab, targetGroup) =>
     set((state) => {
       const existing = state.tabs[projectId];
 
@@ -314,20 +342,43 @@ export const useEditorStore = create<EditorStoreState>((set) => ({
         projectTabs.tabs.map((t) => t.id),
         tab.id,
       );
-      const activeGroupId = layout.activeGroupId;
-      const newLayout: EditorSplitLayout = {
-        ...layout,
-        groups: {
-          ...layout.groups,
-          [activeGroupId]: {
-            ...layout.groups[activeGroupId],
-            tabIds: layout.groups[activeGroupId].tabIds.includes(tab.id)
-              ? layout.groups[activeGroupId].tabIds
-              : [...layout.groups[activeGroupId].tabIds, tab.id],
-            activeTabId: tab.id,
+      // 落组：'pinned' 进 pinned 列表（末尾追加）并激活；其余落到指定组或
+      // 缺省激活组。'pinned' 分支需把新 tab 从组里排除——ensureLayout 在
+      // layout 缺失时会将 allTabIds 全塞进 left，避免 pinned/组双重归属。
+      let newLayout: EditorSplitLayout;
+      if (targetGroup === 'pinned') {
+        newLayout = {
+          ...layout,
+          pinnedTabIds: [...layout.pinnedTabIds, tab.id],
+          pinnedActiveTabId: tab.id,
+          groups: {
+            ...layout.groups,
+            left: {
+              ...layout.groups.left,
+              tabIds: layout.groups.left.tabIds.filter((id) => id !== tab.id),
+            },
+            right: {
+              ...layout.groups.right,
+              tabIds: layout.groups.right.tabIds.filter((id) => id !== tab.id),
+            },
           },
-        },
-      };
+        };
+      } else {
+        const activeGroupId = targetGroup ?? layout.activeGroupId;
+        newLayout = {
+          ...layout,
+          groups: {
+            ...layout.groups,
+            [activeGroupId]: {
+              ...layout.groups[activeGroupId],
+              tabIds: layout.groups[activeGroupId].tabIds.includes(tab.id)
+                ? layout.groups[activeGroupId].tabIds
+                : [...layout.groups[activeGroupId].tabIds, tab.id],
+              activeTabId: tab.id,
+            },
+          },
+        };
+      }
 
       queueMicrotask(() => {
         emitTabActivated(projectId, tab.id, tab);
@@ -866,21 +917,50 @@ export const useEditorStore = create<EditorStoreState>((set) => ({
       const layout = state.editorLayout[tabKey];
       if (!layout || !layout.pinnedTabIds.includes(tabId)) return state;
 
-      const remainingPinned = layout.pinnedTabIds.filter((id) => id !== tabId);
+      const { remainingPinned, pinnedActiveTabId } = releaseFromPinned(layout, tabId);
       const leftIds = [tabId, ...layout.groups.left.tabIds.filter((id) => id !== tabId)];
 
       const newLayout: EditorSplitLayout = {
         ...layout,
         pinnedTabIds: remainingPinned,
-        pinnedActiveTabId:
-          layout.pinnedActiveTabId === tabId
-            ? (remainingPinned[0] ?? null)
-            : layout.pinnedActiveTabId,
+        pinnedActiveTabId,
         groups: {
           ...layout.groups,
           left: {
             tabIds: leftIds,
             activeTabId: layout.groups.left.activeTabId ?? tabId,
+          },
+        },
+      };
+
+      return {
+        editorLayout: { ...state.editorLayout, [tabKey]: newLayout },
+      };
+    }),
+
+  unpinTabTo: (tabKey, tabId, groupId, overId) =>
+    set((state) => {
+      const layout = state.editorLayout[tabKey];
+      if (!layout || !layout.pinnedTabIds.includes(tabId)) return state;
+      const group = layout.groups[groupId];
+      if (!group) return state;
+
+      const { remainingPinned, pinnedActiveTabId } = releaseFromPinned(layout, tabId);
+      const targetIds = group.tabIds.filter((id) => id !== tabId);
+      const overIndex = overId ? targetIds.indexOf(overId) : -1;
+      // 与 reorderTab 的 splice 语义一致：插到 over tab 之前；over 缺失则追加尾部
+      targetIds.splice(overIndex === -1 ? targetIds.length : overIndex, 0, tabId);
+
+      const newLayout: EditorSplitLayout = {
+        ...layout,
+        pinnedTabIds: remainingPinned,
+        pinnedActiveTabId,
+        groups: {
+          ...layout.groups,
+          [groupId]: {
+            tabIds: targetIds,
+            // 拖入的 tab 是用户主动放置，激活它（对齐 VSCode 拖拽行为）
+            activeTabId: tabId,
           },
         },
       };
