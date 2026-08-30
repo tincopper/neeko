@@ -11,7 +11,7 @@
   "creator": "tincopper",
   "assignee": "tincopper",
   "createdAt": "2026-08-30",
-  "completedAt": null,
+  "completedAt": "2026-08-30",
   "branch": null,
   "base_branch": "main",
   "worktree_path": null,
@@ -21,6 +21,6 @@
   "children": [],
   "parent": null,
   "relatedFiles": [],
-  "notes": "",
+  "notes": "全部完成并实测验证（纯浏览器 + 真实环境）。P0：Cmd/Ctrl 抑制 hover docs（modKeyState 单例）、mousedown 收起 tooltip、跳转失败可见（分类 toast，英文文案）、probe/jump pending 共享窗口（lspCache sharePendingWithinMs）。P1：跳转 loading 光标（lspStore.isDefinitionJumping）。P2：项目外定义只读查看（后端 preauth.rs 预授权白名单 + lsp_read_preauthorized_file + 前端definitionTarget 分类 + readOnly tab）；死代码 useLspExtensions 删除。连带修复：splash 退出保证（useSessionBootstrap 失败/超时兜底）、编辑器滚动回归（EditorDndShell wrapper min-h-0）。neeko-check 两轮：Block（useLspNavigation 302 行）与 FileContentLike 重复已修，Nit（Rust helper 抽取、debugBridge 注释）已清。遗留：FileEditor 314 行 / EditorGroupPane 301 行存量超限待拆分任务；OUTSIDE_ROOT_MARKER 字符串匹配脆弱契约；远程/WSL 项目外读取。门禁：lint:fe 0 error / test:run 296 文件 2358 passed / cargo test lsp 82 + clippy 干净。提交：74ce4a63 / 21d1d912 / 08fd086a / 2f9a6f82 / 59b0a6aa。",
   "meta": {}
 }
