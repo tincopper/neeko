@@ -1257,3 +1257,36 @@ Closed out 08-07-drag-tab-to-pin after real-environment verification: checklist 
 ### Next Steps
 
 - None - task complete
+
+
+## Session 155: Archive lsp-navigation-ux (P0-P2 landed, splash + scroll fixes included)
+
+**Date**: 2026-08-30
+**Task**: Archive lsp-navigation-ux (P0-P2 landed, splash + scroll fixes included)
+**Branch**: `main`
+
+### Summary
+
+Archived 08-30-lsp-navigation-ux after real-environment verification: hover suppression + mousedown close, pending sharing, visible classified failures, pre-authorized read-only out-of-root targets, English copy. Also landed splash exit guarantee (74ce4a63) and editor scroll regression fix (21d1d912) verified via debugBridge browser automation. neeko-check review fixes included (line limit, type dedup, Rust helper extraction).
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `2f9a6f82` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
