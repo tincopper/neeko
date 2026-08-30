@@ -3,7 +3,7 @@
   "name": "08-30-file-reader-unification",
   "title": "文件读取统一中间层：AccessScope 策略 + 单源 read_file（消除三份重复实现 + WSL/远程预授权补齐）",
   "description": "",
-  "status": "in_progress",
+  "status": "completed",
   "dev_type": null,
   "scope": null,
   "package": null,
