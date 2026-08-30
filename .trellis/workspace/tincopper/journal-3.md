@@ -1290,3 +1290,36 @@ Archived 08-30-lsp-navigation-ux after real-environment verification: hover supp
 ### Next Steps
 
 - None - task complete
+
+
+## Session 156: Unify file reading behind AccessScope-strategy read_file core
+
+**Date**: 2026-08-30
+**Task**: Unify file reading behind AccessScope-strategy read_file core
+**Branch**: `main`
+
+### Summary
+
+Collapsed three overlapping file-read implementations into common/file/reader.rs (FileAccessScope InProject/Trusted + ExecTarget channel + max_bytes/binary guards), all former entry points as thin wrappers with unchanged IPC contracts. WSL/SSH out-of-root preauth reads now use the shell channel (local-only special case removed); frontend definitionTarget falls back to the preauth table unconditionally (whitelist as authoritative decision, no error-string matching). Also created task 08-30-file-reader-unification with PRD. Gates: cargo reader 9 / lsp 82, clippy clean, lint:fe 0 errors, test:run 296 files / 2359 passed.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `31a7d1d2` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
