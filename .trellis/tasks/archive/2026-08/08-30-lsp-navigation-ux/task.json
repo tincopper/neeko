@@ -3,7 +3,7 @@
   "name": "08-30-lsp-navigation-ux",
   "title": "LSP 导航体验优化：跳转丝滑化（Cmd+Click / 双击 / 项目外定义只读查看）",
   "description": "",
-  "status": "in_progress",
+  "status": "completed",
   "dev_type": null,
   "scope": null,
   "package": null,
