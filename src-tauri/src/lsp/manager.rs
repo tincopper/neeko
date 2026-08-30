@@ -72,6 +72,8 @@ pub struct LspManager {
     deactivate_gens: Mutex<HashMap<String, u64>>,
     /// Seconds after deactivation before closing sessions (from settings).
     deactivate_stop_secs: Mutex<u64>,
+    /// Definition-target uris pre-authorized for out-of-root reads (per session).
+    preauth: Mutex<super::preauth::PreauthorizedTargets>,
 }
 
 impl LspManager {
@@ -89,6 +91,7 @@ impl LspManager {
             profiles: Mutex::new(HashMap::new()),
             deactivate_gens: Mutex::new(HashMap::new()),
             deactivate_stop_secs: Mutex::new(DEFAULT_DEACTIVATE_STOP_SECS),
+            preauth: Mutex::new(super::preauth::PreauthorizedTargets::new()),
         }
     }
 
@@ -230,6 +233,30 @@ impl LspManager {
                 version,
             },
         );
+    }
+
+    /// Record definition-target uris as pre-authorized for out-of-root reads.
+    pub fn record_definition_targets(
+        &self,
+        project_path: &str,
+        language_id: &str,
+        uris: &[String],
+    ) {
+        if uris.is_empty() {
+            return;
+        }
+        if let Ok(mut preauth) = self.preauth.lock() {
+            preauth.record(project_path, language_id, uris);
+        }
+    }
+
+    /// Whether the uri is a pre-authorized definition target for this session.
+    #[must_use]
+    pub fn is_preauthorized(&self, project_path: &str, language_id: &str, uri: &str) -> bool {
+        self.preauth
+            .lock()
+            .map(|preauth| preauth.is_authorized(project_path, language_id, uri))
+            .unwrap_or(false)
     }
 
     /// Check whether a document is already registered as open for this session.

@@ -9,6 +9,9 @@ pub mod installer;
 pub mod manager;
 pub mod plugin;
 pub mod plugin_manager;
+
+/// Pre-authorized external reads for definition targets.
+pub mod preauth;
 pub mod process;
 pub mod profile;
 pub mod server_request;

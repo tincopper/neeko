@@ -35,9 +35,22 @@ const lastReportAt: Record<string, number> = {};
  */
 const BENIGN_WARNING_PREFIXES = ['ResizeObserver loop'];
 
+/**
+ * 外部库内部崩溃的已知良性模式：无功能损害（调用方自愈）且应用侧不可修，
+ * 落日志（保留可观察性）但不弹 toast 打扰用户。
+ *
+ * - CodeMirror `posAtCoords → Pointer.scanTile`：hover 定时检查触发，
+ *   `tile.children[scan.i]` 在指针位于 tile 末尾时越界（@codemirror/view
+ *   6.43.9 上游边界 bug），该次 hover 检查自愈、下次 mousemove 重启。
+ */
+const BENIGN_MESSAGE_PATTERNS = [/evaluating 'child\.isText'/];
+
 /** 判定是否为无需 toast 的良性警告。 */
 export function isBenignWarning(message: string): boolean {
-  return BENIGN_WARNING_PREFIXES.some((prefix) => message.startsWith(prefix));
+  return (
+    BENIGN_WARNING_PREFIXES.some((prefix) => message.startsWith(prefix)) ||
+    BENIGN_MESSAGE_PATTERNS.some((pattern) => pattern.test(message))
+  );
 }
 
 /**

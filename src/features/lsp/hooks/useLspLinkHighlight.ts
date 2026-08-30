@@ -14,6 +14,9 @@ import { definitionCacheKey, getOrFetchDefinition } from './lspCache';
 /** Debounce for Cmd/Ctrl+hover definition probes (reduces gopls flood). */
 const LINK_HIGHLIGHT_DEBOUNCE_MS = 150;
 
+/** probe 间 pending 去重窗口（latest-wins 语义，等价原默认行为）。 */
+const PROBE_PENDING_SHARE_MS = 15_000;
+
 const setLinkDeco = StateEffect.define<DecorationSet>();
 
 /** Clear the link highlight decoration on an editor view. */
@@ -114,15 +117,18 @@ export function useLspLinkHighlightExtension(
                 if (!word) return false;
 
                 const key = definitionCacheKey(projectPath, uri, lspPos.line, lspPos.character);
-                const wrapped = await getOrFetchDefinition(key, () =>
-                  lspGoToDefinition(
-                    projectPath!,
-                    languageId!,
-                    uri,
-                    lspPos.line,
-                    lspPos.character,
-                    true, // probe: best-effort decoration, never cancels a jump
-                  ),
+                const wrapped = await getOrFetchDefinition(
+                  key,
+                  () =>
+                    lspGoToDefinition(
+                      projectPath!,
+                      languageId!,
+                      uri,
+                      lspPos.line,
+                      lspPos.character,
+                      true, // probe: best-effort decoration, never cancels a jump
+                    ),
+                  { sharePendingWithinMs: PROBE_PENDING_SHARE_MS },
                 );
 
                 if (!wrapped?.lspResult) return false;

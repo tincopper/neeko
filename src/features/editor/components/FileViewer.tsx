@@ -28,6 +28,7 @@ function tabToFileTab(tab: Tab & { data: FileTabData }): import('@/shared/types'
     initialPreviewMode: tab.data.initialPreviewMode,
     isUntitled: tab.data.isUntitled,
     untitledName: tab.data.untitledName,
+    readOnly: tab.data.readOnly,
   };
 }
 

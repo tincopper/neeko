@@ -364,6 +364,7 @@ macro_rules! neeko_invoke_handler {
             $crate::lsp::commands::lsp_restart_session,
             $crate::lsp::commands::lsp_stop_session,
             $crate::lsp::commands::lsp_get_server_info,
+            $crate::lsp::commands::lsp_read_preauthorized_file,
             $crate::lsp::commands::lsp_get_server_logs,
             $crate::lsp::commands::lsp_restart_all_sessions,
             $crate::lsp::commands::lsp_stop_all_sessions,

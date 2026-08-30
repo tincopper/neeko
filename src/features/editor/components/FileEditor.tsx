@@ -6,6 +6,7 @@ import React, { useCallback, useMemo, useRef, useState } from 'react';
 import { useCmdHeld } from '@/features/lsp';
 import { cn } from '@/lib/utils';
 import { useAppContext } from '@/shared/contexts';
+import { useLspStore } from '@/shared/store/lspStore';
 import { useNotificationStore } from '@/shared/store/notificationStore';
 import type { AppTheme, FileTab } from '@/shared/types';
 import { MarkdownPreview } from '@/ui';
@@ -167,7 +168,13 @@ function FileEditor({
 
   // Cmd/Ctrl held state — used for link highlight pointer cursor style
   const cmdHeld = useCmdHeld();
-  const cmClassName = cn('h-full overflow-hidden', cmdHeld && 'cmd-held');
+  // 显式跳转进行中 → loading 光标（冷启动 server 握手时给出可感知反馈）
+  const isJumping = useLspStore((state) => state.isDefinitionJumping);
+  const cmClassName = cn(
+    'h-full overflow-hidden',
+    cmdHeld && 'cmd-held',
+    isJumping && 'lsp-jumping',
+  );
 
   // Markdown / HTML preview 模式下点击内部链接时打开目标文件
   const { onFileSelect } = useFileActionsContext();
@@ -199,7 +206,7 @@ function FileEditor({
   }, [showToast]);
 
   // Determine if file can be edited
-  const canEdit = !tab.content.is_binary && tab.content.size <= 512 * 1024;
+  const canEdit = !tab.readOnly && !tab.content.is_binary && tab.content.size <= 512 * 1024;
 
   // Binary file
   if (tab.content.is_binary) {

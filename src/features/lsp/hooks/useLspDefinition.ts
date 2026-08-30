@@ -1,11 +1,19 @@
 import { useCallback, useMemo } from 'react';
 
+import { useLspStore } from '@/shared/store/lspStore';
 import { useNotificationStore } from '@/shared/store/notificationStore';
 
 import { lspGoToDefinition, lspRequest } from '../api/lspApi';
 import type { LspLocation } from '../types';
 
 import { definitionCacheKey, getOrFetchDefinition } from './lspCache';
+
+/**
+ * 显式跳转可共享的 pending 年龄上限。双击/F12 通常与刚发出的 hover probe
+ * 同位（同 cache key）——共享新鲜 pending 消除双倍 LSP 往返；窗口足够小，
+ * 不会等到陈旧文档版本上的旧结果。
+ */
+const JUMP_PENDING_SHARE_MS = 1000;
 
 function toLspLocation(raw: unknown): LspLocation | null {
   if (!raw || typeof raw !== 'object') return null;
@@ -58,8 +66,8 @@ function showNoDefinitionHint(): void {
   lastNoDefinitionHintAt = now;
   useNotificationStore.getState().addNotification({
     type: 'info',
-    title: '未找到定义',
-    message: '未获取到可跳转的定义位置。',
+    title: 'No Definition Found',
+    message: 'No navigable definition at this position.',
   });
 }
 
@@ -77,14 +85,13 @@ export function useLspDefinition(projectPath: string | null) {
       if (!projectPath) return null;
 
       try {
+        useLspStore.getState().setDefinitionJumping(true);
         const key = definitionCacheKey(projectPath, uri, line, character);
-        // skipPending: an explicit jump wants a fresh result for the user's
-        // gesture — it must not wait on a best-effort hover probe's pending
-        // promise (which may target an older document version).
+        // 共享新鲜 pending：跳转手势与 probe 同位时避免双倍请求
         const wrapped = await getOrFetchDefinition(
           key,
           () => lspGoToDefinition(projectPath, languageId, uri, line, character),
-          { skipPending: true },
+          { sharePendingWithinMs: JUMP_PENDING_SHARE_MS },
         );
 
         if (!wrapped || !wrapped.lspResult) {
@@ -107,6 +114,8 @@ export function useLspDefinition(projectPath: string | null) {
           message: String(e),
         });
         return null;
+      } finally {
+        useLspStore.getState().setDefinitionJumping(false);
       }
     },
     [projectPath],

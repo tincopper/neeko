@@ -279,3 +279,9 @@
     & li { margin-bottom: 0.15em; &:last-child { margin-bottom: 0; } }
   }
 }
+
+/* 显式跳转进行中：loading 光标（F12 / Cmd+Click 触发，落地后由 store 复位） */
+.lsp-jumping,
+.lsp-jumping * {
+  cursor: progress !important;
+}

@@ -51,6 +51,9 @@ interface LspStoreState {
   profiles: Record<string, ProjectLanguageProfile>;
   /** Extension routing conflicts from the live registry. */
   extensionConflicts: LspExtensionConflictDto[];
+  /** 显式跳转（F12 / Cmd+Click）进行中：UI 据此显示 loading 光标。 */
+  isDefinitionJumping: boolean;
+  setDefinitionJumping: (jumping: boolean) => void;
   setSessionState: (
     projectPath: string,
     languageId: string,
@@ -73,6 +76,11 @@ export const useLspStore = create<LspStoreState>((set, get) => ({
   sessions: {},
   profiles: {},
   extensionConflicts: [],
+  isDefinitionJumping: false,
+
+  setDefinitionJumping: (jumping) => {
+    set({ isDefinitionJumping: jumping });
+  },
 
   setSessionState: (projectPath, languageId, state) => {
     set((prev) => ({

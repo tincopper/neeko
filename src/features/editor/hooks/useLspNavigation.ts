@@ -1,8 +1,13 @@
 import { EditorView, keymap } from '@codemirror/view';
 import { useCallback, useMemo } from 'react';
 
-import { readFileContent } from '@/features/file/api/fileApi';
-import { fromFileUri, toFileUri, useLspDefinition } from '@/features/lsp';
+import {
+  fromFileUri,
+  loadDefinitionTargetContent,
+  showNavigationFailure,
+  toFileUri,
+  useLspDefinition,
+} from '@/features/lsp';
 import type { LspLocation } from '@/features/lsp/types';
 import { useSymbolNavStore } from '@/features/symbol-nav/store/symbolNavStore';
 import { useCodeMirrorBinding } from '@/shared/hooks/useResolvedShortcuts';
@@ -98,14 +103,31 @@ export function useLspNavigation({
         // Await language first-time import so FileViewer mounts with lang ready
         await langWarm;
 
-        const content = preloadedContent
-          ? {
-              path: targetPath,
-              content: preloadedContent,
-              size: preloadedContent.length,
-              is_binary: false,
-            }
-          : await readFileContent(projId, targetPath);
+        // 目标内容：后端已随 definition 预读优先；否则按「项目内 / 项目外只读」
+        // 策略加载（loadDefinitionTargetContent 区分失败原因，反馈可见）
+        let content: { path: string; content: string; size: number; is_binary: boolean };
+        let isExternalReadonly = false;
+        if (preloadedContent) {
+          content = {
+            path: targetPath,
+            content: preloadedContent,
+            size: preloadedContent.length,
+            is_binary: false,
+          };
+        } else {
+          const loaded = await loadDefinitionTargetContent(
+            projId,
+            lspLanguageIdRef.current ?? '',
+            location.uri,
+          );
+          if (loaded.kind === 'unavailable') {
+            useEditorStore.getState().setPendingNavigateTarget(null);
+            showNavigationFailure(loaded.reason);
+            return;
+          }
+          content = loaded.content;
+          isExternalReadonly = loaded.kind === 'external-readonly';
+        }
 
         const newTab: Tab = {
           id: targetTabId,
@@ -118,11 +140,13 @@ export function useLspNavigation({
             fileName: getFileName(targetPath),
             content,
             isDirty: false,
+            readOnly: isExternalReadonly || undefined,
           },
         };
         useEditorStore.getState().addTab(tKey, newTab);
       } catch (e) {
         useEditorStore.getState().setPendingNavigateTarget(null);
+        showNavigationFailure('read-failed');
         console.error('[LSP] Failed to open definition target:', e);
       }
     },

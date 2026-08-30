@@ -1,5 +1,7 @@
 import { invoke } from '@tauri-apps/api/core';
 
+import type { FileContent } from '@/shared/types';
+
 import type {
   LspServerInfo,
   LspServerLogEntry,
@@ -232,4 +234,21 @@ export function lspGetExtensionConflicts(): Promise<LspExtensionConflictDto[]> {
 /** Reload LSP settings from config.json into the backend registry. */
 export function lspApplySettings(): Promise<LspExtensionMapEntryDto[]> {
   return invoke<LspExtensionMapEntryDto[]>('lsp_apply_settings');
+}
+
+/**
+ * Read a file that was returned as a definition target (pre-authorized by the
+ * backend when the definition response was served). Required for targets that
+ * live outside the project root, which `read_file_content` refuses to serve.
+ */
+export function lspReadPreauthorizedFile(
+  projectPath: string,
+  languageId: string,
+  uri: string,
+): Promise<FileContent> {
+  return invoke<FileContent>('lsp_read_preauthorized_file', {
+    projectPath,
+    languageId,
+    uri,
+  });
 }

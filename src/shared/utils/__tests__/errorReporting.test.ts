@@ -115,6 +115,16 @@ describe('isBenignWarning', () => {
   it('普通错误非良性警告', () => {
     expect(isBenignWarning('render boom')).toBe(false);
   });
+
+  it('识别 CodeMirror scanTile 内部崩溃为良性（外部库已知边界 bug，自愈）', () => {
+    // posAtCoords → scanTile：hover 定时检查触发，tile.children[scan.i] 越界，
+    // 该次 hover 检查自愈、无功能损害——落日志、不打扰用户
+    expect(isBenignWarning("undefined is not an object (evaluating 'child.isText')")).toBe(true);
+  });
+
+  it('同族 posAtCoords 崩溃（d.top 形态）非良性（属于应上报的真实回归）', () => {
+    expect(isBenignWarning("undefined is not an object (evaluating 'd.top')")).toBe(false);
+  });
 });
 
 describe('reportFrontendError 良性警告豁免', () => {

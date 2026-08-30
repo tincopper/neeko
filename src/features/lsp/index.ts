@@ -17,6 +17,8 @@ export {
   lspGetExtensionMap,
   lspGetExtensionConflicts,
 } from './api/lspApi';
+export { loadDefinitionTargetContent, showNavigationFailure } from './api/definitionTarget';
+export type { DefinitionTargetContent } from './api/definitionTarget';
 export { acquireLspPlugin, releaseLspClient } from './hooks/lspClientManager';
 export { useCmdHeld } from './hooks/useCmdHeld';
 export { useLspDefinition } from './hooks/useLspDefinition';

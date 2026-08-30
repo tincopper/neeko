@@ -637,6 +637,15 @@ pub async fn lsp_go_to_definition(
         t2 - t1,
     );
 
+    // 记录全部目标 uri 为预授权（供 lsp_read_preauthorized_file 读取项目外定义）
+    let target_uris: Vec<String> = UnifiedLocation::from_definition_response(&lsp_result)
+        .into_iter()
+        .map(|loc| loc.uri)
+        .collect();
+    state
+        .lsp_manager
+        .record_definition_targets(&project_path, &language_id, &target_uris);
+
     // Preload target file content using UnifiedLocation
     let file_content = match UnifiedLocation::first_target_uri(&lsp_result) {
         Some(target_uri) => {
@@ -656,4 +665,45 @@ pub async fn lsp_go_to_definition(
         "lspResult": lsp_result,
         "fileContent": file_content,
     }))
+}
+
+/// Read a file that was returned as a go-to-definition target, even when it
+/// lives outside the project root (monorepo deps, installed sources).
+///
+/// 授权模型：uri 必须出现在该会话最近一次 definition 响应中（`preauth` 表），
+/// 前端无法伪造任意路径；读取前仍做 canonicalize + 大小上限防御。
+#[tauri::command]
+pub async fn lsp_read_preauthorized_file(
+    project_path: String,
+    language_id: String,
+    uri: String,
+    state: State<'_, AppStateWrapper>,
+) -> Result<crate::common::types::FileContent, AppError> {
+    if !state
+        .lsp_manager
+        .is_preauthorized(&project_path, &language_id, &uri)
+    {
+        return Err(AppError::InvalidInput(
+            "uri is not a pre-authorized definition target".to_string(),
+        ));
+    }
+
+    let raw_path = uri.strip_prefix("file://").unwrap_or(&uri).to_string();
+    let file = tokio::task::spawn_blocking(move || {
+        super::preauth::read_preauthorized_file_blocking(&raw_path)
+    })
+    .await
+    .map_err(|e| AppError::Lsp(format!("preauth read join error: {e}")))?
+    .ok_or_else(|| {
+        AppError::NotFound("pre-authorized file unavailable or too large".to_string())
+    })?;
+
+    let (path, size, content) = file;
+
+    Ok(crate::common::types::FileContent {
+        path: path.to_string_lossy().to_string(),
+        content,
+        size,
+        is_binary: false,
+    })
 }

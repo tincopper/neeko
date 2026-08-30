@@ -33,6 +33,8 @@ export interface FileTab {
   initialPreviewMode?: 'preview' | 'source';
   isUntitled?: boolean;
   untitledName?: string;
+  /** 只读 tab（如 LSP 跳转打开的项目外定义文件）：不可编辑。 */
+  readOnly?: boolean;
 }
 
 export interface FileChangedEvent {

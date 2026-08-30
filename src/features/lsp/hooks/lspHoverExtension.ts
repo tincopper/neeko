@@ -1,11 +1,12 @@
 import { LSPPlugin } from '@codemirror/lsp-client';
 import type { Extension, Text } from '@codemirror/state';
-import type { EditorView, Tooltip, TooltipView } from '@codemirror/view';
-import { hoverTooltip } from '@codemirror/view';
+import type { Tooltip, TooltipView } from '@codemirror/view';
+import { EditorView, closeHoverTooltips, hoverTooltip } from '@codemirror/view';
 
 import { useBrowserStore } from '@/shared/store/browserStore';
 import { useDockStore } from '@/shared/store/dockStore';
 
+import { isModKeyHeld } from '../modKeyState';
 import { LatestRequestTracker } from '../requestTracker';
 
 interface LspHoverRange {
@@ -41,7 +42,7 @@ function getHoverTracker(view: EditorView): LatestRequestTracker {
 
 /**
  * Custom hover tooltip extension that replaces @codemirror/lsp-client's
- * `hoverTooltips()` to fix three issues:
+ * `hoverTooltips()` to fix these issues:
  *
  * 1. Tooltip clipping at top window edge — the upstream hardcodes
  *    `above: true` which forces the tooltip upward even when the target
@@ -58,13 +59,28 @@ function getHoverTracker(view: EditorView): LatestRequestTracker {
  * 4. Flood control: only the latest hover generation may produce a tooltip
  *    (stale in-flight responses are dropped). Backend also cancels prior
  *    textDocument/hover via $/cancelRequest.
+ *
+ * 5. Jump affordance: while the jump modifier (Cmd/Ctrl) is held, docs
+ *    are suppressed entirely and any open tooltip closes on mousedown —
+ *    otherwise the tooltip DOM intercepts Cmd+Click / double-click and
+ *    the jump never reaches the editor.
  */
-export function createLspHoverTooltips(config: { hoverTime?: number } = {}): Extension {
-  return hoverTooltip(lspTooltipSource, {
-    hideOn: (tr) => tr.docChanged,
-    // Slightly higher than CodeMirror default to cut mousemove noise
-    hoverTime: config.hoverTime ?? 300,
-  });
+export function createLspHoverTooltips(config: { hoverTime?: number } = {}): Extension[] {
+  return [
+    hoverTooltip(lspTooltipSource, {
+      hideOn: (tr) => tr.docChanged,
+      // Slightly higher than CodeMirror default to cut mousemove noise
+      hoverTime: config.hoverTime ?? 300,
+    }),
+    EditorView.domEventHandlers({
+      mousedown(_event, view) {
+        // 按下即收起 docs：tooltip 悬在点击位置上方会截获 Cmd+Click /
+        // 双击的第二击。不吞事件（return false），编辑器默认行为照常。
+        view.dispatch({ effects: closeHoverTooltips });
+        return false;
+      },
+    }),
+  ];
 }
 
 function hoverRequest(plugin: LSPPlugin, pos: number) {
@@ -82,6 +98,10 @@ function hoverRequest(plugin: LSPPlugin, pos: number) {
 
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 function lspTooltipSource(view: EditorView, pos: number, _side: -1 | 1): Promise<Tooltip | null> {
+  // Cmd/Ctrl 按住 = 用户正准备跳转：抑制 docs 弹出，避免遮挡点击目标
+  //（链接高亮下划线已提供导航视觉提示）。VSCode 同款行为。
+  if (isModKeyHeld()) return Promise.resolve(null);
+
   const plugin = LSPPlugin.get(view);
   if (!plugin) return Promise.resolve(null);
 
