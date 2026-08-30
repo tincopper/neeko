@@ -27,9 +27,9 @@ cargo test --manifest-path src-tauri/Cargo.toml  # 无后端改动，可选
 - `src/features/editor/components/EditorGroupPane.tsx` — 事件上抛。
 - 回滚：还原三个文件到 git HEAD。
 
-## 提交前检查
+## 提交前检查（2026-08-30 真实环境验证后勾选）
 
-- [ ] left/right 组内排序手动验证不回归。
-- [ ] 拖到 pinned 面板区域触发 pin。
-- [ ] pinned tab 不可被拖出。
-- [ ] `pnpm test:run`、`pnpm type-check`、`pnpm lint` 通过。
+- [x] left/right 组内排序手动验证不回归。
+- [x] 拖到 pinned 面板区域触发 pin（含无 pinned 面板时的动态 PinDropZone 路径）。
+- [x] pinned tab 可拖出 unpin 到 left/right（扩展 2 解禁）；pinned 内部拖拽判定 none 弹回。
+- [x] `pnpm test:run`、`pnpm type-check`、`pnpm lint` 通过（最终 295 文件 / 2344 passed）。

@@ -11,7 +11,7 @@
   "creator": "tincopper",
   "assignee": "tincopper",
   "createdAt": "2026-08-07",
-  "completedAt": null,
+  "completedAt": "2026-08-30",
   "branch": null,
   "base_branch": "main",
   "worktree_path": null,
@@ -21,6 +21,6 @@
   "children": [],
   "parent": null,
   "relatedFiles": [],
-  "notes": "",
+  "notes": "全部完成（含 4 轮 scope 扩展，见 prd.md「Scope 扩展」）。① 多 pin 拖拽主功能 7e1c5df9；② 拖拽动效：DragOverlay（TabDragPreview）+ pinned drop 高亮 （editorPaneRegionClass），修复被 TabBar overflow 裁剪导致的跨面板拖拽不可见；③ pinned tab 拖出 unpin：resolveDropAction pinnedIds + unpin 动作 + store unpinTabTo；④ 无 pinned 面板时动态 PinDropZone（MeasuringStrategy.Always 支持拖拽中途挂载 droppable）；⑤ pane 内 + / ActionMenu 新建 tab 跟随发起面板落组（addTab targetGroup 全链路）。neeko-check 修复：EditorDndShell 拆分（EditorGroupLayout 302→267 行）、TabBar 死代码清理（自建 DndContext 分支 + onReorderTab 死链）、addTab 收敛 + releaseFromPinned。门禁全绿：lint:fe / type-check / test:run（295 文件 / 2344 passed）。提交：7e1c5df9 / cd02adb7 / 0926f124。已知限制：全局 AgentBar 新建落激活组（无 pane 上下文），记录于 PRD。存量遗留：EditorGroupPane 301 行（改动前即超限），建议另立任务拆分。",
   "meta": {}
 }
