@@ -1224,3 +1224,36 @@ Completed the 08-07-drag-tab-to-pin scope extensions: DragOverlay preview (TabDr
 ### Next Steps
 
 - None - task complete
+
+
+## Session 154: Archive drag-tab-to-pin (4 scope extensions + neeko-check fixes)
+
+**Date**: 2026-08-30
+**Task**: Archive drag-tab-to-pin (4 scope extensions + neeko-check fixes)
+**Branch**: `main`
+
+### Summary
+
+Closed out 08-07-drag-tab-to-pin after real-environment verification: checklist re-semantics per extension 2 (pinned tab drag-out now allowed), task.json notes with full completion record, archived to archive/2026-08/. Feature work committed as cd02adb7 (code) and 0926f124 (PRD extensions).
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `cd02adb7` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
