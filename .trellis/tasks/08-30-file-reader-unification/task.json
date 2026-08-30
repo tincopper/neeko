@@ -11,7 +11,7 @@
   "creator": "tincopper",
   "assignee": "tincopper",
   "createdAt": "2026-08-30",
-  "completedAt": null,
+  "completedAt": "2026-08-30",
   "branch": null,
   "base_branch": "main",
   "worktree_path": null,
@@ -21,6 +21,6 @@
   "children": [],
   "parent": null,
   "relatedFiles": [],
-  "notes": "",
+  "notes": "全部完成。核心 common/file/reader.rs：FileAccessScope（InProject root 强校验 / Trusted 调用方授权 + canonicalize fail-closed）+ ExecTarget 通道（Local fs spawn_blocking / WSL+Remote shell exec_on）+ 防护参数（max_bytes / detect_binary）。三个旧入口（read_file_content / read_file_blocking / lsp_read_preauthorized_file 的本地 blocking helper）全部变为薄封装，IPC 契约零变化；services 旧实现与 read_file_blocking 删除。WSL/SSH 项目外预授权读取经 shell 通道可用（本地-only 特例消除，target 取 manager 项目执行绑定）；前端 definitionTarget 预授权回退无条件化（授权表为权威裁决，OUTSIDE_ROOT_MARKER 退化为展示推断）。决策记录：三 scope 合并为两 scope（YAGNI）；WSL/Remote 的 InProject 远程 root 强校验为已知欠账（单独立项）；LSP didOpen 保持无上限（行为保持）。门禁：cargo reader 9 / lsp 82 用例，clippy 干净，lint:fe 0 error，test:run 296 文件 2359 passed。提交：31a7d1d2。",
   "meta": {}
 }
