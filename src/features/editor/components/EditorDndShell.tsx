@@ -60,7 +60,9 @@ function EditorDndShell({
       onDragEnd={handleDragEnd}
       measuring={DND_MEASURING}
     >
-      <div className="flex-1 flex min-w-0">
+      {/* min-h-0：flex-col 主轴上 flex 子项默认 min-height:auto，会被编辑器
+          内容撑爆导致高度链断裂（cm-scroller 无法溢出 → 代码不能滚动） */}
+      <div className="flex-1 flex min-w-0 min-h-0 overflow-hidden">
         {showPinDropZone && <PinDropZone tabKey={tabKey} />}
         {children}
       </div>
