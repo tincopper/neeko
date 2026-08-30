@@ -68,7 +68,20 @@ pub async fn read_file_content(
     let (t, wd) = state.resolve_project(&project_id)?;
     let target = t;
     let base = root_path.unwrap_or(wd);
-    crate::common::file::services::read_file_content(&target, &base, &file_path).await
+    crate::common::file::reader::read_file(
+        crate::common::file::reader::FileAccessScope::InProject {
+            root: base.clone().into(),
+        },
+        crate::common::file::reader::FileReadRequest {
+            target,
+            base: base.clone(),
+            path: file_path,
+            // 行为保持：项目内读取无大小上限，二进制检测与既有实现一致
+            max_bytes: None,
+            detect_binary: true,
+        },
+    )
+    .await
 }
 
 /// Write file content.

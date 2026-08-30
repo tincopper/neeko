@@ -65,15 +65,37 @@ describe('loadDefinitionTargetContent — 跳转目标内容加载策略', () =>
     expect(result).toEqual({ kind: 'unavailable', reason: 'outside-root' });
   });
 
-  it('普通读取失败（非项目外原因）→ unavailable / read-failed，不触发预授权', async () => {
+  it('普通读取失败 → 也尝试预授权（授权表为权威裁决），未命中 → read-failed', async () => {
     invokeMock.mockImplementation(async (cmd: string) => {
       if (cmd === 'read_file_content') throw new Error('Failed to read file: boom');
+      if (cmd === 'lsp_read_preauthorized_file') throw new Error('not pre-authorized');
       throw new Error(`unexpected: ${cmd}`);
     });
 
     const result = await loadDefinitionTargetContent('p1', 'rust', 'file:///proj/missing.rs');
 
     expect(result).toEqual({ kind: 'unavailable', reason: 'read-failed' });
-    expect(invokeMock).not.toHaveBeenCalledWith('lsp_read_preauthorized_file', expect.anything());
+    expect(invokeMock).toHaveBeenCalledWith('lsp_read_preauthorized_file', expect.anything());
+  });
+
+  it('远程/WSL 项目外文件（错误标记不同）→ 预授权命中同样打开只读', async () => {
+    invokeMock.mockImplementation(async (cmd: string) => {
+      if (cmd === 'read_file_content') throw new Error('Failed to read file content: exit 1');
+      if (cmd === 'lsp_read_preauthorized_file')
+        return {
+          path: '/opt/go/src/x.go',
+          content: 'package main',
+          size: 12,
+          is_binary: false,
+        };
+      throw new Error(`unexpected: ${cmd}`);
+    });
+
+    const result = await loadDefinitionTargetContent('p1', 'go', 'file:///opt/go/src/x.go');
+
+    expect(result).toEqual({
+      kind: 'external-readonly',
+      content: { path: '/opt/go/src/x.go', content: 'package main', size: 12, is_binary: false },
+    });
   });
 });

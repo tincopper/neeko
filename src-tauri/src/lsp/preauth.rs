@@ -59,20 +59,6 @@ impl PreauthorizedTargets {
 /// 上限对齐前端 `canEdit` 阈值（FileEditor 512KB），防止预授权读取大文件。
 pub const MAX_PREAUTH_READ_BYTES: u64 = 512 * 1024;
 
-/// Blocking read of a pre-authorized definition target（仅在 spawn_blocking 中调用）。
-/// Returns `(canonical_path, size, text)` or `None` when the path is not a
-/// readable regular file within the size cap.
-#[must_use]
-pub fn read_preauthorized_file_blocking(path: &str) -> Option<(std::path::PathBuf, u64, String)> {
-    let canonical = std::fs::canonicalize(path).ok()?;
-    let meta = std::fs::metadata(&canonical).ok()?;
-    if !meta.is_file() || meta.len() > MAX_PREAUTH_READ_BYTES {
-        return None;
-    }
-    let text = std::fs::read_to_string(&canonical).ok()?;
-    Some((canonical, meta.len(), text))
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

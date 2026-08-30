@@ -53,19 +53,6 @@ async fn ensure_session_async(
 /// Read a file on the OS blocking pool — async commands must never call
 /// `std::fs` directly on a tokio worker thread.
 ///
-/// The path is canonicalized before reading, so a frontend-supplied `file://`
-/// URI is resolved to its physical location first (path-safety red line).
-async fn read_file_blocking(path: &str) -> Option<String> {
-    let path = path.to_string();
-    tokio::task::spawn_blocking(move || {
-        std::fs::canonicalize(&path)
-            .ok()
-            .and_then(|p| std::fs::read_to_string(p).ok())
-    })
-    .await
-    .unwrap_or(None)
-}
-
 // ═══════════════════════════════════════════════════════════════════════
 // Core LSP commands
 // ═══════════════════════════════════════════════════════════════════════
@@ -97,7 +84,20 @@ pub async fn lsp_request(
                 uri,
                 file_path
             );
-            if let Some(text) = read_file_blocking(file_path).await {
+            if let Ok(text) = crate::common::file::reader::read_file(
+                crate::common::file::reader::FileAccessScope::Trusted,
+                crate::common::file::reader::FileReadRequest {
+                    target: crate::common::executor::factory::ExecTarget::Local,
+                    base: String::new(),
+                    path: file_path.to_string(),
+                    // didOpen 全文发送给 server，不设大小上限（与既有行为一致）
+                    max_bytes: None,
+                    detect_binary: false,
+                },
+            )
+            .await
+            {
+                let text = text.content;
                 if text.len() > MAX_AUTO_OPEN_FILE_SIZE {
                     log::warn!(
                         "[LSP] File too large for auto-open: {} ({} bytes)",
@@ -594,7 +594,20 @@ pub async fn lsp_go_to_definition(
         .is_document_open(&project_path, &language_id, &uri)
     {
         let file_path = uri.strip_prefix("file://").unwrap_or(&uri);
-        if let Some(text) = read_file_blocking(file_path).await {
+        if let Ok(text) = crate::common::file::reader::read_file(
+            crate::common::file::reader::FileAccessScope::Trusted,
+            crate::common::file::reader::FileReadRequest {
+                target: crate::common::executor::factory::ExecTarget::Local,
+                base: String::new(),
+                path: file_path.to_string(),
+                // didOpen 全文发送给 server，不设大小上限（与既有行为一致）
+                max_bytes: None,
+                detect_binary: false,
+            },
+        )
+        .await
+        {
+            let text = text.content;
             let open_params = serde_json::json!({
                 "textDocument": {
                     "uri": &uri,
@@ -649,8 +662,22 @@ pub async fn lsp_go_to_definition(
     // Preload target file content using UnifiedLocation
     let file_content = match UnifiedLocation::first_target_uri(&lsp_result) {
         Some(target_uri) => {
-            let path = target_uri.strip_prefix("file://").unwrap_or(&target_uri);
-            read_file_blocking(path).await
+            crate::common::file::reader::read_file(
+                crate::common::file::reader::FileAccessScope::Trusted,
+                crate::common::file::reader::FileReadRequest {
+                    target: crate::common::executor::factory::ExecTarget::Local,
+                    base: String::new(),
+                    path: target_uri
+                        .strip_prefix("file://")
+                        .unwrap_or(&target_uri)
+                        .to_string(),
+                    // 预读内容随响应返回，512KB 对齐前端只读查看上限
+                    max_bytes: Some(512 * 1024),
+                    detect_binary: false,
+                },
+            )
+            .await
+            .ok()
         }
         None => None,
     };
@@ -689,21 +716,22 @@ pub async fn lsp_read_preauthorized_file(
     }
 
     let raw_path = uri.strip_prefix("file://").unwrap_or(&uri).to_string();
-    let file = tokio::task::spawn_blocking(move || {
-        super::preauth::read_preauthorized_file_blocking(&raw_path)
-    })
+    // 通道按项目执行环境分发（Local fs / WSL+Remote shell）——与文件读取
+    // 统一核心一致，不再有本地-only 特例
+    let target = state
+        .lsp_manager
+        .project_exec_target(&project_path)
+        .unwrap_or(crate::common::executor::factory::ExecTarget::Local);
+
+    crate::common::file::reader::read_file(
+        crate::common::file::reader::FileAccessScope::Trusted,
+        crate::common::file::reader::FileReadRequest {
+            target,
+            base: String::new(),
+            path: raw_path,
+            max_bytes: Some(super::preauth::MAX_PREAUTH_READ_BYTES),
+            detect_binary: false,
+        },
+    )
     .await
-    .map_err(|e| AppError::Lsp(format!("preauth read join error: {e}")))?
-    .ok_or_else(|| {
-        AppError::NotFound("pre-authorized file unavailable or too large".to_string())
-    })?;
-
-    let (path, size, content) = file;
-
-    Ok(crate::common::types::FileContent {
-        path: path.to_string_lossy().to_string(),
-        content,
-        size,
-        is_binary: false,
-    })
 }

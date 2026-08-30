@@ -4,7 +4,7 @@ use crate::common::executor::factory::ExecTarget;
 use crate::common::executor::sync::{collect_output, exec_on};
 use crate::common::git::parsers::build_file_tree_from_find;
 use crate::common::utils::command::local::safe_path;
-use crate::project::types::{FileContent, FileNode};
+use crate::project::types::FileNode;
 use crate::AppError;
 use std::collections::HashSet;
 use std::path::Path;
@@ -90,45 +90,6 @@ pub async fn read_dir_tree(
             }
             prune_ignored_dirs(&mut tree, &ignored_set);
             Ok(tree)
-        }
-    }
-}
-
-/// 统一读取文件内容，按 ExecTarget 类型分发。
-pub async fn read_file_content(
-    target: &ExecTarget,
-    base_path: &str,
-    file_path: &str,
-) -> Result<FileContent, AppError> {
-    let full_path = format!("{}/{}", base_path, file_path);
-    match target {
-        ExecTarget::Local => {
-            let base = Path::new(base_path);
-            let full = base.join(file_path);
-            crate::common::utils::path_resolver::validate_within_root(&full, base)?;
-            let metadata = std::fs::metadata(&full)
-                .map_err(|e| AppError::File(format!("Failed to read metadata: {}", e)))?;
-            let size = metadata.len();
-            let is_binary = is_binary_file(&full)?;
-            if is_binary {
-                return Ok(FileContent {
-                    path: file_path.to_string(),
-                    content: String::new(),
-                    size,
-                    is_binary: true,
-                });
-            }
-            let content = std::fs::read_to_string(&full)
-                .map_err(|e| AppError::File(format!("Failed to read file: {}", e)))?;
-            Ok(FileContent {
-                path: file_path.to_string(),
-                content,
-                size,
-                is_binary: false,
-            })
-        }
-        ExecTarget::Wsl { .. } | ExecTarget::Remote { .. } => {
-            read_file_content_shell(target, &full_path, file_path).await
         }
     }
 }
@@ -557,55 +518,6 @@ pub async fn rename_path(
     }
 }
 
-/// 通过 shell 读取文件内容（WSL / Remote）
-async fn read_file_content_shell(
-    target: &ExecTarget,
-    full_path: &str,
-    file_path: &str,
-) -> Result<FileContent, AppError> {
-    let safe_fp = safe_path(full_path);
-    let shell = if matches!(target, ExecTarget::Wsl { .. }) {
-        "bash"
-    } else {
-        "sh"
-    };
-
-    let stat_cmd = format!("stat -c '%s' '{safe_fp}' 2>/dev/null || echo 0");
-    let size: u64 = exec_on(target, shell, &["-c", &stat_cmd])
-        .await
-        .ok()
-        .and_then(|s| s.trim().parse().ok())
-        .unwrap_or(0);
-
-    let binary_cmd =
-        format!("head -c 8192 '{safe_fp}' | grep -ql '\\x00' 2>/dev/null && echo 1 || echo 0");
-    let is_binary = exec_on(target, shell, &["-c", &binary_cmd])
-        .await
-        .map(|out| out.trim() == "1")
-        .unwrap_or(false);
-
-    if is_binary {
-        return Ok(FileContent {
-            path: file_path.to_string(),
-            content: String::new(),
-            size,
-            is_binary: true,
-        });
-    }
-
-    let cat_cmd = format!("cat '{safe_fp}'");
-    let content = exec_on(target, shell, &["-c", &cat_cmd])
-        .await
-        .map_err(|e| AppError::File(format!("Failed to read file content: {}", e)))?;
-
-    Ok(FileContent {
-        path: file_path.to_string(),
-        content,
-        size,
-        is_binary: false,
-    })
-}
-
 /// 通过 shell 创建新文件（WSL / Remote）
 async fn create_new_file_remote(target: &ExecTarget, full_path: &str) -> Result<(), AppError> {
     let safe_fp = safe_path(full_path);
@@ -669,17 +581,6 @@ fn prefix_paths(nodes: &mut [FileNode], prefix: &str) {
 }
 
 /// 检查本地文件是否为二进制文件
-fn is_binary_file(path: &Path) -> Result<bool, AppError> {
-    use std::io::Read;
-    let mut file = std::fs::File::open(path)
-        .map_err(|e| AppError::File(format!("Failed to open file: {}", e)))?;
-    let mut buffer = vec![0u8; 8192];
-    let bytes_read = file
-        .read(&mut buffer)
-        .map_err(|e| AppError::File(e.to_string()))?;
-    Ok(buffer[..bytes_read].contains(&0))
-}
-
 fn read_dir_recursive(
     dir: &Path,
     project_root: &Path,
