@@ -1,8 +1,19 @@
 import { SplashScreen } from '@/app/components/SplashScreen';
 import { useAppShell, useDockBarButtons } from '@/app/hooks';
+import { useEditorStore } from '@/shared/store/editorStore';
+import { useProjectStore } from '@/shared/store/projectStore';
+import { useWorktreeStore } from '@/shared/store/worktreeStore';
 
 import AppProviders from './AppProviders';
+import { installDebugBridge } from './debugBridge';
 import AppShell from './shell/AppShell';
+
+// DEV-only：纯浏览器调试/自动化注入 store 数据的入口（生产 tree-shake）
+installDebugBridge({
+  projectStore: useProjectStore,
+  editorStore: useEditorStore,
+  worktreeStore: useWorktreeStore,
+});
 
 /**
  * 组合根：Provider 装配 + <AppShell/>（AGENTS.md「组合层」）。
