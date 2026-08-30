@@ -3,7 +3,7 @@
   "name": "drag-tab-to-pin",
   "title": "支持拖拽未pin的tab到pinned tab上触发pin",
   "description": "支持将未 pin 的 tab（left/right 面板）通过拖拽放到 pinned tab 上触发 pin。视觉上保留独立面板，采用单一共享 DndContext + 多 SortableContext 方案。",
-  "status": "in_progress",
+  "status": "completed",
   "dev_type": null,
   "scope": null,
   "package": null,
