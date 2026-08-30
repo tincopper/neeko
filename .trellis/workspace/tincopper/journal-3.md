@@ -1190,3 +1190,37 @@ Verified completion of 08-28-layout-architecture (Step 1/2/4 done, Step 3 consci
 ### Next Steps
 
 - None - task complete
+
+
+## Session 153: Editor tab drag pin UX: overlay, unpin, dynamic pin zone, pane-scoped creation
+
+**Date**: 2026-08-30
+**Task**: Editor tab drag pin UX: overlay, unpin, dynamic pin zone, pane-scoped creation
+**Branch**: `main`
+
+### Summary
+
+Completed the 08-07-drag-tab-to-pin scope extensions: DragOverlay preview (TabDragPreview) fixing overflow-clipped cross-panel drags, pinned-tab drag-out via unpinTabTo, dynamic PinDropZone when no pinned panel exists (MeasuringStrategy.Always for mid-drag droppable registration), and pane-scoped tab creation via addTab targetGroup. neeko-check found 1 Block (EditorGroupLayout 302 lines) + 3 Warnings; fixed by extracting EditorDndShell, deleting TabBar dead self-DndContext/onReorderTab chain, converging addTab branches with releaseFromPinned. Full suite 295 files / 2344 passed.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `cd02adb7` | (see git log) |
+| `0926f124` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
