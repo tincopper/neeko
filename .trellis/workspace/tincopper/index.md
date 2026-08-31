@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-3.md`
-- **Total Sessions**: 159
+- **Total Sessions**: 160
 - **Last Active**: 2026-08-31
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-3.md` | ~1425 | Active |
+| `journal-3.md` | ~1458 | Active |
 | `journal-2.md` | ~1991 | Archived |
 | `journal-1.md` | ~1986 | Archived |
 <!-- @@@/auto:active-documents -->
@@ -31,6 +31,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 160 | 2026-08-31 | typography-font-unify Phase 0-4 | `6c974dbfc293bf3daef20f77b968de1d2a42b80c` | `main` |
 | 159 | 2026-08-31 | Split oversized editor/git components (4 components back under 300 lines) | `3f14eea4` | `main` |
 | 158 | 2026-08-31 | Git panel UX: deleted strikethrough + Open File shortcuts, ToolbarControls split | `ba645b6b`, `9039c544` | `main` |
 | 157 | 2026-08-30 | Archive file-reader-unification (AccessScope core, WSL/SSH preauth parity) | `31a7d1d2` | `main` |
