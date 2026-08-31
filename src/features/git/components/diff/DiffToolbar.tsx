@@ -1,21 +1,8 @@
 import React from 'react';
 
-import { cn } from '@/lib/utils';
-import {
-  ChevronsDownUp,
-  ChevronsUpDown,
-  FoldVertical,
-  MoreHorizontal,
-  MoveDown,
-  MoveLeft,
-  MoveRight,
-  MoveUp,
-  Sparkles,
-  SquareSplitHorizontal,
-  SquareSplitVertical,
-  UnfoldVertical,
-} from '@/shared/components/icons';
+import { MoveDown, MoveLeft, MoveRight, MoveUp } from '@/shared/components/icons';
 
+import ToolbarControls, { flatBtnClass } from './ToolbarControls';
 import type { ViewMode } from './types';
 
 interface DiffToolbarProps {
@@ -46,11 +33,11 @@ interface DiffToolbarProps {
   fullMode?: boolean;
   onToggleFull?: () => void;
   onReview?: () => void;
+  /** 打开当前 diff 对应的工作区文件（仅工作区 diff 且 projectId 可用时提供） */
+  onOpenFile?: () => void;
+  /** Open File 置灰条件（diff 加载中/出错）；按钮仍渲染，仅禁用 */
+  openFileDisabled?: boolean;
 }
-
-/** Flat icon button (no box/border). Used for nav and action buttons. */
-const flatBtnClass =
-  'inline-flex h-6 w-6 items-center justify-center rounded text-text-muted hover:text-text-primary hover:bg-bg-hover/80 disabled:opacity-35 disabled:pointer-events-none transition-colors';
 
 const DiffToolbar: React.FC<DiffToolbarProps> = ({
   title,
@@ -75,21 +62,9 @@ const DiffToolbar: React.FC<DiffToolbarProps> = ({
   fullMode,
   onToggleFull,
   onReview,
+  onOpenFile,
+  openFileDisabled,
 }) => {
-  const [menuOpen, setMenuOpen] = React.useState(false);
-  const menuRef = React.useRef<HTMLDivElement>(null);
-
-  React.useEffect(() => {
-    if (!menuOpen) return;
-    const onDown = (e: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
-        setMenuOpen(false);
-      }
-    };
-    document.addEventListener('mousedown', onDown);
-    return () => document.removeEventListener('mousedown', onDown);
-  }, [menuOpen]);
-
   const canChangePrev = changeTotal > 0 && changeIndex > 0;
   const canChangeNext = changeTotal > 0 && changeIndex < changeTotal - 1;
   const canFilePrev = !!showFileNav && fileTotal > 0 && fileIndex > 0;
@@ -200,136 +175,19 @@ const DiffToolbar: React.FC<DiffToolbarProps> = ({
         ) : null}
       </div>
 
-      {/* ── Right: controls ────────────────────────────────────────── */}
-      <div className="flex items-center gap-px shrink-0">
-        {/* View mode toggle */}
-        <button
-          type="button"
-          className={flatBtnClass}
-          onClick={() => onViewModeChange(viewMode === 'unified' ? 'split' : 'unified')}
-          title={viewMode === 'unified' ? 'Switch to split view' : 'Switch to unified view'}
-          aria-label={viewMode === 'unified' ? 'Switch to split view' : 'Switch to unified view'}
-          aria-pressed={viewMode === 'split'}
-        >
-          {viewMode === 'unified' ? (
-            <SquareSplitVertical size={14} />
-          ) : (
-            <SquareSplitHorizontal size={14} />
-          )}
-        </button>
-
-        {onToggleFull ? (
-          <button
-            type="button"
-            className={flatBtnClass}
-            onClick={onToggleFull}
-            title={fullMode ? 'Collapse full diff' : 'Expand full diff'}
-            aria-label={fullMode ? 'Collapse full diff' : 'Expand full diff'}
-            aria-pressed={fullMode}
-          >
-            {fullMode ? <FoldVertical size={14} /> : <UnfoldVertical size={14} />}
-          </button>
-        ) : null}
-
-        {showFoldToggle ? (
-          <button
-            type="button"
-            className={flatBtnClass}
-            onClick={onToggleFoldAll}
-            title={allCollapsed ? 'Expand all' : 'Collapse all'}
-            aria-label={allCollapsed ? 'Expand all' : 'Collapse all'}
-          >
-            {allCollapsed ? <ChevronsUpDown size={14} /> : <ChevronsDownUp size={14} />}
-          </button>
-        ) : null}
-
-        {onReview ? (
-          <button
-            type="button"
-            className={cn(
-              flatBtnClass,
-              'text-accent-blue hover:text-accent-blue hover:bg-accent-blue/15',
-            )}
-            onClick={onReview}
-            title="Review this change"
-            aria-label="Review this change"
-          >
-            <Sparkles size={14} />
-          </button>
-        ) : null}
-
-        {/* Overflow */}
-        <div className="relative" ref={menuRef}>
-          <button
-            type="button"
-            className={flatBtnClass}
-            onClick={() => setMenuOpen((v) => !v)}
-            title="More actions"
-            aria-label="More actions"
-            aria-expanded={menuOpen}
-          >
-            <MoreHorizontal size={14} />
-          </button>
-          {menuOpen ? (
-            <div className="absolute right-0 top-full mt-1 z-50 w-44 rounded-md border border-border bg-bg-secondary shadow-lg py-0.5">
-              {onReview ? (
-                <button
-                  type="button"
-                  className="flex w-full items-center gap-2 px-2 py-1.5 text-left text-[var(--font-size)] text-text-secondary hover:bg-bg-hover hover:text-text-primary"
-                  onClick={() => {
-                    setMenuOpen(false);
-                    onReview();
-                  }}
-                >
-                  <Sparkles size={12} />
-                  Review change
-                </button>
-              ) : null}
-              {showFoldToggle ? (
-                <button
-                  type="button"
-                  className="flex w-full items-center gap-2 px-2 py-1.5 text-left text-[var(--font-size)] text-text-secondary hover:bg-bg-hover hover:text-text-primary"
-                  onClick={() => {
-                    setMenuOpen(false);
-                    onToggleFoldAll?.();
-                  }}
-                >
-                  {allCollapsed ? <ChevronsUpDown size={12} /> : <ChevronsDownUp size={12} />}
-                  {allCollapsed ? 'Expand all' : 'Collapse all'}
-                </button>
-              ) : null}
-              {onToggleFull ? (
-                <button
-                  type="button"
-                  className="flex w-full items-center gap-2 px-2 py-1.5 text-left text-[var(--font-size)] text-text-secondary hover:bg-bg-hover hover:text-text-primary"
-                  onClick={() => {
-                    setMenuOpen(false);
-                    onToggleFull();
-                  }}
-                >
-                  {fullMode ? <FoldVertical size={12} /> : <UnfoldVertical size={12} />}
-                  {fullMode ? 'Collapse full diff' : 'Expand full diff'}
-                </button>
-              ) : null}
-              <button
-                type="button"
-                className="flex w-full items-center gap-2 px-2 py-1.5 text-left text-[var(--font-size)] text-text-secondary hover:bg-bg-hover hover:text-text-primary"
-                onClick={() => {
-                  setMenuOpen(false);
-                  onViewModeChange(viewMode === 'unified' ? 'split' : 'unified');
-                }}
-              >
-                {viewMode === 'unified' ? (
-                  <SquareSplitVertical size={12} />
-                ) : (
-                  <SquareSplitHorizontal size={12} />
-                )}
-                {viewMode === 'unified' ? 'Switch to split view' : 'Switch to unified view'}
-              </button>
-            </div>
-          ) : null}
-        </div>
-      </div>
+      {/* ── Right: controls（ToolbarControls 内聚菜单开合状态） ─────── */}
+      <ToolbarControls
+        viewMode={viewMode}
+        onViewModeChange={onViewModeChange}
+        fullMode={fullMode}
+        onToggleFull={onToggleFull}
+        showFoldToggle={showFoldToggle}
+        allCollapsed={allCollapsed}
+        onToggleFoldAll={onToggleFoldAll}
+        onOpenFile={onOpenFile}
+        openFileDisabled={openFileDisabled}
+        onReview={onReview}
+      />
     </div>
   );
 };
