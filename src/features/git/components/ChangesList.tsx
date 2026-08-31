@@ -17,6 +17,8 @@ interface ChangesListProps {
   onStageFile?: (path: string) => void;
   onStageAllUntracked?: () => void;
   onFileSelect?: (path: string) => void;
+  /** 在编辑器中打开该文件（Open File 快捷跳转）；透传给各 Section */
+  onOpenFile?: (path: string) => void;
   /**
    * 展开折叠的 untracked 目录条目（后端 `git status` 折叠语义，条目 path 带尾斜杠）：
    * 返回目录下的 untracked 文件相对路径列表。缺省时目录条目退化为纯展示行。
@@ -44,6 +46,7 @@ const ChangesList: React.FC<ChangesListProps> = ({
   onStageFile,
   onStageAllUntracked,
   onFileSelect,
+  onOpenFile,
   onExpandUntrackedDir,
   loading,
 }) => {
@@ -112,6 +115,7 @@ const ChangesList: React.FC<ChangesListProps> = ({
           onToggleFile={onToggleFile}
           onFileSelect={onFileSelect}
           onDiscardFile={onDiscardFile}
+          onOpenFile={onOpenFile}
           loading={loading}
           filter={
             <div className="flex items-center gap-1">
@@ -163,6 +167,7 @@ const ChangesList: React.FC<ChangesListProps> = ({
           onToggleFile={onToggleFile}
           onFileSelect={onFileSelect}
           onDiscardFile={onDiscardFile}
+          onOpenFile={onOpenFile}
           onStageFile={onStageFile}
           loading={loading}
           headerAction={

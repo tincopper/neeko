@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 
+import { openProjectFile } from '@/features/quick-open';
 import { fileIconSrc } from '@/shared/utils/fileIcons';
 
 import CombinedDiffView from './CombinedDiffView';
@@ -292,6 +293,8 @@ const DiffView: React.FC<DiffViewProps> = React.memo(
         fullMode={fullMode}
         onToggleFull={toggleFullMode}
         onReview={loading || error ? undefined : handleReviewFull}
+        onOpenFile={projectId ? () => void openProjectFile({ projectId, filePath }) : undefined}
+        openFileDisabled={Boolean(loading || error)}
       />
     );
 

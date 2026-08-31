@@ -1,7 +1,7 @@
 import React from 'react';
 
 import { cn } from '@/lib/utils';
-import { ChevronRightIcon, Undo2, Plus, Minus } from '@/shared/components/icons';
+import { ChevronRightIcon, FileCode2, Undo2, Plus, Minus } from '@/shared/components/icons';
 import type { FileChange } from '@/shared/types';
 import { fileIconSrc } from '@/shared/utils/fileIcons';
 import { Checkbox } from '@/ui/Checkbox';
@@ -32,6 +32,8 @@ export interface SectionProps {
   onFileSelect?: (path: string) => void;
   onDiscardFile: (path: string) => void;
   onStageFile?: (path: string) => void;
+  /** 在编辑器中打开该文件（Open File 快捷跳转）；未提供则不渲染按钮 */
+  onOpenFile?: (path: string) => void;
   loading: boolean;
   filter?: React.ReactNode;
   headerAction?: React.ReactNode;
@@ -52,6 +54,7 @@ const Section: React.FC<SectionProps> = ({
   onFileSelect,
   onDiscardFile,
   onStageFile,
+  onOpenFile,
   loading,
   filter,
   headerAction,
@@ -136,7 +139,13 @@ const Section: React.FC<SectionProps> = ({
                   width={14}
                   height={14}
                 />
-                <span className="shrink-0 max-w-[9rem] truncate text-[calc(var(--font-size)-1px)] font-mono text-text-primary">
+                <span
+                  className={cn(
+                    'shrink-0 max-w-[9rem] truncate text-[calc(var(--font-size)-1px)] font-mono text-text-primary',
+                    // 已删除文件：删除线 + 弱化（文件已不存在于工作区）
+                    file.status === 'Deleted' && 'line-through text-text-muted',
+                  )}
+                >
                   {name}
                 </span>
                 <span className="flex-1 min-w-0 truncate text-[calc(var(--font-size)-3px)] font-mono text-text-muted">
@@ -157,6 +166,19 @@ const Section: React.FC<SectionProps> = ({
                   )}
                 </span>
                 <span className="shrink-0 flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity duration-100">
+                  {onOpenFile && (
+                    <button
+                      className="p-0.5 rounded text-text-muted hover:text-text-primary hover:bg-bg-hover transition-colors duration-100"
+                      title="Open File"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onOpenFile(file.path);
+                      }}
+                      disabled={loading}
+                    >
+                      <FileCode2 size={12} />
+                    </button>
+                  )}
                   <button
                     className="p-0.5 rounded text-text-muted hover:text-accent-red hover:bg-bg-hover transition-colors duration-100"
                     title="Discard changes"

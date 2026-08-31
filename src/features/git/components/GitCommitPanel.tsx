@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 
+import { openProjectFile } from '@/features/quick-open';
 import { useAppContext } from '@/shared/contexts';
 import type { AheadBehind, CommitResult, PushOutcome } from '@/shared/types';
 import type {
@@ -578,6 +579,7 @@ const GitCommitPanel: React.FC<GitCommitPanelProps> = ({
             onStageFile={handleStageFile}
             onStageAllUntracked={handleStageAllUntracked}
             onFileSelect={(path) => onSelectFile?.(path)}
+            onOpenFile={(path) => void openProjectFile({ projectId: project.id, filePath: path })}
             onExpandUntrackedDir={handleExpandUntrackedDir}
             loading={loading}
           />
