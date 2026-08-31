@@ -9,6 +9,7 @@ import { MarkdownPreview } from '@/ui';
 import EditorHeader from './EditorHeader';
 import ExternallyModifiedDialog from './ExternallyModifiedDialog';
 import InlineHtmlPreview from './InlineHtmlPreview';
+import JsonPreview from './JsonPreview';
 import MarkdownScrollContainer from './MarkdownScrollContainer';
 import SelectionToolbar from './SelectionToolbar';
 import SvgPreview from './SvgPreview';
@@ -37,6 +38,7 @@ interface FileEditorViewProps {
   isMd: boolean;
   isHtml: boolean;
   isSvg: boolean;
+  isJson: boolean;
   currentContent: string;
   basePath: string | undefined;
   canEdit: boolean;
@@ -75,6 +77,7 @@ function FileEditorView({
   isMd,
   isHtml,
   isSvg,
+  isJson,
   currentContent,
   basePath,
   canEdit,
@@ -92,7 +95,7 @@ function FileEditorView({
   pendingAgentName,
   onCreateAgentTab,
 }: FileEditorViewProps) {
-  const showPreview = (isMd || isHtml || isSvg) && previewMode === 'preview';
+  const showPreview = (isMd || isHtml || isSvg || isJson) && previewMode === 'preview';
 
   return (
     <div className="flex-1 flex flex-col min-h-0">
@@ -112,6 +115,7 @@ function FileEditorView({
         isMd={isMd}
         isHtml={isHtml}
         isSvg={isSvg}
+        isJson={isJson}
         previewMode={previewMode}
         onTogglePreview={callbacks.onTogglePreview}
         onOpenInBrowser={callbacks.onOpenInBrowser}
@@ -134,6 +138,13 @@ function FileEditorView({
             </MarkdownScrollContainer>
           ) : isSvg ? (
             <SvgPreview
+              tabKey={tabKey}
+              tabId={tabId}
+              content={currentContent}
+              fileName={tab.fileName}
+            />
+          ) : isJson ? (
+            <JsonPreview
               tabKey={tabKey}
               tabId={tabId}
               content={currentContent}

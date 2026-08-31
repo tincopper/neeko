@@ -66,6 +66,12 @@ export function isSvgFile(filePath: string): boolean {
   return ext === 'svg';
 }
 
+/** 检查文件是否为 JSON 文件（.jsonc 含注释无法 JSON.parse，不提供格式化预览） */
+export function isJsonFile(filePath: string): boolean {
+  const ext = filePath.split('.').pop()?.toLowerCase();
+  return ext === 'json';
+}
+
 /** 二进制图片扩展名集合（svg 是文本格式，不在此列） */
 const BINARY_IMAGE_EXTENSIONS = new Set([
   'png',

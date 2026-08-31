@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useLayoutEffect, useRef } from 'react';
 
+import type { ViewVariant } from '@/shared/utils/editorViewState';
 import { getViewSnapshot, setViewSnapshot } from '@/shared/utils/editorViewState';
 
 interface MarkdownScrollContainerProps {
@@ -7,6 +8,8 @@ interface MarkdownScrollContainerProps {
   tabId: string;
   content: string;
   children: React.ReactNode;
+  /** editorViewState 快照 variant，默认 'markdown'（JSON 预览复用时传 'json'） */
+  variant?: ViewVariant;
 }
 
 /**
@@ -18,6 +21,7 @@ function MarkdownScrollContainer({
   tabId,
   content,
   children,
+  variant = 'markdown',
 }: MarkdownScrollContainerProps) {
   const ref = useRef<HTMLDivElement | null>(null);
 
@@ -25,7 +29,7 @@ function MarkdownScrollContainer({
   useLayoutEffect(() => {
     const el = ref.current;
     if (!el) return;
-    const snap = getViewSnapshot(tabKey, tabId, 'markdown');
+    const snap = getViewSnapshot(tabKey, tabId, variant);
     if (!snap) return;
     // 内容渲染可能尚未完成（图片/mermaid 异步）；先尝试一次，再 rAF 兜底
     const apply = () => {
@@ -35,21 +39,21 @@ function MarkdownScrollContainer({
     apply();
     const raf = requestAnimationFrame(apply);
     return () => cancelAnimationFrame(raf);
-  }, [tabKey, tabId, content]);
+  }, [tabKey, tabId, content, variant]);
 
   const handleScroll = useCallback(() => {
     const el = ref.current;
     if (!el) return;
-    setViewSnapshot(tabKey, tabId, 'markdown', { scrollTop: el.scrollTop });
-  }, [tabKey, tabId]);
+    setViewSnapshot(tabKey, tabId, variant, { scrollTop: el.scrollTop });
+  }, [tabKey, tabId, variant]);
 
   useEffect(() => {
     const el = ref.current;
     return () => {
       if (!el) return;
-      setViewSnapshot(tabKey, tabId, 'markdown', { scrollTop: el.scrollTop });
+      setViewSnapshot(tabKey, tabId, variant, { scrollTop: el.scrollTop });
     };
-  }, [tabKey, tabId]);
+  }, [tabKey, tabId, variant]);
 
   return (
     <div ref={ref} onScroll={handleScroll} className="h-full overflow-y-auto px-6 py-4">

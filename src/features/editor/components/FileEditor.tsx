@@ -81,6 +81,7 @@ function FileEditor({
     isMd,
     isHtml,
     isSvg,
+    isJson,
     currentContent,
     basePath,
     pending,
@@ -227,6 +228,7 @@ function FileEditor({
             isMd={false}
             isHtml={false}
             isSvg={false}
+            isJson={false}
             previewMode="preview"
             onTogglePreview={() => {}}
           />
@@ -266,6 +268,7 @@ function FileEditor({
       isMd={isMd}
       isHtml={isHtml}
       isSvg={isSvg}
+      isJson={isJson}
       currentContent={currentContent}
       basePath={basePath}
       canEdit={canEdit}

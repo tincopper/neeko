@@ -6,6 +6,7 @@ import {
   getTabDisplayName,
   isDirtyFileTab,
   isImageFile,
+  isJsonFile,
   isSvgFile,
 } from '@/shared/utils/fileTree';
 
@@ -152,5 +153,14 @@ describe('isSvgFile / isImageFile', () => {
     expect(isImageFile('i.txt')).toBe(false);
     expect(isImageFile('j.svg')).toBe(false);
     expect(isImageFile('k.ts')).toBe(false);
+  });
+});
+
+describe('isJsonFile', () => {
+  it('.json 大小写不敏感，.jsonc 不算（无法 JSON.parse）', () => {
+    expect(isJsonFile('config.json')).toBe(true);
+    expect(isJsonFile('DATA.JSON')).toBe(true);
+    expect(isJsonFile('config.jsonc')).toBe(false);
+    expect(isJsonFile('a.ts')).toBe(false);
   });
 });

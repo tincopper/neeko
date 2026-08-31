@@ -12,7 +12,7 @@ import {
   getLanguageExtension,
   isMarkdownFile,
 } from '@/shared/utils/codemirror';
-import { isHtmlFile, isSvgFile } from '@/shared/utils/fileTree';
+import { isHtmlFile, isJsonFile, isSvgFile } from '@/shared/utils/fileTree';
 
 import type { PreviewMode } from '../types';
 
@@ -28,8 +28,10 @@ interface UseFileEditorStateParams {
  * 语言扩展（同步缓存优先 + 异步加载）、选中文本 AI 工具栏状态。
  */
 export function useFileEditorState({ tab, projectPath }: UseFileEditorStateParams) {
+  // JSON 源码优先（配置/代码文件常需编辑，格式化预览为辅助）；MD/HTML/SVG 预览优先
+  const isJson = isJsonFile(tab.filePath);
   const [previewMode, setPreviewMode] = useState<PreviewMode>(
-    () => tab.initialPreviewMode ?? 'preview',
+    () => tab.initialPreviewMode ?? (isJson ? 'source' : 'preview'),
   );
   const [isSaving, setIsSaving] = useState(false);
   const [langExtension, setLangExtension] = useState<import('@codemirror/state').Extension | null>(
@@ -46,7 +48,6 @@ export function useFileEditorState({ tab, projectPath }: UseFileEditorStateParam
   // SVG 是文本格式：content 可直接进 srcDoc 预览，WSL/SSH 项目同样可用
   const isSvg = isSvgFile(tab.filePath);
   const currentContent = tab.content.content;
-
   const basePath = useMemo(() => {
     if (!projectPath) return undefined;
     // resolveAbsolutePath handles both relative and absolute filePaths correctly,
@@ -134,6 +135,7 @@ export function useFileEditorState({ tab, projectPath }: UseFileEditorStateParam
     isMd,
     isHtml,
     isSvg,
+    isJson,
     currentContent,
     basePath,
     pending,

@@ -10,7 +10,7 @@
  * - 这是 UI 瞬态状态，不需要持久化到 sessions.json / config.json。
  */
 
-export type ViewVariant = 'editor' | 'markdown' | 'html' | 'svg';
+export type ViewVariant = 'editor' | 'markdown' | 'html' | 'svg' | 'json';
 
 /**
  * CodeMirror 的 EditorSelection.toJSON() 形状。
@@ -60,7 +60,7 @@ export function clearViewSnapshot(tabKey: string, tabId: string, variant?: ViewV
     cache.delete(key(tabKey, tabId, variant));
     return;
   }
-  const variants: ViewVariant[] = ['editor', 'markdown', 'html', 'svg'];
+  const variants: ViewVariant[] = ['editor', 'markdown', 'html', 'svg', 'json'];
   for (const v of variants) {
     cache.delete(key(tabKey, tabId, v));
   }

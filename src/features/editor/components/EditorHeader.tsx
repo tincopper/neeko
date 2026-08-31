@@ -17,6 +17,7 @@ interface EditorHeaderProps {
   isMd: boolean;
   isHtml: boolean;
   isSvg: boolean;
+  isJson: boolean;
   previewMode: PreviewMode;
   onTogglePreview: () => void;
   onOpenInBrowser?: () => void;
@@ -42,6 +43,7 @@ function EditorHeader({
   isMd,
   isHtml,
   isSvg,
+  isJson,
   previewMode,
   onTogglePreview,
   onOpenInBrowser,
@@ -152,8 +154,8 @@ function EditorHeader({
           </button>
         )}
 
-        {/* Markdown / HTML / SVG preview toggle */}
-        {(isMd || isHtml || isSvg) && (
+        {/* Markdown / HTML / SVG / JSON preview toggle */}
+        {(isMd || isHtml || isSvg || isJson) && (
           <button
             className="tb-icon-btn w-6 h-6 rounded-md flex items-center justify-center text-text-secondary hover:bg-bg-hover hover:text-text-primary transition-colors"
             onClick={onTogglePreview}
