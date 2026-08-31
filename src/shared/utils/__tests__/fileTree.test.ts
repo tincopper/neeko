@@ -1,7 +1,13 @@
 import { describe, expect, it } from 'vitest';
 
 import type { FileNode, Tab, FileTabData } from '@/shared/types';
-import { buildFileTreeView, getTabDisplayName, isDirtyFileTab } from '@/shared/utils/fileTree';
+import {
+  buildFileTreeView,
+  getTabDisplayName,
+  isDirtyFileTab,
+  isImageFile,
+  isSvgFile,
+} from '@/shared/utils/fileTree';
 
 function dirNode(name: string, path: string, children: FileNode[] = []): FileNode {
   return { name, path, is_dir: true, children };
@@ -123,5 +129,28 @@ describe('isDirtyFileTab / getTabDisplayName', () => {
     expect(getTabDisplayName(fileTab({ fileName: undefined as unknown as string }))).toBe(
       'Untitled',
     );
+  });
+});
+
+describe('isSvgFile / isImageFile', () => {
+  it('isSvgFile：.svg 大小写不敏感', () => {
+    expect(isSvgFile('assets/diagram.svg')).toBe(true);
+    expect(isSvgFile('LOGO.SVG')).toBe(true);
+    expect(isSvgFile('index.html')).toBe(false);
+    expect(isSvgFile('diagram.svgx')).toBe(false);
+  });
+
+  it('isImageFile：常见二进制图片扩展名大小写不敏感', () => {
+    expect(isImageFile('a.png')).toBe(true);
+    expect(isImageFile('b.JPG')).toBe(true);
+    expect(isImageFile('c.jpeg')).toBe(true);
+    expect(isImageFile('d.gif')).toBe(true);
+    expect(isImageFile('e.webp')).toBe(true);
+    expect(isImageFile('f.bmp')).toBe(true);
+    expect(isImageFile('g.avif')).toBe(true);
+    expect(isImageFile('h.ico')).toBe(true);
+    expect(isImageFile('i.txt')).toBe(false);
+    expect(isImageFile('j.svg')).toBe(false);
+    expect(isImageFile('k.ts')).toBe(false);
   });
 });

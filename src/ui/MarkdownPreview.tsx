@@ -39,7 +39,9 @@ function MermaidBlock({ code, theme }: MermaidBlockProps) {
   const [svg, setSvg] = useState<string>('');
   const [error, setError] = useState<string | null>(null);
   const uid = useId();
-  const id = useRef(`mermaid-${uid}`);
+  // React useId 可能产出 ":r0:"（React 18）/"«r0»"（React 19），含 CSS 选择器非法字符；
+  // mermaid 内部用 querySelector('#<id>') 定位容器，冒号会导致 "not a valid selector"
+  const id = useRef(`mermaid-${uid.replace(/[^a-zA-Z0-9_-]/g, '')}`);
   const cancelledRef = useRef(false);
 
   // Reset state when inputs change

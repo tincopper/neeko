@@ -29,6 +29,7 @@ function UneditableFileView({ filePath, projectPath, size, message }: Uneditable
         isDirty={false}
         isMd={false}
         isHtml={false}
+        isSvg={false}
         previewMode="preview"
         onTogglePreview={() => {}}
       />

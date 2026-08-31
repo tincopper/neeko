@@ -11,6 +11,7 @@ import ExternallyModifiedDialog from './ExternallyModifiedDialog';
 import InlineHtmlPreview from './InlineHtmlPreview';
 import MarkdownScrollContainer from './MarkdownScrollContainer';
 import SelectionToolbar from './SelectionToolbar';
+import SvgPreview from './SvgPreview';
 
 /** EditorHeader 上层的动作回调集（由 FileEditor 的 hooks 提供）。 */
 export interface FileEditorViewCallbacks {
@@ -35,6 +36,7 @@ interface FileEditorViewProps {
   previewMode: 'preview' | 'source';
   isMd: boolean;
   isHtml: boolean;
+  isSvg: boolean;
   currentContent: string;
   basePath: string | undefined;
   canEdit: boolean;
@@ -72,6 +74,7 @@ function FileEditorView({
   previewMode,
   isMd,
   isHtml,
+  isSvg,
   currentContent,
   basePath,
   canEdit,
@@ -89,7 +92,7 @@ function FileEditorView({
   pendingAgentName,
   onCreateAgentTab,
 }: FileEditorViewProps) {
-  const showPreview = (isMd || isHtml) && previewMode === 'preview';
+  const showPreview = (isMd || isHtml || isSvg) && previewMode === 'preview';
 
   return (
     <div className="flex-1 flex flex-col min-h-0">
@@ -108,6 +111,7 @@ function FileEditorView({
         isDirty={tab.isDirty}
         isMd={isMd}
         isHtml={isHtml}
+        isSvg={isSvg}
         previewMode={previewMode}
         onTogglePreview={callbacks.onTogglePreview}
         onOpenInBrowser={callbacks.onOpenInBrowser}
@@ -128,6 +132,13 @@ function FileEditorView({
                 onInternalLinkClick={callbacks.onInternalLinkClick}
               />
             </MarkdownScrollContainer>
+          ) : isSvg ? (
+            <SvgPreview
+              tabKey={tabKey}
+              tabId={tabId}
+              content={currentContent}
+              fileName={tab.fileName}
+            />
           ) : (
             <InlineHtmlPreview
               tabKey={tabKey}

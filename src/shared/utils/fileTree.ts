@@ -59,3 +59,27 @@ export function isHtmlFile(filePath: string): boolean {
   const ext = filePath.split('.').pop()?.toLowerCase();
   return ext === 'html' || ext === 'htm';
 }
+
+/** 检查文件是否为 SVG 文件（文本格式，可读入 content 走 srcDoc 预览） */
+export function isSvgFile(filePath: string): boolean {
+  const ext = filePath.split('.').pop()?.toLowerCase();
+  return ext === 'svg';
+}
+
+/** 二进制图片扩展名集合（svg 是文本格式，不在此列） */
+const BINARY_IMAGE_EXTENSIONS = new Set([
+  'png',
+  'jpg',
+  'jpeg',
+  'gif',
+  'webp',
+  'bmp',
+  'avif',
+  'ico',
+]);
+
+/** 检查文件是否为二进制图片文件（走 asset URL 预览，content 为空） */
+export function isImageFile(filePath: string): boolean {
+  const ext = filePath.split('.').pop()?.toLowerCase();
+  return ext !== undefined && BINARY_IMAGE_EXTENSIONS.has(ext);
+}

@@ -7,7 +7,9 @@ import { cn } from '@/lib/utils';
 import { useAppContext } from '@/shared/contexts';
 import { useLspStore } from '@/shared/store/lspStore';
 import { useNotificationStore } from '@/shared/store/notificationStore';
+import { useProjectStore } from '@/shared/store/projectStore';
 import type { AppTheme, FileTab } from '@/shared/types';
+import { isImageFile } from '@/shared/utils/fileTree';
 
 import { useFileActionsContext } from '../FileActionsContext';
 import { useEditorBreakpoints } from '../hooks/useEditorBreakpoints';
@@ -18,7 +20,9 @@ import { useFileEditorState } from '../hooks/useFileEditorState';
 import { useLspClient } from '../hooks/useLspClient';
 import { useLspNavigation } from '../hooks/useLspNavigation';
 
+import EditorHeader from './EditorHeader';
 import FileEditorView from './FileEditorView';
+import ImageFileView from './ImageFileView';
 import UneditableFileView from './UneditableFileView';
 
 interface FileEditorProps {
@@ -76,6 +80,7 @@ function FileEditor({
     setToolbarPos,
     isMd,
     isHtml,
+    isSvg,
     currentContent,
     basePath,
     pending,
@@ -83,6 +88,13 @@ function FileEditor({
     handleEditorAction,
     handleCreateTab,
   } = useFileEditorState({ tab, projectPath });
+
+  // 二进制图片仅本地项目可预览：asset 协议无法访问 SSH/WSL 远程文件
+  const projectEnvironmentType = useProjectStore(
+    (s) => s.projects.find((p) => p.id === tab.projectId)?.environment.type,
+  );
+  const isBinaryImage =
+    tab.content.is_binary && isImageFile(tab.filePath) && projectEnvironmentType === 'Local';
 
   const {
     bpGutterExt,
@@ -203,8 +215,25 @@ function FileEditor({
   // Determine if file can be edited
   const canEdit = !tab.readOnly && !tab.content.is_binary && tab.content.size <= 512 * 1024;
 
-  // Binary / oversized → 不可编辑占位视图（分支仍在编排层：早退避免无谓 hooks 消费）
+  // Binary / oversized → 不可编辑占位视图；本地二进制图片走图片预览（分支仍在编排层）
   if (tab.content.is_binary) {
+    if (isBinaryImage) {
+      return (
+        <div className="flex-1 flex flex-col">
+          <EditorHeader
+            filePath={tab.filePath}
+            projectPath={projectPath}
+            isDirty={false}
+            isMd={false}
+            isHtml={false}
+            isSvg={false}
+            previewMode="preview"
+            onTogglePreview={() => {}}
+          />
+          <ImageFileView absPath={absFilePath} fileName={tab.fileName} />
+        </div>
+      );
+    }
     return (
       <UneditableFileView
         filePath={tab.filePath}
@@ -236,6 +265,7 @@ function FileEditor({
       previewMode={previewMode}
       isMd={isMd}
       isHtml={isHtml}
+      isSvg={isSvg}
       currentContent={currentContent}
       basePath={basePath}
       canEdit={canEdit}

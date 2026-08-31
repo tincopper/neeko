@@ -12,7 +12,7 @@ import {
   getLanguageExtension,
   isMarkdownFile,
 } from '@/shared/utils/codemirror';
-import { isHtmlFile } from '@/shared/utils/fileTree';
+import { isHtmlFile, isSvgFile } from '@/shared/utils/fileTree';
 
 import type { PreviewMode } from '../types';
 
@@ -43,6 +43,8 @@ export function useFileEditorState({ tab, projectPath }: UseFileEditorStateParam
 
   const isMd = isMarkdownFile(tab.filePath);
   const isHtml = isHtmlFile(tab.filePath);
+  // SVG 是文本格式：content 可直接进 srcDoc 预览，WSL/SSH 项目同样可用
+  const isSvg = isSvgFile(tab.filePath);
   const currentContent = tab.content.content;
 
   const basePath = useMemo(() => {
@@ -131,6 +133,7 @@ export function useFileEditorState({ tab, projectPath }: UseFileEditorStateParam
     setToolbarPos,
     isMd,
     isHtml,
+    isSvg,
     currentContent,
     basePath,
     pending,
