@@ -1,28 +1,27 @@
-import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import React, { useState, useCallback, useMemo } from 'react';
 
 import { openProjectFile } from '@/features/quick-open';
-import { useAppContext } from '@/shared/contexts';
-import type { AheadBehind, CommitResult, PushOutcome } from '@/shared/types';
+import type { AheadBehind } from '@/shared/types';
 import type {
   ProjectView,
   ProjectCommands,
   ProjectCapabilities,
 } from '@/shared/types/activeProject';
-import { reportFrontendError } from '@/shared/utils/errorReporting';
-import { withTimeout } from '@/shared/utils/withTimeout';
 import { Button } from '@/ui/Button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/ui/Dialog';
+
+import {
+  useAiCommitMessage,
+  useCommitPanelDiffStats,
+  useDividerDrag,
+} from '../hooks/useCommitPanelAux';
+import { useGitActions } from '../hooks/useGitActions';
 
 import BranchInfo from './BranchInfo';
 import ChangesList from './ChangesList';
 import CommitForm from './CommitForm';
 import GitCredentialDialog from './GitCredentialDialog';
 import GitDialog, { type DialogState } from './GitDialog';
-
-// Timeout constants (ms). These protect against indefinite IPC hangs caused by
-// the Rust backend's project_manager Mutex being held by a long operation.
-const TIMEOUT_LOCAL_MS = 30_000; // discard, stage, commit
-const TIMEOUT_NETWORK_MS = 30_000; // fetch, pull, push
 
 interface GitCommitPanelProps {
   project: ProjectView;
@@ -46,219 +45,62 @@ const GitCommitPanel: React.FC<GitCommitPanelProps> = ({
   aheadBehind,
 }) => {
   const [selectedFiles, setSelectedFiles] = useState<Set<string>>(new Set());
-  const [loading, setLoading] = useState(false);
   const [dialog, setDialog] = useState<DialogState | null>(null);
   const [discardConfirm, setDiscardConfirm] = useState<
     { type: 'file'; path: string } | { type: 'all'; count: number } | null
   >(null);
-  const [credentialDialog, setCredentialDialog] = useState<{
-    open: boolean;
-    host: string;
-    usernameHint: string | null;
-    setUpstream: boolean;
-  }>({ open: false, host: '', usernameHint: null, setUpstream: false });
-
-  // 从 URL 中提取可读的 hostname（仅显示域名部分）
-  const formatHost = (url: string): string => {
-    try {
-      const cleaned = url.replace(/^git@/, '').replace(/\.git$/, '');
-      if (cleaned.includes('://')) {
-        const afterProtocol = cleaned.split('://')[1];
-        const withoutUser = afterProtocol.includes('@')
-          ? afterProtocol.split('@')[1]
-          : afterProtocol;
-        return withoutUser;
-      }
-      if (cleaned.includes(':')) {
-        return cleaned.split(':')[0];
-      }
-      return cleaned;
-    } catch {
-      return url;
-    }
-  };
-
-  /** Handle the result of push/pull/fetch. Returns true if caller should stop further processing. */
-  const handlePushOutcome = useCallback(
-    (outcome: PushOutcome, _opName: string, setUpstream: boolean = false): boolean => {
-      if ('AuthRequired' in outcome) {
-        const { remote_url, ssh, username_hint } = outcome.AuthRequired;
-        if (ssh) {
-          onShowToast?.(
-            'SSH authentication failed. Ensure ssh-agent is running and key is added via ssh-add.',
-            'error',
-          );
-        } else {
-          setCredentialDialog({
-            open: true,
-            host: formatHost(remote_url),
-            usernameHint: username_hint,
-            setUpstream,
-          });
-        }
-        return true; // caller should stop / not treat as success
-      }
-      return false; // Success
-    },
-    [onShowToast],
-  );
-
-  const [textareaHeight, setTextareaHeight] = useState(120);
-  const dragStartRef = useRef<{ startY: number; startHeight: number } | null>(null);
-
-  // AI 生成 commit message 相关状�?
   const [commitMessage, setCommitMessage] = useState('');
-  const [aiGenerating, setAiGenerating] = useState(false);
-  const { config } = useAppContext();
-
-  const handleCredentialSubmit = useCallback(
-    async (username: string, password: string) => {
-      const setUpstream = credentialDialog.setUpstream;
-      setCredentialDialog((prev) => ({ ...prev, open: false }));
-      setLoading(true);
-      try {
-        const outcome = await withTimeout(
-          commands.pushWithCredentials(setUpstream, username, password),
-          TIMEOUT_NETWORK_MS,
-          'push',
-        );
-        if (!handlePushOutcome(outcome, 'push', setUpstream)) {
-          await onRefreshGit();
-          setSelectedFiles(new Set());
-          setCommitMessage('');
-          onShowToast?.('Pushed successfully', 'info');
-        }
-      } catch (e: unknown) {
-        onShowToast?.(String(e), 'error');
-      } finally {
-        setLoading(false);
-      }
-    },
-    [commands, onRefreshGit, onShowToast, handlePushOutcome, credentialDialog.setUpstream],
-  );
 
   const changedFiles = useMemo(
     () => project.gitInfo?.changed_files ?? [],
     [project.gitInfo?.changed_files],
   );
 
+  // ── Git 操作域（fetch/pull/push/commit/stage/凭据对话），见 useGitActions ──
+  const {
+    loading,
+    setLoading,
+    credentialDialog,
+    setCredentialDialog,
+    handleCredentialSubmit,
+    handleFetch,
+    handlePull,
+    handlePush,
+    handleStageFile,
+    handleStageAllUntracked,
+    handleConfirmDiscard,
+    handleCommit,
+    handleCommitAndPush,
+  } = useGitActions({
+    commands,
+    onRefreshGit,
+    onShowToast,
+    onCommitMessageClear: () => setCommitMessage(''),
+    selectedFiles,
+    onSelectedFilesClear: () => setSelectedFiles(new Set()),
+  });
+
+  const { changedFilesWithStats } = useCommitPanelDiffStats({
+    commands,
+    projectId: project.id,
+    changedFiles,
+  });
+
+  const { textareaHeight, handleDividerMouseDown } = useDividerDrag();
+
+  const { aiGenerating, canAiGenerate, handleAiGenerate } = useAiCommitMessage({
+    commands,
+    capabilities,
+    project,
+    selectedFiles,
+    onShowToast,
+    onGenerated: setCommitMessage,
+  });
+
   const noCommits =
     project.gitInfo !== null &&
     project.gitInfo.branches.length === 0 &&
     !project.gitInfo.current_branch;
-
-  // Diff stats 懒加载：首次渲染后异步获�?+/- 统计
-  const [diffStats, setDiffStats] = useState<
-    Record<string, { additions: number; deletions: number }>
-  >({});
-  // Reset diffStats when changes clear
-  const prevHasChangesRef = useRef(changedFiles.length > 0);
-  useEffect(() => {
-    if (changedFiles.length === 0 && prevHasChangesRef.current) {
-      prevHasChangesRef.current = false;
-      setDiffStats({});
-    } else if (changedFiles.length > 0) {
-      prevHasChangesRef.current = true;
-    }
-  }, [changedFiles]);
-
-  useEffect(() => {
-    if (changedFiles.length === 0) return;
-    let cancelled = false;
-    commands
-      .getChangedFilesDiffStats()
-      .then((stats) => {
-        if (cancelled) return;
-        const map: Record<string, { additions: number; deletions: number }> = {};
-        for (const s of stats) {
-          map[s.path] = { additions: s.additions, deletions: s.deletions };
-        }
-        setDiffStats(map);
-      })
-      .catch((err) => reportFrontendError('git.diffStats', err));
-    return () => {
-      cancelled = true;
-    };
-  }, [project.id, changedFiles.length, commands]);
-
-  // 合并 diff stats 到文件列�?
-  const changedFilesWithStats = changedFiles.map((f) => ({
-    ...f,
-    additions: diffStats[f.path]?.additions ?? f.additions,
-    deletions: diffStats[f.path]?.deletions ?? f.deletions,
-  }));
-
-  const handleDividerMouseDown = useCallback(
-    (e: React.MouseEvent) => {
-      e.preventDefault();
-      dragStartRef.current = { startY: e.clientY, startHeight: textareaHeight };
-
-      const onMouseMove = (ev: MouseEvent) => {
-        if (!dragStartRef.current) return;
-        const delta = dragStartRef.current.startY - ev.clientY;
-        const newHeight = Math.max(40, Math.min(300, dragStartRef.current.startHeight + delta));
-        setTextareaHeight(newHeight);
-      };
-
-      const onMouseUp = () => {
-        dragStartRef.current = null;
-        document.removeEventListener('mousemove', onMouseMove);
-        document.removeEventListener('mouseup', onMouseUp);
-        document.body.style.cursor = '';
-        document.body.style.userSelect = '';
-      };
-
-      document.body.style.cursor = 'row-resize';
-      document.body.style.userSelect = 'none';
-      document.addEventListener('mousemove', onMouseMove);
-      document.addEventListener('mouseup', onMouseUp);
-    },
-    [textareaHeight],
-  );
-
-  // Guard against userSelect/cursor leak: if this component unmounts while a
-  // divider drag is still in progress the document-level mouseup handler will
-  // never fire, leaving body styles permanently dirty.
-  useEffect(() => {
-    return () => {
-      document.body.style.cursor = '';
-      document.body.style.userSelect = '';
-    };
-  }, []);
-
-  // AI 按钮仅当 capabilities.canGenerateCommitMessage 且已选择 agent 时可�?
-  const canAiGenerate = capabilities.canGenerateCommitMessage && !!project.selectedAgent;
-
-  const handleAiGenerate = useCallback(async () => {
-    if (!capabilities.canGenerateCommitMessage || !project.selectedAgent) return;
-    const files = Array.from(selectedFiles);
-    if (files.length === 0) {
-      onShowToast?.('No files selected. Please select files to generate commit message.', 'error');
-      return;
-    }
-    setAiGenerating(true);
-    try {
-      const selectedAgent = project.selectedAgent?.[0] ?? '';
-      const agentCommandOverride = config.agentCommandOverrides?.[selectedAgent] ?? null;
-      const generated = await commands.generateCommitMessage(
-        selectedAgent,
-        files,
-        agentCommandOverride,
-      );
-      setCommitMessage(generated.trim());
-    } catch (e: unknown) {
-      onShowToast?.(String(e), 'error');
-    } finally {
-      setAiGenerating(false);
-    }
-  }, [
-    capabilities.canGenerateCommitMessage,
-    project.selectedAgent,
-    selectedFiles,
-    commands,
-    config.agentCommandOverrides,
-    onShowToast,
-  ]);
 
   const toggleFile = useCallback((path: string) => {
     setSelectedFiles((prev) => {
@@ -283,177 +125,6 @@ const GitCommitPanel: React.FC<GitCommitPanelProps> = ({
   const handleCancelDiscard = useCallback(() => {
     setDiscardConfirm(null);
   }, []);
-
-  const handleConfirmDiscard = useCallback(async () => {
-    if (!discardConfirm) return;
-    const confirm = discardConfirm;
-    setDiscardConfirm(null);
-    setLoading(true);
-    try {
-      if (confirm.type === 'file') {
-        await withTimeout(commands.discardFile(confirm.path), TIMEOUT_LOCAL_MS, 'discard');
-      } else {
-        await withTimeout(commands.discardAll(), TIMEOUT_LOCAL_MS, 'discard-all');
-      }
-      await onRefreshGit();
-      setSelectedFiles((prev) => {
-        const next = new Set(prev);
-        if (confirm.type === 'all') {
-          next.clear();
-        } else {
-          next.delete(confirm.path);
-        }
-        return next;
-      });
-      onShowToast?.(confirm.type === 'all' ? 'Discarded all changes' : 'Discarded changes', 'info');
-    } catch (e: unknown) {
-      onShowToast?.(String(e), 'error');
-    } finally {
-      setLoading(false);
-    }
-  }, [commands, discardConfirm, onRefreshGit, onShowToast]);
-
-  const handleStageFile = useCallback(
-    async (path: string) => {
-      setLoading(true);
-      try {
-        await withTimeout(commands.stageFiles([path]), TIMEOUT_LOCAL_MS, 'stage');
-        await onRefreshGit();
-        onShowToast?.('Staged file', 'info');
-      } catch (e: unknown) {
-        onShowToast?.(String(e), 'error');
-      } finally {
-        setLoading(false);
-      }
-    },
-    [commands, onRefreshGit, onShowToast],
-  );
-
-  const handleStageAllUntracked = useCallback(async () => {
-    const untrackedPaths = changedFiles.filter((f) => f.status === 'Untracked').map((f) => f.path);
-    if (untrackedPaths.length === 0) return;
-    setLoading(true);
-    try {
-      await withTimeout(commands.stageFiles(untrackedPaths), TIMEOUT_LOCAL_MS, 'stage-all');
-      await onRefreshGit();
-      onShowToast?.(`Staged ${untrackedPaths.length} file(s)`, 'info');
-    } catch (e: unknown) {
-      onShowToast?.(String(e), 'error');
-    } finally {
-      setLoading(false);
-    }
-  }, [changedFiles, commands, onRefreshGit, onShowToast]);
-
-  // 展开折叠的 untracked 目录条目：按需拉取目录下的 untracked 文件列表
-  const handleExpandUntrackedDir = useCallback(
-    async (dirPath: string) => {
-      try {
-        return await commands.listUntrackedFiles(dirPath);
-      } catch (e: unknown) {
-        onShowToast?.(String(e), 'error');
-        return [];
-      }
-    },
-    [commands, onShowToast],
-  );
-
-  const handleCommit = useCallback(
-    async (message: string) => {
-      const files = Array.from(selectedFiles);
-      if (files.length === 0) {
-        onShowToast?.('No files selected. Check files to commit.', 'error');
-        return;
-      }
-      setLoading(true);
-      try {
-        const result = (await withTimeout(
-          commands.commitFiles(files, message),
-          TIMEOUT_LOCAL_MS,
-          'commit',
-        )) as CommitResult;
-        await onRefreshGit();
-        setSelectedFiles(new Set());
-        setCommitMessage('');
-        onShowToast?.(
-          `Committed ${result.hash ? result.hash.slice(0, 7) : 'successfully'}`,
-          'info',
-        );
-      } catch (e: unknown) {
-        onShowToast?.(String(e), 'error');
-      } finally {
-        setLoading(false);
-      }
-    },
-    [selectedFiles, commands, onRefreshGit, onShowToast],
-  );
-
-  const handleCommitAndPush = useCallback(
-    async (message: string) => {
-      const files = Array.from(selectedFiles);
-      if (files.length === 0) {
-        onShowToast?.('No files selected. Check files to commit.', 'error');
-        return;
-      }
-      setLoading(true);
-      try {
-        await withTimeout(commands.commitFiles(files, message), TIMEOUT_LOCAL_MS, 'commit');
-        const outcome = await withTimeout(commands.push(false), TIMEOUT_NETWORK_MS, 'push');
-        if (handlePushOutcome(outcome, 'push')) return; // AuthRequired handled
-        await onRefreshGit();
-        setSelectedFiles(new Set());
-        setCommitMessage('');
-        onShowToast?.('Committed & pushed successfully', 'info');
-      } catch (e: unknown) {
-        onShowToast?.(String(e), 'error');
-      } finally {
-        setLoading(false);
-      }
-    },
-    [selectedFiles, commands, onRefreshGit, onShowToast, handlePushOutcome],
-  );
-
-  const handleFetch = useCallback(async () => {
-    setLoading(true);
-    try {
-      const outcome = await withTimeout(commands.fetch(), TIMEOUT_NETWORK_MS, 'fetch');
-      if (handlePushOutcome(outcome, 'fetch')) return;
-      // fetch 后刷新 changed_files + ahead/behind（待 push/pull 数量）
-      await onRefreshGit();
-      onShowToast?.('Fetched successfully', 'info');
-    } catch (e: unknown) {
-      onShowToast?.(String(e), 'error');
-    } finally {
-      setLoading(false);
-    }
-  }, [commands, onRefreshGit, onShowToast, handlePushOutcome]);
-
-  const handlePull = useCallback(async () => {
-    setLoading(true);
-    try {
-      const outcome = await withTimeout(commands.pull(), TIMEOUT_NETWORK_MS, 'pull');
-      if (handlePushOutcome(outcome, 'pull')) return;
-      await onRefreshGit();
-      onShowToast?.('Pulled successfully', 'info');
-    } catch (e: unknown) {
-      onShowToast?.(String(e), 'error');
-    } finally {
-      setLoading(false);
-    }
-  }, [commands, onRefreshGit, onShowToast, handlePushOutcome]);
-
-  const handlePush = useCallback(async () => {
-    setLoading(true);
-    try {
-      const outcome = await withTimeout(commands.push(false), TIMEOUT_NETWORK_MS, 'push');
-      if (handlePushOutcome(outcome, 'push')) return;
-      await onRefreshGit();
-      onShowToast?.('Pushed successfully', 'info');
-    } catch (e: unknown) {
-      onShowToast?.(String(e), 'error');
-    } finally {
-      setLoading(false);
-    }
-  }, [commands, onRefreshGit, onShowToast, handlePushOutcome]);
 
   const handleNewBranch = useCallback(() => {
     if (onOpenDialog) {
@@ -491,6 +162,19 @@ const GitCommitPanel: React.FC<GitCommitPanelProps> = ({
       }
     },
     [commands, onRefreshGit, onShowToast],
+  );
+
+  // 展开折叠的 untracked 目录条目：按需拉取目录下的 untracked 文件列表
+  const handleExpandUntrackedDir = useCallback(
+    async (dirPath: string) => {
+      try {
+        return await commands.listUntrackedFiles(dirPath);
+      } catch (e: unknown) {
+        onShowToast?.(String(e), 'error');
+        return [];
+      }
+    },
+    [commands, onShowToast],
   );
 
   const handleDialogClose = useCallback(() => {
@@ -557,7 +241,10 @@ const GitCommitPanel: React.FC<GitCommitPanelProps> = ({
             <Button variant="outline" onClick={handleCancelDiscard}>
               Cancel
             </Button>
-            <Button variant="destructive" onClick={handleConfirmDiscard}>
+            <Button
+              variant="destructive"
+              onClick={() => discardConfirm && void handleConfirmDiscard(discardConfirm)}
+            >
               {discardConfirm?.type === 'all' ? 'Discard All' : 'Discard'}
             </Button>
           </DialogFooter>
@@ -577,7 +264,11 @@ const GitCommitPanel: React.FC<GitCommitPanelProps> = ({
             onDiscardFile={handleDiscardFile}
             onDiscardAll={handleDiscardAllRequest}
             onStageFile={handleStageFile}
-            onStageAllUntracked={handleStageAllUntracked}
+            onStageAllUntracked={() =>
+              void handleStageAllUntracked(
+                changedFiles.filter((f) => f.status === 'Untracked').map((f) => f.path),
+              )
+            }
             onFileSelect={(path) => onSelectFile?.(path)}
             onOpenFile={(path) => void openProjectFile({ projectId: project.id, filePath: path })}
             onExpandUntrackedDir={handleExpandUntrackedDir}

@@ -1,6 +1,5 @@
 import { closeSearchPanel, openSearchPanel, searchPanelOpen } from '@codemirror/search';
 import type { EditorView } from '@codemirror/view';
-import CodeMirror from '@uiw/react-codemirror';
 import React, { useCallback, useMemo, useRef, useState } from 'react';
 
 import { useCmdHeld } from '@/features/lsp';
@@ -9,7 +8,6 @@ import { useAppContext } from '@/shared/contexts';
 import { useLspStore } from '@/shared/store/lspStore';
 import { useNotificationStore } from '@/shared/store/notificationStore';
 import type { AppTheme, FileTab } from '@/shared/types';
-import { MarkdownPreview } from '@/ui';
 
 import { useFileActionsContext } from '../FileActionsContext';
 import { useEditorBreakpoints } from '../hooks/useEditorBreakpoints';
@@ -20,11 +18,7 @@ import { useFileEditorState } from '../hooks/useFileEditorState';
 import { useLspClient } from '../hooks/useLspClient';
 import { useLspNavigation } from '../hooks/useLspNavigation';
 
-import EditorHeader from './EditorHeader';
-import ExternallyModifiedDialog from './ExternallyModifiedDialog';
-import InlineHtmlPreview from './InlineHtmlPreview';
-import MarkdownScrollContainer from './MarkdownScrollContainer';
-import SelectionToolbar from './SelectionToolbar';
+import FileEditorView from './FileEditorView';
 import UneditableFileView from './UneditableFileView';
 
 interface FileEditorProps {
@@ -42,7 +36,8 @@ interface FileEditorProps {
 
 /**
  * 单文件编辑器组装层：组合编辑器状态 / 断点 / LSP / 快照 / 保存 hooks，
- * 组装 CodeMirror extensions 并分发 binary / 超大 / preview / source 渲染。
+ * 组装 CodeMirror extensions 并把渲染职责委托给 FileEditorView
+ * （binary / 超大 / preview / source 分支在视图层）。
  */
 function FileEditor({
   tab,
@@ -208,7 +203,7 @@ function FileEditor({
   // Determine if file can be edited
   const canEdit = !tab.readOnly && !tab.content.is_binary && tab.content.size <= 512 * 1024;
 
-  // Binary file
+  // Binary / oversized → 不可编辑占位视图（分支仍在编排层：早退避免无谓 hooks 消费）
   if (tab.content.is_binary) {
     return (
       <UneditableFileView
@@ -219,8 +214,6 @@ function FileEditor({
       />
     );
   }
-
-  // Large file (view only)
   if (tab.content.size > 512 * 1024) {
     return (
       <UneditableFileView
@@ -232,82 +225,42 @@ function FileEditor({
     );
   }
 
-  // Markdown / HTML preview mode
-  const showPreview = (isMd || isHtml) && previewMode === 'preview';
-
   return (
-    <div className="flex-1 flex flex-col min-h-0">
-      {/* 外部文件修改 Modal */}
-      {externallyModified && (
-        <ExternallyModifiedDialog
-          fileName={tab.fileName}
-          onKeepEdits={handleKeepEdits}
-          onReload={handleReload}
-        />
-      )}
-
-      <EditorHeader
-        filePath={tab.filePath}
-        projectPath={projectPath}
-        isDirty={tab.isDirty}
-        isMd={isMd}
-        isHtml={isHtml}
-        previewMode={previewMode}
-        onTogglePreview={() => setPreviewMode((m) => (m === 'preview' ? 'source' : 'preview'))}
-        onOpenInBrowser={handleOpenInBrowser}
-        onOpenInSystemBrowser={handleOpenInSystemBrowser}
-        canOpenInBrowser={canOpenInBrowser}
-        onSearch={showPreview ? undefined : handleOpenSearch}
-        onAI={handleOpenAI}
-      />
-
-      <div className="flex-1 min-h-0 overflow-hidden">
-        {showPreview ? (
-          isMd ? (
-            <MarkdownScrollContainer tabKey={tabKey} tabId={tabId} content={currentContent}>
-              <MarkdownPreview
-                content={currentContent}
-                theme={theme}
-                basePath={basePath}
-                onInternalLinkClick={handleInternalLinkClick}
-              />
-            </MarkdownScrollContainer>
-          ) : (
-            <InlineHtmlPreview
-              tabKey={tabKey}
-              tabId={tabId}
-              content={currentContent}
-              basePath={basePath}
-              fileName={tab.fileName}
-            />
-          )
-        ) : (
-          <CodeMirror
-            value={currentContent}
-            height="100%"
-            extensions={extensions}
-            onChange={handleEditorChange}
-            onCreateEditor={handleCreateEditor}
-            editable={true}
-            readOnly={!canEdit}
-            theme={cmTheme}
-            basicSetup={false}
-            className={cmClassName}
-          />
-        )}
-      </div>
-
-      <SelectionToolbar
-        visible={toolbarPos !== null && !showPreview && !externallyModified}
-        top={toolbarPos?.top ?? 0}
-        left={toolbarPos?.left ?? 0}
-        onAction={handleEditorAction}
-        onClose={handleCloseToolbar}
-        needsAgentTab={pending !== null}
-        agentName="Agent"
-        onCreateTab={handleCreateTab}
-      />
-    </div>
+    <FileEditorView
+      tab={tab}
+      tabKey={tabKey}
+      tabId={tabId}
+      projectPath={projectPath}
+      theme={theme}
+      externallyModified={externallyModified}
+      previewMode={previewMode}
+      isMd={isMd}
+      isHtml={isHtml}
+      currentContent={currentContent}
+      basePath={basePath}
+      canEdit={canEdit}
+      extensions={extensions}
+      cmTheme={cmTheme}
+      cmClassName={cmClassName}
+      onEditorChange={handleEditorChange}
+      onCreateEditor={handleCreateEditor}
+      onKeepEdits={handleKeepEdits}
+      onReload={handleReload}
+      callbacks={{
+        onTogglePreview: () => setPreviewMode((m) => (m === 'preview' ? 'source' : 'preview')),
+        onOpenInBrowser: handleOpenInBrowser,
+        onOpenInSystemBrowser: handleOpenInSystemBrowser,
+        canOpenInBrowser,
+        onOpenSearch: handleOpenSearch,
+        onOpenAI: handleOpenAI,
+        onInternalLinkClick: handleInternalLinkClick,
+      }}
+      toolbarPos={toolbarPos}
+      onToolbarAction={handleEditorAction}
+      onToolbarClose={handleCloseToolbar}
+      pendingAgentName={pending !== null ? 'Agent' : null}
+      onCreateAgentTab={handleCreateTab}
+    />
   );
 }
 

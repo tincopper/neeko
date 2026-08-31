@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import { checkAgentsInstalled } from '@/features/agent/api/agentApi';
-import type { AgentConfig } from '@/shared/types';
+import type { AgentConfig, Tab } from '@/shared/types';
 import { reportFrontendError } from '@/shared/utils/errorReporting';
+
+import { renderEditorTabLeading } from '../components/TabItemLeading';
 
 interface UsePaneAgentsParams {
   agents: AgentConfig[];
@@ -55,5 +57,17 @@ export function usePaneAgents({
     [enabledAgents, installedMap],
   );
 
-  return { installedMap, handleAgentClick, enabledAgents, installedEnabledAgents };
+  /** Tab leading 渲染回调（依赖 installed agents 状态，与 hook 同域内聚）。 */
+  const renderTabLeading = useCallback(
+    (tab: Tab) => renderEditorTabLeading(tab, installedEnabledAgents),
+    [installedEnabledAgents],
+  );
+
+  return {
+    installedMap,
+    handleAgentClick,
+    enabledAgents,
+    installedEnabledAgents,
+    renderTabLeading,
+  };
 }

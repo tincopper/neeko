@@ -6,7 +6,6 @@ import { ContextMenu } from '@/features/project';
 import { useEditorContext, EditorProvider } from '@/shared/contexts';
 import { useAppContext } from '@/shared/contexts/AppContext';
 import type { AuthMethod, EditorGroupId } from '@/shared/types';
-import type { Tab } from '@/shared/types/tab';
 
 import { PINNED_DROP_PREFIX, editorPaneRegionClass } from '../dragDrop';
 import { useFileActionsContext } from '../FileActionsContext';
@@ -25,7 +24,6 @@ import BulkCloseConfirmDialog from './BulkCloseConfirmDialog';
 import CloseConfirmDialog from './CloseConfirmDialog';
 import PaneContent from './PaneContent';
 import PaneTabBar from './PaneTabBar';
-import { renderEditorTabLeading } from './TabItemLeading';
 
 /** 面板容器键盘事件：Enter / Space 聚焦该面板 */
 function handlePaneKeyDown(e: React.KeyboardEvent<HTMLDivElement>, onFocusGroup: () => void) {
@@ -142,20 +140,16 @@ function EditorGroupPane({
   const actionMenuItems = useMemo(() => getActionMenuItems(actionMenuCtx), [actionMenuCtx]);
 
   // ── Agents ──
-  const { handleAgentClick, enabledAgents, installedEnabledAgents } = usePaneAgents({
-    agents,
-    hiddenAgentIds,
-    projectIdForCheck,
-    onAgentClick,
-    showToast,
-  });
+  const { handleAgentClick, enabledAgents, installedEnabledAgents, renderTabLeading } =
+    usePaneAgents({
+      agents,
+      hiddenAgentIds,
+      projectIdForCheck,
+      onAgentClick,
+      showToast,
+    });
 
   const currentAgentId = activeTab?.data.kind === 'terminal' ? activeTab.data.agentId : null;
-
-  const renderTabLeading = useCallback(
-    (tab: Tab) => renderEditorTabLeading(tab, installedEnabledAgents),
-    [installedEnabledAgents],
-  );
 
   const showAgentBarContent =
     showAgentBar && activeTab?.data.kind === 'terminal' && installedEnabledAgents.length > 0;

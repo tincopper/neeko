@@ -1,18 +1,11 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 
-import { openProjectFile } from '@/features/quick-open';
-import { fileIconSrc } from '@/shared/utils/fileIcons';
-
 import CombinedDiffView from './CombinedDiffView';
-import DiffTable from './DiffTable';
-import DiffToolbar from './DiffToolbar';
-import { mergeSelection, splitFilePath } from './diffViewUtils';
+import { mergeSelection } from './diffViewUtils';
 import type { SelectionMode } from './diffViewUtils';
-import { DiffFileCard } from './FileDiffSection';
-import { detectLanguage, ensureLanguageRegistered } from './highlight';
 import ReviewInstructionPopover from './ReviewInstructionPopover';
 import SelectionActionBar from './SelectionActionBar';
-import SplitDiffTable from './SplitDiffTable';
+import SingleDiffBody from './SingleDiffBody';
 import type { DiffViewProps, ViewMode } from './types';
 import { useDiffData } from './useDiffData';
 import { useDiffReview } from './useDiffReview';
@@ -112,21 +105,6 @@ const DiffView: React.FC<DiffViewProps> = React.memo(
         onClose={() => setReviewPopover(false)}
       />
     ) : null;
-
-    const language = useMemo(() => detectLanguage(filePath), [filePath]);
-    const singleParts = useMemo(() => splitFilePath(filePath), [filePath]);
-    const [singleLanguageReady, setSingleLanguageReady] = useState(false);
-
-    useEffect(() => {
-      if (combined) return;
-      let cancelled = false;
-      void ensureLanguageRegistered(language).then(() => {
-        if (!cancelled) setSingleLanguageReady(true);
-      });
-      return () => {
-        cancelled = true;
-      };
-    }, [combined, language]);
 
     // Reset shared state when the commit file set identity changes.
     // （导航 state 由 CombinedDiffView 内部 useCombinedDiffNav 的 filesKey effect 负责。）
@@ -275,110 +253,34 @@ const DiffView: React.FC<DiffViewProps> = React.memo(
       );
     }
 
-    // ── Single-file: same card chrome as combined ─────────────────────────
-    const singleToolbar = (
-      <DiffToolbar
-        title={singleParts.name}
-        subtitle={singleParts.dir || undefined}
-        titleTooltip={filePath}
-        iconSrc={fileIconSrc(singleParts.name)}
-        additions={loading || error ? 0 : changeStats.additions}
-        deletions={loading || error ? 0 : changeStats.deletions}
+    // ── Single-file: rendering delegated to SingleDiffBody ──────────────
+    return (
+      <SingleDiffBody
+        filePath={filePath}
+        projectId={projectId}
+        loading={loading}
+        error={error}
+        diffResult={diffResult}
         viewMode={viewMode}
-        onViewModeChange={handleViewModeChange}
-        changeIndex={!loading && !error && totalChangeBlocks > 0 ? currentBlockIndex : 0}
-        changeTotal={!loading && !error ? totalChangeBlocks : 0}
-        onChangePrev={() => navigateBlock('prev')}
-        onChangeNext={() => navigateBlock('next')}
         fullMode={fullMode}
         onToggleFull={toggleFullMode}
-        onReview={loading || error ? undefined : handleReviewFull}
-        onOpenFile={projectId ? () => void openProjectFile({ projectId, filePath }) : undefined}
-        openFileDisabled={Boolean(loading || error)}
+        onViewModeChange={handleViewModeChange}
+        changeStats={changeStats}
+        totalChangeBlocks={totalChangeBlocks}
+        currentBlockIndex={currentBlockIndex}
+        onChangePrev={() => navigateBlock('prev')}
+        onChangeNext={() => navigateBlock('next')}
+        onRetry={() => void loadDiff()}
+        onReview={handleReviewFull}
+        selectedLines={selectedLines}
+        onToggleLine={toggleLine}
+        onDragCommit={commitDragRange}
+        fullHunks={fullHunks}
+        expandedSections={expandedSections}
+        onToggleSection={toggleSection}
+        selectionActionBar={selectionActionBar}
+        reviewPopoverEl={reviewPopoverEl}
       />
-    );
-
-    let singleBody: React.ReactNode;
-    if (loading) {
-      singleBody = (
-        <div className="space-y-2 py-2" aria-busy="true" aria-label="Loading diff">
-          {Array.from({ length: 8 }).map((_, i) => (
-            <div
-              key={i}
-              className="h-3 rounded bg-bg-tertiary/70 animate-pulse"
-              style={{ width: `${70 + (i % 3) * 10}%` }}
-            />
-          ))}
-        </div>
-      );
-    } else if (error) {
-      singleBody = (
-        <div className="flex flex-col items-center justify-center gap-3 py-8 text-[var(--font-size)]">
-          <p className="text-accent-red">Error: {error}</p>
-          <button
-            type="button"
-            className="py-1.5 px-3 rounded bg-accent-blue/15 text-accent-blue border border-accent-blue/30 cursor-pointer hover:bg-accent-blue/25"
-            onClick={() => {
-              void loadDiff();
-            }}
-          >
-            Retry
-          </button>
-        </div>
-      );
-    } else if (diffResult && diffResult.hunks.length > 0) {
-      singleBody =
-        viewMode === 'unified' ? (
-          <DiffTable
-            diffResult={diffResult}
-            language={language}
-            languageReady={singleLanguageReady}
-            selectedLines={selectedLines}
-            onToggleLine={toggleLine}
-            onDragCommit={(keys, mode) => commitDragRange(keys, mode)}
-            fullHunks={fullHunks ?? undefined}
-            expandedSections={expandedSections}
-            onToggleSection={(hunkIdx, lineIdx) => toggleSection(hunkIdx, lineIdx)}
-            selectionActionBar={selectionActionBar}
-          />
-        ) : (
-          <SplitDiffTable
-            diffResult={diffResult}
-            language={language}
-            languageReady={singleLanguageReady}
-            selectedLines={selectedLines}
-            onToggleLine={toggleLine}
-            onDragCommit={(keys, mode) => commitDragRange(keys, mode)}
-            fullHunks={fullHunks ?? undefined}
-            expandedSections={expandedSections}
-            onToggleSection={(hunkIdx, lineIdx) => toggleSection(hunkIdx, lineIdx)}
-            selectionActionBar={selectionActionBar}
-          />
-        );
-    } else {
-      singleBody = (
-        <div className="text-text-muted text-[var(--font-size)] py-8 text-center">
-          No changes to display
-        </div>
-      );
-    }
-
-    return (
-      <div className="relative flex-1 flex flex-col overflow-hidden min-w-0 bg-bg-secondary">
-        {singleToolbar}
-
-        {reviewPopoverEl}
-
-        <div className="flex-1 overflow-auto min-w-0 bg-bg-secondary py-0.5">
-          {/*
-            Single mode: keep the rounded content card for visual parity with
-            combined, but hide the file header — toolbar already shows name/dir/stats.
-          */}
-          <DiffFileCard filePath={filePath} expanded active showHeader={false}>
-            {singleBody}
-          </DiffFileCard>
-        </div>
-      </div>
     );
   },
 );
