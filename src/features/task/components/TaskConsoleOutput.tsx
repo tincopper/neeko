@@ -15,12 +15,12 @@ import { useBrowserStore } from '@/shared/store/browserStore';
 import { useDockStore } from '@/shared/store/dockStore';
 import {
   applyRenderer,
-  buildFontFamily,
   buildTerminalTheme,
   safeDisposeTerminal,
   TERMINAL_SCROLLBACK,
 } from '@/shared/utils/terminal';
 import { setupTerminalInput, type TerminalInputController } from '@/shared/utils/terminalInput';
+import { buildMonoStack, MONO_LINE_HEIGHT } from '@/shared/utils/typography';
 
 import { writeTaskInput } from '../taskRunner';
 import type { TaskRun } from '../types';
@@ -55,7 +55,8 @@ function TaskConsoleOutput({ run, active }: Props) {
       cursorBlink: false,
       cursorStyle: 'underline',
       fontSize: config.terminalFontSize ?? 14,
-      fontFamily: buildFontFamily(config.fontFamily ?? ''),
+      fontFamily: buildMonoStack(config.monoFontFamily ?? config.fontFamily ?? ''),
+      lineHeight: MONO_LINE_HEIGHT,
       theme: buildTerminalTheme(),
       scrollback: TERMINAL_SCROLLBACK,
       allowProposedApi: true,
@@ -129,7 +130,7 @@ function TaskConsoleOutput({ run, active }: Props) {
     };
     // Only recreate when run identity / read-only mode changes — not when output grows
     // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: buffer streamed via second effect
-  }, [run.id, readOnly, config.terminalFontSize, config.fontFamily]);
+  }, [run.id, readOnly, config.terminalFontSize, config.monoFontFamily, config.fontFamily]);
 
   // Attach input only while the backend session id exists and the run is live.
   // Font config changes recreate xterm above, so input must be reattached afterward.
@@ -152,7 +153,14 @@ function TaskConsoleOutput({ run, active }: Props) {
       inputControllerRef.current?.dispose();
       inputControllerRef.current = null;
     };
-  }, [run.source, run.status, run.processId, config.terminalFontSize, config.fontFamily]);
+  }, [
+    run.source,
+    run.status,
+    run.processId,
+    config.terminalFontSize,
+    config.monoFontFamily,
+    config.fontFamily,
+  ]);
 
   // Stream new output chunks without rewriting the whole buffer
   useEffect(() => {

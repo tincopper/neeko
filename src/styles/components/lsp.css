@@ -24,7 +24,7 @@
     border-radius: 0;
     font-size: 12px;
     line-height: 1.6;
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+    font-family: var(--font-ui);
     max-width: 480px;
     max-height: 340px;
     overflow-y: auto;
@@ -228,7 +228,7 @@
     margin-top: 8px;
     padding-top: 8px;
     border-top: 1px solid var(--border-color);
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+    font-family: var(--font-ui);
     font-size: 12px;
     line-height: 1.6;
     color: var(--text-secondary);

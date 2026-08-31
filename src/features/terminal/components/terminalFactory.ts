@@ -5,14 +5,10 @@ import { Terminal } from '@xterm/xterm';
 
 import type { AgentConfig } from '@/shared/types';
 import { createPollingDrainScheduler } from '@/shared/utils/drainLoop';
-import {
-  applyRenderer,
-  buildFontFamily,
-  buildTerminalTheme,
-  TERMINAL_SCROLLBACK,
-} from '@/shared/utils/terminal';
+import { applyRenderer, buildTerminalTheme, TERMINAL_SCROLLBACK } from '@/shared/utils/terminal';
 import { terminalClosedEvent, terminalInputEvent } from '@/shared/utils/terminalEvents';
 import { setupTerminalInput } from '@/shared/utils/terminalInput';
+import { buildMonoStack, MONO_LINE_HEIGHT } from '@/shared/utils/typography';
 
 // eslint-disable-next-line import/no-restricted-paths -- terminal factory needs agent API for agent config
 import { getAgent } from '../../agent/api/agentApi';
@@ -52,7 +48,8 @@ export async function createTerminalForProject(
   const term = new Terminal({
     cursorBlink: true,
     fontSize,
-    fontFamily: buildFontFamily(fontFamily),
+    fontFamily: buildMonoStack(fontFamily),
+    lineHeight: MONO_LINE_HEIGHT,
     theme: buildTerminalTheme(),
     scrollback: TERMINAL_SCROLLBACK,
     overviewRuler: { width: 0 },

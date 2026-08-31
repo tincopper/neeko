@@ -51,4 +51,23 @@ describe('theme token integrity', () => {
       .map(([selector]) => `${selector} 缺少 --accent-brick`);
     expect(missing).toEqual([]);
   });
+
+  it('defines --mono-fg and --mono-fg-dim in every theme block that carries text palette', () => {
+    const textBlocks = [...themes.entries()].filter(([, vars]) => vars.has('--text-primary'));
+    expect(textBlocks.length).toBeGreaterThanOrEqual(5);
+    const missingFg = textBlocks
+      .filter(([, vars]) => !vars.has('--mono-fg'))
+      .map(([selector]) => `${selector} 缺少 --mono-fg`);
+    const missingDim = textBlocks
+      .filter(([, vars]) => !vars.has('--mono-fg-dim'))
+      .map(([selector]) => `${selector} 缺少 --mono-fg-dim`);
+    expect(missingFg).toEqual([]);
+    expect(missingDim).toEqual([]);
+  });
+
+  it('defines --mono-fg in :root fallback', () => {
+    const root = themes.get(':root');
+    expect(root?.has('--mono-fg')).toBe(true);
+    expect(root?.has('--mono-fg-dim')).toBe(true);
+  });
 });

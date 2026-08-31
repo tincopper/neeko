@@ -13,7 +13,7 @@ import { BUILTIN_THEMES } from '@/features/settings/types';
 import { updateAllTerminalThemes } from '@/features/terminal';
 import { useConnectionStore } from '@/shared/store/connectionStore';
 import { useProjectStore } from '@/shared/store/projectStore';
-import { buildFontFamily } from '@/shared/utils/terminal';
+import { syncTypographyTokens } from '@/shared/utils/typography';
 
 import {
   saveConfig as saveConfigApi,
@@ -31,6 +31,8 @@ const DEFAULT_CONFIG: AppConfig = {
   diffMode: 'unified',
   shell: '',
   fontFamily: '',
+  monoFontFamily: '',
+  uiFontFamily: '',
   customIdes: [],
   ideCommandOverrides: {},
   agentCommandOverrides: {},
@@ -155,23 +157,17 @@ export function useAppConfig() {
   const themeDataCache = useRef<Map<string, CustomThemeData>>(new Map());
 
   useEffect(() => {
-    document.documentElement.style.setProperty('--font-size', `${config.appearanceFontSize}px`);
-  }, [config.appearanceFontSize]);
-
-  useEffect(() => {
-    document.documentElement.style.setProperty(
-      '--terminal-font-size',
-      `${config.terminalFontSize}px`,
-    );
-  }, [config.terminalFontSize]);
-
-  useEffect(() => {
-    // Keep Debug Console / other terminal-styled panes on the same stack as xterm.
-    document.documentElement.style.setProperty(
-      '--terminal-font-family',
-      buildFontFamily(config.fontFamily ?? ''),
-    );
-  }, [config.fontFamily]);
+    syncTypographyTokens({
+      monoFamily: config.monoFontFamily ?? config.fontFamily ?? '',
+      uiFontSize: config.appearanceFontSize,
+      monoFontSize: config.terminalFontSize,
+    });
+  }, [
+    config.appearanceFontSize,
+    config.terminalFontSize,
+    config.fontFamily,
+    config.monoFontFamily,
+  ]);
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', config.theme);
@@ -222,10 +218,15 @@ export function useAppConfig() {
 
   const saveConfig = useCallback(
     async (next: AppConfig) => {
+      // 幂等迁移：monoFontFamily 变化时同步写回 fontFamily 保持向后兼容
+      const withMonoSync: AppConfig =
+        typeof next.monoFontFamily === 'string' && next.monoFontFamily !== next.fontFamily
+          ? { ...next, fontFamily: next.monoFontFamily }
+          : next;
       // Always normalize global lsp block so it is part of config.json
       const normalized: AppConfig = {
-        ...next,
-        lsp: mergeLspConfig(next.lsp),
+        ...withMonoSync,
+        lsp: mergeLspConfig(withMonoSync.lsp),
       };
       setConfig(normalized);
       if (!isBuiltinTheme(normalized.theme)) {
@@ -271,6 +272,18 @@ export function useAppConfig() {
             await loadCustomThemeVars(theme);
           }
 
+          // 迁移：旧 fontFamily → 新 monoFontFamily（幂等，读旧写新）
+          const rawMono =
+            typeof (saved as unknown as { monoFontFamily?: unknown }).monoFontFamily === 'string'
+              ? ((saved as unknown as { monoFontFamily: string }).monoFontFamily as string)
+              : typeof saved.fontFamily === 'string'
+                ? (saved.fontFamily as string)
+                : (DEFAULT_CONFIG.monoFontFamily ?? '');
+          const rawUi =
+            typeof (saved as unknown as { uiFontFamily?: unknown }).uiFontFamily === 'string'
+              ? ((saved as unknown as { uiFontFamily: string }).uiFontFamily as string)
+              : (DEFAULT_CONFIG.uiFontFamily ?? '');
+
           setConfig({
             theme,
             appearanceFontSize:
@@ -289,6 +302,8 @@ export function useAppConfig() {
             shell: typeof saved.shell === 'string' ? saved.shell : DEFAULT_CONFIG.shell,
             fontFamily:
               typeof saved.fontFamily === 'string' ? saved.fontFamily : DEFAULT_CONFIG.fontFamily,
+            monoFontFamily: rawMono,
+            uiFontFamily: rawUi,
             customIdes: Array.isArray(saved.customIdes)
               ? saved.customIdes
               : DEFAULT_CONFIG.customIdes,

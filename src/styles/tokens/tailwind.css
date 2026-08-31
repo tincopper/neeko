@@ -50,3 +50,13 @@
   --radius-apple-pill: 9999px;
   --radius-apple-full: 9999px;
 }
+
+/* 字体角色桥接（@theme inline 沿用 shadcn.css 模式）：
+ * 让 Tailwind `font-sans` / `font-mono` 工具类解析到 Neeko 的字体角色 token，
+ * 使全部 font-mono 消费方（输入框、列表、面板等）与终端/编辑器同栈。
+ * 必须用别名 `--font-code`/`--font-ui` 引用运行时 var —— 若写 `--font-mono: var(--font-mono)`
+ * 会对 @theme 键自身形成自引用。 */
+@theme inline {
+  --font-sans: var(--font-ui);
+  --font-mono: var(--font-code);
+}

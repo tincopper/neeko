@@ -129,7 +129,7 @@ export function useTerminalStrategy(options: UseTerminalStrategyOptions): Termin
         agentDelayMs: 0,
         connectingMessage: `\x1b[33m[Terminal] Connecting to ${projectName ?? projectPath}...\x1b[0m\r\n`,
         fontSize: config.terminalFontSize,
-        fontFamily: config.fontFamily ?? '',
+        fontFamily: config.monoFontFamily ?? config.fontFamily ?? '',
         gpuAccel: config.terminalGpuAcceleration ?? false,
         outputFilter: (bytes: Uint8Array): Uint8Array => {
           const arr: number[] = [];
@@ -172,7 +172,7 @@ export function useTerminalStrategy(options: UseTerminalStrategyOptions): Termin
         agentDelayMs: 500,
         connectingMessage: `\x1b[33m[WSL] Connecting to ${distro}:${projectPath}...\x1b[0m\r\n`,
         fontSize: config.terminalFontSize,
-        fontFamily: config.fontFamily ?? '',
+        fontFamily: config.monoFontFamily ?? config.fontFamily ?? '',
         gpuAccel: config.terminalGpuAcceleration ?? false,
         onSessionReady: () => {},
         setupFileLinks: (term) => {
@@ -207,7 +207,7 @@ export function useTerminalStrategy(options: UseTerminalStrategyOptions): Termin
         agentDelayMs: 800,
         connectingMessage: `\x1b[33m[SSH] Connecting to ${remoteConfig.username}@${remoteConfig.host}:${remoteConfig.port}${projectPath}...\x1b[0m\r\n`,
         fontSize: config.terminalFontSize,
-        fontFamily: config.fontFamily ?? '',
+        fontFamily: config.monoFontFamily ?? config.fontFamily ?? '',
         gpuAccel: config.terminalGpuAcceleration ?? false,
         onSessionReady: remoteConfig.onSessionReady
           ? () => remoteConfig.onSessionReady!(projectId)
@@ -230,6 +230,7 @@ export function useTerminalStrategy(options: UseTerminalStrategyOptions): Termin
     activeTabId,
     showToast,
     config.terminalFontSize,
+    config.monoFontFamily,
     config.fontFamily,
     config.terminalGpuAcceleration,
     config.shell,

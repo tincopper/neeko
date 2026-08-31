@@ -3,6 +3,12 @@
  */
 
 @layer components {
+  /* Mono 行高和谐：编辑器与 xterm 共用 --line-height-mono（1.5），与终端对齐 */
+  .cm-editor .cm-content,
+  .cm-editor .cm-line {
+    line-height: var(--line-height-mono) !important;
+  }
+
   /* Cmd+Hover pointer cursor — when cmd-held class is on the editor wrapper */
   .cmd-held .cm-content { cursor: pointer !important; }
 

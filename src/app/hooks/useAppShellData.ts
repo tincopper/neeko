@@ -156,7 +156,7 @@ export function useAppShellData(): UseAppShellDataResult {
     terminal: {
       fontSize: config.terminalFontSize ?? 14,
       shell: config.shell ?? '',
-      fontFamily: config.fontFamily ?? '',
+      fontFamily: config.monoFontFamily ?? config.fontFamily ?? '',
       gpuAcceleration: config.terminalGpuAcceleration ?? false,
     },
     agentCommandOverrides: config.agentCommandOverrides,

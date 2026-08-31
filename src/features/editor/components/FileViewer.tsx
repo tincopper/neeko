@@ -44,7 +44,7 @@ function FileViewer() {
   const { onFileSave: onSave, onFileContentChange: onContentChange } = useFileActionsContext();
 
   const theme = config.theme;
-  const fontFamily = config.fontFamily;
+  const fontFamily = config.monoFontFamily ?? config.fontFamily ?? '';
   const fontSize = config.editorFontSize;
 
   // Composite tab key: unified across local/WSL/remote projects

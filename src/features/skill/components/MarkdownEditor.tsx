@@ -30,8 +30,8 @@ const MarkdownEditor: React.FC<MarkdownEditorProps> = React.memo(
     const handleChange = useCallback((val: string) => onChange(val), [onChange]);
 
     const cmTheme = useMemo(
-      () => createCmTheme(config.fontFamily, config.editorFontSize),
-      [config.fontFamily, config.editorFontSize],
+      () => createCmTheme(config.monoFontFamily ?? config.fontFamily ?? '', config.editorFontSize),
+      [config.monoFontFamily, config.fontFamily, config.editorFontSize],
     );
 
     const extensions = useMemo(() => {

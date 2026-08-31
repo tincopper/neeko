@@ -273,7 +273,7 @@ export function useProjectActions({
             activeProject.name,
             agent.id,
             config.terminalFontSize ?? 14,
-            config.fontFamily ?? '',
+            config.monoFontFamily ?? config.fontFamily ?? '',
             config.agentCommandOverrides,
           );
         }

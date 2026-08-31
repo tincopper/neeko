@@ -1,6 +1,7 @@
 import React from 'react';
 
 import { cn } from '@/lib/utils';
+import { buildMonoStack, resolveTerminalFontSize } from '@/shared/utils/typography';
 import { Input, Switch } from '@/ui';
 
 import { PRESET_SHELLS } from './constants';
@@ -23,6 +24,8 @@ interface TerminalPanelProps {
   onApplyShell: (value: string) => void;
   gpuAcceleration: boolean;
   onGpuAccelerationChange: (enabled: boolean) => void;
+  /** 和谐默认值：ui+2，用于“恢复和谐默认”按钮 */
+  harmonyTerminalSize?: number;
 }
 
 const TerminalPanel: React.FC<TerminalPanelProps> = ({
@@ -43,7 +46,9 @@ const TerminalPanel: React.FC<TerminalPanelProps> = ({
   onApplyShell,
   gpuAcceleration,
   onGpuAccelerationChange,
+  harmonyTerminalSize,
 }) => {
+  const harmonySize = harmonyTerminalSize ?? resolveTerminalFontSize(12, null);
   return (
     <>
       <h3 className="text-base font-semibold text-text-primary mb-4">Terminal</h3>
@@ -73,6 +78,15 @@ const TerminalPanel: React.FC<TerminalPanelProps> = ({
           >
             +
           </button>
+          {terminalFontSize !== harmonySize && (
+            <button
+              className="ml-1 text-[0.72em] text-accent-blue hover:text-accent-blue/80 underline underline-offset-2"
+              onClick={() => onTerminalFontSizeChange(harmonySize)}
+              title={`恢复和谐默认 ${harmonySize}px (UI+2)`}
+            >
+              恢复和谐默认 ({harmonySize}px)
+            </button>
+          )}
         </div>
       </div>
 
@@ -171,6 +185,25 @@ const TerminalPanel: React.FC<TerminalPanelProps> = ({
               </div>
             </div>
           )}
+        </div>
+        {/* 预览：真实等宽渲染 + Nerd 符号行（与终端同栈），标注无连字 */}
+        <div
+          className="w-full rounded border border-border bg-bg-secondary px-3 py-2.5 overflow-hidden"
+          style={{
+            fontFamily: buildMonoStack(fontFamily),
+            fontSize: `${terminalFontSize}px`,
+            lineHeight: 'var(--line-height-mono)',
+          }}
+        >
+          <div className="text-text-primary whitespace-nowrap overflow-hidden text-ellipsis">
+            The quick brown fox — 0123456789
+          </div>
+          <div className="text-text-secondary whitespace-nowrap overflow-hidden text-ellipsis">
+            Nerd: 󰘦 󰅂 󰛨 󰅖 󰗠
+          </div>
+        </div>
+        <div className="text-[0.72em] text-text-muted leading-relaxed">
+          预览为等宽渲染；Nerd 符号经 fallback 字体补齐；连字已禁用（xterm 限制，无 ligatures）。
         </div>
       </div>
 

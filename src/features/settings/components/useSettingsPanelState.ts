@@ -126,7 +126,7 @@ export function useSettingsPanelState({
   };
 
   const applyFont = (font: string) => {
-    onConfigChange({ ...config, fontFamily: font });
+    onConfigChange({ ...config, fontFamily: font, monoFontFamily: font });
     setFontListOpen(false);
     setFontSearch('');
   };

@@ -159,7 +159,7 @@
   .work-row:not(:has(.cmd-body)) .chevron { display:none; }
 
   /* ── Command Card ── */
-  .cmd-card { margin:4px 0; border:1px solid color-mix(in srgb, var(--accent-blue) 25%, transparent); border-radius:var(--radius-apple-sm); background:color-mix(in srgb, var(--accent-blue) 4%, transparent); overflow:hidden; font-family:var(--terminal-font-family); }
+  .cmd-card { margin:4px 0; border:1px solid color-mix(in srgb, var(--accent-blue) 25%, transparent); border-radius:var(--radius-apple-sm); background:color-mix(in srgb, var(--accent-blue) 4%, transparent); overflow:hidden; font-family:var(--font-mono); }
   .cmd-card.failed { border-color:color-mix(in srgb, var(--accent-red) 30%, transparent); background:color-mix(in srgb, var(--accent-red) 4%, transparent); }
   .cmd-card .cmd-head { display:flex; align-items:center; gap:8px; padding:7px 12px; }
   .cmd-card .cmd-head-btn { display:flex; align-items:center; gap:8px; width:100%; padding:7px 12px; background:none; border:none; cursor:pointer; text-align:left; font:inherit; color:inherit; }
@@ -256,7 +256,7 @@
   .work-row:not(:has(.cmd-body)) .chevron { display:none; }
 
   /* ── Command Card ── */
-  .cmd-card { margin:4px 0; border:1px solid color-mix(in srgb, var(--accent-blue) 25%, transparent); border-radius:var(--radius-apple-sm); background:color-mix(in srgb, var(--accent-blue) 4%, transparent); overflow:hidden; font-family:var(--terminal-font-family); }
+  .cmd-card { margin:4px 0; border:1px solid color-mix(in srgb, var(--accent-blue) 25%, transparent); border-radius:var(--radius-apple-sm); background:color-mix(in srgb, var(--accent-blue) 4%, transparent); overflow:hidden; font-family:var(--font-mono); }
   .cmd-card.failed { border-color:color-mix(in srgb, var(--accent-red) 30%, transparent); background:color-mix(in srgb, var(--accent-red) 4%, transparent); }
   .cmd-card .cmd-head { display:flex; align-items:center; gap:8px; padding:7px 12px; }
   .cmd-card .cmd-head-btn { display:flex; align-items:center; gap:8px; width:100%; padding:7px 12px; background:none; border:none; cursor:pointer; text-align:left; font:inherit; color:inherit; }

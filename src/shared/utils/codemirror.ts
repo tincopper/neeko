@@ -2,7 +2,7 @@ import type { Extension } from '@codemirror/state';
 import { tags as t } from '@lezer/highlight';
 import { createTheme } from '@uiw/codemirror-themes';
 
-import { buildFontFamily } from './terminal';
+import { buildMonoStack } from './typography';
 
 // Extension to file extension mapping (lazy loaded)
 const LANG_MAP: Record<string, () => Promise<Extension>> = {
@@ -372,14 +372,14 @@ function getFileExtension(filename: string): string {
  * Creates a new theme object each call so CodeMirror reconfigures on prop change.
  */
 export function createCmTheme(fontFamily: string, fontSize: number) {
-  const ff = buildFontFamily(fontFamily);
+  const ff = buildMonoStack(fontFamily);
   return createTheme({
     theme: 'dark',
     settings: {
       fontSize: `${fontSize}px`,
       fontFamily: ff,
       background: 'var(--bg-secondary)',
-      foreground: 'var(--text-primary)',
+      foreground: 'var(--mono-fg, var(--text-primary))',
       caret: 'var(--accent-blue)',
       selection: 'rgba(var(--accent-blue-rgb), 0.3)',
       selectionMatch: 'rgba(var(--accent-blue-rgb), 0.2)',

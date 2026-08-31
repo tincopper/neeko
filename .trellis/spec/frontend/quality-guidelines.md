@@ -330,3 +330,36 @@ pnpm lint:fix     # 自动修复 ESLint/prettier 问题（如需要，手动执�
 | 纯函数 / utils | 100% |
 | 自定义 Hooks | 关键行为 100% |
 | 业务组件 | 关键交互路径 |
+
+---
+
+## 字体角色约定（Typography SSOT）
+
+> 统一终端/编辑器/UI 字体栈，消除 4 处 mono 分裂 + 3 处 sans 硬编码。详见 `src/shared/utils/typography.ts` 与 `src/styles/tokens/theme.css`。
+
+### Token 角色
+
+| Token | 角色 | 消费方 |
+|-------|------|--------|
+| `--font-ui` | UI sans（系统栈） | `body`, LSP hover/signature doc, 面板标题等非等宽文本 |
+| `--font-mono` / `--font-code` | mono 等宽（JetBrains/Cascadia + Nerd） | xterm, CodeMirror, markdown 代码, LSP 单行, agent-chat `font-mono` 类 |
+| `--line-height-mono` | mono 行高 1.5 | xterm `lineHeight`, `.cm-content` |
+| `--mono-fg` / `--mono-fg-dim` | mono 前景（终端+编辑器共用） | `buildTerminalTheme`, `createCmTheme` |
+
+- `--font-code = var(--font-mono)` 为 Tailwind `@theme inline` 桥接别名（避开 `@theme` 键自引用）。`font-mono` / `font-sans` 工具类分别解析到 `--font-code` / `--font-ui`，随用户设置自动跟随。
+
+### JS 单一真相
+
+- 默认栈：`SANS_DEFAULT` / `MONO_DEFAULT`（与 theme.css 静态默认保持一致）。
+- 构造器：`buildMonoStack(userOverride)` / `buildSansStack(userOverride)` — 唯一构造，含 Nerd fallback。
+- 单一写入口：`syncTypographyTokens({ monoFamily, uiFontSize, monoFontSize, monoLineHeight })` — 仅 `useAppConfig` 调用，写入 `--font-mono` / `--font-size` / `--terminal-font-size` / `--line-height-mono`。
+- 字号和谐：`resolveTerminalFontSize(ui, terminal?)`（默认 ui+2） / `resolveEditorFontSize(terminal, editor?)`（默认 = terminal） / `resolveEffectiveSizes(ui, terminal?, editor?)`。非法值回退到和谐值，范围 10–24。
+- 配置字段：`monoFontFamily`（新，mono 角色）+ `uiFontFamily`（预留），旧 `fontFamily` 仅兼容读取，写入时同步回填。
+
+### 使用约定
+
+- CSS 消费：`font-family: var(--font-mono)` / `var(--font-ui)`；前景 `color: var(--mono-fg)`（编辑器）或 `foreground: var(--mono-fg)`（终端主题）。禁止新增裸 `font-family: "...", monospace` 硬编码（仅 `nerd-font.css` 例外）。
+- Tailwind 消费：`class="font-mono"` / `font-sans`（已桥接到角色 token）。
+- xterm：`new Terminal({ fontFamily: buildMonoStack(...), lineHeight: MONO_LINE_HEIGHT })` + `options.lineHeight` 同步。
+- CodeMirror：`createCmTheme(monoFamily, size)` 内部 `buildMonoStack`，前景 `var(--mono-fg, var(--text-primary))`。
+- 校验：`pnpm lint` 含 `check_font_family_guard.py`（扫描 `src/styles/**/*.css` 裸 `font-family:`）；`themeTokens.test.ts` 守卫各主题 `--mono-fg` 齐全。

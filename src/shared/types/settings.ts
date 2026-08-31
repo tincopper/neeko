@@ -57,7 +57,12 @@ export interface AppConfig {
   terminalFontSize: number;
   diffMode: DiffMode;
   shell: string;
+  /** @deprecated 旧字段，保留兼容读取，写入时同步 monoFontFamily */
   fontFamily: string;
+  /** 新：mono 角色字体（终端+编辑器+全部 font-mono），替代 fontFamily */
+  monoFontFamily?: string;
+  /** 预留：UI 角色字体，本期不暴露 UI */
+  uiFontFamily?: string;
   customIdes: { name: string; command: string }[];
   ideCommandOverrides: Record<string, string>;
   /** 内置 agent 的 command 覆盖（旧字段，已由 `agentOverrides` 取代，保留兼容读取）。 */

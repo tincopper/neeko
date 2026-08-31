@@ -12,7 +12,7 @@ import { Square, Terminal, X } from '@/shared/components/icons';
 import { useAppContext } from '@/shared/contexts/AppContext';
 import { useProjectStore } from '@/shared/store/projectStore';
 import { cn } from '@/shared/utils/cn';
-import { buildFontFamily } from '@/shared/utils/terminal';
+import { buildMonoStack } from '@/shared/utils/typography';
 
 import { useTaskStore } from '../store';
 
@@ -66,9 +66,9 @@ function TaskConsolePanel() {
   const terminalType = useMemo(
     () => ({
       fontSize: config.terminalFontSize ?? 14,
-      fontFamily: buildFontFamily(config.fontFamily ?? ''),
+      fontFamily: buildMonoStack(config.monoFontFamily ?? config.fontFamily ?? ''),
     }),
-    [config.terminalFontSize, config.fontFamily],
+    [config.terminalFontSize, config.monoFontFamily, config.fontFamily],
   );
 
   const latestH = useRef(PANEL_H_DEFAULT);

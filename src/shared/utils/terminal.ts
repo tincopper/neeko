@@ -112,8 +112,8 @@ export async function applyRenderer(term: Terminal, gpuEnabled: boolean): Promis
 const IS_LINUX = navigator.platform.toLowerCase().startsWith('linux');
 
 export const DEFAULT_FONT_FAMILY = IS_LINUX
-  ? "'Cascadia Code', 'JetBrains Mono', 'Fira Code', monospace"
-  : "'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace";
+  ? "'Cascadia Code', 'JetBrains Mono', 'Fira Code', Consolas, monospace"
+  : "'JetBrains Mono', 'Fira Code', 'Cascadia Code', Consolas, monospace";
 export function buildFontFamily(fontFamily: string): string {
   const base = fontFamily ? `'${fontFamily}', ${DEFAULT_FONT_FAMILY}` : DEFAULT_FONT_FAMILY;
   // NerdFontSymbols 作为 PUA 码点最终 fallback（CSS @font-face 通过
@@ -167,12 +167,16 @@ export function buildTerminalTheme(): ITheme {
   const theme = document.documentElement.getAttribute('data-theme') || 'dark';
   const isDark = isDarkTheme(theme);
   const bg = cssVar('--bg-secondary') || (isDark ? '#000000' : '#ffffff');
-  // Soft default glyph color (ANSI “white”) — less harsh than pure UI primary white.
+  // Mono 前景：优先 --mono-fg 角色 token（与编辑器共用），回退 ANSI soft white
+  const monoFg = cssVar('--mono-fg');
+  const monoFgDim = cssVar('--mono-fg-dim');
   const softFg =
+    monoFg ||
     (isDark ? DARK_ANSI_COLORS.white : LIGHT_ANSI_COLORS.white) ||
     cssVar('--text-secondary') ||
     (isDark ? '#abb2bf' : '#4f5258');
   const dimFg =
+    monoFgDim ||
     (isDark ? DARK_ANSI_COLORS.brightBlack : LIGHT_ANSI_COLORS.brightBlack) ||
     cssVar('--text-muted') ||
     (isDark ? '#5c6370' : '#696c77');

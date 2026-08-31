@@ -5,14 +5,10 @@ import { Terminal } from '@xterm/xterm';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 
 import { createPollingDrainScheduler } from '@/shared/utils/drainLoop';
-import {
-  applyRenderer,
-  buildFontFamily,
-  buildTerminalTheme,
-  TERMINAL_SCROLLBACK,
-} from '@/shared/utils/terminal';
+import { applyRenderer, buildTerminalTheme, TERMINAL_SCROLLBACK } from '@/shared/utils/terminal';
 import { terminalClosedEvent, terminalInputEvent } from '@/shared/utils/terminalEvents';
 import { setupTerminalInput } from '@/shared/utils/terminalInput';
+import { buildMonoStack, MONO_LINE_HEIGHT } from '@/shared/utils/typography';
 
 // eslint-disable-next-line import/no-restricted-paths -- terminal view needs agent API for agent config lookup
 import { getAgent } from '../../agent/api/agentApi';
@@ -148,7 +144,8 @@ export default React.memo(function TerminalViewBase({
     const c = strategyRef.current.cache.get(cacheKey);
     if (!c) return;
     c.term.options.fontSize = strategyRef.current.fontSize;
-    c.term.options.fontFamily = buildFontFamily(strategyRef.current.fontFamily);
+    c.term.options.fontFamily = buildMonoStack(strategyRef.current.fontFamily);
+    c.term.options.lineHeight = MONO_LINE_HEIGHT;
     scheduleFit();
   }, [fontSize, fontFamilyProp, cacheKey, cache, scheduleFit]);
   useEffect(() => {
@@ -226,7 +223,8 @@ export default React.memo(function TerminalViewBase({
       const term = new Terminal({
         cursorBlink: true,
         fontSize: fontSizeVal,
-        fontFamily: buildFontFamily(fontFamilyVal),
+        fontFamily: buildMonoStack(fontFamilyVal),
+        lineHeight: MONO_LINE_HEIGHT,
         theme: buildTerminalTheme(),
         scrollback: TERMINAL_SCROLLBACK,
         overviewRuler: { width: 0 },
