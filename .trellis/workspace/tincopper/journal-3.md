@@ -1356,3 +1356,37 @@ Archived 08-30-file-reader-unification: single read_file core (FileAccessScope I
 ### Next Steps
 
 - None - task complete
+
+
+## Session 158: Git panel UX: deleted strikethrough + Open File shortcuts, ToolbarControls split
+
+**Date**: 2026-08-31
+**Task**: Git panel UX: deleted strikethrough + Open File shortcuts, ToolbarControls split
+**Branch**: `main`
+
+### Summary
+
+Two Git panel UX improvements (deleted-file strikethrough in changes list; Open File buttons in diff toolbar and changes row actions reusing openProjectFile) plus neeko-check follow-up refactor extracting ToolbarControls (DiffToolbar 353 to 194 lines). TDD with 7 new component cases; full gates green (299 files / 2368 tests, lint 0 errors).
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `ba645b6b` | (see git log) |
+| `9039c544` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
