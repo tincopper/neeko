@@ -16,7 +16,6 @@ export interface StrategyOptions {
   resize: (sessionId: string, cols: number, rows: number) => Promise<void>;
   closeSession: (sessionId: string) => Promise<void>;
   agentDelayMs: number;
-  connectingMessage: string;
   outputFilter?: (bytes: Uint8Array) => Uint8Array;
   setupFileLinks?: (term: Terminal) => void;
   cacheKey: string;
@@ -51,7 +50,6 @@ export function createTerminalStrategy(options: StrategyOptions): TerminalStrate
     resize,
     closeSession,
     agentDelayMs,
-    connectingMessage,
     fontSize,
     fontFamily,
     gpuAccel,
@@ -70,7 +68,6 @@ export function createTerminalStrategy(options: StrategyOptions): TerminalStrate
     resize,
     closeSession,
     agentDelayMs,
-    connectingMessage,
     fontSize,
     fontFamily,
     gpuAccel,

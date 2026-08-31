@@ -10,11 +10,19 @@ import {
   resolveEffectiveSizes,
   resolveTerminalFontSize,
   syncTypographyTokens,
+  resolveTerminalLineHeight,
 } from '../typography';
 
 describe('typography tokens', () => {
   it('MONO_DEFAULT contains monospace', () => {
     expect(MONO_DEFAULT).toContain('monospace');
+  });
+
+  it('MONO_DEFAULT leads with bundled JetBrains Mono and ends with Menlo fallback', () => {
+    // 打包字体首位：不依赖系统安装（杜绝同屏双字体的 fallback 漂移）
+    expect(MONO_DEFAULT.indexOf("'JetBrains Mono'")).toBe(0);
+    // macOS 确定存在的字体兜底
+    expect(MONO_DEFAULT).toContain('Menlo');
   });
 
   it('SANS_DEFAULT contains sans-serif', () => {
@@ -58,11 +66,22 @@ describe('syncTypographyTokens', () => {
     vi.restoreAllMocks();
   });
 
-  it('writes --font-mono, --font-size and --terminal-font-size', () => {
+  it('writes --font-size and --terminal-font-size', () => {
     syncTypographyTokens({ monoFamily: 'Fira Code', uiFontSize: 12, monoFontSize: 14 });
-    expect(setSpy).toHaveBeenCalledWith('--font-mono', expect.stringContaining('Fira Code'));
     expect(setSpy).toHaveBeenCalledWith('--font-size', '12px');
     expect(setSpy).toHaveBeenCalledWith('--terminal-font-size', '14px');
+  });
+
+  it('terminal font must NOT leak into global --font-mono (app mono role is independent)', () => {
+    // 终端字体与 UI 等宽角色分离：改终端字体不允许改变应用内的 font-mono 消费
+    syncTypographyTokens({ monoFamily: 'Comic Sans MS', uiFontSize: 12, monoFontSize: 14 });
+    const monoCall = setSpy.mock.calls.find(([k]) => k === '--font-mono');
+    expect(monoCall?.[1]).not.toContain('Comic Sans MS');
+  });
+
+  it('still writes --font-mono as the app default mono stack', () => {
+    syncTypographyTokens({ monoFamily: '', uiFontSize: 12, monoFontSize: 14 });
+    expect(setSpy).toHaveBeenCalledWith('--font-mono', expect.stringContaining('JetBrains Mono'));
   });
 
   it('writes --line-height-mono when provided', () => {
@@ -139,5 +158,39 @@ describe('font size harmony', () => {
   it('resolveEffectiveSizes clamps ui+2 within bounds', () => {
     expect(resolveEffectiveSizes(24, null, null).terminal).toBe(24); // clamped 26→24
     expect(resolveEffectiveSizes(10, null, null).terminal).toBe(12);
+  });
+});
+
+describe('resolveTerminalLineHeight — 行高随字号缩放', () => {
+  it('默认 14px 附近维持 1.2（既有观感不回归）', () => {
+    expect(resolveTerminalLineHeight(14)).toBe(1.2);
+  });
+
+  it('小字号提高倍率（避免行距占比过大显得松散）', () => {
+    expect(resolveTerminalLineHeight(10)).toBeGreaterThan(1.2);
+    expect(resolveTerminalLineHeight(12)).toBeGreaterThan(1.2);
+  });
+
+  it('大字号降低倍率（避免行距绝对值过大）', () => {
+    expect(resolveTerminalLineHeight(20)).toBeLessThan(1.2);
+    expect(resolveTerminalLineHeight(24)).toBeLessThan(resolveTerminalLineHeight(20));
+  });
+
+  it('倍率单调递减（字号越大倍率越小，无跳变）', () => {
+    let prev = Infinity;
+    for (let size = 10; size <= 24; size++) {
+      const lh = resolveTerminalLineHeight(size);
+      expect(lh).toBeLessThanOrEqual(prev);
+      expect(lh).toBeGreaterThan(0);
+      prev = lh;
+    }
+  });
+
+  it('像素行距不小于可读下限（cell 高度 = size × lineHeight ≥ 1.15 × 基准）', () => {
+    // 倍率递减但像素间距不能塌：10px 字号时 cell 高度不得低于 12px 附近观感
+    for (let size = 10; size <= 24; size++) {
+      const cellPx = size * resolveTerminalLineHeight(size);
+      expect(cellPx).toBeGreaterThanOrEqual(13); // ≈ 14px × 0.93 的可读下限
+    }
   });
 });

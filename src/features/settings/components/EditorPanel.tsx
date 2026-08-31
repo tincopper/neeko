@@ -1,13 +1,11 @@
 import React from 'react';
 
-import { resolveEditorFontSize } from '@/shared/utils/typography';
 import { Separator, Switch } from '@/ui';
 
 interface EditorPanelProps {
   editorFontSize: number;
   onEditorFontSizeChange: (size: number) => void;
-  /** 和谐默认值：默认 = terminal 字号，用于恢复按钮 */
-  harmonyEditorSize?: number;
+  /** Recommended editor size: follows terminal, for the reset button */
   /** 切换 file tab 时自动在文件树中定位该文件 */
   autoLocateFileOnTabSwitch: boolean;
   onAutoLocateFileOnTabSwitchChange: (enabled: boolean) => void;
@@ -18,9 +16,7 @@ const EditorPanel: React.FC<EditorPanelProps> = ({
   onEditorFontSizeChange,
   autoLocateFileOnTabSwitch,
   onAutoLocateFileOnTabSwitchChange,
-  harmonyEditorSize,
 }) => {
-  const harmonySize = harmonyEditorSize ?? resolveEditorFontSize(14, null);
   return (
     <>
       <h3 className="text-base font-semibold text-text-primary mb-4">Editor</h3>
@@ -50,15 +46,6 @@ const EditorPanel: React.FC<EditorPanelProps> = ({
           >
             +
           </button>
-          {editorFontSize !== harmonySize && (
-            <button
-              className="ml-1 text-[0.72em] text-accent-blue hover:text-accent-blue/80 underline underline-offset-2"
-              onClick={() => onEditorFontSizeChange(harmonySize)}
-              title={`恢复和谐默认 ${harmonySize}px (跟随终端)`}
-            >
-              恢复和谐默认 ({harmonySize}px)
-            </button>
-          )}
         </div>
       </div>
       <div className="flex items-center justify-between py-3 border-b border-white/[0.04] gap-6 [&:last-child]:border-b-0">

@@ -4,7 +4,6 @@ import { cn } from '@/lib/utils';
 import { CloseIcon } from '@/shared/components/icons';
 import { useAppContext } from '@/shared/contexts';
 import type { AgentConfig, AppConfig, DiffMode } from '@/shared/types';
-import { resolveEditorFontSize, resolveTerminalFontSize } from '@/shared/utils/typography';
 
 // eslint-disable-next-line import/no-restricted-paths -- settings panel lists agents via agent API
 import { listAgents } from '../../agent/api/agentApi';
@@ -89,7 +88,6 @@ const SettingsPanel: React.FC<SettingsPanelProps> = React.memo(
             <EditorPanel
               editorFontSize={config.editorFontSize}
               onEditorFontSizeChange={state.setEditorFontSize}
-              harmonyEditorSize={resolveEditorFontSize(config.terminalFontSize, null)}
               autoLocateFileOnTabSwitch={config.autoLocateFileOnTabSwitch}
               onAutoLocateFileOnTabSwitchChange={(enabled) =>
                 onConfigChange({ ...config, autoLocateFileOnTabSwitch: enabled })
@@ -105,7 +103,6 @@ const SettingsPanel: React.FC<SettingsPanelProps> = React.memo(
             <TerminalPanel
               terminalFontSize={config.terminalFontSize}
               fontFamily={config.monoFontFamily ?? config.fontFamily ?? ''}
-              harmonyTerminalSize={resolveTerminalFontSize(config.appearanceFontSize, null)}
               shellInput={state.shellInput}
               fontSearch={state.fontSearch}
               fontsLoading={state.fontsLoading}
@@ -117,6 +114,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = React.memo(
               onToggleFontList={() => state.setFontListOpen((value) => !value)}
               onFontSearchChange={state.setFontSearch}
               onApplyFont={state.applyFont}
+              onRefreshFonts={state.refreshFonts}
               onShellInputChange={state.setShellInput}
               onApplyShell={state.applyShell}
               gpuAcceleration={config.terminalGpuAcceleration}

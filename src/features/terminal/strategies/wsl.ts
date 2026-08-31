@@ -56,7 +56,6 @@ export function useWslTerminalStrategy(paneId: string): TerminalStrategy | null 
       resize: resizeTerminal,
       closeSession: closeTerminalSession,
       agentDelayMs: 500,
-      connectingMessage: `\x1b[33m[WSL] Connecting to ${distro}:${projectPath}...\x1b[0m\r\n`,
       fontSize: config.terminalFontSize,
       fontFamily: config.monoFontFamily ?? config.fontFamily ?? '',
       gpuAccel: config.terminalGpuAcceleration ?? false,

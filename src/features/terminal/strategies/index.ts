@@ -65,8 +65,7 @@ export function useTerminalStrategy(options: UseTerminalStrategyOptions): Termin
   const { activeTabId } = useEditorContext();
   const activeProject = useProjectStore((s) => s.activeProject);
   const activeWorktreePath = useWorktreeStore((s) => s.activeWorktreePath);
-  const activeWorktreeBranch = useWorktreeStore((s) => s.activeWorktreeBranch);
-  const { paneId, remoteConfig, worktreePathOverride, worktreeBranchOverride } = options;
+  const { paneId, remoteConfig, worktreePathOverride } = options;
 
   return useMemo(() => {
     const env = activeProject?.environment;
@@ -94,13 +93,8 @@ export function useTerminalStrategy(options: UseTerminalStrategyOptions): Termin
       if (!projectId) return null;
 
       const effWorktreePath = worktreePathOverride ?? activeWorktreePath;
-      const effWorktreeBranch = worktreeBranchOverride ?? activeWorktreeBranch;
       const isWorktree = !!effWorktreePath;
       const projectPath = effWorktreePath ?? activeProject?.path ?? null;
-      const baseName = activeProject?.name ?? null;
-      const projectName =
-        baseName && effWorktreeBranch ? `${baseName} [${effWorktreeBranch}]` : (baseName ?? null);
-
       const cacheKey = projectId
         ? isWorktree
           ? `${projectId}:wt:${effWorktreePath}:${activeTabId ?? 'default'}:${paneId}`
@@ -127,7 +121,6 @@ export function useTerminalStrategy(options: UseTerminalStrategyOptions): Termin
         resize: resizeTerminal,
         closeSession: closeTerminalSession,
         agentDelayMs: 0,
-        connectingMessage: `\x1b[33m[Terminal] Connecting to ${projectName ?? projectPath}...\x1b[0m\r\n`,
         fontSize: config.terminalFontSize,
         fontFamily: config.monoFontFamily ?? config.fontFamily ?? '',
         gpuAccel: config.terminalGpuAcceleration ?? false,
@@ -170,7 +163,6 @@ export function useTerminalStrategy(options: UseTerminalStrategyOptions): Termin
         resize: resizeTerminal,
         closeSession: closeTerminalSession,
         agentDelayMs: 500,
-        connectingMessage: `\x1b[33m[WSL] Connecting to ${distro}:${projectPath}...\x1b[0m\r\n`,
         fontSize: config.terminalFontSize,
         fontFamily: config.monoFontFamily ?? config.fontFamily ?? '',
         gpuAccel: config.terminalGpuAcceleration ?? false,
@@ -205,7 +197,6 @@ export function useTerminalStrategy(options: UseTerminalStrategyOptions): Termin
         resize: resizeTerminal,
         closeSession: closeTerminalSession,
         agentDelayMs: 800,
-        connectingMessage: `\x1b[33m[SSH] Connecting to ${remoteConfig.username}@${remoteConfig.host}:${remoteConfig.port}${projectPath}...\x1b[0m\r\n`,
         fontSize: config.terminalFontSize,
         fontFamily: config.monoFontFamily ?? config.fontFamily ?? '',
         gpuAccel: config.terminalGpuAcceleration ?? false,
@@ -222,11 +213,9 @@ export function useTerminalStrategy(options: UseTerminalStrategyOptions): Termin
   }, [
     activeProject,
     activeWorktreePath,
-    activeWorktreeBranch,
     paneId,
     remoteConfig,
     worktreePathOverride,
-    worktreeBranchOverride,
     activeTabId,
     showToast,
     config.terminalFontSize,

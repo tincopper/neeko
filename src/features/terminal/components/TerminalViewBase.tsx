@@ -8,7 +8,7 @@ import { createPollingDrainScheduler } from '@/shared/utils/drainLoop';
 import { applyRenderer, buildTerminalTheme, TERMINAL_SCROLLBACK } from '@/shared/utils/terminal';
 import { terminalClosedEvent, terminalInputEvent } from '@/shared/utils/terminalEvents';
 import { setupTerminalInput } from '@/shared/utils/terminalInput';
-import { buildMonoStack, MONO_LINE_HEIGHT } from '@/shared/utils/typography';
+import { buildMonoStack, resolveTerminalLineHeight } from '@/shared/utils/typography';
 
 // eslint-disable-next-line import/no-restricted-paths -- terminal view needs agent API for agent config lookup
 import { getAgent } from '../../agent/api/agentApi';
@@ -145,7 +145,7 @@ export default React.memo(function TerminalViewBase({
     if (!c) return;
     c.term.options.fontSize = strategyRef.current.fontSize;
     c.term.options.fontFamily = buildMonoStack(strategyRef.current.fontFamily);
-    c.term.options.lineHeight = MONO_LINE_HEIGHT;
+    c.term.options.lineHeight = resolveTerminalLineHeight(strategyRef.current.fontSize);
     scheduleFit();
   }, [fontSize, fontFamilyProp, cacheKey, cache, scheduleFit]);
   useEffect(() => {
@@ -160,7 +160,6 @@ export default React.memo(function TerminalViewBase({
       fontFamily: fontFamilyVal,
       gpuAccel: gpuAccelVal,
       setupFileLinks: setupFileLinksVal,
-      connectingMessage: connectingMessageVal,
       createSession: createSessionVal,
       agentDelayMs: agentDelayMsVal,
       onSessionReady: onSessionReadyVal,
@@ -224,7 +223,7 @@ export default React.memo(function TerminalViewBase({
         cursorBlink: true,
         fontSize: fontSizeVal,
         fontFamily: buildMonoStack(fontFamilyVal),
-        lineHeight: MONO_LINE_HEIGHT,
+        lineHeight: resolveTerminalLineHeight(fontSizeVal),
         theme: buildTerminalTheme(),
         scrollback: TERMINAL_SCROLLBACK,
         overviewRuler: { width: 0 },
@@ -259,8 +258,6 @@ export default React.memo(function TerminalViewBase({
         inputController: null as ReturnType<typeof setupTerminalInput> | null,
       };
       cache.set(cacheKey, entry);
-
-      term.write(connectingMessageVal);
 
       (async () => {
         try {

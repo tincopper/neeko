@@ -4,6 +4,7 @@ Font-family guard: 禁止在 src/styles 下新增裸 font-family 硬编码（非
 
 豁免：
 - src/styles/nerd-font.css（@font-face 定义，必须用 font-family）
+- src/styles/jetbrains-mono.css（打包等宽字体 @font-face 定义，必须用 font-family）
 - 值为 var(--*) 或 inherit 的合法角色引用
 
 检查范围：src/styles/**/*.css（豁免上述）
@@ -16,7 +17,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 STYLES_DIR = ROOT / "src" / "styles"
-EXEMPT = {"nerd-font.css"}
+EXEMPT = {"nerd-font.css", "jetbrains-mono.css"}
 
 # font-family: 之后到 ; 之间
 RE_FONT_FAMILY = re.compile(r"font-family\s*:\s*([^;{}]+);", re.IGNORECASE)

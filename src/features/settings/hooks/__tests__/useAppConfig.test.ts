@@ -253,4 +253,43 @@ describe('useAppConfig', () => {
 
     expect(document.documentElement.style.getPropertyValue('--terminal-font-size')).toBe('20px');
   });
+
+  it('旧 fontFamily 迁移为 monoFontFamily（读旧写新幂等）', async () => {
+    mockInvoke.mockResolvedValue({
+      fontFamily: 'Fira Code',
+    });
+
+    const { result } = renderHook(() => useAppConfig());
+
+    await waitFor(() => {
+      expect(result.current.config.monoFontFamily).toBe('Fira Code');
+      expect(result.current.config.fontFamily).toBe('Fira Code');
+    });
+  });
+
+  it('saveConfig 时 monoFontFamily 同步写回 fontFamily 保持向后兼容', async () => {
+    mockInvoke.mockResolvedValue({});
+
+    const { result } = renderHook(() => useAppConfig());
+
+    await waitFor(() => {
+      expect(result.current.config.monoFontFamily).toBe('');
+    });
+
+    const next = { ...result.current.config, monoFontFamily: 'JetBrains Mono' };
+    await act(async () => {
+      await result.current.saveConfig(next);
+    });
+
+    // save_config 收到的 config 需同时带新旧字段且一致
+    expect(mockInvoke).toHaveBeenCalledWith(
+      'save_config',
+      expect.objectContaining({
+        config: expect.objectContaining({
+          monoFontFamily: 'JetBrains Mono',
+          fontFamily: 'JetBrains Mono',
+        }),
+      }),
+    );
+  });
 });

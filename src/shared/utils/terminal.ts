@@ -109,17 +109,12 @@ export async function applyRenderer(term: Terminal, gpuEnabled: boolean): Promis
   }
 }
 
-const IS_LINUX = navigator.platform.toLowerCase().startsWith('linux');
-
-export const DEFAULT_FONT_FAMILY = IS_LINUX
-  ? "'Cascadia Code', 'JetBrains Mono', 'Fira Code', Consolas, monospace"
-  : "'JetBrains Mono', 'Fira Code', 'Cascadia Code', Consolas, monospace";
-export function buildFontFamily(fontFamily: string): string {
-  const base = fontFamily ? `'${fontFamily}', ${DEFAULT_FONT_FAMILY}` : DEFAULT_FONT_FAMILY;
-  // NerdFontSymbols 作为 PUA 码点最终 fallback（CSS @font-face 通过
-  // unicode-range 仅对图标码点生效，不影响普通文字字体选择）
-  return `${base}, 'NerdFontSymbols'`;
-}
+// 字体栈唯一真相已收敛至 shared/utils/typography.ts（SSOT）。
+// 此处保留兼容 re-export，避免既有调用方与单测的导入路径断裂。
+export {
+  MONO_DEFAULT as DEFAULT_FONT_FAMILY,
+  buildMonoStack as buildFontFamily,
+} from './typography';
 
 function cssVar(name: string): string {
   return getComputedStyle(document.documentElement).getPropertyValue(name).trim();

@@ -7,6 +7,7 @@ import { bootstrap } from './bootstrap';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import '../styles/index.css';
 import '../styles/nerd-font.css';
+import '../styles/jetbrains-mono.css';
 
 bootstrap();
 

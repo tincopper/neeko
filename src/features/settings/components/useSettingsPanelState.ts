@@ -7,7 +7,7 @@ import type { IdePreset } from '@/shared/utils/idePresets';
 
 // eslint-disable-next-line import/no-restricted-paths -- settings panel state management needs agent API
 import { addAgent, removeAgent } from '../../agent/api/agentApi';
-import { getSystemFonts } from '../api/settingsApi';
+import { getSystemFonts, resetSystemFonts } from '../api/settingsApi';
 
 import { BUILTIN_FONTS, PRESET_SHELLS, type SettingsNavId } from './constants';
 
@@ -62,6 +62,20 @@ export function useSettingsPanelState({
       setFontsLoading(false);
     }
   }, [systemFonts.length]);
+
+  /** 安装新字体后强制刷新：先失效后端进程缓存，再绕过本地短路重新拉取。 */
+  const refreshFonts = useCallback(async () => {
+    setFontsLoading(true);
+    try {
+      await resetSystemFonts();
+      const fonts = await getSystemFonts();
+      setSystemFonts(fonts);
+    } catch (e) {
+      console.error('Failed to refresh system fonts:', e);
+    } finally {
+      setFontsLoading(false);
+    }
+  }, []);
 
   // Load fonts — use Promise.resolve().then to avoid sync setState in effect
   useEffect(() => {
@@ -374,6 +388,7 @@ export function useSettingsPanelState({
     setNewIdeCommand,
     isCustomShell,
     filteredFonts,
+    refreshFonts,
 
     setAppearanceFontSize,
     setEditorFontSize,

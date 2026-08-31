@@ -1,7 +1,7 @@
 import React from 'react';
 
 import { cn } from '@/lib/utils';
-import { buildMonoStack, resolveTerminalFontSize } from '@/shared/utils/typography';
+import { buildMonoStack } from '@/shared/utils/typography';
 import { Input, Switch } from '@/ui';
 
 import { PRESET_SHELLS } from './constants';
@@ -20,12 +20,13 @@ interface TerminalPanelProps {
   onToggleFontList: () => void;
   onFontSearchChange: (value: string) => void;
   onApplyFont: (font: string) => void;
+  /** 安装新字体后强制刷新列表（失效后端进程缓存 + 重新拉取）。 */
+  onRefreshFonts: () => void;
   onShellInputChange: (value: string) => void;
   onApplyShell: (value: string) => void;
   gpuAcceleration: boolean;
   onGpuAccelerationChange: (enabled: boolean) => void;
-  /** 和谐默认值：ui+2，用于“恢复和谐默认”按钮 */
-  harmonyTerminalSize?: number;
+  /** Recommended terminal size: ui + 2, for the reset button */
 }
 
 const TerminalPanel: React.FC<TerminalPanelProps> = ({
@@ -42,13 +43,12 @@ const TerminalPanel: React.FC<TerminalPanelProps> = ({
   onToggleFontList,
   onFontSearchChange,
   onApplyFont,
+  onRefreshFonts,
   onShellInputChange,
   onApplyShell,
   gpuAcceleration,
   onGpuAccelerationChange,
-  harmonyTerminalSize,
 }) => {
-  const harmonySize = harmonyTerminalSize ?? resolveTerminalFontSize(12, null);
   return (
     <>
       <h3 className="text-base font-semibold text-text-primary mb-4">Terminal</h3>
@@ -78,15 +78,6 @@ const TerminalPanel: React.FC<TerminalPanelProps> = ({
           >
             +
           </button>
-          {terminalFontSize !== harmonySize && (
-            <button
-              className="ml-1 text-[0.72em] text-accent-blue hover:text-accent-blue/80 underline underline-offset-2"
-              onClick={() => onTerminalFontSizeChange(harmonySize)}
-              title={`恢复和谐默认 ${harmonySize}px (UI+2)`}
-            >
-              恢复和谐默认 ({harmonySize}px)
-            </button>
-          )}
         </div>
       </div>
 
@@ -107,7 +98,7 @@ const TerminalPanel: React.FC<TerminalPanelProps> = ({
             )}
             onClick={onToggleFontList}
             style={{
-              fontFamily: fontFamily ? `'${fontFamily}', monospace` : 'monospace',
+              fontFamily: buildMonoStack(fontFamily),
             }}
           >
             <span className="flex-1 overflow-hidden text-ellipsis whitespace-nowrap min-w-0">
@@ -140,7 +131,7 @@ const TerminalPanel: React.FC<TerminalPanelProps> = ({
 
           {fontListOpen && (
             <div className="absolute top-[calc(100%+4px)] left-0 right-0 bg-bg-secondary border border-accent-blue rounded-md shadow-[0_8px_24px_rgba(0,0,0,0.5)] z-[100] overflow-hidden">
-              <div className="py-2 px-2 pb-1.5 border-b border-border">
+              <div className="py-2 px-2 pb-1.5 border-b border-border flex items-center gap-2">
                 <Input
                   className="w-full box-border py-1 px-2 text-[0.86em]"
                   type="text"
@@ -149,6 +140,15 @@ const TerminalPanel: React.FC<TerminalPanelProps> = ({
                   onChange={(e) => onFontSearchChange(e.target.value)}
                   spellCheck={false}
                 />
+                <button
+                  type="button"
+                  onClick={onRefreshFonts}
+                  disabled={fontsLoading}
+                  title="重新扫描系统字体（安装新字体后使用）"
+                  className="shrink-0 text-[0.72em] text-text-muted cursor-pointer py-1 px-2 rounded-[3px] border border-border hover:text-text-primary hover:bg-bg-hover disabled:opacity-50 disabled:cursor-wait"
+                >
+                  {fontsLoading ? '…' : '⟳'}
+                </button>
               </div>
               <div className="w-full max-h-[200px] overflow-y-auto">
                 {fontsLoading ? (
@@ -192,7 +192,7 @@ const TerminalPanel: React.FC<TerminalPanelProps> = ({
           style={{
             fontFamily: buildMonoStack(fontFamily),
             fontSize: `${terminalFontSize}px`,
-            lineHeight: 'var(--line-height-mono)',
+            lineHeight: 'var(--line-height-terminal)',
           }}
         >
           <div className="text-text-primary whitespace-nowrap overflow-hidden text-ellipsis">
@@ -203,7 +203,7 @@ const TerminalPanel: React.FC<TerminalPanelProps> = ({
           </div>
         </div>
         <div className="text-[0.72em] text-text-muted leading-relaxed">
-          预览为等宽渲染；Nerd 符号经 fallback 字体补齐；连字已禁用（xterm 限制，无 ligatures）。
+          Monospaced preview. Nerd symbols via fallback font. Ligatures disabled (xterm limitation).
         </div>
       </div>
 

@@ -394,6 +394,7 @@ macro_rules! neeko_invoke_handler {
             // ── common (cross-domain) ────────────────────────────────────────
             $crate::common::commands::log_frontend_error,
             $crate::settings::commands::get_system_fonts,
+            $crate::settings::commands::reset_font_cache,
         ]
     };
 }

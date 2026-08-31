@@ -7,6 +7,11 @@ export function getSystemFonts(): Promise<string[]> {
   return invoke<string[]>('get_system_fonts');
 }
 
+/** 使后端进程级字体缓存失效，下次 getSystemFonts 会重新枚举（安装新字体后调用）。 */
+export function resetSystemFonts(): Promise<void> {
+  return invoke<void>('reset_font_cache');
+}
+
 /** 查询应用版本与元数据信息（设置面板 About 页数据源）。 */
 export function getAppInfo(): Promise<AppInfo> {
   return invoke<AppInfo>('get_app_info');

@@ -26,7 +26,6 @@ export interface TerminalStrategy {
   resize: (sessionId: string, cols: number, rows: number) => Promise<void>;
   closeSession: (sessionId: string) => Promise<void>;
   agentDelayMs: number;
-  connectingMessage: string;
   fontSize: number;
   fontFamily: string;
   gpuAccel: boolean;

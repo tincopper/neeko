@@ -19,9 +19,10 @@
   --font-mono: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', Consolas, monospace, 'NerdFontSymbols';
   --font-code: var(--font-mono);
 
-  /* 行高轴 token（xterm / CodeMirror / markdown 共用） */
+  /* 行高轴 token：终端紧凑、编辑器宽松，保持与应用字体区隔 */
   --line-height-ui: 1.4;
-  --line-height-mono: 1.5;
+  --line-height-mono: 1.5;       /* 编辑器 / markdown 代码块 */
+  --line-height-terminal: 1.2;   /* 终端 xterm：紧凑，避免 1.5 过高 */
 
   /* Mono 前景角色（终端 + 编辑器共用，buildTerminalTheme / createCmTheme 读取） */
   --mono-fg: #abb2bf;

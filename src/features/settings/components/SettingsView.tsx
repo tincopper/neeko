@@ -6,7 +6,6 @@ import { useAppContext } from '@/shared/contexts';
 import { useAppViewStore } from '@/shared/store/appViewStore';
 import { useProjectStore } from '@/shared/store/projectStore';
 import type { AgentConfig, AppConfig } from '@/shared/types';
-import { resolveEditorFontSize, resolveTerminalFontSize } from '@/shared/utils/typography';
 
 // eslint-disable-next-line import/no-restricted-paths -- settings view lists agents via agent API
 import { listAgents } from '../../agent/api/agentApi';
@@ -112,7 +111,6 @@ function SettingsView() {
           <EditorPanel
             editorFontSize={config.editorFontSize}
             onEditorFontSizeChange={state.setEditorFontSize}
-            harmonyEditorSize={resolveEditorFontSize(config.terminalFontSize, null)}
             autoLocateFileOnTabSwitch={config.autoLocateFileOnTabSwitch}
             onAutoLocateFileOnTabSwitchChange={(enabled) =>
               onConfigChange({ ...config, autoLocateFileOnTabSwitch: enabled })
@@ -128,7 +126,6 @@ function SettingsView() {
           <TerminalPanel
             terminalFontSize={config.terminalFontSize}
             fontFamily={config.monoFontFamily ?? config.fontFamily ?? ''}
-            harmonyTerminalSize={resolveTerminalFontSize(config.appearanceFontSize, null)}
             shellInput={state.shellInput}
             fontSearch={state.fontSearch}
             fontsLoading={state.fontsLoading}
@@ -140,6 +137,7 @@ function SettingsView() {
             onToggleFontList={() => state.setFontListOpen((value) => !value)}
             onFontSearchChange={state.setFontSearch}
             onApplyFont={state.applyFont}
+            onRefreshFonts={state.refreshFonts}
             onShellInputChange={state.setShellInput}
             onApplyShell={state.applyShell}
             gpuAcceleration={config.terminalGpuAcceleration}

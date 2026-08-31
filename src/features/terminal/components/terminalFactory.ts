@@ -8,7 +8,7 @@ import { createPollingDrainScheduler } from '@/shared/utils/drainLoop';
 import { applyRenderer, buildTerminalTheme, TERMINAL_SCROLLBACK } from '@/shared/utils/terminal';
 import { terminalClosedEvent, terminalInputEvent } from '@/shared/utils/terminalEvents';
 import { setupTerminalInput } from '@/shared/utils/terminalInput';
-import { buildMonoStack, MONO_LINE_HEIGHT } from '@/shared/utils/typography';
+import { buildMonoStack, resolveTerminalLineHeight } from '@/shared/utils/typography';
 
 // eslint-disable-next-line import/no-restricted-paths -- terminal factory needs agent API for agent config
 import { getAgent } from '../../agent/api/agentApi';
@@ -49,7 +49,7 @@ export async function createTerminalForProject(
     cursorBlink: true,
     fontSize,
     fontFamily: buildMonoStack(fontFamily),
-    lineHeight: MONO_LINE_HEIGHT,
+    lineHeight: resolveTerminalLineHeight(fontSize),
     theme: buildTerminalTheme(),
     scrollback: TERMINAL_SCROLLBACK,
     overviewRuler: { width: 0 },
@@ -93,7 +93,6 @@ export async function createTerminalForProject(
   };
 
   terminalCache.set(cacheKey, cache);
-  term.write('\x1b[33m[Terminal] Connecting...\x1b[0m\r\n');
 
   try {
     const session = await createTerminalSession(
@@ -108,7 +107,6 @@ export async function createTerminalForProject(
     const sid = session.id;
     cache.sessionId = sid;
     log(`Session created: ${sid}, PID: ${session.pid}`);
-    term.write(`\x1b[32m[Terminal] Connected (PID: ${session.pid})\x1b[0m\r\n\r\n`);
 
     // taskConfigId retained for editor-tab task/resume terminals only;
     // bottom Task Console no longer mounts through this factory.

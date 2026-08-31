@@ -22,15 +22,10 @@ import { createTerminalStrategy } from './factory';
  * Prefer using the unified `useTerminalStrategy` from `./index` instead; this
  * export is kept for backward compatibility.
  */
-export function useLocalTerminalStrategy(
-  paneId: string,
-  worktreePathOverride?: string,
-  worktreeBranchOverride?: string,
-) {
+export function useLocalTerminalStrategy(paneId: string, worktreePathOverride?: string) {
   const { config, showToast } = useAppContext();
   const activeProject = useProjectStore((s) => s.activeProject);
   const activeWorktreePath = useWorktreeStore((s) => s.activeWorktreePath);
-  const activeWorktreeBranch = useWorktreeStore((s) => s.activeWorktreeBranch);
   const { activeTabId } = useEditorContext();
 
   return useMemo(() => {
@@ -38,13 +33,8 @@ export function useLocalTerminalStrategy(
     if (!projectId) return null;
 
     const effWorktreePath = worktreePathOverride ?? activeWorktreePath;
-    const effWorktreeBranch = worktreeBranchOverride ?? activeWorktreeBranch;
     const isWorktree = Boolean(effWorktreePath);
     const projectPath = effWorktreePath ?? activeProject?.path ?? null;
-    const baseName = activeProject?.name ?? null;
-    const projectName =
-      baseName && effWorktreeBranch ? `${baseName} [${effWorktreeBranch}]` : (baseName ?? null);
-
     const cacheKey = projectId
       ? isWorktree
         ? `${projectId}:wt:${effWorktreePath}:${activeTabId ?? 'default'}:${paneId}`
@@ -75,7 +65,6 @@ export function useLocalTerminalStrategy(
       resize: resizeTerminal,
       closeSession: closeTerminalSession,
       agentDelayMs: 0,
-      connectingMessage: `\x1b[33m[Terminal] Connecting to ${projectName ?? projectPath}...\x1b[0m\r\n`,
       fontSize: config.terminalFontSize,
       fontFamily: config.monoFontFamily ?? config.fontFamily ?? '',
       gpuAccel: config.terminalGpuAcceleration ?? false,
@@ -94,9 +83,7 @@ export function useLocalTerminalStrategy(
   }, [
     activeProject,
     activeWorktreePath,
-    activeWorktreeBranch,
     worktreePathOverride,
-    worktreeBranchOverride,
     paneId,
     activeTabId,
     showToast,
