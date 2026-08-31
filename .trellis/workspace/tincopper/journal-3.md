@@ -1390,3 +1390,36 @@ Two Git panel UX improvements (deleted-file strikethrough in changes list; Open 
 ### Next Steps
 
 - None - task complete
+
+
+## Session 159: Split oversized editor/git components (4 components back under 300 lines)
+
+**Date**: 2026-08-31
+**Task**: Split oversized editor/git components (4 components back under 300 lines)
+**Branch**: `main`
+
+### Summary
+
+Executed 08-31-editor-git-component-split: GitCommitPanel 623->308 via useGitActions + useCommitPanelAux, FileEditor 314->267 via FileEditorView, DiffView 390->291 via SingleDiffBody, EditorGroupPane 301->292 via renderTabLeading migration. Pure move refactors with git domain 376 tests green throughout; full gates green (299 files / 2368 tests).
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `3f14eea4` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
