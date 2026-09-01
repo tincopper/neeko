@@ -1,13 +1,19 @@
 import { SortableContext, horizontalListSortingStrategy } from '@dnd-kit/sortable';
-import React, { useCallback, useRef, useMemo } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 
 import { AgentIcon } from '@/features/agent';
 import { cn } from '@/lib/utils';
-import { Plus } from '@/shared/components/icons';
+import { ChevronDown, Plus } from '@/shared/components/icons';
 import type { AgentConfig } from '@/shared/types';
 import type { Tab } from '@/shared/types/tab';
 
+import { useTabOverflow } from '../hooks/useTabOverflow';
+
 import TabItem from './TabItem';
+import TabOverflowMenu from './TabOverflowMenu';
+
+/** 稳定的空数组默认值：避免默认参数每帧新建数组导致 memo / effect 失效 */
+const EMPTY_TAB_IDS: string[] = [];
 
 interface TabBarProps {
   tabs: Tab[];
@@ -71,7 +77,7 @@ const TabBar: React.FC<TabBarProps> = React.memo(
   ({
     tabs,
     activeTabId,
-    pinnedTabIds = [],
+    pinnedTabIds = EMPTY_TAB_IDS,
     onActivateTab,
     onCloseTab,
     onAddTerminalTab,
@@ -86,14 +92,17 @@ const TabBar: React.FC<TabBarProps> = React.memo(
     hiddenAgentIds = [],
     renderTabLeading,
   }) => {
-    const scrollRef = useRef<HTMLDivElement>(null);
+    const [overflowMenuAnchorEl, setOverflowMenuAnchorEl] = useState<HTMLElement | null>(null);
 
-    // 鼠标滚轮横向滚动
-    const handleWheel = useCallback((e: React.WheelEvent) => {
-      if (scrollRef.current) {
-        scrollRef.current.scrollLeft += e.deltaY;
-      }
-    }, []);
+    const hasPlusButton = Boolean(onAddTerminalTab || onActionMenuOpen);
+
+    // 溢出测量与计算（pinned 永不溢出，激活 tab 强制可见，收敛机制见 hook 注释）
+    const { containerRef, getTabSizeRef, renderedTabs, hiddenTabs } = useTabOverflow({
+      tabs,
+      pinnedTabIds,
+      activeTabId,
+      hasPlusButton,
+    });
 
     // 双击 tab 栏空白区域（非 tab 项、非按钮）快速新建文件
     const handleTabBarDoubleClick = useCallback(
@@ -104,6 +113,8 @@ const TabBar: React.FC<TabBarProps> = React.memo(
       },
       [onNewFileTab],
     );
+
+    const handleOverflowMenuClose = useCallback(() => setOverflowMenuAnchorEl(null), []);
 
     // 当前激活 tab 是否为终端
     const activeTab = useMemo(() => tabs.find((t) => t.id === activeTabId), [tabs, activeTabId]);
@@ -122,67 +133,60 @@ const TabBar: React.FC<TabBarProps> = React.memo(
       [onAgentClick],
     );
 
-    const tabItems = useMemo(() => tabs.map((tab) => tab.id), [tabs]);
-
     // 空状态
     if (tabs.length === 0) return null;
 
     const renderTabs = () => {
+      const renderItem = (tab: Tab) => (
+        <div key={tab.id} ref={getTabSizeRef(tab.id)} className="flex shrink-0">
+          <TabItem
+            tab={tab}
+            isActive={tab.id === activeTabId}
+            isPinned={pinnedTabIds.includes(tab.id)}
+            reorderable={reorderable}
+            onActivate={onActivateTab}
+            onClose={onCloseTab}
+            onContextMenu={onContextMenu}
+            renderLeading={renderTabLeading}
+          />
+        </div>
+      );
+
       // 不设 tabs.length 下限：单 tab 面板也要可发起跨面板拖拽
       //（left 单 tab → pinned、pinned 最后一个 tab 拖出 unpin）。
       if (reorderable) {
         // 可排序分支必须运行在 EditorGroupLayout 的共享 DndContext 内
         //（跨面板碰撞检测）；TabBar 自身不自建 DndContext。
+        // 仅可见 tab 参与排序；溢出 tab 无物理位置，不可拖拽。
         return (
-          <SortableContext items={tabItems} strategy={horizontalListSortingStrategy}>
-            {tabs.map((tab) => (
-              <TabItem
-                key={tab.id}
-                tab={tab}
-                isActive={tab.id === activeTabId}
-                isPinned={pinnedTabIds.includes(tab.id)}
-                reorderable
-                onActivate={onActivateTab}
-                onClose={onCloseTab}
-                onContextMenu={onContextMenu}
-                renderLeading={renderTabLeading}
-              />
-            ))}
+          <SortableContext
+            items={renderedTabs.map((tab) => tab.id)}
+            strategy={horizontalListSortingStrategy}
+          >
+            {renderedTabs.map(renderItem)}
           </SortableContext>
         );
       }
 
-      return tabs.map((tab) => (
-        <TabItem
-          key={tab.id}
-          tab={tab}
-          isActive={tab.id === activeTabId}
-          isPinned={pinnedTabIds.includes(tab.id)}
-          onActivate={onActivateTab}
-          onClose={onCloseTab}
-          onContextMenu={onContextMenu}
-          renderLeading={renderTabLeading}
-        />
-      ));
+      return renderedTabs.map(renderItem);
     };
 
     return (
       <div className="shrink-0">
-        {/* Tab 列表 */}
+        {/* Tab 列表（溢出 tab 收纳进下拉，不再横向滚动） */}
         <div
-          ref={scrollRef}
+          ref={containerRef}
           role="tablist"
           tabIndex={-1}
-          className="flex items-center gap-1 overflow-x-auto no-scrollbar"
-          onWheel={handleWheel}
+          className="flex items-center gap-1 overflow-hidden"
           onDoubleClick={handleTabBarDoubleClick}
         >
           {renderTabs()}
 
           {/* 新增动作按钮：New Terminal / New Browser / …（始终显示，不受终端数量门控） */}
-          {(onAddTerminalTab || onActionMenuOpen) && (
+          {hasPlusButton && (
             <button
-              className="tb-icon-btn w-6 h-6 rounded-md flex items-center justify-center text-text-secondary hover:bg-bg-hover hover:text-text-primary transition-colors"
+              className="tb-icon-btn w-6 h-6 rounded-md flex items-center justify-center text-text-secondary hover:bg-bg-hover hover:text-text-primary transition-colors shrink-0"
               onClick={(e) => {
                 if (onActionMenuOpen) {
                   onActionMenuOpen(e.currentTarget.getBoundingClientRect());
@@ -195,6 +199,19 @@ const TabBar: React.FC<TabBarProps> = React.memo(
               aria-haspopup="menu"
             >
               <Plus size={14} />
+            </button>
+          )}
+
+          {/* 溢出收纳按钮：仅存在被隐藏 tab 时渲染 */}
+          {hiddenTabs.length > 0 && (
+            <button
+              className="tb-icon-btn w-6 h-6 rounded-md flex items-center justify-center text-text-secondary hover:bg-bg-hover hover:text-text-primary transition-colors shrink-0"
+              onClick={(e) => setOverflowMenuAnchorEl((prev) => (prev ? null : e.currentTarget))}
+              title="Hidden tabs"
+              aria-label="Hidden tabs"
+              aria-haspopup="menu"
+            >
+              <ChevronDown size={14} />
             </button>
           )}
         </div>
@@ -211,6 +228,18 @@ const TabBar: React.FC<TabBarProps> = React.memo(
               />
             ))}
           </div>
+        )}
+
+        {/* 溢出 tab 下拉（锚定 ⋯ 按钮，窗口缩放时跟随） */}
+        {overflowMenuAnchorEl && hiddenTabs.length > 0 && (
+          <TabOverflowMenu
+            tabs={hiddenTabs}
+            anchorEl={overflowMenuAnchorEl}
+            onActivateTab={onActivateTab}
+            onCloseTab={onCloseTab}
+            onClose={handleOverflowMenuClose}
+            renderLeading={renderTabLeading}
+          />
         )}
       </div>
     );

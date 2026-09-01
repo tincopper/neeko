@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
 import TabBar from '@/features/editor/components/TabBar';
@@ -88,5 +88,110 @@ describe('TabBar + 按钮（New action）', () => {
     renderTabBar();
 
     expect(screen.queryByLabelText('New action')).not.toBeInTheDocument();
+  });
+});
+
+describe('TabBar 溢出收纳', () => {
+  const makeFileTabs = () => [
+    makeTab('one', 'one.ts'),
+    makeTab('two', 'two.ts'),
+    makeTab('three', 'three.ts'),
+  ];
+
+  /** 模拟布局：容器 clientWidth 固定，tab 自然宽度按标题区分 */
+  const mockLayout = (containerWidth: number) => {
+    vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(containerWidth);
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (
+      this: HTMLElement,
+    ) {
+      const text = this.textContent ?? '';
+      const width = text.includes('three.ts') ? 150 : text.includes('two.ts') ? 100 : 100;
+      return {
+        width,
+        height: 24,
+        x: 0,
+        y: 0,
+        top: 0,
+        left: 0,
+        right: width,
+        bottom: 24,
+        toJSON: () => ({}),
+      } as DOMRect;
+    });
+  };
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('全部放得下 → 不渲染溢出按钮', () => {
+    mockLayout(600);
+    render(
+      <TabBar
+        tabs={makeFileTabs()}
+        activeTabId="one"
+        onActivateTab={vi.fn()}
+        onCloseTab={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByRole('tab', { name: /one\.ts/ })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: /two\.ts/ })).toBeInTheDocument();
+    expect(screen.queryByLabelText('Hidden tabs')).not.toBeInTheDocument();
+  });
+
+  it('放不下 → 溢出 tab 从 tab 栏移除并出现「⋯」按钮', () => {
+    mockLayout(200);
+    render(
+      <TabBar
+        tabs={makeFileTabs()}
+        activeTabId="one"
+        onActivateTab={vi.fn()}
+        onCloseTab={vi.fn()}
+      />,
+    );
+
+    // one 为激活 tab 强制可见；two/three 放不下进下拉
+    expect(screen.getByRole('tab', { name: /one\.ts/ })).toBeInTheDocument();
+    expect(screen.queryByRole('tab', { name: /two\.ts/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('tab', { name: /three\.ts/ })).not.toBeInTheDocument();
+    expect(screen.getByLabelText('Hidden tabs')).toBeInTheDocument();
+  });
+
+  it('点击「⋯」打开下拉，点击隐藏 tab 触发激活', () => {
+    mockLayout(200);
+    const onActivateTab = vi.fn();
+    render(
+      <TabBar
+        tabs={makeFileTabs()}
+        activeTabId="one"
+        onActivateTab={onActivateTab}
+        onCloseTab={vi.fn()}
+      />,
+    );
+
+    fireEvent.click(screen.getByLabelText('Hidden tabs'));
+    const menuItem = screen.getByRole('menuitem', { name: /two\.ts/ });
+    fireEvent.click(menuItem);
+    expect(onActivateTab).toHaveBeenCalledWith('two');
+  });
+
+  it('下拉中点击 × 直接关闭隐藏 tab', () => {
+    mockLayout(200);
+    const onCloseTab = vi.fn();
+    render(
+      <TabBar
+        tabs={makeFileTabs()}
+        activeTabId="one"
+        onActivateTab={vi.fn()}
+        onCloseTab={onCloseTab}
+      />,
+    );
+
+    fireEvent.click(screen.getByLabelText('Hidden tabs'));
+    const menuItem = screen.getByRole('menuitem', { name: /three\.ts/ });
+    const closeBtn = within(menuItem).getByTitle('Close tab');
+    fireEvent.click(closeBtn);
+    expect(onCloseTab).toHaveBeenCalledWith('three');
   });
 });
