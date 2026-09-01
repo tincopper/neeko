@@ -167,7 +167,7 @@ const McpMarketplaceContent: React.FC = React.memo(() => {
 
       {/* Content area — 外层相对定位：翻页 loading 时叠加遮罩（保留旧内容不跳动） */}
       <div className="relative flex-1 min-h-0 overflow-hidden">
-        <div className="h-full min-h-0 overflow-y-auto overflow-x-hidden overscroll-contain thin-scrollbar">
+        <div className="h-full min-h-0 overflow-y-auto overflow-x-hidden overscroll-contain">
           {loading && displayList.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-full min-h-[200px] text-text-muted gap-2">
               <Loader2 className="h-5 w-5 animate-spin opacity-50" />

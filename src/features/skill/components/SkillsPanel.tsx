@@ -224,7 +224,7 @@ const SkillsPanel: React.FC = React.memo(() => {
 
   return (
     <div className="flex flex-col h-full">
-      <div className="flex-1 overflow-y-auto thin-scrollbar">
+      <div className="flex-1 overflow-y-auto">
         {/* Primary nav */}
         <nav className="py-2 px-1.5" aria-label="Skill views">
           {navItems.map((item) => {

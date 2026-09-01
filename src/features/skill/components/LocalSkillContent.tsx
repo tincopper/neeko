@@ -182,7 +182,7 @@ const LocalSkillContent: React.FC<LocalSkillContentProps> = React.memo(({ setDia
       </div>
 
       {/* Scroll region — must be flex-1 + min-h-0 + overflow-y-auto */}
-      <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden overscroll-contain thin-scrollbar">
+      <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden overscroll-contain">
         <SkillListSection
           skills={filteredSkills}
           loading={loading && skills.length === 0}

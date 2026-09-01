@@ -52,29 +52,26 @@
     color: #fff !important;
   }
 
-  /* Scrollbars — theme tokens (match app chrome, not OS default black) */
+  /* Scrollbars — 滚动时显示，停止 3s 后隐藏（.is-scrolling 由
+     shared/utils/scrollAutoHide.ts 全局管理）。
+     用标准属性 scrollbar-color 切换显隐，而非 ::-webkit-scrollbar 伪元素：
+     WebKit 对伪元素样式的动态 class 切换不重绘滚动条（Chromium 会），
+     标准属性走普通样式重算、两端都可靠；且设置标准属性后两端都会禁用
+     伪元素样式，宽度由 scrollbar-width: thin 决定（UA 值，无法精确 px）。
+     引擎版本下限：scrollbar-width/scrollbar-color 需 Safari 18.2+（Tauri
+     macOS 用系统 WKWebView）/ WebKitGTK 2.46+；旧内核降级为系统默认
+     滚动条常显，功能不受影响。 */
   * {
     scrollbar-width: thin;
-    scrollbar-color: var(--bg-hover) var(--bg-secondary);
+    scrollbar-color: transparent transparent;
   }
-  ::-webkit-scrollbar { width: 10px; height: 10px; }
-  ::-webkit-scrollbar-track { background: var(--bg-secondary); }
-  ::-webkit-scrollbar-thumb { background: var(--bg-hover); border-radius: 5px; border: 2px solid transparent; background-clip: padding-box; }
-  ::-webkit-scrollbar-thumb:hover { background: var(--text-muted); background-clip: padding-box; }
-  ::-webkit-scrollbar-corner { background: var(--bg-secondary); }
+  .is-scrolling {
+    scrollbar-color: var(--bg-hover) transparent;
+  }
 
-  .thin-scrollbar {
-    scrollbar-width: thin;
-    scrollbar-color: var(--bg-hover) var(--bg-secondary);
-  }
-  .thin-scrollbar::-webkit-scrollbar { width: 6px; height: 6px; }
-  .thin-scrollbar::-webkit-scrollbar-track { background: transparent; }
-  .thin-scrollbar::-webkit-scrollbar-thumb {
-    background: var(--bg-hover);
-    border-radius: 3px;
-  }
-  .thin-scrollbar::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
-  .thin-scrollbar::-webkit-scrollbar-corner { background: transparent; }
+  /* TabBar 等明确要求永久无滚动条的容器。 */
+  .no-scrollbar { scrollbar-width: none; }
+  .no-scrollbar::-webkit-scrollbar { display: none; }
 
   .settings-font-item.builtin .settings-font-name::after { content: " \2726"; font-size: 0.7em; color: var(--text-muted); opacity: 0.6; }
 

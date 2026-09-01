@@ -204,10 +204,16 @@ describe('completionTheme', () => {
   });
 
   it('styles tooltip scrollbars to match app theme', () => {
-    const scrollbar = theme.spec['.cm-tooltip ::-webkit-scrollbar'] as Record<string, unknown>;
+    // 与 base.css 全局自动隐藏对齐：标准属性切换显隐（WebKit 伪元素不重绘）
+    const scrollbar = theme.spec['.cm-tooltip, .cm-tooltip *'] as Record<string, unknown>;
     expect(scrollbar).toBeDefined();
-    expect(scrollbar.width).toBe('6px');
-    expect(scrollbar.height).toBe('6px');
+    expect(scrollbar.scrollbarWidth).toBe('thin');
+    expect(scrollbar.scrollbarColor).toBe('transparent transparent');
+    const scrolling = theme.spec['.cm-tooltip.is-scrolling, .cm-tooltip .is-scrolling'] as Record<
+      string,
+      unknown
+    >;
+    expect(scrolling.scrollbarColor).toBe('var(--bg-hover) transparent');
   });
 
   it('aligns list items with flex-start for two-line icon alignment', () => {

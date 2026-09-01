@@ -4,7 +4,6 @@ import { cn } from '@/lib/utils';
 import { SplitPane } from '@/shared/components';
 import { FileDiff, GitCommitHorizontal, MessageSquare } from '@/shared/components/icons';
 import { useAppContext } from '@/shared/contexts/AppContext';
-import { ScrollArea } from '@/ui/ScrollArea';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/ui/Tabs';
 
 import {
@@ -311,7 +310,7 @@ const PRDetailView: React.FC<PRDetailViewProps> = ({
           className="flex-1 flex flex-col overflow-hidden mt-0 data-[state=active]:flex-1"
         >
           <FileStatsBar files={files} />
-          <ScrollArea className="flex-1">
+          <div className="flex-1 overflow-y-auto">
             {info.body ? (
               <PRDescription body={info.body} theme={config.theme} />
             ) : (
@@ -392,14 +391,14 @@ const PRDetailView: React.FC<PRDetailViewProps> = ({
             <div className="px-4 py-2 border-t border-border">
               <PRCommentInput onSubmit={handleAddComment} placeholder="Write a comment..." />
             </div>
-          </ScrollArea>
+          </div>
         </TabsContent>
 
         <TabsContent
           value="commits"
           className="flex-1 flex flex-col overflow-hidden mt-0 data-[state=active]:flex-1"
         >
-          <ScrollArea className="flex-1">
+          <div className="flex-1 overflow-y-auto">
             <div className="px-4 py-2">
               {commits.length === 0 ? (
                 <div className="flex items-center justify-center p-4 text-[var(--font-size)] text-text-muted">
@@ -409,7 +408,7 @@ const PRDetailView: React.FC<PRDetailViewProps> = ({
                 <PRCommitList commits={commits} onCommitClick={handleCommitClick} />
               )}
             </div>
-          </ScrollArea>
+          </div>
         </TabsContent>
 
         <TabsContent

@@ -666,7 +666,7 @@ const AgentSkillContent: React.FC<AgentSkillContentProps> = React.memo(({ setDia
       </div>
 
       {/* Body */}
-      <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden overscroll-contain thin-scrollbar">
+      <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden overscroll-contain">
         {total === 0 ? (
           <div
             className="flex flex-col items-center justify-center py-20 px-6 text-center"

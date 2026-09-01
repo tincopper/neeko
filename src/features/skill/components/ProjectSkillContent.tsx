@@ -1007,7 +1007,7 @@ const ProjectSkillContent: React.FC<ProjectSkillContentProps> = React.memo(({ se
         {/* Agent filter — icons only; agents that have skills in this project */}
         {agentsInProject.length > 0 ? (
           <div
-            className="flex items-center gap-1 min-w-0 max-w-full overflow-x-auto thin-scrollbar shrink-0"
+            className="flex items-center gap-1 min-w-0 max-w-full overflow-x-auto shrink-0"
             role="group"
             aria-label="Filter by agent"
           >
@@ -1220,7 +1220,7 @@ const ProjectSkillContent: React.FC<ProjectSkillContentProps> = React.memo(({ se
       ) : null}
 
       {/* Body */}
-      <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden overscroll-contain thin-scrollbar">
+      <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden overscroll-contain">
         {loading ? (
           <div
             className="flex items-center justify-center h-32 text-text-muted gap-2"

@@ -74,7 +74,7 @@ const LibraryDetail: React.FC<{
       <div className="flex-1 min-h-0 overflow-hidden">
         {activeKind === 'skill' && <SkillContent titleless />}
         {activeKind === 'prompt' && (
-          <div className="h-full overflow-y-auto overflow-x-hidden overscroll-contain thin-scrollbar">
+          <div className="h-full overflow-y-auto overflow-x-hidden overscroll-contain">
             <PromptListSection onInsert={handleInsert} />
           </div>
         )}

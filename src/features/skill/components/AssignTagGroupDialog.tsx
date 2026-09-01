@@ -183,7 +183,7 @@ const AssignTagGroupDialog: React.FC<AssignTagGroupDialogProps> = React.memo(
                 No tag groups yet. Create one below or in the Skills sidebar.
               </div>
             ) : (
-              <ul className="space-y-0.5 max-h-52 overflow-y-auto thin-scrollbar -mx-1 px-1">
+              <ul className="space-y-0.5 max-h-52 overflow-y-auto -mx-1 px-1">
                 {sortedGroups.map((tg) => {
                   const Icon = getTagGroupIcon(tg.name);
                   const checked = selected.has(tg.id);

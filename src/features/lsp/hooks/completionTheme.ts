@@ -516,13 +516,15 @@ export function completionTheme() {
     },
 
     /* ── Scrollbars inside tooltips ────────────────────────────── */
-    '.cm-tooltip ::-webkit-scrollbar': { width: '6px', height: '6px' },
-    '.cm-tooltip ::-webkit-scrollbar-track': { background: 'transparent' },
-    '.cm-tooltip ::-webkit-scrollbar-thumb': {
-      background: 'var(--bg-hover)',
-      borderRadius: '3px',
+    /* 与 base.css 全局自动隐藏滚动条对齐：标准属性切换显隐
+       （WebKit 对 ::-webkit-scrollbar 伪元素的动态 class 切换不重绘） */
+    '.cm-tooltip, .cm-tooltip *': {
+      scrollbarWidth: 'thin',
+      scrollbarColor: 'transparent transparent',
     },
-    '.cm-tooltip ::-webkit-scrollbar-corner': { background: 'transparent' },
+    '.cm-tooltip.is-scrolling, .cm-tooltip .is-scrolling': {
+      scrollbarColor: 'var(--bg-hover) transparent',
+    },
 
     /* Entrance animation shared by dropdown + info panel */
     '@keyframes cm-autocomplete-in': {

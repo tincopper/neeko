@@ -58,7 +58,7 @@ const McpTabContent: React.FC = React.memo(() => {
       )}
       <div className="flex-1 min-h-0">
         {mcpView === 'installed' && (
-          <div className="h-full overflow-y-auto overflow-x-hidden overscroll-contain thin-scrollbar">
+          <div className="h-full overflow-y-auto overflow-x-hidden overscroll-contain">
             <McpListSection onEdit={handleEdit} />
           </div>
         )}

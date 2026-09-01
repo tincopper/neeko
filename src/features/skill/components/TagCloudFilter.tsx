@@ -27,7 +27,7 @@ const TagCloudFilter: React.FC<TagCloudFilterProps> = React.memo(({ skills }) =>
   if (allTags.length === 0) return null;
 
   return (
-    <div className="flex items-center gap-1.5 px-4 py-1.5 border-b border-border overflow-x-auto shrink-0 thin-scrollbar">
+    <div className="flex items-center gap-1.5 px-4 py-1.5 border-b border-border overflow-x-auto shrink-0">
       <span className="text-[10.5px] font-bold tracking-[0.12em] uppercase text-text-muted shrink-0 mr-0.5">
         Tags
       </span>

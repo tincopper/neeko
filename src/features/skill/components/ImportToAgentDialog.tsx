@@ -177,7 +177,7 @@ const ImportToAgentDialog: React.FC<ImportToAgentDialogProps> = React.memo(
           </div>
 
           {/* Tag filter */}
-          <div className="flex items-center gap-1.5 px-4 py-2.5 overflow-x-auto thin-scrollbar shrink-0">
+          <div className="flex items-center gap-1.5 px-4 py-2.5 overflow-x-auto shrink-0">
             <span className="text-[10.5px] font-bold tracking-[0.1em] uppercase text-text-muted shrink-0">
               Tags
             </span>
@@ -228,7 +228,7 @@ const ImportToAgentDialog: React.FC<ImportToAgentDialogProps> = React.memo(
           </div>
 
           {/* List */}
-          <div className="flex-1 min-h-0 overflow-y-auto thin-scrollbar">
+          <div className="flex-1 min-h-0 overflow-y-auto">
             {filtered.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-12 px-6 text-center text-text-muted">
                 <p className="text-sm text-text-secondary">No matching skills</p>

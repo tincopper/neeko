@@ -53,7 +53,6 @@ export { Separator } from './Separator';
 export { Switch } from './Switch';
 export { ToggleGroup, ToggleGroupItem } from './ToggleGroup';
 export { ResizablePanelGroup, ResizablePanel, ResizableHandle } from './Resizable';
-export { ScrollArea, ScrollBar } from './ScrollArea';
 export { Tabs, TabsList, TabsTrigger, TabsContent } from './Tabs';
 export { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from './Tooltip';
 export {

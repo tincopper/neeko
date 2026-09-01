@@ -112,7 +112,7 @@ const BindTagGroupsDialog: React.FC<BindTagGroupsDialogProps> = React.memo(
             </div>
           </div>
 
-          <div className="flex-1 min-h-0 overflow-y-auto thin-scrollbar mt-2 border-t border-border">
+          <div className="flex-1 min-h-0 overflow-y-auto mt-2 border-t border-border">
             {tagGroups.length === 0 ? (
               <div className="px-4 py-10 text-center text-text-muted text-sm">
                 No tag groups yet. Create one in the Skills sidebar.

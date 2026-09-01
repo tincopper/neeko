@@ -32,7 +32,7 @@ const LibrarySidebar: React.FC = React.memo(() => {
   );
 
   return (
-    <div className="flex-1 overflow-y-auto thin-scrollbar py-2 px-1.5">
+    <div className="flex-1 overflow-y-auto py-2 px-1.5">
       {/* Scope filter */}
       <div className="mb-1">
         <button
