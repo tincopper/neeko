@@ -102,6 +102,10 @@ jobs:
         if: matrix.os == 'ubuntu-latest'
         run: python3 .trellis/scripts/check_worktree_byte_assertions.py
 
+      - name: Guard platform-specific imports
+        if: matrix.os == 'ubuntu-latest'
+        run: python3 .trellis/scripts/check_platform_imports.py
+
   backend-test:
     needs: backend-check
     strategy:
