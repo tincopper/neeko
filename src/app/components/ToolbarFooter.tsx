@@ -9,6 +9,7 @@ import AddProjectMenu from './AddProjectMenu';
 
 export interface ToolbarFooterProps {
   onAddProject: () => void;
+  onCloneProject: () => void;
   onAddWsl: () => void;
   onAddRemote: () => void;
   onOpenSettings: () => void;
@@ -23,7 +24,7 @@ export interface ToolbarFooterProps {
  * store 同一惯例）—— 上游无需穿线视图状态。
  */
 const ToolbarFooter: React.FC<ToolbarFooterProps> = React.memo(
-  ({ onAddProject, onAddWsl, onAddRemote, onOpenSettings }) => {
+  ({ onAddProject, onCloneProject, onAddWsl, onAddRemote, onOpenSettings }) => {
     const [showAddMenu, setShowAddMenu] = useState(false);
     const addMenuRef = useRef<HTMLDivElement>(null);
     const isSettingsOpen = useAppViewStore((s) => s.appView === 'settings');
@@ -63,6 +64,7 @@ const ToolbarFooter: React.FC<ToolbarFooterProps> = React.memo(
             <AddProjectMenu
               onClose={() => setShowAddMenu(false)}
               onAddProject={onAddProject}
+              onCloneProject={onCloneProject}
               onAddWsl={onAddWsl}
               onAddRemote={onAddRemote}
             />

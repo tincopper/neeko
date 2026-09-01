@@ -114,29 +114,47 @@ export function useLocalProjects() {
     }
   }, []);
 
+  /** Shared tail of "add a local project": duplicate check → backend → store → activate. */
+  const addProjectFromPath = useCallback(
+    async (path: string) => {
+      const exists = projects.some((p) => p.path === path);
+      if (exists) {
+        throw new Error(`Project already added: ${path}`);
+      }
+      const project = await addProject(path, null, null, randomAvatarColor());
+      await saveSession().catch((e) => console.error('[App] Failed to save session:', e));
+      setProjects((prev) => [...prev, project]);
+      setActiveProjectId(project.id);
+      setActiveProject(project);
+      setActiveProjectApi(project.id).catch(console.error);
+      return project;
+    },
+    [projects, setActiveProject, setActiveProjectId, setProjects],
+  );
+
   const handleAddProject = useCallback(async () => {
     try {
       setLoading(true);
       const selected = await open({ multiple: false, directory: true });
       if (selected) {
-        const exists = projects.some((p) => p.path === selected);
-        if (exists) {
-          alert(`Project already added: ${selected}`);
-          return;
+        try {
+          await addProjectFromPath(selected);
+        } catch (e) {
+          const message = e instanceof Error ? e.message : String(e);
+          // addProjectFromPath 已做判重：复用其错误信息做 alert，保持 UX 一致
+          if (message.includes('already added')) {
+            alert(message);
+          } else {
+            throw e;
+          }
         }
-        const project = await addProject(selected, null, null, randomAvatarColor());
-        await saveSession().catch((e) => console.error('[App] Failed to save session:', e));
-        setProjects((prev) => [...prev, project]);
-        setActiveProjectId(project.id);
-        setActiveProject(project);
-        setActiveProjectApi(project.id).catch(console.error);
       }
     } catch (error) {
       console.error('[App] Failed to add project:', error);
     } finally {
       setLoading(false);
     }
-  }, [projects, setActiveProject, setActiveProjectId, setProjects]);
+  }, [addProjectFromPath]);
 
   const handleRemoveProject = useCallback(async (projectId: string) => {
     try {
@@ -326,6 +344,7 @@ export function useLocalProjects() {
     loadProjects,
     loadAgents,
     handleAddProject,
+    addProjectFromPath,
     handleRemoveProject,
     handleSelectProject,
     handleSelectFile,

@@ -97,6 +97,9 @@ function makeData(): AppShellData {
     onCancelExit: fn,
     onRemoteAuthCancel: fn,
     onRemoteAuthSuccess: fn,
+    cloneDialogOpen: false,
+    handleCloneDialogClose: fn,
+    handleCloneSuccess: fn,
   };
 }
 

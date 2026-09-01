@@ -17,6 +17,7 @@ function renderFooter() {
   return render(
     <ToolbarFooter
       onAddProject={vi.fn()}
+      onCloneProject={vi.fn()}
       onAddWsl={vi.fn()}
       onAddRemote={vi.fn()}
       onOpenSettings={vi.fn()}
@@ -48,6 +49,7 @@ describe('ToolbarFooter', () => {
     render(
       <ToolbarFooter
         onAddProject={vi.fn()}
+        onCloneProject={vi.fn()}
         onAddWsl={vi.fn()}
         onAddRemote={vi.fn()}
         onOpenSettings={onOpenSettings}

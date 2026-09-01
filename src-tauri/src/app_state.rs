@@ -46,6 +46,8 @@ pub struct AppStateWrapper {
     pub storage_manager: StorageManager,
     /// Currently active project ID, if any.
     pub active_project_id: Mutex<Option<String>>,
+    /// Running project clone handle (single-clone slot; None when idle).
+    pub project_clone: Mutex<Option<crate::project::clone::CloneHandle>>,
     /// File-system watcher for project changes.
     pub watcher_manager: WatcherManager,
     /// Shared skill store (tag groups, installed skills).
@@ -469,6 +471,7 @@ impl AppStateWrapper {
             session_store,
             storage_manager,
             active_project_id: Mutex::new(None),
+            project_clone: Mutex::new(None),
             watcher_manager: WatcherManager::new(),
             library_store,
             lsp_manager,

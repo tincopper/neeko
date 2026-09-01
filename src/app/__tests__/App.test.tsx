@@ -32,6 +32,7 @@ vi.mock('@/app/hooks', () => ({
     },
     toolbarProps: {
       onAddProject: vi.fn(),
+      onCloneProject: vi.fn(),
       onAddWsl: vi.fn(),
       onAddRemote: vi.fn(),
       onOpenSettings: vi.fn(),

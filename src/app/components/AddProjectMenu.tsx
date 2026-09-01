@@ -1,12 +1,13 @@
 import type { LucideIcon } from 'lucide-react';
 import React, { useCallback } from 'react';
 
-import { FolderPlus, Server, Terminal } from '@/shared/components/icons';
+import { Download, FolderPlus, Server, Terminal } from '@/shared/components/icons';
 import { IS_WINDOWS } from '@/shared/utils/platform';
 
 interface AddProjectMenuProps {
   onClose: () => void;
   onAddProject: () => void;
+  onCloneProject: () => void;
   onAddWsl: () => void;
   onAddRemote: () => void;
 }
@@ -36,7 +37,7 @@ function AddProjectMenuItem({ label, onClick, icon: Icon }: AddProjectMenuItemPr
 }
 
 const AddProjectMenu: React.FC<AddProjectMenuProps> = React.memo(
-  ({ onClose, onAddProject, onAddWsl, onAddRemote }) => {
+  ({ onClose, onAddProject, onCloneProject, onAddWsl, onAddRemote }) => {
     const select = useCallback(
       (action: () => void) => {
         onClose();
@@ -51,6 +52,11 @@ const AddProjectMenu: React.FC<AddProjectMenuProps> = React.memo(
           label="Add Local Project"
           icon={FolderPlus}
           onClick={() => select(onAddProject)}
+        />
+        <AddProjectMenuItem
+          label="Clone from Git"
+          icon={Download}
+          onClick={() => select(onCloneProject)}
         />
         {IS_WINDOWS && (
           <AddProjectMenuItem

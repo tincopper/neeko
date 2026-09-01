@@ -3,6 +3,8 @@ import { invoke } from '@tauri-apps/api/core';
 import type { Project } from '@/shared/types';
 import type { GitInfo } from '@/shared/types/git';
 
+import type { CloneProjectParams, CloneProjectResult } from '../types/clone';
+
 export function addProject(
   path: string,
   agentId?: string | null,
@@ -10,6 +12,18 @@ export function addProject(
   avatarColor?: string | null,
 ): Promise<Project> {
   return invoke<Project>('add_project', { path, agentId, ide, avatarColor });
+}
+
+export function cloneGitProject(params: CloneProjectParams): Promise<CloneProjectResult> {
+  return invoke<CloneProjectResult>('clone_git_project', {
+    url: params.url,
+    destParent: params.destParent,
+    name: params.name,
+  });
+}
+
+export function cancelProjectClone(): Promise<void> {
+  return invoke<void>('cancel_project_clone');
 }
 
 export function removeProject(projectId: string): Promise<void> {

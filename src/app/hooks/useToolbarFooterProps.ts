@@ -14,6 +14,7 @@ const noop = () => {};
  */
 export function useToolbarFooterProps(opts: {
   onAddProject: () => void;
+  onCloneProject: () => void;
   onOpenWslDialog: () => void;
   onOpenRemoteDialog: () => void;
 }): ToolbarFooterProps {
@@ -24,6 +25,7 @@ export function useToolbarFooterProps(opts: {
 
   return {
     onAddProject: opts.onAddProject,
+    onCloneProject: opts.onCloneProject,
     onAddWsl: IS_WINDOWS ? opts.onOpenWslDialog : noop,
     onAddRemote: opts.onOpenRemoteDialog,
     onOpenSettings: handleToggleSettings,

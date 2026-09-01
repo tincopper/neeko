@@ -102,6 +102,9 @@ export interface AppShellData {
   handleAgentClick: EditorContextValue['onAgentClick'];
   handleToggleHiddenAgent: EditorContextValue['onToggleHiddenAgent'];
   // modals
+  cloneDialogOpen: AppModalsProps['cloneDialogOpen'];
+  handleCloneDialogClose: AppModalsProps['onCloneDialogClose'];
+  handleCloneSuccess: AppModalsProps['onCloneSuccess'];
   confirmExitOpen: AppModalsProps['confirmExitOpen'];
   unsavedFileNames: AppModalsProps['unsavedFileNames'];
   onConfirmExit: AppModalsProps['onConfirmExit'];
@@ -184,6 +187,9 @@ export function buildAppShellValues(data: AppShellData) {
     onCancelExit,
     onRemoteAuthCancel,
     onRemoteAuthSuccess,
+    cloneDialogOpen,
+    handleCloneDialogClose,
+    handleCloneSuccess,
   } = data;
 
   const projectActionsValue: ProjectActionsContextValue = {
@@ -276,6 +282,9 @@ export function buildAppShellValues(data: AppShellData) {
   };
 
   const appModalsProps: AppModalsProps = {
+    cloneDialogOpen,
+    onCloneDialogClose: handleCloneDialogClose,
+    onCloneSuccess: handleCloneSuccess,
     confirmExitOpen,
     unsavedFileNames,
     onConfirmExit,

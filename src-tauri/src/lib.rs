@@ -86,6 +86,8 @@ macro_rules! neeko_invoke_handler {
             $crate::project::commands::change_project_path,
             $crate::project::commands::reorder_projects,
             $crate::project::commands::set_project_primary_language,
+            $crate::project::commands_clone::clone_git_project,
+            $crate::project::commands_clone::cancel_project_clone,
             // project — IDE
             $crate::project::commands_ide::set_project_ide,
             $crate::project::commands_ide::open_ide,

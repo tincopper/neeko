@@ -1,5 +1,5 @@
 import { listen } from '@tauri-apps/api/event';
-import { useCallback, useEffect } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 
 import { useAgentActions, useAgentClickHandler } from '@/features/agent';
 import { useRemoteAuthActions } from '@/features/connection';
@@ -76,6 +76,7 @@ export function useAppShellData(): UseAppShellDataResult {
     loadProjects,
     loadAgents,
     handleAddProject,
+    addProjectFromPath,
     handleRemoveProject,
     handleSelectFile,
     handleRefreshGit,
@@ -296,8 +297,23 @@ export function useAppShellData(): UseAppShellDataResult {
 
   const { confirmExitOpen, unsavedFileNames, closeExitDialog, confirmExit } = useConfirmExit();
 
+  // Clone-from-Git dialog state + success → add-project chain.
+  // 声明在 toolbarProps 之前：onCloneProject 闭包引用 setCloneDialogOpen，避免 TDZ 可读性陷阱。
+  const [cloneDialogOpen, setCloneDialogOpen] = useState(false);
+  const handleCloneDialogClose = useCallback(() => setCloneDialogOpen(false), []);
+  const handleCloneSuccess = useCallback(
+    (path: string) => {
+      setCloneDialogOpen(false);
+      addProjectFromPath(path).catch((e: unknown) =>
+        showToast(e instanceof Error ? e.message : String(e), 'error'),
+      );
+    },
+    [addProjectFromPath, showToast],
+  );
+
   const toolbarProps = useToolbarFooterProps({
     onAddProject: handleAddProject,
+    onCloneProject: () => setCloneDialogOpen(true),
     onOpenWslDialog: () => setWslDialogOpen(true),
     onOpenRemoteDialog: () => setRemoteDialogOpen(true),
   });
@@ -315,6 +331,9 @@ export function useAppShellData(): UseAppShellDataResult {
     handleAddProject,
     handleSelectFile,
     handleRefreshGit,
+    cloneDialogOpen,
+    handleCloneDialogClose,
+    handleCloneSuccess,
     handleBackToMainTerminal: worktreeActionsWrap.handleBackToMainTerminal,
     handleOpenIdeForSidebar: agentActionsWrap.handleOpenIdeForSidebar,
     handleOpenWorktreeTerminal: worktreeActionsWrap.handleOpenWorktreeTerminal,

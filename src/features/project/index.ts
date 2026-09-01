@@ -1,5 +1,6 @@
 // Components
 export { default as ContextMenu, type ContextMenuItem } from './components/ContextMenu';
+export { default as CloneProjectDialog } from './components/CloneProjectDialog';
 export { default as ProjectSettingsDialog } from './components/ProjectSettingsDialog';
 export { default as ProjectItem } from './components/ProjectItem';
 export { default as ProjectGitSection } from './components/ProjectGitSection';

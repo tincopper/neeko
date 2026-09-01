@@ -1,11 +1,16 @@
 import React from 'react';
 
 import { RemoteAuthDialog, RemoteDialog, WSLDialog } from '@/features/connection';
+import { CloneProjectDialog } from '@/features/project';
 import ConfirmDialog from '@/shared/components/ConfirmDialog';
 import type { AuthMethod, RemoteEntrySession, WSLEntrySession } from '@/shared/types';
 import { IS_WINDOWS } from '@/shared/utils/platform';
 
 interface AppModalsProps {
+  cloneDialogOpen: boolean;
+  onCloneDialogClose: () => void;
+  onCloneSuccess: (path: string) => void;
+
   wslDialogOpen: boolean;
 
   onWslDialogClose: () => void;
@@ -36,6 +41,9 @@ interface AppModalsProps {
 }
 
 function AppModals({
+  cloneDialogOpen,
+  onCloneDialogClose,
+  onCloneSuccess,
   wslDialogOpen,
   onWslDialogClose,
   onAddWslEntry,
@@ -59,6 +67,12 @@ function AppModals({
   const unsavedPreview = unsavedFileNames.slice(0, 3).join(', ');
   return (
     <>
+      <CloneProjectDialog
+        isOpen={cloneDialogOpen}
+        onClose={onCloneDialogClose}
+        onSuccess={onCloneSuccess}
+      />
+
       {IS_WINDOWS && (
         <WSLDialog
           isOpen={wslDialogOpen}
