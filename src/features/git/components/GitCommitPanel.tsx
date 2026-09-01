@@ -243,7 +243,12 @@ const GitCommitPanel: React.FC<GitCommitPanelProps> = ({
             </Button>
             <Button
               variant="destructive"
-              onClick={() => discardConfirm && void handleConfirmDiscard(discardConfirm)}
+              onClick={() => {
+                const pending = discardConfirm;
+                if (!pending) return;
+                setDiscardConfirm(null);
+                void handleConfirmDiscard(pending);
+              }}
             >
               {discardConfirm?.type === 'all' ? 'Discard All' : 'Discard'}
             </Button>
