@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-3.md`
-- **Total Sessions**: 161
-- **Last Active**: 2026-08-31
+- **Total Sessions**: 162
+- **Last Active**: 2026-09-01
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-3.md` | ~1491 | Active |
+| `journal-3.md` | ~1524 | Active |
 | `journal-2.md` | ~1991 | Archived |
 | `journal-1.md` | ~1986 | Archived |
 <!-- @@@/auto:active-documents -->
@@ -31,6 +31,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 162 | 2026-09-01 | archive scrollbar-auto-hide | `d0b54a57` | `main` |
 | 161 | 2026-08-31 | font picker optimization & typography SSOT | `534add80` | `main` |
 | 160 | 2026-08-31 | typography-font-unify Phase 0-4 | `6c974dbfc293bf3daef20f77b968de1d2a42b80c` | `main` |
 | 159 | 2026-08-31 | Split oversized editor/git components (4 components back under 300 lines) | `3f14eea4` | `main` |

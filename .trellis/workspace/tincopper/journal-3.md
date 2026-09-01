@@ -1489,3 +1489,36 @@ Executed 08-31-editor-git-component-split: GitCommitPanel 623->308 via useGitAct
 ### Next Steps
 
 - None - task complete
+
+
+## Session 162: archive scrollbar-auto-hide
+
+**Date**: 2026-09-01
+**Task**: archive scrollbar-auto-hide
+**Branch**: `main`
+
+### Summary
+
+Archived 09-01-scrollbar-auto-hide: scrollbar auto-hide with 3s delay completed (feat f9433d87)
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `d0b54a57` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
