@@ -7,7 +7,9 @@
 //!   首次取一次足够；安装新字体后可调 [`reset_font_cache`] 失效重建（设置页刷新）。
 //! - **可选项安全**：过滤系统私有字体（`.` 前缀）与非首选取名形态。
 
+#[cfg(target_os = "macos")]
 use std::collections::BTreeSet;
+#[cfg(target_os = "macos")]
 use std::path::Path;
 use std::sync::Mutex;
 
