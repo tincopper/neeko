@@ -1522,3 +1522,36 @@ Archived 09-01-scrollbar-auto-hide: scrollbar auto-hide with 3s delay completed 
 ### Next Steps
 
 - None - task complete
+
+
+## Session 163: Editor tab overflow collection dropdown
+
+**Date**: 2026-09-01
+**Task**: Editor tab overflow collection dropdown
+**Branch**: `main`
+
+### Summary
+
+(Add summary)
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `008d9e8c` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
