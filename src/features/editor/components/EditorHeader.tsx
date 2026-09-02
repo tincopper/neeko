@@ -1,7 +1,15 @@
 import React, { useMemo, useRef } from 'react';
 
 import { cn } from '@/lib/utils';
-import { Eye, FileCode, Globe, ExternalLink, Search, Sparkles } from '@/shared/components/icons';
+import {
+  Eye,
+  FileCode,
+  Globe,
+  ExternalLink,
+  Languages,
+  Search,
+  Sparkles,
+} from '@/shared/components/icons';
 import { fileIconSrc } from '@/shared/utils/fileIcons';
 
 import { useBreadcrumbSegments } from '../hooks/useBreadcrumbSegments';
@@ -20,6 +28,9 @@ interface EditorHeaderProps {
   isJson: boolean;
   previewMode: PreviewMode;
   onTogglePreview: () => void;
+  /** 可翻译文件（md/html/txt）：渲染三段式视图切换（Source | Preview | AI 译文） */
+  translatable?: boolean;
+  onViewModeChange?: (mode: PreviewMode) => void;
   onOpenInBrowser?: () => void;
   onOpenInSystemBrowser?: () => void;
   canOpenInBrowser?: boolean;
@@ -46,6 +57,8 @@ function EditorHeader({
   isJson,
   previewMode,
   onTogglePreview,
+  translatable = false,
+  onViewModeChange,
   onOpenInBrowser,
   onOpenInSystemBrowser,
   canOpenInBrowser,
@@ -154,17 +167,44 @@ function EditorHeader({
           </button>
         )}
 
-        {/* Markdown / HTML / SVG / JSON preview toggle */}
-        {(isMd || isHtml || isSvg || isJson) && (
-          <button
-            className="tb-icon-btn w-6 h-6 rounded-md flex items-center justify-center text-text-secondary hover:bg-bg-hover hover:text-text-primary transition-colors"
-            onClick={onTogglePreview}
-            title={previewMode === 'preview' ? '切换到源码' : '切换预览'}
-            aria-label="切换预览/源码"
-          >
-            {previewMode === 'preview' ? <FileCode size={14} /> : <Eye size={14} />}
-          </button>
-        )}
+        {/* Markdown / HTML / SVG / JSON preview toggle；可翻译文件为三段式视图切换（图标按钮） */}
+        {(isMd || isHtml || isSvg || isJson || translatable) &&
+          (translatable && onViewModeChange ? (
+            <>
+              {(
+                [
+                  ['source', 'Source', <FileCode key="i" size={14} />],
+                  ['preview', 'Preview', <Eye key="i" size={14} />],
+                  ['translate', 'Translate', <Languages key="i" size={14} />],
+                ] as const
+              ).map(([mode, label, icon]) => (
+                <button
+                  key={mode}
+                  className={cn(
+                    'tb-icon-btn w-6 h-6 rounded-md flex items-center justify-center transition-colors',
+                    previewMode === mode
+                      ? 'bg-bg-selected text-text-primary'
+                      : 'text-text-secondary hover:bg-bg-hover hover:text-text-primary',
+                  )}
+                  onClick={() => onViewModeChange(mode)}
+                  title={label}
+                  aria-label={label}
+                  aria-pressed={previewMode === mode}
+                >
+                  {icon}
+                </button>
+              ))}
+            </>
+          ) : (
+            <button
+              className="tb-icon-btn w-6 h-6 rounded-md flex items-center justify-center text-text-secondary hover:bg-bg-hover hover:text-text-primary transition-colors"
+              onClick={onTogglePreview}
+              title={previewMode === 'preview' ? '切换到源码' : '切换预览'}
+              aria-label="切换预览/源码"
+            >
+              {previewMode === 'preview' ? <FileCode size={14} /> : <Eye size={14} />}
+            </button>
+          ))}
 
         {/* HTML: Open in Browser Panel */}
         {isHtml && canOpenInBrowser && (

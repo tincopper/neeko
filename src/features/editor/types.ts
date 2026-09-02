@@ -28,5 +28,8 @@ export type {
   SplitState,
 } from '@/shared/types/split';
 
-/** Editor preview toggle state (markdown/html preview vs source) */
-export type PreviewMode = 'preview' | 'source';
+/**
+ * Editor preview toggle state (markdown/html preview vs source).
+ * `translate`：AI 译文视图（仅 md/html/txt 可进入，见 TranslationView）。
+ */
+export type PreviewMode = 'preview' | 'source' | 'translate';

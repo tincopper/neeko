@@ -6,6 +6,9 @@ import type { AppTheme, FileTab } from '@/shared/types';
 import type { EditorAction } from '@/shared/utils/agentPrompt';
 import { MarkdownPreview } from '@/ui';
 
+import { isTranslatableFile } from '../translation/useDocumentTranslation';
+import type { PreviewMode } from '../types';
+
 import EditorHeader from './EditorHeader';
 import ExternallyModifiedDialog from './ExternallyModifiedDialog';
 import InlineHtmlPreview from './InlineHtmlPreview';
@@ -13,10 +16,13 @@ import JsonPreview from './JsonPreview';
 import MarkdownScrollContainer from './MarkdownScrollContainer';
 import SelectionToolbar from './SelectionToolbar';
 import SvgPreview from './SvgPreview';
+import TranslationView from './TranslationView';
 
 /** EditorHeader 上层的动作回调集（由 FileEditor 的 hooks 提供）。 */
 export interface FileEditorViewCallbacks {
   onTogglePreview: () => void;
+  /** 译文视图三段式切换（仅可翻译文件使用） */
+  onSetViewMode: (mode: PreviewMode) => void;
   onOpenInBrowser: () => void;
   onOpenInSystemBrowser: () => void;
   canOpenInBrowser: boolean;
@@ -34,7 +40,7 @@ interface FileEditorViewProps {
   theme: AppTheme;
   externallyModified: boolean;
   /** hooks 组装产物 */
-  previewMode: 'preview' | 'source';
+  previewMode: PreviewMode;
   isMd: boolean;
   isHtml: boolean;
   isSvg: boolean;
@@ -96,6 +102,8 @@ function FileEditorView({
   onCreateAgentTab,
 }: FileEditorViewProps) {
   const showPreview = (isMd || isHtml || isSvg || isJson) && previewMode === 'preview';
+  const translatable = isTranslatableFile(tab.filePath);
+  const showTranslate = previewMode === 'translate' && translatable;
 
   return (
     <div className="flex-1 flex flex-col min-h-0">
@@ -118,6 +126,8 @@ function FileEditorView({
         isJson={isJson}
         previewMode={previewMode}
         onTogglePreview={callbacks.onTogglePreview}
+        translatable={translatable}
+        onViewModeChange={callbacks.onSetViewMode}
         onOpenInBrowser={callbacks.onOpenInBrowser}
         onOpenInSystemBrowser={callbacks.onOpenInSystemBrowser}
         canOpenInBrowser={callbacks.canOpenInBrowser}
@@ -126,7 +136,14 @@ function FileEditorView({
       />
 
       <div className="flex-1 min-h-0 overflow-hidden">
-        {showPreview ? (
+        {showTranslate ? (
+          <TranslationView
+            filePath={tab.filePath}
+            content={currentContent}
+            projectId={tab.projectId}
+            enabled
+          />
+        ) : showPreview ? (
           isMd ? (
             <MarkdownScrollContainer tabKey={tabKey} tabId={tabId} content={currentContent}>
               <MarkdownPreview

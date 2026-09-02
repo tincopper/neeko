@@ -45,6 +45,8 @@ export const BROWSER_PAGE_META_EVENT = 'browser://page-meta';
 
 /** Agent Chat 流式事件通道（StreamEvent 统一协议）：`agent-chat://event` */
 export const AGENT_CHAT_EVENT = 'agent-chat://event';
+/** 文档翻译流式事件通道（同 StreamEvent 协议，与聊天隔离）：`translation://event` */
+export const TRANSLATION_EVENT = 'translation://event';
 
 // ── 菜单/标签页事件（与 src-tauri/src/app_menu.rs 常量保持同步）──
 

@@ -12,6 +12,7 @@ pub mod events;
 pub mod manager;
 pub mod mock;
 pub mod session_store;
+pub mod translation;
 
 pub use events::{
     Capabilities, ContextManifest, DoneReason, ErrorKind, SessionRequest, StreamEvent,

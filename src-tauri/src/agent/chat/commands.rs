@@ -61,7 +61,10 @@ fn env_label(env: &ProjectEnvironment) -> String {
 }
 
 /// Resolve the agent config（数据对象）from the agent manager（clone 快照）。
-fn resolve_agent_config(state: &AppStateWrapper, agent_id: &str) -> Result<AgentConfig, AppError> {
+pub(crate) fn resolve_agent_config(
+    state: &AppStateWrapper,
+    agent_id: &str,
+) -> Result<AgentConfig, AppError> {
     let am = state.agent_manager.lock().map_err(AppError::from)?;
     am.get_agent(agent_id)
         .cloned()
@@ -69,7 +72,7 @@ fn resolve_agent_config(state: &AppStateWrapper, agent_id: &str) -> Result<Agent
 }
 
 /// Resolve project display name + environment + path.
-fn resolve_project_ctx(
+pub(crate) fn resolve_project_ctx(
     state: &AppStateWrapper,
     project_id: &str,
 ) -> Result<(String, String, String), AppError> {
@@ -180,7 +183,16 @@ pub async fn agent_stream(
     // adapter: Spawn / Connect / SSE / ACP — not bound to stdout/JSON-Lines).
     let adapter = adapter_for(&agent)?;
     let session = adapter.create(&context).await?;
-    spawn_session_pipeline(&state, &app_handle, &req, session_id.clone(), session);
+    let cursor = build_resume_cursor(&req, &session_id);
+    spawn_session_pipeline(
+        &state,
+        &app_handle,
+        &req,
+        session_id.clone(),
+        session,
+        AGENT_CHAT_EVENT,
+        Some(cursor),
+    );
 
     Ok(session_id)
 }
@@ -238,33 +250,34 @@ pub async fn agent_chat_resume(
         )));
     }
     let session = adapter.resume(&context, &native_session_id).await?;
-    spawn_session_pipeline(&state, &app_handle, &req, session_id.clone(), session);
+    let cursor = build_resume_cursor(&req, &session_id);
+    spawn_session_pipeline(
+        &state,
+        &app_handle,
+        &req,
+        session_id.clone(),
+        session,
+        AGENT_CHAT_EVENT,
+        Some(cursor),
+    );
 
     Ok(session_id)
 }
 
-/// Shared tail of `agent_stream` / `agent_chat_resume`: persist the resume
-/// cursor, register the live session, and start the bridge pump.
-fn spawn_session_pipeline(
+/// Shared tail of `agent_stream` / `agent_chat_resume` / `translation_stream`:
+/// persist the resume cursor (if any), register the live session, and start
+/// the bridge pump. `event_name` selects the frontend event channel
+/// (`AGENT_CHAT_EVENT` for chat, `TRANSLATION_EVENT` for ephemeral translation).
+pub(crate) fn spawn_session_pipeline(
     state: &State<'_, AppStateWrapper>,
     app_handle: &tauri::AppHandle,
     req: &StreamRequest,
     session_id: String,
     session: Box<dyn AgentSession>,
+    event_name: &'static str,
+    cursor: Option<ResumeCursor>,
 ) {
     if let Some(request_tx) = session.request_channel() {
-        // Build the initial resume cursor for session persistence (P2).
-        let cursor = ResumeCursor {
-            session_id: session_id.clone(),
-            agent_kind: AgentKind::from_agent_id(&req.agent_id),
-            agent_id: req.agent_id.clone(),
-            cwd: req.project_id.clone(),
-            model: String::new(),
-            runtime_mode: req.mode.clone().unwrap_or_else(|| "auto".into()),
-            turn_count: 0,
-            status: SessionStatus::Running,
-            last_activity: chrono::Utc::now().to_rfc3339(),
-        };
         state.agent_chat_manager.register(
             session_id.clone(),
             SessionHandle {
@@ -272,7 +285,7 @@ fn spawn_session_pipeline(
                 project_id: req.project_id.clone(),
                 request_tx,
             },
-            Some(cursor),
+            cursor,
         );
     }
 
@@ -285,11 +298,26 @@ fn spawn_session_pipeline(
     let sid = session_id.clone();
     tauri::async_runtime::spawn(async move {
         let emit = move |seq_evs: Vec<SequencedEvent>| {
-            let _ = handle.emit(AGENT_CHAT_EVENT, &seq_evs);
+            let _ = handle.emit(event_name, &seq_evs);
         };
         let _ = AgentChatBridge::run(sid.clone(), session, emit).await;
         manager.unregister(&sid);
     });
+}
+
+/// Build the resume cursor for chat session persistence (P2).
+fn build_resume_cursor(req: &StreamRequest, session_id: &str) -> ResumeCursor {
+    ResumeCursor {
+        session_id: session_id.to_string(),
+        agent_kind: AgentKind::from_agent_id(&req.agent_id),
+        agent_id: req.agent_id.clone(),
+        cwd: req.project_id.clone(),
+        model: String::new(),
+        runtime_mode: req.mode.clone().unwrap_or_else(|| "auto".into()),
+        turn_count: 0,
+        status: SessionStatus::Running,
+        last_activity: chrono::Utc::now().to_rfc3339(),
+    }
 }
 
 /// Approve / deny a pending tool call (Gate return, A2).

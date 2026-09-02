@@ -54,7 +54,6 @@ const DEFAULT_CONFIG: AppConfig = {
   },
   favoriteBranches: {},
 };
-
 type PartialLoadedConfig = Partial<AppConfig> & {
   fontSize?: number;
   theme?: unknown;
@@ -362,6 +361,10 @@ export function useAppConfig() {
               saved.favoriteBranches && typeof saved.favoriteBranches === 'object'
                 ? saved.favoriteBranches
                 : DEFAULT_CONFIG.favoriteBranches,
+            translation:
+              saved.translation && typeof saved.translation === 'object'
+                ? saved.translation
+                : undefined,
           });
         }
       } catch (e) {

@@ -92,6 +92,21 @@ const SettingsPanel: React.FC<SettingsPanelProps> = React.memo(
               onAutoLocateFileOnTabSwitchChange={(enabled) =>
                 onConfigChange({ ...config, autoLocateFileOnTabSwitch: enabled })
               }
+              translationAgentId={config.translation?.agentId}
+              translationTargetLanguage={config.translation?.targetLanguage}
+              agents={[...builtinAgents, ...config.customAgents]}
+              onTranslationAgentChange={(agentId) =>
+                onConfigChange({
+                  ...config,
+                  translation: { ...config.translation, agentId },
+                })
+              }
+              onTranslationTargetLanguageChange={(targetLanguage) =>
+                onConfigChange({
+                  ...config,
+                  translation: { ...config.translation, targetLanguage },
+                })
+              }
             />
           );
 

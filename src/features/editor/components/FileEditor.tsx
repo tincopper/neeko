@@ -281,6 +281,7 @@ function FileEditor({
       onReload={handleReload}
       callbacks={{
         onTogglePreview: () => setPreviewMode((m) => (m === 'preview' ? 'source' : 'preview')),
+        onSetViewMode: setPreviewMode,
         onOpenInBrowser: handleOpenInBrowser,
         onOpenInSystemBrowser: handleOpenInSystemBrowser,
         canOpenInBrowser,

@@ -85,4 +85,10 @@ export interface AppConfig {
   lsp: LspConfig;
   /** Project-id → favorite branch names, persisted across sessions. */
   favoriteBranches: Record<string, string[]>;
+  /** AI 文档翻译默认项（工具条选择器以此初始化）。 */
+  translation?: {
+    agentId?: string;
+    modelId?: string;
+    targetLanguage?: string;
+  };
 }

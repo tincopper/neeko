@@ -9,6 +9,11 @@ use serde::{Deserialize, Serialize};
 /// Tauri event channel carrying [`StreamEvent`] to the frontend (red line 5).
 pub const AGENT_CHAT_EVENT: &str = "agent-chat://event";
 
+/// Tauri event channel for ephemeral document translation turns
+/// (same [`StreamEvent`] protocol, separate channel so chat listeners
+/// never see translation traffic and vice versa).
+pub const TRANSLATION_EVENT: &str = "translation://event";
+
 /// Lightweight capability declaration sent once at session start.
 /// The page uses this to decide which UI (approval panel, diff panel, …) to show.
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]

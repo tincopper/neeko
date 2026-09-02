@@ -60,6 +60,11 @@ export function isHtmlFile(filePath: string): boolean {
   return ext === 'html' || ext === 'htm';
 }
 
+/** 纯文本文档（AI 翻译视图适用） */
+export function isTxtFile(filePath: string): boolean {
+  return filePath.split('.').pop()?.toLowerCase() === 'txt';
+}
+
 /** 检查文件是否为 SVG 文件（文本格式，可读入 content 走 srcDoc 预览） */
 export function isSvgFile(filePath: string): boolean {
   const ext = filePath.split('.').pop()?.toLowerCase();

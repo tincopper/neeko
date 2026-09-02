@@ -30,6 +30,7 @@ function SettingsView() {
   const [activeNav, setActiveNav] = useState<SettingsNavId>('appearance');
   const [searchQuery, setSearchQuery] = useState('');
   const [builtinAgents, setBuiltinAgents] = useState<AgentConfig[]>([]);
+  const [allAgents, setAllAgents] = useState<AgentConfig[]>([]);
 
   useEffect(() => {
     let alive = true;
@@ -38,6 +39,7 @@ function SettingsView() {
         const all = await listAgents();
         if (alive) {
           setBuiltinAgents(all.filter((a) => a.is_builtin === true));
+          setAllAgents(all);
         }
       } catch (e) {
         console.error('[SettingsView] Failed to list agents:', e);
@@ -114,6 +116,18 @@ function SettingsView() {
             autoLocateFileOnTabSwitch={config.autoLocateFileOnTabSwitch}
             onAutoLocateFileOnTabSwitchChange={(enabled) =>
               onConfigChange({ ...config, autoLocateFileOnTabSwitch: enabled })
+            }
+            translationAgentId={config.translation?.agentId}
+            translationTargetLanguage={config.translation?.targetLanguage}
+            agents={allAgents}
+            onTranslationAgentChange={(agentId) =>
+              onConfigChange({ ...config, translation: { ...config.translation, agentId } })
+            }
+            onTranslationTargetLanguageChange={(targetLanguage) =>
+              onConfigChange({
+                ...config,
+                translation: { ...config.translation, targetLanguage },
+              })
             }
           />
         );

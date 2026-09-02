@@ -181,6 +181,7 @@ macro_rules! neeko_invoke_handler {
             $crate::agent::chat::commands::agent_input,
             $crate::agent::chat::commands::agent_context_set,
             $crate::agent::chat::commands::agent_chat_context,
+            $crate::agent::chat::translation::translation_stream,
             // ── search ────────────────────────────────────────────────────────
             $crate::search::commands::search_run,
             $crate::search::commands::search_stop,
