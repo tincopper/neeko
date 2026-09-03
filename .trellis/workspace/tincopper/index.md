@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-3.md`
-- **Total Sessions**: 166
+- **Total Sessions**: 168
 - **Last Active**: 2026-09-03
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-3.md` | ~1656 | Active |
+| `journal-3.md` | ~1722 | Active |
 | `journal-2.md` | ~1991 | Archived |
 | `journal-1.md` | ~1986 | Archived |
 <!-- @@@/auto:active-documents -->
@@ -31,6 +31,8 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 168 | 2026-09-03 | WebGL自愈任务验收通过归档 | `aff4f8e9` | `main` |
+| 167 | 2026-09-03 | WebGL自愈任务验收通过归档 | `aff4f8e9` | `main` |
 | 166 | 2026-09-03 | 终端WebGL自愈review修复与合入 | `aff4f8e9` | `main` |
 | 165 | 2026-09-02 | 终端 WebGL 自愈回退：移除 attach 清图集，仅保留 onContextLoss 兜底 | `47f6b77b` | `main` |
 | 164 | 2026-09-02 | 终端 WebGL 渲染层乱码自愈（clearTextureAtlas + onContextLoss 恢复） | `47f6b77b` | `main` |
