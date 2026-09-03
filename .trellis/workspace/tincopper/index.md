@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-3.md`
-- **Total Sessions**: 163
-- **Last Active**: 2026-09-01
+- **Total Sessions**: 166
+- **Last Active**: 2026-09-03
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-3.md` | ~1557 | Active |
+| `journal-3.md` | ~1656 | Active |
 | `journal-2.md` | ~1991 | Archived |
 | `journal-1.md` | ~1986 | Archived |
 <!-- @@@/auto:active-documents -->
@@ -31,6 +31,9 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 166 | 2026-09-03 | 终端WebGL自愈review修复与合入 | `aff4f8e9` | `main` |
+| 165 | 2026-09-02 | 终端 WebGL 自愈回退：移除 attach 清图集，仅保留 onContextLoss 兜底 | `47f6b77b` | `main` |
+| 164 | 2026-09-02 | 终端 WebGL 渲染层乱码自愈（clearTextureAtlas + onContextLoss 恢复） | `47f6b77b` | `main` |
 | 163 | 2026-09-01 | Editor tab overflow collection dropdown | `008d9e8c` | `main` |
 | 162 | 2026-09-01 | archive scrollbar-auto-hide | `d0b54a57` | `main` |
 | 161 | 2026-08-31 | font picker optimization & typography SSOT | `534add80` | `main` |

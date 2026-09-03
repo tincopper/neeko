@@ -1555,3 +1555,102 @@ Archived 09-01-scrollbar-auto-hide: scrollbar auto-hide with 3s delay completed 
 ### Next Steps
 
 - None - task complete
+
+
+## Session 164: 终端 WebGL 渲染层乱码自愈（clearTextureAtlas + onContextLoss 恢复）
+
+**Date**: 2026-09-02
+**Task**: 终端 WebGL 渲染层乱码自愈（clearTextureAtlas + onContextLoss 恢复）
+**Branch**: `main`
+
+### Summary
+
+(Add summary)
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `47f6b77b` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
+
+
+## Session 165: 终端 WebGL 自愈回退：移除 attach 清图集，仅保留 onContextLoss 兜底
+
+**Date**: 2026-09-02
+**Task**: 终端 WebGL 自愈回退：移除 attach 清图集，仅保留 onContextLoss 兜底
+**Branch**: `main`
+
+### Summary
+
+(Add summary)
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `47f6b77b` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
+
+
+## Session 166: 终端WebGL自愈review修复与合入
+
+**Date**: 2026-09-03
+**Task**: 终端WebGL自愈review修复与合入
+**Branch**: `main`
+
+### Summary
+
+(Add summary)
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `aff4f8e9` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
