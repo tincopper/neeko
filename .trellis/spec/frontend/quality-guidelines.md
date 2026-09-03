@@ -175,6 +175,14 @@ ESLint 的 `no-restricted-imports` 规则会检测并报 error 拦截违反此�
 
 **回归验证**：提交前临时删除被测守卫（generation 计数器 / 锁 / AbortController），测试必须 RED；恢复后 GREEN。
 
+### 7. 无设计记录的 vendor 补丁（`patchedDependencies`）
+
+`patches/*.patch`（尤其 minified 单行 bundle，如 xterm 系 `lib/*.mjs`）随任何上游小版本即失效，且管线级改动（如 shader 精度 `lowp→highp`）有功耗/性能含义。禁止为"试试是否变好"直接落补丁。
+
+**正确做法**：fork 级改动必须先在任务 `design.md` 立决策条目（含 A/B 对照证据与副作用评估），补丁收窄到最小 diff（如 shader 字符串级而非整文件行替换）；否则回退，另起任务。
+
+**反例**：2026-09-03 终端任务工作树 `lowp→highp` 补丁（433KB、无记录、与"不再做 fork 级改动"终局冲突）→ review B2 回退，stock 恢复。
+
 ---
 
 ## 必需模式

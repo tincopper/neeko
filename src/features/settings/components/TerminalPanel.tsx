@@ -1,7 +1,7 @@
 import React from 'react';
 
 import { cn } from '@/lib/utils';
-import { buildMonoStack } from '@/shared/utils/typography';
+import { buildMonoStack, TERMINAL_FONT_WEIGHT } from '@/shared/utils/typography';
 import { Input, Switch } from '@/ui';
 
 import { PRESET_SHELLS } from './constants';
@@ -186,12 +186,13 @@ const TerminalPanel: React.FC<TerminalPanelProps> = ({
             </div>
           )}
         </div>
-        {/* 预览：真实等宽渲染 + Nerd 符号行（与终端同栈），标注无连字 */}
+        {/* 预览：真实等宽渲染 + Nerd 符号行（与终端同栈同字重），标注无连字 */}
         <div
           className="w-full rounded border border-border bg-bg-secondary px-3 py-2.5 overflow-hidden"
           style={{
             fontFamily: buildMonoStack(fontFamily),
             fontSize: `${terminalFontSize}px`,
+            fontWeight: TERMINAL_FONT_WEIGHT,
             lineHeight: 'var(--line-height-terminal)',
           }}
         >
@@ -253,8 +254,11 @@ const TerminalPanel: React.FC<TerminalPanelProps> = ({
             GPU Acceleration
           </div>
           <div className="text-[0.79em] text-text-muted leading-relaxed">
-            Use WebGL to render the terminal. May improve performance but can cause issues on some
-            systems. Takes effect on the next terminal session.
+            Use WebGL to render the terminal. Only recommended for very large output streams; the
+            default Canvas renderer stays pixel-perfect for ASCII art and Ink/React TUI apps (e.g.
+            OpenCode, claude-code TUI), while WebGL can show hairline seams inside solid block art
+            (upstream texture-quad artifact, no public API to tune). Takes effect on the next
+            terminal session.
           </div>
         </div>
         <Switch checked={gpuAcceleration} onCheckedChange={onGpuAccelerationChange} />

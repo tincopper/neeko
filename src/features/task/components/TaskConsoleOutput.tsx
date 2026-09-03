@@ -20,7 +20,11 @@ import {
   TERMINAL_SCROLLBACK,
 } from '@/shared/utils/terminal';
 import { setupTerminalInput, type TerminalInputController } from '@/shared/utils/terminalInput';
-import { buildMonoStack, resolveTerminalLineHeight } from '@/shared/utils/typography';
+import {
+  buildMonoStack,
+  resolveTerminalLineHeight,
+  TERMINAL_FONT_WEIGHT,
+} from '@/shared/utils/typography';
 
 import { writeTaskInput } from '../taskRunner';
 import type { TaskRun } from '../types';
@@ -55,7 +59,8 @@ function TaskConsoleOutput({ run, active }: Props) {
       cursorBlink: false,
       cursorStyle: 'underline',
       fontSize: config.terminalFontSize ?? 14,
-      // 行高随字号缩放（与 TerminalViewBase/terminalFactory 一致）
+      fontWeight: TERMINAL_FONT_WEIGHT,
+      // 行高 flat 1.0（与 TerminalViewBase/terminalFactory 一致，见 typography）
       lineHeight: resolveTerminalLineHeight(config.terminalFontSize ?? 14),
       fontFamily: buildMonoStack(config.monoFontFamily ?? config.fontFamily ?? ''),
       theme: buildTerminalTheme(),

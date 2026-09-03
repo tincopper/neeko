@@ -4,8 +4,10 @@ import {
   MONO_DEFAULT,
   MONO_LINE_HEIGHT,
   SANS_DEFAULT,
+  TERMINAL_FONT_WEIGHT,
   buildMonoStack,
   buildSansStack,
+  ensureTerminalFontsReady,
   resolveEditorFontSize,
   resolveEffectiveSizes,
   resolveTerminalFontSize,
@@ -161,36 +163,93 @@ describe('font size harmony', () => {
   });
 });
 
-describe('resolveTerminalLineHeight — 行高随字号缩放', () => {
-  it('默认 14px 附近维持 1.2（既有观感不回归）', () => {
-    expect(resolveTerminalLineHeight(14)).toBe(1.2);
-  });
-
-  it('小字号提高倍率（避免行距占比过大显得松散）', () => {
-    expect(resolveTerminalLineHeight(10)).toBeGreaterThan(1.2);
-    expect(resolveTerminalLineHeight(12)).toBeGreaterThan(1.2);
-  });
-
-  it('大字号降低倍率（避免行距绝对值过大）', () => {
-    expect(resolveTerminalLineHeight(20)).toBeLessThan(1.2);
-    expect(resolveTerminalLineHeight(24)).toBeLessThan(resolveTerminalLineHeight(20));
-  });
-
-  it('倍率单调递减（字号越大倍率越小，无跳变）', () => {
-    let prev = Infinity;
+describe('resolveTerminalLineHeight — flat 1.0（对齐 orca）', () => {
+  it('任意字号恒为 1（cell 高 = 字号，dpr 2 时 14px → 28 device px 整数）', () => {
     for (let size = 10; size <= 24; size++) {
-      const lh = resolveTerminalLineHeight(size);
-      expect(lh).toBeLessThanOrEqual(prev);
-      expect(lh).toBeGreaterThan(0);
-      prev = lh;
+      expect(resolveTerminalLineHeight(size)).toBe(1);
     }
   });
+});
 
-  it('像素行距不小于可读下限（cell 高度 = size × lineHeight ≥ 1.15 × 基准）', () => {
-    // 倍率递减但像素间距不能塌：10px 字号时 cell 高度不得低于 12px 附近观感
-    for (let size = 10; size <= 24; size++) {
-      const cellPx = size * resolveTerminalLineHeight(size);
-      expect(cellPx).toBeGreaterThanOrEqual(13); // ≈ 14px × 0.93 的可读下限
-    }
+describe('TERMINAL_FONT_WEIGHT — 终端默认字重', () => {
+  it('为 300（Light），对齐 orca 观感基准', () => {
+    expect(TERMINAL_FONT_WEIGHT).toBe(300);
+  });
+});
+
+describe('ensureTerminalFontsReady — P0-A 字体门闩', () => {
+  type FontsStub = {
+    check: ReturnType<typeof vi.fn>;
+    load: ReturnType<typeof vi.fn>;
+    forEach: ReturnType<typeof vi.fn>;
+  };
+  let fontsStub: FontsStub | undefined;
+
+  /** jsdom 缺 document.fonts：defineProperty 注入可控假体。 */
+  function stubFonts(impl: { checkResult?: boolean; webFont?: boolean }) {
+    fontsStub = {
+      check: vi.fn(() => impl.checkResult ?? false),
+      load: vi.fn(() => Promise.resolve([])),
+      forEach: vi.fn((cb: (ff: { family: string }) => void) => {
+        if (impl.webFont) cb({ family: '"JetBrains Mono"' });
+      }),
+    };
+    Object.defineProperty(document, 'fonts', { value: fontsStub, configurable: true });
+  }
+
+  afterEach(() => {
+    // 还原 document.fonts 缺失态，避免污染其它用例/套件
+    delete (document as unknown as { fonts?: unknown }).fonts;
+    fontsStub = undefined;
+  });
+
+  it('无 document.fonts（node/jsdom 缺失）→ 立即 resolve 不抛', async () => {
+    await expect(ensureTerminalFontsReady(MONO_DEFAULT, 14)).resolves.toBeUndefined();
+  });
+
+  it('系统字体（check 通过）→ 零延迟放行、不触发 load', async () => {
+    stubFonts({ checkResult: true });
+    await expect(ensureTerminalFontsReady(MONO_DEFAULT, 14)).resolves.toBeUndefined();
+    expect(fontsStub!.load).not.toHaveBeenCalled();
+  });
+
+  it('未注册 @font-face（用户配置了不存在的字体）→ 零延迟放行、不触发 load', async () => {
+    stubFonts({ checkResult: false, webFont: false });
+    await expect(ensureTerminalFontsReady(MONO_DEFAULT, 14)).resolves.toBeUndefined();
+    expect(fontsStub!.load).not.toHaveBeenCalled();
+  });
+
+  it('打包字体加载中 → 等终端字重(300) + bold 两档 load 完成才放行', async () => {
+    stubFonts({ checkResult: false, webFont: true });
+    const releases: Array<() => void> = [];
+    fontsStub!.load.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          releases.push(resolve as () => void);
+        }),
+    );
+
+    const gate = ensureTerminalFontsReady(MONO_DEFAULT, 14, 5000);
+    // 两档（300 + bold）都发起加载后才 resolve
+    expect(fontsStub!.load).toHaveBeenCalledTimes(2);
+    expect(fontsStub!.load).toHaveBeenNthCalledWith(
+      1,
+      '300 14px "JetBrains Mono"',
+      expect.stringContaining('A'),
+    );
+    releases.forEach((r) => r());
+    await expect(gate).resolves.toBeUndefined();
+  });
+
+  it('load 挂起超过超时 → 静默放行（兜底不阻塞终端创建）', async () => {
+    stubFonts({ checkResult: false, webFont: true });
+    fontsStub!.load.mockImplementation(() => new Promise(() => {})); // 永不 resolve
+    await expect(ensureTerminalFontsReady(MONO_DEFAULT, 14, 20)).resolves.toBeUndefined();
+  });
+
+  it('load reject（字体源失败）→ 静默放行不抛', async () => {
+    stubFonts({ checkResult: false, webFont: true });
+    fontsStub!.load.mockImplementation(() => Promise.reject(new Error('font source failed')));
+    await expect(ensureTerminalFontsReady(MONO_DEFAULT, 14, 5000)).resolves.toBeUndefined();
   });
 });

@@ -8,9 +8,16 @@
  * 授权：SIL Open Font License 1.1（见同目录 JetBrainsMono-OFL.txt），允许
  * 随应用再分发。
  *
- * 三个 weight 对齐 xterm 的 fontWeight/fontWeightBold 与编辑器的粗体渲染；
- * italic 供编辑器注释/斜体场景。
+ * 四个 weight 对齐 xterm 的 fontWeight（终端 300 → Light）/fontWeightBold
+ * 与编辑器的粗体渲染；italic 供编辑器注释/斜体场景。
  */
+@font-face {
+  font-family: "JetBrains Mono";
+  src: url("../assets/fonts/JetBrainsMono-Light.ttf") format("truetype");
+  font-weight: 300;
+  font-style: normal;
+  font-display: block;
+}
 @font-face {
   font-family: "JetBrains Mono";
   src: url("../assets/fonts/JetBrainsMono-Regular.ttf") format("truetype");

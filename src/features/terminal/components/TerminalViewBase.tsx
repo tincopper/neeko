@@ -5,10 +5,22 @@ import { Terminal } from '@xterm/xterm';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 
 import { createPollingDrainScheduler } from '@/shared/utils/drainLoop';
-import { applyRenderer, buildTerminalTheme, TERMINAL_SCROLLBACK } from '@/shared/utils/terminal';
+import {
+  applyRenderer,
+  buildTerminalTheme,
+  healWebglRenderer,
+  resumeWebglRenderer,
+  suspendWebglRenderer,
+  TERMINAL_SCROLLBACK,
+} from '@/shared/utils/terminal';
 import { terminalClosedEvent, terminalInputEvent } from '@/shared/utils/terminalEvents';
 import { setupTerminalInput } from '@/shared/utils/terminalInput';
-import { buildMonoStack, resolveTerminalLineHeight } from '@/shared/utils/typography';
+import {
+  buildMonoStack,
+  ensureTerminalFontsReady,
+  resolveTerminalLineHeight,
+  TERMINAL_FONT_WEIGHT,
+} from '@/shared/utils/typography';
 
 // eslint-disable-next-line import/no-restricted-paths -- terminal view needs agent API for agent config lookup
 import { getAgent } from '../../agent/api/agentApi';
@@ -182,6 +194,15 @@ export default React.memo(function TerminalViewBase({
       }
       // attach 触发源（2）：统一经 scheduleFit 合帧，避免与 RO 竞态
       scheduleFit();
+      // WebGL 状态恢复（借鉴 orca pane-webgl suspend/resume 裁剪版）：
+      //  - 终端在后台被 suspend（tab 切走时 cleanup dispose 了 addon 释放
+      //    GPU 配额）→ resume 重建渲染器 + 恢复链（内部自判 suspended，
+      //    非 suspend 态同步 no-op，不受 heal 节流约束）；
+      //  - 终端始终在页面（从未离开）→ heal 图集（30s 节流），防 DOM 移动
+      //    后纹理失同步乱码（中文断裂成方块）。suspend 后 addon 已清，
+      //    heal 自然 no-op，无重复动作。
+      void resumeWebglRenderer(entry.term);
+      healWebglRenderer(entry.term);
       requestAnimationFrame(() => {
         if (currentKeyRef.current !== cacheKey) return;
         entry.term.focus();
@@ -203,6 +224,10 @@ export default React.memo(function TerminalViewBase({
     }
 
     let scrollDisposable: { dispose: () => void } | undefined;
+    // 字体门闩等待期间的卸载标记：cleanup 置 true，async 创建续体据此放弃
+    // （await 是宏任务间隙，React 卸载/rebuild 可在此期间发生 → 防幽灵终端
+    // 在已 detach 的 wrapper 上 open + 覆盖 cache entry）。
+    let cancelled = false;
 
     const existingCache = cache.get(cacheKey);
     if (existingCache) {
@@ -222,11 +247,13 @@ export default React.memo(function TerminalViewBase({
       const term = new Terminal({
         cursorBlink: true,
         fontSize: fontSizeVal,
+        fontWeight: TERMINAL_FONT_WEIGHT,
         fontFamily: buildMonoStack(fontFamilyVal),
         lineHeight: resolveTerminalLineHeight(fontSizeVal),
         theme: buildTerminalTheme(),
         scrollback: TERMINAL_SCROLLBACK,
-        overviewRuler: { width: 0 },
+        // 无 overviewRuler：xterm 6.1-beta 已移除该选项（改走 scrollbar.width，
+        // 缺省即不启用 ruler，等价于旧 overviewRuler: { width: 0 }）。
         allowProposedApi: true,
       });
       const fitAddon = new FitAddon();
@@ -235,31 +262,40 @@ export default React.memo(function TerminalViewBase({
       term.loadAddon(unicode11);
       term.unicode.activeVersion = '11';
 
-      wrapper.appendChild(element);
-      term.open(element);
-      // 渲染器：确定性 RendererPlan 选型（启动期探测 + 预热，见 shared/utils/terminal）。
-      // GPU 配置开启且 webgl 可用 → WebGL，否则 Canvas（xterm 6 默认 DOM renderer
-      // 在 TUI 高频重绘下内存爆炸）。
-      void applyRenderer(term, gpuAccelVal);
-      if (setupFileLinksVal) setupFileLinksVal(term);
-      fitAddon.fit();
+      // P0-A 字体门闩（根治字体加载竞态，见 shared/utils/typography）：
+      // 打包 mono 字体就绪前 open() 会令 xterm 按 fallback 字形测量，且 WebGL
+      // 图集首帧把 fallback 字形锁死进纹理缓存 —— 表现即「开 GPU 后 TUI 渲染
+      // 不精细/乱码」（Canvas 每帧重绘自愈故无此现象，orca 用系统 SF Mono 无
+      // 加载窗口故同样 WebGL 却精细）。gate 通过才 append + open，首帧即真实
+      // 字形；等待期间组件卸载/rebuild（cancelled）则放弃本次创建。
+      void (async () => {
+        await ensureTerminalFontsReady(buildMonoStack(fontFamilyVal), fontSizeVal);
+        if (cancelled) return;
 
-      currentTermRef.current = term;
-      scrollDisposable = term.onScroll(() => {
-        setIsAtBottom(term.buffer.active.viewportY >= term.buffer.active.baseY);
-      });
+        wrapper.appendChild(element);
+        term.open(element);
+        // 渲染器：确定性 RendererPlan 选型（启动期探测 + 预热，见 shared/utils/terminal）。
+        // GPU 配置开启且 webgl 可用 → WebGL，否则 Canvas（xterm 6 默认 DOM renderer
+        // 在 TUI 高频重绘下内存爆炸）。
+        void applyRenderer(term, gpuAccelVal);
+        if (setupFileLinksVal) setupFileLinksVal(term);
+        fitAddon.fit();
 
-      const entry = {
-        term,
-        fitAddon,
-        element,
-        sessionId: null as string | null,
-        unlisten: null as (() => void) | null,
-        inputController: null as ReturnType<typeof setupTerminalInput> | null,
-      };
-      cache.set(cacheKey, entry);
+        currentTermRef.current = term;
+        scrollDisposable = term.onScroll(() => {
+          setIsAtBottom(term.buffer.active.viewportY >= term.buffer.active.baseY);
+        });
 
-      (async () => {
+        const entry = {
+          term,
+          fitAddon,
+          element,
+          sessionId: null as string | null,
+          unlisten: null as (() => void) | null,
+          inputController: null as ReturnType<typeof setupTerminalInput> | null,
+        };
+        cache.set(cacheKey, entry);
+
         try {
           const sessionId = await createSessionVal(term.cols, term.rows, {
             command: taskCommand ?? undefined,
@@ -393,7 +429,7 @@ export default React.memo(function TerminalViewBase({
             term.focus();
           });
         } catch (err) {
-          if (currentKeyRef.current !== cacheKey) return;
+          if (cancelled || currentKeyRef.current !== cacheKey) return;
           setReady(true);
           term.write(`\x1b[31mFailed to connect: ${err}\x1b[0m\r\n`);
         }
@@ -424,6 +460,7 @@ export default React.memo(function TerminalViewBase({
     ro.observe(wrapper);
 
     return () => {
+      cancelled = true;
       if (fitRafRef.current !== null) cancelAnimationFrame(fitRafRef.current);
       if (fitTrailingRef.current !== undefined) window.clearTimeout(fitTrailingRef.current);
       fitRafRef.current = null;
@@ -435,6 +472,21 @@ export default React.memo(function TerminalViewBase({
         stallTimerRef.current = undefined;
       }
       ro.disconnect();
+      // WebGL 挂起（tab 切走 / 组件卸载 = orca pane-hide）：dispose addon
+      // 释放 GPU 上下文配额（Chromium ~8~16 上限，超限静默逐出最旧 context）。
+      // 多 tab 终端累积正是 context-loss 的系统性源头 —— suspend 是「防」而非
+      // 「治」。term 缓冲数据完好，下次 mount 的 attach 经 resumeWebglRenderer
+      // 重建渲染器。常驻终端（底部 Task Console 等不卸载组件）不会误触。
+      // 精确目标：suspend 本 effect 的 cacheKey 条目，而非共享可变 ref
+      // （门闩等待期卸载时 currentTermRef 可能仍指旧 term → 错位 dispose；
+      // suspend 幂等故此前仅冗余，无风暴风险）。条目不存在（门闩期）则
+      // 回退同 key 的 currentTermRef；key 已切换则跳过。
+      {
+        const staleEntry = strategyRef.current.cache.get(cacheKey);
+        const termToSuspend =
+          staleEntry?.term ?? (currentKeyRef.current === cacheKey ? currentTermRef.current : null);
+        if (termToSuspend) suspendWebglRenderer(termToSuspend);
+      }
       detachAll();
       rebuildCallbacks.delete(cacheKey);
       wrapperRefs.delete(cacheKey);

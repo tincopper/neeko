@@ -1,0 +1,2 @@
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "校验 customGlyphs 类型修复、refresh/loseContext 包裹与打点是否合规"}
+{"file": ".trellis/spec/unit-test/index.md", "reason": "校验新增单测（构造参数/refresh/独立节流/脏引用清理）覆盖是否达标"}

@@ -44,30 +44,30 @@ export function buildSansStack(userOverride: string): string {
 
 /** mono 行高：编辑器 / markdown（theme.css --line-height-mono 同步）。 */
 export const MONO_LINE_HEIGHT = 1.5;
-/** 终端行高基准：14px 字号时的倍率（既有观感锚点）。 */
-export const TERMINAL_LINE_HEIGHT_BASE = 1.2;
 
 /**
- * 终端行高倍率随字号缩放。
+ * 终端默认字重：300（Light），对齐 orca 的观感基准。
  *
- * xterm 的行高 = 字号 × lineHeight（倍率）。固定倍率下：小字号行距占比过大
- * （「行高很高」），大字号行距占比过小（「挨得很近」）。改为分段线性——
- * 以 14px 的 1.2 为锚点，字号每偏离 1px 倍率反向调整，并保证像素行距
- * （size × 倍率）不低于可读下限。
- *
- * @param fontSize 终端字号（px，合法范围 10–24）
- * @returns xterm lineHeight 倍率（两位小数）
+ * 依赖打包的 JetBrains Mono Light @font-face（styles/jetbrains-mono.css）——
+ * 仅设 option 不补字体面时浏览器会静默回退 400，字重不会有任何变化。
+ * 用户自定义字体无 Light 面时同样回退最近可用字重，无害。
  */
-export function resolveTerminalLineHeight(fontSize: number): number {
-  // 像素行距模型：base(14) × 1.2 = 16.8px 锚点；字号每 +1px，像素行距 +0.6px
-  // （而非 +1.2px 全额跟随）→ 倍率随之递减；-1px 同理反向，保住松散下限。
-  const BASE_SIZE = 14;
-  const BASE_LINE_HEIGHT = TERMINAL_LINE_HEIGHT_BASE;
-  const PX_PER_SIZE_STEP = 0.6;
+export const TERMINAL_FONT_WEIGHT = 300;
 
-  const pixelSpacing = BASE_SIZE * BASE_LINE_HEIGHT + (fontSize - BASE_SIZE) * PX_PER_SIZE_STEP;
-  // 倍率 = 像素行距 / 字号，两位小数（xterm options 无所谓精度，稳定比较友好）
-  return Math.round((pixelSpacing / fontSize) * 100) / 100;
+/**
+ * 终端行高：固定 1.0（对齐 orca 基准）。
+ *
+ * 历史：曾用「14px→1.2 锚点 + 随字号分段缩放」模型；对齐 orca 后统一为
+ * flat 1.0 —— cell 高 = 字号 × 1（dpr 2 时 14px → 28 device px 整数），
+ * 行距更紧凑，且消除 lineHeight 1.2 带来的非整数 device cell（块字形
+ * 分数坐标灰边的放大器，见 .workbuddy/artifacts/neeko-terminal-block-glyph-audit.md）。
+ *
+ * @param _fontSize 终端字号（保留参数位以稳定调用方签名）
+ * @returns xterm lineHeight 倍率（恒 1）
+ */
+export function resolveTerminalLineHeight(_fontSize: number): number {
+  void _fontSize; // 参数位保留（调用方语义稳定），当前 flat 1.0 不随字号变化
+  return 1;
 }
 
 /** 字号合法范围（与 Settings 滑杆一致）。 */
@@ -112,6 +112,79 @@ export function resolveEffectiveSizes(
 
 /** 兼容别名：旧名（若有调用方 import） */
 export const resolveEffectiveFontSizes = resolveEffectiveSizes;
+
+/** 字体门闩超时：打包字体（~800KB，本地 asar）正常远快于此，纯兜底不阻塞终端。 */
+const TERMINAL_FONT_GATE_TIMEOUT_MS = 3000;
+
+/** 从 CSS font-family 栈解析首位字族（去引号），它是实际最先生效的字体。 */
+function firstFamilyFromStack(stack: string): string {
+  const first = stack.split(',')[0]?.trim() ?? '';
+  return first.replace(/^['"]|['"]$/g, '');
+}
+
+/** 字族是否为当前文档已注册的 @font-face（web font）；系统字体不在其列。 */
+function isRegisteredWebFont(family: string): boolean {
+  const fonts = (typeof document !== 'undefined' ? document.fonts : undefined) as
+    | { forEach(cb: (ff: { family: string }) => void): void }
+    | undefined;
+  if (!fonts) return false;
+  let found = false;
+  fonts.forEach((ff) => {
+    if (!found && (ff.family ?? '').replace(/^['"]|['"]$/g, '') === family) found = true;
+  });
+  return found;
+}
+
+/**
+ * 终端字体就绪门闩（P0-A，根治字体加载竞态）。
+ *
+ * 背景：终端 mono 栈首位是打包的 JetBrains Mono（@font-face，~800KB 从
+ * asar 加载）。xterm 在 open() 时同步测量字体并栅格化 WebGL 纹理图集，且
+ * 6.0.0 从不监听字体加载完成 —— 若打包字体未就绪就 open，测量与图集首帧
+ * 都会锁死 fallback 字形（WebGL 图集缓存后不重建 → 持续显示错误字形，
+ * 表现为「开 GPU 后 TUI 渲染不精细/乱码」；Canvas 每帧重绘会自愈故无此
+ * 现象）。orca 用系统字体（SF Mono）无加载窗口，故同样 WebGL 却精细。
+ *
+ * 策略：open() 前 await 此门闩 ——
+ *  - 系统字体（SF Mono/Menlo）与已加载完的 web font：check 立即通过，零延迟；
+ *  - 用户配置了不存在的字体名（非 @font-face）：无加载可等，零延迟放行；
+ *  - 仅对「已注册 @font-face 且仍在加载」的字体等待终端字重（TERMINAL_FONT_WEIGHT
+ *    300）+ bold 两档就绪（xterm 常规/粗体两路字形），超时兜底。
+ * 失败/超时一律静默放行（不阻塞终端创建），遗漏由 P0-B（font-ready 兜底
+ * heal，见 shared/utils/terminal.ts registerFontsReadyHeal）收口。
+ */
+export async function ensureTerminalFontsReady(
+  fontStack: string,
+  fontSize: number,
+  timeoutMs: number = TERMINAL_FONT_GATE_TIMEOUT_MS,
+): Promise<void> {
+  const fonts = (typeof document !== 'undefined' ? document.fonts : undefined) as
+    | { check(font: string): boolean; load(font: string, text?: string): Promise<unknown> }
+    | undefined;
+  if (!fonts || typeof fonts.check !== 'function' || typeof fonts.load !== 'function') return;
+  const family = firstFamilyFromStack(fontStack);
+  if (!family) return;
+  try {
+    // 已可用（系统字体 / 加载完成的 web font）：立即放行。
+    // 按终端实际字重 300 探测——xterm 以该字重测量 + 烘焙图集，等错档等于没等。
+    if (fonts.check(`${TERMINAL_FONT_WEIGHT} ${fontSize}px "${family}"`)) return;
+    if (!isRegisteredWebFont(family)) return;
+    // 打包字体加载中：等终端字重 + bold 就绪（任一失败不阻塞，走超时/静默）
+    const sample = 'Ag0123456789';
+    const loadNormal = fonts
+      .load(`${TERMINAL_FONT_WEIGHT} ${fontSize}px "${family}"`, sample)
+      .catch(() => undefined);
+    const loadBold = fonts.load(`bold ${fontSize}px "${family}"`, sample).catch(() => undefined);
+    await Promise.race([
+      Promise.all([loadNormal, loadBold]),
+      new Promise<void>((resolve) => {
+        setTimeout(resolve, timeoutMs);
+      }),
+    ]);
+  } catch {
+    // 探测异常（罕见）：静默放行，交由 P0-B 兜底
+  }
+}
 
 /** 字体 token 输入：一次同步所需的全部轴。 */
 export interface TypographyTokens {

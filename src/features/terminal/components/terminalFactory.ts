@@ -8,7 +8,12 @@ import { createPollingDrainScheduler } from '@/shared/utils/drainLoop';
 import { applyRenderer, buildTerminalTheme, TERMINAL_SCROLLBACK } from '@/shared/utils/terminal';
 import { terminalClosedEvent, terminalInputEvent } from '@/shared/utils/terminalEvents';
 import { setupTerminalInput } from '@/shared/utils/terminalInput';
-import { buildMonoStack, resolveTerminalLineHeight } from '@/shared/utils/typography';
+import {
+  buildMonoStack,
+  ensureTerminalFontsReady,
+  resolveTerminalLineHeight,
+  TERMINAL_FONT_WEIGHT,
+} from '@/shared/utils/typography';
 
 // eslint-disable-next-line import/no-restricted-paths -- terminal factory needs agent API for agent config
 import { getAgent } from '../../agent/api/agentApi';
@@ -41,6 +46,10 @@ export async function createTerminalForProject(
 ): Promise<TerminalCache> {
   log(`Creating new terminal for project ${projectName}`);
 
+  // P0-A 字体门闩：等打包 mono 字体就绪再 open（防 WebGL 图集首帧锁死
+  // fallback 字形 → 开 GPU 渲染不精细/乱码的根因，见 shared/utils/typography）。
+  await ensureTerminalFontsReady(buildMonoStack(fontFamily), fontSize);
+
   const element = document.createElement('div');
   element.style.width = '100%';
   element.style.height = '100%';
@@ -48,11 +57,14 @@ export async function createTerminalForProject(
   const term = new Terminal({
     cursorBlink: true,
     fontSize,
+    // 字重 300（Light，对齐 orca）：需配打包 JBM Light @font-face 才真正生效，
+    // 见 shared/utils/typography TERMINAL_FONT_WEIGHT
+    fontWeight: TERMINAL_FONT_WEIGHT,
     fontFamily: buildMonoStack(fontFamily),
     lineHeight: resolveTerminalLineHeight(fontSize),
     theme: buildTerminalTheme(),
     scrollback: TERMINAL_SCROLLBACK,
-    overviewRuler: { width: 0 },
+    // 无 overviewRuler：xterm 6.1-beta 已移除该选项（见 TerminalViewBase 同位注释）。
     allowProposedApi: true,
   });
 
