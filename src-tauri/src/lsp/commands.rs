@@ -688,10 +688,23 @@ pub async fn lsp_go_to_definition(
         t3 - t2,
     );
 
-    Ok(serde_json::json!({
+    // fileContent 契约为纯文本（string | null）：组装逻辑抽为纯函数，契约由单元测试锁定
+    Ok(definition_response(lsp_result, file_content))
+}
+
+/// Assemble the go-to-definition IPC response (pure, unit-testable).
+///
+/// `fileContent` 契约必须为纯文本（`string | null`）：前端 `lspApi.ts` 按此声明
+/// 类型并直供 CodeMirror doc —— 整个 `FileContent` 对象误传会令 react-codemirror
+/// 渲染崩溃。该契约由文件底部单元测试锁定。
+fn definition_response(
+    lsp_result: Value,
+    file_content: Option<crate::common::types::FileContent>,
+) -> Value {
+    serde_json::json!({
         "lspResult": lsp_result,
-        "fileContent": file_content,
-    }))
+        "fileContent": file_content.map(|f| f.content),
+    })
 }
 
 /// Read a file that was returned as a go-to-definition target, even when it
@@ -734,4 +747,41 @@ pub async fn lsp_read_preauthorized_file(
         },
     )
     .await
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn definition_response_file_content_is_plain_text() {
+        let resp = definition_response(
+            serde_json::json!([{ "uri": "file:///repo/src/lib.rs" }]),
+            Some(crate::common::types::FileContent {
+                path: "/repo/src/lib.rs".into(),
+                content: "pub fn target() {}\n".into(),
+                size: 19,
+                is_binary: false,
+            }),
+        );
+        assert_eq!(
+            resp["fileContent"],
+            serde_json::Value::String("pub fn target() {}\n".into()),
+            "fileContent 必须是纯文本字符串而非 FileContent 对象（对象会让 CodeMirror 渲染崩溃）"
+        );
+        assert_eq!(
+            resp["lspResult"],
+            serde_json::json!([{ "uri": "file:///repo/src/lib.rs" }])
+        );
+    }
+
+    #[test]
+    fn definition_response_without_target_is_null() {
+        let resp = definition_response(serde_json::json!([]), None);
+        assert!(
+            resp["fileContent"].is_null(),
+            "无预读目标时 fileContent 必须为 null 而非缺失或对象"
+        );
+        assert_eq!(resp["lspResult"], serde_json::json!([]));
+    }
 }

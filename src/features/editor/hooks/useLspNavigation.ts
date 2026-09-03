@@ -107,11 +107,15 @@ export function useLspNavigation({
         // 策略加载（loadDefinitionTargetContent 区分失败原因，反馈可见）
         let content: { path: string; content: string; size: number; is_binary: boolean };
         let isExternalReadonly = false;
-        if (preloadedContent) {
+        // 契约防御：预读内容必须是纯文本——对象误入 doc 会让 react-codemirror
+        // 渲染崩溃（整页降级）。非 string 一律丢弃预读，走下方兜底加载
+        if (typeof preloadedContent === 'string' && preloadedContent.length > 0) {
+          // size 契约为字节（对齐后端 FileContent.size 与兑底加载路径）：
+          // string.length 是 UTF-16 单元数，多字节内容会低估
           content = {
             path: targetPath,
             content: preloadedContent,
-            size: preloadedContent.length,
+            size: new TextEncoder().encode(preloadedContent).byteLength,
             is_binary: false,
           };
         } else {
