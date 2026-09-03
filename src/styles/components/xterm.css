@@ -8,7 +8,9 @@
   .terminal-wrapper .xterm-viewport { overflow-y: scroll !important; background-color: var(--terminal-bg) !important; scrollbar-width: none !important; }
   .terminal-wrapper .xterm-scrollable-element { background-color: var(--terminal-bg) !important; }
   .terminal-wrapper .xterm-screen { width: 100% !important; background-color: var(--terminal-bg) !important; }
-  .terminal-wrapper .xterm .xterm-scrollable-element > .scrollbar { display: none !important; }
+  /* xterm ≥ 6.1.0-beta.287 滚动条 class 已前缀化：scrollbar→xterm-scrollbar, slider→xterm-slider。
+     主终端不隐藏滚动条，容器挂 `.xterm-themed-scrollbar` 复用应用主题样式（见下组规则）；
+     显隐动画由 xterm 自带（滚动时 xterm-visible 渐入，静止后 xterm-invisible.xterm-fade 渐出）。 */
 
   /* Reusable xterm scrollbar theme — attach `.xterm-themed-scrollbar` to any
      container that hosts an xterm instance whose custom overlay scrollbar
@@ -17,18 +19,22 @@
      (TaskConsoleOutput) and reusable by future xterm-based surfaces.
      xterm sets width via inline style and slider color via generated CSS,
      so these need !important to win. */
-  .xterm-themed-scrollbar .xterm .xterm-scrollable-element > .scrollbar {
+  .xterm-themed-scrollbar .xterm .xterm-scrollable-element > .xterm-scrollbar {
     width: 6px !important;
   }
-  .xterm-themed-scrollbar .xterm .xterm-scrollable-element > .scrollbar > .slider {
+  /* 隐藏 VS Code 式上下箭头：6px 细条放不下，应用原生滚动条也无箭头 */
+  .xterm-themed-scrollbar .xterm .xterm-scrollable-element > .xterm-scrollbar > .xterm-scra {
+    display: none;
+  }
+  .xterm-themed-scrollbar .xterm .xterm-scrollable-element > .xterm-scrollbar > .xterm-slider {
     width: 6px !important;
     background: var(--bg-hover) !important;
     border-radius: 3px;
   }
-  .xterm-themed-scrollbar .xterm .xterm-scrollable-element > .scrollbar > .slider:hover {
+  .xterm-themed-scrollbar .xterm .xterm-scrollable-element > .xterm-scrollbar > .xterm-slider:hover {
     background: var(--text-muted) !important;
   }
-  .xterm-themed-scrollbar .xterm .xterm-scrollable-element > .scrollbar > .slider:active {
+  .xterm-themed-scrollbar .xterm .xterm-scrollable-element > .xterm-scrollbar > .xterm-slider.xterm-active {
     background: var(--text-muted) !important;
   }
 

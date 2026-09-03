@@ -514,7 +514,7 @@ export default React.memo(function TerminalViewBase({
         </div>
       )}
       <div
-        className="terminal-wrapper flex-1 p-0 pl-2 overflow-hidden min-w-0 min-h-0"
+        className="terminal-wrapper xterm-themed-scrollbar flex-1 p-0 pl-2 overflow-hidden min-w-0 min-h-0"
         style={{ backgroundColor: 'var(--terminal-bg)' }}
         ref={wrapperRef}
       />
