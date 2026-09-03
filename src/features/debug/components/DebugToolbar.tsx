@@ -1,5 +1,6 @@
 import React from 'react';
 
+import { cn } from '@/lib/utils';
 import {
   ArrowDownToLine,
   ArrowUpFromLine,
@@ -8,7 +9,6 @@ import {
   Square,
   StepForward,
 } from '@/shared/components/icons';
-import { cn } from '@/shared/utils/cn';
 
 export type DebugToolbarAction = 'continue' | 'next' | 'stepIn' | 'stepOut' | 'pause' | 'stop';
 

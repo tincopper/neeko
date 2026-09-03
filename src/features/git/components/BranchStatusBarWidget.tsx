@@ -2,13 +2,13 @@ import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react'
 import { createPortal } from 'react-dom';
 import { useShallow } from 'zustand/shallow';
 
+import { cn } from '@/lib/utils';
 import { BranchIcon, ArrowDown, ArrowUp } from '@/shared/components/icons';
 import { useGitStore } from '@/shared/store/gitStore';
 import { useProjectStore } from '@/shared/store/projectStore';
 import { useWorktreeStore } from '@/shared/store/worktreeStore';
 import type { GitInfo } from '@/shared/types';
 import { filterWorktreeBranches, isActiveWorktree } from '@/shared/utils';
-import { cn } from '@/shared/utils/cn';
 
 import BranchSwitcherPanel from './BranchSwitcherPanel';
 

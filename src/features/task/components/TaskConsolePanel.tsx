@@ -8,11 +8,12 @@
  */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
+import { cn } from '@/lib/utils';
 import { Square, Terminal, X } from '@/shared/components/icons';
 import { useAppContext } from '@/shared/contexts/AppContext';
 import { useProjectStore } from '@/shared/store/projectStore';
-import { cn } from '@/shared/utils/cn';
 import { buildMonoStack } from '@/shared/utils/typography';
+import { Island } from '@/ui/Island';
 
 import { useTaskStore } from '../store';
 
@@ -114,10 +115,7 @@ function TaskConsolePanel() {
 
   return (
     <div className="shrink-0 mx-11 px-px pb-0.5" data-testid="task-console-panel">
-      <div
-        className="relative flex flex-col overflow-hidden rounded-lg shadow-sm bg-bg-secondary"
-        style={{ height: panelHeight }}
-      >
+      <Island className="relative" style={{ height: panelHeight }}>
         {/* eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions */}
         <div
           className="absolute top-0 left-0 right-0 h-3 z-20 cursor-row-resize group"
@@ -250,7 +248,7 @@ function TaskConsolePanel() {
             )}
           </div>
         </div>
-      </div>
+      </Island>
     </div>
   );
 }

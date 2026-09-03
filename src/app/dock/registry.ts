@@ -1,5 +1,4 @@
 import {
-  Blocks,
   FileText,
   FolderOpen,
   GitBranch,
@@ -18,7 +17,6 @@ import { DOCK_PANEL_META } from '@/shared/dock';
 // ── Icon map (static imports for tree-shaking) ──────────────────────────────
 
 export const dockPanelIcons: Record<string, LucideIcon> = {
-  Blocks,
   FolderOpen,
   FileText,
   GitPullRequest,
@@ -44,8 +42,6 @@ const ProjectsPanel = lazy(() =>
  * 避免单文件聚合导致全部面板代码同 chunk 加载。
  */
 const LazyFilesPanelWrapper = lazy(() => import('@/app/dock/wrappers/FilesPanelWrapper'));
-
-const LazySkillsPanelWrapper = lazy(() => import('@/app/dock/wrappers/SkillsPanelWrapper'));
 
 const LazyLibraryPanelWrapper = lazy(() => import('@/app/dock/wrappers/LibraryPanelWrapper'));
 
@@ -83,14 +79,6 @@ const UI_BINDINGS: Record<string, UiBinding> = {
       React.ComponentType<Record<string, unknown>>
     >,
     minPanelSize: 180,
-  },
-  skills: {
-    title: 'Skills',
-    icon: 'Blocks',
-    component: LazySkillsPanelWrapper as React.LazyExoticComponent<
-      React.ComponentType<Record<string, unknown>>
-    >,
-    minPanelSize: 200,
   },
   library: {
     title: 'Library',

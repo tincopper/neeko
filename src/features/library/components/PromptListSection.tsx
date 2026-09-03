@@ -7,6 +7,8 @@ import { useCopyToClipboard } from '@/shared/hooks/useCopyToClipboard';
 import { useNotificationStore } from '@/shared/store/notificationStore';
 import type { PromptInsertTarget, PromptResource } from '@/shared/types/library';
 
+import { sortResources } from '../utils/resourceSort';
+
 interface PromptListSectionProps {
   /** Called when the user picks a prompt to insert (primary action). */
   onInsert?: (prompt: PromptResource, target?: PromptInsertTarget) => void;
@@ -47,14 +49,11 @@ const PromptListSection: React.FC<PromptListSectionProps> = React.memo(({ onInse
           p.tags.some((t) => t.toLowerCase().includes(q)),
       );
     }
-    if (sortMode === 'alphabetical') {
-      list.sort((a, b) => a.name.localeCompare(b.name));
-    } else if (sortMode === 'frequent') {
-      list.sort((a, b) => b.usageCount - a.usageCount);
-    } else {
-      list.sort((a, b) => b.updatedAt - a.updatedAt);
-    }
-    return list;
+    return sortResources(list, sortMode, {
+      name: (p) => p.name,
+      usage: (p) => p.usageCount,
+      updated: (p) => p.updatedAt,
+    });
   }, [prompts, scopeFilter, tagFilter, searchQuery, sortMode]);
 
   const handleCopy = useCallback(

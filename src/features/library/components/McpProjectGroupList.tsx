@@ -1,9 +1,11 @@
-import { ChevronDown, ChevronRight } from 'lucide-react';
-import React, { useCallback, useState } from 'react';
+import React, { useCallback } from 'react';
 
 import { useMcpStore } from '@/features/library/store/mcpStore';
 import { useSkillStore } from '@/features/skill/store';
-import { cn } from '@/lib/utils';
+import CountLabel from '@/shared/components/nav/CountLabel';
+import NavEmpty from '@/shared/components/nav/NavEmpty';
+import NavRow from '@/shared/components/nav/NavRow';
+import NavSection from '@/shared/components/nav/NavSection';
 import { useProjectStore } from '@/shared/store/projectStore';
 import { getAvatarStyle, getProjectInitials } from '@/shared/utils/projectAvatar';
 
@@ -22,8 +24,6 @@ const McpProjectGroupList: React.FC = React.memo(() => {
   const projectTagGroupCountsLoading = useSkillStore((s) => s.projectTagGroupCountsLoading);
   const projectTagGroupCountsError = useSkillStore((s) => s.projectTagGroupCountsError);
 
-  const [expanded, setExpanded] = useState(false);
-
   const handleSelect = useCallback(
     (projectId: string) => {
       setActiveMcpProjectId(projectId);
@@ -34,77 +34,54 @@ const McpProjectGroupList: React.FC = React.memo(() => {
   );
 
   return (
-    <div className="border-t border-border mt-0.5 pt-1">
-      <button
-        type="button"
-        className="flex items-center gap-1 px-3 py-1.5 w-full min-w-0 text-left select-none"
-        onClick={() => setExpanded(!expanded)}
-      >
-        {expanded ? (
-          <ChevronDown className="h-3 w-3 text-text-muted shrink-0" />
-        ) : (
-          <ChevronRight className="h-3 w-3 text-text-muted shrink-0" />
-        )}
-        <span className="text-[10.5px] font-bold tracking-[0.14em] uppercase text-text-muted">
-          Projects
-        </span>
-      </button>
-      {expanded && (
-        <div className="pb-1 px-1.5">
-          {projects.length === 0 ? (
-            <p className="px-2.5 py-1 text-[11px] text-text-muted leading-relaxed">
-              No projects loaded.
-            </p>
-          ) : (
-            projects.map((project) => {
-              const avatarStyle = getAvatarStyle({
-                name: project.name,
-                color: (project as any).avatar_color,
-              });
-              const initials = getProjectInitials(project.name);
-              const diskCount = projectSkillCounts.get(project.id);
-              const groupCount = projectTagGroupCounts.get(project.id);
-              const diskLabel = projectSkillCountsError
-                ? '?'
-                : projectSkillCountsLoading && diskCount === undefined
-                  ? '...'
-                  : (diskCount ?? 0);
-              const groupLabel = projectTagGroupCountsError
-                ? '?'
-                : projectTagGroupCountsLoading && groupCount === undefined
-                  ? '...'
-                  : (groupCount ?? 0);
-              const isActive = mcpView === 'project' && project.id === activeMcpProjectId;
-              return (
-                <button
-                  key={project.id}
-                  type="button"
-                  onClick={() => handleSelect(project.id)}
-                  className={cn(
-                    'flex items-center gap-2 w-full px-2.5 py-1.5 rounded-md text-left transition-colors duration-150',
-                    'text-[var(--font-size)]',
-                    isActive
-                      ? 'bg-bg-selected text-text-primary'
-                      : 'text-text-secondary hover:bg-bg-hover hover:text-text-primary',
-                  )}
+    <NavSection title="Projects">
+      {projects.length === 0 ? (
+        <NavEmpty>No projects loaded.</NavEmpty>
+      ) : (
+        projects.map((project) => {
+          const avatarStyle = getAvatarStyle({
+            name: project.name,
+            color: project.avatar_color,
+          });
+          const initials = getProjectInitials(project.name);
+          return (
+            <NavRow
+              key={project.id}
+              active={mcpView === 'project' && project.id === activeMcpProjectId}
+              onSelect={() => handleSelect(project.id)}
+              testId={`mcp-project-row-${project.id}`}
+              leading={
+                <span
+                  className="flex items-center justify-center h-4 w-4 rounded-full text-[9px] font-bold shrink-0"
+                  style={avatarStyle}
                 >
-                  <span
-                    className="flex items-center justify-center h-4 w-4 rounded-full text-[9px] font-bold shrink-0"
-                    style={avatarStyle}
-                  >
-                    {initials}
-                  </span>
-                  <span className="truncate flex-1 font-medium">{project.name}</span>
-                  <span className="text-[11px] tabular-nums text-text-muted min-w-[1.25rem] text-right">
-                    {diskLabel}·{groupLabel}
-                  </span>
-                </button>
-              );
-            })
-          )}
-        </div>
+                  {initials}
+                </span>
+              }
+            >
+              <span className="truncate flex-1 font-medium">{project.name}</span>
+              <span className="inline-flex items-baseline gap-1 text-[11px] tabular-nums shrink-0">
+                <CountLabel
+                  loading={projectSkillCountsLoading}
+                  error={projectSkillCountsError}
+                  count={projectSkillCounts.get(project.id)}
+                  testId={`mcp-project-disk-count-${project.id}`}
+                />
+                <span className="opacity-40" aria-hidden>
+                  ·
+                </span>
+                <CountLabel
+                  loading={projectTagGroupCountsLoading}
+                  error={projectTagGroupCountsError}
+                  count={projectTagGroupCounts.get(project.id)}
+                  testId={`mcp-project-group-count-${project.id}`}
+                />
+              </span>
+            </NavRow>
+          );
+        })
       )}
-    </div>
+    </NavSection>
   );
 });
 

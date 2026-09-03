@@ -1,14 +1,12 @@
 import { useCallback, useState } from 'react';
 
-import { useDockStore } from '@/shared/store/dockStore';
+import { openLibraryAt } from '@/features/library/store/libraryNavigation';
 import { useNotificationStore } from '@/shared/store/notificationStore';
 import type { AgentConfig } from '@/shared/types';
 
 import { getSkillsForTagGroup, importSkillsToProject } from '../api/skillApi';
 import { useSkillStore } from '../store';
 import { bindProjectTagGroups } from '../utils/bindProjectTagGroups';
-import { ensureSkillsPanelOpen } from '../utils/ensureSkillsPanelOpen';
-import { openProjectSkillsPanel } from '../utils/openProjectSkillsPanel';
 
 export function resolveProjectTargetAgentIds(
   agents: AgentConfig[],
@@ -54,20 +52,8 @@ export function useBindProjectTagGroups({
   }, []);
 
   const openSkillsProject = useCallback(() => {
-    const dock = useDockStore.getState();
-    openProjectSkillsPanel({
-      ensureSkillsPanelOpen: () =>
-        ensureSkillsPanelOpen({
-          zones: dock.zones,
-          togglePanel: dock.togglePanel,
-          activatePanel: dock.activatePanel,
-        }),
-      setActiveSkillView: useSkillStore.getState().setActiveSkillView,
-      setActiveTagGroupIds: useSkillStore.getState().setActiveTagGroupIds,
-      setActiveAgentId: useSkillStore.getState().setActiveAgentId,
-    });
+    openLibraryAt({ kind: 'skill', skillView: 'project' });
   }, []);
-
   const bind = useCallback(
     async (tagGroupIds: string[]) => {
       if (!projectId || !projectPath) {

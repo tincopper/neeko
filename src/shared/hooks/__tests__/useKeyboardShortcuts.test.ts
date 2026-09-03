@@ -1,11 +1,14 @@
 import { renderHook } from '@testing-library/react';
 import { afterEach, describe, it, expect, vi, beforeEach } from 'vitest';
 
+// eslint-disable-next-line import/no-restricted-paths -- tests seed the Library kind for toggleDockSkills
+import { useLibraryStore } from '@/features/library/store/libraryStore';
 // eslint-disable-next-line import/no-restricted-paths -- tests seed the MRU store for Ctrl+Tab
 import { useMruTabsStore } from '@/features/quick-open/store/mruTabsStore';
 // eslint-disable-next-line import/no-restricted-paths -- tests assert the quick-open palette stays closed
 import { useQuickOpenStore } from '@/features/quick-open/store/quickOpenStore';
 import { useKeyboardShortcuts } from '@/shared/hooks/useKeyboardShortcuts';
+import { useAppViewStore } from '@/shared/store/appViewStore';
 import { useConnectionStore } from '@/shared/store/connectionStore';
 import { useEditorStore } from '@/shared/store/editorStore';
 import { useProjectStore } from '@/shared/store/projectStore';
@@ -168,6 +171,8 @@ describe('useKeyboardShortcuts', () => {
     storeState = seedStore();
     useMruTabsStore.setState({ byTabKey: {} });
     useQuickOpenStore.setState({ open: false, mode: 'gotoFile' });
+    useAppViewStore.setState({ appView: 'normal' });
+    useLibraryStore.setState({ activeKind: 'skill' });
   });
 
   afterEach(() => {
@@ -633,5 +638,32 @@ describe('useKeyboardShortcuts', () => {
     dispatchKey('KeyR', { ctrlKey: true, altKey: true });
 
     expect(refreshTerminal).toHaveBeenCalledWith('p1:p1');
+  });
+
+  it('Ctrl+Shift+2 在 Library Skills 页时切回 normal（toggle-off）', () => {
+    useAppViewStore.setState({ appView: 'library' });
+    useLibraryStore.setState({ activeKind: 'skill' });
+    renderHook(() => useKeyboardShortcuts(params));
+
+    const target = document.createElement('div');
+    document.body.appendChild(target);
+    dispatchKeyAt(target, { code: 'Digit2', ctrlKey: true, shiftKey: true });
+    target.remove();
+
+    expect(useAppViewStore.getState().appView).toBe('normal');
+  });
+
+  it('Ctrl+Shift+2 在 normal 时打开 Library 并切到 Skills 页', () => {
+    useAppViewStore.setState({ appView: 'normal' });
+    useLibraryStore.setState({ activeKind: 'prompt' });
+    renderHook(() => useKeyboardShortcuts(params));
+
+    const target = document.createElement('div');
+    document.body.appendChild(target);
+    dispatchKeyAt(target, { code: 'Digit2', ctrlKey: true, shiftKey: true });
+    target.remove();
+
+    expect(useAppViewStore.getState().appView).toBe('library');
+    expect(useLibraryStore.getState().activeKind).toBe('skill');
   });
 });

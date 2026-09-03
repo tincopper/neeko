@@ -1,5 +1,4 @@
 export * from './agents';
-export * from './cn';
 export * from './codemirror';
 export * from './distros';
 export * from './entryUpdates';

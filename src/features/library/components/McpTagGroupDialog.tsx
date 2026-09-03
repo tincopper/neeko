@@ -20,6 +20,9 @@ interface McpTagGroupDialogProps {
  * Dialog for creating or editing an MCP tag group.
  * Mirrors the AssignTagGroupDialog pattern.
  */
+
+/** Delay before focusing the name input — lets the dialog finish mounting. */
+const FOCUS_DELAY_MS = 50;
 const McpTagGroupDialog: React.FC<McpTagGroupDialogProps> = React.memo(
   ({ open, tagGroup, onClose }) => {
     const createMcpTagGroup = useMcpStore((s) => s.createMcpTagGroup);
@@ -47,10 +50,9 @@ const McpTagGroupDialog: React.FC<McpTagGroupDialogProps> = React.memo(
     // Auto-focus name input on open
     useEffect(() => {
       if (open) {
-        // Small delay to let the dialog render
         const timer = setTimeout(() => {
           nameInputRef.current?.focus();
-        }, 50);
+        }, FOCUS_DELAY_MS);
         return () => clearTimeout(timer);
       }
     }, [open]);

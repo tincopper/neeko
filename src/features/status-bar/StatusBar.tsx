@@ -7,12 +7,12 @@ import { BranchStatusBarWidget } from '@/features/git';
 import { lspListSessions } from '@/features/lsp/api/lspApi';
 import { NotificationButton } from '@/features/notification';
 import { useActiveProject } from '@/features/project';
+import { cn } from '@/lib/utils';
 import { Bug, Terminal } from '@/shared/components/icons';
 import { useEditorStore } from '@/shared/store/editorStore';
 import { useLspStore, type LspSessionState } from '@/shared/store/lspStore';
 import { useProjectStore } from '@/shared/store/projectStore';
 import { useTaskStore } from '@/shared/store/taskStore';
-import { cn } from '@/shared/utils/cn';
 import { safeUnlisten } from '@/shared/utils/safeUnlisten';
 
 import { LspStatusSection, serverName } from './LspStatusSection';

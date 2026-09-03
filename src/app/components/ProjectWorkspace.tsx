@@ -11,7 +11,7 @@ import { setProjectAgents } from '@/features/agent/api/agentApi';
 import { useRemoteContext } from '@/features/connection';
 import { EditorGroupLayout } from '@/features/editor';
 import { useFileDrop } from '@/features/file';
-import { useLibraryStore } from '@/features/library/store/libraryStore';
+import { openLibraryAt } from '@/features/library/store/libraryNavigation';
 import { ProjectGuidePage } from '@/features/project';
 import { useProjectActionsContext } from '@/features/project/ProjectContext';
 import { useQuickOpenStore } from '@/features/quick-open/store/quickOpenStore';
@@ -31,7 +31,6 @@ import { Button } from '@/ui/Button';
 
 import { WelcomeScreen } from './WelcomeScreen';
 const APP_SETTINGS_PROJECT_ID = '__app__';
-
 function ProjectWorkspace() {
   const { showToast } = useAppContext();
   const { onAddProject } = useProjectActionsContext();
@@ -221,14 +220,8 @@ function ProjectWorkspace() {
       },
       openLibrary: (opts) => {
         const kind = opts?.kind ?? 'skill';
-        useDockStore.getState().togglePanel('library');
-        // Defer to next tick so the panel mounts before we set the kind.
-        setTimeout(() => {
-          if (kind === 'prompt') {
-            useLibraryStore.getState().setActiveKind('prompt');
-            useLibraryStore.getState().openInsert();
-          }
-        }, 50);
+        // 'action' predates the skill/prompt/mcp tabs — falls back to skills.
+        openLibraryAt(kind === 'prompt' ? { kind: 'prompt', insert: true } : { kind: 'skill' });
       },
     }),
     [currentProjectId, tabKey, agents],

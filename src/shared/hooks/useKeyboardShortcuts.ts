@@ -2,6 +2,10 @@ import { useEffect, useRef } from 'react';
 
 // eslint-disable-next-line import/no-restricted-paths -- keyboard shortcuts reference project list types
 import { useActionPaletteStore } from '@/features/action-menu/store/actionPaletteStore';
+// eslint-disable-next-line import/no-restricted-paths -- keyboard shortcuts open Library at the skills kind
+import { openLibraryAt } from '@/features/library/store/libraryNavigation';
+// eslint-disable-next-line import/no-restricted-paths -- keyboard shortcuts open Library at the skills kind
+import { useLibraryStore } from '@/features/library/store/libraryStore';
 // eslint-disable-next-line import/no-restricted-paths -- keyboard shortcuts reference project list types
 import type { ProjectListItem } from '@/features/project/hooks/useProjectList';
 // eslint-disable-next-line import/no-restricted-paths -- keyboard shortcuts reference quick open store
@@ -10,6 +14,8 @@ import { useQuickOpenStore } from '@/features/quick-open/store/quickOpenStore';
 import { useTabCycleStore } from '@/features/quick-open/store/tabCycleStore';
 // eslint-disable-next-line import/no-restricted-paths -- keyboard shortcuts need terminal cache for refresh
 import { refreshTerminal, terminalCacheKey } from '@/features/terminal/components/terminalCache';
+// eslint-disable-next-line import/no-restricted-paths
+import { useAppViewStore } from '@/shared/store/appViewStore';
 // eslint-disable-next-line import/no-restricted-paths
 import { useDockStore } from '@/shared/store/dockStore';
 import { useEditorStore } from '@/shared/store/editorStore';
@@ -231,7 +237,15 @@ export function useKeyboardShortcuts({
 
           case 'toggleDockSkills': {
             e.preventDefault();
-            useDockStore.getState().togglePanel('skills');
+            // 独立 skills 面板已并入 Library：该快捷键切换 Library 的 Skills 页
+            if (
+              useAppViewStore.getState().appView === 'library' &&
+              useLibraryStore.getState().activeKind === 'skill'
+            ) {
+              useDockStore.getState().togglePanel('library');
+            } else {
+              openLibraryAt({ kind: 'skill' });
+            }
             break;
           }
 

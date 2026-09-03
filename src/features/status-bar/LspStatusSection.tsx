@@ -9,11 +9,11 @@ import {
   lspStopSession,
   type LspServerInfo,
 } from '@/features/lsp/api/lspApi';
+import { cn } from '@/lib/utils';
 import { RefreshCw, ServerIcon, Square, TerminalIcon } from '@/shared/components/icons';
 import { useLspStore, type LspSessionState } from '@/shared/store/lspStore';
 import { useNotificationStore } from '@/shared/store/notificationStore';
 import { useTaskStore } from '@/shared/store/taskStore';
-import { cn } from '@/shared/utils/cn';
 
 /**
  * Enter/exit presence: mounts the element, animates opacity+transform, and only

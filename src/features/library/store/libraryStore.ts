@@ -34,6 +34,8 @@ interface LibraryState {
   selectedId: string | null;
   /** View mode (grid | list) — persisted. */
   viewMode: ViewMode;
+  /** Nav column width as a percentage (0-100) of the Library center area — persisted. Default 18. */
+  navSize: number;
 
   /** Sort mode for resource lists. */
   sortMode: SortMode;
@@ -73,6 +75,7 @@ interface LibraryActions {
   setSelectedId: (id: string | null) => void;
   setViewMode: (mode: ViewMode) => void;
   toggleViewMode: () => void;
+  setNavSize: (size: number) => void;
   setSortMode: (mode: SortMode) => void;
 
   refreshPrompts: () => Promise<void>;
@@ -104,6 +107,7 @@ const initialState: LibraryState = {
   scopeFilter: 'all',
   selectedId: null,
   viewMode: 'grid',
+  navSize: 18,
   sortMode: 'recent',
   prompts: [],
   promptsLoading: false,
@@ -139,6 +143,7 @@ export const useLibraryStore = create<LibraryState & LibraryActions>()(
       setViewMode: (mode) => set({ viewMode: mode }),
       toggleViewMode: () =>
         set((state) => ({ viewMode: state.viewMode === 'grid' ? 'list' : 'grid' })),
+      setNavSize: (size) => set({ navSize: size }),
       setSortMode: (mode) => set({ sortMode: mode }),
 
       refreshPrompts: async () => {
@@ -227,6 +232,7 @@ export const useLibraryStore = create<LibraryState & LibraryActions>()(
         activeKind: state.activeKind,
         viewMode: state.viewMode,
         sortMode: state.sortMode,
+        navSize: state.navSize,
       }),
     },
   ),

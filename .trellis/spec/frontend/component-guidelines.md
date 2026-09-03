@@ -149,20 +149,21 @@ const ProjectItem: React.FC<ProjectItemProps> = ({
 ### 模式结构
 
 ```tsx
-// LibraryPanel.tsx —— 壳层（v7 两栏 master-detail 布局）
+// LibraryPanel.tsx —— 壳层（v7 两栏 master-detail 布局，内部分栏走统一标准见下）
 const LibraryPanel: React.FC = React.memo(() => {
   const activeKind = useLibraryStore((s) => s.activeKind);
   return (
     <div className="flex flex-col h-full min-h-0 overflow-hidden bg-bg-primary">
-      <div className="flex-1 min-h-0 flex gap-0.5 p-0.5">
-        <div className="flex flex-col shrink-0 w-60 rounded-lg shadow-sm bg-bg-secondary overflow-hidden">
-          <LibraryActivityBar />   {/* 资源类型导航（Skills/Prompts/Actions/MCP/Commands） */}
+      <ResizablePanelGroup orientation="horizontal" id="library-split" className={`flex-1 min-h-0 ${ISLAND_SPLIT_GROUP_CLASS}`} onLayoutChanged={handleLayoutChanged}>
+        <ResizablePanel id="library-nav" defaultSize={`${navSize}%`} minSize={NAV_MIN_PX} maxSize={`${NAV_MAX_PERCENT}%`} panelRef={navPanelRef} className={ISLAND_CLASS}>
+          <LibraryActivityBar />   {/* 资源类型导航（Skills/Prompts/MCP） */}
           <LibraryNavTree />       {/* 按 activeKind 切换导航树 */}
-        </div>
-        <div className="flex-1 min-w-0 rounded-lg shadow-sm bg-bg-secondary overflow-hidden">
+        </ResizablePanel>
+        <ResizableHandle id="library-nav-handle" />
+        <ResizablePanel id="library-detail" minSize={DETAIL_MIN_PX} className={`min-w-0 ${ISLAND_CLASS}`}>
           <LibraryDetail />        {/* 工具栏 + 搜索 + 内容路由 */}
-        </div>
-      </div>
+        </ResizablePanel>
+      </ResizablePanelGroup>
       <PromptEditorDialog />
       <PromptInsertDialog onInsert={handleInsert} />
       ...
@@ -185,18 +186,6 @@ const LibraryDetail: React.FC = React.memo(() => {
     </div>
   );
 });
-
-// SkillsTabContent.tsx —— 内嵌现有面板（列表岛 + 内容岛，不复制业务逻辑）
-const SkillsTabContent: React.FC = React.memo(() => (
-  <div className="flex h-full min-h-0 overflow-hidden gap-1">
-    <div className="w-44 shrink-0 rounded-lg shadow-sm bg-bg-secondary overflow-hidden">
-      <SkillsPanel />
-    </div>
-    <div className="flex-1 min-w-0 rounded-lg shadow-sm bg-bg-secondary overflow-hidden">
-      <SkillContent />
-    </div>
-  </div>
-));
 ```
 
 ### 关键规则
@@ -205,10 +194,68 @@ const SkillsTabContent: React.FC = React.memo(() => (
 2. **状态隔离**：壳层 store 与内嵌面板的 store 独立，通过 props/context 通信
 3. **Tab 切换不丢失内嵌面板状态**：用 CSS `display` 控制显隐，不要 unmount
 4. **双视图模式**：网格/列表切换通过 `viewMode` 状态控制
+5. **面板内分栏走布局统一标准**：见「面板内分栏（统一标准）」节——禁止手写固定宽 + 自研拖拽
+6. **禁止岛屿嵌套**：自带岛屿 + 海面的面板（Library 双岛）必须裸挂进中央区/zone，
+> 外层只允许透明定位包装（hidden 切换、flex 尺寸），不得再套 `rounded-lg bg-bg-secondary`
+> 岛屿层。DockZone 的单岛 + 扁平内容、Settings 的裸挂是参照。
+7. **导航结构复用 nav primitives**：`src/shared/components/nav/`（`NavSection` 分区外壳 /
+> `NavRow` 行骨架 / `CountLabel` 三态计数 / `NavEmpty` 空态）是 Skills 与 MCP 导航的唯一来源；
+> 新增资源导航禁止复制现有分区结构。数据选择、CRUD、刷新 effects 保留各域 store/hook 内，
+> primitives 只收敛表现层（props 组合，不持有业务状态）。
 
 ### 示例
 
 `features/library/components/LibraryPanel.tsx`（2026-07-29）
+
+---
+
+## 面板内分栏（统一标准）
+
+> 布局框架层面规范：任何面板的新增/改造凡涉及左右（或上下）可调分栏，一律走本标准，
+> 禁止手写固定宽（`w-60` 等）+ 自研指针拖拽。Projects 面板（dock zone 级）与 Library
+> 内部分栏（面板级）共用同一套基元与状态规约，只是归属层级不同。
+
+### 基元（唯一来源）
+
+- `src/ui/Resizable.tsx`：`ResizablePanelGroup` + `ResizablePanel` + `ResizableHandle`
+> （`react-resizable-panels` v4 薄封装，尺寸同时支持百分比字符串与 px 数字）。
+
+### 状态规约
+
+1. **Panel 自身不持有宽度**：`defaultSize` 绑定 owning store 的百分比值（如 dock 的
+> `leftPanelSize`、Library 的 `navSize`，默认 18 与应用侧栏比例一致）。
+2. **Group 级 `onLayoutChanged` 提交**：pointer-up 语义 + `meta.isUserInteraction` 过滤
+> 程序性变化（挂载/imperative resize），回调内经 `panelRef.current?.getSize().asPercentage`
+> 读最终值写入 store——写入天然不与拖动并发，无需去抖（见 `DockLayout.handleLayoutChanged`）。
+3. **尺寸进 store 并 `persist` + `partialize`**：只持久化尺寸等布局值，不持久化 transient
+> 内容态；数值约束（min/max）由 Panel props 承担，store setter 保持 plain。
+4. **约束就近声明为模块常量**：内容驱动的下限用 px（如导航列 200px），上限用相对百分比
+> （如 40%）；导航列不设 `collapsible`（zone 级折叠是 DockLayout 的专属语义）。
+
+### 层级对照
+
+| 层级 | Group 归属 | 尺寸存哪 | 示例 |
+|---|---|---|---|
+| 窗口级三分栏 | `DockLayout`（`neeko-main`） | `dockStore`（`leftPanelSize`/`rightPanelSizes`） | Projects 所在左 zone |
+| 面板内两栏 | 面板自身（如 `LibraryPanel#library-split`） | 面板域 store（如 `libraryStore.navSize`） | Library 导航列/详情列 |
+
+### 海面几何（唯一来源 `src/layout/islands.ts`）
+
+任意两座岛屿之间永远是 3px 海面 = 1px 面板内缩 + 1px 分隔条 + 1px 面板内缩：
+
+- 窗口级（DockLayout）：zone 面板各留 1px 内边 + `ResizableHandle`（`w-px`）；
+- 面板内部分栏：宿主 panel 承担外圈内缩，Group 只用 `ISLAND_SPLIT_GROUP_CLASS`
+> （`gap-px`）分隔岛屿，禁止 Group 再加外圈 padding（会与宿主双重内缩）。
+
+禁止各面板自定 gap/padding 数值。
+
+### 岛屿外壳（唯一来源 `src/ui/Island.tsx`）
+
+所有浮动面板表面都是同一套类（flex 纵填 + 圆角 + 细阴影 + 二级底），只填内容、不重写：
+
+- 组件 `<Island className="…">`（尺寸/定位类透传，如 `flex-1`、`h-full`、`relative` + 行内高）；
+- 非 div 宿主（`ResizablePanel`）用导出的 `ISLAND_CLASS` 字符串；
+- 海面几何见上节（`src/layout/islands.ts`）。
 
 ---
 
@@ -239,12 +286,13 @@ const SkillsTabContent: React.FC = React.memo(() => (
 </div>
 ```
 
-### 动态类合并：`cn()`
+### 动态类合并：`cn()`（唯一来源 `@/lib/utils`）
 
-需要条件组合类名时使用 `cn()`（`clsx` + `tailwind-merge`）：
+需要条件组合类名时使用 `cn()`（`clsx` + `tailwind-merge`），禁止另起 `cn` 实现
+（`src/shared/utils/cn.ts` 重复件已删除）：
 
 ```tsx
-import { cn } from "../utils/cn";
+import { cn } from '@/lib/utils';
 
 <div className={cn(
   "flex items-center gap-1 px-2 py-0.5 rounded",

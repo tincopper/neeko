@@ -26,8 +26,6 @@ export type {
   BindProjectTagGroupsDeps,
   BindProjectTagGroupsResult,
 } from './utils/bindProjectTagGroups';
-export { openProjectSkillsPanel } from './utils/openProjectSkillsPanel';
-export { ensureSkillsPanelOpen } from './utils/ensureSkillsPanelOpen';
 
 // Types & Hooks (public contract)
 export type {

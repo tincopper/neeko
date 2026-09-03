@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef } from 'react';
 
 import type { AuthMethod } from '@/shared/types';
+import { Island } from '@/ui/Island';
 import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from '@/ui/Resizable';
 
 import { useEditorGroupLayout } from '../hooks/useEditorGroupLayout';
@@ -185,8 +186,8 @@ function EditorGroupLayout({
         {/* ── Pinned panel (leftmost, Cases B & C) ── */}
         {hasPinned && (
           <>
-            <ResizablePanel id={pinnedPanelId} minSize={10} className="py-0.5 pr-0.5 min-w-0">
-              <div className="flex-1 flex flex-col overflow-hidden min-w-0 rounded-lg shadow-sm bg-bg-secondary">
+            <ResizablePanel id={pinnedPanelId} minSize={10} className="py-0.5 pr-px min-w-0">
+              <Island className="flex-1 min-w-0">
                 <EditorGroupPane
                   tabKey={tabKey}
                   onAddTerminalTab={onAddTerminalTab}
@@ -195,7 +196,7 @@ function EditorGroupLayout({
                   onFocusGroup={() => {}}
                   layoutId={pinnedLayoutId}
                 />
-              </div>
+              </Island>
             </ResizablePanel>
             <ResizableHandle id={`pin-handle-${tabKey}`} />
           </>
@@ -205,17 +206,9 @@ function EditorGroupLayout({
         <ResizablePanel
           id={leftPanelId}
           minSize={10}
-          className="py-0.5 min-w-0"
-          // Add right padding only when there's no right panel
-          style={
-            isSplit
-              ? { paddingRight: '2px' }
-              : hasPinned
-                ? { paddingLeft: '2px' }
-                : { paddingLeft: '2px' }
-          }
+          className={`py-0.5 min-w-0 ${isSplit ? 'pr-px' : 'pl-px'}`}
         >
-          <div className="flex-1 flex flex-col overflow-hidden min-w-0 rounded-lg shadow-sm bg-bg-secondary">
+          <Island className="flex-1 min-w-0">
             <EditorGroupPane
               tabKey={tabKey}
               onAddTerminalTab={onAddTerminalTab}
@@ -224,15 +217,15 @@ function EditorGroupLayout({
               onFocusGroup={() => setActiveGroup('left')}
               layoutId={leftLayoutId}
             />
-          </div>
+          </Island>
         </ResizablePanel>
 
         {/* ── Right panel (Cases C & D) ── */}
         {isSplit && (
           <>
             <ResizableHandle id={`split-handle-${tabKey}`} />
-            <ResizablePanel id={rightPanelId} minSize={10} className="py-0.5 pl-0.5 min-w-0">
-              <div className="flex-1 flex flex-col overflow-hidden min-w-0 rounded-lg shadow-sm bg-bg-secondary">
+            <ResizablePanel id={rightPanelId} minSize={10} className="py-0.5 pl-px min-w-0">
+              <Island className="flex-1 min-w-0">
                 <EditorGroupPane
                   tabKey={tabKey}
                   onAddTerminalTab={onAddTerminalTab}
@@ -241,7 +234,7 @@ function EditorGroupLayout({
                   onFocusGroup={() => setActiveGroup('right')}
                   layoutId={rightLayoutId}
                 />
-              </div>
+              </Island>
             </ResizablePanel>
           </>
         )}

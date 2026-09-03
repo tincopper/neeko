@@ -1,10 +1,11 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
+import { cn } from '@/lib/utils';
 import { Bug, CircleDot, X } from '@/shared/components/icons';
 import { useAppContext } from '@/shared/contexts/AppContext';
 import { useProjectStore } from '@/shared/store/projectStore';
-import { cn } from '@/shared/utils/cn';
 import { buildMonoStack } from '@/shared/utils/typography';
+import { Island } from '@/ui/Island';
 
 import { openSourceAtLine, activeProjectPaths } from '../navigate';
 import { useDebugStore } from '../store/debugStore';
@@ -236,14 +237,10 @@ function DebugPanel() {
 
   const bpCount = breakpoints.length;
 
-  // Island shell: align with DockLayout toolbars (w-11) + zone gutters (px-px pb-0.5).
-  // Surface: rounded-lg shadow-sm bg-bg-secondary — same as DockZone / center editor.
+  // Island shell (ui/Island): surface + gutters shared with DockZone / center editor.
   return (
     <div className="shrink-0 mx-11 px-px pb-0.5">
-      <div
-        className="relative flex flex-col overflow-hidden rounded-lg shadow-sm bg-bg-secondary"
-        style={{ height: panelHeight }}
-      >
+      <Island className="relative" style={{ height: panelHeight }}>
         {/* Top edge resize handle — full-width strip like SplitLayout */}
         {/* eslint-disable jsx-a11y/no-noninteractive-element-interactions, jsx-a11y/no-noninteractive-tabindex */}
         <div
@@ -574,7 +571,7 @@ function DebugPanel() {
             )}
           </div>
         )}
-      </div>
+      </Island>
     </div>
   );
 }

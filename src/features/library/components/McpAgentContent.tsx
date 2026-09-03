@@ -18,6 +18,13 @@ interface McpAgentContentProps {
   agentId: string;
 }
 
+/** Narrow the untyped deployer boundary (`Vec<serde_json::Value>`) to named entries. */
+function isDeployedEntry(value: unknown): value is { name: string } {
+  return (
+    typeof value === 'object' && value !== null && 'name' in value && typeof value.name === 'string'
+  );
+}
+
 const McpAgentContent: React.FC<McpAgentContentProps> = React.memo(({ agentId }) => {
   const mcpServers = useMcpStore((s) => s.mcpServers);
   const setMcpView = useMcpStore((s) => s.setMcpView);
@@ -33,7 +40,7 @@ const McpAgentContent: React.FC<McpAgentContentProps> = React.memo(({ agentId })
     setLoading(true);
     try {
       const result = await listDeployedMcp(agentId, activeProjectId ?? undefined);
-      setDeployedNames(result.map((r: any) => r.name as string));
+      setDeployedNames(result.filter(isDeployedEntry).map((entry) => entry.name));
     } catch {
       setDeployedNames([]);
     } finally {

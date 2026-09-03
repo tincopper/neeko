@@ -105,19 +105,29 @@ await saveSession(session);
 
 中心区域（`app/components/AppCenter.tsx`）只读 `useAppViewStore.appView` 决定渲染：
 
-- `settings` / `library`：条件渲染（切走即卸载）
-- `skills`：`SkillContent` 激活才挂载（消灭「启动即取数」）；`ProjectWorkspace` 保持挂载（hidden 切换）
-- `normal`：`ProjectWorkspace`
+- `settings`：条件渲染（切走即卸载）
+- `library`：首次进入后常驻（hidden 切换，见 `AppCenter`）；再次激活后台刷新
+- `normal`：`ProjectWorkspace`（常驻）
 
 **写入方（禁止绕过）**：
 
 - `settings`：`useToolbarFooterProps`（工具栏） / `SettingsView`（关闭）
-- `library`：dockStore tab-mode 面板（`openAs: 'tab'`）
-- `skills`：dockStore 中心耦合 dock 面板（`DOCK_PANEL_TO_APP_VIEW`，激活同步）
+- `library`：`openLibraryAt`（`src/features/library/store/libraryNavigation.ts`，唯一入口；先置选择态再开 tab，免 deferred 定时器）
 - `normal`：上述视图退出后的兜底
 
-注意：`dockStore` 持久化、`appViewStore` 不持久化 → 启动时 `useAppShell` 把左 zone 的
-`skills` 激活态同步回 `appView`。禁止在 App.tsx / 业务组件里直接用 `dockStore.zones.*.activePanelId` 判断中心视图。
+注意：`dockStore` 持久化、`appViewStore` 不持久化。tab-mode 面板与左栏互斥：打开 Library
+即收起左栏（含 Projects）、关闭即恢复原展开态（`openTabView` / `restoreLeftZone`，transient
+不持久化）。禁止在 App.tsx / 业务组件里直接用 `dockStore.zones.*.activePanelId` 判断中心视图。
+
+### 9. Dock 面板 toggle/activate 框架契约（`dockStore.togglePanel`）
+
+所有面板切换（dock 栏按钮、快捷键）统一走此契约，禁止各面板自研开关语义：
+
+- **toggle-off 仅当面板当前可见**：同 zone 内已激活且已展开 → 收起；其余一律按**激活**处理
+> （切到该面板并展开）。
+- **从 tab 视图退出时的本次点击强制激活**：tab 覆盖期间 zone 可见态是过期/被收起的，
+> 此时若走 toggle 会反直觉地关掉用户刚点的面板（如 Library 中点 Projects 反而收起列表）。
+- 快捷键（`toggleDockProjects` 等）复用同一入口，自动获得该语义，无需分支处理。
 
 ---
 

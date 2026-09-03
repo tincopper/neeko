@@ -15,7 +15,7 @@ export function useAppShell(): {
   toolbarProps: ReturnType<typeof useAppShellData>['toolbarProps'];
   appModalsProps: ReturnType<typeof buildAppShellValues>['appModalsProps'];
 } {
-  // 应用级全局副作用（paste 监听、quick-open 跟踪、skills→appView 启动同步）
+  // 应用级全局副作用（paste 监听、quick-open 跟踪、滚动条自动隐藏）
   useAppGlobalEffects();
 
   const data = useAppShellData();

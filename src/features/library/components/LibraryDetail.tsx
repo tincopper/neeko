@@ -1,4 +1,4 @@
-import React, { useCallback } from 'react';
+import React from 'react';
 
 import McpTabContent from '@/features/library/components/McpTabContent';
 import PromptListSection from '@/features/library/components/PromptListSection';
@@ -6,6 +6,8 @@ import { useLibraryStore } from '@/features/library/store/libraryStore';
 import { useMcpStore } from '@/features/library/store/mcpStore';
 import { SkillContent } from '@/features/skill';
 import type { PromptInsertTarget, PromptResource, ResourceKind } from '@/shared/types/library';
+
+import { usePromptInsert } from '../hooks/usePromptInsert';
 
 import LibrarySearchBar from './LibrarySearchBar';
 import LibraryToolbar from './LibraryToolbar';
@@ -36,28 +38,7 @@ const LibraryDetail: React.FC<{
   const mcpView = useMcpStore((s) => s.mcpView);
   const searchQuery = useLibraryStore((s) => s.searchQuery);
   const setSearchQuery = useLibraryStore((s) => s.setSearchQuery);
-  const recordUsage = useLibraryStore((s) => s.recordUsage);
-  const detectVariables = useLibraryStore((s) => s.detectVariables);
-  const openVariableDialog = useLibraryStore((s) => s.openVariableDialog);
-
-  // ── Prompt insert handler ──────────────────────────────────────────────
-
-  const handleInsert = useCallback(
-    (prompt: PromptResource, target: PromptInsertTarget = 'agent') => {
-      void recordUsage(prompt.id);
-      if (target === 'agent') {
-        const variables = detectVariables(prompt.content);
-        if (variables.length > 0) {
-          void openVariableDialog(prompt.content).then((rendered) => {
-            onInsertPrompt?.({ ...prompt, content: rendered }, target);
-          });
-          return;
-        }
-      }
-      onInsertPrompt?.(prompt, target);
-    },
-    [recordUsage, detectVariables, openVariableDialog, onInsertPrompt],
-  );
+  const handleInsert = usePromptInsert(onInsertPrompt);
 
   return (
     <div className="flex flex-col h-full min-h-0">

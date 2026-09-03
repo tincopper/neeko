@@ -12,20 +12,14 @@ describe('useAppGlobalEffects', () => {
     useDockStore.setState({ zones: { left: { activePanelId: 'projects' } } });
   });
 
-  it('syncs a persisted skills left-panel to appView at startup', () => {
-    useDockStore.setState({ zones: { left: { activePanelId: 'skills' } } });
-    renderHook(() => useAppGlobalEffects());
-    expect(useAppViewStore.getState().appView).toBe('skills');
-  });
-
-  it('leaves appView untouched when the left panel is not skills', () => {
+  it('leaves appView untouched regardless of the left panel', () => {
+    useDockStore.setState({ zones: { left: { activePanelId: 'library' } } });
     renderHook(() => useAppGlobalEffects());
     expect(useAppViewStore.getState().appView).toBe('normal');
   });
 
   it('does not downgrade a non-normal appView', () => {
     useAppViewStore.setState({ appView: 'settings' });
-    useDockStore.setState({ zones: { left: { activePanelId: 'skills' } } });
     renderHook(() => useAppGlobalEffects());
     expect(useAppViewStore.getState().appView).toBe('settings');
   });

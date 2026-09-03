@@ -6,6 +6,7 @@ import { useAppContext } from '@/shared/contexts';
 import { useAppViewStore } from '@/shared/store/appViewStore';
 import { useProjectStore } from '@/shared/store/projectStore';
 import type { AgentConfig, AppConfig } from '@/shared/types';
+import { Island } from '@/ui/Island';
 
 // eslint-disable-next-line import/no-restricted-paths -- settings view lists agents via agent API
 import { listAgents } from '../../agent/api/agentApi';
@@ -233,10 +234,7 @@ function SettingsView() {
   };
 
   return (
-    <div
-      className="flex-1 flex flex-col overflow-hidden bg-bg-secondary rounded-lg shadow-sm"
-      data-settings-view
-    >
+    <Island className="flex-1" data-settings-view>
       <div className="flex flex-1 overflow-hidden">
         {/* Left navigation sidebar */}
         <nav className="w-[200px] shrink-0 border-r border-border flex flex-col overflow-hidden">
@@ -342,7 +340,7 @@ function SettingsView() {
           <div className="max-w-[640px]">{renderPanel()}</div>
         </div>
       </div>
-    </div>
+    </Island>
   );
 }
 

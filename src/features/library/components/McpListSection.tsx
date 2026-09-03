@@ -15,6 +15,8 @@ import {
   DropdownMenuTrigger,
 } from '@/ui';
 
+import { sortResources } from '../utils/resourceSort';
+
 const TAG_PALETTE = [
   'bg-accent-blue/15 text-accent-blue',
   'bg-bg-selected text-text-secondary',
@@ -64,14 +66,11 @@ const McpListSection: React.FC<McpListSectionProps> = React.memo(({ onEdit }) =>
           s.tags.some((t) => t.toLowerCase().includes(q)),
       );
     }
-    if (sortMode === 'alphabetical') {
-      list.sort((a, b) => a.name.localeCompare(b.name));
-    } else if (sortMode === 'frequent') {
-      list.sort((a, b) => b.usageCount - a.usageCount);
-    } else {
-      list.sort((a, b) => b.updatedAt - a.updatedAt);
-    }
-    return list;
+    return sortResources(list, sortMode, {
+      name: (s) => s.name,
+      usage: (s) => s.usageCount,
+      updated: (s) => s.updatedAt,
+    });
   }, [mcpServers, searchQuery, sortMode]);
 
   const handleDelete = useCallback(

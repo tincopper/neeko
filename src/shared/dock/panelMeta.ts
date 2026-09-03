@@ -21,14 +21,10 @@ export const DOCK_PANEL_META: Record<string, DockPanelMeta> = {
     defaultZone: 'right',
     defaultOrder: 0,
   },
-  skills: {
-    id: 'skills',
-    defaultZone: 'left',
-    defaultOrder: 2,
-  },
   library: {
     id: 'library',
-    // 中央全宽展示（评审决策）：tab-mode 不入 dock zone，由 appViewStore 控制
+    // 中央全宽展示（与左栏互斥：打开即收起左栏，关闭即恢复；评审决策）：
+    // tab-mode 不入 dock zone，由 appViewStore 控制
     defaultZone: 'left',
     defaultOrder: 3,
     openAs: 'tab',

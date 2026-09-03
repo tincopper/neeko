@@ -1,8 +1,6 @@
 import {
   Package,
   Download,
-  ChevronDown,
-  ChevronRight,
   Trash2,
   Plus,
   RefreshCw,
@@ -17,6 +15,10 @@ import { resolveAgentIconSrc } from '@/features/agent/api/agentApi';
 import { useSkillStore } from '@/features/skill/store';
 import { cn } from '@/lib/utils';
 import ConfirmDialog from '@/shared/components/ConfirmDialog';
+import CountLabel from '@/shared/components/nav/CountLabel';
+import NavEmpty from '@/shared/components/nav/NavEmpty';
+import NavRow from '@/shared/components/nav/NavRow';
+import NavSection from '@/shared/components/nav/NavSection';
 import { useNotificationStore } from '@/shared/store/notificationStore';
 import { useProjectStore } from '@/shared/store/projectStore';
 import type { SkillView } from '@/shared/types';
@@ -57,9 +59,6 @@ const SkillsPanel: React.FC = React.memo(() => {
   const agentGroups = useSkillStore((s) => s.agentSkillGroups);
   const refreshAgentSkills = useSkillStore((s) => s.refreshAgentSkills);
 
-  const [projectsExpanded, setProjectsExpanded] = useState(false);
-  const [agentsExpanded, setAgentsExpanded] = useState(false);
-  const [tagsExpanded, setTagsExpanded] = useState(true);
   const [creating, setCreating] = useState(false);
   const [newName, setNewName] = useState('');
   const [syncingId, setSyncingId] = useState<string | null>(null);
@@ -233,17 +232,11 @@ const SkillsPanel: React.FC = React.memo(() => {
               activeSkillView === item.key &&
               (item.key !== 'local' || activeTagGroupIds.length === 0);
             return (
-              <button
+              <NavRow
                 key={item.key}
-                type="button"
-                className={cn(
-                  'flex items-center gap-2.5 w-full px-2.5 py-1.5 rounded-md text-left transition-colors duration-150',
-                  'text-[var(--font-size)]',
-                  isActive
-                    ? 'bg-bg-selected text-text-primary'
-                    : 'text-text-secondary hover:bg-bg-hover hover:text-text-primary',
-                )}
-                onClick={() => {
+                active={isActive}
+                gapClassName="gap-2.5"
+                onSelect={() => {
                   if (item.key === 'local') selectLibrary();
                   else if (item.key === 'marketplace') selectMarketplace();
                   else {
@@ -252,36 +245,21 @@ const SkillsPanel: React.FC = React.memo(() => {
                     setActiveAgentId(null);
                   }
                 }}
+                leading={<Icon className="h-3.5 w-3.5 shrink-0 opacity-90" />}
               >
-                <Icon className="h-3.5 w-3.5 shrink-0 opacity-90" />
                 <span className="truncate flex-1 font-medium">{item.label}</span>
-                {item.count !== undefined && (
-                  <span className="text-[11px] tabular-nums text-text-muted min-w-[1.25rem] text-right">
-                    {item.count}
-                  </span>
-                )}
-              </button>
+                {item.count !== undefined && <CountLabel loading={false} count={item.count} />}
+              </NavRow>
             );
           })}
         </nav>
 
         {/* Tags = Tag Groups */}
-        <div className="border-t border-border mt-0.5 pt-1">
-          <div className="flex items-center gap-1 px-3 py-1.5 select-none">
-            <button
-              type="button"
-              className="flex items-center gap-1 flex-1 min-w-0 text-left"
-              onClick={() => setTagsExpanded((v) => !v)}
-            >
-              {tagsExpanded ? (
-                <ChevronDown className="h-3 w-3 text-text-muted shrink-0" />
-              ) : (
-                <ChevronRight className="h-3 w-3 text-text-muted shrink-0" />
-              )}
-              <span className="text-[10.5px] font-bold tracking-[0.14em] uppercase text-text-muted">
-                Tags
-              </span>
-            </button>
+        <NavSection
+          title="Tags"
+          defaultExpanded
+          listClassName="pb-2 px-1.5"
+          actions={
             <button
               type="button"
               className="p-1 rounded-md text-text-muted hover:bg-bg-hover hover:text-text-primary transition-colors"
@@ -290,293 +268,230 @@ const SkillsPanel: React.FC = React.memo(() => {
             >
               <Plus className="h-3.5 w-3.5" />
             </button>
-          </div>
+          }
+        >
+          {creating && (
+            <div className="px-1.5 py-1 flex gap-1 items-center mb-0.5">
+              <input
+                className={cn(
+                  'flex-1 min-w-0 h-7 px-2 text-[var(--font-size)] rounded-md',
+                  'bg-bg-hover/60 border border-border text-text-primary',
+                  'outline-none focus:border-border focus:bg-bg-primary placeholder:text-text-muted',
+                )}
+                placeholder="e.g. Backend"
+                value={newName}
+                onChange={(e) => setNewName(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') void handleCreate();
+                  if (e.key === 'Escape') {
+                    setCreating(false);
+                    setNewName('');
+                  }
+                }}
+              />
+              <button
+                type="button"
+                className="h-7 px-2.5 text-[11px] font-medium text-text-primary bg-bg-selected hover:bg-bg-hover rounded-md shrink-0 border border-border"
+                onClick={() => void handleCreate()}
+              >
+                Add
+              </button>
+            </div>
+          )}
 
-          {tagsExpanded && (
-            <div className="pb-2 px-1.5">
-              {creating && (
-                <div className="px-1.5 py-1 flex gap-1 items-center mb-0.5">
+          {tagGroups.map((tg) => {
+            const active = activeTagGroupIds.includes(tg.id) && activeSkillView === 'local';
+            return (
+              <NavRow
+                key={tg.id}
+                active={active}
+                onSelect={() => handleTagGroupSelect(tg.id)}
+                leading={<LayoutGrid className="h-3.5 w-3.5 shrink-0 opacity-50" />}
+                actions={
+                  <>
+                    <button
+                      type="button"
+                      onClick={(e) => void handleRenameStart(e, tg.id, tg.name)}
+                      className="p-0.5 rounded text-text-muted hover:text-text-primary"
+                      title="Rename tag"
+                    >
+                      <Pencil className="h-3 w-3" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={(e) => void handleSync(e, tg.id, tg.name)}
+                      className="p-0.5 rounded text-text-muted hover:text-text-primary"
+                      title="Sync to agents"
+                      disabled={syncingId === tg.id}
+                    >
+                      <RefreshCw className={cn('h-3 w-3', syncingId === tg.id && 'animate-spin')} />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={(e) => void handleDelete(e, tg.id)}
+                      className="p-0.5 rounded text-text-muted hover:text-accent-red"
+                      title="Delete tag"
+                    >
+                      <Trash2 className="h-3 w-3" />
+                    </button>
+                  </>
+                }
+              >
+                {renamingId === tg.id ? (
                   <input
                     className={cn(
-                      'flex-1 min-w-0 h-7 px-2 text-[var(--font-size)] rounded-md',
-                      'bg-bg-hover/60 border border-border text-text-primary',
-                      'outline-none focus:border-border focus:bg-bg-primary placeholder:text-text-muted',
+                      'flex-1 min-w-0 h-6 px-1.5 text-[var(--font-size)] rounded',
+                      'bg-bg-hover/60 border border-border text-text-primary outline-none',
                     )}
-                    placeholder="e.g. Backend"
-                    value={newName}
-                    onChange={(e) => setNewName(e.target.value)}
+                    value={renameValue}
+                    onChange={(e) => setRenameValue(e.target.value)}
                     onKeyDown={(e) => {
-                      if (e.key === 'Enter') void handleCreate();
-                      if (e.key === 'Escape') {
-                        setCreating(false);
-                        setNewName('');
-                      }
+                      if (e.key === 'Enter') void handleRenameSubmit(tg.id);
+                      if (e.key === 'Escape') setRenamingId(null);
                     }}
+                    onBlur={() => void handleRenameSubmit(tg.id)}
+                    onClick={(e) => e.stopPropagation()}
                   />
-                  <button
-                    type="button"
-                    className="h-7 px-2.5 text-[11px] font-medium text-text-primary bg-bg-selected hover:bg-bg-hover rounded-md shrink-0 border border-border"
-                    onClick={() => void handleCreate()}
-                  >
-                    Add
-                  </button>
-                </div>
-              )}
+                ) : (
+                  <span className="truncate flex-1 font-medium">{tg.name}</span>
+                )}
+                <CountLabel loading={false} count={tg.skill_count} />
+              </NavRow>
+            );
+          })}
 
-              {tagGroups.map((tg) => {
-                const active = activeTagGroupIds.includes(tg.id) && activeSkillView === 'local';
-                return (
-                  <div
-                    key={tg.id}
-                    role="button"
-                    tabIndex={0}
-                    className={cn(
-                      'group/row flex items-center gap-2 px-2.5 py-1.5 rounded-md cursor-pointer transition-colors duration-150',
-                      'text-[var(--font-size)]',
-                      active
-                        ? 'bg-bg-selected text-text-primary'
-                        : 'text-text-secondary hover:bg-bg-hover hover:text-text-primary',
-                    )}
-                    onClick={() => handleTagGroupSelect(tg.id)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' || e.key === ' ') {
-                        e.preventDefault();
-                        handleTagGroupSelect(tg.id);
-                      }
-                    }}
-                  >
-                    <LayoutGrid className="h-3.5 w-3.5 shrink-0 opacity-50" />
-                    {renamingId === tg.id ? (
-                      <input
-                        className={cn(
-                          'flex-1 min-w-0 h-6 px-1.5 text-[var(--font-size)] rounded',
-                          'bg-bg-hover/60 border border-border text-text-primary outline-none',
-                        )}
-                        value={renameValue}
-                        onChange={(e) => setRenameValue(e.target.value)}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter') void handleRenameSubmit(tg.id);
-                          if (e.key === 'Escape') setRenamingId(null);
-                        }}
-                        onBlur={() => void handleRenameSubmit(tg.id)}
-                        onClick={(e) => e.stopPropagation()}
-                      />
-                    ) : (
-                      <span className="truncate flex-1 font-medium">{tg.name}</span>
-                    )}
-                    <span className="text-[11px] tabular-nums text-text-muted min-w-[1.25rem] text-right">
-                      {tg.skill_count}
-                    </span>
-                    <div className="flex items-center gap-0.5 opacity-0 group-hover/row:opacity-100 transition-opacity w-0 group-hover/row:w-auto overflow-hidden group-hover/row:overflow-visible">
-                      <button
-                        type="button"
-                        onClick={(e) => void handleRenameStart(e, tg.id, tg.name)}
-                        className="p-0.5 rounded text-text-muted hover:text-text-primary"
-                        title="Rename tag"
-                      >
-                        <Pencil className="h-3 w-3" />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={(e) => void handleSync(e, tg.id, tg.name)}
-                        className="p-0.5 rounded text-text-muted hover:text-text-primary"
-                        title="Sync to agents"
-                        disabled={syncingId === tg.id}
-                      >
-                        <RefreshCw
-                          className={cn('h-3 w-3', syncingId === tg.id && 'animate-spin')}
-                        />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={(e) => void handleDelete(e, tg.id)}
-                        className="p-0.5 rounded text-text-muted hover:text-accent-red"
-                        title="Delete tag"
-                      >
-                        <Trash2 className="h-3 w-3" />
-                      </button>
-                    </div>
-                  </div>
-                );
-              })}
-
-              {!creating && (
-                <button
-                  type="button"
-                  className="flex items-center gap-2 w-full px-2.5 py-1.5 rounded-md text-[var(--font-size)] text-text-muted hover:bg-bg-hover hover:text-text-secondary transition-colors"
-                  onClick={() => setCreating(true)}
-                >
-                  <Plus className="h-3.5 w-3.5" />
-                  New Tag
-                </button>
-              )}
-
-              {tagGroups.length === 0 && !creating && (
-                <p className="px-2.5 py-1 text-[11px] text-text-muted leading-relaxed">
-                  Group skills by role (Backend, Frontend…)
-                </p>
-              )}
-            </div>
+          {!creating && (
+            <button
+              type="button"
+              className="flex items-center gap-2 w-full px-2.5 py-1.5 rounded-md text-[var(--font-size)] text-text-muted hover:bg-bg-hover hover:text-text-secondary transition-colors"
+              onClick={() => setCreating(true)}
+            >
+              <Plus className="h-3.5 w-3.5" />
+              New Tag
+            </button>
           )}
-        </div>
+
+          {tagGroups.length === 0 && !creating && (
+            <NavEmpty>Group skills by role (Backend, Frontend…)</NavEmpty>
+          )}
+        </NavSection>
 
         {/* Agent list */}
-        <div className="border-t border-border mt-0.5 pt-1">
-          <button
-            type="button"
-            className="flex items-center gap-1 px-3 py-1.5 w-full min-w-0 text-left select-none"
-            onClick={() => setAgentsExpanded((v) => !v)}
-          >
-            {agentsExpanded ? (
-              <ChevronDown className="h-3 w-3 text-text-muted shrink-0" />
-            ) : (
-              <ChevronRight className="h-3 w-3 text-text-muted shrink-0" />
-            )}
-            <span className="text-[10.5px] font-bold tracking-[0.14em] uppercase text-text-muted">
-              Agents
-            </span>
-          </button>
-
-          {agentsExpanded && (
-            <div className="pb-1 px-1.5">
-              {agentGroups.length === 0 ? (
-                <p className="px-2.5 py-1 text-[11px] text-text-muted leading-relaxed">
-                  No agents configured.
-                </p>
-              ) : (
-                agentGroups.map((group) => {
-                  const icon = resolveAgentIconSrc(group.agent_icon);
-                  const isActiveAgent =
-                    activeAgentId === group.agent_id && activeSkillView === 'agents';
-                  return (
-                    <button
-                      key={group.agent_id}
-                      type="button"
-                      onClick={() => selectAgent(group.agent_id)}
-                      className={cn(
-                        'flex items-center gap-2 w-full px-2.5 py-1.5 rounded-md text-left transition-colors duration-150',
-                        'text-[var(--font-size)]',
-                        isActiveAgent
-                          ? 'bg-bg-selected text-text-primary'
-                          : 'text-text-secondary hover:bg-bg-hover hover:text-text-primary',
-                      )}
-                    >
-                      {icon ? (
-                        <img src={icon} alt="" className="h-4 w-4 rounded shrink-0" />
-                      ) : (
-                        <Terminal className="h-3.5 w-3.5 shrink-0 opacity-50" />
-                      )}
-                      <span className="truncate flex-1 font-medium">{group.agent_name}</span>
-                      {!group.agent_enabled && (
-                        <span className="text-[10px] text-text-muted">disabled</span>
-                      )}
-                      <span className="text-[11px] tabular-nums text-text-muted min-w-[1.25rem] text-right">
-                        {group.skills.length}
-                      </span>
-                    </button>
-                  );
-                })
-              )}
-            </div>
+        <NavSection title="Agents">
+          {agentGroups.length === 0 ? (
+            <NavEmpty>No agents configured.</NavEmpty>
+          ) : (
+            agentGroups.map((group) => {
+              const icon = resolveAgentIconSrc(group.agent_icon);
+              const isActiveAgent =
+                activeAgentId === group.agent_id && activeSkillView === 'agents';
+              return (
+                <NavRow
+                  key={group.agent_id}
+                  active={isActiveAgent}
+                  onSelect={() => selectAgent(group.agent_id)}
+                  leading={
+                    icon ? (
+                      <img src={icon} alt="" className="h-4 w-4 rounded shrink-0" />
+                    ) : (
+                      <Terminal className="h-3.5 w-3.5 shrink-0 opacity-50" />
+                    )
+                  }
+                >
+                  <span className="truncate flex-1 font-medium">{group.agent_name}</span>
+                  {!group.agent_enabled && (
+                    <span className="text-[10px] text-text-muted">disabled</span>
+                  )}
+                  <CountLabel loading={false} count={group.skills.length} />
+                </NavRow>
+              );
+            })
           )}
-        </div>
+        </NavSection>
 
         {/* Project list */}
-        <div className="border-t border-border mt-0.5 pt-1">
-          <button
-            type="button"
-            className="flex items-center gap-1 px-3 py-1.5 w-full min-w-0 text-left select-none"
-            onClick={() => setProjectsExpanded((v) => !v)}
-          >
-            {projectsExpanded ? (
-              <ChevronDown className="h-3 w-3 text-text-muted shrink-0" />
-            ) : (
-              <ChevronRight className="h-3 w-3 text-text-muted shrink-0" />
-            )}
-            <span className="text-[10.5px] font-bold tracking-[0.14em] uppercase text-text-muted">
-              Projects
-            </span>
-          </button>
-
-          {projectsExpanded && (
-            <div className="pb-1 px-1.5">
-              {projects.length === 0 ? (
-                <p className="px-2.5 py-1 text-[11px] text-text-muted leading-relaxed">
-                  No projects loaded.
-                </p>
-              ) : (
-                projects.map((project) => {
-                  const isActive = activeProjectId === project.id && activeSkillView === 'project';
-                  const diskCount = projectSkillCounts.get(project.id);
-                  const groupCount = projectTagGroupCounts.get(project.id);
-                  const diskLabel = projectSkillCountsError
-                    ? '!'
-                    : projectSkillCountsLoading && diskCount === undefined
-                      ? '…'
-                      : String(diskCount ?? 0);
-                  const groupLabel = projectTagGroupCountsError
-                    ? '!'
-                    : projectTagGroupCountsLoading && groupCount === undefined
-                      ? '…'
-                      : `${groupCount ?? 0}g`;
-                  const diskNum = diskCount ?? 0;
-                  const groupNum = groupCount ?? 0;
-                  const metricsTitle =
-                    projectSkillCountsError || projectTagGroupCountsError
-                      ? (projectSkillCountsError ?? projectTagGroupCountsError ?? undefined)
-                      : `${diskNum} skill${diskNum === 1 ? '' : 's'} on disk · ${groupNum} tag group${groupNum === 1 ? '' : 's'} bound`;
-                  return (
-                    <button
-                      key={project.id}
-                      type="button"
-                      onClick={() => selectProjectNav(project.id)}
-                      className={cn(
-                        'flex items-center gap-2.5 w-full px-2.5 py-1.5 rounded-md text-left transition-colors duration-150',
-                        'text-[var(--font-size)]',
-                        isActive
-                          ? 'bg-bg-selected text-text-primary'
-                          : 'text-text-secondary hover:bg-bg-hover hover:text-text-primary',
-                      )}
-                      title={metricsTitle}
-                      data-testid={`project-skill-row-${project.id}`}
+        <NavSection title="Projects">
+          {projects.length === 0 ? (
+            <NavEmpty>No projects loaded.</NavEmpty>
+          ) : (
+            projects.map((project) => {
+              const isActive = activeProjectId === project.id && activeSkillView === 'project';
+              const diskCount = projectSkillCounts.get(project.id);
+              const groupCount = projectTagGroupCounts.get(project.id);
+              const diskNum = diskCount ?? 0;
+              const groupNum = groupCount ?? 0;
+              const diskLabel =
+                projectSkillCountsError || projectTagGroupCountsError
+                  ? '!'
+                  : projectSkillCountsLoading && diskCount === undefined
+                    ? '…'
+                    : String(diskNum);
+              const groupLabel =
+                projectSkillCountsError || projectTagGroupCountsError
+                  ? '!'
+                  : projectTagGroupCountsLoading && groupCount === undefined
+                    ? '…'
+                    : `${groupNum}g`;
+              const metricsTitle =
+                projectSkillCountsError || projectTagGroupCountsError
+                  ? (projectSkillCountsError ?? projectTagGroupCountsError ?? undefined)
+                  : `${diskNum} skill${diskNum === 1 ? '' : 's'} on disk · ${groupNum} tag group${groupNum === 1 ? '' : 's'} bound`;
+              return (
+                <NavRow
+                  key={project.id}
+                  active={isActive}
+                  gapClassName="gap-2.5"
+                  onSelect={() => selectProjectNav(project.id)}
+                  title={metricsTitle}
+                  testId={`project-skill-row-${project.id}`}
+                  leading={
+                    <span
+                      className="w-5 h-5 rounded flex items-center justify-center text-[10px] font-bold shrink-0"
+                      style={getAvatarStyle({ name: project.name, color: project.avatar_color })}
                     >
-                      <span
-                        className="w-5 h-5 rounded flex items-center justify-center text-[10px] font-bold shrink-0"
-                        style={getAvatarStyle({ name: project.name, color: project.avatar_color })}
-                      >
-                        {getProjectInitials(project.name)}
-                      </span>
-                      <span className="truncate flex-1 font-medium">{project.name}</span>
-                      <span
-                        className={cn(
-                          'inline-flex items-baseline gap-1 text-[11px] tabular-nums shrink-0',
-                          projectSkillCountsError || projectTagGroupCountsError
-                            ? 'text-accent-red'
-                            : 'text-text-muted',
-                        )}
-                        data-testid={`project-skill-metrics-${project.id}`}
-                        aria-label={`${diskLabel} on disk, ${groupLabel} bound`}
-                      >
-                        <span data-testid={`project-disk-count-${project.id}`}>{diskLabel}</span>
-                        <span className="opacity-40" aria-hidden>
-                          ·
-                        </span>
-                        <span
-                          className={cn(
-                            isActive && !projectTagGroupCountsError && 'text-accent-blue/90',
-                          )}
-                          data-testid={`project-group-count-${project.id}`}
-                        >
-                          {groupLabel}
-                        </span>
-                      </span>
-                    </button>
-                  );
-                })
-              )}
-            </div>
+                      {getProjectInitials(project.name)}
+                    </span>
+                  }
+                >
+                  <span className="truncate flex-1 font-medium">{project.name}</span>
+                  <span
+                    className={cn(
+                      'inline-flex items-baseline gap-1 text-[11px] tabular-nums shrink-0',
+                      projectSkillCountsError || projectTagGroupCountsError
+                        ? 'text-accent-red'
+                        : 'text-text-muted',
+                    )}
+                    data-testid={`project-skill-metrics-${project.id}`}
+                    aria-label={`${diskLabel} on disk, ${groupLabel} bound`}
+                  >
+                    <CountLabel
+                      loading={projectSkillCountsLoading}
+                      error={projectSkillCountsError}
+                      count={diskCount}
+                      testId={`project-disk-count-${project.id}`}
+                    />
+                    <span className="opacity-40" aria-hidden>
+                      ·
+                    </span>
+                    <span
+                      className={cn(
+                        isActive && !projectTagGroupCountsError && 'text-accent-blue/90',
+                      )}
+                      data-testid={`project-group-count-${project.id}`}
+                    >
+                      <CountLabel
+                        loading={projectTagGroupCountsLoading}
+                        error={projectTagGroupCountsError}
+                        count={groupCount}
+                        format={(n) => `${n}g`}
+                      />
+                    </span>
+                  </span>
+                </NavRow>
+              );
+            })
           )}
-        </div>
+        </NavSection>
       </div>
       <ConfirmDialog
         open={pendingDeleteId !== null}

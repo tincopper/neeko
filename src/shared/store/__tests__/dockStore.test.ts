@@ -23,7 +23,7 @@ function resetStores() {
     zones: {
       left: {
         id: 'left',
-        panels: ['projects', 'skills'],
+        panels: ['projects'],
         activePanelId: 'projects',
         expanded: true,
       },
@@ -100,69 +100,68 @@ describe('dockStore togglePanel — tab (center) views', () => {
   });
 });
 
-describe('dockStore togglePanel — center-coupled dock panels (skills ↔ appView)', () => {
+describe('dockStore — dock panels no longer drive appView (skills merged into Library)', () => {
   beforeEach(() => {
     localStorage.clear();
     resetStores();
   });
 
-  it('activating skills dock panel switches appView to skills', () => {
-    useDockStore.getState().togglePanel('skills');
-    expect(useAppViewStore.getState().appView).toBe('skills');
-    const state = useDockStore.getState();
-    expect(state.zones.left?.activePanelId).toBe('skills');
-    expect(state.zones.left?.expanded).toBe(true);
-  });
-
-  it('collapsing an already-active skills panel keeps skills view', () => {
-    useDockStore.setState((state) => ({
-      zones: {
-        ...state.zones,
-        left: state.zones.left
-          ? { ...state.zones.left, activePanelId: 'skills' }
-          : state.zones.left,
-      },
-    }));
-    useAppViewStore.setState({ appView: 'skills' });
-
-    useDockStore.getState().togglePanel('skills'); // active → collapse
-
-    expect(useAppViewStore.getState().appView).toBe('skills');
-    expect(useDockStore.getState().zones.left?.expanded).toBe(false);
-  });
-
-  it('opening another dock panel exits the skills view back to normal', () => {
-    useDockStore.getState().togglePanel('skills');
-    expect(useAppViewStore.getState().appView).toBe('skills');
-
-    useDockStore.getState().togglePanel('files');
-
+  it('toggling a dock panel leaves appView untouched', () => {
+    useDockStore.getState().togglePanel('projects');
     expect(useAppViewStore.getState().appView).toBe('normal');
+    expect(useDockStore.getState().zones.left?.activePanelId).toBe('projects');
   });
 
-  it('activatePanel on skills syncs appView, on other panels exits skills', () => {
-    useDockStore.getState().activatePanel('left', 'skills');
-    expect(useAppViewStore.getState().appView).toBe('skills');
-
+  it('activatePanel on a dock panel does not set a center view', () => {
     useDockStore.getState().activatePanel('left', 'projects');
     expect(useAppViewStore.getState().appView).toBe('normal');
   });
 
-  it('closePanel on skills exits the skills view', () => {
-    useDockStore.getState().togglePanel('skills');
-    expect(useAppViewStore.getState().appView).toBe('skills');
-
-    useDockStore.getState().closePanel('skills');
+  it('closePanel on a dock panel leaves appView untouched', () => {
+    useDockStore.getState().togglePanel('projects');
+    useDockStore.getState().closePanel('projects');
     expect(useAppViewStore.getState().appView).toBe('normal');
   });
+});
 
-  it('library and skills views are independent: opening library from skills exits skills', () => {
-    useDockStore.getState().togglePanel('skills');
-    expect(useAppViewStore.getState().appView).toBe('skills');
+describe('dockStore togglePanel — toggle/activate 框架契约', () => {
+  beforeEach(() => {
+    localStorage.clear();
+    resetStores();
+  });
 
+  it('normal 下点已展开的面板 → 收起（toggle-off 仅当前可见时成立）', () => {
+    useDockStore.getState().togglePanel('projects');
+    expect(useDockStore.getState().zones.left?.expanded).toBe(false);
+  });
+
+  it('Library 中点 Projects → 退出并展开（不反转为收起）', () => {
+    useDockStore.getState().togglePanel('library');
+    expect(useAppViewStore.getState().appView).toBe('library');
+
+    useDockStore.getState().togglePanel('projects');
+
+    expect(useAppViewStore.getState().appView).toBe('normal');
+    const state = useDockStore.getState();
+    expect(state.zones.left?.activePanelId).toBe('projects');
+    expect(state.zones.left?.expanded).toBe(true);
+  });
+
+  it('Library 中点右栏已展开面板 → 保持展开（不 toggle 关掉）', () => {
+    useDockStore.setState((state) => ({
+      zones: {
+        ...state.zones,
+        right: state.zones.right ? { ...state.zones.right, expanded: true } : state.zones.right,
+      },
+    }));
     useDockStore.getState().togglePanel('library');
 
-    expect(useAppViewStore.getState().appView).toBe('library');
+    useDockStore.getState().togglePanel('files');
+
+    expect(useAppViewStore.getState().appView).toBe('normal');
+    const state = useDockStore.getState();
+    expect(state.zones.right?.activePanelId).toBe('files');
+    expect(state.zones.right?.expanded).toBe(true);
   });
 });
 
@@ -227,5 +226,6 @@ describe('appViewStore isAppView guard', () => {
     expect(isAppView('mysteryTab')).toBe(false);
     expect(isAppView('')).toBe(false);
     expect(isAppView('projects')).toBe(false);
+    expect(isAppView('skills')).toBe(false); // 独立 skills 中心视图已并入 Library
   });
 });

@@ -107,15 +107,9 @@ function findPanelZone(zones: Record<ZoneId, DockZoneState>, panelId: string): Z
 }
 
 /**
- * Dock 面板 → 中心视图映射：激活这些 dock 面板时同步切换 appView。
- * 与 tab-mode 面板（library）一起构成「单一中心路由源」（appViewStore），
- * 避免中心区域被 dockStore 与 appViewStore 双源控制。
- */
-const DOCK_PANEL_TO_APP_VIEW: Partial<Record<string, AppView>> = { skills: 'skills' };
-
-/**
  * Partial state for opening a tab (center) view: collapse the left zone and
  * remember its previous expanded state so it can be restored on close.
+ * Library 与左栏（含 Projects）互斥：打开 Library 即收起左栏。
  */
 function openTabView(state: DockStore): Partial<DockStore> {
   return {
@@ -185,6 +179,7 @@ export const useDockStore = create<DockStore>()(
         togglePanel: (panelId: string) => {
           // Tab-mode panels (e.g. library) are center views — toggle via appView,
           // never dock them into a zone (avoids left-zone/center double render).
+          // 与左栏互斥：打开即收起左栏（含 Projects），关闭/切走即恢复。
           const def = DOCK_PANEL_META[panelId];
           if (def?.openAs === 'tab') {
             // Defensive guard: only real AppView values are valid tab targets.
@@ -196,17 +191,13 @@ export const useDockStore = create<DockStore>()(
             return;
           }
           // Opening any dock panel exits the library center view back to workspace.
-          if (useAppViewStore.getState().appView === 'library') {
+          // 退出 tab 视图时的本次点击一律按“激活”处理（切到该面板并展开），不做 toggle：
+          // tab 覆盖期间 zone 可见态是过期/被收起的，此时 toggle 会反直觉地关掉用户刚点的面板。
+          const exitedTabView = useAppViewStore.getState().appView === 'library';
+          if (exitedTabView) {
             useAppViewStore.getState().setAppView('normal');
             // 恢复左栏原展开态（Library 打开时被收起）
             set((state) => restoreLeftZone(state));
-          }
-
-          // 中心耦合面板（skills）：激活时同步 appView，单一路由源
-          const centerView = DOCK_PANEL_TO_APP_VIEW[panelId];
-          // 打开其他 dock 面板：退出 skills 中心视图
-          if (!centerView && useAppViewStore.getState().appView === 'skills') {
-            useAppViewStore.getState().setAppView('normal');
           }
 
           const { zones } = get();
@@ -215,8 +206,8 @@ export const useDockStore = create<DockStore>()(
           if (currentZoneId) {
             // Panel is already in a zone
             const zone = zones[currentZoneId];
-            if (zone.activePanelId === panelId) {
-              // Already active → toggle expanded (show/hide)
+            if (zone.activePanelId === panelId && !exitedTabView) {
+              // Active and visible → toggle expanded (show/hide)
               set((state) => ({
                 zones: {
                   ...state.zones,
@@ -238,7 +229,6 @@ export const useDockStore = create<DockStore>()(
                   },
                 },
               }));
-              if (centerView) useAppViewStore.getState().setAppView(centerView);
             }
           } else {
             // Panel is not in any zone → add to its default zone alongside existing panels
@@ -263,7 +253,6 @@ export const useDockStore = create<DockStore>()(
                 ),
               };
             });
-            if (centerView) useAppViewStore.getState().setAppView(centerView);
           }
         },
 
@@ -278,13 +267,6 @@ export const useDockStore = create<DockStore>()(
               },
             };
           });
-          // 中心耦合面板：激活同步 appView；激活其他面板退出 skills 中心视图
-          const centerView = DOCK_PANEL_TO_APP_VIEW[panelId];
-          if (centerView) {
-            useAppViewStore.getState().setAppView(centerView);
-          } else if (useAppViewStore.getState().appView === 'skills') {
-            useAppViewStore.getState().setAppView('normal');
-          }
         },
 
         closePanel: (panelId: string) => {
@@ -306,11 +288,6 @@ export const useDockStore = create<DockStore>()(
               },
             };
           });
-          // 关闭中心耦合面板时退出对应中心视图
-          const centerView = DOCK_PANEL_TO_APP_VIEW[panelId];
-          if (centerView && useAppViewStore.getState().appView === centerView) {
-            useAppViewStore.getState().setAppView('normal');
-          }
         },
 
         setRightPanelSize: (panelId: string, size: number) => {

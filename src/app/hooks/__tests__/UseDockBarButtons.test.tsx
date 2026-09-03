@@ -17,7 +17,7 @@ import { useDockBarButtons } from '../UseDockBarButtons';
 function makeBarItems(): DockBarItem[] {
   return [
     { panelId: 'projects', side: 'left', order: 1, visible: true },
-    { panelId: 'skills', side: 'left', order: 2, visible: true },
+    { panelId: 'library', side: 'left', order: 2, visible: true },
     { panelId: 'files', side: 'right', order: 1, visible: true },
     { panelId: 'hiddenPanel', side: 'left', order: 0, visible: false },
   ];
@@ -36,7 +36,7 @@ describe('useDockBarButtons', () => {
     expect(left).toHaveLength(2);
     expect(left[0].props.panelId).toBe('projects');
     expect(left[0].props.side).toBe('left');
-    expect(left[1].props.panelId).toBe('skills');
+    expect(left[1].props.panelId).toBe('library');
   });
 
   it('returns right buttons only', () => {
@@ -52,7 +52,7 @@ describe('useDockBarButtons', () => {
     expect(result.current).toHaveLength(2);
 
     useDockStore.setState((s) => ({
-      barItems: s.barItems.map((i) => (i.panelId === 'skills' ? { ...i, visible: false } : i)),
+      barItems: s.barItems.map((i) => (i.panelId === 'library' ? { ...i, visible: false } : i)),
     }));
     rerender();
 

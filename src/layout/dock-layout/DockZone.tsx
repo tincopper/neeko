@@ -2,15 +2,14 @@ import React, { Suspense } from 'react';
 
 import { cn } from '@/lib/utils';
 import { useDockStore, type ZoneId } from '@/shared/store/dockStore';
+import { Island } from '@/ui/Island';
 
 import { useDockRegistry } from '../DockRegistryContext';
 
 interface DockZoneProps {
   zoneId: ZoneId;
 }
-
-/** Docking zone container -- renders active panel as a floating "island".
- *  Islands theme: rounded-lg border, subtle shadow, bg-secondary surface. */
+/** Docking zone container -- renders active panel as a floating island (see ui/Island). */
 const DockZone: React.FC<DockZoneProps> = ({ zoneId }) => {
   const dockPanelRegistry = useDockRegistry();
   const zone = useDockStore((s) => s.zones[zoneId]);
@@ -31,9 +30,8 @@ const DockZone: React.FC<DockZoneProps> = ({ zoneId }) => {
   // 渲染所有 panel，非活跃的用 CSS hidden 隐藏。
   // 避免切换时卸载/挂载组件导致 useState 重置、useEffect 重触发、React.lazy chunk 加载。
   const activePanelId = zone.activePanelId;
-
   return (
-    <div className="flex h-full flex-col overflow-hidden rounded-lg shadow-sm bg-bg-secondary">
+    <Island className="h-full">
       {zone.panels.map((panelId) => {
         const def = dockPanelRegistry[panelId];
         if (!def?.component) return null;
@@ -59,7 +57,7 @@ const DockZone: React.FC<DockZoneProps> = ({ zoneId }) => {
           No panel selected
         </div>
       )}
-    </div>
+    </Island>
   );
 };
 

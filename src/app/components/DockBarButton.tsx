@@ -2,6 +2,7 @@ import React, { useCallback } from 'react';
 
 import { dockPanelRegistry, dockPanelIcons } from '@/app/dock/registry';
 import { cn } from '@/lib/utils';
+import { useAppViewStore } from '@/shared/store/appViewStore';
 import { useDockStore } from '@/shared/store/dockStore';
 import { Badge } from '@/ui/Badge';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/ui/Tooltip';
@@ -22,7 +23,9 @@ const DockBarButton: React.FC<DockBarButtonProps> = ({ panelId, side = 'right' }
     return false;
   });
 
-  const isActive = isDockActive;
+  // tab-mode 面板（如 Library）永不进 zone：中心视图激活时同样高亮
+  const isTabActive = useAppViewStore((s) => s.appView === panelId);
+  const isActive = isDockActive || (def?.openAs === 'tab' && isTabActive);
 
   const togglePanel = useDockStore((s) => s.togglePanel);
 
