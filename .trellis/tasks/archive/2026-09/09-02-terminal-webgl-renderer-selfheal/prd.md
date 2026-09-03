@@ -21,11 +21,11 @@ GPU 加速下 WKWebView 静默失效化 WebGL 字形图集/绘图缓冲导致终
 
 ## Acceptance Criteria
 
-- [ ] AC1：GPU 开启时复现图集失同步（tab 切走切回）→ 自动恢复，无中文断裂/白缝残留，无需手动 resize。
-- [ ] AC2：同屏对照（Canvas / WebGL / orca）：opencode 大字块内无横向白线，200% 放大下 WebGL 与 orca 一致。
-- [ ] AC3：`300 / 1.0` 保留：行盒无裁剪（下划线/块下半可见），`--line-height-terminal` 与 `resolveTerminalLineHeight` 同步。
-- [ ] AC4：`pnpm test:run`（含 `terminalRenderer` / `webglRecovery` / `typography`）+ `pnpm type-check` + `pnpm lint:fe` 全绿。
-- [ ] AC5：降级/重载路径均打点（`terminal.renderer.recovery` / `terminal.renderer.resume`），无静默降级。
+- [x] AC1：GPU 开启时复现图集失同步（tab 切走切回）→ 自动恢复，无中文断裂/白缝残留，无需手动 resize。（2026-09-03 真机人工验收通过）
+- [x] AC2：同屏对照（Canvas / WebGL / orca）：opencode 大字块内无横向白线，200% 放大下 WebGL 与 orca 一致。（2026-09-03 真机人工验收通过）
+- [x] AC3：`300 / 1.0` 保留：行盒无裁剪（下划线/块下半可见），`--line-height-terminal` 与 `resolveTerminalLineHeight` 同步。（代码+测试静态确认）
+- [x] AC4：`pnpm test:run`（含 `terminalRenderer` / `webglRecovery` / `typography`）+ `pnpm type-check` + `pnpm lint:fe` 全绿。（`lint:fe`：321 文件/2578 通过/零类型错）
+- [x] AC5：降级/重载路径均打点（`terminal.renderer.recovery` / `terminal.renderer.resume`），无静默降级。（常量收口 + 测试覆盖）
 
 ## Non-Goals
 
