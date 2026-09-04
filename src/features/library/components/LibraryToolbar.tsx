@@ -4,7 +4,6 @@ import React, { useCallback, useMemo } from 'react';
 import { useLibraryStore } from '@/features/library/store/libraryStore';
 import { useMcpStore } from '@/features/library/store/mcpStore';
 import { useSkillStore } from '@/features/skill/store';
-import { useProjectStore } from '@/shared/store/projectStore';
 import type { ResourceKind } from '@/shared/types/library';
 
 const KIND_LABELS: Record<ResourceKind, string> = {
@@ -13,13 +12,11 @@ const KIND_LABELS: Record<ResourceKind, string> = {
   mcp: 'MCP',
 };
 
-function deriveSubLabel(
+export function deriveSubLabel(
   kind: ResourceKind,
   mcpView: string,
   scopeFilter: string,
   tagFilter: string[],
-  agentId: string | null,
-  projectId: string | null,
 ): string {
   if (kind === 'skill') {
     return 'Installed';
@@ -32,12 +29,6 @@ function deriveSubLabel(
   }
   if (tagFilter.length > 0) {
     return `${tagFilter.length} tag${tagFilter.length > 1 ? 's' : ''}`;
-  }
-  if (agentId) {
-    return `Agent: ${agentId}`;
-  }
-  if (projectId) {
-    return `Project: ${projectId}`;
   }
   return 'All';
 }
@@ -53,13 +44,9 @@ const LibraryToolbar: React.FC = React.memo(() => {
 
   const marketplaceTotalItems = useSkillStore((s) => s.marketplaceTotalItems);
 
-  const projectStore = useProjectStore();
-  const agentId = projectStore.activeProjectId;
-  const projectId = projectStore.activeProjectId;
-
   const subLabel = useMemo(
-    () => deriveSubLabel(activeKind, mcpView, scopeFilter, tagFilter, agentId, projectId),
-    [activeKind, mcpView, scopeFilter, tagFilter, agentId, projectId],
+    () => deriveSubLabel(activeKind, mcpView, scopeFilter, tagFilter),
+    [activeKind, mcpView, scopeFilter, tagFilter],
   );
 
   const handleNew = useCallback(() => {
