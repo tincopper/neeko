@@ -1,0 +1,5 @@
+{"file": ".trellis/spec/frontend/state-management.md", "reason": "closeConfirmStore 全局 zustand store 的分层与跨模块直导规范"}
+{"file": ".trellis/spec/frontend/hook-guidelines.md", "reason": "useCloseConfirmation 状态机 store 化迁移、usePaneActions/useTabManagement 改造约束"}
+{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "CloseConfirmDialog 挪到 AppModals 的组件边界与 props 规范"}
+{"file": ".trellis/spec/frontend/directory-structure.md", "reason": "新 store 文件落位 feature store/ 目录（防火墙白名单）"}
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "TDD 红绿循环与回归门禁要求"}

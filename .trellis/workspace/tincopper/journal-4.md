@@ -98,3 +98,65 @@
 ### Next Steps
 
 - None - task complete
+
+
+## Session 180: Cmd+W 未保存关闭确认修复（任务 09-04-cmdw-unsaved-confirm）
+
+**Date**: 2026-09-04
+**Task**: Cmd+W 未保存关闭确认修复（任务 09-04-cmdw-unsaved-confirm）
+**Branch**: `main`
+
+### Summary
+
+修复 Cmd+W/Ctrl+W 关闭 tab 绕过未保存确认：确认状态机提升为全局 closeConfirmStore（AppModals 挂 CloseConfirmDialog），三条关闭路径（X/菜单/快捷键）统一走 closeTabWithConfirmation；SaveAsRequest 增加 closeAfterSave 闭环 untitled 保存后自动关 tab；删除 useCloseConfirmation（clean cutover）。门禁全绿：type-check / test:run 2682 passed / lint:fe。spec 沉淀 state-management.md 场景 + 常见错误 10。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+(No commits - planning session)
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
+
+
+## Session 181: 修复项目切换时 unlisten 注册竞态 toast（safeUnlisten 收口）
+
+**Date**: 2026-09-04
+**Task**: 修复项目切换时 unlisten 注册竞态 toast（safeUnlisten 收口）
+**Branch**: `main`
+
+### Summary
+
+用户报错 listeners[eventId].handlerId（项目切换时）。根因：多个裸 unlisten 调用点命中 tauri 注入脚本注册竞态/双重注销。TDD 修复：新增 useFileTreeSync 竞态回归测试（Red→Green），7 处裸调用点收口 safeUnlisten（useFileTreeSync/useDiffData/useAgentChat/tauriTurn/debugStore/taskRunner/terminalFactory/TerminalViewBase）。门禁全绿：type-check / test:run 2683 passed / lint:fe。spec 沉淀 state-management.md 常见错误 11。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+(No commits - planning session)
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

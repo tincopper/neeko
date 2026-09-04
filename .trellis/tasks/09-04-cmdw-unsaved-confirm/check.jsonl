@@ -1,0 +1,2 @@
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "审查 TDD 覆盖与回归门禁"}
+{"file": ".trellis/spec/frontend/state-management.md", "reason": "审查 store 分层与跨模块导入合规"}
