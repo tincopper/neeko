@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-3.md`
-- **Total Sessions**: 171
+- **Total Sessions**: 172
 - **Last Active**: 2026-09-04
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-3.md` | ~1821 | Active |
+| `journal-3.md` | ~1854 | Active |
 | `journal-2.md` | ~1991 | Archived |
 | `journal-1.md` | ~1986 | Archived |
 <!-- @@@/auto:active-documents -->
@@ -31,6 +31,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 172 | 2026-09-04 | terminal锁统一+neeko-check N1-N5修复 | `54efba0c7072af6e611356d3eb068cbeea037024` | `main` |
 | 171 | 2026-09-04 | terminal 锁统一实现与审查 | `eaec61fe87852451bbc5d5db71443afb47975879` | `main` |
 | 170 | 2026-09-04 | terminal long-poll 去轮询化改造完成 | `982af214` | `main` |
 | 169 | 2026-09-04 | terminal-drain-long-poll 去轮询化 + app_state 优化 | `11d9c10ca4684b3e4a559e2454da460324b94e5c` | `main` |

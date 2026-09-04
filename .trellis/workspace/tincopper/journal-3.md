@@ -1819,3 +1819,36 @@ terminal_drain_wait 挂起式传输替代100ms轮询，三消费方切换+env回
 ### Next Steps
 
 - None - task complete
+
+
+## Session 172: terminal锁统一+neeko-check N1-N5修复
+
+**Date**: 2026-09-04
+**Task**: terminal锁统一+neeko-check N1-N5修复
+**Branch**: `main`
+
+### Summary
+
+(Add summary)
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `54efba0c7072af6e611356d3eb068cbeea037024` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
