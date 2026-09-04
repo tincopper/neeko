@@ -1945,3 +1945,34 @@ terminal_drain_wait 挂起式传输替代100ms轮询，三消费方切换+env回
 ### Next Steps
 
 - None - task complete
+
+
+## Session 176: 归档statusbar-prompts任务
+
+**Date**: 2026-09-04
+**Task**: 归档statusbar-prompts任务
+**Branch**: `main`
+
+### Summary
+
+任务归档到archive/2026-09并提交e128d62a；瞬态index.lock重试一次成功；未新增全局spec（知识已在代码注释与单测内）
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+(No commits - planning session)
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

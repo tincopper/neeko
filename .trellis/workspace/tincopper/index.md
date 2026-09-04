@@ -7,8 +7,8 @@
 ## Current Status
 
 <!-- @@@auto:current-status -->
-- **Active File**: `journal-3.md`
-- **Total Sessions**: 175
+- **Active File**: `journal-4.md`
+- **Total Sessions**: 179
 - **Last Active**: 2026-09-04
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,8 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-3.md` | ~1947 | Active |
+| `journal-4.md` | ~100 | Active |
+| `journal-3.md` | ~1978 | Archived |
 | `journal-2.md` | ~1991 | Archived |
 | `journal-1.md` | ~1986 | Archived |
 <!-- @@@/auto:active-documents -->
@@ -31,6 +32,10 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 179 | 2026-09-04 | StatusBar开发规范文档 | - | `main` |
+| 178 | 2026-09-04 | neeko-check十三支柱审查 | - | `main` |
+| 177 | 2026-09-04 | StatusBar registry修门禁 | - | `main` |
+| 176 | 2026-09-04 | 归档statusbar-prompts任务 | - | `main` |
 | 175 | 2026-09-04 | Prompts优化1-4落地 | - | `main` |
 | 174 | 2026-09-04 | StatusBar prompts优化点复核 | - | `main` |
 | 173 | 2026-09-04 | StatusBar prompts快捷入口实现 | - | `main` |
