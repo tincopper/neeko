@@ -6,8 +6,10 @@ import { useLibraryStore } from '../store/libraryStore';
 
 /**
  * Prompt insert flow shared by LibraryPanel and LibraryDetail (single source).
- * Records usage, resolves `{{variables}}` through the variable dialog for agent
+ * Resolves `{{variables}}` through the variable dialog for agent and terminal
  * inserts, then forwards the (possibly rendered) prompt to the host callback.
+ * Usage is counted only when the prompt is actually inserted (dialog confirmed
+ * or variable-free direct insert) — cancelling the dialog counts nothing.
  */
 export function usePromptInsert(
   onInsertPrompt?: (prompt: PromptResource, target?: PromptInsertTarget) => void,
@@ -16,19 +18,20 @@ export function usePromptInsert(
 
   return useCallback(
     (prompt: PromptResource, target: PromptInsertTarget = 'agent') => {
-      void recordUsage(prompt.id);
-      if (target === 'agent') {
+      if (target === 'agent' || target === 'terminal') {
         const variables = useLibraryStore.getState().detectVariables(prompt.content);
         if (variables.length > 0) {
           void useLibraryStore
             .getState()
             .openVariableDialog(prompt.content)
             .then((rendered) => {
+              void recordUsage(prompt.id);
               onInsertPrompt?.({ ...prompt, content: rendered }, target);
             });
           return;
         }
       }
+      void recordUsage(prompt.id);
       onInsertPrompt?.(prompt, target);
     },
     [recordUsage, onInsertPrompt],

@@ -14,6 +14,11 @@ export {
   launchAgentInTerminal,
   switchAgentInTerminal,
   sendToTerminal,
+  pasteToTerminal,
+  pasteToTerminalSession,
+  wrapBracketedPaste,
+  BRACKETED_PASTE_START,
+  BRACKETED_PASTE_END,
 } from './components/terminalCommands';
 export { worktreeKey } from './components/worktreeTerminalKey';
 export {
@@ -53,7 +58,7 @@ export {
 } from './components/terminalCache';
 
 // New unified exports
-export { launchAgentInAnyTerminal, switchAgentInAnyTerminal } from './components/terminalCache';
+export { findSessionIdForProject } from './components/terminalCache';
 
 export { default as SplitLayout, type SplitStateInfo } from './components/SplitLayout';
 export { updateAllTerminalThemes } from './components/index';

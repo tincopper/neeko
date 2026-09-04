@@ -16,7 +16,13 @@ import { ProjectGuidePage } from '@/features/project';
 import { useProjectActionsContext } from '@/features/project/ProjectContext';
 import { useQuickOpenStore } from '@/features/quick-open/store/quickOpenStore';
 import { useRecentFilesStore } from '@/features/quick-open/store/recentFilesStore';
-import { sendToTerminal } from '@/features/terminal';
+import {
+  findSessionIdForProject,
+  pasteToTerminal,
+  pasteToTerminalSession,
+  remoteTerminalCache,
+  wslTerminalCache,
+} from '@/features/terminal';
 import { KeyRound } from '@/shared/components/icons';
 import { useEditorContext, useAppContext, useTerminalInsert } from '@/shared/contexts';
 import { INSERT_TO_AGENT_INPUT_EVENT } from '@/shared/events';
@@ -31,6 +37,7 @@ import { Button } from '@/ui/Button';
 
 import { WelcomeScreen } from './WelcomeScreen';
 const APP_SETTINGS_PROJECT_ID = '__app__';
+
 function ProjectWorkspace() {
   const { showToast } = useAppContext();
   const { onAddProject } = useProjectActionsContext();
@@ -188,12 +195,29 @@ function ProjectWorkspace() {
       insertToTerminal: (text: string) => {
         const editorState = useEditorStore.getState();
         const activeTabId = editorState.activeTabId;
-        const proj = useProjectStore.getState();
-        const activeProjectId = proj.activeProjectId;
-        if (!activeProjectId) return false;
+        const activeProject = useProjectStore.getState().activeProject;
+        const activeProjectId = activeProject?.id;
+        if (!activeProjectId || !activeProject) return false;
         try {
-          sendToTerminal(activeProjectId, text, activeTabId);
-          return true;
+          const env = activeProject.environment;
+          // WSL / SSH 会话落在各自 cache——同样走 bracketed-paste（不执行）。
+          // WSL 用确知 distro 收敛命名空间；SSH 的 environment 不含 entryId，
+          // host 反查 remoteEntries 在多 entry 同 host 时歧义，且 remote projectId
+          // 为全局 UUID、remote 域内定界匹配已精确，故保持 'remote:' 不再收敛。
+          if (env.type === 'Wsl' || env.type === 'Remote') {
+            const cache = env.type === 'Wsl' ? wslTerminalCache : remoteTerminalCache;
+            const scopePrefix = env.type === 'Wsl' ? `wsl:${env.distro}:` : 'remote:';
+            const sessionId = findSessionIdForProject(
+              cache,
+              activeProjectId,
+              activeTabId,
+              scopePrefix,
+            );
+            if (!sessionId) return false;
+            pasteToTerminalSession(sessionId, text);
+            return true;
+          }
+          return pasteToTerminal(activeProjectId, text, activeTabId);
         } catch (err) {
           console.error('[ProjectWorkspace] insertToTerminal failed:', err);
           return false;

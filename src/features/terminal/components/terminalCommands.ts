@@ -50,6 +50,68 @@ export function sendToTerminal(projectId: string, text: string, tabId?: string |
   });
 }
 
+/** Bracketed-paste start marker: wrapped input lands in the buffer, never executes. */
+export const BRACKETED_PASTE_START = '\x1b[200~';
+/** Bracketed-paste end marker. */
+export const BRACKETED_PASTE_END = '\x1b[201~';
+
+/**
+ * Wrap text in bracketed-paste markers so the shell pastes it as one
+ * buffer edit (multi-line stays multi-line, nothing auto-executes).
+ */
+export function wrapBracketedPaste(text: string): string {
+  return `${BRACKETED_PASTE_START}${text}${BRACKETED_PASTE_END}`;
+}
+
+/**
+ * Emit bracketed-paste bytes to an already-resolved terminal session.
+ * Shares sendToTerminal's transport, never appends `\r`.
+ */
+export function pasteToTerminalSession(sessionId: string, text: string): void {
+  const bytes = Array.from(new TextEncoder().encode(wrapBracketedPaste(text)));
+  emit(terminalInputEvent(sessionId), bytes).catch((err) => {
+    log(`pasteToTerminalSession error: ${err}`);
+  });
+}
+
+/**
+ * Paste text into the active terminal's PTY without executing it
+ * (bracketed-paste wrapped). Same session lookup as sendToTerminal;
+ * sendToTerminal itself is untouched (its trailing-`\r` paths stay intact).
+ *
+ * @returns true when a session matched and bytes were emitted, false otherwise.
+ */
+export function pasteToTerminal(projectId: string, text: string, tabId?: string | null): boolean {
+  let sessionId: string | null = null;
+
+  // When tabId is provided, build the exact cache key for precise lookup
+  if (tabId) {
+    const exactKey = terminalCacheKey(projectId, tabId);
+    sessionId = terminalCache.get(exactKey)?.sessionId ?? null;
+  }
+
+  // Fallback: exact projectId match, then prefix match
+  if (!sessionId) {
+    sessionId = terminalCache.get(projectId)?.sessionId ?? null;
+  }
+  if (!sessionId) {
+    for (const [key, c] of terminalCache.entries()) {
+      if (key.startsWith(`${projectId}:`)) {
+        sessionId = c.sessionId;
+        break;
+      }
+    }
+  }
+
+  if (!sessionId) {
+    log(`pasteToTerminal: no session for ${projectId}${tabId ? `:${tabId}` : ''}`);
+    return false;
+  }
+
+  pasteToTerminalSession(sessionId, text);
+  return true;
+}
+
 export function launchAgentInTerminal(projectId: string, command: string, args: string[]) {
   const cmdStr = [command, ...args].join(' ');
   sendToTerminal(projectId, '\x03');

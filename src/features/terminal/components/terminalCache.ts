@@ -504,3 +504,53 @@ export async function switchAgentInAnyTerminal(
   }
   if (oldCache?.term) safeDisposeTerminal(oldCache.term);
 }
+
+/**
+ * 检查 key 是否以冒号定界含某段（整段出现，非子串）。
+ * 不用 `key.split(':').includes(part)`：part 本身含冒号（如编辑器 tabId
+ * `proj:src/a.ts`、远端 key 内嵌的 tab 段）时会被切碎导致永远 miss；
+ * 定界子串匹配对含冒号的 part 同样成立，且不会把 `proj` 误配 `proj-1`。
+ */
+function hasCacheKeySegment(key: string, part: string): boolean {
+  return (
+    key === part ||
+    key.startsWith(`${part}:`) ||
+    key.endsWith(`:${part}`) ||
+    key.includes(`:${part}:`)
+  );
+}
+
+/**
+ * 在终端 cache 中按项目找活动会话。key 形态各异
+ *（local `proj:tab:p1` / wsl `wsl:distro:proj:…` / remote `remote:entry:proj:…`），
+ * 按冒号定界匹配 projectId，优先命中活动 tab。
+ * `scopePrefix` 为确知命名空间（如 `wsl:<distro>:`）时先收敛作用域，
+ * 镜像后端 `resolveCacheKey` 的前缀消解语义。
+ */
+export function findSessionIdForProject(
+  cache: Map<string, { sessionId: string | null }>,
+  projectId: string,
+  tabId?: string | null,
+  scopePrefix?: string,
+): string | null {
+  const inScope = (key: string): boolean =>
+    !scopePrefix || key === scopePrefix.slice(0, -1) || key.startsWith(scopePrefix);
+  if (tabId) {
+    for (const [key, entry] of cache.entries()) {
+      if (
+        entry.sessionId &&
+        inScope(key) &&
+        hasCacheKeySegment(key, projectId) &&
+        hasCacheKeySegment(key, tabId)
+      ) {
+        return entry.sessionId;
+      }
+    }
+  }
+  for (const [key, entry] of cache.entries()) {
+    if (entry.sessionId && inScope(key) && hasCacheKeySegment(key, projectId)) {
+      return entry.sessionId;
+    }
+  }
+  return null;
+}

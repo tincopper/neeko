@@ -7,10 +7,19 @@ export {
   destroyTerminalCachesByPrefix,
   refreshTerminal,
   terminalWrapperRefs,
-  executedAgentKeys,
+  findSessionIdForProject,
 } from './terminalCache';
 export { createTerminalForProject } from './terminalFactory';
-export { launchAgentInTerminal, switchAgentInTerminal, sendToTerminal } from './terminalCommands';
+export {
+  launchAgentInTerminal,
+  switchAgentInTerminal,
+  sendToTerminal,
+  pasteToTerminal,
+  pasteToTerminalSession,
+  wrapBracketedPaste,
+  BRACKETED_PASTE_START,
+  BRACKETED_PASTE_END,
+} from './terminalCommands';
 export { worktreeKey } from './worktreeTerminalKey';
 export {
   cleanupTerminalsForTab,

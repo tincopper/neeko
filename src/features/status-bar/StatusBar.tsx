@@ -16,6 +16,7 @@ import { useTaskStore } from '@/shared/store/taskStore';
 import { safeUnlisten } from '@/shared/utils/safeUnlisten';
 
 import { LspStatusSection, serverName } from './LspStatusSection';
+import { PromptsStatusSection } from './PromptsStatusSection';
 
 interface LspInstallProgressEvent {
   language_id: string;
@@ -304,6 +305,7 @@ export function StatusBar() {
             Ln {cursorPosition.line}, Col {cursorPosition.col}
           </span>
         )}
+        <PromptsStatusSection />
         <NotificationButton />
       </div>
     </div>
