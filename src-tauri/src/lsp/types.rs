@@ -9,6 +9,10 @@ pub const LSP_DIAG_EVENT_PREFIX: &str = "lsp-diagnostics-";
 /// Prefix for LSP progress events: `lsp-progress-{project_path}`.
 pub const LSP_PROGRESS_EVENT_PREFIX: &str = "lsp-project-";
 
+/// Auto-install progress event: `lsp-install-progress`
+/// (frontend mirror: `src/shared/events.ts` `LSP_INSTALL_PROGRESS_EVENT`).
+pub const LSP_INSTALL_PROGRESS_EVENT: &str = "lsp-install-progress";
+
 /// LSP session lifecycle events.
 pub mod session_events {
     /// Server process is starting.

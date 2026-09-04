@@ -11,6 +11,7 @@ use tauri::Emitter;
 use crate::common::executor::factory::ExecTarget;
 use crate::lsp::plugin::LspPlugin;
 use crate::lsp::process::run_command_blocking;
+use crate::lsp::types::LSP_INSTALL_PROGRESS_EVENT;
 
 /// Track in-progress installs to avoid concurrent attempts per language.
 static INSTALL_IN_PROGRESS: LazyLock<Mutex<HashSet<String>>> =
@@ -28,7 +29,7 @@ fn emit_progress(app_handle: &tauri::AppHandle, language_id: &str, phase: &str, 
         phase: phase.to_string(),
         message: message.to_string(),
     };
-    if let Err(e) = app_handle.emit("lsp-install-progress", payload) {
+    if let Err(e) = app_handle.emit(LSP_INSTALL_PROGRESS_EVENT, payload) {
         log::error!("[LSP] Failed to emit install progress: {}", e);
     }
 }

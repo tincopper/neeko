@@ -18,6 +18,11 @@ export const GIT_CHANGED_EVENT = 'git-changed';
 /** 应用关闭请求事件（后端阻止关闭后通知前端弹「确认退出」框）：`app-close-requested` */
 export const APP_CLOSE_REQUESTED_EVENT = 'app-close-requested';
 
+// ── LSP 事件（与 src-tauri/src/lsp/types.rs 常量保持同步）──
+
+/** LSP 自动安装进度事件：`lsp-install-progress` */
+export const LSP_INSTALL_PROGRESS_EVENT = 'lsp-install-progress';
+
 /**
  * 插入到 agent 输入框事件（DOM CustomEvent，best-effort 桥接）：`neeko:insert-to-agent-input`
  * ProjectWorkspace dispatch，agent 输入组件可监听。统一此处单一事实源，禁止硬编码。
