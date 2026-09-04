@@ -7,6 +7,7 @@ import {
   exclusiveOpenDebugPanel,
   registerDebugPanelCloser,
 } from '@/shared/utils/bottomPanelExclusive';
+import { safeUnlisten } from '@/shared/utils/safeUnlisten';
 
 import {
   dapCheckAdapter,
@@ -747,7 +748,7 @@ export const useDebugStore = create<DebugState>((rawSet, get) => {
         }),
       );
       return () => {
-        for (const u of unsubs) u();
+        for (const u of unsubs) safeUnlisten(u)();
       };
     },
   };

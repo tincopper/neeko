@@ -5,6 +5,7 @@ import { Terminal } from '@xterm/xterm';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 
 import { createDrainTransportScheduler } from '@/shared/utils/drainLoop';
+import { safeUnlisten } from '@/shared/utils/safeUnlisten';
 import {
   applyRenderer,
   buildTerminalTheme,
@@ -403,9 +404,10 @@ export default React.memo(function TerminalViewBase({
           // 会话自然退出（shell exit）后后端已移除 drain 条目并 close：
           // 挂起的 drainWait 得 NotFound 自停；dispose 幂等收口，closed 后
           // 无数据可拉，注销绝对安全。
-          const unlistenClosed = await listen(terminalClosedEvent(sessionId), () => {
+          const rawUnlistenClosed = await listen(terminalClosedEvent(sessionId), () => {
             scheduler.dispose();
           });
+          const unlistenClosed = safeUnlisten(rawUnlistenClosed);
 
           // 调度器注销挂到 entry.unlisten 槽位：terminalCache 销毁/重建统一经
           // entry.unlisten?.() 清理，幂等安全。closed 监听一并收口，避免

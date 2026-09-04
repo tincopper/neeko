@@ -6,6 +6,7 @@ import { useFileStore } from '@/features/file/store';
 import { FILE_TREE_CHANGED_EVENT } from '@/shared/events';
 import type { ProjectCommands, ProjectView, FileTreeChangedEvent } from '@/shared/types';
 import { DEFAULT_TREE_DEPTH } from '@/shared/types/file';
+import { safeUnlisten } from '@/shared/utils/safeUnlisten';
 
 export interface UseFileTreeSyncOptions {
   project: ProjectView | null;
@@ -145,7 +146,7 @@ export function useFileTreeSync({
         });
     });
     return () => {
-      unlistenPromise.then((unlisten) => unlisten());
+      unlistenPromise.then((unlisten) => safeUnlisten(unlisten)());
     };
   }, [activeProjectId, project, fileRootPath, ignoredFiles, makeLocalLoader]);
 

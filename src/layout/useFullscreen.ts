@@ -2,6 +2,7 @@ import { getCurrentWindow } from '@tauri-apps/api/window';
 import { useEffect, useState } from 'react';
 
 import { reportFrontendError } from '@/shared/utils/errorReporting';
+import { safeUnlisten } from '@/shared/utils/safeUnlisten';
 
 /**
  * Tracks whether the Tauri window is currently in fullscreen mode.
@@ -16,6 +17,7 @@ export function useFullscreen(): boolean {
 
   useEffect(() => {
     let unlistenFn: (() => void) | undefined;
+    let cancelled = false;
 
     try {
       const appWindow = getCurrentWindow();
@@ -36,6 +38,10 @@ export function useFullscreen(): boolean {
             .catch((err) => reportFrontendError('window.isFullscreen', err));
         })
         .then((fn) => {
+          if (cancelled) {
+            safeUnlisten(fn)();
+            return;
+          }
           unlistenFn = fn;
         })
         .catch((err) => reportFrontendError('window.onResized', err));
@@ -44,6 +50,7 @@ export function useFullscreen(): boolean {
     }
 
     return () => {
+      cancelled = true;
       unlistenFn?.();
     };
   }, []);

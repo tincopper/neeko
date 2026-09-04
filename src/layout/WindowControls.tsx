@@ -2,6 +2,7 @@ import { getCurrentWindow } from '@tauri-apps/api/window';
 import React, { useEffect, useMemo, useState } from 'react';
 
 import { Minus, Square, Copy, X } from '@/shared/components/icons';
+import { safeUnlisten } from '@/shared/utils/safeUnlisten';
 
 function WindowControls() {
   const [isMaximized, setIsMaximized] = useState(false);
@@ -28,7 +29,7 @@ function WindowControls() {
 
     return () => {
       cancelled = true;
-      unlisten.then((fn) => fn());
+      unlisten.then((fn) => safeUnlisten(fn)());
     };
   }, [appWindow]);
 

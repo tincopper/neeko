@@ -5,6 +5,7 @@ import { Terminal } from '@xterm/xterm';
 
 import type { AgentConfig } from '@/shared/types';
 import { createDrainTransportScheduler } from '@/shared/utils/drainLoop';
+import { safeUnlisten } from '@/shared/utils/safeUnlisten';
 import { applyRenderer, buildTerminalTheme, TERMINAL_SCROLLBACK } from '@/shared/utils/terminal';
 import { terminalClosedEvent, terminalInputEvent } from '@/shared/utils/terminalEvents';
 import { setupTerminalInput } from '@/shared/utils/terminalInput';
@@ -150,7 +151,10 @@ export async function createTerminalForProject(
       scheduler.dispose();
     };
 
-    const unlistenClosed = await listen<{ exit_code: number }>(
+    // safeUnlisten：closed 事件自注销 + cache 销毁再次调用属双重注销（第二次
+    // 命中已删除条目抛 listeners[eventId].handlerId），单次放行收口；注册竞态
+    // （unlisten 早于事件表 eval 填充）由内部重试补执行。
+    const rawUnlistenClosed = await listen<{ exit_code: number }>(
       terminalClosedEvent(sid),
       async (event) => {
         log(`Session ${sid} closed by backend (exit_code=${event.payload?.exit_code ?? -1})`);
@@ -166,6 +170,7 @@ export async function createTerminalForProject(
         terminalRebuildCallbacks.get(cacheKey)?.();
       },
     );
+    const unlistenClosed = safeUnlisten(rawUnlistenClosed);
     cache.unlistenClosed = unlistenClosed;
 
     const sendInput = (text: string) => {

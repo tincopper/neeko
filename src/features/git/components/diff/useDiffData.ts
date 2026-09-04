@@ -6,6 +6,7 @@ import { useFileChangedEvent } from '@/shared/hooks/useFileChangedEvent';
 import { useGitRefresh } from '@/shared/hooks/useGitRefresh';
 import type { FileChangedEvent } from '@/shared/types';
 import type { ProjectCommands } from '@/shared/types/activeProject';
+import { safeUnlisten } from '@/shared/utils/safeUnlisten';
 
 import type { DiffResult, DiffSource, DiffLine } from './types';
 
@@ -141,8 +142,8 @@ export function useDiffData({
         setRefreshTick((t) => t + 1);
       }
     }).then((un) => {
-      if (cancelled) un();
-      else unlisten = un;
+      if (cancelled) safeUnlisten(un)();
+      else unlisten = safeUnlisten(un);
     });
     return () => {
       cancelled = true;

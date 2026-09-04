@@ -12,6 +12,7 @@ import {
   type DrainTransportScheduler,
 } from '@/shared/utils/drainLoop';
 import { reportFrontendError } from '@/shared/utils/errorReporting';
+import { safeUnlisten } from '@/shared/utils/safeUnlisten';
 import { terminalClosedEvent, terminalInputEvent } from '@/shared/utils/terminalEvents';
 
 import {
@@ -66,7 +67,9 @@ export async function startTaskProcess(opts: StartTaskProcessOptions): Promise<T
   const dispose = () => {
     if (disposed) return;
     disposed = true;
-    unlistenClosed?.();
+    if (unlistenClosed) {
+      safeUnlisten(unlistenClosed)();
+    }
     scheduler?.dispose();
     unlistenClosed = null;
     scheduler = null;

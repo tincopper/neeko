@@ -15,6 +15,7 @@ import type { AgentConfig } from '@/shared/types/agent';
 import type { SequencedEvent } from '@/shared/types/agentChat';
 import type { ConversationMeta } from '@/shared/types/session';
 import type { AgentChatTabData } from '@/shared/types/tab';
+import { safeUnlisten } from '@/shared/utils/safeUnlisten';
 
 import {
   approveAgentCall,
@@ -476,9 +477,9 @@ export function useAgentChat({ tabKey, tabId, projectId, data, mockMode }: UseAg
         },
       );
       if (disposed) {
-        unlisten();
+        safeUnlisten(unlisten)();
       } else {
-        unlistenRef.current = unlisten;
+        unlistenRef.current = safeUnlisten(unlisten);
       }
     })();
     return () => {

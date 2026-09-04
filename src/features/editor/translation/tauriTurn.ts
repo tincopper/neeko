@@ -2,6 +2,7 @@ import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 
 import { TRANSLATION_EVENT } from '@/shared/events';
 import type { SequencedEvent } from '@/shared/types/agentChat';
+import { safeUnlisten } from '@/shared/utils/safeUnlisten';
 
 import { cancelTranslation, startTranslation } from '../api/translationApi';
 
@@ -78,10 +79,10 @@ export function createTauriTurn(options: TauriTurnOptions): TranslationTurn {
         })
           .then((u) => {
             if (settled) {
-              u();
+              safeUnlisten(u)();
               return;
             }
-            unlisten = u;
+            unlisten = safeUnlisten(u);
             // 信号中止：取消会话（bridge 回 turn_end(stopped) 后走 reject；
             // 轮询兜底覆盖事件未达的窗口）
             abortTimer = setInterval(() => {
