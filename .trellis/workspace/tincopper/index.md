@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-3.md`
-- **Total Sessions**: 168
-- **Last Active**: 2026-09-03
+- **Total Sessions**: 169
+- **Last Active**: 2026-09-04
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-3.md` | ~1722 | Active |
+| `journal-3.md` | ~1755 | Active |
 | `journal-2.md` | ~1991 | Archived |
 | `journal-1.md` | ~1986 | Archived |
 <!-- @@@/auto:active-documents -->
@@ -31,6 +31,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 169 | 2026-09-04 | terminal-drain-long-poll 去轮询化 + app_state 优化 | `11d9c10ca4684b3e4a559e2454da460324b94e5c` | `main` |
 | 168 | 2026-09-03 | WebGL自愈任务验收通过归档 | `aff4f8e9` | `main` |
 | 167 | 2026-09-03 | WebGL自愈任务验收通过归档 | `aff4f8e9` | `main` |
 | 166 | 2026-09-03 | 终端WebGL自愈review修复与合入 | `aff4f8e9` | `main` |

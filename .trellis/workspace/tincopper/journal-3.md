@@ -1720,3 +1720,36 @@ Archived 09-01-scrollbar-auto-hide: scrollbar auto-hide with 3s delay completed 
 ### Next Steps
 
 - None - task complete
+
+
+## Session 169: terminal-drain-long-poll 去轮询化 + app_state 优化
+
+**Date**: 2026-09-04
+**Task**: terminal-drain-long-poll 去轮询化 + app_state 优化
+**Branch**: `main`
+
+### Summary
+
+(Add summary)
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `11d9c10ca4684b3e4a559e2454da460324b94e5c` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
