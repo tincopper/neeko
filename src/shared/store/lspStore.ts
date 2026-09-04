@@ -16,6 +16,12 @@ import type { ProjectLanguageProfile } from '@/features/lsp/types';
 import { preloadLanguageExtension } from '@/shared/utils/codemirror';
 import { safeUnlisten } from '@/shared/utils/safeUnlisten';
 
+export interface LspInstallProgress {
+  language_id: string;
+  phase: 'installing' | 'done' | 'error';
+  message: string;
+}
+
 export interface LspSessionState {
   languageId: string;
   serverName: string;
@@ -51,6 +57,9 @@ interface LspStoreState {
   profiles: Record<string, ProjectLanguageProfile>;
   /** Extension routing conflicts from the live registry. */
   extensionConflicts: LspExtensionConflictDto[];
+  /** 自动安装进度（常驻 InstallProgressBridge 写入，LspSlotItem 读取）。 */
+  installProgress: LspInstallProgress | null;
+  setInstallProgress: (progress: LspInstallProgress | null) => void;
   /** 显式跳转（F12 / Cmd+Click）进行中：UI 据此显示 loading 光标。 */
   isDefinitionJumping: boolean;
   setDefinitionJumping: (jumping: boolean) => void;
@@ -76,7 +85,12 @@ export const useLspStore = create<LspStoreState>((set, get) => ({
   sessions: {},
   profiles: {},
   extensionConflicts: [],
+  installProgress: null,
   isDefinitionJumping: false,
+
+  setInstallProgress: (progress) => {
+    set({ installProgress: progress });
+  },
 
   setDefinitionJumping: (jumping) => {
     set({ isDefinitionJumping: jumping });

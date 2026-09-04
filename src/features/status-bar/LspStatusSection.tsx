@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react';
 import { createPortal } from 'react-dom';
+import { useShallow } from 'zustand/shallow';
 
 import {
   lspGetServerInfo,
@@ -13,6 +14,7 @@ import { cn } from '@/lib/utils';
 import { RefreshCw, ServerIcon, Square, TerminalIcon } from '@/shared/components/icons';
 import { useLspStore, type LspSessionState } from '@/shared/store/lspStore';
 import { useNotificationStore } from '@/shared/store/notificationStore';
+import { useProjectStore } from '@/shared/store/projectStore';
 import { useTaskStore } from '@/shared/store/taskStore';
 
 /**
@@ -209,22 +211,24 @@ function ChevronRight() {
   );
 }
 
-export interface LspStatusSectionProps {
-  activeProjectPath: string;
-  activeProjectId: string | null;
-  projectName: string;
-  sessionEntries: LspSessionState[];
-}
-
 /**
  * Status-bar LSP chip + nested menus (main list + per-server submenu).
+ * 标准 registry item：自订阅 store（PromptsStatusSection 范本），无 props。
  */
-export function LspStatusSection({
-  activeProjectPath,
-  activeProjectId,
-  projectName,
-  sessionEntries,
-}: LspStatusSectionProps) {
+export function LspStatusSection() {
+  const activeProjectPath = useProjectStore((s) => s.activeProject?.path);
+  const activeProjectId = useProjectStore((s) => s.activeProject?.id ?? null);
+  const projectName = useProjectStore((s) => s.activeProject?.name ?? 'Project');
+  // Use shallow comparison to avoid re-render loops from new {} references.
+  // Filter out stopped sessions — they should not appear in the status bar.
+  const sessionEntries = useLspStore(
+    useShallow((s) => {
+      if (!activeProjectPath) return [] as LspSessionState[];
+      const projectSessions = s.sessions[activeProjectPath];
+      if (!projectSessions) return [] as LspSessionState[];
+      return Object.values(projectSessions).filter((se) => se.status !== 'stopped');
+    }),
+  );
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [dropdownStyle, setDropdownStyle] = useState<CSSProperties | undefined>(undefined);
   const [activeSubmenuLanguageId, setActiveSubmenuLanguageId] = useState<string | null>(null);
@@ -381,6 +385,7 @@ export function LspStatusSection({
   };
 
   const handleRestart = async (languageId: string) => {
+    if (!activeProjectPath) return;
     const store = useLspStore.getState();
     const name = sessionEntries.find((s) => s.languageId === languageId)?.serverName;
     closeAll();
@@ -402,6 +407,7 @@ export function LspStatusSection({
   };
 
   const handleStop = async (languageId: string) => {
+    if (!activeProjectPath) return;
     const store = useLspStore.getState();
     closeAll();
     store.removeSession(activeProjectPath, languageId);
@@ -414,6 +420,7 @@ export function LspStatusSection({
   };
 
   const handleRestartAll = async () => {
+    if (!activeProjectPath) return;
     const store = useLspStore.getState();
     const languages = sessionEntries.map((s) => s.languageId);
     closeAll();
@@ -434,6 +441,7 @@ export function LspStatusSection({
   };
 
   const handleStopAll = async () => {
+    if (!activeProjectPath) return;
     const store = useLspStore.getState();
     const languages = sessionEntries.map((s) => s.languageId);
     closeAll();
@@ -449,7 +457,7 @@ export function LspStatusSection({
   };
 
   const handleViewLogs = async (session: LspSessionState) => {
-    if (!activeProjectId) return;
+    if (!activeProjectId || !activeProjectPath) return;
     closeAll();
     try {
       await openLspLogConsole({
@@ -477,7 +485,7 @@ export function LspStatusSection({
     }, 180);
   };
 
-  if (sessionEntries.length === 0) return null;
+  if (!activeProjectPath || sessionEntries.length === 0) return null;
 
   const multi = sessionEntries.length > 1;
   const chipTitle = multi

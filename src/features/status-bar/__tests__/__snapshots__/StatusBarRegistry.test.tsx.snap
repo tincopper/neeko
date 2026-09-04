@@ -1,0 +1,46 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`statusBarRegistry > 快照：side/order 保持稳定 1`] = `
+[
+  {
+    "id": "branch",
+    "order": 10,
+    "side": "left",
+  },
+  {
+    "id": "lsp",
+    "order": 20,
+    "side": "left",
+  },
+  {
+    "id": "conflicts",
+    "order": 50,
+    "side": "left",
+  },
+  {
+    "id": "console",
+    "order": 10,
+    "side": "right",
+  },
+  {
+    "id": "debug",
+    "order": 20,
+    "side": "right",
+  },
+  {
+    "id": "cursor",
+    "order": 30,
+    "side": "right",
+  },
+  {
+    "id": "prompts",
+    "order": 40,
+    "side": "right",
+  },
+  {
+    "id": "notifications",
+    "order": 50,
+    "side": "right",
+  },
+]
+`;
