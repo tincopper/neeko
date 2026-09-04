@@ -1,0 +1,10 @@
+{"file": ".trellis/spec/backend/index.md", "reason": "后端规范索引"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "Rust 质量红线（平台门控/阻塞IO/命令层）"}
+{"file": ".trellis/spec/backend/concurrency-guidelines.md", "reason": "Notify 挂起等待的并发规范"}
+{"file": ".trellis/spec/backend/command-guidelines.md", "reason": "Tauri 命令层约定（新命令 terminal_drain_wait）"}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "AppError/NotFound 语义复用"}
+{"file": ".trellis/spec/frontend/index.md", "reason": "前端规范索引"}
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "前端质量规范"}
+{"file": ".trellis/spec/frontend/api-layer.md", "reason": "api 层封装约定（新增 drainWait）"}
+{"file": ".trellis/spec/unit-test/index.md", "reason": "TDD 测试规范"}
+{"file": "docs/research/terminal-drain-transport-alternatives.md", "reason": "本任务调研依据（一手源码引用）"}

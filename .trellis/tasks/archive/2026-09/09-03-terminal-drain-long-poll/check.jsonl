@@ -1,0 +1,6 @@
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "Rust 质量红线核查"}
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "前端质量核查"}
+{"file": ".trellis/spec/unit-test/index.md", "reason": "测试规范核查"}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "跨层数据流核查"}
+{"file": ".trellis/spec/guides/code-reuse-thinking-guide.md", "reason": "复用核查（drainLoop 既有协议复用）"}
+{"file": "docs/research/terminal-drain-transport-alternatives.md", "reason": "调研结论对照（方案边界）"}
