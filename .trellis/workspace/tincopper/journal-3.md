@@ -1852,3 +1852,96 @@ terminal_drain_wait 挂起式传输替代100ms轮询，三消费方切换+env回
 ### Next Steps
 
 - None - task complete
+
+
+## Session 173: StatusBar prompts快捷入口实现
+
+**Date**: 2026-09-04
+**Task**: StatusBar prompts快捷入口实现
+**Branch**: `main`
+
+### Summary
+
+新增PromptsStatusSection（搜索+favorite置顶+描述兜底），usePromptInsert变量决议放宽到terminal，新增pasteToTerminal bracketed包裹，ProjectWorkspace按Local/Wsl/Remote分发；修StatusBar import覆盖bug；tsc/eslint/全量2635用例通过
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+(No commits - planning session)
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
+
+
+## Session 174: StatusBar prompts优化点复核
+
+**Date**: 2026-09-04
+**Task**: StatusBar prompts优化点复核
+**Branch**: `main`
+
+### Summary
+
+列5项优化：搜索框回车/键盘导航、插入后终端露面、取消变量框仍计usage、SSH同projectId串会话、全量sort；均未改代码
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+(No commits - planning session)
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
+
+
+## Session 175: Prompts优化1-4落地
+
+**Date**: 2026-09-04
+**Task**: Prompts优化1-4落地
+**Branch**: `main`
+
+### Summary
+
+键盘导航+终端露面（revealTerminalTab经resolveTabKey/activateTab）+usage后移+SSH不改（UUID唯一）；修2 lint（effect内setState、未用参）；全量待跑
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+(No commits - planning session)
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
