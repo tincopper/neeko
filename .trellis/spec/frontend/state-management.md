@@ -675,6 +675,62 @@ const browserState = useProjectBrowserStore((s) =>
 ```
 
 ---
+## 场景：Tab 关闭入口统一走未保存确认编排 2026-09-04
+
+### 1. Scope / Trigger
+
+新增或修改任何「关闭 editor tab」的入口（TabBar X 按钮、菜单 `CLOSE_TAB_EVENT`、键盘快捷键、保存后自动关等）时，必须经 `closeTabWithConfirmation` 统一编排，禁止直调 `closeEditorTab`。直调会绕过未保存确认，导致用户输入内容静默丢失（历史事故见常见错误 10）。
+
+### 2. Signatures
+
+```ts
+// src/features/editor/store/closeConfirmStore.ts（zustand store + 共享编排同文件）
+useCloseConfirmStore.request(fileName: string): Promise<'save' | 'discard' | 'cancel'>;
+useCloseConfirmStore.resolve(action: 'save' | 'discard' | 'cancel'): void;
+closeTabWithConfirmation(tabKey: string, tabId: string, saveTab?: (tabId: string) => Promise<boolean>): Promise<boolean>;
+```
+
+### 3. Contracts
+
+- dirty 文件 tab（`isDirtyFileTab`）→ 经 store 弹三选确认框（全局唯一实例，渲染于 `AppModals`）。
+- `'cancel'` → 不关；`'discard'` → 直接关；`'save'` → `saveTab` 成功才关（失败含 Save As 取消 → 不关）。
+- 非 file tab / 非 dirty → 直关，不弹框。
+- 关闭一律经 `@/features/terminal` 门面 `closeEditorTab`（PTY 回收等清理不绕过）。
+- 保存动作显式注入（如 `useAppShellData` 把 `fileView.saveTabById` 传给 `closeActiveTabCommand` / `useTabManagement`），不设模块级注册器。
+
+### 4. Validation & Error Matrix
+
+- `saveTab` 缺省或返回 `false` → 视同保存失败，tab 不关闭。
+- 并发 `request()` → 旧 Promise resolve `'cancel'`（旧 tab 保持打开，无悬挂泄漏）。
+- `resolve()` 幂等（resolver 已空时 no-op）；overlay 'close-confirm' 计数幂等。
+
+### 5. Good/Base/Bad Cases
+
+- Good：`useTabManagement.handleCloseTab` → `closeTabWithConfirmation(tabKey, tabId, saveTabById)`。
+- Base：非 dirty 文件 tab 关闭 → 直关，无弹框。
+- Bad：任何路径直接 `closeEditorTab(tabKey, tabId)` 关闭可能 dirty 的文件 tab。
+
+### 6. Tests Required
+
+- 每条关闭入口 4 分支：cancel 不关 / discard 关（不调 saveTab）/ save 成功关（调 saveTab）/ save 失败不关；外加非 file 与非 dirty 直关分支。断言点：`closeEditorTab` 门面调用参数 + `saveTab` 是否被调。
+- `closeConfirmStore.test.ts`：三选回传、并发排队（旧 Promise resolve 'cancel'）、overlay 计数幂等。
+
+### 7. Wrong vs Correct
+
+#### Wrong
+
+```ts
+// 新增关闭入口直调门面，绕过确认
+listen(SOME_CLOSE_EVENT, () => closeEditorTab(resolveTabKey(), activeTabId));
+```
+
+#### Correct
+
+```ts
+listen(SOME_CLOSE_EVENT, () => {
+  void closeTabWithConfirmation(tabKey, activeTabId, saveTabById);
+});
+```
 
 ## 常见错误
 
@@ -796,3 +852,34 @@ const state = useStore((s) => s.getState(projectId));
 ```
 
 **涉及文件**：`src/shared/store/browserStore.ts`（2026-08-06 修复）。
+
+### 10. 新增 tab 关闭入口直调 `closeEditorTab` 绕过未保存确认
+
+**问题**：关闭 tab 的入口有多条（X 按钮、菜单 `CLOSE_TAB_EVENT`、键盘快捷键）。若新增入口直调 `closeEditorTab` 而不经确认编排，dirty 文件 tab 会被静默关闭、内容丢失。历史事故（2026-09-04，任务 `09-04-cmdw-unsaved-confirm`）：`closeActiveTabCommand`（菜单 Cmd+W）与 `useTabManagement.handleCloseTab`（Ctrl+W 默认绑定）均绕过确认——untitled 新建文件输入内容后 Cmd+W 直接丢失，无任何提示。
+
+**正确模式**：一律经 `closeTabWithConfirmation`（`src/features/editor/store/closeConfirmStore.ts`），编排契约见「场景：Tab 关闭入口统一走未保存确认编排」。新增关闭入口时自问：这条路径 dirty 时会弹确认框吗？
+
+**涉及文件**：`src/app/hooks/closeActiveTabCommand.ts`、`src/features/editor/hooks/useTabManagement.ts`、`src/features/editor/hooks/usePaneActions.ts`、`src/app/AppModals.tsx`。
+
+### 11. Tauri 事件 `unlisten` 未走 `safeUnlisten` 包装
+
+**问题**：tauri 注入脚本的监听注销读 `listeners[eventId].handlerId` 时，该条目可能尚未由 `listen_js_script` 的 eval 填充（注册竞态），或已被前一次注销删除（双重注销）——同步抛 `undefined is not an object` → unhandledrejection → 用户 toast，且 `plugin:event|unlisten` 被跳过 → Rust 侧监听泄漏。触发条件：快速连续重订阅（deps 含 `activeProjectId`/`projectId` 的 effect 在项目切换时连跑）或同一 unlisten 被两处调用（如 terminalFactory closed 事件自注销 + cache 销毁再调）。历史事故（2026-09-04）：选择项目时 toast 报错，根因 `useFileTreeSync` 项目切换重订阅 + 多处裸 `unlisten()`。
+
+**正确模式**：所有 `listen()` 产物的注销一律经 `safeUnlisten`（`src/shared/utils/safeUnlisten.ts`，单次放行 + 竞态重试 + 重试耗尽上报）：
+
+```ts
+// 正确：effect 清理经 safeUnlisten
+const unlistenPromise = listen(EVENT, handler);
+return () => {
+  unlistenPromise.then((unlisten) => safeUnlisten(unlisten)());
+};
+```
+
+```ts
+// 错误：裸调用 unlisten（注册竞态/双重注销直接抛错）
+return () => {
+  unlistenPromise.then((unlisten) => unlisten());
+};
+```
+
+新增 `listen` 调用点时自问：这个 unlisten 会不会在注册后极短时间内被调用？会不会被多处调用？——任一成立则必须 `safeUnlisten`。
