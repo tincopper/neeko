@@ -1753,3 +1753,36 @@ Archived 09-01-scrollbar-auto-hide: scrollbar auto-hide with 3s delay completed 
 ### Next Steps
 
 - None - task complete
+
+
+## Session 170: terminal long-poll 去轮询化改造完成
+
+**Date**: 2026-09-04
+**Task**: terminal long-poll 去轮询化改造完成
+**Branch**: `main`
+
+### Summary
+
+terminal_drain_wait 挂起式传输替代100ms轮询，三消费方切换+env回退；app_state锁/清理优化；并发指南补long-poll场景；neeko-check终检放行
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `982af214` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
