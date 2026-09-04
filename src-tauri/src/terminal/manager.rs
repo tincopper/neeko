@@ -70,19 +70,9 @@ impl TerminalManager {
     /// 轮询降级路径专用：tick 即唤醒，竞态补发闭包保持为空；
     /// long-poll 路径经 `SessionDrain::notify_one` 唤醒，不走此处。
     pub(crate) fn take_drain(&self, session_id: &str) -> Option<Vec<u8>> {
-        let drain = self
-            .drains
-            .lock()
-            .ok()
-            .and_then(|m| m.get(session_id).cloned())?;
-        Some(drain.take_and_rearm(|| {
-            // Wake hint 退役（方案 B 去 eval 化）：前端已改为全局轮询器驱动
-            // credit-pull，`terminal-drain-{id}` 事件不再被监听。macOS 上事件
-            // 送达 = 每次 evaluateJavaScript，即使无 listener 也应避免无意义
-            // 的 IPC 消息往返。take_and_rearm 的竞态补发语义保留（闭包为空），
-            // 字节安全由轮询「拉空为止」保证。
-        }))
+        crate::common::terminal::drain::take_drain(&self.drains, session_id)
     }
+
     /// Long-poll drain: 有积压立即返回；空则挂起至 push/close/超时。
     /// closed/missing 返回 `None`（调用方转 `NotFound`，前端停止续挂）。
     pub(crate) async fn wait_drain(
@@ -90,12 +80,7 @@ impl TerminalManager {
         session_id: &str,
         timeout: std::time::Duration,
     ) -> Option<Vec<u8>> {
-        let drain = self
-            .drains
-            .lock()
-            .ok()
-            .and_then(|m| m.get(session_id).cloned())?;
-        drain.wait_drain(timeout).await
+        crate::common::terminal::drain::wait_drain(&self.drains, session_id, timeout).await
     }
 
     /// Creates a new PTY terminal session for a local project.
@@ -198,17 +183,22 @@ impl TerminalManager {
 
     /// Resizes a terminal session to the given column/row dimensions.
     pub fn resize_session(&self, session_id: &str, cols: u16, rows: u16) -> Result<()> {
-        let mut handles = self
-            .pty_handles
-            .lock()
-            .map_err(|e| anyhow::anyhow!("Lock poisoned: {}", e))?;
-        if let Some(handle) = handles.get_mut(session_id) {
-            handle.master.resize(PtySize {
-                rows,
-                cols,
-                pixel_width: 0,
-                pixel_height: 0,
-            })?;
+        // resize 在临界区内执行并带出结果，守卫在此作用域末释放，log 在锁外。
+        let resize_result = {
+            let mut handles =
+                crate::common::terminal::locks::lock_warn(&self.pty_handles, "pty_handles");
+            match handles.get_mut(session_id) {
+                Some(handle) => Some(handle.master.resize(PtySize {
+                    rows,
+                    cols,
+                    pixel_width: 0,
+                    pixel_height: 0,
+                })),
+                None => None,
+            }
+        };
+        if let Some(result) = resize_result {
+            result?;
             crate::terminal::services::log_info(&format!(
                 "[PTY] Resized {} to {}x{}",
                 &session_id[..8.min(session_id.len())],
@@ -258,30 +248,19 @@ impl TerminalManager {
     }
 
     fn take_session_handle(&self, session_id: &str) -> Option<PtyHandle> {
-        if let Ok(mut sessions) = self.sessions.lock() {
-            sessions.remove(session_id);
-        }
-        // 先 close 再移除：孤儿 reader 泵的后续 push 被黑洞吸收，读到 EOF
+        crate::common::terminal::locks::lock_warn(&self.sessions, "sessions").remove(session_id);
+        // remove-then-close（见 drain::close_and_remove_drain）：先摘表项，
+        // 孤儿 reader 泵手持同一 Arc，后续 push 被黑洞吸收，读到 EOF
         // 自然退出线程（否则永久停泊背压循环，任务 design.md §8.2）。
-        if let Ok(mut drains) = self.drains.lock() {
-            if let Some(d) = drains.remove(session_id) {
-                d.close();
-            }
-        }
-        self.pty_handles
-            .lock()
-            .ok()
-            .and_then(|mut handles| handles.remove(session_id))
+        crate::common::terminal::drain::close_and_remove_drain(&self.drains, session_id);
+        crate::common::terminal::locks::lock_warn(&self.pty_handles, "pty_handles")
+            .remove(session_id)
     }
 
     /// Closes all terminal sessions and releases all PTY handles.
     pub fn close_all_sessions(&self) {
         crate::terminal::services::log_info("[PTY] Closing all sessions...");
-        let ids: Vec<String> = self
-            .pty_handles
-            .lock()
-            .map(|h| h.keys().cloned().collect())
-            .unwrap_or_default();
+        let ids = crate::common::terminal::drain::session_ids(&self.drains);
         for id in ids {
             self.close_session(&id);
         }
@@ -292,21 +271,26 @@ impl TerminalManager {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::common::terminal::drain::SessionDrain;
+    use crate::common::terminal::drain;
     use std::sync::Arc;
     use std::time::Duration;
+
+    fn poison<T: Send + 'static>(m: &Arc<Mutex<T>>) {
+        let clone = Arc::clone(m);
+        let _ = std::thread::spawn(move || {
+            let _guard = clone.lock().unwrap();
+            panic!("poison-inject");
+        })
+        .join();
+    }
 
     /// `wait_drain` 经 manager 查表分发：有积压立即返回字节，不落空。
     #[tokio::test]
     async fn wait_drain_returns_buffered_bytes() {
         let manager = TerminalManager::new();
-        let drain = Arc::new(SessionDrain::default());
+        drain::insert_drain(&manager.drains, "s1");
+        let drain = drain::get_drain(&manager.drains, "s1").expect("registered drain");
         drain.push(b"hello", || drain.notify_one());
-        manager
-            .drains
-            .lock()
-            .expect("infallible: drains lock")
-            .insert("s1".into(), drain);
         let got = manager
             .wait_drain("s1", Duration::from_millis(50))
             .await
@@ -328,13 +312,10 @@ mod tests {
     #[tokio::test]
     async fn wait_drain_closed_session_returns_none() {
         let manager = TerminalManager::new();
-        let drain = Arc::new(SessionDrain::default());
-        drain.close();
-        manager
-            .drains
-            .lock()
-            .expect("infallible: drains lock")
-            .insert("gone".into(), drain);
+        drain::insert_drain(&manager.drains, "gone");
+        drain::get_drain(&manager.drains, "gone")
+            .expect("registered drain")
+            .close();
         assert_eq!(
             manager.wait_drain("gone", Duration::from_millis(10)).await,
             None
@@ -345,12 +326,8 @@ mod tests {
     #[tokio::test]
     async fn wait_drain_parks_then_push_wakes() {
         let manager = TerminalManager::new();
-        let drain = Arc::new(SessionDrain::default());
-        manager
-            .drains
-            .lock()
-            .expect("infallible: drains lock")
-            .insert("s2".into(), drain.clone());
+        drain::insert_drain(&manager.drains, "s2");
+        let drain = drain::get_drain(&manager.drains, "s2").expect("registered drain");
         let waiter = {
             let manager = manager.clone();
             tokio::spawn(async move { manager.wait_drain("s2", Duration::from_secs(5)).await })
@@ -362,5 +339,51 @@ mod tests {
             .expect("waiter task panicked")
             .expect("open drain must return Some");
         assert_eq!(got, b"wake-me");
+    }
+
+    #[test]
+    fn poisoned_sessions_close_does_not_panic() {
+        use crate::common::terminal::types::{TerminalSession, TerminalStatus};
+        let manager = TerminalManager::new();
+        manager.sessions.lock().unwrap().insert(
+            "s-poison".into(),
+            TerminalSession {
+                id: "s-poison".into(),
+                pid: None,
+                status: TerminalStatus::Idle,
+                history: Vec::new(),
+                agent: None,
+            },
+        );
+        drain::insert_drain(&manager.drains, "s-poison");
+        poison(&manager.sessions);
+        manager.close_session("s-poison");
+        // 容忍继续：poison 后 sessions 条目仍被移除（中毒前数据不丢、不泄漏）。
+        let sessions = manager
+            .sessions
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        assert!(!sessions.contains_key("s-poison"));
+        assert_eq!(drain::session_ids(&manager.drains), Vec::<String>::new());
+    }
+
+    /// 中毒容忍：`pty_handles` poison 后 `resize_session` 不报错（内部容忍，签名不变）。
+    #[test]
+    fn poisoned_pty_handles_resize_tolerated() {
+        let manager = TerminalManager::new();
+        poison(&manager.pty_handles);
+        manager
+            .resize_session("missing", 80, 24)
+            .expect("poisoned resize must be tolerated");
+        manager.close_session("missing");
+    }
+
+    /// D4：`close_all_sessions` 枚举源为 drains——仅 drain 注册（handles 失配）也要被关闭。
+    #[test]
+    fn close_all_enumerates_drains_on_mismatch() {
+        let manager = TerminalManager::new();
+        drain::insert_drain(&manager.drains, "orphan");
+        manager.close_all_sessions();
+        assert_eq!(drain::session_ids(&manager.drains), Vec::<String>::new());
     }
 }

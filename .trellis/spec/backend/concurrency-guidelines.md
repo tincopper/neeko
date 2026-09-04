@@ -546,3 +546,14 @@ std::thread::spawn(move || {
     let map = sessions.lock().unwrap();
 });
 ```
+
+### 5. 终端短临界区锁：tolerate-and-continue + warn（禁止静默吞锁）
+
+终端 `sessions` / `pty_handles` / `ssh_handles` / `drains` 锁的临界区都是短小的 HashMap 查表/插入，poison 仅意味着"某个持锁线程 panic"，数据大概率仍可用——一律容忍继续，中毒时打一条 `warn` 日志。禁止三种写法：生产路径 `.lock().ok()`（调用方误判"无此会话"）、`if let Ok` 静默跳过（handle 丢失但会话照常创建）、`map_err("…poisoned")` fail-loud（一次偶发 panic 放大为整条会话不可用）。
+
+```rust
+// 统一入口：common/terminal/locks.rs
+let mut handles = lock_warn(&self.pty_handles, "pty_handles");
+```
+
+测试内的 `.expect("infallible: … lock")` 与 poison 注入脚手架不受此限。

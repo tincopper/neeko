@@ -183,7 +183,7 @@ impl SessionDrain {
 }
 
 fn lock<T>(m: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
-    m.lock().unwrap_or_else(std::sync::PoisonError::into_inner)
+    super::locks::lock_warn(m, "drain")
 }
 
 /// Registry of live session drains, keyed by session id.
@@ -192,6 +192,56 @@ pub(crate) type SessionDrainMap = Arc<Mutex<HashMap<String, Arc<SessionDrain>>>>
 #[must_use]
 pub(crate) fn new_drain_map() -> SessionDrainMap {
     Arc::new(Mutex::new(HashMap::new()))
+}
+
+// ── Drain 查表操作（TerminalManager / RemoteTerminalManager 共用） ─────
+
+/// 轮询降级路径：取走有界缓冲区全部积压字节。
+/// 必须走 `take_and_rearm`（而非直接 `take_all`）：它负责复位 `wake_in_flight`，
+/// 否则唤醒合并被破坏，后续 push 的唤醒会被吞。空闭包仅表示轮询路径无须补发
+/// 事件（唤醒由前端轮询器"拉空为止"保证，wake hint 事件已退役）。
+/// `None` 仅表示 session 缺席；锁中毒时容忍继续（`lock_warn`），已注册数据不丢。
+pub(crate) fn take_drain(map: &SessionDrainMap, session_id: &str) -> Option<Vec<u8>> {
+    let drain = get_drain(map, session_id)?;
+    Some(drain.take_and_rearm(|| {}))
+}
+
+/// long-poll 路径：有积压立即返回，空则挂起至 push/close/超时。
+pub(crate) async fn wait_drain(
+    map: &SessionDrainMap,
+    session_id: &str,
+    timeout: Duration,
+) -> Option<Vec<u8>> {
+    let drain = get_drain(map, session_id)?;
+    drain.wait_drain(timeout).await
+}
+
+/// 查表取共享 drain（`take_drain`/`wait_drain`/泵分发的共用查表口）。
+/// 缺席返回 `None`（调用方转 `NotFound`，前端停止续挂）。
+pub(crate) fn get_drain(map: &SessionDrainMap, session_id: &str) -> Option<Arc<SessionDrain>> {
+    lock(map).get(session_id).cloned()
+}
+
+/// 插入新 session 的 drain（创建会话时调用）。
+pub(crate) fn insert_drain(map: &SessionDrainMap, session_id: &str) {
+    lock(map).insert(session_id.to_string(), Arc::new(SessionDrain::default()));
+}
+
+/// 关闭并移除 session 的 drain（close_session 时调用）。
+/// 刻意采用 remove-then-close：先摘表项让查表口（`get_drain`/`take_drain`/
+/// `wait_drain`）立即看到缺席（转 NotFound，前端停止续挂），再对取出的
+/// 同一个 `Arc` 调 `close()`——仍持有该 `Arc` 的孤儿泵后续 push 照样被黑洞
+/// 吸收（读到 EOF 自然退出），与 close-first 等价，且不存在"已 close 但仍
+/// 可查到"的并发窗口；残留缓冲随 `Arc` 释放而丢弃（有界，不泄漏）。
+pub(crate) fn close_and_remove_drain(map: &SessionDrainMap, session_id: &str) {
+    if let Some(d) = lock(map).remove(session_id) {
+        d.close();
+    }
+}
+
+/// 列出所有活跃 session ID（close_all_sessions 时调用）。
+pub(crate) fn session_ids(map: &SessionDrainMap) -> Vec<String> {
+    lock(map).keys().cloned().collect()
 }
 
 #[cfg(test)]
@@ -480,6 +530,27 @@ mod tests {
             waiter.await.expect("waiter task panicked"),
             None,
             "close must wake parked waiter with None"
+        );
+    }
+
+    #[test]
+    fn poisoned_drain_map_take_still_returns_bytes() {
+        // 中毒容忍：map poison 后查表继续可用（into_inner），已注册数据不丢。
+        let map = new_drain_map();
+        insert_drain(&map, "p1");
+        lock(&map)
+            .get("p1")
+            .expect("registered")
+            .push(b"kept", || {});
+        let clone = Arc::clone(&map);
+        let _ = thread::spawn(move || {
+            let _guard = clone.lock().unwrap();
+            panic!("poison-inject");
+        })
+        .join();
+        assert_eq!(
+            take_drain(&map, "p1").expect("poisoned take must continue"),
+            b"kept"
         );
     }
 }
