@@ -1,4 +1,5 @@
 /* eslint-disable check-file/filename-naming-convention */
+/// <reference types="vite/client" />
 declare module '*.png' {
   const src: string;
   export default src;

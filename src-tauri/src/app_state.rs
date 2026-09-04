@@ -14,17 +14,20 @@ use crate::AppError;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex, RwLock};
-use std::thread;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 /// Routing tag for terminal sessions — tracks which backend owns each session.
-#[derive(Clone, PartialEq)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
 enum SessionOwner {
     /// Local / WSL PTY-backed session.
     Pty,
     /// SSH remote session.
     Ssh,
 }
+
+/// long-poll drain 等待超时钳制区间（`terminal_drain_wait` 用）。
+const DRAIN_WAIT_MIN: Duration = Duration::from_secs(1);
+const DRAIN_WAIT_MAX: Duration = Duration::from_secs(30);
 
 /// Central application state holding all managers and shared resources.
 pub struct AppStateWrapper {
@@ -69,61 +72,89 @@ pub struct AppStateWrapper {
     main_window: RwLock<Option<tauri::WebviewWindow>>,
 }
 
+/// 后台清理任务：名称 + 一次性闭包（`shutdown_background_and_exit` 任务表用）。
+type ShutdownTask = (&'static str, Box<dyn FnOnce() + Send>);
+
 impl AppStateWrapper {
-    /// Shut down all background services (terminal, watcher, LSP) and exit.
+    // 路由表查询：锁中毒视为不可恢复而 expect —— 中毒后继续跑只会产出误诊的
+    // NotFound（把存活会话判成不存在），不如显式 panic 让问题暴露。
+    #[allow(clippy::expect_used)]
+    fn owner_of(&self, session_id: &str) -> Option<SessionOwner> {
+        self.session_owner
+            .lock()
+            .expect("infallible: session_owner")
+            .get(session_id)
+            .copied()
+    }
+
+    #[allow(clippy::expect_used)]
+    fn take_owner(&self, session_id: &str) -> Option<SessionOwner> {
+        self.session_owner
+            .lock()
+            .expect("infallible: session_owner")
+            .remove(session_id)
+    }
+
+    /// 关闭全部后台服务并退出进程（四路并行清理，失败只记日志不阻断退出）。
     pub fn shutdown_background_and_exit(&self) {
         let terminal_manager = self.terminal_manager.clone();
         let remote_terminal_manager = self.remote_terminal_manager.clone();
         let watcher_manager = self.watcher_manager.clone();
         let lsp_manager = self.lsp_manager.clone();
 
-        thread::spawn(move || {
-            log::info!("shutdown_all_background start");
-            let start = Instant::now();
+        // 外层清理线程：命名便于崩溃栈定位；spawn 失败仅记日志
+        if std::thread::Builder::new()
+            .name("neeko-shutdown".into())
+            .spawn(move || {
+                log::info!("shutdown_all_background start");
+                let start = Instant::now();
 
-            let t1 = thread::spawn(move || {
-                terminal_manager.close_all_sessions();
-            });
-            let t2 = thread::spawn(move || {
-                remote_terminal_manager.close_all_sessions();
-            });
-            let t3 = thread::spawn(move || {
-                watcher_manager.stop_all();
-            });
-            let t4 = thread::spawn(move || {
-                lsp_manager.close_all_sessions();
-            });
+                let tasks: Vec<ShutdownTask> = vec![
+                    (
+                        "terminal",
+                        Box::new(move || terminal_manager.close_all_sessions()),
+                    ),
+                    (
+                        "remote",
+                        Box::new(move || remote_terminal_manager.close_all_sessions()),
+                    ),
+                    ("watcher", Box::new(move || watcher_manager.stop_all())),
+                    ("lsp", Box::new(move || lsp_manager.close_all_sessions())),
+                ];
 
-            if let Err(e) = t1.join() {
-                log::error!("Terminal cleanup failed: {:?}", e);
-            } else {
-                log::info!("Terminal cleanup finished in {:?}", start.elapsed());
-            }
+                let mut handles = Vec::with_capacity(tasks.len());
+                for (name, task) in tasks {
+                    let task_start = Instant::now();
+                    match std::thread::Builder::new()
+                        .name(format!("shutdown-{name}"))
+                        .spawn(task)
+                    {
+                        Ok(handle) => handles.push((name, task_start, handle)),
+                        // 单路 spawn 失败仅记日志，不阻断其余清理
+                        Err(e) => log::error!("{} cleanup spawn failed: {:?}", name, e),
+                    }
+                }
 
-            if let Err(e) = t2.join() {
-                log::error!("Remote cleanup failed: {:?}", e);
-            } else {
-                log::info!("Remote cleanup finished in {:?}", start.elapsed());
-            }
+                // 逐个 join、逐个打点；panic 也只记日志不阻断退出
+                for (name, task_start, handle) in handles {
+                    match handle.join() {
+                        Ok(()) => {
+                            log::info!("{} cleanup finished in {:?}", name, task_start.elapsed());
+                        }
+                        Err(e) => log::error!("{} cleanup failed: {:?}", name, e),
+                    }
+                }
 
-            if let Err(e) = t3.join() {
-                log::error!("Watcher cleanup failed: {:?}", e);
-            } else {
-                log::info!("Watcher cleanup finished in {:?}", start.elapsed());
-            }
-
-            if let Err(e) = t4.join() {
-                log::error!("LSP cleanup failed: {:?}", e);
-            } else {
-                log::info!("LSP cleanup finished in {:?}", start.elapsed());
-            }
-
-            log::info!(
-                "shutdown_all_background finished in {:?}, exiting",
-                start.elapsed()
-            );
-            std::process::exit(0);
-        });
+                log::info!(
+                    "shutdown_all_background finished in {:?}, exiting",
+                    start.elapsed()
+                );
+                std::process::exit(0);
+            })
+            .is_err()
+        {
+            log::error!("Shutdown thread spawn failed");
+        }
     }
 
     /// 注入主窗口句柄（setup 阶段调用一次；菜单事件等从此取，见 [`Self::main_window`]）。
@@ -206,6 +237,7 @@ impl AppStateWrapper {
 
     /// Create a terminal session, routing to the correct backend.
     #[allow(clippy::too_many_arguments)]
+    #[allow(clippy::expect_used)] // session_owner 路由表 insert：锁中毒不可恢复，见 `owner_of` 注释
     pub async fn create_terminal_session(
         &self,
         project_id: &str,
@@ -251,10 +283,10 @@ impl AppStateWrapper {
                     )
                     .map_err(AppError::from)?;
 
-                let _ = self
-                    .session_owner
+                self.session_owner
                     .lock()
-                    .map(|mut m| m.insert(session.id.clone(), SessionOwner::Pty));
+                    .expect("infallible: session_owner")
+                    .insert(session.id.clone(), SessionOwner::Pty);
                 Ok(session)
             }
             #[cfg(target_os = "windows")]
@@ -292,16 +324,15 @@ impl AppStateWrapper {
                         }
                     }
                 }
-
                 let session = self
                     .terminal_manager
                     .create_wsl_session(distro, &path_string, cols, rows, app_handle)
                     .map_err(AppError::from)?;
 
-                let _ = self
-                    .session_owner
+                self.session_owner
                     .lock()
-                    .map(|mut m| m.insert(session.id.clone(), SessionOwner::Pty));
+                    .expect("infallible: session_owner")
+                    .insert(session.id.clone(), SessionOwner::Pty);
                 Ok(session)
             }
             crate::core::project::ProjectEnvironment::Remote {
@@ -325,10 +356,10 @@ impl AppStateWrapper {
                     .await
                     .map_err(AppError::from)?;
 
-                let _ = self
-                    .session_owner
+                self.session_owner
                     .lock()
-                    .map(|mut m| m.insert(session.id.clone(), SessionOwner::Ssh));
+                    .expect("infallible: session_owner")
+                    .insert(session.id.clone(), SessionOwner::Ssh);
                 Ok(session)
             }
         }
@@ -336,11 +367,7 @@ impl AppStateWrapper {
 
     /// Resize a terminal session, dispatching to the correct backend.
     pub fn resize_session(&self, session_id: &str, cols: u16, rows: u16) -> Result<(), AppError> {
-        let owner = self
-            .session_owner
-            .lock()
-            .ok()
-            .and_then(|m| m.get(session_id).cloned());
+        let owner = self.owner_of(session_id);
         match owner {
             Some(SessionOwner::Pty) => self
                 .terminal_manager
@@ -358,11 +385,7 @@ impl AppStateWrapper {
 
     /// Drain buffered terminal output, dispatching to the correct backend.
     pub fn terminal_drain(&self, session_id: &str) -> Result<tauri::ipc::Response, AppError> {
-        let owner = self
-            .session_owner
-            .lock()
-            .ok()
-            .and_then(|m| m.get(session_id).cloned());
+        let owner = self.owner_of(session_id);
         match owner {
             Some(SessionOwner::Pty) => self
                 .terminal_manager
@@ -383,14 +406,39 @@ impl AppStateWrapper {
             ))),
         }
     }
+    /// Long-poll drain: 无数据时挂起至 push/close/超时，而非立即返回空。
+    /// `timeout_ms` 后端钳制 1–30s；drain 不存在或已关闭返回 `NotFound`
+    ///（前端据此终止该 session 的挂起循环；debug 日志便于排查 dispose 泄漏）。
+    pub async fn terminal_drain_wait(
+        &self,
+        session_id: &str,
+        timeout_ms: u64,
+    ) -> Result<tauri::ipc::Response, AppError> {
+        let timeout = Duration::from_millis(timeout_ms).clamp(DRAIN_WAIT_MIN, DRAIN_WAIT_MAX);
+        let owner = self.owner_of(session_id);
+        let data = match owner {
+            Some(SessionOwner::Pty) => self.terminal_manager.wait_drain(session_id, timeout).await,
+            Some(SessionOwner::Ssh) => {
+                self.remote_terminal_manager
+                    .wait_drain(session_id, timeout)
+                    .await
+            }
+            None => None,
+        };
+        match data {
+            Some(bytes) => Ok(tauri::ipc::Response::new(bytes)),
+            None => {
+                log::debug!("[Terminal] drain_wait stopped: session gone or closed: {session_id}");
+                Err(AppError::NotFound(format!(
+                    "Terminal session not found: {session_id}"
+                )))
+            }
+        }
+    }
 
     /// Close a terminal session, dispatching to the correct backend.
     pub fn close_session(&self, session_id: &str) {
-        let owner = self
-            .session_owner
-            .lock()
-            .ok()
-            .and_then(|mut m| m.remove(session_id));
+        let owner = self.take_owner(session_id);
         match owner {
             Some(SessionOwner::Pty) => self
                 .terminal_manager

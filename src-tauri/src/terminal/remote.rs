@@ -223,8 +223,9 @@ impl RemoteTerminalManager {
                                 match msg {
                                     Some(ChannelMsg::Data { data }) => {
                                         // 内存治理：写入有界 drain 队列，前端经
-                                        // terminal_drain 拉二进制块（全局共享轮询器
-                                        // 100ms tick 驱动，wake hint 事件已退役）。
+                                        // terminal_drain(_wait) 拉二进制块（默认
+                                        // long-poll 挂起式 drain，VITE_TERMINAL_DRAIN_POLL=1
+                                        // 回退轮询；wake hint 事件已退役）。
                                         // Mutex 临界区极短，不违反阻塞红线。
                                         //
                                         // 背压契约对齐本地泵（design.md §8.2）：
@@ -233,12 +234,10 @@ impl RemoteTerminalManager {
                                         // channel 不丢失；会话已关闭（closed）
                                         // 时 push 黑洞吸收，循环自然结束。
                                         let session_drain = io_drain.clone();
-                                        // Wake hint 退役（方案 B 去 eval 化）：
-                                        // 前端改为全局轮询器驱动 credit-pull，
-                                        // `terminal-drain-{id}` 不再被监听；即使
-                                        // 无 listener 也应避免无意义 IPC 往返。
-                                        while !session_drain.push(&data, || {}) {
-                                            std::thread::sleep(std::time::Duration::from_millis(2));
+                                        // long-poll 路径经 Notify 唤醒挂起的 terminal_drain_wait；
+                                        // 轮询降级路径 tick 即唤醒。
+                                        while !session_drain.push(&data, || session_drain.notify_one()) {
+                                            tokio::time::sleep(std::time::Duration::from_millis(2)).await;
                                         }
                                     }
                                     Some(ChannelMsg::Eof) => {
@@ -324,6 +323,8 @@ impl RemoteTerminalManager {
     }
 
     /// Takes all buffered output bytes for a session (credit-pull protocol).
+    /// 轮询降级路径专用：tick 即唤醒，竞态补发闭包保持为空；
+    /// long-poll 路径经 `SessionDrain::notify_one` 唤醒，不走此处。
     #[must_use]
     pub fn take_drain(&self, session_id: &str) -> Option<Vec<u8>> {
         let drain = self
@@ -335,6 +336,20 @@ impl RemoteTerminalManager {
             // Wake hint 退役（方案 B 去 eval 化）：前端全局轮询器拉空为止，
             // 竞态补发闭包为空，语义保留（参见 TerminalManager::take_drain）。
         }))
+    }
+    /// Long-poll drain: 有积压立即返回；空则挂起至 push/close/超时。
+    /// closed/missing 返回 `None`（调用方转 `NotFound`，前端停止续挂）。
+    pub(crate) async fn wait_drain(
+        &self,
+        session_id: &str,
+        timeout: std::time::Duration,
+    ) -> Option<Vec<u8>> {
+        let drain = self
+            .drains
+            .lock()
+            .ok()
+            .and_then(|m| m.get(session_id).cloned())?;
+        drain.wait_drain(timeout).await
     }
 
     /// Test whether an SSH connection can be established with the given parameters.
@@ -483,3 +498,79 @@ fn log_warn(msg: &str) {
 }
 
 // IDE 相关函数已移至 commands/ide.rs
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::common::terminal::drain::SessionDrain;
+    use std::sync::Arc;
+    use std::time::Duration;
+
+    /// `wait_drain` 经 RemoteTerminalManager 查表分发：有积压立即返回字节。
+    #[tokio::test]
+    async fn wait_drain_returns_buffered_bytes() {
+        let manager = RemoteTerminalManager::new();
+        let drain = Arc::new(SessionDrain::default());
+        drain.push(b"remote", || drain.notify_one());
+        manager
+            .drains
+            .lock()
+            .expect("infallible: drains lock")
+            .insert("r1".into(), drain);
+        let got = manager
+            .wait_drain("r1", Duration::from_millis(50))
+            .await
+            .expect("registered drain must return Some");
+        assert_eq!(got, b"remote");
+    }
+
+    /// 会话不存在：查表落空返回 `None`（调用方转 NotFound，前端停止续挂）。
+    #[tokio::test]
+    async fn wait_drain_missing_session_returns_none() {
+        let manager = RemoteTerminalManager::new();
+        assert_eq!(
+            manager.wait_drain("nope", Duration::from_millis(10)).await,
+            None
+        );
+    }
+
+    /// 会话已关闭：返回 `None`（与 terminal_drain_wait 的 NotFound 语义一致）。
+    #[tokio::test]
+    async fn wait_drain_closed_session_returns_none() {
+        let manager = RemoteTerminalManager::new();
+        let drain = Arc::new(SessionDrain::default());
+        drain.close();
+        manager
+            .drains
+            .lock()
+            .expect("infallible: drains lock")
+            .insert("gone".into(), drain);
+        assert_eq!(
+            manager.wait_drain("gone", Duration::from_millis(10)).await,
+            None
+        );
+    }
+
+    /// 空队列挂起至 push：waiter 先注册，push 后经 notify 唤醒返回字节。
+    #[tokio::test]
+    async fn wait_drain_parks_then_push_wakes() {
+        let manager = RemoteTerminalManager::new();
+        let drain = Arc::new(SessionDrain::default());
+        manager
+            .drains
+            .lock()
+            .expect("infallible: drains lock")
+            .insert("r2".into(), drain.clone());
+        let waiter = {
+            let manager = manager.clone();
+            tokio::spawn(async move { manager.wait_drain("r2", Duration::from_secs(5)).await })
+        };
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        drain.push(b"wake-me", || drain.notify_one());
+        let got = waiter
+            .await
+            .expect("waiter task panicked")
+            .expect("open drain must return Some");
+        assert_eq!(got, b"wake-me");
+    }
+}

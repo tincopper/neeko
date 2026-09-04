@@ -4,7 +4,7 @@ import { Unicode11Addon } from '@xterm/addon-unicode11';
 import { Terminal } from '@xterm/xterm';
 
 import type { AgentConfig } from '@/shared/types';
-import { createPollingDrainScheduler } from '@/shared/utils/drainLoop';
+import { createDrainTransportScheduler } from '@/shared/utils/drainLoop';
 import { applyRenderer, buildTerminalTheme, TERMINAL_SCROLLBACK } from '@/shared/utils/terminal';
 import { terminalClosedEvent, terminalInputEvent } from '@/shared/utils/terminalEvents';
 import { setupTerminalInput } from '@/shared/utils/terminalInput';
@@ -17,7 +17,7 @@ import {
 
 // eslint-disable-next-line import/no-restricted-paths -- terminal factory needs agent API for agent config
 import { getAgent } from '../../agent/api/agentApi';
-import { createTerminalSession, drainTerminal } from '../api/terminalApi';
+import { createTerminalSession, drainTerminal, drainTerminalWait } from '../api/terminalApi';
 
 import {
   terminalCache,
@@ -127,13 +127,15 @@ export async function createTerminalForProject(
     // credit-pull 输出协议（内存治理）：轮询驱动二进制拉取。无在途
     // 门闸（pendingWrites 恒 0），循环拉到空为止 —— 与旧推送语义等价，
     // 但消除了 JSON 膨胀与事件洪泛。
-    // 方案 B（去 eval 化）：触发源由 terminal-drain-{id} 事件改为全局共享
-    // 轮询器（createPollingDrainScheduler）——macOS 上事件送达 = 每次
-    // evaluateJavaScript，WebKit 无条件克隆+stringify 完成值导致 WebContent
-    // RSS 只增不减；invoke 走 custom protocol fetch，零 eval 零克隆。
-    const scheduler = createPollingDrainScheduler({
+    // 方案 B（去 eval 化）：触发源由 terminal-drain-{id} 事件改为 fetch
+    // 拉取——macOS 上事件送达 = 每次 evaluateJavaScript，WebKit 无条件
+    // 克隆+stringify 完成值导致 WebContent RSS 只增不减；invoke 走 custom
+    // protocol fetch，零 eval 零克隆。默认 long-poll 挂起式 drain
+    // （createDrainTransportScheduler），VITE_TERMINAL_DRAIN_POLL=1 时回退轮询。
+    const scheduler = createDrainTransportScheduler({
       sessionId: sid,
       drain: drainTerminal,
+      drainWait: drainTerminalWait,
       write: (chunk) => {
         const filtered = new Uint8Array(chunk).filter((b) => b !== 0x7f);
         if (filtered.length > 0) {
@@ -143,7 +145,7 @@ export async function createTerminalForProject(
       pendingWrites: () => 0,
     });
     // dispose 挂到 unlistenOutput 槽位：terminalCache 销毁/重建统一经
-    // entry.unlistenOutput?.() 清理，轮询注销幂等安全。
+    // entry.unlistenOutput?.() 清理，传输注销幂等安全。
     cache.unlistenOutput = () => {
       scheduler.dispose();
     };

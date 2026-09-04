@@ -65,3 +65,14 @@ pub async fn terminal_drain(
 ) -> Result<tauri::ipc::Response, AppError> {
     state.terminal_drain(&session_id)
 }
+/// Long-poll drain: 无数据时挂起至 push/close/超时（前端每 session 一条挂起 fetch）。
+/// `timeout_ms` 后端钳制到 1–30s（`timeout_ms == 0` 视为 1s）。
+/// 必须保持 async：挂起等待在 tokio 上执行，不占 Tauri 主线程。
+#[tauri::command]
+pub async fn terminal_drain_wait(
+    session_id: String,
+    timeout_ms: u64,
+    state: State<'_, AppStateWrapper>,
+) -> Result<tauri::ipc::Response, AppError> {
+    state.terminal_drain_wait(&session_id, timeout_ms).await
+}

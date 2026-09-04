@@ -55,3 +55,11 @@ export function resizeTerminal(sessionId: string, cols: number, rows: number): P
 export function drainTerminal(sessionId: string): Promise<ArrayBuffer> {
   return invoke<ArrayBuffer>('terminal_drain', { sessionId });
 }
+
+/**
+ * Long-poll drain: 无数据时后端挂起至数据到达/超时（而非立即返回空）。
+ * 会话已关闭/不存在时后端返回 NotFound（reject）。二进制响应，零 JSON。
+ */
+export function drainTerminalWait(sessionId: string, timeoutMs: number): Promise<ArrayBuffer> {
+  return invoke<ArrayBuffer>('terminal_drain_wait', { sessionId, timeoutMs });
+}

@@ -7,12 +7,16 @@
  */
 import { emit, listen, type UnlistenFn } from '@tauri-apps/api/event';
 
-import { createPollingDrainScheduler } from '@/shared/utils/drainLoop';
+import {
+  createDrainTransportScheduler,
+  type DrainTransportScheduler,
+} from '@/shared/utils/drainLoop';
 import { reportFrontendError } from '@/shared/utils/errorReporting';
 import { terminalClosedEvent, terminalInputEvent } from '@/shared/utils/terminalEvents';
 
 import {
   drainTaskProcessOutput,
+  drainTaskProcessOutputWait,
   startTaskProcessSession,
   stopTaskProcessSession,
 } from './api/taskApi';
@@ -56,8 +60,8 @@ export async function startTaskProcess(opts: StartTaskProcessOptions): Promise<T
   const decoder = new TextDecoder('utf-8', { fatal: false });
   let disposed = false;
   let unlistenClosed: UnlistenFn | null = null;
-  // scheduler 需在 dispose 中注销轮询，故提升到外层作用域。
-  let scheduler: ReturnType<typeof createPollingDrainScheduler> | null = null;
+  // scheduler 需在 dispose 中注销传输，故提升到外层作用域。
+  let scheduler: DrainTransportScheduler | null = null;
 
   const dispose = () => {
     if (disposed) return;
@@ -73,13 +77,15 @@ export async function startTaskProcess(opts: StartTaskProcessOptions): Promise<T
     // 经调度器拉取二进制块并解码为文本。无 xterm 门闸（pendingWrites 恒 0），
     // 循环拉到空为止；下游 onOutput 由 taskStore 的输出截断兜底
     // （MAX_TASK_OUTPUT_CHARS）。
-    // 方案 B（去 eval 化）：触发源由 terminal-drain-{id} 事件改为全局共享
-    // 轮询器——macOS 上事件送达 = 每次 evaluateJavaScript（WebKit 无条件
-    // 克隆+stringify 完成值 → WebContent RSS 只增不减）；invoke 走 custom
-    // protocol fetch，零 eval 零克隆。
-    scheduler = createPollingDrainScheduler({
+    // 方案 B（去 eval 化）：触发源由 terminal-drain-{id} 事件改为 fetch 拉取
+    // ——macOS 上事件送达 = 每次 evaluateJavaScript（WebKit 无条件克隆+
+    // stringify 完成值 → WebContent RSS 只增不减）；invoke 走 custom
+    // protocol fetch，零 eval 零克隆。默认 long-poll 挂起式 drain
+    // （createDrainTransportScheduler），VITE_TERMINAL_DRAIN_POLL=1 时回退轮询。
+    scheduler = createDrainTransportScheduler({
       sessionId: processId,
       drain: drainTaskProcessOutput,
+      drainWait: drainTaskProcessOutputWait,
       write: (chunk) => {
         const filtered = new Uint8Array(chunk).filter((b) => b !== 0x7f);
         if (filtered.length === 0) return;

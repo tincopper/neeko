@@ -317,11 +317,9 @@ fn spawn_reader_thread(
             ));
             let started = std::time::Instant::now();
             // 同一 flush 语义复用于两个 pump 变体：有界推入 SessionDrain。
-            // Wake hint 已退役（方案 B 去 eval 化）：前端改为全局轮询器驱动
-            // credit-pull，`terminal-drain-{id}` 不再被监听；macOS 上事件送达
-            // = 每次 evaluateJavaScript，即使无 listener 也避免无意义 IPC。
-            // push 的 wake 回调传空闭包，协议签名与 wake_in_flight 状态机保留。
-            let flush = |data: &[u8]| session_drain.push(data, || {});
+            // long-poll 路径经 Notify 唤醒挂起的 terminal_drain_wait；
+            // 轮询降级路径 tick 即唤醒（take_drain 保持空闭包）。
+            let flush = |data: &[u8]| session_drain.push(data, || session_drain.notify_one());
             #[cfg(unix)]
             let outcome = match master_fd {
                 Some(fd) => {

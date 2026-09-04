@@ -8,6 +8,9 @@
 //! - 消费端（`terminal_drain` 命令）`take_and_rearm`：取走全部积压并复位
 //!   唤醒标志；若取走期间生产者又插入了数据（竞态窗口），立即补发唤醒，
 //!   保证唤醒永不丢失。
+//! - 挂起消费（`terminal_drain_wait` 命令）`wait_drain`：Notify 与
+//!   wake_in_flight 双轨并行，取到非空后自复位唤醒标志，保证门闸满早退
+//!   路径下后续 push 的 notify 不被吞。
 //!
 //! 唤醒事件本身零载荷，仅是 "可能有数据" 的 hint；正确性以 drain-to-empty
 //! 为准（design.md §6 权衡 4）。
@@ -15,6 +18,7 @@
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
+use std::time::Duration;
 
 /// 默认缓冲容量：大于泵 `max_buffer`(256KB)，数学上排除"单批即超限"死锁
 /// （design.md §2.2 / §3）。
@@ -67,6 +71,9 @@ pub(crate) struct SessionDrain {
     /// their pushes absorbed — the pump reads through to EOF and exits
     /// instead of parking in a backpressure loop forever (design.md §8.2).
     closed: AtomicBool,
+    /// Long-poll waker: `push` 成功后 `notify_one`，无 waiter 时存一个 permit，
+    /// 下一次 `notified().await` 立即完成——覆盖 take 与 await 注册之间的竞态窗口。
+    notify: tokio::sync::Notify,
 }
 
 impl Default for SessionDrain {
@@ -85,12 +92,16 @@ impl SessionDrain {
             }),
             wake_in_flight: AtomicBool::new(false),
             closed: AtomicBool::new(false),
+            notify: tokio::sync::Notify::const_new(),
         }
     }
 
     /// Marks the drain as closed. Idempotent.
     pub(crate) fn close(&self) {
         self.closed.store(true, Ordering::Release);
+        // Best-effort 唤醒挂起的 long-poll waiter；未注册 waiter 的竞态由
+        // `wait_drain` 下一轮 `is_closed` 检查兜底。
+        self.notify.notify_waiters();
     }
 
     #[must_use]
@@ -135,6 +146,34 @@ impl SessionDrain {
             wake();
         }
         data
+    }
+    /// 生产侧唤醒钩子：由 push 调用方在 push 后调用。
+    /// permit 合并：无 waiter 时存一个 permit，多次调用折叠为一次唤醒。
+    pub(crate) fn notify_one(&self) {
+        self.notify.notify_one();
+    }
+
+    /// 消费侧挂起等待（仅 async 上下文调用）。
+    /// 返回 `Some(bytes)`：非空积压（含等待后被唤醒）；
+    /// 返回 `Some(vec![])`：idle 超时（前端续挂）；
+    /// 返回 `None`：drain 已关闭（manager 层转 NotFound）。
+    pub(crate) async fn wait_drain(&self, idle_timeout: Duration) -> Option<Vec<u8>> {
+        loop {
+            let data = lock(&self.buffer).take_all();
+            if !data.is_empty() {
+                // 自复位：取走非空后复位唤醒标志，否则后续 push 的 notify
+                // 会被吞（门闸满早退路径下字节滞留至超时才被取走）。
+                self.wake_in_flight.store(false, Ordering::Release);
+                return Some(data);
+            }
+            if self.is_closed() {
+                return None;
+            }
+            match tokio::time::timeout(idle_timeout, self.notify.notified()).await {
+                Ok(()) => continue,
+                Err(_elapsed) => return Some(Vec::new()),
+            }
+        }
     }
 
     #[cfg(test)]
@@ -362,5 +401,85 @@ mod tests {
             assert_eq!(*b, (i % 251) as u8, "byte order preserved at {i}");
         }
         assert!(wakes.load(Ordering::Relaxed) >= 1);
+    }
+    // ── wait_drain long-poll ──────────────────────────────────────────────
+
+    #[tokio::test]
+    async fn wait_drain_returns_buffered_data_immediately() {
+        use std::time::Duration;
+        let drain = SessionDrain::default();
+        drain.push(b"hello", || {});
+        let got = drain
+            .wait_drain(Duration::from_millis(50))
+            .await
+            .expect("open drain must return Some");
+        assert_eq!(got, b"hello");
+    }
+
+    #[tokio::test]
+    async fn wait_drain_parks_until_push_then_returns_bytes() {
+        use std::time::Duration;
+        let drain = std::sync::Arc::new(SessionDrain::default());
+        let waiter = {
+            let drain = drain.clone();
+            tokio::spawn(async move { drain.wait_drain(Duration::from_secs(5)).await })
+        };
+        // 让 waiter 先进入挂起态，再 push。
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        drain.push(b"wake-me", || drain.notify_one());
+        let got = waiter
+            .await
+            .expect("waiter task panicked")
+            .expect("open drain must return Some");
+        assert_eq!(got, b"wake-me");
+    }
+
+    #[tokio::test]
+    async fn wait_drain_no_lost_wakeup_when_push_precedes_park() {
+        use std::time::Duration;
+        let drain = SessionDrain::default();
+        // push 先于 wait 注册：permit 语义必须让这次 wait 立即返回，不丢唤醒。
+        drain.push(b"early", || drain.notify_one());
+        let got = drain
+            .wait_drain(Duration::from_millis(50))
+            .await
+            .expect("open drain must return Some");
+        assert_eq!(got, b"early");
+    }
+
+    #[tokio::test]
+    async fn wait_drain_returns_none_when_closed() {
+        use std::time::Duration;
+        let drain = SessionDrain::default();
+        drain.close();
+        assert_eq!(drain.wait_drain(Duration::from_millis(10)).await, None);
+    }
+
+    #[tokio::test]
+    async fn wait_drain_returns_empty_on_idle_timeout() {
+        use std::time::Duration;
+        let drain = SessionDrain::default();
+        let got = drain
+            .wait_drain(Duration::from_millis(20))
+            .await
+            .expect("timeout must return Some(empty)");
+        assert!(got.is_empty());
+    }
+
+    #[tokio::test]
+    async fn close_wakes_parked_waiter() {
+        use std::time::Duration;
+        let drain = std::sync::Arc::new(SessionDrain::default());
+        let waiter = {
+            let drain = drain.clone();
+            tokio::spawn(async move { drain.wait_drain(Duration::from_secs(5)).await })
+        };
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        drain.close();
+        assert_eq!(
+            waiter.await.expect("waiter task panicked"),
+            None,
+            "close must wake parked waiter with None"
+        );
     }
 }

@@ -110,6 +110,7 @@ macro_rules! neeko_invoke_handler {
             $crate::terminal::commands::close_terminal_session,
             $crate::terminal::commands::resize_terminal,
             $crate::terminal::commands::terminal_drain,
+            $crate::terminal::commands::terminal_drain_wait,
             // ── agent ────────────────────────────────────────────────────────
             $crate::agent::commands::list_agents,
             $crate::agent::commands::get_agent,

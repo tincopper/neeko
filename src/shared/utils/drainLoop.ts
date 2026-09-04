@@ -1,10 +1,12 @@
 /**
  * Credit-pull consumer protocol for terminal output (内存治理协议前端半场).
  *
- * 后端把输出写入有界 SessionDrain；消费侧通过 `terminal_drain` 命令拉取
- * 二进制块，直到后端报告为空。触发源为全局共享轮询器
- * （`createPollingDrainScheduler`，100ms tick，方案 B 去 eval 化）；历史
- * 的 `terminal-drain-{id}` 唤醒事件已退役，`onWake` 语义保留供轮询复用。
+ * 后端把输出写入有界 SessionDrain；消费侧通过 `terminal_drain` /
+ * `terminal_drain_wait` 命令拉取二进制块，直到后端报告为空。默认触发源为
+ * per-session long-poll 挂起式 drain（`createLongPollScheduler`，无数据挂起、
+ * 有数据立即返回，空闲零空转）；`VITE_TERMINAL_DRAIN_POLL=1` 时回退全局共享
+ * 轮询器（`createPollingDrainScheduler`，100ms tick，方案 B 去 eval 化）。
+ * 历史 `terminal-drain-{id}` 唤醒事件已退役，`onWake` 语义保留供调度器复用。
  *
  * 背压闸门：xterm 仍在消化的在途 write 达到阈值时提前退出循环 —— 队列中
  * 的剩余数据由调度器的闩锁/续拉机制保证最终被拉取，字节永不丢失。
@@ -61,6 +63,8 @@ export async function runDrainLoop(
 
 export interface DrainSchedulerDeps extends DrainLoopDeps {
   sessionId: string;
+  /** Long-poll pull: 有数据立即返回字节，无数据挂起至超时；NotFound 抛错。 */
+  drainWait?: (sessionId: string, timeoutMs: number) => Promise<ArrayBuffer>;
 }
 
 export interface DrainScheduler {
@@ -173,6 +177,10 @@ if (hot) {
       pollTimer = null;
     }
     pollSubscribers.clear();
+    for (const disposeLongPoll of longPollDisposers) {
+      disposeLongPoll();
+    }
+    longPollDisposers.clear();
   });
 }
 
@@ -207,4 +215,73 @@ export function createPollingDrainScheduler(deps: DrainSchedulerDeps): PollingDr
       }
     },
   };
+}
+/** Long-poll 挂起超时：后端钳制 1–30s，前端取 25s 自兜底后续挂。 */
+export const DRAIN_WAIT_TIMEOUT_MS = 25_000;
+
+export interface LongPollDrainScheduler extends DrainScheduler {
+  /** 终止挂起循环并丢弃迟到结果。幂等，可调用多次。 */
+  dispose(): void;
+}
+// HMR 卫生：dev 下模块重载会遗留孤儿 long-poll 循环（挂起 fetch 在后端
+// 超时前仍存活），已登记循环在重载时统一终止（生产无影响）。
+const longPollDisposers = new Set<() => void>();
+
+/** `createDrainTransportScheduler` 的统一返回契约：两种传输都保证幂等 dispose。 */
+export type DrainTransportScheduler = PollingDrainScheduler | LongPollDrainScheduler;
+
+/**
+ * Long-poll 驱动的 drain 调度器：每 session 一条挂起 fetch 循环，
+ * 返回即 wake。复用 `createDrainScheduler` 的 pendingWake 闩锁 /
+ * maybePending 续拉协议；`wait` 返回的数据块直接 `write`，不经
+ * `runDrainLoop` 首次 pull（`onWake` 仅补拉竞态窗口新数据）。
+ *
+ * 终止语义：`drainWait` 抛错（NotFound=会话已关闭/移除）即停；
+ * `dispose` 后循环即停、迟到结果丢弃（invoke 无 AbortSignal，
+ * fetch 本体由后端 25s 超时回收，孤儿任务无害）。
+ */
+export function createLongPollScheduler(deps: DrainSchedulerDeps): LongPollDrainScheduler {
+  const drainWait = deps.drainWait;
+  if (!drainWait) {
+    throw new Error('createLongPollScheduler requires deps.drainWait');
+  }
+  const inner = createDrainScheduler(deps);
+  let disposed = false;
+  const dispose = (): void => {
+    disposed = true;
+    longPollDisposers.delete(dispose);
+  };
+  longPollDisposers.add(dispose);
+  void (async () => {
+    while (!disposed) {
+      try {
+        const chunk = await drainWait(deps.sessionId, DRAIN_WAIT_TIMEOUT_MS);
+        if (disposed) break;
+        if (chunk.byteLength > 0) {
+          deps.write(chunk);
+          inner.onWake();
+        }
+      } catch (e) {
+        console.debug('[Drain] long-poll stopped:', e);
+        break;
+      }
+    }
+  })();
+  return {
+    onWake: inner.onWake,
+    onWriteDigested: inner.onWriteDigested,
+    dispose,
+  };
+}
+
+/**
+ * 传输层统一入口：默认 long-poll，`VITE_TERMINAL_DRAIN_POLL=1` 时回退轮询。
+ * Call site 一行不改即可整体回退。
+ */
+export function createDrainTransportScheduler(deps: DrainSchedulerDeps): DrainTransportScheduler {
+  const usePollFallback = import.meta.env.VITE_TERMINAL_DRAIN_POLL === '1';
+  if (usePollFallback) {
+    return createPollingDrainScheduler(deps);
+  }
+  return createLongPollScheduler(deps);
 }

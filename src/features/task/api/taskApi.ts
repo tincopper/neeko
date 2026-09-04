@@ -91,3 +91,14 @@ export function stopTaskProcessSession(sessionId: string): Promise<void> {
 export function drainTaskProcessOutput(sessionId: string): Promise<ArrayBuffer> {
   return invoke<ArrayBuffer>('terminal_drain', { sessionId });
 }
+
+/**
+ * Long-poll drain: 无数据时后端挂起至数据到达/超时。镜像终端侧
+ * `terminal_drain_wait` 命令——保持本地镜像约定，不导入 terminal feature。
+ */
+export function drainTaskProcessOutputWait(
+  sessionId: string,
+  timeoutMs: number,
+): Promise<ArrayBuffer> {
+  return invoke<ArrayBuffer>('terminal_drain_wait', { sessionId, timeoutMs });
+}

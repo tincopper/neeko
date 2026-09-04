@@ -4,6 +4,8 @@ import {
   DRAIN_POLL_INTERVAL_MS,
   MAX_IN_FLIGHT_WRITES,
   createDrainScheduler,
+  createDrainTransportScheduler,
+  createLongPollScheduler,
   createPollingDrainScheduler,
   runDrainLoop,
 } from '../drainLoop';
@@ -358,5 +360,137 @@ describe('createPollingDrainScheduler — sessionId 冲突/重复注册', () => 
     scheduler.dispose();
     await vi.advanceTimersByTimeAsync(DRAIN_POLL_INTERVAL_MS * 3);
     expect(drain).toHaveBeenCalledTimes(1); // 不再空转
+  });
+});
+
+describe('createDrainTransportScheduler', () => {
+  const POLL_ENV = 'VITE_TERMINAL_DRAIN_POLL';
+  const original = process.env[POLL_ENV];
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    if (original === undefined) {
+      delete process.env[POLL_ENV];
+    } else {
+      process.env[POLL_ENV] = original;
+    }
+  });
+
+  it('VITE_TERMINAL_DRAIN_POLL=1 falls back to polling', async () => {
+    process.env[POLL_ENV] = '1';
+    const drain = vi.fn().mockResolvedValue(new ArrayBuffer(0));
+    const scheduler = createDrainTransportScheduler({
+      sessionId: 'sel-1',
+      drain,
+      write: () => {},
+      pendingWrites: () => 0,
+    });
+    await vi.advanceTimersByTimeAsync(DRAIN_POLL_INTERVAL_MS);
+    expect(drain).toHaveBeenCalledWith('sel-1');
+    scheduler.dispose();
+  });
+
+  it('defaults to long-poll when flag unset', async () => {
+    delete process.env[POLL_ENV];
+    const drainWait = vi.fn().mockImplementation(() => new Promise(() => {}));
+    const scheduler = createDrainTransportScheduler({
+      sessionId: 'sel-2',
+      drain: vi.fn(),
+      drainWait,
+      write: () => {},
+      pendingWrites: () => 0,
+    });
+    await flushMicrotasks(10);
+    expect(drainWait).toHaveBeenCalled();
+    scheduler.dispose();
+  });
+});
+
+describe('createLongPollScheduler', () => {
+  it('writes chunk then re-arms wait', async () => {
+    const drainWait = vi
+      .fn()
+      .mockResolvedValueOnce(makeArrayBuffer([1, 2]))
+      .mockImplementationOnce(() => new Promise(() => {}));
+    const write = vi.fn();
+    const scheduler = createLongPollScheduler({
+      sessionId: 'lp-1',
+      drain: vi.fn().mockResolvedValue(new ArrayBuffer(0)),
+      drainWait,
+      write,
+      pendingWrites: () => 0,
+    });
+    await flushMicrotasks(20);
+    expect(write).toHaveBeenCalledTimes(1);
+    expect(drainWait).toHaveBeenCalledTimes(2);
+    expect(drainWait).toHaveBeenNthCalledWith(1, 'lp-1', expect.any(Number));
+    scheduler.dispose();
+  });
+
+  it('stops loop on NotFound error', async () => {
+    const err = new Error('Terminal drain queue not found: lp-2');
+    const drainWait = vi
+      .fn()
+      .mockRejectedValueOnce(err)
+      .mockImplementation(() => new Promise(() => {}));
+    const write = vi.fn();
+    const scheduler = createLongPollScheduler({
+      sessionId: 'lp-2',
+      drain: vi.fn(),
+      drainWait,
+      write,
+      pendingWrites: () => 0,
+    });
+    await flushMicrotasks(20);
+    expect(drainWait).toHaveBeenCalledTimes(1);
+    expect(write).not.toHaveBeenCalled();
+    scheduler.dispose();
+  });
+
+  it('dispose stops loop and drops late results', async () => {
+    const gate = deferred<ArrayBuffer>();
+    const drainWait = vi.fn().mockReturnValueOnce(gate.promise);
+    const write = vi.fn();
+    const scheduler = createLongPollScheduler({
+      sessionId: 'lp-3',
+      drain: vi.fn(),
+      drainWait,
+      write,
+      pendingWrites: () => 0,
+    });
+    await flushMicrotasks(5);
+    scheduler.dispose();
+    gate.resolve(makeArrayBuffer([9]));
+    await flushMicrotasks(10);
+    expect(write).not.toHaveBeenCalled();
+    expect(drainWait).toHaveBeenCalledTimes(1);
+  });
+
+  it('backpressure gate resumes via onWriteDigested', async () => {
+    let pending = MAX_IN_FLIGHT_WRITES;
+    const drainWait = vi.fn().mockResolvedValue(makeArrayBuffer([7]));
+    const drain = vi
+      .fn()
+      .mockResolvedValueOnce(makeArrayBuffer([8]))
+      .mockResolvedValue(new ArrayBuffer(0));
+    const write = vi.fn();
+    const scheduler = createLongPollScheduler({
+      sessionId: 'lp-4',
+      drain,
+      drainWait,
+      write,
+      pendingWrites: () => pending,
+    });
+    await flushMicrotasks(20);
+    // 门闸满：long-poll 首块被 write，但 inner 续拉因门闸早退置 maybePending。
+    pending = 0;
+    scheduler.onWriteDigested();
+    await flushMicrotasks(20);
+    expect(drain).toHaveBeenCalled();
+    scheduler.dispose();
   });
 });

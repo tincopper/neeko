@@ -351,6 +351,86 @@ run_polling(fd, reader, &PumpConfig::default(), |batch| drain.push(batch, || app
 // SSH backpressure: tokio::time::sleep(2ms).await
 ```
 
+## Scenario: 终端输出 long-poll 传输（09-03 去轮询化）
+
+### 1. Scope / Trigger
+
+- Trigger：credit-pull 协议的触发源是 100ms 全局共享轮询器（`drainLoop.ts` `createPollingDrainScheduler`），每 session 空闲期 ≈10 次/秒空 invoke，空闲首包延迟 ≤100ms。
+- Scope：`common/terminal/drain.rs`（`Notify` + `wait_drain`）、`terminal/commands.rs`（`terminal_drain_wait`）、`app_state.rs`（owner 路由 + 超时钳制）、双 manager 的 `wait_drain`、`services.rs`/`remote.rs` 的 push 唤醒、前端 `drainLoop.ts`（`createLongPollScheduler`/`createDrainTransportScheduler`）+ 三消费方（TerminalViewBase / terminalFactory / taskRunner）。
+- 约束：macOS native→JS 推送 = eval（内存事故根因），唤醒通道必须保持 fetch 拉取（零 eval）。Tauri ipc custom protocol 的 async command 响应可任意延迟（`UriSchemeResponder` 模型），long-poll 无需新协议面。
+
+### 2. Signatures
+
+```rust
+pub(crate) fn notify_one(&self) // SessionDrain：push 成功后调，无 waiter 时存一个 permit
+pub(crate) async fn wait_drain(&self, idle_timeout: Duration) -> Option<Vec<u8>>
+pub(crate) async fn wait_drain(&self, session_id: &str, timeout: Duration) -> Option<Vec<u8>> // 双 manager 同构
+#[tauri::command] pub async fn terminal_drain_wait(session_id: String, timeout_ms: u64, state: State<'_, AppStateWrapper>) -> Result<tauri::ipc::Response, AppError>
+```
+
+```typescript
+export const DRAIN_WAIT_TIMEOUT_MS = 25_000;
+export function createLongPollScheduler(deps: DrainSchedulerDeps): LongPollDrainScheduler
+export function createDrainTransportScheduler(deps: DrainSchedulerDeps): DrainTransportScheduler // 默认 long-poll，VITE_TERMINAL_DRAIN_POLL=1 回退轮询
+export function drainTerminalWait(sessionId: string, timeoutMs: number): Promise<ArrayBuffer>
+export function drainTaskProcessOutputWait(sessionId: string, timeoutMs: number): Promise<ArrayBuffer> // task 侧本地镜像，不跨 feature 导入 terminalApi
+```
+
+### 3. Contracts
+
+1. **协议语义不变**：有界 `SessionDrain`、背压门闸 `MAX_IN_FLIGHT_WRITES`、drain-to-empty、`pendingWake` 闩锁 / `maybePending` 续拉全部保留；long-poll 每次返回天然等价一次 wake。
+2. **超时钳制**：`Duration::from_millis(timeout_ms).clamp(DRAIN_WAIT_MIN, DRAIN_WAIT_MAX)`（1s–30s 具名常量）；前端取 25s（后端上限内，自兜底后续挂）；`timeout_ms == 0` 视为 1s。
+3. **Notify 与 `wake_in_flight` 双轨**：`push` 把 `notify_one` 包在闩锁内；`wait_drain` 取到非空后自复位标志（否则门闸满早退路径下后续 notify 被吞，退化至 digest/25s 自愈）。无 waiter 时 permit 合并，take 与 await 注册间的竞态由 permit 覆盖。
+4. **终止语义**：`wait_drain` 返回 `None`（closed/missing）→ 调用方转 `NotFound` → 前端 `break` 停挂；超时返回空块（不 write 不 onWake，直接续挂，无忙旋）。`invoke` 无 AbortSignal：`dispose` 置 flag + 丢弃迟到结果，fetch 本体由后端超时回收（孤儿任务无害，最长 30s 持一份 Arc）。
+5. **错误口径**：`terminal_drain_wait` 的 None 一律 `Terminal session not found`（与 resize/close 一致）；`terminal_drain` 的 owner 命中但 drain 缺失保留 `drain queue not found`（真正的内部不一致，值得区分）。后端 `log::debug!` 记完整 session_id（dispose 泄漏排查用）。
+6. **降级开关**：`VITE_TERMINAL_DRAIN_POLL=1` 整体回退轮询，call site 一行不改；轮询实现与测试原样保留（逃生门，非死代码）。
+7. **HMR**：模块级 `longPollDisposers` 登记，`hot.dispose` 时清空（dev 残留循环最多存活 25s）。
+
+### 4. Validation & Error Matrix
+
+| 场景 | 预期 | 风险 |
+|---|---|---|
+| 有积压调用 | 立即返回字节，不挂起 | 无 |
+| 空队列 | 挂起至 push/close/超时；push 先于 wait 注册时 permit 使其立即返回 | permit 丢失则挂满超时（由 `notify_one` + 首轮 buffer 检查双保险覆盖） |
+| closed/missing | `None` → `NotFound`，前端停挂 + 后端 debug 日志 | 错误串改动不影响前端（按变体匹配） |
+| 门闸满时首块到达 | `write` 照常，续拉经 `maybePending`→`onWriteDigested` | 若 `wait_drain` 不自复位标志，下一 push 的 notify 被吞（Warn-1 实测教训） |
+| dispose / terminal-closed | 循环即停、迟到丢弃；closed 事件监听与 `entry.unlisten` 双收口（幂等） | 仅 dispose 置 flag，pending fetch 由后端超时回收 |
+| SSH 背压期间 | `tokio::time::sleep.await`，input/resize 不饿死 | 误用 `thread::sleep` 会饿死 select（2026-09 实测遗留，Pillar 7） |
+
+### 5. Good/Base/Bad Cases
+
+- Good：空闲 session 每 25s 一次超时续挂（≈0.04/s），有数据时 ≈16ms（泵 flush）+ RTT 首包。
+- Base：`VITE_TERMINAL_DRAIN_POLL=1` 下行为与旧轮询完全一致。
+- Bad：`wait_drain` 不复位 `wake_in_flight` → 背压后首包延迟退化；`remote.rs` 用 `thread::sleep` → input/resize 饿死。
+
+### 6. Tests Required
+
+- `drain::tests::wait_drain_*`：立即返回 / 挂起后 push 唤醒 / push 先于 wait（permit）/ closed→None / 超时空 / `close` 唤醒 parked waiter。
+- `manager/remote::tests::wait_drain_*`：有积压 / 缺席→None / 已关闭→None / 挂起后 push 唤醒（双 owner 同构）。
+- `drainLoop.test`：首块 write+续挂 / NotFound 停 / dispose 丢迟到（deferred gate，禁微任务顺序假 GREEN）/ 门闸早退经 digest 续拉 / 开关两用例。
+- 集成：`terminal_drain_wait` 往返 `Vec<u8>` 与 `ArrayBuffer` 一致性。
+
+### 7. Wrong vs Correct
+
+#### Wrong
+
+```rust
+// wait 取走数据但不复位闩锁 —— 门闸满早退后下一 push 的 notify 被吞
+if !data.is_empty() { return Some(data); }
+// SSH 背压在 tokio select 内阻塞睡 —— input/resize 分支饿死
+while !drain.push(&data, || {}) { std::thread::sleep(2ms); }
+```
+
+#### Correct
+
+```rust
+if !data.is_empty() {
+    self.wake_in_flight.store(false, Ordering::Release); // 自复位，后续 notify 可达
+    return Some(data);
+}
+while !drain.push(&data, || drain.notify_one()) { tokio::time::sleep(2ms).await; }
+```
+
 
 ## 常见错误
 

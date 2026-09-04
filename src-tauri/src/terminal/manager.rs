@@ -67,6 +67,8 @@ impl TerminalManager {
     }
 
     /// Takes all buffered output bytes for a session (credit-pull protocol).
+    /// 轮询降级路径专用：tick 即唤醒，竞态补发闭包保持为空；
+    /// long-poll 路径经 `SessionDrain::notify_one` 唤醒，不走此处。
     pub(crate) fn take_drain(&self, session_id: &str) -> Option<Vec<u8>> {
         let drain = self
             .drains
@@ -80,6 +82,20 @@ impl TerminalManager {
             // 的 IPC 消息往返。take_and_rearm 的竞态补发语义保留（闭包为空），
             // 字节安全由轮询「拉空为止」保证。
         }))
+    }
+    /// Long-poll drain: 有积压立即返回；空则挂起至 push/close/超时。
+    /// closed/missing 返回 `None`（调用方转 `NotFound`，前端停止续挂）。
+    pub(crate) async fn wait_drain(
+        &self,
+        session_id: &str,
+        timeout: std::time::Duration,
+    ) -> Option<Vec<u8>> {
+        let drain = self
+            .drains
+            .lock()
+            .ok()
+            .and_then(|m| m.get(session_id).cloned())?;
+        drain.wait_drain(timeout).await
     }
 
     /// Creates a new PTY terminal session for a local project.
@@ -270,5 +286,81 @@ impl TerminalManager {
             self.close_session(&id);
         }
         crate::terminal::services::log_info("[PTY] All sessions closed");
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::common::terminal::drain::SessionDrain;
+    use std::sync::Arc;
+    use std::time::Duration;
+
+    /// `wait_drain` 经 manager 查表分发：有积压立即返回字节，不落空。
+    #[tokio::test]
+    async fn wait_drain_returns_buffered_bytes() {
+        let manager = TerminalManager::new();
+        let drain = Arc::new(SessionDrain::default());
+        drain.push(b"hello", || drain.notify_one());
+        manager
+            .drains
+            .lock()
+            .expect("infallible: drains lock")
+            .insert("s1".into(), drain);
+        let got = manager
+            .wait_drain("s1", Duration::from_millis(50))
+            .await
+            .expect("registered drain must return Some");
+        assert_eq!(got, b"hello");
+    }
+
+    /// 会话不存在：查表落空返回 `None`（调用方转 NotFound，前端停止续挂）。
+    #[tokio::test]
+    async fn wait_drain_missing_session_returns_none() {
+        let manager = TerminalManager::new();
+        assert_eq!(
+            manager.wait_drain("nope", Duration::from_millis(10)).await,
+            None
+        );
+    }
+
+    /// 会话已关闭：`SessionDrain::close` 后返回 `None`（同一 NotFound 语义）。
+    #[tokio::test]
+    async fn wait_drain_closed_session_returns_none() {
+        let manager = TerminalManager::new();
+        let drain = Arc::new(SessionDrain::default());
+        drain.close();
+        manager
+            .drains
+            .lock()
+            .expect("infallible: drains lock")
+            .insert("gone".into(), drain);
+        assert_eq!(
+            manager.wait_drain("gone", Duration::from_millis(10)).await,
+            None
+        );
+    }
+
+    /// 空队列挂起至 push：waiter 先注册，push 后经 notify 唤醒返回字节。
+    #[tokio::test]
+    async fn wait_drain_parks_then_push_wakes() {
+        let manager = TerminalManager::new();
+        let drain = Arc::new(SessionDrain::default());
+        manager
+            .drains
+            .lock()
+            .expect("infallible: drains lock")
+            .insert("s2".into(), drain.clone());
+        let waiter = {
+            let manager = manager.clone();
+            tokio::spawn(async move { manager.wait_drain("s2", Duration::from_secs(5)).await })
+        };
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        drain.push(b"wake-me", || drain.notify_one());
+        let got = waiter
+            .await
+            .expect("waiter task panicked")
+            .expect("open drain must return Some");
+        assert_eq!(got, b"wake-me");
     }
 }
