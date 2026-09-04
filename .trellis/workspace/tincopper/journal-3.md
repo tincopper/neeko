@@ -1786,3 +1786,36 @@ terminal_drain_wait 挂起式传输替代100ms轮询，三消费方切换+env回
 ### Next Steps
 
 - None - task complete
+
+
+## Session 171: terminal 锁统一实现与审查
+
+**Date**: 2026-09-04
+**Task**: terminal 锁统一实现与审查
+**Branch**: `main`
+
+### Summary
+
+(Add summary)
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `eaec61fe87852451bbc5d5db71443afb47975879` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
