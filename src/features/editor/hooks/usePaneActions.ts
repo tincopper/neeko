@@ -3,13 +3,13 @@ import { useCallback, useMemo } from 'react';
 import type { ActionRegistryItem, ActionContext } from '@/features/action-menu/types/actionMenu';
 import { useQuickOpenStore } from '@/features/quick-open/store/quickOpenStore';
 import { useRecentFilesStore } from '@/features/quick-open/store/recentFilesStore';
-import { closeEditorTab } from '@/features/terminal';
 import { useDockStore } from '@/shared/store/dockStore';
 import { useEditorStore } from '@/shared/store/editorStore';
 import { useProjectStore } from '@/shared/store/projectStore';
 import type { AgentConfig, EditorGroupId, Tab } from '@/shared/types';
 import { createUntitledFileTab } from '@/shared/utils/createUntitledFileTab';
-import { getTabDisplayName, isDirtyFileTab } from '@/shared/utils/fileTree';
+
+import { closeTabWithConfirmation } from '../store/closeConfirmStore';
 
 interface UsePaneActionsParams {
   tabKey: string;
@@ -20,13 +20,6 @@ interface UsePaneActionsParams {
   /** 新建终端 tab；targetGroup 由发起 pane 决定（pinned pane 内创建落 pinned）。 */
   onAddTerminalTab?: (targetGroup?: EditorGroupId | 'pinned') => void;
   onActionMenuClose: () => void;
-  /**
-   * 未保存关闭确认回调：返回用户的选择。
-   * - 'save'    → 先保存再关闭
-   * - 'discard' → 不保存直接关闭
-   * - 'cancel'  → 取消关闭
-   */
-  onRequestCloseTab?: (tabId: string, fileName: string) => Promise<'save' | 'discard' | 'cancel'>;
   /** 保存指定 tab（关闭确认中用户选择「保存」时调用）。返回 true 表示保存成功。 */
   onSaveTab?: (tabId: string) => Promise<boolean>;
 }
@@ -42,7 +35,6 @@ export function usePaneActions({
   agents,
   onAddTerminalTab,
   onActionMenuClose,
-  onRequestCloseTab,
   onSaveTab,
 }: UsePaneActionsParams) {
   const handleActivateTab = useCallback(
@@ -55,23 +47,10 @@ export function usePaneActions({
   const handleCloseTab = useCallback(
     async (tabId: string) => {
       if (groupId === 'pinned') return;
-      const tab = tabs.find((t) => t.id === tabId);
-      if (tab && isDirtyFileTab(tab)) {
-        const fileName = getTabDisplayName(tab);
-        if (onRequestCloseTab) {
-          const action = await onRequestCloseTab(tabId, fileName);
-          if (action === 'cancel') return;
-          if (action === 'save') {
-            const saved = onSaveTab ? await onSaveTab(tabId) : false;
-            // 保存失败（含 untitled 的 Save As 取消/失败）→ 不关闭
-            if (!saved) return;
-          }
-          // 'discard' → 直接关闭
-        }
-      }
-      closeEditorTab(tabKey, tabId);
+      // dirty → 三选确认编排统一走全局 closeConfirmStore（与菜单/Cmd+W 路径同源）
+      await closeTabWithConfirmation(tabKey, tabId, onSaveTab);
     },
-    [tabKey, groupId, tabs, onRequestCloseTab, onSaveTab],
+    [tabKey, groupId, onSaveTab],
   );
 
   const handleActionMenuExecute = useCallback(

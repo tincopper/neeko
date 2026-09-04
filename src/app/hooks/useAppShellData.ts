@@ -192,6 +192,7 @@ export function useAppShellData(): UseAppShellDataResult {
   } = useTabManagement({
     activeProject,
     activeWorktreePath,
+    saveTabById: fileView.saveTabById,
   });
   const handleFileSelect = useCallback(
     (filePath: string) => {
@@ -259,14 +260,15 @@ export function useAppShellData(): UseAppShellDataResult {
   // Cmd+W / Ctrl+W → close active tab only, never close the window.
   // 只订阅一次（不随 activeTabId/tabKey 变化重订阅），避免重订阅竞态：
   // 事件到达时由 closeActiveTabCommand 现取项目/worktree/tab 最新状态。
+  // dirty 文件 tab 的「保存」分支注入 fileView.saveTabById（引用稳定，仅依赖 ref）。
   useEffect(() => {
     const unlistenPromise = listen(CLOSE_TAB_EVENT, () => {
-      closeActiveTabCommand();
+      void closeActiveTabCommand(fileView.saveTabById);
     });
     return () => {
       unlistenPromise.then((fn) => safeUnlisten(fn)());
     };
-  }, []);
+  }, [fileView.saveTabById]);
 
   const { handleAgentClick } = useAgentClickHandler({
     tabKey,

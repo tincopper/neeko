@@ -7,6 +7,8 @@ export interface SaveAsRequest {
   content: string;
   defaultDirectory: string;
   defaultFilename: string;
+  /** 关闭确认触发的 Save As：保存成功后自动关闭该 tab（Ctrl+S 手动保存不传）。 */
+  closeAfterSave?: boolean;
 }
 
 interface SaveAsStoreState {

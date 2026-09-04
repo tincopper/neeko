@@ -85,7 +85,7 @@ describe('useFileViewTabOps saveTabById', () => {
     }
   });
 
-  it('untitled tab：触发 Save As 对话框、不写盘、返回 false', async () => {
+  it('untitled tab：saveTabById 触发 Save As 并携带 closeAfterSave: true（关闭确认链路）', async () => {
     act(() => {
       useEditorStore
         .getState()
@@ -105,9 +105,29 @@ describe('useFileViewTabOps saveTabById', () => {
         tabKey: 'p1',
         content: 'hello',
         defaultFilename: 'Untitled-1',
+        closeAfterSave: true,
       }),
     );
     expect(writeFileContentMock).not.toHaveBeenCalled();
+  });
+
+  it('untitled tab：Ctrl+S 手动保存（saveFile 无 tabId）不带 closeAfterSave', async () => {
+    act(() => {
+      useEditorStore
+        .getState()
+        .addTab('p1', makeFileTab('u1', { isUntitled: true, untitledName: 'Untitled-1' }));
+    });
+
+    const { result } = renderOps();
+    let saved = true;
+    await act(async () => {
+      saved = await result.current.saveFile('hello');
+    });
+
+    expect(saved).toBe(false);
+    expect(requestSaveAsMock).toHaveBeenCalledTimes(1);
+    const req = requestSaveAsMock.mock.calls[0][0];
+    expect(req.closeAfterSave).toBeUndefined();
   });
 
   it('找不到 tab 或非文件 tab：返回 false 且不写盘', async () => {

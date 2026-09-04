@@ -1,6 +1,8 @@
-import React from 'react';
+import React, { useCallback } from 'react';
 
 import { RemoteAuthDialog, RemoteDialog, WSLDialog } from '@/features/connection';
+import { CloseConfirmDialog } from '@/features/editor';
+import { useCloseConfirmStore } from '@/features/editor/store/closeConfirmStore';
 import { CloneProjectDialog } from '@/features/project';
 import ConfirmDialog from '@/shared/components/ConfirmDialog';
 import type { AuthMethod, RemoteEntrySession, WSLEntrySession } from '@/shared/types';
@@ -63,6 +65,17 @@ function AppModals({
   onCancelExit,
   unsavedFileNames = [],
 }: AppModalsProps) {
+  const closeConfirmPending = useCloseConfirmStore((s) => s.pending);
+  const resolveCloseConfirm = useCloseConfirmStore((s) => s.resolve);
+  const onCloseConfirmSave = useCallback(() => resolveCloseConfirm('save'), [resolveCloseConfirm]);
+  const onCloseConfirmDiscard = useCallback(
+    () => resolveCloseConfirm('discard'),
+    [resolveCloseConfirm],
+  );
+  const onCloseConfirmCancel = useCallback(
+    () => resolveCloseConfirm('cancel'),
+    [resolveCloseConfirm],
+  );
   const unsavedCount = unsavedFileNames.length;
   const unsavedPreview = unsavedFileNames.slice(0, 3).join(', ');
   return (
@@ -92,7 +105,14 @@ function AppModals({
         selectedEntryId={remoteAddToEntryId ?? undefined}
         existingEntryAuth={remoteAuthStore}
       />
-
+      {/* 未保存关闭确认对话框（全局单例：TabBar X / 菜单 Close Tab / Cmd+W 三条关闭路径共用） */}
+      <CloseConfirmDialog
+        open={closeConfirmPending !== null}
+        fileName={closeConfirmPending?.fileName ?? ''}
+        onSave={onCloseConfirmSave}
+        onDiscard={onCloseConfirmDiscard}
+        onCancel={onCloseConfirmCancel}
+      />
       {pendingAuthEntry && (
         <RemoteAuthDialog
           isOpen={true}

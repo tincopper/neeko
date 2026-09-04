@@ -5,6 +5,7 @@ import DirectoryPickerDialog from '@/features/action-menu/components/DirectoryPi
 import { readDirTree, saveNewFile } from '@/features/file/api/fileApi';
 import { useFileStore } from '@/features/file/store';
 import { refreshGitFileStates } from '@/features/git';
+import { closeEditorTab } from '@/features/terminal';
 import { useEditorStore } from '@/shared/store/editorStore';
 import { useProjectStore } from '@/shared/store/projectStore';
 import { useWorktreeStore } from '@/shared/store/worktreeStore';
@@ -131,7 +132,13 @@ const SaveFileDialog: React.FC = () => {
           is_binary: false,
         } satisfies FileContent,
       });
-      store.activateTab(request.tabKey, request.tabId);
+      if (request.closeAfterSave) {
+        // 关闭确认触发的 Save As：保存成功即关 tab（untitled「保存后关闭」闭环），
+        // 无需再激活该 tab；经 terminal 门面保证 PTY 回收等清理一致。
+        closeEditorTab(request.tabKey, request.tabId);
+      } else {
+        store.activateTab(request.tabKey, request.tabId);
+      }
       void refreshFileTree();
       clearSaveAs();
     } catch (err) {

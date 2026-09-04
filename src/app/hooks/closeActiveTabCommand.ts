@@ -1,4 +1,7 @@
-import { closeEditorTab } from '@/features/terminal';
+import {
+  closeTabWithConfirmation,
+  type SaveTabAction,
+} from '@/features/editor/store/closeConfirmStore';
 import { useEditorStore } from '@/shared/store/editorStore';
 import { useProjectStore } from '@/shared/store/projectStore';
 import { useWorktreeStore } from '@/shared/store/worktreeStore';
@@ -30,21 +33,28 @@ export function resolveCurrentTabKey(): string {
  * addTab/activateTab/closeTab 都会同步），而非全局 activeTabId ——
  * 全局值会在项目/worktree 切换路径被置空/错位。
  *
+ * dirty 文件 tab 弹三选确认（与 X 按钮路径同源的 closeConfirmStore 编排）：
+ * cancel 不关、discard 直接关、save 保存成功才关。
+ *
+ * @param saveTab 保存指定 tab 的动作（「保存」分支调用），由 useAppShellData
+ *   注入 `fileView.saveTabById`；未提供时「保存」视为失败 → 不关闭。
  * @returns 是否真的关闭了一个 tab
  */
-export function closeActiveTabForTabKey(tabKey: string): boolean {
+export async function closeActiveTabForTabKey(
+  tabKey: string,
+  saveTab?: SaveTabAction,
+): Promise<boolean> {
   const tabId = useEditorStore.getState().tabs[tabKey]?.activeTabId ?? null;
   if (!tabId) return false;
-  closeEditorTab(tabKey, tabId);
-  return true;
+  return closeTabWithConfirmation(tabKey, tabId, saveTab);
 }
 
 /**
  * Cmd+W / Ctrl+W → 关闭当前激活 tab（绝不关窗口）。
  *
  * 作为 `close-tab` 事件的处理器：现取项目/worktree/tab 最新状态，
- * 无激活 tab 时静默返回。
+ * 无激活 tab 时静默返回；dirty 文件 tab 经全局确认状态机三选。
  */
-export function closeActiveTabCommand(): boolean {
-  return closeActiveTabForTabKey(resolveCurrentTabKey());
+export async function closeActiveTabCommand(saveTab?: SaveTabAction): Promise<boolean> {
+  return closeActiveTabForTabKey(resolveCurrentTabKey(), saveTab);
 }

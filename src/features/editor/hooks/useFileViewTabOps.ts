@@ -163,10 +163,11 @@ export function useFileViewTabOps({
 
   /**
    * Save file content.
-   * 传入 `tabId` 时保存指定 tab（关闭确认等场景）；否则保存当前激活的文件 tab。
+   * 传入 `tabId` 时保存指定 tab；`closeAfterSave` 标记本次保存来自关闭确认链路
+   * （untitled 触发 Save As 后，保存成功即关 tab）——Ctrl+S 手动保存不传。
    */
   const saveFile = useCallback(
-    async (content: string, tabId?: string): Promise<boolean> => {
+    async (content: string, tabId?: string, closeAfterSave?: boolean): Promise<boolean> => {
       const tk = tabKeyRef.current;
       if (!tk) return false;
 
@@ -193,6 +194,7 @@ export function useFileViewTabOps({
           content,
           defaultDirectory,
           defaultFilename: fileTab.data.untitledName ?? fileTab.data.fileName,
+          closeAfterSave,
         });
         return false;
       }
@@ -235,7 +237,8 @@ export function useFileViewTabOps({
       const tab = projTabs?.tabs.find((t) => t.id === tabId);
       if (!tab || tab.data.kind !== 'file') return false;
 
-      return saveFile(tab.data.content.content, tabId);
+      // 关闭确认链路：untitled 走 Save As 成功后由对话框关 tab（closeAfterSave）
+      return saveFile(tab.data.content.content, tabId, true);
     },
     [tabKeyRef, saveFile],
   );

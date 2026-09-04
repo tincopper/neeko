@@ -1,5 +1,5 @@
 import { useDroppable } from '@dnd-kit/core';
-import React, { useCallback, useMemo } from 'react';
+import React, { useMemo } from 'react';
 
 import { getActionMenuItems } from '@/features/action-menu';
 import { ContextMenu } from '@/features/project';
@@ -11,7 +11,6 @@ import { PINNED_DROP_PREFIX, editorPaneRegionClass } from '../dragDrop';
 import { useFileActionsContext } from '../FileActionsContext';
 import { useActionMenu } from '../hooks/useActionMenu';
 import { useBulkCloseConfirmation } from '../hooks/useBulkCloseConfirmation';
-import { useCloseConfirmation } from '../hooks/useCloseConfirmation';
 import { useEditorGroupLayout } from '../hooks/useEditorGroupLayout';
 import { usePaneActions } from '../hooks/usePaneActions';
 import { usePaneAgents } from '../hooks/usePaneAgents';
@@ -21,7 +20,6 @@ import { usePaneSplit } from '../hooks/usePaneSplit';
 import { usePaneTabs } from '../hooks/usePaneTabs';
 
 import BulkCloseConfirmDialog from './BulkCloseConfirmDialog';
-import CloseConfirmDialog from './CloseConfirmDialog';
 import PaneContent from './PaneContent';
 import PaneTabBar from './PaneTabBar';
 
@@ -68,18 +66,6 @@ function EditorGroupPane({
   const { agents, compactMode, showAgentBar, hiddenAgentIds, onAgentClick } = globalEditorCtx;
   const { config, showToast } = useAppContext();
   const { onFileSaveTab } = useFileActionsContext();
-  const {
-    closeConfirmOpen,
-    closeConfirmFileName,
-    requestCloseConfirmation,
-    onSave,
-    onDiscard,
-    onCancel,
-  } = useCloseConfirmation();
-  const handleRequestCloseTab = useCallback(
-    (_tabId: string, fileName: string) => requestCloseConfirmation(fileName),
-    [requestCloseConfirmation],
-  );
   const {
     bulkCloseOpen,
     bulkCloseDirtyCount,
@@ -133,7 +119,6 @@ function EditorGroupPane({
     agents,
     onAddTerminalTab,
     onActionMenuClose: closeActionMenu,
-    onRequestCloseTab: handleRequestCloseTab,
     onSaveTab: onFileSaveTab,
   });
 
@@ -267,15 +252,6 @@ function EditorGroupPane({
             onClose={closeContextMenu}
           />
         )}
-
-        {/* 未保存关闭确认对话框 */}
-        <CloseConfirmDialog
-          open={closeConfirmOpen}
-          fileName={closeConfirmFileName}
-          onSave={onSave}
-          onDiscard={onDiscard}
-          onCancel={onCancel}
-        />
 
         {/* 批量关闭未保存确认对话框 */}
         <BulkCloseConfirmDialog
