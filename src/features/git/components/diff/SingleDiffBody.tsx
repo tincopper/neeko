@@ -115,13 +115,15 @@ function SingleDiffBody(props: SingleDiffBodyProps) {
 
   React.useEffect(() => {
     let cancelled = false;
-    void ensureLanguageRegistered(filePath).then(() => {
+    // 必须传语言名（detectLanguage 结果）而非 filePath：LANGUAGE_MAP 以语言为 key，
+    // 传 filePath 会导致静默不注册 → highlightLine 永久降级 escapeHtml（高亮消失）。
+    void ensureLanguageRegistered(language).then(() => {
       if (!cancelled) setLanguageReady(true);
     });
     return () => {
       cancelled = true;
     };
-  }, [filePath]);
+  }, [language]);
 
   const parts = filePath.split('/');
   const name = parts[parts.length - 1];
