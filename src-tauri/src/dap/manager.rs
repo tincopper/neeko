@@ -220,12 +220,7 @@ impl DapManager {
         config_name: Option<String>,
         current_file: Option<String>,
     ) -> Result<DapSessionInfo, AppError> {
-        // Stop existing session for this project
-        self.stop_project_sessions(project_id).await;
-
         let path = project_path(state, project_id)?;
-        let env = state.project_environment(project_id)?;
-        let target = env.to_exec_target();
 
         // Prefer existing launch.json; if empty, discover and materialize.
         let mut file = load_launch_file(&path)?;
@@ -256,7 +251,28 @@ impl DapManager {
                 })?
         };
 
-        let config = expand_config(&raw, &path, current_file.as_deref());
+        self.launch_session(state, app, project_id, raw, current_file.as_deref())
+            .await
+    }
+
+    /// Shared launch tail: stop existing project sessions, expand the config,
+    /// attach breakpoints, start the session and register it.
+    async fn launch_session(
+        &self,
+        state: &AppStateWrapper,
+        app: tauri::AppHandle,
+        project_id: &str,
+        raw_config: LaunchConfig,
+        current_file: Option<&str>,
+    ) -> Result<DapSessionInfo, AppError> {
+        // One active session per project.
+        self.stop_project_sessions(project_id).await;
+
+        let path = project_path(state, project_id)?;
+        let env = state.project_environment(project_id)?;
+        let target = env.to_exec_target();
+
+        let config = expand_config(&raw_config, &path, current_file);
         let bps = self.get_breakpoints(state, project_id).await?;
 
         let session = DapSession::start(
@@ -275,6 +291,20 @@ impl DapManager {
             .await
             .insert(session.session_id.clone(), session);
         Ok(info)
+    }
+
+    /// Start a DAP debug session from a fully-specified config, bypassing
+    /// launch.json entirely (editor inline test debug: synthetic lldb launch
+    /// with program = test binary parsed from `cargo test --no-run` output).
+    pub async fn start_session_config(
+        &self,
+        state: &AppStateWrapper,
+        app: tauri::AppHandle,
+        project_id: &str,
+        raw_config: LaunchConfig,
+    ) -> Result<DapSessionInfo, AppError> {
+        self.launch_session(state, app, project_id, raw_config, None)
+            .await
     }
 
     /// Stop a DAP session by session_id.

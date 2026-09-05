@@ -33,6 +33,13 @@ export function dapStartSession(
   });
 }
 
+export function dapStartSessionConfig(
+  projectId: string,
+  config: LaunchConfig,
+): Promise<DapSessionInfo> {
+  return invoke<DapSessionInfo>('dap_start_session_config', { projectId, config });
+}
+
 export function dapStopSession(sessionId: string): Promise<void> {
   return invoke('dap_stop_session', { sessionId });
 }

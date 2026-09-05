@@ -27,6 +27,14 @@ pub fn reveal_in_file_manager(path: String) -> Result<(), AppError> {
 
     Ok(())
 }
+// ── Existence probe ──────────────────────────────────────────────────────────
+
+/// 存在性探测（O(1) stat，不读内容）：任务命令构造等前端逻辑用，返回 bool
+/// 而非 NotFound 错误。仅元数据访问，无内容泄露面。
+#[tauri::command]
+pub fn file_exists(path: String) -> Result<bool, AppError> {
+    Ok(Path::new(&normalize_path(&path)).exists())
+}
 
 // ── File operations ──────────────────────────────────────────────────────────
 
@@ -276,6 +284,18 @@ mod tests {
         }
 
         let _ = fs::remove_dir(&temp);
+    }
+
+    #[test]
+    fn test_file_exists() {
+        let temp = std::env::temp_dir().join("neeko_test_file_exists_marker");
+        let _ = fs::remove_file(&temp);
+        assert!(!file_exists(temp.to_str().unwrap().to_string()).unwrap());
+
+        fs::write(&temp, b"x").unwrap();
+        assert!(file_exists(temp.to_str().unwrap().to_string()).unwrap());
+
+        let _ = fs::remove_file(&temp);
     }
 
     #[test]

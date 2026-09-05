@@ -244,6 +244,33 @@ mod tests {
         assert_eq!(SessionStatus::Stopped.as_str(), "stopped");
         assert_eq!(SessionStatus::Terminated.as_str(), "terminated");
     }
+
+    /// Editor inline test debug sends a synthetic launch config over IPC.
+    /// The exact frontend payload shape (camelCase, optional cwd, args list)
+    /// must deserialize into LaunchConfig unchanged.
+    #[test]
+    fn should_deserialize_synthetic_test_debug_launch_config() {
+        let payload = serde_json::json!({
+            "name": "Debug test: parse_simple",
+            "type": "lldb",
+            "request": "launch",
+            "program": "/proj/target/debug/deps/neeko-abc123",
+            "cwd": "/proj",
+            "args": ["parse_simple"],
+            "stopOnEntry": false
+        });
+        let cfg: LaunchConfig = serde_json::from_value(payload).expect("deserialize");
+        assert_eq!(cfg.name, "Debug test: parse_simple");
+        assert_eq!(cfg.type_, "lldb");
+        assert_eq!(cfg.request, "launch");
+        assert_eq!(
+            cfg.program.as_deref(),
+            Some("/proj/target/debug/deps/neeko-abc123")
+        );
+        assert_eq!(cfg.cwd.as_deref(), Some("/proj"));
+        assert_eq!(cfg.args, vec!["parse_simple".to_string()]);
+        assert_eq!(cfg.stop_on_entry, Some(false));
+    }
 }
 
 /// Supported debug adapter families.

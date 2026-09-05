@@ -25,6 +25,17 @@ import {
 } from '@/shared/utils/bottomPanelExclusive';
 import { reportFrontendError } from '@/shared/utils/errorReporting';
 
+/** Optional cwd override + output/exit observers for programmatic runs (editor test Run/Debug). */
+export interface RunTaskOptions {
+  /** Working directory override; defaults to the active project path. */
+  cwd?: string;
+  onOutput?: (chunk: string) => void;
+  onExit?: (exitCode: number) => void;
+}
+
+/** Per-run observers for programmatic runs, keyed by run id (cleaned up on exit). */
+const runObservers = new Map<string, Pick<RunTaskOptions, 'onOutput' | 'onExit'>>();
+
 /** Active process handles keyed by run id — outside React so hide/show never touches them. */
 const processHandles = new Map<string, TaskProcessHandle>();
 
@@ -76,7 +87,7 @@ interface TaskStoreState {
   deleteConfig: (id: string, scope: string, projectPath?: string) => Promise<void>;
 
   /** Start (or re-run) a task; process + buffer live independent of panel mount. */
-  runTask: (command: string, configId: string) => void;
+  runTask: (command: string, configId: string, options?: RunTaskOptions) => string | null;
   stopTask: (runId?: string) => void;
 
   setSelectedConfig: (id: string | null) => void;
@@ -190,8 +201,16 @@ async function launchProcessForRun(run: TaskRun) {
       command: run.command,
       cwd: run.projectPath,
       projectId: run.projectId,
-      onOutput: (chunk) => appendOutput(run.id, chunk),
-      onExit: (code) => finalizeRun(run.id, code),
+      onOutput: (chunk) => {
+        appendOutput(run.id, chunk);
+        runObservers.get(run.id)?.onOutput?.(chunk);
+      },
+      onExit: (code) => {
+        finalizeRun(run.id, code);
+        const observers = runObservers.get(run.id);
+        runObservers.delete(run.id);
+        observers?.onExit?.(code);
+      },
     });
     processHandles.set(run.id, handle);
     useTaskStore.setState((state) => ({
@@ -201,6 +220,9 @@ async function launchProcessForRun(run: TaskRun) {
     }));
   } catch (e) {
     console.error('[TaskStore] failed to start task process:', e);
+    const observers = runObservers.get(run.id);
+    runObservers.delete(run.id);
+    observers?.onExit?.(1);
     const msg = `\x1b[31m[Failed to start task: ${String(e)}]\x1b[0m\r\n`;
     useTaskStore.setState((state) => ({
       consoleSessions: state.consoleSessions.map((s) =>
@@ -345,15 +367,16 @@ export const useTaskStore = create<TaskStoreState>((rawSet, get) => {
       }
     },
 
-    runTask: (command: string, configId: string) => {
+    runTask: (command: string, configId: string, options?: RunTaskOptions) => {
       const activeProject = useProjectStore.getState().activeProject;
       if (!activeProject) {
         console.error('No active project to run task in');
-        return;
+        return null;
       }
 
       const projectId = activeProject.id;
-      const projectPath = activeProject.path ?? '';
+      const projectPath = options?.cwd || activeProject.path || '';
+
       const name = resolveTaskName(get, configId, command);
       const sessions = get().consoleSessions;
 
@@ -367,7 +390,7 @@ export const useTaskStore = create<TaskStoreState>((rawSet, get) => {
           activeConsoleId: running.id,
           selectedConfigId: configId,
         });
-        return;
+        return running.id;
       }
 
       // Finished run for same config → re-run in-place (clear buffer, new process)
@@ -378,6 +401,9 @@ export const useTaskStore = create<TaskStoreState>((rawSet, get) => {
           (s.status === 'idle' || s.status === 'failed'),
       );
       if (finished) {
+        if (options?.onOutput || options?.onExit) {
+          runObservers.set(finished.id, { onOutput: options.onOutput, onExit: options.onExit });
+        }
         const header = formatTaskHeader(command, projectPath);
         const updated: TaskRun = {
           ...finished,
@@ -389,6 +415,7 @@ export const useTaskStore = create<TaskStoreState>((rawSet, get) => {
           exitCode: null,
           startedAt: Date.now(),
           endedAt: null,
+          projectPath,
         };
         set({
           consolePanelOpen: true,
@@ -397,11 +424,14 @@ export const useTaskStore = create<TaskStoreState>((rawSet, get) => {
           consoleSessions: sessions.map((s) => (s.id === finished.id ? updated : s)),
         });
         void launchProcessForRun(updated);
-        return;
+        return finished.id;
       }
 
       // New run / new tab
       const id = `task_${crypto.randomUUID()}`;
+      if (options?.onOutput || options?.onExit) {
+        runObservers.set(id, { onOutput: options.onOutput, onExit: options.onExit });
+      }
       const header = formatTaskHeader(command, projectPath);
       const run: TaskRun = {
         id,
@@ -425,6 +455,7 @@ export const useTaskStore = create<TaskStoreState>((rawSet, get) => {
         consoleSessions: [...sessions, run],
       });
       void launchProcessForRun(run);
+      return id;
     },
 
     stopTask: (runId?: string) => {
@@ -503,6 +534,12 @@ export const useTaskStore = create<TaskStoreState>((rawSet, get) => {
             reportFrontendError('task.stopProcess', err),
           );
         }
+        // dispose() detaches the exit listener, so an observed run would never
+        // report exit — end it here (process killed → non-zero) to release the
+        // runObservers entry instead of leaking it.
+        const observers = runObservers.get(id);
+        runObservers.delete(id);
+        observers?.onExit?.(1);
       }
       set((state) => {
         const next = state.consoleSessions.filter((s) => s.id !== id);

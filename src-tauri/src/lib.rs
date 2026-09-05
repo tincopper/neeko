@@ -267,6 +267,7 @@ macro_rules! neeko_invoke_handler {
             $crate::git::commands::list_pr_review_comments_command,
             // ── file ──────────────────────────────────────────────────────────
             $crate::file::commands::reveal_in_file_manager,
+            $crate::file::commands::file_exists,
             $crate::file::commands::read_dir_tree,
             $crate::file::commands::read_file_content,
             $crate::file::commands::write_file_content,
@@ -385,6 +386,7 @@ macro_rules! neeko_invoke_handler {
             $crate::dap::commands::dap_save_configs,
             $crate::dap::commands::dap_discover_entries,
             $crate::dap::commands::dap_start_session,
+            $crate::dap::commands::dap_start_session_config,
             $crate::dap::commands::dap_stop_session,
             $crate::dap::commands::dap_get_session,
             $crate::dap::commands::dap_list_sessions,

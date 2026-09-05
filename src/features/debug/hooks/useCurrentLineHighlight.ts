@@ -48,7 +48,9 @@ export { applyDebugCurrentLine };
 
 /**
  * Reactively apply / clear the debug current-line highlight.
- * Extensions themselves come from `useBreakpointGutterExtensions` (includes the field).
+ * The `currentLineDecoField` lives inside `breakpointContributionExtensions`
+ * (assembled by the unified gutter); this hook only dispatches the highlight
+ * effect on session stop / line change.
  */
 export function useCurrentLineHighlight(
   absFilePath: string | null,

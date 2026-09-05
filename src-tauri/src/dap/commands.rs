@@ -51,6 +51,21 @@ pub async fn dap_start_session(
         .await
 }
 
+/// Start a DAP debug session from a synthetic launch config (editor inline
+/// test debug: lldb launch with program = test binary, args = [name]).
+#[tauri::command]
+pub async fn dap_start_session_config(
+    project_id: String,
+    config: LaunchConfig,
+    state: State<'_, AppStateWrapper>,
+    app: AppHandle,
+) -> Result<DapSessionInfo, AppError> {
+    state
+        .dap_manager
+        .start_session_config(&state, app, &project_id, config)
+        .await
+}
+
 /// Stop a DAP debug session.
 #[tauri::command]
 pub async fn dap_stop_session(

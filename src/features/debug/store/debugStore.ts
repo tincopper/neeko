@@ -21,6 +21,7 @@ import {
   dapSetBreakpoints,
   dapStackTrace,
   dapStartSession,
+  dapStartSessionConfig,
   dapStopSession,
   dapVariables,
 } from '../api/debugApi';
@@ -73,6 +74,8 @@ interface DebugState {
   updateConfig: (projectId: string, originalName: string, config: LaunchConfig) => Promise<void>;
   deleteConfig: (projectId: string, name: string) => Promise<void>;
   start: (projectId: string, currentFile?: string | null) => Promise<void>;
+  /** Start a session from a fully-specified synthetic config (editor test debug). */
+  startWithConfig: (projectId: string, config: LaunchConfig) => Promise<void>;
   /** Debug a discovered entry (ensures matching launch config). */
   debugEntry: (projectId: string, entry: EntryPoint, currentFile?: string | null) => Promise<void>;
   /** Run entry without debugger (terminal task). */
@@ -153,6 +156,76 @@ export const useDebugStore = create<DebugState>((rawSet, get) => {
     }
     return (rawSet as (p: unknown, r?: boolean) => void)(partial, replace);
   }) as typeof rawSet;
+
+  /** Adapter check + session launch + panel/console wiring, shared by `start` (named config)
+   *  and `startWithConfig` (synthetic config from editor test debug). Rethrows on failure. */
+  const launchSession = async (
+    projectId: string,
+    config: LaunchConfig,
+    start: () => Promise<DapSessionInfo>,
+  ) => {
+    try {
+      const available = await dapCheckAdapter(projectId, config.type);
+      if (!available) {
+        const hint =
+          config.type === 'go'
+            ? 'Install Delve: go install github.com/go-delve/delve/cmd/dlv@latest'
+            : 'Install lldb-dap (LLVM) or codelldb and ensure it is on PATH';
+        const msg = `Debug adapter for type "${config.type}" not found. ${hint}`;
+        set({ error: msg, panelOpen: true, panelTab: 'console' });
+        get().pushConsole('err', msg);
+        notifyError(msg);
+        throw new Error(msg);
+      }
+      if (config.preLaunchTask?.trim()) {
+        get().pushConsole('sys', `preLaunchTask: ${config.preLaunchTask}`);
+      }
+      get().pushConsole('sys', `Starting: ${config.name}…`);
+      set({ panelOpen: true, panelTab: 'console' });
+      const session = await start();
+      set({ session, panelOpen: true, panelTab: 'session' });
+      get().pushConsole('sys', `Started: ${session.configName} (${session.status})`);
+      // No toast — Debug panel / status bar icon already show session state.
+      // Handshake waits for entry stop when possible — load stack/highlight immediately.
+      if (session.status === 'stopped' || session.status === 'starting') {
+        void get().refreshStackAndVars();
+      }
+    } catch (e) {
+      const msg = String(e).replace(/^Error:\s*/, '');
+      set({
+        error: msg,
+        panelOpen: true,
+        panelTab: 'console',
+        session: get().session
+          ? { ...get().session!, status: 'terminated', statusMessage: msg }
+          : {
+              sessionId: '',
+              projectId,
+              projectPath: '',
+              configName: config.name,
+              status: 'terminated',
+              statusMessage: msg,
+            },
+      });
+      // Multi-line DAP build errors → console
+      for (const line of msg.split('\n')) {
+        if (line.trim()) get().pushConsole('err', line);
+      }
+      notifyError(msg.length > 200 ? `${msg.slice(0, 200)}…` : msg);
+      throw e;
+    }
+  };
+
+  const resetSessionState = () => {
+    set({
+      error: null,
+      consoleLines: [],
+      frames: [],
+      variables: [],
+      stoppedAt: null,
+      selectedFrameId: null,
+    });
+  };
 
   return {
     configs: [],
@@ -280,14 +353,7 @@ export const useDebugStore = create<DebugState>((rawSet, get) => {
     start: async (projectId, currentFile) => {
       // Fresh session: clear previous console output (do not append across runs).
       resetSystemAutoContinue();
-      set({
-        error: null,
-        consoleLines: [],
-        frames: [],
-        variables: [],
-        stoppedAt: null,
-        selectedFrameId: null,
-      });
+      resetSessionState();
       let name = get().selectedConfigName;
       let config = get().configs.find((c) => c.name === name);
 
@@ -306,56 +372,13 @@ export const useDebugStore = create<DebugState>((rawSet, get) => {
         throw new Error(msg);
       }
 
-      try {
-        const available = await dapCheckAdapter(projectId, config.type);
-        if (!available) {
-          const hint =
-            config.type === 'go'
-              ? 'Install Delve: go install github.com/go-delve/delve/cmd/dlv@latest'
-              : 'Install lldb-dap (LLVM) or codelldb and ensure it is on PATH';
-          const msg = `Debug adapter for type "${config.type}" not found. ${hint}`;
-          set({ error: msg, panelOpen: true, panelTab: 'console' });
-          get().pushConsole('err', msg);
-          notifyError(msg);
-          throw new Error(msg);
-        }
-        if (config.preLaunchTask?.trim()) {
-          get().pushConsole('sys', `preLaunchTask: ${config.preLaunchTask}`);
-        }
-        get().pushConsole('sys', `Starting: ${config.name}…`);
-        set({ panelOpen: true, panelTab: 'console' });
-        const session = await dapStartSession(projectId, name, currentFile);
-        set({ session, panelOpen: true, panelTab: 'session' });
-        get().pushConsole('sys', `Started: ${session.configName} (${session.status})`);
-        // No toast — Debug panel / status bar icon already show session state.
-        // Handshake waits for entry stop when possible — load stack/highlight immediately.
-        if (session.status === 'stopped' || session.status === 'starting') {
-          void get().refreshStackAndVars();
-        }
-      } catch (e) {
-        const msg = String(e).replace(/^Error:\s*/, '');
-        set({
-          error: msg,
-          panelOpen: true,
-          panelTab: 'console',
-          session: get().session
-            ? { ...get().session!, status: 'terminated', statusMessage: msg }
-            : {
-                sessionId: '',
-                projectId,
-                projectPath: '',
-                configName: config.name,
-                status: 'terminated',
-                statusMessage: msg,
-              },
-        });
-        // Multi-line DAP build errors → console
-        for (const line of msg.split('\n')) {
-          if (line.trim()) get().pushConsole('err', line);
-        }
-        notifyError(msg.length > 200 ? `${msg.slice(0, 200)}…` : msg);
-        throw e;
-      }
+      await launchSession(projectId, config, () => dapStartSession(projectId, name, currentFile));
+    },
+
+    startWithConfig: async (projectId, config) => {
+      resetSystemAutoContinue();
+      resetSessionState();
+      await launchSession(projectId, config, () => dapStartSessionConfig(projectId, config));
     },
 
     debugEntry: async (projectId, entry, currentFile) => {

@@ -6,6 +6,11 @@ export function revealInFileManager(path: string): Promise<void> {
   return invoke<void>('reveal_in_file_manager', { path });
 }
 
+/** 存在性探测（O(1) stat，不读内容）：任务命令构造等前端逻辑用。 */
+export function fileExists(path: string): Promise<boolean> {
+  return invoke<boolean>('file_exists', { path });
+}
+
 export function readFileContent(
   projectId: string,
   filePath: string,

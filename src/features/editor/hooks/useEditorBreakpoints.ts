@@ -1,7 +1,7 @@
 import type { EditorView } from '@codemirror/view';
 import { useCallback, useEffect, useRef } from 'react';
 
-import { useBreakpointGutterExtensions, useCurrentLineHighlight } from '@/features/debug';
+import { useBreakpointGutter, useCurrentLineHighlight } from '@/features/debug';
 import { EMPTY_BP_LINES, useDebugStore } from '@/features/debug/store/debugStore';
 
 interface UseEditorBreakpointsParams {
@@ -27,13 +27,13 @@ export function useEditorBreakpoints({
   // (that would trip zustand's Object.is check and infinite-loop renders).
   const bpLines = useDebugStore((s) => s.breakpoints[projectId]?.[absFilePath] ?? EMPTY_BP_LINES);
   const {
-    extensions: bpGutterExt,
     syncEffect: bpSyncEffect,
     onLineNumberClick,
     onLineNumberHover,
     onLineNumberLeave,
-  } = useBreakpointGutterExtensions(projectId, absFilePath);
-  // Current-line highlight field lives inside bpGutterExt; this only re-applies on stop.
+  } = useBreakpointGutter(projectId, absFilePath);
+  // Current-line highlight field lives inside breakpointContributionExtensions
+  // (assembled by the unified gutter); this only re-applies on stop.
   useCurrentLineHighlight(absFilePath, filePath, editorViewRef, editorViewEpoch);
 
   // Stable callbacks for lineNumbers handlers
@@ -67,7 +67,6 @@ export function useEditorBreakpoints({
   }, [bpLines, bpSyncEffect, absFilePath]);
 
   return {
-    bpGutterExt,
     bpSyncEffect,
     lastSyncedBpKeyRef,
     handleLnClick,

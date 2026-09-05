@@ -1,5 +1,5 @@
-import { type Extension, RangeSetBuilder, StateEffect, StateField } from '@codemirror/state';
-import { Decoration, EditorView, gutter, GutterMarker, type DecorationSet } from '@codemirror/view';
+import { RangeSetBuilder, StateEffect, StateField } from '@codemirror/state';
+import { Decoration, EditorView, type DecorationSet } from '@codemirror/view';
 import { useCallback, useMemo } from 'react';
 
 import { useDebugStore } from '../store/debugStore';
@@ -9,33 +9,6 @@ import { useDebugStore } from '../store/debugStore';
 export const setBreakpointsEffect = StateEffect.define<readonly number[]>();
 export const setHoverLineEffect = StateEffect.define<number | null>();
 export const setCurrentLineEffect = StateEffect.define<number | null>();
-
-class BreakpointMarker extends GutterMarker {
-  toDOM() {
-    const el = document.createElement('div');
-    el.className = 'cm-breakpoint-marker';
-    el.title = 'Breakpoint';
-    return el;
-  }
-  eq() {
-    return true;
-  }
-}
-
-class BreakpointHoverMarker extends GutterMarker {
-  toDOM() {
-    const el = document.createElement('div');
-    el.className = 'cm-breakpoint-marker cm-breakpoint-marker--hover';
-    el.title = 'Add breakpoint';
-    return el;
-  }
-  eq() {
-    return true;
-  }
-}
-
-const breakpointMarker = new BreakpointMarker();
-const breakpointHoverMarker = new BreakpointHoverMarker();
 
 /** 1-based lines with breakpoints. */
 export const breakpointField = StateField.define<readonly number[]>({
@@ -60,7 +33,7 @@ export const hoverLineField = StateField.define<number | null>({
 });
 
 /** Yellow current-statement line decoration. */
-const currentLineDecoField = StateField.define<DecorationSet>({
+export const currentLineDecoField = StateField.define<DecorationSet>({
   create: () => Decoration.none,
   update(deco, tr) {
     for (const e of tr.effects) {
@@ -155,119 +128,73 @@ export function applyDebugCurrentLine(view: EditorView, line: number | null): vo
 
 // ── Extension pack (NO lineNumbers — FileViewer always owns that) ─────────
 
-function buildBreakpointOnlyExtensions(onToggle: (line: number) => void): Extension[] {
-  const handleClick = (view: EditorView, lineFrom: number) =>
-    toggleBreakpointAt(view, lineFrom, onToggle);
+/**
+ * 断点 gutter 列样式（红点/ghost/行号 affordance/current-line 高亮）。
+ * 统一 gutter 复用本主题（列宽由其覆盖为自适应），避免两处定义红点样式分叉。
+ */
+export const breakpointGutterTheme = EditorView.theme({
+  '.cm-breakpoint-gutter': {
+    width: '16px',
+    minWidth: '16px',
+    cursor: 'pointer',
+  },
+  '.cm-breakpoint-gutter .cm-gutterElement': {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    cursor: 'pointer',
+  },
+  '.cm-breakpoint-marker': {
+    width: '9px',
+    height: '9px',
+    borderRadius: '50%',
+    backgroundColor: 'var(--accent-red, #e06c75)',
+    boxShadow: '0 0 0 1px rgba(0, 0, 0, 0.25)',
+  },
+  '.cm-breakpoint-marker--hover': {
+    backgroundColor: 'color-mix(in srgb, var(--accent-red, #e06c75) 30%, transparent)',
+    boxShadow: '0 0 0 1px color-mix(in srgb, var(--accent-red, #e06c75) 45%, transparent)',
+  },
+  // Line-number affordance only (numbers themselves come from FileViewer)
+  '.cm-lineNumbers': {
+    cursor: 'pointer',
+    minWidth: '2.5em',
+  },
+  '.cm-lineNumbers .cm-gutterElement': {
+    cursor: 'pointer',
+    paddingRight: '8px',
+    color: 'var(--text-muted, #7f848e)',
+  },
+  '.cm-lineNumbers .cm-gutterElement:hover': {
+    color: 'var(--text-primary, #abb2bf)',
+  },
+  '.cm-debug-current-line': {
+    backgroundColor:
+      'color-mix(in srgb, var(--accent-yellow, #e5c07b) 38%, transparent) !important',
+    boxShadow: 'inset 3px 0 0 var(--accent-yellow, #e5c07b)',
+  },
+  '.cm-activeLine.cm-debug-current-line': {
+    backgroundColor:
+      'color-mix(in srgb, var(--accent-yellow, #e5c07b) 42%, transparent) !important',
+  },
+});
 
-  return [
-    breakpointField,
-    hoverLineField,
-    currentLineDecoField,
-    gutter({
-      class: 'cm-breakpoint-gutter',
-      markers(view) {
-        try {
-          const bps = view.state.field(breakpointField);
-          const hover = view.state.field(hoverLineField);
-          const bpSet = new Set(bps);
-          const byLine = new Map<number, GutterMarker>();
+/** Store → CM breakpoint field 同步 effect 构造器（setBreakpointsEffect.of 的具名形态）。 */
+export type BreakpointSyncEffect = (lines: readonly number[]) => StateEffect<readonly number[]>;
 
-          for (const line of bps) {
-            if (line >= 1 && line <= view.state.doc.lines) {
-              byLine.set(line, breakpointMarker);
-            }
-          }
-          if (hover != null && hover >= 1 && hover <= view.state.doc.lines && !bpSet.has(hover)) {
-            byLine.set(hover, breakpointHoverMarker);
-          }
-
-          const builder = new RangeSetBuilder<GutterMarker>();
-          for (const line of [...byLine.keys()].sort((a, b) => a - b)) {
-            const from = view.state.doc.line(line).from;
-            builder.add(from, from, byLine.get(line)!);
-          }
-          return builder.finish();
-        } catch {
-          return new RangeSetBuilder<GutterMarker>().finish();
-        }
-      },
-      domEventHandlers: {
-        mousedown(view, line) {
-          return handleClick(view, line.from);
-        },
-        mouseover(view, line) {
-          return setBreakpointHoverLine(view, line.from);
-        },
-        mouseout(view) {
-          return clearBreakpointHoverLine(view);
-        },
-      },
-    }),
-    EditorView.theme({
-      '.cm-breakpoint-gutter': {
-        width: '16px',
-        minWidth: '16px',
-        cursor: 'pointer',
-      },
-      '.cm-breakpoint-gutter .cm-gutterElement': {
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        cursor: 'pointer',
-      },
-      '.cm-breakpoint-marker': {
-        width: '9px',
-        height: '9px',
-        borderRadius: '50%',
-        backgroundColor: 'var(--accent-red, #e06c75)',
-        boxShadow: '0 0 0 1px rgba(0, 0, 0, 0.25)',
-      },
-      '.cm-breakpoint-marker--hover': {
-        backgroundColor: 'color-mix(in srgb, var(--accent-red, #e06c75) 30%, transparent)',
-        boxShadow: '0 0 0 1px color-mix(in srgb, var(--accent-red, #e06c75) 45%, transparent)',
-      },
-      // Line-number affordance only (numbers themselves come from FileViewer)
-      '.cm-lineNumbers': {
-        cursor: 'pointer',
-        minWidth: '2.5em',
-      },
-      '.cm-lineNumbers .cm-gutterElement': {
-        cursor: 'pointer',
-        paddingRight: '8px',
-        color: 'var(--text-muted, #7f848e)',
-      },
-      '.cm-lineNumbers .cm-gutterElement:hover': {
-        color: 'var(--text-primary, #abb2bf)',
-      },
-      '.cm-debug-current-line': {
-        backgroundColor:
-          'color-mix(in srgb, var(--accent-yellow, #e5c07b) 38%, transparent) !important',
-        boxShadow: 'inset 3px 0 0 var(--accent-yellow, #e5c07b)',
-      },
-      '.cm-activeLine.cm-debug-current-line': {
-        backgroundColor:
-          'color-mix(in srgb, var(--accent-yellow, #e5c07b) 42%, transparent) !important',
-      },
-    }),
-  ];
-}
-
-const EMPTY_EXTENSIONS: Extension[] = [];
-const syncEffectOf = (lines: readonly number[]) => setBreakpointsEffect.of(lines);
+const syncEffectOf: BreakpointSyncEffect = (lines) => setBreakpointsEffect.of(lines);
 
 /**
- * Breakpoint gutter + current-line highlight field.
- * Does **not** include `lineNumbers()` — FileViewer always provides that so
- * the number column never disappears during debug reconfiguration.
+ * 断点 gutter 的行号交互与同步。断点列渲染已由统一 gutter 的
+ * `breakpointContribution`（debug/gutter/breakpointContribution.ts）承担，
+ * 本函数不再装配任何 CM 扩展 —— 只提供 store → field 同步的 effect 构造器
+ * 与 FileViewer 行号列的点击/悬停处理器。
  */
-export function useBreakpointGutterExtensions(
+export function useBreakpointGutter(
   projectId: string | null,
   filePath: string | null,
 ): {
-  extensions: Extension[];
-  /** Always false — line numbers are owned by FileViewer. */
-  includesLineNumbers: boolean;
-  syncEffect: (lines: readonly number[]) => ReturnType<typeof setBreakpointsEffect.of>;
+  syncEffect: BreakpointSyncEffect;
   /** Toggle BP at line.from — wire into FileViewer lineNumbers mousedown. */
   onLineNumberClick: (view: EditorView, lineFrom: number) => boolean;
   onLineNumberHover: (view: EditorView, lineFrom: number) => boolean;
@@ -292,17 +219,7 @@ export function useBreakpointGutterExtensions(
       onLineNumberLeave: (view: EditorView) => clearBreakpointHoverLine(view),
     };
 
-    if (!projectId || !filePath) {
-      return {
-        extensions: EMPTY_EXTENSIONS,
-        includesLineNumbers: false,
-        syncEffect: syncEffectOf,
-        ...handlers,
-      };
-    }
     return {
-      extensions: buildBreakpointOnlyExtensions((line) => onToggle(line)),
-      includesLineNumbers: false,
       syncEffect: syncEffectOf,
       ...handlers,
     };

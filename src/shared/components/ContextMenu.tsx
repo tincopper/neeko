@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 
 import { cn } from '@/lib/utils';
 import { LucideIcon } from '@/shared/components/icons';
@@ -53,7 +54,10 @@ const ContextMenu: React.FC<ContextMenuProps> = ({ items, position, onClose }) =
     };
   }, [position, items.length]);
 
-  return (
+  // portal 到 body：菜单可能从深层容器（dock 面板，祖先常带 transform/overflow-hidden）
+  // 触发——树内渲染时 fixed 定位会被祖先 containing block 劫持并裁剪，菜单不可见。
+  // 与 tooltips(parent: body)/popover/dialog 等 app 浮层惯例一致。
+  return createPortal(
     <div
       ref={menuRef}
       className="fixed bg-bg-tertiary border border-border rounded-md min-w-[200px] z-[10000] shadow-[0_4px_16px_rgba(0,0,0,0.5)] overflow-hidden py-1"
@@ -96,7 +100,8 @@ const ContextMenu: React.FC<ContextMenuProps> = ({ items, position, onClose }) =
           </div>
         ),
       )}
-    </div>
+    </div>,
+    document.body,
   );
 };
 

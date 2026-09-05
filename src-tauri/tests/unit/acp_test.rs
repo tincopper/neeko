@@ -120,8 +120,13 @@ async fn acp_full_flow_with_in_process_mock() {
 /// handshake → prompt → text response → turn end → cancel.
 ///
 /// This is the test that verifies the actual opencode integration works.
-/// It skips if `opencode` is not installed.
+/// Marked `#[ignore]` (slow; requires `opencode` installed **and** a reachable
+/// model — with the CLI present but the model unavailable it hangs instead of
+/// failing, starving the default `cargo test` run). Run explicitly with
+/// `cargo test -- --ignored`. Same convention as
+/// `serve.rs::serve_round_trip_streams_text_delta`.
 #[tokio::test]
+#[ignore]
 async fn acp_opencode_real_roundtrip() {
     use neeko_lib::agent::chat::adapter::AcpAdapter;
     use neeko_lib::agent::chat::events::{SessionRequest, StreamEvent};

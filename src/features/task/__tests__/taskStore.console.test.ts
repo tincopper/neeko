@@ -47,7 +47,88 @@ vi.mock('@/features/lsp/api/lspApi', () => ({
   lspGetServerLogs: (...args: unknown[]) => mockLspGetServerLogs(...args),
 }));
 
+import { useProjectStore } from '@/shared/store/projectStore';
+
 import { useTaskStore } from '../store';
+
+describe('task store runTask options (programmatic runs)', () => {
+  beforeEach(() => {
+    mockStart.mockReset();
+    mockStop.mockReset();
+    mockStart.mockResolvedValue({ processId: 'pty-1', dispose: vi.fn() });
+    mockStop.mockResolvedValue(undefined);
+    useTaskStore.setState({
+      configs: [],
+      discovered: [],
+      discovering: false,
+      selectedConfigId: null,
+      consolePanelOpen: false,
+      consoleSessions: [],
+      activeConsoleId: null,
+    });
+  });
+
+  it('should_return_run_id_apply_cwd_override_and_notify_observers', async () => {
+    const onOutput = vi.fn();
+    const onExit = vi.fn();
+    const runId = useTaskStore
+      .getState()
+      .runTask('cargo test x --no-run', 'cfg-debug', { cwd: '/tmp/wt', onOutput, onExit });
+
+    expect(runId).toBeTypeOf('string');
+    await vi.waitFor(() => expect(mockStart).toHaveBeenCalledTimes(1));
+    const startOpts = mockStart.mock.calls[0][0];
+    expect(startOpts.command).toBe('cargo test x --no-run');
+    expect(startOpts.cwd).toBe('/tmp/wt');
+
+    startOpts.onOutput('compiled ok\r\n');
+    expect(onOutput).toHaveBeenCalledWith('compiled ok\r\n');
+    expect(useTaskStore.getState().consoleSessions[0].output).toContain('compiled ok');
+
+    startOpts.onExit(0);
+    expect(onExit).toHaveBeenCalledWith(0);
+    expect(useTaskStore.getState().consoleSessions[0].status).toBe('idle');
+  });
+
+  it('should_return_existing_run_id_when_focusing_running_tab', async () => {
+    const first = useTaskStore.getState().runTask('cargo test x', 'cfg-x');
+    await vi.waitFor(() => expect(mockStart).toHaveBeenCalledTimes(1));
+    const second = useTaskStore.getState().runTask('cargo test x', 'cfg-x');
+    expect(second).toBe(first);
+    expect(mockStart).toHaveBeenCalledTimes(1);
+  });
+
+  it('should_return_null_when_no_active_project', () => {
+    // This suite mocks projectStore with an active project; drop it for this case.
+    const original = useProjectStore.getState;
+    useProjectStore.getState = (() => ({ ...original(), activeProject: null })) as typeof original;
+    try {
+      expect(useTaskStore.getState().runTask('x', 'cfg-x')).toBeNull();
+    } finally {
+      useProjectStore.getState = original;
+    }
+  });
+
+  it('should_report_exit_and_stop_process_when_closing_running_observed_session', async () => {
+    const onOutput = vi.fn();
+    const onExit = vi.fn();
+    useTaskStore
+      .getState()
+      .runTask('cargo test x --no-run', 'cfg-debug', { cwd: '/tmp/wt', onOutput, onExit });
+    await vi.waitFor(() => expect(mockStart).toHaveBeenCalledTimes(1));
+
+    const runId = useTaskStore.getState().consoleSessions[0].id;
+    useTaskStore.getState().closeConsoleSession(runId);
+
+    // dispose() detaches the exit listener — close must end the observed run itself.
+    expect(onExit).toHaveBeenCalledWith(1);
+    expect(mockStop).toHaveBeenCalled();
+    expect(useTaskStore.getState().consoleSessions).toHaveLength(0);
+    // A late process-exit event after close must not double-fire the observer.
+    (mockStart.mock.calls[0][0].onExit as (code: number) => void)(0);
+    expect(onExit).toHaveBeenCalledTimes(1);
+  });
+});
 
 describe('task store console / run lifecycle', () => {
   beforeEach(() => {
