@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-4.md`
-- **Total Sessions**: 181
-- **Last Active**: 2026-09-04
+- **Total Sessions**: 183
+- **Last Active**: 2026-09-05
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-4.md` | ~162 | Active |
+| `journal-4.md` | ~224 | Active |
 | `journal-3.md` | ~1978 | Archived |
 | `journal-2.md` | ~1991 | Archived |
 | `journal-1.md` | ~1986 | Archived |
@@ -32,6 +32,8 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 183 | 2026-09-05 | 测试按钮二次迭代：gutter 图标 + Run/Debug 下拉（IDEA 交互） | - | `main` |
+| 182 | 2026-09-05 | 编辑器单测运行/调试按钮（任务 09-04-editor-test-run-buttons） | - | `main` |
 | 181 | 2026-09-04 | 修复项目切换时 unlisten 注册竞态 toast（safeUnlisten 收口） | - | `main` |
 | 180 | 2026-09-04 | Cmd+W 未保存关闭确认修复（任务 09-04-cmdw-unsaved-confirm） | - | `main` |
 | 179 | 2026-09-04 | StatusBar开发规范文档 | - | `main` |

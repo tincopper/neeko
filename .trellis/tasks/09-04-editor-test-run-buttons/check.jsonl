@@ -1,0 +1,2 @@
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "审查 TDD 覆盖与门禁"}
+{"file": ".trellis/spec/frontend/state-management.md", "reason": "审查防火墙与 store 直导合规"}

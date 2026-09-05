@@ -1,0 +1,4 @@
+{"file": ".trellis/spec/frontend/state-management.md", "reason": "跨 feature 门面导入与 store 直导规范（editor→task 接线）"}
+{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "CodeMirror 扩展/widget 组件边界与主题 token"}
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "TDD 红绿循环与回归门禁"}
+{"file": ".trellis/spec/frontend/directory-structure.md", "reason": "utils/ 共享纯函数落位（feature 内部共享）"}

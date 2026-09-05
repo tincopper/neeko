@@ -160,3 +160,65 @@
 ### Next Steps
 
 - None - task complete
+
+
+## Session 182: 编辑器单测运行/调试按钮（任务 09-04-editor-test-run-buttons）
+
+**Date**: 2026-09-05
+**Task**: 编辑器单测运行/调试按钮（任务 09-04-editor-test-run-buttons）
+**Branch**: `main`
+
+### Summary
+
+CodeLens 风格内联 Run/Debug 按钮：testCases.ts 用例检测（TS test/it + Rust #[test]）、testCodelens.ts CodeMirror block widget（facet+300ms 防抖）、testCommands.ts 命令构造（vitest run -t / cargo test 子串过滤）、runTask options 扩展（cwd 覆盖+观察者+runId）、Rust debug 闭环（cargo --no-run → 解析二进制 → dap_start_session_config lldb 会话）。trellis-check 修复 closeConsoleSession 观察者泄漏 + timer 类型错误。实现期修正：去掉 --exact（嵌套 mod tests 匹配问题）。acp 真实往返测试对齐 serve.rs 惯例标 #[ignore]。门禁：test:run 345 文件 2742 passed / lint:fe / type-check / cargo test 956+100 全绿。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+(No commits - planning session)
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
+
+
+## Session 183: 测试按钮二次迭代：gutter 图标 + Run/Debug 下拉（IDEA 交互）
+
+**Date**: 2026-09-05
+**Task**: 测试按钮二次迭代：gutter 图标 + Run/Debug 下拉（IDEA 交互）
+**Branch**: `main`
+
+### Summary
+
+用户反馈改交互：block widget 替换为行号旁 gutter play 图标（GutterMarker + StateField，检测/防抖复用），点击 Rust 用例弹 shared ContextMenu 下拉（Run/Debug 两项），TS 用例直跑不弹菜单。overlayStore 惯例配对 + 卸载清理。trellis-check 修复 FileEditor 未使用变量（noUnusedLocals 会挂）与 testCases.ts 陈旧注释。门禁：type-check / lint:fe / cargo 不涉及；test:run 5 轮 4 绿，1 轮偶发 2 失败未捕获身份（连续 4 轮复跑全绿，待再现再定位）。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+(No commits - planning session)
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
