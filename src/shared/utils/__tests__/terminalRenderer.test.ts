@@ -134,6 +134,12 @@ function makeTerm(
   } as unknown as import('@xterm/xterm').Terminal;
 }
 
+/** makeTerm 伪终端的内部核心形状（探测路径对齐 isTerminalDisposed/hasLinkifier）。 */
+interface XtermCoreProbe {
+  _store: { isDisposed: boolean };
+  linkifier: unknown;
+}
+
 beforeEach(() => {
   reportMock.mockClear();
   webglMockState.throwOnConstruct = false;
@@ -298,6 +304,22 @@ describe('applyRenderer', () => {
     await mod.applyRenderer(term, false);
 
     expect(term.loadAddon).not.toHaveBeenCalled();
+  });
+
+  it('装载窗口内被 dispose → 主动放弃不上报（remount/status 翻转竞态）', async () => {
+    // 入口守卫通过（term 存活）→ import 微任务期间 dispose 插入 → loader 守卫抛错。
+    // 该场景属"主动放弃"（装载已无意义）而非能力故障：devLog 即可，不得上报。
+    const mod = await loadModule();
+    stubGetContext(() => null);
+    const term = makeTerm();
+
+    const pending = mod.applyRenderer(term, false);
+    const store = (term._core as XtermCoreProbe)._store;
+    store.isDisposed = true;
+    await pending;
+
+    expect(term.loadAddon).not.toHaveBeenCalled();
+    expect(reportMock).not.toHaveBeenCalled();
   });
 
   it('loadAddon 失败时显式降级到 DOM 并打点（design D7：不再静默）', async () => {

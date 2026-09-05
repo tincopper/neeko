@@ -648,6 +648,11 @@ export async function applyRenderer(term: Terminal, gpuEnabled: boolean): Promis
         await loadCanvasAddonWithErrorReport(term, 'webgl->canvas fallback');
       }
     } catch (err) {
+      // 装载窗口内终端消失 → 同 canvas 路径：主动放弃，不上报。
+      if (isTerminalDisposed(term) || !hasLinkifier(term)) {
+        devLog('webgl path aborted after throw: term disposed or linkifier missing', err);
+        return;
+      }
       reportFrontendError(
         RENDERER_EVENT_WEBGL,
         err instanceof Error ? err : new Error(String(err)),
@@ -656,6 +661,10 @@ export async function applyRenderer(term: Terminal, gpuEnabled: boolean): Promis
       try {
         await loadCanvasAddonWithErrorReport(term, 'webgl->canvas fallback after throw');
       } catch (err2) {
+        if (isTerminalDisposed(term) || !hasLinkifier(term)) {
+          devLog('webgl->canvas fallback aborted: term disposed or linkifier missing', err2);
+          return;
+        }
         reportFrontendError(
           RENDERER_EVENT_CANVAS,
           err2 instanceof Error ? err2 : new Error(String(err2)),
@@ -672,6 +681,13 @@ export async function applyRenderer(term: Terminal, gpuEnabled: boolean): Promis
     try {
       await loadCanvasAddonWithErrorReport(term, 'canvas plan');
     } catch (err) {
+      // 装载窗口内终端消失（dispose/linkifier 释放：remount、readOnly 翻转重建、
+      // 面板重挂）→ 装载已无意义，属"主动放弃"而非能力故障，与入口守卫同语义：
+      // devLog 即可，不上报（误报会让用户把无害竞态当成运行故障）。
+      if (isTerminalDisposed(term) || !hasLinkifier(term)) {
+        devLog('canvas path aborted after throw: term disposed or linkifier missing', err);
+        return;
+      }
       reportFrontendError(
         RENDERER_EVENT_CANVAS,
         err instanceof Error ? err : new Error(String(err)),
