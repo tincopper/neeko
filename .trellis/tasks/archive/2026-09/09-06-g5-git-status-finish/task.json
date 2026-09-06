@@ -1,0 +1,17 @@
+{
+  "id": "g5-git-status-finish",
+  "name": "g5-git-status-finish",
+  "title": "G5 Git Status 路线收尾：v1 死监听修复 + 嵌套 gitignore 分层 + 截断上限统一 + 压测验收替身",
+  "description": "git-changes-redesign-plan G 路线收尾四项：#4 git-status-diff v1 清理（useDiffData 切换 git-status-snapshot，修复 diff 自动刷新潜伏回归）；#3 嵌套 .gitignore 分层加载（ignore crate WalkBuilder）；#8 截断上限统一 1000（决策点4）；#7 G2 压测验收自动化替身。XY 契约独立立项不在本轮。",
+  "status": "completed",
+  "priority": "P1",
+  "creator": "tincopper",
+  "assignee": "tincopper",
+  "createdAt": "2026-09-06",
+  "base_branch": "main",
+  "parent": null,
+  "subtasks": [],
+  "notes": "来源：.workbuddy/artifacts/git-changes-redesign-plan.md 对照核查（2026-09-06 会话）",
+  "meta": {},
+  "completedAt": "2026-09-06"
+}
