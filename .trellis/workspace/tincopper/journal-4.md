@@ -222,3 +222,127 @@ CodeLens 风格内联 Run/Debug 按钮：testCases.ts 用例检测（TS test/it 
 ### Next Steps
 
 - None - task complete
+
+
+## Session 184: S3 git 状态入模：组装期 Join + 子树指纹 memo 落地
+
+**Date**: 2026-09-06
+**Task**: S3 git 状态入模：组装期 Join + 子树指纹 memo 落地
+**Branch**: `main`
+
+### Summary
+
+实现 09-06-s3-git-status-into-model：git 状态成为视图节点一等属性（组装期盖章 git_status/is_ignored + 逐节点视图状态），删除 resolver 单例。三处实现期修正：①逐节点视图状态必须入模（props 流经父渲染，bail out 后子元素不更新，投影比较失效）；②handleToggleDir 经 ref 稳定身份；③修复存量缺陷——递归引用原始函数绕过 memo，深度节点从未被 memo 保护。渲染隔离从 1 场景扩展到 7 场景（桶重载/展开/击键从整树降为 0~链路）。质量门全绿：type-check / lint:fe / test:run 353 文件 2860 用例。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+(No commits - planning session)
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
+
+
+## Session 185: G5 Git Status 路线收尾：diff 刷新回归修复 + 嵌套 gitignore 分层 + 上限统一 + 压测替身
+
+**Date**: 2026-09-06
+**Task**: G5 Git Status 路线收尾：diff 刷新回归修复 + 嵌套 gitignore 分层 + 上限统一 + 压测替身
+**Branch**: `main`
+
+### Summary
+
+落地 git-changes-redesign-plan 对照核查发现的 4 项收尾：①useDiffData 死监听切换 git-status-snapshot（修复 G2 起停发 v1 事件导致的 diff 自动刷新潜伏回归）；②GitIgnoreFilter 重写为按目录分层 matcher 栈（根因：ignore crate 单 Gitignore 不感知 glob 来源目录，单 builder 会让子包规则全仓泄漏；WalkBuilder 收集 + 深层裁定优先 + exclude 最高优先级）；③status 相关截断上限统一 1000（决策点4，untracked 单目录保持 500）；④G2 压测验收自动化替身（并发信号风暴零 emit + 变更/切分支严格单调 + porcelain 真值一致）。cargo fmt 全仓消除 G2 格式漂移。全部门禁绿：cargo test 1055 / pnpm test:run 2860 / lint / type-check。XY 契约独立立项待做。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+(No commits - planning session)
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
+
+
+## Session 186: G6 XY 状态码契约：ChangesList 四组真实分组落地
+
+**Date**: 2026-09-06
+**Task**: G6 XY 状态码契约：ChangesList 四组真实分组落地
+**Branch**: `main`
+
+### Summary
+
+落地 git-changes-redesign-plan §3.2 核心契约：FileChange 携带 porcelain X/Y 字符 + renamed_from（serde 向后兼容）；parse_status_line 提取 XY/renamed_from；libgit2 路径 status flags → porcelain 词表映射（空侧归一为字面空格）；新增 gitStatusGroups 纯函数派生 staged/unstaged/unversioned/conflicted 四组（同文件可双组，conflicted 独占，缺 XY 回退）；ChangesList 渲染 Staged Changes/Changes/Unversioned/Merge Conflicts 四组 + rename 行 old→new；gitFileDecoration staged 桶转真（临时语义标注移除，realPayload 无 XY 回退保持绿）。门禁：cargo 1060 / pnpm 2870 / lint / type-check 全绿。G 路线至此全部关闭。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+(No commits - planning session)
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
+
+
+## Session 187: S4 文件树窗口虚拟化：扁平化 + VirtualList，万级节点渲染 O(可见行数)
+
+**Date**: 2026-09-06
+**Task**: S4 文件树窗口虚拟化：扁平化 + VirtualList，万级节点渲染 O(可见行数)
+**Branch**: `main`
+
+### Summary
+
+落地调研文档 S4：flattenFileTreeView 纯函数把嵌套视图树按渲染顺序摊平（node/renaming/creating 三种行）；FileTreeNode 递归组件拆为无递归 FileTreeRow（扁平行结构上免除「父 bail out 断供子 props」问题，指纹比较器保留）；FilesPanel 接共享 VirtualList（@tanstack/react-virtual 动态测量，窗口化断言：201 行目录仅挂载视口窗口行）；定位改走 scrollToIndex（虚拟化后目标行可能未挂载）；DEFAULT_TREE_DEPTH 3→2 初始扫描减半。测试基建沿用 OutputScroll 的 offsetWidth/offsetHeight mock 模式。门禁全绿：lint / type-check / 354 文件 2865 用例。调研文档 S 路线至此 S0/S1/S3/S4 完成，剩 S2 排除式监听与 fsmonitor 引导、ignored_files 退役。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+(No commits - planning session)
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

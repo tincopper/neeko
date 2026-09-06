@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-4.md`
-- **Total Sessions**: 183
-- **Last Active**: 2026-09-05
+- **Total Sessions**: 187
+- **Last Active**: 2026-09-06
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-4.md` | ~224 | Active |
+| `journal-4.md` | ~348 | Active |
 | `journal-3.md` | ~1978 | Archived |
 | `journal-2.md` | ~1991 | Archived |
 | `journal-1.md` | ~1986 | Archived |
@@ -32,6 +32,10 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 187 | 2026-09-06 | S4 文件树窗口虚拟化：扁平化 + VirtualList，万级节点渲染 O(可见行数) | - | `main` |
+| 186 | 2026-09-06 | G6 XY 状态码契约：ChangesList 四组真实分组落地 | - | `main` |
+| 185 | 2026-09-06 | G5 Git Status 路线收尾：diff 刷新回归修复 + 嵌套 gitignore 分层 + 上限统一 + 压测替身 | - | `main` |
+| 184 | 2026-09-06 | S3 git 状态入模：组装期 Join + 子树指纹 memo 落地 | - | `main` |
 | 183 | 2026-09-05 | 测试按钮二次迭代：gutter 图标 + Run/Debug 下拉（IDEA 交互） | - | `main` |
 | 182 | 2026-09-05 | 编辑器单测运行/调试按钮（任务 09-04-editor-test-run-buttons） | - | `main` |
 | 181 | 2026-09-04 | 修复项目切换时 unlisten 注册竞态 toast（safeUnlisten 收口） | - | `main` |
