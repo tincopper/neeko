@@ -1,4 +1,4 @@
-import type { FileChange } from '@/shared/types';
+import type { FileChange, FileTreeGitStatus } from '@/shared/types';
 
 /**
  * git 状态装饰的唯一公开面（单一事实源）。
@@ -7,12 +7,10 @@ import type { FileChange } from '@/shared/types';
  * 被 features/git 的 PRFileTree 间接消费）、未来 tab-bar。因此落位 `shared/utils`，
  * 避免 shared/components 反向依赖 feature 内部实现（违反分层红线）。
  *
- * ## 临时语义标注
- * Rust 当前对每个文件输出单一 status，映射时确定性落入 `unstaged` 桶：
- * `Added → added`、`Modified → modified`、`Renamed → renamed 计数`、
- * `Deleted → deleted`、`Untracked → untracked`。
- * `staged` 恒为 0、`conflict` 为常驻语义（当前无输入源）——禁止把桶位解释成真实暂存状态；
- * 后端升级输出 staged/unstaged 分离后，字段即自然生效，无需前端重新建模。
+ * ## XY 语义标注（G6 转真）
+ * 后端已按 porcelain 契约输出 X/Y（`index_status` / `worktree_status`）：
+ * X → `staged` 桶、Y → `unstaged` 桶、X=Y='?' → `untracked`、未合并 → `conflict`。
+ * 缺 XY 的旧 payload 回退单一 status 映射（确定性落入 unstaged 桶）。
  * （renamed 独立计数：徽标字母必须保真显示 R，不可折叠进 modified。）
  *
  * ## 词表封闭约定
@@ -66,8 +64,9 @@ export interface Decoration {
 
 /**
  * 单节点装饰解析回调的形状：路径 + 目录性 + 是否激活 → Decoration。
- * 递归树组件的公开 prop 契约 —— 由父级为每个直接子节点调用后逐一传入子行组件，
- * 不再下传整张 map 或祖先谓词（P3 下传策略）。
+ *
+ * S3 起文件树（FilesPanel/FileTreeRow）已改为组装期盖章 + 节点字段直读，
+ * 不再使用该回调契约；类型保留供过渡期消费方引用，新增消费方禁止使用。
  */
 export type ResolveNodeDecoration = (
   path: string,
@@ -75,8 +74,9 @@ export type ResolveNodeDecoration = (
   isActive: boolean,
 ) => Decoration | null;
 
-/** 主导状态（优先级序）：conflict > deleted > modified > renamed > untracked > added */
-type DominantStatus = 'conflict' | 'deleted' | 'modified' | 'renamed' | 'untracked' | 'added';
+/** 主导状态（优先级序）：conflict > deleted > modified > renamed > untracked > added。
+ * 与 shared/types 的 FileTreeGitStatus 同一词表（视图节点 git_status 字段的类型）。 */
+type DominantStatus = FileTreeGitStatus;
 
 /**
  * 状态 → 展示词表的单一事实源（badge 字母 / Badge variant / 文字色 / 圆点色）。
@@ -188,10 +188,65 @@ function dominantStatus(s: GitStatusSummary): DominantStatus | null {
   return null;
 }
 
-/** 单一 FileChange.status → summary（确定性落入 unstaged 桶，见文件头临时语义标注） */
-function fileChangeToSummary(status: FileChange['status']): GitStatusSummary {
+/** 未合并组合（G6 XY 词表）：任一侧 U，或 AA / DD */
+function isUnmergedXy(x: string, y: string): boolean {
+  return x === 'U' || y === 'U' || (x === 'A' && y === 'A') || (x === 'D' && y === 'D');
+}
+
+/**
+ * FileChange → summary（G6 XY 契约版）：
+ * - 携带 porcelain XY 时按词表分桶：X → staged 桶（A/M/D/T；R 独立 renamed 计数）、
+ *   Y → unstaged 桶（M/D/T；R 计入 renamed）、X=Y='?' → untracked、未合并 → conflict
+ *   —— 文件头「staged 恒 0」的临时语义自此转真；
+ * - 缺 XY 的旧 payload 回退单一 status 映射（确定性落入 unstaged 桶）。
+ */
+function fileChangeToSummary(f: FileChange): GitStatusSummary {
   const s = zeroSummary();
-  switch (status) {
+  const x = f.index_status;
+  const y = f.worktree_status;
+  if (x !== undefined && y !== undefined) {
+    if (isUnmergedXy(x, y)) {
+      s.conflict = 1;
+      return s;
+    }
+    if (x === '?' && y === '?') {
+      s.untracked = 1;
+      return s;
+    }
+    switch (x) {
+      case 'A':
+        s.staged.added = 1;
+        break;
+      case 'M':
+      case 'T':
+        s.staged.modified = 1;
+        break;
+      case 'D':
+        s.staged.deleted = 1;
+        break;
+      case 'R':
+        s.renamed = 1;
+        break;
+      default:
+        break;
+    }
+    switch (y) {
+      case 'M':
+      case 'T':
+        s.unstaged.modified = 1;
+        break;
+      case 'D':
+        s.unstaged.deleted = 1;
+        break;
+      case 'R':
+        s.renamed = s.renamed + 1;
+        break;
+      default:
+        break;
+    }
+    return s;
+  }
+  switch (f.status) {
     case 'Added':
       s.unstaged.added = 1;
       break;
@@ -217,18 +272,24 @@ function fileChangeToSummary(status: FileChange['status']): GitStatusSummary {
  * 语义等价于已删除的 FileTreeNode.parentIgnored 继承谓词。
  */
 /**
- * 收集「折叠 untracked 目录条目」（Rust 不递归 untracked，目录以尾斜杠单条输出）。
- * 归一化后按字典序排序，供 resolveDecoration 二分前缀匹配：把目录态色下传
- * 给已展开可见的后代节点 —— 否则折叠目录内部的深层文件无任何状态提示。
+ * 收集「折叠 untracked 目录条目」（Rust 不递归 untracked，目录以单条目输出；
+ * G1 起显式 `is_dir` 字段，path 无尾斜杠）。输出统一为无尾斜杠目录路径
+ * （旧 payload 斜杠条目在此归一化），按字典序排序，供 resolveDecoration
+ * 二分前缀匹配：把目录态色下传给已展开可见的后代节点 —— 否则折叠目录内部的
+ * 深层文件无任何状态提示。
  */
 export function collectCollapsedDirs(files: FileChange[]): string[] {
-  const dirs = files.map((f) => normalizePath(f.path)).filter((p) => p.endsWith('/'));
+  const dirs = files
+    .filter((f) => f.is_dir ?? f.path.endsWith('/'))
+    .map((f) => normalizePath(f.path).replace(/\/+$/, ''))
+    .filter((p) => p !== '');
   dirs.sort();
   return dirs;
 }
 
 /**
- * 二分查找包含 path 的最近折叠目录前缀（条目均带尾斜杠，天然排除兄弟误匹配）。
+ * 二分查找包含 path 的最近折叠目录前缀（无尾斜杠目录路径，命中判定带目录边界
+ * `path === prefix || startsWith(prefix + '/')`，排除兄弟目录前缀误匹配）。
  * 返回命中的目录条目路径，未命中返回 null。
  */
 function findInheritedCollapsedDir(
@@ -249,7 +310,7 @@ function findInheritedCollapsedDir(
     }
   }
   const prefix = idx >= 0 ? (collapsedDirs[idx] as string) : null;
-  return prefix !== null && path.startsWith(prefix) ? prefix : null;
+  return prefix !== null && (path === prefix || path.startsWith(`${prefix}/`)) ? prefix : null;
 }
 
 function isPathIgnored(path: string, ignoredSet: ReadonlySet<string> | undefined): boolean {
@@ -271,7 +332,7 @@ export function buildFileSummaryMap(changed: FileChange[]): Map<string, GitStatu
   const out = new Map<string, GitStatusSummary>();
   for (const f of changed) {
     const key = normalizePath(f.path);
-    const s = fileChangeToSummary(f.status);
+    const s = fileChangeToSummary(f);
     const prev = out.get(key);
     out.set(key, prev ? addSummary(prev, s) : s);
   }
@@ -282,20 +343,32 @@ export function buildFileSummaryMap(changed: FileChange[]): Map<string, GitStatu
  * 目录聚合：对每个变更文件按 `/` 分段向上累加全部祖先目录（含根段）。
  * deleted 不向目录传播（对齐 Orca shouldPropagateStatus）——删除文件正在消失，
  * 无需在父目录上提示。基于 changed 全集而非展开态：未展开深层祖先也携带摘要。
+ *
+ * G1 说明：折叠 untracked 目录条目为「无尾斜杠 path + is_dir」后，split 不再
+ * 产生其自身目录 key（旧版靠尾斜杠路径的空尾段巧合产出），因此调用方需把
+ * `collectCollapsedDirs` 的产物传入 `collapsedDirs`，目录自身才会携带状态色，
+ * 后代节点才能经 findInheritedCollapsedDir 继承。
  */
 export function buildFolderSummaryMap(
   fileSummaries: Map<string, GitStatusSummary>,
+  collapsedDirs?: ReadonlyArray<string>,
 ): Map<string, GitStatusSummary> {
   const out = new Map<string, GitStatusSummary>();
+
+  // 折叠目录条目自身：以目录身份携带状态（自身作为 folder key）
+  if (collapsedDirs) {
+    for (const dir of collapsedDirs) {
+      const s = fileSummaries.get(dir);
+      if (!s) continue;
+      const propagated = stripDeletedPropagation(s);
+      if (dominantStatus(propagated) === null) continue;
+      out.set(dir, propagated);
+    }
+  }
+
   for (const [path, s] of fileSummaries) {
     // 剥离 deleted 桶后若为空则跳过（纯 deleted 文件不传播）
-    const propagated: GitStatusSummary = {
-      staged: { ...s.staged, deleted: 0 },
-      unstaged: { ...s.unstaged, deleted: 0 },
-      renamed: s.renamed,
-      untracked: s.untracked,
-      conflict: s.conflict,
-    };
+    const propagated = stripDeletedPropagation(s);
     if (dominantStatus(propagated) === null) continue;
 
     const parts = path.split('/');
@@ -307,6 +380,17 @@ export function buildFolderSummaryMap(
     }
   }
   return out;
+}
+
+/** 拷贝 summary 并剥离 deleted 桶（供目录传播，删除不向父目录扩散） */
+function stripDeletedPropagation(s: GitStatusSummary): GitStatusSummary {
+  return {
+    staged: { ...s.staged, deleted: 0 },
+    unstaged: { ...s.unstaged, deleted: 0 },
+    renamed: s.renamed,
+    untracked: s.untracked,
+    conflict: s.conflict,
+  };
 }
 
 /** summary → 行尾徽标（badge 字母 + Badge variant）；无状态返回 null */
@@ -342,10 +426,80 @@ export function summaryToDotClass(s: GitStatusSummary): string {
   return STATUS_PRESENTATION[d].dotClass;
 }
 
+// ─── 语义状态判定（S3 组装期 join 核心）─────────────────────────────────────
+
+/** 单节点语义状态判定结果：`status` 为主导状态（null = 无 git 状态）；
+ * `ignored` 是「被忽略」的**原始事实**（与状态共存时呈现层让状态优先） */
+export interface NodeGitStatus {
+  status: FileTreeGitStatus | null;
+  ignored: boolean;
+}
+
+/** `resolveNodeStatus` 的输入投影（FilesPanel 由派生 map 构建后注入组装回调） */
+export interface NodeStatusInputs {
+  fileSummaries: ReadonlyMap<string, GitStatusSummary>;
+  folderSummaries: ReadonlyMap<string, GitStatusSummary>;
+  ignoredSet?: ReadonlySet<string>;
+  collapsedDirs?: ReadonlyArray<string>;
+}
+
 /**
- * 纯函数投影：path → Decoration。
+ * 单节点语义状态判定（纯函数，呈现之前的全部逻辑）：
+ * 1. 文件取自身摘要、目录取 folderSummaries 聚合（含折叠目录自身 key；
+ *    deleted 已在构建期剥离、未展开深层祖先基于 changed 全集携带摘要）；
+ * 2. 折叠 untracked 目录的可见后代经 findInheritedCollapsedDir 二分前缀继承目录态；
+ * 3. ignored 判定沿祖先链逐级上行（isPathIgnored）。
+ *
+ * `resolveDecoration`（PR 树消费）与本函数共享同一语义核心——语义改这里，
+ * 呈现改 statusToNameColorClass / Decoration 投影，二者不得各持一份判定。
+ */
+export function resolveNodeStatus(
+  path: string,
+  isDir: boolean,
+  inputs: NodeStatusInputs,
+): NodeGitStatus {
+  const norm = normalizePath(path);
+  const ignored = isPathIgnored(norm, inputs.ignoredSet);
+
+  const s = isDir ? inputs.folderSummaries.get(norm) : inputs.fileSummaries.get(norm);
+  // 有状态则非空（buildFileSummaryMap 不产空 summary）；防御空 summary 回落
+  if (s && summaryToBadge(s)) {
+    return { status: dominantStatus(s), ignored };
+  }
+
+  // 折叠 untracked 目录的后代继承：深层可见节点无自身/祖先摘要时，
+  // 从包裹它的折叠目录条目继承目录态（与 git 状态优先于 ignored 的次序一致）
+  const inheritedDir = findInheritedCollapsedDir(norm, inputs.collapsedDirs);
+  if (inheritedDir) {
+    const inheritedSummary = inputs.folderSummaries.get(inheritedDir);
+    if (inheritedSummary && summaryToBadge(inheritedSummary)) {
+      return { status: dominantStatus(inheritedSummary), ignored };
+    }
+  }
+
+  return { status: null, ignored };
+}
+
+/**
+ * 文件树叶子级名字色（呈现派生）。优先级链单处收敛（词表封闭约定不变）：
+ * `active(accent) > conflict > deleted > modified > renamed > untracked > added >
+ * ignored(dimmed) > 默认`
+ */
+export function statusToNameColorClass(
+  status: FileTreeGitStatus | null | undefined,
+  ignored: boolean,
+  isActive: boolean,
+): string {
+  if (isActive) return 'text-accent';
+  if (status) return STATUS_PRESENTATION[status].textClass;
+  if (ignored) return 'text-text-muted';
+  return 'text-text-primary';
+}
+
+/**
+ * 纯函数投影：path → Decoration（PR 变更树消费）。
+ * 语义判定委托 resolveNodeStatus，本函数只做 Decoration 形状投影。
  * - 文件取自身摘要、目录取文件夹摘要；
- * - ignoredSet 判定沿祖先链逐级上行匹配；
  * - ignored 与变更共存时 git 状态优先（不灰化）。
  */
 export function resolveDecoration(
@@ -358,42 +512,25 @@ export function resolveDecoration(
   /** 折叠 untracked 目录条目（collectCollapsedDirs 产物）；后代节点继承目录态色 */
   collapsedDirs?: ReadonlyArray<string>,
 ): Decoration | null {
-  const norm = normalizePath(path);
-  const s = isDir ? folderSummaries.get(norm) : fileSummaries.get(norm);
+  const { status, ignored } = resolveNodeStatus(path, isDir, {
+    fileSummaries,
+    folderSummaries,
+    ignoredSet,
+    collapsedDirs,
+  });
 
-  if (s) {
-    const badge = summaryToBadge(s);
-    // 有状态则非空（buildFileSummaryMap 不产空 summary）；防御空 summary 回落
-    if (badge) {
-      return {
-        color: summaryToLabelClass(s, isPathIgnored(norm, ignoredSet), isActive),
-        badge: badge.badge,
-        variant: badge.variant,
-        dot: summaryToDotClass(s),
-        dimmed: false,
-      };
-    }
+  if (status) {
+    const p = STATUS_PRESENTATION[status];
+    return {
+      color: statusToNameColorClass(status, ignored, isActive),
+      badge: p.badge,
+      variant: p.variant,
+      dot: p.dotClass,
+      dimmed: false,
+    };
   }
 
-  // 折叠 untracked 目录的后代继承：深层可见节点无自身/祖先摘要时，
-  // 从包裹它的折叠目录条目继承目录态色（与 git 状态优先于 ignored 的次序一致）
-  const inheritedDir = findInheritedCollapsedDir(norm, collapsedDirs);
-  if (inheritedDir) {
-    // 匹配键保留尾斜杠（防兄弟误匹配）；folder 聚合的键不含尾斜杠，取值前剥离
-    const inheritedSummary = folderSummaries.get(inheritedDir.replace(/\/+$/, ''));
-    const badge = inheritedSummary ? summaryToBadge(inheritedSummary) : null;
-    if (inheritedSummary && badge) {
-      return {
-        color: summaryToLabelClass(inheritedSummary, isPathIgnored(norm, ignoredSet), isActive),
-        badge: badge.badge,
-        variant: badge.variant,
-        dot: summaryToDotClass(inheritedSummary),
-        dimmed: false,
-      };
-    }
-  }
-
-  if (isPathIgnored(norm, ignoredSet)) {
+  if (ignored) {
     // 被忽略的激活文件仍保持 accent 高亮（对齐激活优先的既有行为）
     return { color: isActive ? 'text-accent' : 'text-text-muted', dimmed: true };
   }
@@ -401,124 +538,4 @@ export function resolveDecoration(
     return { color: 'text-accent', dimmed: false };
   }
   return null;
-}
-
-// ─── 实例复用缓存（P3：memo 稳定性） ─────────────────────────────────────────
-
-function decorationsEqual(a: Decoration | null, b: Decoration | null): boolean {
-  if (a === b) return true;
-  if (!a || !b) return false;
-  return (
-    a.color === b.color &&
-    a.badge === b.badge &&
-    a.variant === b.variant &&
-    a.dot === b.dot &&
-    a.tooltip === b.tooltip &&
-    a.dimmed === b.dimmed
-  );
-}
-
-export interface DecorationResolver {
-  resolve: typeof resolveDecoration;
-}
-
-/**
- * 跨快照的实例复用缓存工厂。
- *
- * 重新解析时，结构等值（color/badge/dimmed/tooltip 全等）的 Decoration 沿用上一个实例，
- * 保证未受影响节点的 props 浅比较持续命中 React.memo——无此机制则每次刷新所有节点拿到新对象、
- * memo 全军覆没。status 真变的路径才产出新实例；active 只影响激活节点自身（其颜色折叠进
- * color 参与等值比较，非激活节点不受 active 变化扰动）。
- *
- * 缓存按 path 键控 + 结构等值比较：不同文件树/多项目并存不会串数据——装饰值是纯不可变值，
- * 等值复用无身份语义；值不同则必然产出新实例。
- */
-export function createDecorationResolver(): DecorationResolver {
-  const cache = new Map<string, Decoration | null>();
-  return {
-    resolve(path, isDir, fileSummaries, folderSummaries, ignoredSet, isActive, collapsedDirs) {
-      const fresh = resolveDecoration(
-        path,
-        isDir,
-        fileSummaries,
-        folderSummaries,
-        ignoredSet,
-        isActive,
-        collapsedDirs,
-      );
-      if (cache.has(path) && decorationsEqual(cache.get(path)!, fresh)) {
-        return cache.get(path)!;
-      }
-      cache.set(path, fresh);
-      return fresh;
-    },
-  };
-}
-
-/**
- * 进程级共享 resolver 单例（惰性创建）。
- *
- * 全局共享是安全的：缓存按 path 键控 + 结构等值复用，Decoration 是纯不可变值 ——
- * 多文件树/多项目并存互不串数据（等值判断发生在每次调用处），最坏情形只是
- * 复用率被交替解析稀释，语义永不失真。FilesPanel 作为唯一消费入口使用本单例。
- */
-export interface SharedDecorationResolver {
-  /**
-   * 渲染期发布本轮提交的最新派生输入；resolve 在同一提交内读取 —— 保证根节点与
-   * 递归子节点解析看到同一份数据。模块级可变寄存器非渲染作用域闭包变量，
-   * 不受 react-hooks/immutability 约束；幂等后写覆盖前写，并发渲染语义单调向前。
-   */
-  publish(
-    fileSummaries: ReadonlyMap<string, GitStatusSummary>,
-    folderSummaries: ReadonlyMap<string, GitStatusSummary>,
-    ignoredSet?: ReadonlySet<string>,
-    collapsedDirs?: ReadonlyArray<string>,
-  ): void;
-  resolve(path: string, isDir: boolean, isActive: boolean): Decoration | null;
-}
-
-let sharedResolverInstance: SharedDecorationResolver | null = null;
-
-export function getSharedDecorationResolver(): SharedDecorationResolver {
-  if (!sharedResolverInstance) {
-    const base = createDecorationResolver();
-    let snapshot: {
-      fileSummaries: ReadonlyMap<string, GitStatusSummary>;
-      folderSummaries: ReadonlyMap<string, GitStatusSummary>;
-      ignoredSet?: ReadonlySet<string>;
-      collapsedDirs?: ReadonlyArray<string>;
-    } = {
-      fileSummaries: new Map<string, GitStatusSummary>(),
-      folderSummaries: new Map<string, GitStatusSummary>(),
-      ignoredSet: undefined as ReadonlySet<string> | undefined,
-      collapsedDirs: undefined as ReadonlyArray<string> | undefined,
-    };
-    sharedResolverInstance = {
-      publish(fileSummaries, folderSummaries, ignoredSet, collapsedDirs) {
-        if (
-          snapshot.fileSummaries === fileSummaries &&
-          snapshot.folderSummaries === folderSummaries &&
-          snapshot.ignoredSet === ignoredSet &&
-          snapshot.collapsedDirs === collapsedDirs
-        ) {
-          // 引用等值：本轮输入与已发布快照完全相同，跳过重写（渲染期副作用最小化）。
-          // 快照不变 → 同 pass resolve 结果与上次一致（RenderCount 不变式不破坏）。
-          return;
-        }
-        snapshot = { fileSummaries, folderSummaries, ignoredSet, collapsedDirs };
-      },
-      resolve(path, isDir, isActive) {
-        return base.resolve(
-          path,
-          isDir,
-          snapshot.fileSummaries,
-          snapshot.folderSummaries,
-          snapshot.ignoredSet,
-          isActive,
-          snapshot.collapsedDirs,
-        );
-      },
-    };
-  }
-  return sharedResolverInstance;
 }

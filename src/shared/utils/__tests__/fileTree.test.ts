@@ -34,13 +34,15 @@ describe('buildFileTreeView 扁平缓存 → 嵌套视图', () => {
       src: [fileNode('a.ts', 'src/a.ts')],
     };
     const view = buildFileTreeView(dirs, new Set(['src']));
-    expect(view).toEqual([dirNode('src', 'src', [fileNode('a.ts', 'src/a.ts')])]);
+    expect(view).toEqual([
+      { ...dirNode('src', 'src', [fileNode('a.ts', 'src/a.ts')]), is_expanded: true },
+    ]);
   });
 
   it('展开但目录缓存缺失（未加载）：children 为空（由 loadStates 显示加载态）', () => {
     const dirs = { '': [dirNode('src', 'src')] };
     const view = buildFileTreeView(dirs, new Set(['src']));
-    expect(view).toEqual([dirNode('src', 'src')]);
+    expect(view).toEqual([{ ...dirNode('src', 'src'), is_expanded: true }]);
   });
 
   it('深层目录：沿展开路径递归组装', () => {
@@ -51,7 +53,12 @@ describe('buildFileTreeView 扁平缓存 → 嵌套视图', () => {
     };
     const view = buildFileTreeView(dirs, new Set(['a', 'a/b']));
     expect(view).toEqual([
-      dirNode('a', 'a', [dirNode('b', 'a/b', [fileNode('c.ts', 'a/b/c.ts')])]),
+      {
+        ...dirNode('a', 'a', [
+          { ...dirNode('b', 'a/b', [fileNode('c.ts', 'a/b/c.ts')]), is_expanded: true },
+        ]),
+        is_expanded: true,
+      },
     ]);
   });
 
@@ -63,7 +70,7 @@ describe('buildFileTreeView 扁平缓存 → 嵌套视图', () => {
     };
     // a 展开但 a/b 未展开 → c.ts 不可见
     const view = buildFileTreeView(dirs, new Set(['a']));
-    expect(view).toEqual([dirNode('a', 'a', [dirNode('b', 'a/b')])]);
+    expect(view).toEqual([{ ...dirNode('a', 'a', [dirNode('b', 'a/b')]), is_expanded: true }]);
   });
 
   it('根刷新后已展开子目录仍从各自缓存取内容（根替换不影响子树）', () => {
@@ -80,10 +87,110 @@ describe('buildFileTreeView 扁平缓存 → 嵌套视图', () => {
       new Set(['src']),
     );
     expect(after).toEqual([
-      dirNode('src', 'src', [fileNode('a.ts', 'src/a.ts')]),
+      { ...dirNode('src', 'src', [fileNode('a.ts', 'src/a.ts')]), is_expanded: true },
       fileNode('new.md', 'new.md'),
     ]);
     expect(before).not.toEqual(after);
+  });
+});
+
+describe('buildFileTreeView git 状态盖章（S3 组装期 join）', () => {
+  type NodeGitStatus = { status: string | null; ignored: boolean };
+
+  it('decorate 返回的字段落到对应视图节点（文件与目录）', () => {
+    const dirs = {
+      '': [dirNode('src', 'src'), fileNode('b.ts', 'b.ts')],
+      src: [fileNode('a.ts', 'src/a.ts')],
+    };
+    const statusByPath = new Map<string, NodeGitStatus>([
+      ['src', { status: 'modified', ignored: false }],
+      ['src/a.ts', { status: 'added', ignored: false }],
+      ['b.ts', { status: null, ignored: true }],
+    ]);
+    const view = buildFileTreeView(
+      dirs,
+      new Set(['src']),
+      {},
+      (path) => statusByPath.get(path) ?? null,
+    );
+
+    expect(view[0]).toMatchObject({ path: 'src', git_status: 'modified' });
+    // 非 ignored 节点不写 is_ignored 键（字段只在 true 时存在）
+    expect('is_ignored' in view[0]!).toBe(false);
+    // 展开目录的子节点同样被盖章
+    expect(view[0]?.children[0]).toMatchObject({
+      path: 'src/a.ts',
+      git_status: 'added',
+    });
+    // 无状态但 ignored：仅 is_ignored 落节点（git_status 键不存在）
+    expect('git_status' in view[1]!).toBe(false);
+    expect(view[1]).toMatchObject({ path: 'b.ts', is_ignored: true });
+  });
+
+  it('逐节点视图状态盖章：is_active / is_selected / is_expanded / dir_state / creating_input', () => {
+    const dirs = {
+      '': [dirNode('src', 'src'), fileNode('b.ts', 'b.ts')],
+      src: [fileNode('a.ts', 'src/a.ts')],
+    };
+    const view = buildFileTreeView(
+      dirs,
+      new Set(['src']),
+      {
+        activeFilePath: 'src/a.ts',
+        selectedPath: 'b.ts',
+        dirLoadStates: { src: 'loading' },
+        creating: { dirPath: 'src', kind: 'file' },
+        creatingValue: 'new.ts',
+      },
+      () => null,
+    );
+
+    // 展开/加载/内联新建仅命中目录携带；激活命中子文件
+    expect(view[0]).toMatchObject({
+      path: 'src',
+      is_expanded: true,
+      dir_state: 'loading',
+      creating_input: { kind: 'file', value: 'new.ts' },
+    });
+    expect('is_active' in view[0]!).toBe(false);
+    expect(view[0]?.children[0]).toMatchObject({ path: 'src/a.ts', is_active: true });
+    // b.ts：选中态；文件节点无 dir_state / creating_input / is_expanded
+    expect(view[1]).toMatchObject({ path: 'b.ts', is_selected: true });
+    expect('is_expanded' in view[1]!).toBe(false);
+    expect('dir_state' in view[1]!).toBe(false);
+  });
+
+  it('重命名命中节点盖章 renaming_name（行替换为输入框）', () => {
+    const dirs = { '': [fileNode('b.ts', 'b.ts')] };
+    const view = buildFileTreeView(
+      dirs,
+      new Set(),
+      { renaming: { path: 'b.ts', isDir: false, name: 'c.ts' } },
+      () => null,
+    );
+    expect(view[0]).toMatchObject({ path: 'b.ts', renaming_name: 'c.ts' });
+  });
+
+  it('未提供 decorate/input：视图节点不携带任何投影字段（其他消费方零感知）', () => {
+    const dirs = { '': [fileNode('a.ts', 'a.ts')] };
+    const view = buildFileTreeView(dirs, new Set());
+    expect(view[0]).toEqual(fileNode('a.ts', 'a.ts'));
+    expect('git_status' in view[0]!).toBe(false);
+  });
+
+  it('decorate 返回 null 的路径不写字段', () => {
+    const dirs = { '': [fileNode('a.ts', 'a.ts')] };
+    const view = buildFileTreeView(dirs, new Set(), {}, () => null);
+    expect(view[0]).toEqual(fileNode('a.ts', 'a.ts'));
+  });
+
+  it('未展开目录（children 截断）同样被盖章', () => {
+    const dirs = { '': [dirNode('src', 'src', [fileNode('a.ts', 'src/a.ts')])] };
+    const view = buildFileTreeView(dirs, new Set(), {}, (path) =>
+      path === 'src' ? { status: 'untracked', ignored: false } : null,
+    );
+    expect(view[0]).toMatchObject({ path: 'src', git_status: 'untracked' });
+    expect(view[0]?.children).toEqual([]);
   });
 });
 

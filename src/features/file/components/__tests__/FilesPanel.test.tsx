@@ -1,5 +1,5 @@
 import { fireEvent, render as renderRTL, screen, waitFor } from '@testing-library/react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import FilesPanel, { displayHomePath } from '@/features/file/components/FilesPanel';
 // Mock setDragFile to verify it's called for directories
@@ -68,6 +68,22 @@ const baseProps = {
   onExpandDir: vi.fn().mockResolvedValue(undefined),
   projectType: 'Local' as const,
 };
+
+// virtual-core 挂载时同步测量 scrollRect（jsdom 恒 0）→ mock 非零尺寸让虚拟化渲染行
+class ResizeObserverStub {
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+}
+beforeEach(() => {
+  vi.stubGlobal('ResizeObserver', ResizeObserverStub);
+  vi.spyOn(HTMLElement.prototype, 'offsetWidth', 'get').mockReturnValue(600);
+  vi.spyOn(HTMLElement.prototype, 'offsetHeight', 'get').mockReturnValue(1200);
+});
+afterEach(() => {
+  vi.unstubAllGlobals();
+  vi.restoreAllMocks();
+});
 
 describe('FilesPanel 文件管理', () => {
   beforeEach(() => {

@@ -6,9 +6,9 @@ import {
   buildFileSummaryMap,
   buildFolderSummaryMap,
   collectCollapsedDirs,
-  createDecorationResolver,
-  getSharedDecorationResolver,
   resolveDecoration,
+  resolveNodeStatus,
+  statusToNameColorClass,
   summaryToBadge,
   summaryToDotClass,
   summaryToLabelClass,
@@ -16,11 +16,16 @@ import {
 } from '@/shared/utils/gitFileDecoration';
 import type { GitStatusSummary } from '@/shared/utils/gitFileDecoration';
 
-const fc = (path: string, status: FileChange['status'] = 'Modified'): FileChange => ({
+const fc = (
+  path: string,
+  status: FileChange['status'] = 'Modified',
+  is_dir = false,
+): FileChange => ({
   path,
   status,
   additions: 0,
   deletions: 0,
+  is_dir,
 });
 
 /** 构造 summary 的便捷工厂：仅设置感兴趣的计数 */
@@ -199,19 +204,28 @@ describe('summaryToBadge', () => {
 });
 
 describe('resolveDecoration — 折叠 untracked 目录的后代继承', () => {
-  // Rust 侧不递归 untracked 目录：折叠为单条目录条目（尾斜杠），其下子路径不在变更列表内
-  const collapsed = [fc('.trellis/tasks/08-27-x/', 'Untracked')];
+  // Rust 侧不递归 untracked 目录：折叠为单条目录条目（G1：无尾斜杠 path + is_dir=true）
+  const collapsed = [fc('.trellis/tasks/08-27-x', 'Untracked', true)];
   const cFileSummaries = buildFileSummaryMap(collapsed);
-  const cFolderSummaries = buildFolderSummaryMap(cFileSummaries);
   const cCollapsedDirs = collectCollapsedDirs(collapsed);
+  const cFolderSummaries = buildFolderSummaryMap(cFileSummaries, cCollapsedDirs);
 
-  it('collectCollapsedDirs 仅收集目录条目且排序', () => {
+  it('collectCollapsedDirs 仅收集目录条目且输出无尾斜杠路径并排序', () => {
     const files = [
-      fc('b/inner/', 'Untracked'),
+      fc('b/inner', 'Untracked', true),
       fc('a.ts', 'Modified'),
-      fc('.trellis/x/', 'Untracked'),
+      fc('.trellis/x', 'Untracked', true),
     ];
-    expect(collectCollapsedDirs(files)).toEqual(['.trellis/x/', 'b/inner/']);
+    expect(collectCollapsedDirs(files)).toEqual(['.trellis/x', 'b/inner']);
+  });
+
+  it('collectCollapsedDirs 兼容旧 payload（无 is_dir 的尾斜杠目录条目）', () => {
+    // 旧 payload 不含 is_dir 字段（undefined），需走尾斜杠兜底 —— 字面量刻意不写 is_dir
+    const legacy: FileChange[] = [
+      { path: 'b/inner/', status: 'Untracked', additions: 0, deletions: 0 },
+      { path: 'a.ts', status: 'Modified', additions: 0, deletions: 0 },
+    ];
+    expect(collectCollapsedDirs(legacy)).toEqual(['b/inner']);
   });
 
   it('折叠目录内的深层文件继承该目录的 untracked 色', () => {
@@ -255,10 +269,10 @@ describe('resolveDecoration — 折叠 untracked 目录的后代继承', () => {
   });
 
   it('兄弟前缀相近的路径不误匹配（须以条目+分隔符为界）', () => {
-    const two = [fc('ab/', 'Untracked')];
+    const two = [fc('ab', 'Untracked', true)];
     const dirs = collectCollapsedDirs(two);
     const fileSummaries = buildFileSummaryMap(two);
-    const folderSummaries = buildFolderSummaryMap(fileSummaries);
+    const folderSummaries = buildFolderSummaryMap(fileSummaries, dirs);
     expect(
       resolveDecoration('abc/f.txt', false, fileSummaries, folderSummaries, undefined, false, dirs),
     ).toBeNull();
@@ -421,162 +435,169 @@ describe('resolveDecoration', () => {
   });
 });
 
-describe('createDecorationResolver 实例复用缓存', () => {
-  const buildMaps = (files: FileChange[]) => {
+describe('resolveNodeStatus — 语义状态判定（S3 状态入模的组装期 join 核心）', () => {
+  const buildInputs = (files: FileChange[], ignored?: string[]) => {
     const fileSummaries = buildFileSummaryMap(files);
-    const folderSummaries = buildFolderSummaryMap(fileSummaries);
-    return { fileSummaries, folderSummaries };
+    const collapsedDirs = collectCollapsedDirs(files);
+    const folderSummaries = buildFolderSummaryMap(fileSummaries, collapsedDirs);
+    return {
+      fileSummaries,
+      folderSummaries,
+      collapsedDirs,
+      ignoredSet: ignored ? new Set(ignored) : undefined,
+    };
   };
 
-  it('同一输入集合同一路径多次解析返回同一 Decoration 实例', () => {
-    const resolver = createDecorationResolver();
-    const { fileSummaries, folderSummaries } = buildMaps([fc('src/a.ts', 'Modified')]);
-    const d1 = resolver.resolve(
-      'src/a.ts',
-      false,
-      fileSummaries,
-      folderSummaries,
-      undefined,
-      false,
-    );
-    const d2 = resolver.resolve(
-      'src/a.ts',
-      false,
-      fileSummaries,
-      folderSummaries,
-      undefined,
-      false,
-    );
-    expect(d1).not.toBeNull();
-    expect(d1).toBe(d2);
+  it('文件精确命中：返回自身主导状态，ignored 为原始事实', () => {
+    const inputs = buildInputs([fc('src/a.ts', 'Modified')], ['src/a.ts']);
+    expect(resolveNodeStatus('src/a.ts', false, inputs)).toEqual({
+      status: 'modified',
+      ignored: true,
+    });
   });
 
-  it('快照更新后结构等值的 Decoration 沿用上一实例', () => {
-    const resolver = createDecorationResolver();
-    const snap1 = buildMaps([fc('src/a.ts', 'Modified'), fc('src/b.ts', 'Added')]);
-    const d1a = resolver.resolve(
-      'src/a.ts',
-      false,
-      snap1.fileSummaries,
-      snap1.folderSummaries,
-      undefined,
-      false,
-    );
-    // 新快照：b.ts 状态变化，a.ts 不变
-    const snap2 = buildMaps([fc('src/a.ts', 'Modified'), fc('src/b.ts', 'Deleted')]);
-    const d2a = resolver.resolve(
-      'src/a.ts',
-      false,
-      snap2.fileSummaries,
-      snap2.folderSummaries,
-      undefined,
-      false,
-    );
-    expect(d1a).toBe(d2a);
+  it('目录取聚合主导状态（含未展开深层祖先）', () => {
+    const inputs = buildInputs([fc('a/b/c/d.ts', 'Added')]);
+    expect(resolveNodeStatus('a/b', true, inputs)).toEqual({ status: 'added', ignored: false });
   });
 
-  it('status 真变的路径产出新实例', () => {
-    const resolver = createDecorationResolver();
-    const snap1 = buildMaps([fc('src/a.ts', 'Modified')]);
-    const d1 = resolver.resolve(
-      'src/a.ts',
-      false,
-      snap1.fileSummaries,
-      snap1.folderSummaries,
-      undefined,
-      false,
-    );
-    const snap2 = buildMaps([fc('src/a.ts', 'Added')]);
-    const d2 = resolver.resolve(
-      'src/a.ts',
-      false,
-      snap2.fileSummaries,
-      snap2.folderSummaries,
-      undefined,
-      false,
-    );
-    expect(d1).not.toBeNull();
-    expect(d2).not.toBeNull();
-    expect(d1).not.toBe(d2);
-    expect(d2).toMatchObject({ badge: 'A', color: 'text-accent-green' });
+  it('目录聚合优先级：conflict > deleted > modified > renamed > untracked > added', () => {
+    const inputs = buildInputs([fc('src/m.ts', 'Modified'), fc('src/u.ts', 'Untracked')]);
+    expect(resolveNodeStatus('src', true, inputs)?.status).toBe('modified');
   });
 
-  it('不同文件树（不同容器引用）同路径同结构值互不串数据', () => {
-    const resolver = createDecorationResolver();
-    const treeA = buildMaps([fc('src/a.ts', 'Modified')]);
-    const treeB = buildMaps([]);
-    const da = resolver.resolve(
-      'src/a.ts',
-      false,
-      treeA.fileSummaries,
-      treeA.folderSummaries,
-      undefined,
-      false,
-    );
-    // 树 B 中该路径无变更 → null，不得复用树 A 的实例
-    const db = resolver.resolve(
-      'src/a.ts',
-      false,
-      treeB.fileSummaries,
-      treeB.folderSummaries,
-      undefined,
-      false,
-    );
-    expect(da).not.toBeNull();
-    expect(db).toBeNull();
+  it('折叠 untracked 目录的后代继承目录态色（与 resolveDecoration parity）', () => {
+    const inputs = buildInputs([fc('.trellis/tasks/08-27-x', 'Untracked', true)]);
+    expect(resolveNodeStatus('.trellis/tasks/08-27-x/prd.md', false, inputs)).toEqual({
+      status: 'untracked',
+      ignored: false,
+    });
   });
 
-  it('active 只影响激活节点自身，其余节点仍复用实例', () => {
-    const resolver = createDecorationResolver();
-    const snap = buildMaps([fc('src/a.ts', 'Modified'), fc('src/b.ts', 'Added')]);
-    const inactiveB = resolver.resolve(
-      'src/b.ts',
-      false,
-      snap.fileSummaries,
-      snap.folderSummaries,
-      undefined,
-      false,
-    );
-    // 切换 active 到 a.ts，b.ts 不受影响
-    const activeA = resolver.resolve(
-      'src/a.ts',
-      false,
-      snap.fileSummaries,
-      snap.folderSummaries,
-      undefined,
-      true,
-    );
-    const inactiveB2 = resolver.resolve(
-      'src/b.ts',
-      false,
-      snap.fileSummaries,
-      snap.folderSummaries,
-      undefined,
-      false,
-    );
-    expect(activeA).toMatchObject({ color: 'text-accent' });
-    expect(inactiveB).toBe(inactiveB2);
+  it('ignored 祖先上行匹配：深层文件位于被剪枝忽略目录内仍 ignored', () => {
+    const inputs = buildInputs([], ['node_modules']);
+    expect(resolveNodeStatus('node_modules/pkg/deep/index.js', false, inputs)).toEqual({
+      status: null,
+      ignored: true,
+    });
+  });
+
+  it('无状态且未忽略：status null / ignored false', () => {
+    const inputs = buildInputs([fc('other.ts', 'Modified')]);
+    expect(resolveNodeStatus('plain.txt', false, inputs)).toEqual({
+      status: null,
+      ignored: false,
+    });
+  });
+
+  it('与 resolveDecoration 语义 parity：同一输入集逐路径对照', () => {
+    const files = [
+      fc('src/a.ts', 'Modified'),
+      fc('src/inner/b.ts', 'Added'),
+      fc('dist/.env', 'Untracked'),
+      fc('coll', 'Untracked', true),
+    ];
+    const ignored = ['node_modules'];
+    const inputs = buildInputs(files, ignored);
+    const paths: Array<[string, boolean]> = [
+      ['src/a.ts', false],
+      ['src/inner/b.ts', false],
+      ['src', true],
+      ['src/inner', true],
+      ['dist/.env', false],
+      ['dist', true],
+      ['coll/deep.txt', false],
+      ['node_modules/x.js', false],
+      ['plain.txt', false],
+    ];
+    for (const [path, isDir] of paths) {
+      const deco = resolveDecoration(
+        path,
+        isDir,
+        inputs.fileSummaries,
+        inputs.folderSummaries,
+        inputs.ignoredSet,
+        false,
+        inputs.collapsedDirs,
+      );
+      const semantic = resolveNodeStatus(path, isDir, inputs);
+      if (semantic.status !== null) {
+        // 有状态：dimmed 恒 false，色由主导状态决定
+        expect(deco?.dimmed).toBe(false);
+        expect(deco?.color).toBe(statusToNameColorClass(semantic.status, semantic.ignored, false));
+      } else if (semantic.ignored) {
+        expect(deco).toMatchObject({ color: 'text-text-muted', dimmed: true });
+      } else {
+        expect(deco).toBeNull();
+      }
+    }
   });
 });
 
-describe('getSharedDecorationResolver — publish 输入转发', () => {
-  it('publish 携带折叠目录条目时，后代节点继承目录态色', () => {
-    const resolver = getSharedDecorationResolver();
-    const files = [fc('pub-test/collapsed/', 'Untracked')];
-    const fileSummaries = buildFileSummaryMap(files);
-    const folderSummaries = buildFolderSummaryMap(fileSummaries);
-    resolver.publish(fileSummaries, folderSummaries, undefined, collectCollapsedDirs(files));
-    expect(resolver.resolve('pub-test/collapsed/deep.md', false, false)?.color).toBe(
-      'text-accent-brick',
-    );
+describe('statusToNameColorClass — 叶子级名字色（优先级链单处收敛）', () => {
+  it('active 最高优先（accent），即使有状态或 ignored', () => {
+    expect(statusToNameColorClass('conflict', true, true)).toBe('text-accent');
+    expect(statusToNameColorClass(undefined, true, true)).toBe('text-accent');
   });
 
-  it('publish 未携带折叠条目时不发生继承', () => {
-    const resolver = getSharedDecorationResolver();
-    const files = [fc('pub-test2/plain.md', 'Untracked')];
-    const fileSummaries = buildFileSummaryMap(files);
-    const folderSummaries = buildFolderSummaryMap(fileSummaries);
-    resolver.publish(fileSummaries, folderSummaries, undefined, undefined);
-    expect(resolver.resolve('pub-test2/other.md', false, false)).toBeNull();
+  it('状态优先于 ignored（共存不灰化）', () => {
+    expect(statusToNameColorClass('modified', true, false)).toBe('text-accent-blue');
+    expect(statusToNameColorClass('untracked', true, false)).toBe('text-accent-brick');
+  });
+
+  it('各状态映射 JetBrains 词表色', () => {
+    expect(statusToNameColorClass('conflict', false, false)).toBe('text-accent-red');
+    expect(statusToNameColorClass('deleted', false, false)).toBe('text-accent-orange');
+    expect(statusToNameColorClass('modified', false, false)).toBe('text-accent-blue');
+    expect(statusToNameColorClass('renamed', false, false)).toBe('text-accent-blue');
+    expect(statusToNameColorClass('untracked', false, false)).toBe('text-accent-brick');
+    expect(statusToNameColorClass('added', false, false)).toBe('text-accent-green');
+  });
+
+  it('无状态：ignored 灰显，否则默认色', () => {
+    expect(statusToNameColorClass(undefined, true, false)).toBe('text-text-muted');
+    expect(statusToNameColorClass(null, false, false)).toBe('text-text-primary');
+  });
+});
+
+describe('fileChangeToSummary（经 buildFileSummaryMap）— G6 XY 契约分桶', () => {
+  const fxy = (
+    path: string,
+    status: FileChange['status'],
+    xy?: { x?: string; y?: string },
+  ): FileChange => ({
+    path,
+    status,
+    additions: 0,
+    deletions: 0,
+    ...(xy?.x !== undefined ? { index_status: xy.x } : {}),
+    ...(xy?.y !== undefined ? { worktree_status: xy.y } : {}),
+  });
+
+  it('X 侧计数进 staged 桶（staged 桶自此转真）', () => {
+    const map = buildFileSummaryMap([fxy('a.txt', 'Added', { x: 'A', y: ' ' })]);
+    expect(map.get('a.txt')?.staged.added).toBe(1);
+    expect(map.get('a.txt')?.unstaged.added).toBe(0);
+  });
+
+  it('XY 双侧同现：staged + unstaged 同时计数（README 场景）', () => {
+    const map = buildFileSummaryMap([fxy('r.md', 'Modified', { x: 'M', y: 'M' })]);
+    expect(map.get('r.md')?.staged.modified).toBe(1);
+    expect(map.get('r.md')?.unstaged.modified).toBe(1);
+  });
+
+  it('unversioned 与 conflict 桶转真', () => {
+    const map = buildFileSummaryMap([
+      fxy('new.ts', 'Untracked', { x: '?', y: '?' }),
+      fxy('c.txt', 'Modified', { x: 'U', y: 'U' }),
+    ]);
+    expect(map.get('new.ts')?.untracked).toBe(1);
+    expect(map.get('c.txt')?.conflict).toBe(1);
+  });
+
+  it('缺 XY 回退单 status 映射（旧 payload 不炸）', () => {
+    const map = buildFileSummaryMap([fc('m.ts', 'Modified')]);
+    expect(map.get('m.ts')?.unstaged.modified).toBe(1);
+    expect(map.get('m.ts')?.staged.modified).toBe(0);
   });
 });

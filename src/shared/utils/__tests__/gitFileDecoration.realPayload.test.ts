@@ -5,22 +5,25 @@ import type { FileChange } from '@/shared/types';
 import {
   buildFileSummaryMap,
   buildFolderSummaryMap,
+  collectCollapsedDirs,
   resolveDecoration,
 } from '../gitFileDecoration';
 
 /**
  * 真实载荷形状回归：用 Rust 后端对真实仓库 `git status`（git2 路径）的实测输出
- * 驱动装饰管线（2026-08-28 捕获）。覆盖三类关键形状：
- * 1. 折叠 untracked 目录条目（尾斜杠，如 `.trellis/tasks/.../`）；
+ * 驱动装饰管线（2026-08-28 捕获，目录条目已按 G1 契约归一化为无尾斜杠 + is_dir）。
+ * 覆盖三类关键形状：
+ * 1. 折叠 untracked 目录条目（G1：path 无尾斜杠 + is_dir=true，如 `.trellis/tasks/...`）；
  * 2. 混合目录中的独立 untracked 文件（目录内同时含已跟踪文件）；
  * 3. 同目录 Modified 与 Untracked 并存 → 目录聚合按优先级 M > U 取蓝色。
  */
 const REAL_CHANGED: FileChange[] = [
   {
-    path: '.trellis/tasks/08-27-file-tree-git-decoration/',
+    path: '.trellis/tasks/08-27-file-tree-git-decoration',
     status: 'Untracked',
     additions: 0,
     deletions: 0,
+    is_dir: true,
   },
   { path: 'src-tauri/tests/diag_real_repo.rs', status: 'Untracked', additions: 0, deletions: 0 },
   {
@@ -68,7 +71,8 @@ const TARGET = 'src/features/file/components/__tests__/FileTreeNodeRenderCount.t
 describe('gitFileDecoration real payload', () => {
   it('untracked file resolves to text-accent-brick with real backend payload', () => {
     const fileSummaries = buildFileSummaryMap(REAL_CHANGED);
-    const folderSummaries = buildFolderSummaryMap(fileSummaries);
+    const collapsedDirs = collectCollapsedDirs(REAL_CHANGED);
+    const folderSummaries = buildFolderSummaryMap(fileSummaries, collapsedDirs);
 
     // 混合目录中的独立 untracked 文件 → 砖红
     const fileDeco = resolveDecoration(

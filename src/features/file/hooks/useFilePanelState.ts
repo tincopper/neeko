@@ -60,6 +60,13 @@ export function useFilePanelState(params: UseFilePanelStateParams) {
 
   const [expandedDirs, setExpandedDirs] = useState<Set<string>>(new Set());
   const prevActiveFilePathRef = useRef<string | null>(null);
+  // expandedDirs 镜像 ref：让 handleToggleDir 的 useCallback 依赖不含 expandedDirs
+  // （身份稳定）——S3 memo 比较器按回调身份比较，toggle 身份抖动会使整树重渲染。
+  // 提交后读取（点击发生在 commit 之后），语义与闭包读取一致。
+  const expandedDirsRef = useRef<Set<string>>(expandedDirs);
+  useEffect(() => {
+    expandedDirsRef.current = expandedDirs;
+  }, [expandedDirs]);
   // 用户 home 目录（用于路径展示时替换为 ~）
   const [homeDirPath, setHomeDirPath] = useState('');
   const copyToClipboard = useCopyToClipboard();
@@ -134,8 +141,9 @@ export function useFilePanelState(params: UseFilePanelStateParams) {
 
   const handleToggleDir = useCallback(
     async (path: string) => {
-      // 收起：直接 toggle，无需加载
-      if (expandedDirs.has(path)) {
+      // 经 ref 读取当前展开态（回调身份稳定）；mutation 走函数式 setState
+      const wasExpanded = expandedDirsRef.current.has(path);
+      if (wasExpanded) {
         setExpandedDirs((prev) => {
           const next = new Set(prev);
           next.delete(path);
@@ -150,7 +158,7 @@ export function useFilePanelState(params: UseFilePanelStateParams) {
       setExpandedDirs((prev) => new Set(prev).add(path));
       await onExpandDir(path);
     },
-    [expandedDirs, onExpandDir],
+    [onExpandDir],
   );
 
   // 右键菜单处理
