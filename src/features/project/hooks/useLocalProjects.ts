@@ -19,7 +19,9 @@ import { randomAvatarColor } from '@/shared/utils/projectAvatar';
 // eslint-disable-next-line import/no-restricted-paths -- useLocalProjects needs agent API for listing agents
 import { listAgents } from '../../agent/api/agentApi';
 // eslint-disable-next-line import/no-restricted-paths -- useLocalProjects needs git API for branch/worktree info
-import { getWorktreeChangedFiles, getGitBranchInfo, getAheadBehind } from '../../git/api/gitApi';
+import { getGitBranchInfo, getAheadBehind } from '../../git/api/gitApi';
+// eslint-disable-next-line import/no-restricted-paths -- useLocalProjects reuses the gated refresh entry for changed_files
+import { refreshGitFileStates } from '../../git/utils/gitStatus';
 // eslint-disable-next-line import/no-restricted-paths -- useLocalProjects needs session API for persistence
 import { saveSession } from '../../session/api/sessionApi';
 import {
@@ -267,8 +269,9 @@ export function useLocalProjects() {
         const proj = useProjectStore.getState().projects.find((p) => p.id === projectId);
         if (proj?.git_info === null) return;
 
-        const changedFiles = await getWorktreeChangedFiles(projectId, activeWorktreePath ?? '');
-        updateProjectGitInfo({ changed_files: changedFiles, is_clean: changedFiles.length === 0 });
+        // changed_files 走唯一权威刷新入口（versioned 读 + version gate + 单一写通道，
+        // G2 D4）：不再绕过 gate 裸写，避免手动刷新响应与更新的快照事件竞态覆盖。
+        await refreshGitFileStates(projectId, activeWorktreePath ?? '');
 
         getGitBranchInfo(projectId, activeWorktreePath)
           .then((branchInfo) => {

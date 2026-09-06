@@ -2,10 +2,20 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 
 import type { FileChange } from '@/shared/types';
 
+import { isUnversionedEntry } from '../utils/gitStatusGroups';
+
 /**
- * 把折叠的 untracked 目录条目（path 带尾斜杠）替换为其下的文件条目，
+ * G1 契约判定：目录条目显式 `is_dir` 字段优先；`?? dir/` 旧 payload
+ * （无 is_dir 且 path 带尾斜杠）走斜杠兜底（过渡期兼容）。
+ */
+function isCollapsedDirEntry(file: FileChange): boolean {
+  return file.is_dir ?? file.path.endsWith('/');
+}
+
+/**
+ * 把折叠的 untracked 目录条目替换为其下的文件条目，
  * 使 Unversioned 组内所有行同构展示（【文件名】【目录名】）。
- * 子文件列表尚未拉取完成时保留目录条目占位（行显示剥离尾斜杠后的名字）。
+ * 子文件列表尚未拉取完成时保留目录条目占位。
  */
 export function expandUntrackedEntries(
   files: FileChange[],
@@ -13,14 +23,14 @@ export function expandUntrackedEntries(
 ): FileChange[] {
   const out: FileChange[] = [];
   for (const file of files) {
-    if (!file.path.endsWith('/')) {
+    if (!isCollapsedDirEntry(file)) {
       out.push(file);
       continue;
     }
     const children = dirFilesMap[file.path];
     if (children) {
       for (const child of children) {
-        out.push({ path: child, status: 'Untracked', additions: 0, deletions: 0 });
+        out.push({ path: child, status: 'Untracked', additions: 0, deletions: 0, is_dir: false });
       }
     } else {
       out.push(file);
@@ -31,8 +41,9 @@ export function expandUntrackedEntries(
 
 /**
  * 折叠 untracked 目录条目的按需展开状态机：
- * 后端 `git status` 折叠语义输出 `dir/` 单条目；此处按需拉取目录下的文件并
- * 与普通文件行同构展示（【文件名】【目录名】），未加载完成前保留目录条目占位。
+ * 后端 `git status` 折叠语义输出目录条目（G1 起 path 无尾斜杠 + is_dir=true）；
+ * 此处按需拉取目录下的文件并与普通文件行同构展示（【文件名】【目录名】），
+ * 未加载完成前保留目录条目占位。
  */
 export function useUntrackedDirExpansion(
   files: FileChange[],
@@ -41,10 +52,11 @@ export function useUntrackedDirExpansion(
   const [dirFilesMap, setDirFilesMap] = useState<Record<string, string[]>>({});
   const inflightDirsRef = useRef<Set<string>>(new Set());
 
-  const untrackedFiles = useMemo(() => files.filter((f) => f.status === 'Untracked'), [files]);
+  // G6：unversioned 判定优先走 porcelain XY（X=Y='?'），缺 XY 回退单 status
+  const untrackedFiles = useMemo(() => files.filter(isUnversionedEntry), [files]);
 
   const collapsedDirEntries = useMemo(
-    () => untrackedFiles.filter((f) => f.path.endsWith('/')),
+    () => untrackedFiles.filter(isCollapsedDirEntry),
     [untrackedFiles],
   );
 
@@ -58,6 +70,7 @@ export function useUntrackedDirExpansion(
     Promise.all(
       pending.map(async (entry) => {
         try {
+          // 兼容旧 payload 的尾斜杠路径；G1 起后端已归一化为无斜杠 path
           const children = await onExpandUntrackedDir(entry.path.replace(/\/+$/, ''));
           return [entry.path, children] as const;
         } catch {

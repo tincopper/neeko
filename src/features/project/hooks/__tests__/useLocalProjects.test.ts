@@ -189,7 +189,7 @@ describe('useLocalProjects', () => {
 
   it('handleRefreshGit 刷新 git 信息与 ahead/behind', async () => {
     mockInvoke.mockImplementation(async (cmd: string) => {
-      if (cmd === 'get_worktree_changed_files') return [];
+      if (cmd === 'get_worktree_changed_files') return { files: [], version: 0 };
       if (cmd === 'get_git_branch_info') {
         return { current_branch: 'main', branches: ['main'], worktrees: [] };
       }

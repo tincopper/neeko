@@ -87,32 +87,77 @@ pub(super) fn resolve_git_meta_paths(repo_path: &Path) -> Option<GitMetaPaths> {
 enum GitMetaChange {
     /// 无关路径（config / ORIG_HEAD 等），不处理
     Nothing,
-    /// index 变更 → 需要全量刷新（覆盖 ignored_files）
+    /// 主 index 变更 → 需要全量刷新（覆盖 ignored_files）
     IndexChanged,
-    /// HEAD 或 worktree HEAD 变更（分支切换）
+    /// 主 HEAD 变更（分支切换）
     HeadChanged,
+    /// worktree 区域（`.git/worktrees/*` 的 HEAD/index）或 linked worktree 工作
+    /// 目录内任何变更 → 前端按 activeWorktree 刷新（G3：不再依赖 has_wt 判定，
+    /// worktree 内 git add / commit / 外部文件编辑一律即时感知）。
+    WorktreeMetaChanged,
 }
 
-/// 将一次 git 元数据事件涉及的路径分类为 HEAD / index / 无关。
+/// 解析 linked worktree 的工作目录绝对路径列表。
 ///
-/// 优先级：index 优先于 HEAD —— `git commit` 会同时改写 index（清空暂存）
+/// git 在 `.git/worktrees/<name>/gitdir` 文件中写入**裸绝对路径**，指向该 worktree
+/// 工作目录内的 `.git` 文件（如 `/workspace/wt-dev/.git`，无 `gitdir: ` 前缀——
+/// 前缀格式属于 worktree 侧的 `.git` 文件，此处防御性兼容）。指向的是 `.git`
+/// 文件而非工作目录本身，须剥掉末尾 `.git` 分量才得到监听根。
+/// 用于对 worktree 工作目录补挂递归监听（G3，P4：worktree 内文件编辑即时感知）。
+fn resolve_worktree_roots(git_dir: &Path) -> Vec<PathBuf> {
+    let wts = git_dir.join("worktrees");
+    let Ok(entries) = std::fs::read_dir(&wts) else {
+        return Vec::new();
+    };
+    entries
+        .filter_map(Result::ok)
+        .filter_map(|e| {
+            let gitdir_file = e.path().join("gitdir");
+            let content = std::fs::read_to_string(gitdir_file).ok()?;
+            let line = content.lines().map(str::trim).find(|l| !l.is_empty())?;
+            let raw = line.strip_prefix("gitdir:").map(str::trim).unwrap_or(line);
+            let git_file = PathBuf::from(raw);
+            let root = if git_file.file_name() == Some(std::ffi::OsStr::new(".git")) {
+                git_file.parent()?.to_path_buf()
+            } else {
+                git_file
+            };
+            if root.as_os_str().is_empty() {
+                return None;
+            }
+            // 归一化：与 notify realpath 事件对齐（macOS /var → /private/var）
+            Some(root.canonicalize().unwrap_or(root))
+        })
+        .collect()
+}
+
+/// 将一次 git 元数据事件涉及的路径分类为 HEAD / index / worktree / 无关。
+///
+/// 优先级：主 index 优先于主 HEAD —— `git commit` 会同时改写 index（清空暂存）
 /// 与 HEAD，此时按 index 处理，确保全量刷新覆盖 ignored_files。
+/// worktree 区域（`.git/worktrees`）与 linked worktree 工作目录事件独立分类，
+/// 不再借用主 HEAD 的 `has_wt` 语义（G3 精确化）。
 fn classify_git_meta_event(
     paths: &[PathBuf],
     head: &Path,
     index: &Path,
     worktrees_dir: Option<&Path>,
+    worktree_roots: &[PathBuf],
 ) -> GitMetaChange {
     if paths.iter().any(|p| p == index) {
         return GitMetaChange::IndexChanged;
     }
-    let touched_head = paths.iter().any(|p| p == head);
-    // worktrees 目录递归监听产生的事件（其他 worktree 的 HEAD 变更）
-    let touched_worktree = worktrees_dir
+    if paths.iter().any(|p| p == head) {
+        return GitMetaChange::HeadChanged;
+    }
+    let in_worktrees_meta = worktrees_dir
         .map(|w| paths.iter().any(|p| p.starts_with(w)))
         .unwrap_or(false);
-    if touched_head || touched_worktree {
-        GitMetaChange::HeadChanged
+    let in_worktree_root = worktree_roots
+        .iter()
+        .any(|root| paths.iter().any(|p| p.starts_with(root)));
+    if in_worktrees_meta || in_worktree_root {
+        GitMetaChange::WorktreeMetaChanged
     } else {
         GitMetaChange::Nothing
     }
@@ -141,6 +186,9 @@ pub(super) struct GitMetaWatcherHandle {
     worktrees_armed: Arc<AtomicBool>,
     /// worktrees 是否存在（HEAD 事件是否应触发全量刷新兜底）
     has_wt: Arc<AtomicBool>,
+    /// 已挂递归监听的 linked worktree 工作目录集合（G3：P4 worktree 文件即时感知）。
+    /// 由 rearm 解析 `.git/worktrees/*/gitdir` 增量补挂。
+    watched_worktree_roots: Arc<Mutex<std::collections::HashSet<PathBuf>>>,
 }
 
 impl GitMetaWatcherHandle {
@@ -149,19 +197,57 @@ impl GitMetaWatcherHandle {
     /// `git-changed` 全量刷新（修复会话中途 `git worktree add` 后 worktree 状态
     /// 永不自动刷新的缺口）。已挂载 / 目录未出现时为 no-op；监听失败保持
     /// 未置位，下轮 10s 后重试。
+    ///
+    /// G3 扩展：每个 tick 同时解析 linked worktree 工作目录（`.git/worktrees/*/gitdir`），
+    /// 对未挂载的目录补挂递归监听（覆盖会话中途 `git worktree add` 后工作目录内
+    /// 文件编辑/新建的即时感知）。
     pub(super) fn rearm_worktrees_if_needed(&self) {
         let Some(wt_dir) = &self.worktrees_dir else {
             return;
         };
-        if self.worktrees_armed.load(Ordering::Relaxed) || !wt_dir.is_dir() {
-            return;
+        if wt_dir.is_dir() && !self.worktrees_armed.load(Ordering::Relaxed) {
+            let result = self
+                .watcher
+                .lock()
+                .expect("infallible: git meta watcher mutex")
+                .watch(wt_dir, RecursiveMode::Recursive);
+            apply_rearm_result(wt_dir, result, &self.worktrees_armed, &self.has_wt);
         }
-        let result = self
-            .watcher
+
+        // G3：linked worktree 工作目录增量补挂（与 .git/worktrees 监听独立）
+        let Some(meta_git_dir) = wt_dir.parent() else {
+            return;
+        };
+        let mut watched = self
+            .watched_worktree_roots
             .lock()
-            .expect("infallible: git meta watcher mutex")
-            .watch(wt_dir, RecursiveMode::Recursive);
-        apply_rearm_result(wt_dir, result, &self.worktrees_armed, &self.has_wt);
+            .expect("infallible: worktree roots mutex");
+        for root in resolve_worktree_roots(meta_git_dir) {
+            if watched.contains(&root) {
+                continue;
+            }
+            let result = self
+                .watcher
+                .lock()
+                .expect("infallible: git meta watcher mutex")
+                .watch(&root, RecursiveMode::Recursive);
+            match result {
+                Ok(()) => {
+                    watched.insert(root.clone());
+                    log::info!(
+                        "[Watcher] Watching linked worktree dir {} (worktree file events)",
+                        root.display()
+                    );
+                }
+                Err(e) => {
+                    log::warn!(
+                        "[Watcher] watch linked worktree dir error for {}: {}",
+                        root.display(),
+                        e
+                    );
+                }
+            }
+        }
     }
 }
 
@@ -218,12 +304,14 @@ pub(super) fn create_git_meta_watcher(
     meta: &GitMetaPaths,
     on_index_changed: impl FnMut() + Send + 'static,
     on_head_changed: impl FnMut(bool) + Send + 'static,
+    on_worktree_meta_changed: impl FnMut() + Send + 'static,
 ) -> Option<GitMetaWatcherHandle> {
     create_git_meta_watcher_with(
         project_id,
         meta,
         on_index_changed,
         on_head_changed,
+        on_worktree_meta_changed,
         |watcher, path, mode| watcher.watch(path, mode),
     )
 }
@@ -240,6 +328,7 @@ fn create_git_meta_watcher_with<W>(
     meta: &GitMetaPaths,
     mut on_index_changed: impl FnMut() + Send + 'static,
     mut on_head_changed: impl FnMut(bool) + Send + 'static,
+    mut on_worktree_meta_changed: impl FnMut() + Send + 'static,
     mut watch_fn: W,
 ) -> Option<GitMetaWatcherHandle>
 where
@@ -248,7 +337,7 @@ where
     let head_path = meta.head.clone();
     let index_path = meta.index.clone();
     // 恒为 `<git_dir>/worktrees`：启动时可能不存在，由 rearm 在出现后补挂；
-    // 回调分类据此识别 worktree HEAD 事件。
+    // 回调分类据此识别 worktree HEAD/index 事件。
     let worktrees_dir = Some(meta.git_dir.join("worktrees"));
     // 回调闭包 move 捕获用 clone，外层仍需保留 worktrees_dir 做 watch 设置
     let worktrees_dir_for_cb = worktrees_dir.clone();
@@ -256,6 +345,10 @@ where
     let worktrees_armed = Arc::new(AtomicBool::new(false));
     let has_wt = Arc::new(AtomicBool::new(meta.has_worktrees));
     let has_wt_for_cb = has_wt.clone();
+    // G3：linked worktree 工作目录集合（rearm 增量补挂；回调读取用于事件分类）
+    let watched_worktree_roots: Arc<Mutex<std::collections::HashSet<PathBuf>>> =
+        Arc::new(Mutex::new(std::collections::HashSet::new()));
+    let watched_roots_for_cb = watched_worktree_roots.clone();
     // 回调闭包 move 捕获用 clone，外层仍需保留 project_id 做 watch 设置日志
     let project_id_for_cb = project_id.clone();
     let result = RecommendedWatcher::new(
@@ -271,17 +364,23 @@ where
                     return;
                 }
             };
+            let roots_snapshot: Vec<PathBuf> = watched_roots_for_cb
+                .lock()
+                .map(|s| s.iter().cloned().collect())
+                .unwrap_or_default();
             match classify_git_meta_event(
                 &event.paths,
                 &head_path,
                 &index_path,
                 worktrees_dir_for_cb.as_deref(),
+                &roots_snapshot,
             ) {
                 GitMetaChange::Nothing => {}
                 GitMetaChange::IndexChanged => on_index_changed(),
                 GitMetaChange::HeadChanged => {
                     on_head_changed(has_wt_for_cb.load(Ordering::Relaxed));
                 }
+                GitMetaChange::WorktreeMetaChanged => on_worktree_meta_changed(),
             }
         },
         Config::default(),
@@ -337,12 +436,40 @@ where
                 }
             }
         }
+        // G3：linked worktree 工作目录（P4 —— worktree 内文件编辑即时感知）。
+        // 启动时已存在的 worktree 直接补挂；会话中途新增由 rearm 增量处理。
+        {
+            let mut watched = watched_worktree_roots
+                .lock()
+                .expect("infallible: worktree roots mutex");
+            for root in resolve_worktree_roots(&meta.git_dir) {
+                match watch_fn(&mut watcher, &root, RecursiveMode::Recursive) {
+                    Ok(()) => {
+                        watched.insert(root.clone());
+                        log::info!(
+                            "[Watcher:{}] Watching linked worktree dir {}",
+                            project_id,
+                            root.display()
+                        );
+                    }
+                    Err(e) => {
+                        log::warn!(
+                            "[Watcher:{}] watch linked worktree dir error for {}: {}",
+                            project_id,
+                            root.display(),
+                            e
+                        );
+                    }
+                }
+            }
+        }
     }
     Some(GitMetaWatcherHandle {
         watcher: Arc::new(Mutex::new(watcher)),
         worktrees_dir,
         worktrees_armed,
         has_wt,
+        watched_worktree_roots,
     })
 }
 
@@ -552,7 +679,7 @@ mod tests {
     fn classify_git_meta_event_index_touched() {
         let head = PathBuf::from("/repo/.git/HEAD");
         let index = PathBuf::from("/repo/.git/index");
-        let change = classify_git_meta_event(&[index.clone()], &head, &index, None);
+        let change = classify_git_meta_event(&[index.clone()], &head, &index, None, &[]);
         assert_eq!(change, GitMetaChange::IndexChanged);
     }
 
@@ -561,7 +688,7 @@ mod tests {
     fn classify_git_meta_event_head_touched() {
         let head = PathBuf::from("/repo/.git/HEAD");
         let index = PathBuf::from("/repo/.git/index");
-        let change = classify_git_meta_event(&[head.clone()], &head, &index, None);
+        let change = classify_git_meta_event(&[head.clone()], &head, &index, None, &[]);
         assert_eq!(change, GitMetaChange::HeadChanged);
     }
 
@@ -570,12 +697,87 @@ mod tests {
     fn classify_git_meta_event_ignores_unrelated_meta() {
         let head = PathBuf::from("/repo/.git/HEAD");
         let index = PathBuf::from("/repo/.git/index");
-        let change =
-            classify_git_meta_event(&[PathBuf::from("/repo/.git/config")], &head, &index, None);
+        let change = classify_git_meta_event(
+            &[PathBuf::from("/repo/.git/config")],
+            &head,
+            &index,
+            None,
+            &[],
+        );
         assert_eq!(change, GitMetaChange::Nothing);
     }
 
-    /// worktrees 目录下的事件（其他 worktree 的 HEAD）→ HeadChanged
+    /// resolve_worktree_roots：解析 `.git/worktrees/<name>/gitdir`（真实 git 写**裸路径**，
+    /// 指向 worktree 的 `.git` 文件）→ 剥掉 `.git` 分量得工作目录根
+    #[test]
+    fn resolve_worktree_roots_reads_gitdir_files() {
+        let tmp = tempfile::tempdir().unwrap();
+        let repo = tmp.path();
+        let git_dir = repo.join(".git");
+        std::fs::create_dir_all(&git_dir.join("worktrees").join("dev")).unwrap();
+        std::fs::create_dir_all(&git_dir.join("worktrees").join("qa")).unwrap();
+        // 真实格式：裸绝对路径 + 末尾 `.git` 分量（无 `gitdir: ` 前缀）
+        std::fs::write(
+            git_dir.join("worktrees").join("dev").join("gitdir"),
+            "/workspace/wt-dev/.git\n",
+        )
+        .unwrap();
+        // 防御性兼容：带 `gitdir: ` 前缀的行（worktree 侧 `.git` 文件的格式）
+        std::fs::write(
+            git_dir.join("worktrees").join("qa").join("gitdir"),
+            "gitdir: /workspace/wt-qa/.git\n",
+        )
+        .unwrap();
+
+        let roots = resolve_worktree_roots(&git_dir);
+        assert!(roots.iter().any(|r| r.ends_with("wt-dev")));
+        assert!(roots.iter().any(|r| r.ends_with("wt-qa")));
+        // 不得把 `.git` 文件本身当监听根
+        assert!(
+            roots.iter().all(|r| !r.ends_with(".git")),
+            "root must be the worktree dir, not the .git file: {roots:?}"
+        );
+    }
+
+    /// resolve_worktree_roots：真实 libgit2 worktree（端到端格式回归——
+    /// 曾误用 `gitdir: ` 前缀解析且未剥 `.git` 分量，真实仓库上恒返回空）。
+    #[test]
+    fn resolve_worktree_roots_parses_real_git_worktree() {
+        let tmp = tempfile::tempdir().unwrap();
+        let repo_path = tmp.path().join("main");
+        let repo = git2::Repository::init(&repo_path).unwrap();
+        std::fs::write(repo_path.join("README.md"), "# t\n").unwrap();
+        let sig = git2::Signature::now("t", "t@t.com").unwrap();
+        let mut index = repo.index().unwrap();
+        index.add_path(std::path::Path::new("README.md")).unwrap();
+        index.write().unwrap();
+        let tree_id = index.write_tree().unwrap();
+        let tree = repo.find_tree(tree_id).unwrap();
+        repo.commit(Some("HEAD"), &sig, &sig, "init", &tree, &[])
+            .unwrap();
+
+        let wt_path = tmp.path().join("wt-dev");
+        repo.worktree("dev", &wt_path, None).unwrap();
+
+        let git_dir = repo_path.join(".git");
+        let roots = resolve_worktree_roots(&git_dir);
+        assert_eq!(roots.len(), 1, "actual: {roots:?}");
+        // canonicalize 在 macOS 会把 /var 归一化为 /private/var，用 ends_with 断言
+        assert!(roots[0].ends_with("wt-dev"), "actual: {:?}", roots[0]);
+        assert!(!roots[0].ends_with(".git"));
+    }
+
+    /// resolve_worktree_roots：无 worktrees 目录时返回空
+    #[test]
+    fn resolve_worktree_roots_empty_without_worktrees() {
+        let tmp = tempfile::tempdir().unwrap();
+        let git_dir = tmp.path().join(".git");
+        std::fs::create_dir_all(&git_dir).unwrap();
+        assert!(resolve_worktree_roots(&git_dir).is_empty());
+    }
+
+    /// worktrees 目录下的事件（其他 worktree 的 HEAD/index）→ WorktreeMetaChanged
+    /// （G3：独立分类，前端按 activeWorktree 刷新，不再借用主 HEAD 的 has_wt 语义）
     #[test]
     fn classify_git_meta_event_worktree_head_touched() {
         let head = PathBuf::from("/repo/.git/HEAD");
@@ -586,8 +788,44 @@ mod tests {
             &head,
             &index,
             Some(&wt_dir),
+            &[],
         );
-        assert_eq!(change, GitMetaChange::HeadChanged);
+        assert_eq!(change, GitMetaChange::WorktreeMetaChanged);
+
+        // worktree 的 index（git add / commit 在 linked worktree 内只改这个文件）
+        let change2 = classify_git_meta_event(
+            &[PathBuf::from("/repo/.git/worktrees/dev/index")],
+            &head,
+            &index,
+            Some(&wt_dir),
+            &[],
+        );
+        assert_eq!(change2, GitMetaChange::WorktreeMetaChanged);
+    }
+
+    /// linked worktree 工作目录内的事件（文件编辑/新建，P4）→ WorktreeMetaChanged
+    #[test]
+    fn classify_git_meta_event_worktree_root_edit_is_worktree_change() {
+        let head = PathBuf::from("/repo/.git/HEAD");
+        let index = PathBuf::from("/repo/.git/index");
+        let roots = [PathBuf::from("/workspace/wt-dev")];
+        let change = classify_git_meta_event(
+            &[PathBuf::from("/workspace/wt-dev/src/main.rs")],
+            &head,
+            &index,
+            None,
+            &roots,
+        );
+        assert_eq!(change, GitMetaChange::WorktreeMetaChanged);
+        // 主仓库路径不误判为 worktree
+        let change2 = classify_git_meta_event(
+            &[PathBuf::from("/workspace/main/src/app.rs")],
+            &head,
+            &index,
+            None,
+            &roots,
+        );
+        assert_eq!(change2, GitMetaChange::Nothing);
     }
 
     /// 无 worktrees 时，worktrees 目录下的事件 → Nothing
@@ -600,6 +838,7 @@ mod tests {
             &head,
             &index,
             None,
+            &[],
         );
         assert_eq!(change, GitMetaChange::Nothing);
     }
@@ -610,7 +849,8 @@ mod tests {
     fn classify_git_meta_event_index_takes_priority_over_head() {
         let head = PathBuf::from("/repo/.git/HEAD");
         let index = PathBuf::from("/repo/.git/index");
-        let change = classify_git_meta_event(&[head.clone(), index.clone()], &head, &index, None);
+        let change =
+            classify_git_meta_event(&[head.clone(), index.clone()], &head, &index, None, &[]);
         assert_eq!(change, GitMetaChange::IndexChanged);
     }
 
@@ -619,7 +859,7 @@ mod tests {
     fn classify_git_meta_event_empty_paths() {
         let head = PathBuf::from("/repo/.git/HEAD");
         let index = PathBuf::from("/repo/.git/index");
-        let change = classify_git_meta_event(&[], &head, &index, None);
+        let change = classify_git_meta_event(&[], &head, &index, None, &[]);
         assert_eq!(change, GitMetaChange::Nothing);
     }
 
@@ -664,6 +904,7 @@ mod tests {
             move |_has_wt| {
                 head_flag.fetch_add(1, Ordering::SeqCst);
             },
+            || {},
         )
         .expect("git meta watcher should be created");
 
@@ -747,15 +988,10 @@ mod tests {
 
     // ── worktrees 自愈补挂（会话中途 git worktree add） ────────────────────────
 
-    /// 自愈补挂集成验证：会话中途 `git worktree add`（worktrees 目录出现）后，
-    /// 心跳线程调用 `rearm_worktrees_if_needed` 补挂递归监听，此后该 worktree 的
-    /// HEAD 变更触发 `on_head_changed(has_wt=true)`（驱动 git-changed 全量刷新）。
-    ///
-    /// 断言铁三角（确定性，不依赖事件精确计数）：
-    /// - rearm 前已送达的事件（目录创建）携带 has_wt=false；
-    /// - rearm 后 worktree HEAD 变更使计数增长；
-    /// - 增长由携带 has_wt=true 的 HeadChanged 事件贡献——该值只有在 rearm
-    ///   成功置位后才能出现，是「递归监听已挂载且生效」的直接证明。
+    /// 自愈补挂集成验证（G3 语义）：会话中途 `git worktree add`（worktrees 目录出现）后，
+    /// 心跳线程调用 `rearm_worktrees_if_needed` 补挂递归监听，此后该 worktree 区域
+    /// （`.git/worktrees/<n>/HEAD` / index）的变更触发 `on_worktree_meta_changed`
+    /// （驱动 git-changed → 前端按 activeWorktree 刷新；不再依赖主 HEAD 的 has_wt 语义）。
     #[test]
     fn git_meta_watcher_rearms_worktrees_watch_after_dir_appears() {
         let tmp = tempfile::tempdir().unwrap();
@@ -767,17 +1003,15 @@ mod tests {
         let meta = resolve_git_meta_paths(repo).unwrap();
         assert!(!meta.has_worktrees, "启动时应无 worktrees");
 
-        let head_changed = Arc::new(AtomicUsize::new(0));
-        let last_has_wt = Arc::new(AtomicBool::new(false));
-        let head_flag = head_changed.clone();
-        let last_has_wt_flag = last_has_wt.clone();
+        let wt_changed = Arc::new(AtomicUsize::new(0));
+        let wt_flag = wt_changed.clone();
         let handle = create_git_meta_watcher(
             "rearm-test".to_string(),
             &meta,
             || {},
-            move |has_wt| {
-                last_has_wt_flag.store(has_wt, Ordering::SeqCst);
-                head_flag.fetch_add(1, Ordering::SeqCst);
+            |_| {},
+            move || {
+                wt_flag.fetch_add(1, Ordering::SeqCst);
             },
         )
         .expect("git meta watcher should be created");
@@ -788,47 +1022,39 @@ mod tests {
         handle.rearm_worktrees_if_needed();
 
         // 2. 会话中途 git worktree add：创建 worktrees/dev 目录。
-        //    目录创建事件（深度 1）由非递归 .git 监听送达，分类为 HeadChanged
-        //    （此刻 has_wt 仍 false）。wait_until 保证该事件已计入，后续断言无竞态。
+        //    worktrees 目录创建事件由非递归 .git 监听送达，分类为 WorktreeMetaChanged
+        //    （G3：worktree 区域事件独立信号）。wait_until 保证该事件已计入。
         let wt_dir = git_dir.join("worktrees").join("dev");
         std::fs::create_dir_all(&wt_dir).unwrap();
         assert!(
             wait_until(
-                || head_changed.load(Ordering::SeqCst) >= 1,
+                || wt_changed.load(Ordering::SeqCst) >= 1,
                 Duration::from_secs(5)
             ),
-            "worktrees 目录创建事件应送达（分类为 HeadChanged）"
-        );
-        assert!(
-            !last_has_wt.load(Ordering::SeqCst),
-            "rearm 前已送达的 HEAD 事件应携带 has_wt=false"
+            "worktrees 目录创建事件应送达（分类为 WorktreeMetaChanged）"
         );
 
         // 3. rearm 前：深度 2 的 worktree HEAD 写入不被非递归 .git 监听捕获
         //    （该路径只能由 rearm 后的递归监听送达——递归监听是必要路径）。
         std::fs::write(wt_dir.join("HEAD"), "ref: refs/heads/main\n").unwrap();
         std::thread::sleep(Duration::from_millis(400));
-        let before_rearm = head_changed.load(Ordering::SeqCst);
+        let before_rearm = wt_changed.load(Ordering::SeqCst);
 
-        // 4. 自愈补挂：worktrees 目录已出现 → 挂上递归监听并置位 has_wt
+        // 4. 自愈补挂：worktrees 目录已出现 → 挂上递归监听
         handle.rearm_worktrees_if_needed();
         std::thread::sleep(Duration::from_millis(300));
 
         // 5. rearm 后：worktree HEAD 变更（lock + rename，git 真实行为）
-        //    应触发 on_head_changed，且携带 has_wt=true（驱动全量刷新兜底）
+        //    应触发 on_worktree_meta_changed（驱动前端 activeWorktree 刷新）
         std::fs::write(wt_dir.join("HEAD.lock"), "ref: refs/heads/feature\n").unwrap();
         std::fs::rename(wt_dir.join("HEAD.lock"), wt_dir.join("HEAD")).unwrap();
 
         assert!(
             wait_until(
-                || head_changed.load(Ordering::SeqCst) > before_rearm,
+                || wt_changed.load(Ordering::SeqCst) > before_rearm,
                 Duration::from_secs(5)
             ),
-            "rearm 后 worktree HEAD 变更应触发 on_head_changed"
-        );
-        assert!(
-            last_has_wt.load(Ordering::SeqCst),
-            "rearm 后 HEAD 回调应携带 has_wt=true（驱动全量刷新兜底）"
+            "rearm 后 worktree HEAD 变更应触发 on_worktree_meta_changed"
         );
         drop(handle);
     }
@@ -856,6 +1082,7 @@ mod tests {
             &meta,
             || {},
             |_| {},
+            || {},
             |_watcher, _path, _mode| Err(notify::Error::generic("simulated watch failure")),
         );
         assert!(
@@ -884,6 +1111,7 @@ mod tests {
             &meta,
             || {},
             |_| {},
+            || {},
             |watcher, path, mode| {
                 if path.ends_with("worktrees") {
                     Err(notify::Error::generic("simulated worktrees watch failure"))

@@ -6,8 +6,8 @@
 pub const FILE_CHANGED_EVENT: &str = "file-changed";
 /// 文件树结构变更事件：`file-tree-changed`
 pub const FILE_TREE_CHANGED_EVENT: &str = "file-tree-changed";
-/// Git 增量 diff 事件：`git-status-diff`
-pub const GIT_STATUS_DIFF_EVENT: &str = "git-status-diff";
+/// G2 事件协议 v2：versioned 全量 git-status 快照（单一权威，替代增量 diff 事件）。
+pub const GIT_STATUS_SNAPSHOT_EVENT: &str = "git-status-snapshot";
 /// Git 状态变更事件（兼容旧监听的全量刷新 fallback）：`git-changed`
 pub const GIT_CHANGED_EVENT: &str = "git-changed";
 

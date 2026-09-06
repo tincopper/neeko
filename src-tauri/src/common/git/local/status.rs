@@ -41,7 +41,8 @@ pub fn get_changed_files_from_repo(repo: &Repository) -> Result<Vec<FileChange>>
     // 封顶（S1-1，公理：一切随输入规模增长的结构必须有界）：变更列表超过上限时
     // 截断并告警。S0 已让 untracked 折叠为目录条目，此处防御的是「一次性修改大量
     // 已跟踪文件」的极端场景（如手工 merge），避免把数万条 FileChange 推过 IPC。
-    const MAX_CHANGED_FILES: usize = 500;
+    // 上限与主链路 MAX_STATUS_ENTRIES 统一为 1000（G5，redesign-plan 决策点 4）。
+    const MAX_CHANGED_FILES: usize = 1000;
 
     let mut opts = StatusOptions::new();
     // untracked 目录保持折叠语义（与 CLI `git status --porcelain` 一致）：
@@ -89,11 +90,21 @@ pub fn get_changed_files_from_repo(repo: &Repository) -> Result<Vec<FileChange>>
                 continue;
             };
 
+            // G6 契约：git2 status flags → porcelain X/Y 字符（与 CLI 路径同词表；
+            // libgit2 不提供 rename 旧路径，renamed_from 恒 None —— 主路径 CLI 有值）
+            let (index_status, worktree_status) = status_chars(status);
             files.push(FileChange {
+                // G1 契约统一：折叠 untracked 目录条目 path 不带尾斜杠（本路径一直如此），
+                // 目录性落到显式 is_dir 字段 —— 与 CLI porcelain 路径（parse_status_line
+                // 剥离尾斜杠 + is_dir）语义对齐，前端不再依赖斜杠判定（P0）。
                 path: PathBuf::from(path),
                 status: file_status,
                 additions: 0,
                 deletions: 0,
+                is_dir: repo_workdir.join(path).is_dir(),
+                index_status,
+                worktree_status,
+                renamed_from: None,
             });
         }
     }
@@ -157,6 +168,43 @@ pub fn get_changed_files_from_repo(repo: &Repository) -> Result<Vec<FileChange>>
     }
 
     Ok(files)
+}
+
+/// git2 status flags → porcelain X/Y 字符（G6 契约）。
+/// X 表 index 侧（A/M/D/R/T），Y 表 worktree 侧（?/M/D/R/T）；冲突 CONFLICTED
+/// 统一 'U'/'U'；与 CLI `git status --porcelain` 词表一致。
+const fn status_chars(status: git2::Status) -> (Option<char>, Option<char>) {
+    if status.contains(git2::Status::CONFLICTED) {
+        return (Some('U'), Some('U'));
+    }
+    // porcelain 永远双侧输出：无变更侧为字面空格（词表一致性）
+    let x = if status.contains(git2::Status::INDEX_NEW) {
+        'A'
+    } else if status.contains(git2::Status::INDEX_MODIFIED) {
+        'M'
+    } else if status.contains(git2::Status::INDEX_DELETED) {
+        'D'
+    } else if status.contains(git2::Status::INDEX_RENAMED) {
+        'R'
+    } else if status.contains(git2::Status::INDEX_TYPECHANGE) {
+        'T'
+    } else {
+        ' '
+    };
+    let y = if status.contains(git2::Status::WT_NEW) {
+        '?'
+    } else if status.contains(git2::Status::WT_MODIFIED) {
+        'M'
+    } else if status.contains(git2::Status::WT_DELETED) {
+        'D'
+    } else if status.contains(git2::Status::WT_RENAMED) {
+        'R'
+    } else if status.contains(git2::Status::WT_TYPECHANGE) {
+        'T'
+    } else {
+        ' '
+    };
+    (Some(x), Some(y))
 }
 
 /// Windows: 检测 reparse point（symlink + junction）。
@@ -304,6 +352,70 @@ mod tests {
         // No modifications
         let files = get_changed_files_from_repo(&repo).unwrap();
         assert!(files.is_empty(), "Clean repo should have no changes");
+    }
+
+    /// G6 契约：git2 flags → porcelain XY 映射。
+    /// wt-only 修改：X=' '、Y='M'；index+wt 双改：X='M'、Y='M'；
+    /// untracked：X=' '、Y='?'；冲突：'U'/'U'。
+    #[test]
+    fn status_chars_map_matches_porcelain_vocabulary() {
+        assert_eq!(
+            status_chars(git2::Status::WT_MODIFIED),
+            (Some(' '), Some('M'))
+        );
+        assert_eq!(
+            status_chars(git2::Status::INDEX_MODIFIED),
+            (Some('M'), Some(' '))
+        );
+        assert_eq!(status_chars(git2::Status::WT_NEW), (Some(' '), Some('?')));
+        assert_eq!(
+            status_chars(git2::Status::INDEX_MODIFIED.union(git2::Status::WT_MODIFIED)),
+            (Some('M'), Some('M'))
+        );
+        assert_eq!(
+            status_chars(git2::Status::CONFLICTED),
+            (Some('U'), Some('U'))
+        );
+        assert_eq!(
+            status_chars(git2::Status::INDEX_NEW.union(git2::Status::WT_DELETED)),
+            (Some('A'), Some('D'))
+        );
+    }
+
+    /// G6 端到端：libgit2 路径产出的 entries 携带正确 XY
+    /// （wt-only 修改 → ' '/'M'；untracked → ' '?''）。
+    #[test]
+    fn changed_files_from_repo_carry_xy_chars() {
+        let dir = tempfile::tempdir().unwrap();
+        let repo_path = dir.path();
+        let repo = Repository::init(repo_path).unwrap();
+        let mut config = repo.config().unwrap();
+        config.set_str("user.name", "test").unwrap();
+        config.set_str("user.email", "test@test.com").unwrap();
+        std::fs::write(repo_path.join("tracked.txt"), "v1\n").unwrap();
+        {
+            let mut index = repo.index().unwrap();
+            index.add_path(std::path::Path::new("tracked.txt")).unwrap();
+            index.write().unwrap();
+            let tree_id = index.write_tree().unwrap();
+            let tree = repo.find_tree(tree_id).unwrap();
+            let sig = git2::Signature::now("test", "test@test.com").unwrap();
+            repo.commit(Some("HEAD"), &sig, &sig, "initial", &tree, &[])
+                .unwrap();
+        }
+        std::fs::write(repo_path.join("tracked.txt"), "v2\n").unwrap();
+        std::fs::write(repo_path.join("new.txt"), "untracked\n").unwrap();
+
+        let files = get_changed_files_from_repo(&repo).unwrap();
+        let modified = files
+            .iter()
+            .find(|f| f.path.ends_with("tracked.txt"))
+            .unwrap();
+        assert_eq!(modified.index_status, Some(' '));
+        assert_eq!(modified.worktree_status, Some('M'));
+        let untracked = files.iter().find(|f| f.path.ends_with("new.txt")).unwrap();
+        assert_eq!(untracked.index_status, Some(' '));
+        assert_eq!(untracked.worktree_status, Some('?'));
     }
 
     #[test]

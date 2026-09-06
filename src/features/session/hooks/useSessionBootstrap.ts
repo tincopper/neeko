@@ -1,13 +1,17 @@
 import { useState, useEffect } from 'react';
 
 import { useGitStore } from '@/shared/store/gitStore';
-import { useProjectStore } from '@/shared/store/projectStore';
+import { useProjectStore, versionGateAccepts } from '@/shared/store/projectStore';
 import { useWorktreeStore } from '@/shared/store/worktreeStore';
 import type { FileChange, Worktree } from '@/shared/types';
 import { reportFrontendError } from '@/shared/utils/errorReporting';
 
 /* eslint-disable import/no-restricted-paths -- session bootstrap needs git API for reading git info */
-import { getIgnoredFiles, getWorktreeChangedFiles, getGitBranchInfo } from '../../git/api/gitApi';
+import {
+  getIgnoredFiles,
+  getWorktreeChangedFilesVersioned,
+  getGitBranchInfo,
+} from '../../git/api/gitApi';
 import { useGitStatusEventsSync } from '../../git/hooks/useGitStatusEventsSync';
 /* eslint-enable import/no-restricted-paths */
 // eslint-disable-next-line import/no-restricted-paths -- session bootstrap needs project API for listing projects
@@ -29,7 +33,7 @@ export function useSessionBootstrap(deps: {
 
   const { loadProjects, restoreWorktreeState } = deps;
 
-  // git 状态事件流同步（git-changed 全量刷新 + git-status-diff 增量 patch），
+  // git 状态事件流同步（git-changed 兜底刷新 + git-status-snapshot 版本化快照），
   // 监听注册与去抖调度在 useGitStatusEventsSync 内部自管理
   useGitStatusEventsSync();
 
@@ -69,12 +73,15 @@ export function useSessionBootstrap(deps: {
           // 非 git 项目（git_info 为 null）跳过所有 git 命令
           if (p.git_info === null) continue;
           if (!p.git_info.changed_files?.length) {
-            // split 轻量路径：与 watcher git-changed 处理一致，避免重量级 refresh_git_info
-            getWorktreeChangedFiles(p.id, '')
-              .then((changedFiles) => {
+            // split 轻量路径：与 watcher snapshot 处理一致，避免重量级 refresh_git_info。
+            // G2 D2/D4：versioned 读 + version gate —— 与快照事件同一写入通道，
+            // 不会用旧数据覆盖更新的快照。
+            getWorktreeChangedFilesVersioned(p.id, '')
+              .then((payload) => {
+                if (!versionGateAccepts(p.id, payload.version)) return;
                 patchGitInfo(p.id, {
-                  changed_files: changedFiles,
-                  is_clean: changedFiles.length === 0,
+                  changed_files: payload.files,
+                  is_clean: payload.files.length === 0,
                 });
               })
               .catch((err) => reportFrontendError('session.gitChangedFiles', err));
@@ -156,9 +163,13 @@ export function useSessionBootstrap(deps: {
                 };
               });
             };
-            getWorktreeChangedFiles(activeId, '')
-              .then((changedFiles) => {
-                patchGitInfo({ changed_files: changedFiles, is_clean: changedFiles.length === 0 });
+            getWorktreeChangedFilesVersioned(activeId, '')
+              .then((payload) => {
+                if (!versionGateAccepts(activeId, payload.version)) return;
+                patchGitInfo({
+                  changed_files: payload.files,
+                  is_clean: payload.files.length === 0,
+                });
               })
               .catch((err) => reportFrontendError('session.gitChangedFiles', err));
             // 恢复激活项目同样补拉忽略列表（快照缺失时一次性成本，写入 gitStore）

@@ -2,7 +2,6 @@
 
 use super::types::{
     FileChangedEvent, FileTreeChangedEvent, FILE_CHANGED_EVENT, FILE_TREE_CHANGED_EVENT,
-    GIT_CHANGED_EVENT,
 };
 use std::{
     path::{Path, PathBuf},
@@ -146,28 +145,7 @@ impl DebounceSender {
     }
 }
 
-// ── 信号型双窗口背压（tree-changed / git-changed 共用）──────────────────────
-
-/// 双窗口等待：trailing 滑动窗口（持续信号不断顺延）+ maxWait 背压上限
-/// （自窗口开始起最长等待，保证无限事件流下仍会执行、不饿死）。
-/// 返回 false 表示 channel 已断开，调用方应退出线程。
-fn wait_quiet_window(rx: &mpsc::Receiver<()>, trailing_ms: u64, max_wait_ms: u64) -> bool {
-    let window_start = Instant::now();
-    let mut deadline = window_start + Duration::from_millis(trailing_ms);
-    let max_deadline = window_start + Duration::from_millis(max_wait_ms);
-    loop {
-        let now = Instant::now();
-        if now >= deadline || now >= max_deadline {
-            return true;
-        }
-        match rx.recv_timeout(deadline.min(max_deadline) - now) {
-            // 有新信号：重置滑动窗口
-            Ok(()) => deadline = Instant::now() + Duration::from_millis(trailing_ms),
-            Err(mpsc::RecvTimeoutError::Timeout) => return true,
-            Err(mpsc::RecvTimeoutError::Disconnected) => return false,
-        }
-    }
-}
+// ── 路径型双窗口背压（tree-changed 共用）─────────────────────────────────────
 
 /// 记录变更路径所属的父目录（相对项目根，`/` 分隔，'' 表示根本身）。
 fn push_parent_dir(dirs: &mut Vec<String>, path: &std::path::Path, project_root: &Path) {
@@ -283,80 +261,5 @@ impl TreeChangeDebounceSender {
             .expect("Failed to spawn tree-debounce thread");
 
         Self { tx }
-    }
-}
-
-// ── GitChangedDebounceSender：git-changed 全量刷新信号节流 ──────────────────────
-
-const GIT_CHANGED_TRAILING_MS: u64 = 500;
-const GIT_CHANGED_MAX_WAIT_MS: u64 = 2000;
-
-/// 收到信号后开启双窗口（滑动 500ms + 最长等待 2s），结束后 emit 一次 `git-changed`。
-///
-/// 第一性原理：增量 diff（`git-status-diff`）已是轻量、完整的主数据源（前端直接
-/// patch store，无后端往返）。`git-changed` 只是兼容旧监听的全量刷新 fallback，
-/// 每个增量 diff 都触发它会造成 build 期间的全量刷新风暴。这里把全量 fallback
-/// 从「每次 diff 一次」降为「每段静默窗口一次」，从根上封顶刷新频率。
-#[derive(Clone)]
-pub(super) struct GitChangedDebounceSender {
-    tx: Option<mpsc::Sender<()>>,
-    // spawn 失败时的降级直发路径（不建线程，避免 Panic 闪退；极端系统故障场景）
-    fallback: Option<(String, AppHandle)>,
-}
-
-impl GitChangedDebounceSender {
-    pub(super) fn new(project_id: String, app_handle: AppHandle) -> Self {
-        let (tx, rx) = mpsc::channel::<()>();
-
-        // spawn 失败降级需要持有 project_id / app_handle（闭包 move 后无法取回）
-        let fallback_id = project_id.clone();
-        let fallback_handle = app_handle.clone();
-
-        let spawned = std::thread::Builder::new()
-            .name(format!("git-changed-debounce-{}", project_id))
-            .spawn(move || {
-                while let Ok(()) = rx.recv() {
-                    if !wait_quiet_window(&rx, GIT_CHANGED_TRAILING_MS, GIT_CHANGED_MAX_WAIT_MS) {
-                        return;
-                    }
-
-                    // 窗口结束，emit 一次 git-changed（全量刷新 fallback）
-                    log::debug!(
-                        "[GitChangedDebounce:{}] Emitting {}",
-                        project_id,
-                        GIT_CHANGED_EVENT
-                    );
-                    let _ = app_handle.emit(GIT_CHANGED_EVENT, &project_id);
-                }
-            });
-
-        match spawned {
-            Ok(_) => Self {
-                tx: Some(tx),
-                fallback: None,
-            },
-            Err(e) => {
-                // 线程 spawn 失败属极低概率系统级故障：降级为直发（无节流），
-                // 严禁 Panic 闪退——功能可用性优先于节流效果。
-                log::error!(
-                    "[GitChangedDebounce:{}] Failed to spawn thread: {e}; falling back to direct emit",
-                    fallback_id
-                );
-                Self {
-                    tx: None,
-                    fallback: Some((fallback_id, fallback_handle)),
-                }
-            }
-        }
-    }
-
-    /// 收到一个「有 git 变更」信号。线程正常时走滑动窗口节流；
-    /// spawn 失败降级模式下直接 emit（无节流，但保证 fallback 不丢）。
-    pub(super) fn signal(&self) {
-        if let Some(tx) = &self.tx {
-            let _ = tx.send(());
-        } else if let Some((project_id, app_handle)) = &self.fallback {
-            let _ = app_handle.emit(GIT_CHANGED_EVENT, project_id);
-        }
     }
 }

@@ -139,6 +139,17 @@ const Section: React.FC<SectionProps> = ({
                   width={14}
                   height={14}
                 />
+                {/* G6 契约：rename 条目显示 old → new（renamed_from 为 porcelain 旧路径） */}
+                {file.renamed_from && (
+                  <span className="shrink-0 max-w-[7rem] truncate text-[calc(var(--font-size)-1px)] font-mono text-text-muted line-through">
+                    {splitFilePath(file.renamed_from).name}
+                  </span>
+                )}
+                {file.renamed_from && (
+                  <span className="shrink-0 text-[calc(var(--font-size)-2px)] text-text-muted">
+                    →
+                  </span>
+                )}
                 <span
                   className={cn(
                     'shrink-0 max-w-[9rem] truncate text-[calc(var(--font-size)-1px)] font-mono text-text-primary',

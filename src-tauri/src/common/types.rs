@@ -33,6 +33,27 @@ pub struct FileChange {
     pub additions: usize,
     /// Number of deleted lines.
     pub deletions: usize,
+    /// Whether this entry is a collapsed untracked directory (not a file).
+    ///
+    /// G1 契约统一：`path` 一律不带尾斜杠，目录性由本字段显式表达。
+    /// 前端不再用 `path.endsWith('/')` 隐式判定（曾因双数据源
+    /// A=CLI 带斜杠 / B=libgit2 不带斜杠 而语义分裂，导致 untracked
+    /// 目录在兜底路径下永远无法展开 —— P0）。
+    ///
+    /// `#[serde(default)]`：缺字段的旧 payload（G1 之前）反序列化为 `false`
+    /// 文件语义，与前端 `is_dir ?? path.endsWith('/')` 回退一致（pillar 12 防御）。
+    #[serde(default)]
+    pub is_dir: bool,
+    /// porcelain X（staged 侧）状态字符：' '/A/M/D/R/T/U（G6 契约，§3.2）。
+    /// None = 未产出 XY 的旧 payload（渐进迁移，前端按单 status 回退分组）。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub index_status: Option<char>,
+    /// porcelain Y（unstaged 侧）状态字符：' '/?/M/D/R/T/U
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub worktree_status: Option<char>,
+    /// rename 原路径（X 或 Y 含 'R' 时的 `old -> new` 之 old；UI 显示 old → new）
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub renamed_from: Option<String>,
 }
 
 /// Diff statistics for a single file (additions/deletions only).

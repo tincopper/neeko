@@ -5,6 +5,7 @@ import { Undo2, ListPlus } from '@/shared/components/icons';
 import type { FileChange } from '@/shared/types';
 
 import { useUntrackedDirExpansion } from '../hooks/useUntrackedDirExpansion';
+import { buildGitStatusGroups } from '../utils/gitStatusGroups';
 
 import Section from './ChangesSection';
 
@@ -25,6 +26,8 @@ interface ChangesListProps {
    */
   onExpandUntrackedDir?: (dirPath: string) => Promise<string[]>;
   loading: boolean;
+  /** G4（P3 截断显式化）：快照超过 MAX_STATUS_ENTRIES 被截断时顶部显示提示 */
+  truncated?: boolean;
 }
 
 type FilterStatus = 'all' | 'Modified' | 'Added' | 'Deleted' | 'Renamed';
@@ -49,23 +52,37 @@ const ChangesList: React.FC<ChangesListProps> = ({
   onOpenFile,
   onExpandUntrackedDir,
   loading,
+  truncated = false,
 }) => {
+  const [conflictsExpanded, setConflictsExpanded] = useState(true);
+  const [stagedExpanded, setStagedExpanded] = useState(true);
   const [changesExpanded, setChangesExpanded] = useState(true);
   const [unversionedExpanded, setUnversionedExpanded] = useState(true);
   const [filter, setFilter] = useState<FilterStatus>('all');
 
-  const trackedFiles = useMemo(() => files.filter((f) => f.status !== 'Untracked'), [files]);
+  // G6 契约：porcelain XY → staged/unstaged/unversioned/conflicted 四组真实分组
+  // （纯派生，无独立状态；缺 XY 的旧 payload 回退单组行为）
+  const groups = useMemo(() => buildGitStatusGroups(files), [files]);
 
   // 折叠 untracked 目录条目 → 平铺为文件行（按需拉取 + 占位，见 useUntrackedDirExpansion）
-  const { flattenedUntracked } = useUntrackedDirExpansion(files, onExpandUntrackedDir);
+  const { flattenedUntracked } = useUntrackedDirExpansion(groups.unversioned, onExpandUntrackedDir);
 
-  const filteredTrackedFiles = useMemo(() => {
-    if (filter === 'all') return trackedFiles;
-    return trackedFiles.filter((f) => f.status === filter);
-  }, [trackedFiles, filter]);
+  const filterList = useCallback(
+    (list: FileChange[]) => (filter === 'all' ? list : list.filter((f) => f.status === filter)),
+    [filter],
+  );
+  const filteredStaged = useMemo(() => filterList(groups.staged), [groups.staged, filterList]);
+  const filteredUnstaged = useMemo(
+    () => filterList(groups.unstaged),
+    [groups.unstaged, filterList],
+  );
 
-  const trackedAdd = trackedFiles.reduce((s, f) => s + f.additions, 0);
-  const trackedDel = trackedFiles.reduce((s, f) => s + f.deletions, 0);
+  const groupStats = (list: FileChange[]) => ({
+    add: list.reduce((s, f) => s + f.additions, 0),
+    del: list.reduce((s, f) => s + f.deletions, 0),
+  });
+  const stagedStats = groupStats(filteredStaged);
+  const unstagedStats = groupStats(filteredUnstaged);
 
   const isAllSelected = useCallback(
     (fileList: FileChange[]) =>
@@ -99,19 +116,65 @@ const ChangesList: React.FC<ChangesListProps> = ({
 
   return (
     <div className="flex flex-col flex-1 min-h-0 overflow-auto">
-      {/* ── Changes (tracked files) ── */}
-      {trackedFiles.length > 0 && (
+      {/* ── G4 截断提示（P3：截断显式化，对齐 orca too-many-changes）── */}
+      {truncated && (
+        <div className="px-3 py-1.5 text-[var(--font-size)] text-accent-orange bg-accent-orange/10 shrink-0">
+          Change list exceeds 1000 entries and is truncated
+        </div>
+      )}
+      {/* ── Merge Conflicts（G6：冲突可见，独占组）── */}
+      {groups.conflicted.length > 0 && (
+        <Section
+          title="Merge Conflicts"
+          count={groups.conflicted.length}
+          expanded={conflictsExpanded}
+          onToggle={() => setConflictsExpanded((v) => !v)}
+          files={groups.conflicted}
+          selectedFiles={selectedFiles}
+          allSelected={isAllSelected(groups.conflicted)}
+          onSelectAll={() => handleSelectGroup(groups.conflicted)}
+          onToggleFile={onToggleFile}
+          onFileSelect={onFileSelect}
+          onDiscardFile={onDiscardFile}
+          onOpenFile={onOpenFile}
+          loading={loading}
+        />
+      )}
+
+      {/* ── Staged Changes（G6：X 侧非空格/问号的条目）── */}
+      {filteredStaged.length > 0 && (
+        <Section
+          title="Staged Changes"
+          count={filteredStaged.length}
+          additions={stagedStats.add}
+          deletions={stagedStats.del}
+          expanded={stagedExpanded}
+          onToggle={() => setStagedExpanded((v) => !v)}
+          files={filteredStaged}
+          selectedFiles={selectedFiles}
+          allSelected={isAllSelected(filteredStaged)}
+          onSelectAll={() => handleSelectGroup(filteredStaged)}
+          onToggleFile={onToggleFile}
+          onFileSelect={onFileSelect}
+          onDiscardFile={onDiscardFile}
+          onOpenFile={onOpenFile}
+          loading={loading}
+        />
+      )}
+
+      {/* ── Changes（unstaged tracked files；同文件可同时出现在 Staged Changes）── */}
+      {filteredUnstaged.length > 0 && (
         <Section
           title="Changes"
-          count={trackedFiles.length}
-          additions={trackedAdd}
-          deletions={trackedDel}
+          count={filteredUnstaged.length}
+          additions={unstagedStats.add}
+          deletions={unstagedStats.del}
           expanded={changesExpanded}
           onToggle={() => setChangesExpanded((v) => !v)}
-          files={filteredTrackedFiles}
+          files={filteredUnstaged}
           selectedFiles={selectedFiles}
-          allSelected={isAllSelected(filteredTrackedFiles)}
-          onSelectAll={() => handleSelectGroup(filteredTrackedFiles)}
+          allSelected={isAllSelected(filteredUnstaged)}
+          onSelectAll={() => handleSelectGroup(filteredUnstaged)}
           onToggleFile={onToggleFile}
           onFileSelect={onFileSelect}
           onDiscardFile={onDiscardFile}

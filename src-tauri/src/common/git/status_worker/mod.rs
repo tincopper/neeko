@@ -4,4 +4,4 @@ pub mod worker;
 pub mod writer;
 
 pub use worker::GitStatusWorker;
-pub use writer::{GitStatusDiff, GitStatusFile};
+pub use writer::GitStatusSnapshot;

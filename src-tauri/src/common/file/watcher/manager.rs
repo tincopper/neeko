@@ -1,15 +1,14 @@
 //! `WatcherManager` 编排：为每个项目启动文件监听，聚合各子模块。
 
-use super::debounce::{
-    DebounceSender, GitChangedDebounceSender, ThrottleScheduler, TreeChangeDebounceSender,
-};
+use super::debounce::{DebounceSender, ThrottleScheduler, TreeChangeDebounceSender};
 use super::git_meta::{create_git_meta_watcher, resolve_git_meta_paths, GitMetaWatcherHandle};
 use super::gitignore::GitIgnoreFilter;
 use super::types::{
-    FileTreeChangedEvent, FILE_TREE_CHANGED_EVENT, GIT_CHANGED_EVENT, GIT_STATUS_DIFF_EVENT,
+    FileTreeChangedEvent, FILE_TREE_CHANGED_EVENT, GIT_CHANGED_EVENT, GIT_STATUS_SNAPSHOT_EVENT,
 };
 use crate::common::git::local::is_git_repo;
-use crate::common::git::status_worker::{GitStatusDiff, GitStatusWorker};
+use crate::common::git::status_worker::GitStatusSnapshot;
+use crate::common::git::status_worker::GitStatusWorker;
 use notify::event::ModifyKind;
 use notify::{Config, Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
 use std::{
@@ -46,11 +45,14 @@ struct WatcherHandle {
 /// Manages file-system watchers for multiple projects.
 ///
 /// Each project gets a dedicated watcher thread that monitors file changes,
-/// computes git status diffs, and emits events to the frontend.
+/// computes authoritative git status snapshots, and emits them to the frontend.
 #[derive(Clone)]
 pub struct WatcherManager {
     /// Map of project IDs to active watcher handles.
     watchers: Arc<Mutex<HashMap<String, WatcherHandle>>>,
+    /// G2 单一权威化：每项目最新 versioned 快照（worker 产出，invoke 读接口走这里，
+    /// 不再跑第二套 libgit2 status —— D2 收编）。
+    snapshots: Arc<Mutex<HashMap<String, Arc<GitStatusSnapshot>>>>,
 }
 
 impl Default for WatcherManager {
@@ -65,7 +67,18 @@ impl WatcherManager {
     pub fn new() -> Self {
         Self {
             watchers: Arc::new(Mutex::new(HashMap::new())),
+            snapshots: Arc::new(Mutex::new(HashMap::new())),
         }
+    }
+
+    /// Latest authoritative status snapshot for `project_id` (G2 D2 读接口数据源)。
+    /// `None` = watcher 尚未产出（非 git 项目 / 尚未 watch / 启动初期首快照未到）。
+    #[must_use]
+    pub fn snapshot(&self, project_id: &str) -> Option<Arc<GitStatusSnapshot>> {
+        self.snapshots
+            .lock()
+            .ok()
+            .and_then(|m| m.get(project_id).cloned())
     }
 
     /// Start watching the given project directory for file changes.
@@ -76,21 +89,23 @@ impl WatcherManager {
         // 仅保留文件监听 + 文件树变更事件。避免对非 git 仓库启动 git status worker 执行 git rev-parse 等命令。
         let git_repo = is_git_repo(&path);
 
-        // 1. 创建 GitStatusWorker -- 有变化时发增量 diff 事件
+        // 1. 创建 GitStatusWorker —— status 唯一计算路径（D1）。
+        // 每次实质变化产出**完整 versioned 快照**：写共享注册表（invoke 读接口
+        // 的数据源，D2 收编 libgit2 B 路径）+ 发 v2 事件整体替换（D3，替代增量 patch）。
         // 非 git 项目跳过：避免对非 git 仓库启动 git status worker 执行 git rev-parse 等命令
         let (worker, scheduler) = if git_repo {
             let pid_emit = project_id.clone();
-            // git-changed 全量 fallback 节流 sender：worker 闭包持有其 clone 即可
-            // 保证 channel 存活，原始 sender 无需在 WatcherHandle 中冗余保存。
-            let git_changed_signal =
-                GitChangedDebounceSender::new(project_id.clone(), app_handle.clone());
-            let worker = GitStatusWorker::start(path.clone(), move |mut diff: GitStatusDiff| {
-                diff.project_id = pid_emit.clone();
-                // 增量 diff 事件（即时、轻量，前端直接 patch store）
-                let _ = app_for_diff.emit(GIT_STATUS_DIFF_EVENT, &diff);
-                // 全量刷新 fallback：经节流器合并，静默 500ms 后才 emit 一次
-                git_changed_signal.signal();
-            });
+            let snapshots_store = self.snapshots.clone();
+            let worker =
+                GitStatusWorker::start(path.clone(), move |mut snapshot: GitStatusSnapshot| {
+                    snapshot.project_id = pid_emit.clone();
+                    // 写共享快照：get_worktree_changed_files 读接口与事件同源同版本
+                    if let Ok(mut map) = snapshots_store.lock() {
+                        map.insert(pid_emit.clone(), Arc::new(snapshot.clone()));
+                    }
+                    // v2 事件：versioned 全量快照，前端整体替换（version gate 拒旧）
+                    let _ = app_for_diff.emit(GIT_STATUS_SNAPSHOT_EVENT, &snapshot);
+                });
 
             // 2. 创建 ThrottleScheduler -- 合并 notify 事件，驱动 worker.check()
             let worker_clone = worker.clone();
@@ -98,7 +113,7 @@ impl WatcherManager {
                 worker_clone.check();
             });
 
-            // 立即触发一次 git status 检查，获取初始状态
+            // 立即触发一次 git status 检查，获取初始状态（首个快照由 worker 线程异步产出）
             worker.check();
 
             (Some(worker), Some(scheduler))
@@ -247,16 +262,18 @@ impl WatcherManager {
             path.display()
         );
 
-        // 4b. 创建 git 元数据 watcher -- 单独监听 .git（HEAD / index / worktrees），
-        // 绕过 git 忽略过滤（该过滤会丢弃 .git 内事件，导致 checkout 后
-        // git worker 无法感知分支变化，changes 列表残留旧分支数据）。
+        // 4b. 创建 git 元数据 watcher -- 单独监听 .git（HEAD / index / worktrees +
+        // linked worktree 工作目录），绕过 git 忽略过滤（该过滤会丢弃 .git 内事件，
+        // 导致 checkout 后 git worker 无法感知分支变化，changes 列表残留旧分支数据）。
         let head_watcher = if git_repo {
             resolve_git_meta_paths(&path).and_then(|meta| {
                 let scheduler_tx = scheduler.as_ref().map(|s| s.sender());
                 let scheduler_tx_for_head = scheduler_tx.clone();
                 let pid_index = project_id.clone();
                 let pid_head = project_id.clone();
+                let pid_wt = project_id.clone();
                 let app_for_head = app_handle.clone();
+                let app_for_worktree = app_handle.clone();
                 create_git_meta_watcher(
                     project_id.clone(),
                     &meta,
@@ -282,6 +299,17 @@ impl WatcherManager {
                         if has_wt {
                             let _ = app_for_head.emit(GIT_CHANGED_EVENT, &pid_head);
                         }
+                    },
+                    // G3：worktree 区域（.git/worktrees/* HEAD/index）或 linked worktree
+                    // 工作目录内的任何变更 → 前端按 activeWorktree 刷新（P4）。
+                    // 无条件发 git-changed（不再依赖 has_wt 的 rearm 时机）；前端
+                    // 500ms debounce 合并高频事件，无 activeWorktree 时读主快照幂等。
+                    move || {
+                        log::debug!(
+                            "[Watcher:{}] worktree area changed, signaling frontend refresh",
+                            pid_wt
+                        );
+                        let _ = app_for_worktree.emit(GIT_CHANGED_EVENT, &pid_wt);
                     },
                 )
             })

@@ -29,14 +29,15 @@ vi.mock('@/shared/hooks/useGitRefresh', () => ({
   },
 }));
 
-// 捕获 git-status-diff（Tauri listen）注册的回调（仓库级自动刷新主信号）
+// 捕获 git-status-snapshot（Tauri listen）注册的回调（仓库级自动刷新主信号，
+// G5 起 v2 快照事件替代已停发的 v1 git-status-diff，断言只消费 project_id）
 const { mockListen, statusDiffListeners } = vi.hoisted(() => {
   const statusDiffListeners: Array<(event: { payload: { project_id: string } }) => void> = [];
   const mockListen = (
     eventName: string,
     cb: (event: { payload: { project_id: string } }) => void,
   ) => {
-    if (eventName === 'git-status-diff') statusDiffListeners.push(cb);
+    if (eventName === 'git-status-snapshot') statusDiffListeners.push(cb);
     return Promise.resolve(() => {});
   };
   return { mockListen, statusDiffListeners };
@@ -301,7 +302,7 @@ describe('useDiffData stateless (no module cache)', () => {
     second.unmount();
   });
 
-  it('reloads diff when git-status-diff fires for this project', async () => {
+  it('reloads diff when git-status-snapshot fires for this project', async () => {
     getFileDiff.mockResolvedValueOnce(makeDiff('old-content'));
     const { result } = renderHook(() =>
       useDiffData({
@@ -331,7 +332,7 @@ describe('useDiffData stateless (no module cache)', () => {
     expect(getFileDiff).toHaveBeenCalledTimes(2);
   });
 
-  it('ignores git-status-diff events for other projects', async () => {
+  it('ignores git-status-snapshot events for other projects', async () => {
     getFileDiff.mockResolvedValueOnce(makeDiff('old-content'));
     const { result } = renderHook(() =>
       useDiffData({

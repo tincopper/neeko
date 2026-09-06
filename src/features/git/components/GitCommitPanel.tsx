@@ -1,6 +1,7 @@
 import React, { useState, useCallback, useMemo } from 'react';
 
 import { openProjectFile } from '@/features/quick-open';
+import { useGitStore } from '@/shared/store/gitStore';
 import type { AheadBehind } from '@/shared/types';
 import type {
   ProjectView,
@@ -50,6 +51,9 @@ const GitCommitPanel: React.FC<GitCommitPanelProps> = ({
     { type: 'file'; path: string } | { type: 'all'; count: number } | null
   >(null);
   const [commitMessage, setCommitMessage] = useState('');
+
+  // G4（P3）：快照截断状态（versioned snapshot 的 truncated 位；store 响应式）
+  const statusTruncated = useGitStore((s) => s.truncatedByProject[project.id] ?? false);
 
   const changedFiles = useMemo(
     () => project.gitInfo?.changed_files ?? [],
@@ -278,6 +282,7 @@ const GitCommitPanel: React.FC<GitCommitPanelProps> = ({
             onOpenFile={(path) => void openProjectFile({ projectId: project.id, filePath: path })}
             onExpandUntrackedDir={handleExpandUntrackedDir}
             loading={loading}
+            truncated={statusTruncated}
           />
         )}
       </div>

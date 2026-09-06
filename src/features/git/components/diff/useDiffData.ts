@@ -1,10 +1,10 @@
 import { listen } from '@tauri-apps/api/event';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
-import { GIT_STATUS_DIFF_EVENT } from '@/shared/events';
+import { GIT_STATUS_SNAPSHOT_EVENT } from '@/shared/events';
 import { useFileChangedEvent } from '@/shared/hooks/useFileChangedEvent';
 import { useGitRefresh } from '@/shared/hooks/useGitRefresh';
-import type { FileChangedEvent } from '@/shared/types';
+import type { FileChangedEvent, GitStatusSnapshot } from '@/shared/types';
 import type { ProjectCommands } from '@/shared/types/activeProject';
 import { safeUnlisten } from '@/shared/utils/safeUnlisten';
 
@@ -31,7 +31,7 @@ export function useDiffData({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [currentBlockIndex, setCurrentBlockIndex] = useState(0);
-  // 刷新信号版本号：file-changed / git-status-diff / Git 刷新按钮命中时递增，驱动重新拉取
+  // 刷新信号版本号：file-changed / git-status-snapshot / Git 刷新按钮命中时递增，驱动重新拉取
   const [refreshTick, setRefreshTick] = useState(0);
 
   /** 按 collapse 模式拉取 diff（loadDiff / loadFullHunks 共用）。 */
@@ -130,13 +130,14 @@ export function useDiffData({
     ),
   );
 
-  // 仓库状态事件（git-status-diff，路径无关）→ 该项目的任意文件状态变化
+  // 仓库状态事件（git-status-snapshot，路径无关）→ 该项目的任意文件状态变化
   // 都触发当前 diff 重新拉取；后端指纹校验保证未变文件命中缓存（廉价）。
+  // （v1 git-status-diff 已随 G2 停发，本监听自 G5 起消费 v2 快照事件。）
   useEffect(() => {
     if (!projectId) return;
     let cancelled = false;
     let unlisten: (() => void) | undefined;
-    void listen<{ project_id: string }>(GIT_STATUS_DIFF_EVENT, (event) => {
+    void listen<GitStatusSnapshot>(GIT_STATUS_SNAPSHOT_EVENT, (event) => {
       if (cancelled) return;
       if (event.payload.project_id === projectId) {
         setRefreshTick((t) => t + 1);

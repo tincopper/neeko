@@ -143,10 +143,19 @@ pub(crate) fn parse_status_line(line: &str) -> Option<FileChange> {
         return None;
     }
 
-    let file_path = match raw_path.find(" -> ") {
-        Some(idx) => &raw_path[idx + 4..],
-        None => raw_path,
+    // G6 契约：rename 行 `old -> new` —— old 落 renamed_from（UI 显示 old → new）
+    let (renamed_from, file_path) = match raw_path.find(" -> ") {
+        Some(idx) => (Some(raw_path[..idx].to_string()), &raw_path[idx + 4..]),
+        None => (None, raw_path),
     };
+
+    // G1 契约统一：porcelain `?? dir/` 折叠目录条目尾带斜杠 —— 剥离尾斜杠并把
+    // 目录性落到显式 is_dir 字段（前端不再用尾斜杠判定目录，P0）。
+    let is_dir = file_path.ends_with('/');
+    let clean_path = file_path.trim_end_matches('/');
+    if clean_path.is_empty() {
+        return None;
+    }
 
     let x = xy.as_bytes()[0];
     let y = xy.as_bytes()[1];
@@ -166,10 +175,15 @@ pub(crate) fn parse_status_line(line: &str) -> Option<FileChange> {
     };
 
     Some(FileChange {
-        path: PathBuf::from(file_path),
+        path: PathBuf::from(clean_path),
         status: file_status,
         additions: 0,
         deletions: 0,
+        is_dir,
+        // G6 契约：porcelain 原始 XY 字符（'?' 与空格均保留原语义）
+        index_status: Some(x as char),
+        worktree_status: Some(y as char),
+        renamed_from,
     })
 }
 
@@ -178,6 +192,47 @@ mod porcelain_status_tests {
     use super::*;
     use crate::common::types::FileStatus;
     use crate::project::types::FileChange;
+
+    // ── G6 XY 契约：porcelain X/Y 字符与 renamed_from 提取 ──────────────────
+
+    #[test]
+    fn xy_chars_are_extracted_from_porcelain_columns() {
+        let cases = [
+            ("M  staged-only.txt", 'M', ' '),
+            (" M wt-only.txt", ' ', 'M'),
+            ("MM both.txt", 'M', 'M'),
+            ("?? untracked.txt", '?', '?'),
+            ("A  added.txt", 'A', ' '),
+            ("D  index-deleted.txt", 'D', ' '),
+            ("UU conflicted.txt", 'U', 'U'),
+            ("T  typechange.txt", 'T', ' '),
+        ];
+        for (line, x, y) in cases {
+            let fc = parse_status_line(line).unwrap_or_else(|| panic!("{line} must parse"));
+            assert_eq!(fc.index_status, Some(x), "{line}: X");
+            assert_eq!(fc.worktree_status, Some(y), "{line}: Y");
+        }
+    }
+
+    #[test]
+    fn untracked_dir_entry_carries_xy() {
+        let fc = parse_status_line("?? new_dir/").expect("dir line must parse");
+        assert_eq!(fc.index_status, Some('?'));
+        assert_eq!(fc.worktree_status, Some('?'));
+        assert!(fc.is_dir);
+    }
+
+    #[test]
+    fn rename_line_extracts_old_path_as_renamed_from() {
+        let fc = parse_status_line("R  old.txt -> new.txt").expect("rename must parse");
+        assert_eq!(fc.index_status, Some('R'));
+        assert_eq!(fc.renamed_from.as_deref(), Some("old.txt"));
+        assert_eq!(fc.path, std::path::PathBuf::from("new.txt"));
+
+        let wt = parse_status_line(" R old.rs -> new.rs").expect("wt rename must parse");
+        assert_eq!(wt.worktree_status, Some('R'));
+        assert_eq!(wt.renamed_from.as_deref(), Some("old.rs"));
+    }
 
     #[test]
     fn unmerged_uu_line_must_not_be_dropped() {
@@ -248,6 +303,20 @@ mod porcelain_status_tests {
         let fc = parse_status_line("?? new dir/file.txt").expect("?? line must parse");
         assert!(matches!(fc.status, FileStatus::Untracked));
         assert_eq!(fc.path, std::path::PathBuf::from("new dir/file.txt"));
+    }
+
+    #[test]
+    fn untracked_collapsed_dir_normalizes_to_is_dir() {
+        // G1 契约回归（P0）：`?? dir/` 折叠目录必须 → path 无尾斜杠 + is_dir=true，
+        // 与 libgit2 兜底路径（无尾斜杠目录条目）语义一致；前端不再靠斜杠判定。
+        let fc = parse_status_line("?? generated/").expect("collapsed dir must parse");
+        assert!(matches!(fc.status, FileStatus::Untracked));
+        assert_eq!(fc.path, std::path::PathBuf::from("generated"));
+        assert!(fc.is_dir, "collapsed untracked dir must carry is_dir=true");
+
+        let file = parse_status_line("?? plain.txt").expect("plain file must parse");
+        assert!(!file.is_dir, "plain file must carry is_dir=false");
+        assert_eq!(file.path, std::path::PathBuf::from("plain.txt"));
     }
 
     #[test]

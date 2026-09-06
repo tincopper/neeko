@@ -153,12 +153,30 @@ fn file_change_serde_roundtrip() {
         status: FileStatus::Modified,
         additions: 5,
         deletions: 2,
+        is_dir: false,
+        // G6 XY 契约字段：skip_serializing_if none —— 序列化结果与旧 payload 兼容
+        index_status: Some('M'),
+        worktree_status: Some(' '),
+        renamed_from: None,
     };
     let json = serde_json::to_string(&change).unwrap();
     let back: FileChange = serde_json::from_str(&json).unwrap();
     assert_eq!(back.path, PathBuf::from("src/main.rs"));
     assert_eq!(back.additions, 5);
     assert_eq!(back.deletions, 2);
+}
+
+/// 旧 payload（G1 之前，无 is_dir / XY / renamed_from）反序列化防御：
+/// 缺省字段必须落到确定零值，而非反序列化失败（pillar 12 serde 防御契约）。
+#[test]
+fn file_change_deserializes_legacy_payload_without_new_fields() {
+    let legacy = r#"{"path":"a.txt","status":"Modified","additions":0,"deletions":0}"#;
+    let change: FileChange = serde_json::from_str(legacy).unwrap();
+    assert_eq!(change.path, PathBuf::from("a.txt"));
+    assert!(!change.is_dir, "缺 is_dir 的旧 payload 应回退文件语义");
+    assert_eq!(change.index_status, None);
+    assert_eq!(change.worktree_status, None);
+    assert_eq!(change.renamed_from, None);
 }
 
 #[test]

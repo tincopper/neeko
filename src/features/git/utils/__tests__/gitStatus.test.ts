@@ -2,10 +2,13 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
   setIgnoredFiles: vi.fn(),
+  versionGateAccepts: vi.fn(() => true),
 }));
 
 vi.mock('@/shared/store/projectStore', () => ({
   useProjectStore: { setState: vi.fn() },
+  // G2 version gate 已由 projectStore 单测覆盖；此处放行以聚焦本模块逻辑
+  versionGateAccepts: mocks.versionGateAccepts,
 }));
 
 vi.mock('@/shared/store/gitStore', () => ({
@@ -15,20 +18,22 @@ vi.mock('@/shared/store/gitStore', () => ({
 }));
 
 vi.mock('../../api/gitApi', () => ({
-  getWorktreeChangedFiles: vi.fn(),
+  getWorktreeChangedFilesVersioned: vi.fn(),
   getIgnoredFiles: vi.fn(),
 }));
 
 import { useProjectStore } from '@/shared/store/projectStore';
-import type { FileChange, GitInfo } from '@/shared/types';
+import type { FileChange, ChangedFilesPayload, GitInfo } from '@/shared/types';
 
-import { getIgnoredFiles, getWorktreeChangedFiles } from '../../api/gitApi';
+import { getIgnoredFiles, getWorktreeChangedFilesVersioned } from '../../api/gitApi';
 import { refreshGitFileStates, createDebouncedGitRefresh } from '../gitStatus';
 
-const mockGetWorktreeChangedFiles = vi.mocked(getWorktreeChangedFiles);
+const mockGetWorktreeChangedFiles = vi.mocked(getWorktreeChangedFilesVersioned);
 const mockGetIgnoredFiles = vi.mocked(getIgnoredFiles);
 const mockSetState = vi.mocked(useProjectStore.setState);
 const mockSetIgnoredFiles = mocks.setIgnoredFiles;
+
+const payload = (files: FileChange[], version = 0): ChangedFilesPayload => ({ files, version });
 
 const makeGitInfo = (changedFiles: FileChange[] = []): GitInfo => ({
   current_branch: 'main',
@@ -72,9 +77,9 @@ describe('refreshGitFileStates', () => {
   });
 
   it('includeIgnored: true 时拉取 ignored_files 写入 gitStore，changed_files patch 到项目', async () => {
-    mockGetWorktreeChangedFiles.mockResolvedValue([
-      { path: 'new.ts', status: 'Untracked', additions: 0, deletions: 0 },
-    ]);
+    mockGetWorktreeChangedFiles.mockResolvedValue(
+      payload([{ path: 'new.ts', status: 'Untracked', additions: 0, deletions: 0 }]),
+    );
     mockGetIgnoredFiles.mockResolvedValue(['.env', 'dist']);
     const takeUpdater = captureUpdater();
 
@@ -105,9 +110,9 @@ describe('refreshGitFileStates', () => {
   });
 
   it('默认（轻量模式）不拉取 ignored_files，且不覆盖 gitStore 既有灰显集合', async () => {
-    mockGetWorktreeChangedFiles.mockResolvedValue([
-      { path: 'a.ts', status: 'Modified', additions: 1, deletions: 0 },
-    ]);
+    mockGetWorktreeChangedFiles.mockResolvedValue(
+      payload([{ path: 'a.ts', status: 'Modified', additions: 1, deletions: 0 }]),
+    );
     const takeUpdater = captureUpdater();
 
     await refreshGitFileStates('p1', '');
@@ -124,7 +129,7 @@ describe('refreshGitFileStates', () => {
   });
 
   it('worktree 路径透传给两个 API（includeIgnored: true）', async () => {
-    mockGetWorktreeChangedFiles.mockResolvedValue([]);
+    mockGetWorktreeChangedFiles.mockResolvedValue(payload([]));
     mockGetIgnoredFiles.mockResolvedValue([]);
     const takeUpdater = captureUpdater();
 
@@ -138,7 +143,7 @@ describe('refreshGitFileStates', () => {
   });
 
   it('get_ignored_files 失败时回退为空列表并写入 gitStore（includeIgnored: true）', async () => {
-    mockGetWorktreeChangedFiles.mockResolvedValue([]);
+    mockGetWorktreeChangedFiles.mockResolvedValue(payload([]));
     mockGetIgnoredFiles.mockRejectedValue(new Error('not a repo'));
     const takeUpdater = captureUpdater();
 
@@ -166,12 +171,12 @@ describe('refreshGitFileStates', () => {
     // 为避免依赖微任务调度顺序（Node 上两条 setState 相对顺序不稳定），
     // 用 mockSetState 的实现作为信号：第一次 setState（B 的快照）触发后再
     // 解析 A，从而保证 A 的 setState 一定在 B 之后执行。
-    let resolveA!: (v: FileChange[]) => void;
-    let resolveB!: (v: FileChange[]) => void;
-    const promiseA = new Promise<FileChange[]>((r) => {
+    let resolveA!: (v: ChangedFilesPayload) => void;
+    let resolveB!: (v: ChangedFilesPayload) => void;
+    const promiseA = new Promise<ChangedFilesPayload>((r) => {
       resolveA = r;
     });
-    const promiseB = new Promise<FileChange[]>((r) => {
+    const promiseB = new Promise<ChangedFilesPayload>((r) => {
       resolveB = r;
     });
     mockGetWorktreeChangedFiles
@@ -187,7 +192,7 @@ describe('refreshGitFileStates', () => {
     mockSetState.mockImplementation(() => {
       setStateCount += 1;
       if (setStateCount === 1) {
-        resolveA([{ path: 'stale.ts', status: 'Modified', additions: 0, deletions: 0 }]);
+        resolveA(payload([{ path: 'stale.ts', status: 'Modified', additions: 0, deletions: 0 }]));
         firstSetStateResolve();
       }
     });
@@ -196,7 +201,7 @@ describe('refreshGitFileStates', () => {
     const callB = refreshGitFileStates('p1', '');
 
     // B 先返回（build 后期发出，捕获更新快照）
-    resolveB([{ path: 'newer.ts', status: 'Modified', additions: 1, deletions: 0 }]);
+    resolveB(payload([{ path: 'newer.ts', status: 'Modified', additions: 1, deletions: 0 }]));
 
     // 等待 B 的 setState 触发（A 在该回调内被解析）
     await firstSetStateDone;

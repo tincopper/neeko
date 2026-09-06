@@ -43,7 +43,8 @@ pub async fn get_ignored_files(
     transport: &dyn GitTransport,
     worktree_path: &str,
 ) -> Result<Vec<String>> {
-    const MAX_IGNORED_FILES: usize = 500;
+    // 上限与主链路 MAX_STATUS_ENTRIES 统一为 1000（G5，redesign-plan 决策点 4）
+    const MAX_IGNORED_FILES: usize = 1000;
     let output = transport
         .run_git_opts(
             &["status", "--porcelain", "--ignored"],

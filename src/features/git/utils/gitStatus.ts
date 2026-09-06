@@ -1,8 +1,8 @@
 import { useGitStore } from '@/shared/store/gitStore';
-import { useProjectStore } from '@/shared/store/projectStore';
+import { useProjectStore, versionGateAccepts } from '@/shared/store/projectStore';
 import type { GitInfo } from '@/shared/types';
 
-import { getIgnoredFiles, getWorktreeChangedFiles } from '../api/gitApi';
+import { getIgnoredFiles, getWorktreeChangedFilesVersioned } from '../api/gitApi';
 
 // 避免 build 期间并发的慢请求覆盖新快照：同一 projectId 只允许最新一代的 setState 生效
 const refreshGenerations = new Map<string, number>();
@@ -86,18 +86,26 @@ export async function refreshGitFileStates(
     git_provider: '',
   };
   try {
-    const [changedFiles, ignoredFiles] = await Promise.all([
-      getWorktreeChangedFiles(projectId, worktreePath),
+    const [changedPayload, ignoredFiles] = await Promise.all([
+      getWorktreeChangedFilesVersioned(projectId, worktreePath),
       // 非 git 仓库时 get_ignored_files 会失败，回退为空列表；
       // 默认跳过（includeIgnored=false），避免常规刷新触发全树 --ignored 遍历
       includeIgnored ? getIgnoredFiles(projectId, worktreePath).catch(() => []) : null,
     ]);
-    // 等待期间若同 projectId 有更新的调用，则本代陈旧，setState 被跳过
-    if (refreshGenerations.get(projectId) !== myGen) return;
+    // G2 D4 version gate：快照读（version>0）旧于已应用版本 → 丢弃，避免覆盖更新的快照事件；
+    // version=0（WSL/SSH / worktree 兜底）恒放行，与旧行为一致。等待期间同代 refresh 由
+    // refreshGenerations 兜底。
+    // 主路径显式刷新 allowEqual：worktree 激活期间主快照事件被跳过（不推进版本），
+    // 切回主视图时此刷新需能幂等恢复主数据（version == applied 也放行）。
+    const allowEqual = worktreePath === '' && changedPayload.version > 0;
+    if (!versionGateAccepts(projectId, changedPayload.version, allowEqual)) return;
     // ignored 拉取成功时写入独立 gitStore（不寄生于 git_info —— 会被项目列表刷新洗掉）
     if (includeIgnored && ignoredFiles) {
       useGitStore.getState().setIgnoredFiles(projectId, ignoredFiles);
     }
+    const changedFiles = changedPayload.files;
+    // 等待期间若同 projectId 有更新的调用，则本代陈旧，setState 被跳过
+    if (refreshGenerations.get(projectId) !== myGen) return;
     useProjectStore.setState((state) => {
       const nextProjects = state.projects.map((p) =>
         p.id === projectId

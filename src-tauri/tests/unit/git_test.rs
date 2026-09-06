@@ -708,25 +708,31 @@ async fn get_untracked_files_caps_at_500_entries() {
     let files = operations::get_untracked_files(&transport, &path, "bulk")
         .await
         .expect("capped list");
+    // 上限保持 500：单目录按需展开的语义与 status 主链路不同（G5 决策）
     assert_eq!(files.len(), 500, "应封顶 500 条，实际 {}", files.len());
 }
 
 #[tokio::test]
-async fn get_ignored_files_caps_at_500_entries() {
+async fn get_ignored_files_caps_at_1000_entries() {
     let (tmp, _repo) = create_test_repo();
     let path = tmp.path().to_string_lossy().to_string();
     // 根级通配忽略：整目录被忽略时 git 折叠为单条 `!! dir/`，故文件必须放在根目录
     // 逐条列出，才能产生超过 cap 的条目数触发截断。
     std::fs::write(tmp.path().join(".gitignore"), "ignored-*\n").unwrap();
-    for i in 0..520 {
-        std::fs::write(tmp.path().join(format!("ignored-{i:03}.txt")), "x").unwrap();
+    for i in 0..1020 {
+        std::fs::write(tmp.path().join(format!("ignored-{i:04}.txt")), "x").unwrap();
     }
 
     let transport = ExecTarget::Local;
     let files = operations::get_ignored_files(&transport, &path)
         .await
         .expect("capped ignored list");
-    assert_eq!(files.len(), 500, "应封顶 500 条，实际 {}", files.len());
+    assert_eq!(
+        files.len(),
+        1000,
+        "应封顶 1000 条（G5 与主链路统一上限），实际 {}",
+        files.len()
+    );
     assert!(
         files.iter().all(|p| p.starts_with("ignored-")),
         "截断后条目应全部是 ignored- 文件，实际: {files:?}"

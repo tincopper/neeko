@@ -20,5 +20,5 @@ mod types;
 pub use manager::WatcherManager;
 pub use types::{
     FileChangedEvent, FileTreeChangedEvent, FILE_CHANGED_EVENT, FILE_TREE_CHANGED_EVENT,
-    GIT_CHANGED_EVENT, GIT_STATUS_DIFF_EVENT,
+    GIT_CHANGED_EVENT,
 };

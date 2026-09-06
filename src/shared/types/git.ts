@@ -5,6 +5,23 @@ export interface FileChange {
   status: 'Modified' | 'Added' | 'Deleted' | 'Renamed' | 'Untracked';
   additions: number;
   deletions: number;
+  /**
+   * porcelain X（staged 侧）状态字符（G6 契约，' '/A/M/D/R/T/U）。
+   * 旧 payload / 未产出 XY 时缺省——消费端须走单 status 回退分组。
+   */
+  index_status?: string;
+  /** porcelain Y（unstaged 侧）状态字符（' '?/M/D/R/T/U） */
+  worktree_status?: string;
+  /** rename 原路径（X 或 Y 含 'R' 时存在；UI 显示 old → new） */
+  renamed_from?: string;
+  /**
+   * 折叠的 untracked 目录条目（G1 契约）。path 一律不带尾斜杠，目录性由本字段
+   * 显式表达 —— 不再用 `path.endsWith('/')` 隐式判定（曾因 A=CLI 带斜杠 /
+   * B=libgit2 不带斜杠 而分裂，untracked 目录在兜底路径下永远无法展开 —— P0）。
+   *
+   * 过渡期可选：消费端判定统一用 `is_dir ?? path.endsWith('/')`（兜底旧 payload）。
+   */
+  is_dir?: boolean;
 }
 
 export interface FileDiffStats {
@@ -191,6 +208,28 @@ export interface GitStatusFile {
   status: string;
   additions: number;
   deletions: number;
+  /** 折叠 untracked 目录条目（G1 契约；后端 A 路径自 G1 起保证发送） */
+  is_dir?: boolean;
+}
+
+/**
+ * G2 事件协议 v2：versioned 全量 git-status 快照（单一权威）。
+ * worker 每次实质变化产出完整快照整体替换 —— 前端按 `version` 单调递增门控消费，
+ * 乱序/回退覆盖从结构上消除（P1）。entries 直接复用 FileChange（含 is_dir）。
+ */
+export interface GitStatusSnapshot {
+  version: number;
+  project_id: string;
+  branch: string;
+  entries: FileChange[];
+  truncated: boolean;
+}
+
+/** `get_worktree_changed_files` 读接口返回（G2 D2 收编）：`version=0` 表示无
+ * versioned 快照语义（WSL/SSH / worktree 兜底），前端只在 version>0 时 gate。 */
+export interface ChangedFilesPayload {
+  files: FileChange[];
+  version: number;
 }
 
 export interface GitStatusDiff {

@@ -19,6 +19,7 @@ vi.mock('@tauri-apps/api/event', () => ({
 vi.mock('../../../git/api/gitApi', () => ({
   getIgnoredFiles: vi.fn(() => Promise.resolve([])),
   getWorktreeChangedFiles: vi.fn(() => Promise.resolve([])),
+  getWorktreeChangedFilesVersioned: vi.fn(() => Promise.resolve({ files: [], version: 0 })),
   getGitBranchInfo: mockGetGitBranchInfo,
   getAheadBehind: mockGetAheadBehind,
 }));

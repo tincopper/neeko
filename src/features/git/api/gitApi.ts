@@ -15,6 +15,7 @@ import type {
   PushOutcome,
   StashActionResult,
   StashEntry,
+  ChangedFilesPayload,
 } from '../types';
 export type { PushOutcome };
 
@@ -211,11 +212,21 @@ export function getGitBranchInfo(
   return invoke<GitBranchInfo>('get_git_branch_info', { projectId, worktreePath });
 }
 
-export function getWorktreeChangedFiles(
+/** G2 收编后命令返回 `{ files, version }`；数组形态 API 保持（调用面不炸） */
+export async function getWorktreeChangedFiles(
   projectId: string,
   worktreePath: string,
 ): Promise<FileChange[]> {
-  return invoke<FileChange[]>('get_worktree_changed_files', { projectId, worktreePath });
+  const payload = await getWorktreeChangedFilesVersioned(projectId, worktreePath);
+  return payload.files;
+}
+
+/** 版本化读（G2 D2/D4）：version>0 = watcher 权威快照，供刷新路径做 version gate */
+export function getWorktreeChangedFilesVersioned(
+  projectId: string,
+  worktreePath: string,
+): Promise<ChangedFilesPayload> {
+  return invoke<ChangedFilesPayload>('get_worktree_changed_files', { projectId, worktreePath });
 }
 
 export function getIgnoredFiles(projectId: string, worktreePath: string): Promise<string[]> {

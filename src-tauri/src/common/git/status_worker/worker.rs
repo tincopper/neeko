@@ -7,10 +7,7 @@ use std::thread;
 use crate::common::executor::factory::ExecTarget;
 use crate::core::exec::collect_blocking;
 
-use super::writer::{
-    compute_branch_switch_diff, compute_status_diff, get_numstat_map, parse_porcelain,
-    serialize_files_for_diff, GitStatusDiff,
-};
+use super::writer::{parse_porcelain, GitStatusSnapshot};
 
 const fn exit_diagnostics(code: i32) -> (Option<i32>, Option<i32>) {
     (Some(code), None)
@@ -25,7 +22,10 @@ pub struct GitStatusWorker {
 
 impl GitStatusWorker {
     /// Start the worker for the given `repo_path`.
-    pub fn start(repo_path: PathBuf, on_change: impl Fn(GitStatusDiff) + Send + 'static) -> Self {
+    pub fn start(
+        repo_path: PathBuf,
+        on_change: impl Fn(GitStatusSnapshot) + Send + 'static,
+    ) -> Self {
         let (signal_tx, signal_rx) = mpsc::channel::<()>();
 
         thread::Builder::new()
@@ -50,14 +50,19 @@ impl GitStatusWorker {
     }
 }
 
-/// Main worker loop: wait for signal → run git status → compare → notify.
+/// Main worker loop: wait for signal → run git status → compare → emit full snapshot.
+///
+/// G2 单一权威化：worker 是 status 的唯一计算路径（D1）。任何实质变化（porcelain
+/// 输出或分支变化）都产出**完整快照**（version 单调递增）并整体通知 —— 事件携带
+/// 全量数据而非增量 patch（D3），前端以 version 门控替换，乱序/回退从结构上消除（P1）。
 fn worker_loop(
     repo_path: PathBuf,
     signal_rx: mpsc::Receiver<()>,
-    on_change: impl Fn(GitStatusDiff),
+    on_change: impl Fn(GitStatusSnapshot),
 ) {
     let mut last_status = String::new();
     let mut last_branch = String::new();
+    let mut version: u64 = 0;
     let mut supports_no_optional_locks = true;
     let path_str = repo_path.display().to_string();
 
@@ -87,62 +92,51 @@ fn worker_loop(
         }
 
         let mut current_files = parse_porcelain(&current);
-        const MAX_NUMSTAT_FILES: usize = 200;
-        if !current_files.is_empty() && current_files.len() <= MAX_NUMSTAT_FILES {
-            let numstat = get_numstat_map(&repo_path);
-            for file in &mut current_files {
-                if let Some((add, del)) = numstat.get(&file.path) {
-                    file.additions = *add;
-                    file.deletions = *del;
-                }
-            }
-        }
 
-        let current_serialized = serialize_files_for_diff(&current_files);
+        // G4（P7）：numstat/行数不再进 status 主链路 —— 行数由 CommitPanel 独立的
+        // get_changed_files_diff_stats 按需提供（stats 优先、快照行数仅 fallback），
+        // status 重算从「status + 2×diff --numstat」降为单次 porcelain。
+
+        // 全链路封顶（公理：随输入规模增长的结构必须有界；对齐 orca 1000 条超限截断）。
+        const MAX_STATUS_ENTRIES: usize = 1000;
+        let truncated = current_files.len() > MAX_STATUS_ENTRIES;
+        if truncated {
+            log::warn!(
+                "[GitWorker] status entries exceeded cap for {}: {} truncated to {}",
+                path_str,
+                current_files.len(),
+                MAX_STATUS_ENTRIES
+            );
+            current_files.truncate(MAX_STATUS_ENTRIES);
+        }
 
         log::debug!(
-            "[GitWorker] git status result for {}: {} bytes, changed={}",
+            "[GitWorker] git status result for {}: {} bytes, changed={}, entries={}",
             path_str,
             current.len(),
-            current != last_status
+            current != last_status,
+            current_files.len()
         );
 
-        if current_branch != last_branch {
-            let last_files = parse_porcelain(&last_status);
-            let diff = compute_branch_switch_diff(&last_files, &current_files);
-            log::debug!(
-                "[GitWorker] Branch changed {} -> {} for {}, emitting full diff",
-                last_branch,
-                current_branch,
-                path_str
-            );
-            last_status = current;
-            last_branch = current_branch;
-            on_change(diff);
-            continue;
-        }
+        last_status = current;
+        last_branch.clone_from(&current_branch);
+        version += 1;
 
-        if current != last_status {
-            let last_files = parse_porcelain(&last_status);
-            let last_serialized = serialize_files_for_diff(&last_files);
+        log::debug!(
+            "[GitWorker] Emitting snapshot v{} for {} (branch {}): {} entries",
+            version,
+            path_str,
+            current_branch,
+            current_files.len()
+        );
 
-            last_status = current;
-
-            if current_serialized != last_serialized {
-                let diff = compute_status_diff(&last_files, &current_files);
-
-                if !diff.added.is_empty() || !diff.removed.is_empty() || !diff.modified.is_empty() {
-                    log::debug!(
-                        "[GitWorker] Emitting diff for {}: +{} ~{} -{}",
-                        path_str,
-                        diff.added.len(),
-                        diff.modified.len(),
-                        diff.removed.len()
-                    );
-                    on_change(diff);
-                }
-            }
-        }
+        on_change(GitStatusSnapshot {
+            version,
+            project_id: String::new(),
+            branch: current_branch,
+            entries: current_files,
+            truncated,
+        });
     }
 }
 
@@ -294,7 +288,7 @@ mod tests {
         let (tmp, _repo) = create_repo_with_commit();
         std::fs::write(tmp.path().join("README.md"), "# Changed\n").unwrap();
 
-        let (emit_tx, emit_rx) = mpsc::channel::<GitStatusDiff>();
+        let (emit_tx, emit_rx) = mpsc::channel::<GitStatusSnapshot>();
         let worker = GitStatusWorker::start(tmp.path().to_path_buf(), move |diff| {
             let _ = emit_tx.send(diff);
         });
@@ -309,6 +303,88 @@ mod tests {
             Ok(_) => panic!("unchanged status must not emit another diff"),
             Err(mpsc::RecvTimeoutError::Timeout) => {}
             Err(e) => panic!("unexpected recv error: {e}"),
+        }
+    }
+
+    /// G2 验收标准的自动化替身（redesign-plan §3.7「压测：高频 touch + 心跳并发 +
+    /// 切分支 → 零丢失、零回退」）。确定性化：并发信号风暴打在未变更工作区上
+    /// （不得产生任何 emit），随后单次实质变更与切分支各产生恰好一个新版本；
+    /// 最终快照与 `git status --porcelain` 真值逐条一致。
+    #[test]
+    fn worker_stress_concurrent_signals_churn_and_branch_switch() {
+        use std::sync::Arc;
+        use std::time::Duration;
+
+        let (tmp, repo) = create_repo_with_commit();
+        let (emit_tx, emit_rx) = mpsc::channel::<GitStatusSnapshot>();
+        let worker = GitStatusWorker::start(tmp.path().to_path_buf(), move |snap| {
+            let _ = emit_tx.send(snap);
+        });
+
+        // 初始版本（v1，干净工作区）
+        worker.check();
+        let first = emit_rx
+            .recv_timeout(Duration::from_secs(5))
+            .expect("initial check should emit");
+        assert_eq!(first.version, 1);
+        assert_eq!(first.branch, repo.head().unwrap().shorthand().unwrap());
+
+        // 并发信号风暴（4 线程 × 50 次 check，模拟 watcher/index/心跳同时触发）：
+        // 内容未变 → 不得产生任何新 emit（查询-比较闸门在并发下同样生效）
+        let worker_arc = Arc::new(worker.clone());
+        let handles: Vec<_> = (0..4)
+            .map(|_| {
+                let w = Arc::clone(&worker_arc);
+                std::thread::spawn(move || {
+                    for _ in 0..50 {
+                        w.check();
+                    }
+                })
+            })
+            .collect();
+        for h in handles {
+            h.join().expect("storm thread should not panic");
+        }
+        match emit_rx.recv_timeout(Duration::from_millis(500)) {
+            Ok(snap) => panic!(
+                "unchanged-content storm must not emit, got v{}",
+                snap.version
+            ),
+            Err(mpsc::RecvTimeoutError::Timeout) => {}
+            Err(e) => panic!("unexpected recv error: {e}"),
+        }
+
+        // 实质变更（modify tracked + add untracked）→ 恰好一个新版本（v2）
+        std::fs::write(tmp.path().join("README.md"), "# changed\n").unwrap();
+        std::fs::write(tmp.path().join("extra.txt"), "untracked\n").unwrap();
+        worker.check();
+        let after_churn = emit_rx
+            .recv_timeout(Duration::from_secs(5))
+            .expect("churn should emit");
+        assert_eq!(after_churn.version, 2, "version 必须严格单调");
+        assert_eq!(after_churn.entries.len(), 2);
+
+        // 切分支 → 分支变化触发新版本（v3）
+        let head = repo.head().unwrap().peel_to_commit().unwrap();
+        repo.branch("feature-stress", &head, false).unwrap();
+        repo.set_head("refs/heads/feature-stress").unwrap();
+        worker.check();
+        let after_switch = emit_rx
+            .recv_timeout(Duration::from_secs(5))
+            .expect("branch switch should emit");
+        assert_eq!(after_switch.version, 3);
+        assert_eq!(after_switch.branch, "feature-stress");
+
+        // 最终一致：快照 entries 与 porcelain 真值逐条一致（同一解析入口）
+        let output = std::process::Command::new("git")
+            .args(["-C", tmp.path().to_str().unwrap(), "status", "--porcelain"])
+            .output()
+            .expect("git should be available (worker itself shells out to git)");
+        let truth = parse_porcelain(&String::from_utf8_lossy(&output.stdout));
+        assert_eq!(after_switch.entries.len(), truth.len());
+        for (entry, truth_entry) in after_switch.entries.iter().zip(truth.iter()) {
+            assert_eq!(entry.path, truth_entry.path);
+            assert_eq!(entry.status, truth_entry.status);
         }
     }
 }

@@ -17,6 +17,13 @@ interface GitStoreState {
    */
   ignoredByProject: Record<string, string[]>;
   setIgnoredFiles: (projectId: string, files: string[]) => void;
+
+  /**
+   * G4：各项目 git-status 快照是否被截断（entries 超过 MAX_STATUS_ENTRIES=1000）。
+   * ChangesList 顶部据此显示截断 banner（P3：截断显式化，对齐 orca too-many-changes）。
+   */
+  truncatedByProject: Record<string, boolean>;
+  setStatusTruncated: (projectId: string, truncated: boolean) => void;
 }
 
 export const useGitStore = create<GitStoreState>((set) => ({
@@ -47,6 +54,14 @@ export const useGitStore = create<GitStoreState>((set) => ({
         return state;
       }
       return { ignoredByProject: { ...state.ignoredByProject, [projectId]: files } };
+    }),
+
+  truncatedByProject: {},
+
+  setStatusTruncated: (projectId, truncated) =>
+    set((state) => {
+      if (state.truncatedByProject[projectId] === truncated) return state;
+      return { truncatedByProject: { ...state.truncatedByProject, [projectId]: truncated } };
     }),
 
   setFavoriteBranches: (projectId, branches) =>
