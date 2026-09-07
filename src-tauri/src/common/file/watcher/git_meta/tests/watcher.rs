@@ -3,6 +3,7 @@
 use super::super::paths::{resolve_git_meta_paths, GitMetaPaths};
 use super::super::watcher::{
     apply_rearm_result, create_git_meta_watcher, create_git_meta_watcher_with,
+    is_gitignore_rules_change,
 };
 use notify::{RecommendedWatcher, Watcher};
 use std::path::Path;
@@ -51,7 +52,7 @@ fn spawn_git_meta_watcher_spy() -> (
         move |_has_wt| {
             head_flag.fetch_add(1, Ordering::SeqCst);
         },
-        || {},
+        |_| {},
     )
     .expect("git meta watcher should be created");
 
@@ -157,7 +158,7 @@ fn git_meta_watcher_rearms_worktrees_watch_after_dir_appears() {
         &meta,
         || {},
         |_| {},
-        move || {
+        move |_| {
             wt_flag.fetch_add(1, Ordering::SeqCst);
         },
     )
@@ -229,7 +230,7 @@ fn create_git_meta_watcher_returns_none_when_git_dir_watch_fails() {
         &meta,
         || {},
         |_| {},
-        || {},
+        |_| {},
         |_watcher: &mut RecommendedWatcher, _path, _mode| {
             Err(notify::Error::generic("simulated watch failure"))
         },
@@ -260,7 +261,7 @@ fn create_git_meta_watcher_tolerates_worktree_subwatch_failure() {
         &meta,
         || {},
         |_| {},
-        || {},
+        |_| {},
         |watcher: &mut RecommendedWatcher, path, mode| {
             if path.ends_with("worktrees") {
                 Err(notify::Error::generic("simulated worktrees watch failure"))
@@ -308,4 +309,39 @@ fn apply_rearm_result_on_success_sets_flags() {
     assert!(ok, "rearm 成功应返回 true");
     assert!(armed.load(Ordering::SeqCst), "成功后 armed 应置位");
     assert!(has_wt.load(Ordering::SeqCst), "成功后 has_wt 应置位");
+}
+
+// ── worktree 规则变更判定（is_gitignore_rules_change） ──────────────────────
+
+/// worktree 区域 `.gitignore` / `exclude` 变更判定：命中规则文件 → true
+/// （驱动目录树刷新 → 读树重建 worktree 根过滤器，等效热重载）；
+/// 普通文件 / HEAD / index → false。
+#[test]
+fn is_gitignore_rules_change_detects_rule_files_only() {
+    let wt = std::path::PathBuf::from("/wt");
+    assert!(
+        is_gitignore_rules_change(&[wt.join(".gitignore")]),
+        "worktree 根 .gitignore 应命中"
+    );
+    assert!(
+        is_gitignore_rules_change(&[wt.join("src").join(".gitignore")]),
+        "嵌套 .gitignore 应命中"
+    );
+    assert!(
+        is_gitignore_rules_change(&[wt.join(".git").join("info").join("exclude")]),
+        "exclude 应命中"
+    );
+    assert!(
+        !is_gitignore_rules_change(&[wt.join("src").join("a.ts")]),
+        "普通文件不应命中"
+    );
+    assert!(
+        !is_gitignore_rules_change(&[wt.join("HEAD")]),
+        "HEAD 不应命中"
+    );
+    // 混合列表：任一命中即可
+    assert!(
+        is_gitignore_rules_change(&[wt.join("src").join("a.ts"), wt.join(".gitignore")]),
+        "混合列表含规则文件应命中"
+    );
 }

@@ -11,4 +11,6 @@ mod watcher;
 mod tests;
 
 pub(super) use paths::resolve_git_meta_paths;
-pub(super) use watcher::{create_git_meta_watcher, GitMetaWatcherHandle};
+pub(super) use watcher::{
+    create_git_meta_watcher, is_gitignore_rules_change, GitMetaWatcherHandle,
+};

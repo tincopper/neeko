@@ -128,6 +128,19 @@ pub(super) fn apply_rearm_result(
     }
 }
 
+/// 事件路径中是否命中 git 忽略规则文件（`.gitignore` / `exclude`）。
+///
+/// worktree 区域规则变更判定：linked worktree 工作目录的 `.gitignore` 变更由 git
+/// 元数据 watcher 送达（主 watcher 根固定在主项目路径，不监听 worktree 目录；且
+/// `.git` 内事件被 gitignore 硬过滤）。命中后调用方驱动目录树刷新 —— 读树时
+/// `resolve_gitignore_filter` 现场重建 worktree 根过滤器，等效热重载。
+pub(in crate::common::file::watcher) fn is_gitignore_rules_change(paths: &[PathBuf]) -> bool {
+    paths.iter().any(|p| {
+        let name = p.file_name().map(|n| n.to_string_lossy());
+        matches!(name.as_deref(), Some(".gitignore") | Some("exclude"))
+    })
+}
+
 /// 创建 git 元数据 watcher：监听 `.git` 目录（非递归）捕获 HEAD（分支切换）
 /// 与 index（暂存/取消暂存）变更，绕过 git 忽略过滤（该过滤会丢弃 .git 内事件）。
 ///
@@ -141,7 +154,9 @@ pub(super) fn apply_rearm_result(
 ///
 /// 回调经参数注入，便于脱离 `AppHandle` 做真实文件系统集成测试：
 /// - `on_index_changed`：index 变更时调用（调用方负责全量刷新 fallback）；
-/// - `on_head_changed(has_worktrees)`：HEAD / worktree HEAD 变更时调用。
+/// - `on_head_changed(has_worktrees)`：HEAD / worktree HEAD 变更时调用；
+/// - `on_worktree_meta_changed(&[PathBuf])`：worktree 区域变更时调用，携带事件
+///   路径（调用方可据此区分 `.gitignore`/`exclude` 规则变更并驱动目录树刷新）。
 ///
 /// 失败语义（显式约定）：
 /// - 核心 `git_dir` 监听失败 = watcher 无意义 → 返回 `None`；
@@ -152,7 +167,7 @@ pub(in crate::common::file::watcher) fn create_git_meta_watcher(
     meta: &GitMetaPaths,
     on_index_changed: impl FnMut() + Send + 'static,
     on_head_changed: impl FnMut(bool) + Send + 'static,
-    on_worktree_meta_changed: impl FnMut() + Send + 'static,
+    on_worktree_meta_changed: impl FnMut(&[PathBuf]) + Send + 'static,
 ) -> Option<GitMetaWatcherHandle> {
     create_git_meta_watcher_with(
         project_id,
@@ -176,7 +191,7 @@ pub(super) fn create_git_meta_watcher_with<W>(
     meta: &GitMetaPaths,
     mut on_index_changed: impl FnMut() + Send + 'static,
     mut on_head_changed: impl FnMut(bool) + Send + 'static,
-    mut on_worktree_meta_changed: impl FnMut() + Send + 'static,
+    mut on_worktree_meta_changed: impl FnMut(&[PathBuf]) + Send + 'static,
     mut watch_fn: W,
 ) -> Option<GitMetaWatcherHandle>
 where
@@ -228,7 +243,9 @@ where
                 GitMetaChange::HeadChanged => {
                     on_head_changed(has_wt_for_cb.load(Ordering::Relaxed));
                 }
-                GitMetaChange::WorktreeMetaChanged => on_worktree_meta_changed(),
+                GitMetaChange::WorktreeMetaChanged => {
+                    on_worktree_meta_changed(&event.paths);
+                }
             }
         },
         Config::default(),

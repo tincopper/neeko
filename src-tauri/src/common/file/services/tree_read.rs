@@ -3,12 +3,14 @@
 
 use crate::common::executor::factory::ExecTarget;
 use crate::common::executor::sync::collect_output;
+use crate::common::file::watcher::GitIgnoreFilter;
 use crate::common::git::parsers::build_file_tree_from_find;
 use crate::common::utils::command::local::safe_path;
 use crate::project::types::FileNode;
 use crate::AppError;
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
+use std::sync::{Arc, LazyLock, Mutex};
 
 use super::ignored_cache::{
     apply_ignored_to_tree, fetch_remote_ignored_paths, get_or_fetch_remote_ignored_paths,
@@ -120,9 +122,38 @@ pub(super) fn build_find_tree_command(safe_path: &str, max_depth: u32) -> String
     )
 }
 
+/// 读层现场构建的 gitignore 过滤器缓存（键 = 过滤器根）。
+///
+/// 只缓存「现场构建」的过滤器：主项目读路径复用 watcher 共享过滤器（不进缓存），
+/// 本缓存服务 linked worktree 等根不匹配场景 —— 避免每次读树（含懒加载逐目录
+/// 展开）重复全树遍历构建。失效由 watcher 的 worktree 规则变更信号驱动
+/// （`invalidate_local_gitignore_cache`），规则变更后下次读树重建 → 规则最新。
+static LOCAL_GITIGNORE_CACHE: LazyLock<Mutex<HashMap<PathBuf, Arc<GitIgnoreFilter>>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
+
+fn local_gitignore_cache() -> &'static Mutex<HashMap<PathBuf, Arc<GitIgnoreFilter>>> {
+    &LOCAL_GITIGNORE_CACHE
+}
+
+/// 清除读层现场构建的 gitignore 过滤器缓存。
+///
+/// watcher 的 worktree 规则变更（`.gitignore` / `exclude`）时调用，避免 ignored
+/// 标记 / 剪枝 stale；主项目读路径复用 watcher 过滤器，不受影响。
+pub fn invalidate_local_gitignore_cache() {
+    if let Ok(mut cache) = local_gitignore_cache().lock() {
+        cache.clear();
+    }
+}
+
 /// 解析读层 gitignore 过滤器（读层自洽，不依赖 watcher 挂载时序）。
 ///
-/// - watcher 已挂载 → 复用共享过滤器（与事件过滤 / 规则热重载同源）；
+/// - watcher 已挂载且过滤器根 == 读取根 → 复用共享过滤器（与事件过滤 /
+///   规则热重载同源），并携带热重载；
+/// - 读取根 ≠ 共享过滤器根（linked worktree 的 base 在主仓库之外；watcher
+///   过滤器根固定在主项目路径，`path.starts_with(level.dir)` 对 worktree 路径
+///   永不命中 → worktree 内 ignored 标注恒缺）→ 现场构建以读取根为根的过滤器，
+///   结果按 root 进读层缓存（`invalidate_local_gitignore_cache` 失效），避免
+///   懒加载逐目录展开时重复全树遍历构建；
 /// - watcher 未挂载（切换项目时前端 fire-and-forget 激活与文件树首载并发，
 ///   watch 尚未完成）且 Local 目标是 git 仓库 → 现场构建兜底，保证首屏
 ///   文件树即带 ignored 标注 —— 否则无标注的首载结果被前端目录缓存为
@@ -133,24 +164,50 @@ pub(super) fn build_find_tree_command(safe_path: &str, max_depth: u32) -> String
 /// 均为阻塞 I/O，必须整体移交 blocking 线程执行，禁止进入 async driver。
 pub async fn resolve_gitignore_filter(
     target: &ExecTarget,
-    existing: Option<Arc<crate::common::file::watcher::GitIgnoreFilter>>,
+    existing: Option<Arc<GitIgnoreFilter>>,
     base: &Path,
-) -> Option<Arc<crate::common::file::watcher::GitIgnoreFilter>> {
-    if existing.is_some() || !matches!(target, ExecTarget::Local) {
-        return existing;
+) -> Option<Arc<GitIgnoreFilter>> {
+    // 非 Local 目标的 ignored 标注走远程 `git ls-files`，不构建本地兜底过滤器
+    // （远程路径可能恰好以本地挂载/UNC 形式存在，误判会引入无谓的全树遍历）。
+    if !matches!(target, ExecTarget::Local) {
+        return None;
+    }
+    // 复用共享过滤器仅当根一致；根不匹配（linked worktree）落到下方现场构建。
+    if let Some(filter) = existing {
+        if filter.same_root(base) {
+            return Some(filter);
+        }
+    }
+    // 读层缓存：同 root 的现场构建复用（worktree 场景每次读树全树遍历成本高）。
+    // 规则变更由 invalidate_local_gitignore_cache 清除（core.rs worktree 回调驱动）。
+    if let Ok(cache) = local_gitignore_cache().lock() {
+        if let Some(cached) = cache.get(base) {
+            return Some(Arc::clone(cached));
+        }
     }
     let root = base.to_path_buf();
-    tokio::task::spawn_blocking(move || {
+    let built = tokio::task::spawn_blocking(move || {
         if !crate::common::git::local::is_git_repo(&root) {
             return None;
         }
-        Some(Arc::new(
-            crate::common::file::watcher::GitIgnoreFilter::new(root),
-        ))
+        Some(Arc::new(GitIgnoreFilter::new(root)))
     })
-    .await
-    .ok()
-    .flatten()
+    .await;
+    let filter = flatten_join_result(built)?;
+    if let Ok(mut cache) = local_gitignore_cache().lock() {
+        cache.insert(base.to_path_buf(), Arc::clone(&filter));
+    }
+    Some(filter)
+}
+
+/// `spawn_blocking` join 结果 → 过滤器的退化映射。
+///
+/// join 失败（runtime 关闭 / 闭包 panic）语义为退化为 `None` = 无过滤器 =
+/// 无 ignored 标注（与修复前一致），不掩盖错误。独立纯函数使 join 失败分支可直测。
+pub(super) fn flatten_join_result(
+    result: Result<Option<Arc<GitIgnoreFilter>>, tokio::task::JoinError>,
+) -> Option<Arc<GitIgnoreFilter>> {
+    result.ok().flatten()
 }
 
 /// 递归给所有节点的 path 字段加上前缀

@@ -1,11 +1,14 @@
 //! `WatcherManager` 编排：为每个项目启动文件监听，计算 git status 快照并聚合子模块。
 
 use super::super::debounce::{DebounceSender, ThrottleScheduler, TreeChangeDebounceSender};
-use super::super::git_meta::{create_git_meta_watcher, resolve_git_meta_paths};
+use super::super::git_meta::{
+    create_git_meta_watcher, is_gitignore_rules_change, resolve_git_meta_paths,
+};
 use super::super::gitignore::GitIgnoreFilter;
 use super::super::registration::{spawn_maintenance_thread, WatchRegistration};
 use super::super::types::{
-    GitPerfSuggestionEvent, GIT_CHANGED_EVENT, GIT_PERF_SUGGESTION_EVENT, GIT_STATUS_SNAPSHOT_EVENT,
+    FileTreeChangedEvent, GitPerfSuggestionEvent, FILE_TREE_CHANGED_EVENT, GIT_CHANGED_EVENT,
+    GIT_PERF_SUGGESTION_EVENT, GIT_STATUS_SNAPSHOT_EVENT,
 };
 use super::callbacks::build_notify_callback;
 use super::handle::WatcherHandle;
@@ -261,11 +264,28 @@ impl WatcherManager {
                     // 工作目录内的任何变更 → 前端按 activeWorktree 刷新（P4）。
                     // 无条件发 git-changed（不再依赖 has_wt 的 rearm 时机）；前端
                     // 500ms debounce 合并高频事件，无 activeWorktree 时读主快照幂等。
-                    move || {
+                    // linked worktree 工作目录的 .gitignore/exclude 变更额外驱动
+                    // 目录树刷新（file-tree-changed）—— watcher 过滤器根固定在主项目
+                    // 路径，不监听 worktree 目录；重读树时 resolve_gitignore_filter
+                    // 现场重建 worktree 根过滤器 → 规则变更等效热重载，否则 ignored
+                    // 标注持续过期直至手动刷新。
+                    move |paths| {
                         log::debug!(
                             "[Watcher:{}] worktree area changed, signaling frontend refresh",
                             pid_wt
                         );
+                        if is_gitignore_rules_change(paths) {
+                            // 使读层现场构建的过滤器缓存失效：下次读树重建 → 规则最新
+                            // （避免已缓存 worktree 过滤器携带旧规则）。
+                            crate::common::file::services::invalidate_local_gitignore_cache();
+                            let _ = app_for_worktree.emit(
+                                FILE_TREE_CHANGED_EVENT,
+                                &FileTreeChangedEvent {
+                                    project_id: pid_wt.clone(),
+                                    dirs: Vec::new(),
+                                },
+                            );
+                        }
                         let _ = app_for_worktree.emit(GIT_CHANGED_EVENT, &pid_wt);
                     },
                 )

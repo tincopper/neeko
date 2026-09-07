@@ -64,6 +64,45 @@ impl GitIgnoreFilter {
         filter
     }
 
+    /// 过滤器根是否与给定根一致。
+    ///
+    /// 读层复用判断：watcher 共享过滤器根固定在主项目路径；当读取根是 linked
+    /// worktree（主仓库之外）时根不匹配，必须现场构建以读取根为根的过滤器——
+    /// 否则 `is_ignored_with` 的 `path.starts_with(level.dir)` 对 worktree 路径
+    /// 永不命中，worktree 内 ignored 标注恒缺。
+    #[must_use]
+    pub fn same_root(&self, root: &Path) -> bool {
+        self.root == root
+    }
+}
+
+/// 解析仓库根的 `.git/info/exclude` 路径。
+///
+/// linked worktree 的 `.git` 是指针文件（内容形如 `gitdir: <主仓库>/.git/worktrees/<name>`），
+/// 其 info/exclude 实际共享主仓库 `.git/info/exclude`；普通仓库为自身 `.git/info/exclude`。
+/// 指针解析失败时回退到本地路径（`is_file()` 判定自然 miss，不加载）。
+pub(super) fn resolve_info_exclude(root: &Path) -> PathBuf {
+    let git = root.join(".git");
+    if git.is_file() {
+        if let Ok(content) = std::fs::read_to_string(&git) {
+            for line in content.lines() {
+                if let Some(path) = line.strip_prefix("gitdir: ") {
+                    let gitdir = Path::new(path.trim());
+                    // gitdir = <主仓库>/.git/worktrees/<name> → exclude 在 <主仓库>/.git/info
+                    if let Some(worktrees) = gitdir.parent() {
+                        if let Some(main_git) = worktrees.parent() {
+                            return main_git.join("info").join("exclude");
+                        }
+                    }
+                    break;
+                }
+            }
+        }
+    }
+    git.join("info").join("exclude")
+}
+
+impl GitIgnoreFilter {
     /// 重载忽略规则：分层收集全仓 `.gitignore`（含 monorepo 子包），按目录
     /// 各自编译，`.git/info/exclude` 并入根层且排在根 `.gitignore` 之后
     /// （git 语义：本地排除规则覆盖 .gitignore）。`.gitignore` 文件变更
@@ -102,8 +141,9 @@ impl GitIgnoreFilter {
                 None => groups.push((dir, vec![file])),
             }
         }
-        // .git/info/exclude 并入根层（无根 .gitignore 也要建根层承载它）
-        let info_exclude = self.root.join(".git").join("info").join("exclude");
+        // .git/info/exclude 并入根层（无根 .gitignore 也要建根层承载它）。
+        // linked worktree 经 gitdir 指针解析共享主仓库 exclude。
+        let info_exclude = resolve_info_exclude(&self.root);
         if info_exclude.is_file() {
             match groups.iter_mut().find(|(d, _)| *d == self.root) {
                 Some((_, files)) => files.push(info_exclude),
@@ -327,5 +367,48 @@ mod tests {
         std::fs::write(base.join(".gitignore"), "dist/\n").unwrap();
         filter.reload();
         assert!(filter.should_ignore(&base.join("dist").join("foo.js"), None));
+    }
+
+    /// 普通仓库：info/exclude 解析到自身 `.git/info/exclude`。
+    #[test]
+    fn resolve_info_exclude_points_to_local_git_dir() {
+        let tmp = tempfile::tempdir().unwrap();
+        let base = tmp.path();
+        assert_eq!(
+            resolve_info_exclude(base),
+            base.join(".git").join("info").join("exclude"),
+            "普通仓库应解析到自身 exclude"
+        );
+    }
+
+    /// linked worktree：`.git` 是指针文件（`gitdir: <主仓库>/.git/worktrees/<name>`），
+    /// info/exclude 实际共享主仓库 `.git/info/exclude` —— 否则 worktree 过滤器的
+    /// exclude 规则缺失。
+    #[test]
+    fn resolve_info_exclude_follows_worktree_gitdir_pointer() {
+        let tmp = tempfile::tempdir().unwrap();
+        let main = tmp.path().join("main");
+        let main_git = main.join(".git");
+        std::fs::create_dir_all(main_git.join("info")).unwrap();
+        std::fs::write(main_git.join("info/exclude"), "*.tmp\n").unwrap();
+        // worktree .git 是指针文件
+        let wt = tmp.path().join("wt");
+        std::fs::create_dir_all(&wt).unwrap();
+        let gitdir = main_git.join("worktrees").join("dev");
+        std::fs::create_dir_all(&gitdir).unwrap();
+        std::fs::write(wt.join(".git"), format!("gitdir: {}\n", gitdir.display())).unwrap();
+
+        assert_eq!(
+            resolve_info_exclude(&wt),
+            main_git.join("info").join("exclude"),
+            "worktree 应解析到主仓库 exclude"
+        );
+
+        // 过滤器应真正加载主仓库 exclude 规则并命中
+        let filter = GitIgnoreFilter::new(wt.clone());
+        assert!(
+            filter.should_ignore_own(&wt.join("cache.tmp"), false),
+            "worktree 过滤器必须命中主仓库 exclude 规则"
+        );
     }
 }

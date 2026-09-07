@@ -1,7 +1,7 @@
 //! tree_read：目录树读取、远程子路径校验与读层 gitignore 过滤器测试。
 
 use super::super::tree_read::{
-    build_find_tree_command, read_dir_recursive, validate_remote_sub_path,
+    build_find_tree_command, flatten_join_result, read_dir_recursive, validate_remote_sub_path,
 };
 use super::temp_root;
 use crate::common::executor::factory::ExecTarget;
@@ -231,6 +231,123 @@ async fn resolve_gitignore_filter_reuses_existing_watcher_filter() {
         Arc::ptr_eq(&shared, &resolved),
         "应复用 watcher 共享过滤器，而非重建"
     );
+    let _ = fs::remove_dir_all(&root);
+}
+
+/// 回归（linked worktree 灰显盲区）：watcher 过滤器根固定在主项目路径，worktree
+/// 的 base 在主仓库之外 → 根不匹配必须现场构建以 base 为根的过滤器，否则
+/// `is_ignored_with` 的 `path.starts_with(level.dir)` 对 worktree 路径永不命中，
+/// worktree 内 ignored 标注恒缺（且刷新也无法修复）。
+#[tokio::test]
+async fn resolve_gitignore_filter_builds_base_root_when_existing_root_mismatches() {
+    let main_root = temp_root("wt_filter_main");
+    let wt_root = temp_root("wt_filter_worktree");
+    fs::create_dir_all(main_root.join(".git")).expect("创建主仓库 .git 失败");
+    fs::create_dir_all(wt_root.join(".git")).expect("创建 worktree .git 失败");
+    // worktree 有独立 .gitignore；主仓库规则不同（不应命中 worktree 路径）
+    fs::write(main_root.join(".gitignore"), "main.log\n").expect("写入主 .gitignore 失败");
+    fs::write(wt_root.join(".gitignore"), "wt.log\n").expect("写入 worktree .gitignore 失败");
+    // watcher 共享过滤器：根固定在主项目路径
+    let shared = Arc::new(GitIgnoreFilter::new(main_root.clone()));
+
+    // base = worktree 路径（主仓库之外）→ 根不匹配 → 现场构建 worktree 根过滤器
+    let resolved = crate::common::file::services::resolve_gitignore_filter(
+        &ExecTarget::Local,
+        Some(Arc::clone(&shared)),
+        &wt_root,
+    )
+    .await
+    .expect("根不匹配必须现场构建过滤器");
+    assert!(
+        !Arc::ptr_eq(&shared, &resolved),
+        "根不匹配不得复用 watcher 共享过滤器"
+    );
+    assert!(
+        resolved.same_root(&wt_root),
+        "现场构建过滤器必须以 base（worktree）为根"
+    );
+    assert!(
+        resolved.should_ignore_own(&wt_root.join("wt.log"), false),
+        "worktree 过滤器必须命中 worktree 自身 .gitignore"
+    );
+    assert!(
+        !resolved.should_ignore_own(&wt_root.join("main.log"), false),
+        "worktree 过滤器不应携带主仓库规则"
+    );
+    let _ = fs::remove_dir_all(&main_root);
+    let _ = fs::remove_dir_all(&wt_root);
+}
+
+/// spawn_blocking join 失败（runtime 关闭 / 闭包 panic）→ 退化为 None（无过滤器
+/// = 无 ignored 标注，与修复前一致），不掩盖错误 —— 直接覆盖该防御分支。
+#[tokio::test]
+async fn flatten_join_result_degrades_to_none_on_join_failure() {
+    // join 失败：panic 的 blocking 任务 join 返回 Err(JoinError)
+    let join_err = tokio::task::spawn_blocking(|| panic!("simulated blocking panic"))
+        .await
+        .err()
+        .expect("panic 的 blocking 任务 join 必须返回 Err");
+    let err_result: Result<Option<Arc<GitIgnoreFilter>>, _> = Err(join_err);
+    assert!(
+        flatten_join_result(err_result).is_none(),
+        "join 失败应退化为无过滤器（无标注）"
+    );
+
+    // Ok(Some)：构建成功透传
+    let root = temp_root("join_ok");
+    fs::create_dir_all(root.join(".git")).unwrap();
+    let ok_result: Result<Option<Arc<GitIgnoreFilter>>, _> =
+        Ok(Some(Arc::new(GitIgnoreFilter::new(root.clone()))));
+    assert!(
+        flatten_join_result(ok_result).is_some(),
+        "Ok(Some) 应透传过滤器"
+    );
+
+    // Ok(None)：非 git 目录透传 None
+    let none_result: Result<Option<Arc<GitIgnoreFilter>>, _> = Ok(None);
+    assert!(
+        flatten_join_result(none_result).is_none(),
+        "Ok(None) 应透传 None"
+    );
+    let _ = fs::remove_dir_all(&root);
+}
+
+/// 读层缓存：同 root 的现场构建复用（避免 worktree 每次读树全树遍历构建）；
+/// `invalidate_local_gitignore_cache` 后重建并命中新规则。
+#[tokio::test]
+async fn resolve_gitignore_filter_caches_built_filter_per_root() {
+    let root = temp_root("gitignore_local_cache");
+    fs::create_dir_all(root.join(".git")).expect("创建 .git 失败");
+    fs::write(root.join(".gitignore"), "*.log\n").expect("写入 .gitignore 失败");
+
+    let first =
+        crate::common::file::services::resolve_gitignore_filter(&ExecTarget::Local, None, &root)
+            .await
+            .expect("首次构建");
+    let second =
+        crate::common::file::services::resolve_gitignore_filter(&ExecTarget::Local, None, &root)
+            .await
+            .expect("二次读取");
+    assert!(
+        Arc::ptr_eq(&first, &second),
+        "同 root 应复用读层缓存，而非重建"
+    );
+
+    // 规则变更：写入新规则 → 失效 → 重读必须重建并命中新规则
+    fs::write(root.join(".gitignore"), "cache.log\n").expect("写入新规则失败");
+    crate::common::file::services::invalidate_local_gitignore_cache();
+    let refreshed =
+        crate::common::file::services::resolve_gitignore_filter(&ExecTarget::Local, None, &root)
+            .await
+            .expect("失效后重建");
+    assert!(!Arc::ptr_eq(&first, &refreshed), "失效后必须重建过滤器");
+    assert!(
+        refreshed.should_ignore_own(&root.join("cache.log"), false),
+        "重建过滤器必须命中新规则"
+    );
+
+    // 清理缓存，避免污染同 root 的其他测试
+    crate::common::file::services::invalidate_local_gitignore_cache();
     let _ = fs::remove_dir_all(&root);
 }
 
