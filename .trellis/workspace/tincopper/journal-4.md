@@ -346,3 +346,96 @@ CodeLens 风格内联 Run/Debug 按钮：testCases.ts 用例检测（TS test/it 
 ### Next Steps
 
 - None - task complete
+
+
+## Session 188: S2 注册层排除 + fsmonitor 引导 + ignored_files 退役：调研文档全部收口
+
+**Date**: 2026-09-07
+**Task**: S2 注册层排除 + fsmonitor 引导 + ignored_files 退役：调研文档全部收口
+**Branch**: `main`
+
+### Summary
+
+完成剩余三项（调研文档 S0-S5 与 G1-G6 全部落地）：①S2 排除式监听——registration.rs 平台策略枚举（Linux=Selective 逐可见目录注册、macOS/Windows=Recursive+回调过滤）+ compute_watch_dirs 计划纯函数（超限/失败降级整树）+ 独立维护线程（规避 notify 回调内 watch 的 FSEvents 死锁），ignored 子树在 inotify 注册层不再产生事件；②G7 fsmonitor/untracked cache 引导——perf.rs 检测（>2万文件阈值 + git config 探测，纯决策函数可测）+ 一次性 git-perf-suggestion 事件 + 前端通知（只提示不代改用户仓库配置）；③S5 ignored_files 退役——GitIgnoreFilter 提升为 pub + should_ignore_own（自匹配语义，保「展开 ignored 目录可见内容」穿透性）+ FileNode.ignored 原生标注 + read_dir_tree 签名改 filter 引用 + get_ignored_files/gitStore.ignoredByProject/前端 ignoredFiles props 全链退役，灰显单一事实源收敛到读层。门禁：cargo 1064/0、pnpm 355 文件 2868/0、lint（fmt+clippy+3守卫）全绿、type-check 0。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+(No commits - planning session)
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
+
+
+## Session 189: neeko-check 审核修复 + register_selective 降级路径注入化测试
+
+**Date**: 2026-09-07
+**Task**: neeko-check 审核修复 + register_selective 降级路径注入化测试
+**Branch**: `main`
+
+### Summary
+
+完成 neeko-check 审核整改（1 Block + 3 Warning + 2 Nit）：①perf 线程加 git_repo 门控（对齐 watch() 内非 git 项目跳过约定）；②'git-perf-suggestion' 收入 shared/events.ts 常量（红线12）；③notify 回调内 fs::metadata 移入维护线程（回调零 fs 探测）；④GitIgnoreFilter 两个判定函数提取共用 is_ignored_with（with_parents 参数区分 watcher/read 层语义）；⑤doc 残留 + _root 改名。同步完成 register_selective 降级路径注入化：WatchRegistration 全方法泛化 W: Watcher（生产 RecommendedWatcher / 测试 FailureWatch mock，MutexGuard 调用点显式解引用 &mut *w），新增 4 条确定性测试（连续失败降级+部分成功 drain 解除 / 超限直接降级 / 维护补注册与降级 no-op / 规则重算平台条件断言——Linux drain 重算 vs Recursive 平台策略性 no-op），registration 测试 10/10。门禁：cargo 1069/0、pnpm 2868/0、lint 全绿、type-check 0。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+(No commits - planning session)
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
+
+
+## Session 190: 对标差距收口：窗口聚焦触发 + P2/check-ignore 文档化
+
+**Date**: 2026-09-07
+**Task**: 对标差距收口：窗口聚焦触发 + P2/check-ignore 文档化
+**Branch**: `main`
+
+### Summary
+
+完成 redesign-plan 对标审计后的三项建议优化：①窗口重新聚焦触发（VSCode 触发源⑤对标）——useGitStatusEventsSync 经 getCurrentWindow().onFocusChanged 对活跃项目调度 refreshGitFileStates（复用 500ms 去抖 + worker 查询-比较闸门兜底平台丢事件），unlisten 正确析构；②P2 rename 降级语义文档化（redesign-plan §3.5 标注已落地 + parser 就近注释：similarity 不足由 git 自身输出 D+?，不做补偿推断）；③redesign-plan 补实施状态注记（G1-G6 关闭、check-ignore 点查由分层 GitIgnoreFilter 替代满足、per-repo 全操作串行队列留作按需项及理由）。对标结论：五条公理全部达成，无架构性违反。门禁：cargo 1069/0、lint 全绿、type-check 0、pnpm 2868/0。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+(No commits - planning session)
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-4.md`
-- **Total Sessions**: 187
-- **Last Active**: 2026-09-06
+- **Total Sessions**: 190
+- **Last Active**: 2026-09-07
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-4.md` | ~348 | Active |
+| `journal-4.md` | ~441 | Active |
 | `journal-3.md` | ~1978 | Archived |
 | `journal-2.md` | ~1991 | Archived |
 | `journal-1.md` | ~1986 | Archived |
@@ -32,6 +32,9 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 190 | 2026-09-07 | 对标差距收口：窗口聚焦触发 + P2/check-ignore 文档化 | - | `main` |
+| 189 | 2026-09-07 | neeko-check 审核修复 + register_selective 降级路径注入化测试 | - | `main` |
+| 188 | 2026-09-07 | S2 注册层排除 + fsmonitor 引导 + ignored_files 退役：调研文档全部收口 | - | `main` |
 | 187 | 2026-09-06 | S4 文件树窗口虚拟化：扁平化 + VirtualList，万级节点渲染 O(可见行数) | - | `main` |
 | 186 | 2026-09-06 | G6 XY 状态码契约：ChangesList 四组真实分组落地 | - | `main` |
 | 185 | 2026-09-06 | G5 Git Status 路线收尾：diff 刷新回归修复 + 嵌套 gitignore 分层 + 上限统一 + 压测替身 | - | `main` |

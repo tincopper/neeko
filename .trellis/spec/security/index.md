@@ -25,6 +25,14 @@
 3. **输入校验**：命令参数需校验类型、范围、业务规则
 4. **路径规范化**：必要时对路径参数 `canonicalize` 并限制在允许目录内
 
+## 文件树路径安全细则
+
+- Local 路径：优先 `canonicalize()` 后用 `starts_with(root)` 校验，能覆盖符号链接和 `..` 穿越。
+- WSL / Remote 相对子路径：本端无法可靠 canonicalize，必须在拼接 `root_path` 前做严格语法校验；仅接受普通相对段，拒绝绝对路径、空段、`.`、`..`、反斜杠和 NUL。
+- Shell 转义不能替代路径边界校验：`safe_path()` 只防止命令注入，不防止越出项目根。
+- WSL / Remote 文件树的 ignored 标记与剪枝功能建立在越界校验之后，安全校验不应改变合法相对路径的懒加载行为。
+- 远程 ignored 查询结果必须有界：解析输出设上限并告警，缓存 key 只含 project / target / root 等稳定非敏感信息，且必须提供 TTL 与 `.gitignore` / exclude / unwatch 失效。
+
 ---
 
 ## 如何使用这些指南
