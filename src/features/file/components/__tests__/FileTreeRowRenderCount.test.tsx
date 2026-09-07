@@ -48,7 +48,9 @@ vi.mock('@/features/file/components/FileTreeRow', async () => {
     if (row.kind === 'renaming') {
       return <input aria-label="rename-input" value={node.renaming_name ?? ''} readOnly />;
     }
-    const handleClick = () => {
+    const handleClick = (e: React.MouseEvent) => {
+      // 与真实 FileTreeRow 契约一致：节点点击不冒泡到树容器（容器空白才选根）
+      e.stopPropagation();
       props.onSelectNode?.(node.path, node.is_dir);
       if (node.is_dir) {
         props.onToggleDir?.(node.path);
@@ -63,7 +65,7 @@ vi.mock('@/features/file/components/FileTreeRow', async () => {
         className={color}
         onClick={handleClick}
         onKeyDown={(e) => {
-          if (e.key === 'Enter' || e.key === ' ') handleClick();
+          if (e.key === 'Enter' || e.key === ' ') handleClick(e);
         }}
       >
         {node.name}

@@ -180,6 +180,11 @@ export function useFilePanelState(params: UseFilePanelStateParams) {
     setSelectedNode({ path, isDir });
   }, []);
 
+  // 取消选中（点击文件面板外任意处）：新建目标回到根（getCreationDir 对 null 返回 ''）。
+  const clearSelection = useCallback(() => {
+    setSelectedNode(null);
+  }, []);
+
   // 定位：复用「点击选中」逻辑（selectedNode → selectedPath → isSelected 高亮），
   // 额外展开父目录。与手动点击文件的选中路径完全一致，不另起一套高亮。
   // 文件树为「初始有限深度（DEFAULT_TREE_DEPTH=3）+ 按目录懒加载」，深于初始
@@ -440,6 +445,7 @@ export function useFilePanelState(params: UseFilePanelStateParams) {
     collapseAll,
     closeContextMenu,
     handleSelectNode,
+    clearSelection,
     locateFile,
     getCreationDir,
     startCreating,

@@ -11,6 +11,7 @@ import {
 } from '@/shared/utils/gitFileDecoration';
 
 import { useFilePanelState } from '../hooks/useFilePanelState';
+import { usePanelDeselect } from '../hooks/usePanelDeselect';
 import { useFileStore } from '../store';
 import { displayHomePath } from '../utils/fileTreeUtils';
 
@@ -190,6 +191,12 @@ function FilesPanel({
     prevLocateTargetRef.current = locateTargetPath;
   }, [autoLocateFileOnTabSwitch, locateTargetPath, locateFile]);
 
+  // 面板空白选根 + 面板外点击全局取消选中（数据流收口见 usePanelDeselect）
+  const { panelRef, handlePanelBackgroundClick } = usePanelDeselect({
+    handleSelectNode: state.handleSelectNode,
+    clearSelection: state.clearSelection,
+  });
+
   if (!projectName) {
     return (
       <div className="flex-1 flex items-center justify-center p-4">
@@ -201,7 +208,12 @@ function FilesPanel({
   }
 
   return (
-    <div className="flex flex-col h-full">
+    <div
+      ref={panelRef}
+      className="flex flex-col h-full"
+      role="presentation"
+      onClick={handlePanelBackgroundClick}
+    >
       <FilesPanelHeader
         projectName={projectName}
         projectPath={projectPath}
@@ -245,6 +257,7 @@ function FilesPanel({
         onRefresh={onRefresh}
         onContextMenu={state.handleContextMenu}
         onSelectNode={state.handleSelectNode}
+        onSelectRoot={() => state.handleSelectNode('', true)}
         onCreatingValueChange={state.setCreatingValue}
         onCreatingSubmit={state.submitCreating}
         onCreatingCancel={state.cancelCreating}

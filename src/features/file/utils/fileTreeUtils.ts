@@ -24,3 +24,14 @@ export function getParentPaths(filePath: string): string[] {
   }
   return paths;
 }
+
+/**
+ * 点击目标是否命中交互控件（按钮 / 输入 / 树节点行 / 菜单项）。
+ *
+ * 文件面板「空白点击选中项目根」时用于排除交互控件：节点行已 stopPropagation，
+ * 此判定兜底新建/重命名输入框、头部按钮、右键菜单项等，避免聚焦输入或点按钮时
+ * 误清选中。树容器与面板根共用同一份选择器（单源）。
+ */
+export function isPanelInteractiveTarget(target: HTMLElement): boolean {
+  return Boolean(target.closest('button, input, textarea, [role="treeitem"], [role="menuitem"]'));
+}

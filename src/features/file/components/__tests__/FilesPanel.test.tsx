@@ -144,6 +144,71 @@ describe('FilesPanel 文件管理', () => {
     expect(onCreateFile).toHaveBeenCalledWith('src', 'x.ts');
   });
 
+  it('点击树空白区域选中项目根：新建文件/目录目标回到根', () => {
+    const onCreateFile = vi.fn().mockResolvedValue(undefined);
+    render(<FilesPanel {...baseProps} onCreateFile={onCreateFile} />);
+
+    // 先选中 src 目录 → 新建目标为 src 内
+    fireEvent.click(screen.getByText('src'));
+    fireEvent.click(screen.getByTitle('New File'));
+    const input1 = screen.getByPlaceholderText('filename');
+    fireEvent.change(input1, { target: { value: 'inner.ts' } });
+    fireEvent.keyDown(input1, { key: 'Enter' });
+    expect(onCreateFile).toHaveBeenCalledWith('src', 'inner.ts');
+
+    // 点击树空白区域 → 选中项目根
+    fireEvent.click(screen.getByTestId('file-tree-empty-area'));
+
+    // 新建文件 → 目标回到根（''）
+    fireEvent.click(screen.getByTitle('New File'));
+    const input2 = screen.getByPlaceholderText('filename');
+    fireEvent.change(input2, { target: { value: 'root.ts' } });
+    fireEvent.keyDown(input2, { key: 'Enter' });
+    expect(onCreateFile).toHaveBeenCalledWith('', 'root.ts');
+  });
+
+  it('点击文件面板头部空白区域取消节点选中：新建目标回到根', () => {
+    const onCreateFile = vi.fn().mockResolvedValue(undefined);
+    render(<FilesPanel {...baseProps} onCreateFile={onCreateFile} />);
+
+    // 选中 src → 新建目标为 src 内
+    fireEvent.click(screen.getByText('src'));
+    fireEvent.click(screen.getByTitle('New File'));
+    const input1 = screen.getByPlaceholderText('filename');
+    fireEvent.change(input1, { target: { value: 'inner.ts' } });
+    fireEvent.keyDown(input1, { key: 'Enter' });
+    expect(onCreateFile).toHaveBeenCalledWith('src', 'inner.ts');
+
+    // 点击头部项目名（非交互区域）→ 取消选中，新建目标回根
+    fireEvent.click(screen.getByText('demo'));
+    fireEvent.click(screen.getByTitle('New File'));
+    const input2 = screen.getByPlaceholderText('filename');
+    fireEvent.change(input2, { target: { value: 'root.ts' } });
+    fireEvent.keyDown(input2, { key: 'Enter' });
+    expect(onCreateFile).toHaveBeenCalledWith('', 'root.ts');
+  });
+
+  it('点击文件面板外任意处取消节点选中：新建目标回到根', () => {
+    const onCreateFile = vi.fn().mockResolvedValue(undefined);
+    render(<FilesPanel {...baseProps} onCreateFile={onCreateFile} />);
+
+    // 选中 src → 新建目标为 src 内
+    fireEvent.click(screen.getByText('src'));
+    fireEvent.click(screen.getByTitle('New File'));
+    const input1 = screen.getByPlaceholderText('filename');
+    fireEvent.change(input1, { target: { value: 'inner.ts' } });
+    fireEvent.keyDown(input1, { key: 'Enter' });
+    expect(onCreateFile).toHaveBeenCalledWith('src', 'inner.ts');
+
+    // 点击面板外（document.body 空白）→ 取消选中，新建目标回根
+    fireEvent.click(document.body);
+    fireEvent.click(screen.getByTitle('New File'));
+    const input2 = screen.getByPlaceholderText('filename');
+    fireEvent.change(input2, { target: { value: 'root.ts' } });
+    fireEvent.keyDown(input2, { key: 'Enter' });
+    expect(onCreateFile).toHaveBeenCalledWith('', 'root.ts');
+  });
+
   it('右键目录 → New File 时提交到该目录', () => {
     const onCreateFile = vi.fn().mockResolvedValue(undefined);
     render(<FilesPanel {...baseProps} onCreateFile={onCreateFile} />);

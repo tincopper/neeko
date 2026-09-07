@@ -1,9 +1,11 @@
-import { useEffect, useRef } from 'react';
+import React, { useEffect, useRef } from 'react';
 
 import { VirtualList } from '@/shared/components/VirtualList';
 import type { VirtualListHandle } from '@/shared/components/VirtualList';
 import type { FileTreeViewNode } from '@/shared/types';
 import { flatRowKey, type FlatFileTreeRow } from '@/shared/utils/fileTree';
+
+import { isPanelInteractiveTarget } from '../utils/fileTreeUtils';
 
 import FileTreeRow from './FileTreeRow';
 
@@ -29,6 +31,8 @@ interface FileTreeListProps {
   onRefresh: () => void;
   onContextMenu: (position: { x: number; y: number }, node: FileTreeViewNode) => void;
   onSelectNode: (path: string, isDir: boolean) => void;
+  /** 点击树空白区域选中项目根（新建文件/目录目标回到根） */
+  onSelectRoot: () => void;
   onCreatingValueChange: (value: string) => void;
   onCreatingSubmit: () => void;
   onCreatingCancel: () => void;
@@ -56,6 +60,7 @@ function FileTreeList({
   onRefresh,
   onContextMenu,
   onSelectNode,
+  onSelectRoot,
   onCreatingValueChange,
   onCreatingSubmit,
   onCreatingCancel,
@@ -78,15 +83,15 @@ function FileTreeList({
     listHandleRef.current?.scrollToIndex(idx, align);
   }, [selectedPath, rows]);
 
+  let content: React.ReactNode;
   if (isLoading) {
-    return (
+    content = (
       <div className="flex-1 flex items-center justify-center p-4">
         <span className="text-[var(--font-size)] text-text-secondary">Loading...</span>
       </div>
     );
-  }
-  if (loadFailed) {
-    return (
+  } else if (loadFailed) {
+    content = (
       <div className="flex-1 flex flex-col items-center justify-center gap-2 p-4">
         <span className="text-[var(--font-size)] text-text-secondary">Failed to load files</span>
         <button
@@ -98,44 +103,64 @@ function FileTreeList({
         </button>
       </div>
     );
-  }
-  if (rows.length === 0) {
-    return (
+  } else if (rows.length === 0) {
+    content = (
       <div className="flex-1 flex items-center justify-center p-4">
         <span className="text-[var(--font-size)] text-text-secondary">No files found</span>
       </div>
     );
+  } else {
+    content = (
+      <VirtualList
+        items={rows}
+        getKey={flatRowKey}
+        estimateSize={20}
+        overscan={10}
+        className="flex-1 min-h-0 overflow-x-hidden pb-8"
+        initialRect={INITIAL_LIST_RECT}
+        handleRef={listHandleRef}
+        onRangeChange={(start, end) => {
+          visibleRangeRef.current = [start, end];
+        }}
+        renderItem={(row) => (
+          <FileTreeRow
+            row={row}
+            projectId={projectId}
+            onSelectFile={onSelectFile}
+            onToggleDir={onToggleDir}
+            onRetryDir={onRetryDir}
+            onContextMenu={onContextMenu}
+            onSelectNode={onSelectNode}
+            onCreatingValueChange={onCreatingValueChange}
+            onCreatingSubmit={onCreatingSubmit}
+            onCreatingCancel={onCreatingCancel}
+            onRenamingChange={onRenamingChange}
+            onRenamingSubmit={onRenamingSubmit}
+            onRenamingCancel={onRenamingCancel}
+          />
+        )}
+      />
+    );
   }
+
   return (
-    <VirtualList
-      items={rows}
-      getKey={flatRowKey}
-      estimateSize={20}
-      overscan={10}
-      className="flex-1 min-h-0 overflow-x-hidden"
-      initialRect={INITIAL_LIST_RECT}
-      handleRef={listHandleRef}
-      onRangeChange={(start, end) => {
-        visibleRangeRef.current = [start, end];
+    // 点击空白区域（节点行 onClick 已 stopPropagation）选中项目根，使头部新建
+    // 文件/目录目标回到根 —— 否则选中节点后无法在根目录新建。
+    // role=presentation 遵循项目空白点击先例（SettingsPanel/OverlayPanel）；
+    // 内含 treeitem（可聚焦后代）时 presentation 语义被 UA 忽略，树不扁平化。
+    <div
+      data-testid="file-tree-empty-area"
+      className="flex flex-col flex-1 min-h-0"
+      role="presentation"
+      onClick={(e) => {
+        // 节点行已 stopPropagation；新建/重命名输入等交互控件经共享判定排除，
+        // 避免聚焦输入时误清选中
+        if (isPanelInteractiveTarget(e.target as HTMLElement)) return;
+        onSelectRoot();
       }}
-      renderItem={(row) => (
-        <FileTreeRow
-          row={row}
-          projectId={projectId}
-          onSelectFile={onSelectFile}
-          onToggleDir={onToggleDir}
-          onRetryDir={onRetryDir}
-          onContextMenu={onContextMenu}
-          onSelectNode={onSelectNode}
-          onCreatingValueChange={onCreatingValueChange}
-          onCreatingSubmit={onCreatingSubmit}
-          onCreatingCancel={onCreatingCancel}
-          onRenamingChange={onRenamingChange}
-          onRenamingSubmit={onRenamingSubmit}
-          onRenamingCancel={onRenamingCancel}
-        />
-      )}
-    />
+    >
+      {content}
+    </div>
   );
 }
 

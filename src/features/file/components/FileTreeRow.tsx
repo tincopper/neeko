@@ -124,7 +124,11 @@ function FileTreeRow({
       style={{ paddingLeft: indent }}
       draggable={!!projectId}
       onDragStart={handleDragStart}
-      onClick={handleClick}
+      onClick={(e) => {
+        // 阻止冒泡到树容器：容器空白点击才选中项目根，节点点击只选中自身
+        e.stopPropagation();
+        handleClick();
+      }}
       onKeyDown={(e) => {
         if (e.key === 'Enter' || e.key === ' ') {
           e.preventDefault();
