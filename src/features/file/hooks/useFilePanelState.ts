@@ -182,12 +182,27 @@ export function useFilePanelState(params: UseFilePanelStateParams) {
 
   // 定位：复用「点击选中」逻辑（selectedNode → selectedPath → isSelected 高亮），
   // 额外展开父目录。与手动点击文件的选中路径完全一致，不另起一套高亮。
+  // 文件树为「初始有限深度（DEFAULT_TREE_DEPTH=3）+ 按目录懒加载」，深于初始
+  // 深度的目标文件其祖先目录可能从未 loadDir —— 只改 expandedDirs 会让目标行
+  // 缺失（不高亮、不滚动，点击看似无反应）。逐级 onExpandDir（store.loadDir
+  // 幂等：已加载跳过）补齐内容；加载完成后 rows 变化触发 FilesPanel 滚动 effect
+  // （idx<0 不记 prev）自动重跑滚到目标行。
   const locateFile = useCallback(
-    (path: string) => {
+    async (path: string) => {
       handleSelectNode(path, false);
       expandPathParents(path);
+      const parentPaths = getParentPaths(path);
+      // 单目录加载失败不中断整链定位：目录已展开，失败由 store error 态呈现
+      // （红点可重试），定位本身是尽力而为 —— 已就绪的选中/展开不因单级失败回退。
+      for (const p of parentPaths) {
+        try {
+          await onExpandDir(p);
+        } catch {
+          // 目录加载失败已由 store 标记 error；继续加载剩余祖先路径。
+        }
+      }
     },
-    [handleSelectNode, expandPathParents],
+    [handleSelectNode, expandPathParents, onExpandDir],
   );
 
   // 关闭删除确认对话框（不执行删除）

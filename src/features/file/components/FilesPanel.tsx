@@ -1,10 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useRef } from 'react';
 
 import ContextMenu from '@/shared/components/ContextMenu';
-import { VirtualList } from '@/shared/components/VirtualList';
-import type { VirtualListHandle } from '@/shared/components/VirtualList';
 import type { FileChange } from '@/shared/types';
-import { buildFileTreeView, flattenFileTreeView, flatRowKey } from '@/shared/utils/fileTree';
+import { buildFileTreeView, flattenFileTreeView } from '@/shared/utils/fileTree';
 import {
   buildFileSummaryMap,
   buildFolderSummaryMap,
@@ -18,16 +16,13 @@ import { displayHomePath } from '../utils/fileTreeUtils';
 
 import DeleteConfirmDialog from './DeleteConfirmDialog';
 import FilesPanelHeader from './FilesPanelHeader';
-import FileTreeRow from './FileTreeRow';
+import FileTreeList from './FileTreeList';
 import InlineNameInput from './InlineNameInput';
 
 export { displayHomePath };
 
 /** 空变更列表常量：避免每次渲染新建空数组导致下游 useMemo 依赖抖动 */
 const EMPTY_CHANGED_FILES: FileChange[] = [];
-
-/** VirtualList 首帧测量前的容器尺寸兜底（模块级常量，避免内联对象逐渲染新建） */
-const INITIAL_LIST_RECT: { width: number; height: number } = { width: 600, height: 1200 };
 
 interface FilesPanelProps {
   projectName: string | null;
@@ -162,28 +157,10 @@ function FilesPanel({
     ],
   );
 
-  // S4：视图树 → 扁平行（按渲染顺序），交 VirtualList 窗口化渲染（O(可见行数)）
+  // S4：视图树 → 扁平行（按渲染顺序），交 FileTreeList 窗口化渲染（O(可见行数)）。
+  // 定位滚动（scrollToIndex）由 FileTreeList 收口。
   const rows = useMemo(() => flattenFileTreeView(viewTree), [viewTree]);
-
-  // 定位：虚拟化后目标行可能未挂载，scrollIntoView 不可靠 —— 经 handle 滚到目标行。
-  // 仅在选中目标**变化**时滚动（rows 重建不重滚，避免 git 刷新/内联击键把视口拽回
-  // 选中行）；目标行已在可见窗口内时不滚（保持旧版 scrollIntoView block:'nearest'
-  // 语义：下方目标贴底、上方目标贴顶，各取最小滚动）。
-  const listHandleRef = useRef<VirtualListHandle | null>(null);
-  const visibleRangeRef = useRef<[number, number] | null>(null);
-  const prevSelectedPathRef = useRef<string | null>(null);
   const selectedPath = state.selectedNode?.path ?? null;
-  useEffect(() => {
-    if (!selectedPath || selectedPath === prevSelectedPathRef.current) return;
-    const idx = rows.findIndex((r) => r.node.path === selectedPath);
-    // 行尚未组装（祖先目录内容懒加载未到）→ 不记 prev，待 rows 到位后下一轮 effect 再滚
-    if (idx < 0) return;
-    prevSelectedPathRef.current = selectedPath;
-    const range = visibleRangeRef.current;
-    if (range && idx >= range[0] && idx < range[1]) return;
-    const align = range ? (idx < range[0] ? 'start' : 'end') : 'center';
-    listHandleRef.current?.scrollToIndex(idx, align);
-  }, [selectedPath, rows]);
 
   // 首次加载（根无内容且 loading）显示全面板 Loading；失败且无内容显示重试
   const isLoading = loadStates[''] === 'loading' && !dirs[''];
@@ -194,7 +171,7 @@ function FilesPanel({
   const { locateFile } = state;
   const handleLocateFile = useCallback(() => {
     if (locateTargetPath) {
-      locateFile(locateTargetPath);
+      void locateFile(locateTargetPath);
     }
   }, [locateTargetPath, locateFile]);
 
@@ -208,7 +185,7 @@ function FilesPanel({
       locateTargetPath &&
       locateTargetPath !== prevLocateTargetRef.current
     ) {
-      locateFile(locateTargetPath);
+      void locateFile(locateTargetPath);
     }
     prevLocateTargetRef.current = locateTargetPath;
   }, [autoLocateFileOnTabSwitch, locateTargetPath, locateFile]);
@@ -255,56 +232,26 @@ function FilesPanel({
           indent={4}
         />
       )}
-      {isLoading ? (
-        <div className="flex-1 flex items-center justify-center p-4">
-          <span className="text-[var(--font-size)] text-text-secondary">Loading...</span>
-        </div>
-      ) : loadFailed ? (
-        <div className="flex-1 flex flex-col items-center justify-center gap-2 p-4">
-          <span className="text-[var(--font-size)] text-text-secondary">Failed to load files</span>
-          <button
-            type="button"
-            onClick={onRefresh}
-            className="text-[var(--font-size)] text-accent hover:underline"
-          >
-            Retry
-          </button>
-        </div>
-      ) : rows.length === 0 ? (
-        <div className="flex-1 flex items-center justify-center p-4">
-          <span className="text-[var(--font-size)] text-text-secondary">No files found</span>
-        </div>
-      ) : (
-        <VirtualList
-          items={rows}
-          getKey={flatRowKey}
-          estimateSize={20}
-          overscan={10}
-          className="flex-1 min-h-0 overflow-x-hidden"
-          initialRect={INITIAL_LIST_RECT}
-          handleRef={listHandleRef}
-          onRangeChange={(start, end) => {
-            visibleRangeRef.current = [start, end];
-          }}
-          renderItem={(row) => (
-            <FileTreeRow
-              row={row}
-              projectId={projectId}
-              onSelectFile={onSelectFile}
-              onToggleDir={state.handleToggleDir}
-              onRetryDir={onExpandDir}
-              onContextMenu={state.handleContextMenu}
-              onSelectNode={state.handleSelectNode}
-              onCreatingValueChange={state.setCreatingValue}
-              onCreatingSubmit={state.submitCreating}
-              onCreatingCancel={state.cancelCreating}
-              onRenamingChange={state.handleRenamingChange}
-              onRenamingSubmit={state.submitRenaming}
-              onRenamingCancel={state.cancelRenaming}
-            />
-          )}
-        />
-      )}
+      {/* 树列表：loading / error / empty 三态 + 虚拟化渲染 + 定位滚动（FileTreeList 收口） */}
+      <FileTreeList
+        rows={rows}
+        selectedPath={selectedPath}
+        isLoading={isLoading}
+        loadFailed={loadFailed}
+        projectId={projectId}
+        onSelectFile={onSelectFile}
+        onToggleDir={state.handleToggleDir}
+        onRetryDir={onExpandDir}
+        onRefresh={onRefresh}
+        onContextMenu={state.handleContextMenu}
+        onSelectNode={state.handleSelectNode}
+        onCreatingValueChange={state.setCreatingValue}
+        onCreatingSubmit={state.submitCreating}
+        onCreatingCancel={state.cancelCreating}
+        onRenamingChange={state.handleRenamingChange}
+        onRenamingSubmit={state.submitRenaming}
+        onRenamingCancel={state.cancelRenaming}
+      />
 
       {/* Context Menu */}
       {state.contextMenu && (

@@ -379,6 +379,59 @@ describe('FilesPanel 文件管理', () => {
     fireEvent.click(screen.getByTitle('Locate current file'));
     expect(screen.getByRole('treeitem', { selected: true })).toHaveTextContent('a.ts');
   });
+
+  it('定位深于初始深度的文件：未加载祖先目录触发懒加载后选中目标（回归）', async () => {
+    // 只 seed 根与 src —— 模拟初始加载（DEFAULT_TREE_DEPTH=3）后 src/deep 因
+    // children 为空未被 flattenNestedDirs seed，dirs['src/deep'] 缓存缺失。
+    useFileStore.getState().reset();
+    useFileStore.setState({
+      owner: OWNER,
+      dirs: {
+        '': [{ name: 'src', path: 'src', is_dir: true, children: [] }],
+        src: [{ name: 'deep', path: 'src/deep', is_dir: true, children: [] }],
+      },
+      loadStates: { '': 'loaded', src: 'loaded' },
+    });
+
+    // onExpandDir 模拟 store.loadDir 的幂等语义：已加载目录跳过，缺失目录填充一级条目
+    const onExpandDir = vi.fn(async (dirPath: string) => {
+      const s = useFileStore.getState();
+      if (s.dirs[dirPath]) return;
+      useFileStore.setState({
+        dirs: {
+          ...s.dirs,
+          [dirPath]: [{ name: 'foo.ts', path: `${dirPath}/foo.ts`, is_dir: false, children: [] }],
+        },
+        loadStates: { ...s.loadStates, [dirPath]: 'loaded' },
+      });
+    });
+
+    try {
+      render(
+        <FilesPanel
+          {...baseProps}
+          onExpandDir={onExpandDir}
+          locateTargetPath="src/deep/foo.ts"
+          canLocateFile
+          autoLocateFileOnTabSwitch={false}
+        />,
+      );
+
+      fireEvent.click(screen.getByTitle('Locate current file'));
+
+      // 未加载祖先目录被触发懒加载（从浅到深）
+      await waitFor(() => expect(onExpandDir).toHaveBeenCalledWith('src'));
+      expect(onExpandDir).toHaveBeenCalledWith('src/deep');
+
+      // 加载完成后目标行出现并被选中（修复前只展开 expandedDirs、无内容 → 永不选中）
+      await waitFor(() => {
+        expect(screen.getByRole('treeitem', { selected: true })).toHaveTextContent('foo.ts');
+      });
+    } finally {
+      // 恢复基态：后续「目录 git 状态装饰」describe 依赖 seedDirs(tree) 的残留
+      seedDirs(tree);
+    }
+  });
 });
 
 describe('目录 git 状态装饰（P1：目录级着色；需求演进：不渲染行尾徽标）', () => {
