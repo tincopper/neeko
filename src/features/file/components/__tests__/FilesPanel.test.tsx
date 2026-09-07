@@ -236,13 +236,15 @@ describe('FilesPanel 文件管理', () => {
     expect(screen.queryByText('a.ts')).not.toBeInTheDocument();
   });
 
-  it('被 .gitignore 忽略的文件显示灰色', () => {
+  // ── S5：ignored 灰显由后端读层原生标注（FileNode.ignored），平行数组退役 ──
+
+  it('被 .gitignore 忽略的文件（后端标注 ignored）显示灰色', () => {
     const treeWithIgnored: FileNode[] = [
       ...tree,
-      { name: '.env', path: '.env', is_dir: false, children: [] },
+      { name: '.env', path: '.env', is_dir: false, children: [], ignored: true },
     ];
     seedDirs(treeWithIgnored);
-    render(<FilesPanel {...baseProps} ignoredFiles={['.env']} />);
+    render(<FilesPanel {...baseProps} />);
 
     expect(screen.getByText('.env')).toHaveClass('text-text-muted');
     // 普通文件不受影响
@@ -250,44 +252,15 @@ describe('FilesPanel 文件管理', () => {
   });
 
   it('被忽略的目录显示灰色', () => {
-    render(<FilesPanel {...baseProps} ignoredFiles={['src']} />);
+    const treeIgnoredDir: FileNode[] = [
+      { name: 'src', path: 'src', is_dir: true, children: [], ignored: true },
+    ];
+    seedDirs(treeIgnoredDir);
+    render(<FilesPanel {...baseProps} />);
     expect(screen.getByText('src')).toHaveClass('text-text-muted');
   });
 
-  it('被忽略目录的子文件也显示灰色（忽略状态沿树传播）', () => {
-    render(<FilesPanel {...baseProps} ignoredFiles={['src']} />);
-
-    // 展开 src 后，子文件应继承父目录的忽略状态
-    fireEvent.click(screen.getByText('src'));
-    expect(screen.getByText('a.ts')).toHaveClass('text-text-muted');
-  });
-
-  it('多级嵌套子目录继承忽略状态', () => {
-    const deepTree: FileNode[] = [
-      {
-        name: 'a',
-        path: 'a',
-        is_dir: true,
-        children: [
-          {
-            name: 'b',
-            path: 'a/b',
-            is_dir: true,
-            children: [{ name: 'c.txt', path: 'a/b/c.txt', is_dir: false, children: [] }],
-          },
-        ],
-      },
-    ];
-    seedDirs(deepTree);
-    render(<FilesPanel {...baseProps} ignoredFiles={['a']} />);
-
-    fireEvent.click(screen.getByText('a'));
-    fireEvent.click(screen.getByText('b'));
-    expect(screen.getByText('b')).toHaveClass('text-text-muted');
-    expect(screen.getByText('c.txt')).toHaveClass('text-text-muted');
-  });
-
-  it('部分忽略的目录自身不灰，仅被忽略的子项灰显', () => {
+  it('部分忽略：命中的子目录灰显，未命中项保持默认色', () => {
     const partialTree: FileNode[] = [
       {
         name: 'sub',
@@ -298,47 +271,33 @@ describe('FilesPanel 文件管理', () => {
             name: 'deep',
             path: 'sub/deep',
             is_dir: true,
-            children: [
-              { name: 'cache.dat', path: 'sub/deep/cache.dat', is_dir: false, children: [] },
-            ],
+            children: [],
+            ignored: true,
           },
           { name: 'keep.txt', path: 'sub/keep.txt', is_dir: false, children: [] },
         ],
       },
     ];
     seedDirs(partialTree);
-    render(<FilesPanel {...baseProps} ignoredFiles={['sub/deep']} />);
+    render(<FilesPanel {...baseProps} />);
 
     fireEvent.click(screen.getByText('sub'));
-    // sub 只有部分内容被忽略 → 自身与未忽略项不灰
+    // sub 自身未命中 → 不灰；被忽略的 deep 灰
     expect(screen.getByText('sub')).toHaveClass('text-text-primary');
-    expect(screen.getByText('keep.txt')).toHaveClass('text-text-primary');
-    // 被忽略的 deep 目录灰，展开后其子文件继承灰
-    fireEvent.click(screen.getByText('deep'));
     expect(screen.getByText('deep')).toHaveClass('text-text-muted');
-    expect(screen.getByText('cache.dat')).toHaveClass('text-text-muted');
+    expect(screen.getByText('keep.txt')).toHaveClass('text-text-primary');
   });
 
-  it('变更文件状态优先于继承的忽略状态（Modified→blue，词表唯一源）', () => {
-    const changed: FileChange[] = [
-      { path: 'src/a.ts', status: 'Modified', additions: 1, deletions: 0 },
-    ];
-    render(<FilesPanel {...baseProps} ignoredFiles={['src']} changedFiles={changed} />);
-
-    fireEvent.click(screen.getByText('src'));
-    expect(screen.getByText('a.ts')).toHaveClass('text-accent-blue');
-  });
-
-  it('变更文件状态优先于忽略灰色（Modified→blue）', () => {
+  it('变更文件状态优先于忽略灰色（Modified→blue，词表唯一源）', () => {
     const treeWithIgnored: FileNode[] = [
       ...tree,
-      { name: '.env', path: '.env', is_dir: false, children: [] },
+      { name: '.env', path: '.env', is_dir: false, children: [], ignored: true },
     ];
     const changed: FileChange[] = [
       { path: '.env', status: 'Modified', additions: 1, deletions: 0 },
     ];
     seedDirs(treeWithIgnored);
-    render(<FilesPanel {...baseProps} ignoredFiles={['.env']} changedFiles={changed} />);
+    render(<FilesPanel {...baseProps} changedFiles={changed} />);
 
     expect(screen.getByText('.env')).toHaveClass('text-accent-blue');
   });

@@ -57,8 +57,6 @@ interface FilesPanelProps {
   onDeletePath?: (path: string, isDir: boolean) => Promise<void> | void;
   /** 重命名文件或目录（同目录内改名） */
   onRenamePath?: (path: string, newName: string) => Promise<void> | void;
-  /** 被 .gitignore 忽略的相对路径列表（文件树灰色显示） */
-  ignoredFiles?: string[];
   /** 定位目标：当前激活 file tab 的路径（null 表示无 file tab） */
   locateTargetPath?: string | null;
   /** 当前是否有 file tab 打开（无则按钮置灰） */
@@ -83,7 +81,6 @@ function FilesPanel({
   onCreateDirectory,
   onDeletePath,
   onRenamePath,
-  ignoredFiles,
   changedFiles,
   locateTargetPath,
   canLocateFile,
@@ -124,17 +121,15 @@ function FilesPanel({
     () => buildFolderSummaryMap(fileSummaries, collapsedDirs),
     [fileSummaries, collapsedDirs],
   );
-  const ignoredSet = useMemo<Set<string> | undefined>(
-    () => (ignoredFiles && ignoredFiles.length > 0 ? new Set(ignoredFiles) : undefined),
-    [ignoredFiles],
-  );
+  // S5：ignored 灰显不再来自平行数组 —— 后端读层原生标注 node.ignored，
+  // 组装期并入 is_ignored（见 fileTree.ts finalizeNode）。
 
   // 组装期 join：buildFileTreeView 的 decorate 回调把语义状态（主导状态 + ignored
   // 原始事实）直接盖章到视图节点——FileTreeRow 读字段呈现，无渲染期匹配回调。
   const decorate = useCallback(
     (path: string, isDir: boolean) =>
-      resolveNodeStatus(path, isDir, { fileSummaries, folderSummaries, ignoredSet, collapsedDirs }),
-    [fileSummaries, folderSummaries, ignoredSet, collapsedDirs],
+      resolveNodeStatus(path, isDir, { fileSummaries, folderSummaries, collapsedDirs }),
+    [fileSummaries, folderSummaries, collapsedDirs],
   );
 
   // 视图树：组装期 join（git 投影 + 逐节点视图状态统一盖章）。

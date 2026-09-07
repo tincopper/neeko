@@ -17,6 +17,8 @@ mod types;
 
 // 对外公共面（`file/mod.rs` 与 `app_state.rs` 依赖）：事件 payload 类型 + 管理器；
 // 事件名常量一并暴露（保持原公共 API 不变）。
+mod registration;
+pub use gitignore::GitIgnoreFilter;
 pub use manager::WatcherManager;
 pub use types::{
     FileChangedEvent, FileTreeChangedEvent, FILE_CHANGED_EVENT, FILE_TREE_CHANGED_EVENT,

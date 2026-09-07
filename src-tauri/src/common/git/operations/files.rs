@@ -36,36 +36,6 @@ pub async fn get_worktree_changed_files(
     }
 }
 
-/// Get ignored files (from .gitignore / .git/info/exclude) for a worktree path.
-/// Uses `git status --porcelain --ignored` (directory-level collapsed), which works
-/// for local, WSL and SSH transports alike. Empty when the path is not a git repo.
-pub async fn get_ignored_files(
-    transport: &dyn GitTransport,
-    worktree_path: &str,
-) -> Result<Vec<String>> {
-    // 上限与主链路 MAX_STATUS_ENTRIES 统一为 1000（G5，redesign-plan 决策点 4）
-    const MAX_IGNORED_FILES: usize = 1000;
-    let output = transport
-        .run_git_opts(
-            &["status", "--porcelain", "--ignored"],
-            worktree_path,
-            readonly_opts(),
-        )
-        .await?;
-    let mut entries = parse_ignored_porcelain(&output);
-    if entries.len() > MAX_IGNORED_FILES {
-        // 与 get_untracked_files 截断惯例一致：超限必须留痕，避免静默丢数据
-        ::log::warn!(
-            "get_ignored_files({}) exceeded cap: {} entries truncated to {}",
-            worktree_path,
-            entries.len(),
-            MAX_IGNORED_FILES
-        );
-        entries.truncate(MAX_IGNORED_FILES);
-    }
-    Ok(entries)
-}
-
 /// List untracked files under `dir_path`, expanding a collapsed untracked-dir
 /// entry from `get_worktree_changed_files` (changes list shows `dir/` as a single
 /// row; the UI expands it on demand). `git ls-files --others --exclude-standard`
@@ -105,17 +75,6 @@ pub async fn get_untracked_files(
         entries.truncate(MAX_UNTRACKED_FILES);
     }
     Ok(entries)
-}
-
-/// Parse `git status --porcelain --ignored` output into relative paths.
-/// Ignored entries are prefixed with `!! `; directories end with a trailing `/`.
-pub(crate) fn parse_ignored_porcelain(output: &str) -> Vec<String> {
-    output
-        .lines()
-        .filter(|line| line.starts_with("!! "))
-        .map(|line| line[3..].trim_end_matches('/').to_string())
-        .filter(|p| !p.is_empty())
-        .collect()
 }
 
 /// Get changed files diff stats (additions/deletions).

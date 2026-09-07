@@ -1,8 +1,7 @@
-import { useGitStore } from '@/shared/store/gitStore';
 import { useProjectStore, versionGateAccepts } from '@/shared/store/projectStore';
 import type { GitInfo } from '@/shared/types';
 
-import { getIgnoredFiles, getWorktreeChangedFilesVersioned } from '../api/gitApi';
+import { getWorktreeChangedFilesVersioned } from '../api/gitApi';
 
 // 避免 build 期间并发的慢请求覆盖新快照：同一 projectId 只允许最新一代的 setState 生效
 const refreshGenerations = new Map<string, number>();
@@ -50,30 +49,13 @@ export function createDebouncedGitRefresh(debounceMs: number) {
   };
 }
 
-export type RefreshGitFileStatesOptions = {
-  /**
-   * 是否同时拉取 ignored_files（`git status --porcelain --ignored`，
-   * 大仓库上是一次全树遍历，实测可达数秒）。
-   *
-   * 默认 false：changed_files 是每次变更都要刷新的高频数据，而 ignored 集合
-   * 由 .gitignore 规则决定、不随普通文件增删变化 —— 只在应用启动初始加载、
-   * .gitignore 被编辑等明确场景才值得付出全树遍历的代价。
-   */
-  includeIgnored?: boolean;
-};
-
 /**
  * 显式刷新指定项目（含 worktree）的 git 文件状态：
- * changed_files（着色）+ 可选 ignored_files（.gitignore 忽略项，文件树灰色显示）。
+ * changed_files（着色）；ignored 灰显由后端读层原生标注（FileNode.ignored）。
  * 文件操作（新建/删除/重命名/保存）成功后调用，弥补文件系统 watcher
  * 只监听主项目路径、无法自动触发 worktree 内 git status 刷新的缺口。
  */
-export async function refreshGitFileStates(
-  projectId: string,
-  worktreePath: string,
-  options: RefreshGitFileStatesOptions = {},
-): Promise<void> {
-  const { includeIgnored = false } = options;
+export async function refreshGitFileStates(projectId: string, worktreePath: string): Promise<void> {
   const myGen = (refreshGenerations.get(projectId) ?? 0) + 1;
   refreshGenerations.set(projectId, myGen);
 
@@ -86,12 +68,8 @@ export async function refreshGitFileStates(
     git_provider: '',
   };
   try {
-    const [changedPayload, ignoredFiles] = await Promise.all([
-      getWorktreeChangedFilesVersioned(projectId, worktreePath),
-      // 非 git 仓库时 get_ignored_files 会失败，回退为空列表；
-      // 默认跳过（includeIgnored=false），避免常规刷新触发全树 --ignored 遍历
-      includeIgnored ? getIgnoredFiles(projectId, worktreePath).catch(() => []) : null,
-    ]);
+    // S5：ignored_files 平行数组退役 —— 灰显由后端读层原生标注（FileNode.ignored）
+    const changedPayload = await getWorktreeChangedFilesVersioned(projectId, worktreePath);
     // G2 D4 version gate：快照读（version>0）旧于已应用版本 → 丢弃，避免覆盖更新的快照事件；
     // version=0（WSL/SSH / worktree 兜底）恒放行，与旧行为一致。等待期间同代 refresh 由
     // refreshGenerations 兜底。
@@ -99,10 +77,6 @@ export async function refreshGitFileStates(
     // 切回主视图时此刷新需能幂等恢复主数据（version == applied 也放行）。
     const allowEqual = worktreePath === '' && changedPayload.version > 0;
     if (!versionGateAccepts(projectId, changedPayload.version, allowEqual)) return;
-    // ignored 拉取成功时写入独立 gitStore（不寄生于 git_info —— 会被项目列表刷新洗掉）
-    if (includeIgnored && ignoredFiles) {
-      useGitStore.getState().setIgnoredFiles(projectId, ignoredFiles);
-    }
     const changedFiles = changedPayload.files;
     // 等待期间若同 projectId 有更新的调用，则本代陈旧，setState 被跳过
     if (refreshGenerations.get(projectId) !== myGen) return;

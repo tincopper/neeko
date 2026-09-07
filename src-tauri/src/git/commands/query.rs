@@ -90,22 +90,6 @@ pub async fn get_worktree_changed_files(
     Ok(ChangedFilesPayload { files, version: 0 })
 }
 
-/// Get ignored files (from .gitignore / .git/info/exclude) for a worktree path.
-#[tauri::command]
-pub async fn get_ignored_files(
-    project_id: String,
-    worktree_path: String,
-    state: State<'_, AppStateWrapper>,
-) -> Result<Vec<String>, AppError> {
-    let (t, wd) = state.resolve_project(&project_id)?;
-    // 空串视为未指定 worktree（回落项目根），并校验非空路径
-    let wt = Some(worktree_path);
-    let repo_path = resolve_validated_work_dir(&t, &wt, &wd)?;
-    operations::get_ignored_files(&t, repo_path)
-        .await
-        .map_err(AppError::from)
-}
-
 /// List untracked files under a directory (expands a collapsed untracked-dir
 /// entry shown in the changes list). Returns an error when the path is not a
 /// git repository; the UI expand handler catches it.

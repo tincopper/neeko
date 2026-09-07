@@ -112,6 +112,19 @@ export interface AheadBehind {
   behind: number;
 }
 
+/** 与 Rust `common::git::perf::GitPerfSuggestion` 保持 IPC 契约同步 */
+export interface GitPerfSuggestion {
+  kind: string;
+  command: string;
+  label: string;
+}
+
+/** 与 Rust watcher `GitPerfSuggestionEvent` 保持 IPC 契约同步 */
+export interface GitPerfSuggestionEvent {
+  project_id: string;
+  suggestions: GitPerfSuggestion[];
+}
+
 export type DiffLine =
   | { Context: string }
   | { Added: string }

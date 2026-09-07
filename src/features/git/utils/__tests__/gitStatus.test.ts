@@ -1,7 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
-  setIgnoredFiles: vi.fn(),
   versionGateAccepts: vi.fn(() => true),
 }));
 
@@ -11,27 +10,18 @@ vi.mock('@/shared/store/projectStore', () => ({
   versionGateAccepts: mocks.versionGateAccepts,
 }));
 
-vi.mock('@/shared/store/gitStore', () => ({
-  useGitStore: {
-    getState: () => ({ setIgnoredFiles: mocks.setIgnoredFiles }),
-  },
-}));
-
 vi.mock('../../api/gitApi', () => ({
   getWorktreeChangedFilesVersioned: vi.fn(),
-  getIgnoredFiles: vi.fn(),
 }));
 
 import { useProjectStore } from '@/shared/store/projectStore';
 import type { FileChange, ChangedFilesPayload, GitInfo } from '@/shared/types';
 
-import { getIgnoredFiles, getWorktreeChangedFilesVersioned } from '../../api/gitApi';
+import { getWorktreeChangedFilesVersioned } from '../../api/gitApi';
 import { refreshGitFileStates, createDebouncedGitRefresh } from '../gitStatus';
 
 const mockGetWorktreeChangedFiles = vi.mocked(getWorktreeChangedFilesVersioned);
-const mockGetIgnoredFiles = vi.mocked(getIgnoredFiles);
 const mockSetState = vi.mocked(useProjectStore.setState);
-const mockSetIgnoredFiles = mocks.setIgnoredFiles;
 
 const payload = (files: FileChange[], version = 0): ChangedFilesPayload => ({ files, version });
 
@@ -76,91 +66,20 @@ describe('refreshGitFileStates', () => {
     vi.resetAllMocks();
   });
 
-  it('includeIgnored: true 时拉取 ignored_files 写入 gitStore，changed_files patch 到项目', async () => {
-    mockGetWorktreeChangedFiles.mockResolvedValue(
-      payload([{ path: 'new.ts', status: 'Untracked', additions: 0, deletions: 0 }]),
-    );
-    mockGetIgnoredFiles.mockResolvedValue(['.env', 'dist']);
-    const takeUpdater = captureUpdater();
-
-    await refreshGitFileStates('p1', '', { includeIgnored: true });
-
-    expect(mockGetWorktreeChangedFiles).toHaveBeenCalledWith('p1', '');
-    expect(mockGetIgnoredFiles).toHaveBeenCalledWith('p1', '');
-    // ignored 集合写入独立 gitStore（不寄生 git_info —— 会被项目列表刷新洗掉）
-    expect(mockSetIgnoredFiles).toHaveBeenCalledWith('p1', ['.env', 'dist']);
-
-    const state = makeState(
-      [
-        { id: 'p1', git_info: makeGitInfo() },
-        { id: 'p2', git_info: makeGitInfo() },
-      ],
-      'p1',
-    );
-    const next = takeUpdater()!(state) as typeof state;
-    // 目标项目被 patch（changed_files）
-    expect(next.projects[0].git_info.changed_files).toHaveLength(1);
-    expect(next.projects[0].git_info.changed_files[0].status).toBe('Untracked');
-    expect(next.projects[0].git_info.is_clean).toBe(false);
-    // 其他项目不受影响
-    expect(next.projects[1].git_info.changed_files).toHaveLength(0);
-    // activeProject 同步更新
-    expect(next.activeProject?.id).toBe('p1');
-    expect(mockSetState).toHaveBeenCalledTimes(1);
-  });
-
-  it('默认（轻量模式）不拉取 ignored_files，且不覆盖 gitStore 既有灰显集合', async () => {
-    mockGetWorktreeChangedFiles.mockResolvedValue(
-      payload([{ path: 'a.ts', status: 'Modified', additions: 1, deletions: 0 }]),
-    );
-    const takeUpdater = captureUpdater();
-
-    await refreshGitFileStates('p1', '');
-
-    expect(mockGetWorktreeChangedFiles).toHaveBeenCalledWith('p1', '');
-    expect(mockGetIgnoredFiles).not.toHaveBeenCalled();
-    // 关键回归（S0-2）：常规刷新不得清掉启动时加载的 ignored 集合（gitStore 不被触碰）
-    expect(mockSetIgnoredFiles).not.toHaveBeenCalled();
-
-    const state = makeState([{ id: 'p1', git_info: makeGitInfo() }], 'p1');
-    const next = takeUpdater()!(state) as typeof state;
-    expect(next.projects[0].git_info.changed_files).toHaveLength(1);
-    expect(mockSetState).toHaveBeenCalledTimes(1);
-  });
-
-  it('worktree 路径透传给两个 API（includeIgnored: true）', async () => {
+  it('worktree 路径透传给变更快照 API', async () => {
     mockGetWorktreeChangedFiles.mockResolvedValue(payload([]));
-    mockGetIgnoredFiles.mockResolvedValue([]);
     const takeUpdater = captureUpdater();
 
-    await refreshGitFileStates('p1', '/wt/path', { includeIgnored: true });
+    await refreshGitFileStates('p1', '/wt/path');
 
     expect(mockGetWorktreeChangedFiles).toHaveBeenCalledWith('p1', '/wt/path');
-    expect(mockGetIgnoredFiles).toHaveBeenCalledWith('p1', '/wt/path');
-    // 空 ignored 集合同样按 worktree 路径写入 gitStore
-    expect(mockSetIgnoredFiles).toHaveBeenCalledWith('p1', []);
     expect(takeUpdater()).not.toBeNull();
-  });
-
-  it('get_ignored_files 失败时回退为空列表并写入 gitStore（includeIgnored: true）', async () => {
-    mockGetWorktreeChangedFiles.mockResolvedValue(payload([]));
-    mockGetIgnoredFiles.mockRejectedValue(new Error('not a repo'));
-    const takeUpdater = captureUpdater();
-
-    await refreshGitFileStates('p1', '', { includeIgnored: true });
-
-    // 非 git 仓库：getIgnoredFiles 失败 → 回退空列表 → 覆盖 gitStore 灰显集合为空
-    expect(mockSetIgnoredFiles).toHaveBeenCalledWith('p1', []);
-    expect(takeUpdater()).not.toBeNull();
-    expect(mockSetState).toHaveBeenCalledTimes(1);
   });
 
   it('changed_files 失败时静默忽略（不抛出、不 patch）', async () => {
     mockGetWorktreeChangedFiles.mockRejectedValue(new Error('boom'));
-    mockGetIgnoredFiles.mockResolvedValue([]);
     await expect(refreshGitFileStates('p1', '')).resolves.toBeUndefined();
     expect(mockSetState).not.toHaveBeenCalled();
-    expect(mockSetIgnoredFiles).not.toHaveBeenCalled();
   });
 
   it('并发刷新时仅最新一代的全量快照生效，陈旧请求的结果被丢弃', async () => {
@@ -182,7 +101,6 @@ describe('refreshGitFileStates', () => {
     mockGetWorktreeChangedFiles
       .mockReturnValueOnce(promiseA as never)
       .mockReturnValueOnce(promiseB as never);
-    mockGetIgnoredFiles.mockResolvedValue([]);
 
     let firstSetStateResolve!: () => void;
     const firstSetStateDone = new Promise<void>((r) => {
@@ -218,8 +136,6 @@ describe('refreshGitFileStates', () => {
     expect(next.projects[0].git_info.changed_files).toEqual([
       { path: 'newer.ts', status: 'Modified', additions: 1, deletions: 0 },
     ]);
-    // 轻量模式：并发刷新不触碰 gitStore
-    expect(mockSetIgnoredFiles).not.toHaveBeenCalled();
   });
 });
 

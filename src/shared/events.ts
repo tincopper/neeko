@@ -1,13 +1,16 @@
 /**
  * Tauri Event 名称统一模块（前端侧单一事实源）。
  *
- * 与 `src-tauri/src/common/file/watcher.rs` 顶部的事件常量保持同步：
- * FILE_CHANGED_EVENT / FILE_TREE_CHANGED_EVENT / GIT_STATUS_SNAPSHOT_EVENT / GIT_CHANGED_EVENT。
+ * 与 `src-tauri/src/common/file/watcher/types.rs` 顶部的事件常量保持同步：
+ * FILE_CHANGED_EVENT / FILE_TREE_CHANGED_EVENT / GIT_STATUS_SNAPSHOT_EVENT /
+ * GIT_CHANGED_EVENT / GIT_PERF_SUGGESTION_EVENT。
  * 禁止在业务代码中硬编码事件字符串。
  */
 
 /** 文件内容变更事件：`file-changed` */
 export const FILE_CHANGED_EVENT = 'file-changed';
+/** Git 性能建议事件（G7，一次性）：`git-perf-suggestion` */
+export const GIT_PERF_SUGGESTION_EVENT = 'git-perf-suggestion';
 /** 文件树结构变更事件：`file-tree-changed` */
 export const FILE_TREE_CHANGED_EVENT = 'file-tree-changed';
 /** G2 事件协议 v2：versioned 全量 git-status 快照（单一权威，整体替换）：`git-status-snapshot` */

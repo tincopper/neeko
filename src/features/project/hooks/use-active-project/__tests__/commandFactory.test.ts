@@ -225,18 +225,16 @@ describe('createProjectCommands (Local)', () => {
       rootPath: null,
       subPath: null,
       maxDepth: DEFAULT_TREE_DEPTH,
-      ignored: null,
     });
   });
 
-  it('readDirTree should forward ignoredFiles for pruning', async () => {
-    await commands.readDirTree('root', 'src', 2, ['node_modules', 'dist']);
+  it('readDirTree should forward args (S5: ignored pruning moved to backend)', async () => {
+    await commands.readDirTree('root', 'src', 2);
     expect(mockInvoke).toHaveBeenCalledWith('read_dir_tree', {
       ...payload(),
       rootPath: 'root',
       subPath: 'src',
       maxDepth: 2,
-      ignored: ['node_modules', 'dist'],
     });
   });
 

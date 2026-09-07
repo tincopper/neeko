@@ -1,17 +1,13 @@
 import { useState, useEffect } from 'react';
 
-import { useGitStore } from '@/shared/store/gitStore';
 import { useProjectStore, versionGateAccepts } from '@/shared/store/projectStore';
 import { useWorktreeStore } from '@/shared/store/worktreeStore';
 import type { FileChange, Worktree } from '@/shared/types';
 import { reportFrontendError } from '@/shared/utils/errorReporting';
 
 /* eslint-disable import/no-restricted-paths -- session bootstrap needs git API for reading git info */
-import {
-  getIgnoredFiles,
-  getWorktreeChangedFilesVersioned,
-  getGitBranchInfo,
-} from '../../git/api/gitApi';
+import { getWorktreeChangedFilesVersioned, getGitBranchInfo } from '../../git/api/gitApi';
+import { useGitPerfSuggestion } from '../../git/hooks/useGitPerfSuggestion';
 import { useGitStatusEventsSync } from '../../git/hooks/useGitStatusEventsSync';
 /* eslint-enable import/no-restricted-paths */
 // eslint-disable-next-line import/no-restricted-paths -- session bootstrap needs project API for listing projects
@@ -36,6 +32,7 @@ export function useSessionBootstrap(deps: {
   // git 状态事件流同步（git-changed 兜底刷新 + git-status-snapshot 版本化快照），
   // 监听注册与去抖调度在 useGitStatusEventsSync 内部自管理
   useGitStatusEventsSync();
+  useGitPerfSuggestion();
 
   useEffect(() => {
     // 超时兜底：无论初始化链路结局如何，splash 必须退出
@@ -95,16 +92,6 @@ export function useSessionBootstrap(deps: {
                 });
               })
               .catch((err) => reportFrontendError('session.gitBranchInfo', err));
-          }
-          // 忽略文件列表（.gitignore），供文件树灰色显示。写入 gitStore 独立状态 ——
-          // git_info 会被项目列表刷新用 Rust 返回值整体重建（无此字段），寄生存不可靠。
-          // 与变更解耦、仅在缺失时补拉一次，避免重复付出全树 --ignored 遍历的成本。
-          if (!useGitStore.getState().ignoredByProject[p.id]?.length) {
-            getIgnoredFiles(p.id, '')
-              .then((ignoredFiles) => {
-                useGitStore.getState().setIgnoredFiles(p.id, ignoredFiles);
-              })
-              .catch((err) => reportFrontendError('session.gitIgnoredFiles', err));
           }
         }
       } catch {
@@ -172,14 +159,6 @@ export function useSessionBootstrap(deps: {
                 });
               })
               .catch((err) => reportFrontendError('session.gitChangedFiles', err));
-            // 恢复激活项目同样补拉忽略列表（快照缺失时一次性成本，写入 gitStore）
-            if (!useGitStore.getState().ignoredByProject[activeId]?.length) {
-              getIgnoredFiles(activeId, '')
-                .then((ignoredFiles) => {
-                  useGitStore.getState().setIgnoredFiles(activeId, ignoredFiles);
-                })
-                .catch((err) => reportFrontendError('session.gitIgnoredFiles', err));
-            }
             getGitBranchInfo(activeId)
               .then((branchInfo) => {
                 patchGitInfo({

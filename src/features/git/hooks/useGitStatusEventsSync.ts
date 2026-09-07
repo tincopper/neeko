@@ -1,4 +1,5 @@
 import { listen } from '@tauri-apps/api/event';
+import { getCurrentWindow } from '@tauri-apps/api/window';
 import { useEffect } from 'react';
 
 import { GIT_CHANGED_EVENT, GIT_STATUS_SNAPSHOT_EVENT } from '@/shared/events';
@@ -161,6 +162,18 @@ export function useGitStatusEventsSync() {
       },
     );
 
+    // 窗口重新聚焦（VSCode 触发源⑤ onWindowFocus 对标）：平台 watcher 有丢事件
+    // 缺陷（inotify 溢出 / FSEvents 延迟聚合），聚焦时对活跃项目 hint 一次 status
+    // 查询（worker 查询-比较闸门兜底幂等）。去抖合并避免快速 Alt+Tab 风暴。
+    const unlistenFocusPromise = getCurrentWindow().onFocusChanged(({ payload: focused }) => {
+      if (!focused) return;
+      const pid = useProjectStore.getState().activeProjectId;
+      if (!pid) return;
+      gitChangedDebounce.schedule(pid, '', (wt) => {
+        void refreshGitFileStates(pid, wt);
+      });
+    });
+
     // 切回主视图（activeWorktreePath → null）：主动触发一次主路径刷新，
     // 恢复主仓库 changed_files（worktree 激活期间主快照被跳过、可能残留 worktree 数据）。
     const unsubscribeWt = useWorktreeStore.subscribe((state, prev) => {
@@ -176,6 +189,7 @@ export function useGitStatusEventsSync() {
     return () => {
       unlistenPromise.then((unlisten) => safeUnlisten(unlisten)());
       unlistenSnapshotPromise.then((unlisten) => safeUnlisten(unlisten)());
+      unlistenFocusPromise.then((unlisten) => safeUnlisten(unlisten)());
       unsubscribeWt();
       // 清除 pending 的刷新调度，避免卸载后执行 setState
       gitChangedDebounce.clear();

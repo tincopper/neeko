@@ -45,7 +45,6 @@ function makeOptions(overrides: Partial<UseFileTreeSyncOptions> = {}): UseFileTr
     commands: null,
     activeProjectId: 'p1',
     fileRootPath: '/tmp/proj',
-    ignoredFiles: [],
     isActive: true,
     onLoadFileTree: vi.fn(),
     onFileRefresh: vi.fn(),

@@ -14,7 +14,6 @@ export interface UseFileTreeSyncOptions {
   activeProjectId: string | null;
   /** 文件树根路径（worktree 或项目根） */
   fileRootPath: string | null;
-  ignoredFiles: string[];
   /** 面板在 dock 中是否激活（激活时才发起首次加载） */
   isActive: boolean;
   onLoadFileTree: (pid: string, rootPath: string) => void;
@@ -40,7 +39,6 @@ export function useFileTreeSync({
   commands,
   activeProjectId,
   fileRootPath,
-  ignoredFiles,
   isActive,
   onLoadFileTree,
   onFileRefresh,
@@ -53,25 +51,19 @@ export function useFileTreeSync({
         dirPath || null,
         fileRootPath,
         // S2-0：非根目录单层读取 —— 刷新成本 O(变更)，与 dirCache 一级条目语义一致；
-        // 根目录保留 depth=3 预扫语义（初始结构一次性成型）
+        // 根目录按 DEFAULT_TREE_DEPTH 预扫（初始结构成型），S5 起 ignored 由后端标注
         dirPath ? 1 : DEFAULT_TREE_DEPTH,
-        ignoredFiles,
       ),
-    [fileRootPath, ignoredFiles],
+    [fileRootPath],
   );
   const makeWslRemoteLoader = useCallback(
     (dirPath: string) => () => {
       if (!commands || !fileRootPath) {
         return Promise.reject(new Error('commands unavailable'));
       }
-      return commands.readDirTree(
-        fileRootPath,
-        dirPath || undefined,
-        DEFAULT_TREE_DEPTH,
-        ignoredFiles,
-      );
+      return commands.readDirTree(fileRootPath, dirPath || undefined, DEFAULT_TREE_DEPTH);
     },
-    [commands, fileRootPath, ignoredFiles],
+    [commands, fileRootPath],
   );
 
   // Track previous values to avoid redundant file tree loads.
@@ -148,7 +140,7 @@ export function useFileTreeSync({
     return () => {
       unlistenPromise.then((unlisten) => safeUnlisten(unlisten)());
     };
-  }, [activeProjectId, project, fileRootPath, ignoredFiles, makeLocalLoader]);
+  }, [activeProjectId, project, fileRootPath, makeLocalLoader]);
 
   // WSL/Remote: 通过 store.refreshTree 强制全树重载（失败保留旧内容 + error 态，不置空）。
   // Local: delegate to onFileRefresh (context → useFileView.loadFileTree, force 全树刷新)。

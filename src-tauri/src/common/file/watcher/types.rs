@@ -10,6 +10,17 @@ pub const FILE_TREE_CHANGED_EVENT: &str = "file-tree-changed";
 pub const GIT_STATUS_SNAPSHOT_EVENT: &str = "git-status-snapshot";
 /// Git 状态变更事件（兼容旧监听的全量刷新 fallback）：`git-changed`
 pub const GIT_CHANGED_EVENT: &str = "git-changed";
+/// Git 性能建议事件（G7，一次性）：`git-perf-suggestion`
+pub const GIT_PERF_SUGGESTION_EVENT: &str = "git-perf-suggestion";
+
+/// Git 性能建议事件 payload（大仓库 + 未启用原生缓存的引导）
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct GitPerfSuggestionEvent {
+    /// 项目 ID
+    pub project_id: String,
+    /// 建议列表（可能为空集合，调用方保证非空才发）
+    pub suggestions: Vec<crate::common::git::perf::GitPerfSuggestion>,
+}
 
 // ── 文件变更事件 ──────────────────────────────────────────────────────────────
 

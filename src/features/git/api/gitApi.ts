@@ -229,10 +229,6 @@ export function getWorktreeChangedFilesVersioned(
   return invoke<ChangedFilesPayload>('get_worktree_changed_files', { projectId, worktreePath });
 }
 
-export function getIgnoredFiles(projectId: string, worktreePath: string): Promise<string[]> {
-  return invoke<string[]>('get_ignored_files', { projectId, worktreePath });
-}
-
 export function getUntrackedFiles(
   projectId: string,
   worktreePath: string,

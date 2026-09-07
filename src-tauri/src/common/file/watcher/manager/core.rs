@@ -1,19 +1,21 @@
-//! `WatcherManager` 编排：为每个项目启动文件监听，聚合各子模块。
+//! `WatcherManager` 编排：为每个项目启动文件监听，计算 git status 快照并聚合子模块。
 
-use super::debounce::{DebounceSender, ThrottleScheduler, TreeChangeDebounceSender};
-use super::git_meta::{create_git_meta_watcher, resolve_git_meta_paths, GitMetaWatcherHandle};
-use super::gitignore::GitIgnoreFilter;
-use super::types::{
-    FileTreeChangedEvent, FILE_TREE_CHANGED_EVENT, GIT_CHANGED_EVENT, GIT_STATUS_SNAPSHOT_EVENT,
+use super::super::debounce::{DebounceSender, ThrottleScheduler, TreeChangeDebounceSender};
+use super::super::git_meta::{create_git_meta_watcher, resolve_git_meta_paths};
+use super::super::gitignore::GitIgnoreFilter;
+use super::super::registration::{spawn_maintenance_thread, WatchRegistration};
+use super::super::types::{
+    GitPerfSuggestionEvent, GIT_CHANGED_EVENT, GIT_PERF_SUGGESTION_EVENT, GIT_STATUS_SNAPSHOT_EVENT,
 };
+use super::callbacks::build_notify_callback;
+use super::handle::WatcherHandle;
 use crate::common::git::local::is_git_repo;
-use crate::common::git::status_worker::GitStatusSnapshot;
-use crate::common::git::status_worker::GitStatusWorker;
-use notify::event::ModifyKind;
-use notify::{Config, Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
+use crate::common::git::status_worker::{GitStatusSnapshot, GitStatusWorker};
+use notify::{Config, RecommendedWatcher, Watcher};
+use std::path::PathBuf;
+use std::sync::mpsc;
 use std::{
     collections::HashMap,
-    path::PathBuf,
     sync::{
         atomic::{AtomicBool, Ordering},
         Arc, Mutex,
@@ -21,26 +23,6 @@ use std::{
     time::Duration,
 };
 use tauri::{AppHandle, Emitter};
-
-// ── WatcherHandle & WatcherManager ───────────────────────────────────────────
-
-struct WatcherHandle {
-    _watcher: RecommendedWatcher,
-    // scheduler / worker / heartbeat：仅 git 项目持有，非 git 项目为 None
-    _scheduler: Option<ThrottleScheduler>,
-    _worker: Option<GitStatusWorker>,
-    // .git 元数据监听器（HEAD 分支切换 + index 暂存/取消暂存 + worktree HEAD），
-    _head_watcher: Option<GitMetaWatcherHandle>,
-    // file-changed debounce sender（drop 时关闭 channel，结束 debounce 线程）
-    _debounce: DebounceSender,
-    // file-tree-changed debounce sender（Create/Remove/Rename 事件触发）
-    _tree_debounce: TreeChangeDebounceSender,
-    // git 语义忽略过滤器（仅 git 项目）
-    _gitignore: Option<GitIgnoreFilter>,
-    stop_signal: Arc<AtomicBool>,
-    // 心跳线程：仅 git 项目持有
-    _heartbeat: Option<std::thread::JoinHandle<()>>,
-}
 
 /// Manages file-system watchers for multiple projects.
 ///
@@ -71,7 +53,19 @@ impl WatcherManager {
         }
     }
 
-    /// Latest authoritative status snapshot for `project_id` (G2 D2 读接口数据源)。
+    /// 该项目的 git 语义忽略过滤器（S5：读目录层复用做读前剪枝 + ignored 标记；
+    /// 非 git 项目 / 尚未 watch 时为 None —— 读层退化为仅 .git 硬过滤）。
+    #[must_use]
+    pub fn gitignore_for(&self, project_id: &str) -> Option<Arc<GitIgnoreFilter>> {
+        self.watchers
+            .lock()
+            .ok()?
+            .get(project_id)?
+            ._gitignore
+            .clone()
+    }
+
+    /// 最新权威 status 快照（G2 D2 读接口数据源）。
     /// `None` = watcher 尚未产出（非 git 项目 / 尚未 watch / 启动初期首快照未到）。
     #[must_use]
     pub fn snapshot(&self, project_id: &str) -> Option<Arc<GitStatusSnapshot>> {
@@ -91,7 +85,7 @@ impl WatcherManager {
 
         // 1. 创建 GitStatusWorker —— status 唯一计算路径（D1）。
         // 每次实质变化产出**完整 versioned 快照**：写共享注册表（invoke 读接口
-        // 的数据源，D2 收编 libgit2 B 路径）+ 发 v2 事件整体替换（D3，替代增量 patch）。
+        // 的数据源，D2 收编）+ 发 v2 事件整体替换（D3，替代增量 patch）。
         // 非 git 项目跳过：避免对非 git 仓库启动 git status worker 执行 git rev-parse 等命令
         let (worker, scheduler) = if git_repo {
             let pid_emit = project_id.clone();
@@ -149,112 +143,75 @@ impl WatcherManager {
         } else {
             None
         };
-        // 为 notify 闭包克隆一份（闭包会 move），原值保留给 WatcherHandle
-        let gitignore_filter_for_notify = gitignore_filter.clone();
+        // S2：filter 以 Option<Arc<..>> 共享给闭包（事件过滤 + 规则热重载）、
+        // 注册维护线程、WatcherHandle —— 单一实例三方可见
+        let gitignore_filter_for_notify: Option<Arc<GitIgnoreFilter>> =
+            gitignore_filter.map(Arc::new);
+        let gitignore_for_handle = gitignore_filter_for_notify.clone();
+        // 注册维护通道：闭包（回调）只投递消息，独立线程执行 watch/unwatch
+        let (maintenance_tx, maintenance_rx) =
+            mpsc::channel::<super::super::registration::WatchMaintenance>();
+        let maintenance_tx_for_closure = maintenance_tx.clone();
         let notify_result = RecommendedWatcher::new(
-            move |result: Result<Event, notify::Error>| {
-                let event = match result {
-                    Ok(ev) => ev,
-                    Err(e) => {
-                        log::warn!("[Watcher:{}] notify error: {}", pid_log, e);
-                        // S2-2 正确性兜底：watcher 异常（overflow 等）意味着可能丢失事件，
-                        // 无法保证目录缓存一致 —— 发送空 dirs 的 tree-changed，
-                        // 通知前端退回全树刷新（orca 同款 overflow→full refresh 语义）。
-                        let _ = app_for_watcher_error.emit(
-                            FILE_TREE_CHANGED_EVENT,
-                            &FileTreeChangedEvent {
-                                project_id: pid_log.clone(),
-                                dirs: Vec::new(),
-                            },
-                        );
-                        return;
-                    }
-                };
-
-                // 路径过滤：git 项目走 gitignore 规则，非 git 项目仅硬过滤 .DS_Store/.git
-                let relevant_paths: Vec<PathBuf> = match gitignore_filter_for_notify {
-                    Some(ref filter) => {
-                        // .gitignore / .git/info/exclude 自身变更时重载规则
-                        let rules_changed = event.paths.iter().any(|p| {
-                            let name = p.file_name().map(|n| n.to_string_lossy().to_string());
-                            matches!(name.as_deref(), Some(".gitignore") | Some("exclude"))
-                        });
-                        if rules_changed {
-                            filter.reload();
-                        }
-                        event
-                            .paths
-                            .iter()
-                            .filter(|p| !filter.should_ignore(p))
-                            .cloned()
-                            .collect()
-                    }
-                    None => event
-                        .paths
-                        .iter()
-                        .filter(|p| {
-                            !p.file_name()
-                                .and_then(|n| n.to_str())
-                                .is_some_and(|n| n == ".DS_Store" || n == ".git")
-                        })
-                        .cloned()
-                        .collect(),
-                };
-
-                if relevant_paths.is_empty() {
-                    return;
-                }
-
-                // 每个 FS 事件都会触发，高频；降为 trace 避免刷爆日志
-                log::trace!(
-                    "[Watcher:{}] FS event {:?}, paths={:?}, relevant={}",
-                    pid_log,
-                    event.kind,
-                    event.paths,
-                    !relevant_paths.is_empty()
-                );
-
-                if git_repo {
-                    // 驱动 git worker（仅 git 项目有 scheduler）
-                    if let Some(ref tx) = scheduler_tx {
-                        let _ = tx.send(());
-                    }
-                }
-                // 发送变更路径给 debounce sender（用于文件 tab 刷新）
-                for p in &relevant_paths {
-                    let _ = debounce_tx_for_notify.send(p.clone());
-                }
-                // 文件树结构变更（新增/删除/重命名）时把变更路径发给 tree-debounce，
-                // 由其聚合父目录集合后定向通知前端（S2-1/S2-2）
-                let is_structure_change = matches!(
-                    event.kind,
-                    EventKind::Create(_)
-                        | EventKind::Remove(_)
-                        | EventKind::Modify(ModifyKind::Name(_))
-                );
-                if is_structure_change {
-                    for p in &relevant_paths {
-                        let _ = tree_debounce_tx.send(p.clone());
-                    }
-                }
-            },
+            build_notify_callback(
+                pid_log,
+                app_for_watcher_error,
+                gitignore_filter_for_notify,
+                maintenance_tx_for_closure,
+                debounce_tx_for_notify,
+                tree_debounce_tx,
+                scheduler_tx,
+                git_repo,
+            ),
             Config::default(),
         );
 
-        let mut watcher = match notify_result {
+        let watcher = match notify_result {
             Ok(w) => w,
             Err(e) => {
                 log::warn!("[Watcher] create error for {}: {}", path.display(), e);
                 return;
             }
         };
+        // Arc<Mutex> 包装：S2 注册维护线程需要 &mut 执行 watch/unwatch
+        //（notify 回调内禁止 watch —— FSEvents 死锁，故经独立线程中转）
+        let watcher = Arc::new(std::sync::Mutex::new(watcher));
 
-        // 递归监听：捕获深层文件变化（src/nested/file.rs 等）
-        // 通过 git 语义忽略过滤（.gitignore 规则）滤掉不需要的目录
-        if let Err(e) = watcher.watch(&path, RecursiveMode::Recursive) {
-            log::warn!("[Watcher] watch error for {}: {}", path.display(), e);
-            return;
+        // S2 注册：初始 watch + 结构维护通道（ignored 子树在注册层排除）
+        let registration = Arc::new(std::sync::Mutex::new(WatchRegistration::default()));
+        {
+            let mut w = match watcher.lock() {
+                Ok(watcher) => watcher,
+                Err(e) => {
+                    log::warn!(
+                        "[Watcher:{}] watcher mutex poisoned during registration: {}",
+                        project_id,
+                        e
+                    );
+                    return;
+                }
+            };
+            let mut reg = match registration.lock() {
+                Ok(registration) => registration,
+                Err(e) => {
+                    log::warn!(
+                        "[Watcher:{}] registration mutex poisoned during registration: {}",
+                        project_id,
+                        e
+                    );
+                    return;
+                }
+            };
+            // MutexGuard 不实现 Watcher：显式解引用到内层 &mut RecommendedWatcher
+            reg.register_root(&mut *w, &path, gitignore_for_handle.as_deref());
         }
+        spawn_maintenance_thread(
+            Arc::clone(&watcher),
+            path.clone(),
+            gitignore_for_handle.clone(),
+            Arc::clone(&registration),
+            maintenance_rx,
+        );
 
         log::info!(
             "[Watcher] Started watching project {} at {}",
@@ -360,17 +317,49 @@ impl WatcherManager {
             None
         };
 
+        // 6. 一次性性能引导检测（G7，公理 3「借力 git 本身的优化」）：大仓库且
+        // fsmonitor/untracked cache 未启用时发一次建议事件（独立线程，同步桥安全；
+        // 只提示不代改用户仓库配置）。仅 git 项目：与 worker/heartbeat 同款门控，
+        // 非 git 目录不启动 git 探测线程。
+        if git_repo {
+            let app_for_perf = app_handle.clone();
+            let pid_perf = project_id.clone();
+            let perf_root = path.clone();
+            let _ = std::thread::Builder::new()
+                .name(format!("git-perf-{}", project_id))
+                .spawn(move || {
+                    let suggestions = crate::common::git::perf::detect_perf_suggestions(&perf_root);
+                    if suggestions.is_empty() {
+                        return;
+                    }
+                    log::info!(
+                        "[Watcher:{}] {} git perf suggestions",
+                        pid_perf,
+                        suggestions.len()
+                    );
+                    let _ = app_for_perf.emit(
+                        GIT_PERF_SUGGESTION_EVENT,
+                        &GitPerfSuggestionEvent {
+                            project_id: pid_perf,
+                            suggestions,
+                        },
+                    );
+                });
+        }
+
         if let Ok(mut watchers) = self.watchers.lock() {
             watchers.insert(
                 project_id,
                 WatcherHandle {
                     _watcher: watcher,
+                    _registration: registration,
+                    _maintenance_tx: Some(maintenance_tx),
                     _scheduler: scheduler,
                     _worker: worker,
                     _head_watcher: head_watcher,
                     _debounce: debounce,
                     _tree_debounce: tree_debounce,
-                    _gitignore: gitignore_filter,
+                    _gitignore: gitignore_for_handle,
                     stop_signal: stop,
                     _heartbeat: heartbeat,
                 },
@@ -385,15 +374,23 @@ impl WatcherManager {
                 handle.stop_signal.store(true, Ordering::Relaxed);
             }
         }
+        crate::common::file::services::invalidate_remote_ignored_cache(project_id);
     }
 
     /// Stop all active file watchers.
     pub fn stop_all(&self) {
         log::info!("[Watcher] Stopping all watchers...");
-        if let Ok(mut watchers) = self.watchers.lock() {
+        let stopped_ids: Vec<String> = if let Ok(mut watchers) = self.watchers.lock() {
+            let ids: Vec<String> = watchers.keys().cloned().collect();
             for (_id, watcher) in watchers.drain() {
                 watcher.stop_signal.store(true, Ordering::Relaxed);
             }
+            ids
+        } else {
+            Vec::new()
+        };
+        for project_id in stopped_ids {
+            crate::common::file::services::invalidate_remote_ignored_cache(&project_id);
         }
         log::info!("[Watcher] All watchers stopped");
     }

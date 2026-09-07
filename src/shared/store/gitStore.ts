@@ -11,14 +11,6 @@ interface GitStoreState {
   toggleFavorite: (projectId: string, branchName: string) => void;
 
   /**
-   * 各项目被 .gitignore 忽略的路径集合（文件树灰色显示的装饰输入）。
-   * 独立于 Project.git_info 存储：git_info 会被项目列表刷新等路径用 Rust 返回值
-   * 整体重建（Rust GitInfo 无此字段），寄生其中会被随时洗掉（补拉成果不可靠的根因）。
-   */
-  ignoredByProject: Record<string, string[]>;
-  setIgnoredFiles: (projectId: string, files: string[]) => void;
-
-  /**
    * G4：各项目 git-status 快照是否被截断（entries 超过 MAX_STATUS_ENTRIES=1000）。
    * ChangesList 顶部据此显示截断 banner（P3：截断显式化，对齐 orca too-many-changes）。
    */
@@ -44,17 +36,6 @@ export const useGitStore = create<GitStoreState>((set) => ({
     }),
 
   favoriteBranches: {},
-
-  ignoredByProject: {},
-
-  setIgnoredFiles: (projectId, files) =>
-    set((state) => {
-      const current = state.ignoredByProject[projectId];
-      if (current && current.length === files.length && current.every((v, i) => v === files[i])) {
-        return state;
-      }
-      return { ignoredByProject: { ...state.ignoredByProject, [projectId]: files } };
-    }),
 
   truncatedByProject: {},
 

@@ -175,18 +175,13 @@ export function createProjectCommands(
       return invoke<void>('create_tag', { projectId, tagName, message });
     },
 
-    readDirTree(
-      rootPath?: string,
-      subPath?: string,
-      maxDepth?: number,
-      ignoredFiles?: string[],
-    ): Promise<FileNode[]> {
+    // S5：ignored 剪枝/标注由后端读层原生提供，命令不再接收 ignoredFiles
+    readDirTree(rootPath?: string, subPath?: string, maxDepth?: number): Promise<FileNode[]> {
       return invoke<FileNode[]>('read_dir_tree', {
         projectId,
         rootPath: rootPath ?? null,
         subPath: subPath ?? null,
         maxDepth: maxDepth ?? DEFAULT_TREE_DEPTH,
-        ignored: ignoredFiles ?? null,
       });
     },
     readFileContent(filePath: string, rootPath?: string): Promise<FileContent> {

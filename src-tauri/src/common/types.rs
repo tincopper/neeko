@@ -91,6 +91,10 @@ pub struct FileNode {
     pub is_dir: bool,
     /// Child nodes (empty for files).
     pub children: Vec<FileNode>,
+    /// 被 .gitignore 忽略（S5 退役 ignored_files 数组：灰显标记由读层原生标注，
+    /// 前端不再持有平行数组；文件树 ignored 目录保留节点但不递归 children）。
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub ignored: bool,
 }
 
 // ─── Git types ────────────────────────────────────────────────────────────────

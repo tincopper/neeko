@@ -15,7 +15,6 @@ import { refreshGitFileStates } from '@/features/git';
 import { useActiveProject } from '@/features/project';
 import { useAppContext } from '@/shared/contexts';
 import { useDockStore } from '@/shared/store/dockStore';
-import { useGitStore } from '@/shared/store/gitStore';
 import { useProjectStore } from '@/shared/store/projectStore';
 import {
   filePathToFileUrl,
@@ -30,7 +29,6 @@ import { resolveTabKey } from '@/shared/utils/tabKey';
  * 本层只做 dock 适配（isActive）与文件 CRUD / 浏览器打开等展示侧动作。
  */
 /** 空忽略列表常量：保证引用稳定，避免下游 effect/callback 依赖抖动 */
-const EMPTY_IGNORED: string[] = [];
 
 const FilesPanelWrapper: React.FC = React.memo(() => {
   const { onFileSelect, onFileRefresh, onLoadFileTree, onExpandDir } = useFileActionsContext();
@@ -49,13 +47,6 @@ const FilesPanelWrapper: React.FC = React.memo(() => {
   // Compute projectId for use by child components (drag-and-drop, etc.)
   const projectId = project ? (project.type === 'Local' ? activeProjectId : project.id) : null;
 
-  // 忽略列表读独立 gitStore（不寄生于 git_info —— 会被项目列表刷新整体重建洗掉）。
-  // EMPTY 模块级常量保引用稳定，避免下游 effect/callback 依赖抖动。
-  const ignoredFilesRaw = useGitStore((s) =>
-    projectId ? s.ignoredByProject[projectId] : undefined,
-  );
-  const ignoredFiles = ignoredFilesRaw ?? EMPTY_IGNORED;
-
   // 面板在 dock 中激活（任一 zone 激活且展开）才发起首次加载
   const isActive = useDockStore((s) => {
     for (const zone of Object.values(s.zones)) {
@@ -70,7 +61,6 @@ const FilesPanelWrapper: React.FC = React.memo(() => {
     commands,
     activeProjectId,
     fileRootPath,
-    ignoredFiles,
     isActive,
     onLoadFileTree,
     onFileRefresh,
@@ -181,7 +171,6 @@ const FilesPanelWrapper: React.FC = React.memo(() => {
       onDeletePath={handleDeletePath}
       onRenamePath={handleRenamePath}
       changedFiles={changedFiles}
-      ignoredFiles={ignoredFiles}
       locateTargetPath={locateTargetPath}
       canLocateFile={canLocateFile}
       autoLocateFileOnTabSwitch={config.autoLocateFileOnTabSwitch}

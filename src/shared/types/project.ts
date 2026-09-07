@@ -141,12 +141,7 @@ export interface ProjectCommands {
   cherryPick(commitHash: string): Promise<void>;
   revert(commitHash: string): Promise<void>;
   createTag(tagName: string, message?: string): Promise<void>;
-  readDirTree(
-    rootPath?: string,
-    subPath?: string,
-    maxDepth?: number,
-    ignoredFiles?: string[],
-  ): Promise<FileNode[]>;
+  readDirTree(rootPath?: string, subPath?: string, maxDepth?: number): Promise<FileNode[]>;
   readFileContent(filePath: string, rootPath?: string): Promise<FileContent>;
   writeFileContent(filePath: string, content: string, rootPath?: string): Promise<void>;
   generateCommitMessage(

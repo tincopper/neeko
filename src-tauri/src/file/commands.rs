@@ -1,3 +1,5 @@
+use crate::common::executor::factory::ExecTarget;
+use crate::common::git::path_guard::validate_worktree_path;
 use crate::platform::reveal::{build_reveal_command, normalize_path};
 use crate::project::types::{FileContent, FileNode};
 use crate::AppError;
@@ -38,6 +40,22 @@ pub fn file_exists(path: String) -> Result<bool, AppError> {
 
 // ── File operations ──────────────────────────────────────────────────────────
 
+/// 解析 file 操作基准目录：`root_path` 是 worktree 用户输入，必须先校验；
+/// 为空时回落到 `resolve_project()` 返回的受信项目根。
+fn resolve_base<'a>(
+    target: &ExecTarget,
+    root_path: &'a Option<String>,
+    wd: &'a str,
+) -> Result<&'a str, AppError> {
+    match root_path.as_deref().filter(|path| !path.trim().is_empty()) {
+        Some(path) => {
+            validate_worktree_path(target, path).map_err(AppError::from)?;
+            Ok(path)
+        }
+        None => Ok(wd),
+    }
+}
+
 /// Read the directory tree.
 #[tauri::command]
 pub async fn read_dir_tree(
@@ -45,22 +63,30 @@ pub async fn read_dir_tree(
     root_path: Option<String>,
     sub_path: Option<String>,
     max_depth: Option<u32>,
-    ignored: Option<Vec<String>>,
     state: State<'_, AppStateWrapper>,
 ) -> Result<Vec<FileNode>, AppError> {
     // 深度常量单一事实源：crate::common::file::services::DEFAULT_TREE_DEPTH
     let depth = max_depth.unwrap_or(crate::common::file::services::DEFAULT_TREE_DEPTH);
     let (t, wd) = state.resolve_project(&project_id)?;
     let target = t;
-    let base = root_path.unwrap_or(wd);
-    // 被 .gitignore 忽略的目录剪枝：保留目录节点，子节点由懒加载展开时按需返回
-    let ignored_list = ignored.unwrap_or_default();
-    crate::common::file::services::read_dir_tree(
+    let base = resolve_base(&target, &root_path, &wd)?;
+    // S5：gitignore 语义由 watcher 的分层过滤器原生提供（读前剪枝 + ignored 标记），
+    // 前端 ignored_files 平行数组退役。watcher 未挂载（切换项目时首载与 watch
+    // 并发的 race）→ resolve_gitignore_filter 现场构建兜底，保证首屏即带 ignored
+    // 标注；非 git 项目 → None（仅 .git 硬过滤）。
+    let gitignore = crate::common::file::services::resolve_gitignore_filter(
         &target,
-        &base,
+        state.watcher_manager.gitignore_for(&project_id),
+        Path::new(base),
+    )
+    .await;
+    crate::common::file::services::read_dir_tree(
+        &project_id,
+        &target,
+        base,
         sub_path.as_deref(),
         depth,
-        &ignored_list,
+        gitignore.as_deref(),
     )
     .await
 }
@@ -75,14 +101,14 @@ pub async fn read_file_content(
 ) -> Result<FileContent, AppError> {
     let (t, wd) = state.resolve_project(&project_id)?;
     let target = t;
-    let base = root_path.unwrap_or(wd);
+    let base = resolve_base(&target, &root_path, &wd)?;
     crate::common::file::reader::read_file(
         crate::common::file::reader::FileAccessScope::InProject {
-            root: base.clone().into(),
+            root: std::path::PathBuf::from(base),
         },
         crate::common::file::reader::FileReadRequest {
             target,
-            base: base.clone(),
+            base: base.to_string(),
             path: file_path,
             // 行为保持：项目内读取无大小上限，二进制检测与既有实现一致
             max_bytes: None,
@@ -103,8 +129,8 @@ pub async fn write_file_content(
 ) -> Result<(), AppError> {
     let (t, wd) = state.resolve_project(&project_id)?;
     let target = t;
-    let base = root_path.unwrap_or(wd);
-    crate::common::file::services::write_file_content(&target, &base, &file_path, &content).await
+    let base = resolve_base(&target, &root_path, &wd)?;
+    crate::common::file::services::write_file_content(&target, base, &file_path, &content).await
 }
 
 /// Create a new empty file (with parent directories).
@@ -117,8 +143,8 @@ pub async fn create_new_file(
 ) -> Result<(), AppError> {
     let (t, wd) = state.resolve_project(&project_id)?;
     let target = t;
-    let base = root_path.unwrap_or(wd);
-    crate::common::file::services::create_new_file(&target, &base, &file_path).await
+    let base = resolve_base(&target, &root_path, &wd)?;
+    crate::common::file::services::create_new_file(&target, base, &file_path).await
 }
 
 /// Save a new file with content at `directory/filename`, returning the relative path.
@@ -133,8 +159,8 @@ pub async fn save_new_file(
 ) -> Result<String, AppError> {
     let (t, wd) = state.resolve_project(&project_id)?;
     let target = t;
-    let base = root_path.unwrap_or(wd);
-    crate::common::file::services::save_new_file(&target, &base, &directory, &filename, &content)
+    let base = resolve_base(&target, &root_path, &wd)?;
+    crate::common::file::services::save_new_file(&target, base, &directory, &filename, &content)
         .await
 }
 
@@ -148,8 +174,8 @@ pub async fn create_directory(
 ) -> Result<(), AppError> {
     let (t, wd) = state.resolve_project(&project_id)?;
     let target = t;
-    let base = root_path.unwrap_or(wd);
-    crate::common::file::services::create_directory(&target, &base, &dir_path).await
+    let base = resolve_base(&target, &root_path, &wd)?;
+    crate::common::file::services::create_directory(&target, base, &dir_path).await
 }
 
 /// Delete a file or directory (recursively for directories).
@@ -162,8 +188,8 @@ pub async fn delete_path(
 ) -> Result<(), AppError> {
     let (t, wd) = state.resolve_project(&project_id)?;
     let target = t;
-    let base = root_path.unwrap_or(wd);
-    crate::common::file::services::delete_path(&target, &base, &path).await
+    let base = resolve_base(&target, &root_path, &wd)?;
+    crate::common::file::services::delete_path(&target, base, &path).await
 }
 
 /// Rename a file or directory (within the same parent directory).
@@ -177,8 +203,8 @@ pub async fn rename_path(
 ) -> Result<(), AppError> {
     let (t, wd) = state.resolve_project(&project_id)?;
     let target = t;
-    let base = root_path.unwrap_or(wd);
-    crate::common::file::services::rename_path(&target, &base, &path, &new_name).await
+    let base = resolve_base(&target, &root_path, &wd)?;
+    crate::common::file::services::rename_path(&target, base, &path, &new_name).await
 }
 
 // ── Tests ────────────────────────────────────────────────────────────────────
@@ -190,6 +216,17 @@ mod tests {
     #[cfg(target_os = "windows")]
     use crate::platform::reveal::normalize_path;
     use std::fs;
+
+    #[test]
+    fn resolve_base_accepts_valid_worktree_and_rejects_traversal() {
+        let tmp = tempfile::tempdir().unwrap();
+        let path = tmp.path().to_string_lossy().to_string();
+        let root = Some(path);
+        assert!(resolve_base(&ExecTarget::Local, &root, "/trusted").is_ok());
+
+        let traversal = Some("../../etc".to_string());
+        assert!(resolve_base(&ExecTarget::Local, &traversal, "/trusted").is_err());
+    }
 
     #[test]
     fn test_normalize_path_windows() {

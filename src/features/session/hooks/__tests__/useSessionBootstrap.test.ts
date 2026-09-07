@@ -17,7 +17,6 @@ vi.mock('@tauri-apps/api/event', () => ({
 }));
 
 vi.mock('../../../git/api/gitApi', () => ({
-  getIgnoredFiles: vi.fn(() => Promise.resolve([])),
   getWorktreeChangedFiles: vi.fn(() => Promise.resolve([])),
   getWorktreeChangedFilesVersioned: vi.fn(() => Promise.resolve({ files: [], version: 0 })),
   getGitBranchInfo: mockGetGitBranchInfo,
@@ -36,8 +35,6 @@ vi.mock('@/shared/store/gitStore', () => ({
   useGitStore: {
     getState: () => ({
       setAheadBehind: vi.fn(),
-      ignoredByProject: {},
-      setIgnoredFiles: vi.fn(),
     }),
   },
 }));

@@ -195,6 +195,7 @@ pub(crate) fn build_file_tree_from_find(find_output: &str, root_path: &str) -> V
                 path: rel_path,
                 is_dir,
                 children,
+                ignored: false,
             });
         }
     }
@@ -247,6 +248,7 @@ pub(crate) fn collect_file_tree_children(
                 path: rel_path,
                 is_dir,
                 children: grandchildren,
+                ignored: false,
             });
         }
     }

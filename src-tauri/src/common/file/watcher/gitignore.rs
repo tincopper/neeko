@@ -7,6 +7,19 @@ use std::{
     sync::{Arc, RwLock},
 };
 
+/// 平台/元数据硬噪声路径：不属于项目内容，任何场景都不应进入前端。
+///
+/// 这里与 Git 语义过滤分开建模：文件树仍需展示 ignored 灰色节点，但 `.git`
+/// 与 `.DS_Store` 永远不是项目内容。
+pub(super) fn is_hard_noise_path(path: &Path) -> bool {
+    path.components().any(|component| {
+        matches!(
+            component,
+            std::path::Component::Normal(name) if name == ".git" || name == ".DS_Store"
+        )
+    })
+}
+
 /// 分层加载的 .gitignore 文件数上限（公理：随仓库规模增长的结构必须有界；
 /// 正常仓库远低于此值，超限多为异常嵌套，截断仅损失事件过滤精度、不损失正确性）。
 const MAX_GITIGNORE_FILES: usize = 100;
@@ -33,14 +46,16 @@ struct DirRules {
 /// `None` 再向浅层回退；同层内后一条规则覆盖前一条（单 matcher 内建语义）。
 /// 规则在 watcher 启动时编译，任意层级的 `.gitignore` 变更时自动重载（见 `reload`）。
 #[derive(Clone)]
-pub(super) struct GitIgnoreFilter {
+pub struct GitIgnoreFilter {
     root: PathBuf,
     /// 浅 → 深排序的规则层（根层恒为第 0 层）
     levels: Arc<RwLock<Vec<DirRules>>>,
 }
 
 impl GitIgnoreFilter {
-    pub(super) fn new(root: PathBuf) -> Self {
+    /// 构建并立即加载仓库根的分层忽略规则（含嵌套子包与 info/exclude）。
+    #[must_use]
+    pub fn new(root: PathBuf) -> Self {
         let filter = Self {
             root,
             levels: Arc::new(RwLock::new(Vec::new())),
@@ -53,7 +68,7 @@ impl GitIgnoreFilter {
     /// 各自编译，`.git/info/exclude` 并入根层且排在根 `.gitignore` 之后
     /// （git 语义：本地排除规则覆盖 .gitignore）。`.gitignore` 文件变更
     /// （任意层级）时由 notify 回调触发。
-    pub(super) fn reload(&self) {
+    pub fn reload(&self) {
         // WalkBuilder 关闭 hidden 过滤（.gitignore 是隐藏文件），显式过滤 .git
         // 元数据目录；ignored 子树由其内置 gitignore 栈剪枝，遍历成本与可见树成正比
         let mut gitignore_files: Vec<PathBuf> = Vec::new();
@@ -120,14 +135,33 @@ impl GitIgnoreFilter {
         }
     }
 
-    /// 路径是否应被忽略（git 分层语义 + 平台硬过滤）
-    pub(super) fn should_ignore(&self, path: &Path) -> bool {
-        if path.components().any(
-            |c| matches!(c, std::path::Component::Normal(n) if n == ".git" || n == ".DS_Store"),
-        ) {
+    /// 路径自身是否命中忽略规则（不含祖先上行）。
+    ///
+    /// 读目录层专用（S5）：读前剪枝保证「不会访问被忽略目录的后代」，节点自身的
+    /// 命中即完整判定；若沿用 `should_ignore` 的祖先上行，展开一个被忽略目录时
+    /// 其子节点会因父链命中而被整体标记/剪枝，破坏「展开可见内容」的穿透语义。
+    /// watcher 事件过滤仍用 `should_ignore`（FSEvents 等递归后端会送达被忽略
+    /// 目录深处的事件，需要父链判定）。
+    #[must_use]
+    pub fn should_ignore_own(&self, path: &Path, is_dir: bool) -> bool {
+        self.is_ignored_with(path, false, is_dir)
+    }
+
+    /// 路径是否应被忽略（git 分层语义 + 平台硬过滤，含祖先上行 —— watcher 事件用）。
+    /// `is_dir` 由调用方传入时避免热路径内额外 stat；不确定时传 `None` 触发 stat。
+    #[must_use]
+    pub fn should_ignore(&self, path: &Path, is_dir: Option<bool>) -> bool {
+        let is_dir = is_dir.unwrap_or_else(|| path.is_dir());
+        self.is_ignored_with(path, true, is_dir)
+    }
+
+    /// 两个公开判定的共用实现（单一判定核心：硬过滤 → 分层裁定，深层优先）。
+    /// `with_parents` 决定单层匹配是否含祖先上行
+    /// （`matched_path_or_any_parents` vs `matched`）。
+    fn is_ignored_with(&self, path: &Path, with_parents: bool, is_dir: bool) -> bool {
+        if is_hard_noise_path(path) {
             return true;
         }
-        let is_dir = path.is_dir();
         let Ok(levels) = self.levels.read() else {
             return false;
         };
@@ -136,7 +170,12 @@ impl GitIgnoreFilter {
             if !path.starts_with(&level.dir) {
                 continue;
             }
-            match level.gitignore.matched_path_or_any_parents(path, is_dir) {
+            let verdict = if with_parents {
+                level.gitignore.matched_path_or_any_parents(path, is_dir)
+            } else {
+                level.gitignore.matched(path, is_dir)
+            };
+            match verdict {
                 ignore::Match::Ignore(_) => return true,
                 ignore::Match::Whitelist(_) => return false,
                 ignore::Match::None => {}
@@ -163,14 +202,14 @@ mod tests {
         .unwrap();
 
         let filter = GitIgnoreFilter::new(base.to_path_buf());
-        assert!(filter.should_ignore(&base.join("dist").join("foo.js")));
-        assert!(filter.should_ignore(&base.join("build").join("index.html")));
-        assert!(filter.should_ignore(&base.join(".next").join("cache.json")));
-        assert!(filter.should_ignore(&base.join("out").join("bundle.js")));
-        assert!(filter.should_ignore(&base.join("coverage").join("lcov.info")));
+        assert!(filter.should_ignore(&base.join("dist").join("foo.js"), None));
+        assert!(filter.should_ignore(&base.join("build").join("index.html"), None));
+        assert!(filter.should_ignore(&base.join(".next").join("cache.json"), None));
+        assert!(filter.should_ignore(&base.join("out").join("bundle.js"), None));
+        assert!(filter.should_ignore(&base.join("coverage").join("lcov.info"), None));
 
         // 非忽略的兄弟路径仍应通过
-        assert!(!filter.should_ignore(&base.join("src").join("main.rs")));
+        assert!(!filter.should_ignore(&base.join("src").join("main.rs"), None));
     }
 
     /// 平台硬过滤：.git / .DS_Store 无论 .gitignore 内容如何都必须忽略。
@@ -180,8 +219,8 @@ mod tests {
         let base = tmp.path();
         let filter = GitIgnoreFilter::new(base.to_path_buf());
 
-        assert!(filter.should_ignore(&base.join(".git").join("HEAD")));
-        assert!(filter.should_ignore(&base.join(".DS_Store")));
+        assert!(filter.should_ignore(&base.join(".git").join("HEAD"), None));
+        assert!(filter.should_ignore(&base.join(".DS_Store"), None));
     }
 
     /// G5/P5：嵌套 .gitignore 分层加载——monorepo 子包规则必须生效。
@@ -205,19 +244,19 @@ mod tests {
 
         // 子包规则生效
         assert!(
-            filter.should_ignore(&app.join("dist").join("bundle.js")),
+            filter.should_ignore(&app.join("dist").join("bundle.js"), None),
             "packages/app/.gitignore 的 dist/ 规则应生效"
         );
         assert!(
-            filter.should_ignore(&lib.join("coverage").join("lcov.info")),
+            filter.should_ignore(&lib.join("coverage").join("lcov.info"), None),
             "packages/lib/.gitignore 的 coverage/ 规则应生效"
         );
         // 子包规则不得泄漏到兄弟包
-        assert!(!filter.should_ignore(&lib.join("dist").join("x.js")));
+        assert!(!filter.should_ignore(&lib.join("dist").join("x.js"), None));
         // 根规则不受影响
-        assert!(filter.should_ignore(&base.join("target").join("x.rs")));
+        assert!(filter.should_ignore(&base.join("target").join("x.rs"), None));
         // 未忽略路径仍通过
-        assert!(!filter.should_ignore(&app.join("src").join("main.rs")));
+        assert!(!filter.should_ignore(&app.join("src").join("main.rs"), None));
     }
 
     /// 深层规则覆盖浅层（git 语义：更深的 .gitignore 后加载、优先级更高），
@@ -234,11 +273,11 @@ mod tests {
         let filter = GitIgnoreFilter::new(base.to_path_buf());
 
         assert!(
-            !filter.should_ignore(&app.join("keep.log")),
+            !filter.should_ignore(&app.join("keep.log"), None),
             "子包否定规则应覆盖根规则"
         );
-        assert!(filter.should_ignore(&app.join("other.log")));
-        assert!(filter.should_ignore(&base.join("root.log")));
+        assert!(filter.should_ignore(&app.join("other.log"), None));
+        assert!(filter.should_ignore(&base.join("root.log"), None));
     }
 
     /// .git/info/exclude 优先级高于 .gitignore（git 语义：后加载者胜），
@@ -253,7 +292,7 @@ mod tests {
         std::fs::write(git_dir.join("exclude"), "!build/\n").unwrap();
 
         let filter = GitIgnoreFilter::new(base.to_path_buf());
-        assert!(!filter.should_ignore(&base.join("build").join("x.js")));
+        assert!(!filter.should_ignore(&base.join("build").join("x.js"), None));
     }
 
     /// 根因修复：名为 dist / out / build 的真实源码目录（未被 .gitignore 忽略）
@@ -267,12 +306,12 @@ mod tests {
 
         let filter = GitIgnoreFilter::new(base.to_path_buf());
         // 这些目录名过去被硬编码黑名单误过滤，现在按 git 语义不应被忽略
-        assert!(!filter.should_ignore(&base.join("dist").join("app.ts")));
-        assert!(!filter.should_ignore(&base.join("out").join("main.go")));
-        assert!(!filter.should_ignore(&base.join("build").join("CMakeLists.txt")));
+        assert!(!filter.should_ignore(&base.join("dist").join("app.ts"), None));
+        assert!(!filter.should_ignore(&base.join("out").join("main.go"), None));
+        assert!(!filter.should_ignore(&base.join("build").join("CMakeLists.txt"), None));
         // node_modules / target 同样只在 .gitignore 声明时忽略
-        assert!(!filter.should_ignore(&base.join("node_modules").join("react")));
-        assert!(!filter.should_ignore(&base.join("target").join("debug")));
+        assert!(!filter.should_ignore(&base.join("node_modules").join("react"), None));
+        assert!(!filter.should_ignore(&base.join("target").join("debug"), None));
     }
 
     /// 用户编辑 .gitignore 后 reload 立即生效。
@@ -282,11 +321,11 @@ mod tests {
         let base = tmp.path();
         std::fs::write(base.join(".gitignore"), "").unwrap();
         let filter = GitIgnoreFilter::new(base.to_path_buf());
-        assert!(!filter.should_ignore(&base.join("dist").join("foo.js")));
+        assert!(!filter.should_ignore(&base.join("dist").join("foo.js"), None));
 
         // 模拟用户向 .gitignore 追加 dist/ 规则
         std::fs::write(base.join(".gitignore"), "dist/\n").unwrap();
         filter.reload();
-        assert!(filter.should_ignore(&base.join("dist").join("foo.js")));
+        assert!(filter.should_ignore(&base.join("dist").join("foo.js"), None));
     }
 }

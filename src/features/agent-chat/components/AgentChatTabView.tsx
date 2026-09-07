@@ -174,14 +174,7 @@ export default function AgentChatTabView({
   const openAttachDrop = useCallback(() => {
     if (attachFiles.length === 0 && !attachFilesLoading) {
       setAttachFilesLoading(true);
-      void readDirTree(projectId, null, null, 3, [
-        'node_modules',
-        '.git',
-        'dist',
-        'target',
-        'build',
-        'out',
-      ])
+      void readDirTree(projectId, null, null, 3)
         .then((tree) => setAttachFiles(tree))
         .catch(() => setAttachFiles([]))
         .finally(() => setAttachFilesLoading(false));

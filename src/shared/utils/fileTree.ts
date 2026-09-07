@@ -94,6 +94,8 @@ function finalizeNode(
     if (stamped.status) node.git_status = stamped.status;
     if (stamped.ignored) node.is_ignored = true;
   }
+  // S5：后端读层原生标注的 ignored（git 分层规则）并入灰显投影
+  if (node.ignored) node.is_ignored = true;
   // 逐节点视图状态：字段只在命中/非默认时写入，保持节点形状最小
   if (input.activeFilePath && input.activeFilePath === node.path) node.is_active = true;
   if (input.selectedPath && input.selectedPath === node.path) node.is_selected = true;

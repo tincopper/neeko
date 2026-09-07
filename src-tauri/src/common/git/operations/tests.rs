@@ -273,24 +273,6 @@ async fn file_diff_shell_fallback_crlf_file_strips_carriage_returns() {
     assert_eq!(added, vec!["line1", "line2"], "CRLF 行尾不应泄漏 \\r");
 }
 
-#[test]
-fn parse_ignored_porcelain_extracts_ignored_paths() {
-    // `!! ` 前缀为忽略项；目录带尾斜杠；普通 porcelain 行应被过滤
-    let output = "!! .env\n!! dist/\n M src/main.rs\n?? new.txt\n";
-    let paths = parse_ignored_porcelain(output);
-    assert_eq!(paths, vec![".env", "dist"]);
-}
-
-#[test]
-fn parse_ignored_porcelain_handles_edge_cases() {
-    assert!(parse_ignored_porcelain("").is_empty());
-    assert!(parse_ignored_porcelain(" M src/main.rs\n").is_empty());
-    assert_eq!(
-        parse_ignored_porcelain("!! node_modules/\n"),
-        vec!["node_modules"]
-    );
-}
-
 // ── collapse 参数：false 时跳过上下文折叠、返回完整上下文 ────────────────
 
 /// 脚本化 mock transport：返回带长连续 context 的 diff 文本，并捕获
@@ -449,7 +431,6 @@ async fn readonly_queries_inject_git_optional_locks() {
     let transport = DiffTextTransport::new(long_context_diff());
 
     let _ = get_worktree_changed_files(&transport, "/tmp").await;
-    let _ = get_ignored_files(&transport, "/tmp").await;
     let _ = get_file_diff(&transport, "/tmp", "a.txt", true).await;
     let _ = get_staged_diff(&transport, "/tmp", 100).await;
 

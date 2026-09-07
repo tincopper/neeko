@@ -4,7 +4,6 @@ import { useShallow } from 'zustand/shallow';
 import { readDirTree } from '@/features/file/api/fileApi';
 import { useFileStore } from '@/features/file/store';
 import { useEditorStore } from '@/shared/store/editorStore';
-import { useGitStore } from '@/shared/store/gitStore';
 import { useProjectStore } from '@/shared/store/projectStore';
 import { useWorktreeStore } from '@/shared/store/worktreeStore';
 import type { FileNode } from '@/shared/types';
@@ -16,10 +15,6 @@ import { resolveTabKey } from '@/shared/utils/tabKey';
 import { useFileViewTabOps } from './useFileViewTabOps';
 
 /** 从 gitStore 读取指定项目的 .gitignore 忽略列表（供文件树剪枝，undefined 表示不剪枝） */
-function getIgnoredFiles(projectId: string): string[] | undefined {
-  return useGitStore.getState().ignoredByProject[projectId];
-}
-
 /**
  * useFileView �?文件视图 hook
  *
@@ -106,12 +101,11 @@ export function useFileView(
    */
   const makeDirLoader = useCallback((projectId: string, rootPath: string, dirPath: string) => {
     const cmds = externalCommandsRef.current;
-    const ignored = getIgnoredFiles(projectId);
     const depth = dirPath ? 1 : DEFAULT_TREE_DEPTH;
     return (): Promise<FileNode[]> =>
       cmds
-        ? cmds.readDirTree(rootPath, dirPath || undefined, depth, ignored)
-        : readDirTree(projectId, dirPath || null, rootPath, depth, ignored);
+        ? cmds.readDirTree(rootPath, dirPath || undefined, depth)
+        : readDirTree(projectId, dirPath || null, rootPath, depth);
   }, []);
 
   /** 解析当前 root 路径：外部（WSL/Remote worktree）优先，否则 activeProject.path */

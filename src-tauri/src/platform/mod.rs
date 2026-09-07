@@ -22,6 +22,7 @@
 //! | `menu` | `build_edit_submenu` | `app_menu.rs` |
 //! | `file_url` | `file_url_to_path` | `lsp/session/root.rs` |
 //! | `notify_base` | `notify_base` | `browser/scripts.rs` |
+//! | `watch_strategy` | `watch_selectively` | `common/file/watcher/registration.rs` |
 
 pub mod devtools;
 pub mod file_url;
@@ -35,3 +36,4 @@ pub mod process_spawn;
 pub mod process_tree;
 pub mod reveal;
 pub mod shell_launch;
+pub mod watch_strategy;

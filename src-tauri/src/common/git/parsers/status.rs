@@ -143,7 +143,10 @@ pub(crate) fn parse_status_line(line: &str) -> Option<FileChange> {
         return None;
     }
 
-    // G6 契约：rename 行 `old -> new` —— old 落 renamed_from（UI 显示 old → new）
+    // G6 契约：rename 行 `old -> new` —— old 落 renamed_from（UI 显示 old → new）。
+    // P2 显式降级（业界同款，VSCode 同）：rename 识别完全交给 git 的相似度启发式；
+    // similarity 不足时 git 自身输出 `D` + `?` 两条目，Neeko 不做补偿推断，
+    // watcher 的 Rename 事件仅作为 status 重算触发信号。
     let (renamed_from, file_path) = match raw_path.find(" -> ") {
         Some(idx) => (Some(raw_path[..idx].to_string()), &raw_path[idx + 4..]),
         None => (None, raw_path),

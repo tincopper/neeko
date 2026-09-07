@@ -8,6 +8,7 @@ pub mod local;
 pub mod operations;
 pub mod parsers;
 pub mod path_guard;
+pub mod perf;
 pub mod pr;
 pub mod provider;
 pub mod refs;

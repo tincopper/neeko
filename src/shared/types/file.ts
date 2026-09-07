@@ -12,6 +12,11 @@ export interface FileNode {
   path: string;
   is_dir: boolean;
   children: FileNode[];
+  /**
+   * 被 .gitignore 忽略（S5 退役 ignored_files 数组：灰显标记由后端读层原生标注，
+   * ignored 目录保留节点但不递归 children）。
+   */
+  ignored?: boolean;
 }
 
 /**

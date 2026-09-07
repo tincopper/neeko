@@ -19,7 +19,7 @@ export function isActiveWorktree(path: string | null | undefined): boolean {
  * 避免 store 中项目的 current_branch 被 worktree 分支名污染。
  * 其余字段（changed_files 等）仍使用 worktree 的最新数据。
  *
- * 注：ignored（忽略列表）已迁移至 gitStore.ignoredByProject 独立状态，
+ * 注：ignored（忽略列表）已于 S5 退役为后端读层原生标注（FileNode.ignored），
  * 不再经由 GitInfo 传递；此函数仅负责 changed/branch/worktree 字段的合并。
  */
 export function mergeGitInfoForStore(
