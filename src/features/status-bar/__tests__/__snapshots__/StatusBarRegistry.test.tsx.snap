@@ -18,22 +18,22 @@ exports[`statusBarRegistry > 快照：side/order 保持稳定 1`] = `
     "side": "left",
   },
   {
-    "id": "console",
+    "id": "prompts",
     "order": 10,
     "side": "right",
   },
   {
-    "id": "debug",
+    "id": "console",
     "order": 20,
     "side": "right",
   },
   {
-    "id": "cursor",
+    "id": "debug",
     "order": 30,
     "side": "right",
   },
   {
-    "id": "prompts",
+    "id": "cursor",
     "order": 40,
     "side": "right",
   },

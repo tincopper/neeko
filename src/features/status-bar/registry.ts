@@ -18,10 +18,10 @@ export const STATUS_BAR_ITEMS: StatusBarItemDef[] = [
   { id: 'branch', side: 'left', order: 10, component: BranchItem },
   { id: 'lsp', side: 'left', order: 20, component: LspSlotItem },
   { id: 'conflicts', side: 'left', order: 50, component: ConflictsItem },
-  { id: 'console', side: 'right', order: 10, component: ConsoleItem },
-  { id: 'debug', side: 'right', order: 20, component: DebugItem },
-  { id: 'cursor', side: 'right', order: 30, component: CursorItem },
-  { id: 'prompts', side: 'right', order: 40, component: PromptsStatusSection },
+  { id: 'prompts', side: 'right', order: 10, component: PromptsStatusSection },
+  { id: 'console', side: 'right', order: 20, component: ConsoleItem },
+  { id: 'debug', side: 'right', order: 30, component: DebugItem },
+  { id: 'cursor', side: 'right', order: 40, component: CursorItem },
   { id: 'notifications', side: 'right', order: 50, component: NotificationButton },
 ];
 
