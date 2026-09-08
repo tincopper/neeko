@@ -131,6 +131,28 @@ describe('useTestRunActions', () => {
       );
       expect(mockStart.mock.calls[0][0].cwd).toBe('/tmp/proj/.worktrees/fix-1');
     });
+
+    it('should_launch_go_test_via_task_console_with_anchored_run_and_json', async () => {
+      const { result } = renderHook(() =>
+        useTestRunActions({
+          projectId: 'proj-1',
+          filePath: 'pkg/math/add_test.go',
+          projectPath: '/tmp/proj',
+        }),
+      );
+
+      act(() => result.current.handleRunTest({ name: 'TestAdd', line: 3, lang: 'go' }));
+
+      await waitFor(() => expect(mockStart).toHaveBeenCalledTimes(1));
+      expect(mockStart.mock.calls[0][0].command).toBe(
+        "go test -run '^TestAdd$' -json './pkg/math'",
+      );
+      expect(mockStart.mock.calls[0][0].cwd).toBe('/tmp/proj');
+      // Console session visible + focused
+      const state = useTaskStore.getState();
+      expect(state.consolePanelOpen).toBe(true);
+      expect(state.consoleSessions).toHaveLength(1);
+    });
   });
   describe('run result stream (libtest JSON / vitest report → testResults store)', () => {
     beforeEach(() => {
@@ -322,6 +344,63 @@ describe('useTestRunActions', () => {
       act(() => result.current.handleRunTest({ name: 'parse_simple', line: 1, lang: 'rust' }));
 
       await waitFor(() => expect(statusForCase('proj-1', 'src/lib.rs', 'parse_simple')).toBeNull());
+    });
+
+    it('should_land_go_test2json_status_on_exit_for_go_cases', async () => {
+      const { result } = renderHook(() =>
+        useTestRunActions({
+          projectId: 'proj-1',
+          filePath: 'pkg/math/add_test.go',
+          projectPath: '/tmp/proj',
+        }),
+      );
+      act(() => result.current.handleRunTest({ name: 'TestAdd', line: 3, lang: 'go' }));
+      await waitFor(() => expect(mockStart).toHaveBeenCalledTimes(1));
+      // spawn 前 beginRun：running 占位
+      expect(statusForCase('proj-1', 'pkg/math/add_test.go', 'TestAdd')).toEqual({
+        status: 'running',
+      });
+
+      const opts = mockStart.mock.calls[0][0];
+      opts.onOutput(
+        JSON.stringify({ Action: 'run', Package: 'math', Test: 'TestAdd' }) +
+          '\n' +
+          JSON.stringify({ Action: 'output', Test: 'TestAdd', Output: '=== RUN   TestAdd\n' }) +
+          '\n' +
+          JSON.stringify({ Action: 'output', Test: 'TestAdd', Output: 'add_test.go:10: boom\n' }) +
+          '\n' +
+          JSON.stringify({ Action: 'fail', Test: 'TestAdd', Elapsed: 0.002 }) +
+          '\n',
+      );
+      opts.onExit(1);
+
+      await waitFor(() =>
+        expect(statusForCase('proj-1', 'pkg/math/add_test.go', 'TestAdd')).toEqual({
+          status: 'failed',
+          duration: 2,
+          message: 'add_test.go:10: boom\n',
+        }),
+      );
+    });
+
+    it('should_clear_go_running_state_when_output_has_no_test2json_events', async () => {
+      const { result } = renderHook(() =>
+        useTestRunActions({
+          projectId: 'proj-1',
+          filePath: 'pkg/math/add_test.go',
+          projectPath: '/tmp/proj',
+        }),
+      );
+      act(() => result.current.handleRunTest({ name: 'TestAdd', line: 3, lang: 'go' }));
+      await waitFor(() => expect(mockStart).toHaveBeenCalledTimes(1));
+
+      const opts = mockStart.mock.calls[0][0];
+      opts.onOutput('go: cannot find main module\n');
+      opts.onExit(1);
+
+      await waitFor(() =>
+        expect(statusForCase('proj-1', 'pkg/math/add_test.go', 'TestAdd')).toBeNull(),
+      );
     });
   });
   describe('debug (Rust → headless build → parse binary → lldb session)', () => {
@@ -591,6 +670,73 @@ describe('useTestRunActions', () => {
       expect(mockStart).not.toHaveBeenCalled();
       expect(mockStartWithConfig).not.toHaveBeenCalled();
       expect(mockInvoke).not.toHaveBeenCalled();
+    });
+
+    it('should_build_go_test_binary_headless_and_launch_dlv_exec', async () => {
+      mockInvoke.mockImplementation((cmd: string) =>
+        cmd === 'debug_build_test_binary'
+          ? // go test -c 成功时无 stdout（产物落 `-o` 显式路径）
+            Promise.resolve({ exit_code: 0, stdout: '' })
+          : Promise.resolve(false),
+      );
+      const { result } = renderHook(() =>
+        useTestRunActions({
+          projectId: 'proj-1',
+          filePath: 'pkg/math/add_test.go',
+          projectPath: '/tmp/proj',
+        }),
+      );
+
+      act(() => result.current.handleDebugTest({ name: 'TestAdd', line: 3, lang: 'go' }));
+
+      // pending：DebugPanel 打开，Task Console 永不参与
+      await waitFor(() => expect(mockOpenDebugPanel).toHaveBeenCalledWith('console'));
+      expect(mockPushConsole).toHaveBeenCalledWith('sys', expect.stringContaining('构建'));
+      // 无头构建：go test -c + 显式 `-o`（gitignored .neeko/）+ 无优化 -gcflags
+      await waitFor(() =>
+        expect(mockInvoke).toHaveBeenCalledWith('debug_build_test_binary', {
+          projectId: 'proj-1',
+          command: "go test -c -o '.neeko/test-bin/TestAdd' -gcflags 'all=-N -l' './pkg/math'",
+          cwd: '/tmp/proj',
+        }),
+      );
+      expect(mockStart).not.toHaveBeenCalled();
+      expect(useTaskStore.getState().consoleSessions).toHaveLength(0);
+
+      // dlv exec launch：program = `-o` 显式产物绝对路径；type go + mode exec
+      await waitFor(() => expect(mockStartWithConfig).toHaveBeenCalledTimes(1));
+      expect(mockStartWithConfig).toHaveBeenCalledWith('proj-1', {
+        name: 'Debug test: TestAdd',
+        type: 'go',
+        request: 'launch',
+        program: '/tmp/proj/.neeko/test-bin/TestAdd',
+        cwd: '/tmp/proj',
+        mode: 'exec',
+        args: ['^TestAdd$'],
+        stopOnEntry: false,
+      });
+    });
+
+    it('should_not_start_go_session_when_go_build_fails', async () => {
+      mockInvoke.mockImplementation((cmd: string) =>
+        cmd === 'debug_build_test_binary'
+          ? Promise.resolve({ exit_code: 1, stdout: 'add_test.go:1: undefined: add\n' })
+          : Promise.resolve(false),
+      );
+      const { result } = renderHook(() =>
+        useTestRunActions({
+          projectId: 'proj-1',
+          filePath: 'pkg/math/add_test.go',
+          projectPath: '/tmp/proj',
+        }),
+      );
+
+      act(() => result.current.handleDebugTest({ name: 'TestAdd', line: 3, lang: 'go' }));
+
+      await waitFor(() => expect(notifiedWith('构建失败')).toBe(true));
+      expect(mockStartWithConfig).not.toHaveBeenCalled();
+      expect(mockStart).not.toHaveBeenCalled();
+      expect(mockPushConsole).toHaveBeenCalledWith('err', expect.stringContaining('undefined'));
     });
   });
 

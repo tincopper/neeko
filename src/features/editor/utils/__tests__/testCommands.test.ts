@@ -3,9 +3,14 @@ import { describe, expect, it } from 'vitest';
 import type { TestCaseInfo } from '../testCases';
 import {
   buildDebugBuildCommand,
+  buildDebugLaunchConfig,
+  buildGoDebugBuildCommand,
   buildRunCommand,
   buildTestConfigId,
   buildVitestReportPath,
+  findGoModuleDir,
+  goDebugBinaryRelPath,
+  goPkgDir,
   parseTestBinaryPath,
   resolveBinaryPath,
   resolveTestTargetFlag,
@@ -13,50 +18,51 @@ import {
 
 const tsCase: TestCaseInfo = { name: 'adds numbers', line: 2, lang: 'ts' };
 const rustCase: TestCaseInfo = { name: 'parse_simple', line: 1, lang: 'rust' };
+const goCase: TestCaseInfo = { name: 'TestAdd', line: 3, lang: 'go' };
 
 describe('buildRunCommand', () => {
-  it('should_build_vitest_command_with_json_report_output_for_ts_cases', () => {
-    expect(buildRunCommand(tsCase, 'src/a.test.ts', null, '/tmp/proj')).toBe(
+  it('should_build_vitest_command_with_json_report_output_for_ts_cases', async () => {
+    expect(await buildRunCommand(tsCase, 'src/a.test.ts', null, '/tmp/proj')).toBe(
       "pnpm vitest run 'src/a.test.ts' -t 'adds numbers'" +
         " --reporter=default --reporter=json --outputFile.json='/tmp/proj/node_modules/.neeko/vitest-report.json'",
     );
   });
 
-  it('should_fall_back_to_relative_report_path_without_run_root', () => {
-    expect(buildRunCommand(tsCase, 'src/a.test.ts')).toBe(
+  it('should_fall_back_to_relative_report_path_without_run_root', async () => {
+    expect(await buildRunCommand(tsCase, 'src/a.test.ts')).toBe(
       "pnpm vitest run 'src/a.test.ts' -t 'adds numbers'" +
         " --reporter=default --reporter=json --outputFile.json='node_modules/.neeko/vitest-report.json'",
     );
   });
 
-  it('should_build_cargo_test_with_libtest_json_via_posix_env_prefix_for_rust_cases', () => {
-    expect(buildRunCommand(rustCase, 'src/lib.rs')).toBe(
+  it('should_build_cargo_test_with_libtest_json_via_posix_env_prefix_for_rust_cases', async () => {
+    expect(await buildRunCommand(rustCase, 'src/lib.rs')).toBe(
       "RUSTC_BOOTSTRAP=1 cargo test 'parse_simple' -- -Z unstable-options --format=json --show-output",
     );
   });
 
-  it('should_append_manifest_path_before_harness_separator_for_subdir_cargo_layouts', () => {
-    expect(buildRunCommand(rustCase, 'src-tauri/tests/x.rs', 'src-tauri')).toBe(
+  it('should_append_manifest_path_before_harness_separator_for_subdir_cargo_layouts', async () => {
+    expect(await buildRunCommand(rustCase, 'src-tauri/tests/x.rs', 'src-tauri')).toBe(
       "RUSTC_BOOTSTRAP=1 cargo test 'parse_simple' --manifest-path 'src-tauri/Cargo.toml'" +
         ' -- -Z unstable-options --format=json --show-output',
     );
   });
 
-  it('should_not_append_manifest_args_for_null_hint', () => {
-    expect(buildRunCommand(rustCase, 'src/lib.rs', null)).toBe(
+  it('should_not_append_manifest_args_for_null_hint', async () => {
+    expect(await buildRunCommand(rustCase, 'src/lib.rs', null)).toBe(
       "RUSTC_BOOTSTRAP=1 cargo test 'parse_simple' -- -Z unstable-options --format=json --show-output",
     );
   });
 
-  it('should_single_quote_escape_names_with_quotes_and_spaces', () => {
+  it('should_single_quote_escape_names_with_quotes_and_spaces', async () => {
     expect(
-      buildRunCommand({ ...tsCase, name: "it's fine" }, 'src/a.test.ts', null, '/tmp/proj'),
+      await buildRunCommand({ ...tsCase, name: "it's fine" }, 'src/a.test.ts', null, '/tmp/proj'),
     ).toBe(
       `pnpm vitest run 'src/a.test.ts' -t 'it'\\''s fine'` +
         " --reporter=default --reporter=json --outputFile.json='/tmp/proj/node_modules/.neeko/vitest-report.json'",
     );
     expect(
-      buildRunCommand(
+      await buildRunCommand(
         { ...tsCase, name: 'has "double" quotes' },
         'src/a.test.ts',
         null,
@@ -68,11 +74,30 @@ describe('buildRunCommand', () => {
     );
   });
 
-  it('should_quote_relative_paths_containing_spaces', () => {
-    expect(buildRunCommand(tsCase, 'src/my folder/a.test.ts', null, '/tmp/proj')).toBe(
+  it('should_quote_relative_paths_containing_spaces', async () => {
+    expect(await buildRunCommand(tsCase, 'src/my folder/a.test.ts', null, '/tmp/proj')).toBe(
       `pnpm vitest run 'src/my folder/a.test.ts' -t 'adds numbers'` +
         " --reporter=default --reporter=json --outputFile.json='/tmp/proj/node_modules/.neeko/vitest-report.json'",
     );
+  });
+
+  it('should_build_go_test_command_with_anchored_run_and_json_for_go_cases', async () => {
+    expect(await buildRunCommand(goCase, 'pkg/math/add_test.go')).toBe(
+      "go test -run '^TestAdd$' -json './pkg/math'",
+    );
+  });
+
+  it('should_use_dot_package_dir_for_root_go_test_files', async () => {
+    expect(await buildRunCommand(goCase, 'add_test.go')).toBe("go test -run '^TestAdd$' -json '.'");
+  });
+
+  it('should_resolve_nested_module_pkg_relative_to_module_root_for_go_cases', async () => {
+    // 嵌套 module：go.mod 在 `submod/`，包目录取相对 module 根（`./pkg/math`），
+    // 而非 cwd 相对（`./submod/pkg/math`）——与 `go test` 的 module 内寻址一致。
+    const exists = async (p: string) => ['/proj/submod/go.mod'].includes(p);
+    expect(
+      await buildRunCommand(goCase, 'submod/pkg/math/add_test.go', null, '/proj', exists),
+    ).toBe("go test -run '^TestAdd$' -json './pkg/math'");
   });
 });
 
@@ -117,6 +142,117 @@ describe('buildDebugBuildCommand', () => {
     expect(buildDebugBuildCommand(rustCase, null, '--test unit')).toBe(
       "cargo test 'parse_simple' --no-run --test unit --message-format=json",
     );
+  });
+});
+
+describe('findGoModuleDir', () => {
+  const exists = (existing: string[]) => async (p: string) => existing.includes(p);
+
+  it('should_return_empty_string_for_root_module_go_mod_at_run_root', async () => {
+    const probe = exists(['/proj/go.mod']);
+    expect(await findGoModuleDir('pkg/math/add_test.go', '/proj', probe)).toBe('');
+  });
+
+  it('should_return_nested_module_dir_when_go_mod_is_in_subdir', async () => {
+    const probe = exists(['/proj/submod/go.mod']);
+    expect(await findGoModuleDir('submod/pkg/math/add_test.go', '/proj', probe)).toBe('submod');
+  });
+
+  it('should_return_null_when_no_go_mod_found_up_to_run_root', async () => {
+    const probe = exists([]);
+    expect(await findGoModuleDir('pkg/math/add_test.go', '/proj', probe)).toBeNull();
+  });
+
+  it('should_return_null_for_empty_run_root_or_file_path', async () => {
+    expect(await findGoModuleDir('pkg/math/add_test.go', '', async () => true)).toBeNull();
+    expect(await findGoModuleDir('', '/proj', async () => true)).toBeNull();
+  });
+
+  it('should_return_null_and_fall_back_when_probe_throws', async () => {
+    const probe = async () => {
+      throw new Error('ipc down');
+    };
+    expect(await findGoModuleDir('pkg/math/add_test.go', '/proj', probe)).toBeNull();
+  });
+});
+
+describe('goPkgDir', () => {
+  const exists = (existing: string[]) => async (p: string) => existing.includes(p);
+
+  it('should_derive_package_directory_from_file_path', async () => {
+    expect(await goPkgDir('pkg/math/add_test.go')).toBe('./pkg/math');
+    expect(await goPkgDir('add_test.go')).toBe('.');
+  });
+
+  it('should_normalize_windows_separators', async () => {
+    expect(await goPkgDir('pkg\\math\\add_test.go')).toBe('./pkg/math');
+  });
+
+  it('should_resolve_root_module_package_relative_to_run_root', async () => {
+    const probe = exists(['/proj/go.mod']);
+    expect(await goPkgDir('pkg/math/add_test.go', '/proj', probe)).toBe('./pkg/math');
+    expect(await goPkgDir('add_test.go', '/proj', probe)).toBe('.');
+  });
+
+  it('should_resolve_nested_module_package_relative_to_module_root', async () => {
+    // 嵌套 module：go.mod 在 `submod/`，包目录相对 module 根（`./pkg/math`），
+    // 而非 cwd 相对（`./submod/pkg/math`）；文件在 module 根时返回 `.`。
+    const probe = exists(['/proj/submod/go.mod']);
+    expect(await goPkgDir('submod/pkg/math/add_test.go', '/proj', probe)).toBe('./pkg/math');
+    expect(await goPkgDir('submod/add_test.go', '/proj', probe)).toBe('.');
+  });
+
+  it('should_fall_back_to_file_dir_when_no_go_mod_found', async () => {
+    const probe = exists([]);
+    expect(await goPkgDir('pkg/math/add_test.go', '/proj', probe)).toBe('./pkg/math');
+    expect(await goPkgDir('add_test.go', '/proj', probe)).toBe('.');
+  });
+});
+
+describe('buildGoDebugBuildCommand', () => {
+  it('should_build_go_test_c_command_with_explicit_output_and_no_optimization', () => {
+    expect(buildGoDebugBuildCommand('./pkg/math', '.neeko/test-bin/TestAdd')).toBe(
+      "go test -c -o '.neeko/test-bin/TestAdd' -gcflags 'all=-N -l' './pkg/math'",
+    );
+  });
+
+  it('should_use_dot_package_for_root_files', () => {
+    expect(buildGoDebugBuildCommand('.', '.neeko/test-bin/TestAdd')).toBe(
+      "go test -c -o '.neeko/test-bin/TestAdd' -gcflags 'all=-N -l' '.'",
+    );
+  });
+});
+
+describe('goDebugBinaryRelPath', () => {
+  it('should_place_binary_under_gitignored_neeko_dir', () => {
+    expect(goDebugBinaryRelPath('TestAdd')).toBe('.neeko/test-bin/TestAdd');
+  });
+});
+
+describe('buildDebugLaunchConfig', () => {
+  it('should_build_lldb_config_for_rust_cases', () => {
+    expect(buildDebugLaunchConfig(rustCase, '/proj/target/debug/deps/neeko-abc', '/proj')).toEqual({
+      name: 'Debug test: parse_simple',
+      type: 'lldb',
+      request: 'launch',
+      program: '/proj/target/debug/deps/neeko-abc',
+      cwd: '/proj',
+      args: ['parse_simple'],
+      stopOnEntry: false,
+    });
+  });
+
+  it('should_build_go_exec_config_with_anchored_test_run_pattern_for_go_cases', () => {
+    expect(buildDebugLaunchConfig(goCase, '/proj/.neeko/test-bin/TestAdd', '/proj')).toEqual({
+      name: 'Debug test: TestAdd',
+      type: 'go',
+      request: 'launch',
+      program: '/proj/.neeko/test-bin/TestAdd',
+      cwd: '/proj',
+      mode: 'exec',
+      args: ['^TestAdd$'],
+      stopOnEntry: false,
+    });
   });
 });
 

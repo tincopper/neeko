@@ -28,6 +28,17 @@ describe('isTestFile', () => {
     // Without content we cannot know — not a test file.
     expect(isTestFile('lib.rs')).toBe(false);
   });
+
+  it('should_match_go_test_files', () => {
+    expect(isTestFile('add_test.go')).toBe(true);
+    expect(isTestFile('pkg/sub_add_test.go')).toBe(true);
+    expect(isTestFile('pkg/math/calc_test.go')).toBe(true);
+  });
+
+  it('should_reject_plain_go_and_non_suffix_files', () => {
+    expect(isTestFile('math.go')).toBe(false);
+    expect(isTestFile('helper_test.ts')).toBe(false); // ts 是 `*.test.*`（点），非 `_test.go`
+  });
 });
 
 describe('parseTestCases — TS/JS', () => {
@@ -168,5 +179,71 @@ describe('parseTestCases — Rust', () => {
       { name: 'first', line: 2, lang: 'rust' },
       { name: 'second', line: 5, lang: 'rust' },
     ]);
+  });
+});
+
+describe('parseTestCases — Go', () => {
+  it('should_parse_top_level_test_functions_and_ignore_benchmarks', () => {
+    const doc = [
+      'package math',
+      '',
+      'func TestAdd(t *testing.T) {',
+      '    got := add(1, 2)',
+      '    if got != 3 { t.Fatalf("got %d", got) }',
+      '}',
+      '',
+      'func BenchmarkFib(b *testing.B) {',
+      '    for i := 0; i < b.N; i++ { _ = fib(i) }',
+      '}',
+    ].join('\n');
+    expect(parseTestCases('math/add_test.go', doc)).toEqual([
+      { name: 'TestAdd', line: 3, lang: 'go' },
+    ]);
+    // Benchmark 不检测（YAGNI：`-run` 过滤与 benchmark 名不匹配），不得出现在结果里
+    expect(parseTestCases('math/add_test.go', doc)).not.toContainEqual({
+      name: 'BenchmarkFib',
+      line: 8,
+      lang: 'go',
+    });
+  });
+
+  it('should_ignore_comments_non_line_start_and_non_test_functions', () => {
+    const doc = [
+      '// func TestCommented(t *testing.T) {}',
+      '/* func TestBlockComment(t *testing.T) {} */',
+      'func helper(x int) int { return x }',
+      'func (s *Suite) TestMethod(t *testing.T) {}',
+      'func TestReal(t *testing.T) {',
+      '    t.Run("sub", func(t *testing.T) {})',
+      '}',
+    ].join('\n');
+    expect(parseTestCases('math/add_test.go', doc)).toEqual([
+      { name: 'TestReal', line: 5, lang: 'go' },
+    ]);
+  });
+
+  it('should_parse_multiple_cases_with_line_numbers_in_order', () => {
+    const doc = [
+      'func TestA(t *testing.T) {}',
+      '',
+      'func TestB_WithSuffix(t *testing.T) {}',
+      '',
+      'func BenchmarkB(b *testing.B) {}',
+    ].join('\n');
+    expect(parseTestCases('math/math_test.go', doc)).toEqual([
+      { name: 'TestA', line: 1, lang: 'go' },
+      { name: 'TestB_WithSuffix', line: 3, lang: 'go' },
+    ]);
+    // Benchmark 与 Test 混排时仍不检测，结果不含 BenchmarkB
+    expect(parseTestCases('math/math_test.go', doc)).not.toContainEqual({
+      name: 'BenchmarkB',
+      line: 5,
+      lang: 'go',
+    });
+  });
+
+  it('should_return_empty_for_non_go_files', () => {
+    const doc = 'func TestAdd(t *testing.T) {}';
+    expect(parseTestCases('math/add.go', doc)).toEqual([]);
   });
 });

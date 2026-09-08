@@ -60,7 +60,7 @@ const RUN_ICON_SVG =
 export function buildTestRunElement(testCase: TestCaseInfo): HTMLElement {
   const el = document.createElement('div');
   el.className = 'cm-test-run-marker';
-  el.title = testCase.lang === 'rust' ? 'Run or Debug test' : 'Run test';
+  el.title = testCase.lang === 'rust' || testCase.lang === 'go' ? 'Run or Debug test' : 'Run test';
   el.innerHTML = RUN_ICON_SVG;
   return el;
 }
@@ -236,8 +236,8 @@ export function createTestRunContribution(
     },
 
     onClick(hit: GutterHit<TestCaseInfo>): boolean {
-      // TS 直跑；Rust 走 rect 锚点菜单。返回 true 吞掉，不冒泡给列级 toggle。
-      if (hit.payload.lang === 'rust') {
+      // TS 直跑；Rust/Go 走 rect 锚点菜单（菜单含 Run + Debug）。返回 true 吞掉，不冒泡给列级 toggle。
+      if (hit.payload.lang === 'rust' || hit.payload.lang === 'go') {
         // 原型锚定：浮层紧贴图标（rect.right + 4 / rect.top），不用鼠标裸坐标。
         onMenuRequest(
           hit.payload,

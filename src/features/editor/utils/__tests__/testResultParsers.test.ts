@@ -4,6 +4,7 @@ import {
   MAX_REPORT_CHARS,
   matchCaseName,
   parseLibtestJsonLines,
+  parseTest2JsonLines,
   parseVitestJsonReport,
 } from '../testResultParsers';
 
@@ -61,6 +62,89 @@ describe('parseLibtestJsonLines', () => {
   it('should_treat_failed_event_without_stdout_as_message_free', () => {
     const text = JSON.stringify({ type: 'test', event: 'failed', name: 'a' });
     expect(parseLibtestJsonLines(text)).toEqual([{ name: 'a', status: 'failed' }]);
+  });
+});
+
+describe('parseTest2JsonLines', () => {
+  const g = (obj: Record<string, unknown>) => JSON.stringify(obj);
+
+  it('should_map_terminal_actions_to_case_results', () => {
+    const text = [
+      g({ Action: 'run', Package: 'math', Test: 'TestAdd' }),
+      g({ Action: 'pass', Package: 'math', Test: 'TestAdd', Elapsed: 0.0012 }),
+      g({ Action: 'fail', Package: 'math', Test: 'TestSub' }),
+      g({ Action: 'skip', Package: 'math', Test: 'TestSkip' }),
+      g({ Action: 'pass', Package: 'math', Elapsed: 0.1 }),
+    ].join('\n');
+
+    expect(parseTest2JsonLines(text)).toEqual([
+      { name: 'TestAdd', status: 'passed', duration: 1 },
+      { name: 'TestSub', status: 'failed' },
+      { name: 'TestSkip', status: 'ignored' },
+    ]);
+  });
+
+  it('should_accumulate_output_and_attach_to_failed_cases', () => {
+    const text = [
+      g({ Action: 'run', Test: 'TestAdd' }),
+      g({ Action: 'output', Test: 'TestAdd', Output: '=== RUN   TestAdd\n' }),
+      g({ Action: 'output', Test: 'TestAdd', Output: 'add_test.go:10: expected 2, got 3\n' }),
+      g({ Action: 'fail', Test: 'TestAdd', Elapsed: 0.01 }),
+      g({ Action: 'pass', Test: 'TestPassed' }),
+    ].join('\n');
+
+    expect(parseTest2JsonLines(text)).toEqual([
+      {
+        name: 'TestAdd',
+        status: 'failed',
+        duration: 10,
+        stdout: 'add_test.go:10: expected 2, got 3\n',
+      },
+      { name: 'TestPassed', status: 'passed' },
+    ]);
+  });
+
+  it('should_drop_non_json_and_package_level_events', () => {
+    const text = [
+      'ok  \tmath\t0.123s',
+      g({ Action: 'output', Package: 'math', Output: 'PASS\n' }),
+      g({ Action: 'pass', Package: 'math', Elapsed: 0.1 }),
+      g({ Action: 'run', Test: 'TestAdd' }),
+    ].join('\n');
+
+    expect(parseTest2JsonLines(text)).toEqual([]);
+  });
+
+  it('should_ignore_pause_cont_and_unknown_actions', () => {
+    const text = [
+      g({ Action: 'run', Test: 'TestParallel' }),
+      g({ Action: 'pause', Test: 'TestParallel' }),
+      g({ Action: 'cont', Test: 'TestParallel' }),
+      g({ Action: 'pass', Test: 'TestParallel' }),
+    ].join('\n');
+
+    expect(parseTest2JsonLines(text)).toEqual([{ name: 'TestParallel', status: 'passed' }]);
+  });
+
+  it('should_return_empty_for_empty_or_json_error_output', () => {
+    expect(parseTest2JsonLines('')).toEqual([]);
+    expect(parseTest2JsonLines('go: cannot find main module')).toEqual([]);
+    expect(parseTest2JsonLines('{"Action":"pass" ')).toEqual([]);
+  });
+
+  it('should_not_attach_failed_output_to_passed_cases_or_subtests', () => {
+    // 子测试失败输出归到子测试（`TestFoo/sub`），父级 `TestFoo` 终态 failed 但
+    // 无输出——源码侧只按 fn 名对齐顶层，子测试事件自然丢弃。
+    const text = [
+      g({ Action: 'output', Test: 'TestFoo/sub', Output: 'sub_test.go:1: boom\n' }),
+      g({ Action: 'fail', Test: 'TestFoo/sub' }),
+      g({ Action: 'fail', Test: 'TestFoo' }),
+    ].join('\n');
+
+    expect(parseTest2JsonLines(text)).toEqual([
+      { name: 'TestFoo/sub', status: 'failed', stdout: 'sub_test.go:1: boom\n' },
+      { name: 'TestFoo', status: 'failed' },
+    ]);
   });
 });
 

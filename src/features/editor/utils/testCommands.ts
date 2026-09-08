@@ -19,6 +19,9 @@
  *   gitignored）；vitest json reporter 自建输出目录（dist 实证 mkdir recursive）。
  */
 
+import { fileExists } from '@/features/file/api/fileApi';
+
+import type { ExistsProbe } from './cargoManifest';
 import type { TestCaseInfo } from './testCases';
 
 /** POSIX 单引号转义：内嵌 `'` → `'\''`。 */
@@ -35,33 +38,116 @@ export function buildVitestReportPath(runRoot: string): string {
   return root ? `${root}/${VITEST_REPORT_REL_PATH}` : VITEST_REPORT_REL_PATH;
 }
 
+/** Tauri `file_exists`（O(1) stat，不读内容）——Go go.mod 探测默认探针，与 cargo 清单探测同构。 */
+const goExists: ExistsProbe = (absPath) => fileExists(absPath);
+
+/**
+ * Go module 根探测：从被编辑文件目录向上找最近 `go.mod`（对齐 Go toolchain 的
+ * 模块边界语义），返回相对 `runRoot` 的 module 目录；找不到/探测失败 → null。
+ * 复用 `resolveCargoManifestDirForFile` 模式：probe 注入便于测试，默认走
+ * Tauri `file_exists`。
+ *
+ * - 根模块：`go.mod` 在 runRoot → 返回 `''`（module 根 = runRoot）。
+ * - 嵌套模块：`go.mod` 在某子目录（如 `submod/`）→ 返回 `'submod'`。
+ * - 无 go.mod（runRoot 到文件目录链路均无）→ null（调用方回退文件目录语义）。
+ * 搜索有界于 runRoot：module 根在 runRoot 之上时回退 cwd 相对路径（`go` 自会
+ * 向上找到 module），无需 `..` 表达。
+ */
+export async function findGoModuleDir(
+  filePath: string,
+  runRoot: string,
+  probe: ExistsProbe = goExists,
+): Promise<string | null> {
+  const root = runRoot.replace(/[/\\]+$/, '');
+  if (!root || !filePath) return null;
+  const parts = filePath.replace(/\\/g, '/').split('/');
+  parts.pop(); // 去掉文件名，从所在目录起向上
+  for (let i = parts.length; i >= 0; i--) {
+    const dir = parts.slice(0, i).join('/'); // '' = runRoot 自身
+    const goMod = dir ? `${root}/${dir}/go.mod` : `${root}/go.mod`;
+    try {
+      if (await probe(goMod)) return dir;
+    } catch {
+      return null; // 探测失败（IPC 不可用等）→ 回退文件目录语义，不阻塞运行
+    }
+  }
+  return null;
+}
+
+/** 文件所在目录相对 module 根的路径（moduleDir='' 表示 runRoot 自身）。 */
+function pkgDirRelativeToModule(filePath: string, moduleDir: string): string {
+  const normalized = filePath.replace(/\\/g, '/');
+  const body = moduleDir ? normalized.slice(moduleDir.length).replace(/^\/+/, '') : normalized;
+  const lastSlash = body.lastIndexOf('/');
+  return lastSlash >= 0 ? body.slice(0, lastSlash) : '';
+}
+
+/**
+ * Go 测试文件路径 → 所属包目录（cwd 相对：`./dir` / `.`）。
+ * cwd = run 根（worktree 根或项目根）。优先按 module 边界解析：`go.mod` 位于
+ * 嵌套模块（如 `submod/`）时返回相对 module 根的包目录（`./pkg/math`，与
+ * `go test` 的 module 内包寻址一致）；无 go.mod（或探测失败/无 runRoot）回退
+ * 文件所在目录。
+ */
+export async function goPkgDir(
+  filePath: string,
+  runRoot?: string | null,
+  probe: ExistsProbe = goExists,
+): Promise<string> {
+  if (runRoot) {
+    const moduleDir = await findGoModuleDir(filePath, runRoot, probe);
+    if (moduleDir !== null) {
+      const rel = pkgDirRelativeToModule(filePath, moduleDir);
+      return rel ? `./${rel}` : '.';
+    }
+  }
+  // 回退：文件所在目录（`./dir` / `.` 为 cwd 相对）。
+  const normalized = filePath.replace(/\\/g, '/');
+  const lastSlash = normalized.lastIndexOf('/');
+  const dir = lastSlash >= 0 ? normalized.slice(0, lastSlash) : '';
+  return dir ? `./${dir}` : '.';
+}
+
 /**
  * Run 命令（P1 结构化结果流版）：
  * - Rust `RUSTC_BOOTSTRAP=1 cargo test <name>[ --manifest-path …] -- -Z unstable-options
  *   --format=json --show-output`（libtest JSON 行，env 前缀与 Windows 限制见文件头）。
+ * - Go `go test -run '^Name$' -json <pkg>`（test2json 行式事件，与 libtest 同族；
+ *   pkg = 测试文件所属包目录——优先按 module 边界（`go.mod` 向上探测，嵌套 module
+ *   取相对 module 根的包目录），无 go.mod 回退文件目录）。
  * - TS `pnpm vitest run <relPath> -t <name> --reporter=default --reporter=json
  *   --outputFile.json=<报告路径>`（default 进 Task Console，json 落文件供 onExit 读取）。
  *
  * `cargoManifestDir`：清单所在目录相对项目根的路径（如 Tauri 布局的
  * `src-tauri`）。cargo 只向上查找清单，项目根无 `Cargo.toml` 时必须显式
  * `--manifest-path`，否则 exit 101。为空/undefined 时不追加（根清单布局）。
- * `runRoot`：TS 报告路径的 run 根（worktree 根或项目根）；为空时回退相对路径。
+ * `runRoot`：TS 报告路径的 run 根 + Go module 探测根（worktree 根或项目根）；
+ * 为空时回退相对路径 / 文件目录语义。
+ * `probe`：Go module 探测探针（默认 Tauri `file_exists`），测试注入。
  *
  * 不用 `--exact`：libtest 的 exact 匹配完整测试路径（如 `tests::case`），仅传
  * fn 名时 `mod tests` 嵌套用例会匹配 0 个；子串过滤对根级/嵌套用例均可命中，
  * 同名用例可能多跑——输出可见，可接受（MVP，模块路径透传待后续）。
  */
-export function buildRunCommand(
+export async function buildRunCommand(
   testCase: TestCaseInfo,
   relPath: string,
   cargoManifestDir?: string | null,
   runRoot?: string | null,
-): string {
+  probe: ExistsProbe = goExists,
+): Promise<string> {
   if (testCase.lang === 'rust') {
     return (
       `RUSTC_BOOTSTRAP=1 cargo test ${shQuote(testCase.name)}` +
       `${buildManifestArgs(cargoManifestDir)} -- -Z unstable-options --format=json --show-output`
     );
+  }
+  if (testCase.lang === 'go') {
+    // `-run` 锚定 `^Name$`（子串命中会多跑；debug 0 命中则断点永不触发）。
+    // `-json` → test2json 行式事件（与 libtest JSON 同族，共用 TestResultEvent 状态机）。
+    // pkg = 测试文件所属包目录（module 感知，见 goPkgDir）。
+    const pkg = await goPkgDir(relPath, runRoot, probe);
+    return `go test -run ${shQuote(`^${testCase.name}$`)} -json ${shQuote(pkg)}`;
   }
   return (
     `pnpm vitest run ${shQuote(relPath)} -t ${shQuote(testCase.name)}` +
@@ -82,7 +168,9 @@ function buildManifestArgs(cargoManifestDir?: string | null): string {
  * 放 `--` 之前；无 `VAR=x` env 前缀，shell 无关（Windows 本地 cmd 同样可用）。
  * `targetFlag` 为多目标工作区消歧：lib+bin 共享 src/ 时 artifact 的 src_path 是
  * crate root、与源文件行永不匹配（hint 消歧失效），必须在构建期锁定目标使产物唯一。
- * Debug 首期仅支持 Rust —— 非 Rust 用例直接抛错（UI 已按 lang 隐藏 Debug 按钮）。
+ * Debug 支持 Rust/Go（§4/§5）：cargo 构建命令只服务 Rust —— 非 Rust 用例直接
+ * 抛错；Go 的调试构建走 `buildGoDebugBuildCommand`。UI 已按 lang 只对 Rust/Go
+ * 显示 Debug 按钮，此处抛错为防御兜底。
  */
 export function buildDebugBuildCommand(
   testCase: TestCaseInfo,
@@ -94,6 +182,29 @@ export function buildDebugBuildCommand(
   }
   const target = targetFlag ? ` ${targetFlag}` : '';
   return `cargo test ${shQuote(testCase.name)} --no-run${target}${buildManifestArgs(cargoManifestDir)} --message-format=json`;
+}
+
+/**
+ * Go Debug 前置构建产物相对路径（cwd 相对，gitignored `.neeko/` 下）。
+ * `go test -c -o` 会自建父目录；产物路径显式（`-o`），启动时按此解析，无 compiler-artifact。
+ */
+export function goDebugBinaryRelPath(name: string): string {
+  return `.neeko/test-bin/${name}`;
+}
+
+/**
+ * Go Debug 前置构建命令（delve `pkg/gobuild` 的公开常量，GoLand/Zed mode:exec 一字不差复用）：
+ * `go test -c -o <out> -gcflags all=-N -l <pkg>`。
+ * `-gcflags all=-N -l` 无优化构建是断点/变量正确性前提（delve#4165）；`-o` 显式产物路径，
+ * 比 Rust 的 compiler-artifact 解析更简单（解析 `<out>` 即可）。`<pkg>` 为测试文件所属
+ * 包目录（cwd 相对 `./dir` / `.`）。
+ */
+export function buildGoDebugBuildCommand(pkgDir: string, outRelPath: string): string {
+  // `-gcflags` 的值 `all=-N -l` 必须是单个 argv token（delve gobuild 的 `-gcflags=all=-N -l`
+  // 是代码内 argv，落到 shell 命令必须引号成 `-gcflags 'all=-N -l'`）——写成
+  // `-gcflags=all=-N -l` / `-gcflags all=-N -l` 会让 go 把 `-l` 解析成独立 flag 报错
+  // （"unknown flag -l cannot be used with -c"）。
+  return `go test -c -o ${shQuote(outRelPath)} -gcflags ${shQuote('all=-N -l')} ${shQuote(pkgDir)}`;
 }
 
 /**
@@ -204,7 +315,9 @@ export function resolveBinaryPath(binary: string, cwd: string): string {
   return `${cwd.replace(/[/\\]+$/, '')}/${binary}`;
 }
 
-/** 合成 lldb launch 配置：program = 测试二进制，args = [name]（libtest 子串过滤，理由同 buildRunCommand）。 */
+/** 合成 debug launch 配置：program = 测试二进制，args = [name]（libtest 子串过滤，理由同 buildRunCommand）。
+ *  Go：`type: 'go'` + `mode: 'exec'`（预编译测试二进制），args 传锚定 `-test.run` 模式
+ *  （`^Name$`）——GoAdapter 端负责拼装 `-test.run` 前缀（见 go.rs），此处只传过滤模式本身。 */
 export function buildDebugLaunchConfig(
   testCase: TestCaseInfo,
   program: string,
@@ -216,8 +329,21 @@ export function buildDebugLaunchConfig(
   program: string;
   cwd: string;
   args: string[];
+  mode?: string;
   stopOnEntry: boolean;
 } {
+  if (testCase.lang === 'go') {
+    return {
+      name: `Debug test: ${testCase.name}`,
+      type: 'go',
+      request: 'launch',
+      program,
+      cwd: workspaceRoot,
+      mode: 'exec',
+      args: [`^${testCase.name}$`],
+      stopOnEntry: false,
+    };
+  }
   return {
     name: `Debug test: ${testCase.name}`,
     type: 'lldb',

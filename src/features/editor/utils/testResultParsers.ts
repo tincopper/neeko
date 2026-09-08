@@ -76,6 +76,71 @@ export function parseLibtestJsonLines(text: string): LibtestEvent[] {
   return events;
 }
 
+/** go test2json 终态 Action → 统一 status（run/pause/cont/output 非终态不进映射）。 */
+const GO2J_STATUS: Record<string, LibtestEvent['status']> = {
+  pass: 'passed',
+  fail: 'failed',
+  skip: 'ignored',
+};
+
+/** go test `-v` 横幅行（输出清洗：`=== RUN/PAUSE/CONT <name>`、`--- PASS/FAIL/SKIP: <name>`）。 */
+const GO_TEST_BANNER_LINE = /^(?:=== (?:RUN|PAUSE|CONT)|--- (?:PASS|FAIL|SKIP))/;
+
+/**
+ * 解析 `go test -json`（test2json）行式事件。逐行 JSON.parse，非 JSON 行丢弃；
+ * 消费带 `Test` 字段的终态事件（pass/fail/skip），`Action: output` 累积到该用例
+ * 的输出并在终态（failed）时作为 `stdout` 摘要携带（对齐 libtest `--show-output`）。
+ * 包级事件（无 `Test` 字段）、run/pause/cont 及未知 Action 忽略。
+ * 子测试在 `Test` 字段以 `/` 扁平（`TestFoo/sub`）——匹配时按源码 fn 名后缀对齐，
+ * 无法对齐的子测试事件自然丢弃（首期不做 `t.Run` 识别，对齐 vscode-go 局限）。
+ */
+export function parseTest2JsonLines(text: string): LibtestEvent[] {
+  const outputs: Record<string, string> = {};
+  const events: LibtestEvent[] = [];
+  for (const rawLine of text.split('\n')) {
+    const line = rawLine.trim();
+    if (!line.startsWith('{')) continue;
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(line);
+    } catch {
+      continue;
+    }
+    if (typeof parsed !== 'object' || parsed === null) continue;
+    const obj = parsed as Record<string, unknown>;
+    const action = obj['Action'];
+    const test = obj['Test'];
+    if (typeof action !== 'string' || typeof test !== 'string' || test.length === 0) continue;
+    if (action === 'output') {
+      const chunk = obj['Output'];
+      if (typeof chunk === 'string' && chunk.length > 0) {
+        // 剥 go test `-v` 横幅（`=== RUN/PAUSE/CONT`、`--- PASS/FAIL/SKIP`）：
+        // libtest 的 stdout 只含真实用例输出，对齐失败摘要语义。
+        const cleaned = chunk
+          .split('\n')
+          .filter((l) => !GO_TEST_BANNER_LINE.test(l))
+          .join('\n');
+        if (cleaned.length > 0) outputs[test] = (outputs[test] ?? '') + cleaned;
+      }
+      continue;
+    }
+    const status = GO2J_STATUS[action];
+    if (!status) continue;
+    const event: LibtestEvent = { name: test, status };
+    const elapsed = obj['Elapsed'];
+    if (typeof elapsed === 'number' && Number.isFinite(elapsed)) {
+      event.duration = Math.round(elapsed * 1000);
+    }
+    if (status === 'failed') {
+      const stdout = outputs[test];
+      if (stdout) event.stdout = stdout;
+    }
+    delete outputs[test];
+    events.push(event);
+  }
+  return events;
+}
+
 /** vitest/jest 状态 → 统一 status（todo/pending 等非通过非失败态归入 skipped）。 */
 const VITEST_STATUS: Record<string, VitestCaseResult['status']> = {
   passed: 'passed',

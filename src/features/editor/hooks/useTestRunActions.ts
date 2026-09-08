@@ -5,7 +5,7 @@
  *   P1 结构化结果流：beginRun 标记用例进行中 → onOutput 累积（Rust libtest JSON 行）/
  *   onExit 后经 file api 读取 vitest JSON 报告（TS）→ parse → matchCaseName 对齐源码用例名
  *   → testResults store 落库（gutter test-status 贡献消费）。Run 路径零改动。
- * - Debug（仅 Rust，§4/§5 描述统一载体分离）：点击瞬间 `debugStore.openPanel`
+ * - Debug（Rust/Go，§4/§5 描述统一载体分离）：点击瞬间 `debugStore.openPanel`
  *   （pending 态"正在构建测试二进制…"，静态路由）→ 无头构建
  *  （`debugBuildApi.buildTestBinaryRemote` → 后端管道进程，无会话/无复用/
  *   无 observer；二次点击 = 第二次独立构建）→ `parseTestBinaryPath` 解析产物
@@ -40,8 +40,11 @@ import type { TestCaseInfo } from '../utils/testCases';
 import {
   buildDebugBuildCommand,
   buildDebugLaunchConfig,
+  buildGoDebugBuildCommand,
   buildRunCommand,
   buildTestConfigId,
+  goDebugBinaryRelPath,
+  goPkgDir,
   parseTestBinaryPath,
   resolveBinaryPath,
   resolveTestTargetFlag,
@@ -50,7 +53,9 @@ import {
 import {
   matchCaseName,
   parseLibtestJsonLines,
+  parseTest2JsonLines,
   parseVitestJsonReport,
+  type LibtestEvent,
 } from '../utils/testResultParsers';
 
 /** 原型风格菜单文案：Run 项 `Test '<name>'`（JetBrains gutter 浮层首行）。 */
@@ -101,14 +106,16 @@ async function finalizeRunResults(
   const results =
     testCase.lang === 'rust'
       ? alignLibtestResults(output, testCase)
-      : await readVitestResults(testCase, ctx, runRoot);
+      : testCase.lang === 'go'
+        ? alignGoResults(output, testCase)
+        : await readVitestResults(testCase, ctx, runRoot);
   useTestResultsStore.getState().applyResults(ctx.projectId, ctx.filePath, results);
 }
 
-/** libtest JSON 行 → 对齐到源码用例名的结果（matchCaseName 拒绝无边界/参数化名）。 */
-function alignLibtestResults(output: string, testCase: TestCaseInfo): AlignedCaseResult[] {
+/** 事件流 → 对齐到源码用例名的结果（matchCaseName 拒绝无边界/参数化名）。 */
+function alignEvents(events: LibtestEvent[], testCase: TestCaseInfo): AlignedCaseResult[] {
   const results: AlignedCaseResult[] = [];
-  for (const event of parseLibtestJsonLines(output)) {
+  for (const event of events) {
     if (!matchCaseName(event.name, testCase.name)) continue;
     results.push({
       caseName: testCase.name,
@@ -118,6 +125,16 @@ function alignLibtestResults(output: string, testCase: TestCaseInfo): AlignedCas
     });
   }
   return results;
+}
+
+/** libtest JSON 行 → 对齐到源码用例名的结果。 */
+function alignLibtestResults(output: string, testCase: TestCaseInfo): AlignedCaseResult[] {
+  return alignEvents(parseLibtestJsonLines(output), testCase);
+}
+
+/** go test2json 行 → 对齐到源码用例名的结果。 */
+function alignGoResults(output: string, testCase: TestCaseInfo): AlignedCaseResult[] {
+  return alignEvents(parseTest2JsonLines(output), testCase);
 }
 
 /**
@@ -148,29 +165,27 @@ async function readVitestResults(
 /**
  * Phase 2（run 分叉）：直跑用例命令，输出进 Task Console；结果流回填 gutter 状态。
  * Run 路径行为不变（Task Console + ✓/✗ 状态流，不新增通知）。
+ * Go 分支命令构造需 module 探测（`goPkgDir` 向上找 go.mod），故为 async。
  */
-function launchRun(
+async function launchRun(
   testCase: TestCaseInfo,
   ctx: TestActionContext,
   manifestDir: string | null,
   runRoot: string,
-): void {
+): Promise<void> {
+  const command = await buildRunCommand(testCase, ctx.filePath, manifestDir, runRoot);
   let output = '';
   const runId = useTaskStore
     .getState()
-    .runTask(
-      buildRunCommand(testCase, ctx.filePath, manifestDir, runRoot),
-      buildTestConfigId('run', testCase, ctx.filePath),
-      {
-        cwd: runRoot,
-        onOutput: (chunk) => {
-          if (output.length < MAX_CAPTURED_OUTPUT_CHARS) output += chunk;
-        },
-        onExit: () => {
-          void finalizeRunResults(output, testCase, ctx, runRoot);
-        },
+    .runTask(command, buildTestConfigId('run', testCase, ctx.filePath), {
+      cwd: runRoot,
+      onOutput: (chunk) => {
+        if (output.length < MAX_CAPTURED_OUTPUT_CHARS) output += chunk;
       },
-    );
+      onExit: () => {
+        void finalizeRunResults(output, testCase, ctx, runRoot);
+      },
+    });
   if (!runId) {
     // 会话未能创建（如无活动项目）：结束 running 占位，避免图标永久卡在进行中
     useTestResultsStore.getState().invalidateFile(ctx.projectId, ctx.filePath);
@@ -186,13 +201,18 @@ export function runTestCase(testCase: TestCaseInfo, ctx: TestActionContext): voi
     const runRoot = resolveRunCwd(ctx);
     // Run 开始：清该文件旧状态并标记进行中（gutter 半透明占位）
     useTestResultsStore.getState().beginRun(ctx.projectId, ctx.filePath);
-    launchRun(testCase, ctx, manifestDir, runRoot);
+    await launchRun(testCase, ctx, manifestDir, runRoot);
   })();
 }
 /** Phase 1 无头构建的产物（退出码 + 管道 stdout，与后端 DTO 对齐）。 */
 interface TestBinaryBuild {
   exitCode: number;
   output: string;
+  /**
+   * go：`go test -c -o` 的显式产物绝对路径（确定性，无需从 stdout 解析）；
+   * rust：undefined（走 parseTestBinaryPath 的 compiler-artifact 解析）。
+   */
+  programPath?: string;
 }
 
 /**
@@ -212,6 +232,26 @@ async function buildTestBinary(
   // cargo 实际 cwd 一致，否则 worktree 会话下探测的是主工作树清单（构建却在
   // worktree 里跑 → 无 manifest-path → exit 101）。
   const cwd = resolveRunCwd(ctx);
+  if (testCase.lang === 'go') {
+    // go 无 manifest 解析链：pkg = 测试文件所属包目录（cwd 相对，module 感知——
+    // `goPkgDir` 向上找 go.mod，嵌套 module 取相对 module 根的包目录），产物走
+    // `-o` 显式路径（`.neeko/test-bin/<name>`，gitignored；go 自建父目录），比 Rust
+    // compiler-artifact 解析更简单——programPath 直接确定，无需解析 stdout。
+    const outRelPath = goDebugBinaryRelPath(testCase.name);
+    const pkg = await goPkgDir(ctx.filePath, cwd);
+    const command = buildGoDebugBuildCommand(pkg, outRelPath);
+    try {
+      const result = await buildTestBinaryRemote({ projectId: ctx.projectId, command, cwd });
+      return {
+        exitCode: result.exitCode,
+        output: result.output,
+        programPath: resolveBinaryPath(outRelPath, cwd),
+      };
+    } catch (e) {
+      const detail = e instanceof Error ? e.message : String(e);
+      throw new Error(`无头构建执行失败：${detail}（命令：${command}，目录：${cwd}）`);
+    }
+  }
   const member = await resolveCargoManifestDirForFile(cwd, ctx.filePath);
   const relPath = member ? ctx.filePath.replace(`${member}/`, '') : ctx.filePath;
   const targetFlag = resolveTestTargetFlag(relPath, await hasLibTarget(cwd, member));
@@ -267,7 +307,10 @@ async function launchDebug(
     notifyDebugError('构建失败，未启动调试（构建日志见 DebugPanel console）');
     return;
   }
-  const parsed = parseTestBinaryPath(build.output, ctx.filePath);
+  // go：`-o` 显式产物路径（buildTestBinary 已解析）；rust：compiler-artifact 解析。
+  const parsed = build.programPath
+    ? { ok: true as const, path: build.programPath }
+    : parseTestBinaryPath(build.output, ctx.filePath);
   if (!parsed.ok) {
     pushBuildLogTail(build.output);
     notifyDebugError(
@@ -290,9 +333,9 @@ async function launchDebug(
   }
 }
 
-/** Debug（仅 Rust）：pending 开面板 → 无头构建 → 解析 → 启动/失败分类。 */
-export function debugRustTestCase(testCase: TestCaseInfo, ctx: TestActionContext): void {
-  if (testCase.lang !== 'rust') return; // UI 已隐藏 Debug 按钮，防御兜底（非失败路径）
+/** Debug（仅 Rust/Go）：pending 开面板 → 无头构建 → 解析 → 启动/失败分类。 */
+export function debugTestCase(testCase: TestCaseInfo, ctx: TestActionContext): void {
+  if (testCase.lang !== 'rust' && testCase.lang !== 'go') return; // UI 已隐藏 Debug 按钮，防御兜底（非失败路径）
   const debug = useDebugStore.getState();
   debug.openPanel('console');
   debug.pushConsole('sys', '正在构建测试二进制…');
@@ -324,7 +367,7 @@ export function useTestRunActions({ projectId, filePath, projectPath }: UseTestR
     [projectId, filePath, projectPath],
   );
   const handleDebugTest = useCallback(
-    (testCase: TestCaseInfo) => debugRustTestCase(testCase, { projectId, filePath, projectPath }),
+    (testCase: TestCaseInfo) => debugTestCase(testCase, { projectId, filePath, projectPath }),
     [projectId, filePath, projectPath],
   );
 
