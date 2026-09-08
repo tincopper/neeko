@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-4.md`
-- **Total Sessions**: 192
+- **Total Sessions**: 193
 - **Last Active**: 2026-09-08
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-4.md` | ~507 | Active |
+| `journal-4.md` | ~540 | Active |
 | `journal-3.md` | ~1978 | Archived |
 | `journal-2.md` | ~1991 | Archived |
 | `journal-1.md` | ~1986 | Archived |
@@ -32,6 +32,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 193 | 2026-09-08 | cmdw-unsaved-confirm 收尾：check 审查通过 + 门禁全绿 + 任务置 done | `5ff465d6` | `main` |
 | 192 | 2026-09-08 | file-tree-security-async-fix 回归确认并归档 | `c13a12a6` | `main` |
 | 191 | 2026-09-08 | Fix WebKit autocapitalize and IME segmentation spaces in text inputs | `c13a12a6` | `main` |
 | 190 | 2026-09-07 | 对标差距收口：窗口聚焦触发 + P2/check-ignore 文档化 | - | `main` |
