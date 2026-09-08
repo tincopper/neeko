@@ -9,6 +9,7 @@ import { withTimeout } from '@/shared/utils/withTimeout';
 import { Button } from '@/ui/Button';
 import { Checkbox } from '@/ui/Checkbox';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/ui/Dialog';
+import { noAutocorrectProps } from '@/ui/inputDefaults';
 
 import {
   commitFiles,
@@ -200,6 +201,7 @@ function CommitDialog({ projectId, onClose, onRefreshGit }: CommitDialogProps) {
 
         {/* Message */}
         <textarea
+          {...noAutocorrectProps}
           className="w-full bg-bg-secondary border border-border rounded-md px-3 py-2 text-[13px] text-text-primary placeholder-text-muted resize-none outline-none focus:border-accent"
           rows={4}
           placeholder="Commit message"

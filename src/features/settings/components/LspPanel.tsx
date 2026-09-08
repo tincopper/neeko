@@ -439,9 +439,6 @@ const LspPanel: React.FC<LspPanelProps> = ({ config, onConfigChange }) => {
                 placeholder="buf beta lsp"
                 className="h-9 py-1.5 text-[0.86em]"
                 autoComplete="off"
-                autoCorrect="off"
-                autoCapitalize="off"
-                spellCheck={false}
                 data-form-type="other"
               />
             </Field>
@@ -454,9 +451,6 @@ const LspPanel: React.FC<LspPanelProps> = ({ config, onConfigChange }) => {
                   placeholder="proto, pb"
                   className="h-9 py-1.5 text-[0.86em] !font-sans"
                   autoComplete="off"
-                  autoCorrect="off"
-                  autoCapitalize="off"
-                  spellCheck={false}
                   data-form-type="other"
                 />
               </Field>
@@ -470,9 +464,6 @@ const LspPanel: React.FC<LspPanelProps> = ({ config, onConfigChange }) => {
                   placeholder="buf.yaml"
                   className="h-9 py-1.5 text-[0.86em] !font-sans"
                   autoComplete="off"
-                  autoCorrect="off"
-                  autoCapitalize="off"
-                  spellCheck={false}
                   data-form-type="other"
                 />
               </Field>

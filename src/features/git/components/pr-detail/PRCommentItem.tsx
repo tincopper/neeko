@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 
 import { cn } from '@/lib/utils';
+import { noAutocorrectProps } from '@/ui/inputDefaults';
 
 import type { PRComment } from '../../types/comment';
 
@@ -120,6 +121,7 @@ const PRCommentItem: React.FC<PRCommentItemProps> = ({
         {isEditing ? (
           <div className="space-y-2">
             <textarea
+              {...noAutocorrectProps}
               className="w-full min-h-[100px] p-3 bg-bg-primary border border-border rounded-md text-[var(--font-size)] text-text-primary placeholder-text-muted outline-none focus:border-accent-blue resize-y"
               value={editBody}
               onChange={(e) => setEditBody(e.target.value)}

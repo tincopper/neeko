@@ -3,6 +3,7 @@ import React, { useRef } from 'react';
 import { GitCommitHorizontal, ArrowUp, Sparkles, Loader2 } from '@/shared/components/icons';
 import { useImeSpaceGuard } from '@/shared/hooks/useImeSpaceGuard';
 import { Button } from '@/ui/Button';
+import { noAutocorrectProps } from '@/ui/inputDefaults';
 
 interface CommitFormProps {
   /** 受控 message 值 */
@@ -65,6 +66,7 @@ const CommitForm: React.FC<CommitFormProps> = ({
       <div className="relative">
         <textarea
           ref={textareaRef}
+          {...noAutocorrectProps}
           className="w-full bg-bg-tertiary/60 border-0 rounded-md px-2.5 py-1.5 text-[var(--font-size)] text-text-primary placeholder:text-text-muted resize-none outline-none focus:ring-1 focus:ring-accent-blue/30 transition-all duration-100 font-mono"
           style={
             textareaHeight

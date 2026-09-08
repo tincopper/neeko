@@ -8,6 +8,7 @@ import { useImeSpaceGuard } from '@/shared/hooks/useImeSpaceGuard';
 import { useProjectStore } from '@/shared/store/projectStore';
 import { Button } from '@/ui/Button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/ui/Dialog';
+import { noAutocorrectProps } from '@/ui/inputDefaults';
 
 interface FormState {
   name: string;
@@ -309,6 +310,7 @@ const McpEditorDialog: React.FC = React.memo(() => {
               </label>
               <textarea
                 id="mcp-args"
+                {...noAutocorrectProps}
                 className={cn(
                   'w-full min-h-[60px] px-2.5 py-2 text-[var(--font-size)] rounded-md resize-y font-mono',
                   'bg-bg-primary border border-border text-text-primary',
@@ -331,6 +333,7 @@ const McpEditorDialog: React.FC = React.memo(() => {
             </label>
             <textarea
               id="mcp-env"
+              {...noAutocorrectProps}
               className={cn(
                 'w-full min-h-[60px] px-2.5 py-2 text-[var(--font-size)] rounded-md resize-y font-mono',
                 'bg-bg-primary border border-border text-text-primary',

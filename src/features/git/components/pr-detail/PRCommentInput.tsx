@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 
 import { cn } from '@/lib/utils';
 import { useImeSpaceGuard } from '@/shared/hooks/useImeSpaceGuard';
+import { noAutocorrectProps } from '@/ui/inputDefaults';
 
 interface PRCommentInputProps {
   onSubmit: (body: string) => void;
@@ -36,6 +37,7 @@ const PRCommentInput: React.FC<PRCommentInputProps> = ({
       {/* Textarea */}
       <div className="min-h-[120px]">
         <textarea
+          {...noAutocorrectProps}
           className="w-full min-h-[120px] p-3 bg-transparent text-[var(--font-size)] text-text-primary placeholder-text-muted outline-none resize-y"
           value={body}
           onChange={(e) => setBody(e.target.value)}

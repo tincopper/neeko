@@ -3,6 +3,7 @@ import type { ChangeEvent, KeyboardEvent } from 'react';
 
 import type { ModelInfo } from '@/features/agent/api/agentApi';
 import type { AgentConfig } from '@/shared/types/agent';
+import { noAutocorrectProps } from '@/ui/inputDefaults';
 
 import { AGENT_MODES, THINKING_LEVELS } from './constants';
 import ContextWindowMeter from './ContextWindowMeter';
@@ -95,6 +96,7 @@ export default function ChatComposer({
           value={input}
           onChange={onInputChange}
           onKeyDown={onKeyDown}
+          {...noAutocorrectProps}
         />
 
         <div className="composer-footer">

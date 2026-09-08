@@ -4,6 +4,7 @@ import { cn } from '@/lib/utils';
 import { ChevronRightIcon } from '@/shared/components/icons';
 import { reportFrontendError } from '@/shared/utils/errorReporting';
 import { fileIconSrc } from '@/shared/utils/fileIcons';
+import { noAutocorrectProps } from '@/ui/inputDefaults';
 
 import { readFileContent, listPrReviewComments, addPrReviewComment } from '../../api/gitApi';
 import type { PRFileChange } from '../../types';
@@ -492,6 +493,7 @@ const DiffBody: React.FC<DiffBodyProps> = ({
           {isActive && (
             <div className="flex flex-col gap-1.5">
               <textarea
+                {...noAutocorrectProps}
                 className="w-full min-h-[60px] bg-bg-primary border border-border rounded p-2 text-[var(--font-size)] text-text-primary resize-none outline-none focus:border-accent-blue"
                 placeholder="Leave a comment on this line..."
                 value={commentText}

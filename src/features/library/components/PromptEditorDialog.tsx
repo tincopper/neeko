@@ -8,6 +8,7 @@ import { useProjectStore } from '@/shared/store/projectStore';
 import type { PromptResource } from '@/shared/types/library';
 import { Button } from '@/ui/Button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/ui/Dialog';
+import { noAutocorrectProps } from '@/ui/inputDefaults';
 
 import { savePrompt, updatePrompt } from '../api/libraryApi';
 
@@ -226,6 +227,7 @@ const PromptEditorDialog: React.FC = React.memo(() => {
             </label>
             <textarea
               id="prompt-content"
+              {...noAutocorrectProps}
               className={cn(
                 'w-full min-h-[160px] px-2.5 py-2 text-[var(--font-size)] rounded-md resize-y',
                 'bg-bg-primary border border-border text-text-primary font-mono',
@@ -378,6 +380,7 @@ const PromptEditorDialog: React.FC = React.memo(() => {
             </summary>
             <textarea
               id="prompt-variables"
+              {...noAutocorrectProps}
               className={cn(
                 'mt-1 w-full min-h-[80px] px-2.5 py-2 text-[var(--font-size)] rounded-md resize-y font-mono',
                 'bg-bg-primary border border-border text-text-primary',

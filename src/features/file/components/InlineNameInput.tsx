@@ -1,6 +1,8 @@
 import { useEffect, useRef } from 'react';
 
+import { useImeSpaceGuard } from '@/shared/hooks/useImeSpaceGuard';
 import { fileIconSrc } from '@/shared/utils/fileIcons';
+import { noAutocorrectProps } from '@/ui/inputDefaults';
 
 interface InlineNameInputProps {
   kind: 'file' | 'dir';
@@ -27,6 +29,7 @@ function InlineNameInput({
   commitOnBlur = false,
 }: InlineNameInputProps) {
   const inputRef = useRef<HTMLInputElement>(null);
+  const { onCompositionEnd } = useImeSpaceGuard<HTMLInputElement>();
 
   useEffect(() => {
     inputRef.current?.focus();
@@ -58,8 +61,10 @@ function InlineNameInput({
       )}
       <input
         ref={inputRef}
+        {...noAutocorrectProps}
         value={value}
         onChange={(e) => onChange?.(e.target.value)}
+        onCompositionEnd={onCompositionEnd}
         onKeyDown={(e) => {
           if (e.key === 'Enter') {
             e.preventDefault();

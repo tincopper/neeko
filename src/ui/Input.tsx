@@ -3,11 +3,14 @@ import * as React from 'react';
 import { cn } from '@/lib/utils';
 import { useImeSpaceGuard } from '@/shared/hooks/useImeSpaceGuard';
 
+import { noAutocorrectProps } from './inputDefaults';
+
 function Input({ className, onCompositionEnd, ...props }: React.ComponentProps<'input'>) {
   const guard = useImeSpaceGuard<HTMLInputElement>();
   return (
     <input
       data-slot="input"
+      {...noAutocorrectProps}
       className={cn(
         'w-full px-3 py-2.5 bg-bg-primary border border-border rounded-md',
         'text-text-primary text-[var(--font-size)] font-mono',
@@ -34,6 +37,7 @@ function Textarea({ className, onCompositionEnd, ...props }: React.ComponentProp
   return (
     <textarea
       data-slot="textarea"
+      {...noAutocorrectProps}
       className={cn(
         'w-full px-3 py-2.5 bg-bg-primary border border-border rounded-md',
         'text-text-primary text-[var(--font-size)] font-mono',
