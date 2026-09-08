@@ -10,6 +10,15 @@
 > - 验证基线：`pnpm type-check` 绿；`pnpm vitest run src/features/editor src/features/debug` 58 文件 416 用例全绿（gutter 域 42 用例）；eslint（含防火墙规则）clean。
 > - **2026-09-05 点击无响应修复（两叠加 bug，breadcrumb 定位）**：① CM 层命中判定 `instanceof HTMLElement` 对 SVGElement 失效（图标内联 `<svg>/<polygon>` 继承 Element 非 HTMLElement）→ 改 `instanceof Element`（测试 `should_route_click_when_target_is_svg_child_of_icon`）；② 菜单树内渲染被 dock 面板祖先 transform/overflow-hidden 裁剪不可见，且其 document 级 outside-click 监听把下一次开启菜单的 mousedown 判为外部点击立即 closeMenu（开↔关竞态）→ ContextMenu 改 `createPortal(document.body)`（与 app 浮层惯例一致）+ 合并器对已处理点击 `stopPropagation`（测试 `should_stop_propagation_when_contribution_handles_click`）。验证链：DEV breadcrumb 定位到 openMenu 已执行而菜单不可见 + 真实 Chromium harness（esbuild 打包真实模块）证明 CM 路由正常，排除层逐步收窄至 React 渲染层。
 
+## V2 现行实现（唯一基准：`design/test-run-debug.md`）
+
+> 历史 M1-M4/P1 为已落地基线，直接复用、零改动：parser（`parseTestBinaryPath`）、命令构造（`testCommands`）、run 链路（`launchRun` / testResults / P1 状态流）、gutter 交互（图标/浮层/冲突规则）。V2 只动 debug 载体。
+
+- 后端新增 `debug_build_test_binary`（exec 管道执行，stdout 2MB 截断，注册 `neeko_invoke_handler!`）；`dap_start_session_config` 不动。
+- 前端新增 `debug/api/debugBuildApi.ts` 门面；`buildTestBinary` 改无头构建（删 `runTask` / observer / 会话耦合）；`launchDebug`：pending 开面板 → 构建 → 解析 → 成功 `startWithConfig` / 失败 console tab + notification。
+- 面板路由退化为静态（删 outcome 矩阵，调用点收敛）；回滚指纹补丁（`summarizeBuildOutput` 实现+测试+调用点全删）；parser 加输入清洗用例。
+- 历史设计文档已删除，树上唯一设计即 `test-run-debug.md`；本文件 M1-M4/P1 章节保留为基线记录。
+
 ## M1 用例检测纯函数（已实现）
 
 - `src/features/editor/utils/testCases.ts`：
