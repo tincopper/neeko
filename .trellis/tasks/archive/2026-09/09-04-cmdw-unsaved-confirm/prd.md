@@ -30,12 +30,12 @@ untitled 新建文件创建即 `isDirty: true`（`createUntitledFileTab.ts`）�
 
 ## Acceptance Criteria
 
-- [ ] `closeConfirmStore` 全局单例：Promise 语义 `request()` 返回 `'save' | 'discard' | 'cancel'`，并发请求排队行为与现 `useCloseConfirmation` 一致（新请求到来时旧 Promise resolve `'cancel'`）。
-- [ ] `closeActiveTabCommand` 与 `useTabManagement.handleCloseTab`：dirty 文件 tab → 经 store 弹确认；`'cancel'` 不关；`'discard'` 直接关；`'save'` 保存成功才关。
-- [ ] `EditorGroupPane` 的 X 按钮路径改消费全局 store，行为不回归（三选框 UX 不变）。
-- [ ] `SaveFileDialog` 保存成功且 `closeAfterSave=true` 时自动 `closeEditorTab`；取消时不动。
-- [ ] 非 dirty / 非 file tab 走原直关路径，无弹框。
-- [ ] 全程 TDD（red-green-refactor）；`pnpm type-check` / `pnpm test:run` / `pnpm lint:fe` 全绿。
+- [x] `closeConfirmStore` 全局单例：Promise 语义 `request()` 返回 `'save' | 'discard' | 'cancel'`，并发请求排队行为与现 `useCloseConfirmation` 一致（新请求到来时旧 Promise resolve `'cancel'`）。
+- [x] `closeActiveTabCommand` 与 `useTabManagement.handleCloseTab`：dirty 文件 tab → 经 store 弹确认；`'cancel'` 不关；`'discard'` 直接关；`'save'` 保存成功才关。
+- [x] `EditorGroupPane` 的 X 按钮路径改消费全局 store，行为不回归（三选框 UX 不变）。
+- [x] `SaveFileDialog` 保存成功且 `closeAfterSave=true` 时自动 `closeEditorTab`；取消时不动。
+- [x] 非 dirty / 非 file tab 走原直关路径，无弹框。
+- [x] 全程 TDD（red-green-refactor）；`pnpm type-check` / `pnpm test:run` / `pnpm lint:fe` 全绿。
 
 ## Notes
 
