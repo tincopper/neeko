@@ -78,6 +78,16 @@ export function dapVariables(sessionId: string, frameId: number): Promise<Variab
   return invoke<VariableDto[]>('dap_variables', { sessionId, frameId });
 }
 
+export function dapVariablesByReference(
+  sessionId: string,
+  variablesReference: number,
+): Promise<VariableDto[]> {
+  return invoke<VariableDto[]>('dap_variables_by_reference', {
+    sessionId,
+    variablesReference,
+  });
+}
+
 export function dapEvaluate(
   sessionId: string,
   expression: string,

@@ -1,17 +1,19 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { cn } from '@/lib/utils';
-import { Bug, CircleDot, X } from '@/shared/components/icons';
-import { useAppContext } from '@/shared/contexts/AppContext';
+import { Bug, X } from '@/shared/components/icons';
 import { useProjectStore } from '@/shared/store/projectStore';
-import { buildMonoStack } from '@/shared/utils/typography';
 import { Island } from '@/ui/Island';
 
-import { openSourceAtLine, activeProjectPaths } from '../navigate';
+import { statusMeta } from '../statusMeta';
 import { useDebugStore } from '../store/debugStore';
-import type { DebugPanelTab, StackFrameDto } from '../types';
+import type { DebugPanelTab } from '../types';
 
+import DebugBreakpointsPane from './DebugBreakpointsPane';
+import DebugConsolePane from './DebugConsolePane';
+import DebugFramesColumn from './DebugFramesColumn';
 import DebugToolbar, { type DebugToolbarAction } from './DebugToolbar';
+import DebugVariablesPane from './DebugVariablesPane';
 
 const VIEW_TABS: { id: DebugPanelTab; label: string }[] = [
   { id: 'session', label: 'Frames & Variables' },
@@ -47,62 +49,22 @@ function writeStored(key: string, value: number) {
   }
 }
 
-function statusMeta(status: string | undefined, hasError: boolean) {
-  if (status === 'stopped') {
-    return { label: 'Paused', dot: 'bg-accent-yellow' };
-  }
-  if (status === 'running' || status === 'starting') {
-    return {
-      label: status === 'starting' ? 'Starting' : 'Running',
-      dot: 'bg-accent-green animate-pulse',
-    };
-  }
-  if (status === 'terminated' || status === 'ended' || hasError) {
-    return {
-      label: hasError && status !== 'terminated' ? 'Failed' : 'Ended',
-      dot: 'bg-text-muted',
-    };
-  }
-  return { label: 'Idle', dot: 'bg-text-muted/60' };
-}
-
 /**
- * Bottom debug panel — theme tokens, resizable height + frames column.
+ * Bottom debug panel shell — theme tokens, resizable height + frames column,
+ * header with tabs. Pane bodies live in sibling `Debug*Pane/Column` files.
  * Layout/chrome aligned with RightPanel + GitCommitPanel.
  */
 function DebugPanel() {
   const session = useDebugStore((s) => s.session);
-  const frames = useDebugStore((s) => s.frames);
-  const variables = useDebugStore((s) => s.variables);
-  const consoleLines = useDebugStore((s) => s.consoleLines);
-  const selectedFrameId = useDebugStore((s) => s.selectedFrameId);
   const panelOpen = useDebugStore((s) => s.panelOpen);
   const panelTab = useDebugStore((s) => s.panelTab);
   const setPanelOpen = useDebugStore((s) => s.setPanelOpen);
   const setPanelTab = useDebugStore((s) => s.setPanelTab);
-  const selectFrame = useDebugStore((s) => s.selectFrame);
-  const evaluate = useDebugStore((s) => s.evaluate);
   const control = useDebugStore((s) => s.control);
   const stop = useDebugStore((s) => s.stop);
-  const removeBreakpoint = useDebugStore((s) => s.removeBreakpoint);
   const listAllBreakpoints = useDebugStore((s) => s.listAllBreakpoints);
   const error = useDebugStore((s) => s.error);
 
-  const activeProject = useProjectStore((s) => s.activeProject);
-  const projectId = activeProject?.id ?? null;
-  const { config } = useAppContext();
-
-  /** Same typeface + size as Task Console / xterm. */
-  const terminalType = useMemo(
-    () => ({
-      fontSize: config.terminalFontSize ?? 14,
-      fontFamily: buildMonoStack(config.monoFontFamily ?? config.fontFamily ?? ''),
-    }),
-    [config.terminalFontSize, config.monoFontFamily, config.fontFamily],
-  );
-
-  const [expr, setExpr] = useState('');
-  const consoleEndRef = useRef<HTMLDivElement>(null);
   const latestPanelH = useRef(PANEL_H_DEFAULT);
   const latestFramesW = useRef(FRAMES_W_DEFAULT);
 
@@ -116,9 +78,12 @@ function DebugPanel() {
     latestFramesW.current = framesWidth;
   }, [framesWidth]);
 
+  // Header breakpoint badge — scoped to the active project (same as before).
+  const activeProject = useProjectStore((s) => s.activeProject);
+  const projectId = activeProject?.id ?? null;
   const breakpointsMap = useDebugStore((s) => (projectId ? s.breakpoints[projectId] : undefined));
-  const breakpoints = useMemo(
-    () => (projectId ? listAllBreakpoints(projectId) : []),
+  const bpCount = useMemo(
+    () => (projectId ? listAllBreakpoints(projectId).length : 0),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [projectId, breakpointsMap, listAllBreakpoints],
   );
@@ -127,11 +92,6 @@ function DebugPanel() {
   const isStopped = live && session?.status === 'stopped';
   const isRunning = live && !isStopped;
   const meta = statusMeta(session?.status, !!error);
-
-  useEffect(() => {
-    if (panelTab !== 'console') return;
-    consoleEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [consoleLines, panelTab]);
 
   // Panel vertical resize (drag top edge) — same interaction as GitCommitPanel divider
   const startPanelResize = useCallback((e: React.MouseEvent) => {
@@ -192,36 +152,6 @@ function DebugPanel() {
     };
   }, []);
 
-  const handleFrameClick = useCallback(
-    async (frame: StackFrameDto) => {
-      await selectFrame(frame.id);
-      const paths = activeProjectPaths();
-      if (paths && frame.sourcePath) {
-        await openSourceAtLine(
-          paths.projectId,
-          paths.projectPath,
-          frame.sourcePath,
-          frame.line,
-          frame.column,
-        );
-      }
-    },
-    [selectFrame],
-  );
-
-  const handleEval = useCallback(async () => {
-    const text = expr.trim();
-    if (!text) return;
-    setExpr('');
-    await evaluate(text);
-  }, [expr, evaluate]);
-
-  const handleBpClick = useCallback(async (filePath: string, line: number) => {
-    const paths = activeProjectPaths();
-    if (!paths) return;
-    await openSourceAtLine(paths.projectId, paths.projectPath, filePath, line, 1);
-  }, []);
-
   const handleToolbar = useCallback(
     (action: DebugToolbarAction) => {
       if (action === 'stop') {
@@ -234,8 +164,6 @@ function DebugPanel() {
   );
 
   if (!panelOpen) return null;
-
-  const bpCount = breakpoints.length;
 
   // Island shell (ui/Island): surface + gutters shared with DockZone / center editor.
   return (
@@ -341,258 +269,15 @@ function DebugPanel() {
         {/* Body */}
         {panelTab === 'session' && (
           <div className="flex-1 flex min-h-0">
-            {/* Frames column */}
-            <div
-              className="relative flex flex-col min-h-0 border-r border-border bg-bg-secondary shrink-0"
-              style={{ width: framesWidth }}
-            >
-              <SectionLabel>
-                Frames
-                {frames.length > 0 ? (
-                  <span className="ml-auto tabular-nums">{frames.length}</span>
-                ) : null}
-              </SectionLabel>
-              <div className="flex-1 overflow-y-auto">
-                {frames.length === 0 ? (
-                  <EmptyHint>
-                    {live ? 'No stack frames' : 'Start debugging to inspect frames'}
-                  </EmptyHint>
-                ) : (
-                  frames.map((f) => {
-                    const selected = selectedFrameId === f.id;
-                    const file = f.sourcePath ? f.sourcePath.split(/[/\\]/).pop() : null;
-                    return (
-                      <button
-                        key={f.id}
-                        type="button"
-                        className={cn(
-                          'w-full text-left px-2.5 py-1 cursor-pointer transition-colors duration-100',
-                          selected
-                            ? 'bg-accent-blue/10 text-text-primary'
-                            : 'text-text-secondary hover:bg-bg-hover',
-                        )}
-                        title={f.sourcePath ?? f.name}
-                        onClick={() => void handleFrameClick(f)}
-                      >
-                        <div
-                          className={cn(
-                            'truncate text-[var(--font-size)]',
-                            selected && 'font-medium',
-                          )}
-                        >
-                          {f.name}
-                        </div>
-                        <div className="truncate text-[10px] text-text-muted mt-0.5">
-                          {file ? (
-                            <>
-                              {file}
-                              <span className="text-text-muted">:{f.line}</span>
-                            </>
-                          ) : (
-                            `line ${f.line}`
-                          )}
-                        </div>
-                      </button>
-                    );
-                  })
-                )}
-              </div>
-
-              {/* Frames width resize handle — RightPanel style */}
-              {/* eslint-disable jsx-a11y/no-noninteractive-element-interactions, jsx-a11y/no-noninteractive-tabindex */}
-              <div
-                role="separator"
-                tabIndex={0}
-                className="absolute top-0 right-0 bottom-0 w-3 translate-x-1/2 z-10 cursor-col-resize group"
-                onMouseDown={startFramesResize}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' || e.key === ' ') {
-                    e.preventDefault();
-                  }
-                }}
-                title="Drag to resize frames"
-                aria-orientation="vertical"
-                aria-label="Resize frames column"
-              >
-                <div className="absolute left-1/2 top-0 bottom-0 w-1 -translate-x-1/2 bg-transparent group-hover:bg-accent-blue/50 group-active:bg-accent-blue/60 transition-colors" />
-              </div>
-              {/* eslint-enable jsx-a11y/no-noninteractive-element-interactions, jsx-a11y/no-noninteractive-tabindex */}
-            </div>
-
-            {/* Variables + evaluate (evaluate lives here, not in Console) */}
-            <div className="flex-1 flex flex-col min-h-0 min-w-0 bg-bg-secondary">
-              <div className="shrink-0 h-7 border-b border-border flex items-center px-2.5 gap-2 bg-bg-primary/40">
-                <span className="text-accent-blue font-mono text-[var(--font-size)] shrink-0 select-none">
-                  ›
-                </span>
-                <input
-                  type="text"
-                  value={expr}
-                  onChange={(e) => setExpr(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') void handleEval();
-                  }}
-                  placeholder={isStopped ? 'Evaluate expression…' : 'Evaluate when paused'}
-                  disabled={!isStopped}
-                  className="flex-1 min-w-0 bg-transparent text-[var(--font-size)] text-text-primary placeholder:text-text-muted focus:outline-none disabled:opacity-40 font-mono"
-                />
-              </div>
-
-              <SectionLabel>
-                Variables
-                {variables.length > 0 ? (
-                  <span className="ml-auto tabular-nums">{variables.length}</span>
-                ) : null}
-              </SectionLabel>
-
-              <div className="flex-1 overflow-y-auto text-[var(--font-size)] font-mono">
-                {variables.length === 0 ? (
-                  <EmptyHint className="font-sans">
-                    {isStopped ? 'Variables are not available' : 'Pause to inspect variables'}
-                  </EmptyHint>
-                ) : (
-                  variables.map((v, i) => (
-                    <div
-                      key={`${v.name}-${i}`}
-                      className="px-2.5 py-0.5 hover:bg-bg-hover flex gap-2 items-baseline min-h-[22px]"
-                      title={v.type ?? undefined}
-                    >
-                      <span className="text-accent-blue shrink-0">{v.name}</span>
-                      <span className="text-text-muted shrink-0">=</span>
-                      <span className="text-text-primary truncate">{v.value}</span>
-                      {v.type ? (
-                        <span className="text-[10px] text-text-muted shrink-0 ml-auto pl-2">
-                          {v.type}
-                        </span>
-                      ) : null}
-                    </div>
-                  ))
-                )}
-              </div>
-            </div>
+            <DebugFramesColumn width={framesWidth} onResizeStart={startFramesResize} />
+            <DebugVariablesPane />
           </div>
         )}
 
-        {panelTab === 'console' && (
-          <div
-            className="flex-1 flex flex-col min-h-0 min-w-0"
-            style={{ backgroundColor: 'var(--terminal-bg, var(--bg-secondary))' }}
-          >
-            {/* Match Task Console: same bg / fg / size / typeface as xterm */}
-            <div
-              className="flex-1 overflow-y-auto px-3 py-1.5 space-y-0.5"
-              style={{
-                fontSize: `${terminalType.fontSize}px`,
-                fontFamily: terminalType.fontFamily,
-                color: 'var(--terminal-fg, var(--text-secondary))',
-                lineHeight: 1.35,
-              }}
-            >
-              {consoleLines.length === 0 ? (
-                <div
-                  className="h-full flex items-center justify-center px-3 text-center leading-relaxed"
-                  style={{
-                    fontSize: `${terminalType.fontSize}px`,
-                    fontFamily: terminalType.fontFamily,
-                    color: 'var(--terminal-fg-dim, var(--text-muted))',
-                  }}
-                >
-                  Debug output and build messages appear here.
-                </div>
-              ) : (
-                consoleLines.map((line) => (
-                  <div
-                    key={line.id}
-                    className="whitespace-pre-wrap"
-                    style={{
-                      fontSize: `${terminalType.fontSize}px`,
-                      fontFamily: terminalType.fontFamily,
-                      color:
-                        line.kind === 'in'
-                          ? 'var(--accent-blue)'
-                          : line.kind === 'err'
-                            ? 'var(--accent-red)'
-                            : line.kind === 'sys'
-                              ? 'var(--terminal-fg-dim, var(--text-muted))'
-                              : 'var(--terminal-fg, var(--text-secondary))',
-                    }}
-                  >
-                    {line.kind === 'in' ? `› ${line.text}` : line.text}
-                  </div>
-                ))
-              )}
-              <div ref={consoleEndRef} />
-            </div>
-          </div>
-        )}
+        {panelTab === 'console' && <DebugConsolePane />}
 
-        {panelTab === 'breakpoints' && (
-          <div className="flex-1 overflow-y-auto text-[var(--font-size)] bg-bg-secondary">
-            {breakpoints.length === 0 ? (
-              <EmptyHint>
-                No breakpoints. Click a line number or the left gutter to set one.
-                <span className="block mt-1 text-text-muted">
-                  Saved to <code className="text-text-secondary">.neeko/breakpoints.json</code>
-                </span>
-              </EmptyHint>
-            ) : (
-              breakpoints.map((bp) => (
-                <div
-                  key={`${bp.filePath}:${bp.line}`}
-                  className="flex items-center gap-2 px-3 py-1.5 hover:bg-bg-hover group border-b border-border/60"
-                >
-                  <CircleDot size={12} className="text-accent-red shrink-0" />
-                  <button
-                    type="button"
-                    className="flex-1 min-w-0 text-left cursor-pointer"
-                    onClick={() => void handleBpClick(bp.filePath, bp.line)}
-                    title={bp.filePath}
-                  >
-                    <span className="text-text-primary truncate block">
-                      {bp.filePath.split(/[/\\]/).pop()}
-                      <span className="text-text-muted">:{bp.line}</span>
-                    </span>
-                    <span className="text-[10px] text-text-muted truncate block mt-0.5">
-                      {bp.filePath}
-                    </span>
-                  </button>
-                  <button
-                    type="button"
-                    className="opacity-0 group-hover:opacity-100 inline-flex items-center justify-center h-5 w-5 rounded text-text-muted hover:text-accent-red hover:bg-bg-hover cursor-pointer shrink-0 transition-opacity"
-                    title="Remove breakpoint"
-                    onClick={() => {
-                      if (projectId) void removeBreakpoint(projectId, bp.filePath, bp.line);
-                    }}
-                  >
-                    <X size={12} />
-                  </button>
-                </div>
-              ))
-            )}
-          </div>
-        )}
+        {panelTab === 'breakpoints' && <DebugBreakpointsPane />}
       </Island>
-    </div>
-  );
-}
-
-function SectionLabel({ children }: { children: React.ReactNode }) {
-  return (
-    <div className="px-2.5 h-6 flex items-center shrink-0 border-b border-border text-[10px] font-medium uppercase tracking-wide text-text-muted">
-      {children}
-    </div>
-  );
-}
-
-function EmptyHint({ children, className }: { children: React.ReactNode; className?: string }) {
-  return (
-    <div
-      className={cn(
-        'px-3 py-3 text-[calc(var(--font-size)-1px)] text-text-muted leading-relaxed',
-        className,
-      )}
-    >
-      {children}
     </div>
   );
 }

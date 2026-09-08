@@ -168,6 +168,21 @@ pub async fn dap_variables(
     session.scopes_variables(frame_id).await
 }
 
+/// Get child variables for a `variablesReference` (lazy tree expansion).
+#[tauri::command]
+pub async fn dap_variables_by_reference(
+    session_id: String,
+    variables_reference: i64,
+    state: State<'_, AppStateWrapper>,
+) -> Result<Vec<VariableDto>, AppError> {
+    let session = state
+        .dap_manager
+        .get_session(&session_id)
+        .await
+        .ok_or_else(|| AppError::NotFound(format!("Session not found: {session_id}")))?;
+    session.variables_by_reference(variables_reference).await
+}
+
 /// Evaluate an expression in a debug session.
 #[tauri::command]
 pub async fn dap_evaluate(

@@ -394,6 +394,7 @@ macro_rules! neeko_invoke_handler {
             $crate::dap::commands::dap_control,
             $crate::dap::commands::dap_stack_trace,
             $crate::dap::commands::dap_variables,
+            $crate::dap::commands::dap_variables_by_reference,
             $crate::dap::commands::dap_evaluate,
             $crate::dap::commands::dap_check_adapter,
             $crate::dap::commands::debug_build_test_binary,

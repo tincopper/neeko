@@ -25,6 +25,7 @@ import {
   dapStartSessionConfig,
   dapStopSession,
   dapVariables,
+  dapVariablesByReference,
 } from '../api/debugApi';
 import { openSourceAtLine } from '../navigate';
 import { pickNavigateFrame, shouldAutoContinueSystemStop } from '../stackFrames';
@@ -44,6 +45,19 @@ import { isCodelldbNoise } from '../utils/consoleFilter';
 /** Stable empty list — never return a fresh `[]` from selectors (avoids re-render loops). */
 export const EMPTY_BP_LINES: readonly number[] = Object.freeze([]);
 
+/**
+ * Clear lazy variable-expansion state. DAP `variablesReference` values are only
+ * valid for the current paused context — stale caches would silently show data
+ * from a previous stop (Delve may even reuse references), so every context
+ * switch (stopped → new stop / continued / frame switch / session end) resets.
+ */
+const CLEAR_EXPANSION = {
+  childrenByRef: {},
+  expandedRefs: {},
+  loadingRefs: {},
+  varErrors: {},
+} as const;
+
 /** Cap auto-continue through runtime so we never loop forever. */
 const MAX_SYSTEM_AUTO_CONTINUE = 48;
 let systemAutoContinueCount = 0;
@@ -61,6 +75,14 @@ interface DebugState {
   breakpoints: Record<string, Record<string, number[]>>;
   frames: StackFrameDto[];
   variables: VariableDto[];
+  /** Lazy-expanded child variables keyed by `variablesReference`. */
+  childrenByRef: Record<number, VariableDto[]>;
+  /** Which references are currently expanded in the variables tree. */
+  expandedRefs: Record<number, boolean>;
+  /** In-flight child fetches keyed by `variablesReference`. */
+  loadingRefs: Record<number, boolean>;
+  /** Last expansion error keyed by `variablesReference`. */
+  varErrors: Record<number, string>;
   selectedFrameId: number | null;
   consoleLines: ConsoleLine[];
   panelOpen: boolean;
@@ -91,6 +113,8 @@ interface DebugState {
   listAllBreakpoints: (projectId: string) => BreakpointSpec[];
   refreshStackAndVars: (opts?: { reason?: string | null }) => Promise<void>;
   selectFrame: (frameId: number) => Promise<void>;
+  /** Expand / collapse a variable node (lazy-fetches children via DAP). */
+  toggleVariableExpand: (variablesReference: number) => Promise<void>;
   evaluate: (expression: string) => Promise<void>;
   setPanelOpen: (open: boolean) => void;
   openPanel: (tab?: DebugPanelTab) => void;
@@ -141,6 +165,7 @@ function endedSessionPatch(
       : null,
     frames: [],
     variables: [],
+    ...CLEAR_EXPANSION,
     stoppedAt: null,
     selectedFrameId: null,
   };
@@ -224,6 +249,7 @@ export const useDebugStore = create<DebugState>((rawSet, get) => {
       consoleLines: [],
       frames: [],
       variables: [],
+      ...CLEAR_EXPANSION,
       stoppedAt: null,
       selectedFrameId: null,
     });
@@ -237,6 +263,10 @@ export const useDebugStore = create<DebugState>((rawSet, get) => {
     breakpoints: {},
     frames: [],
     variables: [],
+    childrenByRef: {},
+    expandedRefs: {},
+    loadingRefs: {},
+    varErrors: {},
     selectedFrameId: null,
     consoleLines: [],
     panelOpen: false,
@@ -547,6 +577,9 @@ export const useDebugStore = create<DebugState>((rawSet, get) => {
       if (!sid || !session || !isLiveSession(session)) return;
       const stopReason = opts?.reason ?? null;
 
+      // New stopped context: previously fetched child variables are stale.
+      set({ ...CLEAR_EXPANSION });
+
       /** Drop stale work if session ended or was replaced mid-await. */
       const stillLive = (): DapSessionInfo | null => {
         const s = get().session;
@@ -641,7 +674,7 @@ export const useDebugStore = create<DebugState>((rawSet, get) => {
     selectFrame: async (frameId) => {
       const sid = get().session?.sessionId;
       if (!sid || !isLiveSession(get().session)) return;
-      set({ selectedFrameId: frameId });
+      set({ selectedFrameId: frameId, ...CLEAR_EXPANSION });
       const frame = get().frames.find((f) => f.id === frameId);
       if (frame?.sourcePath) {
         set({
@@ -657,6 +690,44 @@ export const useDebugStore = create<DebugState>((rawSet, get) => {
         set({ variables });
       } catch (e) {
         notifyError(String(e));
+      }
+    },
+
+    toggleVariableExpand: async (ref) => {
+      const sid = get().session?.sessionId;
+      if (!sid || !isLiveSession(get().session) || ref <= 0) return;
+
+      // Collapse.
+      if (get().expandedRefs[ref]) {
+        set({ expandedRefs: { ...get().expandedRefs, [ref]: false } });
+        return;
+      }
+      // Re-expand from cache.
+      if (get().childrenByRef[ref]) {
+        set({ expandedRefs: { ...get().expandedRefs, [ref]: true } });
+        return;
+      }
+      // First expand: fetch children lazily.
+      const varErrors = { ...get().varErrors };
+      delete varErrors[ref];
+      set({
+        expandedRefs: { ...get().expandedRefs, [ref]: true },
+        loadingRefs: { ...get().loadingRefs, [ref]: true },
+        varErrors,
+      });
+      try {
+        const children = await dapVariablesByReference(sid, ref);
+        set({
+          childrenByRef: { ...get().childrenByRef, [ref]: children },
+          loadingRefs: { ...get().loadingRefs, [ref]: false },
+        });
+      } catch (e) {
+        const msg = String(e).replace(/^Error:\s*/, '');
+        set({
+          expandedRefs: { ...get().expandedRefs, [ref]: false },
+          loadingRefs: { ...get().loadingRefs, [ref]: false },
+          varErrors: { ...get().varErrors, [ref]: msg },
+        });
       }
     },
 
@@ -712,6 +783,7 @@ export const useDebugStore = create<DebugState>((rawSet, get) => {
             set({
               session: session ? { ...session, status: 'running' } : session,
               stoppedAt: null, // clear yellow line while running
+              ...CLEAR_EXPANSION, // references from the previous stop are stale
             });
           } else if (kind === 'terminated') {
             // Always clear stack/vars (status may already be terminated via dap-session-status).

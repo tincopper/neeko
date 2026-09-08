@@ -548,6 +548,24 @@ impl DapSession {
         Ok(frames)
     }
 
+    /// Fetch variables for a given `variablesReference`.
+    ///
+    /// Used to lazily expand child variables of a container reported by a
+    /// previous `scopes`/`variables` response.
+    pub async fn variables_by_reference(
+        &self,
+        reference: i64,
+    ) -> Result<Vec<VariableDto>, AppError> {
+        if reference <= 0 {
+            return Ok(Vec::new());
+        }
+        let vbody = self
+            .client
+            .request("variables", json!({ "variablesReference": reference }))
+            .await?;
+        Ok(parse_variable_list(&vbody))
+    }
+
     /// Fetch scopes and variables for a given stack frame.
     pub async fn scopes_variables(&self, frame_id: i64) -> Result<Vec<VariableDto>, AppError> {
         let scopes_body = self
@@ -568,30 +586,7 @@ impl DapSession {
                     .client
                     .request("variables", json!({ "variablesReference": reference }))
                     .await?;
-                if let Some(arr) = vbody.get("variables").and_then(|v| v.as_array()) {
-                    for v in arr {
-                        vars.push(VariableDto {
-                            name: v
-                                .get("name")
-                                .and_then(|n| n.as_str())
-                                .unwrap_or("?")
-                                .to_string(),
-                            value: v
-                                .get("value")
-                                .and_then(|n| n.as_str())
-                                .unwrap_or("")
-                                .to_string(),
-                            var_type: v
-                                .get("type")
-                                .and_then(|t| t.as_str())
-                                .map(|s| s.to_string()),
-                            variables_reference: v
-                                .get("variablesReference")
-                                .and_then(|r| r.as_i64())
-                                .unwrap_or(0),
-                        });
-                    }
-                }
+                vars.extend(parse_variable_list(&vbody));
             }
         }
         Ok(vars)
@@ -670,4 +665,12 @@ fn group_breakpoints(bps: &[BreakpointSpec]) -> Vec<(String, Vec<u32>)> {
         map.entry(b.file_path.clone()).or_default().push(b.line);
     }
     map.into_iter().collect()
+}
+
+/// Extract `variables` from a DAP `variables` response body.
+fn parse_variable_list(body: &Value) -> Vec<VariableDto> {
+    body.get("variables")
+        .and_then(|v| v.as_array())
+        .map(|arr| arr.iter().map(VariableDto::from_dap_json).collect())
+        .unwrap_or_default()
 }

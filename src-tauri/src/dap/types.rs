@@ -140,6 +140,36 @@ pub struct VariableDto {
     pub variables_reference: i64,
 }
 
+impl VariableDto {
+    /// Parse a DAP `Variable` wire object into a [`VariableDto`].
+    ///
+    /// Missing fields fall back to safe defaults: `name` → `"?"`, `value` →
+    /// `""`, `type` → `None`, `variablesReference` → `0` (no children).
+    #[must_use]
+    pub fn from_dap_json(v: &Value) -> VariableDto {
+        VariableDto {
+            name: v
+                .get("name")
+                .and_then(|n| n.as_str())
+                .unwrap_or("?")
+                .to_string(),
+            value: v
+                .get("value")
+                .and_then(|n| n.as_str())
+                .unwrap_or("")
+                .to_string(),
+            var_type: v
+                .get("type")
+                .and_then(|t| t.as_str())
+                .map(|s| s.to_string()),
+            variables_reference: v
+                .get("variablesReference")
+                .and_then(|r| r.as_i64())
+                .unwrap_or(0),
+        }
+    }
+}
+
 // ── Domain enums (internal + IPC parsing) ──────────────────────────────────
 
 /// Session lifecycle status.
@@ -270,6 +300,38 @@ mod tests {
         assert_eq!(cfg.cwd.as_deref(), Some("/proj"));
         assert_eq!(cfg.args, vec!["parse_simple".to_string()]);
         assert_eq!(cfg.stop_on_entry, Some(false));
+    }
+
+    #[test]
+    fn should_parse_dap_variable_wire_object() {
+        let v = serde_json::json!({
+            "name": "m",
+            "value": "map[string]string{...}",
+            "type": "map[string]string",
+            "variablesReference": 42
+        });
+        let dto = VariableDto::from_dap_json(&v);
+        assert_eq!(dto.name, "m");
+        assert_eq!(dto.value, "map[string]string{...}");
+        assert_eq!(dto.var_type.as_deref(), Some("map[string]string"));
+        assert_eq!(dto.variables_reference, 42);
+    }
+
+    #[test]
+    fn should_default_missing_dap_variable_fields() {
+        let dto = VariableDto::from_dap_json(&serde_json::json!({}));
+        assert_eq!(dto.name, "?");
+        assert_eq!(dto.value, "");
+        assert_eq!(dto.var_type, None);
+        assert_eq!(dto.variables_reference, 0);
+
+        // Non-string type / non-integer reference fall back too.
+        let weird = serde_json::json!({ "name": "x", "type": 1, "variablesReference": "n" });
+        let dto = VariableDto::from_dap_json(&weird);
+        assert_eq!(dto.name, "x");
+        assert_eq!(dto.value, "");
+        assert_eq!(dto.var_type, None);
+        assert_eq!(dto.variables_reference, 0);
     }
 }
 
