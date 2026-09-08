@@ -439,3 +439,69 @@ CodeLens 风格内联 Run/Debug 按钮：testCases.ts 用例检测（TS test/it 
 ### Next Steps
 
 - None - task complete
+
+
+## Session 191: Fix WebKit autocapitalize and IME segmentation spaces in text inputs
+
+**Date**: 2026-09-08
+**Task**: Fix WebKit autocapitalize and IME segmentation spaces in text inputs
+**Branch**: `main`
+
+### Summary
+
+(Add summary)
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `c13a12a6` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
+
+
+## Session 192: file-tree-security-async-fix 回归确认并归档
+
+**Date**: 2026-09-08
+**Task**: file-tree-security-async-fix 回归确认并归档
+**Branch**: `main`
+
+### Summary
+
+cargo test 全量回归通过（lib 1004/unit 100，0失败），任务归档关闭
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `c13a12a6` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

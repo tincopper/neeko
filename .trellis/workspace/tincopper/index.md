@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-4.md`
-- **Total Sessions**: 190
-- **Last Active**: 2026-09-07
+- **Total Sessions**: 192
+- **Last Active**: 2026-09-08
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-4.md` | ~441 | Active |
+| `journal-4.md` | ~507 | Active |
 | `journal-3.md` | ~1978 | Archived |
 | `journal-2.md` | ~1991 | Archived |
 | `journal-1.md` | ~1986 | Archived |
@@ -32,6 +32,8 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 192 | 2026-09-08 | file-tree-security-async-fix 回归确认并归档 | `c13a12a6` | `main` |
+| 191 | 2026-09-08 | Fix WebKit autocapitalize and IME segmentation spaces in text inputs | `c13a12a6` | `main` |
 | 190 | 2026-09-07 | 对标差距收口：窗口聚焦触发 + P2/check-ignore 文档化 | - | `main` |
 | 189 | 2026-09-07 | neeko-check 审核修复 + register_selective 降级路径注入化测试 | - | `main` |
 | 188 | 2026-09-07 | S2 注册层排除 + fsmonitor 引导 + ignored_files 退役：调研文档全部收口 | - | `main` |
