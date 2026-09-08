@@ -571,3 +571,36 @@ cargo test 全量回归通过（lib 1004/unit 100，0失败），任务归档关
 ### Next Steps
 
 - None - task complete
+
+
+## Session 195: 测试 Run/Debug v2：载体分离 + 无头构建 + 门禁全绿
+
+**Date**: 2026-09-08
+**Task**: 测试 Run/Debug v2：载体分离 + 无头构建 + 门禁全绿
+**Branch**: `main`
+
+### Summary
+
+(Add summary)
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `HEAD` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
