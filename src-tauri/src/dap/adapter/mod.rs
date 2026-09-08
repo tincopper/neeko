@@ -6,6 +6,7 @@
 
 mod go;
 mod lldb;
+mod registry;
 
 use async_trait::async_trait;
 use serde_json::Value;
@@ -16,6 +17,7 @@ use crate::AppError;
 
 pub use go::GoAdapter;
 pub use lldb::LldbAdapter;
+pub use registry::{adapter_available, plugin_for};
 
 /// Strategy for a language-specific debug adapter.
 #[async_trait]
@@ -33,7 +35,14 @@ pub trait DebugAdapterPlugin: Send + Sync {
     fn handshake_order(&self) -> HandshakeOrder;
 
     /// Resolve binary + args in the **project** execution environment.
-    async fn resolve_spawn(&self, target: &ExecTarget) -> Result<AdapterSpawn, AppError>;
+    /// `adapter_binary`（config `dap.adapterBinaries.<kind>`，对齐 Zed
+    /// `dap.$ADAPTER.binary`）存在时覆盖默认探测——用户可指到自定义
+    /// codelldb / lldb-dap / dlv 而不必改 PATH。
+    async fn resolve_spawn(
+        &self,
+        target: &ExecTarget,
+        adapter_binary: Option<&str>,
+    ) -> Result<AdapterSpawn, AppError>;
 
     /// Whether any suitable adapter binary exists on `target`.
     async fn is_available(&self, target: &ExecTarget) -> bool;
@@ -53,48 +62,3 @@ pub trait DebugAdapterPlugin: Send + Sync {
 static GO: GoAdapter = GoAdapter;
 /// Singleton LLDB adapter plugin.
 static LLDB: LldbAdapter = LldbAdapter;
-
-/// Resolve the plugin for a launch configuration type.
-pub fn plugin_for(type_: &str) -> Result<&'static dyn DebugAdapterPlugin, AppError> {
-    if GO.matches_type(type_) {
-        return Ok(&GO);
-    }
-    if LLDB.matches_type(type_) {
-        return Ok(&LLDB);
-    }
-    Err(AppError::Dap(format!("Unsupported debug type: {type_}")))
-}
-
-/// Whether an adapter for `type_` exists in the project environment.
-pub async fn adapter_available(type_: &str, target: &ExecTarget) -> bool {
-    match plugin_for(type_) {
-        Ok(p) => p.is_available(target).await,
-        Err(_) => false,
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::dap::types::AdapterTransport;
-
-    #[tokio::test]
-    async fn should_resolve_go_plugin_spawn_shape() {
-        let p = plugin_for("go").expect("go");
-        assert_eq!(p.kind(), AdapterKind::Go);
-        assert_eq!(p.adapter_id(), "go");
-        assert_eq!(p.handshake_order(), HandshakeOrder::LaunchBeforeBreakpoints);
-        // May fail if dlv missing — only assert shape when available.
-        if p.is_available(&ExecTarget::Local).await {
-            let spawn = p.resolve_spawn(&ExecTarget::Local).await.expect("spawn");
-            assert_eq!(spawn.program, "dlv");
-            assert_eq!(spawn.transport, AdapterTransport::TcpListen);
-            assert!(spawn.args.iter().any(|a| a == "dap"));
-        }
-    }
-
-    #[test]
-    fn should_reject_unknown_type() {
-        assert!(plugin_for("python").is_err());
-    }
-}

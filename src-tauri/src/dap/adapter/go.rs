@@ -32,7 +32,18 @@ impl DebugAdapterPlugin for GoAdapter {
         HandshakeOrder::LaunchBeforeBreakpoints
     }
 
-    async fn resolve_spawn(&self, target: &ExecTarget) -> Result<AdapterSpawn, AppError> {
+    async fn resolve_spawn(
+        &self,
+        target: &ExecTarget,
+        adapter_binary: Option<&str>,
+    ) -> Result<AdapterSpawn, AppError> {
+        if let Some(bin) = adapter_binary.filter(|b| !b.is_empty()) {
+            return Ok(AdapterSpawn {
+                program: bin.to_string(),
+                args: vec!["dap".into(), "--listen=127.0.0.1:0".into(), "--log".into()],
+                transport: AdapterTransport::TcpListen,
+            });
+        }
         if !exec::command_exists(target, "dlv").await {
             return Err(AppError::Dap(format!(
                 "Debug adapter 'dlv' not found. {}",

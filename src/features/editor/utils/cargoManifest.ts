@@ -50,3 +50,31 @@ export async function resolveCargoManifestDir(
   cache.set(root, dir);
   return dir;
 }
+
+/**
+ * 从被编辑文件向上定位其所属 Cargo 清单目录（crate/member 定位，对齐 RA/IDEA
+ * 的 crate 归属推断）。返回相对 projectRoot 的清单目录；根清单返回 null
+ * （cargo 默认行为）。覆盖任意布局：单 crate、Tauri `src-tauri/`、
+ * workspace member（`packages/foo/src/…`）——`cargo test` 从根跑会编整个
+ * workspace 的所有测试二进制导致多候选，必须 `--manifest-path` 指到具体 crate。
+ */
+export async function resolveCargoManifestDirForFile(
+  projectRoot: string,
+  filePath: string,
+  probe: ExistsProbe = tauriExists,
+): Promise<string | null> {
+  const root = projectRoot.replace(/[/\\]+$/, '');
+  if (!root || !filePath) return resolveCargoManifestDir(root, probe);
+  const parts = filePath.replace(/\\/g, '/').split('/');
+  parts.pop(); // 去掉文件名，从所在目录起向上
+  for (let i = parts.length; i >= 0; i--) {
+    const dir = parts.slice(0, i).join('/'); // '' = 根
+    const manifestPath = dir ? `${root}/${dir}/Cargo.toml` : `${root}/Cargo.toml`;
+    try {
+      if (await probe(manifestPath)) return dir === '' ? null : dir;
+    } catch {
+      return resolveCargoManifestDir(root, probe); // 探测失败兜底旧行为
+    }
+  }
+  return resolveCargoManifestDir(root, probe);
+}

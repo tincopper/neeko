@@ -4,31 +4,38 @@
  * - Run：构造命令 → `useTaskStore.runTask`（Task Console 会话，cwd 取 worktree 根或项目根）。
  *   P1 结构化结果流：beginRun 标记用例进行中 → onOutput 累积（Rust libtest JSON 行）/
  *   onExit 后经 file api 读取 vitest JSON 报告（TS）→ parse → matchCaseName 对齐源码用例名
- *   → testResults store 落库（gutter test-status 贡献消费）。
- * - Debug（仅 Rust）：`cargo test <name> --no-run` 经 Task Console 运行 → 从输出解析
- *   测试二进制路径 → `useDebugStore.startWithConfig` 启动 lldb 会话；构建失败
- *   （exit code ≠ 0）或解析不到二进制时不启动会话（构建错误已在 Task Console 可见）。
- *   Debug 不做用例状态流（DAP 会话，超出 P1 范围）。
+ *   → testResults store 落库（gutter test-status 贡献消费）。Run 路径零改动。
+ * - Debug（仅 Rust，§4/§5 描述统一载体分离）：点击瞬间 `debugStore.openPanel`
+ *   （pending 态"正在构建测试二进制…"，静态路由）→ 无头构建
+ *  （`debugBuildApi.buildTestBinaryRemote` → 后端管道进程，无会话/无复用/
+ *   无 observer；二次点击 = 第二次独立构建）→ `parseTestBinaryPath` 解析产物
+ *   → 成功 `useDebugStore.startWithConfig` 启动 lldb 会话（切 session tab）；
+ *   构建失败/产物缺失/歧义/spawn 失败落 DebugPanel console tab（附构建日志尾部
+ *   ≤50 行）+ notification；DAP 启动失败走 launchSession 既有错误路径（不重复通知）。
+ *   Task Console 永不参与 debug。Debug 不做用例状态流（DAP 会话，超出 P1 范围）。
  * - Menu（gutter 图标点击 → 原型风格浮层）：openMenu 记录用例与图标 rect 锚点并上报 overlay 浮层，
  *   FileEditor 条件渲染 shared ContextMenu（深色双行、hover 高亮、Esc/外点关闭由组件内建；
  *   Rust 两项 Run/Debug，文案携带测试名；TS 直跑不进菜单 —— 分流在 testCodelens 扩展内按 lang 判定）。
  *
  * 跨 feature 边界：task 经 `@/shared/store/taskStore`（与编辑器其他 hooks 一致）；
- * debug 经其 `store/` 直导白名单（与 useEditorBreakpoints 既有先例一致）；
+ * debug 经其 `store/` 直导白名单（与 useEditorBreakpoints 既有先例一致）+ `api/` 门面
+ * （`debugBuildApi`，前端不直导 tauri api）；
  * 报告读取经 `@/features/file/api/fileApi`（cargoManifest 既有先例）。
  */
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
+import { buildTestBinaryRemote } from '@/features/debug/api/debugBuildApi';
 import { useDebugStore } from '@/features/debug/store/debugStore';
-import { readFileContent } from '@/features/file/api/fileApi';
+import { readFileContent, fileExists } from '@/features/file/api/fileApi';
 import type { ContextMenuItem } from '@/shared/components/ContextMenu';
 import { Bug, Play } from '@/shared/components/icons';
+import { useNotificationStore } from '@/shared/store/notificationStore';
 import { useOverlayStore } from '@/shared/store/overlayStore';
 import { useTaskStore } from '@/shared/store/taskStore';
 import { useWorktreeStore } from '@/shared/store/worktreeStore';
 
 import { useTestResultsStore, type AlignedCaseResult } from '../store/testResults';
-import { resolveCargoManifestDir } from '../utils/cargoManifest';
+import { resolveCargoManifestDir, resolveCargoManifestDirForFile } from '../utils/cargoManifest';
 import type { TestCaseInfo } from '../utils/testCases';
 import {
   buildDebugBuildCommand,
@@ -37,6 +44,7 @@ import {
   buildTestConfigId,
   parseTestBinaryPath,
   resolveBinaryPath,
+  resolveTestTargetFlag,
   VITEST_REPORT_REL_PATH,
 } from '../utils/testCommands';
 import {
@@ -137,7 +145,40 @@ async function readVitestResults(
   }
 }
 
-/** Run：构造命令并经任务会话启动，输出进 Task Console；结果流回填 gutter 状态。 */
+/**
+ * Phase 2（run 分叉）：直跑用例命令，输出进 Task Console；结果流回填 gutter 状态。
+ * Run 路径行为不变（Task Console + ✓/✗ 状态流，不新增通知）。
+ */
+function launchRun(
+  testCase: TestCaseInfo,
+  ctx: TestActionContext,
+  manifestDir: string | null,
+  runRoot: string,
+): void {
+  let output = '';
+  const runId = useTaskStore
+    .getState()
+    .runTask(
+      buildRunCommand(testCase, ctx.filePath, manifestDir, runRoot),
+      buildTestConfigId('run', testCase, ctx.filePath),
+      {
+        cwd: runRoot,
+        onOutput: (chunk) => {
+          if (output.length < MAX_CAPTURED_OUTPUT_CHARS) output += chunk;
+        },
+        onExit: () => {
+          void finalizeRunResults(output, testCase, ctx, runRoot);
+        },
+      },
+    );
+  if (!runId) {
+    // 会话未能创建（如无活动项目）：结束 running 占位，避免图标永久卡在进行中
+    useTestResultsStore.getState().invalidateFile(ctx.projectId, ctx.filePath);
+    console.error('[TestRun] failed to start test task');
+  }
+}
+
+/** Run：构造命令并经任务会话启动（Phase 1 上下文准备 → Phase 2 run 分叉）。 */
 export function runTestCase(testCase: TestCaseInfo, ctx: TestActionContext): void {
   void (async () => {
     const manifestDir =
@@ -145,76 +186,127 @@ export function runTestCase(testCase: TestCaseInfo, ctx: TestActionContext): voi
     const runRoot = resolveRunCwd(ctx);
     // Run 开始：清该文件旧状态并标记进行中（gutter 半透明占位）
     useTestResultsStore.getState().beginRun(ctx.projectId, ctx.filePath);
-    let output = '';
-    const runId = useTaskStore
-      .getState()
-      .runTask(
-        buildRunCommand(testCase, ctx.filePath, manifestDir, runRoot),
-        buildTestConfigId('run', testCase, ctx.filePath),
-        {
-          cwd: runRoot,
-          onOutput: (chunk) => {
-            if (output.length < MAX_CAPTURED_OUTPUT_CHARS) output += chunk;
-          },
-          onExit: () => {
-            void finalizeRunResults(output, testCase, ctx, runRoot);
-          },
-        },
-      );
-    if (!runId) {
-      // 会话未能创建（如无活动项目）：结束 running 占位，避免图标永久卡在进行中
-      useTestResultsStore.getState().invalidateFile(ctx.projectId, ctx.filePath);
-      console.error('[TestRun] failed to start test task');
-    }
+    launchRun(testCase, ctx, manifestDir, runRoot);
   })();
 }
+/** Phase 1 无头构建的产物（退出码 + 管道 stdout，与后端 DTO 对齐）。 */
+interface TestBinaryBuild {
+  exitCode: number;
+  output: string;
+}
 
-/** 构建 → 解析二进制 → 启动 lldb 会话（exit 回调内推进）。 */
-async function finalizeRustDebugLaunch(
-  exitCode: number,
-  output: string,
+/**
+ * Phase 1（无头构建，C1：构建描述与 run 共用同一 `buildDebugBuildCommand`，
+ * 载体走后端管道进程）：一次独立 `debug_build_test_binary` 调用，无会话、
+ * 无复用、无 observer；二次点击 = 第二次独立构建。
+ * spawn 失败抛错（含命令与 cwd）—— 调用方按 §5 显式通知。
+ */
+async function buildTestBinary(
+  testCase: TestCaseInfo,
+  ctx: TestActionContext,
+): Promise<TestBinaryBuild> {
+  // crate/member 定位：从被编辑文件向上找最近 Cargo.toml。workspace 从根跑
+  // `cargo test` 会编所有成员 → 多候选（artifact src_path 是各 crate root），
+  // 必须 `--manifest-path` 指到具体 crate 再锁定 target 使产物唯一。
+  // 基准 = 实际执行目录（激活 worktree 优先，projectPath 兜底）：探测必须与
+  // cargo 实际 cwd 一致，否则 worktree 会话下探测的是主工作树清单（构建却在
+  // worktree 里跑 → 无 manifest-path → exit 101）。
+  const cwd = resolveRunCwd(ctx);
+  const member = await resolveCargoManifestDirForFile(cwd, ctx.filePath);
+  const relPath = member ? ctx.filePath.replace(`${member}/`, '') : ctx.filePath;
+  const targetFlag = resolveTestTargetFlag(relPath, await hasLibTarget(cwd, member));
+  const command = buildDebugBuildCommand(testCase, member, targetFlag);
+  try {
+    const result = await buildTestBinaryRemote({ projectId: ctx.projectId, command, cwd });
+    return { exitCode: result.exitCode, output: result.output };
+  } catch (e) {
+    const detail = e instanceof Error ? e.message : String(e);
+    throw new Error(`无头构建执行失败：${detail}（命令：${command}，目录：${cwd}）`);
+  }
+}
+
+/** 项目是否有 lib target（`src/lib.rs` 存在，标准布局）；探测失败按无 lib 兜底。 */
+async function hasLibTarget(projectRoot: string, memberDir: string | null): Promise<boolean> {
+  const base = memberDir ? `${projectRoot}/${memberDir}` : projectRoot;
+  if (!base) return false;
+  try {
+    return await fileExists(`${base}/src/lib.rs`);
+  } catch {
+    return false;
+  }
+}
+
+/** 构建日志尾部行数（§5：失败时附进 DebugPanel console，≤50 行）。 */
+const MAX_BUILD_LOG_TAIL_LINES = 50;
+
+/** 构建日志尾部 → DebugPanel console（失败证据，失败分类 C2 的统一落点）。 */
+function pushBuildLogTail(output: string): void {
+  const push = useDebugStore.getState().pushConsole;
+  for (const line of output.split('\n').slice(-MAX_BUILD_LOG_TAIL_LINES)) {
+    if (line.trim()) push('err', line);
+  }
+}
+
+function notifyDebugError(message: string): void {
+  useNotificationStore.getState().addNotification({ type: 'error', title: 'Debug', message });
+}
+
+/**
+ * Phase 2（debug 分叉）：产物解析 → lldb 启动（C2 构建失败短路，C3 面板静态归属）。
+ * 成功由 `startWithConfig` 切 session tab；构建失败/产物缺失/歧义落 console
+ * tab（附构建日志尾部）+ notification；DAP 启动失败走 launchSession 既有错误
+ * 路径（已落 console + 通知，此处不重复）。Task Console 永不参与，零静默 return。
+ */
+async function launchDebug(
+  build: TestBinaryBuild,
   testCase: TestCaseInfo,
   ctx: TestActionContext,
 ): Promise<void> {
-  if (exitCode !== 0) return; // 构建失败：Task Console 已可见错误，不启动会话
-  const binary = parseTestBinaryPath(output, ctx.filePath);
-  if (!binary) {
-    console.error('[TestRun] no unit-test binary found in `cargo test --no-run` output');
+  if (build.exitCode !== 0) {
+    pushBuildLogTail(build.output);
+    notifyDebugError('构建失败，未启动调试（构建日志见 DebugPanel console）');
+    return;
+  }
+  const parsed = parseTestBinaryPath(build.output, ctx.filePath);
+  if (!parsed.ok) {
+    pushBuildLogTail(build.output);
+    notifyDebugError(
+      parsed.error === 'binary_ambiguous'
+        ? '找到多个测试二进制，无法确定调试目标，未启动调试'
+        : '找不到唯一测试二进制：构建输出中没有测试产物，未启动调试',
+    );
     return;
   }
   const cwd = resolveRunCwd(ctx);
-  const program = resolveBinaryPath(binary, cwd);
   try {
     await useDebugStore
       .getState()
-      .startWithConfig(ctx.projectId, buildDebugLaunchConfig(testCase, program, cwd));
-  } catch (e) {
-    console.error('[TestRun] failed to start debug session:', e);
+      .startWithConfig(
+        ctx.projectId,
+        buildDebugLaunchConfig(testCase, resolveBinaryPath(parsed.path, cwd), cwd),
+      );
+  } catch {
+    // DAP 启动失败：launchSession 错误路径已处理，此处不重复通知
   }
 }
 
-/** Debug（仅 Rust）：--no-run 构建 → 解析二进制 → lldb 会话。 */
+/** Debug（仅 Rust）：pending 开面板 → 无头构建 → 解析 → 启动/失败分类。 */
 export function debugRustTestCase(testCase: TestCaseInfo, ctx: TestActionContext): void {
-  if (testCase.lang !== 'rust') return; // Debug 首期仅 Rust（UI 已隐藏按钮，防御兜底）
+  if (testCase.lang !== 'rust') return; // UI 已隐藏 Debug 按钮，防御兜底（非失败路径）
+  const debug = useDebugStore.getState();
+  debug.openPanel('console');
+  debug.pushConsole('sys', '正在构建测试二进制…');
   void (async () => {
-    const manifestDir = await resolveCargoManifestDir(ctx.projectPath ?? '');
-    let output = '';
-    const runId = useTaskStore
-      .getState()
-      .runTask(
-        buildDebugBuildCommand(testCase, manifestDir),
-        buildTestConfigId('debug', testCase, ctx.filePath),
-        {
-          cwd: resolveRunCwd(ctx),
-          onOutput: (chunk) => {
-            if (output.length < MAX_CAPTURED_OUTPUT_CHARS) output += chunk;
-          },
-          onExit: (code) => {
-            void finalizeRustDebugLaunch(code, output, testCase, ctx);
-          },
-        },
-      );
-    if (!runId) console.error('[TestRun] failed to start `cargo test --no-run` task');
+    let build: TestBinaryBuild;
+    try {
+      build = await buildTestBinary(testCase, ctx);
+    } catch (e) {
+      const message = e instanceof Error ? e.message : String(e);
+      debug.pushConsole('err', message);
+      notifyDebugError(message);
+      return;
+    }
+    await launchDebug(build, testCase, ctx);
   })();
 }
 interface UseTestRunActionsParams {

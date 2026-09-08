@@ -274,6 +274,10 @@ impl DapManager {
 
         let config = expand_config(&raw_config, &path, current_file);
         let bps = self.get_breakpoints(state, project_id).await?;
+        // 用户显式 adapter 二进制覆盖（config `dap.adapterBinaries.<kind>`，对齐
+        // Zed `dap.$ADAPTER.binary`）：resolve_spawn 用它而非默认探测。
+        let kind = crate::dap::adapter::plugin_for(&config.type_)?.kind();
+        let adapter_binary = load_dap_adapter_override(state, kind);
 
         let session = DapSession::start(
             app,
@@ -282,6 +286,7 @@ impl DapManager {
             target,
             config,
             bps,
+            adapter_binary,
         )
         .await?;
 
@@ -399,4 +404,20 @@ fn project_path(state: &AppStateWrapper, project_id: &str) -> Result<PathBuf, Ap
         .get_project(project_id)
         .ok_or_else(|| AppError::NotFound(format!("Project not found: {project_id}")))?;
     Ok(project.path.clone())
+}
+
+/// 读取 config `dap.adapterBinaries.<kind>`（对齐 Zed `dap.$ADAPTER.binary`）：
+/// 用户显式指定的 adapter 二进制（如自定义 codelldb / lldb-dap / dlv），
+/// 存在则覆盖默认探测。配置缺省 / 空串 / 读取失败 → None（走默认探测）。
+fn load_dap_adapter_override(
+    state: &AppStateWrapper,
+    kind: crate::dap::types::AdapterKind,
+) -> Option<String> {
+    let config = state.storage_manager.load_config().ok()?;
+    let path = format!("/dap/adapterBinaries/{}", kind.as_str());
+    config
+        .pointer(&path)
+        .and_then(|v| v.as_str())
+        .filter(|s| !s.is_empty())
+        .map(str::to_string)
 }

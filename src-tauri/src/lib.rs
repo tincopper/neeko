@@ -396,6 +396,7 @@ macro_rules! neeko_invoke_handler {
             $crate::dap::commands::dap_variables,
             $crate::dap::commands::dap_evaluate,
             $crate::dap::commands::dap_check_adapter,
+            $crate::dap::commands::debug_build_test_binary,
             // ── common (cross-domain) ────────────────────────────────────────
             $crate::common::commands::log_frontend_error,
             $crate::settings::commands::get_system_fonts,

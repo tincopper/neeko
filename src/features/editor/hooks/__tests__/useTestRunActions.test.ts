@@ -5,8 +5,10 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mockStart = vi.hoisted(() => vi.fn());
 const mockStartWithConfig = vi.hoisted(() => vi.fn());
-const mockActiveWorktreePath = vi.hoisted(() => ({ value: null as string | null }));
+const mockOpenDebugPanel = vi.hoisted(() => vi.fn());
+const mockPushConsole = vi.hoisted(() => vi.fn());
 const mockInvoke = vi.hoisted(() => vi.fn());
+const mockActiveWorktreePath = vi.hoisted(() => ({ value: null as string | null }));
 vi.mock('@tauri-apps/api/core', () => ({ invoke: mockInvoke }));
 vi.mock('@/features/task/taskRunner', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/features/task/taskRunner')>();
@@ -35,7 +37,11 @@ vi.mock('@/shared/store/worktreeStore', () => ({
 
 vi.mock('@/features/debug/store/debugStore', () => ({
   useDebugStore: {
-    getState: () => ({ startWithConfig: mockStartWithConfig }),
+    getState: () => ({
+      startWithConfig: mockStartWithConfig,
+      openPanel: mockOpenDebugPanel,
+      pushConsole: mockPushConsole,
+    }),
   },
 }));
 
@@ -44,6 +50,7 @@ vi.mock('@/shared/utils/bottomPanelExclusive', () => ({
   registerTaskConsoleCloser: vi.fn(),
 }));
 
+import { useNotificationStore } from '@/shared/store/notificationStore';
 import { useOverlayStore } from '@/shared/store/overlayStore';
 import { useTaskStore } from '@/shared/store/taskStore';
 
@@ -55,6 +62,10 @@ describe('useTestRunActions', () => {
   beforeEach(() => {
     mockStart.mockReset();
     mockStartWithConfig.mockReset();
+    mockOpenDebugPanel.mockReset();
+    mockPushConsole.mockReset();
+    mockInvoke.mockReset();
+    useNotificationStore.setState({ notifications: [], unreadCount: 0 });
     clearCargoManifestCache();
     mockStartWithConfig.mockResolvedValue({
       sessionId: 'dap-1',
@@ -313,30 +324,56 @@ describe('useTestRunActions', () => {
       await waitFor(() => expect(statusForCase('proj-1', 'src/lib.rs', 'parse_simple')).toBeNull());
     });
   });
+  describe('debug (Rust → headless build → parse binary → lldb session)', () => {
+    const artifactOutput = (srcPath: string, binary: string) =>
+      '   Compiling neeko v0.1.0 (/tmp/proj)\n' +
+      `${JSON.stringify({
+        reason: 'compiler-artifact',
+        target: { kind: ['lib'], name: 'neeko', src_path: srcPath },
+        profile: { test: true },
+        executable: binary,
+      })}\n`;
 
-  describe('debug (Rust → --no-run → parse binary → lldb session)', () => {
-    it('should_build_binary_then_start_debug_session_with_parsed_program', async () => {
-      const { result } = renderHook(() =>
-        useTestRunActions({
-          projectId: 'proj-1',
-          filePath: 'src/lib.rs',
-          projectPath: '/tmp/proj',
-        }),
+    const mockHeadlessBuild = (stdout: string, exitCode = 0) => {
+      mockInvoke.mockImplementation((cmd: string, args: { path?: string }) => {
+        if (cmd === 'debug_build_test_binary') {
+          return Promise.resolve({ exit_code: exitCode, stdout });
+        }
+        // 根布局项目：`src/lib.rs` 存在（lib target 探测）→ targetFlag 锁定 `--lib`
+        return Promise.resolve(cmd === 'file_exists' && args.path?.endsWith('/src/lib.rs'));
+      });
+    };
+
+    const renderDebugHook = (filePath = 'src/lib.rs') =>
+      renderHook(() =>
+        useTestRunActions({ projectId: 'proj-1', filePath, projectPath: '/tmp/proj' }),
       );
+
+    const notifiedWith = (part: string) =>
+      useNotificationStore.getState().notifications.some((n) => n.message.includes(part));
+
+    it('should_open_debug_panel_pending_and_build_headless_without_task_session', async () => {
+      mockHeadlessBuild(
+        artifactOutput('/tmp/proj/src/lib.rs', '/tmp/proj/target/debug/deps/neeko-abc123'),
+      );
+      const { result } = renderDebugHook();
 
       act(() => result.current.handleDebugTest({ name: 'parse_simple', line: 1, lang: 'rust' }));
 
-      // Build runs in Task Console
-      await waitFor(() => expect(mockStart).toHaveBeenCalledTimes(1));
-      const buildOpts = mockStart.mock.calls[0][0];
-      expect(buildOpts.command).toBe("cargo test 'parse_simple' --no-run");
-
-      buildOpts.onOutput(
-        '   Compiling neeko v0.1.0 (/tmp/proj)\n' +
-          '    Finished test [unoptimized + debuginfo] target(s) in 2.11s\n' +
-          '     Running unittests src/lib.rs (target/debug/deps/neeko-abc123)\n',
+      // pending：点击瞬间 DebugPanel 打开（console tab + 构建中提示），Task Console 永不参与
+      await waitFor(() => expect(mockOpenDebugPanel).toHaveBeenCalledWith('console'));
+      expect(mockPushConsole).toHaveBeenCalledWith('sys', expect.stringContaining('构建'));
+      // 无头构建：一次独立 invoke，无任务会话、无 observer
+      await waitFor(() =>
+        expect(mockInvoke).toHaveBeenCalledWith('debug_build_test_binary', {
+          projectId: 'proj-1',
+          command: "cargo test 'parse_simple' --no-run --lib --message-format=json",
+          cwd: '/tmp/proj',
+        }),
       );
-      buildOpts.onExit(0);
+      expect(mockStart).not.toHaveBeenCalled();
+      expect(useTaskStore.getState().consoleSessions).toHaveLength(0);
+      expect(useTaskStore.getState().consolePanelOpen).toBe(false);
 
       await waitFor(() => expect(mockStartWithConfig).toHaveBeenCalledTimes(1));
       expect(mockStartWithConfig).toHaveBeenCalledWith('proj-1', {
@@ -351,59 +388,194 @@ describe('useTestRunActions', () => {
     });
 
     it('should_append_manifest_path_for_tauri_layout_projects', async () => {
-      mockInvoke.mockImplementation((cmd: string, args: { path: string }) =>
-        Promise.resolve(cmd === 'file_exists' && args.path === '/tmp/proj/src-tauri/Cargo.toml'),
-      );
+      mockInvoke.mockImplementation((cmd: string, args: { path: string }) => {
+        if (cmd === 'debug_build_test_binary') {
+          return Promise.resolve({
+            exit_code: 0,
+            stdout: artifactOutput(
+              '/tmp/proj/src-tauri/src/agent/chat/adapter/serve.rs',
+              '/tmp/proj/src-tauri/target/debug/deps/neeko_lib-abc123',
+            ),
+          });
+        }
+        return Promise.resolve(
+          cmd === 'file_exists' &&
+            (args.path === '/tmp/proj/src-tauri/Cargo.toml' ||
+              args.path === '/tmp/proj/src-tauri/src/lib.rs'),
+        );
+      });
       const { result } = renderHook(() =>
         useTestRunActions({
           projectId: 'proj-1',
-          filePath: 'src-tauri/tests/unit/acp_test.rs',
+          filePath: 'src-tauri/src/agent/chat/adapter/serve.rs',
           projectPath: '/tmp/proj',
         }),
       );
 
       act(() => result.current.handleDebugTest({ name: 'parse_simple', line: 1, lang: 'rust' }));
 
-      await waitFor(() => expect(mockStart).toHaveBeenCalledTimes(1));
-      expect(mockStart.mock.calls[0][0].command).toBe(
-        "cargo test 'parse_simple' --no-run --manifest-path 'src-tauri/Cargo.toml'",
+      await waitFor(() =>
+        expect(mockInvoke).toHaveBeenCalledWith(
+          'debug_build_test_binary',
+          expect.objectContaining({
+            command:
+              "cargo test 'parse_simple' --no-run --lib --manifest-path 'src-tauri/Cargo.toml' --message-format=json",
+          }),
+        ),
       );
+    });
+
+    it('should_probe_manifest_and_lib_under_active_worktree_not_project_root', async () => {
+      mockActiveWorktreePath.value = '/tmp/proj/.worktrees/fix-1';
+      const probed: string[] = [];
+      mockInvoke.mockImplementation((cmd: string, args: { path?: string }) => {
+        if (cmd === 'debug_build_test_binary') {
+          return Promise.resolve({
+            exit_code: 0,
+            stdout: artifactOutput(
+              '/tmp/proj/.worktrees/fix-1/src-tauri/src/lib.rs',
+              '/tmp/proj/.worktrees/fix-1/src-tauri/target/debug/deps/neeko_lib-abc123',
+            ),
+          });
+        }
+        if (cmd === 'file_exists') {
+          probed.push(args.path ?? '');
+          // 仅 worktree 下有 Tauri 布局清单 + lib target；主工作树探测全 false
+          return Promise.resolve(
+            args.path === '/tmp/proj/.worktrees/fix-1/src-tauri/Cargo.toml' ||
+              args.path === '/tmp/proj/.worktrees/fix-1/src-tauri/src/lib.rs',
+          );
+        }
+        return Promise.resolve(false);
+      });
+      const { result } = renderHook(() =>
+        useTestRunActions({
+          projectId: 'proj-1',
+          filePath: 'src-tauri/src/lib.rs',
+          projectPath: '/tmp/proj',
+        }),
+      );
+
+      act(() => result.current.handleDebugTest({ name: 'parse_simple', line: 1, lang: 'rust' }));
+
+      // member 定位与 lib 探测基准 = 实际执行目录（worktree），构建命令带
+      // `--manifest-path`（探测命中 worktree 清单）；cwd 也是 worktree。
+      await waitFor(() =>
+        expect(mockInvoke).toHaveBeenCalledWith(
+          'debug_build_test_binary',
+          expect.objectContaining({
+            command:
+              "cargo test 'parse_simple' --no-run --lib --manifest-path 'src-tauri/Cargo.toml' --message-format=json",
+            cwd: '/tmp/proj/.worktrees/fix-1',
+          }),
+        ),
+      );
+      expect(probed).toContain('/tmp/proj/.worktrees/fix-1/src-tauri/Cargo.toml');
+      expect(probed).toContain('/tmp/proj/.worktrees/fix-1/src-tauri/src/lib.rs');
+      expect(probed).not.toContain('/tmp/proj/src-tauri/Cargo.toml');
+      expect(probed).not.toContain('/tmp/proj/src-tauri/src/lib.rs');
+    });
+
+    it('should_build_independently_on_repeated_clicks_without_reuse', async () => {
+      mockHeadlessBuild(
+        artifactOutput('/tmp/proj/src/lib.rs', '/tmp/proj/target/debug/deps/neeko-abc123'),
+      );
+      const { result } = renderDebugHook();
+
+      act(() => result.current.handleDebugTest({ name: 'parse_simple', line: 1, lang: 'rust' }));
+      act(() => result.current.handleDebugTest({ name: 'parse_simple', line: 1, lang: 'rust' }));
+
+      // 二次点击 = 第二次独立构建，无复用、无挂起
+      await waitFor(() =>
+        expect(
+          mockInvoke.mock.calls.filter((c) => c[0] === 'debug_build_test_binary'),
+        ).toHaveLength(2),
+      );
+      await waitFor(() => expect(mockStartWithConfig).toHaveBeenCalledTimes(2));
+      expect(mockStart).not.toHaveBeenCalled();
     });
 
     it('should_not_start_session_when_build_fails', async () => {
-      const { result } = renderHook(() =>
-        useTestRunActions({
-          projectId: 'proj-1',
-          filePath: 'src/lib.rs',
-          projectPath: '/tmp/proj',
-        }),
-      );
+      mockHeadlessBuild('error[E0432]: unresolved import\n', 101);
+      const { result } = renderDebugHook();
 
       act(() => result.current.handleDebugTest({ name: 'parse_simple', line: 1, lang: 'rust' }));
-      await waitFor(() => expect(mockStart).toHaveBeenCalledTimes(1));
-      mockStart.mock.calls[0][0].onOutput('error[E0432]: unresolved import\n');
-      mockStart.mock.calls[0][0].onExit(101);
 
-      await waitFor(() => expect(useTaskStore.getState().consoleSessions[0].status).toBe('failed'));
+      await waitFor(() => expect(notifiedWith('构建失败')).toBe(true));
       expect(mockStartWithConfig).not.toHaveBeenCalled();
+      expect(mockStart).not.toHaveBeenCalled();
+      // 失败落 DebugPanel console（附构建日志尾部），Task Console 无会话
+      expect(mockOpenDebugPanel).toHaveBeenCalledWith('console');
+      expect(mockPushConsole).toHaveBeenCalledWith(
+        'err',
+        expect.stringContaining('unresolved import'),
+      );
+      expect(useTaskStore.getState().consoleSessions).toHaveLength(0);
     });
 
     it('should_not_start_session_when_output_has_no_test_binary', async () => {
-      const { result } = renderHook(() =>
-        useTestRunActions({
-          projectId: 'proj-1',
-          filePath: 'src/lib.rs',
-          projectPath: '/tmp/proj',
-        }),
-      );
+      mockHeadlessBuild('Finished in 1s\n');
+      const { result } = renderDebugHook();
 
       act(() => result.current.handleDebugTest({ name: 'parse_simple', line: 1, lang: 'rust' }));
-      await waitFor(() => expect(mockStart).toHaveBeenCalledTimes(1));
-      mockStart.mock.calls[0][0].onOutput('Finished in 1s\n');
-      mockStart.mock.calls[0][0].onExit(0);
 
-      await waitFor(() => expect(useTaskStore.getState().consoleSessions[0].status).toBe('idle'));
+      await waitFor(() => expect(notifiedWith('测试二进制')).toBe(true));
       expect(mockStartWithConfig).not.toHaveBeenCalled();
+      expect(mockStart).not.toHaveBeenCalled();
+      expect(mockOpenDebugPanel).toHaveBeenCalledWith('console');
+      expect(useTaskStore.getState().consoleSessions).toHaveLength(0);
+    });
+
+    it('should_notify_when_multiple_binaries_cannot_be_disambiguated', async () => {
+      mockHeadlessBuild(
+        artifactOutput('/tmp/proj/src/lib.rs', '/tmp/proj/target/debug/deps/neeko-abc123') +
+          artifactOutput('/tmp/proj/src/main.rs', '/tmp/proj/target/debug/deps/neeko-bin-def456'),
+      );
+      const { result } = renderDebugHook('src/other.rs');
+
+      act(() => result.current.handleDebugTest({ name: 'parse_simple', line: 1, lang: 'rust' }));
+
+      await waitFor(() => expect(notifiedWith('多个测试二进制')).toBe(true));
+      expect(mockStartWithConfig).not.toHaveBeenCalled();
+      expect(mockStart).not.toHaveBeenCalled();
+      expect(mockOpenDebugPanel).toHaveBeenCalledWith('console');
+    });
+
+    it('should_notify_with_command_and_cwd_when_headless_spawn_fails', async () => {
+      mockInvoke.mockImplementation((cmd: string) =>
+        cmd === 'debug_build_test_binary'
+          ? Promise.reject(new Error('spawn failed'))
+          : Promise.resolve(false),
+      );
+      const { result } = renderDebugHook();
+
+      act(() => result.current.handleDebugTest({ name: 'parse_simple', line: 1, lang: 'rust' }));
+
+      await waitFor(() =>
+        expect(
+          useNotificationStore
+            .getState()
+            .notifications.some(
+              (n) => n.message.includes('cargo test') && n.message.includes('/tmp/proj'),
+            ),
+        ).toBe(true),
+      );
+      expect(mockStartWithConfig).not.toHaveBeenCalled();
+      expect(mockStart).not.toHaveBeenCalled();
+    });
+
+    it('should_not_duplicate_notification_when_dap_start_fails', async () => {
+      mockStartWithConfig.mockRejectedValue(new Error('lldb missing'));
+      mockHeadlessBuild(
+        artifactOutput('/tmp/proj/src/lib.rs', '/tmp/proj/target/debug/deps/neeko-abc123'),
+      );
+      const { result } = renderDebugHook();
+
+      act(() => result.current.handleDebugTest({ name: 'parse_simple', line: 1, lang: 'rust' }));
+
+      await waitFor(() => expect(mockStartWithConfig).toHaveBeenCalledTimes(1));
+      // launchSession 错误路径已通知，此处不重复
+      expect(useNotificationStore.getState().notifications).toHaveLength(0);
     });
 
     it('should_ignore_debug_for_ts_cases', async () => {
@@ -418,6 +590,7 @@ describe('useTestRunActions', () => {
       act(() => result.current.handleDebugTest({ name: 'adds', line: 2, lang: 'ts' }));
       expect(mockStart).not.toHaveBeenCalled();
       expect(mockStartWithConfig).not.toHaveBeenCalled();
+      expect(mockInvoke).not.toHaveBeenCalled();
     });
   });
 
@@ -476,7 +649,12 @@ describe('useTestRunActions', () => {
       expect(items[1]).toMatchObject({ label: "Debug 'Test other_case'" });
     });
 
-    it('run_item_launches_run_command_and_debug_item_starts_no_run_build', async () => {
+    it('run_item_launches_run_command_and_debug_item_builds_headless', async () => {
+      mockInvoke.mockImplementation((cmd: string, args: { path?: string }) =>
+        cmd === 'debug_build_test_binary'
+          ? Promise.resolve({ exit_code: 0, stdout: '' })
+          : Promise.resolve(cmd === 'file_exists' && args.path?.endsWith('/src/lib.rs')),
+      );
       const { result } = renderHook(() =>
         useTestRunActions({
           projectId: 'proj-1',
@@ -493,8 +671,16 @@ describe('useTestRunActions', () => {
       );
 
       act(() => result.current.menuItems[1].action());
-      await waitFor(() => expect(mockStart).toHaveBeenCalledTimes(2));
-      expect(mockStart.mock.calls[1][0].command).toBe("cargo test 'parse_simple' --no-run");
+      await waitFor(() =>
+        expect(mockInvoke).toHaveBeenCalledWith(
+          'debug_build_test_binary',
+          expect.objectContaining({
+            command: "cargo test 'parse_simple' --no-run --lib --message-format=json",
+          }),
+        ),
+      );
+      // Debug 不再经任务会话：run 的一次 mockStart 之外无新增
+      expect(mockStart).toHaveBeenCalledTimes(1);
     });
 
     it('closeMenu_clears_state_and_releases_overlay', () => {

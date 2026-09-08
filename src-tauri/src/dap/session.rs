@@ -97,6 +97,7 @@ impl DapSession {
         target: ExecTarget,
         config: LaunchConfig,
         breakpoints: Vec<BreakpointSpec>,
+        adapter_binary: Option<String>,
     ) -> Result<Arc<Self>, AppError> {
         let plugin = adapter::plugin_for(&config.type_)?;
 
@@ -108,12 +109,14 @@ impl DapSession {
             )));
         }
 
-        if let Some(ref pre) = config.pre_launch_task {
+        if let Some(pre) = &config.pre_launch_task {
             process::run_pre_launch_task(&target, pre).await?;
         }
 
         // Single resolve path — always against project ExecTarget.
-        let spawn = plugin.resolve_spawn(&target).await?;
+        let spawn = plugin
+            .resolve_spawn(&target, adapter_binary.as_deref())
+            .await?;
         let adapter_proc = process::spawn_adapter(&target, &project_path, &spawn).await?;
         let process::AdapterProcess { io, kill: kill_fn } = adapter_proc;
         let stderr_buf = Arc::clone(&io.stderr_buf);
@@ -245,6 +248,30 @@ impl DapSession {
                     .request_timeout("launch", launch_args, Duration::from_secs(60))
                     .await
                     .map_err(|e| AppError::Dap(format!("launch failed: {e}")))?;
+            }
+            HandshakeOrder::PipelinedLaunch => {
+                // lldb-dap (LLVM 22+)：launch 请求内启动进程并**门控响应**——
+                // launch 先发不等响应、收 `initialized`、发 configurationDone，
+                // launch 响应才返回（pipelined，顺序 await 会 timeout）。
+                // 断点按 CodeLLDB 时序在 **launch 前**注册（target 建好即设断点，
+                // 模块加载后 resolve）；launch 后设断点对快速跑完的测试会错过。
+                self.set_status(
+                    SessionStatus::Starting,
+                    Some("Building / launching…".into()),
+                )
+                .await;
+                self.apply_breakpoints(breakpoints, entry_fn).await;
+                let launch_rx = self.client.send_request("launch", launch_args).await?;
+                self.client
+                    .wait_for_initialized(Duration::from_secs(30))
+                    .await?;
+                let _ = self.client.request("configurationDone", json!({})).await;
+                let resp = self
+                    .client
+                    .await_response("launch", launch_rx, Duration::from_secs(180))
+                    .await
+                    .map_err(|e| AppError::Dap(format!("launch failed: {e}")))?;
+                self.client.finish_request("launch", resp).await?;
             }
         }
 

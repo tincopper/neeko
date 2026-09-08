@@ -291,6 +291,15 @@ impl AdapterKind {
             other => Err(AppError::Dap(format!("Unsupported debug type: {other}"))),
         }
     }
+
+    /// Config key for per-adapter overrides（`dap.adapterBinaries.<kind>`）。
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Go => "go",
+            Self::Lldb => "lldb",
+        }
+    }
 }
 
 /// How Neeko speaks DAP with the adapter process.
@@ -320,4 +329,8 @@ pub enum HandshakeOrder {
     LaunchBeforeBreakpoints,
     /// initialize → initialized → breakpoints → configurationDone → launch
     BreakpointsBeforeLaunch,
+    /// lldb-dap (LLVM 22+): launch 请求内启动进程并门控响应——必须 pipelined：
+    /// launch 先发不等响应 → 收 `initialized` → setBreakpoints → configurationDone
+    /// → launch 响应才返回（实测：顺序 await 会 timeout waiting for launch）。
+    PipelinedLaunch,
 }

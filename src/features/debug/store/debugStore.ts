@@ -8,6 +8,7 @@ import {
   registerDebugPanelCloser,
 } from '@/shared/utils/bottomPanelExclusive';
 import { safeUnlisten } from '@/shared/utils/safeUnlisten';
+import { stripAnsi } from '@/shared/utils/stripAnsi';
 
 import {
   dapCheckAdapter,
@@ -38,6 +39,7 @@ import type {
   StackFrameDto,
   VariableDto,
 } from '../types';
+import { isCodelldbNoise } from '../utils/consoleFilter';
 
 /** Stable empty list — never return a fresh `[]` from selectors (avoids re-render loops). */
 export const EMPTY_BP_LINES: readonly number[] = Object.freeze([]);
@@ -726,7 +728,15 @@ export const useDebugStore = create<DebugState>((rawSet, get) => {
           } else if (kind === 'output') {
             const output = body as { output?: string; category?: string };
             const raw = output.output ?? '';
-            const text = raw.replace(/\n$/, '');
+            let text = raw.replace(/\n$/, '');
+            // codelldb / libtest 输出带 ANSI 颜色（`\x1b[32m`…`\x1b[0m`、字符集
+            // `\x1b(B`）——DebugPanel console 是纯文本，原样显示即乱码，先剥。
+            text = stripAnsi(text);
+            // 过滤调试台的纯提示噪音（codelldb 启动 banner；VSCode DEBUG CONSOLE
+            // 也有，但对普通用户无信息量）。`Starting:`/`Launched process` 保留。
+            if (isCodelldbNoise(text)) {
+              return;
+            }
             if (text) {
               const cat = output.category ?? 'stdout';
               const lineKind: ConsoleLine['kind'] =

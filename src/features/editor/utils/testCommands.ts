@@ -76,17 +76,47 @@ function buildManifestArgs(cargoManifestDir?: string | null): string {
 }
 
 /**
- * Rust Debug 前置构建命令：`cargo test <caseName> --no-run`（Task Console 可见）。
+ * Rust Debug 前置构建命令：`cargo test <caseName> --no-run [<targetFlag>] --message-format=json`
+ * （C4：产物定位走 compiler-artifact 结构化协议）。
+ * `--message-format` / `--lib|--bin|--test` 均为 cargo 级 flag（非测试二进制参数），
+ * 放 `--` 之前；无 `VAR=x` env 前缀，shell 无关（Windows 本地 cmd 同样可用）。
+ * `targetFlag` 为多目标工作区消歧：lib+bin 共享 src/ 时 artifact 的 src_path 是
+ * crate root、与源文件行永不匹配（hint 消歧失效），必须在构建期锁定目标使产物唯一。
  * Debug 首期仅支持 Rust —— 非 Rust 用例直接抛错（UI 已按 lang 隐藏 Debug 按钮）。
  */
 export function buildDebugBuildCommand(
   testCase: TestCaseInfo,
   cargoManifestDir?: string | null,
+  targetFlag = '',
 ): string {
   if (testCase.lang !== 'rust') {
     throw new Error(`Debug is only supported for Rust tests, got: ${testCase.lang}`);
   }
-  return `cargo test ${shQuote(testCase.name)} --no-run${buildManifestArgs(cargoManifestDir)}`;
+  const target = targetFlag ? ` ${targetFlag}` : '';
+  return `cargo test ${shQuote(testCase.name)} --no-run${target}${buildManifestArgs(cargoManifestDir)} --message-format=json`;
+}
+
+/**
+ * 用例文件 → cargo target 锁定 flag（多目标工作区消歧，R4 对齐 RA/IDEA）：
+ * 匹配任意前缀（项目根 / manifest 目录均可，如 `src-tauri/tests/…`）：
+ * - `…/tests/<n>.rs` → `--test <n>`（integration）
+ * - `…/src/bin/<n>.rs` | `…/src/bin/<n>/main.rs` → `--bin <n>`
+ * - `…/src/main.rs` → 不锁定（crate root，单 bin 唯一候选；lib+bin 时 hint 精确对齐）
+ * - 其余 `…/src/**` → 有 lib 则 `--lib`（lib 是 unit test 默认归宿），否则不锁定（单 bin）
+ * - 未知布局 → 空串（不锁定，走解析器 hint/唯一候选兜底）
+ * `hasLib` 由调用方探测 `src/lib.rs` 存在注入（纯函数，可单测）。
+ */
+export function resolveTestTargetFlag(filePath: string, hasLib: boolean): string {
+  const p = filePath.replace(/\\/g, '/');
+  const tests = p.match(/(?:^|\/)tests\/([^/]+)\.rs$/);
+  if (tests) return `--test ${tests[1]}`;
+  const binFile = p.match(/(?:^|\/)src\/bin\/([^/]+)\.rs$/);
+  if (binFile) return `--bin ${binFile[1]}`;
+  const binDir = p.match(/(?:^|\/)src\/bin\/([^/]+)\/main\.rs$/);
+  if (binDir) return `--bin ${binDir[1]}`;
+  if (/(?:^|\/)src\/main\.rs$/.test(p)) return '';
+  if (/(?:^|\/)src\//.test(p)) return hasLib ? '--lib' : '';
+  return '';
 }
 
 /** 任务 Console 会话 configId：按 run/debug + 语言 + 文件 + 用例名隔离标签页。 */
@@ -99,30 +129,73 @@ export function buildTestConfigId(
 }
 
 /**
- * 解析 `cargo test --no-run` 输出中的单元测试二进制路径。
+ * 解析 `cargo test --no-run --message-format=json` 输出中的单元测试二进制路径
+ * （C4：结构化产物定位，替代正则猜 `Running|Executable unittests` 行）。
  *
- * 匹配 `Running unittests src/lib.rs (target/debug/deps/...)` 行（新 cargo）与
- * `Executable unittests ...` 行（旧 cargo）。`sourceHint` 为被编辑文件相对路径
- * （如 `src/lib.rs`）：多二进制工作区中优先取源文件匹配的二进制，否则取最后一个。
- * 无匹配返回 null（调用方不启动调试会话）。
+ * 只消费 `reason:"compiler-artifact"` 且 `profile.test:true` 且 `executable`
+ * 非空的行；其余（编译日志、`build-finished`、`compiler-message`、非法 JSON、
+ * 非 test profile、executable 为空的 rlib/build-script 产物）全部丢弃。
+ * `sourceHint` 为被编辑文件相对路径（如 `src/lib.rs`）：与 artifact 的
+ * `target.src_path`（绝对路径）做后缀对齐，多二进制工作区中消歧。
+ *
+ * 输入清洗（防御性兜底，主路径输入已是干净管道 stdout）：逐行剥 ANSI 转义
+ * 序列（颜色前缀）与 `\r` 行尾；截断产生的半行 JSON 解析失败即丢弃。
+ *
+ * 返回显式结果（§5 失败分类）：0 产物 → `binary_not_found`；多产物且 hint
+ * 无法消歧到唯一 → `binary_ambiguous`（调用方显式落 DebugPanel console +
+ * notification，不再静默 `return null`）。
  */
-export function parseTestBinaryPath(output: string, sourceHint?: string): string | null {
-  const re = /(?:Running|Executable)\s+unittests\s+(\S+)\s+\(([^)]+)\)/g;
-  const candidates: Array<{ source: string; binary: string }> = [];
-  for (const m of output.matchAll(re)) {
-    candidates.push({ source: m[1], binary: m[2] });
+export type TestBinaryFailure = 'binary_not_found' | 'binary_ambiguous';
+export type TestBinaryResult = { ok: true; path: string } | { ok: false; error: TestBinaryFailure };
+
+interface CargoArtifactLine {
+  reason?: string;
+  target?: { src_path?: string };
+  profile?: { test?: boolean };
+  executable?: string | null;
+}
+
+/** ANSI 转义序列（CSI `ESC [ … <letter>`，如颜色 `\x1b[32m` / 复位 `\x1b[0m`）。
+ *  `fromCharCode` 构造避免正则字面量里的控制字符（no-control-regex）。 */
+const ANSI_ESCAPE_PATTERN = new RegExp(`${String.fromCharCode(0x1b)}\\[[0-9;?]*[A-Za-z]`, 'g');
+
+/** 剥 ANSI 转义 + `\r` 行尾，返回可做 `startsWith('{')` 判定的干净行。 */
+function cleanBuildLine(line: string): string {
+  return line.replace(ANSI_ESCAPE_PATTERN, '').replace(/\r/g, '').trim();
+}
+
+export function parseTestBinaryPath(output: string, sourceHint?: string): TestBinaryResult {
+  const candidates: Array<{ srcPath: string; binary: string }> = [];
+  for (const line of output.split('\n')) {
+    const trimmed = cleanBuildLine(line);
+    if (!trimmed.startsWith('{')) continue; // 非 JSON 行丢弃（编译日志等）
+    let value: CargoArtifactLine;
+    try {
+      value = JSON.parse(trimmed) as CargoArtifactLine;
+    } catch {
+      continue; // 非法 JSON 行丢弃（含截断半行）
+    }
+    if (value.reason !== 'compiler-artifact') continue;
+    if (value.profile?.test !== true) continue;
+    if (typeof value.executable !== 'string' || !value.executable) continue;
+    candidates.push({ srcPath: value.target?.src_path ?? '', binary: value.executable });
   }
-  if (candidates.length === 0) return null;
+  if (candidates.length === 0) return { ok: false, error: 'binary_not_found' };
   if (sourceHint) {
-    const matched = candidates.find(
+    const matched = candidates.filter(
       (c) =>
-        c.source === sourceHint ||
-        c.source.endsWith(`/${sourceHint}`) ||
-        sourceHint.endsWith(`/${c.source}`),
+        c.srcPath === sourceHint ||
+        (c.srcPath !== '' && c.srcPath.endsWith(`/${sourceHint}`)) ||
+        sourceHint.endsWith(`/${c.srcPath}`),
     );
-    if (matched) return matched.binary;
+    if (matched.length === 1) return { ok: true, path: matched[0].binary };
+    if (matched.length > 1) return { ok: false, error: 'binary_ambiguous' };
+    // hint 无匹配：唯一候选直接用，否则歧义（不猜多产物中的最后一个）。
+    if (candidates.length === 1) return { ok: true, path: candidates[0].binary };
+    return { ok: false, error: 'binary_ambiguous' };
   }
-  return candidates[candidates.length - 1].binary;
+  if (candidates.length === 1) return { ok: true, path: candidates[0].binary };
+  return { ok: false, error: 'binary_ambiguous' };
 }
 
 /** 相对二进制路径 → 绝对路径（cargo 在 cwd 下输出 `target/...` 相对路径）。 */

@@ -189,11 +189,51 @@ impl DapClient {
             .send(encode_message(&msg))
             .map_err(|_| AppError::Dap("adapter connection closed".into()))?;
 
-        let resp = tokio::time::timeout(timeout, rx)
+        let resp = self.await_response(command, rx, timeout).await?;
+
+        self.finish_request(command, resp).await
+    }
+
+    /// 写请求但不等待响应（pipelined）：返回响应接收器，调用方可先推进其他
+    /// 请求/事件（如 lldb-dap 的 launch 被 configurationDone 门控）再 await。
+    pub async fn send_request(
+        &self,
+        command: &str,
+        arguments: Value,
+    ) -> Result<oneshot::Receiver<Value>, AppError> {
+        let seq = self.next_seq();
+        let (tx, rx) = oneshot::channel();
+        {
+            let mut pending = self.pending.lock().await;
+            pending.insert(seq, tx);
+        }
+        let msg = json!({
+            "seq": seq,
+            "type": "request",
+            "command": command,
+            "arguments": arguments,
+        });
+        self.write_tx
+            .send(encode_message(&msg))
+            .map_err(|_| AppError::Dap("adapter connection closed".into()))?;
+        Ok(rx)
+    }
+
+    /// Await a request response with timeout（供顺序与 pipelined 两条路径复用）。
+    pub async fn await_response(
+        &self,
+        command: &str,
+        rx: oneshot::Receiver<Value>,
+        timeout: Duration,
+    ) -> Result<Value, AppError> {
+        tokio::time::timeout(timeout, rx)
             .await
             .map_err(|_| AppError::Dap(format!("timeout waiting for {command}")))?
-            .map_err(|_| AppError::Dap(format!("canceled waiting for {command}")))?;
+            .map_err(|_| AppError::Dap(format!("canceled waiting for {command}")))
+    }
 
+    /// 解析请求响应：失败时聚合 recent_output 报错（顺序与 pipelined 共用）。
+    pub async fn finish_request(&self, command: &str, resp: Value) -> Result<Value, AppError> {
         let success = resp
             .get("success")
             .and_then(|s| s.as_bool())
