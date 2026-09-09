@@ -11,6 +11,11 @@ export default defineConfig(async () => ({
     alias: {
       '@': path.resolve(__dirname, './src'),
     },
+    // 单实例 @codemirror/view：lock 曾并存 6.43.9（经 lint/theme-one-dark 间接）
+    // 与 6.43.11（直引），预打包产出双 view 实例导致 facet 失配、滚动后点击
+    // 光标错位。dedupe 强制两处 import 收敛到同一副本（版本唯一性由
+    // pnpm.overrides + check_codemirror_singleton.py 保障）。
+    dedupe: ['@codemirror/view', '@codemirror/state'],
   },
 
   /**

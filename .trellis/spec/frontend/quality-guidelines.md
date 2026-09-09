@@ -183,6 +183,36 @@ ESLint 的 `no-restricted-imports` 规则会检测并报 error 拦截违反此�
 
 **反例**：2026-09-03 终端任务工作树 `lowp→highp` 补丁（433KB、无记录、与"不再做 fork 级改动"终局冲突）→ review B2 回退，stock 恢复。
 
+### 8. CodeMirror 多实例（facet 静默失效）
+
+`@codemirror/view` 的 facet（如 `EditorView.mouseSelectionStyle`）按**模块实例**区分身份。Vite 预打包若产出两份 view——`@uiw/react-codemirror` 链经 `@codemirror/lint` 拉起 nested 旧版，源码走顶层新版——传给 live `EditorView` 的扩展**全部静默失效，无任何报错**。
+
+**反例**：2026-09-09 编辑器滚动后点击错位。`@uiw_react-codemirror.js` 的 `EditorView2` 来自 `chunk-XI6XTRT3.js`（view 6.43.9，经 `@codemirror/lint@6.9.5` 的 nested 依赖），源码 `import` 落在 `chunk-PFGFVYCY.js`（顶层 6.43.11）；`mouseClickGuard()` 注册在 6.43.11 的 facet 上从未被执行；顶层升级（`f4b725dc`）没到达运行时。
+
+**正确做法**（三件套，缺一不可）：
+1. `vite.config.ts` → `resolve.dedupe: ['@codemirror/view', '@codemirror/state']`（dev + build 同生效）。
+2. `pnpm-workspace.yaml` → `overrides: '@codemirror/view': <单版本>` 消灭 nested 旧版。注意 pnpm v11 **不读** `package.json` 顶层 `overrides` / `pnpm` 字段，必须放 `pnpm-workspace.yaml`。
+3. `.trellis/scripts/check_codemirror_singleton.py`（已接入 `pnpm lint`）断言 lockfile 单版本。
+
+**验证**：`npx vite optimize --force` 后 `@uiw_react-codemirror.js` 与 `@codemirror_view.js` 必须 import 同一 chunk；`chunk-*.js` 中 `EditorView` 定义仅一处。改 overrides 后删 `node_modules/.vite` 重启 dev。
+
+### 9. WebKit focus 滚动漂移（点击后光标落错/视图被拖回）
+
+**症状**：拖垂直滚动条（编辑器 blur）→ 点击代码区深处，光标落在旧 caret 附近而非鼠标处，视图被「拖回」。`posAtCoords`/`caretRangeFromPoint` 映射本身正确——漂移发生在 **mousedown → mouseup 之间**。
+
+**机制**（`codemirrorMouseClickGuard.ts` + CM 源码实证）：CM mousedown 顺序是 `startMouseSelection` → `focusPreventScroll`（同步 focus）→ `mouseSel.start()`（dispatch 新 selection）。WebKit（WKWebView）下 `focusPreventScroll` **失效**：focus 把视图滚到「旧 caret」所在位置，scrollTop 漂移（无任何 JS 赋值——浏览器原生行为，抓不到 setter 栈）。随后 `start()` 基于漂移后 scrollTop 映射，光标落错。
+
+**判别特征**（排障探针实测）：scrollTop 在 mapped（mousedown）→ event（mouseup）之间变（如 1289→0/235）；`view.dom.isConnected` 恒 true（**view 未重建**，排除快照恢复）；`Element.prototype.scrollTop` setter 追踪零调用（**非 JS 赋值**，排除 scrollIntoView/reconfigure）。
+
+**修复**（已落地 `src/shared/utils/codemirrorMouseClickGuard.ts`，双保险）：
+1. **焦点锚定**：`makeMouseClickGuardStyle` 创建时（CM focus 之前）把 `selection` dispatch 到点击处——caret 锚定在视口内的新位置，focus 滚动目标正确。
+2. **静止点击恢复 scrollTop**：`get()` 中 `moved < 10px` 且 `scrollTop` 与 mousedown 时偏差 > 2px 时恢复为 mousedown 值再映射。mousedown 的 `start()` 首次调 `get()` 同步完成恢复，视觉无闪。
+   **注意**：只在静止点击分支恢复；真实拖拽（moved ≥ 阈值）期间 scrollTop 变化可能是用户拖出视口的 auto-scroll，属意图，不得恢复。
+
+**映射走 CM 原生 `posAndSideAtCoords`**（与 `basicMouseSelection` 同一路径）。不要引入 `caretRangeFromPoint` 自建命中测试层：其针对的「posAtCoords 滚动失准」假设已被证伪（Chromium 探针 `posAtCoords` 与 DOM 真值全一致；双实例期间 guard 完全失效、CM 原生 `basicMouseSelection` 一直工作正常，bug 纯为 scrollTop 漂移）。该层是 2026-09-09 简化移除的误诊设计。
+
+**回归测试**：`codemirrorMouseClickGuard.test.ts` 含 `should_restore_scroll_top_before_mapping_when_focus_scroll_drifted` / `should_not_restore_scroll_top_on_real_drag` / `should_use_native_posandsideatcoords_for_mapping`。
+
 ---
 
 ## 必需模式

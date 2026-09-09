@@ -8,3 +8,9 @@ allowBuilds:
 
 patchedDependencies:
   '@xterm/addon-canvas': patches/@xterm__addon-canvas.patch
+
+overrides:
+  # 单实例 @codemirror/view：@codemirror/lint/theme-one-dark 经间接依赖曾锁定
+  # 6.43.9，与直引 6.43.11 并存致 Vite 预打包双 view 实例、滚动后点击错位。
+  # 此处强制全树收敛到 6.43.11（版本唯一性由 check_codemirror_singleton.py 保障）。
+  '@codemirror/view': 6.43.11
