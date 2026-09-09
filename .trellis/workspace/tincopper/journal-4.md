@@ -604,3 +604,267 @@ cargo test 全量回归通过（lib 1004/unit 100，0失败），任务归档关
 ### Next Steps
 
 - None - task complete
+
+
+## Session 196: 编辑器滚动点击错位：CodeMirror 双实例单例化修复
+
+**Date**: 2026-09-09
+**Task**: 编辑器滚动点击错位：CodeMirror 双实例单例化修复
+**Branch**: `main`
+
+### Summary
+
+(Add summary)
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `cd75ea70b87b27eb514773bc056690a98a1cda9b` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
+
+
+## Session 197: 编辑器滚动点击错位：CodeMirror 双实例单例化修复
+
+**Date**: 2026-09-09
+**Task**: 编辑器滚动点击错位：CodeMirror 双实例单例化修复
+**Branch**: `main`
+
+### Summary
+
+(Add summary)
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `cd75ea70b87b27eb514773bc056690a98a1cda9b` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
+
+
+## Session 198: 编辑器滚动点击错位：CodeMirror 双实例单例化修复
+
+**Date**: 2026-09-09
+**Task**: 编辑器滚动点击错位：CodeMirror 双实例单例化修复
+**Branch**: `main`
+
+### Summary
+
+(Add summary)
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `cd75ea70b87b27eb514773bc056690a98a1cda9b` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
+
+
+## Session 199: 编辑器滚动点击错位根治：WebKit focus 滚动漂移
+
+**Date**: 2026-09-09
+**Task**: 编辑器滚动点击错位根治：WebKit focus 滚动漂移
+**Branch**: `main`
+
+### Summary
+
+(Add summary)
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `cd75ea70b87b27eb514773bc056690a98a1cda9b` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
+
+
+## Session 200: 编辑器滚动点击错位根治：WebKit focus 滚动漂移
+
+**Date**: 2026-09-09
+**Task**: 编辑器滚动点击错位根治：WebKit focus 滚动漂移
+**Branch**: `main`
+
+### Summary
+
+(Add summary)
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `cd75ea70b87b27eb514773bc056690a98a1cda9b` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
+
+
+## Session 201: 编辑器滚动点击错位根治：WebKit focus 滚动漂移
+
+**Date**: 2026-09-09
+**Task**: 编辑器滚动点击错位根治：WebKit focus 滚动漂移
+**Branch**: `main`
+
+### Summary
+
+(Add summary)
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `cd75ea70b87b27eb514773bc056690a98a1cda9b` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
+
+
+## Session 202: 提交：编辑器滚动点击错位修复（双实例 + focus 漂移 + 简化）
+
+**Date**: 2026-09-09
+**Task**: 提交：编辑器滚动点击错位修复（双实例 + focus 漂移 + 简化）
+**Branch**: `main`
+
+### Summary
+
+(Add summary)
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `195bac2e31f4b6148ba8eed1a574429b4913502a` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
+
+
+## Session 203: 编辑器滚动点击错位修复 + 归档
+
+**Date**: 2026-09-09
+**Task**: 编辑器滚动点击错位修复 + 归档
+**Branch**: `main`
+
+### Summary
+
+修复 CodeMirror 双实例 + WebKit focus 滚动漂移；guard 简化移除 caret 层；neeko-check PASS；提交 195bac2e 归档 09-09 任务
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `195bac2e` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
