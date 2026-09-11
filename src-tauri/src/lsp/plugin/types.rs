@@ -37,13 +37,130 @@ impl LspAutoStart {
     }
 }
 
+/// 一条安装命令的形态。
+///
+/// 取代此前的裸 argv 表示（`&'static [&'static str]`）：那种表示下「工具名」只能
+/// 靠 `argv[0]` 猜、`sh -c <脚本>` 只能靠「首个元素恰好是 sh」的形状巧合被当作
+/// 可探测的工具，也无法表达 URL / 解压等非 argv 形态的安装法。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum InstallOp {
+    /// 直接执行 `tool args…`；可用性判据 = `tool` 能否在目标环境解析。
+    Exec {
+        /// 可执行文件名（同时是可用性探测目标）。
+        tool: &'static str,
+        /// 传给 `tool` 的参数。
+        args: &'static [&'static str],
+    },
+    /// 经 POSIX shell 执行脚本体；可用性判据 = `shell` 能否解析。
+    /// 脚本自带 curl/tar 等依赖，不依赖环境 PATH 里的 npm/brew。
+    Script {
+        /// shell 可执行文件名（可用性探测目标，通常 `sh`）。
+        shell: &'static str,
+        /// 脚本正文（`[stage] <描述>` 行上报进度，见 `ProgressHint`）。
+        body: &'static str,
+    },
+}
+
+impl InstallOp {
+    /// `tool args…` 形态。
+    #[must_use]
+    pub const fn exec(tool: &'static str, args: &'static [&'static str]) -> Self {
+        Self::Exec { tool, args }
+    }
+
+    /// POSIX shell 脚本形态（探测 `sh`）。
+    #[must_use]
+    pub const fn script(body: &'static str) -> Self {
+        Self::Script { shell: "sh", body }
+    }
+
+    /// 可用性探测目标（可执行文件名）。
+    #[must_use]
+    pub const fn probe_tool(self) -> &'static str {
+        match self {
+            Self::Exec { tool, .. } => tool,
+            Self::Script { shell, .. } => shell,
+        }
+    }
+
+    /// 错误信息里的人类可读标识。
+    #[must_use]
+    pub const fn describe(self) -> &'static str {
+        match self {
+            Self::Exec { tool, .. } => tool,
+            Self::Script { .. } => "download script",
+        }
+    }
+
+    /// 展开为 `(program, args)`（Script → `shell -c body`）。
+    #[must_use]
+    pub fn command(self) -> (&'static str, Vec<&'static str>) {
+        match self {
+            Self::Exec { tool, args } => (tool, args.to_vec()),
+            Self::Script { shell, body } => (shell, vec!["-c", body]),
+        }
+    }
+}
+
 /// Installation recipe for an LSP server (typically built-in).
 #[derive(Debug, Clone)]
 pub struct LspInstallMethod {
     /// Human-readable prerequisite description (e.g. "Node.js >= 18").
     pub prerequisite: &'static str,
-    /// Command + args to install the server.
-    pub command: &'static [&'static str],
+    /// 首选安装操作。
+    pub primary: InstallOp,
+    /// 回退链：首选工具不可解析或安装失败时按序尝试。
+    /// 例：fnm/nvm 只管 shell-init PATH 时 npm 不可达 → brew / 官方下载兜底。
+    pub fallbacks: &'static [InstallOp],
+}
+
+impl LspInstallMethod {
+    /// Preferred-only recipe (empty fallback chain) —— 绝大多数插件的形态，
+    /// 免去每个 builtin 手写空回退。
+    #[must_use]
+    pub const fn new(prerequisite: &'static str, primary: InstallOp) -> Self {
+        Self {
+            prerequisite,
+            primary,
+            fallbacks: &[],
+        }
+    }
+
+    /// 附加有序回退链（首选方法之后依次尝试）。
+    #[must_use]
+    pub const fn with_fallbacks(mut self, fallbacks: &'static [InstallOp]) -> Self {
+        self.fallbacks = fallbacks;
+        self
+    }
+}
+
+/// 服务器特有的会话调优（builtin 自带；通用插件用 `Default`）。
+///
+/// 收编此前散在两处的 jdtls 特判 —— `version_probe` bool 与 session 层的
+/// `language_id == "java"`。两种知识都挂到插件自身，session 层只读数据、不再按
+/// 语言名分支：第二个 Java 系服务器只需声明同一 tuning，无需改 session。
+#[derive(Debug, Clone, Copy)]
+pub struct LspServerTuning {
+    /// 创建会话前是否探测 `<server> --version` 取版本元数据。
+    ///
+    /// 某些服务器的 `--version` 会启动重量级运行时（如 jdtls 的完整 OSGi JVM），
+    /// 且并发探测会在 workspace 锁上互挂 → 这类服务器声明 `false`（版本降级为
+    /// unknown），避免 `--version` 阻塞会话创建。
+    pub version_probe: bool,
+    /// 是否从项目环境 PATH 的 `java` 解析并注入 `JAVA_HOME`
+    /// （对齐 VSCode `java.jdt.ls.java.home` 的 "Tooling JDK" 语义：服务器启动器
+    /// 默认可能取最新版 JDK，超出其支持范围会导致 JDK 源码映射失效）。
+    pub java_home_from_path: bool,
+}
+
+impl Default for LspServerTuning {
+    /// 通用默认：探测版本、不注入 `JAVA_HOME`。
+    fn default() -> Self {
+        Self {
+            version_probe: true,
+            java_home_from_path: false,
+        }
+    }
 }
 
 /// Descriptor for a language server plugin (built-in or custom).
@@ -72,6 +189,13 @@ pub struct LspPlugin {
     pub is_custom: bool,
     /// Optional `InitializeParams.initializationOptions` for the server.
     pub initialization_options: Option<serde_json::Value>,
+    /// Optional `InitializeParams.initializationOptions.extendedClientCapabilities`
+    /// (vendor-specific, e.g. jdtls `classFileContentsSupport`). `None` for
+    /// all languages except those whose server gates features on it.
+    pub extended_client_capabilities: Option<serde_json::Value>,
+    /// 服务器特有的会话调优（探测策略 / 环境注入）。通用插件保持 `Default`；
+    /// 仅声明与默认不同的行为，session 层据此决策而不按语言名分支。
+    pub tuning: LspServerTuning,
 }
 
 impl LspPlugin {
@@ -95,6 +219,8 @@ impl LspPlugin {
             auto_start: LspAutoStart::OnFirstFile,
             is_custom: false,
             initialization_options: None,
+            extended_client_capabilities: None,
+            tuning: LspServerTuning::default(),
         }
     }
 
@@ -119,10 +245,24 @@ impl LspPlugin {
         self
     }
 
+    /// Override the server-specific session tuning (probe policy / env injection).
+    #[must_use]
+    pub const fn with_tuning(mut self, tuning: LspServerTuning) -> Self {
+        self.tuning = tuning;
+        self
+    }
+
     /// Set LSP initialization options.
     #[must_use]
     pub fn with_initialization_options(mut self, opts: serde_json::Value) -> Self {
         self.initialization_options = Some(opts);
+        self
+    }
+
+    /// Set vendor-specific extended client capabilities.
+    #[must_use]
+    pub fn with_extended_client_capabilities(mut self, caps: serde_json::Value) -> Self {
+        self.extended_client_capabilities = Some(caps);
         self
     }
 
@@ -155,6 +295,8 @@ impl LspPlugin {
                 .unwrap_or(LspAutoStart::OnFirstFile),
             is_custom: true,
             initialization_options: cfg.initialization_options.clone(),
+            extended_client_capabilities: None,
+            tuning: LspServerTuning::default(),
         }
     }
 }
@@ -243,4 +385,85 @@ pub struct LspExtensionMapEntry {
     pub server_name: String,
     /// Whether this mapping comes from a custom server config.
     pub is_custom: bool,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn install_method_new_has_empty_fallback_chain() {
+        let m = LspInstallMethod::new("npm", InstallOp::exec("npm", &["install", "-g", "x"]));
+        assert_eq!(m.prerequisite, "npm");
+        assert_eq!(m.primary.probe_tool(), "npm");
+        assert_eq!(m.primary.command().1, vec!["install", "-g", "x"]);
+        assert!(m.fallbacks.is_empty(), "默认无回退链");
+    }
+
+    #[test]
+    fn install_method_with_fallbacks_attaches_chain_in_order() {
+        const CHAIN: &[InstallOp] = &[
+            InstallOp::exec("brew", &["install", "x"]),
+            InstallOp::script("echo hi"),
+        ];
+        let m = LspInstallMethod::new("npm", InstallOp::exec("npm", &["i"])).with_fallbacks(CHAIN);
+        assert_eq!(m.fallbacks, CHAIN);
+    }
+
+    /// `Exec` / `Script` 两种形态的探测目标与展开命令（脚本走 `sh -c body`，
+    /// 不再依赖「argv[0] 恰好是 sh」的形状巧合）。
+    #[test]
+    fn install_op_expands_to_program_and_args() {
+        let exec = InstallOp::exec("npm", &["install", "-g", "x"]);
+        assert_eq!(exec.probe_tool(), "npm");
+        assert_eq!(exec.command(), ("npm", vec!["install", "-g", "x"]));
+        assert_eq!(exec.describe(), "npm");
+
+        let script = InstallOp::script(
+            "echo one
+echo two",
+        );
+        assert_eq!(script.probe_tool(), "sh");
+        assert_eq!(
+            script.command(),
+            (
+                "sh",
+                vec![
+                    "-c",
+                    "echo one
+echo two"
+                ]
+            )
+        );
+        assert_eq!(script.describe(), "download script");
+    }
+
+    /// 通用默认调优：探测版本、不注入 JAVA_HOME —— 未声明 tuning 的插件不受
+    /// jdtls 特判影响。
+    #[test]
+    fn default_tuning_probes_version_without_java_home() {
+        let t = LspServerTuning::default();
+        assert!(t.version_probe);
+        assert!(!t.java_home_from_path);
+    }
+
+    #[test]
+    fn builtin_plugin_uses_default_tuning() {
+        let p = LspPlugin::builtin("go", &["go"], "gopls", &["gopls"], None);
+        assert!(p.tuning.version_probe);
+        assert!(!p.tuning.java_home_from_path);
+        assert!(!p.is_custom);
+    }
+
+    #[test]
+    fn with_tuning_overrides_only_declared_behaviours() {
+        let p = LspPlugin::builtin("java", &["java"], "jdtls", &["jdtls"], None).with_tuning(
+            LspServerTuning {
+                version_probe: false,
+                java_home_from_path: true,
+            },
+        );
+        assert!(!p.tuning.version_probe);
+        assert!(p.tuning.java_home_from_path);
+    }
 }

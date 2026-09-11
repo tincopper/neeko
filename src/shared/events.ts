@@ -4,6 +4,7 @@
  * 与 `src-tauri/src/common/file/watcher/types.rs` 顶部的事件常量保持同步：
  * FILE_CHANGED_EVENT / FILE_TREE_CHANGED_EVENT / GIT_STATUS_SNAPSHOT_EVENT /
  * GIT_CHANGED_EVENT / GIT_PERF_SUGGESTION_EVENT。
+ * 其余分组见各自文件头（LSP → `lsp/types.rs`、DAP → `dap/events.rs`、…）。
  * 禁止在业务代码中硬编码事件字符串。
  */
 
@@ -25,6 +26,20 @@ export const APP_CLOSE_REQUESTED_EVENT = 'app-close-requested';
 
 /** LSP 自动安装进度事件：`lsp-install-progress` */
 export const LSP_INSTALL_PROGRESS_EVENT = 'lsp-install-progress';
+
+/** LSP 诊断推送事件前缀（拼接 projectPath）：`lsp-diagnostics-{projectPath}` */
+export const LSP_DIAG_EVENT_PREFIX = 'lsp-diagnostics-';
+/** LSP work-done 进度事件前缀（拼接 projectPath）：`lsp-progress-{projectPath}` */
+export const LSP_PROGRESS_EVENT_PREFIX = 'lsp-progress-';
+/** LSP 项目语言 profile 广播事件：`lsp-project-profile` */
+export const LSP_PROFILE_EVENT = 'lsp-project-profile';
+
+// ── DAP 事件（与 src-tauri/src/dap/events.rs 常量保持同步）──
+
+/** 调试事件载荷（断点命中 / 输出 / terminated 等）：`dap-event` */
+export const DAP_EVENT = 'dap-event';
+/** 调试会话状态变更事件：`dap-session-status` */
+export const DAP_SESSION_STATUS_EVENT = 'dap-session-status';
 
 /**
  * 插入到 agent 输入框事件（DOM CustomEvent，best-effort 桥接）：`neeko:insert-to-agent-input`

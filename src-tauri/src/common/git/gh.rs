@@ -7,8 +7,8 @@ use anyhow::{Context, Result};
 use serde::de::DeserializeOwned;
 
 use crate::common::executor::factory::ExecTarget;
-use crate::common::executor::sync::exec_on;
 use crate::common::executor::ExecError;
+use crate::core::exec::run;
 
 /// Extract `owner/repo` from a GraphQL "Could not resolve to a Repository" message.
 fn extract_repo_name_from_resolve_error(text: &str) -> Option<String> {
@@ -185,7 +185,7 @@ impl GhCli {
         let repo_flag = format!("{owner}/{repo}");
         let mut full_args = vec!["-R", repo_flag.as_str()];
         full_args.extend_from_slice(args);
-        exec_on(&self.target, "gh", &full_args)
+        run(&self.target, "gh", &full_args)
             .await
             .map_err(map_gh_exec_error)
     }
@@ -231,7 +231,7 @@ impl GhCli {
         }
 
         let repo_path = self.repo_path.to_string_lossy().to_string();
-        let stdout = exec_on(
+        let stdout = run(
             &self.target,
             "git",
             &["-C", &repo_path, "remote", "get-url", "origin"],
@@ -258,14 +258,12 @@ impl GhCli {
 
     /// Check whether the `gh` CLI is installed and available.
     pub async fn is_installed(&self) -> bool {
-        exec_on(&self.target, "gh", &["--version"]).await.is_ok()
+        run(&self.target, "gh", &["--version"]).await.is_ok()
     }
 
     /// Check whether the user is authenticated with `gh`.
     pub async fn is_authenticated(&self) -> bool {
-        exec_on(&self.target, "gh", &["auth", "status"])
-            .await
-            .is_ok()
+        run(&self.target, "gh", &["auth", "status"]).await.is_ok()
     }
 }
 

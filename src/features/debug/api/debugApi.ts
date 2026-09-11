@@ -40,6 +40,16 @@ export function dapStartSessionConfig(
   return invoke<DapSessionInfo>('dap_start_session_config', { projectId, config });
 }
 
+/** Java attach-first（J3）：后端 spawn 测试 JVM（jdwp suspend=y）→ 解析端口 → attach 会话。 */
+export function debugJavaAttach(
+  projectId: string,
+  command: string,
+  cwd: string,
+  testName: string,
+): Promise<DapSessionInfo> {
+  return invoke<DapSessionInfo>('debug_java_attach', { projectId, command, cwd, testName });
+}
+
 export function dapStopSession(sessionId: string): Promise<void> {
   return invoke('dap_stop_session', { sessionId });
 }

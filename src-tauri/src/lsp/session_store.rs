@@ -34,13 +34,6 @@ impl LspSessionStore {
         }
     }
 
-    pub(crate) fn contains(&self, key: &str) -> bool {
-        self.sessions
-            .lock()
-            .map(|s| s.contains_key(key))
-            .unwrap_or(false)
-    }
-
     pub(crate) fn is_alive(&self, key: &str) -> bool {
         self.sessions
             .lock()

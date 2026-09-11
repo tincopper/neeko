@@ -117,9 +117,19 @@ impl CommandExecutor for WslExecutor {
                 .ok_or(ExecError::Killed)
         };
         let kill_child = Arc::clone(&child_lock);
+        let kill_pid = pid;
+        let kill_tree = opts.kill_tree;
         let kill_fn = move || {
             async move {
-                kill_child.lock().await.kill().await?;
+                let mut guard = kill_child.lock().await;
+                // 宿主侧(`wsl.exe`)按进程树杀,覆盖其 Windows 侧子进程;
+                // Linux 侧后代无跨内核 pgid 可寻,由 WSL 会话回收(尽力而为)。
+                if kill_tree && guard.try_wait().map_err(ExecError::Io)?.is_none() {
+                    if let Some(pid) = kill_pid {
+                        crate::platform::process_spawn::kill_process_tree(pid);
+                    }
+                }
+                guard.kill().await?;
                 Ok(())
             }
             .boxed()

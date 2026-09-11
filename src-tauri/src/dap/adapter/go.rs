@@ -124,6 +124,7 @@ mod tests {
             cwd: Some("/proj".into()),
             args,
             mode: Some("exec".into()),
+            port: None,
             pre_launch_task: None,
             stop_on_entry: Some(false),
         }
@@ -176,6 +177,7 @@ mod tests {
             cwd: Some("/proj".into()),
             args: vec!["-test.run".into(), "^TestAdd$".into()],
             mode: Some("test".into()),
+            port: None,
             pre_launch_task: None,
             stop_on_entry: Some(false),
         };
@@ -258,7 +260,10 @@ mod tests {
                 Err(_) => break, // 超时：窗口内未就绪
             }
         }
-        assert!(ready, "dlv dap 未在预期窗口内打印 listening 行: {line}");
+        assert!(
+            ready,
+            "dlv dap failed to print the listening line within the expected window: {line}"
+        );
         let _ = child.kill().await;
     }
 }

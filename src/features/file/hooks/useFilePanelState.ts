@@ -20,6 +20,7 @@ import type { FileNode } from '@/shared/types';
 import { resolveAbsolutePath } from '@/shared/utils/browserUtils';
 
 import { displayHomePath, getParentPath, getParentPaths } from '../utils/fileTreeUtils';
+import { isJavaSourceRoot, isUnderJavaSourceRoot } from '../utils/javaPackageTree';
 
 export interface UseFilePanelStateParams {
   projectPath?: string | null;
@@ -27,6 +28,9 @@ export interface UseFilePanelStateParams {
   onSelectFile: (filePath: string) => void;
   onRefresh: () => void;
   onExpandDir: (dirPath: string) => Promise<void>;
+  /** 目录缓存读取探针（FilesPanel 注入 useFileStore.dirs）：包链自动展开/收起用它
+   *  判断「单子目录链」；缺省返回空（测试/无目录上下文时包链 walk 为 no-op）。 */
+  readDir?: (dirPath: string) => FileNode[];
   projectType?: 'Local' | 'Wsl' | 'Remote' | null;
   onOpenInBrowser?: (filePath: string) => void;
   onOpenInSystemBrowser?: (filePath: string) => void;
@@ -48,6 +52,7 @@ export function useFilePanelState(params: UseFilePanelStateParams) {
     onSelectFile,
     onRefresh,
     onExpandDir,
+    readDir = () => [],
     projectType,
     onOpenInBrowser,
     onOpenInSystemBrowser,
@@ -144,9 +149,22 @@ export function useFilePanelState(params: UseFilePanelStateParams) {
       // 经 ref 读取当前展开态（回调身份稳定）；mutation 走函数式 setState
       const wasExpanded = expandedDirsRef.current.has(path);
       if (wasExpanded) {
+        // 收起：连同整条包链（单子目录链）一次收起——用户点一下折叠整个包视图。
         setExpandedDirs((prev) => {
           const next = new Set(prev);
           next.delete(path);
+          let cur = path;
+          let hops = 0;
+          while (hops++ < 64) {
+            const parent = getParentPath(cur);
+            if (!parent || parent === cur) break;
+            if (!(isUnderJavaSourceRoot(parent) || isJavaSourceRoot(parent))) break;
+            const entries = readDir(parent);
+            const dirsOnly = entries.filter((n) => n.is_dir);
+            if (dirsOnly.length !== 1 || dirsOnly[0].path !== cur) break;
+            next.delete(parent);
+            cur = parent;
+          }
           return next;
         });
         return;
@@ -157,8 +175,24 @@ export function useFilePanelState(params: UseFilePanelStateParams) {
       // 失败由 store 置 error 态（红点提示，可重试），不再由面板折叠目录。
       setExpandedDirs((prev) => new Set(prev).add(path));
       await onExpandDir(path);
+      // 包视图链：源根或其下目录只含一个子目录时自动逐级展开到底
+      //（视觉压行 + 数据就绪两条腿；上限 64 级防病态深链）。
+      let cur = path;
+      let hops = 0;
+      while (hops++ < 64 && (isUnderJavaSourceRoot(cur) || isJavaSourceRoot(cur))) {
+        const entries = readDir(cur);
+        const dirsOnly = entries.filter((n) => n.is_dir);
+        if (dirsOnly.length !== 1) break;
+        const next = dirsOnly[0].path;
+        setExpandedDirs((prev) => {
+          if (prev.has(next)) return prev;
+          return new Set(prev).add(next);
+        });
+        await onExpandDir(next);
+        cur = next;
+      }
     },
-    [onExpandDir],
+    [onExpandDir, readDir],
   );
 
   // 右键菜单处理

@@ -3,7 +3,8 @@
 //! - `tree_read`: unified directory tree reading (Local fs / WSL / Remote find) + read-layer gitignore filter resolution
 //! - `ignored_cache`: process-level caching and fetching of ignored paths for WSL/Remote (`git ls-files --ignored`)
 //! - `shell_cmd`: shared WSL/Remote shell command construction (shell selection / quoting / mkdir / rm / mv)
-//! - `crud`: file write / create / delete / rename
+//! - `file_write`: file write / create (Local `std::fs` under `spawn_blocking`)
+//! - `path_ops`: directory create / delete / rename
 //!
 //! `mod.rs` stays minimal: only mod declarations and pub use re-exports (Review Gate 9).
 

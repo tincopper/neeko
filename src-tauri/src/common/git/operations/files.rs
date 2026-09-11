@@ -13,7 +13,7 @@ use crate::common::git::provider::detect_provider;
 use crate::common::git::transport::{ErrorKind, GitExecError, GitTransport};
 use crate::common::git::types::PushOutcome;
 use crate::common::git::types::{DiffHunk, DiffLine, DiffResult};
-use crate::core::exec::collect_in_dir;
+use crate::core::exec::collect;
 use crate::project::types::{
     AheadBehind, CommitDetail, CommitEntry, CommitFileChange, CommitResult, FileChange,
     FileDiffStats, GitBranchInfo, GitInfo, GitProvider, StashActionResult, StashEntry, Worktree,

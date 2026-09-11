@@ -5,9 +5,9 @@ import { useBrowserStore } from '@/shared/store/browserStore';
 import { useDockStore } from '@/shared/store/dockStore';
 import { useEditorStore } from '@/shared/store/editorStore';
 import type { Tab } from '@/shared/types';
+import { canonicalFsPath } from '@/shared/utils/fileRef';
 import { getFileName, getTabId } from '@/shared/utils/fileTree';
 
-// eslint-disable-next-line import/no-restricted-paths -- terminal links need file API for file operations
 import { revealInFileManager, readFileContent } from '../../file/api/fileApi';
 
 interface FilePathLinkOptions {
@@ -25,14 +25,8 @@ function openInEmbeddedBrowser(url: string): void {
 const FILE_PATH_REGEX =
   /((?:[A-Z]:\\|\/|\.\/|\.\.\/)?[\w\-./\\]+\.\w+)(?:[([](\d+)(?:[,:](\d+))?[)\]])?/g;
 
-function resolveToAbsolute(matchedPath: string, projectPath: string): string {
-  if (/^[A-Z]:\\/.test(matchedPath) || matchedPath.startsWith('/')) {
-    return matchedPath;
-  }
-  const separator = projectPath.includes('\\') ? '\\' : '/';
-  const base = projectPath.endsWith(separator) ? projectPath : projectPath + separator;
-  return base + matchedPath;
-}
+// 终端文本里的文件路径 → canonical 绝对路径（fileRef 单一所有权：斜杠统一、
+// 连续斜杠压缩；相对路径拼项目根），identity 与后端读取 base 一致。
 
 function createFilePathLinkProvider(term: Terminal, options: FilePathLinkOptions) {
   const { projectPath, tabKey, projectId, showToast } = options;
@@ -52,7 +46,7 @@ function createFilePathLinkProvider(term: Terminal, options: FilePathLinkOptions
       FILE_PATH_REGEX.lastIndex = 0;
 
       while ((match = FILE_PATH_REGEX.exec(line)) !== null) {
-        const fullPath = resolveToAbsolute(match[1], projectPath);
+        const fullPath = canonicalFsPath(projectPath, match[1]);
         const startIndex = match.index + 1;
         const endIndex = match.index + match[0].length + 1;
         const lineNum = match[2] ? parseInt(match[2], 10) : undefined;

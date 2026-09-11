@@ -3,8 +3,11 @@ import type { Transport } from '@codemirror/lsp-client';
 import { invoke } from '@tauri-apps/api/core';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 
+import { LSP_DIAG_EVENT_PREFIX, LSP_PROGRESS_EVENT_PREFIX } from '@/shared/events';
 import { useNotificationStore } from '@/shared/store/notificationStore';
 import { safeUnlisten } from '@/shared/utils/safeUnlisten';
+
+import { isVirtualDocLifecycleMessage } from '../jdt/jdtUtils';
 
 /**
  * Bridges @codemirror/lsp-client to Neeko's Rust LSP backend via Tauri IPC.
@@ -30,6 +33,12 @@ export class TauriLspTransport implements Transport {
    * Responses come back through the subscribe handler, not synchronously.
    */
   send(message: string): void {
+    // 虚拟文档（jdtls 的 `jdt://` 类文件）不参与 LSP 文档生命周期——对齐
+    // vscode-java：content-provider 文档不发 didOpen/didChange/didClose，
+    // server 端从 uri 原生解析 IClassFile。发出去反而让 jdtls 把它当未知文档。
+    if (isVirtualDocLifecycleMessage(message)) {
+      return;
+    }
     invoke<string>('lsp_transport', {
       projectPath: this.projectPath,
       languageId: this.languageId,
@@ -71,7 +80,7 @@ export class TauriLspTransport implements Transport {
 
     // Listen for server-pushed diagnostics via Tauri events,
     // and convert them to LSP JSON-RPC notifications for the client.
-    const diagEventName = `lsp-diagnostics-${this.projectPath}`;
+    const diagEventName = `${LSP_DIAG_EVENT_PREFIX}${this.projectPath}`;
     listen<{ uri: string; diagnostics: unknown[] }>(diagEventName, (event) => {
       this.handlers.forEach((h) => h(JSON.stringify(event.payload)));
     }).then((unlisten) => {
@@ -79,7 +88,7 @@ export class TauriLspTransport implements Transport {
     });
 
     // Listen for work-done progress events
-    const progressEventName = `lsp-progress-${this.projectPath}`;
+    const progressEventName = `${LSP_PROGRESS_EVENT_PREFIX}${this.projectPath}`;
     listen<{
       token: string;
       value: { kind: string; title?: string; message?: string; percentage?: number };

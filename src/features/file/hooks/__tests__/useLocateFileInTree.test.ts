@@ -44,7 +44,7 @@ describe('useLocateFileInTree', () => {
     useEditorStore.setState({ tabs: {}, editorLayout: {}, activeTabId: null });
   });
 
-  it('active file tab → canLocate true and exposes its path', () => {
+  it('active file tab（相对路径）→ canLocate true and exposes its path', () => {
     useEditorStore.setState({
       tabs: {
         p1: { tabs: [makeFileTab('t1', 'src/hooks/useFilePanelState.ts')], activeTabId: 't1' },
@@ -55,6 +55,42 @@ describe('useLocateFileInTree', () => {
     const { result } = renderHook(() => useLocateFileInTree('p1'));
     expect(result.current.canLocateFile).toBe(true);
     expect(result.current.filePath).toBe('src/hooks/useFilePanelState.ts');
+  });
+
+  it('active file tab（canonical 绝对路径且在 root 下）→ 剥根成相对路径匹配树', () => {
+    useEditorStore.setState({
+      tabs: {
+        p1: {
+          tabs: [makeFileTab('t1', '/repo/src/hooks/useFilePanelState.ts')],
+          activeTabId: 't1',
+        },
+      },
+      activeTabId: 't1',
+    });
+
+    const { result } = renderHook(() => useLocateFileInTree('p1', '/repo'));
+    expect(result.current.canLocateFile).toBe(true);
+    expect(result.current.filePath).toBe('src/hooks/useFilePanelState.ts');
+  });
+
+  it('绝对路径不在 root 下（外置根/盘符差异）→ 原样返回（树匹配自然失败）', () => {
+    useEditorStore.setState({
+      tabs: { p1: { tabs: [makeFileTab('t1', '/other/src/a.ts')], activeTabId: 't1' } },
+      activeTabId: 't1',
+    });
+
+    const { result } = renderHook(() => useLocateFileInTree('p1', '/repo'));
+    expect(result.current.filePath).toBe('/other/src/a.ts');
+  });
+
+  it('root 未提供 → 绝对路径原样返回（保守，不剥）', () => {
+    useEditorStore.setState({
+      tabs: { p1: { tabs: [makeFileTab('t1', '/repo/src/a.ts')], activeTabId: 't1' } },
+      activeTabId: 't1',
+    });
+
+    const { result } = renderHook(() => useLocateFileInTree('p1'));
+    expect(result.current.filePath).toBe('/repo/src/a.ts');
   });
 
   it('active terminal tab → canLocate false, filePath null', () => {

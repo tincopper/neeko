@@ -5,13 +5,16 @@
 //! language tables — it only calls [`all_builtin_plugins`].
 //!
 //! **Adding a language:** create `foo.rs`, implement `plugins()`, add
-//! `mod foo` + `out.extend(foo::plugins())` below.
+//! `mod foo` + `out.extend(foo::plugins())` below. 语言专属的**安装配方**放
+//! 同语言模块（如 `java_install.rs`），平台层只提供 OS 能力。
 
+mod all;
 mod clang_family;
 mod csharp;
 mod elixir;
 mod go;
 mod java;
+mod java_install;
 mod kotlin;
 mod lua;
 mod php;
@@ -23,29 +26,4 @@ mod sql;
 mod swift;
 mod typescript_family;
 
-use super::types::LspPlugin;
-
-/// All shipped language plugins, in stable registration order.
-///
-/// Registration order also influences extension conflict resolution
-/// (later registrations win) when ids differ.
-#[must_use]
-pub fn all_builtin_plugins() -> Vec<LspPlugin> {
-    let mut out = Vec::with_capacity(24);
-    out.extend(rust_lang::plugins());
-    out.extend(go::plugins());
-    out.extend(python::plugins());
-    out.extend(typescript_family::plugins());
-    out.extend(java::plugins());
-    out.extend(clang_family::plugins());
-    out.extend(csharp::plugins());
-    out.extend(ruby::plugins());
-    out.extend(php::plugins());
-    out.extend(swift::plugins());
-    out.extend(kotlin::plugins());
-    out.extend(lua::plugins());
-    out.extend(elixir::plugins());
-    out.extend(r_lang::plugins());
-    out.extend(sql::plugins());
-    out
-}
+pub use all::all_builtin_plugins;

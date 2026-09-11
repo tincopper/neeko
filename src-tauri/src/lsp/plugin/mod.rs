@@ -11,5 +11,5 @@ pub mod types;
 pub use registry::LspPluginRegistry;
 pub use types::{
     CustomLspServerConfig, LspAutoStart, LspExtensionConflict, LspExtensionMapEntry,
-    LspInstallMethod, LspPlugin, LspSettings,
+    LspInstallMethod, LspPlugin, LspServerTuning, LspSettings,
 };

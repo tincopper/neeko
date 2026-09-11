@@ -1,7 +1,6 @@
 import { Terminal } from 'lucide-react';
 import React, { useCallback } from 'react';
 
-// eslint-disable-next-line import/no-restricted-paths -- need agent icon resolution
 import { resolveAgentIconSrc } from '@/features/agent/api/agentApi';
 import { useMcpStore } from '@/features/library/store/mcpStore';
 import { useSkillStore } from '@/features/skill/store';

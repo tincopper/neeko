@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { statusForCase, useTestResultsStore } from '../../store/testResults';
 import { createUnifiedGutterExtension } from '../registry';
-import { createTestCodelensCore, createTestRunContribution } from '../testRunContribution';
+import { createRunCodelensCore, createRunContribution } from '../runContribution';
 import { createTestStatusContribution, createTestStatusCore } from '../testStatusContribution';
 
 const RUST_DOC = '#[test]\nfn parse_simple() {}\n\n#[test]\nfn other() {}\n';
@@ -19,13 +19,13 @@ function makeView(projectId = 'p1', filePath = 'src/lib.rs') {
     state: EditorState.create({
       doc: RUST_DOC,
       extensions: [
-        createTestCodelensCore({ fileName: filePath, onRun, onMenuRequest }),
+        createRunCodelensCore({ fileName: filePath, onRun, onMenuRequest }),
         createTestStatusCore({ projectId, filePath }),
         createUnifiedGutterExtension({
           fileName: filePath,
           editable: true,
           contributions: [
-            createTestRunContribution({ onRun, onMenuRequest }),
+            createRunContribution({ onRun, onMenuRequest }),
             createTestStatusContribution({ projectId, filePath }),
           ],
           onColumnClick: vi.fn(),
@@ -63,7 +63,7 @@ describe('testStatusContribution', () => {
     expect(contrib.id).toBe('test-status');
     expect(contrib.priority).toBe(30);
     expect(contrib.priority).toBeGreaterThan(
-      createTestRunContribution({ onRun: vi.fn(), onMenuRequest: vi.fn() }).priority,
+      createRunContribution({ onRun: vi.fn(), onMenuRequest: vi.fn() }).priority,
     );
   });
 
@@ -84,7 +84,7 @@ describe('testStatusContribution', () => {
     const state = EditorState.create({
       doc: RUST_DOC,
       extensions: [
-        createTestCodelensCore({ fileName: 'src/lib.rs', onRun: vi.fn(), onMenuRequest: vi.fn() }),
+        createRunCodelensCore({ fileName: 'src/lib.rs', onRun: vi.fn(), onMenuRequest: vi.fn() }),
       ],
     });
     const contrib = createTestStatusContribution({ projectId: 'p1', filePath: 'src/lib.rs' });
@@ -106,7 +106,7 @@ describe('testStatusContribution', () => {
     const state = EditorState.create({
       doc: RUST_DOC,
       extensions: [
-        createTestCodelensCore({ fileName: 'src/lib.rs', onRun: vi.fn(), onMenuRequest: vi.fn() }),
+        createRunCodelensCore({ fileName: 'src/lib.rs', onRun: vi.fn(), onMenuRequest: vi.fn() }),
       ],
     });
     const contrib = createTestStatusContribution({ projectId: 'p1', filePath: 'src/lib.rs' });
@@ -193,7 +193,7 @@ describe('testStatusContribution', () => {
     await flushRefresh();
 
     const cell = view.dom.querySelector('.cm-breakpoint-gutter .cm-unified-gutter-cell')!;
-    expect(cell.querySelector("[data-gutter-contribution='test-run']")).not.toBeNull();
+    expect(cell.querySelector("[data-gutter-contribution='run']")).not.toBeNull();
     expect(cell.querySelector("[data-gutter-contribution='test-status']")).not.toBeNull();
     view.destroy();
   });

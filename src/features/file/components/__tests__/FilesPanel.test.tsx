@@ -650,3 +650,89 @@ describe('FileTreeNode draggable（目录拖拽）', () => {
     expect(srcNode).toHaveAttribute('draggable', 'false');
   });
 });
+
+describe('Java 包视图压行 + 链自动展开（方案A）', () => {
+  const javaChain: FileNode[] = [
+    {
+      name: 'src',
+      path: 'src',
+      is_dir: true,
+      children: [
+        {
+          name: 'main',
+          path: 'src/main',
+          is_dir: true,
+          children: [
+            {
+              name: 'java',
+              path: 'src/main/java',
+              is_dir: true,
+              children: [
+                {
+                  name: 'com',
+                  path: 'src/main/java/com',
+                  is_dir: true,
+                  children: [
+                    {
+                      name: 'tomgs',
+                      path: 'src/main/java/com/tomgs',
+                      is_dir: true,
+                      children: [
+                        {
+                          name: 'algorithm',
+                          path: 'src/main/java/com/tomgs/algorithm',
+                          is_dir: true,
+                          children: [
+                            {
+                              name: 'array',
+                              path: 'src/main/java/com/tomgs/algorithm/array',
+                              is_dir: true,
+                              children: [
+                                {
+                                  name: 'ArrayTest.java',
+                                  path: 'src/main/java/com/tomgs/algorithm/array/ArrayTest.java',
+                                  is_dir: false,
+                                  children: [],
+                                },
+                              ],
+                            },
+                          ],
+                        },
+                      ],
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    },
+  ];
+
+  function treeitemByText(text: string): HTMLElement | null {
+    return screen.getAllByRole('treeitem').find((el) => el.textContent?.includes(text)) ?? null;
+  }
+
+  it('源根 java 点击后：单子目录链自动展开 + 压行显示，叶子可见', async () => {
+    seedDirs(javaChain);
+    render(<FilesPanel {...baseProps} />);
+
+    fireEvent.click(screen.getByText('src'));
+    fireEvent.click(screen.getByText('main'));
+    fireEvent.click(screen.getByText('java'));
+
+    // 自动逐级展开 com→tomgs→algorithm→array，压成一行（path 取叶子）
+    await waitFor(() => expect(treeitemByText('com.tomgs.algorithm.array')).toBeInTheDocument());
+    expect(treeitemByText('ArrayTest.java')).toBeInTheDocument();
+  });
+
+  it('非 java 目录不压行（src 原样展开）', async () => {
+    seedDirs(tree);
+    render(<FilesPanel {...baseProps} />);
+
+    fireEvent.click(screen.getByText('src'));
+    expect(screen.getByText('src')).toBeInTheDocument();
+    expect(screen.getByText('a.ts')).toBeInTheDocument();
+  });
+});

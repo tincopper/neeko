@@ -197,6 +197,7 @@ pub fn entry_to_launch_config(entry: &EntryPoint) -> super::types::LaunchConfig 
         cwd: Some("${workspaceFolder}".into()),
         args: vec![],
         mode: entry.mode.clone(),
+        port: None,
         pre_launch_task: entry.pre_launch_task.clone(),
         stop_on_entry: Some(false),
     }

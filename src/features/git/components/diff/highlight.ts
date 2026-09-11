@@ -89,6 +89,9 @@ const EXT_TO_LANG: Record<string, string> = {
   '.env': 'plaintext',
 };
 
+/** 覆盖的扩展名 / 文件名键 —— 供覆盖度护栏测试使用（词表见 `@/shared/utils/languageRegistry`）。 */
+export const HIGHLIGHT_KEYS: readonly string[] = Object.keys(EXT_TO_LANG);
+
 export async function ensureLanguageRegistered(lang: string): Promise<void> {
   if (registeredLangs.has(lang)) {
     return;

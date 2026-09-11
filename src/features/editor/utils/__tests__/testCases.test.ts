@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
-import { isTestFile, parseTestCases } from '../testCases';
+import { parseTestCases } from '../runLanguages';
+import { isTestFile } from '../testCases';
 
 describe('isTestFile', () => {
   it('should_match_ts_test_and_spec_files', () => {
@@ -38,6 +39,24 @@ describe('isTestFile', () => {
   it('should_reject_plain_go_and_non_suffix_files', () => {
     expect(isTestFile('math.go')).toBe(false);
     expect(isTestFile('helper_test.ts')).toBe(false); // ts 是 `*.test.*`（点），非 `_test.go`
+  });
+
+  it('should_match_java_test_and_tests_suffix_files', () => {
+    expect(isTestFile('CalculatorTest.java')).toBe(true);
+    expect(isTestFile('src/test/java/com/example/CalculatorTest.java')).toBe(true);
+    expect(isTestFile('CalculatorTests.java')).toBe(true);
+  });
+
+  it('should_match_java_file_containing_test_annotation', () => {
+    expect(isTestFile('MathUtils.java', 'public void x() {}\n@Test\nvoid testAdd() {}')).toBe(true);
+    // 无内容时无法判定（与 rust 同语义）——*Test.java 后缀已在上方覆盖
+    expect(isTestFile('MathUtils.java')).toBe(false);
+  });
+
+  it('should_reject_plain_java_and_non_test_files', () => {
+    expect(isTestFile('MathUtils.java')).toBe(false);
+    expect(isTestFile('MathUtils.java', 'public void testAdd() {}')).toBe(false); // 无 @Test 注解
+    expect(isTestFile('testable.java')).toBe(false);
   });
 });
 
@@ -245,5 +264,150 @@ describe('parseTestCases — Go', () => {
   it('should_return_empty_for_non_go_files', () => {
     const doc = 'func TestAdd(t *testing.T) {}';
     expect(parseTestCases('math/add.go', doc)).toEqual([]);
+  });
+});
+
+describe('parseTestCases — Java', () => {
+  it('should_parse_test_annotation_followed_by_void_method', () => {
+    const doc = [
+      'package com.example;',
+      '',
+      'public class CalculatorTest {',
+      '    @Test',
+      '    void testAdd() {',
+      '        assertEquals(2, add(1, 1));',
+      '    }',
+      '}',
+    ].join('\n');
+    expect(parseTestCases('src/test/java/com/example/CalculatorTest.java', doc)).toEqual([
+      { name: 'testAdd', line: 4, lang: 'java' },
+    ]);
+  });
+
+  it('should_handle_public_static_and_generic_method_modifiers', () => {
+    const doc = [
+      'public class FooTest {',
+      '    @Test',
+      '    public static void testStatic() {}',
+      '    @Test',
+      '    public <T> void testGeneric() {}',
+      '}',
+    ].join('\n');
+    expect(parseTestCases('FooTest.java', doc)).toEqual([
+      { name: 'testStatic', line: 2, lang: 'java' },
+      { name: 'testGeneric', line: 4, lang: 'java' },
+    ]);
+  });
+
+  it('should_skip_other_annotations_and_comments_between_test_and_method', () => {
+    const doc = [
+      'public class BarTest {',
+      '    @Test',
+      '    @DisplayName("adds two numbers")',
+      '    @Tag("fast")',
+      '    // legacy comment',
+      '    void testAdd() {}',
+      '}',
+    ].join('\n');
+    expect(parseTestCases('BarTest.java', doc)).toEqual([
+      { name: 'testAdd', line: 2, lang: 'java' },
+    ]);
+  });
+
+  it('should_match_parameterized_and_repeated_test_annotations_as_single_methods', () => {
+    // 声明局限：`@ParameterizedTest`/`@RepeatedTest` 文本级按方法名单用例（不建模 invocation）
+    const doc = [
+      'public class ParamTest {',
+      '    @ParameterizedTest',
+      '    @ValueSource(ints = {1, 2, 3})',
+      '    void testSquares(int n) {}',
+      '    @RepeatedTest(5)',
+      '    void testRepeated() {}',
+      '}',
+    ].join('\n');
+    expect(parseTestCases('ParamTest.java', doc)).toEqual([
+      { name: 'testSquares', line: 2, lang: 'java' },
+      { name: 'testRepeated', line: 5, lang: 'java' },
+    ]);
+  });
+
+  it('should_ignore_lifecycle_annotations_not_ending_in_test', () => {
+    const doc = [
+      'public class LifecycleTest {',
+      '    @BeforeEach',
+      '    void setUp() {}',
+      '    @AfterEach',
+      '    void tearDown() {}',
+      '    @Test',
+      '    void testReal() {}',
+      '}',
+    ].join('\n');
+    expect(parseTestCases('LifecycleTest.java', doc)).toEqual([
+      { name: 'testReal', line: 6, lang: 'java' },
+    ]);
+  });
+
+  it('should_ignore_comments_and_test_annotation_without_following_method', () => {
+    const doc = [
+      '// @Test',
+      '// void testCommented() {}',
+      'public class WeirdTest {',
+      '    @Test',
+      '    int field = 42;',
+      '    @Test',
+      '    void testReal() {}',
+      '}',
+    ].join('\n');
+    expect(parseTestCases('WeirdTest.java', doc)).toEqual([
+      { name: 'testReal', line: 6, lang: 'java' },
+    ]);
+  });
+
+  it('should_ignore_non_void_and_non_line_start_methods', () => {
+    const doc = [
+      'public class TypeTest {',
+      '    @Test',
+      '    int testReturnsInt() { return 1; }',
+      '    @Test',
+      '    void testReal() {}',
+      '    void helper() {}',
+      '}',
+    ].join('\n');
+    expect(parseTestCases('TypeTest.java', doc)).toEqual([
+      { name: 'testReal', line: 4, lang: 'java' },
+    ]);
+  });
+
+  it('should_handle_test_annotation_with_timeout_args', () => {
+    const doc = [
+      'public class TimeoutTest {',
+      '    @Test(timeout = 500)',
+      '    void testTimed() {}',
+      '}',
+    ].join('\n');
+    expect(parseTestCases('TimeoutTest.java', doc)).toEqual([
+      { name: 'testTimed', line: 2, lang: 'java' },
+    ]);
+  });
+
+  it('should_parse_multiple_cases_in_order', () => {
+    const doc = [
+      'public class MultiTest {',
+      '    @Test',
+      '    void testFirst() {}',
+      '    @Test',
+      '    void testSecond() {}',
+      '}',
+    ].join('\n');
+    expect(parseTestCases('MultiTest.java', doc)).toEqual([
+      { name: 'testFirst', line: 2, lang: 'java' },
+      { name: 'testSecond', line: 4, lang: 'java' },
+    ]);
+  });
+
+  it('should_return_empty_for_non_java_files', () => {
+    const doc = '@Test\nvoid testAdd() {}';
+    expect(parseTestCases('MathUtils.java2', doc)).toEqual([]);
+    expect(parseTestCases('math/add_test.go', doc)).toEqual([]);
   });
 });

@@ -109,15 +109,28 @@ function finalizeNode(
   }
   if (input.renaming?.path === node.path) node.renaming_name = input.renaming.name;
 
+  // 子指纹用 \u0001 分隔（避免 [X, Y] 兄弟与 [X → Y] 链的拼接碰撞），保持注入性。
   const childFps = node.children.map((c) => subtreeFingerprints.get(c) ?? '').join('\u0001');
-  subtreeFingerprints.set(
-    node,
-    `${node.is_dir ? 1 : 0}|${node.git_status ?? ''}|${node.is_ignored ? 1 : 0}|${
-      node.is_active ? 1 : 0
-    }|${node.is_selected ? 1 : 0}|${node.is_expanded ? 1 : 0}|${node.dir_state ?? ''}|${
-      node.creating_input ? `${node.creating_input.kind}:${node.creating_input.value}` : ''
-    }|${node.renaming_name ?? ''}|${childFps}`,
-  );
+  subtreeFingerprints.set(node, computeSubtreeFingerprint(node, childFps));
+  return node;
+}
+
+/**
+ * 子树指纹计算（finalizeNode 与包视图合并共用）：自身全部语义字段 + 已组装的
+ * 后代指纹。调用方保证 children 指纹先就绪（后序），合并节点自底向上打戳。
+ */
+export function computeSubtreeFingerprint(node: FileTreeViewNode, childFps: string): string {
+  return `${node.is_dir ? 1 : 0}|${node.git_status ?? ''}|${node.is_ignored ? 1 : 0}|${
+    node.is_active ? 1 : 0
+  }|${node.is_selected ? 1 : 0}|${node.is_expanded ? 1 : 0}|${node.dir_state ?? ''}|${
+    node.creating_input ? `${node.creating_input.kind}:${node.creating_input.value}` : ''
+  }|${node.renaming_name ?? ''}|${childFps}`;
+}
+
+/** 为组装外新建的视图节点（如包视图合并行）补打子树指纹（memo 比较器依赖）。 */
+export function stampSubtreeFingerprint(node: FileTreeViewNode): FileTreeViewNode {
+  const childFps = node.children.map((c) => subtreeFingerprints.get(c) ?? '').join('\u0001');
+  subtreeFingerprints.set(node, computeSubtreeFingerprint(node, childFps));
   return node;
 }
 

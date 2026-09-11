@@ -16,8 +16,8 @@
 //! | `host_path` | `resolve_host_path` | `core/exec_env.rs` |
 //! | `devtools` | `ensure_detached_devtools` / `needs_side_effect_compensation` / `configure_inspector` | `browser/devtools.rs` + `webview_ops.rs` |
 //! | `git_credential` | `platform_default` | `common/git/credential.rs` |
-//! | `shell_launch` | `build_task_command` / `apply_locale_env` | `terminal/mod.rs` |
-//! | `process_spawn` | `apply_child_flags` / `apply_detached_flags` | `common/executor/local.rs` |
+//! | `shell_launch` | `build_task_command` / `apply_locale_env` / `posix_sh` | `terminal/mod.rs` |
+//! | `process_spawn` | `apply_child_flags` / `apply_detached_flags` / `kill_process_tree` | `common/executor/local.rs` |
 //! | `ide_launch` | `launch_ide_with_fallback` / `spawn_ide_process` | `project/commands_ide.rs` |
 //! | `menu` | `build_edit_submenu` | `app_menu.rs` |
 //! | `file_url` | `file_url_to_path` | `lsp/session/root.rs` |

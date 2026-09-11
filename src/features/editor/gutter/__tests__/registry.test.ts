@@ -15,7 +15,7 @@ import {
 import type { TestCaseInfo } from '../../utils/testCases';
 import type { GutterContribution } from '../contribution';
 import { ComposedMarker, createUnifiedGutterExtension } from '../registry';
-import { createTestCodelensCore, createTestRunContribution } from '../testRunContribution';
+import { createRunCodelensCore, createRunContribution } from '../runContribution';
 
 const TS_DOC = ["describe('math', () => {", "  it('adds', () => {});", '});'].join('\n');
 const RUST_DOC = '#[test]\nfn parse_simple() {}\n#[tokio::test]\nasync fn other() {}';
@@ -36,7 +36,7 @@ function makeRegistry(doc: string, fileName: string, overrides: MakeOverrides = 
   const onRun = overrides.onRun ?? vi.fn();
   const onMenuRequest = overrides.onMenuRequest ?? vi.fn();
   const includeTestMarkers = overrides.includeTestMarkers ?? true;
-  const testRun = includeTestMarkers ? createTestRunContribution({ onRun, onMenuRequest }) : null;
+  const testRun = includeTestMarkers ? createRunContribution({ onRun, onMenuRequest }) : null;
   const parent = document.createElement('div');
   document.body.appendChild(parent);
   const view = new EditorView({
@@ -44,7 +44,7 @@ function makeRegistry(doc: string, fileName: string, overrides: MakeOverrides = 
       doc,
       extensions: [
         ...breakpointContributionExtensions,
-        ...(testRun ? [createTestCodelensCore({ fileName, onRun, onMenuRequest })] : []),
+        ...(testRun ? [createRunCodelensCore({ fileName, onRun, onMenuRequest })] : []),
         createUnifiedGutterExtension({
           fileName,
           editable: overrides.editable ?? true,
@@ -99,7 +99,7 @@ describe('registry single column', () => {
     const { view } = makeRegistry(TS_DOC, 'a.test.ts');
     drawGutter(view);
 
-    expect(view.dom.querySelector('.cm-test-run-gutter')).toBeNull();
+    expect(view.dom.querySelector('.cm-run-gutter')).toBeNull();
     const gutters = view.dom.querySelectorAll('.cm-gutters > .cm-gutter');
     const names = Array.from(gutters).map((g) => g.className);
     expect(names.filter((c) => c.includes('cm-breakpoint-gutter'))).toHaveLength(1);
@@ -116,7 +116,7 @@ describe('registry single column', () => {
     const gutter = view.dom.querySelector('.cm-breakpoint-gutter')!;
     const dots = gutter.querySelectorAll('.cm-breakpoint-marker:not(.cm-breakpoint-marker--hover)');
     expect(dots).toHaveLength(1);
-    expect(gutter.querySelectorAll('.cm-test-run-marker')).toHaveLength(1);
+    expect(gutter.querySelectorAll('.cm-run-marker')).toHaveLength(1);
     expect(gutter.querySelectorAll('.cm-gutterElement')).toHaveLength(2);
     view.destroy();
   });
@@ -172,9 +172,9 @@ describe('registry single column', () => {
     const order = Array.from(cell.children).map((el) =>
       el.getAttribute('data-gutter-contribution'),
     );
-    expect(order).toEqual(['test-run', 'coverage']);
+    expect(order).toEqual(['run', 'coverage']);
     expect(cell.querySelector('.cm-breakpoint-marker')).toBeNull();
-    expect(cell.querySelector('.cm-test-run-marker')).not.toBeNull();
+    expect(cell.querySelector('.cm-run-marker')).not.toBeNull();
     view.destroy();
   });
 
@@ -185,10 +185,13 @@ describe('registry single column', () => {
     drawGutter(view);
     stubLine(view, 2);
 
-    const icon = view.dom.querySelector<HTMLElement>('.cm-test-run-marker')!;
+    const icon = view.dom.querySelector<HTMLElement>('.cm-run-marker')!;
     icon.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
     expect(onRun).toHaveBeenCalledTimes(1);
-    expect(onRun).toHaveBeenCalledWith({ name: 'adds', line: 2, lang: 'ts' });
+    expect(onRun).toHaveBeenCalledWith({
+      kind: 'test',
+      testCase: { name: 'adds', line: 2, lang: 'ts' },
+    });
     expect(onToggleBreakpoint).not.toHaveBeenCalled();
     view.destroy();
   });
@@ -202,10 +205,13 @@ describe('registry single column', () => {
     drawGutter(view);
     stubLine(view, 2);
 
-    const polygon = view.dom.querySelector('.cm-test-run-marker polygon')!;
+    const polygon = view.dom.querySelector('.cm-run-marker polygon')!;
     polygon.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
     expect(onRun).toHaveBeenCalledTimes(1);
-    expect(onRun).toHaveBeenCalledWith({ name: 'adds', line: 2, lang: 'ts' });
+    expect(onRun).toHaveBeenCalledWith({
+      kind: 'test',
+      testCase: { name: 'adds', line: 2, lang: 'ts' },
+    });
     expect(onToggleBreakpoint).not.toHaveBeenCalled();
     view.destroy();
   });
@@ -222,7 +228,7 @@ describe('registry single column', () => {
     const docHandler = (e: Event) => docEvents.push(e);
     document.addEventListener('mousedown', docHandler);
     try {
-      const icon = view.dom.querySelector<HTMLElement>('.cm-test-run-marker')!;
+      const icon = view.dom.querySelector<HTMLElement>('.cm-run-marker')!;
       icon.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
       expect(onRun).toHaveBeenCalledTimes(1);
       expect(docEvents).toHaveLength(0);
@@ -269,11 +275,11 @@ describe('registry single column', () => {
     // P2 委托语义：图标本体不再自吞 mousedown（监听已移入列级委托）；
     // 游离片段点击无任何路由，真实点击必经 gutter 列处理器显式命中。
     const onRun = vi.fn();
-    const contrib = createTestRunContribution({ onRun, onMenuRequest: vi.fn() });
+    const contrib = createRunContribution({ onRun, onMenuRequest: vi.fn() });
     const el = contrib.render({
-      contributionId: 'test-run',
+      contributionId: 'run',
       line: 2,
-      payload: { name: 'adds', line: 2, lang: 'ts' },
+      payload: { kind: 'test', testCase: { name: 'adds', line: 2, lang: 'ts' } },
       anchorRect: new DOMRect(),
     })!;
     el.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
@@ -317,7 +323,7 @@ describe('registry single column', () => {
     const gutter = view.dom.querySelector('.cm-breakpoint-gutter')!;
     expect(gutter.querySelectorAll('.cm-gutterElement')).toHaveLength(1);
     const cell = gutter.querySelector('.cm-gutterElement')!;
-    expect(cell.querySelector('.cm-test-run-marker')).not.toBeNull();
+    expect(cell.querySelector('.cm-run-marker')).not.toBeNull();
     expect(cell.querySelector('.cm-breakpoint-marker')).toBeNull();
     view.destroy();
   });
@@ -330,7 +336,7 @@ describe('registry single column', () => {
 
     const gutter = view.dom.querySelector('.cm-breakpoint-gutter')!;
     const cell = gutter.querySelector('.cm-gutterElement')!;
-    expect(cell.querySelector('.cm-test-run-marker')).not.toBeNull();
+    expect(cell.querySelector('.cm-run-marker')).not.toBeNull();
     expect(cell.querySelector('.cm-breakpoint-marker--hover')).toBeNull();
     view.destroy();
   });
@@ -377,7 +383,7 @@ describe('registry single column', () => {
     drawGutter(view);
 
     const gutter = view.dom.querySelector('.cm-breakpoint-gutter')!;
-    expect(gutter.querySelectorAll('.cm-test-run-marker')).toHaveLength(2);
+    expect(gutter.querySelectorAll('.cm-run-marker')).toHaveLength(2);
     expect(
       gutter.querySelectorAll('.cm-breakpoint-marker:not(.cm-breakpoint-marker--hover)'),
     ).toHaveLength(1);
@@ -396,7 +402,7 @@ describe('registry single column', () => {
     drawGutter(view);
     stubLine(view, 3);
 
-    const icons = Array.from(view.dom.querySelectorAll<HTMLElement>('.cm-test-run-marker'));
+    const icons = Array.from(view.dom.querySelectorAll<HTMLElement>('.cm-run-marker'));
     expect(icons).toHaveLength(2);
     // 浮层锚定到图标 rect 旁，而非鼠标裸坐标：用偏离的 clientX/Y 点击，
     // 断言回调拿到的是 rect 推导锚点，且 anchorRect 非空。
@@ -404,7 +410,11 @@ describe('registry single column', () => {
     icons[1].dispatchEvent(
       new MouseEvent('mousedown', { bubbles: true, clientX: 12, clientY: 34 }),
     );
-    expect(onMenuRequest).toHaveBeenCalledWith({ name: 'other', line: 3, lang: 'rust' }, 116, 200);
+    expect(onMenuRequest).toHaveBeenCalledWith(
+      { kind: 'test', testCase: { name: 'other', line: 3, lang: 'rust' } },
+      116,
+      200,
+    );
     expect(onRun).not.toHaveBeenCalled();
     view.destroy();
   });
@@ -414,10 +424,10 @@ describe('registry single column', () => {
     view.dispatch({ effects: setBreakpointsEffect.of([1]) });
     drawGutter(view);
 
-    expect(view.dom.querySelector('.cm-test-run-gutter')).toBeNull();
+    expect(view.dom.querySelector('.cm-run-gutter')).toBeNull();
     const gutter = view.dom.querySelector('.cm-breakpoint-gutter')!;
     expect(gutter.querySelectorAll('.cm-breakpoint-marker')).toHaveLength(1);
-    expect(gutter.querySelectorAll('.cm-test-run-marker')).toHaveLength(0);
+    expect(gutter.querySelectorAll('.cm-run-marker')).toHaveLength(0);
     view.destroy();
   });
 
@@ -425,8 +435,8 @@ describe('registry single column', () => {
     const { view } = makeRegistry(TS_DOC, 'a.test.ts', { includeTestMarkers: false });
     drawGutter(view);
 
-    expect(view.dom.querySelector('.cm-test-run-gutter')).toBeNull();
-    expect(view.dom.querySelectorAll('.cm-test-run-marker')).toHaveLength(0);
+    expect(view.dom.querySelector('.cm-run-gutter')).toBeNull();
+    expect(view.dom.querySelectorAll('.cm-run-marker')).toHaveLength(0);
     expect(view.dom.querySelector('.cm-breakpoint-gutter')).not.toBeNull();
     view.destroy();
   });
@@ -435,14 +445,14 @@ describe('registry single column', () => {
     const { view } = makeRegistry(TS_DOC, 'a.test.ts');
     drawGutter(view);
 
-    expect(view.dom.querySelector<HTMLElement>('.cm-test-run-marker')!.title).toBe('Run test');
+    expect(view.dom.querySelector<HTMLElement>('.cm-run-marker')!.title).toBe('Run test');
     view.destroy();
 
     const { view: rustView } = makeRegistry(RUST_DOC, 'lib.rs');
     drawGutter(rustView);
-    const titles = Array.from(
-      rustView.dom.querySelectorAll<HTMLElement>('.cm-test-run-marker'),
-    ).map((el) => el.title);
+    const titles = Array.from(rustView.dom.querySelectorAll<HTMLElement>('.cm-run-marker')).map(
+      (el) => el.title,
+    );
     expect(titles).toEqual(['Run or Debug test', 'Run or Debug test']);
     rustView.destroy();
   });
@@ -455,7 +465,7 @@ describe('registry single column', () => {
     drawGutter(view);
 
     const gutter = view.dom.querySelector('.cm-breakpoint-gutter')!;
-    expect(gutter.querySelectorAll('.cm-test-run-marker')).toHaveLength(0);
+    expect(gutter.querySelectorAll('.cm-run-marker')).toHaveLength(0);
     expect(
       gutter.querySelectorAll('.cm-breakpoint-marker:not(.cm-breakpoint-marker--hover)'),
     ).toHaveLength(1);
@@ -468,14 +478,14 @@ describe('registry single column', () => {
     document.body.appendChild(parent);
     const compartment = new Compartment();
     const testRun = (onRun: (t: TestCaseInfo) => void) =>
-      createTestRunContribution({ onRun, onMenuRequest: vi.fn() });
+      createRunContribution({ onRun, onMenuRequest: vi.fn() });
     const view = new EditorView({
       state: EditorState.create({
         doc: TS_DOC,
         extensions: [
           ...breakpointContributionExtensions,
           compartment.of(
-            createTestCodelensCore({
+            createRunCodelensCore({
               fileName: 'a.test.ts',
               onRun: vi.fn(),
               onMenuRequest: vi.fn(),
@@ -495,16 +505,16 @@ describe('registry single column', () => {
       parent,
     });
     drawGutter(view);
-    const before = view.dom.querySelector('.cm-test-run-marker');
+    const before = view.dom.querySelector('.cm-run-marker');
     expect(before).not.toBeNull();
 
     view.dispatch({
       effects: compartment.reconfigure(
-        createTestCodelensCore({ fileName: 'a.test.ts', onRun: vi.fn(), onMenuRequest: vi.fn() }),
+        createRunCodelensCore({ fileName: 'a.test.ts', onRun: vi.fn(), onMenuRequest: vi.fn() }),
       ),
     });
-    // field 重建（新 TestRunMarker 实例）→ 合并器重建 marker → eq 值比较命中 → DOM 复用。
-    expect(view.dom.querySelector('.cm-test-run-marker')).toBe(before);
+    // field 重建（新 RunMarker 实例）→ 合并器重建 marker → eq 值比较命中 → DOM 复用。
+    expect(view.dom.querySelector('.cm-run-marker')).toBe(before);
     view.destroy();
   });
 });
@@ -516,12 +526,12 @@ describe('ComposedMarker eq', () => {
     // 同 payload、不同对象身份（旧 eq 比较回调引用即全量重建，G4）。
     const a = new ComposedMarker(
       2,
-      [{ id: 'test-run', payload: { name: 'adds', line: 2, lang: 'ts' } }],
+      [{ id: 'run', payload: { name: 'adds', line: 2, lang: 'ts' } }],
       contribs,
     );
     const b = new ComposedMarker(
       2,
-      [{ id: 'test-run', payload: { name: 'adds', line: 2, lang: 'ts' } }],
+      [{ id: 'run', payload: { name: 'adds', line: 2, lang: 'ts' } }],
       contribs,
     );
     expect(a.eq(b)).toBe(true);
@@ -529,13 +539,13 @@ describe('ComposedMarker eq', () => {
   });
 
   it('rejects_differing_payload_values_order_and_length', () => {
-    const base = [{ id: 'test-run', payload: { name: 'adds', line: 2, lang: 'ts' } }];
+    const base = [{ id: 'run', payload: { name: 'adds', line: 2, lang: 'ts' } }];
     const same = new ComposedMarker(2, base, contribs);
     expect(
       same.eq(
         new ComposedMarker(
           2,
-          [{ id: 'test-run', payload: { name: 'renamed', line: 2, lang: 'ts' } }],
+          [{ id: 'run', payload: { name: 'renamed', line: 2, lang: 'ts' } }],
           contribs,
         ),
       ),
@@ -546,7 +556,7 @@ describe('ComposedMarker eq', () => {
           2,
           [
             { id: 'breakpoint', payload: { state: 'active' } },
-            { id: 'test-run', payload: { name: 'adds', line: 2, lang: 'ts' } },
+            { id: 'run', payload: { name: 'adds', line: 2, lang: 'ts' } },
           ],
           contribs,
         ),
@@ -556,7 +566,7 @@ describe('ComposedMarker eq', () => {
       new ComposedMarker(
         2,
         [
-          { id: 'test-run', payload: { name: 'adds', line: 2, lang: 'ts' } },
+          { id: 'run', payload: { name: 'adds', line: 2, lang: 'ts' } },
           { id: 'breakpoint', payload: { state: 'active' } },
         ],
         contribs,
@@ -565,7 +575,7 @@ describe('ComposedMarker eq', () => {
           2,
           [
             { id: 'breakpoint', payload: { state: 'active' } },
-            { id: 'test-run', payload: { name: 'adds', line: 2, lang: 'ts' } },
+            { id: 'run', payload: { name: 'adds', line: 2, lang: 'ts' } },
           ],
           contribs,
         ),

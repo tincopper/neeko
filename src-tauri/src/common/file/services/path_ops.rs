@@ -1,11 +1,12 @@
-//! 文件写 / 建 / 删 / 改名：按 ExecTarget 类型分发（Local fs + spawn_blocking，
-//! WSL/Remote 走 shell 命令），统一执行路径安全校验。
+//! 目录建 / 删 / 改名：按 ExecTarget 类型分发（Local: `std::fs` + `spawn_blocking`；
+//! WSL/Remote: shell 命令），统一执行路径安全校验。
 //!
-//! 原crud.rs超300行，按职责拆分：`file_write`（写/建文件）与 `path_ops`（目录建/删/改名）。
+//! 原 `crud.rs` 超 300 行，按职责拆分：`file_write`（写 / 建文件）与本文件（目录操作）。
 
 use crate::common::executor::factory::ExecTarget;
-use crate::common::executor::sync::exec_on;
+use crate::common::runtime::run_blocking_result;
 use crate::common::utils::command::local::safe_path;
+use crate::core::exec::run;
 use crate::AppError;
 
 use super::shell_cmd::{
@@ -34,7 +35,7 @@ pub async fn create_directory(
             // 阻塞 I/O（canonicalize/fs::*）物理隔离到 OS 阻塞线程池（维度 7）
             let base_path = base_path.to_owned();
             let dir_path = dir_path.to_owned();
-            tokio::task::spawn_blocking(move || -> Result<(), AppError> {
+            run_blocking_result(move || -> Result<(), AppError> {
                 let base = std::path::Path::new(&base_path);
                 let canonical_base = base
                     .canonicalize()
@@ -64,13 +65,12 @@ pub async fn create_directory(
                 Ok(())
             })
             .await
-            .map_err(|e| AppError::File(format!("Blocking task failed: {}", e)))?
         }
         ExecTarget::Wsl { .. } | ExecTarget::Remote { .. } => {
             let full_path = format!("{}/{}", base_path, dir_path);
             let safe_fp = safe_path(&full_path);
             let mkdir_cmd = build_mkdir_command(&safe_fp);
-            exec_on(target, remote_shell_name(target), &["-c", &mkdir_cmd])
+            run(target, remote_shell_name(target), &["-c", &mkdir_cmd])
                 .await
                 .map_err(|e| AppError::File(format!("Failed to create directory: {}", e)))?;
             Ok(())
@@ -96,7 +96,7 @@ pub async fn delete_path(target: &ExecTarget, base_path: &str, path: &str) -> Re
             // 阻塞 I/O（canonicalize/fs::*）物理隔离到 OS 阻塞线程池（维度 7）
             let base_path = base_path.to_owned();
             let path = path.to_owned();
-            tokio::task::spawn_blocking(move || -> Result<(), AppError> {
+            run_blocking_result(move || -> Result<(), AppError> {
                 let base = std::path::Path::new(&base_path);
                 let canonical_base = base
                     .canonicalize()
@@ -141,14 +141,13 @@ pub async fn delete_path(target: &ExecTarget, base_path: &str, path: &str) -> Re
                 Ok(())
             })
             .await
-            .map_err(|e| AppError::File(format!("Blocking task failed: {}", e)))?
         }
         ExecTarget::Wsl { .. } | ExecTarget::Remote { .. } => {
             let full_path = format!("{}/{}", base_path, path);
             let safe_fp = safe_path(&full_path);
             // 与 Local 分支保持一致的 NotFound 契约：目标不存在时报错
             let exists_cmd = build_exists_check_command(&safe_fp);
-            let exists = exec_on(target, remote_shell_name(target), &["-c", &exists_cmd])
+            let exists = run(target, remote_shell_name(target), &["-c", &exists_cmd])
                 .await
                 .map(|out| out.trim() == "yes")
                 .unwrap_or(false);
@@ -156,7 +155,7 @@ pub async fn delete_path(target: &ExecTarget, base_path: &str, path: &str) -> Re
                 return Err(AppError::NotFound(format!("Path does not exist: {}", path)));
             }
             let rm_cmd = build_rm_command(&safe_fp);
-            exec_on(target, remote_shell_name(target), &["-c", &rm_cmd])
+            run(target, remote_shell_name(target), &["-c", &rm_cmd])
                 .await
                 .map_err(|e| AppError::File(format!("Failed to delete path: {}", e)))?;
             Ok(())
@@ -210,7 +209,7 @@ pub async fn rename_path(
             let base_path = base_path.to_owned();
             let old_path = old_path.to_owned();
             let new_name = new_name.to_owned();
-            tokio::task::spawn_blocking(move || -> Result<(), AppError> {
+            run_blocking_result(move || -> Result<(), AppError> {
                 let base = std::path::Path::new(&base_path);
                 let canonical_base = base
                     .canonicalize()
@@ -248,7 +247,6 @@ pub async fn rename_path(
                 Ok(())
             })
             .await
-            .map_err(|e| AppError::File(format!("Blocking task failed: {}", e)))?
         }
         ExecTarget::Wsl { .. } | ExecTarget::Remote { .. } => {
             let old_full = format!("{}/{}", base_path, old_path);
@@ -257,7 +255,7 @@ pub async fn rename_path(
             let safe_new = safe_path(&new_full);
             // 与 Local 分支一致：旧路径不存在时报 NotFound
             let exists_cmd = build_exists_check_command(&safe_old);
-            let exists = exec_on(target, remote_shell_name(target), &["-c", &exists_cmd])
+            let exists = run(target, remote_shell_name(target), &["-c", &exists_cmd])
                 .await
                 .map(|out| out.trim() == "yes")
                 .unwrap_or(false);
@@ -268,7 +266,7 @@ pub async fn rename_path(
                 )));
             }
             let mv_cmd = build_mv_command(&safe_old, &safe_new);
-            exec_on(target, remote_shell_name(target), &["-c", &mv_cmd])
+            run(target, remote_shell_name(target), &["-c", &mv_cmd])
                 .await
                 .map_err(|e| AppError::File(format!("Failed to rename path: {}", e)))?;
             Ok(())

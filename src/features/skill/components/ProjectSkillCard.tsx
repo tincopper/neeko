@@ -10,7 +10,6 @@ import {
 } from 'lucide-react';
 import React, { useMemo, useState } from 'react';
 
-// eslint-disable-next-line import/no-restricted-paths -- custom agent icons
 import { resolveAgentIconSrc } from '@/features/agent/api/agentApi';
 import { cn } from '@/lib/utils';
 import type { ProjectDiskSkill } from '@/shared/types';

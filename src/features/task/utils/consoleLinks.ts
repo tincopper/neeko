@@ -16,9 +16,9 @@ import { useBrowserStore } from '@/shared/store/browserStore';
 import { useDockStore } from '@/shared/store/dockStore';
 import { useEditorStore } from '@/shared/store/editorStore';
 import type { Tab } from '@/shared/types';
+import { canonicalFsPath } from '@/shared/utils/fileRef';
 import { getFileName, getTabId } from '@/shared/utils/fileTree';
 
-// eslint-disable-next-line import/no-restricted-paths -- console links need file API
 import { revealInFileManager, readFileContent } from '../../file/api/fileApi';
 
 interface ConsoleLinkOptions {
@@ -41,15 +41,6 @@ const URL_REGEX = /https?:\/\/[^\s<>"{}|\\^`[\]]+/gi;
 function openInEmbeddedBrowser(url: string): void {
   useDockStore.getState().activatePanel('right', 'browser');
   useBrowserStore.getState().navigateTo(url);
-}
-
-function resolveToAbsolute(matchedPath: string, projectPath: string): string {
-  if (/^[A-Z]:\\/.test(matchedPath) || matchedPath.startsWith('/')) {
-    return matchedPath;
-  }
-  const separator = projectPath.includes('\\') ? '\\' : '/';
-  const base = projectPath.endsWith(separator) ? projectPath : projectPath + separator;
-  return base + matchedPath;
 }
 
 /** Find the first file-path match whose range contains `column` (1-based). */
@@ -203,7 +194,7 @@ export function setupConsoleLinks(term: Terminal, options: ConsoleLinkOptions): 
     if (fileMatch) {
       event.preventDefault();
       event.stopPropagation();
-      const fullPath = resolveToAbsolute(fileMatch.fullPath, projectPath);
+      const fullPath = canonicalFsPath(projectPath, fileMatch.fullPath);
       if (event.metaKey || event.ctrlKey) {
         void openFileInEditor(fullPath, projectId, fileMatch.line, fileMatch.col);
       } else {

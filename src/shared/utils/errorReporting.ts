@@ -54,13 +54,26 @@ export function isBenignWarning(message: string): boolean {
 }
 
 /**
+ * 已知的裸超时消息规范化：`@codemirror/lsp-client` 的 `timeoutRequest` 在未被
+ * `lspClientManager` 包装拦截时只抛 "Request timed out"，来源不可辨。兜底改写为
+ * 带来源的英文提示（其余路径的裸超时同样受益）。
+ */
+export function normalizeErrorMessage(message: string): string {
+  if (message === 'Request timed out') {
+    return 'LSP request timed out (language server did not respond in time)';
+  }
+  return message;
+}
+
+/**
  * 将前端错误上报到 Rust 日志（`~/.neeko/neeko.log`）+ 用户提示 toast。
  * 带 source 级节流，防刷屏；上报链路自身失败一律静默（避免二次崩溃）。
  * 良性警告（见 isBenignWarning）仅落日志、不弹 toast。
  */
 export function reportFrontendError(source: string, error: unknown): void {
-  const message =
-    error instanceof Error ? error.message : typeof error === 'string' ? error : String(error);
+  const message = normalizeErrorMessage(
+    error instanceof Error ? error.message : typeof error === 'string' ? error : String(error),
+  );
   const stack = error instanceof Error ? error.stack : undefined;
 
   const now = Date.now();
@@ -83,7 +96,7 @@ export function reportFrontendError(source: string, error: unknown): void {
   }
 
   try {
-    notifier?.(message.slice(0, MAX_MESSAGE_LENGTH) || '发生未捕获错误');
+    notifier?.(message.slice(0, MAX_MESSAGE_LENGTH) || 'Uncaught error');
   } catch {
     // 提示链路自身失败必须静默，避免错误处理引发二次错误
   }

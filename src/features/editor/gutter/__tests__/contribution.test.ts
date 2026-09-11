@@ -7,11 +7,10 @@ import {
   setBreakpointsEffect,
   setHoverLineEffect,
 } from '@/features/debug';
-import type { TestCaseInfo } from '@/features/editor/utils/testCases';
 
 import type { GutterContribution, GutterLineContext } from '../contribution';
 import { gutterContributions } from '../contribution';
-import { createTestCodelensCore, createTestRunContribution } from '../testRunContribution';
+import { createRunCodelensCore, createRunContribution } from '../runContribution';
 
 const TS_DOC = ["describe('math', () => {", "  it('adds', () => {});", '});'].join('\n');
 const RUST_DOC = '#[test]\nfn parse_simple() {}\n#[tokio::test]\nasync fn other() {}';
@@ -26,13 +25,11 @@ describe('gutterContributions registry facet', () => {
       doc: TS_DOC,
       extensions: [
         gutterContributions.of(breakpointContribution),
-        gutterContributions.of(
-          createTestRunContribution({ onRun: vi.fn(), onMenuRequest: vi.fn() }),
-        ),
+        gutterContributions.of(createRunContribution({ onRun: vi.fn(), onMenuRequest: vi.fn() })),
       ],
     });
     const ids = state.facet(gutterContributions).map((c) => c.id);
-    expect(ids).toEqual(['breakpoint', 'test-run']);
+    expect(ids).toEqual(['breakpoint', 'run']);
   });
 });
 
@@ -40,7 +37,7 @@ describe('breakpointContribution', () => {
   it('exposes_stable_identity_and_priority_before_test_run', () => {
     expect(breakpointContribution.id).toBe('breakpoint');
     expect(breakpointContribution.priority).toBeLessThan(
-      createTestRunContribution({ onRun: vi.fn(), onMenuRequest: vi.fn() }).priority,
+      createRunContribution({ onRun: vi.fn(), onMenuRequest: vi.fn() }).priority,
     );
     // 断点列无门控：装配层（有 projectId/absFilePath 即挂载）负责开关。
     expect(breakpointContribution.when(ctxOf())).toBe(true);
@@ -102,85 +99,104 @@ describe('breakpointContribution', () => {
   });
 });
 
-describe('testRunContribution', () => {
+describe('runContribution', () => {
   function testState(doc: string, fileName: string): EditorState {
     return EditorState.create({
       doc,
-      extensions: [createTestCodelensCore({ fileName, onRun: vi.fn(), onMenuRequest: vi.fn() })],
+      extensions: [createRunCodelensCore({ fileName, onRun: vi.fn(), onMenuRequest: vi.fn() })],
     });
   }
 
   function makeContrib() {
-    return createTestRunContribution({ onRun: vi.fn(), onMenuRequest: vi.fn() });
+    return createRunContribution({ onRun: vi.fn(), onMenuRequest: vi.fn() });
   }
 
   it('markersOf_maps_case_lines_to_payload', () => {
     const ts = testState(TS_DOC, 'a.test.ts');
     expect(makeContrib().markersOf(ts, 2)).toEqual({
-      payload: { name: 'adds', line: 2, lang: 'ts' },
+      payload: { kind: 'test', testCase: { name: 'adds', line: 2, lang: 'ts' } },
     });
     expect(makeContrib().markersOf(ts, 1)).toBeNull();
 
     const rust = testState(RUST_DOC, 'lib.rs');
     expect(makeContrib().markersOf(rust, 1)).toEqual({
-      payload: { name: 'parse_simple', line: 1, lang: 'rust' },
+      payload: { kind: 'test', testCase: { name: 'parse_simple', line: 1, lang: 'rust' } },
     });
     expect(makeContrib().markersOf(rust, 2)).toBeNull();
+
+    // main 入口同样映射（同一贡献、同一 payload 通道）
+    const go = testState('package main\n\nfunc main() {}\n', 'main.go');
+    expect(makeContrib().markersOf(go, 3)).toEqual({
+      payload: { kind: 'main', entry: { line: 3, language: 'go' } },
+    });
   });
 
   it('when_gates_non_test_files_and_readonly_tabs', () => {
-    const contrib = createTestRunContribution({ onRun: vi.fn(), onMenuRequest: vi.fn() });
-    expect(contrib.id).toBe('test-run');
+    const contrib = createRunContribution({ onRun: vi.fn(), onMenuRequest: vi.fn() });
+    expect(contrib.id).toBe('run');
     expect(contrib.when(ctxOf())).toBe(true);
     expect(contrib.when(ctxOf({ fileName: 'plain.ts' }))).toBe(false);
     expect(contrib.when(ctxOf({ editable: false }))).toBe(false);
     expect(contrib.when(ctxOf({ fileName: 'lib.rs' }))).toBe(true);
+    // main 语言文件进列（main 与测试共用贡献）
+    expect(contrib.when(ctxOf({ fileName: 'cmd/main.go' }))).toBe(true);
   });
 
   it('onClick_routes_ts_direct_run_and_rust_menu_by_rect', () => {
     const onRun = vi.fn();
     const onMenuRequest = vi.fn();
-    const contrib = createTestRunContribution({ onRun, onMenuRequest });
+    const contrib = createRunContribution({ onRun, onMenuRequest });
 
-    const tsCase: TestCaseInfo = { name: 'adds', line: 2, lang: 'ts' };
+    const tsCase: RunTarget = { kind: 'test', testCase: { name: 'adds', line: 2, lang: 'ts' } };
     expect(
       contrib.onClick?.(
-        { contributionId: 'test-run', line: 2, payload: tsCase, anchorRect: new DOMRect() },
+        { contributionId: 'run', line: 2, payload: tsCase, anchorRect: new DOMRect() },
         new MouseEvent('mousedown'),
       ),
     ).toBe(true);
     expect(onRun).toHaveBeenCalledWith(tsCase);
     expect(onMenuRequest).not.toHaveBeenCalled();
 
-    const rustCase: TestCaseInfo = { name: 'other', line: 3, lang: 'rust' };
+    const rustCase: RunTarget = {
+      kind: 'test',
+      testCase: { name: 'other', line: 3, lang: 'rust' },
+    };
     // rect.right=112/top=200 → 锚点 (116, 200)，与现行图标监听语义一致。
     const rect = { right: 112, top: 200 } as DOMRect;
     expect(
       contrib.onClick?.(
-        { contributionId: 'test-run', line: 3, payload: rustCase, anchorRect: rect },
+        { contributionId: 'run', line: 3, payload: rustCase, anchorRect: rect },
         new MouseEvent('mousedown'),
       ),
     ).toBe(true);
     expect(onMenuRequest).toHaveBeenCalledWith(rustCase, 116, 200);
+
+    // main 入口同样走菜单（与测试同路由）
+    const mainCase: RunTarget = { kind: 'main', entry: { line: 3, language: 'go' } };
+    contrib.onClick?.(
+      { contributionId: 'run', line: 3, payload: mainCase, anchorRect: rect },
+      new MouseEvent('mousedown'),
+    );
+    expect(onMenuRequest).toHaveBeenCalledWith(mainCase, 116, 200);
   });
 
   it('render_returns_tagged_play_fragment', () => {
-    const contrib = createTestRunContribution({ onRun: vi.fn(), onMenuRequest: vi.fn() });
+    const contrib = createRunContribution({ onRun: vi.fn(), onMenuRequest: vi.fn() });
     const el = contrib.render({
-      contributionId: 'test-run',
+      contributionId: 'run',
       line: 2,
-      payload: { name: 'adds', line: 2, lang: 'ts' },
+      payload: { kind: 'test', testCase: { name: 'adds', line: 2, lang: 'ts' } },
       anchorRect: new DOMRect(),
     });
-    expect(el?.classList.contains('cm-test-run-marker')).toBe(true);
-    expect(el?.getAttribute('data-gutter-contribution')).toBe('test-run');
+    expect(el?.classList.contains('cm-run-marker')).toBe(true);
+    expect(el?.getAttribute('data-gutter-contribution')).toBe('run');
     expect(el?.querySelector('svg')).not.toBeNull();
   });
 
   it('conforms_to_registry_interface', () => {
     const registered: GutterContribution<unknown>[] = [
-      createTestRunContribution({ onRun: vi.fn(), onMenuRequest: vi.fn() }),
+      createRunContribution({ onRun: vi.fn(), onMenuRequest: vi.fn() }),
     ];
-    expect(registered[0].id).toBe('test-run');
+    expect(registered[0].id).toBe('run');
   });
 });

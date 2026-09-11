@@ -3,10 +3,10 @@ import { StateEffect, StateField } from '@codemirror/state';
 import { Decoration, DecorationSet, EditorView } from '@codemirror/view';
 import { useMemo } from 'react';
 
+import { resolveLspPositionFromOffset } from '@/shared/utils/lspPosition';
 import { IS_MACOS } from '@/shared/utils/platform';
 
 import { lspGoToDefinition } from '../api/lspApi';
-import { resolveLspPositionFromOffset } from '../position';
 import { createDebouncedLatestRunner } from '../requestTracker';
 
 import { definitionCacheKey, getOrFetchDefinition } from './lspCache';

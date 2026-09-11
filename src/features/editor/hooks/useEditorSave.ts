@@ -8,12 +8,9 @@ import { useAppContext } from '@/shared/contexts';
 import { useCodeMirrorBinding } from '@/shared/hooks/useResolvedShortcuts';
 import { useEditorStore } from '@/shared/store/editorStore';
 import type { FileTab } from '@/shared/types';
-import {
-  filePathToFileUrl,
-  openHtmlInBrowserPanel,
-  resolveAbsolutePath,
-} from '@/shared/utils/browserUtils';
+import { filePathToFileUrl, openHtmlInBrowserPanel } from '@/shared/utils/browserUtils';
 import { clearViewSnapshot } from '@/shared/utils/editorViewState';
+import { canonicalFsPath } from '@/shared/utils/fileRef';
 
 interface UseEditorSaveParams {
   tab: FileTab;
@@ -63,13 +60,13 @@ export function useEditorSave({
   // 在 Browser Panel 中打开 HTML 文件
   const handleOpenInBrowser = useCallback(() => {
     if (!projectPath || !canOpenInBrowser) return;
-    openHtmlInBrowserPanel(resolveAbsolutePath(projectPath, tab.filePath));
+    openHtmlInBrowserPanel(canonicalFsPath(projectPath, tab.filePath));
   }, [tab.filePath, projectPath, canOpenInBrowser]);
 
   // 用系统默认浏览器打开 HTML 文件
   const handleOpenInSystemBrowser = useCallback(() => {
     if (!projectPath || !canOpenInBrowser) return;
-    const absPath = resolveAbsolutePath(projectPath, tab.filePath);
+    const absPath = canonicalFsPath(projectPath, tab.filePath);
     const fileUrl = filePathToFileUrl(absPath);
     openInDefaultBrowser(fileUrl, project?.id).catch((err) => {
       console.error('[FileViewer] Failed to open in system browser:', err);

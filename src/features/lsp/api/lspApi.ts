@@ -252,3 +252,21 @@ export function lspReadPreauthorizedFile(
     uri,
   });
 }
+
+/**
+ * Fetch jdtls class-file content (attached source or decompiled) for a
+ * `jdt://` definition target (JDK / dependency symbols). Authorization mirrors
+ * `lsp_read_preauthorized_file`: the backend only serves uris that appeared in
+ * this session's most recent definition response.
+ */
+export function lspReadClassFileContents(
+  projectPath: string,
+  languageId: string,
+  uri: string,
+): Promise<{ content: string }> {
+  return invoke<{ content: string }>('lsp_read_class_file_contents', {
+    projectPath,
+    languageId,
+    uri,
+  });
+}

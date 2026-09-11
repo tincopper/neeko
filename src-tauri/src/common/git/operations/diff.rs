@@ -12,7 +12,7 @@ use crate::common::git::provider::detect_provider;
 use crate::common::git::transport::{ErrorKind, GitExecError, GitTransport};
 use crate::common::git::types::PushOutcome;
 use crate::common::git::types::{DiffHunk, DiffLine, DiffResult};
-use crate::core::exec::collect_in_dir;
+use crate::core::exec::collect;
 use crate::project::types::{
     AheadBehind, CommitDetail, CommitEntry, CommitFileChange, CommitResult, FileChange,
     FileDiffStats, GitBranchInfo, GitInfo, GitProvider, StashActionResult, StashEntry, Worktree,
@@ -168,23 +168,31 @@ pub(crate) async fn get_file_diff_shell(
         .await?;
     let mut result = crate::common::git::parsers::parse_unified_diff(&output);
     if result.hunks.is_empty() {
-        let full_path = std::path::Path::new(work_dir).join(file_path);
-        if full_path.exists() && full_path.is_file() {
-            if let Ok(content) = std::fs::read_to_string(&full_path) {
-                let lines: Vec<DiffLine> = content
-                    .lines()
-                    .map(|line| DiffLine::Added(line.to_string()))
-                    .collect();
-                if !lines.is_empty() {
-                    #[allow(clippy::cast_possible_truncation)]
-                    result.hunks.push(DiffHunk {
-                        old_start: 0,
-                        old_lines: 0,
-                        new_start: 1,
-                        new_lines: lines.len() as u32,
-                        lines,
-                    });
-                }
+        let path = std::path::Path::new(work_dir).join(file_path);
+        // 新建文件的 `exists` / 读取都是阻塞 I/O —— 隔离到 OS 阻塞线程池（规则 #3）。
+        let content = crate::common::runtime::run_blocking(move || {
+            if !path.is_file() {
+                return None;
+            }
+            std::fs::read_to_string(&path).ok()
+        })
+        .await
+        .ok()
+        .flatten();
+        if let Some(content) = content {
+            let lines: Vec<DiffLine> = content
+                .lines()
+                .map(|line| DiffLine::Added(line.to_string()))
+                .collect();
+            if !lines.is_empty() {
+                #[allow(clippy::cast_possible_truncation)]
+                result.hunks.push(DiffHunk {
+                    old_start: 0,
+                    old_lines: 0,
+                    new_start: 1,
+                    new_lines: lines.len() as u32,
+                    lines,
+                });
             }
         }
     }
@@ -196,14 +204,14 @@ pub(crate) async fn get_file_diff_shell(
 
 /// Get changed files diff stats (additions/deletions) for local
 pub async fn get_changed_files_diff_stats_local(work_dir: &str) -> Result<Vec<FileDiffStats>> {
-    let unstaged = collect_in_dir(
+    let unstaged = collect(
         &ExecTarget::Local,
         "git",
         &["diff", "--numstat"],
         Some(work_dir),
     )
     .await?;
-    let staged = collect_in_dir(
+    let staged = collect(
         &ExecTarget::Local,
         "git",
         &["diff", "--cached", "--numstat"],
@@ -241,7 +249,7 @@ pub async fn get_changed_files_diff_stats_local(work_dir: &str) -> Result<Vec<Fi
         }
     }
 
-    let untracked = collect_in_dir(
+    let untracked = collect(
         &ExecTarget::Local,
         "git",
         &["ls-files", "--others", "--exclude-standard"],
@@ -253,13 +261,18 @@ pub async fn get_changed_files_diff_stats_local(work_dir: &str) -> Result<Vec<Fi
         if file_path.is_empty() || tracked_paths.contains(file_path) {
             continue;
         }
-        let full_path = std::path::Path::new(work_dir).join(file_path);
-        if !full_path.exists() || !full_path.is_file() {
-            continue;
-        }
-        let line_count = std::fs::read_to_string(&full_path)
-            .map(|c| c.lines().count())
-            .unwrap_or(0);
+        let path = std::path::Path::new(work_dir).join(file_path);
+        // `exists` / 逐行计数都是阻塞 I/O —— 隔离到 OS 阻塞线程池（规则 #3）。
+        let line_count = crate::common::runtime::run_blocking(move || {
+            if !path.is_file() {
+                return 0;
+            }
+            std::fs::read_to_string(&path)
+                .map(|c| c.lines().count())
+                .unwrap_or(0)
+        })
+        .await
+        .unwrap_or(0);
         stats.push(FileDiffStats {
             path: std::path::PathBuf::from(file_path),
             additions: line_count,

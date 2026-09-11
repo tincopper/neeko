@@ -8,6 +8,10 @@ use crate::lsp::types::{LspSessionInfo, MAX_AUTO_OPEN_FILE_SIZE};
 use crate::AppError;
 use crate::AppStateWrapper;
 
+/// jdtls 非标准类内容请求（`ClassfileContentHandler` 路由；`JDTLanguageServer`
+/// 本体字符串表实测，`java/classContents` 不存在）。
+const JDT_CLASS_FILE_CONTENTS_METHOD: &str = "java/classFileContents";
+
 /// Extract the LSP `textDocument/uri` field from a request/notification params.
 ///
 /// The same JSON pointer is read in several commands; centralising it keeps the
@@ -588,10 +592,13 @@ pub async fn lsp_go_to_definition(
     let t1 = t0.elapsed();
     log::info!("[perf] lsp_go_to_definition: session ready in {:?}", t1);
 
-    // Auto-didOpen if the document is not yet registered
-    if !state
-        .lsp_manager
-        .is_document_open(&project_path, &language_id, &uri)
+    // Auto-didOpen if the document is not yet registered. jdt:// 类文件 uri 是
+    // jdtls 模型内的 IClassFile（非磁盘文件），无需 didOpen 也无法读盘——直接跳过，
+    // definition/hover 等请求 server 端原生解析该 uri。
+    if !uri.starts_with("jdt://")
+        && !state
+            .lsp_manager
+            .is_document_open(&project_path, &language_id, &uri)
     {
         let file_path = uri.strip_prefix("file://").unwrap_or(&uri);
         if let Ok(text) = crate::common::file::reader::read_file(
@@ -661,6 +668,10 @@ pub async fn lsp_go_to_definition(
 
     // Preload target file content using UnifiedLocation
     let file_content = match UnifiedLocation::first_target_uri(&lsp_result) {
+        // jdt:// 是 jdtls 的类文件虚拟 uri（JDK/依赖符号），不是文件路径——
+        // 预读短路，避免把 uri 当路径读盘产生无谓错误日志；内容改由
+        // `lsp_read_class_file_contents`（java/classFileContents）按需获取。
+        Some(target_uri) if is_jdt_class_uri(&target_uri) => None,
         Some(target_uri) => {
             crate::common::file::reader::read_file(
                 crate::common::file::reader::FileAccessScope::Trusted,
@@ -723,6 +734,12 @@ pub async fn lsp_read_preauthorized_file(
         .lsp_manager
         .is_preauthorized(&project_path, &language_id, &uri)
     {
+        log::debug!(
+            "[preauth] deny project={} language={} uri={}",
+            project_path,
+            language_id,
+            uri
+        );
         return Err(AppError::InvalidInput(
             "uri is not a pre-authorized definition target".to_string(),
         ));
@@ -747,6 +764,71 @@ pub async fn lsp_read_preauthorized_file(
         },
     )
     .await
+}
+
+/// Whether a definition-target uri is a jdtls class-file uri (`jdt://…`).
+///
+/// jdtls reports JDK / dependency symbols as virtual `jdt://` class-file uris
+/// instead of filesystem paths. Such uris must never be treated as paths —
+/// their content is fetched on demand via the non-standard `java/classFileContents`
+/// request (see [`lsp_read_class_file_contents`]). Pure so the gate is
+/// unit-testable without session state.
+#[must_use]
+fn is_jdt_class_uri(uri: &str) -> bool {
+    uri.starts_with("jdt://")
+}
+
+/// Fetch jdtls class-file content (attached source or decompiled) for a
+/// `jdt://` go-to-definition target.
+///
+/// 授权模型与 [`lsp_read_preauthorized_file`] 一致：uri 必须是 `jdt://` 类文件
+/// uri，且出现在该会话最近一次 definition 响应中（preauth 表），前端无法伪造
+/// 任意 jdt uri。实现转发 jdtls 非标准请求 `java/classFileContents`
+/// （`ClassfileContentHandler` 返回文件内容字符串）；命令体保持极薄——门控 +
+/// 转发，协议细节归 manager/session。返回 `{"content": <string>}`；类文件是
+/// 单个文本（远小于 2MB IPC 红线），无需分片。
+#[tauri::command]
+pub async fn lsp_read_class_file_contents(
+    project_path: String,
+    language_id: String,
+    uri: String,
+    state: State<'_, AppStateWrapper>,
+) -> Result<Value, AppError> {
+    if !is_jdt_class_uri(&uri)
+        || !state
+            .lsp_manager
+            .is_preauthorized(&project_path, &language_id, &uri)
+    {
+        log::debug!(
+            "[preauth] deny jdt project={} language={} uri={}",
+            project_path,
+            language_id,
+            uri
+        );
+        return Err(AppError::InvalidInput(
+            "uri is not a pre-authorized jdt class-file target".to_string(),
+        ));
+    }
+
+    let response = state
+        .lsp_manager
+        .send_request_async(
+            &project_path,
+            &language_id,
+            JDT_CLASS_FILE_CONTENTS_METHOD,
+            serde_json::json!({ "uri": &uri }),
+            false,
+        )
+        .await?;
+
+    // jdtls 的 ClassfileContentHandler 响应为字符串（源码或反编译文本）；
+    // null / 结构异常一律映射为 LSP 错误，前端按跳转失败提示。
+    match response.as_str() {
+        Some(content) => Ok(serde_json::json!({ "content": content })),
+        None => Err(AppError::Lsp(format!(
+            "jdtls returned no class-file content for {uri}"
+        ))),
+    }
 }
 
 #[cfg(test)]
@@ -783,5 +865,27 @@ mod tests {
             "无预读目标时 fileContent 必须为 null 而非缺失或对象"
         );
         assert_eq!(resp["lspResult"], serde_json::json!([]));
+    }
+
+    #[test]
+    fn jdt_class_uri_gate_requires_full_jdt_scheme() {
+        // jdtls definition 目标（JDK / 依赖符号）的典型形态
+        assert!(is_jdt_class_uri(
+            "jdt://contents/java.base/java.lang/System.class?=p1/=src/Main.java"
+        ));
+        // file:// 与裸路径不是类文件 uri，必须走常规预读/预授权通道
+        assert!(!is_jdt_class_uri("file:///repo/src/lib.rs"));
+        assert!(!is_jdt_class_uri("/repo/src/lib.rs"));
+        assert!(!is_jdt_class_uri(""));
+        // 少一杠的近似 scheme 不匹配（门控只认完整 jdt:// 前缀）
+        assert!(!is_jdt_class_uri("jdt:/contents/java.base/System.class"));
+    }
+
+    #[test]
+    fn jdt_class_file_contents_method_name() {
+        assert_eq!(
+            JDT_CLASS_FILE_CONTENTS_METHOD, "java/classFileContents",
+            "服务端路由的类内容请求是 java/classFileContents（JDTLanguageServer 字符串表实测）"
+        );
     }
 }

@@ -1,8 +1,8 @@
 import { listen } from '@tauri-apps/api/event';
 import { useEffect } from 'react';
 
+import { useLspStore, type LspInstallProgress } from '@/features/lsp/store/lspStore';
 import { LSP_INSTALL_PROGRESS_EVENT } from '@/shared/events';
-import { useLspStore, type LspInstallProgress } from '@/shared/store/lspStore';
 import { safeUnlisten } from '@/shared/utils/safeUnlisten';
 
 /**
@@ -19,14 +19,14 @@ export function InstallProgressBridge() {
     const setup = async () => {
       const fn = await listen<LspInstallProgress>(LSP_INSTALL_PROGRESS_EVENT, (event) => {
         if (cancelled) return;
-        const { language_id, phase, message } = event.payload;
+        const { language_id, phase, message, log } = event.payload;
         if (phase === 'done' || phase === 'error') {
           setTimeout(
             () => useLspStore.getState().setInstallProgress(null),
             phase === 'done' ? 2000 : 5000,
           );
         }
-        useLspStore.getState().setInstallProgress({ language_id, phase, message });
+        useLspStore.getState().setInstallProgress({ language_id, phase, message, log });
       });
       if (!cancelled) {
         unlisten = safeUnlisten(fn);

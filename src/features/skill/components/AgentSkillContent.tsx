@@ -18,7 +18,6 @@ import {
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 
 // Cross-feature toast (same pattern as useLocalSkillActions / SkillsPanel)
-// eslint-disable-next-line import/no-restricted-paths -- notification is the shared toast bus
 import { resolveAgentIconSrc } from '@/features/agent/api/agentApi';
 import {
   importDiscoveredSkill,

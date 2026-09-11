@@ -35,6 +35,12 @@ export interface FileTabData {
   untitledName?: string;
   /** 只读 tab（如 LSP 跳转打开的项目外定义文件）：不可编辑、不进入保存流程。 */
   readOnly?: boolean;
+  /**
+   * LSP 虚拟文档 uri（如 jdtls 的 `jdt://` 类文件）：tab 的 filePath 是展示路径
+   * （`jdt:/<module>/…/<Name>.java`，供面包屑/高亮），而 LSP 请求（definition/hover/
+   * completion）必须携带此原始 uri，jdtls 才能定位其模型中的 IClassFile。
+   */
+  virtualUri?: string;
 }
 
 export interface DiffTabData {

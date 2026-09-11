@@ -3,9 +3,11 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { readFileContent, readDirTree } from '@/features/file/api/fileApi';
 import { useEditorStore } from '@/shared/store/editorStore';
+import { useProjectStore } from '@/shared/store/projectStore';
 import { useWorktreeStore } from '@/shared/store/worktreeStore';
 import type { FileNode } from '@/shared/types';
 import type { AgentChatTabData } from '@/shared/types/tab';
+import { canonicalFsPath } from '@/shared/utils/fileRef';
 import { getFileName, getTabId } from '@/shared/utils/fileTree';
 import { resolveTabKey } from '@/shared/utils/tabKey';
 
@@ -72,6 +74,10 @@ export default function AgentChatTabView({
   } = useAgentChat({ tabKey, tabId, projectId, data, mockMode });
 
   const activeWorktreePath = useWorktreeStore((s) => s.activeWorktreePath);
+  // agent 消息里的文件路径拼根基准（相对路径拼项目根——与后端缺省 base 对齐）
+  const projectPath = useProjectStore(
+    (s) => s.projects.find((p) => p.id === projectId)?.path ?? '',
+  );
   const [attachFiles, setAttachFiles] = useState<FileNode[]>([]);
   const [attachFilesLoading, setAttachFilesLoading] = useState(false);
 
@@ -119,8 +125,10 @@ export default function AgentChatTabView({
 
   /** 点击 read_file 路径 → 在编辑器打开该文件（复用 editorStore + readFileContent，对齐 terminalLinks）。 */
   const openAgentFile = useCallback(
-    (filePath: string) => {
+    (rawPath: string) => {
       void (async () => {
+        // agent 给绝对路径则原样（幂等归一），相对路径拼项目根 canonical
+        const filePath = canonicalFsPath(projectPath, rawPath);
         const tabKey = resolveTabKey(projectId, activeWorktreePath ?? undefined);
         const tabId = getTabId(tabKey, filePath);
         const existing = useEditorStore.getState().tabs[tabKey];
@@ -148,7 +156,7 @@ export default function AgentChatTabView({
         }
       })();
     },
-    [projectId, activeWorktreePath],
+    [projectId, projectPath, activeWorktreePath],
   );
 
   const handleKeyDown = useCallback(

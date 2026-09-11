@@ -19,7 +19,7 @@ use super::profile::detect_project_profile_with_markers;
 use super::session::{do_send_request, LspSession};
 use super::session_store::LspSessionStore;
 use super::transport::{IpcTransport, LspTransport};
-use super::types::{LspServerInfo, LspServerLogEntry, LspSessionInfo};
+use super::types::{LspServerInfo, LspServerLogEntry, LspSessionInfo, LSP_PROFILE_EVENT};
 
 // ── Re-exports ─────────────────────────────────────────────────────────
 
@@ -74,6 +74,13 @@ pub struct LspManager {
     deactivate_stop_secs: Mutex<u64>,
     /// Definition-target uris pre-authorized for out-of-root reads (per session).
     preauth: Mutex<super::preauth::PreauthorizedTargets>,
+    /// Per-key creation gates: serialize concurrent `get_or_create_session`
+    /// for the same (project, language) so only one slow `LspSession::new`
+    /// runs at a time. Lives on the manager rather than the store: the store
+    /// owns pure session state (kept API-stable), while creation
+    /// serialization is a manager-level orchestration concern. parking_lot
+    /// (no poisoning) because the gate is held across the spawn.
+    creation_locks: parking_lot::Mutex<HashMap<String, Arc<parking_lot::Mutex<()>>>>,
 }
 
 impl LspManager {
@@ -92,6 +99,7 @@ impl LspManager {
             deactivate_gens: Mutex::new(HashMap::new()),
             deactivate_stop_secs: Mutex::new(DEFAULT_DEACTIVATE_STOP_SECS),
             preauth: Mutex::new(super::preauth::PreauthorizedTargets::new()),
+            creation_locks: parking_lot::Mutex::new(HashMap::new()),
         }
     }
 
@@ -285,6 +293,18 @@ impl LspManager {
         }
     }
 
+    /// Return the creation gate for a session key, creating it on first use.
+    /// Only the map lookup-or-insert holds the map lock (short critical
+    /// section); the returned gate serializes the slow creation path below.
+    fn creation_gate(&self, key: &str) -> Arc<parking_lot::Mutex<()>> {
+        let mut gates = self.creation_locks.lock();
+        Arc::clone(
+            gates
+                .entry(key.to_string())
+                .or_insert_with(|| Arc::new(parking_lot::Mutex::new(()))),
+        )
+    }
+
     /// Get an existing session or create a new one for the given project and language.
     pub fn get_or_create_session(
         &self,
@@ -294,12 +314,27 @@ impl LspManager {
     ) -> Result<String, AppError> {
         let key = session_key(project_path, language_id);
 
-        // Fast path: check if session exists and is alive (short lock)
+        // Fast path: alive session returns without touching the gate.
         if self.session_store.is_alive(&key) {
             return Ok(key);
         }
 
-        // Slow path: create session without holding the sessions lock
+        // Slow path: serialize per-key creation. The gate is held across the
+        // whole `LspSession::new` below (this runs on a spawn_blocking
+        // thread, so blocking is by design): a second concurrent caller for
+        // the same key blocks here, then hits the recheck and returns without
+        // spawning a duplicate server.
+        let gate = self.creation_gate(&key);
+        let _creation_guard = gate.lock();
+
+        // Recheck under the gate (double-checked locking): the winner's
+        // session is now visible.
+        if self.session_store.is_alive(&key) {
+            return Ok(key);
+        }
+
+        // Slow path: create the session holding only the per-key gate (never
+        // the sessions lock, which `is_alive`/`insert` take briefly).
         let plugin = self
             .plugin_manager
             .resolve_by_language(language_id)
@@ -340,8 +375,10 @@ impl LspManager {
         )
         .map_err(|e| AppError::Lsp(e.to_string()))?;
 
-        // Insert session, handling concurrent creation
-        if self.session_store.contains(&key) && self.session_store.is_alive(&key) {
+        // Defensive: unreachable while the gate is held (no other thread can
+        // be creating this key), but if a session appeared anyway, drop the
+        // just-built one — its Drop→kill reaps the child — and use the key.
+        if self.session_store.is_alive(&key) {
             return Ok(key);
         }
         let open_count = self
@@ -586,6 +623,23 @@ impl LspManager {
         );
     }
 
+    /// Broadcast the detected language profile to the frontend.
+    ///
+    /// 无 `AppHandle`（测试 / 早期启动）、锁中毒或 emit 失败都只记日志 —— 广播是尽力
+    /// 而为，不得中断项目激活流程。
+    fn emit_profile(&self, profile: &ProjectLanguageProfile) {
+        let Ok(handle) = self.app_handle.lock() else {
+            log::warn!("[LSP] app_handle lock poisoned; profile event skipped");
+            return;
+        };
+        let Some(app) = handle.as_ref() else {
+            return;
+        };
+        if let Err(e) = app.emit(LSP_PROFILE_EVENT, profile) {
+            log::warn!("[LSP] Failed to emit global profile event: {e}");
+        }
+    }
+
     /// Detect profile, cancel stop timer, emit profile event. Call when project becomes active.
     pub fn activate_project(
         self: &Arc<Self>,
@@ -599,13 +653,7 @@ impl LspManager {
             map.insert(project_path.to_string(), profile.clone());
         }
 
-        if let Ok(handle) = self.app_handle.lock() {
-            if let Some(app) = handle.as_ref() {
-                if let Err(e) = app.emit("lsp-project-profile", &profile) {
-                    log::warn!("[LSP] Failed to emit global profile event: {}", e);
-                }
-            }
-        }
+        self.emit_profile(&profile);
 
         if let Some(ref primary) = profile.primary {
             let policy = self.plugin_manager.resolve_auto_start(&primary.language_id);
@@ -882,5 +930,119 @@ mod tests {
         assert_eq!(parsed["status"].as_str(), Some("starting"));
         assert_eq!(parsed["connected"].as_bool(), None);
         assert!(parsed.get("connected").is_none());
+    }
+    #[test]
+    fn creation_gate_same_key_returns_shared_arc() {
+        let manager = LspManager::new_default();
+        let a = manager.creation_gate("proj:rust");
+        let b = manager.creation_gate("proj:rust");
+        assert!(Arc::ptr_eq(&a, &b), "same key must share one gate");
+    }
+
+    #[test]
+    fn creation_gates_are_isolated_per_key() {
+        let manager = LspManager::new_default();
+        let a = manager.creation_gate("proj:rust");
+        let b = manager.creation_gate("proj:java");
+        assert!(!Arc::ptr_eq(&a, &b), "different keys must not share a gate");
+    }
+
+    /// Models `get_or_create_session`'s double-checked shape against the gate:
+    /// fast miss → hold per-key gate → recheck → create once. Without the
+    /// gate the critical sections overlap (`max_active > 1`) and the counter
+    /// exceeds 1 — the duplicate-jdtls-spawn race.
+    #[test]
+    fn creation_gate_serializes_concurrent_creation() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+
+        let manager = Arc::new(LspManager::new_default());
+        let slot = Arc::new(parking_lot::Mutex::new(None::<String>));
+        let active = Arc::new(AtomicUsize::new(0));
+        let max_active = Arc::new(AtomicUsize::new(0));
+        let creations = Arc::new(AtomicUsize::new(0));
+
+        let handles: Vec<_> = (0..8)
+            .map(|_| {
+                let manager = Arc::clone(&manager);
+                let slot = Arc::clone(&slot);
+                let active = Arc::clone(&active);
+                let max_active = Arc::clone(&max_active);
+                let creations = Arc::clone(&creations);
+                std::thread::spawn(move || {
+                    if slot.lock().is_some() {
+                        return; // fast path: already created
+                    }
+                    let gate = manager.creation_gate("proj:rust");
+                    let _guard = gate.lock();
+                    if slot.lock().is_some() {
+                        return; // recheck under gate: loser returns
+                    }
+                    let cur = active.fetch_add(1, Ordering::SeqCst) + 1;
+                    max_active.fetch_max(cur, Ordering::SeqCst);
+                    std::thread::sleep(Duration::from_millis(5));
+                    *slot.lock() = Some("proj:rust".to_string());
+                    creations.fetch_add(1, Ordering::SeqCst);
+                    active.fetch_sub(1, Ordering::SeqCst);
+                })
+            })
+            .collect();
+        for h in handles {
+            h.join().unwrap();
+        }
+        assert_eq!(
+            max_active.load(Ordering::SeqCst),
+            1,
+            "creation critical sections must not overlap"
+        );
+        assert_eq!(
+            creations.load(Ordering::SeqCst),
+            1,
+            "concurrent same-key creation must happen exactly once"
+        );
+    }
+
+    /// Slow-path errors must release the gate: concurrent same-key failures
+    /// (unknown language → no spawn attempted) all return, and a follow-up
+    /// call still proceeds instead of deadlocking on a wedged gate.
+    #[test]
+    fn concurrent_failed_creation_never_wedges_gate() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+
+        let manager = Arc::new(LspManager::new_default());
+        let errors = Arc::new(AtomicUsize::new(0));
+        let handles: Vec<_> = (0..4)
+            .map(|_| {
+                let manager = Arc::clone(&manager);
+                let errors = Arc::clone(&errors);
+                std::thread::spawn(move || {
+                    match manager.get_or_create_session("/test/project", "no-such-lang-xyz", None) {
+                        Ok(_) => panic!("unknown language must not create a session"),
+                        Err(_) => {
+                            errors.fetch_add(1, Ordering::SeqCst);
+                        }
+                    }
+                })
+            })
+            .collect();
+        for h in handles {
+            h.join().unwrap();
+        }
+        assert_eq!(errors.load(Ordering::SeqCst), 4);
+        assert!(manager
+            .get_or_create_session("/test/project", "no-such-lang-xyz", None)
+            .is_err());
+    }
+
+    /// Known language without AppHandle fails after the gate (no spawn), and
+    /// the gate is released so the next call proceeds identically.
+    #[test]
+    fn get_or_create_without_app_handle_errors_and_releases_gate() {
+        let manager = LspManager::new_default();
+        assert!(manager
+            .get_or_create_session("/test/project", "rust", None)
+            .is_err());
+        assert!(manager
+            .get_or_create_session("/test/project", "rust", None)
+            .is_err());
     }
 }

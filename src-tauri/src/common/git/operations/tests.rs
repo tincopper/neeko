@@ -1,6 +1,14 @@
+// `use super::*` 提供 mod.rs 的 `pub use <op>::*`（被 re-export 的操作函数）。
+// 原先还依赖 mod.rs 里为 re-export 而写的普通 `use`，那条泄漏已封堵，
+// 故此处显式引入所需类型/函数（AGENTS.md 规则 #9：mod.rs 只留声明与 pub use）。
 use super::*;
+
+use anyhow::Result;
+
 use crate::common::executor::factory::ExecTarget;
-use crate::common::git::transport::{GitExecOptions, GitTransport};
+use crate::common::git::transport::{ErrorKind, GitExecError, GitExecOptions, GitTransport};
+use crate::common::git::types::DiffLine;
+use crate::core::exec::collect;
 
 // ── resolve_worktree_path ─────────────────────────────────────────────
 
@@ -36,7 +44,7 @@ use tempfile::tempdir;
 
 /// 在测试中执行本地 git 命令（async，走统一接口）。
 async fn git_local(path: &str, args: &[&str]) -> crate::common::executor::ExecOutput {
-    collect_in_dir(&ExecTarget::Local, "git", args, Some(path))
+    collect(&ExecTarget::Local, "git", args, Some(path))
         .await
         .expect("run git command")
 }

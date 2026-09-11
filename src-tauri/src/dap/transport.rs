@@ -7,7 +7,7 @@ use std::time::Duration;
 
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::net::TcpStream;
-use tokio::sync::{mpsc, oneshot, Mutex};
+use tokio::sync::{mpsc, oneshot, Mutex, Notify};
 
 use super::types::{AdapterSpawn, AdapterTransport};
 use crate::common::executor::{BoxAsyncRead, BoxAsyncWrite};
@@ -50,8 +50,8 @@ pub async fn connect_transport(
     stdout: BoxAsyncRead,
     stderr: BoxAsyncRead,
     stdin: BoxAsyncWrite,
-    kill_tx: oneshot::Sender<()>,
-) -> Result<(DapIo, oneshot::Sender<()>), AppError> {
+    kill: Arc<Notify>,
+) -> Result<DapIo, AppError> {
     let stderr_buf = Arc::new(Mutex::new(String::new()));
     let (proc_out_tx, proc_out_rx) = mpsc::unbounded_channel::<(String, String)>();
 
@@ -113,7 +113,7 @@ pub async fn connect_transport(
             let addr = match tokio::time::timeout(Duration::from_secs(10), addr_rx).await {
                 Ok(Ok(Ok(a))) => a,
                 Ok(Ok(Err(e))) => {
-                    let _ = kill_tx.send(());
+                    kill.notify_one();
                     let detail = stderr_buf.lock().await.clone();
                     let detail = detail.trim();
                     return Err(AppError::Dap(if detail.is_empty() {
@@ -123,7 +123,7 @@ pub async fn connect_transport(
                     }));
                 }
                 Ok(Err(_)) | Err(_) => {
-                    let _ = kill_tx.send(());
+                    kill.notify_one();
                     return Err(AppError::Dap(
                         "Timed out waiting for DAP server listen address \
                          (dlv did not print \"DAP server listening at: …\")"
@@ -135,7 +135,7 @@ pub async fn connect_transport(
             let stream = match TcpStream::connect(&addr).await {
                 Ok(s) => s,
                 Err(e) => {
-                    let _ = kill_tx.send(());
+                    kill.notify_one();
                     return Err(AppError::Dap(format!(
                         "Failed to connect to DAP server at {addr}: {e}"
                     )));
@@ -149,17 +149,12 @@ pub async fn connect_transport(
         }
     };
 
-    // TcpListen error paths already consumed kill_tx via send(); success paths
-    // still hold it for the process kill callback.
-    Ok((
-        DapIo {
-            reader,
-            writer,
-            proc_out_rx,
-            stderr_buf,
-        },
-        kill_tx,
-    ))
+    Ok(DapIo {
+        reader,
+        writer,
+        proc_out_rx,
+        stderr_buf,
+    })
 }
 
 /// Read process pipe line-by-line and forward (category, line).

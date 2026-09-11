@@ -36,15 +36,15 @@ export interface UnifiedGutterOptions {
   onColumnLeave: (view: EditorView) => boolean;
 }
 
-/** 同行冲突规则（最小实现：test-run 优先硬规则）。
+/** 同行冲突规则（最小实现：run 优先硬规则）。
  *
  * 用例属性行（Rust `#[test]`/`#[tokio::test]` 行）只显示 play 图标，不提供断点：
- * 同行同时有 test-run 与 breakpoint 片段时丢弃断点片段（active 红点与 hover
+ * 同行同时有 run 与 breakpoint 片段时丢弃断点片段（active 红点与 hover
  * ghost 同理丢弃——ghost 只是 breakpoint 贡献的另一种 payload）。
  * 扩展点：后续贡献（coverage 等）若需与断点互斥，把互斥声明收敛到此一处
  * （如 `excludes: ['breakpoint']` 注册表），合并器按声明过滤，不碰各贡献。
  */
-const CONFLICT_WINNER = 'test-run';
+const CONFLICT_WINNER = 'run';
 const CONFLICT_LOSER = 'breakpoint';
 
 /** payload 值比较：JSON 语义相等即相等（payload 契约为纯数据，见 GutterHit）。 */

@@ -3,8 +3,8 @@
 use anyhow::Result;
 
 use crate::common::executor::factory::ExecTarget;
-use crate::common::executor::sync::exec_on;
 use crate::common::utils::command::local::safe_path;
+use crate::core::exec::run;
 
 use super::{classify_stderr, shell_quote, GitExecError};
 
@@ -24,7 +24,7 @@ pub(crate) async fn run_git_wsl(
     config_args.push("--".to_string());
     config_args.extend(args.iter().map(|a| shell_quote(a)));
     let cmd = format!("cd '{sp}' && {}git {}", env_prefix, config_args.join(" "));
-    exec_on(target, "bash", &["-c", &cmd]).await.map_err(|e| {
+    run(target, "bash", &["-c", &cmd]).await.map_err(|e| {
         GitExecError {
             kind: classify_stderr(&e.to_string()),
             stderr: e.to_string(),
@@ -39,5 +39,5 @@ pub(crate) async fn run_git_wsl(
 pub(crate) async fn is_git_repo_wsl(target: &ExecTarget, path: &str) -> bool {
     let sp = safe_path(path);
     let cmd = format!("test -e '{sp}/.git'");
-    exec_on(target, "bash", &["-c", &cmd]).await.is_ok()
+    run(target, "bash", &["-c", &cmd]).await.is_ok()
 }

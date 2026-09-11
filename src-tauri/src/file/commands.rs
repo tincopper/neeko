@@ -130,7 +130,7 @@ pub async fn write_file_content(
     let (t, wd) = state.resolve_project(&project_id)?;
     let target = t;
     let base = resolve_base(&target, &root_path, &wd)?;
-    crate::common::file::services::write_file_content(&target, base, &file_path, &content).await
+    crate::common::file::services::write_file_content(&target, base, &file_path, content).await
 }
 
 /// Create a new empty file (with parent directories).
@@ -160,7 +160,7 @@ pub async fn save_new_file(
     let (t, wd) = state.resolve_project(&project_id)?;
     let target = t;
     let base = resolve_base(&target, &root_path, &wd)?;
-    crate::common::file::services::save_new_file(&target, base, &directory, &filename, &content)
+    crate::common::file::services::save_new_file(&target, base, &directory, &filename, content)
         .await
 }
 

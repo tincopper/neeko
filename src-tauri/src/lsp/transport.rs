@@ -3,6 +3,8 @@
 //! Defines the [`LspTransport`] trait and the default [`IpcTransport`] implementation.
 use tauri::Emitter;
 
+use super::types::{LSP_DIAG_EVENT_PREFIX, LSP_PROGRESS_EVENT_PREFIX};
+
 /// Trait for delivering LSP-originated data to the frontend.
 ///
 /// Current implementation uses Tauri IPC events. A future WebSocket
@@ -68,7 +70,7 @@ impl IpcTransport {
 
 impl LspTransport for IpcTransport {
     fn push_diagnostics(&self, project_path: &str, uri: &str, diagnostics: serde_json::Value) {
-        let event_name = format!("lsp-diagnostics-{}", project_path);
+        let event_name = format!("{}{}", LSP_DIAG_EVENT_PREFIX, project_path);
         let payload = serde_json::json!({
             "uri": uri,
             "diagnostics": diagnostics,
@@ -92,7 +94,7 @@ impl LspTransport for IpcTransport {
         message: Option<&str>,
         percentage: Option<u32>,
     ) {
-        let event_name = format!("lsp-progress-{}", project_path);
+        let event_name = format!("{}{}", LSP_PROGRESS_EVENT_PREFIX, project_path);
         let kind_str = match kind {
             ProgressKind::Begin => "begin",
             ProgressKind::Report => "report",

@@ -1,11 +1,11 @@
-use super::super::types::{LspInstallMethod, LspPlugin};
+use super::super::types::{InstallOp, LspInstallMethod, LspPlugin};
 
 const TS_SERVER: &str = "typescript-language-server";
 const TS_CMD: &[&str] = &["typescript-language-server", "--stdio"];
-const TS_INSTALL: LspInstallMethod = LspInstallMethod {
-    prerequisite: "npm",
-    command: &["npm", "install", "-g", "typescript-language-server"],
-};
+const TS_INSTALL: LspInstallMethod = LspInstallMethod::new(
+    "npm",
+    InstallOp::exec("npm", &["install", "-g", "typescript-language-server"]),
+);
 
 pub fn plugins() -> Vec<LspPlugin> {
     vec![

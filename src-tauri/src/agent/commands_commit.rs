@@ -2,7 +2,7 @@
 
 use crate::common::agent::services::commit as ai_svc;
 use crate::common::executor::factory::ExecTarget;
-use crate::common::executor::sync::exec_on;
+use crate::core::exec::run;
 use crate::AppError;
 use crate::AppStateWrapper;
 use tauri::State;
@@ -130,7 +130,7 @@ async fn run_agent_exec(
 
     log::info!("[AI commit {label}] agent_cmd='{}'", agent_cmd);
 
-    match exec_on(&target, "bash", &["-c", &actual_cmd]).await {
+    match run(&target, "bash", &["-c", &actual_cmd]).await {
         Ok(o) => {
             log::info!("[AI commit {label}] success, stdout_len={}", o.len());
             Ok(o)

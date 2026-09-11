@@ -1,4 +1,4 @@
-use super::super::types::{LspInstallMethod, LspPlugin};
+use super::super::types::{InstallOp, LspInstallMethod, LspPlugin};
 
 pub fn plugins() -> Vec<LspPlugin> {
     vec![LspPlugin::builtin(
@@ -6,10 +6,10 @@ pub fn plugins() -> Vec<LspPlugin> {
         &["php"],
         "intelephense",
         &["intelephense", "--stdio"],
-        Some(LspInstallMethod {
-            prerequisite: "npm",
-            command: &["npm", "install", "-g", "intelephense"],
-        }),
+        Some(LspInstallMethod::new(
+            "npm",
+            InstallOp::exec("npm", &["install", "-g", "intelephense"]),
+        )),
     )
     .with_detect_priority(65)]
 }

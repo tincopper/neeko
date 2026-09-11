@@ -1,13 +1,16 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import * as lspApi from '../api/lspApi';
+import { LANGUAGE_BY_EXTENSION } from '@/shared/utils/languageRegistry';
+
 import {
+  LSP_EXTENSIONS,
   applyCustomServersFromConfig,
   cacheLiveLanguageResolution,
   getLspLanguageId,
   resolveLspLanguageId,
   setCustomLspExtensionMap,
 } from '../languageMap';
+import * as lspApi from '../lspApi';
 
 describe('languageMap', () => {
   beforeEach(() => {
@@ -76,5 +79,13 @@ describe('resolveLspLanguageId', () => {
 
     const id = await resolveLspLanguageId('main.py');
     expect(id).toBe('python');
+  });
+});
+
+describe('LSP 覆盖度护栏', () => {
+  it('LSP_EXTENSIONS 均收录于 languageRegistry 词表（新增扩展名只改词表）', () => {
+    expect(LSP_EXTENSIONS.length).toBeGreaterThan(0);
+    const missing = LSP_EXTENSIONS.filter((ext) => !LANGUAGE_BY_EXTENSION[ext]);
+    expect(missing).toEqual([]);
   });
 });

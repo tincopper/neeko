@@ -1,7 +1,6 @@
 import { Download, ExternalLink, Server, Star } from 'lucide-react';
 import React, { useCallback } from 'react';
 
-// eslint-disable-next-line import/no-restricted-paths -- market card opens repo via browser API
 import { openInDefaultBrowser } from '@/features/browser/api/browserApi';
 import type { McpRegistrySummary } from '@/features/library/api/libraryApi';
 import { cn } from '@/lib/utils';

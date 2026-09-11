@@ -9,35 +9,51 @@
  * registry (custom plugins) is authoritative; the local map is a sync cache.
  */
 
-import * as lspApi from './api/lspApi';
+import { LANGUAGE_BY_EXTENSION, extensionOf } from '@/shared/utils/languageRegistry';
 
-const BUILTIN_LSP_LANGUAGE_MAP: Record<string, string> = {
-  rs: 'rust',
-  py: 'python',
-  ts: 'typescript',
-  tsx: 'typescriptreact',
-  js: 'javascript',
-  jsx: 'javascriptreact',
-  go: 'go',
-  java: 'java',
-  rb: 'ruby',
-  php: 'php',
-  c: 'c',
-  h: 'c',
-  cpp: 'cpp',
-  hpp: 'cpp',
-  cc: 'cpp',
-  cxx: 'cpp',
-  cs: 'csharp',
-  swift: 'swift',
-  kt: 'kotlin',
-  kts: 'kotlin',
-  lua: 'lua',
-  ex: 'elixir',
-  exs: 'elixir',
-  r: 'r',
-  sql: 'sql',
-};
+import * as lspApi from './lspApi';
+
+/**
+ * LSP 同步缓存覆盖的扩展名（**不带点**）。
+ *
+ * 覆盖范围是 LSP 子系统的产品决定（决定哪些文件会尝试拉起语言服务器）；
+ * **语言名**一律取自 `@/shared/utils/languageRegistry`（唯一事实源）。
+ * `languageMap.test.ts` 锁定两者不得漂移。
+ */
+export const LSP_EXTENSIONS: readonly string[] = [
+  'rs',
+  'py',
+  'ts',
+  'tsx',
+  'js',
+  'jsx',
+  'go',
+  'java',
+  'rb',
+  'php',
+  'c',
+  'h',
+  'cpp',
+  'hpp',
+  'cc',
+  'cxx',
+  'cs',
+  'swift',
+  'kt',
+  'kts',
+  'lua',
+  'ex',
+  'exs',
+  'r',
+  'sql',
+];
+
+const BUILTIN_LSP_LANGUAGE_MAP: Readonly<Record<string, string>> = Object.fromEntries(
+  LSP_EXTENSIONS.flatMap((ext) => {
+    const language = LANGUAGE_BY_EXTENSION[ext];
+    return language ? [[ext, language] as const] : [];
+  }),
+);
 
 /** Custom overrides (extension without dot → languageId). Later wins. */
 let customExtMap: Record<string, string> = {};
@@ -75,13 +91,6 @@ export function applyCustomServersFromConfig(
     }
   }
   customExtMap = next;
-}
-
-function extensionOf(filePath: string): string {
-  const base = filePath.replace(/\\/g, '/').split('/').pop() ?? filePath;
-  const dot = base.lastIndexOf('.');
-  if (dot <= 0 || dot === base.length - 1) return '';
-  return base.slice(dot + 1).toLowerCase();
 }
 
 export function getLspLanguageId(filePath: string): string | null {

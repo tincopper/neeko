@@ -1,4 +1,4 @@
-use super::super::types::{LspInstallMethod, LspPlugin};
+use super::super::types::{InstallOp, LspInstallMethod, LspPlugin};
 
 pub fn plugins() -> Vec<LspPlugin> {
     vec![LspPlugin::builtin(
@@ -6,10 +6,10 @@ pub fn plugins() -> Vec<LspPlugin> {
         &["rs"],
         "rust-analyzer",
         &["rust-analyzer"],
-        Some(LspInstallMethod {
-            prerequisite: "rustup",
-            command: &["rustup", "component", "add", "rust-analyzer"],
-        }),
+        Some(LspInstallMethod::new(
+            "rustup",
+            InstallOp::exec("rustup", &["component", "add", "rust-analyzer"]),
+        )),
     )
     .with_root_markers(&["Cargo.toml"])
     .with_detect_priority(10)]

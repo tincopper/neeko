@@ -28,7 +28,8 @@ pub async fn discover_opencode_models(
         path
     );
 
-    discover_opencode_models_with(|| exec::collect(&target, &path, &["models", "--verbose"])).await
+    discover_opencode_models_with(|| exec::collect(&target, &path, &["models", "--verbose"], None))
+        .await
 }
 
 /// Injectable core of [`discover_opencode_models`]: the caller supplies how to fetch `ExecOutput`.

@@ -1,32 +1,29 @@
-import { closeSearchPanel, openSearchPanel, searchPanelOpen } from '@codemirror/search';
 import type { EditorView } from '@codemirror/view';
-import React, { useCallback, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { useCmdHeld } from '@/features/lsp';
+import { useLspStore } from '@/features/lsp/store/lspStore';
 import { cn } from '@/lib/utils';
 import ContextMenu from '@/shared/components/ContextMenu';
-import { useAppContext } from '@/shared/contexts';
-import { useLspStore } from '@/shared/store/lspStore';
-import { useNotificationStore } from '@/shared/store/notificationStore';
 import { useProjectStore } from '@/shared/store/projectStore';
 import type { AppTheme, FileTab } from '@/shared/types';
+import { canonicalFsPath } from '@/shared/utils/fileRef';
 import { isImageFile } from '@/shared/utils/fileTree';
+import { tabLspDocumentUri } from '@/shared/utils/jdt';
 
-import { useFileActionsContext } from '../FileActionsContext';
 import { useEditorBreakpoints } from '../hooks/useEditorBreakpoints';
 import { useEditorExtensions } from '../hooks/useEditorExtensions';
 import { useEditorSave } from '../hooks/useEditorSave';
 import { useEditorViewSnapshot } from '../hooks/useEditorViewSnapshot';
+import { useFileEditorCallbacks } from '../hooks/useFileEditorCallbacks';
 import { useFileEditorState } from '../hooks/useFileEditorState';
 import { useLspClient } from '../hooks/useLspClient';
 import { useLspNavigation } from '../hooks/useLspNavigation';
-import { useTestRunActions } from '../hooks/useTestRunActions';
+import { useRunActions } from '../hooks/useRunActions';
 import { useUnifiedGutterExtension } from '../hooks/useUnifiedGutter';
 
-import EditorHeader from './EditorHeader';
+import FileEditorFallback, { fileEditorFallbackKind } from './FileEditorFallback';
 import FileEditorView from './FileEditorView';
-import ImageFileView from './ImageFileView';
-import UneditableFileView from './UneditableFileView';
 
 interface FileEditorProps {
   tab: FileTab;
@@ -63,15 +60,12 @@ function FileEditor({
   /** Bumped when EditorView mounts so debug highlight can re-apply. */
   const [editorViewEpoch, setEditorViewEpoch] = useState(0);
 
-  // DAP breakpoints (absolute path for adapter)
-  const absFilePath = useMemo(() => {
-    const fp = tab.filePath;
-    if (fp.startsWith('/') || /^[A-Za-z]:[\\/]/.test(fp)) return fp;
-    if (!projectPath) return fp;
-    const base = projectPath.replace(/[/\\]+$/, '');
-    const rel = fp.replace(/^[/\\]+/, '');
-    return `${base}/${rel}`.replace(/\\/g, '/');
-  }, [projectPath, tab.filePath]);
+  // DAP breakpoints（adapter 需要绝对路径）：filePath 恒为 canonical 绝对（jdt
+  // 展示路径除外——断点对虚拟文档本就无意义），lexical 归一即可，不再内联拼根。
+  const absFilePath = useMemo(
+    () => canonicalFsPath(projectPath ?? '', tab.filePath),
+    [projectPath, tab.filePath],
+  );
 
   const {
     previewMode,
@@ -109,18 +103,41 @@ function FileEditor({
       editorViewEpoch,
     });
 
+  // hover 的 jdt:// 链接 → 跳转的晚绑定：useLspClient 需要稳定回调（共享 client
+  // 首建时捕获），而 navigateToLocation 属于其后的 useLspNavigation —— 经 ref 解耦，
+  // 双向均不感知对方（回调签名只收 uri，语义同 Cmd+Click 跳转）。
+  const openJdtLinkRef = useRef<((uri: string) => void) | null>(null);
+
   const { lspLanguageIdRef, lspClientExt, linkHighlightExt } = useLspClient({
     projectPath,
     filePath: tab.filePath,
+    virtualUri: tab.virtualUri ?? tabLspDocumentUri(tab),
+    onOpenJdtLink: useCallback((uri: string) => openJdtLinkRef.current?.(uri), []),
   });
 
-  const { lspKeymap, cmdClickExt } = useLspNavigation({
+  const { lspKeymap, cmdClickExt, navigateToLocation } = useLspNavigation({
     projectPath,
     tabKey,
     tab,
     lspLanguageIdRef,
     editorViewRef,
   });
+
+  useEffect(() => {
+    openJdtLinkRef.current = (uri: string) => {
+      void navigateToLocation(
+        { uri, range: { start: { line: 0, character: 0 }, end: { line: 0, character: 0 } } },
+        projectPath ?? '',
+        tabKey,
+        tab.projectId,
+        tab.filePath,
+        null,
+      );
+    };
+    return () => {
+      openJdtLinkRef.current = null;
+    };
+  }, [navigateToLocation, projectPath, tabKey, tab.projectId, tab.filePath]);
 
   const { handleCreateEditor, viewStateExt, resetEditorRestored } = useEditorViewSnapshot({
     tabKey,
@@ -158,22 +175,21 @@ function FileEditor({
   // Determine if file can be edited
   const canEdit = !tab.readOnly && !tab.content.is_binary && tab.content.size <= 512 * 1024;
 
-  // 测试运行动作（TS 点击直跑 → Task Console，
-  // Rust 点击弹 Run/Debug 下拉菜单 → Run 走 Task Console / Debug 走 lldb 会话）
-  const { handleRunTest, menu, menuItems, openMenu, closeMenu } = useTestRunActions({
+  // 可运行动作（TS 点击直跑 → Task Console；Rust/Go/Java 测试用例与 main 入口
+  // 点击弹 Run/Debug 下拉菜单 → Run 走 Task Console / Debug 走 DAP 会话）
+  const { handleRun, menu, menuItems, openMenu, closeMenu } = useRunActions({
     projectId: tab.projectId,
     filePath: tab.filePath,
     projectPath,
   });
-  // 统一 gutter 单列：断点红点常驻 + 测试 play 标记叠加（可编辑测试文件）。
-  // 替代旧双列（cm-breakpoint-gutter + cm-test-run-gutter）：同一 markers 来源
-  // 合并断点状态与用例检测，同行共存时渲染组合 cell，可分别点击。
+  // 统一 gutter 单列：断点红点常驻 + 可运行 play 标记叠加（测试用例与 main 共用）。
   const bpGutterExt = useUnifiedGutterExtension({
     projectId: tab.projectId,
     absFilePath,
     fileName: tab.filePath,
     enabled: canEdit,
-    onRun: handleRunTest,
+    // onRun 仅 TS 用例触发（扩展内 targetLang==='ts' 才直跑），单一 handleRun 直接接管
+    onRun: handleRun,
     onMenuRequest: openMenu,
   });
 
@@ -202,71 +218,19 @@ function FileEditor({
     cmdHeld && 'cmd-held',
     isJumping && 'lsp-jumping',
   );
-  // Markdown / HTML preview 模式下点击内部链接时打开目标文件
-  const { onFileSelect } = useFileActionsContext();
-  const handleInternalLinkClick = useCallback(
-    async (absPath: string) => {
-      if (!onFileSelect) return;
-      const ok = await onFileSelect(absPath);
-      if (!ok) {
-        useNotificationStore
-          .getState()
-          .addNotification({ type: 'error', title: '无法打开文件', message: absPath });
-      }
-    },
-    [onFileSelect],
-  );
+  const { handleInternalLinkClick, handleOpenSearch, handleOpenAI } = useFileEditorCallbacks({
+    editorViewRef,
+  });
 
-  // 页内内容搜索：标题栏「搜索」按钮开合 CodeMirror 查找面板（Ctrl+F 由 searchKeymap 承担）
-  const handleOpenSearch = useCallback(() => {
-    const view = editorViewRef.current;
-    if (!view) return;
-    if (searchPanelOpen(view.state)) closeSearchPanel(view);
-    else openSearchPanel(view);
-  }, []);
-
-  // AI 助手：占位入口，后续接入 Agent 选择器
-  const { showToast } = useAppContext();
-  const handleOpenAI = useCallback(() => {
-    showToast('AI 助手功能即将接入', 'info');
-  }, [showToast]);
-
-  // Binary / oversized → 不可编辑占位视图；本地二进制图片走图片预览（分支仍在编排层）
-  if (tab.content.is_binary) {
-    if (isBinaryImage) {
-      return (
-        <div className="flex-1 flex flex-col">
-          <EditorHeader
-            filePath={tab.filePath}
-            projectPath={projectPath}
-            isDirty={false}
-            isMd={false}
-            isHtml={false}
-            isSvg={false}
-            isJson={false}
-            previewMode="preview"
-            onTogglePreview={() => {}}
-          />
-          <ImageFileView absPath={absFilePath} fileName={tab.fileName} />
-        </div>
-      );
-    }
+  // 二进制（含本地图片预览）/ 超大文件 → 只读兜底视图（分支判定见 fileEditorFallbackKind）。
+  const fallbackKind = fileEditorFallbackKind(tab, isBinaryImage);
+  if (fallbackKind) {
     return (
-      <UneditableFileView
-        filePath={tab.filePath}
+      <FileEditorFallback
+        kind={fallbackKind}
+        tab={tab}
         projectPath={projectPath}
-        size={tab.content.size}
-        message="Binary file — cannot be displayed"
-      />
-    );
-  }
-  if (tab.content.size > 512 * 1024) {
-    return (
-      <UneditableFileView
-        filePath={tab.filePath}
-        projectPath={projectPath}
-        size={tab.content.size}
-        message="File too large to edit (> 500 KB)"
+        absFilePath={absFilePath}
       />
     );
   }
@@ -312,7 +276,7 @@ function FileEditor({
         onCreateAgentTab={handleCreateTab}
       />
 
-      {/* 测试运行下拉菜单（Rust 用例 gutter 图标点击触发；选择后/Esc/外点关闭） */}
+      {/* Run/Debug 下拉菜单（Rust/Go/Java 用例与 main 入口共用；选择后/Esc/外点关闭） */}
       {menu && (
         <ContextMenu position={{ x: menu.x, y: menu.y }} items={menuItems} onClose={closeMenu} />
       )}

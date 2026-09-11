@@ -12,6 +12,7 @@ import {
   getLanguageExtension,
   isMarkdownFile,
 } from '@/shared/utils/codemirror';
+import { relativeToRoot } from '@/shared/utils/fileRef';
 import { isHtmlFile, isJsonFile, isSvgFile } from '@/shared/utils/fileTree';
 
 import type { PreviewMode } from '../types';
@@ -89,7 +90,9 @@ export function useFileEditorState({ tab, projectPath }: UseFileEditorStateParam
       const message = buildCodeMessage(
         action,
         {
-          filePath: tab.filePath,
+          // 发给 agent 的路径保持项目相对（可读性，与 tab 相对存储时代一致）；
+          // tab.filePath 已 canonical 绝对，剥根转换仅用于消息文本。
+          filePath: relativeToRoot(projectPath ?? '', tab.filePath),
           startLine: selectionLines.startLine,
           endLine: selectionLines.endLine,
         },
@@ -101,7 +104,7 @@ export function useFileEditorState({ tab, projectPath }: UseFileEditorStateParam
         setToolbarPos(null);
       }
     },
-    [selectionLines, tab.filePath, currentProjectIdForToolbar, sendToAgent],
+    [selectionLines, tab.filePath, projectPath, currentProjectIdForToolbar, sendToAgent],
   );
 
   const { addTab: addTerminalTab } = useTerminalTabs();

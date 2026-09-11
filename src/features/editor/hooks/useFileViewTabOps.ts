@@ -9,6 +9,7 @@ import { useProjectStore } from '@/shared/store/projectStore';
 import type { FileContent, Tab } from '@/shared/types';
 import type { ProjectCommands } from '@/shared/types/activeProject';
 import { clearViewSnapshot, clearAllForTabKey } from '@/shared/utils/editorViewState';
+import { canonicalFsPath } from '@/shared/utils/fileRef';
 import { getFileName, getTabId, isFileTab } from '@/shared/utils/fileTree';
 import { parseProjectIdFromTabKey } from '@/shared/utils/tabKey';
 
@@ -33,11 +34,17 @@ export function useFileViewTabOps({
    * Open a file - adds a new tab or activates existing tab
    */
   const openFile = useCallback(
-    async (filePath: string): Promise<boolean> => {
+    async (rawPath: string): Promise<boolean> => {
       const tk = tabKeyRef.current;
       if (!tk) return false;
 
       const projectId = parseProjectIdFromTabKey(tk);
+      // 身份根与后端 resolve_base 对齐：worktree 激活用 worktree 根，否则项目根
+      const projectPath =
+        useProjectStore.getState().projects.find((p) => p.id === projectId)?.path ?? '';
+      const identityRoot = worktreePathRef.current ?? projectPath;
+      const filePath = canonicalFsPath(identityRoot, rawPath);
+      const rootPath = worktreePathRef.current ?? undefined;
       const tabId = getTabId(tk, filePath);
 
       // If tab already exists, re-read content from disk and activate
@@ -46,7 +53,6 @@ export function useFileViewTabOps({
       if (existingTab) {
         if (existingTab.data.kind === 'file') {
           try {
-            const rootPath = worktreePathRef.current ?? undefined;
             const cmds = externalCommandsRef.current;
             const newContent = cmds
               ? await cmds.readFileContent(filePath, rootPath)
@@ -78,7 +84,6 @@ export function useFileViewTabOps({
       // Load file content — 不触碰文件树 loading 状态（树加载由 store.loadDir 独立治理）
       setError(null);
       try {
-        const rootPath = worktreePathRef.current ?? undefined;
         const cmds = externalCommandsRef.current;
         let content: FileContent;
         if (cmds) {

@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 pub const LSP_DIAG_EVENT_PREFIX: &str = "lsp-diagnostics-";
 
 /// Prefix for LSP progress events: `lsp-progress-{project_path}`.
-pub const LSP_PROGRESS_EVENT_PREFIX: &str = "lsp-project-";
+pub const LSP_PROGRESS_EVENT_PREFIX: &str = "lsp-progress-";
 
 /// Auto-install progress event: `lsp-install-progress`
 /// (frontend mirror: `src/shared/events.ts` `LSP_INSTALL_PROGRESS_EVENT`).
@@ -86,6 +86,16 @@ impl LspServerInfo {
     }
 }
 
+/// Split `"name (commit date)"` → `("commit date", "name")`.
+///
+/// Returns `None` when there is no well-formed trailing/parenthetical group, so the
+/// caller keeps its line-derived fallback instead of branching three levels deep.
+fn split_parenthetical(text: &str) -> Option<(&str, &str)> {
+    let open = text.rfind('(')?;
+    let close = text[open..].find(')')?;
+    Some((text[open + 1..open + close].trim(), text[..open].trim()))
+}
+
 /// Best-effort parse of language-server `--version` stdout/stderr.
 ///
 /// Handles common shapes:
@@ -110,26 +120,17 @@ pub fn parse_server_version_output(output: &str) -> LspServerInfo {
     let mut build_date = String::new();
 
     // Prefer parenthetical: (commit date) or (commit)
-    if let Some(open) = line.rfind('(') {
-        if let Some(close) = line[open..].find(')') {
-            let inner = line[open + 1..open + close].trim();
-            let parts: Vec<&str> = inner.split_whitespace().collect();
-            if let Some(first) = parts.first() {
-                // The parenthetical opens with the short commit hash (when present).
-                if !first.is_empty() {
-                    commit = (*first).to_string();
-                }
-            }
-            if parts.len() >= 2 {
-                let maybe_date = parts[1];
-                if maybe_date.len() >= 8 && maybe_date.contains('-') {
-                    build_date = maybe_date.to_string();
-                }
-            }
-            // version is last token before '('
-            let before = line[..open].trim();
-            version = extract_version_token(before).unwrap_or_else(|| before.to_string());
+    if let Some((inner, before)) = split_parenthetical(&line) {
+        let parts: Vec<&str> = inner.split_whitespace().collect();
+        // The parenthetical opens with the short commit hash (when present).
+        if let Some(first) = parts.first().filter(|f| !f.is_empty()) {
+            commit = (*first).to_string();
         }
+        if let Some(date) = parts.get(1).filter(|d| d.len() >= 8 && d.contains('-')) {
+            build_date = (*date).to_string();
+        }
+        // version is last token before '('
+        version = extract_version_token(before).unwrap_or_else(|| before.to_string());
     }
 
     if version.is_empty() {
@@ -170,6 +171,23 @@ fn extract_version_token(s: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// 事件名 / 前缀是对外协议（前端 `src/shared/events.ts` 镜像）。
+    /// 值一旦漂移，前端 `listen` 会**静默失联** —— 历史上 `LSP_PROGRESS_EVENT_PREFIX`
+    /// 就曾写成 `lsp-project-`（与实际 emit 的 `lsp-progress-` 不符）。这里钉死线上格式。
+    #[test]
+    fn event_names_match_frontend_mirror() {
+        assert_eq!(
+            format!("{}{}", LSP_DIAG_EVENT_PREFIX, "/p"),
+            "lsp-diagnostics-/p"
+        );
+        assert_eq!(
+            format!("{}{}", LSP_PROGRESS_EVENT_PREFIX, "/p"),
+            "lsp-progress-/p"
+        );
+        assert_eq!(LSP_INSTALL_PROGRESS_EVENT, "lsp-install-progress");
+        assert_eq!(LSP_PROFILE_EVENT, "lsp-project-profile");
+    }
 
     #[test]
     fn parse_rust_analyzer_version() {

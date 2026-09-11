@@ -4,6 +4,7 @@ import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest';
 
 import {
   isBenignWarning,
+  normalizeErrorMessage,
   reportFrontendError,
   resetFrontendErrorThrottle,
   setErrorNotifier,
@@ -149,5 +150,18 @@ describe('reportFrontendError 良性警告豁免', () => {
 
     expect(mockedInvoke).toHaveBeenCalledTimes(1);
     expect(mockNotify).not.toHaveBeenCalled();
+  });
+});
+
+describe('normalizeErrorMessage', () => {
+  it('裸 "Request timed out" 改写为带来源的英文提示', () => {
+    expect(normalizeErrorMessage('Request timed out')).toBe(
+      'LSP request timed out (language server did not respond in time)',
+    );
+  });
+
+  it('其他消息原样保留', () => {
+    expect(normalizeErrorMessage('boom')).toBe('boom');
+    expect(normalizeErrorMessage('')).toBe('');
   });
 });

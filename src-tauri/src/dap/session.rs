@@ -14,12 +14,14 @@ use tokio::sync::{oneshot, Mutex};
 
 use super::adapter::{self, DebugAdapterPlugin};
 use super::client::{DapClient, DapEventHandler};
+use super::events::{DAP_EVENT, DAP_SESSION_STATUS_EVENT};
 use super::process;
 use super::types::{
     BreakpointSpec, ControlAction, DapEventPayload, DapSessionInfo, HandshakeOrder, LaunchConfig,
     SessionStatus, StackFrameDto, VariableDto,
 };
 use crate::common::executor::factory::ExecTarget;
+use crate::common::executor::ProcessGuard;
 use crate::AppError;
 
 static NEXT_SESSION: AtomicI64 = AtomicI64::new(1);
@@ -38,7 +40,7 @@ pub struct DapSession {
     status_message: Mutex<Option<String>>,
     last_thread_id: Mutex<i64>,
     client: Arc<DapClient>,
-    kill: Mutex<Option<Box<dyn FnOnce() + Send>>>,
+    kill: Mutex<Option<ProcessGuard>>,
     stopped_waiters: Mutex<Vec<oneshot::Sender<()>>>,
     terminated_emitted: AtomicBool,
     app: AppHandle,
@@ -118,7 +120,7 @@ impl DapSession {
             .resolve_spawn(&target, adapter_binary.as_deref())
             .await?;
         let adapter_proc = process::spawn_adapter(&target, &project_path, &spawn).await?;
-        let process::AdapterProcess { io, kill: kill_fn } = adapter_proc;
+        let process::AdapterProcess { io, guard } = adapter_proc;
         let stderr_buf = Arc::clone(&io.stderr_buf);
         let mut proc_out_rx = io.proc_out_rx;
 
@@ -138,7 +140,7 @@ impl DapSession {
                 status_message: Mutex::new(None),
                 last_thread_id: Mutex::new(1),
                 client,
-                kill: Mutex::new(Some(kill_fn)),
+                kill: Mutex::new(Some(guard)),
                 stopped_waiters: Mutex::new(Vec::new()),
                 terminated_emitted: AtomicBool::new(false),
                 app: app.clone(),
@@ -170,8 +172,10 @@ impl DapSession {
             .await;
 
         if let Err(e) = handshake {
-            if let Some(kill) = session.kill.lock().await.take() {
-                kill();
+            // 先取走守卫、释放锁，再 await 终止（禁止跨 await 持锁）。
+            let guard = session.kill.lock().await.take();
+            if let Some(guard) = guard {
+                guard.terminate().await;
             }
             let detail = stderr_buf.lock().await.clone();
             let detail = detail.trim().to_string();
@@ -219,6 +223,8 @@ impl DapSession {
         let launch_args = plugin.build_launch_args(config, project_path)?;
         let stop_on_entry = config.stop_on_entry.unwrap_or(false);
         let entry_fn = plugin.entry_function_for_stop_on_entry(stop_on_entry);
+        // 请求命令名：Go/Lldb 为 launch；Java attach-first 为 attach。
+        let start_cmd = plugin.launch_request_command();
 
         match plugin.handshake_order() {
             HandshakeOrder::LaunchBeforeBreakpoints => {
@@ -228,9 +234,9 @@ impl DapSession {
                 )
                 .await;
                 self.client
-                    .request_timeout("launch", launch_args, Duration::from_secs(180))
+                    .request_timeout(start_cmd, launch_args, Duration::from_secs(180))
                     .await
-                    .map_err(|e| AppError::Dap(format!("launch failed: {e}")))?;
+                    .map_err(|e| AppError::Dap(format!("{start_cmd} failed: {e}")))?;
                 self.client
                     .wait_for_initialized(Duration::from_secs(30))
                     .await?;
@@ -245,9 +251,9 @@ impl DapSession {
                 self.apply_breakpoints(breakpoints, entry_fn).await;
                 let _ = self.client.request("configurationDone", json!({})).await;
                 self.client
-                    .request_timeout("launch", launch_args, Duration::from_secs(60))
+                    .request_timeout(start_cmd, launch_args, Duration::from_secs(60))
                     .await
-                    .map_err(|e| AppError::Dap(format!("launch failed: {e}")))?;
+                    .map_err(|e| AppError::Dap(format!("{start_cmd} failed: {e}")))?;
             }
             HandshakeOrder::PipelinedLaunch => {
                 // lldb-dap (LLVM 22+)：launch 请求内启动进程并**门控响应**——
@@ -261,17 +267,17 @@ impl DapSession {
                 )
                 .await;
                 self.apply_breakpoints(breakpoints, entry_fn).await;
-                let launch_rx = self.client.send_request("launch", launch_args).await?;
+                let start_rx = self.client.send_request(start_cmd, launch_args).await?;
                 self.client
                     .wait_for_initialized(Duration::from_secs(30))
                     .await?;
                 let _ = self.client.request("configurationDone", json!({})).await;
                 let resp = self
                     .client
-                    .await_response("launch", launch_rx, Duration::from_secs(180))
+                    .await_response(start_cmd, start_rx, Duration::from_secs(180))
                     .await
-                    .map_err(|e| AppError::Dap(format!("launch failed: {e}")))?;
-                self.client.finish_request("launch", resp).await?;
+                    .map_err(|e| AppError::Dap(format!("{start_cmd} failed: {e}")))?;
+                self.client.finish_request(start_cmd, resp).await?;
             }
         }
 
@@ -621,8 +627,9 @@ impl DapSession {
             .client
             .request("disconnect", json!({ "terminateDebuggee": true }))
             .await;
-        if let Some(kill) = self.kill.lock().await.take() {
-            kill();
+        let guard = self.kill.lock().await.take();
+        if let Some(guard) = guard {
+            guard.terminate().await;
         }
         self.finish_terminated(Some("Stopped".into()), json!({ "reason": "stopped" }))
             .await;
@@ -643,7 +650,21 @@ impl DapSession {
     async fn set_status(&self, status: SessionStatus, message: Option<String>) {
         *self.status.lock().await = status;
         *self.status_message.lock().await = message;
-        let _ = self.app.emit("dap-session-status", self.info().await);
+        let _ = self.app.emit(DAP_SESSION_STATUS_EVENT, self.info().await);
+    }
+
+    /// Forward an external process line (e.g. Java debuggee JVM stdout) as a
+    /// DAP `output` event. Body shape matches the adapter proc_out fan-in
+    /// (`{ category, output }`), so the frontend renders it identically.
+    pub(crate) async fn emit_output(&self, category: &str, line: &str) {
+        self.emit_event(
+            "output",
+            json!({
+                "category": category,
+                "output": format!("{line}\n"),
+            }),
+        )
+        .await;
     }
 
     async fn emit_event(&self, kind: &str, body: Value) {
@@ -653,7 +674,7 @@ impl DapSession {
             kind: kind.to_string(),
             body,
         };
-        if let Err(e) = self.app.emit("dap-event", &payload) {
+        if let Err(e) = self.app.emit(DAP_EVENT, &payload) {
             log::warn!("[DAP] emit failed: {e}");
         }
     }

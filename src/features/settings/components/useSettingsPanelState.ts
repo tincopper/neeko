@@ -5,7 +5,6 @@ import type { AgentConfig, AppConfig, DiffMode } from '@/shared/types';
 import { IDE_PRESETS, getIdeCommand } from '@/shared/utils/idePresets';
 import type { IdePreset } from '@/shared/utils/idePresets';
 
-// eslint-disable-next-line import/no-restricted-paths -- settings panel state management needs agent API
 import { addAgent, removeAgent } from '../../agent/api/agentApi';
 import { getSystemFonts, resetSystemFonts } from '../api/settingsApi';
 

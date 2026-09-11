@@ -10,11 +10,8 @@ import {
 } from 'lucide-react';
 import React, { useState, useEffect, useCallback } from 'react';
 
-// eslint-disable-next-line import/no-restricted-paths -- skill view dialog opens browser via browser API
 import { openInDefaultBrowser } from '@/features/browser/api/browserApi';
-// eslint-disable-next-line import/no-restricted-paths -- skill view dialog reveals files via file API
 import { revealInFileManager } from '@/features/file/api/fileApi';
-// eslint-disable-next-line import/no-restricted-paths -- skill view dialog reads app config
 import { useAppConfig } from '@/features/settings';
 import { getSkillDocumentAtPath } from '@/features/skill/api/skillApi';
 import { useSkillStore } from '@/features/skill/store';

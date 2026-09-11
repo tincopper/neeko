@@ -1,0 +1,233 @@
+import { Compartment, EditorState } from '@codemirror/state';
+import { EditorView } from '@codemirror/view';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+
+import {
+  createRunCodelensCore,
+  runCodelensConfig,
+  runCodelensField,
+  RunMarker,
+  type RunTarget,
+  type RunCodelensConfig,
+} from '../runContribution';
+
+function collectMarkers(view: EditorView): Array<{ from: number; marker: RunMarker }> {
+  const doc = view.state.doc;
+  const markers = view.state.field(runCodelensField);
+  const out: Array<{ from: number; marker: RunMarker }> = [];
+  const iter = markers.iter(0);
+  while (iter.value && iter.from < doc.length) {
+    out.push({ from: iter.from, marker: iter.value });
+    iter.next();
+  }
+  return out;
+}
+
+const TS_DOC = ["describe('math', () => {", "  it('adds', () => {});", '});'].join('\n');
+const RUST_DOC = '#[test]\nfn parse_simple() {}\n#[tokio::test]\nasync fn other() {}';
+const GO_MAIN_DOC = ['package main', '', 'func main() {', '\tprintln("hi")', '}'].join('\n');
+const RUST_MAIN_DOC = ['fn main() {', '\tprintln!("hi");', '}'].join('\n');
+const JAVA_MAIN_DOC = [
+  'package com.example;',
+  '',
+  'public class App {',
+  '    public static void main(String[] args) {',
+  '        System.out.println("hi");',
+  '    }',
+  '}',
+].join('\n');
+
+function makeConfig(overrides: Partial<RunCodelensConfig> = {}): RunCodelensConfig {
+  return {
+    fileName: 'a.test.ts',
+    onRun: vi.fn(),
+    onMenuRequest: vi.fn(),
+    ...overrides,
+  };
+}
+
+function makeView(doc: string, config: RunCodelensConfig) {
+  const parent = document.createElement('div');
+  document.body.appendChild(parent);
+  const view = new EditorView({
+    state: EditorState.create({
+      doc,
+      extensions: [createRunCodelensCore(config)],
+    }),
+    parent,
+  });
+  return view;
+}
+
+describe('runCodelens gutter field', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('should_mark_ts_test_lines_with_run_markers', () => {
+    const config = makeConfig();
+    const view = makeView(TS_DOC, config);
+    const markers = collectMarkers(view);
+    expect(markers).toHaveLength(1);
+    expect(markers[0].from).toBe(view.state.doc.line(2).from);
+    expect(markers[0].marker.target).toEqual({
+      kind: 'test',
+      testCase: { name: 'adds', line: 2, lang: 'ts' },
+    });
+    view.destroy();
+  });
+
+  it('should_mark_rust_test_fn_lines_with_markers', () => {
+    const config = makeConfig({ fileName: 'lib.rs' });
+    const view = makeView(RUST_DOC, config);
+    const markers = collectMarkers(view);
+    expect(markers).toHaveLength(2);
+    expect(markers[0].marker.target).toEqual({
+      kind: 'test',
+      testCase: { name: 'parse_simple', line: 1, lang: 'rust' },
+    });
+    expect(markers[1].marker.target).toMatchObject({ kind: 'test' });
+    view.destroy();
+  });
+
+  it('should_mark_go_main_with_the_same_run_marker_machinery', () => {
+    const view = makeView(GO_MAIN_DOC, makeConfig({ fileName: 'cmd/agent/main.go' }));
+    const markers = collectMarkers(view);
+    expect(markers).toHaveLength(1);
+    expect(markers[0].from).toBe(view.state.doc.line(3).from);
+    expect(markers[0].marker.target).toEqual({ kind: 'main', entry: { line: 3, language: 'go' } });
+    view.destroy();
+  });
+
+  it('should_mark_rust_and_java_main_with_same_machinery', () => {
+    const rust = makeView(RUST_MAIN_DOC, makeConfig({ fileName: 'src/main.rs' }));
+    expect(collectMarkers(rust)[0].marker.target).toEqual({
+      kind: 'main',
+      entry: { line: 1, language: 'rust' },
+    });
+    rust.destroy();
+
+    const java = makeView(
+      JAVA_MAIN_DOC,
+      makeConfig({ fileName: 'src/main/java/com/example/App.java' }),
+    );
+    const javaMarkers = collectMarkers(java);
+    expect(javaMarkers[0].marker.target).toEqual({
+      kind: 'main',
+      entry: { line: 4, language: 'java' },
+    });
+    java.destroy();
+  });
+
+  it('should_merge_rust_main_and_tests_in_line_order', () => {
+    // 同一 .rs 既有 main 又有测试、且 main 在测试之前：两路检测（测试先、
+    // main 后）的产出若直接喂 RangeSetBuilder 会乱序 panic，必须先按行号归并。
+    const doc = ['fn main() {}', '', '#[test]', 'fn t() {}'].join('\n');
+    const view = makeView(doc, makeConfig({ fileName: 'src/main.rs' }));
+    const markers = collectMarkers(view);
+    expect(markers.map((m) => m.marker.target)).toEqual([
+      { kind: 'main', entry: { line: 1, language: 'rust' } },
+      { kind: 'test', testCase: { name: 't', line: 3, lang: 'rust' } },
+    ]);
+    view.destroy();
+  });
+
+  it('should_not_mark_non_test_files_without_main', () => {
+    const config = makeConfig({ fileName: 'plain.ts' });
+    const view = makeView(TS_DOC, config);
+    expect(collectMarkers(view)).toHaveLength(0);
+    view.destroy();
+  });
+
+  it('should_not_mark_rust_file_without_tests_or_main', () => {
+    const config = makeConfig({ fileName: 'plain.rs' });
+    const view = makeView('fn helper() {}\nfn other() {}', config);
+    expect(collectMarkers(view)).toHaveLength(0);
+    view.destroy();
+  });
+
+  it('should_rebuild_when_config_facet_changes', () => {
+    const compartment = new Compartment();
+    const parent = document.createElement('div');
+    document.body.appendChild(parent);
+    const configA = makeConfig({ fileName: 'a.test.ts' });
+    const configB = makeConfig({ fileName: 'plain.ts' });
+    const view = new EditorView({
+      state: EditorState.create({
+        doc: TS_DOC,
+        extensions: [compartment.of(runCodelensConfig.of(configA)), runCodelensField],
+      }),
+      parent,
+    });
+    expect(collectMarkers(view)).toHaveLength(1);
+
+    view.dispatch({ effects: compartment.reconfigure(runCodelensConfig.of(configB)) });
+    // Same doc but config now claims a plain ts file: no runnables.
+    expect(collectMarkers(view)).toHaveLength(0);
+    view.destroy();
+  });
+
+  it('should_reparse_after_doc_change_once_debounce_elapses', () => {
+    const config = makeConfig();
+    const view = makeView(TS_DOC, config);
+    expect(collectMarkers(view)).toHaveLength(1);
+
+    view.dispatch({
+      changes: { from: view.state.doc.length, insert: "\nit('later', () => {});" },
+    });
+    // Stale until the debounce fires — no immediate full reparse per keystroke.
+    expect(collectMarkers(view)).toHaveLength(1);
+
+    vi.advanceTimersByTime(400);
+    const markers = collectMarkers(view);
+    expect(markers).toHaveLength(2);
+    expect(markers[1].marker.target).toEqual({
+      kind: 'test',
+      testCase: { name: 'later', line: 4, lang: 'ts' },
+    });
+    view.destroy();
+  });
+
+  it('should_coalesce_rapid_doc_changes_into_single_reparse', () => {
+    const config = makeConfig();
+    const view = makeView(TS_DOC, config);
+
+    view.dispatch({ changes: { from: 0, insert: 'x' } });
+    vi.advanceTimersByTime(100);
+    view.dispatch({ changes: { from: 0, insert: 'y' } });
+    vi.advanceTimersByTime(100);
+    view.dispatch({ changes: { from: 0, insert: 'z' } });
+    vi.advanceTimersByTime(400);
+
+    // Debounce refreshed exactly once — final state consistent, no throw.
+    expect(collectMarkers(view).length).toBeGreaterThan(0);
+    view.destroy();
+  });
+});
+
+describe('runCodelens marker DOM', () => {
+  it('should_render_play_icon_without_click_routing', () => {
+    // 点击路由已移入统一 gutter 列级委托（registry.test.ts 覆盖 TS 直跑 /
+    // Rust rect 锚点菜单）；图标本体为纯视觉片段。
+    const config = makeConfig();
+    const icon = new RunMarker({
+      kind: 'test',
+      testCase: { name: 'adds', line: 2, lang: 'ts' },
+    }).toDOM();
+    expect(icon.querySelector('svg')).not.toBeNull();
+    expect(icon.title).toBe('Run test');
+    icon.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+    expect(config.onRun).not.toHaveBeenCalled();
+    expect(config.onMenuRequest).not.toHaveBeenCalled();
+  });
+
+  it('should_render_main_marker_with_same_icon_but_main_title', () => {
+    const mainTarget: RunTarget = { kind: 'main', entry: { line: 3, language: 'go' } };
+    const icon = new RunMarker(mainTarget).toDOM();
+    expect(icon.querySelector('svg')).not.toBeNull();
+    expect(icon.title).toBe('Run or Debug main');
+  });
+});

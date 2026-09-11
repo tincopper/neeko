@@ -181,7 +181,7 @@ impl CommandExecutor for SshExecutor {
         let stdout: BoxAsyncRead = Box::pin(RusshReadAdapter::new(stdout_rx));
         let stderr: BoxAsyncRead = Box::pin(RusshReadAdapter::new(stderr_rx));
         let wait = wait_from_watch(exit_rx);
-        let kill = kill_for(handle, remote_pid);
+        let kill = kill_for(handle, remote_pid, opts.kill_tree);
 
         Ok(ExecChild::new_with_pid(
             Some(stdin),
@@ -297,9 +297,12 @@ async fn wait_from_watch(
     }
 }
 
+/// 远端终止：`kill_tree` 时先按**进程组**杀（sshd 为每个会话 `setsid`，故会话内
+/// 命令与其后代同组），组不存在再回退直接杀该 pid —— 一条命令覆盖两种语义。
 fn kill_for(
     handle: Handle<Client>,
     pid: u32,
+    kill_tree: bool,
 ) -> impl FnOnce() -> Pin<Box<dyn std::future::Future<Output = Result<(), ExecError>> + Send>>
        + Send
        + 'static {
@@ -309,7 +312,11 @@ fn kill_for(
                 .channel_open_session()
                 .await
                 .map_err(|e| ExecError::Ssh(format!("kill channel: {e}")))?;
-            let kill_cmd = format!("kill -9 {}", pid);
+            let kill_cmd = if kill_tree {
+                format!("kill -9 -{pid} 2>/dev/null || kill -9 {pid} 2>/dev/null || true")
+            } else {
+                format!("kill -9 {pid} 2>/dev/null || true")
+            };
             kc.exec(true, kill_cmd.as_bytes())
                 .await
                 .map_err(|e| ExecError::Ssh(format!("kill exec: {e}")))?;

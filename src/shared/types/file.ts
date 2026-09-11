@@ -87,6 +87,8 @@ export interface FileTab {
   untitledName?: string;
   /** 只读 tab（如 LSP 跳转打开的项目外定义文件）：不可编辑。 */
   readOnly?: boolean;
+  /** LSP 虚拟文档 uri（如 jdtls 的 `jdt://` 类文件）；语义见 FileTabData.virtualUri。 */
+  virtualUri?: string;
 }
 
 export interface FileChangedEvent {

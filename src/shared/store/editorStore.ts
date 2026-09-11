@@ -278,6 +278,12 @@ interface EditorStoreState {
     tabId: string,
     partial: Partial<TabData> & { title?: string },
   ) => void;
+  /**
+   * 重命名 tab 身份（改 id）：Save As 等「身份迁移」场景——untitled id 迁移到
+   * canonical path id。保持 order / 双组归属 / pinned / 激活（tab 级与全局级）
+   * 一致；目标 id 已被占用或 old id 不存在时无变化。
+   */
+  renameTab: (projectId: string, oldTabId: string, newTabId: string) => void;
   clearProjectTabs: (projectId: string) => void;
 
   splitRight: (tabKey: string, tabId: string) => void;
@@ -641,6 +647,54 @@ export const useEditorStore = create<EditorStoreState>((set) => ({
             tabs: existing.tabs.map((t) => (t.id === tabId ? updatedTab : t)),
           },
         },
+      };
+    }),
+
+  renameTab: (projectId, oldTabId, newTabId) =>
+    set((state) => {
+      if (oldTabId === newTabId) return state;
+      const existing = state.tabs[projectId];
+      if (!existing) return state;
+      if (!existing.tabs.some((t) => t.id === oldTabId)) return state;
+      // 目标 id 已被其他 tab 占用 → 拒绝（身份必须保持唯一）
+      if (existing.tabs.some((t) => t.id === newTabId)) return state;
+
+      const tabs = existing.tabs.map((t) => (t.id === oldTabId ? { ...t, id: newTabId } : t));
+      const activeTabId = existing.activeTabId === oldTabId ? newTabId : existing.activeTabId;
+
+      const layout = state.editorLayout[projectId];
+      const newEditorLayout = layout
+        ? {
+            ...state.editorLayout,
+            [projectId]: {
+              ...layout,
+              pinnedTabIds: layout.pinnedTabIds.map((id) => (id === oldTabId ? newTabId : id)),
+              pinnedActiveTabId:
+                layout.pinnedActiveTabId === oldTabId ? newTabId : layout.pinnedActiveTabId,
+              groups: {
+                left: {
+                  tabIds: layout.groups.left.tabIds.map((id) => (id === oldTabId ? newTabId : id)),
+                  activeTabId:
+                    layout.groups.left.activeTabId === oldTabId
+                      ? newTabId
+                      : layout.groups.left.activeTabId,
+                },
+                right: {
+                  tabIds: layout.groups.right.tabIds.map((id) => (id === oldTabId ? newTabId : id)),
+                  activeTabId:
+                    layout.groups.right.activeTabId === oldTabId
+                      ? newTabId
+                      : layout.groups.right.activeTabId,
+                },
+              },
+            },
+          }
+        : state.editorLayout;
+
+      return {
+        tabs: { ...state.tabs, [projectId]: { tabs, activeTabId } },
+        activeTabId: state.activeTabId === oldTabId ? newTabId : state.activeTabId,
+        editorLayout: newEditorLayout,
       };
     }),
 

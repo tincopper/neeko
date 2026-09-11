@@ -1,14 +1,14 @@
 /**
  * 用例级测试状态 store（P1：结构化结果流 → gutter ✓/✗）。
  *
- * 就近放 editor feature：gutter 状态贡献（同域）与 Run 链路（useTestRunActions）
+ * 就近放 editor feature：gutter 状态贡献（同域）与 Run 链路（useRunActions）
  * 直接消费，不跨 feature（AGENTS.md 防火墙）。
  *
  * 数据模型：key = {projectId, filePath} → {running, cases: caseName → 状态}。
  * caseName 为源码侧用例名（parseTestCases 产物）——Run 链路先 parse + matchCaseName
  * 对齐（utils/testResultParsers）再落库，store 对行号一无所知：行号是文档态，
  * 与 CM StateField 双份维护必然漂移；line → caseName 的映射由 gutter 贡献经
- * testCodelensField 完成（任务指定 statusForLine 的职责拆分，偏离点已记录 implement.md）。
+ * runCodelensField 完成（任务指定 statusForLine 的职责拆分，偏离点已记录 implement.md）。
  *
  * 响应式契约：每次变更 bump 该文件 version —— gutter 的 test-status core
  * 订阅 version 触发一次 CM 刷新 dispatch（markers() 重读 store）。

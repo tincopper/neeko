@@ -12,19 +12,9 @@ import { useProjectStore } from '@/shared/store/projectStore';
 import { useWorktreeStore } from '@/shared/store/worktreeStore';
 import type { Tab } from '@/shared/types';
 import { preloadLanguageExtension } from '@/shared/utils/codemirror';
+import { canonicalFsPath } from '@/shared/utils/fileRef';
 import { getFileName, getTabId } from '@/shared/utils/fileTree';
 import { resolveTabKey } from '@/shared/utils/tabKey';
-
-/** Convert absolute path to project-relative if under workspace. */
-export function toProjectRelative(projectPath: string, absPath: string): string {
-  const normProj = projectPath.replace(/\\/g, '/').replace(/\/+$/, '');
-  const normFile = absPath.replace(/\\/g, '/');
-  if (normFile.startsWith(normProj + '/')) {
-    return normFile.slice(normProj.length + 1);
-  }
-  if (normFile === normProj) return normFile;
-  return absPath;
-}
 
 export async function openSourceAtLine(
   projectId: string,
@@ -35,9 +25,9 @@ export async function openSourceAtLine(
 ): Promise<void> {
   // Fall back to active project path when session snapshot is incomplete.
   const resolvedProjectPath = projectPath || useProjectStore.getState().activeProject?.path || '';
-  const filePath = resolvedProjectPath
-    ? toProjectRelative(resolvedProjectPath, sourcePath)
-    : sourcePath.replace(/\\/g, '/');
+  // DAP 源路径是绝对路径：直接 canonical 存储（不再相对化——tab 身份恒为
+  // canonical 绝对路径；后端 read_file_content 对绝对 path 自身消费）。
+  const filePath = canonicalFsPath(resolvedProjectPath, sourcePath);
   preloadLanguageExtension(filePath);
 
   const activeWorktree = useWorktreeStore.getState().activeWorktreePath;

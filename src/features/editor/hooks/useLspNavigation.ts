@@ -1,13 +1,13 @@
 import { EditorView, keymap } from '@codemirror/view';
 import { useCallback, useMemo } from 'react';
 
+import { useLspDefinition } from '@/features/lsp';
 import {
-  fromFileUri,
+  jdtClassFileDisplayName,
   loadDefinitionTargetContent,
   showNavigationFailure,
-  toFileUri,
-  useLspDefinition,
-} from '@/features/lsp';
+} from '@/features/lsp/api/definitionTarget';
+import { fromFileUri, toFileUri } from '@/features/lsp/api/languageMap';
 import type { LspLocation } from '@/features/lsp/types';
 import { useSymbolNavStore } from '@/features/symbol-nav/store/symbolNavStore';
 import { useCodeMirrorBinding } from '@/shared/hooks/useResolvedShortcuts';
@@ -19,7 +19,9 @@ import {
 } from '@/shared/store/navigationHistoryStore';
 import type { FileTab, Tab } from '@/shared/types';
 import { getLanguageExtension, preloadLanguageExtension } from '@/shared/utils/codemirror';
+import { fileRefFromLspUri, fileRefFromTabPath, sameFile } from '@/shared/utils/fileRef';
 import { getFileName, getTabId } from '@/shared/utils/fileTree';
+import { isJdtUri, jdtDisplayPath, tabLspDocumentUri } from '@/shared/utils/jdt';
 
 import { applyNavigateCaret } from '../navigateCaret';
 
@@ -33,10 +35,6 @@ interface UseLspNavigationParams {
   editorViewRef: React.MutableRefObject<EditorView | null>;
 }
 
-/**
- * LSP 导航能力：go-to-definition / find-references / file structure 快捷键、
- * 跨文件导航（含历史记录与语言预加载）、Cmd+Click 跳转。
- */
 export function useLspNavigation({
   projectPath,
   tabKey,
@@ -51,13 +49,18 @@ export function useLspNavigation({
   const navigateToLocation = useCallback(
     async (
       location: LspLocation,
-      _projPath: string,
+      projPath: string,
       tKey: string,
       projId: string,
       currentFilePath: string,
       preloadedContent?: string | null,
     ) => {
-      const targetPath = fromFileUri(location.uri);
+      // jdt:// 类文件 uri 不是文件路径：映射为 `jdt:/<module>/<pkg>/<Name>.java`
+      // 展示路径（面包屑可读、.java 结尾让 getLanguageExtension 命中高亮；
+      // tab id / NavLocation 也用它，重跳转命中同一 tab）。file:// 原样。
+      const targetPath = isJdtUri(location.uri)
+        ? jdtDisplayPath(location.uri)
+        : fromFileUri(location.uri);
       const targetLine = location.range.start.line;
       const targetChar = location.range.start.character;
 
@@ -71,7 +74,13 @@ export function useLspNavigation({
       };
       recordNavigationJump(from, to);
 
-      if (targetPath === currentFilePath) {
+      // 同文件判定只在 FileRef 身份上比较（fileRef 是文件身份唯一所有权模块）：
+      // LSP uri 结构化解析为准，解析不出（罕见非 file/jdt scheme）时回退目标
+      // tab path。相对路径 tab（快速打开/最近文件）/绝对路径 tab/jdt 展示路径
+      // tab 三态一次归一——字符串直接比较永不相等，会把同文件跳转误开成重复
+      // tab；jdt uri 与其展示路径也收敛为同一身份。
+      const targetRef = fileRefFromLspUri(location.uri) ?? fileRefFromTabPath(projPath, targetPath);
+      if (sameFile(targetRef, fileRefFromTabPath(projPath, currentFilePath))) {
         // Same file – caret + flash + focus so the landing spot is obvious
         const v = editorViewRef.current;
         if (!v) return;
@@ -119,8 +128,11 @@ export function useLspNavigation({
             is_binary: false,
           };
         } else {
+          // preauth 桶键是 fs path（后端 record/check 一致），UUID 在此恒 miss；
+          // projId 只用于 NavLocation/tab 键，门控一律走 projPath。
           const loaded = await loadDefinitionTargetContent(
             projId,
+            projPath,
             lspLanguageIdRef.current ?? '',
             location.uri,
           );
@@ -133,18 +145,26 @@ export function useLspNavigation({
           isExternalReadonly = loaded.kind === 'external-readonly';
         }
 
+        // jdt:// 目标：标题取类文件显示名（uri `?` 前最后一段）；tab 的
+        // filePath / id 已用 jdt 展示路径（见上），内容只读。file:// 目标沿用路径推导。
+        const title = isJdtUri(location.uri)
+          ? jdtClassFileDisplayName(location.uri)
+          : getFileName(targetPath);
         const newTab: Tab = {
           id: targetTabId,
           projectId: projId,
-          title: getFileName(targetPath),
+          title,
           order: 0,
           data: {
             kind: 'file' as const,
             filePath: targetPath,
-            fileName: getFileName(targetPath),
+            fileName: title,
             content,
             isDirty: false,
             readOnly: isExternalReadonly || undefined,
+            // 原始 jdt:// uri：tab 内发起的 LSP 请求（definition/hover/…）必须
+            // 带它，jdtls 才能定位 IClassFile（filePath 是展示路径，非有效文档）。
+            virtualUri: isJdtUri(location.uri) ? location.uri : undefined,
           },
         };
         useEditorStore.getState().addTab(tKey, newTab);
@@ -177,12 +197,15 @@ export function useLspNavigation({
       const lineObj = view.state.doc.lineAt(pos);
       const line = lineObj.number - 1;
       const character = pos - lineObj.from;
-      const uri = projectPath ? toFileUri(projectPath, tab.filePath) : '';
+      const uri =
+        tab.virtualUri ??
+        tabLspDocumentUri(tab) ??
+        (projectPath ? toFileUri(projectPath, tab.filePath) : '');
 
       // eslint-disable-next-line react-hooks/purity -- performance.now() in callback, not during render
       definition.goToDefinitionWithContent(lid, uri, line, character).then((result) => {
         if (!result) return;
-        preloadLanguageExtension(fromFileUri(result.location.uri));
+        preloadLanguageExtension(jdtDisplayPath(result.location.uri));
         navigateToLocation(
           result.location,
           projectPath,
@@ -204,7 +227,10 @@ export function useLspNavigation({
       const lineObj = view.state.doc.lineAt(pos);
       const line = lineObj.number - 1;
       const character = pos - lineObj.from;
-      const uri = projectPath ? toFileUri(projectPath, tab.filePath) : '';
+      const uri =
+        tab.virtualUri ??
+        tabLspDocumentUri(tab) ??
+        (projectPath ? toFileUri(projectPath, tab.filePath) : '');
 
       // Best-effort symbol name for the palette title
       const word = view.state.wordAt(pos);
@@ -232,7 +258,7 @@ export function useLspNavigation({
     const runFileStructure = (): boolean => {
       const lid = lspLanguageIdRef.current;
       if (!lid || !projectPath) return false;
-      const uri = toFileUri(projectPath, tab.filePath);
+      const uri = tab.virtualUri ?? tabLspDocumentUri(tab) ?? toFileUri(projectPath, tab.filePath);
       useSymbolNavStore.getState().openStructure({
         projectId: tab.projectId,
         projectPath,
@@ -256,9 +282,8 @@ export function useLspNavigation({
     return bindings.length > 0 ? keymap.of(bindings) : [];
   }, [
     projectPath,
-    tab.filePath,
+    tab,
     tabKey,
-    tab.projectId,
     definition,
     navigateToLocation,
     gotoDefCmKey,
@@ -281,5 +306,5 @@ export function useLspNavigation({
     navigateToLocation,
   });
 
-  return { lspKeymap, cmdClickExt };
+  return { lspKeymap, cmdClickExt, navigateToLocation };
 }

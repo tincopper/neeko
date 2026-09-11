@@ -8,7 +8,6 @@ import { useProjectStore } from '@/shared/store/projectStore';
 import type { AgentConfig, AppConfig } from '@/shared/types';
 import { Island } from '@/ui/Island';
 
-// eslint-disable-next-line import/no-restricted-paths -- settings view lists agents via agent API
 import { listAgents } from '../../agent/api/agentApi';
 
 import AboutPanel from './AboutPanel';

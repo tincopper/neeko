@@ -19,22 +19,40 @@ static INIT: OnceLock<()> = OnceLock::new();
 /// 平台解析逻辑已集中到 `crate::platform::host_path::resolve_host_path`。
 pub fn init_host_user_path() {
     INIT.get_or_init(|| {
-        let full_path = crate::platform::host_path::resolve_host_path();
-        if full_path.is_empty() {
-            log::warn!("[exec_env] Failed to resolve host user PATH, using process default");
-        } else {
-            log::info!(
-                "[exec_env] Resolved host user PATH (len={}), injecting into process env",
-                full_path.len()
+        let resolved = crate::platform::host_path::resolve_host_path();
+        if resolved.trim().is_empty() {
+            log::warn!(
+                "[exec_env] Failed to resolve host user PATH; falling back to the process PATH"
             );
-            // SAFETY: called once at process start before concurrent readers matter.
-            std::env::set_var("PATH", &full_path);
         }
+        // 回归背景：解析失败时曾直接把 PATH 写成 `~/.neeko/bin` —— 系统 PATH 被清空，
+        // `command_exists` / LocalExecutor 全线解析不到命令。解析结果为空一律回退进程
+        // 当前 PATH，再置顶 Neeko 自管目录。
+        let base = base_path(&resolved, &std::env::var("PATH").unwrap_or_default());
+        // Neeko 自管工具（如 jdtls 官方发行版下载生成的 `~/.neeko/bin/jdtls`）置顶，
+        // 确保下载式安装产物可被 `command_exists` / LocalExecutor 解析。
+        let full_path = crate::platform::host_path::prepend_neeko_bin(&base);
         log::info!(
-            "[exec_env] Effective PATH after resolve: {}",
-            std::env::var("PATH").unwrap_or_default()
+            "[exec_env] Injected host PATH (len={}), resolved={}",
+            full_path.len(),
+            !resolved.trim().is_empty()
         );
+        // SAFETY: called once at process start before concurrent readers matter.
+        std::env::set_var("PATH", &full_path);
     });
+}
+
+/// 选基准 PATH：host 解析结果非空则用之；为空（解析失败）回退进程当前 PATH。
+///
+/// 绝不返回空串后交给 `prepend_neeko_bin` —— 那会把 PATH 收窄成只剩
+/// `~/.neeko/bin`（见上方回归说明）。
+#[must_use]
+fn base_path(resolved: &str, process_path: &str) -> String {
+    if resolved.trim().is_empty() {
+        process_path.to_string()
+    } else {
+        resolved.to_string()
+    }
 }
 
 /// Current host PATH used for local binary resolution (after init).
@@ -54,6 +72,24 @@ pub(crate) fn local_command_exists(command: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn base_path_prefers_resolved_host_path_when_present() {
+        assert_eq!(
+            base_path("/opt/homebrew/bin:/usr/bin", "/fallback"),
+            "/opt/homebrew/bin:/usr/bin"
+        );
+    }
+
+    /// L9 回归：host PATH 解析失败（空/空白）必须回退进程当前 PATH ——
+    /// 此前会退化成只剩 `~/.neeko/bin`，系统命令全部解析不到。
+    #[test]
+    fn base_path_falls_back_to_process_path_when_resolution_empty() {
+        assert_eq!(base_path("", "/usr/bin:/bin"), "/usr/bin:/bin");
+        assert_eq!(base_path("   ", "/usr/bin:/bin"), "/usr/bin:/bin");
+        // 两者皆空 → 空串（后续仅剩 neeko bin，无可丢内容，非回归）
+        assert_eq!(base_path("", ""), "");
+    }
 
     #[test]
     fn should_report_false_for_nonexistent_local_command() {

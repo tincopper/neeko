@@ -1,7 +1,6 @@
 import { Pencil } from 'lucide-react';
 import React, { useState } from 'react';
 
-// eslint-disable-next-line import/no-restricted-paths -- settings UI displays agent capability badges + edit form
 import { AgentForm, CapabilityBadges } from '@/features/agent';
 import { cn } from '@/lib/utils';
 import { FolderIcon } from '@/shared/components/icons';

@@ -42,7 +42,7 @@ const FilesPanelWrapper: React.FC = React.memo(() => {
   const changedFiles = project?.gitInfo?.changed_files;
   // 定位当前编辑器 file tab 到文件树（复用面板内「点击选中」逻辑）
   const tabKey = project ? resolveTabKey(project.id, worktreePath) : '';
-  const { canLocateFile, filePath: locateTargetPath } = useLocateFileInTree(tabKey);
+  const { canLocateFile, filePath: locateTargetPath } = useLocateFileInTree(tabKey, fileRootPath);
 
   // Compute projectId for use by child components (drag-and-drop, etc.)
   const projectId = project ? (project.type === 'Local' ? activeProjectId : project.id) : null;

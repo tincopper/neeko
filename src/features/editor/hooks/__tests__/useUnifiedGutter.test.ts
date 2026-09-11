@@ -21,6 +21,21 @@ describe('useUnifiedGutterExtension', () => {
     expect(result.current).toHaveLength(1);
   });
 
+  it('should_enable_single_column_for_main_language_files', () => {
+    const { result } = renderHook(() =>
+      useUnifiedGutterExtension({
+        projectId: 'p1',
+        absFilePath: '/p/src/main.rs',
+        fileName: 'src/main.rs',
+        enabled: true,
+        onRun,
+        onMenuRequest,
+      }),
+    );
+    // .rs 文件进列：main 运行按钮与断点共用单列。
+    expect(result.current).toHaveLength(1);
+  });
+
   it('should_enable_breakpoint_column_for_non_test_files_with_context', () => {
     const { result } = renderHook(() =>
       useUnifiedGutterExtension({

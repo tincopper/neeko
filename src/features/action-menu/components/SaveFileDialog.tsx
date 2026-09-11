@@ -10,6 +10,8 @@ import { useEditorStore } from '@/shared/store/editorStore';
 import { useProjectStore } from '@/shared/store/projectStore';
 import { useWorktreeStore } from '@/shared/store/worktreeStore';
 import type { FileContent } from '@/shared/types';
+import { canonicalFsPath } from '@/shared/utils/fileRef';
+import { getTabId } from '@/shared/utils/fileTree';
 import {
   Dialog,
   DialogContent,
@@ -109,7 +111,6 @@ const SaveFileDialog: React.FC = () => {
 
     setSubmitting(true);
     setError(null);
-
     try {
       const relPath = await saveNewFile(
         request.projectId,
@@ -118,26 +119,45 @@ const SaveFileDialog: React.FC = () => {
         request.content,
         activeWorktreePath ?? undefined,
       );
+      // tab 身份恒为 canonical 绝对路径：Save As 根与 saveNewFile 的 resolve_base
+      // 对齐（worktree 激活用 worktree 根，否则项目根）
+      const saveRoot = activeWorktreePath ?? activeProject.path;
+      const canonicalPath = canonicalFsPath(saveRoot, relPath);
+      const newTabId = getTabId(request.tabKey, canonicalPath);
       const store = useEditorStore.getState();
+      // Save As 目标路径已作为 tab 打开（id 冲突）→ renameTab 会拒绝迁移
+      //（tab id 必须唯一）。磁盘已被新内容覆盖：关闭源 tab（untitled），激活
+      // 既有目标 tab，不残留「id 与 filePath 脱钩」的重复 tab。
+      const targetOpen = store.tabs[request.tabKey]?.tabs.some((t) => t.id === newTabId);
+      if (targetOpen) {
+        closeEditorTab(request.tabKey, request.tabId);
+        store.activateTab(request.tabKey, newTabId);
+        void refreshFileTree();
+        clearSaveAs();
+        return;
+      }
       store.updateTab(request.tabKey, request.tabId, {
-        filePath: relPath,
+        filePath: canonicalPath,
         title: fn,
         isDirty: false,
         isUntitled: false,
         initialPreviewMode: undefined,
         content: {
-          path: relPath,
+          path: canonicalPath,
           content: request.content,
           size: request.content.length,
           is_binary: false,
         } satisfies FileContent,
       });
+      // 修身份脱钩：updateTab 只改 data 不改 id，Save As 后必须把 tab.id 同步
+      // 迁移到新 canonical path 的身份（否则 id 与 filePath 永久不一致）。
+      store.renameTab(request.tabKey, request.tabId, newTabId);
       if (request.closeAfterSave) {
         // 关闭确认触发的 Save As：保存成功即关 tab（untitled「保存后关闭」闭环），
         // 无需再激活该 tab；经 terminal 门面保证 PTY 回收等清理一致。
-        closeEditorTab(request.tabKey, request.tabId);
+        closeEditorTab(request.tabKey, newTabId);
       } else {
-        store.activateTab(request.tabKey, request.tabId);
+        store.activateTab(request.tabKey, newTabId);
       }
       void refreshFileTree();
       clearSaveAs();

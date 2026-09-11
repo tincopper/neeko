@@ -4,8 +4,8 @@ use anyhow::Result;
 
 use crate::common::connection::types::AuthMethod;
 use crate::common::executor::factory::ExecTarget;
-use crate::common::executor::sync::exec_on;
 use crate::common::utils::command::local::safe_path;
+use crate::core::exec::run;
 use crate::project::types::{GitInfo, GitProvider};
 
 use super::parsers::parse_git_info_output;
@@ -33,7 +33,7 @@ pub async fn get_remote_git_info(
           && printf '\\n__REMOTE__\\n' \
           && git remote get-url origin 2>/dev/null"
     );
-    let output = exec_on(
+    let output = run(
         &ExecTarget::Remote {
             host: host.to_string(),
             port,

@@ -31,6 +31,16 @@ vi.mock('@/features/file/api/fileApi', () => ({
   ),
 }));
 
+// 项目路径 mock：openAgentFile 的相对路径拼根（canonicalFsPath root=projectPath）。
+const projectMock = vi.hoisted(() => ({
+  projects: [{ id: 'test-project', path: '/proj' }],
+}));
+
+vi.mock('@/shared/store/projectStore', () => ({
+  useProjectStore: (selector: (s: { projects: typeof projectMock.projects }) => unknown) =>
+    selector({ projects: projectMock.projects }),
+}));
+
 // 共享 mock 对象：openAgentFile 跳转编辑器时调用 addTab/activateTab（同 handleSend 的 updateTab）。
 const editorMock = vi.hoisted(() => ({
   tabs: {} as Record<string, unknown>,
@@ -402,7 +412,7 @@ describe('AgentChatTabView', () => {
       expect(editorMock.addTab).toHaveBeenCalledTimes(1);
     });
     const [, tab] = editorMock.addTab.mock.calls[0];
-    expect(tab.data).toMatchObject({ filePath: 'src/auth/session.ts' });
+    expect(tab.data).toMatchObject({ filePath: '/proj/src/auth/session.ts' });
   });
 
   it('分组折叠（≥2 连续 read_file）内的路径可点击打开文件（透传 onOpenFile）', async () => {
@@ -440,7 +450,7 @@ describe('AgentChatTabView', () => {
       expect(editorMock.addTab).toHaveBeenCalledTimes(1);
     });
     const [, tab] = editorMock.addTab.mock.calls[0];
-    expect(tab.data).toMatchObject({ filePath: 'src/a.ts' });
+    expect(tab.data).toMatchObject({ filePath: '/proj/src/a.ts' });
   });
 
   it('消息内相邻 tool blocks 合并分组：≥2 连续同类工具归入摘要行而非逐行散渲染', async () => {
@@ -577,10 +587,10 @@ describe('AgentChatTabView', () => {
     const [tabKey, tab] = editorMock.addTab.mock.calls[0];
     expect(tabKey).toBe('test-project');
     expect(tab).toMatchObject({
-      id: 'test-project:src/auth/session.ts',
+      id: 'test-project:/proj/src/auth/session.ts',
       projectId: 'test-project',
       title: 'session.ts',
-      data: { kind: 'file', filePath: 'src/auth/session.ts', isDirty: false },
+      data: { kind: 'file', filePath: '/proj/src/auth/session.ts', isDirty: false },
     });
   });
 
@@ -588,8 +598,8 @@ describe('AgentChatTabView', () => {
     await renderView();
     editorMock.tabs = {
       'test-project': {
-        tabs: [{ id: 'test-project:src/auth/session.ts', title: 'session.ts' }],
-        activeTabId: 'test-project:src/auth/session.ts',
+        tabs: [{ id: 'test-project:/proj/src/auth/session.ts', title: 'session.ts' }],
+        activeTabId: 'test-project:/proj/src/auth/session.ts',
       },
     };
     editorMock.addTab.mockClear();
@@ -609,7 +619,7 @@ describe('AgentChatTabView', () => {
     await waitFor(() => {
       expect(editorMock.activateTab).toHaveBeenCalledWith(
         'test-project',
-        'test-project:src/auth/session.ts',
+        'test-project:/proj/src/auth/session.ts',
       );
     });
     expect(editorMock.addTab).not.toHaveBeenCalled();

@@ -122,34 +122,56 @@ impl LspSession {
             std::mem::discriminant(&exec_target)
         );
 
-        let mut server_info = match crate::lsp::process::run_command_blocking(
-            &exec_target,
-            &cmd[0],
-            &["--version"],
-        ) {
-            Ok((_code, stdout, stderr)) => {
-                parse_server_version_output(if stdout.trim().is_empty() {
-                    &stderr
-                } else {
-                    &stdout
-                })
-            }
-            Err(e) => {
-                log::debug!(
-                    "[LSP] --version failed for {}: {} (continuing without metadata)",
-                    server_name,
-                    e
-                );
-                LspServerInfo::unknown()
+        // 探测策略由插件自带 tuning 声明（见 plugin/builtins/java.rs 的 jdtls
+        // 调优）：跳过探测的服务器版本降级为 unknown；其余限时 3s，超时组杀后
+        // 降级为无元数据。session 层不按语言名分支。
+        let mut server_info = if !plugin.tuning.version_probe {
+            LspServerInfo::unknown()
+        } else {
+            match crate::lsp::process::run_command_blocking(
+                &exec_target,
+                &cmd[0],
+                &["--version"],
+                std::time::Duration::from_secs(3),
+            ) {
+                Ok((_code, stdout, stderr)) => {
+                    parse_server_version_output(if stdout.trim().is_empty() {
+                        &stderr
+                    } else {
+                        &stdout
+                    })
+                }
+                Err(e) => {
+                    log::debug!(
+                        "[LSP] --version failed for {}: {} (continuing without metadata)",
+                        server_name,
+                        e
+                    );
+                    LspServerInfo::unknown()
+                }
             }
         };
 
         let args: Vec<&str> = cmd[1..].iter().map(|s| s.as_str()).collect();
+        // Tooling JDK 对齐（VSCode `java.jdt.ls.java.home` 语义）：由插件 tuning
+        // 声明是否需要注入（`java_home_from_path`），不再按语言名判断 —— 第二个
+        // Java 系服务器声明同一 tuning 即可，无需改此处。
+        let env: Vec<(String, String)> = if plugin.tuning.java_home_from_path {
+            crate::lsp::process::resolve_java_home(&exec_target)
+                .into_iter()
+                .map(|home| ("JAVA_HOME".to_string(), home))
+                .collect()
+        } else {
+            Vec::new()
+        };
+        let env_ref: Vec<(&str, &str)> =
+            env.iter().map(|(k, v)| (k.as_str(), v.as_str())).collect();
         let mut process = crate::lsp::process::spawn_lsp_process(
             &exec_target,
             &cmd[0],
             &args,
             Some(&workspace_root_str),
+            &env_ref,
         )
         .map_err(|e| anyhow::anyhow!("Failed to spawn LSP server {}: {}", server_name, e))?;
 
@@ -308,9 +330,11 @@ impl LspSession {
             "capabilities": build_client_capabilities(),
             "clientInfo": { "name": "neeko", "version": env!("CARGO_PKG_VERSION") }
         });
-        if let Some(opts) = plugin.initialization_options.clone() {
+        // JDT 扩展字段归属 initializationOptions（非 capabilities）。两者皆无时
+        // 不注入该键 —— 保持既有各语言 initialize 载荷不变（空对象注入是无谓变更）。
+        if let Some(init_options) = init_options_for(plugin) {
             if let Some(obj) = init_params.as_object_mut() {
-                obj.insert("initializationOptions".into(), opts);
+                obj.insert("initializationOptions".into(), init_options);
             }
         }
 
@@ -515,8 +539,47 @@ pub(crate) fn build_client_capabilities() -> Value {
     })
 }
 
-/// Extract server capabilities from an `initialize` response.
+/// Build the `initializationOptions` payload for a plugin, or `None` when the
+/// plugin declares neither options nor extended capabilities — callers must
+/// then omit the key entirely (an empty `{}` would be a gratuitous change to
+/// every other language's initialize payload).
+pub(crate) fn init_options_for(plugin: &LspPlugin) -> Option<Value> {
+    if plugin.initialization_options.is_none() && plugin.extended_client_capabilities.is_none() {
+        return None;
+    }
+    Some(merge_extended_client_capabilities_into_init_options(
+        plugin
+            .initialization_options
+            .clone()
+            .unwrap_or_else(|| serde_json::json!({})),
+        plugin,
+    ))
+}
+
+/// Merge plugin-declared `extendedClientCapabilities` into `initializationOptions`.
 ///
+/// JDT 只从 `initializationOptions.extendedClientCapabilities` 读取（见
+/// plugin/builtins/java.rs），`capabilities` 下的同名字段它永远看不见。
+/// Only plugins that declare them (currently java/jdtls) gain the extra key;
+/// all other languages get the input back byte-identical. Non-object input
+/// with declared caps cannot be merged, so a fresh object holding only the
+/// extra key is returned instead.
+pub(crate) fn merge_extended_client_capabilities_into_init_options(
+    mut init_options: Value,
+    plugin: &LspPlugin,
+) -> Value {
+    match plugin.extended_client_capabilities.clone() {
+        Some(extra) => match init_options.as_object_mut() {
+            Some(obj) => {
+                obj.insert("extendedClientCapabilities".into(), extra);
+                init_options
+            }
+            None => serde_json::json!({ "extendedClientCapabilities": extra }),
+        },
+        None => init_options,
+    }
+}
+
 /// When the server answered with an error (e.g. typescript-language-server
 /// failing to locate a TypeScript installation), the server's own message is
 /// surfaced instead of a bare "has no result", so the real cause is visible.
@@ -606,6 +669,8 @@ mod tests {
     #[test]
     fn client_capabilities_advertise_snippet_support() {
         let caps = build_client_capabilities();
+        // JDT 扩展字段走 initializationOptions：capabilities 下绝不能出现残留。
+        assert!(caps.get("extendedClientCapabilities").is_none());
         assert_eq!(
             caps["textDocument"]["completion"]["completionItem"]["snippetSupport"],
             json!(true),
@@ -627,6 +692,90 @@ mod tests {
             caps["textDocument"]["completion"]["completionItem"]["documentation"],
             json!(true),
             "documentation must be advertised so servers include per-item docs"
+        );
+    }
+
+    #[test]
+    fn merge_extended_capabilities_into_init_options_inserts_when_present() {
+        let plugin = LspPlugin::builtin("java", &["java"], "jdtls", &["jdtls"], None)
+            .with_extended_client_capabilities(serde_json::json!({
+                "classFileContentsSupport": true,
+                "progressReportProvider": true,
+                "resolveAdditionalTextEditsSupport": true
+            }));
+        // 空对象基底：仅插入 extendedClientCapabilities。
+        let merged = merge_extended_client_capabilities_into_init_options(json!({}), &plugin);
+        assert_eq!(
+            merged["extendedClientCapabilities"]["classFileContentsSupport"],
+            json!(true)
+        );
+        assert_eq!(
+            merged["extendedClientCapabilities"]["progressReportProvider"],
+            json!(true)
+        );
+        assert_eq!(
+            merged["extendedClientCapabilities"]["resolveAdditionalTextEditsSupport"],
+            json!(true)
+        );
+        // 预置键保留：插件原有 initializationOptions 键不受影响。
+        let merged =
+            merge_extended_client_capabilities_into_init_options(json!({ "existing": 1 }), &plugin);
+        assert_eq!(merged["existing"], json!(1));
+        assert_eq!(
+            merged["extendedClientCapabilities"]["classFileContentsSupport"],
+            json!(true)
+        );
+    }
+
+    #[test]
+    fn merge_extended_capabilities_into_init_options_passthrough_without_field() {
+        let plugin = LspPlugin::builtin("rust", &["rs"], "rust-analyzer", &["rust-analyzer"], None);
+        let before = json!({ "existing": 1 });
+        let after = merge_extended_client_capabilities_into_init_options(before.clone(), &plugin);
+        assert_eq!(after, before, "无扩展字段时初始化选项必须与之前字节一致");
+        assert!(after.get("extendedClientCapabilities").is_none());
+        // 非对象输入无扩展字段时同样原样返回。
+        let before = json!("garbage");
+        let after = merge_extended_client_capabilities_into_init_options(before.clone(), &plugin);
+        assert_eq!(after, before);
+    }
+
+    #[test]
+    fn init_options_absent_for_plugin_without_options() {
+        let plugin = LspPlugin::builtin("rust", &["rs"], "rust-analyzer", &["rust-analyzer"], None);
+        assert!(
+            init_options_for(&plugin).is_none(),
+            "无选项/无扩展能力的插件不得注入 initializationOptions"
+        );
+    }
+
+    #[test]
+    fn init_options_present_when_plugin_declares_any() {
+        let with_opts = LspPlugin::builtin("go", &["go"], "gopls", &["gopls"], None)
+            .with_initialization_options(json!({ "a": 1 }));
+        assert_eq!(init_options_for(&with_opts), Some(json!({ "a": 1 })));
+
+        let with_caps = LspPlugin::builtin("java", &["java"], "jdtls", &["jdtls"], None)
+            .with_extended_client_capabilities(json!({ "classFileContentsSupport": true }));
+        let opts = init_options_for(&with_caps).expect("extended caps → Some payload");
+        assert_eq!(
+            opts["extendedClientCapabilities"]["classFileContentsSupport"],
+            json!(true)
+        );
+    }
+
+    #[test]
+    fn merge_extended_capabilities_into_init_options_replaces_non_object() {
+        let plugin = LspPlugin::builtin("java", &["java"], "jdtls", &["jdtls"], None)
+            .with_extended_client_capabilities(serde_json::json!({
+                "classFileContentsSupport": true
+            }));
+        // 非对象基底无法合并且无保留价值：一律返回仅含扩展字段的新对象。
+        let merged =
+            merge_extended_client_capabilities_into_init_options(json!("garbage"), &plugin);
+        assert_eq!(
+            merged,
+            json!({ "extendedClientCapabilities": { "classFileContentsSupport": true } })
         );
     }
 

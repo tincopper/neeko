@@ -3,13 +3,14 @@
 use anyhow::Result;
 use tokio::io::AsyncWriteExt;
 
+use crate::common::executor::collect_child_output;
 use crate::common::executor::factory::{create_executor, ExecTarget};
-use crate::common::executor::sync::{collect_child_output, exec_on};
 use crate::common::utils::command::local::safe_path;
+use crate::core::exec::run;
 
 use super::{classify_stderr, shell_quote, GitExecError};
 
-/// Remote (SSH) execution of `git` via `exec_on` with shell quoting.
+/// Remote (SSH) execution of `git` via `run` with shell quoting.
 pub(crate) async fn run_git_remote(
     target: &ExecTarget,
     args: &[&str],
@@ -26,7 +27,7 @@ pub(crate) async fn run_git_remote(
     config_args.extend(args.iter().map(|a| shell_quote(a)));
     let git_cmd = format!("{}git {}", env_prefix, config_args.join(" "));
     let cmd = format!("cd '{sp}' && {git_cmd}");
-    exec_on(target, "sh", &["-c", &cmd]).await.map_err(|e| {
+    run(target, "sh", &["-c", &cmd]).await.map_err(|e| {
         GitExecError {
             kind: classify_stderr(&e.to_string()),
             stderr: e.to_string(),
@@ -80,5 +81,5 @@ pub(crate) async fn exec_git_with_stdin_remote(
 pub(crate) async fn is_git_repo_remote(target: &ExecTarget, path: &str) -> bool {
     let sp = safe_path(path);
     let cmd = format!("test -e '{sp}/.git'");
-    exec_on(target, "sh", &["-c", &cmd]).await.is_ok()
+    run(target, "sh", &["-c", &cmd]).await.is_ok()
 }

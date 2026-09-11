@@ -1,4 +1,4 @@
-import { useLspStore } from '@/shared/store/lspStore';
+import { useLspStore } from '@/features/lsp/store/lspStore';
 
 /** 左簇常驻项：扩展路由冲突提示（无冲突时隐藏）。 */
 export function ConflictsItem() {

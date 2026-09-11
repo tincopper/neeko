@@ -3,7 +3,7 @@
  */
 import { create } from 'zustand';
 
-import { fromFileUri } from '@/features/lsp';
+import { fromFileUri } from '@/features/lsp/api/languageMap';
 import { lspRequest } from '@/features/lsp/api/lspApi';
 import type { LspLocation } from '@/features/lsp/types';
 import { fuzzyFilter, openProjectFile } from '@/features/quick-open';

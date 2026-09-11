@@ -36,7 +36,7 @@ export interface GutterHit<P = unknown> {
 }
 
 export interface GutterContribution<P = unknown> {
-  /** 唯一 id：'breakpoint' | 'test-run' | 'coverage' | ... */
+  /** 唯一 id：'breakpoint' | 'run' | 'coverage' | ... */
   id: string;
   /** 同行排序（小在先/左）；同值按注册序（稳定，Array.prototype.sort 稳定性保证）。 */
   priority: number;

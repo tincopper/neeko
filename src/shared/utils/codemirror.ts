@@ -2,6 +2,7 @@ import type { Extension } from '@codemirror/state';
 import { tags as t } from '@lezer/highlight';
 import { createTheme } from '@uiw/codemirror-themes';
 
+import { extensionOf as sharedExtensionOf } from './languageRegistry';
 import { buildMonoStack } from './typography';
 
 // Extension to file extension mapping (lazy loaded)
@@ -241,6 +242,11 @@ const LANG_MAP: Record<string, () => Promise<Extension>> = {
   },
 };
 
+/** 覆盖的扩展名（不含点）—— 供覆盖度护栏测试使用（词表见 `languageRegistry`）。 */
+export const CODEMIRROR_EXTENSIONS: readonly string[] = Object.keys(LANG_MAP).map((key) =>
+  key.replace(/^\./, ''),
+);
+
 // Filename-based mapping (files without standard extensions)
 const FILENAME_MAP: Record<string, () => Promise<Extension>> = {
   dockerfile: async () => {
@@ -265,13 +271,17 @@ const FILENAME_MAP: Record<string, () => Promise<Extension>> = {
   },
 };
 
+/** 覆盖的文件名（无标准扩展名）—— 供覆盖度护栏测试使用。 */
+export const CODEMIRROR_FILENAMES: readonly string[] = Object.keys(FILENAME_MAP);
+
 // Cache for loaded language extensions (sync hit path for tab switches)
 const langCache = new Map<string, Extension>();
 // In-flight loads so concurrent open/prefetch share one dynamic import
 const langPending = new Map<string, Promise<Extension | null>>();
 
 function languageCacheKey(filename: string): { key: string; ext: string; baseName: string } {
-  const ext = getFileExtension(filename);
+  const bare = sharedExtensionOf(filename);
+  const ext = bare ? `.${bare}` : '';
   const baseName = filename.split(/[/\\]/).pop()?.toLowerCase() || '';
   const key = ext || baseName;
   return { key, ext, baseName };
@@ -359,15 +369,6 @@ export async function getLanguageExtension(filename: string): Promise<Extension 
 }
 
 /**
- * Get the file extension (including the dot)
- */
-function getFileExtension(filename: string): string {
-  const lastDot = filename.lastIndexOf('.');
-  if (lastDot === -1) return '';
-  return filename.slice(lastDot).toLowerCase();
-}
-
-/**
  * Build a CodeMirror theme that reads all colors from CSS variables.
  * Creates a new theme object each call so CodeMirror reconfigures on prop change.
  */
@@ -414,6 +415,6 @@ export function createCmTheme(fontFamily: string, fontSize: number) {
  * Check if a file is a markdown file
  */
 export function isMarkdownFile(filename: string): boolean {
-  const ext = getFileExtension(filename);
-  return ext === '.md' || ext === '.mdx';
+  const ext = sharedExtensionOf(filename);
+  return ext === 'md' || ext === 'mdx';
 }

@@ -1,6 +1,8 @@
 import { listen } from '@tauri-apps/api/event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { DAP_EVENT } from '@/shared/events';
+
 import { useDebugStore } from '../store/debugStore';
 import type { DapEventPayload, VariableDto } from '../types';
 
@@ -18,7 +20,7 @@ type DapListener = (event: { payload: DapEventPayload }) => void;
 async function subscribeAndGrabDapListener(): Promise<DapListener> {
   await useDebugStore.getState().subscribeEvents();
   const calls = vi.mocked(listen).mock.calls;
-  const dapEventCall = calls.find(([name]) => name === 'dap-event');
+  const dapEventCall = calls.find(([name]) => name === DAP_EVENT);
   if (!dapEventCall) throw new Error('dap-event listener not registered');
   return dapEventCall[1] as DapListener;
 }
@@ -190,5 +192,46 @@ describe('debugStore variable expansion cache invalidation', () => {
 
     expect(useDebugStore.getState().childrenByRef).toEqual({});
     expect(useDebugStore.getState().expandedRefs).toEqual({});
+  });
+});
+
+describe('debugStore.pushConsole', () => {
+  it('should_keep_repeated_program_output_verbatim', () => {
+    // 实证：同一用例两次 println("0:2")，第二行被旧去重吞掉 —— 程序输出必须逐字保留。
+    useDebugStore.setState({ consoleLines: [] });
+    const push = useDebugStore.getState().pushConsole;
+    push('out', '0:2');
+    push('out', '0:2');
+    const texts = useDebugStore.getState().consoleLines.map((l) => l.text);
+    expect(texts).toEqual(['0:2', '0:2']);
+  });
+
+  it('should_still_dedup_consecutive_identical_sys_lines', () => {
+    useDebugStore.setState({ consoleLines: [] });
+    const push = useDebugStore.getState().pushConsole;
+    push('sys', 'Starting: Debug test: test1…');
+    push('sys', 'Starting: Debug test: test1…');
+    const texts = useDebugStore.getState().consoleLines.map((l) => l.text);
+    expect(texts).toEqual(['Starting: Debug test: test1…']);
+  });
+});
+
+describe('debugStore.startJavaAttach', () => {
+  it('should_echo_executed_command_after_session_reset', async () => {
+    // 回显必须在 resetSessionState 之后（之前推会被清空导致 console 不可见）。
+    // adapter 不可用时 launchSession 直接抛错 —— 回显先行，不依赖会话建成。
+    useDebugStore.setState({ consoleLines: [] });
+    await expect(
+      useDebugStore
+        .getState()
+        .startJavaAttach(
+          'p1',
+          'java -agentlib:jdwp=transport=dt_socket -jar launcher.jar',
+          '/tmp/proj',
+          'test1',
+        ),
+    ).rejects.toThrow();
+    const texts = useDebugStore.getState().consoleLines.map((l) => l.text);
+    expect(texts[0]).toBe('$ java -agentlib:jdwp=transport=dt_socket -jar launcher.jar');
   });
 });

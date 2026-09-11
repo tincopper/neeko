@@ -34,9 +34,10 @@ const lspHookState = vi.hoisted(() => ({
   },
   profiles: {},
   extensionConflicts: [],
+  progressTokens: {},
 }));
 
-vi.mock('@/shared/store/lspStore', () => ({
+vi.mock('@/features/lsp/store/lspStore', () => ({
   useLspStore: Object.assign((sel: (s: Record<string, unknown>) => unknown) => sel(lspHookState), {
     getState: () => ({
       setSessionState: mockSetSessionState,
@@ -122,5 +123,83 @@ describe('LspStatusSection', () => {
       expect(mockStopAll).toHaveBeenCalledWith('/tmp/neeko');
     });
     expect(mockRemoveSession).toHaveBeenCalled();
+  });
+});
+
+describe('LspStatusSection busy chip', () => {
+  it('starting 态 chip 显示加载状态文字', () => {
+    lspHookState.sessions = {
+      '/tmp/neeko': {
+        rust: { languageId: 'rust', serverName: 'rust-analyzer', status: 'starting' },
+      },
+    };
+    render(<LspStatusSection />);
+    expect(screen.getByTestId('lsp-status-chip')).toHaveTextContent('rust-analyzer Starting');
+  });
+
+  it('indexing 态 chip 显示加载状态文字', () => {
+    lspHookState.sessions = {
+      '/tmp/neeko': {
+        rust: { languageId: 'rust', serverName: 'rust-analyzer', status: 'indexing' },
+      },
+    };
+    render(<LspStatusSection />);
+    expect(screen.getByTestId('lsp-status-chip')).toHaveTextContent('rust-analyzer Indexing');
+  });
+
+  it('ready 态 chip 只显示服务器名', () => {
+    lspHookState.sessions = {
+      '/tmp/neeko': { rust: { languageId: 'rust', serverName: 'rust-analyzer', status: 'ready' } },
+    };
+    render(<LspStatusSection />);
+    expect(screen.getByTestId('lsp-status-chip')).toHaveTextContent('rust-analyzer');
+    expect(screen.getByTestId('lsp-status-chip')).not.toHaveTextContent('Starting');
+  });
+});
+
+describe('LspStatusSection progress tokens', () => {
+  beforeEach(() => {
+    lspHookState.progressTokens = {};
+  });
+
+  it('ready + open token 时 chip 显示 Indexing busy 态（不闪绿）', () => {
+    lspHookState.sessions = {
+      '/tmp/neeko': {
+        java: { languageId: 'java', serverName: 'jdtls', status: 'ready' },
+      },
+    };
+    lspHookState.progressTokens = { '/tmp/neeko': { java: ['import-1'] } };
+    render(<LspStatusSection />);
+    const chip = screen.getByTestId('lsp-status-chip');
+    expect(chip).toHaveTextContent('jdtls Indexing');
+    // busy 圆点：沿用 aggregate-busy/indexing 脉冲样式，不新增颜色语义
+    // eslint-disable-next-line testing-library/no-node-access -- 圆点无 testid，只能查子元素类名
+    expect(chip.querySelector('.bg-status-running')).not.toBeNull();
+  });
+
+  it('token 清空后 chip 回到 ready（只显示服务器名）', () => {
+    lspHookState.sessions = {
+      '/tmp/neeko': { java: { languageId: 'java', serverName: 'jdtls', status: 'ready' } },
+    };
+    lspHookState.progressTokens = { '/tmp/neeko': { java: [] } };
+    render(<LspStatusSection />);
+    const chip = screen.getByTestId('lsp-status-chip');
+    expect(chip).toHaveTextContent('jdtls');
+    expect(chip).not.toHaveTextContent('Indexing');
+  });
+
+  it('多会话聚合：任一会话 open token 非空即 aggregate-busy', () => {
+    lspHookState.sessions = {
+      '/tmp/neeko': {
+        rust: { languageId: 'rust', serverName: 'rust-analyzer', status: 'ready' },
+        java: { languageId: 'java', serverName: 'jdtls', status: 'ready' },
+      },
+    };
+    lspHookState.progressTokens = { '/tmp/neeko': { java: ['import-1'] } };
+    render(<LspStatusSection />);
+    const chip = screen.getByTestId('lsp-status-chip');
+    // eslint-disable-next-line testing-library/no-node-access -- 圆点无 testid，只能查子元素类名
+    expect(chip.querySelector('.bg-status-running')).not.toBeNull();
+    expect(chip).toHaveAttribute('title', '2 LSPs');
   });
 });

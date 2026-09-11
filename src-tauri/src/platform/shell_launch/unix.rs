@@ -2,6 +2,15 @@
 
 use portable_pty::CommandBuilder;
 
+/// 当前平台的 POSIX shell 可执行名（Unix:`sh`）。
+///
+/// 供「以 shell 脚本形式安装/执行」的策略查询平台能力；无 POSIX shell 的平台
+/// 返回 `None`（见 windows 实现）。
+#[must_use]
+pub const fn posix_sh() -> Option<&'static str> {
+    Some("sh")
+}
+
 /// 构建 Unix 任务命令:`sh -c <command>`。
 #[must_use]
 pub fn build_task_command(task_command: &str) -> CommandBuilder {

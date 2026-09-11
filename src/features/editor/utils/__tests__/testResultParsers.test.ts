@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   MAX_REPORT_CHARS,
   matchCaseName,
+  parseJunitXml,
   parseLibtestJsonLines,
   parseTest2JsonLines,
   parseVitestJsonReport,
@@ -219,6 +220,100 @@ describe('parseVitestJsonReport', () => {
   it('should_skip_reports_over_the_2mb_guard', () => {
     const big = 'x'.repeat(MAX_REPORT_CHARS + 1);
     expect(parseVitestJsonReport(big)).toEqual([]);
+  });
+});
+
+describe('parseJunitXml', () => {
+  // Console Launcher / Surefire / Gradle 兼容 JUnit XML（`--reports-dir` 产物）
+  const REPORT = `<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="com.example.CalculatorTest" tests="3" failures="1" errors="0" skipped="1" time="0.023">
+  <testcase name="testAdd" classname="com.example.CalculatorTest" time="0.002"/>
+  <testcase name="testFail" classname="com.example.CalculatorTest" time="0.001">
+    <failure message="expected 2 to be 3" type="AssertionFailedError">org.opentest4j.AssertionFailedError: expected 2 to be 3&#10;&#9;at com.example.CalculatorTest.testFail(CalculatorTest.java:12)</failure>
+  </testcase>
+  <testcase name="testSkip" classname="com.example.CalculatorTest" time="0.0">
+    <skipped/>
+  </testcase>
+</testsuite>`;
+
+  it('should_map_testcase_nodes_to_case_results_with_duration_ms', () => {
+    const results = parseJunitXml(REPORT);
+    expect(results).toEqual([
+      { name: 'testAdd', classname: 'com.example.CalculatorTest', status: 'passed', duration: 2 },
+      {
+        name: 'testFail',
+        classname: 'com.example.CalculatorTest',
+        status: 'failed',
+        duration: 1,
+        message: 'expected 2 to be 3',
+      },
+      // `time="0.0"` → 0ms 耗时（Number('0.0') 有限，照常落 duration: 0）
+      { name: 'testSkip', classname: 'com.example.CalculatorTest', status: 'skipped', duration: 0 },
+    ]);
+  });
+
+  it('should_treat_error_child_as_failed_with_text_message', () => {
+    const xml = `
+<testsuite name="A" tests="1" failures="0" errors="1" time="0.01">
+  <testcase name="boom" classname="com.A" time="0.01">
+    <error>NullPointerException: npe</error>
+  </testcase>
+</testsuite>`;
+    expect(parseJunitXml(xml)).toEqual([
+      {
+        name: 'boom',
+        classname: 'com.A',
+        status: 'failed',
+        duration: 10,
+        message: 'NullPointerException: npe',
+      },
+    ]);
+  });
+
+  it('should_skip_cases_missing_name_or_classname', () => {
+    const xml = `
+<testsuite name="A" tests="1" time="0.01">
+  <testcase time="0.01"/>
+  <testcase name="onlyName" time="0.01"/>
+</testsuite>`;
+    expect(parseJunitXml(xml)).toEqual([]);
+  });
+
+  it('should_handle_missing_time_and_failure_without_message', () => {
+    const xml = `
+<testsuite name="A" tests="1" time="0">
+  <testcase name="mystery" classname="com.A">
+    <failure>stack only</failure>
+  </testcase>
+</testsuite>`;
+    expect(parseJunitXml(xml)).toEqual([
+      { name: 'mystery', classname: 'com.A', status: 'failed', message: 'stack only' },
+    ]);
+  });
+
+  it('should_ignore_container_nodes_and_system_output', () => {
+    const xml = `
+<testsuites tests="1" failures="0" time="0.02">
+  <testsuite name="com.A" tests="1" time="0.02">
+    <properties><property name="x" value="y"/></properties>
+    <testcase name="ok" classname="com.A" time="0.02"/>
+    <system-out>stdout noise</system-out>
+  </testsuite>
+</testsuites>`;
+    expect(parseJunitXml(xml)).toEqual([
+      { name: 'ok', classname: 'com.A', status: 'passed', duration: 20 },
+    ]);
+  });
+
+  it('should_return_empty_for_malformed_xml', () => {
+    expect(parseJunitXml('not xml at all')).toEqual([]);
+    expect(parseJunitXml('<testsuite><testcase')).toEqual([]);
+    expect(parseJunitXml('')).toEqual([]);
+  });
+
+  it('should_skip_reports_over_the_2mb_guard', () => {
+    const big = 'x'.repeat(MAX_REPORT_CHARS + 1);
+    expect(parseJunitXml(big)).toEqual([]);
   });
 });
 

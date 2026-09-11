@@ -1,6 +1,6 @@
 import { useCallback, useMemo } from 'react';
 
-import { useLspStore } from '@/shared/store/lspStore';
+import { useLspStore } from '@/features/lsp/store/lspStore';
 import { useNotificationStore } from '@/shared/store/notificationStore';
 
 import { lspGoToDefinition, lspRequest } from '../api/lspApi';
@@ -71,6 +71,47 @@ function showNoDefinitionHint(): void {
   });
 }
 
+/** hover 结果是否有内容（jdtls 对 JDK 符号 hover 可解析，definition 却常返回空）。 */
+function hasHoverContent(result: unknown): boolean {
+  if (!result || typeof result !== 'object' || !('contents' in result)) return false;
+  const contents = result.contents;
+  if (Array.isArray(contents)) return contents.length > 0;
+  if (typeof contents === 'string') return contents.trim().length > 0;
+  if (contents && typeof contents === 'object') return Object.keys(contents).length > 0;
+  return false;
+}
+
+/**
+ * Java 专属兜底：definition 为空时追加一次 hover 探测区分两种情况——
+ * hover 有内容（jdtls 解析到符号但没映射源码，典型是 JDK/外部源码）→ 明确提示；
+ * hover 也空 → 真的没有定义。避免把 JDK 源码映射未生效误报成"此处无定义"。
+ */
+async function showJavaNoDefinitionHint(
+  projectPath: string,
+  languageId: string,
+  uri: string,
+  line: number,
+  character: number,
+): Promise<void> {
+  const now = Date.now();
+  if (now - lastNoDefinitionHintAt < NO_DEFINITION_HINT_COOLDOWN_MS) return;
+  lastNoDefinitionHintAt = now;
+
+  const hover = await lspRequest(projectPath, languageId, 'textDocument/hover', {
+    textDocument: { uri },
+    position: { line, character },
+  }).catch(() => null);
+
+  useNotificationStore.getState().addNotification({
+    type: 'info',
+    title: 'No Definition Found',
+    message: hasHoverContent(hover)
+      ? 'jdtls resolved this symbol (hover works) but returned no source location. ' +
+        'JDK / external source navigation is limited on this setup — hover for details, or update jdtls.'
+      : 'No navigable definition at this position.',
+  });
+}
+
 /**
  * Hook for Go to Definition and Find References.
  */
@@ -97,12 +138,21 @@ export function useLspDefinition(projectPath: string | null) {
         if (!wrapped || !wrapped.lspResult) {
           // No definition at this position (or the request was cancelled) —
           // lightweight feedback so an explicit jump is not silently a no-op.
-          showNoDefinitionHint();
+          // Java 额外探测 hover 区分「JDK 源码映射未生效」与「真无定义」。
+          if (languageId === 'java') {
+            await showJavaNoDefinitionHint(projectPath, languageId, uri, line, character);
+          } else {
+            showNoDefinitionHint();
+          }
           return null;
         }
         const location = unwrapLocation(wrapped.lspResult);
         if (!location) {
-          showNoDefinitionHint();
+          if (languageId === 'java') {
+            await showJavaNoDefinitionHint(projectPath, languageId, uri, line, character);
+          } else {
+            showNoDefinitionHint();
+          }
           return null;
         }
         return { location, fileContent: wrapped.fileContent ?? null };

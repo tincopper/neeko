@@ -7,9 +7,12 @@
  *   （ok/failed/ignored），started/suite 事件忽略。
  * - TS：vitest JSON reporter 写文件（jest 兼容格式，`testResults[].assertionResults[]`），
  *   onExit 后整文件读取解析。
+ * - Java：JUnit XML（Surefire/Gradle/Console Launcher 兼容，`--reports-dir` 落盘），
+ *   每个 `<testcase>` → 一条结果；`<failure>/<error>` → failed、`<skipped>` → skipped。
  * - matchCaseName：libtest/vitest 输出的是扁平全限定名（`mod::fn` / `describe title`），
- *   源码侧 parseTestCases 只有 fn 名 → 按「名后缀 + 分隔符边界」对齐（与 R3 子串过滤同
- *   语义的查询侧镜像）；参数化/运行时名无法对齐 → false（不猜，见 synthesis 已知坑 ②）。
+ *   JUnit 的 `name` 是方法名（`classname` 是 FQCN）——源码侧 parseTestCases 只有 fn 名 →
+ *   按「名后缀 + 分隔符边界」对齐（与 R3 子串过滤同语义的查询侧镜像）；参数化/运行时名
+ *   无法对齐 → false（不猜，见 synthesis 已知坑 ②）。
  */
 
 /** libtest 单条终态事件（子集，仅保留状态对齐所需字段）。 */
@@ -28,6 +31,19 @@ export interface VitestCaseResult {
   status: 'passed' | 'failed' | 'skipped';
   duration?: number;
   /** failureMessages[0]（失败摘要来源）。 */
+  message?: string;
+}
+
+/** JUnit XML（Surefire/Gradle/Console Launcher）中的单条用例结果（`<testcase>` 节点子集）。 */
+export interface JunitTestCase {
+  /** 方法名（`<testcase name="…">`；`@ParameterizedTest` 时带 invocation 后缀，对齐时被 matchCaseName 拒绝）。 */
+  name: string;
+  /** 类全限定名（`<testcase classname="…">`）。 */
+  classname: string;
+  status: 'passed' | 'failed' | 'skipped';
+  /** `time`（秒）换算的毫秒耗时；缺省 `time` 时无。 */
+  duration?: number;
+  /** `<failure>/<error>` 的 message 属性或文本（失败摘要来源）。 */
   message?: string;
 }
 
@@ -187,6 +203,53 @@ export function parseVitestJsonReport(json: string): VitestCaseResult[] {
       }
       results.push(result);
     }
+  }
+  return results;
+}
+
+/**
+ * 解析 JUnit XML 报告文本（Surefire/Gradle/Console Launcher 兼容，`--reports-dir` 产物）。
+ *
+ * 每个 `<testcase name= classname= time=>` → 一条 `JunitTestCase`：
+ * - `<failure>` / `<error>` 子节点 → `failed`（message 取属性或文本，作为失败摘要）；
+ * - `<skipped>` 子节点 → `skipped`；
+ * - 无子节点 → `passed`；
+ * - `time`（秒）换算毫秒；`<testsuite>/<properties>/<system-out>` 等容器节点忽略。
+ *
+ * 超过 2MB 上限、XML 非法（DOMParser 解析错误 / 抛错）→ 空数组（调用方空结果语义 =
+ * 本次运行无状态可落）。依赖 Web DOMParser（Tauri webview / jsdom 均可用，零依赖）。
+ */
+export function parseJunitXml(xml: string): JunitTestCase[] {
+  if (xml.length > MAX_REPORT_CHARS) return [];
+  let doc: Document;
+  try {
+    doc = new DOMParser().parseFromString(xml, 'text/xml');
+  } catch {
+    return [];
+  }
+  // DOMParser 对非法 XML 会在文档里注入 <parsererror>（而非抛错）。
+  if (doc.querySelector('parsererror')) return [];
+
+  const results: JunitTestCase[] = [];
+  const nodes = doc.getElementsByTagName('testcase');
+  for (const tc of Array.from(nodes)) {
+    const name = tc.getAttribute('name');
+    const classname = tc.getAttribute('classname');
+    if (!name || name.length === 0 || !classname || classname.length === 0) continue;
+    const result: JunitTestCase = { name, classname, status: 'passed' };
+    const failure = tc.getElementsByTagName('failure')[0] ?? tc.getElementsByTagName('error')[0];
+    if (failure) {
+      result.status = 'failed';
+      result.message = failure.getAttribute('message') ?? failure.textContent?.trim() ?? 'failed';
+    } else if (tc.getElementsByTagName('skipped').length > 0) {
+      result.status = 'skipped';
+    }
+    const time = tc.getAttribute('time');
+    if (time) {
+      const secs = Number(time);
+      if (Number.isFinite(secs)) result.duration = Math.round(secs * 1000);
+    }
+    results.push(result);
   }
   return results;
 }

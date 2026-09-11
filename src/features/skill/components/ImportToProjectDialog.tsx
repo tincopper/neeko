@@ -1,7 +1,6 @@
 import { Check, HardDrive, Loader2, Search, Store, X } from 'lucide-react';
 import React, { useCallback, useMemo, useState } from 'react';
 
-// eslint-disable-next-line import/no-restricted-paths -- custom agent icons
 import { resolveAgentIconSrc } from '@/features/agent/api/agentApi';
 import { cn } from '@/lib/utils';
 import type { ManagedSkillDto, TagGroup } from '@/shared/types';

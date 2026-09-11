@@ -2,15 +2,13 @@ import type { Extension } from '@codemirror/state';
 import { EditorView } from '@codemirror/view';
 import { useMemo } from 'react';
 
-import {
-  clearLinkHighlight,
-  fromFileUri,
-  resolveLspPositionFromOffset,
-  toFileUri,
-} from '@/features/lsp';
+import { clearLinkHighlight } from '@/features/lsp';
+import { toFileUri } from '@/features/lsp/api/languageMap';
 import type { LspLocation } from '@/features/lsp/types';
 import type { FileTab } from '@/shared/types';
 import { preloadLanguageExtension } from '@/shared/utils/codemirror';
+import { jdtDisplayPath, tabLspDocumentUri } from '@/shared/utils/jdt';
+import { resolveLspPositionFromOffset } from '@/shared/utils/lspPosition';
 import { IS_MACOS } from '@/shared/utils/platform';
 
 type GoToDefinition = (
@@ -73,11 +71,11 @@ export function handleCmdClickToDefinition({
   const lspPos = resolveLspPositionFromOffset(offset, (p) => view.state.doc.lineAt(p));
   if (!lspPos) return;
 
-  const uri = toFileUri(projectPath, tab.filePath);
+  const uri = tab.virtualUri ?? tabLspDocumentUri(tab) ?? toFileUri(projectPath, tab.filePath);
 
   goToDefinition(lid, uri, lspPos.line, lspPos.character).then((result) => {
     if (!result) return;
-    preloadLanguageExtension(fromFileUri(result.location.uri));
+    preloadLanguageExtension(jdtDisplayPath(result.location.uri));
     return navigateToLocation(
       result.location,
       projectPath,

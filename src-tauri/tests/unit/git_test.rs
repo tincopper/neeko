@@ -339,7 +339,7 @@ async fn get_stash_list_and_files_roundtrip() {
 
     // 准备 stash 前置状态：走统一命令执行接口（与业务代码一致，避免裸 std::process::Command）
     let path = tmp.path().to_string_lossy().to_string();
-    let out = neeko_lib::core::exec::collect_in_dir(
+    let out = neeko_lib::core::exec::collect(
         &ExecTarget::Local,
         "git",
         &["stash", "push", "-m", "wip stash"],
@@ -385,7 +385,7 @@ async fn get_stash_list_empty_repo_yields_empty_list() {
 // --- stash file diff / apply / pop (integration) ---
 
 async fn create_stash(repo_path: &str, message: &str) {
-    let out = neeko_lib::core::exec::collect_in_dir(
+    let out = neeko_lib::core::exec::collect(
         &ExecTarget::Local,
         "git",
         &["stash", "push", "-m", message],

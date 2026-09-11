@@ -1,5 +1,5 @@
 use crate::common::executor::factory::ExecTarget;
-use crate::common::executor::sync::exec_on;
+use crate::core::exec::run;
 use crate::AppError;
 
 /// Get list of installed WSL distributions.
@@ -9,7 +9,7 @@ pub fn get_wsl_distros() -> Result<Vec<String>, AppError> {
         distro: String::new(),
     };
     rt.block_on(async move {
-        let output = exec_on(&target, "wsl.exe", &["-l", "-q"])
+        let output = run(&target, "wsl.exe", &["-l", "-q"])
             .await
             .map_err(|e| AppError::Wsl(format!("Failed to list WSL distros: {}", e)))?;
         let distros: Vec<String> = output
@@ -37,7 +37,7 @@ pub fn get_wsl_directories(distro: &str, path: Option<&str>) -> Result<Vec<Strin
         let target = ExecTarget::Wsl {
             distro: distro.clone(),
         };
-        let output = exec_on(&target, "bash", &["-c", &cmd])
+        let output = run(&target, "bash", &["-c", &cmd])
             .await
             .map_err(|e| AppError::Wsl(format!("Failed to list WSL directories: {}", e)))?;
         let entries: Vec<String> = output
@@ -58,7 +58,7 @@ pub fn get_wsl_home_dir(distro: &str) -> Result<String, AppError> {
         let target = ExecTarget::Wsl {
             distro: distro.clone(),
         };
-        let output = exec_on(&target, "bash", &["-c", "echo $HOME"])
+        let output = run(&target, "bash", &["-c", "echo $HOME"])
             .await
             .map_err(|e| AppError::Wsl(format!("Failed to get WSL home dir: {}", e)))?;
         Ok(output.trim().to_string())

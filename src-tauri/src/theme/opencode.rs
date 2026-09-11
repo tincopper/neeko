@@ -119,7 +119,7 @@ pub async fn install_wsl_theme_files(distro: &str) -> Result<()> {
         let target = crate::common::executor::factory::ExecTarget::Wsl {
             distro: distro.to_string(),
         };
-        crate::common::executor::sync::exec_on(
+        crate::core::exec::run(
             &target,
             "bash",
             &["-c", &format!("mkdir -p {}", themes_dir)],
@@ -152,7 +152,7 @@ pub async fn install_wsl_theme_files(distro: &str) -> Result<()> {
             let target = crate::common::executor::factory::ExecTarget::Wsl {
                 distro: distro.to_string(),
             };
-            if let Err(e) = crate::common::executor::sync::exec_on(&target, "bash", &["-c", &cmd])
+            if let Err(e) = crate::core::exec::run(&target, "bash", &["-c", &cmd])
                 .await
                 .map_err(|e| anyhow::anyhow!("{}", e))
             {
@@ -192,7 +192,7 @@ pub async fn write_wsl_tui_config(
         let target = crate::common::executor::factory::ExecTarget::Wsl {
             distro: distro.to_string(),
         };
-        crate::common::executor::sync::exec_on(
+        crate::core::exec::run(
             &target,
             "bash",
             &["-c", &format!("mkdir -p {}", shell_escape(&opencode_dir))],
@@ -206,7 +206,7 @@ pub async fn write_wsl_tui_config(
         let target = crate::common::executor::factory::ExecTarget::Wsl {
             distro: distro.to_string(),
         };
-        crate::common::executor::sync::exec_on(
+        crate::core::exec::run(
             &target,
             "bash",
             &[
@@ -228,7 +228,7 @@ pub async fn write_wsl_tui_config(
         let target = crate::common::executor::factory::ExecTarget::Wsl {
             distro: distro.to_string(),
         };
-        crate::common::executor::sync::exec_on(
+        crate::core::exec::run(
             &target,
             "bash",
             &["-c", &format!("cat {}", shell_escape(&tui_path))],
@@ -254,7 +254,7 @@ pub async fn write_wsl_tui_config(
         let target = crate::common::executor::factory::ExecTarget::Wsl {
             distro: distro.to_string(),
         };
-        crate::common::executor::sync::exec_on(
+        crate::core::exec::run(
             &target,
             "bash",
             &[

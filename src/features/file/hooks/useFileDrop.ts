@@ -11,7 +11,6 @@
 
 import { useEffect } from 'react';
 
-// eslint-disable-next-line import/no-restricted-paths -- file drop sends commands to terminal via terminal feature
 import { sendToTerminal } from '@/features/terminal';
 import { INSERT_TO_AGENT_INPUT_EVENT } from '@/shared/events';
 import { useEditorStore } from '@/shared/store/editorStore';

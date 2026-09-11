@@ -11,9 +11,7 @@ import { restrictToVerticalAxis, restrictToParentElement } from '@dnd-kit/modifi
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import React, { useCallback, useState, useEffect, useMemo } from 'react';
 
-// eslint-disable-next-line import/no-restricted-paths -- projects panel renders connection project cards
 import { ConnectionProjectCard } from '@/features/connection';
-// eslint-disable-next-line import/no-restricted-paths -- projects panel renders git commit dialog
 import { CommitDialog } from '@/features/git';
 import ProjectItem from '@/features/project/components/ProjectItem';
 import { SectionHeader } from '@/features/project/components/SectionHeader';
@@ -30,7 +28,6 @@ import { getDistroIcon } from '@/shared/utils/distros';
 import { withTimeout } from '@/shared/utils/withTimeout';
 
 import serverIcon from '../../../assets/server.svg';
-// eslint-disable-next-line import/no-restricted-paths -- projects panel needs git push/pull APIs
 import { push, pull, type PushOutcome } from '../../git/api/gitApi';
 
 const ProjectsPanel: React.FC = () => {

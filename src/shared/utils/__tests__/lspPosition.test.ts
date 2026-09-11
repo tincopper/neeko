@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { offsetToLspPosition, resolveLspPositionFromOffset } from '../position';
+import { offsetToLspPosition, resolveLspPositionFromOffset } from '../lspPosition';
 
 describe('offsetToLspPosition', () => {
   it('should_map_1based_line_and_offset_to_0based_lsp_position', () => {

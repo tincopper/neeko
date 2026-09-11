@@ -3181,6 +3181,7 @@ dependencies = [
  "objc2",
  "objc2-web-kit",
  "open",
+ "parking_lot",
  "portable-pty",
  "regex",
  "reqwest 0.12.28",

@@ -17,8 +17,8 @@
 use std::path::{Path, PathBuf};
 
 use crate::common::executor::factory::ExecTarget;
-use crate::common::executor::sync::exec_on;
 use crate::common::utils::command::local::safe_path;
+use crate::core::exec::run;
 use crate::project::types::FileContent;
 use crate::AppError;
 
@@ -131,7 +131,7 @@ async fn read_file_shell(
     //（现状 read_file_content_shell 同样没有），补齐需远程 realpath，单独立项。
     let _ = scope;
 
-    let size: u64 = exec_on(
+    let size: u64 = run(
         &req.target,
         shell,
         &[
@@ -154,7 +154,7 @@ async fn read_file_shell(
     let is_binary = if req.detect_binary {
         let cmd =
             format!("head -c 8192 '{safe}' | grep -ql '\\x00' 2>/dev/null && echo 1 || echo 0");
-        exec_on(&req.target, shell, &["-c", &cmd])
+        run(&req.target, shell, &["-c", &cmd])
             .await
             .map(|out| out.trim() == "1")
             .unwrap_or(false)
@@ -165,7 +165,7 @@ async fn read_file_shell(
     let content = if is_binary {
         String::new()
     } else {
-        exec_on(&req.target, shell, &["-c", &format!("cat '{safe}'")])
+        run(&req.target, shell, &["-c", &format!("cat '{safe}'")])
             .await
             .map_err(|e| AppError::File(format!("Failed to read file content: {}", e)))?
     };

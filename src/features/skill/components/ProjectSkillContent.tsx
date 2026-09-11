@@ -20,10 +20,7 @@ import {
 } from 'lucide-react';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 
-// eslint-disable-next-line import/no-restricted-paths -- list agents for targets + card icons
 import { listAgents, resolveAgentIconSrc, setProjectAgents } from '@/features/agent/api/agentApi';
-// eslint-disable-next-line import/no-restricted-paths -- shared toast bus
-// eslint-disable-next-line import/no-restricted-paths -- active project
 import {
   getProjectSkills,
   getSkillsForTagGroup,

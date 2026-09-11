@@ -5,8 +5,8 @@ use std::time::Duration;
 use anyhow::Result;
 use tokio::io::AsyncWriteExt;
 
+use crate::common::executor::collect_child_output;
 use crate::common::executor::factory::{create_executor, ExecTarget};
-use crate::common::executor::sync::collect_child_output;
 
 use super::{classify_stderr, shell_quote, GitExecError, LOCAL_GIT_TIMEOUT};
 

@@ -1,7 +1,10 @@
 import { renderHook } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { loadDefinitionTargetContent, showNavigationFailure } from '@/features/lsp';
+import {
+  loadDefinitionTargetContent,
+  showNavigationFailure,
+} from '@/features/lsp/api/definitionTarget';
 import type { LspLocation } from '@/features/lsp/types';
 
 import { useLspNavigation } from '../useLspNavigation';
@@ -21,11 +24,21 @@ vi.mock('../useCmdClickGoToDefinition', () => ({
   },
 }));
 
-vi.mock('@/features/lsp', () => ({
-  fromFileUri: (uri: string) => uri.replace('file://', ''),
-  toFileUri: (_base: string, p: string) => `file://${p}`,
+// 门面已按 Firewall 规则 4 收敛为「公开 hooks + 类型」——函数式 API 一律直导
+// `api/*`，故 mock 需按新的导入路径分别声明。
+vi.mock('@/features/lsp/api/definitionTarget', () => ({
+  jdtClassFileDisplayName: (uri: string) =>
+    uri.split('?')[0]?.split('/').filter(Boolean).pop() ?? uri,
   loadDefinitionTargetContent: vi.fn(),
   showNavigationFailure: vi.fn(),
+}));
+
+vi.mock('@/features/lsp/api/languageMap', () => ({
+  fromFileUri: (uri: string) => uri.replace('file://', ''),
+  toFileUri: (_base: string, p: string) => `file://${p}`,
+}));
+
+vi.mock('@/features/lsp', () => ({
   useLspDefinition: () => ({
     goToDefinitionWithContent: vi.fn(),
     findReferences: vi.fn(),
@@ -143,7 +156,12 @@ describe('useLspNavigation — 预读内容契约防御', () => {
       is_binary: false,
     } as never);
 
-    expect(loadDefinitionTargetContent).toHaveBeenCalledWith('proj-1', 'rust', LOCATION.uri);
+    expect(loadDefinitionTargetContent).toHaveBeenCalledWith(
+      'proj-1',
+      '/repo',
+      'rust',
+      LOCATION.uri,
+    );
     expect(h.addTab).toHaveBeenCalledWith(
       'k1',
       expect.objectContaining({
@@ -192,5 +210,87 @@ describe('useLspNavigation — 预读内容契约防御', () => {
         }),
       }),
     );
+  });
+
+  it('should_pass_fs_path_not_uuid_to_loader_for_external_target', async () => {
+    // 回归：后端 preauth 表全用 fs path 做桶键（record/check 一致），UUID 在此
+    // 恒 miss → jdt:// 与项目外 file:// 一律 read-failed。projectId(UUID)≠
+    // projectPath(path) 时，loader 第 1 实参必须是 path（门控键），projId 只
+    // 用于 NavLocation/tab 键。
+    const { result } = renderHook(() =>
+      useLspNavigation({
+        projectPath: '/repo',
+        tabKey: 'k1',
+        tab: { filePath: '/repo/src/main.rs', projectId: 'uuid-1' } as never,
+        lspLanguageIdRef: { current: 'java' },
+        editorViewRef: { current: null },
+      }),
+    );
+    expect(result.current.cmdClickExt).toEqual([]);
+    const navigate = h.capturedNavigate as (...args: unknown[]) => Promise<void>;
+    const JDT_URI = 'jdt://contents/java.base/java.lang/System.class?=x/=src/Main.java';
+    vi.mocked(loadDefinitionTargetContent).mockResolvedValue({
+      kind: 'external-readonly',
+      content: { path: JDT_URI, content: 'class System {}', size: 15, is_binary: false },
+    });
+
+    await navigate(
+      {
+        uri: JDT_URI,
+        range: { start: { line: 1, character: 0 }, end: { line: 1, character: 2 } },
+      },
+      '/repo',
+      'k1',
+      'uuid-1',
+      '/repo/src/main.rs',
+      null,
+    );
+
+    // 双键：常规读取用 UUID，门控键是 fs path
+    expect(loadDefinitionTargetContent).toHaveBeenCalledWith('uuid-1', '/repo', 'java', JDT_URI);
+    expect(h.addTab).toHaveBeenCalledWith(
+      'k1',
+      expect.objectContaining({
+        projectId: 'uuid-1',
+        data: expect.objectContaining({
+          readOnly: true,
+          // tab 身份用 jdt 展示路径（tabIdentityOf，.java 结尾可命中高亮）；
+          // 原始 uri（tab 内 LSP 请求凭据）经 virtualUri / content.path 各司其职
+          filePath: 'jdt:/java.base/java/lang/System.java',
+        }),
+      }),
+    );
+  });
+
+  it('should_stay_in_same_tab_for_same_file_jump_with_relative_tab_path', async () => {
+    // 回归：快速打开建的 tab 用项目相对 filePath（openProjectFile），definition
+    // 目标是绝对路径——同文件比较必须先归一，否则重复开 tab。
+    const { result } = renderHook(() =>
+      useLspNavigation({
+        projectPath: '/repo',
+        tabKey: 'k1',
+        tab: { filePath: 'src/main.rs', projectId: 'uuid-1' } as never,
+        lspLanguageIdRef: { current: 'rust' },
+        editorViewRef: { current: null },
+      }),
+    );
+    expect(result.current.cmdClickExt).toEqual([]);
+    const navigate = h.capturedNavigate as (...args: unknown[]) => Promise<void>;
+
+    await navigate(
+      {
+        uri: 'file:///repo/src/main.rs',
+        range: { start: { line: 4, character: 2 }, end: { line: 4, character: 6 } },
+      },
+      '/repo',
+      'k1',
+      'uuid-1',
+      'src/main.rs',
+      null,
+    );
+
+    expect(h.addTab).not.toHaveBeenCalled();
+    expect(h.setPendingNavigateTarget).not.toHaveBeenCalled();
+    expect(loadDefinitionTargetContent).not.toHaveBeenCalled();
   });
 });

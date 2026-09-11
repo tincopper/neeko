@@ -1,32 +1,13 @@
 import { open } from '@tauri-apps/plugin-dialog';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 
-// eslint-disable-next-line import/no-restricted-paths -- settings project panel uses task dialog
-import { TaskDialog } from '@/features/task';
-import { cn } from '@/lib/utils';
-import { Pencil, Trash2, Plus } from '@/shared/components/icons';
-import { useLspStore } from '@/shared/store/lspStore';
+import { useLspStore } from '@/features/lsp/store/lspStore';
 import { useProjectStore } from '@/shared/store/projectStore';
-import { useTaskStore } from '@/shared/store/taskStore';
 import type { Project } from '@/shared/types';
-import type { TaskConfig } from '@/shared/types/task';
 import { reportFrontendError } from '@/shared/utils/errorReporting';
-import { IDE_PRESETS } from '@/shared/utils/idePresets';
-import { AVATAR_COLORS } from '@/shared/utils/projectAvatar';
-import {
-  Select,
-  SelectTrigger,
-  SelectContent,
-  SelectItem,
-  SelectValue,
-  Input,
-  Button,
-  Separator,
-} from '@/ui';
+import { Input, Button, Separator } from '@/ui';
 
-// eslint-disable-next-line import/no-restricted-paths -- settings project panel needs agent API for agent config
 import { setProjectAgents, listAgents } from '../../agent/api/agentApi';
-/* eslint-disable import/no-restricted-paths -- settings project panel needs project API for project operations */
 import {
   renameProject,
   changeProjectPath,
@@ -35,7 +16,11 @@ import {
   removeProject,
   setProjectPrimaryLanguage,
 } from '../../project/api/projectApi';
-/* eslint-enable import/no-restricted-paths */
+
+import ProjectAppearanceSection from './ProjectAppearanceSection';
+import ProjectDangerZone from './ProjectDangerZone';
+import ProjectOverridesSection from './ProjectOverridesSection';
+import ProjectTasksSection from './ProjectTasksSection';
 
 interface ProjectPanelProps {
   projectId: string;
@@ -56,13 +41,7 @@ const ProjectPanel: React.FC<ProjectPanelProps> = ({ projectId, customIdes, onPr
     Promise.resolve().then(() => setName(project?.name ?? ''));
   }, [project?.name]);
 
-  const [activeTaskTab, setActiveTaskTab] = useState<'project' | 'app'>('project');
-  const [dialogOpen, setDialogOpen] = useState(false);
-  const [editingConfig, setEditingConfig] = useState<TaskConfig | null>(null);
-  const [confirmRemove, setConfirmRemove] = useState(false);
   const [agents, setAgents] = useState<{ id: string; name: string }[]>([]);
-
-  const { configs, loadConfigs, addConfig, updateConfig, deleteConfig } = useTaskStore();
 
   const projectPath = project?.path ?? null;
 
@@ -71,13 +50,6 @@ const ProjectPanel: React.FC<ProjectPanelProps> = ({ projectId, customIdes, onPr
       .then((list) => setAgents(list.filter((a) => a.enabled)))
       .catch((err) => reportFrontendError('settings.listAgents', err));
   }, []);
-
-  useEffect(() => {
-    if (projectPath) loadConfigs(projectPath);
-  }, [projectPath, loadConfigs]);
-
-  const projectTasks = useMemo(() => configs.filter((c) => c.scope === 'project'), [configs]);
-  const appTasks = useMemo(() => configs.filter((c) => c.scope === 'app'), [configs]);
 
   const patchProject = useCallback(
     (patch: Partial<Project>) => {
@@ -191,48 +163,6 @@ const ProjectPanel: React.FC<ProjectPanelProps> = ({ projectId, customIdes, onPr
     return fromProfile;
   }, [projectProfile, project?.primary_language]);
 
-  const handleAddTask = useCallback(() => {
-    setEditingConfig(null);
-    setDialogOpen(true);
-  }, []);
-
-  const handleEditTask = useCallback((config: TaskConfig) => {
-    setEditingConfig(config);
-    setDialogOpen(true);
-  }, []);
-
-  const handleDeleteTask = useCallback(
-    (config: TaskConfig) => {
-      deleteConfig(config.id, config.scope, projectPath ?? undefined);
-    },
-    [deleteConfig, projectPath],
-  );
-
-  const handleDialogSubmit = useCallback(
-    (taskName: string, command: string) => {
-      if (editingConfig) {
-        const updated: TaskConfig = {
-          ...editingConfig,
-          name: taskName || command,
-          command,
-        };
-        updateConfig(updated, projectPath ?? undefined);
-      } else {
-        const config: TaskConfig = {
-          id: crypto.randomUUID(),
-          name: taskName || command,
-          command,
-          scope: activeTaskTab === 'app' ? 'app' : 'project',
-          project_id: projectId,
-        };
-        addConfig(config, projectPath ?? undefined);
-      }
-      setDialogOpen(false);
-      setEditingConfig(null);
-    },
-    [editingConfig, projectId, projectPath, activeTaskTab, addConfig, updateConfig],
-  );
-
   const handleRemove = useCallback(() => {
     removeProject(projectId);
     onProjectRemoved();
@@ -241,8 +171,6 @@ const ProjectPanel: React.FC<ProjectPanelProps> = ({ projectId, customIdes, onPr
   const isLocal = !projectPath?.startsWith('\\\\wsl') && !projectPath?.includes('@');
 
   if (!project) return null;
-
-  const currentTasks = activeTaskTab === 'project' ? projectTasks : appTasks;
 
   return (
     <div className="flex flex-col">
@@ -287,247 +215,31 @@ const ProjectPanel: React.FC<ProjectPanelProps> = ({ projectId, customIdes, onPr
 
       <Separator className="my-4" />
 
-      {/* Overrides */}
-      <div className="mb-6">
-        <div className="text-[0.86em] text-text-primary font-medium mb-1">Project Overrides</div>
-        <div className="text-[0.79em] text-text-muted mb-3">
-          Agent, IDE, and primary language preferences specific to this project.
-        </div>
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <div className="text-[0.79em] text-text-muted mb-1.5">Agent</div>
-            <Select
-              value={project.selected_agents?.[0] ?? '__global__'}
-              onValueChange={handleAgentChange}
-            >
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="__global__">Use global default</SelectItem>
-                {agents.map((a) => (
-                  <SelectItem key={a.id} value={a.id}>
-                    {a.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div>
-            <div className="text-[0.79em] text-text-muted mb-1.5">IDE</div>
-            <Select value={project.selected_ide ?? '__global__'} onValueChange={handleIdeChange}>
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="__global__">Use global default</SelectItem>
-                {IDE_PRESETS.map((ide) => (
-                  <SelectItem key={ide.id} value={ide.id}>
-                    {ide.name}
-                  </SelectItem>
-                ))}
-                {customIdes.map((ide) => (
-                  <SelectItem key={ide.name} value={ide.command}>
-                    {ide.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="col-span-2">
-            <div className="text-[0.79em] text-text-muted mb-1.5">Primary language (LSP)</div>
-            <Select
-              value={project.primary_language ?? '__auto__'}
-              onValueChange={handlePrimaryLanguageChange}
-            >
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="__auto__">
-                  Auto
-                  {projectProfile?.primary
-                    ? ` (detected: ${projectProfile.primary.languageId})`
-                    : ' (from root markers)'}
-                </SelectItem>
-                {primaryLanguageOptions.map((opt) => (
-                  <SelectItem key={opt.id} value={opt.id}>
-                    {opt.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <div className="text-[0.75em] text-text-muted mt-1.5">
-              Monorepos only soft-warm one primary language. Override when auto detection picks the
-              wrong stack.
-            </div>
-          </div>
-        </div>
-      </div>
+      <ProjectOverridesSection
+        project={project}
+        agents={agents}
+        customIdes={customIdes}
+        projectProfile={projectProfile}
+        primaryLanguageOptions={primaryLanguageOptions}
+        onAgentChange={handleAgentChange}
+        onIdeChange={handleIdeChange}
+        onPrimaryLanguageChange={handlePrimaryLanguageChange}
+      />
 
       <Separator className="my-4" />
 
-      {/* Tasks */}
-      <div className="mb-6">
-        <div className="text-[0.86em] text-text-primary font-medium mb-1">Tasks</div>
-        <div className="text-[0.79em] text-text-muted mb-3">
-          Shell commands run via the title bar Run button.
-        </div>
-
-        {/* Tabs */}
-        <div className="flex border-b border-border mb-3">
-          <button
-            className={cn(
-              'px-4 py-2 text-[0.82em] font-medium border-b-2 transition-colors cursor-pointer',
-              activeTaskTab === 'project'
-                ? 'text-accent-blue border-accent-blue'
-                : 'text-text-muted border-transparent hover:text-text-primary',
-            )}
-            onClick={() => setActiveTaskTab('project')}
-          >
-            Project
-          </button>
-          <button
-            className={cn(
-              'px-4 py-2 text-[0.82em] font-medium border-b-2 transition-colors cursor-pointer',
-              activeTaskTab === 'app'
-                ? 'text-accent-blue border-accent-blue'
-                : 'text-text-muted border-transparent hover:text-text-primary',
-            )}
-            onClick={() => setActiveTaskTab('app')}
-          >
-            App (global)
-          </button>
-        </div>
-
-        {/* Task list */}
-        <div className="flex flex-col gap-1.5">
-          {currentTasks.length === 0 ? (
-            <div className="py-6 text-center text-[0.82em] text-text-muted border border-dashed border-border rounded-md">
-              {activeTaskTab === 'project'
-                ? 'No project tasks configured.'
-                : 'No app-level tasks configured.'}
-            </div>
-          ) : (
-            currentTasks.map((task) => (
-              <div
-                key={task.id}
-                className="flex items-center gap-2.5 px-3 py-2.5 bg-bg-tertiary border border-border rounded-md"
-              >
-                <span className="text-[0.86em] text-text-primary font-medium min-w-[60px]">
-                  {task.name}
-                </span>
-                <span className="flex-1 text-[0.79em] text-text-muted font-mono truncate">
-                  {task.command}
-                </span>
-                <button
-                  className="p-1 rounded text-text-muted hover:text-text-primary hover:bg-bg-hover transition-colors cursor-pointer"
-                  onClick={() => handleEditTask(task)}
-                  title="Edit"
-                >
-                  <Pencil size={13} />
-                </button>
-                <button
-                  className="p-1 rounded text-text-muted hover:text-accent-red hover:bg-bg-hover transition-colors cursor-pointer"
-                  onClick={() => handleDeleteTask(task)}
-                  title="Delete"
-                >
-                  <Trash2 size={13} />
-                </button>
-              </div>
-            ))
-          )}
-        </div>
-
-        {activeTaskTab === 'app' && (
-          <div className="mt-2 text-[0.75em] text-text-muted">
-            App-level tasks are visible in all projects. Stored in ~/.neeko/tasks.json
-          </div>
-        )}
-
-        <Button variant="outline" size="sm" className="mt-3" onClick={handleAddTask}>
-          <Plus size={13} />
-          Add Task
-        </Button>
-      </div>
+      <ProjectTasksSection projectId={projectId} projectPath={projectPath} />
 
       <Separator className="my-4" />
 
-      {/* Appearance */}
-      <div className="mb-6">
-        <div className="text-[0.86em] text-text-primary font-medium mb-1">Appearance</div>
-        <div className="text-[0.79em] text-text-muted mb-3">
-          Avatar color shown in the project list and title bar.
-        </div>
-        <div className="flex items-center gap-2" data-testid="appearance-swatches">
-          {AVATAR_COLORS.map((color) => {
-            const selected = project.avatar_color === color;
-            return (
-              <button
-                key={color}
-                type="button"
-                title={color}
-                aria-label={`Select avatar color ${color}`}
-                aria-pressed={selected}
-                onClick={() => handleAvatarColorChange(color)}
-                className={cn(
-                  'w-6 h-6 rounded-full transition-transform shrink-0 cursor-pointer',
-                  selected && 'ring-2 ring-white/80 scale-110',
-                )}
-                style={{ backgroundColor: color }}
-              />
-            );
-          })}
-          {project.avatar_color != null && (
-            <button
-              type="button"
-              onClick={() => handleAvatarColorChange(null)}
-              className="ml-2 text-[0.79em] text-text-muted hover:text-text-primary transition-colors cursor-pointer"
-              data-testid="appearance-reset"
-            >
-              Reset to default
-            </button>
-          )}
-        </div>
-      </div>
+      <Separator className="my-4" />
 
-      {/* Danger zone */}
-      <div className="mt-6 pt-6 border-t border-border">
-        <div className="flex items-center justify-between">
-          <div>
-            <div className="text-[0.86em] text-text-primary font-medium">Remove project</div>
-            <div className="text-[0.79em] text-text-muted">
-              Remove from Neeko. Local files stay intact.
-            </div>
-          </div>
-          {confirmRemove ? (
-            <div className="flex items-center gap-2">
-              <Button variant="outline" size="sm" onClick={() => setConfirmRemove(false)}>
-                Cancel
-              </Button>
-              <Button variant="destructive" size="sm" onClick={handleRemove}>
-                Confirm
-              </Button>
-            </div>
-          ) : (
-            <Button variant="destructive" size="sm" onClick={() => setConfirmRemove(true)}>
-              Remove
-            </Button>
-          )}
-        </div>
-      </div>
+      <ProjectAppearanceSection
+        avatarColor={project.avatar_color}
+        onChange={handleAvatarColorChange}
+      />
 
-      {/* Task Dialog */}
-      {dialogOpen && (
-        <TaskDialog
-          onClose={() => {
-            setDialogOpen(false);
-            setEditingConfig(null);
-          }}
-          onSubmit={handleDialogSubmit}
-          editConfig={editingConfig ?? undefined}
-        />
-      )}
+      <ProjectDangerZone onRemove={handleRemove} />
     </div>
   );
 };

@@ -1,13 +1,13 @@
 /**
  * 用例状态 gutter 贡献（P1：✓/✗/进行中 回显）。
  *
- * 与 test-run 同行并排（priority 30 > test-run 20 → play 左、状态右；cell flex gap
+ * 与 run 同行并排（priority 30 > run 20 → play 左、状态右；cell flex gap
  * 由统一 gutter 主题提供）。状态来自 editor/store/testResults（Run 链路落库）：
- * - markersOf：行 → 用例（复用本域 testCodelensField 的 caseAtLine，行→名映射唯一
+ * - markersOf：行 → 用例（复用本域 runCodelensField 的 runAtLine，行→名映射唯一
  *   来源仍是检测 field，store 对行号无感知）→ 用例名 → store 状态。
  * - running 占位（半透明）由 store 的 statusForCase 给出（beginRun 后、结果落库前）。
  * - 失败 title 携带 message 摘要（libtest stdout / vitest failureMessages[0]）。
- * - onClick 吞掉事件（返回 true 无动作）：状态行必有用例片段，断点已被 test-run
+ * - onClick 吞掉事件（返回 true 无动作）：状态行必有用例片段，断点已被 run
  *   冲突规则压制；状态图标点击不设断点，也不需任何动作。
  *
  * 响应式（store → CM）：createTestStatusCore 经 ViewPlugin 订阅 store 的 per-file
@@ -25,10 +25,10 @@ import {
   useTestResultsStore,
   type TestCaseStatusInfo,
 } from '../store/testResults';
-import { isTestFile } from '../utils/testCases';
+import { isRunnableFile } from '../utils/runLanguages';
 
 import type { GutterContribution, GutterHit, GutterLineContext } from './contribution';
-import { caseAtLine, caseLinesOf } from './testRunContribution';
+import { runAtLine, runLinesOf } from './runContribution';
 
 /** store 状态变更 → gutter 重读信号（无 field 消费，仅触发 view update）。 */
 export const refreshTestStatusEffect = StateEffect.define<null>();
@@ -115,17 +115,20 @@ export function createTestStatusContribution(
     priority: 30,
 
     when(ctx: GutterLineContext): boolean {
-      // 与 test-run 同门控（有测试标记的文件才有状态图标）
-      return ctx.editable && (isTestFile(ctx.fileName) || ctx.fileName.endsWith('.rs'));
+      // 与 run 同门控，且共用唯一事实源（runLanguages）—— 此前此处手写
+      // `isTestFile || .rs || .java` 漏掉 `.go`，与 run 漂移；改为同源调用后
+      // 结构上不可能再漂移。markersOf 再按 kind==='test' 收窄（main 行无状态）。
+      return ctx.editable && isRunnableFile(ctx.fileName);
     },
     linesOf(state): readonly number[] {
-      return caseLinesOf(state);
+      return runLinesOf(state);
     },
 
     markersOf(state, line): { payload: TestCaseStatusInfo } | null {
-      const testCase = caseAtLine(state, line);
-      if (!testCase) return null;
-      const info = statusForCase(projectId, filePath, testCase.name);
+      const target = runAtLine(state, line);
+      // 状态回显仅对单测用例有意义（main 入口无 test-result 状态）。
+      if (!target || target.kind !== 'test') return null;
+      const info = statusForCase(projectId, filePath, target.testCase.name);
       return info ? { payload: info } : null;
     },
 

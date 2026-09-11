@@ -2,6 +2,12 @@
 
 use portable_pty::CommandBuilder;
 
+/// Windows 无 POSIX `sh`（非目标平台 no-op stub，与 unix 实现同签名）。
+#[must_use]
+pub const fn posix_sh() -> Option<&'static str> {
+    None
+}
+
 /// 构建 Windows 任务命令:`cmd /c <command>`。
 #[must_use]
 pub fn build_task_command(task_command: &str) -> CommandBuilder {

@@ -139,7 +139,7 @@ pub fn execute_agent_cli_on_target(
     let runtime = AppRuntime::try_current_or_tauri();
     let collected = runtime.handle().block_on(async {
         let arg_refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
-        exec::collect_in_dir(target, &cmd, &arg_refs, Some(&cwd)).await
+        exec::collect(target, &cmd, &arg_refs, Some(&cwd)).await
     });
 
     if let Some(ref tmp) = prompt_file {

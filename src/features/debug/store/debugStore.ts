@@ -1,6 +1,7 @@
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import { create } from 'zustand';
 
+import { DAP_EVENT, DAP_SESSION_STATUS_EVENT } from '@/shared/events';
 import { useNotificationStore } from '@/shared/store/notificationStore';
 import { useTaskStore } from '@/shared/store/taskStore';
 import {
@@ -26,6 +27,7 @@ import {
   dapStopSession,
   dapVariables,
   dapVariablesByReference,
+  debugJavaAttach,
 } from '../api/debugApi';
 import { openSourceAtLine } from '../navigate';
 import { pickNavigateFrame, shouldAutoContinueSystemStop } from '../stackFrames';
@@ -100,6 +102,16 @@ interface DebugState {
   start: (projectId: string, currentFile?: string | null) => Promise<void>;
   /** Start a session from a fully-specified synthetic config (editor test debug). */
   startWithConfig: (projectId: string, config: LaunchConfig) => Promise<void>;
+  /**
+   * Java attach-first（J3）：后端单条命令 spawn 测试 JVM（jdwp suspend=y）→
+   * 解析端口 → JavaAdapter attach 会话。command 为 buildJavaDebugCommand 产物。
+   */
+  startJavaAttach: (
+    projectId: string,
+    command: string,
+    cwd: string,
+    testName: string,
+  ) => Promise<void>;
   /** Debug a discovered entry (ensures matching launch config). */
   debugEntry: (projectId: string, entry: EntryPoint, currentFile?: string | null) => Promise<void>;
   /** Run entry without debugger (terminal task). */
@@ -197,7 +209,9 @@ export const useDebugStore = create<DebugState>((rawSet, get) => {
         const hint =
           config.type === 'go'
             ? 'Install Delve: go install github.com/go-delve/delve/cmd/dlv@latest'
-            : 'Install lldb-dap (LLVM) or codelldb and ensure it is on PATH';
+            : config.type === 'java'
+              ? 'Run tools/java-host/build.sh to build the Java debug host (requires JDK >= 11), or point `dap.adapterBinaries.java` at a host jar'
+              : 'Install lldb-dap (LLVM) or codelldb and ensure it is on PATH';
         const msg = `Debug adapter for type "${config.type}" not found. ${hint}`;
         set({ error: msg, panelOpen: true, panelTab: 'console' });
         get().pushConsole('err', msg);
@@ -289,9 +303,12 @@ export const useDebugStore = create<DebugState>((rawSet, get) => {
 
     pushConsole: (kind, text) => {
       const lines = get().consoleLines;
-      // Drop consecutive identical system/output lines (duplicate DAP events / listeners).
+      // Drop consecutive identical *system* lines only (our own Starting/Started/
+      // status lines can double-fire from re-renders). Program output ('out'/'err')
+      // must stay verbatim — loops legitimately print identical lines (e.g. two
+      // `println("0:2")` in one test), deduping them hides real output.
       const last = lines[lines.length - 1];
-      if (last && last.kind === kind && last.text === text) {
+      if (kind === 'sys' && last && last.kind === 'sys' && last.text === text) {
         return;
       }
       const line: ConsoleLine = {
@@ -411,6 +428,26 @@ export const useDebugStore = create<DebugState>((rawSet, get) => {
       resetSystemAutoContinue();
       resetSessionState();
       await launchSession(projectId, config, () => dapStartSessionConfig(projectId, config));
+    },
+
+    /** Java attach-first（J3）：spawn 测试 JVM + attach 全流程在单条后端命令内完成，
+     *  返回的 DapSessionInfo 与 startWithConfig 同构。config 仅用于 adapter 可用性
+     *  检查（type:'java'）；port 由后端解析 jdwp 端口后填充进 attach 请求。 */
+    startJavaAttach: async (projectId, command, cwd, testName) => {
+      resetSystemAutoContinue();
+      resetSessionState();
+      // 回显真实执行命令（reset 之后推，否则被清空；用户可复制复现排查）。
+      get().pushConsole('sys', `$ ${command}`);
+      const config: LaunchConfig = {
+        name: `Debug test: ${testName}`,
+        type: 'java',
+        request: 'attach',
+        cwd,
+        stopOnEntry: false,
+      };
+      await launchSession(projectId, config, () =>
+        debugJavaAttach(projectId, command, cwd, testName),
+      );
     },
 
     debugEntry: async (projectId, entry, currentFile) => {
@@ -749,7 +786,7 @@ export const useDebugStore = create<DebugState>((rawSet, get) => {
     subscribeEvents: async () => {
       const unsubs: UnlistenFn[] = [];
       unsubs.push(
-        await listen<DapEventPayload>('dap-event', (event) => {
+        await listen<DapEventPayload>(DAP_EVENT, (event) => {
           const { kind, body, sessionId } = event.payload;
           const session = get().session;
           if (session && session.sessionId && session.sessionId !== sessionId) return;
@@ -830,7 +867,7 @@ export const useDebugStore = create<DebugState>((rawSet, get) => {
         }),
       );
       unsubs.push(
-        await listen<DapSessionInfo>('dap-session-status', (event) => {
+        await listen<DapSessionInfo>(DAP_SESSION_STATUS_EVENT, (event) => {
           const info = event.payload;
           const cur = get().session;
           if (info.status === 'terminated' || info.status === 'ended') {

@@ -23,7 +23,6 @@ import {
   TERMINAL_FONT_WEIGHT,
 } from '@/shared/utils/typography';
 
-// eslint-disable-next-line import/no-restricted-paths -- terminal view needs agent API for agent config lookup
 import { getAgent } from '../../agent/api/agentApi';
 import { drainTerminal, drainTerminalWait } from '../api/terminalApi';
 import type { TerminalStrategy, CacheEntry } from '../strategies/types';

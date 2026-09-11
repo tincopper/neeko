@@ -11,7 +11,7 @@ export { reportFrontendError, resetFrontendErrorThrottle };
 setErrorNotifier((message) => {
   useNotificationStore.getState().addNotification({
     type: 'error',
-    title: '前端错误',
+    title: 'Frontend Error',
     message,
   });
 });

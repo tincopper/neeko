@@ -9,12 +9,14 @@ import { __resetNoDefinitionHintForTests, useLspDefinition } from '../useLspDefi
 const mockGoToDefinition = vi.hoisted(() =>
   vi.fn().mockResolvedValue({ lspResult: null, fileContent: null }),
 );
+const mockLspRequest = vi.hoisted(() => vi.fn().mockResolvedValue(null));
 
 vi.mock('@/features/lsp/api/lspApi', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/features/lsp/api/lspApi')>();
   return {
     ...actual,
     lspGoToDefinition: (...args: unknown[]) => mockGoToDefinition(...args),
+    lspRequest: (...args: unknown[]) => mockLspRequest(...args),
   };
 });
 
@@ -35,6 +37,7 @@ describe('useLspDefinition — goToDefinitionWithContent feedback', () => {
     __resetNoDefinitionHintForTests();
     useNotificationStore.getState().clearAll();
     mockGoToDefinition.mockResolvedValue({ lspResult: null, fileContent: null });
+    mockLspRequest.mockResolvedValue(null);
   });
 
   afterEach(() => {
@@ -106,5 +109,64 @@ describe('useLspDefinition — goToDefinitionWithContent feedback', () => {
       await result.current.goToDefinitionWithContent('rust', 'file:///a.rs', 1, 2);
     });
     expect(useNotificationStore.getState().notifications).toHaveLength(2);
+  });
+});
+
+describe('useLspDefinition — Java JDK 源码兜底提示', () => {
+  beforeEach(() => {
+    __resetDefinitionCachesForTests();
+    __resetNoDefinitionHintForTests();
+    useNotificationStore.getState().clearAll();
+    mockGoToDefinition.mockResolvedValue({ lspResult: null, fileContent: null });
+    mockLspRequest.mockReset();
+  });
+
+  it('java 定义空 + hover 有内容 → 提示 JDK 源码映射未生效', async () => {
+    mockLspRequest.mockResolvedValue({
+      contents: [
+        { language: 'java', value: 'void java.io.PrintStream.println(String x)' },
+        'Prints a String…',
+      ],
+    });
+    const { result } = renderHook(() => useLspDefinition('/proj'));
+
+    await act(async () => {
+      const res = await result.current.goToDefinitionWithContent('java', 'file:///a.java', 4, 19);
+      expect(res).toBeNull();
+    });
+    const msgs = useNotificationStore.getState().notifications.map((n) => n.message);
+    expect(msgs.some((m) => m.includes('jdtls resolved this symbol'))).toBe(true);
+    // hover 探测确实发出
+    expect(mockLspRequest).toHaveBeenCalledWith(
+      '/proj',
+      'java',
+      'textDocument/hover',
+      expect.any(Object),
+    );
+  });
+
+  it('java 定义空 + hover 也空 → 通用"无定义"提示', async () => {
+    mockLspRequest.mockResolvedValue(null);
+    const { result } = renderHook(() => useLspDefinition('/proj'));
+
+    await act(async () => {
+      const res = await result.current.goToDefinitionWithContent('java', 'file:///a.java', 4, 5);
+      expect(res).toBeNull();
+    });
+    const msgs = useNotificationStore.getState().notifications.map((n) => n.message);
+    expect(msgs.some((m) => m === 'No navigable definition at this position.')).toBe(true);
+    expect(msgs.some((m) => m.includes('jdtls resolved'))).toBe(false);
+  });
+
+  it('非 java 语言空定义不触发 hover 探测', async () => {
+    const { result } = renderHook(() => useLspDefinition('/proj'));
+
+    await act(async () => {
+      const res = await result.current.goToDefinitionWithContent('rust', 'file:///a.rs', 0, 0);
+      expect(res).toBeNull();
+    });
+    expect(mockLspRequest).not.toHaveBeenCalled();
+    const msgs = useNotificationStore.getState().notifications.map((n) => n.message);
+    expect(msgs.some((m) => m === 'No navigable definition at this position.')).toBe(true);
   });
 });

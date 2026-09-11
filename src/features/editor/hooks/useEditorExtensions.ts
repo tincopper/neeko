@@ -20,6 +20,7 @@ import { navigateCaretExtension } from '@/features/editor/navigateCaret';
 import { neekoSearchExtension } from '@/features/editor/searchPanel';
 import { createCmTheme } from '@/shared/utils/codemirror';
 import { imeSpaceGuard } from '@/shared/utils/codemirrorIme';
+import { mouseClickGuard } from '@/shared/utils/codemirrorMouseClickGuard';
 
 interface UseEditorExtensionsParams {
   fontFamily: string;
@@ -76,7 +77,7 @@ export function useEditorExtensions({
     // (facet combine picks the first config with `parent`).
     exts.push(tooltips({ position: 'fixed', parent: document.body }));
 
-    // Order: unified gutter (breakpoint + test-run single column) → line numbers → rest.
+    // Order: unified gutter (breakpoint + run single column) → line numbers → rest.
     // lineNumbers is ALWAYS registered here so debug sessions never remove it.
     if (bpGutterExt.length > 0) {
       exts.push(...bpGutterExt);
@@ -124,6 +125,7 @@ export function useEditorExtensions({
       keymap.of(searchKeymap),
       cmTheme,
       viewStateExt,
+      mouseClickGuard(),
       imeSpaceGuard(),
     );
 

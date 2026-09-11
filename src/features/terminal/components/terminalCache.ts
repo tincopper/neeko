@@ -7,7 +7,6 @@ import { safeDisposeTerminal } from '@/shared/utils/terminal';
 import { terminalInputEvent } from '@/shared/utils/terminalEvents';
 import type { TerminalInputController } from '@/shared/utils/terminalInput';
 
-// eslint-disable-next-line import/no-restricted-paths -- terminal cache needs agent API for agent config
 import { getAgent } from '../../agent/api/agentApi';
 import { closeTerminalSession } from '../api/terminalApi';
 

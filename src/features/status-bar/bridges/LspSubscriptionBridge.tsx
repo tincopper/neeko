@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react';
 
 import { lspListSessions } from '@/features/lsp/api/lspApi';
-import { useLspStore, type LspSessionState } from '@/shared/store/lspStore';
+import { useLspStore, type LspSessionState } from '@/features/lsp/store/lspStore';
 import { useProjectStore } from '@/shared/store/projectStore';
 
 /**

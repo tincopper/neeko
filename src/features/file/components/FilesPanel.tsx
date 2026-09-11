@@ -3,17 +3,13 @@ import React, { useCallback, useEffect, useMemo, useRef } from 'react';
 import ContextMenu from '@/shared/components/ContextMenu';
 import type { FileChange } from '@/shared/types';
 import { buildFileTreeView, flattenFileTreeView } from '@/shared/utils/fileTree';
-import {
-  buildFileSummaryMap,
-  buildFolderSummaryMap,
-  collectCollapsedDirs,
-  resolveNodeStatus,
-} from '@/shared/utils/gitFileDecoration';
 
 import { useFilePanelState } from '../hooks/useFilePanelState';
+import { useGitDecorationProjection } from '../hooks/useGitDecorationProjection';
 import { usePanelDeselect } from '../hooks/usePanelDeselect';
 import { useFileStore } from '../store';
 import { displayHomePath } from '../utils/fileTreeUtils';
+import { compactJavaPackages } from '../utils/javaPackageTree';
 
 import DeleteConfirmDialog from './DeleteConfirmDialog';
 import FilesPanelHeader from './FilesPanelHeader';
@@ -21,9 +17,6 @@ import FileTreeList from './FileTreeList';
 import InlineNameInput from './InlineNameInput';
 
 export { displayHomePath };
-
-/** 空变更列表常量：避免每次渲染新建空数组导致下游 useMemo 依赖抖动 */
-const EMPTY_CHANGED_FILES: FileChange[] = [];
 
 interface FilesPanelProps {
   projectName: string | null;
@@ -84,12 +77,22 @@ function FilesPanel({
 }: FilesPanelProps) {
   const dirs = useFileStore((s) => s.dirs);
   const loadStates = useFileStore((s) => s.loadStates);
+  // dirs 镜像 ref：readDir 用稳定闭包读取（身份不随 dirs 变化抖动——
+  // 否则 handleToggleDir 每次渲染重建，FileTreeRow memo 比较器按回调身份
+  // 比较会令整树重渲染，击穿 S4 render-count 兜底）。
+  const dirsRef = useRef(dirs);
+  useEffect(() => {
+    dirsRef.current = dirs;
+  }, [dirs]);
+  // 稳定闭包：readDir 身份不变 → handleToggleDir 身份不变 → 行 memo 生效。
+  const readDirCb = useCallback((dirPath: string) => dirsRef.current[dirPath] ?? [], []);
   const state = useFilePanelState({
     projectPath,
     activeFilePath,
     onSelectFile,
     onRefresh,
     onExpandDir,
+    readDir: readDirCb,
     projectType,
     onOpenInBrowser,
     onOpenInSystemBrowser,
@@ -100,33 +103,7 @@ function FilesPanel({
     onRenamePath,
   });
 
-  // ── 装饰投影（S3：组装期 join）────────────────────────────
-  // git 变更/忽略输入 → 路径摘要 map（输入不变则引用不变）
-  const fileSummaries = useMemo(
-    () => buildFileSummaryMap(changedFiles ?? EMPTY_CHANGED_FILES),
-    [changedFiles],
-  );
-  // 折叠 untracked 目录条目：后代继承目录态色的投影输入（Rust 不递归 untracked）。
-  // G1 起目录条目为无尾斜杠 path + is_dir；collectCollapsedDirs 产物同时喂给
-  // folderSummaries（目录自身需显式携带状态色）与 resolveNodeStatus。
-  const collapsedDirs = useMemo(
-    () => collectCollapsedDirs(changedFiles ?? EMPTY_CHANGED_FILES),
-    [changedFiles],
-  );
-  const folderSummaries = useMemo(
-    () => buildFolderSummaryMap(fileSummaries, collapsedDirs),
-    [fileSummaries, collapsedDirs],
-  );
-  // S5：ignored 灰显不再来自平行数组 —— 后端读层原生标注 node.ignored，
-  // 组装期并入 is_ignored（见 fileTree.ts finalizeNode）。
-
-  // 组装期 join：buildFileTreeView 的 decorate 回调把语义状态（主导状态 + ignored
-  // 原始事实）直接盖章到视图节点——FileTreeRow 读字段呈现，无渲染期匹配回调。
-  const decorate = useCallback(
-    (path: string, isDir: boolean) =>
-      resolveNodeStatus(path, isDir, { fileSummaries, folderSummaries, collapsedDirs }),
-    [fileSummaries, folderSummaries, collapsedDirs],
-  );
+  const decorate = useGitDecorationProjection(changedFiles);
 
   // 视图树：组装期 join（git 投影 + 逐节点视图状态统一盖章）。
   // 已展开目录内容来自各自缓存，根刷新不影响子树。
@@ -158,9 +135,12 @@ function FilesPanel({
     ],
   );
 
+  // 包视图（Java 单子目录链压行）：视图树 → 压行 → 扁平行。
+  const packageView = useMemo(() => compactJavaPackages(viewTree), [viewTree]);
+
   // S4：视图树 → 扁平行（按渲染顺序），交 FileTreeList 窗口化渲染（O(可见行数)）。
   // 定位滚动（scrollToIndex）由 FileTreeList 收口。
-  const rows = useMemo(() => flattenFileTreeView(viewTree), [viewTree]);
+  const rows = useMemo(() => flattenFileTreeView(packageView), [packageView]);
   const selectedPath = state.selectedNode?.path ?? null;
 
   // 首次加载（根无内容且 loading）显示全面板 Loading；失败且无内容显示重试

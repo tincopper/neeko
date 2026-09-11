@@ -34,7 +34,7 @@ vi.mock('@tauri-apps/api/event', () => ({
   }),
 }));
 
-vi.mock('@/shared/store/lspStore', () => ({
+vi.mock('@/features/lsp/store/lspStore', () => ({
   useLspStore: Object.assign(
     (sel: (s: Record<string, unknown>) => unknown) =>
       sel({ installProgress: null, sessions: {}, profiles: {} }),
@@ -74,18 +74,20 @@ describe('statusBarBridges', () => {
     expect(listenCapture.handler).not.toBeNull();
     const handler = listenCapture.handler!;
 
-    handler({ payload: { language_id: 'rust', phase: 'installing', message: '' } });
+    handler({ payload: { language_id: 'rust', phase: 'installing', message: '', log: 'npm …' } });
     expect(storeMock.setInstallProgress).toHaveBeenLastCalledWith({
       language_id: 'rust',
       phase: 'installing',
       message: '',
+      log: 'npm …',
     });
 
-    handler({ payload: { language_id: 'rust', phase: 'done', message: '' } });
+    handler({ payload: { language_id: 'rust', phase: 'done', message: '', log: 'done log' } });
     expect(storeMock.setInstallProgress).toHaveBeenLastCalledWith({
       language_id: 'rust',
       phase: 'done',
       message: '',
+      log: 'done log',
     });
     expect(storeMock.setInstallProgress).not.toHaveBeenCalledWith(null);
     await act(async () => {

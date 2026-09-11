@@ -4,8 +4,8 @@
 //! （与 Local `GitIgnoreFilter` 同语义）；watcher 失效是主失效路径，TTL 仅兜底。
 
 use crate::common::executor::factory::ExecTarget;
-use crate::common::executor::sync::collect_output;
 use crate::common::utils::command::local::safe_path;
+use crate::core::exec::collect;
 use crate::project::types::FileNode;
 use std::collections::{HashMap, HashSet};
 use std::future::Future;
@@ -195,7 +195,7 @@ pub(super) async fn fetch_remote_ignored_paths(
     let safe_root = safe_path(root_path);
     let cmd = build_git_ignored_command(&safe_root);
     let shell = remote_shell_name(target);
-    let output = collect_output(target, shell, &["-c", &cmd]).await;
+    let output = collect(target, shell, &["-c", &cmd], None).await;
     match output {
         Ok(out) if out.exit_code == 0 => {
             parse_remote_ignored_output(&String::from_utf8_lossy(&out.stdout))

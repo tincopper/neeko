@@ -16,7 +16,7 @@ pub struct LaunchConfig {
     /// Adapter type: `lldb` (Rust) or `go` (Delve).
     #[serde(rename = "type")]
     pub type_: String,
-    /// `launch` or `attach` (MVP: launch).
+    /// `launch` or `attach` (MVP: launch; Java attach-first 用 attach)。
     pub request: String,
     /// Path to the program/debug target.
     #[serde(default)]
@@ -30,6 +30,10 @@ pub struct LaunchConfig {
     /// Go: `debug` | `test` | …
     #[serde(default)]
     pub mode: Option<String>,
+    /// Java attach-first：已运行测试 JVM 的 jdwp 监听端口（`address=<port>`）。
+    /// JavaAdapter.build_launch_args 据此生成 DAP attach 请求（SocketAttachingConnector）。
+    #[serde(default)]
+    pub port: Option<u16>,
     /// Optional shell command run in project env before launch (e.g. `cargo build`).
     #[serde(default)]
     pub pre_launch_task: Option<String>,
@@ -342,6 +346,8 @@ pub enum AdapterKind {
     Go,
     /// LLDB-based debugger for Rust and native binaries.
     Lldb,
+    /// Java debug host（自写 JVM 托管 com.microsoft.java.debug.core，attach-first）。
+    Java,
 }
 
 impl AdapterKind {
@@ -350,6 +356,7 @@ impl AdapterKind {
         match type_ {
             "go" | "delve" => Ok(Self::Go),
             "lldb" | "rust" | "codelldb" => Ok(Self::Lldb),
+            "java" | "junit" => Ok(Self::Java),
             other => Err(AppError::Dap(format!("Unsupported debug type: {other}"))),
         }
     }
@@ -360,6 +367,7 @@ impl AdapterKind {
         match self {
             Self::Go => "go",
             Self::Lldb => "lldb",
+            Self::Java => "java",
         }
     }
 }

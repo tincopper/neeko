@@ -9,7 +9,7 @@ use std::time::Duration;
 
 use crate::common::error::AppError;
 use crate::common::executor::factory::ExecTarget;
-use crate::common::executor::sync::collect_output;
+use crate::core::exec::collect;
 use crate::search::types::{
     SearchCursor, SearchFileGroup, SearchMatch, SearchOptions, SearchPage, LINE_TEXT_CAP,
     PAGE_LIMIT_DEFAULT, PAGE_LIMIT_MAX, REMOTE_TIMEOUT_MS,
@@ -49,7 +49,7 @@ pub async fn search_remote(
 
     let output = tokio::time::timeout(
         Duration::from_millis(REMOTE_TIMEOUT_MS),
-        collect_output(target, "grep", &args),
+        collect(target, "grep", &args, None),
     )
     .await
     .map_err(|_| AppError::Remote(format!("Search timed out after {}ms", REMOTE_TIMEOUT_MS)))?

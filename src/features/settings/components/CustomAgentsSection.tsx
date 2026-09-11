@@ -1,7 +1,6 @@
 import { Pencil } from 'lucide-react';
 import React, { useState } from 'react';
 
-// eslint-disable-next-line import/no-restricted-paths -- settings UI resolves agent icons via agent API
 import { AgentForm, CapabilityBadges } from '@/features/agent';
 import { resolveAgentIconSrc } from '@/features/agent/api/agentApi';
 import { cn } from '@/lib/utils';

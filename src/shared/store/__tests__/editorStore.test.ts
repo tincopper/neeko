@@ -426,3 +426,53 @@ describe('editorStore.addTab — targetGroup 指定落组（pane 内 + 创建跟
     expect(next.pinnedActiveTabId).toBe('NEW');
   });
 });
+
+describe('editorStore.renameTab — Save As 身份迁移（改 id 保持一致性）', () => {
+  beforeEach(() => {
+    useEditorStore.setState({
+      tabs: {},
+      editorLayout: {},
+      activeTabId: null,
+    });
+  });
+
+  it('改 id 并保持 order / 双组 / pinned / 激活一致', () => {
+    const layout = splitLayout(['u1', 'A'], ['B'], 'u1', 'B');
+    layout.pinnedTabIds = ['A'];
+    layout.pinnedActiveTabId = 'A';
+    seedState(layout, [makeTab('u1'), makeTab('A'), makeTab('B')], 'u1');
+
+    useEditorStore.getState().renameTab('p1', 'u1', 'p1:/repo/x.ts');
+
+    const s = useEditorStore.getState();
+    expect(s.tabs['p1'].tabs.map((t) => t.id)).toEqual(['p1:/repo/x.ts', 'A', 'B']);
+    expect(s.tabs['p1'].activeTabId).toBe('p1:/repo/x.ts');
+    expect(s.activeTabId).toBe('p1:/repo/x.ts');
+    const l = s.editorLayout['p1'];
+    expect(l.groups.left.tabIds).toEqual(['p1:/repo/x.ts', 'A']);
+    expect(l.groups.left.activeTabId).toBe('p1:/repo/x.ts');
+    expect(l.groups.right.tabIds).toEqual(['B']);
+    expect(l.pinnedTabIds).toEqual(['A']);
+    expect(l.pinnedActiveTabId).toBe('A');
+  });
+
+  it('目标 id 已被占用 → 拒绝（无变化）', () => {
+    seedState(splitLayout(['u1', 'A'], [], 'u1', 'u1'), [makeTab('u1'), makeTab('A')], 'u1');
+
+    useEditorStore.getState().renameTab('p1', 'u1', 'A');
+
+    const s = useEditorStore.getState();
+    expect(s.tabs['p1'].tabs.map((t) => t.id)).toEqual(['u1', 'A']);
+    expect(s.tabs['p1'].activeTabId).toBe('u1');
+  });
+
+  it('old id 不存在 → 无变化', () => {
+    seedState(splitLayout(['A'], [], 'A', 'A'), [makeTab('A')], 'A');
+
+    useEditorStore.getState().renameTab('p1', 'missing', 'X');
+
+    const s = useEditorStore.getState();
+    expect(s.tabs['p1'].tabs.map((t) => t.id)).toEqual(['A']);
+    expect(s.tabs['p1'].activeTabId).toBe('A');
+  });
+});

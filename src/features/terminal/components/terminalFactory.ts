@@ -16,7 +16,6 @@ import {
   TERMINAL_FONT_WEIGHT,
 } from '@/shared/utils/typography';
 
-// eslint-disable-next-line import/no-restricted-paths -- terminal factory needs agent API for agent config
 import { getAgent } from '../../agent/api/agentApi';
 import { createTerminalSession, drainTerminal, drainTerminalWait } from '../api/terminalApi';
 
