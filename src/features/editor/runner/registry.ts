@@ -85,7 +85,7 @@ const JAVA: LanguageRunner = {
     if (blockReason) {
       useNotificationStore.getState().addNotification({
         type: 'error',
-        title: 'Java 测试',
+        title: 'Java Test',
         message: blockReason,
       });
       return null; // 未编译 → 阻断（避免 Task Console 空跑、gutter 永久 running）
@@ -98,7 +98,7 @@ const JAVA: LanguageRunner = {
     if (block) {
       useNotificationStore.getState().addNotification({
         type: 'error',
-        title: 'Java 运行',
+        title: 'Java Run',
         message: block,
       });
       return null;

@@ -25,7 +25,7 @@ export function useGitPerfSuggestion(): void {
         store.addNotification({
           type: 'info',
           title: 'Git performance suggestion',
-          message: `${suggestion.label}：${suggestion.command}`,
+          message: `${suggestion.label}: ${suggestion.command}`,
         });
       }
     });

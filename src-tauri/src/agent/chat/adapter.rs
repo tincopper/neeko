@@ -67,7 +67,7 @@ impl AgentKind {
 pub fn adapter_for(config: &AgentConfig) -> Result<Box<dyn AgentAdapter>, AppError> {
     match &config.chat {
         None => Err(AppError::Unsupported(format!(
-            "agent '{}' 无 CHAT 能力（仅终端/Headless 形态）",
+            "agent '{}' has no CHAT capability (terminal/headless only)",
             config.id
         ))),
         Some(ChatStart::Mock) => Ok(Box::new(AcpAdapter::mock())),

@@ -357,7 +357,7 @@ function MarkdownPreviewImpl({
               }
               useNotificationStore
                 .getState()
-                .addNotification({ type: 'error', title: '链接无法打开', message: href ?? '' });
+                .addNotification({ type: 'error', title: 'Cannot Open Link', message: href ?? '' });
             };
             return (
               <a

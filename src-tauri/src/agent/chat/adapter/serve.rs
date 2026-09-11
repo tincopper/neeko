@@ -454,7 +454,7 @@ fn translate_permission_asked(
         })
         .unwrap_or_default();
     let prompt = if patterns.is_empty() {
-        "允许该操作？".to_string()
+        "Allow this action?".to_string()
     } else {
         patterns.join(" ")
     };

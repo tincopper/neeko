@@ -104,12 +104,12 @@ where
             // 1. Opening: announce the plan（先输出总体意图）
             update_chunk(
                 writer,
-                "你好，让我先读取几个关键文件，然后进行一些修改。\n\n",
+                "Hi! Let me read a few key files and then make some changes.\n\n",
             )
             .await;
 
             // 2. 先输出意图：声明要读取 adapter.rs
-            update_chunk(writer, "让我先读取 adapter.rs 文件。\n\n").await;
+            update_chunk(writer, "Let me read adapter.rs first.\n\n").await;
 
             // 3. 再执行工具：read_file
             tool_call(
@@ -129,7 +129,7 @@ where
             tool_end(writer, "tc_1", "done").await;
 
             // 4. 工具完成后输出文本
-            update_chunk(writer, "已读取 adapter.rs。现在准备修改它。\n\n").await;
+            update_chunk(writer, "Read adapter.rs. Now I'll modify it.\n\n").await;
 
             // 5. 再执行下一个工具：edit_file（触发审批门）
             tool_call(
@@ -164,7 +164,7 @@ where
                         "sessionId": SESSION_ID,
                         "toolCall": { "toolCallId": "tc_2", "toolName": "edit_file" },
                         "title": "src-tauri/src/agent/chat/adapter.rs",
-                        "explanation": "mockAgent 请求修改 adapter.rs：为 AgentAdapter trait 添加 capabilities 方法",
+                        "explanation": "mockAgent wants to edit adapter.rs: add a capabilities method to the AgentAdapter trait",
                         "diff": diff_content,
                         "options": [
                             { "optionId": "allow-once", "name": "Allow once", "kind": "allow_once" },
@@ -201,13 +201,13 @@ where
                 // 6. 工具完成后输出文本：审批结果 + 下一条意图合并为一条 text_delta
                 update_chunk(
                     writer,
-                    "✅ 已允许。修改已应用到 adapter.rs。现在执行一条命令来验证修改。\n\n",
+                    "✅ Approved. The edit is applied to adapter.rs. Now let me run a command to verify the change.\n\n",
                 )
                 .await;
             } else {
                 tool_output(writer, "tc_2", "Edit rejected by user").await;
                 tool_end(writer, "tc_2", "failed").await;
-                update_chunk(writer, "❌ 已拒绝该修改，跳过此步骤。\n\n").await;
+                update_chunk(writer, "❌ Edit rejected, skipping this step.\n\n").await;
             }
 
             // 7. Command execution
@@ -230,7 +230,7 @@ where
                         "sessionId": SESSION_ID,
                         "toolCall": { "toolCallId": "tc_3", "toolName": "run_command" },
                         "title": "cargo check",
-                        "explanation": "mockAgent 请求运行 cargo check 验证编译是否通过",
+                        "explanation": "mockAgent wants to run cargo check to verify compilation",
                         "options": [
                             { "optionId": "allow-once", "name": "Allow once", "kind": "allow_once" },
                             { "optionId": "reject-once", "name": "Reject", "kind": "reject_once" }
@@ -264,12 +264,12 @@ where
                 // 8. 最终总结：编译结果 + 流程回顾合并为一条 text_delta
                 update_chunk(
                     writer,
-                    "✅ 编译通过。本轮处理完成！以上就是 mockAgent 的完整模拟流程，包括：文件读取、文件编辑（带 diff 审批）、命令执行。你可以继续发送消息进行多轮对话。\n\n",
+                    "✅ Compilation passed. This turn is complete! That was mockAgent's full simulated flow: file read, file edit (with diff approval), and command execution. Send another message to continue the conversation.\n\n",
                 )
                 .await;
             } else {
                 tool_end(writer, "cmd_1", "failed").await;
-                update_chunk(writer, "❌ 命令执行被拒绝。\n\n").await;
+                update_chunk(writer, "❌ Command execution rejected.\n\n").await;
             }
 
             // 9. Turn end
@@ -551,35 +551,35 @@ mod tests {
     /// 完成后输出文本 → 执行命令 → 最终总结」的流式顺序（对齐前端 mock 参考实现）。
     ///
     /// 期望序列（每条会话更新一条，审批门省略在 tool_output 之前的 request_permission）：
-    /// 1. text: 你好，让我先读取几个关键文件...
-    /// 2. text: 让我先读取 adapter.rs 文件。        ← 先输出意图
+    /// 1. text: Hi! Let me read a few key files...
+    /// 2. text: Let me read adapter.rs first.        ← 先输出意图
     /// 3. tool_call → tool_output → tool_end (read_file)
-    /// 4. text: 已读取 adapter.rs。现在准备修改它。  ← 工具完成后输出文本
+    /// 4. text: Read adapter.rs. Now I'll modify it.  ← 工具完成后输出文本
     /// 5. tool_call → tool_output → tool_end (edit_file)
-    /// 6. text: ✅ 已允许。修改已应用到 adapter.rs。现在执行一条命令来验证修改。
+    /// 6. text: ✅ Approved. The edit is applied to adapter.rs...
     /// 7. command_run → tool_output → tool_end
-    /// 8. text: ✅ 编译通过。本轮处理完成！...
+    /// 8. text: ✅ Compilation passed...
     #[tokio::test]
     async fn mock_output_flow_matches_expected_sequence() {
         let updates = drive_mock_turn().await;
         let expected = vec![
-            "text:你好，让我先读取几个关键文件，然后进行一些修改。".to_string(),
-            "text:让我先读取 adapter.rs 文件。".to_string(),
+            "text:Hi! Let me read a few key files and then make some changes.".to_string(),
+            "text:Let me read adapter.rs first.".to_string(),
             "tool_call:read_file:tc_1".to_string(),
             "tool_output:tc_1".to_string(),
             "tool_end:tc_1:done".to_string(),
-            "text:已读取 adapter.rs。现在准备修改它。".to_string(),
+            "text:Read adapter.rs. Now I'll modify it.".to_string(),
             "tool_call:edit_file:tc_2".to_string(),
             "permission:tc_2".to_string(),
             "tool_output:tc_2".to_string(),
             "tool_end:tc_2:done".to_string(),
-            "text:✅ 已允许。修改已应用到 adapter.rs。现在执行一条命令来验证修改。"
+            "text:✅ Approved. The edit is applied to adapter.rs. Now let me run a command to verify the change."
                 .to_string(),
             "command_run:cmd_1".to_string(),
             "permission:tc_3".to_string(),
             "tool_output:cmd_1".to_string(),
             "tool_end:cmd_1:done".to_string(),
-            "text:✅ 编译通过。本轮处理完成！以上就是 mockAgent 的完整模拟流程，包括：文件读取、文件编辑（带 diff 审批）、命令执行。你可以继续发送消息进行多轮对话。"
+            "text:✅ Compilation passed. This turn is complete! That was mockAgent's full simulated flow: file read, file edit (with diff approval), and command execution. Send another message to continue the conversation."
                 .to_string(),
             "turn_end:completed".to_string(),
         ];

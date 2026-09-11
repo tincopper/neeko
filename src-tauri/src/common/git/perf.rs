@@ -36,14 +36,15 @@ pub fn perf_suggestions(
         out.push(GitPerfSuggestion {
             kind: "fsmonitor",
             command: "git config core.fsmonitor true".to_string(),
-            label: "fsmonitor daemon 可让 status 避免全树扫描".to_string(),
+            label: "fsmonitor daemon lets status skip a full tree scan".to_string(),
         });
     }
     if !untracked_cache_enabled {
         out.push(GitPerfSuggestion {
             kind: "untrackedCache",
             command: "git config core.untrackedCache true".to_string(),
-            label: "untracked cache 可缓存目录枚举结果，加速 untracked 检测".to_string(),
+            label: "untracked cache memoizes directory scans, speeding up untracked detection"
+                .to_string(),
         });
     }
     out

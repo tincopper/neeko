@@ -22,15 +22,15 @@ BASE="http://download.eclipse.org/jdtls/milestones"
 DEST="$HOME/.neeko/jdtls"
 BIN_DIR="$HOME/.neeko/bin"
 mkdir -p "$DEST" "$BIN_DIR"
-stage "查询最新发行版"
+stage "Querying latest release"
 VER="$(curl -fsSL "$BASE/?d" | grep -oE 'jdtls/milestones/[0-9][^"'"'"']*' | grep -v '\.\.' | sed 's#jdtls/milestones/##' | sort -t. -k1,1n -k2,2n -k3,3n | tail -1)"
-[ -n "$VER" ] || { stage "未找到发行版"; exit 1; }
-stage "解析 $VER 下载链接"
+[ -n "$VER" ] || { stage "Release not found"; exit 1; }
+stage "Resolving download link for $VER"
 URL="$(curl -fsSL "$BASE/$VER/?d" | grep -oE "href='[^']*download\.php\?file=[^']*\.tar\.gz'" | sed "s/^href='//;s/'$//" | head -1)"
-[ -n "$URL" ] || { stage "未找到 $VER 安装包"; exit 1; }
-stage "下载 jdtls $VER"
+[ -n "$URL" ] || { stage "No package found for $VER"; exit 1; }
+stage "Downloading jdtls $VER"
 curl -fL "$URL" -o "$DEST/jdtls.tar.gz"
-stage "解压"
+stage "Extracting"
 rm -rf "$DEST/repository"
 mkdir -p "$DEST/repository"
 tar -xzf "$DEST/jdtls.tar.gz" -C "$DEST/repository" --strip-components=1
@@ -38,12 +38,12 @@ OS="$(uname -s)"
 case "$OS" in
   Darwin) CFG="config_mac" ;;
   Linux) CFG="config_linux" ;;
-  *) stage "不支持的平台 $OS"; exit 1 ;;
+  *) stage "Unsupported platform $OS"; exit 1 ;;
 esac
 DATA_DIR="$HOME/.neeko/jdtls/data/$(echo "$PWD" | tr '/' '_')"
 printf '#!/bin/sh\nexec "%s/repository/bin/jdtls" -configuration "%s/repository/%s" -data "%s" "$@"\n' "$DEST" "$DEST" "$CFG" "$DATA_DIR" > "$BIN_DIR/jdtls"
 chmod +x "$BIN_DIR/jdtls"
-stage "完成：$BIN_DIR/jdtls"
+stage "Done: $BIN_DIR/jdtls"
 "#;
 
 /// brew 回退（macOS / Linux 通用；不可解析时由 installer 自然跳过）。

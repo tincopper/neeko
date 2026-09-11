@@ -250,7 +250,7 @@ fn translate_permission_request(
     let prompt = params
         .get("explanation")
         .and_then(|v| v.as_str())
-        .unwrap_or("允许该操作？")
+        .unwrap_or("Allow this action?")
         .to_string();
     Some(StreamEvent::RequestApproval {
         session_id: session_id.into(),

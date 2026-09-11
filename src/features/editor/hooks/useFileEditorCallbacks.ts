@@ -23,7 +23,7 @@ export function useFileEditorCallbacks({ editorViewRef }: Params) {
       if (!ok) {
         useNotificationStore
           .getState()
-          .addNotification({ type: 'error', title: '无法打开文件', message: absPath });
+          .addNotification({ type: 'error', title: 'Cannot Open File', message: absPath });
       }
     },
     [onFileSelect],
