@@ -256,21 +256,26 @@ impl DapSession {
                     .map_err(|e| AppError::Dap(format!("{start_cmd} failed: {e}")))?;
             }
             HandshakeOrder::PipelinedLaunch => {
-                // lldb-dap (LLVM 22+)：launch 请求内启动进程并**门控响应**——
-                // launch 先发不等响应、收 `initialized`、发 configurationDone，
-                // launch 响应才返回（pipelined，顺序 await 会 timeout）。
-                // 断点按 CodeLLDB 时序在 **launch 前**注册（target 建好即设断点，
-                // 模块加载后 resolve）；launch 后设断点对快速跑完的测试会错过。
+                // lldb-dap / CodeLLDB：launch 请求内启动进程并**门控响应**——必须
+                // pipelined：launch 先发不等响应 → 收 `initialized` → setBreakpoints
+                // → configurationDone → launch 响应才返回（顺序 await 会 timeout）。
+                //
+                // 断点必须在 launch **之后**才发：lldb 系 adapter 在进程/模块存在后
+                // 才能解析文件断点。实测（CodeLLDB 1.12.3 + 真机 Rust 测试二进制）
+                // launch 前发断点 → 每个断点都回 `verified:false` 且不带 `line`
+                // （pending 形态，永不转 verified），launch 后发 → `verified:true`
+                // + 解析出的 line。进程要等 configurationDone 才真正跑起来，
+                // 因此「launch → 断点 → configurationDone」不会漏掉快速跑完的测试。
                 self.set_status(
                     SessionStatus::Starting,
                     Some("Building / launching…".into()),
                 )
                 .await;
-                self.apply_breakpoints(breakpoints, entry_fn).await;
                 let start_rx = self.client.send_request(start_cmd, launch_args).await?;
                 self.client
                     .wait_for_initialized(Duration::from_secs(30))
                     .await?;
+                self.apply_breakpoints(breakpoints, entry_fn).await;
                 let _ = self.client.request("configurationDone", json!({})).await;
                 let resp = self
                     .client
@@ -335,7 +340,7 @@ impl DapSession {
         for (path, lines) in group_breakpoints(breakpoints) {
             let source = json!({ "path": path });
             let bps: Vec<Value> = lines.iter().map(|l| json!({ "line": l })).collect();
-            if let Err(e) = self
+            match self
                 .client
                 .request(
                     "setBreakpoints",
@@ -343,7 +348,30 @@ impl DapSession {
                 )
                 .await
             {
-                log::warn!("[DAP] setBreakpoints failed for {path}: {e}");
+                Ok(body) => {
+                    let unresolved = unresolved_breakpoint_lines(&body);
+                    if !unresolved.is_empty() {
+                        log::warn!(
+                            "[DAP] adapter did not resolve {} breakpoint(s) in {path}: lines {}",
+                            unresolved.len(),
+                            unresolved.join(", ")
+                        );
+                        // 同时落到 Debug Console（category=console → 前端按 sys 渲染）：
+                        // 「断点没生效」若只在日志里，用户无从判断原因。
+                        self.emit_output(
+                            "console",
+                            &format!(
+                                "Breakpoint(s) not resolved by the adapter in {path}: lines {}. \
+                                 No matching code in the debug target — e.g. a breakpoint in \
+                                 `fn main` while debugging a test binary (`main` is not compiled \
+                                 into test targets).",
+                                unresolved.join(", ")
+                            ),
+                        )
+                        .await;
+                    }
+                }
+                Err(e) => log::warn!("[DAP] setBreakpoints failed for {path}: {e}"),
             }
         }
         if let Some(func) = entry_function {
@@ -688,10 +716,63 @@ fn group_breakpoints(bps: &[BreakpointSpec]) -> Vec<(String, Vec<u32>)> {
     map.into_iter().collect()
 }
 
+/// 从 DAP `setBreakpoints` 响应体提取**未解析**断点的行号（`verified != true`；
+/// 适配器可能不回 `line`，此时记 `?`）。返回空 = 全部解析成功。
+///
+/// 用于给出「断点没生效」的显式证据：例如断点落在 `fn main`，但调试目标是测试
+/// 二进制（`main` 不参与编译）时，适配器会回 `verified:false` —— 不记录则用户
+/// 只看到「没停在断点上」，无从判断原因。
+fn unresolved_breakpoint_lines(body: &Value) -> Vec<String> {
+    body.get("breakpoints")
+        .and_then(|b| b.as_array())
+        .map(|arr| {
+            arr.iter()
+                .filter(|b| b.get("verified").and_then(|v| v.as_bool()) != Some(true))
+                .map(|b| {
+                    b.get("line")
+                        .and_then(|l| l.as_u64())
+                        .map_or_else(|| "?".to_string(), |l| l.to_string())
+                })
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
 /// Extract `variables` from a DAP `variables` response body.
 fn parse_variable_list(body: &Value) -> Vec<VariableDto> {
     body.get("variables")
         .and_then(|v| v.as_array())
         .map(|arr| arr.iter().map(VariableDto::from_dap_json).collect())
         .unwrap_or_default()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn unresolved_breakpoint_lines_flags_unverified_and_lineless_entries() {
+        // CodeLLDB 的 pending 断点不带 `line`（`?`）；`verified` 缺失同样视为未解析。
+        let body = json!({ "breakpoints": [
+            { "line": 12, "verified": true },
+            { "line": 1258, "verified": false },
+            { "verified": false },
+            { "line": 7 }
+        ]});
+        assert_eq!(
+            unresolved_breakpoint_lines(&body),
+            vec!["1258".to_string(), "?".to_string(), "7".to_string()]
+        );
+    }
+
+    #[test]
+    fn unresolved_breakpoint_lines_empty_when_all_verified_or_body_malformed() {
+        assert!(unresolved_breakpoint_lines(&json!({
+            "breakpoints": [{ "line": 3, "verified": true }]
+        }))
+        .is_empty());
+        // 响应体异常（缺字段 / 非数组）→ 不误报
+        assert!(unresolved_breakpoint_lines(&json!({})).is_empty());
+        assert!(unresolved_breakpoint_lines(&json!({ "breakpoints": "x" })).is_empty());
+    }
 }
