@@ -7,10 +7,15 @@ import { homeDir } from '@tauri-apps/api/path';
 import { buildTestBinaryRemote } from '@/features/debug/api/debugBuildApi';
 import { useDebugStore } from '@/features/debug/store/debugStore';
 import { fileExists, readFileContent } from '@/features/file/api/fileApi';
+import { lspRequest } from '@/features/lsp/api/lspApi';
 import { useNotificationStore } from '@/shared/store/notificationStore';
+import { fileRefFromTabPath, lspUriOf } from '@/shared/utils/fileRef';
 
-import type { RunTarget } from '../gutter/runContribution';
+import type { RunTarget } from '../gutter/runTarget';
+import { nestedClassPath, parseJavaSymbols } from '../utils/javaDocumentSymbol';
+import { isLspLanguageReady } from '../utils/lspReadiness';
 import { resolveRunContext } from '../utils/runLanguages';
+import type { TestCaseInfo } from '../utils/testCases';
 import {
   buildJavaDebugCommand,
   buildJavaLauncherPath,
@@ -65,8 +70,40 @@ export async function checkJavaCompiled(
   );
 }
 
-// ── Java 运行前置（launcher 供给 + Maven 依赖 classpath）──────────────────────
+/**
+ * 用 LSP `textDocument/documentSymbol` 求 `@Nested` **内层类链**，附到用例上
+ * （`TestCaseInfo.nestedClassPath`），供选择器拼 `$`（design §7.7）。
+ *
+ * 为什么在这里而不是 gutter：gutter marker 构建必须保持**同步纯函数**，而本结果是异步 LSP 产物；
+ * runner 层本就是 Java 的异步 IO 边界（模块根探测 / classpath 读取）。
+ *
+ * **降级即现状**：无项目根 / java 会话未就绪（不发请求）/ 请求失败 / 载荷里找不到该方法
+ * → 原样返回 `testCase` → 选择器与历史形态逐字节一致。任何异常都不外抛（最坏等于今天）。
+ */
+export async function withJavaNestedClassPath(
+  ctx: TestActionContext,
+  testCase: TestCaseInfo,
+): Promise<TestCaseInfo> {
+  const projectPath = ctx.projectPath;
+  if (!projectPath) return testCase;
+  if (!isLspLanguageReady(projectPath, 'java')) return testCase;
 
+  // 路径形态唯一所有权归 fileRef：`ctx.filePath` 允许相对（对项目根）或绝对，canonicalFsPath 两者都接。
+  const uri = lspUriOf(fileRefFromTabPath(projectPath, ctx.filePath));
+  if (!uri) return testCase;
+
+  try {
+    const raw = await lspRequest(projectPath, 'java', 'textDocument/documentSymbol', {
+      textDocument: { uri },
+    });
+    const nested = nestedClassPath(parseJavaSymbols(raw), testCase.name, testCase.line);
+    return nested.length > 0 ? { ...testCase, nestedClassPath: nested } : testCase;
+  } catch {
+    return testCase;
+  }
+}
+
+// ── Java 运行前置（launcher 供给 + Maven 依赖 classpath）──────────────────────
 /** Java 依赖 classpath 文本读取探针（bind projectId + runRoot）：读 .neeko/java-classpath.txt。
  *  缺失/读取失败返回 null（resolveJavaClasspath 退化为仅 target/ 目录 classpath）。 */
 function javaClasspathReader(projectId: string, runRoot: string): ReadTextProbe {
@@ -177,11 +214,13 @@ export async function debugJava(target: RunTarget, ctx: TestActionContext): Prom
     const javaEnv = await prepareJavaRun(ctx, javaRoot);
     if (!javaEnv) return;
     const runCtx = await resolveRunContext('java', ctx.filePath, javaRoot, { javaEnv });
-    const command = buildJavaDebugCommand(target.testCase, ctx.filePath, javaRoot, runCtx);
+    // `@Nested` 内层类链（同 Run 链路）：降级时原样 → 选择器与历史一致。
+    const testCase = await withJavaNestedClassPath(ctx, target.testCase);
+    const command = buildJavaDebugCommand(testCase, ctx.filePath, javaRoot, runCtx);
     try {
       await useDebugStore
         .getState()
-        .startJavaAttach(ctx.projectId, command, javaRoot, target.testCase.name);
+        .startJavaAttach(ctx.projectId, command, javaRoot, testCase.name);
     } catch {
       // launchSession 错误路径已处理（console + 通知），此处不重复
     }

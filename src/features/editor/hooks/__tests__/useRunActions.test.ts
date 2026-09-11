@@ -2102,6 +2102,107 @@ describe('useRunActions', () => {
       expect(result.current.menuItems).toHaveLength(2);
     });
 
+    it('menu_hides_dynamic_subtests_that_already_have_a_static_button', () => {
+      // §7.8.4 去重规则：同名子测试已有静态按钮（表格元素逐行按钮）→ 菜单不再重复列出，
+      // 但**动态独有的**（Sprintf / 变量 / 重名组）仍保留 —— 两条路线互补不重复。
+      useTestResultsStore.setState({ files: {}, versions: {} });
+      useTestResultsStore
+        .getState()
+        .recordSubtests('proj-1', 'pkg/math/add_test.go', 'TestTable', [
+          'TestTable/static',
+          'TestTable/dynamic_only',
+        ]);
+      const { result } = renderHook(() =>
+        useRunActions({
+          projectId: 'proj-1',
+          filePath: 'pkg/math/add_test.go',
+          projectPath: '/tmp/proj',
+        }),
+      );
+
+      act(() =>
+        result.current.openMenu(
+          {
+            kind: 'test',
+            testCase: { name: 'TestTable', line: 3, lang: 'go' },
+            staticSubtests: ['TestTable/static'],
+          },
+          10,
+          20,
+        ),
+      );
+
+      expect(result.current.menuItems.map((i) => (i.separator === true ? '---' : i.label))).toEqual(
+        [
+          "Test 'TestTable'",
+          "Debug 'Test TestTable'",
+          '---',
+          "Test 'TestTable/dynamic_only'",
+          "Debug 'Test TestTable/dynamic_only'",
+        ],
+      );
+    });
+
+    it('menu_omits_the_subtest_section_when_every_dynamic_name_has_a_static_button', () => {
+      // 全部命中静态按钮 → 不再有空分隔条（与「未发现任何子测试」同形）
+      useTestResultsStore.setState({ files: {}, versions: {} });
+      useTestResultsStore
+        .getState()
+        .recordSubtests('proj-1', 'pkg/math/add_test.go', 'TestTable', ['TestTable/zero']);
+      const { result } = renderHook(() =>
+        useRunActions({
+          projectId: 'proj-1',
+          filePath: 'pkg/math/add_test.go',
+          projectPath: '/tmp/proj',
+        }),
+      );
+
+      act(() =>
+        result.current.openMenu(
+          {
+            kind: 'test',
+            testCase: { name: 'TestTable', line: 3, lang: 'go' },
+            staticSubtests: ['TestTable/zero'],
+          },
+          10,
+          20,
+        ),
+      );
+
+      expect(result.current.menuItems).toHaveLength(2);
+    });
+
+    it('menu_keeps_nested_dynamic_subtests_whose_static_ancestor_has_a_button', () => {
+      // 静态只覆盖一层（`T/outer`）；深层 `T/outer/inner` 无静态按钮 → 仍列出
+      useTestResultsStore.setState({ files: {}, versions: {} });
+      useTestResultsStore
+        .getState()
+        .recordSubtests('proj-1', 'pkg/math/add_test.go', 'T', ['T/outer', 'T/outer/inner']);
+      const { result } = renderHook(() =>
+        useRunActions({
+          projectId: 'proj-1',
+          filePath: 'pkg/math/add_test.go',
+          projectPath: '/tmp/proj',
+        }),
+      );
+
+      act(() =>
+        result.current.openMenu(
+          {
+            kind: 'test',
+            testCase: { name: 'T', line: 3, lang: 'go' },
+            staticSubtests: ['T/outer'],
+          },
+          10,
+          20,
+        ),
+      );
+
+      expect(result.current.menuItems.map((i) => (i.separator === true ? '---' : i.label))).toEqual(
+        ["Test 'T'", "Debug 'Test T'", '---', "Test 'T/outer/inner'", "Debug 'Test T/outer/inner'"],
+      );
+    });
+
     it('closeMenu_clears_state_and_releases_overlay', () => {
       const { result } = renderHook(() =>
         useRunActions({
@@ -2159,5 +2260,67 @@ describe('基准菜单文案（P2）', () => {
   it("区分 benchmark 与普通用例（避免 Test 'BenchmarkAdd' 的误导）", () => {
     expect(benchmarkRunLabel('BenchmarkAdd')).toBe("Benchmark 'BenchmarkAdd'");
     expect(benchmarkDebugLabel('BenchmarkAdd')).toBe("Debug 'Benchmark BenchmarkAdd'");
+  });
+});
+
+/**
+ * P3 动态子测试的**完整用户路径**回归：跑父用例 → 重新打开菜单 → 出现子测试条目。
+ * 此前的用例只各测一半（发现入 store / 预置 store 后列菜单），未跨接——本用例补上，
+ * 一旦菜单链路断开（payload 未消费 / store 未读写一致）即红。
+ */
+describe('useRunActions — Go 子测试端到端（P3）', () => {
+  it('跑过父用例后再次打开菜单能看到子测试入口；首次打开时没有', async () => {
+    useTestResultsStore.setState({ files: {}, versions: {} });
+    const goTarget = {
+      kind: 'test' as const,
+      testCase: { name: 'TestTable', line: 3, lang: 'go' as const },
+    };
+    const { result } = renderHook(() =>
+      useRunActions({
+        projectId: 'proj-1',
+        filePath: 'pkg/math/add_test.go',
+        projectPath: '/tmp/proj',
+      }),
+    );
+
+    // ① 首次打开：尚无任何发现 → 仅父用例两条，且不出现空分隔条
+    act(() => result.current.openMenu(goTarget, 10, 20));
+    expect(result.current.menuItems.map((i) => (i.separator === true ? '---' : i.label))).toEqual([
+      "Test 'TestTable'",
+      "Debug 'Test TestTable'",
+    ]);
+    act(() => result.current.closeMenu());
+
+    // ② 运行父用例：test2json 报出子测试（终态事件）
+    act(() => result.current.handleRun(goTarget));
+    await waitFor(() => expect(mockStart).toHaveBeenCalledTimes(1));
+    const opts = mockStart.mock.calls[0][0];
+    const g = (o: Record<string, unknown>) => JSON.stringify(o);
+    opts.onOutput(
+      [
+        g({ Action: 'pass', Package: 'math', Test: 'TestTable/zero' }),
+        g({ Action: 'pass', Package: 'math', Test: 'TestTable/positive' }),
+        g({ Action: 'pass', Package: 'math', Test: 'TestTable' }),
+      ].join('\n'),
+    );
+    opts.onExit(0);
+    await waitFor(() =>
+      expect(subtestsForCase('proj-1', 'pkg/math/add_test.go', 'TestTable')).toEqual([
+        'TestTable/positive',
+        'TestTable/zero',
+      ]),
+    );
+
+    // ③ 再次打开：出现分隔条 + 每个子测试 Run/Debug 两条
+    act(() => result.current.openMenu(goTarget, 10, 20));
+    expect(result.current.menuItems.map((i) => (i.separator === true ? '---' : i.label))).toEqual([
+      "Test 'TestTable'",
+      "Debug 'Test TestTable'",
+      '---',
+      "Test 'TestTable/positive'",
+      "Debug 'Test TestTable/positive'",
+      "Test 'TestTable/zero'",
+      "Debug 'Test TestTable/zero'",
+    ]);
   });
 });

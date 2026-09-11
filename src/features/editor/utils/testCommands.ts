@@ -508,6 +508,20 @@ export function buildGoRunCommand({ testCase, ctx }: RunCommandInput): string {
   return `go test -run ${runPattern} -json ${pkg}`;
 }
 
+/**
+ * Java 用例的 JUnit 方法选择器：`<FQCN>[<$内层类…>]#<method>`。
+ *
+ * `@Nested` 内层类**必须**用 `$` 连接 —— 真机实证（design §7.7.1）：
+ * `com.example.AppTest#testNested` 会报
+ * `PreconditionViolationException: Could not find method with name [testNested] in class [com.example.AppTest]`，
+ * 而 `com.example.AppTest$InnerCases#testNested` 正确执行 1 个用例。
+ * `nestedClassPath` 缺省 / 空 → 与历史形态**逐字节一致**（Run 与 Debug 共用本函数，防两条链路漂移）。
+ */
+export function javaMethodSelector(fqcn: string, testCase: TestCaseInfo): string {
+  const nested = (testCase.nestedClassPath ?? []).map((name) => `$${name}`).join('');
+  return `${fqcn}${nested}#${testCase.name}`;
+}
+
 /** Java：只传 `-m <FQCN#method>`（`-c` 与 `-m` 是 OR 语义，同传会跑整类）。
  *  `--class-path` = target/ 输出 + Maven 依赖产物（ctx.javaDeps）；launcher 取 ctx。 */
 export function buildJavaRunCommand({ testCase, relPath, runRoot, ctx }: RunCommandInput): string {
@@ -515,7 +529,7 @@ export function buildJavaRunCommand({ testCase, relPath, runRoot, ctx }: RunComm
   const cp = buildJavaClasspath(runRoot ?? '', ctx.javaDeps);
   return (
     `java -jar ${shQuote(ctx.javaLauncher)} --class-path=${shQuote(cp)}` +
-    ` -m ${shQuote(`${fqcn}#${testCase.name}`)} --reports-dir=${shQuote(buildJunitReportsDir(runRoot ?? ''))}`
+    ` -m ${shQuote(javaMethodSelector(fqcn, testCase))} --reports-dir=${shQuote(buildJunitReportsDir(runRoot ?? ''))}`
   );
 }
 
@@ -743,7 +757,7 @@ export function buildJavaDebugCommand(
   return (
     `java -agentlib:jdwp=transport=dt_socket,server=y,suspend=y,address=0` +
     ` -jar ${shQuote(ctx.javaLauncher)} --class-path=${shQuote(cp)}` +
-    ` -m ${shQuote(`${fqcn}#${testCase.name}`)} --reports-dir=${shQuote(buildJunitReportsDir(runRoot ?? ''))}`
+    ` -m ${shQuote(javaMethodSelector(fqcn, testCase))} --reports-dir=${shQuote(buildJunitReportsDir(runRoot ?? ''))}`
   );
 }
 

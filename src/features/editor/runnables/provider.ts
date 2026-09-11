@@ -13,7 +13,8 @@
  */
 
 import { lspRequest } from '@/features/lsp/api/lspApi';
-import { useLspStore } from '@/features/lsp/store/lspStore';
+
+import { isLspLanguageReady } from '../utils/lspReadiness';
 
 import { parseRunnables, selectRunnable, type LspRunnable, type RunnableTarget } from './runnable';
 
@@ -75,10 +76,14 @@ function cacheKey(args: FetchRunnablesArgs): string {
   return `${args.projectPath}|${args.absFilePath}|${lines}`;
 }
 
-/** rust-analyzer 会话是否就绪（`indexing` 期间不请求：会拿到空/粗粒度结果且浪费往返）。 */
+/**
+ * rust-analyzer 会话是否就绪（`indexing` 期间不请求：会拿到空/粗粒度结果且浪费往返）。
+ *
+ * 就绪判据**委托** `isLspLanguageReady`（唯一事实源）—— Java `@Nested` 富化用同一谓词，
+ * 两处各写 `status === 'ready'` 就是 code-reuse 指南「模式 5」的副本漂移。
+ */
 export function isRustAnalyzerReady(projectPath: string): boolean {
-  const session = useLspStore.getState().sessions[projectPath]?.['rust'];
-  return session?.status === 'ready';
+  return isLspLanguageReady(projectPath, 'rust');
 }
 
 /**

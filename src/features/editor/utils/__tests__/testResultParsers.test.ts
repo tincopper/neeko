@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
-  collectSubtestNames,
+  collectGoSubtestNames,
   MAX_DISCOVERED_SUBTESTS,
   MAX_REPORT_CHARS,
   matchCaseName,
@@ -151,7 +151,7 @@ describe('parseTest2JsonLines', () => {
   });
 });
 
-describe('collectSubtestNames（P3 动态子测试发现）', () => {
+describe('collectGoSubtestNames（P3 动态子测试发现）', () => {
   const g = (obj: Record<string, unknown>) => JSON.stringify(obj);
   const eventsOf = (lines: Record<string, unknown>[]) =>
     parseTest2JsonLines(lines.map(g).join('\n'));
@@ -170,7 +170,7 @@ describe('collectSubtestNames（P3 动态子测试发现）', () => {
       { Action: 'run', Package: 'p', Test: 'TestOther/x' },
     ]);
 
-    expect(collectSubtestNames(events, 'TestTable')).toEqual([
+    expect(collectGoSubtestNames(events, 'TestTable')).toEqual([
       'TestTable/positive',
       'TestTable/zero',
     ]);
@@ -185,7 +185,7 @@ describe('collectSubtestNames（P3 动态子测试发现）', () => {
     ]);
 
     // 每一层都是可直接单跑的合法目标（`outer` 会连 `inner` 一起跑）
-    expect(collectSubtestNames(events, 'TestNested')).toEqual([
+    expect(collectGoSubtestNames(events, 'TestNested')).toEqual([
       'TestNested/outer',
       'TestNested/outer/inner',
     ]);
@@ -198,12 +198,15 @@ describe('collectSubtestNames（P3 动态子测试发现）', () => {
       { Action: 'pass', Package: 'p', Test: 'TestTable/a' },
     ]);
 
-    expect(collectSubtestNames(events, 'TestTable')).toEqual(['TestTable/a']);
+    expect(collectGoSubtestNames(events, 'TestTable')).toEqual(['TestTable/a']);
   });
 
   it('should_return_empty_when_only_the_parent_ran', () => {
     expect(
-      collectSubtestNames(eventsOf([{ Action: 'pass', Package: 'p', Test: 'TestAdd' }]), 'TestAdd'),
+      collectGoSubtestNames(
+        eventsOf([{ Action: 'pass', Package: 'p', Test: 'TestAdd' }]),
+        'TestAdd',
+      ),
     ).toEqual([]);
   });
 
@@ -214,7 +217,7 @@ describe('collectSubtestNames（P3 动态子测试发现）', () => {
       { Action: 'run', Package: 'p', Test: 'TestTable' },
     ]);
 
-    expect(collectSubtestNames(events, 'TestTable')).toEqual([]);
+    expect(collectGoSubtestNames(events, 'TestTable')).toEqual([]);
   });
 
   it('should_cap_discovery_to_the_guard', () => {
@@ -225,7 +228,7 @@ describe('collectSubtestNames（P3 动态子测试发现）', () => {
     }));
 
     // 按发现序截断前 MAX 个（case_0..case_199），再排序（字典序 → case_0 仍最小）
-    const names = collectSubtestNames(eventsOf(many), 'TestFuzz');
+    const names = collectGoSubtestNames(eventsOf(many), 'TestFuzz');
     expect(names).toHaveLength(MAX_DISCOVERED_SUBTESTS);
     expect(names[0]).toBe('TestFuzz/case_0');
     expect(names).not.toContain(`TestFuzz/case_${MAX_DISCOVERED_SUBTESTS}`);

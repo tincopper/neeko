@@ -1,0 +1,74 @@
+[
+ {
+  "name": "testTop()",
+  "kind": 6,
+  "location": {
+   "uri": "file:///tmp/nested-probe/src/com/example/AppTest.java",
+   "range": {
+    "start": {
+     "line": 7,
+     "character": 9
+    },
+    "end": {
+     "line": 7,
+     "character": 16
+    }
+   }
+  },
+  "containerName": "AppTest"
+ },
+ {
+  "name": "testNested()",
+  "kind": 6,
+  "location": {
+   "uri": "file:///tmp/nested-probe/src/com/example/AppTest.java",
+   "range": {
+    "start": {
+     "line": 12,
+     "character": 13
+    },
+    "end": {
+     "line": 12,
+     "character": 23
+    }
+   }
+  },
+  "containerName": "InnerCases"
+ },
+ {
+  "name": "InnerCases",
+  "kind": 5,
+  "location": {
+   "uri": "file:///tmp/nested-probe/src/com/example/AppTest.java",
+   "range": {
+    "start": {
+     "line": 10,
+     "character": 10
+    },
+    "end": {
+     "line": 10,
+     "character": 20
+    }
+   }
+  },
+  "containerName": "AppTest"
+ },
+ {
+  "name": "AppTest",
+  "kind": 5,
+  "location": {
+   "uri": "file:///tmp/nested-probe/src/com/example/AppTest.java",
+   "range": {
+    "start": {
+     "line": 5,
+     "character": 13
+    },
+    "end": {
+     "line": 5,
+     "character": 20
+    }
+   }
+  },
+  "containerName": "AppTest.java"
+ }
+]

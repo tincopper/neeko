@@ -25,11 +25,8 @@ import { useDebugStore } from '@/features/debug/store/debugStore';
 
 import type { GutterContribution } from '../gutter/contribution';
 import { createUnifiedGutterExtension } from '../gutter/registry';
-import {
-  createRunCodelensCore,
-  createRunContribution,
-  type RunTarget,
-} from '../gutter/runContribution';
+import { createRunCodelensCore, createRunContribution } from '../gutter/runContribution';
+import { type RunTarget } from '../gutter/runTarget';
 import {
   createTestStatusContribution,
   createTestStatusCore,

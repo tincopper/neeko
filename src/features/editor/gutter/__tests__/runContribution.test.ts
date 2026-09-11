@@ -2,16 +2,15 @@ import { Compartment, EditorState } from '@codemirror/state';
 import { EditorView } from '@codemirror/view';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { createRunCodelensCore } from '../runContribution';
+import { setLspRunnablesEffect } from '../runLspOverlay';
+import { RunMarker, runCodelensField } from '../runMarkers';
 import {
-  createRunCodelensCore,
   runCodelensConfig,
-  runCodelensField,
-  RunMarker,
-  setLspRunnablesEffect,
   targetLine,
-  type RunTarget,
   type RunCodelensConfig,
-} from '../runContribution';
+  type RunTarget,
+} from '../runTarget';
 
 function collectMarkers(view: EditorView): Array<{ from: number; marker: RunMarker }> {
   const doc = view.state.doc;
@@ -29,6 +28,29 @@ const TS_DOC = ["describe('math', () => {", "  it('adds', () => {});", '});'].jo
 const RUST_DOC = '#[test]\nfn parse_simple() {}\n#[tokio::test]\nasync fn other() {}';
 const GO_MAIN_DOC = ['package main', '', 'func main() {', '\tprintln("hi")', '}'].join('\n');
 const RUST_MAIN_DOC = ['fn main() {', '\tprintln!("hi");', '}'].join('\n');
+/** 表格驱动用例：父用例 + 逐行静态子测试（行 = 表格元素起始行）。 */
+const GO_TABLE_DOC = [
+  'package math',
+  '',
+  'import "testing"',
+  '',
+  'func TestFib(t *testing.T) {',
+  '\ttests := []struct {',
+  '\t\tname string',
+  '\t\twant int',
+  '\t}{',
+  '\t\t{"zero", 0},',
+  '\t\t{"one", 1},',
+  '\t}',
+  '\tfor _, tt := range tests {',
+  '\t\tt.Run(tt.name, func(t *testing.T) {',
+  '\t\t\tif got := Fib(); got != tt.want {',
+  '\t\t\t\tt.Errorf("got %d", got)',
+  '\t\t\t}',
+  '\t\t})',
+  '\t}',
+  '}',
+].join('\n');
 const JAVA_MAIN_DOC = [
   'package com.example;',
   '',
@@ -101,6 +123,52 @@ describe('runCodelens gutter field', () => {
     expect(markers).toHaveLength(1);
     expect(markers[0].from).toBe(view.state.doc.line(3).from);
     expect(markers[0].marker.target).toEqual({ kind: 'main', entry: { line: 3, language: 'go' } });
+    view.destroy();
+  });
+
+  it('should_carry_static_subtest_names_on_the_parent_go_table_target', () => {
+    // 菜单去重（§7.8.4）的数据来源：父用例目标自带「已被静态发现」的子测试全名，
+    // 与运行时动态发现求差后，同一目标不会出现两个入口。
+    const view = makeView(GO_TABLE_DOC, makeConfig({ fileName: 'pkg/math/fib_test.go' }));
+    const markers = collectMarkers(view);
+    expect(markers).toHaveLength(3); // 父用例 + 两行表格元素（逐行按钮）
+
+    const [parent, first, second] = markers.map((m) => m.marker.target);
+    expect(parent).toEqual({
+      kind: 'test',
+      testCase: { name: 'TestFib', line: 5, lang: 'go' },
+      staticSubtests: ['TestFib/zero', 'TestFib/one'],
+    });
+    // 子测试自身是叶子 → 不携带 staticSubtests（其菜单不该再列自己）
+    expect(first).toEqual({
+      kind: 'test',
+      testCase: { name: 'TestFib/zero', line: 10, lang: 'go' },
+    });
+    expect(second).toEqual({
+      kind: 'test',
+      testCase: { name: 'TestFib/one', line: 11, lang: 'go' },
+    });
+    view.destroy();
+  });
+
+  /**
+   * **F15 回归（端到端）**：`/` 只对**声明了层级用例名**的语言表示父子关系。
+   * 探针实测（F15 前）：TS `test('auth')` + `test('auth/login works')` 会让父目标携带
+   * `staticSubtests: ['auth/login works']` —— 伪造的父子关系。TS 标题含 `/` 极常见
+   * （`test('GET /users')`），故必须在 marker 层就阻断。
+   */
+  it('should_not_attach_static_subtests_for_ts_titles_containing_slash', () => {
+    const doc = [
+      "import { test } from 'vitest';",
+      "test('auth', () => {});",
+      "test('auth/login works', () => {});",
+    ].join('\n');
+    const view = makeView(doc, makeConfig({ fileName: 'api.test.ts' }));
+    const markers = collectMarkers(view);
+    expect(markers).toHaveLength(2);
+    for (const { marker } of markers) {
+      expect(marker.target).not.toHaveProperty('staticSubtests');
+    }
     view.destroy();
   });
 

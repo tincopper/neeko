@@ -5,7 +5,7 @@
  * 直接消费，不跨 feature（AGENTS.md 防火墙）。
  *
  * 数据模型：key = {projectId, filePath} → {running, cases, subtests}。
- * caseName 为源码侧用例名（parseTestCases 产物）——Run 链路先 parse + matchCaseName
+ * caseName 为源码侧用例名（`discoverRunTargets` 产物）——Run 链路先解析 + matchCaseName
  * 对齐（utils/testResultParsers）再落库，store 对行号一无所知：行号是文档态，
  * 与 CM StateField 双份维护必然漂移；line → caseName 的映射由 gutter 贡献经
  * runCodelensField 完成（任务指定 statusForLine 的职责拆分，偏离点已记录 implement.md）。

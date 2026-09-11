@@ -13,23 +13,16 @@
  * 数据表（非 `dyn`/继承）：语言集合固定且已知，用判别联合 + 查表即可。
  */
 import type { LspRunnable } from '../runnables/runnable';
+import type { RunLang, SyntaxDoc, MainEntry, MainLang } from '../syntax/contract';
+import { discoverGoMains, discoverGoTests } from '../syntax/go';
+import { discoverJavaMains, discoverJavaTests } from '../syntax/java';
+import type { SyntaxTree } from '../syntax/lezer';
+import { parserFor } from '../syntax/parsers';
+import { discoverRustMains, discoverRustTests } from '../syntax/rust';
+import { discoverTsTests } from '../syntax/ts';
 
 import type { ExistsProbe } from './cargoManifest';
-import {
-  parseGoMain,
-  parseJavaMain,
-  parseRustMain,
-  type MainEntry,
-  type MainLang,
-} from './mainEntries';
-import {
-  isTsTestFile,
-  parseGoCases,
-  parseJavaCases,
-  parseRustCases,
-  parseTsCases,
-  type TestCaseInfo,
-} from './testCases';
+import { isTsTestFile, type TestCaseInfo } from './testCases';
 import {
   buildGoMainDebugBuildCommand,
   buildGoMainRunCommand,
@@ -52,7 +45,8 @@ import {
 } from './testCommands';
 
 /** 参与 run/测试状态 gutter 的语言 id（与 `TestCaseInfo.lang` 同集合）。 */
-export type RunLang = TestCaseInfo['lang'];
+/** 类型定义已下沉到 `syntax/contract.ts`；此处再导出以保持既有导入路径。 */
+export type { RunLang } from '../syntax/contract';
 
 /** 语言能力声明：驱动 UI 与动作分流，替代散落的 `lang === 'ts'` 之类字符串判断。 */
 export interface RunCapabilities {
@@ -82,10 +76,22 @@ interface RunLanguage {
   isTestCaseFile(fileName: string): boolean;
   /** 是否解析并显示 main 入口。 */
   readonly hasMain: boolean;
-  /** 解析测试用例（纯内容 → 用例；无标记自然返回 []）。 */
-  parseTestCases(docText: string): TestCaseInfo[];
-  /** 解析 main 入口。 */
-  parseMainEntries(docText: string): MainEntry[];
+  /**
+   * 用例名是否以 `/` 表达**层级**（运行时语义，不是文案）。
+   *
+   * 存在理由：静态子测试的「父子关系」只能按该语言的层级语义推导。Go 的 `t.Run` 子测试由
+   * `go test -run` / delve `-test.run` **逐层锚定**（见 `goTestRunPattern`），故 `/` 即层级；
+   * 而 TS 用例标题含 `/` 极常见（`test('GET /users')`）却是**平凡文本** —— 按前缀猜层级会
+   * 产出伪造的父子关系（F15）。本能力位即该差异的**唯一事实源**（§7.8.4）。
+   */
+  readonly hierarchicalTestNames: boolean;
+  /**
+   * **用例发现（AST）**：语法树 → 用例。**必填** —— 四语言已全部迁移、文本正则实现已删除；
+   * 必填使「新增语言必须提供 AST 实现」由编译器强制（不可能再退回逐行正则机制）。
+   */
+  discoverTests(sd: SyntaxDoc): TestCaseInfo[];
+  /** **main 入口发现（AST）**，与 `discoverTests` 同级；无 main 概念的语言返回 `[]`。 */
+  discoverMains(sd: SyntaxDoc): MainEntry[];
   /**
    * 解析该语言的**运行环境事实**（IO）。注册表集中声明「哪种语言要解析什么」，
    * 新增语言只加本项，`resolveRunContext` 不再需要 `if lang === …` 分支；
@@ -112,8 +118,10 @@ const TS: RunLanguage = {
   isRunnableFile: isTsTestFile,
   isTestCaseFile: isTsTestFile,
   hasMain: false,
-  parseTestCases: parseTsCases,
-  parseMainEntries: () => [],
+  hierarchicalTestNames: false,
+  // 已迁移 AST（`syntax/ts.ts`）：不再提供正则实现（避免机制分叉）
+  discoverTests: discoverTsTests,
+  discoverMains: () => [],
   buildRunCommand: buildTsRunCommand,
   capabilities: { directRun: true, debug: null },
   results: 'vitest-json',
@@ -125,8 +133,10 @@ const RUST: RunLanguage = {
   // 测试/ main 均由内容（属性 / `fn main`）判定，解析器自然返回空。
   isTestCaseFile: (name) => name.endsWith('.rs'),
   hasMain: true,
-  parseTestCases: parseRustCases,
-  parseMainEntries: parseRustMain,
+  hierarchicalTestNames: false,
+  // 已迁移 AST（`syntax/rust.ts`）：不再提供正则实现
+  discoverTests: discoverRustTests,
+  discoverMains: discoverRustMains,
   buildRunCommand: buildRustRunCommand,
   buildMainRunCommand: buildRustMainRunCommand,
   buildMainDebugBuildCommand: buildRustMainDebugBuildCommand,
@@ -140,8 +150,11 @@ const GO: RunLanguage = {
   isRunnableFile: (name) => name.endsWith('.go'),
   isTestCaseFile: (name) => name.endsWith('_test.go'),
   hasMain: true,
-  parseTestCases: parseGoCases,
-  parseMainEntries: parseGoMain,
+  // Go 是唯一以 `/` 表达层级的语言（t.Run）——见能力位定义
+  hierarchicalTestNames: true,
+  // 已迁移 AST（`syntax/go.ts`）：不再提供正则实现
+  discoverTests: discoverGoTests,
+  discoverMains: discoverGoMains,
   // 包目录需向上探测 go.mod（嵌套 module 取相对 module 根）。
   resolveContext: async ({ filePath, runRoot, probe }) => ({
     goPkg: await goPkgDir(filePath, runRoot, probe),
@@ -158,8 +171,10 @@ const JAVA: RunLanguage = {
   isRunnableFile: (name) => name.endsWith('.java'),
   isTestCaseFile: (name) => name.endsWith('.java'),
   hasMain: true,
-  parseTestCases: parseJavaCases,
-  parseMainEntries: parseJavaMain,
+  hierarchicalTestNames: false,
+  // 已迁移 AST（`syntax/java.ts`）：不再提供正则实现
+  discoverTests: discoverJavaTests,
+  discoverMains: discoverJavaMains,
   // Maven 依赖 classpath 读产物文件；launcher 走注入路径（缺省 bare jar 名）。
   resolveContext: async ({ runRoot, javaEnv }) => ({
     javaDeps: javaEnv?.readText ? await resolveJavaClasspath(runRoot ?? '', javaEnv.readText) : '',
@@ -188,22 +203,79 @@ export function isRunnableFile(fileName: string): boolean {
   return runLanguageFor(fileName) !== null;
 }
 
-/** 测试用例解析（按语言分发；非目标文件 → []）。 */
-export function parseTestCases(fileName: string, docText: string): TestCaseInfo[] {
+/**
+ * **一次解析、两次发现**（gutter 的批量入口）。
+ *
+ * 存在理由：`discoverTests` 与 `discoverMains` 若各自整篇解析，同一文档会被**解析两遍**
+ * （实测在 179 KB Go 文件里占一半以上成本）。本入口保证**最多解析一次**：调用方若已持有
+ * 覆盖全文的树（如编辑器增量树）则零解析。
+ *
+ * 门控语义与各语言能力位一致：`tests` 受 `isTestCaseFile` 约束、`mains` 受 `hasMain` 约束，
+ * 故非目标文件自然得到空数组（单一来源，避免调用方各自判一遍）。
+ */
+export function discoverRunTargets(
+  fileName: string,
+  docText: string,
+  tree?: SyntaxTree,
+): { tests: TestCaseInfo[]; mains: MainEntry[] } {
   const lang = runLanguageFor(fileName);
-  if (!lang || !lang.isTestCaseFile(fileName)) return [];
-  return lang.parseTestCases(docText);
-}
-
-/** main 入口解析（按语言分发；不支持 main 的语言 → []）。 */
-export function parseMainEntries(fileName: string, docText: string): MainEntry[] {
-  const lang = runLanguageFor(fileName);
-  return lang?.hasMain ? lang.parseMainEntries(docText) : [];
+  if (!lang) return { tests: [], mains: [] };
+  // **先门控、后解析**：两路都不需要时不解析（避免「用不上也白解析全文」）。
+  // 现有四语言在 gutter 调用点必有一路命中（TS 的 isRunnableFile ≡ isTestCaseFile，
+  // Rust/Go/Java 的 hasMain ≡ true），但这是**语言集合的巧合**，不该固化为契约。
+  const wantsTests = lang.isTestCaseFile(fileName);
+  const wantsMains = lang.hasMain;
+  if (!wantsTests && !wantsMains) return { tests: [], mains: [] };
+  const sd = { tree: tree ?? parserFor(lang.id).parse(docText), docText, fileName };
+  return {
+    tests: wantsTests ? lang.discoverTests(sd) : [],
+    mains: wantsMains ? lang.discoverMains(sd) : [],
+  };
 }
 
 /** 文件是否可能有 main 入口（供 markers 合并判定，替代散落的 `.go/.rs/.java`）。 */
 export function hasMainEntries(fileName: string): boolean {
   return runLanguageFor(fileName)?.hasMain ?? false;
+}
+
+/** 该文件的语言是否以 `/` 表达用例层级（决定静态子测试能否按名归组；§7.8.4）。 */
+export function hasHierarchicalTestNames(fileName: string): boolean {
+  return runLanguageFor(fileName)?.hierarchicalTestNames ?? false;
+}
+
+/**
+ * 该文件的**静态子测试索引**：父用例名 → 已有静态按钮的子测试全名（设计 §7.8.4）。
+ *
+ * 用途：菜单据此与运行时动态发现求差，使两条路线互补 —— 静态只覆盖字符串字面量表格，
+ * 动态补 `Sprintf` / 变量 / 净化后重名的组。
+ *
+ * **门控内置（不接受裸 `tests`）**：`/` 只在**声明了层级用例名**的语言里表示父子关系
+ * （`RunLanguage.hierarchicalTestNames`）。TS 标题含 `/` 极常见（`test('GET /users')`）
+ * 却是平凡文本，按前缀猜层级会产出**伪造的父子关系**；而菜单去重正是靠本索引判定
+ * 「已有静态按钮」，假数据会让去重错杀。判定放在函数内，使调用方**结构上无法**忘记门控
+ * —— F15 的根因正是「产出方猜层级、靠消费方兜住」。
+ *
+ * **对每一层祖先都登记**：`t.Run` 可再嵌 `t.Run`，深层子测试相对每层父级都是可运行目标
+ * （与 `-run` 的层级锚定同构），故 `T/a/b` 必须同时进 `T` 与 `T/a` 的桶。
+ *
+ * 无子测试的用例**不建键** —— 调用方以「键是否存在」判定有无静态按钮；建空数组会让
+ * 「有静态按钮但全被去重」与「无静态按钮」两种情形无法区分。
+ */
+export function staticSubtestsForFile(
+  fileName: string,
+  tests: TestCaseInfo[],
+): Map<string, string[]> {
+  const index = new Map<string, string[]>();
+  if (!hasHierarchicalTestNames(fileName)) return index;
+  for (const { name } of tests) {
+    for (let slash = name.indexOf('/'); slash !== -1; slash = name.indexOf('/', slash + 1)) {
+      const parent = name.slice(0, slash);
+      const children = index.get(parent);
+      if (children) children.push(name);
+      else index.set(parent, [name]);
+    }
+  }
+  return index;
 }
 
 /** 按语言 id 查表（`resolveRunContext` 用；无匹配 → null）。 */

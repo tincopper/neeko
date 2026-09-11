@@ -5,7 +5,7 @@ import { buildTestBinaryRemote } from '@/features/debug/api/debugBuildApi';
 import { useDebugStore } from '@/features/debug/store/debugStore';
 import { fileExists } from '@/features/file/api/fileApi';
 
-import type { RunTarget } from '../gutter/runContribution';
+import type { RunTarget } from '../gutter/runTarget';
 import type { LspRunnable } from '../runnables/runnable';
 import { resolveCargoManifestDirForFile } from '../utils/cargoManifest';
 import { buildMainDebugBuildCommand, resolveRunContext } from '../utils/runLanguages';

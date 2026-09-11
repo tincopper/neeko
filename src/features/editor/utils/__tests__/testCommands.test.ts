@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import type { LspRunnable } from '../../runnables/runnable';
-import type { MainLang } from '../mainEntries';
+import type { MainLang } from '../../syntax/contract';
 import {
   buildMainDebugBuildCommand,
   buildMainRunCommand,
@@ -215,6 +215,56 @@ describe('buildRunCommand', () => {
         " --class-path='/proj/target/classes:/proj/target/test-classes'" +
         " -m 'com.example.CalculatorTest#testAdd' --reports-dir='/proj/.neeko/junit-reports'",
     );
+  });
+
+  it('should_append_nested_class_path_to_java_selector', async () => {
+    // @Nested：真机证实内层类必须以 `$` 连接（design §7.7.1 / research/jdtls-runnables-probe.md）——
+    // 不带 `$` 时 Console Launcher 报 `MethodSelector … resolution failed`，0 个用例执行。
+    const env: JavaRunEnv = {
+      launcherPath: `/Users/tester/.neeko/${junitLauncherJarName()}`,
+      readText: async () => null,
+    };
+    const oneLevel: TestCaseInfo = {
+      name: 'testNested',
+      line: 16,
+      lang: 'java',
+      nestedClassPath: ['InnerCases'],
+    };
+    const twoLevels: TestCaseInfo = {
+      name: 'deep',
+      line: 30,
+      lang: 'java',
+      nestedClassPath: ['L1', 'L2'],
+    };
+    const commands = await Promise.all(
+      [oneLevel, twoLevels].map((tc) =>
+        runCmd(tc, 'src/test/java/com/example/CalculatorTest.java', null, '/proj', undefined, env),
+      ),
+    );
+    expect(
+      commands.map((c) => c.includes("-m 'com.example.CalculatorTest$InnerCases#testNested'")),
+    ).toEqual([true, false]);
+    expect(commands.map((c) => c.includes("-m 'com.example.CalculatorTest$L1$L2#deep'"))).toEqual([
+      false,
+      true,
+    ]);
+  });
+
+  it('should_keep_java_selector_byte_identical_without_nested_class_path', async () => {
+    // 缺省 / 空数组必须与现状**逐字节一致**（同 `goTestRunPattern` 的「顶层不变」护栏）——
+    // LSP 不就绪时的降级路径正是「不带 nestedClassPath」。
+    const env: JavaRunEnv = {
+      launcherPath: `/Users/tester/.neeko/${junitLauncherJarName()}`,
+      readText: async () => null,
+    };
+    const withEmpty: TestCaseInfo = { name: 'testAdd', line: 4, lang: 'java', nestedClassPath: [] };
+    const [withEmptyCmd, withoutCmd] = await Promise.all(
+      [withEmpty, javaCase].map((tc) =>
+        runCmd(tc, 'src/test/java/com/example/CalculatorTest.java', null, '/proj', undefined, env),
+      ),
+    );
+    expect(withEmptyCmd).toBe(withoutCmd);
+    expect(withoutCmd).toContain("-m 'com.example.CalculatorTest#testAdd'");
   });
 
   it('should_select_only_method_without_class_selector', async () => {

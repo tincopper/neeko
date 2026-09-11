@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
-import { type MainEntry } from '../mainEntries';
-import { parseMainEntries } from '../runLanguages';
+import type { MainEntry } from '../../syntax/contract';
+import { discoverRunTargets } from '../runLanguages';
 
 const goDoc = `package main
 
@@ -28,7 +28,7 @@ public class App {
 }
 `;
 
-describe('parseMainEntries', () => {
+describe('discoverRunTargets.mains', () => {
   it('Go：识别 func main 行号，忽略注释', () => {
     const doc = `// func main() { not this
 package main
@@ -36,17 +36,19 @@ package main
 func main() {
 }
 `;
-    expect(parseMainEntries('main.go', doc)).toEqual<MainEntry[]>([{ line: 4, language: 'go' }]);
+    expect(discoverRunTargets('main.go', doc).mains).toEqual<MainEntry[]>([
+      { line: 4, language: 'go' },
+    ]);
   });
 
   it('Go：无 func main 返回空', () => {
-    expect(parseMainEntries('main.go', goDoc.replace('func main() {', 'func main2() {'))).toEqual(
-      [],
-    );
+    expect(
+      discoverRunTargets('main.go', goDoc.replace('func main() {', 'func main2() {')).mains,
+    ).toEqual([]);
   });
 
   it('Rust：识别 fn main 行号', () => {
-    expect(parseMainEntries('src/main.rs', rustDoc)).toEqual<MainEntry[]>([
+    expect(discoverRunTargets('src/main.rs', rustDoc).mains).toEqual<MainEntry[]>([
       { line: 1, language: 'rust' },
     ]);
   });
@@ -63,7 +65,7 @@ async fn main() -> Result<()> {
 
 pub async fn serve() {}
 `;
-    expect(parseMainEntries('crates/api/src/main.rs', doc)).toEqual<MainEntry[]>([
+    expect(discoverRunTargets('crates/api/src/main.rs', doc).mains).toEqual<MainEntry[]>([
       { line: 4, language: 'rust' },
     ]);
   });
@@ -79,7 +81,7 @@ pub async fn serve() {}
       'pub(in crate::cli) async unsafe fn main() {}',
       'pub(crate) fn main () {}',
     ].join('\n');
-    expect(parseMainEntries('main.rs', doc)).toEqual<MainEntry[]>([
+    expect(discoverRunTargets('main.rs', doc).mains).toEqual<MainEntry[]>([
       { line: 1, language: 'rust' },
       { line: 2, language: 'rust' },
       { line: 3, language: 'rust' },
@@ -96,19 +98,19 @@ pub async fn serve() {}
 fn main_helper() {}
 fn domain() {}
 `;
-    expect(parseMainEntries('main.rs', doc)).toEqual([]);
+    expect(discoverRunTargets('main.rs', doc).mains).toEqual([]);
   });
 
   it('Rust：非 .rs 文件不识别', () => {
-    expect(parseMainEntries('src/lib.ts', rustDoc)).toEqual([]);
+    expect(discoverRunTargets('src/lib.ts', rustDoc).mains).toEqual([]);
   });
 
   it('Java：识别 static void main（String[] 与 String... 变体）', () => {
-    expect(parseMainEntries('App.java', javaDoc)).toEqual<MainEntry[]>([
+    expect(discoverRunTargets('App.java', javaDoc).mains).toEqual<MainEntry[]>([
       { line: 4, language: 'java' },
     ]);
     const varargs = javaDoc.replace('String[] args', 'String... args');
-    expect(parseMainEntries('App.java', varargs)).toEqual<MainEntry[]>([
+    expect(discoverRunTargets('App.java', varargs).mains).toEqual<MainEntry[]>([
       { line: 4, language: 'java' },
     ]);
   });
@@ -120,11 +122,32 @@ fn domain() {}
   public void main(String[] args) {}
 }
 `;
-    expect(parseMainEntries('A.java', doc)).toEqual([]);
+    expect(discoverRunTargets('A.java', doc).mains).toEqual([]);
+  });
+
+  it('Java：多修饰符组合识别；无参 / 非 String[] 形参不识别（AST）', () => {
+    const decorated = `public class A {
+  public static final synchronized void main(String[] args) {}
+}
+`;
+    expect(discoverRunTargets('A.java', decorated).mains).toEqual<MainEntry[]>([
+      { line: 2, language: 'java' },
+    ]);
+
+    const noArgs = `public class A {
+  public static void main() {}
+}
+`;
+    const wrongParam = `public class A {
+  public static void main(int argc) {}
+}
+`;
+    expect(discoverRunTargets('A.java', noArgs).mains).toEqual([]);
+    expect(discoverRunTargets('A.java', wrongParam).mains).toEqual([]);
   });
 
   it('其他扩展名返回空', () => {
-    expect(parseMainEntries('a.ts', goDoc)).toEqual([]);
-    expect(parseMainEntries('a.py', goDoc)).toEqual([]);
+    expect(discoverRunTargets('a.ts', goDoc).mains).toEqual([]);
+    expect(discoverRunTargets('a.py', goDoc).mains).toEqual([]);
   });
 });

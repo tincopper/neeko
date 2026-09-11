@@ -10,10 +10,10 @@
  * - Java：JUnit XML（Surefire/Gradle/Console Launcher 兼容，`--reports-dir` 落盘），
  *   每个 `<testcase>` → 一条结果；`<failure>/<error>` → failed、`<skipped>` → skipped。
  * - matchCaseName：libtest/vitest 输出的是扁平全限定名（`mod::fn` / `describe title`），
- *   JUnit 的 `name` 是方法名（`classname` 是 FQCN）——源码侧 parseTestCases 只有 fn 名 →
+ *   JUnit 的 `name` 是方法名（`classname` 是 FQCN）——源码侧 AST 发现只有 fn 名 →
  *   按「名后缀 + 分隔符边界」对齐（与 R3 子串过滤同语义的查询侧镜像）；参数化/运行时名
  *   无法对齐 → false（不猜，见 synthesis 已知坑 ②）。
- * - collectSubtestNames：Go 子测试的**动态发现**（从 test2json 实际执行的事件流取
+ * - collectGoSubtestNames：Go 子测试的**动态发现**（从 test2json 实际执行的事件流取
  *   `<父>/<层级>` 全名，供 gutter 菜单单跑），与静态 `t.Run(...)` 解析互不依赖。
  */
 
@@ -193,6 +193,11 @@ export const MAX_DISCOVERED_SUBTESTS = 200;
 /**
  * 从事件流中动态发现某顶层用例的子测试全名（Go `t.Run` 运行时形态 `<父>/<层级>`）。
  *
+ * **Go 专用**（故名字带 `Go`）：前缀即父子关系只在**声明了层级用例名**的语言成立
+ * （`RunLanguage.hierarchicalTestNames`，目前仅 Go）。本模块是共享的产物解析层，
+ * 其它通道的语言名里出现 `/` 只是平凡文本（vitest 标题 `test('GET /users')`）——
+ * 名字显式带 `Go` 即为防止被误用于其它通道（同 F15：层级语义不可按文本猜）。
+ *
  * test2json 只在子测试**真正执行**时报其 `Test` 全名（实测 1.26.4：`TestTable/positive`
  * 与嵌套 `TestNested/outer/inner`）—— 这是子测试名的天然来源：无需静态解析 `t.Run(...)`，
  * 因而不受 GoLand 静态识别的三条约束（测试数据须为 slice/array/map、须在同函数定义、
@@ -206,7 +211,7 @@ export const MAX_DISCOVERED_SUBTESTS = 200;
  * `inner` 一起跑）。`/` 边界严格：父名 `TestTable` 不吞 `TestTableExtra/x`。
  * 上限 {@link MAX_DISCOVERED_SUBTESTS}（按发现序截断后再排序）。
  */
-export function collectSubtestNames(events: LibtestEvent[], parentName: string): string[] {
+export function collectGoSubtestNames(events: LibtestEvent[], parentName: string): string[] {
   const prefix = `${parentName}/`;
   const seen = new Set<string>();
   const names: string[] = [];

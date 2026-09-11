@@ -11,10 +11,10 @@
 import { useDebugStore } from '@/features/debug/store/debugStore';
 import { useTaskStore } from '@/shared/store/taskStore';
 
-import { targetLang, type RunTarget } from '../gutter/runContribution';
+import { targetLang, type RunTarget } from '../gutter/runTarget';
 import type { LspRunnable } from '../runnables/runnable';
 import { useTestResultsStore } from '../store/testResults';
-import type { MainEntry } from '../utils/mainEntries';
+import type { MainEntry } from '../syntax/contract';
 import {
   buildMainRunCommand,
   buildRunCommand,
@@ -38,18 +38,21 @@ async function launchRun(
   runRoot: string,
   lsp: LspRunnable | null,
 ): Promise<void> {
-  const prep = await runnerFor(testCase.lang).prepareRun(ctx, testCase, runRoot);
+  const runner = runnerFor(testCase.lang);
+  const prep = await runner.prepareRun(ctx, testCase, runRoot);
   if (!prep) {
     // 阻断（通知已发）：结束 running 占位，避免 gutter 永久进行中
     useTestResultsStore.getState().invalidateFile(ctx.projectId, ctx.filePath);
     return;
   }
+  // 语言可选富化（Java：`@Nested` 内层类链）。不改控制流：无该 hook / 降级失败 → 原样。
+  const effectiveCase = (await runner.enrichTestCase?.(ctx, testCase)) ?? testCase;
   // IO（go.mod 探测 / Maven classpath 读取）收拢在 resolveRunContext，命令构造纯函数。
   const runCtx = await resolveRunContext(testCase.lang, ctx.filePath, prep.runRoot, {
     javaEnv: prep.javaEnv,
   });
   const command = buildRunCommand(
-    testCase,
+    effectiveCase,
     ctx.filePath,
     prep.manifestDir ?? null,
     prep.runRoot,
@@ -59,13 +62,13 @@ async function launchRun(
   let output = '';
   const runId = useTaskStore
     .getState()
-    .runTask(command, buildTestConfigId('run', testCase, ctx.filePath), {
+    .runTask(command, buildTestConfigId('run', effectiveCase, ctx.filePath), {
       cwd: prep.runRoot,
       onOutput: (chunk) => {
         if (output.length < MAX_CAPTURED_OUTPUT_CHARS) output += chunk;
       },
       onExit: (exitCode: number) => {
-        void finalizeRunResults(output, testCase, ctx, prep.runRoot, { exitCode, command });
+        void finalizeRunResults(output, effectiveCase, ctx, prep.runRoot, { exitCode, command });
       },
     });
   if (!runId) {

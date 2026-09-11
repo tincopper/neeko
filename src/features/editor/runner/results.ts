@@ -14,7 +14,7 @@ import {
   VITEST_REPORT_REL_PATH,
 } from '../utils/testCommands';
 import {
-  collectSubtestNames,
+  collectGoSubtestNames,
   matchCaseName,
   parseJunitXml,
   parseLibtestJsonLines,
@@ -157,7 +157,7 @@ function alignGoResults(output: string, testCase: TestCaseInfo): ReaderOutput {
   return {
     results: alignEvents(events, testCase),
     // benchmark 的 `b.Run` 子基准不在本期范围（发现缓存只服务用例菜单），故不发现。
-    subtests: testCase.kind === 'benchmark' ? [] : collectSubtestNames(events, testCase.name),
+    subtests: testCase.kind === 'benchmark' ? [] : collectGoSubtestNames(events, testCase.name),
   };
 }
 

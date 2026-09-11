@@ -8,9 +8,9 @@
  */
 import { useNotificationStore } from '@/shared/store/notificationStore';
 
-import type { RunTarget } from '../gutter/runContribution';
+import type { RunTarget } from '../gutter/runTarget';
+import type { MainEntry } from '../syntax/contract';
 import { resolveCargoManifestDir, resolveCargoManifestDirForFile } from '../utils/cargoManifest';
-import type { MainEntry } from '../utils/mainEntries';
 import type { RunLang } from '../utils/runLanguages';
 import type { TestCaseInfo } from '../utils/testCases';
 import type { JavaRunEnv } from '../utils/testCommands';
@@ -22,6 +22,7 @@ import {
   prepareJavaMainRun,
   prepareJavaRun,
   resolveJavaRunRoot,
+  withJavaNestedClassPath,
 } from './java';
 import { launchNativeDebug } from './native';
 
@@ -49,6 +50,13 @@ export interface LanguageRunner {
     target: MainEntry,
     runRoot: string,
   ): Promise<RunPreparation | null>;
+  /**
+   * 可选：命令构造前**富化用例**（Java：用 LSP `documentSymbol` 求 `@Nested` 内层类链）。
+   *
+   * 刻意做成注册表 hook 而非在 `launch.ts` 里加 `if lang === 'java'`——后者会破坏
+   * 「语言差异全在注册表」的既有约束（见模块头）。省略该 hook / 降级失败 → 返回入参原样。
+   */
+  enrichTestCase?(ctx: TestActionContext, target: TestCaseInfo): Promise<TestCaseInfo>;
   /** Debug 执行（无 Debug 能力的语言省略；与 `capabilities.debug` 一一对应）。 */
   debug?(ctx: TestActionContext, target: RunTarget): Promise<void>;
 }
@@ -106,6 +114,8 @@ const JAVA: LanguageRunner = {
     // main 直跑不需要 launcher jar（仅测试需要）→ 轻量前置。
     return { runRoot: javaRoot, javaEnv: await prepareJavaMainRun(ctx, javaRoot) };
   },
+  // `@Nested` 内层类链（LSP documentSymbol）：不就绪 / 失败 → 原样返回，选择器与历史一致。
+  enrichTestCase: (ctx, target) => withJavaNestedClassPath(ctx, target),
   debug: (ctx, target) => debugJava(target, ctx),
 };
 

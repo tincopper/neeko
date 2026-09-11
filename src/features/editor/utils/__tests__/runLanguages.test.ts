@@ -7,12 +7,14 @@ import {
   buildRunCommand,
   capabilitiesFor,
   hasMainEntries,
+  hasHierarchicalTestNames,
   isRunnableFile,
-  parseMainEntries,
-  parseTestCases,
+  discoverRunTargets,
   resultsSourceFor,
   runLanguageById,
+  staticSubtestsForFile,
 } from '../runLanguages';
+import type { TestCaseInfo } from '../testCases';
 import { defaultRunContext } from '../testCommands';
 
 /**
@@ -59,43 +61,55 @@ describe('hasMainEntries — main 能力来自同一注册表', () => {
   });
 });
 
-describe('parseTestCases — 按语言分发表', () => {
+describe('discoverRunTargets.tests — 按语言分发表', () => {
   it('Go 仅 _test.go 解析用例（main.go 不产用例）', () => {
     const doc = 'func TestAdd(t *testing.T) {}\n';
-    expect(parseTestCases('add_test.go', doc)).toEqual([{ name: 'TestAdd', line: 1, lang: 'go' }]);
-    expect(parseTestCases('main.go', doc)).toEqual([]);
+    expect(discoverRunTargets('add_test.go', doc).tests).toEqual([
+      { name: 'TestAdd', line: 1, lang: 'go' },
+    ]);
+    expect(discoverRunTargets('main.go', doc).tests).toEqual([]);
   });
 
   it('TS 仅 test/spec 命名解析用例', () => {
     const doc = "test('adds', () => {});\n";
-    expect(parseTestCases('a.test.ts', doc)).toEqual([{ name: 'adds', line: 1, lang: 'ts' }]);
-    expect(parseTestCases('a.ts', doc)).toEqual([]);
+    expect(discoverRunTargets('a.test.ts', doc).tests).toEqual([
+      { name: 'adds', line: 1, lang: 'ts' },
+    ]);
+    expect(discoverRunTargets('a.ts', doc).tests).toEqual([]);
   });
 
   it('Rust 需 #[test] 证据；Java 需 @Test 证据', () => {
-    expect(parseTestCases('lib.rs', '#[test]\nfn t() {}\n')).toEqual([
+    expect(discoverRunTargets('lib.rs', '#[test]\nfn t() {}\n').tests).toEqual([
       { name: 't', line: 1, lang: 'rust' },
     ]);
-    expect(parseTestCases('lib.rs', 'fn t() {}\n')).toEqual([]);
-    expect(parseTestCases('A.java', '@Test\nvoid t() {}\n')).toEqual([
-      { name: 't', line: 1, lang: 'java' },
-    ]);
-    expect(parseTestCases('A.java', 'void t() {}\n')).toEqual([]);
+    expect(discoverRunTargets('lib.rs', 'fn t() {}\n').tests).toEqual([]);
+    // Java 侧用**合法的类体**：AST 要求语法结构可识别（裸方法不是合法 Java，旧行正则虽能认但属宽容）
+    expect(
+      discoverRunTargets('A.java', 'class A {\n    @Test\n    void t() {}\n}\n').tests,
+    ).toEqual([{ name: 't', line: 2, lang: 'java' }]);
+    expect(discoverRunTargets('A.java', 'class A {\n    void t() {}\n}\n').tests).toEqual([]);
   });
 
   it('非可运行语言 → []', () => {
-    expect(parseTestCases('a.py', 'def test_x(): pass\n')).toEqual([]);
+    expect(discoverRunTargets('a.py', 'def test_x(): pass\n').tests).toEqual([]);
   });
 });
 
-describe('parseMainEntries — 按语言分发表', () => {
+describe('discoverRunTargets.mains — 按语言分发表', () => {
   it('Go/Rust/Java 各自识别；ts 无 main 概念', () => {
-    expect(parseMainEntries('main.go', 'func main() {}\n')).toEqual([{ line: 1, language: 'go' }]);
-    expect(parseMainEntries('main.rs', 'fn main() {}\n')).toEqual([{ line: 1, language: 'rust' }]);
-    expect(parseMainEntries('App.java', 'public static void main(String[] args) {}\n')).toEqual([
-      { line: 1, language: 'java' },
+    expect(discoverRunTargets('main.go', 'func main() {}\n').mains).toEqual([
+      { line: 1, language: 'go' },
     ]);
-    expect(parseMainEntries('main.ts', 'function main() {}\n')).toEqual([]);
+    expect(discoverRunTargets('main.rs', 'fn main() {}\n').mains).toEqual([
+      { line: 1, language: 'rust' },
+    ]);
+    expect(
+      discoverRunTargets(
+        'App.java',
+        'class App {\n  public static void main(String[] args) {}\n}\n',
+      ).mains,
+    ).toEqual([{ line: 2, language: 'java' }]);
+    expect(discoverRunTargets('main.ts', 'function main() {}\n').mains).toEqual([]);
   });
 });
 
@@ -168,6 +182,72 @@ describe('resultsSourceFor — 结果读取通道（按产物格式而非语言�
     expect(resultsSourceFor('rust')).toBe('libtest-json');
     expect(resultsSourceFor('go')).toBe('test2json');
     expect(resultsSourceFor('java')).toBe('junit-xml');
+  });
+});
+
+describe('staticSubtestsForFile — 静态子测试按父用例归组（菜单去重依据，§7.8.4）', () => {
+  const goCase = (name: string): TestCaseInfo => ({ name, line: 1, lang: 'go' });
+
+  it('扁平：父用例 → 其全部静态子测试（按发现顺序）', () => {
+    const index = staticSubtestsForFile('pkg/math/fib_test.go', [
+      goCase('TestFib'),
+      goCase('TestFib/zero'),
+      goCase('TestFib/one'),
+      goCase('TestSlash'),
+    ]);
+    expect(index.get('TestFib')).toEqual(['TestFib/zero', 'TestFib/one']);
+    // 子测试自身只是叶子 → 不作父键（点了它不该再列出自己）
+    expect(index.has('TestFib/zero')).toBe(false);
+    expect(index.has('TestFib/one')).toBe(false);
+    expect(index.has('TestSlash')).toBe(false);
+  });
+
+  it('嵌套：深层子测试对**每一层**祖先可见（t.Run 可再嵌 t.Run）', () => {
+    const index = staticSubtestsForFile('f_test.go', [goCase('T'), goCase('T/a'), goCase('T/a/b')]);
+    expect(index.get('T')).toEqual(['T/a', 'T/a/b']);
+    expect(index.get('T/a')).toEqual(['T/a/b']);
+    expect(index.has('T/a/b')).toBe(false);
+  });
+
+  it('无子测试 / 空输入 → 空索引（不产空数组键，调用方据此判定「无静态按钮」）', () => {
+    expect(staticSubtestsForFile('f_test.go', []).size).toBe(0);
+    const index = staticSubtestsForFile('f_test.go', [goCase('TestFib'), goCase('parse_simple')]);
+    expect(index.size).toBe(0);
+  });
+
+  /**
+   * **F15 回归**：`/` 只在**声明了层级用例名**的语言里才表示父子关系。
+   * TS 用例标题含 `/` 极常见（`test('GET /users')`），若按前缀猜层级会产出**伪造的
+   * 父子关系** —— 菜单去重正是靠这个索引判定「已有静态按钮」，假数据会让去重错杀。
+   */
+  it('TS 文件：标题含 `/` 也**不得**产生父子关系（F15 回归，F15 前此断言为红）', () => {
+    const index = staticSubtestsForFile('api.test.ts', [
+      { name: 'auth', line: 1, lang: 'ts' },
+      { name: 'auth/login works', line: 2, lang: 'ts' },
+      { name: 'GET /users', line: 3, lang: 'ts' },
+      { name: 'GET /health', line: 4, lang: 'ts' },
+    ]);
+    expect(index.size).toBe(0);
+  });
+
+  it('Rust / Java 文件：同样不产父子关系（层级语义是每语言声明的能力位）', () => {
+    expect(
+      staticSubtestsForFile('lib.rs', [{ name: 'parse_simple', line: 1, lang: 'rust' }]).size,
+    ).toBe(0);
+    expect(
+      staticSubtestsForFile('App.java', [{ name: 'testAdd', line: 1, lang: 'java' }]).size,
+    ).toBe(0);
+  });
+});
+
+describe('hasHierarchicalTestNames — 层级用例名的能力位（唯一事实源，§7.8.4）', () => {
+  it('仅 Go 声明层级用例名（t.Run + go test -run 的 `/` 逐层锚定）', () => {
+    expect(hasHierarchicalTestNames('pkg/math/fib_test.go')).toBe(true);
+    expect(hasHierarchicalTestNames('cmd/agent/main.go')).toBe(true);
+    expect(hasHierarchicalTestNames('api.test.ts')).toBe(false);
+    expect(hasHierarchicalTestNames('lib.rs')).toBe(false);
+    expect(hasHierarchicalTestNames('App.java')).toBe(false);
+    expect(hasHierarchicalTestNames('script.py')).toBe(false);
   });
 });
 
