@@ -110,4 +110,22 @@ describe('resolveCargoManifestDirForFile', () => {
     const probe = vi.fn(probeReturning(['/proj/src-tauri/Cargo.toml']));
     await expect(resolveCargoManifestDirForFile('/proj', '', probe)).resolves.toBe('src-tauri');
   });
+
+  it('should_accept_canonical_absolute_file_paths_from_production', async () => {
+    // 生产链路（FileEditor → useRunActions）传入 tab.filePath —— 恒为 canonical 绝对；
+    // 探测以「相对 projectRoot」为前提逐级拼 `${root}/${dir}`，必须先剥根，
+    // 否则 member 清单永不命中（回退根清单 → 多候选二进制）。
+    const member = vi.fn(probeReturning(['/proj/packages/foo/Cargo.toml']));
+    await expect(
+      resolveCargoManifestDirForFile('/proj', '/proj/packages/foo/src/lib.rs', member),
+    ).resolves.toBe('packages/foo');
+    const tauri = vi.fn(probeReturning(['/proj/src-tauri/Cargo.toml']));
+    await expect(
+      resolveCargoManifestDirForFile('/proj', '/proj/src-tauri/src/lib.rs', tauri),
+    ).resolves.toBe('src-tauri');
+    const rootManifest = vi.fn(probeReturning(['/proj/Cargo.toml']));
+    await expect(
+      resolveCargoManifestDirForFile('/proj', '/proj/src/lib.rs', rootManifest),
+    ).resolves.toBeNull();
+  });
 });

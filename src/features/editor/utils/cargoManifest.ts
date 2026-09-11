@@ -10,6 +10,7 @@
  * 重开项目/重启生效——频率与代价权衡后的取舍。
  */
 import { fileExists } from '@/features/file/api/fileApi';
+import { relativeToRoot } from '@/shared/utils/fileRef';
 
 export type ExistsProbe = (absPath: string) => Promise<boolean>;
 
@@ -57,6 +58,10 @@ export async function resolveCargoManifestDir(
  * （cargo 默认行为）。覆盖任意布局：单 crate、Tauri `src-tauri/`、
  * workspace member（`packages/foo/src/…`）——`cargo test` 从根跑会编整个
  * workspace 的所有测试二进制导致多候选，必须 `--manifest-path` 指到具体 crate。
+ *
+ * `filePath` 允许 canonical 绝对（生产链路 tab.filePath）或 projectRoot 相对
+ * （单测）——探测以「相对 projectRoot」为逐级拼接前提，故先经 `relativeToRoot`
+ * 归一化，否则绝对路径会拼成 `${root}//abs/…`，member 清单永不命中。
  */
 export async function resolveCargoManifestDirForFile(
   projectRoot: string,
@@ -65,7 +70,7 @@ export async function resolveCargoManifestDirForFile(
 ): Promise<string | null> {
   const root = projectRoot.replace(/[/\\]+$/, '');
   if (!root || !filePath) return resolveCargoManifestDir(root, probe);
-  const parts = filePath.replace(/\\/g, '/').split('/');
+  const parts = relativeToRoot(root, filePath).split('/');
   parts.pop(); // 去掉文件名，从所在目录起向上
   for (let i = parts.length; i >= 0; i--) {
     const dir = parts.slice(0, i).join('/'); // '' = 根
