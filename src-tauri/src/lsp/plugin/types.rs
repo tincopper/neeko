@@ -193,6 +193,15 @@ pub struct LspPlugin {
     /// (vendor-specific, e.g. jdtls `classFileContentsSupport`). `None` for
     /// all languages except those whose server gates features on it.
     pub extended_client_capabilities: Option<serde_json::Value>,
+    /// Optional extra `InitializeParams.capabilities`（服务端专属客户端能力）。
+    ///
+    /// 与 `extended_client_capabilities` 的区别：后者喂 jdtls 的
+    /// `initializationOptions.extendedClientCapabilities`（JDT 只读那里），本字段合并进
+    /// **`capabilities` 顶层** —— rust-analyzer 的 `experimental.runnables` 只有客户端在
+    /// `capabilities.experimental.runnables.kinds` 声明之后才应答（实测 1.97.1：声明前
+    /// 该方法无结果）。`None`（默认）时 initialize 载荷与既有完全一致，因此不影响
+    /// gopls / jdtls / 其它语言。
+    pub client_capabilities: Option<serde_json::Value>,
     /// 服务器特有的会话调优（探测策略 / 环境注入）。通用插件保持 `Default`；
     /// 仅声明与默认不同的行为，session 层据此决策而不按语言名分支。
     pub tuning: LspServerTuning,
@@ -220,6 +229,7 @@ impl LspPlugin {
             is_custom: false,
             initialization_options: None,
             extended_client_capabilities: None,
+            client_capabilities: None,
             tuning: LspServerTuning::default(),
         }
     }
@@ -266,6 +276,13 @@ impl LspPlugin {
         self
     }
 
+    /// Set extra top-level `capabilities` for this server (merged over the base set).
+    #[must_use]
+    pub fn with_client_capabilities(mut self, caps: serde_json::Value) -> Self {
+        self.client_capabilities = Some(caps);
+        self
+    }
+
     /// Build a plugin from a user-defined custom server config.
     pub fn from_custom(cfg: &CustomLspServerConfig) -> Self {
         let binary = cfg
@@ -296,6 +313,7 @@ impl LspPlugin {
             is_custom: true,
             initialization_options: cfg.initialization_options.clone(),
             extended_client_capabilities: None,
+            client_capabilities: None,
             tuning: LspServerTuning::default(),
         }
     }

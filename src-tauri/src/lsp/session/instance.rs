@@ -327,7 +327,7 @@ impl LspSession {
         let mut init_params = serde_json::json!({
             "processId": std::process::id(), "rootUri": root_uri, "rootPath": workspace_root_str,
             "workspaceFolders": [{ "uri": root_uri, "name": Path::new(&workspace_root_str).file_name().and_then(|n| n.to_str()).unwrap_or("workspace") }],
-            "capabilities": build_client_capabilities(),
+            "capabilities": merge_client_capabilities(build_client_capabilities(), plugin),
             "clientInfo": { "name": "neeko", "version": env!("CARGO_PKG_VERSION") }
         });
         // JDT 扩展字段归属 initializationOptions（非 capabilities）。两者皆无时
@@ -537,6 +537,29 @@ pub(crate) fn build_client_capabilities() -> Value {
         "workspace": { "workspaceFolders": true, "configuration": true, "didChangeConfiguration": { "dynamicRegistration": false } },
         "window": { "workDoneProgress": true }
     })
+}
+
+/// Merge a plugin's extra client capabilities **over** the base set (top-level keys).
+///
+/// 用于服务端专属能力：rust-analyzer 的 `experimental.runnables` 只有客户端在
+/// `capabilities.experimental.runnables.kinds` 声明后才应答（实测 1.97.1）。按插件声明
+/// 而不是全局注入 —— 其它语言（gopls / jdtls）的 initialize 载荷保持逐字节不变。
+///
+/// 合并语义：顶层 key 浅合并（同名 key 由插件覆盖）。`None` → 原样返回（逐字节不变）。
+pub(crate) fn merge_client_capabilities(mut base: Value, plugin: &LspPlugin) -> Value {
+    let Some(extra) = plugin.client_capabilities.clone() else {
+        return base;
+    };
+    match (base.as_object_mut(), extra.as_object()) {
+        (Some(base_obj), Some(extra_obj)) => {
+            for (k, v) in extra_obj {
+                base_obj.insert(k.clone(), v.clone());
+            }
+            base
+        }
+        // 非对象形态无法浅合并 → 退回基础集（不猜语义）。
+        _ => base,
+    }
 }
 
 /// Build the `initializationOptions` payload for a plugin, or `None` when the
@@ -819,5 +842,41 @@ mod tests {
             "expected live RSS sample, got {}",
             info.memory_mb
         );
+    }
+
+    // ── plugin 专属 client capabilities 合并（P1：rust-analyzer runnables）──
+
+    /// 未声明扩展的插件（gopls / jdtls / 自定义）→ capabilities **逐字节不变**。
+    #[test]
+    fn merge_client_capabilities_is_identity_without_plugin_extension() {
+        let plugin = LspPlugin::builtin("go", &["go"], "gopls", &["gopls"], None);
+        let base = build_client_capabilities();
+        assert_eq!(merge_client_capabilities(base.clone(), &plugin), base);
+    }
+
+    /// 声明了扩展的插件 → 顶层 key 合并进基础集，其余键保持不变。
+    #[test]
+    fn merge_client_capabilities_adds_plugin_top_level_keys() {
+        let plugin = LspPlugin::builtin("rust", &["rs"], "rust-analyzer", &["rust-analyzer"], None)
+            .with_client_capabilities(json!({
+                "experimental": { "runnables": { "kinds": ["cargo", "shell"] } }
+            }));
+        let merged = merge_client_capabilities(build_client_capabilities(), &plugin);
+        assert_eq!(
+            merged["experimental"]["runnables"]["kinds"],
+            json!(["cargo", "shell"])
+        );
+        // 基础集未被破坏
+        assert_eq!(merged["window"]["workDoneProgress"], json!(true));
+        assert!(merged["textDocument"]["hover"].is_object());
+    }
+
+    /// 非对象形态（异常插件配置）→ 退回基础集，不猜语义。
+    #[test]
+    fn merge_client_capabilities_falls_back_on_non_object_extension() {
+        let plugin = LspPlugin::builtin("rust", &["rs"], "rust-analyzer", &["rust-analyzer"], None)
+            .with_client_capabilities(json!("not-an-object"));
+        let base = build_client_capabilities();
+        assert_eq!(merge_client_capabilities(base.clone(), &plugin), base);
     }
 }
