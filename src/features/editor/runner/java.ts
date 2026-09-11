@@ -59,8 +59,9 @@ export async function checkJavaCompiled(
   const ok = await javaCompiledClassExists(javaRoot, fqcn).catch(() => true);
   if (ok) return null;
   return (
-    `测试类 ${fqcn} 尚未编译（${javaRoot}/target 下无 class 产物），调试无法命中。` +
-    '请先在模块目录执行 mvn test-compile（Gradle 项目：./gradlew testClasses），再重试。'
+    `Test class ${fqcn} is not compiled (no class output under ${javaRoot}/target); ` +
+    'breakpoints cannot be hit. Run mvn test-compile (Gradle: ./gradlew testClasses) ' +
+    'in the module directory, then retry.'
   );
 }
 
@@ -105,12 +106,15 @@ async function ensureJavaClasspathFile(ctx: TestActionContext, runRoot: string):
     });
     if (result.exitCode !== 0) {
       console.warn(
-        '[TestRun] maven dependency:build-classpath 失败，Java classpath 降级为仅 target/ 目录',
-        result.output,
+        '[TestRun] maven dependency:build-classpath failed; Java classpath degraded to target/ only',
+        `${result.stdout}\n${result.stderr}`,
       );
     }
   } catch (e) {
-    console.warn('[TestRun] maven build-classpath 不可用（无 mvn？），降级为仅 target/ 目录', e);
+    console.warn(
+      '[TestRun] maven build-classpath unavailable (no mvn?); degraded to target/ only',
+      e,
+    );
   }
 }
 
@@ -130,8 +134,8 @@ export async function prepareJavaRun(
     const url = junitLauncherDownloadUrl();
     useNotificationStore.getState().addNotification({
       type: 'error',
-      title: 'Java 测试',
-      message: `需要 JUnit Platform Console Launcher（首次运行需下载一次）。\n请下载：${url}\n保存到：${launcherPath}`,
+      title: 'Java Test',
+      message: `JUnit Platform Console Launcher is required (one-time download).\nDownload: ${url}\nSave to: ${launcherPath}`,
     });
     return null;
   }
@@ -169,7 +173,7 @@ export async function debugJava(target: RunTarget, ctx: TestActionContext): Prom
     return;
   }
   if (target.kind === 'test') {
-    debug.pushConsole('sys', '正在启动 Java 测试 JVM（jdwp 挂起等待 attach）…');
+    debug.pushConsole('sys', 'Starting Java test JVM (jdwp suspended, waiting for attach)…');
     const javaEnv = await prepareJavaRun(ctx, javaRoot);
     if (!javaEnv) return;
     const runCtx = await resolveRunContext('java', ctx.filePath, javaRoot, { javaEnv });
@@ -183,7 +187,7 @@ export async function debugJava(target: RunTarget, ctx: TestActionContext): Prom
     }
     return;
   }
-  debug.pushConsole('sys', '正在启动 Java 应用 JVM（jdwp 挂起等待 attach）…');
+  debug.pushConsole('sys', 'Starting Java app JVM (jdwp suspended, waiting for attach)…');
   const javaEnv = await prepareJavaMainRun(ctx, javaRoot);
   const runCtx = await resolveRunContext('java', ctx.filePath, javaRoot, { javaEnv });
   const command = buildMainJavaDebugCommand(ctx.filePath, javaRoot, runCtx);

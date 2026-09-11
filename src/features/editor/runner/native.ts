@@ -6,6 +6,7 @@ import { useDebugStore } from '@/features/debug/store/debugStore';
 import { fileExists } from '@/features/file/api/fileApi';
 
 import type { RunTarget } from '../gutter/runContribution';
+import type { LspRunnable } from '../runnables/runnable';
 import { resolveCargoManifestDirForFile } from '../utils/cargoManifest';
 import { buildMainDebugBuildCommand, resolveRunContext } from '../utils/runLanguages';
 import type { TestCaseInfo } from '../utils/testCases';
@@ -27,10 +28,13 @@ import {
 import { resolveRunCwd, type TestActionContext } from './context';
 import { notifyDebugError, pushBuildLogTail } from './debugConsole';
 
-/** Phase 1 无头构建的产物（退出码 + 管道 stdout，与后端 DTO 对齐）。 */
+/** Phase 1 无头构建的产物（退出码 + 双流管道输出，与后端 DTO 对齐）。 */
 interface TestBinaryBuild {
   exitCode: number;
-  output: string;
+  /** stdout：产物解析通道（cargo `--message-format=json` 行）。 */
+  stdout: string;
+  /** stderr：go/cargo 报错流（构建失败诊断展示用）。 */
+  stderr: string;
   /**
    * go：`go test -c -o` 的显式产物绝对路径（确定性，无需从 stdout 解析）；
    * rust：undefined（走 parseTestBinaryPath 的 compiler-artifact 解析）。
@@ -47,6 +51,7 @@ interface TestBinaryBuild {
 async function buildTestBinary(
   testCase: TestCaseInfo,
   ctx: TestActionContext,
+  lsp: LspRunnable | null,
 ): Promise<TestBinaryBuild> {
   // crate/member 定位：从被编辑文件向上找最近 Cargo.toml。workspace 从根跑
   // `cargo test` 会编所有成员 → 多候选（artifact src_path 是各 crate root），
@@ -67,24 +72,26 @@ async function buildTestBinary(
       const result = await buildTestBinaryRemote({ projectId: ctx.projectId, command, cwd });
       return {
         exitCode: result.exitCode,
-        output: result.output,
+        stdout: result.stdout,
+        stderr: result.stderr,
         programPath: resolveBinaryPath(outRelPath, cwd),
       };
     } catch (e) {
       const detail = e instanceof Error ? e.message : String(e);
-      throw new Error(`无头构建执行失败：${detail}（命令：${command}，目录：${cwd}）`);
+      throw new Error(`Headless build failed: ${detail} (command: ${command}, cwd: ${cwd})`);
     }
   }
   const member = await resolveCargoManifestDirForFile(cwd, ctx.filePath);
   const relPath = member ? ctx.filePath.replace(`${member}/`, '') : ctx.filePath;
   const targetFlag = resolveTestTargetFlag(relPath, await hasLibTarget(cwd, member));
-  const command = buildDebugBuildCommand(testCase, member, targetFlag);
+  // 有 LSP runnable（tier ①）时命令完全由 LS 的 target 选择决定，targetFlag 仅作兜底。
+  const command = buildDebugBuildCommand(testCase, member, targetFlag, lsp);
   try {
     const result = await buildTestBinaryRemote({ projectId: ctx.projectId, command, cwd });
-    return { exitCode: result.exitCode, output: result.output };
+    return { exitCode: result.exitCode, stdout: result.stdout, stderr: result.stderr };
   } catch (e) {
     const detail = e instanceof Error ? e.message : String(e);
-    throw new Error(`无头构建执行失败：${detail}（命令：${command}，目录：${cwd}）`);
+    throw new Error(`Headless build failed: ${detail} (command: ${command}, cwd: ${cwd})`);
   }
 }
 
@@ -109,7 +116,7 @@ export async function launchNativeDebug(target: RunTarget, ctx: TestActionContex
   const debug = useDebugStore.getState();
   debug.pushConsole(
     'sys',
-    target.kind === 'test' ? '正在构建测试二进制…' : '正在构建 main 二进制…',
+    target.kind === 'test' ? 'Building test binary…' : 'Building main binary…',
   );
   let build: TestBinaryBuild;
   try {
@@ -121,26 +128,26 @@ export async function launchNativeDebug(target: RunTarget, ctx: TestActionContex
     return;
   }
   if (build.exitCode !== 0) {
-    pushBuildLogTail(build.output);
+    pushBuildLogTail(build.stdout, build.stderr);
     notifyDebugError(
       target.kind === 'test'
-        ? '构建失败，未启动调试（构建日志见 DebugPanel console）'
-        : 'main 构建失败，未启动调试（构建日志见 DebugPanel console）',
+        ? 'Build failed; debug not started (see the build log in the DebugPanel console)'
+        : 'Main build failed; debug not started (see the build log in the DebugPanel console)',
     );
     return;
   }
   // go：`-o` 显式产物路径；rust：compiler-artifact 解析（测试/main 各用其解析器）。
   const parsed = parseNativeBinary(target, build, ctx.filePath);
   if (!parsed.ok) {
-    pushBuildLogTail(build.output);
+    pushBuildLogTail(build.stdout, build.stderr);
     notifyDebugError(
       parsed.error === 'binary_ambiguous'
         ? target.kind === 'test'
-          ? '找到多个测试二进制，无法确定调试目标，未启动调试'
-          : '找到多个 main 二进制，无法确定调试目标，未启动调试'
+          ? 'Multiple test binaries found; cannot pick a debug target, debug not started'
+          : 'Multiple main binaries found; cannot pick a debug target, debug not started'
         : target.kind === 'test'
-          ? '找不到唯一测试二进制：构建输出中没有测试产物，未启动调试'
-          : '找不到 main 二进制：构建输出中没有可执行产物，未启动调试',
+          ? 'No unique test binary: the build produced no test artifact, debug not started'
+          : 'Main binary not found: the build produced no executable, debug not started',
     );
     return;
   }
@@ -162,7 +169,7 @@ async function buildNativeDebugBinary(
   target: RunTarget,
   ctx: TestActionContext,
 ): Promise<TestBinaryBuild> {
-  if (target.kind === 'test') return buildTestBinary(target.testCase, ctx);
+  if (target.kind === 'test') return buildTestBinary(target.testCase, ctx, target.lsp ?? null);
   const cwd = resolveRunCwd(ctx);
   if (target.entry.language === 'go') {
     const outRel = goDebugBinaryRelPath('main');
@@ -171,17 +178,19 @@ async function buildNativeDebugBinary(
     const result = await buildTestBinaryRemote({ projectId: ctx.projectId, command, cwd });
     return {
       exitCode: result.exitCode,
-      output: result.output,
+      stdout: result.stdout,
+      stderr: result.stderr,
       programPath: resolveBinaryPath(outRel, cwd),
     };
   }
   const member = await resolveCargoManifestDirForFile(cwd, ctx.filePath);
-  // Rust 分支无 IO 事实（cargo 自解析清单）→ 默认上下文即可。
+  // Rust 分支无 IO 事实（cargo 自解析清单）→ 默认上下文即可；LSP runnable 可给出 target。
   const command = buildMainDebugBuildCommand('rust', defaultRunContext(), {
     manifestDir: member,
+    lsp: target.lsp ?? null,
   });
   const result = await buildTestBinaryRemote({ projectId: ctx.projectId, command, cwd });
-  return { exitCode: result.exitCode, output: result.output };
+  return { exitCode: result.exitCode, stdout: result.stdout, stderr: result.stderr };
 }
 
 /** 产物解析（go 走 `-o` 显式路径；rust 测试/main 各用其 artifact 解析器）。 */
@@ -192,8 +201,8 @@ function parseNativeBinary(
 ): TestBinaryResult {
   if (build.programPath) return { ok: true as const, path: build.programPath };
   return target.kind === 'test'
-    ? parseTestBinaryPath(build.output, filePath)
-    : parseCargoBinaryPath(build.output, filePath);
+    ? parseTestBinaryPath(build.stdout, filePath)
+    : parseCargoBinaryPath(build.stdout, filePath);
 }
 
 /** Debug launch 配置（测试/main 共用 shape，仅参数源不同；Java 走 attach 路径不到此）。 */

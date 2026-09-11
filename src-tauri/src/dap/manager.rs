@@ -6,13 +6,16 @@ use std::sync::Arc;
 
 use tokio::sync::Mutex;
 
+use super::adapter;
 use super::config::{
     expand_config, load_breakpoints_file, load_launch_file, save_breakpoints_file, save_launch_file,
 };
 use super::discover::{discover_entries, entry_to_launch_config, EntryPoint};
 use super::java_debuggee::JavaDebuggee;
 use super::session::DapSession;
-use super::types::{BreakpointSpec, DapSessionInfo, LaunchConfig, LaunchFile};
+use super::types::{
+    BreakpointSpec, DapSessionInfo, LaunchConfig, LaunchFile, StackFrameDto, VariableDto,
+};
 use crate::common::executor::factory::ExecTarget;
 use crate::common::executor::ProcessGuard;
 use crate::AppError;
@@ -302,7 +305,7 @@ impl DapManager {
         let bps = self.get_breakpoints(state, project_id).await?;
         // 用户显式 adapter 二进制覆盖（config `dap.adapterBinaries.<kind>`，对齐
         // Zed `dap.$ADAPTER.binary`）：resolve_spawn 用它而非默认探测。
-        let kind = crate::dap::adapter::plugin_for(&config.type_)?.kind();
+        let kind = adapter::plugin_for(&config.type_)?.kind();
         let adapter_binary = load_dap_adapter_override(state, kind);
 
         let session = DapSession::start(
@@ -488,6 +491,79 @@ impl DapManager {
         }
         out
     }
+
+    // ── 会话级操作（统一走 require_session；命令层只透传 id）─────────────────
+
+    /// 按 id 取会话，缺失即 `NotFound` —— 会话级操作的**唯一**查找路径
+    /// （命令层不再各自重复 `get_session` + 组错误）。
+    async fn require_session(&self, session_id: &str) -> Result<Arc<DapSession>, AppError> {
+        self.get_session(session_id)
+            .await
+            .ok_or_else(|| AppError::NotFound(format!("Session not found: {session_id}")))
+    }
+
+    /// 向会话发送控制动作（`continue` / `next` / `stepIn` / …）。
+    pub async fn control(&self, session_id: &str, action: &str) -> Result<(), AppError> {
+        self.require_session(session_id)
+            .await?
+            .control(action)
+            .await
+    }
+
+    /// 当前暂停点的调用栈。
+    pub async fn stack_trace(&self, session_id: &str) -> Result<Vec<StackFrameDto>, AppError> {
+        self.require_session(session_id).await?.stack_trace().await
+    }
+
+    /// 指定栈帧的变量（作用域展开后的一层）。
+    pub async fn variables(
+        &self,
+        session_id: &str,
+        frame_id: i64,
+    ) -> Result<Vec<VariableDto>, AppError> {
+        self.require_session(session_id)
+            .await?
+            .scopes_variables(frame_id)
+            .await
+    }
+
+    /// `variablesReference` 的子变量（懒展开）。
+    pub async fn variables_by_reference(
+        &self,
+        session_id: &str,
+        reference: i64,
+    ) -> Result<Vec<VariableDto>, AppError> {
+        self.require_session(session_id)
+            .await?
+            .variables_by_reference(reference)
+            .await
+    }
+
+    /// 求值表达式（`frame_id` 为空时走会话默认帧）。
+    pub async fn evaluate(
+        &self,
+        session_id: &str,
+        expression: &str,
+        frame_id: Option<i64>,
+    ) -> Result<String, AppError> {
+        self.require_session(session_id)
+            .await?
+            .evaluate(expression, frame_id)
+            .await
+    }
+
+    /// 适配器在**项目环境**（Local / WSL / SSH）内是否可用。
+    ///
+    /// 环境解析是编排层职责，命令层只透传 —— 与 `commands` 的 `dap_check_adapter`
+    /// 一一对应。
+    pub async fn check_adapter(
+        state: &AppStateWrapper,
+        project_id: &str,
+        adapter_type: &str,
+    ) -> Result<bool, AppError> {
+        let target = state.project_environment(project_id)?.to_exec_target();
+        Ok(adapter::adapter_available(adapter_type, &target).await)
+    }
 }
 
 /// Prefer a launch config whose program path is a parent of the current file.
@@ -537,4 +613,74 @@ fn load_dap_adapter_override(
         .and_then(|v| v.as_str())
         .filter(|s| !s.is_empty())
         .map(str::to_string)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::session::StorageManager;
+
+    /// 隔离的 `AppStateWrapper`：StorageManager 指向临时目录 —— 严禁用默认 `~/.neeko`，
+    /// 否则 project 的 auto-save 会覆盖用户数据。与 `browser/url_validator` 测试同款。
+    fn isolated_state(tmp: &tempfile::TempDir) -> AppStateWrapper {
+        let storage = StorageManager::with_dir(tmp.path().join(".neeko")).expect("storage");
+        let store = Arc::new(crate::library::LibraryStore::open_in_memory().expect("library"));
+        AppStateWrapper::new_with_storage_and_library(storage, store)
+    }
+
+    /// 5 个会话级操作共用 `require_session` → 缺失 id 必须统一映射为 `NotFound`。
+    ///
+    /// 命令层只透传 id，错误语义**在此层唯一确定**；前端据此区分「会话已结束」与
+    /// 「参数非法」。若将来有人绕过 `require_session` 各自拼错误，本用例即红。
+    #[tokio::test]
+    async fn session_ops_map_missing_id_to_not_found() {
+        let manager = DapManager::new();
+        let all_errors = vec![
+            manager.control("missing", "continue").await.is_err(),
+            manager.stack_trace("missing").await.is_err(),
+            manager.variables("missing", 1).await.is_err(),
+            manager.variables_by_reference("missing", 1).await.is_err(),
+            manager.evaluate("missing", "x", None).await.is_err(),
+        ];
+        assert_eq!(all_errors, vec![true; 5]);
+
+        // 错误类型必须是 NotFound（而非 InvalidInput / Unknown）
+        assert!(matches!(
+            manager.control("missing", "continue").await,
+            Err(AppError::NotFound(_))
+        ));
+    }
+
+    /// 环境解析在编排层：未知项目 → `project_environment` 的 `NotFound` 原样上抛，
+    /// 不静默降级为「不可用」。
+    #[tokio::test]
+    async fn check_adapter_propagates_unknown_project_as_not_found() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let state = isolated_state(&tmp);
+
+        assert!(matches!(
+            DapManager::check_adapter(&state, "no-such-project", "go").await,
+            Err(AppError::NotFound(_))
+        ));
+    }
+
+    /// 已注册项目 + 未知 adapter 类型 → 走完 `project_environment` → `to_exec_target` →
+    /// `adapter_available` 全链路，确定性得 `false`（未知 kind 不触碰文件系统/环境，
+    /// 因此不受本机是否装了 dlv / lldb 影响）。
+    #[tokio::test]
+    async fn check_adapter_resolves_project_env_then_reports_unavailable() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let project_dir = tmp.path().join("proj");
+        std::fs::create_dir_all(&project_dir).expect("mkdir");
+        let state = isolated_state(&tmp);
+        let project = state
+            .project_manager
+            .lock()
+            .expect("project_manager")
+            .add_project(project_dir, None, None, None)
+            .expect("add_project");
+
+        let result = DapManager::check_adapter(&state, &project.id, "no-such-adapter").await;
+        assert!(matches!(result, Ok(false)), "got {result:?}");
+    }
 }

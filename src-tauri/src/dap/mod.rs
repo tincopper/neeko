@@ -4,6 +4,7 @@
 //!
 //! ```text
 //! commands  →  manager  →  session
+//!     ├──→ build (无头构建服务：校验 + 执行 + 双流截断)
 //!     └──→ launch_support ←──┘        (shared launch helpers, no layer deps)
 //!                            ├─ adapter/*   (language plugins, ExecTarget-aware)
 //!                            ├─ process     (spawn via core::exec only)
@@ -12,13 +13,14 @@
 //!                            └─ protocol    (Content-Length framing)
 //! ```
 //!
-//! `commands`（控制层）与 `manager`（编排层）共用 `launch_support` 的纯逻辑，
-//! 二者都依赖它 —— 编排层不得反向依赖控制层。
+//! `commands`（控制层）只做参数接收 + 调度：会话/断点/配置编排在 `manager`，无头
+//! 构建在 `build`，二者共用 `launch_support` 的纯逻辑 —— 编排层不得反向依赖控制层。
 //!
 //! All process existence checks and spawns go through [`crate::core::exec`]
 //! with the project [`ExecTarget`] — never host-only shortcuts.
 
 pub mod adapter;
+mod build;
 pub mod cleanup;
 pub mod client;
 pub mod commands;

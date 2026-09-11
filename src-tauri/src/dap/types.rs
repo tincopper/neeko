@@ -307,6 +307,26 @@ mod tests {
     }
 
     #[test]
+    fn build_output_deserializes_snake_case() {
+        let out: DebugBuildOutput = serde_json::from_str(
+            r#"{"exit_code":101,"stdout":"error","stderr":"go: cannot find main module"}"#,
+        )
+        .expect("valid dto");
+        assert_eq!(
+            out,
+            DebugBuildOutput {
+                exit_code: 101,
+                stdout: "error".into(),
+                stderr: "go: cannot find main module".into()
+            }
+        );
+        let back = serde_json::to_value(&out).expect("serializable");
+        assert_eq!(back["exit_code"], 101);
+        assert_eq!(back["stdout"], "error");
+        assert_eq!(back["stderr"], "go: cannot find main module");
+    }
+
+    #[test]
     fn should_parse_dap_variable_wire_object() {
         let v = serde_json::json!({
             "name": "m",
@@ -403,4 +423,17 @@ pub enum HandshakeOrder {
     /// launch 先发不等响应 → 收 `initialized` → setBreakpoints → configurationDone
     /// → launch 响应才返回（实测：顺序 await 会 timeout waiting for launch）。
     PipelinedLaunch,
+}
+
+/// 无头构建产物（IPC DTO；cargo 语义解析留前端纯函数，服务层只做执行 + 截断）。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DebugBuildOutput {
+    /// Process exit code (non-zero = build failed, short-circuit per C2).
+    pub exit_code: i32,
+    /// Piped stdout, truncated to the per-stream limit (clean pipe input for the
+    /// artifact parser — never mixed with stderr).
+    pub stdout: String,
+    /// Piped stderr, truncated to the per-stream limit. go/cargo 的构建报错走此流
+    /// （诊断展示用；前端 `pushBuildLogTail` 与 stdout 合并渲染，不参与产物解析）。
+    pub stderr: String,
 }
