@@ -21,6 +21,6 @@
   "children": [],
   "parent": null,
   "relatedFiles": [],
-  "notes": "",
+  "notes": "2026-09-11：Runnable 检测升级 —— P0 已完成（快路径健壮性 + 静默零命中治理）；P1 已完成（Rust 接 rust-analyzer experimental/runnables：插件级能力声明 + 按 position 逐目标请求 + 覆盖 RunTarget.lsp + tier ① 命令构造）。设计与实测载荷见 design/runnable-detection.md，调研见 research/runnable-detection-matrix.md；P2-Go 已完成（benchmark 支持；实证确认 gopls codelens 对现有功能等价、子测试不提供，故不接）；P3-Go 已完成（动态子测试：test2json 运行时发现 + 菜单单跑/单调试 + goDebugBinaryRelPath 产物名消毒；dlv marker-file 实证层级锚定 -test.run 只跑目标子测试，GoAdapter 零改动）；Java（jdt.ls）未开工。",
   "meta": {}
 }
