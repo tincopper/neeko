@@ -58,9 +58,15 @@ import { useNotificationStore } from '@/shared/store/notificationStore';
 import { useOverlayStore } from '@/shared/store/overlayStore';
 import { useTaskStore } from '@/shared/store/taskStore';
 
-import { statusForCase, useTestResultsStore } from '../../store/testResults';
+import { statusForCase, subtestsForCase, useTestResultsStore } from '../../store/testResults';
 import { clearCargoManifestCache } from '../../utils/cargoManifest';
-import { mainDebugLabel, mainRunLabel, useRunActions } from '../useRunActions';
+import {
+  benchmarkDebugLabel,
+  benchmarkRunLabel,
+  mainDebugLabel,
+  mainRunLabel,
+  useRunActions,
+} from '../useRunActions';
 
 describe('useRunActions', () => {
   beforeEach(() => {
@@ -262,6 +268,119 @@ describe('useRunActions', () => {
   describe('run result stream (libtest JSON / vitest report → testResults store)', () => {
     beforeEach(() => {
       useTestResultsStore.setState({ files: {}, versions: {} });
+    });
+
+    it('should_warn_when_command_succeeds_but_no_case_matched', async () => {
+      // 静默失败治理：exit 0 但 target/过滤器不覆盖该用例（examples/、自定义 `[[test]]`
+      // path、test=false 目标、名称未对齐）→ 必须显式告警并附命令，而不是只清 running。
+      const { result } = renderHook(() =>
+        useRunActions({
+          projectId: 'proj-1',
+          filePath: 'src/lib.rs',
+          projectPath: '/tmp/proj',
+        }),
+      );
+
+      act(() =>
+        result.current.handleRun({
+          kind: 'test',
+          testCase: { name: 'parse_simple', line: 1, lang: 'rust' },
+        }),
+      );
+      await waitFor(() => expect(mockStart).toHaveBeenCalledTimes(1));
+
+      const opts = mockStart.mock.calls[0][0];
+      opts.onOutput('   Compiling neeko v0.1.0 (/tmp/proj)\nrunning 0 tests\n');
+      opts.onExit(0);
+
+      await waitFor(() =>
+        expect(
+          useNotificationStore.getState().notifications.some((n) => n.title === 'Test Run'),
+        ).toBe(true),
+      );
+      const warning = useNotificationStore
+        .getState()
+        .notifications.find((n) => n.title === 'Test Run');
+      expect(warning?.message).toContain('parse_simple');
+      // 告警附实际命令（用户据此自助排查 target/过滤器）
+      expect(warning?.message).toContain("cargo test 'parse_simple'");
+      // 未命中的用例不落状态（不猜状态）
+      expect(statusForCase('proj-1', 'src/lib.rs', 'parse_simple')).toBeNull();
+    });
+
+    it('Go benchmark：包级终态收口 → 落 ✓ 且不触发「零命中」告警（P2 × P0 联动）', async () => {
+      // benchmark 的 test2json 无 per-benchmark 终态事件（只有 run + 包级 pass）——
+      // 若解析器不收口，matched=0 会被 P0 的零命中告警误判为「过滤器/target 不覆盖」。
+      const { result } = renderHook(() =>
+        useRunActions({
+          projectId: 'proj-1',
+          filePath: 'pkg/math/add_test.go',
+          projectPath: '/tmp/proj',
+        }),
+      );
+
+      act(() =>
+        result.current.handleRun({
+          kind: 'test',
+          testCase: { name: 'BenchmarkAdd', line: 4, lang: 'go', kind: 'benchmark' },
+        }),
+      );
+      await waitFor(() => expect(mockStart).toHaveBeenCalledTimes(1));
+      // 命令形态：-run 置空 + -bench 锚定 + -count=1
+      expect(mockStart.mock.calls[0][0].command).toContain("-bench '^BenchmarkAdd$' -count=1");
+
+      const opts = mockStart.mock.calls[0][0];
+      const line = (o: Record<string, unknown>) => JSON.stringify(o);
+      opts.onOutput(
+        [
+          line({ Action: 'run', Package: 'math', Test: 'BenchmarkAdd' }),
+          line({
+            Action: 'output',
+            Package: 'math',
+            Test: 'BenchmarkAdd',
+            Output: 'BenchmarkAdd-10   \t1000000000\t         0.2383 ns/op\n',
+          }),
+          line({ Action: 'pass', Package: 'math', Elapsed: 0.787 }),
+        ].join('\n'),
+      );
+      opts.onExit(0);
+
+      await waitFor(() =>
+        expect(statusForCase('proj-1', 'pkg/math/add_test.go', 'BenchmarkAdd')?.status).toBe(
+          'passed',
+        ),
+      );
+      expect(
+        useNotificationStore.getState().notifications.some((n) => n.title === 'Test Run'),
+      ).toBe(false);
+    });
+
+    it('should_not_warn_when_run_failed_to_compile', async () => {
+      // 编译失败（exit != 0）已有 Task Console 错误输出 → 不重复告警
+      const { result } = renderHook(() =>
+        useRunActions({
+          projectId: 'proj-1',
+          filePath: 'src/lib.rs',
+          projectPath: '/tmp/proj',
+        }),
+      );
+
+      act(() =>
+        result.current.handleRun({
+          kind: 'test',
+          testCase: { name: 'parse_simple', line: 1, lang: 'rust' },
+        }),
+      );
+      await waitFor(() => expect(mockStart).toHaveBeenCalledTimes(1));
+
+      const opts = mockStart.mock.calls[0][0];
+      opts.onOutput('error[E0432]: unresolved import `foo`\n');
+      opts.onExit(101);
+
+      await waitFor(() => expect(statusForCase('proj-1', 'src/lib.rs', 'parse_simple')).toBeNull());
+      expect(
+        useNotificationStore.getState().notifications.some((n) => n.title === 'Test Run'),
+      ).toBe(false);
     });
 
     it('should_begin_run_before_spawn_and_land_libtest_result_on_exit', async () => {
@@ -517,6 +636,81 @@ describe('useRunActions', () => {
       );
     });
 
+    it('Go 子测试发现：运行父用例 → 发现的子测试全名入 store（P3 动态子测试）', async () => {
+      // test2json 在子测试真正执行时报其 `Test` 全名（`<父>/<层级>`）→ 运行父用例
+      // 即完成一次动态发现；父级状态仍按源码 fn 名对齐，子测试事件不污染 cases。
+      const { result } = renderHook(() =>
+        useRunActions({
+          projectId: 'proj-1',
+          filePath: 'pkg/math/add_test.go',
+          projectPath: '/tmp/proj',
+        }),
+      );
+      act(() =>
+        result.current.handleRun({
+          kind: 'test',
+          testCase: { name: 'TestTable', line: 3, lang: 'go' },
+        }),
+      );
+      await waitFor(() => expect(mockStart).toHaveBeenCalledTimes(1));
+
+      const opts = mockStart.mock.calls[0][0];
+      const line = (o: Record<string, unknown>) => JSON.stringify(o);
+      opts.onOutput(
+        [
+          line({ Action: 'run', Package: 'math', Test: 'TestTable' }),
+          line({ Action: 'run', Package: 'math', Test: 'TestTable/zero' }),
+          line({ Action: 'pass', Package: 'math', Test: 'TestTable/zero' }),
+          line({ Action: 'run', Package: 'math', Test: 'TestTable/positive' }),
+          line({ Action: 'pass', Package: 'math', Test: 'TestTable/positive' }),
+          line({ Action: 'pass', Package: 'math', Test: 'TestTable', Elapsed: 0.003 }),
+        ].join('\n'),
+      );
+      opts.onExit(0);
+
+      await waitFor(() =>
+        expect(subtestsForCase('proj-1', 'pkg/math/add_test.go', 'TestTable')).toEqual([
+          'TestTable/positive',
+          'TestTable/zero',
+        ]),
+      );
+      // 父级状态按源码名对齐；子测试不进 cases（无对应源码行）
+      expect(statusForCase('proj-1', 'pkg/math/add_test.go', 'TestTable')?.status).toBe('passed');
+      expect(statusForCase('proj-1', 'pkg/math/add_test.go', 'TestTable/zero')).toBeNull();
+    });
+
+    it('Go 子测试发现：benchmark 目标不产出子测试（b.Run 归 P2 基准语义，不在本期范围）', async () => {
+      const { result } = renderHook(() =>
+        useRunActions({
+          projectId: 'proj-1',
+          filePath: 'pkg/math/add_test.go',
+          projectPath: '/tmp/proj',
+        }),
+      );
+      act(() =>
+        result.current.handleRun({
+          kind: 'test',
+          testCase: { name: 'BenchmarkAdd', line: 4, lang: 'go', kind: 'benchmark' },
+        }),
+      );
+      await waitFor(() => expect(mockStart).toHaveBeenCalledTimes(1));
+
+      const opts = mockStart.mock.calls[0][0];
+      const line = (o: Record<string, unknown>) => JSON.stringify(o);
+      opts.onOutput(
+        [
+          line({ Action: 'run', Package: 'math', Test: 'BenchmarkAdd' }),
+          line({ Action: 'run', Package: 'math', Test: 'BenchmarkAdd/x' }),
+          line({ Action: 'pass', Package: 'math', Elapsed: 0.5 }),
+        ].join('\n'),
+      );
+      opts.onExit(0);
+
+      await waitFor(() =>
+        expect(subtestsForCase('proj-1', 'pkg/math/add_test.go', 'BenchmarkAdd')).toEqual([]),
+      );
+    });
+
     it('should_clear_go_running_state_when_output_has_no_test2json_events', async () => {
       const { result } = renderHook(() =>
         useRunActions({
@@ -713,6 +907,27 @@ describe('useRunActions', () => {
       expect(useTaskStore.getState().consoleSessions).toHaveLength(1);
     });
 
+    it('Go：canonical 绝对 filePath（生产形态）仍解析出包目录', async () => {
+      // FileEditor 传 tab.filePath —— 恒为 canonical 绝对；探测须剥 runRoot 前缀，
+      // 否则产出 `./tmp/proj/cmd/agent` 伪包路径 → go run 秒失败。
+      mockInvoke.mockImplementation((cmd: string, args?: { path?: string }) =>
+        Promise.resolve(cmd === 'file_exists' && args?.path === '/tmp/proj/go.mod'),
+      );
+      const { result } = renderHook(() =>
+        useRunActions({
+          projectId: 'proj-1',
+          filePath: '/tmp/proj/cmd/agent/main.go',
+          projectPath: '/tmp/proj',
+        }),
+      );
+
+      act(() => result.current.handleRun({ kind: 'main', entry: { line: 3, language: 'go' } }));
+
+      await waitFor(() => expect(mockStart).toHaveBeenCalledTimes(1));
+      expect(mockStart.mock.calls[0][0].command).toBe("go run './cmd/agent'");
+      expect(mockStart.mock.calls[0][0].cwd).toBe('/tmp/proj');
+    });
+
     it('Rust：cargo run 进 Task Console（cwd = run 根）', async () => {
       const { result } = renderHook(() =>
         useRunActions({
@@ -768,7 +983,7 @@ describe('useRunActions', () => {
 
       await waitFor(() =>
         expect(
-          useNotificationStore.getState().notifications.some((n) => n.title === 'Java 运行'),
+          useNotificationStore.getState().notifications.some((n) => n.title === 'Java Run'),
         ).toBe(true),
       );
       expect(mockStart).not.toHaveBeenCalled();
@@ -808,6 +1023,80 @@ describe('useRunActions', () => {
         stopOnEntry: false,
       });
       expect(mockStart).not.toHaveBeenCalled();
+    });
+
+    it('Go：canonical 绝对 filePath（生产形态）→ go build 包目录正确', async () => {
+      // 回归：`codeant` 实测 —— 绝对路径未剥根时构建命令为
+      // `go build … './Users/…/cmd/agent'`，go 秒失败（main 构建失败）。
+      mockInvoke.mockImplementation((cmd: string, args?: { path?: string; command?: string }) => {
+        if (cmd === 'debug_build_test_binary' && args?.command?.includes('go build')) {
+          return Promise.resolve({ exit_code: 0, stdout: 'built' });
+        }
+        if (cmd === 'file_exists') return Promise.resolve(args?.path === '/tmp/proj/go.mod');
+        return Promise.resolve(false);
+      });
+      const { result } = renderHook(() =>
+        useRunActions({
+          projectId: 'proj-1',
+          filePath: '/tmp/proj/cmd/agent/main.go',
+          projectPath: '/tmp/proj',
+        }),
+      );
+
+      act(() => result.current.handleDebug({ kind: 'main', entry: { line: 3, language: 'go' } }));
+
+      await waitFor(() =>
+        expect(mockInvoke).toHaveBeenCalledWith('debug_build_test_binary', {
+          projectId: 'proj-1',
+          command: "go build -o '.neeko/test-bin/main' -gcflags 'all=-N -l' './cmd/agent'",
+          cwd: '/tmp/proj',
+        }),
+      );
+      await waitFor(() => expect(mockStartWithConfig).toHaveBeenCalledTimes(1));
+      expect(mockStartWithConfig).toHaveBeenCalledWith('proj-1', {
+        name: 'Debug main',
+        type: 'go',
+        request: 'launch',
+        program: '/tmp/proj/.neeko/test-bin/main',
+        cwd: '/tmp/proj',
+        mode: 'exec',
+        args: [],
+        stopOnEntry: false,
+      });
+    });
+
+    it('Go：构建报错只在 stderr 时也落 DebugPanel console', async () => {
+      // go 的构建报错全在 stderr（stdout 为空）——只回 stdout 时 console 里只有
+      // "构建失败"、没有任何证据，失败原因完全不可见。
+      mockInvoke.mockImplementation((cmd: string) =>
+        cmd === 'debug_build_test_binary'
+          ? Promise.resolve({
+              exit_code: 1,
+              stdout: '',
+              stderr: 'stat /tmp/proj/tmp/proj/cmd/agent: directory not found\n',
+            })
+          : Promise.resolve(false),
+      );
+      const { result } = renderHook(() =>
+        useRunActions({
+          projectId: 'proj-1',
+          filePath: '/tmp/proj/cmd/agent/main.go',
+          projectPath: '/tmp/proj',
+        }),
+      );
+
+      act(() => result.current.handleDebug({ kind: 'main', entry: { line: 3, language: 'go' } }));
+
+      await waitFor(() =>
+        expect(useNotificationStore.getState().notifications.some((n) => n.title === 'Debug')).toBe(
+          true,
+        ),
+      );
+      expect(mockPushConsole).toHaveBeenCalledWith(
+        'err',
+        expect.stringContaining('directory not found'),
+      );
+      expect(mockStartWithConfig).not.toHaveBeenCalled();
     });
 
     it('Rust：cargo build artifact 解析 → lldb launch', async () => {
@@ -936,7 +1225,7 @@ describe('useRunActions', () => {
 
       // pending：点击瞬间 DebugPanel 打开（console tab + 构建中提示），Task Console 永不参与
       await waitFor(() => expect(mockOpenDebugPanel).toHaveBeenCalledWith('console'));
-      expect(mockPushConsole).toHaveBeenCalledWith('sys', expect.stringContaining('构建'));
+      expect(mockPushConsole).toHaveBeenCalledWith('sys', expect.stringContaining('Building'));
       // 无头构建：一次独立 invoke，无任务会话、无 observer
       await waitFor(() =>
         expect(mockInvoke).toHaveBeenCalledWith('debug_build_test_binary', {
@@ -1100,7 +1389,7 @@ describe('useRunActions', () => {
         }),
       );
 
-      await waitFor(() => expect(notifiedWith('构建失败')).toBe(true));
+      await waitFor(() => expect(notifiedWith('Build failed')).toBe(true));
       expect(mockStartWithConfig).not.toHaveBeenCalled();
       expect(mockStart).not.toHaveBeenCalled();
       // 失败落 DebugPanel console（附构建日志尾部），Task Console 无会话
@@ -1123,7 +1412,7 @@ describe('useRunActions', () => {
         }),
       );
 
-      await waitFor(() => expect(notifiedWith('测试二进制')).toBe(true));
+      await waitFor(() => expect(notifiedWith('No unique test binary')).toBe(true));
       expect(mockStartWithConfig).not.toHaveBeenCalled();
       expect(mockStart).not.toHaveBeenCalled();
       expect(mockOpenDebugPanel).toHaveBeenCalledWith('console');
@@ -1144,7 +1433,7 @@ describe('useRunActions', () => {
         }),
       );
 
-      await waitFor(() => expect(notifiedWith('多个测试二进制')).toBe(true));
+      await waitFor(() => expect(notifiedWith('Multiple test binaries')).toBe(true));
       expect(mockStartWithConfig).not.toHaveBeenCalled();
       expect(mockStart).not.toHaveBeenCalled();
       expect(mockOpenDebugPanel).toHaveBeenCalledWith('console');
@@ -1241,7 +1530,7 @@ describe('useRunActions', () => {
 
       // pending：DebugPanel 打开，Task Console 永不参与
       await waitFor(() => expect(mockOpenDebugPanel).toHaveBeenCalledWith('console'));
-      expect(mockPushConsole).toHaveBeenCalledWith('sys', expect.stringContaining('构建'));
+      expect(mockPushConsole).toHaveBeenCalledWith('sys', expect.stringContaining('Building'));
       // 无头构建：go test -c + 显式 `-o`（gitignored .neeko/）+ 无优化 -gcflags
       await waitFor(() =>
         expect(mockInvoke).toHaveBeenCalledWith('debug_build_test_binary', {
@@ -1288,10 +1577,41 @@ describe('useRunActions', () => {
         }),
       );
 
-      await waitFor(() => expect(notifiedWith('构建失败')).toBe(true));
+      await waitFor(() => expect(notifiedWith('Build failed')).toBe(true));
       expect(mockStartWithConfig).not.toHaveBeenCalled();
       expect(mockStart).not.toHaveBeenCalled();
       expect(mockPushConsole).toHaveBeenCalledWith('err', expect.stringContaining('undefined'));
+    });
+
+    it('should_build_go_test_binary_from_canonical_absolute_file_path', async () => {
+      // 生产形态：tab.filePath 为 canonical 绝对 → 包目录仍须是 `./pkg/math`。
+      mockInvoke.mockImplementation((cmd: string, args?: { path?: string }) => {
+        if (cmd === 'debug_build_test_binary') return Promise.resolve({ exit_code: 0, stdout: '' });
+        if (cmd === 'file_exists') return Promise.resolve(args?.path === '/tmp/proj/go.mod');
+        return Promise.resolve(false);
+      });
+      const { result } = renderHook(() =>
+        useRunActions({
+          projectId: 'proj-1',
+          filePath: '/tmp/proj/pkg/math/add_test.go',
+          projectPath: '/tmp/proj',
+        }),
+      );
+
+      act(() =>
+        result.current.handleDebug({
+          kind: 'test',
+          testCase: { name: 'TestAdd', line: 3, lang: 'go' },
+        }),
+      );
+
+      await waitFor(() =>
+        expect(mockInvoke).toHaveBeenCalledWith('debug_build_test_binary', {
+          projectId: 'proj-1',
+          command: "go test -c -o '.neeko/test-bin/TestAdd' -gcflags 'all=-N -l' './pkg/math'",
+          cwd: '/tmp/proj',
+        }),
+      );
     });
   });
 
@@ -1317,7 +1637,7 @@ describe('useRunActions', () => {
 
       // pending：DebugPanel 打开 + 启动 JVM 提示
       await waitFor(() => expect(mockOpenDebugPanel).toHaveBeenCalledWith('console'));
-      expect(mockPushConsole).toHaveBeenCalledWith('sys', expect.stringContaining('Java 测试 JVM'));
+      expect(mockPushConsole).toHaveBeenCalledWith('sys', expect.stringContaining('Java test JVM'));
 
       // attach-first：单条后端命令承载 spawn JVM + attach 全流程，无无头构建
       await waitFor(() => expect(mockStartJavaAttach).toHaveBeenCalledTimes(1));
@@ -1586,6 +1906,202 @@ describe('useRunActions', () => {
       waitFor(() => expect(mockStart).toHaveBeenCalledTimes(1));
     });
 
+    it('menu_lists_discovered_subtests_for_go_cases_after_a_separator', () => {
+      useTestResultsStore.setState({ files: {}, versions: {} });
+      useTestResultsStore
+        .getState()
+        .recordSubtests('proj-1', 'pkg/math/add_test.go', 'TestTable', [
+          'TestTable/positive',
+          'TestTable/zero',
+        ]);
+      const { result } = renderHook(() =>
+        useRunActions({
+          projectId: 'proj-1',
+          filePath: 'pkg/math/add_test.go',
+          projectPath: '/tmp/proj',
+        }),
+      );
+
+      act(() =>
+        result.current.openMenu(
+          { kind: 'test', testCase: { name: 'TestTable', line: 3, lang: 'go' } },
+          10,
+          20,
+        ),
+      );
+
+      const items = result.current.menuItems;
+      expect(items).toHaveLength(7);
+      expect(items[0]).toMatchObject({ label: "Test 'TestTable'" });
+      expect(items[1]).toMatchObject({ label: "Debug 'Test TestTable'" });
+      expect(items[2]).toEqual({ separator: true });
+      // 每个子测试成对给出 Run + Debug（与父用例同构：Run 在前、Debug 在后）
+      expect(items[3]).toMatchObject({ label: "Test 'TestTable/positive'" });
+      expect(items[4]).toMatchObject({ label: "Debug 'Test TestTable/positive'" });
+      expect(items[5]).toMatchObject({ label: "Test 'TestTable/zero'" });
+      expect(items[6]).toMatchObject({ label: "Debug 'Test TestTable/zero'" });
+    });
+
+    it('subtest_debug_builds_and_launches_delve_against_the_sanitized_binary', async () => {
+      useTestResultsStore.setState({ files: {}, versions: {} });
+      useTestResultsStore
+        .getState()
+        .recordSubtests('proj-1', 'pkg/math/add_test.go', 'TestTable', ['TestTable/zero']);
+
+      const buildCommands: string[] = [];
+      mockInvoke.mockImplementation((cmd: string, invArgs: { command?: string }) => {
+        if (cmd === 'debug_build_test_binary') {
+          buildCommands.push(invArgs.command ?? '');
+          return Promise.resolve({ exit_code: 0, stdout: '', stderr: '' });
+        }
+        return Promise.resolve(false); // go.mod 探测未命中 → 回退文件所在目录包路径
+      });
+
+      const { result } = renderHook(() =>
+        useRunActions({
+          projectId: 'proj-1',
+          filePath: 'pkg/math/add_test.go',
+          projectPath: '/tmp/proj',
+        }),
+      );
+      act(() =>
+        result.current.openMenu(
+          { kind: 'test', testCase: { name: 'TestTable', line: 3, lang: 'go' } },
+          10,
+          20,
+        ),
+      );
+
+      const debugItem = result.current.menuItems[4];
+      if (debugItem.separator === true) throw new Error('expected a subtest Debug item at index 4');
+      expect(debugItem.label).toBe("Debug 'Test TestTable/zero'");
+      act(() => debugItem.action());
+
+      await waitFor(() => expect(mockStartWithConfig).toHaveBeenCalledTimes(1));
+      const config = mockStartWithConfig.mock.calls[0][1];
+      // 层级锚定 -test.run：dlv exec 只跑该子测试（真机 dlv 1.27 + marker 文件实证）
+      expect(config.args).toEqual(['^TestTable$/^zero$']);
+      expect(config).toMatchObject({ type: 'go', mode: 'exec', cwd: '/tmp/proj' });
+      // program 指向 `-o` 产物；原始名含 `/` → 文件名已消毒，不再落嵌套目录
+      expect(config.program).toMatch(/\/tmp\/proj\/\.neeko\/test-bin\/TestTable_zero-[0-9a-f]{8}$/);
+      expect(buildCommands[0]).toContain("-o '.neeko/test-bin/TestTable_zero-");
+    });
+
+    it('subtest_debug_reports_build_failure_without_starting_a_session', async () => {
+      useTestResultsStore.setState({ files: {}, versions: {} });
+      useTestResultsStore
+        .getState()
+        .recordSubtests('proj-1', 'pkg/math/add_test.go', 'TestTable', ['TestTable/zero']);
+      mockInvoke.mockImplementation((cmd: string) =>
+        Promise.resolve(
+          cmd === 'debug_build_test_binary'
+            ? { exit_code: 1, stdout: '', stderr: 'cannot find package' }
+            : false,
+        ),
+      );
+
+      const { result } = renderHook(() =>
+        useRunActions({
+          projectId: 'proj-1',
+          filePath: 'pkg/math/add_test.go',
+          projectPath: '/tmp/proj',
+        }),
+      );
+      act(() =>
+        result.current.openMenu(
+          { kind: 'test', testCase: { name: 'TestTable', line: 3, lang: 'go' } },
+          10,
+          20,
+        ),
+      );
+      const debugItem = result.current.menuItems[4];
+      if (debugItem.separator === true) throw new Error('expected a subtest Debug item at index 4');
+      act(() => debugItem.action());
+
+      await waitFor(() => expect(mockPushConsole).toHaveBeenCalledWith('err', expect.anything()));
+      expect(mockStartWithConfig).not.toHaveBeenCalled();
+    });
+
+    it('subtest_item_runs_the_single_subtest_with_a_hierarchically_anchored_filter', async () => {
+      useTestResultsStore.setState({ files: {}, versions: {} });
+      useTestResultsStore
+        .getState()
+        .recordSubtests('proj-1', 'pkg/math/add_test.go', 'TestTable', ['TestTable/with.dot']);
+      const { result } = renderHook(() =>
+        useRunActions({
+          projectId: 'proj-1',
+          filePath: 'pkg/math/add_test.go',
+          projectPath: '/tmp/proj',
+        }),
+      );
+      act(() =>
+        result.current.openMenu(
+          { kind: 'test', testCase: { name: 'TestTable', line: 3, lang: 'go' } },
+          10,
+          20,
+        ),
+      );
+
+      const subItem = result.current.menuItems[3];
+      if (subItem.separator === true) throw new Error('expected a subtest menu item at index 3');
+      act(() => subItem.action());
+
+      await waitFor(() => expect(mockStart).toHaveBeenCalledTimes(1));
+      expect(mockStart.mock.calls[0][0].command).toBe(
+        "go test -run '^TestTable$/^\\Qwith.dot\\E$' -json './pkg/math'",
+      );
+      // 单跑子测试同样落父用例的「运行中」占位（源码行只对应父用例）
+      expect(statusForCase('proj-1', 'pkg/math/add_test.go', 'TestTable')).toEqual({
+        status: 'running',
+      });
+    });
+
+    it('menu_omits_the_subtest_section_when_nothing_was_discovered', () => {
+      useTestResultsStore.setState({ files: {}, versions: {} });
+      const { result } = renderHook(() =>
+        useRunActions({
+          projectId: 'proj-1',
+          filePath: 'pkg/math/add_test.go',
+          projectPath: '/tmp/proj',
+        }),
+      );
+
+      act(() =>
+        result.current.openMenu(
+          { kind: 'test', testCase: { name: 'TestTable', line: 3, lang: 'go' } },
+          10,
+          20,
+        ),
+      );
+
+      expect(result.current.menuItems).toHaveLength(2);
+    });
+
+    it('menu_never_lists_subtests_for_non_go_cases', () => {
+      useTestResultsStore.setState({ files: {}, versions: {} });
+      // 子测试发现是 Go `t.Run` 语义；即便 store 里存在同名父级的记录，也不得外溢到其它语言
+      useTestResultsStore
+        .getState()
+        .recordSubtests('proj-1', 'src/lib.rs', 'parse_simple', ['parse_simple/x']);
+      const { result } = renderHook(() =>
+        useRunActions({
+          projectId: 'proj-1',
+          filePath: 'src/lib.rs',
+          projectPath: '/tmp/proj',
+        }),
+      );
+
+      act(() =>
+        result.current.openMenu(
+          { kind: 'test', testCase: { name: 'parse_simple', line: 1, lang: 'rust' } },
+          10,
+          20,
+        ),
+      );
+
+      expect(result.current.menuItems).toHaveLength(2);
+    });
+
     it('closeMenu_clears_state_and_releases_overlay', () => {
       const { result } = renderHook(() =>
         useRunActions({
@@ -1636,5 +2152,12 @@ describe('main 菜单文案', () => {
   it('Run/Debug 标签对齐单测惯例（携带目标描述）', () => {
     expect(mainRunLabel()).toBe("Run 'main'");
     expect(mainDebugLabel()).toBe("Debug 'main'");
+  });
+});
+
+describe('基准菜单文案（P2）', () => {
+  it("区分 benchmark 与普通用例（避免 Test 'BenchmarkAdd' 的误导）", () => {
+    expect(benchmarkRunLabel('BenchmarkAdd')).toBe("Benchmark 'BenchmarkAdd'");
+    expect(benchmarkDebugLabel('BenchmarkAdd')).toBe("Debug 'Benchmark BenchmarkAdd'");
   });
 });

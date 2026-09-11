@@ -32,8 +32,14 @@ import {
   type EditorState,
   type Extension,
 } from '@codemirror/state';
-import { EditorView, GutterMarker } from '@codemirror/view';
+import { EditorView, GutterMarker, ViewPlugin } from '@codemirror/view';
 
+import {
+  fetchRunnablesForLines,
+  isRustAnalyzerReady,
+  type RunnableLineTarget,
+} from '../runnables/provider';
+import type { LspRunnable } from '../runnables/runnable';
 import { type MainEntry } from '../utils/mainEntries';
 import {
   capabilitiesFor,
@@ -51,8 +57,15 @@ import type { GutterContribution, GutterHit, GutterLineContext } from './contrib
  * 显示/菜单/点击机制统一，仅动作层按 kind 分流（runTest/debugTest vs runMain/debugMain）。
  */
 export type RunTarget =
-  | { kind: 'test'; testCase: TestCaseInfo }
-  | { kind: 'main'; entry: MainEntry };
+  | { kind: 'test'; testCase: TestCaseInfo; lsp?: LspRunnable }
+  | { kind: 'main'; entry: MainEntry; lsp?: LspRunnable };
+
+/** RunTarget 的 LSP 覆盖在 marker 层的稳定比较键（避免无谓重建 DOM）。 */
+function lspKey(target: RunTarget): string {
+  const lsp = target.lsp;
+  if (!lsp) return '';
+  return `${lsp.label}|${(lsp.args.cargoArgs ?? []).join(' ')}|${(lsp.args.executableArgs ?? []).join(' ')}`;
+}
 
 /** 目标行号（marker 定位/eq 用）。 */
 export function targetLine(target: RunTarget): number {
@@ -67,6 +80,12 @@ export function targetLang(target: RunTarget): 'ts' | 'go' | 'rust' | 'java' {
 /** Per-editor configuration injected via facet (fileName + click callbacks). */
 export interface RunCodelensConfig {
   fileName: string;
+  /** LSP runnable 拉取所需的项目上下文（缺省则跳过 tier ①，只走快路径）。 */
+  projectId?: string;
+  /** 被编辑文件绝对路径（`file://` uri 构造）。 */
+  absFilePath?: string;
+  /** LSP 会话键（项目根 / worktree 根）。 */
+  projectPath?: string | null;
   onRun: (target: RunTarget) => void;
   /** Rust/Go/Java（测试与 main 皆然）点击 → 请求 React 层在图标 rect 旁（x/y 为 rect
    *  推导锚点）打开 Run/Debug 浮层。 */
@@ -79,6 +98,24 @@ export const runCodelensConfig = Facet.define<RunCodelensConfig, RunCodelensConf
 
 /** Debounced reparse trigger (dispatched from the update listener after doc changes). */
 export const refreshRunCodelensEffect = StateEffect.define<null>();
+
+/**
+ * LSP runnable 覆盖（行号 1-based → runnable），由**异步** provider 注入。
+ *
+ * 刻意做成 StateField 而不是读全局 store/闭包：快路径 markers 的构建（`StateField.create`）
+ * 必须保持**同步纯函数**，异步结果只能在就绪后经 effect 落进来。
+ */
+export const setLspRunnablesEffect = StateEffect.define<Map<number, LspRunnable>>();
+
+export const lspRunnablesField = StateField.define<Map<number, LspRunnable>>({
+  create: () => new Map(),
+  update(value, tr) {
+    for (const e of tr.effects) {
+      if (e.is(setLspRunnablesEffect)) return e.value;
+    }
+    return value;
+  },
+});
 
 const DEFAULT_DEBOUNCE_MS = 300;
 
@@ -114,11 +151,16 @@ export class RunMarker extends GutterMarker {
       return (
         a.testCase.name === b.testCase.name &&
         a.testCase.line === b.testCase.line &&
-        a.testCase.lang === b.testCase.lang
+        a.testCase.lang === b.testCase.lang &&
+        lspKey(a) === lspKey(b)
       );
     }
     if (a.kind === 'main' && b.kind === 'main') {
-      return a.entry.line === b.entry.line && a.entry.language === b.entry.language;
+      return (
+        a.entry.line === b.entry.line &&
+        a.entry.language === b.entry.language &&
+        lspKey(a) === lspKey(b)
+      );
     }
     return false;
   }
@@ -156,10 +198,15 @@ function buildTestCodelensMarkers(state: EditorState): RangeSet<RunMarker> {
   }
   targets.sort((a, b) => targetLine(a) - targetLine(b));
 
+  // LSP 覆盖按行合并（tier ①）；缺失的行保持快路径 payload（tier ②）。
+  const lspByLine = state.field(lspRunnablesField, false) ?? new Map<number, LspRunnable>();
+
   const builder = new RangeSetBuilder<RunMarker>();
   for (const target of targets) {
-    const from = state.doc.line(targetLine(target)).from;
-    builder.add(from, from, new RunMarker(target));
+    const line = targetLine(target);
+    const lsp = lspByLine.get(line);
+    const from = state.doc.line(line).from;
+    builder.add(from, from, new RunMarker(lsp ? { ...target, lsp } : target));
   }
   return builder.finish();
 }
@@ -168,7 +215,11 @@ export const runCodelensField = StateField.define<RangeSet<RunMarker>>({
   create: (state) => buildTestCodelensMarkers(state),
   update(markers, tr) {
     for (const e of tr.effects) {
-      if (e.is(refreshRunCodelensEffect)) return buildTestCodelensMarkers(tr.state);
+      // LSP 覆盖注入（tier ①）同样需要重建 markers —— 否则 marker payload 里永远没有 lsp，
+      // 点击时仍走快路径（覆盖"注入成功但没人消费"的静默失效）。
+      if (e.is(refreshRunCodelensEffect) || e.is(setLspRunnablesEffect)) {
+        return buildTestCodelensMarkers(tr.state);
+      }
     }
     // Facet config change (file switch / callback swap) → immediate rebuild.
     if (tr.startState.facet(runCodelensConfig) !== tr.state.facet(runCodelensConfig)) {
@@ -204,6 +255,60 @@ export const runCodelensCoreTheme = EditorView.theme({
  * 不注册独立 gutter 列（图标列由统一 gutter `cm-breakpoint-gutter` 提供）。
  * 测试文件或 .go/.rs/.java 文件启用（装配层门控）；无目标解析为空集。
  */
+/**
+ * 异步拉取 LSP runnable 并注入 field（tier ①）。**只在 rust 文件 + RA 就绪时**发起；
+ * 任何失败/未命中静默跳过（快路径结果原样保留）。派发前校验目标集合未变，避免陈旧覆盖。
+ */
+async function loadLspRunnables(view: EditorView): Promise<void> {
+  const config = view.state.facet(runCodelensConfig);
+  const { projectId, absFilePath, projectPath, fileName } = config;
+  if (!projectId || !absFilePath || !projectPath) return;
+  // tier ① 目前只接 rust-analyzer（Go/Java 见 design/runnable-detection.md §6 P2）。
+  if (!fileName.endsWith('.rs') || !isRustAnalyzerReady(projectPath)) return;
+
+  const targets: RunnableLineTarget[] = [];
+  for (const line of runLinesOf(view.state)) {
+    const target = runAtLine(view.state, line);
+    if (target) targets.push({ line, kind: target.kind });
+  }
+  if (targets.length === 0) return;
+
+  const signature = targets.map((t) => `${t.line}:${t.kind}`).join(',');
+  const overlay = await fetchRunnablesForLines({
+    projectId,
+    projectPath,
+    absFilePath,
+    targets,
+  });
+  if (overlay.size === 0) return;
+
+  // 目标集合已变化（编辑中）→ 丢弃本次结果，等防抖后的下一轮。
+  const stillValid =
+    runLinesOf(view.state)
+      .map((line) => {
+        const target = runAtLine(view.state, line);
+        return target ? `${line}:${target.kind}` : '';
+      })
+      .filter((s) => s !== '')
+      .join(',') === signature;
+  if (!stillValid) return;
+
+  try {
+    view.dispatch({ effects: setLspRunnablesEffect.of(overlay) });
+  } catch {
+    // View destroyed while awaiting LSP（与防抖分支同处理）。
+  }
+}
+
+/** 挂载时拉一次（构造期只排异步任务，不派发 —— 避免 "update in progress" 限制）。 */
+const lspRunnablesLoader = ViewPlugin.fromClass(
+  class {
+    constructor(view: EditorView) {
+      void loadLspRunnables(view);
+    }
+  },
+);
+
 export function createRunCodelensCore(
   options: RunCodelensConfig & { debounceMs?: number },
 ): Extension {
@@ -212,7 +317,9 @@ export function createRunCodelensCore(
   return [
     runCodelensConfig.of(options),
     runCodelensField,
+    lspRunnablesField,
     runCodelensCoreTheme,
+    lspRunnablesLoader,
     EditorView.updateListener.of((update) => {
       if (!update.docChanged) return;
       clearTimeout(timer);
@@ -220,6 +327,8 @@ export function createRunCodelensCore(
         timer = undefined;
         try {
           update.view.dispatch({ effects: refreshRunCodelensEffect.of(null) });
+          // 快路径重建后再补一次 tier ①（异步，不阻塞 markers）。
+          void loadLspRunnables(update.view);
         } catch {
           // View destroyed between debounce scheduling and firing.
         }

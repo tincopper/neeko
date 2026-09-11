@@ -13,6 +13,8 @@
  *   JUnit 的 `name` 是方法名（`classname` 是 FQCN）——源码侧 parseTestCases 只有 fn 名 →
  *   按「名后缀 + 分隔符边界」对齐（与 R3 子串过滤同语义的查询侧镜像）；参数化/运行时名
  *   无法对齐 → false（不猜，见 synthesis 已知坑 ②）。
+ * - collectSubtestNames：Go 子测试的**动态发现**（从 test2json 实际执行的事件流取
+ *   `<父>/<层级>` 全名，供 gutter 菜单单跑），与静态 `t.Run(...)` 解析互不依赖。
  */
 
 /** libtest 单条终态事件（子集，仅保留状态对齐所需字段）。 */
@@ -106,13 +108,20 @@ const GO_TEST_BANNER_LINE = /^(?:=== (?:RUN|PAUSE|CONT)|--- (?:PASS|FAIL|SKIP))/
  * 解析 `go test -json`（test2json）行式事件。逐行 JSON.parse，非 JSON 行丢弃；
  * 消费带 `Test` 字段的终态事件（pass/fail/skip），`Action: output` 累积到该用例
  * 的输出并在终态（failed）时作为 `stdout` 摘要携带（对齐 libtest `--show-output`）。
- * 包级事件（无 `Test` 字段）、run/pause/cont 及未知 Action 忽略。
  * 子测试在 `Test` 字段以 `/` 扁平（`TestFoo/sub`）——匹配时按源码 fn 名后缀对齐，
  * 无法对齐的子测试事件自然丢弃（首期不做 `t.Run` 识别，对齐 vscode-go 局限）。
+ *
+ * **benchmark（P2）**：`go test -bench` 的 test2json **没有 per-benchmark 终态事件** ——
+ * 只有 `run` + `output`（实测 1.26.4），终态是**包级** `pass`/`fail`。因此把 `run` 到的
+ * `Benchmark*` 记入待收口集合，包级终态时统一产出（status 取包级）；测量行
+ * （`BenchmarkX-10  1000000000  0.24 ns/op`）与 panic 文本都挂在该 `Test` 的 output 上，
+ * 作为 `stdout` 携带（对基准而言测量值即有用信息，不限失败场景）。
  */
 export function parseTest2JsonLines(text: string): LibtestEvent[] {
   const outputs: Record<string, string> = {};
   const events: LibtestEvent[] = [];
+  /** benchmark 待收口：包级终态到达时统一产出（普通用例此时已各自终态）。 */
+  const pendingBenchmarks = new Set<string>();
   for (const rawLine of text.split('\n')) {
     const line = rawLine.trim();
     if (!line.startsWith('{')) continue;
@@ -126,7 +135,20 @@ export function parseTest2JsonLines(text: string): LibtestEvent[] {
     const obj = parsed as Record<string, unknown>;
     const action = obj['Action'];
     const test = obj['Test'];
-    if (typeof action !== 'string' || typeof test !== 'string' || test.length === 0) continue;
+    if (typeof action !== 'string') continue;
+    if (typeof test !== 'string' || test.length === 0) {
+      // 包级事件：终态到达 → 收口尚未终态的 benchmark（无 per-benchmark 终态事件）。
+      if ((action === 'pass' || action === 'fail') && pendingBenchmarks.size > 0) {
+        const status: LibtestEvent['status'] = action === 'pass' ? 'passed' : 'failed';
+        for (const name of pendingBenchmarks) {
+          const stdout = outputs[name];
+          events.push({ name, status, ...(stdout ? { stdout } : {}) });
+          delete outputs[name];
+        }
+        pendingBenchmarks.clear();
+      }
+      continue;
+    }
     if (action === 'output') {
       const chunk = obj['Output'];
       if (typeof chunk === 'string' && chunk.length > 0) {
@@ -138,6 +160,11 @@ export function parseTest2JsonLines(text: string): LibtestEvent[] {
           .join('\n');
         if (cleaned.length > 0) outputs[test] = (outputs[test] ?? '') + cleaned;
       }
+      continue;
+    }
+    if (action === 'run') {
+      // 基准的运行开始事件（无终态伴随）→ 记入待收口集合。
+      if (test.startsWith('Benchmark')) pendingBenchmarks.add(test);
       continue;
     }
     const status = GO2J_STATUS[action];
@@ -155,6 +182,41 @@ export function parseTest2JsonLines(text: string): LibtestEvent[] {
     events.push(event);
   }
   return events;
+}
+
+/**
+ * 单次运行保留的子测试发现上限（防病态用例 / fuzz 级联把 store 与菜单撑爆）。
+ * 200 远超正常表格测试规模；超出部分静默丢弃（发现是增强功能，不是数据完整性契约）。
+ */
+export const MAX_DISCOVERED_SUBTESTS = 200;
+
+/**
+ * 从事件流中动态发现某顶层用例的子测试全名（Go `t.Run` 运行时形态 `<父>/<层级>`）。
+ *
+ * test2json 只在子测试**真正执行**时报其 `Test` 全名（实测 1.26.4：`TestTable/positive`
+ * 与嵌套 `TestNested/outer/inner`）—— 这是子测试名的天然来源：无需静态解析 `t.Run(...)`，
+ * 因而不受 GoLand 静态识别的三条约束（测试数据须为 slice/array/map、须在同函数定义、
+ * 名字须是字符串字段/拼接/Sprintf）限制，动态形态（变量名、helper 内生成）同样覆盖。
+ *
+ * 顺序：终态事件天然是**子先于父**（`pass inner` → `pass outer` → `pass Parent`），故
+ * 收集后按字典序排序 —— 前缀更短者在前，自然还原「父在子前」的层级顺序（`outer` 先于
+ * `outer/inner`），且跨次运行稳定。去重后直接产出，无其它状态。
+ *
+ * `-run`/`-test.run` 共享同一名字空间：每一层都是可单跑的合法目标（跑 `outer` 会连
+ * `inner` 一起跑）。`/` 边界严格：父名 `TestTable` 不吞 `TestTableExtra/x`。
+ * 上限 {@link MAX_DISCOVERED_SUBTESTS}（按发现序截断后再排序）。
+ */
+export function collectSubtestNames(events: LibtestEvent[], parentName: string): string[] {
+  const prefix = `${parentName}/`;
+  const seen = new Set<string>();
+  const names: string[] = [];
+  for (const event of events) {
+    if (names.length >= MAX_DISCOVERED_SUBTESTS) break;
+    if (!event.name.startsWith(prefix) || seen.has(event.name)) continue;
+    seen.add(event.name);
+    names.push(event.name);
+  }
+  return names.sort();
 }
 
 /** vitest/jest 状态 → 统一 status（todo/pending 等非通过非失败态归入 skipped）。 */

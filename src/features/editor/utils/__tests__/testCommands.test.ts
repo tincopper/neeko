@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
+import type { LspRunnable } from '../../runnables/runnable';
 import type { MainLang } from '../mainEntries';
 import {
   buildMainDebugBuildCommand,
@@ -29,6 +30,7 @@ import {
   findJavaModuleDir,
   goDebugBinaryRelPath,
   goPkgDir,
+  goTestRunPattern,
   javaCompiledClassExists,
   JUNIT_CONSOLE_LAUNCHER_VERSION,
   junitLauncherJarName,
@@ -37,6 +39,7 @@ import {
   resolveBinaryPath,
   resolveJavaClasspath,
   resolveTestTargetFlag,
+  shellToken,
   type JavaRunEnv,
   type ReadTextProbe,
 } from '../testCommands';
@@ -170,6 +173,15 @@ describe('buildRunCommand', () => {
 
   it('should_use_dot_package_dir_for_root_go_test_files', async () => {
     expect(await runCmd(goCase, 'add_test.go')).toBe("go test -run '^TestAdd$' -json '.'");
+  });
+
+  it('should_build_hierarchically_anchored_run_for_go_subtest_targets', async () => {
+    // 动态子测试（P3）：test2json 的 `Test` 全名（`TestAdd/positive`）直接作为目标名 →
+    // `-run` 层级锚定单跑该子测试；含元字符的段经 \Q…\E 原样引用。
+    const subCase: TestCaseInfo = { name: 'TestAdd/with.dot', line: 3, lang: 'go' };
+    expect(await runCmd(subCase, 'pkg/math/add_test.go')).toBe(
+      "go test -run '^TestAdd$/^\\Qwith.dot\\E$' -json './pkg/math'",
+    );
   });
 
   it('should_resolve_nested_module_pkg_relative_to_module_root_for_go_cases', async () => {
@@ -349,6 +361,19 @@ describe('findJavaModuleDir', () => {
     ).resolves.toBe('');
   });
 
+  it('should_accept_canonical_absolute_file_paths_from_production', async () => {
+    // 生产链路（FileEditor → useRunActions）传入 tab.filePath —— 恒为 canonical 绝对；
+    // 探测以「runRoot 相对」为前提拼 `${root}/${dir}`，绝对路径必须先剥根。
+    const probe = async (p: string) => p === '/tmp/proj/learning-algorithm/pom.xml';
+    await expect(
+      findJavaModuleDir(
+        '/tmp/proj/learning-algorithm/src/main/java/com/tomgs/algorithm/base/BaseTest.java',
+        '/tmp/proj',
+        probe,
+      ),
+    ).resolves.toBe('learning-algorithm');
+  });
+
   it('should_return_null_when_no_marker_or_probe_fails', async () => {
     const none = async () => false;
     await expect(
@@ -490,6 +515,17 @@ describe('findGoModuleDir', () => {
     };
     expect(await findGoModuleDir('pkg/math/add_test.go', '/proj', probe)).toBeNull();
   });
+
+  it('should_accept_canonical_absolute_file_paths_from_production', async () => {
+    // 生产传入 tab.filePath（canonical 绝对）——不剥根时会拼成
+    // `/proj//proj/…`，模块探测永不命中。
+    const root = exists(['/proj/go.mod']);
+    expect(await findGoModuleDir('/proj/pkg/math/add_test.go', '/proj', root)).toBe('');
+    const nested = exists(['/proj/submod/go.mod']);
+    expect(await findGoModuleDir('/proj/submod/pkg/math/add_test.go', '/proj', nested)).toBe(
+      'submod',
+    );
+  });
 });
 
 describe('goPkgDir', () => {
@@ -523,6 +559,26 @@ describe('goPkgDir', () => {
     expect(await goPkgDir('pkg/math/add_test.go', '/proj', probe)).toBe('./pkg/math');
     expect(await goPkgDir('add_test.go', '/proj', probe)).toBe('.');
   });
+
+  it('should_resolve_package_from_canonical_absolute_file_path', async () => {
+    // 生产链路传入 canonical 绝对路径（codeant `cmd/agent/main.go` 实测回归）：
+    // 不剥根会产出 `./Users/…/cmd/agent` 伪包路径 → go run / go build 秒失败。
+    expect(await goPkgDir('/proj/cmd/agent/main.go', '/proj', exists(['/proj/go.mod']))).toBe(
+      './cmd/agent',
+    );
+    expect(
+      await goPkgDir('/proj/submod/pkg/math/add_test.go', '/proj', exists(['/proj/submod/go.mod'])),
+    ).toBe('./pkg/math');
+  });
+
+  it('should_fall_back_to_file_dir_for_absolute_path_without_go_mod', async () => {
+    expect(await goPkgDir('/proj/cmd/agent/main.go', '/proj', exists([]))).toBe('./cmd/agent');
+  });
+
+  it('should_fall_back_to_cwd_when_file_is_outside_run_root', async () => {
+    // 无法表达为 cwd 相对（worktree 错配等）→ 兜底 cwd，不产出假路径。
+    expect(await goPkgDir('/elsewhere/cmd/agent/main.go', '/proj', exists([]))).toBe('.');
+  });
 });
 
 describe('buildGoDebugBuildCommand', () => {
@@ -539,9 +595,69 @@ describe('buildGoDebugBuildCommand', () => {
   });
 });
 
-describe('goDebugBinaryRelPath', () => {
-  it('should_place_binary_under_gitignored_neeko_dir', () => {
+describe('goDebugBinaryRelPath（子测试名 → `-o` 安全文件名）', () => {
+  const BIN_DIR = '.neeko/test-bin/';
+  const unsafeOf = (name: string) => goDebugBinaryRelPath(name).slice(BIN_DIR.length);
+
+  it('should_keep_top_level_identifier_names_byte_identical', () => {
+    // 顶层用例名是 Go 标识符 → 不发生替换 → 产物名与既有形态逐字节一致（零行为变化）
     expect(goDebugBinaryRelPath('TestAdd')).toBe('.neeko/test-bin/TestAdd');
+    expect(goDebugBinaryRelPath('BenchmarkAdd')).toBe('.neeko/test-bin/BenchmarkAdd');
+    expect(goDebugBinaryRelPath('main')).toBe('.neeko/test-bin/main');
+  });
+
+  it('should_flatten_slashes_into_a_single_safe_segment', () => {
+    // `t.Run` 子测试名含 `/`：实测 `go test -c -o` 会自建嵌套目录（能编译），
+    // 但会把 .neeko/test-bin 撑成树 → 清洗为单段。前缀里那一个 `/` 是唯一分隔符。
+    const rel = goDebugBinaryRelPath('TestTable/with.dot');
+    expect(rel.startsWith(BIN_DIR)).toBe(true);
+    const segment = unsafeOf('TestTable/with.dot');
+    expect(segment).not.toContain('/');
+    expect(segment).toMatch(/^[A-Za-z0-9._-]+$/);
+    expect(segment.startsWith('TestTable_with.dot')).toBe(true);
+  });
+
+  it('should_replace_characters_that_are_illegal_in_windows_filenames', () => {
+    // `:` 等在本机（macOS/Linux）合法 —— 本地开发不暴露，Windows 上 `-o` 直接失败。
+    // 覆盖 Windows 保留字符全集，保证跨平台可用。
+    const reserved = [':', '*', '?', '"', '<', '>', '|', '\\'];
+    const forbidden = reserved.filter((ch) => unsafeOf(`TestTable/a${ch}b`).includes(ch));
+    expect(forbidden).toEqual([]);
+  });
+
+  it('should_be_deterministic_for_the_same_name', () => {
+    expect(goDebugBinaryRelPath('TestTable/zero')).toBe(goDebugBinaryRelPath('TestTable/zero'));
+  });
+
+  it('should_not_collide_when_two_names_sanitize_to_the_same_segment', () => {
+    // `TestTable/zero` 与 `TestTable_zero` 清洗后同形 —— 共用产物文件会让后一次构建
+    // 覆盖前一个二进制，调试时挂到错误的 target 上。原名哈希后缀保证唯一。
+    expect(goDebugBinaryRelPath('TestTable/zero')).not.toBe(goDebugBinaryRelPath('TestTable_zero'));
+  });
+
+  it('should_not_collide_across_different_unsafe_characters', () => {
+    expect(goDebugBinaryRelPath('TestTable/a:b')).not.toBe(goDebugBinaryRelPath('TestTable/a/b'));
+  });
+});
+
+describe('goTestRunPattern（Go -run/-test.run 层级锚定；GoLand 同款）', () => {
+  const anchored = (name: string) => [name, goTestRunPattern(name)];
+
+  it('顶层用例名是标识符 → 与既有 `^Name$` 逐字节一致（零行为变化）', () => {
+    expect(anchored('TestAdd')).toEqual(['TestAdd', '^TestAdd$']);
+    expect(goTestRunPattern('BenchmarkAdd')).toBe('^BenchmarkAdd$');
+  });
+
+  it('子测试按 `/` 分段独立锚定（裸标识符段不加 \\Q\\E，减少噪音）', () => {
+    expect(goTestRunPattern('TestTable/positive')).toBe('^TestTable$/^positive$');
+    expect(goTestRunPattern('TestNested/outer/inner')).toBe('^TestNested$/^outer$/^inner$');
+  });
+
+  it('含正则元字符的段用 \\Q…\\E 原样引用（t.Run 名可任意；实测未引用 `^a+b$` 匹配不到字面量 `a+b`）', () => {
+    expect(goTestRunPattern('TestTable/with.dot')).toBe('^TestTable$/^\\Qwith.dot\\E$');
+    expect(goTestRunPattern('TestTable/a+b')).toBe('^TestTable$/^\\Qa+b\\E$');
+    expect(goTestRunPattern('TestTable/a|b')).toBe('^TestTable$/^\\Qa|b\\E$');
+    expect(goTestRunPattern('TestTable/(x)[y]')).toBe('^TestTable$/^\\Q(x)[y]\\E$');
   });
 });
 
@@ -569,6 +685,14 @@ describe('buildDebugLaunchConfig', () => {
       args: ['^TestAdd$'],
       stopOnEntry: false,
     });
+  });
+
+  it('子测试目标 → args 用层级锚定模式（dlv `-test.run` 单跑该子测试）', () => {
+    // 动态子测试（P3）与 Run 共用同一模式构造：避免两条链路各自拼 -test.run 而漂移。
+    const subCase: TestCaseInfo = { name: 'TestTable/with.dot', line: 3, lang: 'go' };
+    expect(buildDebugLaunchConfig(subCase, '/proj/.neeko/test-bin/x', '/proj').args).toEqual([
+      '^TestTable$/^\\Qwith.dot\\E$',
+    ]);
   });
 });
 
@@ -1018,5 +1142,131 @@ describe('build*Command 纯函数（IO 已在 resolveRunContext 完成）', () =
     expect(buildRunCommand(goCase, 'pkg/math/add_test.go', null, null, ctx)).toBe(
       "go test -run '^TestAdd$' -json './pkg/math'",
     );
+  });
+});
+
+// ── tier ①：LSP runnable → 命令（rust-analyzer `experimental/runnables`）──────────
+// 夹具的 cargoArgs / executableArgs 取自真机实测载荷（见 runnables/__tests__/runnable.test.ts）。
+
+describe('tier ① LSP runnable → 命令', () => {
+  const specificTest: LspRunnable = {
+    label: 'cargo test -p api --bin stock-buddy -- routes::sentiment::tests::test_x --exact',
+    kind: 'cargo',
+    args: {
+      cwd: '/proj/crates/api',
+      workspaceRoot: '/proj',
+      cargoArgs: ['test', '--package', 'api', '--bin', 'stock-buddy'],
+      executableArgs: [
+        'routes::sentiment::tests::test_x',
+        '--exact',
+        '--nocapture',
+        '--include-ignored',
+      ],
+    },
+  };
+  const mainRun: LspRunnable = {
+    label: 'cargo run -p api',
+    kind: 'cargo',
+    args: {
+      cwd: '/proj',
+      workspaceRoot: '/proj',
+      cargoArgs: ['run', '--package', 'api'],
+      executableArgs: [],
+    },
+  };
+
+  it('测试 Run：用 LS 的 target + 完整测试路径 + --exact，并保留本项目结构化结果流参数', () => {
+    const cmd = buildRunCommand(
+      rustCase,
+      'crates/api/src/x.rs',
+      null,
+      '/proj',
+      defaultRunContext(),
+      specificTest,
+    );
+    expect(cmd).toBe(
+      'RUSTC_BOOTSTRAP=1 cargo test --package api --bin stock-buddy -- ' +
+        'routes::sentiment::tests::test_x --exact -Z unstable-options --format=json --show-output',
+    );
+    // --nocapture 会污染 JSON 行；--include-ignored 改变语义 → 均不采用
+    expect(cmd).not.toContain('--nocapture');
+    expect(cmd).not.toContain('--include-ignored');
+  });
+
+  it('测试 Debug 构建：LS 的 target + --no-run --message-format=json', () => {
+    expect(buildDebugBuildCommand(rustCase, 'crates/api', '', specificTest)).toBe(
+      'cargo test --package api --bin stock-buddy --no-run --message-format=json',
+    );
+  });
+
+  it('main Run：直接用 LS 的 cargo run 参数（多 bin 工作区不再靠 cargo 报错）', () => {
+    expect(
+      buildMainRunCommand('rust', 'crates/api/src/main.rs', '/proj', defaultRunContext(), {
+        lsp: mainRun,
+      }),
+    ).toBe('cargo run --package api');
+  });
+
+  it('main Debug 构建：LS 的 run 子命令换成 build + --message-format=json', () => {
+    expect(buildMainDebugBuildCommand('rust', defaultRunContext(), { lsp: mainRun })).toBe(
+      'cargo build --package api --message-format=json',
+    );
+  });
+
+  it('无 LSP runnable 时保持既有快路径命令（回归）', () => {
+    expect(buildRunCommand(rustCase, 'src/lib.rs', null, '/proj', defaultRunContext())).toContain(
+      "RUSTC_BOOTSTRAP=1 cargo test 'parse_simple'",
+    );
+    expect(buildMainRunCommand('rust', 'src/main.rs', '/proj', defaultRunContext())).toBe(
+      'cargo run',
+    );
+    expect(buildDebugBuildCommand(rustCase, null, '--lib')).toBe(
+      "cargo test 'parse_simple' --no-run --lib --message-format=json",
+    );
+  });
+
+  it('shellToken：仅不安全 token 加引号（命令可读且可复制）', () => {
+    expect(shellToken('--package')).toBe('--package');
+    expect(shellToken('routes::sentiment::tests::test_x')).toBe('routes::sentiment::tests::test_x');
+    expect(shellToken('/proj/crates/api')).toBe('/proj/crates/api');
+    expect(shellToken('has space')).toBe("'has space'");
+    expect(shellToken("it's")).toBe(`'it'\\''s'`);
+    expect(shellToken('')).toBe("''");
+  });
+});
+
+describe('Go benchmark 命令（P2）', () => {
+  const benchCase: TestCaseInfo = { name: 'BenchmarkAdd', line: 4, lang: 'go', kind: 'benchmark' };
+  const goCtx: RunContext = { goPkg: './pkg/math' } as RunContext;
+
+  it('Run：-run 置空 + -bench 锚定 + -count=1（benchmark 结果不缓存）', () => {
+    expect(buildRunCommand(benchCase, 'pkg/math/add_test.go', null, null, goCtx)).toBe(
+      "go test -run '^$' -bench '^BenchmarkAdd$' -count=1 -json './pkg/math'",
+    );
+  });
+
+  it('Run：普通用例命令不受影响（回归）', () => {
+    expect(buildRunCommand(goCase, 'pkg/math/add_test.go', null, null, goCtx)).toBe(
+      "go test -run '^TestAdd$' -json './pkg/math'",
+    );
+  });
+
+  it('Debug：dlv launch 传显式 -test.run/-test.bench（首参带 `-` → adapter 原样透传）', () => {
+    expect(
+      buildDebugLaunchConfig(benchCase, '/proj/.neeko/test-bin/BenchmarkAdd', '/proj'),
+    ).toEqual({
+      name: 'Debug benchmark: BenchmarkAdd',
+      type: 'go',
+      request: 'launch',
+      program: '/proj/.neeko/test-bin/BenchmarkAdd',
+      cwd: '/proj',
+      mode: 'exec',
+      args: ['-test.run', '^$', '-test.bench', '^BenchmarkAdd$'],
+      stopOnEntry: false,
+    });
+  });
+
+  it('Debug：普通用例仍走裸锚定模式（adapter 拼 -test.run）', () => {
+    expect(buildDebugLaunchConfig(goCase, '/p/bin', '/proj').args).toEqual(['^TestAdd$']);
   });
 });

@@ -18,6 +18,7 @@ import { useOverlayStore } from '@/shared/store/overlayStore';
 
 import { type RunTarget } from '../gutter/runContribution';
 import { debugTarget, runTarget } from '../runner/launch';
+import { subtestsForCase } from '../store/testResults';
 
 /** 原型风格菜单文案：Run 项 `Test '<name>'`（JetBrains gutter 浮层首行）。 */
 export function testRunLabel(name: string): string {
@@ -27,6 +28,16 @@ export function testRunLabel(name: string): string {
 /** 原型风格菜单文案：Debug 项 `Debug 'Test <name>'`（浮层次行）。 */
 export function testDebugLabel(name: string): string {
   return `Debug 'Test ${name}'`;
+}
+
+/** 基准菜单文案：Run 项 `Benchmark '<name>'`（Go `-bench`，与单测 `Test '<name>'` 同构）。 */
+export function benchmarkRunLabel(name: string): string {
+  return `Benchmark '${name}'`;
+}
+
+/** 基准菜单文案：Debug 项 `Debug 'Benchmark <name>'`（浮层次行）。 */
+export function benchmarkDebugLabel(name: string): string {
+  return `Debug 'Benchmark ${name}'`;
 }
 
 /** main 菜单文案：Run 项 `Run 'main'`（对齐单测 `Test '<name>'` 惯例；main 函数名恒为 main）。 */
@@ -96,19 +107,45 @@ export function useRunActions({ projectId, filePath, projectPath }: UseRunAction
       ];
     }
     const { testCase } = target;
-    return [
+    // 基准与用例命令形态不同（`-bench` + `-run '^$'`）→ 文案区分，避免 `Test 'BenchmarkAdd'` 的误导。
+    const isBenchmark = testCase.kind === 'benchmark';
+    const items: ContextMenuItem[] = [
       {
-        label: testRunLabel(testCase.name),
+        label: isBenchmark ? benchmarkRunLabel(testCase.name) : testRunLabel(testCase.name),
         icon: Play,
         action: () => handleRun(target),
       },
       {
-        label: testDebugLabel(testCase.name),
+        label: isBenchmark ? benchmarkDebugLabel(testCase.name) : testDebugLabel(testCase.name),
         icon: Bug,
         action: () => handleDebug(target),
       },
     ];
-  }, [menu, handleRun, handleDebug]);
+    // Go 动态子测试（P3）：上次运行由 test2json 真实发现的 `<父>/<层级>` 全名，每个给
+    // Run + Debug 两条（与父用例同构：Run 在前、Debug 在后）。名字来自运行时而非静态猜测
+    // → 无 `t.Run` 形态约束、零 LSP 依赖；未发现则整段省略（不出现空分隔条）。
+    // Debug 走同一 `goTestRunPattern` 模式（dlv `-test.run` 层级锚定，真机实证只跑该子测试），
+    // 产物名经 `goDebugBinaryRelPath` 消毒（子测试名含 `/` 等非法字符）。
+    if (!isBenchmark && testCase.lang === 'go') {
+      const subtests = subtestsForCase(projectId, filePath, testCase.name);
+      if (subtests.length > 0) {
+        items.push({ separator: true });
+        for (const name of subtests) {
+          const subTarget: RunTarget = {
+            kind: 'test',
+            testCase: { name, line: testCase.line, lang: 'go' },
+          };
+          items.push({ label: testRunLabel(name), icon: Play, action: () => handleRun(subTarget) });
+          items.push({
+            label: testDebugLabel(name),
+            icon: Bug,
+            action: () => handleDebug(subTarget),
+          });
+        }
+      }
+    }
+    return items;
+  }, [menu, handleRun, handleDebug, projectId, filePath]);
   return {
     handleRun,
     handleDebug,

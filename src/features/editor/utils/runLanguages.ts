@@ -12,6 +12,8 @@
  *
  * 数据表（非 `dyn`/继承）：语言集合固定且已知，用判别联合 + 查表即可。
  */
+import type { LspRunnable } from '../runnables/runnable';
+
 import type { ExistsProbe } from './cargoManifest';
 import {
   parseGoMain,
@@ -239,12 +241,13 @@ export function buildRunCommand(
   cargoManifestDir: string | null | undefined,
   runRoot: string | null | undefined,
   ctx: RunContext,
+  lsp: LspRunnable | null = null,
 ): string {
   const entry = runLanguageById(testCase.lang);
   if (!entry?.buildRunCommand) {
     throw new Error(`No run command builder registered for language: ${testCase.lang}`);
   }
-  return entry.buildRunCommand({ testCase, relPath, cargoManifestDir, runRoot, ctx });
+  return entry.buildRunCommand({ testCase, relPath, cargoManifestDir, runRoot, ctx, lsp });
 }
 
 /** 构造 main 运行命令（表驱动分发）。 */
@@ -253,7 +256,7 @@ export function buildMainRunCommand(
   filePath: string,
   runRoot: string,
   ctx: RunContext,
-  opts: { manifestDir?: string | null } = {},
+  opts: { manifestDir?: string | null; lsp?: LspRunnable | null } = {},
 ): string {
   const entry = runLanguageById(lang);
   if (!entry?.buildMainRunCommand) {
@@ -264,6 +267,7 @@ export function buildMainRunCommand(
     runRoot,
     manifestDir: opts.manifestDir ?? null,
     ctx,
+    lsp: opts.lsp ?? null,
   });
 }
 
@@ -271,13 +275,17 @@ export function buildMainRunCommand(
 export function buildMainDebugBuildCommand(
   lang: 'go' | 'rust',
   ctx: RunContext,
-  opts: { manifestDir?: string | null } = {},
+  opts: { manifestDir?: string | null; lsp?: LspRunnable | null } = {},
 ): string {
   const entry = runLanguageById(lang);
   if (!entry?.buildMainDebugBuildCommand) {
     throw new Error(`No main debug build command registered for language: ${lang}`);
   }
-  return entry.buildMainDebugBuildCommand({ manifestDir: opts.manifestDir ?? null, ctx });
+  return entry.buildMainDebugBuildCommand({
+    manifestDir: opts.manifestDir ?? null,
+    ctx,
+    lsp: opts.lsp ?? null,
+  });
 }
 
 const DEFAULT_CAPABILITIES: RunCapabilities = { directRun: false, debug: null };

@@ -187,6 +187,7 @@ function FileEditor({
     projectId: tab.projectId,
     absFilePath,
     fileName: tab.filePath,
+    projectPath,
     enabled: canEdit,
     // onRun 仅 TS 用例触发（扩展内 targetLang==='ts' 才直跑），单一 handleRun 直接接管
     onRun: handleRun,

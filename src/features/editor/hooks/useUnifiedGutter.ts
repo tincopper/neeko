@@ -38,9 +38,11 @@ import { isRunnableFile } from '../utils/runLanguages';
 
 interface UseUnifiedGutterExtensionParams {
   projectId: string | null;
-  /** DAP 绝对路径（断点 store 同步用）。 */
+  /** DAP 绝对路径（断点 store 同步用；也用于 LSP runnable 的 `file://` uri）。 */
   absFilePath: string | null;
   fileName: string;
+  /** 项目根（LSP 会话键）——tier ① runnable 拉取用；缺省则只走快路径。 */
+  projectPath?: string | null;
   /** file tab 可编辑性门控（readOnly / binary / 超大文件 → 仅断点列，无运行标记）。 */
   enabled: boolean;
   /** TS/JS 用例点击直接运行（扩展内按 lang 分流，Rust/Go/Java 走 onMenuRequest）。 */
@@ -54,6 +56,7 @@ export function useUnifiedGutterExtension({
   projectId,
   absFilePath,
   fileName,
+  projectPath,
   enabled,
   onRun,
   onMenuRequest,
@@ -78,7 +81,14 @@ export function useUnifiedGutterExtension({
       ...breakpointContributionExtensions,
       ...(testRun
         ? [
-            createRunCodelensCore({ fileName, onRun, onMenuRequest }),
+            createRunCodelensCore({
+              fileName,
+              onRun,
+              onMenuRequest,
+              ...(projectId ? { projectId } : {}),
+              ...(absFilePath ? { absFilePath } : {}),
+              ...(projectPath ? { projectPath } : {}),
+            }),
             // P1：store 状态变更 → CM 刷新订阅 + 文件编辑失效（与检测 core 同生命周期）
             createTestStatusCore({ projectId, filePath: fileName }),
           ]
@@ -96,5 +106,14 @@ export function useUnifiedGutterExtension({
       }),
     ];
     return [assembled];
-  }, [projectId, absFilePath, fileName, enabled, toggleBreakpoint, onRun, onMenuRequest]);
+  }, [
+    projectId,
+    absFilePath,
+    fileName,
+    projectPath,
+    enabled,
+    toggleBreakpoint,
+    onRun,
+    onMenuRequest,
+  ]);
 }

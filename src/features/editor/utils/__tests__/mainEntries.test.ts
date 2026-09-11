@@ -51,6 +51,54 @@ func main() {
     ]);
   });
 
+  it('Rust：识别带修饰符的 fn main（async/pub/unsafe/extern）', () => {
+    // `#[tokio::main] async fn main() -> anyhow::Result<()>` 是 async 应用的标准写法，
+    // 行首不再是裸 `fn` —— 漏识别会导致 gutter 无 Run/Debug 按钮。
+    const doc = `use anyhow::Result;
+
+#[tokio::main]
+async fn main() -> Result<()> {
+    Ok(())
+}
+
+pub async fn serve() {}
+`;
+    expect(parseMainEntries('crates/api/src/main.rs', doc)).toEqual<MainEntry[]>([
+      { line: 4, language: 'rust' },
+    ]);
+  });
+
+  it('Rust：修饰符组合（可见性含括号 / async / unsafe / extern "C"）均识别', () => {
+    const doc = [
+      'pub async fn main() {}',
+      'unsafe fn main() {}',
+      'extern "C" fn main() {}',
+      'pub unsafe extern "C" fn main() {}',
+      'pub(crate) async fn main() {}',
+      'pub(super) fn main() {}',
+      'pub(in crate::cli) async unsafe fn main() {}',
+      'pub(crate) fn main () {}',
+    ].join('\n');
+    expect(parseMainEntries('main.rs', doc)).toEqual<MainEntry[]>([
+      { line: 1, language: 'rust' },
+      { line: 2, language: 'rust' },
+      { line: 3, language: 'rust' },
+      { line: 4, language: 'rust' },
+      { line: 5, language: 'rust' },
+      { line: 6, language: 'rust' },
+      { line: 7, language: 'rust' },
+      { line: 8, language: 'rust' },
+    ]);
+  });
+
+  it('Rust：非 main 函数（含 async serve / main_helper）不误报', () => {
+    const doc = `async fn serve() {}
+fn main_helper() {}
+fn domain() {}
+`;
+    expect(parseMainEntries('main.rs', doc)).toEqual([]);
+  });
+
   it('Rust：非 .rs 文件不识别', () => {
     expect(parseMainEntries('src/lib.ts', rustDoc)).toEqual([]);
   });

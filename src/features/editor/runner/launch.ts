@@ -12,6 +12,7 @@ import { useDebugStore } from '@/features/debug/store/debugStore';
 import { useTaskStore } from '@/shared/store/taskStore';
 
 import { targetLang, type RunTarget } from '../gutter/runContribution';
+import type { LspRunnable } from '../runnables/runnable';
 import { useTestResultsStore } from '../store/testResults';
 import type { MainEntry } from '../utils/mainEntries';
 import {
@@ -35,6 +36,7 @@ async function launchRun(
   testCase: TestCaseInfo,
   ctx: TestActionContext,
   runRoot: string,
+  lsp: LspRunnable | null,
 ): Promise<void> {
   const prep = await runnerFor(testCase.lang).prepareRun(ctx, testCase, runRoot);
   if (!prep) {
@@ -52,6 +54,7 @@ async function launchRun(
     prep.manifestDir ?? null,
     prep.runRoot,
     runCtx,
+    lsp,
   );
   let output = '';
   const runId = useTaskStore
@@ -61,8 +64,8 @@ async function launchRun(
       onOutput: (chunk) => {
         if (output.length < MAX_CAPTURED_OUTPUT_CHARS) output += chunk;
       },
-      onExit: () => {
-        void finalizeRunResults(output, testCase, ctx, prep.runRoot);
+      onExit: (exitCode: number) => {
+        void finalizeRunResults(output, testCase, ctx, prep.runRoot, { exitCode, command });
       },
     });
   if (!runId) {
@@ -72,18 +75,27 @@ async function launchRun(
   }
 }
 
-/** Run：构造命令并经任务会话启动（前置 → 命令 → Task Console）。 */
-export function runTestCase(testCase: TestCaseInfo, ctx: TestActionContext): void {
+/** Run：构造命令并经任务会话启动（前置 → 命令 → Task Console）。
+ *  `lsp`：gutter marker 上带的 LSP runnable（tier ①），缺省走快路径启发式。 */
+export function runTestCase(
+  testCase: TestCaseInfo,
+  ctx: TestActionContext,
+  lsp: LspRunnable | null = null,
+): void {
   void (async () => {
     const runRoot = resolveRunCwd(ctx);
     // Run 开始：清该文件旧状态并标记进行中（gutter 半透明占位）
     useTestResultsStore.getState().beginRun(ctx.projectId, ctx.filePath);
-    await launchRun(testCase, ctx, runRoot);
+    await launchRun(testCase, ctx, runRoot, lsp);
   })();
 }
 
 /** main 入口 Run：Task Console 直跑（语言前置 + 命令均表驱动）。 */
-export function runMain(entry: MainEntry, ctx: TestActionContext): void {
+export function runMain(
+  entry: MainEntry,
+  ctx: TestActionContext,
+  lsp: LspRunnable | null = null,
+): void {
   void (async () => {
     const cwd = resolveRunCwd(ctx);
     const prep = await runnerFor(entry.language).prepareMainRun(ctx, entry, cwd);
@@ -93,6 +105,7 @@ export function runMain(entry: MainEntry, ctx: TestActionContext): void {
     });
     const command = buildMainRunCommand(entry.language, ctx.filePath, prep.runRoot, runCtx, {
       manifestDir: prep.manifestDir ?? null,
+      lsp,
     });
     useTaskStore.getState().runTask(command, `main:${entry.language}:${ctx.filePath}`, {
       cwd: prep.runRoot,
@@ -104,9 +117,9 @@ export function runMain(entry: MainEntry, ctx: TestActionContext): void {
 /** Run 单一分发入口（测试用例与 main 共用）：test → runTestCase；main → runMain。 */
 export function runTarget(target: RunTarget, ctx: TestActionContext): void {
   if (target.kind === 'test') {
-    runTestCase(target.testCase, ctx);
+    runTestCase(target.testCase, ctx, target.lsp ?? null);
   } else {
-    runMain(target.entry, ctx);
+    runMain(target.entry, ctx, target.lsp ?? null);
   }
 }
 

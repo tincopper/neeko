@@ -20,13 +20,103 @@
  */
 
 import { fileExists } from '@/features/file/api/fileApi';
+import { relativeToRoot } from '@/shared/utils/fileRef';
+
+import type { LspRunnable } from '../runnables/runnable';
 
 import type { ExistsProbe } from './cargoManifest';
 import type { TestCaseInfo } from './testCases';
 
+/** 绝对路径判定（POSIX `/` 或 Windows 盘符）；用于识别「无法表达为 cwd 相对」的输入。 */
+function isAbsolutePath(p: string): boolean {
+  return p.startsWith('/') || /^[A-Za-z]:[\\/]/.test(p);
+}
+
+/**
+ * 被编辑文件路径 → runRoot 相对分段。
+ *
+ * 生产链路（FileEditor → useRunActions）传入 `tab.filePath` —— 恒为 canonical 绝对
+ * 路径；单测传入相对路径。本模块的清单/module 探测以「runRoot 相对」为逐级拼接
+ * 前提（`${root}/${dir}`），不归一化时绝对路径会拼成 `${root}//abs/…`，探测永不
+ * 命中且回退产出 `./abs/…` 伪包路径（go run / go build 秒失败）。
+ * 归一化统一走 `relativeToRoot`（fileRef 是路径形态换算的唯一所有权模块）。
+ */
+function runRootRelativeParts(filePath: string, runRoot: string): string[] {
+  return relativeToRoot(runRoot, filePath).split('/');
+}
+
 /** POSIX 单引号转义：内嵌 `'` → `'\''`。 */
 export function shQuote(value: string): string {
   return `'${value.replaceAll("'", `'\\''`)}'`;
+}
+
+/**
+ * 按需引用（shlex 风格）：仅当 token 含**不安全字符**时才 `shQuote`。
+ *
+ * 命令要显示在 Task Console 且可复制 —— 全量引用（`'cargo' 'test' '--package'`）虽正确但
+ * 不可读；RA 来的 token 多为 flag / 路径，绝大多数无需引用。安全集与 Python `shlex.quote`
+ * 一致（字母数字 + `@%+=:,./-`），因此 `::`（Rust 测试路径）、`=`（`-gcflags=all=-N -l` 类）
+ * 均不引用；含空格 / 引号 / shell 元字符的一律单引号包裹。
+ */
+export function shellToken(token: string): string {
+  return /^[A-Za-z0-9_@%+=:,./-]+$/.test(token) && token !== '' ? token : shQuote(token);
+}
+
+// ── tier ①：LSP runnable → 命令（Rust / rust-analyzer）─────────────────────────
+
+/** caret 目标类型（与 `runnables/runnable.ts` 的 `RunnableTarget` 同形，避免反向依赖）。 */
+export type LspTargetKind = 'test' | 'main';
+
+/** LSP runnable → token 列表（`cargoArgs` 已在载荷内，无需再拼）。 */
+function runnableCargoTokens(runnable: LspRunnable): string[] {
+  return [runnable.args.overrideCargo || 'cargo', ...(runnable.args.cargoArgs ?? [])];
+}
+
+/**
+ * LSP runnable → Rust **运行**命令。
+ *
+ * - `test`：保留本项目的**结构化结果流**参数（`-Z unstable-options --format=json --show-output`
+ *   + `RUSTC_BOOTSTRAP=1`），否则 gutter 的 ✓/✗ 回填会失效；同时沿用 LSP 的完整测试路径与
+ *   `--exact`（精度来源）。**刻意丢弃** RA 附带的 `--nocapture`（会把测试输出打到 stdout
+ *   污染 JSON 行）与 `--include-ignored`（改变「显式忽略的用例是否执行」语义，与快路径不一致）。
+ * - `main`：载荷就是 `cargo run --package …`，原样执行。
+ */
+export function buildRustRunnableRunCommand(runnable: LspRunnable, target: LspTargetKind): string {
+  const tokens = runnableCargoTokens(runnable);
+  if (target === 'main') return tokens.map(shellToken).join(' ');
+  const executableArgs = runnable.args.executableArgs ?? [];
+  const testPath = executableArgs.find((a) => !a.startsWith('-'));
+  const libtestArgs = [
+    ...(testPath ? [testPath] : []),
+    ...(executableArgs.includes('--exact') ? ['--exact'] : []),
+    '-Z',
+    'unstable-options',
+    '--format=json',
+    '--show-output',
+  ];
+  return `RUSTC_BOOTSTRAP=1 ${[...tokens, '--', ...libtestArgs].map(shellToken).join(' ')}`;
+}
+
+/**
+ * LSP runnable → Rust **无头构建**命令（Debug 前置）。
+ *
+ * `test`：沿用 LSP 的 target 选择 + `--no-run --message-format=json`（产物解析通道不变）；
+ * `main`：LSP 给的是 `cargo run …`，把子命令换成 `build`（`cargo run` 本就会先构建，
+ * 但 Debug 需要独立可执行产物 + artifact JSON）。
+ */
+export function buildRustRunnableBuildCommand(
+  runnable: LspRunnable,
+  target: LspTargetKind,
+): string {
+  const tokens = runnableCargoTokens(runnable) as [string, ...string[]];
+  const [cargo, ...cargoArgs] = tokens;
+  const sub = cargoArgs[0];
+  const rest = cargoArgs.slice(1);
+  const args =
+    target === 'main'
+      ? [...(sub === 'run' ? ['build'] : sub ? [sub] : []), ...rest]
+      : [...(sub ? [sub] : []), ...rest, '--no-run'];
+  return [cargo, ...args, '--message-format=json'].map(shellToken).join(' ');
 }
 
 /** vitest JSON 报告的 run 根下相对路径（读取侧与命令侧共用同一常量，保证路径一致）。 */
@@ -200,7 +290,7 @@ export async function findJavaModuleDir(
 ): Promise<string | null> {
   const root = runRoot.replace(/[/\\]+$/, '');
   if (!root || !filePath) return null;
-  const parts = filePath.replace(/\\/g, '/').split('/');
+  const parts = runRootRelativeParts(filePath, root);
   parts.pop(); // 去掉文件名，从所在目录起向上
   for (let i = parts.length; i >= 0; i--) {
     const dir = parts.slice(0, i).join('/'); // '' = runRoot 自身
@@ -268,7 +358,7 @@ export async function findGoModuleDir(
 ): Promise<string | null> {
   const root = runRoot.replace(/[/\\]+$/, '');
   if (!root || !filePath) return null;
-  const parts = filePath.replace(/\\/g, '/').split('/');
+  const parts = runRootRelativeParts(filePath, root);
   parts.pop(); // 去掉文件名，从所在目录起向上
   for (let i = parts.length; i >= 0; i--) {
     const dir = parts.slice(0, i).join('/'); // '' = runRoot 自身
@@ -295,24 +385,26 @@ function pkgDirRelativeToModule(filePath: string, moduleDir: string): string {
  * cwd = run 根（worktree 根或项目根）。优先按 module 边界解析：`go.mod` 位于
  * 嵌套模块（如 `submod/`）时返回相对 module 根的包目录（`./pkg/math`，与
  * `go test` 的 module 内包寻址一致）；无 go.mod（或探测失败/无 runRoot）回退
- * 文件所在目录。
+ * 文件所在目录。`filePath` 允许 canonical 绝对或 runRoot 相对（统一归一化）。
  */
 export async function goPkgDir(
   filePath: string,
   runRoot?: string | null,
   probe: ExistsProbe = goExists,
 ): Promise<string> {
-  if (runRoot) {
-    const moduleDir = await findGoModuleDir(filePath, runRoot, probe);
+  const rel = runRoot ? relativeToRoot(runRoot, filePath) : filePath.replace(/\\/g, '/');
+  if (runRoot && !isAbsolutePath(rel)) {
+    const moduleDir = await findGoModuleDir(rel, runRoot, probe);
     if (moduleDir !== null) {
-      const rel = pkgDirRelativeToModule(filePath, moduleDir);
-      return rel ? `./${rel}` : '.';
+      const pkg = pkgDirRelativeToModule(rel, moduleDir);
+      return pkg ? `./${pkg}` : '.';
     }
   }
-  // 回退：文件所在目录（`./dir` / `.` 为 cwd 相对）。
-  const normalized = filePath.replace(/\\/g, '/');
-  const lastSlash = normalized.lastIndexOf('/');
-  const dir = lastSlash >= 0 ? normalized.slice(0, lastSlash) : '';
+  // 回退：文件所在目录（`./dir` / `.` 为 cwd 相对）。文件在 runRoot 之外时无法
+  // 表达为 cwd 相对 —— 兜底 cwd，不产出 `./abs/…` 假包路径。
+  if (isAbsolutePath(rel)) return '.';
+  const lastSlash = rel.lastIndexOf('/');
+  const dir = lastSlash >= 0 ? rel.slice(0, lastSlash) : '';
   return dir ? `./${dir}` : '.';
 }
 
@@ -350,6 +442,8 @@ export interface RunCommandInput {
   cargoManifestDir: string | null | undefined;
   runRoot: string | null | undefined;
   ctx: RunContext;
+  /** tier ①：LSP 给出的确定性 runnable（有则优先于本模块的启发式）。 */
+  lsp?: LspRunnable | null;
 }
 
 /**
@@ -368,16 +462,50 @@ export interface RunCommandInput {
  * 不用 `--exact`：libtest exact 匹配完整测试路径，仅传 fn 名时 `mod tests`
  * 嵌套用例匹配 0 个；子串过滤对根级/嵌套均命中（MVP，模块路径透传待后续）。
  */
-export function buildRustRunCommand({ testCase, cargoManifestDir }: RunCommandInput): string {
+export function buildRustRunCommand({ testCase, cargoManifestDir, lsp }: RunCommandInput): string {
+  // tier ①：LSP（rust-analyzer `experimental/runnables`）给出的确定性参数 —— 含
+  // `--package` / `--bin` 与**完整测试路径 + `--exact`**，无需再猜清单与 target。
+  if (lsp) return buildRustRunnableRunCommand(lsp, 'test');
   return (
     `RUSTC_BOOTSTRAP=1 cargo test ${shQuote(testCase.name)}` +
     `${buildManifestArgs(cargoManifestDir)} -- -Z unstable-options --format=json --show-output`
   );
 }
 
+/** Go 正则元字符（RE2 语法）—— 段内出现任一即需 `\Q…\E` 原样引用。 */
+const GO_PATTERN_META = /[\\^$.|?*+()[\]{}]/;
+
+/** 单个 `-run` 层级段锚定：裸标识符 → `^Name$`；含元字符 → `^\QName\E$`。 */
+function anchorGoPatternSegment(segment: string): string {
+  return GO_PATTERN_META.test(segment) ? `^\\Q${segment}\\E$` : `^${segment}$`;
+}
+
+/**
+ * Go `-run` / `-test.run` 的**层级锚定模式**（GoLand 同款 `^\QTestAdd\E$/^\Qsub\E$`）。
+ *
+ * Go 的 `-run` 语义：先按 `/` 切分层级，再**逐层做正则匹配**（每层独立锚定）。`t.Run`
+ * 的子测试名是任意字符串（可含 `.` `+` `|` 等元字符）—— 实测未引用时 `^a+b$` 匹配不到
+ * 字面量 `a+b`，故含元字符的段必须 `\Q…\E` 原样引用。顶层用例名是 Go 标识符
+ * （`[A-Za-z0-9_]`，无元字符），走 `^Name$`，与既有命令形态**逐字节一致**。
+ *
+ * Run（`-run`）与 Debug（delve `-test.run`）共用本函数，避免两条链路各自拼装而漂移
+ * （同 Rust `languageSyntax` 单一事实源的教训）。已知边界（与 GoLand 同）：名字段若
+ * 字面含 `\E` 会提前结束引用（未处理，实际用例名不可能出现）。
+ */
+export function goTestRunPattern(name: string): string {
+  return name.split('/').map(anchorGoPatternSegment).join('/');
+}
+
 /** Go：`-run` 锚定 `^Name$`（子串命中会多跑；debug 0 命中则断点永不触发）。 */
 export function buildGoRunCommand({ testCase, ctx }: RunCommandInput): string {
-  return `go test -run ${shQuote(`^${testCase.name}$`)} -json ${shQuote(ctx.goPkg)}`;
+  const pkg = shQuote(ctx.goPkg);
+  const runPattern = shQuote(goTestRunPattern(testCase.name));
+  // 基准：`-run '^$'` 关掉用例、`-bench` 锚定基准名、`-count=1` **禁缓存** ——
+  // 缓存命中时 go 只回包级事件（无 benchmark 输出/`run` 事件），会被「零命中告警」误判。
+  if (testCase.kind === 'benchmark') {
+    return `go test -run ${shQuote('^$')} -bench ${runPattern} -count=1 -json ${pkg}`;
+  }
+  return `go test -run ${runPattern} -json ${pkg}`;
 }
 
 /** Java：只传 `-m <FQCN#method>`（`-c` 与 `-m` 是 OR 语义，同传会跑整类）。
@@ -411,6 +539,8 @@ export interface MainRunInput {
   runRoot: string;
   manifestDir: string | null | undefined;
   ctx: RunContext;
+  /** tier ①：LSP 给出的确定性 runnable（有则优先于本模块的启发式）。 */
+  lsp?: LspRunnable | null;
 }
 
 /**
@@ -424,7 +554,9 @@ export function buildGoMainRunCommand({ ctx }: MainRunInput): string {
   return `go run ${shQuote(ctx.goPkg || '.')}`;
 }
 
-export function buildRustMainRunCommand({ manifestDir }: MainRunInput): string {
+export function buildRustMainRunCommand({ manifestDir, lsp }: MainRunInput): string {
+  // tier ①：LSP 的 `cargo run --package X [--bin Y]` —— 多 bin 工作区不再靠 cargo 报错提示。
+  if (lsp) return buildRustRunnableRunCommand(lsp, 'main');
   return `cargo run${buildManifestArgs(manifestDir)}`;
 }
 
@@ -449,20 +581,45 @@ export function buildDebugBuildCommand(
   testCase: TestCaseInfo,
   cargoManifestDir?: string | null,
   targetFlag = '',
+  lsp?: LspRunnable | null,
 ): string {
   if (testCase.lang !== 'rust') {
     throw new Error(`Debug is only supported for Rust tests, got: ${testCase.lang}`);
   }
+  // tier ①：LSP 的 target 选择（`cargo test --package X --bin Y`）—— 多 target 工作区里
+  // 产物谓词唯一，不再依赖 targetFlag 猜测与 sourceHint 消歧。
+  if (lsp) return buildRustRunnableBuildCommand(lsp, 'test');
   const target = targetFlag ? ` ${targetFlag}` : '';
   return `cargo test ${shQuote(testCase.name)} --no-run${target}${buildManifestArgs(cargoManifestDir)} --message-format=json`;
+}
+
+/** FNV-1a 32 位（8 位 hex）—— 仅作产物文件名去重，非安全用途。 */
+function shortHash(value: string): string {
+  let hash = 0x811c9dc5;
+  for (let i = 0; i < value.length; i++) {
+    hash ^= value.charCodeAt(i);
+    hash = Math.imul(hash, 0x01000193);
+  }
+  return (hash >>> 0).toString(16).padStart(8, '0');
 }
 
 /**
  * Go Debug 前置构建产物相对路径（cwd 相对，gitignored `.neeko/` 下）。
  * `go test -c -o` 会自建父目录；产物路径显式（`-o`），启动时按此解析，无 compiler-artifact。
+ *
+ * `name` 可能是**子测试全名**（P3 动态子测试，`<父>/<层级>`）而 `t.Run` 的名字是任意字符串 →
+ * 不能直接当文件名：
+ * - `/` 会让产物落到嵌套目录（实测 go 自建父目录、能编译，但把 `.neeko/test-bin` 撑成树）；
+ * - Windows 保留字符 `: * ? " < > |` 会让 `-o` 直接失败（本机 macOS/Linux 合法，故本地开发
+ *   不暴露、跨平台才炸）。
+ *
+ * 策略：不安全字符 → `_`；**仅当发生过替换**时追加原名哈希后缀 —— 否则 `TestTable/zero` 与
+ * `TestTable_zero` 会清洗成同一个文件名，后者构建覆盖前者的二进制，调试时挂错 target。
+ * 顶层用例名是 Go 标识符（无替换）→ 产物名与既有 `.neeko/test-bin/<name>` **逐字节一致**。
  */
 export function goDebugBinaryRelPath(name: string): string {
-  return `.neeko/test-bin/${name}`;
+  const safe = name.replace(/[^A-Za-z0-9._-]/g, '_');
+  return safe === name ? `.neeko/test-bin/${name}` : `.neeko/test-bin/${safe}-${shortHash(name)}`;
 }
 
 /**
@@ -504,6 +661,8 @@ export function buildMainJavaDebugCommand(
 export interface MainDebugBuildInput {
   manifestDir: string | null | undefined;
   ctx: RunContext;
+  /** tier ①：LSP 给出的确定性 runnable（有则优先于本模块的启发式）。 */
+  lsp?: LspRunnable | null;
 }
 
 /**
@@ -518,7 +677,10 @@ export function buildGoMainDebugBuildCommand({ ctx }: MainDebugBuildInput): stri
   return `go build -o ${shQuote(outRel)} -gcflags ${shQuote('all=-N -l')} ${shQuote(ctx.goPkg || '.')}`;
 }
 
-export function buildRustMainDebugBuildCommand({ manifestDir }: MainDebugBuildInput): string {
+export function buildRustMainDebugBuildCommand({ manifestDir, lsp }: MainDebugBuildInput): string {
+  // tier ①：LSP 的 target 选择（`cargo run --package X [--bin Y]`）换成 `build`——
+  // 多 bin 工作区里产物谓词唯一，无需再靠 sourceHint 消歧。
+  if (lsp) return buildRustRunnableBuildCommand(lsp, 'main');
   return `cargo build${buildManifestArgs(manifestDir)} --message-format=json`;
 }
 
@@ -737,21 +899,26 @@ export function resolveBinaryPath(binary: string, cwd: string): string {
 
 /** 合成 debug launch 配置：program = 测试二进制，args = [name]（libtest 子串过滤，理由同 buildRunCommand）。
  *  Go：`type: 'go'` + `mode: 'exec'`（预编译测试二进制），args 传锚定 `-test.run` 模式
- *  （`^Name$`）——GoAdapter 端负责拼装 `-test.run` 前缀（见 go.rs），此处只传过滤模式本身。 */
+ *  （`goTestRunPattern`）——GoAdapter 端负责拼装 `-test.run` 前缀（见 go.rs），此处只传过滤模式本身。 */
 export function buildDebugLaunchConfig(
   testCase: TestCaseInfo,
   program: string,
   workspaceRoot: string,
 ): NativeDebugLaunchConfig {
   if (testCase.lang === 'go') {
+    // 基准：显式传全量 delve flag（首参以 `-` 开头 → GoAdapter 原样透传，不再拼 `-test.run`），
+    // 否则会退化成「跑用例」而非「跑基准」。用例：裸锚定模式，adapter 负责拼 `-test.run`。
+    const isBenchmark = testCase.kind === 'benchmark';
     return {
-      name: `Debug test: ${testCase.name}`,
+      name: `${isBenchmark ? 'Debug benchmark' : 'Debug test'}: ${testCase.name}`,
       type: 'go',
       request: 'launch',
       program,
       cwd: workspaceRoot,
       mode: 'exec',
-      args: [`^${testCase.name}$`],
+      args: isBenchmark
+        ? ['-test.run', '^$', '-test.bench', goTestRunPattern(testCase.name)]
+        : [goTestRunPattern(testCase.name)],
       stopOnEntry: false,
     };
   }

@@ -202,7 +202,7 @@ describe('parseTestCases — Rust', () => {
 });
 
 describe('parseTestCases — Go', () => {
-  it('should_parse_top_level_test_functions_and_ignore_benchmarks', () => {
+  it('should_parse_top_level_tests_and_benchmarks_with_kind', () => {
     const doc = [
       'package math',
       '',
@@ -217,13 +217,9 @@ describe('parseTestCases — Go', () => {
     ].join('\n');
     expect(parseTestCases('math/add_test.go', doc)).toEqual([
       { name: 'TestAdd', line: 3, lang: 'go' },
+      // P2：benchmark 现在检测（命令形态不同：`-bench` + `-run '^$'`），以 kind 区分
+      { name: 'BenchmarkFib', line: 8, lang: 'go', kind: 'benchmark' },
     ]);
-    // Benchmark 不检测（YAGNI：`-run` 过滤与 benchmark 名不匹配），不得出现在结果里
-    expect(parseTestCases('math/add_test.go', doc)).not.toContainEqual({
-      name: 'BenchmarkFib',
-      line: 8,
-      lang: 'go',
-    });
   });
 
   it('should_ignore_comments_non_line_start_and_non_test_functions', () => {
@@ -252,13 +248,9 @@ describe('parseTestCases — Go', () => {
     expect(parseTestCases('math/math_test.go', doc)).toEqual([
       { name: 'TestA', line: 1, lang: 'go' },
       { name: 'TestB_WithSuffix', line: 3, lang: 'go' },
+      // Benchmark 与 Test 混排：按行序输出，且带 kind
+      { name: 'BenchmarkB', line: 5, lang: 'go', kind: 'benchmark' },
     ]);
-    // Benchmark 与 Test 混排时仍不检测，结果不含 BenchmarkB
-    expect(parseTestCases('math/math_test.go', doc)).not.toContainEqual({
-      name: 'BenchmarkB',
-      line: 5,
-      lang: 'go',
-    });
   });
 
   it('should_return_empty_for_non_go_files', () => {
@@ -409,5 +401,24 @@ describe('parseTestCases — Java', () => {
     const doc = '@Test\nvoid testAdd() {}';
     expect(parseTestCases('MathUtils.java2', doc)).toEqual([]);
     expect(parseTestCases('math/add_test.go', doc)).toEqual([]);
+  });
+});
+
+describe('parseGoCases — benchmark（P2：gopls 能力的快路径承载）', () => {
+  it('识别 Benchmark 函数并标记 kind="benchmark"（Test 保持缺省 = 用例）', () => {
+    const doc = [
+      'package p',
+      '',
+      'func TestAdd(t *testing.T) {}',
+      'func BenchmarkAdd(b *testing.B) {}',
+      'func BenchmarkAddParallel(b *testing.B) {}',
+      'func helper() {}',
+      'func ExampleFoo() {}',
+    ].join('\n');
+    expect(parseTestCases('math_test.go', doc)).toEqual([
+      { name: 'TestAdd', line: 3, lang: 'go' },
+      { name: 'BenchmarkAdd', line: 4, lang: 'go', kind: 'benchmark' },
+      { name: 'BenchmarkAddParallel', line: 5, lang: 'go', kind: 'benchmark' },
+    ]);
   });
 });

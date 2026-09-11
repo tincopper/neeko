@@ -7,6 +7,8 @@ import {
   runCodelensConfig,
   runCodelensField,
   RunMarker,
+  setLspRunnablesEffect,
+  targetLine,
   type RunTarget,
   type RunCodelensConfig,
 } from '../runContribution';
@@ -229,5 +231,56 @@ describe('runCodelens marker DOM', () => {
     const icon = new RunMarker(mainTarget).toDOM();
     expect(icon.querySelector('svg')).not.toBeNull();
     expect(icon.title).toBe('Run or Debug main');
+  });
+});
+
+describe('LSP runnable 覆盖（tier ①）', () => {
+  const runnable = {
+    label: 'cargo run -p api',
+    kind: 'cargo' as const,
+    args: { cwd: '/proj', cargoArgs: ['run', '--package', 'api'], executableArgs: [] },
+  };
+
+  it('未注入 LSP 结果时 marker 无 lsp（纯快路径）', () => {
+    const view = makeView(RUST_MAIN_DOC, makeConfig({ fileName: 'main.rs' }));
+    const [marker] = collectMarkers(view);
+    expect(marker.marker.target).toEqual({ kind: 'main', entry: { line: 1, language: 'rust' } });
+    expect(marker.marker.target.lsp).toBeUndefined();
+    view.destroy();
+  });
+
+  it('注入 LSP 结果后按行覆盖（同 target 携带 lsp，供命令构造走 tier ①）', () => {
+    const view = makeView(RUST_MAIN_DOC, makeConfig({ fileName: 'main.rs' }));
+    view.dispatch({ effects: setLspRunnablesEffect.of(new Map([[1, runnable]])) });
+    const [marker] = collectMarkers(view);
+    expect(marker.marker.target.lsp).toEqual(runnable);
+    // 行号未变 → 仍是同一行
+    expect(targetLine(marker.marker.target)).toBe(1);
+    view.destroy();
+  });
+
+  it('覆盖仅影响命中行：未命中行保持快路径 payload', () => {
+    const doc = ['#[test]', 'fn a() {}', '', 'fn main() {}'].join('\n');
+    const view = makeView(doc, makeConfig({ fileName: 'main.rs' }));
+    view.dispatch({ effects: setLspRunnablesEffect.of(new Map([[4, runnable]])) });
+    const markers = collectMarkers(view);
+    expect(markers.map((m) => m.marker.target.lsp)).toEqual([undefined, runnable]);
+    view.destroy();
+  });
+
+  it('RunMarker.eq 纳入 lsp：仅 lsp 变化也触发重建', () => {
+    const base = { kind: 'main' as const, entry: { line: 1, language: 'rust' as const } };
+    const other = {
+      label: 'cargo run -p other',
+      kind: 'cargo' as const,
+      args: { cwd: '/proj', cargoArgs: ['run', '--package', 'other'], executableArgs: [] },
+    };
+    expect(new RunMarker(base).eq(new RunMarker({ ...base, lsp: runnable }))).toBe(false);
+    expect(
+      new RunMarker({ ...base, lsp: runnable }).eq(new RunMarker({ ...base, lsp: other })),
+    ).toBe(false);
+    expect(
+      new RunMarker({ ...base, lsp: runnable }).eq(new RunMarker({ ...base, lsp: runnable })),
+    ).toBe(true);
   });
 });

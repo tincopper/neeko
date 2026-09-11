@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  collectSubtestNames,
+  MAX_DISCOVERED_SUBTESTS,
   MAX_REPORT_CHARS,
   matchCaseName,
   parseJunitXml,
@@ -146,6 +148,87 @@ describe('parseTest2JsonLines', () => {
       { name: 'TestFoo/sub', status: 'failed', stdout: 'sub_test.go:1: boom\n' },
       { name: 'TestFoo', status: 'failed' },
     ]);
+  });
+});
+
+describe('collectSubtestNames（P3 动态子测试发现）', () => {
+  const g = (obj: Record<string, unknown>) => JSON.stringify(obj);
+  const eventsOf = (lines: Record<string, unknown>[]) =>
+    parseTest2JsonLines(lines.map(g).join('\n'));
+
+  it('should_discover_subtests_of_the_parent_sorted_by_name', () => {
+    // 夹具形状取自真机 `go test -json`（1.26.4）：父级 + 各子测试各一条 `run`，
+    // 子测试在 `Test` 字段以 `/` 扁平（`TestTable/positive`）；发现只消费终态事件。
+    const events = eventsOf([
+      { Action: 'run', Package: 'p', Test: 'TestTable' },
+      { Action: 'run', Package: 'p', Test: 'TestTable/zero' },
+      { Action: 'pass', Package: 'p', Test: 'TestTable/zero' },
+      { Action: 'run', Package: 'p', Test: 'TestTable/positive' },
+      { Action: 'pass', Package: 'p', Test: 'TestTable/positive' },
+      { Action: 'pass', Package: 'p', Test: 'TestTable' },
+      // 无关用例的子测试（同一次运行内若过滤器更宽）不得混入
+      { Action: 'run', Package: 'p', Test: 'TestOther/x' },
+    ]);
+
+    expect(collectSubtestNames(events, 'TestTable')).toEqual([
+      'TestTable/positive',
+      'TestTable/zero',
+    ]);
+  });
+
+  it('should_order_nested_levels_parent_before_child', () => {
+    // 终态事件天生「子先于父」；排序还原层级顺序（`outer` 先于 `outer/inner`）。
+    const events = eventsOf([
+      { Action: 'pass', Package: 'p', Test: 'TestNested/outer/inner' },
+      { Action: 'pass', Package: 'p', Test: 'TestNested/outer' },
+      { Action: 'pass', Package: 'p', Test: 'TestNested' },
+    ]);
+
+    // 每一层都是可直接单跑的合法目标（`outer` 会连 `inner` 一起跑）
+    expect(collectSubtestNames(events, 'TestNested')).toEqual([
+      'TestNested/outer',
+      'TestNested/outer/inner',
+    ]);
+  });
+
+  it('should_dedupe_repeated_names_across_actions', () => {
+    const events = eventsOf([
+      { Action: 'run', Package: 'p', Test: 'TestTable/a' },
+      { Action: 'output', Package: 'p', Test: 'TestTable/a', Output: 'hi\n' },
+      { Action: 'pass', Package: 'p', Test: 'TestTable/a' },
+    ]);
+
+    expect(collectSubtestNames(events, 'TestTable')).toEqual(['TestTable/a']);
+  });
+
+  it('should_return_empty_when_only_the_parent_ran', () => {
+    expect(
+      collectSubtestNames(eventsOf([{ Action: 'pass', Package: 'p', Test: 'TestAdd' }]), 'TestAdd'),
+    ).toEqual([]);
+  });
+
+  it('should_require_slash_boundary_so_prefixed_siblings_are_not_collected', () => {
+    // `TestTableExtra/x` 与 `TestTable/x` 前缀相同但不属同一顶层用例 —— `/` 边界必须成立。
+    const events = eventsOf([
+      { Action: 'run', Package: 'p', Test: 'TestTableExtra/x' },
+      { Action: 'run', Package: 'p', Test: 'TestTable' },
+    ]);
+
+    expect(collectSubtestNames(events, 'TestTable')).toEqual([]);
+  });
+
+  it('should_cap_discovery_to_the_guard', () => {
+    const many = Array.from({ length: MAX_DISCOVERED_SUBTESTS + 25 }, (_, i) => ({
+      Action: 'pass',
+      Package: 'p',
+      Test: `TestFuzz/case_${i}`,
+    }));
+
+    // 按发现序截断前 MAX 个（case_0..case_199），再排序（字典序 → case_0 仍最小）
+    const names = collectSubtestNames(eventsOf(many), 'TestFuzz');
+    expect(names).toHaveLength(MAX_DISCOVERED_SUBTESTS);
+    expect(names[0]).toBe('TestFuzz/case_0');
+    expect(names).not.toContain(`TestFuzz/case_${MAX_DISCOVERED_SUBTESTS}`);
   });
 });
 
@@ -342,5 +425,83 @@ describe('matchCaseName', () => {
 
   it('should_reject_when_fn_name_is_longer_than_full_name', () => {
     expect(matchCaseName('adds', 'adds_numbers_long')).toBe(false);
+  });
+});
+
+describe('parseTest2JsonLines — benchmark（P2；夹具形状取自真机 `go test -json -bench`）', () => {
+  /** 事件对象 → test2json 行（用 JSON.stringify 构造，避免手写转义把裸 TAB/换行塞进 JSON 字符串）。 */
+  const line = (obj: Record<string, unknown>): string => JSON.stringify(obj);
+
+  /** 实测（go 1.26.4）：benchmark 只有 `run` + `output`，**没有** per-benchmark 终态事件。 */
+  const PASSING = [
+    line({ Action: 'start', Package: 'example.com/mathprobe' }),
+    line({ Action: 'output', Package: 'example.com/mathprobe', Output: 'goos: darwin\n' }),
+    line({ Action: 'run', Package: 'example.com/mathprobe', Test: 'BenchmarkAdd' }),
+    line({
+      Action: 'output',
+      Package: 'example.com/mathprobe',
+      Test: 'BenchmarkAdd',
+      Output: '=== RUN   BenchmarkAdd\n',
+    }),
+    line({
+      Action: 'output',
+      Package: 'example.com/mathprobe',
+      Test: 'BenchmarkAdd',
+      Output: 'BenchmarkAdd\n',
+    }),
+    line({
+      Action: 'output',
+      Package: 'example.com/mathprobe',
+      Test: 'BenchmarkAdd',
+      Output: 'BenchmarkAdd-10   \t1000000000\t         0.2383 ns/op\n',
+    }),
+    line({ Action: 'output', Package: 'example.com/mathprobe', Output: 'PASS\n' }),
+    line({ Action: 'pass', Package: 'example.com/mathprobe', Elapsed: 0.787 }),
+  ].join('\n');
+
+  /** 实测：benchmark 内 panic 时 panic 文本挂在 `Test` 的 output 上（可作失败摘要）；终态仍只有包级 `fail`。 */
+  const FAILING = [
+    line({ Action: 'run', Package: 'p', Test: 'BenchmarkBoom' }),
+    line({
+      Action: 'output',
+      Package: 'p',
+      Test: 'BenchmarkBoom',
+      Output: '=== RUN   BenchmarkBoom\n',
+    }),
+    line({
+      Action: 'output',
+      Package: 'p',
+      Test: 'BenchmarkBoom',
+      Output: 'panic: runtime error: index out of range [2] with length 1\n',
+    }),
+    line({ Action: 'output', Package: 'p', Output: 'FAIL\n' }),
+    line({ Action: 'fail', Package: 'p', Elapsed: 0.2 }),
+  ].join('\n');
+
+  it('包级终态收口 pending benchmark → passed，并携带测量输出（ns/op）', () => {
+    const events = parseTest2JsonLines(PASSING);
+    expect(events).toHaveLength(1);
+    expect(events[0].name).toBe('BenchmarkAdd');
+    expect(events[0].status).toBe('passed');
+    // 测量结果留在 stdout：gutter tooltip 展示 ns/op（对 benchmark 而言这是有用信息，不限失败）
+    expect(events[0].stdout).toContain('ns/op');
+    expect(events[0].stdout).not.toContain('=== RUN');
+  });
+
+  it('包级 fail → pending benchmark 收口为 failed，panic 文本作摘要', () => {
+    expect(parseTest2JsonLines(FAILING)).toEqual([
+      { name: 'BenchmarkBoom', status: 'failed', stdout: expect.stringContaining('panic:') },
+    ]);
+  });
+
+  it('普通测试路径不受影响（per-test 终态优先，包级 pass 不重复产出）', () => {
+    const events = parseTest2JsonLines(
+      [
+        line({ Action: 'run', Package: 'p', Test: 'TestAdd' }),
+        line({ Action: 'pass', Package: 'p', Test: 'TestAdd', Elapsed: 0.01 }),
+        line({ Action: 'pass', Package: 'p', Elapsed: 0.2 }),
+      ].join('\n'),
+    );
+    expect(events).toEqual([{ name: 'TestAdd', status: 'passed', duration: 10 }]);
   });
 });
