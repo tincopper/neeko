@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-4.md`
-- **Total Sessions**: 203
-- **Last Active**: 2026-09-09
+- **Total Sessions**: 204
+- **Last Active**: 2026-09-12
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-4.md` | ~870 | Active |
+| `journal-4.md` | ~929 | Active |
 | `journal-3.md` | ~1978 | Archived |
 | `journal-2.md` | ~1991 | Archived |
 | `journal-1.md` | ~1986 | Archived |
@@ -32,6 +32,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 204 | 2026-09-12 | DAP 调试源码可达性：去 Just My Code + 外部只读 + Java classpath 源码解析 | - | `main` |
 | 203 | 2026-09-09 | 编辑器滚动点击错位修复 + 归档 | `195bac2e` | `main` |
 | 202 | 2026-09-09 | 提交：编辑器滚动点击错位修复（双实例 + focus 漂移 + 简化） | `195bac2e31f4b6148ba8eed1a574429b4913502a` | `main` |
 | 201 | 2026-09-09 | 编辑器滚动点击错位根治：WebKit focus 滚动漂移 | `cd75ea70b87b27eb514773bc056690a98a1cda9b` | `main` |

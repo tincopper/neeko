@@ -868,3 +868,62 @@ cargo test 全量回归通过（lib 1004/unit 100，0失败），任务归档关
 ### Next Steps
 
 - None - task complete
+
+
+## Session 204: DAP 调试源码可达性：去 Just My Code + 外部只读 + Java classpath 源码解析
+
+**Date**: 2026-09-12
+**Task**: DAP 调试源码可达性：去 Just My Code + 外部只读 + Java classpath 源码解析
+**Branch**: `main`
+
+### Summary
+
+Java 调试无法跳转第三方库/源码库的端到端修复（P0/P1/P2/P3），含 host 自检
+
+### Main Changes
+
+## 问题
+Java 调试时第三方库 / 源码库函数无法跳转（手工 LSP 跳转正常）。
+
+## 根因（反编译 neeko-java-host.jar 字节码确认）
+- `AttachRequestHandler` 把 attach 载荷 `sourcePaths` 写进 context；attach 无 `classPaths` 字段（仅 `launch` 有）。
+- host `SimpleSourceLookUpProvider` 只在 `user.dir`（项目根）做文本后缀搜索 → 库类未命中返回 "" → java-debug `AdapterUtils.sourceLookup([cwd])` 亦未命中 → `StackFrame.source = null`。
+- `sourceReference` 仅 `SourceType.REMOTE` 分支产生 → 本地 Java attach 永不出现。
+- 前端 `openSourceAtLine` 只有 `InProject` 读取通道（项目外被拒），且失败静默。
+- Just My Code 把无 sourcePath 的库帧判为系统帧 → `step` 时自动 continue（静默跳过）。
+
+## 实施
+- P0 删除 Just My Code：`stackFrames.ts` 收窄为停止位置选择；`debugStore` 移除自动 continue 机制与 `justMyCode` 状态。
+- P1 外部源码只读通道：`dap/external_source.rs` + `assert_stopped_at_path`（凭据=「正停在该路径」）+ `dap_read_external_source`；前端拆出 `sourceContent.ts`（内容获取，判别式联合）与 `openStopSource.ts`（store 感知入口，避免 navigate ↔ store 循环）。
+- P2 DAP 虚拟源码：`StackFrameDto` 增 `sourceName`/`sourceReference`，`parse_stack_frames` 纯函数化；`dap_source_content`（512KB 上限）；前端 `dap-source:` 合成身份 + 只读虚拟 tab。
+- P3 Java classpath 源码解析：`LaunchConfig.classpath` → `sourcePaths` 送达 host；host 新增 `ClasspathSources`（目录直查 / `-sources.jar` / JDK `src.zip`，解压到 `~/.neeko/java-src-cache`，构造期预筛 sources jar）；`resolveClassName` 增 jdt 展示路径与 cache 布局两条规则（库断点 FQN）。
+- host 首次具备测试守卫：`tools/java-host/test/...SimpleSourceLookUpProviderTest.java`（15 断言）接入 `build.sh` 3/4 步。
+
+## 验证
+- `pnpm lint`（fmt + clippy -D warnings + 4 guard）✅
+- `pnpm lint:fe`（eslint + tsc + vitest --typecheck）✅ 396 文件 / 3436 用例 / 0 类型错误
+- `cargo test` ✅ 1112 lib + 100 integration
+- `bash tools/java-host/build.sh` ✅ 15/15 自检通过并重打 fat jar
+- 未提交代码
+
+## 已知残留（未修，已在报告中标注）
+- `buildJavaClasspath`/`buildJavaClasspathEntries` 硬编码 `:` 分隔符（Windows 目标应为 `;`）—— 既有问题，与本次改动同源保持一致；修复需 `path.delimiter` 化并在 Windows CI 验证。
+- 非 jdt、非 java-src-cache 的项目外源码路径无可靠包名依据（退化为默认包，断点不绑定）。
+- `~/.neeko/java-src-cache` 不做主动淘汰（量级由被调试类数决定，已注释说明取舍）。
+
+
+### Git Commits
+
+(No commits - planning session)
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
