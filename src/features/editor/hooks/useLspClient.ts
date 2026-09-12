@@ -1,6 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 
-import { acquireLspPlugin, releaseLspClient, useLspLinkHighlightExtension } from '@/features/lsp';
+import {
+  acquireLspPlugin,
+  releaseLspClient,
+  useLspLinkHighlightExtension,
+  withJdtLinkHandler,
+} from '@/features/lsp';
 import { getLspLanguageId, resolveLspLanguageId, toFileUri } from '@/features/lsp/api/languageMap';
 
 interface UseLspClientParams {
@@ -14,7 +19,8 @@ interface UseLspClientParams {
   virtualUri?: string;
   /**
    * hover 文档里 `jdt://` 链接的宿主导航回调（见 createLspHoverTooltips）。
-   * 仅 client 首建时被捕获，传稳定引用（useCallback）。
+   * 经 `jdtLinkHandlerFacet` 随本文件视图注入，不受"共享 client 首建捕获"影响 ——
+   * 每个 tab 拿到自己的回调（仍建议传稳定引用，减少插件扩展重建）。
    */
   onOpenJdtLink?: (uri: string) => void;
 }
@@ -65,9 +71,11 @@ export function useLspClient({
   useEffect(() => {
     if (!projectPath || !lspLanguageId || !fileUri) return;
 
-    const plugin = acquireLspPlugin(projectPath, lspLanguageId, fileUri, { onOpenJdtLink });
+    const plugin = acquireLspPlugin(projectPath, lspLanguageId, fileUri);
+    // 按本视图注入 jdt 链接回调（共享 client 不持有宿主闭包）
+    const perFile = withJdtLinkHandler(plugin, onOpenJdtLink);
     // Defer to avoid sync setState in effect
-    Promise.resolve().then(() => setLspClientExt([plugin]));
+    Promise.resolve().then(() => setLspClientExt([perFile]));
 
     return () => {
       setLspClientExt([]);

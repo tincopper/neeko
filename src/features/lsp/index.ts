@@ -8,6 +8,7 @@
  */
 
 export { acquireLspPlugin, releaseLspClient } from './hooks/lspClientManager';
+export { withJdtLinkHandler } from './hooks/lspHoverExtension';
 export { useCmdHeld } from './hooks/useCmdHeld';
 export { useLspDefinition } from './hooks/useLspDefinition';
 export { useLspLinkHighlightExtension, clearLinkHighlight } from './hooks/useLspLinkHighlight';

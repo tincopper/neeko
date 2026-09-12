@@ -1,5 +1,5 @@
 import { LSPPlugin } from '@codemirror/lsp-client';
-import type { Extension, Text } from '@codemirror/state';
+import { Facet, type Extension, type Text } from '@codemirror/state';
 import type { Tooltip, TooltipView } from '@codemirror/view';
 import { EditorView, closeHoverTooltips, hoverTooltip } from '@codemirror/view';
 
@@ -55,9 +55,10 @@ function getHoverTracker(view: EditorView): LatestRequestTracker {
  *    (src/styles/index.css).
  *
  * 3. Links in hover tooltips: `jdt://` hrefs (javadoc `@link`) are routed
- *    to `onOpenJdtLink` (the definition pipeline renders the classfile
- *    read-only); every other link opens the app's built-in browser panel.
- *    Modelled after vscode-java's `fixJdtSchemeHoverLinks`.
+ *    to the **per-view** handler in `jdtLinkHandlerFacet` (the definition
+ *    pipeline renders the classfile read-only); every other link opens the
+ *    app's built-in browser panel. Modelled after vscode-java's
+ *    `fixJdtSchemeHoverLinks`.
  *
  * 4. Flood control: only the latest hover generation may produce a tooltip
  *    (stale in-flight responses are dropped). Backend also cancels prior
@@ -73,19 +74,60 @@ function getHoverTracker(view: EditorView): LatestRequestTracker {
  *    renders as empty; `normalizeHoverContents` flattens every legal
  *    `Hover.contents` shape into a single MarkupContent first.
  */
-export function createLspHoverTooltips(
-  config: {
-    hoverTime?: number;
-    /**
-     * `jdt://` 链接点击回调（VSCode `fixJdtSchemeHoverLinks` 的对应物）。
-     * 仅在共享 client 首建时被工厂捕获——各宿主实例回调行为等价
-     * （全部经 store 驱动，jdt 目标恒为跨文件分支，无 per-file 视图依赖）。
-     */
-    onOpenJdtLink?: (uri: string) => void;
-  } = {},
+/**
+ * `jdt://` 链接点击回调（VSCode `fixJdtSchemeHoverLinks` 的对应物）——**按视图解析**。
+ *
+ * 为什么是 facet 而非 client 级配置：本扩展挂在**共享**语言 client 上（同
+ * project+language 的多个 tab 共用一个 client，且 `pool.acquire` 的工厂只在首建时
+ * 执行一次）。任何"client 级捕获"都只能拿到**首个 tab** 的回调，其余 tab 的 hover
+ * 会带着首个 tab 的 projectId/filePath 发起跳转（导航历史与同文件判定错位）。
+ * facet 随视图状态流动，由 `acquireLspPlugin` 的 per-file 扩展注入，天然按文档归属
+ * 解析 —— 每个 tab 拿到自己的回调。
+ */
+export const jdtLinkHandlerFacet = Facet.define<
+  (uri: string) => void,
+  ((uri: string) => void) | undefined
+>({
+  combine: (handlers) => (handlers.length > 0 ? handlers[handlers.length - 1] : undefined),
+});
+
+/**
+ * 为**某个文件**组装 client 扩展：语言 client 插件 + 本视图的 `jdt://` 链接回调。
+ *
+ * 组装放在调用方（持有该视图的 hook）而非 `acquireLspPlugin`：共享 client 的池
+ * 绝不能捕获宿主闭包（工厂只跑一次，会变成"首个 tab 独占回调"）。视图侧把回调
+ * 作为 facet 加进自己的 state，按文档归属解析。
+ */
+/**
+ * hover 提示内 `<a>` 点击的路由：`jdt://` 且**本视图**有宿主回调 → 交给宿主
+ * （definition 管线，classfile 只读展示）；其余（含 jdt 但无宿主回调、以及所有
+ * http(s) 链接）→ 内置浏览器面板。
+ *
+ * 纯函数：DOM 事件链只负责取值与派发，路由可独立单测（含"jdt 无宿主回调"回落，
+ * 避免劫持用户点击后什么都不发生）。
+ */
+export type HoverLinkRoute =
+  | { kind: 'host'; uri: string; open: (uri: string) => void }
+  | { kind: 'browser'; href: string };
+
+export function resolveHoverLinkRoute(
+  href: string,
+  openJdtLink?: (uri: string) => void,
+): HoverLinkRoute {
+  if (isJdtUri(href) && openJdtLink) return { kind: 'host', uri: href, open: openJdtLink };
+  return { kind: 'browser', href };
+}
+
+export function withJdtLinkHandler(
+  plugin: Extension,
+  onOpenJdtLink?: (uri: string) => void,
 ): Extension[] {
+  return onOpenJdtLink ? [plugin, jdtLinkHandlerFacet.of(onOpenJdtLink)] : [plugin];
+}
+
+export function createLspHoverTooltips(config: { hoverTime?: number } = {}): Extension[] {
   return [
-    hoverTooltip((view, pos, side) => lspTooltipSource(view, pos, side, config), {
+    hoverTooltip((view, pos, side) => lspTooltipSource(view, pos, side), {
       hideOn: (tr) => tr.docChanged,
       // Slightly higher than CodeMirror default to cut mousemove noise
       hoverTime: config.hoverTime ?? 300,
@@ -115,12 +157,7 @@ function hoverRequest(plugin: LSPPlugin, pos: number) {
 }
 
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
-function lspTooltipSource(
-  view: EditorView,
-  pos: number,
-  _side: -1 | 1,
-  config: { onOpenJdtLink?: (uri: string) => void },
-): Promise<Tooltip | null> {
+function lspTooltipSource(view: EditorView, pos: number, _side: -1 | 1): Promise<Tooltip | null> {
   // Cmd/Ctrl 按住 = 用户正准备跳转：抑制 docs 弹出，避免遮挡点击目标
   //（链接高亮下划线已提供导航视觉提示）。VSCode 同款行为。
   if (isModKeyHeld()) return Promise.resolve(null);
@@ -146,7 +183,7 @@ function lspTooltipSource(
         pos: hover.range ? offsetFromPos(view.state.doc, hover.range.start) : pos,
         end: hover.range ? offsetFromPos(view.state.doc, hover.range.end) : pos,
         // eslint-disable-next-line @typescript-eslint/no-unused-vars
-        create(_editorView: EditorView): TooltipView {
+        create(tooltipView: EditorView): TooltipView {
           const el = document.createElement('div');
           el.className = 'cm-lsp-hover-tooltip cm-lsp-documentation';
           el.innerHTML = plugin.docToHTML(normalized);
@@ -160,11 +197,15 @@ function lspTooltipSource(
             if (!anchor?.href) return;
             e.preventDefault();
             e.stopPropagation();
-            if (isJdtUri(anchor.href) && config.onOpenJdtLink) {
-              config.onOpenJdtLink(anchor.href);
+            const route = resolveHoverLinkRoute(
+              anchor.href,
+              tooltipView.state.facet(jdtLinkHandlerFacet),
+            );
+            if (route.kind === 'host') {
+              route.open(route.uri);
               return;
             }
-            useBrowserStore.getState().navigateTo(anchor.href);
+            useBrowserStore.getState().navigateTo(route.href);
             useDockStore.getState().activatePanel('right', 'browser');
           });
 

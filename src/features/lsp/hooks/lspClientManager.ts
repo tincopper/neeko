@@ -103,16 +103,16 @@ function annotateLspRequestErrors(client: LSPClient): void {
  * Multiple files of the same language share one LSP client + transport.
  * Tab switches cancel the idle destroy timer so the client is reused.
  *
- * `options` 仅在 client 首建（pool 工厂）时被捕获；后续同 key 调用的
- * options 被忽略。当前唯一消费方是 hover 的 `onOpenJdtLink` 回调——
- * 各宿主实例传入的回调行为等价（store 驱动、无 per-file 视图依赖），
- * 首建捕获不会产生行为漂移。
+ * **本函数不接收任何宿主回调/视图状态**：同 project+language 的多个 tab 共享同一
+ * client，而工厂只在首建时执行一次 —— 任何 client 级捕获都会变成"首个 tab 独占"，
+ * 让后续 tab 的 hover 用错上下文（历史教训：曾按"各宿主回调行为等价"假设忽略该
+ * 差异，实际回调闭包持有 per-tab 的 projectId/filePath）。需要按视图注入的扩展由
+ * 视图侧组装（见 `withJdtLinkHandler`）。
  */
 export function acquireLspPlugin(
   projectPath: string,
   languageId: string,
   fileUri: string,
-  options?: { onOpenJdtLink?: (uri: string) => void },
 ): Extension {
   const key = clientKey(projectPath, languageId);
   const bundle = pool.acquire(key, () => {
@@ -120,7 +120,7 @@ export function acquireLspPlugin(
     const client = new LSPClient({
       extensions: [
         createThemedServerCompletion(),
-        createLspHoverTooltips({ onOpenJdtLink: options?.onOpenJdtLink }),
+        createLspHoverTooltips(),
         serverDiagnostics(),
         signatureHelp(),
       ],
