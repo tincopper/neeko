@@ -200,6 +200,7 @@ pub fn entry_to_launch_config(entry: &EntryPoint) -> super::types::LaunchConfig 
         port: None,
         pre_launch_task: entry.pre_launch_task.clone(),
         stop_on_entry: Some(false),
+        classpath: vec![],
     }
 }
 

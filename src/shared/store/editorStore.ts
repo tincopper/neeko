@@ -101,7 +101,9 @@ function mergeTabData(data: TabData, partial: Partial<TabData>): TabData {
         'externallyModified' in p ||
         'isUntitled' in p ||
         'untitledName' in p ||
-        'initialPreviewMode' in p;
+        'initialPreviewMode' in p ||
+        'readOnly' in p ||
+        'virtualUri' in p;
       if (!isFilePartial) return data;
       const d = data as FileTabData;
       return {
@@ -120,6 +122,8 @@ function mergeTabData(data: TabData, partial: Partial<TabData>): TabData {
           'initialPreviewMode' in p
             ? (p.initialPreviewMode as 'preview' | 'source' | undefined)
             : d.initialPreviewMode,
+        readOnly: 'readOnly' in p ? (p.readOnly as boolean | undefined) : d.readOnly,
+        virtualUri: 'virtualUri' in p ? (p.virtualUri as string | undefined) : d.virtualUri,
       };
     }
     case 'diff': {

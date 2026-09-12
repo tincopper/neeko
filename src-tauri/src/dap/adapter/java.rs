@@ -152,12 +152,25 @@ impl DebugAdapterPlugin for JavaAdapter {
             .file_name()
             .map(|n| n.to_string_lossy().into_owned())
             .unwrap_or_default();
+        // 源码查找根：项目根在前（既有多模块后缀搜索依赖它），其后拼 debuggee
+        // classpath 条目。attach 载荷**没有** `classPaths` 字段（只有 `launch`
+        // 有，见 `Requests$AttachArguments`），而 `AttachRequestHandler` 会把
+        // `sourcePaths` 原样写进 context（`setSourcePaths`）—— 这是唯一能到达
+        // host 的数组通道，provider 经 `initialize(context, …)` 读取它来解析
+        // 第三方库 / JDK 源码。
+        let mut source_paths = vec![cwd];
+        source_paths.extend(
+            cfg.classpath
+                .iter()
+                .filter(|entry| !entry.trim().is_empty())
+                .cloned(),
+        );
         Ok(json!({
             "request": "attach",
             "hostName": "127.0.0.1",
             "port": port,
             "projectName": project_name,
-            "sourcePaths": [cwd],
+            "sourcePaths": source_paths,
             // SocketAttachingConnector 默认 30s 超时，显式声明（对齐 AttachArguments）。
             "timeout": 30000,
         }))
@@ -190,6 +203,7 @@ mod tests {
             port,
             pre_launch_task: None,
             stop_on_entry: Some(false),
+            classpath: vec![],
         }
     }
 
@@ -248,6 +262,26 @@ mod tests {
             .build_launch_args(&fallback, "/proj")
             .expect("attach args");
         assert_eq!(args["sourcePaths"], json!(["/proj"]));
+    }
+
+    /// classpath 条目追加在项目根之后（attach 唯一的数组通道 = `sourcePaths`）。
+    #[test]
+    fn build_launch_args_appends_classpath_to_source_paths() {
+        let mut cfg = java_cfg(Some(1), Some("/proj"));
+        cfg.classpath = vec![
+            "/proj/target/classes".into(),
+            "   ".into(), // 空白条目被过滤
+            "/home/u/.m2/repository/com/google/guava/guava-33.jar".into(),
+        ];
+        let args = JavaAdapter.build_launch_args(&cfg, "/proj").expect("args");
+        assert_eq!(
+            args["sourcePaths"],
+            json!([
+                "/proj",
+                "/proj/target/classes",
+                "/home/u/.m2/repository/com/google/guava/guava-33.jar"
+            ])
+        );
     }
 
     #[test]

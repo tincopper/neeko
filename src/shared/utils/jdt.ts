@@ -17,6 +17,17 @@ export function isJdtUri(uri: string): boolean {
 }
 
 /**
+ * `jdt:/<module>/<pkg>/<Name>.java` 展示路径判定（tab 身份形态）。
+ *
+ * 注意它**不是** jdtls 文档 uri（那是 `jdt://contents/…?<query>`）：由调试停点
+ * 打开的 JDK 源码只有该展示身份、没有原始 uri，故不得据此拼 `file://` 文档
+ * （jdtls 认不出），调用方应跳过 LSP 功能。
+ */
+export function isJdtDisplayPath(p: string): boolean {
+  return p.startsWith('jdt:/');
+}
+
+/**
  * `jdt://` 类文件 uri 的展示/标识路径（面包屑、tab id、语言高亮推导用）：
  * 取 `?` 查询串之前的类路径（`contents/<module>/<pkg path>/<Name>.class`），
  * 映射为 `jdt:/<module>/<pkg path>/<Name>.java`——以 `.java` 结尾保证

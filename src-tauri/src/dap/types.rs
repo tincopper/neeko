@@ -40,6 +40,38 @@ pub struct LaunchConfig {
     /// Stop at program entry before running (default false — only user breakpoints).
     #[serde(default)]
     pub stop_on_entry: Option<bool>,
+    /// Java attach-first：debuggee 的运行时 classpath 条目（`target/classes`、
+    /// 依赖 jar…）。仅由编辑器 Java 测试/主类调试链路填充；JavaAdapter 把它并入
+    /// attach 载荷的 `sourcePaths`（attach 无 `classPaths` 字段，见
+    /// `Requests$AttachArguments`），host 侧据此解析第三方库 / JDK 源码。
+    /// 其他适配器忽略。
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub classpath: Vec<String>,
+}
+
+/// 单次源码传输上限（字节）。
+///
+/// 外部源码只读读取（`dap_read_external_source`）与 DAP `source` 虚拟源码
+/// （`dap_source_content`）共用一个数字：与前端 `canEdit` 阈值（512KB）对齐，
+/// 且远低于 2MB 的 IPC 返回红线。超限一律拒绝而不是截断 —— 截断的源码会静默
+/// 误导定位。
+pub const MAX_SOURCE_BYTES: u64 = 512 * 1024;
+
+/// Java attach-first 的 debuggee 启动目标。
+///
+/// 四个字段同源（编辑器同一次 Debug 动作产出）且共同回答「要调试什么」——
+/// 收进单一结构体，避免 manager / 命令层之间的长参数列表各自漂移。
+#[derive(Debug, Clone)]
+pub struct JavaDebugTarget {
+    /// 已就绪的 debuggee shell 命令（前端 `buildJavaDebugCommand` 产物）。
+    pub command: String,
+    /// 运行目录（模块根）；空值拒绝。
+    pub cwd: String,
+    /// 会话显示名中的用例名（`Debug test: <name>`）。
+    pub test_name: String,
+    /// debuggee 运行时 classpath 条目（前端 `buildJavaClasspathEntries` 产物）：
+    /// 随 attach 载荷的 `sourcePaths` 送达 host，供其解析第三方库 / JDK 源码。
+    pub classpath: Vec<String>,
 }
 
 /// File-backed launch file.
@@ -127,6 +159,13 @@ pub struct StackFrameDto {
     pub line: u32,
     /// 1-based column number in the source file.
     pub column: u32,
+    /// DAP `Source.name`（适配器给的类 / 文件名），虚拟源码 tab 的标题用。
+    #[serde(default)]
+    pub source_name: Option<String>,
+    /// DAP `Source.sourceReference`（>0 = 源码不在磁盘上，需经 DAP `source`
+    /// 请求按引用取内容）。缺省 0 / 缺失表示无虚拟源码。
+    #[serde(default)]
+    pub source_reference: Option<i64>,
 }
 
 /// Variable for UI.

@@ -3,16 +3,30 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { DAP_EVENT } from '@/shared/events';
 
+import type * as DebugApi from '../api/debugApi';
 import { useDebugStore } from '../store/debugStore';
 import type { DapEventPayload, VariableDto } from '../types';
 
 const dapVariablesByReference = vi.hoisted(() => vi.fn());
 const dapVariables = vi.hoisted(() => vi.fn());
+const dapStackTrace = vi.hoisted(() => vi.fn());
+const dapControl = vi.hoisted(() => vi.fn());
+const openSourceAtLine = vi.hoisted(() => vi.fn());
+const openVirtualSourceAtLine = vi.hoisted(() => vi.fn());
 
 vi.mock('../api/debugApi', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('../api/debugApi')>()),
+  ...(await importOriginal<typeof DebugApi>()),
   dapVariables,
   dapVariablesByReference,
+  dapStackTrace,
+  dapControl,
+}));
+
+// Isolate store orchestration from tab lifecycle (covered by navigate.test.ts).
+vi.mock('../navigate', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../navigate')>()),
+  openSourceAtLine,
+  openVirtualSourceAtLine,
 }));
 
 type DapListener = (event: { payload: DapEventPayload }) => void;
@@ -61,6 +75,7 @@ function expansionState() {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  dapVariables.mockResolvedValue([]);
   useDebugStore.setState({
     session: null,
     frames: [],
@@ -229,9 +244,166 @@ describe('debugStore.startJavaAttach', () => {
           'java -agentlib:jdwp=transport=dt_socket -jar launcher.jar',
           '/tmp/proj',
           'test1',
+          [],
         ),
     ).rejects.toThrow();
     const texts = useDebugStore.getState().consoleLines.map((l) => l.text);
     expect(texts[0]).toBe('$ java -agentlib:jdwp=transport=dt_socket -jar launcher.jar');
+  });
+});
+
+describe('debugStore.refreshStackAndVars stops', () => {
+  const REGISTRY_FRAME = {
+    id: 7,
+    name: 'serde::de::value::borrowed_str_deserialize',
+    sourcePath:
+      '/home/u/.cargo/registry/src/index.crates.io-6facae9b0d0d8f07/serde-1.0.219/src/de.rs',
+    line: 1234,
+    column: 5,
+  };
+  const GO_RUNTIME_FRAME = {
+    id: 3,
+    name: 'runtime.main',
+    sourcePath: '/usr/local/go/src/runtime/proc.go',
+    line: 250,
+    column: 1,
+  };
+
+  function seedStoppedSession() {
+    useDebugStore.setState({
+      session: {
+        sessionId: 's1',
+        projectId: 'p1',
+        projectPath: '/proj',
+        configName: 'cfg',
+        status: 'stopped',
+      },
+    });
+  }
+
+  it('should_park_third_party_stop_and_highlight_it', async () => {
+    seedStoppedSession();
+    dapStackTrace.mockResolvedValue([REGISTRY_FRAME]);
+
+    await useDebugStore.getState().refreshStackAndVars();
+
+    expect(dapControl).not.toHaveBeenCalledWith('s1', 'continue');
+    expect(useDebugStore.getState().selectedFrameId).toBe(7);
+    expect(useDebugStore.getState().stoppedAt).toEqual({
+      filePath: REGISTRY_FRAME.sourcePath,
+      line: 1234,
+      column: 5,
+    });
+  });
+
+  /// 回归：停在 JDK 方法、调用方是项目文件时，编辑器必须跟**栈顶 JDK 帧**。
+  /// 「优先项目帧」会把编辑器拉回调用方文件 → 用户看到「跳不到 System.out.println」。
+  it('should_open_the_library_stop_frame_not_the_caller_project_frame', async () => {
+    seedStoppedSession();
+    const jdkFrame = {
+      id: 1,
+      name: 'PrintStream.println(String)',
+      sourcePath:
+        '/Users/u/.neeko/java-src-cache/jdk-src-21.0.12.1/java.base/java/io/PrintStream.java',
+      line: 1167,
+      column: 1,
+    };
+    const callerFrame = {
+      id: 2,
+      name: 'ArrayTest.test1()',
+      sourcePath: '/proj/src/test/java/ArrayTest.java',
+      line: 7,
+      column: 1,
+    };
+    dapStackTrace.mockResolvedValue([jdkFrame, callerFrame]);
+
+    await useDebugStore.getState().refreshStackAndVars();
+
+    expect(useDebugStore.getState().selectedFrameId).toBe(1);
+    // stoppedAt 用**规范身份**（jdt 形态）：与 tab 身份、断点 key 同一套，
+    // 黄线判定退化为精确相等。
+    expect(useDebugStore.getState().stoppedAt?.filePath).toBe(
+      'jdt:/java.base/java/io/PrintStream.java',
+    );
+    // 打开时仍把「实际帧路径」（缓存文件）交给 navigate —— 身份归一在那一层做
+    expect(openSourceAtLine).toHaveBeenCalledWith(
+      'p1',
+      '/proj',
+      jdkFrame.sourcePath,
+      jdkFrame.line,
+      jdkFrame.column,
+      expect.objectContaining({ sessionId: 's1' }),
+    );
+  });
+
+  it('should_never_auto_continue_stdlib_stop', async () => {
+    seedStoppedSession();
+    dapStackTrace.mockResolvedValue([GO_RUNTIME_FRAME]);
+
+    await useDebugStore.getState().refreshStackAndVars();
+
+    expect(dapControl).not.toHaveBeenCalled();
+    expect(useDebugStore.getState().stoppedAt?.filePath).toBe(GO_RUNTIME_FRAME.sourcePath);
+  });
+
+  it('should_select_top_frame_without_highlight_when_no_frame_has_source', async () => {
+    seedStoppedSession();
+    dapStackTrace.mockResolvedValue([
+      { id: 9, name: 'native', sourcePath: null, line: 0, column: 0 },
+    ]);
+
+    await useDebugStore.getState().refreshStackAndVars();
+
+    expect(useDebugStore.getState().selectedFrameId).toBe(9);
+    expect(useDebugStore.getState().stoppedAt).toBeNull();
+  });
+
+  it('should_open_adapter_virtual_source_when_no_frame_has_a_path', async () => {
+    seedStoppedSession();
+    dapStackTrace.mockResolvedValue([
+      {
+        id: 11,
+        name: 'remote.frame',
+        sourcePath: null,
+        line: 3,
+        column: 0,
+        sourceReference: 42,
+        sourceName: 'Foo.java',
+      },
+    ]);
+
+    await useDebugStore.getState().refreshStackAndVars();
+
+    expect(useDebugStore.getState().selectedFrameId).toBe(11);
+    expect(useDebugStore.getState().stoppedAt).toEqual({
+      filePath: 'dap-source:/42/Foo.java',
+      line: 3,
+      column: 0,
+    });
+    expect(openVirtualSourceAtLine).toHaveBeenCalledWith(
+      'p1',
+      'Foo.java',
+      42,
+      3,
+      0,
+      expect.objectContaining({ sessionId: 's1' }),
+    );
+  });
+
+  it('should_open_path_source_when_a_frame_has_one', async () => {
+    seedStoppedSession();
+    dapStackTrace.mockResolvedValue([GO_RUNTIME_FRAME]);
+
+    await useDebugStore.getState().refreshStackAndVars();
+
+    expect(openSourceAtLine).toHaveBeenCalledWith(
+      'p1',
+      '/proj',
+      GO_RUNTIME_FRAME.sourcePath,
+      GO_RUNTIME_FRAME.line,
+      GO_RUNTIME_FRAME.column,
+      expect.objectContaining({ sessionId: 's1' }),
+    );
+    expect(openVirtualSourceAtLine).not.toHaveBeenCalled();
   });
 });

@@ -17,6 +17,7 @@ import {
   buildDebugLaunchConfig,
   buildGoDebugBuildCommand,
   buildJavaClasspath,
+  buildJavaClasspathEntries,
   buildJavaDebugCommand,
   buildJavaLauncherPath,
   buildJunitReportsDir,
@@ -825,6 +826,24 @@ describe('java launcher + classpath helpers', () => {
       '/proj/target/classes:/proj/target/test-classes:/root/.m2/a.jar',
     );
     expect(buildJavaClasspath('')).toBe('target/classes:target/test-classes');
+  });
+
+  it('should_expose_classpath_entries_for_host_source_lookup', () => {
+    expect(buildJavaClasspathEntries('/proj')).toEqual([
+      '/proj/target/classes',
+      '/proj/target/test-classes',
+    ]);
+    expect(buildJavaClasspathEntries('/proj', '/root/.m2/a.jar:/root/.m2/b.jar')).toEqual([
+      '/proj/target/classes',
+      '/proj/target/test-classes',
+      '/root/.m2/a.jar',
+      '/root/.m2/b.jar',
+    ]);
+    // 与拼接串同源：entries.join(':') === buildJavaClasspath(...)
+    const deps = '/root/.m2/a.jar:/root/.m2/b.jar';
+    expect(buildJavaClasspathEntries('/proj', deps).join(':')).toBe(
+      buildJavaClasspath('/proj', deps),
+    );
   });
 
   it('should_resolve_java_classpath_from_maven_artifact_read', async () => {

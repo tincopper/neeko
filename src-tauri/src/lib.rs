@@ -394,6 +394,8 @@ macro_rules! neeko_invoke_handler {
             $crate::dap::commands::dap_get_breakpoints,
             $crate::dap::commands::dap_control,
             $crate::dap::commands::dap_stack_trace,
+            $crate::dap::commands::dap_source_content,
+            $crate::dap::commands::dap_read_external_source,
             $crate::dap::commands::dap_variables,
             $crate::dap::commands::dap_variables_by_reference,
             $crate::dap::commands::dap_evaluate,

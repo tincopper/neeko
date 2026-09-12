@@ -21,7 +21,7 @@ import type { FileTab, Tab } from '@/shared/types';
 import { getLanguageExtension, preloadLanguageExtension } from '@/shared/utils/codemirror';
 import { fileRefFromLspUri, fileRefFromTabPath, sameFile } from '@/shared/utils/fileRef';
 import { getFileName, getTabId } from '@/shared/utils/fileTree';
-import { isJdtUri, jdtDisplayPath, tabLspDocumentUri } from '@/shared/utils/jdt';
+import { isJdtDisplayPath, isJdtUri, jdtDisplayPath, tabLspDocumentUri } from '@/shared/utils/jdt';
 
 import { applyNavigateCaret } from '../navigateCaret';
 
@@ -33,6 +33,25 @@ interface UseLspNavigationParams {
   tab: FileTab;
   lspLanguageIdRef: React.MutableRefObject<string | null>;
   editorViewRef: React.MutableRefObject<EditorView | null>;
+}
+
+/**
+ * 编辑器 tab 的 LSP 文档 uri；无法确定返回 null（调用方跳过该 LSP 功能）。
+ *
+ * 三态来源：tab 自带的原始 `jdt://…?<query>` → 派生的 jdt 文档 uri → 常规文件 uri。
+ * **守卫**：`jdt:/…` 展示身份（如调试停点打开的 JDK 源码 —— 只有解压缓存内容、
+ * 没有原始 uri）不存在对应 jdtls 文档，必须返回 null，不得退回 `file://jdt:/…`
+ * 这种 jdtls 认不出的伪造 uri。
+ */
+export function resolveLspDocumentUri(
+  tab: { filePath: string; virtualUri?: string; content?: { path: string } },
+  projectPath: string,
+): string | null {
+  if (tab.virtualUri) return tab.virtualUri;
+  const derived = tabLspDocumentUri(tab);
+  if (derived) return derived;
+  if (isJdtDisplayPath(tab.filePath)) return null;
+  return projectPath ? toFileUri(projectPath, tab.filePath) : null;
 }
 
 export function useLspNavigation({
@@ -197,10 +216,8 @@ export function useLspNavigation({
       const lineObj = view.state.doc.lineAt(pos);
       const line = lineObj.number - 1;
       const character = pos - lineObj.from;
-      const uri =
-        tab.virtualUri ??
-        tabLspDocumentUri(tab) ??
-        (projectPath ? toFileUri(projectPath, tab.filePath) : '');
+      const uri = resolveLspDocumentUri(tab, projectPath);
+      if (!uri) return false;
 
       // eslint-disable-next-line react-hooks/purity -- performance.now() in callback, not during render
       definition.goToDefinitionWithContent(lid, uri, line, character).then((result) => {
@@ -227,10 +244,8 @@ export function useLspNavigation({
       const lineObj = view.state.doc.lineAt(pos);
       const line = lineObj.number - 1;
       const character = pos - lineObj.from;
-      const uri =
-        tab.virtualUri ??
-        tabLspDocumentUri(tab) ??
-        (projectPath ? toFileUri(projectPath, tab.filePath) : '');
+      const uri = resolveLspDocumentUri(tab, projectPath);
+      if (!uri) return false;
 
       // Best-effort symbol name for the palette title
       const word = view.state.wordAt(pos);
@@ -258,7 +273,8 @@ export function useLspNavigation({
     const runFileStructure = (): boolean => {
       const lid = lspLanguageIdRef.current;
       if (!lid || !projectPath) return false;
-      const uri = tab.virtualUri ?? tabLspDocumentUri(tab) ?? toFileUri(projectPath, tab.filePath);
+      const uri = resolveLspDocumentUri(tab, projectPath);
+      if (!uri) return false;
       useSymbolNavStore.getState().openStructure({
         projectId: tab.projectId,
         projectPath,

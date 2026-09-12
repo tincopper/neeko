@@ -8,6 +8,7 @@ import {
   exclusiveOpenDebugPanel,
   registerDebugPanelCloser,
 } from '@/shared/utils/bottomPanelExclusive';
+import { sourceIdentityOf } from '@/shared/utils/fileRef';
 import { safeUnlisten } from '@/shared/utils/safeUnlisten';
 import { stripAnsi } from '@/shared/utils/stripAnsi';
 
@@ -29,8 +30,9 @@ import {
   dapVariablesByReference,
   debugJavaAttach,
 } from '../api/debugApi';
-import { openSourceAtLine } from '../navigate';
-import { pickNavigateFrame, shouldAutoContinueSystemStop } from '../stackFrames';
+import { openSourceAtLine, openVirtualSourceAtLine } from '../navigate';
+import { virtualSourceIdentity } from '../sourceContent';
+import { pickStopFrame } from '../stackFrames';
 import type {
   BreakpointSpec,
   ConsoleLine,
@@ -59,14 +61,6 @@ const CLEAR_EXPANSION = {
   loadingRefs: {},
   varErrors: {},
 } as const;
-
-/** Cap auto-continue through runtime so we never loop forever. */
-const MAX_SYSTEM_AUTO_CONTINUE = 48;
-let systemAutoContinueCount = 0;
-
-function resetSystemAutoContinue() {
-  systemAutoContinueCount = 0;
-}
 
 interface DebugState {
   configs: LaunchConfig[];
@@ -104,13 +98,15 @@ interface DebugState {
   startWithConfig: (projectId: string, config: LaunchConfig) => Promise<void>;
   /**
    * Java attach-first（J3）：后端单条命令 spawn 测试 JVM（jdwp suspend=y）→
-   * 解析端口 → JavaAdapter attach 会话。command 为 buildJavaDebugCommand 产物。
+   * 解析端口 → JavaAdapter attach 会话。command 为 buildJavaDebugCommand 产物；
+   * classpath 为 debuggee 运行时 classpath 条目（供 host 解析库源码）。
    */
   startJavaAttach: (
     projectId: string,
     command: string,
     cwd: string,
     testName: string,
+    classpath: string[],
   ) => Promise<void>;
   /** Debug a discovered entry (ensures matching launch config). */
   debugEntry: (projectId: string, entry: EntryPoint, currentFile?: string | null) => Promise<void>;
@@ -123,7 +119,7 @@ interface DebugState {
   loadBreakpoints: (projectId: string) => Promise<void>;
   getFileBreakpoints: (projectId: string, filePath: string) => readonly number[];
   listAllBreakpoints: (projectId: string) => BreakpointSpec[];
-  refreshStackAndVars: (opts?: { reason?: string | null }) => Promise<void>;
+  refreshStackAndVars: () => Promise<void>;
   selectFrame: (frameId: number) => Promise<void>;
   /** Expand / collapse a variable node (lazy-fetches children via DAP). */
   toggleVariableExpand: (variablesReference: number) => Promise<void>;
@@ -401,7 +397,6 @@ export const useDebugStore = create<DebugState>((rawSet, get) => {
 
     start: async (projectId, currentFile) => {
       // Fresh session: clear previous console output (do not append across runs).
-      resetSystemAutoContinue();
       resetSessionState();
       let name = get().selectedConfigName;
       let config = get().configs.find((c) => c.name === name);
@@ -425,16 +420,15 @@ export const useDebugStore = create<DebugState>((rawSet, get) => {
     },
 
     startWithConfig: async (projectId, config) => {
-      resetSystemAutoContinue();
       resetSessionState();
       await launchSession(projectId, config, () => dapStartSessionConfig(projectId, config));
     },
 
     /** Java attach-first（J3）：spawn 测试 JVM + attach 全流程在单条后端命令内完成，
      *  返回的 DapSessionInfo 与 startWithConfig 同构。config 仅用于 adapter 可用性
-     *  检查（type:'java'）；port 由后端解析 jdwp 端口后填充进 attach 请求。 */
-    startJavaAttach: async (projectId, command, cwd, testName) => {
-      resetSystemAutoContinue();
+     *  检查（type:'java'）；port 由后端解析 jdwp 端口后填充进 attach 请求。
+     *  classpath 供 host 解析第三方库 / JDK 源码（经 attach 载荷 sourcePaths 送达）。 */
+    startJavaAttach: async (projectId, command, cwd, testName, classpath) => {
       resetSessionState();
       // 回显真实执行命令（reset 之后推，否则被清空；用户可复制复现排查）。
       get().pushConsole('sys', `$ ${command}`);
@@ -446,7 +440,7 @@ export const useDebugStore = create<DebugState>((rawSet, get) => {
         stopOnEntry: false,
       };
       await launchSession(projectId, config, () =>
-        debugJavaAttach(projectId, command, cwd, testName),
+        debugJavaAttach(projectId, command, cwd, testName, classpath),
       );
     },
 
@@ -483,7 +477,6 @@ export const useDebugStore = create<DebugState>((rawSet, get) => {
 
     stop: async () => {
       const sid = get().session?.sessionId;
-      resetSystemAutoContinue();
       if (sid) {
         try {
           await dapStopSession(sid);
@@ -608,11 +601,10 @@ export const useDebugStore = create<DebugState>((rawSet, get) => {
       return n;
     },
 
-    refreshStackAndVars: async (opts) => {
+    refreshStackAndVars: async () => {
       const sid = get().session?.sessionId;
       const session = get().session;
       if (!sid || !session || !isLiveSession(session)) return;
-      const stopReason = opts?.reason ?? null;
 
       // New stopped context: previously fetched child variables are stale.
       set({ ...CLEAR_EXPANSION });
@@ -633,32 +625,19 @@ export const useDebugStore = create<DebugState>((rawSet, get) => {
           return;
         }
 
-        const projectPath = live.projectPath || '';
-        const nav = pickNavigateFrame(frames, projectPath);
-
-        // Just My Code: step/stop landed only in runtime — keep going until user
-        // code, next breakpoint, or process exit. Do not open runtime/proc.go.
-        if (shouldAutoContinueSystemStop(frames, projectPath, stopReason)) {
-          set({ stoppedAt: null, selectedFrameId: frames[0]?.id ?? null, variables: [] });
-          if (systemAutoContinueCount < MAX_SYSTEM_AUTO_CONTINUE) {
-            systemAutoContinueCount += 1;
-            if (stillLive()) {
-              void get().control('continue');
-            }
-          }
-          return;
-        }
-
-        resetSystemAutoContinue();
-
-        // Keep Call Stack selection on navigable user frame when possible.
+        // 停止位置 = 栈顶第一个带源码的帧（编辑器跟随栈顶帧，与 IDE 一致）。
+        // 不再优先项目帧：那会把「单步进入 JDK / 库」跳回调用方文件。
+        const nav = pickStopFrame(frames);
         const selected = nav ?? frames[0];
         set({ selectedFrameId: selected.id });
 
+        const onOpenError = (message: string) => get().pushConsole('err', message);
         if (nav?.sourcePath) {
+          // stoppedAt 与 tab 身份同一套规范（JDK 缓存路径收敛成 jdt 身份），
+          // 黄线判定退化为精确相等，不需要任何别名归一。
           set({
             stoppedAt: {
-              filePath: nav.sourcePath,
+              filePath: sourceIdentityOf(live.projectPath, nav.sourcePath),
               line: nav.line,
               column: nav.column,
             },
@@ -669,6 +648,27 @@ export const useDebugStore = create<DebugState>((rawSet, get) => {
             nav.sourcePath,
             nav.line,
             nav.column,
+            {
+              sessionId: sid,
+              onError: onOpenError,
+            },
+          );
+        } else if (nav?.sourceReference) {
+          const identity = virtualSourceIdentity(nav.sourceReference, nav.sourceName);
+          set({
+            stoppedAt: {
+              filePath: identity,
+              line: nav.line,
+              column: nav.column,
+            },
+          });
+          void openVirtualSourceAtLine(
+            live.projectId,
+            nav.sourceName,
+            nav.sourceReference,
+            nav.line,
+            nav.column,
+            { sessionId: sid, onError: onOpenError },
           );
         } else {
           set({ stoppedAt: null });
@@ -717,6 +717,14 @@ export const useDebugStore = create<DebugState>((rawSet, get) => {
         set({
           stoppedAt: {
             filePath: frame.sourcePath,
+            line: frame.line,
+            column: frame.column,
+          },
+        });
+      } else if (frame?.sourceReference) {
+        set({
+          stoppedAt: {
+            filePath: virtualSourceIdentity(frame.sourceReference, frame.sourceName),
             line: frame.line,
             column: frame.column,
           },
@@ -793,10 +801,6 @@ export const useDebugStore = create<DebugState>((rawSet, get) => {
 
           if (kind === 'stopped') {
             if (session?.sessionId && session.sessionId !== sessionId) return;
-            const reason =
-              typeof body === 'object' && body && 'reason' in body
-                ? String((body as { reason?: string }).reason ?? '')
-                : '';
             // Merge status even if start() hasn't set session yet (use payload ids).
             const base =
               session?.sessionId === sessionId
@@ -814,8 +818,7 @@ export const useDebugStore = create<DebugState>((rawSet, get) => {
               panelTab: 'session',
             });
             // No Debug Console spam for stop/step — toolbar + Call Stack already show state.
-            // System-only stops auto-continue inside refresh (Just My Code).
-            void get().refreshStackAndVars({ reason });
+            void get().refreshStackAndVars();
           } else if (kind === 'continued') {
             set({
               session: session ? { ...session, status: 'running' } : session,
@@ -824,7 +827,6 @@ export const useDebugStore = create<DebugState>((rawSet, get) => {
             });
           } else if (kind === 'terminated') {
             // Always clear stack/vars (status may already be terminated via dap-session-status).
-            resetSystemAutoContinue();
             const alreadyEnded = session?.status === 'terminated';
             set({
               ...endedSessionPatch(session),
@@ -871,7 +873,6 @@ export const useDebugStore = create<DebugState>((rawSet, get) => {
           const info = event.payload;
           const cur = get().session;
           if (info.status === 'terminated' || info.status === 'ended') {
-            resetSystemAutoContinue();
             set({
               ...endedSessionPatch(
                 cur?.sessionId === info.sessionId ? { ...cur, ...info } : info,

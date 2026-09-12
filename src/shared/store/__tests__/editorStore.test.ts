@@ -247,6 +247,72 @@ describe('editorStore.updateTab — browser 标题/favicon 同步', () => {
   });
 });
 
+describe('editorStore.updateTab — file tab 只读字段透传（mergeTabData）', () => {
+  beforeEach(() => {
+    useEditorStore.setState({ tabs: {}, editorLayout: {}, activeTabId: null });
+  });
+
+  function seedReadonlyTab() {
+    useEditorStore.getState().addTab('p1', {
+      id: 'tf1',
+      projectId: 'p1',
+      title: 'Foo.java',
+      order: 0,
+      data: {
+        kind: 'file',
+        filePath: 'jdt:/java.base/java/lang/Foo.java',
+        fileName: 'Foo.java',
+        content: 'class Foo {}',
+        isDirty: false,
+        readOnly: true,
+        virtualUri: 'jdt://java.base/java/lang/Foo.java',
+      },
+    });
+  }
+
+  const tabOf = () => useEditorStore.getState().tabs['p1']!.tabs.find((t) => t.id === 'tf1')!;
+
+  it('externallyModified 刷新不剥离 readOnly / virtualUri', () => {
+    seedReadonlyTab();
+    useEditorStore.getState().updateTab('p1', 'tf1', { externallyModified: true });
+
+    const data = tabOf().data;
+    expect(data.kind === 'file' && data.readOnly).toBe(true);
+    expect(data.kind === 'file' && data.virtualUri).toBe('jdt://java.base/java/lang/Foo.java');
+  });
+
+  it('content 刷新不剥离 readOnly / virtualUri', () => {
+    seedReadonlyTab();
+    useEditorStore.getState().updateTab('p1', 'tf1', {
+      content: { path: 'jdt:/x', content: 'new', size: 3, is_binary: false },
+    });
+
+    const data = tabOf().data;
+    expect(data.kind === 'file' && data.readOnly).toBe(true);
+    expect(data.kind === 'file' && data.content.content).toBe('new');
+  });
+
+  it('显式写入 readOnly / virtualUri 时生效', () => {
+    useEditorStore.getState().addTab('p1', {
+      id: 'tf2',
+      projectId: 'p1',
+      title: 'Bar.rs',
+      order: 0,
+      data: {
+        kind: 'file',
+        filePath: 'src/lib.rs',
+        fileName: 'lib.rs',
+        content: '',
+        isDirty: false,
+      },
+    });
+    useEditorStore.getState().updateTab('p1', 'tf2', { readOnly: true });
+
+    const data = useEditorStore.getState().tabs['p1']!.tabs.find((t) => t.id === 'tf2')!.data;
+    expect(data.kind === 'file' && data.readOnly).toBe(true);
+  });
+});
+
 describe('editorStore.unpinTabTo — 拖拽 unpin 到指定组', () => {
   beforeEach(() => {
     useEditorStore.setState({

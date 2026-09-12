@@ -144,6 +144,7 @@ pub fn expand_config(
         port: cfg.port,
         pre_launch_task: cfg.pre_launch_task.as_ref().map(|p| expand(p)),
         stop_on_entry: cfg.stop_on_entry,
+        classpath: cfg.classpath.clone(),
     }
 }
 

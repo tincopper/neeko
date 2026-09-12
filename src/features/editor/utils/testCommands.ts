@@ -224,6 +224,21 @@ export function buildJavaLauncherPath(home: string | null | undefined): string {
 }
 
 /**
+ * Java classpath **条目**（未拼接形态）：`<root>/target/classes`、
+ * `<root>/target/test-classes`、其后接 Maven 依赖条目。
+ *
+ * `buildJavaClasspath` 的拼接串只能交给 `--class-path`；调试链路还需要逐条
+ * classpath（host 侧据此解析第三方库 / JDK 源码），故在此分流 —— 分隔符语义
+ * 与拼接同源（`:`），`deps` 已在 `parseClasspathOutput` 归一（无空条目）。
+ */
+export function buildJavaClasspathEntries(runRoot: string, deps = ''): string[] {
+  const base = runRoot ? `${runRoot}/` : '';
+  const entries = [`${base}target/classes`, `${base}target/test-classes`];
+  if (deps) entries.push(...deps.split(':').filter((entry) => entry.length > 0));
+  return entries;
+}
+
+/**
  * Java 测试运行时 classpath：`<root>/target/classes:<root>/target/test-classes[:<deps>]`。
  * deps 为 `mvn dependency:build-classpath` 产物（.neeko/java-classpath.txt，
  * parseClasspathOutput 解析）；Maven 自编译输出目录手工前置拼接（research §3.1：
@@ -235,10 +250,7 @@ export function buildJavaLauncherPath(home: string | null | undefined): string {
  * 类能加载的前提。
  */
 export function buildJavaClasspath(runRoot: string, deps = ''): string {
-  const base = runRoot ? `${runRoot}/` : '';
-  const cp = [`${base}target/classes`, `${base}target/test-classes`];
-  if (deps) cp.push(deps);
-  return cp.join(':');
+  return buildJavaClasspathEntries(runRoot, deps).join(':');
 }
 
 /** 文本读取探针：java 分支读取 Maven classpath 产物；返回 null 表示缺失/读取失败。 */

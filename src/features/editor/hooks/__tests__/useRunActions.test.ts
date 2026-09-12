@@ -1155,6 +1155,7 @@ describe('useRunActions', () => {
           " -cp '/tmp/proj/target/classes:/tmp/proj/target/test-classes' com.example.App",
         '/tmp/proj',
         'main',
+        ['/tmp/proj/target/classes', '/tmp/proj/target/test-classes'],
       );
     });
 
@@ -1649,6 +1650,7 @@ describe('useRunActions', () => {
           " -m 'com.example.CalculatorTest#testAdd' --reports-dir='/tmp/proj/.neeko/junit-reports'",
         '/tmp/proj',
         'testAdd',
+        ['/tmp/proj/target/classes', '/tmp/proj/target/test-classes'],
       );
       // 不触发无头构建（debug_build_test_binary 仅用于 mvn classpath 生成；无 pom 时零调用）
       expect(mockInvoke.mock.calls.some((c) => c[0] === 'debug_build_test_binary')).toBe(false);
@@ -1675,6 +1677,7 @@ describe('useRunActions', () => {
         expect.stringContaining("--reports-dir='/tmp/wt/neeko/.neeko/junit-reports'"),
         '/tmp/wt/neeko',
         'testAdd',
+        ['/tmp/wt/neeko/target/classes', '/tmp/wt/neeko/target/test-classes'],
       );
     });
 
@@ -1735,6 +1738,10 @@ describe('useRunActions', () => {
           " --reports-dir='/tmp/proj/learning-algorithm/.neeko/junit-reports'",
         '/tmp/proj/learning-algorithm',
         'test0',
+        [
+          '/tmp/proj/learning-algorithm/target/classes',
+          '/tmp/proj/learning-algorithm/target/test-classes',
+        ],
       );
     });
 

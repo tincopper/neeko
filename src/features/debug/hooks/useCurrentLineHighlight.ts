@@ -9,7 +9,12 @@ function normalizePath(p: string): string {
   return p.replace(/\\/g, '/').replace(/\/+$/, '');
 }
 
-/** Loose path equality for DAP abs paths vs editor relative/abs paths. */
+/**
+ * Loose path equality for DAP abs paths vs editor relative/abs paths.
+ *
+ * 两侧都已是**规范源身份**（见 `sourceIdentityOf`：tab 身份、`stoppedAt.filePath`
+ * 同一套归一），故这里只做路径形态容错，不再承担身份转换职责。
+ */
 export function debugPathsMatch(a: string, b: string): boolean {
   const na = normalizePath(a);
   const nb = normalizePath(b);

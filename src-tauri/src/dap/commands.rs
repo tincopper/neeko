@@ -9,8 +9,10 @@ use super::build;
 use super::discover::EntryPoint;
 use super::manager::DapManager;
 use super::types::{
-    BreakpointSpec, DapSessionInfo, DebugBuildOutput, LaunchConfig, StackFrameDto, VariableDto,
+    BreakpointSpec, DapSessionInfo, DebugBuildOutput, JavaDebugTarget, LaunchConfig, StackFrameDto,
+    VariableDto,
 };
+use crate::common::types::FileContent;
 use crate::AppError;
 use crate::AppStateWrapper;
 
@@ -147,6 +149,36 @@ pub async fn dap_stack_trace(
     state.dap_manager.stack_trace(&session_id).await
 }
 
+/// Fetch the source content behind a DAP `sourceReference` (adapters that keep
+/// sources off-disk: remote debuggees, debuggee-provided sources).
+#[tauri::command]
+pub async fn dap_source_content(
+    session_id: String,
+    source_reference: i64,
+    state: State<'_, AppStateWrapper>,
+) -> Result<String, AppError> {
+    state
+        .dap_manager
+        .source_content(&session_id, source_reference)
+        .await
+}
+
+/// Read a stopped stack frame's source file even when it lives outside the
+/// project root (third-party / stdlib code), read-only.
+///
+/// 授权模型见 [`super::external_source`]：凭据是「会话正停在该路径」，由
+/// manager 复核当前调用栈；单次读取设 512KB 上限。前端在项目内读取失败后
+/// 兜底调用，失败不建 tab。
+#[tauri::command]
+pub async fn dap_read_external_source(
+    project_id: String,
+    session_id: String,
+    path: String,
+    state: State<'_, AppStateWrapper>,
+) -> Result<FileContent, AppError> {
+    super::external_source::read_external_source(&state, &project_id, &session_id, &path).await
+}
+
 /// Get variables for a stack frame.
 #[tauri::command]
 pub async fn dap_variables(
@@ -210,17 +242,26 @@ pub async fn debug_build_test_binary(
 /// Java attach-first 调试：spawn 测试 JVM（Console Launcher + jdwp suspend=y，
 /// `command` 由前端 buildJavaDebugCommand 构造）→ 解析 jdwp 端口 →
 /// JavaAdapter attach 会话。整段编排在 DapManager 内（JVM 生命周期随会话清理）。
+/// `classpath` 为 debuggee 运行时 classpath 条目（前端 buildJavaClasspathEntries），
+/// 供 host 解析库源码（详见 [`DapManager::start_java_attach`]）。
 #[tauri::command]
 pub async fn debug_java_attach(
     project_id: String,
     command: String,
     cwd: String,
     test_name: String,
+    classpath: Vec<String>,
     state: State<'_, AppStateWrapper>,
     app: AppHandle,
 ) -> Result<DapSessionInfo, AppError> {
+    let target = JavaDebugTarget {
+        command,
+        cwd,
+        test_name,
+        classpath,
+    };
     state
         .dap_manager
-        .start_java_attach(&state, app, &project_id, &command, &cwd, &test_name)
+        .start_java_attach(&state, app, &project_id, &target)
         .await
 }

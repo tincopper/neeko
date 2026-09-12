@@ -1,5 +1,7 @@
 import { invoke } from '@tauri-apps/api/core';
 
+import type { FileContent } from '@/shared/types';
+
 import type {
   BreakpointSpec,
   DapSessionInfo,
@@ -40,14 +42,23 @@ export function dapStartSessionConfig(
   return invoke<DapSessionInfo>('dap_start_session_config', { projectId, config });
 }
 
-/** Java attach-first（J3）：后端 spawn 测试 JVM（jdwp suspend=y）→ 解析端口 → attach 会话。 */
+/** Java attach-first（J3）：后端 spawn 测试 JVM（jdwp suspend=y）→ 解析端口 → attach 会话。
+ *  `classpath` 为 debuggee 运行时 classpath 条目：随 attach 载荷的 `sourcePaths`
+ *  送达 host，供其解析第三方库 / JDK 源码。 */
 export function debugJavaAttach(
   projectId: string,
   command: string,
   cwd: string,
   testName: string,
+  classpath: string[],
 ): Promise<DapSessionInfo> {
-  return invoke<DapSessionInfo>('debug_java_attach', { projectId, command, cwd, testName });
+  return invoke<DapSessionInfo>('debug_java_attach', {
+    projectId,
+    command,
+    cwd,
+    testName,
+    classpath,
+  });
 }
 
 export function dapStopSession(sessionId: string): Promise<void> {
@@ -82,6 +93,27 @@ export function dapControl(sessionId: string, action: string): Promise<void> {
 
 export function dapStackTrace(sessionId: string): Promise<StackFrameDto[]> {
   return invoke<StackFrameDto[]>('dap_stack_trace', { sessionId });
+}
+
+/**
+ * Fetch the source content behind a DAP `sourceReference` — adapters that keep
+ * sources off-disk (remote debuggees, debuggee-provided sources).
+ */
+export function dapSourceContent(sessionId: string, sourceReference: number): Promise<string> {
+  return invoke<string>('dap_source_content', { sessionId, sourceReference });
+}
+
+/**
+ * Read the source of a stack frame that lives outside the project root
+ * (third-party / stdlib code), read-only. Authorized only while the session is
+ * stopped at that exact frame path.
+ */
+export function dapReadExternalSource(
+  projectId: string,
+  sessionId: string,
+  path: string,
+): Promise<FileContent> {
+  return invoke<FileContent>('dap_read_external_source', { projectId, sessionId, path });
 }
 
 export function dapVariables(sessionId: string, frameId: number): Promise<VariableDto[]> {

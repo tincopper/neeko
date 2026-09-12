@@ -17,6 +17,7 @@ import { isLspLanguageReady } from '../utils/lspReadiness';
 import { resolveRunContext } from '../utils/runLanguages';
 import type { TestCaseInfo } from '../utils/testCases';
 import {
+  buildJavaClasspathEntries,
   buildJavaDebugCommand,
   buildJavaLauncherPath,
   buildMainJavaDebugCommand,
@@ -217,10 +218,13 @@ export async function debugJava(target: RunTarget, ctx: TestActionContext): Prom
     // `@Nested` 内层类链（同 Run 链路）：降级时原样 → 选择器与历史一致。
     const testCase = await withJavaNestedClassPath(ctx, target.testCase);
     const command = buildJavaDebugCommand(testCase, ctx.filePath, javaRoot, runCtx);
+    // 逐条 classpath 交给 host：JDI 栈帧只有包相对源码路径，host 需要 classpath
+    // 才能定位依赖 jar 的 sources / JDK src.zip（详见 JavaAdapter/Host 注释）。
+    const classpath = buildJavaClasspathEntries(javaRoot, runCtx.javaDeps);
     try {
       await useDebugStore
         .getState()
-        .startJavaAttach(ctx.projectId, command, javaRoot, testCase.name);
+        .startJavaAttach(ctx.projectId, command, javaRoot, testCase.name, classpath);
     } catch {
       // launchSession 错误路径已处理（console + 通知），此处不重复
     }
@@ -230,8 +234,11 @@ export async function debugJava(target: RunTarget, ctx: TestActionContext): Prom
   const javaEnv = await prepareJavaMainRun(ctx, javaRoot);
   const runCtx = await resolveRunContext('java', ctx.filePath, javaRoot, { javaEnv });
   const command = buildMainJavaDebugCommand(ctx.filePath, javaRoot, runCtx);
+  const classpath = buildJavaClasspathEntries(javaRoot, runCtx.javaDeps);
   try {
-    await useDebugStore.getState().startJavaAttach(ctx.projectId, command, javaRoot, 'main');
+    await useDebugStore
+      .getState()
+      .startJavaAttach(ctx.projectId, command, javaRoot, 'main', classpath);
   } catch {
     // launchSession 错误路径已处理（console + 通知），此处不重复
   }

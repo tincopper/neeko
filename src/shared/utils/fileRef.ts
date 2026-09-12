@@ -182,6 +182,67 @@ export function tabIdentityOf(ref: FileRef): string {
 }
 
 /**
+ * **源码身份的唯一边界**：把任意「源引用」归一到规范 tab 身份。
+ *
+ * 同一份源码只允许有一种身份 —— tab、断点 key、黄线、导航历史全部以它为准，
+ * 因此不在消费侧做别名匹配（那只是把重复身份藏起来，断点仍会两套 key）。
+ *
+ * 归一规则：
+ * - JDK 解压缓存路径（`…/java-src-cache/jdk-src-<ver>/<module>/<pkg>/<Name>.java`）
+ *   → `jdt:/<module>/<pkg>/<Name>.java`：与「Cmd+Click 打开的 jdt 虚拟页」同一身份
+ *   （两者是同一份 src.zip 源码的两种表示）；
+ * - jdt 展示路径 → 原样（`tabIdentityOf` 幂等）；
+ * - 其余 → canonical 绝对路径。
+ *
+ * **限制（刻意保留，非疏漏）**：这里选择的是「**表示形式**」中最通用的一种做规范
+ * 身份，而不是「它代表的东西」（`java.io.PrintStream` 这个类）。理论最优是后者 ——
+ * 内容由「谁持有这份源码」按表示提供、完全不需要解析任何路径布局。之所以没做：
+ * DAP 的 `Source` 只有 `path`，没有类名字段（我们的 host 能算出 FQN，但塞不进
+ * java-debug 的 `Source` 结构）。要升级需新增 host↔Rust 协议面，收益/代价不划算。
+ * 因此当前是**当前协议约束下的最优**；若将来协议能带类名，本函数应随之收敛为
+ * 「类身份」。
+ *
+ * **禁止对 jdt 形态调用 `canonicalFsPath`**：`jdt:/…` 不以 `/` 开头，会被当相对
+ * 路径拼上项目根，得到 `<root>/jdt:/…` 这种不存在的路径；而 adapter 侧要靠
+ * `jdt:/` 前缀解析出 module/pkg 段推全限定类名 —— 拼根后前缀消失，断点退化成
+ * 默认包类名，永远 `verified: false`（表现为「在库源码里打了断点却停不下来」）。
+ *
+ * 注：无模块段的 src.zip（JDK ≤ 8）与依赖 jar 的 `-sources.jar` 解压产物没有
+ * 等价的 jdt 身份，退化为 canonical 路径身份 —— 只是不复用，不影响正确性。
+ */
+export function sourceIdentityOf(projectRoot: string, p: string): string {
+  const jdtIdentity = jdtIdentityOfJdkCachePath(p);
+  if (jdtIdentity) return jdtIdentity;
+  return tabIdentityOf(fileRefFromTabPath(projectRoot, p));
+}
+
+/**
+ * JDK 源码解压缓存标记（host `ClasspathSources` 产出：
+ * `…/java-src-cache/jdk-src-<ver>/<module>/<pkg 段…>/<Name>.java`）。
+ *
+ * 这是**跨语言契约**：host 刻意保留模块段就是为让前端能还原 jdt 身份。两侧各有
+ * 测试锁定（host `SimpleSourceLookUpProviderTest` / 本模块 `fileRef.test.ts`）。
+ */
+const JDK_CACHE_MARKER = '/java-src-cache/jdk-src-';
+
+/**
+ * JDK 解压缓存路径 → jdt 身份；非 JDK 缓存路径返回 null。
+ *
+ * 实现细节，只服务 {@link sourceIdentityOf}：缓存布局解析不对外暴露，避免调用方
+ * 各自反解 host 布局（那会把「布局知识」散布到多个 feature）。
+ */
+function jdtIdentityOfJdkCachePath(p: string): string | null {
+  const norm = p.replaceAll('\\', '/');
+  const marker = norm.indexOf(JDK_CACHE_MARKER);
+  if (marker < 0) return null;
+  const afterMarker = norm.slice(marker + JDK_CACHE_MARKER.length);
+  const versionEnd = afterMarker.indexOf('/');
+  if (versionEnd < 0) return null;
+  const jdt = parseJdtClassPath(afterMarker.slice(versionEnd + 1));
+  return jdt ? tabIdentityOf({ kind: 'jdt', ...jdt }) : null;
+}
+
+/**
  * LSP 文档 uri 推导：fs → `file://${path}`；jdt 需原始 query 才能重建，
  * `jdtQuery` 缺省返回 null。注意 jdt 身份的扩展名已 canonical 为 `.java`，
  * 反编译类（`.class` 源）的原始 uri 无法从 ref 逐字重建——需要原始 uri 时

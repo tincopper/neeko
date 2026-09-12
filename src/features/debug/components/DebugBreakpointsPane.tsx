@@ -3,7 +3,8 @@ import React, { useCallback, useMemo } from 'react';
 import { CircleDot, X } from '@/shared/components/icons';
 import { useProjectStore } from '@/shared/store/projectStore';
 
-import { openSourceAtLine, activeProjectPaths } from '../navigate';
+import { activeProjectPaths } from '../navigate';
+import { openStopSource } from '../openStopSource';
 import { useDebugStore } from '../store/debugStore';
 
 import { EmptyHint } from './PanePrimitives';
@@ -25,7 +26,7 @@ function DebugBreakpointsPane() {
   const handleBpClick = useCallback(async (filePath: string, line: number) => {
     const paths = activeProjectPaths();
     if (!paths) return;
-    await openSourceAtLine(paths.projectId, paths.projectPath, filePath, line, 1);
+    await openStopSource(paths.projectId, paths.projectPath, filePath, line, 1);
   }, []);
 
   return (

@@ -14,7 +14,8 @@ use super::discover::{discover_entries, entry_to_launch_config, EntryPoint};
 use super::java_debuggee::JavaDebuggee;
 use super::session::DapSession;
 use super::types::{
-    BreakpointSpec, DapSessionInfo, LaunchConfig, LaunchFile, StackFrameDto, VariableDto,
+    BreakpointSpec, DapSessionInfo, JavaDebugTarget, LaunchConfig, LaunchFile, SessionStatus,
+    StackFrameDto, VariableDto,
 };
 use crate::common::executor::factory::ExecTarget;
 use crate::common::executor::ProcessGuard;
@@ -354,15 +355,23 @@ impl DapManager {
     /// `address=0` 让 JVM 自选空闲端口并打印
     /// `Listening for transport dt_socket at address: <port>`（stdout），
     /// host 侧 attach 走 SocketAttachingConnector（无 classPaths 校验）。
+    ///
+    /// `classpath` 为 debuggee 的运行时 classpath 条目（前端
+    /// `buildJavaClasspathEntries` 产物）：随 attach 载荷的 `sourcePaths` 送达
+    /// host，供其解析第三方库 / JDK 源码（见 `adapter::java`）。
     pub async fn start_java_attach(
         &self,
         state: &AppStateWrapper,
         app: tauri::AppHandle,
         project_id: &str,
-        command: &str,
-        cwd: &str,
-        test_name: &str,
+        target: &JavaDebugTarget,
     ) -> Result<DapSessionInfo, AppError> {
+        let JavaDebugTarget {
+            command,
+            cwd,
+            test_name,
+            classpath,
+        } = target;
         if command.trim().is_empty() {
             return Err(AppError::InvalidInput(
                 "java debug command must not be empty".into(),
@@ -379,7 +388,7 @@ impl DapManager {
         let command = if matches!(target, ExecTarget::Local) && cfg!(windows) {
             super::launch_support::windows_cmd_quote(command)
         } else {
-            command.to_string()
+            command.clone()
         };
         let (shell, args) = super::launch_support::build_shell_argv(&command);
 
@@ -403,6 +412,7 @@ impl DapManager {
             port: Some(port),
             pre_launch_task: None,
             stop_on_entry: Some(false),
+            classpath: classpath.clone(),
         };
         // guard 随会话条目落库 → 停止/替换/进程退出统一收敛（单一清理路径）。
         match self
@@ -513,6 +523,50 @@ impl DapManager {
     /// 当前暂停点的调用栈。
     pub async fn stack_trace(&self, session_id: &str) -> Result<Vec<StackFrameDto>, AppError> {
         self.require_session(session_id).await?.stack_trace().await
+    }
+
+    /// 按 `sourceReference` 取回虚拟源码（适配器侧不落盘的源码）。
+    pub async fn source_content(
+        &self,
+        session_id: &str,
+        source_reference: i64,
+    ) -> Result<String, AppError> {
+        self.require_session(session_id)
+            .await?
+            .source_content(source_reference)
+            .await
+    }
+
+    /// 外部源码只读读取的授权校验（凭据 = 「调试器正停在该文件」）。
+    ///
+    /// 会话存在 → 项目匹配 → 处于 Stopped → `path` 命中当前调用栈某一帧路径。
+    ///
+    /// 缺会话沿用 `require_session` 的统一 `NotFound`（模块契约：会话级操作只有
+    /// 这一条查找路径）；**路径授权**相关的一切失败（项目不符 / 未停止 / 取栈失败 /
+    /// 路径不匹配）统一返回同一拒绝错误，不暴露「该路径是否属于当前停止点」——
+    /// 差异化文案会把本命令变成路径探针。栈帧重取即真相，无需授权状态表。
+    pub async fn assert_stopped_at_path(
+        &self,
+        project_id: &str,
+        session_id: &str,
+        path: &str,
+    ) -> Result<(), AppError> {
+        let session = self.require_session(session_id).await?;
+        if session.project_id != project_id {
+            return Err(super::external_source::deny());
+        }
+        if session.info().await.status != SessionStatus::Stopped.as_str() {
+            return Err(super::external_source::deny());
+        }
+        let frames = session.stack_trace().await.map_err(|e| {
+            log::debug!("[dap] external source authorization: stackTrace failed: {e}");
+            super::external_source::deny()
+        })?;
+        if super::external_source::frame_paths_match(&frames, path) {
+            Ok(())
+        } else {
+            Err(super::external_source::deny())
+        }
     }
 
     /// 指定栈帧的变量（作用域展开后的一层）。
@@ -628,10 +682,12 @@ mod tests {
         AppStateWrapper::new_with_storage_and_library(storage, store)
     }
 
-    /// 5 个会话级操作共用 `require_session` → 缺失 id 必须统一映射为 `NotFound`。
+    /// 所有会话级操作共用 `require_session` → 缺失 id 必须统一映射为 `NotFound`。
     ///
     /// 命令层只透传 id，错误语义**在此层唯一确定**；前端据此区分「会话已结束」与
-    /// 「参数非法」。若将来有人绕过 `require_session` 各自拼错误，本用例即红。
+    /// 「参数非法」。若将来有人绕过 `require_session` 各自拼错误，本用例即红 ——
+    /// 外部源码授权（`assert_stopped_at_path`）也不例外：它只对**路径授权**失败
+    /// 做统一拒绝，缺会话仍走 `NotFound`。
     #[tokio::test]
     async fn session_ops_map_missing_id_to_not_found() {
         let manager = DapManager::new();
@@ -641,12 +697,27 @@ mod tests {
             manager.variables("missing", 1).await.is_err(),
             manager.variables_by_reference("missing", 1).await.is_err(),
             manager.evaluate("missing", "x", None).await.is_err(),
+            manager.source_content("missing", 1).await.is_err(),
+            manager
+                .assert_stopped_at_path("p1", "missing", "/opt/lib/x.rs")
+                .await
+                .is_err(),
         ];
-        assert_eq!(all_errors, vec![true; 5]);
+        assert_eq!(all_errors, vec![true; 7]);
 
         // 错误类型必须是 NotFound（而非 InvalidInput / Unknown）
         assert!(matches!(
             manager.control("missing", "continue").await,
+            Err(AppError::NotFound(_))
+        ));
+        assert!(matches!(
+            manager.source_content("missing", 1).await,
+            Err(AppError::NotFound(_))
+        ));
+        assert!(matches!(
+            manager
+                .assert_stopped_at_path("p1", "missing", "/opt/lib/x.rs")
+                .await,
             Err(AppError::NotFound(_))
         ));
     }

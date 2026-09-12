@@ -2,7 +2,8 @@ import React, { useCallback } from 'react';
 
 import { cn } from '@/lib/utils';
 
-import { openSourceAtLine, activeProjectPaths } from '../navigate';
+import { activeProjectPaths } from '../navigate';
+import { openStopSource, openStopVirtualSource } from '../openStopSource';
 import { useDebugStore } from '../store/debugStore';
 import type { StackFrameDto } from '../types';
 
@@ -25,11 +26,20 @@ function DebugFramesColumn({ width, onResizeStart }: DebugFramesColumnProps) {
     async (frame: StackFrameDto) => {
       await selectFrame(frame.id);
       const paths = activeProjectPaths();
-      if (paths && frame.sourcePath) {
-        await openSourceAtLine(
+      if (!paths) return;
+      if (frame.sourcePath) {
+        await openStopSource(
           paths.projectId,
           paths.projectPath,
           frame.sourcePath,
+          frame.line,
+          frame.column,
+        );
+      } else if (frame.sourceReference) {
+        await openStopVirtualSource(
+          paths.projectId,
+          frame.sourceName,
+          frame.sourceReference,
           frame.line,
           frame.column,
         );

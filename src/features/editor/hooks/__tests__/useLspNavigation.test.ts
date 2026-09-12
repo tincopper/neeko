@@ -7,7 +7,7 @@ import {
 } from '@/features/lsp/api/definitionTarget';
 import type { LspLocation } from '@/features/lsp/types';
 
-import { useLspNavigation } from '../useLspNavigation';
+import { resolveLspDocumentUri, useLspNavigation } from '../useLspNavigation';
 
 // 捕获接缝：navigateToLocation 是 hook 内部函数，经 useCmdClickGoToDefinition
 // 的参数暴露。mock 该模块抓住引用，即可直接驱动验证预读内容契约。
@@ -292,5 +292,36 @@ describe('useLspNavigation — 预读内容契约防御', () => {
     expect(h.addTab).not.toHaveBeenCalled();
     expect(h.setPendingNavigateTarget).not.toHaveBeenCalled();
     expect(loadDefinitionTargetContent).not.toHaveBeenCalled();
+  });
+});
+
+describe('resolveLspDocumentUri — jdt 展示身份缺原始 uri 时不得伪造文档', () => {
+  it('tab 自带原始 jdt uri → 原样', () => {
+    expect(
+      resolveLspDocumentUri(
+        { filePath: '/a.ts', virtualUri: 'jdt://contents/java.base/Foo.class?=q' },
+        '/repo',
+      ),
+    ).toBe('jdt://contents/java.base/Foo.class?=q');
+  });
+
+  it('jdt 展示身份 + 无原始 uri（调试打开的 JDK 源码）→ null，调用方跳过 LSP', () => {
+    expect(
+      resolveLspDocumentUri(
+        {
+          filePath: 'jdt:/java.base/java/io/PrintStream.java',
+          content: { path: '/cache/jdk-src-21/java.base/java/io/PrintStream.java' },
+        },
+        '/repo',
+      ),
+    ).toBeNull();
+  });
+
+  it('常规文件 → file:// 文档', () => {
+    expect(resolveLspDocumentUri({ filePath: 'src/a.ts' }, '/repo')).toBe('file://src/a.ts');
+  });
+
+  it('缺 projectPath 的常规文件 → null', () => {
+    expect(resolveLspDocumentUri({ filePath: 'src/a.ts' }, '')).toBeNull();
   });
 });

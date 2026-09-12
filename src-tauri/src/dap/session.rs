@@ -18,7 +18,7 @@ use super::events::{DAP_EVENT, DAP_SESSION_STATUS_EVENT};
 use super::process;
 use super::types::{
     BreakpointSpec, ControlAction, DapEventPayload, DapSessionInfo, HandshakeOrder, LaunchConfig,
-    SessionStatus, StackFrameDto, VariableDto,
+    SessionStatus, StackFrameDto, VariableDto, MAX_SOURCE_BYTES,
 };
 use crate::common::executor::factory::ExecTarget;
 use crate::common::executor::ProcessGuard;
@@ -550,36 +550,25 @@ impl DapSession {
                 json!({ "threadId": thread_id, "startFrame": 0, "levels": 32 }),
             )
             .await?;
-        let mut frames = Vec::new();
-        if let Some(arr) = body.get("stackFrames").and_then(|s| s.as_array()) {
-            for f in arr {
-                let source_path = f
-                    .get("source")
-                    .and_then(|s| s.get("path"))
-                    .and_then(|p| p.as_str())
-                    .map(|s| s.to_string());
-                frames.push(StackFrameDto {
-                    id: f.get("id").and_then(|i| i.as_i64()).unwrap_or(0),
-                    name: f
-                        .get("name")
-                        .and_then(|n| n.as_str())
-                        .unwrap_or("?")
-                        .to_string(),
-                    source_path,
-                    line: f
-                        .get("line")
-                        .and_then(|l| l.as_u64())
-                        .and_then(|l| u32::try_from(l).ok())
-                        .unwrap_or(0),
-                    column: f
-                        .get("column")
-                        .and_then(|c| c.as_u64())
-                        .and_then(|c| u32::try_from(c).ok())
-                        .unwrap_or(0),
-                });
-            }
+        Ok(parse_stack_frames(&body))
+    }
+
+    /// 按 `sourceReference` 取回虚拟源码内容（DAP `source` 请求）。
+    ///
+    /// 适配器不落盘源码时（远程调试 / debuggee 侧提供源码）只有引用可用。
+    /// 超过 [`MAX_SOURCE_BYTES`] 一律拒绝而不是截断：截断的源码会静默误导定位，
+    /// 且守住 IPC 单次返回上限。
+    pub async fn source_content(&self, source_reference: i64) -> Result<String, AppError> {
+        if source_reference <= 0 {
+            return Err(AppError::InvalidInput(
+                "sourceReference must be a positive integer".into(),
+            ));
         }
-        Ok(frames)
+        let body = self
+            .client
+            .request("source", json!({ "sourceReference": source_reference }))
+            .await?;
+        parse_source_content(&body)
     }
 
     /// Fetch variables for a given `variablesReference`.
@@ -738,6 +727,69 @@ fn unresolved_breakpoint_lines(body: &Value) -> Vec<String> {
         .unwrap_or_default()
 }
 
+/// Parse a DAP `stackTrace` body into frames.
+///
+/// `source` 三字段（`path` / `name` / `sourceReference`）同源解析：`path` 是
+/// 磁盘路径，`sourceReference > 0` 表示源码归适配器所有、需走 `source` 请求；
+/// 二者可同时缺失（native 帧）。纯函数，便于单测。
+fn parse_stack_frames(body: &Value) -> Vec<StackFrameDto> {
+    let Some(arr) = body.get("stackFrames").and_then(|s| s.as_array()) else {
+        return Vec::new();
+    };
+    arr.iter()
+        .map(|f| {
+            let source = f.get("source");
+            let text = |key: &str| {
+                source
+                    .and_then(|s| s.get(key))
+                    .and_then(|v| v.as_str())
+                    .map(str::to_string)
+            };
+            StackFrameDto {
+                id: f.get("id").and_then(|i| i.as_i64()).unwrap_or(0),
+                name: f
+                    .get("name")
+                    .and_then(|n| n.as_str())
+                    .unwrap_or("?")
+                    .to_string(),
+                source_path: text("path"),
+                line: f
+                    .get("line")
+                    .and_then(|l| l.as_u64())
+                    .and_then(|l| u32::try_from(l).ok())
+                    .unwrap_or(0),
+                column: f
+                    .get("column")
+                    .and_then(|c| c.as_u64())
+                    .and_then(|c| u32::try_from(c).ok())
+                    .unwrap_or(0),
+                source_name: text("name"),
+                // 0 / 负数 / 缺失一律视为「无虚拟源码」。
+                source_reference: source
+                    .and_then(|s| s.get("sourceReference"))
+                    .and_then(Value::as_i64)
+                    .filter(|r| *r > 0),
+            }
+        })
+        .collect()
+}
+
+/// 从 DAP `source` 响应体取内容并施加上限（纯函数，便于单测）。
+///
+/// 超限**拒绝而非截断**：截断的源码会静默误导定位；上限同时守住 IPC 返回红线。
+fn parse_source_content(body: &Value) -> Result<String, AppError> {
+    let content = body
+        .get("content")
+        .and_then(|c| c.as_str())
+        .unwrap_or_default();
+    if content.len() as u64 > MAX_SOURCE_BYTES {
+        return Err(AppError::Dap(format!(
+            "source content exceeds the {MAX_SOURCE_BYTES} byte limit"
+        )));
+    }
+    Ok(content.to_string())
+}
+
 /// Extract `variables` from a DAP `variables` response body.
 fn parse_variable_list(body: &Value) -> Vec<VariableDto> {
     body.get("variables")
@@ -774,5 +826,84 @@ mod tests {
         // 响应体异常（缺字段 / 非数组）→ 不误报
         assert!(unresolved_breakpoint_lines(&json!({})).is_empty());
         assert!(unresolved_breakpoint_lines(&json!({ "breakpoints": "x" })).is_empty());
+    }
+
+    #[test]
+    fn parse_stack_frames_reads_source_path_name_and_reference() {
+        let body = json!({ "stackFrames": [
+            {
+                "id": 7,
+                "name": "com.demo.Foo.bar",
+                "line": 12,
+                "column": 3,
+                "source": { "name": "Foo.java", "path": "/src/Foo.java", "sourceReference": 0 }
+            },
+            {
+                "id": 8,
+                "name": "remote.frame",
+                "line": 5,
+                "column": 1,
+                "source": { "name": "Bar.java", "sourceReference": 42 }
+            },
+            { "id": 9, "name": "native", "line": 1, "column": 1 }
+        ]});
+        let frames = parse_stack_frames(&body);
+        assert_eq!(frames.len(), 3);
+
+        assert_eq!(frames[0].source_path.as_deref(), Some("/src/Foo.java"));
+        assert_eq!(frames[0].source_name.as_deref(), Some("Foo.java"));
+        // sourceReference=0 → 无虚拟源码
+        assert_eq!(frames[0].source_reference, None);
+
+        // 无 path 但有引用 → 虚拟源码
+        assert_eq!(frames[1].source_path, None);
+        assert_eq!(frames[1].source_name.as_deref(), Some("Bar.java"));
+        assert_eq!(frames[1].source_reference, Some(42));
+
+        // 无 source 字段 → 全空，不 panic
+        assert_eq!(frames[2].source_path, None);
+        assert_eq!(frames[2].source_name, None);
+        assert_eq!(frames[2].source_reference, None);
+    }
+
+    #[test]
+    fn parse_source_content_reads_text_and_missing_content_yields_empty() {
+        assert_eq!(
+            parse_source_content(&json!({ "content": "class A {}" })).expect("content"),
+            "class A {}"
+        );
+        // 适配器未回 content → 空串（不 panic）
+        assert_eq!(parse_source_content(&json!({})).expect("empty"), "");
+    }
+
+    #[test]
+    fn parse_source_content_rejects_over_limit_instead_of_truncating() {
+        let over = "x".repeat(MAX_SOURCE_BYTES as usize + 1);
+        assert!(matches!(
+            parse_source_content(&json!({ "content": over })),
+            Err(AppError::Dap(_))
+        ));
+        // 恰好等于上限 → 放行（边界）
+        let exact = "x".repeat(MAX_SOURCE_BYTES as usize);
+        assert_eq!(
+            parse_source_content(&json!({ "content": exact }))
+                .expect("exact limit")
+                .len(),
+            MAX_SOURCE_BYTES as usize
+        );
+    }
+
+    #[test]
+    fn parse_stack_frames_rejects_non_positive_reference_and_bad_body() {
+        let body = json!({ "stackFrames": [
+            { "id": 1, "name": "a", "source": { "sourceReference": -3 } },
+            { "id": 2, "name": "b", "source": { "sourceReference": "x" } }
+        ]});
+        let frames = parse_stack_frames(&body);
+        assert_eq!(frames[0].source_reference, None);
+        assert_eq!(frames[1].source_reference, None);
+        // 缺字段 / 非数组 → 空列表（不 panic）
+        assert!(parse_stack_frames(&json!({})).is_empty());
+        assert!(parse_stack_frames(&json!({ "stackFrames": "x" })).is_empty());
     }
 }

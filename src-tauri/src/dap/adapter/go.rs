@@ -127,6 +127,7 @@ mod tests {
             port: None,
             pre_launch_task: None,
             stop_on_entry: Some(false),
+            classpath: vec![],
         }
     }
 
@@ -180,6 +181,7 @@ mod tests {
             port: None,
             pre_launch_task: None,
             stop_on_entry: Some(false),
+            classpath: vec![],
         };
         let args = launch_args(&cfg);
         assert_eq!(args["mode"], "test");

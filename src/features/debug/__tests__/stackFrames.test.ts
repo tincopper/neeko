@@ -1,12 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import {
-  hasUserProjectFrame,
-  isSystemDebugSource,
-  isUserProjectFrame,
-  pickNavigateFrame,
-  shouldAutoContinueSystemStop,
-} from '../stackFrames';
+import { pickStopFrame } from '../stackFrames';
 import type { StackFrameDto } from '../types';
 
 function frame(
@@ -20,144 +14,71 @@ function frame(
   };
 }
 
-describe('isSystemDebugSource', () => {
-  it('should_treat_empty_as_system', () => {
-    expect(isSystemDebugSource(null)).toBe(true);
-    expect(isSystemDebugSource('')).toBe(true);
-  });
+const PROJECT = '/Users/me/proj';
+const GO_RUNTIME = '/usr/local/go/src/runtime/proc.go';
+const JDK_CACHE =
+  '/Users/me/.neeko/java-src-cache/jdk-src-21.0.12.1/java.base/java/io/PrintStream.java';
 
-  it('should_detect_go_runtime_paths', () => {
-    expect(isSystemDebugSource('/usr/local/go/src/runtime/proc.go')).toBe(true);
-    expect(isSystemDebugSource('/home/x/go/pkg/mod/github.com/foo@v1/x.go')).toBe(true);
-    expect(isSystemDebugSource('C:\\Go\\src\\runtime\\proc.go')).toBe(true);
-  });
-
-  it('should_not_flag_project_main', () => {
-    expect(isSystemDebugSource('/Users/me/proj/cmd/app/main.go')).toBe(false);
-  });
-
-  it('should_not_flag_project_package_named_like_stdlib', () => {
-    // Project-local `src/os` must not be treated as GOROOT.
-    expect(isSystemDebugSource('/Users/me/proj/src/os/handler.go')).toBe(false);
-  });
-});
-
-describe('pickNavigateFrame', () => {
-  const project = '/Users/me/proj';
-
-  it('should_prefer_user_frame_when_runtime_is_top', () => {
+describe('pickStopFrame — 停止位置 = 栈顶第一个带源码的帧', () => {
+  it('should_pick_library_frame_over_caller_project_frame', () => {
+    // 回归：单步进入 JDK 后编辑器必须跟栈顶帧。此前「优先项目帧」会把编辑器
+    // 拉回调用方文件，表现为「无法跳转到 System.out.println」。
     const frames = [
-      frame({
-        id: 1,
-        name: 'runtime.main',
-        sourcePath: '/usr/local/go/src/runtime/proc.go',
-        line: 250,
-      }),
+      frame({ id: 1, name: 'PrintStream.println(String)', sourcePath: JDK_CACHE, line: 1167 }),
       frame({
         id: 2,
-        name: 'main.main',
-        sourcePath: `${project}/cmd/app/main.go`,
-        line: 12,
+        name: 'ArrayTest.test1()',
+        sourcePath: `${PROJECT}/src/test/ArrayTest.java`,
+        line: 7,
       }),
     ];
-    const picked = pickNavigateFrame(frames, project);
-    expect(picked?.id).toBe(2);
-    expect(picked?.line).toBe(12);
+    expect(pickStopFrame(frames)?.id).toBe(1);
   });
 
-  it('should_return_null_when_only_system_frames', () => {
+  it('should_pick_top_project_frame_when_it_has_a_source', () => {
     const frames = [
-      frame({
-        id: 1,
-        name: 'runtime.exit',
-        sourcePath: '/usr/local/go/src/runtime/proc.go',
-        line: 10,
-      }),
-      frame({
-        id: 2,
-        name: 'runtime.main',
-        sourcePath: '/usr/local/go/src/runtime/proc.go',
-        line: 20,
-      }),
+      frame({ id: 9, name: 'foo', sourcePath: `${PROJECT}/a.go`, line: 3 }),
+      frame({ id: 8, name: 'runtime.main', sourcePath: GO_RUNTIME, line: 250 }),
     ];
-    expect(pickNavigateFrame(frames, project)).toBeNull();
-    expect(hasUserProjectFrame(frames, project)).toBe(false);
+    expect(pickStopFrame(frames)?.id).toBe(9);
   });
 
-  it('should_use_top_user_frame_when_all_user', () => {
+  it('should_skip_sourceless_top_frames_and_take_the_next_with_source', () => {
+    // 栈顶是 native / JIT 帧（line=-1、无 source）→ 下探到最近的有源码帧
     const frames = [
-      frame({
-        id: 9,
-        name: 'foo',
-        sourcePath: `${project}/a.go`,
-        line: 3,
-      }),
-      frame({
-        id: 8,
-        name: 'main.main',
-        sourcePath: `${project}/main.go`,
-        line: 1,
-      }),
+      frame({ id: 1, name: 'LambdaForm$DMH/0x…invokeVirtual', sourcePath: null, line: -1 }),
+      frame({ id: 2, name: 'LambdaForm$MH/0x…invoke', sourcePath: null, line: -1 }),
+      frame({ id: 3, name: 'PrintStream.println(String)', sourcePath: JDK_CACHE, line: 1167 }),
     ];
-    expect(pickNavigateFrame(frames, project)?.id).toBe(9);
+    expect(pickStopFrame(frames)?.id).toBe(3);
   });
 
-  it('should_fallback_to_non_system_outside_project', () => {
-    const f = frame({
-      id: 1,
-      name: 'other',
-      sourcePath: '/tmp/elsewhere/main.go',
-      line: 1,
-    });
-    expect(isUserProjectFrame(f, project)).toBe(false);
-    // Still navigable so path-prefix mismatches do not block editor jump.
-    expect(pickNavigateFrame([f], project)?.id).toBe(1);
-  });
-});
-
-describe('shouldAutoContinueSystemStop', () => {
-  const project = '/Users/me/proj';
-
-  it('should_auto_continue_when_only_runtime_frames', () => {
+  it('should_accept_adapter_virtual_source_frames', () => {
+    // 适配器自带源码（sourceReference）：无磁盘路径也算「有源码」，同样按栈序选
     const frames = [
-      frame({
-        id: 1,
-        name: 'runtime.main',
-        sourcePath: '/usr/local/go/src/runtime/proc.go',
-        line: 250,
-      }),
+      frame({ id: 1, name: 'remote.frame', sourceReference: 42, sourceName: 'Foo.java' }),
+      frame({ id: 2, name: 'caller', sourcePath: `${PROJECT}/a.java` }),
     ];
-    expect(shouldAutoContinueSystemStop(frames, project, 'step')).toBe(true);
-    expect(shouldAutoContinueSystemStop(frames, project, 'breakpoint')).toBe(true);
+    expect(pickStopFrame(frames)?.id).toBe(1);
   });
 
-  it('should_not_auto_continue_on_user_pause', () => {
+  it('should_ignore_non_positive_source_reference', () => {
     const frames = [
-      frame({
-        id: 1,
-        name: 'runtime.main',
-        sourcePath: '/usr/local/go/src/runtime/proc.go',
-        line: 250,
-      }),
+      frame({ id: 1, name: 'native', sourcePath: null, sourceReference: 0 }),
+      frame({ id: 2, name: 'foo', sourcePath: GO_RUNTIME, line: 250 }),
     ];
-    expect(shouldAutoContinueSystemStop(frames, project, 'pause')).toBe(false);
+    expect(pickStopFrame(frames)?.id).toBe(2);
   });
 
-  it('should_not_auto_continue_when_user_frame_exists', () => {
+  it('should_return_null_when_no_frame_has_a_source', () => {
     const frames = [
-      frame({
-        id: 1,
-        name: 'runtime.main',
-        sourcePath: '/usr/local/go/src/runtime/proc.go',
-        line: 250,
-      }),
-      frame({
-        id: 2,
-        name: 'main.main',
-        sourcePath: `${project}/main.go`,
-        line: 10,
-      }),
+      frame({ id: 1, name: 'native', sourcePath: null }),
+      frame({ id: 2, name: 'native2', sourcePath: undefined }),
     ];
-    expect(shouldAutoContinueSystemStop(frames, project, 'step')).toBe(false);
+    expect(pickStopFrame(frames)).toBeNull();
+  });
+
+  it('should_return_null_for_empty_frames', () => {
+    expect(pickStopFrame([])).toBeNull();
   });
 });

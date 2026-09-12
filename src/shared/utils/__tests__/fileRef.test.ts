@@ -8,6 +8,7 @@ import {
   lspUriOf,
   relativeToRoot,
   sameFile,
+  sourceIdentityOf,
   tabIdentityOf,
   type FileRef,
 } from '../fileRef';
@@ -165,6 +166,75 @@ describe('tabIdentityOf — tab 身份字符串（与旧 jdtClassDisplayPath 输
   it('fs → path 原样', () => {
     expect(tabIdentityOf(fileRefFromTabPath('/repo', 'src/a.ts'))).toBe('/repo/src/a.ts');
     expect(tabIdentityOf(fileRefFromTabPath('/repo', '/abs/a.ts'))).toBe('/abs/a.ts');
+  });
+});
+
+describe('sourceIdentityOf — 源码身份唯一入口（fs 拼根、jdt 绝不拼根）', () => {
+  it('fs：与 canonicalFsPath 等价（相对拼根、绝对原样）', () => {
+    expect(sourceIdentityOf('/repo', 'src/a.ts')).toBe('/repo/src/a.ts');
+    expect(sourceIdentityOf('/repo', '/abs/a.ts')).toBe('/abs/a.ts');
+    expect(sourceIdentityOf('/repo', 'src/a.ts')).toBe(canonicalFsPath('/repo', 'src/a.ts'));
+  });
+
+  it('jdt：展示路径原样保留，不得拼上项目根', () => {
+    const display = 'jdt:/java.base/java/io/PrintStream.java';
+    expect(sourceIdentityOf('/repo', display)).toBe(display);
+    // 回归锁：canonicalFsPath 会拼根成 `<root>/jdt:/…`，adapter 侧就再也取不到
+    // module/pkg 段（断点退化为默认包类名 → 永远 verified:false）。
+    expect(canonicalFsPath('/repo', display)).toBe(`/repo/${display}`);
+    expect(sourceIdentityOf('/repo', display)).not.toContain('/repo/jdt:');
+  });
+
+  it('jdt：反解析再规范化（.class 源 / 无包段都能收敛成同一身份）', () => {
+    expect(sourceIdentityOf('/repo', 'jdt:/java.base/java.lang/System.class')).toBe(
+      'jdt:/java.base/java/lang/System.java',
+    );
+    expect(sourceIdentityOf('/repo', 'jdt:/java.base/Foo.java')).toBe('jdt:/java.base/Foo.java');
+  });
+
+  it('jdt：跨 root 稳定（虚拟身份与项目根无关）', () => {
+    const display = 'jdt:/java.base/java/lang/System.java';
+    expect(sourceIdentityOf('/repo-a', display)).toBe(sourceIdentityOf('/repo-b', display));
+  });
+});
+
+describe('sourceIdentityOf — JDK 缓存路径归一为 jdt 身份（同一份源码一种身份）', () => {
+  const CACHE =
+    '/Users/u/.neeko/java-src-cache/jdk-src-21.0.12.1/java.base/java/io/PrintStream.java';
+  const JDT = 'jdt:/java.base/java/io/PrintStream.java';
+
+  it('jdk-src 布局（保留模块段）→ jdt:/<module>/<pkg…>/<Name>.java', () => {
+    expect(sourceIdentityOf('/repo', CACHE)).toBe(JDT);
+  });
+
+  it('Windows 分隔符同样成立', () => {
+    expect(
+      sourceIdentityOf(
+        '/repo',
+        'C:\\Users\\u\\.neeko\\java-src-cache\\jdk-src-21\\java.base\\java\\io\\PrintStream.java',
+      ),
+    ).toBe(JDT);
+  });
+
+  it('依赖 jar 缓存（无模块段）→ canonical 路径身份（不复用 jdt，不影响正确性）', () => {
+    const jarCache = '/h/.neeko/java-src-cache/junit-4.13.2/org/junit/Assert.java';
+    expect(sourceIdentityOf('/repo', jarCache)).toBe(jarCache);
+  });
+
+  it('默认包 JDK 类（模块下直接是文件）→ canonical 路径身份', () => {
+    const p = '/h/.neeko/java-src-cache/jdk-src-21/Foo.java';
+    expect(sourceIdentityOf('/repo', p)).toBe(p);
+  });
+
+  it('非缓存路径：fs 拼根、jdt 原样', () => {
+    expect(sourceIdentityOf('/repo', 'src/a.ts')).toBe('/repo/src/a.ts');
+    expect(sourceIdentityOf('/repo', '/repo/src/a.ts')).toBe('/repo/src/a.ts');
+    expect(sourceIdentityOf('/repo', JDT)).toBe(JDT);
+  });
+
+  it('幂等：归一结果再归一不变（tab 身份即规范身份）', () => {
+    const once = sourceIdentityOf('/repo', CACHE);
+    expect(sourceIdentityOf('/repo', once)).toBe(once);
   });
 });
 

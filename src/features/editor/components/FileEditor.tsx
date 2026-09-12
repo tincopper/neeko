@@ -1,22 +1,22 @@
 import type { EditorView } from '@codemirror/view';
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 
 import { useCmdHeld } from '@/features/lsp';
 import { useLspStore } from '@/features/lsp/store/lspStore';
 import { cn } from '@/lib/utils';
 import ContextMenu from '@/shared/components/ContextMenu';
-import { useProjectStore } from '@/shared/store/projectStore';
 import type { AppTheme, FileTab } from '@/shared/types';
-import { canonicalFsPath } from '@/shared/utils/fileRef';
-import { isImageFile } from '@/shared/utils/fileTree';
+import { sourceIdentityOf } from '@/shared/utils/fileRef';
 import { tabLspDocumentUri } from '@/shared/utils/jdt';
 
+import { useBinaryImagePreview } from '../hooks/useBinaryImagePreview';
 import { useEditorBreakpoints } from '../hooks/useEditorBreakpoints';
 import { useEditorExtensions } from '../hooks/useEditorExtensions';
 import { useEditorSave } from '../hooks/useEditorSave';
 import { useEditorViewSnapshot } from '../hooks/useEditorViewSnapshot';
 import { useFileEditorCallbacks } from '../hooks/useFileEditorCallbacks';
 import { useFileEditorState } from '../hooks/useFileEditorState';
+import { useJdtLinkNavigation } from '../hooks/useJdtLinkNavigation';
 import { useLspClient } from '../hooks/useLspClient';
 import { useLspNavigation } from '../hooks/useLspNavigation';
 import { useRunActions } from '../hooks/useRunActions';
@@ -60,10 +60,11 @@ function FileEditor({
   /** Bumped when EditorView mounts so debug highlight can re-apply. */
   const [editorViewEpoch, setEditorViewEpoch] = useState(0);
 
-  // DAP breakpoints（adapter 需要绝对路径）：filePath 恒为 canonical 绝对（jdt
-  // 展示路径除外——断点对虚拟文档本就无意义），lexical 归一即可，不再内联拼根。
+  // DAP 断点 key = **规范源身份**（见 sourceIdentityOf）：同一份源码只有一种身份，
+  // 因此「Cmd+Click 打开的 jdt 虚拟页」与「调试停点打开的 JDK 源码」是同一个 key
+  // ——断点不会因跳转而消失。
   const absFilePath = useMemo(
-    () => canonicalFsPath(projectPath ?? '', tab.filePath),
+    () => sourceIdentityOf(projectPath ?? '', tab.filePath),
     [projectPath, tab.filePath],
   );
 
@@ -87,12 +88,8 @@ function FileEditor({
     handleCreateTab,
   } = useFileEditorState({ tab, projectPath });
 
-  // 二进制图片仅本地项目可预览：asset 协议无法访问 SSH/WSL 远程文件
-  const projectEnvironmentType = useProjectStore(
-    (s) => s.projects.find((p) => p.id === tab.projectId)?.environment.type,
-  );
-  const isBinaryImage =
-    tab.content.is_binary && isImageFile(tab.filePath) && projectEnvironmentType === 'Local';
+  // 二进制图片仅本地项目可预览（asset 协议无法访问 SSH/WSL 远程文件）——环境查询收在 hook 内
+  const isBinaryImage = useBinaryImagePreview(tab);
 
   const { bpSyncEffect, lastSyncedBpKeyRef, handleLnClick, handleLnHover, handleLnLeave } =
     useEditorBreakpoints({
@@ -103,16 +100,15 @@ function FileEditor({
       editorViewEpoch,
     });
 
-  // hover 的 jdt:// 链接 → 跳转的晚绑定：useLspClient 需要稳定回调（共享 client
-  // 首建时捕获），而 navigateToLocation 属于其后的 useLspNavigation —— 经 ref 解耦，
-  // 双向均不感知对方（回调签名只收 uri，语义同 Cmd+Click 跳转）。
-  const openJdtLinkRef = useRef<((uri: string) => void) | null>(null);
+  // hover 的 jdt:// 链接 → 跳转：回调引用恒定（可先交给 useLspClient），
+  // navigateToLocation 就绪后再 bind（两段式晚绑定，见 useJdtLinkNavigation）。
+  const { onOpenJdtLink, bind: bindJdtLinkNav } = useJdtLinkNavigation();
 
   const { lspLanguageIdRef, lspClientExt, linkHighlightExt } = useLspClient({
     projectPath,
     filePath: tab.filePath,
     virtualUri: tab.virtualUri ?? tabLspDocumentUri(tab),
-    onOpenJdtLink: useCallback((uri: string) => openJdtLinkRef.current?.(uri), []),
+    onOpenJdtLink,
   });
 
   const { lspKeymap, cmdClickExt, navigateToLocation } = useLspNavigation({
@@ -123,21 +119,17 @@ function FileEditor({
     editorViewRef,
   });
 
-  useEffect(() => {
-    openJdtLinkRef.current = (uri: string) => {
-      void navigateToLocation(
-        { uri, range: { start: { line: 0, character: 0 }, end: { line: 0, character: 0 } } },
-        projectPath ?? '',
+  // effect 返回解绑：ref 不超出 tab 存活期（回调归属由 LSP 侧 facet 保证）。
+  useEffect(
+    () =>
+      bindJdtLinkNav(navigateToLocation, {
+        projectPath,
         tabKey,
-        tab.projectId,
-        tab.filePath,
-        null,
-      );
-    };
-    return () => {
-      openJdtLinkRef.current = null;
-    };
-  }, [navigateToLocation, projectPath, tabKey, tab.projectId, tab.filePath]);
+        projectId: tab.projectId,
+        filePath: tab.filePath,
+      }),
+    [bindJdtLinkNav, navigateToLocation, projectPath, tabKey, tab.projectId, tab.filePath],
+  );
 
   const { handleCreateEditor, viewStateExt, resetEditorRestored } = useEditorViewSnapshot({
     tabKey,

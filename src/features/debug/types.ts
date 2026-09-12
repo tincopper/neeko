@@ -47,6 +47,13 @@ export interface StackFrameDto {
   sourcePath?: string | null;
   line: number;
   column: number;
+  /** DAP `Source.name`（适配器给的类 / 文件名）；虚拟源码 tab 标题用。 */
+  sourceName?: string | null;
+  /**
+   * DAP `Source.sourceReference`（>0 = 源码不在磁盘上，经 DAP `source` 请求按
+   * 引用取内容）。缺失 / 0 = 无虚拟源码。
+   */
+  sourceReference?: number | null;
 }
 
 export interface VariableDto {

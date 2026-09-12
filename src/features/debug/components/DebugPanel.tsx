@@ -62,9 +62,9 @@ function DebugPanel() {
   const setPanelTab = useDebugStore((s) => s.setPanelTab);
   const control = useDebugStore((s) => s.control);
   const stop = useDebugStore((s) => s.stop);
+
   const listAllBreakpoints = useDebugStore((s) => s.listAllBreakpoints);
   const error = useDebugStore((s) => s.error);
-
   const latestPanelH = useRef(PANEL_H_DEFAULT);
   const latestFramesW = useRef(FRAMES_W_DEFAULT);
 
@@ -222,7 +222,6 @@ function DebugPanel() {
               onAction={handleToolbar}
             />
           </div>
-
           <div className="flex-1 min-w-0" />
 
           {/* Tabs — underline active style (RightPanel) */}

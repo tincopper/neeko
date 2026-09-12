@@ -27,6 +27,7 @@ pub mod commands;
 pub mod config;
 pub mod discover;
 pub mod events;
+mod external_source;
 mod java_debuggee;
 mod launch_support;
 pub mod manager;
