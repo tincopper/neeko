@@ -58,6 +58,26 @@ jobs:
         run: pnpm test
 
   # ──────────────────────────────────────────────
+  # Java 调试 host：编译 + 自检（源码解析顺序 / 缓存布局 / 断点 FQN 推导）
+  # host 是宿主 jar，Rust/cargo 门禁覆盖不到，故单列一个 job（需 JDK + Maven Central）
+  # ──────────────────────────────────────────────
+  java-host-check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      # build.sh：下载 core + 依赖 → 编译 host → 自检（test.sh）→ 打 fat jar
+      - name: Build host and run self-check
+        run: bash tools/java-host/build.sh
+
+  # ──────────────────────────────────────────────
   # 后端检查：全平台 check（发现跨平台编译问题）
   # ──────────────────────────────────────────────
   backend-check:

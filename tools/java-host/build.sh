@@ -54,19 +54,19 @@ download() {
   local jar="${LIB_DIR}/${artifact}-${version}.jar"
   local url="${REPO}/${path_seg}/${artifact}/${version}/${artifact}-${version}.jar"
   if [ -f "${jar}" ] && [ -s "${jar}" ]; then
-    echo "  [skip] ${jar} 已存在"
+    echo "  [skip] ${jar} already exists"
     return 0
   fi
   echo "  [get]  ${url}"
   curl -fsSL --retry 3 -o "${jar}" "${url}"
 }
 
-echo "==> Neeko Java host 打包"
-echo "    宿主目录: ${HOST_DIR}"
-echo "    产物目录: ${DEST_DIR}"
+echo "==> Neeko Java host packaging"
+echo "    Host dir: ${HOST_DIR}"
+echo "    Output dir: ${DEST_DIR}"
 mkdir -p "${LIB_DIR}"
 
-echo "==> 1/3 下载 core + 依赖（Maven Central）"
+echo "==> 1/4 Downloading core + dependencies (Maven Central)"
 for dep in "${DEPS[@]}"; do
   IFS='|' read -r path_seg artifact version <<<"${dep}"
   download "${path_seg}" "${artifact}" "${version}"
@@ -79,7 +79,7 @@ for dep in "${DEPS[@]}"; do
   CP="${CP:+${CP}:}${LIB_DIR}/${artifact}-${version}.jar"
 done
 
-echo "==> 2/3 编译 host（javac，目标 Java 11）"
+echo "==> 2/4 Compiling host (javac, target Java 11)"
 BUILD_DIR="${DEST_DIR}/classes"
 # 源码比产物新 / 产物缺失时才重编译（find -newer 覆盖 mtime 语义）。
 if [ ! -d "${BUILD_DIR}" ] || [ -n "$(find "${SRC_DIR}" -name '*.java' -newer "${BUILD_DIR}" -print -quit 2>/dev/null || true)" ]; then
@@ -88,14 +88,18 @@ if [ ! -d "${BUILD_DIR}" ] || [ -n "$(find "${SRC_DIR}" -name '*.java' -newer "$
   # shellcheck disable=SC2046 # 源码文件列表故意按行展开
   javac -source 11 -target 11 -encoding UTF-8 -cp "${CP}" \
     -d "${BUILD_DIR}" $(find "${SRC_DIR}" -name '*.java')
-  echo "  [ok] 已编译 ${BUILD_DIR}"
+  echo "  [ok] Compiled ${BUILD_DIR}"
 else
-  echo "  [skip] ${BUILD_DIR} 是最新（无更动源码）"
+  echo "  [skip] ${BUILD_DIR} is up to date (no changed sources)"
 fi
 
-echo "==> 3/3 打 fat host jar（${OUT_JAR}）"
+echo "==> 3/4 Running host self-check (test/, framework-free main assertions)"
+# 单一实现见 test.sh（同一脚本也被 `pnpm lint` 的 lint:host 复用）。
+bash "${HOST_DIR}/test.sh"
+
+echo "==> 4/4 Building fat host jar (${OUT_JAR})"
 if [ -f "${OUT_JAR}" ] && [ "${BUILD_DIR}" -ot "${OUT_JAR}" ]; then
-  echo "  [skip] ${OUT_JAR} 已是最新"
+  echo "  [skip] ${OUT_JAR} is up to date"
 else
   TMP_JAR="${OUT_JAR}.tmp"
   rm -f "${TMP_JAR}"
@@ -120,7 +124,7 @@ else
   echo "  [ok] ${OUT_JAR}"
 fi
 
-echo "==> 完成"
-echo "    运行方式（Rust JavaAdapter 会自动探测）："
+echo "==> Done"
+echo "    Usage (auto-detected by Rust JavaAdapter):"
 echo "    java -jar ${OUT_JAR}"
-echo "    或设置 config dap.adapterBinaries.java=<该 jar 路径>"
+echo "    Or set config dap.adapterBinaries.java=<path to this jar>"
