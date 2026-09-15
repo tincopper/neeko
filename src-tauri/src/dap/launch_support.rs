@@ -4,6 +4,8 @@
 //! 独立成模块后两者都依赖本模块，而不是让 `manager`（编排）反向依赖
 //! `commands`（控制层）—— 符合依赖倒置：高层编排不依赖控制层。
 
+use std::future::Future;
+
 use crate::common::executor::factory::ExecTarget;
 use crate::AppError;
 
@@ -97,6 +99,29 @@ pub(crate) const fn build_shell_argv(command: &str) -> (&'static str, [&str; 2])
     }
 }
 
+/// 泵附属 debuggee 的输出（Debug Console）直到通道关闭，随后执行 `on_exit` 收尾。
+///
+/// **为什么"关闭后收尾"也在这里**：通道关闭（stdout/stderr 双 EOF）是"被调试进程已退出"
+/// 的唯一信号（sender 持有关系见调用方，如 `JavaDebuggee::launch`）。把泵与收尾放在同一个
+/// 单元，这条不变式（**关闭 ⇒ 收尾恰好一次，且在所有输出之后**）就能脱离真实会话被单测。
+///
+/// `emit_line` 是**同步**回调：`DapSession::emit_output` 本身没有异步工作（见 `emit_event`
+/// 的说明），收尾才需要异步（`on_exit` 返回 future，由本函数 `await`）。
+pub(crate) async fn pump_output<F, Fe, Fut>(
+    mut output_rx: tokio::sync::mpsc::Receiver<(String, String)>,
+    mut emit_line: F,
+    on_exit: Fe,
+) where
+    F: FnMut(&str, &str),
+    Fe: FnOnce() -> Fut,
+    Fut: Future<Output = ()>,
+{
+    while let Some((category, line)) = output_rx.recv().await {
+        emit_line(&category, &line);
+    }
+    on_exit().await;
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -152,5 +177,48 @@ mod tests {
         let rewritten =
             windows_cmd_quote("cargo test 'parse_simple' --manifest-path 'src-tauri/Cargo.toml'");
         assert!(!rewritten.contains('\''));
+    }
+
+    /// 泵的输出先排空、随后收尾**恰好一次**（通道关闭 ⟺ 被调试进程退出）。
+    #[tokio::test]
+    async fn pump_output_forwards_all_lines_then_signals_exit_once() {
+        use std::sync::Arc;
+
+        let (tx, rx) = tokio::sync::mpsc::channel(16);
+        tx.try_send(("stdout".to_string(), "one".to_string()))
+            .expect("send");
+        tx.try_send(("stderr".to_string(), "two".to_string()))
+            .expect("send");
+        drop(tx); // 通道关闭 = 被调试进程已退出
+
+        // 同步锁（std）：`emit_line` / `on_exit` 都是同步回调，用 tokio Mutex 反而要 await。
+        let log: Arc<std::sync::Mutex<Vec<String>>> = Arc::new(std::sync::Mutex::new(Vec::new()));
+        let lines = Arc::clone(&log);
+        let exits = Arc::clone(&log);
+        pump_output(
+            rx,
+            move |category, line| {
+                if let Ok(mut guard) = lines.lock() {
+                    guard.push(format!("line:{category}:{line}"));
+                }
+            },
+            move || async move {
+                if let Ok(mut guard) = exits.lock() {
+                    guard.push("exit".to_string());
+                }
+            },
+        )
+        .await;
+
+        let recorded = log.lock().expect("log").clone();
+        assert_eq!(
+            recorded,
+            vec![
+                "line:stdout:one".to_string(),
+                "line:stderr:two".to_string(),
+                "exit".to_string(),
+            ],
+            "必须先排空输出、再恰好收尾一次"
+        );
     }
 }

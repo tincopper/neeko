@@ -76,7 +76,8 @@ pub fn run_task(
 ) -> Result<String, AppError> {
     // Create a PTY session in the given working directory and send the command
     let session = state
-        .terminal_manager
+        .terminal_router
+        .local()
         .create_session(&cwd, 80, 24, None, None, None, app_handle.clone())
         .map_err(AppError::from)?;
 
@@ -95,7 +96,8 @@ pub fn run_task(
 #[tauri::command]
 pub fn stop_task(session_id: String, state: State<AppStateWrapper>) -> Result<(), AppError> {
     state
-        .terminal_manager
+        .terminal_router
+        .local()
         .close_session_in_background(&session_id);
     Ok(())
 }

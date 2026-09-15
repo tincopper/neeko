@@ -238,6 +238,36 @@ describe('sourceIdentityOf — JDK 缓存路径归一为 jdt 身份（同一份�
   });
 });
 
+describe("sourceIdentityOf — 栈帧的 jdt uri 归一为同一 jdt 身份（B' 现场回归）", () => {
+  const CACHE =
+    '/Users/u/.neeko/java-src-cache/jdk-src-21.0.12.1/java.base/java/io/PrintStream.java';
+  const JDT = 'jdt:/java.base/java/io/PrintStream.java';
+  /** 真机实测形态：jdtls 内 java-debug 对 JDK / 依赖类返回的 `Source.path`。 */
+  const FRAME_URI =
+    'jdt://contents/java.base/java.io/PrintStream.class?=api/%5C/opt%5C/homebrew%5C/Cellar%5C/' +
+    'openjdk%5C@21%5C/21.0.12.1%5C/libexec%5C/openjdk.jdk%5C/Contents%5C/Home%5C/lib%5C/' +
+    'jrt-fs.jar%60java.base=/javadoc_location=/https:%5C/%5C/docs.oracle.com%5C/en%5C/java%5C/' +
+    'javase%5C/21%5C/docs%5C/api%5C/=/=/maven.pomderived=/true=/%3Cjava.io(PrintStream.class';
+
+  it('uri 与缓存路径收敛到**同一个**身份（否则 tab 分裂、断点 key 两套）', () => {
+    expect(sourceIdentityOf('/repo', FRAME_URI)).toBe(JDT);
+    expect(sourceIdentityOf('/repo', FRAME_URI)).toBe(sourceIdentityOf('/repo', CACHE));
+  });
+
+  it('uri 不被当成相对路径拼项目根（曾经的现场错误）', () => {
+    expect(sourceIdentityOf('/repo', FRAME_URI)).not.toContain('/repo/jdt:');
+  });
+
+  it('fileRefFromTabPath 直接解析 uri（identity / loadPath 同源）', () => {
+    expect(fileRefFromTabPath('/repo', FRAME_URI)).toEqual({
+      kind: 'jdt',
+      module: 'java.base',
+      classPath: 'java/io',
+      fileName: 'PrintStream.java',
+    });
+  });
+});
+
 describe('fileRefFromTabPath — tab path 反解析', () => {
   it('空串/相对路径 → fs canonical', () => {
     expect(fileRefFromTabPath('/repo', '')).toEqual({ kind: 'fs', path: '/repo' });

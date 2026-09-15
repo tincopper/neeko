@@ -1,4 +1,8 @@
-//! Central application state container and terminal dispatch routing.
+//! 组合根：集中组装所有 manager / store，并提供**只读访问器**。
+//!
+//! 职责边界（见 `.trellis/spec/backend/directory-structure.md`「app_state.rs 的职责」）：
+//! **只组装字段 + 构造 + 共享状态的读取**。域内策略（会话分派、清理机制、路径匹配…）
+//! 一律留在各自的领域模块 —— 组合根不得沉淀业务逻辑。
 
 use crate::agent::AgentManager;
 use crate::common::executor::factory::ExecTarget;
@@ -8,26 +12,10 @@ use crate::conversation::ConversationManager;
 use crate::library;
 use crate::project::ProjectManager;
 use crate::session::StorageManager;
-use crate::terminal::remote::RemoteTerminalManager;
-use crate::terminal::TerminalManager;
+use crate::terminal::TerminalRouter;
 use crate::AppError;
-use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex, RwLock};
-use std::time::{Duration, Instant};
-
-/// Routing tag for terminal sessions — tracks which backend owns each session.
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-enum SessionOwner {
-    /// Local / WSL PTY-backed session.
-    Pty,
-    /// SSH remote session.
-    Ssh,
-}
-
-/// long-poll drain 等待超时钳制区间（`terminal_drain_wait` 用）。
-const DRAIN_WAIT_MIN: Duration = Duration::from_secs(1);
-const DRAIN_WAIT_MAX: Duration = Duration::from_secs(30);
 
 /// Central application state holding all managers and shared resources.
 pub struct AppStateWrapper {
@@ -35,10 +23,10 @@ pub struct AppStateWrapper {
     pub runtime: Arc<AppRuntime>,
     /// Project CRUD and persistence.
     pub project_manager: Mutex<ProjectManager>,
-    /// Local / WSL PTY terminal sessions.
-    pub terminal_manager: TerminalManager,
-    /// SSH remote terminal sessions.
-    pub remote_terminal_manager: RemoteTerminalManager,
+    /// 终端会话路由器（持有本地 PTY / SSH 两个后端 + 会话归属路由表）。
+    ///
+    /// 需直连某后端的调用方用 [`TerminalRouter::local`] / [`TerminalRouter::remote`]。
+    pub terminal_router: TerminalRouter,
     /// AI agent registration and configuration.
     pub agent_manager: Mutex<AgentManager>,
     /// Agent Chat live session registry (session_id → request channel).
@@ -59,11 +47,12 @@ pub struct AppStateWrapper {
     /// Language Server Protocol session manager.
     pub lsp_manager: Arc<crate::lsp::LspManager>,
     /// Debug Adapter Protocol session manager.
+    ///
+    /// 语言编排后端（Java 等）经 `DapManager::register_backend` 注入 —— 组合根不
+    /// 为单个语言开字段（§9.4 方案 C）。
     pub dap_manager: crate::dap::DapManager,
     /// Conversation scanning and management.
     pub conversation_manager: ConversationManager,
-    /// Tracks which backend (PTY / SSH) owns each terminal session.
-    session_owner: Mutex<HashMap<String, SessionOwner>>,
     /// 主窗口句柄（setup 阶段注入；菜单/事件统一从此取）。
     ///
     /// 避免运行时 `get_webview_window("main")` 查找——其内部 `is_webview_window`
@@ -72,89 +61,30 @@ pub struct AppStateWrapper {
     main_window: RwLock<Option<tauri::WebviewWindow>>,
 }
 
-/// 后台清理任务：名称 + 一次性闭包（`shutdown_background_and_exit` 任务表用）。
-type ShutdownTask = (&'static str, Box<dyn FnOnce() + Send>);
-
 impl AppStateWrapper {
-    // 路由表查询：锁中毒视为不可恢复而 expect —— 中毒后继续跑只会产出误诊的
-    // NotFound（把存活会话判成不存在），不如显式 panic 让问题暴露。
-    #[allow(clippy::expect_used)]
-    fn owner_of(&self, session_id: &str) -> Option<SessionOwner> {
-        self.session_owner
-            .lock()
-            .expect("infallible: session_owner")
-            .get(session_id)
-            .copied()
-    }
-
-    #[allow(clippy::expect_used)]
-    fn take_owner(&self, session_id: &str) -> Option<SessionOwner> {
-        self.session_owner
-            .lock()
-            .expect("infallible: session_owner")
-            .remove(session_id)
-    }
-
-    /// 关闭全部后台服务并退出进程（四路并行清理，失败只记日志不阻断退出）。
+    /// 关闭全部后台服务并退出进程。
+    ///
+    /// 组合根只声明"要清理哪些域"（任务表）；并行清理的**机制**在
+    /// [`crate::common::shutdown::run_cleanup_and_exit`]。
     pub fn shutdown_background_and_exit(&self) {
-        let terminal_manager = self.terminal_manager.clone();
-        let remote_terminal_manager = self.remote_terminal_manager.clone();
+        let terminal_manager = self.terminal_router.local().clone();
+        let remote_terminal_manager = self.terminal_router.remote().clone();
         let watcher_manager = self.watcher_manager.clone();
         let lsp_manager = self.lsp_manager.clone();
 
-        // 外层清理线程：命名便于崩溃栈定位；spawn 失败仅记日志
-        if std::thread::Builder::new()
-            .name("neeko-shutdown".into())
-            .spawn(move || {
-                log::info!("shutdown_all_background start");
-                let start = Instant::now();
-
-                let tasks: Vec<ShutdownTask> = vec![
-                    (
-                        "terminal",
-                        Box::new(move || terminal_manager.close_all_sessions()),
-                    ),
-                    (
-                        "remote",
-                        Box::new(move || remote_terminal_manager.close_all_sessions()),
-                    ),
-                    ("watcher", Box::new(move || watcher_manager.stop_all())),
-                    ("lsp", Box::new(move || lsp_manager.close_all_sessions())),
-                ];
-
-                let mut handles = Vec::with_capacity(tasks.len());
-                for (name, task) in tasks {
-                    let task_start = Instant::now();
-                    match std::thread::Builder::new()
-                        .name(format!("shutdown-{name}"))
-                        .spawn(task)
-                    {
-                        Ok(handle) => handles.push((name, task_start, handle)),
-                        // 单路 spawn 失败仅记日志，不阻断其余清理
-                        Err(e) => log::error!("{} cleanup spawn failed: {:?}", name, e),
-                    }
-                }
-
-                // 逐个 join、逐个打点；panic 也只记日志不阻断退出
-                for (name, task_start, handle) in handles {
-                    match handle.join() {
-                        Ok(()) => {
-                            log::info!("{} cleanup finished in {:?}", name, task_start.elapsed());
-                        }
-                        Err(e) => log::error!("{} cleanup failed: {:?}", name, e),
-                    }
-                }
-
-                log::info!(
-                    "shutdown_all_background finished in {:?}, exiting",
-                    start.elapsed()
-                );
-                std::process::exit(0);
-            })
-            .is_err()
-        {
-            log::error!("Shutdown thread spawn failed");
-        }
+        let tasks: Vec<crate::common::shutdown::CleanupTask> = vec![
+            (
+                "terminal",
+                Box::new(move || terminal_manager.close_all_sessions()),
+            ),
+            (
+                "remote",
+                Box::new(move || remote_terminal_manager.close_all_sessions()),
+            ),
+            ("watcher", Box::new(move || watcher_manager.stop_all())),
+            ("lsp", Box::new(move || lsp_manager.close_all_sessions())),
+        ];
+        crate::common::shutdown::run_cleanup_and_exit(tasks);
     }
 
     /// 注入主窗口句柄（setup 阶段调用一次；菜单事件等从此取，见 [`Self::main_window`]）。
@@ -174,28 +104,39 @@ impl AppStateWrapper {
             .clone()
     }
 
-    /// Resolve project path and a matching ExecTarget by project ID.
-    pub fn resolve_project(&self, project_id: &str) -> Result<(ExecTarget, String), AppError> {
+    /// 项目 → (执行环境, 项目路径) 的**单次快照**。
+    ///
+    /// 需要同时拿到两者的调用方（如终端创建）用本访问器，避免两次加锁；
+    /// [`Self::resolve_project`] 亦由它派生（同一份读取逻辑，不重复）。
+    pub fn project_context(
+        &self,
+        project_id: &str,
+    ) -> Result<(crate::core::project::ProjectEnvironment, String), AppError> {
         let manager = self.project_manager.lock().map_err(AppError::from)?;
         let project = manager
             .get_project(project_id)
             .ok_or_else(|| AppError::NotFound(format!("Project not found: {project_id}")))?;
+        Ok((
+            project.environment.clone(),
+            project.path.to_string_lossy().to_string(),
+        ))
+    }
 
-        let path = project.path.to_string_lossy().to_string();
-        let target = project.environment.to_exec_target();
-        Ok((target, path))
+    /// Resolve project path and a matching ExecTarget by project ID.
+    pub fn resolve_project(&self, project_id: &str) -> Result<(ExecTarget, String), AppError> {
+        let (environment, path) = self.project_context(project_id)?;
+        Ok((environment.to_exec_target(), path))
     }
 
     /// Resolve a project's execution environment.
+    ///
+    /// 由 [`Self::project_context`] 派生：两者是同一份"按 id 读项目"逻辑的两个投影，
+    /// 不各自持锁查表（否则改 `NotFound` 文案或查表方式时要改两处）。
     pub fn project_environment(
         &self,
         project_id: &str,
     ) -> Result<crate::core::project::ProjectEnvironment, AppError> {
-        let manager = self.project_manager.lock().map_err(AppError::from)?;
-        let project = manager
-            .get_project(project_id)
-            .ok_or_else(|| AppError::NotFound(format!("Project not found: {project_id}")))?;
-        Ok(project.environment.clone())
+        Ok(self.project_context(project_id)?.0)
     }
 
     /// Resolve the execution environment for the active project.
@@ -216,236 +157,19 @@ impl AppStateWrapper {
     }
 
     /// Resolve execution environment by project filesystem path.
+    ///
+    /// 匹配规则属项目域（[`crate::project::lookup::environment_for_path`]）；
+    /// 组合根只负责读出项目列表。
     pub fn environment_for_project_path(
         &self,
         project_path: &str,
     ) -> Result<crate::core::project::ProjectEnvironment, AppError> {
-        let manager = self.project_manager.lock().map_err(AppError::from)?;
-        manager
-            .list_projects()
-            .into_iter()
-            .find(|p| paths_equal_for_env(&p.path.to_string_lossy(), project_path))
-            .map(|p| p.environment.clone())
-            .ok_or_else(|| {
-                AppError::NotFound(format!(
-                    "No registered project for path '{project_path}' — cannot resolve execution environment"
-                ))
-            })
-    }
-
-    // ── Terminal dispatch ──────────────────────────────────────────────────
-
-    /// Create a terminal session, routing to the correct backend.
-    #[allow(clippy::too_many_arguments)]
-    #[allow(clippy::expect_used)] // session_owner 路由表 insert：锁中毒不可恢复，见 `owner_of` 注释
-    pub async fn create_terminal_session(
-        &self,
-        project_id: &str,
-        cols: u16,
-        rows: u16,
-        shell: Option<String>,
-        working_dir: Option<String>,
-        command: Option<String>,
-        app_handle: tauri::AppHandle,
-    ) -> Result<crate::common::terminal::types::TerminalSession, AppError> {
-        let (env, path_string) = {
-            let manager = self.project_manager.lock().map_err(AppError::from)?;
-            let project = manager
-                .get_project(project_id)
-                .ok_or_else(|| AppError::NotFound(format!("Project not found: {project_id}")))?;
-            (
-                project.environment.clone(),
-                project.path.to_string_lossy().to_string(),
-            )
-        };
-
-        match env {
-            crate::core::project::ProjectEnvironment::Local => {
-                // Theme sync — skip for task terminals
-                if command.is_none() {
-                    let _ = crate::theme::service::write_project_theme_config(
-                        &crate::theme::service::ThemeContext::Local,
-                        &path_string,
-                    )
-                    .await;
-                }
-
-                let session = self
-                    .terminal_manager
-                    .create_session(
-                        &path_string,
-                        cols,
-                        rows,
-                        shell,
-                        working_dir,
-                        command,
-                        app_handle,
-                    )
-                    .map_err(AppError::from)?;
-
-                self.session_owner
-                    .lock()
-                    .expect("infallible: session_owner")
-                    .insert(session.id.clone(), SessionOwner::Pty);
-                Ok(session)
-            }
-            #[cfg(target_os = "windows")]
-            crate::core::project::ProjectEnvironment::Wsl { ref distro } => {
-                // WSL theme sync (non-fatal)
-                {
-                    use crate::theme::{
-                        common::read_neeko_theme,
-                        opencode::{
-                            install_wsl_theme_files, read_enable_opencode_theme_sync,
-                            read_enable_pi_theme_sync, write_wsl_tui_config,
-                        },
-                        pi,
-                    };
-
-                    if let Err(e) = install_wsl_theme_files(distro).await {
-                        log::warn!("[WSL] Failed to install OpenCode theme files: {}", e);
-                    }
-                    if let Err(e) = pi::install_wsl_pi_theme_files(distro).await {
-                        log::warn!("[WSL] Failed to install Pi theme files: {}", e);
-                    }
-                    let current_theme = read_neeko_theme().unwrap_or_else(|| "dark".to_string());
-                    if read_enable_opencode_theme_sync() {
-                        if let Err(e) =
-                            write_wsl_tui_config(distro, &path_string, &current_theme).await
-                        {
-                            log::warn!("[WSL] Failed to write OpenCode tui.json: {}", e);
-                        }
-                    }
-                    if read_enable_pi_theme_sync() {
-                        if let Err(e) =
-                            pi::write_wsl_pi_settings(distro, &path_string, &current_theme).await
-                        {
-                            log::warn!("[WSL] Failed to write Pi settings.json: {}", e);
-                        }
-                    }
-                }
-                let session = self
-                    .terminal_manager
-                    .create_wsl_session(distro, &path_string, cols, rows, app_handle)
-                    .map_err(AppError::from)?;
-
-                self.session_owner
-                    .lock()
-                    .expect("infallible: session_owner")
-                    .insert(session.id.clone(), SessionOwner::Pty);
-                Ok(session)
-            }
-            crate::core::project::ProjectEnvironment::Remote {
-                host,
-                port,
-                username,
-                auth,
-            } => {
-                let session = self
-                    .remote_terminal_manager
-                    .create_session(
-                        &host,
-                        port,
-                        &username,
-                        &auth,
-                        &path_string,
-                        cols,
-                        rows,
-                        app_handle,
-                    )
-                    .await
-                    .map_err(AppError::from)?;
-
-                self.session_owner
-                    .lock()
-                    .expect("infallible: session_owner")
-                    .insert(session.id.clone(), SessionOwner::Ssh);
-                Ok(session)
-            }
-        }
-    }
-
-    /// Resize a terminal session, dispatching to the correct backend.
-    pub fn resize_session(&self, session_id: &str, cols: u16, rows: u16) -> Result<(), AppError> {
-        let owner = self.owner_of(session_id);
-        match owner {
-            Some(SessionOwner::Pty) => self
-                .terminal_manager
-                .resize_session(session_id, cols, rows)
-                .map_err(AppError::from),
-            Some(SessionOwner::Ssh) => self
-                .remote_terminal_manager
-                .resize_session(session_id, cols, rows)
-                .map_err(AppError::from),
-            None => Err(AppError::NotFound(format!(
-                "Terminal session not found: {session_id}"
-            ))),
-        }
-    }
-
-    /// Drain buffered terminal output, dispatching to the correct backend.
-    pub fn terminal_drain(&self, session_id: &str) -> Result<tauri::ipc::Response, AppError> {
-        let owner = self.owner_of(session_id);
-        match owner {
-            Some(SessionOwner::Pty) => self
-                .terminal_manager
-                .take_drain(session_id)
-                .map(tauri::ipc::Response::new)
-                .ok_or_else(|| {
-                    AppError::NotFound(format!("Terminal drain queue not found: {session_id}"))
-                }),
-            Some(SessionOwner::Ssh) => self
-                .remote_terminal_manager
-                .take_drain(session_id)
-                .map(tauri::ipc::Response::new)
-                .ok_or_else(|| {
-                    AppError::NotFound(format!("Terminal drain queue not found: {session_id}"))
-                }),
-            None => Err(AppError::NotFound(format!(
-                "Terminal session not found: {session_id}"
-            ))),
-        }
-    }
-    /// Long-poll drain: 无数据时挂起至 push/close/超时，而非立即返回空。
-    /// `timeout_ms` 后端钳制 1–30s；drain 不存在或已关闭返回 `NotFound`
-    ///（前端据此终止该 session 的挂起循环；debug 日志便于排查 dispose 泄漏）。
-    pub async fn terminal_drain_wait(
-        &self,
-        session_id: &str,
-        timeout_ms: u64,
-    ) -> Result<tauri::ipc::Response, AppError> {
-        let timeout = Duration::from_millis(timeout_ms).clamp(DRAIN_WAIT_MIN, DRAIN_WAIT_MAX);
-        let owner = self.owner_of(session_id);
-        let data = match owner {
-            Some(SessionOwner::Pty) => self.terminal_manager.wait_drain(session_id, timeout).await,
-            Some(SessionOwner::Ssh) => {
-                self.remote_terminal_manager
-                    .wait_drain(session_id, timeout)
-                    .await
-            }
-            None => None,
-        };
-        match data {
-            Some(bytes) => Ok(tauri::ipc::Response::new(bytes)),
-            None => {
-                log::debug!("[Terminal] drain_wait stopped: session gone or closed: {session_id}");
-                Err(AppError::NotFound(format!(
-                    "Terminal session not found: {session_id}"
-                )))
-            }
-        }
-    }
-
-    /// Close a terminal session, dispatching to the correct backend.
-    pub fn close_session(&self, session_id: &str) {
-        let owner = self.take_owner(session_id);
-        match owner {
-            Some(SessionOwner::Pty) => self
-                .terminal_manager
-                .close_session_in_background(session_id),
-            Some(SessionOwner::Ssh) => self.remote_terminal_manager.close_session(session_id),
-            None => log::warn!("[Terminal] Attempted to close unknown session: {session_id}"),
-        }
+        let projects = self
+            .project_manager
+            .lock()
+            .map_err(AppError::from)?
+            .list_projects();
+        crate::project::lookup::environment_for_path(&projects, project_path)
     }
 
     /// Create `AppStateWrapper` with an external shared `LibraryStore`.
@@ -507,11 +231,23 @@ impl AppStateWrapper {
             }),
         );
 
+        // 装配 DAP 语言编排后端：Java 需要 lsp 域的两个端口（能力探测 / 断点源路径翻译）。
+        // 组合根只组装一次 —— 不把端口暴露为 AppStateWrapper 字段（§9.4 方案 C）。
+        let dap_manager = crate::dap::DapManager::new();
+        dap_manager.register_backend(
+            "java",
+            std::sync::Arc::new(crate::dap::adapter::java::JavaBackend::new(
+                std::sync::Arc::new(crate::lsp::LspJavaDebugCapability::new(Arc::clone(
+                    &lsp_manager,
+                ))),
+                std::sync::Arc::new(crate::lsp::LspJavaSourcePath::new()),
+            )),
+        );
+
         Self {
             runtime,
             project_manager: Mutex::new(ProjectManager::new(persist)),
-            terminal_manager: TerminalManager::new(),
-            remote_terminal_manager: RemoteTerminalManager::new(),
+            terminal_router: TerminalRouter::new(),
             agent_manager: Mutex::new(agent_manager_with_overrides(&storage_manager)),
             agent_chat_manager: Arc::new(
                 crate::agent::chat::manager::AgentChatManager::with_store(session_store.clone()),
@@ -523,11 +259,10 @@ impl AppStateWrapper {
             watcher_manager: WatcherManager::new(),
             library_store,
             lsp_manager,
-            dap_manager: crate::dap::DapManager::new(),
+            dap_manager,
             conversation_manager: ConversationManager::new(
                 crate::conversation::adapters::all_adapters(),
             ),
-            session_owner: Mutex::new(HashMap::new()),
             main_window: RwLock::new(None),
         }
     }
@@ -567,10 +302,4 @@ fn agent_manager_with_overrides(
         .collect::<std::collections::HashMap<_, _>>();
     manager.restore_overrides(&overrides);
     manager
-}
-
-/// Loose path equality for project environment lookup.
-fn paths_equal_for_env(a: &str, b: &str) -> bool {
-    let norm = |s: &str| s.replace('\\', "/").trim_end_matches('/').to_string();
-    norm(a) == norm(b)
 }

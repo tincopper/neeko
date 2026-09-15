@@ -1,4 +1,4 @@
-import { useDebugStore } from '@/features/debug/store/debugStore';
+import { useDebugStore } from '@/features/runner/store/debugStore';
 import { cn } from '@/lib/utils';
 import { Bug } from '@/shared/components/icons';
 import { useProjectStore } from '@/shared/store/projectStore';

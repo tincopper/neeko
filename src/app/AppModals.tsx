@@ -5,6 +5,7 @@ import { CloseConfirmDialog } from '@/features/editor';
 import { useCloseConfirmStore } from '@/features/editor/store/closeConfirmStore';
 import { CloneProjectDialog } from '@/features/project';
 import ConfirmDialog from '@/shared/components/ConfirmDialog';
+import ConfirmHost from '@/shared/components/ConfirmHost';
 import type { AuthMethod, RemoteEntrySession, WSLEntrySession } from '@/shared/types';
 import { IS_WINDOWS } from '@/shared/utils/platform';
 
@@ -145,6 +146,9 @@ function AppModals({
         confirmLabel="Exit"
         onConfirm={onConfirmExit}
       />
+      {/* 通用确认宿主（store 驱动）：非 React 模块（runner / store action）经
+          `confirmAction` 询问用户时的唯一渲染点。 */}
+      <ConfirmHost />
     </>
   );
 }

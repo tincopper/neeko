@@ -372,6 +372,7 @@ macro_rules! neeko_invoke_handler {
             $crate::lsp::commands::lsp_read_class_file_contents,
             $crate::lsp::commands::lsp_get_server_logs,
             $crate::lsp::commands::lsp_restart_all_sessions,
+            $crate::lsp::commands::java_debug_ensure_bundle,
             $crate::lsp::commands::lsp_stop_all_sessions,
             $crate::lsp::commands::lsp_go_to_definition,
             $crate::lsp::commands::lsp_transport,
@@ -402,6 +403,7 @@ macro_rules! neeko_invoke_handler {
             $crate::dap::commands::dap_check_adapter,
             $crate::dap::commands::debug_build_test_binary,
             $crate::dap::commands::debug_java_attach,
+            $crate::dap::commands::debug_java_start,
             // ── common (cross-domain) ────────────────────────────────────────
             $crate::common::commands::log_frontend_error,
             $crate::settings::commands::get_system_fonts,

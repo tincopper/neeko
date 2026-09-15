@@ -6,6 +6,8 @@ pub mod commands_clone;
 pub mod commands_ide;
 /// Clone progress event names and payloads.
 pub mod events;
+/// 项目路径 → 执行环境的匹配（组合根只做读取，规则在此）。
+pub mod lookup;
 mod manager;
 /// Project types: Project, ProjectEnvironment, ViewMode, GitInfo.
 pub mod types;

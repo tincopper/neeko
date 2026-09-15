@@ -1,6 +1,6 @@
 //! One LSP language-server session: spawn, I/O threads, request/response.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::io::{BufRead, BufReader};
 use std::path::Path;
 use std::sync::{Arc, Mutex};
@@ -58,6 +58,12 @@ pub(crate) struct LspSession {
     pub(crate) log_buffer: Arc<Mutex<LogRingBuffer>>,
     /// Transport for emitting session lifecycle events to the frontend.
     pub(crate) transport: Arc<dyn LspTransport>,
+    /// 在途 progress token 集合（`$/progress` 的 begin→end 生命周期）。
+    ///
+    /// 供"该项目+语言是否仍在导入/索引"的查询使用 —— Java debug 能力探测的
+    /// `Warming` 判据依赖它（design §2.4）：`classpath` 空 **且** 有在途进度才
+    /// 是"稍后可成"，无进度则属真损坏工程，必须直接报错。
+    pub(crate) in_flight_progress: Arc<Mutex<HashSet<String>>>,
 }
 
 impl LspSession {
@@ -255,6 +261,8 @@ impl LspSession {
         let lang_id_clone = language_id.clone();
         let transport_clone = Arc::clone(&transport);
         let writer_for_reader = writer_tx.clone();
+        let in_flight_progress: Arc<Mutex<HashSet<String>>> = Arc::new(Mutex::new(HashSet::new()));
+        let progress_tokens_reader = Arc::clone(&in_flight_progress);
 
         let reader_handle = thread::Builder::new()
             .name(format!(
@@ -293,6 +301,7 @@ impl LspSession {
                                     &pp_reader,
                                     &lang_id_clone,
                                     &*transport_clone,
+                                    &progress_tokens_reader,
                                 );
                             }
                         }
@@ -390,6 +399,7 @@ impl LspSession {
             server_info,
             log_buffer,
             transport,
+            in_flight_progress,
         })
     }
 
@@ -567,14 +577,16 @@ pub(crate) fn merge_client_capabilities(mut base: Value, plugin: &LspPlugin) -> 
 /// then omit the key entirely (an empty `{}` would be a gratuitous change to
 /// every other language's initialize payload).
 pub(crate) fn init_options_for(plugin: &LspPlugin) -> Option<Value> {
-    if plugin.initialization_options.is_none() && plugin.extended_client_capabilities.is_none() {
+    // 运行时提供者优先：载荷可能依赖"此刻磁盘上是否已有某文件"（jdtls 的 bundles）。
+    let base = plugin
+        .initialization_options_provider
+        .map(|provider| provider())
+        .or_else(|| plugin.initialization_options.clone());
+    if base.is_none() && plugin.extended_client_capabilities.is_none() {
         return None;
     }
     Some(merge_extended_client_capabilities_into_init_options(
-        plugin
-            .initialization_options
-            .clone()
-            .unwrap_or_else(|| serde_json::json!({})),
+        base.unwrap_or_else(|| serde_json::json!({})),
         plugin,
     ))
 }
@@ -832,6 +844,7 @@ mod tests {
             server_info: LspServerInfo::unknown(),
             log_buffer: Arc::new(Mutex::new(LogRingBuffer::new())),
             transport: Arc::new(NoopTransport),
+            in_flight_progress: Arc::new(Mutex::new(HashSet::new())),
         };
 
         let info = session.snapshot_server_info();

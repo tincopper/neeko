@@ -75,15 +75,25 @@ mod tests {
         assert!(plugin_for("python").is_err());
     }
 
-    /// Java attach-first：registry 解析出 JavaAdapter（attach 命令 + 无 classPaths）。
+    /// Java 形态由配置决定：attach（A：自写 host）与 launch（B'：JDTLS 内 server）。
     #[test]
     fn should_resolve_java_plugin() {
         let p = plugin_for("java").expect("java");
         assert_eq!(p.kind(), AdapterKind::Java);
         assert_eq!(p.adapter_id(), "java");
         assert_eq!(p.handshake_order(), HandshakeOrder::LaunchBeforeBreakpoints);
-        assert_eq!(p.launch_request_command(), "attach");
         assert_eq!(p.entry_function_for_stop_on_entry(true), None);
+
+        let attach = crate::dap::types::LaunchConfig {
+            request: "attach".into(),
+            ..java_probe_cfg()
+        };
+        let launch = crate::dap::types::LaunchConfig {
+            request: "launch".into(),
+            ..java_probe_cfg()
+        };
+        assert_eq!(p.launch_request_command(&attach), "attach");
+        assert_eq!(p.launch_request_command(&launch), "launch");
 
         let junit = plugin_for("junit").expect("junit");
         assert_eq!(junit.kind(), AdapterKind::Java);
@@ -96,6 +106,41 @@ mod tests {
             crate::dap::types::AdapterKind::from_config_type("junit").unwrap(),
             AdapterKind::Java
         );
+    }
+
+    /// 非 Java 适配器恒用 `launch` —— 配置里的 `request` 不得改变其握手命令。
+    #[test]
+    fn non_java_plugins_always_use_launch_command() {
+        let cfg = crate::dap::types::LaunchConfig {
+            request: "attach".into(),
+            ..java_probe_cfg()
+        };
+        for type_ in ["go", "lldb", "rust"] {
+            let p = plugin_for(type_).expect(type_);
+            assert_eq!(
+                p.launch_request_command(&cfg),
+                "launch",
+                "{type_} 不得因 cfg.request 走 attach"
+            );
+        }
+    }
+
+    /// 构造探针用的最小配置（仅 registry 测试使用；不启动任何会话）。
+    fn java_probe_cfg() -> crate::dap::types::LaunchConfig {
+        crate::dap::types::LaunchConfig {
+            name: "probe".into(),
+            type_: "java".into(),
+            request: "launch".into(),
+            program: None,
+            cwd: None,
+            args: vec![],
+            mode: None,
+            port: None,
+            pre_launch_task: None,
+            stop_on_entry: None,
+            classpath: vec![],
+            ..Default::default()
+        }
     }
 
     #[tokio::test]

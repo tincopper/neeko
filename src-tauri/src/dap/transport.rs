@@ -157,6 +157,30 @@ pub async fn connect_transport(
     })
 }
 
+/// Connect to an **external** DAP endpoint over TCP (no adapter process owned by
+/// Neeko — e.g. the java-debug server hosted inside a JDTLS JVM).
+///
+/// Unlike the `TcpListen` branch of [`connect_transport`], nothing is spawned and
+/// no listen address has to be discovered: the caller already knows the address
+/// (obtained from an LSP `workspace/executeCommand`). There are therefore no
+/// process pipes to pump and no kill signal — dropping the TCP stream detaches.
+pub async fn connect_tcp_addr(addr: &str) -> Result<DapIo, AppError> {
+    log::info!("[DAP] connecting to external adapter at {addr}");
+    let stream = TcpStream::connect(addr)
+        .await
+        .map_err(|e| AppError::Dap(format!("Failed to connect to DAP server at {addr}: {e}")))?;
+    let (read_half, write_half) = stream.into_split();
+    // No process output to forward: keep an empty receiver so the session's
+    // forwarding task terminates immediately instead of treating it as special.
+    let (_proc_out_tx, proc_out_rx) = mpsc::unbounded_channel::<(String, String)>();
+    Ok(DapIo {
+        reader: Box::pin(read_half) as BoxAsyncRead,
+        writer: Box::pin(write_half) as BoxAsyncWrite,
+        proc_out_rx,
+        stderr_buf: Arc::new(Mutex::new(String::new())),
+    })
+}
+
 /// Read process pipe line-by-line and forward (category, line).
 pub async fn forward_process_lines(
     reader: BoxAsyncRead,
@@ -200,5 +224,43 @@ mod tests {
             parse_listen_addr_line("DAP server listening at: stdio"),
             None
         );
+    }
+
+    /// 外部端点：连不上必须报出目标地址（用户据此判断 jdtls 是否存活）。
+    #[tokio::test]
+    async fn connect_tcp_addr_reports_unreachable_address() {
+        // 端口 1 上不会有 DAP 服务器。
+        let err = match connect_tcp_addr("127.0.0.1:1").await {
+            Ok(_) => panic!("unreachable addr must fail"),
+            Err(e) => e,
+        };
+        let msg = err.to_string();
+        assert!(msg.contains("127.0.0.1:1"), "{msg}");
+    }
+
+    /// 外部端点：连接成功后没有进程管道 —— `proc_out_rx` 必须立即为空
+    /// （会话的转发任务据此自然结束），且 stderr 缓冲为空、无 kill 信号。
+    #[tokio::test]
+    async fn connect_tcp_addr_yields_empty_process_channels() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind");
+        let addr = listener.local_addr().expect("addr").to_string();
+        let accept = tokio::spawn(async move {
+            let (sock, _) = listener.accept().await.expect("accept");
+            // 保持连接打开，避免 connect 侧读到 EOF。
+            tokio::time::sleep(Duration::from_millis(300)).await;
+            drop(sock);
+        });
+
+        let mut io = connect_tcp_addr(&addr).await.expect("connect");
+        assert!(
+            io.proc_out_rx.try_recv().is_err(),
+            "no process pipes → receiver must be empty"
+        );
+        assert!(io.stderr_buf.lock().await.is_empty());
+        // 空通道 + 发送端已 drop → recv 返回 None（转发任务立即退出）。
+        assert!(io.proc_out_rx.recv().await.is_none());
+        accept.await.expect("accept task");
     }
 }

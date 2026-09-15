@@ -22,10 +22,13 @@ pub trait DebugAdapterPlugin: Send + Sync {
     /// Whether to send breakpoints before or after the launch request.
     fn handshake_order(&self) -> HandshakeOrder;
 
-    /// DAP 请求命令名（握手第一步）：默认 `launch`；Java attach-first 走
-    /// `attach`（`AttachRequestHandler` → SocketAttachingConnector，无 classPaths
-    /// 校验）。会话层据此发 `launch`/`attach` 请求。
-    fn launch_request_command(&self) -> &'static str {
+    /// DAP 请求命令名（握手第一步）：默认 `launch`。
+    ///
+    /// Java 依据 `cfg.request` 区分两种形态 —— `launch`（B'：JDTLS 进程内的
+    /// java-debug server 自行注入 jdwp 并 spawn 被测 JVM）与 `attach`（A：自写 host
+    /// 连接已由 Neeko 挂起的 JVM）。形态属于**配置**而非适配器实例，故从 cfg 读取。
+    fn launch_request_command<'a>(&self, cfg: &'a LaunchConfig) -> &'a str {
+        let _ = cfg;
         "launch"
     }
 

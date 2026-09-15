@@ -35,7 +35,7 @@ pub fn remove_project(project_id: String, state: State<AppStateWrapper>) -> Resu
         .map_err(AppError::from)?
         .remove_project(&project_id);
 
-    state.terminal_manager.close_session(&project_id);
+    state.terminal_router.local().close_session(&project_id);
     state.watcher_manager.unwatch(&project_id);
 
     // 若被删的是激活项目，清空 active_project_id（前端 useLocalProjects 会选出下一个并触发 set_active_project）

@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from 'vitest';
 vi.mock('@/features/task', () => ({
   TaskRunButton: () => <button type="button">task-run-stub</button>,
 }));
-vi.mock('@/features/debug', () => ({
+vi.mock('@/features/runner', () => ({
   DebugRunButton: () => <button type="button">debug-run-stub</button>,
 }));
 vi.mock('@/app/components/OpenIdeButton', () => ({

@@ -16,7 +16,7 @@ const LazyTaskConsolePanel = lazy(() =>
 );
 
 const LazyDebugPanel = lazy(() =>
-  import('@/features/debug').then((m) => ({ default: m.DebugPanel })),
+  import('@/features/runner').then((m) => ({ default: m.DebugPanel })),
 );
 
 /**

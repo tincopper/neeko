@@ -1,5 +1,3 @@
-#![allow(unused_imports, missing_docs)]
-
 use crate::common::git::operations;
 use crate::common::git::path_guard::resolve_validated_work_dir;
 use crate::common::git::types::PushOutcome;

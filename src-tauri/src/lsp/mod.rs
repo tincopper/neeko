@@ -6,6 +6,9 @@ pub mod commands;
 pub mod diag_bus;
 pub mod inflight;
 pub mod installer;
+pub mod java_debug_bundle;
+pub mod java_debug_probe;
+pub mod java_source_materializer;
 pub mod manager;
 pub mod plugin;
 pub mod plugin_manager;
@@ -22,6 +25,9 @@ pub mod transport;
 /// Serializable types for LSP IPC with the frontend.
 pub mod types;
 
+pub use java_debug_bundle::{ensure_bundle_blocking, existing_bundle};
+pub use java_debug_probe::LspJavaDebugCapability;
+pub use java_source_materializer::LspJavaSourcePath;
 pub use manager::LspManager;
 pub use plugin::{
     CustomLspServerConfig, LspAutoStart, LspExtensionConflict, LspExtensionMapEntry, LspPlugin,

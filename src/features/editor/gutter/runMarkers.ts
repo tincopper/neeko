@@ -13,21 +13,26 @@ import { ensureSyntaxTree } from '@codemirror/language';
 import { RangeSet, RangeSetBuilder, StateField, type EditorState } from '@codemirror/state';
 import { EditorView, GutterMarker } from '@codemirror/view';
 
-import { type LspRunnable } from '../runnables/runnable';
 import {
   discoverRunTargets,
   hasMainEntries,
   isRunnableFile,
-  staticSubtestsForFile,
-} from '../utils/runLanguages';
-import { isTestFile } from '../utils/testCases';
+  isTestCaseFile,
+  overlayKey,
+  caseOverlaysFor,
+  targetLang,
+  targetLine,
+  type LanguageOverlay,
+  capabilitiesFor,
+  type RunTarget,
+} from '@/features/runner';
 
+import { runCodelensConfig } from './runCodelensConfig';
 import {
   lspRunnablesField,
   refreshRunCodelensEffect,
   setLspRunnablesEffect,
 } from './runLspOverlay';
-import { runCodelensConfig, targetLang, targetLine, lspKey, type RunTarget } from './runTarget';
 
 /** `ensureSyntaxTree` 的解析预算（ms）：超出即回落到整篇解析。 */
 const SYNTAX_PARSE_BUDGET_MS = 50;
@@ -40,12 +45,12 @@ const RUN_ICON_SVG =
 export function buildRunElement(target: RunTarget): HTMLElement {
   const el = document.createElement('div');
   el.className = 'cm-run-marker';
-  el.title =
-    targetLang(target) === 'ts'
-      ? 'Run test'
-      : target.kind === 'main'
-        ? 'Run or Debug main'
-        : 'Run or Debug test';
+  // 文案按**能力位**分流（`directRun` 语言只跑不调）：不再比较语言字面量。
+  el.title = capabilitiesFor(targetLang(target)).directRun
+    ? 'Run test'
+    : target.kind === 'main'
+      ? 'Run or Debug main'
+      : 'Run or Debug test';
   el.innerHTML = RUN_ICON_SVG;
   return el;
 }
@@ -67,14 +72,14 @@ export class RunMarker extends GutterMarker {
         a.testCase.name === b.testCase.name &&
         a.testCase.line === b.testCase.line &&
         a.testCase.lang === b.testCase.lang &&
-        lspKey(a) === lspKey(b)
+        overlayKey(a) === overlayKey(b)
       );
     }
     if (a.kind === 'main' && b.kind === 'main') {
       return (
         a.entry.line === b.entry.line &&
         a.entry.language === b.entry.language &&
-        lspKey(a) === lspKey(b)
+        overlayKey(a) === overlayKey(b)
       );
     }
     return false;
@@ -103,7 +108,7 @@ function buildTestCodelensMarkers(state: EditorState): RangeSet<RunMarker> {
 
   const docText = state.doc.toString();
   // 测试门控按内容（rust `#[test]` / java `@Test` 需文档证据）；无证据跳过测试解析。
-  const hasTests = isTestFile(config.fileName, docText);
+  const hasTests = isTestCaseFile(config.fileName, docText);
   if (!hasTests && !hasMain) return RangeSet.empty;
 
   const tree = ensureSyntaxTree(state, state.doc.length, SYNTAX_PARSE_BUDGET_MS) ?? undefined;
@@ -114,17 +119,13 @@ function buildTestCodelensMarkers(state: EditorState): RangeSet<RunMarker> {
   // 直接「测试后 main」顺序喂入会乱序 panic。
   const targets: RunTarget[] = [];
   if (hasTests) {
-    // 父用例目标携带其**静态子测试名**（Go 表格逐行按钮的产物），供菜单与运行时动态发现
-    // 求差 —— 同一目标不给两个入口（设计 §7.8.4）。门控在 `staticSubtestsForFile` 内
-    // （只有声明了层级用例名的语言才有父子关系），故非 Go 文件天然得到空索引。
-    const staticSubtests = staticSubtestsForFile(config.fileName, tests);
+    // 父用例目标携带**语言自带的同步 overlay 载荷**（Go：静态子测试名，供菜单与运行时动态发现
+    // 求差 —— 同一目标不给两个入口，设计 §7.8.4）。载荷结构归语言：本层只取不解释，
+    // 未声明该 hook 的语言（TS/Rust/Java）天然得到空 Map。
+    const caseOverlays = caseOverlaysFor(config.fileName, tests);
     for (const testCase of tests) {
-      const children = staticSubtests.get(testCase.name);
-      targets.push({
-        kind: 'test',
-        testCase,
-        ...(children ? { staticSubtests: children } : {}),
-      });
+      const overlay = caseOverlays.get(testCase.name);
+      targets.push({ kind: 'test', testCase, ...(overlay === undefined ? {} : { overlay }) });
     }
   }
   if (hasMain) {
@@ -135,15 +136,17 @@ function buildTestCodelensMarkers(state: EditorState): RangeSet<RunMarker> {
   targets.sort((a, b) => targetLine(a) - targetLine(b));
 
   // LSP 覆盖按行合并（tier ①）；缺失的行保持快路径 payload（tier ②）。
-  const lspByLine: Map<number, LspRunnable> =
-    state.field(lspRunnablesField, false) ?? new Map<number, LspRunnable>();
+  const overlayByLine: Map<number, LanguageOverlay> =
+    state.field(lspRunnablesField, false) ?? new Map<number, LanguageOverlay>();
 
   const builder = new RangeSetBuilder<RunMarker>();
   for (const target of targets) {
     const line = targetLine(target);
-    const lsp = lspByLine.get(line);
+    // 行覆盖（Rust tier ①）优先；语言未提供 provider 时用同步载荷（Go 静态子测试）——
+    // 两者结构上互斥（同一个语言不会既声明 provider 又声明 caseOverlays）。
+    const overlay = overlayByLine.get(line) ?? target.overlay;
     const from = state.doc.line(line).from;
-    builder.add(from, from, new RunMarker(lsp ? { ...target, lsp } : target));
+    builder.add(from, from, new RunMarker(overlay ? { ...target, overlay } : target));
   }
   return builder.finish();
 }

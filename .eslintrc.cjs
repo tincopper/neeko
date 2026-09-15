@@ -4,7 +4,7 @@
 const FEATURE_DIRS = [
   'action-menu', 'agent', 'browser', 'connection', 'conversation', 'debug',
   'editor', 'file', 'git', 'library', 'lsp', 'notification', 'project',
-  'quick-open', 'session', 'settings', 'skill', 'status-bar', 'symbol-nav',
+  'quick-open', 'runner', 'session', 'settings', 'skill', 'status-bar', 'symbol-nav',
   'task', 'terminal', 'theme',
 ];
 // except 相对 from（feature 根）解析。store/types/api 兼容单文件与目录形态。
@@ -22,6 +22,33 @@ const firewallZones = FEATURE_DIRS.map((name) => ({
     `Import/Export Firewall: 跨 feature 仅允许导入公开面 (index/store/types)。` +
     `私有实现请经 @/features/${name} 门面导入。`,
 }));
+
+// store 域内**切片目录**（如 `runner/store/debug/**`）是**组合内部件**（slice 工厂 +
+// types/shared/中间件），不是「公开状态接口」。而 `FIREWALL_EXCEPT` 里的 `'./store'` 是
+// **路径前缀**豁免（为 `store/debugStore.ts` 这类公开 store 设计），会把切片目录一并放行
+// —— 于是别的 feature 可以直导 `createSessionSlice` 自行 `create()` 出第二个 store 实例，
+// 击穿「单实例」不变量，门面形同虚设。这里把前缀豁免收窄回来：切片只允许被**本 feature**
+// （含 `store/debugStore.ts` 组合根）引用，其余一律经门面。
+const sliceZones = [
+  {
+    target: [
+      ...FEATURE_DIRS.filter((name) => name !== 'runner').map((name) => `./src/features/${name}`),
+      './src/app',
+      // 非 feature / 非 app 的顶层目录。既有 shared 相关 zone 只枚举了 `shared/<sub>` 六个
+      // **子目录**，`src/shared/*.ts`（如真实存在的 `shared/events.ts`）不在其中 —— 实测该处
+      // 可直导切片且无任何报错（Neeko Check F20）。这里补齐根级，顺带覆盖 layout/lib/ui/types。
+      './src/shared',
+      './src/layout',
+      './src/lib',
+      './src/ui',
+      './src/types',
+    ],
+    from: './src/features/runner/store/debug',
+    message:
+      'store/debug/** 是 debugStore 的组合内部件（slice 工厂，非公开状态接口）：' +
+      '跨 feature / app 请经 @/features/runner/store/debugStore 门面导入。',
+  },
+];
 
 module.exports = {
   root: true,
@@ -75,6 +102,8 @@ module.exports = {
           'error',
           {
             zones: [
+              // 切片封闭 zone 必须先于通用前缀豁免：见顶部 `sliceZones` 定义处注释。
+              ...sliceZones,
               ...firewallZones,
               { target: './src/app/editor', from: './src/app', except: ['./editor'] },
               { target: './src/features', from: './src/app', except: ['./app/editor'] },
@@ -187,6 +216,8 @@ module.exports = {
           'error',
           {
             zones: [
+              // 切片封闭 zone 必须先于通用前缀豁免：见顶部 `sliceZones` 定义处注释。
+              ...sliceZones,
               ...firewallZones,
               { target: './src/app/editor', from: './src/app', except: ['./editor'] },
               { target: './src/features', from: './src/app', except: ['./app/editor'] },

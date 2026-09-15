@@ -1,5 +1,3 @@
-#![allow(unused_imports, missing_docs)]
-
 use crate::common::git::operations;
 use crate::AppError;
 use crate::AppStateWrapper;

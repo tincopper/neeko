@@ -260,6 +260,14 @@ interface PendingNavigateTarget {
   tabId: string;
   line: number;
   col: number;
+  /**
+   * 该次跳转由**调试停点**发起。
+   *
+   * 唯一的用途：调试把光标移到停止行属于**会话的临时副作用**，停止结束（继续运行 / 会话
+   * 终止）后应当释放 —— 见 `releaseDebugCaret`。普通跳转（定义跳转 / 终端链接 / quick-open）
+   * 是用户意图，必须保留光标，故默认不设此位。
+   */
+  debug?: boolean;
 }
 
 interface EditorStoreState {

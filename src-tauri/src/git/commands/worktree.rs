@@ -1,5 +1,3 @@
-#![allow(unused_imports, missing_docs)]
-
 use crate::common::executor::factory::ExecTarget;
 use crate::common::git::operations;
 use crate::common::git::path_guard::validate_worktree_path;

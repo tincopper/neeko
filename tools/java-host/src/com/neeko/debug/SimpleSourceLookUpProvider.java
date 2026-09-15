@@ -43,6 +43,13 @@ import com.microsoft.java.debug.core.protocol.Types.SourceBreakpoint;
  */
 public final class SimpleSourceLookUpProvider implements ISourceLookUpProvider {
 
+    /**
+     * Neeko 的 tab 展示身份前缀（{@code jdt:/<module>/<pkg 段…>/<Name>.java}）。
+     *
+     * <p>它**不是**本 provider 的输入形态：适配器只应收到真实文件路径（Neeko 在 DAP 边界
+     * 翻译）。此处保留仅为**明确拒绝**（见 {@link #resolveClassName}），避免退化成
+     * 「按文件名猜默认包」这种更危险的静默错。
+     */
     private static final String JDT_DISPLAY_PREFIX = "jdt:/";
     private static final String JAVA_SUFFIX = ".java";
 
@@ -269,15 +276,21 @@ public final class SimpleSourceLookUpProvider implements ISourceLookUpProvider {
     /**
      * 源码 URI → JDI 全限定类名；无法判定返回 {@code null}。
      *
-     * <p>规则按「路径形态」分派，覆盖三条真实来源：
+     * <p>规则按「路径形态」分派，覆盖两条真实来源：
      * <ol>
      *   <li>{@code java-src-cache} 解压产物（{@link ClasspathSources} 布局，
-     *       包名 = stem 之后的目录段）；</li>
-     *   <li>LSP jdt 展示路径 {@code jdt:/<module>/<pkg 段…>/<Name>.java}
-     *       （手工跳转打开的 JDK / 依赖类，用户在其上打断点）；</li>
+     *       包名 = stem 之后的目录段）—— JDK 与依赖源码都走这条；</li>
      *   <li>项目源码根标记 {@code /src/test/java/} → {@code /src/main/java/} →
      *       {@code /src/}（Gradle 变体）；均不含则退化为文件名（默认包）。</li>
      * </ol>
+     *
+     * <p>Neeko 的 **tab 展示身份** {@code jdt:/<module>/<pkg 段…>/<Name>.java} 一律
+     * **明确拒绝**（返回 {@code null}）：它不是文件路径，也不在 java-debug 的契约里
+     * （{@code JdtSourceLookUpProvider.asCompilationUnit} 只认「真实存在的文件」或
+     * 「{@code jdt://…?<JDT handle>}」，而 handle 取不到）。Neeko 在 DAP 边界把它翻译成
+     * 真实路径后才下发；若这里仍收到它，说明翻译缺失 —— 此时**按文件名猜**（例如把
+     * {@code jdt:/java.base/java/io/PrintStream.java} 猜成默认包的 {@code PrintStream}）
+     * 会让 java-debug 去解析一个不存在的类，比不解析更难排查。
      */
     static String resolveClassName(String sourceUri) {
         if (sourceUri == null) {
@@ -291,12 +304,12 @@ public final class SimpleSourceLookUpProvider implements ISourceLookUpProvider {
         }
         String simpleName = fileName.substring(0, fileName.length() - JAVA_SUFFIX.length());
 
+        if (path.startsWith(JDT_DISPLAY_PREFIX)) {
+            return null;
+        }
         String fromCache = ClasspathSources.packageFromCachePath(path);
         if (fromCache != null) {
             return qualify(fromCache, simpleName);
-        }
-        if (path.startsWith(JDT_DISPLAY_PREFIX)) {
-            return qualify(packageFromJdtDisplayPath(path), simpleName);
         }
 
         String className = simpleName;
@@ -321,21 +334,6 @@ public final class SimpleSourceLookUpProvider implements ISourceLookUpProvider {
             }
         }
         return className;
-    }
-
-    /**
-     * jdt 展示路径 {@code jdt:/<module>/<pkg 段…>/<Name>.java} → 包名。
-     * 缺模块段或落在默认包时返回空串。
-     */
-    private static String packageFromJdtDisplayPath(String path) {
-        String rest = path.substring(JDT_DISPLAY_PREFIX.length());
-        int moduleEnd = rest.indexOf('/');
-        if (moduleEnd < 0 || moduleEnd + 1 >= rest.length()) {
-            return "";
-        }
-        String afterModule = rest.substring(moduleEnd + 1);
-        int pkgEnd = afterModule.lastIndexOf('/');
-        return pkgEnd < 0 ? "" : afterModule.substring(0, pkgEnd).replace('/', '.');
     }
 
     private static String qualify(String pkg, String simpleName) {

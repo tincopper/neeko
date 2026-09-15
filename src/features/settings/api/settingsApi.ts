@@ -1,7 +1,9 @@
 import { invoke } from '@tauri-apps/api/core';
 
 import type { ThemeListItem, CustomThemeData } from '@/features/settings/types';
+import type { JavaDebugBackend } from '@/shared/types';
 import type { AppInfo } from '@/shared/types/app';
+import { parseJavaDebugBackend } from '@/shared/utils/javaDebugBackend';
 
 export function getSystemFonts(): Promise<string[]> {
   return invoke<string[]>('get_system_fonts');
@@ -28,6 +30,22 @@ export function saveConfig(config: Record<string, unknown>): Promise<void> {
 
 export function loadConfig(): Promise<Record<string, unknown>> {
   return invoke<Record<string, unknown>>('load_config');
+}
+
+/**
+ * 读取 `dap.javaBackend`（缺键 / 非法 / 读取失败一律 `auto`）。
+ *
+ * **唯一的解析点**：前端各处（门控跳过、后端 dispatch）都走这里，避免同一份
+ * "合法值 + 兜底" 规则抄成多份。注意后端在同一次调用内仍会**权威复核**该键。
+ */
+export async function loadJavaDebugBackend(): Promise<JavaDebugBackend> {
+  try {
+    const raw = await loadConfig();
+    const value = (raw.dap as { javaBackend?: unknown } | undefined)?.javaBackend;
+    return parseJavaDebugBackend(value);
+  } catch {
+    return 'auto';
+  }
 }
 
 export interface WslProjectThemeTarget {

@@ -61,6 +61,9 @@ final class ClasspathSources {
     /** JDK 源码缓存 stem 前缀（布局含模块段，见 {@link #findJdkSource}）。 */
     private static final String JDK_STEM_PREFIX = "jdk-src-";
 
+    /** 缓存**基目录**覆盖的系统属性名（见 {@link #defaultCacheRoot}；布局层不可覆盖）。 */
+    static final String CACHE_BASE_PROPERTY = "neeko.java.src.cache.base";
+
     private static final String CACHE_ROOT = defaultCacheRoot();
     private static final String CACHE_MARKER = "/" + CACHE_DIR_NAME + "/";
 
@@ -290,8 +293,23 @@ final class ClasspathSources {
         return Files.isRegularFile(path) && path.getFileName().toString().endsWith(".jar");
     }
 
+    /**
+     * 缓存根 = {@code <基目录>/java-src-cache}，默认基目录为 {@code ~/.neeko}。
+     *
+     * <p>可由系统属性 {@code neeko.java.src.cache.base} 覆盖**基目录**（测试 / 私有部署）：
+     * 缓存根是**进程级全局**，不可注入会让测试把解压产物写进真实用户目录（污染用户数据，
+     * 且测试之间互相影响）。与 Rust 侧 {@code NEEKO_JAVA_DEBUG_PLUGIN} 的覆盖思路一致。
+     *
+     * <p>只允许改基目录、不允许改 {@code java-src-cache} 这一层：该目录名是**跨语言布局
+     * 契约** —— {@link #packageFromCachePath} 的包名推导、前端 {@code fileRef} 的
+     * 「缓存路径 → jdt 身份」映射都按它匹配。允许覆盖整条路径会让推导静默退化成
+     * 「只用文件名」的默认包（实测：FQN 从 {@code com.demo.Foo} 变成 {@code Foo}）。
+     */
     private static String defaultCacheRoot() {
-        String home = System.getProperty("user.home", ".");
-        return Paths.get(home, ".neeko", CACHE_DIR_NAME).toAbsolutePath().normalize().toString();
+        String baseOverride = System.getProperty(CACHE_BASE_PROPERTY);
+        Path base = (baseOverride != null && !baseOverride.trim().isEmpty())
+                ? Paths.get(baseOverride.trim())
+                : Paths.get(System.getProperty("user.home", "."), ".neeko");
+        return base.resolve(CACHE_DIR_NAME).toAbsolutePath().normalize().toString();
     }
 }

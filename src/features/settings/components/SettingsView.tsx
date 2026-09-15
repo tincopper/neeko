@@ -14,6 +14,7 @@ import AboutPanel from './AboutPanel';
 import AgentsPanel from './AgentsPanel';
 import AppearancePanel from './AppearancePanel';
 import { NAV_ITEMS, type SettingsNavId } from './constants';
+import DebugPanel from './DebugPanel';
 import EditorPanel from './EditorPanel';
 import GitPanel from './GitPanel';
 import IdePanel from './IdePanel';
@@ -220,6 +221,16 @@ function SettingsView() {
 
       case 'git':
         return <GitPanel diffMode={config.diffMode} onDiffModeChange={state.setDiffMode} />;
+
+      case 'debug':
+        return (
+          <DebugPanel
+            javaBackend={config.dap?.javaBackend ?? 'auto'}
+            onJavaBackendChange={(javaBackend) =>
+              onConfigChange({ ...config, dap: { ...config.dap, javaBackend } })
+            }
+          />
+        );
 
       case 'shortcuts':
         return <ShortcutPanel config={config} onConfigChange={onConfigChange} />;

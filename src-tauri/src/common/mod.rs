@@ -15,6 +15,8 @@ pub mod file;
 pub mod git;
 pub mod logger;
 pub mod runtime;
+/// 退出前的后台清理机制（组合根只声明任务表）。
+pub mod shutdown;
 pub mod terminal;
 pub mod theme_types;
 pub mod types;

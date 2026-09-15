@@ -889,3 +889,21 @@ mod tests {
         );
     }
 }
+
+/// 下载并校验 **java-debug 插件 bundle**（JDTLS 后端 B' 的前置）。
+///
+/// 幂等：已就绪（存在且结构合法）直接返回路径；否则从 pin 的 Maven Central 坐标下载，
+/// 比对官方 `.sha256` 后原子落盘，再做结构性校验。返回最终 jar 的**绝对路径**。
+///
+/// 为什么是独立命令而不是塞进 `debug_java_start`：能力探测必须**不阻塞** IPC（design
+/// §2.5），而首次下载 2.9 MB 需要数秒；由前端在需要时单独调用，下载完成后重启该项目的
+/// Java 语言服务器会话即生效（`bundles` 在会话创建时求值 —— 见 `LspPlugin
+/// ::initialization_options_provider`）。
+#[tauri::command]
+pub async fn java_debug_ensure_bundle() -> Result<String, AppError> {
+    let path = tokio::task::spawn_blocking(crate::lsp::ensure_bundle_blocking)
+        .await
+        .map_err(|e| AppError::Lsp(format!("bundle download task failed: {e}")))?
+        .map_err(AppError::Lsp)?;
+    Ok(path.to_string_lossy().to_string())
+}

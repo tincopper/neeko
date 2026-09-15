@@ -16,9 +16,10 @@ use super::adapter::{self, DebugAdapterPlugin};
 use super::client::{DapClient, DapEventHandler};
 use super::events::{DAP_EVENT, DAP_SESSION_STATUS_EVENT};
 use super::process;
+use super::transport::{self, DapIo};
 use super::types::{
-    BreakpointSpec, ControlAction, DapEventPayload, DapSessionInfo, HandshakeOrder, LaunchConfig,
-    SessionStatus, StackFrameDto, VariableDto, MAX_SOURCE_BYTES,
+    AdapterKind, BreakpointSpec, ControlAction, DapEventPayload, DapSessionInfo, HandshakeOrder,
+    LaunchConfig, SessionStatus, StackFrameDto, VariableDto, MAX_SOURCE_BYTES,
 };
 use crate::common::executor::factory::ExecTarget;
 use crate::common::executor::ProcessGuard;
@@ -44,6 +45,11 @@ pub struct DapSession {
     stopped_waiters: Mutex<Vec<oneshot::Sender<()>>>,
     terminated_emitted: AtomicBool,
     app: AppHandle,
+    /// 会话所属适配器族 —— 决定收尾时要做的**适配器专属**清理（目前只有 Delve 会留下
+    /// `__debug_bin*` / `debug.test` 之类产物，见 [`super::cleanup`]）。
+    /// 同时是断点源路径等**语言专属**翻译的路由键（见 `LanguageBackend`）：manager 据此
+    /// 反查编排后端，不在各调用点硬编码语言名。
+    kind: AdapterKind,
 }
 
 /// Bridges DAP client events to session methods via `Weak` (breaks init cycle).
@@ -81,7 +87,7 @@ impl DapEventHandler for SessionHandler {
 
     fn on_output(&self, body: Value) {
         if let Some(s) = self.upgrade() {
-            tokio::spawn(async move { s.emit_event("output", body).await });
+            tokio::spawn(async move { s.emit_event("output", body) });
         }
     }
 
@@ -121,6 +127,49 @@ impl DapSession {
             .await?;
         let adapter_proc = process::spawn_adapter(&target, &project_path, &spawn).await?;
         let process::AdapterProcess { io, guard } = adapter_proc;
+        Self::start_with(
+            io,
+            Some(guard),
+            app,
+            project_id,
+            project_path,
+            config,
+            breakpoints,
+        )
+        .await
+    }
+
+    /// Connect to an **external** DAP endpoint that Neeko does not own as a child
+    /// process (e.g. the java-debug server inside a JDTLS JVM).
+    ///
+    /// Availability is NOT checked here — for external endpoints it is answered by
+    /// the caller's own capability probe, not by `is_available`. No `preLaunchTask`
+    /// runs either: the endpoint is already up. Detaching is just closing the TCP
+    /// stream, so the session carries no process guard.
+    pub async fn connect(
+        addr: &str,
+        app: AppHandle,
+        project_id: String,
+        project_path: String,
+        config: LaunchConfig,
+        breakpoints: Vec<BreakpointSpec>,
+    ) -> Result<Arc<Self>, AppError> {
+        let io = transport::connect_tcp_addr(addr).await?;
+        Self::start_with(io, None, app, project_id, project_path, config, breakpoints).await
+    }
+
+    /// Shared tail for both entry points: build the session from connected I/O and
+    /// run the handshake. `guard` is `None` for external endpoints.
+    async fn start_with(
+        io: DapIo,
+        guard: Option<ProcessGuard>,
+        app: AppHandle,
+        project_id: String,
+        project_path: String,
+        config: LaunchConfig,
+        breakpoints: Vec<BreakpointSpec>,
+    ) -> Result<Arc<Self>, AppError> {
+        let plugin = adapter::plugin_for(&config.type_)?;
         let stderr_buf = Arc::clone(&io.stderr_buf);
         let mut proc_out_rx = io.proc_out_rx;
 
@@ -140,9 +189,10 @@ impl DapSession {
                 status_message: Mutex::new(None),
                 last_thread_id: Mutex::new(1),
                 client,
-                kill: Mutex::new(Some(guard)),
+                kill: Mutex::new(guard),
                 stopped_waiters: Mutex::new(Vec::new()),
                 terminated_emitted: AtomicBool::new(false),
+                kind: plugin.kind(),
                 app: app.clone(),
             }
         });
@@ -155,15 +205,13 @@ impl DapSession {
                     log::debug!("[DAP adapter log] {line}");
                     continue;
                 }
-                let _ = session_out
-                    .emit_event(
-                        "output",
-                        json!({
-                            "category": category,
-                            "output": format!("{line}\n"),
-                        }),
-                    )
-                    .await;
+                session_out.emit_event(
+                    "output",
+                    json!({
+                        "category": category,
+                        "output": format!("{line}\n"),
+                    }),
+                );
             }
         });
 
@@ -223,8 +271,8 @@ impl DapSession {
         let launch_args = plugin.build_launch_args(config, project_path)?;
         let stop_on_entry = config.stop_on_entry.unwrap_or(false);
         let entry_fn = plugin.entry_function_for_stop_on_entry(stop_on_entry);
-        // 请求命令名：Go/Lldb 为 launch；Java attach-first 为 attach。
-        let start_cmd = plugin.launch_request_command();
+        // 请求命令名来自配置：`launch`（默认 / B'）或 `attach`（Java A 路径）。
+        let start_cmd = plugin.launch_request_command(config);
 
         match plugin.handshake_order() {
             HandshakeOrder::LaunchBeforeBreakpoints => {
@@ -310,8 +358,7 @@ impl DapSession {
         self.emit_event(
             "session",
             json!({ "status": status.as_str(), "configName": config.name }),
-        )
-        .await;
+        );
         Ok(())
     }
 
@@ -320,7 +367,7 @@ impl DapSession {
             *self.last_thread_id.lock().await = tid;
         }
         self.set_status(SessionStatus::Stopped, None).await;
-        self.emit_event("stopped", body).await;
+        self.emit_event("stopped", body);
         let waiters = std::mem::take(&mut *self.stopped_waiters.lock().await);
         for tx in waiters {
             let _ = tx.send(());
@@ -329,7 +376,7 @@ impl DapSession {
 
     async fn handle_continued(&self, body: Value) {
         self.set_status(SessionStatus::Running, None).await;
-        self.emit_event("continued", body).await;
+        self.emit_event("continued", body);
     }
 
     async fn apply_breakpoints(
@@ -358,17 +405,20 @@ impl DapSession {
                         );
                         // 同时落到 Debug Console（category=console → 前端按 sys 渲染）：
                         // 「断点没生效」若只在日志里，用户无从判断原因。
+                        //
+                        // 文案保持语言中立且**不臆测原因**：适配器未解析既可能是"该行没有
+                        // 可执行代码"，也可能是"源码/类对不上"。历史文案举了 `fn main`（Delve
+                        // 场景）并把 Java 的路径形态问题归因成"代码没编进去"，把用户引向错方向。
                         self.emit_output(
                             "console",
                             &format!(
                                 "Breakpoint(s) not resolved by the adapter in {path}: lines {}. \
-                                 No matching code in the debug target — e.g. a breakpoint in \
-                                 `fn main` while debugging a test binary (`main` is not compiled \
-                                 into test targets).",
+                                 The adapter found no executable code matching those lines — \
+                                 check that the file belongs to the debugged program, that the \
+                                 build is current, and that the source matches the running code.",
                                 unresolved.join(", ")
                             ),
-                        )
-                        .await;
+                        );
                     }
                 }
                 Err(e) => log::warn!("[DAP] setBreakpoints failed for {path}: {e}"),
@@ -481,17 +531,27 @@ impl DapSession {
         {
             return;
         }
-        // Drop Delve / test leftovers (__debug_bin*, debug.test) under the project tree.
-        let root = std::path::PathBuf::from(&self.project_path);
-        let removed = super::cleanup::cleanup_debug_artifacts(&root);
-        if removed > 0 {
-            log::info!(
-                "[dap] removed {removed} debug artifact(s) under {}",
-                self.project_path
-            );
+        // Drop Delve leftovers (`__debug_bin*` / `debug.test`) under the project tree.
+        //
+        // 两条约束：
+        // 1. **适配器专属**：只有 Delve 会留下这类产物，lldb / Java attach-first 都不会 ——
+        //    无条件遍历项目树是白做功（Java 会话尤其频繁）。
+        // 2. **不得阻塞**：`cleanup_debug_artifacts` 是同步目录遍历（深度 ≤ 8），而本函数处于
+        //    会话收尾路径（适配器事件 / 用户停止 / 被调试进程退出），必须放进 `spawn_blocking`
+        //    （红线 3：异步上下文禁止同步阻塞 IO）。
+        if self.kind == AdapterKind::Go {
+            let root = std::path::PathBuf::from(&self.project_path);
+            let label = self.project_path.clone();
+            let removed =
+                tokio::task::spawn_blocking(move || super::cleanup::cleanup_debug_artifacts(&root))
+                    .await
+                    .unwrap_or(0);
+            if removed > 0 {
+                log::info!("[dap] removed {removed} debug artifact(s) under {label}");
+            }
         }
         self.set_status(SessionStatus::Terminated, message).await;
-        self.emit_event("terminated", body).await;
+        self.emit_event("terminated", body);
     }
 
     /// Send updated breakpoints for a file to the adapter.
@@ -638,6 +698,35 @@ impl DapSession {
             .to_string())
     }
 
+    /// 被调试进程（A 路径的测试 JVM）**自行退出** → 结束会话。
+    ///
+    /// 与 [`Self::stop`] 区分：那条是用户主动停止，要发 `disconnect`；这里目标进程已经没了，
+    /// 发请求只会等超时，故**不发 DAP 请求**，语义等价于适配器发来 `terminated`。
+    ///
+    /// 为什么需要它：A 路径的测试 JVM 由 Neeko 自己 spawn（`JavaDebuggee`），**attach 模式下
+    /// 适配器不保证上报 `terminated`**（实测只有 `thread exited`）。若只依赖适配器，测试跑完后
+    /// 会话会永远停在 `stopped`：黄线高亮不消失、工具栏一直显示"停止"、断点状态不再更新。
+    /// 进程退出是 Neeko 掌握的**本地权威事实**，必须据此收敛。
+    ///
+    /// 同时终止**适配器子进程**：它由 Neeko spawn（`kill` 里的守卫），目标没了就无事可做，
+    /// 不取走守卫会让它常驻到会话被替换为止。这里刻意**不发 `disconnect`** —— 被调试进程
+    /// 已消失，协商只会等到超时；适配器随后（或已经）关流，`client` 的 EOF 处理会再走一次
+    /// 收尾，幂等。
+    ///
+    /// 幂等：与 `stop()` / 适配器 `terminated` 竞争时由 `finish_terminated` 的守卫决定只生效一次，
+    /// 因此"停止后又收到管道 EOF"不会重复收尾。
+    pub(crate) async fn debuggee_exited(&self, detail: &str) {
+        let guard = self.kill.lock().await.take();
+        if let Some(guard) = guard {
+            guard.terminate().await;
+        }
+        self.finish_terminated(
+            Some(detail.to_string()),
+            json!({ "reason": "debuggee-exited" }),
+        )
+        .await;
+    }
+
     /// Stop the debug session and disconnect from the adapter.
     pub async fn stop(&self) {
         let _ = self
@@ -650,6 +739,13 @@ impl DapSession {
         }
         self.finish_terminated(Some("Stopped".into()), json!({ "reason": "stopped" }))
             .await;
+    }
+
+    /// 会话的适配器族（`start_with` 建会话时由 launch `type` 经 registry 派生）。
+    /// 语言专属逻辑的路由键——调用方据此反查 `LanguageBackend`，不在各处硬编码语言名。
+    #[must_use]
+    pub const fn kind(&self) -> AdapterKind {
+        self.kind
     }
 
     /// Get a snapshot of the current session state for the frontend.
@@ -673,18 +769,24 @@ impl DapSession {
     /// Forward an external process line (e.g. Java debuggee JVM stdout) as a
     /// DAP `output` event. Body shape matches the adapter proc_out fan-in
     /// (`{ category, output }`), so the frontend renders it identically.
-    pub(crate) async fn emit_output(&self, category: &str, line: &str) {
+    ///
+    /// 同步：事件投递本身没有异步工作（见 [`Self::emit_event`]），保持 `async` 只会让
+    /// 调用方（输出泵等）被迫异步化，而泵需要**同步**回调才能脱离会话被单测。
+    pub(crate) fn emit_output(&self, category: &str, line: &str) {
         self.emit_event(
             "output",
             json!({
                 "category": category,
                 "output": format!("{line}\n"),
             }),
-        )
-        .await;
+        );
     }
 
-    async fn emit_event(&self, kind: &str, body: Value) {
+    /// 向前端投递一个 DAP 事件。
+    ///
+    /// 同步：`AppHandle::emit` 本身是同步调用，函数体内**没有任何 `.await`** ——
+    /// 因此不声明 `async`（假异步会传染给所有调用方）。
+    fn emit_event(&self, kind: &str, body: Value) {
         let payload = DapEventPayload {
             session_id: self.session_id.clone(),
             project_id: self.project_id.clone(),

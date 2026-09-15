@@ -7,20 +7,20 @@
  */
 import { StateEffect, StateField } from '@codemirror/state';
 
-import type { LspRunnable } from '../runnables/runnable';
+import type { LanguageOverlay } from '@/features/runner';
 
 /** Debounced reparse trigger (dispatched from the update listener after doc changes). */
 export const refreshRunCodelensEffect = StateEffect.define<null>();
 
 /**
- * LSP runnable 覆盖（行号 1-based → runnable），由**异步** provider 注入。
+ * 语言 overlay 覆盖（行号 1-based → runnable），由**异步** provider 注入。
  *
  * 刻意做成 StateField 而不是读全局 store/闭包：快路径 markers 的构建（`StateField.create`）
  * 必须保持**同步纯函数**，异步结果只能在就绪后经 effect 落进来。
  */
-export const setLspRunnablesEffect = StateEffect.define<Map<number, LspRunnable>>();
+export const setLspRunnablesEffect = StateEffect.define<Map<number, LanguageOverlay>>();
 
-export const lspRunnablesField = StateField.define<Map<number, LspRunnable>>({
+export const lspRunnablesField = StateField.define<Map<number, LanguageOverlay>>({
   create: () => new Map(),
   update(value, tr) {
     for (const e of tr.effects) {

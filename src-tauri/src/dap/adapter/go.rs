@@ -128,6 +128,7 @@ mod tests {
             pre_launch_task: None,
             stop_on_entry: Some(false),
             classpath: vec![],
+            ..Default::default()
         }
     }
 
@@ -182,6 +183,7 @@ mod tests {
             pre_launch_task: None,
             stop_on_entry: Some(false),
             classpath: vec![],
+            ..Default::default()
         };
         let args = launch_args(&cfg);
         assert_eq!(args["mode"], "test");

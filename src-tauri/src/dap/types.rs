@@ -8,7 +8,7 @@ use crate::AppError;
 // ── Launch / breakpoint persistence (IPC + disk) ───────────────────────────
 
 /// One entry in `.neeko/launch.json` `configurations` array.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct LaunchConfig {
     /// Display name for this launch configuration.
@@ -41,12 +41,29 @@ pub struct LaunchConfig {
     #[serde(default)]
     pub stop_on_entry: Option<bool>,
     /// Java attach-first：debuggee 的运行时 classpath 条目（`target/classes`、
-    /// 依赖 jar…）。仅由编辑器 Java 测试/主类调试链路填充；JavaAdapter 把它并入
-    /// attach 载荷的 `sourcePaths`（attach 无 `classPaths` 字段，见
-    /// `Requests$AttachArguments`），host 侧据此解析第三方库 / JDK 源码。
+    /// 依赖 jar…）。A 路径下 JavaAdapter 把它并入 attach 载荷的 `sourcePaths`
+    /// （attach 无 `classPaths` 字段，见 `Requests$AttachArguments`），host 侧据此
+    /// 解析第三方库 / JDK 源码；B' 路径下它就是 launch 载荷的 `classPaths`。
     /// 其他适配器忽略。
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub classpath: Vec<String>,
+    /// **Java adapter 专属**（§9.4 方案 C）：B'（launch）的 DAP `mainClass`。
+    /// 测试调试为 JUnit Console Launcher；应用调试为目标 main 类。A 路径（attach）
+    /// 不使用。仅 `adapter/java/` 构造站点赋值；通用层（manager / discover）不得消费。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub main_class: Option<String>,
+    /// **Java adapter 专属**（§9.4 方案 C）：JDTLS 的 project name（多模块消歧；
+    /// A 路径的 attach 载荷也用它）。
+    ///
+    /// **evaluate 的硬前置**：真机实证缺该字段时求值直接失败 ——
+    /// `Cannot evaluate, please specify projectName in launch.json.`
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub project_name: Option<String>,
+    /// **Java adapter 专属**（§9.4 方案 C）：B'（launch）的 DAP `modulePaths`
+    /// （模块化工程）。普通 classpath 工程为空且**合法为空**——就绪判据只看
+    /// `classpath` 非空（见 Java debug 能力探测）。仅 `adapter/java/` 构造站点赋值。
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub module_paths: Vec<String>,
 }
 
 /// 单次源码传输上限（字节）。
@@ -431,6 +448,75 @@ impl AdapterKind {
     }
 }
 
+/// `dap.javaBackend` 的取值：Java 调试后端选择。
+///
+/// 缺键 / 非法值 / 读取失败一律按 [`JavaDebugBackend::Auto`]（配置契约）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum JavaDebugBackend {
+    /// 默认：优先 B'（JDTLS 内 java-debug）；不可用时**不自动换引擎**，由前端按
+    /// `statically_detectable` 决定"一次性询问"还是"报错 + 显式入口"。
+    Auto,
+    /// 只用 B'：任何不可用都只报错（不询问）。
+    Jdtls,
+    /// 只用 A（自写 host，功能受限）；前端直接走 `debug_java_attach`。
+    Host,
+}
+
+impl JavaDebugBackend {
+    /// 解析配置值（大小写敏感，与既有配置键风格一致）。
+    #[must_use]
+    pub fn parse(raw: Option<&str>) -> Self {
+        match raw {
+            Some("jdtls") => Self::Jdtls,
+            Some("host") => Self::Host,
+            _ => Self::Auto,
+        }
+    }
+
+    /// 配置值字面量。
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Auto => "auto",
+            Self::Jdtls => "jdtls",
+            Self::Host => "host",
+        }
+    }
+
+    /// 是否允许走 B'（`host` 明确不允许）。
+    #[must_use]
+    pub const fn allows_jdtls(self) -> bool {
+        !matches!(self, Self::Host)
+    }
+}
+
+/// B'（JDTLS 后端）的调试目标：一次编辑器 Debug 动作产出的结构化身份 + 启动参数。
+///
+/// **参数构造单点化（D8）**：`args` 与 `main_class` 由前端**唯一一份**用例身份 →
+/// 启动参数构造逻辑产出（Run 与 Debug 同源），Rust 侧只补齐真值 classpath 与
+/// Console Launcher jar，不重复实现选择器拼装。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct JavaJdtlsTarget {
+    /// 能力探测用的类（测试类或 main 类 FQCN）。
+    pub probe_class: String,
+    /// 运行目录（模块根）。
+    pub cwd: String,
+    /// 会话显示名中的用例名。
+    pub test_name: String,
+    /// DAP `mainClass`（测试为 Console Launcher，应用调试为目标 main 类）。
+    pub main_class: String,
+    /// DAP `args`（前端单点构造）。
+    #[serde(default)]
+    pub args: Vec<String>,
+    /// 测试目标附带 Console Launcher jar（加入 classPaths）；应用调试为 `None`。
+    #[serde(default)]
+    pub launcher_jar: Option<String>,
+    /// 多模块消歧用的 project name；缺省时由后端按项目目录名推导。
+    #[serde(default)]
+    pub project_name: Option<String>,
+}
+
 /// How Neeko speaks DAP with the adapter process.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AdapterTransport {
@@ -475,4 +561,86 @@ pub struct DebugBuildOutput {
     /// Piped stderr, truncated to the per-stream limit. go/cargo 的构建报错走此流
     /// （诊断展示用；前端 `pushBuildLogTail` 与 stdout 合并渲染，不参与产物解析）。
     pub stderr: String,
+}
+
+#[cfg(test)]
+mod java_backend_tests {
+    use super::*;
+
+    /// 缺键 / 非法 / 空串一律 `auto`（配置契约：读取失败不阻断调试）。
+    #[test]
+    fn java_backend_defaults_to_auto() {
+        for raw in [None, Some(""), Some("AUTO"), Some("jdtl"), Some("nope")] {
+            assert_eq!(
+                JavaDebugBackend::parse(raw),
+                JavaDebugBackend::Auto,
+                "{raw:?}"
+            );
+        }
+        assert_eq!(
+            JavaDebugBackend::parse(Some("jdtls")),
+            JavaDebugBackend::Jdtls
+        );
+        assert_eq!(
+            JavaDebugBackend::parse(Some("host")),
+            JavaDebugBackend::Host
+        );
+    }
+
+    /// 只有显式 `host` 才禁止 B'；`auto` 与 `jdtls` 都允许（差异只在前端 UX）。
+    #[test]
+    fn only_host_forbids_jdtls() {
+        assert!(JavaDebugBackend::Auto.allows_jdtls());
+        assert!(JavaDebugBackend::Jdtls.allows_jdtls());
+        assert!(!JavaDebugBackend::Host.allows_jdtls());
+        for b in [
+            JavaDebugBackend::Auto,
+            JavaDebugBackend::Jdtls,
+            JavaDebugBackend::Host,
+        ] {
+            assert_eq!(
+                JavaDebugBackend::parse(Some(b.as_str())),
+                b,
+                "字面量必须可回环"
+            );
+        }
+    }
+
+    /// IPC 契约：`JavaJdtlsTarget` 为 camelCase；`launcherJar` 缺省为 None。
+    #[test]
+    fn jdtls_target_deserializes_camel_case_with_defaults() {
+        let target: JavaJdtlsTarget = serde_json::from_value(serde_json::json!({
+            "probeClass": "com.example.CalcTest",
+            "cwd": "/proj",
+            "testName": "testAdd",
+            "mainClass": "org.junit.platform.console.ConsoleLauncher"
+        }))
+        .expect("deserialize");
+        assert_eq!(target.probe_class, "com.example.CalcTest");
+        assert!(target.args.is_empty());
+        assert!(target.launcher_jar.is_none());
+        assert!(target.project_name.is_none());
+    }
+
+    /// 结果三态以 `kind` 为 tag（前端按 kind 分发）——断言统一的 `DebugStartOutcome`
+    ///（`debug_java_start` 的 IPC 契约与旧 `JavaDebugStartOutcome` 同构）。
+    #[test]
+    fn start_outcome_is_tagged_by_kind() {
+        use crate::dap::adapter::DebugStartOutcome;
+        let warming = serde_json::to_value(DebugStartOutcome::Warming {
+            detail: "import running".into(),
+        })
+        .expect("serialize");
+        assert_eq!(warming["kind"], "warming");
+        assert_eq!(warming["detail"], "import running");
+
+        let unavailable = serde_json::to_value(DebugStartOutcome::Unavailable {
+            message: "no bundle".into(),
+            statically_detectable: true,
+        })
+        .expect("serialize");
+        assert_eq!(unavailable["kind"], "unavailable");
+        assert_eq!(unavailable["staticallyDetectable"], true);
+        assert_eq!(unavailable["message"], "no bundle");
+    }
 }

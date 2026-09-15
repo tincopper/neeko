@@ -189,6 +189,15 @@ pub struct LspPlugin {
     pub is_custom: bool,
     /// Optional `InitializeParams.initializationOptions` for the server.
     pub initialization_options: Option<serde_json::Value>,
+    /// 运行时 `initializationOptions` 提供者（会话创建时求值，**覆盖**上面的静态值）。
+    ///
+    /// 用于载荷必须在会话创建那一刻才确定的服务器 —— 典型是 jdtls 的 `bundles`：
+    /// 它必须指向**真实存在**的绝对路径，而该文件可能由 Neeko 在用户首次调试 Java 时
+    /// 才下载。用 `fn` 指针（无捕获、`Send + Sync`）即可满足，无需闭包或多态。
+    ///
+    /// 说明：`bundles` 只在 jdtls `initialize` 时读取，因此"下载后重启会话"这一
+    /// 缓解手段**只有**在载荷每次会话重新求值时才成立 —— 这正是本字段存在的理由。
+    pub initialization_options_provider: Option<fn() -> serde_json::Value>,
     /// Optional `InitializeParams.initializationOptions.extendedClientCapabilities`
     /// (vendor-specific, e.g. jdtls `classFileContentsSupport`). `None` for
     /// all languages except those whose server gates features on it.
@@ -228,6 +237,7 @@ impl LspPlugin {
             auto_start: LspAutoStart::OnFirstFile,
             is_custom: false,
             initialization_options: None,
+            initialization_options_provider: None,
             extended_client_capabilities: None,
             client_capabilities: None,
             tuning: LspServerTuning::default(),
@@ -266,6 +276,16 @@ impl LspPlugin {
     #[must_use]
     pub fn with_initialization_options(mut self, opts: serde_json::Value) -> Self {
         self.initialization_options = Some(opts);
+        self
+    }
+
+    /// 设置**运行时** `initializationOptions` 提供者（每次会话创建时求值）。
+    #[must_use]
+    pub const fn with_initialization_options_provider(
+        mut self,
+        provider: fn() -> serde_json::Value,
+    ) -> Self {
+        self.initialization_options_provider = Some(provider);
         self
     }
 
@@ -312,6 +332,7 @@ impl LspPlugin {
                 .unwrap_or(LspAutoStart::OnFirstFile),
             is_custom: true,
             initialization_options: cfg.initialization_options.clone(),
+            initialization_options_provider: None,
             extended_client_capabilities: None,
             client_capabilities: None,
             tuning: LspServerTuning::default(),

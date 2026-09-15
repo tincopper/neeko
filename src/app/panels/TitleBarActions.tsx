@@ -1,5 +1,5 @@
 import OpenIdeButton from '@/app/components/OpenIdeButton';
-import { DebugRunButton } from '@/features/debug';
+import { DebugRunButton } from '@/features/runner';
 import { TaskRunButton } from '@/features/task';
 
 /**

@@ -9,8 +9,8 @@ use super::build;
 use super::discover::EntryPoint;
 use super::manager::DapManager;
 use super::types::{
-    BreakpointSpec, DapSessionInfo, DebugBuildOutput, JavaDebugTarget, LaunchConfig, StackFrameDto,
-    VariableDto,
+    BreakpointSpec, DapSessionInfo, DebugBuildOutput, JavaDebugTarget, JavaJdtlsTarget,
+    LaunchConfig, StackFrameDto, VariableDto,
 };
 use crate::common::types::FileContent;
 use crate::AppError;
@@ -241,9 +241,10 @@ pub async fn debug_build_test_binary(
 
 /// Java attach-first 调试：spawn 测试 JVM（Console Launcher + jdwp suspend=y，
 /// `command` 由前端 buildJavaDebugCommand 构造）→ 解析 jdwp 端口 →
-/// JavaAdapter attach 会话。整段编排在 DapManager 内（JVM 生命周期随会话清理）。
+/// JavaAdapter attach 会话。编排在 Java 语言后端（`adapter::java::backend`），
+/// JVM 生命周期随会话清理。
 /// `classpath` 为 debuggee 运行时 classpath 条目（前端 buildJavaClasspathEntries），
-/// 供 host 解析库源码（详见 [`DapManager::start_java_attach`]）。
+/// 供 host 解析库源码。
 #[tauri::command]
 pub async fn debug_java_attach(
     project_id: String,
@@ -260,8 +261,46 @@ pub async fn debug_java_attach(
         test_name,
         classpath,
     };
+    match state
+        .dap_manager
+        .start_language_debug(
+            &state,
+            app,
+            crate::dap::adapter::DebugRequest::JavaAttach { project_id, target },
+        )
+        .await?
+    {
+        // A 路径 attach-first：成功即会话（无 Warming/Unavailable 分支 —— 探测在 plan 内，
+        // 不可用以 Err 上抛）。
+        crate::dap::adapter::DebugStartOutcome::Session { session } => Ok(session),
+        crate::dap::adapter::DebugStartOutcome::Warming { detail } => Err(AppError::Dap(format!(
+            "java debug warming unexpectedly: {detail}"
+        ))),
+        crate::dap::adapter::DebugStartOutcome::Unavailable { message, .. } => {
+            Err(AppError::Dap(message))
+        }
+    }
+}
+
+/// B'（JDTLS 后端）调试：能力探测 → 直连 JDTLS 内 DAP 端口 → `launch`。
+///
+/// 只做参数接收 + 调度（编排在 [`DapManager::start_language_debug`]）。结果三态
+/// （`session` / `warming` / `unavailable`）**不含自动换引擎**：不可用时由前端按
+/// `staticallyDetectable` 决定"一次性询问改用 Host"还是"报错 + 显式入口"；
+/// A（host）路径仍走 `debug_java_attach`。
+#[tauri::command]
+pub async fn debug_java_start(
+    project_id: String,
+    target: JavaJdtlsTarget,
+    state: State<'_, AppStateWrapper>,
+    app: AppHandle,
+) -> Result<crate::dap::adapter::DebugStartOutcome, AppError> {
     state
         .dap_manager
-        .start_java_attach(&state, app, &project_id, &target)
+        .start_language_debug(
+            &state,
+            app,
+            crate::dap::adapter::DebugRequest::JavaJdtls { project_id, target },
+        )
         .await
 }

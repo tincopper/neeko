@@ -270,3 +270,13 @@ export function lspReadClassFileContents(
     uri,
   });
 }
+
+/**
+ * 下载并校验 java-debug 插件 bundle（JDTLS 后端 B' 的前置）。
+ *
+ * 幂等；返回 jar 的绝对路径。下载完成后需**重启该项目的 Java 语言服务器会话**才会
+ * 生效（`bundles` 在会话创建时求值）。
+ */
+export function ensureJavaDebugBundle(): Promise<string> {
+  return invoke<string>('java_debug_ensure_bundle');
+}

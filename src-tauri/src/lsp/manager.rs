@@ -34,6 +34,18 @@ const RESTART_BASE_DELAY_MS: u64 = 500;
 /// Default: after a project is deactivated, wait this long before closing sessions.
 const DEFAULT_DEACTIVATE_STOP_SECS: u64 = 30 * 60;
 
+/// 请求失败后允许对会话做的事 —— 区分**用户意图请求**与**观察请求**。
+///
+/// 拆成策略而不是再挂一个 bool：`is_probe` 已经表示"单飞桶语义"，两者正交，
+/// 两个 bool 并列会让调用点无法自解释。新增调用场景时扩展本枚举即可（开闭）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum RequestPolicy {
+    /// 用户意图请求（导航 / 补全 / 定义…）：失败即重启会话后重试（既有行为）。
+    RestartOnFailure,
+    /// 观察请求（能力探测…）：失败只报错，**不重启、不新建**会话。
+    Never,
+}
+
 /// Compute the restart delay with exponential backoff.
 const fn compute_restart_delay(attempt: u32, base_ms: u64) -> Duration {
     Duration::from_millis(base_ms * 2_u64.saturating_pow(attempt))
@@ -406,6 +418,24 @@ impl LspManager {
         Ok(key)
     }
 
+    /// 该项目+语言是否仍有在途 progress（导入 / 索引进行中）。
+    ///
+    /// Java debug 能力探测的 `Warming` 判据（design §2.4）：`classpath` 空 **且**
+    /// 此值为 `true` 才是"稍后可成"；无在途进度却返回空 classpath 属真损坏工程，
+    /// 调用方必须直接报错而不是等待。缺会话视为无在途。
+    #[must_use]
+    pub fn has_inflight_progress(&self, project_path: &str, language_id: &str) -> bool {
+        let key = session_key(project_path, language_id);
+        self.session_store
+            .with_session(&key, |s| {
+                s.in_flight_progress
+                    .lock()
+                    .map(|set| !set.is_empty())
+                    .unwrap_or(false)
+            })
+            .unwrap_or(false)
+    }
+
     /// Send an LSP request asynchronously, restarting the session if needed.
     ///
     /// `is_probe` marks best-effort decoration lookups (e.g. the link-highlight
@@ -418,6 +448,56 @@ impl LspManager {
         method: &str,
         params: Value,
         is_probe: bool,
+    ) -> Result<Value, AppError> {
+        self.send_request_with_policy(
+            project_path,
+            language_id,
+            method,
+            params,
+            is_probe,
+            RequestPolicy::RestartOnFailure,
+        )
+        .await
+    }
+
+    /// Send an **observation** request: failures never restart (nor create) the session.
+    ///
+    /// 第一性原理：观测不得改变被观测系统的状态。能力探测（"这个项目现在能不能用某个
+    /// 后端"）是观察，不是用户意图 —— 失败时重启语言服务器会产生三个实际损害：
+    /// ① 重启是重量级、用户可见的状态变更（重新导入项目，数十秒）；
+    /// ② 它消耗 `restart_count` —— 那是**真故障**的预算（`MAX_RESTART_COUNT` 用尽后该
+    ///    项目语言服务永久不可用），把预期内的失败（如命令未注册）记进去等于让探测
+    ///    把 LSP 用坏；
+    /// ③ 它违反能力端口的契约（见 `dap::java_capability`：探测不得在内部启动服务器）。
+    ///
+    /// 会话缺失 / 请求失败都以 `Err` 原样返回，由调用方分类（如 `BundleMissing`）。
+    pub async fn send_request_observed(
+        self: &Arc<Self>,
+        project_path: &str,
+        language_id: &str,
+        method: &str,
+        params: Value,
+    ) -> Result<Value, AppError> {
+        self.send_request_with_policy(
+            project_path,
+            language_id,
+            method,
+            params,
+            false,
+            RequestPolicy::Never,
+        )
+        .await
+    }
+
+    /// Shared request body; `policy` decides what a failure may do to the session.
+    async fn send_request_with_policy(
+        self: &Arc<Self>,
+        project_path: &str,
+        language_id: &str,
+        method: &str,
+        params: Value,
+        is_probe: bool,
+        policy: RequestPolicy,
     ) -> Result<Value, AppError> {
         let key = session_key(project_path, language_id);
 
@@ -434,6 +514,11 @@ impl LspManager {
                     .await
                 {
                     Ok(val) => return Ok(val),
+                    // 观察类请求到此为止（见 `send_request_observed`）：失败不重启会话，
+                    // 原样上抛错误供调用方分类（错误文本是探测分类的输入）。
+                    Err(e) if policy == RequestPolicy::Never => {
+                        return Err(AppError::Lsp(e.to_string()));
+                    }
                     Err(e) => {
                         log::warn!(
                             "[LSP] send_request_async failed for {}, reason: {}. Will restart.",
@@ -443,6 +528,14 @@ impl LspManager {
                     }
                 }
             }
+        }
+
+        // 观察类请求也不得"把服务器弄起来"：探测的语义是"现在能不能用"，
+        // 而不是"把它弄成能用"。会话不在时直接报错，由调用方判为不可用。
+        if policy == RequestPolicy::Never {
+            return Err(AppError::Lsp(format!(
+                "No live LSP session for {key}; the observation request was not retried"
+            )));
         }
 
         // Restart path
@@ -819,6 +912,45 @@ mod tests {
         assert_eq!(d2, Duration::from_millis(2000));
         let d4 = compute_restart_delay(4, 500);
         assert_eq!(d4, Duration::from_millis(8000));
+    }
+
+    /// 缺会话 / 未启动 → 无在途进度（能力探测据此把空 classpath 判为硬错误
+    /// 而不是 `Warming`，避免把损坏工程拖成超时错误）。
+    #[test]
+    fn has_inflight_progress_is_false_without_session() {
+        let manager = LspManager::new_default();
+        assert!(!manager.has_inflight_progress("/no/such/project", "java"));
+    }
+
+    /// **观察请求的护栏**：不得重启、不得新建会话、不得消耗重启预算。
+    ///
+    /// 反例后果（修复前的行为）：能力探测失败走重启通道 → 每点一次 Debug 就重启 jdtls
+    /// 并累加 `restart_count`，5 次后该项目 Java LSP 永久不可用（`MAX_RESTART_COUNT`）。
+    #[tokio::test]
+    async fn observation_request_never_restarts_or_spends_the_budget() {
+        let manager = Arc::new(LspManager::new_default());
+        let key = session_key("/no/such/project", "java");
+        let before = manager.session_store.restart_count(&key);
+
+        let err = manager
+            .send_request_observed(
+                "/no/such/project",
+                "java",
+                "workspace/executeCommand",
+                serde_json::json!({ "command": "vscode.java.startDebugSession" }),
+            )
+            .await
+            .expect_err("no live session must fail");
+        assert!(err.to_string().contains("was not retried"), "{err}");
+        assert_eq!(
+            manager.session_store.restart_count(&key),
+            before,
+            "观察请求不得消耗重启预算"
+        );
+        assert!(
+            manager.session_store.with_session(&key, |_| ()).is_none(),
+            "观察请求不得新建会话"
+        );
     }
 
     #[test]

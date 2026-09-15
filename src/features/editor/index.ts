@@ -16,6 +16,25 @@ export { useEditorGroupLayout } from './hooks/useEditorGroupLayout';
 export type { EditorGroupLayoutResult } from './hooks/useEditorGroupLayout';
 export { useSplitLayout, clampRatio, countPanes, updateSplitRatio } from '@/shared/hooks';
 
+// 运行渲染能力（断点 gutter / 当前行高亮）—— CodeMirror 渲染扩展，属 editor 概念（§10.2）
+export {
+  setBreakpointsEffect,
+  setHoverLineEffect,
+  toggleBreakpointAt,
+  setBreakpointHoverLine,
+  clearBreakpointHoverLine,
+  useBreakpointGutter,
+} from './hooks/useBreakpointGutter';
+export {
+  breakpointContribution,
+  breakpointContributionExtensions,
+} from './gutter/breakpointContribution';
+export {
+  applyDebugCurrentLine,
+  resolveDebugHighlightLine,
+  useCurrentLineHighlight,
+} from './hooks/useCurrentLineHighlight';
+
 // Navigation history (IDEA-like Back / Forward)
 export type { NavLocation } from './navigationHistory';
 export { createNavigationHistory } from './navigationHistory';

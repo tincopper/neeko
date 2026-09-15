@@ -54,7 +54,7 @@ vi.mock('@/features/task', () => ({
   TaskConsolePanel: () => null,
   TaskRunButton: () => null,
 }));
-vi.mock('@/features/debug', () => ({
+vi.mock('@/features/runner', () => ({
   DebugPanel: () => null,
   DebugRunButton: () => null,
 }));

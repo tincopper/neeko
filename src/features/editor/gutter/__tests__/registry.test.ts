@@ -2,17 +2,19 @@ import { Compartment, EditorState } from '@codemirror/state';
 import { EditorView, lineNumbers, type BlockInfo } from '@codemirror/view';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import type { TestCaseInfo } from '@/features/runner';
+
 import {
-  breakpointContribution,
-  breakpointContributionExtensions,
   clearBreakpointHoverLine,
   setBreakpointHoverLine,
   setBreakpointsEffect,
   setHoverLineEffect,
   toggleBreakpointAt,
-} from '@/features/debug';
-
-import type { TestCaseInfo } from '../../utils/testCases';
+} from '../../hooks/useBreakpointGutter';
+import {
+  breakpointContribution,
+  breakpointContributionExtensions,
+} from '../breakpointContribution';
 import type { GutterContribution } from '../contribution';
 import { ComposedMarker, createUnifiedGutterExtension } from '../registry';
 import { createRunCodelensCore, createRunContribution } from '../runContribution';

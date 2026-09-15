@@ -3,6 +3,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 
 import { useCmdHeld } from '@/features/lsp';
 import { useLspStore } from '@/features/lsp/store/lspStore';
+import { useRunActions } from '@/features/runner';
 import { cn } from '@/lib/utils';
 import ContextMenu from '@/shared/components/ContextMenu';
 import type { AppTheme, FileTab } from '@/shared/types';
@@ -19,7 +20,6 @@ import { useFileEditorState } from '../hooks/useFileEditorState';
 import { useJdtLinkNavigation } from '../hooks/useJdtLinkNavigation';
 import { useLspClient } from '../hooks/useLspClient';
 import { useLspNavigation } from '../hooks/useLspNavigation';
-import { useRunActions } from '../hooks/useRunActions';
 import { useUnifiedGutterExtension } from '../hooks/useUnifiedGutter';
 
 import FileEditorFallback, { fileEditorFallbackKind } from './FileEditorFallback';

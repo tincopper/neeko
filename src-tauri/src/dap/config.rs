@@ -126,6 +126,10 @@ pub fn expand_variables(s: &str, workspace: &Path, current_file: Option<&str>) -
 }
 
 /// Expand all string fields in a launch config.
+///
+/// 只列出**需要变量展开**的字段；其余字段经 struct-update 原样保留 —— 新增字段
+/// 不会再因"忘加一行拷贝"而在到达适配器前丢值（历史上漏传 main_class 直接报
+/// `Java launch requires "mainClass"`）。
 #[must_use]
 pub fn expand_config(
     cfg: &LaunchConfig,
@@ -134,17 +138,11 @@ pub fn expand_config(
 ) -> LaunchConfig {
     let expand = |s: &str| expand_variables(s, workspace, current_file);
     LaunchConfig {
-        name: cfg.name.clone(),
-        type_: cfg.type_.clone(),
-        request: cfg.request.clone(),
         program: cfg.program.as_ref().map(|p| expand(p)),
         cwd: cfg.cwd.as_ref().map(|p| expand(p)),
         args: cfg.args.iter().map(|a| expand(a)).collect(),
-        mode: cfg.mode.clone(),
-        port: cfg.port,
         pre_launch_task: cfg.pre_launch_task.as_ref().map(|p| expand(p)),
-        stop_on_entry: cfg.stop_on_entry,
-        classpath: cfg.classpath.clone(),
+        ..cfg.clone()
     }
 }
 
@@ -152,6 +150,44 @@ pub fn expand_config(
 mod tests {
     use super::*;
     use std::path::PathBuf;
+
+    /// **回归**：`expand_config` 经 struct-update 保留未展开字段 —— Java 传输字段
+    /// （`main_class` / `project_name` / `module_paths`）必须一起传播。
+    ///
+    /// 曾经的 bug：逐字段拷贝时把它们写成 `None`/空，于是 B' 的 launch 载荷在
+    /// `expand_config` 处丢掉 `mainClass`，适配器报 `Java launch requires "mainClass"`
+    /// （现场即此错）。现实现只列需展开字段 + `..cfg.clone()`，漏传在结构上不可能。
+    #[test]
+    fn expand_config_propagates_java_transport_fields() {
+        let cfg = super::super::types::LaunchConfig {
+            name: "Debug test: testAdd".into(),
+            type_: "java".into(),
+            request: "launch".into(),
+            program: None,
+            cwd: Some("${workspaceFolder}".into()),
+            args: vec!["-m".into(), "com.example.CalcTest#testAdd".into()],
+            mode: None,
+            port: None,
+            pre_launch_task: None,
+            stop_on_entry: Some(false),
+            classpath: vec!["/abs/target/test-classes".into()],
+            main_class: Some("org.junit.platform.console.ConsoleLauncher".into()),
+            project_name: Some("s0-demo".into()),
+            module_paths: vec!["/abs/target/classes".into()],
+        };
+        let ws = PathBuf::from("/proj");
+        let out = expand_config(&cfg, &ws, None);
+
+        assert_eq!(
+            out.main_class.as_deref(),
+            Some("org.junit.platform.console.ConsoleLauncher"),
+            "main_class 必须在展开后保留（否则 launch 载荷报 requires mainClass）"
+        );
+        assert_eq!(out.project_name.as_deref(), Some("s0-demo"));
+        assert_eq!(out.module_paths, vec!["/abs/target/classes".to_string()]);
+        // 路径类字段仍按既有语义展开。
+        assert_eq!(out.cwd.as_deref(), Some("/proj"));
+    }
 
     #[test]
     fn should_expand_workspace_folder() {

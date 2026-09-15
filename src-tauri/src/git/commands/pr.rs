@@ -1,5 +1,3 @@
-#![allow(unused_imports, missing_docs)]
-
 use std::path::Path;
 
 use crate::project::types::{

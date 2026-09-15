@@ -1,13 +1,11 @@
 import { EditorState } from '@codemirror/state';
 import { describe, expect, it, vi } from 'vitest';
 
+import { setBreakpointsEffect, setHoverLineEffect } from '../../hooks/useBreakpointGutter';
 import {
   breakpointContribution,
   breakpointContributionExtensions,
-  setBreakpointsEffect,
-  setHoverLineEffect,
-} from '@/features/debug';
-
+} from '../breakpointContribution';
 import type { GutterContribution, GutterLineContext } from '../contribution';
 import { gutterContributions } from '../contribution';
 import { createRunCodelensCore, createRunContribution } from '../runContribution';

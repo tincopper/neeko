@@ -128,9 +128,13 @@ public final class SimpleSourceLookUpProviderTest {
 
         // 断点 FQN 推导（getBreakpointLocations 的关键路径）
         eq("fqn.cachePath", SimpleSourceLookUpProvider.resolveClassName(dep), "com.demo.Foo");
-        eq("fqn.jdtPath", SimpleSourceLookUpProvider.resolveClassName("jdt:/java.base/java/lang/String.java"),
-                "java.lang.String");
-        eq("fqn.jdtDefaultPackage", SimpleSourceLookUpProvider.resolveClassName("jdt:/m/System.java"), "System");
+        // Neeko 的 tab 展示身份不在适配器契约里（java-debug 只认真实文件或带 JDT handle 的
+        // `jdt://` uri），必须**明确拒绝**：按文件名猜默认包会让 java-debug 去解析一个不存在
+        // 的类。Neeko 在 DAP 边界已把它翻译成真实路径。
+        eq("fqn.jdtDisplayPathRejected",
+                SimpleSourceLookUpProvider.resolveClassName("jdt:/java.base/java/lang/String.java"), null);
+        eq("fqn.jdtDisplayDefaultPackageRejected",
+                SimpleSourceLookUpProvider.resolveClassName("jdt:/m/System.java"), null);
         eq("fqn.srcTestMarker",
                 SimpleSourceLookUpProvider.resolveClassName(project + "/src/test/java/com/demo/DirectTest.java"),
                 "com.demo.DirectTest");

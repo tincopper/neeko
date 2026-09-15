@@ -2,7 +2,7 @@
  * 用例状态 gutter 贡献（P1：✓/✗/进行中 回显）。
  *
  * 与 run 同行并排（priority 30 > run 20 → play 左、状态右；cell flex gap
- * 由统一 gutter 主题提供）。状态来自 editor/store/testResults（Run 链路落库）：
+ * 由统一 gutter 主题提供）。状态来自 runner/store/testResults（Run 链路落库）：
  * - markersOf：行 → 用例（复用本域 runCodelensField 的 runAtLine，行→名映射唯一
  *   来源仍是检测 field，store 对行号无感知）→ 用例名 → store 状态。
  * - running 占位（半透明）由 store 的 statusForCase 给出（beginRun 后、结果落库前）。
@@ -19,13 +19,13 @@
 import { StateEffect, type Extension } from '@codemirror/state';
 import { EditorView, ViewPlugin, type ViewUpdate } from '@codemirror/view';
 
+import { isRunnableFile } from '@/features/runner';
 import {
   statusForCase,
   testResultsFileKey,
   useTestResultsStore,
   type TestCaseStatusInfo,
-} from '../store/testResults';
-import { isRunnableFile } from '../utils/runLanguages';
+} from '@/features/runner/store/testResults';
 
 import type { GutterContribution, GutterHit, GutterLineContext } from './contribution';
 import { runAtLine, runLinesOf } from './runContribution';

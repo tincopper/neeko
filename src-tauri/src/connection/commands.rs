@@ -31,7 +31,8 @@ pub async fn test_remote_connection(
     state: State<'_, AppStateWrapper>,
 ) -> Result<(), AppError> {
     state
-        .remote_terminal_manager
+        .terminal_router
+        .remote()
         .test_connection(&host, port, &username, &auth)
         .await
         .map_err(AppError::from)
@@ -48,7 +49,8 @@ pub async fn list_remote_directories(
     state: State<'_, AppStateWrapper>,
 ) -> Result<Vec<String>, AppError> {
     state
-        .remote_terminal_manager
+        .terminal_router
+        .remote()
         .list_directories(&host, port, &username, &auth, &path)
         .await
         .map_err(AppError::from)

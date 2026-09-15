@@ -159,11 +159,21 @@ export function fileRefFromLspUri(uri: string): FileRef | null {
  * `jdt:/` 前缀为 jdt 展示路径（`tabIdentityOf` 的产出形态），反解析回 jdt ref；
  * 其余（含空串）走 fs canonical。非本模块产出的 `jdt:` 形态按不透明路径兜底，
  * 保持全函数。
+ *
+ * 另外接受 **LSP uri** 形态：栈帧的 DAP `Source.path` 在 B' 下就是
+ * `jdt://contents/<module>/<pkg>/<Name>.class?<attrs>`（jdtls 内 java-debug 对
+ * JDK / 依赖类返回的形态，真机实测）。它**不是文件路径** —— 拼项目根会得到
+ * `<root>/jdt://…`，表现为「停住了却打不开源码」（`not a readable external debug stop`）。
+ * 与展示路径走同一文法（`fileRefFromLspUri`），因此两种表示收敛到**同一身份**。
  */
 export function fileRefFromTabPath(projectRoot: string, p: string): FileRef {
   if (p.startsWith(JDT_DISPLAY_PREFIX)) {
     const jdt = parseJdtClassPath(p.slice(JDT_DISPLAY_PREFIX.length));
     if (jdt) return { kind: 'jdt', ...jdt };
+  }
+  if (p.startsWith(JDT_URI_PREFIX)) {
+    const byUri = fileRefFromLspUri(p);
+    if (byUri) return byUri;
   }
   return { kind: 'fs', path: canonicalFsPath(projectRoot, p) };
 }
@@ -173,6 +183,12 @@ export function fileRefFromTabPath(projectRoot: string, p: string): FileRef {
 /**
  * tab 身份字符串：fs → canonical path；jdt → `jdt:/${module}/${classPath}/${fileName}`
  * （无包段不留双斜杠）。与旧 `jdtClassDisplayPath` 输出逐字一致。
+ *
+ * **这是 Neeko 的进程内身份，不是 DAP 的 `Source.path`**：java-debug 的
+ * `asCompilationUnit` 只认真实存在的文件路径或带 JDT handle 的 `jdt://` uri，
+ * `jdt:/…` 两者都不满足（下发它 = 适配器回 `verified:false`，断点永不命中）。
+ * 适配器侧的真实路径由 Rust 在 DAP 边界翻译（`src-tauri/src/dap/java_source_path.rs`），
+ * 前端**不要把**本身份当作可下发路径使用。
  */
 export function tabIdentityOf(ref: FileRef): string {
   if (ref.kind === 'fs') return ref.path;
@@ -194,6 +210,11 @@ export function tabIdentityOf(ref: FileRef): string {
  * - jdt 展示路径 → 原样（`tabIdentityOf` 幂等）；
  * - 其余 → canonical 绝对路径。
  *
+ * 身份与**下发形态**分离：断点下发时由 Rust 在 DAP 边界把 `jdt:/…` 翻译成真实文件路径
+ * （缓存命中则复用，缺失则从 `src.zip` / `-sources.jar` 落盘，见
+ * `src-tauri/src/dap/java_source_path.rs`）。因此身份只有一种，而下发形态由后端负责 ——
+ * 不需要、也不允许为「让适配器看得懂」而新增第二种身份。
+ *
  * **限制（刻意保留，非疏漏）**：这里选择的是「**表示形式**」中最通用的一种做规范
  * 身份，而不是「它代表的东西」（`java.io.PrintStream` 这个类）。理论最优是后者 ——
  * 内容由「谁持有这份源码」按表示提供、完全不需要解析任何路径布局。之所以没做：
@@ -203,9 +224,8 @@ export function tabIdentityOf(ref: FileRef): string {
  * 「类身份」。
  *
  * **禁止对 jdt 形态调用 `canonicalFsPath`**：`jdt:/…` 不以 `/` 开头，会被当相对
- * 路径拼上项目根，得到 `<root>/jdt:/…` 这种不存在的路径；而 adapter 侧要靠
- * `jdt:/` 前缀解析出 module/pkg 段推全限定类名 —— 拼根后前缀消失，断点退化成
- * 默认包类名，永远 `verified: false`（表现为「在库源码里打了断点却停不下来」）。
+ * 路径拼上项目根，得到 `<root>/jdt:/…` 这种不存在的路径，破坏「同一份源码一种身份」
+ * 的不变式（tab 会分裂成两个、断点 key 也会两套）。
  *
  * 注：无模块段的 src.zip（JDK ≤ 8）与依赖 jar 的 `-sources.jar` 解压产物没有
  * 等价的 jdt 身份，退化为 canonical 路径身份 —— 只是不复用，不影响正确性。

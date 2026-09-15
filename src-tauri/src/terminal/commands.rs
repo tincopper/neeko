@@ -19,9 +19,13 @@ pub async fn create_terminal_session(
     state: State<'_, AppStateWrapper>,
     app_handle: tauri::AppHandle,
 ) -> Result<TerminalSession, AppError> {
+    // 组合根提供"项目 → (环境, 路径)"快照；路由与后端分派在 terminal 域内。
+    let (environment, project_path) = state.project_context(&project_id)?;
     state
-        .create_terminal_session(
-            &project_id,
+        .terminal_router
+        .create_session(
+            &environment,
+            &project_path,
             cols,
             rows,
             shell,
@@ -35,7 +39,7 @@ pub async fn create_terminal_session(
 /// Closes a terminal session by ID.
 #[tauri::command]
 pub fn close_terminal_session(session_id: String, state: State<AppStateWrapper>) {
-    state.close_session(&session_id);
+    state.terminal_router.close_session(&session_id);
 }
 
 /// Resizes a terminal session to the specified column/row dimensions.
@@ -46,7 +50,9 @@ pub fn resize_terminal(
     rows: u16,
     state: State<AppStateWrapper>,
 ) -> Result<(), AppError> {
-    state.resize_session(&session_id, cols, rows)
+    state
+        .terminal_router
+        .resize_session(&session_id, cols, rows)
 }
 
 /// Drains all buffered terminal output for a session as raw bytes.
@@ -63,7 +69,7 @@ pub async fn terminal_drain(
     session_id: String,
     state: State<'_, AppStateWrapper>,
 ) -> Result<tauri::ipc::Response, AppError> {
-    state.terminal_drain(&session_id)
+    state.terminal_router.drain(&session_id)
 }
 /// Long-poll drain: 无数据时挂起至 push/close/超时（前端每 session 一条挂起 fetch）。
 /// `timeout_ms` 后端钳制到 1–30s（`timeout_ms == 0` 视为 1s）。
@@ -74,5 +80,8 @@ pub async fn terminal_drain_wait(
     timeout_ms: u64,
     state: State<'_, AppStateWrapper>,
 ) -> Result<tauri::ipc::Response, AppError> {
-    state.terminal_drain_wait(&session_id, timeout_ms).await
+    state
+        .terminal_router
+        .drain_wait(&session_id, timeout_ms)
+        .await
 }

@@ -4,9 +4,9 @@
  * 回显仅可编辑的测试/main 语言文件叠加，非 file tab / 无上下文返回空数组（零列零开销）。
  *
  * 装配点职责（registry 架构的值层）：把各域贡献拼进注册表——
- * debug 的 breakpointContribution（经 `@/features/debug` 门面，只读消费其
+ * debug 的 breakpointContribution（经 `@/features/runner` 门面，只读消费其
  * 自备扩展；toggle/hover 行为经回调注入）+ editor 自家的 run / test-status
- * 贡献（P1：test-status 经 editor/store/testResults 回显 ✓/✗/进行中）。
+ * 贡献（P1：test-status 经 runner/store/testResults 回显 ✓/✗/进行中）。
  * run 贡献对测试用例与 main 入口共用同一套显示/菜单机制（见 runContribution）。
  * 合并器（gutter/registry）只见注册表接口，不见任何 StateField。
  * 回调经扩展工厂参数注入，不直连 store（断点 store 同步经 whitelist 直导）。
@@ -14,24 +14,26 @@
 import type { Extension } from '@codemirror/state';
 import { useMemo } from 'react';
 
+import { isRunnableFile, type RunTarget } from '@/features/runner';
+import { useDebugStore } from '@/features/runner/store/debugStore';
+
 import {
   breakpointContribution,
   breakpointContributionExtensions,
-  clearBreakpointHoverLine,
-  setBreakpointHoverLine,
-  toggleBreakpointAt,
-} from '@/features/debug';
-import { useDebugStore } from '@/features/debug/store/debugStore';
-
+} from '../gutter/breakpointContribution';
 import type { GutterContribution } from '../gutter/contribution';
 import { createUnifiedGutterExtension } from '../gutter/registry';
 import { createRunCodelensCore, createRunContribution } from '../gutter/runContribution';
-import { type RunTarget } from '../gutter/runTarget';
 import {
   createTestStatusContribution,
   createTestStatusCore,
 } from '../gutter/testStatusContribution';
-import { isRunnableFile } from '../utils/runLanguages';
+
+import {
+  clearBreakpointHoverLine,
+  setBreakpointHoverLine,
+  toggleBreakpointAt,
+} from './useBreakpointGutter';
 
 interface UseUnifiedGutterExtensionParams {
   projectId: string | null;

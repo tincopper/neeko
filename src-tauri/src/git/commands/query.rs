@@ -1,5 +1,3 @@
-#![allow(unused_imports, missing_docs)]
-
 use crate::common::git::operations;
 use crate::common::git::path_guard::{resolve_validated_work_dir, validate_repo_relative_path};
 use crate::common::git::transport::GitTransport;
@@ -50,7 +48,9 @@ pub async fn get_git_branch_info(
 /// （WSL/SSH / worktree 兜底），前端只在 `version>0` 时做 version gate。
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct ChangedFilesPayload {
+    /// 变更文件列表（相对仓库根的路径 + 状态）。
     pub files: Vec<FileChange>,
+    /// 快照版本号：`0` 表示无 versioned 快照语义。
     pub version: u64,
 }
 

@@ -2,8 +2,7 @@ import { EditorSelection } from '@codemirror/state';
 import { EditorView } from '@codemirror/view';
 import { useCallback, useEffect, useMemo, useRef } from 'react';
 
-import { applyDebugCurrentLine, resolveDebugHighlightLine } from '@/features/debug';
-import { useDebugStore } from '@/features/debug/store/debugStore';
+import { useDebugStore } from '@/features/runner/store/debugStore';
 import { useEditorStore } from '@/shared/store/editorStore';
 import type { FileTab } from '@/shared/types';
 import {
@@ -13,6 +12,8 @@ import {
 } from '@/shared/utils/editorViewState';
 
 import { applyNavigateCaret } from '../navigateCaret';
+
+import { applyDebugCurrentLine, resolveDebugHighlightLine } from './useCurrentLineHighlight';
 
 interface UseEditorViewSnapshotParams {
   tabKey: string;
@@ -148,7 +149,11 @@ export function useEditorViewSnapshot({
       if (pending && pending.tabKey === tabKey && pending.tabId === tabId) {
         // Defer one frame so layout is measured before scroll/focus
         requestAnimationFrame(() => {
-          applyNavigateCaret(view, pending.line, pending.col);
+          // `debug`（调试停点）的跳转要记录原光标位置：停止结束后由
+          // `releaseDebugCaret` 还回去（用户意图的跳转不记录）。
+          applyNavigateCaret(view, pending.line, pending.col, {
+            rememberPrevCaret: pending.debug === true,
+          });
         });
         // Delay clear to survive React StrictMode double-mount
         queueMicrotask(() => {
@@ -216,7 +221,11 @@ export function useEditorViewSnapshot({
         const view = editorViewRef.current;
         if (view) {
           requestAnimationFrame(() => {
-            applyNavigateCaret(view, pending.line, pending.col);
+            // `debug`（调试停点）的跳转要记录原光标位置：停止结束后由
+            // `releaseDebugCaret` 还回去（用户意图的跳转不记录）。
+            applyNavigateCaret(view, pending.line, pending.col, {
+              rememberPrevCaret: pending.debug === true,
+            });
           });
           useEditorStore.getState().setPendingNavigateTarget(null);
         }

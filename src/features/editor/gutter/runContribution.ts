@@ -25,20 +25,22 @@ import type { EditorState, Extension } from '@codemirror/state';
 import { EditorView, ViewPlugin } from '@codemirror/view';
 
 import {
-  fetchRunnablesForLines,
-  isRustAnalyzerReady,
-  type RunnableLineTarget,
-} from '../runnables/provider';
-import { capabilitiesFor, isRunnableFile } from '../utils/runLanguages';
+  capabilitiesFor,
+  isRunnableFile,
+  overlayProviderFor,
+  targetLang,
+  type LineTarget,
+  type RunTarget,
+} from '@/features/runner';
 
 import type { GutterContribution, GutterHit, GutterLineContext } from './contribution';
+import { runCodelensConfig, type RunCodelensConfig } from './runCodelensConfig';
 import {
   lspRunnablesField,
   refreshRunCodelensEffect,
   setLspRunnablesEffect,
 } from './runLspOverlay';
 import { buildRunElement, runCodelensField, runCodelensCoreTheme } from './runMarkers';
-import { runCodelensConfig, targetLang, type RunCodelensConfig, type RunTarget } from './runTarget';
 
 /**
  * 异步拉取 LSP runnable 并注入 field（tier ①）。**只在 rust 文件 + RA 就绪时**发起；
@@ -48,10 +50,12 @@ async function loadLspRunnables(view: EditorView): Promise<void> {
   const config = view.state.facet(runCodelensConfig);
   const { projectId, absFilePath, projectPath, fileName } = config;
   if (!projectId || !absFilePath || !projectPath) return;
-  // tier ① 目前只接 rust-analyzer（Go/Java 见 design/runnable-detection.md §6 P2）。
-  if (!fileName.endsWith('.rs') || !isRustAnalyzerReady(projectPath)) return;
+  // tier ① 由**语言模块**提供（`overlayProviderFor`）：本层不认识任何语言，也就没有
+  // `.rs` 判断与「RA 是否就绪」这类语言专属门控（无 provider 的语言直接跳过）。
+  const provider = overlayProviderFor(fileName);
+  if (!provider) return;
 
-  const targets: RunnableLineTarget[] = [];
+  const targets: LineTarget[] = [];
   for (const line of runLinesOf(view.state)) {
     const target = runAtLine(view.state, line);
     if (target) targets.push({ line, kind: target.kind });
@@ -59,12 +63,7 @@ async function loadLspRunnables(view: EditorView): Promise<void> {
   if (targets.length === 0) return;
 
   const signature = targets.map((t) => `${t.line}:${t.kind}`).join(',');
-  const overlay = await fetchRunnablesForLines({
-    projectId,
-    projectPath,
-    absFilePath,
-    targets,
-  });
+  const overlay = await provider.load({ projectId, projectPath, absFilePath, targets });
   if (overlay.size === 0) return;
 
   // 目标集合已变化（编辑中）→ 丢弃本次结果，等防抖后的下一轮。

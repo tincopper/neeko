@@ -2,15 +2,14 @@ import { Compartment, EditorState } from '@codemirror/state';
 import { EditorView } from '@codemirror/view';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { createRunCodelensCore } from '../runContribution';
-import { setLspRunnablesEffect } from '../runLspOverlay';
-import { RunMarker, runCodelensField } from '../runMarkers';
 import {
   runCodelensConfig,
-  targetLine,
   type RunCodelensConfig,
-  type RunTarget,
-} from '../runTarget';
+} from '@/features/editor/gutter/runCodelensConfig';
+import { createRunCodelensCore } from '@/features/editor/gutter/runContribution';
+import { setLspRunnablesEffect } from '@/features/editor/gutter/runLspOverlay';
+import { RunMarker, runCodelensField } from '@/features/editor/gutter/runMarkers';
+import { targetLine, type RunTarget } from '@/features/runner';
 
 function collectMarkers(view: EditorView): Array<{ from: number; marker: RunMarker }> {
   const doc = view.state.doc;
@@ -137,9 +136,9 @@ describe('runCodelens gutter field', () => {
     expect(parent).toEqual({
       kind: 'test',
       testCase: { name: 'TestFib', line: 5, lang: 'go' },
-      staticSubtests: ['TestFib/zero', 'TestFib/one'],
+      overlay: { subtests: ['TestFib/zero', 'TestFib/one'] },
     });
-    // 子测试自身是叶子 → 不携带 staticSubtests（其菜单不该再列自己）
+    // 子测试自身是叶子 → 不携带载荷（其菜单不该再列自己）
     expect(first).toEqual({
       kind: 'test',
       testCase: { name: 'TestFib/zero', line: 10, lang: 'go' },
@@ -313,7 +312,7 @@ describe('LSP runnable 覆盖（tier ①）', () => {
     const view = makeView(RUST_MAIN_DOC, makeConfig({ fileName: 'main.rs' }));
     const [marker] = collectMarkers(view);
     expect(marker.marker.target).toEqual({ kind: 'main', entry: { line: 1, language: 'rust' } });
-    expect(marker.marker.target.lsp).toBeUndefined();
+    expect(marker.marker.target.overlay).toBeUndefined();
     view.destroy();
   });
 
@@ -321,7 +320,7 @@ describe('LSP runnable 覆盖（tier ①）', () => {
     const view = makeView(RUST_MAIN_DOC, makeConfig({ fileName: 'main.rs' }));
     view.dispatch({ effects: setLspRunnablesEffect.of(new Map([[1, runnable]])) });
     const [marker] = collectMarkers(view);
-    expect(marker.marker.target.lsp).toEqual(runnable);
+    expect(marker.marker.target.overlay).toEqual(runnable);
     // 行号未变 → 仍是同一行
     expect(targetLine(marker.marker.target)).toBe(1);
     view.destroy();
@@ -332,7 +331,7 @@ describe('LSP runnable 覆盖（tier ①）', () => {
     const view = makeView(doc, makeConfig({ fileName: 'main.rs' }));
     view.dispatch({ effects: setLspRunnablesEffect.of(new Map([[4, runnable]])) });
     const markers = collectMarkers(view);
-    expect(markers.map((m) => m.marker.target.lsp)).toEqual([undefined, runnable]);
+    expect(markers.map((m) => m.marker.target.overlay)).toEqual([undefined, runnable]);
     view.destroy();
   });
 
@@ -343,12 +342,14 @@ describe('LSP runnable 覆盖（tier ①）', () => {
       kind: 'cargo' as const,
       args: { cwd: '/proj', cargoArgs: ['run', '--package', 'other'], executableArgs: [] },
     };
-    expect(new RunMarker(base).eq(new RunMarker({ ...base, lsp: runnable }))).toBe(false);
+    expect(new RunMarker(base).eq(new RunMarker({ ...base, overlay: runnable }))).toBe(false);
     expect(
-      new RunMarker({ ...base, lsp: runnable }).eq(new RunMarker({ ...base, lsp: other })),
+      new RunMarker({ ...base, overlay: runnable }).eq(new RunMarker({ ...base, overlay: other })),
     ).toBe(false);
     expect(
-      new RunMarker({ ...base, lsp: runnable }).eq(new RunMarker({ ...base, lsp: runnable })),
+      new RunMarker({ ...base, overlay: runnable }).eq(
+        new RunMarker({ ...base, overlay: runnable }),
+      ),
     ).toBe(true);
   });
 });

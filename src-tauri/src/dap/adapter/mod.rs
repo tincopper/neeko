@@ -4,12 +4,17 @@
 //! specs and launch args. All binary existence checks use
 //! [`crate::core::exec`] with the project [`ExecTarget`].
 
+mod backend;
 mod go;
-mod java;
+pub mod java;
 mod lldb;
 mod plugin;
 mod registry;
 
+pub use backend::{
+    DebugRequest, DebugStartOutcome, LanguageBackend, SessionPlan, SessionRoutePlan,
+    SourcePathResolution,
+};
 pub use go::GoAdapter;
 pub use java::JavaAdapter;
 pub use lldb::LldbAdapter;

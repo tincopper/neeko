@@ -24,6 +24,19 @@ if (typeof globalThis.ResizeObserver === 'undefined') {
   globalThis.ResizeObserver = ResizeObserverStub as unknown as typeof ResizeObserver;
 }
 
+// jsdom 未实现 Range 的几何测量；CodeMirror 的测量周期（scrollIntoView / 光标定位）会调用它。
+// 缺失时会在**异步测量周期**里抛 `textRange(...).getClientRects is not a function` ——
+// 表现为"用例通过但报 unhandled error"，还会污染后续断言的可信度。
+if (typeof Range !== 'undefined') {
+  if (typeof Range.prototype.getClientRects !== 'function') {
+    Range.prototype.getClientRects = () => [] as unknown as DOMRectList;
+  }
+  if (typeof Range.prototype.getBoundingClientRect !== 'function') {
+    Range.prototype.getBoundingClientRect = () =>
+      ({ x: 0, y: 0, width: 0, height: 0, top: 0, left: 0, right: 0, bottom: 0 }) as DOMRect;
+  }
+}
+
 // 全局 mock：@tauri-apps/api/core
 vi.mock('@tauri-apps/api/core', () => ({
   invoke: vi.fn(),

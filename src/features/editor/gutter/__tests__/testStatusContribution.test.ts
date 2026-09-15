@@ -2,10 +2,16 @@ import { EditorState } from '@codemirror/state';
 import { EditorView } from '@codemirror/view';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { statusForCase, useTestResultsStore } from '../../store/testResults';
-import { createUnifiedGutterExtension } from '../registry';
-import { createRunCodelensCore, createRunContribution } from '../runContribution';
-import { createTestStatusContribution, createTestStatusCore } from '../testStatusContribution';
+import { createUnifiedGutterExtension } from '@/features/editor/gutter/registry';
+import {
+  createRunCodelensCore,
+  createRunContribution,
+} from '@/features/editor/gutter/runContribution';
+import {
+  createTestStatusContribution,
+  createTestStatusCore,
+} from '@/features/editor/gutter/testStatusContribution';
+import { statusForCase, useTestResultsStore } from '@/features/runner/store/testResults';
 
 const RUST_DOC = '#[test]\nfn parse_simple() {}\n\n#[test]\nfn other() {}\n';
 

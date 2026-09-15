@@ -105,6 +105,49 @@ pub async fn install_wsl_themes(distro: &str) -> Result<()> {
     Ok(())
 }
 
+/// 项目级主题准备入口（**创建终端前调用**）：安装该环境所需的主题文件并写项目配置。
+///
+/// 为什么收在这里（原散在 `app_state.rs` 的终端创建流程里）：主题产物由本域产生，
+/// 而原实现把 `opencode::*` / `pi::*` 的内部函数与开关判定抄了一遍 —— 同一份"主题同步"
+/// 知识分裂成两处（组合根 import 了 terminal + theme + opencode + pi，反向依赖下层）。
+/// 现在组合根/终端只需调本函数。
+///
+/// 行为与重构前**逐条对齐**：
+/// - `Local`：只在**非任务终端**时写项目配置（历史行为，任务终端不需要主题产物）；
+/// - `Wsl`：先安装 WSL 内主题文件（非致命，仅告警），再写项目配置；
+/// - `Remote`：不做主题同步（远端会话的主题由 SSH 通道侧处理，不在此路径）。
+///
+/// 注意 `Local` 与 `Wsl` 的 `is_task_terminal` 处理差异是**刻意保留的历史行为**（WSL 分支
+/// 原本就未按任务终端跳过），本次重构不混入行为变更；若要统一需单独确认。
+pub async fn prepare_project_theme(
+    env: &crate::core::project::ProjectEnvironment,
+    project_path: &str,
+    is_task_terminal: bool,
+) {
+    match env {
+        crate::core::project::ProjectEnvironment::Local => {
+            if is_task_terminal {
+                return;
+            }
+            if let Err(e) = write_project_theme_config(&ThemeContext::Local, project_path).await {
+                log::warn!("[theme] failed to write local project theme config: {e}");
+            }
+        }
+        #[cfg(target_os = "windows")]
+        crate::core::project::ProjectEnvironment::Wsl { distro } => {
+            if let Err(e) = install_wsl_themes(distro).await {
+                log::warn!("[theme] failed to install WSL theme files: {e}");
+            }
+            if let Err(e) =
+                write_project_theme_config(&ThemeContext::Wsl(distro.clone()), project_path).await
+            {
+                log::warn!("[theme] failed to write WSL project theme config: {e}");
+            }
+        }
+        crate::core::project::ProjectEnvironment::Remote { .. } => {}
+    }
+}
+
 /// 统一写入项目级主题配置（本地 / WSL）
 pub async fn write_project_theme_config(ctx: &ThemeContext, project_path: &str) -> Result<()> {
     let theme = common::read_neeko_theme().unwrap_or_else(|| "dark".to_string());

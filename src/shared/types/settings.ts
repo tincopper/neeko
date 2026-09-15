@@ -50,6 +50,20 @@ export interface LspConfig {
   customServers: CustomLspServerConfig[];
 }
 
+/**
+ * `dap.*` 配置段。
+ *
+ * 注意：`javaBackend` 的**权威读取点在后端**（每次调试动作实时读取）；前端读取同一键
+ * 只用于 dispatch（决定是否发起 B' 探测、以及是否跳过 host-jar 门控）。
+ */
+export interface DapConfig {
+  /** Java 调试后端：`auto`（默认，B' 优先）/ `jdtls`（只用 B'）/ `host`（只用自写 host）。 */
+  javaBackend?: JavaDebugBackend;
+}
+
+/** Java 调试后端选择。 */
+export type JavaDebugBackend = 'auto' | 'jdtls' | 'host';
+
 export interface AppConfig {
   theme: AppTheme;
   appearanceFontSize: number;
@@ -85,6 +99,8 @@ export interface AppConfig {
   lsp: LspConfig;
   /** Project-id → favorite branch names, persisted across sessions. */
   favoriteBranches: Record<string, string[]>;
+  /** Debug Adapter Protocol 配置（Java 后端选择等）。 */
+  dap?: DapConfig;
   /** AI 文档翻译默认项（工具条选择器以此初始化）。 */
   translation?: {
     agentId?: string;
