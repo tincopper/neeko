@@ -80,6 +80,7 @@ src-tauri/
     │   ├── mod.rs
     │   ├── commands.rs       # 项目 CRUD 命令
     │   ├── commands_ide.rs   # IDE 启动命令
+    │   ├── lookup.rs         # 项目路径 → 执行环境匹配（组合根只负责读取项目列表）
     │   ├── model.rs          # 项目核心类型
     │   └── types.rs          # 共享类型（Project, GitInfo, FileNode 等）
     ├── session/              # 会话持久化
@@ -118,8 +119,10 @@ src-tauri/
     │   ├── commands.rs       # Tauri 命令（委派到 services）
     │   └── services.rs       # 任务 I/O：TaskConfig 模型 + JSON 读写
     ├── terminal/             # 终端管理
-    │   ├── mod.rs            # TerminalManager + PtyHandle + PipelineConfig
-    │   ├── commands.rs       # 本地/WSL/SSH 终端命令
+    │   ├── mod.rs            # 仅声明与 re-export（无业务实现）
+    │   ├── commands.rs       # 本地/WSL/SSH 终端命令（委派给 TerminalRouter）
+    │   ├── router.rs         # TerminalRouter —— 会话归属路由表 + 后端分派（Pty / SSH）
+    │   ├── manager.rs        # TerminalManager —— 本地/WSL PTY 后端
     │   ├── services.rs       # PTY 管线提取：spawn_pty_pipeline, create_pty, 线程管理
     │   ├── remote.rs         # RemoteTerminalManager —— SSH 终端
     │   ├── model.rs
@@ -186,7 +189,13 @@ pub use core::error::AppError;
 
 ### `app_state.rs` 的职责
 
-`app_state.rs` 定义 `AppStateWrapper`，集中组装所有 Manager：
+`app_state.rs` 定义 `AppStateWrapper`，集中组装所有 Manager。
+
+**边界（硬性）**：本文件只允许三类内容 —— ① 字段声明；② 构造（`new*` / `Default`）；
+③ **共享状态的只读访问器**（如 `project_context` / `resolve_project` / `main_window`）。
+**域内策略一律不留在这里**：会话分派在 `terminal/router.rs`，退出清理机制在
+`common/shutdown.rs`，路径匹配在 `project/lookup.rs`，主题产物准备在
+`theme/service.rs::prepare_project_theme`。判据很简单：写进去的是"**组装**"还是"**规则**"？规则一律下沉到拥有它的领域模块。
 
 ```rust
 pub struct AppStateWrapper {

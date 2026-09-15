@@ -1,0 +1,13 @@
+{"file": ".trellis/spec/backend/directory-structure.md", "reason": "dap/lsp 域目录与分层约定；新增 adapter 形态、窄端口模块放置位置需遵循"}
+{"file": ".trellis/spec/backend/command-guidelines.md", "reason": "新增 debug_java_start 命令的实现与注册规范（薄命令层 + neeko_invoke_handler! 登记）"}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "AppError 细分文案约定；B' 前置缺失（JDK<21/无 session/plugin 缺失/import 中/resolve 空）与 A 缺失的错误分类需对齐"}
+{"file": ".trellis/spec/backend/concurrency-guidelines.md", "reason": "进程守卫、异步终止与锁使用；M0 的 AdapterProcess.guard: Option 与 M2 disconnect 清理路径需遵循"}
+{"file": ".trellis/spec/backend/type-safety.md", "reason": "枚举/穷尽 match 约定；AdapterSpawn 枚举化与 AdapterTransport 的 Copy 取舍需按类型安全规则落地"}
+{"file": ".trellis/spec/frontend/api-layer.md", "reason": "invoke 不出 api/ 目录；新增 debugJavaStart wrapper 与降级字段（backend/degraded）的写法"}
+{"file": ".trellis/spec/frontend/state-management.md", "reason": "Settings 三选即时保存（set + patch store 同步）与 DebugPanel 常驻标注的状态归属"}
+{"file": ".trellis/tasks/09-04-editor-test-run-buttons/research/java-debug-runability.md", "reason": "Console Launcher CLI 形态、--reports-dir、Maven/Gradle classpath 来源；实现 A 前置与 B' args 的原始依据"}
+{"file": ".trellis/tasks/09-04-editor-test-run-buttons/research/vscode-java-run-debug-mechanism.md", "reason": "vscode.java.startDebugSession / resolveClasspath 的调用链与 bundle 依赖；实现 B' LSP 命令契约的依据"}
+{"file": ".trellis/tasks/09-04-editor-test-run-buttons/research/java-jdtls-integration.md", "reason": "initializationOptions.bundles 注入机制；实现 M2 java.rs 初始化载荷与 session 重启逻辑的依据"}
+{"file": ".trellis/tasks/09-04-editor-test-run-buttons/design/test-debug-go-java.md", "reason": "既有 Go/Java Run-Debug 设计（含 JUnit XML 与 Java 前置流程）；避免与既有约定冲突"}
+{"file": ".trellis/tasks/09-12-09-12-java-debug-backends/research/industry-comparison.md", "reason": "业界对照与 4 项修正依据：Warming 需与 LSP 进度交叉验证、多入口歧义硬报错（对齐 Zed）、官方 jar vs Zed fork 取舍、updateBuildConfiguration 取值的全局影响"}
+{"file": ".trellis/tasks/09-12-09-12-java-debug-backends/research/jdtls-debug-spike.md", "reason": "S0 真机 spike 结论（bundle/端口/DAP/classpath 通过；launch 握手未验证=NO-GO）与两处方案修正（modulePaths 可空、官方 jar 可用）；B' 上线前的阻塞项与复现方式"}

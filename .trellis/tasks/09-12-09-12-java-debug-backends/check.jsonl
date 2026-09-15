@@ -1,0 +1,11 @@
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "平台差异集中化与质量门禁细则；B' 的 cfg 门控、clippy -D warnings、Worktree/字节类断言规则在复核该项改动时必读"}
+{"file": ".trellis/spec/backend/command-guidelines.md", "reason": "命令层保持极薄与命令注册单一事实源；复核 debug_java_start / debug_java_attach 的参数契约与调度边界"}
+{"file": ".trellis/spec/backend/concurrency-guidelines.md", "reason": "会话与 debuggee 生命周期、避免跨 await 持锁；复核 ManagedSession::shutdown 在 B'（debuggee=None）下的清理语义"}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "跨层职责与依赖方向判定依据；复核 dap→lsp 改为窄端口注入（design §2.7）是否守住边界"}
+{"file": ".trellis/spec/unit-test/backend-testing.md", "reason": "Rust 单测分层与集成测试组织方式；复核 M0/M2 的枚举形态断言与 mock 窄端口集成单测"}
+{"file": ".trellis/tasks/09-04-editor-test-run-buttons/research/java-debug-runability.md", "reason": "java-debug core 是否可独立运行、Console Launcher 形态与 classpath 来源的一手实证；B'/A 取舍与重复引擎风险的原始依据"}
+{"file": ".trellis/tasks/09-04-editor-test-run-buttons/research/vscode-java-run-debug-mechanism.md", "reason": "vscode.java.* 命令族归属（jdt.ls 侧 vs 扩展侧）与 bundle 注入机制；复核 §2.4 命令契约与就绪信号假设"}
+{"file": ".trellis/tasks/09-04-editor-test-run-buttons/research/java-jdtls-integration.md", "reason": "initializationOptions.bundles 注入机制的实证来源；复核 §3 bundles 生效时机与 session 重启需求"}
+{"file": ".trellis/tasks/09-04-editor-test-run-buttons/design/test-debug-go-java.md", "reason": "本任务的原选型设计（J3 路径判定）；复核本次修订是否与既有设计决策一致或已显式推翻"}
+{"file": ".trellis/tasks/09-12-09-12-java-debug-backends/research/industry-comparison.md", "reason": "VSCode / Zed / Neeko 三方 Java Debug 机制的一手源码对照（bundles 注入、startDebugSession+TCP、resolveClasspath、测试选择器精度、JDK21 门槛）；复核本方案是否与业界同构、能力边界是否已显式声明"}
+{"file": ".trellis/tasks/09-12-09-12-java-debug-backends/research/jdtls-debug-spike.md", "reason": "S0 真机 spike 结论（bundle/端口/DAP/classpath 通过；launch 握手未验证=NO-GO）与两处方案修正（modulePaths 可空、官方 jar 可用）；B' 上线前的阻塞项与复现方式"}
