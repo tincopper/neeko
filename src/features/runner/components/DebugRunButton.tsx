@@ -5,6 +5,8 @@ import { useEditorStore } from '@/shared/store/editorStore';
 import { useProjectStore } from '@/shared/store/projectStore';
 import { safeUnlisten } from '@/shared/utils/safeUnlisten';
 
+import { useDebugSessionLifecycle } from '../hooks/useDebugSessionLifecycle';
+import { useVisibleDebugSession } from '../hooks/useVisibleDebugSession';
 import { useDebugStore } from '../store/debugStore';
 import type { EntryPoint, LaunchConfig } from '../types';
 
@@ -22,6 +24,8 @@ function getActiveEditorFile(projectId: string): string | null {
 }
 
 function DebugRunButton() {
+  // 项目切换时释放旧项目会话（常驻挂载点：title bar）。
+  useDebugSessionLifecycle();
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingConfig, setEditingConfig] = useState<LaunchConfig | null>(null);
@@ -35,7 +39,6 @@ function DebugRunButton() {
     configs,
     entries,
     selectedConfigName,
-    session,
     loadConfigs,
     selectConfig,
     addConfig,
@@ -48,6 +51,8 @@ function DebugRunButton() {
     subscribeEvents,
     clearError,
   } = useDebugStore();
+  // 启动/停止判定只认当前项目会话：跨项目残留会话不得让本项目的按钮误判为「运行中」（#14）。
+  const session = useVisibleDebugSession();
 
   useEffect(() => {
     if (!projectId) return;

@@ -135,11 +135,14 @@ export function useEditorViewSnapshot({
       view.dispatch({ effects: bpSyncEffect(lines) });
       // Re-apply debug current-line if we stopped before the editor mounted.
       const dbg = useDebugStore.getState();
+      const snapshotSession = dbg.session;
+      // 快照恢复只属于本 tab 项目的会话：跨项目残留停点不得在别的项目编辑器上画线（#14）。
+      const snapshotVisible = snapshotSession && snapshotSession.projectId === tab.projectId;
       const hl = resolveDebugHighlightLine(
         absFilePath,
         tab.filePath,
-        dbg.stoppedAt,
-        dbg.session?.status,
+        snapshotVisible ? dbg.stoppedAt : null,
+        snapshotVisible ? (snapshotSession.status ?? null) : null,
       );
       applyDebugCurrentLine(view, hl);
       if (editorRestoredRef.current) return;

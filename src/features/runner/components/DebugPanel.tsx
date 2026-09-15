@@ -6,6 +6,7 @@ import { useProjectStore } from '@/shared/store/projectStore';
 import { Island } from '@/ui/Island';
 
 import { useDragResize } from '../hooks/useDragResize';
+import { useVisibleDebugSession } from '../hooks/useVisibleDebugSession';
 import { statusMeta } from '../statusMeta';
 import { useDebugStore } from '../store/debugStore';
 import { useJavaDebugStore } from '../store/javaDebugStore';
@@ -17,6 +18,7 @@ import DebugFramesColumn from './DebugFramesColumn';
 import DebugSessionBadge from './DebugSessionBadge';
 import DebugToolbar, { type DebugToolbarAction } from './DebugToolbar';
 import DebugVariablesPane from './DebugVariablesPane';
+import { EmptyHint } from './PanePrimitives';
 
 const VIEW_TABS: { id: DebugPanelTab; label: string }[] = [
   { id: 'session', label: 'Frames & Variables' },
@@ -30,8 +32,7 @@ const VIEW_TABS: { id: DebugPanelTab; label: string }[] = [
  * Layout/chrome aligned with RightPanel + GitCommitPanel.
  */
 function DebugPanel() {
-  const session = useDebugStore((s) => s.session);
-  const javaBackendLabel = useJavaDebugStore((s) => s.backendLabel);
+  const session = useVisibleDebugSession();
   const activeProjectId = useProjectStore((s) => s.activeProject?.id ?? null);
   const panelOpen = useDebugStore((s) => s.panelOpen);
   /** 「重试 JDTLS」：清除本会话的降级记忆并提示再点 Debug（不自动重启会话）。 */
@@ -51,6 +52,11 @@ function DebugPanel() {
 
   const listAllBreakpoints = useDebugStore((s) => s.listAllBreakpoints);
   const error = useDebugStore((s) => s.error);
+  const errorProjectId = useDebugStore((s) => s.errorProjectId);
+  const rawJavaBackendLabel = useJavaDebugStore((s) => s.backendLabel);
+  /** error 按所属项目屏蔽（#14）：errorProjectId 由所有 error 写入点携带。 */
+  const visibleError = errorProjectId !== null && errorProjectId === activeProjectId ? error : null;
+  const javaBackendLabel = session ? rawJavaBackendLabel : null;
   const activeProject = useProjectStore((s) => s.activeProject);
   const projectId = activeProject?.id ?? null;
   const breakpointsMap = useDebugStore((s) => (projectId ? s.breakpoints[projectId] : undefined));
@@ -81,7 +87,7 @@ function DebugPanel() {
   const live = !!session && session.status !== 'terminated' && session.status !== 'ended';
   const isStopped = live && session?.status === 'stopped';
   const isRunning = live && !isStopped;
-  const meta = statusMeta(session?.status, !!error);
+  const meta = statusMeta(session?.status, !!visibleError);
 
   const handleToolbar = useCallback(
     (action: DebugToolbarAction) => {
@@ -180,21 +186,36 @@ function DebugPanel() {
           </button>
         </div>
 
-        {error ? (
+        {visibleError ? (
           <div className="shrink-0 px-3 py-1 text-[calc(var(--font-size)-1px)] text-accent-red bg-accent-red/8 border-b border-border truncate">
-            {error}
+            {visibleError}
           </div>
         ) : null}
 
-        {/* Body */}
-        {panelTab === 'session' && (
-          <div className="flex-1 flex min-h-0">
-            <DebugFramesColumn width={framesWidth} onResizeStart={startFramesResize} />
-            <DebugVariablesPane />
-          </div>
-        )}
+        {/* Body —— session/console 页签仅当存在当前项目的可见会话时渲染；
+            跨项目残留会话的帧/变量/输出在 DebugPanel 一层整体屏蔽（#14）。 */}
+        {panelTab === 'session' &&
+          (session ? (
+            <div className="flex-1 flex min-h-0">
+              <DebugFramesColumn width={framesWidth} onResizeStart={startFramesResize} />
+              <DebugVariablesPane />
+            </div>
+          ) : (
+            <div className="flex-1 flex items-center justify-center">
+              <EmptyHint>Start debugging to inspect frames &amp; variables</EmptyHint>
+            </div>
+          ))}
 
-        {panelTab === 'console' && <DebugConsolePane />}
+        {panelTab === 'console' &&
+          (session ? (
+            <DebugConsolePane />
+          ) : (
+            <div className="flex-1 flex items-center justify-center">
+              <EmptyHint>
+                Debug output appears here after starting a session for this project
+              </EmptyHint>
+            </div>
+          ))}
 
         {panelTab === 'breakpoints' && <DebugBreakpointsPane />}
       </Island>

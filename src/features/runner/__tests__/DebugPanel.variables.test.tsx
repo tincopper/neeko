@@ -5,6 +5,8 @@ vi.mock('@/shared/contexts/AppContext', () => ({
   useAppContext: () => ({ config: {} }),
 }));
 
+import { useProjectStore } from '@/shared/store/projectStore';
+
 import DebugPanel from '../components/DebugPanel';
 import { useDebugStore } from '../store/debugStore';
 import type { VariableDto } from '../types';
@@ -23,6 +25,10 @@ const root: VariableDto = {
 };
 
 function seed(overrides: Record<string, unknown> = {}) {
+  useProjectStore.setState({
+    activeProjectId: 'p1',
+    activeProject: { id: 'p1' } as never,
+  });
   useDebugStore.setState({
     panelOpen: true,
     panelTab: 'session',
@@ -113,5 +119,51 @@ describe('DebugPanel variables tree', () => {
     });
     render(<DebugPanel />);
     expect(screen.getByText('stale ref')).toBeInTheDocument();
+  });
+});
+
+describe('DebugPanel — 跨项目会话屏蔽（#14）', () => {
+  it('activeProject 与 session.projectId 不同时不渲染会话内容（选 A 项目不显示 B 项目输出）', () => {
+    seed({
+      session: {
+        sessionId: 's1',
+        projectId: 'p2',
+        projectPath: '/other',
+        configName: 'other-cfg',
+        status: 'stopped',
+      },
+    });
+    render(<DebugPanel />);
+    // B 项目的变量树 / 配置名 / 帧内容被整体屏蔽
+    expect(screen.queryByText('{fetched_at:...}')).not.toBeInTheDocument();
+    expect(screen.queryByText('other-cfg')).not.toBeInTheDocument();
+    expect(screen.getByText(/Start debugging to inspect frames/)).toBeInTheDocument();
+  });
+
+  it('session 属于当前项目时正常渲染变量树', () => {
+    seed();
+    render(<DebugPanel />);
+    expect(screen.getByTitle('{fetched_at:...}')).toBeInTheDocument();
+    expect(screen.queryByText(/Start debugging to inspect frames/)).not.toBeInTheDocument();
+  });
+
+  it('error 属于其他项目时不显示错误横幅', () => {
+    seed({
+      session: null,
+      error: 'Debug adapter for type "go" not found',
+      errorProjectId: 'p2',
+    });
+    render(<DebugPanel />);
+    expect(screen.queryByText(/Debug adapter for type/)).not.toBeInTheDocument();
+  });
+
+  it('error 属于当前项目时显示错误横幅', () => {
+    seed({
+      session: null,
+      error: 'Debug adapter for type "go" not found',
+      errorProjectId: 'p1',
+    });
+    render(<DebugPanel />);
+    expect(screen.getByText(/Debug adapter for type/)).toBeInTheDocument();
   });
 });

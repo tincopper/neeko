@@ -1,6 +1,7 @@
 import type { EditorView } from '@codemirror/view';
 import { useEffect, useRef, type RefObject } from 'react';
 
+import { useVisibleDebugSession } from '@/features/runner';
 import { useDebugStore } from '@/features/runner/store/debugStore';
 
 import { applyDebugCurrentLine } from './useBreakpointGutter';
@@ -75,13 +76,14 @@ export function useCurrentLineHighlight(
   viewEpoch: number,
   releasePlacedCaret: (view: EditorView, placedLine: number) => void,
 ): void {
+  const session = useVisibleDebugSession();
   const stoppedAt = useDebugStore((s) => s.stoppedAt);
-  const sessionStatus = useDebugStore((s) => s.session?.status ?? null);
+  // 黄线/停点只属于当前项目会话：跨项目残留会话的 stoppedAt 不得在别的项目编辑器上画线（#14）。
   const highlightedLine = resolveDebugHighlightLine(
     absFilePath,
     tabFilePath,
-    stoppedAt,
-    sessionStatus,
+    session ? stoppedAt : null,
+    session ? (session.status ?? null) : null,
   );
   /** 最近一次真正占用的行 —— 停点结束后用它判断"光标是否仍停在调试放的位置"。 */
   const lastHighlightedLine = useRef<number | null>(null);

@@ -57,6 +57,7 @@ vi.mock('@/features/task', () => ({
 vi.mock('@/features/runner', () => ({
   DebugPanel: () => null,
   DebugRunButton: () => null,
+  useVisibleDebugSession: () => null,
 }));
 vi.mock('@/features/quick-open', () => ({ QuickOpenPalette: () => null }));
 vi.mock('@/features/symbol-nav', () => ({ SymbolNavPalette: () => null }));

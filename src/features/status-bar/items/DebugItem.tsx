@@ -1,3 +1,4 @@
+import { useVisibleDebugSession } from '@/features/runner';
 import { useDebugStore } from '@/features/runner/store/debugStore';
 import { cn } from '@/lib/utils';
 import { Bug } from '@/shared/components/icons';
@@ -6,7 +7,7 @@ import { useProjectStore } from '@/shared/store/projectStore';
 /** 右簇：调试面板开关（含会话状态徽标）。 */
 export function DebugItem() {
   const activeProjectId = useProjectStore((s) => s.activeProject?.id ?? null);
-  const debugSession = useDebugStore((s) => s.session);
+  const debugSession = useVisibleDebugSession();
   const debugPanelOpen = useDebugStore((s) => s.panelOpen);
   const toggleDebugPanel = useDebugStore((s) => s.togglePanel);
 

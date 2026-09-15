@@ -150,7 +150,7 @@ export const useJavaDebugStore = create<JavaDebugState>((set, get) => ({
       ? ' Switch to the host backend (dap.javaBackend = "host") to debug anyway (limited: no expression evaluation).'
       : ' Retry once the Java language server is ready, or switch to the host backend (dap.javaBackend = "host").';
     const msg = `${result.message}${hint}`;
-    debug.setPanelError(msg);
+    debug.setPanelError(projectId, msg);
     debug.pushConsole('err', msg);
     notify('error', msg);
     return result;

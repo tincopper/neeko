@@ -54,6 +54,8 @@ export interface DebugConfigSlice {
 export interface DebugSessionSlice {
   session: DapSessionInfo | null;
   error: string | null;
+  /** error 所属项目（跨项目切换时按此屏蔽旧项目错误，见 DebugPanel #14）。 */
+  errorProjectId: string | null;
   start: (projectId: string, currentFile?: string | null) => Promise<void>;
   /**
    * Start a session from a fully-specified synthetic config (editor test debug).
@@ -72,8 +74,10 @@ export interface DebugSessionSlice {
    * 与 `startWithConfig` 的会话收尾语义一致，故语言 store 无需直接改本 store 的 state。
    */
   attachSession: (session: DapSessionInfo) => void;
-  /** 面板级错误（置位时打开 Console 并走面板互斥）；`null` = 清除。 */
-  setPanelError: (message: string | null) => void;
+  /** 面板级错误（置位时打开 Console 并走面板互斥）；`projectId` = 错误所属项目，`null` = 清除。 */
+  setPanelError: (projectId: string | null, message: string | null) => void;
+  /** 项目切换时静默释放旧项目会话：终止后端会话、标记 terminated，但不打开面板。 */
+  stopSilent: () => Promise<void>;
   /** 新会话开始前的状态复位（语言侧入口自行控制顺序时使用，如先复位再回显命令）。 */
   resetSession: () => void;
   /** Debug a discovered entry (ensures matching launch config). */

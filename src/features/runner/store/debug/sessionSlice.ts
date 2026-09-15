@@ -23,6 +23,7 @@ export const createSessionSlice: DebugSliceCreator<DebugSessionSlice> = (set, ge
   const resetSession = () => {
     set({
       error: null,
+      errorProjectId: null,
       consoleLines: [],
       frames: [],
       variables: [],
@@ -50,7 +51,7 @@ export const createSessionSlice: DebugSliceCreator<DebugSessionSlice> = (set, ge
           languageHook?.debugHooks?.adapterHint() ??
           'Install lldb-dap (LLVM) or codelldb and ensure it is on PATH';
         const msg = `Debug adapter for type "${config.type}" not found. ${hint}`;
-        set({ error: msg, panelOpen: true, panelTab: 'console' });
+        set({ error: msg, errorProjectId: projectId, panelOpen: true, panelTab: 'console' });
         get().pushConsole('err', msg);
         notifyError(msg);
         throw new Error(msg);
@@ -72,6 +73,7 @@ export const createSessionSlice: DebugSliceCreator<DebugSessionSlice> = (set, ge
       const msg = String(e).replace(/^Error:\s*/, '');
       set({
         error: msg,
+        errorProjectId: projectId,
         panelOpen: true,
         panelTab: 'console',
         session: get().session
@@ -97,8 +99,9 @@ export const createSessionSlice: DebugSliceCreator<DebugSessionSlice> = (set, ge
   return {
     session: null,
     error: null,
+    errorProjectId: null,
 
-    clearError: () => set({ error: null }),
+    clearError: () => set({ error: null, errorProjectId: null }),
 
     resetSession,
 
@@ -117,7 +120,7 @@ export const createSessionSlice: DebugSliceCreator<DebugSessionSlice> = (set, ge
       if (!config) {
         const msg =
           'No launch configuration or entry point found. Add a config or ensure the project has a Go/Rust main.';
-        set({ error: msg, panelOpen: true, panelTab: 'console' });
+        set({ error: msg, errorProjectId: projectId, panelOpen: true, panelTab: 'console' });
         get().pushConsole('err', msg);
         notifyError(msg);
         throw new Error(msg);
@@ -137,17 +140,17 @@ export const createSessionSlice: DebugSliceCreator<DebugSessionSlice> = (set, ge
 
     attachSession: (session) => {
       // 面板互斥由 store 级中间件承担（`set` 里 panelOpen=true 即触发）。
-      set({ session, panelOpen: true, panelTab: 'session', error: null });
+      set({ session, panelOpen: true, panelTab: 'session', error: null, errorProjectId: null });
       // 握手会尽量等到入口停住；立即回填栈/高亮（与 startWithConfig 收尾一致）。
       void get().refreshStackAndVars();
     },
 
-    setPanelError: (message) => {
+    setPanelError: (projectId, message) => {
       if (message === null) {
-        set({ error: null });
+        set({ error: null, errorProjectId: null });
         return;
       }
-      set({ error: message, panelOpen: true, panelTab: 'console' });
+      set({ error: message, errorProjectId: projectId, panelOpen: true, panelTab: 'console' });
     },
 
     debugEntry: async (projectId, entry: EntryPoint, currentFile) => {
@@ -205,10 +208,29 @@ export const createSessionSlice: DebugSliceCreator<DebugSessionSlice> = (set, ge
         await dapControl(sid, action);
       } catch (e) {
         const msg = String(e);
-        set({ error: msg, panelOpen: true, panelTab: 'console' });
+        set({
+          error: msg,
+          errorProjectId: get().session?.projectId ?? null,
+          panelOpen: true,
+          panelTab: 'console',
+        });
         get().pushConsole('err', msg);
         notifyError(msg);
       }
+    },
+
+    /** 项目切换时静默释放旧项目会话：终止后端会话、标记 terminated，但不打开面板。 */
+    stopSilent: async () => {
+      const session = get().session;
+      const sid = session?.sessionId;
+      if (sid) {
+        try {
+          await dapStopSession(sid);
+        } catch (e) {
+          get().pushConsole('err', String(e));
+        }
+      }
+      set({ ...endedSessionPatch(session, 'Stopped') });
     },
   };
 };

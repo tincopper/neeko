@@ -3,6 +3,7 @@ import { act, renderHook } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { useDebugStore } from '@/features/runner/store/debugStore';
+import { useProjectStore } from '@/shared/store/projectStore';
 import type { DapSessionInfo } from '@/shared/types';
 
 import {
@@ -90,6 +91,7 @@ describe('useCurrentLineHighlight — 停点结束后释放调试放置的光标
   beforeEach(() => {
     releasePlacedCaret = vi.fn();
     useDebugStore.setState({ stoppedAt: null, session: null });
+    useProjectStore.setState({ activeProjectId: 'p1', activeProject: { id: 'p1' } as never });
   });
 
   it('停点结束时按最后一次占用的行释放；占用期间不释放', () => {

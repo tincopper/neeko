@@ -20,6 +20,7 @@
  * 跨域消费一律 `from '@/features/runner/store/testResults'` 直导。
  */
 export { useRunActions } from './hooks/useRunActions';
+export { useVisibleDebugSession } from './hooks/useVisibleDebugSession';
 export { default as DebugRunButton } from './components/DebugRunButton';
 export { default as DebugPanel } from './components/DebugPanel';
 export type { LaunchConfig } from './types';

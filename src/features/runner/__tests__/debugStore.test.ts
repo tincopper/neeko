@@ -13,6 +13,7 @@ const dapVariablesByReference = vi.hoisted(() => vi.fn());
 const dapVariables = vi.hoisted(() => vi.fn());
 const dapStackTrace = vi.hoisted(() => vi.fn());
 const dapControl = vi.hoisted(() => vi.fn());
+const dapStopSession = vi.hoisted(() => vi.fn());
 const openSourceAtLine = vi.hoisted(() => vi.fn());
 const openVirtualSourceAtLine = vi.hoisted(() => vi.fn());
 
@@ -22,6 +23,7 @@ vi.mock('../api/debugApi', async (importOriginal) => ({
   dapVariablesByReference,
   dapStackTrace,
   dapControl,
+  dapStopSession,
 }));
 
 // Isolate store orchestration from tab lifecycle (covered by navigate.test.ts).
@@ -80,6 +82,7 @@ beforeEach(() => {
   dapVariables.mockResolvedValue([]);
   useDebugStore.setState({
     session: null,
+    panelOpen: false,
     frames: [],
     variables: [],
     childrenByRef: {},
@@ -450,5 +453,24 @@ describe('debugStore 栈刷新失败的处理策略', () => {
       // 会静音后续用例的输出 —— 恰好掩盖后续失败（Neeko Check F21）。
       warn.mockRestore();
     }
+  });
+});
+
+describe('debugStore.stopSilent — 项目切换静默释放（#14 配套）', () => {
+  it('终止 live 会话、标记 terminated，但不打开面板', async () => {
+    seedLiveSession('running');
+    dapStopSession.mockResolvedValue(undefined);
+    await useDebugStore.getState().stopSilent();
+    const s = useDebugStore.getState();
+    expect(dapStopSession).toHaveBeenCalledWith('s1');
+    expect(s.session?.status).toBe('terminated');
+    expect(s.panelOpen).toBe(false);
+  });
+
+  it('无会话时静默返回，不触碰面板状态', async () => {
+    dapStopSession.mockResolvedValue(undefined);
+    await useDebugStore.getState().stopSilent();
+    expect(dapStopSession).not.toHaveBeenCalled();
+    expect(useDebugStore.getState().panelOpen).toBe(false);
   });
 });
