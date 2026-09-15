@@ -20,6 +20,25 @@ use crate::project::types::{
 };
 use anyhow::{bail, Result};
 
+/// 提交前守卫：`git ls-files -u -- <paths>` 输出非空 = index 存在 unmerged 条目
+/// （merge/rebase 冲突未解决）。`stage_files`（git add）会清除 unmerged 标记，
+/// 直接提交会把未解决冲突当作已解决，故必须在 stage 之前拦截。
+async fn ensure_no_unmerged(
+    transport: &dyn GitTransport,
+    work_dir: &str,
+    file_paths: &[String],
+) -> Result<()> {
+    let mut args: Vec<&str> = vec!["ls-files", "-u", "--"];
+    args.extend(file_paths.iter().map(|p| p.as_str()));
+    let output = transport.run_git(&args, work_dir).await?;
+    if !output.trim().is_empty() {
+        bail!(
+            "Cannot commit: unresolved merge conflict in selected files (resolve conflicts first)"
+        );
+    }
+    Ok(())
+}
+
 pub async fn commit_files(
     transport: &dyn GitTransport,
     work_dir: &str,
@@ -27,6 +46,7 @@ pub async fn commit_files(
     message: &str,
 ) -> Result<CommitResult> {
     if !file_paths.is_empty() {
+        ensure_no_unmerged(transport, work_dir, file_paths).await?;
         stage_files(transport, work_dir, file_paths).await?;
     }
     let output = transport

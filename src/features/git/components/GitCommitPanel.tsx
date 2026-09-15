@@ -82,6 +82,7 @@ const GitCommitPanel: React.FC<GitCommitPanelProps> = ({
     onCommitMessageClear: () => setCommitMessage(''),
     selectedFiles,
     onSelectedFilesClear: () => setSelectedFiles(new Set()),
+    changedFiles,
   });
 
   const { changedFilesWithStats } = useCommitPanelDiffStats({

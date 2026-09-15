@@ -19,6 +19,7 @@ import {
   getCommitLog,
   type PushOutcome,
 } from '../api/gitApi';
+import { isConflictedEntry } from '../utils/gitStatusGroups';
 
 interface CommitDialogProps {
   projectId: string;
@@ -83,6 +84,12 @@ function CommitDialog({ projectId, onClose, onRefreshGit }: CommitDialogProps) {
   const handleCommit = useCallback(
     async (pushAfter: boolean) => {
       if (!message.trim()) return;
+      // W1 根治：与后端 commit_files 守卫一致，阻止未解决冲突提交
+      // （安全底线在后端 ensure_no_unmerged；此处提供对话框内即时提示）
+      if (files.some(isConflictedEntry)) {
+        setError('Cannot commit: unresolved merge conflict selected. Resolve conflicts first.');
+        return;
+      }
       setSubmitting(true);
       setError(null);
       try {

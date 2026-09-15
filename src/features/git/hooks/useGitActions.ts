@@ -1,10 +1,11 @@
 import { useCallback, useState } from 'react';
 
-import type { CommitResult, PushOutcome } from '@/shared/types';
+import type { CommitResult, FileChange, PushOutcome } from '@/shared/types';
 import type { ProjectCommands } from '@/shared/types/activeProject';
 import { withTimeout } from '@/shared/utils/withTimeout';
 
 import { formatGitHost } from '../formatGitHost';
+import { isConflictedEntry } from '../utils/gitStatusGroups';
 
 /** 本地 git 操作超时（discard/stage/commit）。 */
 const TIMEOUT_LOCAL_MS = 30_000;
@@ -25,6 +26,18 @@ const CREDENTIAL_DIALOG_CLOSED: CredentialDialogState = {
   setUpstream: false,
 };
 
+/**
+ * 选中文件是否含未解决冲突（commit/commit-and-push 前的提交拦截）。
+ * porcelain 未合并组合判定见 isConflictedEntry；冲突文件被 git add 会清除
+ * unmerged 标记，直接提交会把未解决冲突当作已解决，故必须在命令层阻止。
+ */
+export function hasConflictedSelected(
+  changedFiles: FileChange[],
+  selectedFiles: ReadonlySet<string>,
+): boolean {
+  return changedFiles.some((f) => selectedFiles.has(f.path) && isConflictedEntry(f));
+}
+
 interface UseGitActionsParams {
   commands: ProjectCommands;
   onRefreshGit: () => Promise<void>;
@@ -35,6 +48,8 @@ interface UseGitActionsParams {
   selectedFiles: ReadonlySet<string>;
   /** selectedFiles 变更（commit 成功后清空选择）。 */
   onSelectedFilesClear: () => void;
+  /** 当前文件变更快照（含 porcelain XY；提交前冲突校验用，见 hasConflictedSelected）。 */
+  changedFiles: FileChange[];
 }
 
 /**
@@ -49,6 +64,7 @@ export function useGitActions({
   onCommitMessageClear,
   selectedFiles,
   onSelectedFilesClear,
+  changedFiles,
 }: UseGitActionsParams) {
   const [loading, setLoading] = useState(false);
   const [credentialDialog, setCredentialDialog] =
@@ -231,6 +247,15 @@ export function useGitActions({
         onShowToast?.('No files selected. Check files to commit.', 'error');
         return;
       }
+      // W1 根治：未解决冲突文件被选中时阻止提交（git add 会清除 unmerged 标记，
+      // 直接提交会把未解决冲突当作已解决）。
+      if (hasConflictedSelected(changedFiles, selectedFiles)) {
+        onShowToast?.(
+          'Cannot commit: unresolved merge conflict selected. Resolve conflicts or uncheck conflicted files first.',
+          'error',
+        );
+        return;
+      }
       setLoading(true);
       try {
         const result = (await withTimeout(
@@ -253,6 +278,7 @@ export function useGitActions({
     },
     [
       selectedFiles,
+      changedFiles,
       commands,
       onRefreshGit,
       onShowToast,
@@ -266,6 +292,14 @@ export function useGitActions({
       const files = Array.from(selectedFiles);
       if (files.length === 0) {
         onShowToast?.('No files selected. Check files to commit.', 'error');
+        return;
+      }
+      // W1 根治：同 handleCommit，commit-and-push 同样阻止冲突文件提交。
+      if (hasConflictedSelected(changedFiles, selectedFiles)) {
+        onShowToast?.(
+          'Cannot commit: unresolved merge conflict selected. Resolve conflicts or uncheck conflicted files first.',
+          'error',
+        );
         return;
       }
       setLoading(true);
@@ -289,6 +323,7 @@ export function useGitActions({
     },
     [
       selectedFiles,
+      changedFiles,
       commands,
       onRefreshGit,
       onShowToast,

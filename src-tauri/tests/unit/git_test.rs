@@ -571,6 +571,60 @@ async fn stash_pop_conflict_keeps_entry_and_reports_failure() {
     assert_eq!(stashes.len(), 1, "stash entry should be kept on conflict");
 }
 
+// ── commit_files 冲突守卫（W1 根治）────────────────────────────────────────
+
+/// 在 Local 目标上跑 git 命令并展开失败（造冲突场景用）。
+async fn git_run_ok(path: &str, args: &[&str]) {
+    let _ = neeko_lib::core::exec::collect(&ExecTarget::Local, "git", args, Some(path))
+        .await
+        .unwrap_or_else(|e| panic!("git {args:?} failed: {e}"));
+}
+
+#[tokio::test]
+async fn commit_files_rejects_unresolved_conflict() {
+    let (tmp, _repo) = create_test_repo();
+    let path = tmp.path().to_string_lossy().to_string();
+    let transport = ExecTarget::Local;
+
+    // 造真实 merge 冲突：feature 与 master 各改 README.md，merge 产生 unmerged index 条目
+    git_run_ok(&path, &["checkout", "-b", "feature"]).await;
+    std::fs::write(tmp.path().join("README.md"), "# Feature\n").unwrap();
+    git_run_ok(&path, &["add", "README.md"]).await;
+    git_run_ok(&path, &["commit", "-m", "feature change"]).await;
+
+    git_run_ok(&path, &["checkout", "master"]).await;
+    std::fs::write(tmp.path().join("README.md"), "# Master\n").unwrap();
+    git_run_ok(&path, &["add", "README.md"]).await;
+    git_run_ok(&path, &["commit", "-m", "master change"]).await;
+
+    // merge 冲突（退出码非零），忽略；index 进入 unmerged 状态
+    let _ =
+        neeko_lib::core::exec::collect(&transport, "git", &["merge", "feature"], Some(&path)).await;
+
+    // 守卫：未解决冲突必须拒绝提交，不得被 git add 清除标记后当作已解决提交
+    let err = operations::commit_files(&transport, &path, &["README.md".to_string()], "msg")
+        .await
+        .expect_err("commit with unresolved conflict must be rejected");
+    assert!(
+        err.to_string().contains("unresolved merge conflict"),
+        "错误应指明冲突，实际: {err}"
+    );
+}
+
+#[tokio::test]
+async fn commit_files_succeeds_without_conflict() {
+    let (tmp, _repo) = create_test_repo();
+    let path = tmp.path().to_string_lossy().to_string();
+    let transport = ExecTarget::Local;
+
+    std::fs::write(tmp.path().join("README.md"), "# Updated\n").unwrap();
+    let result = operations::commit_files(&transport, &path, &["README.md".to_string()], "msg")
+        .await
+        .expect("clean commit should succeed");
+    assert!(result.success);
+    assert!(!result.hash.is_empty(), "commit should produce a hash");
+}
+
 // ── 非 git 仓库守卫（TDD Red）──────────────────────────────────────────────
 
 /// 创建普通临时目录（非 git 仓库），用于验证守卫路径。

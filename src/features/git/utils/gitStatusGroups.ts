@@ -1,28 +1,21 @@
 import type { FileChange } from '@/shared/types';
 
 /**
- * G6 契约（redesign-plan §3.2）：porcelain XY → ChangesList 四组真实语义。
+ * G6 契约（redesign-plan §3.2）→ 2026-09-15 简化：Changes 面板只分两类。
  *
  * 纯派生函数（无独立状态，业界公理 3：消费端不做增量推导，只从权威快照派生）：
- * - staged      = X 存在且 ∉ {' ', '?'}
- * - unstaged    = Y 存在且 ∉ {' ', '?'}（非 unversioned）
- * - unversioned = X='?' && Y='?'（缺 XY 回退 status==='Untracked'）
- * - conflicted  = 未合并组合（U 出现 / AA / DD），独占不进其他组
+ * - tracked     = 已纳入版本控制的文件。staged / unstaged / conflicted 统一归此组：
+ *                 commit 流程经 commit_files 自动 stage 选中文件（见
+ *                 common/git/operations/commit.rs），index 态对 UI 流程无功能意义；
+ *                 冲突文件仍以普通行可见，不单独分组。
+ * - unversioned = untracked（X='?' && Y='?'；缺 XY 回退 status==='Untracked'）。
  *
- * 同一文件允许同时进入 staged 与 unstaged（XY 双非空，VSCode 同款）。
- * 缺 XY 的旧 payload 防御回退：Untracked → unversioned，其余 → unstaged（现行为）。
+ * 缺 XY 的旧 payload 防御回退：Untracked → unversioned，其余 → tracked。
  */
 
 export interface GitStatusGroups {
-  staged: FileChange[];
-  unstaged: FileChange[];
+  tracked: FileChange[];
   unversioned: FileChange[];
-  conflicted: FileChange[];
-}
-
-/** 未合并组合：任一侧 U，或 AA / DD（两侧同为 A / D） */
-function isUnmerged(x: string | undefined, y: string | undefined): boolean {
-  return x === 'U' || y === 'U' || (x === 'A' && y === 'A') || (x === 'D' && y === 'D');
 }
 
 /** unversioned 判定：XY 优先（X=Y='?'），缺 XY 回退单 status === 'Untracked' */
@@ -33,47 +26,27 @@ export function isUnversionedEntry(f: FileChange): boolean {
   return f.status === 'Untracked';
 }
 
-/** 是否携带 XY 契约字段（任一侧存在即视为完整 XY 语义——porcelain 永远双侧输出） */
-function hasXy(f: FileChange): boolean {
-  return f.index_status !== undefined || f.worktree_status !== undefined;
+/** 未合并组合（merge/rebase 冲突）：任一侧 U，或 AA / DD（两侧同为 A / D）。缺 XY 无法判定 → false */
+export function isConflictedEntry(f: FileChange): boolean {
+  return (
+    f.index_status === 'U' ||
+    f.worktree_status === 'U' ||
+    (f.index_status === 'A' && f.worktree_status === 'A') ||
+    (f.index_status === 'D' && f.worktree_status === 'D')
+  );
 }
 
 export function buildGitStatusGroups(files: FileChange[]): GitStatusGroups {
-  const staged: FileChange[] = [];
-  const unstaged: FileChange[] = [];
+  const tracked: FileChange[] = [];
   const unversioned: FileChange[] = [];
-  const conflicted: FileChange[] = [];
 
   for (const f of files) {
-    const x = f.index_status;
-    const y = f.worktree_status;
-
-    if (isUnmerged(x, y)) {
-      conflicted.push(f);
-      continue;
-    }
     if (isUnversionedEntry(f)) {
       unversioned.push(f);
-      continue;
+    } else {
+      tracked.push(f);
     }
-    // 缺 XY：旧 payload 回退现行为（全部进 Changes 组）
-    if (!hasXy(f)) {
-      unstaged.push(f);
-      continue;
-    }
-
-    let grouped = false;
-    if (x !== undefined && x !== ' ' && x !== '?') {
-      staged.push(f);
-      grouped = true;
-    }
-    if (y !== undefined && y !== ' ' && y !== '?') {
-      unstaged.push(f);
-      grouped = true;
-    }
-    // 防御：双侧均为空格的条目（真实 porcelain 不会产生）归入 unstaged 兜底
-    if (!grouped) unstaged.push(f);
   }
 
-  return { staged, unstaged, unversioned, conflicted };
+  return { tracked, unversioned };
 }

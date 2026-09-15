@@ -94,3 +94,45 @@ describe('ChangesSection — 行内 Open File 按钮', () => {
     expect(onFileSelect).not.toHaveBeenCalled();
   });
 });
+
+describe('ChangesSection — 冲突文件行级标记', () => {
+  it('未合并文件（AA）行内显示 Merge conflict 图标，文件名标红', () => {
+    render(
+      <Section
+        {...baseProps}
+        files={[file({ status: 'Added', index_status: 'A', worktree_status: 'A' })]}
+      />,
+    );
+
+    expect(screen.getByTitle('Merge conflict')).toBeInTheDocument();
+    expect(screen.getByText('a.ts')).toHaveClass('text-accent-red');
+  });
+
+  it('非冲突文件不显示冲突图标、不标红', () => {
+    render(
+      <Section
+        {...baseProps}
+        files={[
+          file({ status: 'Modified', index_status: 'M', worktree_status: ' ' }),
+          file({
+            path: 'src/b.ts',
+            status: 'Untracked',
+            index_status: '?',
+            worktree_status: '?',
+          }),
+        ]}
+      />,
+    );
+
+    expect(screen.queryByTitle('Merge conflict')).not.toBeInTheDocument();
+    expect(screen.getByText('a.ts')).not.toHaveClass('text-accent-red');
+    expect(screen.getByText('b.ts')).not.toHaveClass('text-accent-red');
+  });
+
+  it('缺 XY 的旧 payload 无法判定冲突，不标红', () => {
+    render(<Section {...baseProps} files={[file({ status: 'Modified' })]} />);
+
+    expect(screen.queryByTitle('Merge conflict')).not.toBeInTheDocument();
+    expect(screen.getByText('a.ts')).not.toHaveClass('text-accent-red');
+  });
+});
