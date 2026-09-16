@@ -146,24 +146,24 @@ export function useDebugStopReveal(params: {
 
 **先写的失败测试（Red → Green）**
 
-- [ ] T1 代际守卫：两个 deferred `dapStackTrace`（gen1 慢 / gen2 快）→ 反转 resolve 顺序 → `frames` / `location` / `selectedFrameId` 全部来自 gen2，gen1 不留痕。
-- [ ] T2 原子写：订阅 store 断言不存在「新 `location` + 旧 `frames`」的中间快照（帧 / 选中帧 / 位置成对更新）。
-- [ ] T3 迟到者不可覆盖（拆两段，见 implement.md 用例修订记录）：**T3-tab** —— gen1 的源码内容加载晚于 gen2 → 活动 tab 仍属 gen2（`location` 的单写者性质并入 T1）；**T3-cursor** —— 交错结束后编辑器光标停在 gen2 的停止行。
-- [ ] T4 切帧：`selectFrame` 同代际内更新 `location`（规范身份）并 `locationSeq+1`，不新开代际。
-- [ ] T5 结束 / 继续：`continued` / `terminated` / `resetSession` → `location=null` 且 `locationSeq+1`。
-- [ ] T6 命中：stop 匹配本 tab → 光标落在停止行并居中（1 次）。
-- [ ] T7 幂等自愈：同 `seq` 下 `viewEpoch` 变化（模拟视图重建 / 切回 tab）→ 仍收敛到停止行；重复应用不重复记录 `caretBeforeDebug`。
-- [ ] T8 用户接管：光标被移开后同 `seq` 不再夺回；新停点（新 `seq`）恢复跟随。
-- [ ] T9 释放：`location→null` 且光标仍在放置行 → 还回调试前位置；用户已改动则不动。
-- [ ] T10 不误伤：其他文件的编辑器对该 stop 不产生任何 dispatch。
-- [ ] T11 旧停点不抢激活：gen1 的源码内容加载（deferred）晚于 gen2 的 tab 激活 → 最终激活的是 gen2 的 tab（gen1 迟到的 `addTab`/`activateTab` 被代际守卫拦下）。
+- [x] T1 代际守卫：两个 deferred `dapStackTrace`（gen1 慢 / gen2 快）→ 反转 resolve 顺序 → `frames` / `location` / `selectedFrameId` 全部来自 gen2，gen1 不留痕。
+- [x] T2 原子写：订阅 store 断言不存在「新 `location` + 旧 `frames`」的中间快照（帧 / 选中帧 / 位置成对更新）。
+- [x] T3 迟到者不可覆盖（拆两段，见 implement.md 用例修订记录）：**T3-tab** —— gen1 的源码内容加载晚于 gen2 → 活动 tab 仍属 gen2（`location` 的单写者性质并入 T1）；**T3-cursor** —— 交错结束后编辑器光标停在 gen2 的停止行。
+- [x] T4 切帧：`selectFrame` 同代际内更新 `location`（规范身份）并 `locationSeq+1`，不新开代际。
+- [x] T5 结束 / 继续：`continued` / `terminated` / `resetSession` → `location=null` 且 `locationSeq+1`。
+- [x] T6 命中：stop 匹配本 tab → 光标落在停止行并居中（1 次）。
+- [x] T7 幂等自愈：同 `seq` 下 `viewEpoch` 变化（模拟视图重建 / 切回 tab）→ 仍收敛到停止行；重复应用不重复记录 `caretBeforeDebug`。
+- [x] T8 用户接管：光标被移开后同 `seq` 不再夺回；新停点（新 `seq`）恢复跟随。
+- [x] T9 释放：`location→null` 且光标仍在放置行 → 还回调试前位置；用户已改动则不动。
+- [x] T10 不误伤：其他文件的编辑器对该 stop 不产生任何 dispatch。
+- [x] T11 旧停点不抢激活：gen1 的源码内容加载（deferred）晚于 gen2 的 tab 激活 → 最终激活的是 gen2 的 tab（gen1 迟到的 `addTab`/`activateTab` 被代际守卫拦下）。
 
 **回归与质量门**
 
-- [ ] 现有 `debugStore.test.ts` / `navigate.test.ts` / `stackFrames.test.ts` / `navigateCaret.test.ts` / `useLspNavigation.test.ts` 语义保持（仅字段 / 签名适配）。
-- [ ] 三处 `refreshStackAndVars` 并发（启动路径）不再产生交叉写：`location` 与派生视图永远同代际。
-- [ ] `pnpm test:run`、`pnpm type-check`、`pnpm lint:fe`、`pnpm lint`（Rust 无改动，保持绿）全通过。
-- [ ] 真机验收（手动）：Java / Go 单测调试连续单步 20 次 +「首次打开新文件」场景，编辑器每次落在当前断点行；「继续到下一个断点」跨文件不回到上一个停点。
+- [x] 现有 `debugStore.test.ts` / `navigate.test.ts` / `stackFrames.test.ts` / `navigateCaret.test.ts` / `useLspNavigation.test.ts` 语义保持（仅字段 / 签名适配）。
+- [x] 三处 `refreshStackAndVars` 并发（启动路径）不再产生交叉写：`location` 与派生视图永远同代际。
+- [x] `pnpm test:run`、`pnpm type-check`、`pnpm lint:fe`、`pnpm lint`（Rust 无改动，保持绿）全通过。
+- [x] 真机验收（手动）：Java / Go 单测调试连续单步 20 次 +「首次打开新文件」场景，编辑器每次落在当前断点行；「继续到下一个断点」跨文件不回到上一个停点。**（2026-09-16 人工执行，未发现问题）**
 
 ## Risks
 

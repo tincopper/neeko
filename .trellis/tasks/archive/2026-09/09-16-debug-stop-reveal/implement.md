@@ -71,7 +71,7 @@ neeko-check 从「第一性原理 + 高内聚/低耦合/可扩展」审出 6 项
   两者已加入 `vitest.config.ts` 阈值清单（hook 全门控、组件只门控行/语句，理由写在配置注释里）。
   **冒烟测试第一次运行就抓到两条隐式依赖**：`useEditorSave → useActiveProject` 需读 `project.environment.type`
   （手搭最小 project 会抛）、组合层还需 `AppProvider` 上下文 —— 正是这类「装配隐式契约」此前零覆盖。
-* [ ] **第二轮评审 F8（已修，保留原文备查）**：`FileEditor.tsx` 290/300 行，余量 10 —— 建议抽走一块装配（如 run/debug 或
+* [x] **第二轮评审 F8（已修，保留原文备查）**：`FileEditor.tsx` 290/300 行，余量 10 —— 建议抽走一块装配（如 run/debug 或
   reveal 组合 hook）后再给该文件加任何东西；属「组合层瘦身」，可独立小任务或并入切片 3/4。
 * [x] **第二轮评审 F10 已修（2026-09-16）**：越界告警按「**同一事件只报一次**」去重（键 `identity#seq`，模块级只记最后一条键 —— 零状态增长、无需容量控制）。**不等切片 4**：切片 4 只能消除「多副本」这条轴，「同一事件重放（`viewEpoch` 变化）」那条它管不到；且该告警是本轮新引入的诊断，新债自己还。用例 `[T16]`（两个 view 同挂载 → 只报一次）+ `[T13]` 扩展（同 seq 重放不重复报、新 seq 仍报）；已用「撤掉去重」验真红（`expected "warn" to be called 1 times, but got 2 times` ×2）。
 * 另见评审新观察：`vitest.config.ts` 不在 `eslint src/` 范围内（改动前后均为 11 个既有格式错误，
@@ -111,10 +111,10 @@ neeko-check 从「第一性原理 + 高内聚/低耦合/可扩展」审出 6 项
 ## S1 纯函数地基 + 测试夹具（零行为变化）
 
 * [x] `src/testing/async.ts`：`deferred<T>()` + `flushMicrotasks()`（runner/editor 两侧交错用例复用；不放进被测代码）。
-* [ ] `src/features/runner/store/debug/stopGeneration.ts`：`StopGeneration` / `nextGeneration` / `isSameGeneration` / `resetGenerationSeqForTest`（design §2.1）。
+* [x] `src/features/runner/store/debug/stopGeneration.ts`：`StopGeneration` / `nextGeneration` / `isSameGeneration` / `resetGenerationSeqForTest`（design §2.1）。
   * [Red] 新建 `stopGeneration.test.ts`：`nextGeneration('s1').seq < nextGeneration('s1').seq`、跨 sessionId 不相等、`null` 永不相等 → 因模块不存在而失败。
   * [Green] 实现后同用例通过；`resetGenerationSeqForTest` 保证用例独立（每个用例前重置）。
-* [ ] `src/features/runner/stackFrames.ts` 增 `buildStopLocation(frame, projectRoot)`（唯一位置构造点）。
+* [x] `src/features/runner/stackFrames.ts` 增 `buildStopLocation(frame, projectRoot)`（唯一位置构造点）。
   * [Red] 扩 `__tests__/stackFrames.test.ts`：① `sourcePath` → `sourceIdentityOf` 规范身份（含 JDK 缓存路径 → `jdt:/…`）；② `sourceReference>0` → `virtualSourceIdentity`；③ 两者皆无 → `null` → 函数不存在而失败。
   * [Green] 实现后通过；确认 `pickStopFrame` 既有用例不受影响。
 * 验证：`pnpm test:run -- src/features/runner/store/debug src/features/runner/__tests__/stackFrames.test.ts` + `pnpm type-check`。
@@ -123,26 +123,26 @@ neeko-check 从「第一性原理 + 高内聚/低耦合/可扩展」审出 6 项
 
 依赖：S1。**本步只改 store 与消费点，不改跳转机制。**
 
-* [ ] **[Red] T1 代际守卫**（`debugStore.test.ts`）：用两个 `deferred` 的 `dapStackTrace`（gen1 挂起、gen2 挂起）→ **先 resolve gen2、再 resolve gen1** →
+* [x] **[Red] T1 代际守卫**（`debugStore.test.ts`）：用两个 `deferred` 的 `dapStackTrace`（gen1 挂起、gen2 挂起）→ **先 resolve gen2、再 resolve gen1** →
       `await` 两条链 → 断言 `frames` / `selectedFrameId` / `location` 全部属 gen2（gen1 的帧与方法名不得出现）。
       判据：在 S2 实现前，gen1 后到会覆盖 gen2（现行为）⇒ 失败。
-* [ ] **[Red] T2 原子写**（`debugStore.test.ts`）：`useDebugStore.subscribe` 收集快照 → 触发一次停点 → 断言每个快照中「`frames` 与 `location` 的来源代际一致」，即**不存在**「`frames` 为旧、`location` 为新」的快照。
-* [ ] **[Red] T4 切帧**（`debugStore.test.ts`）：`applyStop` 后 `selectFrame(otherId)` → 断言 ① `generation` 未变；② `locationSeq` +1；③ `location.identity` 为规范身份（含 jdt 帧断言 `jdt:/…`，覆盖旧实现写裸 `sourcePath` 的缺陷）。
-* [ ] **[Red] T5 清空**（`debugStore.test.ts`）：`continued` / `terminated` / `resetSession` 三路 → 断言 `location === null` 且 `locationSeq` +1。
-* [ ] **[Green]** `store/debug/types.ts` / `stackSlice.ts` / `shared.ts` / `sessionSlice.ts` / `eventsSlice.ts`：按 design §2.3/§2.4 落地（`beginStop` + `isCurrent` 守卫 + `nextLocation`/`clearLocation` + `buildStopLocation` 单写者）。
-* [ ] **[Green] 改名扩散适配**（以编译器报错为枚举手段）：`stoppedAt`→`location` 的全部消费点 —— `editor/hooks/useCurrentLineHighlight.ts`、`editor/hooks/useEditorViewSnapshot.ts`、`runner/__tests__/DebugPanel.variables.test.tsx`、`editor/hooks/__tests__/useCurrentLineHighlight.test.ts`（仅字段名）。
-* [ ] 保持既有 `debugStore.test.ts` 中「第三个 stop 停在库帧并高亮」「无源码帧 → `location` null」用例语义不变（仅字段改名）。
+* [x] **[Red] T2 原子写**（`debugStore.test.ts`）：`useDebugStore.subscribe` 收集快照 → 触发一次停点 → 断言每个快照中「`frames` 与 `location` 的来源代际一致」，即**不存在**「`frames` 为旧、`location` 为新」的快照。
+* [x] **[Red] T4 切帧**（`debugStore.test.ts`）：`applyStop` 后 `selectFrame(otherId)` → 断言 ① `generation` 未变；② `locationSeq` +1；③ `location.identity` 为规范身份（含 jdt 帧断言 `jdt:/…`，覆盖旧实现写裸 `sourcePath` 的缺陷）。
+* [x] **[Red] T5 清空**（`debugStore.test.ts`）：`continued` / `terminated` / `resetSession` 三路 → 断言 `location === null` 且 `locationSeq` +1。
+* [x] **[Green]** `store/debug/types.ts` / `stackSlice.ts` / `shared.ts` / `sessionSlice.ts` / `eventsSlice.ts`：按 design §2.3/§2.4 落地（`beginStop` + `isCurrent` 守卫 + `nextLocation`/`clearLocation` + `buildStopLocation` 单写者）。
+* [x] **[Green] 改名扩散适配**（以编译器报错为枚举手段）：`stoppedAt`→`location` 的全部消费点 —— `editor/hooks/useCurrentLineHighlight.ts`、`editor/hooks/useEditorViewSnapshot.ts`、`runner/__tests__/DebugPanel.variables.test.tsx`、`editor/hooks/__tests__/useCurrentLineHighlight.test.ts`（仅字段名）。
+* [x] 保持既有 `debugStore.test.ts` 中「第三个 stop 停在库帧并高亮」「无源码帧 → `location` null」用例语义不变（仅字段改名）。
 * 验证：`pnpm test:run -- src/features/runner src/features/editor` + `pnpm type-check` + `pnpm lint:fe`。
 
 ## S3 navigate 拆分 + 调用点收敛（T11 / T3-tab）
 
 依赖：S2。**与 S4 同 PR。**
 
-* [ ] **[Red] T11 过期不抢激活**
+* [x] **[Red] T11 过期不抢激活**
   * `navigate.test.ts`（新增，真 unit）：直接调 `ensureStopSourceTab({ …, isCurrent: () => false })` → 断言 `editorStore.addTab` / `activateTab` **均未发生**（用 spy 或状态断言）；`isCurrent: () => true` → 正常打开（复用 / 新建两分支各一）。
   * `debugStore.test.ts`（新增，链级）：gen1 的 `ensureStopSourceTab` 被 mock 为挂起 → gen2 正常落地并激活 → 再让 gen1 的返回值到达 → 断言激活态仍属 gen2。
   * 判据：S3 前 `openStopTab` 无代际校验，迟到链会 `activateTab` ⇒ 失败。
-* [ ] **[Red] T3-tab 症状级回归**（新建 `runner/__tests__/stopReveal.integration.test.ts`，**不 mock `../navigate`**，只 mock `features/file/api/fileApi` + `../api/debugApi` + `tauriCore`）：
+* [x] **[Red] T3-tab 症状级回归**（新建 `runner/__tests__/stopReveal.integration.test.ts`，**不 mock `../navigate`**，只 mock `features/file/api/fileApi` + `../api/debugApi` + `tauriCore`）：
   * 场景：停点1 → A 文件（`readFileContent` 用 `deferred` 挂起）→ 停点2 → B 文件（立即 resolve）→ 最后 resolve A。
   * 断言：`editorStore.tabs[tabKey].activeTabId === B 的 tabId`；且 A 的迟到不得改变活动 tab。
   * 判据：旧实现 `activateTab` 由迟到链执行 ⇒ 活动 tab 变成 A ⇒ 失败（真红）。
@@ -151,26 +151,26 @@ neeko-check 从「第一性原理 + 高内聚/低耦合/可扩展」审出 6 项
     修法：resolve 迟到内容后补 `await flushMicrotasks()`；随后用例在旧机制上稳定失败于
     `expected 'p1:/repo/src/A.java' to be 'p1:/repo/src/B.java'`（正是本 issue 的症状）。
     这类「断言早于迟到链执行」是竞态用例最常见的假绿来源，新增交错用例必须自查。
-* [ ] **[Green]** `navigate.ts`：抽 `ensureSourceTab`（核心，不写跳转目标）+ 新增 `ensureStopSourceTab`（`await load` 后、`addTab`/`activateTab` 前 `req.isCurrent()`）；两个用户意图入口保留 pending 写入、删除 `debug` 位。
-* [ ] **[Green] 调用点收敛**：`DebugFramesColumn.handleFrameClick` → 只 `await selectFrame(frame.id)`（删 `activeProjectPaths` / `openStopSource` / `openStopVirtualSource` 及 import）；`DebugBreakpointsPane` → `openSourceAtLine`（用户意图，不设 debug 位）；删除 `runner/openStopSource.ts`。
-* [ ] **[Green] mock 面同步**：`debugStore.test.ts` 的 `vi.mock('../navigate', …)` 从 `openSourceAtLine/openVirtualSourceAtLine` 换成 `ensureStopSourceTab`（否则 T1/T3 断言不到，会出现「假绿」）。
-* [ ] 保持 `navigate.test.ts` 既有用例（身份归一 / 外部通道 / 复用 / 失败上报）语义不变。
+* [x] **[Green]** `navigate.ts`：抽 `ensureSourceTab`（核心，不写跳转目标）+ 新增 `ensureStopSourceTab`（`await load` 后、`addTab`/`activateTab` 前 `req.isCurrent()`）；两个用户意图入口保留 pending 写入、删除 `debug` 位。
+* [x] **[Green] 调用点收敛**：`DebugFramesColumn.handleFrameClick` → 只 `await selectFrame(frame.id)`（删 `activeProjectPaths` / `openStopSource` / `openStopVirtualSource` 及 import）；`DebugBreakpointsPane` → `openSourceAtLine`（用户意图，不设 debug 位）；删除 `runner/openStopSource.ts`。
+* [x] **[Green] mock 面同步**：`debugStore.test.ts` 的 `vi.mock('../navigate', …)` 从 `openSourceAtLine/openVirtualSourceAtLine` 换成 `ensureStopSourceTab`（否则 T1/T3 断言不到，会出现「假绿」）。
+* [x] 保持 `navigate.test.ts` 既有用例（身份归一 / 外部通道 / 复用 / 失败上报）语义不变。
 * 验证：`pnpm test:run -- src/features/runner` + `pnpm type-check` + `pnpm lint:fe`。
 
 ## S4 幂等兑现（T6/T7/T8/T9/T10/T3-cursor）
 
 依赖：S3。
 
-* [ ] **[Red] T6 命中**：构造真实 headless `EditorView`（照 `editor/__tests__/navigateCaret.test.ts` 的 `makeView`）+ 直接 `useDebugStore.setState({ session, location, locationSeq })` + `renderHook(() => useDebugStopReveal({...}))` → 断言光标落在 `location.line`（1-based）。
-* [ ] **[Red] T7 幂等自愈**：同一 `locationSeq` 下重挂载（`viewEpoch` 变化 / 重新 `renderHook`）→ 断言仍收敛到停止行，且 `caretBeforeDebug` 不重复记录（用重复放置后可 `releaseDebugCaret` 的行为间接断言，或补一个只读探针导出）。
-* [ ] **[Red] T8 用户接管**：放置后手动 `view.dispatch({ selection: 别处 })` + 同 `seq` 触发重放 → 断言**未**被夺回；随后 `locationSeq+1`（新停点）→ 断言被带回。
-* [ ] **[Red] T9 释放**（由 `useCurrentLineHighlight.test.ts` 的释放用例迁移）：`location→null` 两分支 —— 光标仍在放置行 ⇒ 还回旧位置；用户已改动 ⇒ 不动。
-* [ ] **[Red] T10 不误伤**：`location.identity` 属别的文件 → 断言该 view 零 dispatch（`selection` 未变、无 flash 装饰）。
-* [ ] **[Red] T3-cursor 症状（光标）**：扩展 `stopReveal.integration.test.ts`：A（慢，停点行 L1 ≠ 1）/ B（快，停点行 L2）交错 → 为 A、B 各挂一个 view（`useDebugStopReveal` + headless view）→ 断言 ① B view 光标落在 L2；② A view 光标**仍在初始位置**（`pos === 0`，即其迟到未触发任何 placement）。
+* [x] **[Red] T6 命中**：构造真实 headless `EditorView`（照 `editor/__tests__/navigateCaret.test.ts` 的 `makeView`）+ 直接 `useDebugStore.setState({ session, location, locationSeq })` + `renderHook(() => useDebugStopReveal({...}))` → 断言光标落在 `location.line`（1-based）。
+* [x] **[Red] T7 幂等自愈**：同一 `locationSeq` 下重挂载（`viewEpoch` 变化 / 重新 `renderHook`）→ 断言仍收敛到停止行，且 `caretBeforeDebug` 不重复记录（用重复放置后可 `releaseDebugCaret` 的行为间接断言，或补一个只读探针导出）。
+* [x] **[Red] T8 用户接管**：放置后手动 `view.dispatch({ selection: 别处 })` + 同 `seq` 触发重放 → 断言**未**被夺回；随后 `locationSeq+1`（新停点）→ 断言被带回。
+* [x] **[Red] T9 释放**（由 `useCurrentLineHighlight.test.ts` 的释放用例迁移）：`location→null` 两分支 —— 光标仍在放置行 ⇒ 还回旧位置；用户已改动 ⇒ 不动。
+* [x] **[Red] T10 不误伤**：`location.identity` 属别的文件 → 断言该 view 零 dispatch（`selection` 未变、无 flash 装饰）。
+* [x] **[Red] T3-cursor 症状（光标）**：扩展 `stopReveal.integration.test.ts`：A（慢，停点行 L1 ≠ 1）/ B（快，停点行 L2）交错 → 为 A、B 各挂一个 view（`useDebugStopReveal` + headless view）→ 断言 ① B view 光标落在 L2；② A view 光标**仍在初始位置**（`pos === 0`，即其迟到未触发任何 placement）。
       判据：旧机制下 A 的迟到会写 pending=L1 并把光标移到 L1 ⇒ ②失败（真红）；且旧机制下 B view 会先被放到 L2、随后又被 A 覆盖 ⇒ ①失败。
-* [ ] **[Red] `useStopLocation` 门控与引用恒等**（`runner/hooks/__tests__/useStopLocation.test.ts`）：无会话 / 别项目会话 / `location=null` → `null`；store 值不变时反复渲染返回**同引用**（防 `useSyncExternalStore` 无限重渲）。
-* [ ] **[Green]** `editor/stopMatch.ts`（抽出 `debugPathsMatch` + `resolveDebugHighlightLine`）；`runner/hooks/useStopLocation.ts`（design §3.1 的引用稳定性约束）；`editor/hooks/useDebugStopReveal.ts`（design §3.2 状态机）；`useCurrentLineHighlight.ts` 收缩为纯黄线（删 `releasePlacedCaret` 参数与释放分支）；`useEditorBreakpoints.ts` 少传一参数；`FileEditor.tsx` 装配；`useEditorViewSnapshot.ts` 摘 debug 分支与 `rememberPrevCaret` 开关；删 `PendingNavigateTarget.debug`。
-* [ ] **[Green] 测试迁移**：`useCurrentLineHighlight.test.ts` 的释放用例 → T9；匹配纯函数用例 → 新 `editor/__tests__/stopMatch.test.ts`；`useLspNavigation.test.ts` 仅字段适配。
+* [x] **[Red] `useStopLocation` 门控与引用恒等**（`runner/hooks/__tests__/useStopLocation.test.ts`）：无会话 / 别项目会话 / `location=null` → `null`；store 值不变时反复渲染返回**同引用**（防 `useSyncExternalStore` 无限重渲）。
+* [x] **[Green]** `editor/stopMatch.ts`（抽出 `debugPathsMatch` + `resolveDebugHighlightLine`）；`runner/hooks/useStopLocation.ts`（design §3.1 的引用稳定性约束）；`editor/hooks/useDebugStopReveal.ts`（design §3.2 状态机）；`useCurrentLineHighlight.ts` 收缩为纯黄线（删 `releasePlacedCaret` 参数与释放分支）；`useEditorBreakpoints.ts` 少传一参数；`FileEditor.tsx` 装配；`useEditorViewSnapshot.ts` 摘 debug 分支与 `rememberPrevCaret` 开关；删 `PendingNavigateTarget.debug`。
+* [x] **[Green] 测试迁移**：`useCurrentLineHighlight.test.ts` 的释放用例 → T9；匹配纯函数用例 → 新 `editor/__tests__/stopMatch.test.ts`；`useLspNavigation.test.ts` 仅字段适配。
 * 验证：`pnpm test:run -- src/features/editor src/features/runner` + `pnpm type-check` + `pnpm lint:fe`。
 
 ## S5 收尾、全量回归、上机验收
@@ -178,7 +178,7 @@ neeko-check 从「第一性原理 + 高内聚/低耦合/可扩展」审出 6 项
 * [x] 删除死代码：`openStopSource.ts`（S3 删除）、`PendingNavigateTarget.debug` 与相关注释（S4 删除）。
 * [x] 注释同步：`stackSlice.ts` 顶注（代际 + 单写者 + 原子写三条不变式）、`useCurrentLineHighlight.ts` 顶注（去掉释放职责）、`useDebugStopReveal.ts` 顶注（幂等/自愈/接管语义）、`editorStore.ts` 的 pending 注释（仅剩用户意图）。
 * [x] 全量质量门：`pnpm lint:fe`（eslint + tsc + vitest --typecheck：429 文件 / 3647 测试 / 0 type errors）与 `pnpm lint`（cargo fmt + clippy、4 个护栏脚本、java-host tests OK）全绿。
-* [ ] 上机验收（`pnpm tauri dev`，Java 单测调试 + Go 单测调试各一轮）—— **待人工执行**：
+* [x] 上机验收（`pnpm tauri dev`，Java 单测调试 + Go 单测调试各一轮）—— **2026-09-16 人工执行，未发现问题**：
   * 连续单步 20 次（含进入 JDK / 库源码帧）→ 每次编辑器落在当前停止行；
   * 「继续到下一个断点」跨文件 5 次 → 不得回到上一个停点；
   * 首次打开新文件时停点 → 文件打开即定位到停止行；
