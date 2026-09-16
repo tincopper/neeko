@@ -62,10 +62,18 @@ neeko-check 从「第一性原理 + 高内聚/低耦合/可扩展」审出 6 项
   - **收口内容**：新增 `stopGeneration.stopContextUnchanged(current, captured)` —— 与 `isSameGeneration` 的唯一差别是「**双方皆无代际**」判为**未变**（它按定义判为非同一代际）；`selectFrame` 两处复查改用它。原本直接用 `isSameGeneration` 会让未过 `beginStop` 的停止态（attach 到已暂停进程 / 测试 seed frames+session）**静默不写变量、不打开源码 tab**。
   - **双向反证（两个新用例都不是摆设）**：回到外部作者的原始形态 → `[T14]` 红（`expected [] to deeply equal [{name:'v', value:'kept'}]`，即变量被静默丢弃）；把守卫改成恒真 → `[T15]` 红（`expected [{name:'stale'}] to deeply equal []`，即迟到变量被写入）。恢复后 46 例全绿。
   - **备案**：PR-2 的 diff 因此含**两位作者**的内容（外部编辑 + 我收口），提交信息需注明，便于日后 `git blame` 有据。
-* [ ] **第二轮评审 F8（待排）**：`FileEditor.tsx` 290/300 行，余量 10 —— 建议抽走一块装配（如 run/debug 或
+* [x] **第三轮评审 F11 已修（2026-09-16）**：新增 `FileEditor` **组合冒烟测试**
+  `editor/components/__tests__/FileEditor.compose.test.tsx`（4 例）—— 断言 CodeMirror 真实挂载、
+  `useLspClient` 入参、**两段式晚绑定**（`bind(navigateToLocation, ctx)`）、卸载解绑、交互态光标样式
+  （`cmd-held` / `lsp-jumping` 两分支）、二进制兜底分支不实例化编辑器、菜单条件渲染。
+  效果：`useFileEditorLsp.ts` **0 → 100/100/100/100**；`FileEditor.tsx` **0 → 95.23 行 / 90.9 语句**
+  （分支 69.23 与函数 50 的缺口是「作为 props 传递但未被调用的内联回调」，其行为归属各自 hook 的测试）。
+  两者已加入 `vitest.config.ts` 阈值清单（hook 全门控、组件只门控行/语句，理由写在配置注释里）。
+  **冒烟测试第一次运行就抓到两条隐式依赖**：`useEditorSave → useActiveProject` 需读 `project.environment.type`
+  （手搭最小 project 会抛）、组合层还需 `AppProvider` 上下文 —— 正是这类「装配隐式契约」此前零覆盖。
+* [ ] **第二轮评审 F8（已修，保留原文备查）**：`FileEditor.tsx` 290/300 行，余量 10 —— 建议抽走一块装配（如 run/debug 或
   reveal 组合 hook）后再给该文件加任何东西；属「组合层瘦身」，可独立小任务或并入切片 3/4。
-* [ ] **第二轮评审 F10（待排）**：F2 的越界 `console.warn` 在 split/pinned 多副本挂载下按副本数重复输出
-  —— 切片 4（视图唯一化）后自然消除；若切片 4 延后，则加「同 identity+seq 只 warn 一次」。
+* [x] **第二轮评审 F10 已修（2026-09-16）**：越界告警按「**同一事件只报一次**」去重（键 `identity#seq`，模块级只记最后一条键 —— 零状态增长、无需容量控制）。**不等切片 4**：切片 4 只能消除「多副本」这条轴，「同一事件重放（`viewEpoch` 变化）」那条它管不到；且该告警是本轮新引入的诊断，新债自己还。用例 `[T16]`（两个 view 同挂载 → 只报一次）+ `[T13]` 扩展（同 seq 重放不重复报、新 seq 仍报）；已用「撤掉去重」验真红（`expected "warn" to be called 1 times, but got 2 times` ×2）。
 * 另见评审新观察：`vitest.config.ts` 不在 `eslint src/` 范围内（改动前后均为 11 个既有格式错误，
   本改动未新增）；`openVirtualSourceAtLine` 目前**无生产消费者**（用户意图打开虚拟源码的路径
   尚不存在），保留与否待定。

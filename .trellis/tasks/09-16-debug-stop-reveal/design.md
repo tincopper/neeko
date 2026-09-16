@@ -316,7 +316,12 @@ useEffect(() => {
     placed != null && sel.empty && view.state.doc.lineAt(sel.head).number === placed.line;
   if (!newEvent && !caretUntouched) return;   // 同事件重放 + 用户已改动 → 不夺光标
 
-  if (!resolveDocPos(view, stop.line, stop.column)) return; // 越界保护（doc 未就绪）
+  // 停点行超出文档长度（源码与二进制不一致 / tab 内容陈旧）→ 不伪造位置（F2 决策）
+  if (stop.line > view.state.doc.lines) {
+    warnOutOfRangeOnce(`${stop.identity}#${stop.seq}`, { identity, line: stop.line, docLines });
+    return;                                    // 不放置、不记账；告警按同一事件只报一次（F10）
+  }
+  if (!resolveDocPos(view, stop.line, stop.column)) return; // doc 未就绪 → 同样不放置、不记账
   applyNavigateCaret(view, stop.line, stop.column, { rememberPrevCaret: true });
   placedRef.current = { seq: stop.seq, line: stop.line };
 }, [stop?.seq, targetLine, viewEpoch, editorViewRef, absFilePath, tabFilePath]);
@@ -328,7 +333,8 @@ useEffect(() => {
 - **用户接管**：判据与 `releaseDebugCaret` 完全同一谓词（空选区 + 光标停在放置行）⇒ 不引入新的「谁动了光标」耦合、无需 `EditorView.updateListener`（见 §4.2）。
 - **新事件必然重新跟随**：`seq` 变 ⇒ `newEvent=true` ⇒ 即使光标被用户挪走也会跟随到新停点（IDE 语义）。
 - 复用 `resolveDebugHighlightLine`（纯函数、已测）做匹配 ⇒ 黄线与 reveal 的匹配策略单点。
-- 越界保护：`resolveDocPos` 为 null（doc 尚未就绪 / 行号越界）时**不放置**且**不写 `placedRef`**，等下一次触发重试；不写「已放置」是为了避免分支 2 误判为「用户接管」。
+- **越界两条路线**（F2/F10 决策，见 §6）：`stop.line > doc.lines` → **拒绝放置**（不钳到末行）+ 诊断日志 + 不记账（钳制会让光标停末行且黄线/闪蓝都被丢弃，像「跳错了」）；`resolveDocPos` 为 null（doc 未就绪）→ 同样不放置、不写 `placedRef`（避免分支 2 误判为「用户接管」）。
+- 越界告警**按同一事件只报一次**（键 `identity#seq`）：多副本挂载（切片 4 之前）与同事件重放（`viewEpoch`）都不重复打印。
 
 ### 3.3 `editor/stopMatch.ts`（新增，纯匹配策略）+ `useCurrentLineHighlight.ts`（收缩为纯黄线）
 
@@ -420,7 +426,8 @@ t3  A/B 视图挂载/可见 → useDebugStopReveal 读 location=L2 → 收敛到
 | ~~F2 越界语义~~ | 已于 2026-09-16 决策并落地：**拒绝放置**（不钳到末行）+ 留诊断日志 + 不记账；用例 `[T13]`，已验真红 | ✅ 本任务闭环 |
 | ~~F3 `debugPathsMatch` 第三分支~~ | 已于 2026-09-16 决策并落地：**删除**（穷举证明只对非规范输入可达；不引入第二个 normalizer），前置条件写进模块头注释 | ✅ 本任务闭环 |
 | **F8（第二轮评审）**：`FileEditor.tsx` 290/300 行 | 余量 10：下一次任何小改动都会撞 300 红线，被迫仓促抽离 | 待排（组合层瘦身；可独立小任务或并入切片 3/4） |
-| **F10（第二轮评审）**：越界 warn 在多副本挂载下按副本数重复 | split/pinned 下同一 tabId 有 2–3 份挂载，日志噪声淹没诊断 | 切片 4 后自然消除；若切片 4 延后则加「同 identity+seq 只 warn 一次」 |
+| ~~F10 越界 warn 重复~~ | 已于 2026-09-16 决策并落地：按「同一事件只报一次」去重（键 `identity#seq`，模块级单变量），同时消除「多副本」与「同事件重放」两条轴；用例 `[T13]`/`[T16]`，已验真红 | ✅ 本任务闭环 |
+| ~~F11 组合层 0% 覆盖~~ | 已于 2026-09-16 决策并落地：新增 `FileEditor` 组合冒烟测试（4 例），`useFileEditorLsp` 0→100%、`FileEditor` 0→95.23 行；两者进阈值清单 | ✅ 本任务闭环 |
 | ~~F7 / F9（第二轮评审）~~ | F7 `sourceTab` 声明但不消费的两个 store 读取已下沉到 `navigate.ts`；F9 两处注释已补齐为与实现一致 | ✅ 本任务闭环 |
 
 > 切片 3 已建任务目录：`.trellis/tasks/09-16-debug-source-identity`（PRD 含 R1–R9 与审计范围；本表 F5/F6/F3 的完整条目已迁入该 PRD，此处只留索引）。
