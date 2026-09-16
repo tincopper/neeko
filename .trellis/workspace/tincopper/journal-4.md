@@ -1215,3 +1215,37 @@ B 得 `null`，与既有「jdt 无 query → null」先例一致）。B 的改�
 ### Next Steps
 
 - None - task complete
+
+
+## Session 209: debug bp disable/mute/rerun — full cycle done
+
+**Date**: 2026-09-16
+**Task**: debug bp disable/mute/rerun — full cycle done
+**Branch**: `main`
+
+### Summary
+
+Implemented breakpoint disable/mute/rerun via trellis flow: design review amendments, TDD implement, quality gate, /neeko-check architecture review (3 Major + 5 Minor fixed), spec scenario captured, full test suite green, committed and archived.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `9952db85` | (see git log) |
+| `1f54c1f4` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
