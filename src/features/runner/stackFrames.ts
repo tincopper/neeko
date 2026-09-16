@@ -6,12 +6,11 @@
  * breakpoints unobservable and step-into-library impossible — the stop location
  * is always the source we navigate to.
  *
- * 本模块是**「帧 → 源身份」的唯一所有权点**：适配器虚拟源码身份
- * （`virtualSourceIdentity`）在此产出，物理源码身份由 `fileRef.sourceIdentityOf` 提供
- * （本模块的下游 `stopLocation.ts` 消费两者来构造位置）。零依赖（只用共享纯工具），
- * 可被 store 切片与 UI 直接消费。
+ * 本模块只回答**「哪个帧是停止位置」**（`pickStopFrame`）。
+ * **身份不在本模块**：物理源码身份用 `fileRef.sourceIdentityOf`、适配器虚拟源码身份用
+ * `fileRef.virtualSourceIdentity`（都在身份所有者里，见其模块头「值域必须等于真实身份种类集合」）。
  *
- * 「位置」本身（类型 / 构造 / 状态对）不在本模块 —— 见 `stopLocation.ts`。
+ * 「位置」本身（类型 / 构造 / 状态对）见 `stopLocation.ts`。
  */
 import type { StackFrameDto } from './types';
 
@@ -32,9 +31,4 @@ export function pickStopFrame(frames: StackFrameDto[]): StackFrameDto | null {
     if (f.sourcePath || (f.sourceReference ?? 0) > 0) return f;
   }
   return null;
-}
-
-/** 虚拟源码 tab 的身份路径（`dap-source:` 前缀，非文件系统路径）。 */
-export function virtualSourceIdentity(reference: number, name?: string | null): string {
-  return `dap-source:/${reference}/${name && name.trim() ? name.trim() : 'source'}`;
 }

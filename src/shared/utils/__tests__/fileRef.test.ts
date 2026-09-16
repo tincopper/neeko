@@ -10,6 +10,7 @@ import {
   pathsContainFile,
   relativeToRoot,
   sameFile,
+  sameFileAt,
   sourceIdentityOf,
   tabIdentityOf,
   type FileRef,
@@ -470,5 +471,78 @@ describe('sameIdentity — 两个源身份字符串是否同一文件', () => {
   it('不做相对/绝对混比与 basename 猜测（那属边界解析）', () => {
     expect(sameIdentity('/repo/a.go', 'a.go')).toBe(false);
     expect(sameIdentity('/repo/a.go', 'src/a.go')).toBe(false);
+  });
+});
+
+/**
+ * 适配器虚拟源码身份（`dap-source:/<reference>/<name>`）。
+ *
+ * 它是**身份**，不是文件路径 —— 却曾缺席身份文法：`fileRefFromTabPath` 只认 `jdt:`，
+ * 于是被当相对路径拼上项目根（`/repo/dap-source:/42/Foo.java`），导致身份构造点**不幂等**、
+ * 伪路径被写成断点 key 下发给后端，且任何新消费者用 `absFilePath` 比身份都静默不命中。
+ */
+describe('虚拟源码身份（dap-source:）—— 必须闭合成 FileRef 文法', () => {
+  const ROOT = '/repo';
+  const V = 'dap-source:/42/Foo.java';
+
+  it('sourceIdentityOf 幂等：虚拟身份不再被拼上项目根', () => {
+    expect(sourceIdentityOf(ROOT, V)).toBe(V);
+    expect(sourceIdentityOf('', V)).toBe(V);
+  });
+
+  it('fileRefFromTabPath ↔ tabIdentityOf 互逆', () => {
+    expect(tabIdentityOf(fileRefFromTabPath(ROOT, V))).toBe(V);
+  });
+
+  it('lspUriOf → null（虚拟源码没有 LSP 文档；与「jdt 无 query」同先例）', () => {
+    expect(lspUriOf(fileRefFromTabPath(ROOT, V))).toBeNull();
+  });
+
+  it('比较单位是 (reference, name) 而非文本：name 归一后收敛', () => {
+    expect(sameFile(fileRefFromTabPath(ROOT, V), fileRefFromTabPath(ROOT, V))).toBe(true);
+    // 与构造点 virtualSourceIdentity 的同一条 name 归一（trim + 空回退）
+    expect(
+      sameFile(fileRefFromTabPath(ROOT, V), fileRefFromTabPath(ROOT, 'dap-source:/42/ Foo.java ')),
+    ).toBe(true);
+    expect(sameFile(fileRefFromTabPath(ROOT, V), fileRefFromTabPath(ROOT, 'dap-source:/42/'))).toBe(
+      false,
+    );
+  });
+
+  it('reference / name 不同 → 不同身份；与 fs 恒不同', () => {
+    expect(
+      sameFile(fileRefFromTabPath(ROOT, V), fileRefFromTabPath(ROOT, 'dap-source:/43/Foo.java')),
+    ).toBe(false);
+    expect(
+      sameFile(fileRefFromTabPath(ROOT, V), fileRefFromTabPath(ROOT, 'dap-source:/42/Bar.java')),
+    ).toBe(false);
+    expect(
+      sameFile(fileRefFromTabPath(ROOT, V), fileRefFromTabPath(ROOT, `${ROOT}/Foo.java`)),
+    ).toBe(false);
+  });
+
+  it('sameIdentity 对虚拟身份同样成立（不拼根、不做别名匹配）', () => {
+    expect(sameIdentity(V, V)).toBe(true);
+    expect(sameIdentity(V, `${ROOT}/dap-source:/42/Foo.java`)).toBe(false);
+    expect(sameIdentity(V, 'dap-source:/42/Bar.java')).toBe(false);
+  });
+
+  it('不合文法的 dap-source: 也**绝不拼根**（保持全函数与幂等）', () => {
+    // 引用号非数字 / 只有前缀 / 空引用段 —— 都不得被当相对路径拼上项目根。
+    for (const bad of ['dap-source:/abc/x.java', 'dap-source:/', 'dap-source://x.java']) {
+      expect(sourceIdentityOf(ROOT, bad)).toBe(bad);
+      expect(tabIdentityOf(fileRefFromTabPath(ROOT, bad))).toBe(bad);
+    }
+  });
+
+  it('缺名字段 → 回退为 source（与构造点同一条归一）', () => {
+    expect(sourceIdentityOf(ROOT, 'dap-source:/42')).toBe('dap-source:/42/source');
+    expect(sameIdentity('dap-source:/42', 'dap-source:/42/source')).toBe(true);
+  });
+
+  it('sameFileAt 与 sameIdentity 同一实现（空值早退一致）', () => {
+    expect(sameFileAt(ROOT, '', '/repo/a.ts')).toBe(false);
+    expect(sameFileAt(ROOT, '/repo/a.ts', '')).toBe(false);
+    expect(sameFileAt(ROOT, 'src/a.ts', '/repo/src/a.ts')).toBe(true);
   });
 });

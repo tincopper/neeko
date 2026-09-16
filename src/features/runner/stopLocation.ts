@@ -8,15 +8,15 @@
  *
  * 职责边界：
  * - 本模块 = 「位置是什么 / 怎么造 / 怎么变更」；
- * - `stackFrames.ts` = 「帧 → 源身份」（`pickStopFrame` / `virtualSourceIdentity`），本模块的下游；
+ * - `stackFrames.ts` = 「哪个帧是停止位置」（`pickStopFrame`），本模块的下游；身份构造在
+ *   `fileRef`（`sourceIdentityOf` / `virtualSourceIdentity`）—— 身份只在所有者处产出。
  * - `store/debug/*` = 持有 `StopLocationState` 并通过 `withStopLocation` 写入。
  *
  * 依赖方向：`store/debug/*` → 本模块 → `stackFrames.ts` → `fileRef.ts`（单向，无环）。
  * 位置**不**放进 `store/debug/`：那会让域层（`stackFrames.ts`）反向依赖 store 内部件。
  */
-import { sourceIdentityOf } from '@/shared/utils/fileRef';
+import { sourceIdentityOf, virtualSourceIdentity } from '@/shared/utils/fileRef';
 
-import { virtualSourceIdentity } from './stackFrames';
 import type { StackFrameDto } from './types';
 
 /** 当前停点的位置。`identity` 是规范源身份（tab / 断点 key / 黄线共用同一套）。 */

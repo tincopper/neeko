@@ -9,7 +9,11 @@
  * - `identity` 是**规范 tab 身份**（tab / 断点 key / 黄线共用同一套归一）；
  * - `load` 决定内容通道（项目内读 / 会话门控的外部只读 / 适配器 `source` 请求）。
  */
-import { fileRefFromTabPath, sourceIdentityOf } from '@/shared/utils/fileRef';
+import {
+  fileRefFromTabPath,
+  sourceIdentityOf,
+  virtualSourceIdentity,
+} from '@/shared/utils/fileRef';
 import { getFileName } from '@/shared/utils/fileTree';
 
 import {
@@ -17,7 +21,6 @@ import {
   loadVirtualSourceContent,
   type StopSourceContent,
 } from './sourceContent';
-import { virtualSourceIdentity } from './stackFrames';
 import type { StackFrameDto } from './types';
 
 /** 打开请求：身份 + 标题 + 内容加载器。 */

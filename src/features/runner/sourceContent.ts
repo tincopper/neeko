@@ -88,9 +88,9 @@ export async function loadStopSourceContent(
 /**
  * Load a paused frame's virtual source via DAP `sourceReference`.
  *
- * Nothing touches the filesystem: `identity` (built by `virtualSourceIdentity` in
- * `./stackFrames`) doubles as the tab path and `FileContent.path`, so the tab renders
- * read-only and never enters save / dirty flows.
+ * Nothing touches the filesystem: `identity` (minted by `virtualSourceIdentity` in the
+ * identity owner, `@/shared/utils/fileRef`) doubles as the tab path and `FileContent.path`,
+ * so the tab renders read-only and never enters save / dirty flows.
  */
 export async function loadVirtualSourceContent(
   sessionId: string,

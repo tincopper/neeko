@@ -2,27 +2,92 @@
  * 文件身份的唯一所有权模块 —— 边界解析 → canonical 表示 → 身份比较。
  *
  * 所有「是不是同一个文件」的判定只允许在 `FileRef` 形态上进行（`sameFile`）；
- * 调用方不得自行发明字符串归一（正则/startsWith 拼 root 等）。本模块仅有的
- * 三处形态换算边界：
+ * 调用方不得自行发明字符串归一（正则/startsWith 拼 root 等）。本模块的形态换算边界：
  * - `canonicalFsPath`：tab/项目相对路径 → canonical fs path（lexical only）；
  * - `relativeToRoot`：canonical fs path → root 下相对路径（展示用，非身份比较）；
- * - `fileRefFromLspUri`：LSP uri（file:// / jdt://）→ FileRef。
+ * - `fileRefFromLspUri`：LSP uri（file:// / jdt://）→ FileRef；
+ * - `fileRefFromTabPath`：tab 身份串 → FileRef（含 `jdt:/`、`dap-source:/` 两种合成身份）；
+ * - `virtualSourceIdentity`：适配器虚拟源码的**唯一构造点**（`dap-source:/<ref>/<name>`）。
+ *
+ * **值域必须等于真实身份种类集合**（切片 3 / R10）：身份函数要**全且幂等**
+ * （`id(id(x)) === id(x)`）。任何一种身份只要缺席文法，就会被当成相对路径拼上项目根，
+ * 产出伪路径 —— 那正是「同一份源码两种表示」的入口（见 `DAP_SOURCE_PREFIX` 的注释）。
  *
  * `..` 不在词法层解析（lexical only）——后端读取前的 canonicalize 是安全兜底。
- * jdt 文法解析是本模块唯一正则（`file://` 交给浏览器原生 `new URL`）。
+ * jdt 文法解析是本模块唯一正则（`file://` 交给浏览器原生 `new URL`；`dap-source:` 走
+ * 逐字符解析，不引入第二个正则）。
  * 零依赖：不 import store / api / 任何项目模块，纯函数。
  */
 
 /** canonical fs 路径：只由本模块边界函数产出（branded，防裸字符串混入比较）。 */
 export type CanonicalPath = string & { readonly __brand: 'canonical' };
 
-/** 文件身份：fs 路径，或 jdt 类文件（module + 包路径 + 文件名）。 */
+/**
+ * 文件身份：fs 路径、jdt 类文件（module + 包路径 + 文件名），或适配器虚拟源码。
+ *
+ * 三者都是**身份**而不是「路径」：jdt 与 virtual 都不存在于文件系统，只是各自的
+ * 内容通道不同（前者由后端翻译成真实文件，后者由 adapter 持字节）。
+ */
 export type FileRef =
   | { kind: 'fs'; path: CanonicalPath }
   // classPath：包路径，源 uri 的点分包已转斜杠（`java.lang` → `java/lang`）；
   // fileName：扩展名 canonical 为 `.java`（.class 反编译与 .java 带源码是
   // 同一类的两种载体，身份统一取 .java 形态，与 jdt 展示路径一致）。
-  | { kind: 'jdt'; module: string; classPath: string; fileName: string };
+  | { kind: 'jdt'; module: string; classPath: string; fileName: string }
+  // 适配器虚拟源码（DAP `sourceReference`）：`reference` 是会话内引用号，
+  // `name` 是适配器给的**标签**（不是文件名 —— 不做路径式归一）。
+  | { kind: 'virtual'; reference: number; name: string };
+
+// ── dap-source: 合成身份（适配器虚拟源码）────────────────────────────────────
+
+/**
+ * `dap-source:/<reference>/<name>` 前缀。
+ *
+ * 它是**身份**、不是文件路径：`reference` 只在一个会话内有效，适配器按引用号返回字节。
+ * 曾缺席身份文法（`fileRefFromTabPath` 只认 `jdt:`），于是被当相对路径拼根 →
+ * `sourceIdentityOf` 不幂等、伪路径成为断点 key 下发后端、新消费者比身份静默不命中。
+ */
+const DAP_SOURCE_PREFIX = 'dap-source:/';
+
+/** 虚拟源码名的唯一归一：trim + 空回退（构造点与解析点共用，保证两处一致）。 */
+function normalizeVirtualName(raw: string | null | undefined): string {
+  return raw && raw.trim() ? raw.trim() : 'source';
+}
+
+/**
+ * 适配器虚拟源码身份（**唯一构造点**）。
+ *
+ * 与 `sourceIdentityOf`（物理源码）并列：两者是「同一份源码一种身份」的两个构造入口。
+ */
+export function virtualSourceIdentity(reference: number, name?: string | null): string {
+  return `${DAP_SOURCE_PREFIX}${reference}/${normalizeVirtualName(name)}`;
+}
+
+/** 逐字符判定十进制非负整数（不引入正则 —— 本模块唯一正则留给 jdt 文法）。 */
+function parseNonNegativeInt(s: string): number | null {
+  if (s.length === 0) return null;
+  for (const ch of s) {
+    const code = ch.charCodeAt(0);
+    if (code < 48 || code > 57) return null;
+  }
+  return Number(s);
+}
+
+/**
+ * 反解析 `dap-source:/<reference>/<name>`；不合文法返回 null。
+ *
+ * `name` 取**第一个** `/` 之后的全部内容（标签里带 `/` 也照收，保证与构造点互逆）。
+ * 顺带归一 `name`，使「同一引用 + 同一标签的不同写法」收敛到同一身份
+ * （与 jdt 的 `.class` → `.java` 同一手法：比较语义，不比较文本）。
+ */
+export function parseVirtualSourceIdentity(p: string): { reference: number; name: string } | null {
+  if (!p.startsWith(DAP_SOURCE_PREFIX)) return null;
+  const rest = p.slice(DAP_SOURCE_PREFIX.length);
+  const slash = rest.indexOf('/');
+  const reference = parseNonNegativeInt(slash < 0 ? rest : rest.slice(0, slash));
+  if (reference === null) return null;
+  return { reference, name: normalizeVirtualName(slash < 0 ? '' : rest.slice(slash + 1)) };
+}
 
 // ── jdt 文法（本模块唯一正则）───────────────────────────────────────────────
 
@@ -175,6 +240,11 @@ export function fileRefFromTabPath(projectRoot: string, p: string): FileRef {
     const byUri = fileRefFromLspUri(p);
     if (byUri) return byUri;
   }
+  if (p.startsWith(DAP_SOURCE_PREFIX)) {
+    const virtual = parseVirtualSourceIdentity(p);
+    // 合文法 → 结构化身份；**不合文法也绝不拼根**（原样保留，保持全函数且幂等）。
+    return virtual ? { kind: 'virtual', ...virtual } : { kind: 'fs', path: p as CanonicalPath };
+  }
   return { kind: 'fs', path: canonicalFsPath(projectRoot, p) };
 }
 
@@ -192,6 +262,7 @@ export function fileRefFromTabPath(projectRoot: string, p: string): FileRef {
  */
 export function tabIdentityOf(ref: FileRef): string {
   if (ref.kind === 'fs') return ref.path;
+  if (ref.kind === 'virtual') return `${DAP_SOURCE_PREFIX}${ref.reference}/${ref.name}`;
   return ref.classPath
     ? `jdt:/${ref.module}/${ref.classPath}/${ref.fileName}`
     : `jdt:/${ref.module}/${ref.fileName}`;
@@ -264,12 +335,15 @@ function jdtIdentityOfJdkCachePath(p: string): string | null {
 
 /**
  * LSP 文档 uri 推导：fs → `file://${path}`；jdt 需原始 query 才能重建，
- * `jdtQuery` 缺省返回 null。注意 jdt 身份的扩展名已 canonical 为 `.java`，
+ * `jdtQuery` 缺省返回 null；**虚拟源码恒 null**（适配器持字节，没有 LSP 文档）。
+ *
+ * 注意 jdt 身份的扩展名已 canonical 为 `.java`，
  * 反编译类（`.class` 源）的原始 uri 无法从 ref 逐字重建——需要原始 uri 时
  * 必须由 tab 的 `virtualUri` 携带，不经此函数。
  */
 export function lspUriOf(ref: FileRef, opts?: { jdtQuery?: string }): string | null {
   if (ref.kind === 'fs') return `file://${ref.path}`;
+  if (ref.kind === 'virtual') return null;
   const query = opts?.jdtQuery;
   if (query === undefined) return null;
   return ref.classPath
@@ -283,19 +357,29 @@ export function isJdtRef(ref: FileRef): boolean {
 }
 
 /**
- * 身份相等：fs/fs 比 path；jdt/jdt 比 module+classPath+fileName；跨 kind 恒 false。
- * 相对/绝对 fs 路径、jdt uri 与展示路径在此收敛为同一身份。
- */
-/**
- * 两个**源身份字符串**是否指向同一文件？
+ * 两个**源身份字符串**是否指向同一文件？—— 两侧都必须是**规范身份**（无 root 归一）。
  *
- * 用于「两侧都已是规范身份」的消费侧（DAP 停点位置 vs tab 身份、tab 复用查找）。
- * 相对/绝对混比、拼根、basename 猜测**不在此列** —— 那是边界解析的职责；身份比较只做
- * 形态归一（斜杠 / 盘符）后按 `sameFile` 判定。
+ * 用于「两侧都已是规范身份」的消费侧（DAP 停点位置 vs tab 身份）。
+ * 任一侧可能是**项目相对形态**时用 `sameFileAt`：没有 root 就无法把相对形态归一，
+ * 那条边界不能靠猜（`/repo/a.go` 与 `a.go` 的混比属边界解析）。
  */
 export function sameIdentity(a: string, b: string): boolean {
   if (!a || !b) return false;
-  return sameFile(fileRefFromTabPath('', a), fileRefFromTabPath('', b));
+  return sameFileAt('', a, b);
+}
+
+/**
+ * 同一文件判定（**允许任一侧是项目相对形态**）：两侧都按 `projectRoot` 归一后比较。
+ *
+ * 与 `sameIdentity` 是**同一实现的两个入口**，差别只在**前置条件**：
+ * - 已知两侧都是规范身份 → `sameIdentity`（不引入 root，语义更窄更明确）；
+ * - 可能含项目相对形态（历史 / 会话恢复的 tab）→ 本函数。
+ *
+ * 两者都是「形态归一 + `sameFile`」，不做 basename / 后缀等别名猜测。
+ */
+export function sameFileAt(projectRoot: string, a: string, b: string): boolean {
+  if (!a || !b) return false;
+  return sameFile(fileRefFromTabPath(projectRoot, a), fileRefFromTabPath(projectRoot, b));
 }
 
 /**
@@ -320,10 +404,19 @@ export function pathsContainFile(
   return paths.some((p) => sameFile(fileRefFromTabPath(root, p), target));
 }
 
+/**
+ * 身份相等：fs/fs 比 path；jdt/jdt 比 module+classPath+fileName；跨 kind 恒 false。
+ * 相对/绝对 fs 路径、jdt uri 与展示路径在此收敛为同一身份。
+ */
 export function sameFile(a: FileRef, b: FileRef): boolean {
   if (a.kind === 'fs' && b.kind === 'fs') return a.path === b.path;
   if (a.kind === 'jdt' && b.kind === 'jdt') {
     return a.module === b.module && a.classPath === b.classPath && a.fileName === b.fileName;
+  }
+  // 虚拟源码比较 (reference, name) 元组：name 的归一已在解析/构造边界完成，
+  // 故这里不再做文本归一（两种写法收敛到同一身份是在边界发生的事）。
+  if (a.kind === 'virtual' && b.kind === 'virtual') {
+    return a.reference === b.reference && a.name === b.name;
   }
   return false;
 }
