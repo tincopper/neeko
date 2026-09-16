@@ -54,7 +54,7 @@ describe('breakpointContribution', () => {
 
   it('markersOf_maps_breakpoint_and_hover_lines', () => {
     let state = bpState();
-    state = state.update({ effects: setBreakpointsEffect.of([1]) }).state;
+    state = state.update({ effects: setBreakpointsEffect.of([{ line: 1, enabled: true }]) }).state;
     expect(breakpointContribution.markersOf(state, 1)).toEqual({ payload: { state: 'active' } });
     expect(breakpointContribution.markersOf(state, 2)).toBeNull();
 
@@ -64,9 +64,16 @@ describe('breakpointContribution', () => {
     expect(breakpointContribution.markersOf(state, 1)).toEqual({ payload: { state: 'active' } });
   });
 
+  it('markersOf_maps_disabled_entry_to_disabled_variant', () => {
+    // 禁用/静音断点：field 存视觉态（enabled=false）→ disabled variant（灰空心）。
+    let state = bpState();
+    state = state.update({ effects: setBreakpointsEffect.of([{ line: 2, enabled: false }]) }).state;
+    expect(breakpointContribution.markersOf(state, 2)).toEqual({ payload: { state: 'disabled' } });
+  });
+
   it('linesOf_enumerates_breakpoint_and_hover_lines', () => {
     let state = bpState();
-    state = state.update({ effects: setBreakpointsEffect.of([1]) }).state;
+    state = state.update({ effects: setBreakpointsEffect.of([{ line: 1, enabled: true }]) }).state;
     state = state.update({ effects: setHoverLineEffect.of(2) }).state;
     expect([...breakpointContribution.linesOf(state)].sort()).toEqual([1, 2]);
   });
@@ -89,6 +96,16 @@ describe('breakpointContribution', () => {
     });
     expect(ghost?.classList.contains('cm-breakpoint-marker--hover')).toBe(true);
     expect(ghost?.getAttribute('data-gutter-contribution')).toBe('breakpoint');
+
+    const disabled = breakpointContribution.render({
+      contributionId: 'breakpoint',
+      line: 3,
+      payload: { state: 'disabled' },
+      anchorRect: new DOMRect(),
+    });
+    expect(disabled?.classList.contains('cm-breakpoint-marker--disabled')).toBe(true);
+    expect(disabled?.title).toBe('Disabled breakpoint');
+    expect(disabled?.getAttribute('data-gutter-contribution')).toBe('breakpoint');
   });
 
   it('has_no_onClick_so_dot_clicks_bubble_to_column_toggle', () => {

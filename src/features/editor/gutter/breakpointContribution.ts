@@ -9,8 +9,13 @@
  *
  * markersOf 暂读现有 fields（breakpointField/hoverLineField，同域）；P3 后
  * 亦如此——本文件即断开直读的目标形态（field 常驻 debug 域内）。
+ *
+ * disabled 渲染：断点列 field 存的是**视觉态** entries（`useEditorBreakpoints`
+ * 已把 mute 折叠为 disabled）；`markersOf` 据此出 `active | disabled | ghost`。
  */
 import type { EditorState, Extension } from '@codemirror/state';
+
+import type { BreakpointEntry } from '@/features/runner/types';
 
 import {
   breakpointField,
@@ -20,15 +25,15 @@ import {
 } from '../hooks/useBreakpointGutter';
 
 export interface BreakpointGutterPayload {
-  state: 'active' | 'ghost';
+  state: 'active' | 'disabled' | 'ghost';
 }
 
 /** 快照自家 fields（同域直读；合并器只调本函数，不见 field）。 */
 function snapshotOf(state: EditorState): {
-  breakpoints: readonly number[];
+  breakpoints: readonly BreakpointEntry[];
   hover: number | null;
 } {
-  let breakpoints: readonly number[] = [];
+  let breakpoints: readonly BreakpointEntry[] = [];
   let hover: number | null = null;
   try {
     breakpoints = state.field(breakpointField);
@@ -54,7 +59,9 @@ export const breakpointContribution = {
 
   linesOf(state: EditorState): readonly number[] {
     const { breakpoints, hover } = snapshotOf(state);
-    const lines = breakpoints.filter((line) => line >= 1 && line <= state.doc.lines);
+    const lines = breakpoints
+      .map((e) => e.line)
+      .filter((line) => line >= 1 && line <= state.doc.lines);
     if (hover != null && hover >= 1 && hover <= state.doc.lines && !lines.includes(hover)) {
       lines.push(hover);
     }
@@ -63,7 +70,8 @@ export const breakpointContribution = {
 
   markersOf(state: EditorState, line: number): { payload: BreakpointGutterPayload } | null {
     const { breakpoints, hover } = snapshotOf(state);
-    if (breakpoints.includes(line)) return { payload: { state: 'active' } };
+    const bp = breakpoints.find((e) => e.line === line);
+    if (bp) return { payload: { state: bp.enabled ? 'active' : 'disabled' } };
     if (hover === line) return { payload: { state: 'ghost' } };
     return null;
   },
@@ -77,16 +85,23 @@ export const breakpointContribution = {
     anchorRect: DOMRect;
   }): HTMLElement | null {
     const el = document.createElement('div');
-    const isGhost = payload.state === 'ghost';
-    el.className = isGhost
-      ? 'cm-breakpoint-marker cm-breakpoint-marker--hover'
-      : 'cm-breakpoint-marker';
-    el.title = isGhost ? 'Add breakpoint' : 'Breakpoint';
+    if (payload.state === 'ghost') {
+      el.className = 'cm-breakpoint-marker cm-breakpoint-marker--hover';
+      el.title = 'Add breakpoint';
+    } else if (payload.state === 'disabled') {
+      // 灰空心圆（对齐 lucide `Circle` 的 cx12 cy12 r10 语义，CSS 画，不引入新图标组件）。
+      el.className = 'cm-breakpoint-marker cm-breakpoint-marker--disabled';
+      el.title = 'Disabled breakpoint';
+    } else {
+      el.className = 'cm-breakpoint-marker';
+      el.title = 'Breakpoint';
+    }
     el.setAttribute('data-gutter-contribution', 'breakpoint');
     return el;
   },
 
-  // 无 onClick：红点/ghost 点击冒泡到列级处理器 → toggleBreakpointAt（debug 语义不变）。
+  // 无 onClick：红点/灰空心/ghost 点击冒泡到列级处理器 → toggleBreakpointAt
+  // （存在性 toggle 语义不变：disabled 行单击 = 删除，评审 P12）。
 };
 
 /**

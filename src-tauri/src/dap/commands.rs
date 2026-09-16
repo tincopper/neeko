@@ -9,8 +9,8 @@ use super::build;
 use super::discover::EntryPoint;
 use super::manager::DapManager;
 use super::types::{
-    BreakpointSpec, DapSessionInfo, DebugBuildOutput, JavaDebugTarget, JavaJdtlsTarget,
-    LaunchConfig, StackFrameDto, VariableDto,
+    BreakpointLine, BreakpointSpec, DapSessionInfo, DebugBuildOutput, JavaDebugTarget,
+    JavaJdtlsTarget, LaunchConfig, StackFrameDto, VariableDto,
 };
 use crate::common::types::FileContent;
 use crate::AppError;
@@ -105,7 +105,7 @@ pub async fn dap_list_sessions(
 pub async fn dap_set_breakpoints(
     project_id: String,
     file_path: String,
-    lines: Vec<u32>,
+    breakpoints: Vec<BreakpointLine>,
     session_id: Option<String>,
     state: State<'_, AppStateWrapper>,
 ) -> Result<Vec<BreakpointSpec>, AppError> {
@@ -115,7 +115,7 @@ pub async fn dap_set_breakpoints(
             &state,
             &project_id,
             &file_path,
-            lines,
+            breakpoints,
             session_id.as_deref(),
         )
         .await
@@ -128,6 +128,31 @@ pub async fn dap_get_breakpoints(
     state: State<'_, AppStateWrapper>,
 ) -> Result<Vec<BreakpointSpec>, AppError> {
     state.dap_manager.get_breakpoints(&state, &project_id).await
+}
+
+/// Set the global-mute flag for a project（per-project 单 bool）。
+#[tauri::command]
+pub async fn dap_set_breakpoints_muted(
+    project_id: String,
+    muted: bool,
+    state: State<'_, AppStateWrapper>,
+) -> Result<(), AppError> {
+    state
+        .dap_manager
+        .set_breakpoints_muted(&state, &project_id, muted)
+        .await
+}
+
+/// Get the global-mute flag for a project.
+#[tauri::command]
+pub async fn dap_get_breakpoints_muted(
+    project_id: String,
+    state: State<'_, AppStateWrapper>,
+) -> Result<bool, AppError> {
+    state
+        .dap_manager
+        .get_breakpoints_muted(&state, &project_id)
+        .await
 }
 
 /// Send a control action (continue, next, etc.) to a DAP session.

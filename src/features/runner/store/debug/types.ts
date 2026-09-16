@@ -3,6 +3,7 @@ import type { StateCreator } from 'zustand';
 
 import type { StopLocation } from '../../stopLocation';
 import type {
+  BreakpointEntry,
   BreakpointSpec,
   ConsoleLine,
   DapSessionInfo,
@@ -53,12 +54,39 @@ export interface DebugConfigSlice {
   deleteConfig: (projectId: string, name: string) => Promise<void>;
 }
 
-/** 会话生命周期（启动 / 附加 / 停止 / 控制 / 复位 / 面板级错误）。 */
+/** Rerun 的 launch 意图：语言侧登记，通用层零语言字面量（D7）。 */
+export interface DebugLaunchIntent {
+  projectId: string;
+  label: string;
+  /** 不透明重放 thunk（自带 reset + 回显，通用层不二次 reset）。 */
+  replay: () => Promise<void>;
+}
+
+/** 会话生命周期（启动 / 附加 / 停止 / 控制 / 复位 / 面板级错误 / 重跑意图）。 */
 export interface DebugSessionSlice {
   session: DapSessionInfo | null;
   error: string | null;
   /** error 所属项目（跨项目切换时按此屏蔽旧项目错误，见 DebugPanel #14）。 */
   errorProjectId: string | null;
+  /**
+   * 上次成功启动的 launch 意图（Rerun 的素材）。只记 launch 意图，attach
+   * （`attachSession`）不登记；Java attach-first 在 `startJavaAttach` 成功后登记
+   * （重放 = 重新走 attach 链，与 launch 一致）。
+   *
+   * **只增不丢（D6）**：仅成功启动后覆盖；失败 / `reset` / `stop` / `terminated`
+   * 不清除（终止后重跑是主场景）。
+   */
+  lastLaunch: DebugLaunchIntent | null;
+  /**
+   * 启动互斥位：`start` / `startWithConfig` / `rerun` 共用（评审 P3），
+   * 防 config 区与工具栏并发启动双链。
+   */
+  isLaunching: boolean;
+  /** 薄 setter：语言侧独立启动链（如 `startJavaDebug` 不经过 `startWithConfig`）自行包互斥位。 */
+  setLaunching: (value: boolean) => void;
+  setLastLaunch: (intent: DebugLaunchIntent | null) => void;
+  /** Rerun：带相同意图再走现有启动链（thunk 自带 reset + 回显，通用层不二次 reset）。 */
+  rerun: (projectId: string) => Promise<void>;
   start: (projectId: string, currentFile?: string | null) => Promise<void>;
   /**
    * Start a session from a fully-specified synthetic config (editor test debug).
@@ -139,14 +167,26 @@ export interface DebugVariableSlice {
   toggleVariableExpand: (variablesReference: number) => Promise<void>;
 }
 
-/** 断点（projectId → filePath → lines）。 */
+/** 断点（projectId → filePath → entries；行号升序、`(line)` 唯一）。 */
 export interface DebugBreakpointSlice {
-  /** projectId → filePath → lines */
-  breakpoints: Record<string, Record<string, number[]>>;
+  /** projectId → filePath → entries（`{ line, enabled }`）。 */
+  breakpoints: Record<string, Record<string, BreakpointEntry[]>>;
+  /** 全局静音（per-project 单 bool；mute 下适配器载荷为空，单个 enabled 位不动）。 */
+  breakpointsMuted: Record<string, boolean>;
+  /** 存在性 toggle（语义不变：`(file,line)` 有无；disabled 行单击 = 删除）。 */
   toggleBreakpoint: (projectId: string, filePath: string, line: number) => Promise<void>;
   removeBreakpoint: (projectId: string, filePath: string, line: number) => Promise<void>;
+  /** 改单个使能位（乐观更新 → 下发 enabled 子集 → 回填 verified；失败回滚 + notify）。 */
+  setBreakpointEnabled: (
+    projectId: string,
+    filePath: string,
+    line: number,
+    enabled: boolean,
+  ) => Promise<void>;
+  /** 全局静音开关（乐观更新 → 调后端 → 失败回滚 + notify；entries 不动）。 */
+  setBreakpointsMuted: (projectId: string, muted: boolean) => Promise<void>;
   loadBreakpoints: (projectId: string) => Promise<void>;
-  getFileBreakpoints: (projectId: string, filePath: string) => readonly number[];
+  getFileBreakpoints: (projectId: string, filePath: string) => readonly BreakpointEntry[];
   listAllBreakpoints: (projectId: string) => BreakpointSpec[];
   breakpointCount: (projectId: string | null) => number;
 }

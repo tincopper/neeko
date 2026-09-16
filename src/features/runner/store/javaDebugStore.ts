@@ -64,8 +64,14 @@ interface JavaDebugState {
     testName: string,
     classpath: string[],
   ) => Promise<void>;
-  /** B'（JDTLS 后端）：能力探测 → 直连 JDTLS 内 DAP 端口 → `launch`（三态原样返回）。 */
-  startJavaDebug: (projectId: string, target: JavaJdtlsTarget) => Promise<JavaDebugStartResult>;
+  /**
+   * B'（JDTLS 后端）：能力探测 → 直连 JDTLS 内 DAP 端口 → `launch`（三态原样返回）。
+   * `undefined` = 被在途启动链拦截（评审 P3 互斥位），调用方视同无事发生。
+   */
+  startJavaDebug: (
+    projectId: string,
+    target: JavaJdtlsTarget,
+  ) => Promise<JavaDebugStartResult | undefined>;
 }
 
 /** info/error 级通知（warming 需要非错误提示）。 */
@@ -119,40 +125,62 @@ export const useJavaDebugStore = create<JavaDebugState>((set, get) => ({
       reset: false,
       starter: () => debugJavaAttach(projectId, command, cwd, testName, classpath),
     });
+    // 登记 Rerun 意图（重放 = 重新走 attach 链，与 launch 一致，评审 P4）。
+    // 必须在 startWithConfig 成功之后覆盖其通用登记：重放要带 Java 侧复位 + 回显。
+    useDebugStore.getState().setLastLaunch({
+      projectId,
+      label: config.name,
+      replay: () => get().startJavaAttach(projectId, command, cwd, testName, classpath),
+    });
   },
 
   startJavaDebug: async (projectId, target) => {
-    const debug = useDebugStore.getState();
-    // 与其它入口一致：进入新会话前重置本会话状态。漏掉它会有两个实证后果：`zeroTestReported`
-    // 永不复位（「0 用例即终止」的不变式只生效一次）、Console 跨次累积。重置必须在 pushConsole
-    // 之前，否则回显被清掉。
-    debug.resetSession();
-    get().resetSession();
-    debug.pushConsole('sys', `JDTLS backend: probing ${target.probeClass} …`);
-    const result = await debugJavaStart(projectId, target);
-    if (result.kind === 'session') {
-      const session: DapSessionInfo = result.session;
-      debug.attachSession(session);
-      set({ backendLabel: 'jdtls' });
-      debug.pushConsole('sys', `Started: ${session.configName} (${session.status})`);
+    // 互斥位：JDTLS 是独立链（不经过 startWithConfig），自行 check+set+finally（评审 P3）。
+    if (useDebugStore.getState().isLaunching) return;
+    useDebugStore.getState().setLaunching(true);
+    try {
+      const debug = useDebugStore.getState();
+      // 与其它入口一致：进入新会话前重置本会话状态。漏掉它会有两个实证后果：`zeroTestReported`
+      // 永不复位（「0 用例即终止」的不变式只生效一次）、Console 跨次累积。重置必须在 pushConsole
+      // 之前，否则回显被清掉。
+      debug.resetSession();
+      get().resetSession();
+      debug.pushConsole('sys', `JDTLS backend: probing ${target.probeClass} …`);
+      const result = await debugJavaStart(projectId, target);
+      if (result.kind === 'session') {
+        const session: DapSessionInfo = result.session;
+        debug.attachSession(session);
+        set({ backendLabel: 'jdtls' });
+        debug.pushConsole('sys', `Started: ${session.configName} (${session.status})`);
+        // 登记 Rerun 意图（重放 = 重新走 JDTLS 链；仅成功启动后登记，失败不覆盖）。
+        useDebugStore.getState().setLastLaunch({
+          projectId,
+          label: target.testName,
+          replay: async () => {
+            await get().startJavaDebug(projectId, target);
+          },
+        });
+        return result;
+      }
+      if (result.kind === 'warming') {
+        // 探测**立即返回**（无挂起调用 → 无可取消的 loading）；重试 = 再点一次 Debug。
+        const msg = `JDTLS backend is warming up: ${result.detail}. Click Debug again to retry.`;
+        notify('info', msg);
+        debug.pushConsole('sys', msg);
+        debug.openPanel('console');
+        return result;
+      }
+      // unavailable：报错 + 显式切换入口（绝不自动换成 host）。
+      const hint = result.staticallyDetectable
+        ? ' Switch to the host backend (dap.javaBackend = "host") to debug anyway (limited: no expression evaluation).'
+        : ' Retry once the Java language server is ready, or switch to the host backend (dap.javaBackend = "host").';
+      const msg = `${result.message}${hint}`;
+      debug.setPanelError(projectId, msg);
+      debug.pushConsole('err', msg);
+      notify('error', msg);
       return result;
+    } finally {
+      useDebugStore.getState().setLaunching(false);
     }
-    if (result.kind === 'warming') {
-      // 探测**立即返回**（无挂起调用 → 无可取消的 loading）；重试 = 再点一次 Debug。
-      const msg = `JDTLS backend is warming up: ${result.detail}. Click Debug again to retry.`;
-      notify('info', msg);
-      debug.pushConsole('sys', msg);
-      debug.openPanel('console');
-      return result;
-    }
-    // unavailable：报错 + 显式切换入口（绝不自动换成 host）。
-    const hint = result.staticallyDetectable
-      ? ' Switch to the host backend (dap.javaBackend = "host") to debug anyway (limited: no expression evaluation).'
-      : ' Retry once the Java language server is ready, or switch to the host backend (dap.javaBackend = "host").';
-    const msg = `${result.message}${hint}`;
-    debug.setPanelError(projectId, msg);
-    debug.pushConsole('err', msg);
-    notify('error', msg);
-    return result;
   },
 }));

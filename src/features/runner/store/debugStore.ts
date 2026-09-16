@@ -9,7 +9,12 @@ import { createEventsSlice } from './debug/eventsSlice';
 import { withExclusiveDebugPanel } from './debug/middleware';
 import { createPanelSlice } from './debug/panelSlice';
 import { createSessionSlice } from './debug/sessionSlice';
-import { EMPTY_BP_LINES } from './debug/shared';
+import {
+  EMPTY_BP_ENTRIES,
+  breakpointSyncKey,
+  isBreakpointEffective,
+  toVisualEntries,
+} from './debug/shared';
 import { createStackSlice } from './debug/stackSlice';
 import type { DebugStore } from './debug/types';
 import { createVariableSlice } from './debug/variableSlice';
@@ -47,4 +52,4 @@ registerDebugPanelCloser(() => {
   useDebugStore.setState({ panelOpen: false });
 });
 
-export { EMPTY_BP_LINES };
+export { EMPTY_BP_ENTRIES, breakpointSyncKey, isBreakpointEffective, toVisualEntries };

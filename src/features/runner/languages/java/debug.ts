@@ -261,7 +261,8 @@ async function debugJavaViaJdtls(
     projectName: javaProjectNameCandidate(modulePom, javaRoot),
   };
   const result = await useJavaDebugStore.getState().startJavaDebug(ctx.projectId, jdtlsTarget);
-  if (result.kind !== 'unavailable') return true;
+  // undefined = 被在途启动链拦截（评审 P3 互斥）——视同无事发生。
+  if (!result || result.kind !== 'unavailable') return true;
 
   // 静态可判定的 terminal：**先给真正的修复**（下载 bundle + 重启 Java 会话 + 重试一次）；
   // 只有在用户放弃修复时（且 auto）才询问是否降级到 Host —— 降级永不自动发生。
@@ -272,7 +273,7 @@ async function debugJavaViaJdtls(
         await javaIo.ensureDebugBundle();
         if (ctx.projectPath) await javaIo.restartLspSession(ctx.projectPath);
         const retry = await useJavaDebugStore.getState().startJavaDebug(ctx.projectId, jdtlsTarget);
-        if (retry.kind === 'session') return true;
+        if (!retry || retry.kind === 'session') return true;
         const note =
           retry.kind === 'warming'
             ? 'java-debug plugin installed. The Java language server is restarting — click Debug again in a moment.'

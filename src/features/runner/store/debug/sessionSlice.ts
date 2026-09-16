@@ -105,12 +105,28 @@ export const createSessionSlice: DebugSliceCreator<DebugSessionSlice> = (set, ge
     session: null,
     error: null,
     errorProjectId: null,
+    lastLaunch: null,
+    isLaunching: false,
 
     clearError: () => set({ error: null, errorProjectId: null }),
+
+    setLastLaunch: (intent) => set({ lastLaunch: intent }),
+
+    /** Rerun：带相同意图再走现有启动链（thunk 自带 reset + 回显）。
+     *  互斥位由重放的链（startWithConfig / Java 链）自行 check+set+finally；本函数只 check。 */
+    rerun: async (projectId) => {
+      const { lastLaunch, isLaunching } = get();
+      if (!lastLaunch || lastLaunch.projectId !== projectId || isLaunching) return;
+      await lastLaunch.replay();
+    },
+
+    setLaunching: (value) => set({ isLaunching: value }),
 
     resetSession,
 
     start: async (projectId, currentFile) => {
+      // 互斥位 check 必须最先（resetSession 之前）：并发双链时不得误清在途链的会话状态。
+      if (get().isLaunching) return;
       // Fresh session: clear previous console output (do not append across runs).
       resetSession();
       let name = get().selectedConfigName;
@@ -131,16 +147,57 @@ export const createSessionSlice: DebugSliceCreator<DebugSessionSlice> = (set, ge
         throw new Error(msg);
       }
 
-      await launchSession(projectId, config, () => dapStartSession(projectId, name, currentFile));
+      // isLaunching 互斥覆盖全部启动入口（评审 P3）：start / startWithConfig / rerun 共用，
+      // 防 config 区与工具栏并发启动双链。
+      set({ isLaunching: true });
+      try {
+        await launchSession(projectId, config, () => dapStartSession(projectId, name, currentFile));
+        // 仅成功启动后记录 intent（快照 config，避免引用漂移）；失败不覆盖（D6）。
+        const configSnapshot = { ...config };
+        set({
+          lastLaunch: {
+            projectId,
+            label: config.name,
+            replay: () => get().startWithConfig(projectId, configSnapshot),
+          },
+        });
+      } finally {
+        set({ isLaunching: false });
+      }
     },
 
     startWithConfig: async (projectId, config, opts) => {
+      // 单一 chokepoint：所有启动链（含 rerun 重放、Java attach 经此）在此 check+set。
+      // check 在 resetSession 之前：并发时不得误清在途链的会话状态。
+      if (get().isLaunching) return;
       if (opts?.reset !== false) resetSession();
-      await launchSession(
-        projectId,
-        config,
-        opts?.starter ?? (() => dapStartSessionConfig(projectId, config)),
-      );
+      set({ isLaunching: true });
+      try {
+        await launchSession(
+          projectId,
+          config,
+          opts?.starter ?? (() => dapStartSessionConfig(projectId, config)),
+        );
+        // 仅成功启动后记录 intent；starter 闭包透传（Java attach 重放一致，D7）。
+        // replay 快照 config（与 `start` 的 configSnapshot 同构，架构审查 Minor）：
+        // 调用方之后 mutate config 对象不影响重放。
+        const starter = opts?.starter;
+        const configSnapshot = { ...config };
+        set({
+          lastLaunch: {
+            projectId,
+            label: config.name,
+            replay: () =>
+              get().startWithConfig(
+                projectId,
+                configSnapshot,
+                starter ? { starter, reset: true } : { reset: true },
+              ),
+          },
+        });
+      } finally {
+        set({ isLaunching: false });
+      }
     },
 
     attachSession: (session) => {

@@ -393,6 +393,8 @@ macro_rules! neeko_invoke_handler {
             $crate::dap::commands::dap_list_sessions,
             $crate::dap::commands::dap_set_breakpoints,
             $crate::dap::commands::dap_get_breakpoints,
+            $crate::dap::commands::dap_set_breakpoints_muted,
+            $crate::dap::commands::dap_get_breakpoints_muted,
             $crate::dap::commands::dap_control,
             $crate::dap::commands::dap_stack_trace,
             $crate::dap::commands::dap_source_content,

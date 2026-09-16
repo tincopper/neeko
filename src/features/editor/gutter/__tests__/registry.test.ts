@@ -112,7 +112,7 @@ describe('registry single column', () => {
 
   it('should_show_red_dot_on_breakpoint_lines_only', () => {
     const { view } = makeRegistry(TS_DOC, 'a.test.ts');
-    view.dispatch({ effects: setBreakpointsEffect.of([1]) });
+    view.dispatch({ effects: setBreakpointsEffect.of([{ line: 1, enabled: true }]) });
     drawGutter(view);
 
     const gutter = view.dom.querySelector('.cm-breakpoint-gutter')!;
@@ -166,7 +166,7 @@ describe('registry single column', () => {
       },
     };
     const { view } = makeRegistry(TS_DOC, 'a.test.ts', { extraContributions: [coverage] });
-    view.dispatch({ effects: setBreakpointsEffect.of([2]) });
+    view.dispatch({ effects: setBreakpointsEffect.of([{ line: 2, enabled: true }]) });
     drawGutter(view);
 
     // OCP 回归：同行冲突下断点片段被丢弃，新贡献只追加在 play 之后。
@@ -244,7 +244,7 @@ describe('registry single column', () => {
     // 非用例行（行 1）红点点击 → 冒泡列级 toggle（断点贡献无 onClick）。
     const onToggleBreakpoint = vi.fn();
     const { view } = makeRegistry(TS_DOC, 'a.test.ts', { onToggleBreakpoint });
-    view.dispatch({ effects: setBreakpointsEffect.of([1]) });
+    view.dispatch({ effects: setBreakpointsEffect.of([{ line: 1, enabled: true }]) });
     drawGutter(view);
     stubLine(view, 1);
 
@@ -260,7 +260,7 @@ describe('registry single column', () => {
     const onToggleBreakpoint = vi.fn();
     const onRun = vi.fn();
     const { view } = makeRegistry(TS_DOC, 'a.test.ts', { onToggleBreakpoint, onRun });
-    view.dispatch({ effects: setBreakpointsEffect.of([1]) });
+    view.dispatch({ effects: setBreakpointsEffect.of([{ line: 1, enabled: true }]) });
     drawGutter(view);
     stubLine(view, 1);
 
@@ -319,7 +319,7 @@ describe('registry single column', () => {
   it('should_render_only_play_when_breakpoint_set_on_test_line', () => {
     // 同行冲突：用例行（TS 行 2）同时有断点与 play → 只保留 play，无红点。
     const { view } = makeRegistry(TS_DOC, 'a.test.ts');
-    view.dispatch({ effects: setBreakpointsEffect.of([2]) });
+    view.dispatch({ effects: setBreakpointsEffect.of([{ line: 2, enabled: true }]) });
     drawGutter(view);
 
     const gutter = view.dom.querySelector('.cm-breakpoint-gutter')!;
@@ -360,7 +360,7 @@ describe('registry single column', () => {
     // 非用例行断点语义不变：红点/ghost 照常，空白区点击照常 toggle。
     const onToggleBreakpoint = vi.fn();
     const { view } = makeRegistry(TS_DOC, 'a.test.ts', { onToggleBreakpoint });
-    view.dispatch({ effects: setBreakpointsEffect.of([1]) });
+    view.dispatch({ effects: setBreakpointsEffect.of([{ line: 1, enabled: true }]) });
     view.dispatch({ effects: setHoverLineEffect.of(3) });
     drawGutter(view);
 
@@ -381,7 +381,7 @@ describe('registry single column', () => {
     // Rust 用例行 = 属性行（1、3）；fn 体行（2）仍可设断点。
     const onToggleBreakpoint = vi.fn();
     const { view } = makeRegistry(RUST_DOC, 'lib.rs', { onToggleBreakpoint });
-    view.dispatch({ effects: setBreakpointsEffect.of([2]) });
+    view.dispatch({ effects: setBreakpointsEffect.of([{ line: 2, enabled: true }]) });
     drawGutter(view);
 
     const gutter = view.dom.querySelector('.cm-breakpoint-gutter')!;
@@ -423,7 +423,7 @@ describe('registry single column', () => {
 
   it('should_show_only_dots_in_non_test_files_without_second_column', () => {
     const { view } = makeRegistry('const a = 1;\nconst b = 2;\n', 'plain.ts');
-    view.dispatch({ effects: setBreakpointsEffect.of([1]) });
+    view.dispatch({ effects: setBreakpointsEffect.of([{ line: 1, enabled: true }]) });
     drawGutter(view);
 
     expect(view.dom.querySelector('.cm-run-gutter')).toBeNull();
@@ -463,7 +463,7 @@ describe('registry single column', () => {
     // 贡献已注册、检测核心已挂载，但 when(editable=false) 在合并器层过滤——
     // readOnly/binary/超大文件 tab 只有断点列语义。
     const { view } = makeRegistry(TS_DOC, 'a.test.ts', { editable: false });
-    view.dispatch({ effects: setBreakpointsEffect.of([1]) });
+    view.dispatch({ effects: setBreakpointsEffect.of([{ line: 1, enabled: true }]) });
     drawGutter(view);
 
     const gutter = view.dom.querySelector('.cm-breakpoint-gutter')!;

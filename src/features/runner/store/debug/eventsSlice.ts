@@ -122,9 +122,13 @@ export const createEventsSlice: DebugSliceCreator<DebugEventsSlice> = (set, get)
         const info = event.payload;
         const cur = get().session;
         if (info.status === 'terminated' || info.status === 'ended') {
+          // 死亡通知不许创建会话（评审 P6），且 sessionId 不匹配的死亡通知必须忽略
+          // （架构审查 Major：rerun 停旧起新时旧会话 terminated 晚到会覆盖新会话）。
+          // 镜像 DAP_EVENT 的 identity filter（见上 `session.sessionId !== sessionId`）。
+          if (!cur || cur.sessionId !== info.sessionId) return;
           set({
             ...endedSessionPatch(
-              cur?.sessionId === info.sessionId ? { ...cur, ...info } : info,
+              { ...cur, ...info },
               get(),
               info.statusMessage ?? 'Session terminated',
             ),

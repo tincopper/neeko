@@ -39,6 +39,14 @@ export interface BreakpointSpec {
   filePath: string;
   line: number;
   verified?: boolean;
+  /** Whether the breakpoint is enabled（老数据缺字段 = 已启用）。 */
+  enabled: boolean;
+}
+
+/** store 内态断点：`(file, line)` 是身份，`enabled` 是该身份的属性位（verified 是下发回填，不存）。 */
+export interface BreakpointEntry {
+  line: number;
+  enabled: boolean;
 }
 
 export interface StackFrameDto {

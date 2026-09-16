@@ -862,6 +862,122 @@ useEffect(() => { /* 判新事件 / 用户接管 → applyNavigateCaret / releas
 
 ---
 
+## 场景：调试断点禁用/静音/重跑 2026-09-16
+
+### 1. Scope / Trigger
+
+- Trigger：补齐 IDE 标配的①单个断点可禁用/启用（保留在列表与 gutter 置灰）②Rerun（运行中亦可，语义 = 停旧起新）③全局静音（mute，恢复时仅恢复此前开启的断点）。
+- Scope：`src-tauri/src/dap/{types,config,manager,session,commands}.rs`、`src/features/runner/store/debug/{breakpointSlice,sessionSlice,eventsSlice}.ts`、`DebugToolbar/DebugBreakpointsPane/breakpointContribution`、`javaDebugStore`。
+- 第一性原理：DAP `setBreakpoints` 按文件全量替换、**无 enabled 位**（`session.rs:558`）——「禁用」只能是客户端过滤；「重跑」本质是记住 launch 意图并重放，后端已保证单项目单会话（`launch_session` 内 `stop_project_sessions` 停旧）。
+
+### 2. Signatures
+
+```rust
+// dap/types.rs — BreakpointSpec +=
+pub struct BreakpointSpec {
+    pub file_path: String,
+    pub line: u32,
+    pub verified: bool,
+    #[serde(default = "bp_enabled_default")]  // 老文件缺字段 → true
+    pub enabled: bool,
+}
+// dap/manager.rs — dap_set_breakpoints 请求载荷（同命令名变参，无需注册变更）
+pub struct BreakpointLine { pub line: u32, pub enabled: bool }
+// 命令：dap_set_breakpoints(project_id, file_path, breakpoints: Vec<BreakpointLine>, session_id)
+//       dap_set_breakpoints_muted(project_id, muted: bool) -> ()   // 落盘 + 即时下发 effective 全集
+//       dap_get_breakpoints_muted(project_id) -> bool
+// BreakpointsFile version 0.1.0 → 0.2.0（loader 双版本容忍；enabled/muted 缺字段即 true/false）
+```
+
+```ts
+// runner/types.ts — store 内态（verified 是下发回填，不存）
+export interface BreakpointEntry { line: number; enabled: boolean }
+// runner/store/debug/types.ts — DebugSessionSlice +=
+export interface DebugLaunchIntent {
+  projectId: string;
+  label: string;                 // toolbar title `Rerun <label>`
+  replay: () => Promise<void>;   // 不透明重放（自带 reset + 回显；语言侧登记，通用层零语言字面量）
+}
+lastLaunch: DebugLaunchIntent | null;
+isLaunching: boolean;            // start / startWithConfig / rerun 共用互斥位
+setLastLaunch: (intent: DebugLaunchIntent | null) => void;
+rerun: (projectId: string) => Promise<void>;
+```
+
+### 3. Contracts
+
+1. **DAP 无 enabled 位 ⇒ 过滤点必须在后端 manager**：前端过滤会被 `set_breakpoints` 当删除持久化（`manager.rs` 先全量替换内存再落盘）。`verified`（适配器只读）与 `enabled`（用户可写）正交。
+2. **effective 过滤单点、双路径（本任务真 bug，勿再犯）**：`effective = enabled && !muted` 抽成后端纯函数，**实时（`set_breakpoints`）与启动/重跑（`adapter_breakpoints` → `launch_session`）两条下发路径都必须走它**。只堵实时路径 ⇒ **mute 后 Rerun 经启动路径把全部断点重新下发命中**。
+3. **mute 是叠加态，不是批量改写**：mute=true 时适配器载荷为空（全部扣留，单个 enabled 位原样保留）；unmute 只恢复此前 enabled 的行。mute 按 projectId 存、持久化进 `breakpoints.json`（`breakpoints.json` 本身是 per-project 文件，文件内 `muted` 是单 bool）。
+4. **断点身份 = `(file, line)`，enabled 是属性位**：拒绝 `lines[] + disabledSet` 双 map（双真相漂移）。持久化全量、下发只取 effective。
+5. **rerun = launch 意图重放，不是协议 restart**：`ControlAction` 无 restart；后端恒停旧起新，前端只记意图。**意图只增不丢**：仅成功启动后记录（快照 config，避免引用漂移），失败 / `reset` / `stop` / `terminated` 不清除（终止后重跑是主场景）；跨项目门控（`projectId !== active` 禁用）。
+6. **`isLaunching` 覆盖全部启动入口**（start / startWithConfig / rerun 共用同一互斥位）：start / startWithConfig 在入口 check+set+finally 复位；rerun **只 check**、位由重放的链（startWithConfig / Java 链）自行管理（避免重入被自己的互斥位挡掉）；独立链（JDTLS `startJavaDebug`）经薄 setter `setLaunching` 自行包位。否则 config 区与 toolbar 两个按钮并发启动，各自 `resetSession` + 各自 `set({session})`，前端状态竞争（后端单会话只兜后端）。
+7. **事件堵口**：状态流 `!cur + terminated/ended → 忽略`（死亡通知不许创建会话）。`!cur` 时若照常 `endedSessionPatch(info)` 会用 `info` **凭空创建**一个 terminated 会话对象。**补充（架构审查）：`cur.sessionId !== info.sessionId` 的死亡通知同样忽略**——rerun 停旧起新时旧会话 terminated 晚到会覆盖新会话；镜像 DAP_EVENT 的 identity filter。非死亡状态流（`!cur + starting`）仍照常建会话。
+8. **merge 同行一个 entry、enabled 优先**：adapter remap 把 enabled 行移到相邻行（42→43），若 43 恰有另一条 disabled entry → 按行合并为一个 entry、enabled 优先；disabled 行永不进实时载荷因此不会被 remap 掉。
+
+### 4. Validation & Error Matrix
+
+| 场景 | 输入 | 预期 |
+|------|------|------|
+| 单点禁用 | `setBreakpointEnabled(line, false)` | 内存/磁盘保留该行，实时载荷不含它 |
+| mute=true | `setBreakpointsMuted(pid, true)` | 载荷空（实时与启动/重跑两条路径都空） |
+| mute=true + Rerun | 停住 → Rerun | 新会话启动载荷为空，不断（P1 关键用例） |
+| unmute | `setBreakpointsMuted(pid, false)` | 恢复此前 enabled 子集；单点禁用的保持禁用 |
+| 老文件（0.1.0） | 读 `breakpoints.json` | 缺 enabled → true、缺 muted → false |
+| 启动失败 / reset / stop / terminated | — | `lastLaunch` 不清除（D6） |
+| 跨项目 rerun | `rerun(otherProjectId)` | 拒绝（projectId 门控） |
+| attach 会话点 Rerun | attach 后点 Rerun | 停 attach、重放上次 launch 意图 |
+
+### 5. Good/Base/Bad Cases
+
+- Good：mute 中 rerun → 新会话一个断点都不下；unmute 后只恢复此前开启的行。
+- Base：单点禁用 → 重启 app 仍在（0.2.0 roundtrip）；工具栏 mute 在零断点时 disabled 但仍显示 active 态（muted 残留可见）。
+- Bad：只堵实时路径不堵启动路径 → mute 后 Rerun 断点复活命中（本任务 P1 的真实风险）。
+
+### 6. Tests Required
+
+- Rust（manager/config）：`effective_breakpoints` 纯函数；`adapter_breakpoints_skips_disabled_and_muted_without_notes`（**变异验证：删过滤行 ⇒ 红**）；`effective_lines_for_file`；`set_breakpoints_persists_disabled_and_muted` roundtrip；0.1.0/0.2.0 双版本 loader。
+- TS（slice）：`setBreakpointEnabled` 缺行 no-op / 乐观 + 失败回滚 + notify；merge 冲突（42→43 remap 撞 disabled）；mute 置空/恢复/while-muted 改单 bit 保留；`lastLaunch` 只增不丢；`isLaunching` 互斥（rerun 期间 no-op + startWithConfig 期间置位）；跨项目拒绝；attach 重放 launch。
+- TS（eventsSlice）：`!cur + terminated/ended → 忽略`；正常 terminated 清理不受影响。
+- 组件：pane Eye/EyeOff 开关 `aria-pressed` + 点击调 `setBreakpointEnabled`；toolbar rerun disabled/title 含 label；mute 零断点 disabled 但 active 态可见。
+
+### 7. Wrong vs Correct
+
+#### Wrong
+
+```ts
+// 前端下发时过滤 enabled —— 后端 set_breakpoints 按文件全量替换，disabled 被当删除持久化
+await dapSetBreakpoints(pid, file, entries.filter((e) => e.enabled).map((e) => e.line), live);
+```
+
+```rust
+// 只堵实时路径 —— mute 后 Rerun 经 adapter_breakpoints 启动路径把全部断点重新下发
+// set_breakpoints: 按 effective 过滤 ✓
+// adapter_breakpoints: 不滤 → mute 态启动载荷全量 → 命中 ✗
+```
+
+#### Correct
+
+```rust
+// effective 单一纯函数，实时 + 启动两条路径都走它（评审 P1）
+fn effective_breakpoints(bps: &[BreakpointSpec], muted: bool) -> Vec<BreakpointSpec> {
+    bps.iter().filter(|b| b.enabled && !muted).cloned().collect()
+}
+// set_breakpoints（实时）→ effective_lines_for_file；launch_session（启动）→ adapter_breakpoints(…, muted)
+```
+
+```ts
+// rerun = 重放意图（thunk 自带 reset + 回显）；isLaunching 全入口互斥
+rerun: async (projectId) => {
+  const { lastLaunch, isLaunching } = get();
+  if (!lastLaunch || lastLaunch.projectId !== projectId || isLaunching) return;
+  set({ isLaunching: true });
+  try { await lastLaunch.replay(); } finally { set({ isLaunching: false }); }
+},
+```
+
+---
+
 ## 常见错误
 
 ### 1. 继续把跨域数据通过多层 Props 透传

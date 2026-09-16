@@ -4,13 +4,22 @@ import { cn } from '@/lib/utils';
 import {
   ArrowDownToLine,
   ArrowUpFromLine,
+  Ban,
   Pause,
   Redo2,
+  RotateCcw,
   Square,
   StepForward,
 } from '@/shared/components/icons';
 
-export type DebugToolbarAction = 'continue' | 'next' | 'stepIn' | 'stepOut' | 'pause' | 'stop';
+export type DebugToolbarAction =
+  | 'continue'
+  | 'next'
+  | 'stepIn'
+  | 'stepOut'
+  | 'pause'
+  | 'stop'
+  | 'rerun';
 
 interface DebugToolbarProps {
   isStopped: boolean;
@@ -22,6 +31,16 @@ interface DebugToolbarProps {
   showStop?: boolean;
   /** Flat JetBrains-style strip (no outer chrome) */
   variant?: 'chip' | 'flat';
+  /** Rerun 可用性（lastLaunch 属当前项目且无在途启动链）——纯展示，判定由面板给。 */
+  canRerun?: boolean;
+  /** Rerun 标题展示上次启动名（如 `Rerun Debug test: test1`）。 */
+  rerunLabel?: string;
+  /** 全局静音态（`aria-pressed`）。 */
+  muted?: boolean;
+  /** 断点总数（零断点时 Mute 禁用；muted 残留仍须显示 active 态，评审 P5）。 */
+  total?: number;
+  /** Mute 切换回调。 */
+  onToggleMute?: () => void;
 }
 
 function ToolBtn({
@@ -30,6 +49,7 @@ function ToolBtn({
   disabled,
   danger,
   accent,
+  toggled,
   size,
   children,
 }: {
@@ -38,6 +58,8 @@ function ToolBtn({
   disabled?: boolean;
   danger?: boolean;
   accent?: 'green' | 'yellow' | 'red' | 'blue';
+  /** 显示 active 态（即使 disabled 也可见，评审 P5：mute 残留可见性）。 */
+  toggled?: boolean;
   size: 'sm' | 'md';
   children: React.ReactNode;
 }) {
@@ -47,10 +69,12 @@ function ToolBtn({
       type="button"
       title={title}
       disabled={disabled}
+      aria-pressed={toggled === undefined ? undefined : toggled}
       onClick={onClick}
       className={cn(
         'inline-flex items-center justify-center rounded transition-colors duration-100 cursor-pointer',
-        'disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:bg-transparent',
+        'disabled:cursor-not-allowed disabled:hover:bg-transparent',
+        toggled ? 'opacity-100' : 'disabled:opacity-30',
         dim,
         danger
           ? 'text-accent-red hover:bg-accent-red/12'
@@ -58,7 +82,9 @@ function ToolBtn({
             ? 'text-accent-green hover:bg-accent-green/12'
             : accent === 'yellow'
               ? 'text-accent-yellow hover:bg-accent-yellow/12'
-              : 'text-text-secondary hover:text-text-primary hover:bg-bg-hover',
+              : accent === 'red'
+                ? 'text-accent-red hover:bg-accent-red/12'
+                : 'text-text-secondary hover:text-text-primary hover:bg-bg-hover',
       )}
     >
       {children}
@@ -69,6 +95,9 @@ function ToolBtn({
 /**
  * Debug action strip — JetBrains-like flat icon row.
  * Used in panel header and title bar.
+ *
+ * 布局：`[Continue][Pause][Stop] | [Mute][Rerun] | [Step…]`。
+ * Rerun / Mute 是**纯展示**按钮：可用性与静音态由面板（`DebugPanel`）算好经 props 注入。
  */
 function DebugToolbar({
   isStopped,
@@ -78,6 +107,11 @@ function DebugToolbar({
   className,
   showStop = false,
   variant = 'flat',
+  canRerun = false,
+  rerunLabel,
+  muted = false,
+  total = 0,
+  onToggleMute,
 }: DebugToolbarProps) {
   const icon = size === 'sm' ? 14 : 15;
   const active = isStopped || isRunning;
@@ -121,6 +155,25 @@ function DebugToolbar({
           <Square size={icon - 2} fill="currentColor" strokeWidth={0} />
         </ToolBtn>
       )}
+      <div className="w-px h-3.5 bg-border/80 mx-1" />
+      <ToolBtn
+        title={muted ? 'Unmute breakpoints' : 'Mute all breakpoints'}
+        size={size}
+        accent={muted ? 'red' : undefined}
+        toggled={muted}
+        disabled={total === 0}
+        onClick={() => onToggleMute?.()}
+      >
+        <Ban size={icon} strokeWidth={1.75} />
+      </ToolBtn>
+      <ToolBtn
+        title={rerunLabel ? `Rerun ${rerunLabel}` : 'Rerun'}
+        size={size}
+        disabled={!canRerun}
+        onClick={() => onAction('rerun')}
+      >
+        <RotateCcw size={icon} strokeWidth={1.75} />
+      </ToolBtn>
       <div className="w-px h-3.5 bg-border/80 mx-1" />
       <ToolBtn title="Step Over" size={size} disabled={!isStopped} onClick={() => onAction('next')}>
         <Redo2 size={icon} strokeWidth={1.75} />

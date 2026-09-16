@@ -116,6 +116,26 @@ impl Default for LaunchFile {
     }
 }
 
+/// 断点缺省使能态：老数据 / 缺字段一律视为已启用（`enabled` 是 0.2.0 引入的字段）。
+const fn bp_enabled_default() -> bool {
+    true
+}
+
+/// 请求载荷：`dap_set_breakpoints` 的**一条**断点（行号 + 使能位）。
+///
+/// DAP 无 enabled 位（`setBreakpoints` 按文件全量替换），「禁用」只能是客户端过滤：
+/// disabled 留模型、不进适配器载荷。前端下发全文件 entries（含 disabled），
+/// 后端按 effective（`enabled && !muted`）过滤后才发给适配器。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BreakpointLine {
+    /// 1-based line number.
+    pub line: u32,
+    /// Whether the breakpoint is enabled（缺省 true，兼容旧请求）。
+    #[serde(default = "bp_enabled_default")]
+    pub enabled: bool,
+}
+
 /// Breakpoint as seen by the UI (1-based lines).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -127,6 +147,9 @@ pub struct BreakpointSpec {
     /// Whether the adapter confirmed the breakpoint.
     #[serde(default)]
     pub verified: bool,
+    /// Whether the breakpoint is enabled（老文件缺字段 → 全启用）。
+    #[serde(default = "bp_enabled_default")]
+    pub enabled: bool,
 }
 
 /// Active debug session snapshot for the UI.

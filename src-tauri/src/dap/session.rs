@@ -584,6 +584,8 @@ impl DapSession {
                     file_path: file_path.to_string(),
                     line,
                     verified,
+                    // 适配器回显只对应**有效行**（enabled && !muted 已过滤）——恒为已启用。
+                    enabled: true,
                 });
             }
         }

@@ -1,9 +1,14 @@
-import { EditorSelection } from '@codemirror/state';
+import { EditorSelection, type StateEffect } from '@codemirror/state';
 import { EditorView } from '@codemirror/view';
 import { useCallback, useEffect, useMemo, useRef } from 'react';
 
 import { isSessionVisibleFor } from '@/features/runner';
-import { useDebugStore } from '@/features/runner/store/debugStore';
+import {
+  breakpointSyncKey,
+  toVisualEntries,
+  useDebugStore,
+} from '@/features/runner/store/debugStore';
+import type { BreakpointEntry } from '@/features/runner/types';
 import { useEditorStore } from '@/shared/store/editorStore';
 import type { FileTab } from '@/shared/types';
 import {
@@ -22,7 +27,7 @@ interface UseEditorViewSnapshotParams {
   tabId: string;
   tab: FileTab;
   absFilePath: string;
-  bpSyncEffect: (lines: number[]) => import('@codemirror/state').StateEffect<unknown>;
+  bpSyncEffect: (entries: readonly BreakpointEntry[]) => StateEffect<readonly BreakpointEntry[]>;
   lastSyncedBpKeyRef: React.MutableRefObject<string>;
   setSelectionLines: (sel: { startLine: number; endLine: number } | null) => void;
   setToolbarPos: (pos: { top: number; left: number } | null) => void;
@@ -133,9 +138,12 @@ export function useEditorViewSnapshot({
       editorViewRef.current = view;
       setEditorViewEpoch((n) => n + 1);
       // Apply any breakpoints already in the store (effect may have run before view existed)
-      const lines = useDebugStore.getState().breakpoints[tab.projectId]?.[absFilePath] ?? [];
-      lastSyncedBpKeyRef.current = `${absFilePath}:${lines.join(',')}`;
-      view.dispatch({ effects: bpSyncEffect(lines) });
+      const dbgBp = useDebugStore.getState();
+      const rawEntries = dbgBp.breakpoints[tab.projectId]?.[absFilePath] ?? [];
+      const muted = tab.projectId ? !!dbgBp.breakpointsMuted[tab.projectId] : false;
+      const visualEntries = toVisualEntries(rawEntries, muted);
+      lastSyncedBpKeyRef.current = breakpointSyncKey(absFilePath, visualEntries);
+      view.dispatch({ effects: bpSyncEffect(visualEntries) });
       // Re-apply debug current-line if we stopped before the editor mounted.
       const dbg = useDebugStore.getState();
       const snapshotSession = dbg.session;
@@ -196,7 +204,6 @@ export function useEditorViewSnapshot({
       tabKey,
       tabId,
       tab.projectId,
-      tab.filePath,
       absFilePath,
       bpSyncEffect,
       editorViewRef,

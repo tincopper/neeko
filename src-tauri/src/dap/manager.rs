@@ -1,6 +1,6 @@
 //! DAP session manager.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -14,20 +14,39 @@ use super::config::{
 use super::discover::{discover_entries, entry_to_launch_config, EntryPoint};
 use super::session::DapSession;
 use super::types::{
-    BreakpointSpec, DapSessionInfo, LaunchConfig, LaunchFile, SessionStatus, StackFrameDto,
-    VariableDto,
+    BreakpointLine, BreakpointSpec, DapSessionInfo, LaunchConfig, LaunchFile, SessionStatus,
+    StackFrameDto, VariableDto,
 };
 use crate::common::executor::factory::ExecTarget;
 use crate::common::executor::ProcessGuard;
 use crate::AppError;
 use crate::AppStateWrapper;
 
+/// 断点内存表：`project_id → file → line → enabled`（clippy type_complexity 别名）。
+type BreakpointTable = HashMap<String, HashMap<String, BTreeMap<u32, bool>>>;
+
+/// 有效断点过滤 —— **后端唯一过滤点**（评审 P1）。
+///
+/// `effective = enabled && !muted`。实时（`set_breakpoints`）与启动/重跑
+/// （`adapter_breakpoints`）**两条下发路径都必须**走它：只堵实时路径 ⇒ mute 后
+/// Rerun 会经启动路径把全部断点重新下发命中（打穿 mute 核心语义）。
+#[must_use]
+fn effective_breakpoints(breakpoints: &[BreakpointSpec], muted: bool) -> Vec<BreakpointSpec> {
+    breakpoints
+        .iter()
+        .filter(|b| b.enabled && !muted)
+        .cloned()
+        .collect()
+}
+
 /// Manages DAP debug sessions, breakpoints, and launch configurations.
 pub struct DapManager {
     /// Active sessions by session_id, each carrying its attached debuggee.
     sessions: Mutex<HashMap<String, ManagedSession>>,
-    /// Breakpoints keyed by project_id → file → lines.
-    breakpoints: Mutex<HashMap<String, HashMap<String, Vec<u32>>>>,
+    /// Breakpoints keyed by project_id → file → line → enabled.
+    breakpoints: Mutex<BreakpointTable>,
+    /// 全局静音（per-project 单 bool，与 `breakpoints.json` 的 `muted` 同态）。
+    muted: Mutex<HashMap<String, bool>>,
     /// Projects whose breakpoints were loaded from disk this process.
     bp_loaded: Mutex<HashSet<String>>,
     /// 语言编排后端注册表（§9.4 方案 C）：`kind → backend`。
@@ -71,6 +90,7 @@ impl DapManager {
         Self {
             sessions: Mutex::new(HashMap::new()),
             breakpoints: Mutex::new(HashMap::new()),
+            muted: Mutex::new(HashMap::new()),
             bp_loaded: Mutex::new(HashSet::new()),
             backends: std::sync::Mutex::new(HashMap::new()),
         }
@@ -168,18 +188,21 @@ impl DapManager {
             }
         }
         let path = project_path(state, project_id)?;
-        let list = load_breakpoints_file(&path).unwrap_or_default();
+        let loaded = load_breakpoints_file(&path).unwrap_or_default();
         {
             let mut map = self.breakpoints.lock().await;
             let project = map.entry(project_id.to_string()).or_default();
-            for b in list {
-                project.entry(b.file_path).or_default().push(b.line);
-            }
-            for lines in project.values_mut() {
-                lines.sort_unstable();
-                lines.dedup();
+            for b in loaded.breakpoints {
+                project
+                    .entry(b.file_path)
+                    .or_default()
+                    .insert(b.line, b.enabled);
             }
         }
+        self.muted
+            .lock()
+            .await
+            .insert(project_id.to_string(), loaded.muted);
         self.bp_loaded.lock().await.insert(project_id.to_string());
         Ok(())
     }
@@ -191,7 +214,14 @@ impl DapManager {
     ) -> Result<(), AppError> {
         let path = project_path(state, project_id)?;
         let list = self.get_breakpoints_memory(project_id).await;
-        save_breakpoints_file(&path, &list)
+        let muted = self
+            .muted
+            .lock()
+            .await
+            .get(project_id)
+            .copied()
+            .unwrap_or(false);
+        save_breakpoints_file(&path, &list, muted)
     }
 
     async fn get_breakpoints_memory(&self, project_id: &str) -> Vec<BreakpointSpec> {
@@ -201,11 +231,12 @@ impl DapManager {
         };
         let mut out = Vec::new();
         for (file, lines) in project {
-            for line in lines {
+            for (line, enabled) in lines {
                 out.push(BreakpointSpec {
                     file_path: file.clone(),
                     line: *line,
                     verified: false,
+                    enabled: *enabled,
                 });
             }
         }
@@ -213,23 +244,70 @@ impl DapManager {
         out
     }
 
+    /// 单文件断点（含 enabled）全量读取（内存）；排序按行号。
+    async fn file_breakpoints_memory(
+        &self,
+        project_id: &str,
+        file_path: &str,
+    ) -> Vec<BreakpointSpec> {
+        let map = self.breakpoints.lock().await;
+        let Some(lines) = map.get(project_id).and_then(|p| p.get(file_path)) else {
+            return Vec::new();
+        };
+        lines
+            .iter()
+            .map(|(line, enabled)| BreakpointSpec {
+                file_path: file_path.to_string(),
+                line: *line,
+                verified: false,
+                enabled: *enabled,
+            })
+            .collect()
+    }
+
+    /// **实时路径**的有效适配器载荷（评审 P1）：只取 `enabled && !muted` 的行。
+    ///
+    /// `set_breakpoints`（实时）与 `sync_project_breakpoints_to_session`（mute 切换）共用；
+    /// 与启动/重跑路径（`adapter_breakpoints`）同走 `effective_breakpoints` 单一过滤点。
+    async fn effective_lines_for_file(&self, project_id: &str, file_path: &str) -> Vec<u32> {
+        let file_specs = self.file_breakpoints_memory(project_id, file_path).await;
+        let muted = self
+            .muted
+            .lock()
+            .await
+            .get(project_id)
+            .copied()
+            .unwrap_or(false);
+        effective_breakpoints(&file_specs, muted)
+            .iter()
+            .map(|b| b.line)
+            .collect()
+    }
+
     /// Set breakpoints for a file in a project, persisting to disk and forwarding to the active session.
+    ///
+    /// 语义：`breakpoints` 是该文件**全量替换**（含 disabled 位）；持久化全量；
+    /// 下发只取 effective（`enabled && !muted`，评审 P1 的单一过滤点）。
     pub async fn set_breakpoints(
         &self,
         state: &AppStateWrapper,
         project_id: &str,
         file_path: &str,
-        lines: Vec<u32>,
+        breakpoints: Vec<BreakpointLine>,
         active_session_id: Option<&str>,
     ) -> Result<Vec<BreakpointSpec>, AppError> {
         self.ensure_breakpoints_loaded(state, project_id).await?;
         {
             let mut map = self.breakpoints.lock().await;
             let project = map.entry(project_id.to_string()).or_default();
-            if lines.is_empty() {
+            if breakpoints.is_empty() {
                 project.remove(file_path);
             } else {
-                project.insert(file_path.to_string(), lines.clone());
+                let mut lines = BTreeMap::new();
+                for b in breakpoints {
+                    lines.insert(b.line, b.enabled);
+                }
+                project.insert(file_path.to_string(), lines);
             }
         }
         // Persist even if adapter set fails — UI state is source of truth offline.
@@ -255,16 +333,10 @@ impl DapManager {
                     session.emit_output("console", note);
                 }
                 let Some(adapter_path) = adapter_path else {
-                    // 不可解析：不下发（伪路径会被适配器静默丢弃），回传规范身份 + 未验证。
-                    return Ok(lines
-                        .into_iter()
-                        .map(|line| BreakpointSpec {
-                            file_path: file_path.to_string(),
-                            line,
-                            verified: false,
-                        })
-                        .collect());
+                    // 不可解析：不下发（伪路径会被适配器静默丢弃），回传规范身份 + 未验证（带 enabled）。
+                    return Ok(self.file_breakpoints_memory(project_id, file_path).await);
                 };
+                let lines = self.effective_lines_for_file(project_id, file_path).await;
                 let returned = session
                     .set_breakpoints_for_file(&adapter_path.to_string_lossy(), &lines)
                     .await?;
@@ -279,14 +351,74 @@ impl DapManager {
             }
         }
 
-        Ok(lines
-            .into_iter()
-            .map(|line| BreakpointSpec {
-                file_path: file_path.to_string(),
-                line,
-                verified: false,
-            })
-            .collect())
+        Ok(self.file_breakpoints_memory(project_id, file_path).await)
+    }
+
+    /// 把项目的 effective 全集即时下发到其活动会话（mute 切换后调用）。
+    ///
+    /// mute=true → 每文件载荷为空（全部扣留，单个 enabled 原样保留）；
+    /// mute=false → 恢复各文件 enabled 子集。与实时 toggle 同走
+    /// `effective_breakpoints` 过滤（评审 P1）。
+    async fn sync_project_breakpoints_to_session(&self, state: &AppStateWrapper, project_id: &str) {
+        let Some(session) = self.session_for_project(project_id).await else {
+            return;
+        };
+        // 锁内快照 + drop guard 后再做 await（架构审查 Minor）：per-file 循环里
+        // 有 `adapter_source_path` / `set_breakpoints_for_file` 的 await，持锁跨 await
+        // 会把项目断点变更在整个 mute 同步期间串行化（tokio Mutex 不会死锁，但没必要）。
+        let (snapshot, muted) = {
+            let map = self.breakpoints.lock().await;
+            let Some(project) = map.get(project_id) else {
+                return;
+            };
+            let snapshot: Vec<(String, Vec<BreakpointSpec>)> = project
+                .iter()
+                .map(|(file, lines)| {
+                    let specs = lines
+                        .iter()
+                        .map(|(line, enabled)| BreakpointSpec {
+                            file_path: file.clone(),
+                            line: *line,
+                            verified: false,
+                            enabled: *enabled,
+                        })
+                        .collect();
+                    (file.clone(), specs)
+                })
+                .collect();
+            let muted = self
+                .muted
+                .lock()
+                .await
+                .get(project_id)
+                .copied()
+                .unwrap_or(false);
+            (snapshot, muted)
+        };
+        for (file, file_specs) in snapshot {
+            let effective = effective_breakpoints(&file_specs, muted);
+            let effective_lines: Vec<u32> = effective.iter().map(|b| b.line).collect();
+            let (adapter_path, note) = match state.resolve_project(project_id) {
+                Ok((target, _)) => {
+                    let backend = self.backend_for(session.kind().as_str());
+                    self.adapter_source_path(backend.as_deref(), state, &target, &[], &file)
+                        .await
+                }
+                Err(_) => (Some(PathBuf::from(file.clone())), None),
+            };
+            if let Some(note) = &note {
+                session.emit_output("console", note);
+            }
+            let Some(adapter_path) = adapter_path else {
+                continue;
+            };
+            if let Err(e) = session
+                .set_breakpoints_for_file(&adapter_path.to_string_lossy(), &effective_lines)
+                .await
+            {
+                log::warn!("[DAP] failed to sync breakpoints for {file}: {e}");
+            }
+        }
     }
 
     /// Translate one canonical source identity into a path the adapter can resolve.
@@ -332,6 +464,9 @@ impl DapManager {
     /// discarded by the adapter (`verified:false`) and the user only sees "the breakpoint never
     /// hit". Each such identity yields one note, emitted into the Debug Console once the session
     /// exists. An identity is translated once — a file usually has several breakpoint lines.
+    ///
+    /// 翻译前先按 effective（`enabled && !muted`，评审 P1）过滤：disabled / 静音中的断点
+    /// 不进适配器载荷，也避免给它们发"不可解析"note 噪音。
     async fn adapter_breakpoints(
         &self,
         backend: Option<&dyn crate::dap::adapter::LanguageBackend>,
@@ -339,12 +474,14 @@ impl DapManager {
         target: &ExecTarget,
         classpath: &[String],
         breakpoints: &[BreakpointSpec],
+        muted: bool,
     ) -> (Vec<BreakpointSpec>, Vec<String>) {
-        let mut translated: Vec<BreakpointSpec> = Vec::with_capacity(breakpoints.len());
+        let effective = effective_breakpoints(breakpoints, muted);
+        let mut translated: Vec<BreakpointSpec> = Vec::with_capacity(effective.len());
         let mut notes: Vec<String> = Vec::new();
         let mut resolved: HashMap<String, Option<PathBuf>> = HashMap::new();
 
-        for breakpoint in breakpoints {
+        for breakpoint in &effective {
             let path = match resolved.get(&breakpoint.file_path) {
                 Some(cached) => cached.clone(),
                 None => {
@@ -369,6 +506,7 @@ impl DapManager {
                     file_path: path.to_string_lossy().to_string(),
                     line: breakpoint.line,
                     verified: breakpoint.verified,
+                    enabled: breakpoint.enabled,
                 });
             }
         }
@@ -383,6 +521,45 @@ impl DapManager {
     ) -> Result<Vec<BreakpointSpec>, AppError> {
         self.ensure_breakpoints_loaded(state, project_id).await?;
         Ok(self.get_breakpoints_memory(project_id).await)
+    }
+
+    /// Get the global-mute flag for a project（`loadBreakpoints` 时与列表同取）。
+    pub async fn get_breakpoints_muted(
+        &self,
+        state: &AppStateWrapper,
+        project_id: &str,
+    ) -> Result<bool, AppError> {
+        self.ensure_breakpoints_loaded(state, project_id).await?;
+        Ok(self
+            .muted
+            .lock()
+            .await
+            .get(project_id)
+            .copied()
+            .unwrap_or(false))
+    }
+
+    /// Set the global-mute flag for a project：持久化 + 即时下发 effective 全集。
+    ///
+    /// mute=true → 载荷为空（全部扣留，单个 enabled 原样保留）；
+    /// mute=false → 恢复各文件 enabled 子集（此前单点禁用的保持禁用）。
+    pub async fn set_breakpoints_muted(
+        &self,
+        state: &AppStateWrapper,
+        project_id: &str,
+        muted: bool,
+    ) -> Result<(), AppError> {
+        self.ensure_breakpoints_loaded(state, project_id).await?;
+        self.muted
+            .lock()
+            .await
+            .insert(project_id.to_string(), muted);
+        if let Err(e) = self.persist_breakpoints(state, project_id).await {
+            log::warn!("[DAP] failed to persist muted flag: {e}");
+        }
+        self.sync_project_breakpoints_to_session(state, project_id)
+            .await;
+        Ok(())
     }
 
     /// Start a new DAP debug session for a project with the given config.
@@ -470,8 +647,23 @@ impl DapManager {
         // `jdt://` uri，而 handle 取不到）。只翻**适配器副本**：持久化与回传前端仍是规范身份。
         // 语言差异由该语言的编排后端承担（Go/Lldb 无后端 → 原样透传）。
         let backend = self.backend_for(&config.type_);
+        // 启动/重跑路径同样走 effective 过滤（评审 P1）：mute 下新会话载荷为空。
+        let muted = self
+            .muted
+            .lock()
+            .await
+            .get(project_id)
+            .copied()
+            .unwrap_or(false);
         let (adapter_bps, breakpoint_notes) = self
-            .adapter_breakpoints(backend.as_deref(), state, &target, &config.classpath, &bps)
+            .adapter_breakpoints(
+                backend.as_deref(),
+                state,
+                &target,
+                &config.classpath,
+                &bps,
+                muted,
+            )
             .await;
 
         let session = match endpoint {
@@ -676,6 +868,17 @@ impl DapManager {
             .await
             .get(session_id)
             .map(|m| Arc::clone(&m.session))
+    }
+
+    /// Get the active session Arc for a project, if any（mute 切换的即时下发用）。
+    async fn session_for_project(&self, project_id: &str) -> Option<Arc<DapSession>> {
+        let sessions = self.sessions.lock().await;
+        for m in sessions.values() {
+            if m.session.project_id == project_id {
+                return Some(Arc::clone(&m.session));
+            }
+        }
+        None
     }
 
     /// Get the active session info for a project, if any.
@@ -1056,7 +1259,21 @@ mod tests {
         java_route_state_named(tmp, "proj", capability)
     }
 
-    /// 与 [`java_route_state`] 同，但可指定项目目录名（回归"目录名会被当成项目名"的场景）。
+    /// 注册一个普通项目（无语言后端）：断点/静音的单测只依赖项目注册 + 磁盘路径。
+    fn plain_project_state(tmp: &tempfile::TempDir) -> (AppStateWrapper, String) {
+        let state = isolated_state(tmp);
+        let project_dir = tmp.path().join("proj");
+        std::fs::create_dir_all(&project_dir).expect("mkdir");
+        let project = state
+            .project_manager
+            .lock()
+            .expect("project_manager")
+            .add_project(project_dir, None, None, None)
+            .expect("add_project");
+        (state, project.id)
+    }
+
+    /// 注册一个项目（无语言后端）并注入指定探测结果，返回 (state, project_id)。
     fn java_route_state_named(
         tmp: &tempfile::TempDir,
         dir_name: &str,
@@ -1144,6 +1361,7 @@ mod tests {
             file_path: file_path.to_string(),
             line,
             verified: false,
+            enabled: true,
         }
     }
 
@@ -1297,6 +1515,7 @@ mod tests {
                 &ExecTarget::Local,
                 &[],
                 &input,
+                false,
             )
             .await;
 
@@ -1349,6 +1568,7 @@ mod tests {
                 &ExecTarget::Local,
                 &[],
                 &input,
+                false,
             )
             .await;
 
@@ -1381,5 +1601,186 @@ mod tests {
 
         let result = DapManager::check_adapter(&state, &project.id, "no-such-adapter").await;
         assert!(matches!(result, Ok(false)), "got {result:?}");
+    }
+
+    // ── 禁用 / 全局静音（评审 P1：单一过滤点覆盖实时 + 启动/重跑两条下发路径）──
+
+    fn bp_disabled(file_path: &str, line: u32) -> BreakpointSpec {
+        BreakpointSpec {
+            file_path: file_path.to_string(),
+            line,
+            verified: false,
+            enabled: false,
+        }
+    }
+
+    /// 纯函数过滤：`enabled && !muted`；mute 下全扣留。
+    #[test]
+    fn effective_breakpoints_filters_disabled_and_muted() {
+        let bps = vec![bp("/proj/a.go", 10), bp_disabled("/proj/a.go", 20)];
+        let effective = effective_breakpoints(&bps, false);
+        assert_eq!(effective.len(), 1, "只下发 enabled 行");
+        assert_eq!(effective[0].line, 10);
+        assert!(
+            effective_breakpoints(&bps, true).is_empty(),
+            "mute 下全部扣留（叠加态，不碰单个位）"
+        );
+    }
+
+    /// **启动/重跑路径**（评审 P1）：`adapter_breakpoints` 翻译前按 effective 过滤。
+    /// 变异验证：删掉 `effective_breakpoints` 过滤行 ⇒ 本用例红（mute 下 Rerun 会复活命中）。
+    #[tokio::test]
+    async fn adapter_breakpoints_skips_disabled_and_muted_without_notes() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let (state, _project) = source_path_state(&tmp, vec![]);
+        let input = vec![
+            bp("/proj/a.go", 10),
+            bp_disabled("/proj/a.go", 20),
+            bp("/proj/b.go", 30),
+        ];
+
+        // 未静音：disabled 行不下发，且不给 disabled 发"不可解析"note。
+        let (translated, notes) = DapManager::new()
+            .adapter_breakpoints(
+                state.dap_manager.backend_for("java").as_deref(),
+                &state,
+                &ExecTarget::Local,
+                &[],
+                &input,
+                false,
+            )
+            .await;
+        let mut lines: Vec<u32> = translated.iter().map(|b| b.line).collect();
+        lines.sort_unstable();
+        assert_eq!(lines, vec![10, 30], "disabled 行(20)不进启动载荷");
+        assert!(notes.is_empty(), "disabled 行不产生诊断: {notes:?}");
+
+        // 静音：启动/重跑载荷为空（mute 下 Rerun 新会话仍不命中）。
+        let (translated, notes) = DapManager::new()
+            .adapter_breakpoints(
+                state.dap_manager.backend_for("java").as_deref(),
+                &state,
+                &ExecTarget::Local,
+                &[],
+                &input,
+                true,
+            )
+            .await;
+        assert!(translated.is_empty(), "mute 下启动路径载荷必须为空");
+        assert!(notes.is_empty());
+    }
+
+    /// **实时路径**（评审 P1）：`set_breakpoints` 的内存全量保留 disabled，但
+    /// `effective_lines_for_file`（实时下发的载荷来源）只取 enabled && !muted。
+    /// 变异验证：删掉 `effective_breakpoints` 过滤 ⇒ 本用例红。
+    #[tokio::test]
+    async fn effective_lines_for_file_respects_disabled_and_muted() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let (state, project_id) = plain_project_state(&tmp);
+        let manager = &state.dap_manager;
+
+        manager
+            .set_breakpoints(
+                &state,
+                &project_id,
+                "/proj/a.go",
+                vec![
+                    BreakpointLine {
+                        line: 10,
+                        enabled: true,
+                    },
+                    BreakpointLine {
+                        line: 20,
+                        enabled: false,
+                    },
+                ],
+                None,
+            )
+            .await
+            .expect("set");
+
+        // 未静音：载荷只含 enabled 行。
+        assert_eq!(
+            manager
+                .effective_lines_for_file(&project_id, "/proj/a.go")
+                .await,
+            vec![10]
+        );
+        // 内存全量保留（disabled 位不动 —— 叠加态）。
+        let all = manager
+            .get_breakpoints(&state, &project_id)
+            .await
+            .expect("get");
+        assert_eq!(all.len(), 2);
+        assert!(all.iter().any(|b| b.line == 20 && !b.enabled));
+
+        // 静音：载荷为空（全部扣留）。
+        manager
+            .set_breakpoints_muted(&state, &project_id, true)
+            .await
+            .expect("mute");
+        assert!(
+            manager
+                .effective_lines_for_file(&project_id, "/proj/a.go")
+                .await
+                .is_empty(),
+            "mute 下实时载荷必须为空"
+        );
+    }
+
+    /// disabled 位与 muted 位随 `breakpoints.json` roundtrip（重启后禁用/静音仍在）。
+    #[tokio::test]
+    async fn set_breakpoints_persists_disabled_and_muted() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let (state, project_id) = plain_project_state(&tmp);
+        let manager = &state.dap_manager;
+
+        manager
+            .set_breakpoints(
+                &state,
+                &project_id,
+                "/proj/a.go",
+                vec![
+                    BreakpointLine {
+                        line: 10,
+                        enabled: true,
+                    },
+                    BreakpointLine {
+                        line: 20,
+                        enabled: false,
+                    },
+                ],
+                None,
+            )
+            .await
+            .expect("set");
+        manager
+            .set_breakpoints_muted(&state, &project_id, true)
+            .await
+            .expect("mute");
+
+        // 落盘 0.2.0：enabled + muted 都在。
+        let loaded = load_breakpoints_file(&tmp.path().join("proj")).expect("load");
+        assert_eq!(loaded.breakpoints.len(), 2);
+        assert!(loaded
+            .breakpoints
+            .iter()
+            .any(|b| b.line == 20 && !b.enabled));
+        assert!(loaded.muted);
+
+        // 读回：内存态与磁盘一致。
+        assert!(manager
+            .get_breakpoints_muted(&state, &project_id)
+            .await
+            .expect("get"));
+        // unmute roundtrip。
+        manager
+            .set_breakpoints_muted(&state, &project_id, false)
+            .await
+            .expect("unmute");
+        assert!(!manager
+            .get_breakpoints_muted(&state, &project_id)
+            .await
+            .expect("get"));
     }
 }

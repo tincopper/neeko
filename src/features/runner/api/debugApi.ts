@@ -3,6 +3,7 @@ import { invoke } from '@tauri-apps/api/core';
 import type { FileContent } from '@/shared/types';
 
 import type {
+  BreakpointEntry,
   BreakpointSpec,
   DapSessionInfo,
   EntryPoint,
@@ -74,19 +75,29 @@ export function dapGetSession(projectId: string): Promise<DapSessionInfo | null>
 export function dapSetBreakpoints(
   projectId: string,
   filePath: string,
-  lines: number[],
+  breakpoints: BreakpointEntry[],
   sessionId?: string | null,
 ): Promise<BreakpointSpec[]> {
   return invoke<BreakpointSpec[]>('dap_set_breakpoints', {
     projectId,
     filePath,
-    lines,
+    breakpoints,
     sessionId: sessionId ?? null,
   });
 }
 
 export function dapGetBreakpoints(projectId: string): Promise<BreakpointSpec[]> {
   return invoke<BreakpointSpec[]>('dap_get_breakpoints', { projectId });
+}
+
+/** 全局静音开关（per-project 单 bool；后端持久化进 breakpoints.json）。 */
+export function dapSetBreakpointsMuted(projectId: string, muted: boolean): Promise<void> {
+  return invoke('dap_set_breakpoints_muted', { projectId, muted });
+}
+
+/** 读全局静音（loadBreakpoints 时与列表同取）。 */
+export function dapGetBreakpointsMuted(projectId: string): Promise<boolean> {
+  return invoke<boolean>('dap_get_breakpoints_muted', { projectId });
 }
 
 export function dapControl(sessionId: string, action: string): Promise<void> {

@@ -49,6 +49,10 @@ function DebugPanel() {
   const setPanelTab = useDebugStore((s) => s.setPanelTab);
   const control = useDebugStore((s) => s.control);
   const stop = useDebugStore((s) => s.stop);
+  const rerun = useDebugStore((s) => s.rerun);
+  const lastLaunch = useDebugStore((s) => s.lastLaunch);
+  const isLaunching = useDebugStore((s) => s.isLaunching);
+  const setBreakpointsMuted = useDebugStore((s) => s.setBreakpointsMuted);
 
   const listAllBreakpoints = useDebugStore((s) => s.listAllBreakpoints);
   const error = useDebugStore((s) => s.error);
@@ -65,6 +69,10 @@ function DebugPanel() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [projectId, breakpointsMap, listAllBreakpoints],
   );
+  const muted = useDebugStore((s) => (projectId ? !!s.breakpointsMuted[projectId] : false));
+  /** Rerun 门控（对齐 #14/I7）：intent 属当前项目 + 无在途启动链。 */
+  const canRerun = !!lastLaunch && lastLaunch.projectId === projectId && !isLaunching;
+  const rerunLabel = lastLaunch?.projectId === projectId ? lastLaunch.label : undefined;
 
   // 面板高度 / 侧栏宽度：同一套拖拽 + 持久化（实现见 hooks/useDragResize）。
   const { size: panelHeight, startResize: startPanelResize } = useDragResize({
@@ -95,9 +103,13 @@ function DebugPanel() {
         void stop();
         return;
       }
+      if (action === 'rerun') {
+        if (projectId) void rerun(projectId);
+        return;
+      }
       void control(action);
     },
-    [control, stop],
+    [control, stop, rerun, projectId],
   );
 
   if (!panelOpen) return null;
@@ -147,6 +159,13 @@ function DebugPanel() {
               isRunning={isRunning}
               showStop
               onAction={handleToolbar}
+              canRerun={canRerun}
+              rerunLabel={rerunLabel}
+              muted={muted}
+              total={bpCount}
+              onToggleMute={() => {
+                if (projectId) void setBreakpointsMuted(projectId, !muted);
+              }}
             />
           </div>
           <div className="flex-1 min-w-0" />

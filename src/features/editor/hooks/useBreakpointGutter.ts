@@ -3,15 +3,17 @@ import { Decoration, EditorView, type DecorationSet } from '@codemirror/view';
 import { useCallback, useMemo } from 'react';
 
 import { useDebugStore } from '@/features/runner/store/debugStore';
+import type { BreakpointEntry } from '@/features/runner/types';
 
 // ── Effects / fields (exported so FileViewer lineNumbers can drive hover) ─
 
-export const setBreakpointsEffect = StateEffect.define<readonly number[]>();
+/** 断点条目（含 enabled 的视觉态：`useEditorBreakpoints` 已把 mute 折叠进来）。 */
+export const setBreakpointsEffect = StateEffect.define<readonly BreakpointEntry[]>();
 export const setHoverLineEffect = StateEffect.define<number | null>();
 export const setCurrentLineEffect = StateEffect.define<number | null>();
 
-/** 1-based lines with breakpoints. */
-export const breakpointField = StateField.define<readonly number[]>({
+/** 1-based lines with breakpoints（entry 形态，含视觉 enabled）。 */
+export const breakpointField = StateField.define<readonly BreakpointEntry[]>({
   create: () => [],
   update(lines, tr) {
     for (const e of tr.effects) {
@@ -72,15 +74,16 @@ export function toggleBreakpointAt(
   try {
     const lineNo = view.state.doc.lineAt(lineFrom).number;
     // Only if the field is installed (debug pack present)
-    let current: readonly number[] = [];
+    let current: readonly BreakpointEntry[] = [];
     try {
       current = view.state.field(breakpointField);
     } catch {
       return false;
     }
-    const next = current.includes(lineNo)
-      ? current.filter((l) => l !== lineNo)
-      : [...current, lineNo].sort((a, b) => a - b);
+    const has = current.some((e) => e.line === lineNo);
+    const next = has
+      ? current.filter((e) => e.line !== lineNo)
+      : [...current, { line: lineNo, enabled: true }].sort((a, b) => a.line - b.line);
     view.dispatch({ effects: setBreakpointsEffect.of(next) });
     onToggle(lineNo);
     return true;
@@ -155,6 +158,12 @@ export const breakpointGutterTheme = EditorView.theme({
     backgroundColor: 'color-mix(in srgb, var(--accent-red, #e06c75) 30%, transparent)',
     boxShadow: '0 0 0 1px color-mix(in srgb, var(--accent-red, #e06c75) 45%, transparent)',
   },
+  // 禁用/静音断点：灰空心圆（对齐 lucide `Circle` 语义，CSS 画，不引入新图标组件）。
+  '.cm-breakpoint-marker--disabled': {
+    backgroundColor: 'transparent',
+    boxShadow: 'inset 0 0 0 1.5px var(--text-muted, #7f848e)',
+    opacity: '0.55',
+  },
   // Line-number affordance only (numbers themselves come from FileViewer)
   '.cm-lineNumbers': {
     cursor: 'pointer',
@@ -180,9 +189,11 @@ export const breakpointGutterTheme = EditorView.theme({
 });
 
 /** Store → CM breakpoint field 同步 effect 构造器（setBreakpointsEffect.of 的具名形态）。 */
-export type BreakpointSyncEffect = (lines: readonly number[]) => StateEffect<readonly number[]>;
+export type BreakpointSyncEffect = (
+  entries: readonly BreakpointEntry[],
+) => StateEffect<readonly BreakpointEntry[]>;
 
-const syncEffectOf: BreakpointSyncEffect = (lines) => setBreakpointsEffect.of(lines);
+const syncEffectOf: BreakpointSyncEffect = (entries) => setBreakpointsEffect.of(entries);
 
 /**
  * 断点 gutter 的行号交互与同步。断点列渲染已由统一 gutter 的

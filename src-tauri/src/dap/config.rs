@@ -29,17 +29,34 @@ pub struct BreakpointsFile {
     /// Persisted breakpoint list.
     #[serde(default)]
     pub breakpoints: Vec<BreakpointSpec>,
+    /// 全局静音（per-project 单 bool）：mute 下适配器载荷为空。
+    /// 缺字段 = false（0.1.0 老文件 / 0.2.0 未设置静音）。
+    #[serde(default)]
+    pub muted: bool,
 }
 
 fn default_bp_version() -> String {
-    "0.1.0".into()
+    "0.2.0".into()
 }
 
-/// Load breakpoints; missing file → empty list.
-pub fn load_breakpoints_file(project_path: &Path) -> Result<Vec<BreakpointSpec>, AppError> {
+/// 加载结果：断点列表 + 静音位（双版本 loader 的统一出口）。
+///
+/// `BreakpointsFile.version` 允许 `0.1.0` / `0.2.0`：`enabled` 与 `muted` 都带
+/// serde 默认值（`enabled=true`、`muted=false`），老文件缺字段自动补全，
+/// 故无需按版本号分支解析 —— 一次反序列化即兼容两版。
+#[derive(Debug, Clone, Default)]
+pub struct LoadedBreakpoints {
+    /// 断点列表（含 enabled 位）。
+    pub breakpoints: Vec<BreakpointSpec>,
+    /// 全局静音（per-project 单 bool）。
+    pub muted: bool,
+}
+
+/// Load breakpoints; missing file → empty list + unmuted.
+pub fn load_breakpoints_file(project_path: &Path) -> Result<LoadedBreakpoints, AppError> {
     let path = breakpoints_json_path(project_path);
     if !path.exists() {
-        return Ok(Vec::new());
+        return Ok(LoadedBreakpoints::default());
     }
     let text = std::fs::read_to_string(&path)
         .map_err(|e| AppError::Dap(format!("Failed to read {}: {e}", path.display())))?;
@@ -49,13 +66,17 @@ pub fn load_breakpoints_file(project_path: &Path) -> Result<Vec<BreakpointSpec>,
             path.display()
         ))
     })?;
-    Ok(file.breakpoints)
+    Ok(LoadedBreakpoints {
+        breakpoints: file.breakpoints,
+        muted: file.muted,
+    })
 }
 
 /// Persist breakpoints (creates `.neeko/` if needed).
 pub fn save_breakpoints_file(
     project_path: &Path,
     breakpoints: &[BreakpointSpec],
+    muted: bool,
 ) -> Result<(), AppError> {
     let dir = project_path.join(".neeko");
     std::fs::create_dir_all(&dir).map_err(|e| AppError::Io(e.to_string()))?;
@@ -63,6 +84,7 @@ pub fn save_breakpoints_file(
     let file = BreakpointsFile {
         version: default_bp_version(),
         breakpoints: breakpoints.to_vec(),
+        muted,
     };
     let text = serde_json::to_string_pretty(&file).map_err(|e| AppError::Dap(e.to_string()))?;
     std::fs::write(&path, text).map_err(|e| AppError::Io(e.to_string()))
@@ -211,5 +233,101 @@ mod tests {
             expand_variables("${fileDirname}", &ws, Some("/proj/cmd/agent/main.go")),
             "/proj/cmd/agent"
         );
+    }
+
+    // ── breakpoints.json 双版本 loader（0.1.0 读 / 0.2.0 写）─────────────────
+
+    fn bp_spec(file: &str, line: u32, enabled: bool) -> super::super::types::BreakpointSpec {
+        super::super::types::BreakpointSpec {
+            file_path: file.to_string(),
+            line,
+            verified: false,
+            enabled,
+        }
+    }
+
+    /// 0.1.0 老文件缺 `enabled` / `muted` 字段 → 全启用、未静音（serde default）。
+    #[test]
+    fn loads_010_file_with_all_breakpoints_enabled_and_unmuted() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let path = tmp.path().join(".neeko");
+        std::fs::create_dir_all(&path).expect("mkdir");
+        std::fs::write(
+            path.join("breakpoints.json"),
+            r#"{
+  "version": "0.1.0",
+  "breakpoints": [
+    { "filePath": "/proj/a.go", "line": 10, "verified": false },
+    { "filePath": "/proj/a.go", "line": 20, "verified": true }
+  ]
+}"#,
+        )
+        .expect("write");
+
+        let loaded = load_breakpoints_file(tmp.path()).expect("load");
+        assert_eq!(loaded.breakpoints.len(), 2);
+        assert!(
+            loaded.breakpoints.iter().all(|b| b.enabled),
+            "0.1.0 缺 enabled 字段 ⇒ 全部视为已启用"
+        );
+        assert!(!loaded.muted, "0.1.0 缺 muted 字段 ⇒ 未静音");
+    }
+
+    /// 0.2.0 roundtrip：写出的文件带 enabled + muted，读回一致（重启后禁用/静音仍在）。
+    #[test]
+    fn roundtrips_020_file_with_enabled_and_muted() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let bps = vec![
+            bp_spec("/proj/a.go", 10, false),
+            bp_spec("/proj/a.go", 20, true),
+        ];
+        save_breakpoints_file(tmp.path(), &bps, true).expect("save");
+
+        let text =
+            std::fs::read_to_string(tmp.path().join(".neeko/breakpoints.json")).expect("read");
+        assert!(
+            text.contains("\"version\": \"0.2.0\""),
+            "saver 必须写 0.2.0"
+        );
+
+        let loaded = load_breakpoints_file(tmp.path()).expect("load");
+        assert_eq!(loaded.breakpoints.len(), 2);
+        assert!(!loaded.breakpoints[0].enabled, "disabled 位 roundtrip 保留");
+        assert!(loaded.breakpoints[1].enabled);
+        assert!(loaded.muted, "muted 位 roundtrip 保留");
+    }
+
+    /// 0.2.0 文件里个别断点缺 `enabled`（半老数据）→ 该条视为已启用。
+    #[test]
+    fn loads_020_file_missing_enabled_on_single_breakpoint_as_enabled() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let path = tmp.path().join(".neeko");
+        std::fs::create_dir_all(&path).expect("mkdir");
+        std::fs::write(
+            path.join("breakpoints.json"),
+            r#"{
+  "version": "0.2.0",
+  "breakpoints": [
+    { "filePath": "/proj/a.go", "line": 10 },
+    { "filePath": "/proj/a.go", "line": 20, "enabled": false }
+  ],
+  "muted": true
+}"#,
+        )
+        .expect("write");
+
+        let loaded = load_breakpoints_file(tmp.path()).expect("load");
+        assert!(loaded.breakpoints[0].enabled, "缺 enabled 字段 ⇒ 已启用");
+        assert!(!loaded.breakpoints[1].enabled);
+        assert!(loaded.muted);
+    }
+
+    /// 文件缺失 → 空列表 + 未静音（不报错）。
+    #[test]
+    fn missing_breakpoints_file_loads_empty_and_unmuted() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let loaded = load_breakpoints_file(tmp.path()).expect("load");
+        assert!(loaded.breakpoints.is_empty());
+        assert!(!loaded.muted);
     }
 }
