@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-4.md`
-- **Total Sessions**: 207
+- **Total Sessions**: 208
 - **Last Active**: 2026-09-16
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-4.md` | ~1184 | Active |
+| `journal-4.md` | ~1217 | Active |
 | `journal-3.md` | ~1978 | Archived |
 | `journal-2.md` | ~1991 | Archived |
 | `journal-1.md` | ~1986 | Archived |
@@ -32,6 +32,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 208 | 2026-09-16 | feat(dap): breakpoint disable/mute/rerun + architecture review fixes | `9952db85` | `main` |
 | 207 | 2026-09-16 | 调试源码身份唯一化 + 概念归属收敛（切片 3，issue #13） | `8a4a8fc4`, `235d2546`, `948ee5a0` | `main` |
 | 206 | 2026-09-16 | 调试停点跟随：代际化与状态化（切片 1+2，issue #13） | - | `main` |
 | 205 | 2026-09-14 | neeko-check B1/B2/C dap 优化 | `282c40a4` | `main` |
