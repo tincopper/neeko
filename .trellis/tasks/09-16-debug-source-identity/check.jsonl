@@ -1,1 +1,5 @@
-{"_example": "Fill with {\"file\": \"<path>\", \"reason\": \"<why>\"}. Put spec/research files only — no code paths. Run `python3 .trellis/scripts/get_context.py --mode packages` to list available specs. Delete this line once real entries are added."}
+{"file": ".trellis/spec/guides/code-reuse-thinking-guide.md", "reason": "R1/R3 身份比较必须复用既有 FileRef/sameFile（模式 5：同一判定只许一处定义），禁止消费侧自造字符串归一/别名匹配；本切片所有「同一文件」判定均已收敛到身份所有者"}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "tab 身份在 runner/editor/shared 三层间传递（sourceTab 复用比较、stopMatch 匹配、fileRef 身份文法），跨层契约与依赖方向（store/debug/* → stopLocation → fileRef）是本切片验证重点"}
+{"file": ".trellis/spec/frontend/state-management.md", "reason": "切片 1+2 落下的不变式（位置单写者 buildStopLocation / 原子写 / 代际守卫 isSameGeneration / 用户接管）经 R7 逐条核对未回退；R6 订阅面收敛与「一次性槽 vs 派生状态」判据核对"}
+{"file": ".trellis/spec/unit-test/frontend-testing.md", "reason": "§9 竞态/交错用例假绿防线：R2 characterization（机制加固，无 Red）如实标注；R3 契约变更用例；交错用例（T1 反转 resolve、T14/T15 双向）按 §9 判定准则核对"}
+{"file": "research/identity-audit.md", "reason": "R1 审计义务结论表：机读口径（.trellis/scripts/check_path_identity_scope.py，已接入 pnpm lint/CI）实测 23 文件/40 处（owner 1 / legit 22 / debt 0），6 处身份比较全部已走 FileRef；对照代码逐一复核表格结论与实现一致"}

@@ -104,7 +104,7 @@
 | `sourceTab.ts`（R2） | `sameIdentity(identity, t.data.filePath)` | 1 例（既有 tab 存非规范形态 → 复用，改前红：会开出第二个 tab） |
 | `stopMatch.ts`（R3） | `debugPathsMatch` 委托 `sameIdentity`；删除「互为后缀」容忍 | 重写为「形态归一相等 / 不同文件不等 / **不再**做相对绝对混比 / 空值早退 / 不做身份转换」5 组 |
 
-`recentFilesStore.ts` 的去重键（第 6 处）**未收敛**：低危（只产生重复行），与 §六 的 `dap-source:` 文法闭合同批处理。
+`recentFilesStore.ts` 的去重键（第 6 处）**已随 §六 收敛**：改走 `sameIdentity`（原低危：只产生重复行，非功能失效），守卫 `debt 1 → 0`。本节为任务中期行文；终态以头部口径与机器可读守卫（`check_path_identity_scope.py`，`debt 0`、exit 0）为准。
 
 **R2 的性质如实说明（含边界）**：该例输入（既有 tab 存 `…/src//A.java`）在当前代码里**没有任何生产者会产出**
 （各入口都经 `canonicalFsPath`/`normalizePath`/`jdtDisplayPath`），因此它是**机制加固的护栏**，不是 bugfix；
