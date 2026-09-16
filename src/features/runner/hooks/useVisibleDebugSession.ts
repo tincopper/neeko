@@ -1,10 +1,13 @@
 import { useProjectStore } from '@/shared/store/projectStore';
 
+import { isSessionVisibleFor } from '../sessionVisibility';
 import { useDebugStore } from '../store/debugStore';
 import type { DapSessionInfo } from '../types';
 
 /**
  * 当前项目可见的调试会话：仅当 session 属于 activeProject 时返回，否则 null。
+ *
+ * 门控本身只有一处实现（`isSessionVisibleFor`）—— 见该模块的「为什么单独成模块」。
  *
  * `useDebugStore` 是全局单会话（`DapSessionInfo.projectId` 携带所属项目）。切换项目后，
  * 旧项目的会话仍留在 store 中（其 DAP 事件继续流入、更新 session/console/栈/停点），
@@ -14,5 +17,5 @@ import type { DapSessionInfo } from '../types';
 export function useVisibleDebugSession(): DapSessionInfo | null {
   const session = useDebugStore((s) => s.session);
   const activeProjectId = useProjectStore((s) => s.activeProject?.id ?? null);
-  return session && activeProjectId && session.projectId === activeProjectId ? session : null;
+  return isSessionVisibleFor(session, activeProjectId) ? session : null;
 }

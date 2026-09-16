@@ -21,9 +21,8 @@ import { applyNavigateCaret, releaseDebugCaret, resolveDocPos } from '../navigat
 import { resolveDebugHighlightLine } from '../stopMatch';
 
 export interface DebugStopRevealParams {
-  /** 规范化身份（FileEditor 已算好），用于判定停点是否落在本 tab。 */
+  /** 规范源身份（FileEditor 用 `sourceIdentityOf` 算好），用于判定停点是否落在本 tab。 */
   absFilePath: string | null;
-  tabFilePath: string | null;
   editorViewRef: RefObject<EditorView | null>;
   /** 视图重建 / 文件 reload 时递增；用于重放（自愈）。 */
   viewEpoch: number;
@@ -61,18 +60,12 @@ function warnOutOfRangeOnce(key: string, info: Record<string, unknown>): void {
 
 export function useDebugStopReveal({
   absFilePath,
-  tabFilePath,
   editorViewRef,
   viewEpoch,
 }: DebugStopRevealParams): void {
   // 位置与状态同源、一次订阅（`useStopLocation` 已含 #14 的项目门控）。
   const stop = useStopLocation();
-  const targetLine = resolveDebugHighlightLine(
-    absFilePath,
-    tabFilePath,
-    stop,
-    stop?.status ?? null,
-  );
+  const targetLine = resolveDebugHighlightLine(absFilePath, stop, stop?.status ?? null);
   const placedRef = useRef<PlacedCaret | null>(null);
 
   useEffect(() => {

@@ -19,18 +19,12 @@ import { applyDebugCurrentLine } from './useBreakpointGutter';
 
 export function useCurrentLineHighlight(
   absFilePath: string | null,
-  tabFilePath: string | null,
   editorViewRef: RefObject<EditorView | null>,
   viewEpoch: number,
 ): void {
   // `useStopLocation` 已含「会话属于当前项目」门控（#14）与状态门所需的状态（一次订阅）。
   const stop = useStopLocation();
-  const highlightedLine = resolveDebugHighlightLine(
-    absFilePath,
-    tabFilePath,
-    stop,
-    stop?.status ?? null,
-  );
+  const highlightedLine = resolveDebugHighlightLine(absFilePath, stop, stop?.status ?? null);
 
   useEffect(() => {
     const view = editorViewRef.current;

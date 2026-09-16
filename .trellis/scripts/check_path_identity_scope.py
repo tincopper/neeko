@@ -115,12 +115,6 @@ MANIFEST: dict[str, tuple[str, dict[str, int], str]] = {
     "src/features/runner/languages/go/pkg.ts": ("legit", {"backslash": 2}, "文件所在目录相对 module 根（命令派生）"),
     "src/features/runner/languages/java/commands.ts": ("legit", {"backslash": 1}, "路径布局 → FQCN（命令派生）"),
     "src/features/runner/languages/rust/commands.ts": ("legit", {"backslash": 1}, "路径形状 → cargo target flag（命令派生）"),
-    # ── ★ 已知残留（身份判定未收敛；登记在案而非假装没有）──
-    "src/features/quick-open/store/recentFilesStore.ts": (
-        "debt",
-        {"backslash": 1},
-        "「最近文件」去重键 = 同文件判定；低危（只产生重复行）。应改走 sameIdentity，与 F3 同批",
-    ),
 }
 
 VALID_KINDS = {"owner", "legit", "debt"}

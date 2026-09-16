@@ -4,7 +4,7 @@
  * 为什么是 hook 而不是让编辑器直连 debug store：`store/debug/**` 对其它 feature 是封闭
  * slice 目录（自行 `create()` 会击穿 store 单实例），跨域只允许经门面或公开 store 面。
  * 本 hook 同时承担**门控**：会话不属于当前项目时返回 null（#14 —— 切项目后旧项目的停点
- * 不得在别的项目编辑器上画线 / 夺光标）。
+ * 不得在别的项目编辑器上画线 / 夺光标）。门控本身走唯一实现 `isSessionVisibleFor`。
  *
  * **一次订阅、一并交出状态**（切片 3 / F5）：消费者只需要「位置 + 会话状态」两样输入，
  * 此前它们各自再调一次 `useVisibleDebugSession()` —— 单视图展开成 6 个订阅槽，且「会话属于
@@ -21,6 +21,7 @@ import { useShallow } from 'zustand/shallow';
 
 import { useProjectStore } from '@/shared/store/projectStore';
 
+import { isSessionVisibleFor } from '../sessionVisibility';
 import type { StopLocation } from '../stopLocation';
 import { useDebugStore } from '../store/debugStore';
 
@@ -36,11 +37,11 @@ export interface StopLocationView extends StopLocation {
 
 /** 当前可见会话的停点位置；无会话 / 别项目会话 / 无位置 → null。 */
 export function useStopLocation(): StopLocationView | null {
-  const { location, locationSeq, sessionProjectId, status } = useDebugStore(
+  const { location, locationSeq, session, status } = useDebugStore(
     useShallow((s) => ({
       location: s.location,
       locationSeq: s.locationSeq,
-      sessionProjectId: s.session?.projectId ?? null,
+      session: s.session,
       status: s.session?.status ?? null,
     })),
   );
@@ -48,7 +49,7 @@ export function useStopLocation(): StopLocationView | null {
 
   return useMemo(
     () =>
-      location && sessionProjectId && activeProjectId && sessionProjectId === activeProjectId
+      location && isSessionVisibleFor(session, activeProjectId)
         ? {
             identity: location.identity,
             line: location.line,
@@ -57,6 +58,6 @@ export function useStopLocation(): StopLocationView | null {
             status,
           }
         : null,
-    [location, locationSeq, sessionProjectId, activeProjectId, status],
+    [location, locationSeq, session, activeProjectId, status],
   );
 }

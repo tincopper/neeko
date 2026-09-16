@@ -2,6 +2,7 @@ import { EditorSelection } from '@codemirror/state';
 import { EditorView } from '@codemirror/view';
 import { useCallback, useEffect, useMemo, useRef } from 'react';
 
+import { isSessionVisibleFor } from '@/features/runner';
 import { useDebugStore } from '@/features/runner/store/debugStore';
 import { useEditorStore } from '@/shared/store/editorStore';
 import type { FileTab } from '@/shared/types';
@@ -139,12 +140,11 @@ export function useEditorViewSnapshot({
       const dbg = useDebugStore.getState();
       const snapshotSession = dbg.session;
       // 快照恢复只属于本 tab 项目的会话：跨项目残留停点不得在别的项目编辑器上画线（#14）。
-      const snapshotVisible = snapshotSession && snapshotSession.projectId === tab.projectId;
+      const snapshotVisible = isSessionVisibleFor(snapshotSession, tab.projectId);
       const hl = resolveDebugHighlightLine(
         absFilePath,
-        tab.filePath,
         snapshotVisible ? dbg.location : null,
-        snapshotVisible ? (snapshotSession.status ?? null) : null,
+        snapshotVisible ? (snapshotSession?.status ?? null) : null,
       );
       applyDebugCurrentLine(view, hl);
       if (editorRestoredRef.current) return;

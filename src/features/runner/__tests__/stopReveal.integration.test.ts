@@ -22,6 +22,7 @@ import { useEditorStore } from '@/shared/store/editorStore';
 import { useProjectStore } from '@/shared/store/projectStore';
 import { useWorktreeStore } from '@/shared/store/worktreeStore';
 import type { FileContent } from '@/shared/types';
+import { sourceIdentityOf } from '@/shared/utils/fileRef';
 import { deferred, flushMicrotasks } from '@/testing/async';
 
 import type * as DebugApi from '../api/debugApi';
@@ -31,6 +32,7 @@ import type { StackFrameDto } from '../types';
 const readFileContentMock = vi.hoisted(() => vi.fn());
 const dapStackTrace = vi.hoisted(() => vi.fn());
 const dapVariables = vi.hoisted(() => vi.fn());
+const dapSourceContent = vi.hoisted(() => vi.fn());
 
 vi.mock('@/features/file/api/fileApi', () => ({
   readFileContent: readFileContentMock,
@@ -49,6 +51,7 @@ vi.mock('../api/debugApi', async (importOriginal) => ({
   ...(await importOriginal<typeof DebugApi>()),
   dapStackTrace,
   dapVariables,
+  dapSourceContent,
 }));
 
 const PROJECT = '/repo';
@@ -65,12 +68,32 @@ function frame(id: number, sourcePath: string, line: number): StackFrameDto {
   return { id, name: `f${id}`, sourcePath, line, column: 0 };
 }
 
+/** 适配器侧虚拟源码帧（无磁盘路径，字节由 adapter 持有）。 */
+function virtualFrame(id: number, reference: number, name: string, line: number): StackFrameDto {
+  return {
+    id,
+    name: `f${id}`,
+    sourcePath: null,
+    sourceReference: reference,
+    sourceName: name,
+    line,
+    column: 0,
+  };
+}
+
 function activeTabId(): string | null {
   return useEditorStore.getState().tabs['p1']?.activeTabId ?? null;
 }
 
 function openTabIds(): string[] {
   return (useEditorStore.getState().tabs['p1']?.tabs ?? []).map((t) => t.id);
+}
+
+/** 已打开 file tab 的 `data.filePath`（= tab 身份；FileEditor 由它算 absFilePath）。 */
+function openTabPaths(): string[] {
+  return (useEditorStore.getState().tabs['p1']?.tabs ?? [])
+    .filter((t) => t.data.kind === 'file')
+    .map((t) => (t.data.kind === 'file' ? t.data.filePath : ''));
 }
 
 const STOP_DOC = Array.from({ length: 30 }, (_, i) => `line ${i + 1}`).join('\n');
@@ -91,13 +114,15 @@ function caretLine(view: EditorView): number {
 /**
  * 挂一个「已打开 tab 的编辑器」的跟随钩子（真实 `useDebugStopReveal`）。
  * 这里只挂钩子而非整套 FileEditor：本用例验证的是**停点链 → 跟随**这一段接线。
+ *
+ * 只给 `absFilePath`：它是**规范源身份**（fs / jdt / 虚拟源码三种都成立）——判定不再需要
+ * 第二个参数（曾经的 tab 原始路径参数是为绕过「虚拟身份被拼根」而设的权宜，已随身份文法闭合删除）。
  */
 function renderRevealFor(view: EditorView, filePath: string) {
   const ref = { current: view };
   return renderHook(() =>
     useDebugStopReveal({
       absFilePath: filePath,
-      tabFilePath: filePath,
       editorViewRef: ref,
       viewEpoch: 0,
     }),
@@ -236,5 +261,34 @@ describe('停点跳转链交错（issue #13 症状）', () => {
     expect(location).toEqual({ identity: A_PATH, line: 10, column: 0 });
     // 位置身份就是 tab 身份：不存在「同一份源码两种身份」的分叉。
     expect(openTabIds()).toEqual([`p1:${location!.identity}`]);
+  });
+
+  it('[T3-tab] 适配器虚拟源码：tab 身份即停点身份，编辑器单参数即可命中', async () => {
+    // 虚拟源码（DAP `sourceReference`）没有磁盘路径，身份是合成的 `dap-source:/<ref>/<name>`。
+    // 这条用例锁两件事：
+    // ① `FileEditor` 由 tab 身份算出的 `absFilePath` 必须**等于**停点身份（身份构造点幂等）；
+    // ② 因此匹配判定只需 `absFilePath` 一个参数 —— 回退用的第二个参数已删除且不再需要。
+    seedStoppedSession();
+    dapSourceContent.mockResolvedValue('line 1\nline 2\n');
+    dapStackTrace.mockResolvedValue([virtualFrame(9, 9, 'f9', 2)]);
+
+    await useDebugStore.getState().refreshStackAndVars();
+
+    const { location } = useDebugStore.getState();
+    expect(location?.identity).toBe('dap-source:/9/f9');
+
+    const tabPath = openTabPaths()[0];
+    expect(tabPath).toBe('dap-source:/9/f9');
+    // ★ F3 的核心断言：身份函数对虚拟身份幂等（此前会被拼上项目根 → 伪路径）
+    expect(sourceIdentityOf(PROJECT, tabPath)).toBe(location!.identity);
+
+    // ★ 单参数命中：absFilePath 即身份（正是 FileEditor 传给跟随钩子的那个值）
+    const view = makeView();
+    const { unmount } = renderRevealFor(view, sourceIdentityOf(PROJECT, tabPath));
+    await flushMicrotasks();
+    expect(caretLine(view)).toBe(2);
+
+    unmount();
+    view.destroy();
   });
 });

@@ -1,9 +1,13 @@
 /**
  * Open a file in the editor (shared by Goto File / Recent / search / history).
  *
- * 输入路径是项目根相对（quick-open 文件索引本就按项目根）；tab 身份统一存
- * canonical 绝对路径（worktree 激活时索引与读取 base 仍为项目根，与后端
- * `read_file_content` 缺省 resolve_base 一致）。
+ * 输入可能是**项目根相对路径**（quick-open 索引本就按项目根），也可能是**已规范的身份**
+ * （最近文件列表存的就是 tab 身份：`dap-source:` 虚拟源码 / `jdt:` / JDK 缓存路径）。
+ * 两者都由身份所有者归一（`sourceIdentityOf`），**不得**用 `canonicalFsPath` ——
+ * 它会把非文件路径当相对路径拼上项目根，产出伪身份并开出重复 tab。
+ *
+ * worktree 激活时索引与读取 base 仍为项目根，与后端 `read_file_content` 缺省
+ * resolve_base 一致。
  */
 import { readFileContent } from '@/features/file/api/fileApi';
 import { useEditorStore } from '@/shared/store/editorStore';
@@ -11,7 +15,7 @@ import { useProjectStore } from '@/shared/store/projectStore';
 import { useWorktreeStore } from '@/shared/store/worktreeStore';
 import type { Tab } from '@/shared/types';
 import { preloadLanguageExtension } from '@/shared/utils/codemirror';
-import { canonicalFsPath } from '@/shared/utils/fileRef';
+import { sourceIdentityOf } from '@/shared/utils/fileRef';
 import { getFileName, getTabId } from '@/shared/utils/fileTree';
 import { resolveTabKey } from '@/shared/utils/tabKey';
 
@@ -31,7 +35,7 @@ export async function openProjectFile(opts: {
 
   const projectPath =
     useProjectStore.getState().projects.find((p) => p.id === projectId)?.path ?? '';
-  const filePath = canonicalFsPath(projectPath, rawPath);
+  const filePath = sourceIdentityOf(projectPath, rawPath);
 
   const wt = useWorktreeStore.getState().activeWorktreePath;
   const tabKey = resolveTabKey(projectId, wt);

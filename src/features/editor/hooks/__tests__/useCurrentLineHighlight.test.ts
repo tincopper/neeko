@@ -30,7 +30,7 @@ function sessionWith(status: string): DapSessionInfo {
 }
 
 function render(epoch = 0) {
-  return renderHook(({ e }: { e: number }) => useCurrentLineHighlight('a.ts', 'a.ts', viewRef, e), {
+  return renderHook(({ e }: { e: number }) => useCurrentLineHighlight('a.ts', viewRef, e), {
     initialProps: { e: epoch },
   });
 }
@@ -93,7 +93,7 @@ describe('useCurrentLineHighlight — 黄线（停点标记；光标释放已归
     });
     const emptyRef = { current: null };
 
-    renderHook(() => useCurrentLineHighlight('a.ts', 'a.ts', emptyRef, 0));
+    renderHook(() => useCurrentLineHighlight('a.ts', emptyRef, 0));
 
     expect(applyDebugCurrentLine).not.toHaveBeenCalled();
   });

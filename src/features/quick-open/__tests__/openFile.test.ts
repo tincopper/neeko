@@ -66,4 +66,38 @@ describe('openProjectFile — file tab 构造 canonical 化（quick-open 链路�
       '/repo/src/a.ts',
     );
   });
+
+  /**
+   * 入参可能是**身份**而非文件路径：最近文件列表存的就是 tab 身份，而虚拟源码
+   * （`dap-source:`）与 jdt 都不是文件系统路径。用 `canonicalFsPath` 会把它们当相对路径
+   * 拼上项目根（`/repo/dap-source:/9/f9`）⇒ 开出「伪路径」tab，与停点打开的同一份源码
+   * 变成两个身份。故这里必须走身份入口（`sourceIdentityOf`）。
+   */
+  it('身份化入参（dap-source: 虚拟源码）→ 原样作为 tab 身份，不拼项目根', async () => {
+    await openProjectFile({ projectId: 'p1', filePath: 'dap-source:/9/f9' });
+
+    const space = useEditorStore.getState().tabs['p1'];
+    expect(space.tabs[0].id).toBe('p1:dap-source:/9/f9');
+    expect(space.tabs[0].data.kind === 'file' && space.tabs[0].data.filePath).toBe(
+      'dap-source:/9/f9',
+    );
+  });
+
+  it('身份化入参（jdt 展示路径）→ 原样，且与停点打开的 JDK 源码是同一个 tab', async () => {
+    await openProjectFile({ projectId: 'p1', filePath: 'jdt:/java.base/java/io/PrintStream.java' });
+
+    const space = useEditorStore.getState().tabs['p1'];
+    expect(space.tabs[0].id).toBe('p1:jdt:/java.base/java/io/PrintStream.java');
+  });
+
+  it('JDK 解压缓存路径 → 收敛为 jdt 身份（同一份源码一种身份）', async () => {
+    await openProjectFile({
+      projectId: 'p1',
+      filePath:
+        '/home/u/.neeko/java-src-cache/jdk-src-21.0.12.1/java.base/java/io/PrintStream.java',
+    });
+
+    const space = useEditorStore.getState().tabs['p1'];
+    expect(space.tabs[0].id).toBe('p1:jdt:/java.base/java/io/PrintStream.java');
+  });
 });

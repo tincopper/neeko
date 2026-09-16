@@ -43,14 +43,13 @@ describe('debugPathsMatch — 只做路径形态容错，不做身份转换', ()
 
 describe('resolveDebugHighlightLine — 停点是否落在本 tab（黄线与光标跟随共用同一判定）', () => {
   it('should_return_null_when_no_location', () => {
-    expect(resolveDebugHighlightLine('/p/a.go', 'a.go', null, 'stopped')).toBeNull();
+    expect(resolveDebugHighlightLine('/p/a.go', null, 'stopped')).toBeNull();
   });
 
   it('should_highlight_when_paths_match_and_stopped', () => {
     expect(
       resolveDebugHighlightLine(
         '/Users/me/proj/main.go',
-        'main.go',
         { identity: '/Users/me/proj/main.go', line: 7 },
         'stopped',
       ),
@@ -61,7 +60,6 @@ describe('resolveDebugHighlightLine — 停点是否落在本 tab（黄线与光
     expect(
       resolveDebugHighlightLine(
         '/Users/me/proj/main.go',
-        'main.go',
         { identity: '/Users/me/proj/main.go', line: 7 },
         'running',
       ),
@@ -72,7 +70,6 @@ describe('resolveDebugHighlightLine — 停点是否落在本 tab（黄线与光
     expect(
       resolveDebugHighlightLine(
         '/Users/me/proj/main.go',
-        'main.go',
         { identity: '/Users/me/proj/main.go', line: 7 },
         'terminated',
       ),
@@ -83,27 +80,23 @@ describe('resolveDebugHighlightLine — 停点是否落在本 tab（黄线与光
     expect(
       resolveDebugHighlightLine(
         '/Users/me/proj/main.go',
-        'main.go',
         { identity: '/Users/me/proj/other.go', line: 7 },
         'stopped',
       ),
     ).toBeNull();
   });
 
-  it('abs 路径不命中时回退到 tab 身份（本 tab 的绝对路径入参为 null 的场景）', () => {
+  it('absFilePath 为 null（本 tab 无身份）→ 不命中', () => {
+    expect(
+      resolveDebugHighlightLine(null, { identity: '/Users/me/proj/main.go', line: 7 }, 'stopped'),
+    ).toBeNull();
+  });
+
+  it('虚拟源码身份同样单参数命中（`dap-source:` 不再需要旁路）', () => {
     expect(
       resolveDebugHighlightLine(
-        null,
-        '/Users/me/proj/main.go',
-        { identity: '/Users/me/proj/main.go', line: 7 },
-        'stopped',
-      ),
-    ).toBe(7);
-    expect(
-      resolveDebugHighlightLine(
-        '/Users/me/proj/other.go',
-        '/Users/me/proj/main.go',
-        { identity: '/Users/me/proj/main.go', line: 7 },
+        'dap-source:/42/Foo.java',
+        { identity: 'dap-source:/42/Foo.java', line: 7 },
         'stopped',
       ),
     ).toBe(7);
@@ -113,7 +106,6 @@ describe('resolveDebugHighlightLine — 停点是否落在本 tab（黄线与光
     expect(
       resolveDebugHighlightLine(
         '/Users/me/proj/main.go',
-        'main.go',
         { identity: '/Users/me/proj/main.go', line: 0 },
         'stopped',
       ),
@@ -124,7 +116,6 @@ describe('resolveDebugHighlightLine — 停点是否落在本 tab（黄线与光
     expect(
       resolveDebugHighlightLine(
         '/Users/me/proj/main.go',
-        'main.go',
         { identity: '/Users/me/proj/main.go', line: 7 },
         'starting',
       ),
@@ -132,7 +123,6 @@ describe('resolveDebugHighlightLine — 停点是否落在本 tab（黄线与光
     expect(
       resolveDebugHighlightLine(
         '/Users/me/proj/main.go',
-        'main.go',
         { identity: '/Users/me/proj/main.go', line: 7 },
         null,
       ),

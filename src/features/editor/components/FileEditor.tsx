@@ -90,7 +90,6 @@ function FileEditor({
     useEditorBreakpoints({
       projectId: tab.projectId,
       absFilePath,
-      filePath: tab.filePath,
       editorViewRef,
       editorViewEpoch,
     });
@@ -121,7 +120,6 @@ function FileEditor({
   // 与黄线同一匹配判定，但职责不同 —— 黄线是幂等装饰，光标是带接管语义的动作。
   useDebugStopReveal({
     absFilePath,
-    tabFilePath: tab.filePath,
     editorViewRef,
     viewEpoch: editorViewEpoch,
   });

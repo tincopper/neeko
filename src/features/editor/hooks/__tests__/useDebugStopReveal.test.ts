@@ -61,7 +61,6 @@ function renderReveal(
     ({ e }: { e: number }) =>
       useDebugStopReveal({
         absFilePath: filePath,
-        tabFilePath: filePath,
         editorViewRef: ref,
         viewEpoch: e,
       }),

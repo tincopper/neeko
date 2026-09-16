@@ -20,6 +20,8 @@
  * 跨域消费一律 `from '@/features/runner/store/testResults'` 直导。
  */
 export { useRunActions } from './hooks/useRunActions';
+// #14 门控的唯一实现（纯函数）：editor 侧快照恢复等非 hook 场景也要用它，故进门面。
+export { isSessionVisibleFor } from './sessionVisibility';
 export { useVisibleDebugSession } from './hooks/useVisibleDebugSession';
 export { useStopLocation } from './hooks/useStopLocation';
 export type { StopLocationView } from './hooks/useStopLocation';

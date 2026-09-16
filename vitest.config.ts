@@ -70,6 +70,13 @@ export default defineConfig({
           functions: 100,
           branches: 100,
         },
+        // #14 门控的唯一实现（纯函数）
+        '**/runner/sessionVisibility.ts': {
+          lines: 100,
+          statements: 100,
+          functions: 100,
+          branches: 100,
+        },
         '**/runner/hooks/useStopLocation.ts': {
           lines: 100,
           statements: 100,

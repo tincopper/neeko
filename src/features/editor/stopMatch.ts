@@ -24,12 +24,16 @@ export function debugPathsMatch(a: string, b: string): boolean {
 /**
  * 停点是否落在本 tab？是则返回要标记/跳转的行号（1-based），否则 null。
  *
+ * `absFilePath` 必须是**规范源身份** —— 由 `FileEditor` 用 `sourceIdentityOf` 算出，
+ * 对 fs / jdt / 虚拟源码三种身份都成立（身份构造点幂等，见 `fileRef` 模块头）。
+ * 因此判定只需一个参数：曾有的第二个参数（tab 原始路径）是为绕过「虚拟身份被拼根」
+ * 而设的权宜，身份文法闭合后已删除。
+ *
  * 状态门是**软门**：后端在停点前后可能瞬时报告 `starting` / `running`，所以只有明确
  * 既非 `stopped` 也非 `starting` 时才判定为「不在停点上」。
  */
 export function resolveDebugHighlightLine(
   absFilePath: string | null,
-  tabFilePath: string | null,
   location: { identity: string; line: number } | null,
   sessionStatus: string | null | undefined,
 ): number | null {
@@ -38,9 +42,6 @@ export function resolveDebugHighlightLine(
     return null;
   }
   if (absFilePath && debugPathsMatch(location.identity, absFilePath)) {
-    return location.line;
-  }
-  if (tabFilePath && debugPathsMatch(location.identity, tabFilePath)) {
     return location.line;
   }
   return null;

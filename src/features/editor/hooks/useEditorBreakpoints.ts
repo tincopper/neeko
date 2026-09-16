@@ -9,7 +9,6 @@ import { useCurrentLineHighlight } from './useCurrentLineHighlight';
 interface UseEditorBreakpointsParams {
   projectId: string;
   absFilePath: string;
-  filePath: string;
   editorViewRef: React.MutableRefObject<EditorView | null>;
   editorViewEpoch: number;
 }
@@ -20,7 +19,6 @@ interface UseEditorBreakpointsParams {
 export function useEditorBreakpoints({
   projectId,
   absFilePath,
-  filePath,
   editorViewRef,
   editorViewEpoch,
 }: UseEditorBreakpointsParams) {
@@ -37,7 +35,7 @@ export function useEditorBreakpoints({
   // Current-line highlight field lives inside breakpointContributionExtensions
   // (assembled by the unified gutter); this only re-applies on stop.
   // 黄线只负责标记：光标跟随 / 接管 / 释放归 `useDebugStopReveal`。
-  useCurrentLineHighlight(absFilePath, filePath, editorViewRef, editorViewEpoch);
+  useCurrentLineHighlight(absFilePath, editorViewRef, editorViewEpoch);
 
   // Stable callbacks for lineNumbers handlers
   const handleLnClick = useCallback(
