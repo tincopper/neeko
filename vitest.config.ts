@@ -100,6 +100,21 @@ export default defineConfig({
           functions: 100,
           branches: 80,
         },
+        // 组合装配层（F8 抽取后为独立模块；此前 0%）：由 FileEditor 组合冒烟测试覆盖。
+        // `useFileEditorLsp` 一次渲染即全覆盖，故按「实测 100、分支留 10pt 余量」取值。
+        '**/editor/hooks/useFileEditorLsp.ts': {
+          lines: 100,
+          statements: 100,
+          functions: 100,
+          branches: 90,
+        },
+        // 组件只门控「行 / 语句」（实测 95.23 / 90.9）：**分支与函数不设阈值** ——
+        // 剩余未覆盖是「作为 props 传递但未被调用的内联回调」（其行为归属各自 hook / 子组件的测试），
+        // 给它们设 <80 的阈值等于把低标准写进配置。
+        '**/editor/components/FileEditor.tsx': {
+          lines: 90,
+          statements: 85,
+        },
       },
     },
   },
