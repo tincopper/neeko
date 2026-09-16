@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { useFileStore } from '@/features/file/store';
 import type { FileNode } from '@/shared/types';
+import { deferred } from '@/testing/async';
 
 const OWNER = 'p1:/proj';
 
@@ -10,16 +11,6 @@ function dirNode(name: string, path: string, children: FileNode[] = []): FileNod
 }
 function fileNode(name: string, path: string): FileNode {
   return { name, path, is_dir: false, children: [] };
-}
-
-function deferred<T>() {
-  let resolve!: (value: T) => void;
-  let reject!: (reason?: unknown) => void;
-  const promise = new Promise<T>((res, rej) => {
-    resolve = res;
-    reject = rej;
-  });
-  return { promise, resolve, reject };
 }
 
 beforeEach(() => {

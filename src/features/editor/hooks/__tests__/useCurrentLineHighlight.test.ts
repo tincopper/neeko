@@ -1,152 +1,111 @@
 import type { EditorView } from '@codemirror/view';
-import { act, renderHook } from '@testing-library/react';
+import { renderHook } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { useDebugStore } from '@/features/runner/store/debugStore';
 import { useProjectStore } from '@/shared/store/projectStore';
 import type { DapSessionInfo } from '@/shared/types';
 
-import {
-  debugPathsMatch,
-  resolveDebugHighlightLine,
-  useCurrentLineHighlight,
-} from '../useCurrentLineHighlight';
+const applyDebugCurrentLine = vi.hoisted(() => vi.fn());
 
-describe('debugPathsMatch — 只做路径形态容错，不做身份转换', () => {
-  const CACHE =
-    '/Users/u/.neeko/java-src-cache/jdk-src-21.0.12.1/java.base/java/io/PrintStream.java';
-  const JDT = 'jdt:/java.base/java/io/PrintStream.java';
+vi.mock('../useBreakpointGutter', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../useBreakpointGutter')>()),
+  applyDebugCurrentLine,
+}));
 
-  it('普通路径形态容错', () => {
-    expect(debugPathsMatch('/repo/a.go', 'a.go')).toBe(true);
-    expect(debugPathsMatch('/repo/a.go', '/other/b.go')).toBe(false);
+import { useCurrentLineHighlight } from '../useCurrentLineHighlight';
+
+/** 极简 view：本文件只验证「黄线装饰收到哪一行」（装饰真实效果由 gutter 侧测）。 */
+const fakeView = { dispatch: vi.fn() } as unknown as EditorView;
+const viewRef = { current: fakeView };
+
+function sessionWith(status: string): DapSessionInfo {
+  return {
+    sessionId: 's1',
+    projectId: 'p1',
+    projectPath: '/p',
+    configName: 'cfg',
+    status,
+  };
+}
+
+function render(epoch = 0) {
+  return renderHook(({ e }: { e: number }) => useCurrentLineHighlight('a.ts', 'a.ts', viewRef, e), {
+    initialProps: { e: epoch },
   });
+}
 
-  it('身份转换不在此处：缓存路径与 jdt 身份是两个不同字符串', () => {
-    // 归一统一在 sourceIdentityOf（tab 身份 / stoppedAt 写入时）完成；
-    // 本函数若再次做身份转换，就是把「两种身份」重新引回消费侧。
-    expect(debugPathsMatch(CACHE, JDT)).toBe(false);
-    expect(debugPathsMatch(JDT, JDT)).toBe(true);
-  });
+beforeEach(() => {
+  applyDebugCurrentLine.mockClear();
+  useDebugStore.setState({ session: null, location: null, locationSeq: 0, generation: null });
+  useProjectStore.setState({ activeProjectId: 'p1', activeProject: { id: 'p1' } as never });
 });
 
-describe('resolveDebugHighlightLine', () => {
-  it('should_return_null_when_no_stoppedAt', () => {
-    expect(resolveDebugHighlightLine('/p/a.go', 'a.go', null, 'stopped')).toBeNull();
-  });
-
-  it('should_highlight_when_paths_match_and_stopped', () => {
-    expect(
-      resolveDebugHighlightLine(
-        '/Users/me/proj/main.go',
-        'main.go',
-        { filePath: '/Users/me/proj/main.go', line: 7 },
-        'stopped',
-      ),
-    ).toBe(7);
-  });
-
-  it('should_not_highlight_when_session_running', () => {
-    expect(
-      resolveDebugHighlightLine(
-        '/Users/me/proj/main.go',
-        'main.go',
-        { filePath: '/Users/me/proj/main.go', line: 7 },
-        'running',
-      ),
-    ).toBeNull();
-  });
-
-  it('should_not_highlight_when_terminated', () => {
-    expect(
-      resolveDebugHighlightLine(
-        '/Users/me/proj/main.go',
-        'main.go',
-        { filePath: '/Users/me/proj/main.go', line: 7 },
-        'terminated',
-      ),
-    ).toBeNull();
-  });
-});
-
-describe('useCurrentLineHighlight — 停点结束后释放调试放置的光标（注入式）', () => {
-  /** 极简 view：本文件只验证"调用哪个释放函数、传什么行号"（光标真实效果由 editor 侧测）。 */
-  const fakeView = { dispatch: vi.fn() } as unknown as EditorView;
-  const viewRef = { current: fakeView };
-
-  const sessionWith = (status: string) =>
-    ({
-      sessionId: 's1',
-      projectId: 'p1',
-      projectPath: '/p',
-      configName: 'cfg',
-      status,
-    }) as DapSessionInfo;
-
-  let releasePlacedCaret: ReturnType<typeof vi.fn>;
-
-  const render = () =>
-    renderHook(() => useCurrentLineHighlight('a.ts', 'a.ts', viewRef, 0, releasePlacedCaret));
-
-  beforeEach(() => {
-    releasePlacedCaret = vi.fn();
-    useDebugStore.setState({ stoppedAt: null, session: null });
-    useProjectStore.setState({ activeProjectId: 'p1', activeProject: { id: 'p1' } as never });
-  });
-
-  it('停点结束时按最后一次占用的行释放；占用期间不释放', () => {
+describe('useCurrentLineHighlight — 黄线（停点标记；光标释放已归 useDebugStopReveal）', () => {
+  it('停点落在本文件 → 标记停止行；停点移到别的文件 → 清除标记', () => {
+    useDebugStore.setState({
+      session: sessionWith('stopped'),
+      location: { identity: 'a.ts', line: 2, column: 0 },
+      locationSeq: 1,
+    });
     const { rerender } = render();
 
-    // 停在 2 行 → 占用（不得释放）
-    act(() => {
-      useDebugStore.setState({
-        stoppedAt: { filePath: 'a.ts', line: 2 },
-        session: sessionWith('stopped'),
-      });
-    });
-    rerender();
-    expect(releasePlacedCaret).not.toHaveBeenCalled();
+    expect(applyDebugCurrentLine).toHaveBeenLastCalledWith(fakeView, 2);
 
-    // 会话终止 → 释放，且用的是最后一次占用的行
-    act(() => {
-      useDebugStore.setState({ stoppedAt: null, session: sessionWith('terminated') });
+    useDebugStore.setState({
+      location: { identity: 'other.ts', line: 9, column: 0 },
+      locationSeq: 2,
     });
-    rerender();
-    expect(releasePlacedCaret).toHaveBeenCalledTimes(1);
-    expect(releasePlacedCaret).toHaveBeenCalledWith(fakeView, 2);
+    rerender({ e: 0 });
+
+    expect(applyDebugCurrentLine).toHaveBeenLastCalledWith(fakeView, null);
   });
 
-  it('继续运行同样释放（不必等会话结束）', () => {
-    const { rerender } = render();
-    act(() => {
-      useDebugStore.setState({
-        stoppedAt: { filePath: 'a.ts', line: 5 },
-        session: sessionWith('stopped'),
-      });
+  it('无会话 / 会话不属于当前项目 → 不标记（#14 门控）', () => {
+    useDebugStore.setState({
+      location: { identity: 'a.ts', line: 2, column: 0 },
+      locationSeq: 1,
     });
-    rerender();
+    render();
 
-    act(() => {
-      useDebugStore.setState({ stoppedAt: null, session: sessionWith('running') });
-    });
-    rerender();
-    expect(releasePlacedCaret).toHaveBeenCalledWith(fakeView, 5);
+    expect(applyDebugCurrentLine).toHaveBeenLastCalledWith(fakeView, null);
   });
 
-  it('从未占用过本文件 → 不释放为空操作', () => {
+  it('视图重建（viewEpoch 变化）→ 重放标记（黄线是幂等装饰）', () => {
+    useDebugStore.setState({
+      session: sessionWith('stopped'),
+      location: { identity: 'a.ts', line: 5, column: 0 },
+      locationSeq: 1,
+    });
     const { rerender } = render();
-    act(() => {
-      useDebugStore.setState({
-        stoppedAt: { filePath: 'other.ts', line: 9 },
-        session: sessionWith('stopped'),
-      });
-    });
-    rerender();
-    act(() => {
-      useDebugStore.setState({ stoppedAt: null, session: sessionWith('terminated') });
-    });
-    rerender();
+    applyDebugCurrentLine.mockClear();
 
-    expect(releasePlacedCaret).not.toHaveBeenCalled();
+    rerender({ e: 1 });
+
+    expect(applyDebugCurrentLine).toHaveBeenCalledWith(fakeView, 5);
+  });
+
+  it('视图尚未创建（ref 为空）→ 不派发装饰（防御分支）', () => {
+    useDebugStore.setState({
+      session: sessionWith('stopped'),
+      location: { identity: 'a.ts', line: 3, column: 0 },
+      locationSeq: 1,
+    });
+    const emptyRef = { current: null };
+
+    renderHook(() => useCurrentLineHighlight('a.ts', 'a.ts', emptyRef, 0));
+
+    expect(applyDebugCurrentLine).not.toHaveBeenCalled();
+  });
+
+  it('会话运行中 / 已终止 → 不标记', () => {
+    useDebugStore.setState({
+      session: sessionWith('running'),
+      location: { identity: 'a.ts', line: 5, column: 0 },
+      locationSeq: 1,
+    });
+    render();
+
+    expect(applyDebugCurrentLine).toHaveBeenLastCalledWith(fakeView, null);
   });
 });

@@ -21,6 +21,8 @@
  */
 export { useRunActions } from './hooks/useRunActions';
 export { useVisibleDebugSession } from './hooks/useVisibleDebugSession';
+export { useStopLocation } from './hooks/useStopLocation';
+export type { StopLocationView } from './hooks/useStopLocation';
 export { default as DebugRunButton } from './components/DebugRunButton';
 export { default as DebugPanel } from './components/DebugPanel';
 export type { LaunchConfig } from './types';

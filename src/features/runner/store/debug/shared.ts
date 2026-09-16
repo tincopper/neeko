@@ -1,5 +1,6 @@
 import { useNotificationStore } from '@/shared/store/notificationStore';
 
+import type { StopLocation } from '../../stackFrames';
 import type { DapSessionInfo } from '../../types';
 
 import type { DebugStore } from './types';
@@ -59,9 +60,40 @@ export function isLiveSession(session: DapSessionInfo | null): boolean {
   return !!session?.sessionId && session.status !== 'terminated' && session.status !== 'ended';
 }
 
-/** Clear stack / vars / highlight when a session ends (idempotent). */
+/**
+ * 停点位置状态对：位置 + **严格单调**的位置变化序号。
+ *
+ * `locationSeq` 不是可派生冗余：「位置值相同」≠「事件相同」——同一断点在循环里连续命中时
+ * 各字段逐字相等，而编辑器侧必须能区分「又发生了一次停点」（新事件要重新跟随），
+ * 因此事件键只能是序号。
+ */
+export interface StopLocationState {
+  location: StopLocation | null;
+  locationSeq: number;
+}
+
+/**
+ * 位置变更：写入新位置（`null` = 清空）并把序号 +1。
+ *
+ * 所有写位置的路径（停点 / 切帧 / 清空）都经此函数，使「位置 + 序号」永远成对更新 ——
+ * 编辑器侧只依赖序号，不会漏事件也不会重复响应。
+ */
+export function withStopLocation(
+  current: StopLocationState,
+  next: StopLocation | null,
+): StopLocationState {
+  return { location: next, locationSeq: current.locationSeq + 1 };
+}
+
+/**
+ * Clear stack / vars / highlight when a session ends (idempotent).
+ *
+ * `locationState` 传当前状态（`get()`）：清空也是一次位置事件，序号必须继续 +1，
+ * 否则结束后残留的序号会让编辑器把「清空」误判成同一次事件而不释放光标。
+ */
 export function endedSessionPatch(
   session: DapSessionInfo | null,
+  locationState: StopLocationState,
   statusMessage = 'Session terminated',
 ): Partial<DebugStore> {
   return {
@@ -75,7 +107,8 @@ export function endedSessionPatch(
     frames: [],
     variables: [],
     ...CLEAR_EXPANSION,
-    stoppedAt: null,
+    ...withStopLocation(locationState, null),
     selectedFrameId: null,
+    generation: null,
   };
 }

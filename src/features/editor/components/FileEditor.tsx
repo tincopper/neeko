@@ -1,25 +1,20 @@
 import type { EditorView } from '@codemirror/view';
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
 
-import { useCmdHeld } from '@/features/lsp';
-import { useLspStore } from '@/features/lsp/store/lspStore';
 import { useRunActions } from '@/features/runner';
-import { cn } from '@/lib/utils';
 import ContextMenu from '@/shared/components/ContextMenu';
 import type { AppTheme, FileTab } from '@/shared/types';
 import { sourceIdentityOf } from '@/shared/utils/fileRef';
-import { tabLspDocumentUri } from '@/shared/utils/jdt';
 
 import { useBinaryImagePreview } from '../hooks/useBinaryImagePreview';
+import { useDebugStopReveal } from '../hooks/useDebugStopReveal';
 import { useEditorBreakpoints } from '../hooks/useEditorBreakpoints';
 import { useEditorExtensions } from '../hooks/useEditorExtensions';
 import { useEditorSave } from '../hooks/useEditorSave';
 import { useEditorViewSnapshot } from '../hooks/useEditorViewSnapshot';
 import { useFileEditorCallbacks } from '../hooks/useFileEditorCallbacks';
+import { useFileEditorLsp } from '../hooks/useFileEditorLsp';
 import { useFileEditorState } from '../hooks/useFileEditorState';
-import { useJdtLinkNavigation } from '../hooks/useJdtLinkNavigation';
-import { useLspClient } from '../hooks/useLspClient';
-import { useLspNavigation } from '../hooks/useLspNavigation';
 import { useUnifiedGutterExtension } from '../hooks/useUnifiedGutter';
 
 import FileEditorFallback, { fileEditorFallbackKind } from './FileEditorFallback';
@@ -100,36 +95,14 @@ function FileEditor({
       editorViewEpoch,
     });
 
-  // hover 的 jdt:// 链接 → 跳转：回调引用恒定（可先交给 useLspClient），
-  // navigateToLocation 就绪后再 bind（两段式晚绑定，见 useJdtLinkNavigation）。
-  const { onOpenJdtLink, bind: bindJdtLinkNav } = useJdtLinkNavigation();
-
-  const { lspLanguageIdRef, lspClientExt, linkHighlightExt } = useLspClient({
-    projectPath,
-    filePath: tab.filePath,
-    virtualUri: tab.virtualUri ?? tabLspDocumentUri(tab),
-    onOpenJdtLink,
-  });
-
-  const { lspKeymap, cmdClickExt, navigateToLocation } = useLspNavigation({
-    projectPath,
-    tabKey,
+  // LSP 装配簇（client / 导航 / jdt 链接晚绑定 / 交互态光标样式）收在专用 hook，
+  // 与「文件挂载 + 断点 + 运行入口」的装配互不干扰。
+  const { lspClientExt, lspKeymap, cmdClickExt, linkHighlightExt, cmClassName } = useFileEditorLsp({
     tab,
-    lspLanguageIdRef,
+    tabKey,
+    projectPath,
     editorViewRef,
   });
-
-  // effect 返回解绑：ref 不超出 tab 存活期（回调归属由 LSP 侧 facet 保证）。
-  useEffect(
-    () =>
-      bindJdtLinkNav(navigateToLocation, {
-        projectPath,
-        tabKey,
-        projectId: tab.projectId,
-        filePath: tab.filePath,
-      }),
-    [bindJdtLinkNav, navigateToLocation, projectPath, tabKey, tab.projectId, tab.filePath],
-  );
 
   const { handleCreateEditor, viewStateExt, resetEditorRestored } = useEditorViewSnapshot({
     tabKey,
@@ -142,6 +115,15 @@ function FileEditor({
     setToolbarPos,
     editorViewRef,
     setEditorViewEpoch,
+  });
+
+  // 调试停点跟随：从停点 `location` 派生（幂等重放 + 用户接管 + 结束时释放光标）。
+  // 与黄线同一匹配判定，但职责不同 —— 黄线是幂等装饰，光标是带接管语义的动作。
+  useDebugStopReveal({
+    absFilePath,
+    tabFilePath: tab.filePath,
+    editorViewRef,
+    viewEpoch: editorViewEpoch,
   });
 
   const {
@@ -202,15 +184,6 @@ function FileEditor({
     handleLnLeave,
   });
 
-  // Cmd/Ctrl held state — used for link highlight pointer cursor style
-  const cmdHeld = useCmdHeld();
-  // 显式跳转进行中 → loading 光标（冷启动 server 握手时给出可感知反馈）
-  const isJumping = useLspStore((state) => state.isDefinitionJumping);
-  const cmClassName = cn(
-    'h-full overflow-hidden',
-    cmdHeld && 'cmd-held',
-    isJumping && 'lsp-jumping',
-  );
   const { handleInternalLinkClick, handleOpenSearch, handleOpenAI } = useFileEditorCallbacks({
     editorViewRef,
   });

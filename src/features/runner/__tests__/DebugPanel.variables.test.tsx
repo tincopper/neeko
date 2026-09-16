@@ -46,7 +46,9 @@ function seed(overrides: Record<string, unknown> = {}) {
     loadingRefs: {},
     varErrors: {},
     selectedFrameId: null,
-    stoppedAt: null,
+    location: null,
+    locationSeq: 0,
+    generation: null,
     error: null,
     ...overrides,
   });

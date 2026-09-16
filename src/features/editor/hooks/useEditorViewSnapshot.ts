@@ -12,8 +12,9 @@ import {
 } from '@/shared/utils/editorViewState';
 
 import { applyNavigateCaret } from '../navigateCaret';
+import { resolveDebugHighlightLine } from '../stopMatch';
 
-import { applyDebugCurrentLine, resolveDebugHighlightLine } from './useCurrentLineHighlight';
+import { applyDebugCurrentLine } from './useBreakpointGutter';
 
 interface UseEditorViewSnapshotParams {
   tabKey: string;
@@ -30,7 +31,8 @@ interface UseEditorViewSnapshotParams {
 
 /**
  * CodeMirror 视图生命周期：scrollTop/selection 快照保存与恢复、
- * pending LSP 导航目标应用、卸载兜底保存、status bar 光标同步。
+ * **用户意图**跳转目标应用（调试停点跟随走 `useDebugStopReveal` 的派生链）、
+ * 卸载兜底保存、status bar 光标同步。
  */
 export function useEditorViewSnapshot({
   tabKey,
@@ -141,7 +143,7 @@ export function useEditorViewSnapshot({
       const hl = resolveDebugHighlightLine(
         absFilePath,
         tab.filePath,
-        snapshotVisible ? dbg.stoppedAt : null,
+        snapshotVisible ? dbg.location : null,
         snapshotVisible ? (snapshotSession.status ?? null) : null,
       );
       applyDebugCurrentLine(view, hl);
@@ -152,11 +154,7 @@ export function useEditorViewSnapshot({
       if (pending && pending.tabKey === tabKey && pending.tabId === tabId) {
         // Defer one frame so layout is measured before scroll/focus
         requestAnimationFrame(() => {
-          // `debug`（调试停点）的跳转要记录原光标位置：停止结束后由
-          // `releaseDebugCaret` 还回去（用户意图的跳转不记录）。
-          applyNavigateCaret(view, pending.line, pending.col, {
-            rememberPrevCaret: pending.debug === true,
-          });
+          applyNavigateCaret(view, pending.line, pending.col);
         });
         // Delay clear to survive React StrictMode double-mount
         queueMicrotask(() => {
@@ -224,11 +222,7 @@ export function useEditorViewSnapshot({
         const view = editorViewRef.current;
         if (view) {
           requestAnimationFrame(() => {
-            // `debug`（调试停点）的跳转要记录原光标位置：停止结束后由
-            // `releaseDebugCaret` 还回去（用户意图的跳转不记录）。
-            applyNavigateCaret(view, pending.line, pending.col, {
-              rememberPrevCaret: pending.debug === true,
-            });
+            applyNavigateCaret(view, pending.line, pending.col);
           });
           useEditorStore.getState().setPendingNavigateTarget(null);
         }

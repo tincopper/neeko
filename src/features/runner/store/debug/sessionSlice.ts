@@ -10,7 +10,13 @@ import {
 import type { DapSessionInfo, EntryPoint, LaunchConfig } from '../../types';
 import { languageHooks } from '../languageHooks';
 
-import { CLEAR_EXPANSION, endedSessionPatch, isLiveSession, notifyError } from './shared';
+import {
+  CLEAR_EXPANSION,
+  endedSessionPatch,
+  isLiveSession,
+  notifyError,
+  withStopLocation,
+} from './shared';
 import type { DebugSessionSlice, DebugSliceCreator } from './types';
 
 /**
@@ -28,7 +34,9 @@ export const createSessionSlice: DebugSliceCreator<DebugSessionSlice> = (set, ge
       frames: [],
       variables: [],
       ...CLEAR_EXPANSION,
-      stoppedAt: null,
+      // 复位也是一次位置事件（序号 +1）+ 无效代际：在途旧链必须整批判死。
+      ...withStopLocation(get(), null),
+      generation: null,
       selectedFrameId: null,
     });
   };
@@ -76,6 +84,8 @@ export const createSessionSlice: DebugSliceCreator<DebugSessionSlice> = (set, ge
         errorProjectId: projectId,
         panelOpen: true,
         panelTab: 'console',
+        // 启动失败 ⇒ 会话不存在 ⇒ 无有效停点：代际必须作废，否则在途旧链仍会被判为「当前」。
+        generation: null,
         session: get().session
           ? { ...get().session!, status: 'terminated', statusMessage: msg }
           : {
@@ -195,7 +205,7 @@ export const createSessionSlice: DebugSliceCreator<DebugSessionSlice> = (set, ge
         }
       }
       set({
-        ...endedSessionPatch(get().session, 'Stopped'),
+        ...endedSessionPatch(get().session, get(), 'Stopped'),
         panelOpen: true,
         panelTab: 'console',
       });
@@ -230,7 +240,7 @@ export const createSessionSlice: DebugSliceCreator<DebugSessionSlice> = (set, ge
           get().pushConsole('err', String(e));
         }
       }
-      set({ ...endedSessionPatch(session, 'Stopped') });
+      set({ ...endedSessionPatch(session, get(), 'Stopped') });
     },
   };
 };

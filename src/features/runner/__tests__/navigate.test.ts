@@ -3,6 +3,11 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { useEditorStore } from '@/shared/store/editorStore';
 import { useProjectStore } from '@/shared/store/projectStore';
 import { useWorktreeStore } from '@/shared/store/worktreeStore';
+import type { FileContent } from '@/shared/types';
+import { deferred } from '@/testing/async';
+
+import { ensureStopSourceTab, openSourceAtLine, openVirtualSourceAtLine } from '../navigate';
+import type { StackFrameDto } from '../types';
 
 const { readFileContentMock, preloadMock, externalReadMock, virtualReadMock, recordJumpMock } =
   vi.hoisted(() => ({
@@ -31,8 +36,6 @@ vi.mock('@/shared/store/navigationHistoryStore', () => ({
   captureCurrentNavLocation: () => null,
   recordNavigationJump: recordJumpMock,
 }));
-
-import { openSourceAtLine, openVirtualSourceAtLine } from '../navigate';
 
 const EXTERNAL_PATH = '/opt/dep/src/lib.rs';
 
@@ -356,5 +359,203 @@ describe('openVirtualSourceAtLine — 适配器虚拟源码（sourceReference）
 
     expect(useEditorStore.getState().tabs['p1']).toBeUndefined();
     expect(onError).toHaveBeenCalledWith(expect.stringContaining('Failed to open source'));
+  });
+});
+
+/**
+ * 停点路径：**只确保源码 tab 存在并激活**，不写跳转目标（跳转由 `location` 派生链承担），
+ * 且在 `await` 之后必须校验落地许可 —— 旧停点的内容加载晚到时不得抢走新停点的激活。
+ */
+describe('ensureStopSourceTab — 停点只确保源码可见（不写跳转目标 + 落地许可）', () => {
+  const PROJECT = '/repo';
+  const A_PATH = `${PROJECT}/src/A.java`;
+  const B_PATH = `${PROJECT}/src/B.java`;
+
+  function frame(id: number, sourcePath: string | null, line = 10): StackFrameDto {
+    return { id, name: `f${id}`, sourcePath, line, column: 2 };
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    useEditorStore.setState({
+      tabs: {},
+      editorLayout: {},
+      activeTabId: null,
+      pendingNavigateTarget: null,
+    });
+    useProjectStore.setState({ activeProject: null });
+    useWorktreeStore.setState({ activeWorktreePath: null });
+    readFileContentMock.mockImplementation(async (_projectId: string, p: string) => content(p));
+  });
+
+  it('should_open_and_activate_the_tab_without_writing_a_navigate_target', async () => {
+    const tabId = await ensureStopSourceTab({
+      projectId: 'p1',
+      projectPath: PROJECT,
+      frame: frame(1, A_PATH),
+      sessionId: 's1',
+      isCurrent: () => true,
+    });
+
+    const store = useEditorStore.getState();
+    expect(tabId).toBe('p1:/repo/src/A.java');
+    expect(store.tabs['p1'].activeTabId).toBe('p1:/repo/src/A.java');
+    // 跳转目标必须为空：编辑器侧由 useDebugStopReveal 从 location 派生，不再经单槽消费。
+    expect(store.pendingNavigateTarget).toBeNull();
+  });
+
+  it('should_reuse_an_existing_tab_without_reading_content', async () => {
+    await ensureStopSourceTab({
+      projectId: 'p1',
+      projectPath: PROJECT,
+      frame: frame(1, A_PATH),
+      sessionId: 's1',
+      isCurrent: () => true,
+    });
+    readFileContentMock.mockClear();
+
+    const tabId = await ensureStopSourceTab({
+      projectId: 'p1',
+      projectPath: PROJECT,
+      frame: frame(1, A_PATH, 42),
+      sessionId: 's1',
+      isCurrent: () => true,
+    });
+
+    expect(tabId).toBe('p1:/repo/src/A.java');
+    expect(readFileContentMock).not.toHaveBeenCalled();
+    expect(useEditorStore.getState().tabs['p1'].tabs).toHaveLength(1);
+    expect(useEditorStore.getState().pendingNavigateTarget).toBeNull();
+  });
+
+  it('[T11] should_drop_a_late_content_load_when_the_commit_guard_turned_false', async () => {
+    const gate = deferred<FileContent>();
+    readFileContentMock.mockImplementationOnce(() => gate.promise);
+    let allowed = true;
+
+    const pending = ensureStopSourceTab({
+      projectId: 'p1',
+      projectPath: PROJECT,
+      frame: frame(1, A_PATH),
+      sessionId: 's1',
+      isCurrent: () => allowed,
+    });
+    // 内容还在路上时，新的停点（B）已经落地 —— A 这条链已经被取代。
+    allowed = false;
+    gate.resolve(content(A_PATH));
+    const tabId = await pending;
+
+    expect(tabId).toBeNull();
+    expect(useEditorStore.getState().tabs['p1']).toBeUndefined();
+  });
+
+  it('should_bail_out_before_reading_when_the_guard_is_already_false', async () => {
+    const tabId = await ensureStopSourceTab({
+      projectId: 'p1',
+      projectPath: PROJECT,
+      frame: frame(1, A_PATH),
+      sessionId: 's1',
+      isCurrent: () => false,
+    });
+
+    expect(tabId).toBeNull();
+    expect(readFileContentMock).not.toHaveBeenCalled();
+    expect(useEditorStore.getState().tabs['p1']).toBeUndefined();
+  });
+
+  it('should_open_a_virtual_source_tab_for_a_source_reference_frame', async () => {
+    virtualReadMock.mockResolvedValue('class Foo {}');
+
+    const tabId = await ensureStopSourceTab({
+      projectId: 'p1',
+      projectPath: PROJECT,
+      frame: {
+        id: 3,
+        name: 'remote',
+        sourcePath: null,
+        line: 7,
+        column: 0,
+        sourceReference: 42,
+        sourceName: 'Foo.java',
+      },
+      sessionId: 's1',
+      isCurrent: () => true,
+    });
+
+    expect(tabId).toBe('p1:dap-source:/42/Foo.java');
+    expect(virtualReadMock).toHaveBeenCalledWith('s1', 42);
+  });
+
+  it('should_return_null_for_a_frame_without_any_source', async () => {
+    const tabId = await ensureStopSourceTab({
+      projectId: 'p1',
+      projectPath: PROJECT,
+      frame: frame(4, null),
+      sessionId: 's1',
+      isCurrent: () => true,
+    });
+
+    expect(tabId).toBeNull();
+    expect(useEditorStore.getState().tabs['p1']).toBeUndefined();
+  });
+
+  it('should_report_a_failed_load_without_creating_a_tab', async () => {
+    // 项目内读取失败 + 绝对路径 + 有会话 → 走外部兜底通道；这里让它也失败（双通道皆不可得）。
+    readFileContentMock.mockRejectedValue(new Error('boom'));
+    externalReadMock.mockRejectedValue(new Error('not a readable external debug stop'));
+    const onError = vi.fn();
+
+    const tabId = await ensureStopSourceTab(
+      {
+        projectId: 'p1',
+        projectPath: PROJECT,
+        frame: frame(1, A_PATH),
+        sessionId: 's1',
+        isCurrent: () => true,
+      },
+      onError,
+    );
+
+    expect(tabId).toBeNull();
+    expect(onError).toHaveBeenCalledWith(expect.stringContaining('Failed to open source'));
+  });
+
+  it('should_do_nothing_for_an_empty_project_id（tab 空间键为空时的守卫）', async () => {
+    const id = await ensureStopSourceTab({
+      projectId: '',
+      projectPath: PROJECT,
+      frame: frame(1, A_PATH),
+      sessionId: 's1',
+      isCurrent: () => true,
+    });
+
+    expect(id).toBeNull();
+    expect(readFileContentMock).not.toHaveBeenCalled();
+    expect(useEditorStore.getState().tabs['']).toBeUndefined();
+  });
+
+  it('should_open_the_second_file_when_stops_arrive_in_order', async () => {
+    // 对照组（非竞态）：顺序到达时两个文件都应被打开，最后一次激活属后者。
+    await ensureStopSourceTab({
+      projectId: 'p1',
+      projectPath: PROJECT,
+      frame: frame(1, A_PATH),
+      sessionId: 's1',
+      isCurrent: () => true,
+    });
+    await ensureStopSourceTab({
+      projectId: 'p1',
+      projectPath: PROJECT,
+      frame: frame(2, B_PATH),
+      sessionId: 's1',
+      isCurrent: () => true,
+    });
+
+    const store = useEditorStore.getState();
+    expect(store.tabs['p1'].tabs.map((t) => t.id)).toEqual([
+      'p1:/repo/src/A.java',
+      'p1:/repo/src/B.java',
+    ]);
+    expect(store.tabs['p1'].activeTabId).toBe('p1:/repo/src/B.java');
   });
 });

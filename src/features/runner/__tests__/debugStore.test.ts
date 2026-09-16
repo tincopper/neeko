@@ -3,19 +3,20 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { DAP_EVENT } from '@/shared/events';
 import { useNotificationStore } from '@/shared/store/notificationStore';
+import { deferred, flushMicrotasks } from '@/testing/async';
 
 import type * as DebugApi from '../api/debugApi';
 import { useDebugStore } from '../store/debugStore';
 import { useJavaDebugStore } from '../store/javaDebugStore';
-import type { DapEventPayload, VariableDto } from '../types';
+import type { DapEventPayload, StackFrameDto, VariableDto } from '../types';
 
 const dapVariablesByReference = vi.hoisted(() => vi.fn());
 const dapVariables = vi.hoisted(() => vi.fn());
 const dapStackTrace = vi.hoisted(() => vi.fn());
 const dapControl = vi.hoisted(() => vi.fn());
 const dapStopSession = vi.hoisted(() => vi.fn());
-const openSourceAtLine = vi.hoisted(() => vi.fn());
-const openVirtualSourceAtLine = vi.hoisted(() => vi.fn());
+const dapEvaluate = vi.hoisted(() => vi.fn());
+const ensureStopSourceTab = vi.hoisted(() => vi.fn());
 
 vi.mock('../api/debugApi', async (importOriginal) => ({
   ...(await importOriginal<typeof DebugApi>()),
@@ -24,13 +25,13 @@ vi.mock('../api/debugApi', async (importOriginal) => ({
   dapStackTrace,
   dapControl,
   dapStopSession,
+  dapEvaluate,
 }));
 
-// Isolate store orchestration from tab lifecycle (covered by navigate.test.ts).
+// 隔离 store 编排与 tab 生命周期（tab 生命周期由 navigate.test.ts 覆盖）。
 vi.mock('../navigate', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../navigate')>()),
-  openSourceAtLine,
-  openVirtualSourceAtLine,
+  ensureStopSourceTab,
 }));
 
 type DapListener = (event: { payload: DapEventPayload }) => void;
@@ -90,7 +91,9 @@ beforeEach(() => {
     loadingRefs: {},
     varErrors: {},
     selectedFrameId: null,
-    stoppedAt: null,
+    location: null,
+    locationSeq: 0,
+    generation: null,
     error: null,
   });
 });
@@ -296,8 +299,8 @@ describe('debugStore.refreshStackAndVars stops', () => {
 
     expect(dapControl).not.toHaveBeenCalledWith('s1', 'continue');
     expect(useDebugStore.getState().selectedFrameId).toBe(7);
-    expect(useDebugStore.getState().stoppedAt).toEqual({
-      filePath: REGISTRY_FRAME.sourcePath,
+    expect(useDebugStore.getState().location).toEqual({
+      identity: REGISTRY_FRAME.sourcePath,
       line: 1234,
       column: 5,
     });
@@ -327,19 +330,21 @@ describe('debugStore.refreshStackAndVars stops', () => {
     await useDebugStore.getState().refreshStackAndVars();
 
     expect(useDebugStore.getState().selectedFrameId).toBe(1);
-    // stoppedAt 用**规范身份**（jdt 形态）：与 tab 身份、断点 key 同一套，
+    // location.identity 用**规范身份**（jdt 形态）：与 tab 身份、断点 key 同一套，
     // 黄线判定退化为精确相等。
-    expect(useDebugStore.getState().stoppedAt?.filePath).toBe(
+    expect(useDebugStore.getState().location?.identity).toBe(
       'jdt:/java.base/java/io/PrintStream.java',
     );
-    // 打开时仍把「实际帧路径」（缓存文件）交给 navigate —— 身份归一在那一层做
-    expect(openSourceAtLine).toHaveBeenCalledWith(
-      'p1',
-      '/proj',
-      jdkFrame.sourcePath,
-      jdkFrame.line,
-      jdkFrame.column,
-      expect.objectContaining({ sessionId: 's1' }),
+    // 把**整只帧**交给 navigate：身份归一与内容通道选择都在那一层做
+    expect(ensureStopSourceTab).toHaveBeenCalledWith(
+      expect.objectContaining({
+        projectId: 'p1',
+        projectPath: '/proj',
+        frame: jdkFrame,
+        sessionId: 's1',
+        isCurrent: expect.any(Function),
+      }),
+      expect.any(Function),
     );
   });
 
@@ -350,7 +355,7 @@ describe('debugStore.refreshStackAndVars stops', () => {
     await useDebugStore.getState().refreshStackAndVars();
 
     expect(dapControl).not.toHaveBeenCalled();
-    expect(useDebugStore.getState().stoppedAt?.filePath).toBe(GO_RUNTIME_FRAME.sourcePath);
+    expect(useDebugStore.getState().location?.identity).toBe(GO_RUNTIME_FRAME.sourcePath);
   });
 
   it('should_select_top_frame_without_highlight_when_no_frame_has_source', async () => {
@@ -362,7 +367,7 @@ describe('debugStore.refreshStackAndVars stops', () => {
     await useDebugStore.getState().refreshStackAndVars();
 
     expect(useDebugStore.getState().selectedFrameId).toBe(9);
-    expect(useDebugStore.getState().stoppedAt).toBeNull();
+    expect(useDebugStore.getState().location).toBeNull();
   });
 
   it('should_open_adapter_virtual_source_when_no_frame_has_a_path', async () => {
@@ -382,18 +387,19 @@ describe('debugStore.refreshStackAndVars stops', () => {
     await useDebugStore.getState().refreshStackAndVars();
 
     expect(useDebugStore.getState().selectedFrameId).toBe(11);
-    expect(useDebugStore.getState().stoppedAt).toEqual({
-      filePath: 'dap-source:/42/Foo.java',
+    expect(useDebugStore.getState().location).toEqual({
+      identity: 'dap-source:/42/Foo.java',
       line: 3,
       column: 0,
     });
-    expect(openVirtualSourceAtLine).toHaveBeenCalledWith(
-      'p1',
-      'Foo.java',
-      42,
-      3,
-      0,
-      expect.objectContaining({ sessionId: 's1' }),
+    expect(ensureStopSourceTab).toHaveBeenCalledWith(
+      expect.objectContaining({
+        projectId: 'p1',
+        projectPath: '/proj',
+        frame: expect.objectContaining({ sourceReference: 42, sourceName: 'Foo.java' }),
+        sessionId: 's1',
+      }),
+      expect.any(Function),
     );
   });
 
@@ -403,15 +409,15 @@ describe('debugStore.refreshStackAndVars stops', () => {
 
     await useDebugStore.getState().refreshStackAndVars();
 
-    expect(openSourceAtLine).toHaveBeenCalledWith(
-      'p1',
-      '/proj',
-      GO_RUNTIME_FRAME.sourcePath,
-      GO_RUNTIME_FRAME.line,
-      GO_RUNTIME_FRAME.column,
-      expect.objectContaining({ sessionId: 's1' }),
+    expect(ensureStopSourceTab).toHaveBeenCalledWith(
+      expect.objectContaining({
+        projectId: 'p1',
+        projectPath: '/proj',
+        frame: GO_RUNTIME_FRAME,
+        sessionId: 's1',
+      }),
+      expect.any(Function),
     );
-    expect(openVirtualSourceAtLine).not.toHaveBeenCalled();
   });
 });
 
@@ -472,5 +478,308 @@ describe('debugStore.stopSilent — 项目切换静默释放（#14 配套）', (
     await useDebugStore.getState().stopSilent();
     expect(dapStopSession).not.toHaveBeenCalled();
     expect(useDebugStore.getState().panelOpen).toBe(false);
+  });
+});
+
+/**
+ * 切片 1+2：**停点代际化 + 位置单写者 + 原子写**。
+ *
+ * 症状（issue #13）：停点/单步时编辑器有时不跳到当前断点位置（点一下栈帧才定位）。
+ * 根因一 = 旧停点的异步链迟到后覆盖新停点（此前只校验 sessionId）；根因二 = 帧与位置
+ * 分两次 `set`，出现「新位置 + 旧帧」的可观测中间态。本组用例把两条不变式钉住。
+ */
+describe('debugStore 停点代际与位置（代际化 / 单写者 / 原子写）', () => {
+  const PROJECT = '/proj';
+  const JDK_CACHE =
+    '/Users/u/.neeko/java-src-cache/jdk-src-21.0.12.1/java.base/java/io/PrintStream.java';
+  const JDT_IDENTITY = 'jdt:/java.base/java/io/PrintStream.java';
+
+  function stopFrame(
+    id: number,
+    line: number,
+    name = `frame${id}`,
+    sourcePath: string = `${PROJECT}/a.go`,
+  ): StackFrameDto {
+    return { id, name, sourcePath, line, column: 1 };
+  }
+
+  /** 播一次停点并把位置落到 line（供清空类用例做前置）。 */
+  async function seedStoppedAt(line: number): Promise<void> {
+    seedLiveSession();
+    dapStackTrace.mockResolvedValue([stopFrame(1, line)]);
+    await useDebugStore.getState().refreshStackAndVars();
+  }
+
+  it('[T1] 旧代际迟到不得落地（新链先完成、旧链后完成）', async () => {
+    seedLiveSession();
+    const older = deferred<StackFrameDto[]>();
+    const newer = deferred<StackFrameDto[]>();
+    dapStackTrace
+      .mockImplementationOnce(() => older.promise)
+      .mockImplementationOnce(() => newer.promise);
+
+    const firstRun = useDebugStore.getState().refreshStackAndVars(); // 旧代际
+    const secondRun = useDebugStore.getState().refreshStackAndVars(); // 新代际
+
+    // 关键：新链先完成、旧链后完成 —— 「迟到者」由 deferred 反转兑现顺序构造，
+    // 而不是靠 await 次序（后者根本构造不出竞态）。
+    newer.resolve([stopFrame(2, 20, 'newer')]);
+    await secondRun;
+    older.resolve([stopFrame(1, 10, 'older')]);
+    await firstRun;
+
+    const s = useDebugStore.getState();
+    expect(s.frames.map((f) => f.id)).toEqual([2]);
+    expect(s.selectedFrameId).toBe(2);
+    expect(s.location?.line).toBe(20);
+  });
+
+  it('[T2] frames 与 location 原子落地（不存在「新 location + 旧 frames」快照）', async () => {
+    seedLiveSession();
+    const snapshots: { lines: number[]; locationLine: number | null }[] = [];
+    const unsubscribe = useDebugStore.subscribe((s) => {
+      snapshots.push({
+        lines: s.frames.map((f) => f.line),
+        locationLine: s.location?.line ?? null,
+      });
+    });
+
+    dapStackTrace.mockResolvedValue([stopFrame(1, 10, 'a')]);
+    await useDebugStore.getState().refreshStackAndVars();
+    dapStackTrace.mockResolvedValue([stopFrame(2, 20, 'b')]);
+    await useDebugStore.getState().refreshStackAndVars();
+    unsubscribe();
+
+    // 每一次快照里，位置必须描述同一批帧（否则编辑器会出现「黄线在新停点、位置在旧停点」）。
+    const inconsistent = snapshots.filter(
+      (snap) => snap.locationLine !== null && snap.lines[0] !== snap.locationLine,
+    );
+    expect(inconsistent).toEqual([]);
+    expect(snapshots.at(-1)).toEqual({ lines: [20], locationLine: 20 });
+  });
+
+  it('[T4] 切帧：同一代际内更新位置（规范身份）且 locationSeq+1', async () => {
+    seedLiveSession();
+    dapStackTrace.mockResolvedValue([
+      stopFrame(1, 3, 'caller', `${PROJECT}/src/ArrayTest.java`),
+      { id: 2, name: 'PrintStream.println', sourcePath: JDK_CACHE, line: 1167, column: 5 },
+    ]);
+    await useDebugStore.getState().refreshStackAndVars();
+
+    const generationBefore = useDebugStore.getState().generation;
+    const seqBefore = useDebugStore.getState().locationSeq;
+
+    await useDebugStore.getState().selectFrame(2);
+
+    const s = useDebugStore.getState();
+    // 切帧不是新停点事件：代际必须保持，否则在途的变量请求会被整批判死。
+    expect(s.generation).toEqual(generationBefore);
+    expect(s.selectedFrameId).toBe(2);
+    expect(s.locationSeq).toBe(seqBefore + 1);
+    // 位置身份必须规范（旧实现写裸 sourcePath，会让黄线与跳转判定分叉）。
+    expect(s.location).toEqual({ identity: JDT_IDENTITY, line: 1167, column: 5 });
+  });
+
+  it('[T11] 旧停点交给 navigate 的落地许可在新停点到来后失效', async () => {
+    seedLiveSession();
+    const guards: (() => boolean)[] = [];
+    ensureStopSourceTab.mockImplementation(async (req: { isCurrent: () => boolean }) => {
+      guards.push(req.isCurrent);
+      return 'tab-id';
+    });
+    const slow = deferred<StackFrameDto[]>();
+    dapStackTrace.mockImplementationOnce(() => slow.promise);
+
+    const firstRun = useDebugStore.getState().refreshStackAndVars();
+    slow.resolve([stopFrame(1, 10, 'older')]);
+    await flushMicrotasks(); // 让旧链推进到「已交给 navigate、内容还在路上」的状态
+
+    expect(guards).toHaveLength(1);
+    expect(guards[0]()).toBe(true); // 此刻旧链仍是当前代际
+
+    dapStackTrace.mockResolvedValue([stopFrame(2, 20, 'newer')]);
+    await useDebugStore.getState().refreshStackAndVars(); // 新停点
+    expect(guards[0]()).toBe(false); // 旧链迟到的内容已无权建 tab / 抢激活
+
+    await firstRun;
+  });
+
+  it('[T2] 空栈：帧与位置必须原子清空（序号 +1）', async () => {
+    seedLiveSession();
+    dapStackTrace.mockResolvedValue([]);
+    const seqBefore = useDebugStore.getState().locationSeq;
+
+    await useDebugStore.getState().refreshStackAndVars();
+
+    const s = useDebugStore.getState();
+    expect(s.frames).toEqual([]);
+    expect(s.selectedFrameId).toBeNull();
+    expect(s.location).toBeNull();
+    expect(s.locationSeq).toBe(seqBefore + 1);
+  });
+
+  it('[T12] 变量拉取失败只记日志：不得被误判为栈刷新失败而重试', async () => {
+    // 回归锁：变量失败若冒泡到外层 catch，会触发 150ms 重试 + 二次 dapStackTrace + 弹错 ——
+    // 而帧与位置已经落地，用户已能看到停点，多出来的重试与报错都是噪音。
+    seedLiveSession();
+    useDebugStore.setState({ consoleLines: [] });
+    useNotificationStore.setState({ notifications: [], unreadCount: 0 });
+    dapStackTrace.mockResolvedValue([stopFrame(1, 10)]);
+    dapVariables.mockRejectedValue(new Error('variables boom'));
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    try {
+      await useDebugStore.getState().refreshStackAndVars();
+
+      expect(useDebugStore.getState().location?.line).toBe(10);
+      expect(dapStackTrace).toHaveBeenCalledTimes(1);
+      expect(useDebugStore.getState().consoleLines).toEqual([]);
+      expect(useNotificationStore.getState().notifications).toEqual([]);
+      expect(warn).toHaveBeenCalledWith('[debug]', expect.stringContaining('variables boom'));
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  it('[T14] 无代际（未经过 beginStop）时切帧仍写入变量', async () => {
+    // 外部评审指出的陷阱回归：`isSameGeneration(null, null) === false`，若切帧的复查直接用它会
+    // 把「双方皆无代际」误判为「已变」⇒ 变量静默不写、源码 tab 不打开（attach 到已暂停进程、
+    // 测试直接 seed frames+session 等未过 beginStop 的停止态都会踩到）。
+    useDebugStore.setState({
+      session: {
+        sessionId: 's1',
+        projectId: 'p1',
+        projectPath: '/proj',
+        configName: 'cfg',
+        status: 'stopped',
+      },
+      frames: [{ id: 1, name: 'f1', sourcePath: '/proj/a.go', line: 3, column: 1 }],
+      generation: null,
+      variables: [],
+    });
+    dapVariables.mockResolvedValue([makeVar('v', 0, 'kept')]);
+
+    await useDebugStore.getState().selectFrame(1);
+
+    expect(useDebugStore.getState().variables).toEqual([makeVar('v', 0, 'kept')]);
+  });
+
+  it('[T15] 切帧期间出现新停点 → 迟到的变量被丢弃', async () => {
+    // 锁定外部改动的**意图**：切帧不新开代际，但新停点到达必须让这条链的后续落地失效
+    //（DAP 数字帧 id 极易碰撞，单靠 selectedFrameId 会误判为「仍是这一帧」）。
+    seedLiveSession();
+    dapStackTrace.mockResolvedValue([
+      { id: 1, name: 'f1', sourcePath: '/proj/a.go', line: 3, column: 1 },
+    ]);
+    await useDebugStore.getState().refreshStackAndVars();
+
+    const gate = deferred<VariableDto[]>();
+    dapVariables.mockImplementationOnce(() => gate.promise);
+    const pending = useDebugStore.getState().selectFrame(1);
+
+    useDebugStore.getState().beginStop('s1'); // 新停点取代本次切帧
+    gate.resolve([makeVar('stale', 0, 'stale')]);
+    await pending;
+
+    expect(useDebugStore.getState().variables).toEqual([]);
+  });
+
+  it('[T5] 清空路径（continued / terminated / resetSession）清位置、无效代际且 seq+1', async () => {
+    const handler = await subscribeAndGrabDapListener();
+    await seedStoppedAt(10);
+    const afterContinue = useDebugStore.getState().locationSeq;
+    handler({ payload: { sessionId: 's1', projectId: 'p1', kind: 'continued', body: {} } });
+    expect(useDebugStore.getState().location).toBeNull();
+    expect(useDebugStore.getState().locationSeq).toBe(afterContinue + 1);
+    // 运行中不存在有效停点代际：在途旧链必须被判死。
+    expect(useDebugStore.getState().generation).toBeNull();
+
+    await seedStoppedAt(20);
+    const afterTerminate = useDebugStore.getState().locationSeq;
+    handler({ payload: { sessionId: 's1', projectId: 'p1', kind: 'terminated', body: {} } });
+    expect(useDebugStore.getState().location).toBeNull();
+    expect(useDebugStore.getState().locationSeq).toBe(afterTerminate + 1);
+
+    await seedStoppedAt(30);
+    const afterReset = useDebugStore.getState().locationSeq;
+    useDebugStore.getState().resetSession();
+    expect(useDebugStore.getState().location).toBeNull();
+    expect(useDebugStore.getState().locationSeq).toBe(afterReset + 1);
+    expect(useDebugStore.getState().generation).toBeNull();
+  });
+});
+
+describe('debugStore 停点链的防御分支（会话丢失 / 重试期间被取代）', () => {
+  it('链中途会话丢失 → 不写帧与位置', async () => {
+    seedLiveSession();
+    const stack = deferred<StackFrameDto[]>();
+    dapStackTrace.mockImplementationOnce(() => stack.promise);
+    const run = useDebugStore.getState().refreshStackAndVars();
+
+    // 会话在 await 期间结束（但代际未被改写）：applyStop 必须发现 live 已消失并放弃。
+    useDebugStore.setState({ session: null });
+    stack.resolve([{ id: 1, name: 'f1', sourcePath: '/proj/a.go', line: 10, column: 1 }]);
+    await run;
+
+    expect(useDebugStore.getState().frames).toEqual([]);
+    expect(useDebugStore.getState().location).toBeNull();
+  });
+
+  it('重试等待期间代际被取代 → 不再重取栈（防御分支）', async () => {
+    seedLiveSession();
+    dapStackTrace.mockRejectedValueOnce(new Error('Delve: Dummy thread'));
+
+    vi.useFakeTimers();
+    try {
+      const run = useDebugStore.getState().refreshStackAndVars();
+      await vi.advanceTimersByTimeAsync(100); // 进入 150ms 等待窗口
+      useDebugStore.getState().beginStop('s1'); // 新停点取代本次重试
+      await vi.advanceTimersByTimeAsync(100); // 越过 150ms
+      await run;
+
+      expect(dapStackTrace).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
+describe('debugStore.evaluate — 求值上下文', () => {
+  it('无会话 → 错误进 console，且不调用 DAP', async () => {
+    useDebugStore.setState({ session: null, consoleLines: [] });
+
+    await useDebugStore.getState().evaluate('1+1');
+
+    expect(dapEvaluate).not.toHaveBeenCalled();
+    const lines = useDebugStore.getState().consoleLines;
+    expect(lines).toHaveLength(1);
+    expect(lines[0].kind).toBe('err');
+    expect(lines[0].text).toContain('No active debug session');
+  });
+
+  it('成功 → 依次回显表达式与结果', async () => {
+    seedLiveSession();
+    useDebugStore.setState({ consoleLines: [] });
+    dapEvaluate.mockResolvedValue('42');
+
+    await useDebugStore.getState().evaluate('1+41');
+
+    expect(dapEvaluate).toHaveBeenCalledWith('s1', '1+41', null);
+    expect(useDebugStore.getState().consoleLines.map((l) => [l.kind, l.text])).toEqual([
+      ['in', '1+41'],
+      ['out', '42'],
+    ]);
+  });
+
+  it('失败 → 错误进 console（不抛出）', async () => {
+    seedLiveSession();
+    useDebugStore.setState({ consoleLines: [] });
+    dapEvaluate.mockRejectedValue(new Error('evaluate boom'));
+
+    await useDebugStore.getState().evaluate('boom');
+
+    const lines = useDebugStore.getState().consoleLines;
+    expect(lines.map((l) => l.kind)).toEqual(['in', 'err']);
+    expect(lines[1].text).toContain('evaluate boom');
   });
 });

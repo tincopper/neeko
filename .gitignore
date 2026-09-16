@@ -57,3 +57,6 @@ nul
 .worktrees/
 
 reasonix.toml
+
+# Vitest 覆盖率产物（pnpm test:coverage）
+coverage/

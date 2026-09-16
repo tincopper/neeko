@@ -23,11 +23,6 @@ export type StopSourceContent =
   | { kind: 'virtual'; content: FileContent }
   | { kind: 'failed'; error: unknown };
 
-/** 虚拟源码 tab 的身份路径（`dap-source:` 前缀，非文件系统路径）。 */
-export function virtualSourceIdentity(reference: number, name?: string | null): string {
-  return `dap-source:/${reference}/${name && name.trim() ? name.trim() : 'source'}`;
-}
-
 /** POSIX `/…` or Windows drive `C:\` / `C:/`. */
 function isAbsoluteSourcePath(p: string): boolean {
   return p.startsWith('/') || /^[A-Za-z]:[\\/]/.test(p);
@@ -93,9 +88,9 @@ export async function loadStopSourceContent(
 /**
  * Load a paused frame's virtual source via DAP `sourceReference`.
  *
- * Nothing touches the filesystem: `identity` (see {@link virtualSourceIdentity})
- * doubles as the tab path and `FileContent.path`, so the tab renders read-only
- * and never enters save / dirty flows.
+ * Nothing touches the filesystem: `identity` (built by `virtualSourceIdentity` in
+ * `./stackFrames`) doubles as the tab path and `FileContent.path`, so the tab renders
+ * read-only and never enters save / dirty flows.
  */
 export async function loadVirtualSourceContent(
   sessionId: string,

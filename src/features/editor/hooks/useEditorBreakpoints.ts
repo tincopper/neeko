@@ -3,8 +3,6 @@ import { useCallback, useEffect, useRef } from 'react';
 
 import { EMPTY_BP_LINES, useDebugStore } from '@/features/runner/store/debugStore';
 
-import { releaseDebugCaret } from '../navigateCaret';
-
 import { useBreakpointGutter } from './useBreakpointGutter';
 import { useCurrentLineHighlight } from './useCurrentLineHighlight';
 
@@ -38,8 +36,8 @@ export function useEditorBreakpoints({
   } = useBreakpointGutter(projectId, absFilePath);
   // Current-line highlight field lives inside breakpointContributionExtensions
   // (assembled by the unified gutter); this only re-applies on stop.
-  // 注入「释放被放置的光标」：光标语义属本域，从调用点传入，避免 debug → editor 反向依赖。
-  useCurrentLineHighlight(absFilePath, filePath, editorViewRef, editorViewEpoch, releaseDebugCaret);
+  // 黄线只负责标记：光标跟随 / 接管 / 释放归 `useDebugStopReveal`。
+  useCurrentLineHighlight(absFilePath, filePath, editorViewRef, editorViewEpoch);
 
   // Stable callbacks for lineNumbers handlers
   const handleLnClick = useCallback(

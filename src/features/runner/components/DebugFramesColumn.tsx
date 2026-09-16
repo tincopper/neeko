@@ -2,8 +2,6 @@ import React, { useCallback } from 'react';
 
 import { cn } from '@/lib/utils';
 
-import { activeProjectPaths } from '../navigate';
-import { openStopSource, openStopVirtualSource } from '../openStopSource';
 import { useDebugStore } from '../store/debugStore';
 import type { StackFrameDto } from '../types';
 
@@ -22,28 +20,11 @@ function DebugFramesColumn({ width, onResizeStart }: DebugFramesColumnProps) {
   const session = useDebugStore((s) => s.session);
   const live = !!session && session.status !== 'terminated' && session.status !== 'ended';
 
+  // 点栈帧只需切帧：源码 tab 的打开（`selectFrame` 内部）与编辑器跟随（从 `location` 派生）
+  // 都由此驱动 —— 与自动停点走**同一条路径**，不再依赖「手动点击恰好没有竞态」。
   const handleFrameClick = useCallback(
     async (frame: StackFrameDto) => {
       await selectFrame(frame.id);
-      const paths = activeProjectPaths();
-      if (!paths) return;
-      if (frame.sourcePath) {
-        await openStopSource(
-          paths.projectId,
-          paths.projectPath,
-          frame.sourcePath,
-          frame.line,
-          frame.column,
-        );
-      } else if (frame.sourceReference) {
-        await openStopVirtualSource(
-          paths.projectId,
-          frame.sourceName,
-          frame.sourceReference,
-          frame.line,
-          frame.column,
-        );
-      }
     },
     [selectFrame],
   );

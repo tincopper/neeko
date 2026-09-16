@@ -1,6 +1,7 @@
 import type { UnlistenFn } from '@tauri-apps/api/event';
 import type { StateCreator } from 'zustand';
 
+import type { StopLocation } from '../../stackFrames';
 import type {
   BreakpointSpec,
   ConsoleLine,
@@ -11,6 +12,8 @@ import type {
   StackFrameDto,
   VariableDto,
 } from '../../types';
+
+import type { StopGeneration } from './stopGeneration';
 
 /**
  * Debug store 的**能力切片**：每个 slice 只声明自己的 state 与动作。
@@ -89,13 +92,34 @@ export interface DebugSessionSlice {
   clearError: () => void;
 }
 
-/** 调用栈、当前帧与求值上下文（停止位置供编辑器画黄线）。 */
+/** 调用栈、当前帧与求值上下文（停止位置供编辑器画黄线并跟随）。 */
 export interface DebugStackSlice {
   frames: StackFrameDto[];
   variables: VariableDto[];
   selectedFrameId: number | null;
-  /** Current stopped location for editor highlight */
-  stoppedAt: { filePath: string; line: number; column?: number } | null;
+  /**
+   * 当前停点位置（**规范源身份**，见 `stackFrames.buildStopLocation`）。
+   *
+   * **唯一位置真相**：黄线与「编辑器跟随停点」都由它派生，不允许有第二个写入口径
+   * （旧实现另有写裸 `Source.path` 的路径，会让两处判定分叉）。
+   */
+  location: StopLocation | null;
+  /**
+   * 位置变化序号，**严格单调**（停点 / 切帧 / 清空都 +1）。
+   *
+   * 编辑器侧「跟随停点」以它为事件键：位置值相同也可能是新事件（循环里连续命中同一行），
+   * 值相等无法表达「又停了一次」，故不能用位置值当依赖。
+   */
+  locationSeq: number;
+  /**
+   * 当前有效停点代际；`null` ⟺ 无有效停点（运行中 / 已结束 / 已复位）。
+   *
+   * 所有停点异步链在落地前必须校验它（`isSameGeneration(get().generation, gen)`），
+   * 否则旧停点的迟到结果会覆盖新停点。
+   */
+  generation: StopGeneration | null;
+  /** 取新代际（使在途旧链全部失效）。`refreshStackAndVars` 入口唯一调用点。 */
+  beginStop: (sessionId: string) => StopGeneration;
   refreshStackAndVars: () => Promise<void>;
   selectFrame: (frameId: number) => Promise<void>;
   evaluate: (expression: string) => Promise<void>;

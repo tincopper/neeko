@@ -8,7 +8,7 @@ import type { ConsoleLine, DapEventPayload, DapSessionInfo } from '../../types';
 import { isCodelldbNoise } from '../../utils/consoleFilter';
 import { languageHooks } from '../languageHooks';
 
-import { CLEAR_EXPANSION, endedSessionPatch, notifyError } from './shared';
+import { CLEAR_EXPANSION, endedSessionPatch, notifyError, withStopLocation } from './shared';
 import type { DebugEventsSlice, DebugSliceCreator } from './types';
 
 /**
@@ -53,14 +53,16 @@ export const createEventsSlice: DebugSliceCreator<DebugEventsSlice> = (set, get)
         } else if (kind === 'continued') {
           set({
             session: session ? { ...session, status: 'running' } : session,
-            stoppedAt: null, // clear yellow line while running
+            // 运行中不存在有效停点：清位置（序号 +1，编辑器据此释放光标 + 撤黄线）并作废代际。
+            ...withStopLocation(get(), null),
+            generation: null,
             ...CLEAR_EXPANSION, // references from the previous stop are stale
           });
         } else if (kind === 'terminated') {
           // Always clear stack/vars (status may already be terminated via dap-session-status).
           const alreadyEnded = session?.status === 'terminated';
           set({
-            ...endedSessionPatch(session),
+            ...endedSessionPatch(session, get()),
             panelOpen: true,
             panelTab: 'console',
           });
@@ -122,6 +124,7 @@ export const createEventsSlice: DebugSliceCreator<DebugEventsSlice> = (set, get)
           set({
             ...endedSessionPatch(
               cur?.sessionId === info.sessionId ? { ...cur, ...info } : info,
+              get(),
               info.statusMessage ?? 'Session terminated',
             ),
             panelOpen: true,

@@ -275,7 +275,7 @@ describe('方案 B 护栏 9：语言命名的文件必须在 languages/', () => 
  */
 describe('护栏 10：Debug store 切片结构', () => {
   const DEBUG_DIR = `${RUNNER}/store/debug`;
-  /** 8 个 slice + 叶子（types/shared）+ 中间件。 */
+  /** 8 个 slice + 叶子（types / shared / stopGeneration）+ 中间件。 */
   const DEBUG_WHITELIST = [
     'breakpointSlice.ts',
     'configSlice.ts',
@@ -286,6 +286,7 @@ describe('护栏 10：Debug store 切片结构', () => {
     'sessionSlice.ts',
     'shared.ts',
     'stackSlice.ts',
+    'stopGeneration.ts',
     'types.ts',
     'variableSlice.ts',
   ].map((n) => `${DEBUG_DIR}/${n}`);

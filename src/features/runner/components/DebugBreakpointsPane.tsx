@@ -3,8 +3,7 @@ import React, { useCallback, useMemo } from 'react';
 import { CircleDot, X } from '@/shared/components/icons';
 import { useProjectStore } from '@/shared/store/projectStore';
 
-import { activeProjectPaths } from '../navigate';
-import { openStopSource } from '../openStopSource';
+import { openSourceAtLine } from '../navigate';
 import { useDebugStore } from '../store/debugStore';
 
 import { EmptyHint } from './PanePrimitives';
@@ -23,10 +22,12 @@ function DebugBreakpointsPane() {
     [projectId, breakpointsMap, listAllBreakpoints],
   );
 
+  // 点断点是**用户意图**（不改变调试状态）：走一次性跳转目标，而不是停点跟随派生链。
   const handleBpClick = useCallback(async (filePath: string, line: number) => {
-    const paths = activeProjectPaths();
-    if (!paths) return;
-    await openStopSource(paths.projectId, paths.projectPath, filePath, line, 1);
+    // 项目 id + 路径是「打开源码」的最小输入；缺一不可（本项目内不需要额外回落）。
+    const project = useProjectStore.getState().activeProject;
+    if (!project?.id || !project.path) return;
+    await openSourceAtLine(project.id, project.path, filePath, line, 1);
   }, []);
 
   return (

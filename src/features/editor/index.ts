@@ -29,11 +29,10 @@ export {
   breakpointContribution,
   breakpointContributionExtensions,
 } from './gutter/breakpointContribution';
-export {
-  applyDebugCurrentLine,
-  resolveDebugHighlightLine,
-  useCurrentLineHighlight,
-} from './hooks/useCurrentLineHighlight';
+export { resolveDebugHighlightLine } from './stopMatch';
+export { applyDebugCurrentLine } from './hooks/useBreakpointGutter';
+export { useCurrentLineHighlight } from './hooks/useCurrentLineHighlight';
+export { useDebugStopReveal } from './hooks/useDebugStopReveal';
 
 // Navigation history (IDEA-like Back / Forward)
 export type { NavLocation } from './navigationHistory';

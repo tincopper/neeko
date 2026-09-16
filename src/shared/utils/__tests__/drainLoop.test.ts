@@ -1,5 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 
+import { deferred, flushMicrotasks } from '@/testing/async';
+
 import {
   DRAIN_POLL_INTERVAL_MS,
   MAX_IN_FLIGHT_WRITES,
@@ -12,21 +14,6 @@ import {
 
 function makeArrayBuffer(bytes: number[]): ArrayBuffer {
   return Uint8Array.from(bytes).buffer;
-}
-
-function deferred<T>() {
-  let resolve!: (value: T) => void;
-  let reject!: (reason: unknown) => void;
-  const promise = new Promise<T>((res, rej) => {
-    resolve = res;
-    reject = rej;
-  });
-  return { promise, resolve, reject };
-}
-
-/** Flushes pending microtasks so async loops make progress deterministically. */
-async function flushMicrotasks(times = 8): Promise<void> {
-  for (let i = 0; i < times; i++) await Promise.resolve();
 }
 
 describe('runDrainLoop', () => {
