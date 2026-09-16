@@ -16,6 +16,7 @@ import { useEditorStore } from '@/shared/store/editorStore';
 import { useProjectStore } from '@/shared/store/projectStore';
 import type { FileChangedEvent } from '@/shared/types';
 import { fileUrlToFilePath } from '@/shared/utils/browserUtils';
+import { pathsContainFile } from '@/shared/utils/fileRef';
 import { recordNavigation } from '@/shared/utils/historyStack';
 
 import { browserNavigate } from '../api/browserApi';
@@ -198,12 +199,10 @@ export function useBrowserPanelEvents({
     const project = state.projects.find((p) => p.id === project_id);
     if (!project) return;
 
-    const projectRoot = project.path.replace(/\\/g, '/');
-    const browserFileNorm = browserFilePath.replace(/\\/g, '/');
-    const matched = paths.some((rel: string) => {
-      const abs = `${projectRoot}/${rel}`;
-      return abs === browserFileNorm;
-    });
+    // 同文件判定收敛到**身份所有者**（`pathsContainFile`）：原实现拼接 `projectRoot + '/' + rel`，
+    // 在事件回退为绝对路径（watcher strip_prefix 失败）或项目根带尾斜杠时漏配
+    // —— 后果是「面板不刷新 → 显示过期内容」。
+    const matched = pathsContainFile(project.path, paths, browserFilePath);
 
     if (matched) {
       void refreshRef.current?.();

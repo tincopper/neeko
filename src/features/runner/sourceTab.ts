@@ -12,6 +12,7 @@ import {
 } from '@/shared/store/navigationHistoryStore';
 import type { Tab } from '@/shared/types';
 import { preloadLanguageExtension } from '@/shared/utils/codemirror';
+import { sameIdentity } from '@/shared/utils/fileRef';
 import { getTabId, isFileTab } from '@/shared/utils/fileTree';
 
 import type { SourceOpenRequest } from './sourceOpen';
@@ -60,9 +61,11 @@ export async function ensureSourceTab(
   preloadLanguageExtension(identity);
 
   const store = useEditorStore.getState();
+  // 复用查找走**身份比较**：tab 存的形态可能与本次身份不完全同形（历史 / 会话恢复的 tab），
+  // 字符串等值会漏判并再开一个 tab（同文件两份 tab → 断点/黄线/跳转各认一个）。
   const existing = (store.tabs[tabKey]?.tabs ?? [])
     .filter(isFileTab)
-    .find((t) => t.data.filePath === identity);
+    .find((t) => sameIdentity(identity, t.data.filePath));
 
   const line1 = Math.max(1, line);
   const col = Math.max(0, column);

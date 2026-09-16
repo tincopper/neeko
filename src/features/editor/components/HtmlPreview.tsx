@@ -5,7 +5,9 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { readFileContent } from '@/features/file/api/fileApi';
 import { useFileChangedEvent } from '@/features/git';
 import { Globe, RefreshCw } from '@/shared/components/icons';
+import { useProjectStore } from '@/shared/store/projectStore';
 import type { FileChangedEvent } from '@/shared/types';
+import { pathsContainFile } from '@/shared/utils/fileRef';
 
 interface HtmlPreviewProps {
   projectId: string;
@@ -109,19 +111,20 @@ function HtmlPreview({ projectId, filePath, fileName }: HtmlPreviewProps) {
     };
   }, [loadHtmlContent]);
 
-  const normalizedFilePath = filePath.replace(/\\/g, '/');
-
-  // 使用共享�?file-changed 事件订阅（与 useFileTabRefresh / useBrowserPanel 共享同一 IPC 监听�?
+  // file-changed 事件订阅（与 useFileTabRefresh / useBrowserPanel 共享同一 IPC 监听）。
+  //
+  // **同文件判定必须走身份抽象**：watcher 发出的 `paths` 是**项目相对路径**
+  // （Rust 侧 `strip_prefix(project_root)`；strip 失败时回退绝对路径），而本组件的 `filePath`
+  // 是 tab 的规范**绝对**路径。原先的 `p === filePath || p.endsWith('/' + filePath)` 在正常路径下
+  // **恒不命中**（绝对路径的 `endsWith('//abs')` 永假）⇒ 预览不刷新、显示过期内容。
   useFileChangedEvent(
     useCallback(
       (event: FileChangedEvent) => {
-        const { paths } = event;
-        const matched = paths.some(
-          (p) => p === normalizedFilePath || p.endsWith('/' + normalizedFilePath),
-        );
-        if (matched) loadHtmlContent();
+        const root =
+          useProjectStore.getState().projects.find((p) => p.id === projectId)?.path ?? '';
+        if (pathsContainFile(root, event.paths, filePath)) loadHtmlContent();
       },
-      [normalizedFilePath, loadHtmlContent],
+      [projectId, filePath, loadHtmlContent],
     ),
   );
 

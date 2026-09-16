@@ -16,6 +16,7 @@ import {
   isProjectAutoRefreshArmed,
 } from '@/shared/utils/browserAutoRefresh';
 import { fileUrlToFilePath, hostFromUrl } from '@/shared/utils/browserUtils';
+import { pathsContainFile } from '@/shared/utils/fileRef';
 import { canGoBack, canGoForward, recordNavigation } from '@/shared/utils/historyStack';
 
 import {
@@ -219,11 +220,11 @@ export function useBrowserTab({
     const project = useProjectStore.getState().projects.find((p) => p.id === projectId);
     if (!project) return;
 
-    const projectRoot = project.path.replace(/\\/g, '/');
-    const browserFileNorm = browserFilePath.replace(/\\/g, '/');
-    const matched = paths.some((rel: string) => `${projectRoot}/${rel}` === browserFileNorm);
-
-    if (matched) void refreshRef.current();
+    // 命中判定收敛到**身份所有者**（`pathsContainFile`）：事件路径由 watcher 发出，
+    // 正常为项目相对、`strip_prefix` 失败时回退**绝对**；拼接 `${projectRoot}/${rel}`
+    // 在回退场景恒不命中（`/repo//repo/…`），也会被项目根尾斜杠/重复斜杠打断
+    // —— 后果是「tab 不刷新、显示过期内容」。与 useBrowserPanelEvents 同因同修。
+    if (pathsContainFile(project.path, paths, browserFilePath)) void refreshRef.current();
   });
 
   // 组件卸载时解除项目武装（避免孤儿定时器）

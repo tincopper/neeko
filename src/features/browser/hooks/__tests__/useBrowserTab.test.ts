@@ -1,20 +1,24 @@
 import { act, renderHook } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { useFileChangedEvent } from '@/shared/hooks/useFileChangedEvent';
 import { useBrowserTabsStore } from '@/shared/store/browserTabsStore';
 import { useEditorStore } from '@/shared/store/editorStore';
+import { useProjectStore } from '@/shared/store/projectStore';
+import { armProjectAutoRefresh, disarmProjectAutoRefresh } from '@/shared/utils/browserAutoRefresh';
 
 // 轻量化依赖：terminal 调用 + webview/picker 子 hook 打桩，聚焦 hook 自身逻辑
 vi.mock('@/features/terminal', () => ({
   sendToTerminal: vi.fn(),
 }));
-const { mockDestroy } = vi.hoisted(() => ({
+const { mockDestroy, mockRefresh } = vi.hoisted(() => ({
   mockDestroy: vi.fn().mockResolvedValue(undefined),
+  mockRefresh: vi.fn(),
 }));
 vi.mock('@/features/browser/hooks/useBrowserWebview', () => ({
   useBrowserWebview: vi.fn(() => ({
     navigate: vi.fn(),
-    refresh: vi.fn(),
+    refresh: mockRefresh,
     goBack: vi.fn(),
     goForward: vi.fn(),
     openDevTools: vi.fn(),
@@ -30,6 +34,7 @@ vi.mock('@/features/browser/hooks/useBrowserPicker', () => ({
     reinjectPicker: vi.fn(),
   })),
 }));
+vi.mock('@/shared/hooks/useFileChangedEvent', () => ({ useFileChangedEvent: vi.fn() }));
 
 import { useBrowserTab } from '../useBrowserTab';
 
@@ -160,5 +165,98 @@ describe('useBrowserTab — closePage 关闭页面回收资源', () => {
     });
 
     expect(mockDestroy).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * `file://` tab 的自动刷新依赖「变更路径命中本 tab 的文件」这一判定。
+ *
+ * 生产者契约（`src-tauri/src/common/file/watcher/debounce.rs`）：事件路径**正常为项目相对**，
+ * `strip_prefix` 失败时**回退为绝对路径**。因此拼接 `${projectRoot}/${rel}` 的写法在回退场景
+ * **恒不命中**（`/repo//repo/docs/a.html`）—— 后果是「tab 不刷新、显示过期内容」。
+ * 与 `useBrowserPanelEvents` 的同一缺陷同因，判定必须走身份所有者。
+ */
+describe('useBrowserTab — file:// tab 的变更命中判定走身份抽象', () => {
+  const TAB_ID = 'tab_f';
+  const TAB_KEY = 'p1';
+  const FILE_URL = 'file:///repo/docs/main.html';
+
+  function grabFileChangedHandler(): (event: { project_id: string; paths: string[] }) => void {
+    const calls = vi.mocked(useFileChangedEvent).mock.calls;
+    const handler = calls[calls.length - 1]?.[0];
+    if (!handler) throw new Error('file-changed handler not registered');
+    return handler as never;
+  }
+
+  function setup(projectPath: string) {
+    useBrowserTabsStore.setState({ states: {} });
+    useBrowserTabsStore.getState().setTabState(TAB_ID, {
+      label: `neeko-browser-tab-${TAB_ID}`,
+      url: FILE_URL,
+      isCreated: true,
+      history: { entries: [FILE_URL], index: 0 },
+    });
+    useProjectStore.setState({
+      activeProjectId: 'p1',
+      projects: [{ id: 'p1', path: projectPath } as never],
+    });
+    armProjectAutoRefresh('p1');
+
+    renderHook(() =>
+      useBrowserTab({
+        tabKey: TAB_KEY,
+        tabId: TAB_ID,
+        projectId: 'p1',
+        isActive: true,
+        showToast: vi.fn(),
+      }),
+    );
+    return grabFileChangedHandler();
+  }
+
+  beforeEach(() => {
+    disarmProjectAutoRefresh('p1');
+    mockRefresh.mockClear();
+    vi.mocked(useFileChangedEvent).mockClear();
+  });
+
+  it('项目相对路径（正常形态）→ 刷新', () => {
+    const handler = setup('/repo');
+
+    act(() => {
+      handler({ project_id: 'p1', paths: ['docs/main.html'] });
+    });
+
+    expect(mockRefresh).toHaveBeenCalledTimes(1);
+  });
+
+  it('事件路径回退为**绝对路径**（strip_prefix 失败）→ 仍须刷新', () => {
+    const handler = setup('/repo');
+
+    act(() => {
+      handler({ project_id: 'p1', paths: ['/repo/docs/main.html'] });
+    });
+
+    expect(mockRefresh).toHaveBeenCalledTimes(1);
+  });
+
+  it('项目根带尾斜杠 / 相对路径重复斜杠 → 仍须刷新', () => {
+    const handler = setup('/repo/');
+
+    act(() => {
+      handler({ project_id: 'p1', paths: ['docs//main.html'] });
+    });
+
+    expect(mockRefresh).toHaveBeenCalledTimes(1);
+  });
+
+  it('变更路径属别的文件 → 不刷新', () => {
+    const handler = setup('/repo');
+
+    act(() => {
+      handler({ project_id: 'p1', paths: ['docs/other.html'] });
+    });
+
+    expect(mockRefresh).not.toHaveBeenCalled();
   });
 });

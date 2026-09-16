@@ -5,31 +5,20 @@
  * tab」的判定：两处各写一份，就会出现「黄线在、位置不在」这类分叉。放在独立模块而非某个
  * hook 文件里，也就不会有 hook → hook 的隐式依赖。
  *
- * **前置条件（调用方保证）**：两侧都已是**规范源身份** —— 由 `sourceIdentityOf` /
- * `canonicalFsPath` / `tabIdentityOf` 产出（tab 身份、`location.identity` 同一套归一）。
- * 因此这里**不做身份转换**：不拼项目根、不做 basename 猜测、不折叠 `..`。
+ * **判定实现只有一处**：`fileRef.sameIdentity`（身份所有者）。本模块只声明**前置条件** ——
+ * 两侧都必须是**规范源身份**（`sourceIdentityOf` / `tabIdentityOf` / `virtualSourceIdentity` 产出）。
  *
- * 保留的两条形态容忍（均为**既有事实**，不是身份转换）：
- * 1. 斜杠形态：`\` → `/`、去尾斜杠（Windows / WSL / SSH 路径）；
- * 2. 绝对 vs 相对：DAP 栈帧给绝对路径、而 tab 可能存项目相对形态，故允许「互为后缀」
- *    （`/repo/src/a.go` 与 `src/a.go`）。第 1 条之外**没有**别的兜底。
- *
- * 曾经还有一条「末段同名 + 裸后缀」兜底分支：穷举验证（251 个候选 / 63001 对输入）表明
- * 它只在**非规范输入**（重复/前导斜杠，如 `'////a/ab'` vs `'/ab'`）下可达，与上述前置条件
- * 矛盾且零覆盖 —— 已删除。对非规范输入的容忍应由**入口归一**承担，不在比较侧叠条件
- * （身份唯一化的后续收敛见任务 `09-16-debug-source-identity`）。
+ * 演化记录（避免回退）：
+ * - 曾有「末段同名 + 裸后缀」兜底分支 —— 穷举证明只对非规范输入可达，已删（切片 1+2）；
+ * - 曾有「绝对 vs 相对互为后缀」容忍（`/repo/a.go` vs `a.go`）—— 那是**误命中源**（任意目录下的
+ *   同名文件都会命中），且调用方两侧本就都是规范身份，已删（切片 3，R3）：相对/绝对混比属
+ *   **边界解析**职责，不在身份比较里兜。
  */
-function normalizePath(p: string): string {
-  return p.replace(/\\/g, '/').replace(/\/+$/, '');
-}
+import { sameIdentity } from '@/shared/utils/fileRef';
 
-/** Loose path equality for DAP abs paths vs editor relative/abs paths. */
+/** 两个源身份是否指向同一文件（实现委托身份所有者，见模块头注释的前置条件）。 */
 export function debugPathsMatch(a: string, b: string): boolean {
-  const na = normalizePath(a);
-  const nb = normalizePath(b);
-  if (!na || !nb) return false;
-  if (na === nb) return true;
-  return na.endsWith('/' + nb) || nb.endsWith('/' + na);
+  return sameIdentity(a, b);
 }
 
 /**

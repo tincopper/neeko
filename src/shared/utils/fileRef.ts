@@ -286,6 +286,40 @@ export function isJdtRef(ref: FileRef): boolean {
  * 身份相等：fs/fs 比 path；jdt/jdt 比 module+classPath+fileName；跨 kind 恒 false。
  * 相对/绝对 fs 路径、jdt uri 与展示路径在此收敛为同一身份。
  */
+/**
+ * 两个**源身份字符串**是否指向同一文件？
+ *
+ * 用于「两侧都已是规范身份」的消费侧（DAP 停点位置 vs tab 身份、tab 复用查找）。
+ * 相对/绝对混比、拼根、basename 猜测**不在此列** —— 那是边界解析的职责；身份比较只做
+ * 形态归一（斜杠 / 盘符）后按 `sameFile` 判定。
+ */
+export function sameIdentity(a: string, b: string): boolean {
+  if (!a || !b) return false;
+  return sameFile(fileRefFromTabPath('', a), fileRefFromTabPath('', b));
+}
+
+/**
+ * 路径列表里是否有**指向同一文件**的条目？—— `file-changed` 事件的消费侧唯一判定入口。
+ *
+ * 为什么必须共用：Rust watcher 发出的事件路径是**项目相对**（`strip_prefix` 失败时回退**绝对**），
+ * 而消费侧的 `filePath` 通常是规范绝对。三个消费方（tab 刷新 / HTML 预览 / 浏览器面板）
+ * 曾各写一套判定（字符串等值、后缀拼接、剥根转相对），其中两套会漏配 —— 后果是
+ * 「不刷新、显示过期内容」。此处把「相对/绝对/斜杠形态」双向归一交给身份所有者，
+ * 消费侧只调用本函数。
+ *
+ * @param root 项目根（事件相对路径的基准）
+ * @param paths 事件给出的变更路径列表（相对或绝对）
+ * @param filePath 待判定的文件路径（相对或绝对）
+ */
+export function pathsContainFile(
+  root: string,
+  paths: readonly string[],
+  filePath: string,
+): boolean {
+  const target = fileRefFromTabPath(root, filePath);
+  return paths.some((p) => sameFile(fileRefFromTabPath(root, p), target));
+}
+
 export function sameFile(a: FileRef, b: FileRef): boolean {
   if (a.kind === 'fs' && b.kind === 'fs') return a.path === b.path;
   if (a.kind === 'jdt' && b.kind === 'jdt') {

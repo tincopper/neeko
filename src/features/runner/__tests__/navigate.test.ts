@@ -534,6 +534,49 @@ describe('ensureStopSourceTab — 停点只确保源码可见（不写跳转目�
     expect(useEditorStore.getState().tabs['']).toBeUndefined();
   });
 
+  it('既有 tab 存非规范形态时也复用（同文件判定走身份抽象）', async () => {
+    // 历史 / 会话恢复的 tab 可能存 `…/src//A.java` 这类形态：字符串等值会漏判 ⇒ 再开一个 tab。
+    useEditorStore.setState({
+      tabs: {
+        p1: {
+          tabs: [
+            {
+              id: 'p1:/repo/src//A.java',
+              projectId: 'p1',
+              title: 'A.java',
+              order: 0,
+              data: {
+                kind: 'file' as const,
+                filePath: '/repo/src//A.java',
+                fileName: 'A.java',
+                content: { path: '/repo/src//A.java', content: 'x', size: 1, is_binary: false },
+                isDirty: false,
+              },
+            },
+          ],
+          activeTabId: 'p1:/repo/src//A.java',
+        },
+      },
+      editorLayout: {},
+      activeTabId: null,
+      pendingNavigateTarget: null,
+    });
+    readFileContentMock.mockClear();
+
+    await ensureStopSourceTab({
+      projectId: 'p1',
+      projectPath: PROJECT,
+      frame: frame(1, A_PATH),
+      sessionId: 's1',
+      isCurrent: () => true,
+    });
+
+    const space = useEditorStore.getState().tabs['p1'];
+    expect(space.tabs).toHaveLength(1);
+    // 复用路径不重取内容
+    expect(readFileContentMock).not.toHaveBeenCalled();
+  });
+
   it('should_open_the_second_file_when_stops_arrive_in_order', async () => {
     // 对照组（非竞态）：顺序到达时两个文件都应被打开，最后一次激活属后者。
     await ensureStopSourceTab({

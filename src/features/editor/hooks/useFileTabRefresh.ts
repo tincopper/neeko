@@ -3,7 +3,7 @@ import { useFileChangedEvent } from '@/features/git';
 import { useEditorStore } from '@/shared/store/editorStore';
 import { useProjectStore } from '@/shared/store/projectStore';
 import type { FileChangedEvent, FileContent } from '@/shared/types';
-import { relativeToRoot } from '@/shared/utils/fileRef';
+import { pathsContainFile } from '@/shared/utils/fileRef';
 
 interface FileRefreshCommands {
   readFileContent(path: string): Promise<FileContent>;
@@ -14,9 +14,9 @@ interface FileRefreshCommands {
  * Accepts optional commands for WSL/Remote file reading (from use-active-project).
  * Falls back to unified_read_file_content for local when commands is null.
  *
- * 事件 paths 相对 watcher 监听的根（项目根）；tab.filePath 恒为 canonical 绝对，
- * 命中比较前按事件项目根剥根转相对（worktree 路径不在项目根下，与旧行为一致
- * ——watcher 只监听主项目路径）。
+ * 命中判定收敛到**身份所有者**（`pathsContainFile`）：事件路径可能是项目相对（正常）
+ * 或绝对（watcher `strip_prefix` 失败时的回退），两侧混合形态也必须命中。
+ * worktree 下的 tab 不在项目根内，与旧行为一致不命中 —— watcher 只监听主项目路径。
  */
 export function useFileTabRefresh(commands?: FileRefreshCommands | null) {
   useFileChangedEvent(async (event: FileChangedEvent) => {
@@ -30,7 +30,7 @@ export function useFileTabRefresh(commands?: FileRefreshCommands | null) {
       for (const tab of projectTabs.tabs) {
         if (tab.data.kind !== 'file') continue;
 
-        if (!paths.includes(relativeToRoot(projectRoot, tab.data.filePath))) continue;
+        if (!pathsContainFile(projectRoot, paths, tab.data.filePath)) continue;
 
         if (tab.data.isDirty) {
           useEditorStore.getState().updateTab(tabKey, tab.id, {

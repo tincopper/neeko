@@ -89,10 +89,18 @@ export default defineConfig({
           branches: 80,
         },
         '**/editor/stopMatch.ts': {
-          lines: 90,
-          statements: 90,
+          lines: 100,
+          statements: 100,
           functions: 100,
-          branches: 85,
+          branches: 100,
+        },
+        // 身份所有者（纯函数，被本切片扩展）：lines 实测 100；statements/branches 的缺口
+        // 来自 jdt/LSP 解析的既有多分支（134/176/260/275，非本切片引入），故按实测地板钉住。
+        '**/shared/utils/fileRef.ts': {
+          lines: 100,
+          statements: 98,
+          functions: 100,
+          branches: 95,
         },
         '**/editor/hooks/useDebugStopReveal.ts': {
           lines: 100,

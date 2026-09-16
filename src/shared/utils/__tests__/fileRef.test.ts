@@ -6,6 +6,8 @@ import {
   fileRefFromTabPath,
   isJdtRef,
   lspUriOf,
+  sameIdentity,
+  pathsContainFile,
   relativeToRoot,
   sameFile,
   sourceIdentityOf,
@@ -92,6 +94,11 @@ describe('fileRefFromLspUri — file:// 边界（new URL + 逐段 decode）', ()
     expect(fileRefFromLspUri('untitled:foo')).toBeNull();
     expect(fileRefFromLspUri('https://example.com/a.ts')).toBeNull();
     expect(fileRefFromLspUri('')).toBeNull();
+  });
+
+  it('非法百分号转义 → null（不抛 URIError，边界输入不得炸调用方）', () => {
+    // `decodeURIComponent('%E0%A4%A')` 抛 URIError；真机某些客户端会发出未编码的裸 `%`。
+    expect(fileRefFromLspUri('file:///repo/bad%E0%A4%A.ts')).toBeNull();
   });
 });
 
@@ -407,5 +414,61 @@ describe('isJdtRef', () => {
   it('按 kind 判定', () => {
     expect(isJdtRef(jdtRef('jdt://contents/java.base/Foo.class'))).toBe(true);
     expect(isJdtRef(fileRefFromTabPath('/repo', 'src/a.ts'))).toBe(false);
+  });
+});
+
+describe('pathsContainFile — file-changed 消费侧的唯一判定入口', () => {
+  const ROOT = '/repo';
+  const ABS = '/repo/docs/main.html';
+
+  it('事件给项目相对路径（正常形态）→ 命中', () => {
+    expect(pathsContainFile(ROOT, ['docs/main.html'], ABS)).toBe(true);
+    expect(pathsContainFile(ROOT, ['other.html', 'docs/main.html'], ABS)).toBe(true);
+  });
+
+  it('事件回退为绝对路径（strip_prefix 失败）→ 仍命中', () => {
+    expect(pathsContainFile(ROOT, [ABS], ABS)).toBe(true);
+  });
+
+  it('两侧形态不齐（重复/尾斜杠、反斜杠）→ 归一后仍命中', () => {
+    expect(pathsContainFile(ROOT, ['docs//main.html'], ABS)).toBe(true);
+    expect(pathsContainFile(`${ROOT}/`, ['docs/main.html'], ABS)).toBe(true);
+    expect(pathsContainFile(ROOT, ['docs\\main.html'], ABS)).toBe(true);
+    expect(pathsContainFile(ROOT, ['docs/main.html'], `${ABS}/`)).toBe(true);
+  });
+
+  it('别的文件 / 空列表 → 不命中', () => {
+    expect(pathsContainFile(ROOT, ['docs/other.html'], ABS)).toBe(false);
+    expect(pathsContainFile(ROOT, [], ABS)).toBe(false);
+    // 仅同名的不同文件不得命中（旧的后缀匹配会误命中）
+    expect(pathsContainFile(ROOT, ['/other/repo/docs/main.html'], ABS)).toBe(false);
+  });
+});
+
+describe('sameIdentity — 两个源身份字符串是否同一文件', () => {
+  it('形态差异（重复/尾斜杠、反斜杠）归一后相等', () => {
+    expect(sameIdentity('/repo//a.go', '/repo/a.go')).toBe(true);
+    expect(sameIdentity('/repo/a.go/', '/repo/a.go')).toBe(true);
+    expect(sameIdentity('C:\\repo\\a.go', 'C:/repo/a.go')).toBe(true);
+  });
+
+  it('jdt 展示路径与适配器 uri 收敛为同一身份', () => {
+    expect(
+      sameIdentity(
+        'jdt:/java.base/java/io/PrintStream.java',
+        'jdt:/java.base/java/io/PrintStream.java',
+      ),
+    ).toBe(true);
+  });
+
+  it('不同文件 / 空值 → 不相等', () => {
+    expect(sameIdentity('/a/x.go', '/b/x.go')).toBe(false);
+    expect(sameIdentity('', '/repo/a.go')).toBe(false);
+    expect(sameIdentity('/repo/a.go', '')).toBe(false);
+  });
+
+  it('不做相对/绝对混比与 basename 猜测（那属边界解析）', () => {
+    expect(sameIdentity('/repo/a.go', 'a.go')).toBe(false);
+    expect(sameIdentity('/repo/a.go', 'src/a.go')).toBe(false);
   });
 });

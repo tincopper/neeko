@@ -7,9 +7,22 @@ describe('debugPathsMatch — 只做路径形态容错，不做身份转换', ()
     '/Users/u/.neeko/java-src-cache/jdk-src-21.0.12.1/java.base/java/io/PrintStream.java';
   const JDT = 'jdt:/java.base/java/io/PrintStream.java';
 
-  it('普通路径形态容错', () => {
-    expect(debugPathsMatch('/repo/a.go', 'a.go')).toBe(true);
+  it('形态差异（重复/尾斜杠、反斜杠）归一后相等', () => {
+    expect(debugPathsMatch('/repo//a.go', '/repo/a.go')).toBe(true);
+    expect(debugPathsMatch('/repo/a.go/', '/repo/a.go')).toBe(true);
+    expect(debugPathsMatch('C:\\repo\\a.go', 'C:/repo/a.go')).toBe(true);
+  });
+
+  it('不同文件 → 不相等', () => {
     expect(debugPathsMatch('/repo/a.go', '/other/b.go')).toBe(false);
+    expect(debugPathsMatch('/a/x.go', '/b/x.go')).toBe(false);
+  });
+
+  it('**不再**做相对/绝对混比与 basename 猜测（契约变更：那属边界解析）', () => {
+    // 旧实现允许「互为后缀」：`/repo/a.go` vs `a.go` 会命中 —— 也会让任意目录下的同名文件误命中。
+    // 现在两侧必须是规范身份（调用方由 sourceIdentityOf/tabIdentityOf 产出）。
+    expect(debugPathsMatch('/repo/a.go', 'a.go')).toBe(false);
+    expect(debugPathsMatch('/repo/a.go', 'src/a.go')).toBe(false);
   });
 
   it('空值早退：任一侧为空串一律不匹配', () => {
@@ -75,5 +88,54 @@ describe('resolveDebugHighlightLine — 停点是否落在本 tab（黄线与光
         'stopped',
       ),
     ).toBeNull();
+  });
+
+  it('abs 路径不命中时回退到 tab 身份（本 tab 的绝对路径入参为 null 的场景）', () => {
+    expect(
+      resolveDebugHighlightLine(
+        null,
+        '/Users/me/proj/main.go',
+        { identity: '/Users/me/proj/main.go', line: 7 },
+        'stopped',
+      ),
+    ).toBe(7);
+    expect(
+      resolveDebugHighlightLine(
+        '/Users/me/proj/other.go',
+        '/Users/me/proj/main.go',
+        { identity: '/Users/me/proj/main.go', line: 7 },
+        'stopped',
+      ),
+    ).toBe(7);
+  });
+
+  it('line < 1 视为无效位置', () => {
+    expect(
+      resolveDebugHighlightLine(
+        '/Users/me/proj/main.go',
+        'main.go',
+        { identity: '/Users/me/proj/main.go', line: 0 },
+        'stopped',
+      ),
+    ).toBeNull();
+  });
+
+  it('starting 也按「在停点上」处理（后端瞬时状态），状态缺省不设门', () => {
+    expect(
+      resolveDebugHighlightLine(
+        '/Users/me/proj/main.go',
+        'main.go',
+        { identity: '/Users/me/proj/main.go', line: 7 },
+        'starting',
+      ),
+    ).toBe(7);
+    expect(
+      resolveDebugHighlightLine(
+        '/Users/me/proj/main.go',
+        'main.go',
+        { identity: '/Users/me/proj/main.go', line: 7 },
+        null,
+      ),
+    ).toBe(7);
   });
 });
