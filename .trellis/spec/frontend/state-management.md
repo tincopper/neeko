@@ -788,6 +788,7 @@ export function useDebugStopReveal(p: {
 8. **视图局部接管**：光标离开「我方放置的位置」即视为用户接管，本次事件键内不再夺回；新事件键恢复跟随。释放光标只在「光标仍停在我们放置的行」时执行。
 9. **停点输入面只有一处 store 读取（单视图订阅槽 = 2）**：编辑器侧的两个消费者（`useDebugStopReveal` 光标 / `useCurrentLineHighlight` 黄线）都必须只消费 `useStopLocation`，不得自行读 debug / project store 或再调 `useVisibleDebugSession()`。理由：两者都需要「位置 + 会话状态」，各自订阅会把单视图展开成 6 个槽，且「会话属于当前项目」门控在多处各判一遍 —— 漏一处就是 #14（别项目停点画到本项目编辑器）。`useStopLocation` 用**一次** `useShallow` 选择器取齐（位置 + 序号 + 会话身份 + 状态）+ 一次 `activeProjectId`，把门控与状态一并交出。结构不变量由 `runner/__tests__/architecture.test.ts` **护栏 12** 钉住（源码扫描；不用行为断言是因为 React `useSyncExternalStore` 会按 `subscribe` 去重，多个 selector 运行时只产生一条订阅，行为上测不出差别）。
 10. **selector 返回对象必须套 `useShallow`**：`useStopLocation` 的合并选择器若不套，每次 `getSnapshot` 都是新引用 → React 判定 tearing 并持续重渲。
+11. **路径形态归一只能住在身份所有者里，且出现点必须登记**：任何消费方都不得自造 `\`→`/`、去尾斜杠这类字符串重写来做同文件判定 —— 那是同一份文件的第二种表示。确属展示/URL/树结构/命令入参派生的归一可以保留，但必须在 `.trellis/scripts/check_path_identity_scope.py` 的 `MANIFEST` 登记分类（`owner` / `legit` / `debt`）与计数。该脚本已接入 `pnpm lint` 与 CI：**未登记命中 / 登记失效 / 计数漂移 / 扫描集为空** 四种情况都会判失败。改动前请先跑它（`--list` 看全量台账）。
 
 ### 4. Validation & Error Matrix
 

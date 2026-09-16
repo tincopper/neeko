@@ -371,6 +371,7 @@ cargo test --manifest-path src-tauri/Cargo.toml
 11. **换行边界（Line-Ending Boundary）**：Git 客户端同时面对「git 归一化视图」（blob/diff/status，受 `text`/`core.autocrlf` 影响时统一 LF，确定）与「工作区物化字节」（由平台 + git 配置决定，Windows 默认 `autocrlf=true` 会转 CRLF，**不确定**）。因此：
     - **测试**：禁止对工作区换行做字节级精确断言（`read_to_string` + `assert_eq!(content, "...")` 模式在 Windows CI 必挂）。测试仓库必须用确定性 builder（集成侧 `tests/unit/support.rs::TestRepo`、lib 侧 `operations.rs::init_repo`：仓库级 `core.autocrlf=false` + 提交 `.gitattributes * -text` 双保险）；必须断言工作区字节时走行尾无关比较（`support::assert_content_eq` / `assert_worktree_eq`），或优先在 git 归一化视图（status/diff）上断言。CI 护栏：`.trellis/scripts/check_worktree_byte_assertions.py`（已接入 `pnpm lint` 与 CI）。
     - **生产**：禁止向 git 调用注入 `-c core.autocrlf=...` / 强制换行语义改变用户仓库行为 —— 必须尊重用户仓库的换行设置。工作区字节按不透明平台数据处理（解析走 `.lines()` 等 CRLF 兼容路径）。
+12. **路径身份唯一化（Single Path Identity）**：所有「这是不是同一个文件」的判定必须落在 `FileRef` 身份上（`src/shared/utils/fileRef.ts`：`sameFile` / `sameIdentity` / `pathsContainFile` / `sourceIdentityOf`），**禁止消费侧自造字符串归一或别名匹配**（裸路径等值、`endsWith('/' + p)`、`` `${root}/${rel}` `` 拼接）。同一份源码出现两种表示会让断点 key 分叉、黄线与光标各认一个、变更事件漏配导致视图不刷新（issue #13）。展示 / URL / 树结构 / 命令入参派生的归一是合法的，但**出现点必须登记分类**：CI 护栏 `.trellis/scripts/check_path_identity_scope.py`（已接入 `pnpm lint` 与 CI）以 `MANIFEST` 为机读台账，未登记命中 / 登记失效 / 计数漂移 / 扫描集为空四种情况均判失败；改代码前先跑 `--list` 看全量台账。
 
 ### 业界最佳实践（React / Rust 通用底线）
 
