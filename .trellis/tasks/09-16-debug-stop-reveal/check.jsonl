@@ -1,0 +1,4 @@
+{"file": ".trellis/spec/frontend/state-management.md", "reason": "审查 generation/location/locationSeq 的落点是否符合单写者与「禁止冗余状态」约定（locationSeq 是否为可派生冗余）"}
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "审查幂等重放 effect 是否引入额外渲染/订阅风暴，以及是否存在禁止模式"}
+{"file": ".trellis/spec/frontend/hook-guidelines.md", "reason": "审查 useStopLocation / useDebugStopReveal 的职责边界与依赖注入形态是否越界"}
+{"file": ".trellis/spec/unit-test/frontend-testing.md", "reason": "审查 T1~T10 是否真能锁住代际守卫与幂等自愈（异步交错用例不可用伪同步断言糊过）"}

@@ -1,0 +1,5 @@
+{"file": ".trellis/spec/frontend/state-management.md", "reason": "停点位置改单写者+派生状态：store 字段与切片职责、「禁止冗余状态」约定直接约束 generation/location/locationSeq 的落点"}
+{"file": ".trellis/spec/frontend/hook-guidelines.md", "reason": "新增 useStopLocation / useDebugStopReveal 的 hook 形态、依赖注入与订阅粒度约定"}
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "幂等重放 effect 的性能与渲染约束（不得引入 per-stop 全量重渲染）"}
+{"file": ".trellis/spec/unit-test/frontend-testing.md", "reason": "先写失败测试、renderHook+act 与异步交错测试手法（T1/T3 代际守卫用例）"}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "runner↔editor 跨 feature 边界：门面导出与 store 白名单直导的取舍"}
