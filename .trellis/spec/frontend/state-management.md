@@ -732,6 +732,119 @@ listen(SOME_CLOSE_EVENT, () => {
 });
 ```
 
+## 场景：停点跟随（异步链代际守卫 + 跟随改为派生状态） 2026-09-16
+
+### 1. Scope / Trigger
+
+- Trigger：issue #13 —— 调试停点 / 单步时编辑器**有时**不跳到当前断点位置，重新点一下栈帧中的函数才能定位。两个成因叠加：
+  1. 停点的异步链（取栈 / 取变量 / 取源码内容）**只校验 `sessionId`**：旧停点迟到完成的链会把 `frames` / 位置写回 store，覆盖新停点（「黄线在新停点、编辑器停在旧停点」）；
+  2. 「编辑器跟随停点」被实现成**一次性事件**（全局单槽 `editorStore.pendingNavigateTarget` + 命中即清槽 + rAF 兑现）：槽清掉后若兑现落空（视图被重建 / 尚未测量），跳转**静默丢失且无从补偿**。
+- Scope：`src/features/runner/store/debug/**`（栈切片 + 代际）、`src/features/runner/navigate.ts`（tab 生命周期）、`src/features/runner/hooks/useStopLocation.ts`、`src/features/editor/hooks/useDebugStopReveal.ts`、`src/features/editor/stopMatch.ts`。
+- 与「异步全量刷新防陈旧覆盖 (git status 竞态)」**同类**（异步乱序落地），但本例多一条更强的结论：**能从状态推导的「期望视图」不该做成事件**。
+
+### 2. Signatures
+
+```ts
+// ① 代际（runner/store/debug/stopGeneration.ts，纯函数）
+export type StopGeneration = { sessionId: string; seq: number };
+export function nextGeneration(sessionId: string): StopGeneration;
+export function isSameGeneration(a: StopGeneration | null, b: StopGeneration | null): boolean;
+
+// ② 位置 = 唯一真相 + 严格单调的事件键（store/debug 的 StopLocationState）
+type StopLocationState = {
+  location: { identity: string; line: number; column: number } | null; // 规范源身份
+  locationSeq: number;                                                 // 停点/切帧/清空都 +1
+};
+// 一次停点 = 一次原子 set（帧 + 选中帧 + 位置 + 序号），不允许分次写
+
+// ③ 跨 feature 的异步落地许可（runner/navigate.ts）
+export async function ensureStopSourceTab(
+  req: { projectId; projectPath; frame; sessionId?; isCurrent: () => boolean },
+  onError?: (m: string) => void,
+): Promise<string | null>;   // await 之后、addTab/activateTab 之前必须 isCurrent()
+
+// ④ 编辑器侧：只读派生输入 + 幂等兑现
+export function useStopLocation(): { identity; line; column; seq } | null;  // 含 activeProject 门控
+export function useDebugStopReveal(p: {
+  absFilePath; tabFilePath; editorViewRef; viewEpoch;
+}): void;   // effect 依赖 [stop, targetLine, viewEpoch]，按 seq 判「新事件」并重放
+```
+
+### 3. Contracts
+
+1. **代际单调**：每次停点刷新入口取新代际并使在途旧链失效；所有 `await` 之后落地前必须 `isSameGeneration(get().generation, gen)`，否则**整条链放弃**（不写帧 / 位置 / 变量，也不建 tab、不抢激活）。
+2. **原子写**：一次停点的 `frames` / `selectedFrameId` / `location` / `locationSeq` 必须在**同一次 `set`** 内落地 —— 分次写会产生「新位置 + 旧帧」的可观测中间态。
+3. **位置单写者 + 规范身份**：位置只能由唯一构造点产出（`stackFrames.buildStopLocation`）；同一停点的多个写入口径（裸 `Source.path` vs 规范身份）会让黄线与跳转判定分叉。
+4. **事件键必须严格单调**：`locationSeq` 不是可派生冗余 ——「位置值相同」≠「事件相同」（循环里连续命中同一行），编辑器必须能区分「又停了一次」才能重新接管光标。
+5. **事件型 vs 派生型判据**：能用 store 状态推导的「期望视图」（编辑器展示当前停点）必须**派生 + 幂等重放**；只有真正的**用户意图**（定义跳转 / quick-open / 链接 / 点断点）才用一次性槽消费。
+6. **异步链的落地许可用注入式谓词**：跨 feature 的异步落地把「还算不算数」作为 `isCurrent: () => boolean` 注入，调用方各自给出正确判据（自动停点 = 代际；点栈帧 = `selectedFrameId` 仍是该帧 **且** 停点上下文未变），navigate 不认识代际类型。
+7. **「代际相等」与「停点上下文未变」是两个谓词，不可互换**：`isSameGeneration(null, null) === false` 是该模块的**有意约定**（链条由 `beginStop` 起；store 代际变 null = 已结束 ⇒ 丢弃在途链）。但**切帧不 `beginStop`**，它的复查是「捕获一次、await 后比对」，此时「捕获时无代际、复查时仍无代际」= **什么都没发生** ⇒ 必须用 `stopContextUnchanged(current, captured)`（双方皆无 = 未变；仅一侧无 = 已变；都有 = 比代际）。用错会让未过 `beginStop` 的停止态（attach 到已暂停进程、测试直接 seed frames+session）**静默不写变量、不打开源码 tab**。
+7. **视图局部接管**：光标离开「我方放置的位置」即视为用户接管，本次事件键内不再夺回；新事件键恢复跟随。释放光标只在「光标仍停在我们放置的行」时执行。
+
+### 4. Validation & Error Matrix
+
+| 场景 | 输入 | 预期 | 错误处理 |
+|------|------|------|---------|
+| 单次停点 | 一次 `refreshStackAndVars` | 一次原子写，位置/序号同步 +1 | 无 |
+| 旧链迟到（栈结果后到） | 两个 deferred `dapStackTrace`，旧的后 resolve | 旧代际整链丢弃，状态属新代际 | 静默丢弃（不弹错） |
+| 旧链迟到（源码内容后到） | 旧停点的 `readFileContent` 晚于新停点完成 | 不建 tab、不激活、不写跳转目标 | 静默丢弃 |
+| 切帧 | `selectFrame(otherId)` | 代际不变、`locationSeq+1`、位置为规范身份 | 帧不存在 / 会话非 live → 直接返回 |
+| 停点结束 / 继续 / 终止 / 复位 | `continued` / `terminated` / `resetSession` | `location=null`、`locationSeq+1`、代际作废 | 无 |
+| 用户挪走光标后再重放 | 同 `seq`、`viewEpoch` 变化 | 不夺回光标；黄线照常标记 | 无 |
+| 视图重建 | `viewEpoch` 变化 | 重放（幂等）→ 自愈回到停止行 | 越界（doc 未就绪）时不放置也不记账，等下次触发 |
+
+### 5. Good/Base/Bad Cases
+
+- Good：停点1（源码内容慢）→ 停点2（快）→ 停点1 的内容最后到达：编辑器始终停在停点2，活动 tab 属于停点2，旧文件既不建 tab 也不抢激活。
+- Base：同一文件连续单步（位置值可能相同）：每次都重新跟随（新事件键），用户接管后下一次停点仍恢复跟随。
+- Bad：跳转目标进全局单槽、由异步链写入、命中即清槽 —— 迟到者覆盖 + 清槽后丢失，两者都表现为「有时不跳」。
+
+### 6. Tests Required
+
+- `runner/store/debug/__tests__/stopGeneration.test.ts`：代际单调 / 相等判定（`null` 永不相等）/ 用例独立重置。
+- `runner/__tests__/debugStore.test.ts`：**反转 resolve 顺序**（新链先完成、旧链后完成）后状态仍属新代际；订阅快照中不存在「新位置 + 旧帧」；切帧保持代际且序号 +1；四条清空路径清位置且序号 +1。
+- `runner/__tests__/navigate.test.ts`：`ensureStopSourceTab` 不写跳转目标；许可在 `await` 后变 false 时不建 tab / 不激活。
+- `runner/__tests__/stopReveal.integration.test.ts`：**不 mock `navigate`** 的端到端交错（症状级回归）。
+- `editor/hooks/__tests__/useDebugStopReveal.test.ts`：命中 / 幂等重放（不重复记录原光标位置）/ 用户接管 / 释放两分支 / 不误伤 / 越界不伪造位置。
+- `runner/__tests__/debugStore.test.ts`：切帧的**双向**用例 —— 无代际时变量仍写入（`[T14]`）、切帧期间出现新停点则迟到变量被丢弃（`[T15]`）；两者都要能用「撤掉守卫 / 换成错误谓词」跑出真红。
+- **必须真红**：提交前临时移除代际守卫（或让 `isCurrent` 恒真），上述交错用例必须 RED；恢复后 GREEN。
+
+### 7. Wrong vs Correct
+
+#### Wrong
+
+```ts
+// 跟随 = 一次性事件 + 全局单槽；异步链直接写槽
+async function applyFrames(frames) {           // 只校验 sessionId
+  set({ frames });                              // 与位置分两次 set
+  set({ stoppedAt: { filePath, line } });       // 裸路径，且与上面不同步
+  if (!existing) await load();                  // ← 迟到者在这里之后写槽
+  store.setPendingNavigateTarget({ ..., debug: true });
+}
+// 消费侧：命中即清槽，真正的动作塞进 rAF（丢失后无从补偿）
+```
+
+#### Correct
+
+```ts
+// ① 停点 = 带代际的原子写（位置为规范身份）
+const gen = get().beginStop(sid);
+const frames = await dapStackTrace(sid);
+if (!isCurrent(gen)) return;                    // 旧代际整链放弃
+set({ frames, selectedFrameId: nav.id, ...withStopLocation(get(), buildStopLocation(nav, root)) });
+
+// ② 只确保源码可见，并把「落地许可」注入给 tab 生命周期
+ensureStopSourceTab({ ..., isCurrent: () => isCurrent(gen) });
+
+// ③ 编辑器侧从 location 派生（幂等重放；用户接管后不夺回）
+const stop = useStopLocation();
+const targetLine = resolveDebugHighlightLine(absFilePath, tabFilePath, stop, status);
+useEffect(() => { /* 判新事件 / 用户接管 → applyNavigateCaret / releaseDebugCaret */ },
+  [stop, targetLine, viewEpoch]);
+```
+
+---
+
 ## 常见错误
 
 ### 1. 继续把跨域数据通过多层 Props 透传
@@ -883,3 +996,13 @@ return () => {
 ```
 
 新增 `listen` 调用点时自问：这个 unlisten 会不会在注册后极短时间内被调用？会不会被多处调用？——任一成立则必须 `safeUnlisten`。
+
+### 12. 把「可派生的期望视图」做成一次性槽
+
+**问题**：调试停点跟随曾用全局单槽 `editorStore.pendingNavigateTarget`（一次性消费、命中即清槽）承载「编辑器应展示当前停点」。槽清掉之后动作才在 `requestAnimationFrame` 里执行，若此时视图被重建／尚未测量，跳转静默丢失且**无补偿**；同时异步链（源码内容读取）也会写这个槽，旧停点迟到即覆盖新停点。表现为「有时不跳到断点，点一下栈帧才行」（issue #13，2026-09-16）。
+
+**判定准则**：这个状态**能不能从既有 store 状态推出来**？
+- 能（如「编辑器应展示当前停点」= f(`location`, `locationSeq`)）→ 必须**派生 + 幂等重放**（`viewEpoch` 变化即重放，丢失自愈），不要槽、不要清槽时序；
+- 不能（如「用户点了定义跳转」）→ 才是**用户意图**，可以用一次性槽，但必须带单调序号（防异步乱序），且消费失败要能观测。
+
+**交叉引用**：代际守卫的完整契约、`locationSeq` 为何不可派生、跨 feature 落地许可（`isCurrent` 注入）见「场景：停点跟随（异步链代际守卫 + 跟随改为派生状态）」；交错用例的假绿防线见 `unit-test/frontend-testing.md` §9。

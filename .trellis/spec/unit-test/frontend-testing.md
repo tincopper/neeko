@@ -469,3 +469,27 @@ beforeEach(() => {
 ### 8. detached 节点事件不冒泡
 
 测试中手动创建并触发事件的 DOM 节点若未挂载到 `document`，事件不会冒泡到 `document` 监听器（如外部点击关闭菜单的逻辑）——先 `document.body.appendChild(el)`，结束再移除。
+
+### 9. 竞态用例的假绿：只 `await` 主链，迟到链还没落地
+
+**问题**：交错 / 竞态用例（「旧请求迟到不得覆盖新请求」这类）最常见的失效方式不是断言写错，而是**断言跑在迟到链执行之前**。`await mainRun`（主链 promise 已 resolve）只让出**一个**微任务，而迟到链在自己的 `await` 链上还有若干层（例：`loadStopSourceContent` → `openStopTab` 各有一层 `await`），于是断言抢先执行 → **缺陷代码上也「通过」**。实例：issue #13 的 `T3-tab` 首版就是这样在旧机制上直接绿的（2026-09-16），补一次微任务冲刷后才在旧机制上稳定红。
+
+**正确模式**：用 `deferred()` 显式兑现迟到方，兑现后**必须**再 `await flushMicrotasks()` 才断言（两者都在 `src/testing/async.ts`）：
+
+```ts
+const slowRead = deferred<FileContent>();
+readFileContentMock.mockImplementation((_p, path) => (path === A ? slowRead.promise : Promise.resolve(content(path))));
+
+const firstRun = refresh();                 // 旧停点，挂在内容读取上
+await flushMicrotasks();                    // 让它推进到「内容还在路上」
+await refresh();                            // 新停点先完成
+slowRead.resolve(content(A));               // 旧内容此刻才到
+await firstRun;
+await flushMicrotasks();                    // ★ 少了这一行就是假绿
+expect(activeTabId()).toBe(B_TAB);
+```
+
+**判定准则**：写完交错用例后，**在缺陷代码（或临时移除守卫 / 让守卫恒真）上跑一次**——必须是红的。不红就先怀疑时序（断言早于迟到链）或断言面选错了，而不是宣布「bug 不存在」。
+
+**禁止**：用 `await` 顺序或调用次序模仿交错（那只是顺序执行，测不出竞态）；用 `sleep` 凑时序（不稳定且掩盖问题根源）。
+

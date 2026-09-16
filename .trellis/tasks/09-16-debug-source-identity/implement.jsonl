@@ -1,0 +1,4 @@
+{"file": ".trellis/spec/guides/code-reuse-thinking-guide.md", "reason": "身份比较必须复用既有 FileRef/sameFile，禁止自造字符串归一 —— 本切片 R1/R3 正是「先查有没有现成实现」"}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "tab 身份在 runner/editor/shared 三层间传递（sourceTab 比较、stopMatch 匹配、fileRef 抽象），跨层边界是本切片问题集中地"}
+{"file": ".trellis/spec/frontend/state-management.md", "reason": "切片 1+2 落下的不变式（单写者/原子写/代际守卫/派生跟随）与「一次性槽 vs 派生」判据，本切片不得回退"}
+{"file": ".trellis/spec/unit-test/frontend-testing.md", "reason": "§9 竞态用例假绿防线；本切片含 characterization（无 Red）用例，需按该节如实标注与验证"}

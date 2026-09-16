@@ -109,7 +109,7 @@ export function useDebugStopReveal(params: {
 - `src/features/editor/hooks/useDebugStopReveal.ts` — 幂等兑现 + 接管闩锁 + 释放分支。
 - `src/features/editor/hooks/__tests__/useDebugStopReveal.test.ts` — R5/R6/R7 单测。
 - `src/features/editor/stopMatch.ts` — 停点匹配策略纯函数（从 `useCurrentLineHighlight` 抽出，供黄线与 reveal 共用同一判定）。
-- `src/testing/deferred.ts` — `deferred<T>()` 夹具，供 runner/editor 两侧的代际交错用例复用。
+- `src/testing/async.ts` — 异步测试夹具（`deferred<T>()` + `flushMicrotasks`），供 runner/editor 两侧的代际交错用例复用。
 
 **修改**
 - `src/features/runner/store/debug/stackSlice.ts` — 代际入口与守卫；`stoppedAt`→`location`；原子写；`selectFrame` 归一 + `locationSeq`；删除「打开源码」调用（tab 打开职责留在 navigate）。
@@ -132,7 +132,12 @@ export function useDebugStopReveal(params: {
 
 ## Out of Scope（后续切片，本切片只留接缝）
 
-- **切片 3 身份唯一化**：tab 复用改走 `FileRef/sameFile`（`navigate.ts:86-88` 的裸字符串等值）；`debugPathsMatch` 的宽松归一收敛为身份相等；`useCurrentLineHighlight` 与 reveal 共用同一匹配函数。
+- **切片 3 身份唯一化 + 概念归属收敛**（已建任务：`.trellis/tasks/09-16-debug-source-identity`）：
+  - tab 复用从裸字符串等值改走 `FileRef/sameFile`（现位于 `src/features/runner/sourceTab.ts:78`）；
+  - `debugPathsMatch` 的宽松归一收敛为身份相等（现位于 `src/features/editor/stopMatch.ts:16-25`），黄线与 reveal 共用同一判定；
+  - **F6（评审遗留）**：「停点位置」概念现分三处 —— 类型与构造在 `runner/stackFrames.ts:43`、状态对（`location` + `locationSeq`）在 `store/debug/shared.ts:70-95`、使用在 `store/debug/stackSlice.ts`。归属应收敛到单一模块（建议 `store/debug/stopLocation.ts` 叶子，需在架构护栏 10 白名单登记）。
+  - **F5（评审遗留）**：单视图 6 个 store 订阅槽 —— `useStopLocation.ts:27` 内部已订阅 session/activeProjectId，`useDebugStopReveal.ts:45` 与 `useCurrentLineHighlight.ts:28` 又各订阅一次。收敛方向：由 `useStopLocation` 一并返回 status（一次订阅），或在 hook 层订阅一次后透传。（若切片 4 先行，视图唯一化后订阅面天然减少，F5 在那一刻收敛更省事。）
+  - 备注：**F3**（`debugPathsMatch` 第三分支只对非规范输入可达）与本项落在同一函数上，预期随 `sameFile` 收敛一并消解，无需单独决策面。
 - **切片 4 视图唯一化**：`FileViewer` 只渲染本 group 的 tab（消除同一 `tabId` 的多份挂载）；`MountRegistry` 选举唯一兑现者，隐藏副本不消费。
 - **切片 5 清理**：user 意图槽的有序化 / 单消费者化（`pendingNavigateTarget` 全量替身）；`editorRestoredRef` 时序分支拆除。
 - 与 #13 无关：Java 后端选择、SSH 端口转发、求值 / HCR 能力。
@@ -143,7 +148,7 @@ export function useDebugStopReveal(params: {
 
 - [ ] T1 代际守卫：两个 deferred `dapStackTrace`（gen1 慢 / gen2 快）→ 反转 resolve 顺序 → `frames` / `location` / `selectedFrameId` 全部来自 gen2，gen1 不留痕。
 - [ ] T2 原子写：订阅 store 断言不存在「新 `location` + 旧 `frames`」的中间快照（帧 / 选中帧 / 位置成对更新）。
-- [ ] T3 迟到者不可覆盖跳转目标：gen1 的源文件读取（deferred）晚于 gen2 完成 → 最终 `location` = gen2，`locationSeq` 单调递增。
+- [ ] T3 迟到者不可覆盖（拆两段，见 implement.md 用例修订记录）：**T3-tab** —— gen1 的源码内容加载晚于 gen2 → 活动 tab 仍属 gen2（`location` 的单写者性质并入 T1）；**T3-cursor** —— 交错结束后编辑器光标停在 gen2 的停止行。
 - [ ] T4 切帧：`selectFrame` 同代际内更新 `location`（规范身份）并 `locationSeq+1`，不新开代际。
 - [ ] T5 结束 / 继续：`continued` / `terminated` / `resetSession` → `location=null` 且 `locationSeq+1`。
 - [ ] T6 命中：stop 匹配本 tab → 光标落在停止行并居中（1 次）。

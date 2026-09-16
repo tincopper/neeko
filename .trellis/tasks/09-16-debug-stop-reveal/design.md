@@ -175,10 +175,25 @@ selectFrame: async (frameId) => {
     ...nextLocation(get(), location),
   });
 
-  void ensureStopSourceTab({ ...同上，isCurrent 用同一代际 ... }, onError);
+  // 代际快照：切帧不新开代际，但新停点到达必须让这条链的后续落地失效
+  //（DAP 数字帧 id 极易碰撞，单靠 selectedFrameId 会误判为「仍是这一帧」）。
+  // 复查用 `stopContextUnchanged`（见 2.1）：它与 `isSameGeneration` 的唯一差别就是
+  // 「双方皆无代际」—— 切帧不 beginStop，此时「无代际」= 未变，必须继续。
+  const generationAtSelect = get().generation;
+
+  void ensureStopSourceTab(
+    {
+      ...同上,
+      isCurrent: () =>
+        get().selectedFrameId === frameId &&
+        stopContextUnchanged(get().generation, generationAtSelect),
+    },
+    onError,
+  );
 
   const variables = await dapVariables(sid, frameId);
   if (!isLiveSession(get().session)) return;
+  if (!stopContextUnchanged(get().generation, generationAtSelect)) return;
   if (get().selectedFrameId !== frameId) return;
   set({ variables });
 }
@@ -186,7 +201,9 @@ selectFrame: async (frameId) => {
 
 `nextLocation` / `clearLocation` 为本地纯辅助：`{ location, locationSeq: prev.locationSeq + 1 }`（清空时 `location: null`）。
 
-**为什么切帧不新开代际**：切帧不是新停点事件，若开新代际会把在途的 `variables` 全部判死且使「停点 → 切帧」的因果链断裂；「位置变了」由 `locationSeq` 表达。若切帧发生在旧代际的 `dapVariables` 在途期间，★8 的 `selectedFrameId` 校验负责丢弃迟到变量。
+**为什么切帧不新开代际**：切帧不是新停点事件，若开新代际会把在途的 `variables` 全部判死且使「停点 → 切帧」的因果链断裂；「位置变了」由 `locationSeq` 表达。
+丢弃迟到变量由**两道**校验共同负责：`stopContextUnchanged(get().generation, generationAtSelect)`（期间出现新停点 ⇒ 丢弃）+ `selectedFrameId !== frameId`（用户改选了别的帧 ⇒ 丢弃）。
+**`stopContextUnchanged` 与 `isSameGeneration` 不可互换**：前者把「双方皆无代际」判为**未变**（切帧不 `beginStop`；attach 到已暂停进程 / 测试直接 seed frames+session 这类未过 `beginStop` 的停止态都属此列），后者按定义判为**非同一代际**。用错会让切帧的变量写入与源码 tab 打开被静默跳过（用例 `[T14]` 锁定）。
 
 **为什么 `applyStop` 同步完成核心写**：I2。帧 / 选中帧 / 位置 / `locationSeq` 必须同一次 `set`，从根上消除「黄线新、位置旧」的可观测中间态。
 
@@ -396,14 +413,23 @@ t3  A/B 视图挂载/可见 → useDebugStopReveal 读 location=L2 → 收敛到
 |---|---|---|
 | 同一 `tabId` 多份挂载（`FileViewer` 在每个 pane 渲染全部 file tab） | 隐藏副本也会执行 placement，其测量不可靠（滚动位置无意义）；可见副本正确 | 切片 4（视图唯一化） |
 | `pendingNavigateTarget` 仍是无序单槽（用户意图） | 定义跳转/quick-open/终端链接之间的抢写 | 切片 5 |
-| `debugPathsMatch` 宽松比对 | 身份相等的判定标准仍有两套 | 切片 3 |
+| `debugPathsMatch` 宽松比对（`editor/stopMatch.ts:16-25`） | 身份相等的判定标准仍有两套 | 切片 3 |
 | `EditorMountRegistry` 缺席 | 无法选举「唯一兑现者」 | 切片 4 |
+| **F6（评审遗留）**：位置概念三分（`stackFrames.ts:43` 类型 / `store/debug/shared.ts:70-95` 状态对 / `stackSlice.ts` 使用） | 后续围绕位置新增状态时最自然的落点仍是聚合文件 `shared.ts`，职责边界持续模糊 | **切片 3**（用户 2026-09-16 决定并入） |
+| **F5（评审遗留）**：单视图 6 个 debug/project 订阅槽（`useStopLocation.ts:27` + `useDebugStopReveal.ts:45` + `useCurrentLineHighlight.ts:28` 各订阅 session/activeProjectId） | 每次 session 更新触发 6×N 次冗余订阅回调与选择器求值 | **切片 3**（同上；若切片 4 先行可在视图唯一化后一并收敛） |
+| ~~F2 越界语义~~ | 已于 2026-09-16 决策并落地：**拒绝放置**（不钳到末行）+ 留诊断日志 + 不记账；用例 `[T13]`，已验真红 | ✅ 本任务闭环 |
+| ~~F3 `debugPathsMatch` 第三分支~~ | 已于 2026-09-16 决策并落地：**删除**（穷举证明只对非规范输入可达；不引入第二个 normalizer），前置条件写进模块头注释 | ✅ 本任务闭环 |
+| **F8（第二轮评审）**：`FileEditor.tsx` 290/300 行 | 余量 10：下一次任何小改动都会撞 300 红线，被迫仓促抽离 | 待排（组合层瘦身；可独立小任务或并入切片 3/4） |
+| **F10（第二轮评审）**：越界 warn 在多副本挂载下按副本数重复 | split/pinned 下同一 tabId 有 2–3 份挂载，日志噪声淹没诊断 | 切片 4 后自然消除；若切片 4 延后则加「同 identity+seq 只 warn 一次」 |
+| ~~F7 / F9（第二轮评审）~~ | F7 `sourceTab` 声明但不消费的两个 store 读取已下沉到 `navigate.ts`；F9 两处注释已补齐为与实现一致 | ✅ 本任务闭环 |
+
+> 切片 3 已建任务目录：`.trellis/tasks/09-16-debug-source-identity`（PRD 含 R1–R9 与审计范围；本表 F5/F6/F3 的完整条目已迁入该 PRD，此处只留索引）。
 
 ---
 
 ## 7. 测试契约
 
-新增共享工具：`src/testing/deferred.ts`（`deferred<T>()` → `{ promise, resolve, reject }`），供 runner/editor 两侧交错用例复用（避免各自内联）。
+新增共享工具：`src/testing/async.ts`（`deferred<T>()` → `{ promise, resolve, reject }` + `flushMicrotasks`），供 runner/editor 两侧交错用例复用（避免各自内联）。`flushMicrotasks` 是交错用例的**必需**件：只 `await` 一次主链会在迟到链真正落地前抢先断言（假绿）。
 
 | 文件 | mock / 夹具 | 关键断言 | 对应用例 |
 |---|---|---|---|

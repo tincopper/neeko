@@ -960,3 +960,78 @@ Java 调试时第三方库 / 源码库函数无法跳转（手工 LSP 跳转正�
 ### Next Steps
 
 - None - task complete
+
+
+## Session 206: 调试停点跟随：代际化与状态化（切片 1+2，issue #13）
+
+**Date**: 2026-09-16
+**Task**: 调试停点跟随：代际化与状态化（切片 1+2，issue #13）
+**Branch**: `main`
+
+### Summary
+
+(Add summary)
+
+### Main Changes
+
+## 背景
+
+issue #13：调试停点/单步时编辑器有时不跳到当前断点位置，重新点一下栈帧里的函数才能定位。
+
+第一性原理走查后定位两条成因：
+1. **迟到者覆盖**：停点异步链只校验 `sessionId`，旧停点迟到的结果（帧/位置/源码内容）覆盖新停点；
+   而跳转目标 `pendingNavigateTarget` 在「新建 tab」分支被 `await load()` 推到异步尾部，谁最后写谁赢。
+2. **先清槽、后兑现**：跟随被实现成一次性事件（全局单槽 + 命中即清槽 + rAF 兑现），
+   槽清掉后若兑现落空（视图重建/未测量）就静默丢失、无从补偿 —— 根因是「把可派生的期望视图做成了事件」。
+
+## 交付（S1–S5，切片 1+2）
+
+- **S1 纯函数地基**：`store/debug/stopGeneration.ts`（代际类型/谓词/测试重置）、
+  `stackFrames.buildStopLocation`（唯一位置构造点，规范身份）、`src/testing/async.ts`
+  （`deferred` + `flushMicrotasks`；并收敛 drainLoop/useFileStore 的内联副本）。
+  附带把 `virtualSourceIdentity` 从 `sourceContent.ts` 迁到 `stackFrames.ts`（纯函数模块不得依赖 IPC 层）。
+- **S2 store 代际化 + 位置单写者**：`stoppedAt`→`location`（规范身份）+ `locationSeq`（严格单调）
+  + `generation`（写权限令牌）+ `beginStop`；一次停点的帧/选中帧/位置/序号**原子写**；
+  四条清空路径（continued/terminated/resetSession/启动失败）统一清位置 + 作废代际。
+- **S3 navigate 拆分**：核心 `ensureSourceTab`（只做 tab 生命周期）+ 用户意图入口（保留一次性跳转目标）
+  + 停点入口 `ensureStopSourceTab`（不写跳转目标，`await` 后校验注入的 `isCurrent`）；
+  自动停点与点栈帧统一经它（许可分别是「代际未变」「仍选中该帧」）；删 `openStopSource.ts`。
+- **S4 派生跟随**：`editor/stopMatch.ts`（黄线与光标共用匹配策略）、`runner/hooks/useStopLocation.ts`
+  （公开只读面 + activeProject 门控 + 引用稳定性）、`editor/hooks/useDebugStopReveal.ts`
+  （派生 + 幂等重放 + 用户接管惰性判定 + 释放分支）；`useCurrentLineHighlight` 收缩为纯黄线；
+  删 `PendingNavigateTarget.debug`。
+- **S5 收尾**：`pnpm lint:fe`（429 文件 / 3647 测试 / 0 type errors）与 `pnpm lint`（cargo fmt+clippy、
+  4 个护栏脚本、java-host tests）全绿；spec 回写两条经验（见下）。
+
+## 关键教训（已回写 spec）
+
+1. **`state-management.md` 新增场景「停点跟随（异步链代际守卫 + 跟随改为派生状态）」**：
+   代际单调 + 原子写 + 位置单写者 + `locationSeq` 为何不可派生 + 跨 feature 落地许可（`isCurrent` 注入）
+   + 视图局部接管；并新增常见错误 #12「把可派生的期望视图做成一次性槽」。
+2. **`unit-test/frontend-testing.md` 新增常见错误 #9「竞态用例的假绿」**：
+   `T3-tab` 首版在旧机制上直接绿 —— `await` 主链只让出一个微任务，迟到链还有若干 await 层，
+   断言抢先执行。修法是兑现迟到方后再 `flushMicrotasks()`；判定准则是「在缺陷代码上必须真红」。
+   （该用例修正后在旧机制上稳定红于 `expected 'p1:/repo/src/A.java' to be 'p1:/repo/src/B.java'`。）
+
+## 未完成
+
+- 真机验收（需人工）：连续单步 20 次 / 跨文件 continue / 首次打开新文件 / 用户接管不被夺回 /
+  点栈帧打开未打开的文件 / 停止结束后光标还回原位。
+- 切片 3/4/5（身份唯一化 / 视图唯一化 / 用户意图槽有序化）为后续任务，本切片只留接缝。
+
+
+### Git Commits
+
+(No commits - planning session)
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
