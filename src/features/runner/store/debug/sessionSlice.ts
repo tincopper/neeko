@@ -7,16 +7,11 @@ import {
   dapStartSessionConfig,
   dapStopSession,
 } from '../../api/debugApi';
+import { withStopLocation } from '../../stopLocation';
 import type { DapSessionInfo, EntryPoint, LaunchConfig } from '../../types';
 import { languageHooks } from '../languageHooks';
 
-import {
-  CLEAR_EXPANSION,
-  endedSessionPatch,
-  isLiveSession,
-  notifyError,
-  withStopLocation,
-} from './shared';
+import { CLEAR_EXPANSION, endedSessionPatch, isLiveSession, notifyError } from './shared';
 import type { DebugSessionSlice, DebugSliceCreator } from './types';
 
 /**

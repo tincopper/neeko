@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { buildStopLocation, pickStopFrame } from '../stackFrames';
+import { pickStopFrame } from '../stackFrames';
 import type { StackFrameDto } from '../types';
 
 function frame(
@@ -80,98 +80,5 @@ describe('pickStopFrame — 停止位置 = 栈顶第一个带源码的帧', () =
 
   it('should_return_null_for_empty_frames', () => {
     expect(pickStopFrame([])).toBeNull();
-  });
-});
-
-describe('buildStopLocation — 帧 → 停止位置（唯一构造点，规范身份）', () => {
-  it('should_keep_absolute_project_path_as_canonical_identity', () => {
-    const loc = buildStopLocation(
-      frame({ id: 1, name: 'foo', sourcePath: `${PROJECT}/src/main.rs`, line: 12, column: 4 }),
-      PROJECT,
-    );
-
-    expect(loc).toEqual({ identity: `${PROJECT}/src/main.rs`, line: 12, column: 4 });
-  });
-
-  it('should_join_project_root_for_relative_paths', () => {
-    // 身份必须经 sourceIdentityOf 归一（相对路径拼根），不得透传原始 sourcePath。
-    expect(
-      buildStopLocation(frame({ id: 1, name: 'foo', sourcePath: 'src/main.rs' }), PROJECT),
-    ).toEqual({ identity: `${PROJECT}/src/main.rs`, line: 1, column: 1 });
-  });
-
-  it('should_normalize_jdk_cache_path_to_jdt_identity', () => {
-    // 同一份 JDK 源码（解压缓存 / Cmd+Click 的 jdt 页 / 适配器 jdt uri）只允许一种身份，
-    // 否则 tab / 断点 key / 黄线会分裂成两套。
-    expect(
-      buildStopLocation(
-        frame({ id: 1, name: 'println', sourcePath: JDK_CACHE, line: 1167 }),
-        PROJECT,
-      )?.identity,
-    ).toBe('jdt:/java.base/java/io/PrintStream.java');
-  });
-
-  it('should_normalize_adapter_jdt_uri_to_the_same_jdt_identity', () => {
-    const uri = 'jdt://contents/java.base/java.io/PrintStream.class?=neeko/q';
-
-    expect(
-      buildStopLocation(frame({ id: 1, name: 'println', sourcePath: uri }), PROJECT)?.identity,
-    ).toBe('jdt:/java.base/java/io/PrintStream.java');
-  });
-
-  it('should_build_virtual_identity_from_source_reference', () => {
-    expect(
-      buildStopLocation(
-        frame({ id: 1, name: 'remote', sourceReference: 42, sourceName: 'Foo.java', line: 7 }),
-        PROJECT,
-      ),
-    ).toEqual({ identity: 'dap-source:/42/Foo.java', line: 7, column: 1 });
-  });
-
-  it('should_fall_back_to_source_when_virtual_source_name_is_blank', () => {
-    expect(
-      buildStopLocation(
-        frame({ id: 1, name: 'remote', sourceReference: 42, sourceName: '   ' }),
-        PROJECT,
-      )?.identity,
-    ).toBe('dap-source:/42/source');
-  });
-
-  it('should_prefer_source_path_over_source_reference', () => {
-    const loc = buildStopLocation(
-      frame({
-        id: 1,
-        name: 'foo',
-        sourcePath: `${PROJECT}/a.go`,
-        sourceReference: 42,
-        sourceName: 'a.go',
-      }),
-      PROJECT,
-    );
-
-    expect(loc?.identity).toBe(`${PROJECT}/a.go`);
-  });
-
-  it('should_return_null_when_frame_has_no_source_entry', () => {
-    expect(
-      buildStopLocation(frame({ id: 1, name: 'native', sourceReference: 0 }), PROJECT),
-    ).toBeNull();
-    expect(buildStopLocation(frame({ id: 1, name: 'native' }), PROJECT)).toBeNull();
-  });
-
-  it('should_return_null_when_line_is_not_addressable', () => {
-    // 有源码但行号非法（native / JIT 帧）：不构成可跳转的停点，不得产出 line<1 的位置。
-    expect(
-      buildStopLocation(
-        frame({ id: 1, name: 'jit', sourcePath: `${PROJECT}/a.go`, line: -1 }),
-        PROJECT,
-      ),
-    ).toBeNull();
-    expect(
-      buildStopLocation(
-        frame({ id: 1, name: 'jit', sourcePath: `${PROJECT}/a.go`, line: 0 }),
-        PROJECT,
-      ),
-    ).toBeNull();
   });
 });

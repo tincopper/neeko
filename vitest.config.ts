@@ -39,8 +39,9 @@ export default defineConfig({
        *    机制/策略层 ≥80%。新增模块若被改造，应同步把该文件加进下面的列表。
        *
        * 注意：glob 必须能匹配到实际被测量的文件，否则该条目等于空转 —— 数值一律贴着实测
-       * 值取整，任何下调都应在 PR 中说明理由。已用「全条目设为 101」的负向跑验证过：
-       * 8 个 glob 全部按文件名校验并拦下（可复现该手法来体检新加的条目）。
+       * 值取整，任何下调都应在 PR 中说明理由。**新加条目必须体检**：把该条目的四个数值
+       * 临时设成 `101` 跑一次，能按**文件名**报出该文件的 ERROR 才算条目生效（空转会静默通过）。
+       * 本切片新增的 `fileRef.ts` / `stopLocation.ts` 两个条目均已如此复验过。
        * 全局阈值按**本次测量到的文件**计算，因此 `vitest run --coverage <子集>` 必然
        * 因只测了少量文件而失败 —— 该地板只对全量 `pnpm test:coverage` 有意义。
        */
@@ -52,6 +53,12 @@ export default defineConfig({
 
         // 纯函数 / 唯一构造点：仓库要求 100%
         '**/runner/stackFrames.ts': {
+          lines: 100,
+          statements: 100,
+          functions: 100,
+          branches: 100,
+        },
+        '**/runner/stopLocation.ts': {
           lines: 100,
           statements: 100,
           functions: 100,

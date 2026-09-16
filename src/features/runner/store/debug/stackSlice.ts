@@ -1,15 +1,10 @@
 import { dapEvaluate, dapStackTrace, dapVariables } from '../../api/debugApi';
 import { ensureStopSourceTab } from '../../navigate';
-import { buildStopLocation, pickStopFrame } from '../../stackFrames';
+import { pickStopFrame } from '../../stackFrames';
+import { buildStopLocation, withStopLocation } from '../../stopLocation';
 import type { DapSessionInfo, StackFrameDto } from '../../types';
 
-import {
-  CLEAR_EXPANSION,
-  isLiveSession,
-  logDebugStackError,
-  notifyError,
-  withStopLocation,
-} from './shared';
+import { CLEAR_EXPANSION, isLiveSession, logDebugStackError, notifyError } from './shared';
 import { isSameGeneration, nextGeneration, stopContextUnchanged } from './stopGeneration';
 import type { DebugSliceCreator, DebugStackSlice } from './types';
 

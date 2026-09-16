@@ -4,11 +4,12 @@ import { DAP_EVENT, DAP_SESSION_STATUS_EVENT } from '@/shared/events';
 import { safeUnlisten } from '@/shared/utils/safeUnlisten';
 import { stripAnsi } from '@/shared/utils/stripAnsi';
 
+import { withStopLocation } from '../../stopLocation';
 import type { ConsoleLine, DapEventPayload, DapSessionInfo } from '../../types';
 import { isCodelldbNoise } from '../../utils/consoleFilter';
 import { languageHooks } from '../languageHooks';
 
-import { CLEAR_EXPANSION, endedSessionPatch, notifyError, withStopLocation } from './shared';
+import { CLEAR_EXPANSION, endedSessionPatch, notifyError } from './shared';
 import type { DebugEventsSlice, DebugSliceCreator } from './types';
 
 /**

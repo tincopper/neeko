@@ -12,7 +12,7 @@
  */
 import { useMemo } from 'react';
 
-import type { StopLocation } from '../stackFrames';
+import type { StopLocation } from '../stopLocation';
 import { useDebugStore } from '../store/debugStore';
 
 import { useVisibleDebugSession } from './useVisibleDebugSession';

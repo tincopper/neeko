@@ -1,7 +1,7 @@
 import type { UnlistenFn } from '@tauri-apps/api/event';
 import type { StateCreator } from 'zustand';
 
-import type { StopLocation } from '../../stackFrames';
+import type { StopLocation } from '../../stopLocation';
 import type {
   BreakpointSpec,
   ConsoleLine,
@@ -98,7 +98,7 @@ export interface DebugStackSlice {
   variables: VariableDto[];
   selectedFrameId: number | null;
   /**
-   * 当前停点位置（**规范源身份**，见 `stackFrames.buildStopLocation`）。
+   * 当前停点位置（**规范源身份**，见 `stopLocation.buildStopLocation`）。
    *
    * **唯一位置真相**：黄线与「编辑器跟随停点」都由它派生，不允许有第二个写入口径
    * （旧实现另有写裸 `Source.path` 的路径，会让两处判定分叉）。
