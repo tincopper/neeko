@@ -1,0 +1,5 @@
+{"file": ".trellis/spec/frontend/state-management.md", "reason": "断点内态升级与lastLaunch落点：单写者与禁止冗余状态约束"}
+{"file": ".trellis/spec/frontend/hook-guidelines.md", "reason": "rerun/setLastLaunch的hook与登记形态约束"}
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "防火墙门面、memo/useCallback、TDD红绿约束"}
+{"file": ".trellis/spec/backend/command-guidelines.md", "reason": "dap_set_breakpoints同命令名变参与注册约束"}
+{"file": ".trellis/spec/unit-test/frontend-testing.md", "reason": "交错用例deferred+flushMicrotasks与删守卫验RED"}
