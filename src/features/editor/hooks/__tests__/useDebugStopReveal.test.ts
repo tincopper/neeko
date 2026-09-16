@@ -8,7 +8,7 @@ import { useProjectStore } from '@/shared/store/projectStore';
 import type { DapSessionInfo } from '@/shared/types';
 
 import { flashNavLineField, navigateCaretExtension } from '../../navigateCaret';
-import { useDebugStopReveal } from '../useDebugStopReveal';
+import { resetOutOfRangeWarnForTests, useDebugStopReveal } from '../useDebugStopReveal';
 
 const A = '/repo/src/A.java';
 const B = '/repo/src/B.java';
@@ -87,6 +87,7 @@ function flashLines(view: EditorView): number[] {
 }
 
 beforeEach(() => {
+  resetOutOfRangeWarnForTests(); // 越界告警去重是模块级记忆，用例之间必须隔离
   useDebugStore.setState({ session: null, location: null, locationSeq: 0, generation: null });
   useProjectStore.setState({
     activeProjectId: 'p1',
@@ -204,13 +205,40 @@ describe('useDebugStopReveal — 停点跟随（派生 + 幂等重放）', () =>
         expect.objectContaining({ identity: A, line: 99, docLines: 30 }),
       );
 
-      // 不记账 ⇒ 同一序号重放时会再次尝试（而不是被当成「已放置」而静默跳过）。
+      // 不记账 ⇒ 同一序号重放时会再次尝试（而不是被当成「已放置」而静默跳过）；
+      // 但**告警按「同一事件只报一次」去重**，故重放不再打印。
       rerender({ e: 1 });
       expect(view.state.selection.main.head).toBe(0);
+      expect(warn).toHaveBeenCalledTimes(1);
+
+      // 新事件（新序号）仍然会报 —— 去重不能把不同停点也吞掉。
+      seedStop(A, 99, 2);
+      rerender({ e: 2 });
       expect(warn).toHaveBeenCalledTimes(2);
     } finally {
       warn.mockRestore();
       view.destroy();
+    }
+  });
+
+  it('[T16] 同一越界停点在多副本挂载下只告警一次（split / pinned 布局）', () => {
+    // 切片 4 之前 FileViewer 对每个 pane 渲染全部 file tab ⇒ 同一 tabId 有 2–3 份挂载。
+    const viewA = makeView();
+    const viewB = makeView();
+    seedStop(A, 99, 1);
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    try {
+      renderReveal(viewA, A);
+      renderReveal(viewB, A);
+
+      expect(viewA.state.selection.main.head).toBe(0);
+      expect(viewB.state.selection.main.head).toBe(0);
+      expect(warn).toHaveBeenCalledTimes(1);
+    } finally {
+      warn.mockRestore();
+      viewA.destroy();
+      viewB.destroy();
     }
   });
 

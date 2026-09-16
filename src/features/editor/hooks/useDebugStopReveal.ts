@@ -35,6 +35,30 @@ interface PlacedCaret {
   line: number;
 }
 
+/**
+ * 越界告警的「同一事件只报一次」记忆（键 = `identity#seq`）。
+ *
+ * 为什么需要去重：同一 `tabId` 在 split / pinned 布局下有多份挂载（切片 4 之前
+ * `FileViewer` 对每个 pane 渲染全部 file tab），且视图重建（`viewEpoch`）会让本 effect
+ * 重放 —— 不去重会把同一条诊断打印 2–3 次甚至更多，淹没日志。
+ *
+ * 只记**最后一条**键（而非累积集合）：多副本是**同时**打印同一键，重放也是同一键，
+ * 两者都被挡住；代价是「A 越界 → B 越界 → A 又重放」这种交替场景可能重复打印一次
+ * —— 对该诊断而言可接受，换来的是零状态增长、无需清理与容量控制。
+ */
+let lastOutOfRangeWarnKey: string | null = null;
+
+/** 仅测试使用：清空越界告警记忆，使用例独立（先例：`resetGenerationSeqForTest`）。 */
+export function resetOutOfRangeWarnForTests(): void {
+  lastOutOfRangeWarnKey = null;
+}
+
+function warnOutOfRangeOnce(key: string, info: Record<string, unknown>): void {
+  if (lastOutOfRangeWarnKey === key) return;
+  lastOutOfRangeWarnKey = key;
+  console.warn('[debug] stop line is beyond the document', info);
+}
+
 export function useDebugStopReveal({
   absFilePath,
   tabFilePath,
@@ -77,7 +101,7 @@ export function useDebugStopReveal({
     // 用户看到的是「光标停在末行 + 无高亮」，即「跳错了」。这里直接放弃本次放置并留日志，
     // 且**不记账**：下一次停点 / 视图重建会重试（文档内容变更本身不触发本 effect）。
     if (stop.line > view.state.doc.lines) {
-      console.warn('[debug] stop line is beyond the document', {
+      warnOutOfRangeOnce(`${stop.identity}#${stop.seq}`, {
         identity: stop.identity,
         line: stop.line,
         docLines: view.state.doc.lines,
