@@ -48,6 +48,18 @@ describe('useStopLocation — 编辑器侧的停点输入面', () => {
     expect(renderHook(() => useStopLocation()).result.current).toBeNull();
   });
 
+  it('should_return_null_when_no_project_is_active', () => {
+    // 没有 activeProject 就没有「属于谁」的概念 —— 不得放任画线 / 夺光标。
+    useDebugStore.setState({
+      session: sessionWith(),
+      location: { identity: A, line: 12, column: 4 },
+      locationSeq: 7,
+    });
+    useProjectStore.setState({ activeProjectId: null, activeProject: null });
+
+    expect(renderHook(() => useStopLocation()).result.current).toBeNull();
+  });
+
   it('should_expose_identity_line_column_and_location_seq', () => {
     useDebugStore.setState({
       session: sessionWith(),
@@ -60,7 +72,20 @@ describe('useStopLocation — 编辑器侧的停点输入面', () => {
       line: 12,
       column: 4,
       seq: 7,
+      status: 'stopped',
     });
+  });
+
+  it('should_expose_the_session_status（消费者不必再单独读会话）', () => {
+    // 状态门（`starting` / `running`）是停点匹配的输入之一：位置与状态同源，一次交出，
+    // 否则编辑器侧两个 hook 会各自再订阅一次会话（切片 3 / F5，护栏 12 钉住结构）。
+    useDebugStore.setState({
+      session: { ...sessionWith(), status: 'running' },
+      location: { identity: A, line: 12, column: 4 },
+      locationSeq: 7,
+    });
+
+    expect(renderHook(() => useStopLocation()).result.current?.status).toBe('running');
   });
 
   it('should_keep_reference_identity_across_rerenders（防 useSyncExternalStore 无限重渲）', () => {

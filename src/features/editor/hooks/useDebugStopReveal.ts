@@ -15,7 +15,7 @@
 import type { EditorView } from '@codemirror/view';
 import { useEffect, useRef, type RefObject } from 'react';
 
-import { useStopLocation, useVisibleDebugSession } from '@/features/runner';
+import { useStopLocation } from '@/features/runner';
 
 import { applyNavigateCaret, releaseDebugCaret, resolveDocPos } from '../navigateCaret';
 import { resolveDebugHighlightLine } from '../stopMatch';
@@ -65,13 +65,13 @@ export function useDebugStopReveal({
   editorViewRef,
   viewEpoch,
 }: DebugStopRevealParams): void {
+  // 位置与状态同源、一次订阅（`useStopLocation` 已含 #14 的项目门控）。
   const stop = useStopLocation();
-  const session = useVisibleDebugSession();
   const targetLine = resolveDebugHighlightLine(
     absFilePath,
     tabFilePath,
     stop,
-    session?.status ?? null,
+    stop?.status ?? null,
   );
   const placedRef = useRef<PlacedCaret | null>(null);
 

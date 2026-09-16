@@ -351,3 +351,40 @@ describe('护栏 11：store 切片对外封闭（跨 feature 只能经门面）'
     expect(hits(files, SLICE_REF)).toEqual([]);
   });
 });
+
+/**
+ * 护栏 12：编辑器侧的**停点输入面只有一处 store 读取**（单视图订阅槽 = 2）。
+ *
+ * 停点的编辑器侧链路是 `useDebugStopReveal`（光标）+ `useCurrentLineHighlight`（黄线），
+ * 两者都要「位置 + 会话状态」。此前各自 `useVisibleDebugSession()` + `useStopLocation()`
+ * 展开后是 6 个订阅槽（`session` / `location` / `locationSeq` / `activeProjectId` 各读多遍），
+ * 且「会话属于当前项目」的门控在多处各判一次 —— 任一处漏判就是 #14 的复现（别项目的停点
+ * 画到本项目编辑器上）。
+ *
+ * 为什么用源码扫描而不是行为断言：React 的 `useSyncExternalStore` 会按 `subscribe` 函数
+ * **去重**，多个 `useDebugStore(selector)` 在运行时只产生一条订阅 —— 行为上测不出差别，
+ * 但「门控有几处」是**结构**属性（先例：本文件其余 11 条护栏、`syntax/__tests__/layering`）。
+ * 因此把「消费者不直连 store、输入面恰好两次读取」钉成结构不变量。
+ */
+describe('护栏 12：停点输入面（单视图 debug/project 订阅槽 = 2）', () => {
+  const REVEAL_CONSUMERS = [
+    'src/features/editor/hooks/useDebugStopReveal.ts',
+    'src/features/editor/hooks/useCurrentLineHighlight.ts',
+  ];
+  const STOP_INPUT = `${RUNNER}/hooks/useStopLocation.ts`;
+  /** 任何「读停点/会话相关 store」的写法：直连 store 或经可见性门控 hook。 */
+  const STORE_READ = /use(Debug|Project)Store\s*\(|useVisibleDebugSession\s*\(/;
+
+  const countReads = (file: string, pattern: RegExp): number =>
+    existsSync(file) ? codeLines(file).filter((l) => pattern.test(l)).length : 0;
+
+  it('两个编辑器 hook 不自行读 store（订阅与门控都归 useStopLocation）', () => {
+    expect(hits(REVEAL_CONSUMERS, STORE_READ)).toEqual([]);
+  });
+
+  it('useStopLocation 恰好读两次 store（debug + project 各一次）', () => {
+    expect(countReads(STOP_INPUT, /useDebugStore\s*\(/)).toBe(1);
+    expect(countReads(STOP_INPUT, /useProjectStore\s*\(/)).toBe(1);
+    expect(countReads(STOP_INPUT, STORE_READ)).toBe(2);
+  });
+});

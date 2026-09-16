@@ -739,7 +739,7 @@ listen(SOME_CLOSE_EVENT, () => {
 - Trigger：issue #13 —— 调试停点 / 单步时编辑器**有时**不跳到当前断点位置，重新点一下栈帧中的函数才能定位。两个成因叠加：
   1. 停点的异步链（取栈 / 取变量 / 取源码内容）**只校验 `sessionId`**：旧停点迟到完成的链会把 `frames` / 位置写回 store，覆盖新停点（「黄线在新停点、编辑器停在旧停点」）；
   2. 「编辑器跟随停点」被实现成**一次性事件**（全局单槽 `editorStore.pendingNavigateTarget` + 命中即清槽 + rAF 兑现）：槽清掉后若兑现落空（视图被重建 / 尚未测量），跳转**静默丢失且无从补偿**。
-- Scope：`src/features/runner/store/debug/**`（栈切片 + 代际）、`src/features/runner/navigate.ts`（tab 生命周期）、`src/features/runner/hooks/useStopLocation.ts`、`src/features/editor/hooks/useDebugStopReveal.ts`、`src/features/editor/stopMatch.ts`。
+- Scope：`src/features/runner/store/debug/**`（栈切片 + 代际）、`src/features/runner/stopLocation.ts`（位置单一归属：类型 / 构造 / 状态对，切片 3 / R5）、`src/features/runner/navigate.ts`（tab 生命周期）、`src/features/runner/hooks/useStopLocation.ts`（编辑器侧唯一输入面，切片 3 / R6）、`src/features/editor/hooks/useDebugStopReveal.ts`、`src/features/editor/stopMatch.ts`。
 - 与「异步全量刷新防陈旧覆盖 (git status 竞态)」**同类**（异步乱序落地），但本例多一条更强的结论：**能从状态推导的「期望视图」不该做成事件**。
 
 ### 2. Signatures
@@ -750,12 +750,18 @@ export type StopGeneration = { sessionId: string; seq: number };
 export function nextGeneration(sessionId: string): StopGeneration;
 export function isSameGeneration(a: StopGeneration | null, b: StopGeneration | null): boolean;
 
-// ② 位置 = 唯一真相 + 严格单调的事件键（store/debug 的 StopLocationState）
-type StopLocationState = {
-  location: { identity: string; line: number; column: number } | null; // 规范源身份
-  locationSeq: number;                                                 // 停点/切帧/清空都 +1
-};
+// ② 位置 = 唯一真相 + 严格单调的事件键（**单一归属**：runner/stopLocation.ts）
+//    —— 类型 / 构造 / 状态对 / 变更函数同住一个叶子模块（切片 3 / R5）。位置**不**放
+//    `store/debug/`：那会让域层（stackFrames.ts）反向依赖 store 内部件。
+export interface StopLocation { identity: string; line: number; column: number } // 规范源身份
+export interface StopLocationState {
+  location: StopLocation | null;
+  locationSeq: number;                    // 停点/切帧/清空都 +1
+}
+export function buildStopLocation(frame: StackFrameDto, projectRoot: string): StopLocation | null;
+export function withStopLocation(cur: StopLocationState, next: StopLocation | null): StopLocationState;
 // 一次停点 = 一次原子 set（帧 + 选中帧 + 位置 + 序号），不允许分次写
+// 依赖方向：store/debug/* → stopLocation.ts → stackFrames.ts → fileRef.ts（单向，无环）
 
 // ③ 跨 feature 的异步落地许可（runner/navigate.ts）
 export async function ensureStopSourceTab(
@@ -763,8 +769,8 @@ export async function ensureStopSourceTab(
   onError?: (m: string) => void,
 ): Promise<string | null>;   // await 之后、addTab/activateTab 之前必须 isCurrent()
 
-// ④ 编辑器侧：只读派生输入 + 幂等兑现
-export function useStopLocation(): { identity; line; column; seq } | null;  // 含 activeProject 门控
+// ④ 编辑器侧：**唯一**只读派生输入面 + 幂等兑现
+export function useStopLocation(): { identity; line; column; seq; status } | null; // 含 activeProject 门控
 export function useDebugStopReveal(p: {
   absFilePath; tabFilePath; editorViewRef; viewEpoch;
 }): void;   // effect 依赖 [stop, targetLine, viewEpoch]，按 seq 判「新事件」并重放
@@ -774,12 +780,14 @@ export function useDebugStopReveal(p: {
 
 1. **代际单调**：每次停点刷新入口取新代际并使在途旧链失效；所有 `await` 之后落地前必须 `isSameGeneration(get().generation, gen)`，否则**整条链放弃**（不写帧 / 位置 / 变量，也不建 tab、不抢激活）。
 2. **原子写**：一次停点的 `frames` / `selectedFrameId` / `location` / `locationSeq` 必须在**同一次 `set`** 内落地 —— 分次写会产生「新位置 + 旧帧」的可观测中间态。
-3. **位置单写者 + 规范身份**：位置只能由唯一构造点产出（`stackFrames.buildStopLocation`）；同一停点的多个写入口径（裸 `Source.path` vs 规范身份）会让黄线与跳转判定分叉。
+3. **位置单写者 + 规范身份**：位置只能由唯一构造点产出（`stopLocation.buildStopLocation`）；同一停点的多个写入口径（裸 `Source.path` vs 规范身份）会让黄线与跳转判定分叉。位置的**类型 / 构造 / 状态对 / 变更函数**必须同住 `runner/stopLocation.ts` —— 概念被拆到多处时，任一处单独演化都会让「位置」出现第二种口径。
 4. **事件键必须严格单调**：`locationSeq` 不是可派生冗余 ——「位置值相同」≠「事件相同」（循环里连续命中同一行），编辑器必须能区分「又停了一次」才能重新接管光标。
 5. **事件型 vs 派生型判据**：能用 store 状态推导的「期望视图」（编辑器展示当前停点）必须**派生 + 幂等重放**；只有真正的**用户意图**（定义跳转 / quick-open / 链接 / 点断点）才用一次性槽消费。
 6. **异步链的落地许可用注入式谓词**：跨 feature 的异步落地把「还算不算数」作为 `isCurrent: () => boolean` 注入，调用方各自给出正确判据（自动停点 = 代际；点栈帧 = `selectedFrameId` 仍是该帧 **且** 停点上下文未变），navigate 不认识代际类型。
 7. **「代际相等」与「停点上下文未变」是两个谓词，不可互换**：`isSameGeneration(null, null) === false` 是该模块的**有意约定**（链条由 `beginStop` 起；store 代际变 null = 已结束 ⇒ 丢弃在途链）。但**切帧不 `beginStop`**，它的复查是「捕获一次、await 后比对」，此时「捕获时无代际、复查时仍无代际」= **什么都没发生** ⇒ 必须用 `stopContextUnchanged(current, captured)`（双方皆无 = 未变；仅一侧无 = 已变；都有 = 比代际）。用错会让未过 `beginStop` 的停止态（attach 到已暂停进程、测试直接 seed frames+session）**静默不写变量、不打开源码 tab**。
-7. **视图局部接管**：光标离开「我方放置的位置」即视为用户接管，本次事件键内不再夺回；新事件键恢复跟随。释放光标只在「光标仍停在我们放置的行」时执行。
+8. **视图局部接管**：光标离开「我方放置的位置」即视为用户接管，本次事件键内不再夺回；新事件键恢复跟随。释放光标只在「光标仍停在我们放置的行」时执行。
+9. **停点输入面只有一处 store 读取（单视图订阅槽 = 2）**：编辑器侧的两个消费者（`useDebugStopReveal` 光标 / `useCurrentLineHighlight` 黄线）都必须只消费 `useStopLocation`，不得自行读 debug / project store 或再调 `useVisibleDebugSession()`。理由：两者都需要「位置 + 会话状态」，各自订阅会把单视图展开成 6 个槽，且「会话属于当前项目」门控在多处各判一遍 —— 漏一处就是 #14（别项目停点画到本项目编辑器）。`useStopLocation` 用**一次** `useShallow` 选择器取齐（位置 + 序号 + 会话身份 + 状态）+ 一次 `activeProjectId`，把门控与状态一并交出。结构不变量由 `runner/__tests__/architecture.test.ts` **护栏 12** 钉住（源码扫描；不用行为断言是因为 React `useSyncExternalStore` 会按 `subscribe` 去重，多个 selector 运行时只产生一条订阅，行为上测不出差别）。
+10. **selector 返回对象必须套 `useShallow`**：`useStopLocation` 的合并选择器若不套，每次 `getSnapshot` 都是新引用 → React 判定 tearing 并持续重渲。
 
 ### 4. Validation & Error Matrix
 

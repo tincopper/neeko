@@ -11,7 +11,7 @@
 import type { EditorView } from '@codemirror/view';
 import { useEffect, type RefObject } from 'react';
 
-import { useStopLocation, useVisibleDebugSession } from '@/features/runner';
+import { useStopLocation } from '@/features/runner';
 
 import { resolveDebugHighlightLine } from '../stopMatch';
 
@@ -23,14 +23,13 @@ export function useCurrentLineHighlight(
   editorViewRef: RefObject<EditorView | null>,
   viewEpoch: number,
 ): void {
-  // `useStopLocation` 已含「会话属于当前项目」门控（#14）；状态门由匹配函数统一处理。
+  // `useStopLocation` 已含「会话属于当前项目」门控（#14）与状态门所需的状态（一次订阅）。
   const stop = useStopLocation();
-  const session = useVisibleDebugSession();
   const highlightedLine = resolveDebugHighlightLine(
     absFilePath,
     tabFilePath,
     stop,
-    session?.status ?? null,
+    stop?.status ?? null,
   );
 
   useEffect(() => {
