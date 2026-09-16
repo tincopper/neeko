@@ -24,6 +24,7 @@ import { useWorktreeStore } from '@/shared/store/worktreeStore';
 import type { FileContent } from '@/shared/types';
 import { sourceIdentityOf } from '@/shared/utils/fileRef';
 import { deferred, flushMicrotasks } from '@/testing/async';
+import { createStackFrame } from '@/testing/factories';
 
 import type * as DebugApi from '../api/debugApi';
 import { useDebugStore } from '../store/debugStore';
@@ -64,13 +65,14 @@ function content(path: string, body = 'x'): FileContent {
   return { path, content: body, size: body.length, is_binary: false };
 }
 
+/** 帧夹具：字面量集中在 `@/testing/factories`，下面两个只固化本文件惯用的形态。 */
 function frame(id: number, sourcePath: string, line: number): StackFrameDto {
-  return { id, name: `f${id}`, sourcePath, line, column: 0 };
+  return createStackFrame({ id, name: `f${id}`, sourcePath, line, column: 0 });
 }
 
 /** 适配器侧虚拟源码帧（无磁盘路径，字节由 adapter 持有）。 */
 function virtualFrame(id: number, reference: number, name: string, line: number): StackFrameDto {
-  return {
+  return createStackFrame({
     id,
     name: `f${id}`,
     sourcePath: null,
@@ -78,7 +80,7 @@ function virtualFrame(id: number, reference: number, name: string, line: number)
     sourceName: name,
     line,
     column: 0,
-  };
+  });
 }
 
 function activeTabId(): string | null {

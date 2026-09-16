@@ -8,7 +8,8 @@ import type { DebugStore } from './types';
 
 /**
  * 跨 slice 共享的**叶子原语**：不含 state、不 import 任何 slice。
- * 依赖方向：`types.ts` → 本文件 → slice 文件（单向，无环）。
+ * 依赖方向：`types.ts` → 本文件 → slice 文件（单向，无环）；本文件另依赖域层叶子
+ * `../../stopLocation`（位置状态对与序号语义的归属地）。
  */
 
 /** Stable empty list — never return a fresh `[]` from selectors (avoids re-render loops). */

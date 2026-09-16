@@ -1,18 +1,11 @@
 import { describe, expect, it } from 'vitest';
 
-import { pickStopFrame } from '../stackFrames';
-import type { StackFrameDto } from '../types';
+import { createStackFrame } from '@/testing/factories';
 
-function frame(
-  partial: Partial<StackFrameDto> & Pick<StackFrameDto, 'id' | 'name'>,
-): StackFrameDto {
-  return {
-    line: 1,
-    column: 1,
-    sourcePath: null,
-    ...partial,
-  };
-}
+import { pickStopFrame } from '../stackFrames';
+
+/** 帧夹具：字面量集中在 `@/testing/factories`，此处只缩短名字。 */
+const frame = createStackFrame;
 
 const PROJECT = '/Users/me/proj';
 const GO_RUNTIME = '/usr/local/go/src/runtime/proc.go';

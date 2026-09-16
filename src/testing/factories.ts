@@ -1,3 +1,4 @@
+import type { StackFrameDto } from '@/features/runner/types';
 import type {
   Project,
   AgentConfig,
@@ -85,4 +86,16 @@ export function createDiscoveredSkill(overrides?: Partial<DiscoveredSkillDto>): 
     name_guess: 'discovered-skill',
     ...overrides,
   };
+}
+
+/**
+ * DAP 栈帧夹具（停点链：`pickStopFrame` / `buildStopLocation` / 跟随链）。
+ *
+ * 字面量集中在此，避免各测试各写一份「默认行 1、列 1、无源码」的帧（4 处重复，
+ * 其中两份逐字相同）。调用方按需覆盖 `sourcePath` / `sourceReference` 等字段。
+ */
+export function createStackFrame(
+  overrides: Partial<StackFrameDto> & Pick<StackFrameDto, 'id' | 'name'>,
+): StackFrameDto {
+  return { line: 1, column: 1, sourcePath: null, ...overrides };
 }

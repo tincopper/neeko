@@ -787,8 +787,16 @@ export function useDebugStopReveal(p: {
 7. **「代际相等」与「停点上下文未变」是两个谓词，不可互换**：`isSameGeneration(null, null) === false` 是该模块的**有意约定**（链条由 `beginStop` 起；store 代际变 null = 已结束 ⇒ 丢弃在途链）。但**切帧不 `beginStop`**，它的复查是「捕获一次、await 后比对」，此时「捕获时无代际、复查时仍无代际」= **什么都没发生** ⇒ 必须用 `stopContextUnchanged(current, captured)`（双方皆无 = 未变；仅一侧无 = 已变；都有 = 比代际）。用错会让未过 `beginStop` 的停止态（attach 到已暂停进程、测试直接 seed frames+session）**静默不写变量、不打开源码 tab**。
 8. **视图局部接管**：光标离开「我方放置的位置」即视为用户接管，本次事件键内不再夺回；新事件键恢复跟随。释放光标只在「光标仍停在我们放置的行」时执行。
 9. **停点输入面只有一处 store 读取（单视图订阅槽 = 2）**：编辑器侧的两个消费者（`useDebugStopReveal` 光标 / `useCurrentLineHighlight` 黄线）都必须只消费 `useStopLocation`，不得自行读 debug / project store 或再调 `useVisibleDebugSession()`。理由：两者都需要「位置 + 会话状态」，各自订阅会把单视图展开成 6 个槽，且「会话属于当前项目」门控在多处各判一遍 —— 漏一处就是 #14（别项目停点画到本项目编辑器）。`useStopLocation` 用**一次** `useShallow` 选择器取齐（位置 + 序号 + 会话身份 + 状态）+ 一次 `activeProjectId`，把门控与状态一并交出。结构不变量由 `runner/__tests__/architecture.test.ts` **护栏 12** 钉住（源码扫描；不用行为断言是因为 React `useSyncExternalStore` 会按 `subscribe` 去重，多个 selector 运行时只产生一条订阅，行为上测不出差别）。
-10. **selector 返回对象必须套 `useShallow`**：`useStopLocation` 的合并选择器若不套，每次 `getSnapshot` 都是新引用 → React 判定 tearing 并持续重渲。
-11. **路径形态归一只能住在身份所有者里，且出现点必须登记**：任何消费方都不得自造 `\`→`/`、去尾斜杠这类字符串重写来做同文件判定 —— 那是同一份文件的第二种表示。确属展示/URL/树结构/命令入参派生的归一可以保留，但必须在 `.trellis/scripts/check_path_identity_scope.py` 的 `MANIFEST` 登记分类（`owner` / `legit` / `debt`）与计数。该脚本已接入 `pnpm lint` 与 CI：**未登记命中 / 登记失效 / 计数漂移 / 扫描集为空** 四种情况都会判失败。改动前请先跑它（`--list` 看全量台账）。
+10. **匹配判定只需一个参数（规范源身份）**：`resolveDebugHighlightLine(absFilePath, location, status)`。
+    `absFilePath` 必须由 `sourceIdentityOf` 算出 —— 它对 fs / jdt / 虚拟源码（`dap-source:`）三种身份都成立
+    （身份构造点**幂等**：`id(id(x)) === id(x)`，由 `fileRef` 的「值域 = 真实身份种类集合」保证）。
+    曾有的第二个参数（tab 原始路径）是为绕过「虚拟身份被拼根」而设的权宜，身份文法闭合后已删除；
+    若再出现「同一文件要传两种表示才能判定」，说明身份构造点又有洞，应当去修构造点而不是加参数。
+11. **#14 门控只有一处实现**（`isSessionVisibleFor(session, projectId)`）：会话可见性判定曾被写在三处
+    （`useVisibleDebugSession` / `useStopLocation` / `useEditorViewSnapshot`）—— 漏一处就是
+    「切项目后旧项目的停点画到本项目编辑器上」。判定散落即回到「同一规则多处解释」，新增消费方一律调用它。
+12. **selector 返回对象必须套 `useShallow`**：`useStopLocation` 的合并选择器若不套，每次 `getSnapshot` 都是新引用 → React 判定 tearing 并持续重渲。
+13. **路径形态归一只能住在身份所有者里，且出现点必须登记**：任何消费方都不得自造 `\`→`/`、去尾斜杠这类字符串重写来做同文件判定 —— 那是同一份文件的第二种表示。确属展示/URL/树结构/命令入参派生的归一可以保留，但必须在 `.trellis/scripts/check_path_identity_scope.py` 的 `MANIFEST` 登记分类（`owner` / `legit` / `debt`）与计数。该脚本已接入 `pnpm lint` 与 CI：**未登记命中 / 登记失效 / 计数漂移 / 扫描集为空** 四种情况都会判失败。改动前请先跑它（`--list` 看全量台账）。
 
 ### 4. Validation & Error Matrix
 
@@ -847,7 +855,7 @@ ensureStopSourceTab({ ..., isCurrent: () => isCurrent(gen) });
 
 // ③ 编辑器侧从 location 派生（幂等重放；用户接管后不夺回）
 const stop = useStopLocation();
-const targetLine = resolveDebugHighlightLine(absFilePath, tabFilePath, stop, status);
+const targetLine = resolveDebugHighlightLine(absFilePath, stop, stop?.status ?? null);
 useEffect(() => { /* 判新事件 / 用户接管 → applyNavigateCaret / releaseDebugCaret */ },
   [stop, targetLine, viewEpoch]);
 ```

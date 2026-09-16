@@ -1,19 +1,12 @@
 import { describe, expect, it } from 'vitest';
 
+import { createStackFrame } from '@/testing/factories';
+
 import { buildStopLocation, withStopLocation } from '../stopLocation';
 import type { StopLocation, StopLocationState } from '../stopLocation';
-import type { StackFrameDto } from '../types';
 
-function frame(
-  partial: Partial<StackFrameDto> & Pick<StackFrameDto, 'id' | 'name'>,
-): StackFrameDto {
-  return {
-    line: 1,
-    column: 1,
-    sourcePath: null,
-    ...partial,
-  };
-}
+/** 帧夹具：字面量集中在 `@/testing/factories`，此处只缩短名字。 */
+const frame = createStackFrame;
 
 const PROJECT = '/Users/me/proj';
 const JDK_CACHE =

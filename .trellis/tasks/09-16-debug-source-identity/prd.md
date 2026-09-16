@@ -55,10 +55,19 @@
 - **R7 不得回退切片 1+2 的不变式**：位置单写者（`buildStopLocation`）、原子写（帧/选中帧/位置/序号同一次 `set`）、代际守卫（`isSameGeneration`）、用户接管语义保持不变；`stackSlice` / `navigate` 的既有用例（T1–T12、T3-tab、T3-cursor）必须继续绿。
 - **R8 覆盖率门槛**：本切片涉及的模块按 `vitest.config.ts` 的分层阈值执行（纯函数 100%、机制/策略 ≥80%）；新增的叶子模块（如 `stopLocation.ts`）须同步加入阈值清单。测试须遵循 `unit-test/frontend-testing.md` §9（竞态/交错用例不得假绿）。
 - **R9 非功能**：无 Rust 改动、无新 Tauri 命令、IPC 不变；跨 feature 只经门面（`.eslintrc.cjs` 的 firewall 与 sliceZones 不得为本次改动放宽）。
+- **R10 身份构造点完备（本轮追加，用户定调「一个功能一步到位」）**：`FileRef` 的**值域必须等于真实身份种类集合**，
+  使身份函数**全且幂等**（`id(id(x)) === id(x)`）。具体：`dap-source:`（适配器虚拟源码）纳入文法 ——
+  `fileRefFromTabPath` 解析、`tabIdentityOf` 反向渲染、`sameFile` 增 virtual 分支、`lspUriOf` 返回 `null`、
+  `virtualSourceIdentity` 迁入身份所有者。随之**删除**为绕该洞而设的权宜（`resolveDebugHighlightLine` 的
+  `tabFilePath` 参数与回退分支），并**全域排查同因同类点**（`openFile` 的拼根、`recentFilesStore` 去重键、
+  第三处 #14 门控）。
+- **R11 评审遗留收口**：F4 门控单点（`isSessionVisibleFor`）、F5 tab 复用比较带 `projectRoot`（`sameFileAt`）、
+  F6/F9 注释归位、F8 测试工厂抽取（`createStackFrame`）。
 
 ## Out of Scope
 
 - **切片 4 视图唯一化**（`FileViewer` 只渲染本 group 的 tab + `MountRegistry` 选举唯一兑现者）；**切片 5**（用户意图槽有序化、`editorRestoredRef` 时序分支拆除）。
+  （原计划的「切片 3.5 身份构造点完备」**已并入本切片**作为 R10 —— 它与切片 3 是同一条不变式，不该另开任务留个 `debt`。）
 - **F2 的行为决策**（`useDebugStopReveal` 越界语义）—— **已由任务 `09-16-debug-stop-reveal` 拍板为「拒绝放置」并落地**（2026-09-16），不在本切片范围。
 - 与 #13 无关：Java 后端选择、SSH 端口转发、求值 / HCR。
 - 全部 28 处路径归一的**重写**：仅处理「身份比较」类，展示/URL/解析类归一只做标注（避免为一致性做无收益改动）。
@@ -73,6 +82,20 @@
 - [x] R5：位置概念的 `类型 + 构造 + 状态对` 收敛到单一模块 —— **落点改为域层叶子 `src/features/runner/stopLocation.ts`**（PRD 原建议 `store/debug/stopLocation.ts` 被否：那会让域层 `stackFrames.ts` 反向 import store 内部件）。依赖方向 `store/debug/* → stopLocation.ts → stackFrames.ts → fileRef.ts`，单向无环。副作用：**未在 `store/debug/` 新增文件 ⇒ 护栏 10 白名单无需改动**（不硬塞文件进白名单凑 AC）。新增 `runner/__tests__/stopLocation.test.ts`（构造 9 例 + 状态对 4 例），`stopLocation.ts` 覆盖率 100/100/100/100 并写入阈值清单；`stackFrames.test.ts` 收窄为只测帧选择。
 - [x] R6：编辑器侧停点输入收敛为**单视图 2 个订阅槽**（debug 1 + project 1）。`useStopLocation` 用一次 `useShallow` 选择器取齐「位置 + 序号 + 会话身份 + 状态」并一并交出 `status`，`useDebugStopReveal` / `useCurrentLineHighlight` 不再各自调 `useVisibleDebugSession()`（`useVisibleDebugSession` 仍服务 DebugPanel / DebugRunButton / DebugItem，未删）。可复现断言 = `architecture.test.ts` **护栏 12**（源码扫描，两条：消费者零 store 读取、输入面恰好两次读取）—— 改前 **Red**（`expected [ …(2) ] to deeply equal []`、`expected 2 to be 1`）。为何用结构断言而非行为断言：React `useSyncExternalStore` 会按 `subscribe` 去重，多个 selector 运行时只产生一条订阅，行为测不出差别，而「门控有几处」是结构属性。T6–T10（`useDebugStopReveal.test.ts`）保持绿。
 - [x] R7：`pnpm test:coverage`（432 文件 / 3699 通过 / **零 ERROR**，分层阈值全过）、`pnpm lint:fe`（同规模，无类型错误）、`pnpm lint`（Rust fmt + clippy + java-host）全绿。
+- [x] R10：`dap-source:` 纳入身份文法（B-full）。**先提 5 条 Red**并逐条在改前实证失败：
+  ①`sourceIdentityOf(root, v) === v`（幂等，实测 `/repo/dap-source:/42/Foo.java`）②`tabIdentityOf(fileRefFromTabPath(root,v)) === v`
+  （互逆）③`lspUriOf(...) === null`（实测 `file:///repo/dap-source:/42/Foo.java`）④端到端（`stopReveal.integration.test.ts`：
+  虚拟帧 → tab 身份 `dap-source:/9/f9` → `absFilePath === location.identity` → **单参数**跟随命中）⑤`sameFile` virtual 分支
+  （元组比较与 name 归一）。实现后 5 条全绿。改造面实测 5 处 + `virtualSourceIdentity` 迁入所有者。
+- [x] R10 收口：删除 `resolveDebugHighlightLine` 的 `tabFilePath` 参数与回退分支（连带 `useEditorBreakpoints` 的 `filePath`
+  参数、`FileEditor`/`useEditorViewSnapshot` 两处调用）—— **删除后全量 432 文件 / 3714 用例零失败**，证明该分支已不可达。
+- [x] R10 同因同类（全域排查）：`openFile` 改走 `sourceIdentityOf`（伪路径 tab，3 条 Red）；`recentFilesStore`
+  去重键改走 `sameIdentity`（2 条 Red）⇒ 守卫 `debt 0`；`useEditorViewSnapshot` 的**第三处** #14 门控统一。
+- [x] R11：F4（`isSessionVisibleFor`，3 处共用 + 4 条直测 + 覆盖率条目 101 负向体检）/ F5（`sameFileAt` + `ensureSourceTab`
+  收 `projectRoot`，Red：相对形态 tab 复用）/ F6（`sameFile` doc 归位，模块头边界集更新）/ F8（`createStackFrame` 收敛 4 处工厂）/
+  F9（`shared/debug` 依赖方向注释）。
+- [x] R7（终版）：`pnpm test:coverage` 434 文件 / **3730 通过** / 1 skipped / **0 ERROR**；`eslint src` 0 error；`tsc` 干净；
+  两个新守卫（口径台账 + 字节断言）均 exit 0。
 - [x] 全程 TDD：R2/R3/R6 均有在**改造前**代码上验证的真红（R2 `expected [ {…}, {…} ] to have a length of 1 but got 2`；R3 `expected true to be false`；R6 护栏 12 `expected [ …(2) ] to deeply equal []` 与 `expected 2 to be 1`）。**R5 是纯搬迁重构**（类型/构造/状态对换模块，行为不变）—— 按重构纪律保持既有用例全程绿，不伪造 Red；其新增的 `stopLocation.test.ts` 覆盖的是既有行为（构造 9 例 + 状态对 4 例，此前零直接覆盖）。
 - [x] 附带修复（审计所得，均真红）：`HtmlPreview.tsx`（**恒定缺陷**：`file-changed` 生产者给项目相对路径，原比较恒不命中 ⇒ 预览永不自动刷新）、`useBrowserPanelEvents.ts`（事件回退绝对路径时拼成 `/repo/repo/...` ⇒ 面板不刷新）、`useBrowserTab.ts`（**与前者同一 bug 的孪生副本，第二轮复审补修**）、`useFileTabRefresh.ts`（与前三者口径不一）。四处统一收敛到 `pathsContainFile`，新增用例逐个实证过「改前为红」。
 - [x] 复审修复（`/neeko-check` 第三轮）：F1 = `useBrowserTab.ts` 漏修（同因同类）已修并补 4 例；F7 = 生产者两种形态（相对 / **绝对回退**）与「根尾斜杠 / 重复斜杠」在三个消费方各补齐，`useBrowserPanelEvents.test.ts` 中标题与输入不符的用例已订正。

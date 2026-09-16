@@ -4,15 +4,16 @@
 > 本表是它的**说明面**：口径定义、判据、逐条理由。两者必须一致 —— 改代码请先跑脚本（`--list` 看全量台账），
 > 未登记命中 / 登记失效 / 计数漂移 / 扫描集为空都会让 `pnpm lint` 失败。
 >
-> 脚本口径实测（2026-09-16，含本切片的收敛后）：**24 文件 / 41 处**（`owner` 1、`legit` 22、`debt` 1）。
+> 脚本口径实测（2026-09-16，本切片全部收敛后）：**23 文件 / 40 处**（`owner` 1、`legit` 22、**`debt` 0**）。
+> `recentFilesStore` 的去重键已改走 `sameIdentity`，故 `debt` 归零。
 > 注意它与下表的历史叙述口径不同：脚本把「尾斜杠剥离」也纳入「形态重写」（多出 3 个只在 `strip` 上命中的文件），
 > 且不再限定 `replace(/\\/g, '/')` 这一种写法。
 >
 > 目的：R1 要求「所有『同一文件』判定走 `FileRef`」，且**不许只修被指出的那一处**。本表是该义务的
 > 结论台账：逐处标注「身份比较」还是「合法的展示/解析/派生」。
 >
-> 状态：**全部核实完毕（2026-09-16，第二轮修订）**。结论：**6 处身份比较**（5 处已收敛 + 1 处低危记录）、
-> 其余为合法。
+> 状态：**全部核实完毕并全部收敛（2026-09-16 终版）**。结论：**6 处身份比较全部已改走 `FileRef`**
+> （第 4 消费方 `useBrowserTab` 与第 6 处 `recentFilesStore` 亦已收敛）；其余为合法。
 >
 > ⚠️ **本表第一版的计数是错的（2026-09-16 复审订正）**：第一版声称「28 处」，但**口径从未被脚本执行**，
 > 实测（`git show HEAD` 逐 blob 计数）为 **36 处 / 24 文件**；表格逐行覆盖 ≈31 处，另有 **3 个文件 5 处
@@ -124,49 +125,55 @@ tab 侧来自 `tabIdentityOf`），该容忍的唯一可达路径是**非规范�
 
 其余为合法展示 / URL / 树结构 / 命令派生 / 边界归一，不做改动（见第二节）。
 
-## 六、已知洞（留给后续切片）—— `dap-source:` 不在身份文法里
+## 六、已闭环：`dap-source:` 纳入身份文法（R10，2026-09-16）
 
-**实测（探针，非推断）**：
+> 本节保留完整的**发现过程与证据**（它是本切片最有价值的教训之一），但**已修**：
+> 结论从「留给后续切片」变为「当日闭合」。
+
+**实测（探针，非推断）—— 修复前**：
 
 ```
 fileRefFromTabPath('/repo', 'dap-source:/42/Foo.java') = { kind:'fs', path:'/repo/dap-source:/42/Foo.java' }
-sourceIdentityOf('/repo', 'dap-source:/42/Foo.java')   = '/repo/dap-source:/42/Foo.java'   ← 非 'dap-source:/42/Foo.java'
+sourceIdentityOf('/repo', 'dap-source:/42/Foo.java')   = '/repo/dap-source:/42/Foo.java'   ← 非原值
 sourceIdentityOf('/repo', 'jdt:/java.base/java/io/PrintStream.java') = 原样（幂等 ✅）
 ```
 
 `fileRefFromTabPath` 只认 `jdt:/`（展示）与 `jdt://contents/`（uri），**不认 `virtualSourceIdentity` 产出的
-`dap-source:` 前缀**，于是它被当作**相对路径**拼上项目根。即身份构造点**对虚拟身份不幂等**
-（`id(id(x)) ≠ id(x)`），而幂等是「同一份源码只有一种身份」这条不变式的最低要求。
+`dap-source:` 前缀**，于是它被当作**相对路径**拼上项目根 ⇒ 身份构造点**对虚拟身份不幂等**
+（`id(id(x)) ≠ id(x)`）。而幂等是「同一份源码只有一种身份」的最低要求。
 
 **已核实的三条后果**：
 
 1. `FileEditor.tsx:61-62` 的 `absFilePath` 对虚拟 tab 是**伪路径** `/repo/dap-source:/42/Foo.java`；
-2. 同一值还是**断点 key**（`useEditorBreakpoints.ts:30,36`：`breakpoints[projectId][absFilePath]`）
-   经 `useBreakpointGutter.ts:208` 的 `toggleBreakpoint(projectId, filePath, line)` **下发给后端**。
-   后端确实设计了「按规范身份翻译」这一层（`src-tauri/src/dap/manager.rs:742-749`：`jdt:/…` → 真实路径，
-   翻译失败按原样落回）—— 也就是说**协议上后端期待收到的是规范身份**，而 `dap-source:` 被拼根后
-   连翻译都无从谈起（`jdt:` 能翻，`/repo/dap-source:/…` 不能）。所以这不是「理论不优雅」，
-   而是**已经流到后端翻译层的错误输入**；
-3. 任何**新**消费者若用 `absFilePath` 与 `location.identity` 比较，**恒不命中且静默** —— 与 issue #13 同一失败模式。
+2. 同一值还是**断点 key**（`useEditorBreakpoints.ts:30,36`）经 `useBreakpointGutter.ts:208` 的
+   `toggleBreakpoint(projectId, filePath, line)` **下发给后端**。后端确实设计过「按规范身份翻译」这一层
+   （`src-tauri/src/dap/manager.rs:742-749`：`jdt:/…` → 真实路径）—— 协议上后端期待的就是**规范身份**，
+   而 `dap-source:` 被拼根后连翻译都无从谈起。所以这不是「理论不优雅」，是**已经流到后端翻译层的错误输入**；
+3. 新消费者若用 `absFilePath` 与 `location.identity` 比较 ⇒ **恒不命中且静默**（与 #13 同一失败模式）。
 
-**这解释了两件事**：
+**它解释了两件事（也是本轮删掉两个权宜的依据）**：
 
-- 为什么 `resolveDebugHighlightLine(absFilePath, tabFilePath, …)` 要**同一个文件收两个参数** —— 那是绕过本洞的
-  权宜：虚拟 tab 只靠第二个参数（`tabFilePath === 'dap-source:/42/Foo.java'`）命中，而该分支的测试**此前为零覆盖**
-  （切片 3 补上了，否则删掉它不会有任何用例变红）；
-- 为什么 `sameIdentity` 必须走**空 root** —— 只有 root 为空时 `canonicalFsPath` 才不拼根，`dap-source:` 才原样保留。
-  换句话说 `sameIdentity` 对虚拟身份「恰好能用」，而不是「设计上正确」。
+- `resolveDebugHighlightLine(absFilePath, tabFilePath, …)` 为什么要**同一个文件收两个参数** —— 绕过本洞的权宜：
+  虚拟 tab 只靠第二个参数命中，而该分支测试**曾为零覆盖**（若不做这一步，删掉它不会有任何用例变红）；
+- `sameIdentity` 为什么必须走**空 root** —— 只有 root 为空 `canonicalFsPath` 才不拼根。
+  即它对虚拟身份「恰好能用」，不是「设计上正确」。
 
-**两个候选修法**（择一，需独立切片 + 自己的 Red）：
+**方案取舍（第一性原理）**：A（不透明透传 fs）vs B（补 `FileRef` variant）。**取 B-full**：两者都能消掉三条后果，
+但 A 会让 `kind` 失去判据能力（`kind === 'fs'` 不再蕴含「是文件系统路径」），且 `lspUriOf` 会继续对虚拟身份返回
+truthy 伪 uri（实测 A 得 `file://dap-source:/42/Foo.java`；B 得 `null`，与既有「jdt 无 query → null」同先例）。
+B 的改造面实测仅 5 处（`fileRef.ts` 4 + `sourceOpen.ts:45`），且 **jdt 就是同形先例**。
 
-- **A（不透明透传，最小改动）**：`fileRefFromTabPath` 识别 `dap-source:` 前缀 → 直接返回
-  `{ kind: 'fs', path: p }`。`sourceIdentityOf` 随即幂等，`absFilePath` 变成真身份，`tabFilePath` 参数与
-  回退分支可删。风险：`lspUriOf(fs)` 会给出 `file://dap-source:/…`（今天给的是更糟的 `file:///repo/dap-source:/…`），
-  需确认虚拟 tab 上 LSP 是否启用。
-- **B（补一个 FileRef kind）**：`{ kind: 'virtual'; reference: number; name: string }`。语义最正，`sameFile` 多一个
-  case；但要动 `tabIdentityOf` / `lspUriOf` / `getFileName` 面，成本更高。
+**实施结果**：`FileRef` 增加 `{ kind: 'virtual'; reference: number; name: string }`；`fileRefFromTabPath` 解析
+`dap-source:/<ref>/<name>`（不合文法者**原样保留、绝不拼根**，保持全函数）；`tabIdentityOf` 反向渲染；
+`sameFile` 增 virtual 分支（比较 `(reference, name)` 元组，name 归一在边界完成）；`lspUriOf` 对 virtual 返回 `null`；
+`virtualSourceIdentity` 从 `stackFrames.ts` **迁入身份所有者**（身份只在所有者处产出）。
+随后删掉 `resolveDebugHighlightLine` 的 `tabFilePath` 参数与回退分支（**删除后无任何用例变红** = 该分支确已不可达）。
 
-**建议**：选 **A**，同一批处理掉 `recentFilesStore` 的去重键；在**做之前**先补两条锁定用例
-（`sourceIdentityOf(root, virtualId) === virtualId` 与 `FileEditor` 虚拟 tab 的 `absFilePath === location.identity`），
-再改实现 —— 否则无法证明修的是同一个洞。
+**同因同类顺带修掉的第四消费方**（不做全域排查就会漏）：
 
+- `quick-open/openFile.ts`：`canonicalFsPath` 直接拼根 ⇒ 从「最近文件」重开虚拟源码/jdt 会开出**伪路径 tab**
+  （与停点打开的同一份源码变成两个身份）。改走 `sourceIdentityOf`。
+- `quick-open/store/recentFilesStore.ts`：去重键（第 6 处身份比较）改走 `sameIdentity` ⇒ 守卫从
+  `debt 1` 走到 **`debt 0`**。
+- `useEditorViewSnapshot.ts`：**第三处** #14 门控（`snapshotSession.projectId === tab.projectId`）——
+  第一遍审 read 只找到两处，收口时按「同类全域排查」补齐，统一到 `isSessionVisibleFor`。

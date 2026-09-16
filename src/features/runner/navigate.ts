@@ -67,10 +67,12 @@ export async function openSourceAtLine(
   const tabKey = targetTabKey(projectId);
   if (!tabKey) return;
 
+  const projectRoot = resolveProjectPath(projectPath);
   const target = await ensureSourceTab({
     tabKey,
     projectId,
-    request: fsSourceOpen(resolveProjectPath(projectPath), projectId, sourcePath, opts?.sessionId),
+    projectRoot,
+    request: fsSourceOpen(projectRoot, projectId, sourcePath, opts?.sessionId),
     line,
     column,
     onError: opts?.onError,
@@ -96,6 +98,8 @@ export async function openVirtualSourceAtLine(
   const target = await ensureSourceTab({
     tabKey,
     projectId,
+    // 虚拟身份与 root 无关（`dap-source:` 不拼根），这里取当前项目根只为满足统一入参。
+    projectRoot: resolveProjectPath(''),
     request,
     line,
     column,
@@ -131,12 +135,14 @@ export async function ensureStopSourceTab(
   const tabKey = targetTabKey(projectId);
   if (!tabKey) return null;
 
-  const request = frameSourceOpen(frame, resolveProjectPath(projectPath), projectId, sessionId);
+  const projectRoot = resolveProjectPath(projectPath);
+  const request = frameSourceOpen(frame, projectRoot, projectId, sessionId);
   if (!request) return null;
 
   const target = await ensureSourceTab({
     tabKey,
     projectId,
+    projectRoot,
     request,
     line: frame.line,
     column: frame.column,

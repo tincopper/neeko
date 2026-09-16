@@ -12,7 +12,7 @@ import {
 } from '@/shared/store/navigationHistoryStore';
 import type { Tab } from '@/shared/types';
 import { preloadLanguageExtension } from '@/shared/utils/codemirror';
-import { sameIdentity } from '@/shared/utils/fileRef';
+import { sameFileAt } from '@/shared/utils/fileRef';
 import { getTabId, isFileTab } from '@/shared/utils/fileTree';
 
 import type { SourceOpenRequest } from './sourceOpen';
@@ -31,6 +31,8 @@ export interface EnsureSourceTabResult {
 export interface EnsureSourceTabRequest {
   tabKey: string;
   projectId: string;
+  /** 项目根：tab 复用比较要它才能把「项目相对形态」归一到同一身份。 */
+  projectRoot: string;
   request: SourceOpenRequest;
   line: number;
   column: number;
@@ -52,7 +54,7 @@ export interface EnsureSourceTabRequest {
 export async function ensureSourceTab(
   req: EnsureSourceTabRequest,
 ): Promise<EnsureSourceTabResult | null> {
-  const { tabKey, projectId, request, line, column, onError, canCommit } = req;
+  const { tabKey, projectId, projectRoot, request, line, column, onError, canCommit } = req;
   const { identity, tabTitle, load } = request;
 
   if (canCommit && !canCommit()) return null;
@@ -61,11 +63,12 @@ export async function ensureSourceTab(
   preloadLanguageExtension(identity);
 
   const store = useEditorStore.getState();
-  // 复用查找走**身份比较**：tab 存的形态可能与本次身份不完全同形（历史 / 会话恢复的 tab），
+  // 复用查找走**身份比较**：tab 存的形态可能与本次身份不同形（历史 / 会话恢复的 tab），
   // 字符串等值会漏判并再开一个 tab（同文件两份 tab → 断点/黄线/跳转各认一个）。
+  // 用 `sameFileAt(projectRoot, …)`：相对形态也要归一到同一身份（空 root 做不到）。
   const existing = (store.tabs[tabKey]?.tabs ?? [])
     .filter(isFileTab)
-    .find((t) => sameIdentity(identity, t.data.filePath));
+    .find((t) => sameFileAt(projectRoot, identity, t.data.filePath));
 
   const line1 = Math.max(1, line);
   const col = Math.max(0, column);

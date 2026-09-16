@@ -5,6 +5,7 @@ import { useProjectStore } from '@/shared/store/projectStore';
 import { useWorktreeStore } from '@/shared/store/worktreeStore';
 import type { FileContent } from '@/shared/types';
 import { deferred } from '@/testing/async';
+import { createStackFrame } from '@/testing/factories';
 
 import { ensureStopSourceTab, openSourceAtLine, openVirtualSourceAtLine } from '../navigate';
 import type { StackFrameDto } from '../types';
@@ -371,8 +372,9 @@ describe('ensureStopSourceTab — 停点只确保源码可见（不写跳转目�
   const A_PATH = `${PROJECT}/src/A.java`;
   const B_PATH = `${PROJECT}/src/B.java`;
 
+  /** 帧夹具：字面量集中在 `@/testing/factories`，此处只固化本文件惯用的列号。 */
   function frame(id: number, sourcePath: string | null, line = 10): StackFrameDto {
-    return { id, name: `f${id}`, sourcePath, line, column: 2 };
+    return createStackFrame({ id, name: `f${id}`, sourcePath, line, column: 2 });
   }
 
   beforeEach(() => {
@@ -574,6 +576,50 @@ describe('ensureStopSourceTab — 停点只确保源码可见（不写跳转目�
     const space = useEditorStore.getState().tabs['p1'];
     expect(space.tabs).toHaveLength(1);
     // 复用路径不重取内容
+    expect(readFileContentMock).not.toHaveBeenCalled();
+  });
+
+  it('既有 tab 存**项目相对**形态时也复用（root 归一的机制保证）', async () => {
+    // 与上一条同属**机制加固**：当前各生产者都产规范绝对形态，故无可复现输入；
+    // 但「复用同一 tab」不该依赖「所有生产者产出同一字符串」这一约定。
+    // 相对形态必须靠 projectRoot 才能归一到同一身份 —— 这正是空 root 比较做不到的。
+    useEditorStore.setState({
+      tabs: {
+        p1: {
+          tabs: [
+            {
+              id: 'p1:src/A.java',
+              projectId: 'p1',
+              title: 'A.java',
+              order: 0,
+              data: {
+                kind: 'file' as const,
+                filePath: 'src/A.java',
+                fileName: 'A.java',
+                content: { path: 'src/A.java', content: 'x', size: 1, is_binary: false },
+                isDirty: false,
+              },
+            },
+          ],
+          activeTabId: 'p1:src/A.java',
+        },
+      },
+      editorLayout: {},
+      activeTabId: null,
+      pendingNavigateTarget: null,
+    });
+    readFileContentMock.mockClear();
+
+    await ensureStopSourceTab({
+      projectId: 'p1',
+      projectPath: PROJECT,
+      frame: frame(1, A_PATH),
+      sessionId: 's1',
+      isCurrent: () => true,
+    });
+
+    const space = useEditorStore.getState().tabs['p1'];
+    expect(space.tabs).toHaveLength(1);
     expect(readFileContentMock).not.toHaveBeenCalled();
   });
 
