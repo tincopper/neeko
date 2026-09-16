@@ -1035,3 +1035,150 @@ issue #13：调试停点/单步时编辑器有时不跳到当前断点位置，�
 ### Next Steps
 
 - None - task complete
+
+
+## Session 207: 调试源码身份唯一化 + 概念归属收敛（切片 3，issue #13）
+
+**Date**: 2026-09-16
+**Task**: 调试源码身份唯一化 + 概念归属收敛（切片 3，issue #13）
+**Branch**: `main`
+
+### Summary
+
+切片 3：身份比较单点（4 个 file-changed 消费方收敛到 pathsContainFile，修掉 3 处静默漏配含 HtmlPreview 恒定不刷新）+ tab 复用按身份 + 位置概念单一归属 runner/stopLocation.ts + 编辑器侧订阅槽 6→2（护栏 12 结构断言）。审计台账订正（28→36 实测口径，补第 4 消费方）。门禁：432 文件/3706 passed/0 ERROR、lint:fe 0 类型错误、三 commit 各自独立可构建。
+
+### Main Changes
+
+## 背景
+
+切片 3 出自 issue #13 第一性原理分析拆出的 5 个切片（1 代际化 / 2 状态化 / **3 身份唯一化** / 4 视图唯一化 / 5 清理）。
+切片 1+2（session 206）修掉了观测症状并把**写入侧**统一为规范身份；本切片把「同一份源码只有一种表示」
+这条不变式推进到**比较与复用侧**，并收掉 neeko-check 遗留的 F5（订阅面）/ F6（位置概念三分）/ F3（宽松别名匹配）。
+
+一句话判据：**任何「这是不是同一个文件」的判定都必须落在 `FileRef` 身份上**；同一概念的
+`类型 + 构造 + 状态 + 使用` 收敛到单一归属模块。
+
+## 交付（三个 commit）
+
+### `8a4a8fc4` fix(identity): route same-file checks through the FileRef owner（R1/R2/R3）
+
+- 身份所有者新增两个消费侧原语：`sameIdentity(a, b)`、`pathsContainFile(root, paths, filePath)`，
+  调用方不再自行组装 `FileRef`。
+- **四个** `file-changed` 消费方统一收敛到 `pathsContainFile`。其中三处原本会静默漏配：
+  - `HtmlPreview`：事件路径是**项目相对**、组件 `filePath` 是规范**绝对** ⇒ 等值不命中 +
+    `endsWith('//abs')` 恒假 ⇒ **预览永不自动刷新**（恒定缺陷，读 Rust `debounce.rs:96-104` 才发现）；
+  - `useBrowserPanelEvents` / `useBrowserTab`：拼接 `${root}/${rel}`，在 watcher `strip_prefix` 失败
+    回退绝对路径时拼成 `/repo//repo/...`（恒不命中），项目根带尾斜杠/重复斜杠时同样漏配；
+  - `useFileTabRefresh`：口径与前三者又不同（`paths.includes(relativeToRoot(...))`）。
+- `sourceTab` 的 tab 复用从裸字符串等值改为 `sameIdentity`：把「各生产者各自产出同一规范字符串」的
+  隐含约定升级为机制保证。
+- `debugPathsMatch` 委托 `sameIdentity` 并删除「互为后缀」容忍：该容忍只在非规范输入下可达，
+  且是**真实误命中源**（`a.go` 会命中任意目录下的同名文件）。
+- 覆盖率闸门：新增 `fileRef.ts` 条目（实测地板 100/98/100/95），`stopMatch.ts` 抬到 100 全项。
+
+### `235d2546` refactor(runner): give the stop location a single home（R5/F6）
+
+「位置」原本三分：类型+构造在 `stackFrames.ts`、状态对在 `store/debug/shared.ts`、写在 debug 各 slice。
+新建域层叶子 `runner/stopLocation.ts` 收齐 `StopLocation` + `buildStopLocation` + `StopLocationState` +
+`withStopLocation`；`stackFrames.ts` 收窄为「帧 → 源身份」。
+
+**落点取舍**：PRD 原建议放 `store/debug/stopLocation.ts`，被否——那会让域层反向 import store 内部件。
+依赖方向定为 `store/debug/* → stopLocation.ts → stackFrames.ts → fileRef.ts`（单向无环）。
+副作用：未在 `store/debug/` 新增文件 ⇒ 护栏 10 白名单无需改动（不为凑 AC 硬塞条目）。
+
+新增 `stopLocation.test.ts`（构造 9 例 + 状态对 4 例；后者此前**零直接覆盖**），并给该叶子加 100/100/100/100 阈值。
+
+### `948ee5a0` refactor(runner): read the stop input from a single subscription（R6/F5）
+
+编辑器侧两个消费者（`useDebugStopReveal` 光标 / `useCurrentLineHighlight` 黄线）都需要「位置 + 会话状态」，
+此前各自再调一次 `useVisibleDebugSession()`：单视图 **6 个订阅槽**，且「会话属于当前项目」门控在多处各判一遍
+（漏一处即 #14）。
+
+`useStopLocation` 改为**一次** `useShallow` 选择器取齐（位置 + 序号 + 会话身份 + 状态）并一并交出 `status`；
+两个消费者去掉第二次订阅（`useVisibleDebugSession` 保留给 DebugPanel / DebugRunButton / 状态栏）。
+单视图订阅槽 **6 → 2**。
+
+## 审计台账（R1 义务）与一次自我订正
+
+`research/identity-audit.md` 是 R1 的交付物。**第一版计数是错的**：声称「28 处路径归一 / 4 处身份比较」，
+但该口径从未被脚本执行；实测（`git show HEAD` 逐 blob 计数）为 **36 处 / 24 文件**，表格覆盖 ≈31，
+另有 **3 文件 5 处完全未分类**。订正后：**6 处身份比较**（5 处已收敛 + `recentFilesStore` 去重键 1 处低危记录）、
+`file-changed` 消费方 **3 → 4**。
+
+**教训已写入审计头部**：口径写成叙述 = 没执行，必须写成可跑命令。
+
+## neeko-check 第三轮：F1 漏修 + F7 缺例
+
+- **F1**：审计漏掉了第 4 个消费方 `useBrowserTab.ts`（与 `useBrowserPanelEvents` **同一个 bug 的孪生副本**）。
+  按 TDD 补 4 例，**绝对回退 / 尾斜杠+重复斜杠两例在改前实证为红**
+  （`expected "vi.fn()" to be called 1 times, but got 0 times`），再改实现。
+- **F7**：生产者两种下发形态（相对 / **绝对回退**）在三个消费方各补齐；订正
+  `useBrowserPanelEvents.test.ts` 中标题与输入不符的用例（标题写「重复斜杠」，实际测的是根尾斜杠）。
+  新增/订正的 4 个关键用例逐个反证过「改前为红」，canonical 对照例保持绿。
+
+## 已知洞（留给后续切片）：`dap-source:` 不在身份文法内
+
+实测（探针）：
+
+```
+fileRefFromTabPath('/repo', 'dap-source:/42/Foo.java') = { kind:'fs', path:'/repo/dap-source:/42/Foo.java' }
+sourceIdentityOf('/repo', 'dap-source:/42/Foo.java')   = '/repo/dap-source:/42/Foo.java'   ← 非原值
+sourceIdentityOf('/repo', 'jdt:/…')                     = 原样（幂等 ✅）
+```
+
+`fileRefFromTabPath` 只认 `jdt:/` 与 `jdt://contents/`，于是 `dap-source:` 被当**相对路径**拼根 ⇒
+身份构造点对虚拟身份**不幂等**。三条已核实的后果：① `FileEditor.absFilePath` 对虚拟 tab 是伪路径；
+② 该值同时是断点 key，经 `useBreakpointGutter.ts:208` 的 `toggleBreakpoint` **下发给后端**（后端确实有
+「按规范身份翻译」层：`dap/manager.rs:742-749`，`jdt:/…` 能翻，`/repo/dap-source:/…` 不能）；
+③ 任何新消费者用 `absFilePath` 比身份会**恒不命中且静默**（#13 同类）。
+
+它还解释了两件事：`resolveDebugHighlightLine(absFilePath, tabFilePath, …)` 为何要收**两个**参数
+（虚拟 tab 只靠第二个命中，而那条分支**此前零覆盖**，本切片才补上）；以及 `sameIdentity` 为何必须走**空 root**
+（只有 root 为空 `canonicalFsPath` 才不拼根）——即它对虚拟身份「恰好能用」而非「设计上正确」。
+
+方案对比（第一性原理）：A（不透明透传 fs）/ B（补 `FileRef` variant）。结论 **B-full 是根本解**：
+两者都能消掉三条后果，但 A 会让 `kind` 失去判据能力（`kind === 'fs'` 不再蕴含「是文件系统路径」），
+且 `lspUriOf` 对虚拟身份继续返回 truthy 伪 uri（实测 A 得 `file://dap-source:/42/Foo.java`，
+B 得 `null`，与既有「jdt 无 query → null」先例一致）。B 的改造面实测仅 5 处
+（`fileRef.ts` 3 + `sourceOpen.ts:45` + `virtualSourceIdentity` 迁移），且 **jdt 就是现成同形先例**。
+已连同 5 条待写 Red 与实施顺序记入审计 §六。
+
+## 门禁
+
+- `pnpm test:coverage`（HEAD 复跑）：**432 文件 / 3706 passed / 1 skipped / 0 ERROR**
+- `pnpm lint:fe`：432 文件 / 3706 passed / 0 类型错误（三个 commit 的 pre-commit 各自全量跑过）
+- `npx eslint src`：0 error（仅剩既有 `VirtualList.tsx` 的 react-compiler warning）
+- 三个 commit 均可独立构建：commit 2 的暂存态经手工复现 lefthook 隐藏语义验证（tsc 无错 + 112 文件 1062 用例）
+
+## 过程经验（可复用）
+
+1. **lefthook 会先隐藏未暂存改动再跑钩子** ⇒ 钩子校验的是**暂存态**。做分段提交时，
+   中间 commit 必须能独立构建；若某文件的 diff 横跨两个 commit 而 hunk 无法切分，
+   可临时写「中间版本」入索引用（从备份恢复做下一 commit），但提交前**先手工复现隐藏语义**
+   （`git stash push --keep-index`）+ 跑 tsc/子集测试，比赌钩子便宜。
+2. **stash 恢复冲突**发生在 HEAD 已推进之后（三方合并 base 是旧 HEAD）。解法定然：用权威备份覆盖后
+   逐文件 `diff -q` 比对，确认零损失再 drop。
+3. **护栏只能结构断言**：React `useSyncExternalStore` 按 `subscribe` 函数去重，多个 selector 运行时
+   只产生一条订阅 ⇒ 行为上测不出「订阅槽数量」，而「门控有几处」是结构属性。
+   `architecture.test.ts` 新增护栏 12 用源码扫描锁住「消费者零 store 读取 + 输入面恰好两次读取」。
+
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `8a4a8fc4` | (see git log) |
+| `235d2546` | (see git log) |
+| `948ee5a0` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
