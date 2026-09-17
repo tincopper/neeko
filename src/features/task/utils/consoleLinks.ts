@@ -15,9 +15,11 @@ import type { ILinkProvider, Terminal } from '@xterm/xterm';
 import { useBrowserStore } from '@/shared/store/browserStore';
 import { useDockStore } from '@/shared/store/dockStore';
 import { useEditorStore } from '@/shared/store/editorStore';
+import { useWorktreeStore } from '@/shared/store/worktreeStore';
 import type { Tab } from '@/shared/types';
 import { canonicalFsPath } from '@/shared/utils/fileRef';
 import { getFileName, getTabId } from '@/shared/utils/fileTree';
+import { resolveTabKey } from '@/shared/utils/tabKey';
 
 import { revealInFileManager, readFileContent } from '../../file/api/fileApi';
 
@@ -102,7 +104,10 @@ async function openFileInEditor(
   line?: number,
   col?: number,
 ): Promise<void> {
-  const tabKey = projId;
+  // tab 键空间与 tab 实际落组同源（resolveTabKey，红线 12）：worktree 激活时
+  // 任务控制台链接必须落 worktree 键空间，否则 tab + navigateGoal 写进基础
+  // 空间而 UI 读取 worktree 空间，目标无法兑现。空 worktree 回落基础键空间。
+  const tabKey = resolveTabKey(projId, useWorktreeStore.getState().activeWorktreePath);
   const tabId = getTabId(tabKey, fullPath);
   const existing = useEditorStore.getState().tabs[tabKey];
   if (existing?.tabs.some((t) => t.id === tabId)) {
