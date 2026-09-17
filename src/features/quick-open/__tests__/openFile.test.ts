@@ -3,10 +3,11 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { useEditorStore } from '@/shared/store/editorStore';
 import { useProjectStore } from '@/shared/store/projectStore';
 import { useWorktreeStore } from '@/shared/store/worktreeStore';
+import { flushMicrotasks } from '@/testing/async';
 
-const { readFileContentMock, preloadMock } = vi.hoisted(() => ({
+const { readFileContentMock, langExtMock } = vi.hoisted(() => ({
   readFileContentMock: vi.fn(),
-  preloadMock: vi.fn(),
+  langExtMock: vi.fn(),
 }));
 
 vi.mock('@/features/file/api/fileApi', () => ({
@@ -14,7 +15,7 @@ vi.mock('@/features/file/api/fileApi', () => ({
 }));
 
 vi.mock('@/shared/utils/codemirror', () => ({
-  preloadLanguageExtension: preloadMock,
+  getLanguageExtension: langExtMock,
 }));
 
 import { openProjectFile } from '../openFile';
@@ -22,6 +23,7 @@ import { openProjectFile } from '../openFile';
 describe('openProjectFile — file tab 构造 canonical 化（quick-open 链路）', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    langExtMock.mockResolvedValue(null);
     useEditorStore.setState({ tabs: {}, editorLayout: {}, activeTabId: null });
     useProjectStore.setState({
       projects: [{ id: 'p1', name: 'p1', path: '/repo' } as never],
@@ -99,5 +101,55 @@ describe('openProjectFile — file tab 构造 canonical 化（quick-open 链路�
 
     const space = useEditorStore.getState().tabs['p1'];
     expect(space.tabs[0].id).toBe('p1:jdt:/java.base/java/io/PrintStream.java');
+  });
+});
+
+/**
+ * 语言扩展就绪屏障：openProjectFile 在读内容 / 建 tab **之前** `await getLanguageExtension`
+ * （与 runner/sourceTab 停点打开同款屏障；in-flight 去重 + 缓存命中即时返回）——
+ * 扩展就绪后 tab 才挂载，CodeMirror 只配置一次，消灭「兑现后 reconfigure 重排」。
+ * quick-open 语义为 last-write-wins：屏障后不做许可复检（mock 手法对齐
+ * navigate.test.ts 的屏障 describe）。
+ */
+describe('openProjectFile — 语言扩展就绪屏障（await getLanguageExtension）', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    langExtMock.mockResolvedValue(null);
+    useEditorStore.setState({ tabs: {}, editorLayout: {}, activeTabId: null });
+    useProjectStore.setState({
+      projects: [{ id: 'p1', name: 'p1', path: '/repo' } as never],
+      activeProjectId: 'p1',
+    });
+    useWorktreeStore.setState({ activeWorktreePath: null });
+    readFileContentMock.mockImplementation(async (_projectId: string, p: string) => ({
+      path: p,
+      content: 'x',
+      size: 1,
+      is_binary: false,
+    }));
+  });
+
+  it('does_not_read_content_or_add_the_tab_until_the_language_extension_is_ready', async () => {
+    let releaseLang!: (value: null) => void;
+    langExtMock.mockImplementationOnce(
+      () =>
+        new Promise<null>((resolve) => {
+          releaseLang = resolve;
+        }),
+    );
+
+    const pending = openProjectFile({ projectId: 'p1', filePath: 'src/a.ts' });
+    await flushMicrotasks();
+
+    // 屏障等待期间（扩展未就绪）：不读内容、不建 tab。
+    expect(langExtMock).toHaveBeenCalledWith('/repo/src/a.ts');
+    expect(readFileContentMock).not.toHaveBeenCalled();
+    expect(useEditorStore.getState().tabs['p1']).toBeUndefined();
+
+    releaseLang(null);
+    await pending;
+
+    // 屏障放行后照常提交（读内容 + 建 tab）。
+    expect(useEditorStore.getState().tabs['p1'].tabs).toHaveLength(1);
   });
 });

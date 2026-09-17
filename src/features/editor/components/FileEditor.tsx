@@ -15,6 +15,7 @@ import { useEditorViewSnapshot } from '../hooks/useEditorViewSnapshot';
 import { useFileEditorCallbacks } from '../hooks/useFileEditorCallbacks';
 import { useFileEditorLsp } from '../hooks/useFileEditorLsp';
 import { useFileEditorState } from '../hooks/useFileEditorState';
+import { useNavigateGoal } from '../hooks/useNavigateGoal';
 import { useUnifiedGutterExtension } from '../hooks/useUnifiedGutter';
 
 import FileEditorFallback, { fileEditorFallbackKind } from './FileEditorFallback';
@@ -103,6 +104,16 @@ function FileEditor({
     editorViewRef,
   });
 
+  // 用户意图导航目标兑现器：与 useDebugStopReveal 相邻装配，共用同一 editorViewRef /
+  // editorViewEpoch。挂载消费（consumeOnViewCreate）注入 useEditorViewSnapshot，
+  // 订阅 / 视图重建重放路径在本 hook 内自持。
+  const { consumeOnViewCreate } = useNavigateGoal({
+    tabKey,
+    tabId,
+    editorViewRef,
+    viewEpoch: editorViewEpoch,
+  });
+
   const { handleCreateEditor, viewStateExt, resetEditorRestored } = useEditorViewSnapshot({
     tabKey,
     tabId,
@@ -114,6 +125,7 @@ function FileEditor({
     setToolbarPos,
     editorViewRef,
     setEditorViewEpoch,
+    consumeOnViewCreate,
   });
 
   // 调试停点跟随：从停点 `location` 派生（幂等重放 + 用户接管 + 结束时释放光标）。

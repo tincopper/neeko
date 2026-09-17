@@ -256,14 +256,32 @@ function releaseFromPinned(
 }
 
 /**
- * **用户意图**跳转目标（定义跳转 / quick-open / 终端与任务链接 / 点断点）。
+ * 用户意图导航目标（定义跳转 / quick-open / 终端与任务链接 / 点断点）。
  *
- * 一次性消费：目标 tab 的编辑器创建后或状态变化时取用一次并清空。
+ * 目标状态模型：`seq` 自增事件键提供「取代 + 货币性」判定 —— 新意图覆盖旧目标（I3），
+ * 兑现回调凭 seq 复检货币性，陈旧回调不生效、也不误清新目标。
+ * 兑现绑定「视图就绪」（`useNavigateGoal` 经 CodeMirror `requestMeasure` write 阶段）：
+ * 成功前不丢（I1）、成功后不重放（I2）。
  * **调试停点不在此列** —— 停点跟随是「编辑器展示当前停点」的派生状态（幂等可重放），
- * 由 `useDebugStopReveal` 从停点 `location` 推出；塞进本单槽会遇到「命中即清槽、
+ * 由 `useDebugStopReveal` 从停点 `location` 推出；塞进本槽会遇到「命中即清槽、
  * 兑现失败无从补偿」的时序问题（issue #13）。
  */
-interface PendingNavigateTarget {
+export interface NavigateGoal {
+  /** 自增事件键：取代判定 + 陈旧回调的货币性检查。 */
+  seq: number;
+  tabKey: string;
+  tabId: string;
+  /** 1-based。 */
+  line: number;
+  /** 0-based。 */
+  col: number;
+}
+
+/** 用户意图导航目标的 seq 计数器（store 单实例，模块级即可）。 */
+let navigateGoalSeq = 0;
+
+/** 生产方写入的意图负载（seq 由 store 分配，调用方不感知）。 */
+export interface NavigateGoalInput {
   tabKey: string;
   tabId: string;
   line: number;
@@ -275,7 +293,7 @@ interface EditorStoreState {
   activeTabId: string | null;
   editorLayout: Record<string, EditorSplitLayout>;
   cursorPosition: { line: number; col: number } | null;
-  pendingNavigateTarget: PendingNavigateTarget | null;
+  navigateGoal: NavigateGoal | null;
 
   /**
    * 新增 tab。`targetGroup` 指定落组（pane 内 + 创建跟随发起面板）：
@@ -319,7 +337,35 @@ interface EditorStoreState {
   setPinnedPanelRatio: (tabKey: string, ratio: number) => void;
 
   setCursorPosition: (pos: { line: number; col: number } | null) => void;
-  setPendingNavigateTarget: (target: PendingNavigateTarget | null) => void;
+  /**
+   * 写入用户意图导航目标：seq 自增并覆盖旧目标（取代语义 —— 新意图压旧意图）。
+   * 返回本次目标的 seq：生产方失败路径凭它做「只清自己」的货币性清除 ——
+   * 迟到的失败清不得吞掉并发写入的新目标。兑现由 `useNavigateGoal` 绑定「视图就绪」完成。
+   */
+  setNavigateGoal: (target: NavigateGoalInput) => number;
+  /**
+   * 清除导航目标：仅当前 goal 就是该 seq 时清（货币性安全 —— 兑现回调与生产方失败路径
+   * 一律凭 seq 清除自己的目标，不误伤并发新目标）。
+   */
+  clearNavigateGoal: (seq: number) => void;
+}
+
+/**
+ * tab 移除路径共用的导航目标清理（私有 helper，不对外暴露）：goal 指向的 tab 被移除后
+ * 永远无法兑现，且滞留 goal 会在日后重开同文件时被陈旧目标「换弹」跳转。必须在移除
+ * 动作的**同一 set 更新**内展开返回（单一突变点）；仅在真实发生移除的返回分支调用，
+ * 早退分支（pinned 拒关 / tab 不存在 / tab 空间缺失）自然保留 goal。
+ * `tabId` 缺省时仅按 tabKey 匹配 —— 用于整项目 tab 空间移除（clearProjectTabs）。
+ */
+function dropNavigateGoalFor(
+  state: EditorStoreState,
+  tabKey: string,
+  tabId?: string,
+): { navigateGoal: NavigateGoal | null } | null {
+  const goal = state.navigateGoal;
+  if (!goal || goal.tabKey !== tabKey) return null;
+  if (tabId !== undefined && goal.tabId !== tabId) return null;
+  return { navigateGoal: null };
 }
 
 export const useEditorStore = create<EditorStoreState>((set) => ({
@@ -327,7 +373,7 @@ export const useEditorStore = create<EditorStoreState>((set) => ({
   activeTabId: null,
   editorLayout: {},
   cursorPosition: null,
-  pendingNavigateTarget: null,
+  navigateGoal: null,
 
   addTab: (projectId, tab, targetGroup) =>
     set((state) => {
@@ -561,6 +607,8 @@ export const useEditorStore = create<EditorStoreState>((set) => ({
         tabs: newTabs,
         activeTabId: globalActiveId,
         editorLayout: newEditorLayout,
+        // goal 指向的 tab 已随本次移除：同一 set 更新内清除，避免滞留目标日后「换弹」跳转。
+        ...dropNavigateGoalFor(state, projectId, tabId),
       };
     });
 
@@ -725,7 +773,13 @@ export const useEditorStore = create<EditorStoreState>((set) => ({
       const { [projectId]: _tmp, ...rest } = state.tabs;
       // eslint-disable-next-line @typescript-eslint/no-unused-vars
       const { [projectId]: _tmp2, ...restLayouts } = state.editorLayout;
-      return { tabs: rest, activeTabId: globalActiveId, editorLayout: restLayouts };
+      return {
+        tabs: rest,
+        activeTabId: globalActiveId,
+        editorLayout: restLayouts,
+        // 整项目 tab 空间被移除：该项目键下的 goal 一并清除（不限 tabId）。
+        ...dropNavigateGoalFor(state, projectId),
+      };
     });
 
     if (existing) {
@@ -1052,5 +1106,16 @@ export const useEditorStore = create<EditorStoreState>((set) => ({
 
   setCursorPosition: (pos) => set(() => ({ cursorPosition: pos })),
 
-  setPendingNavigateTarget: (target) => set(() => ({ pendingNavigateTarget: target })),
+  setNavigateGoal: (target) => {
+    const seq = ++navigateGoalSeq;
+    set(() => ({ navigateGoal: { seq, ...target } }));
+    return seq;
+  },
+
+  clearNavigateGoal: (seq) =>
+    set((state) => {
+      const goal = state.navigateGoal;
+      if (!goal || goal.seq !== seq) return state;
+      return { navigateGoal: null };
+    }),
 }));

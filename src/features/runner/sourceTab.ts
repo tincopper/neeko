@@ -11,7 +11,7 @@ import {
   recordNavigationJump,
 } from '@/shared/store/navigationHistoryStore';
 import type { Tab } from '@/shared/types';
-import { preloadLanguageExtension } from '@/shared/utils/codemirror';
+import { getLanguageExtension } from '@/shared/utils/codemirror';
 import { sameFileAt } from '@/shared/utils/fileRef';
 import { getTabId, isFileTab } from '@/shared/utils/fileTree';
 
@@ -59,8 +59,12 @@ export async function ensureSourceTab(
 
   if (canCommit && !canCommit()) return null;
 
-  // Warm the language pack before the tab mounts so CodeMirror configures once.
-  preloadLanguageExtension(identity);
+  // 语言扩展就绪屏障：await 动态 import 完成后再建 tab，CodeMirror 只配置一次
+  //（in-flight 去重 + 缓存命中即时返回）。
+  await getLanguageExtension(identity);
+  // 屏障可能等待动态 import：等待期间这次打开可能已被新请求取代，许可复检
+  //（停点路径 isCurrent 同样覆盖）。
+  if (canCommit && !canCommit()) return null;
 
   const store = useEditorStore.getState();
   // 复用查找走**身份比较**：tab 存的形态可能与本次身份不同形（历史 / 会话恢复的 tab），

@@ -4,16 +4,16 @@ import { useEditorStore } from '@/shared/store/editorStore';
 import { useProjectStore } from '@/shared/store/projectStore';
 import { useWorktreeStore } from '@/shared/store/worktreeStore';
 import type { FileContent } from '@/shared/types';
-import { deferred } from '@/testing/async';
+import { deferred, flushMicrotasks } from '@/testing/async';
 import { createStackFrame } from '@/testing/factories';
 
 import { ensureStopSourceTab, openSourceAtLine, openVirtualSourceAtLine } from '../navigate';
 import type { StackFrameDto } from '../types';
 
-const { readFileContentMock, preloadMock, externalReadMock, virtualReadMock, recordJumpMock } =
+const { readFileContentMock, langExtMock, externalReadMock, virtualReadMock, recordJumpMock } =
   vi.hoisted(() => ({
     readFileContentMock: vi.fn(),
-    preloadMock: vi.fn(),
+    langExtMock: vi.fn(),
     externalReadMock: vi.fn(),
     virtualReadMock: vi.fn(),
     recordJumpMock: vi.fn(),
@@ -24,7 +24,7 @@ vi.mock('@/features/file/api/fileApi', () => ({
 }));
 
 vi.mock('@/shared/utils/codemirror', () => ({
-  preloadLanguageExtension: preloadMock,
+  getLanguageExtension: langExtMock,
 }));
 
 vi.mock('../api/debugApi', async (importOriginal) => ({
@@ -383,7 +383,7 @@ describe('ensureStopSourceTab — 停点只确保源码可见（不写跳转目�
       tabs: {},
       editorLayout: {},
       activeTabId: null,
-      pendingNavigateTarget: null,
+      navigateGoal: null,
     });
     useProjectStore.setState({ activeProject: null });
     useWorktreeStore.setState({ activeWorktreePath: null });
@@ -403,7 +403,7 @@ describe('ensureStopSourceTab — 停点只确保源码可见（不写跳转目�
     expect(tabId).toBe('p1:/repo/src/A.java');
     expect(store.tabs['p1'].activeTabId).toBe('p1:/repo/src/A.java');
     // 跳转目标必须为空：编辑器侧由 useDebugStopReveal 从 location 派生，不再经单槽消费。
-    expect(store.pendingNavigateTarget).toBeNull();
+    expect(store.navigateGoal).toBeNull();
   });
 
   it('should_reuse_an_existing_tab_without_reading_content', async () => {
@@ -427,13 +427,19 @@ describe('ensureStopSourceTab — 停点只确保源码可见（不写跳转目�
     expect(tabId).toBe('p1:/repo/src/A.java');
     expect(readFileContentMock).not.toHaveBeenCalled();
     expect(useEditorStore.getState().tabs['p1'].tabs).toHaveLength(1);
-    expect(useEditorStore.getState().pendingNavigateTarget).toBeNull();
+    expect(useEditorStore.getState().navigateGoal).toBeNull();
   });
 
   it('[T11] should_drop_a_late_content_load_when_the_commit_guard_turned_false', async () => {
     const gate = deferred<FileContent>();
-    readFileContentMock.mockImplementationOnce(() => gate.promise);
     let allowed = true;
+    // 许可翻转挂在「内容读取开始」上：语言扩展就绪屏障之后 load 才发生，若在屏障
+    // 等待期间就翻转，走的是「屏障后复检放弃」路径（且会让 once 实现滞留泄漏到
+    // 后续用例）。读取开始即视为 load 已在途，此时被新停点取代 —— 与原语义一致。
+    readFileContentMock.mockImplementationOnce(() => {
+      allowed = false;
+      return gate.promise;
+    });
 
     const pending = ensureStopSourceTab({
       projectId: 'p1',
@@ -442,12 +448,32 @@ describe('ensureStopSourceTab — 停点只确保源码可见（不写跳转目�
       sessionId: 's1',
       isCurrent: () => allowed,
     });
-    // 内容还在路上时，新的停点（B）已经落地 —— A 这条链已经被取代。
-    allowed = false;
     gate.resolve(content(A_PATH));
     const tabId = await pending;
 
     expect(tabId).toBeNull();
+    expect(useEditorStore.getState().tabs['p1']).toBeUndefined();
+  });
+
+  it('should_abandon_during_language_barrier_when_the_commit_guard_turned_false', async () => {
+    // 语言扩展就绪屏障（await getLanguageExtension）等待期间被新停点取代：
+    // 屏障后的许可复检必须放弃 —— 不读内容、不建 tab。
+    let allowed = true;
+    langExtMock.mockImplementationOnce(() => {
+      allowed = false;
+      return Promise.resolve(null);
+    });
+
+    const tabId = await ensureStopSourceTab({
+      projectId: 'p1',
+      projectPath: PROJECT,
+      frame: frame(1, A_PATH),
+      sessionId: 's1',
+      isCurrent: () => allowed,
+    });
+
+    expect(tabId).toBeNull();
+    expect(readFileContentMock).not.toHaveBeenCalled();
     expect(useEditorStore.getState().tabs['p1']).toBeUndefined();
   });
 
@@ -561,7 +587,7 @@ describe('ensureStopSourceTab — 停点只确保源码可见（不写跳转目�
       },
       editorLayout: {},
       activeTabId: null,
-      pendingNavigateTarget: null,
+      navigateGoal: null,
     });
     readFileContentMock.mockClear();
 
@@ -606,7 +632,7 @@ describe('ensureStopSourceTab — 停点只确保源码可见（不写跳转目�
       },
       editorLayout: {},
       activeTabId: null,
-      pendingNavigateTarget: null,
+      navigateGoal: null,
     });
     readFileContentMock.mockClear();
 
@@ -646,5 +672,82 @@ describe('ensureStopSourceTab — 停点只确保源码可见（不写跳转目�
       'p1:/repo/src/B.java',
     ]);
     expect(store.tabs['p1'].activeTabId).toBe('p1:/repo/src/B.java');
+  });
+});
+
+/**
+ * 语言扩展就绪屏障：`ensureSourceTab` 在建 tab / 激活 / 读内容**之前**
+ * `await getLanguageExtension(identity)`（屏障可能等待动态 import），等待结束后
+ * 必须复检落地许可 —— 屏障期间这次打开可能已被新请求取代。
+ */
+describe('ensureSourceTab — 语言扩展就绪屏障（await getLanguageExtension + 许可复检）', () => {
+  const PROJECT = '/repo';
+  const A_PATH = `${PROJECT}/src/A.java`;
+
+  /** 帧夹具：字面量集中在 `@/testing/factories`，此处只固化本文件惯用的列号。 */
+  function frame(id: number, sourcePath: string, line = 10): StackFrameDto {
+    return createStackFrame({ id, name: `f${id}`, sourcePath, line, column: 2 });
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    langExtMock.mockResolvedValue(null);
+    useEditorStore.setState({ tabs: {}, editorLayout: {}, activeTabId: null });
+    useProjectStore.setState({ activeProject: null });
+    useWorktreeStore.setState({ activeWorktreePath: null });
+    readFileContentMock.mockImplementation(async (_projectId: string, p: string) => content(p));
+  });
+
+  it('should_not_read_content_or_add_the_tab_until_the_language_extension_is_ready', async () => {
+    let releaseLang!: (value: null) => void;
+    langExtMock.mockImplementationOnce(
+      () =>
+        new Promise<null>((resolve) => {
+          releaseLang = resolve;
+        }),
+    );
+
+    const pending = openSourceAtLine('p1', PROJECT, A_PATH, 10, 2);
+    await flushMicrotasks();
+
+    // 屏障等待期间（动态 import 未完成）：既不读内容也不建 tab / 激活。
+    expect(langExtMock).toHaveBeenCalledWith(A_PATH);
+    expect(readFileContentMock).not.toHaveBeenCalled();
+    expect(useEditorStore.getState().tabs['p1']).toBeUndefined();
+
+    releaseLang(null);
+    await pending;
+
+    // 屏障放行后照常建 tab。
+    expect(useEditorStore.getState().tabs['p1'].tabs).toHaveLength(1);
+  });
+
+  it('should_recheck_the_commit_guard_after_the_language_barrier', async () => {
+    let releaseLang!: (value: null) => void;
+    langExtMock.mockImplementationOnce(
+      () =>
+        new Promise<null>((resolve) => {
+          releaseLang = resolve;
+        }),
+    );
+    let allowed = true;
+
+    const pending = ensureStopSourceTab({
+      projectId: 'p1',
+      projectPath: PROJECT,
+      frame: frame(1, A_PATH),
+      sessionId: 's1',
+      isCurrent: () => allowed,
+    });
+    await flushMicrotasks();
+    // 屏障等待期间被新停点取代：许可转 false。
+    allowed = false;
+    releaseLang(null);
+    const tabId = await pending;
+
+    expect(tabId).toBeNull();
+    // 复检发生在 load() 之前：内容读取不得发生。
+    expect(readFileContentMock).not.toHaveBeenCalled();
+    expect(useEditorStore.getState().tabs['p1']).toBeUndefined();
   });
 });

@@ -6,7 +6,7 @@
  * 交错就是用户实际遇到的那条链路（旧停点的源码内容迟到）。
  *
  * 断言面刻意选**跨机制稳定**的 `editorStore` 事实（活动 tab）：
- * - 旧机制（跳转目标经 `pendingNavigateTarget` 单槽、由异步链写入）下，迟到的旧链会
+ * - 旧机制（跳转目标经单槽、由异步链写入）下，迟到的旧链会
  *   `activateTab` 抢走激活并写旧跳转目标 ⇒ 断言失败（真红）；
  * - 新机制（位置单写者 + 代际守卫）下，迟到的旧链在 `addTab` / `activateTab` 前就被拦下
  *   ⇒ 断言通过。
@@ -40,7 +40,7 @@ vi.mock('@/features/file/api/fileApi', () => ({
 }));
 
 vi.mock('@/shared/utils/codemirror', () => ({
-  preloadLanguageExtension: vi.fn(),
+  getLanguageExtension: vi.fn(async () => null),
 }));
 
 vi.mock('@/shared/store/navigationHistoryStore', () => ({
@@ -153,7 +153,7 @@ beforeEach(() => {
     tabs: {},
     editorLayout: {},
     activeTabId: null,
-    pendingNavigateTarget: null,
+    navigateGoal: null,
   });
   useProjectStore.setState({
     activeProject: { id: 'p1', name: 'proj', path: PROJECT } as never,
@@ -192,7 +192,7 @@ describe('停点跳转链交错（issue #13 症状）', () => {
     expect(activeTabId()).toBe(B_TAB);
     expect(openTabIds()).not.toContain(A_TAB);
     // 停点路径不得写跳转目标：跳转由 location 派生链承担（旧机制此刻会写 A 的旧目标）。
-    expect(useEditorStore.getState().pendingNavigateTarget).toBeNull();
+    expect(useEditorStore.getState().navigateGoal).toBeNull();
   });
 
   it('[T3-tab] 顺序到达（非竞态）时两个文件都会被打开，激活属最后一个停点', async () => {

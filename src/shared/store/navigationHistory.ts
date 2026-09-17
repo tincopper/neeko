@@ -7,7 +7,7 @@ export interface NavLocation {
   projectId: string;
   tabKey: string;
   filePath: string;
-  /** 1-based line (matches pendingNavigateTarget). */
+  /** 1-based line (matches navigateGoal). */
   line: number;
   /** 0-based column. */
   column: number;

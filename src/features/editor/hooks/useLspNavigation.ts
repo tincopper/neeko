@@ -113,7 +113,7 @@ export function useLspNavigation({
       const langWarm = getLanguageExtension(targetPath);
       const targetTabId = getTabId(tKey, targetPath);
       const existing = useEditorStore.getState().tabs[tKey];
-      useEditorStore.getState().setPendingNavigateTarget({
+      const goalSeq = useEditorStore.getState().setNavigateGoal({
         tabKey: tKey,
         tabId: targetTabId,
         line: targetLine + 1,
@@ -156,7 +156,7 @@ export function useLspNavigation({
             location.uri,
           );
           if (loaded.kind === 'unavailable') {
-            useEditorStore.getState().setPendingNavigateTarget(null);
+            useEditorStore.getState().clearNavigateGoal(goalSeq);
             showNavigationFailure(loaded.reason);
             return;
           }
@@ -188,7 +188,7 @@ export function useLspNavigation({
         };
         useEditorStore.getState().addTab(tKey, newTab);
       } catch (e) {
-        useEditorStore.getState().setPendingNavigateTarget(null);
+        useEditorStore.getState().clearNavigateGoal(goalSeq);
         showNavigationFailure('read-failed');
         console.error('[LSP] Failed to open definition target:', e);
       }

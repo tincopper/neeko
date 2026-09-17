@@ -1,6 +1,6 @@
 /**
  * App-facing navigation history (Back / Forward).
- * Restores tabs via editor store + pendingNavigateTarget.
+ * Restores tabs via editor store + navigateGoal (用户意图导航目标).
  */
 import { create } from 'zustand';
 
@@ -71,7 +71,7 @@ async function restoreLocation(loc: NavLocation): Promise<void> {
   const existing = store.tabs[loc.tabKey];
   const hasTab = existing?.tabs.some((t) => t.id === tabId);
 
-  store.setPendingNavigateTarget({
+  const goalSeq = store.setNavigateGoal({
     tabKey: loc.tabKey,
     tabId,
     line: loc.line,
@@ -83,7 +83,7 @@ async function restoreLocation(loc: NavLocation): Promise<void> {
     return;
   }
 
-  // Open file tab then activate (pending target applied by FileViewer).
+  // Open file tab then activate (goal redeemed by useNavigateGoal once the view is ready).
   preloadLanguageExtension(loc.filePath);
   try {
     const content = await readFileContent(loc.projectId, loc.filePath);
@@ -103,7 +103,7 @@ async function restoreLocation(loc: NavLocation): Promise<void> {
     store.addTab(loc.tabKey, newTab);
   } catch (e) {
     console.error('[nav-history] Failed to open', loc.filePath, e);
-    store.setPendingNavigateTarget(null);
+    store.clearNavigateGoal(goalSeq);
   }
 }
 

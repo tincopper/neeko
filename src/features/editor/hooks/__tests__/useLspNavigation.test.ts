@@ -14,7 +14,9 @@ import { resolveLspDocumentUri, useLspNavigation } from '../useLspNavigation';
 const h = vi.hoisted(() => ({
   capturedNavigate: null as null | ((...args: unknown[]) => Promise<void>),
   addTab: vi.fn(),
-  setPendingNavigateTarget: vi.fn(),
+  // 生产方失败路径凭 setNavigateGoal 返回的 seq 做货币性清除 —— mock 同形返回。
+  setNavigateGoal: vi.fn(() => 1),
+  clearNavigateGoal: vi.fn(),
 }));
 
 vi.mock('../useCmdClickGoToDefinition', () => ({
@@ -53,7 +55,8 @@ vi.mock('@/shared/store/editorStore', () => ({
   useEditorStore: {
     getState: () => ({
       tabs: {},
-      setPendingNavigateTarget: h.setPendingNavigateTarget,
+      setNavigateGoal: h.setNavigateGoal,
+      clearNavigateGoal: h.clearNavigateGoal,
       addTab: h.addTab,
       activateTab: vi.fn(),
     }),
@@ -189,7 +192,9 @@ describe('useLspNavigation — 预读内容契约防御', () => {
     expect(loadDefinitionTargetContent).toHaveBeenCalledOnce();
     expect(showNavigationFailure).toHaveBeenCalledWith('read-failed');
     expect(h.addTab).not.toHaveBeenCalled();
-    expect(h.setPendingNavigateTarget).toHaveBeenLastCalledWith(null);
+    // 货币性清除：失败路径必须凭 setNavigateGoal 返回的 seq 清自己的目标
+    //（无参强制清会吞掉并发写入的新目标 —— 迟到失败清不得越权）。
+    expect(h.clearNavigateGoal).toHaveBeenCalledWith(1);
   });
 
   it('should_mark_fallback_tab_readonly_for_external_target', async () => {
@@ -290,7 +295,7 @@ describe('useLspNavigation — 预读内容契约防御', () => {
     );
 
     expect(h.addTab).not.toHaveBeenCalled();
-    expect(h.setPendingNavigateTarget).not.toHaveBeenCalled();
+    expect(h.setNavigateGoal).not.toHaveBeenCalled();
     expect(loadDefinitionTargetContent).not.toHaveBeenCalled();
   });
 });

@@ -2,7 +2,7 @@
  * 跳转入口（**策略层**）：决定「一次打开是用户意图还是停点跟随」。
  *
  * - **用户意图**（点断点 / 外部链接）：`openSourceAtLine` / `openVirtualSourceAtLine` ——
- *   打开并激活后写 `pendingNavigateTarget`，由编辑器消费**一次**；
+ *   打开并激活后写 `navigateGoal`（目标状态模型，由 useNavigateGoal 绑定视图就绪兑现）；
  * - **停点**（自动停点 / 点栈帧）：`ensureStopSourceTab` —— 只保证源码可见；「跳到哪一行」
  *   由编辑器从停点 `location` 派生（`useDebugStopReveal`，幂等可重放）。内容加载是异步的，
  *   因此该入口需要**落地许可**（`isCurrent`）：旧停点迟到的内容不得建 tab / 抢激活。
@@ -42,12 +42,12 @@ export interface OpenSourceOptions {
   onError?: (message: string) => void;
 }
 
-/** 写用户意图跳转目标（一次性消费；停点路径不走这里）。 */
-function publishNavigateTarget(
+/** 写用户意图导航目标（兑现绑定「视图就绪」；停点路径不走这里）。 */
+function publishNavigateGoal(
   tabKey: string,
   target: { tabId: string; line: number; col: number },
 ): void {
-  useEditorStore.getState().setPendingNavigateTarget({
+  useEditorStore.getState().setNavigateGoal({
     tabKey,
     tabId: target.tabId,
     line: target.line,
@@ -77,7 +77,7 @@ export async function openSourceAtLine(
     column,
     onError: opts?.onError,
   });
-  if (target) publishNavigateTarget(tabKey, target);
+  if (target) publishNavigateGoal(tabKey, target);
 }
 
 /** 用户意图：打开适配器虚拟源码（DAP `sourceReference`）并跳到指定行。 */
@@ -105,7 +105,7 @@ export async function openVirtualSourceAtLine(
     column,
     onError: opts?.onError,
   });
-  if (target) publishNavigateTarget(tabKey, target);
+  if (target) publishNavigateGoal(tabKey, target);
 }
 
 /** 停点源码可见性请求。 */

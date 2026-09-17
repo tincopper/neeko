@@ -17,7 +17,6 @@ import {
   type SerializedSelection,
 } from '@/shared/utils/editorViewState';
 
-import { applyNavigateCaret } from '../navigateCaret';
 import { resolveDebugHighlightLine } from '../stopMatch';
 
 import { applyDebugCurrentLine } from './useBreakpointGutter';
@@ -33,11 +32,18 @@ interface UseEditorViewSnapshotParams {
   setToolbarPos: (pos: { top: number; left: number } | null) => void;
   editorViewRef: React.MutableRefObject<EditorView | null>;
   setEditorViewEpoch: (updater: (n: number) => number) => void;
+  /**
+   * 消费用户意图导航目标（useNavigateGoal 装配）。onCreateEditor 内调用：
+   * 返回 true 表示本视图已认领目标（调用方跳过快照恢复）；兑现机制（就绪屏障 +
+   * 货币性）在 useNavigateGoal，本 hook 只负责「目标优先于快照」的顺序。
+   */
+  consumeOnViewCreate: () => boolean;
 }
 
 /**
  * CodeMirror 视图生命周期：scrollTop/selection 快照保存与恢复、
- * **用户意图**跳转目标应用（调试停点跟随走 `useDebugStopReveal` 的派生链）、
+ * 挂载时优先消费用户意图跳转目标（订阅/重放路径见 `useNavigateGoal`；
+ * 调试停点跟随走 `useDebugStopReveal` 的派生链）、
  * 卸载兜底保存、status bar 光标同步。
  */
 export function useEditorViewSnapshot({
@@ -51,6 +57,7 @@ export function useEditorViewSnapshot({
   setToolbarPos,
   editorViewRef,
   setEditorViewEpoch,
+  consumeOnViewCreate,
 }: UseEditorViewSnapshotParams) {
   const editorRestoredRef = useRef(false);
 
@@ -157,17 +164,9 @@ export function useEditorViewSnapshot({
       applyDebugCurrentLine(view, hl);
       if (editorRestoredRef.current) return;
 
-      // Check for pending LSP navigation target (go-to-definition / find-references)
-      const pending = useEditorStore.getState().pendingNavigateTarget;
-      if (pending && pending.tabKey === tabKey && pending.tabId === tabId) {
-        // Defer one frame so layout is measured before scroll/focus
-        requestAnimationFrame(() => {
-          applyNavigateCaret(view, pending.line, pending.col);
-        });
-        // Delay clear to survive React StrictMode double-mount
-        queueMicrotask(() => {
-          useEditorStore.getState().setPendingNavigateTarget(null);
-        });
+      // 用户意图导航目标优先于快照恢复（刚因跳转创建的视图不该被旧快照拉回旧位置）；
+      // 兑现机制（就绪屏障 + 货币性）在 useNavigateGoal。
+      if (consumeOnViewCreate()) {
         editorRestoredRef.current = true;
         return;
       }
@@ -209,6 +208,7 @@ export function useEditorViewSnapshot({
       editorViewRef,
       lastSyncedBpKeyRef,
       setEditorViewEpoch,
+      consumeOnViewCreate,
     ],
   );
 
@@ -220,23 +220,6 @@ export function useEditorViewSnapshot({
       editorRestoredRef.current = false;
     };
   }, [saveEditorSnapshot, editorViewRef]);
-
-  // Listen for pending LSP navigation target (existing tabs – go-to-definition / find-references)
-  useEffect(() => {
-    const unsubscribe = useEditorStore.subscribe((state) => {
-      const pending = state.pendingNavigateTarget;
-      if (pending && pending.tabKey === tabKey && pending.tabId === tabId) {
-        const view = editorViewRef.current;
-        if (view) {
-          requestAnimationFrame(() => {
-            applyNavigateCaret(view, pending.line, pending.col);
-          });
-          useEditorStore.getState().setPendingNavigateTarget(null);
-        }
-      }
-    });
-    return unsubscribe;
-  }, [tabKey, tabId, editorViewRef]);
 
   return { handleCreateEditor, viewStateExt, resetEditorRestored };
 }

@@ -108,7 +108,7 @@ async function openFileInEditor(
   if (existing?.tabs.some((t) => t.id === tabId)) {
     useEditorStore.getState().activateTab(tabKey, tabId);
     if (line !== undefined) {
-      useEditorStore.getState().setPendingNavigateTarget({ tabKey, tabId, line, col: col ?? 0 });
+      useEditorStore.getState().setNavigateGoal({ tabKey, tabId, line, col: col ?? 0 });
     }
     return;
   }
@@ -130,7 +130,7 @@ async function openFileInEditor(
     };
     useEditorStore.getState().addTab(tabKey, newTab);
     if (line !== undefined) {
-      useEditorStore.getState().setPendingNavigateTarget({ tabKey, tabId, line, col: col ?? 0 });
+      useEditorStore.getState().setNavigateGoal({ tabKey, tabId, line, col: col ?? 0 });
     }
   } catch (err) {
     console.error(`[ConsoleLinks] File not found: ${fullPath}`, err);

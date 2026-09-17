@@ -542,3 +542,65 @@ describe('editorStore.renameTab — Save As 身份迁移（改 id 保持一致�
     expect(s.tabs['p1'].activeTabId).toBe('A');
   });
 });
+
+describe('editorStore.navigateGoal — cleared when its target tab is removed', () => {
+  beforeEach(() => {
+    useEditorStore.setState({
+      tabs: {},
+      editorLayout: {},
+      activeTabId: null,
+      navigateGoal: null,
+    });
+  });
+
+  it('closeTab removes the goal target tab → navigateGoal cleared', () => {
+    seedState(splitLayout(['A', 'B'], [], 'A', 'A'), [makeTab('A'), makeTab('B')], 'A');
+    useEditorStore.getState().setNavigateGoal({ tabKey: 'p1', tabId: 'A', line: 1, col: 0 });
+
+    useEditorStore.getState().closeTab('p1', 'A');
+
+    expect(useEditorStore.getState().navigateGoal).toBeNull();
+  });
+
+  it('closeTab removes another tab → navigateGoal preserved', () => {
+    seedState(splitLayout(['A', 'B'], [], 'A', 'A'), [makeTab('A'), makeTab('B')], 'A');
+    useEditorStore.getState().setNavigateGoal({ tabKey: 'p1', tabId: 'A', line: 1, col: 0 });
+
+    useEditorStore.getState().closeTab('p1', 'B');
+
+    const goal = useEditorStore.getState().navigateGoal;
+    expect(goal).not.toBeNull();
+    expect(goal?.tabId).toBe('A');
+  });
+
+  it('closeTab on a pinned tab (not actually removed) → navigateGoal preserved', () => {
+    // closeTab 对 pinned tab 早退（不移除）：清理只随真实移除发生，goal 不得被误清。
+    const layout = splitLayout(['A'], [], 'A', 'A');
+    layout.pinnedTabIds = ['A'];
+    layout.pinnedActiveTabId = 'A';
+    seedState(layout, [makeTab('A')], 'A');
+    useEditorStore.getState().setNavigateGoal({ tabKey: 'p1', tabId: 'A', line: 1, col: 0 });
+
+    useEditorStore.getState().closeTab('p1', 'A');
+
+    expect(useEditorStore.getState().navigateGoal?.tabId).toBe('A');
+  });
+
+  it('clearProjectTabs removes the project tab space → goal for that tabKey cleared', () => {
+    seedState(splitLayout(['A'], [], 'A', 'A'), [makeTab('A')], 'A');
+    useEditorStore.getState().setNavigateGoal({ tabKey: 'p1', tabId: 'A', line: 1, col: 0 });
+
+    useEditorStore.getState().clearProjectTabs('p1');
+
+    expect(useEditorStore.getState().navigateGoal).toBeNull();
+  });
+
+  it('clearProjectTabs on another project → navigateGoal preserved', () => {
+    seedState(splitLayout(['A'], [], 'A', 'A'), [makeTab('A')], 'A');
+    useEditorStore.getState().setNavigateGoal({ tabKey: 'p2', tabId: 'X', line: 1, col: 0 });
+
+    useEditorStore.getState().clearProjectTabs('p1');
+
+    expect(useEditorStore.getState().navigateGoal?.tabKey).toBe('p2');
+  });
+});

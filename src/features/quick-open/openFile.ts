@@ -14,7 +14,7 @@ import { useEditorStore } from '@/shared/store/editorStore';
 import { useProjectStore } from '@/shared/store/projectStore';
 import { useWorktreeStore } from '@/shared/store/worktreeStore';
 import type { Tab } from '@/shared/types';
-import { preloadLanguageExtension } from '@/shared/utils/codemirror';
+import { getLanguageExtension } from '@/shared/utils/codemirror';
 import { sourceIdentityOf } from '@/shared/utils/fileRef';
 import { getFileName, getTabId } from '@/shared/utils/fileTree';
 import { resolveTabKey } from '@/shared/utils/tabKey';
@@ -46,12 +46,15 @@ export async function openProjectFile(opts: {
   useRecentFilesStore.getState().record(projectId, filePath);
 
   if (existing) {
-    store.setPendingNavigateTarget({ tabKey, tabId, line, col });
+    store.setNavigateGoal({ tabKey, tabId, line, col });
     store.activateTab(tabKey, tabId);
     return;
   }
 
-  preloadLanguageExtension(filePath);
+  // 语言扩展就绪屏障：await（与 runner/sourceTab 停点打开同款；in-flight 去重 +
+  // 缓存命中即时返回）—— 扩展就绪后 tab 才挂载，CodeMirror 只配置一次，消灭
+  // 「兑现后 reconfigure 重排」。quick-open 语义为 last-write-wins，屏障后不做许可复检。
+  await getLanguageExtension(filePath);
   const content = await readFileContent(projectId, filePath);
   const newTab: Tab = {
     id: tabId,
@@ -67,6 +70,6 @@ export async function openProjectFile(opts: {
       initialPreviewMode: opts.defaultPreviewMode,
     },
   };
-  store.setPendingNavigateTarget({ tabKey, tabId, line, col });
+  store.setNavigateGoal({ tabKey, tabId, line, col });
   store.addTab(tabKey, newTab);
 }

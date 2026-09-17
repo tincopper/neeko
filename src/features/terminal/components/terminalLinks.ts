@@ -88,7 +88,7 @@ async function openFileInEditor(
   if (existing?.tabs.some((t) => t.id === tabId)) {
     useEditorStore.getState().activateTab(tabKey, tabId);
     if (line !== undefined) {
-      useEditorStore.getState().setPendingNavigateTarget({
+      useEditorStore.getState().setNavigateGoal({
         tabKey,
         tabId,
         line,
@@ -115,7 +115,7 @@ async function openFileInEditor(
     };
     useEditorStore.getState().addTab(tabKey, newTab);
     if (line !== undefined) {
-      useEditorStore.getState().setPendingNavigateTarget({
+      useEditorStore.getState().setNavigateGoal({
         tabKey,
         tabId,
         line,
