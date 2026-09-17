@@ -1282,3 +1282,158 @@ Completed 09-16-debug-source-identity (identity uniqueness slice 3): verified al
 ### Next Steps
 
 - None - task complete
+
+
+## Session 211: DAP manager 按 neeko-check 规范重构（5 阶段）
+
+**Date**: 2026-09-17
+**Task**: DAP manager 按 neeko-check 规范重构（5 阶段）
+**Branch**: `main`
+
+### Summary
+
+抽 DapEventSink 端口解 AppHandle 耦合；拆出 breakpoints 单锁仓储/sessions 注册表/source_translation/launch_config/project_context；修 TOCTOU 丢更新、持锁跨 await、语言身份分裂（type 别名）、异步阻塞 IO、路径静默降级；新增 FakeAdapter 测试支撑与 20+ 回归用例；新增 dap-domain.md spec
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+(No commits - planning session)
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
+
+
+## Session 212: DAP 续拆：BackendRegistry / DapContext / launch / breakpoints::service
+
+**Date**: 2026-09-17
+**Task**: DAP 续拆：BackendRegistry / DapContext / launch / breakpoints::service
+**Branch**: `main`
+
+### Summary
+
+manager 生产代码 861 → 345 行，退化为门面（组装上下文 + 转调 + 会话级透传）；新增 backends.rs（注册表与锁同住）、context.rs（四协作者借用打包）、launch.rs（启动编排）、breakpoints/service.rs（断点全链路）；测试归位到各自模块：launch 用 launch_via_endpoint seam，service 就地构造 DapContext；新增 8 个回归用例；修正 over-copy 契约误判（回传是适配器视图，前端 merge）
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+(No commits - planning session)
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
+
+
+## Session 213: neeko-check 复审后的整改：门面纪律 + 覆盖缺口 + 嵌套拍平
+
+**Date**: 2026-09-17
+**Task**: neeko-check 复审后的整改：门面纪律 + 覆盖缺口 + 嵌套拍平
+**Branch**: `main`
+
+### Summary
+
+按 neeko-check 复审结论整改：删除 2 个因 pub 存活的死方法（stop_project_sessions / backend_for_config，manager 生产 345→329 行）；抽 resolve_cached 拍平 adapter_breakpoints 的 3 层解构；补 launch 层 plan 三态断言（Warming/Unavailable 绝不建会话）；DapFixture 提到 testing.rs，launch/service 测试全部脱离门面；manager 测试收口为 4 条门面契约（消除与服务层的重复覆盖）；spec 固化门面纪律 3 条 + plan 三态不变量 + 单锁拆锁条件
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+(No commits - planning session)
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
+
+
+## Session 214: 补 M1：adapter_binary_override 三态夹具（含变异验证）
+
+**Date**: 2026-09-17
+**Task**: 补 M1：adapter_binary_override 三态夹具（含变异验证）
+**Branch**: `main`
+
+### Summary
+
+project_context 新增 3 个用例覆盖 dap.adapterBinaries.<kind> 的命中/空串/缺省（键缺、类型错、非对象、文件缺、JSON 坏）共 7 条分支；变异测试取证：抽掉 .filter(!s.is_empty()) 后空串用例转红；顺带暴露 key 空间与 launch type 别名的 UX 陷阱（adapterBinaries.rust 被静默忽略），已在 dap-domain.md 记为已知契约并给出正确修法（入口归一，而非别名回落）
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+(No commits - planning session)
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
+
+
+## Session 215: 修掉 adapterBinaries 别名陷阱：键空间在读取入口归一
+
+**Date**: 2026-09-17
+**Task**: 修掉 adapterBinaries 别名陷阱：键空间在读取入口归一
+**Branch**: `main`
+
+### Summary
+
+adapter_binary_override 改为读取时按 AdapterKind::from_config_type 归一：规范键（go/lldb/java）恒优先，缺失或空串时接受 launch.json type 别名（delve/rust/codelldb/junit），无法归一的键忽略；抽 usable_override 复用空串过滤；新增 2 个用例（别名生效 + 规范键优先/空串让位），变异验证：删别名回落分支→2 用例转红。同类全域排查：仅 java/backend.rs 读 /dap/javaBackend（标量枚举键，无别名空间）→ 无需处理
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+(No commits - planning session)
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
