@@ -1,0 +1,3 @@
+{"_example": "Fill with {\"file\": \"<path>\", \"reason\": \"<why>\"}. Put spec/research files only — no code paths. Run `python3 .trellis/scripts/get_context.py --mode packages` to list available specs. Delete this line once real entries are added."}
+{"file": ".trellis/spec/frontend/navigation-goal.md", "reason": "goal 生命周期：dropNavigateGoalFor 级联清理语义（§3）"}
+{"file": ".trellis/spec/frontend/state-management.md", "reason": "editorStore 惯例（单一突变点、action 组织）"}
