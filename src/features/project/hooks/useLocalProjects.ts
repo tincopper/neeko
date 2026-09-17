@@ -15,6 +15,7 @@ import { aheadBehindKey } from '@/shared/utils/aheadBehindKey';
 import { applyStateAction } from '@/shared/utils/entryUpdates';
 import { getMacAppNameByCommand, resolveIdeLaunchCommand } from '@/shared/utils/idePresets';
 import { randomAvatarColor } from '@/shared/utils/projectAvatar';
+import { parseProjectIdFromTabKey } from '@/shared/utils/tabKey';
 
 // eslint-disable-next-line import/no-restricted-paths -- useLocalProjects needs agent API for listing agents
 import { listAgents } from '../../agent/api/agentApi';
@@ -161,6 +162,20 @@ export function useLocalProjects() {
   const handleRemoveProject = useCallback(async (projectId: string) => {
     try {
       await removeProject(projectId);
+
+      // R1：项目确认移除后，清空该项目派生的**全部** tab 键空间（基础键 + worktree
+      // 变体，键格式唯一事实源 = tabKey.ts 的 resolveTabKey 派生）。归属判定用
+      // parseProjectIdFromTabKey 精确匹配（'p10:wt:x' → 'p10'），避免字符串前缀
+      // 误伤相邻 id（p1 vs p10）；枚举 editorStore.tabs 现存键即完整键空间 —— 键仅
+      // 在 tab 打开时存在，无需穷举 worktree 路径。逐一走 clearProjectTabs（R2：
+      // 其内 dropNavigateGoalFor 级联清 navigateGoal + activeTabId 兜底 + 按 kind
+      // 触发 tab cleanup），不绕开单写 helper 自行改 tabs 结构。上方 await 抛出
+      // 即走 catch，不会触碰 tabs（R3）。
+      for (const tabKey of Object.keys(useEditorStore.getState().tabs)) {
+        if (parseProjectIdFromTabKey(tabKey) === projectId) {
+          useEditorStore.getState().clearProjectTabs(tabKey);
+        }
+      }
 
       const projState = useProjectStore.getState();
       const editorState = useEditorStore.getState();

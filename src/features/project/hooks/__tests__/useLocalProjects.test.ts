@@ -4,6 +4,8 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 import { useLocalProjects } from '@/features/project/hooks/useLocalProjects';
 import { useEditorStore } from '@/shared/store/editorStore';
+import { useProjectStore } from '@/shared/store/projectStore';
+import { parseProjectIdFromTabKey, resolveTabKey } from '@/shared/utils/tabKey';
 import { createProject } from '@/testing/factories';
 import { invoke } from '@/testing/tauriCore';
 
@@ -168,6 +170,165 @@ describe('useLocalProjects', () => {
     });
 
     expect(result.current.activeProjectId).toBe('p2');
+  });
+
+  describe('handleRemoveProject — tab 键空间清理', () => {
+    beforeEach(() => {
+      useEditorStore.setState({
+        tabs: {},
+        editorLayout: {},
+        activeTabId: null,
+        navigateGoal: null,
+      });
+    });
+
+    afterEach(() => {
+      // 隔离：本组用例经 loadProjects / handleRemoveProject 写入 projectStore，
+      // 复位避免污染后续依赖隐式初始态的用例（如 handleRefreshGit 的「非 git
+      // 项目」早退分支依赖 projects 中不存在目标项目）。
+      useProjectStore.setState({ projects: [], activeProjectId: null, activeProject: null });
+    });
+
+    /** 归属判定复用 tabKey.ts 的解析器（与生产实现同源，覆盖基础键 + worktree 变体）。 */
+    function projectKeySpaces(projectId: string): string[] {
+      return Object.keys(useEditorStore.getState().tabs).filter(
+        (key) => parseProjectIdFromTabKey(key) === projectId,
+      );
+    }
+
+    function seedFileTab(tabKey: string, projectId: string, tabId: string) {
+      useEditorStore.getState().addTab(tabKey, {
+        id: tabId,
+        projectId,
+        title: `${tabId}.ts`,
+        order: 0,
+        data: {
+          kind: 'file',
+          filePath: `src/${tabId}.ts`,
+          fileName: `${tabId}.ts`,
+          content: '',
+          isDirty: false,
+        },
+      });
+    }
+
+    it('removes all key spaces (base + worktree variants) of the removed project', async () => {
+      const projects = [createProject({ id: 'p1' }), createProject({ id: 'p2' })];
+      mockInvoke.mockResolvedValue(projects);
+
+      const { result } = renderHook(() => useLocalProjects());
+
+      await act(async () => {
+        await result.current.loadProjects();
+      });
+
+      const wtKey = resolveTabKey('p1', '/repo/wt-a');
+      act(() => {
+        seedFileTab('p1', 'p1', 'f1');
+        seedFileTab('p1', 'p1', 'f2');
+        seedFileTab(wtKey, 'p1', 'fwt');
+        seedFileTab('p2', 'p2', 'g1');
+        useEditorStore.getState().setNavigateGoal({ tabKey: 'p1', tabId: 'f1', line: 3, col: 0 });
+      });
+      act(() => {
+        result.current.setActiveProjectId('p1');
+      });
+
+      await act(async () => {
+        await result.current.handleRemoveProject('p1');
+      });
+
+      // 基础键与 worktree 变体全部清除，其他项目不受影响
+      expect(projectKeySpaces('p1')).toEqual([]);
+      expect(useEditorStore.getState().tabs['p2']?.tabs.map((t) => t.id)).toEqual(['g1']);
+      // navigateGoal 随项目 tab 空间级联清除（clearProjectTabs → dropNavigateGoalFor）
+      expect(useEditorStore.getState().navigateGoal).toBeNull();
+      // UI 兜底落到剩余项目的 active tab
+      expect(useEditorStore.getState().activeTabId).toBe('g1');
+    });
+
+    it('removing a project without tabs leaves other projects and their goal untouched', async () => {
+      const projects = [createProject({ id: 'p1' }), createProject({ id: 'p2' })];
+      mockInvoke.mockResolvedValue(projects);
+
+      const { result } = renderHook(() => useLocalProjects());
+
+      await act(async () => {
+        await result.current.loadProjects();
+      });
+
+      act(() => {
+        seedFileTab('p2', 'p2', 'g1');
+        useEditorStore.getState().setNavigateGoal({ tabKey: 'p2', tabId: 'g1', line: 1, col: 0 });
+      });
+
+      await act(async () => {
+        await result.current.handleRemoveProject('p1');
+      });
+
+      expect(projectKeySpaces('p1')).toEqual([]);
+      expect(useEditorStore.getState().tabs['p2']?.tabs.map((t) => t.id)).toEqual(['g1']);
+      expect(useEditorStore.getState().navigateGoal?.tabKey).toBe('p2');
+    });
+
+    it('clears the worktree-variant key space even when the base key has no tabs', async () => {
+      const projects = [createProject({ id: 'p1' }), createProject({ id: 'p2' })];
+      mockInvoke.mockResolvedValue(projects);
+
+      const { result } = renderHook(() => useLocalProjects());
+
+      await act(async () => {
+        await result.current.loadProjects();
+      });
+
+      const wtKey = resolveTabKey('p1', '/repo/wt-a');
+      act(() => {
+        seedFileTab(wtKey, 'p1', 'fwt');
+        seedFileTab('p2', 'p2', 'g1');
+        useEditorStore.getState().setNavigateGoal({ tabKey: wtKey, tabId: 'fwt', line: 1, col: 0 });
+      });
+
+      await act(async () => {
+        await result.current.handleRemoveProject('p1');
+      });
+
+      expect(useEditorStore.getState().tabs[wtKey]).toBeUndefined();
+      expect(projectKeySpaces('p1')).toEqual([]);
+      expect(useEditorStore.getState().tabs['p2']?.tabs.map((t) => t.id)).toEqual(['g1']);
+      // worktree 键空间下的 goal 同样级联清除
+      expect(useEditorStore.getState().navigateGoal).toBeNull();
+    });
+
+    it('keeps tab spaces and navigateGoal untouched when backend removal fails', async () => {
+      const projects = [createProject({ id: 'p1' }), createProject({ id: 'p2' })];
+      mockInvoke.mockImplementation(async (cmd: string) => {
+        if (cmd === 'list_projects') return projects;
+        if (cmd === 'remove_project') throw new Error('backend refused');
+        return undefined;
+      });
+
+      const { result } = renderHook(() => useLocalProjects());
+
+      await act(async () => {
+        await result.current.loadProjects();
+      });
+
+      act(() => {
+        seedFileTab('p1', 'p1', 'f1');
+        useEditorStore.getState().setNavigateGoal({ tabKey: 'p1', tabId: 'f1', line: 1, col: 0 });
+      });
+
+      const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+      await act(async () => {
+        await result.current.handleRemoveProject('p1');
+      });
+      consoleSpy.mockRestore();
+
+      // 失败/取消路径不触碰 tabs（R3）
+      expect(useEditorStore.getState().tabs['p1']?.tabs.map((t) => t.id)).toEqual(['f1']);
+      expect(useEditorStore.getState().navigateGoal?.tabKey).toBe('p1');
+      expect(result.current.projects.map((p) => p.id)).toEqual(['p1', 'p2']);
+    });
   });
 
   it('handleSelectProject 设置活跃项目', async () => {

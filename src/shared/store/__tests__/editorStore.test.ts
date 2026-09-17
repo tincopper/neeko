@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import type { EditorSplitLayout, Tab } from '@/shared/types';
 import { createDefaultEditorLayout } from '@/shared/types/editorGroup';
 
-import { useEditorStore } from '../editorStore';
+import { registerTabCleanup, unregisterTabCleanup, useEditorStore } from '../editorStore';
 
 function makeTab(id: string): Tab {
   return {
@@ -602,5 +602,47 @@ describe('editorStore.navigateGoal — cleared when its target tab is removed', 
     useEditorStore.getState().clearProjectTabs('p1');
 
     expect(useEditorStore.getState().navigateGoal?.tabKey).toBe('p2');
+  });
+});
+
+describe('editorStore.tabCleanup — handler 异常在分发点隔离', () => {
+  // 注册表按 kind 分发且对 feature 开放：某个 handler 抛错不得外溢到调用方
+  // （store 移除变更在 handler 运行前已提交，异常只剩破坏调用方后续流程）。
+  let throwingHandler: (tabKey: string, tab: Tab) => void;
+  beforeEach(() => {
+    useEditorStore.setState({
+      tabs: {},
+      editorLayout: {},
+      activeTabId: null,
+      navigateGoal: null,
+    });
+    throwingHandler = vi.fn((tabKey: string, tab: Tab) => {
+      if (tab.id === 'A') throw new Error('cleanup exploded');
+    });
+    registerTabCleanup('file', throwingHandler);
+  });
+
+  afterEach(() => {
+    unregisterTabCleanup('file');
+    vi.restoreAllMocks();
+  });
+
+  it('clearProjectTabs：A 的 handler 抛错 → B 仍被清理、tab 空间仍被移除、异常不外溢', () => {
+    seedState(splitLayout(['A', 'B'], [], 'A', 'A'), [makeTab('A'), makeTab('B')], 'A');
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    expect(() => useEditorStore.getState().clearProjectTabs('p1')).not.toThrow();
+
+    expect(throwingHandler).toHaveBeenCalledTimes(2); // A 抛错不中断 B 的清理
+    expect(useEditorStore.getState().tabs['p1']).toBeUndefined();
+  });
+
+  it('closeTab：handler 抛错 → tab 仍被移除、异常不外溢', () => {
+    seedState(splitLayout(['A', 'B'], [], 'A', 'A'), [makeTab('A'), makeTab('B')], 'A');
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    expect(() => useEditorStore.getState().closeTab('p1', 'A')).not.toThrow();
+
+    expect(useEditorStore.getState().tabs['p1'].tabs.map((t) => t.id)).toEqual(['B']);
   });
 });

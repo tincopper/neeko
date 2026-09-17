@@ -36,7 +36,15 @@ export function unregisterTabCleanup(kind: TabKind): void {
 }
 
 function runTabCleanup(tabKey: string, tab: Tab): void {
-  tabCleanupRegistry.get(tab.data.kind)?.(tabKey, tab);
+  try {
+    tabCleanupRegistry.get(tab.data.kind)?.(tabKey, tab);
+  } catch (err) {
+    // 清理 handler 异常不得外溢：到此处 store 的移除变更已提交，异常不再有恢复
+    // 意义，只会破坏调用方后续流程（closeTab 的事件流 / clearProjectTabs 的多键
+    // 空间循环、移除项目后的 store 兜底）。注册表是对 feature 开放的扩展点，故障
+    // 隔离属于分发点职责。
+    console.error(`[editorStore] tab cleanup failed (kind=${tab.data.kind}, tabId=${tab.id})`, err);
+  }
 }
 
 function ensureLayout(
