@@ -1,4 +1,5 @@
 import { fireEvent, render as renderRTL, screen, waitFor } from '@testing-library/react';
+import { createElement, useEffect, useRef } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import FilesPanel, { displayHomePath } from '@/features/file/components/FilesPanel';
@@ -11,6 +12,59 @@ import { setDragFile } from '@/features/file/hooks/useFileDrop';
 import { useFileStore } from '@/features/file/store';
 import type { FileChange, FileNode } from '@/shared/types';
 import { createAppProviderWrapper } from '@/testing/AppProviderTestUtils';
+
+// ── VirtualList 测试替身（文件级 mock）───────────────────────────────────────
+// scrollToIndex 由 VirtualList 内部 virtualizer 实例执行，jsdom 拿不到实例无从
+// spy；与真实实现同构地经 handleRef 暴露 handle，把 scrollToIndex 换成可断言的
+// mock。rangeOverride 允许用例覆写 onRangeChange 上报的可见窗口，模拟「虚拟滚动
+// 远离目标行」。rows 只含已展开路径，替身全量渲染与本文件小树等价（jsdom 下
+// 1200px 高容器的真实虚拟器同样全量可见）。
+const virtualState = vi.hoisted(() => ({
+  scrollToIndex: vi.fn(),
+  /** 用例可覆写的可见窗口 [start, end)；null = 全量可见 */
+  rangeOverride: null as [number, number] | null,
+}));
+
+vi.mock('@/shared/components/VirtualList', () => {
+  const VirtualListStub = ({
+    items,
+    getKey,
+    renderItem,
+    handleRef,
+    onRangeChange,
+    className,
+  }: {
+    items: unknown[];
+    getKey: (item: unknown, index: number) => string | number;
+    renderItem: (item: unknown, index: number) => unknown;
+    handleRef?: { current: unknown };
+    onRangeChange?: (start: number, end: number) => void;
+    className?: string;
+  }) => {
+    // 与真实实现同构：render 期写入 handle（父级 effect 读取时已是最新）
+    if (handleRef) {
+      handleRef.current = {
+        scrollToIndex: virtualState.scrollToIndex,
+        getScrollElement: () => null,
+      };
+    }
+    const onRangeChangeRef = useRef(onRangeChange);
+    onRangeChangeRef.current = onRangeChange;
+    const range = virtualState.rangeOverride ?? [0, items.length];
+    // 无依赖：与真实 VirtualList 的窗口上报一致（每次渲染后重报当前窗口）
+    useEffect(() => {
+      onRangeChangeRef.current?.(range[0], range[1]);
+    });
+    return createElement(
+      'div',
+      { 'data-testid': 'scroll-list', className },
+      items.map((item, index) =>
+        createElement('div', { key: getKey(item, index) }, renderItem(item, index)),
+      ),
+    );
+  };
+  return { VirtualList: VirtualListStub };
+});
 
 /** FilesPanel 内部 hook（useFilePanelState）依赖 useAppContext 的 toast */
 const render = (ui: Parameters<typeof renderRTL>[0]) =>
@@ -734,5 +788,154 @@ describe('Java 包视图压行 + 链自动展开（方案A）', () => {
     fireEvent.click(screen.getByText('src'));
     expect(screen.getByText('src')).toBeInTheDocument();
     expect(screen.getByText('a.ts')).toBeInTheDocument();
+  });
+});
+
+describe('locate scroll via explicit locateSignal channel', () => {
+  // 行序（src+lib 展开后）：0 src / 1 src/a.ts / 2 lib / 3 lib/x.ts / 4 b.ts / 5 c.ts / 6 d.ts
+  const scrollTree: FileNode[] = [
+    {
+      name: 'src',
+      path: 'src',
+      is_dir: true,
+      children: [{ name: 'a.ts', path: 'src/a.ts', is_dir: false, children: [] }],
+    },
+    {
+      name: 'lib',
+      path: 'lib',
+      is_dir: true,
+      children: [{ name: 'x.ts', path: 'lib/x.ts', is_dir: false, children: [] }],
+    },
+    { name: 'b.ts', path: 'b.ts', is_dir: false, children: [] },
+    { name: 'c.ts', path: 'c.ts', is_dir: false, children: [] },
+    { name: 'd.ts', path: 'd.ts', is_dir: false, children: [] },
+  ];
+
+  beforeEach(() => {
+    virtualState.scrollToIndex.mockReset();
+    virtualState.rangeOverride = null;
+  });
+
+  afterEach(() => {
+    virtualState.rangeOverride = null;
+    // 文件内既有约定：后续用例依赖 seedDirs(tree) 残留
+    seedDirs(tree);
+  });
+
+  it('R1: re-locating the already-selected file scrolls again (explicit locate signal)', () => {
+    seedDirs(scrollTree);
+    // 可见窗口覆写为 [5,7)（c.ts/d.ts）：模拟虚拟滚动远离目标行 a.ts(idx=1)
+    virtualState.rangeOverride = [5, 7];
+    render(
+      <FilesPanel
+        {...baseProps}
+        locateTargetPath="src/a.ts"
+        canLocateFile
+        autoLocateFileOnTabSwitch={false}
+      />,
+    );
+
+    // 展开 src（点击同时选中 src 目录，走既有「选中变化」滚动路径）
+    fireEvent.click(screen.getByText('src'));
+    virtualState.scrollToIndex.mockClear();
+
+    // 点击选中 a.ts：选中变化 → 滚到目标（既有语义）
+    fireEvent.click(screen.getByText('a.ts'));
+    expect(virtualState.scrollToIndex).toHaveBeenCalledTimes(1);
+    expect(virtualState.scrollToIndex).toHaveBeenCalledWith(1, 'start');
+    virtualState.scrollToIndex.mockClear();
+
+    // 核心回归：目标已是选中项，再次点定位按钮 → 显式信号驱动再次滚动
+    fireEvent.click(screen.getByTitle('Locate current file'));
+    expect(virtualState.scrollToIndex).toHaveBeenCalledTimes(1);
+    expect(virtualState.scrollToIndex).toHaveBeenCalledWith(1, 'start');
+  });
+
+  it('R2: explicit locate with unassembled rows retries scroll after lazy load', async () => {
+    // 模拟初始深度加载后 deep 目录内容缺失（dirs['src/deep'] 未加载）
+    useFileStore.getState().reset();
+    useFileStore.setState({
+      owner: OWNER,
+      dirs: {
+        '': [{ name: 'src', path: 'src', is_dir: true, children: [] }],
+        src: [{ name: 'deep', path: 'src/deep', is_dir: true, children: [] }],
+      },
+      loadStates: { '': 'loaded', src: 'loaded' },
+    });
+    // onExpandDir 模拟 store.loadDir 幂等语义：缺失目录填充一级条目
+    const onExpandDir = vi.fn(async (dirPath: string) => {
+      const s = useFileStore.getState();
+      if (s.dirs[dirPath]) return;
+      useFileStore.setState({
+        dirs: {
+          ...s.dirs,
+          [dirPath]: [{ name: 'foo.ts', path: `${dirPath}/foo.ts`, is_dir: false, children: [] }],
+        },
+        loadStates: { ...s.loadStates, [dirPath]: 'loaded' },
+      });
+    });
+    // foo.ts 组装后 idx=2，落在覆写窗口 [0,2) 之外 → 必须补滚才可见
+    virtualState.rangeOverride = [0, 2];
+
+    render(
+      <FilesPanel
+        {...baseProps}
+        onExpandDir={onExpandDir}
+        locateTargetPath="src/deep/foo.ts"
+        canLocateFile
+        autoLocateFileOnTabSwitch={false}
+      />,
+    );
+
+    fireEvent.click(screen.getByTitle('Locate current file'));
+    await waitFor(() => expect(onExpandDir).toHaveBeenCalledWith('src/deep'));
+
+    // 行未组装期间 seq 不消费：rows 到位后自动补滚到目标行
+    await waitFor(() => {
+      expect(virtualState.scrollToIndex).toHaveBeenCalledWith(2, 'end');
+    });
+    expect(screen.getByRole('treeitem', { selected: true })).toHaveTextContent('foo.ts');
+  });
+
+  it('R3: rows rebuild without explicit request or selection change does not re-scroll', () => {
+    seedDirs(scrollTree);
+    virtualState.rangeOverride = [5, 7];
+    const { rerender } = render(<FilesPanel {...baseProps} />);
+
+    fireEvent.click(screen.getByText('src'));
+    fireEvent.click(screen.getByText('a.ts'));
+    expect(virtualState.scrollToIndex).toHaveBeenCalledWith(1, 'start');
+    virtualState.scrollToIndex.mockClear();
+
+    // rows 重建（git 变更装饰注入 → viewTree/rows 重建），无显式请求且选中不变 → 不滚
+    rerender(
+      <FilesPanel
+        {...baseProps}
+        changedFiles={[{ path: 'src/a.ts', status: 'Modified', additions: 1, deletions: 0 }]}
+      />,
+    );
+    expect(virtualState.scrollToIndex).not.toHaveBeenCalled();
+  });
+
+  it('R4: explicit locate within visible window does not scroll', () => {
+    seedDirs(scrollTree);
+    // 默认全量可见（rangeOverride=null → [0, rows)），a.ts 始终在窗口内
+    render(
+      <FilesPanel
+        {...baseProps}
+        locateTargetPath="src/a.ts"
+        canLocateFile
+        autoLocateFileOnTabSwitch={false}
+      />,
+    );
+
+    fireEvent.click(screen.getByText('src'));
+    fireEvent.click(screen.getByText('a.ts'));
+    expect(screen.getByRole('treeitem', { selected: true })).toHaveTextContent('a.ts');
+    expect(virtualState.scrollToIndex).not.toHaveBeenCalled();
+
+    // 显式定位但目标在可见窗口内 → 不滚（既有 block:'nearest' 近似语义）
+    fireEvent.click(screen.getByTitle('Locate current file'));
+    expect(virtualState.scrollToIndex).not.toHaveBeenCalled();
   });
 });

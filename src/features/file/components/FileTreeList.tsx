@@ -17,6 +17,9 @@ interface FileTreeListProps {
   rows: FlatFileTreeRow[];
   /** 当前选中节点路径（驱动定位滚动；行未组装时跳过，待 rows 到位后重滚） */
   selectedPath: string | null;
+  /** 显式定位信号：locateFile 每次调用（定位按钮/自动定位共用入口）递增；未消费
+   *  的信号令「目标已是选中项」的重复定位仍触发滚动 */
+  locateSignal: number;
   /** 首次加载（根无内容且 loading）显示全面板 Loading */
   isLoading: boolean;
   /** 加载失败且无内容显示重试 */
@@ -44,13 +47,18 @@ interface FileTreeListProps {
 /**
  * 文件树列表（S4 虚拟化窗口）：loading / error / empty 三态 + VirtualList 行渲染。
  * 定位滚动在此收口 —— 虚拟化后目标行可能未挂载，scrollIntoView 不可靠，经 handle
- * 滚到目标行。仅在选中目标**变化**时滚动（rows 重建不重滚，避免 git 刷新/内联击键
- * 把视口拽回选中行）；目标行已在可见窗口内时不滚（保持旧版 scrollIntoView
- * block:'nearest' 语义：下方目标贴底、上方目标贴顶，各取最小滚动）。
+ * 滚到目标行。两类触发：① 选中目标变化（点击/首次定位）；② locateSignal 出现未
+ * 消费的显式定位请求 —— 目标已是选中项时选中不再变化，按钮的重复定位必须靠信号
+ * 通道触发（按钮与自动定位共用 locateFile 入口，每次调用递增）。
+ * rows 重建（git 刷新/内联击键）不重滚：无显式请求且选中不变时早退，避免把视口
+ * 拽回选中行；目标行已在可见窗口内时不滚（保持旧版 scrollIntoView block:'nearest'
+ * 语义：下方目标贴底、上方目标贴顶，各取最小滚动）；行未组装（懒加载未到）时
+ * 不消费信号、不记 prev，待 rows 到位后补滚。
  */
 function FileTreeList({
   rows,
   selectedPath,
+  locateSignal,
   isLoading,
   loadFailed,
   projectId,
@@ -71,17 +79,22 @@ function FileTreeList({
   const listHandleRef = useRef<VirtualListHandle | null>(null);
   const visibleRangeRef = useRef<[number, number] | null>(null);
   const prevSelectedPathRef = useRef<string | null>(null);
+  // 最近一次已消费的显式定位信号（与 locateSignal 同初始 0：首渲染不触发显式滚动）
+  const lastConsumedLocateSeqRef = useRef(0);
   useEffect(() => {
-    if (!selectedPath || selectedPath === prevSelectedPathRef.current) return;
+    const explicit = locateSignal !== lastConsumedLocateSeqRef.current;
+    const selectionChanged = selectedPath !== prevSelectedPathRef.current;
+    if (!selectedPath || (!explicit && !selectionChanged)) return;
     const idx = rows.findIndex((r) => r.node.path === selectedPath);
-    // 行尚未组装（祖先目录内容懒加载未到）→ 不记 prev，待 rows 到位后下一轮 effect 再滚
+    // 行尚未组装（祖先目录内容懒加载未到）→ 不消费 seq、不记 prev，待 rows 到位后补滚
     if (idx < 0) return;
     prevSelectedPathRef.current = selectedPath;
+    lastConsumedLocateSeqRef.current = locateSignal;
     const range = visibleRangeRef.current;
     if (range && idx >= range[0] && idx < range[1]) return;
     const align = range ? (idx < range[0] ? 'start' : 'end') : 'center';
     listHandleRef.current?.scrollToIndex(idx, align);
-  }, [selectedPath, rows]);
+  }, [selectedPath, rows, locateSignal]);
 
   let content: React.ReactNode;
   if (isLoading) {

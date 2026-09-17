@@ -149,7 +149,8 @@ function FilesPanel({
 
   // 定位：复用「点击选中」同一流程（selectedNode → isSelected 高亮 + 展开父目录）。
   // 与手动点击文件的选中/滚动完全一致，不单独维护一套高亮。
-  const { locateFile } = state;
+  // locateSignal：显式定位信号，透传给 FileTreeList 驱动「目标已选中」的重复定位滚动。
+  const { locateFile, locateSignal } = state;
   const handleLocateFile = useCallback(() => {
     if (locateTargetPath) {
       void locateFile(locateTargetPath);
@@ -228,6 +229,7 @@ function FilesPanel({
       <FileTreeList
         rows={rows}
         selectedPath={selectedPath}
+        locateSignal={locateSignal}
         isLoading={isLoading}
         loadFailed={loadFailed}
         projectId={projectId}

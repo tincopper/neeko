@@ -107,6 +107,10 @@ export function useFilePanelState(params: UseFilePanelStateParams) {
   const [creatingValue, setCreatingValue] = useState('');
   // 当前选中节点（用于 Delete 按钮）
   const [selectedNode, setSelectedNode] = useState<{ path: string; isDir: boolean } | null>(null);
+  // 显式定位信号：locateFile 每次调用递增（定位按钮与自动定位共用入口）。
+  // FileTreeList 以「信号未消费」识别显式定位请求 —— 目标文件已是选中项时选中
+  // 不再变化，仅靠选中变化驱动的滚动会早退（按钮定位不滚的根因）。
+  const [locateSignal, setLocateSignal] = useState(0);
   // 待确认删除的节点（弹出确认对话框）
   const [confirmDelete, setConfirmDelete] = useState<{ path: string; isDir: boolean } | null>(null);
   // 重命名状态（path + 当前名）
@@ -224,10 +228,12 @@ export function useFilePanelState(params: UseFilePanelStateParams) {
   // 文件树为「初始有限深度（DEFAULT_TREE_DEPTH=3）+ 按目录懒加载」，深于初始
   // 深度的目标文件其祖先目录可能从未 loadDir —— 只改 expandedDirs 会让目标行
   // 缺失（不高亮、不滚动，点击看似无反应）。逐级 onExpandDir（store.loadDir
-  // 幂等：已加载跳过）补齐内容；加载完成后 rows 变化触发 FilesPanel 滚动 effect
-  // （idx<0 不记 prev）自动重跑滚到目标行。
+  // 幂等：已加载跳过）补齐内容；加载完成后 rows 变化触发 FileTreeList 滚动
+  // effect（idx<0 时不消费 seq、不记 prev）自动重跑滚到目标行。
   const locateFile = useCallback(
     async (path: string) => {
+      // 显式定位请求：递增信号（无论目标是否已选中，未消费信号即驱动滚动）
+      setLocateSignal((s) => s + 1);
       handleSelectNode(path, false);
       expandPathParents(path);
       const parentPaths = getParentPaths(path);
@@ -481,6 +487,7 @@ export function useFilePanelState(params: UseFilePanelStateParams) {
     handleSelectNode,
     clearSelection,
     locateFile,
+    locateSignal,
     getCreationDir,
     startCreating,
     submitCreating,
