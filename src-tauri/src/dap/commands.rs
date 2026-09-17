@@ -3,11 +3,15 @@
 //! 命令层只做参数接收 + 调度（AGENTS.md Review Gate #6）：会话/断点/配置编排在
 //! [`super::manager`]，无头构建在 [`super::build`]，进程与目录控制细节不在本层。
 
+use std::sync::Arc;
+
 use tauri::{AppHandle, State};
 
 use super::build;
 use super::discover::EntryPoint;
-use super::manager::DapManager;
+use super::events::{DapEventSink, TauriEventSink};
+use super::launch_config;
+use super::project_context;
 use super::types::{
     BreakpointLine, BreakpointSpec, DapSessionInfo, DebugBuildOutput, JavaDebugTarget,
     JavaJdtlsTarget, LaunchConfig, StackFrameDto, VariableDto,
@@ -16,13 +20,21 @@ use crate::common::types::FileContent;
 use crate::AppError;
 use crate::AppStateWrapper;
 
+/// 把命令层的 `AppHandle` 适配成 domain 的事件端口。
+///
+/// 控制层是 Tauri 运行时与领域模型的翻译官（AGENTS.md Review Gate #6）：
+/// `tauri` 类型到此为止，`manager` 只认 [`DapEventSink`]。
+fn event_sink(app: AppHandle) -> Arc<dyn DapEventSink> {
+    Arc::new(TauriEventSink::new(app))
+}
+
 /// List launch configs for a project.
 #[tauri::command]
 pub fn dap_list_configs(
     project_id: String,
     state: State<'_, AppStateWrapper>,
 ) -> Result<Vec<LaunchConfig>, AppError> {
-    DapManager::list_or_discover_configs(&state, &project_id)
+    launch_config::list_or_discover_configs(&state, &project_id)
 }
 
 /// Save launch configs for a project.
@@ -32,7 +44,7 @@ pub fn dap_save_configs(
     configurations: Vec<LaunchConfig>,
     state: State<'_, AppStateWrapper>,
 ) -> Result<(), AppError> {
-    DapManager::save_configs(&state, &project_id, configurations)
+    launch_config::save_configs(&state, &project_id, configurations)
 }
 
 /// Discover entry points for a project.
@@ -41,7 +53,7 @@ pub fn dap_discover_entries(
     project_id: String,
     state: State<'_, AppStateWrapper>,
 ) -> Result<Vec<EntryPoint>, AppError> {
-    DapManager::discover_entries(&state, &project_id)
+    launch_config::discover_entry_points(&state, &project_id)
 }
 
 /// Start a DAP debug session.
@@ -55,7 +67,13 @@ pub async fn dap_start_session(
 ) -> Result<DapSessionInfo, AppError> {
     state
         .dap_manager
-        .start_session(&state, app, &project_id, config_name, current_file)
+        .start_session(
+            &state,
+            event_sink(app),
+            &project_id,
+            config_name,
+            current_file,
+        )
         .await
 }
 
@@ -70,7 +88,7 @@ pub async fn dap_start_session_config(
 ) -> Result<DapSessionInfo, AppError> {
     state
         .dap_manager
-        .start_session_config(&state, app, &project_id, config)
+        .start_session_config(&state, event_sink(app), &project_id, config)
         .await
 }
 
@@ -249,7 +267,7 @@ pub async fn dap_check_adapter(
     adapter_type: String,
     state: State<'_, AppStateWrapper>,
 ) -> Result<bool, AppError> {
-    DapManager::check_adapter(&state, &project_id, &adapter_type).await
+    project_context::check_adapter(&state, &project_id, &adapter_type).await
 }
 
 /// Headless build for editor inline Debug (§4, C1/C4)：参数校验、构建目录校验、
@@ -290,7 +308,7 @@ pub async fn debug_java_attach(
         .dap_manager
         .start_language_debug(
             &state,
-            app,
+            event_sink(app),
             crate::dap::adapter::DebugRequest::JavaAttach { project_id, target },
         )
         .await?
@@ -324,7 +342,7 @@ pub async fn debug_java_start(
         .dap_manager
         .start_language_debug(
             &state,
-            app,
+            event_sink(app),
             crate::dap::adapter::DebugRequest::JavaJdtls { project_id, target },
         )
         .await

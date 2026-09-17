@@ -1,7 +1,8 @@
 //! Java 断点源路径翻译的 **LSP 侧实现**：把规范身份落成适配器能读的**真实文件**。
 //!
-//! 端口在 `crate::dap::java_source_path`（依赖倒置：dap 定义抽象，lsp 提供实现，
-//! 组合根注入）。为什么必须走真实路径见该模块的文档 —— java-debug 的
+//! 端口在 `crate::dap::adapter::java::source_path`（`LanguageBackend::adapter_source_path`
+//! 的语言专属实现；依赖倒置：dap 定义抽象，lsp 提供实现，组合根注入）。
+//! 为什么必须走真实路径见该模块文档 —— java-debug 的
 //! `asCompilationUnit` 只认「真实存在的文件」或「`jdt://…?<JDT handle>`」，而 handle 取不到。
 //!
 //! ## 落盘位置与 host 一致

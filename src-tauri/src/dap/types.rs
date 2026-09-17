@@ -439,7 +439,12 @@ mod tests {
 }
 
 /// Supported debug adapter families.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+///
+/// **这是语言身份的唯一表示**：编排后端注册表（`DapManager::register_backend` /
+/// `backend_for`）以它为键，断点源路径翻译按 `DapSession::kind()` 查表。
+/// 禁止再用 launch.json 的 `type` 字符串（含 `junit` / `delve` / `rust` 等别名）
+/// 直接当键 —— 那会让同一种语言在"启动路径"与"实时路径"上查到不同结果。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum AdapterKind {
     /// Go / Delve debugger.
     Go,

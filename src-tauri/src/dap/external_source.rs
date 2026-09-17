@@ -86,12 +86,18 @@ pub async fn read_external_source(
         .resolve_external_source(state, project_id, session_id, path)
         .await?;
 
+    // 不可表示 → 与授权失败同口径拒绝（fail-closed）：`to_string_lossy` 会把路径换成
+    // 另一个，读取要么落到别的文件、要么报一个与真实原因无关的 NotFound。
+    let Some(path) = resolved.to_str() else {
+        return Err(deny());
+    };
+
     read_file(
         FileAccessScope::Trusted,
         FileReadRequest {
             target,
             base: String::new(),
-            path: resolved.to_string_lossy().to_string(),
+            path: path.to_string(),
             max_bytes: Some(MAX_SOURCE_BYTES),
             detect_binary: true,
         },

@@ -45,6 +45,30 @@ pub enum DebugRequest {
     },
 }
 
+impl DebugRequest {
+    /// 该请求所属的**语言 kind** —— 编排后端注册表的查找键。
+    ///
+    /// 新增语言必须在这里给出 kind（`match` 缺分支即编译错误），调用点不再硬编码
+    /// 语言名字符串（曾经 `start_language_debug` 里写死 `"java"`，与注册表键、
+    /// 与 `config.type_` 三种表示并存）。
+    #[must_use]
+    pub const fn kind(&self) -> crate::dap::types::AdapterKind {
+        match self {
+            Self::JavaAttach { .. } | Self::JavaJdtls { .. } => {
+                crate::dap::types::AdapterKind::Java
+            }
+        }
+    }
+
+    /// 目标项目 id（解析执行环境 / 项目根都用它）。
+    #[must_use]
+    pub fn project_id(&self) -> &str {
+        match self {
+            Self::JavaAttach { project_id, .. } | Self::JavaJdtls { project_id, .. } => project_id,
+        }
+    }
+}
+
 /// backend `plan` 的输出：会话形态（owned，避免借用生命周期）。
 ///
 /// - [`SessionRoutePlan::Spawn`]：Neeko spawn 子进程（go / lldb / Java-A），可带附属 debuggee。
@@ -181,4 +205,41 @@ pub trait LanguageBackend: Send + Sync {
         classpath: &[String],
         identity: &str,
     ) -> SourcePathResolution;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// `DebugRequest::kind` 是编排后端注册表的查找键 —— 必须与注册键同源，
+    /// 且**新增变体时 `match` 强制补分支**（不再有调用点硬编码语言名）。
+    #[test]
+    fn debug_request_reports_language_kind_and_project() {
+        let attach = DebugRequest::JavaAttach {
+            project_id: "p1".into(),
+            target: JavaDebugTarget {
+                command: "java".into(),
+                cwd: "/proj".into(),
+                test_name: "t".into(),
+                classpath: vec![],
+            },
+        };
+        let jdtls = DebugRequest::JavaJdtls {
+            project_id: "p2".into(),
+            target: JavaJdtlsTarget {
+                probe_class: "A".into(),
+                cwd: "/proj".into(),
+                test_name: "t".into(),
+                main_class: "A".into(),
+                args: vec![],
+                launcher_jar: None,
+                project_name: None,
+            },
+        };
+
+        assert_eq!(attach.kind(), crate::dap::types::AdapterKind::Java);
+        assert_eq!(jdtls.kind(), crate::dap::types::AdapterKind::Java);
+        assert_eq!(attach.project_id(), "p1");
+        assert_eq!(jdtls.project_id(), "p2");
+    }
 }

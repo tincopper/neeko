@@ -235,7 +235,7 @@ impl AppStateWrapper {
         // 组合根只组装一次 —— 不把端口暴露为 AppStateWrapper 字段（§9.4 方案 C）。
         let dap_manager = crate::dap::DapManager::new();
         dap_manager.register_backend(
-            "java",
+            crate::dap::types::AdapterKind::Java,
             std::sync::Arc::new(crate::dap::adapter::java::JavaBackend::new(
                 std::sync::Arc::new(crate::lsp::LspJavaDebugCapability::new(Arc::clone(
                     &lsp_manager,

@@ -428,9 +428,10 @@ mod tests {
         let state = isolated_state(tmp);
         // 保持 dap_manager 注册表与测试注入的 fake 一致（plan 直接调 fake_backend，
         // 此处仅保证 resolve_project 走的 state 语义一致）。
-        state
-            .dap_manager
-            .register_backend("java", Arc::new(fake_backend(capability.clone())));
+        state.dap_manager.register_backend(
+            crate::dap::types::AdapterKind::Java,
+            Arc::new(fake_backend(capability.clone())),
+        );
         let project_dir = tmp.path().join(dir_name);
         std::fs::create_dir_all(&project_dir).expect("mkdir");
         let project = state

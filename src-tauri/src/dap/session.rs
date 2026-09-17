@@ -9,12 +9,11 @@ use std::sync::{Arc, Weak};
 use std::time::Duration;
 
 use serde_json::{json, Value};
-use tauri::{AppHandle, Emitter};
 use tokio::sync::{oneshot, Mutex};
 
 use super::adapter::{self, DebugAdapterPlugin};
 use super::client::{DapClient, DapEventHandler};
-use super::events::{DAP_EVENT, DAP_SESSION_STATUS_EVENT};
+use super::events::DapEventSink;
 use super::process;
 use super::transport::{self, DapIo};
 use super::types::{
@@ -44,7 +43,9 @@ pub struct DapSession {
     kill: Mutex<Option<ProcessGuard>>,
     stopped_waiters: Mutex<Vec<oneshot::Sender<()>>>,
     terminated_emitted: AtomicBool,
-    app: AppHandle,
+    /// 事件投递端口（`AppHandle` 只在 `events::TauriEventSink` 内出现，
+    /// 本类型不依赖 Tauri 运行时 ⇒ 可在 `#[cfg(test)]` 注入记录器）。
+    sink: Arc<dyn DapEventSink>,
     /// 会话所属适配器族 —— 决定收尾时要做的**适配器专属**清理（目前只有 Delve 会留下
     /// `__debug_bin*` / `debug.test` 之类产物，见 [`super::cleanup`]）。
     /// 同时是断点源路径等**语言专属**翻译的路由键（见 `LanguageBackend`）：manager 据此
@@ -99,7 +100,7 @@ impl DapEventHandler for SessionHandler {
 impl DapSession {
     /// Launch a debug session: spawn adapter, run handshake, apply breakpoints.
     pub async fn start(
-        app: AppHandle,
+        sink: Arc<dyn DapEventSink>,
         project_id: String,
         project_path: String,
         target: ExecTarget,
@@ -130,7 +131,7 @@ impl DapSession {
         Self::start_with(
             io,
             Some(guard),
-            app,
+            sink,
             project_id,
             project_path,
             config,
@@ -148,14 +149,23 @@ impl DapSession {
     /// stream, so the session carries no process guard.
     pub async fn connect(
         addr: &str,
-        app: AppHandle,
+        sink: Arc<dyn DapEventSink>,
         project_id: String,
         project_path: String,
         config: LaunchConfig,
         breakpoints: Vec<BreakpointSpec>,
     ) -> Result<Arc<Self>, AppError> {
         let io = transport::connect_tcp_addr(addr).await?;
-        Self::start_with(io, None, app, project_id, project_path, config, breakpoints).await
+        Self::start_with(
+            io,
+            None,
+            sink,
+            project_id,
+            project_path,
+            config,
+            breakpoints,
+        )
+        .await
     }
 
     /// Shared tail for both entry points: build the session from connected I/O and
@@ -163,7 +173,7 @@ impl DapSession {
     async fn start_with(
         io: DapIo,
         guard: Option<ProcessGuard>,
-        app: AppHandle,
+        sink: Arc<dyn DapEventSink>,
         project_id: String,
         project_path: String,
         config: LaunchConfig,
@@ -193,7 +203,7 @@ impl DapSession {
                 stopped_waiters: Mutex::new(Vec::new()),
                 terminated_emitted: AtomicBool::new(false),
                 kind: plugin.kind(),
-                app: app.clone(),
+                sink: Arc::clone(&sink),
             }
         });
 
@@ -750,6 +760,14 @@ impl DapSession {
         self.kind
     }
 
+    /// 会话当前是否停在断点/异常上（`stopped`）。
+    ///
+    /// 供授权判定使用：**直接比枚举**，不经 `DapSessionInfo.status`（线上字符串）
+    /// 往返 —— 后者一旦拼写漂移就会静默变成"永不授权"，症状只是"库源码打不开"。
+    pub async fn is_stopped(&self) -> bool {
+        *self.status.lock().await == SessionStatus::Stopped
+    }
+
     /// Get a snapshot of the current session state for the frontend.
     pub async fn info(&self) -> DapSessionInfo {
         DapSessionInfo {
@@ -765,7 +783,7 @@ impl DapSession {
     async fn set_status(&self, status: SessionStatus, message: Option<String>) {
         *self.status.lock().await = status;
         *self.status_message.lock().await = message;
-        let _ = self.app.emit(DAP_SESSION_STATUS_EVENT, self.info().await);
+        self.sink.session_status(self.info().await);
     }
 
     /// Forward an external process line (e.g. Java debuggee JVM stdout) as a
@@ -786,18 +804,15 @@ impl DapSession {
 
     /// 向前端投递一个 DAP 事件。
     ///
-    /// 同步：`AppHandle::emit` 本身是同步调用，函数体内**没有任何 `.await`** ——
-    /// 因此不声明 `async`（假异步会传染给所有调用方）。
+    /// 同步：端口实现（`TauriEventSink`）内部的 `AppHandle::emit` 是同步调用，
+    /// 函数体内**没有任何 `.await`** —— 因此不声明 `async`（假异步会传染给所有调用方）。
     fn emit_event(&self, kind: &str, body: Value) {
-        let payload = DapEventPayload {
+        self.sink.debug_event(DapEventPayload {
             session_id: self.session_id.clone(),
             project_id: self.project_id.clone(),
             kind: kind.to_string(),
             body,
-        };
-        if let Err(e) = self.app.emit(DAP_EVENT, &payload) {
-            log::warn!("[DAP] emit failed: {e}");
-        }
+        });
     }
 }
 
