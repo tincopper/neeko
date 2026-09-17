@@ -53,6 +53,19 @@ impl TestRepo {
             .expect("repo config")
             .set_bool("core.autocrlf", false)
             .expect("set core.autocrlf=false");
+        // 仓库级 git 身份：`operations::commit_files` 走真实 `git commit`（CLI），
+        // 需要 user.name/user.email。与 lib 侧 `operations/tests.rs::init_repo`
+        // 同为仓库级身份配置（值不必一致，语义一致即可）；集成侧漏设则依赖运行
+        // 环境全局身份——Linux CI runner（无全局身份）上必失败
+        // （Author identity unknown）。此处钉死为确定性配置，跨环境 hermetic。
+        repo.config()
+            .expect("repo config")
+            .set_str("user.name", "Test")
+            .expect("set user.name");
+        repo.config()
+            .expect("repo config")
+            .set_str("user.email", "test@test.com")
+            .expect("set user.email");
         std::fs::write(dir.path().join(".gitattributes"), "* -text\n")
             .expect("write .gitattributes");
 

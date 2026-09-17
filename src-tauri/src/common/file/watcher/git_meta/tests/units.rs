@@ -221,18 +221,27 @@ fn classify_git_meta_event_head_touched() {
 }
 
 /// 无关 git 元数据文件（config / ORIG_HEAD 等）→ Nothing
+///
+/// 这是「无关元数据不触发回调」属性的确定性落点：纯函数、无 FS、无时序。
+/// 真实 FS 上不做「一段时间内无事件」的墙钟负向断言（非确定性）。
 #[test]
 fn classify_git_meta_event_ignores_unrelated_meta() {
     let head = PathBuf::from("/repo/.git/HEAD");
     let index = PathBuf::from("/repo/.git/index");
-    let change = classify_git_meta_event(
-        &[PathBuf::from("/repo/.git/config")],
-        &head,
-        &index,
-        None,
-        &[],
-    );
-    assert_eq!(change, GitMetaChange::Nothing);
+    for unrelated in ["config", "ORIG_HEAD", "COMMIT_EDITMSG"] {
+        let change = classify_git_meta_event(
+            &[PathBuf::from(format!("/repo/.git/{unrelated}"))],
+            &head,
+            &index,
+            None,
+            &[],
+        );
+        assert_eq!(
+            change,
+            GitMetaChange::Nothing,
+            "路径 {unrelated} 应分类为 Nothing"
+        );
+    }
 }
 
 /// resolve_worktree_roots：解析 `.git/worktrees/<name>/gitdir`（真实 git 写**裸路径**，

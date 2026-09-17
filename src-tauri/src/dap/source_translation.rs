@@ -323,18 +323,23 @@ mod tests {
     /// 两者原样永不相等，只有翻译收敛到同一真实文件后才授权通过。
     #[tokio::test]
     async fn external_source_authorizes_when_translations_converge() {
-        const REAL: &str = "/h/.neeko/java-src-cache/jdk-src-21/java.base/java/io/PrintStream.java";
         let tmp = tempfile::tempdir().expect("tempdir");
+        // 平台绝对路径：硬编码 `/h/.neeko/...` 在 Windows 上无盘符前缀，
+        // Rust `Path::is_absolute()` 返回 false，授权守卫（!is_absolute → deny）
+        // 必拒；用 tempdir 推导，Windows（盘符）/ Unix 均为绝对路径。
+        let real = tmp
+            .path()
+            .join(".neeko/java-src-cache/jdk-src-21/java.base/java/io/PrintStream.java");
         let (state, _project) = source_path_state(
             &tmp,
             vec![
                 (
                     "jdt:/java.base/java/io/PrintStream.java",
-                    SourcePathResolution::Adapter(PathBuf::from(REAL)),
+                    SourcePathResolution::Adapter(real.clone()),
                 ),
                 (
                     "jdt://contents/java.base/java.io/PrintStream.class?=api/x",
-                    SourcePathResolution::Adapter(PathBuf::from(REAL)),
+                    SourcePathResolution::Adapter(real.clone()),
                 ),
             ],
         );
@@ -354,7 +359,7 @@ mod tests {
         )
         .await
         .expect("翻译收敛后必须授权");
-        assert_eq!(resolved, PathBuf::from(REAL));
+        assert_eq!(resolved, real);
     }
 
     /// 请求的源码**不在当前栈帧**里 → 拒绝（fail-closed：绝不越权读别的文件）。
@@ -412,7 +417,11 @@ mod tests {
     async fn external_source_authorizes_on_raw_match() {
         let tmp = tempfile::tempdir().expect("tempdir");
         let (state, _project) = source_path_state(&tmp, vec![]);
-        let frames = [dap_frame("/opt/lib/x.rs")];
+        // 平台绝对路径（同 translations_converge）：`/opt/lib/x.rs` 在 Windows 上
+        // 无盘符前缀，is_absolute 为 false，授权守卫必拒；改用 tempdir 推导。
+        let lib = tmp.path().join("lib").join("x.rs");
+        let lib_str = lib.to_string_lossy().to_string();
+        let frames = [dap_frame(&lib_str)];
 
         let backend = state
             .dap_manager
@@ -422,11 +431,11 @@ mod tests {
             &ExecTarget::Local,
             backend.as_deref(),
             &frames,
-            "/opt/lib/x.rs",
+            &lib_str,
         )
         .await
         .expect("原样命中必须授权");
-        assert_eq!(resolved, PathBuf::from("/opt/lib/x.rs"));
+        assert_eq!(resolved, lib);
     }
 
     /// JDK 源码身份被改写成**真实路径**；普通文件路径原样透传；规范身份（= 持久化与

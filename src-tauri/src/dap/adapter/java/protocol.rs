@@ -315,9 +315,11 @@ mod tests {
             PathBuf::from("/home/u/.neeko/java-host/neeko-java-host.jar")
         );
         // 与 build.sh 的 DEST_DIR 默认值一致（幂等产物可寻址）。
-        assert!(host_jar_path_in(base)
-            .to_string_lossy()
-            .contains(".neeko/java-host/"));
+        // 组件级断言（Path::ends_with）：字符串 `.contains(".neeko/java-host/")` 硬编码
+        // Unix `/` 分隔符，Windows（`\`）上必挂——ends_with 按组件比较，跨平台无关。
+        assert!(
+            host_jar_path_in(base).ends_with(std::path::Path::new("java-host/neeko-java-host.jar"))
+        );
     }
 
     #[test]

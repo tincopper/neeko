@@ -6,9 +6,10 @@ use super::super::watcher::{
     is_gitignore_rules_change,
 };
 use notify::{RecommendedWatcher, Watcher};
-use std::path::Path;
+use std::collections::HashSet;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 // ── 真实文件系统集成测试：验证 notify 事件送达（方案 B 修复的核心假设） ────
@@ -16,9 +17,14 @@ use std::time::{Duration, Instant};
 // 这些测试使用真实 notify::RecommendedWatcher + 真实临时 git 仓库，验证：
 // 1. `.git/index` 的原子写（lock + rename，git 真实行为）能被捕获 → on_index_changed
 // 2. `.git/HEAD` 的原子写能被捕获 → on_head_changed
-// 3. 无关元数据（config / ORIG_HEAD）不触发任何回调
-// 有界等待（5s）避免 flaky；非递归监听 `.git` 目录即足以捕获（git 在目录顶层
-// 原子替换 HEAD/index）。
+// 3. worktree 区域事件经 rearm 递归监听送达（自愈补挂）
+//
+// 确定性约定：
+// - 不设注册预热 / 观察窗口 sleep，不用墙钟窗口做负向断言；
+// - 「写-轮询」等待事件到达（25ms 有界轮询，整体 5s 上限）——notify 未就绪时
+//   首事件可能丢失，重试写入即自愈；
+// - 负向分类属性（config / ORIG_HEAD → Nothing）由 units.rs 纯函数测试确定性覆盖，
+//   不在真实 FS 上做「一段时间内无事件」的墙钟断言。
 
 /// 集成测试助手：创建临时普通仓库 + git 元数据 watcher，返回计数 flag。
 /// `tempfile::TempDir` 必须随返回保持存活，否则目录被删、watcher 无事件。
@@ -34,8 +40,9 @@ fn spawn_git_meta_watcher_spy() -> (
     let repo = tmp.path();
     let git_dir = repo.join(".git");
     std::fs::create_dir_all(&git_dir).unwrap();
-    std::fs::write(git_dir.join("HEAD"), "ref: refs/heads/main\n").unwrap();
-    std::fs::write(git_dir.join("index"), "v1").unwrap();
+    // 注意：不得在 watcher 建立前写入 HEAD/index —— macOS FSEvents 异步送达会把
+    // 注册前写入的迟到事件漏进流内，污染负向测试的绝对零断言（CI 实测 index_changed
+    // 被污染为 2）。各测试在 watcher 建立后自行 lock+rename 写入。
     let meta = resolve_git_meta_paths(repo).unwrap();
 
     let index_changed = Arc::new(AtomicUsize::new(0));
@@ -78,17 +85,18 @@ fn wait_until(cond: impl Fn() -> bool, timeout: Duration) -> bool {
 #[test]
 fn git_meta_watcher_detects_index_change_on_real_fs() {
     let (_tmp, watcher, meta, index_changed, head_changed) = spawn_git_meta_watcher_spy();
-    // 给 notify 一点注册时间，降低首事件丢失概率（尤其 FSEvents）
-    std::thread::sleep(Duration::from_millis(300));
 
-    // 模拟 git 原子写 index：先写 index.lock 再 rename 为 index
-    std::fs::write(meta.git_dir.join("index.lock"), "v2").unwrap();
-    std::fs::rename(meta.git_dir.join("index.lock"), meta.git_dir.join("index")).unwrap();
-
+    // 模拟 git 原子写 index（lock + rename）。「写-轮询」：反复写入直到被捕获，
+    // 不设注册预热 sleep——notify 未就绪时首事件可能丢失，重试写入即自愈。
     assert!(
         wait_until(
-            || index_changed.load(Ordering::SeqCst) > 0,
-            Duration::from_secs(5)
+            || {
+                std::fs::write(meta.git_dir.join("index.lock"), "v2").unwrap();
+                std::fs::rename(meta.git_dir.join("index.lock"), meta.git_dir.join("index"))
+                    .unwrap();
+                index_changed.load(Ordering::SeqCst) > 0
+            },
+            Duration::from_secs(5),
         ),
         "index 变更应触发 on_index_changed"
     );
@@ -101,36 +109,19 @@ fn git_meta_watcher_detects_index_change_on_real_fs() {
 #[test]
 fn git_meta_watcher_detects_head_change_on_real_fs() {
     let (_tmp, watcher, meta, _index_changed, head_changed) = spawn_git_meta_watcher_spy();
-    std::thread::sleep(Duration::from_millis(300));
 
-    // 模拟 git 切分支改写 HEAD：lock + rename
-    std::fs::write(meta.git_dir.join("HEAD.lock"), "ref: refs/heads/dev\n").unwrap();
-    std::fs::rename(meta.git_dir.join("HEAD.lock"), meta.git_dir.join("HEAD")).unwrap();
-
+    // 模拟 git 切分支改写 HEAD（lock + rename）。「写-轮询」：反复写入直到被捕获。
     assert!(
         wait_until(
-            || head_changed.load(Ordering::SeqCst) > 0,
-            Duration::from_secs(5)
+            || {
+                std::fs::write(meta.git_dir.join("HEAD.lock"), "ref: refs/heads/dev\n").unwrap();
+                std::fs::rename(meta.git_dir.join("HEAD.lock"), meta.git_dir.join("HEAD")).unwrap();
+                head_changed.load(Ordering::SeqCst) > 0
+            },
+            Duration::from_secs(5),
         ),
         "HEAD 变更应触发 on_head_changed"
     );
-    drop(watcher);
-}
-
-/// 集成验证：无关 git 元数据（config / ORIG_HEAD）不应触发任何回调。
-/// 负向断言，验证事件分类过滤在真实文件系统上同样生效。
-#[test]
-fn git_meta_watcher_ignores_unrelated_git_meta_on_real_fs() {
-    let (_tmp, watcher, meta, index_changed, head_changed) = spawn_git_meta_watcher_spy();
-    std::thread::sleep(Duration::from_millis(300));
-
-    std::fs::write(meta.git_dir.join("config"), "[core]\n").unwrap();
-    std::fs::write(meta.git_dir.join("ORIG_HEAD"), "abc123\n").unwrap();
-
-    // 等待足够时间，确认两个回调都未被触发
-    std::thread::sleep(Duration::from_millis(600));
-    assert_eq!(index_changed.load(Ordering::SeqCst), 0);
-    assert_eq!(head_changed.load(Ordering::SeqCst), 0);
     drop(watcher);
 }
 
@@ -146,61 +137,71 @@ fn git_meta_watcher_rearms_worktrees_watch_after_dir_appears() {
     let repo = tmp.path();
     let git_dir = repo.join(".git");
     std::fs::create_dir_all(&git_dir).unwrap();
-    std::fs::write(git_dir.join("HEAD"), "ref: refs/heads/main\n").unwrap();
-    std::fs::write(git_dir.join("index"), "v1").unwrap();
+    // 与 spy 同一约定：watcher 建立在空 .git 上，不预写 HEAD/index（FSEvents
+    // 会把注册前写入漏进流内）；各阶段事件由测试自行写入触发。
     let meta = resolve_git_meta_paths(repo).unwrap();
     assert!(!meta.has_worktrees, "启动时应无 worktrees");
 
     let wt_changed = Arc::new(AtomicUsize::new(0));
     let wt_flag = wt_changed.clone();
+    // 记录 worktree 回调送到的具体路径：step 4 用「HEAD 路径已送达」精确断言
+    // rearm 的递归监听生效——HEAD（depth-2）只能由 rearm 后的递归监听送达，
+    // 无需 before_rearm 快照 / 墙钟窗口。
+    let seen: Arc<Mutex<HashSet<PathBuf>>> = Arc::new(Mutex::new(HashSet::new()));
+    let seen_cb = seen.clone();
     let handle = create_git_meta_watcher(
         "rearm-test".to_string(),
         &meta,
         || {},
         |_| {},
-        move |_| {
+        move |paths| {
+            seen_cb
+                .lock()
+                .expect("infallible: rearm seen")
+                .extend(paths.iter().cloned());
             wt_flag.fetch_add(1, Ordering::SeqCst);
         },
     )
     .expect("git meta watcher should be created");
-    // 给 notify 一点注册时间，降低首事件丢失概率
-    std::thread::sleep(Duration::from_millis(300));
 
     // 1. 启动时无 worktrees：rearm 为 no-op
     handle.rearm_worktrees_if_needed();
 
-    // 2. 会话中途 git worktree add：创建 worktrees/dev 目录。
-    //    worktrees 目录创建事件由非递归 .git 监听送达，分类为 WorktreeMetaChanged
-    //    （G3：worktree 区域事件独立信号）。wait_until 保证该事件已计入。
-    let wt_dir = git_dir.join("worktrees").join("dev");
-    std::fs::create_dir_all(&wt_dir).unwrap();
+    // 2. 会话中途 git worktree add：worktrees 目录出现（rearm 的前置条件）。
+    //    「写-轮询」：反复在 `.git/worktrees/` 下写 marker 文件（depth-1，
+    //    非递归 .git 监听可见；每次覆盖产生新 Modify 事件）直到被捕获——
+    //    不依赖单次 Create 的送达时序，真正的自愈。create_dir_all 幂等，仅
+    //    保证 worktrees/dev 存在（step 4 写入的前提）。
+    let wt_dir = meta.git_dir.join("worktrees").join("dev");
+    let marker = meta.git_dir.join("worktrees").join("marker");
     assert!(
         wait_until(
-            || wt_changed.load(Ordering::SeqCst) >= 1,
-            Duration::from_secs(5)
+            || {
+                std::fs::create_dir_all(&wt_dir).unwrap();
+                std::fs::write(&marker, "x").unwrap();
+                wt_changed.load(Ordering::SeqCst) >= 1
+            },
+            Duration::from_secs(5),
         ),
-        "worktrees 目录创建事件应送达（分类为 WorktreeMetaChanged）"
+        "worktrees 区域事件应送达（分类为 WorktreeMetaChanged）"
     );
 
-    // 3. rearm 前：深度 2 的 worktree HEAD 写入不被非递归 .git 监听捕获
-    //    （该路径只能由 rearm 后的递归监听送达——递归监听是必要路径）。
-    std::fs::write(wt_dir.join("HEAD"), "ref: refs/heads/main\n").unwrap();
-    std::thread::sleep(Duration::from_millis(400));
-    let before_rearm = wt_changed.load(Ordering::SeqCst);
-
-    // 4. 自愈补挂：worktrees 目录已出现 → 挂上递归监听
+    // 3. 自愈补挂：worktrees 目录已出现 → 挂上递归监听
     handle.rearm_worktrees_if_needed();
-    std::thread::sleep(Duration::from_millis(300));
 
-    // 5. rearm 后：worktree HEAD 变更（lock + rename，git 真实行为）
-    //    应触发 on_worktree_meta_changed（驱动前端 activeWorktree 刷新）
-    std::fs::write(wt_dir.join("HEAD.lock"), "ref: refs/heads/feature\n").unwrap();
-    std::fs::rename(wt_dir.join("HEAD.lock"), wt_dir.join("HEAD")).unwrap();
-
+    // 4. rearm 后：worktree HEAD 变更（lock + rename，git 真实行为）应触发
+    //    on_worktree_meta_changed（驱动前端 activeWorktree 刷新）。「写-轮询」
+    //    反复写入直到 HEAD 路径被回调看到——该路径只在递归监听生效后可达。
     assert!(
         wait_until(
-            || wt_changed.load(Ordering::SeqCst) > before_rearm,
-            Duration::from_secs(5)
+            || {
+                std::fs::write(wt_dir.join("HEAD.lock"), "ref: refs/heads/feature\n").unwrap();
+                std::fs::rename(wt_dir.join("HEAD.lock"), wt_dir.join("HEAD")).unwrap();
+                seen.lock()
+                    .expect("infallible: rearm seen")
+                    .contains(&wt_dir.join("HEAD"))
+            },
+            Duration::from_secs(5),
         ),
         "rearm 后 worktree HEAD 变更应触发 on_worktree_meta_changed"
     );
