@@ -1437,3 +1437,39 @@ adapter_binary_override 改为读取时按 AdapterKind::from_config_type 归一�
 ### Next Steps
 
 - None - task complete
+
+
+## Session 216: 导航目标状态模型重构 + 两个键空间/清理后续任务
+
+**Date**: 2026-09-17
+**Task**: 导航目标状态模型重构 + 两个键空间/清理后续任务
+**Branch**: `main`
+
+### Summary
+
+诊断「点断点列表定位不准需二击」根因（一次性单槽 + rAF 时间窗 + 清槽与成败无关），从第一性原理重构为导航目标状态模型：NavigateGoal{seq} + useNavigateGoal 兑现器（requestMeasure 屏障 + 货币性复检 + viewEpoch 重放）+ sourceTab 扩展屏障 + 6 生产方迁移 + goal 随 tab 移除清理；新增 frontend spec navigation-goal.md；随后完成两个审查发现任务：consoleLinks tabKey 改 resolveTabKey（worktree 键空间）、handleRemoveProject 级联清理项目 tab 空间 + runTabCleanup 故障隔离。三轮 check 全过，门禁 440 文件 / 3801 passed
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `17ed222a` | (see git log) |
+| `2d235c92` | (see git log) |
+| `cb723203` | (see git log) |
+| `1c96f541` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
