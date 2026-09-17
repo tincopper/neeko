@@ -528,6 +528,18 @@ mod tests {
 
         let tmp = tempfile::tempdir().expect("tempdir");
         let (state, project_id) = plain_project_state(&tmp);
+        // 平台绝对路径：`/opt/lib/...` 在 Windows 上无盘符前缀，Rust
+        // `Path::is_absolute()` 返回 false，授权守卫（!is_absolute → deny）
+        // 必拒；用 tempdir 推导，Windows（盘符）/ Unix 均为绝对路径
+        // （与 source_translation.rs 单测同一修法）。
+        let lib = tmp.path().join("lib").join("third_party.go");
+        let lib_str = lib.to_string_lossy().to_string();
+        let other_str = tmp
+            .path()
+            .join("lib")
+            .join("other.go")
+            .to_string_lossy()
+            .to_string();
         let sink = RecordingSink::new();
         let adapter = FakeAdapter::start().await;
         adapter.set_stack_frames(vec![serde_json::json!({
@@ -535,7 +547,7 @@ mod tests {
             "name": "main",
             "line": 3,
             "column": 1,
-            "source": { "path": "/opt/lib/third_party.go" },
+            "source": { "path": lib_str.clone() },
         })]);
         let info = launch_via_fake_adapter(
             &state,
@@ -550,12 +562,7 @@ mod tests {
         // 未停止 → 拒绝（授权前置条件之一）。
         assert!(state
             .dap_manager
-            .resolve_external_source(
-                &state,
-                &project_id,
-                &info.session_id,
-                "/opt/lib/third_party.go"
-            )
+            .resolve_external_source(&state, &project_id, &info.session_id, &lib_str)
             .await
             .is_err());
 
@@ -566,17 +573,12 @@ mod tests {
         let manager = &state.dap_manager;
         // 命中帧 → 授权；未命中帧 → 拒绝（fail-closed）。
         let (_, resolved) = manager
-            .resolve_external_source(
-                &state,
-                &project_id,
-                &info.session_id,
-                "/opt/lib/third_party.go",
-            )
+            .resolve_external_source(&state, &project_id, &info.session_id, &lib_str)
             .await
             .expect("命中帧必须授权");
-        assert_eq!(resolved, PathBuf::from("/opt/lib/third_party.go"));
+        assert_eq!(resolved, lib);
         assert!(manager
-            .resolve_external_source(&state, &project_id, &info.session_id, "/opt/lib/other.go")
+            .resolve_external_source(&state, &project_id, &info.session_id, &other_str)
             .await
             .is_err());
     }
