@@ -13,13 +13,14 @@ export default defineConfig({
     setupFiles: ['./src/testing/setup.ts'],
     include: ['src/**/__tests__/*.{test,spec}.{ts,tsx}'],
     /**
-     * 限制并发 worker 数（默认 ≈ 核数-1）。每个 jsdom worker 冷启动 40s+
-     * （transform + setup + environment），且共享主进程的 setup/transform
-     * 管道会互相拖慢：10 核机默认 9 并发时 13 个文件全部 "Timeout waiting
-     * for worker to respond"（0 tests）；4 并发仍挂 8/13。2 并发实测稳定
-     * （147 tests 全绿）。数值再低只影响总时长，不再影响成功率。
+     * 并发实测（2026-09-17，node/jsdom 环境分拆后）：4 并发 48s → 6 并发 41s →
+     * 8 并发 41s（transform/setup/import 累计开销膨胀、wall time 持平）→ 取 6。
+     * 历史背景：全量 jsdom 时代 9 并发曾全员 "Timeout waiting for worker to
+     * respond"（10 核机），被迫钳 2；node 环境分拆把 163 个纯逻辑文件移出 jsdom
+     * 后，worker 冷启动压力减半，6 并发实测稳定（连续多轮 440 文件全绿）。
+     * 若回退环境分拆，请同步回落本值到 2，否则复现 worker 超时。
      */
-    maxWorkers: 2,
+    maxWorkers: 6,
     coverage: {
       provider: 'v8',
       reporter: ['text', 'json', 'html'],

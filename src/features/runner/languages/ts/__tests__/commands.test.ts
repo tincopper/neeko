@@ -1,3 +1,4 @@
+// @vitest-environment node
 /**
  * ts 命令构造测试
  */

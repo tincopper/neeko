@@ -1,3 +1,4 @@
+// @vitest-environment node
 /**
  * rust 调试 launch 配置
  */

@@ -1,3 +1,4 @@
+// @vitest-environment node
 /**
  * go 调试 launch 配置
  */

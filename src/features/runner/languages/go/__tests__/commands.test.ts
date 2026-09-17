@@ -1,3 +1,4 @@
+// @vitest-environment node
 /**
  * go 命令构造测试（跑测 / 主入口 / 调试前置构建 / 产物定位）
  */

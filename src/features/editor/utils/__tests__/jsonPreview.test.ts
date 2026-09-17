@@ -1,3 +1,4 @@
+// @vitest-environment node
 import { describe, expect, it } from 'vitest';
 
 import { formatJson, highlightJson, type JsonToken } from '@/features/editor/utils/jsonPreview';

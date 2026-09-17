@@ -1,3 +1,4 @@
+// @vitest-environment node
 /**
  * nativeBuild 纯工具测试
  *

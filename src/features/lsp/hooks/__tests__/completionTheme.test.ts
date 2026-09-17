@@ -1,3 +1,4 @@
+// @vitest-environment node
 // Tests for the completionTheme EditorView.theme extension.
 //
 // We mock `@codemirror/view` so we can inspect the theme spec object

@@ -1,3 +1,4 @@
+// @vitest-environment node
 /**
  * `isSessionVisibleFor` —— #14 门控的唯一实现（纯函数，100% 覆盖）。
  */

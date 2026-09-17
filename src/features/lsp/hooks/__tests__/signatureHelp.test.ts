@@ -1,3 +1,4 @@
+// @vitest-environment node
 // Mock the CM6 packages before importing the unit under test.
 vi.mock('@codemirror/lsp-client', () => {
   // A mock LSPClient that records the extensions it was constructed with and

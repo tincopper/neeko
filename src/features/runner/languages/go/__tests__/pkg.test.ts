@@ -1,3 +1,4 @@
+// @vitest-environment node
 /**
  * go 包目录与 module 根探测
  */

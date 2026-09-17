@@ -1,3 +1,4 @@
+// @vitest-environment node
 import { describe, it, expect } from 'vitest';
 
 import { IS_WINDOWS, IS_MACOS } from '../../utils/platform';

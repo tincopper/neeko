@@ -1,3 +1,4 @@
+// @vitest-environment node
 import { describe, expect, it } from 'vitest';
 
 import { CODEMIRROR_EXTENSIONS, CODEMIRROR_FILENAMES } from '../codemirror';

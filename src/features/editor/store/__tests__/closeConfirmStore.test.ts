@@ -1,3 +1,4 @@
+// @vitest-environment node
 // closeConfirmStore 行为断言（自 useCloseConfirmation.test.ts 迁移）：
 // open/close、三选回传、并发排队（旧请求 resolve 'cancel'）、overlay 计数。
 import { beforeEach, describe, expect, it } from 'vitest';

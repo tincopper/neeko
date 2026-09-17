@@ -1,3 +1,4 @@
+// @vitest-environment node
 // Regression test: closing the active tab must move the layout
 // group activeTabId onto a live tab. Runs against the real production
 // code path (`closeEditorTab` → store) WITHOUT React rendering, so the

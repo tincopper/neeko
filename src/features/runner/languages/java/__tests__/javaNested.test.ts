@@ -1,3 +1,4 @@
+// @vitest-environment node
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 // runner/java.ts 的其它依赖（launcher 供给 / 通知 / debug 面板）与本用例无关，按仓库惯例隔离。

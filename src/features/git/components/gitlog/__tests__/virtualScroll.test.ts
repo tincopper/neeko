@@ -1,3 +1,4 @@
+// @vitest-environment node
 import { describe, it, expect } from 'vitest';
 
 import { ROW_HEIGHT, computeRowOffsets, findRowIndex, getVirtualWindow } from '../virtualScroll';

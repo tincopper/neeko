@@ -1,3 +1,4 @@
+// @vitest-environment node
 import { describe, expect, it } from 'vitest';
 
 import { LANGUAGE_BY_EXTENSION, LANGUAGE_BY_FILENAME } from '@/shared/utils/languageRegistry';

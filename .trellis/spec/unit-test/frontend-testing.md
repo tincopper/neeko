@@ -337,6 +337,31 @@ describe('WindowControls', () => {
 
 ## 关键约定
 
+### 测试环境：node vs jsdom（2026-09-17 起）
+
+全量套件的 environment 开销曾是最大瓶颈（jsdom 29 每文件独立构造，440 文件累计 ~111s）。
+**163 个纯逻辑测试文件已通过文件级 docblock 切到 node 环境**（environment 累计 ~62s，
+配合 `maxWorkers: 6`，全量 wall time 107s → 41-50s）。
+
+**新增测试文件时**：
+
+```typescript
+// @vitest-environment node   ← 不碰 DOM 的纯逻辑测试（utils/store reducer/纯函数）加在首行
+import { describe, expect, it } from 'vitest';
+```
+
+- 默认（不写 docblock）= jsdom —— 组件 / Hook（renderHook）/ 任何触碰 `document`、
+  `HTMLElement`、testing-library 的测试**必须**保持默认，宁慢勿错
+- 不确定时先用默认 jsdom 写，跑通后再试 node：在 node 环境 crash（`HTMLElement is not
+  defined` 等）= 有传递性 DOM 依赖，删掉 docblock 即回 jsdom，无需改代码
+- `src/testing/setup.ts` 的 DOM 垫片全部带 `typeof` 守卫，node 环境安全；给垫片加新
+  分支时必须延续该模式
+- vitest 4 已移除 `environmentMatchGlobs`，**docblock 是唯一的逐文件机制**——不要往
+  config 里加回已删除的选项
+
+**变异验证先例**：误标文件（传递性 DOM 依赖）在 node 环境必红——10 个误标已实证回退；
+分类标记集见 `.trellis/spec/unit-test/frontend-testing.md` 本节所用 grep 模式。
+
 ### 测试结构
 
 遵循 **Arrange-Act-Assert** 模式：

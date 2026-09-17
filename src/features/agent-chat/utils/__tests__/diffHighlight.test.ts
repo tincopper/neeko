@@ -1,3 +1,4 @@
+// @vitest-environment node
 import { describe, expect, it } from 'vitest';
 
 import { classifyDiffLine, isDiffLine, isDiffOutput, type DiffLineKind } from '../diffHighlight';

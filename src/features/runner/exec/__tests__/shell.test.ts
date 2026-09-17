@@ -1,3 +1,4 @@
+// @vitest-environment node
 /**
  * shell 纯工具测试
  *

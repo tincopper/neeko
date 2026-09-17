@@ -1,3 +1,4 @@
+// @vitest-environment node
 import { describe, expect, it } from 'vitest';
 
 import { decideReclaims, DEFAULT_RECLAIM_POLICY, type WebviewUsage } from '../reclaimPolicy';

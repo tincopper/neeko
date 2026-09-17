@@ -1,3 +1,4 @@
+// @vitest-environment node
 /**
  * java 命令构造测试（跑测 / 调试 / 选择器 / launcher / classpath 拼装）
  */

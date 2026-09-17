@@ -1,3 +1,4 @@
+// @vitest-environment node
 import { emit } from '@tauri-apps/api/event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 

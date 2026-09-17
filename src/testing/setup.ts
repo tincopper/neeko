@@ -8,7 +8,8 @@ afterEach(() => {
 
 // jsdom 未实现 scrollIntoView；文件树「选中即滚动」逻辑会调用它。
 // 全局 mock 为 no-op，避免组件内调用抛 "Not implemented" 错误。
-if (!HTMLElement.prototype.scrollIntoView) {
+// typeof 守卫：@vitest-environment node 的纯逻辑测试无 DOM 全局，直接引用会 ReferenceError。
+if (typeof HTMLElement !== 'undefined' && !HTMLElement.prototype.scrollIntoView) {
   HTMLElement.prototype.scrollIntoView =
     vi.fn() as unknown as typeof HTMLElement.prototype.scrollIntoView;
 }
