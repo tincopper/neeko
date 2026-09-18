@@ -32,12 +32,15 @@ fn bind_project_exec_target(state: &AppStateWrapper, project_path: &str) -> Resu
 
 /// Run blocking session-creation work on the business AppRuntime pool
 /// so it never occupies a tokio worker thread (and is safe without a current Handle).
+///
+/// 返回会话 key：会话身份由 manager 单点生成，命令层不得自行拼接（重启路径需要
+/// 该 key 生成错误文案）。
 async fn ensure_session_async(
     state: &AppStateWrapper,
     project_path: &str,
     language_id: &str,
     document_uri: Option<&str>,
-) -> Result<(), AppError> {
+) -> Result<String, AppError> {
     bind_project_exec_target(state, project_path)?;
     let manager = Arc::clone(&state.lsp_manager);
     // Own the URI before entering `spawn_blocking` so the closure captures an
@@ -51,7 +54,6 @@ async fn ensure_session_async(
         .spawn_blocking(move || manager.get_or_create_session(&pp, &lid, doc.as_deref()))
         .await
         .map_err(|e| AppError::Lsp(format!("spawn_blocking join error: {}", e)))?
-        .map(|_| ())
 }
 
 /// Read a file on the OS blocking pool — async commands must never call
@@ -159,18 +161,17 @@ pub async fn lsp_notification(
 
 #[tauri::command]
 /// Open a document in an LSP session.
-pub fn lsp_open_document(
+pub async fn lsp_open_document(
     project_path: String,
     language_id: String,
     uri: String,
     text: String,
     version: i64,
-    state: State<AppStateWrapper>,
+    state: State<'_, AppStateWrapper>,
 ) -> Result<(), AppError> {
-    bind_project_exec_target(&state, &project_path)?;
-    state
-        .lsp_manager
-        .get_or_create_session(&project_path, &language_id, Some(&uri))?;
+    // 会话创建含 spawn + initialize 握手（阻塞秒级）：必须走 spawn_blocking，
+    // 否则同步命令会占住主线程、async 命令会占住 tokio worker（红线 3）。
+    ensure_session_async(&state, &project_path, &language_id, Some(&uri)).await?;
 
     state
         .lsp_manager
@@ -269,22 +270,23 @@ pub async fn lsp_restart_session(
     language_id: String,
     state: State<'_, AppStateWrapper>,
 ) -> Result<LspSessionInfo, AppError> {
-    // Close existing session (sends shutdown + kills child)
-    let _ = state.lsp_manager.close_session(&project_path, &language_id);
-
-    bind_project_exec_target(&state, &project_path)?;
-    // Re-create session (triggers lazy init + reopen docs on next request)
-    let key = state
+    // Close existing session (sends shutdown + kills child).
+    // 静默关闭：重启是替换而非结束，不向状态栏宣告 `stopped`（否则 chip 闪断）。
+    let _ = state
         .lsp_manager
-        .get_or_create_session(&project_path, &language_id, None)?;
+        .close_session_for_restart(&project_path, &language_id);
 
-    let sessions = state.lsp_manager.list_sessions();
-    sessions
+    // Re-create session (triggers lazy init + reopen docs on next request).
+    // 重建走统一的阻塞隔离路径 —— 状态栏「崩溃重试」一键触达，绝不允许在
+    // async 命令里同步跑完整 initialize 握手（红线 3/7）。
+    let key = ensure_session_async(&state, &project_path, &language_id, None).await?;
+
+    state
+        .lsp_manager
+        .list_sessions()
         .into_iter()
-        .find(|s| {
-            let expected = format!("{}:{}", project_path, language_id);
-            format!("{}:{}", s.project_path, s.language_id) == expected
-        })
+        // 结构化比对（不拼接 key 字符串），避免命令层复制会话身份的表示。
+        .find(|s| s.project_path == project_path && s.language_id == language_id)
         .ok_or_else(|| AppError::Lsp(format!("Failed to restart session: {}", key)))
 }
 
@@ -346,7 +348,10 @@ pub async fn lsp_restart_all_sessions(
         .lsp_manager
         .session_language_ids_for_project(&project_path);
     for language_id in languages {
-        let _ = state.lsp_manager.close_session(&project_path, &language_id);
+        // 同上：重启路径静默关闭（不宣告 stopped），避免 chip 闪断。
+        let _ = state
+            .lsp_manager
+            .close_session_for_restart(&project_path, &language_id);
         ensure_session_async(&state, &project_path, &language_id, None).await?;
     }
     Ok(())

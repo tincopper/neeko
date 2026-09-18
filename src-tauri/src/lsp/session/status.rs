@@ -7,6 +7,10 @@ pub(crate) enum LspSessionStatus {
     /// Initialize handshake in progress.
     Initializing,
     /// Server is indexing the workspace.
+    ///
+    /// **服务端不会发出该状态**：`indexing` 是前端由 work-done 进度 token 合成的
+    /// 展示态（见 lspStore 的 `progressTokens`）。此处保留该变体是为了让
+    /// `as_str` 覆盖前端可见的完整状态词表，相位归一化见 `Lifecycle`（→ Ready）。
     Indexing,
     /// Server is ready to accept requests.
     Ready,

@@ -85,6 +85,57 @@ export function humanStatus(status: LspSessionState['status']): string {
   }
 }
 
+/** 状态栏 chip 上的展示决策：文案 + tooltip + 重试入口归属。 */
+export interface ChipPresentation {
+  label: string;
+  title: string;
+  /**
+   * 非空即渲染重试按钮。仅**单会话 error 态**暴露——多会话时由下拉行内
+   * 各语言自己的 Restart 承载（chip 上放重试会造成"重试哪一个"的歧义）。
+   */
+  retry: { languageId: string; label: string } | null;
+}
+
+const BUSY_CHIP_STATUS: Record<string, true> = {
+  starting: true,
+  initializing: true,
+  indexing: true,
+};
+
+const MANAGE_HINT = 'Click to manage LSP servers';
+
+/**
+ * 把会话列表（已由调用方做 ready+tokens → indexing 投影）压成 chip 展示态。
+ *
+ * 第一性原理：chip 是**单会话摘要**，多会话时必须退化为计数——否则聚合圆点
+ * 与单一服务器名会互相矛盾。崩溃态（error）是唯一需要在 chip 上直接暴露
+ * 完整 message 的情形：用户要能自答"为什么没有提示"（M2 / AC2）。
+ */
+export function chipPresentation(entries: readonly LspSessionState[]): ChipPresentation {
+  if (entries.length === 0) return { label: '', title: MANAGE_HINT, retry: null };
+
+  if (entries.length > 1) {
+    const label = `${entries.length} LSPs`;
+    return { label, title: label, retry: null };
+  }
+
+  const { languageId, serverName: liveName, status, statusMessage } = entries[0];
+  const name = serverName(languageId, liveName);
+
+  if (status === 'error') {
+    // message 缺失时降级为「名字 Error」——重试入口不得因缺文案而消失。
+    const message = statusMessage || `${name} ${humanStatus(status)}`;
+    return {
+      label: message,
+      title: `${message} (click to manage)`,
+      retry: { languageId, label: `Restart ${name}` },
+    };
+  }
+
+  const label = BUSY_CHIP_STATUS[status] ? `${name} ${humanStatus(status)}` : name;
+  return { label, title: MANAGE_HINT, retry: null };
+}
+
 function formatMemoryMb(mb: number): string {
   if (!Number.isFinite(mb) || mb <= 0) return '—';
   if (mb >= 100) return `${Math.round(mb)} MB`;

@@ -32,7 +32,13 @@ lsp-client 补全接受已原子应用 `additionalTextEdits`（自动导入核�
       （severity 分组、点击跳转对应行）；无诊断时列表空态（2026-09-18 `d8d44697` 落地：
       Problems 面板 + lspStore 诊断副本 + code 贯通 + 信封修复 + lspDiagnosticsProjection
       重放器——波浪线消失根因为 reconfigure 丢弃 lint 渲染器，已修）
-- [ ] AC2（R2）：gopls/jdt.ls 启动、就绪、崩溃三态在 status-bar 可见；崩溃含重试入口
+- [x] AC2（R2）：gopls/jdt.ls 启动、就绪、崩溃三态在 status-bar 可见；崩溃含重试入口
+      （2026-09-18 M2 落地：Rust 生命周期事件全接线 + reader 崩溃检测/panic 兜底 +
+      快照派生 error + 前端 error chip/重试；LspHealthCheck 复核 3 个 P1 已修。
+      同日复审后收敛：生命周期真相归一到 `session/lifecycle.rs::Lifecycle`（终态吸收 +
+      幂等，区分「优雅关闭 / 进程崩溃 / 重启替换」）、装配细节归一到
+      `SessionFactory` 端口（失败发射路径可脱离 Tauri 运行时单测）、重启路径改为静默
+      关闭不推 `stopped`（消除 chip 闪断）、崩溃/新会话起点清诊断副本（不留陈旧波浪线））
 - [ ] AC3（R3）：Go 文件输入未导入符号产生诊断 → 诊断行 quickfix「Add import」→
       接受后 import 落块、诊断消失
 - [ ] AC4（R4）：策略设置为 Never 时接受补全不应用附加编辑；Auto 时应用；Ask 弹选择

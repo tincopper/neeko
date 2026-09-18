@@ -3,7 +3,7 @@
 //! Defines the [`LspTransport`] trait and the default [`IpcTransport`] implementation.
 use tauri::Emitter;
 
-use super::types::{LSP_DIAG_EVENT_PREFIX, LSP_PROGRESS_EVENT_PREFIX};
+use super::types::{LSP_DIAG_EVENT_PREFIX, LSP_PROGRESS_EVENT_PREFIX, LSP_SESSION_EVENT_PREFIX};
 
 /// Trait for delivering LSP-originated data to the frontend.
 ///
@@ -125,7 +125,7 @@ impl LspTransport for IpcTransport {
         message: Option<&str>,
         progress_pct: Option<u32>,
     ) {
-        let event_name = format!("lsp-session-{}", project_path);
+        let event_name = format!("{}{}", LSP_SESSION_EVENT_PREFIX, project_path);
         let payload = serde_json::json!({
             "languageId": language_id,
             "status": status,

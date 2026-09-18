@@ -31,6 +31,8 @@ export const LSP_INSTALL_PROGRESS_EVENT = 'lsp-install-progress';
 export const LSP_DIAG_EVENT_PREFIX = 'lsp-diagnostics-';
 /** LSP work-done 进度事件前缀（拼接 projectPath）：`lsp-progress-{projectPath}` */
 export const LSP_PROGRESS_EVENT_PREFIX = 'lsp-progress-';
+/** LSP 会话生命周期事件前缀（拼接 projectPath）：`lsp-session-{projectPath}` */
+export const LSP_SESSION_EVENT_PREFIX = 'lsp-session-';
 /** LSP 项目语言 profile 广播事件：`lsp-project-profile` */
 export const LSP_PROFILE_EVENT = 'lsp-project-profile';
 

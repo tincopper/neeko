@@ -19,6 +19,8 @@ pub mod process;
 pub mod profile;
 pub mod server_request;
 pub mod session;
+/// Session assembly port (transport + live session construction).
+pub mod session_factory;
 pub mod session_store;
 pub mod symbol;
 pub mod transport;

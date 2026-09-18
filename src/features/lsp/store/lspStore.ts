@@ -6,6 +6,7 @@ import {
   LSP_DIAG_EVENT_PREFIX,
   LSP_PROFILE_EVENT,
   LSP_PROGRESS_EVENT_PREFIX,
+  LSP_SESSION_EVENT_PREFIX,
 } from '@/shared/events';
 import { preloadLanguageExtension } from '@/shared/utils/codemirror';
 import { safeUnlisten } from '@/shared/utils/safeUnlisten';
@@ -53,6 +54,18 @@ interface LspProgressEventPayload {
 
 /** Busy-equivalent session statuses (green must not show while these hold). */
 const BUSY_STATUS: Record<string, true> = { starting: true, initializing: true, indexing: true };
+
+/**
+ * 新会话起点：上一会话的 token 空间与诊断副本都随之失效。
+ *
+ * 重启是**替换**而非结束（后端重启路径刻意不推 `stopped`，否则状态栏 chip 会在
+ * close→create 之间被过滤掉、出现闪断），所以"旧事实失效"必须挂在新会话起点上，
+ * 否则死进程不再推送的诊断会永久残留成陈旧波浪线。
+ */
+const NEW_SESSION_STATUS: Record<string, true> = { starting: true, initializing: true };
+
+/** 会话终态：不再可能推送任何数据（design.md M1 矩阵「会话结束 → 整体清除」）。 */
+const TERMINAL_STATUS: Record<string, true> = { error: true, stopped: true };
 
 /** Map languageId → representative file for CodeMirror lang preload. */
 const LANG_PRELOAD_FILE: Record<string, string> = {
@@ -282,16 +295,16 @@ export const useLspStore = create<LspStoreState>((set, get) => ({
   },
 
   subscribeToProject: async (projectPath) => {
-    const eventName = `lsp-session-${projectPath}`;
+    const eventName = `${LSP_SESSION_EVENT_PREFIX}${projectPath}`;
     const unlistenSession = await listen<LspSessionStatusEventPayload>(eventName, (event) => {
       const { languageId, status, message, progressPct } = event.payload;
       const store = get();
-      if (status === 'starting' || status === 'initializing') {
+      if (NEW_SESSION_STATUS[status]) {
         // 新会话 token 空间 fresh：清掉上个会话残留 token，防 busy 残留 wedge。
         store.clearProgressTokens(projectPath, languageId);
       }
-      if (status === 'stopped') {
-        // 会话结束（后端进程退出/关闭的终态）：诊断整体失效，清该 projectPath 键
+      if (NEW_SESSION_STATUS[status] || TERMINAL_STATUS[status]) {
+        // 会话边界（新会话起点 / 终态）→ 上一会话的诊断整体失效，清该 projectPath 键
         // （design.md M1 错误矩阵；诊断事件无 languageId，按项目粒度清除）。
         store.clearProjectDiagnostics(projectPath);
       }

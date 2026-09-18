@@ -157,6 +157,71 @@ describe('LspStatusSection busy chip', () => {
   });
 });
 
+describe('LspStatusSection error state (M2 / AC2)', () => {
+  beforeEach(() => {
+    lspHookState.sessions = {
+      '/tmp/neeko': {
+        go: {
+          languageId: 'go',
+          serverName: 'gopls',
+          status: 'error',
+          statusMessage: 'gopls exited unexpectedly',
+        },
+      },
+    };
+    lspHookState.progressTokens = {};
+  });
+
+  it('error 态 chip 显示 message 而非只显示服务器名', () => {
+    render(<LspStatusSection />);
+    const chip = screen.getByTestId('lsp-status-chip');
+    expect(chip).toHaveTextContent('gopls exited unexpectedly');
+    // title 携带完整 message（hover 可读），不丢失崩溃文案
+    expect(chip).toHaveAttribute('title', expect.stringContaining('gopls exited unexpectedly'));
+  });
+
+  it('error 态显示重试入口，点击复用 lspRestartSession 重启通道', async () => {
+    render(<LspStatusSection />);
+    const retry = screen.getByTestId('lsp-error-retry');
+    expect(retry).toBeInTheDocument();
+    fireEvent.click(retry);
+    await waitFor(() => {
+      expect(mockRestart).toHaveBeenCalledWith('/tmp/neeko', 'go');
+    });
+    // 重试触发乐观 starting 状态（lspStore.setSessionState）
+    expect(mockSetSessionState).toHaveBeenCalledWith(
+      '/tmp/neeko',
+      'go',
+      expect.objectContaining({ status: 'starting' }),
+    );
+  });
+
+  it('ready 态不渲染重试按钮（仅 error 提供重试入口）', () => {
+    lspHookState.sessions = {
+      '/tmp/neeko': { go: { languageId: 'go', serverName: 'gopls', status: 'ready' } },
+    };
+    render(<LspStatusSection />);
+    expect(screen.queryByTestId('lsp-error-retry')).not.toBeInTheDocument();
+  });
+
+  it('stopped 会话被过滤，不在状态栏显示', () => {
+    lspHookState.sessions = {
+      '/tmp/neeko': { go: { languageId: 'go', serverName: 'gopls', status: 'stopped' } },
+    };
+    const { container } = render(<LspStatusSection />);
+    expect(screen.queryByTestId('lsp-status-chip')).not.toBeInTheDocument();
+    expect(container).toBeEmptyDOMElement();
+  });
+
+  it('下拉行内也显示 error message（lsp-row-msg）', async () => {
+    render(<LspStatusSection />);
+    fireEvent.click(screen.getByTestId('lsp-status-chip'));
+    const row = await screen.findByTestId('lsp-server-row-go');
+    expect(row).toHaveTextContent('gopls');
+    expect(screen.getByTestId('lsp-row-msg-go')).toHaveTextContent('gopls exited unexpectedly');
+  });
+});
+
 describe('LspStatusSection progress tokens', () => {
   beforeEach(() => {
     lspHookState.progressTokens = {};

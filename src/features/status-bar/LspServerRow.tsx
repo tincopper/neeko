@@ -35,6 +35,14 @@ export function LspServerRow({ session, isActive, onOpen, registerRef }: Props) 
       <span className="flex items-center gap-1.5 min-w-0">
         <span className={cn('w-1.5 h-1.5 rounded-full shrink-0', statusDotClass(session.status))} />
         <span className="truncate">{label}</span>
+        {session.statusMessage && (
+          <span
+            className="text-text-muted truncate"
+            data-testid={`lsp-row-msg-${session.languageId}`}
+          >
+            {session.statusMessage}
+          </span>
+        )}
         {session.progressPct != null && (
           <span className="text-text-muted shrink-0">{session.progressPct}%</span>
         )}

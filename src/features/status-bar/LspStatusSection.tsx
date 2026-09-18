@@ -13,9 +13,9 @@ import {
   ENTER_DUR,
   EXIT_DUR,
   aggregateStatus,
+  chipPresentation,
   formatInfoFooter,
   humanStatus,
-  serverName,
   statusDotClass,
 } from './lspStatusFormat';
 import { ChevronDown } from './LspStatusIcons';
@@ -80,31 +80,17 @@ export function LspStatusSection() {
       : s,
   );
   const multi = displayEntries.length > 1;
-  const chipTitle = multi
-    ? `${displayEntries.length} LSPs`
-    : serverName(displayEntries[0].languageId, displayEntries[0].serverName);
   const agg = aggregateStatus(displayEntries);
   const activeSession = activeSubmenuLanguageId
     ? (displayEntries.find((s) => s.languageId === activeSubmenuLanguageId) ?? null)
     : null;
 
-  // 加载过程可见：starting/initializing/indexing 在 chip 上显示状态文字
-  //（如 "jdtls Starting" / "jdtls Indexing"），配合脉冲圆点，用户可感知服务在启动。
-  const busySession = !multi ? displayEntries[0] : null;
-  const showBusyStatus =
-    busySession != null &&
-    (busySession.status === 'starting' ||
-      busySession.status === 'initializing' ||
-      busySession.status === 'indexing');
-  const chipLabel =
-    busySession != null && showBusyStatus
-      ? `${serverName(busySession.languageId, busySession.serverName)} ${humanStatus(busySession.status)}`
-      : busySession != null
-        ? serverName(busySession.languageId, busySession.serverName)
-        : chipTitle;
+  // chip 展示决策（label / tooltip / 重试入口）下沉到纯函数模块，
+  // 组件只负责渲染（见 lspStatusFormat.chipPresentation + 其单测）。
+  const { label: chipLabel, title: chipHoverTitle, retry } = chipPresentation(displayEntries);
 
   return (
-    <div className="relative" ref={dropdownRef}>
+    <div className="relative flex items-center" ref={dropdownRef}>
       <button
         ref={buttonRef}
         type="button"
@@ -112,8 +98,8 @@ export function LspStatusSection() {
           if (dropdownOpen) closeAll();
           else setDropdownOpen(true);
         }}
-        className="flex h-4 items-center gap-1.5 leading-4 hover:text-text-primary transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-blue rounded-sm"
-        title={multi ? chipTitle : 'Click to manage LSP servers'}
+        className="flex h-4 items-center gap-1.5 leading-4 hover:text-text-primary transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-blue rounded-sm max-w-[240px]"
+        title={chipHoverTitle}
         data-testid="lsp-status-chip"
       >
         <span
@@ -129,6 +115,18 @@ export function LspStatusSection() {
         )}
         <ChevronDown open={dropdownOpen} />
       </button>
+      {retry && (
+        <button
+          type="button"
+          onClick={() => void handleRestart(retry.languageId)}
+          title={retry.label}
+          aria-label={retry.label}
+          className="ml-1.5 flex h-4 items-center rounded-sm px-0.5 text-status-failed hover:bg-bg-hover transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-blue"
+          data-testid="lsp-error-retry"
+        >
+          <RefreshCw size={12} className="shrink-0" aria-hidden />
+        </button>
+      )}
 
       {dropdownPresence.mounted &&
         dropdownStyle &&

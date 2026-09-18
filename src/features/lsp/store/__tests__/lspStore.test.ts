@@ -6,6 +6,7 @@ import {
   LSP_DIAG_EVENT_PREFIX,
   LSP_PROGRESS_EVENT_PREFIX,
   LSP_PROFILE_EVENT,
+  LSP_SESSION_EVENT_PREFIX,
 } from '@/shared/events';
 
 import { useLspStore } from '../lspStore';
@@ -70,7 +71,7 @@ describe('lspStore progress tokens', () => {
     });
 
     // 后端短任务 end 先推 session ready：open token 非空时不得覆盖 busy。
-    emit(captured, `lsp-session-${PROJECT}`, { languageId: LANG, status: 'ready' });
+    emit(captured, `${LSP_SESSION_EVENT_PREFIX}${PROJECT}`, { languageId: LANG, status: 'ready' });
     expect(useLspStore.getState().sessions[PROJECT]?.[LANG]?.status).toBe('indexing');
 
     emit(captured, `${LSP_PROGRESS_EVENT_PREFIX}${PROJECT}`, {
@@ -95,7 +96,10 @@ describe('lspStore progress tokens', () => {
     const unlisten = await useLspStore.getState().subscribeToProject(PROJECT);
     useLspStore.getState().addProgressToken(PROJECT, LANG, 'stale-token');
 
-    emit(captured, `lsp-session-${PROJECT}`, { languageId: LANG, status: 'starting' });
+    emit(captured, `${LSP_SESSION_EVENT_PREFIX}${PROJECT}`, {
+      languageId: LANG,
+      status: 'starting',
+    });
 
     expect(useLspStore.getState().progressTokens[PROJECT]?.[LANG]).toEqual([]);
     expect(useLspStore.getState().sessions[PROJECT]?.[LANG]?.status).toBe('starting');
@@ -120,7 +124,7 @@ describe('lspStore progress tokens', () => {
   it('unsubscribe 一并注销 progress 监听', async () => {
     const unlisten = await useLspStore.getState().subscribeToProject(PROJECT);
     // session + progress + profile + diagnostics 四路订阅
-    expect(captured.has(`lsp-session-${PROJECT}`)).toBe(true);
+    expect(captured.has(`${LSP_SESSION_EVENT_PREFIX}${PROJECT}`)).toBe(true);
     expect(captured.has(`${LSP_PROGRESS_EVENT_PREFIX}${PROJECT}`)).toBe(true);
     expect(captured.has(LSP_PROFILE_EVENT)).toBe(true);
     expect(captured.has(`${LSP_DIAG_EVENT_PREFIX}${PROJECT}`)).toBe(true);
@@ -250,11 +254,43 @@ describe('lspStore diagnostics slice (D3 single write point)', () => {
     const unlisten = await useLspStore.getState().subscribeToProject(PROJECT);
     useLspStore.getState().setProjectDiagnostics(PROJECT, 'file:///a.go', [diag(0)]);
 
-    emit(captured, `lsp-session-${PROJECT}`, { languageId: 'go', status: 'ready' });
+    emit(captured, `${LSP_SESSION_EVENT_PREFIX}${PROJECT}`, { languageId: 'go', status: 'ready' });
     expect(useLspStore.getState().diagnosticsByProject[PROJECT]).toBeDefined();
 
     // 会话结束（stopped = 后端进程退出/关闭的终态）→ projectPath 键整体清除
-    emit(captured, `lsp-session-${PROJECT}`, { languageId: 'go', status: 'stopped' });
+    emit(captured, `${LSP_SESSION_EVENT_PREFIX}${PROJECT}`, {
+      languageId: 'go',
+      status: 'stopped',
+    });
+    expect(useLspStore.getState().diagnosticsByProject[PROJECT]).toBeUndefined();
+    unlisten();
+  });
+
+  it('崩溃（error）是终态：诊断副本必须整体失效', async () => {
+    const unlisten = await useLspStore.getState().subscribeToProject(PROJECT);
+    useLspStore.getState().setProjectDiagnostics(PROJECT, 'file:///a.go', [diag(0)]);
+
+    // 进程崩溃 = 会话终态（design.md M1 矩阵「会话结束 → 整体清除」）：
+    // 死掉的服务器不会再推送，留着就是永久陈旧波浪线。
+    emit(captured, `${LSP_SESSION_EVENT_PREFIX}${PROJECT}`, {
+      languageId: 'go',
+      status: 'error',
+      message: 'gopls exited unexpectedly',
+    });
+    expect(useLspStore.getState().diagnosticsByProject[PROJECT]).toBeUndefined();
+    unlisten();
+  });
+
+  it('新会话 starting 清空上一会话诊断（重启不残留陈旧事实）', async () => {
+    const unlisten = await useLspStore.getState().subscribeToProject(PROJECT);
+    useLspStore.getState().setProjectDiagnostics(PROJECT, 'file:///stale.go', [diag(0)]);
+
+    // 重启 = 替换而非结束：后端不推 stopped（避免 chip 闪断），诊断失效
+    // 必须挂在「新会话起点」上，否则旧会话的事实会一直留着。
+    emit(captured, `${LSP_SESSION_EVENT_PREFIX}${PROJECT}`, {
+      languageId: 'go',
+      status: 'starting',
+    });
     expect(useLspStore.getState().diagnosticsByProject[PROJECT]).toBeUndefined();
     unlisten();
   });
@@ -269,5 +305,92 @@ describe('lspStore diagnostics slice (D3 single write point)', () => {
       diagnostics: [diag(0)],
     });
     expect(useLspStore.getState().diagnosticsByProject[PROJECT]).toBeUndefined();
+  });
+});
+
+/**
+ * M2 会话健康度（design.md §M2）：
+ * 生命周期事件 `lsp-session-{projectPath}` → sessions 切片。
+ * 错误矩阵要求「重复事件幂等（同 phase 重放不闪烁）」。
+ */
+describe('lspStore session health (M2)', () => {
+  let captured: Map<string, Handler>;
+  let unlistens: Mock[];
+
+  beforeEach(() => {
+    captured = new Map();
+    unlistens = [];
+    vi.mocked(listen).mockImplementation(((eventName: string, handler: Handler) => {
+      captured.set(eventName, handler);
+      const unlisten = vi.fn(() => {
+        captured.delete(eventName);
+      });
+      unlistens.push(unlisten);
+      return Promise.resolve(unlisten);
+    }) as typeof listen);
+    useLspStore.setState({ sessions: {}, progressTokens: {}, diagnosticsByProject: {} });
+  });
+
+  it('error 事件写入 error 状态并携带 message（崩溃重试入口的数据源）', async () => {
+    const unlisten = await useLspStore.getState().subscribeToProject(PROJECT);
+    emit(captured, `${LSP_SESSION_EVENT_PREFIX}${PROJECT}`, {
+      languageId: LANG,
+      status: 'error',
+      message: 'gopls exited unexpectedly',
+    });
+
+    const session = useLspStore.getState().sessions[PROJECT]?.[LANG];
+    expect(session?.status).toBe('error');
+    expect(session?.statusMessage).toBe('gopls exited unexpectedly');
+    unlisten();
+  });
+
+  it('同 phase 重复事件幂等：ready 重放不抖动状态', async () => {
+    const unlisten = await useLspStore.getState().subscribeToProject(PROJECT);
+    useLspStore.getState().setSessionState(PROJECT, LANG, { status: 'ready' });
+
+    // 同 phase 重复推送（后端并发路径可能重放）→ 状态不变，不产生中间态
+    emit(captured, `${LSP_SESSION_EVENT_PREFIX}${PROJECT}`, {
+      languageId: LANG,
+      status: 'ready',
+      message: 'running',
+    });
+    emit(captured, `${LSP_SESSION_EVENT_PREFIX}${PROJECT}`, {
+      languageId: LANG,
+      status: 'ready',
+      message: 'running',
+    });
+
+    const after = useLspStore.getState().sessions[PROJECT]?.[LANG];
+    expect(after?.status).toBe('ready');
+    expect(after?.statusMessage).toBe('running');
+    expect(after?.progressPct).toBeUndefined();
+    unlisten();
+  });
+
+  it('error 后收到 starting（重试）→ 会话回到 starting 并清空残留 token', async () => {
+    const unlisten = await useLspStore.getState().subscribeToProject(PROJECT);
+    useLspStore.getState().addProgressToken(PROJECT, LANG, 'stale');
+    emit(captured, `${LSP_SESSION_EVENT_PREFIX}${PROJECT}`, {
+      languageId: LANG,
+      status: 'error',
+      message: 'spawn failed',
+    });
+    expect(useLspStore.getState().sessions[PROJECT]?.[LANG]?.status).toBe('error');
+
+    // 重试入口触发 restart → 新会话 starting 事件
+    emit(captured, `${LSP_SESSION_EVENT_PREFIX}${PROJECT}`, {
+      languageId: LANG,
+      status: 'starting',
+    });
+    expect(useLspStore.getState().sessions[PROJECT]?.[LANG]?.status).toBe('starting');
+    expect(useLspStore.getState().progressTokens[PROJECT]?.[LANG]).toEqual([]);
+    unlisten();
+  });
+
+  it('会话事件名前缀与 Rust 端常量镜像一致（红线 5：单侧改名即红）', () => {
+    // Rust 端 `LSP_SESSION_EVENT_PREFIX` 由 types.rs 单测钉死字面量
+    // `lsp-session-`；本测试钉死前端镜像，两端任何一侧漂移都会红。
+    expect(LSP_SESSION_EVENT_PREFIX).toBe('lsp-session-');
   });
 });

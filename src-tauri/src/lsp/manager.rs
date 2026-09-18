@@ -16,7 +16,8 @@ use super::diag_bus::{DiagnosticBus, DiagnosticEvent};
 use super::plugin::{LspAutoStart, LspPlugin, LspPluginRegistry, LspSettings};
 use super::plugin_manager::LspPluginManager;
 use super::profile::detect_project_profile_with_markers;
-use super::session::{do_send_request, LspSession};
+use super::session::{do_send_request, emit_session_error, LspSession};
+use super::session_factory::{IpcSessionFactory, SessionBuildRequest, SessionFactory};
 use super::session_store::LspSessionStore;
 use super::transport::{IpcTransport, LspTransport};
 use super::types::{LspServerInfo, LspServerLogEntry, LspSessionInfo, LSP_PROFILE_EVENT};
@@ -60,6 +61,16 @@ fn session_key(project_path: &str, language_id: &str) -> String {
     format!("{}:{}", project_path, language_id)
 }
 
+/// 会话关闭语义：决定要不要向状态栏宣告"该语言的会话就此结束"。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum SessionCloseNotice {
+    /// 会话结束（用户停止 / 项目停用 / 应用退出）：推 `stopped`。
+    Announce,
+    /// 会话即将被同 project+language 的新会话**替换**（重启）：静默。
+    /// 详见 [`LspManager::close_session_for_restart`]。
+    Silent,
+}
+
 // ── LspManager ──────────────────────────────────────────────────────────
 
 /// Coordinates LSP session lifecycle, plugin management, and project profiles.
@@ -78,6 +89,10 @@ pub struct LspManager {
     diag_bus: DiagnosticBus,
     /// Tauri AppHandle for event emission.
     app_handle: Mutex<Option<tauri::AppHandle>>,
+    /// Session assembly port (DIP): manager orchestrates lifecycle, the port owns
+    /// transport/session construction. Swappable in tests to cover failure paths
+    /// without a Tauri runtime.
+    session_factory: Arc<dyn SessionFactory>,
     /// Cached language profiles per project path.
     profiles: Mutex<HashMap<String, ProjectLanguageProfile>>,
     /// Generation counter per project path to cancel pending deactivate timers.
@@ -99,6 +114,18 @@ impl LspManager {
     /// Create a manager that schedules work on the given business runtime.
     #[must_use]
     pub fn new(runtime: Arc<AppRuntime>) -> Self {
+        Self::with_session_factory(runtime, Arc::new(IpcSessionFactory))
+    }
+
+    /// Create a manager with an injected session-assembly port.
+    ///
+    /// 测试据此在不依赖 Tauri 运行时（`tauri::AppHandle` 无法常驻 `#[cfg(test)]`）
+    /// 的前提下驱动 `get_or_create_session` 的成功 / 失败路径。
+    #[must_use]
+    pub(crate) fn with_session_factory(
+        runtime: Arc<AppRuntime>,
+        session_factory: Arc<dyn SessionFactory>,
+    ) -> Self {
         let diag_bus = DiagnosticBus::new();
 
         Self {
@@ -107,6 +134,7 @@ impl LspManager {
             plugin_manager: LspPluginManager::new(),
             diag_bus,
             app_handle: Mutex::new(None),
+            session_factory,
             profiles: Mutex::new(HashMap::new()),
             deactivate_gens: Mutex::new(HashMap::new()),
             deactivate_stop_secs: Mutex::new(DEFAULT_DEACTIVATE_STOP_SECS),
@@ -357,15 +385,17 @@ impl LspManager {
                 ))
             })?;
 
+        // AppHandle 不再由 manager 强制：装配端口自行决定是否需要它
+        //（生产实现缺失时报 "AppHandle not set"，行为与既有错误契约一致）。
         let app_handle = self
             .app_handle
             .lock()
             .map_err(|e| AppError::Lsp(e.to_string()))?
-            .clone()
-            .ok_or_else(|| AppError::Lsp("AppHandle not set".to_string()))?;
+            .clone();
 
         let diag_bus = Arc::new(self.diag_bus.clone());
-        let transport: Arc<dyn LspTransport> = Arc::new(IpcTransport::new(app_handle.clone()));
+        // 先取 transport：装配失败时还要靠它把 error 事件送到前端。
+        let transport = self.session_factory.transport(app_handle.as_ref())?;
         let exec_target = self.require_project_exec_target(project_path)?;
         // For document-scoped languages (TypeScript family), root the session at
         // the nearest TS project instead of the project root, so servers like
@@ -376,16 +406,29 @@ impl LspManager {
             language_id,
         );
 
-        let session = LspSession::new(
-            &plugin,
-            project_path,
-            &workspace_root,
+        let session = match self.session_factory.build(SessionBuildRequest {
             app_handle,
+            plugin: &plugin,
+            project_path,
+            workspace_root: &workspace_root,
             diag_bus,
-            transport,
+            transport: Arc::clone(&transport),
             exec_target,
-        )
-        .map_err(|e| AppError::Lsp(e.to_string()))?;
+        }) {
+            Ok(s) => s,
+            // 创建失败（spawn / install / initialize）：`starting` 可能已发（init 失败
+            // 时）也可能未发（spawn 失败时）——统一补发 `error`，前端据此展示
+            // message + 重试入口（design.md M2 错误矩阵：启动异常 → failed + 重试）。
+            Err(e) => {
+                emit_session_error(
+                    transport.as_ref(),
+                    project_path,
+                    language_id,
+                    &e.to_string(),
+                );
+                return Err(e);
+            }
+        };
 
         // Defensive: unreachable while the gate is held (no other thread can
         // be creating this key), but if a session appeared anyway, drop the
@@ -609,12 +652,47 @@ impl LspManager {
     }
 
     /// Close an LSP session for a project and language.
+    ///
+    /// 宣告结束：前端收到 `stopped` 即清该项目的诊断副本（design.md M1 矩阵）。
     pub fn close_session(&self, project_path: &str, language_id: &str) -> Result<(), AppError> {
+        self.close_session_impl(project_path, language_id, SessionCloseNotice::Announce);
+        Ok(())
+    }
+
+    /// 重启专用关闭：落终态但**不宣告** `stopped`。
+    ///
+    /// 第一性原理：`stopped` 是"该语言的会话就此结束"的宣告；而重启是**替换**——
+    /// 该语言的服务从未真正缺席。若中途宣告结束：① 状态栏 chip 被过滤掉（stopped
+    /// 不展示）再被 starting 拉起，用户看到闪断（jdtls 重启可达数十秒）；② 前端
+    /// 把诊断整块清空，出现"旧会话已清、新会话未报"的空窗。终态仍必须落：reader
+    /// 线程随后退出不得被误判为崩溃（否则闪 error）。
+    pub fn close_session_for_restart(
+        &self,
+        project_path: &str,
+        language_id: &str,
+    ) -> Result<(), AppError> {
+        self.close_session_impl(project_path, language_id, SessionCloseNotice::Silent);
+        Ok(())
+    }
+
+    fn close_session_impl(
+        &self,
+        project_path: &str,
+        language_id: &str,
+        notice: SessionCloseNotice,
+    ) {
         let key = session_key(project_path, language_id);
         let session = self.session_store.close_session(&key);
         if let Some(mut s) = session {
-            s.transport
-                .push_session_event(project_path, language_id, "stopped", None, None);
+            match notice {
+                SessionCloseNotice::Announce => {
+                    s.close();
+                }
+                // 静默替换：相位落终态（reader 退出据此静默），事件刻意不发。
+                SessionCloseNotice::Silent => {
+                    s.close_silently();
+                }
+            }
             let pp = project_path.to_string();
             let lid = language_id.to_string();
             self.runtime.spawn_blocking(move || {
@@ -632,7 +710,6 @@ impl LspManager {
                 log::info!("[LSP] Closed session: {pp}:{lid}");
             });
         }
-        Ok(())
     }
 
     /// Close every LSP session belonging to `project_path`.
@@ -644,9 +721,8 @@ impl LspManager {
         for lid in &languages {
             let key = session_key(project_path, lid);
             if let Some(session) = self.session_store.close_session(&key) {
-                session
-                    .transport
-                    .push_session_event(project_path, lid, "stopped", None, None);
+                // 优雅关闭（项目停用）：落终态 + 发 `stopped`（同 close_session）。
+                session.close();
                 let _ = session.send_notification_raw("shutdown", serde_json::json!({}));
                 sessions.push(session);
             }
@@ -852,18 +928,6 @@ impl LspManager {
         }
     }
 
-    /// Restart every active session for a project (stop then re-create).
-    pub fn restart_all_sessions_for_project(&self, project_path: &str) -> Result<(), AppError> {
-        let languages = self
-            .session_store
-            .session_language_ids_for_project(project_path);
-        for lid in languages {
-            let _ = self.close_session(project_path, &lid);
-            self.get_or_create_session(project_path, &lid, None)?;
-        }
-        Ok(())
-    }
-
     /// Get cached server capabilities for a session.
     pub fn get_capabilities(&self, project_path: &str, language_id: &str) -> Option<Value> {
         let key = session_key(project_path, language_id);
@@ -897,6 +961,9 @@ impl Default for LspManager {
 mod tests {
     use super::*;
     use crate::lsp::plugin::CustomLspServerConfig;
+    use crate::lsp::session::lifecycle::Lifecycle;
+    use crate::lsp::session::status::LspSessionStatus;
+    use crate::lsp::session::testing::RecordingTransport;
 
     #[test]
     fn test_session_key() {
@@ -1176,5 +1243,222 @@ mod tests {
         assert!(manager
             .get_or_create_session("/test/project", "rust", None)
             .is_err());
+    }
+
+    // ── M2 会话健康度：停止路径（design.md M2：进程退出 → stopped）──
+
+    /// 测试用会话身份（store 键 + 事件断言共用，避免散落字面量漂移）。
+    const TEST_PROJECT: &str = "/tmp/proj";
+    const TEST_LANG: &str = "go";
+    const TEST_SERVER: &str = "gopls";
+
+    /// 本项目桩会话（复用 session 域共享夹具，字段变更只改夹具一处）。
+    fn stub_session(transport: Arc<dyn LspTransport>) -> LspSession {
+        crate::lsp::session::testing::stub_session(transport, TEST_PROJECT, TEST_LANG, TEST_SERVER)
+    }
+
+    /// 构造一个无真实进程的 go 会话并插入 store（生命周期初始 Ready）。
+    ///
+    /// 返回生命周期句柄：会话被 close 路径接管（move 进 spawn_blocking）后，外部
+    /// 只能靠共享 Arc 观察「是否已落终态」，这是关闭路径的关键不变量。
+    fn insert_test_session(
+        manager: &LspManager,
+        transport: Arc<dyn LspTransport>,
+    ) -> Arc<Lifecycle> {
+        let session = stub_session(transport);
+        let lifecycle = Arc::clone(&session.lifecycle);
+        manager
+            .session_store
+            .insert(session_key(TEST_PROJECT, TEST_LANG), session);
+        lifecycle
+    }
+
+    /// 项目停用（优雅关闭）必须落终态并推 `stopped` 事件（前端据此清诊断）。
+    #[test]
+    fn close_sessions_for_project_emits_stopped() {
+        let manager = LspManager::new_default();
+        let transport = Arc::new(RecordingTransport::default());
+        let lifecycle =
+            insert_test_session(&manager, Arc::clone(&transport) as Arc<dyn LspTransport>);
+
+        manager.close_sessions_for_project(TEST_PROJECT);
+
+        assert!(
+            transport.has(TEST_PROJECT, TEST_LANG, "stopped"),
+            "close_sessions_for_project 必须推 stopped 事件: {:?}",
+            transport.take()
+        );
+        assert!(
+            lifecycle.status(TEST_SERVER) == LspSessionStatus::Stopped,
+            "close_sessions_for_project 必须先落终态：reader 退出据此静默，否则优雅关闭会闪错误"
+        );
+    }
+
+    /// 单语言关闭（`lsp_restart_session` / `lsp_stop_session` / 状态栏崩溃重试按钮
+    /// 都走这条）：与项目停用同构 —— 落终态 + 推 `stopped`。
+    #[test]
+    fn close_session_emits_stopped_and_marks_closed_terminal() {
+        let manager = LspManager::new_default();
+        let transport = Arc::new(RecordingTransport::default());
+        let lifecycle =
+            insert_test_session(&manager, Arc::clone(&transport) as Arc<dyn LspTransport>);
+
+        manager.close_session(TEST_PROJECT, TEST_LANG).unwrap();
+
+        assert!(
+            transport.has(TEST_PROJECT, TEST_LANG, "stopped"),
+            "close_session 必须推 stopped 事件: {:?}",
+            transport.take()
+        );
+        assert!(
+            lifecycle.status(TEST_SERVER) == LspSessionStatus::Stopped,
+            "close_session 必须先落终态，否则 reader 线程随后退出会被误判为崩溃（error）"
+        );
+        assert!(
+            !manager
+                .session_store
+                .is_alive(&session_key(TEST_PROJECT, TEST_LANG)),
+            "close_session 必须把会话从 store 摘除（否则 snapshot 会把已关闭会话报成 error）"
+        );
+    }
+
+    /// 重启路径（`lsp_restart_session` / Restart All / 状态栏崩溃重试）走静默关闭：
+    /// **不得**推 `stopped`。
+    ///
+    /// 第一性原理：`stopped` 是"该语言的会话就此结束"的宣告，前端据此清诊断；
+    /// 而重启是**替换**——该语言的服务从未真正缺席。若中途宣告结束，状态栏 chip
+    /// 会先被过滤掉（stopped 不展示）再被 starting 拉起，用户看到闪断（jdtls 重启
+    /// 可达数十秒）。静默关闭仍必须落终态：reader 线程随后退出不得被误判为崩溃。
+    #[test]
+    fn restart_close_is_silent_but_still_terminal() {
+        let manager = LspManager::new_default();
+        let transport = Arc::new(RecordingTransport::default());
+        let lifecycle =
+            insert_test_session(&manager, Arc::clone(&transport) as Arc<dyn LspTransport>);
+
+        manager
+            .close_session_for_restart(TEST_PROJECT, TEST_LANG)
+            .unwrap();
+
+        assert!(
+            transport.take().is_empty(),
+            "重启关闭不得产生任何生命周期事件: {:?}",
+            transport.take()
+        );
+        assert_eq!(
+            lifecycle.status(TEST_SERVER),
+            LspSessionStatus::Stopped,
+            "静默关闭仍必须落终态（否则 reader 退出会被误判为崩溃 → 闪错误）"
+        );
+        assert!(
+            !manager
+                .session_store
+                .is_alive(&session_key(TEST_PROJECT, TEST_LANG)),
+            "静默关闭仍必须把会话从 store 摘除"
+        );
+    }
+
+    // ── 装配端口（DIP）：manager 只编排，装配细节可注入 ──
+
+    /// 用桩装配端口建一个不依赖 Tauri 运行时的 manager（已绑定项目 exec target）。
+    fn manager_with_factory(factory: Arc<dyn SessionFactory>) -> LspManager {
+        let manager = LspManager::with_session_factory(AppRuntime::shared_default(), factory);
+        manager.set_project_exec_target(
+            TEST_PROJECT,
+            crate::common::executor::factory::ExecTarget::Local,
+        );
+        manager
+    }
+
+    /// 装配端口桩：transport 用 recording，`build` 固定失败
+    /// （等价于 spawn / auto-install / initialize 失败）。
+    struct FailingSessionFactory {
+        transport: Arc<RecordingTransport>,
+    }
+
+    impl SessionFactory for FailingSessionFactory {
+        fn transport(
+            &self,
+            _: Option<&tauri::AppHandle>,
+        ) -> Result<Arc<dyn LspTransport>, AppError> {
+            Ok(Arc::clone(&self.transport) as Arc<dyn LspTransport>)
+        }
+
+        fn build(&self, _: SessionBuildRequest<'_>) -> Result<LspSession, AppError> {
+            Err(AppError::Lsp("Failed to spawn gopls".to_string()))
+        }
+    }
+
+    /// AC2「启动异常 → failed + 重试」：装配失败必须补发 error 事件并把错误上抛。
+    ///
+    /// 该路径原先零覆盖 —— `LspSession::new` 需要真实 `tauri::AppHandle`，
+    /// 单测无法触达；装配端口让这段编排逻辑脱离 Tauri 运行时受测。
+    #[test]
+    fn session_creation_failure_emits_error_event() {
+        let transport = Arc::new(RecordingTransport::default());
+        let manager = manager_with_factory(Arc::new(FailingSessionFactory {
+            transport: Arc::clone(&transport),
+        }));
+
+        let result = manager.get_or_create_session(TEST_PROJECT, TEST_LANG, None);
+
+        assert!(
+            matches!(result, Err(AppError::Lsp(_))),
+            "装配失败必须把错误原样上抛: {result:?}"
+        );
+        let events = transport.take();
+        assert!(
+            events
+                .iter()
+                .any(|(pp, lid, status, msg, _)| pp == TEST_PROJECT
+                && lid == TEST_LANG
+                && status == "error"
+                // message 即前端 chip 上展示的文案：必须携带失败原因（非空泛错误）。
+                && msg.as_deref().is_some_and(|m| m.contains("Failed to spawn gopls"))),
+            "装配失败必须经注入的 transport 发 error（状态栏重试入口的数据源）: {events:?}"
+        );
+    }
+
+    /// 装配端口桩：`build` 成功返回桩会话（验证注入端口下编排语义不变）。
+    struct StubSessionFactory {
+        transport: Arc<RecordingTransport>,
+    }
+
+    impl SessionFactory for StubSessionFactory {
+        fn transport(
+            &self,
+            _: Option<&tauri::AppHandle>,
+        ) -> Result<Arc<dyn LspTransport>, AppError> {
+            Ok(Arc::clone(&self.transport) as Arc<dyn LspTransport>)
+        }
+
+        fn build(&self, request: SessionBuildRequest<'_>) -> Result<LspSession, AppError> {
+            Ok(stub_session(request.transport))
+        }
+    }
+
+    /// 装配成功：会话登记进 store，且不发 error（编排路径与具体装配实现解耦）。
+    #[test]
+    fn session_creation_success_registers_session_from_injected_factory() {
+        let transport = Arc::new(RecordingTransport::default());
+        let manager = manager_with_factory(Arc::new(StubSessionFactory {
+            transport: Arc::clone(&transport),
+        }));
+
+        let key = manager
+            .get_or_create_session(TEST_PROJECT, TEST_LANG, None)
+            .expect("桩装配应当成功");
+
+        assert_eq!(key, session_key(TEST_PROJECT, TEST_LANG));
+        assert!(
+            // 桩会话无 reader，故用「已登记」而非 `is_alive`（后者语义是 reader 存活）。
+            manager.session_store.with_session(&key, |_| ()).is_some(),
+            "装配成功的会话必须登记进 store"
+        );
+        assert!(
+            !transport.has(TEST_PROJECT, TEST_LANG, "error"),
+            "成功路径不得发 error 事件: {:?}",
+            transport.take()
+        );
     }
 }

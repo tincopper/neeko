@@ -142,8 +142,19 @@ setProjectDiagnostics(projectPath: string, uri: string, diagnostics: LspDiagnost
 |---|---|
 | 事件 payload 解析失败 | 丢弃 + console.warn（单事件损坏不污染状态） |
 | LS 推送空 diagnostics 数组 | 整体替换为空（清空该 uri，规范语义） |
-| 会话结束 / 项目移除 | 对应 projectPath 键整体清除 |
+| **会话边界**（终态 / 新会话起点）| 对应 projectPath 键整体清除（见下方修订） |
 | 多项目并发 | diagnosticsByProject 按键隔离（#14 同类门控：跨项目不串） |
+
+**会话边界清诊断（2026-09-18 修订）**：原表述「会话结束 → 清除」在引入
+error/stopped 二分后不完整。失效判据改为**会话边界**两侧都清：
+
+| 边界 | 触发状态 | 理由 |
+|---|---|---|
+| 终态 | `error`（崩溃）/ `stopped`（结束） | 会话不再可能推送；留着就是永久陈旧波浪线（死进程不会澄清） |
+| 新会话起点 | `starting` / `initializing` | 重启是**替换**而非结束（后端重启路径刻意不推 `stopped`，避免 chip 闪断），旧会话的诊断事实必须在新会话起点失效，否则"旧已清/新未报"的空窗变成永久残留 |
+
+诊断事件无 languageId → 清除粒度是 projectPath 整键（多语言项目下会连带清掉同项目
+其它语言的诊断，等其重新 publish；已知边界，见「不做清单」）。
 
 **投影接线（2026-09-18 修正）**：
 - 事实层（本任务新增的 store 切片）不变：`diagnosticsByProject` 是**权威副本**（I1）。
@@ -165,6 +176,57 @@ setProjectDiagnostics(projectPath: string, uri: string, diagnostics: LspDiagnost
 
 ### M2 会话健康度可观测（R2 / AC2）
 
+**实现契约（2026-09-18 定稿，替换下方草案）**：不新建并行切片，直接复用既有
+`LspSessionState`（`src/features/lsp/store/lspStore.ts`）——它已是「会话状态」的公开
+状态接口；另起 `LspSessionHealth{phase: starting|running|failed|stopped}` 会造成同一
+事实的第二套词表（`running` vs `ready`、`failed` vs `error`），前端消费面要同时理解
+两套。词表以 Rust `LspSessionStatus::as_str()` 为单一事实源：
+
+| Rust 相位 | 状态串 | 语义 |
+|---|---|---|
+| `Starting` | `starting` | 已 spawn，等 initialize 响应 |
+| `Initializing` | `initializing` | initialize 已响应，等 initialized |
+| `Ready` | `ready` | 可服务（前端在进度 token 非空时展示为 `indexing`——**前端派生态**，服务端不存在该相位） |
+| `Error(msg)` | `error` | 启动异常**或**意外退出（崩溃），带 message + 重试入口 |
+| `Stopped` | `stopped` | 会话**结束**（用户停止 / 项目停用） |
+
+**数据源**：Rust 会话生命周期事件 → 前缀常量 `lsp-session-{projectPath}`
+（`lsp/types.rs` `LSP_SESSION_EVENT_PREFIX` + 前端镜像 `src/shared/events.ts`；两端
+各自钉死字面量的测试互为护栏——红线 5）。
+
+**错误矩阵（2026-09-18 修订：区分「结束 / 崩溃 / 重启」三种退出）**：
+| 条件 | 行为 |
+|---|---|
+| 启动异常（spawn / auto-install / initialize 失败） | `error` + message（chip 显示文案 + 重试按钮，复用 `lspRestartSession` 通道） |
+| 进程意外退出（reader 退出且未曾主动关闭） | `error` + `{server} exited unexpectedly`（AC2 崩溃可观测） |
+| Neeko 主动关闭（停止 / 项目停用） | **先落终态**再推 `stopped`——顺序不可交换，否则 reader 退出会被判成崩溃（"关闭后闪错误"） |
+| 重启（Restart / Restart All / 崩溃重试） | 关闭阶段**静默**（不推 `stopped`）→ 序列 `…→starting`：重启是**替换**而非结束，宣告终态会让 chip 被过滤后又被拉起（闪断，jdtls 可达数十秒） |
+| reader 线程 panic | 兜底按崩溃发 `error`，panic 载荷写日志（应用无全局 panic hook，载荷丢弃则打包后无处可查） |
+| 重复事件 | 幂等：终态吸收，`close` / `on_reader_exit` 仅首次返回 true → 不重复发事件 |
+
+**实现要点（单一真相）**：
+- `lsp/session/lifecycle.rs::Lifecycle` = 会话状态**唯一真相**：reader 线程与关闭路径
+  是写者，快照 / 存活判定 / 事件发射是读者。此前是 `LspSession.status`（构造后永不
+  更新的字段）+ `closing: AtomicBool`（第二套判定）+ `snapshot()` 轮询
+  `JoinHandle::is_finished()`（第三套反推）三份表示互相补偿，且**无法区分**两种
+  "reader 已结束"（优雅关闭 vs 进程崩溃）。
+- `lsp/session_factory.rs::SessionFactory` = 会话装配端口（DIP）：manager 只编排
+  （gate → 复用判定 → 装配 → 文档重放 → 登记 → 事件），transport / session 构造由
+  注入实现负责。收益：① AC2 的失败发射路径可在**无 Tauri 运行时**下单测（`AppHandle`
+  无法常驻 `#[cfg(test)]`）；② `transport.rs` 承诺的「WebSocket 替换 IPC 而不改会话
+  逻辑」有了实际替换点。
+- `lsp/session/testing.rs` = 会话域测试夹具（桩会话 + recording transport），
+  instance / manager 两个测试模块共用，取代此前各自维护的 18 字段字面量副本。
+
+**测试点**：`lifecycle.rs` 相位机单测（推进 / 终态吸收 / 崩溃幂等 / `Error` 归一 /
+`Indexing` 归一）；`instance.rs`（相位与事件同源、reader 退出三态、快照三态、
+panic 载荷可读）；`manager.rs`（关闭语义 宣告 vs 静默、装配失败发 `error`、装配成功
+登记）；前端 store（幂等 + 会话边界清诊断）；status-bar chip 三态（busy / error+重试 /
+ready）。
+
+<details>
+<summary>原草案（已由上方实现契约替换，保留决策痕迹）</summary>
+
 **签名**：
 ```ts
 // lspStore（或独立 sessionHealth 切片）
@@ -182,6 +244,8 @@ diag_bus 既有模式二选一，事件名常量化进 events.ts——红线 5�
 链路）；进程退出 → stopped；重复事件幂等（同 phase 重放不闪烁）。
 
 **测试点**：Rust 钩子触发矩阵单测；前端 store 幂等单测；status-bar item 组件测试。
+
+</details>
 
 ### M3 codeAction 通道（R3 / AC3）
 
@@ -236,6 +300,11 @@ CM gutter/行内灯泡为可选增强（实现期评估，不做承诺）。
 - ❌ rename / organizeImports / refactoring 等 source.* 命令全量接入（M3 只做
   quickfix + applyEdit 传输；source 操作留扩展点不做承诺）
 - ❌ 自研补全 UI / 诊断 UI 替换 lsp-client 内建渲染（只做包装与接线）
+- ❌ 诊断按**语言**粒度失效（需 `publishDiagnostics` 事件带 languageId：传输层当前
+  只有 `push_diagnostics(project_path, uri, diagnostics)`，无 languageId。多语言项目下
+  一条语言的会话边界会清掉同项目其它语言的诊断，等其重新 publish 才恢复——已知边界，
+  根治留扩展点）
+- ❌ 全局 panic hook / 崩溃上报（M2 只在 reader 线程 catch_unwind 内落日志）
 
 ## 4. 风险与缓解
 
