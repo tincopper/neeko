@@ -28,8 +28,10 @@ lsp-client 补全接受已原子应用 `additionalTextEdits`（自动导入核�
 
 ## Acceptance Criteria
 
-- [ ] AC1（R1）：打开含类型错误的文件 → 编辑器 squiggle（既有）+ 问题列表显示该诊断
-      （severity 分组、点击跳转对应行）；无诊断时列表空态
+- [x] AC1（R1）：打开含类型错误的文件 → 编辑器 squiggle（既有）+ 问题列表显示该诊断
+      （severity 分组、点击跳转对应行）；无诊断时列表空态（2026-09-18 `d8d44697` 落地：
+      Problems 面板 + lspStore 诊断副本 + code 贯通 + 信封修复 + lspDiagnosticsProjection
+      重放器——波浪线消失根因为 reconfigure 丢弃 lint 渲染器，已修）
 - [ ] AC2（R2）：gopls/jdt.ls 启动、就绪、崩溃三态在 status-bar 可见；崩溃含重试入口
 - [ ] AC3（R3）：Go 文件输入未导入符号产生诊断 → 诊断行 quickfix「Add import」→
       接受后 import 落块、诊断消失

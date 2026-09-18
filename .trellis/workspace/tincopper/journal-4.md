@@ -1473,3 +1473,47 @@ adapter_binary_override 改为读取时按 AdapterKind::from_config_type 归一�
 ### Next Steps
 
 - None - task complete
+
+
+## Session 217: LSP 诊断权威副本与可重建投影
+
+**Date**: 2026-09-18
+**Task**: LSP 诊断权威副本与可重建投影
+**Branch**: `main`
+
+### Summary
+
+定位「编辑器波浪线出现后消失（Problems 面板正常）」根因：@uiw/react-codemirror 在 extensions 身份变化时 dispatch StateEffect.reconfigure，而 @codemirror/state 的 reconfigure 会整体替换 base，丢弃 @codemirror/lint 经 appendConfig 惰性安装的渲染扩展；触发源是 extensions 依赖混入活状态（saveKeymap←currentContent/isDirty、lspKeymap←每次渲染新建的 tab 对象），每次按键都重建整个扩展世界。从第一性原理确立三条不变量——I1 权威副本唯一归 lspStore、I2 投影可重建、I3 配置纯净——新增 lspDiagnosticsProjection（位于 base 的镜像 StateField + 微任务重放 reconciler）并修正三个 hook 的依赖；顺带收敛 cmd+click 的 uri 派生到唯一派生点、移除 M0 探针与逐事件日志、@codemirror/lint 归位为运行时依赖。门禁 eslint 0 error / 446 文件 3855 passed / cargo test 1357 passed。
+
+### Main Changes
+
+- **根因三层**：机制=reconfigure 丢弃 appendConfig 追加的 lint 渲染扩展；触发=extensions 身份被活文档/活 tab 状态污染；设计=诊断渲染扩展的存续被默认外包给库的隐式副作用安装，且 D3「同源⇒天然一致」是错误推论（同源只保证初始一致）
+- **两条实证反直觉结论**：`Transaction.reconfigured` 只是 `startState.config != state.config`，对 `appendConfig` 同样为 true（用作判据会自己触发自己，实测首推/重放各多一次事务）；`diagnosticCount` 是 lint 合并后的 range 数，不能与诊断数组长度比对
+- **新增 `src/features/lsp/hooks/lspDiagnosticsProjection.ts`**：模块级单例 `diagnosticsMirror`（StateField 位于 base，故 reconfigure 存活；随 docChanged 按 assoc +1/-1 映射并丢弃塌缩项以对齐 lint 语义）+ `reconciler`（仅 `StateEffect.reconfigure` 且镜像非空时在微任务重放 setDiagnostics，含 isViewDestroyed 守卫与 pending 合并）；模块覆盖率 100% 语句/分支/函数/行
+- **配置纯净 I3**：`useEditorSave` 的 saveKeymap 改为按键时从 store 读内容与脏标记（顺带删掉 `currentContent` 入参、`setIsSaving` 改 try/finally 防卡死）；`useLspNavigation` 的 lspKeymap 去掉 `tab` 对象依赖（派生 `lspDocumentUri` 标量）；`useCmdClickGoToDefinition` 改显式标量入参并删除死 lint 抑制
+- **装配**：`useEditorExtensions` 在稳定段装配投影（不随 lspClientExt 挂载/释放起落），移除 M0 诊断探针
+- **顺带修复**：cmd+click 的文档 uri 收敛到唯一派生点 `resolveLspDocumentUri`（原先自行回退伪造 `file://jdt:/…`）；`@codemirror/lint` 从 devDependencies 归位到 dependencies（已被生产代码 import）
+- **测试**：新增 `lspDiagnosticsProjection.test.ts`（9 例：推送渲染 / reconfigure 后自愈 / 位置映射与塌缩丢弃 / 空镜像不重放 / 连续重建合并 / 推送本身不触发 / 重放前被清空 / 销毁守卫）；`useEditorExtensions.test.ts`（装配契约 + 真实装配段端到端，注释掉装配行即复现用户症状 `expected null not to be null`）；`saveKeymap` / `lspKeymap` 身份稳定回归
+- **文档**：design.md 重写 M1 真实根因与 I1/I2/I3 + 不做清单补「不挂第二套 linter」；frontend quality-guidelines 新增禁止模式 10（CodeMirror 扩展身份不稳定）
+- **审查发现（已修）**：装配行零覆盖（删掉该行全部测试仍全绿 → 已补端到端用例并验证 Red）；`useCmdClickGoToDefinition` 的死 lint 抑制（实测移除后 eslint 仍干净）；投影 line 110 分支未覆盖
+- **审查发现（未修，待决策）**：分屏 Ctrl+S 串写——`onSave(content)` 不传 `tabId`，`saveFile` 落到 tab 空间 `activeTabId`，在非 active 面板保存会把该面板内容写入 active tab（既有缺陷，需放宽 `onFileSave` 类型 + 补分屏用例）
+- 已在 design.md 记录的边界：split 同 uri 两视图（lsp-client DefaultWorkspace 单视图模型）、镜像生命周期 = EditorView
+
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `d8d44697` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
