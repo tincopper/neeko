@@ -16,6 +16,23 @@ pub struct LspPluginRegistry {
     ext_claimants: HashMap<String, Vec<String>>,
 }
 
+/// 一条检测标记：`marker` 文件存在 ⇒ 本项目可能是 `language_id`（由
+/// `server_name` 服务），**除非** `suppressed_by` 中任一文件同时存在
+/// （更特定的同族语言接管，如 `tsconfig.json` 压制 `javascript`）。
+///
+/// 结构化而非元组：压制规则必须随标记一起传递，否则引擎侧又会退化成按语言名分支。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DetectionMarker {
+    /// 触发检测的根文件（如 `Cargo.toml`）。
+    pub marker: String,
+    /// 该标记指示的语言。
+    pub language_id: String,
+    /// 服务该语言的二进制名（用于 profile 展示 / 预热）。
+    pub server_name: String,
+    /// 存在即压制本条目的文件列表（声明式规则，来自插件数据）。
+    pub suppressed_by: Vec<String>,
+}
+
 impl LspPluginRegistry {
     /// Empty registry (tests / custom-only setups).
     #[must_use]
@@ -163,26 +180,19 @@ impl LspPluginRegistry {
     /// Returns `(marker_filename, language_id, server_name)` sorted by
     /// plugin `detect_priority` then marker name.
     #[must_use]
-    pub fn detection_markers(&self) -> Vec<(String, String, String)> {
+    pub fn detection_markers(&self) -> Vec<DetectionMarker> {
         let mut plugins: Vec<&LspPlugin> = self.plugins.values().collect();
         plugins.sort_by_key(|p| (p.detect_priority, p.language_id.as_str()));
 
         let mut out = Vec::new();
         for p in plugins {
             for m in &p.root_markers {
-                out.push((m.clone(), p.language_id.clone(), p.server_binary.clone()));
-            }
-        }
-        out
-    }
-
-    /// Custom root markers only (compat helper).
-    #[must_use]
-    pub fn custom_root_markers(&self) -> Vec<(String, String, String)> {
-        let mut out = Vec::new();
-        for p in self.plugins.values().filter(|p| p.is_custom) {
-            for m in &p.root_markers {
-                out.push((m.clone(), p.language_id.clone(), p.server_binary.clone()));
+                out.push(DetectionMarker {
+                    marker: m.clone(),
+                    language_id: p.language_id.clone(),
+                    server_name: p.server_binary.clone(),
+                    suppressed_by: p.detect_suppressed_by.clone(),
+                });
             }
         }
         out
@@ -234,7 +244,7 @@ mod tests {
         assert!(registry
             .detection_markers()
             .iter()
-            .any(|(m, lang, _)| m == "buf.yaml" && lang == "protobuf"));
+            .any(|m| m.marker == "buf.yaml" && m.language_id == "protobuf"));
     }
 
     #[test]
@@ -243,15 +253,15 @@ mod tests {
         let markers = registry.detection_markers();
         assert!(markers
             .iter()
-            .any(|(m, lang, _)| m == "Cargo.toml" && lang == "rust"));
+            .any(|m| m.marker == "Cargo.toml" && m.language_id == "rust"));
         assert!(markers
             .iter()
-            .any(|(m, lang, _)| m == "go.mod" && lang == "go"));
+            .any(|m| m.marker == "go.mod" && m.language_id == "go"));
         // Priority: go (5) before rust (10)
-        let go_idx = markers.iter().position(|(m, _, _)| m == "go.mod").unwrap();
+        let go_idx = markers.iter().position(|m| m.marker == "go.mod").unwrap();
         let rust_idx = markers
             .iter()
-            .position(|(m, _, _)| m == "Cargo.toml")
+            .position(|m| m.marker == "Cargo.toml")
             .unwrap();
         assert!(go_idx < rust_idx);
     }

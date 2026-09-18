@@ -8,8 +8,8 @@ pub mod builtins;
 pub mod registry;
 pub mod types;
 
-pub use registry::LspPluginRegistry;
+pub use registry::{DetectionMarker, LspPluginRegistry};
 pub use types::{
     CustomLspServerConfig, LspAutoStart, LspExtensionConflict, LspExtensionMapEntry,
-    LspInstallMethod, LspPlugin, LspServerTuning, LspSettings,
+    LspInstallMethod, LspPlugin, LspServerTuning, LspSettings, RootScope,
 };

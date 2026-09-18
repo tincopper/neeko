@@ -163,6 +163,47 @@ impl Default for LspServerTuning {
     }
 }
 
+/// 会话根的解析范围。
+///
+/// 第一性原理：**是否按文档定根、按哪些 marker 定根**是"语言服务器怎么找自己的
+/// 工程"的特性，不是会话编排的知识。放进插件数据后，`session::root` 才能保持语言
+/// 无关（新增语言只加数据、不改代码 —— 与 `tuning` 同构）。
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub enum RootScope {
+    /// 会话根 = 项目根（默认）。服务器按自己的 markers 找工程。
+    #[default]
+    ProjectScoped,
+    /// 会话根 = 从打开文档向上找到的、含任一 `markers` 的**最近**目录（VS Code 语义）。
+    ///
+    /// 自带 markers 而**不复用** `root_markers`：后者回答"这个项目用什么语言"
+    /// （`typescript` 插件只认 `tsconfig.json`），这里回答"TS/JS 工程根在哪" ——
+    /// `typescript-language-server` 需要含 `package.json` 的目录才能解析到
+    /// `node_modules/typescript`。复用会让没有 tsconfig 的子包被误判回项目根。
+    DocumentScoped {
+        /// 向上寻找的工程根 marker（任一存在即认定为根）。
+        markers: Vec<String>,
+    },
+}
+
+impl RootScope {
+    /// 便捷构造：`DocumentScoped` 自带 markers。
+    #[must_use]
+    pub fn document_scoped(markers: &[&str]) -> Self {
+        Self::DocumentScoped {
+            markers: markers.iter().map(|m| (*m).to_string()).collect(),
+        }
+    }
+
+    /// 文档定根时要向上寻找的 marker；`None` = 始终使用项目根。
+    #[must_use]
+    pub fn walk_markers(&self) -> Option<&[String]> {
+        match self {
+            Self::ProjectScoped => None,
+            Self::DocumentScoped { markers } => Some(markers),
+        }
+    }
+}
+
 /// Descriptor for a language server plugin (built-in or custom).
 ///
 /// Built-ins are produced by modules under [`super::builtins`]; customs via
@@ -214,6 +255,15 @@ pub struct LspPlugin {
     /// 服务器特有的会话调优（探测策略 / 环境注入）。通用插件保持 `Default`；
     /// 仅声明与默认不同的行为，session 层据此决策而不按语言名分支。
     pub tuning: LspServerTuning,
+    /// 会话根解析范围（默认 `ProjectScoped` = 项目根；自定义 LSP 行为零变化）。
+    /// session 层据此决策，不按语言名分支。
+    pub root_scope: RootScope,
+    /// 检测压制标记：这些文件**同时存在**时本插件不参与候选（更特定的同族语言接管）。
+    ///
+    /// 例：`javascript` 被 `tsconfig.json` 压制 —— package.json + tsconfig 说明该
+    /// 工程是 TS。**不含 `jsconfig.json`**：它是 JS 工程配置，压制 javascript 是
+    /// 语义错误（单测 `jsconfig_does_not_suppress_javascript` 钉住）。
+    pub detect_suppressed_by: Vec<String>,
 }
 
 impl LspPlugin {
@@ -241,7 +291,23 @@ impl LspPlugin {
             extended_client_capabilities: None,
             client_capabilities: None,
             tuning: LspServerTuning::default(),
+            root_scope: RootScope::default(),
+            detect_suppressed_by: Vec::new(),
         }
+    }
+
+    /// 声明会话根解析范围（默认项目根）。
+    #[must_use]
+    pub fn with_root_scope(mut self, scope: RootScope) -> Self {
+        self.root_scope = scope;
+        self
+    }
+
+    /// 声明检测压制标记（见 [`LspPlugin::detect_suppressed_by`]）。
+    #[must_use]
+    pub fn with_detect_suppressed_by(mut self, markers: &[&str]) -> Self {
+        self.detect_suppressed_by = markers.iter().map(|s| (*s).to_string()).collect();
+        self
     }
 
     /// Set root marker files for project detection.
@@ -336,6 +402,8 @@ impl LspPlugin {
             extended_client_capabilities: None,
             client_capabilities: None,
             tuning: LspServerTuning::default(),
+            root_scope: RootScope::default(),
+            detect_suppressed_by: Vec::new(),
         }
     }
 }

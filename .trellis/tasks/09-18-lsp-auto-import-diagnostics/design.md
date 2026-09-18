@@ -107,6 +107,43 @@ Ask/Auto/Never（IDEA 三态，industry-survey §4）作用于「接受补全时
 
 ---
 
+### 1.6 语言差异的归属——数据而非分支（2026-09-18 收敛）
+
+R5 要求"新 LS 接入即自动获得全部能力"，这意味着**语言差异不能出现在通用模块里**。
+第一性原理：通用模块（`manager` / `session` / `profile` / `registry`）处理的是
+**协议与编排**；"某个服务器怎么找自己的工程、被哪些标记压制、需不需要等文档"是
+**服务器特性**，必须以数据形式携带。
+
+本次把两处代码内语言知识数据化（此前是审查记录里的 ⚠️ 项）：
+
+| 原实现（代码内语言知识） | 数据化后 | 引擎侧（无语言名） |
+|---|---|---|
+| `session/root.rs` 的 `TS_ROOT_MARKERS` 常量 + `is_document_root_scoped(language_id)` 白名单（4 个 TS language id） | `LspPlugin.root_scope: RootScope`（`ProjectScoped` 默认 / `DocumentScoped { markers }`）；TS 家族四个插件声明 `TS_PROJECT_ROOT_MARKERS` | `resolve_session_root(.., &plugin)` 只读 `walk_markers()`；`manager` 的"文档定根必须等文档"判据也改读它 |
+| `profile.rs` 的 `marker == "package.json" && has_tsconfig && lang == "javascript"` 特例 | `LspPlugin.detect_suppressed_by: Vec<String>`（javascript 家族声明 `["tsconfig.json"]`）；`DetectionMarker` 结构体随标记携带该规则 | `detect_project_profile_with_markers` 只做一条通用谓词：`!suppressed_by.any(present)` |
+
+**不可合并的细节**（写进数据注释以防回退）：
+- `RootScope::DocumentScoped` 自带 markers，**不复用** `root_markers`：后者答"项目用什么
+  语言"（typescript 只认 tsconfig.json），前者答"TS/JS 工程根在哪"（需要含
+  `package.json` 的目录才能解析 `node_modules/typescript`）。复用会让无 tsconfig 的子包
+  被误判回项目根。
+- `javascript.detect_suppressed_by` **不含 `jsconfig.json`**：它是 JS 工程配置，压制
+  javascript 是语义错误（`jsconfig_does_not_suppress_javascript` 钉住）。
+
+**数据化证明型测试**（新增能力的护栏，数据退化成代码即红）：
+`root.rs::document_scoped_markers_come_from_plugin_data`（自定义语言声明 markers 即可
+文档定根）、`root.rs::no_document_scan_uses_plugin_markers`、
+`profile.rs::custom_plugin_suppression_is_data_not_code`（自定义插件声明压制即生效）、
+`profile.rs::suppression_only_applies_when_the_marker_is_present`（反向）、
+`typescript_family.rs` 三条数据契约（家族 root_scope 逐字等价 / 压制表内容 / 非 TS 语言
+保持项目根）。
+
+**同时清理**：`custom_root_markers()` 与 `detect_project_profile_with_extras()`（全仓零
+调用方）删除；`detect_project_profile()` 保留（无调用方但为文档化入口，编译不受影响）。
+
+**剩余例外（不在本次范围，已标注）**：前端 `useLspDefinition.ts`（jdt:// 类文件）、
+`lspClientManager.ts`（Java 慢启动超时）是 jdtls **专有扩展**的宿主，属"非标准 LSP 扩展"
+而非"语言分支"；如要收敛，应抽象为"服务器扩展能力开关"数据。
+
 ## 2. 分阶段契约（M1 → M4）
 
 > 顺序依据：M1（诊断可视化）独立可交付且是 AC 的感知基础；M2（健康度）让用户自答
@@ -310,7 +347,7 @@ CM gutter/行内灯泡为可选增强（实现期评估，不做承诺）。
 
 | 风险 | 缓解 |
 |---|---|
-| lsp-client 补全接受的 additionalTextEdits 应用在真实 gopls 下有位置转换 bug | M0 实测是第一优先级；发现即上游 issue + 客户端兜底（本任务内记录不内修包） |
+| lsp-client 补全接受的 additionalTextEdits 应用在真实 gopls 下有位置转换 bug | **已定案（2026-09-18）**：根因是上游把 snippet 与附加编辑写成互斥分支（`insertTextFormat == 2` 时丢弃 `additionalTextEdits`），非位置转换 bug。修正 = pnpm patch 合并进同一事务；第一版补丁把 `snippet()` 的 void 返回值当 spec 传给 `dispatch` 而抛 TypeError，已重写并加测试护栏；另发现 Vite 预打包缓存（`node_modules/.vite`）会让 node_modules 改动**不进浏览器**——改包后必须重启 dev server 或 `npx vite optimize` |
 | node/jsdom 分拆后 lspStore 测试环境归属 | diagnostics 订阅用 mock 事件，纯逻辑可 node 环境 |
 | 灯泡 UI 与 CM hover/tooltip 体系冲突 | M3 实现期仅做 DiagnosticsPanel 行内入口（不进 CM 视图），规避 tooltip 竞态 |
 | 诊断事件高频推送导致 store 抖动 | setProjectDiagnostics 按 uri 整体替换（幂等），面板渲染走既有 memo 模式 |

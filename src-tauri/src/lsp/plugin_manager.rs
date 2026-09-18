@@ -3,7 +3,9 @@
 use std::collections::HashMap;
 use std::sync::Mutex;
 
-use crate::lsp::plugin::{LspAutoStart, LspPlugin, LspPluginRegistry, LspSettings};
+use crate::lsp::plugin::{
+    DetectionMarker, LspAutoStart, LspPlugin, LspPluginRegistry, LspSettings,
+};
 use crate::AppError;
 
 /// Manages LSP plugin discovery, registration, and project execution targets.
@@ -61,7 +63,7 @@ impl LspPluginManager {
             .unwrap_or_default()
     }
 
-    pub(crate) fn detection_markers(&self) -> Vec<(String, String, String)> {
+    pub(crate) fn detection_markers(&self) -> Vec<DetectionMarker> {
         self.registry
             .lock()
             .map(|r| r.detection_markers())

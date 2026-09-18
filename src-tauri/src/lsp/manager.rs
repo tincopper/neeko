@@ -397,14 +397,11 @@ impl LspManager {
         // 先取 transport：装配失败时还要靠它把 error 事件送到前端。
         let transport = self.session_factory.transport(app_handle.as_ref())?;
         let exec_target = self.require_project_exec_target(project_path)?;
-        // For document-scoped languages (TypeScript family), root the session at
-        // the nearest TS project instead of the project root, so servers like
-        // typescript-language-server can locate the `typescript` library.
-        let workspace_root = crate::lsp::session::root::resolve_session_root(
-            project_path,
-            document_uri,
-            language_id,
-        );
+        // 会话根由插件数据决定（`RootScope`）：文档定根的插件（如 TS 家族）会取
+        // 文档所在的最近工程目录，让 typescript-language-server 能解析到
+        // `node_modules/typescript`；其余插件保持项目根。
+        let workspace_root =
+            crate::lsp::session::root::resolve_session_root(project_path, document_uri, &plugin);
 
         let session = match self.session_factory.build(SessionBuildRequest {
             app_handle,
@@ -826,12 +823,13 @@ impl LspManager {
 
         if let Some(ref primary) = profile.primary {
             let policy = self.plugin_manager.resolve_auto_start(&primary.language_id);
-            if policy == LspAutoStart::OnProjectSelect
-                && !crate::lsp::session::root::is_document_root_scoped(&primary.language_id)
-            {
-                // Document-scoped servers (TypeScript family) must wait for a
-                // document to be opened so the session root can be resolved
-                // from the document's own project directory.
+            // 文档定根的插件必须等文档打开（会话根按文档所在工程解析），故此处不启动。
+            // 判据取自插件数据，manager 不按语言名分支。
+            let needs_document = self
+                .plugin_manager
+                .resolve_by_language(&primary.language_id)
+                .is_some_and(|p| p.root_scope.walk_markers().is_some());
+            if policy == LspAutoStart::OnProjectSelect && !needs_document {
                 let this = Arc::clone(self);
                 let pp = project_path.to_string();
                 let lid = primary.language_id.clone();
