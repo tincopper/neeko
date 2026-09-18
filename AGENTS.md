@@ -374,6 +374,10 @@ cargo test --manifest-path src-tauri/Cargo.toml
 12. **路径身份唯一化（Single Path Identity）**：所有「这是不是同一个文件」的判定必须落在 `FileRef` 身份上（`src/shared/utils/fileRef.ts`：`sameFile` / `sameIdentity` / `pathsContainFile` / `sourceIdentityOf`），**禁止消费侧自造字符串归一或别名匹配**（裸路径等值、`endsWith('/' + p)`、`` `${root}/${rel}` `` 拼接）。同一份源码出现两种表示会让断点 key 分叉、黄线与光标各认一个、变更事件漏配导致视图不刷新（issue #13）。展示 / URL / 树结构 / 命令入参派生的归一是合法的，但**出现点必须登记分类**：CI 护栏 `.trellis/scripts/check_path_identity_scope.py`（已接入 `pnpm lint` 与 CI）以 `MANIFEST` 为机读台账，未登记命中 / 登记失效 / 计数漂移 / 扫描集为空四种情况均判失败；改代码前先跑 `--list` 看全量台账。
 13. **测试夹具路径平台无关（Test Fixture Path Portability）**：测试代码中进入 `Path`/`PathBuf` 语义或路径敏感 API（授权守卫 `is_absolute()`、`canonicalize()`、存在性判定）的路径字面量，**禁止硬编码 POSIX 绝对路径**（`/opt/…`、`/home/…`、`/tmp/…` 等）——Windows 上无盘符前缀，`is_absolute()` 恒 false，本地（macOS/Linux）绿而 Windows CI 红。一律由 `tempdir()` 推导平台绝对路径（Windows 盘符 / Unix 均成立）；纯字符串语义（JSON 载荷、URL query、转义拼接、平台无关断言）不受限。**执行方式**：本红线无稳定语法指纹——静态 grep 实证 45+ 文件合法命中（生产 Unix 默认路径、JSON fixture、转义拼接），脚本化信噪比不可接受（红线 11/12 可脚本化正因有指纹），故由 **AI 审查（neeko-check / trellis-check）对 diff 内夹具路径字面量专项检查**；唯一可靠判定仍是 CI 的 Windows `cargo test` job（真实平台执行）。回归样例：`dap::manager::tests::resolve_external_source_authorizes_only_on_current_frame`（2026-09-17 Windows CI 红，同批 `source_translation.rs` 两处已修未引以为戒）。
 
+14. **LSP 能力声明必须与实现一致（Capability Claims Match Implementation）**：向语言服务器声明的每一项客户端能力都是**行为契约**——服务器会据此切换通道，声明了却没人实现 = 静默功能缺失。改 `build_client_capabilities()` / `plugin.with_extended_client_capabilities()` 前必须问「哪段代码消费它」，并在同一 diff 内给出实现或删掉声明。回归样例（2026-09-18，两处同源）：① `resolveAdditionalTextEditsSupport: true` 令 jdtls 把 import 编辑全部推迟到 `completionItem/resolve`，而本栈（Rust transport + `@codemirror/lsp-client`）从不发 resolve → Java 自动导包彻底失效（实测：声明 true 时 `List` 33 个候选 0 个带 `additionalTextEdits`，不声明则 33/33 带）；② `progressReportProvider: true` 而全仓无 `language/progressReport` 处理。护栏：宣称值由插件单测钉死（`java_plugin_advertises_only_implemented_extended_capabilities`），新增声明必须同时新增消费点或说明。
+
+15. **语言差异必须落在插件数据（Language Differences Are Plugin Data）**：语言服务器之间的差异——会话根解析范围、检测压制、调优开关、安装方式、能力声明——一律作为 `LspPlugin` 字段声明，**禁止**在通用模块（`lsp/session/*`、`manager.rs`、`profile.rs`、`registry.rs`、`plugin_manager.rs`）里写 `language_id == "xxx"`、语言白名单或按语言的 `if/match` 特例。**Why**：R5 要求"新增 LS 零逻辑改动即获得全部能力"，代码内白名单会让新语言必须改核心模块，且白名单会与插件数据漂移（同一知识两处表示）。**How to apply**：改通用模块时若需要知道"这是哪种语言"，先问「这条知识能不能作为插件字段携带」；能就加字段 + builder，把差异下沉到 `builtins/*`。参照（2026-09-18 数据化）：`RootScope`（会话根范围 ← 原 `is_document_root_scoped` 白名单）、`detect_suppressed_by`（检测压制 ← 原 `profile.rs` 的 javascript 特例）、`tuning`、`extended_client_capabilities`。护栏：消费侧必须有一条"**自定义插件声明该数据即生效**"的测试（如 `document_scoped_markers_come_from_plugin_data`、`custom_plugin_suppression_is_data_not_code`）——没有它，数据可能退化成被忽略的装饰。
+
 ### 业界最佳实践（React / Rust 通用底线）
 
 > 供 `neeko-check` 审核时对齐。业界通用最佳实践独立成文件、按需扩展，索引见
@@ -496,6 +500,12 @@ python3 ./.trellis/scripts/add_session.py --title "<title>" --commit "<hash>"
 - SSH 凭据重连自动填充可能有边界情况
 - SSH 路径自动补全下拉可能有 z-index 问题
 - 自定义 IDE 的 icon 解析不支持
+- **改了 `node_modules`（`pnpm patch` / `patches/*.patch`）后必须重启 dev server 或
+  跑 `npx vite optimize`**：Vite 依赖预打包（`node_modules/.vite/deps`）按 lockfile
+  哈希缓存，不重启会继续跑旧代码（"改了包却没生效"的假象）。改 `patches/*.patch`
+  的正确流程：`pnpm patch <pkg>@<ver>` → 编辑 `.pnpm_patches/` 下的文件 →
+  `pnpm patch-commit <dir>` → `pnpm install`；补丁文件必须**纳入 git**（否则新克隆
+  `pnpm install` 会因缺补丁文件而失败）
 
 ## 相关文档
 

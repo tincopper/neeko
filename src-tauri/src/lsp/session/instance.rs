@@ -921,8 +921,7 @@ mod tests {
         let plugin = LspPlugin::builtin("java", &["java"], "jdtls", &["jdtls"], None)
             .with_extended_client_capabilities(serde_json::json!({
                 "classFileContentsSupport": true,
-                "progressReportProvider": true,
-                "resolveAdditionalTextEditsSupport": true
+                "progressReportProvider": true
             }));
         // 空对象基底：仅插入 extendedClientCapabilities。
         let merged = merge_extended_client_capabilities_into_init_options(json!({}), &plugin);
@@ -932,10 +931,6 @@ mod tests {
         );
         assert_eq!(
             merged["extendedClientCapabilities"]["progressReportProvider"],
-            json!(true)
-        );
-        assert_eq!(
-            merged["extendedClientCapabilities"]["resolveAdditionalTextEditsSupport"],
             json!(true)
         );
         // 预置键保留：插件原有 initializationOptions 键不受影响。

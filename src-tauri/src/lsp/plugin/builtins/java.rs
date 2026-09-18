@@ -30,10 +30,18 @@ pub fn plugins() -> Vec<LspPlugin> {
     // 载荷**在会话创建时求值**（`bundles` 必须指向真实存在的绝对路径，而该文件可能
     // 由 Neeko 稍后才下载）—— 正因如此"下载后重启会话"才真的生效。
     .with_initialization_options_provider(java_initialization_options)
+    // 只声明**真的实现了**的能力（Annex：声明即行为契约，服务器据此切通道）。
+    //
+    // 两条被删掉的假声明（2026-09-18 实测，勿回退）：
+    // - `resolveAdditionalTextEditsSupport`：本栈不发 `completionItem/resolve`，
+    //   声明 true 会让 jdtls 把 import 编辑全推到 resolve（33 候选 0 个带附加编辑）
+    //   → Java 自动导包失效；不声明则 33 个全带。
+    // - `progressReportProvider`：本栈只处理标准 `$/progress`，声明 true 会让 jdtls
+    //   独占走 `language/progressReport`（43 条 / 标准 0 条）→ 导入进度全丢；不声明则
+    //   回退标准通道（36 条 begin/report/end，含 `Synchronizing projects` 等）。
+    // 要恢复任一声明，前提是先实现对应通道。
     .with_extended_client_capabilities(serde_json::json!({
-        "classFileContentsSupport": true,
-        "progressReportProvider": true,
-        "resolveAdditionalTextEditsSupport": true
+        "classFileContentsSupport": true
     }))
     // jdtls 的两项调优（原为 session 层的 `language_id == "java"` + bool 开关）：
     // - `--version` = 完整 OSGi JVM 启动，且并发探测会在 data 目录锁上互相挂死
@@ -93,8 +101,22 @@ fn java_initialization_options_for(bundle: &std::path::Path) -> serde_json::Valu
 mod tests {
     use super::*;
 
+    /// jdtls 的 `extendedClientCapabilities` 契约：**只声明我们真的实现了的能力**。
+    ///
+    /// `progressReportProvider` 的教训（2026-09-18 实测）：它是"客户端处理
+    /// `language/progressReport` 私有进度通道"的声明。本栈只处理标准 `$/progress`，
+    /// 声明 true 后 jdtls 会**独占**走私有通道（实测标准通道 0 条）→ Java 项目导入
+    /// 进度完全不可见；不声明则回退标准通道（36 条 begin/report/end）。
+    ///
+    /// `resolveAdditionalTextEditsSupport` 的教训（2026-09-18）：它是"客户端能通过
+    /// `completionItem/resolve` 取回附加编辑"的声明。曾经声明 true，而本栈（Rust
+    /// transport + `@codemirror/lsp-client`）**从不发送 `completionItem/resolve`**
+    /// → jdtls 遂把 import 编辑全部推迟到 resolve（实测：声明 true 时 `List` 的 33 个
+    /// 候选 **0** 个带 `additionalTextEdits`；声明 false 时 **33** 个全带）。
+    /// 即 Java 的自动导包被我们自己的一句假声明扣住。要恢复该声明，必须先真正实现
+    /// resolve 通道，否则能力声明与实现不符就是"静默功能缺失"。
     #[test]
-    fn java_plugin_advertises_class_file_contents_support() {
+    fn java_plugin_advertises_only_implemented_extended_capabilities() {
         let plugin = plugins()
             .into_iter()
             .find(|p| p.language_id == "java")
@@ -104,10 +126,17 @@ mod tests {
             .as_ref()
             .expect("java 插件必须声明 extendedClientCapabilities");
         assert_eq!(caps["classFileContentsSupport"], serde_json::json!(true));
-        assert_eq!(caps["progressReportProvider"], serde_json::json!(true));
-        assert_eq!(
-            caps["resolveAdditionalTextEditsSupport"],
-            serde_json::json!(true)
+        assert!(
+            caps.get("resolveAdditionalTextEditsSupport").is_none(),
+            "不得声明 resolveAdditionalTextEditsSupport：本栈没有 completionItem/resolve，\
+             声明它会让 jdtls 把 import 编辑藏起来（Java 自动导包失效）"
+        );
+        assert!(
+            caps.get("progressReportProvider").is_none(),
+            "不得声明 progressReportProvider：本栈未处理 language/progressReport。\
+             实测 A/B（未导入工程 + pom.xml）：声明 true → language/progressReport 43 条、\
+             标准 $/progress 0 条（进度全部丢失）；不声明 → 标准 $/progress 36 条\
+             （Synchronizing projects / Building / Initialize Workspace，含百分比）"
         );
     }
 
