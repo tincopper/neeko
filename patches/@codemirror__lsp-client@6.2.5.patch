@@ -1,0 +1,59 @@
+diff --git a/dist/index.js b/dist/index.js
+index e53e571e2fdcd1220133c27cf064696213d4d0c5..48871429ed07d5c71eaa1ac3bbc425f1ccb4a5d1 100644
+--- a/dist/index.js
++++ b/dist/index.js
+@@ -963,17 +963,49 @@ const serverCompletionSource = context => {
+                     option.detail = item.detail;
+                 if (item.sortText)
+                     option.sortText = item.sortText;
+-                if (insertTextFormat == 2 /* Snippet */) {
+-                    option.apply = (view, c, from, to) => snippet(lspToSnippet(text))(view, c, from, to);
+-                }
+-                else if (item.additionalTextEdits) {
+-                    let edits = [];
++                let edits = [];
++                if (item.additionalTextEdits) {
+                     for (let edit of item.additionalTextEdits) {
+                         let from = fromPositionChecked(context.state.doc, edit.range.start);
+                         let to = fromPositionChecked(context.state.doc, edit.range.end);
+                         if (from != null && to != null)
+                             edits.push({ from, to, text: edit.newText });
+                     }
++                }
++                // Neeko patch (2026-09-18): snippet-format completions must also
++                // apply additionalTextEdits (auto-import) — atomically, in the
++                // SAME transaction. Upstream treats snippet and edits as mutually
++                // exclusive, so function completions (gopls `fmt.Println`) lost
++                // the import edit entirely.
++                //
++                // Implementation note: `snippet()`'s apply function returns void
++                // and dispatches internally, so its result cannot be merged into
++                // a later dispatch (doing that throws "Cannot read properties of
++                // undefined"). It only touches `{state, dispatch}` — that is its
++                // exported parameter type — so we hand it a capture shim and then
++                // dispatch the captured transaction together with the edits.
++                // Multi-spec dispatch resolves EVERY spec's positions against the
++                // start document, so the snippet change and the (LSP-defined,
++                // original-coordinate) import edits merge into one transaction:
++                // single undo step, no position drift.
++                if (insertTextFormat == 2 /* Snippet */) {
++                    option.apply = (view, c, from, to) => {
++                        let snippetTxn = null;
++                        let capture = {
++                            get state() { return view.state; },
++                            dispatch: (tr) => { snippetTxn = tr; },
++                        };
++                        snippet(lspToSnippet(text))(capture, c, from, to);
++                        if (!snippetTxn)
++                            return;
++                        if (!edits.length) {
++                            view.dispatch(snippetTxn);
++                            return;
++                        }
++                        view.dispatch(snippetTxn, { changes: edits.map(e => ({ from: e.from, to: e.to, insert: e.text })) });
++                    };
++                }
++                else if (item.additionalTextEdits) {
+                     extraEdits.push({ index: i, text, edits });
+                     option.apply = applyEdits(edits, text, null);
+                 }

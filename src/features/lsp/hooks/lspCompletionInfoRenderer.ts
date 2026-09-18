@@ -117,9 +117,21 @@ const FUNCTION_KINDS = new Set([2 /* Method */, 3 /* Function */, 4 /* Construct
  * snippet that fills its parameters. Mirrors the `@codemirror/lsp-client`
  * `insertTextFormat === 2` path so every function completion gets IDEA-style
  * argument placeholders — even when the server omits a snippet.
+ *
+ * ⚠️ 当前**不生效**（2026-09-18 核实）：入参是 `@codemirror/lsp-client` 构造的
+ * CM6 `Completion`，它只带 `label` / `displayLabel` / `type` / `apply` / `info`
+ * 等字段——**从不携带 `kind` / `insertTextFormat`**（见 dist 里 `option` 字面量）。
+ * 因此上面两处判断恒为假、函数必定早退。保留现状（不激活）是刻意的：激活会为
+ * 「服务器已给 snippet」或「自带 additionalTextEdits」的项重装 apply，从而**丢
+ * 掉自动导入的 import 编辑**。要恢复该特性，判据必须换成 CM6 侧的 `type`，并且
+ * 保留 `item.apply != null` 让行护栏。详见任务 09-18-lsp-auto-import-diagnostics。
  */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function maybeAttachSnippetFallback(item: any): void {
+  // 上游/补丁已经装好 apply = 插入文本与附加编辑（自动导入）的决策已定，覆盖它
+  // 会静默丢掉 import 编辑或改变插入文本 —— 必须让行（护栏，见下方"本函数当前
+  // 不生效"的说明）。
+  if (item.apply != null) return;
   // Server already provided a snippet (or we must not touch its intent).
   if (item.insertTextFormat === 2) return;
   // Only function-like kinds benefit from parameter auto-fill.
@@ -170,6 +182,23 @@ export function createThemedCompletionSource(context: CompletionContext): Promis
       // `serverCompletionSource` captures documentation inside each option's
       // `info` closure — we lift the rendered HTML out of it below.
       const options = (result as unknown as { options?: unknown[] }).options ?? [];
+
+      // 自动导包探针（仅 DEV）：这里只能看到"库把 apply 装成了什么"，
+      // **看不到** additionalTextEdits —— CM6 option 上不存在该字段（见 dist 的
+      // option 字面量），在此判"有没有附加编辑"恒为假。真值在传输层：
+      // `tauriLspTransport` 的 `[LSP-probe] completion response` 行
+      // （with-additionalTextEdits=N）。
+      if (import.meta.env.DEV) {
+        const withApply = options.filter(
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          (o: any) => typeof o.apply === 'function',
+        ).length;
+        console.info(
+          `[LSP-probe] completion: ${options.length} items, apply-fn=${withApply}`,
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          options.slice(0, 3).map((o: any) => o.label),
+        );
+      }
 
       for (const option of options) {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
