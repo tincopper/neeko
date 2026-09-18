@@ -17,7 +17,6 @@ interface UseEditorSaveParams {
   tabKey: string;
   tabId: string;
   projectPath: string | null;
-  currentContent: string;
   setIsSaving: (v: boolean) => void;
   onSave: (content: string) => Promise<boolean>;
   onContentChange: (tabId: string, content: string) => void;
@@ -27,13 +26,19 @@ interface UseEditorSaveParams {
 /**
  * 文件保存与外部修改处理：Ctrl+S 保存、外部修改 reload/保留编辑、
  * HTML 浏览器打开能力、CodeMirror change 转发。
+ *
+ * **配置纯净**：本 hook 产出的 `saveKeymap` 会进入 CodeMirror 的 extensions 数组，
+ * 而宿主 `@uiw/react-codemirror` 在 extensions 身份变化时 dispatch
+ * `StateEffect.reconfigure` 重建整个扩展世界（lint 等经 appendConfig 惰性安装的扩展
+ * 会被丢掉）。因此活文档状态（内容 / 脏标记）**不得**进入依赖数组——按下快捷键时
+ * 从 store 读取（store 本就是文件内容的单一事实源），而不是在渲染期捕获闭包。
+ * 见 `useEditorExtensions` 的「配置纯净」不变量。
  */
 export function useEditorSave({
   tab,
   tabKey,
   tabId,
   projectPath,
-  currentContent,
   setIsSaving,
   onSave,
   onContentChange,
@@ -46,11 +51,23 @@ export function useEditorSave({
     [tab.id, onContentChange],
   );
 
+  /** 按键时读取本 tab 的最新内容与脏标记（不进渲染依赖，故 keymap 身份稳定）。 */
+  const readFileTabState = useCallback((): { content: string; isDirty: boolean } | null => {
+    const found = useEditorStore.getState().tabs[tabKey]?.tabs.find((t) => t.id === tabId);
+    if (!found || found.data.kind !== 'file') return null;
+    return { content: found.data.content.content, isDirty: found.data.isDirty };
+  }, [tabKey, tabId]);
+
   const handleSave = useCallback(async () => {
+    const current = readFileTabState();
+    if (!current) return;
     setIsSaving(true);
-    await onSave(currentContent);
-    setIsSaving(false);
-  }, [currentContent, onSave, setIsSaving]);
+    try {
+      await onSave(current.content);
+    } finally {
+      setIsSaving(false);
+    }
+  }, [onSave, readFileTabState, setIsSaving]);
 
   // 获取 capabilities（用于判断是否显示 Open in Browser）
   const { project, capabilities } = useActiveProject();
@@ -75,23 +92,18 @@ export function useEditorSave({
   }, [tab.filePath, projectPath, canOpenInBrowser, project?.id, showToast]);
 
   // Save shortcut — from user-configurable shortcut registry (default Ctrl+S).
+  // 身份稳定：只依赖快捷键与稳定的回调；脏检查/内容在按键时从 store 读取。
   const saveCmKey = useCodeMirrorBinding('saveFile');
+  const runSave = useCallback((): boolean => {
+    if (!readFileTabState()?.isDirty) return false;
+    void handleSave();
+    return true;
+  }, [handleSave, readFileTabState]);
+
   const saveKeymap = useMemo(() => {
     if (!saveCmKey) return [];
-    return keymap.of([
-      {
-        key: saveCmKey,
-        run: () => {
-          if (tab.isDirty) {
-            handleSave();
-            return true;
-          }
-          return false;
-        },
-        preventDefault: true,
-      },
-    ]);
-  }, [saveCmKey, tab.isDirty, handleSave]);
+    return keymap.of([{ key: saveCmKey, run: runSave, preventDefault: true }]);
+  }, [saveCmKey, runSave]);
 
   // 处理外部文件修改：重新加载
   const handleReload = useCallback(async () => {

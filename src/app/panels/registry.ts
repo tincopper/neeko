@@ -19,6 +19,10 @@ const LazyDebugPanel = lazy(() =>
   import('@/features/runner').then((m) => ({ default: m.DebugPanel })),
 );
 
+const LazyProblemsPanel = lazy(() =>
+  import('@/features/lsp').then((m) => ({ default: m.ProblemsPanel })),
+);
+
 /**
  * 固定底部面板注册表（单一事实源）。
  *
@@ -29,4 +33,5 @@ const LazyDebugPanel = lazy(() =>
 export const fixedPanelRegistry: FixedPanelDef[] = [
   { id: 'task-console', placement: 'bottom', Component: LazyTaskConsolePanel },
   { id: 'debug', placement: 'bottom', Component: LazyDebugPanel },
+  { id: 'problems', placement: 'bottom', Component: LazyProblemsPanel },
 ];

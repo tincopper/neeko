@@ -1,10 +1,23 @@
+import { setDiagnostics } from '@codemirror/lint';
 import { EditorState } from '@codemirror/state';
+import { EditorView } from '@codemirror/view';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 // 共享 client / transport 需要活体运行时：mock 掉，只验证"回调按视图注入"这一契约。
-vi.mock('@codemirror/lsp-client', () => ({
-  LSPClient: class {
+const { MockLSPClient } = vi.hoisted(() => {
+  class MockLSPClient {
+    /** 捕获装配传入的扩展（供「linter 波浪线渲染器在位」行为测试使用）。 */
+    static lastExtensions: unknown[] = [];
+    /** workspace 存根：重挂容忍补丁会包装其 openFile。 */
+    workspace = {
+      getFile: () => null,
+      closeFile: () => {},
+      openFile: () => {},
+    };
     serverCapabilities = {};
+    constructor(options: { extensions?: unknown[] } = {}) {
+      MockLSPClient.lastExtensions = options.extensions ?? [];
+    }
     connect(): void {}
     request(): Promise<null> {
       return Promise.resolve(null);
@@ -12,7 +25,11 @@ vi.mock('@codemirror/lsp-client', () => ({
     plugin(): [] {
       return [];
     }
-  },
+  }
+  return { MockLSPClient };
+});
+vi.mock('@codemirror/lsp-client', () => ({
+  LSPClient: MockLSPClient,
   serverDiagnostics: () => [],
   signatureHelp: () => [],
 }));
@@ -27,6 +44,7 @@ import {
   lspClientTimeout,
   lspMethodLabel,
   lspRequestTimeoutMessage,
+  makeWorkspaceTolerantToRemount,
   releaseLspClient,
 } from '../lspClientManager';
 import { jdtLinkHandlerFacet, withJdtLinkHandler } from '../lspHoverExtension';
@@ -103,5 +121,73 @@ describe('withJdtLinkHandler — jdt 链接回调按视图注入（共享 client
     // 契约锚点：acquireLspPlugin 签名不含任何回调参数；这里断言其返回值就是
     // client 自身的插件（mock 为 []），宿主扩展一律由视图侧组装。
     expect(acquireLspPlugin('/p2', 'java', 'file:///p2/C.java')).toEqual([]);
+  });
+});
+
+describe('makeWorkspaceTolerantToRemount — 同 uri 重挂竞态容忍', () => {
+  function makeFakeWorkspace() {
+    return {
+      getFile: vi.fn(),
+      closeFile: vi.fn(),
+      openFile: vi.fn(),
+    };
+  }
+
+  it('同 uri 旧条目仍在 → 先摘旧（closeFile）再登记（openFile）', () => {
+    const fake = makeFakeWorkspace();
+    // 模拟 HMR 竞态：旧视图条目仍被 workspace 持有
+    fake.getFile.mockReturnValueOnce({ uri: 'file:///p/main.go' });
+    const originalOpenFile = fake.openFile; // 补丁会用包装器替换属性，先捕获原 spy
+    makeWorkspaceTolerantToRemount(fake);
+
+    fake.openFile('file:///p/main.go', 'go', {} as never);
+
+    expect(fake.closeFile).toHaveBeenCalledWith('file:///p/main.go', {});
+    expect(originalOpenFile).toHaveBeenCalledWith('file:///p/main.go', 'go', {});
+  });
+
+  it('全新 uri → 直接登记（无多余 didClose）', () => {
+    const fake = makeFakeWorkspace();
+    fake.getFile.mockReturnValue(null);
+    const originalOpenFile = fake.openFile;
+    makeWorkspaceTolerantToRemount(fake);
+
+    fake.openFile('file:///p/other.go', 'go', {} as never);
+
+    expect(fake.closeFile).not.toHaveBeenCalled();
+    expect(originalOpenFile).toHaveBeenCalledWith('file:///p/other.go', 'go', {});
+  });
+});
+
+describe('诊断渲染链 — 推送诊断在编辑器装配下渲染波浪线', () => {
+  afterEach(() => {
+    releaseLspClient('/pl', 'go');
+  });
+
+  it('setDiagnostics 产生 cm-lintRange-error 装饰（自组装：无 linter 挂载亦渲染）', () => {
+    // 验证渲染链自组装：编辑器装配（无 linter）下，首次 setDiagnostics 经
+    // maybeEnableLint 自动追加 lint 渲染扩展（lintState.provide 提供 wavy
+    // decorations + hover tooltip）。**真实场景中波浪线缺失 = 诊断未到达视图**
+    // （LS 会话未运行 / uri-version 不匹配被 serverDiagnostics 丢弃），
+    // 而非渲染器缺失——归因见任务 design.md 勘误。
+    // 注意：零长度文档下 0..3 诊断走 widget 路径而非 mark 波浪线，故 doc 必须有内容。
+    acquireLspPlugin('/pl', 'go', 'file:///pl/main.go');
+    const parent = document.createElement('div');
+    const view = new EditorView({
+      state: EditorState.create({
+        doc: 'const value = fmt.Println(1);',
+        extensions: MockLSPClient.lastExtensions as never,
+      }),
+      parent,
+    });
+
+    view.dispatch(
+      setDiagnostics(view.state, [
+        { from: 0, to: 3, severity: 'error', message: 'undefined: fmt' },
+      ]),
+    );
+
+    expect(view.dom.querySelector('.cm-lintRange-error')).not.toBeNull();
+    view.destroy();
   });
 });

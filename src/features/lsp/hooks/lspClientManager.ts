@@ -12,6 +12,30 @@ interface LspClientBundle {
   transport: TauriLspTransport;
 }
 
+/** 重挂容忍补丁所需的 workspace 最小结构面（Workspace 基类的相关方法子集）。 */
+interface PatchableWorkspace {
+  getFile(uri: string): unknown;
+  closeFile(uri: string, view: unknown): void;
+  openFile(uri: string, languageId: string, view: unknown): void;
+}
+
+/**
+ * 把默认 workspace 的 openFile 包成「摘旧再登记」。
+ *
+ * 为什么：DefaultWorkspace.openFile 对同 uri 二次登记直接 throw（默认实现不支持
+ * 同文件多视图）。HMR 热更新 / 快速切 tab 的销毁-创建竞态会命中——新视图装配失败
+ * （openFile 抛错，插件缺失），后续该 uri 的诊断推送全部被 client 丢弃，用户实测
+ * 表现为「波浪线出现后消失且不恢复」。摘旧 = closeFile（对旧视图补发 didClose，
+ * 符合 LSP 语义），再登记新视图，重挂自愈。
+ */
+export function makeWorkspaceTolerantToRemount(workspace: PatchableWorkspace): void {
+  const originalOpenFile = workspace.openFile.bind(workspace);
+  workspace.openFile = (uri: string, languageId: string, view: unknown) => {
+    if (workspace.getFile(uri) != null) workspace.closeFile(uri, view);
+    originalOpenFile(uri, languageId, view);
+  };
+}
+
 /**
  * Keep idle LSP clients warm long enough to survive tab switches during
  * go-to-definition (unmount source → mount target of the same language).
@@ -118,6 +142,10 @@ export function acquireLspPlugin(
   const bundle = pool.acquire(key, () => {
     // timeout: java 120s（jdtls JVM/Eclipse 冷启动慢，见 lspClientTimeout），其余 15s。
     const client = new LSPClient({
+      // 注意：波浪线渲染**无需**在此挂 @codemirror/lint 的 linter()——首次
+      // setDiagnostics 会经 maybeEnableLint 自动追加渲染扩展（lintState.provide
+      // 自带 wavy decorations + hover tooltip）。在此挂空 source 的 linter 反而
+      // 会在 idle 轮询时用空数组清掉服务器推送的诊断（自毁）。
       extensions: [
         createThemedServerCompletion(),
         createLspHoverTooltips(),
@@ -126,6 +154,9 @@ export function acquireLspPlugin(
       ],
       timeout: lspClientTimeout(languageId),
     });
+    // HMR / 快速切 tab 的重挂竞态容忍：同 uri 旧条目未摘除时 openFile 会 throw，
+    // 新视图装配失败 → 后续诊断推送全被丢（波浪线出现后消失且不恢复的根因）。
+    makeWorkspaceTolerantToRemount(client.workspace);
     const transport = new TauriLspTransport(projectPath, languageId);
     annotateLspRequestErrors(client);
     client.connect(transport);

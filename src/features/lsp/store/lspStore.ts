@@ -2,7 +2,11 @@ import { listen } from '@tauri-apps/api/event';
 import type { UnlistenFn } from '@tauri-apps/api/event';
 import { create } from 'zustand';
 
-import { LSP_PROFILE_EVENT, LSP_PROGRESS_EVENT_PREFIX } from '@/shared/events';
+import {
+  LSP_DIAG_EVENT_PREFIX,
+  LSP_PROFILE_EVENT,
+  LSP_PROGRESS_EVENT_PREFIX,
+} from '@/shared/events';
 import { preloadLanguageExtension } from '@/shared/utils/codemirror';
 import { safeUnlisten } from '@/shared/utils/safeUnlisten';
 
@@ -14,7 +18,7 @@ import {
   lspGetExtensionMap,
   type LspExtensionConflictDto,
 } from '../api/lspApi';
-import type { ProjectLanguageProfile } from '../types';
+import type { LspDiagnosticsEvent, LspDiagnostic, ProjectLanguageProfile } from '../types';
 
 export interface LspInstallProgress {
   language_id: string;
@@ -72,6 +76,29 @@ interface LspStoreState {
   extensionConflicts: LspExtensionConflictDto[];
   /** 自动安装进度（常驻 InstallProgressBridge 写入，LspSlotItem 读取）。 */
   installProgress: LspInstallProgress | null;
+  /**
+   * 诊断事实的**权威副本**（不变量 I1）：projectPath → uri → 诊断数组。
+   * 由 subscribeToProject 直采 `lsp-diagnostics-{projectPath}` 事件写入。
+   *
+   * 消费面有两个，都是它的**投影**：
+   * - Problems 面板：直接派生（本 store 切片）；
+   * - 编辑器波浪线：由 lsp-client 独立消费同一事件流做坐标映射，其映射结果由
+   *   `lsp/hooks/lspDiagnosticsProjection.ts` 持存并在 CM 配置重建后自愈（不变量 I2）。
+   * 两个投影从同一事件派生，但生命周期不同（会话 vs 一次编辑器配置代）——
+   * 一致由「投影可重建」保证，不靠「两边各存一份、永不丢失」的假设。
+   */
+  diagnosticsByProject: Record<string, Record<string, LspDiagnostic[]>>;
+  /** Problems 底部面板可见性（ProblemsPanel 自渲染开关 + ProblemsItem 计数入口）。 */
+  problemsPanelOpen: boolean;
+  setProblemsPanelOpen: (open: boolean) => void;
+  toggleProblemsPanel: () => void;
+  /**
+   * 整体替换该 uri 的诊断（publishDiagnostics 语义 = 全量推送，非合并）；
+   * 空 arrays 即清空该 uri（规范语义）。
+   */
+  setProjectDiagnostics: (projectPath: string, uri: string, diagnostics: LspDiagnostic[]) => void;
+  /** 会话结束 / 项目移除：对应 projectPath 键整体清除。 */
+  clearProjectDiagnostics: (projectPath: string) => void;
   setInstallProgress: (progress: LspInstallProgress | null) => void;
   /** 显式跳转（F12 / Cmd+Click）进行中：UI 据此显示 loading 光标。 */
   isDefinitionJumping: boolean;
@@ -108,7 +135,38 @@ export const useLspStore = create<LspStoreState>((set, get) => ({
   profiles: {},
   extensionConflicts: [],
   installProgress: null,
+  diagnosticsByProject: {},
+  problemsPanelOpen: false,
   isDefinitionJumping: false,
+
+  setProblemsPanelOpen: (open) => {
+    set({ problemsPanelOpen: open });
+  },
+
+  toggleProblemsPanel: () => {
+    set((prev) => ({ problemsPanelOpen: !prev.problemsPanelOpen }));
+  },
+
+  setProjectDiagnostics: (projectPath, uri, diagnostics) => {
+    set((prev) => ({
+      diagnosticsByProject: {
+        ...prev.diagnosticsByProject,
+        [projectPath]: {
+          ...(prev.diagnosticsByProject[projectPath] ?? {}),
+          [uri]: diagnostics,
+        },
+      },
+    }));
+  },
+
+  clearProjectDiagnostics: (projectPath) => {
+    set((prev) => {
+      if (!prev.diagnosticsByProject[projectPath]) return prev;
+      const next = { ...prev.diagnosticsByProject };
+      delete next[projectPath];
+      return { diagnosticsByProject: next };
+    });
+  },
 
   setInstallProgress: (progress) => {
     set({ installProgress: progress });
@@ -232,6 +290,11 @@ export const useLspStore = create<LspStoreState>((set, get) => ({
         // 新会话 token 空间 fresh：清掉上个会话残留 token，防 busy 残留 wedge。
         store.clearProgressTokens(projectPath, languageId);
       }
+      if (status === 'stopped') {
+        // 会话结束（后端进程退出/关闭的终态）：诊断整体失效，清该 projectPath 键
+        // （design.md M1 错误矩阵；诊断事件无 languageId，按项目粒度清除）。
+        store.clearProjectDiagnostics(projectPath);
+      }
       if (
         status === 'ready' &&
         (store.progressTokens[projectPath]?.[languageId] ?? []).length > 0
@@ -286,10 +349,31 @@ export const useLspStore = create<LspStoreState>((set, get) => ({
       }
     });
 
+    // 诊断直采（D3 单写点）：publishDiagnostics 语义 = 整体替换该 uri。
+    // 注册/释放随 subscribeToProject 生命周期（bridge 对 active project 对称调用）。
+    const unlistenDiag = await listen<LspDiagnosticsEvent>(
+      `${LSP_DIAG_EVENT_PREFIX}${projectPath}`,
+      (event) => {
+        const payload = event.payload as LspDiagnosticsEvent | null | undefined;
+        // 解析容错（错误矩阵）：单事件损坏整体丢弃 + warn，不污染状态。
+        if (
+          !payload ||
+          typeof payload.uri !== 'string' ||
+          payload.uri === '' ||
+          !Array.isArray(payload.diagnostics)
+        ) {
+          console.warn('[LSP] malformed diagnostics event discarded:', event.payload);
+          return;
+        }
+        get().setProjectDiagnostics(projectPath, payload.uri, payload.diagnostics);
+      },
+    );
+
     return () => {
       safeUnlisten(unlistenSession)();
       safeUnlisten(unlistenProgress)();
       safeUnlisten(unlistenProfile)();
+      safeUnlisten(unlistenDiag)();
     };
   },
 

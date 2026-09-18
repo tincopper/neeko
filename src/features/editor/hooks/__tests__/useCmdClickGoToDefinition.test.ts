@@ -11,12 +11,11 @@ import {
 
 vi.mock('@/shared/utils/platform', () => ({ IS_MACOS: true }));
 
-const TAB = {
-  filePath: '/repo/src/main.rs',
+/** 显式标量入参（hook 只消费这些，不再捕获整个 tab 对象）。 */
+const CMD_CLICK_TARGET = {
+  lspDocumentUri: 'file:///repo/src/main.rs',
   projectId: 'proj-1',
-  order: 0,
-  title: 'main.rs',
-  data: { kind: 'file' as const, filePath: '/repo/src/main.rs' },
+  filePath: '/repo/src/main.rs',
 };
 
 const LOCATION: LspLocation = {
@@ -61,13 +60,13 @@ describe('handleCmdClickToDefinition', () => {
       view,
       projectPath: '/repo',
       tabKey: 'k1',
-      tab: TAB as never,
+      ...CMD_CLICK_TARGET,
       lspLanguageIdRef: { current: 'rust' },
       goToDefinition,
       navigateToLocation,
     });
 
-    // offset 5 on line 2 (from=3) → LSP line 1, character 2; uri from tab path.
+    // offset 5 on line 2 (from=3) → LSP line 1, character 2; uri 由调用方派生传入。
     expect(goToDefinition).toHaveBeenCalledWith('rust', 'file:///repo/src/main.rs', 1, 2);
     await vi.waitFor(() => {
       expect(navigateToLocation).toHaveBeenCalledWith(
@@ -88,7 +87,7 @@ describe('handleCmdClickToDefinition', () => {
       view: makeView(),
       projectPath: '/repo',
       tabKey: 'k1',
-      tab: TAB as never,
+      ...CMD_CLICK_TARGET,
       lspLanguageIdRef: { current: 'rust' },
       goToDefinition,
       navigateToLocation: vi.fn(),
@@ -103,8 +102,26 @@ describe('handleCmdClickToDefinition', () => {
       view: makeView(),
       projectPath: '/repo',
       tabKey: 'k1',
-      tab: TAB as never,
+      ...CMD_CLICK_TARGET,
       lspLanguageIdRef: { current: null },
+      goToDefinition,
+      navigateToLocation: vi.fn(),
+    });
+    expect(goToDefinition).not.toHaveBeenCalled();
+  });
+
+  it('should_ignore_click_without_document_uri（jdt 展示路径等无有效文档身份）', () => {
+    // 回归：uri 曾在此处由 tab 自行推导并回退 `file://jdt:/…` 伪造 uri，
+    // 与 F12 keymap 的守卫（resolveLspDocumentUri 返回 null 即跳过）不一致。
+    const goToDefinition = vi.fn();
+    handleCmdClickToDefinition({
+      event: makeEvent(),
+      view: makeView(),
+      projectPath: '/repo',
+      tabKey: 'k1',
+      ...CMD_CLICK_TARGET,
+      lspDocumentUri: null,
+      lspLanguageIdRef: { current: 'rust' },
       goToDefinition,
       navigateToLocation: vi.fn(),
     });
@@ -118,7 +135,7 @@ describe('handleCmdClickToDefinition', () => {
       view: makeView({ posAtCoords: vi.fn(() => null) }),
       projectPath: '/repo',
       tabKey: 'k1',
-      tab: TAB as never,
+      ...CMD_CLICK_TARGET,
       lspLanguageIdRef: { current: 'rust' },
       goToDefinition,
       navigateToLocation: vi.fn(),
@@ -141,7 +158,7 @@ describe('handleCmdClickToDefinition', () => {
       }),
       projectPath: '/repo',
       tabKey: 'k1',
-      tab: TAB as never,
+      ...CMD_CLICK_TARGET,
       lspLanguageIdRef: { current: 'rust' },
       goToDefinition,
       navigateToLocation: vi.fn(),
@@ -156,7 +173,7 @@ describe('useCmdClickGoToDefinition', () => {
       useCmdClickGoToDefinition({
         projectPath: null,
         tabKey: 'k1',
-        tab: TAB as never,
+        ...CMD_CLICK_TARGET,
         lspLanguageIdRef: { current: 'rust' },
         goToDefinition: vi.fn(),
         navigateToLocation: vi.fn(),
@@ -170,7 +187,7 @@ describe('useCmdClickGoToDefinition', () => {
       useCmdClickGoToDefinition({
         projectPath: '/repo',
         tabKey: 'k1',
-        tab: TAB as never,
+        ...CMD_CLICK_TARGET,
         lspLanguageIdRef: { current: 'rust' },
         goToDefinition: vi.fn(),
         navigateToLocation: vi.fn(),

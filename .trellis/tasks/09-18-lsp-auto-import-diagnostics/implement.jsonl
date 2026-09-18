@@ -1,0 +1,3 @@
+{"_example": "Fill with {\"file\": \"<path>\", \"reason\": \"<why>\"}. Put spec/research files only — no code paths. Run `python3 .trellis/scripts/get_context.py --mode packages` to list available specs. Delete this line once real entries are added."}
+{"file": ".trellis/tasks/09-18-lsp-auto-import-diagnostics/research/lsp-capability-matrix.md", "reason": "现状能力矩阵（file:line 实证）——实现的起点事实"}
+{"file": ".trellis/spec/frontend/state-management.md", "reason": "store 惯例（单写点/§12 可派生期望视图不做一次性槽）"}

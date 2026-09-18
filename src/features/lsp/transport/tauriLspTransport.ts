@@ -80,20 +80,38 @@ export class TauriLspTransport implements Transport {
 
     // Listen for server-pushed diagnostics via Tauri events,
     // and convert them to LSP JSON-RPC notifications for the client.
+    // Rust 侧只发 {uri, diagnostics} 裸载荷；lsp-client 按 JSON-RPC method 路由
+    // 消息——必须补全信封，否则通知被静默丢弃（「有诊断、无波浪线」的根因）。
     const diagEventName = `${LSP_DIAG_EVENT_PREFIX}${this.projectPath}`;
     listen<{ uri: string; diagnostics: unknown[] }>(diagEventName, (event) => {
-      this.handlers.forEach((h) => h(JSON.stringify(event.payload)));
+      this.handlers.forEach((h) =>
+        h(
+          JSON.stringify({
+            jsonrpc: '2.0',
+            method: 'textDocument/publishDiagnostics',
+            params: event.payload,
+          }),
+        ),
+      );
     }).then((unlisten) => {
       this.unlistenDiag = unlisten;
     });
 
-    // Listen for work-done progress events
+    // Listen for work-done progress events（同病同修：$/progress 通知也需信封）
     const progressEventName = `${LSP_PROGRESS_EVENT_PREFIX}${this.projectPath}`;
     listen<{
       token: string;
       value: { kind: string; title?: string; message?: string; percentage?: number };
     }>(progressEventName, (event) => {
-      this.handlers.forEach((h) => h(JSON.stringify(event.payload)));
+      this.handlers.forEach((h) =>
+        h(
+          JSON.stringify({
+            jsonrpc: '2.0',
+            method: '$/progress',
+            params: { token: event.payload.token, value: event.payload.value },
+          }),
+        ),
+      );
     }).then((unlisten) => {
       this.unlistenProgress = unlisten;
     });

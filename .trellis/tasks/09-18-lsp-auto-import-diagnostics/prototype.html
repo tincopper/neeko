@@ -1,0 +1,1447 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PROTOTYPE · LSP 自动导入与诊断提示体系（M1–M4）</title>
+<style>
+  /* ══════════════════════════════════════════════════════════════════
+     PROTOTYPE — 设计评审用，非生产代码。
+     配色/字号/圆角直接取仓库真实 token：
+       src/styles/tokens/theme.css   (OKLCH Dark 默认主题)
+       src/styles/tokens/tailwind.css
+       src/ui/Island.tsx             (ISLAND_CLASS)
+     ══════════════════════════════════════════════════════════════════ */
+
+  :root {
+    /* 应用语义令牌（theme.css :root[data-theme="dark"]） */
+    --bg-primary:   oklch(0.178 0 0);
+    --bg-secondary: oklch(0.205 0 0);
+    --bg-tertiary:  oklch(0.269 0 0);
+    --bg-hover:     oklch(0.3 0 0);
+    --bg-selected:  oklch(0.35 0 0);
+    --text-primary:   oklch(0.985 0 0);
+    --text-secondary: oklch(0.85 0 0);
+    --text-muted:     oklch(0.708 0 0);
+    --border-color: oklch(1 0 0 / 10%);
+    --accent-blue:   oklch(0.7 0.1 250);
+    --accent-green:  oklch(0.7 0.15 150);
+    --accent-yellow: oklch(0.8 0.15 85);
+    --accent-red:    oklch(0.704 0.191 22.216);
+    --accent-orange: oklch(0.75 0.15 65);
+    --status-idle:    oklch(0.7 0.15 150);
+    --status-running: oklch(0.8 0.15 85);
+    --status-failed:  oklch(0.704 0.191 22.216);
+    --titlebar-gradient-start: oklch(0.178 0 0);
+
+    /* CodeMirror 语法令牌（theme.css） */
+    --cm-keyword:   oklch(0.7 0.15 300);
+    --cm-comment:   oklch(0.556 0 0);
+    --cm-string:    oklch(0.7 0.15 150);
+    --cm-number:    oklch(0.75 0.12 70);
+    --cm-operator:  oklch(0.65 0.1 220);
+    --cm-variable:  oklch(0.7 0.15 20);
+    --cm-type:      oklch(0.75 0.12 70);
+    --cm-function:  oklch(0.7 0.1 250);
+    --cm-punct:     oklch(0.85 0 0);
+
+    /* 字体角色（theme.css） */
+    --font-ui: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    --font-mono: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', Consolas, ui-monospace, monospace;
+    --font-size: 12px;
+
+    /* 文档自身 chrome（不属于应用视觉，仅用于区分"图纸"与"实景"） */
+    --doc-bg: oklch(0.13 0 0);
+    --doc-surface: oklch(0.16 0 0);
+    --doc-border: oklch(1 0 0 / 12%);
+    --doc-muted: oklch(0.65 0 0);
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: var(--font-ui);
+    background: var(--doc-bg);
+    color: var(--text-primary);
+    font-size: 13px;
+    line-height: 1.6;
+    padding: 28px 24px 80px;
+    max-width: 1080px;
+    margin: 0 auto;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* ── 文档头部 ─────────────────────────────────────────── */
+  .flag {
+    display: inline-flex; align-items: center; gap: 6px;
+    font-family: var(--font-mono); font-size: 10.5px; letter-spacing: .08em;
+    color: var(--accent-orange);
+    border: 1px solid var(--accent-orange); border-radius: 999px;
+    padding: 2px 10px; margin-bottom: 14px;
+  }
+  h1 { font-size: 21px; font-weight: 650; letter-spacing: -.01em; }
+  .sub { color: var(--text-muted); font-size: 12px; margin-top: 6px; line-height: 1.7; }
+  .sub code, .mono { font-family: var(--font-mono); font-size: 11px; color: var(--text-secondary); }
+
+  .chip-row { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 14px; }
+  .chip {
+    font-size: 11px; padding: 2px 9px; border-radius: 999px;
+    border: 1px solid var(--doc-border); color: var(--text-muted);
+  }
+  .chip.ok   { color: var(--status-idle);    border-color: var(--status-idle); }
+  .chip.busy { color: var(--status-running); border-color: var(--status-running); }
+  .chip.no   { color: var(--text-muted); }
+  .chip.err  { color: var(--status-failed);  border-color: var(--status-failed); }
+
+  details.callout {
+    margin-top: 18px; background: var(--doc-surface);
+    border: 1px solid var(--doc-border); border-radius: 8px; padding: 12px 14px;
+  }
+  details.callout summary { cursor: pointer; font-weight: 600; font-size: 12.5px; }
+  details.callout > *:not(summary) { margin-top: 10px; }
+  details.callout ul { padding-left: 18px; }
+  details.callout li { color: var(--text-secondary); font-size: 12px; margin: 5px 0; }
+  details.callout strong { color: var(--text-primary); font-weight: 600; }
+
+  /* ── 目录 ─────────────────────────────────────────────── */
+  nav.toc {
+    position: sticky; top: 0; z-index: 20;
+    display: flex; gap: 4px; flex-wrap: wrap;
+    margin: 22px 0 8px; padding: 8px 0;
+    background: linear-gradient(to bottom, var(--doc-bg) 70%, transparent);
+  }
+  nav.toc a {
+    font-size: 11.5px; color: var(--text-secondary); text-decoration: none;
+    border: 1px solid var(--doc-border); border-radius: 6px; padding: 3px 9px;
+    transition: background-color 120ms ease, color 120ms ease;
+  }
+  nav.toc a:hover { background: var(--bg-hover); color: var(--text-primary); }
+
+  /* ── 章节 ─────────────────────────────────────────────── */
+  section { margin-top: 40px; scroll-margin-top: 56px; }
+  .sec-head { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+  .m-badge {
+    font-family: var(--font-mono); font-size: 11px; font-weight: 600;
+    color: var(--accent-blue); border: 1px solid var(--accent-blue);
+    border-radius: 5px; padding: 1px 7px;
+  }
+  section h2 { font-size: 16px; font-weight: 650; }
+  .sec-sub { color: var(--text-muted); font-size: 12px; margin-top: 4px; }
+  .rule { height: 1px; background: var(--doc-border); margin: 12px 0 18px; }
+
+  h3 { font-size: 12.5px; font-weight: 600; color: var(--text-secondary); margin: 22px 0 10px; }
+  h3 .hint { font-weight: 400; color: var(--text-muted); font-size: 11.5px; margin-left: 6px; }
+
+  /* ── 图 ───────────────────────────────────────────────── */
+  figure { margin: 0 0 22px; }
+  figcaption {
+    font-size: 11.5px; color: var(--text-muted); margin-top: 8px;
+    display: flex; gap: 8px; align-items: flex-start;
+  }
+  figcaption .tag {
+    flex-shrink: 0; font-family: var(--font-mono); font-size: 10.5px;
+    color: var(--text-secondary); border: 1px solid var(--doc-border);
+    border-radius: 4px; padding: 0 5px;
+  }
+
+  /* ── 窗口实景（AppShell 结构还原）─────────────────────── */
+  .win {
+    display: flex; flex-direction: column;
+    background: var(--bg-primary);
+    border: 1px solid var(--doc-border); border-radius: 10px;
+    overflow: hidden;
+  }
+  .win.full { height: 560px; }
+  .win.mid  { height: 320px; }
+  .win.sm   { height: 208px; }
+
+  .tb {
+    height: 34px; flex-shrink: 0;
+    background: linear-gradient(to bottom, var(--titlebar-gradient-start), var(--bg-gradient-end, var(--bg-primary)));
+    border-bottom: 1px solid var(--border-color);
+    display: flex; align-items: center; gap: 10px; padding: 0 12px;
+  }
+  .traffic { display: flex; gap: 6px; }
+  .traffic i { width: 10px; height: 10px; border-radius: 50%; background: var(--bg-hover); display: block; }
+  .tb-title { font-size: 11.5px; color: var(--text-muted); }
+  .tb-spacer { flex: 1; }
+  .tb-act {
+    font-size: 11px; color: var(--text-muted);
+    display: inline-flex; align-items: center; gap: 4px;
+  }
+
+  .ws { flex: 1; display: flex; min-height: 0; }
+  .rail {
+    width: 44px; flex-shrink: 0; border-right: 1px solid var(--border-color);
+    display: flex; flex-direction: column; align-items: center;
+    gap: 10px; padding-top: 12px;
+  }
+  .rail i {
+    width: 18px; height: 18px; border-radius: 5px; display: block;
+    background: var(--bg-tertiary);
+  }
+  .rail i.on { background: var(--accent-blue); }
+  .col {
+    width: 190px; flex-shrink: 0; border-right: 1px solid var(--border-color);
+    padding: 10px; display: flex; flex-direction: column; gap: 7px;
+  }
+  .col-h { font-size: 10.5px; letter-spacing: .06em; color: var(--text-muted); text-transform: uppercase; }
+  .col-row {
+    font-size: 11.5px; color: var(--text-secondary);
+    display: flex; align-items: center; gap: 6px;
+    padding: 3px 5px; border-radius: 4px;
+  }
+  .col-row.on { background: var(--bg-hover); color: var(--text-primary); }
+
+  .center { flex: 1; min-width: 0; display: flex; flex-direction: column; padding: 0 44px 2px; }
+  .island {
+    background: var(--bg-secondary); border-radius: 8px;
+    box-shadow: 0 1px 2px oklch(0 0 0 / .3);
+    display: flex; flex-direction: column; overflow: hidden; min-height: 0;
+  }
+  .center > .island { flex: 1; }
+
+  /* 编辑器 */
+  .tabs {
+    height: 30px; flex-shrink: 0; display: flex; align-items: stretch;
+    border-bottom: 1px solid var(--border-color); background: var(--bg-secondary);
+  }
+  .tab {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 0 11px; font-size: 11.5px; color: var(--text-muted);
+    border-right: 1px solid var(--border-color); border-bottom: 2px solid transparent;
+  }
+  .tab.on { color: var(--text-primary); background: var(--bg-primary); border-bottom-color: var(--accent-blue); }
+  .tab .badge-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent-red); flex-shrink: 0; }
+
+  .code {
+    flex: 1; min-height: 0; overflow: hidden;
+    font-family: var(--font-mono); font-size: 12px; line-height: 1.75;
+    padding: 8px 0;
+  }
+  .ln { display: flex; white-space: pre; }
+  .ln.hi { background: oklch(0.7 0.1 250 / .12); }
+  .ln.ins { background: oklch(0.7 0.15 150 / .16); }
+  .g {
+    width: 44px; flex-shrink: 0; text-align: right; padding-right: 12px;
+    color: var(--text-muted); opacity: .55; font-size: 11px;
+    position: relative; user-select: none;
+  }
+  .c { padding-right: 10px; }
+  .k  { color: var(--cm-keyword); }
+  .s  { color: var(--cm-string); }
+  .n  { color: var(--cm-number); }
+  .f  { color: var(--cm-function); }
+  .t  { color: var(--cm-type); }
+  .v  { color: var(--cm-variable); }
+  .o  { color: var(--cm-operator); }
+  .p  { color: var(--cm-punct); }
+  .cm { color: var(--cm-comment); font-style: italic; }
+
+  /* 诊断波浪线 */
+  .sq-e { text-decoration: underline wavy var(--accent-red) 1.5px; text-underline-offset: 3px; text-decoration-skip-ink: none; }
+  .sq-w { text-decoration: underline wavy var(--accent-yellow) 1.5px; text-underline-offset: 3px; text-decoration-skip-ink: none; }
+  /* 内联诊断提示（编辑器行尾灰字，VS Code 风格） */
+  .inline-diag {
+    font-family: var(--font-ui); font-size: 11px; font-style: normal;
+    color: var(--text-muted); margin-left: 18px;
+  }
+  /* 行内灯泡（M3） */
+  .bulb {
+    position: absolute; left: 14px; top: 2px;
+    color: var(--accent-yellow); display: inline-flex;
+  }
+
+  /* 底部固定面板（ProblemsPanel / TaskConsolePanel 同构） */
+  .panel-wrap { flex-shrink: 0; padding: 0 44px 2px; }
+  .panel {
+    background: var(--bg-secondary); border-radius: 8px 8px 8px 8px;
+    box-shadow: 0 1px 2px oklch(0 0 0 / .3);
+    display: flex; flex-direction: column; overflow: hidden;
+    height: 172px; position: relative;
+  }
+  .panel-h {
+    height: 32px; flex-shrink: 0; display: flex; align-items: center; gap: 6px;
+    border-bottom: 1px solid var(--border-color); padding-right: 4px;
+  }
+  .panel-h .ttl {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 0 10px; font-size: var(--font-size); font-weight: 500; color: var(--text-primary);
+  }
+  .panel-h .grip {
+    position: absolute; top: 1px; left: 50%; transform: translateX(-50%);
+    width: 32px; height: 3px; border-radius: 999px; background: var(--border-color);
+  }
+  .icon-btn {
+    width: 22px; height: 22px; border-radius: 4px;
+    display: inline-flex; align-items: center; justify-content: center;
+    color: var(--text-muted); background: transparent;
+  }
+  .panel-b { flex: 1; min-height: 0; overflow: hidden; }
+
+  .sum {
+    display: flex; align-items: center; gap: 14px;
+    padding: 5px 12px; font-size: 11.5px;
+    border-bottom: 1px solid var(--border-color);
+  }
+  .sum .err  { color: var(--accent-red); }
+  .sum .warn { color: var(--accent-yellow); }
+  .sum .info { color: var(--accent-blue); }
+  .sum .hint { color: var(--text-muted); }
+
+  .grp-h {
+    padding: 3px 12px; font-size: 11px; font-weight: 500; color: var(--text-secondary);
+    background: oklch(0.205 0 0 / .6); border-bottom: 1px solid var(--border-color);
+    display: flex; align-items: center; gap: 6px;
+  }
+  .grp-h .pill {
+    font-size: 10px; color: var(--text-muted);
+    border: 1px solid var(--border-color); border-radius: 999px; padding: 0 6px;
+  }
+  .drow {
+    display: flex; align-items: flex-start; gap: 8px;
+    padding: 5px 12px; font-size: 11.5px;
+    border-bottom: 1px solid oklch(1 0 0 / 5%);
+  }
+  .drow:hover { background: var(--bg-hover); }
+  .drow .sev { flex-shrink: 0; margin-top: 1px; font-size: 11px; }
+  .drow .sev.e { color: var(--accent-red); }
+  .drow .sev.w { color: var(--accent-yellow); }
+  .drow .msg { color: var(--text-primary); }
+  .drow .loc { color: var(--text-secondary); font-size: 11px; }
+  .drow .caret { margin-left: auto; flex-shrink: 0; color: var(--text-muted); opacity: 0; }
+  .drow:hover .caret { opacity: 1; }
+  .empty {
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    height: 100%; gap: 4px; color: var(--text-muted); font-size: 12px;
+  }
+  .empty .codim { font-size: 11px; }
+
+  /* 状态栏（真 16px 高） */
+  .sb {
+    height: 16px; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 0 12px; font-size: var(--font-size); line-height: 16px;
+    color: var(--text-secondary); user-select: none;
+    border-top: 1px solid var(--border-color);
+  }
+  .sb-l, .sb-r { display: flex; align-items: center; gap: 12px; height: 100%; }
+  .sb-item { display: inline-flex; align-items: center; gap: 6px; }
+  .sb-item.on { color: var(--text-primary); }
+  .dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; display: inline-block; }
+  .dot.idle { background: var(--status-idle); }
+  .dot.busy { background: var(--status-running); animation: pulse 1.4s ease-in-out infinite; }
+  .dot.err  { background: var(--status-failed); }
+  .dot.mut  { background: var(--text-muted); }
+  @keyframes pulse { 0%,100% { opacity: 1 } 50% { opacity: .35 } }
+  .hi-ring { box-shadow: inset 0 0 0 1px var(--accent-blue); border-radius: 3px; padding: 0 4px; }
+
+  /* 浮层：下拉 / 灯泡 / 补全 / 确认框 */
+  .pop {
+    background: var(--bg-secondary); border: 1px solid var(--border-color);
+    border-radius: 6px; box-shadow: 0 8px 24px oklch(0 0 0 / .5);
+    font-size: 11.5px; color: var(--text-primary); overflow: hidden;
+  }
+  .pop-r {
+    display: flex; align-items: center; gap: 8px;
+    padding: 5px 10px; border-bottom: 1px solid oklch(1 0 0 / 6%);
+  }
+  .pop-r:last-child { border-bottom: none; }
+  .pop-r.sel { background: var(--bg-hover); }
+  .pop-r.dis { color: var(--text-muted); }
+  .pop-r .sub2 { margin-left: auto; font-size: 10.5px; color: var(--text-muted); }
+  .pop-h {
+    padding: 4px 10px; font-size: 10px; letter-spacing: .06em; text-transform: uppercase;
+    color: var(--text-muted); background: oklch(0.25 0 0 / .5);
+    border-bottom: 1px solid var(--border-color);
+  }
+  .pop-sep { height: 1px; background: var(--border-color); }
+  .pop code { font-family: var(--font-mono); font-size: 11px; color: var(--cm-string); }
+  .kbd {
+    font-family: var(--font-mono); font-size: 10px; color: var(--text-muted);
+    border: 1px solid var(--border-color); border-radius: 3px; padding: 0 4px;
+  }
+  .btn {
+    font-size: 11px; border-radius: 4px; padding: 3px 9px;
+    border: 1px solid var(--border-color); color: var(--text-secondary);
+    display: inline-flex; align-items: center;
+  }
+  .btn.primary { background: var(--accent-blue); border-color: var(--accent-blue); color: var(--bg-primary); font-weight: 600; }
+  .toast {
+    display: inline-flex; align-items: center; gap: 7px;
+    background: var(--bg-tertiary); border: 1px solid var(--border-color);
+    border-radius: 6px; padding: 5px 10px; font-size: 11.5px; color: var(--text-secondary);
+    box-shadow: 0 6px 18px oklch(0 0 0 / .45);
+  }
+
+  /* 定位容器：把浮层锚到窗口内的具体位置 */
+  .anchor { position: relative; }
+  .abs-bulb   { position: absolute; left: 258px; top: 96px; width: 232px; z-index: 5; }
+  .abs-compl  { position: absolute; left: 150px; top: 58px; width: 268px; z-index: 5; }
+  .abs-ask    { position: absolute; left: 120px; top: 34px; width: 300px; z-index: 6; }
+  .abs-drop   { position: absolute; left: 88px; bottom: 18px; width: 244px; z-index: 5; }
+  .abs-toast  { position: absolute; right: 56px; bottom: 22px; z-index: 5; }
+  .dim-mask { position: absolute; inset: 0; background: oklch(0.1 0 0 / .45); z-index: 4; }
+
+  /* ── 通道流图 ─────────────────────────────────────────── */
+  .flow {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 7px;
+    background: var(--doc-surface); border: 1px solid var(--doc-border);
+    border-radius: 8px; padding: 11px 12px;
+  }
+  .fbox {
+    border: 1px solid var(--doc-border); background: var(--doc-bg);
+    border-radius: 5px; padding: 4px 9px; font-size: 11px; color: var(--text-secondary);
+  }
+  .fbox b { color: var(--text-primary); font-weight: 600; }
+  .fbox.own { box-shadow: inset 0 0 0 1px var(--accent-blue); color: var(--text-primary); }
+  .fbox.ext { box-shadow: inset 0 0 0 1px var(--status-idle); color: var(--text-primary); }
+  .fbox.lsp { box-shadow: inset 0 0 0 1px var(--accent-orange); color: var(--text-primary); }
+  .arw { color: var(--doc-muted); font-family: var(--font-mono); font-size: 12px; }
+  .flow-note { width: 100%; font-size: 11px; color: var(--doc-muted); margin-top: 2px; }
+
+  /* ── 选项切换（纯 CSS，无 JS）────────────────────────── */
+  .switch > input { display: none; }
+  .sw-bar { display: inline-flex; gap: 2px; background: var(--doc-surface); border: 1px solid var(--doc-border); border-radius: 7px; padding: 2px; }
+  .sw-bar label {
+    font-size: 11.5px; color: var(--text-muted); padding: 3px 12px;
+    border-radius: 5px; cursor: pointer;
+  }
+  .sw-bar label:hover { color: var(--text-secondary); }
+  .panes > .pane { display: none; }
+
+  /* 高亮当前选项：.sw-bar 嵌在 .sw-head 内，故用后代选择器而非子选择器 */
+  .switch.opt-a > input#opt-a:checked ~ .sw-head .sw-bar label[for="opt-a"],
+  .switch.opt-b > input#opt-b:checked ~ .sw-head .sw-bar label[for="opt-b"],
+  .switch.opt-c > input#opt-c:checked ~ .sw-head .sw-bar label[for="opt-c"],
+  .switch.opt-auto > input#opt-auto:checked ~ .sw-head .sw-bar label[for="opt-auto"],
+  .switch.opt-ask > input#opt-ask:checked ~ .sw-head .sw-bar label[for="opt-ask"],
+  .switch.opt-never > input#opt-never:checked ~ .sw-head .sw-bar label[for="opt-never"] {
+    background: var(--accent-blue); color: var(--bg-primary); font-weight: 600;
+  }
+  .switch.opt-a > input#opt-a:checked ~ .panes > .pane[data-p="a"],
+  .switch.opt-b > input#opt-b:checked ~ .panes > .pane[data-p="b"],
+  .switch.opt-c > input#opt-c:checked ~ .panes > .pane[data-p="c"],
+  .switch.opt-auto > input#opt-auto:checked ~ .panes > .pane[data-p="auto"],
+  .switch.opt-ask > input#opt-ask:checked ~ .panes > .pane[data-p="ask"],
+  .switch.opt-never > input#opt-never:checked ~ .panes > .pane[data-p="never"] {
+    display: block;
+  }
+  .sw-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 10px; }
+  .sw-verdict { font-size: 11.5px; color: var(--text-muted); }
+
+  /* ── 卡片 / 结论块 ───────────────────────────────────── */
+  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 10px; }
+  .card {
+    background: var(--doc-surface); border: 1px solid var(--doc-border);
+    border-radius: 8px; padding: 11px 13px;
+  }
+  .card h4 { font-size: 12px; font-weight: 600; margin-bottom: 5px; }
+  .card p, .card li { font-size: 11.5px; color: var(--text-secondary); line-height: 1.65; }
+  .card ul { padding-left: 16px; margin-top: 4px; }
+  .card.chosen { border-color: var(--accent-blue); }
+  .card.chosen h4::after { content: " · 已选定"; color: var(--accent-blue); font-weight: 500; font-size: 11px; }
+  .card.reject h4 { color: var(--text-muted); }
+
+  .qa { counter-reset: q; }
+  .qa-item {
+    display: flex; gap: 12px; padding: 12px 0;
+    border-top: 1px solid var(--doc-border);
+  }
+  .qa-item:first-child { border-top: none; }
+  .qa-n {
+    flex-shrink: 0; width: 20px; height: 20px; border-radius: 50%;
+    border: 1px solid var(--accent-orange); color: var(--accent-orange);
+    font-family: var(--font-mono); font-size: 11px;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .qa-body h4 { font-size: 12.5px; font-weight: 600; margin-bottom: 4px; }
+  .qa-body p { font-size: 11.5px; color: var(--text-secondary); }
+  .qa-opts { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 7px; }
+  .qa-opt {
+    font-size: 11px; color: var(--text-secondary);
+    border: 1px solid var(--doc-border); border-radius: 5px; padding: 2px 8px;
+  }
+  .qa-opt b { color: var(--text-primary); }
+
+  table.contract { width: 100%; border-collapse: collapse; font-size: 11.5px; }
+  table.contract th, table.contract td {
+    text-align: left; padding: 7px 10px; border-bottom: 1px solid var(--doc-border);
+    vertical-align: top;
+  }
+  table.contract th { color: var(--text-muted); font-weight: 500; font-size: 11px; }
+  table.contract td { color: var(--text-secondary); }
+  table.contract td.no { color: var(--text-muted); }
+  table.contract code { font-family: var(--font-mono); font-size: 11px; }
+</style>
+</head>
+<body>
+
+<!-- SVG 图标符号（对齐仓库 icons 组件语义：X / Terminal / ListX / TriangleAlert / ChevronDown / RefreshCw / Bulb / Server） -->
+<svg style="display:none" aria-hidden="true">
+  <symbol id="i-x" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18M6 6l12 12"/></symbol>
+  <symbol id="i-terminal" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m4 17 6-6-6-6"/><path d="M12 19h8"/></symbol>
+  <symbol id="i-listx" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 12H3"/><path d="M16 6H3"/><path d="M16 18H3"/><path d="m19 10-4 4"/><path d="m15 10 4 4"/></symbol>
+  <symbol id="i-alert" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/></symbol>
+  <symbol id="i-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></symbol>
+  <symbol id="i-refresh" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></symbol>
+  <symbol id="i-bulb" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 14c.2-1 .7-1.7 1.5-2.5 1-.9 1.5-2.2 1.5-3.5A6 6 0 0 0 6 8c0 1 .2 2.2 1.5 3.5.7.7 1.3 1.5 1.5 2.5"/><path d="M9 18h6"/><path d="M10 22h4"/></symbol>
+  <symbol id="i-server" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="8" x="2" y="2" rx="2"/><rect width="20" height="8" x="2" y="14" rx="2"/><path d="M6 6h.01M6 18h.01"/></symbol>
+  <symbol id="i-square" viewBox="0 0 24 24" fill="currentColor"><rect x="5" y="5" width="14" height="14" rx="1"/></symbol>
+</svg>
+
+<header>
+  <div class="flag">PROTOTYPE · 设计评审用 · 非生产代码</div>
+  <h1>LSP 自动导入与诊断提示体系 — 方案原型</h1>
+  <p class="sub">
+    任务 <span class="mono">.trellis/tasks/09-18-lsp-auto-import-diagnostics</span> ·
+    契约依据 <span class="mono">design.md</span> §2 · 业界机制 <span class="mono">research/industry-survey.md</span> ·
+    仓库实证 <span class="mono">research/lsp-capability-matrix.md</span><br>
+    视觉按 Neeko <strong>暗色默认主题真实 token</strong> 还原（<span class="mono">bg-primary/secondary</span>、<span class="mono">accent-*</span>、12px UI 字号、Island 圆角、status-bar 真实 16px 高度），
+    可直接与运行中的 app 对照判断「放这儿合不合适」。
+  </p>
+  <div class="chip-row">
+    <span class="chip ok">M1 诊断可视化 · 代码已落地（未提交）</span>
+    <span class="chip no">M2 健康度 · 未开始</span>
+    <span class="chip no">M3 codeAction · 未开始</span>
+    <span class="chip no">M4 策略三态 · 未开始</span>
+  </div>
+
+  <details class="callout" open>
+    <summary>本次盘点发现（读图前请先看这条）</summary>
+    <ul>
+      <li><strong>M1 与 M2 都存在「方案假设 ≠ 仓库现状」的落差</strong>：M1 的挂载点已按 design §M1 判定标准取 <strong>(a) dock 固定底部面板</strong>；M2 想做的「LS 生命周期可见」在 <span class="mono">LspStatusSection</span> + <span class="mono">LspSlotItem</span> 里<strong>已大部分存在</strong>（phase 圆点 / Starting·Indexing 文案 / Error / Restart Server 入口），M2 的真实增量小于计划描述。</li>
+      <li>因此下文 M2 用 <span class="mono">现状</span> / <span class="mono">增量</span> 双标签标注，供你决定是否收缩 M2 范围。</li>
+      <li>M3、M4 为全新通道，原型即契约的可视化；其中两条交互（<strong>灯泡位置</strong>、<strong>Ask 预览形态</strong>）是 design.md 明确留给实现期的判断点，见文末「待你判断」。</li>
+      <li>本文件的代码示例统一用 Go + gopls（M0 指定的真机验证语言），但原型不引入任何语言分支——这本身就是 R5 的可视化承诺。</li>
+    </ul>
+  </details>
+</header>
+
+<nav class="toc">
+  <a href="#m1">M1 诊断可视化</a>
+  <a href="#m2">M2 会话健康度</a>
+  <a href="#m3">M3 codeAction 灯泡</a>
+  <a href="#m4">M4 导入策略三态</a>
+  <a href="#qa">待你判断</a>
+  <a href="#contract">契约红线</a>
+</nav>
+
+<main>
+
+<!-- ══════════════════════════════════════════════════════════════════
+     M1
+     ══════════════════════════════════════════════════════════════════ -->
+<section id="m1">
+  <div class="sec-head">
+    <span class="m-badge">M1</span>
+    <h2>诊断可视化闭环</h2>
+    <span class="chip ok">R1 / AC1 · 已实现</span>
+  </div>
+  <p class="sec-sub">Problems 面板从「孤儿组件」接入诊断数据流：诊断数据单写点 = lspStore，面板与编辑器波浪线共享同一事件源。</p>
+  <div class="rule"></div>
+
+  <div class="flow">
+    <span class="fbox lsp"><b>语言服务器</b> publishDiagnostics</span>
+    <span class="arw">→</span>
+    <span class="fbox">Rust <b>lsp-diagnostics-{projectPath}</b> Tauri 事件</span>
+    <span class="arw">→</span>
+    <span class="fbox own"><b>lspStore</b> diagnosticsByProject（单写点 · D3）</span>
+    <span class="arw">→</span>
+    <span class="fbox ext"><b>Problems 面板</b>（本任务新增）</span>
+    <span class="arw">│</span>
+    <span class="fbox ext"><b>lsp-client</b> → CM squiggle（现状不动）</span>
+    <span class="flow-note">同一事件流两个消费面直接派生，不引入转发层 —— 避免「波浪线在、列表没有」的双表示病根（design D3）。</span>
+  </div>
+
+  <h3>主场景：全窗口实景 <span class="hint">Problems 面板展开 · 按文件分组 · severity 排序</span></h3>
+  <figure>
+    <div class="win full">
+      <div class="tb">
+        <span class="traffic"><i></i><i></i><i></i></span>
+        <span class="tb-title">neeko-demo — Neeko</span>
+        <span class="tb-spacer"></span>
+        <span class="tb-act"><svg width="12" height="12"><use href="#i-terminal"/></svg> Console</span>
+        <span class="tb-act"><svg width="12" height="12"><use href="#i-server"/></svg> LSP</span>
+      </div>
+
+      <div class="ws">
+        <div class="rail"><i class="on"></i><i></i><i></i><i></i></div>
+        <div class="col">
+          <div class="col-h">Explorer</div>
+          <div class="col-row on">main.go</div>
+          <div class="col-row">go.mod</div>
+          <div class="col-row">utils/</div>
+          <div class="col-row" style="padding-left:18px">helper.go</div>
+        </div>
+        <div class="center">
+          <div class="island">
+            <div class="tabs">
+              <span class="tab on"><span class="badge-dot"></span>main.go</span>
+              <span class="tab"><span class="badge-dot"></span>helper.go</span>
+            </div>
+            <div class="code">
+              <div class="ln"><span class="g">1</span><span class="c"><span class="k">package</span> main</span></div>
+              <div class="ln"><span class="g">2</span><span class="c"></span></div>
+              <div class="ln"><span class="g">3</span><span class="c"><span class="k">import</span> <span class="s">"os"</span></span></div>
+              <div class="ln"><span class="g">4</span><span class="c"></span></div>
+              <div class="ln"><span class="g">5</span><span class="c"><span class="k">func</span> <span class="f">main</span><span class="p">() {</span></span></div>
+              <div class="ln"><span class="g">6</span><span class="c">	name <span class="o">:=</span> os<span class="p">.</span><span class="f">Args</span><span class="p">[</span><span class="n">1</span><span class="p">]</span></span></div>
+              <div class="ln"><span class="g">7</span><span class="c">	<span class="sq-e">fmt</span><span class="p">.</span><span class="f">Println</span><span class="p">(</span><span class="s">"hello"</span><span class="p">,</span> name<span class="p">)</span><span class="inline-diag">undefined: fmt</span></span></div>
+              <div class="ln"><span class="g">8</span><span class="c">	msg <span class="o">:=</span> <span class="sq-w">build</span><span class="p">(</span>name<span class="p">)</span><span class="inline-diag">ineffectual assignment to msg</span></span></div>
+              <div class="ln"><span class="g">9</span><span class="c">	msg <span class="o">=</span> <span class="s">"hi"</span></span></div>
+              <div class="ln"><span class="g">10</span><span class="c">	<span class="f">println</span><span class="p">(</span>msg<span class="p">)</span></span></div>
+              <div class="ln"><span class="g">11</span><span class="c"><span class="p">}</span></span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel-wrap">
+        <div class="panel">
+          <div class="grip"></div>
+          <div class="panel-h">
+            <span class="ttl"><svg width="13" height="13" style="color:var(--text-secondary)"><use href="#i-listx"/></svg> Problems</span>
+            <span class="tb-spacer"></span>
+            <span class="icon-btn"><svg width="14" height="14"><use href="#i-x"/></svg></span>
+          </div>
+          <div class="panel-b">
+            <div class="sum">
+              <span class="err">2 errors</span>
+              <span class="warn">1 warning</span>
+              <span class="info">0 infos</span>
+              <span class="hint">0 hints</span>
+            </div>
+            <div class="grp-h">main.go <span class="pill">2</span></div>
+            <div class="drow">
+              <span class="sev e">✕</span>
+              <span><span class="msg">undefined: fmt</span> <span class="loc">L7:2 • gopls</span></span>
+              <span class="caret">→</span>
+            </div>
+            <div class="drow">
+              <span class="sev w">⚠</span>
+              <span><span class="msg">ineffectual assignment to msg</span> <span class="loc">L8:2 • gopls</span></span>
+              <span class="caret">→</span>
+            </div>
+            <div class="grp-h">utils/helper.go <span class="pill">1</span></div>
+            <div class="drow">
+              <span class="sev e">✕</span>
+              <span><span class="msg">declared and not used: tmp</span> <span class="loc">L12:2 • gopls</span></span>
+              <span class="caret">→</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="sb">
+        <div class="sb-l">
+          <span class="sb-item">main</span>
+          <span class="sb-item">Go</span>
+          <span class="sb-item"><span class="dot idle"></span>gopls</span>
+        </div>
+        <div class="sb-r">
+          <span class="sb-item" title="Problems · 2 errors, 1 warning">✕ 2 &nbsp;⚠ 1</span>
+          <span class="sb-item">Ln 7, Col 3</span>
+          <span class="sb-item">Spaces: 4</span>
+        </div>
+      </div>
+    </div>
+    <figcaption>
+      <span class="tag">M1-1</span>
+      <span>左：编辑器内两处波浪线（error 红 / warning 黄）+ 行尾内联诊断文案（CM 既有渲染，本任务不动）。
+      下：Problems 面板按文件分组，组内按 severity → 行号排序；点击行 → <span class="mono">openProjectFile</span> 定位（LS 0-based 行转 1-based）。
+      右簇：Problems 计数入口（仅 error/warning 入徽标，点击开关面板）。</span>
+    </figcaption>
+  </figure>
+
+  <h3>空态与跨项目隔离 <span class="hint">错误矩阵的两条边界</span></h3>
+  <figure>
+    <div class="win sm">
+      <div class="tb">
+        <span class="traffic"><i></i><i></i><i></i></span>
+        <span class="tb-title">neeko-demo — Neeko</span>
+        <span class="tb-spacer"></span>
+      </div>
+      <div class="ws">
+        <div class="rail"></div>
+        <div class="center">
+          <div class="island">
+            <div class="tabs"><span class="tab on">main.go</span></div>
+            <div class="code">
+              <div class="ln"><span class="g">1</span><span class="c"><span class="k">package</span> main</span></div>
+              <div class="ln"><span class="g">2</span><span class="c"></span></div>
+              <div class="ln"><span class="g">3</span><span class="c"><span class="k">func</span> <span class="f">main</span><span class="p">() {}</span></span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="panel-wrap">
+        <div class="panel" style="height:74px">
+          <div class="grip"></div>
+          <div class="panel-h">
+            <span class="ttl"><svg width="13" height="13" style="color:var(--text-secondary)"><use href="#i-listx"/></svg> Problems</span>
+            <span class="tb-spacer"></span>
+          </div>
+          <div class="panel-b">
+            <div class="empty">
+              <span>No diagnostics</span>
+              <span class="codim">LS 推空数组 = 清空该 uri（规范语义），不是"没收到"</span>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="sb">
+        <div class="sb-l"><span class="sb-item">main</span><span class="sb-item">Go</span><span class="sb-item"><span class="dot idle"></span>gopls</span></div>
+        <div class="sb-r"><span class="sb-item on">✕ 0 &nbsp;⚠ 0</span></div>
+      </div>
+    </div>
+    <figcaption>
+      <span class="tag">M1-2</span>
+      <span>切换文件 / 项目后无诊断 → 空态文案（组件原有），计数归零但不隐藏入口。
+      并发多项目时 <span class="mono">diagnosticsByProject</span> 按键隔离，跨项目不串（切项目即换键，旧项目诊断不泄漏到新项目面板）。</span>
+    </figcaption>
+  </figure>
+
+  <h3>挂载点：三选一的实际落点 <span class="hint">design §M1 判定标准 · 禁止新建第三种面板机制</span></h3>
+  <figure>
+  <div class="switch opt-a">
+    <input type="radio" name="mount" id="opt-a" checked>
+    <input type="radio" name="mount" id="opt-b">
+    <input type="radio" name="mount" id="opt-c">
+    <div class="sw-head">
+      <div class="sw-bar">
+        <label for="opt-a">(a) dock 固定底部面板</label>
+        <label for="opt-b">(b) 编辑器组底部折叠条</label>
+        <label for="opt-c">(c) status-bar 弹层</label>
+      </div>
+      <span class="sw-verdict">判定依据：与现有「终端 / 调试」面板同类 = dock；仅计数 = status-bar</span>
+    </div>
+    <div class="panes">
+      <div class="pane" data-p="a">
+        <div class="cards">
+          <div class="card chosen">
+            <h4>(a) dock 固定底部面板</h4>
+            <p><span class="mono">fixedPanelRegistry</span> 新增一项，与 <span class="mono">task-console</span> / <span class="mono">debug</span> 完全同构：顶缘拖拽调高 + localStorage 持久化 + 头部关闭按钮。可见性由 store 的 <span class="mono">problemsPanelOpen</span> 驱动。</p>
+            <ul>
+              <li>有列表 + 跳转 + 分组 = 信息量等同 Console，归 dock</li>
+              <li>零新增面板机制（满足「禁止第三种机制」）</li>
+              <li>代价：占竖向空间，需手动开关</li>
+            </ul>
+          </div>
+          <div class="card">
+            <h4>为什么不是另两个</h4>
+            <ul>
+              <li><b>(b) 折叠条</b>：高度受限，诊断列表 + M3 灯泡动作列表放不下；且编辑器组本身尚无折叠条机制，等于新增机制。</li>
+              <li><b>(c) status-bar 弹层</b>：design 已把「仅计数」归给 status-bar——计数入口正是本次 <span class="mono">ProblemsItem</span> 承担的角色；完整列表继续塞弹层会与 LSP chip 下拉抢同一空间。</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+      <div class="pane" data-p="b">
+        <div class="win mid">
+          <div class="tb"><span class="traffic"><i></i><i></i><i></i></span><span class="tb-title">备选 (b) · 编辑器组底部折叠条</span></div>
+          <div class="ws">
+            <div class="rail"><i class="on"></i><i></i></div>
+            <div class="center">
+              <div class="island">
+                <div class="tabs"><span class="tab on">main.go</span></div>
+                <div class="code">
+                  <div class="ln"><span class="g">7</span><span class="c">	<span class="sq-e">fmt</span><span class="p">.</span><span class="f">Println</span><span class="p">(</span><span class="s">"hello"</span><span class="p">)</span></span></div>
+                </div>
+                <div style="height:26px;border-top:1px solid var(--border-color);display:flex;align-items:center;gap:10px;padding:0 12px;font-size:11.5px;color:var(--text-secondary)">
+                  <span style="color:var(--accent-red)">✕ 2</span>
+                  <span style="color:var(--accent-yellow)">⚠ 1</span>
+                  <span style="margin-left:auto;color:var(--text-muted)">main.go · 2 problems</span>
+                  <svg width="12" height="12" style="color:var(--text-muted)"><use href="#i-chev"/></svg>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="sb"><div class="sb-l"><span class="sb-item">main</span></div><div class="sb-r"><span class="sb-item">✕ 2 &nbsp;⚠ 1</span></div></div>
+        </div>
+        <p class="sw-verdict" style="margin-top:8px">折叠条只能承载「当前文件计数 + 展开」，跨文件分组列表和 M3 动作列表在此形态里会被压成两行滚动区；编辑器组也没有既有折叠条可复用。</p>
+      </div>
+      <div class="pane" data-p="c">
+        <div class="win mid anchor">
+          <div class="tb"><span class="traffic"><i></i><i></i><i></i></span><span class="tb-title">备选 (c) · status-bar 弹层</span></div>
+          <div class="ws">
+            <div class="rail"><i class="on"></i><i></i></div>
+            <div class="col"><div class="col-h">Explorer</div><div class="col-row on">main.go</div></div>
+            <div class="center">
+              <div class="island">
+                <div class="tabs"><span class="tab on">main.go</span></div>
+                <div class="code">
+                  <div class="ln"><span class="g">7</span><span class="c">	<span class="sq-e">fmt</span><span class="p">.</span><span class="f">Println</span><span class="p">(</span><span class="s">"hello"</span><span class="p">)</span></span></div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="pop abs-drop" style="width:280px;bottom:26px;left:auto;right:52px">
+            <div class="pop-h">Problems · main.go</div>
+            <div class="pop-r"><span style="color:var(--accent-red)">✕</span><span>undefined: fmt</span><span class="sub2">L7:2</span></div>
+            <div class="pop-r"><span style="color:var(--accent-yellow)">⚠</span><span>ineffectual assignment to msg</span><span class="sub2">L8:2</span></div>
+            <div class="pop-sep"></div>
+            <div class="pop-r dis"><span>utils/helper.go · 1 error</span><span class="sub2">未打开</span></div>
+          </div>
+          <div class="sb">
+            <div class="sb-l"><span class="sb-item">main</span></div>
+            <div class="sb-r"><span class="sb-item hi-ring on">✕ 2 &nbsp;⚠ 1</span></div>
+          </div>
+        </div>
+        <p class="sw-verdict" style="margin-top:8px">弹层形态与 LSP chip 下拉（同位置、同 z 层）互斥竞争；列表被宽度压到 ~280px 后消息必须截断，跳转前看不到完整诊断文案。</p>
+      </div>
+    </div>
+    </div>
+    <figcaption>
+      <span class="tag">M1-3</span>
+      <span>该决策已在实现中落地为 (a)（<span class="mono">src/app/panels/registry.ts</span> + <span class="mono">ProblemsPanel.tsx</span>）。此图保留三选项仅供你复核判定依据——若要改挂载点，现在改成本最低。</span>
+    </figcaption>
+  </figure>
+</section>
+
+<!-- ══════════════════════════════════════════════════════════════════
+     M2
+     ══════════════════════════════════════════════════════════════════ -->
+<section id="m2">
+  <div class="sec-head">
+    <span class="m-badge">M2</span>
+    <h2>会话健康度可观测</h2>
+    <span class="chip no">R2 / AC2 · 未开始</span>
+  </div>
+  <p class="sec-sub">目标：用户能自答「为什么没有提示」——LS 没起来 ≠ 没有该功能。四态：starting / running / failed / stopped。</p>
+  <div class="rule"></div>
+
+  <div class="flow">
+    <span class="fbox">Rust <b>会话生命周期钩子</b>（spawn / handshake / exit）</span>
+    <span class="arw">→</span>
+    <span class="fbox">事件 <b>lsp-health-{projectPath}</b> 或复用 progress 前缀</span>
+    <span class="arw">→</span>
+    <span class="fbox own"><b>lspStore</b> health 切片（幂等：同 phase 重放不闪烁）</span>
+    <span class="arw">→</span>
+    <span class="fbox ext"><b>status-bar item</b>（语言图标 + phase + failed 重试入口）</span>
+    <span class="flow-note">白名单语义不动（D4）：这里只是新增一条 Rust→前端的推送事件，不涉及 server→client 请求。</span>
+  </div>
+
+  <h3>四态在 status-bar 的呈现 <span class="hint">现状 vs 增量，逐条标注</span></h3>
+  <figure>
+    <div class="win sm" style="height:auto">
+      <div class="tb"><span class="traffic"><i></i><i></i><i></i></span><span class="tb-title">status-bar 左簇 · LSP 槽位四态</span><span class="tb-spacer"></span><span class="tb-act">现状 = LspStatusSection / LspSlotItem</span></div>
+
+      <div style="padding:10px 12px;display:flex;flex-direction:column;gap:8px">
+        <div style="display:flex;align-items:center;gap:12px">
+          <span class="chip ok" style="flex-shrink:0">现状</span>
+          <div class="sb" style="flex:1;border:none;padding:0">
+            <div class="sb-l"><span class="sb-item">main</span><span class="sb-item">Go</span>
+              <span class="sb-item"><span class="dot busy"></span>gopls Indexing<svg width="12" height="12" style="color:var(--text-muted)"><use href="#i-chev"/></svg></span>
+            </div>
+            <div class="sb-r"><span class="sb-item">Ln 1, Col 1</span></div>
+          </div>
+        </div>
+        <p class="sw-verdict" style="padding-left:60px">starting / initializing / indexing → 黄点脉冲 + phase 文案（<span class="mono">humanStatus()</span> 已有）。</p>
+
+        <div style="display:flex;align-items:center;gap:12px">
+          <span class="chip ok" style="flex-shrink:0">现状</span>
+          <div class="sb" style="flex:1;border:none;padding:0">
+            <div class="sb-l"><span class="sb-item">main</span><span class="sb-item">Go</span>
+              <span class="sb-item"><span class="dot idle"></span>gopls<svg width="12" height="12" style="color:var(--text-muted)"><use href="#i-chev"/></svg></span>
+            </div>
+            <div class="sb-r"><span class="sb-item">Ln 1, Col 1</span></div>
+          </div>
+        </div>
+        <p class="sw-verdict" style="padding-left:60px">ready / running → 绿点 + 服务器名。</p>
+
+        <div style="display:flex;align-items:center;gap:12px">
+          <span class="chip busy" style="flex-shrink:0">增量</span>
+          <div class="sb" style="flex:1;border:none;padding:0">
+            <div class="sb-l"><span class="sb-item">main</span><span class="sb-item">Go</span>
+              <span class="sb-item" style="color:var(--accent-red)"><span class="dot err"></span>gopls failed<svg width="12" height="12" style="color:var(--text-muted)"><use href="#i-chev"/></svg></span>
+            </div>
+            <div class="sb-r"><span class="sb-item">Ln 1, Col 1</span></div>
+          </div>
+        </div>
+        <p class="sw-verdict" style="padding-left:60px">failed = 红点 + <b>failed</b> + 错误原因进 title/下拉 + <b>Retry</b> 入口（现状只有 Error 圆点，无原因、无重试文案）。</p>
+
+        <div style="display:flex;align-items:center;gap:12px">
+          <span class="chip busy" style="flex-shrink:0">增量</span>
+          <div class="sb" style="flex:1;border:none;padding:0">
+            <div class="sb-l"><span class="sb-item">main</span><span class="sb-item">Go</span>
+              <span class="sb-item" style="color:var(--text-muted)"><span class="dot mut"></span>gopls stopped</span>
+            </div>
+            <div class="sb-r"><span class="sb-item">Ln 1, Col 1</span></div>
+          </div>
+        </div>
+        <p class="sw-verdict" style="padding-left:60px">stopped 现状被 <b>过滤掉不显示</b>（<span class="mono">filter(se =&gt; se.status !== 'stopped')</span>）→ 用户看到的是「什么都没有」，无从分辨"没启动"和"已停止"。这是 M2 最实的一块增量。</p>
+      </div>
+    </div>
+    <figcaption>
+      <span class="tag">M2-1</span>
+      <span>四态里前两态仓库已有；M2 的真实增量集中在 <b>failed 的原因 + 重试</b> 与 <b>stopped 的显式化</b>。建议把 AC2 收敛为这两条，避免重复实现既有能力。</span>
+    </figcaption>
+  </figure>
+
+  <h3>failed 展开态 <span class="hint">AC2 要求「崩溃含重试入口」</span></h3>
+  <figure>
+    <div class="win mid anchor">
+      <div class="tb"><span class="traffic"><i></i><i></i><i></i></span><span class="tb-title">failed 下拉</span></div>
+      <div class="ws">
+        <div class="rail"><i class="on"></i><i></i></div>
+        <div class="center">
+          <div class="island">
+            <div class="tabs"><span class="tab on">main.go</span></div>
+            <div class="code">
+              <div class="ln"><span class="g">7</span><span class="c">	<span class="f">println</span><span class="p">(</span><span class="s">"no hints here"</span><span class="p">)</span></span></div>
+              <div class="ln"><span class="g">8</span><span class="c"></span></div>
+              <div class="ln"><span class="g">9</span><span class="c">	<span class="cm">// 无诊断 ≠ 代码没问题：gopls 没起来</span></span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="pop abs-drop" style="left:88px;bottom:22px;width:330px">
+        <div class="pop-h">main · gopls</div>
+        <div class="pop-r" style="align-items:flex-start">
+          <span class="dot err" style="margin-top:5px"></span>
+          <span>
+            <div style="color:var(--accent-red);font-weight:600">Failed to start</div>
+            <div style="color:var(--text-muted);font-size:11px;font-family:var(--font-mono);line-height:1.6">
+              gopls: exit status 1<br>go.work not found in /Users/tom/proj
+            </div>
+          </span>
+        </div>
+        <div class="pop-sep"></div>
+        <div class="pop-r sel"><svg width="12" height="12" style="color:var(--text-muted)"><use href="#i-refresh"/></svg><span>Retry</span></div>
+        <div class="pop-r"><svg width="12" height="12" style="color:var(--text-muted)"><use href="#i-terminal"/></svg><span>View Logs</span></div>
+      </div>
+      <div class="sb">
+        <div class="sb-l"><span class="sb-item">main</span><span class="sb-item">Go</span><span class="sb-item hi-ring" style="color:var(--accent-red)"><span class="dot err"></span>gopls failed</span></div>
+        <div class="sb-r"><span class="sb-item">✕ 0 &nbsp;⚠ 0</span></div>
+      </div>
+    </div>
+    <figcaption>
+      <span class="tag">M2-2</span>
+      <span>关键对照：右侧计数为 0 且编辑器无波浪线。若无健康度，用户会误判"代码干净"；有 failed 后，同一画面即可自答「是 LS 死了，不是没问题」。
+      错误原因来自 Rust 侧 <span class="mono">error</span> 字段（<span class="mono">LspSessionHealth.error</span>），重试复用既有 installer / probe 链路。</span>
+    </figcaption>
+  </figure>
+</section>
+
+<!-- ══════════════════════════════════════════════════════════════════
+     M3
+     ══════════════════════════════════════════════════════════════════ -->
+<section id="m3">
+  <div class="sec-head">
+    <span class="m-badge">M3</span>
+    <h2>codeAction 通道（诊断驱动 quickfix）</h2>
+    <span class="chip no">R3 / AC3 · 未开始</span>
+  </div>
+  <p class="sec-sub">诊断 → 灯泡 → <span class="mono">textDocument/codeAction</span> 请求 → 服务器回 <span class="mono">workspace/applyEdit</span> → 白名单转发 → 前端原子应用。</p>
+  <div class="rule"></div>
+
+  <div class="flow">
+    <span class="fbox ext"><b>诊断行</b>（M1 数据同源）</span>
+    <span class="arw">→</span>
+    <span class="fbox">前端 <b>requestCodeActions()</b>（走既有 lspRequest 面）</span>
+    <span class="arw">→</span>
+    <span class="fbox lsp"><b>语言服务器</b> codeAction</span>
+    <span class="arw">→</span>
+    <span class="fbox lsp"><b>server→client</b> workspace/applyEdit</span>
+    <span class="arw">→</span>
+    <span class="fbox own"><b>server_request.rs 白名单</b>新增一项（D4，非透传）</span>
+    <span class="arw">→</span>
+    <span class="fbox">事件 <b>lsp-apply-edit-{projectPath}</b></span>
+    <span class="arw">→</span>
+    <span class="fbox ext"><b>前端原子多 edit 应用</b> + 回 Response ok</span>
+    <span class="flow-note">首版只做 quickfix <b>+ applyEdit 传输</b>；<span class="mono">source.*</span>（organizeImports / rename）留扩展点，不做承诺（YAGNI 红线）。</span>
+  </div>
+
+  <h3>步骤 1：诊断 + 灯泡 <span class="hint">灯泡入口挂点待你确认（见文末 Q3）</span></h3>
+  <figure>
+    <div class="win full anchor">
+      <div class="tb">
+        <span class="traffic"><i></i><i></i><i></i></span>
+        <span class="tb-title">neeko-demo — Neeko</span>
+        <span class="tb-spacer"></span>
+      </div>
+      <div class="ws">
+        <div class="rail"><i class="on"></i><i></i></div>
+        <div class="center">
+          <div class="island">
+            <div class="tabs"><span class="tab on">main.go</span></div>
+            <div class="code">
+              <div class="ln"><span class="g">1</span><span class="c"><span class="k">package</span> main</span></div>
+              <div class="ln"><span class="g">2</span><span class="c"></span></div>
+              <div class="ln"><span class="g">3</span><span class="c"><span class="k">func</span> <span class="f">main</span><span class="p">() {</span></span></div>
+              <div class="ln hi"><span class="g">4<span class="bulb"><svg width="11" height="11"><use href="#i-bulb"/></svg></span></span><span class="c">	<span class="sq-e">fmt</span><span class="p">.</span><span class="f">Println</span><span class="p">(</span><span class="s">"hello"</span><span class="p">)</span><span class="inline-diag">undefined: fmt</span></span></div>
+              <div class="ln"><span class="g">5</span><span class="c"><span class="p">}</span></span></div>
+              <div class="ln"><span class="g">6</span><span class="c"></span></div>
+              <div class="ln"><span class="g">7</span><span class="c"><span class="cm">// 诊断行本身即入口：点击 / 悬停 → 请求 codeAction</span></span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="panel-wrap">
+        <div class="panel" style="height:128px">
+          <div class="grip"></div>
+          <div class="panel-h">
+            <span class="ttl"><svg width="13" height="13" style="color:var(--text-secondary)"><use href="#i-listx"/></svg> Problems</span>
+            <span class="tb-spacer"></span>
+            <span class="icon-btn"><svg width="14" height="14"><use href="#i-x"/></svg></span>
+          </div>
+          <div class="panel-b">
+            <div class="sum"><span class="err">1 error</span><span class="warn">0 warnings</span><span class="info">0 infos</span><span class="hint">0 hints</span></div>
+            <div class="grp-h">main.go <span class="pill">1</span></div>
+            <div class="drow" style="background:var(--bg-hover)">
+              <span class="sev e">✕</span>
+              <span><span class="msg">undefined: fmt</span> <span class="loc">L4:2 • gopls</span></span>
+              <span class="caret" style="opacity:1;color:var(--accent-yellow)"><svg width="12" height="12"><use href="#i-bulb"/></svg></span>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="sb">
+        <div class="sb-l"><span class="sb-item">main</span><span class="sb-item">Go</span><span class="sb-item"><span class="dot idle"></span>gopls</span></div>
+        <div class="sb-r"><span class="sb-item">✕ 1 &nbsp;⚠ 0</span></div>
+      </div>
+    </div>
+    <figcaption>
+      <span class="tag">M3-1</span>
+      <span>两处入口同源：编辑器行号槽灯泡（红色诊断行才出现）+ Problems 行尾灯泡（hover 显形）。
+      本图同时展示两条候选入口，实际只落一条 —— 见文末 Q3。</span>
+    </figcaption>
+  </figure>
+
+  <h3>步骤 2：动作列表 <span class="hint">只呈现服务器给的动作，客户端不做任何语言推断（D1）</span></h3>
+  <figure>
+    <div class="win mid anchor">
+      <div class="tb"><span class="traffic"><i></i><i></i><i></i></span><span class="tb-title">codeAction 列表</span></div>
+      <div class="ws">
+        <div class="rail"><i class="on"></i><i></i></div>
+        <div class="center">
+          <div class="island">
+            <div class="tabs"><span class="tab on">main.go</span></div>
+            <div class="code">
+              <div class="ln"><span class="g">3</span><span class="c"><span class="k">func</span> <span class="f">main</span><span class="p">() {</span></span></div>
+              <div class="ln hi"><span class="g">4<span class="bulb"><svg width="11" height="11"><use href="#i-bulb"/></svg></span></span><span class="c">	<span class="sq-e">fmt</span><span class="p">.</span><span class="f">Println</span><span class="p">(</span><span class="s">"hello"</span><span class="p">)</span></span></div>
+              <div class="ln"><span class="g">5</span><span class="c"><span class="p">}</span></span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="pop abs-bulb">
+        <div class="pop-h">Quick Fix</div>
+        <div class="pop-r sel">
+          <svg width="12" height="12" style="color:var(--accent-yellow)"><use href="#i-bulb"/></svg>
+          <span><code>Import "fmt"</code></span>
+          <span class="sub2">gopls</span>
+        </div>
+        <div class="pop-sep"></div>
+        <div class="pop-h">Source Action</div>
+        <div class="pop-r dis">
+          <span>Organize Imports</span>
+          <span class="sub2">首版不做 · 留扩展点</span>
+        </div>
+      </div>
+      <div class="sb"><div class="sb-l"><span class="sb-item">main</span><span class="sb-item">Go</span></div><div class="sb-r"><span class="sb-item">✕ 1 &nbsp;⚠ 0</span></div></div>
+    </div>
+    <figcaption>
+      <span class="tag">M3-2</span>
+      <span>动作文案、title、kind 全部来自服务器响应。灰色 <span class="mono">Source Action</span> 组是刻意画出来的<b>范围声明</b>：<span class="mono">source.organizeImports</span> 等首版不接，避免评审时误以为 M3 覆盖重构类操作。</span>
+    </figcaption>
+  </figure>
+
+  <h3>步骤 3：应用后 <span class="hint">applyEdit 原子落块 + 诊断消失</span></h3>
+  <figure>
+    <div class="win mid anchor">
+      <div class="tb"><span class="traffic"><i></i><i></i><i></i></span><span class="tb-title">applied</span></div>      <div class="ws">
+        <div class="rail"><i class="on"></i><i></i></div>
+        <div class="center">
+          <div class="island">
+            <div class="tabs"><span class="tab on">main.go</span></div>
+            <div class="code">
+              <div class="ln"><span class="g">1</span><span class="c"><span class="k">package</span> main</span></div>
+              <div class="ln"><span class="g">2</span><span class="c"></span></div>
+              <div class="ln ins"><span class="g">3</span><span class="c"><span class="k">import</span> <span class="s">"fmt"</span>   <span class="inline-diag" style="color:var(--accent-green)">+ inserted by source</span></span></div>
+              <div class="ln"><span class="g">4</span><span class="c"></span></div>
+              <div class="ln"><span class="g">5</span><span class="c"><span class="k">func</span> <span class="f">main</span><span class="p">() {</span></span></div>
+              <div class="ln"><span class="g">6</span><span class="c">	<span class="f">fmt</span><span class="p">.</span><span class="f">Println</span><span class="p">(</span><span class="s">"hello"</span><span class="p">)</span></span></div>
+              <div class="ln"><span class="g">7</span><span class="c"><span class="p">}</span></span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="toast abs-toast">
+        <svg width="12" height="12" style="color:var(--accent-green)"><use href="#i-bulb"/></svg>
+        <span>Applied <code style="font-family:var(--font-mono);color:var(--cm-string)">Import "fmt"</code> · 1 edit</span>
+      </div>
+      <div class="sb">
+        <div class="sb-l"><span class="sb-item">main</span><span class="sb-item">Go</span><span class="sb-item"><span class="dot idle"></span>gopls</span></div>
+        <div class="sb-r"><span class="sb-item on">✕ 0 &nbsp;⚠ 0</span></div>
+      </div>
+    </div>
+    <figcaption>
+      <span class="tag">M3-3</span>
+      <span>import 块由服务器给的 <span class="mono">TextEdit</span> 落位（绿色高亮 = 本次事务写入），诊断随服务器下一轮 publishDiagnostics 消失。
+      原子性要求：多 edit 一次 dispatch（串行队列），中途失败整体不落 —— 见 design §M3 错误矩阵「多动作并发应用」。</span>
+    </figcaption>
+  </figure>
+</section>
+
+<!-- ══════════════════════════════════════════════════════════════════
+     M4
+     ══════════════════════════════════════════════════════════════════ -->
+<section id="m4">
+  <div class="sec-head">
+    <span class="m-badge">M4</span>
+    <h2>导入策略三态（Ask / Auto / Never）</h2>
+    <span class="chip no">R4 / AC4 · 未开始</span>
+  </div>
+  <p class="sec-sub">唯一允许的「产品逻辑」：拦截点在补全接受前，决定是否应用 <span class="mono">additionalTextEdits</span>。不改 lsp-client 包。</p>
+  <div class="rule"></div>
+
+  <div class="flow">
+    <span class="fbox lsp"><b>补全项</b> CompletionItem + additionalTextEdits</span>
+    <span class="arw">→</span>
+    <span class="fbox own"><b>策略拦截</b> editor.lsp.importStrategy</span>
+    <span class="arw">→</span>
+    <span class="fbox ext"><b>CM apply</b>（auto 放行 / never 剥离 / ask 确认后放行）</span>
+    <span class="flow-note">拦截点 = <span class="mono">lspCompletionInfoRenderer.createThemedCompletionSource</span> 返回处 —— 所有补全项的必经之路，禁止旁路（D2）。</span>
+  </div>
+
+  <div class="switch opt-auto">
+    <input type="radio" name="m4" id="opt-auto" checked>
+    <input type="radio" name="m4" id="opt-ask">
+    <input type="radio" name="m4" id="opt-never">
+    <div class="sw-head">
+      <div class="sw-bar">
+        <label for="opt-auto">Auto（默认）</label>
+        <label for="opt-ask">Ask</label>
+        <label for="opt-never">Never</label>
+      </div>
+      <span class="sw-verdict">同一补全项（<span class="mono">fmt.Println</span>，带 1 条 additionalTextEdit）在三态下的行为差异</span>
+    </div>
+
+    <div class="panes">
+
+      <!-- AUTO -->
+      <div class="pane" data-p="auto">
+        <h3>设置项 <span class="hint">settings 域既有 SettingRow 模式</span></h3>
+        <div class="card" style="max-width:640px">
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:24px">
+            <div>
+              <div style="font-size:12px;font-weight:500">Import strategy</div>
+              <div style="font-size:11px;color:var(--text-muted);margin-top:2px;line-height:1.6">接受补全时如何处理语言服务器给出的 import 附加编辑。</div>
+            </div>
+            <div class="sw-bar" style="flex-shrink:0">
+              <label style="background:var(--accent-blue);color:var(--bg-primary);font-weight:600">Auto</label>
+              <label>Ask</label>
+              <label>Never</label>
+            </div>
+          </div>
+        </div>
+
+        <h3>补全接受 → 静默落 import</h3>
+        <figure>
+          <div class="win mid anchor">
+            <div class="tb"><span class="traffic"><i></i><i></i><i></i></span><span class="tb-title">Auto</span><span class="tb-spacer"></span><span class="tb-act">无中断，接受即完成</span></div>
+            <div class="ws">
+              <div class="rail"><i class="on"></i><i></i></div>
+              <div class="center">
+                <div class="island">
+                  <div class="tabs"><span class="tab on">main.go</span></div>
+                  <div class="code">
+                    <div class="ln"><span class="g">1</span><span class="c"><span class="k">package</span> main</span></div>
+                    <div class="ln ins"><span class="g">2</span><span class="c"><span class="k">import</span> <span class="s">"fmt"</span></span></div>
+                    <div class="ln"><span class="g">3</span><span class="c"></span></div>
+                    <div class="ln"><span class="g">4</span><span class="c"><span class="k">func</span> <span class="f">main</span><span class="p">() {</span></span></div>
+                    <div class="ln"><span class="g">5</span><span class="c">	<span class="f">fmt</span><span class="p">.</span><span class="f">Println</span><span class="p">(</span><span class="s">"hello"</span><span class="p">)</span><span style="color:var(--text-muted)">▏</span></span></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="pop abs-compl" style="left:120px;top:74px">
+              <div class="pop-h">Suggestions · gopls</div>
+              <div class="pop-r sel"><span><code>Println</code></span><span class="sub2">func(string) (int, error)</span></div>
+              <div class="pop-r"><span><code>Printf</code></span><span class="sub2">func(string, ...any)</span></div>
+              <div class="pop-r"><span><code>Print</code></span><span class="sub2">func(...any)</span></div>
+              <div class="pop-sep"></div>
+              <div class="pop-r dis"><span>将同时添加 <code>import "fmt"</code></span><span class="sub2">Auto · 自动应用</span></div>
+            </div>
+            <div class="toast abs-toast"><span>Added <code style="font-family:var(--font-mono);color:var(--cm-string)">import "fmt"</code></span></div>
+            <div class="sb"><div class="sb-l"><span class="sb-item">main</span><span class="sb-item">Go</span></div><div class="sb-r"><span class="sb-item on">✕ 0 &nbsp;⚠ 0</span></div></div>
+          </div>
+          <figcaption>
+            <span class="tag">M4-A</span>
+            <span>Auto = 现状行为（lsp-client 已原子应用）。唯一变化：补全面板底部多一行<b>预告</b>「将同时添加 import」，让静默行为可见而非黑箱。</span>
+          </figcaption>
+        </figure>
+      </div>
+
+      <!-- ASK -->
+      <div class="pane" data-p="ask">
+        <h3>设置项</h3>
+        <div class="card" style="max-width:640px">
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:24px">
+            <div>
+              <div style="font-size:12px;font-weight:500">Import strategy</div>
+              <div style="font-size:11px;color:var(--text-muted);margin-top:2px;line-height:1.6">接受补全时如何处理语言服务器给出的 import 附加编辑。</div>
+            </div>
+            <div class="sw-bar" style="flex-shrink:0">
+              <label>Auto</label>
+              <label style="background:var(--accent-blue);color:var(--bg-primary);font-weight:600">Ask</label>
+              <label>Never</label>
+            </div>
+          </div>
+        </div>
+
+        <h3>补全接受 → 预览并确认 <span class="hint">Ask 的呈现形态待你确认（见文末 Q4）</span></h3>
+        <figure>
+          <div class="win mid anchor">
+            <div class="dim-mask"></div>
+            <div class="tb"><span class="traffic"><i></i><i></i><i></i></span><span class="tb-title">Ask</span><span class="tb-spacer"></span><span class="tb-act">接受前拦截</span></div>
+            <div class="ws">
+              <div class="rail"><i class="on"></i><i></i></div>
+              <div class="center">
+                <div class="island">
+                  <div class="tabs"><span class="tab on">main.go</span></div>
+                  <div class="code">
+                    <div class="ln"><span class="g">3</span><span class="c"><span class="k">func</span> <span class="f">main</span><span class="p">() {</span></span></div>
+                    <div class="ln"><span class="g">4</span><span class="c">	<span class="f">Println</span><span class="p">(</span><span class="s">"hello"</span><span class="p">)</span><span style="color:var(--text-muted)">▏</span></span></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="pop abs-ask">
+              <div class="pop-h">Accept completion will also edit 1 range</div>
+              <div style="padding:8px 10px;font-family:var(--font-mono);font-size:11px;line-height:1.7">
+                <div style="color:var(--text-muted)">main.go : 1</div>
+                <div style="color:var(--accent-green)">+ import "fmt"</div>
+              </div>
+              <div class="pop-sep"></div>
+              <div class="pop-r" style="justify-content:flex-end;gap:8px">
+                <span class="btn">Cancel <span class="kbd">Esc</span></span>
+                <span class="btn">Skip import</span>
+                <span class="btn primary">Apply</span>
+              </div>
+            </div>
+            <div class="sb"><div class="sb-l"><span class="sb-item">main</span><span class="sb-item">Go</span></div><div class="sb-r"><span class="sb-item">✕ 1 &nbsp;⚠ 0</span></div></div>
+          </div>
+          <figcaption>
+            <span class="tag">M4-B</span>
+            <span>预览内容只做一件事：把服务器给的附加 edit 原样列出（不解释、不推导，D1）。三个出口对应三种意图：确认 / 只插符号不导包 / 放弃（此时诊断仍在，M3 灯泡可兜底）。
+            多候选场景（gopls 给多个 unimported 包）复用同一弹层，逐条列出待选。</span>
+          </figcaption>
+        </figure>
+      </div>
+
+      <!-- NEVER -->
+      <div class="pane" data-p="never">
+        <h3>设置项</h3>
+        <div class="card" style="max-width:640px">
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:24px">
+            <div>
+              <div style="font-size:12px;font-weight:500">Import strategy</div>
+              <div style="font-size:11px;color:var(--text-muted);margin-top:2px;line-height:1.6">接受补全时如何处理语言服务器给出的 import 附加编辑。</div>
+            </div>
+            <div class="sw-bar" style="flex-shrink:0">
+              <label>Auto</label>
+              <label>Ask</label>
+              <label style="background:var(--accent-blue);color:var(--bg-primary);font-weight:600">Never</label>
+            </div>
+          </div>
+        </div>
+
+        <h3>补全接受 → 只插符号，import 不落 <span class="hint">给「我自己写 import」的用户</span></h3>
+        <figure>
+          <div class="win mid anchor">
+            <div class="tb"><span class="traffic"><i></i><i></i><i></i></span><span class="tb-title">Never</span><span class="tb-spacer"></span><span class="tb-act">剥离附加编辑</span></div>
+            <div class="ws">
+              <div class="rail"><i class="on"></i><i></i></div>
+              <div class="center">
+                <div class="island">
+                  <div class="tabs"><span class="tab on"><span class="badge-dot"></span>main.go</span></div>
+                  <div class="code">
+                    <div class="ln"><span class="g">1</span><span class="c"><span class="k">package</span> main</span></div>
+                    <div class="ln"><span class="g">2</span><span class="c"></span></div>
+                    <div class="ln"><span class="g">3</span><span class="c"><span class="k">func</span> <span class="f">main</span><span class="p">() {</span></span></div>
+                    <div class="ln"><span class="g">4</span><span class="c">	<span class="sq-e">fmt</span><span class="p">.</span><span class="f">Println</span><span class="p">(</span><span class="s">"hello"</span><span class="p">)</span><span class="inline-diag">undefined: fmt</span></span></div>
+                    <div class="ln"><span class="g">5</span><span class="c"><span class="p">}</span></span></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="toast abs-toast"><span>Inserted <code style="font-family:var(--font-mono)">Println</code> · import 已按 Never 策略跳过</span></div>
+            <div class="sb">
+              <div class="sb-l"><span class="sb-item">main</span><span class="sb-item">Go</span><span class="sb-item"><span class="dot idle"></span>gopls</span></div>
+              <div class="sb-r"><span class="sb-item" style="color:var(--accent-red)">✕ 1 &nbsp;⚠ 0</span></div>
+            </div>
+          </div>
+          <figcaption>
+            <span class="tag">M4-C</span>
+            <span>Never 的关键设计约束：<b>不能把用户丢进死路</b>。接受后诊断仍在（这是策略的预期结果，不是 bug），M3 的灯泡依旧可用；toast 里明说「按 Never 策略跳过」，避免被当成失灵。
+            （备选文案：什么都不提示、静默跳过 —— 见文末 Q4。）</span>
+          </figcaption>
+        </figure>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════════════════════
+     待你判断
+     ══════════════════════════════════════════════════════════════════ -->
+<section id="qa">
+  <div class="sec-head"><h2>待你判断</h2><span class="chip busy">阻塞 M1 收尾 / M2 开工</span></div>
+  <p class="sec-sub">前四条来自 design.md 明确留给实现期的判断点；第 1、2 条是本次盘点新发现的落差。</p>
+  <div class="rule"></div>
+
+  <div class="qa">
+    <div class="qa-item">
+      <span class="qa-n">1</span>
+      <div class="qa-body">
+        <h4>M1 挂载点是否维持 (a) dock 固定底部面板？</h4>
+        <p>已按 design §M1 判定标准落地为 (a)（与 Console / Debug 同构，零新增面板机制）。若你认为诊断该像 VS Code 一样常驻不占主区，或希望改为 (b) 折叠条，现在是改动成本最低的时点。</p>
+        <div class="qa-opts"><span class="qa-opt"><b>维持 (a)</b></span><span class="qa-opt">改 (b) 折叠条</span><span class="qa-opt">改 (c) status-bar 弹层</span></div>
+      </div>
+    </div>
+
+    <div class="qa-item">
+      <span class="qa-n">2</span>
+      <div class="qa-body">
+        <h4>M2 是否收缩为「failed 原因 + 重试 + stopped 显式化」？</h4>
+        <p>盘点显示 starting / running / error 圆点与 phase 文案仓库已有（<span class="mono">LspStatusSection</span>），重复实现会与既有 chip 竞争同一位置。建议 M2 只补两块：failed 的 error 详情与 Retry 入口；取消对 stopped 的过滤并给出明确终态。</p>
+        <div class="qa-opts"><span class="qa-opt"><b>收缩（推荐）</b></span><span class="qa-opt">按原计划全量做</span><span class="qa-opt">先只做 stopped</span></div>
+      </div>
+    </div>
+
+    <div class="qa-item">
+      <span class="qa-n">3</span>
+      <div class="qa-body">
+        <h4>M3 灯泡入口落哪一处？</h4>
+        <p>design 把编辑器内灯泡列为「可选增强，不做承诺」，主线是 Problems 行内。但诊断驱动的 quickfix 在业界心智是「光标所在行」，只在面板里点会弱一档。两条都做则需评估与 CM hover/tooltip 的竞态（design 风险表已列）。</p>
+        <div class="qa-opts"><span class="qa-opt">仅 Problems 行内（最小风险）</span><span class="qa-opt"><b>两处都做（体验完整）</b></span><span class="qa-opt">仅编辑器行号槽</span></div>
+      </div>
+    </div>
+
+    <div class="qa-item">
+      <span class="qa-n">4</span>
+      <div class="qa-body">
+        <h4>Ask 的预览形态与 Never 的提示策略？</h4>
+        <p>Ask 目前画的是居中弹层（带 Cancel / Skip import / Apply）。备选是补全面板内的行内 note（少一次焦点迁移，但预览多 edit 时空间紧张）。Never 的 toast 也可以静默去掉。</p>
+        <div class="qa-opts"><span class="qa-opt"><b>Ask 弹层 + Never 有 toast</b></span><span class="qa-opt">Ask 行内 note</span><span class="qa-opt">Never 静默跳过</span></div>
+      </div>
+    </div>
+
+    <div class="qa-item">
+      <span class="qa-n">5</span>
+      <div class="qa-body">
+        <h4>M0 真机验证谁来跑？</h4>
+        <p>AC1 / AC3 的终验都需要真实 gopls（<span class="mono">gopls version</span> → 打开 Go 文件 → <span class="mono">fmt.</span> 补全 → 接受后 import 是否落块）。本原型是按「链路健康」画的；若实测发现 lsp-client 的 additionalTextEdits 落位有 bug，M3/M4 的原型前提要重估。</p>
+        <div class="qa-opts"><span class="qa-opt">你在本地 Go 项目跑一遍</span><span class="qa-opt">我按 M0 清单写成可执行步骤</span></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════════════════════
+     契约红线
+     ══════════════════════════════════════════════════════════════════ -->
+<section id="contract">
+  <div class="sec-head"><h2>契约红线（原型已遵守）</h2></div>
+  <div class="rule"></div>
+  <table class="contract">
+    <thead><tr><th style="width:34%">红线 / 不做项</th><th style="width:16%">原型体现</th><th>说明</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><b>D1 语言无关铁律</b><br>禁止包名表 / 正则 / 按语言分支 UI</td>
+        <td>全图无语言分支</td>
+        <td>图中 Go 示例仅作载体；import 位置、动作文案、诊断内容全部由服务器给。新 LS 接入即自动获得三通道（R5 / AC5）。</td>
+      </tr>
+      <tr>
+        <td><b>D3 诊断单写点</b><br>诊断状态只由 lspStore 持有</td>
+        <td>M1-1 通道图</td>
+        <td>面板与 CM squiggle 从同一 Tauri 事件派生，<b>不经 lspStore 转发</b>给 CM（转发会引入时序差，正是「波浪线在、列表没有」的病根）。</td>
+      </tr>
+      <tr>
+        <td><b>D4 白名单语义</b><br>禁止无差别透传 server 请求</td>
+        <td>M3 通道图</td>
+        <td><span class="mono">workspace/applyEdit</span> 显式进白名单后转发，未列入的请求仍回 MethodNotFound。M3 带 MethodNotFound 兜底回归测试。</td>
+      </tr>
+      <tr>
+        <td><b>D2 禁止旁路补全</b><br>不在客户端二次计算 import 位置</td>
+        <td>M4 通道图</td>
+        <td>三态只对已有 <span class="mono">additionalTextEdits</span> 做放行 / 剥离 / 确认，拦截点在既有包装层，<b>不改 lsp-client 包</b>。</td>
+      </tr>
+      <tr>
+        <td class="no"><b>不做</b>：诊断状态转发给 CM</td>
+        <td class="no">图中无此路径</td>
+        <td class="no">design §3 不做清单第 3 条。</td>
+      </tr>
+      <tr>
+        <td class="no"><b>不做</b>：<span class="mono">source.*</span>（organizeImports / rename / 重构）</td>
+        <td class="no">M3-2 置灰项</td>
+        <td class="no">首版只做 quickfix + applyEdit 传输，扩展点保留但不承诺。</td>
+      </tr>
+      <tr>
+        <td class="no"><b>不做</b>：自研补全 UI / 诊断 UI 替换 lsp-client</td>
+        <td class="no">M1/M4 复用既有渲染</td>
+        <td class="no">只做包装与接线；编辑器内波浪线与补全面板仍是 lsp-client 既有渲染。</td>
+      </tr>
+      <tr>
+        <td><b>红线 5 事件名常量化</b></td>
+        <td>图中所有事件名</td>
+        <td><span class="mono">LSP_DIAG_EVENT_PREFIX</span> 已在 <span class="mono">shared/events.ts</span> 与 <span class="mono">lsp/types.rs</span> 双端同源；M2 / M3 新增事件沿袭该模式。</td>
+      </tr>
+      <tr>
+        <td><b>红线 6 Command 层极薄</b>（M3 后端）</td>
+        <td>M3 通道图</td>
+        <td>后端只做「白名单判定 + 事件转发 + 应答」，不承载编辑应用逻辑（应用在前端事务层）。</td>
+      </tr>
+    </tbody>
+  </table>
+</section>
+
+<!-- ══════════════════════════════════════════════════════════════════
+     原型 ↔ 实现映射
+     ══════════════════════════════════════════════════════════════════ -->
+<section id="map">
+  <div class="sec-head"><h2>原型 ↔ 实现位置映射</h2><span class="chip ok">M1 已落地</span></div>
+  <p class="sec-sub">M1 部分可直接对照代码复核；M2–M4 列为「待实现时应落的位置」，作为实现期定位锚点。</p>
+  <div class="rule"></div>
+  <table class="contract">
+    <thead><tr><th style="width:14%">图号</th><th style="width:44%">实现位置</th><th>状态</th></tr></thead>
+    <tbody>
+      <tr><td>M1-1 / M1-2</td><td><span class="mono">src/features/lsp/store/lspStore.ts</span>（diagnosticsByProject 切片 + 事件直采 + stopped 清除）<br><span class="mono">src/features/lsp/components/DiagnosticsPanel.tsx</span>（分组 / 排序 / 跳转）</td><td>已实现</td></tr>
+      <tr><td>M1-1 底部面板</td><td><span class="mono">src/features/lsp/components/ProblemsPanel.tsx</span> + <span class="mono">src/app/panels/registry.ts</span>（fixedPanelRegistry 新增 problems）</td><td>已实现</td></tr>
+      <tr><td>M1-1 右簇计数</td><td><span class="mono">src/features/status-bar/items/ProblemsItem.tsx</span> + <span class="mono">status-bar/registry.ts</span></td><td>已实现</td></tr>
+      <tr><td>M2-1 / M2-2</td><td>Rust 会话生命周期钩子 → 新事件；<span class="mono">lspStore</span> health 切片；<span class="mono">LspStatusSection</span> / <span class="mono">lspStatusFormat.ts</span>（failed 文案 + stopped 去过滤）</td><td>待实现</td></tr>
+      <tr><td>M3-1 ~ M3-3</td><td><span class="mono">src-tauri/src/lsp/server_request.rs</span>（白名单 + applyEdit 转发）<br>前端 <span class="mono">requestCodeActions</span> / <span class="mono">applyCodeAction</span> + 原子应用 + 灯泡 UI</td><td>待实现</td></tr>
+      <tr><td>M4-A / B / C</td><td><span class="mono">settings</span> 域新增 <span class="mono">editor.lsp.importStrategy</span>；拦截点 <span class="mono">lspCompletionInfoRenderer.createThemedCompletionSource</span></td><td>待实现</td></tr>
+    </tbody>
+  </table>
+
+  <div class="cards" style="margin-top:16px">
+    <div class="card">
+      <h4>如何打开本文件</h4>
+      <p>单文件自包含、无外部依赖，直接浏览器打开即可：</p>
+      <p class="mono" style="margin-top:6px;word-break:break-all">open .trellis/tasks/09-18-lsp-auto-import-diagnostics/prototype.html</p>
+      <p style="margin-top:6px">M1 挂载点与 M4 三态为纯 CSS 切换（点击标签），无 JS、无网络。</p>
+    </div>
+    <div class="card">
+      <h4>与实景对照</h4>
+      <p>窗口结构、status-bar 16px 高度、Island 圆角与暗色 token 均取自仓库真实值，可与运行中的 <span class="mono">pnpm tauri dev</span> 并排比对；唯一刻意的差异是文档页背景（<span class="mono">--doc-bg</span>）比应用「海」色更深，用于区分图纸与实景。</p>
+    </div>
+    <div class="card">
+      <h4>明确未画的部分</h4>
+      <p>① 诊断事件的解析容错与跨项目隔离（无 UI，属 store 单测范畴）；② applyEdit 多 edit 原子事务的失败回滚路径（协议层，非视觉）；③ M0 真机验证的终端操作过程。</p>
+    </div>
+  </div>
+</section>
+
+</main>
+
+<footer style="margin-top:44px;padding-top:16px;border-top:1px solid var(--doc-border);color:var(--text-muted);font-size:11.5px;line-height:1.8">
+  PROTOTYPE · 随任务 <span class="mono">09-18-lsp-auto-import-diagnostics</span> 归档 · 定稿后折叠结论进 <span class="mono">design.md</span> / 实现报告，本文件仅作评审快照，勿合入产品代码分支。
+</footer>
+
+</body>
+</html>

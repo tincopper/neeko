@@ -198,6 +198,16 @@ export function useLspNavigation({
   );
 
   // LSP keybindings — chords from shortcut registry (F12 / Ctrl+B / Shift+F12 / Alt+F7 / Ctrl+F12).
+  //
+  // 身份稳定（配置纯净不变量）：keymap 进入 CodeMirror extensions 数组，身份一变宿主就
+  // reconfigure 重建整个扩展世界（lint 等经 appendConfig 惰性安装的扩展被丢掉）。
+  // 因此这里只依赖**稳定标量**——`lspDocumentUri` 由不可变字段派生，`tab` 对象本身
+  // （FileViewer 每次渲染新建）不得进入依赖。
+  //
+  // 不 useMemo：结果是字符串，下游依赖按值比较，每次渲染重算不影响身份；
+  // 用 useMemo 反而要面对 exhaustive-deps 对 tab 字段级依赖的告警。
+  const lspDocumentUri = projectPath ? resolveLspDocumentUri(tab, projectPath) : null;
+
   const gotoDefCmKey = useCodeMirrorBinding('gotoDefinition');
   const gotoDefAltCmKey = useCodeMirrorBinding('gotoDefinitionAlt');
   const findRefsCmKey = useCodeMirrorBinding('findReferences');
@@ -216,7 +226,7 @@ export function useLspNavigation({
       const lineObj = view.state.doc.lineAt(pos);
       const line = lineObj.number - 1;
       const character = pos - lineObj.from;
-      const uri = resolveLspDocumentUri(tab, projectPath);
+      const uri = lspDocumentUri;
       if (!uri) return false;
 
       // eslint-disable-next-line react-hooks/purity -- performance.now() in callback, not during render
@@ -244,7 +254,7 @@ export function useLspNavigation({
       const lineObj = view.state.doc.lineAt(pos);
       const line = lineObj.number - 1;
       const character = pos - lineObj.from;
-      const uri = resolveLspDocumentUri(tab, projectPath);
+      const uri = lspDocumentUri;
       if (!uri) return false;
 
       // Best-effort symbol name for the palette title
@@ -273,7 +283,7 @@ export function useLspNavigation({
     const runFileStructure = (): boolean => {
       const lid = lspLanguageIdRef.current;
       if (!lid || !projectPath) return false;
-      const uri = resolveLspDocumentUri(tab, projectPath);
+      const uri = lspDocumentUri;
       if (!uri) return false;
       useSymbolNavStore.getState().openStructure({
         projectId: tab.projectId,
@@ -298,7 +308,9 @@ export function useLspNavigation({
     return bindings.length > 0 ? keymap.of(bindings) : [];
   }, [
     projectPath,
-    tab,
+    lspDocumentUri,
+    tab.projectId,
+    tab.filePath,
     tabKey,
     definition,
     navigateToLocation,
@@ -313,10 +325,13 @@ export function useLspNavigation({
 
   // Cmd+Click / Ctrl+Click — go to definition, clearing link highlight first.
   // Bound as a CodeMirror domEventHandlers extension (view-lifetime binding).
+  // 只传显式标量（uri/projectId/filePath），与 keymap 同源、身份稳定。
   const cmdClickExt = useCmdClickGoToDefinition({
     projectPath,
     tabKey,
-    tab,
+    lspDocumentUri,
+    projectId: tab.projectId,
+    filePath: tab.filePath,
     lspLanguageIdRef,
     goToDefinition: definition.goToDefinitionWithContent,
     navigateToLocation,

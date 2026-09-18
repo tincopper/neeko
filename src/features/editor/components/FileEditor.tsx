@@ -149,7 +149,6 @@ function FileEditor({
     tabKey,
     tabId,
     projectPath,
-    currentContent,
     setIsSaving,
     onSave,
     onContentChange,

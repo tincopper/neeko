@@ -18,17 +18,20 @@ describe('statusBarRegistry', () => {
     expect(meta()).toMatchSnapshot();
   });
 
-  it('左簇：branch、lsp 槽位、conflicts；右簇 5 项', () => {
+  it('左簇：branch、lsp 槽位、conflicts；右簇 6 项', () => {
     const byId: Record<string, StatusBarItemDef | undefined> = Object.fromEntries(
       STATUS_BAR_ITEMS.map((d) => [d.id, d]),
     );
     expect(byId['branch']?.side).toBe('left');
     expect(byId['lsp']?.side).toBe('left');
     expect(byId['conflicts']?.side).toBe('left');
-    for (const id of ['console', 'debug', 'cursor', 'prompts', 'notifications']) {
+    for (const id of ['console', 'problems', 'debug', 'cursor', 'prompts', 'notifications']) {
       expect(byId[id]?.side).toBe('right');
     }
-    expect(STATUS_BAR_ITEMS).toHaveLength(8);
+    // 用户不变量：Problems 计数在 Debug 按钮右侧（order 严格大于），cursor 仍在最右
+    expect(byId['problems']!.order).toBeGreaterThan(byId['debug']!.order);
+    expect(byId['problems']!.order).toBeLessThan(byId['cursor']!.order);
+    expect(STATUS_BAR_ITEMS).toHaveLength(9);
   });
   it('order 稀疏递增且同 order 时按 id 确定性兜底', () => {
     for (const side of ['left', 'right'] as const) {

@@ -33,6 +33,11 @@ exports[`statusBarRegistry > 快照：side/order 保持稳定 1`] = `
     "side": "right",
   },
   {
+    "id": "problems",
+    "order": 35,
+    "side": "right",
+  },
+  {
     "id": "cursor",
     "order": 40,
     "side": "right",

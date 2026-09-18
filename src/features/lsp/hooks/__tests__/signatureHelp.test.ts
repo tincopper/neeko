@@ -7,6 +7,12 @@ vi.mock('@codemirror/lsp-client', () => {
   class MockLSPClient {
     lastExtensions: unknown[] = [];
     lastTimeout = 0;
+    // workspace 存根：acquireLspPlugin 会对 openFile 打重挂容忍补丁（缺 stub 会崩）。
+    workspace = {
+      getFile: () => null,
+      closeFile: () => {},
+      openFile: () => {},
+    };
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     constructor(cfg: any) {
       this.lastExtensions = cfg.extensions ?? [];

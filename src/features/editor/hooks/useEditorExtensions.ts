@@ -4,7 +4,6 @@ import { foldGutter, indentOnInput, bracketMatching } from '@codemirror/language
 import { highlightSelectionMatches, searchKeymap } from '@codemirror/search';
 import type { Extension } from '@codemirror/state';
 import {
-  EditorView,
   lineNumbers,
   highlightActiveLine,
   highlightActiveLineGutter,
@@ -14,10 +13,12 @@ import {
   keymap,
   tooltips,
 } from '@codemirror/view';
+import type { EditorView } from '@codemirror/view';
 import { useMemo } from 'react';
 
 import { navigateCaretExtension } from '@/features/editor/navigateCaret';
 import { neekoSearchExtension } from '@/features/editor/searchPanel';
+import { lspDiagnosticsProjection } from '@/features/lsp';
 import { createCmTheme } from '@/shared/utils/codemirror';
 import { imeSpaceGuard } from '@/shared/utils/codemirrorIme';
 import { mouseClickGuard } from '@/shared/utils/codemirrorMouseClickGuard';
@@ -41,6 +42,13 @@ interface UseEditorExtensionsParams {
 /**
  * 组装 CodeMirror extensions：tooltips 挂载、断点 gutter、基础能力、
  * 语言/LSP 扩展。返回含主题的 [extensions, cmTheme] 对。
+ *
+ * **不变量（配置纯净）**：本 memo 产出的数组是 `@uiw/react-codemirror` 的
+ * `extensions` prop——它一变，宿主就 dispatch `StateEffect.reconfigure` 重建整个
+ * 扩展世界（lint 等经 appendConfig 惰性安装的扩展会被丢掉）。因此依赖项**只能**
+ * 是配置输入（字体、语言扩展、稳定 keymap/扩展引用），**禁止**把活文档内容、
+ * `isDirty` 或每次渲染新建的 tab 对象接进来。回归护栏见
+ * `__tests__/lspDiagnosticsProjection.test.ts` 与 useEditorSave/useLspNavigation 的稳定性用例。
  */
 export function useEditorExtensions({
   fontFamily,
@@ -130,6 +138,12 @@ export function useEditorExtensions({
     );
 
     if (langExtension) exts.push(langExtension);
+
+    // LSP 诊断投影：让 `setDiagnostics` 推送的波浪线在编辑器配置重建（reconfigure
+    // 丢弃 lint 经 appendConfig 惰性安装的渲染扩展）后自愈。刻意**不**放进
+    // `lspClientExt`——它随 client 挂载/释放起落，会把投影字段一起摘掉；
+    // 这里按「编辑器级稳定扩展」装配，生命周期 = EditorView。
+    exts.push(lspDiagnosticsProjection());
 
     // LSP: @codemirror/lsp-client plugin (hover, diagnostics, completion, document sync)
     // + custom keybinding (F12/Shift+F12) + Cmd+Click jump + link highlight

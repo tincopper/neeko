@@ -35,6 +35,8 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock('@/features/lsp', () => ({
   useCmdHeld: () => mocks.cmdHeld,
+  // 诊断投影是模块级单例扩展；本用例只验证装配接线，stub 成空数组。
+  lspDiagnosticsProjection: () => [],
 }));
 
 vi.mock('../../hooks/useLspClient', () => ({ useLspClient: mocks.useLspClient }));

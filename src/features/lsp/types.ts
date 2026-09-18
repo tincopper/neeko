@@ -47,6 +47,10 @@ export interface LspDiagnostic {
   severity: number | null;
   message: string;
   source: string | null;
+  /** LSP Diagnostic.code（number|string，如 "UndeclaredName" / 2339）；多数服务器缺省。 */
+  code?: string | number;
+  /** LSP Diagnostic.codeDescription——target 为诊断文档外链（VS Code 中 code 渲染为可点链接）。 */
+  codeDescription?: { href: string };
 }
 
 export interface LspRange {

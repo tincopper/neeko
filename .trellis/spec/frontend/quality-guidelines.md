@@ -213,6 +213,31 @@ ESLint 的 `no-restricted-imports` 规则会检测并报 error 拦截违反此�
 
 **回归测试**：`codemirrorMouseClickGuard.test.ts` 含 `should_restore_scroll_top_before_mapping_when_focus_scroll_drifted` / `should_not_restore_scroll_top_on_real_drag` / `should_use_native_posandsideatcoords_for_mapping`。
 
+### 10. CodeMirror 扩展身份不稳定（惰性安装的扩展被静默丢弃）
+
+`@uiw/react-codemirror` 在 `extensions` **prop 身份**变化时 dispatch `StateEffect.reconfigure`（无内容相等判断，`useCodeMirror.js` 的 effect 依赖数组含 `extensions`）。`@codemirror/state` 的 reconfigure 会**整体替换 base 配置**，把此前经 `StateEffect.appendConfig` 追加的扩展一并丢弃（state 源码 `applyTransaction`：`reconfigure` 走 `base = effect.value`，`appendConfig` 走 `base = base.concat(...)`）。
+
+**症状**：`@codemirror/lint` 的波浪线（诊断由 `setDiagnostics` 经 `maybeEnableLint` → `appendConfig` 惰性安装）出现后消失——输入时闪烁、保存后消失且不再恢复；**同一份数据的其他呈现（Problems 面板 / lspStore）完全正常**，于是表现为「列表有、波浪线没有」。诊断本身没丢，丢的是**配置里的渲染能力**。
+
+**机制**：任何把**活状态**接进 extensions 依赖的写法都会让宿主每次渲染都 reconfigure：
+
+```ts
+// Wrong：内容/脏标记/tab 对象进依赖 → 每次按键重建整个扩展世界
+const saveKeymap = useMemo(() => keymap.of([...]), [saveCmKey, tab.isDirty, handleSave]); // handleSave 捕获 currentContent
+const lspKeymap = useMemo(() => ..., [projectPath, tab, ...]);                          // tab 每次渲染新建
+```
+
+**判别特征**（实证）：
+- `Transaction.reconfigured` **不能**用来判「base 被替换」——它只是 `startState.config != state.config`，对 `appendConfig` 同样为 true，会让惰性安装/重放自己触发自己；只认 `tr.effects.some(e => e.is(StateEffect.reconfigure))`。
+- `diagnosticCount` 是 lint **合并后**的 range 数，不能与诊断数组长度直接比对。
+
+**正确做法**（三件套）：
+1. **配置纯净（I3）**：extensions 的身份只由**配置输入**决定（字体、语言扩展、稳定引用）；活文档内容、`isDirty`、每次渲染新建的对象一律走 ref 或在事件回调内读 store，**禁止**进入依赖数组（`useEditorSave` / `useLspNavigation` / `useCmdClickGoToDefinition` 为参照实现）。
+2. **需要跨 reconfigure 存活的字段必须位于 base 且模块级单例**：`StateField.define` 每次调用分配新 id，`slot.reconfigure` 仅在「旧配置里存在同 id 字段」时保留值——写成函数内定义会让字段静默归零。
+3. **投影可重建（I2）**：从外部推送一次性安装的装饰（诊断、装饰类扩展）必须在配置重建后能自愈——参照 `src/features/lsp/hooks/lspDiagnosticsProjection.ts`（镜像 StateField 在 base + reconciler 在微任务重放 `setDiagnostics`；CM 更新周期内禁止 dispatch，见 `navigation-goal.md` §4）。
+
+**回归测试**：`lspDiagnosticsProjection.test.ts`（reconfigure 后波浪线自愈 / 推送本身不触发重放 / 镜像位置映射与塌缩丢弃 / 连续重配置合并 / 销毁后不抛）；身份稳定用例在 `UseEditorSave.test.tsx` 与 `useLspNavigation.test.ts`。
+
 ---
 
 ## 必需模式

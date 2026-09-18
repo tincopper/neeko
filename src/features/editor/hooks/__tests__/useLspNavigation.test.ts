@@ -17,6 +17,11 @@ const h = vi.hoisted(() => ({
   // 生产方失败路径凭 setNavigateGoal 返回的 seq 做货币性清除 —— mock 同形返回。
   setNavigateGoal: vi.fn(() => 1),
   clearNavigateGoal: vi.fn(),
+  // 身份稳定（生产 useLspDefinition 返回 memo 化对象 / ref 由 useRef 恒定）：
+  // 身份稳定用例必须同构，否则测的是 mock 抖动而非 hook 契约。
+  definition: { goToDefinitionWithContent: vi.fn(), findReferences: vi.fn() },
+  lspLanguageIdRef: { current: 'rust' as string | null },
+  editorViewRef: { current: null },
 }));
 
 vi.mock('../useCmdClickGoToDefinition', () => ({
@@ -41,10 +46,7 @@ vi.mock('@/features/lsp/api/languageMap', () => ({
 }));
 
 vi.mock('@/features/lsp', () => ({
-  useLspDefinition: () => ({
-    goToDefinitionWithContent: vi.fn(),
-    findReferences: vi.fn(),
-  }),
+  useLspDefinition: () => h.definition,
 }));
 
 vi.mock('@/shared/hooks/useResolvedShortcuts', () => ({
@@ -328,5 +330,31 @@ describe('resolveLspDocumentUri — jdt 展示身份缺原始 uri 时不得伪�
 
   it('缺 projectPath 的常规文件 → null', () => {
     expect(resolveLspDocumentUri({ filePath: 'src/a.ts' }, '')).toBeNull();
+  });
+});
+
+describe('useLspNavigation — lspKeymap 身份稳定（配置纯净不变量）', () => {
+  it('tab 换新对象引用（FileViewer 每次渲染新建）后 lspKeymap 引用不变', () => {
+    const tab = { filePath: '/repo/src/main.rs', projectId: 'proj-1' };
+
+    // 回归：keymap 进入 CodeMirror extensions 数组，身份一变宿主就 reconfigure
+    // 重建整个扩展世界 —— lint 经 appendConfig 惰性安装的渲染扩展被丢掉，
+    // 波浪线随每次内容变更闪烁/消失。
+    const { result, rerender } = renderHook(
+      (props: { tab: typeof tab }) =>
+        useLspNavigation({
+          projectPath: '/repo',
+          tabKey: 'k1',
+          tab: props.tab as never,
+          lspLanguageIdRef: h.lspLanguageIdRef,
+          editorViewRef: h.editorViewRef as never,
+        }),
+      { initialProps: { tab } },
+    );
+
+    const mounted = result.current.lspKeymap;
+    rerender({ tab: { ...tab } });
+
+    expect(result.current.lspKeymap).toBe(mounted);
   });
 });

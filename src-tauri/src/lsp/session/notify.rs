@@ -233,4 +233,54 @@ mod tests {
         handle_progress_notification(&serde_json::json!({ "token": "x" }), "/p", "java", &t, &s);
         assert!(snapshot(&s).is_empty());
     }
+
+    /// 诊断通知直传原始 JSON（避免 serialize→parse→serialize 往返）：
+    /// `code`（number|string）必须原样到达 DiagnosticBus —— Problems 面板
+    /// 的 `(UndeclaredName)` 段依赖它；任何中途解析丢弃都是回归。
+    #[test]
+    fn diagnostics_notification_forwards_code_field_to_bus() {
+        let captured = std::sync::Arc::new(Mutex::new(None::<DiagnosticEvent>));
+        let sink = std::sync::Arc::clone(&captured);
+        let bus = DiagnosticBus::new();
+        let _sub = bus.subscribe(move |event| {
+            *sink.lock().expect("sink lock") = Some(event.clone());
+        });
+
+        let params = serde_json::json!({
+            "uri": "file:///p/main_test.go",
+            "diagnostics": [
+                {
+                    "range": {
+                        "start": { "line": 55, "character": 12 },
+                        "end": { "line": 55, "character": 15 }
+                    },
+                    "severity": 1,
+                    "message": "undefined: fmt",
+                    "source": "compiler",
+                    "code": "UndeclaredName"
+                },
+                {
+                    "range": {
+                        "start": { "line": 3, "character": 0 },
+                        "end": { "line": 3, "character": 1 }
+                    },
+                    "severity": 2,
+                    "message": "unused variable",
+                    "code": 1234
+                }
+            ]
+        });
+
+        handle_diagnostics_notification(&params, "/p", "go", &bus);
+
+        let event = captured
+            .lock()
+            .expect("captured lock")
+            .clone()
+            .expect("bus event published");
+        assert_eq!(event.uri, "file:///p/main_test.go");
+        let diags = event.diagnostics.as_array().expect("diagnostics array");
+        assert_eq!(diags[0]["code"], "UndeclaredName");
+        assert_eq!(diags[1]["code"], 1234);
+    }
 }

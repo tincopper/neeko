@@ -8,10 +8,12 @@
  */
 
 export { acquireLspPlugin, releaseLspClient } from './hooks/lspClientManager';
+export { lspDiagnosticsProjection } from './hooks/lspDiagnosticsProjection';
 export { withJdtLinkHandler } from './hooks/lspHoverExtension';
 export { useCmdHeld } from './hooks/useCmdHeld';
 export { useLspDefinition } from './hooks/useLspDefinition';
 export { useLspLinkHighlightExtension, clearLinkHighlight } from './hooks/useLspLinkHighlight';
+export { default as ProblemsPanel } from './components/ProblemsPanel';
 
 export type { DefinitionTargetContent } from './api/definitionTarget';
 export type { LspLocation, LspDiagnostic, ProjectLanguageProfile, LspSessionInfo } from './types';

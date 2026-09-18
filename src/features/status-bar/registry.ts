@@ -6,6 +6,7 @@ import { ConsoleItem } from './items/ConsoleItem';
 import { CursorItem } from './items/CursorItem';
 import { DebugItem } from './items/DebugItem';
 import { LspSlotItem } from './items/LspSlotItem';
+import { ProblemsItem } from './items/ProblemsItem';
 import { PromptsStatusSection } from './PromptsStatusSection';
 import type { StatusBarItemDef, StatusBarSide } from './types';
 
@@ -21,6 +22,7 @@ export const STATUS_BAR_ITEMS: StatusBarItemDef[] = [
   { id: 'prompts', side: 'right', order: 10, component: PromptsStatusSection },
   { id: 'console', side: 'right', order: 20, component: ConsoleItem },
   { id: 'debug', side: 'right', order: 30, component: DebugItem },
+  { id: 'problems', side: 'right', order: 35, component: ProblemsItem },
   { id: 'cursor', side: 'right', order: 40, component: CursorItem },
   { id: 'notifications', side: 'right', order: 50, component: NotificationButton },
 ];

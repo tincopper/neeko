@@ -237,6 +237,46 @@ mod tests {
         assert_eq!(v["level"], "warn");
         assert_eq!(v["message"], "hello");
     }
+
+    /// LSP spec 3.17：`Diagnostic.code` 为 number|string。三态序列化往返：
+    /// string（如 gopls 的 "UndeclaredName"）/ number（如 tsserver 的 2339）/
+    /// 缺失（`#[serde(default)]`）都不得报错或丢失。
+    #[test]
+    fn diagnostic_code_roundtrips_string_number_and_missing() {
+        let base = serde_json::json!({
+            "range": {
+                "start": { "line": 55, "character": 12 },
+                "end": { "line": 55, "character": 15 }
+            },
+            "severity": 1,
+            "message": "undefined: fmt",
+            "source": "compiler"
+        });
+
+        // string code 往返
+        let mut with_str = base.clone();
+        with_str["code"] = serde_json::json!("UndeclaredName");
+        let d: LspDiagnostic = serde_json::from_value(with_str).unwrap();
+        assert_eq!(
+            d.code.as_ref().and_then(serde_json::Value::as_str),
+            Some("UndeclaredName")
+        );
+        assert_eq!(serde_json::to_value(&d).unwrap()["code"], "UndeclaredName");
+
+        // number code 往返
+        let mut with_num = base.clone();
+        with_num["code"] = serde_json::json!(1234);
+        let d: LspDiagnostic = serde_json::from_value(with_num).unwrap();
+        assert_eq!(
+            d.code.as_ref().and_then(serde_json::Value::as_i64),
+            Some(1234)
+        );
+        assert_eq!(serde_json::to_value(&d).unwrap()["code"], 1234);
+
+        // 缺失 → None（serde default），不报错
+        let without: LspDiagnostic = serde_json::from_value(base).unwrap();
+        assert!(without.code.is_none());
+    }
 }
 
 /// A single diagnostic item, serializable for Tauri IPC.
@@ -250,6 +290,10 @@ pub struct LspDiagnostic {
     pub message: String,
     /// Source of the diagnostic (e.g. "rustc").
     pub source: Option<String>,
+    /// LSP spec 3.17 `Diagnostic.code`（number|string，如 gopls 的
+    /// "UndeclaredName" 或 tsserver 的 2339）。多数服务器缺失该字段 → default。
+    #[serde(default)]
+    pub code: Option<serde_json::Value>,
 }
 
 /// A range in a text document (0-based).

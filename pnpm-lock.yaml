@@ -53,6 +53,9 @@ importers:
       '@codemirror/legacy-modes':
         specifier: ^6.5.2
         version: 6.5.2
+      '@codemirror/lint':
+        specifier: ^6.9.5
+        version: 6.9.5
       '@codemirror/lsp-client':
         specifier: ^6.2.5
         version: 6.2.5
