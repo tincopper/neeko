@@ -1,8 +1,23 @@
 diff --git a/dist/index.js b/dist/index.js
-index e53e571e2fdcd1220133c27cf064696213d4d0c5..48871429ed07d5c71eaa1ac3bbc425f1ccb4a5d1 100644
+index e53e571e2fdcd1220133c27cf064696213d4d0c5..cf5b6806d91a42e0380308ea4eb8a2e003c0c2e1 100644
 --- a/dist/index.js
 +++ b/dist/index.js
-@@ -963,17 +963,49 @@ const serverCompletionSource = context => {
+@@ -906,9 +906,13 @@ function resultMapper(changes, extraEdits) {
+ }
+ function applyEdits(edits, text, mapped) {
+     return (view, completion, from, to) => {
++        // Neeko patch (2026-09-19): `edits` may be a getter, so edits deferred to
++        // `completionItem/resolve` are collected at ACCEPT time instead of when
++        // the completion list was built (they did not exist yet then).
++        let resolvedEdits = typeof edits == "function" ? edits(view.state.doc) : edits;
+         let base = insertCompletionText(view.state, text, from, to);
+         let changes = [];
+-        for (let { from, to, text } of edits) {
++        for (let { from, to, text } of resolvedEdits) {
+             if (mapped) {
+                 if (mapped.touchesRange(from, to))
+                     continue;
+@@ -963,19 +967,87 @@ const serverCompletionSource = context => {
                      option.detail = item.detail;
                  if (item.sortText)
                      option.sortText = item.sortText;
@@ -19,7 +34,39 @@ index e53e571e2fdcd1220133c27cf064696213d4d0c5..48871429ed07d5c71eaa1ac3bbc425f1
                          if (from != null && to != null)
                              edits.push({ from, to, text: edit.newText });
                      }
+-                    extraEdits.push({ index: i, text, edits });
+-                    option.apply = applyEdits(edits, text, null);
 +                }
++                // Neeko patch (2026-09-19): keep the raw LSP CompletionItem on the
++                // option. Servers that defer auto-import edits to
++                // `completionItem/resolve` (rust-analyzer 1.97.1, jdtls 1.61.0)
++                // need the item's `data` echoed back, and this library copies only
++                // a fixed field set onto the CM6 option — `data` is dropped.
++                option.lspItem = item;
++                // 服务器给了 `data` 即"这是半成品，编辑在 resolve 里"：这是 LSP 的通用
++                // 约定（data 就是客户端回传给 resolve 的凭据），不含任何语言差异。
++                // 必须**在这里**判定：下面装 `apply` 的分支是构建期求值的，等调用方
++                // 拿到 options 再标注就已经晚了（会退化成裸 label 插入）。
++                if (item.data != null)
++                    option.neekoNeedsResolve = true;
++                // Accept-time edit collection: the inline edits computed above plus
++                // edits fetched later by completionItem/resolve
++                // (`option.neekoDeferredEdits`), both converted against the document
++                // as it is when the user ACCEPTS. Collecting here rather than
++                // dispatching a second transaction keeps the insert and the import
++                // edit in one transaction: single undo step, no position drift.
++                let collectEdits = (doc) => {
++                    let all = edits.slice();
++                    let deferred = option.neekoDeferredEdits;
++                    if (deferred)
++                        for (let edit of deferred) {
++                            let f = fromPositionChecked(doc, edit.range.start);
++                            let t = fromPositionChecked(doc, edit.range.end);
++                            if (f != null && t != null)
++                                all.push({ from: f, to: t, text: edit.newText });
++                        }
++                    return all;
++                };
 +                // Neeko patch (2026-09-18): snippet-format completions must also
 +                // apply additionalTextEdits (auto-import) — atomically, in the
 +                // SAME transaction. Upstream treats snippet and edits as mutually
@@ -46,14 +93,22 @@ index e53e571e2fdcd1220133c27cf064696213d4d0c5..48871429ed07d5c71eaa1ac3bbc425f1
 +                        snippet(lspToSnippet(text))(capture, c, from, to);
 +                        if (!snippetTxn)
 +                            return;
-+                        if (!edits.length) {
++                        let all = collectEdits(view.state.doc);
++                        if (!all.length) {
 +                            view.dispatch(snippetTxn);
 +                            return;
 +                        }
-+                        view.dispatch(snippetTxn, { changes: edits.map(e => ({ from: e.from, to: e.to, insert: e.text })) });
++                        view.dispatch(snippetTxn, { changes: all.map(e => ({ from: e.from, to: e.to, insert: e.text })) });
 +                    };
 +                }
-+                else if (item.additionalTextEdits) {
-                     extraEdits.push({ index: i, text, edits });
-                     option.apply = applyEdits(edits, text, null);
++                // Neeko patch (2026-09-19): install an apply for items whose edits
++                // are deferred too — such an item has `insertText === label`, so
++                // none of the branches above would fire and CodeMirror would fall
++                // back to inserting the bare label.
++                else if (item.additionalTextEdits || option.neekoNeedsResolve) {
++                    if (item.additionalTextEdits)
++                        extraEdits.push({ index: i, text, edits });
++                    option.apply = applyEdits(collectEdits, text, null);
                  }
+                 else if (option.label != text) {
+                     option.apply = text;

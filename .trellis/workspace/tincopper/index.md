@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-4.md`
-- **Total Sessions**: 217
-- **Last Active**: 2026-09-18
+- **Total Sessions**: 218
+- **Last Active**: 2026-09-19
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-4.md` | ~1519 | Active |
+| `journal-4.md` | ~1583 | Active |
 | `journal-3.md` | ~1978 | Archived |
 | `journal-2.md` | ~1991 | Archived |
 | `journal-1.md` | ~1986 | Archived |
@@ -32,6 +32,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 218 | 2026-09-19 | Rust flyimport：全局声明 resolveSupport + 通用 completionItem/resolve 通道 | - | `main` |
 | 217 | 2026-09-18 | LSP 诊断权威副本与可重建投影 | `d8d44697` | `main` |
 | 216 | 2026-09-17 | 导航目标状态模型重构 + 两个键空间/清理后续任务 | `17ed222a`, `2d235c92`, `cb723203`, `1c96f541` | `main` |
 | 215 | 2026-09-17 | 修掉 adapterBinaries 别名陷阱：键空间在读取入口归一 | - | `main` |

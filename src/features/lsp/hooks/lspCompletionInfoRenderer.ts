@@ -1,6 +1,6 @@
 import { autocompletion, snippet } from '@codemirror/autocomplete';
 import type { Completion, CompletionContext, CompletionResult } from '@codemirror/autocomplete';
-import { serverCompletionSource } from '@codemirror/lsp-client';
+import { LSPPlugin, serverCompletionSource } from '@codemirror/lsp-client';
 import type { Extension } from '@codemirror/state';
 import { EditorView, tooltips, type Rect } from '@codemirror/view';
 
@@ -11,6 +11,7 @@ import {
   buildModuleNodeFromCompletion,
 } from './completionRenderer';
 import { completionTheme } from './completionTheme';
+import { resolveCompletionItem } from './lspCompletionResolve';
 
 /**
  * Calculate width / height from a `Rect` ({left, right, top, bottom}).
@@ -173,6 +174,10 @@ function maybeAttachSnippetFallback(item: any): void {
  */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function createThemedCompletionSource(context: CompletionContext): Promise<any> {
+  // 语言客户端句柄：`completionItem/resolve` 要走同一个
+  // LSPClient（`lspHoverExtension.ts` 里取句柄的方式相同）。
+  const plugin = context.view ? LSPPlugin.get(context.view) : null;
+
   // Delegate to the canonical source — keep completion behavior identical.
   return Promise.resolve(serverCompletionSource(context)).then(
     (result: CompletionResult | null) => {
@@ -204,6 +209,9 @@ export function createThemedCompletionSource(context: CompletionContext): Promis
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const item = option as any;
 
+        // 注：`neekoNeedsResolve`（该项的 import 编辑被推迟到 resolve）由 patch 在
+        // **构建期**判定 —— 只有那里能看到原始 item 的 `data`。这里再标注已经太晚：
+        // 库装 `apply` 的分支早已求值完毕，延迟项会退化成插入裸 label。
         maybeAttachSnippetFallback(item);
 
         // Apply the premium list-item look: icon type + cleaned detail.
@@ -222,6 +230,11 @@ export function createThemedCompletionSource(context: CompletionContext): Promis
         const originalInfo = typeof item.info === 'function' ? item.info : null;
 
         item.info = async function themedInfo() {
+          // 选中即解析（CodeMirror 只为当前选中项调用 info）：取回被服务器
+          // 推迟的 import 编辑，写回 `neekoDeferredEdits`，接受时与插入文本
+          // 合并成同一事务。失败静默 —— 最多是这一项不带 import。
+          if (plugin) await resolveCompletionItem(item as object, plugin);
+
           let docHtml = '';
           if (originalInfo) {
             const rendered = await originalInfo();
@@ -231,6 +244,14 @@ export function createThemedCompletionSource(context: CompletionContext): Promis
           }
           return buildInfoPanel(item, item, docHtml);
         };
+      }
+
+      // 预热首个候选（CM6 打开列表时默认选中它）：把"选中→resolve→接受"的竞态
+      // 窗口压到最小。声明 `resolveSupport` 之后 jdtls / rust-analyzer 的 import
+      // 编辑只在 resolve 里下发，用户比它快就会丢 import。
+      // 必须在上面标注完 `neekoNeedsResolve` 之后再触发。
+      if (plugin && options.length) {
+        void resolveCompletionItem(options[0] as object, plugin);
       }
 
       return result;

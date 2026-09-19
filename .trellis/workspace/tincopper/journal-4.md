@@ -1517,3 +1517,67 @@ adapter_binary_override 改为读取时按 AdapterKind::from_config_type 归一�
 ### Next Steps
 
 - None - task complete
+
+
+## Session 218: Rust flyimport：全局声明 resolveSupport + 通用 completionItem/resolve 通道
+
+**Date**: 2026-09-19
+**Task**: Rust flyimport：全局声明 resolveSupport + 通用 completionItem/resolve 通道
+**Branch**: `main`
+
+### Summary
+
+定位 r-a 静默丢弃 flyimport 候选的根因；按通用（非按语言）方案补齐 declaration + consumer 两端
+
+### Main Changes
+
+## 根因（裸 r-a 1.97.1 + scratch crate A/B 实测）
+
+客户端 `initialize` 未声明 `completionItem.resolveSupport.properties` 含 `additionalTextEdits`
+时，rust-analyzer **丢弃全部** flyimport 候选（108 项、无 HashMap）；声明后 109 项且
+`HashMap` 居首，import 编辑改由 `completionItem/resolve` 下发。Neeko 三处全缺：没声明、
+补全库丢掉原始 item 的 `data`、从不发 resolve。
+
+## 设计取舍（按通用抽象，非按语言切开关）
+
+同一探针跑三种 server，只切换这一条声明：
+
+- rust-analyzer 1.97.1：不声明 → 候选整条不发；声明 → 走 resolve
+- jdtls 1.61.0：不声明 → 33/33 内联；声明 → 改走 resolve（resolve 返回 `import java.awt.List;`）
+  即 jdtls **也读标准能力**，不只它私有的 `extendedClientCapabilities`
+- gopls v0.23.0：恒内联，无感
+
+三种策略由**同一套**通用 consumer 兜住，故声明写进 `build_client_capabilities()` 全局生效；
+jdtls 私有 flag 仍保持删除。刻意只声明 `additionalTextEdits`（不带 documentation/detail），
+避免服务器把文档一并推迟导致信息面板空。
+
+## 落地
+
+- `instance.rs::build_client_capabilities` 加 resolveSupport + 单测钉住
+- `patches/@codemirror__lsp-client@6.2.5.patch`：`option.lspItem = item` 透出原始 item；
+  `collectEdits(doc)` 接受期收集（延迟编辑并入**同一事务**，单步撤销）；`applyEdits` 支持取值函数
+- 新增 `src/features/lsp/hooks/lspCompletionResolve.ts`（WeakMap 去重、原样回传 item、失败静默）
+- `lspCompletionInfoRenderer.ts` 接线：构建期标注 `neekoNeedsResolve`、首个候选预热、选中即解析
+
+## 验证
+
+Rust 1291+102 全绿、前端 3899 全绿、lint/clippy/type-check 通过。
+待手动冒烟：stock-buddy 内打 `Hash` → `HashMap (use std::collections::HashMap)`，回车后
+文件头出现 `use …`，一次 Ctrl+Z 同时撤销；Java `List`、Go `fmt.Pr` 回归。
+
+
+### Git Commits
+
+(No commits - planning session)
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

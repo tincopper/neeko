@@ -8,7 +8,7 @@ overrides:
   '@codemirror/view': 6.43.11
 
 patchedDependencies:
-  '@codemirror/lsp-client@6.2.5': a178c91fd1981e5406780f4db099759df174ddd6cfa6ca9c6c8ee0243a850bdc
+  '@codemirror/lsp-client@6.2.5': 6727f815eeb02dbc0f6e7b6f97eeba99fd1b0e023085831cf61937a20d7e5208
   '@xterm/addon-canvas': f39b8eee64b365d9705304af53d2f5733ccb841664e3caf291a18e026a6ecc77
 
 importers:
@@ -59,7 +59,7 @@ importers:
         version: 6.9.5
       '@codemirror/lsp-client':
         specifier: ^6.2.5
-        version: 6.2.5(patch_hash=a178c91fd1981e5406780f4db099759df174ddd6cfa6ca9c6c8ee0243a850bdc)
+        version: 6.2.5(patch_hash=6727f815eeb02dbc0f6e7b6f97eeba99fd1b0e023085831cf61937a20d7e5208)
       '@codemirror/search':
         specifier: ^6.6.0
         version: 6.6.0
@@ -5856,7 +5856,7 @@ snapshots:
       '@codemirror/view': 6.43.11
       crelt: 1.0.7
 
-  '@codemirror/lsp-client@6.2.5(patch_hash=a178c91fd1981e5406780f4db099759df174ddd6cfa6ca9c6c8ee0243a850bdc)':
+  '@codemirror/lsp-client@6.2.5(patch_hash=6727f815eeb02dbc0f6e7b6f97eeba99fd1b0e023085831cf61937a20d7e5208)':
     dependencies:
       '@codemirror/autocomplete': 6.20.1
       '@codemirror/language': 6.12.3

@@ -375,6 +375,7 @@ cargo test --manifest-path src-tauri/Cargo.toml
 13. **测试夹具路径平台无关（Test Fixture Path Portability）**：测试代码中进入 `Path`/`PathBuf` 语义或路径敏感 API（授权守卫 `is_absolute()`、`canonicalize()`、存在性判定）的路径字面量，**禁止硬编码 POSIX 绝对路径**（`/opt/…`、`/home/…`、`/tmp/…` 等）——Windows 上无盘符前缀，`is_absolute()` 恒 false，本地（macOS/Linux）绿而 Windows CI 红。一律由 `tempdir()` 推导平台绝对路径（Windows 盘符 / Unix 均成立）；纯字符串语义（JSON 载荷、URL query、转义拼接、平台无关断言）不受限。**执行方式**：本红线无稳定语法指纹——静态 grep 实证 45+ 文件合法命中（生产 Unix 默认路径、JSON fixture、转义拼接），脚本化信噪比不可接受（红线 11/12 可脚本化正因有指纹），故由 **AI 审查（neeko-check / trellis-check）对 diff 内夹具路径字面量专项检查**；唯一可靠判定仍是 CI 的 Windows `cargo test` job（真实平台执行）。回归样例：`dap::manager::tests::resolve_external_source_authorizes_only_on_current_frame`（2026-09-17 Windows CI 红，同批 `source_translation.rs` 两处已修未引以为戒）。
 
 14. **LSP 能力声明必须与实现一致（Capability Claims Match Implementation）**：向语言服务器声明的每一项客户端能力都是**行为契约**——服务器会据此切换通道，声明了却没人实现 = 静默功能缺失。改 `build_client_capabilities()` / `plugin.with_extended_client_capabilities()` 前必须问「哪段代码消费它」，并在同一 diff 内给出实现或删掉声明。回归样例（2026-09-18，两处同源）：① `resolveAdditionalTextEditsSupport: true` 令 jdtls 把 import 编辑全部推迟到 `completionItem/resolve`，而本栈（Rust transport + `@codemirror/lsp-client`）从不发 resolve → Java 自动导包彻底失效（实测：声明 true 时 `List` 33 个候选 0 个带 `additionalTextEdits`，不声明则 33/33 带）；② `progressReportProvider: true` 而全仓无 `language/progressReport` 处理。护栏：宣称值由插件单测钉死（`java_plugin_advertises_only_implemented_extended_capabilities`），新增声明必须同时新增消费点或说明。
+    - **反向同样违约（2026-09-19，rust-analyzer 1.97.1）**：**该声明却没声明**也会造成静默缺失——r-a 在客户端未声明 `completionItem.resolveSupport.properties` 含 `additionalTextEdits` 时，把**所有** flyimport（自动导包）候选整条丢弃，补全列表里永远不会出现 `HashMap`（实测：不声明 108 项无候选，声明后 109 项且 `HashMap` 居首）。即"漏声明"与"假声明"是同一条契约的两面。此例同时说明：**不要因为某次事故就把能力按语言切成开关**——三条实测策略（r-a 强制要声明、jdtls 声明后改走 resolve、gopls 恒内联）由**同一套通用消费者**（`src/features/lsp/hooks/lspCompletionResolve.ts`）兜住即可，声明写进 `build_client_capabilities()` 全局生效。
 
 15. **语言差异必须落在插件数据（Language Differences Are Plugin Data）**：语言服务器之间的差异——会话根解析范围、检测压制、调优开关、安装方式、能力声明——一律作为 `LspPlugin` 字段声明，**禁止**在通用模块（`lsp/session/*`、`manager.rs`、`profile.rs`、`registry.rs`、`plugin_manager.rs`）里写 `language_id == "xxx"`、语言白名单或按语言的 `if/match` 特例。**Why**：R5 要求"新增 LS 零逻辑改动即获得全部能力"，代码内白名单会让新语言必须改核心模块，且白名单会与插件数据漂移（同一知识两处表示）。**How to apply**：改通用模块时若需要知道"这是哪种语言"，先问「这条知识能不能作为插件字段携带」；能就加字段 + builder，把差异下沉到 `builtins/*`。参照（2026-09-18 数据化）：`RootScope`（会话根范围 ← 原 `is_document_root_scoped` 白名单）、`detect_suppressed_by`（检测压制 ← 原 `profile.rs` 的 javascript 特例）、`tuning`、`extended_client_capabilities`。护栏：消费侧必须有一条"**自定义插件声明该数据即生效**"的测试（如 `document_scoped_markers_come_from_plugin_data`、`custom_plugin_suppression_is_data_not_code`）——没有它，数据可能退化成被忽略的装饰。
 
@@ -505,7 +506,11 @@ python3 ./.trellis/scripts/add_session.py --title "<title>" --commit "<hash>"
   哈希缓存，不重启会继续跑旧代码（"改了包却没生效"的假象）。改 `patches/*.patch`
   的正确流程：`pnpm patch <pkg>@<ver>` → 编辑 `.pnpm_patches/` 下的文件 →
   `pnpm patch-commit <dir>` → `pnpm install`；补丁文件必须**纳入 git**（否则新克隆
-  `pnpm install` 会因缺补丁文件而失败）
+  `pnpm install` 会因缺补丁文件而失败）。
+  **实测补充（2026-09-19）**：只"重启 dev server"**不够** —— 缓存按 lockfile 哈希，
+  而 patch 改动不进 lockfile 哈希，因此仍会命中旧 bundle；必须
+  `rm -rf node_modules/.vite`（或 `npx vite optimize --force`）后重启。失效症状是
+  "列表正常但补丁里的新逻辑完全没跑"（无任何新请求发出），极易误判为逻辑错误。
 
 ## 相关文档
 

@@ -15,8 +15,11 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { snippet } from '@codemirror/autocomplete';
+import { serverCompletionSource } from '@codemirror/lsp-client';
 import { EditorState } from '@codemirror/state';
 import { describe, expect, it } from 'vitest';
+
+import { resolveCompletionItem } from '../lspCompletionResolve';
 
 /** `@codemirror/lsp-client/dist/index.js` 的 `lspToSnippet` 同实现。 */
 const lspToSnippet = (text: string): string =>
@@ -107,6 +110,112 @@ describe('自动导包：补全应用机制', () => {
   });
 });
 
+describe('自动导包：延迟编辑（completionItem/resolve）真正跑通 patch', () => {
+  /** 与 rust-analyzer 1.97.1 的 flyimport 响应同构：无内联编辑，只有 `data`。 */
+  const DOC = 'fn main() {\n    Hash\n}\n';
+  const IMPORT_EDIT = {
+    range: { start: { line: 0, character: 0 }, end: { line: 0, character: 0 } },
+    newText: 'use std::collections::HashMap;\n',
+  };
+  const ITEM = {
+    label: 'HashMap',
+    insertText: 'HashMap',
+    filterText: 'HashMap',
+    kind: 22,
+    data: { imports: [{ full_import_path: 'std::collections::HashMap' }] },
+    textEdit: {
+      range: { start: { line: 1, character: 4 }, end: { line: 1, character: 8 } },
+      newText: 'HashMap',
+    },
+  };
+
+  /** `LSPPlugin.get(view)` 只调 `view.plugin(...)` —— 无需 DOM 即可驱动真实库代码。 */
+  function harness() {
+    const calls: { method: string; params: unknown }[] = [];
+    let state = EditorState.create({ doc: DOC });
+    const dispatches: unknown[][] = [];
+    const view = {
+      get state() {
+        return state;
+      },
+      plugin: () => ({
+        uri: 'file:///probe.rs',
+        // 与库内 `toPosition` 同实现（doc 偏移 → LSP {line, character}）
+        toPosition: (pos: number) => {
+          const line = state.doc.lineAt(pos);
+          return { line: line.number - 1, character: pos - line.from };
+        },
+        client: {
+          serverCapabilities: {},
+          hasCapability: () => true,
+          sync: async () => undefined,
+          request: async (method: string, params: unknown) => {
+            calls.push({ method, params });
+            if (method === 'textDocument/completion') return { items: [ITEM] };
+            return { additionalTextEdits: [IMPORT_EDIT] };
+          },
+        },
+      }),
+      dispatch: (...specs: unknown[]) => {
+        dispatches.push(specs);
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        state = state.update(...(specs as any[])).state;
+      },
+    };
+    return { calls, view, dispatches, doc: () => state.doc.toString() };
+  }
+
+  it('库把原始 item 透出并在构建期标记需要 resolve', async () => {
+    const h = harness();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const result: any = await serverCompletionSource({
+      view: h.view,
+      state: h.view.state,
+      pos: 18,
+      explicit: true,
+      // `getCompletions` 把 context 本身当 abort 用（调 context.addEventListener）
+      addEventListener: () => undefined,
+    } as unknown as import('@codemirror/autocomplete').CompletionContext);
+
+    const option = result.options[0];
+    expect(option.lspItem).toBe(ITEM); // resolve 的凭据（含 data）
+    expect(option.neekoNeedsResolve).toBe(true); // 构建期判定，晚一步就退化成裸插入
+  });
+
+  it('延迟编辑与插入文本在同一事务落地（一次 dispatch、可一步撤销）', async () => {
+    const h = harness();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const result: any = await serverCompletionSource({
+      view: h.view,
+      state: h.view.state,
+      pos: 18,
+      explicit: true,
+      // `getCompletions` 把 context 本身当 abort 用（调 context.addEventListener）
+      addEventListener: () => undefined,
+    } as unknown as import('@codemirror/autocomplete').CompletionContext);
+    const option = result.options[0];
+
+    // 真实 resolver 往返：发 resolve 并把编辑写回候选
+    const edits = await resolveCompletionItem(option, {
+      client: {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        request: (h.view as any).plugin().client.request,
+      },
+    });
+    expect(edits).toEqual([IMPORT_EDIT]);
+
+    // 接受补全
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    option.apply(h.view, option, result.from, result.to);
+
+    const doc = h.doc();
+    expect(doc).toContain('HashMap');
+    expect(doc).toContain('use std::collections::HashMap;');
+    // 原子：插入 + import 合并进**一次** dispatch
+    expect(h.dispatches).toHaveLength(1);
+  });
+});
+
 describe('自动导包：补丁护栏（pnpm patch 丢失/回退即红）', () => {
   const distPath = join(process.cwd(), 'node_modules/@codemirror/lsp-client/dist/index.js');
   const dist = readFileSync(distPath, 'utf8');
@@ -114,6 +223,21 @@ describe('自动导包：补丁护栏（pnpm patch 丢失/回退即红）', () =
   it('安装的包必须含「snippet + additionalTextEdits 合并」实现', () => {
     expect(dist).toContain('Neeko patch');
     // 合并必须发生在**同一事务**（captured snippet transaction + edits）
+    expect(dist).toMatch(/dispatch\(snippetTxn, \{ changes:/);
+  });
+
+  it('安装的包必须透出原始 CompletionItem 并在接受时收集延迟编辑', () => {
+    // ① 原始 item 必须挂到 option 上 —— 否则客户端无从发起 `completionItem/resolve`
+    //    （服务器靠 item 里的 `data` 计算 import 编辑）。
+    expect(dist).toContain('option.lspItem = item');
+    // ② 「该项需要 resolve」必须在**构建期**判定（`item.data != null`）：装 apply 的
+    //    分支此刻就求值，等调用方拿到 options 再标已经晚了（会退化成裸 label 插入）。
+    expect(dist).toMatch(/if \(item\.data != null\)\s*\n\s*option\.neekoNeedsResolve = true;/);
+    // ② 编辑必须在**接受时**收集：延迟到 resolve 的编辑此刻才存在
+    expect(dist).toMatch(/collectEdits\(view\.state\.doc\)/);
+    // ③ 非 snippet 分支的 applyEdits 也要能吃"取值函数"，否则延迟编辑进不来
+    expect(dist).toContain('resolvedEdits');
+    // ④ 仍然保持单事务：插入与 import 编辑合并进同一个 dispatch
     expect(dist).toMatch(/dispatch\(snippetTxn, \{ changes:/);
   });
 

@@ -466,6 +466,88 @@ describe('createThemedCompletionSource snippet fallback', () => {
   });
 });
 
+describe('createThemedCompletionSource 与 completionItem/resolve 的接线', () => {
+  /** rust-analyzer / jdtls 在 resolve 里下发的 import 编辑。 */
+  const DEFERRED_EDIT = [
+    {
+      range: { start: { line: 0, character: 0 }, end: { line: 0, character: 0 } },
+      newText: 'use std::collections::HashMap;\n',
+    },
+  ];
+
+  function pluginRecording(calls: { method: string; params: unknown }[]) {
+    return {
+      client: {
+        request: async (method: string, params: unknown) => {
+          calls.push({ method, params });
+          return { additionalTextEdits: DEFERRED_EDIT };
+        },
+      },
+    };
+  }
+
+  it('should_resolve_items_flagged_by_the_patch_on_selection', async () => {
+    const calls: { method: string; params: unknown }[] = [];
+    vi.mocked(LSPPlugin.get).mockReturnValue(pluginRecording(calls) as any);
+
+    // `neekoNeedsResolve` 由 pnpm patch 在构建期标注（只有那里看得到 item.data）；
+    // 这里模拟它的产物，验证渲染层的解析接线。
+    const rawItem = { label: 'HashMap', data: { imports: [] } };
+    const option = { label: 'HashMap', lspItem: rawItem, neekoNeedsResolve: true } as any;
+    vi.mocked(serverCompletionSource).mockResolvedValue({
+      options: [option],
+      from: 0,
+      to: 3,
+    } as any);
+
+    await createThemedCompletionSource({ view: {} } as any);
+
+    // 首个候选预热一次（用户可能立刻回车）
+    expect(calls).toHaveLength(1);
+    expect(calls[0].method).toBe('completionItem/resolve');
+    expect(calls[0].params).toBe(rawItem);
+
+    // 选中渲染信息面板：复用缓存，不再发请求，编辑已落回候选
+    await option.info();
+    expect(calls).toHaveLength(1);
+    expect(option.neekoDeferredEdits).toEqual(DEFERRED_EDIT);
+  });
+
+  it('should_not_resolve_items_without_data', async () => {
+    const calls: { method: string; params: unknown }[] = [];
+    vi.mocked(LSPPlugin.get).mockReturnValue(pluginRecording(calls) as any);
+
+    // 已是完整候选（服务器内联了 import 编辑）：无需 resolve
+    const option = { label: 'List', lspItem: { label: 'List' } } as any;
+    vi.mocked(serverCompletionSource).mockResolvedValue({
+      options: [option],
+      from: 0,
+      to: 3,
+    } as any);
+
+    await createThemedCompletionSource({ view: {} } as any);
+    await option.info();
+
+    expect(calls).toHaveLength(0);
+  });
+
+  it('should_noop_when_there_is_no_client_handle', async () => {
+    // 极端情况：`LSPPlugin.get` 拿不到句柄（视图未挂载 LSP 扩展）
+    vi.mocked(LSPPlugin.get).mockReturnValue(undefined as any);
+
+    const option = { label: 'HashMap', lspItem: { label: 'HashMap', data: {} } } as any;
+    vi.mocked(serverCompletionSource).mockResolvedValue({
+      options: [option],
+      from: 0,
+      to: 3,
+    } as any);
+
+    await expect(createThemedCompletionSource({ view: {} } as any)).resolves.toBeDefined();
+    await expect(option.info()).resolves.toBeDefined();
+    expect(option.neekoDeferredEdits).toBeUndefined();
+  });
+});
+
 describe('createThemedServerCompletion', () => {
   it('returns an array of extensions', () => {
     const result = createThemedServerCompletion();

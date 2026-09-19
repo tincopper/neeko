@@ -720,13 +720,29 @@ pub(crate) fn panic_payload_message(payload: &(dyn std::any::Any + Send)) -> Str
 /// `completionItem.documentation: true` asks servers to include per-item
 /// documentation in completion responses — the info panel's docs section
 /// ("function documentation hints") depends on it.
+///
+/// `completionItem.resolveSupport.properties: ["additionalTextEdits"]` declares
+/// we can fetch auto-import edits later via `completionItem/resolve` — every
+/// mainstream LSP client declares this for every server. Servers react
+/// differently and all three reactions are handled by one generic consumer
+/// (`src/features/lsp/hooks/lspCompletionResolve.ts`), hence it is declared
+/// globally rather than per plugin (measured 2026-09-19, same probe/scenario):
+///   - rust-analyzer 1.97.1: without it, **every** flyimport candidate is
+///     dropped (no `HashMap` in the list at all); with it, candidates appear
+///     and the `use …;` edit moves to `completionItem/resolve`
+///   - jdtls 1.61.0: without it, import edits arrive inline (33/33); with it,
+///     they move to resolve too (returns `import java.awt.List;`)
+///   - gopls v0.23.0: always inline, unaffected by the declaration
+///
+/// `documentation`/`detail` are deliberately NOT listed — including them makes
+/// servers defer docs as well, rendering the info panel empty until resolve.
 pub(crate) fn build_client_capabilities() -> Value {
     serde_json::json!({
         "textDocument": {
             "hover": { "contentFormat": ["markdown", "plaintext"] },
             "definition": { "linkSupport": true },
             "references": {},
-            "completion": { "completionItem": { "snippetSupport": true, "documentation": true, "documentationFormat": ["markdown", "plaintext"] } },
+            "completion": { "completionItem": { "snippetSupport": true, "documentation": true, "documentationFormat": ["markdown", "plaintext"], "resolveSupport": { "properties": ["additionalTextEdits"] } } },
             "publishDiagnostics": { "relatedInformation": true }
         },
         "workspace": { "workspaceFolders": true, "configuration": true, "didChangeConfiguration": { "dynamicRegistration": false } },
@@ -913,6 +929,39 @@ mod tests {
             caps["textDocument"]["completion"]["completionItem"]["documentation"],
             json!(true),
             "documentation must be advertised so servers include per-item docs"
+        );
+    }
+
+    /// 红线 14：我们向**所有**服务器声明了「能通过 `completionItem/resolve` 取回
+    /// `additionalTextEdits`」，就必须真的发得出去 —— 消费者是前端的通用 resolver
+    ///（`src/features/lsp/hooks/lspCompletionResolve.ts`），不区分语言。
+    ///
+    /// 为什么是全局而非按插件声明（实测 2026-09-19，同一探针、同一未导入符号场景）：
+    ///   - rust-analyzer 1.97.1：不声明 → **丢弃全部** flyimport 候选（108 项无 HashMap）；
+    ///     声明 → 候选出现且编辑走 resolve（返回 `use std::collections::HashMap;`）
+    ///   - jdtls 1.61.0：不声明 → 33 项全部内联；声明 → 改走 resolve
+    ///     （resolve 返回 `import java.awt.List;`）
+    ///   - gopls v0.23.0：恒内联，对此声明无感
+    /// 三种策略由**同一套**通用 resolver 兜住，故能力声明不带语言差异。
+    #[test]
+    fn client_capabilities_advertise_additional_text_edits_resolve() {
+        let caps = build_client_capabilities();
+        let props = caps["textDocument"]["completion"]["completionItem"]["resolveSupport"]
+            ["properties"]
+            .as_array()
+            .expect("resolveSupport.properties must be declared");
+        assert_eq!(
+            props,
+            &vec![json!("additionalTextEdits")],
+            "without this declaration servers may drop every auto-import candidate \
+             (rust-analyzer 1.97.1 measured)"
+        );
+        // 刻意**不**声明 documentation / detail：多声明会让服务器把文档一并推迟，
+        // 补全信息面板在 resolve 返回前渲染为空。
+        assert!(
+            !props.iter().any(|p| p == "documentation" || p == "detail"),
+            "do not defer documentation/detail — the info panel would render empty until \
+             completionItem/resolve returns"
         );
     }
 
