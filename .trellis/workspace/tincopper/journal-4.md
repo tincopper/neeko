@@ -1581,3 +1581,67 @@ Rust 1291+102 全绿、前端 3899 全绿、lint/clippy/type-check 通过。
 ### Next Steps
 
 - None - task complete
+
+
+## Session 219: Rust flyimport 修复收尾：提交并回填 commit
+
+**Date**: 2026-09-19
+**Task**: Rust flyimport 修复收尾：提交并回填 commit
+**Branch**: `main`
+
+### Summary
+
+两笔提交落地；全量回归 3901 / 1291+102 全绿；三语言手动冒烟通过
+
+### Main Changes
+
+## 两笔提交
+
+- `6871c985` fix(lsp): fetch deferred auto-import edits via completionItem/resolve
+  —— 能力声明 + patch + 通用 resolver + 接线 + 文档（12 files）
+- `921ba9ab` chore(lsp): extend auto-import probe with import-candidate sampling
+  —— 诊断探针（2 files）
+
+## 提交前的拦截（均未绕过）
+
+1. lefthook pre-commit 报 3 个 eslint 错误（prettier 换行、import/order 排错位置）
+   → `eslint --fix` 修正后重跑，**未使用 --no-verify**
+2. `.git/index.lock` 残留 → 先确认无 git 进程在跑，锁自行释放后才继续，**未强删**
+
+## 回归
+
+- `pnpm lint` = 0（cargo fmt --check、clippy -D warnings、5 个护栏脚本、java-host、
+  eslint、tsc --noEmit、vitest --typecheck）
+- `pnpm test:run` = 3901 passed
+- `cargo test` = 1291 + 102 passed
+
+## 手动冒烟（用户确认）
+
+Rust（stock-buddy 内 `Hash` → `HashMap` + `use std::collections::HashMap;`）、
+Java（`List`）、Go（`fmt.Pr`）三种语言自动导包均生效，一次 Ctrl+Z 可同时撤销插入与 import。
+
+## 遗留
+
+- 竞态窗口：用户快于 resolve 时退化为"插入但不带 import"，已在能力矩阵登记；
+  未为追平而补第二次 dispatch（会拆成两段 undo + 坐标漂移）
+- 未 push
+
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `6871c985` | (see git log) |
+| `921ba9ab` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

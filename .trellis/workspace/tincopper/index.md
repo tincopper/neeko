@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-4.md`
-- **Total Sessions**: 218
+- **Total Sessions**: 219
 - **Last Active**: 2026-09-19
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-4.md` | ~1583 | Active |
+| `journal-4.md` | ~1647 | Active |
 | `journal-3.md` | ~1978 | Archived |
 | `journal-2.md` | ~1991 | Archived |
 | `journal-1.md` | ~1986 | Archived |
@@ -32,6 +32,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 219 | 2026-09-19 | Rust flyimport 修复收尾：提交并回填 commit | `6871c985`, `921ba9ab` | `main` |
 | 218 | 2026-09-19 | Rust flyimport：全局声明 resolveSupport + 通用 completionItem/resolve 通道 | - | `main` |
 | 217 | 2026-09-18 | LSP 诊断权威副本与可重建投影 | `d8d44697` | `main` |
 | 216 | 2026-09-17 | 导航目标状态模型重构 + 两个键空间/清理后续任务 | `17ed222a`, `2d235c92`, `cb723203`, `1c96f541` | `main` |
