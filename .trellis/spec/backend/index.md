@@ -25,6 +25,7 @@
 | [项目 Skill 同步](./project-skill-sync.md) | Project Tag Group、target Agent、项目本地部署与解绑契约 | 已填写 |
 | [Git 域](./git-domain.md) | 历史展示范围（HEAD）、refs 分类、stash 查询命令 | 已填写 |
 | [DAP 域](./dap-domain.md) | 调试域分层、断点单锁仓储、语言身份归一、事件端口、路径不降级 | 已填写 |
+| [LSP 域](./lsp-domain.md) | 三通道模型、applyEdit 跨层转发契约、诊断单写点、F1-F7 重构台账 | 已填写 |
 
 ---
 
