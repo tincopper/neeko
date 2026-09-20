@@ -39,8 +39,12 @@ lsp-client 补全接受已原子应用 `additionalTextEdits`（自动导入核�
       幂等，区分「优雅关闭 / 进程崩溃 / 重启替换」）、装配细节归一到
       `SessionFactory` 端口（失败发射路径可脱离 Tauri 运行时单测）、重启路径改为静默
       关闭不推 `stopped`（消除 chip 闪断）、崩溃/新会话起点清诊断副本（不留陈旧波浪线））
-- [ ] AC3（R3）：Go 文件输入未导入符号产生诊断 → 诊断行 quickfix「Add import」→
-      接受后 import 落块、诊断消失
+- [x] AC3（R3）：Go 文件输入未导入符号产生诊断 → 诊断行 quickfix「Add import」→
+      接受后 import 落块、诊断消失（**2026-09-21 真机验收通过**：Go 项目实测三通道闭环。
+      代码侧：`server_request.rs` 白名单转发 `workspace/applyEdit` →
+      `lsp-apply-edit-{projectPath}` 事件，前端 `codeAction.ts::requestCodeActions` +
+      `applyCodeAction` 经 `applyWorkspaceEdit` 单事务落 edit；灯泡入口在 gutter 与
+      Problems 面板行内双挂载）
 - [x] AC4（R4）：策略设置为 Never 时接受补全不应用附加编辑；Auto 时应用；Ask 弹选择
       （2026-09-20 M4 落地：`LspConfig.importStrategy` + `lspImportStrategy` 拦截层 +
       LspPanel 三态开关；单测 31 + Rust serde 2，全量 4038 passed；真机三态手验待补）
@@ -69,8 +73,18 @@ lsp-client 补全接受已原子应用 `additionalTextEdits`（自动导入核�
   2. `lsp/hooks/useLspDefinition.ts:142,151` —— `languageId === 'java'` 走
      `showJavaNoDefinitionHint`（「探测 hover 区分 JDK 源码映射」应是通用能力，任何
      提供 source-materializer 的 LS 都可能需要）
-  两者违反 AGENTS.md 红线 15（Language Differences Are Plugin Data），但**不属于本任务
-  改动面**；待定：并入本任务收尾 or 另开技术债任务。
+  两者违反 AGENTS.md 红线 15（Language Differences Are Plugin Data）。
+
+  **已修（`ad3a47fd`，用户裁定「并入本任务」）**：
+  1. 超时 → `LspPlugin.request_timeout_ms` 插件字段（java builtin 声明 120_000），
+     经 extension map 下发；前端 `lspClientTimeout` 改为「取插件数据 ?? 通用 15s」，
+     `LanguageMap` 持有 per-language 索引（`setCustomLspExtensionMap` 随之更名
+     `applyBackendExtensionMap` —— 它现在不只喂 custom mapping）。
+  2. 空定义 hover 兜底 → **不再是 Java 特权**：任一语言 definition 返回空都追加一次
+     hover 探测，区分「服务器认得符号但没源码位置」与「真无定义」；文案去掉 jdtls
+     字样，改为服务器无关表述。
+  护栏均用**虚构语言/插件**断言（`lspClientTimeout('mylang')` / registry 注册虚构
+  插件），任何重新引入的语言分支都会挂。存量 review 面据此清零。
 
 ### R0 诊断记录（2026-09-18，用户实测「自动导包还是不行」）
 
