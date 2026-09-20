@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-4.md`
-- **Total Sessions**: 219
-- **Last Active**: 2026-09-19
+- **Total Sessions**: 220
+- **Last Active**: 2026-09-20
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-4.md` | ~1647 | Active |
+| `journal-4.md` | ~1680 | Active |
 | `journal-3.md` | ~1978 | Archived |
 | `journal-2.md` | ~1991 | Archived |
 | `journal-1.md` | ~1986 | Archived |
@@ -32,6 +32,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 220 | 2026-09-20 | lsp M3+重构收尾 | `799f3a1a` | `main` |
 | 219 | 2026-09-19 | Rust flyimport 修复收尾：提交并回填 commit | `6871c985`, `921ba9ab` | `main` |
 | 218 | 2026-09-19 | Rust flyimport：全局声明 resolveSupport + 通用 completionItem/resolve 通道 | - | `main` |
 | 217 | 2026-09-18 | LSP 诊断权威副本与可重建投影 | `d8d44697` | `main` |
