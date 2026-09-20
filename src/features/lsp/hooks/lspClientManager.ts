@@ -1,6 +1,7 @@
 import { LSPClient, serverDiagnostics, signatureHelp } from '@codemirror/lsp-client';
 import type { Extension } from '@codemirror/state';
 
+import { lspRequestTimeoutMs } from '../api/languageMap';
 import { IdleRefCountedCache } from '../idleRefCountedCache';
 import { TauriLspTransport } from '../transport/tauriLspTransport';
 
@@ -60,12 +61,14 @@ function clientKey(projectPath: string, languageId: string): string {
 }
 
 /**
- * LSP 请求超时（ms）：java 需大超时 —— jdtls 是 JVM + Eclipse 冷启动（`-Xms1G`），
- * 首次 initialize 常超 30s（后端初始化等待无超时，靠前端兜底）；其余语言服务器
- * 秒级响应，15s 足够。
+ * 通用请求超时（ms）：秒级响应的服务器都够用。冷启动/全量索引远超此预算的服务器在
+ * `LspPlugin.request_timeout_ms` 自行声明，经 extension map 下发到
+ * `languageMap.lspRequestTimeoutMs` —— **本模块不得按 languageId 分支**（红线 15）。
  */
+export const DEFAULT_LSP_REQUEST_TIMEOUT_MS = 15_000;
+
 export function lspClientTimeout(languageId: string): number {
-  return languageId === 'java' ? 120_000 : 15_000;
+  return lspRequestTimeoutMs(languageId) ?? DEFAULT_LSP_REQUEST_TIMEOUT_MS;
 }
 
 /** LSP 方法 → 友好功能名（超时/错误提示用；未命中回退原始方法名）。 */
@@ -140,7 +143,7 @@ export function acquireLspPlugin(
 ): Extension {
   const key = clientKey(projectPath, languageId);
   const bundle = pool.acquire(key, () => {
-    // timeout: java 120s（jdtls JVM/Eclipse 冷启动慢，见 lspClientTimeout），其余 15s。
+    // timeout：插件声明优先（重冷启动服务器经 extension map 下发），否则通用 15s。
     const client = new LSPClient({
       // 注意：波浪线渲染**无需**在此挂 @codemirror/lint 的 linter()——首次
       // setDiagnostics 会经 maybeEnableLint 自动追加渲染扩展（lintState.provide

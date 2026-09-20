@@ -9,13 +9,13 @@ import {
   cacheLiveLanguageResolution,
   getLspLanguageId,
   resolveLspLanguageId,
-  setCustomLspExtensionMap,
+  applyBackendExtensionMap,
 } from '../languageMap';
 import * as lspApi from '../lspApi';
 
 describe('languageMap', () => {
   beforeEach(() => {
-    setCustomLspExtensionMap([]);
+    applyBackendExtensionMap([]);
     vi.restoreAllMocks();
   });
 
@@ -26,7 +26,7 @@ describe('languageMap', () => {
   });
 
   it('should_prefer_custom_extension_map', () => {
-    setCustomLspExtensionMap([
+    applyBackendExtensionMap([
       {
         extension: 'proto',
         languageId: 'protobuf',
@@ -56,7 +56,7 @@ describe('languageMap', () => {
 
 describe('resolveLspLanguageId', () => {
   beforeEach(() => {
-    setCustomLspExtensionMap([]);
+    applyBackendExtensionMap([]);
     vi.restoreAllMocks();
   });
 

@@ -60,18 +60,10 @@ export function __resetNoDefinitionHintForTests(): void {
   lastNoDefinitionHintAt = 0;
 }
 
-function showNoDefinitionHint(): void {
-  const now = Date.now();
-  if (now - lastNoDefinitionHintAt < NO_DEFINITION_HINT_COOLDOWN_MS) return;
-  lastNoDefinitionHintAt = now;
-  useNotificationStore.getState().addNotification({
-    type: 'info',
-    title: 'No Definition Found',
-    message: 'No navigable definition at this position.',
-  });
-}
+/** 完全没东西可跳时的文案（hover 探测也空的那个分支复用同一份）。 */
+const NO_DEFINITION_MESSAGE = 'No navigable definition at this position.';
 
-/** hover 结果是否有内容（jdtls 对 JDK 符号 hover 可解析，definition 却常返回空）。 */
+/** hover 结果是否有内容（服务器对 JDK/构件符号常能 hover，definition 却返回空）。 */
 function hasHoverContent(result: unknown): boolean {
   if (!result || typeof result !== 'object' || !('contents' in result)) return false;
   const contents = result.contents;
@@ -82,11 +74,19 @@ function hasHoverContent(result: unknown): boolean {
 }
 
 /**
- * Java 专属兜底：definition 为空时追加一次 hover 探测区分两种情况——
- * hover 有内容（jdtls 解析到符号但没映射源码，典型是 JDK/外部源码）→ 明确提示；
- * hover 也空 → 真的没有定义。避免把 JDK 源码映射未生效误报成"此处无定义"。
+ * 空定义兜底：**所有语言同一条路径**——definition 返回空时追加一次 hover 探测，
+ * 区分两种情况并给出准确提示：
+ *
+ * - hover 有内容：服务器认识这个符号却给不出源码位置（典型是源码/构件未附到工程），
+ *   不是"此处没有定义"；
+ * - hover 也空：确实没有定义。
+ *
+ * 代价仅落在失败路径的一次额外请求（此处已在说实话与省一次往返之间选了前者）。
+ *
+ * 过去这条只对 java 生效（`languageId === 'java'` 分支）——那是把「服务器给了符号但
+ * 没给源码位置」当成 Java 的私事：任何处在该状态的服务器都需要同样的分辨能力。
  */
-async function showJavaNoDefinitionHint(
+async function showNoDefinitionHintWithHoverProbe(
   projectPath: string,
   languageId: string,
   uri: string,
@@ -106,9 +106,9 @@ async function showJavaNoDefinitionHint(
     type: 'info',
     title: 'No Definition Found',
     message: hasHoverContent(hover)
-      ? 'jdtls resolved this symbol (hover works) but returned no source location. ' +
-        'JDK / external source navigation is limited on this setup — hover for details, or update jdtls.'
-      : 'No navigable definition at this position.',
+      ? 'The server resolved this symbol but returned no source location. ' +
+        'Sources may not be attached for this project — try rebuilding indexes or attaching sources.'
+      : NO_DEFINITION_MESSAGE,
   });
 }
 
@@ -137,22 +137,14 @@ export function useLspDefinition(projectPath: string | null) {
 
         if (!wrapped || !wrapped.lspResult) {
           // No definition at this position (or the request was cancelled) —
-          // lightweight feedback so an explicit jump is not silently a no-op.
-          // Java 额外探测 hover 区分「JDK 源码映射未生效」与「真无定义」。
-          if (languageId === 'java') {
-            await showJavaNoDefinitionHint(projectPath, languageId, uri, line, character);
-          } else {
-            showNoDefinitionHint();
-          }
+          // probe hover so we can tell "server knows the symbol but has no source
+          // location" from "nothing to jump to" (language-agnostic fallback).
+          await showNoDefinitionHintWithHoverProbe(projectPath, languageId, uri, line, character);
           return null;
         }
         const location = unwrapLocation(wrapped.lspResult);
         if (!location) {
-          if (languageId === 'java') {
-            await showJavaNoDefinitionHint(projectPath, languageId, uri, line, character);
-          } else {
-            showNoDefinitionHint();
-          }
+          await showNoDefinitionHintWithHoverProbe(projectPath, languageId, uri, line, character);
           return null;
         }
         return { location, fileContent: wrapped.fileContent ?? null };

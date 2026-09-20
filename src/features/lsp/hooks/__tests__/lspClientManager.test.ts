@@ -39,7 +39,10 @@ vi.mock('../transport/tauriLspTransport', () => ({
   },
 }));
 
+import { applyBackendExtensionMap, getLspLanguageId } from '@/features/lsp/api/languageMap';
+
 import {
+  DEFAULT_LSP_REQUEST_TIMEOUT_MS,
   acquireLspPlugin,
   lspClientTimeout,
   lspMethodLabel,
@@ -50,10 +53,57 @@ import {
 import { jdtLinkHandlerFacet, withJdtLinkHandler } from '../lspHoverExtension';
 
 describe('lspClientTimeout', () => {
-  it('java 大超时（jdtls JVM 冷启动慢），其余 15s', () => {
-    expect(lspClientTimeout('java')).toBe(120_000);
-    expect(lspClientTimeout('rust')).toBe(15_000);
-    expect(lspClientTimeout('typescript')).toBe(15_000);
+  afterEach(() => {
+    applyBackendExtensionMap([]);
+  });
+
+  it('未声明的服务器走通用默认', () => {
+    expect(lspClientTimeout('rust')).toBe(DEFAULT_LSP_REQUEST_TIMEOUT_MS);
+    expect(lspClientTimeout('go')).toBe(DEFAULT_LSP_REQUEST_TIMEOUT_MS);
+  });
+
+  /// 红线 15 的消费侧护栏：**任意**插件在后端声明超时即生效 —— 前端没有语言列表。
+  /// 用虚构语言（而非 java）断言，任何"照 languageId 抄一个分支"的实现都会挂。
+  it('插件声明的超时对任意 languageId 生效（非按语言硬编码）', () => {
+    applyBackendExtensionMap([
+      {
+        extension: 'ml',
+        languageId: 'mylang',
+        serverName: 'mls',
+        isCustom: true,
+        requestTimeoutMs: 42_000,
+      },
+    ]);
+    expect(lspClientTimeout('mylang')).toBe(42_000);
+  });
+
+  it('同一次 apply 是整体替换（旧声明不残留）', () => {
+    applyBackendExtensionMap([
+      {
+        extension: 'ml',
+        languageId: 'mylang',
+        serverName: 'mls',
+        isCustom: true,
+        requestTimeoutMs: 42_000,
+      },
+    ]);
+    applyBackendExtensionMap([]);
+    expect(lspClientTimeout('mylang')).toBe(DEFAULT_LSP_REQUEST_TIMEOUT_MS);
+  });
+
+  /// 同一份后端 extension map 既驱动语言解析、又驱动超时 —— 单一数据源，不漂移。
+  it('同一份后端 map 同时服务于语言解析与超时', () => {
+    applyBackendExtensionMap([
+      {
+        extension: 'ml',
+        languageId: 'mylang',
+        serverName: 'mls',
+        isCustom: true,
+        requestTimeoutMs: 9_000,
+      },
+    ]);
+    expect(getLspLanguageId('a.ml')).toBe('mylang');
+    expect(lspClientTimeout('mylang')).toBe(9_000);
   });
 });
 

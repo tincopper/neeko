@@ -258,6 +258,12 @@ pub struct LspPlugin {
     /// 会话根解析范围（默认 `ProjectScoped` = 项目根；自定义 LSP 行为零变化）。
     /// session 层据此决策，不按语言名分支。
     pub root_scope: RootScope,
+    /// 客户端单请求超时（ms）——冷启动/首次索引远超通用预算的服务器自行声明。
+    ///
+    /// `None` = 走客户端通用默认。**为何放在插件数据**：这是"该服务器有多慢"的知识，
+    /// 不是编辑器行为；写成前端 `languageId === 'java'` 分支会让第二个同形态服务器
+    /// （任何 heavyweight JVM/索引型 LS）必须改前端代码。经 extension map 下发。
+    pub request_timeout_ms: Option<u32>,
     /// 检测压制标记：这些文件**同时存在**时本插件不参与候选（更特定的同族语言接管）。
     ///
     /// 例：`javascript` 被 `tsconfig.json` 压制 —— package.json + tsconfig 说明该
@@ -292,6 +298,7 @@ impl LspPlugin {
             client_capabilities: None,
             tuning: LspServerTuning::default(),
             root_scope: RootScope::default(),
+            request_timeout_ms: None,
             detect_suppressed_by: Vec::new(),
         }
     }
@@ -321,6 +328,13 @@ impl LspPlugin {
     #[must_use]
     pub const fn with_detect_priority(mut self, priority: u32) -> Self {
         self.detect_priority = priority;
+        self
+    }
+
+    /// 声明客户端单请求超时（见 [`LspPlugin::request_timeout_ms`]）。
+    #[must_use]
+    pub const fn with_request_timeout_ms(mut self, request_timeout_ms: u32) -> Self {
+        self.request_timeout_ms = Some(request_timeout_ms);
         self
     }
 
@@ -403,6 +417,7 @@ impl LspPlugin {
             client_capabilities: None,
             tuning: LspServerTuning::default(),
             root_scope: RootScope::default(),
+            request_timeout_ms: None,
             detect_suppressed_by: Vec::new(),
         }
     }
@@ -502,6 +517,10 @@ pub struct LspExtensionMapEntry {
     pub server_name: String,
     /// Whether this mapping comes from a custom server config.
     pub is_custom: bool,
+    /// 客户端单请求超时（ms）：仅插件声明时出现（见
+    /// [`LspPlugin::request_timeout_ms`]）；缺省即走客户端通用默认。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub request_timeout_ms: Option<u32>,
 }
 
 #[cfg(test)]
@@ -562,6 +581,64 @@ echo two"
         let t = LspServerTuning::default();
         assert!(t.version_probe);
         assert!(!t.java_home_from_path);
+    }
+
+    /// 请求超时是**插件数据**（红线 15）：冷启动慢的服务器自行声明，通用插件不声明
+    /// → 前端按数据取值，不得按语言名写死（前端同类测试的 Rust 侧镜像）。
+    #[test]
+    fn plugin_declares_no_request_timeout_by_default() {
+        let p = LspPlugin::builtin("go", &["go"], "gopls", &["gopls"], None);
+        assert_eq!(p.request_timeout_ms, None, "未声明的插件走前端默认超时");
+    }
+
+    #[test]
+    fn with_request_timeout_ms_declares_override() {
+        let p = LspPlugin::builtin("mylang", &["ml"], "mls", &["mls"], None)
+            .with_request_timeout_ms(42_000);
+        assert_eq!(p.request_timeout_ms, Some(42_000));
+    }
+
+    #[test]
+    fn custom_plugin_from_config_declares_no_request_timeout() {
+        let p = LspPlugin::from_custom(&CustomLspServerConfig {
+            id: "proto".into(),
+            language_id: "protobuf".into(),
+            display_name: None,
+            command: vec!["buf".into(), "lsp".into()],
+            file_extensions: vec!["proto".into()],
+            root_markers: vec![],
+            auto_start: None,
+            initialization_options: None,
+        });
+        assert_eq!(p.request_timeout_ms, None, "自定义 server 走默认超时");
+    }
+
+    /// Extension map 字段只在插件**声明了**超时时出现（老前端payload 无该字段仍兼容）。
+    #[test]
+    fn extension_map_entry_carries_request_timeout_only_when_declared() {
+        let base = || LspExtensionMapEntry {
+            extension: "ml".into(),
+            language_id: "mylang".into(),
+            server_name: "mls".into(),
+            is_custom: false,
+            request_timeout_ms: None,
+        };
+
+        let undeclared = serde_json::to_value(base()).expect("serialize");
+        assert!(
+            undeclared.get("requestTimeoutMs").is_none(),
+            "未声明时不出字段"
+        );
+
+        let declared = serde_json::to_value(LspExtensionMapEntry {
+            request_timeout_ms: Some(42_000),
+            ..base()
+        })
+        .expect("serialize");
+        assert_eq!(
+            declared.get("requestTimeoutMs").and_then(|v| v.as_u64()),
+            Some(42_000)
+        );
     }
 
     #[test]

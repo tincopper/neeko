@@ -213,6 +213,8 @@ export interface LspExtensionMapEntryDto {
   languageId: string;
   serverName: string;
   isCustom: boolean;
+  /** 插件声明的单请求超时（ms）；未声明时为 undefined。 */
+  requestTimeoutMs?: number;
 }
 
 /** Built-in + custom extension map from the live backend registry. */

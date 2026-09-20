@@ -2,7 +2,7 @@ import React, { useCallback, useMemo, useState } from 'react';
 
 import {
   applyCustomServersFromConfig,
-  setCustomLspExtensionMap,
+  applyBackendExtensionMap,
 } from '@/features/lsp/api/languageMap';
 import { lspGetExtensionMap } from '@/features/lsp/api/lspApi';
 import { useLspStore } from '@/features/lsp/store/lspStore';
@@ -33,7 +33,7 @@ interface LspPanelProps {
 async function refreshFrontendExtensionMap(): Promise<void> {
   try {
     const map = await lspGetExtensionMap();
-    setCustomLspExtensionMap(
+    applyBackendExtensionMap(
       map.map((e) => ({
         extension: e.extension,
         languageId: e.languageId,

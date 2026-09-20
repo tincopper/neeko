@@ -2,7 +2,7 @@
  * File extension → LSP language ID mapping.
  *
  * Built-in defaults are always present. Custom servers (from config.lsp)
- * are merged at runtime via `setCustomLspExtensionMap` so that opening a
+ * are merged at runtime via `applyBackendExtensionMap` so that opening a
  * matching file routes to the user-defined language server.
  *
  * Prefer {@link resolveLspLanguageId} when opening files so the live backend
@@ -63,18 +63,40 @@ export interface LspExtensionMapEntry {
   languageId: string;
   serverName: string;
   isCustom: boolean;
+  /** 客户端单请求超时（ms）——冷启动慢的服务器自行声明；缺省走通用默认。 */
+  requestTimeoutMs?: number;
+}
+
+/**
+ * 每语言请求超时（ms）：来自后端插件数据，**不是本文件硬编码的语言知识**。
+ *
+ * 冷启动慢的服务器（重型 JVM / 全量索引）在 `LspPlugin` 上声明自己的超时；新增同形态
+ * 服务器只需声明数据，不得回到「按 languageId 判断」的老路（红线 15）。
+ */
+const requestTimeoutMsByLanguage = new Map<string, number>();
+
+/**
+ * 后端声明的请求超时；未声明返回 `undefined`（调用方回落到通用默认）。
+ */
+export function lspRequestTimeoutMs(languageId: string): number | undefined {
+  return requestTimeoutMsByLanguage.get(languageId);
 }
 
 /**
  * Replace custom extension mappings from the backend registry.
  * Built-ins remain; custom entries override on conflict.
  */
-export function setCustomLspExtensionMap(entries: LspExtensionMapEntry[]): void {
+export function applyBackendExtensionMap(entries: LspExtensionMapEntry[]): void {
   const next: Record<string, string> = {};
+  requestTimeoutMsByLanguage.clear();
   for (const e of entries) {
+    const languageId = e.languageId;
+    if (typeof e.requestTimeoutMs === 'number' && e.requestTimeoutMs > 0) {
+      requestTimeoutMsByLanguage.set(languageId, e.requestTimeoutMs);
+    }
     if (!e.isCustom) continue;
     const ext = e.extension.replace(/^\./, '').toLowerCase();
-    if (ext) next[ext] = e.languageId;
+    if (ext) next[ext] = languageId;
   }
   customExtMap = next;
 }

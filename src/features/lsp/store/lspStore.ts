@@ -11,7 +11,7 @@ import {
 import { preloadLanguageExtension } from '@/shared/utils/codemirror';
 import { safeUnlisten } from '@/shared/utils/safeUnlisten';
 
-import { setCustomLspExtensionMap } from '../api/languageMap';
+import { applyBackendExtensionMap } from '../api/languageMap';
 import {
   lspCheckServerInstalled,
   lspDetectProjectProfile,
@@ -465,7 +465,7 @@ export const useLspStore = create<LspStoreState>((set, get) => ({
       // Keep frontend extension router in sync with custom servers
       try {
         const map = await lspGetExtensionMap();
-        setCustomLspExtensionMap(
+        applyBackendExtensionMap(
           map.map((e) => ({
             extension: e.extension,
             languageId: e.languageId,

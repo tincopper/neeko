@@ -50,7 +50,11 @@ pub fn plugins() -> Vec<LspPlugin> {
     .with_tuning(LspServerTuning {
         version_probe: false,
         java_home_from_path: true,
-    })]
+    })
+    // 首请求超时：JVM + Eclipse/OSGi 冷启动常超通用预算（原为前端
+    // `languageId === 'java'` 分支，见 `lspClientManager`）。声明在此 = 第二个
+    // 同形态服务器无需改前端。
+    .with_request_timeout_ms(120_000)]
 }
 
 /// jdtls 的 `initializationOptions`：java-debug bundle + import/settings。
@@ -156,6 +160,22 @@ mod tests {
         assert!(
             plugin.tuning.java_home_from_path,
             "jdtls 需要 PATH java 推导的 JAVA_HOME（Tooling JDK）"
+        );
+    }
+
+    /// jdtls 首请求超时同样应是**插件数据**（原为前端 `languageId === 'java'` 分支）：
+    /// JVM + Eclipse 冷启动常超通用预算，第二个 Java 系服务器声明同一字段即可，
+    /// 无需前端改代码。
+    #[test]
+    fn java_plugin_declares_long_request_timeout() {
+        let plugin = plugins()
+            .into_iter()
+            .find(|p| p.language_id == "java")
+            .expect("java builtin plugin must exist");
+        assert_eq!(
+            plugin.request_timeout_ms,
+            Some(120_000),
+            "jdtls 冷启动慢，需声明大超时"
         );
     }
 

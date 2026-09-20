@@ -112,7 +112,7 @@ describe('useLspDefinition — goToDefinitionWithContent feedback', () => {
   });
 });
 
-describe('useLspDefinition — Java JDK 源码兜底提示', () => {
+describe('useLspDefinition — 无定义时的 hover 兜底提示（语言无关）', () => {
   beforeEach(() => {
     __resetDefinitionCachesForTests();
     __resetNoDefinitionHintForTests();
@@ -121,31 +121,32 @@ describe('useLspDefinition — Java JDK 源码兜底提示', () => {
     mockLspRequest.mockReset();
   });
 
-  it('java 定义空 + hover 有内容 → 提示 JDK 源码映射未生效', async () => {
+  /// 用**虚构语言**而非 java 断言：任何"照 languageId 抄一个分支"的实现都会挂。
+  it('定义空 + hover 有内容 → 提示符号可解析但无源码位置', async () => {
     mockLspRequest.mockResolvedValue({
-      contents: [
-        { language: 'java', value: 'void java.io.PrintStream.println(String x)' },
-        'Prints a String…',
-      ],
+      contents: [{ language: 'mylang', value: 'void mylib.println(String x)' }, 'Prints a String…'],
     });
     const { result } = renderHook(() => useLspDefinition('/proj'));
 
     await act(async () => {
-      const res = await result.current.goToDefinitionWithContent('java', 'file:///a.java', 4, 19);
+      const res = await result.current.goToDefinitionWithContent('mylang', 'file:///a.ml', 4, 19);
       expect(res).toBeNull();
     });
     const msgs = useNotificationStore.getState().notifications.map((n) => n.message);
-    expect(msgs.some((m) => m.includes('jdtls resolved this symbol'))).toBe(true);
+    const hint = msgs.find((m) => m.includes('no source location'));
+    expect(hint).toBeDefined();
+    // 服务器名不得出现在提示里（语言无关：同一条路径服务所有 LS）
+    expect(hint?.includes('jdtls')).toBe(false);
     // hover 探测确实发出
     expect(mockLspRequest).toHaveBeenCalledWith(
       '/proj',
-      'java',
+      'mylang',
       'textDocument/hover',
       expect.any(Object),
     );
   });
 
-  it('java 定义空 + hover 也空 → 通用"无定义"提示', async () => {
+  it('定义空 + hover 也空 → 通用"无定义"提示', async () => {
     mockLspRequest.mockResolvedValue(null);
     const { result } = renderHook(() => useLspDefinition('/proj'));
 
@@ -155,17 +156,24 @@ describe('useLspDefinition — Java JDK 源码兜底提示', () => {
     });
     const msgs = useNotificationStore.getState().notifications.map((n) => n.message);
     expect(msgs.some((m) => m === 'No navigable definition at this position.')).toBe(true);
-    expect(msgs.some((m) => m.includes('jdtls resolved'))).toBe(false);
+    expect(msgs.some((m) => m.includes('no source location'))).toBe(false);
   });
 
-  it('非 java 语言空定义不触发 hover 探测', async () => {
+  /// 反向前两轮的“非 java 不发探测”：兜底是通用能力，不是某服务器的特权。
+  it('任一语言（rust）空定义都触发 hover 探测', async () => {
+    mockLspRequest.mockResolvedValue(null);
     const { result } = renderHook(() => useLspDefinition('/proj'));
 
     await act(async () => {
       const res = await result.current.goToDefinitionWithContent('rust', 'file:///a.rs', 0, 0);
       expect(res).toBeNull();
     });
-    expect(mockLspRequest).not.toHaveBeenCalled();
+    expect(mockLspRequest).toHaveBeenCalledWith(
+      '/proj',
+      'rust',
+      'textDocument/hover',
+      expect.any(Object),
+    );
     const msgs = useNotificationStore.getState().notifications.map((n) => n.message);
     expect(msgs.some((m) => m === 'No navigable definition at this position.')).toBe(true);
   });

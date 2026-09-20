@@ -139,6 +139,7 @@ impl LspPluginRegistry {
                     language_id: lang.clone(),
                     server_name: plugin.server_binary.clone(),
                     is_custom: plugin.is_custom,
+                    request_timeout_ms: plugin.request_timeout_ms,
                 });
             }
         }
@@ -222,6 +223,31 @@ mod tests {
             "go"
         );
         assert!(registry.resolve_by_extension("unknown_ext").is_none());
+    }
+
+    /// 请求超时经 extension map 下发前端：任何插件（含第二个 Java 系服务器）声明
+    /// 即生效，前端不必按语言名分叉 —— 红线 15 的消费侧护栏。
+    #[test]
+    fn plugin_request_timeout_flows_to_frontend_extension_map() {
+        let mut registry = LspPluginRegistry::with_defaults();
+        registry.register(
+            LspPlugin::builtin("mylang", &["ml"], "mls", &["mls"], None)
+                .with_request_timeout_ms(42_000),
+        );
+
+        let entry = registry
+            .extension_map()
+            .into_iter()
+            .find(|e| e.extension == "ml")
+            .expect("mylang entry");
+        assert_eq!(entry.request_timeout_ms, Some(42_000));
+
+        let rs = registry
+            .extension_map()
+            .into_iter()
+            .find(|e| e.extension == "rs")
+            .expect("rust entry");
+        assert_eq!(rs.request_timeout_ms, None, "未声明的插件不带该字段");
     }
 
     #[test]
