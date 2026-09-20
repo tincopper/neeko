@@ -42,12 +42,22 @@ export interface LspExtensionConflict {
   displacedLanguageIds: string[];
 }
 
+/** 补全接受时是否自动应用附加编辑（自动导入），默认 `'auto'`。 */
+export type LspImportStrategy = 'auto' | 'ask' | 'never';
+
 export interface LspConfig {
   /** Default auto-start for built-in servers. */
   autoStart: LspAutoStart;
   /** Minutes after leaving a project before stopping its LSP sessions. */
   deactivateStopMinutes: number;
   customServers: CustomLspServerConfig[];
+  /**
+   * 补全接受时附加编辑（自动导入）的应用策略（M4 / R4）。
+   *
+   * `auto` 放行（现状行为）/ `ask` 有编辑时弹确认 / `never` 只插入标识符。
+   * 纯前端策略，后端只做持久化透传（`LspSettings.import_strategy`）。
+   */
+  importStrategy: LspImportStrategy;
 }
 
 /**

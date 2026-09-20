@@ -1,6 +1,7 @@
 import { renderHook, waitFor, act } from '@testing-library/react';
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
+import { getLspImportStrategy, setLspImportStrategy } from '@/features/lsp/api/lspImportStrategy';
 import { useAppConfig } from '@/features/settings/hooks/useAppConfig';
 import { invoke } from '@/testing/tauriCore';
 
@@ -9,6 +10,10 @@ const mockInvoke = vi.mocked(invoke);
 describe('useAppConfig', () => {
   beforeEach(() => {
     mockInvoke.mockReset();
+  });
+
+  afterEach(() => {
+    setLspImportStrategy('auto');
   });
 
   it('初始状态使用默认配置', () => {
@@ -183,6 +188,7 @@ describe('useAppConfig', () => {
           autoStart: 'onProjectSelect',
           deactivateStopMinutes: 45,
           customServers: [],
+          importStrategy: 'auto',
         },
       });
     });
@@ -288,6 +294,84 @@ describe('useAppConfig', () => {
         config: expect.objectContaining({
           monoFontFamily: 'JetBrains Mono',
           fontFamily: 'JetBrains Mono',
+        }),
+      }),
+    );
+  });
+
+  it('lsp 缺 importStrategy 时回落 auto（老 config.json 向后兼容）', async () => {
+    mockInvoke.mockImplementation(async (cmd: string) => {
+      if (cmd === 'load_config') {
+        return { lsp: { autoStart: 'manual', deactivateStopMinutes: 10, customServers: [] } };
+      }
+      if (cmd === 'list_custom_themes') return [];
+      return undefined;
+    });
+
+    const { result } = renderHook(() => useAppConfig());
+
+    await waitFor(() => {
+      expect(result.current.config.lsp.autoStart).toBe('manual');
+    });
+    expect(result.current.config.lsp.importStrategy).toBe('auto');
+    expect(getLspImportStrategy()).toBe('auto');
+  });
+
+  it('lsp.importStrategy 随 load_config 落盘值同步补全策略缓存', async () => {
+    mockInvoke.mockImplementation(async (cmd: string) => {
+      if (cmd === 'load_config') {
+        return {
+          lsp: {
+            autoStart: 'onFirstFile',
+            deactivateStopMinutes: 30,
+            customServers: [],
+            importStrategy: 'never',
+          },
+        };
+      }
+      if (cmd === 'list_custom_themes') return [];
+      return undefined;
+    });
+
+    const { result } = renderHook(() => useAppConfig());
+
+    await waitFor(() => {
+      expect(result.current.config.lsp.importStrategy).toBe('never');
+    });
+    expect(getLspImportStrategy()).toBe('never');
+  });
+
+  it('saveConfig 持久化 importStrategy 并同步补全策略缓存', async () => {
+    mockInvoke.mockImplementation(async (cmd: string) => {
+      if (cmd === 'load_config') return {};
+      if (cmd === 'list_custom_themes') return [];
+      return undefined;
+    });
+    const { result } = renderHook(() => useAppConfig());
+
+    await waitFor(() => {
+      expect(result.current.config.lsp).toBeDefined();
+    });
+
+    await act(async () => {
+      await result.current.saveConfig({
+        ...result.current.config,
+        lsp: {
+          autoStart: 'onFirstFile',
+          deactivateStopMinutes: 30,
+          customServers: [],
+          importStrategy: 'ask',
+        },
+      });
+    });
+
+    expect(result.current.config.lsp.importStrategy).toBe('ask');
+    expect(getLspImportStrategy()).toBe('ask');
+    expect(mockInvoke).toHaveBeenCalledWith(
+      'save_config',
+      expect.objectContaining({
+        config: expect.objectContaining({
+          lsp: expect.objectContaining({ importStrategy: 'ask' }),
         }),
       }),
     );

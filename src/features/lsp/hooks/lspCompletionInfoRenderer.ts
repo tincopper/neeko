@@ -4,6 +4,8 @@ import { LSPPlugin, serverCompletionSource } from '@codemirror/lsp-client';
 import type { Extension } from '@codemirror/state';
 import { EditorView, tooltips, type Rect } from '@codemirror/view';
 
+import { applyImportStrategyToOption, getLspImportStrategy } from '../api/lspImportStrategy';
+
 import {
   buildFunctionSnippet,
   buildInfoPanel,
@@ -188,6 +190,10 @@ export function createThemedCompletionSource(context: CompletionContext): Promis
       // `info` closure — we lift the rendered HTML out of it below.
       const options = (result as unknown as { options?: unknown[] }).options ?? [];
 
+      // M4 导入策略三态（R4/AC4）：本轮补全按策略变换 option（`auto` = no-op）。
+      // 一次请求读一次（同轮选项策略一致，无需逐项读取）。
+      const importStrategy = getLspImportStrategy();
+
       // 自动导包探针（仅 DEV）：这里只能看到"库把 apply 装成了什么"，
       // **看不到** additionalTextEdits —— CM6 option 上不存在该字段（见 dist 的
       // option 字面量），在此判"有没有附加编辑"恒为假。真值在传输层：
@@ -214,6 +220,10 @@ export function createThemedCompletionSource(context: CompletionContext): Promis
         // 库装 `apply` 的分支早已求值完毕，延迟项会退化成插入裸 label。
         maybeAttachSnippetFallback(item);
 
+        // M4：按策略变换 apply（`never` 剥离附加编辑只留插入 / `ask` 包确认）。
+        // 只包装 CM6 option.apply，不重算任何坐标与插入文本（D2 无旁路）。
+        applyImportStrategyToOption(item, importStrategy, { plugin });
+
         // Apply the premium list-item look: icon type + cleaned detail.
         const listItem = buildListItem(item, item);
         if (listItem.type) item.type = listItem.type;
@@ -233,7 +243,11 @@ export function createThemedCompletionSource(context: CompletionContext): Promis
           // 选中即解析（CodeMirror 只为当前选中项调用 info）：取回被服务器
           // 推迟的 import 编辑，写回 `neekoDeferredEdits`，接受时与插入文本
           // 合并成同一事务。失败静默 —— 最多是这一项不带 import。
-          if (plugin) await resolveCompletionItem(item as object, plugin);
+          // M4：`never` 下跳过 —— 延迟编辑拿了也会被策略剥掉，不浪费请求
+          //（此处读实时策略：列表打开期间用户可能刚切了设置）。
+          if (plugin && getLspImportStrategy() !== 'never') {
+            await resolveCompletionItem(item as object, plugin);
+          }
 
           let docHtml = '';
           if (originalInfo) {
@@ -250,7 +264,9 @@ export function createThemedCompletionSource(context: CompletionContext): Promis
       // 窗口压到最小。声明 `resolveSupport` 之后 jdtls / rust-analyzer 的 import
       // 编辑只在 resolve 里下发，用户比它快就会丢 import。
       // 必须在上面标注完 `neekoNeedsResolve` 之后再触发。
-      if (plugin && options.length) {
+      // M4：`never` 下跳过预热（本就是为拿延迟编辑，拿了也丢）；`ask` 保留
+      //（预览文案要靠它）。
+      if (plugin && options.length && importStrategy !== 'never') {
         void resolveCompletionItem(options[0] as object, plugin);
       }
 

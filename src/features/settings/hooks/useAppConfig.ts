@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 
+import { parseImportStrategy, setLspImportStrategy } from '@/features/lsp/api/lspImportStrategy';
 import type {
   AppConfig,
   ThemeListItem,
@@ -50,6 +51,7 @@ const DEFAULT_CONFIG: AppConfig = {
     autoStart: 'onFirstFile',
     deactivateStopMinutes: 30,
     customServers: [],
+    importStrategy: 'auto',
   },
   favoriteBranches: {},
 };
@@ -85,6 +87,8 @@ function mergeLspConfig(raw: unknown): LspConfig {
         ? Math.floor(o.deactivateStopMinutes)
         : base.deactivateStopMinutes,
     customServers: servers,
+    // 缺字段 / 非法值回落 `auto`（老 config.json 向后兼容；`#[serde(default)]` 的 TS 侧）。
+    importStrategy: parseImportStrategy(o.importStrategy),
   };
 }
 
@@ -226,6 +230,9 @@ export function useAppConfig() {
         ...withMonoSync,
         lsp: mergeLspConfig(withMonoSync.lsp),
       };
+      // M4 单写点：补全源跑在 CM6 回调里，只能同步读模块缓存 —— 写入方唯一在此
+      //（保存时同步；启动加载见下方 load effect）。
+      setLspImportStrategy(normalized.lsp.importStrategy);
       setConfig(normalized);
       if (!isBuiltinTheme(normalized.theme)) {
         await loadCustomThemeVars(normalized.theme);
@@ -281,6 +288,10 @@ export function useAppConfig() {
             typeof (saved as unknown as { uiFontFamily?: unknown }).uiFontFamily === 'string'
               ? ((saved as unknown as { uiFontFamily: string }).uiFontFamily as string)
               : (DEFAULT_CONFIG.uiFontFamily ?? '');
+
+          // M4：启动加载同步补全策略缓存（`mergeLspConfig` 已回落 auto）。
+          const mergedLsp = mergeLspConfig(saved.lsp);
+          setLspImportStrategy(mergedLsp.importStrategy);
 
           setConfig({
             theme,
@@ -355,7 +366,7 @@ export function useAppConfig() {
               typeof saved.autoLocateFileOnTabSwitch === 'boolean'
                 ? saved.autoLocateFileOnTabSwitch
                 : DEFAULT_CONFIG.autoLocateFileOnTabSwitch,
-            lsp: mergeLspConfig(saved.lsp),
+            lsp: mergedLsp,
             favoriteBranches:
               saved.favoriteBranches && typeof saved.favoriteBranches === 'object'
                 ? saved.favoriteBranches

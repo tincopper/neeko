@@ -460,10 +460,19 @@ pub struct LspSettings {
     /// User-defined custom LSP server configurations.
     #[serde(default)]
     pub custom_servers: Vec<CustomLspServerConfig>,
+    /// M4 导入策略三态（R4/AC4）：补全接受时是否自动应用附加编辑
+    /// ("auto" | "ask" | "never")。纯前端策略，后端只做持久化透传，
+    /// 缺字段回落 `auto`（老 config.json 向后兼容）。
+    #[serde(default = "default_import_strategy")]
+    pub import_strategy: String,
 }
 
 fn default_auto_start() -> String {
     "onFirstFile".into()
+}
+
+fn default_import_strategy() -> String {
+    "auto".into()
 }
 
 const fn default_deactivate_minutes() -> u64 {
@@ -476,6 +485,7 @@ impl Default for LspSettings {
             auto_start: default_auto_start(),
             deactivate_stop_minutes: default_deactivate_minutes(),
             custom_servers: Vec::new(),
+            import_strategy: default_import_strategy(),
         }
     }
 }
@@ -572,5 +582,36 @@ echo two"
         );
         assert!(!p.tuning.version_probe);
         assert!(p.tuning.java_home_from_path);
+    }
+
+    /// M4：老 config.json 的 `lsp` 块缺 `importStrategy` → 回落 `auto`
+    ///（前端纯策略，后端只做持久化透传；`#[serde(default)]` 语义）。
+    #[test]
+    fn lsp_settings_missing_import_strategy_falls_back_to_auto() {
+        let s: LspSettings = serde_json::from_value(serde_json::json!({
+            "autoStart": "onFirstFile",
+            "deactivateStopMinutes": 30,
+            "customServers": []
+        }))
+        .expect("parse");
+        assert_eq!(s.import_strategy, "auto");
+    }
+
+    /// M4：`importStrategy` roundtrip（透传不丢；非法值不由后端校验）。
+    #[test]
+    fn lsp_settings_import_strategy_roundtrip() {
+        let s: LspSettings = serde_json::from_value(serde_json::json!({
+            "autoStart": "onFirstFile",
+            "deactivateStopMinutes": 30,
+            "customServers": [],
+            "importStrategy": "never"
+        }))
+        .expect("parse");
+        assert_eq!(s.import_strategy, "never");
+        let back = serde_json::to_value(&s).expect("serialize");
+        assert_eq!(
+            back.get("importStrategy").and_then(|v| v.as_str()),
+            Some("never")
+        );
     }
 }

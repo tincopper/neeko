@@ -134,6 +134,20 @@ applyCodeAction(uri, action, resolveView = resolveEditorViewFromUri);
 | 行数 | 非测试源码 <300 行；`lsp/types.rs:383` 含约 117 行内联测试（净源码约 266 行），属已知豁免；`instance.rs` 存量胖（本次 +8 行），不扩范围 |
 | F4 | shell 选择在执行层（`platform/shell_launch` 的 `cmd /c` vs `sh -c`），拼装层只做 sh 转义并显式委托注释 |
 
+## 4. 导入策略三态（M4：R4/AC4，传输之上的唯一产品逻辑）
+
+- 设置：`LspConfig.importStrategy: 'auto' | 'ask' | 'never'`（默认 `auto`；前后端缺字段
+  回落 auto，`#[serde(default)]` 向后兼容）；读写走 settings 既有通道
+ （`useAppConfig.mergeLspConfig` 单写点 + `patchLsp` 持久化 + `LspPanel` ToggleGroup）。
+- 拦截点：`createThemedCompletionSource` 返回处逐项变换 `apply`（所有补全项必经之路，
+  D2 禁止旁路，不改补丁包）：`auto` no-op；`never` 换只插入（单事务单 spec，不重算
+  坐标与文本）+ 跳过 resolve 预热与选中解析；`ask` 有编辑弹确认（import 首行摘要预览，
+  确认放行 / 取消只插入 / 通道故障 fail-open 到 auto），无编辑不打扰。
+- 模块：`lsp/api/lspImportStrategy.ts`（纯函数 + 模块级同步缓存，`languageMap.customExtMap`
+  同款模式）；CM6 option 无 `additionalTextEdits` 字段是既定事实，策略层只认"携带编辑"
+  的 option 形态，禁止回头解析 LSP 载荷。
+- 测试：三态行为差异 + 持久化 roundtrip + 缺字段回落 auto。
+
 ## 4. 常见坑
 
 1. **Vite 预打包缓存**：改 `patches/*.patch` 后只重启 dev 不够（lockfile 哈希不变仍命中旧

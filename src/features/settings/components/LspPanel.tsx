@@ -6,7 +6,12 @@ import {
 } from '@/features/lsp/api/languageMap';
 import { lspGetExtensionMap } from '@/features/lsp/api/lspApi';
 import { useLspStore } from '@/features/lsp/store/lspStore';
-import type { AppConfig, LspAutoStart, LspConfig } from '@/features/settings/types';
+import type {
+  AppConfig,
+  LspAutoStart,
+  LspConfig,
+  LspImportStrategy,
+} from '@/features/settings/types';
 import { Separator, ToggleGroup, ToggleGroupItem } from '@/ui';
 
 import LspCustomServersSection from './LspCustomServersSection';
@@ -14,6 +19,7 @@ import {
   AUTO_START_OPTIONS,
   buildServerEntry,
   DEFAULT_LSP,
+  IMPORT_STRATEGY_OPTIONS,
   type ServerDraftForm,
 } from './lspServerDraft';
 import SettingRow from './SettingRow';
@@ -124,6 +130,26 @@ const LspPanel: React.FC<LspPanelProps> = ({ config, onConfigChange }) => {
           }}
         >
           {AUTO_START_OPTIONS.map((opt) => (
+            <ToggleGroupItem key={opt.value} value={opt.value} className="text-[0.79em] px-2.5">
+              {opt.label}
+            </ToggleGroupItem>
+          ))}
+        </ToggleGroup>
+      </SettingRow>
+
+      <SettingRow
+        title="Auto-import on completion"
+        description="Whether accepting a completion also applies its import edits."
+      >
+        <ToggleGroup
+          type="single"
+          value={lsp.importStrategy}
+          disabled={saving}
+          onValueChange={(value) => {
+            if (value) void patchLsp({ importStrategy: value as LspImportStrategy });
+          }}
+        >
+          {IMPORT_STRATEGY_OPTIONS.map((opt) => (
             <ToggleGroupItem key={opt.value} value={opt.value} className="text-[0.79em] px-2.5">
               {opt.label}
             </ToggleGroupItem>

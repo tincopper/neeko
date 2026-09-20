@@ -41,7 +41,9 @@ lsp-client 补全接受已原子应用 `additionalTextEdits`（自动导入核�
       关闭不推 `stopped`（消除 chip 闪断）、崩溃/新会话起点清诊断副本（不留陈旧波浪线））
 - [ ] AC3（R3）：Go 文件输入未导入符号产生诊断 → 诊断行 quickfix「Add import」→
       接受后 import 落块、诊断消失
-- [ ] AC4（R4）：策略设置为 Never 时接受补全不应用附加编辑；Auto 时应用；Ask 弹选择
+- [x] AC4（R4）：策略设置为 Never 时接受补全不应用附加编辑；Auto 时应用；Ask 弹选择
+      （2026-09-20 M4 落地：`LspConfig.importStrategy` + `lspImportStrategy` 拦截层 +
+      LspPanel 三态开关；单测 29 + Rust serde 2，全量 4038 passed；真机三态手验待补）
 - [ ] AC5（R5）：全链路无语言分支；新增任意遵循 LSP 的 LS（以 builtins 现有 17 种中
       未实测的一种验证）无需改动本任务代码即可获得三通道
 - [ ] AC6：门禁全绿（type-check / test:run / lint / eslint / cargo test）；每阶段

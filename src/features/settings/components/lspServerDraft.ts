@@ -1,17 +1,30 @@
 /** LSP 自定义服务的草稿表单模型与纯校验/解析逻辑（无 React 依赖，可直接单测）。 */
 
-import type { CustomLspServerConfig, LspAutoStart, LspConfig } from '@/features/settings/types';
+import type {
+  CustomLspServerConfig,
+  LspAutoStart,
+  LspConfig,
+  LspImportStrategy,
+} from '@/features/settings/types';
 
 export const DEFAULT_LSP: LspConfig = {
   autoStart: 'onFirstFile',
   deactivateStopMinutes: 30,
   customServers: [],
+  importStrategy: 'auto',
 };
 
 export const AUTO_START_OPTIONS: { value: LspAutoStart; label: string }[] = [
   { value: 'onFirstFile', label: 'First file' },
   { value: 'onProjectSelect', label: 'Project select' },
   { value: 'manual', label: 'Manual' },
+];
+
+/** M4 导入策略三态（R4/AC4）：接受补全时是否自动应用附加编辑（自动导入）。 */
+export const IMPORT_STRATEGY_OPTIONS: { value: LspImportStrategy; label: string }[] = [
+  { value: 'auto', label: 'Auto' },
+  { value: 'ask', label: 'Ask' },
+  { value: 'never', label: 'Never' },
 ];
 
 /** Form-local draft: list fields stay as raw strings so spaces/commas can be typed. */

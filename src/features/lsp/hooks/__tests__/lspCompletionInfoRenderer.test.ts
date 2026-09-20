@@ -19,8 +19,9 @@ vi.mock('@codemirror/autocomplete', () => ({
 }));
 
 import { LSPPlugin, serverCompletionSource } from '@codemirror/lsp-client';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { setLspImportStrategy } from '../../api/lspImportStrategy';
 import {
   buildFunctionSnippet,
   extractParamName,
@@ -545,6 +546,122 @@ describe('createThemedCompletionSource 与 completionItem/resolve 的接线', ()
     await expect(createThemedCompletionSource({ view: {} } as any)).resolves.toBeDefined();
     await expect(option.info()).resolves.toBeDefined();
     expect(option.neekoDeferredEdits).toBeUndefined();
+  });
+});
+
+describe('createThemedCompletionSource 导入策略三态（M4 / R4）', () => {
+  afterEach(() => {
+    setLspImportStrategy('auto');
+  });
+
+  /** gopls 形态：内联 additionalTextEdits + 双 spec dispatch 的 apply。 */
+  function goLikeOption() {
+    return {
+      label: 'Println',
+      lspItem: {
+        label: 'Println',
+        additionalTextEdits: [
+          {
+            range: { start: { line: 0, character: 0 }, end: { line: 0, character: 0 } },
+            newText: '\n\t"fmt"',
+          },
+        ],
+      },
+      apply: (view: unknown) => {
+        (view as { dispatch: (...s: unknown[]) => void }).dispatch(
+          { insert: 'Println' },
+          { changes: [{ from: 0, to: 0, insert: '\n\t"fmt"' }] },
+        );
+      },
+    } as any;
+  }
+
+  function resolveRecording(calls: { method: string }[]) {
+    return {
+      client: {
+        request: async (method: string) => {
+          calls.push({ method });
+          return { additionalTextEdits: [] };
+        },
+      },
+    };
+  }
+
+  it('auto 下不碰 apply（现状行为逐字一致）', async () => {
+    setLspImportStrategy('auto');
+    const option = goLikeOption();
+    const before = option.apply;
+    vi.mocked(LSPPlugin.get).mockReturnValue(undefined as any);
+    vi.mocked(serverCompletionSource).mockResolvedValue({
+      options: [option],
+      from: 0,
+      to: 3,
+    } as any);
+
+    await createThemedCompletionSource({ view: {} } as any);
+
+    expect(option.apply).toBe(before);
+  });
+
+  it('never 下剥离附加编辑：接受只 dispatch 插入 spec', async () => {
+    setLspImportStrategy('never');
+    const option = goLikeOption();
+    vi.mocked(LSPPlugin.get).mockReturnValue(undefined as any);
+    vi.mocked(serverCompletionSource).mockResolvedValue({
+      options: [option],
+      from: 0,
+      to: 3,
+    } as any);
+
+    await createThemedCompletionSource({ view: {} } as any);
+
+    const calls: unknown[][] = [];
+    const view = { state: {}, dispatch: (...specs: unknown[]) => void calls.push(specs) };
+    option.apply(view, {}, 0, 3);
+    expect(calls).toHaveLength(1);
+    expect(calls[0]).toEqual([{ insert: 'Println' }]);
+  });
+
+  it('never 下跳过 resolve 预热与选中解析（拿了也丢，不浪费请求）', async () => {
+    setLspImportStrategy('never');
+    const calls: { method: string }[] = [];
+    vi.mocked(LSPPlugin.get).mockReturnValue(resolveRecording(calls) as any);
+    const option = {
+      label: 'HashMap',
+      lspItem: { label: 'HashMap', data: { imports: [] } },
+      neekoNeedsResolve: true,
+      apply: (view: unknown) => {
+        (view as { dispatch: (...s: unknown[]) => void }).dispatch({ insert: 'HashMap' });
+      },
+    } as any;
+    vi.mocked(serverCompletionSource).mockResolvedValue({
+      options: [option],
+      from: 0,
+      to: 3,
+    } as any);
+
+    await createThemedCompletionSource({ view: {} } as any);
+    await option.info();
+
+    expect(calls).toHaveLength(0);
+  });
+
+  it('ask 下包装 apply（接受时走确认通道），无编辑项不碰', async () => {
+    setLspImportStrategy('ask');
+    const withEdits = goLikeOption();
+    const before = withEdits.apply;
+    const plain = { label: 'foo' } as any;
+    vi.mocked(LSPPlugin.get).mockReturnValue(undefined as any);
+    vi.mocked(serverCompletionSource).mockResolvedValue({
+      options: [withEdits, plain],
+      from: 0,
+      to: 3,
+    } as any);
+
+    await createThemedCompletionSource({ view: {} } as any);
+
+    expect(withEdits.apply).not.toBe(before);
+    expect(plain.apply).toBeUndefined();
   });
 });
 

@@ -239,6 +239,8 @@ impl LspManager {
                 .map(|x| x.saturating_div(60))
                 .unwrap_or_default(),
             custom_servers: Vec::new(),
+            // M4 纯前端策略：快照不设该键（调用方无；留 default 仅为构造完整）。
+            import_strategy: "auto".to_string(),
         }
     }
 

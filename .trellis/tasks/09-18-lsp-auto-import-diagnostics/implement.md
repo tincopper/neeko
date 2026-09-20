@@ -133,6 +133,17 @@ M1 的诊断行承载。
    option（auto 放行 / never 剥离附加编辑 / ask 弹 import 预览确认）
 3. 测试：三态行为差异单元测试 + 设置持久化
 
+### M4 落地（2026-09-20，TDD 红绿留痕）
+
+1. `LspConfig.importStrategy`（`shared/types/settings.ts`，必填默认 auto；后端
+   `plugin/types.rs::LspSettings` 镜像 `#[serde(default)]`，`manager.rs` 快照同步）
+2. `lsp/api/lspImportStrategy.ts`（新建，`api/` 白名单面）：`auto` no-op；`never`
+   换只插入 + 跳过预热/选中解析；`ask` 有编辑弹确认（首行摘要），fail-open 到 auto
+3. `LspPanel` ToggleGroup（Auto/Ask/Never，走 `patchLsp`）；`useAppConfig`
+   加载/保存同步策略缓存（单写点）
+4. 测试：api 层 ~20 + renderer 接线 4 + `useAppConfig` 3 + Rust serde 2；全量
+   463 文件 4038 passed，tsc/clippy/fmt/eslint 全绿；R5 零语言分支
+
 ## 收尾
 
 - AC5 语言无关性验证：builtins 中选一个未实测 LS（如 python/pyright 或 rust-analyzer）
