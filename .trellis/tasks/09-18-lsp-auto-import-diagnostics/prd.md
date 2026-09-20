@@ -47,11 +47,20 @@ lsp-client 补全接受已原子应用 `additionalTextEdits`（自动导入核�
       Problems 面板行内双挂载）
 - [x] AC4（R4）：策略设置为 Never 时接受补全不应用附加编辑；Auto 时应用；Ask 弹选择
       （2026-09-20 M4 落地：`LspConfig.importStrategy` + `lspImportStrategy` 拦截层 +
-      LspPanel 三态开关；单测 31 + Rust serde 2，全量 4038 passed；真机三态手验待补）
+      LspPanel 三态开关；单测 31 + Rust serde 2。**2026-09-21 真机三态手验通过**：
+      Auto 应用附加编辑 / Never 只插入不落 import / Ask 弹确认后才落）
 - [ ] AC5（R5）：全链路无语言分支；新增任意遵循 LSP 的 LS（以 builtins 现有 17 种中
       未实测的一种验证）无需改动本任务代码即可获得三通道
-- [ ] AC6：门禁全绿（type-check / test:run / lint / eslint / cargo test）；每阶段
-      TDD 红绿留痕
+      （**选 rust-analyzer 为第二验证对象**：本机已有 `~/.cargo/bin/rust-analyzer`
+      1.97.1，且本仓库 `src-tauri` 自身就是 `Cargo.toml` 工程，开箱可验。
+      静态部分已完成：本任务改动面语言分支扫描 0 处 + 存量两处 java 分支已数据化
+      `ad3a47fd`（详见「R5 静态扫描」小节）；**待真机三通道复跑**后勾选）
+- [x] AC6：门禁全绿（type-check / test:run / lint / eslint / cargo test）；每阶段
+      TDD 红绿留痕（2026-09-21 终轮：HEAD `a1c250d1` 下 `pnpm type-check` 0 错误、
+      `pnpm test:run` 466 文件 4062 passed / 1 skipped、`pnpm lint`（cargo fmt + clippy
+      -D warnings + 5 个护栏脚本 + `lint:host`）全绿、`cargo test` 1303 + 102 passed；
+      红绿留痕见 implement.md 各阶段，上下文台账 implement.jsonl / check.jsonl 已换真实
+      条目，spec 沉淀见 `.trellis/spec/backend/lsp-domain.md`）
 
 ## 用户协作验证项（M0，需用户配合）
 
@@ -85,6 +94,25 @@ lsp-client 补全接受已原子应用 `additionalTextEdits`（自动导入核�
      字样，改为服务器无关表述。
   护栏均用**虚构语言/插件**断言（`lspClientTimeout('mylang')` / registry 注册虚构
   插件），任何重新引入的语言分支都会挂。存量 review 面据此清零。
+
+### AC5 真机验证清单（第二 LS = rust-analyzer，2026-09-21）
+
+前置：把**本仓库的 `src-tauri` 目录**作为项目加进 Neeko（它有 `Cargo.toml` → rust 插件
+按 `root_markers` 命中，`detect_priority` 10 最高）。rust-analyzer 已在本机
+（`~/.cargo/bin/rust-analyzer`，1.97.1），无需安装。打开任一 `.rs` 文件后逐项：
+
+1. **诊断（A 通道）**：在文件里加一行 `let x: i32 = "oops";` → 期望：编辑器立即出波浪线
+   + Problems 面板出现该诊断（类型不匹配），点击行跳到对应位置
+2. **自动导包（B 通道）**：删掉某文件的某个 `use` 语句（或新开一行敲 `HashMap::new()`）
+   → 输入 `Hash` 触发补全 → 接受 `HashMap` → 期望：`use std::collections::HashMap;` 与
+   插入的文本**同一次操作**落下（Ctrl+Z 一步可整体回退）
+3. **quickfix（C 通道）**：把光标放在那条冒红诊断行 → 期望：gutter 出现灯泡 / `⌘.`
+   弹出动作列表，取其中的修复项（本研究仓库里通常是 "Change type" / "Convert to &
+   str" 之类）→ 接受后错误消失；Problems 面板行尾灯泡同样可用
+4. **健康度（R2）**：status-bar 应出现 rust-analyzer 的会话状态（starting → running）
+
+四条都通过即 AC5 成立（证明三者都不是 Java/Go 特例）
+；任一项不符请记录现象（哪一步没反应 / DevTools 里的 `[LSP]` 输出）。
 
 ### R0 诊断记录（2026-09-18，用户实测「自动导包还是不行」）
 
