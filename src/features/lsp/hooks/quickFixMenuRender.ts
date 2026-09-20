@@ -1,10 +1,6 @@
 import type { QuickFixMenuItem } from '../api/codeAction';
 import { BULB_SVG_MARKUP, sparklesSvgMarkup } from '../components/QuickFixBulbIcon';
-import {
-  firstEnabledIndex,
-  flattenMenuItems,
-  stepEnabledIndex,
-} from '../components/quickFixMenuNav';
+import { flattenMenuItems, stepEnabledIndex } from '../components/quickFixMenuNav';
 import { computeMenuPosition } from '../components/quickFixMenuPosition';
 
 /**
@@ -142,7 +138,9 @@ export function showQuickFixMenu(
 
   const flatItems = flattenMenuItems(sections);
   /** 键盘高亮：以**摊平下标**为准（跨组连续移动），初始停在服务器声明的首选/首个可执行项 */
-  let activeIndex = firstEnabledIndex(flatItems);
+  // -1 = **不预选中**（只有 ↑/↓ 或鼠标 hover 后才出现选中态）；↑/↓ 从 -1 起步会落到
+  // 首个/末个可执行项（见 stepEnabledIndex）
+  let activeIndex = -1;
   const rowByIndex = new Map<number, HTMLElement>();
 
   const close = (): void => {

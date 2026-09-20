@@ -7,7 +7,7 @@ import { useDiagnosticQuickFix } from '../hooks/useDiagnosticQuickFix';
 import type { LspDiagnostic } from '../types';
 
 import { QuickFixBulbIcon, QuickFixSparkleIcon } from './QuickFixBulbIcon';
-import { firstEnabledIndex, flattenMenuItems, stepEnabledIndex } from './quickFixMenuNav';
+import { flattenMenuItems, stepEnabledIndex } from './quickFixMenuNav';
 import { computeMenuPosition } from './quickFixMenuPosition';
 
 interface DiagnosticQuickFixProps {
@@ -56,10 +56,10 @@ export function DiagnosticQuickFix({
     },
     [uri, diagnostic, close, apply],
   );
-  // 键盘高亮：`null` = 尚未手动移动 → 派生为"服务器声明的首选/首个可执行项"。
+  // 键盘高亮：`null` = 尚未移动 → **不预选中**（只有 ↑/↓ 或鼠标 hover 后才高亮）。
   // 用派生而不是在 effect 里 setState（后者会多一轮渲染，且被 react-hooks 规则拦下）。
   const [navIndex, setNavIndex] = useState<number | null>(null);
-  const activeIndex = navIndex ?? (open ? firstEnabledIndex(flatItems) : -1);
+  const activeIndex = navIndex ?? -1;
   // 键盘处理函数在事件里读 ref：↑↓ 与 Enter 连续按下时，若读 useState 闭包值会拿到
   // 上一轮渲染的旧下标（当次按键白按）。ref 的写入放在 effect 里（渲染期写 ref 违规）。
   const activeIndexRef = useRef(activeIndex);

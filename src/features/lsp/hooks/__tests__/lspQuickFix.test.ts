@@ -489,15 +489,19 @@ describe('#3 编辑器内菜单的键盘导航', () => {
     );
   }
 
-  it('打开时高亮停在服务器声明的首选（isPreferred）', () => {
+  it('打开时**不预选中**；↓ 才高亮到首个可执行项', () => {
     open();
     // 用 classList 精确判类名：`hover:bg-[var(--bg-hover)]` 会让 className 子串匹配失真
-    expect(rowOf('Preferred').classList.contains('bg-[var(--bg-hover)]')).toBe(true);
+    expect(rowOf('Preferred').classList.contains('bg-[var(--bg-hover)]')).toBe(false);
     expect(rowOf('Other').classList.contains('bg-[var(--bg-hover)]')).toBe(false);
+
+    press('ArrowDown'); // -1 → 首个可执行项
+    expect(rowOf('Preferred').classList.contains('bg-[var(--bg-hover)]')).toBe(true);
   });
 
   it('↓ 跳过置灰项；↑ 回到上一个可执行项', () => {
     open();
+    press('ArrowDown'); // -1 → Preferred
     press('ArrowDown');
     expect(rowOf('Other').classList.contains('bg-[var(--bg-hover)]')).toBe(true); // 跨过 Command only
     expect(rowOf('Preferred').classList.contains('bg-[var(--bg-hover)]')).toBe(false);
@@ -508,13 +512,18 @@ describe('#3 编辑器内菜单的键盘导航', () => {
 
   it('到达边界停住（不回绕）', () => {
     open();
-    press('ArrowDown');
+    press('ArrowDown'); // Preferred
+    press('ArrowDown'); // Other
     press('ArrowDown'); // 已在最后一项，再按不动
     expect(rowOf('Other').classList.contains('bg-[var(--bg-hover)]')).toBe(true);
   });
 
-  it('Enter 应用高亮项', () => {
+  it('Enter 应用高亮项（未移动时 Enter 无动作）', () => {
     open();
+    press('Enter');
+    expect(SECTIONS[0].items[0].onPick).not.toHaveBeenCalled();
+
+    press('ArrowDown');
     press('Enter');
     expect(SECTIONS[0].items[0].onPick).toHaveBeenCalledTimes(1);
   });

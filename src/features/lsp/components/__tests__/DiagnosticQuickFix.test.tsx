@@ -228,7 +228,8 @@ describe('#3 面板菜单的键盘导航', () => {
   it('↓ 移向下一动作后 Enter 应用高亮项（command-only 不再入列）', async () => {
     await openMenu();
 
-    press('ArrowDown'); // Preferred → Other
+    press('ArrowDown'); // 不预选中：-1 → Preferred
+    press('ArrowDown'); // Preferred → Other（跨过 command-only）
     press('Enter');
 
     expect(applyCodeAction).toHaveBeenCalledTimes(1);
