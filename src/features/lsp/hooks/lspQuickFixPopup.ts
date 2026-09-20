@@ -5,6 +5,7 @@ import type { EditorView } from '@codemirror/view';
 import { openInDefaultBrowser } from '@/features/browser/api/browserApi';
 import { lspPositionToOffset, offsetToLspPosition } from '@/shared/utils/lspPosition';
 
+import { diagnosticCodeBadge, diagnosticCodeTooltip } from '../components/diagnosticCode';
 import { sparklesSvgMarkup } from '../components/QuickFixBulbIcon';
 import { severityColorClass, severitySvgMarkup } from '../components/SeverityIcon';
 import { useLspStore } from '../store/lspStore';
@@ -42,6 +43,9 @@ export function createDiagnosticPopup(diagnostic: LspDiagnostic): {
   // 消息行：与 Problems 面板行同构（VS Code：错误内容以同样式呈现）
   const row = document.createElement('div');
   row.className = 'flex items-start gap-2 px-2.5 pt-2 pb-1 text-xs';
+  // 数字 code 不占行尾，但原值留在 title（悬停可查：TS 2339 / JDT 内部 ID）
+  const codeTooltip = diagnosticCodeTooltip(diagnostic);
+  if (codeTooltip) row.title = codeTooltip;
 
   const icon = document.createElement('span');
   icon.className = `shrink-0 mt-px ${severityColorClass(diagnostic.severity)}`;
@@ -62,23 +66,24 @@ export function createDiagnosticPopup(diagnostic: LspDiagnostic): {
     row.appendChild(source);
   }
 
-  if (diagnostic.code != null) {
-    // 有 codeDescription.target → 真链接（VS Code 同款：打开诊断文档，系统默认浏览器）
-    if (diagnostic.codeDescription?.href) {
+  const badge = diagnosticCodeBadge(diagnostic);
+  if (badge) {
+    // 有诊断文档 → 真链接（VS Code 同款：打开诊断文档，系统默认浏览器）
+    if (badge.href) {
       const link = document.createElement('a');
-      link.href = diagnostic.codeDescription.href;
+      link.href = badge.href;
       link.className =
         'shrink-0 text-blue-400/80 underline underline-offset-2 hover:text-blue-300 cursor-pointer';
-      link.textContent = `(${diagnostic.code})`;
+      link.textContent = `(${badge.label})`;
       link.addEventListener('click', (e) => {
         e.preventDefault();
-        void openInDefaultBrowser(diagnostic.codeDescription!.href);
+        void openInDefaultBrowser(badge.href!);
       });
       row.appendChild(link);
     } else {
       const code = document.createElement('span');
       code.className = 'shrink-0 text-blue-400/80';
-      code.textContent = `(${diagnostic.code})`;
+      code.textContent = `(${badge.label})`;
       row.appendChild(code);
     }
   }

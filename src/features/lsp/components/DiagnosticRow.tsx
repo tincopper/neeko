@@ -4,6 +4,7 @@ import { openInDefaultBrowser } from '@/features/browser/api/browserApi';
 
 import type { LspDiagnostic } from '../types';
 
+import { diagnosticCodeBadge, diagnosticCodeTooltip } from './diagnosticCode';
 import { DiagnosticQuickFix } from './DiagnosticQuickFix';
 import { SeverityIcon, severityColorClass } from './SeverityIcon';
 
@@ -43,6 +44,8 @@ export const DiagnosticRow = memo(function DiagnosticRow({
         type="button"
         data-testid="diagnostic-row"
         onClick={jump}
+        // 数字 code 不占行尾，但原值留在 title（悬停可查：TS 2339 / JDT 内部 ID）
+        title={diagnosticCodeTooltip(diagnostic)}
         className="flex-1 min-w-0 flex items-center gap-2 text-left cursor-pointer"
       >
         <span
@@ -53,25 +56,29 @@ export const DiagnosticRow = memo(function DiagnosticRow({
         </span>
         <span className="min-w-0 flex-1 truncate text-text-primary">{diagnostic.message}</span>
         {diagnostic.source && <span className="shrink-0 text-text-muted">{diagnostic.source}</span>}
-        {diagnostic.code != null &&
-          // 有 codeDescription.target → 真链接（VS Code 同款：打开诊断文档，
-          // 系统默认浏览器）；否则静态文本。stopPropagation 防止触发行跳转。
-          (diagnostic.codeDescription?.href ? (
+        {(() => {
+          const badge = diagnosticCodeBadge(diagnostic);
+          if (!badge) return null;
+          // 有诊断文档 → 真链接（VS Code 同款：系统默认浏览器打开）；否则静态文本。
+          // stopPropagation 防止触发行跳转。
+          const className = 'shrink-0 text-blue-400/80';
+          return badge.href ? (
             <a
-              href={diagnostic.codeDescription.href}
+              href={badge.href}
               data-testid="diagnostic-code-link"
-              className="shrink-0 text-blue-400/80 underline underline-offset-2 hover:text-blue-300"
+              className={`${className} underline underline-offset-2 hover:text-blue-300`}
               onClick={(e) => {
                 e.preventDefault();
                 e.stopPropagation();
-                void openInDefaultBrowser(diagnostic.codeDescription!.href);
+                void openInDefaultBrowser(badge.href!);
               }}
             >
-              ({diagnostic.code})
+              ({badge.label})
             </a>
           ) : (
-            <span className="shrink-0 text-blue-400/80">({diagnostic.code})</span>
-          ))}
+            <span className={className}>({badge.label})</span>
+          );
+        })()}
         <span className="shrink-0 text-text-muted">
           [Ln {diagnostic.range.start.line + 1}, Col {diagnostic.range.start.character + 1}]
         </span>

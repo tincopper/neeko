@@ -201,14 +201,17 @@ describe('DiagnosticsPanel', () => {
     expect(within(row).getByText('[Ln 56, Col 13]')).toBeInTheDocument();
   });
 
-  it('number code renders in parens too', () => {
+  /// TS 等服务器给的 code 也是纯数字（2339），而且是有用信息 —— 一致地不在行尾占位，
+  /// 但必须还能从 tooltip 查到（不要变成"丢信息"）。
+  it('numeric code leaves the row but stays discoverable via tooltip', () => {
     seed({
       'file:///proj/src/a.ts': [{ ...diag(0, 1, 'type err'), code: 2339 }],
     });
 
     render(<DiagnosticsPanel projectPath={PROJECT} />);
 
-    expect(screen.getByText('(2339)')).toBeInTheDocument();
+    expect(screen.queryByText('(2339)')).not.toBeInTheDocument();
+    expect(screen.getByTestId('diagnostic-row')).toHaveAttribute('title', 'Code: 2339');
   });
 
   it('omits the code segment when the diagnostic has no code', () => {
@@ -249,6 +252,42 @@ describe('DiagnosticsPanel', () => {
     const link = screen.getByTestId('diagnostic-code-link');
     expect(link).toHaveAttribute('href', 'https://pkg.go.dev/go/types#UndeclaredName');
     expect(link).toHaveTextContent('(UndeclaredName)');
+  });
+
+  /// 案例来源：Java 项目里 jdtls 把 Eclipse `IProblem` 的内部 ID 当 code 发出来
+  /// （16777218 = 0x01000002），面板上行尾不得再出现那段数字。
+  it('machine-only numeric code is not rendered', () => {
+    seed({
+      'file:///proj/src/Main.java': [
+        { ...diag(9, 1, 'The import java.util cannot be resolved'), code: 16777218 },
+      ],
+    });
+
+    render(<DiagnosticsPanel projectPath={PROJECT} />);
+
+    expect(screen.queryByTestId('diagnostic-code-link')).not.toBeInTheDocument();
+    expect(screen.getByTestId('diagnostic-row')).not.toHaveTextContent('16777218');
+  });
+
+  /// 数字 code 但服务器声明了文档链接 → 链接保留（不丢能力），文案换成 source 名。
+  it('numeric code with docs keeps the link but drops the raw number', () => {
+    seed({
+      'file:///proj/src/Main.java': [
+        {
+          ...diag(9, 1, 'The import java.util cannot be resolved'),
+          code: 16777218,
+          source: 'javac',
+          codeDescription: { href: 'https://example.com/jdt-problem-2' },
+        },
+      ],
+    });
+
+    render(<DiagnosticsPanel projectPath={PROJECT} />);
+
+    const link = screen.getByTestId('diagnostic-code-link');
+    expect(link).toHaveAttribute('href', 'https://example.com/jdt-problem-2');
+    expect(link).toHaveTextContent('(javac)');
+    expect(link).not.toHaveTextContent('16777218');
   });
 
   it('clicking the code link opens the docs instead of jumping the row', () => {
