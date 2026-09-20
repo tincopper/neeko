@@ -149,7 +149,7 @@ describe('DiagnosticsPanel', () => {
 
   // ── 诊断行（VS Code 视觉契约 2）─────────────────────────────────────────
 
-  it('maps severity to lucide icons: error warning info hint-and-null', () => {
+  it('maps severity to icons: error warning info hint-and-null', () => {
     seed({
       'file:///proj/src/a.ts': [
         diag(0, 1, 'err msg'),
@@ -162,15 +162,15 @@ describe('DiagnosticsPanel', () => {
 
     const { container } = render(<DiagnosticsPanel projectPath={PROJECT} />);
 
-    // error 红 ⊗ / warning 黄 ⚠ / info 蓝 / hint 暗（lucide 别名渲染为规范类名）
-    // eslint-disable-next-line testing-library/no-node-access, testing-library/no-container -- 图标类名映射必须落到 svg class 查询
+    // error ⊗ / warning ⚠ / info ℹ / hint 暗点（lucide 图标，aliases 渲染为规范类名）
+    // eslint-disable-next-line testing-library/no-node-access, testing-library/no-container -- 图标映射必须落到 svg 查询
     expect(container.querySelectorAll('svg.lucide-circle-x')).toHaveLength(1);
-    // eslint-disable-next-line testing-library/no-node-access, testing-library/no-container -- 图标类名映射必须落到 svg class 查询
+    // eslint-disable-next-line testing-library/no-node-access, testing-library/no-container -- 图标映射必须落到 svg 查询
     expect(container.querySelectorAll('svg.lucide-triangle-alert')).toHaveLength(1);
-    // eslint-disable-next-line testing-library/no-node-access, testing-library/no-container -- 图标类名映射必须落到 svg class 查询
+    // eslint-disable-next-line testing-library/no-node-access, testing-library/no-container -- 图标映射必须落到 svg 查询
     expect(container.querySelectorAll('svg.lucide-info')).toHaveLength(1);
     // severity 4 与 null 都落到 hint 图标（CircleDot）
-    // eslint-disable-next-line testing-library/no-node-access, testing-library/no-container -- 图标类名映射必须落到 svg class 查询
+    // eslint-disable-next-line testing-library/no-node-access, testing-library/no-container -- 图标映射必须落到 svg 查询
     expect(container.querySelectorAll('svg.lucide-circle-dot')).toHaveLength(2);
   });
 

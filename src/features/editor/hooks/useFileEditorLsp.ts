@@ -9,9 +9,9 @@
  * 依赖方向：本 hook 只依赖 editor 域的 LSP 装配 hook 与 lsp 域公开面，不反向依赖组件。
  */
 import type { EditorView } from '@codemirror/view';
-import { useEffect } from 'react';
+import { useEffect, useMemo } from 'react';
 
-import { useCmdHeld } from '@/features/lsp';
+import { fromFileUri, getLspLanguageId, lspQuickFix, useCmdHeld } from '@/features/lsp';
 import { useLspStore } from '@/features/lsp/store/lspStore';
 import { cn } from '@/lib/utils';
 import type { FileTab } from '@/shared/types';
@@ -38,7 +38,7 @@ export function useFileEditorLsp({
   // navigateToLocation 就绪后再 bind（两段式晚绑定，见 useJdtLinkNavigation）。
   const { onOpenJdtLink, bind: bindJdtLinkNav } = useJdtLinkNavigation();
 
-  const { lspLanguageIdRef, lspClientExt, linkHighlightExt } = useLspClient({
+  const { fileUri, lspLanguageIdRef, lspClientExt, linkHighlightExt } = useLspClient({
     projectPath,
     filePath: tab.filePath,
     virtualUri: tab.virtualUri ?? tabLspDocumentUri(tab),
@@ -74,5 +74,21 @@ export function useFileEditorLsp({
     isJumping && 'lsp-jumping',
   );
 
-  return { lspClientExt, lspKeymap, cmdClickExt, linkHighlightExt, cmClassName };
+  // 编辑器内 quickfix：uri 直接取 **`useLspClient` 算出的 `fileUri`**（就是 didOpen 用的那个）。
+  // 不要自己再算一遍：曾误用 `tabLspDocumentUri`（它只对 jdt:// 虚拟文档返回 uri，普通文件
+  // 恒为 undefined），导致扩展拿到 uri=null、三条入口全部静默 return。
+  // 语言 ID 由 uri 纯推导（与 Problems 面板的诊断行同一算法），不读 ref ——
+  // 渲染期把 ref 传进函数会违反 react-hooks/refs，且这里本就不需要"会话握手后"的时效性：
+  // 拿不到语言 ID 时扩展的各入口会安静返回，等 uri 就绪后 memo 会重算。
+  const quickFixExt = useMemo(
+    () =>
+      lspQuickFix({
+        projectPath,
+        uri: fileUri || null,
+        getLanguageId: () => (fileUri ? getLspLanguageId(fromFileUri(fileUri)) : null),
+      }),
+    [projectPath, fileUri],
+  );
+
+  return { lspClientExt, lspKeymap, quickFixExt, cmdClickExt, linkHighlightExt, cmClassName };
 }

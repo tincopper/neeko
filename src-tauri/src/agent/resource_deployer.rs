@@ -664,6 +664,7 @@ mod tests {
             env: std::collections::HashMap::new(),
             chat: None,
             prompt_args: None,
+            interactive_prompt_args: None,
             post_prompt_args: None,
             skill_path: None,
             detection: None,

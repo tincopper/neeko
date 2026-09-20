@@ -64,5 +64,11 @@ export { default as SplitLayout, type SplitStateInfo } from './components/SplitL
 export { updateAllTerminalThemes } from './components/index';
 export type { TerminalTab } from './types';
 export { useTerminalTabs } from './hooks/useTerminalTabs';
+export {
+  MAX_TERMINAL_TABS,
+  createTaskTerminal,
+  generateTerminalTabId,
+  type TaskTerminalOptions,
+} from './api/taskTerminal';
 
 export { useTerminalStrategy } from './strategies';

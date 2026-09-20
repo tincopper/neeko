@@ -173,6 +173,11 @@ pub struct AgentConfig {
     /// `command --bare -p "<prompt>" [post_prompt_args]`。None = 无 Headless 能力。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub prompt_args: Option<Vec<String>>,
+    /// 交互式（TUI）prompt 前置参数，如 opencode `["--prompt"]` 表示
+    /// `command --prompt "<prompt>"`（打开 CLI 并预填 prompt，非 headless）。
+    /// `None` = 无交互 prompt 形态，终端场景回落到 `prompt_args`。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub interactive_prompt_args: Option<Vec<String>>,
     /// prompt 后置参数，追加在 prompt 之后。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub post_prompt_args: Option<Vec<String>>,

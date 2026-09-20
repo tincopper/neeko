@@ -31,6 +31,7 @@ interface UseEditorExtensionsParams {
   viewStateExt: Extension;
   lspClientExt: Extension[];
   lspKeymap: Extension;
+  quickFixExt: Extension;
   cmdClickExt: Extension;
   linkHighlightExt: Extension;
   bpGutterExt: Extension[];
@@ -58,6 +59,7 @@ export function useEditorExtensions({
   viewStateExt,
   lspClientExt,
   lspKeymap,
+  quickFixExt,
   cmdClickExt,
   linkHighlightExt,
   bpGutterExt,
@@ -150,6 +152,7 @@ export function useEditorExtensions({
     // (Cmd/Ctrl+hover underline)
     exts.push(...lspClientExt);
     exts.push(lspKeymap);
+    exts.push(quickFixExt);
     exts.push(cmdClickExt);
     exts.push(linkHighlightExt);
 
@@ -161,6 +164,7 @@ export function useEditorExtensions({
     viewStateExt,
     lspClientExt,
     lspKeymap,
+    quickFixExt,
     cmdClickExt,
     linkHighlightExt,
     bpGutterExt,

@@ -33,6 +33,12 @@ export const LSP_DIAG_EVENT_PREFIX = 'lsp-diagnostics-';
 export const LSP_PROGRESS_EVENT_PREFIX = 'lsp-progress-';
 /** LSP 会话生命周期事件前缀（拼接 projectPath）：`lsp-session-{projectPath}` */
 export const LSP_SESSION_EVENT_PREFIX = 'lsp-session-';
+/**
+ * 服务端 `workspace/applyEdit` 请示的转发事件前缀（拼接 projectPath）：
+ * `lsp-apply-edit-{projectPath}`。
+ * 载荷 `{ languageId, edit }`，`edit` 为原始 LSP WorkspaceEdit。
+ */
+export const LSP_APPLY_EDIT_EVENT_PREFIX = 'lsp-apply-edit-';
 /** LSP 项目语言 profile 广播事件：`lsp-project-profile` */
 export const LSP_PROFILE_EVENT = 'lsp-project-profile';
 

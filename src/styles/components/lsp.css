@@ -16,6 +16,28 @@
       0 8px 32px oklch(0 0 0 / 45%) !important;
   }
 
+  /* 诊断 quickfix popup（VS Code 形态）：与 LSP hover 文档同款 —— 边框/底色/圆角/阴影
+     放外层 .cm-tooltip，内层 .neeko-diagnostic-popup 透明。若把底色/圆角放内层，方形
+     .cm-tooltip 外壳的深色底会从圆角处透出（"四角黑色"）。 */
+  .cm-tooltip:has(.neeko-diagnostic-popup) {
+    background: var(--bg-secondary) !important;
+    border-radius: var(--radius-apple-md, 11px) !important;
+    border: 1px solid var(--border-color) !important;
+    box-shadow:
+      0 0 0 1px oklch(1 0 0 / 4%),
+      0 8px 32px oklch(0 0 0 / 45%) !important;
+  }
+
+  .neeko-diagnostic-popup {
+    background: transparent !important;
+    border: none;
+    border-radius: 0;
+    box-shadow: none;
+    color: var(--text-primary);
+    font-size: 12px;
+    font-family: var(--font-ui);
+  }
+
   /* ── LSP hover tooltip content ──────────────────────────────────── */
   .cm-lsp-hover-tooltip {
     background: transparent !important;

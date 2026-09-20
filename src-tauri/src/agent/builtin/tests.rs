@@ -60,6 +60,38 @@ fn config_map_links_ids() {
 }
 
 #[test]
+fn opencode_interactive_prompt_form_is_tui() {
+    let c = config_map();
+    let opencode = c.get("opencode").expect("opencode config");
+    // 交互式（TUI）形态：`opencode --prompt "<prompt>"`（打开 CLI 并预填 prompt）——
+    // 由数据（interactive_prompt_args）承载，前端不做 agent 特判。
+    assert_eq!(
+        opencode.interactive_prompt_args,
+        Some(vec!["--prompt".to_string()])
+    );
+    // headless 形态保持不动（AI commit 等后台一次性执行用）。
+    assert_eq!(
+        opencode.prompt_args,
+        Some(vec![
+            "run".to_string(),
+            "--pure".to_string(),
+            "--dangerously-skip-permissions=true".to_string(),
+            "-f".to_string(),
+        ])
+    );
+}
+
+#[test]
+fn cli_agents_default_to_no_interactive_form() {
+    for c in builtin_configs() {
+        if c.id == "opencode" {
+            continue;
+        }
+        assert_eq!(c.interactive_prompt_args, None, "{} 未声明交互式形态", c.id);
+    }
+}
+
+#[test]
 fn chat_agents_are_exactly_two() {
     let chat: Vec<String> = builtin_configs()
         .into_iter()

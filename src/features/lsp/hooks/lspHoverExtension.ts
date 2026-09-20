@@ -6,6 +6,7 @@ import { EditorView, closeHoverTooltips, hoverTooltip } from '@codemirror/view';
 import { useBrowserStore } from '@/shared/store/browserStore';
 import { useDockStore } from '@/shared/store/dockStore';
 import { isJdtUri } from '@/shared/utils/jdt';
+import { lspPositionToOffset } from '@/shared/utils/lspPosition';
 
 import { isModKeyHeld } from '../modKeyState';
 import { LatestRequestTracker } from '../requestTracker';
@@ -26,8 +27,8 @@ interface LspHoverResult {
  * (which is not publicly exported).
  */
 function offsetFromPos(doc: Text, pos: { line: number; character: number }): number {
-  const line = doc.line(pos.line + 1);
-  return line.from + pos.character;
+  // 复用共享换算（唯一实现）—— 夹紧语义见 lspPosition.ts
+  return lspPositionToOffset(doc, pos) ?? 0;
 }
 
 /** Per-view trackers: each editor instance has its own hover generation counter. */

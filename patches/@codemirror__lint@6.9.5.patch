@@ -1,0 +1,16 @@
+diff --git a/dist/index.js b/dist/index.js
+index 1759f8ce676e87346164216f733a5e9c65cf7b85..721a408206fb90812dacd381bb021b086206eef9 100644
+--- a/dist/index.js
++++ b/dist/index.js
+@@ -184,6 +184,11 @@ function diagnosticCount(state) {
+ }
+ const activeMark = /*@__PURE__*/Decoration.mark({ class: "cm-lintRange cm-lintRange-active" });
+ function lintTooltip(view, pos, side) {
++    // Neeko patch (2026-09-19): 宿主在编辑器 DOM 上打标记时交出自建诊断 tooltip。
++    // 上游没有关闭开关（`tooltipFilter` 只能经 `linter()` 传入，而本仓禁止挂空 source
++    // 的 linter —— idle 轮询会用空数组清掉推送诊断），故在此承认"宿主接管"这一事实。
++    if (view.dom.closest(".neeko-lint-tooltip-owner"))
++        return null;
+     let { diagnostics } = view.state.field(lintState);
+     let found, start = -1, end = -1;
+     diagnostics.between(pos - (side < 0 ? 1 : 0), pos + (side > 0 ? 1 : 0), (from, to, { spec }) => {

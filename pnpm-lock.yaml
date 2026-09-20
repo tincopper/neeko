@@ -8,6 +8,7 @@ overrides:
   '@codemirror/view': 6.43.11
 
 patchedDependencies:
+  '@codemirror/lint@6.9.5': 954e33d90a720b2062dd51827a87a2e3477193d0e9b5c2a1d017a6d0162dc3bd
   '@codemirror/lsp-client@6.2.5': 6727f815eeb02dbc0f6e7b6f97eeba99fd1b0e023085831cf61937a20d7e5208
   '@xterm/addon-canvas': f39b8eee64b365d9705304af53d2f5733ccb841664e3caf291a18e026a6ecc77
 
@@ -56,7 +57,7 @@ importers:
         version: 6.5.2
       '@codemirror/lint':
         specifier: ^6.9.5
-        version: 6.9.5
+        version: 6.9.5(patch_hash=954e33d90a720b2062dd51827a87a2e3477193d0e9b5c2a1d017a6d0162dc3bd)
       '@codemirror/lsp-client':
         specifier: ^6.2.5
         version: 6.2.5(patch_hash=6727f815eeb02dbc0f6e7b6f97eeba99fd1b0e023085831cf61937a20d7e5208)
@@ -140,7 +141,7 @@ importers:
         version: 4.25.9(@codemirror/language@6.12.3)(@codemirror/state@6.7.1)(@codemirror/view@6.43.11)
       '@uiw/react-codemirror':
         specifier: ^4.23.10
-        version: 4.25.9(@babel/runtime@7.29.2)(@codemirror/autocomplete@6.20.1)(@codemirror/language@6.12.3)(@codemirror/lint@6.9.5)(@codemirror/search@6.6.0)(@codemirror/state@6.7.1)(@codemirror/theme-one-dark@6.1.3)(@codemirror/view@6.43.11)(codemirror@6.0.2)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+        version: 4.25.9(@babel/runtime@7.29.2)(@codemirror/autocomplete@6.20.1)(@codemirror/language@6.12.3)(@codemirror/lint@6.9.5(patch_hash=954e33d90a720b2062dd51827a87a2e3477193d0e9b5c2a1d017a6d0162dc3bd))(@codemirror/search@6.6.0)(@codemirror/state@6.7.1)(@codemirror/theme-one-dark@6.1.3)(@codemirror/view@6.43.11)(codemirror@6.0.2)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
       '@xterm/addon-canvas':
         specifier: 0.8.0-beta.48
         version: 0.8.0-beta.48(patch_hash=f39b8eee64b365d9705304af53d2f5733ccb841664e3caf291a18e026a6ecc77)(@xterm/xterm@6.1.0-beta.287)
@@ -5803,7 +5804,7 @@ snapshots:
     dependencies:
       '@codemirror/autocomplete': 6.20.1
       '@codemirror/language': 6.12.3
-      '@codemirror/lint': 6.9.5
+      '@codemirror/lint': 6.9.5(patch_hash=954e33d90a720b2062dd51827a87a2e3477193d0e9b5c2a1d017a6d0162dc3bd)
       '@codemirror/state': 6.7.1
       '@codemirror/view': 6.43.11
       '@lezer/common': 1.5.2
@@ -5850,7 +5851,7 @@ snapshots:
     dependencies:
       '@codemirror/language': 6.12.3
 
-  '@codemirror/lint@6.9.5':
+  '@codemirror/lint@6.9.5(patch_hash=954e33d90a720b2062dd51827a87a2e3477193d0e9b5c2a1d017a6d0162dc3bd)':
     dependencies:
       '@codemirror/state': 6.7.1
       '@codemirror/view': 6.43.11
@@ -5860,7 +5861,7 @@ snapshots:
     dependencies:
       '@codemirror/autocomplete': 6.20.1
       '@codemirror/language': 6.12.3
-      '@codemirror/lint': 6.9.5
+      '@codemirror/lint': 6.9.5(patch_hash=954e33d90a720b2062dd51827a87a2e3477193d0e9b5c2a1d017a6d0162dc3bd)
       '@codemirror/state': 6.7.1
       '@codemirror/view': 6.43.11
       '@lezer/highlight': 1.2.3
@@ -7553,12 +7554,12 @@ snapshots:
       '@typescript-eslint/types': 8.60.0
       eslint-visitor-keys: 5.0.1
 
-  '@uiw/codemirror-extensions-basic-setup@4.25.9(@codemirror/autocomplete@6.20.1)(@codemirror/commands@6.10.3)(@codemirror/language@6.12.3)(@codemirror/lint@6.9.5)(@codemirror/search@6.6.0)(@codemirror/state@6.7.1)(@codemirror/view@6.43.11)':
+  '@uiw/codemirror-extensions-basic-setup@4.25.9(@codemirror/autocomplete@6.20.1)(@codemirror/commands@6.10.3)(@codemirror/language@6.12.3)(@codemirror/lint@6.9.5(patch_hash=954e33d90a720b2062dd51827a87a2e3477193d0e9b5c2a1d017a6d0162dc3bd))(@codemirror/search@6.6.0)(@codemirror/state@6.7.1)(@codemirror/view@6.43.11)':
     dependencies:
       '@codemirror/autocomplete': 6.20.1
       '@codemirror/commands': 6.10.3
       '@codemirror/language': 6.12.3
-      '@codemirror/lint': 6.9.5
+      '@codemirror/lint': 6.9.5(patch_hash=954e33d90a720b2062dd51827a87a2e3477193d0e9b5c2a1d017a6d0162dc3bd)
       '@codemirror/search': 6.6.0
       '@codemirror/state': 6.7.1
       '@codemirror/view': 6.43.11
@@ -7569,14 +7570,14 @@ snapshots:
       '@codemirror/state': 6.7.1
       '@codemirror/view': 6.43.11
 
-  '@uiw/react-codemirror@4.25.9(@babel/runtime@7.29.2)(@codemirror/autocomplete@6.20.1)(@codemirror/language@6.12.3)(@codemirror/lint@6.9.5)(@codemirror/search@6.6.0)(@codemirror/state@6.7.1)(@codemirror/theme-one-dark@6.1.3)(@codemirror/view@6.43.11)(codemirror@6.0.2)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)':
+  '@uiw/react-codemirror@4.25.9(@babel/runtime@7.29.2)(@codemirror/autocomplete@6.20.1)(@codemirror/language@6.12.3)(@codemirror/lint@6.9.5(patch_hash=954e33d90a720b2062dd51827a87a2e3477193d0e9b5c2a1d017a6d0162dc3bd))(@codemirror/search@6.6.0)(@codemirror/state@6.7.1)(@codemirror/theme-one-dark@6.1.3)(@codemirror/view@6.43.11)(codemirror@6.0.2)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)':
     dependencies:
       '@babel/runtime': 7.29.2
       '@codemirror/commands': 6.10.3
       '@codemirror/state': 6.7.1
       '@codemirror/theme-one-dark': 6.1.3
       '@codemirror/view': 6.43.11
-      '@uiw/codemirror-extensions-basic-setup': 4.25.9(@codemirror/autocomplete@6.20.1)(@codemirror/commands@6.10.3)(@codemirror/language@6.12.3)(@codemirror/lint@6.9.5)(@codemirror/search@6.6.0)(@codemirror/state@6.7.1)(@codemirror/view@6.43.11)
+      '@uiw/codemirror-extensions-basic-setup': 4.25.9(@codemirror/autocomplete@6.20.1)(@codemirror/commands@6.10.3)(@codemirror/language@6.12.3)(@codemirror/lint@6.9.5(patch_hash=954e33d90a720b2062dd51827a87a2e3477193d0e9b5c2a1d017a6d0162dc3bd))(@codemirror/search@6.6.0)(@codemirror/state@6.7.1)(@codemirror/view@6.43.11)
       codemirror: 6.0.2
       react: 18.3.1
       react-dom: 18.3.1(react@18.3.1)
@@ -8105,7 +8106,7 @@ snapshots:
       '@codemirror/autocomplete': 6.20.1
       '@codemirror/commands': 6.10.3
       '@codemirror/language': 6.12.3
-      '@codemirror/lint': 6.9.5
+      '@codemirror/lint': 6.9.5(patch_hash=954e33d90a720b2062dd51827a87a2e3477193d0e9b5c2a1d017a6d0162dc3bd)
       '@codemirror/search': 6.6.0
       '@codemirror/state': 6.7.1
       '@codemirror/view': 6.43.11

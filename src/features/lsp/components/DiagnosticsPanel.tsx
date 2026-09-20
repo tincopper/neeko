@@ -1,12 +1,15 @@
-import { useCallback, useMemo, useState, type ReactNode } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 
 import { openInDefaultBrowser } from '@/features/browser/api/browserApi';
-import { AlertTriangle, ChevronRight, CircleDot, Info, XCircle } from '@/shared/components/icons';
+import { ChevronRight } from '@/shared/components/icons';
 import { fileIconSrc } from '@/shared/utils/fileIcons';
 
-import { fromFileUri } from '../api/languageMap';
+import { fromFileUri, getLspLanguageId } from '../api/languageMap';
 import { useLspStore } from '../store/lspStore';
 import type { LspDiagnostic } from '../types';
+
+import { DiagnosticQuickFix } from './DiagnosticQuickFix';
+import { SeverityIcon, severityColorClass } from './SeverityIcon';
 
 interface DiagnosticsPanelProps {
   /** 项目根路径（lspStore 诊断切片键，D3 单写点：数据直采 lsp-diagnostics 事件）。 */
@@ -74,14 +77,6 @@ function splitLabel(label: string): { name: string; dir: string } {
   return { name: label.slice(idx + 1), dir: label.slice(0, idx) };
 }
 
-/** severity → 行首图标与配色（VS Code Problems 同构：⊗红 / ⚠黄 / ℹ蓝 / 暗点）。 */
-function severityVisual(severity: number | null): { icon: ReactNode; color: string } {
-  if (severity === 1) return { icon: <XCircle size={14} />, color: 'text-red-500' };
-  if (severity === 2) return { icon: <AlertTriangle size={14} />, color: 'text-yellow-500' };
-  if (severity === 3) return { icon: <Info size={14} />, color: 'text-blue-500' };
-  return { icon: <CircleDot size={14} />, color: 'text-text-muted' };
-}
-
 /**
  * Problems 诊断列表（VS Code Problems 视觉契约）：
  * 文件组头 = 折叠 chevron + 文件类型图标 + 文件名（主色）+ 父目录（暗色）+ 计数徽章；
@@ -139,50 +134,61 @@ export function DiagnosticsPanel({ projectPath, onJumpToDiagnostic }: Diagnostic
               {!isCollapsed && (
                 <div className="ml-6 border-l border-border/60">
                   {group.diagnostics.map((d) => {
-                    const visual = severityVisual(d.severity);
                     return (
-                      <button
+                      // 外层 div 只为提供 `group`（灯泡按 group-hover 显形）。行与灯泡都是
+                      // button，嵌套 button 是非法 DOM —— 必须做成兄弟而不是父子。
+                      <div
                         key={`${d.message}-${d.range.start.line}-${d.range.start.character}-${
                           d.severity ?? 'none'
                         }`}
-                        type="button"
-                        data-testid="diagnostic-row"
-                        onClick={() => onJumpToDiagnostic?.(group.uri, d)}
-                        className="w-full flex items-center gap-2 pl-2 pr-2 py-1 text-xs hover:bg-bg-hover transition-colors text-left cursor-pointer"
+                        className="group w-full flex items-center gap-2 pl-2 pr-2 py-1 text-xs hover:bg-bg-hover transition-colors"
                       >
-                        <span
-                          data-testid="diagnostic-row-icon"
-                          className={`shrink-0 ${visual.color}`}
+                        <button
+                          type="button"
+                          data-testid="diagnostic-row"
+                          onClick={() => onJumpToDiagnostic?.(group.uri, d)}
+                          className="flex-1 min-w-0 flex items-center gap-2 text-left cursor-pointer"
                         >
-                          {visual.icon}
-                        </span>
-                        <span className="min-w-0 flex-1 truncate text-text-primary">
-                          {d.message}
-                        </span>
-                        {d.source && <span className="shrink-0 text-text-muted">{d.source}</span>}
-                        {d.code != null &&
-                          // 有 codeDescription.target → 真链接（VS Code 同款：打开诊断文档，
-                          // 系统默认浏览器）；否则静态文本。stopPropagation 防止触发行跳转。
-                          (d.codeDescription?.href ? (
-                            <a
-                              href={d.codeDescription.href}
-                              data-testid="diagnostic-code-link"
-                              className="shrink-0 text-blue-400/80 underline underline-offset-2 hover:text-blue-300"
-                              onClick={(e) => {
-                                e.preventDefault();
-                                e.stopPropagation();
-                                void openInDefaultBrowser(d.codeDescription!.href);
-                              }}
-                            >
-                              ({d.code})
-                            </a>
-                          ) : (
-                            <span className="shrink-0 text-blue-400/80">({d.code})</span>
-                          ))}
-                        <span className="shrink-0 text-text-muted">
-                          [Ln {d.range.start.line + 1}, Col {d.range.start.character + 1}]
-                        </span>
-                      </button>
+                          <span
+                            data-testid="diagnostic-row-icon"
+                            className={`shrink-0 ${severityColorClass(d.severity)}`}
+                          >
+                            <SeverityIcon severity={d.severity} />
+                          </span>
+                          <span className="min-w-0 flex-1 truncate text-text-primary">
+                            {d.message}
+                          </span>
+                          {d.source && <span className="shrink-0 text-text-muted">{d.source}</span>}
+                          {d.code != null &&
+                            // 有 codeDescription.target → 真链接（VS Code 同款：打开诊断文档，
+                            // 系统默认浏览器）；否则静态文本。stopPropagation 防止触发行跳转。
+                            (d.codeDescription?.href ? (
+                              <a
+                                href={d.codeDescription.href}
+                                data-testid="diagnostic-code-link"
+                                className="shrink-0 text-blue-400/80 underline underline-offset-2 hover:text-blue-300"
+                                onClick={(e) => {
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                  void openInDefaultBrowser(d.codeDescription!.href);
+                                }}
+                              >
+                                ({d.code})
+                              </a>
+                            ) : (
+                              <span className="shrink-0 text-blue-400/80">({d.code})</span>
+                            ))}
+                          <span className="shrink-0 text-text-muted">
+                            [Ln {d.range.start.line + 1}, Col {d.range.start.character + 1}]
+                          </span>
+                        </button>
+                        <DiagnosticQuickFix
+                          projectPath={projectPath}
+                          languageId={getLspLanguageId(fromFileUri(group.uri))}
+                          uri={group.uri}
+                          diagnostic={d}
+                        />
+                      </div>
                     );
                   })}
                 </div>

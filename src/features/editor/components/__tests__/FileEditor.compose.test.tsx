@@ -37,6 +37,10 @@ vi.mock('@/features/lsp', () => ({
   useCmdHeld: () => mocks.cmdHeld,
   // 诊断投影是模块级单例扩展；本用例只验证装配接线，stub 成空数组。
   lspDiagnosticsProjection: () => [],
+  // 编辑器内 quickfix 同理：本用例只验证"接线是否发生"，扩展本体由 lspQuickFix.test 覆盖
+  lspQuickFix: () => [],
+  fromFileUri: (uri: string) => uri.replace('file://', ''),
+  getLspLanguageId: () => 'go',
 }));
 
 vi.mock('../../hooks/useLspClient', () => ({ useLspClient: mocks.useLspClient }));

@@ -4,10 +4,11 @@ import { useShallow } from 'zustand/shallow';
 import { useEditorStore } from '@/shared/store/editorStore';
 import type { TerminalTab, AgentConfig, Tab, TerminalTabData } from '@/shared/types';
 
+import { MAX_TERMINAL_TABS, generateTerminalTabId } from '../api/taskTerminal';
 import { closeAllEditorTabs, closeEditorTab } from '../components/terminalTabCleanup';
 
 function generateTabId(): string {
-  return `tab_${crypto.randomUUID()}`;
+  return generateTerminalTabId();
 }
 
 /** Type guard: narrow Tab to terminal kind */
@@ -127,7 +128,7 @@ export function useTerminalTabs() {
       const state = useEditorStore.getState();
       const existing = state.tabs[projectId];
       const terminalCount = (existing?.tabs ?? []).filter(isTerminalTab).length;
-      if (terminalCount >= 10) return null;
+      if (terminalCount >= MAX_TERMINAL_TABS) return null;
 
       const tabId = generateTabId();
       const newTab: Tab = {

@@ -10,6 +10,9 @@
 export { acquireLspPlugin, releaseLspClient } from './hooks/lspClientManager';
 export { lspDiagnosticsProjection } from './hooks/lspDiagnosticsProjection';
 export { withJdtLinkHandler } from './hooks/lspHoverExtension';
+// 编辑器内 quickfix（hover 提示 / 键位 / gutter 灯泡）：由 editor 域的装配处调用
+export { lspQuickFix } from './hooks/lspQuickFix';
+export { fromFileUri, getLspLanguageId } from './api/languageMap';
 export { useCmdHeld } from './hooks/useCmdHeld';
 export { useLspDefinition } from './hooks/useLspDefinition';
 export { useLspLinkHighlightExtension, clearLinkHighlight } from './hooks/useLspLinkHighlight';

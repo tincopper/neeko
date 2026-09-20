@@ -5,6 +5,8 @@ export interface CodeContext {
   startLine: number;
   endLine: number;
   language?: string;
+  /** 诊断消息（诊断 UI 的 AI 动作）：让 agent 知道要修/解释的具体问题。 */
+  diagnostic?: string;
 }
 
 export interface DiffContext {
@@ -32,11 +34,15 @@ export function buildCodeMessage(
 
   switch (action) {
     case 'explain':
-      return `explain the ${lang} code at ${location}`;
+      return ctx.diagnostic
+        ? `explain the following problem in this ${lang} code at ${location}: ${ctx.diagnostic}`
+        : `explain the ${lang} code at ${location}`;
     case 'review':
       return `review this ${lang} code for issues at ${location}`;
     case 'fix':
-      return `fix any bugs or issues in this ${lang} code at ${location}`;
+      return ctx.diagnostic
+        ? `fix the following problem in this ${lang} code at ${location}: ${ctx.diagnostic}`
+        : `fix any bugs or issues in this ${lang} code at ${location}`;
     case 'ask':
       return `${question || '?'} (context: ${location})`;
   }

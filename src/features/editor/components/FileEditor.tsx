@@ -97,12 +97,13 @@ function FileEditor({
 
   // LSP 装配簇（client / 导航 / jdt 链接晚绑定 / 交互态光标样式）收在专用 hook，
   // 与「文件挂载 + 断点 + 运行入口」的装配互不干扰。
-  const { lspClientExt, lspKeymap, cmdClickExt, linkHighlightExt, cmClassName } = useFileEditorLsp({
-    tab,
-    tabKey,
-    projectPath,
-    editorViewRef,
-  });
+  const { lspClientExt, lspKeymap, quickFixExt, cmdClickExt, linkHighlightExt, cmClassName } =
+    useFileEditorLsp({
+      tab,
+      tabKey,
+      projectPath,
+      editorViewRef,
+    });
 
   // 用户意图导航目标兑现器：与 useDebugStopReveal 相邻装配，共用同一 editorViewRef /
   // editorViewEpoch。挂载消费（consumeOnViewCreate）注入 useEditorViewSnapshot，
@@ -185,6 +186,7 @@ function FileEditor({
     viewStateExt,
     lspClientExt,
     lspKeymap,
+    quickFixExt,
     cmdClickExt,
     linkHighlightExt,
     bpGutterExt,

@@ -3,7 +3,10 @@
 //! Defines the [`LspTransport`] trait and the default [`IpcTransport`] implementation.
 use tauri::Emitter;
 
-use super::types::{LSP_DIAG_EVENT_PREFIX, LSP_PROGRESS_EVENT_PREFIX, LSP_SESSION_EVENT_PREFIX};
+use super::types::{
+    LSP_APPLY_EDIT_EVENT_PREFIX, LSP_DIAG_EVENT_PREFIX, LSP_PROGRESS_EVENT_PREFIX,
+    LSP_SESSION_EVENT_PREFIX,
+};
 
 /// Trait for delivering LSP-originated data to the frontend.
 ///
@@ -27,6 +30,12 @@ pub trait LspTransport: Send + Sync {
         _percentage: Option<u32>,
     ) {
     }
+
+    /// Hand a server-initiated `workspace/applyEdit` to the frontend.
+    ///
+    /// `edit` is the raw LSP `WorkspaceEdit` — passed through without parsing so
+    /// the editor owns interpretation. Default no-op keeps test doubles small.
+    fn push_apply_edit(&self, _project_path: &str, _language_id: &str, _edit: &serde_json::Value) {}
 
     /// Push a session lifecycle event (starting, ready, error, etc.) to the frontend.
     fn push_session_event(
@@ -111,6 +120,21 @@ impl LspTransport for IpcTransport {
         if let Err(e) = self.app_handle.emit(&event_name, payload) {
             log::error!(
                 "[LSP] Failed to emit progress event '{}': {}",
+                event_name,
+                e
+            );
+        }
+    }
+
+    fn push_apply_edit(&self, project_path: &str, language_id: &str, edit: &serde_json::Value) {
+        let event_name = format!("{}{}", LSP_APPLY_EDIT_EVENT_PREFIX, project_path);
+        let payload = serde_json::json!({
+            "languageId": language_id,
+            "edit": edit,
+        });
+        if let Err(e) = self.app_handle.emit(&event_name, payload) {
+            log::error!(
+                "[LSP] Failed to emit applyEdit event '{}': {}",
                 event_name,
                 e
             );

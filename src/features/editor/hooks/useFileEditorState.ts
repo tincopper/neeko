@@ -1,11 +1,13 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
-import { useTerminalTabs } from '@/features/terminal';
+import { getAgent } from '@/features/agent/api/agentApi';
+import { createTaskTerminal } from '@/features/terminal/api/taskTerminal';
 import { AGENT_IDS } from '@/shared/constants/agentIds';
 import { useProjectStore } from '@/shared/store/projectStore';
 import type { FileTab } from '@/shared/types';
 import type { EditorAction } from '@/shared/utils/agentPrompt';
 import { buildCodeMessage } from '@/shared/utils/agentPrompt';
+import { buildAgentPromptCommand } from '@/shared/utils/agentPromptCommand';
 import { resolveAbsolutePath } from '@/shared/utils/browserUtils';
 import {
   getCachedLanguageExtension,
@@ -15,6 +17,12 @@ import {
 import { relativeToRoot } from '@/shared/utils/fileRef';
 import { isHtmlFile, isJsonFile, isSvgFile } from '@/shared/utils/fileTree';
 
+import {
+  registerAiActionHandler,
+  unregisterAiActionHandler,
+  type AiActionRequest,
+} from '../api/aiActionRegistry';
+import { editorIdentityOfTab } from '../api/editorViews';
 import type { PreviewMode } from '../types';
 
 import { useEditorAgentActions } from './useEditorAgentActions';
@@ -79,6 +87,72 @@ export function useFileEditorState({ tab, projectPath }: UseFileEditorStateParam
   const { sendToAgent, pending, clearPending } = useEditorAgentActions();
   const currentProjectIdForToolbar = tab.projectId;
 
+  /**
+   * 代码动作消息的构造（唯一实现）：选区工具栏与诊断 AI 动作共用。
+   * 发给 agent 的路径保持项目相对（可读性，与 tab 相对存储时代一致）；
+   * tab.filePath 已 canonical 绝对，剥根转换仅用于消息文本。
+   */
+  const buildActionMessage = useCallback(
+    (
+      action: EditorAction,
+      range: { startLine: number; endLine: number },
+      diagnostic?: string,
+      question?: string,
+    ) =>
+      buildCodeMessage(
+        action,
+        {
+          filePath: relativeToRoot(projectPath ?? '', tab.filePath),
+          startLine: range.startLine,
+          endLine: range.endLine,
+          diagnostic,
+        },
+        question,
+      ),
+    [tab.filePath, projectPath],
+  );
+
+  /**
+   * 没有运行的 agent 终端时：经 terminal 端口打开一个 agent 终端并执行对应 CLI 的
+   * **一次性 prompt 命令**（如 opencode → `opencode --prompt '…'`）。用 taskCommand
+   * 终端（PTY 直接执行）—— 不进入交互 TUI，也无需等 session 就绪再补发：不存在
+   * "终端开了但 agent CLI 没起来导致消息发不出去"的问题。
+   *
+   * 配额/ID/排序知识收敛在 terminal 域（`createTaskTerminal`），此处只传参。
+   */
+  const sendAfterBoot = useCallback(
+    async (message: string): Promise<boolean> => {
+      const agentId =
+        useProjectStore.getState().activeProject?.selected_agents?.[0] ?? AGENT_IDS.opencode;
+      const agent = await getAgent(agentId).catch(() => null);
+      if (!agent?.command) {
+        console.warn('[AgentChat] AI 动作：无法解析 agent 命令，未打开终端');
+        return false;
+      }
+      const taskCommand = buildAgentPromptCommand(agent, message);
+      return createTaskTerminal(currentProjectIdForToolbar, {
+        agentId,
+        agentName: agent.name ?? undefined,
+        taskCommand,
+      });
+    },
+    [currentProjectIdForToolbar],
+  );
+
+  const dispatchCodeAction = useCallback(
+    (
+      action: EditorAction,
+      range: { startLine: number; endLine: number },
+      question?: string,
+      diagnostic?: string,
+    ) =>
+      sendToAgent(
+        currentProjectIdForToolbar,
+        buildActionMessage(action, range, diagnostic, question),
+      ),
+    [currentProjectIdForToolbar, buildActionMessage, sendToAgent],
+  );
+
   const handleCloseToolbar = useCallback(() => {
     setSelectionLines(null);
     setToolbarPos(null);
@@ -87,43 +161,60 @@ export function useFileEditorState({ tab, projectPath }: UseFileEditorStateParam
   const handleEditorAction = useCallback(
     (action: EditorAction, question?: string) => {
       if (!selectionLines) return;
-      const message = buildCodeMessage(
-        action,
-        {
-          // 发给 agent 的路径保持项目相对（可读性，与 tab 相对存储时代一致）；
-          // tab.filePath 已 canonical 绝对，剥根转换仅用于消息文本。
-          filePath: relativeToRoot(projectPath ?? '', tab.filePath),
-          startLine: selectionLines.startLine,
-          endLine: selectionLines.endLine,
-        },
-        question,
-      );
-      const sent = sendToAgent(currentProjectIdForToolbar, message);
+      const sent = dispatchCodeAction(action, selectionLines, question);
       if (sent) {
         setSelectionLines(null);
         setToolbarPos(null);
       }
     },
-    [selectionLines, tab.filePath, projectPath, currentProjectIdForToolbar, sendToAgent],
+    [selectionLines, dispatchCodeAction],
   );
 
-  const { addTab: addTerminalTab } = useTerminalTabs();
+  // ── 诊断 UI 的 AI 动作登记（M3）：Problems 面板 / 编辑器 hover popup 经
+  // aiActionRegistry 按 LSP uri 找到这里（镜像 editorViews 的注册表模式）。
+  // B1：agent 自己通过工具改文件，宿主只把诊断上下文（行范围 + 消息）传过去。
+  // 有 agent 终端直接发；没有则自动创建并补发 —— 点击必须"有反应"（不能静默 no-op）。
+  const aiActionIdentity = useMemo(
+    () => editorIdentityOfTab(tab.projectId, tab.filePath),
+    [tab.projectId, tab.filePath],
+  );
+  // 派发经 ref 读最新闭包（依赖项随渲染变化）
+  const runDiagnosticActionRef = useRef<(req: AiActionRequest) => boolean>(() => false);
+  useEffect(() => {
+    runDiagnosticActionRef.current = (req) => {
+      const message = buildActionMessage(
+        req.action,
+        { startLine: req.startLine, endLine: req.endLine },
+        req.diagnosticMessage,
+      );
+      if (sendToAgent(currentProjectIdForToolbar, message)) return true;
+      // 没有 agent 终端：清掉 sendToAgent 留下的 pending（诊断路径无工具栏承接），
+      // 打开 agent 终端执行一次性 prompt 命令（taskCommand，PTY 直接跑，无需等就绪）
+      clearPending();
+      void sendAfterBoot(message);
+      return true; // 已接管：终端打开后由 taskCommand 执行命令
+    };
+  }, [buildActionMessage, currentProjectIdForToolbar, sendToAgent, clearPending, sendAfterBoot]);
+  useEffect(() => {
+    if (!aiActionIdentity) return;
+    const handler = (req: AiActionRequest): boolean => runDiagnosticActionRef.current(req);
+    registerAiActionHandler(aiActionIdentity, handler);
+    // 同一身份已被本 tab 登记（如 StrictMode 双挂载）→ 幂等（Map 覆盖）
+    return () => {
+      unregisterAiActionHandler(aiActionIdentity);
+    };
+  }, [aiActionIdentity]);
 
   const handleCreateTab = useCallback(() => {
-    const agentId =
-      useProjectStore.getState().activeProject?.selected_agents?.[0] ?? AGENT_IDS.opencode;
-    const tabCreated = addTerminalTab(currentProjectIdForToolbar, agentId, agentId);
-    if (tabCreated && pending) {
-      setTimeout(() => {
-        import('@/features/terminal').then(({ sendToTerminal }) => {
-          sendToTerminal(currentProjectIdForToolbar, `${pending.message}\r`);
-          clearPending();
-          setSelectionLines(null);
-          setToolbarPos(null);
-        });
-      }, 1500);
-    }
-  }, [currentProjectIdForToolbar, pending, clearPending, addTerminalTab]);
+    if (!pending) return;
+    void sendAfterBoot(pending.message).then((sent) => {
+      if (sent) {
+        clearPending();
+        setSelectionLines(null);
+        setToolbarPos(null);
+      }
+    });
+  }, [pending, sendAfterBoot, clearPending]);
 
   return {
     previewMode,

@@ -28,6 +28,8 @@ export interface AgentConfig {
   chat?: ChatStart | null;
   /** prompt 前置参数（Headless 能力；None = 无）。 */
   prompt_args?: string[] | null;
+  /** 交互式（TUI）prompt 前置参数（如 opencode `--prompt`：打开 CLI 并预填 prompt）；None = 无交互形态，回落 headless prompt_args。 */
+  interactive_prompt_args?: string[] | null;
   post_prompt_args?: string[] | null;
   /** 全局 skills 目录 override（如 ~/.claude/skills）。 */
   skill_path?: string | null;

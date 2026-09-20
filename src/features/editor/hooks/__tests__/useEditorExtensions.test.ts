@@ -37,6 +37,7 @@ describe('useEditorExtensions — 诊断投影装配契约', () => {
         viewStateExt: [],
         lspClientExt: [],
         lspKeymap: [],
+        quickFixExt: [],
         cmdClickExt: [],
         linkHighlightExt: [],
         bpGutterExt: [],

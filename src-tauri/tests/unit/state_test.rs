@@ -190,6 +190,7 @@ fn agent_config_serde_roundtrip() {
         icon: Some("icon.png".into()),
         enabled: true,
         prompt_args: None,
+        interactive_prompt_args: None,
         post_prompt_args: None,
         is_builtin: false,
         skill_path: None,

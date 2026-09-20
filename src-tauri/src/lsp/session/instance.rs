@@ -339,9 +339,15 @@ impl LspSession {
                                     let root = url::Url::from_directory_path(&ws_root_reader)
                                         .ok()
                                         .map(|u| u.to_string());
+                                    let ctx = crate::lsp::server_request::ServerRequestCtx {
+                                        workspace_folder_uri: root.as_deref(),
+                                        project_path: &pp_reader,
+                                        language_id: &lang_id_clone,
+                                        transport: &*transport_clone,
+                                    };
                                     let resp = crate::lsp::server_request::respond_to_server_request(
                                         req,
-                                        root.as_deref(),
+                                        &ctx,
                                     );
                                     log::debug!(
                                         "[LSP] Answered server request: {} id={:?}",

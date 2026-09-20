@@ -9,6 +9,13 @@ pub const LSP_DIAG_EVENT_PREFIX: &str = "lsp-diagnostics-";
 /// Prefix for LSP progress events: `lsp-progress-{project_path}`.
 pub const LSP_PROGRESS_EVENT_PREFIX: &str = "lsp-progress-";
 
+/// Prefix for `workspace/applyEdit` requests forwarded to the frontend:
+/// `lsp-apply-edit-{project_path}`.
+/// The server asks the client to apply a WorkspaceEdit; we hand it to the
+/// editor instead of answering MethodNotFound (frontend mirror:
+/// `src/shared/events.ts` `LSP_APPLY_EDIT_EVENT_PREFIX`).
+pub const LSP_APPLY_EDIT_EVENT_PREFIX: &str = "lsp-apply-edit-";
+
 /// Prefix for LSP session lifecycle events: `lsp-session-{project_path}`.
 /// (frontend mirror: `src/shared/events.ts` `LSP_SESSION_EVENT_PREFIX`).
 pub const LSP_SESSION_EVENT_PREFIX: &str = "lsp-session-";
@@ -192,6 +199,10 @@ mod tests {
         assert_eq!(
             format!("{}{}", LSP_SESSION_EVENT_PREFIX, "/p"),
             "lsp-session-/p"
+        );
+        assert_eq!(
+            format!("{}{}", LSP_APPLY_EDIT_EVENT_PREFIX, "/p"),
+            "lsp-apply-edit-/p"
         );
         assert_eq!(LSP_INSTALL_PROGRESS_EVENT, "lsp-install-progress");
         assert_eq!(LSP_PROFILE_EVENT, "lsp-project-profile");

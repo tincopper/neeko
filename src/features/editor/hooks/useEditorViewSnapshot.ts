@@ -17,6 +17,7 @@ import {
   type SerializedSelection,
 } from '@/shared/utils/editorViewState';
 
+import { editorIdentityOfTab, registerEditorView, unregisterEditorView } from '../api/editorViews';
 import { resolveDebugHighlightLine } from '../stopMatch';
 
 import { applyDebugCurrentLine } from './useBreakpointGutter';
@@ -143,6 +144,10 @@ export function useEditorViewSnapshot({
   const handleCreateEditor = useCallback(
     (view: EditorView) => {
       editorViewRef.current = view;
+      // 登记到全局注册表：跨面板的编辑（codeAction / workspace/applyEdit）要按
+      // document uri 找回这个视图。项目根取自项目对象，不在本处推导。
+      const viewIdentity = editorIdentityOfTab(tab.projectId, absFilePath);
+      if (viewIdentity) registerEditorView(viewIdentity, view);
       setEditorViewEpoch((n) => n + 1);
       // Apply any breakpoints already in the store (effect may have run before view existed)
       const dbgBp = useDebugStore.getState();
@@ -216,10 +221,13 @@ export function useEditorViewSnapshot({
   useEffect(() => {
     return () => {
       saveEditorSnapshot();
+      // 注销：注册表必须随视图一起回收，否则会持有已销毁的 EditorView（V8 堆泄漏）。
+      const viewIdentity = editorIdentityOfTab(tab.projectId, absFilePath);
+      if (viewIdentity) unregisterEditorView(viewIdentity);
       editorViewRef.current = null;
       editorRestoredRef.current = false;
     };
-  }, [saveEditorSnapshot, editorViewRef]);
+  }, [saveEditorSnapshot, editorViewRef, tab.projectId, absFilePath]);
 
   return { handleCreateEditor, viewStateExt, resetEditorRestored };
 }

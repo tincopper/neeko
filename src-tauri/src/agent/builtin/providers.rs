@@ -23,6 +23,7 @@ pub fn builtin_configs() -> Vec<AgentConfig> {
             env: HashMap::new(),
             chat: None,
             prompt_args: Some(vec!["--bare".into(), "-p".into()]),
+            interactive_prompt_args: None,
             post_prompt_args: Some(vec!["--dangerously-skip-permissions".into()]),
             skill_path: Some("~/.claude/skills".into()),
             detection: Some(Detection::Command {
@@ -42,6 +43,8 @@ pub fn builtin_configs() -> Vec<AgentConfig> {
             "opencode.png",
             "opencode",
             Some(&["run", "--pure", "--dangerously-skip-permissions=true", "-f"]),
+            // 交互式（TUI）形态：opencode --prompt "<prompt>"（打开 CLI 并预填 prompt）
+            Some(&["--prompt"]),
             None,
             Some(ChatStart::Serve),
             "~/.config/opencode/skills",
@@ -54,6 +57,7 @@ pub fn builtin_configs() -> Vec<AgentConfig> {
             Some(&["--prompt"]),
             None,
             None,
+            None,
             "~/.gemini/skills",
         ),
         shell_agent(
@@ -62,6 +66,7 @@ pub fn builtin_configs() -> Vec<AgentConfig> {
             "codex.png",
             "codex",
             Some(&[]),
+            None,
             None,
             None,
             "~/.codex/skills",
@@ -74,6 +79,7 @@ pub fn builtin_configs() -> Vec<AgentConfig> {
             Some(&["--prompt"]),
             None,
             None,
+            None,
             "~/.qoder/skills",
         ),
         shell_agent(
@@ -82,6 +88,7 @@ pub fn builtin_configs() -> Vec<AgentConfig> {
             "codebuddy.svg",
             "codebuddy",
             Some(&["--prompt"]),
+            None,
             None,
             None,
             "~/.codebuddy/skills",
@@ -94,6 +101,7 @@ pub fn builtin_configs() -> Vec<AgentConfig> {
             Some(&["-p"]),
             None,
             None,
+            None,
             "~/.omp/skills",
         ),
         shell_agent(
@@ -102,6 +110,7 @@ pub fn builtin_configs() -> Vec<AgentConfig> {
             "pi.svg",
             "pi",
             Some(&["-p"]),
+            None,
             None,
             None,
             "~/.pi/skills",
@@ -114,6 +123,7 @@ pub fn builtin_configs() -> Vec<AgentConfig> {
             Some(&["run", "--yolo"]),
             None,
             None,
+            None,
             "~/.reasonix/skills",
         ),
         shell_agent(
@@ -122,6 +132,7 @@ pub fn builtin_configs() -> Vec<AgentConfig> {
             "grok.ico",
             "grok",
             Some(&["-p"]),
+            None,
             None,
             None,
             "~/.grok/skills",
@@ -138,6 +149,7 @@ pub fn builtin_configs() -> Vec<AgentConfig> {
             env: HashMap::new(),
             chat: Some(ChatStart::Mock),
             prompt_args: None,
+            interactive_prompt_args: None,
             post_prompt_args: None,
             skill_path: Some("~/.mock-agent/skills".into()),
             detection: None,
@@ -174,6 +186,7 @@ fn shell_agent(
     icon: &'static str,
     command: &'static str,
     prompt_args: Option<&[&'static str]>,
+    interactive_prompt_args: Option<&[&'static str]>,
     post_prompt_args: Option<&[&'static str]>,
     chat: Option<ChatStart>,
     skill_path: &'static str,
@@ -189,6 +202,8 @@ fn shell_agent(
         env: HashMap::new(),
         chat,
         prompt_args: prompt_args.map(|a| a.iter().map(|s| (*s).into()).collect()),
+        interactive_prompt_args: interactive_prompt_args
+            .map(|a| a.iter().map(|s| (*s).into()).collect()),
         post_prompt_args: post_prompt_args.map(|a| a.iter().map(|s| (*s).into()).collect()),
         skill_path: Some(skill_path.into()),
         detection: Some(Detection::Command {
