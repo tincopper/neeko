@@ -54,6 +54,24 @@ lsp-client 补全接受已原子应用 `additionalTextEdits`（自动导入核�
 - 在 Go 项目中实测现有链路：gopls 是否安装/启动、`fmt.` 是否弹出补全、接受后是否
   自动落 import、错误是否显示 squiggle——**实测结果决定 M1 前是否需要先修链路断点**
 
+### R5 静态扫描（2026-09-20，AC5 的部分证据）
+
+对本任务改动面（`4619c839~1..HEAD`，排除 `builtins/` 与测试）检索 `language_id ==` /
+`match language_id` / `languageId ===` / 语言字面量：
+
+- **本任务引入：0 处**。三通道（诊断 / 补全附加编辑 / codeAction + applyEdit）与 UI 层
+  均无语言分支；命中仅剩两类合法形态——「按 `languageId` 查表找会话/探针条目」
+  （`LspSlotItem.tsx:119`、`useLspServerActions.ts:41/79`、`LspStatusSection.tsx:85`），
+  以及把 `language_id` 当作**数据**透传/装箱（不做分支判断）。
+- **存量、非本任务引入（均出自 `80e011c6` 另一任务）的两处语言分支**：
+  1. `lsp/hooks/lspClientManager.ts:68` `lspClientTimeout` —— `languageId === 'java'
+     ? 120_000 : 15_000`（请求超时应是插件数据 `LspPlugin` 字段）
+  2. `lsp/hooks/useLspDefinition.ts:142,151` —— `languageId === 'java'` 走
+     `showJavaNoDefinitionHint`（「探测 hover 区分 JDK 源码映射」应是通用能力，任何
+     提供 source-materializer 的 LS 都可能需要）
+  两者违反 AGENTS.md 红线 15（Language Differences Are Plugin Data），但**不属于本任务
+  改动面**；待定：并入本任务收尾 or 另开技术债任务。
+
 ### R0 诊断记录（2026-09-18，用户实测「自动导包还是不行」）
 
 **根因（三处叠加，均已修）**：
