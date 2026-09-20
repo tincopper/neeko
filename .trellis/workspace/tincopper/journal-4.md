@@ -1678,3 +1678,36 @@ Java（`List`）、Go（`fmt.Pr`）三种语言自动导包均生效，一次 Ct
 ### Next Steps
 
 - None - task complete
+
+
+## Session 221: lsp M4策略三态收尾
+
+**Date**: 2026-09-20
+**Task**: lsp M4策略三态收尾
+**Branch**: `main`
+
+### Summary
+
+(Add summary)
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `6909b543` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

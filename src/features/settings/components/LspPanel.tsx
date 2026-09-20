@@ -52,6 +52,7 @@ const LspPanel: React.FC<LspPanelProps> = ({ config, onConfigChange }) => {
     () => ({
       ...DEFAULT_LSP,
       ...(config.lsp ?? {}),
+      importStrategy: config.lsp?.importStrategy ?? 'auto',
       customServers: config.lsp?.customServers ?? [],
     }),
     [config.lsp],

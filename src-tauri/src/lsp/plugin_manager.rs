@@ -155,11 +155,4 @@ impl LspPluginManager {
             }
         }
     }
-
-    pub(crate) fn default_auto_start(&self) -> LspAutoStart {
-        self.default_auto_start
-            .lock()
-            .map(|x| *x)
-            .unwrap_or(LspAutoStart::OnFirstFile)
-    }
 }

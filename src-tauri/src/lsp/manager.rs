@@ -228,22 +228,6 @@ impl LspManager {
         self.plugin_manager.extension_conflicts()
     }
 
-    /// Get a snapshot of current LSP settings.
-    pub fn get_settings_snapshot(&self) -> LspSettings {
-        let auto_start = self.plugin_manager.default_auto_start();
-        LspSettings {
-            auto_start: auto_start.as_str().to_string(),
-            deactivate_stop_minutes: self
-                .deactivate_stop_secs
-                .lock()
-                .map(|x| x.saturating_div(60))
-                .unwrap_or_default(),
-            custom_servers: Vec::new(),
-            // M4 纯前端策略：快照不设该键（调用方无；留 default 仅为构造完整）。
-            import_strategy: "auto".to_string(),
-        }
-    }
-
     /// Access the diagnostic bus (for hooking up transport subscribers).
     pub const fn diag_bus(&self) -> &DiagnosticBus {
         &self.diag_bus

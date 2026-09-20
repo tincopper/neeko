@@ -18,7 +18,9 @@
   "commit": null,
   "pr_url": null,
   "subtasks": [],
-  "children": [],
+  "children": [
+    "09-20-problems-perf"
+  ],
   "parent": null,
   "relatedFiles": [],
   "notes": "",
