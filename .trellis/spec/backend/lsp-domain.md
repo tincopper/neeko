@@ -171,6 +171,22 @@ applyCodeAction(uri, action, resolveView = resolveEditorViewFromUri);
 - 已知边界（不扩）：`buildGroups` 每次 store 变化全量重排（虚拟滚动/增量分组范畴）；
   行 key `${message}-${line}-${char}-${severity}` 重复诊断碰撞（既存）。
 
+## 6. 诊断行展示：code 形态无关（勿回退）
+
+- **单一策略点**：`lsp/components/diagnosticCode.ts`（`diagnosticCodeBadge` /
+  `diagnosticCodeTooltip`）。Problems 行（`DiagnosticRow`）与编辑器 hover popup
+  （`lspQuickFixPopup`）都走它 —— 消费侧禁止自判 `diagnostic.code` / `codeDescription`
+  （红线 12 的同源要求：同一份语义只在一处分叉）。
+- **规则**：字符串 code 原样展示（有 `codeDescription.href` → 渲染成链接，打开诊断文档）；
+  数字 code **不占行尾**，原值进 `title`（悬停可查）；数字 code 且服务器给了文档链接时，
+  链接保留、文案取 `source`（无 source 兜底 `docs`），不把数字摆到界面上。
+- **为什么形态判据而非语言判据**：jdtls 把 Eclipse `IProblem` 的内部 ID（典型
+  `16777218` = `0x01000002`）当 `code` 发出 —— 对用户是纯噪音；而 TS 的 `2339` 同样是
+  数字却是有用的约定编号。**两者形状完全一致**，任何"按 languageId 分别处理"的写法都
+  违反红线 15。将来若要真正区分，必须由服务器在载荷里给出可分辨的数据，而不是客户端猜。
+- 护栏测试：`diagnosticCode.test.ts`（12 例，含数字/字符串/带链接/兜底文案）+ 面板级
+  「`16777218` 不得出现在行上」「`2339` 不在行尾但进 title」。
+
 ## 4. 常见坑
 
 1. **Vite 预打包缓存**：改 `patches/*.patch` 后只重启 dev 不够（lockfile 哈希不变仍命中旧
