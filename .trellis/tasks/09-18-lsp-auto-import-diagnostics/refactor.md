@@ -91,6 +91,25 @@
 
 门禁（每项完成后）：`pnpm type-check` + `pnpm test:run` 相关域 + `cargo test --manifest-path src-tauri/Cargo.toml`（F1-F5 为前端主，Rust 侧仅 F6 相关单测重跑）。
 
+## 完成留痕（2026-09-20 复核）
+
+全部 7 项已落地（同一提交 `5e5be798`），以下为 git  HEAD 代码实证复核：
+
+| 项 | 代码实证 | 状态 |
+|---|---|---|
+| F1 `applyCodeAction` 注入视图解析 | `lsp/api/codeAction.ts:154` `resolveView: EditorViewResolver = resolveEditorViewFromUri` 默认参数 | ✅ |
+| F2 `sendAfterBoot` 收回 terminal 域 | `terminal/api/taskTerminal.ts::createTaskTerminal`（配额/ID/排序一处）；`editor/hooks/useFileEditorState.ts:4,133` 只传参 | ✅ |
+| F3 `aiActionRegistry` 多 tab 竞态 | `editor/api/aiActionRegistry.ts:38-51` `Map<string,{handler,count}>` 引用计数，计数归零才删 | ✅ |
+| F4 Windows shell 选择 | 平台差异集中在 `platform::shell_launch`（`terminal/manager.rs:115` 不再自造）；`agentPromptCommand.test.ts:66` 引号/空格用例 | ✅（只验证未改拼装） |
+| F5 `lspQuickFix.ts` 拆分 + 探针清理 | `lspQuickFix.ts` 45 行只做装配 → popup(190)/gutter(92)/menu(19) | ✅ |
+| F6 `workspace/applyEdit` 可观测 | `lsp/hooks/lspWorkspaceEdit.ts:106` 统一 `[LSP] applyEdit skipped`；未引入 ack 协议 | ✅（维持乐观应答） |
+| F7a menu 二拆 | `hooks/quickFixMenuActions.ts` + `hooks/quickFixMenuRender.ts`，`lspQuickFixMenu.ts` 降为重导出 | ✅ |
+| F7b transport 抽探针 | `transport/lspCompletionProbe.ts`（纯函数 + 类型），单测随搬 `__tests__/lspCompletionProbe.test.ts` | ✅ |
+
+**未完成闭环**：本清单无 AC 级待办，仅缺门禁结果归档（见 `implement.md` 收尾）——复核批次
+`pnpm type-check` 0 错误 / `pnpm test:run` 465 文件 4045 passed / `cargo test` 102 passed
+（含 UI 十一轮「菜单不预选中」未提交改动一并验证）。
+
 ## 不做清单
 
 * 不引入"等前端 ack"的 applyEdit 确认协议（会重演服务端卡住）。

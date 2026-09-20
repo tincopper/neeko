@@ -126,6 +126,16 @@ M1 的诊断行承载。
     `interactive_prompt_args ?? prompt_args`，无任何 agent 特判。后端测试钉住 opencode
     交互式 `["--prompt"]` 与 headless `prompt_args` 双契约。
 
+18. **2026-09-20 十一轮（用户反馈"菜单不要预选中"）**：打开 quickfix 菜单时不再把首个/
+    首选可执行项标为高亮，改为「未移动 = 不高亮」，只有 ↑/↓ 或鼠标 hover 后才出现选中态。
+    两侧同步：`quickFixMenuRender.ts` 的 `activeIndex` 初值 `firstEnabledIndex(flatItems)`
+    → `-1`（`stepEnabledIndex` 从 -1 起步落到首个/末个可执行项），`DiagnosticQuickFix.tsx`
+    派生式 `activeIndex = navIndex ?? firstEnabledIndex(...)` → `navIndex ?? -1`（不再依赖
+    `firstEnabledIndex`，两处消费点归零，仅保留其 `stepEnabledIndex` 内部用途）。
+    **副作用（须记录）**：未移动直接 Enter 现在是 no-op —— 菜单要求显式选择后才生效。
+    测试：编辑器侧 4 条改写（不预选中断言 / ↓ 起步 / 边界 / Enter 先行移动），面板侧键盘
+    链补一次 `ArrowDown`；`lspQuickFix.test.ts` 31 + `DiagnosticQuickFix.test.tsx` 10 全绿。
+
 ## M4 策略三态（R4/AC4）
 
 1. 设置项 `editor.lsp.importStrategy`（settings 域既有模式 + 持久化）
