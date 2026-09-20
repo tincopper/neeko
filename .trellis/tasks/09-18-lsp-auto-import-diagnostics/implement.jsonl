@@ -1,3 +1,9 @@
-{"_example": "Fill with {\"file\": \"<path>\", \"reason\": \"<why>\"}. Put spec/research files only — no code paths. Run `python3 .trellis/scripts/get_context.py --mode packages` to list available specs. Delete this line once real entries are added."}
-{"file": ".trellis/tasks/09-18-lsp-auto-import-diagnostics/research/lsp-capability-matrix.md", "reason": "现状能力矩阵（file:line 实证）——实现的起点事实"}
-{"file": ".trellis/spec/frontend/state-management.md", "reason": "store 惯例（单写点/§12 可派生期望视图不做一次性槽）"}
+{"file": ".trellis/spec/backend/lsp-domain.md", "reason": "由本任务沉淀的域规范：三通道模型 / D1 语言无关 / D3 诊断单写点 / D4 server_request 白名单 —— 实现 M1-M4 的契约源"}
+{"file": ".trellis/tasks/09-18-lsp-auto-import-diagnostics/research/lsp-capability-matrix.md", "reason": "现状能力矩阵（file:line 实证）：主通道已在、缺哪些接线 —— 实现的起点事实"}
+{"file": ".trellis/tasks/09-18-lsp-auto-import-diagnostics/research/industry-survey.md", "reason": "VS Code / Zed 的自动导入与诊断机制基线，据此定 R1-R5 与 B1 产出形态"}
+{"file": ".trellis/tasks/09-18-lsp-auto-import-diagnostics/design.md", "reason": "§2 契约、§1.6 差异数据化、M1 挂载点判定标准 —— 每阶段的验收依据"}
+{"file": ".trellis/spec/frontend/state-management.md", "reason": "lspStore 诊断切片 / 事件订阅生命周期 / health 幂等的 store 惯例与单写点约束"}
+{"file": ".trellis/spec/frontend/status-bar.md", "reason": "M2 健康度 item 的挂载与刷新惯例（语言图标 + phase + 失败重试入口）"}
+{"file": ".trellis/spec/frontend/api-layer.md", "reason": "lsp/api 面（codeAction / lspImportStrategy / lspRequest）的边界约定，跨域调用只能走这一层"}
+{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "DiagnosticsPanel / 菜单 DOM / SeverityIcon 等组件的大小与拆分约束"}
+{"file": ".trellis/spec/frontend/hook-guidelines.md", "reason": "useFileEditorState / useDiagnosticQuickFix 的抽取与依赖倒置约定（注入 resolver、注册表端口）"}

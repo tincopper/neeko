@@ -1,3 +1,7 @@
-{"_example": "Fill with {\"file\": \"<path>\", \"reason\": \"<why>\"}. Put spec/research files only — no code paths. Run `python3 .trellis/scripts/get_context.py --mode packages` to list available specs. Delete this line once real entries are added."}
-{"file": ".trellis/spec/frontend/state-management.md", "reason": "核查诊断状态单写点与跨项目门控（#14 同类）"}
-{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "server_request 白名单语义与红线核查"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "红线核查：Event 名常量化、Command 层保持极薄、阻塞 I/O 隔离、平台差异集中化（server_request 转发与 Windows shell）"}
+{"file": ".trellis/spec/backend/lsp-domain.md", "reason": "对照实现是否满足三通道契约、D3 单写点、D4 白名单语义 —— 本任务产出的规范即审查基准"}
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "文件行数内聚告警、DEV 探针治理、拆分底线（F5/F7 即据此提出）"}
+{"file": ".trellis/spec/frontend/type-safety.md", "reason": "再无 any / as 逃逸：codeAction 载荷、applyEdit 事件、settings importStrategy 双端镜像类型"}
+{"file": ".trellis/spec/frontend/state-management.md", "reason": "诊断状态是否仍经 lspStore 单写点（禁止 CM 侧绕道直采事件）"}
+{"file": ".trellis/spec/frontend/interaction-patterns.md", "reason": "菜单键盘导航 / 弹出层可见性与 z-index（用户多轮反馈：点击即关、不预选中、popup 外壳）"}
+{"file": ".trellis/spec/frontend/api-layer.md", "reason": "lsp 域对外只有 api/ 面，editor/terminal 域不得被反向直导（F1 修复的双向依赖）"}
