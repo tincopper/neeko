@@ -136,6 +136,17 @@ M1 的诊断行承载。
     测试：编辑器侧 4 条改写（不预选中断言 / ↓ 起步 / 边界 / Enter 先行移动），面板侧键盘
     链补一次 `ArrowDown`；`lspQuickFix.test.ts` 31 + `DiagnosticQuickFix.test.tsx` 10 全绿。
 
+19. **2026-09-21 十二轮（用户反馈"Java 项目里问题链接是一段数字"）**：`16777218` 是
+    jdtls 把 Eclipse `IProblem` 内部 ID（0x01000002）当 `Diagnostic.code` 发出、我们按
+    VS Code 约定原样渲染的结果。判定**按形态不按语言**（红线 15）：新增共享策略
+    `lsp/components/diagnosticCode.ts`（`diagnosticCodeBadge` + `diagnosticCodeTooltip`），
+    Problems 行（`DiagnosticRow.tsx`）与编辑器 hover popup（`lspQuickFixPopup.ts`）共用
+    同一份规则 —— 字符串 code 照原样（有 href 则链接）；数字 code 不再占行尾、原值进
+    `title`（悬停仍可查，TS 的 `2339` 也适用）；数字 code 且服务器给了文档链接时保留链接、
+    文案换 `source`（无 source 兜底 `docs`）。测试：`diagnosticCode.test.ts` 12 例 +
+    面板级 3 条回归（含 `16777218 不得出现在行上`）；既有的 `(2339)` 断言改写为
+    「不占行尾 + title 可查」。全量 466 文件 4062 passed。
+
 ## M4 策略三态（R4/AC4）
 
 1. 设置项 `editor.lsp.importStrategy`（settings 域既有模式 + 持久化）
