@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-4.md`
-- **Total Sessions**: 221
+- **Total Sessions**: 222
 - **Last Active**: 2026-09-20
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-4.md` | ~1713 | Active |
+| `journal-4.md` | ~1746 | Active |
 | `journal-3.md` | ~1978 | Archived |
 | `journal-2.md` | ~1991 | Archived |
 | `journal-1.md` | ~1986 | Archived |
@@ -32,6 +32,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 222 | 2026-09-20 | lsp跟进修复提交 | `8ec80d77` | `main` |
 | 221 | 2026-09-20 | lsp M4策略三态收尾 | `6909b543` | `main` |
 | 220 | 2026-09-20 | lsp M3+重构收尾 | `799f3a1a` | `main` |
 | 219 | 2026-09-19 | Rust flyimport 修复收尾：提交并回填 commit | `6871c985`, `921ba9ab` | `main` |

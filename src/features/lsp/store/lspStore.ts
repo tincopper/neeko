@@ -110,6 +110,14 @@ interface LspStoreState {
    * 空 arrays 即清空该 uri（规范语义）。
    */
   setProjectDiagnostics: (projectPath: string, uri: string, diagnostics: LspDiagnostic[]) => void;
+  /**
+   * 一次替换多个 uri 的诊断（P1 突发收敛用）：与 `setProjectDiagnostics` 语义一致
+   * （每个 uri 整体替换），但合并为**单次** set，避免 N 次发布触发 N 次订阅通知。
+   */
+  setProjectDiagnosticsBatch: (
+    projectPath: string,
+    entries: Array<[string, LspDiagnostic[]]>,
+  ) => void;
   /** 会话结束 / 项目移除：对应 projectPath 键整体清除。 */
   clearProjectDiagnostics: (projectPath: string) => void;
   setInstallProgress: (progress: LspInstallProgress | null) => void;
@@ -143,6 +151,25 @@ interface LspStoreState {
   onProjectActivated: (projectPath: string) => Promise<void>;
 }
 
+/**
+ * 诊断切片的唯一写路径（D3 单写点）：按 projectPath 展开，逐个 uri 整体替换。
+ * `setProjectDiagnostics` / `setProjectDiagnosticsBatch` 共用 —— 突发合并与单条
+ * 推送走同一语义，展开逻辑只此一份。
+ */
+function patchDiagnosticsByProject(
+  prev: Record<string, Record<string, LspDiagnostic[]>>,
+  projectPath: string,
+  entries: Array<[string, LspDiagnostic[]]>,
+): Record<string, Record<string, LspDiagnostic[]>> {
+  return {
+    ...prev,
+    [projectPath]: {
+      ...(prev[projectPath] ?? {}),
+      ...Object.fromEntries(entries),
+    },
+  };
+}
+
 export const useLspStore = create<LspStoreState>((set, get) => ({
   sessions: {},
   profiles: {},
@@ -162,13 +189,20 @@ export const useLspStore = create<LspStoreState>((set, get) => ({
 
   setProjectDiagnostics: (projectPath, uri, diagnostics) => {
     set((prev) => ({
-      diagnosticsByProject: {
-        ...prev.diagnosticsByProject,
-        [projectPath]: {
-          ...(prev.diagnosticsByProject[projectPath] ?? {}),
-          [uri]: diagnostics,
-        },
-      },
+      diagnosticsByProject: patchDiagnosticsByProject(prev.diagnosticsByProject, projectPath, [
+        [uri, diagnostics],
+      ]),
+    }));
+  },
+
+  setProjectDiagnosticsBatch: (projectPath, entries) => {
+    if (entries.length === 0) return;
+    set((prev) => ({
+      diagnosticsByProject: patchDiagnosticsByProject(
+        prev.diagnosticsByProject,
+        projectPath,
+        entries,
+      ),
     }));
   },
 
@@ -295,6 +329,31 @@ export const useLspStore = create<LspStoreState>((set, get) => ({
   },
 
   subscribeToProject: async (projectPath) => {
+    // P1 突发收敛：jdtls 初次构建短时对数百文件逐个 publish，N 次直写会触发
+    // N 次订阅通知 → 面板 N 次全量重建。待处理表 + microtask 单次 flush，
+    // 把同 tick 突发压成 1 次 set（AC1 ≤ 3）。flush 仍经单写点语义：
+    // 每个 uri 整体替换，不做数组合并。
+    const pendingDiag = new Map<string, LspDiagnostic[]>();
+    let diagFlushScheduled = false;
+    const flushPendingDiag = () => {
+      if (pendingDiag.size === 0) {
+        diagFlushScheduled = false;
+        return;
+      }
+      const entries = Array.from(pendingDiag.entries());
+      pendingDiag.clear();
+      diagFlushScheduled = false;
+      // 单次 set 整体替换本次突发涉及的全部 uri（其余 uri 引用不变，
+      // 行 memo 化 P3 依赖该引用稳定性）。写路径收敛到 store action，
+      // 与 setProjectDiagnostics 同一单写点（D3），不在订阅闭包内平铺。
+      get().setProjectDiagnosticsBatch(projectPath, entries);
+    };
+    const scheduleDiagFlush = () => {
+      if (diagFlushScheduled) return;
+      diagFlushScheduled = true;
+      queueMicrotask(flushPendingDiag);
+    };
+
     const eventName = `${LSP_SESSION_EVENT_PREFIX}${projectPath}`;
     const unlistenSession = await listen<LspSessionStatusEventPayload>(eventName, (event) => {
       const { languageId, status, message, progressPct } = event.payload;
@@ -306,6 +365,8 @@ export const useLspStore = create<LspStoreState>((set, get) => ({
       if (NEW_SESSION_STATUS[status] || TERMINAL_STATUS[status]) {
         // 会话边界（新会话起点 / 终态）→ 上一会话的诊断整体失效，清该 projectPath 键
         // （design.md M1 错误矩阵；诊断事件无 languageId，按项目粒度清除）。
+        // 同步丢弃待 flush 的旧会话缓冲，否则 microtask 会把陈旧诊断写回来。
+        pendingDiag.clear();
         store.clearProjectDiagnostics(projectPath);
       }
       if (
@@ -364,6 +425,7 @@ export const useLspStore = create<LspStoreState>((set, get) => ({
 
     // 诊断直采（D3 单写点）：publishDiagnostics 语义 = 整体替换该 uri。
     // 注册/释放随 subscribeToProject 生命周期（bridge 对 active project 对称调用）。
+    // 突发收敛：先入待处理表，microtask 批量单次 set（R1）。
     const unlistenDiag = await listen<LspDiagnosticsEvent>(
       `${LSP_DIAG_EVENT_PREFIX}${projectPath}`,
       (event) => {
@@ -378,11 +440,14 @@ export const useLspStore = create<LspStoreState>((set, get) => ({
           console.warn('[LSP] malformed diagnostics event discarded:', event.payload);
           return;
         }
-        get().setProjectDiagnostics(projectPath, payload.uri, payload.diagnostics);
+        pendingDiag.set(payload.uri, payload.diagnostics);
+        scheduleDiagFlush();
       },
     );
 
     return () => {
+      // 卸载兜底：同步 flush 残留突发（防丢尾），再对称释放监听。
+      flushPendingDiag();
       safeUnlisten(unlistenSession)();
       safeUnlisten(unlistenProgress)();
       safeUnlisten(unlistenProfile)();

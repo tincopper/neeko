@@ -29,3 +29,13 @@
 
 - 每步：相关 vitest + `pnpm type-check`；收尾：`pnpm test:run` 相关域 + eslint 触及文件。
 - 回滚点：每步独立提交可 revert；P1 flush 逻辑失败即回退直写（行为等价，性能回落）。
+
+## 落地（2026-09-20，TDD 红绿留痕）
+
+- P1：`lspStore.subscribeToProject` 内 `pendingDiag` 表 + `queueMicrotask` 单次 flush（会话边界
+  清缓冲、卸载同步 flush 兜底）；`lspDiagnosticsBurst.test.ts`（200 uri ≤ 3 通知 / 同 uri 覆盖）；
+  既有 `lspStore.test.ts` 订阅测试补 await flush。
+- P2：`DiagnosticsPanel` 组数 >20 默认折叠（折叠组零行渲染）；`languageId` 按组算一次传入。
+- P3：`DiagnosticRow.tsx`（`React.memo`，props 全稳定引用 + `onJump` useCallback）；
+  `DiagnosticsPanel.perf.test.tsx`（30 组默认折叠/20 组默认展开/无关 publish 行不重渲染）。
+- 门禁：lsp 域 360 passed + 全量 lsp/settings 423 passed，tsc/eslint 全绿。

@@ -148,6 +148,29 @@ applyCodeAction(uri, action, resolveView = resolveEditorViewFromUri);
   的 option 形态，禁止回头解析 LSP 载荷。
 - 测试：三态行为差异 + 持久化 roundtrip + 缺字段回落 auto。
 
+## 5. Problems 大项目性能（09-20-problems-perf：P1-P3）
+
+> 触发：jdtls 初次构建短时对数百文件逐个 `publishDiagnostics`，N 次直写 → N 次订阅通知
+> → 面板 N 次全量 buildGroups + 全行挂载，千行级卡顿。
+
+- **P1 发布合并**：`subscribeToProject` 内 `pendingDiag` 待处理表 + `queueMicrotask` 单次
+  flush；写路径收敛到 store action `setProjectDiagnosticsBatch(projectPath, entries)`
+  （`patchDiagnosticsByProject` 是诊断切片唯一展开逻辑，单条 `setProjectDiagnostics` 与
+  batch 共用 —— D3 单写点只此一份）。关键安全分支：会话边界 `pendingDiag.clear()` 防陈旧
+  microtask 回写；卸载兜底同步 `flushPendingDiag()` 防丢尾。
+- **P2 默认折叠**：`DiagnosticsPanel` 文件组数 > `COLLAPSED_GROUP_THRESHOLD`（20）默认折叠，
+  折叠组零行渲染；`languageId` 按组算一次。`toggleCollapsed` 须按当前展开态翻转
+  （`!(prev[uri] ?? defaultCollapsed)`）—— 默认折叠下首次点击必须展开。
+- **P3 行 memo**：`DiagnosticRow`（`React.memo`）props 全稳定引用；`onJump` 在 Panel 层
+  `useCallback` 稳定，上游 `ProblemsPanel.handleJump` deps `[activeProject, projectId]`
+  （仅切项目变）。**契约**：无关 uri 的诊断对象引用必须不变（P1 合并保证），否则 memo
+  浅比较失效。
+- 护栏测试：`lspDiagnosticsBurst.test.ts`（200 uri ≤3 通知 / 同 uri 覆盖 / 卸载 flush 兜底 /
+  会话边界清缓冲）、`DiagnosticsPanel.perf.test.tsx`（30 组折叠 / 20 组展开 / 无关 publish
+  行不重渲染）。
+- 已知边界（不扩）：`buildGroups` 每次 store 变化全量重排（虚拟滚动/增量分组范畴）；
+  行 key `${message}-${line}-${char}-${severity}` 重复诊断碰撞（既存）。
+
 ## 4. 常见坑
 
 1. **Vite 预打包缓存**：改 `patches/*.patch` 后只重启 dev 不够（lockfile 哈希不变仍命中旧

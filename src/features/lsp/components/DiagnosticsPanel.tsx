@@ -1,6 +1,5 @@
 import { useCallback, useMemo, useState } from 'react';
 
-import { openInDefaultBrowser } from '@/features/browser/api/browserApi';
 import { ChevronRight } from '@/shared/components/icons';
 import { fileIconSrc } from '@/shared/utils/fileIcons';
 
@@ -8,8 +7,10 @@ import { fromFileUri, getLspLanguageId } from '../api/languageMap';
 import { useLspStore } from '../store/lspStore';
 import type { LspDiagnostic } from '../types';
 
-import { DiagnosticQuickFix } from './DiagnosticQuickFix';
-import { SeverityIcon, severityColorClass } from './SeverityIcon';
+import { DiagnosticRow } from './DiagnosticRow';
+
+/** 文件组数超过该阈值时默认折叠（P2：大项目首屏不渲染全部行）。 */
+const COLLAPSED_GROUP_THRESHOLD = 20;
 
 interface DiagnosticsPanelProps {
   /** 项目根路径（lspStore 诊断切片键，D3 单写点：数据直采 lsp-diagnostics 事件）。 */
@@ -87,12 +88,24 @@ function splitLabel(label: string): { name: string; dir: string } {
 export function DiagnosticsPanel({ projectPath, onJumpToDiagnostic }: DiagnosticsPanelProps) {
   const byUri = useLspStore((s) => s.diagnosticsByProject[projectPath]);
   const groups = useMemo(() => buildGroups(byUri ?? {}, projectPath), [byUri, projectPath]);
-  // 折叠状态按 uri 键控（默认展开）；Record 即 Map<uri, boolean> 的轻量形态
+  // 折叠状态按 uri 键控（显式点击覆盖）；未显式设置时按组数阈值默认折叠（P2）。
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
+  const defaultCollapsed = groups.length > COLLAPSED_GROUP_THRESHOLD;
 
-  const toggleCollapsed = useCallback((uri: string) => {
-    setCollapsed((prev) => ({ ...prev, [uri]: !prev[uri] }));
-  }, []);
+  const toggleCollapsed = useCallback(
+    (uri: string) => {
+      // 基于当前展开态翻转：默认折叠（defaultCollapsed=true）时，第一次点击必须展开
+      // （prev[uri] 为 undefined，须按 defaultCollapsed 计算而非 !undefined=true）。
+      setCollapsed((prev) => ({ ...prev, [uri]: !(prev[uri] ?? defaultCollapsed) }));
+    },
+    [defaultCollapsed],
+  );
+
+  // 稳定回调：作为行 memo 的 prop，引用不变时无关 publish 不触发行重渲染（P3）。
+  const onJump = useCallback(
+    (uri: string, diagnostic: LspDiagnostic) => onJumpToDiagnostic?.(uri, diagnostic),
+    [onJumpToDiagnostic],
+  );
 
   if (groups.length === 0) {
     return <div className="p-3 text-xs text-text-secondary">No diagnostics</div>;
@@ -103,7 +116,9 @@ export function DiagnosticsPanel({ projectPath, onJumpToDiagnostic }: Diagnostic
       <div className="flex-1 overflow-y-auto">
         {groups.map((group) => {
           const { name, dir } = splitLabel(group.label);
-          const isCollapsed = collapsed[group.uri] ?? false;
+          const isCollapsed = collapsed[group.uri] ?? defaultCollapsed;
+          // P2：组内共享语言 ID 按组算一次，不再每行重算。
+          const languageId = getLspLanguageId(fromFileUri(group.uri));
           return (
             <div key={group.uri} data-testid={`diagnostic-file-group-${group.label}`}>
               {/* 文件组头：点击折叠/展开 */}
@@ -130,67 +145,21 @@ export function DiagnosticsPanel({ projectPath, onJumpToDiagnostic }: Diagnostic
                   {group.diagnostics.length}
                 </span>
               </button>
-              {/* 折叠后行不渲染；左缩进参考线表达组内层级 */}
+              {/* 折叠后行不渲染（P2 懒渲染：折叠组零行，大项目首屏只渲染组头） */}
               {!isCollapsed && (
                 <div className="ml-6 border-l border-border/60">
-                  {group.diagnostics.map((d) => {
-                    return (
-                      // 外层 div 只为提供 `group`（灯泡按 group-hover 显形）。行与灯泡都是
-                      // button，嵌套 button 是非法 DOM —— 必须做成兄弟而不是父子。
-                      <div
-                        key={`${d.message}-${d.range.start.line}-${d.range.start.character}-${
-                          d.severity ?? 'none'
-                        }`}
-                        className="group w-full flex items-center gap-2 pl-2 pr-2 py-1 text-xs hover:bg-bg-hover transition-colors"
-                      >
-                        <button
-                          type="button"
-                          data-testid="diagnostic-row"
-                          onClick={() => onJumpToDiagnostic?.(group.uri, d)}
-                          className="flex-1 min-w-0 flex items-center gap-2 text-left cursor-pointer"
-                        >
-                          <span
-                            data-testid="diagnostic-row-icon"
-                            className={`shrink-0 ${severityColorClass(d.severity)}`}
-                          >
-                            <SeverityIcon severity={d.severity} />
-                          </span>
-                          <span className="min-w-0 flex-1 truncate text-text-primary">
-                            {d.message}
-                          </span>
-                          {d.source && <span className="shrink-0 text-text-muted">{d.source}</span>}
-                          {d.code != null &&
-                            // 有 codeDescription.target → 真链接（VS Code 同款：打开诊断文档，
-                            // 系统默认浏览器）；否则静态文本。stopPropagation 防止触发行跳转。
-                            (d.codeDescription?.href ? (
-                              <a
-                                href={d.codeDescription.href}
-                                data-testid="diagnostic-code-link"
-                                className="shrink-0 text-blue-400/80 underline underline-offset-2 hover:text-blue-300"
-                                onClick={(e) => {
-                                  e.preventDefault();
-                                  e.stopPropagation();
-                                  void openInDefaultBrowser(d.codeDescription!.href);
-                                }}
-                              >
-                                ({d.code})
-                              </a>
-                            ) : (
-                              <span className="shrink-0 text-blue-400/80">({d.code})</span>
-                            ))}
-                          <span className="shrink-0 text-text-muted">
-                            [Ln {d.range.start.line + 1}, Col {d.range.start.character + 1}]
-                          </span>
-                        </button>
-                        <DiagnosticQuickFix
-                          projectPath={projectPath}
-                          languageId={getLspLanguageId(fromFileUri(group.uri))}
-                          uri={group.uri}
-                          diagnostic={d}
-                        />
-                      </div>
-                    );
-                  })}
+                  {group.diagnostics.map((d) => (
+                    <DiagnosticRow
+                      key={`${d.message}-${d.range.start.line}-${d.range.start.character}-${
+                        d.severity ?? 'none'
+                      }`}
+                      uri={group.uri}
+                      projectPath={projectPath}
+                      languageId={languageId}
+                      diagnostic={d}
+                      onJump={onJump}
+                    />
+                  ))}
                 </div>
               )}
             </div>

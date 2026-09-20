@@ -223,6 +223,8 @@ describe('lspStore diagnostics slice (D3 single write point)', () => {
       uri: 'file:///a.go',
       diagnostics: [diag(1), diag(2)],
     });
+    // P1 突发收敛：emit 进 microtask 缓冲，等一次 flush 后再断言
+    await new Promise((resolve) => setTimeout(resolve, 0));
     expect(useLspStore.getState().diagnosticsByProject[PROJECT]['file:///a.go']).toHaveLength(2);
     unlisten();
   });

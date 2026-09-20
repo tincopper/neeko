@@ -18,9 +18,14 @@ Problems 列表必须保持首屏可交互、不卡顿（当前：突发 N 次�
 
 ## Acceptance Criteria
 
-- [ ] AC1：构造 N=200 文件 × M=20 诊断的突发 publish，面板重渲染次数 ≤ 3（回归测试钉死）。
-- [ ] AC2：折叠组零行渲染；展开后行渲染正确，跳转/quickfix/AI 动作行为不变（既有单测全绿）。
-- [ ] AC3：`pnpm type-check` + 相关 vitest + eslint 全绿；无新增超 300 行文件。
+- [x] AC1：构造 N=200 文件 × M=20 诊断的突发 publish，面板重渲染次数 ≤ 3（回归测试钉死）。
+      （2026-09-20 落地：`lspStore` P1 microtask 批量 set + `lspDiagnosticsBurst.test.ts` 200 uri 突发
+      → 通知 ≤ 3）
+- [x] AC2：折叠组零行渲染；展开后行渲染正确，跳转/quickfix/AI 动作行为不变（既有单测全绿）。
+      （2026-09-20 落地：`DiagnosticsPanel` 阈值 20 默认折叠 + `DiagnosticRow` memo 行 +
+      `DiagnosticsPanel.perf.test.tsx`；既有 15 面板单测全绿）
+- [x] AC3：`pnpm type-check` + 相关 vitest + eslint 全绿；无新增超 300 行文件。
+      （lsp 域 360 passed；`DiagnosticsPanel 166` / `DiagnosticRow 89` / 新增测试 <300 行）
 
 ## Notes
 
