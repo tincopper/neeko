@@ -41,7 +41,7 @@ impl RecordingTransport {
 }
 
 impl LspTransport for RecordingTransport {
-    fn push_diagnostics(&self, _: &str, _: &str, _: serde_json::Value) {}
+    fn push_diagnostics(&self, _: &str, _: &str, _: serde_json::Value, _: Option<i64>) {}
 
     fn push_session_event(
         &self,

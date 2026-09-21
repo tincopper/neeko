@@ -23,6 +23,10 @@ pub struct LspSessionStore {
     open_docs: RwLock<HashMap<String, Vec<OpenDocument>>>,
     /// Restart bookkeeping: RwLock for concurrent reads.
     restart_counts: RwLock<HashMap<String, u32>>,
+    /// **编辑器持有**的 uri：前端视图挂载即声明（原子性 ownership）。代开只对
+    /// 无人持有的 uri 生效 —— 否则后端会拿**磁盘文本**去覆盖编辑器正在编辑的
+    /// 未保存缓冲区，服务器据此算出的诊断位置与编辑器文本错位。
+    editor_owned: RwLock<HashMap<String, Vec<String>>>,
 }
 
 impl LspSessionStore {
@@ -31,6 +35,7 @@ impl LspSessionStore {
             sessions: Mutex::new(HashMap::new()),
             open_docs: RwLock::new(HashMap::new()),
             restart_counts: RwLock::new(HashMap::new()),
+            editor_owned: RwLock::new(HashMap::new()),
         }
     }
 
@@ -131,10 +136,48 @@ impl LspSessionStore {
     }
 
     pub(crate) fn is_document_open(&self, key: &str, uri: &str) -> bool {
+        self.open_document_version(key, uri).is_some()
+    }
+
+    /// 已登记版本号；未登记返回 `None`。
+    ///
+    /// 供转发层识别「第二个前端 client 在写同一文档」：它的版本计数器独立，
+    /// 会出现版本回退（`v_new <= v_prev`）。
+    pub(crate) fn open_document_version(&self, key: &str, uri: &str) -> Option<i64> {
         self.open_docs
             .read()
             .ok()
-            .and_then(|m| m.get(key).map(|docs| docs.iter().any(|d| d.uri == uri)))
+            .and_then(|m| m.get(key)?.iter().find(|d| d.uri == uri).map(|d| d.version))
+    }
+
+    /// 前端视图声明持有该文档（挂载时调用；重复声明幂等）。
+    pub(crate) fn claim_document(&self, key: String, uri: String) {
+        if let Ok(mut owned) = self.editor_owned.write() {
+            let uris = owned.entry(key).or_default();
+            if !uris.iter().any(|u| u == &uri) {
+                uris.push(uri);
+            }
+        }
+    }
+
+    /// 视图卸载（最后一个视图）时释放持有。
+    pub(crate) fn release_document(&self, key: &str, uri: &str) {
+        if let Ok(mut owned) = self.editor_owned.write() {
+            if let Some(uris) = owned.get_mut(key) {
+                uris.retain(|u| u != uri);
+                if uris.is_empty() {
+                    owned.remove(key);
+                }
+            }
+        }
+    }
+
+    /// 是否由编辑器视图持有（持有期间后端**不得**代为打开）。
+    pub(crate) fn is_editor_owned(&self, key: &str, uri: &str) -> bool {
+        self.editor_owned
+            .read()
+            .ok()
+            .and_then(|m| m.get(key).map(|uris| uris.iter().any(|u| u == uri)))
             .unwrap_or(false)
     }
 
@@ -200,6 +243,9 @@ impl LspSessionStore {
         let session = self.remove(key);
         self.clear_open_documents(key);
         self.clear_restart(key);
+        if let Ok(mut owned) = self.editor_owned.write() {
+            owned.remove(key);
+        }
         session
     }
 
@@ -210,6 +256,9 @@ impl LspSessionStore {
             .map(|mut s| s.drain().map(|(_, v)| v).collect())
             .unwrap_or_default();
         self.clear_all_open_documents();
+        if let Ok(mut owned) = self.editor_owned.write() {
+            owned.clear();
+        }
         sessions
     }
 }
@@ -239,6 +288,68 @@ mod tests {
         let entries = docs.get("/p::rust").expect("key");
         assert_eq!(entries.len(), 1, "同 uri 只保留一条（取最新）");
         assert_eq!(entries[0].version, 3, "后到的版本覆盖旧的");
+    }
+
+    /// 编辑器持有：声明后即为持有，释放后不再是；重复声明幂等（同 uri 只留一条）。
+    #[test]
+    fn editor_ownership_is_claimed_and_released() {
+        let store = LspSessionStore::new();
+        assert!(!store.is_editor_owned("/p::rust", "file:///a.rs"));
+
+        store.claim_document("/p::rust".to_string(), "file:///a.rs".to_string());
+        store.claim_document("/p::rust".to_string(), "file:///a.rs".to_string());
+        assert!(store.is_editor_owned("/p::rust", "file:///a.rs"));
+        assert_eq!(
+            store
+                .editor_owned
+                .read()
+                .expect("lock")
+                .get("/p::rust")
+                .map(Vec::len),
+            Some(1),
+            "重复声明不堆叠"
+        );
+
+        store.release_document("/p::rust", "file:///a.rs");
+        assert!(!store.is_editor_owned("/p::rust", "file:///a.rs"));
+    }
+
+    /// 所有权按（project, language）隔离，且关闭会话时清空。
+    #[test]
+    fn editor_ownership_is_per_session_and_cleared_on_close() {
+        let store = LspSessionStore::new();
+        store.claim_document("/p::rust".to_string(), "file:///a.rs".to_string());
+
+        assert!(!store.is_editor_owned("/p::go", "file:///a.rs"));
+        assert!(!store.is_editor_owned("/q::rust", "file:///a.rs"));
+
+        store.clear_open_documents("/p::rust");
+        assert!(
+            store.is_editor_owned("/p::rust", "file:///a.rs"),
+            "清文档登记不动所有权"
+        );
+    }
+
+    /// 版本号可见：转发层据此识别「第二个 client 的独立计数器」（版本回退）。
+    #[test]
+    fn open_document_version_reports_registered_version() {
+        let store = LspSessionStore::new();
+        assert_eq!(
+            store.open_document_version("/p::rust", "file:///a.rs"),
+            None
+        );
+
+        store.register_open_document("/p::rust".to_string(), doc("file:///a.rs", 7));
+        assert_eq!(
+            store.open_document_version("/p::rust", "file:///a.rs"),
+            Some(7)
+        );
+
+        store.unregister_open_document("/p::rust", "file:///a.rs");
+        assert_eq!(
+            store.open_document_version("/p::rust", "file:///a.rs"),
+            None
+        );
     }
 
     #[test]

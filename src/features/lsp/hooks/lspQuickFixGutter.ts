@@ -68,19 +68,28 @@ const bulbMarker = new QuickFixBulbMarker();
 /** 行内灯泡图标：与 React 侧共用同一份 path（原型 #i-bulb）。 */
 const BULB_SVG = BULB_SVG_MARKUP;
 
-/** 有诊断的行首灯泡；点击在该行打开 quickfix。 */
+/**
+ * 灯泡 gutter：**只在光标所在行**、且该行有 error 诊断时显示（VS Code 语义）。
+ *
+ * 为什么不铺满所有错误行（2026-09-21 用户实测「小灯泡一闪一闪」）：灯泡按推送重建，
+ * 铺满错误行意味着每次 publishDiagnostics 都要重建多个 marker → 视觉抖动；而且
+ * 满屏灯泡本身是噪音。收敛到光标行后，同一时刻至多一个 marker，且与"当前要修哪行"
+ * 的语义一致（键位 `Mod-.` / `⌥Enter` 本来也只作用于光标处）。
+ */
 export function quickFixGutter(ctx: LspQuickFixContext): Extension {
   return gutter({
     class: 'cm-neeko-quickfix-gutter',
     markers: (view) => {
-      const seen = new Set<number>();
+      const cursorLine = view.state.doc.lineAt(view.state.selection.main.head);
       const ranges: ReturnType<GutterMarker['range']>[] = [];
+      let placed = false;
       forEachDiagnostic(view.state, (diagnostic) => {
+        if (placed) return;
         // 原型 M3-1：灯泡只在**红色（error）诊断**行出现
         if (diagnostic.severity !== 'error') return;
-        // 同一位置多条诊断只放一个灯泡
-        if (seen.has(diagnostic.from)) return;
-        seen.add(diagnostic.from);
+        // 只在光标所在行（同一行多条只放一个）
+        if (diagnostic.from < cursorLine.from || diagnostic.from > cursorLine.to) return;
+        placed = true;
         ranges.push(bulbMarker.range(diagnostic.from));
       });
       return RangeSet.of(ranges, true);

@@ -123,6 +123,64 @@ applyCodeAction(uri, action, resolveView = resolveEditorViewFromUri);
 - 面板与编辑器菜单共用 `groupQuickFixActions`，两端结构不漂移；诊断取 store 原始项
   （保留 `data`，部分服务器靠它匹配 quickfix），不读 CM lint state。
 
+### 设计决策：波浪线模型（客户端不猜新鲜度，但用内容锚定挡陈旧坐标）
+
+**Context**：编辑时旧错误波浪线不跟随错误代码位置——rust-analyzer 1.97.1 把「当前
+版本号」盖在「旧分析坐标」上重发（文档版本钟 ≠ 分析新鲜钟，flycheck 缓存）。曾用
+三层启发式防御（`keepSyntaxLayerOnly` 语法层过滤 / 内容锚定 / 越界检查），但客户端在
+信息论上**无法判定**「坐标是新鲜还是陈旧」，任何启发式都既误杀又漏网（2026-09-22
+实证：语法错误时隐藏全部语义诊断、跨行/无 token 诊断 fail-open 放行）。
+
+**Options Considered**：
+1. 严格化锚定 + 批级决策 —— 仍是猜测，跨行/无 token 诊断永远无法可靠锚定。
+2. 对齐 VS Code：`DiagnosticCollection.set` 零过滤整批替换，信任服务器靠重推自愈。
+   —— **试行失败**（2026-09-22 用户复测）：rust-analyzer 语义诊断重推慢（flycheck
+   缓存），"短暂画错自愈"在本栈不成立；陈旧坐标被整批应用，把 lint/mirror 已**跟随
+   正确**的旧波浪线拽回旧行（用户实测「编辑后旧波浪线跑到别的行」）。
+3. settle 延迟窗口 —— 已试删，语义波浪线滞后。
+
+**Decision**：**内容锚定（恢复）+ 逐条判定 + 混装批合并**。内容锚定是信息论上
+**可判定**的唯一判据：点名 token 的诊断（E0425/E0433 的 message 含
+`` `int32` ``）映射到当前文本切片，不含该 token → 坐标与文本不符 → 陈旧。**不做**
+的信息论上不可能的判断（无 token / 跨行 / 映射失败的 fail-open 放行，靠服务器下一次
+新鲜推送纠正）。**批级演进**：十七轮曾「任一条陈旧 → 整批拒绝」，但混装批
+（陈旧 E0425 + 新鲜 syntax-error）会连带拒绝新鲜的 syntax-error（缺分号波浪线不显示）
+——十八轮改为**逐条判定 + 合并**。
+
+```ts
+// applyFiltered 流程（2026-09-22 十八轮逐条合并修正）
+// ① incoming.length === 0 → 清空（整体替换语义）
+// ② 无 file?.doc        → 委托内层（版本门在其中）
+// ③ isFresh(d) = rangeFitsDocument(doc, d.range) && anchorFitsCurrentText(view, d)  // 逐条
+// ④ fresh = incoming.filter(isFresh)；stale = incoming.filter(!isFresh)
+// ⑤ stale.length === 0 → inner(client, params)           // 全部新鲜：整批应用
+// ⑥ fresh.length === 0 → return true                     // 全部陈旧：保留 lint 旧线
+// ⑦ 混合：fresh 原样 + stale 用 lint 已跟随位置重建坐标后一并 inner
+//    （lintPositionsByMessage 按 message 读 lint 当前渲染位置，plugin.toPosition
+//     转回 LSP；lint 里也没有 → 丢弃，避免旧坐标画错位）
+```
+
+**保留**：内层 lsp-client 版本门（防「旧版本号+旧坐标」真实违规）；lint
+`map(tr.changes)` 文本跟随（CodeMirror 天然行为，编辑时旧线随文本走——比 VS Code 更优）。
+
+**删除**（clean cutover，grep 零残留）：`keepSyntaxLayerOnly`（语法错误不再隐藏语义
+诊断）、`syntax_error_codes` 全链路（`LspPlugin` 字段+builder、`LspExtensionMapEntry`
+DTO、registry 映射、rust builtin 声明、前端 `lspApi`/`languageMap`）。
+
+**行为契约**：陈旧坐标（新版本号+旧坐标）由内容锚定拒绝，旧波浪线跟随文本不被拽回；
+新鲜推送到达即纠正。语义诊断不再被语法错误隐藏（错误始终可见）。**逐条合并（18 轮）**：
+混装批里新鲜诊断应用、陈旧诊断用 lint 已跟随位置重建后一并应用——既不连带拒绝新鲜的
+syntax-error（缺分号必须显示），也不让陈旧 E0425 覆盖跟随正确的位置。**禁止**整批拒绝
+（会连带拒新鲜条）或纯子集应用（会隐式清除被过滤诊断）。禁止重新引入 settle 延迟 /
+指纹去重 / 语法层过滤等启发式。
+
+**护栏测试**：`lspDiagnosticsMapping.test.ts` 17 用例——版本门/越界保留语义钉死；
+「陈旧推送被锚定拒绝 → 跟随旧线不被拽回 → 新鲜推送应用到位」完整序列
+（`edit_insert_line_then_stale_rejected_then_fresh_applies`）；「陈旧越界 E0425 +
+新鲜 syntax-error 混装批 → 逐条合并 → E0425 保留 lint 跟随位置**且** syntax 点显示」
+用户现场回归；未同步编辑窗口内陈旧重定位反解 syncedDoc、往返恒等不偏移；语法+语义
+同批都应用（不隐藏语义）。
+
 ## 3. 重构台账（F1-F7，后来者勿回退）
 
 | 项 | 约定 |
@@ -196,12 +254,30 @@ applyCodeAction(uri, action, resolveView = resolveEditorViewFromUri);
 3. **能力声明 = 行为契约**：声明 `resolveAdditionalTextEditsSupport` /
    `progressReportProvider` 而无消费实现，会让 jdtls 切私有通道致功能静默丢失；删声明
    即修进度不可见。新增声明必须同时有消费点或说明。
+   **反向同罪（2026-09-22，jdtls quickfix 缺失）**：**该声明却没声明**同样静默缺失——
+   `textDocument.codeAction.codeActionLiteralSupport` 未声明时，jdtls 的
+   `isSupportedCodeActionKind` 对未声明 valueSet 恒 false，**丢弃全部 quickfix**
+   （Java 未导入包无任何修复项，而 gopls 不检查故 Go 正常）。修复：声明
+   `codeActionLiteralSupport.codeActionKind.valueSet = ["quickfix", "source"]`，且
+   **不声明** `resolveSupport`（无 `codeAction/resolve` 通道，声明会让 jdtls 推迟全部
+   edit）。护栏：`client_capabilities_advertise_code_action_literal_support_without_resolve`
+   （valueSet 含 quickfix + resolveSupport 不得出现）。原则：改 capabilities 前先问
+   「哪段代码消费它」，同一 diff 给出消费点或删掉声明——漏声明与假声明是同一契约的两面。
 4. **uri 必须与 didOpen 完全一致**：编辑器 quickfix 取 `useLspClient` 算出的 `fileUri`，
    不得自己再算（`tabLspDocumentUri` 对普通文件恒 `undefined`，曾致三入口静默 return）。
-5. **重复 `didOpen` = 静默功能缺失**：同一 uri 在没有 didClose 的情况下收到第二次
-   didOpen，rust-analyzer（1.97.1 实测）只 stderr 一句 `duplicate DidOpenTextDocument`
-   就把该文档剔出语义分析 —— 表现是"只有语法错误、永不报类型错误"，UI 上完全看不出
-   原因。归一在**服务器会话边界**（`commands::lsp_transport` 的 didOpen 分支：已打开则
-   先补发 didClose），不在前端补 —— 多 client / 重挂竞态的组合太多，前端任何单点都挡
-   不全。登记表同 uri 只留一条（`session_store::register_open_document`），否则会话重启
-   的补发同样会连发两次。
+5. **`didOpen` 只有一个出口**（2026-09-21 实证，事故链完整）：后端曾有三条 didOpen 发送
+   路径 —— `lsp_transport` 转发分支、`lsp_request` 的内联代开、`lsp_go_to_definition`
+   的内联代开；后两者各自「读盘 + 手写 `version: 1` + 裸发」，其中 `lsp_request` 那条
+   还不登记。后果：同一 uri 两条 didOpen → rust-analyzer 报
+   `duplicate DidOpenTextDocument`；即便不报错，服务器按 v1 推诊断而
+   `@codemirror/lsp-client` 手里的文档是 v0 → 版本门
+   (`params.version != file.version`) **整批丢弃** → **Problems 面板有诊断、编辑器既没
+   波浪线也没 gutter 灯泡**（两个数据源分叉的典型症状，极易误判成"LSP 没起来"）。
+   收敛：`document_open::ensure_document_open`（读盘代开）与
+   `LspManager::send_did_open`（唯一出口：重复先补 didClose、发送、登记）——版本号一律
+   由登记表推进（`next_open_version`，首开 0、之后 +1），**禁止任何地方手写 `version: 1`**。
+   取证手段：`[LSP] didOpen … (previous=…)` 与版本回退告警（`non-monotonic didOpen`）；
+   前端侧 `TauriLspTransport.destroy()` 之后 `send()` 变哑（否则僵尸 client 能继续用自己
+   的计数器写同一会话）。
+6. **uri 必须与 didOpen 完全一致**：编辑器 quickfix 取 `useLspClient` 算出的 `fileUri`，
+   不得自己再算（`tabLspDocumentUri` 对普通文件恒 `undefined`，曾致三入口静默 return）。

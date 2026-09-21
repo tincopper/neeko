@@ -749,6 +749,13 @@ pub(crate) fn build_client_capabilities() -> Value {
             "definition": { "linkSupport": true },
             "references": {},
             "completion": { "completionItem": { "snippetSupport": true, "documentation": true, "documentationFormat": ["markdown", "plaintext"], "resolveSupport": { "properties": ["additionalTextEdits"] } } },
+            "codeAction": {
+                // `codeActionLiteralSupport`：声明我们消费结构化 CodeAction（带 `edit` 的
+                // quickfix，经 `groupQuickFixActions` 铺进菜单）。**不声明** `resolveSupport`：
+                // 本栈没有 `codeAction/resolve` 通道，声明会让 jdtls 把 edit 全部推迟到
+                // resolve（同 `resolveAdditionalTextEditsSupport` 事故，2026-09-18）。
+                "codeActionLiteralSupport": { "codeActionKind": { "valueSet": ["quickfix", "source"] } }
+            },
             "publishDiagnostics": { "relatedInformation": true }
         },
         "workspace": { "workspaceFolders": true, "configuration": true, "didChangeConfiguration": { "dynamicRegistration": false } },
@@ -971,6 +978,34 @@ mod tests {
         );
     }
 
+    /// 红线 14（声明 = 行为契约）：必须声明 `codeActionLiteralSupport` 否则 jdtls
+    /// 丢弃全部 quickfix（`isSupportedCodeActionKind` 对未声明 valueSet 恒 false，
+    /// 实测 2026-09-22：Java 未导入包无任何修复项，而 gopls 不检查故 Go 正常）。
+    ///
+    /// 同时**不得**声明 `resolveSupport`：本栈没有 `codeAction/resolve` 通道，声明会让
+    /// jdtls 把 edit 全部推迟到 resolve（同 `resolveAdditionalTextEditsSupport` 事故，
+    /// 2026-09-18 —— 能力声明必须与消费实现一一对应）。
+    #[test]
+    fn client_capabilities_advertise_code_action_literal_support_without_resolve() {
+        let caps = build_client_capabilities();
+        let value_set = caps["textDocument"]["codeAction"]["codeActionLiteralSupport"]
+            ["codeActionKind"]["valueSet"]
+            .as_array()
+            .expect(
+                "codeActionKind.valueSet must be declared (jdtls drops all quickfix without it)",
+            );
+        assert!(
+            value_set.iter().any(|v| v == "quickfix"),
+            "quickfix kind must be in valueSet — jdtls filters every code action through it"
+        );
+        // 不声明 resolveSupport：无 `codeAction/resolve` 消费实现。
+        assert!(
+            caps["textDocument"]["codeAction"].get("resolveSupport").is_none(),
+            "do not declare codeAction.resolveSupport — no codeAction/resolve channel exists; \
+             jdtls would defer every edit to resolve (same trap as resolveAdditionalTextEditsSupport)"
+        );
+    }
+
     #[test]
     fn merge_extended_capabilities_into_init_options_inserts_when_present() {
         let plugin = LspPlugin::builtin("java", &["java"], "jdtls", &["jdtls"], None)
@@ -1054,7 +1089,7 @@ mod tests {
     struct NoopTransport;
 
     impl LspTransport for NoopTransport {
-        fn push_diagnostics(&self, _: &str, _: &str, _: serde_json::Value) {}
+        fn push_diagnostics(&self, _: &str, _: &str, _: serde_json::Value, _: Option<i64>) {}
     }
 
     /// Regression: `snapshot_server_info` must sample live RSS, not return the

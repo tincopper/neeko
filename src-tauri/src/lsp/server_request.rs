@@ -126,7 +126,7 @@ mod tests {
     }
 
     impl LspTransport for CapturingTransport {
-        fn push_diagnostics(&self, _: &str, _: &str, _: Value) {}
+        fn push_diagnostics(&self, _: &str, _: &str, _: Value, _: Option<i64>) {}
         fn push_apply_edit(&self, _project_path: &str, _language_id: &str, edit: &Value) {
             self.apply_edits.lock().push(edit.clone());
         }

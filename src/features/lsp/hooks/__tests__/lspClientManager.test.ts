@@ -30,7 +30,11 @@ const { MockLSPClient } = vi.hoisted(() => {
 });
 vi.mock('@codemirror/lsp-client', () => ({
   LSPClient: MockLSPClient,
-  serverDiagnostics: () => [],
+  // 形状必须与真实 `serverDiagnostics()` 一致：我们的护栏扩展会包装它的
+  // `notificationHandlers['textDocument/publishDiagnostics']`。
+  serverDiagnostics: () => ({
+    notificationHandlers: { 'textDocument/publishDiagnostics': () => false },
+  }),
   signatureHelp: () => [],
 }));
 vi.mock('../transport/tauriLspTransport', () => ({
@@ -223,10 +227,16 @@ describe('诊断渲染链 — 推送诊断在编辑器装配下渲染波浪线',
     // 注意：零长度文档下 0..3 诊断走 widget 路径而非 mark 波浪线，故 doc 必须有内容。
     acquireLspPlugin('/pl', 'go', 'file:///pl/main.go');
     const parent = document.createElement('div');
+    // 装配数组里混有两类东西：CM 扩展 + `LSPClientExtension` 对象（如诊断护栏）。
+    // 真实 `LSPClient` 会按 `notificationHandlers`/`clientCapabilities` 拆分，mock 不会
+    // —— 这里模拟同样的拆分，只把 CM 扩展交给 EditorState。
+    const cmExtensions = (MockLSPClient.lastExtensions as unknown[]).filter(
+      (ext) => !(ext && typeof ext === 'object' && 'notificationHandlers' in ext),
+    );
     const view = new EditorView({
       state: EditorState.create({
         doc: 'const value = fmt.Println(1);',
-        extensions: MockLSPClient.lastExtensions as never,
+        extensions: cmExtensions as never,
       }),
       parent,
     });

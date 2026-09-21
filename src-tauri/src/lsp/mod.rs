@@ -4,6 +4,8 @@
 pub mod commands;
 /// Diagnostic pub/sub event bus.
 pub mod diag_bus;
+/// didOpen 唯一入口（见模块头注释）。
+pub mod document_open;
 pub mod inflight;
 pub mod installer;
 pub mod java_debug_bundle;

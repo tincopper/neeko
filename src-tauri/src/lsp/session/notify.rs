@@ -28,6 +28,7 @@ pub(super) fn handle_diagnostics_notification(
         uri: uri.to_string(),
         language_id: language_id.to_string(),
         diagnostics,
+        version: params.get("version").and_then(serde_json::Value::as_i64),
     });
 }
 
@@ -139,7 +140,14 @@ mod tests {
     /// 只需实现 `push_diagnostics`（其余方法有默认空实现）。
     struct NullTransport;
     impl LspTransport for NullTransport {
-        fn push_diagnostics(&self, _project_path: &str, _uri: &str, _diagnostics: Value) {}
+        fn push_diagnostics(
+            &self,
+            _project_path: &str,
+            _uri: &str,
+            _diagnostics: Value,
+            _version: Option<i64>,
+        ) {
+        }
     }
 
     fn progress(kind: &str, token: &Value) -> Value {
@@ -234,6 +242,51 @@ mod tests {
         assert!(snapshot(&s).is_empty());
     }
 
+    /// `version` 必须原样带到 DiagnosticBus：前端据此让 lsp-client 的版本门生效
+    /// （缺它会把旧版本的诊断按当前文本坐标套用 → 波浪线偏移，2026-09-21 实测）。
+    #[test]
+    fn diagnostics_notification_forwards_document_version_to_bus() {
+        let captured = std::sync::Arc::new(Mutex::new(None::<DiagnosticEvent>));
+        let sink = std::sync::Arc::clone(&captured);
+        let bus = DiagnosticBus::new();
+        let _sub = bus.subscribe(move |event| {
+            *sink.lock().expect("sink lock") = Some(event.clone());
+        });
+
+        handle_diagnostics_notification(
+            &serde_json::json!({ "uri": "file:///p/a.rs", "version": 14, "diagnostics": [] }),
+            "/p",
+            "rust",
+            &bus,
+        );
+        assert_eq!(
+            captured
+                .lock()
+                .expect("sink")
+                .as_ref()
+                .expect("event")
+                .version,
+            Some(14)
+        );
+
+        handle_diagnostics_notification(
+            &serde_json::json!({ "uri": "file:///p/a.rs", "diagnostics": [] }),
+            "/p",
+            "rust",
+            &bus,
+        );
+        assert_eq!(
+            captured
+                .lock()
+                .expect("sink")
+                .as_ref()
+                .expect("event")
+                .version,
+            None,
+            "服务器未声明版本时为 None（前端据此退回「不拦截」）"
+        );
+    }
+
     /// 诊断通知直传原始 JSON（避免 serialize→parse→serialize 往返）：
     /// `code`（number|string）必须原样到达 DiagnosticBus —— Problems 面板
     /// 的 `(UndeclaredName)` 段依赖它；任何中途解析丢弃都是回归。
@@ -248,6 +301,7 @@ mod tests {
 
         let params = serde_json::json!({
             "uri": "file:///p/main_test.go",
+            "version": 14,
             "diagnostics": [
                 {
                     "range": {

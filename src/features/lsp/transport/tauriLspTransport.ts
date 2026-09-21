@@ -36,6 +36,8 @@ export class TauriLspTransport implements Transport {
   private unlistenProgress: UnlistenFn | null = null;
   private unlistenApplyEdit: UnlistenFn | null = null;
   private subscribed = false;
+  /** 已销毁：此后 `send()` 一律丢弃（见 `send()` 注释）。 */
+  private destroyed = false;
   /** DEV 探针：在途 completion 请求 id（响应回来时据此识别并摘要）。 */
   private pendingCompletionIds = new Set<string | number>();
 
@@ -49,6 +51,16 @@ export class TauriLspTransport implements Transport {
    * Responses come back through the subscribe handler, not synchronously.
    */
   send(message: string): void {
+    // 已销毁的 transport 必须是**哑的**：destroy() 只清订阅，若不设闸，一个仍被
+    // 插件的僵尸 client 能继续把 didOpen/didChange 写进后端**仍然活着**的会话
+    // （会话按 project+language 复用），用自己那套版本号覆盖真实文档状态 ——
+    // 实测症状：服务器报 `duplicate DidOpenTextDocument` 后停止分析该文档。
+    if (this.destroyed) {
+      if (import.meta.env.DEV) {
+        console.info(`[LSP-probe] send after destroy ignored (${this.languageId})`);
+      }
+      return;
+    }
     // 虚拟文档（jdtls 的 `jdt://` 类文件）不参与 LSP 文档生命周期——对齐
     // vscode-java：content-provider 文档不发 didOpen/didChange/didClose，
     // server 端从 uri 原生解析 IClassFile。发出去反而让 jdtls 把它当未知文档。
@@ -141,17 +153,29 @@ export class TauriLspTransport implements Transport {
     // Rust 侧只发 {uri, diagnostics} 裸载荷；lsp-client 按 JSON-RPC method 路由
     // 消息——必须补全信封，否则通知被静默丢弃（「有诊断、无波浪线」的根因）。
     const diagEventName = `${LSP_DIAG_EVENT_PREFIX}${this.projectPath}`;
-    listen<{ uri: string; diagnostics: unknown[] }>(diagEventName, (event) => {
-      this.handlers.forEach((h) =>
-        h(
-          JSON.stringify({
-            jsonrpc: '2.0',
-            method: 'textDocument/publishDiagnostics',
-            params: event.payload,
-          }),
-        ),
-      );
-    }).then((unlisten) => {
+    listen<{ uri: string; diagnostics: unknown[]; version?: number | null }>(
+      diagEventName,
+      (event) => {
+        const { uri, diagnostics, version } = event.payload;
+        this.handlers.forEach((h) =>
+          h(
+            JSON.stringify({
+              jsonrpc: '2.0',
+              method: 'textDocument/publishDiagnostics',
+              params: {
+                uri,
+                diagnostics,
+                // `version` 决定 lsp-client 的版本门是否生效（诊断坐标属于哪一版文本）。
+                // Rust 侧序列化 `Option<i64>` 会给出显式 `null`，而 lsp-client 的门是
+                // `params.version != null && ...` —— 显式 `null` 与"字段缺失"等价（都是
+                // 不拦截），但显式 `undefined` 会让 JSON.stringify 丢掉该字段，语义更清楚。
+                ...(version == null ? {} : { version }),
+              },
+            }),
+          ),
+        );
+      },
+    ).then((unlisten) => {
       this.unlistenDiag = unlisten;
     });
 
@@ -194,8 +218,9 @@ export class TauriLspTransport implements Transport {
     this.handlers.delete(handler);
   }
 
-  /** Clean up all event listeners. */
+  /** Clean up all event listeners（此后 `send()` 变为 no-op）。 */
   destroy(): void {
+    this.destroyed = true;
     this.handlers.clear();
     if (this.unlistenDiag) {
       safeUnlisten(this.unlistenDiag)();

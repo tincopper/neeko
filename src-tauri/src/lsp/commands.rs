@@ -4,7 +4,7 @@ use serde_json::Value;
 use tauri::State;
 
 use crate::lsp::symbol::UnifiedLocation;
-use crate::lsp::types::{LspSessionInfo, MAX_AUTO_OPEN_FILE_SIZE};
+use crate::lsp::types::LspSessionInfo;
 use crate::AppError;
 use crate::AppStateWrapper;
 
@@ -78,58 +78,12 @@ pub async fn lsp_request(
     ensure_session_async(&state, &project_path, &language_id, doc_uri).await?;
 
     // Ensure the document is known by the server before sending a document request.
+    // 代开统一走 `document_open::ensure_document_open`（唯一入口：版本号由登记表推进、
+    // 重复 didOpen 先补 didClose）—— 曾经在此内联「手写 version:1 + 裸发」，导致同一
+    // uri 两条 didOpen 且版本分叉，服务器推的诊断被客户端版本门整批丢弃。
     if let Some(uri) = doc_uri {
-        if !state
-            .lsp_manager
-            .is_document_open(&project_path, &language_id, uri)
-        {
-            let file_path = uri.strip_prefix("file://").unwrap_or(uri);
-            log::debug!(
-                "[LSP] Auto-opening document for {}: uri={}, file_path={}",
-                method,
-                uri,
-                file_path
-            );
-            if let Ok(text) = crate::common::file::reader::read_file(
-                crate::common::file::reader::FileAccessScope::Trusted,
-                crate::common::file::reader::FileReadRequest {
-                    target: crate::common::executor::factory::ExecTarget::Local,
-                    base: String::new(),
-                    path: file_path.to_string(),
-                    // didOpen 全文发送给 server，不设大小上限（与既有行为一致）
-                    max_bytes: None,
-                    detect_binary: false,
-                },
-            )
-            .await
-            {
-                let text = text.content;
-                if text.len() > MAX_AUTO_OPEN_FILE_SIZE {
-                    log::warn!(
-                        "[LSP] File too large for auto-open: {} ({} bytes)",
-                        file_path,
-                        text.len()
-                    );
-                } else {
-                    let open_params = serde_json::json!({
-                        "textDocument": {
-                            "uri": uri,
-                            "languageId": &language_id,
-                            "version": 1,
-                            "text": text,
-                        }
-                    });
-                    let _ = state.lsp_manager.send_notification(
-                        &project_path,
-                        &language_id,
-                        "textDocument/didOpen",
-                        open_params,
-                    );
-                }
-            } else {
-                log::warn!("[LSP] Could not read file for didOpen: {}", file_path);
-            }
-        }
+        crate::lsp::document_open::ensure_document_open(&state, &project_path, &language_id, uri)
+            .await;
     } else {
         log::warn!(
             "[LSP] No textDocument/uri found in params for method={}",
@@ -422,6 +376,38 @@ pub async fn lsp_check_server_installed(
     .await?
 }
 
+/// 前端视图声明持有该文档（编辑器挂载时调用）。
+///
+/// 为什么需要：后端代开只能读**磁盘**文本，而编辑器手里的可能是未保存缓冲区 ——
+/// 代开会让服务器按旧文本计算诊断，位置与编辑器文本错位（2026-09-21 实测：
+/// 波浪线整体偏移）。持有期间后端不再代开，didOpen 完全由编辑器负责。
+#[tauri::command]
+pub fn lsp_claim_document(
+    project_path: String,
+    language_id: String,
+    uri: String,
+    state: State<'_, AppStateWrapper>,
+) -> Result<(), AppError> {
+    state
+        .lsp_manager
+        .claim_document(&project_path, &language_id, &uri);
+    Ok(())
+}
+
+/// 前端视图释放持有（最后一个视图卸载时调用）。
+#[tauri::command]
+pub fn lsp_release_document(
+    project_path: String,
+    language_id: String,
+    uri: String,
+    state: State<'_, AppStateWrapper>,
+) -> Result<(), AppError> {
+    state
+        .lsp_manager
+        .release_document(&project_path, &language_id, &uri);
+    Ok(())
+}
+
 /// Full extension → language map (built-in + custom) for the frontend router.
 #[tauri::command]
 pub fn lsp_get_extension_map(
@@ -538,58 +524,36 @@ pub async fn lsp_transport(
         .map_err(AppError::from);
     }
 
-    // ── Notification (no id): track document lifecycle, then forward ──
-    match method {
-        "textDocument/didOpen" => {
-            if let (Some(uri), Some(text), Some(version)) = (
-                text_document_uri(&params),
-                params
-                    .pointer("/textDocument/text")
-                    .and_then(|v| v.as_str()),
-                params
-                    .pointer("/textDocument/version")
-                    .and_then(|v| v.as_i64()),
-            ) {
-                // 幂等归一：同一 uri 已在打开态时**先补发 didClose** 再转发本次
-                // didOpen —— 否则服务器会看到两条 didOpen 而没有 didClose。
-                // 实测后果（rust-analyzer 1.97.1）：`duplicate DidOpenTextDocument`
-                // → 该文档不进语义分析 → 类型错误永远不报，只剩语法错误。
-                //
-                // 归一点放在这里（服务器会话边界）而不是前端：多 client / 重挂竞态
-                // 的排列组合太多，前端任何单点都挡不全（AGENTS 红线 12 同源要求）。
-                if state
-                    .lsp_manager
-                    .is_document_open(&project_path, &language_id, uri)
-                {
-                    log::warn!(
-                        "[LSP] duplicate didOpen for {} ({}); closing before reopening",
-                        uri,
-                        language_id
-                    );
-                    let _ = state.lsp_manager.send_notification(
-                        &project_path,
-                        &language_id,
-                        "textDocument/didClose",
-                        serde_json::json!({ "textDocument": { "uri": uri } }),
-                    );
-                }
-                state.lsp_manager.register_open_document(
-                    &project_path,
-                    &language_id,
-                    uri,
-                    text,
-                    version,
-                );
-            }
-        }
-        "textDocument/didClose" => {
-            if let Some(uri) = text_document_uri(&params) {
+    // ── Notification (no id)：didOpen 由唯一出口接管，其余原样转发 ──
+    //
+    // didOpen **必须在这里 return**：`send_did_open` 已经把它发出去并登记，
+    // 若继续走下面的通用转发，同一毫秒会向服务器发两条 didOpen —— rust-analyzer
+    // 报 `duplicate DidOpenTextDocument`（实测 11:28:34.600 两条同版本消息）。
+    if method == "textDocument/didOpen" {
+        if let (Some(uri), Some(text), Some(version)) = (
+            text_document_uri(&params),
+            params
+                .pointer("/textDocument/text")
+                .and_then(|v| v.as_str()),
+            params
+                .pointer("/textDocument/version")
+                .and_then(|v| v.as_i64()),
+        ) {
+            // 幂等归一（重复 didOpen 先补 didClose）与登记都在 `send_did_open` 里。
+            let _ =
                 state
                     .lsp_manager
-                    .unregister_open_document(&project_path, &language_id, uri);
-            }
+                    .send_did_open(&project_path, &language_id, uri, text, version);
         }
-        _ => {}
+        return Ok("{}".into());
+    }
+
+    if method == "textDocument/didClose" {
+        if let Some(uri) = text_document_uri(&params) {
+            state
+                .lsp_manager
+                .unregister_open_document(&project_path, &language_id, uri);
+        }
     }
 
     state
@@ -620,48 +584,9 @@ pub async fn lsp_go_to_definition(
     let t1 = t0.elapsed();
     log::info!("[perf] lsp_go_to_definition: session ready in {:?}", t1);
 
-    // Auto-didOpen if the document is not yet registered. jdt:// 类文件 uri 是
-    // jdtls 模型内的 IClassFile（非磁盘文件），无需 didOpen 也无法读盘——直接跳过，
-    // definition/hover 等请求 server 端原生解析该 uri。
-    if !uri.starts_with("jdt://")
-        && !state
-            .lsp_manager
-            .is_document_open(&project_path, &language_id, &uri)
-    {
-        let file_path = uri.strip_prefix("file://").unwrap_or(&uri);
-        if let Ok(text) = crate::common::file::reader::read_file(
-            crate::common::file::reader::FileAccessScope::Trusted,
-            crate::common::file::reader::FileReadRequest {
-                target: crate::common::executor::factory::ExecTarget::Local,
-                base: String::new(),
-                path: file_path.to_string(),
-                // didOpen 全文发送给 server，不设大小上限（与既有行为一致）
-                max_bytes: None,
-                detect_binary: false,
-            },
-        )
-        .await
-        {
-            let text = text.content;
-            let open_params = serde_json::json!({
-                "textDocument": {
-                    "uri": &uri,
-                    "languageId": &language_id,
-                    "version": 1,
-                    "text": &text,
-                }
-            });
-            let _ = state.lsp_manager.send_notification(
-                &project_path,
-                &language_id,
-                "textDocument/didOpen",
-                open_params,
-            );
-            state
-                .lsp_manager
-                .register_open_document(&project_path, &language_id, &uri, &text, 1);
-        }
-    }
+    // 代开统一走唯一入口（见 `document_open`）：jdt:// 虚拟文档自动跳过，已登记则 no-op。
+    crate::lsp::document_open::ensure_document_open(&state, &project_path, &language_id, &uri)
+        .await;
 
     let params = serde_json::json!({
         "textDocument": { "uri": &uri },

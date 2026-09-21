@@ -1,4 +1,4 @@
-import { setDiagnostics, type Diagnostic } from '@codemirror/lint';
+import { forEachDiagnostic, setDiagnostics, type Diagnostic } from '@codemirror/lint';
 import { EditorState, StateEffect, type Extension } from '@codemirror/state';
 import { EditorView } from '@codemirror/view';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -48,6 +48,15 @@ describe('lspDiagnosticsProjection — 配置重建后诊断投影自愈', () =>
     return view.dom.querySelectorAll('.cm-lintRange-error');
   }
 
+  /** lint 自己映射后的位置（权威参照）。 */
+  function lintPositions(view: EditorView): [number, number][] {
+    const out: [number, number][] = [];
+    forEachDiagnostic(view.state, (_d, from, to) => {
+      out.push([from, to]);
+    });
+    return out;
+  }
+
   it('推送诊断 → 渲染波浪线', () => {
     const view = makeView('const value = fmt.Println(1);');
     push(view, [{ from: 14, to: 17, severity: 'error', message: 'undefined: fmt' }]);
@@ -72,8 +81,23 @@ describe('lspDiagnosticsProjection — 配置重建后诊断投影自愈', () =>
 
     view.dispatch({ changes: { from: 0, insert: 'ab' } });
 
-    const mirror = view.state.field(__diagnosticsMirrorForTests);
-    expect(mirror.map((d) => [d.from, d.to])).toEqual([[16, 19]]);
+    expect(__diagnosticsMirrorForTests.positions(view.state)).toEqual([[16, 19]]);
+  });
+
+  it('编辑位移后配置重建 → 重放位置跟随文本（而非弹回旧坐标）', async () => {
+    const view = makeView('const value = fmt.Println(1);');
+    push(view, [{ from: 14, to: 17, severity: 'error', message: 'undefined: fmt' }]);
+
+    // 在文档头部插入 2 字符 → 诊断应右移至 [16, 19]
+    view.dispatch({ changes: { from: 0, insert: 'ab' } });
+    expect(lintPositions(view)).toEqual([[16, 19]]);
+
+    reconfigure(view);
+    await flushMicrotasks();
+
+    // 重放必须用映射后坐标：弹回 [14, 17] 即旧坐标透传 bug（打字时波浪线乱跳根因）
+    expect(lintPositions(view)).toEqual([[16, 19]]);
+    expect(waveNodes(view)).toHaveLength(1);
   });
 
   it('诊断所在文本被删除 → 塌缩项丢弃，配置重建不复活', async () => {
@@ -83,7 +107,7 @@ describe('lspDiagnosticsProjection — 配置重建后诊断投影自愈', () =>
     // 删掉被诊断的 `fmt` 本身 → 该诊断塌缩为空区间，与 lint 的装饰语义一致地丢弃
     view.dispatch({ changes: { from: 14, to: 17, insert: '' } });
 
-    expect(view.state.field(__diagnosticsMirrorForTests)).toHaveLength(0);
+    expect(__diagnosticsMirrorForTests.positions(view.state)).toEqual([]);
 
     reconfigure(view);
     await flushMicrotasks();
@@ -145,6 +169,75 @@ describe('lspDiagnosticsProjection — 配置重建后诊断投影自愈', () =>
     await flushMicrotasks();
 
     expect(waveNodes(view)).toHaveLength(0);
+  });
+
+  /**
+   * 位置语义 parity（2026-09-21 实证修正）：镜像曾用 `mapPos(from, +1)` /
+   * `mapPos(to, -1)` 手写映射，与 lint 的装饰映射在**零点诊断**上分叉 ——
+   * rust-analyzer 的语法诊断大量是 `start == end`（lint 渲染成小三角点），
+   * 老实现会把这些诊断在重放后整批丢弃。这里逐场景与 lint 对齐。
+   */
+  it('镜像位置与 lint 逐场景一致（含起点/终点插入、删除、覆盖、零点）', () => {
+    const cases: {
+      name: string;
+      diagnostic: Diagnostic;
+      change: Parameters<EditorView['dispatch']>[0];
+    }[] = [
+      {
+        name: '在诊断起点插入',
+        diagnostic: { from: 14, to: 17, severity: 'error', message: 'm' },
+        change: { changes: { from: 14, insert: 'ab' } },
+      },
+      {
+        name: '在诊断终点插入',
+        diagnostic: { from: 14, to: 17, severity: 'error', message: 'm' },
+        change: { changes: { from: 17, insert: 'ab' } },
+      },
+      {
+        name: '删除诊断整段',
+        diagnostic: { from: 14, to: 17, severity: 'error', message: 'm' },
+        change: { changes: { from: 14, to: 17, insert: '' } },
+      },
+      {
+        name: '覆盖式替换',
+        diagnostic: { from: 14, to: 17, severity: 'error', message: 'm' },
+        change: { changes: { from: 13, to: 18, insert: 'xx' } },
+      },
+      {
+        name: '零点诊断 + 其后插入（lint 渲染成点，必须存活）',
+        diagnostic: { from: 20, to: 20, severity: 'error', message: 'point' },
+        change: { changes: { from: 20, insert: 'z' } },
+      },
+    ];
+
+    for (const c of cases) {
+      const plain = makeView('const value = fmt.Println(1);');
+      const projected = makeView('const value = fmt.Println(1);');
+      push(plain, [c.diagnostic]);
+      push(projected, [c.diagnostic]);
+
+      plain.dispatch(c.change as never);
+      projected.dispatch(c.change as never);
+      projected.dispatch({ effects: StateEffect.reconfigure.of([lspDiagnosticsProjection()]) });
+
+      // 把 case 名塞进断言对象：出错时能一眼看出是哪个场景分叉
+      expect({
+        case: c.name,
+        positions: __diagnosticsMirrorForTests.positions(projected.state),
+      }).toEqual({ case: c.name, positions: lintPositions(plain) });
+    }
+  });
+
+  it('零点诊断经配置重建后仍渲染（小三角点不消失）', async () => {
+    const view = makeView('const value = fmt.Println(1);');
+    push(view, [{ from: 20, to: 20, severity: 'error', message: 'point' }]);
+
+    reconfigure(view);
+    await flushMicrotasks();
+
+    expect(
+      view.dom.querySelectorAll('.cm-lint-marker-error, .cm-lintPoint').length,
+    ).toBeGreaterThan(0);
   });
 
   it('视图销毁后挂起的重放不抛错', async () => {

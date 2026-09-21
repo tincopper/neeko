@@ -17,7 +17,13 @@ pub trait LspTransport: Send + Sync {
     /// Push diagnostics for a specific file URI to the frontend.
     /// `diagnostics` is the raw JSON array from the LSP server —
     /// emitted directly without intermediate parsing.
-    fn push_diagnostics(&self, project_path: &str, uri: &str, diagnostics: serde_json::Value);
+    fn push_diagnostics(
+        &self,
+        project_path: &str,
+        uri: &str,
+        diagnostics: serde_json::Value,
+        version: Option<i64>,
+    );
 
     /// Push a work-done progress notification to the frontend.
     fn push_progress(
@@ -78,11 +84,21 @@ impl IpcTransport {
 }
 
 impl LspTransport for IpcTransport {
-    fn push_diagnostics(&self, project_path: &str, uri: &str, diagnostics: serde_json::Value) {
+    fn push_diagnostics(
+        &self,
+        project_path: &str,
+        uri: &str,
+        diagnostics: serde_json::Value,
+        version: Option<i64>,
+    ) {
         let event_name = format!("{}{}", LSP_DIAG_EVENT_PREFIX, project_path);
+        // `version` 必须在场：前端把它放进 `publishDiagnostics` 通知，lsp-client 的
+        // 版本门据此区分"这份诊断属于哪一版文本"（缺了就会把旧诊断按新文本套用，
+        // 波浪线整体偏移）。
         let payload = serde_json::json!({
             "uri": uri,
             "diagnostics": diagnostics,
+            "version": version,
         });
 
         if let Err(e) = self.app_handle.emit(&event_name, payload) {

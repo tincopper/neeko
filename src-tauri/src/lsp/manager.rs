@@ -299,6 +299,98 @@ impl LspManager {
         self.session_store.is_document_open(&key, uri)
     }
 
+    /// 前端视图声明持有该文档（挂载时）。
+    pub fn claim_document(&self, project_path: &str, language_id: &str, uri: &str) {
+        self.session_store
+            .claim_document(session_key(project_path, language_id), uri.to_string());
+    }
+
+    /// 前端视图释放持有（最后一个视图卸载时）。
+    pub fn release_document(&self, project_path: &str, language_id: &str, uri: &str) {
+        self.session_store
+            .release_document(&session_key(project_path, language_id), uri);
+    }
+
+    /// 该文档是否正被编辑器视图持有 —— 持有期间后端**不得**代开（否则会用磁盘文本
+    /// 覆盖编辑器未保存的缓冲区，服务器随即按旧文本报出错位诊断）。
+    #[must_use]
+    pub fn is_editor_owned(&self, project_path: &str, language_id: &str, uri: &str) -> bool {
+        self.session_store
+            .is_editor_owned(&session_key(project_path, language_id), uri)
+    }
+
+    /// 已登记版本号（未登记为 `None`）—— 鉴定「第二个 client 的独立计数器」用。
+    #[must_use]
+    pub fn open_document_version(
+        &self,
+        project_path: &str,
+        language_id: &str,
+        uri: &str,
+    ) -> Option<i64> {
+        let key = session_key(project_path, language_id);
+        self.session_store.open_document_version(&key, uri)
+    }
+
+    /// `textDocument/didOpen` 的**唯一出口**：必要时先补 `didClose`，再发送、再登记。
+    ///
+    /// 为什么收敛到一处（2026-09-21 实证）：后端曾有第三条 didOpen 路径（`lsp_request`
+    /// 的内联代开）绕过登记，造成同一 uri 两条 didOpen、且服务器与客户端的文档版本分叉
+    /// —— 服务器用 v1 推诊断，客户端文档是 v0，被 `@codemirror/lsp-client` 的版本门整批
+    /// 丢弃，表现为「Problems 面板有诊断、编辑器没有波浪线/灯泡」。任何新增的 didOpen
+    /// 发送者都必须走本方法，禁止自行拼参数直发。
+    pub fn send_did_open(
+        &self,
+        project_path: &str,
+        language_id: &str,
+        uri: &str,
+        text: &str,
+        version: i64,
+    ) -> Result<(), AppError> {
+        log::debug!(
+            "[LSP] didOpen {} v={} (previous={:?})",
+            uri,
+            version,
+            self.open_document_version(project_path, language_id, uri)
+        );
+        if let Some(previous) = self.open_document_version(project_path, language_id, uri) {
+            if version <= previous {
+                log::warn!(
+                    "[LSP] non-monotonic didOpen for {}: v={} <= previous v={} \
+                     (a second writer is tracking this document)",
+                    uri,
+                    version,
+                    previous
+                );
+            }
+            log::warn!(
+                "[LSP] duplicate didOpen for {} ({}); closing before reopening",
+                uri,
+                language_id
+            );
+            self.send_notification(
+                project_path,
+                language_id,
+                "textDocument/didClose",
+                serde_json::json!({ "textDocument": { "uri": uri } }),
+            )?;
+        }
+        self.send_notification(
+            project_path,
+            language_id,
+            "textDocument/didOpen",
+            serde_json::json!({
+                "textDocument": {
+                    "uri": uri,
+                    "languageId": language_id,
+                    "version": version,
+                    "text": text,
+                }
+            }),
+        )?;
+        self.register_open_document(project_path, language_id, uri, text, version);
+        Ok(())
+    }
+
     /// Unregister a closed document.
     pub fn unregister_open_document(&self, project_path: &str, language_id: &str, uri: &str) {
         let key = session_key(project_path, language_id);
@@ -310,7 +402,12 @@ impl LspManager {
         let ah = app_handle.clone();
         let diag_subscriber = self.diag_bus.subscribe(move |event: &DiagnosticEvent| {
             let transport = IpcTransport::new(ah.clone());
-            transport.push_diagnostics(&event.project_path, &event.uri, event.diagnostics.clone());
+            transport.push_diagnostics(
+                &event.project_path,
+                &event.uri,
+                event.diagnostics.clone(),
+                event.version,
+            );
         });
         std::mem::forget(diag_subscriber);
 

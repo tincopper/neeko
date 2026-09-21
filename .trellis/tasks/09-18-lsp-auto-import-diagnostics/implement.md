@@ -147,6 +147,167 @@ M1 的诊断行承载。
     面板级 3 条回归（含 `16777218 不得出现在行上`）；既有的 `(2339)` 断言改写为
     「不占行尾 + title 可查」。全量 466 文件 4062 passed。
 
+20. **2026-09-21 十三轮（AC5 rust-analyzer 真机验证暴露的根因：编辑器没有波浪线/灯泡）**：
+    现象分裂 —— Problems 面板有诊断、hover popup 有诊断（`E0425 cannot find type int32`）
+    且 `textDocument/codeAction` 正常发出，但编辑器**既没波浪线也没 gutter 灯泡**。
+    日志取证（`~/.neeko/neeko.log`）逐步收敛：
+    1. 同文件 47ms 内两条 `didOpen`（v1 然后 v0）且无 didClose → rust-analyzer
+       `ERROR duplicate DidOpenTextDocument`
+    2. 加 `previous=` 取证日志后发现：**v1 那条根本没走 `lsp_transport` 的转发分支**
+       （无取证行）→ 定位到**第三条 didOpen 路径**：`lsp_request` 的内联代开
+       （读盘 + 手写 `version: 1` + 裸发 + **不登记**）；`lsp_go_to_definition` 是第四条
+    3. 服务器按 v1 推诊断，而 `@codemirror/lsp-client` 手里文档是 v0 → 版本门
+       (`serverDiagnostics`: `params.version != file.version` 直接 return) **整批丢弃**
+       → 编辑器无 lint 状态 ⇒ 波浪线与灯泡同时消失（面板走 lspStore，不经过该门）
+    **修法（入口归一）**：新增 `lsp/document_open.rs`（`ensure_document_open` +
+    `next_open_version`：版本由登记表推进，首开 0）+ `LspManager::send_did_open`
+    （didOpen 唯一出口：重复先补 didClose、发送、登记）；`lsp_transport` 转发分支、
+    `lsp_request`、`lsp_go_to_definition` 三处全部委托。另修 `TauriLspTransport.destroy()`
+    后仍可 `send()` 的漏洞（僵尸 client 能继续用自己计数器写同一会话）。
+    测试：Rust +4（`next_open_version` / `needs_backend_open` / 登记去重 / 版本查询）、
+    前端 +1（destroy 后 send 不触发 IPC）；全量 cargo 1309 + 前端 380(lsp) 全绿。
+    用户复测：**波浪线与灯泡恢复**。
+
+21. **2026-09-22 十四轮（方案 C 混合：内容锚定校验 + 删 settle/指纹，用户裁定）**：
+    现象 —— rust-analyzer 下输入 `HashMap::new()` 过程中及收尾后，`int32`（E0425）
+    的波浪线长期落在错行（`let map` 行），typing 期语义波浪线直接消失，用户两轮复测
+    「还是不行」。
+    法医证据（`~/.neeko/neeko.log`，0-based 行号）：
+    ① v34：map 行 14、`int32` 行 15，publish `[syntax-error@14:18, E0425@15:11-16]`
+    坐标正确；
+    ② v35：一次 didChange 带两个 contentChanges（键入 `Hash` + 自动导包在 line 5 插入
+    `\nuse std::hash::Hash;`），此后 map→15、`int32`→16，但 publish
+    `[syntax-error@15:18, E0425@15:11-16]` —— syntax 跟输入走（新鲜），E0425 钉死
+    （陈旧），`version:35` 照跟，版本门放行；v36→v43 及 12:59 新会话复现同一模式。
+    根因（两时钟模型）：`syntax-error`（source=rust-analyzer，live parsing，每击新鲜）
+    与 E0425（source=rustc + `data.rendered`，flycheck 缓存）在同一 push 里混装；
+    文档版本钟 ≠ 分析新鲜钟，version 相等不代表坐标新鲜 —— version 门 / 越界检查 /
+    指纹去重三层对「无 syntax 批次里的孤立陈旧语义诊断」（v43）全部放行。
+    VSCode 对照（`vscode-languageserver-node` 源码）：push →
+    `DiagnosticCollection.set(uri, items)` 整批替换，无穿编辑映射、无语法语义分流、
+    无延迟去重；同样短暂画错，但零延迟零丢弃故自愈快、不隐藏语义诊断。
+    方案（用户选 C，比较用 `includes(token)` 宽容匹配）：保留 `keepSyntaxLayerOnly` +
+    `rangeFitsDocument` + 内层版本门；删除 settle 整条路径
+    （`DIAGNOSTICS_SETTLE_MS`/`pending`/`flush`）与指纹整块
+    （`lastApplied`/`fingerprintDiagnostics`）；新增**内容锚定校验**为唯一陈旧判据
+    （逐条 fail-open）：仅 message 含反引号 token 且 range 单行时检查；映射与内层同源
+    （`fromPosition(range, syncedDoc)` → `unsyncedChanges.mapPos` → 当前 view 文本切片
+    `includes(token)`）；不含则丢该条，全丢空则 `return true` 保旧线。
+    TDD：新增 v34→v35 日志回放 e2e（陈旧必丢 / 旧线保留 / 新鲜必画）；原 settle 语义
+    3 条用例（静置待定 / 快打丢弃 / 权威取消待定）改写为即时应用；其余保留。
+    门禁：`npx vitest run src/features/lsp`（404 基线）+ `npx tsc --noEmit` + `eslint`
+    两文件；真机：stock-buddy `main.rs`「补全导包→插行→`;`收尾」三步复测，波浪线钉住。
+    回滚：`lspServerDiagnostics.ts` 单文件回退即回退全部行为。
+
+22. **2026-09-22 十五轮（对齐 VS Code：删语法层过滤 + 内容锚定，用户裁定）**：
+    现象复现十四轮方案 C 后仍「编辑时旧波浪线不跟随错误代码位置」——用户明确：
+    编辑插行后错误代码下移，旧波浪线却跳到别的行。
+    第一性原理再审查（见 `prd.md` 附注）：客户端在信息论上**无法判定**「坐标是新鲜
+    还是陈旧」——文档版本钟 ≠ 分析新鲜钟，服务器会把当前版本号盖在旧分析结果上重发。
+    任何启发式（语法层过滤 `keepSyntaxLayerOnly` / 内容锚定 `anchorFitsCurrentText`）
+    都既误杀（语法错误时隐藏全部语义诊断）又漏网（跨行/无 token 诊断 fail-open 放行），
+    表现为波浪线跳动/不跟随；防御失败的代价不对称——漏网长期错位、误杀错误凭空消失，
+    且无法靠调参消除。
+    裁定（对齐 VS Code 哲学）：客户端**不猜新鲜度，信任服务器，靠重推自愈**。
+    VS Code 对照（`DiagnosticCollection.set(uri, items)` 零过滤整批替换）：同样短暂画错，
+    但零延迟零丢弃故自愈快、不隐藏语义诊断；其成熟在于**不做信息论上不可能的判断**。
+    **改动**：`lspServerDiagnostics.ts` 收敛为只保留**可判定**防御 ——
+    ① 空推送清空（整体替换语义）；② 无 doc 委托内层；③ `rangeFitsDocument` 越界安全网
+    （纯防御，只防坐标形状不合法）；④ 整批全越界 → 不应用保留旧线；⑤ 其余**整批应用**
+    （陈旧坐标短暂画错，靠下一次新鲜推送整批替换自愈）。
+    删除：`keepSyntaxLayerOnly` / `anchorToken` / `anchorFitsCurrentText` /
+    `ANCHOR_TOKEN_PATTERN` / `languageOf`；`syntax_error_codes` 全链路 dead code
+    （`LspPlugin` 字段+builder、`LspExtensionMapEntry` DTO、registry 映射、rust builtin
+    声明、前端 `lspApi`/`languageMap`）一并删除（clean cutover，grep 零残留）。
+    保留：内层版本门（防「旧版本号+旧坐标」真实违规）+ lint `map(tr.changes)` 文本跟随
+    （CodeMirror 天然行为，编辑时旧线随文本走——比 VS Code 更优）。
+    TDD：`lspDiagnosticsMapping.test.ts` 15 用例改写/新增——陈旧坐标**应用**（短暂画错）
+    而非锚定识破丢弃；「陈旧应用 → 新鲜纠正自愈」完整序列用例
+    `aligned_vscode_editor_edit_preserves_follow_then_fresh_corrects`；语法+语义同批
+    **都应用**（不隐藏语义）；版本门/越界保留语义原样钉死。
+    门禁（trellis-check PASS）：`pnpm type-check`、`npx vitest run src/features/lsp`
+    （404 tests）、eslint 本改动文件、`cargo check` + `cargo test lsp::plugin`（32）、
+    残留扫描零命中。
+    **行为变化（接受）**：语法错误期间语义诊断坐标陈旧时会短暂画错，由下一次新鲜推送
+    自愈——这是「隐藏语义诊断」与「短暂画错」之间的取舍，VS Code 选择后者（错误始终
+    可见、最终正确）。
+    回滚：`lspServerDiagnostics.ts` 单文件回退即回退全部行为；`syntax_error_codes` 属
+    未提交工作区状态，删除后 plugin/api 文件与 HEAD 一致。
+
+23. **2026-09-22 十六轮（修正：恢复内容锚定，不恢复语法层过滤）**：
+    十五轮（对齐 VS Code）后用户复测仍报「编辑时旧波浪线不跟随错误代码位置」——
+    日志取证（`~/.neeko/neeko.log`）确认传输链路本身通畅（didChange 逐版本发出、
+    publishDiagnostics 逐版本响应），问题在**客户端**：rust-analyzer 语义诊断重推慢
+    （flycheck 缓存），"信任服务器靠重推自愈"在本栈不成立——陈旧坐标（新版本号 +
+    旧坐标，不越界）被**整批应用**后，把 lint/mirror 已**跟随正确**的旧波浪线**拽回
+    旧行**，即用户看到的「变动到别的行」。
+    修正：**恢复内容锚定**（`anchorToken` / `anchorFitsCurrentText` / `ANCHOR_TOKEN_PATTERN`），
+    作为陈旧坐标的**唯一可判定判据**——点名 token 的诊断（E0425/E0433）映射到当前
+    文本切片不含该 token → 该批含陈旧坐标 → **整批拒绝**，跟随正确的旧线保留。
+    **不恢复**语法层过滤 `keepSyntaxLayerOnly`（语义诊断保持可见，VS Code 行为）。
+    TDD：`lspDiagnosticsMapping.test.ts` 翻转 4 个「陈旧应用」用例为「锚定拒绝、跟随
+    旧线不被拽回」（含用户现场：插行后陈旧 E0425 落在插入行 `"inser"` 切片 → 拒绝）；
+    新增 `edit_insert_line_then_stale_rejected_then_fresh_applies` 完整序列。
+    门禁：`npx vitest run src/features/lsp`（404）+ `pnpm type-check` + eslint 两文件全绿。
+    回滚：`lspServerDiagnostics.ts` 单文件回退即回退全部行为。
+
+24. **2026-09-22 十七轮（批级决策：修复「编辑后波浪线消失」，用户复测）**：
+    十六轮（恢复内容锚定）后用户复测报「编辑代码后错误上面的波浪线消失」。
+    日志取证（`~/.neeko/neeko.log`）：服务器端 E0425 **从未消失**（逐版本推
+    `E0425@syntax-error` 混装批，坐标正确）→ 问题在前端过滤层的**子集应用**：
+    旧逻辑 `kept = incoming.filter(rangeFitsDocument)` 后，批里 E0425 陈旧越界被滤、
+    新鲜的 syntax-error 通过 → `kept` 非空 → 只应用 syntax 子集 → `setDiagnostics`
+    **整批替换**把 lint 里已跟随正确的 E0425 波浪线**挤掉** → 波浪线消失。
+    **根因**：`publishDiagnostics` 是**整批替换**语义，部分过滤 + 应用子集 = 隐式清除
+    被过滤的诊断。VS Code 从不过滤（`DiagnosticCollection.set` 整批信服务器），故从不丢。
+    **修法（批级决策）**：`applyFiltered` 收敛为「**任一条**越界或锚定失败 → **整批拒绝**
+    （`return true` 保留 lint/mirror 已跟随旧线）；只有**全部**通过 → 整批应用
+    （`inner(client, params)`，与 VS Code 同语义，服务器推什么就画什么）」。
+    不再做任何子集应用。
+    TDD：新增用户现场精确复现 `陈旧越界 E0425 + 新鲜 syntax-error：整批拒绝，E0425
+    波浪线不消失`（编辑截短行 + sync 后推混装批，断言 E0425 lint 位置保留）；
+    翻转 `混合批` 用例为「任一条越界 → 整批拒绝」。16 用例全绿。
+    门禁：`npx vitest run src/features/lsp`（405）+ `pnpm type-check` + eslint 全绿。
+    回滚：`lspServerDiagnostics.ts` 单文件回退即回退全部行为。
+
+25. **2026-09-22 十八轮（逐条合并：修复「缺分号 syntax-error 不显示」，用户复测）**：
+    十七轮（批级决策：任一条陈旧整批拒绝）后用户复测报「代码最后没有分号的错误没显示
+    波浪线」——日志取证：批 = `[syntax-error@15:21-21(零长度点, 无反引号 token →
+    锚定 fail-open 通过) + E0425@15:11-16]`。批级决策的「任一条锚定失败 → 整批拒绝」
+    把**新鲜的 syntax-error 连带拒掉**（E0425 陈旧拖累整批）。
+    修正（逐条合并）：`applyFiltered` 拆分为**逐条判定** —— 越界/锚定判定独立作用于
+    每条诊断；`fresh`（越界+锚定通过）原样应用；`stale`（陈旧）从 lint 层按 message
+    取**已跟随位置**重建坐标后一并应用（`lintPositionsByMessage` 用 `forEachDiagnostic`
+    读 lint 当前渲染位置；`plugin.toPosition` 转回 LSP 坐标，内层同源映射落回跟随处）；
+    lint 里也没有（无旧线可保留）→ 丢弃避免旧坐标画错位。三种结果：全新鲜整批应用 /
+    全陈旧整批拒绝保留旧线 / 混合逐条合并。
+    TDD：翻转 `陈旧越界 E0425 + 新鲜 syntax-error` 用例为「逐条合并：E0425 保留 lint
+    跟随位置 **且** syntax-error 点显示」（用 `arrayContaining` 断言两者并存）。
+    16 用例全绿。门禁：`npx vitest run src/features/lsp`（405）+ `pnpm type-check` +
+    eslint 全绿。回滚：`lspServerDiagnostics.ts` 单文件回退即回退全部行为。
+
+26. **2026-09-22 十九轮（jdtls quickfix 缺失：声明 codeActionLiteralSupport，用户反馈）**：
+    现象 —— Java 未导入包（`ArrayList cannot be resolved to a type`）的 quick fix 没有
+    修复方法，Go 有。日志取证：`textDocument/codeAction` 请求**正常到达** jdtls（context
+    诊断含 `source:"Java"`、`code:16777218`），但 jdtls **返回空列表**。
+    jdtls 源码实证（`CodeActionHandler.getCodeActionFromProposal` + `ClientPreferences`
+    字节码反编译）：`isSupportedCodeActionKind(kind)` 从
+    `capabilities.textDocument.codeAction.codeActionLiteralSupport.codeActionKind.valueSet`
+    读取；**客户端未声明 valueSet（null）→ 恒 false → 所有 quickfix proposal 被丢弃**。
+    gopls 不检查该声明故 Go 正常。根因：`build_client_capabilities()` 缺 `textDocument.codeAction`。
+    **修复**：`session/instance.rs::build_client_capabilities` 新增
+    `codeAction.codeActionLiteralSupport.codeActionKind.valueSet = ["quickfix", "source"]`。
+    **红线 14 双向护栏（不重蹈 resolveAdditionalTextEditsSupport 覆辙）**：
+    - **声明** `codeActionLiteralSupport`：前端确实消费带 `edit` 的 quickfix
+      （`groupQuickFixActions` 已有 `{ title:'Add import', kind:'quickfix', edit }` 用例，
+      `applyCodeAction` → `applyWorkspaceEdit` 单事务）；
+    - **不声明** `resolveSupport`：本栈无 `codeAction/resolve` 通道，声明会让 jdtls 把
+      edit 全推迟到 resolve。
+    TDD：新增护栏 `client_capabilities_advertise_code_action_literal_support_without_resolve`
+    （valueSet 含 quickfix + resolveSupport 不得出现）。后端 lsp:: 222 passed、cargo check 绿。
+    **生效方式**：能力在 initialize 时发送 → 需**重启 Java 会话**（改的是 Rust 载荷）。
+    回滚：删 `codeAction` 块 + 该测试即可。
+
 ## M4 策略三态（R4/AC4）
 
 1. 设置项 `editor.lsp.importStrategy`（settings 域既有模式 + 持久化）

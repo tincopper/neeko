@@ -22,8 +22,16 @@
  * linter，重放会与它的结果互相覆盖。
  */
 import { setDiagnostics, setDiagnosticsEffect, type Diagnostic } from '@codemirror/lint';
-import { StateEffect, StateField, type Extension, type Transaction } from '@codemirror/state';
-import { EditorView, ViewPlugin, type ViewUpdate } from '@codemirror/view';
+import {
+  RangeSet,
+  RangeValue,
+  StateEffect,
+  StateField,
+  type EditorState,
+  type Extension,
+  type Transaction,
+} from '@codemirror/state';
+import { Decoration, EditorView, ViewPlugin, WidgetType, type ViewUpdate } from '@codemirror/view';
 
 /** `EditorView.destroyed` 为 TS private，按仓内既有做法（useNavigateGoal）经 unknown 收窄。 */
 function isViewDestroyed(view: EditorView): boolean {
@@ -53,29 +61,108 @@ function replacesBaseConfig(tr: Transaction): boolean {
  *
  * **必须模块级定义**：`StateField.define` 每次调用分配新 id，写成函数内定义会让
  * reconfigure 后的镜像静默归零 —— 那正是本模块要修的病。
+ *
+ * **位置映射必须与 lint 逐位一致**（2026-09-21 实测修正）：镜像曾用
+ * `mapPos(from, +1)` / `mapPos(to, -1)` 手写映射，与 lint 的
+ * `RangeSet<Decoration>.map(tr.changes)` 语义分叉 —— 在诊断起点插入、删除首字符、
+ * 零点诊断（`from == to`）三类场景下位置不同（分叉取证见
+ * `lspDiagnosticsProjection.test.ts` 的 parity 用例）。后果是每次编辑后重放都把
+ * 波浪线挪到错位置。现在改为**同一套值语义**：把诊断包成 `RangeValue`，两侧
+ * side 取 `Decoration.mark()` 的公开属性（lint 的诊断就是 mark 装饰），并用
+ * `RangeSet.map` 映射 —— 与 lint 同源，不再自行推导。
  */
-const diagnosticsMirror = StateField.define<readonly Diagnostic[]>({
-  create: () => [],
-  update(value, tr) {
-    let next = value;
-    if (tr.docChanged && value.length) {
-      // 与 lintState 的 RangeSet.map 同语义：start assoc=+1、end assoc=-1，
-      // 区间塌缩（from >= to）即丢弃 —— 否则重放会复活 lint 已丢弃的陈旧诊断。
-      next = value.flatMap((diagnostic) => {
-        const from = tr.changes.mapPos(diagnostic.from, 1);
-        const to = tr.changes.mapPos(diagnostic.to, -1);
-        return from < to ? [{ ...diagnostic, from, to }] : [];
-      });
+class MirrorValue extends RangeValue {
+  /**
+   * 与 lint 渲染同 side：lint 把非空诊断渲染成 **mark**、零长度诊断渲染成
+   * **widget 点**（`LintState.init` 的两条分支），两者的 side 语义不同，
+   * 映射结果也不同。这里直接取两种公共装饰的公开属性，避免手写魔数、
+   * 也避免"照抄一遍却在边界场景分叉"。
+   */
+  startSide: number;
+  endSide: number;
+  /** 零长度区间需显式声明 `point`，否则 `RangeSet.of` 直接丢弃。 */
+  point = true;
+
+  constructor(readonly diagnostic: Diagnostic) {
+    super();
+    const sides = diagnostic.from === diagnostic.to ? WIDGET_SIDES : MARK_SIDES;
+    this.startSide = sides.startSide;
+    this.endSide = sides.endSide;
+  }
+
+  eq(other: MirrorValue): boolean {
+    return (
+      other.diagnostic.from === this.diagnostic.from &&
+      other.diagnostic.to === this.diagnostic.to &&
+      other.diagnostic.message === this.diagnostic.message
+    );
+  }
+}
+
+const MARK_SIDES = (() => {
+  const mark = Decoration.mark({});
+  return { startSide: mark.startSide, endSide: mark.endSide };
+})();
+
+const WIDGET_SIDES = (() => {
+  class ProbeWidget extends WidgetType {
+    toDOM(): HTMLElement {
+      return document.createElement('span');
     }
+  }
+  const widget = Decoration.widget({ widget: new ProbeWidget() });
+  return { startSide: widget.startSide, endSide: widget.endSide };
+})();
+
+function toRangeSet(diagnostics: readonly Diagnostic[]): RangeSet<MirrorValue> {
+  return RangeSet.of(
+    diagnostics.map((diagnostic) =>
+      new MirrorValue(diagnostic).range(diagnostic.from, diagnostic.to),
+    ),
+    true,
+  );
+}
+
+const diagnosticsMirror = StateField.define<RangeSet<MirrorValue>>({
+  create: () => RangeSet.empty,
+  update(value, tr) {
+    let next = tr.docChanged ? value.map(tr.changes) : value;
     for (const effect of tr.effects) {
-      if (effect.is(setDiagnosticsEffect)) next = effect.value;
+      if (effect.is(setDiagnosticsEffect)) next = toRangeSet(effect.value);
     }
     return next;
   },
 });
 
+/**
+ * 镜像中的诊断（重放用）。
+ *
+ * 必须用映射后的 `iter.from/to` 重建诊断：`MirrorValue.diagnostic` 存的是推送时刻的
+ * 旧坐标，直接透传会在每次编辑 + 配置重建后把波浪线弹回旧位置（2026-09-21 实证：
+ * 打字时波浪线乱跳）。其余字段（severity/message/source/code/actions 等）原样保留。
+ */
+function diagnosticsOf(mirror: RangeSet<MirrorValue>): Diagnostic[] {
+  const out: Diagnostic[] = [];
+  for (const iter = mirror.iter(); iter.value; iter.next()) {
+    out.push({ ...iter.value.diagnostic, from: iter.from, to: iter.to });
+  }
+  return out;
+}
+
 /** @internal 测试钩子：断言镜像内容（生产代码不得使用）。 */
-export const __diagnosticsMirrorForTests = diagnosticsMirror;
+export const __diagnosticsMirrorForTests = {
+  field: diagnosticsMirror,
+  positions: (state: EditorState): [number, number][] => {
+    const out: [number, number][] = [];
+    const mirror = state.field(diagnosticsMirror, false);
+    if (mirror) {
+      for (const iter = mirror.iter(); iter.value; iter.next()) {
+        out.push([iter.from, iter.to]);
+      }
+    }
+    return out;
+  },
+};
 
 /**
  * 配置重建后把镜像重放回 lint 渲染层。
@@ -97,7 +184,7 @@ const reconciler = ViewPlugin.fromClass(
     update(update: ViewUpdate): void {
       if (this.pending) return;
       if (!update.transactions.some(replacesBaseConfig)) return;
-      if (!update.state.field(diagnosticsMirror, false)?.length) return;
+      if (!update.state.field(diagnosticsMirror, false)?.size) return;
 
       this.pending = true;
       // CM 更新周期内禁止 dispatch（.trellis/spec/frontend/navigation-goal.md §4），
@@ -107,8 +194,8 @@ const reconciler = ViewPlugin.fromClass(
         const view = update.view;
         if (isViewDestroyed(view)) return;
         const mirror = view.state.field(diagnosticsMirror, false);
-        if (!mirror?.length) return;
-        view.dispatch(setDiagnostics(view.state, mirror));
+        if (!mirror?.size) return;
+        view.dispatch(setDiagnostics(view.state, diagnosticsOf(mirror)));
       });
     }
   },

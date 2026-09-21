@@ -151,3 +151,70 @@ describe('completion 探针（DEV）', () => {
     info.mockRestore();
   });
 });
+
+describe('TauriLspTransport — 诊断推送必须带 version', () => {
+  beforeEach(() => {
+    for (const key of Object.keys(listenHandlers)) delete listenHandlers[key];
+    vi.clearAllMocks();
+  });
+
+  /// lsp-client 的版本门是 `params.version != file.version 即丢弃`：诊断坐标属于哪一版
+  /// 文本全靠它。后端事件里带 version 时必须原样透传，否则旧版本的诊断会被按当前文本
+  /// 套用（波浪线整体偏移，2026-09-21 实测）。
+  it('后端事件里的 version 进入 publishDiagnostics 通知', async () => {
+    const transport = new TauriLspTransport('/proj', 'rust');
+    const received: string[] = [];
+    transport.subscribe((message) => received.push(message));
+    await Promise.resolve();
+
+    listenHandlers['lsp-diagnostics-/proj']?.({
+      payload: { uri: 'file:///proj/src/main.rs', diagnostics: [], version: 14 },
+    });
+
+    const params = (JSON.parse(received[0]) as { params: { version?: number } }).params;
+    expect(params.version).toBe(14);
+  });
+
+  /// 服务器没声明版本（`null` / 缺字段）时不得写进 `null`：lsp-client 对显式 `null` 与
+  /// 缺失同样不拦截，但显式 `null` 会让载荷含义含糊（协议里 version 是可选 number）。
+  it('version 缺失/为 null 时不产出该字段', async () => {
+    const transport = new TauriLspTransport('/proj', 'rust');
+    const received: string[] = [];
+    transport.subscribe((message) => received.push(message));
+    await Promise.resolve();
+
+    listenHandlers['lsp-diagnostics-/proj']?.({
+      payload: { uri: 'file:///proj/src/main.rs', diagnostics: [], version: null },
+    });
+
+    const params = JSON.parse(received[0]).params as Record<string, unknown>;
+    expect('version' in params).toBe(false);
+    expect(params.uri).toBe('file:///proj/src/main.rs');
+  });
+});
+
+describe('TauriLspTransport — 销毁后不得再写服务器', () => {
+  beforeEach(() => {
+    for (const key of Object.keys(listenHandlers)) delete listenHandlers[key];
+    vi.clearAllMocks();
+  });
+
+  /// destroy() 只清订阅；若不设闸，被插件僵尸 client 仍可把 didOpen/didChange
+  /// 写进后端**仍活着**的会话（会话按 project+language 复用），用自己那套版本号
+  /// 覆盖真实文档状态 → 服务器报 duplicate DidOpenTextDocument 后停止分析。
+  it('destroy 之后的 send 一律丢弃（不触发 IPC）', async () => {
+    const transport = new TauriLspTransport('/proj', 'rust');
+    await Promise.resolve();
+
+    transport.send(
+      JSON.stringify({ jsonrpc: '2.0', method: 'textDocument/didChange', params: {} }),
+    );
+    expect(invokeMock).toHaveBeenCalledTimes(1);
+
+    transport.destroy();
+    transport.send(
+      JSON.stringify({ jsonrpc: '2.0', method: 'textDocument/didChange', params: {} }),
+    );
+    expect(invokeMock).toHaveBeenCalledTimes(1);
+  });
+});

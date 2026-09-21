@@ -6,6 +6,10 @@ import {
   useLspLinkHighlightExtension,
   withJdtLinkHandler,
 } from '@/features/lsp';
+import {
+  claimDocumentOwnership,
+  releaseDocumentOwnership,
+} from '@/features/lsp/api/documentOwnership';
 import { getLspLanguageId, resolveLspLanguageId, toFileUri } from '@/features/lsp/api/languageMap';
 
 interface UseLspClientParams {
@@ -72,6 +76,9 @@ export function useLspClient({
     if (!projectPath || !lspLanguageId || !fileUri) return;
 
     const plugin = acquireLspPlugin(projectPath, lspLanguageId, fileUri);
+    // 视图持有声明：必须在 CM 插件挂载（didOpen）**之前**发出 —— 否则请求可能先到，
+    // 后端会用磁盘文本代开，服务器按旧文本报出错位诊断（谁编辑谁负责打开）。
+    claimDocumentOwnership(projectPath, lspLanguageId, fileUri);
     // 按本视图注入 jdt 链接回调（共享 client 不持有宿主闭包）
     const perFile = withJdtLinkHandler(plugin, onOpenJdtLink);
     // Defer to avoid sync setState in effect
@@ -79,6 +86,7 @@ export function useLspClient({
 
     return () => {
       setLspClientExt([]);
+      releaseDocumentOwnership(projectPath, lspLanguageId, fileUri);
       releaseLspClient(projectPath, lspLanguageId);
     };
   }, [projectPath, lspLanguageId, fileUri, onOpenJdtLink]);

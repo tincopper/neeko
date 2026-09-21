@@ -13,6 +13,13 @@ pub struct DiagnosticEvent {
     pub language_id: String,
     /// Raw diagnostics JSON array from the LSP notification.
     pub diagnostics: serde_json::Value,
+    /// 服务器声明的文档版本（`publishDiagnostics.params.version`）。
+    ///
+    /// **必须原样带到前端**：`@codemirror/lsp-client` 的版本门
+    /// （`params.version != file.version` 即丢弃）是"诊断坐标属于哪一版文本"的唯一
+    /// 判据；丢掉它守门就失效，旧版本的诊断会按当前文本坐标套用 → 波浪线整体偏移
+    /// （2026-09-21 实测：编辑后错误位置跟不上代码）。
+    pub version: Option<i64>,
 }
 
 type Listener = Box<dyn Fn(&DiagnosticEvent) + Send + Sync>;
@@ -123,6 +130,7 @@ mod tests {
             count_clone.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
         });
         bus.publish(DiagnosticEvent {
+            version: None,
             project_path: "/test".into(),
             uri: "file:///test/main.rs".into(),
             language_id: "rust".into(),

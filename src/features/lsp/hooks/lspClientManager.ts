@@ -1,4 +1,4 @@
-import { LSPClient, serverDiagnostics, signatureHelp } from '@codemirror/lsp-client';
+import { LSPClient, signatureHelp } from '@codemirror/lsp-client';
 import type { Extension } from '@codemirror/state';
 
 import { lspRequestTimeoutMs } from '../api/languageMap';
@@ -7,6 +7,7 @@ import { TauriLspTransport } from '../transport/tauriLspTransport';
 
 import { createThemedServerCompletion } from './lspCompletionInfoRenderer';
 import { createLspHoverTooltips } from './lspHoverExtension';
+import { lspServerDiagnostics } from './lspServerDiagnostics';
 
 interface LspClientBundle {
   client: LSPClient;
@@ -152,7 +153,7 @@ export function acquireLspPlugin(
       extensions: [
         createThemedServerCompletion(),
         createLspHoverTooltips(),
-        serverDiagnostics(),
+        lspServerDiagnostics(),
         signatureHelp(),
       ],
       timeout: lspClientTimeout(languageId),
