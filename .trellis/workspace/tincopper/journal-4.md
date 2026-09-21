@@ -1810,3 +1810,36 @@ AC5 语言无关性验证通过（rust-analyzer 1.97.1 三通道真机复跑：�
 ### Next Steps
 
 - None - task complete
+
+
+## Session 225: 09-12-java-debug-backends 归档：JDTLS/host 双后端完成，WSL 记为已知限制
+
+**Date**: 2026-09-21
+**Task**: 09-12-java-debug-backends 归档：JDTLS/host 双后端完成，WSL 记为已知限制
+**Branch**: `main`
+
+### Summary
+
+Java Debug 双后端任务归档收尾。核心（S0 spike GO / R8 外部端点入口 / B' JDTLS 后端 / A host 后端 / 能力探测三态 / 选择器不变式 / 参数单点化 / 降级 UX / bundle pin+SHA256）与附一（语言无关 DAP 重构 A-1..A-4 + runner 域迁移）代码均已在主提交 570463bd（2026-09-15）落地。归档时修正：PRD 环境验收项标记完成（Local 真机冒烟通过、SSH 显式拒绝，WSL 无本机环境记为显式已知限制待有 WSL 机器补验）；implement.md 附二 R-0..R-4 共 25 个 checkbox 按实证勾选（features/runner 完整存在、features/debug 已删、grep 零残留）；task.json 状态修正 in_progress→completed（completedAt 2026-09-15）。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `218a3355` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
