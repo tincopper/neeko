@@ -328,8 +328,15 @@ M1 的诊断行承载。
 
 ## 收尾
 
-- AC5 语言无关性验证：builtins 中选一个未实测 LS（如 python/pyright 或 rust-analyzer）
-  重复 M0 清单 1-3 项
-- 全量门禁 + 各阶段报告归档 implement.jsonl / check.jsonl
+- AC5 语言无关性验证：**rust-analyzer 1.97.1 真机三通道复跑通过**（2026-09-22，
+  HEAD `d24f2448`）—— 以 `src-tauri`（Cargo.toml 工程）为项目：① 诊断
+  `let x: i32 = "oops";` 出波浪线 + Problems 跳转；② 补全 `HashMap` 一步落
+  `use std::collections::HashMap;`；③ 诊断行灯泡 / `⌘.` 修复后错误消失；④
+  status-bar rust-analyzer starting → running。验证暴露的 didOpen 归一化
+  （`e3a802f1`）、波浪线稳定化（`d24f2448`）、jdtls codeActionLiteralSupport
+  （十九轮）均已真机复测确认。ac 勾选见 prd.md AC5。
+- 全量门禁 + 各阶段报告归档 implement.jsonl / check.jsonl（AC6 终轮：type-check 0 /
+  test:run 468 文件 4089 passed / lint 全绿 / cargo test 1303+102）
 - trellis-update-spec：三通道模型沉淀进 spec（LSP 域规范文件——参照 dap-domain.md
-  先例新建 lsp-domain.md，收录：通道模型、单写点决策 D3、白名单语义 D4、语言无关铁律 D1）
+  先例新建 lsp-domain.md，收录：通道模型、单写点决策 D3、白名单语义 D4、语言无关铁律 D1；
+  2026-09-22 补充：波浪线内容锚定模型、didOpen 单出口、jdtls codeActionLiteralSupport 双向声明护栏）

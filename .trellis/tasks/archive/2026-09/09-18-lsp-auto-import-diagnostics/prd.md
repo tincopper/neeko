@@ -49,16 +49,20 @@ lsp-client 补全接受已原子应用 `additionalTextEdits`（自动导入核�
       （2026-09-20 M4 落地：`LspConfig.importStrategy` + `lspImportStrategy` 拦截层 +
       LspPanel 三态开关；单测 31 + Rust serde 2。**2026-09-21 真机三态手验通过**：
       Auto 应用附加编辑 / Never 只插入不落 import / Ask 弹确认后才落）
-- [ ] AC5（R5）：全链路无语言分支；新增任意遵循 LSP 的 LS（以 builtins 现有 17 种中
+- [x] AC5（R5）：全链路无语言分支；新增任意遵循 LSP 的 LS（以 builtins 现有 17 种中
       未实测的一种验证）无需改动本任务代码即可获得三通道
-      （**选 rust-analyzer 为第二验证对象**：本机已有 `~/.cargo/bin/rust-analyzer`
-      1.97.1，且本仓库 `src-tauri` 自身就是 `Cargo.toml` 工程，开箱可验。
-      静态部分已完成：本任务改动面语言分支扫描 0 处 + 存量两处 java 分支已数据化
-      `ad3a47fd`（详见「R5 静态扫描」小节）；**待真机三通道复跑**后勾选）
+      （**rust-analyzer 1.97.1 为第二验证对象**：本仓库 `src-tauri` 自身即 `Cargo.toml`
+      工程，开箱可验。静态：本任务改动面语言分支扫描 0 处 + 存量两处 java 分支已
+      数据化 `ad3a47fd`（详见「R5 静态扫描」小节）；**真机三通道复跑通过**：rust-analyzer
+      验证暴露的 didOpen 归一化（`e3a802f1`）、诊断波浪线稳定化 + quickfix 交付
+      （`d24f2448`）与 jdtls codeActionLiteralSupport（implement.md 十九轮）均在真机
+      复测中确认 —— 诊断/自动导包/quickfix/健康度四步全部成立，证明三者非 Java/Go
+      特例）
 - [x] AC6：门禁全绿（type-check / test:run / lint / eslint / cargo test）；每阶段
-      TDD 红绿留痕（2026-09-21 终轮：HEAD `a1c250d1` 下 `pnpm type-check` 0 错误、
-      `pnpm test:run` 466 文件 4062 passed / 1 skipped、`pnpm lint`（cargo fmt + clippy
-      -D warnings + 5 个护栏脚本 + `lint:host`）全绿、`cargo test` 1303 + 102 passed；
+      TDD 红绿留痕（**2026-09-22 AC5 收尾终轮**：HEAD `d24f2448` 下 `pnpm type-check`
+      0 错误、`pnpm test:run` 468 文件 4089 passed / 1 skipped（含 AC5 新增锚定/合并/
+      didOpen 护栏）、`pnpm lint`（cargo fmt + clippy -D warnings + 5 个护栏脚本 +
+      `lint:host`）全绿、`cargo test` 1303 + 102 passed；
       红绿留痕见 implement.md 各阶段，上下文台账 implement.jsonl / check.jsonl 已换真实
       条目，spec 沉淀见 `.trellis/spec/backend/lsp-domain.md`）
 
