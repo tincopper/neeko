@@ -257,7 +257,7 @@ export function fileRefFromTabPath(projectRoot: string, p: string): FileRef {
  * **这是 Neeko 的进程内身份，不是 DAP 的 `Source.path`**：java-debug 的
  * `asCompilationUnit` 只认真实存在的文件路径或带 JDT handle 的 `jdt://` uri，
  * `jdt:/…` 两者都不满足（下发它 = 适配器回 `verified:false`，断点永不命中）。
- * 适配器侧的真实路径由 Rust 在 DAP 边界翻译（`src-tauri/src/dap/java_source_path.rs`），
+ * 适配器侧的真实路径由 Rust 在 DAP 边界翻译（`src-tauri/src/dap/adapter/java/source_path.rs`），
  * 前端**不要把**本身份当作可下发路径使用。
  */
 export function tabIdentityOf(ref: FileRef): string {
@@ -283,7 +283,7 @@ export function tabIdentityOf(ref: FileRef): string {
  *
  * 身份与**下发形态**分离：断点下发时由 Rust 在 DAP 边界把 `jdt:/…` 翻译成真实文件路径
  * （缓存命中则复用，缺失则从 `src.zip` / `-sources.jar` 落盘，见
- * `src-tauri/src/dap/java_source_path.rs`）。因此身份只有一种，而下发形态由后端负责 ——
+ * `src-tauri/src/dap/adapter/java/source_path.rs`）。因此身份只有一种，而下发形态由后端负责 ——
  * 不需要、也不允许为「让适配器看得懂」而新增第二种身份。
  *
  * **限制（刻意保留，非疏漏）**：这里选择的是「**表示形式**」中最通用的一种做规范

@@ -7,7 +7,7 @@ import { computeMenuPosition } from '../components/quickFixMenuPosition';
  * 编辑器内 quickfix 的菜单**渲染**层：菜单 DOM、样式常量与弹出容器
  * （`showQuickFixMenu`，VS Code 平铺形态）。
  *
- * 从 `lspQuickFixMenu.ts` 拆出（F7a）：本层只管"菜单长什么样、怎么交互"，
+ * 从原合并单文件拆出（F7a，`lspQuickFixMenu.ts` 已删除）：本层只管"菜单长什么样、怎么交互"，
  * 不认识诊断定位与派发（`./quickFixMenuActions` 单向依赖本层，反向零依赖 ——
  * 本层禁止 import `../api/codeAction` 的动作函数与 `../store/lspStore`）。
  */

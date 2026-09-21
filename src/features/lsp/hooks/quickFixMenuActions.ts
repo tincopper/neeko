@@ -18,7 +18,7 @@ import { showQuickFixMenu } from './quickFixMenuRender';
  * 编辑器内 quickfix 的动作**派发**层：诊断上下文、光标处诊断定位、
  * 动作派发（服务器首选 / AI Fix / 问题查看）与弹出编排（`openQuickFixAt`）。
  *
- * 从 `lspQuickFixMenu.ts` 拆出（F7a）：本层单向依赖渲染层
+ * 从原合并单文件拆出（F7a，`lspQuickFixMenu.ts` 已删除）：本层单向依赖渲染层
  * （`./quickFixMenuRender` 的 `showQuickFixMenu` + 菜单类型），渲染层反向零依赖。
  *
  * 诊断取自 **lspStore**（原始 LSP 诊断，保留 `data`）而不是 CM6 lint state —— 后者经

@@ -207,7 +207,7 @@ impl JavaBackend {
         }
 
         // 权威配置：显式 host 时前端本不该调用本命令，报错而非静默改道。
-        if !load_java_backend(state).allows_jdtls() {
+        if !load_java_backend(state).await.allows_jdtls() {
             return Err(AppError::InvalidInput(
                 "dap.javaBackend is \"host\"; use debug_java_attach for the host backend".into(),
             ));
@@ -318,8 +318,19 @@ fn unsupported_remote_error() -> AppError {
 }
 
 /// 读取 config `dap.javaBackend`（缺键 / 非法值 / 读取失败一律 `auto`）。
-fn load_java_backend(state: &AppStateWrapper) -> JavaDebugBackend {
-    let raw = state.storage_manager.load_config().ok().and_then(|config| {
+///
+/// **异步**：`load_config` 是阻塞文件读（Gate #3），经 `run_blocking_result` 隔离到阻塞
+/// 线程池 —— 对齐 `project_context::adapter_binary_override` 对同一 `load_config` 的先例
+/// （红线 3：async 路径不做裸阻塞 IO）。`StorageManager` 只含一个 `PathBuf` 且 `Clone`，
+/// 克隆后即可安全移交阻塞线程池。
+async fn load_java_backend(state: &AppStateWrapper) -> JavaDebugBackend {
+    let storage = state.storage_manager.clone();
+    let raw = crate::common::runtime::run_blocking_result(move || {
+        storage.load_config().map_err(AppError::from)
+    })
+    .await
+    .ok()
+    .and_then(|config| {
         config
             .pointer("/dap/javaBackend")
             .and_then(|v| v.as_str())
@@ -736,12 +747,12 @@ mod tests {
     }
 
     /// `dap.javaBackend` 权威读取：缺键/非法一律 `auto`。
-    #[test]
-    fn java_backend_is_read_from_config_with_auto_default() {
+    #[tokio::test]
+    async fn java_backend_is_read_from_config_with_auto_default() {
         let tmp = tempfile::tempdir().expect("tempdir");
         let state = isolated_state(&tmp);
         assert_eq!(
-            load_java_backend(&state),
+            load_java_backend(&state).await,
             JavaDebugBackend::Auto,
             "缺键 → auto"
         );
@@ -755,7 +766,7 @@ mod tests {
                 .storage_manager
                 .save_config(&serde_json::json!({ "dap": { "javaBackend": raw } }))
                 .expect("save_config");
-            assert_eq!(load_java_backend(&state), want, "{raw}");
+            assert_eq!(load_java_backend(&state).await, want, "{raw}");
         }
     }
 

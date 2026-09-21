@@ -275,13 +275,6 @@ export function buildMainJavaDebugCommand(
 }
 
 /**
- * 各语言 main Debug 前置构建命令（**纯函数，无 lang 分支** —— 注册表按语言选取）：
- * - Go `go build -o <out> -gcflags 'all=-N -l' <pkg>`（无优化构建是 dlv 断点/变量
- *   正确性前提；`-o` 显式产物路径，启动时按此解析，无 compiler-artifact）；
- * - Rust `cargo build[ --manifest-path …] --message-format=json`（bin 产物由
- *   `parseCargoBinaryPath` 解析；多 bin 工作区按 sourceHint=被编辑文件消歧）。
- */
-/**
  * Java 测试 Debug 前置命令（J3 attach-first，与 Run 命令同源、仅注入 jdwp 参数）：
  * `java -agentlib:jdwp=transport=dt_socket,server=y,suspend=y,address=0
  *  -jar <launcher> --class-path=<cp> -m '<FQCN#method>' --reports-dir=<dir>`

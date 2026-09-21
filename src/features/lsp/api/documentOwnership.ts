@@ -10,7 +10,7 @@
  * 直接一对一 claim/release 会因顺序不确定把所有权状态抖掉。只有 0→1 才发 claim、
  * 1→0 才发 release，跨 IPC 的乱序窗口随之消失。
  */
-import { lspClaimDocument, lspReleaseDocument } from './lspApi';
+import { lspClaimDocument, lspReleaseDocument } from './lspOwnershipApi';
 
 const refCounts = new Map<string, number>();
 

@@ -61,6 +61,30 @@ fn session_key(project_path: &str, language_id: &str) -> String {
     format!("{}:{}", project_path, language_id)
 }
 
+/// didOpen 归一决策（抽纯函数以便直接单测两条关键路径：重复 didOpen / 版本回退）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum DidOpenAction {
+    /// 登记表无记录：直接 didOpen。
+    PlainOpen,
+    /// 登记表已有记录：先补 didClose 再 didOpen。
+    ///
+    /// `version_regressed`：本次版本**低于**登记版本 —— 真实回退（告警级）；
+    /// 相等（编辑器在后端代开后以同版本接管，常见 v0==v0）或更高则非回退
+    /// （debug 级记录，不误报）。
+    Reopen { version_regressed: bool },
+}
+
+/// 由「登记表 previous 版本 + 本次版本」得出 didOpen 归一决策。
+#[must_use]
+const fn did_open_action(previous: Option<i64>, version: i64) -> DidOpenAction {
+    match previous {
+        None => DidOpenAction::PlainOpen,
+        Some(prev) => DidOpenAction::Reopen {
+            version_regressed: version < prev,
+        },
+    }
+}
+
 /// 会话关闭语义：决定要不要向状态栏宣告"该语言的会话就此结束"。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum SessionCloseNotice {
@@ -346,33 +370,46 @@ impl LspManager {
         text: &str,
         version: i64,
     ) -> Result<(), AppError> {
+        let previous = self.open_document_version(project_path, language_id, uri);
         log::debug!(
             "[LSP] didOpen {} v={} (previous={:?})",
             uri,
             version,
-            self.open_document_version(project_path, language_id, uri)
+            previous
         );
-        if let Some(previous) = self.open_document_version(project_path, language_id, uri) {
-            if version <= previous {
+        match did_open_action(previous, version) {
+            DidOpenAction::PlainOpen => {}
+            DidOpenAction::Reopen { version_regressed } => {
+                if version_regressed {
+                    // 真实回退：登记表版本高于本次 —— 保留告警（非单调写入者）。
+                    log::warn!(
+                        "[LSP] non-monotonic didOpen for {}: v={} < previous v={} \
+                         (a second writer is tracking this document)",
+                        uri,
+                        version,
+                        previous.expect("reopen implies a previous version")
+                    );
+                } else {
+                    // 同版本（编辑器在后端代开后接管，v0==v0）或更高版本重开：
+                    // 行为照旧（didClose+didOpen 使文本对齐），仅 debug 记录，不误报。
+                    log::debug!(
+                        "[LSP] didOpen for {} at v={} (editor re-open after backend pre-open)",
+                        uri,
+                        version
+                    );
+                }
                 log::warn!(
-                    "[LSP] non-monotonic didOpen for {}: v={} <= previous v={} \
-                     (a second writer is tracking this document)",
+                    "[LSP] duplicate didOpen for {} ({}); closing before reopening",
                     uri,
-                    version,
-                    previous
+                    language_id
                 );
+                self.send_notification(
+                    project_path,
+                    language_id,
+                    "textDocument/didClose",
+                    serde_json::json!({ "textDocument": { "uri": uri } }),
+                )?;
             }
-            log::warn!(
-                "[LSP] duplicate didOpen for {} ({}); closing before reopening",
-                uri,
-                language_id
-            );
-            self.send_notification(
-                project_path,
-                language_id,
-                "textDocument/didClose",
-                serde_json::json!({ "textDocument": { "uri": uri } }),
-            )?;
         }
         self.send_notification(
             project_path,
@@ -1540,6 +1577,160 @@ mod tests {
             !transport.has(TEST_PROJECT, TEST_LANG, "error"),
             "成功路径不得发 error 事件: {:?}",
             transport.take()
+        );
+    }
+
+    // ── W3：send_did_open 归一（唯一出口）的直接单测 ────────────────────────
+
+    /// 构造 writer 接收端存活的桩会话：`send_notification_raw` 会把消息送进通道，
+    /// 测试据此断言 didClose / didOpen 的实际发送序列（`stub_session` 丢弃接收端、
+    /// 无法观察协议消息，故在此自建）。
+    fn session_with_writer(
+        transport: Arc<dyn LspTransport>,
+    ) -> (LspSession, crossbeam_channel::Receiver<lsp_server::Message>) {
+        let (writer, rx) = crossbeam_channel::unbounded();
+        (
+            LspSession {
+                language_id: TEST_LANG.to_string(),
+                project_path: TEST_PROJECT.to_string(),
+                server_name: TEST_SERVER.to_string(),
+                writer,
+                pending: Arc::new(std::sync::Mutex::new(std::collections::HashMap::new())),
+                inflight: Arc::new(std::sync::Mutex::new(
+                    crate::lsp::inflight::InflightRequestTracker::new(),
+                )),
+                reader: None,
+                stderr_logger: None,
+                restart_count: 0,
+                server_capabilities: serde_json::json!({}),
+                child: None,
+                process_pid: None,
+                server_info: LspServerInfo::unknown(),
+                log_buffer: Arc::new(std::sync::Mutex::new(
+                    crate::lsp::session::LogRingBuffer::new(),
+                )),
+                transport,
+                in_flight_progress: Arc::new(std::sync::Mutex::new(
+                    std::collections::HashSet::new(),
+                )),
+                lifecycle: Arc::new(Lifecycle::new()),
+            },
+            rx,
+        )
+    }
+
+    /// 通道中已发出的 LSP 通知方法名（按顺序）。
+    fn notif_methods(rx: &crossbeam_channel::Receiver<lsp_server::Message>) -> Vec<String> {
+        rx.try_iter()
+            .filter_map(|m| match m {
+                lsp_server::Message::Notification(n) => Some(n.method),
+                _ => None,
+            })
+            .collect()
+    }
+
+    const TEST_URI: &str = "file:///a.rs";
+
+    /// 重复 didOpen → 先补 didClose 再 didOpen（钉死关键路径 ①）。
+    #[test]
+    fn send_did_open_duplicate_sends_close_before_reopen() {
+        let manager = LspManager::new_default();
+        let transport = Arc::new(RecordingTransport::default());
+        let (session, rx) = session_with_writer(Arc::clone(&transport) as Arc<dyn LspTransport>);
+        manager
+            .session_store
+            .insert(session_key(TEST_PROJECT, TEST_LANG), session);
+
+        // 首开 v0：仅 didOpen。
+        manager
+            .send_did_open(TEST_PROJECT, TEST_LANG, TEST_URI, "a", 0)
+            .unwrap();
+        // 重复 v0（编辑器在后端代开后以同版本接管）：先补 didClose 再 didOpen。
+        manager
+            .send_did_open(TEST_PROJECT, TEST_LANG, TEST_URI, "b", 0)
+            .unwrap();
+
+        assert_eq!(
+            notif_methods(&rx),
+            vec![
+                "textDocument/didOpen".to_string(),
+                "textDocument/didClose".to_string(),
+                "textDocument/didOpen".to_string(),
+            ],
+            "重复 didOpen 必须先补 didClose 再 didOpen（否则服务器报 duplicate DidOpenTextDocument）"
+        );
+        assert_eq!(
+            manager.open_document_version(TEST_PROJECT, TEST_LANG, TEST_URI),
+            Some(0),
+            "登记表以本次版本推进"
+        );
+    }
+
+    /// 版本回退（v5→v3）：行为照旧（didClose+didOpen），登记表推进到新版本。
+    #[test]
+    fn send_did_open_version_regression_still_reopens_and_advances() {
+        let manager = LspManager::new_default();
+        let transport = Arc::new(RecordingTransport::default());
+        let (session, rx) = session_with_writer(Arc::clone(&transport) as Arc<dyn LspTransport>);
+        manager
+            .session_store
+            .insert(session_key(TEST_PROJECT, TEST_LANG), session);
+
+        manager
+            .send_did_open(TEST_PROJECT, TEST_LANG, TEST_URI, "a", 5)
+            .unwrap();
+        manager
+            .send_did_open(TEST_PROJECT, TEST_LANG, TEST_URI, "b", 3)
+            .unwrap();
+
+        assert_eq!(
+            notif_methods(&rx),
+            vec![
+                "textDocument/didOpen".to_string(),
+                "textDocument/didClose".to_string(),
+                "textDocument/didOpen".to_string(),
+            ],
+            "版本回退仍必须先补 didClose 再 didOpen"
+        );
+        assert_eq!(
+            manager.open_document_version(TEST_PROJECT, TEST_LANG, TEST_URI),
+            Some(3),
+            "回退后登记表推进到新版本，文本以本次为准"
+        );
+    }
+
+    /// 归一决策（纯函数，钉死关键路径 ② 的决策层）：登记表无记录 → 直接打开。
+    #[test]
+    fn did_open_action_first_open_is_plain() {
+        assert_eq!(did_open_action(None, 0), DidOpenAction::PlainOpen);
+        assert_eq!(did_open_action(None, 7), DidOpenAction::PlainOpen);
+    }
+
+    /// 重复 didOpen（同版本 = 编辑器在后端代开后接管 / 更高版本）→ Reopen 且非回退。
+    #[test]
+    fn did_open_action_duplicate_is_reopen_without_regression() {
+        assert_eq!(
+            did_open_action(Some(0), 0),
+            DidOpenAction::Reopen {
+                version_regressed: false
+            }
+        );
+        assert_eq!(
+            did_open_action(Some(2), 3),
+            DidOpenAction::Reopen {
+                version_regressed: false
+            }
+        );
+    }
+
+    /// 版本回退（version < previous）→ Reopen 且标记回退（告警分支）。
+    #[test]
+    fn did_open_action_version_regression_is_flagged() {
+        assert_eq!(
+            did_open_action(Some(5), 3),
+            DidOpenAction::Reopen {
+                version_regressed: true
+            }
         );
     }
 }

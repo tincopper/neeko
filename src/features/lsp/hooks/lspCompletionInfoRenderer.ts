@@ -1,19 +1,18 @@
-import { autocompletion, snippet } from '@codemirror/autocomplete';
-import type { Completion, CompletionContext, CompletionResult } from '@codemirror/autocomplete';
+import { autocompletion } from '@codemirror/autocomplete';
+import type { CompletionContext, CompletionResult } from '@codemirror/autocomplete';
 import { LSPPlugin, serverCompletionSource } from '@codemirror/lsp-client';
 import type { Extension } from '@codemirror/state';
 import { EditorView, tooltips, type Rect } from '@codemirror/view';
 
-import { applyImportStrategyToOption, getLspImportStrategy } from '../api/lspImportStrategy';
+import { getLspImportStrategy } from '../api/lspImportStrategy';
 
-import {
-  buildFunctionSnippet,
-  buildInfoPanel,
-  buildListItem,
-  buildModuleNodeFromCompletion,
-} from './completionRenderer';
+import { buildInfoPanel, buildListItem, buildModuleNodeFromCompletion } from './completionRenderer';
 import { completionTheme } from './completionTheme';
-import { resolveCompletionItem } from './lspCompletionResolve';
+import { maybeAttachSnippetFallback } from './lspCompletionSnippetFallback';
+import {
+  applyImportStrategyToCompletion,
+  prewarmCompletionStrategy,
+} from './lspCompletionStrategy';
 
 /**
  * Calculate width / height from a `Rect` ({left, right, top, bottom}).
@@ -112,59 +111,6 @@ export function flipPositionInfo(
   };
 }
 
-/** LSP CompletionItemKind values that benefit from parameter auto-fill. */
-const FUNCTION_KINDS = new Set([2 /* Method */, 3 /* Function */, 4 /* Constructor */]);
-
-/**
- * Upgrade a function-like completion whose insert text is a bare name into a
- * snippet that fills its parameters. Mirrors the `@codemirror/lsp-client`
- * `insertTextFormat === 2` path so every function completion gets IDEA-style
- * argument placeholders — even when the server omits a snippet.
- *
- * ⚠️ 当前**不生效**（2026-09-18 核实）：入参是 `@codemirror/lsp-client` 构造的
- * CM6 `Completion`，它只带 `label` / `displayLabel` / `type` / `apply` / `info`
- * 等字段——**从不携带 `kind` / `insertTextFormat`**（见 dist 里 `option` 字面量）。
- * 因此上面两处判断恒为假、函数必定早退。保留现状（不激活）是刻意的：激活会为
- * 「服务器已给 snippet」或「自带 additionalTextEdits」的项重装 apply，从而**丢
- * 掉自动导入的 import 编辑**。要恢复该特性，判据必须换成 CM6 侧的 `type`，并且
- * 保留 `item.apply != null` 让行护栏。详见任务 09-18-lsp-auto-import-diagnostics。
- */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function maybeAttachSnippetFallback(item: any): void {
-  // 上游/补丁已经装好 apply = 插入文本与附加编辑（自动导入）的决策已定，覆盖它
-  // 会静默丢掉 import 编辑或改变插入文本 —— 必须让行（护栏，见下方"本函数当前
-  // 不生效"的说明）。
-  if (item.apply != null) return;
-  // Server already provided a snippet (or we must not touch its intent).
-  if (item.insertTextFormat === 2) return;
-  // Only function-like kinds benefit from parameter auto-fill.
-  if (!FUNCTION_KINDS.has(item.kind)) return;
-
-  // The text the server would insert (same precedence as lsp-client).
-  const text = item.textEdit?.newText ?? item.textEditText ?? item.insertText ?? item.label;
-  const hasExplicitInsert =
-    item.textEdit?.newText != null || item.textEditText != null || item.insertText != null;
-
-  // Extract a function name from whatever text would be inserted.
-  let funcName: string | null = null;
-  if (text.includes('(')) {
-    // Already a call signature — only override when the server gave NO
-    // insertText (otherwise it would insert the raw label, which is worse
-    // than a snippet). When overriding, take the leading name.
-    if (hasExplicitInsert) return;
-    const m = /^([A-Za-z_$][\w$]*)\(/.exec(text);
-    if (m) funcName = m[1];
-  } else {
-    const m = /^([A-Za-z_$][\w$]*)$/.exec(text);
-    if (m) funcName = m[1];
-  }
-  if (!funcName) return;
-
-  const snippetText = buildFunctionSnippet(funcName, item.label);
-  item.apply = (view: EditorView, completion: Completion, from: number, to: number) =>
-    snippet(snippetText)(view, completion, from, to);
-}
-
 /**
  * Wrap `@codemirror/lsp-client`'s `serverCompletionSource` so the selected
  * item's `info` panel shares the hover tooltip's `cm-lsp-hover-tooltip` class,
@@ -220,55 +166,23 @@ export function createThemedCompletionSource(context: CompletionContext): Promis
         // 库装 `apply` 的分支早已求值完毕，延迟项会退化成插入裸 label。
         maybeAttachSnippetFallback(item);
 
-        // M4：按策略变换 apply（`never` 剥离附加编辑只留插入 / `ask` 包确认）。
-        // 只包装 CM6 option.apply，不重算任何坐标与插入文本（D2 无旁路）。
-        applyImportStrategyToOption(item, importStrategy, { plugin });
+        // M4：按策略变换 apply（`never` 剥离附加编辑只留插入 / `ask` 包确认）
+        // + 包上「选中即 resolve → 主题化 info」的 info 函数（`lspCompletionStrategy`）。
+        applyImportStrategyToCompletion(item, importStrategy, plugin, (docHtml) =>
+          buildInfoPanel(item, item, docHtml),
+        );
 
         // Apply the premium list-item look: icon type + cleaned detail.
         const listItem = buildListItem(item, item);
         if (listItem.type) item.type = listItem.type;
         if (listItem.detail) item.detail = listItem.detail;
-
-        // Always attach a themed info panel - even without documentation,
-        // the signature highlighting and structured returns add value.
-        //
-        // Note: `serverCompletionSource` does NOT copy `documentation` onto the
-        // option object - it captures it inside the original `info` closure
-        // (`() => renderDocInfo(plugin, item.documentation)`). So we resolve
-        // docs by invoking the original renderer and reusing its HTML instead
-        // of reading `item.documentation` (which is always undefined here).
-        const originalInfo = typeof item.info === 'function' ? item.info : null;
-
-        item.info = async function themedInfo() {
-          // 选中即解析（CodeMirror 只为当前选中项调用 info）：取回被服务器
-          // 推迟的 import 编辑，写回 `neekoDeferredEdits`，接受时与插入文本
-          // 合并成同一事务。失败静默 —— 最多是这一项不带 import。
-          // M4：`never` 下跳过 —— 延迟编辑拿了也会被策略剥掉，不浪费请求
-          //（此处读实时策略：列表打开期间用户可能刚切了设置）。
-          if (plugin && getLspImportStrategy() !== 'never') {
-            await resolveCompletionItem(item as object, plugin);
-          }
-
-          let docHtml = '';
-          if (originalInfo) {
-            const rendered = await originalInfo();
-            if (rendered instanceof HTMLElement) {
-              docHtml = rendered.innerHTML;
-            }
-          }
-          return buildInfoPanel(item, item, docHtml);
-        };
       }
 
-      // 预热首个候选（CM6 打开列表时默认选中它）：把"选中→resolve→接受"的竞态
-      // 窗口压到最小。声明 `resolveSupport` 之后 jdtls / rust-analyzer 的 import
-      // 编辑只在 resolve 里下发，用户比它快就会丢 import。
-      // 必须在上面标注完 `neekoNeedsResolve` 之后再触发。
+      // 预热首个候选（CM6 打开列表时默认选中它）：把「选中→resolve→接受」的竞态
+      // 窗口压到最小。必须在上面标注完 `neekoNeedsResolve` 之后再触发。
       // M4：`never` 下跳过预热（本就是为拿延迟编辑，拿了也丢）；`ask` 保留
       //（预览文案要靠它）。
-      if (plugin && options.length && importStrategy !== 'never') {
-        void resolveCompletionItem(options[0] as object, plugin);
-      }
+      prewarmCompletionStrategy(options, importStrategy, plugin);
 
       return result;
     },

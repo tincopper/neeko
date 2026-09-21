@@ -55,6 +55,29 @@ pub async fn ensure_document_open(
     }
 
     let file_path = uri.strip_prefix("file://").unwrap_or(uri);
+
+    // 超大文件不代开：先查 metadata 判大小，避免把大文件全文读入后才弃用
+    // （红线 4 的 2MB 边界：didOpen 全文过 IPC，且服务器本也吃不消）。metadata
+    // 失败（文件不存在等）不阻塞：落到下面的 read_file，由它报"Could not read"。
+    // 阻塞 fs 走 spawn_blocking（红线 3）。
+    let file_size = tokio::task::spawn_blocking({
+        let file_path = file_path.to_string();
+        move || std::fs::metadata(&file_path).map(|m| m.len()).ok()
+    })
+    .await
+    .ok()
+    .flatten();
+    if let Some(size) = file_size {
+        if size > crate::lsp::types::MAX_AUTO_OPEN_FILE_SIZE as u64 {
+            log::warn!(
+                "[LSP] File too large for auto-open: {} ({} bytes)",
+                file_path,
+                size
+            );
+            return false;
+        }
+    }
+
     let Ok(text) = read_file(
         FileAccessScope::Trusted,
         FileReadRequest {
@@ -77,8 +100,7 @@ pub async fn ensure_document_open(
         language_id,
         uri,
     ));
-    // 超大文件不代开：didOpen 全文过 IPC（红线 4 的 2MB 边界），且服务器本也吃不消。
-    // 调用方的请求照旧发出，由服务器自己回答"未知文档"。
+    // 读盘后仍保留大小检查：metadata 与读入内容之间文件可能增长（防御纵深）。
     if text.content.len() > crate::lsp::types::MAX_AUTO_OPEN_FILE_SIZE {
         log::warn!(
             "[LSP] File too large for auto-open: {} ({} bytes)",

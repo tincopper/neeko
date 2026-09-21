@@ -530,8 +530,9 @@ pub async fn lsp_transport(
     // 若继续走下面的通用转发，同一毫秒会向服务器发两条 didOpen —— rust-analyzer
     // 报 `duplicate DidOpenTextDocument`（实测 11:28:34.600 两条同版本消息）。
     if method == "textDocument/didOpen" {
+        let uri = text_document_uri(&params);
         if let (Some(uri), Some(text), Some(version)) = (
-            text_document_uri(&params),
+            uri,
             params
                 .pointer("/textDocument/text")
                 .and_then(|v| v.as_str()),
@@ -544,6 +545,13 @@ pub async fn lsp_transport(
                 state
                     .lsp_manager
                     .send_did_open(&project_path, &language_id, uri, text, version);
+        } else {
+            // 畸形载荷：缺 uri / text / version 之一时静默丢弃会让服务器错过文档，
+            // 前端诊断随之缺失 —— 必须留下痕迹而不是无声 return。
+            log::warn!(
+                "[LSP] malformed textDocument/didOpen (uri={:?}): text or version missing",
+                uri
+            );
         }
         return Ok("{}".into());
     }

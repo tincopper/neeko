@@ -9,6 +9,8 @@ import type {
   ProjectLanguageProfile,
 } from '../types';
 
+import type { LspExtensionMapEntryDto } from './lspApiTypes';
+
 export type { LspServerInfo, LspServerLogEntry };
 
 export function lspRequest(
@@ -208,39 +210,9 @@ export function lspResolveLanguage(filePath: string): Promise<string | null> {
   return invoke<string | null>('lsp_resolve_language', { filePath });
 }
 
-export interface LspExtensionMapEntryDto {
-  extension: string;
-  languageId: string;
-  serverName: string;
-  isCustom: boolean;
-  /** 插件声明的单请求超时（ms）；未声明时为 undefined。 */
-  requestTimeoutMs?: number;
-}
-
 /** Built-in + custom extension map from the live backend registry. */
 export function lspGetExtensionMap(): Promise<LspExtensionMapEntryDto[]> {
   return invoke<LspExtensionMapEntryDto[]>('lsp_get_extension_map');
-}
-
-/**
- * 声明编辑器视图持有该文档：后端在持有期间**不再代开**（代开只能读磁盘文本，
- * 会与编辑器未保存缓冲区错位）。
- */
-export function lspClaimDocument(
-  projectPath: string,
-  languageId: string,
-  uri: string,
-): Promise<void> {
-  return invoke<void>('lsp_claim_document', { projectPath, languageId, uri });
-}
-
-/** 释放编辑器持有（最后一个视图卸载时）。 */
-export function lspReleaseDocument(
-  projectPath: string,
-  languageId: string,
-  uri: string,
-): Promise<void> {
-  return invoke<void>('lsp_release_document', { projectPath, languageId, uri });
 }
 
 export interface LspExtensionConflictDto {

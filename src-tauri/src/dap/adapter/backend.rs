@@ -151,9 +151,11 @@ pub enum DebugStartOutcome {
 
 /// 一次断点源身份翻译的结果（语言无关：任何语言都可能把规范身份翻译成真实文件）。
 ///
-/// 由 [`LanguageBackend::adapter_source_path`] 返回；默认（Go / Lldb / 无编排后端）恒为
-/// [`SourcePathResolution::Adapter`]（原样即适配器可读路径）。语言实现（如 Java 的
-/// `jdt://…` 翻译）返回 `Unresolvable` 时，调用方剔除该断点并给出用户可见原因。
+/// 由 [`LanguageBackend::adapter_source_path`] 返回；无编排后端的语言（Go / Lldb）经
+/// `dap::source_translation` 的 `backend == None` 分支原样透传，恒为
+/// [`SourcePathResolution::Adapter`]（原样即适配器可读路径）—— 与 trait 默认无关。
+/// 语言实现（如 Java 的 `jdt://…` 翻译）返回 `Unresolvable` 时，调用方剔除该断点并给出
+/// 用户可见原因。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SourcePathResolution {
     /// 适配器可识别的**真实文件路径**。
@@ -168,9 +170,13 @@ pub enum SourcePathResolution {
 /// 语言调试后端（编排层）。
 ///
 /// 协议层只回答"怎么和适配器说话"；本 trait 回答"怎么为这种语言做完整调试"。
-/// 默认实现 = 通用行为（spawn / 原样翻译 / install_hint 文案），**Go / Lldb 零成本**——
-/// 但按 §9.7 它们当前不注册 backend（走 manager 通用路径），默认实现主要作为新增语言
-/// 时的契约起点。
+///
+/// **`plan` / `adapter_source_path` 是抽象方法**（每个注册的 backend 都必须实现）；
+/// 仅有 `supported_on` / `unsupported_error` 提供默认体。Go / Lldb 的"零成本"**不来自
+/// trait 默认实现** —— 它们按 §9.7 不注册 backend（`backend_for` 未命中即走 manager
+/// 通用 spawn 路径），断点身份翻译由 `dap::source_translation` 的 `backend == None` 分支
+/// 原样透传（见 `adapter_source_path` 的 None 分支）。trait 默认体主要作为新增语言时的
+/// 契约起点，不承载通用行为。
 #[async_trait]
 pub trait LanguageBackend: Send + Sync {
     /// 对应语言的协议层（spawn / launch args 走它）。
@@ -190,14 +196,17 @@ pub trait LanguageBackend: Send + Sync {
     /// 会话形态规划：返回三态（`Launch` / `Warming` / `Unavailable`）。
     ///
     /// `Launch` 时**尚未**建立任何会话；调用方负责起会话 —— 保证"不可用时绝不建会话、
-    /// 绝不换引擎"的可单测不变式。默认 = spawn + 通用载荷（供新增语言起步）。
+    /// 绝不换引擎"的可单测不变式。**无默认体**：spawn + 通用载荷是未注册 backend 时
+    /// manager 的通用路径（§9.7），不是本方法的默认行为。
     async fn plan(
         &self,
         state: &AppStateWrapper,
         request: &DebugRequest,
     ) -> Result<SessionPlan, AppError>;
 
-    /// 断点源路径翻译：规范身份 → 适配器可读真实路径。默认原样；Java 覆盖为 jdt 翻译。
+    /// 断点源路径翻译：规范身份 → 适配器可读真实路径。**无默认体**；"原样透传"是未注册
+    /// backend 时 `dap::source_translation` 的 None 分支行为（Go / Lldb），Java 覆盖为
+    /// jdt 翻译。
     async fn adapter_source_path(
         &self,
         state: &AppStateWrapper,
