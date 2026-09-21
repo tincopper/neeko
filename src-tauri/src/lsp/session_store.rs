@@ -108,14 +108,24 @@ impl LspSessionStore {
         }
     }
 
+    /// 登记/刷新一个打开中的文档。
+    ///
+    /// **同 uri 只保留一条**（后来者覆盖）：客户端可能在没有 didClose 的情况下重复
+    /// didOpen（前任 client 未关 / 重挂竞态），登记表若堆叠重复项，会话重启的补发会
+    /// 把同一 uri 连发两次 didOpen —— rust-analyzer 之类服务器会以
+    /// `duplicate DidOpenTextDocument` 拒绝并停止分析该文件。
     pub(crate) fn register_open_document(&self, key: String, doc: OpenDocument) {
+        let register = |map: &mut HashMap<String, Vec<OpenDocument>>| {
+            let docs = map.entry(key.clone()).or_default();
+            docs.retain(|d| d.uri != doc.uri);
+            docs.push(doc.clone());
+        };
         match self.open_docs.write() {
-            Ok(mut map) => {
-                map.entry(key).or_default().push(doc);
-            }
+            Ok(mut map) => register(&mut map),
             Err(poisoned) => {
                 log::warn!("[LSP] open_docs mutex poisoned, recovering");
-                poisoned.into_inner().entry(key).or_default().push(doc);
+                let mut guard = poisoned.into_inner();
+                register(&mut guard);
             }
         }
     }
@@ -201,5 +211,57 @@ impl LspSessionStore {
             .unwrap_or_default();
         self.clear_all_open_documents();
         sessions
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn doc(uri: &str, version: i64) -> OpenDocument {
+        OpenDocument {
+            uri: uri.to_string(),
+            language_id: "rust".to_string(),
+            text: "fn main() {}".to_string(),
+            version,
+        }
+    }
+
+    /// 重复 didOpen（前任 client 未 didClose / 重挂竞态）不得让登记表出现两条同 uri
+    /// —— 否则会话重启时会补发两次 didOpen，服务器（rust-analyzer）直接拒绝分析。
+    #[test]
+    fn registering_the_same_uri_twice_keeps_a_single_entry() {
+        let store = LspSessionStore::new();
+        store.register_open_document("/p::rust".to_string(), doc("file:///a.rs", 0));
+        store.register_open_document("/p::rust".to_string(), doc("file:///a.rs", 3));
+
+        let docs = store.open_docs.read().expect("lock");
+        let entries = docs.get("/p::rust").expect("key");
+        assert_eq!(entries.len(), 1, "同 uri 只保留一条（取最新）");
+        assert_eq!(entries[0].version, 3, "后到的版本覆盖旧的");
+    }
+
+    #[test]
+    fn is_document_open_tracks_register_unregister() {
+        let store = LspSessionStore::new();
+        assert!(!store.is_document_open("/p::rust", "file:///a.rs"));
+
+        store.register_open_document("/p::rust".to_string(), doc("file:///a.rs", 0));
+        assert!(store.is_document_open("/p::rust", "file:///a.rs"));
+        assert!(!store.is_document_open("/p::rust", "file:///b.rs"));
+
+        store.unregister_open_document("/p::rust", "file:///a.rs");
+        assert!(!store.is_document_open("/p::rust", "file:///a.rs"));
+    }
+
+    /// 同一 uri 在不同（project, language）会话里互不影响。
+    #[test]
+    fn open_document_state_is_per_session() {
+        let store = LspSessionStore::new();
+        store.register_open_document("/p::rust".to_string(), doc("file:///a.rs", 0));
+
+        assert!(store.is_document_open("/p::rust", "file:///a.rs"));
+        assert!(!store.is_document_open("/p::go", "file:///a.rs"));
+        assert!(!store.is_document_open("/q::rust", "file:///a.rs"));
     }
 }

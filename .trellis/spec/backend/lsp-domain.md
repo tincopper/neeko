@@ -198,3 +198,10 @@ applyCodeAction(uri, action, resolveView = resolveEditorViewFromUri);
    即修进度不可见。新增声明必须同时有消费点或说明。
 4. **uri 必须与 didOpen 完全一致**：编辑器 quickfix 取 `useLspClient` 算出的 `fileUri`，
    不得自己再算（`tabLspDocumentUri` 对普通文件恒 `undefined`，曾致三入口静默 return）。
+5. **重复 `didOpen` = 静默功能缺失**：同一 uri 在没有 didClose 的情况下收到第二次
+   didOpen，rust-analyzer（1.97.1 实测）只 stderr 一句 `duplicate DidOpenTextDocument`
+   就把该文档剔出语义分析 —— 表现是"只有语法错误、永不报类型错误"，UI 上完全看不出
+   原因。归一在**服务器会话边界**（`commands::lsp_transport` 的 didOpen 分支：已打开则
+   先补发 didClose），不在前端补 —— 多 client / 重挂竞态的组合太多，前端任何单点都挡
+   不全。登记表同 uri 只留一条（`session_store::register_open_document`），否则会话重启
+   的补发同样会连发两次。

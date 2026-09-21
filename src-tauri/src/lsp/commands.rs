@@ -550,6 +550,29 @@ pub async fn lsp_transport(
                     .pointer("/textDocument/version")
                     .and_then(|v| v.as_i64()),
             ) {
+                // 幂等归一：同一 uri 已在打开态时**先补发 didClose** 再转发本次
+                // didOpen —— 否则服务器会看到两条 didOpen 而没有 didClose。
+                // 实测后果（rust-analyzer 1.97.1）：`duplicate DidOpenTextDocument`
+                // → 该文档不进语义分析 → 类型错误永远不报，只剩语法错误。
+                //
+                // 归一点放在这里（服务器会话边界）而不是前端：多 client / 重挂竞态
+                // 的排列组合太多，前端任何单点都挡不全（AGENTS 红线 12 同源要求）。
+                if state
+                    .lsp_manager
+                    .is_document_open(&project_path, &language_id, uri)
+                {
+                    log::warn!(
+                        "[LSP] duplicate didOpen for {} ({}); closing before reopening",
+                        uri,
+                        language_id
+                    );
+                    let _ = state.lsp_manager.send_notification(
+                        &project_path,
+                        &language_id,
+                        "textDocument/didClose",
+                        serde_json::json!({ "textDocument": { "uri": uri } }),
+                    );
+                }
                 state.lsp_manager.register_open_document(
                     &project_path,
                     &language_id,
