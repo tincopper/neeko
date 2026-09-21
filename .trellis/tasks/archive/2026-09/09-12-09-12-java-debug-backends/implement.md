@@ -265,50 +265,50 @@
 
 ## R-0 建骨架 + 迁移 debug 非渲染部分
 
-* [ ] 建 `features/runner/{api,exec,store,utils,syntax,runnables,components,hooks}` 骨架（`git mv` 保留历史）。
-* [ ] `features/debug/api/*` → `runner/api/`；`debug/components/*`（非 gutter）→ `runner/components/`；
+* [x] 建 `features/runner/{api,exec,store,utils,syntax,runnables,components,hooks}` 骨架（`git mv` 保留历史）。
+* [x] `features/debug/api/*` → `runner/api/`；`debug/components/*`（非 gutter）→ `runner/components/`；
   `debug/store/debugStore.ts` → `runner/store/`；`debug/types.ts` → `runner/types.ts`；
   `debug/{navigate,openStopSource,sourceContent,stackFrames,statusMeta,variableTree}.ts` → `runner/` 根；
   `debug/index.ts` → `runner/index.ts`（门面改造，扩为 run+debug）。
-* [ ] 消费方改指：`app/panels/TitleBarActions.tsx`、`app/panels/registry.ts`、`status-bar/items/DebugItem.tsx`
+* [x] 消费方改指：`app/panels/TitleBarActions.tsx`、`app/panels/registry.ts`、`status-bar/items/DebugItem.tsx`
   （`@/features/debug` → `@/features/runner`）。
-* [ ] 验证：`npx tsc --noEmit` + `pnpm test:run` 绿。
+* [x] 验证：`npx tsc --noEmit` + `pnpm test:run` 绿。
 
 ## R-1 迁移 exec + 命令构造 + syntax
 
-* [ ] `features/editor/runner/*` → `runner/exec/`（launch/java/native/registry/results/context/debugConsole/index）。
-* [ ] `features/editor/utils/{runLanguages,testCases,testCommands,testResultParsers,javaDocumentSymbol,cargoManifest}.ts` → `runner/utils/`。
-* [ ] `features/editor/syntax/*` → `runner/syntax/`（用例发现 AST，纯 run）。
-* [ ] 内部相对路径随迁；`useRunActions` 的 import 改指。
-* [ ] 验证：`tsc` + `pnpm test:run` 绿。
+* [x] `features/editor/runner/*` → `runner/exec/`（launch/java/native/registry/results/context/debugConsole/index）。
+* [x] `features/editor/utils/{runLanguages,testCases,testCommands,testResultParsers,javaDocumentSymbol,cargoManifest}.ts` → `runner/utils/`。
+* [x] `features/editor/syntax/*` → `runner/syntax/`（用例发现 AST，纯 run）。
+* [x] 内部相对路径随迁；`useRunActions` 的 import 改指。
+* [x] 验证：`tsc` + `pnpm test:run` 绿。
 
 ## R-2 迁移 runnables + testResults + useRunActions
 
-* [ ] `features/editor/runnables/{provider,runnable}.ts` → `runner/runnables/`。
-* [ ] `features/editor/store/testResults.ts` → `runner/store/`。
-* [ ] `features/editor/hooks/useRunActions.ts` → `runner/hooks/`（纯动作，无 codemirror）。
-* [ ] 消费方：`FileEditor.tsx` 的 `useRunActions` 改指 `@/features/runner`；`gutter/testStatusContribution` 改指 `runner/store`。
-* [ ] 验证：`tsc` + `pnpm test:run` 绿。
+* [x] `features/editor/runnables/{provider,runnable}.ts` → `runner/runnables/`。
+* [x] `features/editor/store/testResults.ts` → `runner/store/`。
+* [x] `features/editor/hooks/useRunActions.ts` → `runner/hooks/`（纯动作，无 codemirror）。
+* [x] 消费方：`FileEditor.tsx` 的 `useRunActions` 改指 `@/features/runner`；`gutter/testStatusContribution` 改指 `runner/store`。
+* [x] 验证：`tsc` + `pnpm test:run` 绿。
 
 ## R-3 gutter 归位（渲染层留 editor）
 
-* [ ] `debug/gutter/breakpointContribution.ts` → `editor/gutter/`（CodeMirror 渲染扩展）。
-* [ ] `debug/hooks/{useCurrentLineHighlight,useBreakpointGutter}.ts` → `editor/hooks/`（含 codemirror）。
-* [ ] `editor/gutter/{contribution,registry}.ts` + `run*` + `testStatusContribution` **保持原位**（通用 gutter 框架 + 渲染）。
-* [ ] 验证：`tsc` + `pnpm test:run` 绿。
+* [x] `debug/gutter/breakpointContribution.ts` → `editor/gutter/`（CodeMirror 渲染扩展）。
+* [x] `debug/hooks/{useCurrentLineHighlight,useBreakpointGutter}.ts` → `editor/hooks/`（含 codemirror）。
+* [x] `editor/gutter/{contribution,registry}.ts` + `run*` + `testStatusContribution` **保持原位**（通用 gutter 框架 + 渲染）。
+* [x] 验证：`tsc` + `pnpm test:run` 绿。
 
 ## R-4 shared/utils 误置件 + 消费方收敛 + 删 debug
 
-* [ ] `shared/utils/javaClasspath.ts` + `javaConsoleSummary.ts` → `runner/utils/`。
-* [ ] 全部消费方改指 runner 门面 / store 直导（`grep "features/debug\|editor/runner"` 收敛）。
-* [ ] 删除 `features/debug/` 空目录；`editor/index.ts` 门面不动（本就无 run 导出）。
-* [ ] 验证：`grep -rln "features/debug" src` 为空；`grep -rln "editor/runner" src` 为空。
+* [x] `shared/utils/javaClasspath.ts` + `javaConsoleSummary.ts` → `runner/utils/`。
+* [x] 全部消费方改指 runner 门面 / store 直导（`grep "features/debug\|editor/runner"` 收敛）。
+* [x] 删除 `features/debug/` 空目录；`editor/index.ts` 门面不动（本就无 run 导出）。
+* [x] 验证：`grep -rln "features/debug" src` 为空；`grep -rln "editor/runner" src` 为空。
 
 ## 验证清单（R 全部完成后）
 
-* [ ] `pnpm type-check` / `pnpm test:run` / `pnpm lint:fe` 全绿。
-* [ ] `git diff` 审查：纯 move + import 路径，零逻辑改动。
-* [ ] 后端零改动（`git diff src-tauri` 不含本次前端迁移）。
+* [x] `pnpm type-check` / `pnpm test:run` / `pnpm lint:fe` 全绿。
+* [x] `git diff` 审查：纯 move + import 路径，零逻辑改动。
+* [x] 后端零改动（`git diff src-tauri` 不含本次前端迁移）。
 
 ## 回滚（§10.6）
 

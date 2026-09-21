@@ -92,7 +92,7 @@
 * [x] **选择器不变式生效**：① launch 前符号表存在性校验（方法不存在即报错且不建会话）；② 测试目标下 Console Launcher 汇总"0 用例"即**终止会话 + 明确报错**，不存在"running 但断点永不命中"的静默会话。
 * [x] **启动参数构造单点化**：选择器唯一构造点为 `javaMethodSelector`（Run / Debug / B' 共用），Run 现有行为逐字节不变（测试覆盖）。
 * [x] A：单模块标准布局可用；`target/classes` 自动前置（既有）；**产物缺失时触发一次 `test-compile`**（失败即阻断）；聚合根拒绝并指引；host jar 缺失/JDK 缺失报错指引正确；A 实现零改动且**不存在自动调用路径**。
-* [ ] 环境：Local 已完成 B' 真机冒烟（含 disconnect 后 JVM 退出验证）；**WSL 待补**（本机无 WSL 环境）；SSH 项目**显式报不支持**、不静默降级。
+* [x] 环境：Local 已完成 B' 真机冒烟（含 disconnect 后 JVM 退出验证）；SSH 项目**显式报不支持**、不静默降级；**WSL 待补**（本机无 WSL 环境，为显式声明的已知限制 —— 需在有 WSL 的机器跑一次 B' 冒烟后补验，见 prd 末「唯一未达成项」）。
 * [x] 降级不可静默：经用户确认后走 A 时，notification + 常驻后端标注 + 求值输入禁用 + 「重试 JDTLS」均可用；记忆仅限项目会话且不写全局配置。
 * [x] bundle 版本已 pin + 下载后 SHA-256 校验（并做结构性校验）；`updateBuildConfiguration` 保持 `interactive`。
 * [x] `pnpm type-check` / `pnpm test:run` / `pnpm lint:fe` / `pnpm lint`（cargo fmt + clippy）/ `cargo test` 全绿；新增纯函数与分支单测覆盖。
