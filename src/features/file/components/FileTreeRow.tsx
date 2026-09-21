@@ -1,14 +1,23 @@
 import React, { useCallback, useEffect, useRef } from 'react';
 
 import { ChevronRight } from '@/shared/components/icons';
+import type { FileTreeViewNode } from '@/shared/types';
 import { fileIconSrc } from '@/shared/utils/fileIcons';
 import { statusToNameColorClass } from '@/shared/utils/gitFileDecoration';
 
 import { setDragFile } from '../hooks/useFileDrop';
+import { disposeDragGhost, setDragGhost } from '../utils/dragGhost';
 
 import { areFileTreeRowPropsEqual } from './fileTreeRowProps';
 import type { FileTreeRowProps } from './fileTreeRowProps';
 import InlineNameInput from './InlineNameInput';
+
+/** 行图标 URL（JSX 与拖影共用）：目录用展开/折叠文件夹，文件用 fileIconSrc。 */
+function nodeIconSrc(node: FileTreeViewNode): string {
+  return node.is_dir
+    ? `/icons/${node.is_expanded ? '_folder_open' : '_folder'}.svg`
+    : fileIconSrc(node.name);
+}
 
 /**
  * 文件树单行组件（S4 虚拟化）：无递归——可见行由 FilesPanel 经
@@ -73,8 +82,14 @@ function FileTreeRow({
       if (!projectId) return;
       e.dataTransfer.effectAllowed = 'copy';
       setDragFile(node.path, projectId);
+      // 自定义拖影（去 chevron 等行内 UI 装饰），图标尺寸与行内一致
+      setDragGhost(e.dataTransfer, {
+        iconUrl: nodeIconSrc(node),
+        label: node.name,
+        iconSize: node.is_dir ? 16 : 14,
+      });
     },
-    [node.path, projectId],
+    [projectId, node],
   );
 
   if (row.kind === 'renaming') {
@@ -124,6 +139,7 @@ function FileTreeRow({
       style={{ paddingLeft: indent }}
       draggable={!!projectId}
       onDragStart={handleDragStart}
+      onDragEnd={disposeDragGhost}
       onClick={(e) => {
         // 阻止冒泡到树容器：容器空白点击才选中项目根，节点点击只选中自身
         e.stopPropagation();
@@ -147,7 +163,7 @@ function FileTreeRow({
           />
           <img
             className="w-4 h-4 shrink-0 block"
-            src={`/icons/${isExpanded ? '_folder_open' : '_folder'}.svg`}
+            src={nodeIconSrc(node)}
             alt=""
             width={16}
             height={16}

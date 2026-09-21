@@ -1,4 +1,4 @@
-import { fireEvent, render as renderRTL, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render as renderRTL, screen, waitFor, within } from '@testing-library/react';
 import { createElement, useEffect, useRef } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -10,6 +10,7 @@ vi.mock('@/features/file/hooks/useFileDrop', () => ({
 }));
 import { setDragFile } from '@/features/file/hooks/useFileDrop';
 import { useFileStore } from '@/features/file/store';
+import { disposeDragGhost } from '@/features/file/utils/dragGhost';
 import type { FileChange, FileNode } from '@/shared/types';
 import { createAppProviderWrapper } from '@/testing/AppProviderTestUtils';
 
@@ -640,6 +641,12 @@ describe('FileTreeNode draggable（目录拖拽）', () => {
     vi.clearAllMocks();
   });
 
+  // 兜底清理：即使断言中途失败，也移除残留的离屏拖影，防止污染后续测试
+  // （dragEnd 配对是主防线，此处是健壮性保险）。
+  afterEach(() => {
+    disposeDragGhost();
+  });
+
   /**
    * 获取 treeitem 节点：通过文本找到 span，再向上找到 [role="treeitem"]。
    * 使用 getByRole('treeitem') + 文本匹配，避免 testing-library/no-node-access。
@@ -672,11 +679,14 @@ describe('FileTreeNode draggable（目录拖拽）', () => {
 
     // 模拟 dragStart 事件
     fireEvent.dragStart(srcNode, {
-      dataTransfer: { effectAllowed: 'copy', setData: vi.fn() },
+      dataTransfer: { effectAllowed: 'copy', setData: vi.fn(), setDragImage: vi.fn() },
     });
 
     // 验证 setDragFile 被调用，传入目录路径
     expect(setDragFile).toHaveBeenCalledWith('src', 'p1');
+
+    // dragStart 必配 dragEnd（生产不变量）：否则自定义拖影残留 body 污染后续测试
+    fireEvent.dragEnd(srcNode);
   });
 
   it('文件节点拖拽时也应调用 setDragFile', () => {
@@ -688,10 +698,47 @@ describe('FileTreeNode draggable（目录拖拽）', () => {
     const fileNode = getTreeitemByText('a.ts');
 
     fireEvent.dragStart(fileNode, {
-      dataTransfer: { effectAllowed: 'copy', setData: vi.fn() },
+      dataTransfer: { effectAllowed: 'copy', setData: vi.fn(), setDragImage: vi.fn() },
     });
 
     expect(setDragFile).toHaveBeenCalledWith('src/a.ts', 'p1');
+
+    // dragStart 必配 dragEnd（生产不变量）：否则自定义拖影残留 body 污染后续测试
+    fireEvent.dragEnd(fileNode);
+  });
+
+  it('拖拽目录使用自定义拖影：不含折叠 chevron，dragend 后清理', () => {
+    render(<FilesPanel {...baseProps} />);
+
+    // 展开 src 目录
+    fireEvent.click(screen.getByText('src'));
+
+    const srcNode = getTreeitemByText('src');
+
+    const setDragImage = vi.fn();
+    fireEvent.dragStart(srcNode, {
+      dataTransfer: { effectAllowed: 'copy', setData: vi.fn(), setDragImage },
+    });
+
+    // 自定义拖影：独立元素挂载在离屏位置，内容 = 图标 + 名字（无 chevron 装饰）
+    expect(setDragImage).toHaveBeenCalledTimes(1);
+    const [ghost, offsetX, offsetY] = setDragImage.mock.calls[0] as [HTMLElement, number, number];
+    expect(ghost.tagName).toBe('DIV');
+    expect(ghost).toHaveStyle('top: -9999px');
+    // 结构断言（行为可观察）：拖影 = 一个装饰性图标（空 alt → presentation）+ 名字文本
+    expect(within(ghost).getByRole('presentation')).toHaveAttribute(
+      'src',
+      '/icons/_folder_open.svg',
+    );
+    expect(within(ghost).getByText('src')).toBeInTheDocument();
+    expect(within(ghost).queryAllByRole('presentation')).toHaveLength(1);
+    expect(document.body.contains(ghost)).toBe(true);
+    expect(offsetX).toBe(10);
+    expect(offsetY).toBe(10);
+
+    // dragend 后拖影从文档移除，不随拖拽次数泄漏
+    fireEvent.dragEnd(srcNode);
+    expect(document.body.contains(ghost)).toBe(false);
   });
 
   it('projectId 为空时节点不可拖拽', () => {
