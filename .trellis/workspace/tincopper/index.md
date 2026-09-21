@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-4.md`
-- **Total Sessions**: 223
+- **Total Sessions**: 224
 - **Last Active**: 2026-09-21
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-4.md` | ~1779 | Active |
+| `journal-4.md` | ~1812 | Active |
 | `journal-3.md` | ~1978 | Archived |
 | `journal-2.md` | ~1991 | Archived |
 | `journal-1.md` | ~1986 | Archived |
@@ -32,6 +32,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 224 | 2026-09-21 | lsp-auto-import-diagnostics 归档：AC5 rust-analyzer 真机验证通过 + 门禁终轮全绿 | `2822ed15` | `main` |
 | 223 | 2026-09-21 | problems-perf 性能归档 | `41acc57c` | `main` |
 | 222 | 2026-09-20 | lsp跟进修复提交 | `8ec80d77` | `main` |
 | 221 | 2026-09-20 | lsp M4策略三态收尾 | `6909b543` | `main` |

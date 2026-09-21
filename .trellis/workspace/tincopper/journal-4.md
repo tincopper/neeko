@@ -1777,3 +1777,36 @@ Java（`List`）、Go（`fmt.Pr`）三种语言自动导包均生效，一次 Ct
 ### Next Steps
 
 - None - task complete
+
+
+## Session 224: lsp-auto-import-diagnostics 归档：AC5 rust-analyzer 真机验证通过 + 门禁终轮全绿
+
+**Date**: 2026-09-21
+**Task**: lsp-auto-import-diagnostics 归档：AC5 rust-analyzer 真机验证通过 + 门禁终轮全绿
+**Branch**: `main`
+
+### Summary
+
+AC5 语言无关性验证通过（rust-analyzer 1.97.1 三通道真机复跑：诊断/自动导包/quickfix/健康度四步成立；didOpen 归一化 e3a802f1 + 波浪线稳定化 d24f2448 + jdtls codeActionLiteralSupport 十九轮均真机确认）。AC6 门禁终轮（HEAD d24f2448）：type-check 0 错误 / test:run 468 文件 4089 passed / lint 全绿 / cargo test 1303+102。spec 已沉淀 lsp-domain.md（三通道模型/诊断单写点/applyEdit 白名单/波浪线内容锚定/常见坑）。任务已归档至 archive/2026-09。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `2822ed15` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
