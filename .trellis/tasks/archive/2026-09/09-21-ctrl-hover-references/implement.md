@@ -16,11 +16,11 @@
 
 ## 0. 前置（硬闸门）
 
-- [ ] `prd.md` + `design.md` + 本文件已评审通过。
-- [ ] 用户明确说“可以开始实现”。
-- [ ] 执行 `python3 ./.trellis/scripts/task.py start`（status → `in_progress`）后再改码。
+- [x] `prd.md` + `design.md` + 本文件已评审通过。
+- [x] 用户明确说“可以开始实现”。
+- [x] 执行 `python3 ./.trellis/scripts/task.py start`（status → `in_progress`）后再改码。
 
-## 1. 有序清单
+## 1. 有序清单（已废弃 — 徽标方案取消，本节不执行，仅作决策留痕）
 
 ### Step 1 — 纯函数 `referencePeek`（TDD）
 - [ ] 🔴 新增 `src/features/lsp/api/__tests__/referencePeek.test.ts`：正常计数、`null`/空数组→`0`、抛错→`null`、参数透传（含 `includeDeclaration:true`）、jdt/null-uri 由调用方守卫（本函数只测透传与归一）。
@@ -63,8 +63,8 @@ pnpm test:run
 
 > 前置：用户确认 §6 方案（新弹窗 vs 改造旧弹窗、V1 纯文本预览）后再开工。
 
-- [ ] 🔴 Step 1 — 分组纯函数测试（按 uri 分组保序、空输入、计数）→ 🟢 `referencesPeekStore` 分组实现
-- [ ] 🔴 Step 2 — store action 测试（多文件一次拉取去重、`allSettled` 单文件失败隔离、>200 截断）→ 🟢 实现
-- [ ] 🔴 Step 3 — 弹窗测试（分组渲染/片段高亮、`↑↓↵esc`、空态、200+ 截断提示）→ 🟢 `ReferencesPeekDialog`
+- [x] 🔴 Step 1 — 分组纯函数测试（按 uri 分组保序、空输入、计数）→ 🟢 `referencesPeekStore` 分组实现
+- [x] 🔴 Step 2 — store action 测试（多文件一次拉取去重、`allSettled` 单文件失败隔离、>200 截断）→ 🟢 实现
+- [x] 🔴 Step 3 — 弹窗测试（分组渲染/片段高亮、`↑↓↵esc`、空态、200+ 截断提示）→ 🟢 `ReferencesPeekDialog`
 - [x] 🟢 Step 4 — 接线：`AppShell` 并列挂载 + 定义处分支改调 `openPeek`（含 `navigate` 端口）
 - [x] 验证：`pnpm lint` + `pnpm lint:fe` 全绿；回滚 = 定义处分支摘除即回退纯跳转 + 删新文件

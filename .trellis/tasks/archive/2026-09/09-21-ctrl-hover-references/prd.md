@@ -21,32 +21,32 @@
 ## Requirements
 
 ### R1 交互（上下文感知 Ctrl+Click）
-- [ ] `Ctrl/Cmd+Click` 先发 `textDocument/definition`（复用既有链路、缓存与 jdt 守卫）。
-- [ ] 若定义目标即当前位置（同文档 + 点击落在定义名 range 内）→ 视为点在**定义名**上：发显式 `findReferences`，打开 VSCode 式 Peek 弹窗（标题带 `symbolHint`，空结果显示 `No references found`），不跳转。
-- [ ] 否则（定义在别处）→ 视为点在**调用处**：走既有 `navigateToLocation` 跳转。
-- [ ] 无定义结果时保持既有 `No Definition Found` 提示不变。
-- [ ] F12 等键盘跳转保持纯跳转语义不变（本次只改鼠标链路）。
+- [x] `Ctrl/Cmd+Click` 先发 `textDocument/definition`（复用既有链路、缓存与 jdt 守卫）。
+- [x] 若定义目标即当前位置（同文档 + 点击落在定义名 range 内）→ 视为点在**定义名**上：发显式 `findReferences`，打开 VSCode 式 Peek 弹窗（标题带 `symbolHint`，空结果显示 `No references found`），不跳转。
+- [x] 否则（定义在别处）→ 视为点在**调用处**：走既有 `navigateToLocation` 跳转。
+- [x] 无定义结果时保持既有 `No Definition Found` 提示不变。
+- [x] F12 等键盘跳转保持纯跳转语义不变（本次只改鼠标链路）。
 
 ### R2 范围（已决策：不过滤，空结果即可）
-- [ ] V1 不做客户端“仅函数”硬过滤：所有可导航符号统一发 `references` 请求，非函数自然返回 0/1 条。禁止按 `languageId` 分支判断是否为函数（红线 15）。
-- [ ] jdt 展示路径（`jdt:/…` 无有效文档身份）不发请求，与 F12 / Ctrl+Click 守卫一致（`resolveLspDocumentUri` 返回 null 即跳过）。
+- [x] V1 不做客户端“仅函数”硬过滤：所有可导航符号统一发 `references` 请求，非函数自然返回 0/1 条。禁止按 `languageId` 分支判断是否为函数（红线 15）。
+- [x] jdt 展示路径（`jdt:/…` 无有效文档身份）不发请求，与 F12 / Ctrl+Click 守卫一致（`resolveLspDocumentUri` 返回 null 即跳过）。
 
 ### R3 性能与正确性
-- [ ] 无新增悬停探针：分流复用本次点击已发出的 definition 结果，仅定义名命中时追加一次 `findReferences`。
-- [ ] “是否定义处”判定为纯函数 `isOnDefinitionSite`（同文档 + 落在 range 内），jdt uri 与 file uri 各自归一比较。
-- [ ] F12 / Shift+F12 链路不受影响；StrictMode 下无重复弹窗。
+- [x] 无新增悬停探针：分流复用本次点击已发出的 definition 结果，仅定义名命中时追加一次 `findReferences`。
+- [x] “是否定义处”判定为纯函数 `isOnDefinitionSite`（同文档 + 落在 range 内），jdt uri 与 file uri 各自归一比较。
+- [x] F12 / Shift+F12 链路不受影响；StrictMode 下无重复弹窗。
 
 ### R4 架构约束
-- [ ] 前端-only 改动，不新增 Tauri 命令，不改后端 LSP 会话逻辑。
-- [ ] 复用 `findReferences` 端口；跳转经**注入端口** `PeekNavigate`（editor 在 `openPeek` 时绑定 `navigateToLocation → NavigateGoal`；`openProjectFile` 读不了 `jdt:/` 展示路径与项目外文件，见 `design.md §2`）。弹窗为新增 `ReferencesPeekDialog`（`Shift+F12` 的旧 `SymbolNavPalette` 零改动，见 `design.md §6`）。
-- [ ] 跨 feature 只走公开面：`store/` 直导、`index.ts` 门面；禁止 editor 直引 lsp 内部实现（防火墙规范）。
+- [x] 前端-only 改动，不新增 Tauri 命令，不改后端 LSP 会话逻辑。
+- [x] 复用 `findReferences` 端口；跳转经**注入端口** `PeekNavigate`（editor 在 `openPeek` 时绑定 `navigateToLocation → NavigateGoal`；`openProjectFile` 读不了 `jdt:/` 展示路径与项目外文件，见 `design.md §2`）。弹窗为新增 `ReferencesPeekDialog`（`Shift+F12` 的旧 `SymbolNavPalette` 零改动，见 `design.md §6`）。
+- [x] 跨 feature 只走公开面：`store/` 直导、`index.ts` 门面；禁止 editor 直引 lsp 内部实现（防火墙规范）。
 
 ## Acceptance Criteria
 
-- [ ] AC1：`Ctrl+Click` 点定义名 → 弹出 Peek 调用窗（与 `Shift+F12` 在该位置结果条目一致）；不发生跳转。
-- [ ] AC2：`Ctrl+Click` 点调用处 → 跳转到定义（既有行为，`useCmdClickGoToDefinition.test.ts` 原有用例保持）。
-- [ ] AC3：弹窗内回车/双击条目 → 跳转到对应文件行列（复用 `confirm`）。
-- [ ] AC4：无定义时保持既有提示；质量门禁 `pnpm lint:fe` 全绿。
+- [x] AC1：`Ctrl+Click` 点定义名 → 弹出 Peek 调用窗（与 `Shift+F12` 在该位置结果条目一致）；不发生跳转。
+- [x] AC2：`Ctrl+Click` 点调用处 → 跳转到定义（既有行为，`useCmdClickGoToDefinition.test.ts` 原有用例保持）。
+- [x] AC3：弹窗内回车/双击条目 → 跳转到对应文件行列（复用 `confirm`）。
+- [x] AC4：无定义时保持既有提示；质量门禁 `pnpm lint:fe` 全绿。
 
 ## Out of Scope
 
