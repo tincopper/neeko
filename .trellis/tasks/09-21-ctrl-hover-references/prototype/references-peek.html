@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>References Peek 原型（对标 VSCode）</title>
+<style>
+  :root {
+    --bg: #1e1e1e;
+    --peek-bg: #252526;
+    --peek-header: #252526;
+    --border: #454545;
+    --accent: #007acc;
+    --fg: #d4d4d4;
+    --muted: #858585;
+    --row-hover: #2a2d2e;
+    --row-select: #04395e;
+    --match: rgba(234, 179, 8, 0.32);
+    --code-select-line: rgba(9, 71, 113, 0.45);
+    --kw: #c586c0;
+    --fn: #dcdcaa;
+    --ty: #4ec9b0;
+    --str: #ce9178;
+    --num: #b5cea8;
+    --cmt: #6a9955;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: var(--fg);
+    font-family: -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+    font-size: 13px;
+    padding: 32px;
+  }
+  .page-hint { color: var(--muted); margin-bottom: 12px; }
+  .page-hint b { color: var(--fg); font-weight: 600; }
+
+  /* ── Peek 容器 ─────────────────────────────── */
+  .peek {
+    border: 1px solid var(--accent);
+    border-top-width: 1px;
+    background: var(--peek-bg);
+    max-width: 1180px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.55);
+  }
+  .peek.hidden { display: none; }
+
+  /* ── 标题栏 ────────────────────────────────── */
+  .peek-title {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 8px 4px 12px;
+    background: var(--peek-header);
+    border-bottom: 1px solid var(--border);
+    font-size: 13px;
+    user-select: none;
+  }
+  .peek-title .file { font-weight: 600; }
+  .peek-title .path { color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .peek-title .spacer { flex: 1; }
+  .peek-close {
+    border: 0; background: transparent; color: var(--muted);
+    font-size: 16px; line-height: 1; padding: 2px 8px; cursor: pointer; border-radius: 4px;
+  }
+  .peek-close:hover { background: rgba(255, 255, 255, 0.12); color: var(--fg); }
+
+  /* ── 主体：左代码 + 右树 ───────────────────── */
+  .peek-body { display: flex; min-height: 340px; max-height: 420px; }
+  .peek-editor { flex: 1; overflow: auto; padding: 8px 0 16px; }
+  .peek-tree { width: 340px; min-width: 300px; overflow: auto; padding: 6px 0 12px; border-right: 1px solid var(--border); }
+
+  /* 代码行 */
+  .cl { display: flex; font-family: "JetBrains Mono", Consolas, monospace; font-size: 13px; line-height: 20px; white-space: pre; }
+  .cl .ln {
+    width: 44px; min-width: 44px; text-align: right; padding-right: 12px;
+    color: var(--muted); user-select: none;
+  }
+  .cl.current { background: var(--code-select-line); box-shadow: inset 2px 0 0 var(--accent); }
+  .tok-kw { color: var(--kw); } .tok-fn { color: var(--fn); } .tok-ty { color: var(--ty); }
+  .tok-str { color: var(--str); } .tok-num { color: var(--num); } .tok-cmt { color: var(--cmt); }
+  .tok-match { background: var(--match); border-radius: 2px; }
+
+  /* 树 */
+  .tfile { user-select: none; }
+  .tfile-head {
+    display: flex; align-items: center; gap: 6px;
+    padding: 3px 12px 3px 8px; cursor: pointer; line-height: 22px;
+  }
+  .tfile-head:hover { background: var(--row-hover); }
+  .twisty { color: var(--muted); font-size: 11px; width: 14px; }
+  .tfile-head .fname { font-weight: 700; }
+  .tfile-head .fpath { color: var(--muted); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .tfile-head .count { margin-left: auto; color: var(--fg); font-size: 12px; padding-left: 12px; }
+  .tfile.collapsed .twisty { transform: rotate(-90deg); display: inline-block; }
+  .tfile.collapsed .tkids { display: none; }
+  .tsnip {
+    padding: 3px 12px 3px 28px; cursor: pointer; line-height: 20px;
+    font-family: "JetBrains Mono", Consolas, monospace; font-size: 12.5px;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--fg);
+  }
+  .tsnip:hover { background: var(--row-hover); }
+  .tsnip.selected { background: var(--row-select); }
+  .tsnip .m { background: var(--match); border-radius: 2px; }
+
+  /* 底部提示条 */
+  .peek-foot {
+    border-top: 1px solid var(--border);
+    padding: 5px 12px; color: var(--muted); font-size: 12px;
+    display: flex; gap: 16px; user-select: none;
+  }
+  .peek-foot kbd {
+    font-family: inherit; background: rgba(255,255,255,.08);
+    border: 1px solid var(--border); border-radius: 4px; padding: 0 5px;
+  }
+
+  .reopen {
+    display: none; margin-top: 16px; background: #0e639c; color: #fff;
+    border: 0; border-radius: 4px; padding: 6px 14px; cursor: pointer; font-size: 13px;
+  }
+  .reopen.show { display: inline-block; }
+  .toast {
+    position: fixed; left: 50%; bottom: 28px; transform: translateX(-50%);
+    background: #333; border: 1px solid var(--border); color: var(--fg);
+    padding: 8px 16px; border-radius: 6px; display: none; font-size: 13px;
+  }
+</style>
+</head>
+<body>
+
+<p class="page-hint">原型：<b>定义处 Ctrl+Click → References 弹窗</b>（对标 VSCode Peek Widget）。点击右侧条目切换左侧预览；<kbd>↑</kbd><kbd>↓</kbd> 移动，<kbd>↵</kbd> 跳转，<kbd>esc</kbd> 关闭。</p>
+
+<div class="peek" id="peek">
+  <div class="peek-title">
+    <span class="file" id="titleFile">main_test.go</span>
+    <span class="path" id="titlePath">~/workspaces/go_space/codeant/cmd/agent&nbsp;&nbsp;-&nbsp;&nbsp;References (3)</span>
+    <span class="spacer"></span>
+    <button class="peek-close" id="btnClose" title="关闭">×</button>
+  </div>
+  <div class="peek-body">
+    <div class="peek-tree" id="tree"></div>
+    <div class="peek-editor" id="editor"></div>
+  </div>
+  <div class="peek-foot">
+    <span><kbd>↑</kbd><kbd>↓</kbd> 切换引用</span>
+    <span><kbd>↵</kbd> 跳转到该位置</span>
+    <span><kbd>esc</kbd> 关闭</span>
+  </div>
+</div>
+
+<button class="reopen" id="btnReopen">重新打开 References（3）</button>
+<div class="toast" id="toast"></div>
+
+<script>
+/* 数据：与截图一致的 Go 示例（3 个引用） */
+const REFS = [
+  {
+    file: "config_cmd.go", dir: "cmd/agent",
+    baseLine: 14, matchIdx: 2,
+    lines: [
+      `<span class="tok-kw">func</span> <span class="tok-match">parseConfigCommand</span>(args []<span class="tok-ty">string</span>) (<span class="tok-ty">string</span>, <span class="tok-ty">bool</span>) {`,
+      `\t<span class="tok-kw">if</span> len(args) &gt;= <span class="tok-num">3</span> &amp;&amp; args[<span class="tok-num">1</span>] == <span class="tok-str">"config"</span> {`,
+      `\t\t<span class="tok-kw">switch</span> args[<span class="tok-num">2</span>] {`,
+    ],
+    snip: `<span class="tok-kw">func</span> <span class="m">parseConfigCommand</span>(args []string) (string, bool) {`,
+  },
+  {
+    file: "main.go", dir: "cmd/agent",
+    baseLine: 17, matchIdx: 1,
+    lines: [
+      `\tsub, ok := <span class="tok-match">parseConfigCommand</span>(os.Args); ok {`,
+      `\t\tfmt.Println(sub)`,
+      `\t}`,
+    ],
+    snip: `sub, ok := <span class="m">parseConfigCommand</span>(os.Args); ok {`,
+  },
+  {
+    file: "main_test.go", dir: "cmd/agent",
+    baseLine: 21, matchIdx: 2,
+    lines: [
+      `\t}`,
+      `\t<span class="tok-kw">for</span> _, tt := <span class="tok-kw">range</span> tests {`,
+      `\t\tgot, ok := <span class="tok-match">parseConfigCommand</span>(tt.args)`,
+      `\t\t<span class="tok-kw">if</span> got != tt.want || ok != tt.ok {`,
+      `\t\t\tt.Errorf(<span class="tok-str">"parseConfigCommand(%v) = (%q,%v), want (%q,%v)"</span>, tt.args, got, ok, tt.want, tt.ok)`,
+    ],
+    snip: `got, ok := <span class="m">parseConfigCommand</span>(tt.args)`,
+  },
+];
+
+const tree = document.getElementById("tree");
+const editor = document.getElementById("editor");
+const titleFile = document.getElementById("titleFile");
+const toast = document.getElementById("toast");
+let toastTimer = null;
+let sel = 2; // 默认选中第 3 条（与截图一致）
+
+function showToast(msg) {
+  toast.textContent = msg;
+  toast.style.display = "block";
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => (toast.style.display = "none"), 1600);
+}
+
+function renderTree() {
+  tree.innerHTML = "";
+  REFS.forEach((r, i) => {
+    const g = document.createElement("div");
+    g.className = "tfile";
+    g.innerHTML =
+      `<div class="tfile-head"><span class="twisty">▾</span>` +
+      `<span class="fname">${r.file}</span>` +
+      `<span class="fpath">${r.dir}</span>` +
+      `<span class="count">1</span></div>` +
+      `<div class="tkids"><div class="tsnip${i === sel ? " selected" : ""}">${r.snip}</div></div>`;
+    g.querySelector(".tfile-head").onclick = (e) => {
+      if (e.target.closest(".tsnip")) return;
+      g.classList.toggle("collapsed");
+    };
+    g.querySelector(".tsnip").onclick = () => select(i);
+    tree.appendChild(g);
+  });
+}
+
+function renderEditor() {
+  const r = REFS[sel];
+  titleFile.textContent = r.file;
+  editor.innerHTML = "";
+  r.lines.forEach((html, idx) => {
+    const row = document.createElement("div");
+    row.className = "cl" + (idx === r.matchIdx ? " current" : "");
+    row.innerHTML = `<span class="ln">${r.baseLine + idx}</span><span>${html}</span>`;
+    editor.appendChild(row);
+  });
+  const cur = editor.querySelector(".current");
+  if (cur) cur.scrollIntoView({ block: "center" });
+}
+
+function select(i) {
+  sel = (i + REFS.length) % REFS.length;
+  renderTree();
+  renderEditor();
+  document.querySelectorAll(".tsnip")[0]?.scrollIntoView({ block: "nearest" });
+}
+
+function jump() {
+  const r = REFS[sel];
+  showToast(`跳转到 ${r.file}:${r.baseLine + r.matchIdx}（原型演示，不真实跳转）`);
+}
+
+document.addEventListener("keydown", (e) => {
+  const peek = document.getElementById("peek");
+  if (peek.classList.contains("hidden")) return;
+  if (e.key === "ArrowDown") { e.preventDefault(); select(sel + 1); }
+  else if (e.key === "ArrowUp") { e.preventDefault(); select(sel - 1); }
+  else if (e.key === "Enter") { e.preventDefault(); jump(); }
+  else if (e.key === "Escape") { closePeek(); }
+});
+
+function closePeek() {
+  document.getElementById("peek").classList.add("hidden");
+  document.getElementById("btnReopen").classList.add("show");
+}
+document.getElementById("btnClose").onclick = closePeek;
+document.getElementById("btnReopen").onclick = () => {
+  document.getElementById("peek").classList.remove("hidden");
+  document.getElementById("btnReopen").classList.remove("show");
+};
+
+renderTree();
+renderEditor();
+</script>
+</body>
+</html>

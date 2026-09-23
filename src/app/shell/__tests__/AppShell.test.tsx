@@ -32,6 +32,7 @@ vi.mock('@/features/quick-open', () => ({
 }));
 vi.mock('@/features/symbol-nav', () => ({
   SymbolNavPalette: () => <div data-testid="symbol-nav" />,
+  ReferencesPeekDialog: () => <div data-testid="references-peek" />,
 }));
 vi.mock('../../AppModals', () => ({ default: () => <div data-testid="app-modals" /> }));
 vi.mock('../../components/AppCenter', () => ({ default: () => <div data-testid="app-center" /> }));
@@ -77,6 +78,7 @@ describe('AppShell 骨架装配', () => {
     expect(screen.getByTestId('app-modals')).toBeInTheDocument();
     expect(screen.getByTestId('quick-open')).toBeInTheDocument();
     expect(screen.getByTestId('symbol-nav')).toBeInTheDocument();
+    expect(screen.getByTestId('references-peek')).toBeInTheDocument();
     expect(screen.getByTestId('status-bar')).toBeInTheDocument();
   });
 

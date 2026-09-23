@@ -4,7 +4,9 @@ import { useMemo } from 'react';
 
 import { clearLinkHighlight } from '@/features/lsp';
 import type { LspLocation } from '@/features/lsp/types';
+import { useReferencesPeekStore } from '@/features/symbol-nav/store/referencesPeekStore';
 import { preloadLanguageExtension } from '@/shared/utils/codemirror';
+import { fileRefFromLspUri, sameFile } from '@/shared/utils/fileRef';
 import { jdtDisplayPath } from '@/shared/utils/jdt';
 import { resolveLspPositionFromOffset } from '@/shared/utils/lspPosition';
 import { IS_MACOS } from '@/shared/utils/platform';
@@ -30,6 +32,12 @@ interface HandleCmdClickParams {
   filePath: string;
   lspLanguageIdRef: React.MutableRefObject<string | null>;
   goToDefinition: GoToDefinition;
+  findReferences: (
+    languageId: string,
+    uri: string,
+    line: number,
+    character: number,
+  ) => Promise<LspLocation[]>;
   navigateToLocation: (
     location: LspLocation,
     projectPath: string,
@@ -41,7 +49,35 @@ interface HandleCmdClickParams {
 }
 
 /**
- * Cmd+Click / Ctrl+Click → go to definition.
+ * 同文档判定：一律落在**身份所有者**（`fileRefFromLspUri` + `sameFile`）上，
+ * 不在消费侧自造字符串归一 / 别名匹配（红线 12）。两侧任一解析失败 → false（不猜）。
+ */
+function sameDocumentUri(a: string, b: string): boolean {
+  if (a === b) return true;
+  const ra = fileRefFromLspUri(a);
+  const rb = fileRefFromLspUri(b);
+  return ra !== null && rb !== null && sameFile(ra, rb);
+}
+
+/**
+ * 点击是否落在定义名上：定义目标与当前文档同一，且点击位置落在定义 range 内。
+ * 纯函数，可独立单测；语言无关（不读 languageId）。
+ */
+export function isOnDefinitionSite(
+  currentUri: string,
+  line: number,
+  character: number,
+  location: LspLocation,
+): boolean {
+  if (!sameDocumentUri(currentUri, location.uri)) return false;
+  const { start, end } = location.range;
+  if (start.line !== line) return false;
+  // LSP Range 是半开区间 [start, end)：`end` 处已不属于该符号
+  // （点 `myFn` 后面的 `(` 不算落在定义名上）。零宽 range 不命中，退回跳转语义。
+  return character >= start.character && character < end.character;
+}
+/**
+ * Cmd+Click / Ctrl+Click → 上下文感知：定义处弹调用窗，调用处跳转定义。
  *
  * Pure handler (testable): uses the click coordinates — not the current
  * selection — so it jumps to the symbol under the mouse, matching the
@@ -60,6 +96,7 @@ export function handleCmdClickToDefinition({
   filePath,
   lspLanguageIdRef,
   goToDefinition,
+  findReferences,
   navigateToLocation,
 }: HandleCmdClickParams): void {
   const modKey = IS_MACOS ? event.metaKey : event.ctrlKey;
@@ -78,11 +115,32 @@ export function handleCmdClickToDefinition({
   if (!lspDocumentUri) return;
 
   const offset = view.posAtCoords({ x: event.clientX, y: event.clientY });
+  // 点在编辑器外 → null。`resolveLspPositionFromOffset` 同样会返回 null，但这里必须
+  // 显式收窄类型，供下方 `wordAt(offset)` 使用。
+  if (offset === null) return;
   const lspPos = resolveLspPositionFromOffset(offset, (p) => view.state.doc.lineAt(p));
   if (!lspPos) return;
 
-  goToDefinition(lid, lspDocumentUri, lspPos.line, lspPos.character).then((result) => {
+  goToDefinition(lid, lspDocumentUri, lspPos.line, lspPos.character).then(async (result) => {
     if (!result) return;
+    // 定义处 → Peek 调用窗；调用处 → 跳转定义（分流复用本次 definition 结果，不多发请求）。
+    if (isOnDefinitionSite(lspDocumentUri, lspPos.line, lspPos.character, result.location)) {
+      const word = view.state.wordAt(offset);
+      const symbolHint = word ? view.state.sliceDoc(word.from, word.to) : undefined;
+      const locations = await findReferences(lid, lspDocumentUri, lspPos.line, lspPos.character);
+      useReferencesPeekStore.getState().openPeek({
+        projectId,
+        projectPath,
+        languageId: lid,
+        locations,
+        symbolHint,
+        // 跳转端口：editor 域是「打开一个 LSP 位置」的唯一所有者（jdt 类文件 /
+        // 项目外只读 tab 只有它建得对：readOnly + virtualUri）。store 不持有实现。
+        navigate: (location) =>
+          navigateToLocation(location, projectPath, tabKey, projectId, filePath),
+      });
+      return;
+    }
     preloadLanguageExtension(jdtDisplayPath(result.location.uri));
     return navigateToLocation(
       result.location,
@@ -103,6 +161,12 @@ interface UseCmdClickGoToDefinitionParams {
   filePath: string;
   lspLanguageIdRef: React.MutableRefObject<string | null>;
   goToDefinition: GoToDefinition;
+  findReferences: (
+    languageId: string,
+    uri: string,
+    line: number,
+    character: number,
+  ) => Promise<LspLocation[]>;
   navigateToLocation: (
     location: LspLocation,
     projectPath: string,
@@ -131,6 +195,7 @@ export function useCmdClickGoToDefinition({
   filePath,
   lspLanguageIdRef,
   goToDefinition,
+  findReferences,
   navigateToLocation,
 }: UseCmdClickGoToDefinitionParams): Extension {
   // 入参全是显式标量 + 稳定引用（ref 只被传递、不在渲染期解引用），
@@ -150,6 +215,7 @@ export function useCmdClickGoToDefinition({
           filePath,
           lspLanguageIdRef,
           goToDefinition,
+          findReferences,
           navigateToLocation,
         });
       },
@@ -162,6 +228,7 @@ export function useCmdClickGoToDefinition({
     filePath,
     lspLanguageIdRef,
     goToDefinition,
+    findReferences,
     navigateToLocation,
   ]);
 }

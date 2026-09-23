@@ -334,6 +334,7 @@ export function useLspNavigation({
     filePath: tab.filePath,
     lspLanguageIdRef,
     goToDefinition: definition.goToDefinitionWithContent,
+    findReferences: definition.findReferences,
     navigateToLocation,
   });
 

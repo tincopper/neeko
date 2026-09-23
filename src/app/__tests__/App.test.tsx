@@ -60,7 +60,10 @@ vi.mock('@/features/runner', () => ({
   useVisibleDebugSession: () => null,
 }));
 vi.mock('@/features/quick-open', () => ({ QuickOpenPalette: () => null }));
-vi.mock('@/features/symbol-nav', () => ({ SymbolNavPalette: () => null }));
+vi.mock('@/features/symbol-nav', () => ({
+  SymbolNavPalette: () => null,
+  ReferencesPeekDialog: () => null,
+}));
 vi.mock('@/features/git', () => ({ BranchStatusBarWidget: () => null }));
 
 describe('App 组合层', () => {

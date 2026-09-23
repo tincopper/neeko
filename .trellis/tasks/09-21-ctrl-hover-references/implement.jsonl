@@ -1,0 +1,4 @@
+{"_example": "Fill with {\"file\": \"<path>\", \"reason\": \"<why>\"}. Put spec/research files only — no code paths. Run `python3 .trellis/scripts/get_context.py --mode packages` to list available specs. Delete this line once real entries are added."}
+{"file": ".trellis/spec/frontend/index.md", "reason": "前端门面与防火墙规范：store直导、index门面"}
+{"file": ".trellis/spec/backend/lsp-domain.md", "reason": "LSP三通道模型与probe/跳转契约"}
+{"file": ".trellis/spec/frontend/navigation-goal.md", "reason": "引用跳转复用NavigateGoal兑现契约"}

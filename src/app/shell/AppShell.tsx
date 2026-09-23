@@ -2,7 +2,7 @@ import { memo } from 'react';
 
 import { QuickOpenPalette } from '@/features/quick-open';
 import { StatusBar } from '@/features/status-bar';
-import { SymbolNavPalette } from '@/features/symbol-nav';
+import { ReferencesPeekDialog, SymbolNavPalette } from '@/features/symbol-nav';
 import { DockLayout, TitleBar } from '@/layout';
 
 import AppModals from '../AppModals';
@@ -56,6 +56,7 @@ function AppShell({ toolbarProps, appModalsProps, leftButtons, rightButtons }: A
       <AppModals {...appModalsProps} />
       <QuickOpenPalette />
       <SymbolNavPalette />
+      <ReferencesPeekDialog />
 
       {/* ── 窗口框架 · 底（必须在 AppProvider 内：NotificationDetail
           经 useCopyToClipboard 调用 useAppContext()，Provider 外会抛错） ── */}

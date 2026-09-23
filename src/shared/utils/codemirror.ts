@@ -1,3 +1,4 @@
+import { HighlightStyle, syntaxHighlighting } from '@codemirror/language';
 import type { Extension } from '@codemirror/state';
 import { tags as t } from '@lezer/highlight';
 import { createTheme } from '@uiw/codemirror-themes';
@@ -369,6 +370,38 @@ export async function getLanguageExtension(filename: string): Promise<Extension 
 }
 
 /**
+ * 与编辑器主题同源的语法 token 样式。
+ *
+ * 单一事实源：`createCmTheme` 与预览类只读小视图都认这一份，不各自手写第二套
+ * 配色（第二套必漂移）。编辑器经 uiw `createTheme(styles)` 消费，预览经
+ * `neekoSyntaxHighlighting()` 消费，色值零分叉。
+ */
+export const neekoSyntaxTagStyles = [
+  { tag: t.keyword, color: 'var(--cm-keyword)', fontWeight: 'bold' },
+  { tag: t.comment, color: 'var(--cm-comment)', fontStyle: 'italic' },
+  { tag: t.string, color: 'var(--cm-string)' },
+  { tag: t.number, color: 'var(--cm-number)' },
+  { tag: t.operator, color: 'var(--cm-operator)' },
+  { tag: t.variableName, color: 'var(--cm-variableName)' },
+  { tag: t.typeName, color: 'var(--cm-typeName)' },
+  { tag: t.propertyName, color: 'var(--cm-propertyName)' },
+  { tag: t.function(t.variableName), color: 'var(--cm-function)' },
+  { tag: t.className, color: 'var(--cm-className)' },
+  { tag: t.definition(t.variableName), color: 'var(--cm-definition)' },
+  { tag: t.meta, color: 'var(--cm-meta)' },
+  { tag: t.tagName, color: 'var(--cm-tag)' },
+  { tag: t.atom, color: 'var(--cm-atom)' },
+  { tag: t.bool, color: 'var(--cm-bool)' },
+  { tag: t.punctuation, color: 'var(--cm-punctuation)' },
+  { tag: t.bracket, color: 'var(--cm-bracket)' },
+];
+
+/** 只读预览用语法高亮扩展（与编辑器同色）。 */
+export function neekoSyntaxHighlighting(): Extension {
+  return syntaxHighlighting(HighlightStyle.define(neekoSyntaxTagStyles));
+}
+
+/**
  * Build a CodeMirror theme that reads all colors from CSS variables.
  * Creates a new theme object each call so CodeMirror reconfigures on prop change.
  */
@@ -389,25 +422,7 @@ export function createCmTheme(fontFamily: string, fontSize: number) {
       gutterForeground: 'var(--text-muted)',
       gutterActiveForeground: 'var(--text-primary)',
     },
-    styles: [
-      { tag: t.keyword, color: 'var(--cm-keyword)', fontWeight: 'bold' },
-      { tag: t.comment, color: 'var(--cm-comment)', fontStyle: 'italic' },
-      { tag: t.string, color: 'var(--cm-string)' },
-      { tag: t.number, color: 'var(--cm-number)' },
-      { tag: t.operator, color: 'var(--cm-operator)' },
-      { tag: t.variableName, color: 'var(--cm-variableName)' },
-      { tag: t.typeName, color: 'var(--cm-typeName)' },
-      { tag: t.propertyName, color: 'var(--cm-propertyName)' },
-      { tag: t.function(t.variableName), color: 'var(--cm-function)' },
-      { tag: t.className, color: 'var(--cm-className)' },
-      { tag: t.definition(t.variableName), color: 'var(--cm-definition)' },
-      { tag: t.meta, color: 'var(--cm-meta)' },
-      { tag: t.tagName, color: 'var(--cm-tag)' },
-      { tag: t.atom, color: 'var(--cm-atom)' },
-      { tag: t.bool, color: 'var(--cm-bool)' },
-      { tag: t.punctuation, color: 'var(--cm-punctuation)' },
-      { tag: t.bracket, color: 'var(--cm-bracket)' },
-    ],
+    styles: neekoSyntaxTagStyles,
   });
 }
 
