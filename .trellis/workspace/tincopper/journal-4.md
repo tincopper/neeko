@@ -1843,3 +1843,37 @@ Java Debug 双后端任务归档收尾。核心（S0 spike GO / R8 外部端点�
 ### Next Steps
 
 - None - task complete
+
+
+## Session 226: Ctrl+Click references peek shipped and task archived
+
+**Date**: 2026-09-23
+**Task**: Ctrl+Click references peek shipped and task archived
+**Branch**: `main`
+
+### Summary
+
+Context-aware Cmd/Ctrl+Click: definition-name opens VSCode-style References Peek, call-site jumps to definition. PeekNavigate port injection, batch-race guard, focus/drag lifecycle fixes. neeko-check review applied (probes removed, prd/design synced). Full gates green: lint, type-check, 4134 FE tests, 102 cargo tests. Task 09-21-ctrl-hover-references archived as completed.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `b9dbc8bd` | (see git log) |
+| `50153053` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

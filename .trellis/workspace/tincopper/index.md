@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-4.md`
-- **Total Sessions**: 225
-- **Last Active**: 2026-09-21
+- **Total Sessions**: 226
+- **Last Active**: 2026-09-23
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-4.md` | ~1845 | Active |
+| `journal-4.md` | ~1879 | Active |
 | `journal-3.md` | ~1978 | Archived |
 | `journal-2.md` | ~1991 | Archived |
 | `journal-1.md` | ~1986 | Archived |
@@ -32,6 +32,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 226 | 2026-09-23 | Ctrl+Click references peek shipped and task archived | `b9dbc8bd`, `50153053` | `main` |
 | 225 | 2026-09-21 | 09-12-java-debug-backends 归档：JDTLS/host 双后端完成，WSL 记为已知限制 | `218a3355` | `main` |
 | 224 | 2026-09-21 | lsp-auto-import-diagnostics 归档：AC5 rust-analyzer 真机验证通过 + 门禁终轮全绿 | `2822ed15` | `main` |
 | 223 | 2026-09-21 | problems-perf 性能归档 | `41acc57c` | `main` |
