@@ -5,13 +5,13 @@
 
 use super::super::gitignore::GitIgnoreFilter;
 use super::super::registration::WatchMaintenance;
-use super::super::types::{FileTreeChangedEvent, FILE_TREE_CHANGED_EVENT};
+use super::super::sink::{WatcherEvent, WatcherEventSink};
+use super::super::types::FileTreeChangedEvent;
 use super::classify::{relevant_event_paths, structure_event_paths};
 use notify::event::ModifyKind;
 use notify::{Event, EventKind};
 use std::path::PathBuf;
 use std::sync::{mpsc, Arc};
-use tauri::{AppHandle, Emitter};
 
 /// 构建 notify 事件回调（`RecommendedWatcher::new` 的事件处理闭包）。
 ///
@@ -25,7 +25,7 @@ use tauri::{AppHandle, Emitter};
 #[allow(clippy::too_many_arguments)]
 pub(super) fn build_notify_callback(
     pid_log: String,
-    app_for_watcher_error: AppHandle,
+    sink: Arc<dyn WatcherEventSink>,
     gitignore_filter_for_notify: Option<Arc<GitIgnoreFilter>>,
     maintenance_tx_for_closure: mpsc::Sender<WatchMaintenance>,
     debounce_tx_for_notify: mpsc::Sender<PathBuf>,
@@ -41,13 +41,10 @@ pub(super) fn build_notify_callback(
                 // S2-2 正确性兜底：watcher 异常（overflow 等）意味着可能丢失事件，
                 // 无法保证目录缓存一致 —— 发送空 dirs 的 tree-changed，
                 // 通知前端退回全树刷新（orca 同款 overflow→full refresh 语义）。
-                let _ = app_for_watcher_error.emit(
-                    FILE_TREE_CHANGED_EVENT,
-                    &FileTreeChangedEvent {
-                        project_id: pid_log.clone(),
-                        dirs: Vec::new(),
-                    },
-                );
+                sink.emit(WatcherEvent::TreeChanged(&FileTreeChangedEvent {
+                    project_id: pid_log.clone(),
+                    dirs: Vec::new(),
+                }));
                 return;
             }
         };

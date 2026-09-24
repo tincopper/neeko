@@ -98,9 +98,13 @@ pub fn run() {
             // 只为激活项目挂 watcher；非激活项目由 set_active_project 触发时再挂
             if let Some(id) = active_id {
                 if let Some((_, path)) = projects.iter().find(|(pid, _)| pid == &id) {
-                    state
-                        .watcher_manager
-                        .watch(id, path.clone(), app.handle().clone());
+                    state.watcher_manager.watch(
+                        id,
+                        path.clone(),
+                        std::sync::Arc::new(crate::common::file::watcher::AppHandleSink::new(
+                            app.handle().clone(),
+                        )),
+                    );
                 }
             }
 

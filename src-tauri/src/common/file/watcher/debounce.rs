@@ -1,14 +1,12 @@
 //! Throttle / Debounce 线程基建：合并高频 notify 信号，按滑动窗口一次性 emit。
 
-use super::types::{
-    FileChangedEvent, FileTreeChangedEvent, FILE_CHANGED_EVENT, FILE_TREE_CHANGED_EVENT,
-};
+use super::sink::{WatcherEvent, WatcherEventSink};
+use super::types::{FileChangedEvent, FileTreeChangedEvent, FILE_TREE_CHANGED_EVENT};
 use std::{
     path::{Path, PathBuf},
-    sync::mpsc,
+    sync::{mpsc, Arc},
     time::{Duration, Instant},
 };
-use tauri::{AppHandle, Emitter};
 
 // ── Throttle 调度器 ───────────────────────────────────────────────────────────
 
@@ -67,7 +65,11 @@ pub(super) struct DebounceSender {
 }
 
 impl DebounceSender {
-    pub(super) fn new(project_id: String, project_root: PathBuf, app_handle: AppHandle) -> Self {
+    pub(super) fn new(
+        project_id: String,
+        project_root: PathBuf,
+        sink: Arc<dyn WatcherEventSink>,
+    ) -> Self {
         let (tx, rx) = mpsc::channel::<PathBuf>();
 
         std::thread::Builder::new()
@@ -127,7 +129,7 @@ impl DebounceSender {
                                     project_id,
                                     event.paths.len()
                                 );
-                                let _ = app_handle.emit(FILE_CHANGED_EVENT, &event);
+                                sink.emit(WatcherEvent::FileChanged(&event));
                             }
                             deadline = None;
                             first_at = None;
@@ -202,7 +204,11 @@ pub(super) struct TreeChangeDebounceSender {
 }
 
 impl TreeChangeDebounceSender {
-    pub(super) fn new(project_id: String, project_root: PathBuf, app_handle: AppHandle) -> Self {
+    pub(super) fn new(
+        project_id: String,
+        project_root: PathBuf,
+        sink: Arc<dyn WatcherEventSink>,
+    ) -> Self {
         let (tx, rx) = mpsc::channel::<PathBuf>();
 
         std::thread::Builder::new()
@@ -249,13 +255,10 @@ impl TreeChangeDebounceSender {
                         FILE_TREE_CHANGED_EVENT,
                         dirs.len()
                     );
-                    let _ = app_handle.emit(
-                        FILE_TREE_CHANGED_EVENT,
-                        &FileTreeChangedEvent {
-                            project_id: project_id.clone(),
-                            dirs,
-                        },
-                    );
+                    sink.emit(WatcherEvent::TreeChanged(&FileTreeChangedEvent {
+                        project_id: project_id.clone(),
+                        dirs,
+                    }));
                 }
             })
             .expect("Failed to spawn tree-debounce thread");

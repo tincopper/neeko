@@ -12,6 +12,8 @@ mod core;
 mod handle;
 
 #[cfg(test)]
+mod lifecycle_tests;
+#[cfg(test)]
 mod tests;
 
 pub use core::WatcherManager;

@@ -1,0 +1,5 @@
+{"_example": "Fill with {\"file\": \"<path>\", \"reason\": \"<why>\"}. Put spec/research files only — no code paths. Run `python3 .trellis/scripts/get_context.py --mode packages` to list available specs. Delete this line once real entries are added."}
+{"file": ".trellis/spec/backend/concurrency-guidelines.md", "reason": "检查线程释放链与停机路径是否完整"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "检查红线：阻塞 IO、平台分支、mod.rs 极薄"}
+{"file": ".trellis/tasks/09-24-watcher-lifecycle-and-git-lock/prd.md", "reason": "验收标准 AC1-AC8"}
+{"file": ".trellis/spec/unit-test/index.md", "reason": "检查生命周期契约测试可无 GUI 运行、覆盖 unwatch/re-watch"}

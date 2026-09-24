@@ -1,9 +1,11 @@
 //! Tauri commands for project lifecycle management.
 
+use crate::common::file::watcher::AppHandleSink;
 use crate::project::types::{GitInfo, Project};
 use crate::AppError;
 use crate::AppStateWrapper;
 use std::path::PathBuf;
+use std::sync::Arc;
 use tauri::State;
 
 /// Adds a new local project to the project list.
@@ -131,7 +133,11 @@ pub async fn set_active_project(
     state
         .runtime
         .spawn_blocking(move || {
-            watcher_manager.watch(pid, path_for_watch, app_handle);
+            watcher_manager.watch(
+                pid,
+                path_for_watch,
+                Arc::new(AppHandleSink::new(app_handle)),
+            );
         })
         .await
         .map_err(|e| AppError::Unknown(format!("watch task join error: {e}")))?;
@@ -301,9 +307,11 @@ pub fn change_project_path(
         == Some(project_id.as_str());
     if is_active {
         state.watcher_manager.unwatch(&project_id);
-        state
-            .watcher_manager
-            .watch(project_id, PathBuf::from(new_path), app_handle);
+        state.watcher_manager.watch(
+            project_id,
+            PathBuf::from(new_path),
+            Arc::new(AppHandleSink::new(app_handle)),
+        );
     }
 
     Ok(())

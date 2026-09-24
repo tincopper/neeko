@@ -1,0 +1,11 @@
+{"_example": "Fill with {\"file\": \"<path>\", \"reason\": \"<why>\"}. Put spec/research files only — no code paths. Run `python3 .trellis/scripts/get_context.py --mode packages` to list available specs. Delete this line once real entries are added."}
+{"file": ".trellis/spec/backend/concurrency-guidelines.md", "reason": "线程/生命周期与资源释放红线（watcher 泄漏属此类）"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "后端质量红线：阻塞 IO 隔离、mod.rs 极薄、平台代码集中"}
+{"file": ".trellis/spec/backend/git-domain.md", "reason": "git 域契约（含 §7 换行边界、§8 路径 C 转义；只读锁语义相关）"}
+{"file": "src-tauri/src/common/file/watcher/manager/core.rs", "reason": "WatcherManager::watch/unwatch 与资源组装（泄漏根因：维护线程 Arc + 闭包 tx 互相保活）"}
+{"file": "src-tauri/src/common/file/watcher/manager/callbacks.rs", "reason": "notify 回调构建：maintenance_tx_for_closure 等各 sender 的持有关系"}
+{"file": "src-tauri/src/common/git/operations/support.rs", "reason": "readonly_opts / READONLY_ENV（GIT_OPTIONAL_LOCKS=0）唯一入口"}
+{"file": "src-tauri/src/common/git/operations/info.rs", "reason": "读路径缺口：status 未带 readonly opts（锁争用）"}
+{"file": "src-tauri/src/common/git/operations/worktree.rs", "reason": "读路径缺口：status 未带 readonly opts（锁争用）"}
+{"file": "src-tauri/src/common/git/status_worker/worker.rs", "reason": "同步桥上的 status 调用与 --no-optional-locks 回退分支"}
+{"file": ".trellis/spec/unit-test/index.md", "reason": "TDD 红绿重构与测试要求（生命周期契约测试口径）"}

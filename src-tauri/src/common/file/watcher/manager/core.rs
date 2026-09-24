@@ -6,10 +6,8 @@ use super::super::git_meta::{
 };
 use super::super::gitignore::GitIgnoreFilter;
 use super::super::registration::{spawn_maintenance_thread, WatchRegistration};
-use super::super::types::{
-    FileTreeChangedEvent, GitPerfSuggestionEvent, FILE_TREE_CHANGED_EVENT, GIT_CHANGED_EVENT,
-    GIT_PERF_SUGGESTION_EVENT, GIT_STATUS_SNAPSHOT_EVENT,
-};
+use super::super::sink::{WatcherEvent, WatcherEventSink};
+use super::super::types::{FileTreeChangedEvent, GitPerfSuggestionEvent};
 use super::callbacks::build_notify_callback;
 use super::handle::WatcherHandle;
 use crate::common::git::local::is_git_repo;
@@ -25,7 +23,6 @@ use std::{
     },
     time::Duration,
 };
-use tauri::{AppHandle, Emitter};
 
 /// Manages file-system watchers for multiple projects.
 ///
@@ -79,8 +76,22 @@ impl WatcherManager {
     }
 
     /// Start watching the given project directory for file changes.
-    pub fn watch(&self, project_id: String, path: PathBuf, app_handle: AppHandle) {
-        let app_for_diff = app_handle.clone();
+    pub fn watch(&self, project_id: String, path: PathBuf, sink: Arc<dyn WatcherEventSink>) {
+        // 入口不变量：同一项目只允许一套 watcher。重复注册会**翻倍投递事件**并再泄漏
+        // 一套后台线程（实测：同项目被 watch 4 次 → 单次变更 emit 3 次）。
+        // 「配置变更」不需要重建 watcher —— 它走 `WatchMaintenance::ReloadAll`。
+        if let Ok(watchers) = self.watchers.lock() {
+            if watchers.contains_key(&project_id) {
+                log::warn!(
+                    "[Watcher] project {} is already watched at {}, ignoring duplicate watch",
+                    project_id,
+                    path.display()
+                );
+                return;
+            }
+        }
+
+        let sink_for_diff = Arc::clone(&sink);
 
         // 非 git 项目：跳过所有 git 相关资源（worker / scheduler / heartbeat / git meta watcher），
         // 仅保留文件监听 + 文件树变更事件。避免对非 git 仓库启动 git status worker 执行 git rev-parse 等命令。
@@ -101,7 +112,7 @@ impl WatcherManager {
                         map.insert(pid_emit.clone(), Arc::new(snapshot.clone()));
                     }
                     // v2 事件：versioned 全量快照，前端整体替换（version gate 拒旧）
-                    let _ = app_for_diff.emit(GIT_STATUS_SNAPSHOT_EVENT, &snapshot);
+                    sink_for_diff.emit(WatcherEvent::StatusSnapshot(&snapshot));
                 });
 
             // 2. 创建 ThrottleScheduler -- 合并 notify 事件，驱动 worker.check()
@@ -124,12 +135,12 @@ impl WatcherManager {
         };
 
         // 3. 创建 file-changed debounce sender
-        let debounce = DebounceSender::new(project_id.clone(), path.clone(), app_handle.clone());
+        let debounce = DebounceSender::new(project_id.clone(), path.clone(), Arc::clone(&sink));
 
         // 3b. 创建 file-tree-changed debounce sender（专门处理 Create/Remove/Rename，
         // S2-1：收集变更路径的父目录集合，前端只重载命中桶）
         let tree_debounce =
-            TreeChangeDebounceSender::new(project_id.clone(), path.clone(), app_handle.clone());
+            TreeChangeDebounceSender::new(project_id.clone(), path.clone(), Arc::clone(&sink));
 
         // 4. 创建 notify watcher -- 递归监听 + 路径过滤
         // 从 scheduler 克隆 Sender 传给 notify 闭包（非 git 项目时为 None）
@@ -137,7 +148,7 @@ impl WatcherManager {
         let debounce_tx_for_notify = debounce.tx.clone();
         let tree_debounce_tx = tree_debounce.tx.clone();
         let pid_log = project_id.clone();
-        let app_for_watcher_error = app_handle.clone();
+        let sink_for_watcher_error = Arc::clone(&sink);
         // git 语义忽略过滤器：编译 .gitignore / .git/info/exclude 规则，
         // 与 git 自身行为一致（不再是硬编码目录名黑名单）。
         // 非 git 项目时为 None，不做 gitignore 过滤。
@@ -158,7 +169,7 @@ impl WatcherManager {
         let notify_result = RecommendedWatcher::new(
             build_notify_callback(
                 pid_log,
-                app_for_watcher_error,
+                sink_for_watcher_error,
                 gitignore_filter_for_notify,
                 maintenance_tx_for_closure,
                 debounce_tx_for_notify,
@@ -209,7 +220,8 @@ impl WatcherManager {
             reg.register_root(&mut *w, &path, gitignore_for_handle.as_deref());
         }
         spawn_maintenance_thread(
-            Arc::clone(&watcher),
+            // 只给 Weak：强所有者是下面的 WatcherHandle（见 maintenance.rs 的生命周期契约）
+            Arc::downgrade(&watcher),
             path.clone(),
             gitignore_for_handle.clone(),
             Arc::clone(&registration),
@@ -232,8 +244,8 @@ impl WatcherManager {
                 let pid_index = project_id.clone();
                 let pid_head = project_id.clone();
                 let pid_wt = project_id.clone();
-                let app_for_head = app_handle.clone();
-                let app_for_worktree = app_handle.clone();
+                let sink_for_head = Arc::clone(&sink);
+                let sink_for_worktree = Arc::clone(&sink);
                 create_git_meta_watcher(
                     project_id.clone(),
                     &meta,
@@ -257,7 +269,7 @@ impl WatcherManager {
                             let _ = tx.send(());
                         }
                         if has_wt {
-                            let _ = app_for_head.emit(GIT_CHANGED_EVENT, &pid_head);
+                            sink_for_head.emit(WatcherEvent::GitChanged(&pid_head));
                         }
                     },
                     // G3：worktree 区域（.git/worktrees/* HEAD/index）或 linked worktree
@@ -278,15 +290,14 @@ impl WatcherManager {
                             // 使读层现场构建的过滤器缓存失效：下次读树重建 → 规则最新
                             // （避免已缓存 worktree 过滤器携带旧规则）。
                             crate::common::file::services::invalidate_local_gitignore_cache();
-                            let _ = app_for_worktree.emit(
-                                FILE_TREE_CHANGED_EVENT,
+                            sink_for_worktree.emit(WatcherEvent::TreeChanged(
                                 &FileTreeChangedEvent {
                                     project_id: pid_wt.clone(),
                                     dirs: Vec::new(),
                                 },
-                            );
+                            ));
                         }
-                        let _ = app_for_worktree.emit(GIT_CHANGED_EVENT, &pid_wt);
+                        sink_for_worktree.emit(WatcherEvent::GitChanged(&pid_wt));
                     },
                 )
             })
@@ -342,7 +353,7 @@ impl WatcherManager {
         // 只提示不代改用户仓库配置）。仅 git 项目：与 worker/heartbeat 同款门控，
         // 非 git 目录不启动 git 探测线程。
         if git_repo {
-            let app_for_perf = app_handle.clone();
+            let sink_for_perf = Arc::clone(&sink);
             let pid_perf = project_id.clone();
             let perf_root = path.clone();
             let _ = std::thread::Builder::new()
@@ -357,13 +368,10 @@ impl WatcherManager {
                         pid_perf,
                         suggestions.len()
                     );
-                    let _ = app_for_perf.emit(
-                        GIT_PERF_SUGGESTION_EVENT,
-                        &GitPerfSuggestionEvent {
-                            project_id: pid_perf,
-                            suggestions,
-                        },
-                    );
+                    sink_for_perf.emit(WatcherEvent::PerfSuggestion(&GitPerfSuggestionEvent {
+                        project_id: pid_perf,
+                        suggestions,
+                    }));
                 });
         }
 
