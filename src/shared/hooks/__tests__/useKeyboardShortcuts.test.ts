@@ -526,8 +526,27 @@ describe('useKeyboardShortcuts', () => {
     textarea.remove();
   });
 
-  it('默认未绑定 Alt+Left 时不切换 tab（保留 macOS Option+方向键按词移动语义）', () => {
+  it('默认 Alt+Left 切换到上一个 tab（IDEA 手感）', () => {
     params.activeTabId = 't1';
+    seedTwoTabEditor();
+    renderHook(() => useKeyboardShortcuts(params));
+
+    const cm = document.createElement('div');
+    cm.className = 'cm-editor';
+    const content = document.createElement('div');
+    content.className = 'cm-content';
+    cm.appendChild(content);
+    document.body.appendChild(cm);
+
+    dispatchKeyAt(content, { code: 'ArrowLeft', key: 'ArrowLeft', altKey: true });
+
+    expect(useEditorStore.getState().tabs.p1?.activeTabId).toBe('t0');
+    cm.remove();
+  });
+
+  it('显式设为 Unbound 后 Alt+Left 不切换 tab（保留 macOS Option 按词移动）', () => {
+    params.activeTabId = 't1';
+    params.shortcuts = { prevTab: '' };
     seedTwoTabEditor();
     renderHook(() => useKeyboardShortcuts(params));
 

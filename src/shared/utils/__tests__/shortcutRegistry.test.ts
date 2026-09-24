@@ -331,12 +331,12 @@ describe('shortcutRegistry', () => {
       expect(resolved.unsplitEditor).toBe('Ctrl+Shift+\\');
     });
 
-    it('should_leave_direct_tab_cycle_unbound_and_keep_ctrl_tab_and_nav_history_defaults', () => {
+    it('should_bind_direct_tab_cycle_to_idea_defaults_and_keep_ctrl_tab_and_nav_history', () => {
       const resolved = resolveBindings({});
-      // Alt+Left/Right 不再作为默认 tab 切换（保留 macOS Option+方向键按词移动语义），
-      // Ctrl+Tab / Ctrl+Shift+Tab 是唯一的 tab 切换入口。
-      expect(resolved.prevTab).toBe('');
-      expect(resolved.nextTab).toBe('');
+      // 与 IDEA 对齐：Alt+Left/Right 默认切换前后 tab；
+      // Ctrl+Tab / Ctrl+Shift+Tab 保留为 MRU 切换入口。
+      expect(resolved.prevTab).toBe('Alt+Left');
+      expect(resolved.nextTab).toBe('Alt+Right');
       expect(resolved.switchTabNext).toBe('Ctrl+Tab');
       expect(resolved.switchTabPrev).toBe('Ctrl+Shift+Tab');
       expect(resolved.navigateBack).toBe('Ctrl+Alt+Left');

@@ -63,19 +63,18 @@ export const SHORTCUT_ACTIONS: ShortcutAction[] = [
   {
     id: 'prevTab',
     label: 'Previous Tab',
-    // 默认不绑定：Alt/Option+方向键在 macOS 上是原生「按词移动」，不该被全局抢占。
-    // Ctrl+Tab (switchTabNext) 是唯一、标准的 tab 切换入口。
-    // 想要 IDEA 手感可走「Apply IDEA Preset」（Alt+Left）；启用后 allowInEditable
-    // 使其在终端 textarea 聚焦时也生效。
-    defaultBinding: '',
+    // 默认与 IDEA 对齐：Alt+Left。allowInEditable 使其在终端/输入框聚焦时也生效
+    // （capture 阶段 stopPropagation，避免 xterm 同时收到按词移动序列）。
+    // macOS 代价：Option+← 原生按词移动在应用内被抢占；不需要时可在设置改为 Unbound。
+    defaultBinding: 'Alt+Left',
     category: 'tabs',
     allowInEditable: true,
   },
   {
     id: 'nextTab',
     label: 'Next Tab',
-    // 同上：默认未绑定；IDEA 预设绑定 Alt+Right。
-    defaultBinding: '',
+    // 同上：默认 Alt+Right（IDEA）。
+    defaultBinding: 'Alt+Right',
     category: 'tabs',
     allowInEditable: true,
   },
@@ -260,6 +259,7 @@ export const IDEA_SHORTCUT_PRESET: Record<string, string> = {
   closeTab: 'Ctrl+F4',
   prevTab: 'Alt+Left',
   nextTab: 'Alt+Right',
+  // 与 registry 默认一致（prevTab/nextTab 已默认 Alt+Left/Right）；保留条目使预设自描述。
   switchTabNext: 'Ctrl+Tab',
   switchTabPrev: 'Ctrl+Shift+Tab',
   saveFile: 'Ctrl+S',
