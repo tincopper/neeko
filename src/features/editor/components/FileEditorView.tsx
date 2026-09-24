@@ -27,7 +27,6 @@ export interface FileEditorViewCallbacks {
   onOpenInSystemBrowser: () => void;
   canOpenInBrowser: boolean;
   onOpenSearch: () => void;
-  onOpenAI: () => void;
   /** Markdown/HTML 预览内链点击。 */
   onInternalLinkClick: (absPath: string) => void;
 }
@@ -132,7 +131,6 @@ function FileEditorView({
         onOpenInSystemBrowser={callbacks.onOpenInSystemBrowser}
         canOpenInBrowser={callbacks.canOpenInBrowser}
         onSearch={showPreview ? undefined : callbacks.onOpenSearch}
-        onAI={callbacks.onOpenAI}
       />
 
       <div className="flex-1 min-h-0 overflow-hidden">

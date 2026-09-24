@@ -80,7 +80,6 @@ vi.mock('../../hooks/useFileEditorCallbacks', () => ({
   useFileEditorCallbacks: () => ({
     handleInternalLinkClick: vi.fn(),
     handleOpenSearch: vi.fn(),
-    handleOpenAI: vi.fn(),
   }),
 }));
 

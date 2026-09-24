@@ -1,15 +1,7 @@
 import React, { useMemo, useRef } from 'react';
 
 import { cn } from '@/lib/utils';
-import {
-  Eye,
-  FileCode,
-  Globe,
-  ExternalLink,
-  Languages,
-  Search,
-  Sparkles,
-} from '@/shared/components/icons';
+import { Eye, FileCode, Globe, ExternalLink, Languages, Search } from '@/shared/components/icons';
 import { fileIconSrc } from '@/shared/utils/fileIcons';
 
 import { useBreadcrumbSegments } from '../hooks/useBreadcrumbSegments';
@@ -36,8 +28,6 @@ interface EditorHeaderProps {
   canOpenInBrowser?: boolean;
   /** 页内内容搜索（打开 CodeMirror 查找面板） */
   onSearch?: () => void;
-  /** AI 助手 */
-  onAI?: () => void;
 }
 
 /** 项目根目录图标 */
@@ -63,7 +53,6 @@ function EditorHeader({
   onOpenInSystemBrowser,
   canOpenInBrowser,
   onSearch,
-  onAI,
 }: EditorHeaderProps) {
   const crumbRef = useRef<HTMLDivElement>(null);
   const { items, segments } = useBreadcrumbSegments(filePath, projectPath, crumbRef, isDirty);
@@ -153,17 +142,6 @@ function EditorHeader({
             aria-label="查找（页内搜索）"
           >
             <Search size={14} />
-          </button>
-        )}
-
-        {onAI && (
-          <button
-            className="tb-icon-btn w-6 h-6 rounded-md flex items-center justify-center text-accent-blue hover:bg-bg-hover hover:text-text-primary transition-colors"
-            onClick={onAI}
-            title="AI 助手"
-            aria-label="AI 助手"
-          >
-            <Sparkles size={14} />
           </button>
         )}
 

@@ -18,6 +18,12 @@ const baseProps = {
 };
 
 describe('EditorHeader — 三段式视图切换', () => {
+  it('不渲染 AI 助手按钮', () => {
+    render(<EditorHeader {...baseProps} />);
+
+    expect(screen.queryByRole('button', { name: 'AI 助手' })).not.toBeInTheDocument();
+  });
+
   it('translate 模式下点击 Source / Preview 回调对应模式', () => {
     const onViewModeChange = vi.fn();
     render(<EditorHeader {...baseProps} onViewModeChange={onViewModeChange} />);

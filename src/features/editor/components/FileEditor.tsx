@@ -221,7 +221,7 @@ function FileEditor({
     handleLnLeave,
   });
 
-  const { handleInternalLinkClick, handleOpenSearch, handleOpenAI } = useFileEditorCallbacks({
+  const { handleInternalLinkClick, handleOpenSearch } = useFileEditorCallbacks({
     editorViewRef,
   });
 
@@ -269,7 +269,6 @@ function FileEditor({
           onOpenInSystemBrowser: handleOpenInSystemBrowser,
           canOpenInBrowser,
           onOpenSearch: handleOpenSearch,
-          onOpenAI: handleOpenAI,
           onInternalLinkClick: handleInternalLinkClick,
         }}
         toolbarPos={toolbarPos}

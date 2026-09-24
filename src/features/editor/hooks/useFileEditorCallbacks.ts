@@ -2,7 +2,6 @@ import { closeSearchPanel, openSearchPanel, searchPanelOpen } from '@codemirror/
 import type { EditorView } from '@codemirror/view';
 import { useCallback, type RefObject } from 'react';
 
-import { useAppContext } from '@/shared/contexts';
 import { useNotificationStore } from '@/shared/store/notificationStore';
 
 import { useFileActionsContext } from '../FileActionsContext';
@@ -12,7 +11,7 @@ interface Params {
   editorViewRef: RefObject<EditorView | null>;
 }
 
-/** FileEditor 的视图级交互回调：内部链接跳转 / 页内搜索 / AI 助手占位。 */
+/** FileEditor 的视图级交互回调：内部链接跳转 / 页内搜索。 */
 export function useFileEditorCallbacks({ editorViewRef }: Params) {
   // Markdown / HTML preview 模式下点击内部链接时打开目标文件
   const { onFileSelect } = useFileActionsContext();
@@ -37,11 +36,5 @@ export function useFileEditorCallbacks({ editorViewRef }: Params) {
     else openSearchPanel(view);
   }, [editorViewRef]);
 
-  // AI 助手：占位入口，后续接入 Agent 选择器
-  const { showToast } = useAppContext();
-  const handleOpenAI = useCallback(() => {
-    showToast('AI 助手功能即将接入', 'info');
-  }, [showToast]);
-
-  return { handleInternalLinkClick, handleOpenSearch, handleOpenAI };
+  return { handleInternalLinkClick, handleOpenSearch };
 }
