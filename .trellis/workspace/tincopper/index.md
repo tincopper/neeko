@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-4.md`
-- **Total Sessions**: 228
-- **Last Active**: 2026-09-24
+- **Total Sessions**: 229
+- **Last Active**: 2026-09-25
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-4.md` | ~1943 | Active |
+| `journal-4.md` | ~1989 | Active |
 | `journal-3.md` | ~1978 | Archived |
 | `journal-2.md` | ~1991 | Archived |
 | `journal-1.md` | ~1986 | Archived |
@@ -32,6 +32,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 229 | 2026-09-25 | watcher 幂等测试 macOS CI flake 修复（批次计数改创建计数） | `322cfbb2` | `main` |
 | 228 | 2026-09-24 | 修复 untracked 折叠目录展开缓存陈旧 + status 闸门盲区 + git 路径 C 转义 | - | `main` |
 | 227 | 2026-09-24 | editor line-level git change highlight: review fixes, quality gates, finish-work | `ff5afa5d043dbbdff5cec775fd510816ff98ae57` | `main` |
 | 226 | 2026-09-23 | Ctrl+Click references peek shipped and task archived | `b9dbc8bd`, `50153053` | `main` |

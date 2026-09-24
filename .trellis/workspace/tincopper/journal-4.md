@@ -1954,3 +1954,36 @@ A（前端 S1/S2/S3 失效通道）+ B（折叠目录内容摘要进闸门）落
 ### Next Steps
 
 - None - task complete
+
+
+## Session 229: watcher 幂等测试 macOS CI flake 修复（批次计数改创建计数）
+
+**Date**: 2026-09-25
+**Task**: watcher 幂等测试 macOS CI flake 修复（批次计数改创建计数）
+**Branch**: `main`
+
+### Summary
+
+(Add summary)
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `322cfbb2` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
