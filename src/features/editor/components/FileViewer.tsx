@@ -103,6 +103,8 @@ function FileViewer() {
               fontFamily={fontFamily}
               fontSize={fontSize}
               projectPath={projectPath}
+              editorGitChangeHighlight={config.editorGitChangeHighlight}
+              worktreePath={effectiveWorktreePath}
               onSave={onSave}
               onContentChange={onContentChange}
             />

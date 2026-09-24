@@ -28,6 +28,7 @@ const defaultConfig: AppConfig = {
   terminalGpuAcceleration: false,
   enablePiThemeSync: false,
   enableOpenCodeThemeSync: false,
+  editorGitChangeHighlight: true,
   lsp: {
     autoStart: 'onFirstFile',
     deactivateStopMinutes: 30,
@@ -93,6 +94,23 @@ describe('SettingsPanel', () => {
     it('显示 Font Size 设置', () => {
       renderPanel();
       expect(screen.getByText('Font Size')).toBeInTheDocument();
+    });
+
+    it('显示 Git Change Highlight 开关（英文标签）', () => {
+      renderPanel({ editorGitChangeHighlight: true });
+      fireEvent.click(screen.getByRole('button', { name: 'Editor' }));
+      expect(screen.getByText('Git Change Highlight')).toBeInTheDocument();
+    });
+
+    it('关闭 Git Change Highlight 开关触发 onConfigChange', () => {
+      const { onConfigChange } = renderPanel({ editorGitChangeHighlight: true });
+      fireEvent.click(screen.getByRole('button', { name: 'Editor' }));
+      // Editor 面板里 autoLocate 是第一个 switch，Git 变更高亮是第二个
+      const switches = screen.getAllByRole('switch');
+      fireEvent.click(switches[1]);
+      expect(onConfigChange).toHaveBeenCalledWith(
+        expect.objectContaining({ editorGitChangeHighlight: false }),
+      );
     });
 
     it('显示当前编辑器字号', () => {

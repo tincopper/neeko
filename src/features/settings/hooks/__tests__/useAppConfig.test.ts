@@ -26,6 +26,7 @@ describe('useAppConfig', () => {
     expect(result.current.config.diffMode).toBe('unified');
     expect(result.current.config.shell).toBe('');
     expect(result.current.config.fontFamily).toBe('');
+    expect(result.current.config.editorGitChangeHighlight).toBe(true);
   });
 
   it('挂载时加载配置', async () => {
@@ -66,6 +67,31 @@ describe('useAppConfig', () => {
       expect(result.current.config.editorFontSize).toBe(14);
       expect(result.current.config.terminalFontSize).toBe(14);
       expect(result.current.config.diffMode).toBe('unified');
+      expect(result.current.config.editorGitChangeHighlight).toBe(true);
+    });
+  });
+
+  it('editorGitChangeHighlight 缺键/null/非法值归一为 true', async () => {
+    mockInvoke.mockResolvedValue({
+      editorGitChangeHighlight: null,
+    });
+    const { result, rerender } = renderHook(() => useAppConfig());
+    await waitFor(() => {
+      expect(result.current.config.editorGitChangeHighlight).toBe(true);
+    });
+
+    mockInvoke.mockResolvedValue({ editorGitChangeHighlight: 'yes' });
+    rerender();
+    await waitFor(() => {
+      expect(result.current.config.editorGitChangeHighlight).toBe(true);
+    });
+  });
+
+  it('editorGitChangeHighlight 显式 false 被保留', async () => {
+    mockInvoke.mockResolvedValue({ editorGitChangeHighlight: false });
+    const { result } = renderHook(() => useAppConfig());
+    await waitFor(() => {
+      expect(result.current.config.editorGitChangeHighlight).toBe(false);
     });
   });
 

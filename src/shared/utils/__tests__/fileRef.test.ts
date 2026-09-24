@@ -10,6 +10,7 @@ import {
   sameIdentity,
   pathsContainFile,
   relativeToRoot,
+  relativeToRootOrNull,
   sameFile,
   sameFileAt,
   sourceIdentityOf,
@@ -390,6 +391,36 @@ describe('relativeToRoot — 展示用剥根（canonicalFsPath 拼根的逆，�
     expect(canonicalFsPath('/repo', relativeToRoot('/repo', '/repo/src/a.ts'))).toBe(
       '/repo/src/a.ts',
     );
+  });
+});
+
+describe('relativeToRootOrNull — 安全剥根（不在根下 → null，IPC 下发门禁）', () => {
+  it('root 下绝对路径 → 相对路径', () => {
+    expect(relativeToRootOrNull('/repo', '/repo/src/a.ts')).toBe('src/a.ts');
+  });
+
+  it('不在 root 下 → null（不可下发）', () => {
+    expect(relativeToRootOrNull('/repo', '/other/a.ts')).toBeNull();
+  });
+
+  it('空 root + 相对路径 → 原样', () => {
+    expect(relativeToRootOrNull('', 'src/a.ts')).toBe('src/a.ts');
+  });
+
+  it('空 root + 绝对路径 → null（无法锚定）', () => {
+    expect(relativeToRootOrNull('', '/repo/a.ts')).toBeNull();
+  });
+
+  it('空 root + 盘符绝对路径 → null', () => {
+    expect(relativeToRootOrNull('', 'C:/repo/a.ts')).toBeNull();
+  });
+
+  it('反斜杠归一后剥根', () => {
+    expect(relativeToRootOrNull('/repo', '\\repo\\src\\a.ts')).toBe('src/a.ts');
+  });
+
+  it('前缀必须整段匹配（/repoX 不误剥 → null）', () => {
+    expect(relativeToRootOrNull('/repo', '/repoX/a.ts')).toBeNull();
   });
 });
 

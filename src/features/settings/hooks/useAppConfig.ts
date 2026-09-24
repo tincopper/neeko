@@ -47,6 +47,7 @@ const DEFAULT_CONFIG: AppConfig = {
   enableOpenCodeThemeSync: false,
   enableDevTools: false,
   autoLocateFileOnTabSwitch: true,
+  editorGitChangeHighlight: true,
   lsp: {
     autoStart: 'onFirstFile',
     deactivateStopMinutes: 30,
@@ -366,6 +367,10 @@ export function useAppConfig() {
               typeof saved.autoLocateFileOnTabSwitch === 'boolean'
                 ? saved.autoLocateFileOnTabSwitch
                 : DEFAULT_CONFIG.autoLocateFileOnTabSwitch,
+            editorGitChangeHighlight:
+              typeof saved.editorGitChangeHighlight === 'boolean'
+                ? saved.editorGitChangeHighlight
+                : DEFAULT_CONFIG.editorGitChangeHighlight,
             lsp: mergedLsp,
             favoriteBranches:
               saved.favoriteBranches && typeof saved.favoriteBranches === 'object'

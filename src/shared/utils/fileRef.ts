@@ -162,6 +162,26 @@ export function relativeToRoot(root: string, p: string): string {
   return unified.startsWith(prefix) ? unified.slice(prefix.length) : unified;
 }
 
+/**
+ * 剥根为仓库相对路径：**仅当 `path` 确实位于 `root` 之下**时返回相对路径，否则 null
+ * （不可锚定 / 不在根下 → 不能当作仓库相对路径下发 IPC）。
+ *
+ * 相对 `relativeToRoot`（不在根下时原样返回绝对路径）的「安全版」：把「是否在根下」
+ * 的判定收敛到本模块，避免消费侧另立绝对路径正则（与 `canonicalFsPath` 的
+ * 绝对路径判定同源 —— 均为 `startsWith('/') || isDriveStart`）。
+ *
+ * 空 `root`：无法锚定，仅在 `path` 本身为相对形态时原样返回，绝对形态返回 null。
+ */
+export function relativeToRootOrNull(root: string, path: string): string | null {
+  const unified = path.replaceAll('\\', '/');
+  const r = normalizeSlashes(root.replaceAll('\\', '/'));
+  if (r === '') {
+    return unified.startsWith('/') || isDriveStart(unified) ? null : unified;
+  }
+  const prefix = `${r}/`;
+  return unified.startsWith(prefix) ? unified.slice(prefix.length) : null;
+}
+
 interface JdtParts {
   module: string;
   classPath: string;

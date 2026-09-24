@@ -105,6 +105,8 @@ export interface AppConfig {
   enableDevTools: boolean;
   /** 切换 file tab 时自动在文件树中定位该文件。 */
   autoLocateFileOnTabSwitch: boolean;
+  /** 编辑器左侧 Git 行级变更高亮（IDEA 风格变更条 + 行/词背景），默认开启。 */
+  editorGitChangeHighlight: boolean;
   /** Language server settings (profile soft-warm, custom servers, idle recycle). */
   lsp: LspConfig;
   /** Project-id → favorite branch names, persisted across sessions. */

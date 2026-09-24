@@ -91,7 +91,7 @@ PATTERNS: dict[str, re.Pattern[str]] = {
 # path: (classification, {pattern: count}, note)
 MANIFEST: dict[str, tuple[str, dict[str, int], str]] = {
     # ── 身份所有者（唯一允许归一处）──
-    OWNER: ("owner", {"backslash": 5}, "身份所有者：canonicalFsPath / relativeToRoot 在此归一"),
+    OWNER: ("owner", {"backslash": 7}, "身份所有者：canonicalFsPath / relativeToRoot / relativeToRootOrNull 在此归一"),
     # ── 展示 / 解析 / 派生（不参与同文件判定）──
     "src/ui/MarkdownPreview.tsx": ("legit", {"backslash": 3}, "图片 src → asset: URL 构建"),
     "src/shared/components/ChangeFileTree.tsx": ("legit", {"backslash": 1}, "变更列表建树（按 / 分段）"),

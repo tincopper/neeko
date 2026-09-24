@@ -15,6 +15,7 @@ import { useEditorViewSnapshot } from '../hooks/useEditorViewSnapshot';
 import { useFileEditorCallbacks } from '../hooks/useFileEditorCallbacks';
 import { useFileEditorLsp } from '../hooks/useFileEditorLsp';
 import { useFileEditorState } from '../hooks/useFileEditorState';
+import { useGitChangeEditor } from '../hooks/useGitChangeEditor';
 import { useNavigateGoal } from '../hooks/useNavigateGoal';
 import { useUnifiedGutterExtension } from '../hooks/useUnifiedGutter';
 
@@ -30,6 +31,10 @@ interface FileEditorProps {
   fontFamily: string;
   fontSize: number;
   projectPath: string | null;
+  /** 设置：编辑器 Git 变更高亮开关（AppConfig.editorGitChangeHighlight）。 */
+  editorGitChangeHighlight?: boolean;
+  /** 当前 worktree 路径（非主 worktree 时非空），透传 getFileDiff。 */
+  worktreePath?: string | null;
   onSave: (content: string) => Promise<boolean>;
   onContentChange: (tabId: string, content: string) => void;
 }
@@ -48,6 +53,8 @@ function FileEditor({
   fontFamily,
   fontSize,
   projectPath,
+  editorGitChangeHighlight = true,
+  worktreePath,
   onSave,
   onContentChange,
 }: FileEditorProps) {
@@ -178,6 +185,25 @@ function FileEditor({
     onMenuRequest: openMenu,
   });
 
+  // Git 行级变更高亮（旁路扩展）：数据只走 StateField effect；扩展数组仅依赖 enabled。
+  // projectRoot=projectPath：绝对 tab.filePath 剥根 + file-changed 身份匹配（get_file_diff 拒绝绝对路径）。
+  const gitChangeExt = useGitChangeEditor({
+    enabled: editorGitChangeHighlight,
+    projectId: tab.projectId,
+    filePath: tab.filePath,
+    projectRoot: projectPath,
+    worktreePath,
+    editorViewRef,
+    editorViewEpoch,
+  });
+
+  // 变更条列须位于 unified breakpoint gutter **左侧**（CM 按扩展注册顺序排 gutter）。
+  // 两侧引用均稳定（enabled / canEdit 级变化），合并数组因此也稳定，不触发多余 reconfigure。
+  const gutterExtWithChange = useMemo(
+    () => (gitChangeExt.length === 0 ? bpGutterExt : [...gitChangeExt, ...bpGutterExt]),
+    [gitChangeExt, bpGutterExt],
+  );
+
   const { extensions, cmTheme } = useEditorExtensions({
     fontFamily,
     fontSize,
@@ -189,7 +215,7 @@ function FileEditor({
     quickFixExt,
     cmdClickExt,
     linkHighlightExt,
-    bpGutterExt,
+    bpGutterExt: gutterExtWithChange,
     handleLnClick,
     handleLnHover,
     handleLnLeave,

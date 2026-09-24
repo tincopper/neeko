@@ -71,6 +71,11 @@ vi.mock('../../hooks/useUnifiedGutter', () => ({
   useUnifiedGutterExtension: () => [],
 }));
 
+// Git 变更高亮装配：组合冒烟不测其行为（归 useGitChangeEditor.test），stub 掉以免牵入 gitApi。
+vi.mock('../../hooks/useGitChangeEditor', () => ({
+  useGitChangeEditor: () => [],
+}));
+
 vi.mock('../../hooks/useFileEditorCallbacks', () => ({
   useFileEditorCallbacks: () => ({
     handleInternalLinkClick: vi.fn(),
@@ -116,6 +121,8 @@ function editorElement(tab: FileTab = makeTab()) {
       fontFamily="mono"
       fontSize={13}
       projectPath={PROJECT_PATH}
+      editorGitChangeHighlight={false}
+      worktreePath={null}
       onSave={vi.fn(async () => true)}
       onContentChange={vi.fn()}
     />

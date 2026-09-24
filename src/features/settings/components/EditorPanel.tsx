@@ -11,6 +11,9 @@ interface EditorPanelProps {
   /** 切换 file tab 时自动在文件树中定位该文件 */
   autoLocateFileOnTabSwitch: boolean;
   onAutoLocateFileOnTabSwitchChange: (enabled: boolean) => void;
+  /** 编辑器左侧 Git 行级变更高亮开关 */
+  editorGitChangeHighlight: boolean;
+  onEditorGitChangeHighlightChange: (enabled: boolean) => void;
   /** AI 翻译默认项 */
   translationAgentId?: string;
   translationTargetLanguage?: string;
@@ -36,6 +39,8 @@ const EditorPanel: React.FC<EditorPanelProps> = ({
   onEditorFontSizeChange,
   autoLocateFileOnTabSwitch,
   onAutoLocateFileOnTabSwitchChange,
+  editorGitChangeHighlight,
+  onEditorGitChangeHighlightChange,
   translationAgentId,
   translationTargetLanguage,
   agents,
@@ -88,6 +93,20 @@ const EditorPanel: React.FC<EditorPanelProps> = ({
         <Switch
           checked={autoLocateFileOnTabSwitch}
           onCheckedChange={onAutoLocateFileOnTabSwitchChange}
+        />
+      </div>
+      <div className="flex items-center justify-between py-3 border-b border-white/[0.04] gap-6 [&:last-child]:border-b-0">
+        <div className="flex-1 min-w-0">
+          <div className="text-[0.86em] text-text-primary font-medium mb-0.75">
+            Git Change Highlight
+          </div>
+          <div className="text-[0.79em] text-text-muted leading-relaxed">
+            Show git change gutter marks and line highlights in the editor.
+          </div>
+        </div>
+        <Switch
+          checked={editorGitChangeHighlight}
+          onCheckedChange={onEditorGitChangeHighlightChange}
         />
       </div>
       <div className="flex items-center justify-between py-3 border-b border-white/[0.04] gap-6 [&:last-child]:border-b-0">

@@ -144,6 +144,24 @@ export interface DiffResult {
   truncated?: boolean;
 }
 
+/** 行级变更种类（IDEA 语义：added=绿、modified=蓝；口径=相对 HEAD 单档）。 */
+export type LineChangeKind = 'added' | 'modified';
+
+/** 行内词片段高亮区间；偏移相对该行纯文本（UTF-16 code unit，与 CM 一致）。 */
+export interface WordRange {
+  from: number;
+  to: number;
+}
+
+/** 编辑器行级变更条目（deriveFileLineChanges 输出；仅含存在编辑器行位的变更）。 */
+export interface FileLineChange {
+  /** 1-based，diff new 侧 = 编辑器行号 */
+  line: number;
+  kind: LineChangeKind;
+  /** 仅 kind=modified 时可选；无差异片段则为空数组/缺省 */
+  words?: WordRange[];
+}
+
 export interface PrLabel {
   name: string;
   color: string;

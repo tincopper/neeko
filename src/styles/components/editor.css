@@ -161,4 +161,69 @@
   .cm-editor .cm-selectionMatch {
     background-color: color-mix(in srgb, var(--accent-yellow) 22%, transparent) !important;
   }
+
+  /* ── Git 行级变更高亮（IDEA 风格）：独立 4px 变更条列 + 行背景 + 词级高亮 ──
+   * 颜色：走 --accent-green / --accent-blue（对齐 gitFileDecoration 绿=新增、蓝=修改）；
+   * 与 DiffView 的 --diff-added 语义同源但 token 独立（编辑器不用带 alpha 的 diff token）。
+   * 变更条不进 gutterContributions registry，纯被动状态展示。 */
+  .cm-editor .cm-change-gutter {
+    width: 4px !important;
+    min-width: 4px !important;
+    background: transparent !important;
+    overflow: hidden !important;
+  }
+  .cm-editor .cm-change-gutter .cm-gutterElement {
+    padding: 0 !important;
+    width: 100% !important;
+    display: flex !important;
+    justify-content: center !important;
+  }
+  .cm-editor .cm-change-bar {
+    display: block !important;
+    width: 4px !important;
+    height: 100% !important;
+    min-height: var(--line-height-mono, 1.5em) !important;
+    border-radius: 0 !important;
+    background: transparent !important;
+  }
+  .cm-editor .cm-change-bar--added {
+    background: color-mix(in srgb, var(--accent-green, #30d158) 80%, transparent) !important;
+  }
+  .cm-editor .cm-change-bar--modified {
+    background: color-mix(in srgb, var(--accent-blue, #2997ff) 80%, transparent) !important;
+  }
+  /* 段首/段尾圆角（连续同类型行合并为一段，两端圆角） */
+  .cm-editor .cm-change-bar--seg-start,
+  .cm-editor .cm-change-bar--seg-single {
+    border-radius: 2px 2px 0 0 !important;
+  }
+  .cm-editor .cm-change-bar--seg-end,
+  .cm-editor .cm-change-bar--seg-single {
+    border-radius: 0 0 2px 2px !important;
+  }
+  .cm-editor .cm-change-bar--seg-single {
+    border-radius: 2px !important;
+  }
+
+  /* 行背景（弱化，避免盖过当前行高亮） */
+  .cm-editor .cm-git-line-added {
+    background: color-mix(in srgb, var(--accent-green, #30d158) 8%, transparent) !important;
+  }
+  .cm-editor .cm-git-line-modified {
+    background: color-mix(in srgb, var(--accent-blue, #2997ff) 8%, transparent) !important;
+  }
+  /* 行背景与当前行高亮共存时，当前行优先（去 !important 或加更具体选择器） */
+  .cm-editor .cm-activeLine.cm-git-line-added,
+  .cm-editor .cm-activeLine.cm-git-line-modified {
+    background: color-mix(in srgb, var(--accent-blue-rgb, 41, 151, 255) 6%, var(--bg-secondary)) !important;
+  }
+
+  /* 词级高亮（仅 modified 行内，LCS 推导的变更词区间） */
+  .cm-editor .cm-git-word {
+    background: color-mix(in srgb, var(--accent-blue, #2997ff) 24%, transparent) !important;
+    border-radius: 2px;
+  }
+  .cm-editor .cm-git-line-added .cm-git-word {
+    background: color-mix(in srgb, var(--accent-green, #30d158) 24%, transparent) !important;
+  }
 }
