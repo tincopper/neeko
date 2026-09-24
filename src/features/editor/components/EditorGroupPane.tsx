@@ -104,6 +104,16 @@ function EditorGroupPane({
   // ── Action Menu ──
   const { actionMenuRect, openActionMenu, closeActionMenu } = useActionMenu();
 
+  // ── Agents（先于 usePaneActions：安装状态过滤结果是 Action Menu 的数据源）──
+  const { handleAgentClick, enabledAgents, installedEnabledAgents, renderTabLeading } =
+    usePaneAgents({
+      agents,
+      hiddenAgentIds,
+      projectIdForCheck,
+      onAgentClick,
+      showToast,
+    });
+
   const {
     handleActivateTab,
     handleCloseTab,
@@ -116,23 +126,13 @@ function EditorGroupPane({
     groupId,
     tabs,
     projectIdForCheck,
-    agents,
+    agents: installedEnabledAgents,
     onAddTerminalTab,
     onActionMenuClose: closeActionMenu,
     onSaveTab: onFileSaveTab,
   });
 
   const actionMenuItems = useMemo(() => getActionMenuItems(actionMenuCtx), [actionMenuCtx]);
-
-  // ── Agents ──
-  const { handleAgentClick, enabledAgents, installedEnabledAgents, renderTabLeading } =
-    usePaneAgents({
-      agents,
-      hiddenAgentIds,
-      projectIdForCheck,
-      onAgentClick,
-      showToast,
-    });
 
   const currentAgentId = activeTab?.data.kind === 'terminal' ? activeTab.data.agentId : null;
 

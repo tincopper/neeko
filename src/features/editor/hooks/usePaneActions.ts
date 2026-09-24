@@ -16,6 +16,7 @@ interface UsePaneActionsParams {
   groupId: EditorGroupId | 'pinned';
   tabs: Tab[];
   projectIdForCheck: string | null;
+  /** Action Menu 的 agent 数据源：由调用方传入已过滤列表（installedEnabledAgents）。 */
   agents: AgentConfig[];
   /** 新建终端 tab；targetGroup 由发起 pane 决定（pinned pane 内创建落 pinned）。 */
   onAddTerminalTab?: (targetGroup?: EditorGroupId | 'pinned') => void;
