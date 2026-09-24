@@ -9,31 +9,17 @@ interface IdeProject {
   selected_ide: string | null;
 }
 
-/**
- * G2 D4 version gate：changed_files 唯一写入通道按单调递增 version 门控。
- *
- * - `version > 0`（watcher 快照 / 快照读接口）：旧版本（乱序/回退）一律拒绝 ——
- *   增量 patch 与全量覆盖的跨源竞态（P1）从结构上消灭。
- * - `allowEqual=true`（显式主路径刷新）：`version == applied` 也放行 —— 用于
- *   worktree 激活期间主快照被跳过、切回主视图时幂等恢复主数据（死区解除）。
- * - `version <= 0`（WSL/SSH / worktree 兜底，无 versioned 快照语义）恒放行，
- *   与旧行为一致（这些路径不存在 watcher 快照竞争）。
- */
-const appliedStatusVersion = new Map<string, number>();
-
-function versionGateAccepts(projectId: string, version: number, allowEqual = false): boolean {
-  if (version <= 0) return true;
-  const prev = appliedStatusVersion.get(projectId) ?? 0;
-  if (version < prev || (version === prev && !allowEqual)) return false;
-  appliedStatusVersion.set(projectId, version);
-  return true;
-}
-
 interface ProjectStoreState {
   projects: Project[];
   activeProjectId: string | null;
   activeProject: Project | null;
   isTerminalView: boolean;
+  /**
+   * 已应用的 changed_files 快照版本（per project）。无版本语义的路径（WSL/SSH/
+   * worktree 兜底，version 恒 0）不入表 —— 消费端按「缺失 = 0 = 无版本信号」处理。
+   */
+  statusVersionByProject: Record<string, number>;
+  setStatusVersion: (projectId: string, version: number) => void;
   selectProject: (id: string) => void;
   openIde: (project: IdeProject) => void;
   setProjectIde: (projectId: string, ideCommand: string | null) => void;
@@ -49,6 +35,12 @@ export const useProjectStore = create<ProjectStoreState>((set) => ({
   activeProjectId: null,
   activeProject: null,
   isTerminalView: false,
+
+  statusVersionByProject: {},
+  setStatusVersion: (projectId, version) =>
+    set((state) => ({
+      statusVersionByProject: { ...state.statusVersionByProject, [projectId]: version },
+    })),
 
   selectProject: noop,
   openIde: noop,
@@ -89,6 +81,30 @@ export const useProjectStore = create<ProjectStoreState>((set) => ({
       };
     }),
 }));
+
+/**
+ * G2 D4 version gate：changed_files 唯一写入通道按单调递增 version 门控。
+ *
+ * - `version > 0`（watcher 快照 / 快照读接口）：旧版本（乱序/回退）一律拒绝 ——
+ *   增量 patch 与全量覆盖的跨源竞态（P1）从结构上消灭。
+ * - `allowEqual=true`（显式主路径刷新）：`version == applied` 也放行 —— 用于
+ *   worktree 激活期间主快照被跳过、切回主视图时幂等恢复主数据（死区解除）。
+ * - `version <= 0`（WSL/SSH / worktree 兜底，无 versioned 快照语义）恒放行，
+ *   与旧行为一致（这些路径不存在 watcher 快照竞争）。
+ *
+ * 登记表落在 store state（`statusVersionByProject`）而非模块级 Map —— 单一表示，
+ * 且 UI 可响应式订阅「已应用版本」：折叠 untracked 目录的展开缓存以它作失效信号
+ * （版本前进 → 逐出展开缓存；无版本语义时退化为 `files` 引用身份，见
+ * `useUntrackedDirExpansion`）。
+ */
+function versionGateAccepts(projectId: string, version: number, allowEqual = false): boolean {
+  if (version <= 0) return true;
+  const store = useProjectStore.getState();
+  const prev = store.statusVersionByProject[projectId] ?? 0;
+  if (version < prev || (version === prev && !allowEqual)) return false;
+  store.setStatusVersion(projectId, version);
+  return true;
+}
 
 // 仅供同模块内部使用（避免与 action 语义混淆时直接裸引用）；对外唯一判定入口是
 // useGitStatusEventsSync / refreshGitFileStates（version<=0 放行规则一致）。

@@ -169,14 +169,17 @@ const GitCommitPanel: React.FC<GitCommitPanelProps> = ({
     [commands, onRefreshGit, onShowToast],
   );
 
-  // 展开折叠的 untracked 目录条目：按需拉取目录下的 untracked 文件列表
+  // 展开折叠的 untracked 目录条目：按需拉取目录下的 untracked 文件列表。
+  // 失败必须**抛出**而不是返回 `[]`：把失败伪装成「空目录」会让展开 hook 把空列表
+  // 当作有效结果（目录里的文件全部消失），且无从重试。抛出后由 hook 记为失败并
+  // 保持目录占位，下一次失效信号（刷新/目录内容变化）再重试。
   const handleExpandUntrackedDir = useCallback(
     async (dirPath: string) => {
       try {
         return await commands.listUntrackedFiles(dirPath);
       } catch (e: unknown) {
         onShowToast?.(String(e), 'error');
-        return [];
+        throw e;
       }
     },
     [commands, onShowToast],
@@ -268,6 +271,9 @@ const GitCommitPanel: React.FC<GitCommitPanelProps> = ({
           </div>
         ) : (
           <ChangesList
+            /* 缓存作用域：切换项目即重挂载 —— 展开缓存（dirFilesMap）按目录 path 键存
+               在 hook 状态里，跨项目复用会把上一个项目的子文件显示到同名目录下 */
+            key={project.id}
             files={changedFilesWithStats}
             selectedFiles={selectedFiles}
             onToggleFile={toggleFile}

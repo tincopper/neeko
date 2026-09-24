@@ -1,0 +1,6 @@
+{"file": ".trellis/spec/frontend/hook-guidelines.md", "reason": "自定义 Hook 设计约定：useUntrackedDirExpansion 失效通道改造"}
+{"file": ".trellis/spec/frontend/api-layer.md", "reason": "事件监听规范：FILE_CHANGED_EVENT 走 useFileChangedEvent 共享订阅"}
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "前端禁止模式与 memo 依赖规范（展开 hook 重构）"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "Rust 红线：阻塞 IO 隔离、if-let 层级、平台代码（worker digest 探测）"}
+{"file": ".trellis/spec/backend/command-guidelines.md", "reason": "命令层约定（本次命令零改动，operations 复用需保持契约）"}
+{"file": ".trellis/spec/unit-test/index.md", "reason": "TDD 红绿重构流程与测试覆盖率要求"}

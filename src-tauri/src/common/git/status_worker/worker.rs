@@ -7,6 +7,7 @@ use std::thread;
 use crate::common::executor::factory::ExecTarget;
 use crate::core::exec::collect_blocking;
 
+use super::collapsed_probe::{collapsed_dirs_digest, Digest};
 use super::writer::{parse_porcelain, GitStatusSnapshot};
 
 const fn exit_diagnostics(code: i32) -> (Option<i32>, Option<i32>) {
@@ -62,6 +63,9 @@ fn worker_loop(
 ) {
     let mut last_status = String::new();
     let mut last_branch = String::new();
+    // 上一次 emit 时折叠 untracked 目录的内容摘要（见 `collapsed_probe`）。
+    // `None` = 尚未探测 → 放行 emit。
+    let mut last_collapsed_digest: Option<Digest> = None;
     let mut version: u64 = 0;
     let mut supports_no_optional_locks = true;
     let path_str = repo_path.display().to_string();
@@ -87,10 +91,6 @@ fn worker_loop(
         let current = git_status_porcelain(&repo_path, &mut supports_no_optional_locks);
         let current_branch = get_current_branch(&repo_path);
 
-        if current == last_status && current_branch == last_branch {
-            continue;
-        }
-
         let mut current_files = parse_porcelain(&current);
 
         // G4（P7）：numstat/行数不再进 status 主链路 —— 行数由 CommitPanel 独立的
@@ -110,16 +110,33 @@ fn worker_loop(
             current_files.truncate(MAX_STATUS_ENTRIES);
         }
 
+        // 折叠 untracked 目录的**内容**摘要：porcelain 折叠语义下目录内部增删不会改变
+        // `current` 字符串，只看字符串的闸门会判定「无变化」→ 不 emit → 前端拿到陈旧
+        // 快照且没有任何失效信号（本任务要修的盲区）。摘要只喂闸门，不进快照载荷，
+        // 因此 IPC 条目数、折叠语义都不变。
+        // 取截断后的集合：超出上限的条目本就不进快照，也就无需为其探测。
+        let collapsed_digest = collapsed_dirs_digest(&repo_path, &current_files);
+
+        let status_unchanged = current == last_status && current_branch == last_branch;
+        // 未知摘要一律放行（宁可多发一次快照，不可漏发）；已知且与上次相等才算「真无变化」
+        let digest_unchanged =
+            !collapsed_digest.is_unknown() && Some(collapsed_digest) == last_collapsed_digest;
+        if status_unchanged && digest_unchanged {
+            continue;
+        }
+
         log::debug!(
-            "[GitWorker] git status result for {}: {} bytes, changed={}, entries={}",
+            "[GitWorker] git status result for {}: {} bytes, changed={}, entries={}, digest={:?}",
             path_str,
             current.len(),
             current != last_status,
-            current_files.len()
+            current_files.len(),
+            collapsed_digest
         );
 
         last_status = current;
         last_branch.clone_from(&current_branch);
+        last_collapsed_digest = Some(collapsed_digest);
         version += 1;
 
         log::debug!(
@@ -301,6 +318,106 @@ mod tests {
         worker.check();
         match emit_rx.recv_timeout(Duration::from_millis(800)) {
             Ok(_) => panic!("unchanged status must not emit another diff"),
+            Err(mpsc::RecvTimeoutError::Timeout) => {}
+            Err(e) => panic!("unexpected recv error: {e}"),
+        }
+    }
+
+    /// 对照（防矫枉过正）：折叠目录**内容不变**时不得因为新增了摘要探测就反复 emit
+    /// —— 否则每次 FS 事件批次都会让前端整体替换快照（churn）。
+    #[test]
+    fn untracked_dir_unchanged_does_not_emit() {
+        use std::sync::mpsc;
+        use std::time::Duration;
+
+        let (tmp, _repo) = create_repo_with_commit();
+        let (emit_tx, emit_rx) = mpsc::channel::<GitStatusSnapshot>();
+        let worker = GitStatusWorker::start(tmp.path().to_path_buf(), move |snap| {
+            let _ = emit_tx.send(snap);
+        });
+
+        let dir = tmp.path().join("stable");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("a.txt"), "x\n").unwrap();
+
+        worker.check();
+        emit_rx
+            .recv_timeout(Duration::from_secs(5))
+            .expect("initial check should emit");
+
+        worker.check();
+        match emit_rx.recv_timeout(Duration::from_millis(800)) {
+            Ok(snap) => panic!(
+                "折叠目录内容未变时不得 emit（摘要相等应继续闸门），got v{}",
+                snap.version
+            ),
+            Err(mpsc::RecvTimeoutError::Timeout) => {}
+            Err(e) => panic!("unexpected recv error: {e}"),
+        }
+    }
+
+    /// AC7（后端侧）/ AC5：同一个折叠 untracked 目录**已进入上一次快照**后，在其内部
+    /// 连续创建 10 个文件 → 恰好产出 1 个新快照（不是 10 个，也不是 0 个），幅度只体现
+    /// 为 version 前进。
+    ///
+    /// 关键前置：目录必须先以折叠条目形态存在于上一次快照里 —— 否则 porcelain 字符串
+    /// （`""` → `?? burst/`）本身就会变化，闸门放行，用例通过但什么都没验证到。
+    ///
+    /// 当前实现为 Red：第二阶段 porcelain 全程是 `?? burst/`（折叠语义），闸门判定
+    /// 「无变化」→ 不 emit。前端调用次数上界见
+    /// `src/features/git/hooks/__tests__/useUntrackedDirExpansion.test.ts`。
+    #[test]
+    fn untracked_dir_burst_creates_emit_exactly_one_snapshot() {
+        use std::sync::mpsc;
+        use std::time::Duration;
+
+        let (tmp, _repo) = create_repo_with_commit();
+        let (emit_tx, emit_rx) = mpsc::channel::<GitStatusSnapshot>();
+        let worker = GitStatusWorker::start(tmp.path().to_path_buf(), move |snap| {
+            let _ = emit_tx.send(snap);
+        });
+
+        // v1：干净工作区
+        worker.check();
+        let first = emit_rx
+            .recv_timeout(Duration::from_secs(5))
+            .expect("initial check should emit");
+        assert_eq!(first.version, 1);
+        assert_eq!(first.entries.len(), 0);
+
+        // v2：折叠目录入场（此阶段 porcelain 字符串确实变化，闸门放行属正常路径）
+        let burst = tmp.path().join("burst");
+        std::fs::create_dir_all(&burst).unwrap();
+        std::fs::write(burst.join("f0.txt"), "x\n").unwrap();
+        worker.check();
+        let with_dir = emit_rx
+            .recv_timeout(Duration::from_secs(5))
+            .expect("collapsed dir should emit");
+        assert_eq!(with_dir.version, 2);
+        assert_eq!(with_dir.entries.len(), 1, "折叠语义：1 条目录条目");
+        assert!(with_dir.entries[0].is_dir);
+        assert_eq!(with_dir.entries[0].path, std::path::PathBuf::from("burst"));
+
+        // v3：同一批次内在**已折叠**的目录里再建 10 个文件（其间不发 check）——
+        // porcelain 字符串始终是 `?? burst/`，只有目录内容变了
+        for i in 1..=10 {
+            std::fs::write(burst.join(format!("f{i}.txt")), "x\n").unwrap();
+        }
+        worker.check();
+        let snap = emit_rx
+            .recv_timeout(Duration::from_secs(5))
+            .expect("折叠目录内部的风暴必须产出快照（当前实现：porcelain 不变 → 被闸门吞掉）");
+        assert_eq!(snap.version, 3, "version 必须单调递增");
+        assert_eq!(
+            snap.entries.len(),
+            1,
+            "折叠语义：11 个文件仍是 1 条目录条目"
+        );
+        assert!(snap.entries[0].is_dir, "折叠目录条目必须携带 is_dir");
+
+        // 同一批次不得二次 emit（风暴不放大为多次快照）
+        match emit_rx.recv_timeout(Duration::from_millis(300)) {
+            Ok(extra) => panic!("同一批次不得二次 emit，got v{}", extra.version),
             Err(mpsc::RecvTimeoutError::Timeout) => {}
             Err(e) => panic!("unexpected recv error: {e}"),
         }

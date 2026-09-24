@@ -1,0 +1,4 @@
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "检查 hook memo 依赖宽度、禁止模式 #5/#8/#10"}
+{"file": ".trellis/spec/frontend/api-layer.md", "reason": "检查业务层无裸 invoke、事件常量复用（不新造事件字符串）"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "检查换行边界红线 #11、路径身份红线 #12、阻塞 IO 隔离 #3"}
+{"file": ".trellis/spec/unit-test/index.md", "reason": "检查测试独立性、纯函数 100% 覆盖、红绿重构完整性"}

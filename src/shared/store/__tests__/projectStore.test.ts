@@ -8,8 +8,8 @@ import type * as projectStoreModule from '../projectStore';
 
 /**
  * G2 D4 version gate 单测。
- * 版本登记表是模块级状态（非 zustand state）——每个用例经 vi.resetModules +
- * 动态 import 获得全新模块，保证用例互不依赖、不共享登记状态。
+ * 版本登记表落在 store state（`statusVersionByProject`）——每个用例经 vi.resetModules +
+ * 动态 import 获得全新 store 实例，保证用例互不依赖、不共享登记状态。
  */
 async function freshModule(): Promise<typeof projectStoreModule> {
   vi.resetModules();
@@ -73,6 +73,22 @@ describe('versionGateAccepts — G2 D4 单调 version 门控', () => {
   it('项目间隔离：p1 的高版本不影响 p2 的低版本', () => {
     expect(accepts('p1', 10)).toBe(true);
     expect(accepts('p2', 1)).toBe(true);
+  });
+
+  it('已应用版本可被 UI 响应式读取（登记表在 store state，不是模块级 Map）', async () => {
+    const mod = await freshModule();
+    mod.useProjectStore.setState({ statusVersionByProject: {} });
+
+    mod.versionGateAccepts('p1', 4);
+    expect(mod.useProjectStore.getState().statusVersionByProject).toEqual({ p1: 4 });
+
+    // version<=0（无版本语义）不入表 —— 消费端据此判定「无版本信号」
+    mod.versionGateAccepts('p2', 0);
+    expect(mod.useProjectStore.getState().statusVersionByProject).toEqual({ p1: 4 });
+
+    // 被拒绝的旧版本不覆盖登记值
+    expect(mod.versionGateAccepts('p1', 3)).toBe(false);
+    expect(mod.useProjectStore.getState().statusVersionByProject.p1).toBe(4);
   });
 });
 

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { useAppContext } from '@/shared/contexts';
 import type { FileChange } from '@/shared/types';
@@ -60,11 +60,20 @@ export function useCommitPanelDiffStats({
     };
   }, [projectId, changedFiles.length, commands]);
 
-  const changedFilesWithStats: ChangedFilesWithStats = changedFiles.map((f) => ({
-    ...f,
-    additions: diffStats[f.path]?.additions ?? f.additions,
-    deletions: diffStats[f.path]?.deletions ?? f.deletions,
-  }));
+  // memo 是**契约**而非单纯优化：`files` 引用只在「changed_files 被替换 / stats 落地」
+  // 时变化 —— ChangesList 以此引用变化作为「快照被替换」的失效信号（折叠 untracked
+  // 目录的展开缓存需后台重拉，见 useUntrackedDirExpansion 的 S2）。若每次 render 换
+  // 引用，该信号退化为「每次 render 都重拉」（提交框每次按键都会重渲染 GitCommitPanel），
+  // 同时 ChangesList 的 React.memo 也会失效。
+  const changedFilesWithStats: ChangedFilesWithStats = useMemo(
+    () =>
+      changedFiles.map((f) => ({
+        ...f,
+        additions: diffStats[f.path]?.additions ?? f.additions,
+        deletions: diffStats[f.path]?.deletions ?? f.deletions,
+      })),
+    [changedFiles, diffStats],
+  );
 
   return { changedFilesWithStats };
 }
