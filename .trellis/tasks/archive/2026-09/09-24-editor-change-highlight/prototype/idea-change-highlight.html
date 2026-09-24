@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Neeko · 源码行级变更高亮原型（IDEA 风格）</title>
+<style>
+  :root {
+    --font-mono: 'JetBrains Mono', 'Fira Code', ui-monospace, SFMono-Regular, Consolas, monospace;
+    --bar-w: 4px;
+    --ln-w: 48px;
+    --row-h: 22px;
+  }
+  html[data-theme='dark'] {
+    --bg-app: #17181a;
+    --bg-panel: #1c1d20;
+    --bg-editor: #1a1b1e;
+    --text: #dcdfe4;
+    --text-dim: #8b9096;
+    --text-strong: #f2f3f5;
+    --border: rgba(255,255,255,.08);
+    --chip: rgba(255,255,255,.06);
+    --bar-added: #4ec96b;
+    --bar-mod: #4095f5;
+    --line-added: rgba(78,201,107,.13);
+    --line-mod: rgba(64,149,245,.11);
+    --word-added: rgba(78,201,107,.34);
+    --word-mod: rgba(64,149,245,.42);
+    --badge-m-bg: rgba(64,149,245,.18);
+    --badge-m-fg: #6db1ff;
+    --kw: #c678dd; --fn: #61afef; --str: #98c379;
+    --cm: #5c6370; --num: #d19a66; --ty: #e5c07b; --op: #abb2bf;
+    --tip-bg: #2b2d30;
+  }
+  html[data-theme='light'] {
+    --bg-app: #f4f5f7;
+    --bg-panel: #ffffff;
+    --bg-editor: #ffffff;
+    --text: #1f2328;
+    --text-dim: #656d76;
+    --text-strong: #0d1117;
+    --border: rgba(0,0,0,.10);
+    --chip: rgba(0,0,0,.05);
+    --bar-added: #1a9e49;
+    --bar-mod: #2f7cf6;
+    --line-added: rgba(26,158,73,.12);
+    --line-mod: rgba(47,124,246,.10);
+    --word-added: rgba(26,158,73,.30);
+    --word-mod: rgba(47,124,246,.28);
+    --badge-m-bg: rgba(47,124,246,.14);
+    --badge-m-fg: #2f7cf6;
+    --kw: #a626a4; --fn: #4078f2; --str: #50a14f;
+    --cm: #a0a1a7; --num: #986801; --ty: #c18401; --op: #383a42;
+    --tip-bg: #30363d;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 32px 16px;
+    background: var(--bg-app); color: var(--text);
+    font: 14px/1.5 -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+  }
+  .wrap { max-width: 920px; margin: 0 auto; }
+  h1 { font-size: 18px; font-weight: 600; margin: 0 0 6px; color: var(--text-strong); }
+  .sub { color: var(--text-dim); font-size: 13px; margin-bottom: 18px; }
+
+  .toolbar {
+    display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+    padding: 10px 14px; background: var(--bg-panel);
+    border: 1px solid var(--border); border-radius: 10px 10px 0 0;
+  }
+  .file { font-family: var(--font-mono); font-size: 13px; color: var(--text-strong); }
+  .file .dir { color: var(--text-dim); }
+  .badge {
+    font: 600 11px/1 var(--font-mono); padding: 3px 6px; border-radius: 4px;
+    background: var(--badge-m-bg); color: var(--badge-m-fg);
+  }
+  .spacer { flex: 1; }
+  .btn {
+    font: 12px/1 sans-serif; padding: 6px 10px; border-radius: 6px; cursor: pointer;
+    background: var(--chip); color: var(--text); border: 1px solid var(--border);
+  }
+  .btn:hover { filter: brightness(1.1); }
+
+  .editor {
+    background: var(--bg-editor); border: 1px solid var(--border); border-top: 0;
+    border-radius: 0 0 10px 10px; overflow: hidden;
+    box-shadow: 0 8px 28px rgba(0,0,0,.25);
+  }
+  .line { display: flex; height: var(--row-h); min-height: var(--row-h); }
+  .line .bar {
+    width: var(--bar-w); flex: 0 0 var(--bar-w); background: transparent;
+    position: relative; cursor: default;
+  }
+  .line .bar.added { background: var(--bar-added); cursor: pointer; }
+  .line .bar.modified { background: var(--bar-mod); cursor: pointer; }
+  .line.seg-start .bar.added,
+  .line.seg-start .bar.modified { border-radius: 2px 2px 0 0; }
+  .line.seg-end .bar.added,
+  .line.seg-end .bar.modified { border-radius: 0 0 2px 2px; }
+  .line .bar.added:hover { filter: brightness(1.25); }
+  .line .bar.modified:hover { filter: brightness(1.25); }
+  .line .bar[data-tip]:hover::after {
+    content: attr(data-tip); position: absolute; left: calc(var(--bar-w) + 8px); top: 2px;
+    background: var(--tip-bg); color: #f0f0f0; font: 11px/1.4 sans-serif;
+    padding: 4px 8px; border-radius: 5px; white-space: nowrap; z-index: 10;
+    box-shadow: 0 4px 12px rgba(0,0,0,.35);
+  }
+  .line .body { display: flex; flex: 1; min-width: 0; }
+  .line.kind-added .body { background: var(--line-added); }
+  .line.kind-modified .body { background: var(--line-mod); }
+  .line .ln {
+    width: var(--ln-w); flex: 0 0 var(--ln-w); text-align: right;
+    padding: 0 14px 0 8px; color: var(--text-dim); user-select: none;
+    font: 12px/var(--row-h) var(--font-mono);
+  }
+  .line .code {
+    flex: 1; padding: 0 18px 0 6px; white-space: pre; overflow-x: auto;
+    font: 13px/var(--row-h) var(--font-mono); color: var(--text);
+  }
+  .w-added { background: var(--word-added); border-radius: 3px; padding: 1px 0; }
+  .w-mod   { background: var(--word-mod);   border-radius: 3px; padding: 1px 0; }
+  .kw { color: var(--kw); } .fn { color: var(--fn); }
+  .str { color: var(--str); } .cm { color: var(--cm); font-style: italic; }
+  .num { color: var(--num); } .ty { color: var(--ty); }
+
+  body.no-highlight .bar { background: transparent !important; }
+  body.no-highlight .line .body { background: transparent !important; }
+  body.no-highlight .w-added,
+  body.no-highlight .w-mod { background: transparent !important; }
+
+  .panel {
+    margin-top: 16px; padding: 14px 16px; background: var(--bg-panel);
+    border: 1px solid var(--border); border-radius: 10px;
+  }
+  .panel h2 { font-size: 13px; font-weight: 600; margin: 0 0 10px; color: var(--text-strong); }
+  .legend { display: flex; flex-wrap: wrap; gap: 16px; font-size: 12px; color: var(--text); }
+  .legend i {
+    display: inline-block; width: 4px; height: 14px; border-radius: 2px;
+    vertical-align: -2px; margin-right: 6px;
+  }
+  .legend .sw-line {
+    width: 14px; height: 14px; border-radius: 3px; border: 1px solid var(--border);
+  }
+  .notes { margin: 12px 0 0; padding-left: 18px; font-size: 12px; color: var(--text-dim); }
+  .notes li { margin: 4px 0; }
+  .notes code {
+    font-family: var(--font-mono); font-size: 11px;
+    background: var(--chip); padding: 1px 5px; border-radius: 4px;
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>源码行级变更高亮 · IDEA 风格原型</h1>
+  <div class="sub">左侧变更竖条（gutter change bar）+ 行背景着色 + 词级片段高亮 · 对齐 JetBrains 语义：绿=新增、蓝=修改</div>
+
+  <div class="toolbar">
+    <span class="file"><span class="dir">src/features/editor/</span>changeMap.ts</span>
+    <span class="badge" title="工作区相对 HEAD：已修改">M</span>
+    <span class="spacer"></span>
+    <button class="btn" id="btnTheme">切换浅色</button>
+    <button class="btn" id="btnHighlight">关闭变更高亮</button>
+  </div>
+
+  <div class="editor" id="editor">
+    <div class="line"><div class="bar"></div><div class="body"><div class="ln">1</div><div class="code"><span class="kw">import</span> <span class="kw">type</span> { <span class="ty">WordRange</span> } <span class="kw">from</span> <span class="str">'./ranges'</span>;</div></div></div>
+    <div class="line"><div class="bar"></div><div class="body"><div class="ln">2</div><div class="code"> </div></div></div>
+    <div class="line"><div class="bar"></div><div class="body"><div class="ln">3</div><div class="code"><span class="kw">export</span> <span class="kw">type</span> <span class="ty">ChangeKind</span> =</div></div></div>
+    <div class="line"><div class="bar"></div><div class="body"><div class="ln">4</div><div class="code">  | <span class="str">'none'</span></div></div></div>
+    <div class="line"><div class="bar"></div><div class="body"><div class="ln">5</div><div class="code">  | <span class="str">'added'</span></div></div></div>
+    <div class="line"><div class="bar"></div><div class="body"><div class="ln">6</div><div class="code">  | <span class="str">'modified'</span>;</div></div></div>
+    <div class="line"><div class="bar"></div><div class="body"><div class="ln">7</div><div class="code"> </div></div></div>
+    <div class="line"><div class="bar"></div><div class="body"><div class="ln">8</div><div class="code"><span class="kw">export</span> <span class="kw">interface</span> <span class="ty">LineChange</span> {</div></div></div>
+    <div class="line"><div class="bar"></div><div class="body"><div class="ln">9</div><div class="code">  line: <span class="ty">number</span>;</div></div></div>
+    <div class="line"><div class="bar"></div><div class="body"><div class="ln">10</div><div class="code">  kind: <span class="ty">ChangeKind</span>;</div></div></div>
+    <div class="line kind-modified seg-end">
+      <div class="bar modified" data-tip="已修改 · git 工作区 vs HEAD"></div>
+      <div class="body"><div class="ln">11</div><div class="code">  <span class="w-mod">ranges?: <span class="ty">WordRange</span>[]</span>;</div></div>
+    </div>
+    <div class="line"><div class="bar"></div><div class="body"><div class="ln">12</div><div class="code">}</div></div></div>
+    <div class="line"><div class="bar"></div><div class="body"><div class="ln">13</div><div class="code"> </div></div></div>
+    <div class="line kind-modified seg-end">
+      <div class="bar modified" data-tip="已修改 · git 工作区 vs HEAD"></div>
+      <div class="body"><div class="ln">14</div><div class="code"><span class="kw">export</span> <span class="kw">function</span> <span class="fn"><span class="w-mod">compute</span>ChangeMap</span>(</div></div>
+    </div>
+    <div class="line"><div class="bar"></div><div class="body"><div class="ln">15</div><div class="code">  lines: <span class="kw">readonly</span> <span class="ty">string</span>[],</div></div></div>
+    <div class="line"><div class="bar"></div><div class="body"><div class="ln">16</div><div class="code">  base: <span class="kw">readonly</span> <span class="ty">string</span>[],</div></div></div>
+    <div class="line"><div class="bar"></div><div class="body"><div class="ln">17</div><div class="code">): <span class="ty">LineChange</span>[] {</div></div></div>
+    <div class="line kind-added seg-start">
+      <div class="bar added" data-tip="新增行 · 相对 HEAD 为新增"></div>
+      <div class="body"><div class="ln">18</div><div class="code">  <span class="kw">const</span> index = <span class="kw">new</span> <span class="ty">Map</span>&lt;<span class="ty">string</span>, <span class="ty">number</span>&gt;();</div></div>
+    </div>
+    <div class="line kind-added">
+      <div class="bar added" data-tip="新增行 · 相对 HEAD 为新增"></div>
+      <div class="body"><div class="ln">19</div><div class="code">  base.<span class="fn">forEach</span>((text, i) =&gt; index.<span class="fn">set</span>(text, i));</div></div>
+    </div>
+    <div class="line kind-added">
+      <div class="bar added" data-tip="新增行 · 相对 HEAD 为新增"></div>
+      <div class="body"><div class="ln">20</div><div class="code">  <span class="kw">return</span> lines.<span class="fn">map</span>((text, i) =&gt; ({</div></div>
+    </div>
+    <div class="line kind-added">
+      <div class="bar added" data-tip="新增行 · 相对 HEAD 为新增"></div>
+      <div class="body"><div class="ln">21</div><div class="code">    line: i + <span class="num">1</span>,</div></div>
+    </div>
+    <div class="line kind-added">
+      <div class="bar added" data-tip="新增行 · 相对 HEAD 为新增"></div>
+      <div class="body"><div class="ln">22</div><div class="code">    kind: <span class="fn">classify</span>(text, index),</div></div>
+    </div>
+    <div class="line kind-added seg-end">
+      <div class="bar added" data-tip="新增行 · 相对 HEAD 为新增"></div>
+      <div class="body"><div class="ln">23</div><div class="code">  }));</div></div>
+    </div>
+    <div class="line"><div class="bar"></div><div class="body"><div class="ln">24</div><div class="code">}</div></div></div>
+  </div>
+
+  <div class="panel">
+    <h2>图例</h2>
+    <div class="legend">
+      <span><i style="background:var(--bar-added)"></i>新增行（变更条）</span>
+      <span><i style="background:var(--bar-mod)"></i>修改行（变更条）</span>
+      <span><i class="sw-line" style="background:var(--line-added)"></i>新增行背景</span>
+      <span><i class="sw-line" style="background:var(--line-mod)"></i>修改行背景</span>
+      <span><i class="sw-line" style="background:var(--word-added)"></i>新增词片段</span>
+      <span><i class="sw-line" style="background:var(--word-mod)"></i>修改词片段</span>
+      <span style="color:var(--text-dim)">无色 = 未改动</span>
+    </div>
+    <ul class="notes">
+      <li>删除行：编辑器内不出现，相邻变更条自然断开（与 IDEA 一致）；完整删除内容在 Diff 视图查看。</li>
+      <li>连续变更段首尾圆角，段间断开；变更条 hover 显示来源提示。</li>
+      <li>词级高亮仅在「修改行」上标注新片段；完整前后对照走既有 DiffView。</li>
+      <li>实现落点：新增 <code>GutterContribution</code>（变更条）+ 行级 diff 数据源（现仅有文件级统计，需补行范围命令或由 <code>get_file_diff</code> hunk 推导）。</li>
+    </ul>
+  </div>
+</div>
+<script>
+  const root = document.documentElement;
+  const btnTheme = document.getElementById('btnTheme');
+  btnTheme.addEventListener('click', () => {
+    const light = root.getAttribute('data-theme') === 'light';
+    root.setAttribute('data-theme', light ? 'dark' : 'light');
+    btnTheme.textContent = light ? '切换浅色' : '切换深色';
+  });
+  const btnHl = document.getElementById('btnHighlight');
+  btnHl.addEventListener('click', () => {
+    const off = document.body.classList.toggle('no-highlight');
+    btnHl.textContent = off ? '开启变更高亮' : '关闭变更高亮';
+  });
+</script>
+</body>
+</html>

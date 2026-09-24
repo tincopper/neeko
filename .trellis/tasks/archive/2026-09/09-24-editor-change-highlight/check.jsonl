@@ -1,0 +1,9 @@
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "审查防火墙、memo 纪律、架构边界（editor 不碰 diff 解析）"}
+{"file": ".trellis/spec/frontend/index.md", "reason": "前端规范入口，核对层适用性"}
+{"file": ".trellis/spec/frontend/state-management.md", "reason": "检查状态分层与高频数据未进 extensions memo"}
+{"file": ".trellis/spec/frontend/api-layer.md", "reason": "检查 invoke 未散落到组件/hook 外"}
+{"file": ".trellis/spec/backend/git-domain.md", "reason": "检查无模块级 diff 缓存、口径与 HEAD 硬契约一致"}
+{"file": ".trellis/spec/unit-test/index.md", "reason": "检查测试分层与覆盖要求"}
+{"file": ".trellis/spec/unit-test/frontend-testing.md", "reason": "检查测试范式与断言质量"}
+{"file": ".trellis/tasks/09-24-editor-change-highlight/research/gutter-diff-survey.md", "reason": "对照缺口清单与设计映射，验证未偏离调研结论"}
+{"file": ".trellis/tasks/09-24-editor-change-highlight/design.md", "reason": "审查实现是否符合边界规则、数据契约与已决权衡"}

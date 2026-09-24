@@ -1,0 +1,10 @@
+{"file": ".trellis/spec/frontend/index.md", "reason": "前端 spec 总索引，实现前定位相关层规范"}
+{"file": ".trellis/spec/frontend/api-layer.md", "reason": "invoke 必须走 git feature api 封装；新增/复用 get_file_diff 的调用位置约束"}
+{"file": ".trellis/spec/frontend/state-management.md", "reason": "状态就近原则：行级数据走 CM StateField 而非全局 store；扩展 memo 纪律"}
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "Import Firewall、memo/reconfigure 纪律、禁止模式"}
+{"file": ".trellis/spec/frontend/hook-guidelines.md", "reason": "useFileLineChanges / useGitChangeEditor 的 hook 设计与清理范式"}
+{"file": ".trellis/spec/frontend/type-safety.md", "reason": "shared/types 新增 FileLineChange 契约的类型规范"}
+{"file": ".trellis/spec/backend/git-domain.md", "reason": "git 口径、禁跨挂载模块级 diff 缓存、HEAD 范围硬契约（虽零后端改动，数据语义受此约束）"}
+{"file": ".trellis/spec/unit-test/index.md", "reason": "TDD 与测试位置总则"}
+{"file": ".trellis/spec/unit-test/frontend-testing.md", "reason": "vitest 表驱动/renderHook/EditorState 测试范式"}
+{"file": ".trellis/tasks/09-24-editor-change-highlight/research/gutter-diff-survey.md", "reason": "调研纪要：装配链、事件常量、设置链路、缺口映射，实现子代理必读"}
