@@ -118,6 +118,38 @@ pub fn parse_git_info_output(output: &str) -> GitInfo {
     }
 }
 
+/// 拆 porcelain 路径：是 rename（`old -> new`）就返回两侧原始 token，否则 `None`。
+///
+/// 引号形态（含非 ASCII / 特殊字符，见 `parsers::quoting`）两侧各自成 token，且
+/// **引号内的名字本身可能含 ` -> `**，故按 token 扫描而非整行 `find`；
+/// 非引号形态沿用 git porcelain v1 的分隔约定（第一个 ` -> `）。
+fn split_porcelain_paths(raw: &str) -> Option<(&str, &str)> {
+    if raw.starts_with('"') {
+        let (first, rest) = take_quoted_token(raw)?;
+        let second = rest.strip_prefix(" -> ")?;
+        return Some((first, second));
+    }
+    let idx = raw.find(" -> ")?;
+    Some((&raw[..idx], &raw[idx + 4..]))
+}
+
+/// 取引号包裹的路径 token 及其后的剩余部分（`\"` 不算收尾引号）。
+fn take_quoted_token(raw: &str) -> Option<(&str, &str)> {
+    let bytes = raw.as_bytes();
+    if bytes.first() != Some(&b'"') {
+        return None;
+    }
+    let mut i = 1;
+    while i < bytes.len() {
+        match bytes[i] {
+            b'\\' => i += 2,
+            b'"' => return Some((raw.get(..=i)?, raw.get(i + 1..)?)),
+            _ => i += 1,
+        }
+    }
+    None
+}
+
 /// Parse a single line from `git status --porcelain` into a FileChange.
 ///
 /// porcelain v1 的唯一解析入口（status_worker / operations / remote 共用，
@@ -131,6 +163,8 @@ pub fn parse_git_info_output(output: &str) -> GitInfo {
 ///   WSL/SSH 链路把 `UU` 丢弃）；FileStatus 暂无 Conflict 变体
 /// - `A` → Added（Y 位 `M`/`?` 不改变 index 语义）、任一 `D` → Deleted、
 ///   其余 → Modified
+use super::quoting::unquote_git_path;
+
 pub(crate) fn parse_status_line(line: &str) -> Option<FileChange> {
     // porcelain 行形如 `XY<space>path`：前 3 字节恒为 ASCII，可安全切片
     let bytes = line.as_bytes();
@@ -147,9 +181,14 @@ pub(crate) fn parse_status_line(line: &str) -> Option<FileChange> {
     // P2 显式降级（业界同款，VSCode 同）：rename 识别完全交给 git 的相似度启发式；
     // similarity 不足时 git 自身输出 `D` + `?` 两条目，Neeko 不做补偿推断，
     // watcher 的 Rename 事件仅作为 status 重算触发信号。
-    let (renamed_from, file_path) = match raw_path.find(" -> ") {
-        Some(idx) => (Some(raw_path[..idx].to_string()), &raw_path[idx + 4..]),
-        None => (None, raw_path),
+    // 两侧路径都可能被 C 转义引号包裹，且**引号内的名字本身可能含 ` -> `**
+    // （`R  "a -> b.txt" -> "c.txt"`）—— 故按 token 扫描而非整行 find(" -> ")；
+    // 解码统一在解析入口做（parsers::quoting）。
+    let (renamed_from, file_path) = match split_porcelain_paths(raw_path) {
+        Some((old_path, new_path)) => {
+            (Some(unquote_git_path(old_path)), unquote_git_path(new_path))
+        }
+        None => (None, unquote_git_path(raw_path)),
     };
 
     // G1 契约统一：porcelain `?? dir/` 折叠目录条目尾带斜杠 —— 剥离尾斜杠并把
@@ -339,5 +378,50 @@ mod porcelain_status_tests {
         let out = "?? a.txt\n M b.txt\nUU c.txt\nR  d.txt -> e.txt\n";
         let files: Vec<FileChange> = out.lines().filter_map(parse_status_line).collect();
         assert_eq!(files.len(), 4, "every valid line must survive");
+    }
+}
+
+/// git 文本输出对非 ASCII / 特殊字符路径做 C 风格转义并整体加双引号
+/// （`core.quotePath` 默认 true）：`"test/\346\265\213\350\257\225.txt"`。
+/// 解析入口必须解码成真实路径 —— 否则下游把它当路径用会全线错位：
+/// UI 显示乱码、按路径建索引不命中、staging/diff 命令找不到文件。
+#[cfg(test)]
+mod quoted_path_tests {
+    use super::*;
+    use crate::project::types::FileChange;
+
+    #[test]
+    fn quoted_non_ascii_file_path_is_decoded() {
+        let fc: FileChange = parse_status_line("?? \"test/\\346\\265\\213\\350\\257\\225.txt\"")
+            .expect("quoted untracked line must parse");
+        assert_eq!(fc.path, std::path::PathBuf::from("test/测试.txt"));
+        assert!(!fc.is_dir);
+        assert_eq!(fc.index_status, Some('?'));
+        assert_eq!(fc.worktree_status, Some('?'));
+    }
+
+    #[test]
+    fn quoted_collapsed_dir_still_carries_is_dir() {
+        // 引号包住整个路径（含尾斜杠）—— 必须先解码再判目录性
+        let fc = parse_status_line("?? \"\\346\\265\\213\\350\\257\\225/\"").expect("dir line");
+        assert!(fc.is_dir, "解码后仍须识别折叠目录");
+        assert_eq!(fc.path, std::path::PathBuf::from("测试"));
+    }
+
+    #[test]
+    fn quoted_rename_with_arrow_inside_name_splits_correctly() {
+        // 旧名自身含 ` -> ` 且两侧带引号：不能对整行做 find(" -> ")
+        let fc =
+            parse_status_line("R  \"a -> b.txt\" -> \"\\346\\265\\213.txt\"").expect("rename line");
+        assert_eq!(fc.renamed_from.as_deref(), Some("a -> b.txt"));
+        assert_eq!(fc.path, std::path::PathBuf::from("测.txt"));
+        assert!(matches!(fc.status, FileStatus::Renamed));
+    }
+
+    #[test]
+    fn plain_paths_are_left_untouched() {
+        let fc = parse_status_line(" M src/main.rs").expect("plain line");
+        assert_eq!(fc.path, std::path::PathBuf::from("src/main.rs"));
+        assert_eq!(fc.renamed_from, None);
     }
 }

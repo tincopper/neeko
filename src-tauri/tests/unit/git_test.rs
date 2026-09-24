@@ -710,6 +710,29 @@ async fn get_untracked_files_lists_files_under_dir() {
     assert_eq!(files, vec!["assets/logo.png", "assets/notes.md"]);
 }
 
+/// 回归：非 ASCII（中文）文件名必须原样返回 —— 文本形态的 git 输出会做 C 转义
+/// （`"assets/\346\265\213..."`），直接进 UI 即乱码（2026-09-24 现场缺陷）。
+/// 展开链路走 `-z`，不经过 git 的转义。
+#[tokio::test]
+async fn get_untracked_files_returns_raw_non_ascii_paths() {
+    let (tmp, _repo) = create_test_repo();
+    let path = tmp.path().to_string_lossy().to_string();
+    std::fs::create_dir_all(tmp.path().join("assets")).unwrap();
+    std::fs::write(tmp.path().join("assets/测试.txt"), "cn").unwrap();
+    std::fs::write(tmp.path().join("assets/plain.txt"), "en").unwrap();
+
+    let transport = ExecTarget::Local;
+    let mut files = operations::get_untracked_files(&transport, &path, "assets/")
+        .await
+        .expect("list untracked files under assets");
+    files.sort();
+    assert_eq!(
+        files,
+        vec!["assets/plain.txt", "assets/测试.txt"],
+        "必须是原始 UTF-8 路径，不得是 `\\346\\265\\213` 形态的转义文本"
+    );
+}
+
 #[tokio::test]
 async fn get_untracked_files_respects_gitignore() {
     let (tmp, _repo) = create_test_repo();

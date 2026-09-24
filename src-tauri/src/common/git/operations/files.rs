@@ -53,15 +53,26 @@ pub async fn get_untracked_files(
     }
     let output = transport
         .run_git_opts(
-            &["ls-files", "--others", "--exclude-standard", "--", dir],
+            // -z：NUL 分隔且 git **不做 C 转义**。文本形态下含非 ASCII 的名字会被转成
+            // `"test/\346\265\213\350\257\225.txt"`（core.quotePath 默认开启），
+            // 直接进 UI 就是乱码、拿它当 pathspec 也找不到目录。
+            &[
+                "ls-files",
+                "--others",
+                "--exclude-standard",
+                "-z",
+                "--",
+                dir,
+            ],
             worktree_path,
             readonly_opts(),
         )
         .await?;
+    // -z 形态下路径是原样字节：不做 trim（文件名可以合法地含首尾空格），只丢弃
+    // 末尾 NUL 切出的空片段。
     let mut entries: Vec<String> = output
-        .lines()
-        .map(str::trim)
-        .filter(|line| !line.is_empty())
+        .split('\0')
+        .filter(|entry| !entry.is_empty())
         .map(str::to_string)
         .collect();
     if entries.len() > MAX_UNTRACKED_FILES {

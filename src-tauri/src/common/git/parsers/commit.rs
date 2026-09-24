@@ -1,6 +1,7 @@
 #![allow(unused_imports, missing_docs)]
 use std::path::PathBuf;
 
+use super::quoting::unquote_git_path;
 use crate::common::git::refs::parse_decorate_refs;
 use crate::project::types::{CommitEntry, CommitFileChange, FileNode, StashEntry};
 
@@ -83,6 +84,9 @@ pub fn parse_stash_branch(message: &str) -> String {
 }
 
 /// Merge `--numstat` output with `--name-status` output into CommitFileChange list.
+///
+/// 已知残留（非本次范围）：rename 行在两侧形态不同（name-status `R100\told\tnew` /
+/// numstat `old => new`），路径取 parts[1]/parts[2] 只会拿到旧名或整体串。
 #[must_use]
 pub fn parse_numstat_with_status(numstat: &str, status_output: &str) -> Vec<CommitFileChange> {
     let status_map: std::collections::HashMap<String, String> = status_output
@@ -90,7 +94,9 @@ pub fn parse_numstat_with_status(numstat: &str, status_output: &str) -> Vec<Comm
         .filter_map(|line| {
             let parts: Vec<&str> = line.split('\t').collect();
             if parts.len() >= 2 {
-                Some((parts[1].to_string(), parts[0].to_string()))
+                // 解码 C 转义引号（非 ASCII 路径）——两侧必须用同一形态，否则下面
+                // 按 path 合并 status 会因 key 不一致静默退化成默认 "M"
+                Some((unquote_git_path(parts[1]), parts[0].to_string()))
             } else {
                 None
             }
@@ -102,7 +108,7 @@ pub fn parse_numstat_with_status(numstat: &str, status_output: &str) -> Vec<Comm
         .filter_map(|line| {
             let parts: Vec<&str> = line.split('\t').collect();
             if parts.len() >= 3 {
-                let path = parts[2].to_string();
+                let path = unquote_git_path(parts[2]);
                 let additions = parts[0].parse::<usize>().unwrap_or(0);
                 let deletions = parts[1].parse::<usize>().unwrap_or(0);
                 let status = status_map
@@ -404,6 +410,18 @@ mod stash_parse_tests {
         assert_eq!(files[1].path, "src/new.ts");
         assert_eq!(files[1].status, "A");
         assert_eq!(files[1].additions, 1);
+    }
+
+    #[test]
+    fn quoted_non_ascii_paths_are_decoded_and_still_merged() {
+        // 两侧都被 C 转义引号包裹：解码后 key 才一致 -> status 合并命中（否则退化为 "M"）
+        let numstat = "3\t1\t\"\\346\\265\\213.txt\"";
+        let status = "A\t\"\\346\\265\\213.txt\"";
+        let files = parse_numstat_with_status(numstat, status);
+        assert_eq!(files.len(), 1);
+        assert_eq!(files[0].path, "测.txt");
+        assert_eq!(files[0].status, "A", "解码不一致会取不到 status 而退化为 M");
+        assert_eq!((files[0].additions, files[0].deletions), (3, 1));
     }
 
     #[test]

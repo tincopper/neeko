@@ -19,15 +19,26 @@
 
 ### Main Changes
 
-(Add details)
+- **A 前端失效通道**（`useUntrackedDirExpansion`）：S1 `file-changed` 前缀命中（`isPathUnderDir`，路径段语义）、S2 `changed_files` 引用被替换 → SWR 后台重拉（旧值保留到新值落地）+ 丢弃已消失目录键、S3 失败不写缓存键 + `failedDirsRef` 抑制（无自发重试）；去重：stale 在本轮拉取开始时清除 → 飞行期间失效合并为 1 次 trailing
+- **契约修正**：失效信号落在「引用被替换」而非快照 version（两条刷新路径都不推进 version：刷新按钮走 `get_git_info` 不经 gate、聚焦走 `allowEqual` 同版本放行）
+- **S2 的两条前置契约**：`useCommitPanelDiffStats` 的 `changedFilesWithStats` 加 memo（顺带修掉 `ChangesList` 失去 `React.memo` 的问题）；`ChangesList` 加 `key={project.id}`（缓存作用域，避免跨项目串子行）
+- **S3 调用侧**：`GitCommitPanel.handleExpandUntrackedDir` 失败 toast 后 **rethrow**（不再 `return []` 把失败伪装成空目录）
+- **B 后端窄口修正**：新文件 `status_worker/collapsed_probe.rs`（折叠目录内容摘要，`-z` 枚举、禁截断、8 MiB 超限 → Unknown 放行）+ `worker.rs` 闸门追加摘要比较（`status_unchanged && digest_unchanged → continue`）
+- **顺带修 git 路径 C 转义**（复测发现）：新文件 `parsers/quoting.rs::unquote_git_path`，接入 `parse_status_line`（rename 改 token 扫描）/`parse_numstat_line`/`parse_numstat_with_status`；`get_untracked_files` 改走 `-z`
+- **清理**：`projectStore` 版本登记表从模块级 Map 搬进 store state（`statusVersionByProject`，语义不变）
+- spec 同步：`.trellis/spec/backend/git-domain.md` 新增 §8「路径文本输出契约（C 转义 / -z）」
 
 ### Git Commits
 
-(No commits - planning session)
+（未提交 —— 按约定停在未提交状态，等待人工确认后提交）
 
 ### Testing
 
-- [OK] (Add test results)
+- `cargo test --lib`：1337 passed / 0 failed / 3 ignored
+- `cargo test --test unit`：103 passed / 0 failed
+- `pnpm test:run`：477 文件 / 4204 passed / 1 skipped / 0 failed（新增 13 条 hook 用例）
+- `pnpm lint`（fmt + clippy `-D warnings` + 5 个 python 护栏 + java-host）、`pnpm type-check`、`check_path_identity_scope.py`：全绿
+- 端到端现场：AC1/AC2/AC3 复测通过（A 生效 + B 生效后复测）；中文文件名显示正常
 
 ### Status
 
@@ -35,7 +46,9 @@
 
 ### Next Steps
 
-- None - task complete
+- 可选：AC4 失败态现场观察、AC9（WSL/SSH）抽查
+- 建议单开任务：watcher 生命周期缺陷（`maintenance_tx_for_closure` 与维护线程互相保活 → `unwatch` 后旧 watcher 仍投递，实测单次变更被 emit 3 次；证据见任务 `implement.md` D1 段）
+- 建议单开任务（低优先）：rename 在 `--numstat`/`--name-status` 与 `status` 的路径形态不同 → 提交/暂存列表 rename 行取不到新名
 
 
 ## Session 178: neeko-check十三支柱审查
@@ -1898,6 +1911,37 @@ Applied all neeko-check review fixes (import order, path-identity MANIFEST backs
 | Hash | Message |
 |------|---------|
 | `ff5afa5d043dbbdff5cec775fd510816ff98ae57` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
+
+
+## Session 228: 修复 untracked 折叠目录展开缓存陈旧 + status 闸门盲区 + git 路径 C 转义
+
+**Date**: 2026-09-24
+**Task**: 修复 untracked 折叠目录展开缓存陈旧 + status 闸门盲区 + git 路径 C 转义
+**Branch**: `main`
+
+### Summary
+
+A（前端 S1/S2/S3 失效通道）+ B（折叠目录内容摘要进闸门）落地；顺带修 git 文本输出非 ASCII 路径转义；AC1-AC9 与全量门禁通过
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+(No commits - planning session)
 
 ### Testing
 

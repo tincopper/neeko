@@ -148,11 +148,52 @@ fallback，主路径 `wc -l` 按 `\n` 计数）、`local.rs:514`（git2 fallback
 WSL/SSH）+ `parse_unified_diff_crlf_input_strips_carriage_returns`（解析器）。约定详见
 `docs/ARCHITECTURE.md` 6.1。
 
+## 8. 路径文本输出契约（C 转义 / `-z`）
+
+**第一性原理**：git 的**文本**输出（`status --porcelain` / `ls-files` / `diff --numstat` /
+`--name-status`）在 `core.quotePath` 默认开启时，对含非 ASCII / 特殊字符的路径做
+**C 风格转义 + 整体加双引号**：
+
+```
+git ls-files --others --exclude-standard -- test/     ->  "test/\346\265\213\350\257\225.txt"
+git ls-files --others --exclude-standard -z -- test/  ->  test/测试.txt        （-z 不转义）
+```
+
+未解码即**下游全线错位**：UI 显示乱码、按路径建索引不命中（stats 合并不上）、staging/diff 命令
+拿到引号 + 转义的伪路径、目录展开拿它当 pathspec 找不到目录（2026-09-24 现场缺陷）。
+
+**规则**：
+
+- **文本输出一律在解析入口解码**：`parsers::quoting::unquote_git_path` 是**唯一**解码点，已接入
+  `parse_status_line`（rename 两侧按 token 扫描 —— 引号内的名字本身可以含 ` -> `）、
+  `parse_numstat_line`、`parse_numstat_with_status`。禁止在消费侧（建索引 / 拼命令 / 显示）
+  各自处理转义形态。
+- **能用 `-z` 就用 `-z`**：NUL 分隔且不做转义，天然免疫（`operations::get_untracked_files`、
+  `status_worker::collapsed_probe` 的探测均走 `-z`）。用 `-z` 时**不要 `trim()`** —— 文件名可以
+  合法地含首尾空格，只丢弃末尾 NUL 切出的空片段。
+- **不要在调用点撒 `-c core.quotePath=false`**：要求所有调用点一个不漏，且无法处理**必须**转义的
+  路径（含引号 / 控制字符）。
+- **两侧形态必须一致**：`parse_numstat_with_status` 把 `--numstat` 与 `--name-status` 按路径合并，
+  一侧解码一侧不解码会静默取不到 status（退化为默认 `M`）。
+
+**已知残留**：rename 在 `--numstat`（`old => new`）与 `--name-status`（`R100\told\tnew`）的形态与
+`status`（`old -> new`）不同，提交 / 暂存列表的 rename 行仍取不到新名（2026-09-24 记录）。
+
+**回归测试**：`parsers::quoting::tests::*`（八进制 / 简单转义 / 半截引号 / 1–3 位八进制）、
+`parsers::status::quoted_path_tests::*`（非 ASCII、折叠目录尾斜杠、名字含 ` -> ` 的 rename）、
+`parsers::numstat::quoted_path_tests::*`、
+`parsers::commit::stash_parse_tests::quoted_non_ascii_paths_are_decoded_and_still_merged`、
+集成 `git_test::get_untracked_files_returns_raw_non_ascii_paths`。
+
+**改共享解析层必须跑全量 `cargo test`**：只跑新增用例过滤（如 `--lib quoted_`）会漏掉既有契约 ——
+首版实现把非引号 rename 也走了 token 扫描，打挂 4 条既有 rename 测试，全量测试才发现。
+
 ## 相关文件
 
 - `src-tauri/src/common/git/refs.rs` — refs 分类纯函数
-- `src-tauri/src/common/git/parsers.rs` — `parse_commit_log_output` / `parse_stash_list` / `parse_numstat_with_status`
+- `src-tauri/src/common/git/parsers/` — `status` / `numstat` / `commit` / `quoting`（C 转义唯一解码点）
 - `src-tauri/src/common/git/cache.rs` — `get_cached_worktree_diff` / `FileFingerprint` / LRU diff 缓存
+- `src-tauri/src/common/git/status_worker/` — status 快照唯一计算路径（含折叠 untracked 目录内容摘要 `collapsed_probe.rs`）
 - `src-tauri/src/common/git/operations.rs` + `local.rs` — `get_commit_log` / `get_stash_list` / `get_stash_files` / `get_file_diff`
 - `src-tauri/src/git/commands.rs` + `src-tauri/src/lib.rs` — 命令透传与注册
 - `src/features/git/components/diff/useDiffData.ts` — 前端无状态 diff 消费者（git-status-diff / file-changed / 手动刷新驱动重拉）
