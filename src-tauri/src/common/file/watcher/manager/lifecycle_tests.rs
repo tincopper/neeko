@@ -5,11 +5,17 @@
 //! 人肉看日志发现，**没有 CI 守护就必然回归**；`WatcherEventSink` 抽象正是为了
 //! 让下面这些断言可以在无 Tauri 窗口的情况下运行。
 //!
-//! 断言口径（时间窗比对，不依赖线程数）：
+//! 断言口径（不依赖线程数与负载时序）：
 //! - 「有事件」：在 `FIRST_EVENT_TIMEOUT` 内轮询到目标事件；
 //! - 「无事件」：记录基线 → 触发变更 → 静默 `QUIET_WINDOW` → 计数不得增长。
 //!   `QUIET_WINDOW` 必须大于 debounce 上限（`FILE_CHANGED_MAX_WAIT_MS = 1500`），
 //!   否则可能把「还没 flush」误判为「没有事件」。
+//! - 「恰好一套 watcher」：断言 `watcher_set_creations()` 计数，**不断言批次 == 1**
+//!   —— 单次写入的多个 FS 事件（Create + Modify Data 等）在负载下可能跨过
+//!   debounce 滑动窗口（200ms）分多批投递，这是合法生产行为（前端按批次合并
+//!   刷新）；macOS CI（FSEvents + 高负载）实测把「一次写入恰好 1 批」误报为 2
+//!   （2026-09-25）。批次计数只用于上面的「无事件」类断言（delta == 0 稳健：
+//!   任何增长都是真泄漏）。
 
 use super::WatcherManager;
 use crate::common::file::watcher::sink::test_support::CollectingSink;
@@ -114,24 +120,30 @@ fn watch_twice_is_idempotent() {
     manager.watch("p1".to_string(), root.clone(), sink.clone());
     std::thread::sleep(WATCH_SETTLE);
 
-    assert!(touch_and_wait(
-        &root,
-        "a.txt",
-        &sink,
-        FILE_CHANGED_EVENT,
-        FIRST_EVENT_TIMEOUT
-    ));
-    std::thread::sleep(QUIET_WINDOW);
-
+    // 幂等核心契约（确定性断言）：重复 watch 不得创建第二套 watcher。
+    // 用创建计数而非批次计数 —— 「一次写入 == 1 条批次」不是代码承诺：单次写入
+    // 的多个 FS 事件可跨 debounce 滑动窗口分两批（macOS CI 高负载下实测触发），
+    // 前端本就按批次合并刷新。
     assert_eq!(
-        sink.count(FILE_CHANGED_EVENT),
+        manager.watcher_set_creations(),
         1,
-        "重复 watch 必须幂等：一次写入只应产生 1 条批次（多套 watcher 会成倍投递）"
+        "重复 watch 必须幂等：不得创建第二套 watcher（多套 watcher 会成倍投递并泄漏线程）"
+    );
+
+    assert!(
+        touch_and_wait(
+            &root,
+            "a.txt",
+            &sink,
+            FILE_CHANGED_EVENT,
+            FIRST_EVENT_TIMEOUT
+        ),
+        "重复 watch 后事件投递必须仍然可用"
     );
 }
 
 #[test]
-fn rewatch_after_unwatch_delivers_exactly_once() {
+fn rewatch_after_unwatch_rebuilds_single_set() {
     let tmp = tempfile::tempdir().unwrap();
     let root = tmp.path().to_path_buf();
     let sink = CollectingSink::new();
@@ -150,21 +162,20 @@ fn rewatch_after_unwatch_delivers_exactly_once() {
     manager.unwatch("p1");
     std::thread::sleep(WATCH_SETTLE);
 
-    // 重新 watch：应恰好恢复一套 watcher（既不残留旧的，也不叠加）
+    // 重新 watch：应恰好重建一套（unwatch 未注销 → 护栏拦截，计数仍为 1；
+    // re-watch 叠加 → 计数为 3；只有恰好重建才是 2）
     manager.watch("p1".to_string(), root.clone(), sink.clone());
     std::thread::sleep(WATCH_SETTLE);
-    let baseline = sink.count(FILE_CHANGED_EVENT);
+    assert_eq!(
+        manager.watcher_set_creations(),
+        2,
+        "unwatch 必须真正注销，re-watch 必须重建且仅重建一套 watcher"
+    );
 
     std::fs::write(root.join("second.txt"), "x\n").unwrap();
     assert!(
         wait_for_event(&sink, FILE_CHANGED_EVENT, FIRST_EVENT_TIMEOUT),
         "re-watch 后应恢复事件投递"
-    );
-    std::thread::sleep(QUIET_WINDOW);
-    assert_eq!(
-        sink.count(FILE_CHANGED_EVENT) - baseline,
-        1,
-        "re-watch 后一次写入恰好 1 条批次（无旧 watcher 残留）"
     );
 }
 

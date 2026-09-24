@@ -14,6 +14,8 @@ use crate::common::git::local::is_git_repo;
 use crate::common::git::status_worker::{GitStatusSnapshot, GitStatusWorker};
 use notify::{Config, RecommendedWatcher, Watcher};
 use std::path::PathBuf;
+#[cfg(test)]
+use std::sync::atomic::AtomicUsize;
 use std::sync::mpsc;
 use std::{
     collections::HashMap,
@@ -35,6 +37,12 @@ pub struct WatcherManager {
     /// G2 单一权威化：每项目最新 versioned 快照（worker 产出，invoke 读接口走这里，
     /// 不再跑第二套 libgit2 status —— D2 收编）。
     snapshots: Arc<Mutex<HashMap<String, Arc<GitStatusSnapshot>>>>,
+    /// 已创建的 watcher 套数（幂等契约观测口，见 `lifecycle_tests.rs`）：
+    /// 「重复 watch 只建一套」用创建计数断言，不用事件批次计数 —— 单次写入的
+    /// 多个 FS 事件在负载下可跨 debounce 窗口分多批投递（合法生产行为），
+    /// 批次 == 1 的断言在高负载 CI 上会误报。
+    #[cfg(test)]
+    watcher_set_creations: Arc<AtomicUsize>,
 }
 
 impl Default for WatcherManager {
@@ -50,7 +58,16 @@ impl WatcherManager {
         Self {
             watchers: Arc::new(Mutex::new(HashMap::new())),
             snapshots: Arc::new(Mutex::new(HashMap::new())),
+            #[cfg(test)]
+            watcher_set_creations: Arc::new(AtomicUsize::new(0)),
         }
+    }
+
+    /// 已创建的 watcher 套数（`#[cfg(test)]` 观测口：直接测量「重复 watch 是否被
+    /// 入口护栏拦截」—— map 尺寸测不出来，因为重复 insert 会覆盖旧 handle）。
+    #[cfg(test)]
+    pub(crate) fn watcher_set_creations(&self) -> usize {
+        self.watcher_set_creations.load(Ordering::Relaxed)
     }
 
     /// 该项目的 git 语义忽略过滤器（S5：读目录层复用做读前剪枝 + ignored 标记；
@@ -392,6 +409,9 @@ impl WatcherManager {
                     _heartbeat: heartbeat,
                 },
             );
+            // 套数计数在 insert 成功处自增（一套完整资源真正落地）
+            #[cfg(test)]
+            self.watcher_set_creations.fetch_add(1, Ordering::Relaxed);
         }
     }
 
