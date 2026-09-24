@@ -67,7 +67,6 @@ fn worker_loop(
     // `None` = 尚未探测 → 放行 emit。
     let mut last_collapsed_digest: Option<Digest> = None;
     let mut version: u64 = 0;
-    let mut supports_no_optional_locks = true;
     let path_str = repo_path.display().to_string();
 
     log::debug!("[GitWorker] Worker started for {}", path_str);
@@ -88,7 +87,7 @@ fn worker_loop(
 
         log::debug!("[GitWorker] Running git status for {}", path_str);
 
-        let current = git_status_porcelain(&repo_path, &mut supports_no_optional_locks);
+        let current = git_status_porcelain(&repo_path);
         let current_branch = get_current_branch(&repo_path);
 
         let mut current_files = parse_porcelain(&current);
@@ -172,56 +171,14 @@ pub(crate) fn get_current_branch(repo_path: &Path) -> String {
     }
 }
 
-/// Execute `git status --porcelain` with optional `--no-optional-locks`.
-fn git_status_porcelain(repo_path: &Path, supports_no_optional_locks: &mut bool) -> String {
+/// Execute `git status --porcelain` for `repo_path`.
+///
+/// 只读语义（不 refresh index、不取 optional lock）由 exec facade 统一注入
+/// `GIT_OPTIONAL_LOCKS=0` 承担（见 `common::git::git_env`），因此这里**不再**传
+/// `--no-optional-locks`，也就不需要"老 git 不支持该标志"的回退分支 —— 回退分支
+/// 恰恰是当年漏掉锁语义的地方之一。
+fn git_status_porcelain(repo_path: &Path) -> String {
     let path_str = repo_path.to_str().unwrap_or(".");
-
-    if *supports_no_optional_locks {
-        match collect_blocking(
-            &ExecTarget::Local,
-            "git",
-            &[
-                "-C",
-                path_str,
-                "status",
-                "--porcelain",
-                "--no-optional-locks",
-            ],
-        ) {
-            Ok(output) if output.exit_code == 0 => {
-                return String::from_utf8_lossy(&output.stdout).to_string();
-            }
-            Ok(output) => {
-                let stderr = String::from_utf8_lossy(&output.stderr);
-                if stderr.contains("unknown option") {
-                    log::warn!(
-                        "[GitWorker] git at {} does not support --no-optional-locks, falling back",
-                        repo_path.display()
-                    );
-                    *supports_no_optional_locks = false;
-                } else {
-                    let (code, signal) = exit_diagnostics(output.exit_code);
-                    log::warn!(
-                        "[GitWorker] git status failed at {}: exit={:?} signal={:?} stderr={}",
-                        repo_path.display(),
-                        code,
-                        signal,
-                        stderr.trim()
-                    );
-                    return String::from_utf8_lossy(&output.stdout).to_string();
-                }
-            }
-            Err(e) => {
-                log::error!(
-                    "[GitWorker] Failed to spawn git at {}: {}",
-                    repo_path.display(),
-                    e
-                );
-                return String::new();
-            }
-        }
-    }
-
     match collect_blocking(
         &ExecTarget::Local,
         "git",

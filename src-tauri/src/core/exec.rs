@@ -10,6 +10,7 @@
 //! tools for WSL/SSH projects live in those environments.
 
 use crate::common::executor::factory::{create_executor, ExecTarget};
+use crate::common::executor::with_default_env;
 use crate::common::executor::{
     collect_child_output, ExecChild, ExecError, ExecOutput, SpawnOptions,
 };
@@ -47,13 +48,13 @@ pub async fn spawn_with(
     args: &[&str],
     current_dir: Option<&str>,
 ) -> Result<ExecChild, ExecError> {
-    create_executor(target)
-        .spawn_with(
-            SpawnOptions::new(cmd, args)
-                .with_current_dir_if(current_dir)
-                .with_kill_tree(),
-        )
-        .await
+    spawn_target(
+        target,
+        SpawnOptions::new(cmd, args)
+            .with_current_dir_if(current_dir)
+            .with_kill_tree(),
+    )
+    .await
 }
 
 /// Collect raw stdout/stderr/exit code (including non-zero exits).
@@ -119,11 +120,39 @@ pub fn command_exists_blocking(target: &ExecTarget, cmd: &str) -> bool {
 ///
 /// [`collect`] / [`collect_blocking`] / [`collect_blocking_with`] 全部汇入此处，
 /// 彼此只在「是否同步桥」「是否带 cwd/env」上有别。
+/// 唯一 spawn 入口：`git` 命令补上**只读环境默认值**后交给执行器。
+///
+/// 为什么在这里：`git status` 会 refresh index（读路径的写副作用，与 IDE / 用户 git 争
+/// `.git/index.lock`）。若要求每个调用点自己传 opts，必然遗漏（2026-09-24 的漏点是
+/// `operations/info.rs` / `worktree.rs`）；收敛到此入口后，新增调用默认即正确。
+/// 依据与取舍见 [`crate::common::git::git_env`]。
+///
+/// 注：WSL/SSH 的 git 调用不走这里 —— 它们由 `common::git::transport` 把 env 渲染成远端
+/// shell 前缀（同样默认注入）。
+async fn spawn_target(target: &ExecTarget, opts: SpawnOptions<'_>) -> Result<ExecChild, ExecError> {
+    // 默认 env 只对 **Local** 生效：WSL/SSH 的 env 设在本地 `wsl.exe`/`ssh` 进程上，
+    // 无法穿透到远端进程（远端 git 的只读语义由 `common::git::transport` 渲染成
+    // shell 前缀承担，见 `common::git::remote` 同理）。此处显式限定目标，避免
+    // 「看着注入了、其实对远端无效」的平台盲区。
+    if !matches!(target, ExecTarget::Local) {
+        return create_executor(target).spawn_with(opts).await;
+    }
+    let merged_env = with_default_env(opts.cmd, opts.env);
+    let opts = SpawnOptions {
+        cmd: opts.cmd,
+        args: opts.args,
+        current_dir: opts.current_dir,
+        env: &merged_env,
+        kill_tree: opts.kill_tree,
+    };
+    create_executor(target).spawn_with(opts).await
+}
+
 async fn collect_core(
     target: &ExecTarget,
     opts: SpawnOptions<'_>,
 ) -> Result<ExecOutput, ExecError> {
-    let child = create_executor(target).spawn_with(opts).await?;
+    let child = spawn_target(target, opts).await?;
     collect_child_output(child).await
 }
 
@@ -495,5 +524,42 @@ mod tests {
         });
         let value = tauri::async_runtime::block_on(join).expect("join");
         assert_eq!(value, "bridged");
+    }
+    /// 同步桥（`status_worker` / `collapsed_probe` 走这条路径）同样必须只读：
+    /// 「`git status` 不得刷新 `.git/index`」。依据见 `common::git::git_env`。
+    #[test]
+    fn collect_blocking_git_status_does_not_refresh_index() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path().to_path_buf();
+        let repo = git2::Repository::init(&root).unwrap();
+        let sig = git2::Signature::now("Test", "test@test.com").unwrap();
+        std::fs::write(root.join("README.md"), "# Test\n").unwrap();
+        {
+            let mut index = repo.index().unwrap();
+            index.add_path(std::path::Path::new("README.md")).unwrap();
+            index.write().unwrap();
+            let tree_id = index.write_tree().unwrap();
+            let tree = repo.find_tree(tree_id).unwrap();
+            repo.commit(Some("HEAD"), &sig, &sig, "init", &tree, &[])
+                .unwrap();
+        }
+        std::fs::write(root.join("untracked.txt"), "x\n").unwrap();
+
+        let index_path = root.join(".git/index");
+        let before = std::fs::metadata(&index_path).unwrap().modified().unwrap();
+        let work_dir = root.to_string_lossy().to_string();
+        let output = collect_blocking(
+            &ExecTarget::Local,
+            "git",
+            &["-C", &work_dir, "status", "--porcelain"],
+        )
+        .unwrap();
+        assert_eq!(output.exit_code, 0, "git status 应成功");
+        let after = std::fs::metadata(&index_path).unwrap().modified().unwrap();
+
+        assert_eq!(
+            before, after,
+            "facade 默认注入 GIT_OPTIONAL_LOCKS=0：git status 不得刷新 index"
+        );
     }
 }

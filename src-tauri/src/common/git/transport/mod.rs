@@ -8,6 +8,7 @@ pub mod wsl;
 
 use std::time::Duration;
 
+use crate::common::executor::with_default_env;
 use anyhow::Result;
 use async_trait::async_trait;
 
@@ -222,7 +223,9 @@ impl GitTransport for ExecTarget {
             LOCAL_GIT_TIMEOUT
         };
 
-        let mut env: Vec<(&str, &str)> = opts.env.to_vec();
+        // 只读语义默认生效（GIT_OPTIONAL_LOCKS=0）：读路径（status 等）不再 refresh index，
+        // 避免与 IDE / 用户 git 争 index 锁。见 common::git::git_env 的第一性依据。
+        let mut env: Vec<(&str, &str)> = with_default_env("git", opts.env);
         if is_network_op {
             env.push(("GIT_TERMINAL_PROMPT", GIT_TERMINAL_PROMPT));
         }
@@ -249,7 +252,9 @@ impl GitTransport for ExecTarget {
         opts: GitExecOptions<'_>,
         stdin: &[u8],
     ) -> Result<String> {
-        let mut env: Vec<(&str, &str)> = opts.env.to_vec();
+        // 只读语义默认生效（GIT_OPTIONAL_LOCKS=0）：读路径（status 等）不再 refresh index，
+        // 避免与 IDE / 用户 git 争 index 锁。见 common::git::git_env 的第一性依据。
+        let mut env: Vec<(&str, &str)> = with_default_env("git", opts.env);
         env.push(("GIT_TERMINAL_PROMPT", GIT_TERMINAL_PROMPT));
 
         let config_args = opts.config_args();

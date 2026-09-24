@@ -5,6 +5,7 @@
 //! of the target environment.
 
 pub mod collect;
+mod env_defaults;
 mod error;
 pub mod factory;
 mod local;
@@ -16,6 +17,7 @@ mod types;
 mod wsl;
 
 pub use collect::collect_child_output;
+pub(crate) use env_defaults::with_default_env;
 pub use error::{format_command_failed_msg, ExecError};
 pub use process_guard::ProcessGuard;
 pub use traits::CommandExecutor;

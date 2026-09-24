@@ -19,20 +19,7 @@ pub async fn get_remote_git_info(
     auth: &AuthMethod,
     project_path: &str,
 ) -> Result<GitInfo> {
-    let sp = safe_path(project_path);
-    let cmd = format!(
-        "cd '{sp}' \
-          && printf '__BRANCH__\\n' \
-          && git branch --show-current 2>/dev/null \
-          && printf '\\n__BRANCHES__\\n' \
-          && git branch 2>/dev/null \
-          && printf '\\n__WORKTREES__\\n' \
-          && git worktree list --porcelain 2>/dev/null \
-          && printf '\\n__STATUS__\\n' \
-          && git status --porcelain 2>/dev/null \
-          && printf '\\n__REMOTE__\\n' \
-          && git remote get-url origin 2>/dev/null"
-    );
+    let cmd = remote_git_info_command(project_path);
     let output = run(
         &ExecTarget::Remote {
             host: host.to_string(),
@@ -61,6 +48,30 @@ pub async fn get_remote_git_info(
     let mut info = parse_git_info_output(&output);
     info.git_provider = git_provider;
     Ok(info)
+}
+
+/// 远端 git 信息采集命令（纯函数，便于单测）。
+///
+/// 远端 shell 内直接跑多个 git 子命令（绕过 transport 的 env 渲染），因此**必须在
+/// 脚本开头导出只读语义** `GIT_OPTIONAL_LOCKS=0`：否则 `git status` 会在远端 refresh
+/// index，与用户 / IDE 争远端 index 锁（与本地注入同源的第一性依据见
+/// `common::executor::env_defaults`）。
+#[must_use]
+fn remote_git_info_command(project_path: &str) -> String {
+    let sp = safe_path(project_path);
+    format!(
+        "export GIT_OPTIONAL_LOCKS=0; cd '{sp}' \
+          && printf '__BRANCH__\\n' \
+          && git branch --show-current 2>/dev/null \
+          && printf '\\n__BRANCHES__\\n' \
+          && git branch 2>/dev/null \
+          && printf '\\n__WORKTREES__\\n' \
+          && git worktree list --porcelain 2>/dev/null \
+          && printf '\\n__STATUS__\\n' \
+          && git status --porcelain 2>/dev/null \
+          && printf '\\n__REMOTE__\\n' \
+          && git remote get-url origin 2>/dev/null"
+    )
 }
 
 #[cfg(test)]
@@ -139,5 +150,27 @@ __STATUS__";
         assert!(info.current_branch.is_empty());
         assert!(info.branches.is_empty());
         assert!(info.worktrees.is_empty());
+    }
+}
+
+#[cfg(test)]
+mod remote_command_tests {
+    use super::remote_git_info_command;
+
+    #[test]
+    fn remote_git_info_command_exports_optional_locks_off() {
+        let cmd = remote_git_info_command("/home/user/proj");
+        assert!(
+            cmd.starts_with("export GIT_OPTIONAL_LOCKS=0;"),
+            "远端 git 脚本必须显式导出只读语义（否则远端 git status 会 refresh index 抢锁）：{cmd}"
+        );
+        assert!(
+            cmd.contains("cd '/home/user/proj'"),
+            "工作目录须安全引用：{cmd}"
+        );
+        assert!(
+            cmd.contains("git status --porcelain"),
+            "须包含 status 采集：{cmd}"
+        );
     }
 }

@@ -183,3 +183,55 @@ async fn test_local_is_git_repo() {
     let transport = ExecTarget::Local;
     assert!(!transport.is_git_repo("/tmp").await);
 }
+
+// ── 只读语义：git status 不得刷新 index（GIT_OPTIONAL_LOCKS=0 默认生效）──────────
+
+/// 造一个含 1 次提交的仓库，并让 index 处于「可被刷新」状态（新增未跟踪文件）。
+fn repo_with_untracked_file() -> (tempfile::TempDir, std::path::PathBuf) {
+    let tmp = tempfile::tempdir().unwrap();
+    let root = tmp.path().to_path_buf();
+    let repo = git2::Repository::init(&root).unwrap();
+    let sig = git2::Signature::now("Test", "test@test.com").unwrap();
+    std::fs::write(root.join("README.md"), "# Test\n").unwrap();
+    {
+        let mut index = repo.index().unwrap();
+        index.add_path(std::path::Path::new("README.md")).unwrap();
+        index.write().unwrap();
+        let tree_id = index.write_tree().unwrap();
+        let tree = repo.find_tree(tree_id).unwrap();
+        repo.commit(Some("HEAD"), &sig, &sig, "Initial commit", &tree, &[])
+            .unwrap();
+    }
+    std::fs::write(root.join("untracked.txt"), "x\n").unwrap();
+    (tmp, root)
+}
+
+fn index_mtime(root: &std::path::Path) -> std::time::SystemTime {
+    std::fs::metadata(root.join(".git/index"))
+        .unwrap()
+        .modified()
+        .unwrap()
+}
+
+/// 第一性断言：读路径不得有写副作用。
+///
+/// `git status` 默认会 refresh index（写 `.git/index`），这是**可选**锁操作；它与
+/// IDE / 用户手工 git 争 `.git/index.lock`（现场两次 `git commit` 因此失败）。
+/// 传输层已默认注入 `GIT_OPTIONAL_LOCKS=0`（见 `common::git::git_env`），故 index 不得被改。
+#[tokio::test]
+async fn git_status_does_not_refresh_index() {
+    let (_tmp, root) = repo_with_untracked_file();
+    let work_dir = root.to_string_lossy().to_string();
+
+    let before = index_mtime(&root);
+    ExecTarget::Local
+        .run_git(&["status", "--porcelain"], &work_dir)
+        .await
+        .expect("git status should succeed");
+    let after = index_mtime(&root);
+
+    assert_eq!(
+        before, after,
+        "git status 不得刷新 .git/index（只读语义缺失时会与 IDE/用户 git 争 index 锁）"
+    );
+}
