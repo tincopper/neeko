@@ -262,7 +262,7 @@ mod tests {
 
 ### 辅助函数：创建测试仓库（确定性）
 
-**必须使用确定性测试仓库**（见 `AGENTS.md` 红线 11「换行边界」）：Windows 上 git 默认
+**必须使用确定性测试仓库**（见 `src-tauri/AGENTS.md` 红线 11「换行边界」）：Windows 上 git 默认
 `core.autocrlf=true`，会把 stash/checkout/discard 等 git 写操作落盘的工作区内容转成 CRLF，
 导致字节级内容断言在 Windows CI 必挂。双保险 = 仓库级 `core.autocrlf=false` + 提交
 `.gitattributes * -text`。
@@ -510,6 +510,6 @@ assert!(info.changed_files.iter().any(|f| f.path == "README.md"));
 ```
 
 > 注意：`operations::get_git_info` 的同步版走 `core::exec` 同步桥，**禁止在 `#[tokio::test]`
-> 体内调用**（AGENTS.md 红线 1）；async 测试里用 `operations::get_git_info(...).await` 版本。
+> 体内调用**（`src-tauri/AGENTS.md` 红线 1）；async 测试里用 `operations::get_git_info(...).await` 版本。
 > 护栏脚本 `.trellis/scripts/check_worktree_byte_assertions.py` 会检出该模式（已接入
 > `pnpm lint` 与 CI）。

@@ -151,7 +151,7 @@ WSL 项目的根可能是 `\\wsl$\…` UNC 路径，同步读会占住 worker �
 | 给 launch 配置回落第一个配置 | 点 A 文件却跑 B 的配置 | 已回传 `DapSessionInfo.config_name`；如需显式提示，走 route 级 note 通道（待做） |
 | 用例测试经门面（`state.dap_manager.*`） | 门面被迫长测试专用 API，断言绑在转调层 | 用 `DapFixture` + `ctx()` 直调模块函数 |
 | 删除方法时按"缩进处"定位 | 残留孤儿 `///` 文档（clippy `empty_line_after_doc_comments` 拦截） | 删除时按**行首**定位并连同 `#[attr]`/`///` 一起摘除 |
-| 测试夹具硬编码 `/opt/…` 类 POSIX 绝对路径 | Windows 上无盘符前缀，`Path::is_absolute()` 为 false，授权守卫（!is_absolute → deny）必拒 —— 本地绿、Windows CI 红 | tempdir 推导平台绝对路径（Windows 盘符 / Unix 均成立）；已踩两次（`source_translation.rs`、`manager.rs` 外部源码授权链路）。AGENTS.md 审查红线 13 |
+| 测试夹具硬编码 `/opt/…` 类 POSIX 绝对路径 | Windows 上无盘符前缀，`Path::is_absolute()` 为 false，授权守卫（!is_absolute → deny）必拒 —— 本地绿、Windows CI 红 | tempdir 推导平台绝对路径（Windows 盘符 / Unix 均成立）；已踩两次（`source_translation.rs`、`manager.rs` 外部源码授权链路）。红线 13（全文见 `src-tauri/AGENTS.md`） |
 
 ---
 
@@ -191,7 +191,7 @@ WSL 项目的根可能是 `\\wsl$\…` UNC 路径，同步读会占住 worker �
   canonical_key_wins_over_alias_and_alias_covers_empty_canonical}`。
   > 修前只读规范键 ⇒ 用户写 `adapterBinaries.rust` 被**静默忽略**、回落默认探测
   > （"我配了路径却没生效"）。修法是在**读取入口归一**，而不是在消费侧加别名回落 ——
-  > 后者才是 AGENTS.md 红线 12 禁止的"别名匹配掩盖"。
+  > 后者才是红线 12 禁止的"别名匹配掩盖"（全文见 `src/AGENTS.md`）。
 - `set_breakpoints` 的回传是**适配器视图**（只含 `effective` 行）+ 身份改写回规范身份，
   **不是内存全量**。前端 `mergeBreakpointEntries(next, returned)` 用本地 `next`（全量、
   含 `enabled` 位）与回传**合并**，因此 disabled 条目在客户端保留、`verified` 以后端为准。

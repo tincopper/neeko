@@ -229,6 +229,11 @@ pub const fn build_edit_submenu(
 **边界**（豁免场景必须同时遵守「import 跟随 cfg」纪律：平台专属 import 必须与其使用点同 cfg 门控，禁止未门控的平台专属 import）：
 - 平台专属独立模块（如 `job_object`、`wsl`）——整个模块本身就是平台隔离，等效于 `platform/<theme>/`，无需二次抽取；
 - 简单 shell 选择策略——实现仅一行分支且无平台专属 import 时，允许 `#[cfg]` 分支；
+- **命令执行 facade 的基础设施豁免（仅这两类，且文件内必须注释说明原因）**：
+  - `platform/host_path/*` 的 PATH 引导探测——运行在 `exec_env::init_host_user_path` 之前，不能依赖尚未初始化完成的 `core::exec`；
+  - `platform/process_spawn/*` 的 OS 进程原语（进程组 / 树杀 `kill_process_tree`）——同步、fire-and-forget，位于 async executor 之下，走 facade 会形成循环依赖。
+
+  除此之外业务代码一律走统一命令接口（见 `command-guidelines.md`）。
 - 其余一律抽入 `platform/<theme>/`。**历史豁免撤销**：macOS 菜单（`app_menu.rs`）原豁免理由「与 Tauri Menu API 深度绑定」不成立——Tauri Menu API 全平台可用，仅 `PredefinedMenuItem` 角色语义为 macOS 专属，恰是平台适配器最佳适用场景，已于 2026-08 迁入 `platform/menu/` 作为正例。
 
 ---
@@ -302,6 +307,14 @@ use terminal::TerminalManager;
 // 例外 —— state 类型使用 glob 导入
 use state::*;
 ```
+
+### 5. `if let` 嵌套超过 3 层
+
+连续 3 层及以上 `if let` / `if let ... else if` 必须拍平为单个 `match`——嵌套链的分支归属靠缩进记忆，`match` 让穷尽性在编译期可见。
+
+反向同样成立：只有 1-2 个 happy path 的解构优先用 `if let`，**禁止**为凑格式写出带 `_ => {}` 占位的 `match`——空臂会把未来的新 variant 静默吞掉，正好抵消穷尽性检查。
+
+（原 AGENTS.md 审查红线 7，2026-09-25 迁入本文件；规则索引仍保留在 `src-tauri/AGENTS.md`。）
 
 ---
 

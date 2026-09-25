@@ -50,7 +50,7 @@ pub async fn check_adapter(
 /// 用户显式指定的 adapter 二进制（如自定义 codelldb / lldb-dap / dlv），
 /// 存在则覆盖默认探测。配置缺省 / 空串 / 读取失败 → `None`（走默认探测）。
 ///
-/// ## 键空间在**读取入口**归一（AGENTS.md 红线 12）
+/// ## 键空间在**读取入口**归一（`src/AGENTS.md` 红线 12）
 ///
 /// 规范键是 [`AdapterKind::as_str`]（`go` / `lldb` / `java`），但同时接受 launch.json
 /// 的 `type` 别名（`delve` / `rust` / `codelldb` / `junit`）—— 归一用的是与编排后端
