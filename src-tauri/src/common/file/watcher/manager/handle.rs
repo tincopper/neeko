@@ -18,7 +18,10 @@ pub(in crate::common::file::watcher) struct WatcherHandle {
     pub(super) _maintenance_tx: Option<mpsc::Sender<super::super::registration::WatchMaintenance>>,
     // scheduler / worker / heartbeat：仅 git 项目持有，非 git 项目为 None
     pub(super) _scheduler: Option<super::super::debounce::ThrottleScheduler>,
-    pub(super) _worker: Option<GitStatusWorker>,
+    /// status worker 句柄：`poke_status_worker_and_wait` 经此请求即时重算并等待
+    /// 落地（写操作后必须戳一下，否则 `snapshot()` 会停留在写前状态）。
+    /// 字段自身仍需在 drop 时保持存活。
+    pub(super) worker: Option<GitStatusWorker>,
     // .git 元数据监听器（HEAD 分支切换 + index 暂存/取消暂存 + worktree HEAD），
     pub(super) _head_watcher: Option<GitMetaWatcherHandle>,
     // file-changed debounce sender（drop 时关闭 channel，结束 debounce 线程）

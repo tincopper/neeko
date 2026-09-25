@@ -49,17 +49,12 @@ describe('createProjectCommands (Local)', () => {
     });
   });
 
-  it('discardFile should call discard_file', async () => {
-    await commands.discardFile('src/foo.ts');
-    expect(mockInvoke).toHaveBeenCalledWith('discard_file', {
+  it('discardFiles should call discard_files', async () => {
+    await commands.discardFiles(['src/foo.ts']);
+    expect(mockInvoke).toHaveBeenCalledWith('discard_files', {
       ...wtPayload(),
-      filePath: 'src/foo.ts',
+      filePaths: ['src/foo.ts'],
     });
-  });
-
-  it('discardAll should call discard_all', async () => {
-    await commands.discardAll();
-    expect(mockInvoke).toHaveBeenCalledWith('discard_all', wtPayload());
   });
 
   it('commitFiles should call commit_files', async () => {
@@ -296,10 +291,11 @@ describe('createProjectCommands with worktreePath', () => {
     });
   });
 
-  it('discardAll should pass worktreePath', async () => {
-    await commands.discardAll();
-    expect(mockInvoke).toHaveBeenCalledWith('discard_all', {
+  it('discardFiles should pass worktreePath', async () => {
+    await commands.discardFiles(['src/foo.ts']);
+    expect(mockInvoke).toHaveBeenCalledWith('discard_files', {
       projectId,
+      filePaths: ['src/foo.ts'],
       worktreePath,
     });
   });

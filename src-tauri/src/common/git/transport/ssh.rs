@@ -33,6 +33,7 @@ pub(crate) async fn run_git_remote(
             stderr: e.to_string(),
             stdout: String::new(),
             command: cmd,
+            exit_code: -1,
         }
         .into()
     })
@@ -71,6 +72,7 @@ pub(crate) async fn exec_git_with_stdin_remote(
             stderr,
             stdout,
             command: command.to_string(),
+            exit_code: output.exit_code,
         }
         .into());
     }

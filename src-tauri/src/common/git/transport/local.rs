@@ -73,6 +73,7 @@ pub(crate) async fn run_git_local(
             stderr,
             stdout,
             command: format!("git {}", full_args.join(" ")),
+            exit_code: output.exit_code,
         }
         .into());
     }
@@ -139,6 +140,7 @@ pub(crate) async fn run_git_with_stdin_local(
             stderr,
             stdout: stdout_str,
             command: command.to_string(),
+            exit_code: output.exit_code,
         }
         .into());
     }

@@ -5,6 +5,7 @@ import type { ProjectCommands } from '@/shared/types/activeProject';
 import { withTimeout } from '@/shared/utils/withTimeout';
 
 import { formatGitHost } from '../formatGitHost';
+import type { DiscardIntent } from '../utils/discardIntent';
 import { isConflictedEntry } from '../utils/gitStatusGroups';
 
 /** 本地 git 操作超时（discard/stage/commit）。 */
@@ -48,14 +49,21 @@ interface UseGitActionsParams {
   selectedFiles: ReadonlySet<string>;
   /** selectedFiles 变更（commit 成功后清空选择）。 */
   onSelectedFilesClear: () => void;
+  /**
+   * 只移除指定路径的选中态（discard 成功后）。
+   *
+   * 丢弃是**局部**操作：丢掉 2 个不应连带清掉另外 3 个的勾选
+   * （`onSelectedFilesClear` 是 commit 那种「整批已消费」语义，不适用于此）。
+   */
+  onSelectedFilesRemove: (paths: readonly string[]) => void;
   /** 当前文件变更快照（含 porcelain XY；提交前冲突校验用，见 hasConflictedSelected）。 */
   changedFiles: FileChange[];
 }
 
 /**
- * GitCommitPanel 的 git 操作域：fetch/pull/push/commit/stage/discard 系列
- * 命令编排（含超时包装、凭据对话状态、AuthRequired 分流、toast 反馈）。
- * 纯命令编排层——不含 UI 状态（选中文件、对话框 JSX 由宿主持有）。
+ * GitCommitPanel 的 git 操作域：fetch/pull/push/commit/stage/discard/checkout
+ * 系列、untracked 目录展开的命令编排（含超时包装、凭据对话状态、AuthRequired
+ * 分流、toast 反馈）。纯命令编排层——不含 UI 状态（选中文件、对话框 JSX 由宿主持有）。
  */
 export function useGitActions({
   commands,
@@ -64,6 +72,7 @@ export function useGitActions({
   onCommitMessageClear,
   selectedFiles,
   onSelectedFilesClear,
+  onSelectedFilesRemove,
   changedFiles,
 }: UseGitActionsParams) {
   const [loading, setLoading] = useState(false);
@@ -165,18 +174,32 @@ export function useGitActions({
     [commands, runNetworkOp],
   );
 
-  const handleDiscardFile = useCallback(
-    (path: string) => {
-      setLoading(true);
-      withTimeout(commands.discardFile(path), TIMEOUT_LOCAL_MS, 'discard')
-        .then(async () => {
-          await onRefreshGit();
-          onShowToast?.('Discarded changes', 'info');
-        })
-        .catch((e: unknown) => onShowToast?.(String(e), 'error'))
-        .finally(() => setLoading(false));
+  const handleCheckoutBranch = useCallback(
+    async (branchName: string) => {
+      try {
+        await commands.checkoutBranch(branchName);
+        await onRefreshGit();
+      } catch (e: unknown) {
+        onShowToast?.(String(e), 'error');
+      }
     },
     [commands, onRefreshGit, onShowToast],
+  );
+
+  // 展开折叠的 untracked 目录条目：按需拉取目录下的 untracked 文件列表。
+  // 失败必须**抛出**而不是返回 `[]`：把失败伪装成「空目录」会让展开 hook 把空列表
+  // 当作有效结果（目录里的文件全部消失），且无从重试。抛出后由 hook 记为失败并
+  // 保持目录占位，下一次失效信号（刷新/目录内容变化）再重试。
+  const handleExpandUntrackedDir = useCallback(
+    async (dirPath: string) => {
+      try {
+        return await commands.listUntrackedFiles(dirPath);
+      } catch (e: unknown) {
+        onShowToast?.(String(e), 'error');
+        throw e;
+      }
+    },
+    [commands, onShowToast],
   );
 
   const handleStageFile = useCallback(
@@ -195,31 +218,46 @@ export function useGitActions({
     [commands, onRefreshGit, onShowToast],
   );
 
-  /** Discard 确认弹窗的实际执行（file / all 两分支），由宿主的确认流调用。 */
+  /**
+   * Discard 确认弹窗的实际执行，由宿主的确认流调用。
+   *
+   * 只消费 `intent.paths`：执行范围严格等于用户确认过的那份集合，后端不再
+   * 自行扩大（后端同样按传入路径分类分派，不整仓扫描）。
+   */
   const handleConfirmDiscard = useCallback(
-    async (confirm: { type: 'file'; path: string } | { type: 'all'; count: number }) => {
+    async (intent: DiscardIntent) => {
+      if (intent.paths.length === 0) return;
       setLoading(true);
+      let failure: unknown = null;
       try {
-        if (confirm.type === 'file') {
-          await withTimeout(commands.discardFile(confirm.path), TIMEOUT_LOCAL_MS, 'discard');
-        } else {
-          await withTimeout(commands.discardAll(), TIMEOUT_LOCAL_MS, 'discard-all');
+        try {
+          await withTimeout(commands.discardFiles(intent.paths), TIMEOUT_LOCAL_MS, 'discard');
+          // 先摘掉已丢弃路径的勾选，再刷新：中间态不会出现「勾选项已不存在」。
+          onSelectedFilesRemove(intent.paths);
+        } catch (e: unknown) {
+          failure = e;
         }
-        await onRefreshGit();
-        if (confirm.type === 'all') {
-          onSelectedFilesClear();
+        // 刷新**无条件执行**（成败都要）。discard 由多条 git 子命令串联而成、
+        // 非原子：任一条中途失败都可能已部分生效（如 clean 跳过含嵌套仓库的目录、
+        // checkout 对某一 pathspec 失败）。此时列表若留在旧快照上，用户无法判断
+        // 实际发生了什么 —— 必须回到仓库真实状态。
+        try {
+          await onRefreshGit();
+        } catch (e: unknown) {
+          failure ??= e;
         }
-        onShowToast?.(
-          confirm.type === 'all' ? 'Discarded all changes' : 'Discarded changes',
-          'info',
-        );
-      } catch (e: unknown) {
-        onShowToast?.(String(e), 'error');
       } finally {
         setLoading(false);
       }
+
+      if (failure === null) {
+        const count = intent.paths.length;
+        onShowToast?.(`Discarded ${count} file${count === 1 ? '' : 's'}`, 'info');
+      } else {
+        onShowToast?.(String(failure), 'error');
+      }
     },
-    [commands, onRefreshGit, onShowToast, onSelectedFilesClear],
+    [commands, onRefreshGit, onShowToast, onSelectedFilesRemove],
   );
 
   /** Stage 全部 untracked 文件。 */
@@ -340,13 +378,14 @@ export function useGitActions({
     setCredentialDialog,
     handleCredentialSubmit,
     handlePushOutcome,
-    handleDiscardFile,
     handleConfirmDiscard,
     handleStageAllUntracked,
     handleFetch,
     handlePull,
     handlePush,
     handleStageFile,
+    handleCheckoutBranch,
+    handleExpandUntrackedDir,
     handleCommit,
     handleCommitAndPush,
   };

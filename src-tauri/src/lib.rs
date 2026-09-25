@@ -192,8 +192,7 @@ macro_rules! neeko_invoke_handler {
             $crate::git::commands::unstage_files,
             $crate::git::commands::stage_all,
             $crate::git::commands::unstage_all,
-            $crate::git::commands::discard_file,
-            $crate::git::commands::discard_all,
+            $crate::git::commands::discard_files,
             // remote
             $crate::git::commands::fetch,
             $crate::git::commands::pull,

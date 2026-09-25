@@ -206,3 +206,42 @@ fn unwatch_stops_git_worker_snapshots() {
         "unwatch 后不得再驱动 git worker（scheduler/worker 线程必须退出）"
     );
 }
+
+/// Nit 4：git 项目写入后 `poke_status_worker_and_wait` 必须确认重算落地（true），
+/// 且返回时快照注册表已拿到**写后**数据 —— 命令层随后的读接口不再有首刷旧值窗口。
+#[test]
+fn poke_status_worker_and_wait_confirms_fresh_snapshot_after_write() {
+    let tmp = tempfile::tempdir().unwrap();
+    let root = tmp.path().to_path_buf();
+    // git 项目（含 .git）：watch 会启动 status worker
+    git2::Repository::init(&root).expect("init git repo");
+    let sink = CollectingSink::new();
+    let manager = WatcherManager::new();
+
+    manager.watch("p1".to_string(), root.clone(), sink.clone());
+
+    std::fs::write(root.join("tracked.txt"), "x\n").unwrap();
+    assert!(
+        manager.poke_status_worker_and_wait("p1", FIRST_EVENT_TIMEOUT),
+        "git 项目的写后 poke 必须在时限内确认重算落地"
+    );
+    let snap = manager.snapshot("p1").expect("重算落地后快照必须存在");
+    assert_eq!(
+        snap.entries.len(),
+        1,
+        "快照必须反映写后工作区（首刷旧值窗口已消除）"
+    );
+}
+
+/// 非 git 项目没有 status worker → poke 直接返回 false（空操作语义不变）。
+#[test]
+fn poke_status_worker_and_wait_is_noop_for_non_git_project() {
+    let tmp = tempfile::tempdir().unwrap();
+    let sink = CollectingSink::new();
+    let manager = WatcherManager::new();
+    manager.watch("p1".to_string(), tmp.path().to_path_buf(), sink.clone());
+    assert!(
+        !manager.poke_status_worker_and_wait("p1", Duration::from_secs(1)),
+        "非 git 项目无 worker，必须返回 false"
+    );
+}

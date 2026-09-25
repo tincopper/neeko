@@ -58,11 +58,8 @@ export function createProjectCommands(
     unstageFiles(filePaths: string[]): Promise<void> {
       return invoke<void>('unstage_files', { projectId, filePaths, worktreePath });
     },
-    discardFile(filePath: string): Promise<void> {
-      return invoke<void>('discard_file', { projectId, filePath, worktreePath });
-    },
-    discardAll(): Promise<void> {
-      return invoke<void>('discard_all', { projectId, worktreePath });
+    discardFiles(filePaths: string[]): Promise<void> {
+      return invoke<void>('discard_files', { projectId, filePaths, worktreePath });
     },
 
     commitFiles(filePaths: string[], message: string): Promise<CommitResult> {

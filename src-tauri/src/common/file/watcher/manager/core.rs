@@ -82,6 +82,38 @@ impl WatcherManager {
             .clone()
     }
 
+    /// 请求一次 git status 重算并**有界等待其落地**（返回时快照已反映本调用前
+    /// 的全部写入）。
+    ///
+    /// **为什么必须有这个入口**：`snapshot()` 是 G2 D2 读接口（
+    /// `get_worktree_changed_files`）的唯一数据源，而 worker 只在「被信号触发」时
+    /// 重算。任何不走 watcher 的写操作（discard / stage / commit 由 IPC 直接跑
+    /// git 命令改工作区）都不会自动 reflex 到 worker —— 快照于是停留在写前的状态，
+    /// 读接口把它当成权威数据返回给前端，覆盖掉我们刚刚拿到的真实结果。
+    /// 这正是「discard 后列表要手动刷新才更新」的根因。
+    ///
+    /// 等待而非仅投递信号的原因：信号是异步的，写操作返回后前端立即刷新读到的
+    /// 仍是写前快照（首刷旧值窗口）；等待重算落地后，读接口天然拿到写后数据
+    /// （超时场景由快照事件推送最终收敛）。
+    ///
+    /// 契约：调用方必须在 **git 写操作成功之后** 调用（worker 重算必须晚于写入）。
+    ///
+    /// **阻塞方法**：Condvar 等待原语 —— async 上下文必须经 `run_blocking` /
+    /// `spawn_blocking` 调用（见 `git/commands/index.rs` 的 `wait_status_fresh`）。
+    /// 非 git 项目 / 尚未 watch / 超时 → `false`。
+    #[must_use]
+    pub fn poke_status_worker_and_wait(&self, project_id: &str, timeout: Duration) -> bool {
+        let Some(handle) = self
+            .watchers
+            .lock()
+            .ok()
+            .and_then(|m| m.get(project_id).and_then(|h| h.worker.as_ref().cloned()))
+        else {
+            return false;
+        };
+        handle.check_and_wait(timeout)
+    }
+
     /// 最新权威 status 快照（G2 D2 读接口数据源）。
     /// `None` = watcher 尚未产出（非 git 项目 / 尚未 watch / 启动初期首快照未到）。
     #[must_use]
@@ -400,7 +432,7 @@ impl WatcherManager {
                     _registration: registration,
                     _maintenance_tx: Some(maintenance_tx),
                     _scheduler: scheduler,
-                    _worker: worker,
+                    worker,
                     _head_watcher: head_watcher,
                     _debounce: debounce,
                     _tree_debounce: tree_debounce,

@@ -103,7 +103,7 @@ pub fn classify_stderr(stderr: &str) -> ErrorKind {
 /// Git execution error with classified kind and raw output.
 ///
 /// `run_git_opts` returns this wrapped in `anyhow::Error` on non-zero exit.
-/// Callers can downcast to inspect `kind` and the original stderr.
+/// Callers can downcast to inspect `kind`, the original stderr, and the exit code.
 #[derive(Debug)]
 pub struct GitExecError {
     /// Classified error kind.
@@ -114,6 +114,8 @@ pub struct GitExecError {
     pub stdout: String,
     /// The git command that was executed (for display).
     pub command: String,
+    /// Process exit code. `-1` when the command never ran (spawn failure).
+    pub exit_code: i32,
 }
 
 impl std::fmt::Display for GitExecError {

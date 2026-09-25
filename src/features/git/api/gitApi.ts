@@ -45,16 +45,12 @@ export function unstageAll(projectId: string, worktreePath?: string | null): Pro
   return invoke<void>('unstage_all', { projectId, worktreePath });
 }
 
-export function discardFile(
+export function discardFiles(
   projectId: string,
-  filePath: string,
+  filePaths: string[],
   worktreePath?: string | null,
 ): Promise<void> {
-  return invoke<void>('discard_file', { projectId, filePath, worktreePath });
-}
-
-export function discardAll(projectId: string, worktreePath?: string | null): Promise<void> {
-  return invoke<void>('discard_all', { projectId, worktreePath });
+  return invoke<void>('discard_files', { projectId, filePaths, worktreePath });
 }
 
 // ─── Remote operations ───────────────────────────────────────────────────────

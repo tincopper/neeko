@@ -113,8 +113,13 @@ export interface ProjectCommands {
   listUntrackedFiles(dirPath: string): Promise<string[]>;
   stageFiles(filePaths: string[]): Promise<void>;
   unstageFiles(filePaths: string[]): Promise<void>;
-  discardFile(filePath: string): Promise<void>;
-  discardAll(): Promise<void>;
+  /**
+   * 丢弃一批文件的变更（唯一入口）。
+   *
+   * 路径集合由调用方决定（单行 / 选中 / 整组）；每条路径是删除（未跟踪）
+   * 还是恢复（已跟踪）由仓库状态决定，不由前端声明 —— 保证确认文案与执行范围一致。
+   */
+  discardFiles(filePaths: string[]): Promise<void>;
   commitFiles(filePaths: string[], message: string): Promise<CommitResult>;
   fetch(): Promise<PushOutcome>;
   pull(): Promise<PushOutcome>;

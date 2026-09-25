@@ -5,16 +5,49 @@ import { Undo2, ListPlus } from '@/shared/components/icons';
 import type { FileChange } from '@/shared/types';
 
 import { useUntrackedDirExpansion } from '../hooks/useUntrackedDirExpansion';
+import type { DiscardIntent } from '../utils/discardIntent';
+import {
+  buildFileDiscardIntent,
+  buildGroupDiscardIntent,
+  discardTargetPhrase,
+} from '../utils/discardIntent';
 import { buildGitStatusGroups } from '../utils/gitStatusGroups';
 
 import Section from './ChangesSection';
+
+/**
+ * 分组头部的 discard 按钮。
+ *
+ * 两个分组共用同一份实现（文案由 `discardTargetPhrase` 统一生成，避免 tooltip
+ * 与确认弹窗各写一份后漂移）。按钮挂在组头 = 作用域即该组：选中优先于全组，
+ * 且 tooltip 在点击前就把范围讲清楚（第一道确认），弹窗是第二道。
+ */
+interface GroupDiscardButtonProps {
+  intent: DiscardIntent;
+  disabled: boolean;
+  onClick: () => void;
+}
+
+const GroupDiscardButton: React.FC<GroupDiscardButtonProps> = ({ intent, disabled, onClick }) => (
+  <button
+    className="p-0.5 rounded text-text-muted hover:text-accent-red hover:bg-bg-hover transition-colors duration-100"
+    title={`Discard ${discardTargetPhrase(intent)}`}
+    onClick={(e) => {
+      e.stopPropagation();
+      onClick();
+    }}
+    disabled={disabled}
+  >
+    <Undo2 size={14} />
+  </button>
+);
 
 interface ChangesListProps {
   files: FileChange[];
   selectedFiles: Set<string>;
   onToggleFile: (path: string) => void;
-  onDiscardFile: (path: string) => void;
-  onDiscardAll?: () => void;
+  /** 统一的 discard 入口：单行 / 选中 / 整组都经由此回调，由宿主弹确认。 */
+  onDiscard: (intent: DiscardIntent) => void;
   onStageFile?: (path: string) => void;
   onStageAllUntracked?: () => void;
   onFileSelect?: (path: string) => void;
@@ -44,8 +77,7 @@ const ChangesList: React.FC<ChangesListProps> = ({
   files,
   selectedFiles,
   onToggleFile,
-  onDiscardFile,
-  onDiscardAll,
+  onDiscard,
   onStageFile,
   onStageAllUntracked,
   onFileSelect,
@@ -76,6 +108,27 @@ const ChangesList: React.FC<ChangesListProps> = ({
     del: list.reduce((s, f) => s + f.deletions, 0),
   });
   const trackedStats = groupStats(filteredTracked);
+
+  // discard 意图：纯派生（分组 × 选中），无独立状态。
+  // 「选中优先于全组」与 scope 反推都在 buildGroupDiscardIntent 内，此处只绑定分组。
+  const trackedDiscardIntent = useMemo(
+    () => buildGroupDiscardIntent(filteredTracked, selectedFiles, 'tracked'),
+    [filteredTracked, selectedFiles],
+  );
+  const unversionedDiscardIntent = useMemo(
+    () => buildGroupDiscardIntent(flattenedUntracked, selectedFiles, 'unversioned'),
+    [flattenedUntracked, selectedFiles],
+  );
+
+  // 行内按钮：分组已知 → 类别在绑定时定死，引用稳定（Section 是 memo 组件）。
+  const discardTrackedRow = useCallback(
+    (path: string) => onDiscard(buildFileDiscardIntent(path, 'tracked')),
+    [onDiscard],
+  );
+  const discardUnversionedRow = useCallback(
+    (path: string) => onDiscard(buildFileDiscardIntent(path, 'unversioned')),
+    [onDiscard],
+  );
 
   const isAllSelected = useCallback(
     (fileList: FileChange[]) =>
@@ -130,7 +183,7 @@ const ChangesList: React.FC<ChangesListProps> = ({
           onSelectAll={() => handleSelectGroup(filteredTracked)}
           onToggleFile={onToggleFile}
           onFileSelect={onFileSelect}
-          onDiscardFile={onDiscardFile}
+          onDiscardFile={discardTrackedRow}
           onOpenFile={onOpenFile}
           loading={loading}
           filter={
@@ -152,18 +205,12 @@ const ChangesList: React.FC<ChangesListProps> = ({
             </div>
           }
           headerAction={
-            onDiscardAll && (
-              <button
-                className="p-0.5 rounded text-text-muted hover:text-accent-red hover:bg-bg-hover transition-colors duration-100"
-                title="Discard all changes"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onDiscardAll();
-                }}
+            trackedDiscardIntent && (
+              <GroupDiscardButton
+                intent={trackedDiscardIntent}
                 disabled={loading}
-              >
-                <Undo2 size={14} />
-              </button>
+                onClick={() => onDiscard(trackedDiscardIntent)}
+              />
             )
           }
         />
@@ -182,24 +229,33 @@ const ChangesList: React.FC<ChangesListProps> = ({
           onSelectAll={() => handleSelectGroup(flattenedUntracked)}
           onToggleFile={onToggleFile}
           onFileSelect={onFileSelect}
-          onDiscardFile={onDiscardFile}
+          onDiscardFile={discardUnversionedRow}
           onOpenFile={onOpenFile}
           onStageFile={onStageFile}
           loading={loading}
           headerAction={
-            onStageAllUntracked && (
-              <button
-                className="p-0.5 rounded text-text-muted hover:text-accent-green hover:bg-bg-hover transition-colors duration-100"
-                title="Stage all unversioned files"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onStageAllUntracked();
-                }}
-                disabled={loading}
-              >
-                <ListPlus size={14} />
-              </button>
-            )
+            <span className="flex items-center gap-1">
+              {unversionedDiscardIntent && (
+                <GroupDiscardButton
+                  intent={unversionedDiscardIntent}
+                  disabled={loading}
+                  onClick={() => onDiscard(unversionedDiscardIntent)}
+                />
+              )}
+              {onStageAllUntracked && (
+                <button
+                  className="p-0.5 rounded text-text-muted hover:text-accent-green hover:bg-bg-hover transition-colors duration-100"
+                  title="Stage all unversioned files"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onStageAllUntracked();
+                  }}
+                  disabled={loading}
+                >
+                  <ListPlus size={14} />
+                </button>
+              )}
+            </span>
           }
         />
       )}

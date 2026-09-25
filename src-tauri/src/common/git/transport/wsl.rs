@@ -30,6 +30,7 @@ pub(crate) async fn run_git_wsl(
             stderr: e.to_string(),
             stdout: String::new(),
             command: cmd,
+            exit_code: -1,
         }
         .into()
     })

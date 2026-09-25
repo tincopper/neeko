@@ -8,21 +8,24 @@ import type {
   ProjectCommands,
   ProjectCapabilities,
 } from '@/shared/types/activeProject';
-import { Button } from '@/ui/Button';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/ui/Dialog';
 
 import {
   useAiCommitMessage,
   useCommitPanelDiffStats,
   useDividerDrag,
 } from '../hooks/useCommitPanelAux';
+import { useDiscardConfirm } from '../hooks/useDiscardConfirm';
+import { useFileSelection } from '../hooks/useFileSelection';
 import { useGitActions } from '../hooks/useGitActions';
+import { useGitDialogRequest } from '../hooks/useGitDialogRequest';
 
 import BranchInfo from './BranchInfo';
 import ChangesList from './ChangesList';
 import CommitForm from './CommitForm';
+import CommitPanelDivider from './CommitPanelDivider';
+import DiscardConfirmDialog from './DiscardConfirmDialog';
 import GitCredentialDialog from './GitCredentialDialog';
-import GitDialog, { type DialogState } from './GitDialog';
+import GitDialog from './GitDialog';
 
 interface GitCommitPanelProps {
   project: ProjectView;
@@ -45,11 +48,6 @@ const GitCommitPanel: React.FC<GitCommitPanelProps> = ({
   onOpenDialog,
   aheadBehind,
 }) => {
-  const [selectedFiles, setSelectedFiles] = useState<Set<string>>(new Set());
-  const [dialog, setDialog] = useState<DialogState | null>(null);
-  const [discardConfirm, setDiscardConfirm] = useState<
-    { type: 'file'; path: string } | { type: 'all'; count: number } | null
-  >(null);
   const [commitMessage, setCommitMessage] = useState('');
 
   // G4（P3）：快照截断状态（versioned snapshot 的 truncated 位；store 响应式）
@@ -60,7 +58,15 @@ const GitCommitPanel: React.FC<GitCommitPanelProps> = ({
     [project.gitInfo?.changed_files],
   );
 
-  // ── Git 操作域（fetch/pull/push/commit/stage/凭据对话），见 useGitActions ──
+  const noCommits =
+    project.gitInfo !== null &&
+    project.gitInfo.branches.length === 0 &&
+    !project.gitInfo.current_branch;
+
+  // ── 选中域：勾选 / discard 局部摘除 / commit 整批清空，见 useFileSelection ──
+  const { selectedFiles, toggleFile, removeSelected, clearSelected } = useFileSelection();
+
+  // ── Git 操作域（fetch/pull/push/commit/stage/discard/checkout），见 useGitActions ──
   const {
     loading,
     setLoading,
@@ -73,6 +79,8 @@ const GitCommitPanel: React.FC<GitCommitPanelProps> = ({
     handleStageFile,
     handleStageAllUntracked,
     handleConfirmDiscard,
+    handleCheckoutBranch,
+    handleExpandUntrackedDir,
     handleCommit,
     handleCommitAndPush,
   } = useGitActions({
@@ -81,7 +89,8 @@ const GitCommitPanel: React.FC<GitCommitPanelProps> = ({
     onShowToast,
     onCommitMessageClear: () => setCommitMessage(''),
     selectedFiles,
-    onSelectedFilesClear: () => setSelectedFiles(new Set()),
+    onSelectedFilesClear: clearSelected,
+    onSelectedFilesRemove: removeSelected,
     changedFiles,
   });
 
@@ -102,92 +111,48 @@ const GitCommitPanel: React.FC<GitCommitPanelProps> = ({
     onGenerated: setCommitMessage,
   });
 
-  const noCommits =
-    project.gitInfo !== null &&
-    project.gitInfo.branches.length === 0 &&
-    !project.gitInfo.current_branch;
+  // ── 弹窗域：丢弃二次确认 + 分支/worktree 对话，状态与语义见各自 hook ──
+  const discard = useDiscardConfirm(handleConfirmDiscard);
+  const {
+    dialog,
+    open: openDialog,
+    close: closeDialog,
+  } = useGitDialogRequest({
+    project,
+    onOpenDialog,
+  });
 
-  const toggleFile = useCallback((path: string) => {
-    setSelectedFiles((prev) => {
-      const next = new Set(prev);
-      if (next.has(path)) {
-        next.delete(path);
-      } else {
-        next.add(path);
-      }
-      return next;
-    });
-  }, []);
+  // ── 以下回调全部稳定化：BranchInfo / ChangesList / CommitForm 均为 React.memo，
+  //    内联箭头会在每次渲染击穿 memo ──
+  const handleNewBranch = useCallback(() => openDialog('new-branch'), [openDialog]);
 
-  const handleDiscardFile = useCallback((path: string) => {
-    setDiscardConfirm({ type: 'file', path });
-  }, []);
+  const handleNewWorktree = useCallback(() => openDialog('new-worktree'), [openDialog]);
 
-  const handleDiscardAllRequest = useCallback(() => {
-    setDiscardConfirm({ type: 'all', count: changedFiles.length });
-  }, [changedFiles.length]);
-
-  const handleCancelDiscard = useCallback(() => {
-    setDiscardConfirm(null);
-  }, []);
-
-  const handleNewBranch = useCallback(() => {
-    if (onOpenDialog) {
-      onOpenDialog('new-branch', {} as React.MouseEvent);
-    } else {
-      setDialog({
-        type: 'new-branch',
-        projectId: project.id,
-        branches: project.gitInfo?.branches ?? [],
-        projectPath: project.path,
-      });
+  const handleRefreshBranchInfo = useCallback(async () => {
+    setLoading(true);
+    try {
+      await onRefreshGit();
+    } finally {
+      setLoading(false);
     }
-  }, [onOpenDialog, project]);
+  }, [setLoading, onRefreshGit]);
 
-  const handleNewWorktree = useCallback(() => {
-    if (onOpenDialog) {
-      onOpenDialog('new-worktree', {} as React.MouseEvent);
-    } else {
-      setDialog({
-        type: 'new-worktree',
-        projectId: project.id,
-        branches: project.gitInfo?.branches ?? [],
-        projectPath: project.path,
-      });
-    }
-  }, [onOpenDialog, project]);
+  const handleStageAllUntrackedClick = useCallback(() => {
+    void handleStageAllUntracked(
+      changedFiles.filter((f) => f.status === 'Untracked').map((f) => f.path),
+    );
+  }, [handleStageAllUntracked, changedFiles]);
 
-  const handleCheckoutBranch = useCallback(
-    async (branchName: string) => {
-      try {
-        await commands.checkoutBranch(branchName);
-        await onRefreshGit();
-      } catch (e: unknown) {
-        onShowToast?.(String(e), 'error');
-      }
-    },
-    [commands, onRefreshGit, onShowToast],
+  const handleFileSelect = useCallback((path: string) => onSelectFile?.(path), [onSelectFile]);
+
+  const handleOpenFile = useCallback(
+    (path: string) => void openProjectFile({ projectId: project.id, filePath: path }),
+    [project.id],
   );
 
-  // 展开折叠的 untracked 目录条目：按需拉取目录下的 untracked 文件列表。
-  // 失败必须**抛出**而不是返回 `[]`：把失败伪装成「空目录」会让展开 hook 把空列表
-  // 当作有效结果（目录里的文件全部消失），且无从重试。抛出后由 hook 记为失败并
-  // 保持目录占位，下一次失效信号（刷新/目录内容变化）再重试。
-  const handleExpandUntrackedDir = useCallback(
-    async (dirPath: string) => {
-      try {
-        return await commands.listUntrackedFiles(dirPath);
-      } catch (e: unknown) {
-        onShowToast?.(String(e), 'error');
-        throw e;
-      }
-    },
-    [commands, onShowToast],
-  );
-
-  const handleDialogClose = useCallback(() => {
-    setDialog(null);
-  }, []);
+  const handleCredentialCancel = useCallback(() => {
+    setCredentialDialog({ open: false, host: '', usernameHint: null, setUpstream: false });
+  }, [setCredentialDialog]);
 
   // GitDialog onRefreshGit shim: local dialogs pass projectId, but we use onRefreshGit() directly
   const handleDialogRefreshGit = useCallback(() => {
@@ -197,20 +162,14 @@ const GitCommitPanel: React.FC<GitCommitPanelProps> = ({
   return (
     <div className="flex flex-col h-full gap-0.5 p-1.5">
       {dialog && (
-        <GitDialog
-          dialog={dialog}
-          onClose={handleDialogClose}
-          onRefreshGit={handleDialogRefreshGit}
-        />
+        <GitDialog dialog={dialog} onClose={closeDialog} onRefreshGit={handleDialogRefreshGit} />
       )}
       <GitCredentialDialog
         open={credentialDialog.open}
         host={credentialDialog.host}
         usernameHint={credentialDialog.usernameHint}
         onSubmit={handleCredentialSubmit}
-        onCancel={() =>
-          setCredentialDialog({ open: false, host: '', usernameHint: null, setUpstream: false })
-        }
+        onCancel={handleCredentialCancel}
       />
       <BranchInfo
         gitInfo={project.gitInfo ?? null}
@@ -220,49 +179,17 @@ const GitCommitPanel: React.FC<GitCommitPanelProps> = ({
         onFetch={handleFetch}
         onPull={handlePull}
         onPush={handlePush}
-        onRefresh={async () => {
-          setLoading(true);
-          try {
-            await onRefreshGit();
-          } finally {
-            setLoading(false);
-          }
-        }}
+        onRefresh={handleRefreshBranchInfo}
         onNewBranch={handleNewBranch}
         onNewWorktree={handleNewWorktree}
         onCheckoutBranch={handleCheckoutBranch}
       />
 
-      <Dialog open={!!discardConfirm} onOpenChange={(open) => !open && setDiscardConfirm(null)}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>
-              {discardConfirm?.type === 'all' ? 'Discard all changes?' : 'Discard changes?'}
-            </DialogTitle>
-          </DialogHeader>
-          <p className="text-[13px] text-text-secondary">
-            {discardConfirm?.type === 'all'
-              ? `This will discard all ${discardConfirm.count} changes and delete untracked files. This action cannot be undone.`
-              : `This will discard changes in '${discardConfirm?.path}' and cannot be undone.`}
-          </p>
-          <DialogFooter>
-            <Button variant="outline" onClick={handleCancelDiscard}>
-              Cancel
-            </Button>
-            <Button
-              variant="destructive"
-              onClick={() => {
-                const pending = discardConfirm;
-                if (!pending) return;
-                setDiscardConfirm(null);
-                void handleConfirmDiscard(pending);
-              }}
-            >
-              {discardConfirm?.type === 'all' ? 'Discard All' : 'Discard'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <DiscardConfirmDialog
+        intent={discard.pending}
+        onCancel={discard.cancel}
+        onConfirm={discard.confirm}
+      />
 
       <div className="flex-1 min-h-0 flex flex-col overflow-hidden rounded-md">
         {noCommits ? (
@@ -277,16 +204,11 @@ const GitCommitPanel: React.FC<GitCommitPanelProps> = ({
             files={changedFilesWithStats}
             selectedFiles={selectedFiles}
             onToggleFile={toggleFile}
-            onDiscardFile={handleDiscardFile}
-            onDiscardAll={handleDiscardAllRequest}
+            onDiscard={discard.request}
             onStageFile={handleStageFile}
-            onStageAllUntracked={() =>
-              void handleStageAllUntracked(
-                changedFiles.filter((f) => f.status === 'Untracked').map((f) => f.path),
-              )
-            }
-            onFileSelect={(path) => onSelectFile?.(path)}
-            onOpenFile={(path) => void openProjectFile({ projectId: project.id, filePath: path })}
+            onStageAllUntracked={handleStageAllUntrackedClick}
+            onFileSelect={handleFileSelect}
+            onOpenFile={handleOpenFile}
             onExpandUntrackedDir={handleExpandUntrackedDir}
             loading={loading}
             truncated={statusTruncated}
@@ -294,24 +216,7 @@ const GitCommitPanel: React.FC<GitCommitPanelProps> = ({
         )}
       </div>
 
-      {/* Draggable divider */}
-      {/* eslint-disable jsx-a11y/no-noninteractive-element-interactions, jsx-a11y/no-noninteractive-tabindex */}
-      <div
-        role="separator"
-        tabIndex={0}
-        className="group h-1.5 shrink-0 cursor-row-resize flex items-center justify-center"
-        aria-orientation="horizontal"
-        aria-label="Resize commit area"
-        onMouseDown={handleDividerMouseDown}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter' || e.key === ' ') {
-            e.preventDefault();
-          }
-        }}
-      >
-        <div className="w-8 h-[3px] rounded-full bg-border group-hover:bg-accent-blue/50 transition-colors duration-150" />
-      </div>
-      {/* eslint-enable jsx-a11y/no-noninteractive-element-interactions, jsx-a11y/no-noninteractive-tabindex */}
+      <CommitPanelDivider onMouseDown={handleDividerMouseDown} />
 
       <CommitForm
         message={commitMessage}

@@ -1,8 +1,9 @@
 #![allow(clippy::unwrap_used, clippy::expect_used, missing_docs)]
 
 use std::path::{Path, PathBuf};
-use std::sync::mpsc;
+use std::sync::{mpsc, Arc, Condvar, Mutex};
 use std::thread;
+use std::time::{Duration, Instant};
 
 use crate::common::executor::factory::ExecTarget;
 use crate::core::exec::collect_blocking;
@@ -14,11 +15,39 @@ const fn exit_diagnostics(code: i32) -> (Option<i32>, Option<i32>) {
     (Some(code), None)
 }
 
+/// `check_and_wait` 等待重算落地的默认上限。
+///
+/// 常规一轮 `git status` 毫秒级；上限只兜住病态场景（超大仓库的折叠目录探测、
+/// 系统负载尖峰）。超时后放弃等待，由快照事件推送最终收敛（最终一致性不变）。
+pub const RECALC_WAIT_TIMEOUT: Duration = Duration::from_millis(1500);
+
+/// worker 迭代进度（started/completed 对）。
+///
+/// 成对存在的原因：worker 可能有**早于调用方写入启动**的迭代在跑，只看
+/// `completed` 前进可能被那一轮提前满足 —— 读到的仍是写前状态。只有
+/// 「采样时刻 started == completed（空闲）之后启动的新迭代」才保证晚于写入。
+#[derive(Default)]
+struct Progress {
+    /// 已开始的迭代数（recv 信号并清空队列后）。
+    started: u64,
+    /// 已完成的迭代数（git status 跑完、emit 决策做完后）。
+    completed: u64,
+}
+
+/// 重算落地同步原语：worker 线程推进进度，`check_and_wait` 在其上有界等待。
+#[derive(Default)]
+struct RecalcSync {
+    progress: Mutex<Progress>,
+    completed_cv: Condvar,
+}
+
 /// Persistent git status worker that runs `git status --porcelain` on demand.
 #[derive(Clone)]
 pub struct GitStatusWorker {
     /// Channel to signal a status check request.
     signal_tx: mpsc::Sender<()>,
+    /// 迭代进度共享状态（`check_and_wait` 的等待依据）。
+    sync: Arc<RecalcSync>,
 }
 
 impl GitStatusWorker {
@@ -28,6 +57,7 @@ impl GitStatusWorker {
         on_change: impl Fn(GitStatusSnapshot) + Send + 'static,
     ) -> Self {
         let (signal_tx, signal_rx) = mpsc::channel::<()>();
+        let sync = Arc::new(RecalcSync::default());
 
         thread::Builder::new()
             .name(format!(
@@ -37,17 +67,60 @@ impl GitStatusWorker {
                     .map(|n| n.to_string_lossy().to_string())
                     .unwrap_or_else(|| "unknown".to_string())
             ))
-            .spawn(move || {
-                worker_loop(repo_path, signal_rx, on_change);
+            .spawn({
+                let sync = Arc::clone(&sync);
+                move || worker_loop(repo_path, signal_rx, on_change, sync)
             })
             .expect("Failed to spawn git worker thread");
 
-        Self { signal_tx }
+        Self { signal_tx, sync }
     }
 
     /// Request a status check (non-blocking).
     pub fn check(&self) {
         let _ = self.signal_tx.send(());
+    }
+
+    /// 请求一次 status 重算并**有界等待其落地**（worker 跑完一轮 git status）。
+    ///
+    /// 返回 `true` = 一轮**晚于本调用启动**的重算已完成（emit 已在该调用返回前
+    /// 冲刷，此刻的快照反映调用之前的全部写入）；`false` = 超时（调用方退回
+    /// 快照事件推送收敛）。非阻塞版见 [`check`](Self::check)。
+    ///
+    /// **阻塞方法**：Condvar 等待原语 —— async 上下文必须经 `run_blocking` /
+    /// `spawn_blocking` 调用。
+    #[must_use]
+    pub fn check_and_wait(&self, timeout: Duration) -> bool {
+        let deadline = Instant::now() + timeout;
+        loop {
+            let (started, completed) = {
+                let p = self.sync.progress.lock().expect("recalc progress mutex");
+                (p.started, p.completed)
+            };
+            let remaining = deadline.saturating_duration_since(Instant::now());
+            let p = self.sync.progress.lock().expect("recalc progress mutex");
+            if started == completed {
+                // 空闲：采样之后启动的迭代必然晚于调用方写入，发信号并等它完成。
+                drop(p);
+                self.check();
+                let p = self.sync.progress.lock().expect("recalc progress mutex");
+                let (done, _) = self
+                    .sync
+                    .completed_cv
+                    .wait_timeout_while(p, remaining, |pr: &mut Progress| pr.completed <= completed)
+                    .expect("recalc progress mutex");
+                return done.completed > completed;
+            }
+            // 忙碌：先等在飞迭代落地（它可能早于写入启动，不可信），落地后重采样。
+            let (done, _) = self
+                .sync
+                .completed_cv
+                .wait_timeout_while(p, remaining, |pr: &mut Progress| pr.completed <= completed)
+                .expect("recalc progress mutex");
+            if done.completed <= completed {
+                return false;
+            }
+        }
     }
 }
 
@@ -60,6 +133,7 @@ fn worker_loop(
     repo_path: PathBuf,
     signal_rx: mpsc::Receiver<()>,
     on_change: impl Fn(GitStatusSnapshot),
+    sync: Arc<RecalcSync>,
 ) {
     let mut last_status = String::new();
     let mut last_branch = String::new();
@@ -84,6 +158,9 @@ fn worker_loop(
         }
 
         while signal_rx.try_recv().is_ok() {}
+
+        // 迭代起点：此后执行的 git status 晚于任何在本轮信号发出前完成的写入。
+        sync.progress.lock().expect("recalc progress mutex").started += 1;
 
         log::debug!("[GitWorker] Running git status for {}", path_str);
 
@@ -121,6 +198,13 @@ fn worker_loop(
         let digest_unchanged =
             !collapsed_digest.is_unknown() && Some(collapsed_digest) == last_collapsed_digest;
         if status_unchanged && digest_unchanged {
+            // 无变化不 emit，但迭代照常落地：started/completed 必须成对推进，
+            // 否则 check_and_wait 会把「无变化重算」永远等成超时。
+            {
+                let mut p = sync.progress.lock().expect("recalc progress mutex");
+                p.completed += 1;
+            }
+            sync.completed_cv.notify_all();
             continue;
         }
 
@@ -153,6 +237,14 @@ fn worker_loop(
             entries: current_files,
             truncated,
         });
+
+        // 迭代终点：emit 已冲刷后才算落地（`check_and_wait` 依赖此顺序 ——
+        // 等待返回时快照写入与事件推送均已完成）。
+        {
+            let mut p = sync.progress.lock().expect("recalc progress mutex");
+            p.completed += 1;
+        }
+        sync.completed_cv.notify_all();
     }
 }
 
@@ -252,6 +344,82 @@ mod tests {
     fn get_current_branch_returns_empty_for_non_repo() {
         let tmp = tempfile::tempdir().unwrap();
         assert_eq!(get_current_branch(tmp.path()), "");
+    }
+
+    /// Nit 4 核心契约：写入 → `check_and_wait` 返回 true 时，emit（快照推送 +
+    /// 注册表写入）**已在该调用返回前冲刷** —— 命令层随后发起的读接口必然看到
+    /// 写后快照，首刷旧值窗口被消除。
+    #[test]
+    fn check_and_wait_confirms_recalc_landed_after_write() {
+        use std::sync::mpsc;
+        use std::time::Duration;
+
+        let (tmp, _repo) = create_repo_with_commit();
+        let (emit_tx, emit_rx) = mpsc::channel::<GitStatusSnapshot>();
+        let worker = GitStatusWorker::start(tmp.path().to_path_buf(), move |snap| {
+            let _ = emit_tx.send(snap);
+        });
+
+        // 写入发生在 check_and_wait 之前（对齐命令层「写成功后才 poke」的契约）
+        std::fs::write(tmp.path().join("README.md"), "# changed\n").unwrap();
+        assert!(
+            worker.check_and_wait(Duration::from_secs(5)),
+            "recalc must land within the bound after a write"
+        );
+        let snap = emit_rx
+            .try_recv()
+            .expect("emit must have flushed before check_and_wait returned");
+        assert_eq!(
+            snap.entries.len(),
+            1,
+            "snapshot must reflect the post-write worktree"
+        );
+    }
+
+    /// 对照：空闲 + 无实质变化 → 迭代照常落地（completed 推进）→ true；
+    /// 不得把「无变化重算」误判为超时，也不得 emit。
+    #[test]
+    fn check_and_wait_returns_true_without_emit_when_unchanged() {
+        use std::sync::mpsc;
+        use std::time::Duration;
+
+        let (tmp, _repo) = create_repo_with_commit();
+        let (emit_tx, emit_rx) = mpsc::channel::<GitStatusSnapshot>();
+        let worker = GitStatusWorker::start(tmp.path().to_path_buf(), move |snap| {
+            let _ = emit_tx.send(snap);
+        });
+
+        assert!(
+            worker.check_and_wait(Duration::from_secs(5)),
+            "first recalc should land"
+        );
+        let first = emit_rx
+            .try_recv()
+            .expect("first recalc emits the baseline snapshot");
+        assert_eq!(first.version, 1);
+
+        assert!(
+            worker.check_and_wait(Duration::from_secs(5)),
+            "unchanged recalc still completes"
+        );
+        assert!(
+            emit_rx.try_recv().is_err(),
+            "unchanged worktree must not emit"
+        );
+    }
+
+    /// 超时路径：deadline 为 0 → 等待立即失败返回 false，不挂死、不误报成功
+    /// （worker 不可能在 0 时间内 fork+exec 完一次 git status）。
+    #[test]
+    fn check_and_wait_zero_deadline_times_out() {
+        use std::time::Duration;
+
+        let (tmp, _repo) = create_repo_with_commit();
+        let worker = GitStatusWorker::start(tmp.path().to_path_buf(), |_| {});
+        assert!(
+            !worker.check_and_wait(Duration::ZERO),
+            "zero deadline must time out, not report success"
+        );
     }
 
     #[test]
