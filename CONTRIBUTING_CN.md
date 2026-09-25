@@ -29,10 +29,12 @@
 
 | 工具 | 版本 |
 | --- | --- |
-| Node.js | 18+ |
-| pnpm | `9.12.2` |
+| Node.js | `>=24` |
+| pnpm | `11.25.0` |
 | Rust | edition 2021（stable） |
 | Tauri | 2.0 |
+
+> 具体版本以 `package.json` 的 `engines` / `packageManager` 字段为准，此处仅为快照。
 
 请先按平台安装 Tauri 的系统依赖：
 
@@ -55,7 +57,7 @@ pnpm tauri dev        # 启动开发模式（前端端口 1420）
 | --- | --- |
 | `pnpm tauri dev` | 运行开发模式 |
 | `pnpm tauri build` | 构建发布版本 |
-| `pnpm lint` | Rust `cargo fmt --check` + `cargo clippy` |
+| `pnpm lint` | Rust fmt + clippy(-D warnings) + 全部 Python 护栏 + 护栏单测 + Java host |
 | `pnpm lint:fe` | 前端 ESLint + `tsc --noEmit` + vitest typecheck |
 | `pnpm lint:all` | Rust 与前端全部 lint |
 | `pnpm type-check` | 仅 TypeScript 类型检查 |
@@ -67,81 +69,37 @@ pnpm tauri dev        # 启动开发模式（前端端口 1420）
 
 ## 项目结构
 
-### 前端 —— Feature-Based 架构
+目录树与模块职责的**单一事实源**是各侧的 `AGENTS.md`，本文不复述（维护副本必然漂移）：
 
-```
-src/
-├── app/          # 应用入口与组合层（App.tsx、useAppShell）
-├── features/     # 功能域，各自含 components/ hooks/ store/
-├── shared/       # 跨域共享：components、contexts、hooks、store、types、utils
-├── layout/       # 窗口布局框架
-├── ui/           # 通用 UI 组件
-└── styles/       # 全局样式
-```
+- 前端（Feature-Based）：`src/AGENTS.md`「模块布局」
+- 后端（Domain-Driven）：`src-tauri/AGENTS.md`「模块布局」
+- 全栈总览：`docs/ARCHITECTURE.md`
 
-### 后端 —— Domain-Driven 模块化架构
-
-```
-src-tauri/src/
-├── main.rs / lib.rs / app.rs / app_state.rs
-├── common/       # 共享基础设施（error、logger、runtime）
-├── <domain>/     # 例如 agent、project、session、terminal、connection、git、search
-│   ├── commands.rs   # 极薄的 Tauri 命令层
-│   ├── services.rs   # 业务逻辑
-│   └── mod.rs        # 仅 mod 声明与 re-export
-└── ...
-```
+目录清单请用 `ls` / Glob 现取 —— 根 `AGENTS.md`「顶层目录」已把这条定为元规则。
 
 ## 代码规范
 
-### 架构原则
+规范的**单一事实源**是仓库根的 [`AGENTS.md`](./AGENTS.md)：15 条「审查红线」由护栏
+`check_agents_md_size.py` 校验「正文落点唯一 + 完整」，红线表是机读台账。本文只给落点索引：
 
-1. **高内聚、低耦合** —— 每个模块只负责一项清晰职责；模块间通过显式接口
-   （props / context / API wrapper / `pub use` re-export）通信。
-2. **依赖倒置（DIP）** —— 高层模块依赖抽象，而非具体实现。
-3. **开闭原则（OCP）** —— 通过新增代码（新 variant、新策略、新组件）扩展，
-   而非修改既有逻辑；变体集合已知且固定时用 `Enum + match` 而非 `Box<dyn Trait>`。
-4. **DRY / KISS / YAGNI** —— 重复逻辑（3 次以上）抽象复用；优先最简单方案；
-   不为"将来可能用到"而过度设计。
+| 主题 | 权威落点 |
+| --- | --- |
+| 架构原则（高内聚低耦合 / 依赖倒置 / OCP / DRY-KISS-YAGNI） | `AGENTS.md`「架构基本原则」 |
+| 15 条审查红线（违反即 Block，编号可被 spec / 代码注释引用） | `AGENTS.md` 红线表（编号 → 摘要 → 落点） |
+| 前端导入/导出防火墙 | `src/AGENTS.md`「模块导入/导出规范」 |
+| 前端状态管理、React 性能 | `src/AGENTS.md`「前端架构约定」 |
+| 后端命令层、错误与并发 | `src-tauri/AGENTS.md`「Rust 命令层约定」「错误与并发」 |
 
-### 模块导入/导出防火墙
-
-- **禁止根级 barrel**（如 `@/components/index.ts`）。
-- 跨 feature 使用 **store** 一律直导具体文件（`@/features/file/store`），
-  禁止经 feature `index.ts` re-export。
-- **类型**直接导入（`export type` 编译期擦除）。
-- feature 的 `index.ts` **仅为门面** —— 只 re-export 公开组件与 hooks，
-  禁止纳入 store 或内部工具函数。
-- 同 feature 内部模块之间直接导入具体文件，不得经本目录 `index.ts` 自环引用。
-
-### 状态管理
-
-- 状态就近存放（`useState` → feature store → `shared/store`）。
-- 不存储可派生状态，用 `useMemo` 计算。
-- 单向数据流：数据向下流动、事件向上传递；子组件不得直接修改父组件状态。
-
-### Rust 命令层
-
-- 命令使用 `#[tauri::command]`，返回 `Result<T, AppError>`。
-- 命令层保持**极薄**：只做参数接收 + 校验，再调度 service/manager。
-- 每个新命令都要注册进 `src-tauri/src/lib.rs` 的 `neeko_invoke_handler!`。
-- 命令执行统一走 `crate::core::exec` / `crate::common::executor`
-  （Local/WSL/SSH 统一接口），禁止使用已弃用的 `local::exec` 辅助函数。
-- 阻塞 I/O（`std::fs`、`std::process`、PTY）必须包裹进
-  `tokio::task::spawn_blocking`。
-- `mod.rs` 保持极薄：只允许 `mod` 声明与 `pub use` re-export。
+> 2026-09-25 前本文逐条复述了上述条文，已证明会漂移（当时副本里的 `pnpm lint` 描述、前端
+> 目录树都是错的），故改为落点索引。新增规范请改落点文件，不要再往本文加副本。
 
 ## 测试驱动开发（TDD）
 
-所有新功能与 Bug 修复都必须遵循 **红 → 绿 → 重构** 循环：
+红 → 绿 → 重构的流程、分层覆盖率基线（纯函数 / Rust manager / Hooks / 组件）与硬约束
+（无测试不许合入、测试独立且单个 < 100ms）见 [`AGENTS.md`](./AGENTS.md)「TDD 开发模式」
+—— 那是单一事实源，本文不复述。
 
-1. **红（Red）** —— 先写失败的测试，精确定义预期行为；确认失败原因符合预期。
-2. **绿（Green）** —— 写最少代码让测试通过。
-3. **重构（Refactor）** —— 在测试保护下消除重复、提升可读性。
-
-**Bug 修复**从复现该 Bug 的回归测试开始，再实施修复。
-
-> 没有测试的新代码不允许合入。修改已有代码前，先确认已有测试通过。
+本仓库所有新功能与 Bug 修复都必须遵循该流程；Bug 修复从复现该 Bug 的回归测试开始。
 
 ## 提交信息规范
 
@@ -199,32 +157,27 @@ fix(file): refresh expanded dir caches on file move/delete
 
 [lefthook](https://github.com/evilmartians/lefthook) 会在提交时自动执行。
 Hooks 通过 `pnpm prepare`（或 `pnpm lefthook install`）安装。
+**Hook 清单以 `lefthook.yml` 为准**（下表为概览）：
 
 | Hook | 触发条件 | 执行内容 |
 | --- | --- | --- |
 | `pre-commit` | 改动 `src/**/*.{ts,tsx,js,jsx}` | `pnpm lint:fe` |
 | `pre-commit` | 改动 `src-tauri/**/*.rs` | `pnpm lint` |
+| `pre-commit` | 改动 `tools/java-host/**` | `pnpm lint:host` |
+| `pre-commit` | 改动任意 `AGENTS.md` | 护栏单测 + `check_agents_md_size.py` |
 | `commit-msg` | 每次提交 | `pnpm commitlint` |
 
-所有质量门通过前提交会被拦截。开 PR 前请在本地跑一遍最小回归集：
-
-```bash
-pnpm lint:all
-pnpm test:run
-cargo test --manifest-path src-tauri/Cargo.toml
-```
+所有质量门通过前提交会被拦截。开 PR 前请在本地跑一遍**最小回归集** —— 定义见
+[`AGENTS.md`](./AGENTS.md)「Development Commands」（单一事实源，此处不复述）。
 
 ## 测试要求
 
-| 层级 | 要求 | 方法 |
-| --- | --- | --- |
-| 纯函数 / 工具类 | 100% 覆盖 | 直接调用 + 断言返回值 |
-| Manager 逻辑（Rust） | 核心路径覆盖 | `#[test]` 函数 |
-| 自定义 Hooks（TS） | 关键行为 | `renderHook` + `act` |
-| 组件 | 关键交互 | `@testing-library/react` |
+分层覆盖率基线见 [`AGENTS.md`](./AGENTS.md)「TDD 开发模式」；前端测试框架、目录约定与
+mock 策略见 `src/AGENTS.md`「测试」。
 
-测试必须独立、快速（单个 < 100ms），且不依赖外部状态。涉及文件系统的 Rust
-测试使用 `tempfile`，**严禁**写入真实的 `~/.neeko` 配置。
+本文只保留其它落点没有的一条：
+
+- 涉及文件系统的 Rust 测试使用 `tempfile`，**严禁**写入真实的 `~/.neeko` 配置。
 
 ## 分支与 Pull Request
 
@@ -253,5 +206,4 @@ cargo test --manifest-path src-tauri/Cargo.toml
 3. 提交 `release: v<version>` 并打 tag `v<version>`。
 
 推送 tag 会触发 GitHub Actions 构建 Windows / macOS / Linux 三平台并发布
-GitHub Release（含各平台安装包）。详见 `AGENTS.md` 的发布章节。仅拥有推送
-权限的维护者执行发布。
+GitHub Release（含各平台安装包）。仅拥有推送权限的维护者执行发布。

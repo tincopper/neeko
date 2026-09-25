@@ -31,10 +31,13 @@ the quality gates that run automatically, and how to get your changes merged.
 
 | Tool | Version |
 | --- | --- |
-| Node.js | 18+ |
-| pnpm | `9.12.2` |
+| Node.js | `>=24` |
+| pnpm | `11.25.0` |
 | Rust | edition 2021 (stable) |
 | Tauri | 2.0 |
+
+> Exact versions are owned by the `engines` / `packageManager` fields in
+> `package.json`; the table above is only a snapshot.
 
 Install the Tauri system prerequisites for your platform first:
 
@@ -58,7 +61,7 @@ pnpm tauri dev        # start the dev app (frontend on port 1420)
 | --- | --- |
 | `pnpm tauri dev` | Run the app in development mode |
 | `pnpm tauri build` | Build a release bundle |
-| `pnpm lint` | Rust `cargo fmt --check` + `cargo clippy` |
+| `pnpm lint` | Rust fmt + clippy(-D warnings) + all Python guards + guard unit tests + Java host |
 | `pnpm lint:fe` | Frontend ESLint + `tsc --noEmit` + vitest typecheck |
 | `pnpm lint:all` | Both Rust and frontend lint |
 | `pnpm type-check` | TypeScript type check only |
@@ -70,90 +73,46 @@ pnpm tauri dev        # start the dev app (frontend on port 1420)
 
 ## Project Structure
 
-### Frontend — Feature-Based architecture
+The per-side `AGENTS.md` files are the **single source of truth** for directory
+trees and module responsibilities; this guide does not restate them (copies drift):
 
-```
-src/
-├── app/          # App entry, composition root (App.tsx, useAppShell)
-├── features/     # Feature domains, each with components/ hooks/ store/
-├── shared/       # Cross-domain: components, contexts, hooks, store, types, utils
-├── layout/       # Window layout framework
-├── ui/           # Generic UI components
-└── styles/       # Global styles
-```
+- Frontend (Feature-Based): `src/AGENTS.md` → "模块布局"
+- Backend (Domain-Driven): `src-tauri/AGENTS.md` → "模块布局"
+- Full-stack overview: `docs/ARCHITECTURE.md`
 
-### Backend — Domain-Driven modular architecture
-
-```
-src-tauri/src/
-├── main.rs / lib.rs / app.rs / app_state.rs
-├── common/       # Shared infrastructure (error, logger, runtime)
-├── <domain>/     # e.g. agent, project, session, terminal, connection, git, search
-│   ├── commands.rs   # Thin Tauri command layer
-│   ├── services.rs   # Business logic
-│   └── mod.rs        # Module aggregation + re-exports only
-└── ...
-```
+List directories with `ls` / Glob instead of maintaining a copy — the root
+`AGENTS.md` "顶层目录" section makes that a standing rule.
 
 ## Coding Conventions
 
-### Architecture principles
+The **single source of truth** for conventions is [`AGENTS.md`](./AGENTS.md) at
+the repo root: its 15 "review red lines" are enforced by the
+`check_agents_md_size.py` guard (every rule's full text lives in exactly one
+file, and the red-line table is the machine-readable ledger). Below is a
+location index only:
 
-1. **High cohesion, low coupling** — each module has a single clear
-   responsibility; modules communicate through explicit interfaces
-   (props / contexts / API wrappers / `pub use` re-exports).
-2. **Dependency Inversion** — high-level modules depend on abstractions, not
-   concrete implementations.
-3. **Open/Closed** — extend by adding new code (new variants, strategies,
-   components), not by modifying existing logic. Use `Enum + match` over
-   `Box<dyn Trait>` when the variant set is known and fixed.
-4. **DRY / KISS / YAGNI** — abstract repeated logic (3+ occurrences), prefer
-   the simplest solution, and don't build for hypothetical future needs.
+| Topic | Authoritative location |
+| --- | --- |
+| Architecture principles (cohesion/coupling, DIP, OCP, DRY-KISS-YAGNI) | `AGENTS.md` → "架构基本原则" |
+| The 15 review red lines (Block-level; cite by number) | `AGENTS.md` red-line table (number → summary → home) |
+| Frontend import/export firewall | `src/AGENTS.md` → "模块导入/导出规范" |
+| Frontend state management, React performance | `src/AGENTS.md` → "前端架构约定" |
+| Backend command layer, errors & concurrency | `src-tauri/AGENTS.md` → "Rust 命令层约定", "错误与并发" |
 
-### Import/Export firewall
-
-- **No root-level barrels** (e.g. `@/components/index.ts`).
-- Cross-feature **store** imports go directly to the concrete file
-  (`@/features/file/store`), never re-exported through a feature `index.ts`.
-- **Types** are imported directly (`export type` is erased at compile time).
-- A feature's `index.ts` is a **facade only** — it re-exports public components
-  and hooks, never stores or internal utilities.
-- Within the same feature, import concrete files directly (no self-looping
-  through the local `index.ts`).
-
-### State management
-
-- Keep state as close to its consumer as possible (`useState` → feature store
-  → `shared/store`).
-- Don't store derived state — compute it with `useMemo`.
-- One-way data flow: data flows down, events flow up. Children never mutate
-  parent state directly.
-
-### Rust command layer
-
-- Commands use `#[tauri::command]` and return `Result<T, AppError>`.
-- The command layer stays **thin**: receive + validate args, then delegate to
-  the service/manager.
-- Register every new command in `neeko_invoke_handler!` in `src-tauri/src/lib.rs`.
-- Use `crate::core::exec` / `crate::common::executor` for command execution
-  (Local/WSL/SSH unified interface) — never the deprecated `local::exec` helpers.
-- Blocking I/O (`std::fs`, `std::process`, PTY) must be wrapped in
-  `tokio::task::spawn_blocking`.
-- `mod.rs` stays thin: only `mod` declarations and `pub use` re-exports.
+> Before 2026-09-25 this guide restated all of the above and demonstrably drifted
+> (the stale copy described `pnpm lint` wrong and listed an outdated frontend
+> tree), so it is now an index. Add new conventions to the owning file — never a
+> copy here.
 
 ## Test-Driven Development
 
-All new features and bug fixes follow the **Red → Green → Refactor** loop:
+The Red → Green → Refactor loop, the per-layer coverage baseline (pure functions /
+Rust managers / hooks / components) and the hard constraints (no code without
+tests; tests independent and < 100ms each) live in [`AGENTS.md`](./AGENTS.md) →
+"TDD 开发模式" — the single source of truth, not restated here.
 
-1. **Red** — write a failing test that pins down the expected behavior;
-   confirm it fails for the right reason.
-2. **Green** — write the minimal code to make it pass.
-3. **Refactor** — clean up duplication while keeping the tests green.
-
-**Bug fixes** start with a regression test that reproduces the bug, then the fix.
-
-> No new code without tests. Before modifying existing code, make sure the
-> existing tests pass.
+All new features and bug fixes in this repo must follow that loop; bug fixes start
+with a regression test.
 
 ## Commit Message Guidelines
 
@@ -213,34 +172,30 @@ Keep commits **atomic**: split unrelated changes into separate commits.
 
 [lefthook](https://github.com/evilmartians/lefthook) runs automatically on
 commit. Hooks are installed via `pnpm prepare` (or `pnpm lefthook install`).
+**`lefthook.yml` owns the hook list** (table below is an overview):
 
 | Hook | Trigger | Runs |
 | --- | --- | --- |
 | `pre-commit` | changed `src/**/*.{ts,tsx,js,jsx}` | `pnpm lint:fe` |
 | `pre-commit` | changed `src-tauri/**/*.rs` | `pnpm lint` |
+| `pre-commit` | changed `tools/java-host/**` | `pnpm lint:host` |
+| `pre-commit` | changed any `AGENTS.md` | guard unit tests + `check_agents_md_size.py` |
 | `commit-msg` | every commit | `pnpm commitlint` |
 
-A commit is blocked until all gates pass. Before opening a PR, run the full
-minimal regression set locally:
-
-```bash
-pnpm lint:all
-pnpm test:run
-cargo test --manifest-path src-tauri/Cargo.toml
-```
+A commit is blocked until all gates pass. Before opening a PR, run the **minimal
+regression set** locally — its definition lives in [`AGENTS.md`](./AGENTS.md) →
+"Development Commands" (single source of truth, not restated here).
 
 ## Testing Requirements
 
-| Layer | Requirement | Method |
-| --- | --- | --- |
-| Pure functions / utils | 100% coverage | Direct call + assert return |
-| Manager logic (Rust) | Core paths covered | `#[test]` functions |
-| Custom hooks (TS) | Key behavior | `renderHook` + `act` |
-| Components | Key interactions | `@testing-library/react` |
+The per-layer coverage baseline lives in [`AGENTS.md`](./AGENTS.md) → "TDD 开发模式";
+the frontend test framework, directory layout and mock strategy live in
+`src/AGENTS.md` → "测试".
 
-Tests must be independent, fast (single test < 100ms), and not depend on
-external state. Use `tempfile` for Rust tests that touch the filesystem, and
-never write to the real `~/.neeko` config in tests.
+This guide keeps only the rule that has no other home:
+
+- Use `tempfile` for Rust tests that touch the filesystem, and **never** write to
+  the real `~/.neeko` config in tests.
 
 ## Branching & Pull Requests
 
@@ -270,5 +225,5 @@ Releases are driven by `pnpm release <version>` (`scripts/release.mjs`), which:
 3. Commits `release: v<version>` and tags `v<version>`.
 
 Pushing the tag triggers GitHub Actions to build Windows / macOS / Linux and
-publish a GitHub Release with installers. See the release section of
-`AGENTS.md` for details. Only maintainers with push access run releases.
+publish a GitHub Release with installers. Only maintainers with push access run
+releases.
