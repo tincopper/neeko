@@ -1,17 +1,17 @@
 # Neeko 后端（`src-tauri/`）开发规则
 
-> **根文件硬指令：改 `src-tauri/**` 前必须读本文件**（工具不会总是自动注入）。跨栈规则（IPC 载荷预算、
-> Event 名、LSP 能力契约）在仓库根 `AGENTS.md`；前端规则在 `src/AGENTS.md`。红线编号与根文件
-> 索引一一对应。机制细节与事故记录在 `.trellis/spec/backend/`，本文只保留祈使句与判据。
+> **根文件硬指令：改 `src-tauri/**` 前必须读本文件**（工具不会总是自动注入）。跨栈规则在仓库根
+> `AGENTS.md`（红线表列出各自落点）；前端规则在 `src/AGENTS.md`。红线编号与根文件索引一一
+> 对应。机制细节与事故记录在 `.trellis/spec/backend/`，本文只保留祈使句与判据。
 
 ## 模块布局
 
 `src-tauri/src/` 按域分模块，每个域是 `commands.rs`（或 `commands/`）+ `services.rs`/`manager.rs` + `mod.rs`：
 
 `src-tauri/src/main.rs`（入口）· `lib.rs`（模块聚合 + `neeko_invoke_handler!`）· `app.rs`（Builder 组装）·
-`app_state.rs`（`AppStateWrapper`）· `common/`（error/logger/executor/utils）· `core/`（exec/runtime/project）·
-`platform/`（平台适配器集中层）· `agent/` `project/` `session/` `terminal/` `connection/`
-`conversation/` `git/` `file/` `skill/` `settings/` `task/` `browser/` `dap/` `lsp/` `theme/`
+`app_state.rs`（`AppStateWrapper`）· `common/`（error/logger/executor/utils…）· `core/`（exec/runtime/project）·
+`platform/`（平台适配器集中层）；其余按域分目录，清单以 `ls src-tauri/src` 为准 ——
+**2026-09-25 核对**：旧副本列的 `skill/` 已不存在，`about/` `library/` `search/` 未在列，故删除副本。
 
 完整树状与职责：`docs/ARCHITECTURE.md`、`.trellis/spec/backend/directory-structure.md`。
 
@@ -48,7 +48,8 @@
 5. 异步命令优先使用 `State<'_, AppStateWrapper>`
 6. AppError 覆盖：Io, Git, Storage, Skill, Project, NotFound, InvalidInput, Remote, Dap, Serde, Unknown
 
-新增命令：域文件实现 → 域 `mod.rs` 聚合导出 → 命令路径加入 `neeko_invoke_handler!`。
+新增命令：域文件实现（返回 `Result<T, AppError>`）→ 域 `mod.rs` 聚合导出 → 命令路径加入
+`neeko_invoke_handler!` → 补测试并跑回归。
 
 ## 错误与并发
 
@@ -60,7 +61,7 @@
 
 ## 审查红线（后端专属）
 
-> 违反即为 Block 级。跨栈红线（4 IPC 载荷 / 5 Event 名 / 14 LSP 能力声明）不在此列，见根文件。
+> 违反即为 Block 级。跨栈红线不在此列 —— 落点见根 `AGENTS.md` 红线表的「全文位置」列。
 
 **1. 统一命令执行接口（Local/WSL/SSH）** —— 命令执行必须走统一接口：`crate::core::exec` facade
 （`run` / `spawn` / `spawn_with` / `collect` / `command_exists`）或 `crate::common::executor`

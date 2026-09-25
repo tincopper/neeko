@@ -5,13 +5,14 @@
 > **分层加载模型** —— 本文件只放「改任何目录都成立」的内容（跨栈契约、通用原则、红线索引）。
 > 单侧专属规则按代码物理边界拆分：
 >
-> - `src-tauri/AGENTS.md` —— Rust 后端红线 1,2,3,6,7,8,9,10,11,13,15 + 命令层/并发/导入防火墙
-> - `src/AGENTS.md` —— React 前端红线 12 + 模块导入防火墙 + React 性能 + 状态管理
+> - `src-tauri/AGENTS.md` —— Rust 后端专属（该侧红线 + 命令层/并发/导入防火墙）
+> - `src/AGENTS.md` —— React 前端专属（该侧红线 + 模块导入防火墙/React 性能/状态管理）
 >
 > **硬指令：动手改 `src-tauri/**` 或 `src/**` 前，必须先 Read 对应子目录的 `AGENTS.md`。**
 > 不要依赖工具自动注入 —— 各工具行为不同：opencode / Claude Code 只在 Read 工具打开该子树
 > 文件时注入（`@` 提及、IDE 打开均不触发）；Codex 只拼接「仓库根 → 当前工作目录」路径上的
-> 文件，从仓库根启动的会话**不会**加载嵌套文件。漏读 = 该侧 11 / 1 条红线整体失效，等同盲改。
+> 文件，从仓库根启动的会话**不会**加载嵌套文件。漏读 = 该侧全部红线整体失效（红线表的
+> 摘要列只够让你停下正在违规的操作，判据与例外仍以落点文件为准）。
 >
 > 机制细节与事故复盘在 `.trellis/spec/<层>/<主题>.md`（按需 `trellis-before-dev` 载入）与 `docs/`。
 > **每条红线全文只在一个 AGENTS.md 中出现**（`.trellis/spec/` 是机制详解层，另当别论），
@@ -32,9 +33,6 @@ SSH 远程三种项目类型。核心目标：把终端会话、Git 操作、文
 ```
 src/                 React 前端（Feature-Based）→ 规则见 src/AGENTS.md
 src-tauri/           Rust 后端（Domain-Driven）→ 规则见 src-tauri/AGENTS.md
-  src/core/          exec facade / runtime / project 环境抽象
-  src/common/        error、logger、executor、git、utils
-  src/platform/      平台适配器集中层（红线 10）
 docs/                架构、需求与设计文档
 .trellis/            spec 知识库、任务、会话日志（Trellis 管理）
 ```
@@ -80,26 +78,29 @@ Red（先写失败测试）→ Green（最少代码让测试通过）→ Refacto
 
 ## AI 代码审查红线 (Review Gates)
 
-> 经代码库验证，违反即为 Block 级。**跨域红线（4、5、14）全文在本文件**，其余全文在对应嵌套文件。
-> 编号是稳定标识符，spec/docs 引用编号而非正文。
+> 经代码库验证，违反即为 Block 级。标「本文件 ↓」的红线全文在本文件，其余全文在对应嵌套文件。
+> 编号是稳定标识符，spec/docs 与代码注释**一律引用编号**（如「红线 4」），不要复述或改写标题 ——
+> 那会给同一条规则造出第二个名字，grep 任一名字都找不全。**术语只允许「红线」** —— 旧
+> neeko-check「支柱」体系（15/13 条、编号与本表不同）已废止，活代码/活文档里出现即按本表换算。
+> **摘要列**是嵌套文件未加载时的兜底（够用来识别并停止违规），判据与例外一律以落点文件为准。
 
-| # | 红线 | 全文位置 |
-| --- | --- | --- |
-| 1 | 统一命令执行接口（Local/WSL/SSH） | `src-tauri/AGENTS.md` |
-| 2 | 跨平台 shell 选择（`cmd /c` vs `sh -c`） | `src-tauri/AGENTS.md` |
-| 3 | 阻塞 I/O 隔离（`spawn_blocking`） | `src-tauri/AGENTS.md` |
-| 4 | **IPC 大文本边界** | 本文件 ↓ |
-| 5 | **Event 名常量化** | 本文件 ↓ |
-| 6 | Command 层保持极薄 | `src-tauri/AGENTS.md` |
-| 7 | `if let` 嵌套不超过 3 层 | `src-tauri/AGENTS.md` |
-| 8 | 路径安全校验（`canonicalize` + capabilities 白名单） | `src-tauri/AGENTS.md` |
-| 9 | `mod.rs` 保持极薄 | `src-tauri/AGENTS.md` |
-| 10 | 平台代码规范化（Platform Adapter） | `src-tauri/AGENTS.md` |
-| 11 | 换行边界（Line-Ending Boundary） | `src-tauri/AGENTS.md` |
-| 12 | 路径身份唯一化（`FileRef`） | `src/AGENTS.md` |
-| 13 | 测试夹具路径平台无关 | `src-tauri/AGENTS.md` |
-| 14 | **LSP 能力声明与实现一致** | 本文件 ↓ |
-| 15 | 语言差异必须落在插件数据 | `src-tauri/AGENTS.md` |
+| # | 红线 | 必须 / 禁止（摘要） | 全文位置 |
+| --- | --- | --- | --- |
+| 1 | 统一命令执行接口（Local/WSL/SSH） | 命令只走 `core::exec` / `common::executor`，禁止直接用 `std::process::Command` | `src-tauri/AGENTS.md` |
+| 2 | 跨平台 shell 选择（`cmd /c` vs `sh -c`） | Local 路径按平台选 shell，禁止硬编码 `sh -c` / `bash -lc` | `src-tauri/AGENTS.md` |
+| 3 | 阻塞 I/O 隔离（`spawn_blocking`） | 异步中调 `std::fs` / `std::process` / portable-pty 阻塞读写必须包 `spawn_blocking` | `src-tauri/AGENTS.md` |
+| 4 | **IPC 大文本边界** | 单次 Command 返回 JSON ≤ 2MB，大载荷走二进制流或分页 | 本文件 ↓ |
+| 5 | **Event 名常量化** | Event 名双端只允许来自单一常量源，禁止各自硬编码 | 本文件 ↓ |
+| 6 | Command 层保持极薄 | `#[tauri::command]` 只做参数校验 + 调度，核心逻辑落 manager/service | `src-tauri/AGENTS.md` |
+| 7 | `if let` 嵌套不超过 3 层 | 连续 ≥3 层 `if let` 拍平成 `match`；仅 1-2 条 happy path 才用 `if let` | `src-tauri/AGENTS.md` |
+| 8 | 路径安全校验（`canonicalize` + capabilities 白名单） | 前端传入路径消费前必须 `canonicalize`，capabilities 禁止 allow-all | `src-tauri/AGENTS.md` |
+| 9 | `mod.rs` 保持极薄 | `mod.rs` 只允许 `mod` 声明 + `pub use`，业务 `fn`/`impl` 抽同级文件 | `src-tauri/AGENTS.md` |
+| 10 | 平台代码规范化（Platform Adapter） | 平台差异与单平台代码必须落 `platform/<theme>/`，通用文件禁止平铺 `#[cfg]` | `src-tauri/AGENTS.md` |
+| 11 | 换行边界（Line-Ending Boundary） | 禁止注入 `core.autocrlf`；禁止对工作区换行做字节级断言 | `src-tauri/AGENTS.md` |
+| 12 | 路径身份唯一化（`FileRef`） | 同文件判定必须走 `FileRef`，禁止消费侧自造字符串归一 / 别名匹配 | `src/AGENTS.md` |
+| 13 | 测试夹具路径平台无关 | 夹具路径一律由 `tempdir()` 推导，禁止硬编码 POSIX 绝对路径 | `src-tauri/AGENTS.md` |
+| 14 | **LSP 能力声明必须与实现一致** | 声明客户端能力前先确定消费点，同一 diff 内给出实现或删声明 | 本文件 ↓ |
+| 15 | 语言差异必须落在插件数据 | 语言差异只允许作为 `LspPlugin` 字段，通用模块禁止 `language_id` 分支 | `src-tauri/AGENTS.md` |
 
 ### 4. IPC 大文本边界（跨栈：Rust 返回 ↔ 前端消费）
 
@@ -134,9 +135,9 @@ Tauri Event 字符串（如 `terminal-output-{id}`、`git-status-diff`）禁止�
 
 ## Important Files
 
-| 文件 | 作用 |
+| 文件 | 作用（导航摘要；契约定义见落点文件） |
 | --- | --- |
-| `src-tauri/src/lib.rs` | 模块聚合与 `neeko_invoke_handler!`（命令注册单一事实源） |
+| `src-tauri/src/lib.rs` | 后端模块聚合与命令注册入口 |
 | `src-tauri/src/app.rs` | Tauri 启动与命令注册入口 |
 | `src-tauri/src/app_state.rs` | `AppStateWrapper` 组装中心 |
 | `src-tauri/src/common/error.rs` | `AppError` 定义与错误转换 |
@@ -164,9 +165,9 @@ Tauri Event 字符串（如 `terminal-output-{id}`、`git-status-diff`）禁止�
 
 ## Quick Change Playbooks
 
-- **新增 Tauri 命令**：域文件加函数（返回 `Result<T, AppError>`）→ `mod.rs` 聚合 → 命令路径加入
-  `neeko_invoke_handler!` → 补测试并跑回归
-- **改前端容器逻辑**：优先改 `useAppShell` 或 domain hook，不把业务逻辑回填到 `App.tsx`；更新类型并跑 `pnpm type-check`
+单侧 playbook 在对应嵌套文件（新增命令 → `src-tauri/AGENTS.md`「Rust 命令层约定」；改前端容器逻辑 →
+`src/AGENTS.md`「前端架构约定」），此处只留跨栈条目。
+
 - **改构建或权限配置**：同步检查 `package.json`、`vite.config.ts`、`tauri.conf.json`、`capabilities/default.json`，验证 `pnpm tauri dev` 与 `build`
 
 ## 相关文档

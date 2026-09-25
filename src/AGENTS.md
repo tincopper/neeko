@@ -1,8 +1,8 @@
 # Neeko 前端（`src/`）开发规则
 
-> **根文件硬指令：改 `src/**` 前必须读本文件**（工具不会总是自动注入）。跨栈规则（IPC 载荷预算、
-> Event 名、LSP 能力契约）在仓库根 `AGENTS.md`；后端规则在 `src-tauri/AGENTS.md`。红线编号与
-> 根文件索引一一对应。细则与样例在 `.trellis/spec/frontend/`，本文只保留祈使句与判据。
+> **根文件硬指令：改 `src/**` 前必须读本文件**（工具不会总是自动注入）。跨栈规则在仓库根
+> `AGENTS.md`（红线表列出各自落点）；后端规则在 `src-tauri/AGENTS.md`。红线编号与根文件
+> 索引一一对应。细则与样例在 `.trellis/spec/frontend/`，本文只保留祈使句与判据。
 
 ## 模块布局
 
@@ -10,13 +10,10 @@ Feature-Based 架构，`src/` 顶层：
 
 - `app/` —— 组合入口：`App.tsx`（hooks + JSX 编排）、`main.tsx`、`AppModals/AppProviders`、
   `hooks/useAppShell.ts`（主协调）、`components/`、`dock/`
-- `features/` —— 按域拆分的功能模块，每个域自带 `components/ hooks/ store/`：
-  action-menu · agent · agent-chat · browser · connection · conversation · editor · file · git ·
-  library · lsp · notification · project · quick-open · runner · search · session · settings ·
-  skill · status-bar · symbol-nav · task · terminal · theme
-  （**以 `ls src/features` 为准，勿在本文档维护清单或数量**）
-- `shared/` —— 跨域共享：`components/` `contexts/` `dock/` `hooks/` `store/`（zustand）
-  `types/`（按域分文件）`utils/`
+- `features/` —— 按域拆分的功能模块，每个域自带 `components/ hooks/ store/`。域清单以
+  `ls src/features` 为准 —— **不在本文档维护副本**
+- `shared/` —— 跨域共享：组件、hooks、zustand `store/`、`types/`（按域分文件）、`utils/` 等
+  （子目录清单以 `ls src/shared` 为准）
 - `layout/` `lib/` `ui/` `styles/` `testing/`
 
 完整树状与职责：`docs/project-frontend-struct-spec.md`、
@@ -38,7 +35,8 @@ Feature-Based 架构，`src/` 顶层：
    `useAppShell` 层组合
 3. **Ref 同步集中**：所有 refs 在单个 effect 中同步
 4. **功能域代码**放在 `src/features/` 对应子目录
-5. 页面容器逻辑下沉到 hooks，`App.tsx` 维持组合层职责
+5. 页面容器逻辑下沉到 hooks，`App.tsx` 维持组合层职责；改动优先落在 `useAppShell` 或 domain
+   hook，不把业务逻辑回填到 `App.tsx`，改完更新类型并跑 `pnpm type-check`
 
 ### React 性能优化
 
@@ -78,7 +76,7 @@ Feature-Based 架构，`src/` 顶层：
 
 ## 审查红线（前端专属）
 
-> 违反即为 Block 级。跨栈红线（4 IPC 载荷 / 5 Event 名 / 14 LSP 能力声明）不在此列，见根文件。
+> 违反即为 Block 级。跨栈红线不在此列 —— 落点见根 `AGENTS.md` 红线表的「全文位置」列。
 
 **12. 路径身份唯一化（Single Path Identity）** —— 所有「这是不是同一个文件」的判定必须落在 `FileRef`
 身份上（`src/shared/utils/fileRef.ts`：`sameFile` / `sameIdentity` / `pathsContainFile` /
@@ -98,8 +96,5 @@ Vitest + `@testing-library/react` + jsdom。目录约定：`src/testing/`（`set
 `factories.ts` 工厂）、`src/features/*/__tests__/`、`src/shared/hooks/__tests__/`、
 `src/shared/utils/__tests__/`。
 
-优先级：纯函数直接断言 → Hooks（`renderHook` + `act`）→ 组件（mock `invoke`）。
-单测框架与 mock 策略见 `.trellis/spec/unit-test/frontend-testing.md`、`mock-strategies.md`。
-
-约束：没有测试的新代码不允许合入；测试必须独立（不依赖执行顺序与外部状态）、快速（单个 < 100ms，
-全量 < 30s）。
+前端测试层级与 mock 策略（组件级一律 mock `invoke`）见 `.trellis/spec/unit-test/frontend-testing.md`、
+`mock-strategies.md`；覆盖率基线与测试硬约束（合入门槛、独立性、耗时上限）见根 `AGENTS.md`「TDD 开发模式」。
