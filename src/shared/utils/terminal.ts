@@ -7,7 +7,7 @@ import { planWebglRecovery, shouldHealWebgl, type WebglRecoveryState } from './w
 /** xterm scrollback 行数预算：控制 WebContent 常驻 DOM/内存上限（原 10000）。 */
 export const TERMINAL_SCROLLBACK = 5000;
 /**
- * 渲染器恢复链打点名（支柱 12：Event 名常量化，禁止双端/多处各自硬编码）。
+ * 渲染器恢复链打点名（红线 5：Event 名常量化，禁止双端/多处各自硬编码）。
  * 测试断言一律引用此处常量，禁止字面量重复。
  */
 export const RENDERER_EVENT_RESUME = 'terminal.renderer.resume';

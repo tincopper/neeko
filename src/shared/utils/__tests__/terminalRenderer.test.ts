@@ -334,7 +334,7 @@ describe('applyRenderer', () => {
     await expect(mod.applyRenderer(term, false)).resolves.toBeUndefined();
 
     // design D7 改造后：错误不再归并，分阶段打点（常量见 terminal.ts，
-    // 支柱 12）给前端日志+toast 更精细的归因。
+    // 红线 5）给前端日志+toast 更精细的归因。
     expect(reportMock).toHaveBeenCalledWith(RENDERER_EVENT_CANVAS, expect.any(Error));
   });
 
