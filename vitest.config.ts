@@ -31,7 +31,7 @@ export default defineConfig({
         '**/*.d.ts',
       ],
       /**
-       * 覆盖率闸门（分层，见 AGENTS.md「测试覆盖率要求」）。
+       * 覆盖率闸门（分层，见 AGENTS.md「TDD 开发模式」的覆盖率要求）。
        *
        * ① 全局 = **回归地板**：整体尚未达到 80% 目标（实测 stmts 55.6 / branch 48.9 /
        *    funcs 49.4 / lines 56.7），因此先把「不许回退」钉住（留 ~1.5pt 余量，避免无关

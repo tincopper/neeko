@@ -13,6 +13,11 @@ pre-commit:
     lint-java-host:
       glob: "tools/java-host/**"
       run: pnpm lint:host
+    # 上面三条按源码后缀 glob，纯 AGENTS.md 提交一条都不会触发 —— 而护栏守的正是这些文件，
+    # 所以必须单独挂一条，否则要等 CI 才发现体积/路由退化。测试与护栏同源，一起跑。
+    guard-agents-md:
+      glob: "**/AGENTS.md"
+      run: python3 -m unittest discover -s .trellis/scripts -p 'test_*.py' && python3 .trellis/scripts/check_agents_md_size.py
 
 commit-msg:
   commands:

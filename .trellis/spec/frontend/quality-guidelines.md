@@ -426,3 +426,19 @@ pnpm lint:fix     # 自动修复 ESLint/prettier 问题（如需要，手动执�
 - xterm：`new Terminal({ fontFamily: buildMonoStack(...), lineHeight: MONO_LINE_HEIGHT })` + `options.lineHeight` 同步。
 - CodeMirror：`createCmTheme(monoFamily, size)` 内部 `buildMonoStack`，前景 `var(--mono-fg, var(--text-primary))`。
 - 校验：`pnpm lint` 含 `check_font_family_guard.py`（扫描 `src/styles/**/*.css` 裸 `font-family:`）；`themeTokens.test.ts` 守卫各主题 `--mono-fg` 齐全。
+
+## 依赖补丁与 Vite 预打包缓存（改 `node_modules` 必守）
+
+> 原根 `AGENTS.md`「已知问题」条目，2026-09-25 迁入本文件。
+
+改了 `node_modules`（`pnpm patch` / `patches/*.patch`）后，Vite 依赖预打包（`node_modules/.vite/deps`）
+按 **lockfile 哈希**缓存，不失效就会继续跑旧代码，表现为「改了包却没生效」。
+
+**正确流程**：`pnpm patch <pkg>@<ver>` → 编辑 `.pnpm_patches/` 下的文件 → `pnpm patch-commit <dir>` →
+`pnpm install`。补丁文件**必须纳入 git**，否则新克隆 `pnpm install` 会因缺补丁文件而失败。
+
+**只"重启 dev server"不够**（2026-09-19 实测）：缓存键是 lockfile 哈希，而 patch 改动不进 lockfile
+哈希，因此仍命中旧 bundle。必须 `rm -rf node_modules/.vite`（或 `npx vite optimize --force`）后再重启。
+
+失效症状是「列表正常但补丁里的新逻辑完全没跑」（无任何新请求发出），极易误判为业务逻辑错误 —— 排查
+`patches/*.patch` 相关行为前先确认缓存已清。与「### 8. CodeMirror 多实例」是同一缓存层的两种症状。

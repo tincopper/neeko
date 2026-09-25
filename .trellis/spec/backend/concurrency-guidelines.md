@@ -157,6 +157,24 @@ let (resize_tx, mut resize_rx) = tokio::sync::mpsc::unbounded_channel::<(u32, u3
 
 本地终端操作**完全同步/基于线程** —— 不涉及 tokio。
 
+### `core::exec` 的同步桥语义（`collect_blocking` / `collect_blocking_with` / `spawn_detached` / `command_exists_blocking`）
+
+同步桥内部通过 `block_on_sync` 在**临时 runtime** 上驱动 future，因此**不借用调用方 runtime、任何上下文都不 panic**：
+
+- 无 runtime 上下文时 → 在本线程直接跑；
+- 已在 runtime 内时 → 自动改到独立 OS 线程执行，并用 `log::warn!` 记录调用点。
+
+所以「会不会 panic」不是判断依据，**「在 async driver 线程里做同步阻塞」才是性能反模式**。分工：
+
+| 场景 | 该用什么 |
+|------|----------|
+| async 命令 / async manager | async 变体 `run` / `collect` / `command_exists` |
+| 同步逻辑整体很多 | `tokio::task::spawn_blocking` 或 `common::runtime::run_blocking` |
+| 独立 OS worker 线程（如 `status_worker`） | 同步桥，允许 |
+| 同步 `#[tauri::command]` | 同步桥，允许 |
+
+（原 AGENTS.md 审查红线 1 的同步桥段落，2026-09-25 迁入；红线主干见 `src-tauri/AGENTS.md`。）
+
 ---
 
 ## 通信：前端 <-> 后端

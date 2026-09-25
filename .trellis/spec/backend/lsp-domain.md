@@ -281,3 +281,58 @@ syntax-error（缺分号必须显示），也不让陈旧 E0425 覆盖跟随正�
    的计数器写同一会话）。
 6. **uri 必须与 didOpen 完全一致**：编辑器 quickfix 取 `useLspClient` 算出的 `fileUri`，
    不得自己再算（`tabLspDocumentUri` 对普通文件恒 `undefined`，曾致三入口静默 return）。
+
+## 语言差异必须落在插件数据（新增 LS 零逻辑改动）
+
+> 原 AGENTS.md 审查红线 15，2026-09-25 迁入本文件；索引保留在 `src-tauri/AGENTS.md`。
+
+语言服务器之间的差异——会话根解析范围、检测压制、调优开关、安装方式、能力声明——一律作为
+`LspPlugin`（`lsp/plugin/types.rs`）字段声明。**禁止**在通用模块里写 `language_id == "xxx"`、
+语言白名单或按语言的 `if`/`match` 特例。
+
+通用模块清单（本规则的作用域）：`lsp/session/*`、`lsp/manager.rs`、`lsp/profile.rs`、
+`lsp/plugin/registry.rs`、`lsp/plugin_manager.rs`。
+
+**Why**：R5 要求「新增 LS 零逻辑改动即获得全部能力」。代码内白名单会让新语言必须改核心模块，
+且白名单与插件数据是同一知识的两种表示，必然漂移。
+
+**How to apply**：改通用模块时若需要知道「这是哪种语言」，先问「这条知识能不能作为插件字段
+携带」；能就加字段 + builder，把差异下沉到 `lsp/plugin/builtins/*`。
+
+已数据化的字段（2026-09-18 迁移，勿回退为代码分支）：
+
+| 字段 | 替代掉的代码特例 | 消费点 |
+|------|------------------|--------|
+| `root_scope: RootScope` | `is_document_root_scoped` 语言白名单 | `lsp/session/root.rs` |
+| `detect_suppressed_by` | `profile.rs` 的 javascript 特例 | `plugin/registry.rs` → `suppressed_by` |
+| `tuning` | 按语言的性能开关分支 | `lsp/manager.rs` |
+| `extended_client_capabilities` / `client_capabilities` | 能力声明散写 | `lsp/session/instance.rs`（见下文能力声明契约） |
+
+正例注释：`lsp/profile.rs:74` —— 「规则来自插件数据（`LspPlugin::detect_suppressed_by`），
+本模块不含任何语言名」。
+
+**护栏**：消费侧必须各有一条「自定义插件声明该数据即生效」的测试，否则数据会退化成被忽略的
+装饰——没有它，字段加了没人读也测不出来：
+
+- `document_scoped_markers_come_from_plugin_data`（`lsp/session/root.rs:464`）
+- `custom_plugin_suppression_is_data_not_code`（`lsp/profile.rs:306`）
+- `java_plugin_advertises_only_implemented_extended_capabilities`（`lsp/plugin/builtins/java.rs:123`）
+
+### 能力声明必须与实现一致（原红线 14 的回归细节）
+
+声明侧与消费侧分跨 Rust / TS 两层，规则本体留在根 `AGENTS.md`（跨域红线），此处只记实测结论：
+
+- `resolveAdditionalTextEditsSupport: true` 令 jdtls 把 import 编辑全部推迟到
+  `completionItem/resolve`，而本栈（Rust transport + `@codemirror/lsp-client`）从不发 resolve
+  → Java 自动导包彻底失效。实测：声明 `true` 时 `List` 的 33 个候选 0 个带
+  `additionalTextEdits`，不声明则 33/33 带。
+- `progressReportProvider: true` 而全仓无 `language/progressReport` 处理 —— 同属假声明。
+- **反向违约同样致命**（rust-analyzer 1.97.1）：客户端未在
+  `completionItem.resolveSupport.properties` 声明 `additionalTextEdits` 时，r-a 把**所有**
+  flyimport 候选整条丢弃，补全列表里永远不会出现 `HashMap`。实测：不声明 108 项无候选，
+  声明后 109 项且 `HashMap` 居首。「漏声明」与「假声明」是同一条契约的两面。
+- 三条实测策略（r-a 强制要声明、jdtls 声明后改走 resolve、gopls 恒内联）由**同一套通用消费者**
+  `src/features/lsp/hooks/lspCompletionResolve.ts` 兜住即可。**不要因为某次事故就把能力按语言
+  切成开关**——那会违反上文「语言差异落在插件数据」。声明统一写进
+  `build_client_capabilities()` 全局生效。
+

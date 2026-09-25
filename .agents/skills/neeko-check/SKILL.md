@@ -9,12 +9,17 @@ disable-model-invocation: true
 # Neeko 代码审核规范（Code Reviewer）
 
 > **定位**：本 skill 是**代码审核器**，审核代码是否符合三层标准：
-> 1. **项目规范** —— `AGENTS.md`（单一事实源）+ 下方 15 大 pillar
+> 1. **项目规范** —— 15 条红线（全文按代码物理边界分文件存放，根 `AGENTS.md` 的红线索引表是唯一台账）+ 下方 15 大 pillar
 > 2. **业界最佳实践** —— `AGENTS.md` 中「业界最佳实践（React / Rust 通用底线）」章节
 > 3. **架构设计** —— `AGENTS.md` 架构基本原则 + 15 大 pillar
 >
-> 审核标准以 `AGENTS.md` 为单一事实源，本 skill 负责**引用并对齐**，不重复定义标准。
-> 若审核中发现标准缺失，应提示补充到 `AGENTS.md`，而非在本 skill 内新增规则。
+> **按改动所在侧取红线全文，否则等于漏审**：跨栈红线 4（IPC 2MB）/ 5（Event 常量）/ 14（LSP 能力声明）
+> 在根 `AGENTS.md`；后端红线 1,2,3,6,7,8,9,10,11,13,15 在 `src-tauri/AGENTS.md`；前端红线 12 在
+> `src/AGENTS.md`。审核 `src-tauri/**` 改动必须同时读 `src-tauri/AGENTS.md`，只读根文件会漏掉 11 条。
+> 以编号为准定位规则，不要按标题文字猜。
+>
+> 审核标准以这三处 AGENTS.md 为单一事实源，本 skill 负责**引用并对齐**，不重复定义标准。
+> 若审核中发现标准缺失，应提示补充到对应 AGENTS.md，而非在本 skill 内新增规则。
 
 # 核心使命
 死守单机 OS 资源底线，捍卫多平台编译一致性，确保 Neeko 长期架构可维护性。

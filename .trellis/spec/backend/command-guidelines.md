@@ -215,6 +215,27 @@ const project = await invoke<Project>("add_project", {
 
 ---
 
+## 命令边界的两条硬约束
+
+### 1. Command 层保持极薄
+
+`#[tauri::command]` 只做三件事：参数接收、反序列化校验、调度 manager/service。Git、SSH、PTY 的核心控制逻辑一律下沉（委派写法见上文「commands.rs → services.rs 委派模式」）。
+
+原因：命令层是 IPC 契约面，逻辑平铺在这里会让同一能力无法被非命令入口（worker、setup 恢复流程）复用，且每个新调用点都要重抄一遍错误处理。
+
+### 2. 单次返回的 JSON 不超过 2MB
+
+Diff 视图、PTY 缓冲区、大目录列表这类文本量不确定的载荷，禁止整体序列化为 JSON 返回：
+
+- 走 Tauri 二进制流（`Response::new(Vec<u8>)` + 前端 `invoke<ArrayBuffer>`），或
+- 前端按需分页/虚拟滚动，只取可见区间。
+
+原因：JSON 会把 `Vec<u8>` 展开成数字数组，实测膨胀约 6 倍。已有事故：`PTY 4KB read → emit(Vec<u8>) → JSON number[] → listen → term.write()` 全链路无界，WebContent 8.7 分钟膨胀至 5.2GB——完整链路与正确实现见 `concurrency-guidelines.md` 的终端 drain 场景。
+
+（原 AGENTS.md 审查红线 4、6，2026-09-25 迁入本文件；规则索引仍保留在根 `AGENTS.md` 与 `src-tauri/AGENTS.md`。）
+
+---
+
 ## 注册新命令
 
 1. 在对应域模块中定义命令函数

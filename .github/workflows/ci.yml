@@ -130,6 +130,12 @@ jobs:
         if: matrix.os == 'ubuntu-latest'
         run: python3 .trellis/scripts/check_path_identity_scope.py
 
+      - name: Guard AGENTS.md size and red-line routing
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          python3 -m unittest discover -s .trellis/scripts -p 'test_*.py'
+          python3 .trellis/scripts/check_agents_md_size.py
+
   backend-test:
     needs: backend-check
     strategy:
