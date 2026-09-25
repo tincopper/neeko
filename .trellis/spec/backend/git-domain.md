@@ -188,6 +188,68 @@ git ls-files --others --exclude-standard -z -- test/  ->  test/测试.txt       
 **改共享解析层必须跑全量 `cargo test`**：只跑新增用例过滤（如 `--lib quoted_`）会漏掉既有契约 ——
 首版实现把非引号 rename 也走了 token 扫描，打挂 4 条既有 rename 测试，全量测试才发现。
 
+## 9. 只读 git 语义单点注入（`GIT_OPTIONAL_LOCKS=0`）
+
+**契约**：一切只读 git 调用（status / rev-parse / ls-files 等）**不得刷新 `.git/index`**——
+否则与 IDE / 用户 git 争 index 锁，实测挡住过用户 `git commit`（2026-09-24 缺陷）。
+
+**单一事实源在执行层**，业务代码**禁止**再逐点补 opts / CLI 标志：
+
+1. `core::exec` 的 `spawn_target()`（本地 facade 唯一 spawn 入口）：`cmd == "git"` 时自动补
+   `GIT_OPTIONAL_LOCKS=0`（`collect` / `run` / `spawn_with` / `collect_blocking*` 全覆盖）；
+2. `common/git/transport` 的 `run_git_opts` / `run_git_with_stdin` 共用 env 组装处：
+   **三端（Local / WSL / SSH）同时生效**（WSL/SSH 把 env 渲染成远端 shell 前缀）。
+
+构造点：`common/git/git_env.rs`（`with_optional_locks_disabled` 尊重调用方显式覆盖）。
+已退役的散落机制：`status_worker` 的 `--no-optional-locks` CLI 标志与「老 git 回退」分支——
+**回退分支正是当年漏锁语义的地方**。`readonly_opts()` 仅剩显式意图标注用途，勿再往里加锁语义。
+
+**验证方式（行为断言，非 mock）**：`git status` 前后 `stat .git/index` 的 mtime 严格相等——
+`git_env::tests` 与 `collect_blocking_git_status_does_not_refresh_index` 两条用例钉死；
+写路径（stage/commit/stash/checkout）回归全绿证明 optional ≠ 必需。
+
+**Wrong**：新增读命令时 `run_git(&args, wd)` 之外再手动拼 `--no-optional-locks` 或 opts env——
+散落注入必然在下一处新增调用点被遗漏（info.rs / worktree.rs 两处缺口即前车之鉴）。
+**Correct**：直接走 facade / transport 默认注入；发现读路径写 index 立即回来改注入点。
+
+## 10. 写后 status 快照新鲜度契约（poke-and-wait）
+
+**背景**：`snapshot()` 是 G2 D2 读接口（`get_worktree_changed_files`）的唯一数据源，而 status
+worker 只在被信号触发时重算。discard / stage / commit 等 IPC 直接跑 git 命令改工作区，**不走
+watcher**——不主动通知，快照停留在写前状态，读接口把陈旧快照当权威数据返回（「操作成功但
+列表要手动刷新才更新」的根因）。
+
+**契约**：任何经 IPC 的 git **写命令成功后**必须调用 `wait_status_fresh`（`git/commands/index.rs`）：
+
+- 链路：命令层 → `run_blocking`（Condvar 等待是阻塞原语，**禁止**在 async 线程直呼）→
+  `WatcherManager::poke_status_worker_and_wait(project_id, RECALC_WAIT_TIMEOUT)` →
+  `GitStatusWorker::check_and_wait`；
+- 有界等待（1.5s 上限）：返回 `true` = 一轮**晚于写入启动**的重算已落地（emit 已冲刷，读接口
+  拿到写后快照）；`false` = 超时 / 非 git 项目——由 `git-status-snapshot` 事件推送最终收敛；
+- worker 侧以 **started/completed 进度对**判定「空闲」：早于写入启动的在飞迭代不可信，只等
+  「采样时刻空闲之后启动」的新迭代。无变化不 emit 的迭代**必须照常推进 completed**，否则
+  `check_and_wait` 会把「无变化重算」永远等成超时（实现时踩过的坑）。
+
+**Wrong**：写命令成功后只 `worker.check()`（非阻塞投递）就返回——前端立即刷新仍读到写前快照。
+**Correct**：`wait_status_fresh` 有界等待落地后再返回命令。
+
+**测试**：`check_and_wait_confirms_recalc_landed_after_write`（等待返回时 emit 已冲刷）、
+`check_and_wait_returns_true_without_emit_when_unchanged`（无变化不误判超时）、
+`poke_status_worker_and_wait_confirms_fresh_snapshot_after_write`（manager 级快照已更新）、
+`check_and_wait_zero_deadline_times_out`（超时路径）。
+
+## 11. GitExecError 携带 exit_code：禁止 stderr 嗅探判定行为分支
+
+**契约**：需要按 git 失败原因分流时，优先用**确定性信号**（exit code、结构化字段），
+stderr 文本匹配只允许用于「错误分类展示」（`classify_stderr` → Auth/Network 等 UI 分流），
+**不得作为行为分支的依据**——文本随 git 版本 / 语言环境漂移，误匹配会把真实错误吞成兜底成功。
+
+范例：unstage 兜底（discard.rs）——`git reset` 失败后用
+`rev-parse --verify --quiet HEAD` 的 **exit 1**（git `die_no_single_rev`：`--quiet` 走 1、
+报错版走 128）判定 unborn 分支，才走 `rm --cached`；HEAD 存在时一律传播真实错误。
+回归钉子：`discard_paths_should_not_trust_stderr_sniff_when_head_exists`（stderr 偏说
+"unknown revision" 而 HEAD 实际存在时，兜底不得触发）。
+
 ## 相关文件
 
 - `src-tauri/src/common/git/refs.rs` — refs 分类纯函数

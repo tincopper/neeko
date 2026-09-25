@@ -18,12 +18,12 @@
 | [命令指南](./command-guidelines.md) | Tauri 命令模式、状态访问、错误返回 | 已填写 |
 | [类型安全](./type-safety.md) | 结构体、枚举、serde、Rust-TS 类型同步 | 已填写 |
 | [错误处理](./error-handling.md) | anyhow、Result 模式、命令边界 | 已填写 |
-| [并发指南](./concurrency-guidelines.md) | 线程、Mutex、tokio、PTY/SSH I/O | 已填写 |
+| [并发指南](./concurrency-guidelines.md) | 线程、Mutex、tokio、PTY/SSH I/O、watcher 生命周期所有权契约 | 已填写 |
 | [质量指南](./quality-guidelines.md) | 代码风格、命名、平台特定代码 | 已填写 |
 | [会话适配器](./conversation-adapter.md) | Agent 会话管理、适配器模式、Tauri 命令 | 已填写 |
 | [窗口生命周期](./window-lifecycle.md) | 窗口关闭、Cmd+W 快捷键、跨平台事件交互 | 已填写 |
 | [项目 Skill 同步](./project-skill-sync.md) | Project Tag Group、target Agent、项目本地部署与解绑契约 | 已填写 |
-| [Git 域](./git-domain.md) | 历史展示范围（HEAD）、refs 分类、stash 查询命令 | 已填写 |
+| [Git 域](./git-domain.md) | 历史展示范围（HEAD）、refs 分类、stash 查询、换行/路径契约、只读 git 语义单点注入、写后快照新鲜度 | 已填写 |
 | [DAP 域](./dap-domain.md) | 调试域分层、断点单锁仓储、语言身份归一、事件端口、路径不降级 | 已填写 |
 | [LSP 域](./lsp-domain.md) | 三通道模型、applyEdit 跨层转发契约、诊断单写点、F1-F7 重构台账 | 已填写 |
 

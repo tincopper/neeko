@@ -110,6 +110,31 @@ std::thread::spawn(move || {
 stop.store(true, Ordering::Relaxed);
 ```
 
+### 后台线程资源所有权 —— 单一强所有者 + Weak 借用者（watcher 生命周期契约）
+
+> 2026-09-24 缺陷沉淀：旧 watcher 不释放（同一变更 emit 多次、每次项目激活泄漏一套线程），
+> 根因是 `spawn_maintenance_thread` 强持有 `Arc<Mutex<RecommendedWatcher>>`，而退出条件
+> `rx.recv()` 断开依赖的 `maintenance_tx` clone 又被 notify 闭包（活在 watcher 内）持有 ——
+> **双向保活**，`unwatch` 只置 stop_signal 而仅心跳线程轮询它。
+
+**契约**（`common/file/watcher/`）：
+
+1. **单一强所有者**：`WatcherHandle` 聚合项目全部运行资源（watcher / 线程 / 发送端），
+   drop 即释放。后台辅助线程（maintenance）一律持 `Weak`：每条消息 `upgrade()`，失败即
+   `break`——「所有者已释放 ⇒ 无需再维护」，**复用既有的断开即退出语义，不新造停机协议**。
+2. **入口幂等**：`watch()` 遇同 project_id 已注册 → `log::warn!` 直接返回。重复注册会
+   **翻倍投递事件并再泄漏一套线程**，不变量必须在所有者入口强制，而非依赖调用方自觉。
+3. **事件出口依赖倒置**：watcher 域不接触 Tauri `AppHandle`——统一走
+   `WatcherEventSink`（`sink.rs`，`WatcherEvent` 枚举 + 单方法 trait），生产适配器
+   `AppHandleSink` 在组合根注入。这同时让**无 GUI 契约测试**成为可能
+   （`lifecycle_tests.rs` 注入 `CollectingSink`）。
+4. **契约测试必须 Red 验证**：新加的生命周期测试要临时回退修复确认会失败
+   （当年 4/5 失败、恢复后 5/5 绿），否则「恰好绿」抓不住回归。
+
+**Wrong**：新建后台线程时把 `Arc<T>` clone 进线程，又把回传的 sender 存进 `T` 内部——
+环形强引用让「断开即退出」永不触发。
+**Correct**：线程持 `Weak<T>` + 每消息 `upgrade()`；或确保持有的引用链严格单向（所有者 → 线程）。
+
 ### `tokio::sync::mpsc::UnboundedSender/Receiver` —— 用于 SSH I/O 通道
 
 用于将输入和调整大小事件从 Tauri 事件处理器传递到 SSH I/O 线程：
