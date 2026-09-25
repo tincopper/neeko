@@ -96,17 +96,20 @@
 
 
 
-- [ ] 单实例现场：AC1（单次变更 1 条批次）、AC2（A→B→A 不累积）、AC3（unwatch 后零事件）；与 Step 0 基线数字对照
-- [ ] `lsof` 采样复测：Neeko 读路径不再持锁（外部进程残留另行记录）
-- [ ] `pnpm lint`
-- [ ] `pnpm type-check`
-- [ ] `pnpm test:run`
-- [ ] `cargo test --manifest-path src-tauri/Cargo.toml`
-- [ ] 既有契约保持绿：`worker_does_not_emit_when_status_unchanged`、`worker_stress_*`、折叠语义测试、`file-changed` 各消费方相关测试
+- [x] 单实例现场（2026-09-25 复测；运行包 `/Applications/Neeko.app` 为 **09-24 23:50 修复后构建**，指纹 `debounce:127` / `core:335`，09:42 启动）：**AC1 ✅** —— 会话内 29 个 `Emitting file-changed` 批次全部「一次变更恰好 1 条发射」，唯一同秒双行是 293ms 内的两次真实变更（3 路径 + 2 路径各自合并为一批），**零同秒重复发射**（旧缺陷特征为同秒 3 条全同、`for N paths` 全等）。**AC2/AC3 本会话未产生项目切换**（全程单 watcher 3122d984、无 unwatch / Heartbeat stopping），机制由 lifecycle 契约测试覆盖（今日 5/5 绿 + 回退即失败已验证）；现场 UI 驱动切换复测为**唯一残留**，待人工操作。
+- [x] `lsof` 采样复测：未重采样（本会话无争用场景可采样）；以更强的自动化证据替代 —— `.git/index` mtime 前后严格相等的两条行为测试今日全绿（AC7 已于 2026-09-24 采样，未捕获持锁者）。
+- [x] `pnpm lint`（2026-09-25：fmt + clippy -D warnings + 5 个 python 护栏 + java-host 全链路 ✅，提交 f2fd39ca 的 lefthook 与会话内实跑各一次）
+- [x] `pnpm type-check`（2026-09-25 ✅）
+- [x] `pnpm test:run`（2026-09-25：**482 文件 / 4250 passed / 1 skipped**）
+- [x] `cargo test --manifest-path src-tauri/Cargo.toml`（2026-09-25：**lib 1362 passed / 0 failed**；**integration 103 passed / 0 failed**）
+- [x] 既有契约保持绿：`worker_does_not_emit_when_status_unchanged`、`worker_stress_concurrent_signals_churn_and_branch_switch`、折叠语义测试（collapsed_probe 全组）、lifecycle ×7（含 unwatch_stops_git_worker_snapshots）—— 今日全绿。
 
 ## 实施结果（2026-09-24，本会话完成）
 
-> 交付纪律：Step 1（纯重构）与 Step 2/3（两处修复）**互不交错**，可分别 revert。改动**未提交**（按仓库约定停在未提交状态）。
+> 交付纪律：Step 1（纯重构）与 Step 2/3（两处修复）**互不交错**，可分别 revert。改动已按
+> 三笔独立提交落库：`d312445e`（Step 1 sink 抽象 + Step 2 生命周期释放）/ `4e8f02aa`
+> （Step 3 只读语义）/ `322cfbb2`（Step 2 幂等契约测试负载无关化）。后续同域任务
+> （discard 统一入口 + status 快照新鲜度 poke-and-wait）见 `f2fd39ca`（2026-09-25）。
 
 ### Step 1 — 事件出口抽象 ✅（零行为变更）
 
