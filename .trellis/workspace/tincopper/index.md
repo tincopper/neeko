@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-5.md`
-- **Total Sessions**: 230
+- **Total Sessions**: 231
 - **Last Active**: 2026-09-25
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-5.md` | ~41 | Active |
+| `journal-5.md` | ~134 | Active |
 | `journal-4.md` | ~1989 | Archived |
 | `journal-3.md` | ~1978 | Archived |
 | `journal-2.md` | ~1991 | Archived |
@@ -33,6 +33,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 231 | 2026-09-25 | AGENTS.md 治理收口（体积预算/台账校验/章节去重）+ 贡献指南去镜像 | `512d9cf6`, `f25d2ec0`, `e3b706df` | `main` |
 | 230 | 2026-09-25 | git discard 统一入口 + 写后快照新鲜度（watcher-lifecycle 任务收尾归档） | `f2fd39ca`, `53ebc610` | `main` |
 | 229 | 2026-09-25 | watcher 幂等测试 macOS CI flake 修复（批次计数改创建计数） | `322cfbb2` | `main` |
 | 228 | 2026-09-24 | 修复 untracked 折叠目录展开缓存陈旧 + status 闸门盲区 + git 路径 C 转义 | - | `main` |
