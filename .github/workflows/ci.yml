@@ -118,23 +118,11 @@ jobs:
         run: cargo clippy -- -D warnings
         working-directory: ./src-tauri
 
-      - name: Guard worktree byte assertions in git tests
+      # 护栏清单 = tools/guards/checks/ 目录本身；这里只声明「在哪个 stage 跑」，
+      # 不再逐条列脚本（三份手写清单正是本地与 CI 门禁集漂移的根因）。
+      - name: Run repository guards
         if: matrix.os == 'ubuntu-latest'
-        run: python3 .trellis/scripts/check_worktree_byte_assertions.py
-
-      - name: Guard platform-specific imports
-        if: matrix.os == 'ubuntu-latest'
-        run: python3 .trellis/scripts/check_platform_imports.py
-
-      - name: Guard path identity scope (same-file checks must use FileRef)
-        if: matrix.os == 'ubuntu-latest'
-        run: python3 .trellis/scripts/check_path_identity_scope.py
-
-      - name: Guard AGENTS.md size and red-line routing
-        if: matrix.os == 'ubuntu-latest'
-        run: |
-          python3 -m unittest discover -s .trellis/scripts -p 'test_*.py'
-          python3 .trellis/scripts/check_agents_md_size.py
+        run: python3 tools/guards/run.py run --stage ci --format github-actions
 
   backend-test:
     needs: backend-check

@@ -164,8 +164,39 @@ Hooks 通过 `pnpm prepare`（或 `pnpm lefthook install`）安装。
 | `pre-commit` | 改动 `src/**/*.{ts,tsx,js,jsx}` | `pnpm lint:fe` |
 | `pre-commit` | 改动 `src-tauri/**/*.rs` | `pnpm lint` |
 | `pre-commit` | 改动 `tools/java-host/**` | `pnpm lint:host` |
-| `pre-commit` | 改动任意 `AGENTS.md` | 护栏单测 + `check_agents_md_size.py` |
+| `pre-commit` | 每次提交 | `pnpm guards run --stage commit --staged` |
 | `commit-msg` | 每次提交 | `pnpm commitlint` |
+
+### 新增一条护栏
+
+护栏清单**就是** `tools/guards/checks/` 目录 —— 放一个模块即完成注册，
+`package.json` / `ci.yml` / `lefthook.yml` 一处都不用改（此前正是「三份手抄清单」让本地与
+CI 的门禁集悄悄漂移）。模块只导出两样东西：
+
+```python
+GUARD = Guard(id="check_my_rule", title="…", scopes=("src/**/*.ts",),
+              stages=("local", "ci", "commit"), red_lines=(8,), fix_hint="…")
+
+def check(ctx: Context) -> GuardResult: ...   # 只返回结论，不 print
+```
+
+框架统一兜住过去每条护栏各写一遍、且各自写歪的部分：
+
+- **不许空转通过** —— `scanned == 0` 判为「护栏自身失效」（退出码 2）而非通过；
+  仓库根由 marker 向上定位，全仓一处实现，不再出现 `parents[N]`；
+- **强制配套单测** —— 必须有 `tests/test_<id>.py`，护栏单测先于任何结论执行；
+- **退出码可区分** —— 0 通过 / 1 违规 / 2 护栏坏了，坏掉的工具无法伪装成「检查过了」；
+  坏护栏还会额外打一条 CI `::warning::` —— 否则它只躺在默认折叠的日志块里，等于静默消失；
+- **每条护栏都有时间预算**（`budget_ms`，默认 10s）—— 慢到没人愿意跑的门禁就是消失了
+  的门禁，所以超时按「护栏坏了」报，而不是按「代码违规」。
+
+`pnpm guards list` 打印当前注册表；`pnpm guards list --stage ci` 直接回答「CI 到底门禁哪几条」
+（并把被排除的护栏点名 —— 本地与 CI 门禁集当初正是因为没有这样一条命令才漂移）；
+`pnpm guards list <id>` 打印该护栏的台账明细。
+
+**护栏与它的测试要一起 `git add`。** `lefthook run pre-commit` 跑的是**暂存区**那棵树：
+只 add 了 `tests/test_check_x.py` 而 `core/…` 或 `checks/check_x.py` 还留在旧版本，
+hook 就会拿新测试去跑旧框架 —— 报错看起来像代码 bug，实际是版本错配。
 
 所有质量门通过前提交会被拦截。开 PR 前请在本地跑一遍**最小回归集** —— 定义见
 [`AGENTS.md`](./AGENTS.md)「Development Commands」（单一事实源，此处不复述）。

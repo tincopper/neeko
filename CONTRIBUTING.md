@@ -179,8 +179,48 @@ commit. Hooks are installed via `pnpm prepare` (or `pnpm lefthook install`).
 | `pre-commit` | changed `src/**/*.{ts,tsx,js,jsx}` | `pnpm lint:fe` |
 | `pre-commit` | changed `src-tauri/**/*.rs` | `pnpm lint` |
 | `pre-commit` | changed `tools/java-host/**` | `pnpm lint:host` |
-| `pre-commit` | changed any `AGENTS.md` | guard unit tests + `check_agents_md_size.py` |
+| `pre-commit` | every commit | `pnpm guards run --stage commit --staged` |
 | `commit-msg` | every commit | `pnpm commitlint` |
+
+### Adding a guard
+
+The guard list **is** the directory `tools/guards/checks/` — dropping a module
+there registers it, and none of `package.json`, `ci.yml` or `lefthook.yml` needs
+to change (three hand-copied lists is exactly how the local and CI gate sets
+drifted apart before). A module exports two things:
+
+```python
+GUARD = Guard(id="check_my_rule", title="…", scopes=("src/**/*.ts",),
+              stages=("local", "ci", "commit"), red_lines=(8,), fix_hint="…")
+
+def check(ctx: Context) -> GuardResult: ...   # returns findings, never prints
+```
+
+The framework enforces the parts every guard used to re-invent badly:
+
+- **no vacuous pass** — `scanned == 0` is reported as *the guard itself broke*
+  (exit 2), not as a pass; the repo root is resolved in one place by marker,
+  never by `parents[N]`;
+- **a companion test is mandatory** — `tests/test_<id>.py` must exist, and the
+  guard suite runs before any verdict is printed;
+- **exit codes are distinguished** — 0 pass / 1 violation / 2 guard error, so a
+  broken tool can never masquerade as "checked". A broken guard also raises a CI
+  `::warning::`, because a guard that silently died would otherwise hide inside
+  a collapsed log group;
+- **every guard has a time budget** (`budget_ms`, default 10s) — a gate slow
+  enough that nobody runs it is a gate that has disappeared, so overrunning it
+  is reported as *guard error*, not as a code violation.
+
+`pnpm guards list` prints the live registry; `pnpm guards list --stage ci` shows
+exactly what CI gates on (and names any guard left out — the local/CI gate sets
+drifted apart precisely because no command could answer that before);
+`pnpm guards list <id>` dumps that guard's ledger.
+
+**Stage a guard together with its test.** `lefthook run pre-commit` evaluates the
+*staged* tree, so staging `tests/test_check_x.py` while `core/…` or
+`checks/check_x.py` stays at an older revision makes the hook run new tests
+against the old framework — it will fail with something that looks like a code
+bug but is really a split snapshot.
 
 A commit is blocked until all gates pass. Before opening a PR, run the **minimal
 regression set** locally — its definition lives in [`AGENTS.md`](./AGENTS.md) →

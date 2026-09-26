@@ -1,0 +1,39 @@
+{
+  "root_file": "AGENTS.md",
+  "nested": [
+    "src/AGENTS.md",
+    "src-tauri/AGENTS.md"
+  ],
+  "size_caps": {
+    "AGENTS.md": 16384,
+    "src/AGENTS.md": 16384,
+    "src-tauri/AGENTS.md": 16384
+  },
+  "pair_cap": 30720,
+  "summary_max_bytes": 200,
+  "ledger_columns": [
+    "#",
+    "红线",
+    "必须 / 禁止（摘要）",
+    "全文位置"
+  ],
+  "title_column": "红线",
+  "summary_column": "必须 / 禁止（摘要）",
+  "signatures": {
+    "1": "统一命令执行接口",
+    "2": "跨平台 shell 选择",
+    "3": "阻塞 I/O 隔离",
+    "4": "IPC 大文本边界",
+    "5": "Event 名常量化",
+    "6": "Command 层保持极薄",
+    "7": "嵌套不超过 3 层",
+    "8": "路径安全校验",
+    "9": "`mod.rs` 保持极薄",
+    "10": "平台代码规范化",
+    "11": "换行边界",
+    "12": "路径身份唯一化",
+    "13": "测试夹具路径平台无关",
+    "14": "能力声明必须与实现一致",
+    "15": "语言差异必须落在插件数据"
+  }
+}

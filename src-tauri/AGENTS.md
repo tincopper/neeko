@@ -130,7 +130,7 @@ Windows 默认 `autocrlf=true` 会转 CRLF，**不确定**）。
   测试仓库必须用确定性 builder（`tests/unit/support.rs::TestRepo`、`operations.rs::init_repo`：
   仓库级 `core.autocrlf=false` + `.gitattributes * -text` 双保险）；必须断言字节时走行尾无关比较
   （`support::assert_content_eq` / `assert_worktree_eq`），或优先在归一化视图（status/diff）上断言。
-  护栏：`.trellis/scripts/check_worktree_byte_assertions.py`（已接 `pnpm lint` 与 CI）。
+  护栏：`tools/guards/checks/check_worktree_byte_assertions.py`（已接 `pnpm lint` 与 CI）。
   细则见 `.trellis/spec/unit-test/backend-testing.md`。
 
 **13. 测试夹具路径平台无关** —— 测试中进入 `Path`/`PathBuf` 语义或路径敏感 API（`is_absolute()`、

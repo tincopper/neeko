@@ -1,0 +1,174 @@
+{
+  "manifest": {
+    "src/features/editor/breadcrumb.ts": {
+      "counts": {
+        "backslash": 1,
+        "strip": 1
+      },
+      "kind": "legit",
+      "note": "面包屑分段展示"
+    },
+    "src/features/editor/hooks/useFileEditorState.ts": {
+      "counts": {
+        "backslash": 1
+      },
+      "kind": "legit",
+      "note": "预览/资源基准目录"
+    },
+    "src/features/file/utils/fileTreeUtils.ts": {
+      "counts": {
+        "backslash": 1
+      },
+      "kind": "legit",
+      "note": "各级父目录（树展开）"
+    },
+    "src/features/file/utils/javaPackageTree.ts": {
+      "counts": {
+        "backslash": 2
+      },
+      "kind": "legit",
+      "note": "判定 Java 源根（树结构）"
+    },
+    "src/features/git/components/ChangesSection.tsx": {
+      "counts": {
+        "strip": 1
+      },
+      "kind": "legit",
+      "note": "折叠目录占位行显示名剥离尾斜杠"
+    },
+    "src/features/git/components/diff/diffViewUtils.ts": {
+      "counts": {
+        "backslash": 1
+      },
+      "kind": "legit",
+      "note": "diff 行「文件名 + 目录」"
+    },
+    "src/features/git/components/gitlog/commitListUtils.ts": {
+      "counts": {
+        "backslash": 1
+      },
+      "kind": "legit",
+      "note": "commit 行「文件名 + 目录」"
+    },
+    "src/features/git/hooks/useUntrackedDirExpansion.ts": {
+      "counts": {
+        "strip": 1
+      },
+      "kind": "legit",
+      "note": "兼容旧 payload 的命令入参归一"
+    },
+    "src/features/lsp/api/languageMap.ts": {
+      "counts": {
+        "backslash": 2
+      },
+      "kind": "legit",
+      "note": "路径 → LSP file:// uri"
+    },
+    "src/features/project/utils/cloneFormUtils.ts": {
+      "counts": {
+        "strip": 1
+      },
+      "kind": "legit",
+      "note": "从 git URL 推导项目名（URL 派生）"
+    },
+    "src/features/quick-open/fileIndex.ts": {
+      "counts": {
+        "backslash": 2
+      },
+      "kind": "legit",
+      "note": "文件索引条目（派生，不做同文件判定）"
+    },
+    "src/features/runner/languages/go/pkg.ts": {
+      "counts": {
+        "backslash": 2
+      },
+      "kind": "legit",
+      "note": "文件所在目录相对 module 根（命令派生）"
+    },
+    "src/features/runner/languages/java/commands.ts": {
+      "counts": {
+        "backslash": 1
+      },
+      "kind": "legit",
+      "note": "路径布局 → FQCN（命令派生）"
+    },
+    "src/features/runner/languages/rust/commands.ts": {
+      "counts": {
+        "backslash": 1
+      },
+      "kind": "legit",
+      "note": "路径形状 → cargo target flag（命令派生）"
+    },
+    "src/features/symbol-nav/store/symbolNavStore.ts": {
+      "counts": {
+        "backslash": 1
+      },
+      "kind": "legit",
+      "note": "引用项标签取 basename"
+    },
+    "src/shared/components/ChangeFileTree.tsx": {
+      "counts": {
+        "backslash": 1
+      },
+      "kind": "legit",
+      "note": "变更列表建树（按 / 分段）"
+    },
+    "src/shared/utils/browserUtils.ts": {
+      "counts": {
+        "backslash": 3
+      },
+      "kind": "legit",
+      "note": "相对→绝对解析 + file:// URL 构建"
+    },
+    "src/shared/utils/fileRef.ts": {
+      "counts": {
+        "backslash": 7
+      },
+      "kind": "owner",
+      "note": "身份所有者：canonicalFsPath / relativeToRoot / relativeToRootOrNull 在此归一"
+    },
+    "src/shared/utils/fileTree.ts": {
+      "counts": {
+        "backslash": 1
+      },
+      "kind": "legit",
+      "note": "取文件名用于显示"
+    },
+    "src/shared/utils/gitFileDecoration.ts": {
+      "counts": {
+        "backslash": 1,
+        "strip": 1
+      },
+      "kind": "legit",
+      "note": "git 输出路径 → 内部 map key"
+    },
+    "src/shared/utils/languageRegistry.ts": {
+      "counts": {
+        "backslash": 2
+      },
+      "kind": "legit",
+      "note": "取扩展名/文件名查语言表"
+    },
+    "src/shared/utils/markdownLinks.ts": {
+      "counts": {
+        "backslash": 2,
+        "strip": 1
+      },
+      "kind": "legit",
+      "note": "md 内链 → 绝对路径"
+    },
+    "src/ui/MarkdownPreview.tsx": {
+      "counts": {
+        "backslash": 3
+      },
+      "kind": "legit",
+      "note": "图片 src → asset: URL 构建"
+    }
+  },
+  "owner": "src/shared/utils/fileRef.ts",
+  "valid_kinds": [
+    "debt",
+    "legit",
+    "owner"
+  ]
+}

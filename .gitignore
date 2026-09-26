@@ -61,3 +61,7 @@ reasonix.toml
 
 # Vitest 覆盖率产物（pnpm test:coverage）
 coverage/
+
+# Python 护栏框架字节码产物（tools/guards）
+__pycache__/
+*.pyc

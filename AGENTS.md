@@ -33,6 +33,7 @@ SSH 远程三种项目类型。核心目标：把终端会话、Git 操作、文
 ```
 src/                 React 前端（Feature-Based）→ 规则见 src/AGENTS.md
 src-tauri/           Rust 后端（Domain-Driven）→ 规则见 src-tauri/AGENTS.md
+tools/guards/        护栏框架与注册表（清单 = `checks/` 目录本身，新增文件即生效）
 docs/                架构、需求与设计文档
 .trellis/            spec 知识库、任务、会话日志（Trellis 管理）
 ```
@@ -44,7 +45,8 @@ docs/                架构、需求与设计文档
 
 ```bash
 pnpm install                 pnpm tauri dev            pnpm tauri build
-pnpm lint          # Rust fmt + clippy(-D warnings) + 全部 .trellis/scripts/check_*.py 护栏
+pnpm lint          # Rust fmt + clippy(-D warnings) + 全部护栏（tools/guards）+ java-host
+pnpm guards list   # 列当前护栏清单与其 stage/scope（清单即 tools/guards/checks/ 目录）
 pnpm lint:fe       # ESLint + tsc + vitest typecheck
 pnpm type-check    # npx tsc --noEmit
 pnpm test / test:run / test:coverage
@@ -174,7 +176,7 @@ Tauri Event 字符串（如 `terminal-output-{id}`、`git-status-diff`）禁止�
 
 - `docs/ARCHITECTURE.md` 架构总览 · `docs/neeko-development-spec.md` 全栈架构规范
 - `docs/project-backend-struct-spec.md` / `docs/project-frontend-struct-spec.md` 前后端结构规范
-- `docs/REQUIREMENTS.md` 需求 · `docs/skill-management-design.md` Skill 系统
+- `docs/skill-management-design.md` Skill 系统
 - `docs/keyboard-shortcuts.md` 快捷键表（面向用户，非 Agent 指令）
 - `docs/best-practices/index.md` 业界通用底线（React / Rust / 通用工程），供 `neeko-check` 对齐
 - `docs/agents/issue-tracker.md` Issue 跟踪 · `docs/agents/triage-labels.md` Triage 标签 · `docs/agents/domain.md` 单语境上下文

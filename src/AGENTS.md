@@ -86,8 +86,9 @@ Feature-Based 架构，`src/` 顶层：
 同一份源码出现两种表示会让断点 key 分叉、黄线与光标各认一个、变更事件漏配导致视图不刷新（issue #13）。
 
 展示 / URL / 树结构 / 命令入参派生的归一是合法的，但**出现点必须登记分类**：护栏
-`.trellis/scripts/check_path_identity_scope.py`（已接 `pnpm lint` 与 CI）以 `MANIFEST` 为机读台账，
-未登记命中 / 登记失效 / 计数漂移 / 扫描集为空四种情况均判失败；**改代码前先跑 `--list` 看全量台账**。
+`tools/guards/checks/check_path_identity_scope.py`（已接 `pnpm lint` 与 CI）以
+`tools/guards/ledger/path_identity_scope.json` 为机读台账，未登记命中 / 登记失效 / 计数漂移 /
+扫描集为空四种情况均判失败；**改代码前先跑 `pnpm guards list check_path_identity_scope` 看全量台账**。
 细则见 `.trellis/spec/frontend/state-management.md`。
 
 ## 测试

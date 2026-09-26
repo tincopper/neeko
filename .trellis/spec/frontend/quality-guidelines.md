@@ -192,7 +192,7 @@ ESLint 的 `no-restricted-imports` 规则会检测并报 error 拦截违反此�
 **正确做法**（三件套，缺一不可）：
 1. `vite.config.ts` → `resolve.dedupe: ['@codemirror/view', '@codemirror/state']`（dev + build 同生效）。
 2. `pnpm-workspace.yaml` → `overrides: '@codemirror/view': <单版本>` 消灭 nested 旧版。注意 pnpm v11 **不读** `package.json` 顶层 `overrides` / `pnpm` 字段，必须放 `pnpm-workspace.yaml`。
-3. `.trellis/scripts/check_codemirror_singleton.py`（已接入 `pnpm lint`）断言 lockfile 单版本。
+3. `tools/guards/checks/check_codemirror_singleton.py`（`pnpm lint` 与 CI 都跑）断言 lockfile 单版本。
 
 **验证**：`npx vite optimize --force` 后 `@uiw_react-codemirror.js` 与 `@codemirror_view.js` 必须 import 同一 chunk；`chunk-*.js` 中 `EditorView` 定义仅一处。改 overrides 后删 `node_modules/.vite` 重启 dev。
 
@@ -425,7 +425,7 @@ pnpm lint:fix     # 自动修复 ESLint/prettier 问题（如需要，手动执�
 - Tailwind 消费：`class="font-mono"` / `font-sans`（已桥接到角色 token）。
 - xterm：`new Terminal({ fontFamily: buildMonoStack(...), lineHeight: MONO_LINE_HEIGHT })` + `options.lineHeight` 同步。
 - CodeMirror：`createCmTheme(monoFamily, size)` 内部 `buildMonoStack`，前景 `var(--mono-fg, var(--text-primary))`。
-- 校验：`pnpm lint` 含 `check_font_family_guard.py`（扫描 `src/styles/**/*.css` 裸 `font-family:`）；`themeTokens.test.ts` 守卫各主题 `--mono-fg` 齐全。
+- 校验：护栏 `check_font_family_guard`（`pnpm guards run --only check_font_family_guard`，扫描 `src/styles/**/*.css` 裸 `font-family:`）；`themeTokens.test.ts` 守卫各主题 `--mono-fg` 齐全。
 
 ## 依赖补丁与 Vite 预打包缓存（改 `node_modules` 必守）
 

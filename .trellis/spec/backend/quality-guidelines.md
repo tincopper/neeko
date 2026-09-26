@@ -22,7 +22,7 @@
 - [ ] **平台判断先行**：本次改动是否新增/修改平台专属逻辑（`target_os = "macos"/"windows"/"linux"` / `unix` / `windows`）？若是，是否已确定主题归属（`platform/<theme>/` 或独立模块 `job_object`/`wsl`）？
 - [ ] **import 与使用点同 cfg**：所有平台专属 `use`（如 `BTreeSet`/`Path` 仅在 macOS 分支使用、`windows_sys::*` 仅在 Windows 分支使用）是否已与使用点同条件 `#[cfg(...)]` 门控？禁止顶层无条件 `use` 仅在 `#[cfg]` 块内使用（`clippy -D unused_imports` 会在非目标平台失败，见 `fonts.rs` 2026-09 回归）。
 - [ ] **Platform Adapter 分层**：多平台/单平台专属实现是否已抽入 `src-tauri/src/platform/<theme>/`（`mod.rs` 仅 `mod` + `pub use` 门控，业务代码无 `#[cfg]` 块）？独立模块（`job_object`/`wsl`）是否豁免但仍保持 import 门控？
-- [ ] **本地门禁 ≠ 跨平台门禁**：`pnpm lint` / `cargo clippy` 仅在宿主机（macOS）跑，平台 `unused_imports` 问题需靠 `python3 .trellis/scripts/check_platform_imports.py`（已接入 `pnpm lint`）或 CI 三平台矩阵兜底；改动后是否已跑 `pnpm lint` 且 `check_platform_imports.py` 通过？
+- [ ] **本地门禁 ≠ 跨平台门禁**：`pnpm lint` / `cargo clippy` 仅在宿主机（macOS）跑，平台 `unused_imports` 问题需靠 `pnpm guards run --only check_platform_imports`（已接入 `pnpm lint`）或 CI 三平台矩阵兜底；改动后是否已跑 `pnpm lint` 且该护栏通过？
 
 ---
 
@@ -420,13 +420,16 @@ pnpm tauri dev         # 完整开发环境（前端 + 后端）
 ### 质量门禁脚本
 
 ```bash
-pnpm lint              # 运行所有质量检查（cargo fmt + clippy + eslint + tsc + 3 个 Python 护栏）
-# 含：check_worktree_byte_assertions.py（工作区换行 CRLF 陷阱）|
-#     check_font_family_guard.py（font-family 硬编码）|
-#     check_platform_imports.py（平台专属 import 未门控，fonts.rs 2026-09 回归）
+pnpm lint                       # cargo fmt + clippy + 全部护栏（tools/guards）+ java-host
+pnpm guards list                # 当前护栏清单 + 各自 stage / scope / 关联红线
+pnpm guards run --stage local   # 只跑护栏
 ```
 
-- `check_platform_imports.py`：扫描 `src-tauri/src/**/*.rs`，若无 `#[cfg]` 门控的 `use` 仅在 `#[cfg(target_os/...)]` 块内使用则报错（本地单平台 `clippy` 无法发现，靠此脚本在 macOS 本机提前暴露，需与 CI 三平台矩阵互补）。
+护栏清单的唯一事实源是 `tools/guards/checks/` 目录本身（放一个模块即完成注册，
+不需要改 package.json / CI / lefthook），因此**本文件不复制清单** —— 逐条列出必然滞后
+（这里曾长期写着「3 个 Python 护栏」而实际有 6 条）。
+
+- `check_platform_imports.py`：扫描 `src-tauri/src/**/*.rs`，若无 `#[cfg]` 门控的 `use` 仅在 `#[cfg(target_os/...)]` 块内使用则报错（本地单平台 `clippy` 无法发现，靠此护栏在 macOS 本机提前暴露，需与 CI 三平台矩阵互补）。
 
 ### `[lints.clippy]` 配置说明
 
@@ -491,7 +494,8 @@ pub fn reorder(&self, ids: &[String]) -> Result<()> {
 
 在 push/PR 到 `main` 时运行：
 - `cargo check` + `cargo clippy -- -D warnings`（Windows、macOS、Linux 三平台矩阵）
-- `check_worktree_byte_assertions.py` / `check_platform_imports.py`（`ubuntu-latest` 上运行，本地 `pnpm lint` 已同步接入）
+- `pnpm guards run --stage ci`（`ubuntu-latest` 上跑全部护栏；本地 `pnpm lint` 跑 `--stage local`，
+  两边集合由护栏自己的 `stages` 声明决定，不再各写一份清单）
 
 ### 发布构建
 

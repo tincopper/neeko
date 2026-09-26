@@ -796,7 +796,7 @@ export function useDebugStopReveal(p: {
     （`useVisibleDebugSession` / `useStopLocation` / `useEditorViewSnapshot`）—— 漏一处就是
     「切项目后旧项目的停点画到本项目编辑器上」。判定散落即回到「同一规则多处解释」，新增消费方一律调用它。
 12. **selector 返回对象必须套 `useShallow`**：`useStopLocation` 的合并选择器若不套，每次 `getSnapshot` 都是新引用 → React 判定 tearing 并持续重渲。
-13. **路径形态归一只能住在身份所有者里，且出现点必须登记**：任何消费方都不得自造 `\`→`/`、去尾斜杠这类字符串重写来做同文件判定 —— 那是同一份文件的第二种表示。确属展示/URL/树结构/命令入参派生的归一可以保留，但必须在 `.trellis/scripts/check_path_identity_scope.py` 的 `MANIFEST` 登记分类（`owner` / `legit` / `debt`）与计数。该脚本已接入 `pnpm lint` 与 CI：**未登记命中 / 登记失效 / 计数漂移 / 扫描集为空** 四种情况都会判失败。改动前请先跑它（`--list` 看全量台账）。
+13. **路径形态归一只能住在身份所有者里，且出现点必须登记**：任何消费方都不得自造 `\`→`/`、去尾斜杠这类字符串重写来做同文件判定 —— 那是同一份文件的第二种表示。确属展示/URL/树结构/命令入参派生的归一可以保留，但必须在 `tools/guards/ledger/path_identity_scope.json` 登记分类（`owner` / `legit` / `debt`）与计数。该护栏已接入 `pnpm lint` 与 CI：**未登记命中 / 登记失效 / 计数漂移 / 扫描集为空** 四种情况都会判失败。改动前请先跑它（`pnpm guards list check_path_identity_scope` 看全量台账）。
 
 ### 4. Validation & Error Matrix
 

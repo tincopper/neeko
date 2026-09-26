@@ -511,5 +511,5 @@ assert!(info.changed_files.iter().any(|f| f.path == "README.md"));
 
 > 注意：`operations::get_git_info` 的同步版走 `core::exec` 同步桥，**禁止在 `#[tokio::test]`
 > 体内调用**（`src-tauri/AGENTS.md` 红线 1）；async 测试里用 `operations::get_git_info(...).await` 版本。
-> 护栏脚本 `.trellis/scripts/check_worktree_byte_assertions.py` 会检出该模式（已接入
+> 护栏脚本 `tools/guards/checks/check_worktree_byte_assertions.py` 会检出该模式（已接入
 > `pnpm lint` 与 CI）。

@@ -135,7 +135,7 @@
 - **生产**：禁止向 git 调用注入 `-c core.autocrlf=...` 或强制换行语义——必须尊重用户仓库的换行
   设置。工作区字节按不透明平台数据处理（解析走 `.lines()` 等 CRLF 兼容路径，如
   `operations.rs::get_file_diff` 的 fallback）。
-- **护栏**：`.trellis/scripts/check_worktree_byte_assertions.py` 检出「read_to_string 绑定变量被
+- **护栏**：`tools/guards/checks/check_worktree_byte_assertions.py` 检出「read_to_string 绑定变量被
   assert_eq! 字节级引用」模式，已接入 `pnpm lint` 与 CI（backend-check ubuntu）。
 
 **生产审计（L4）**：`common/git/` 5 处工作区字节读点全部 CRLF 兼容——`operations.rs:1106`
