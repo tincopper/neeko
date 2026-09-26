@@ -132,3 +132,34 @@ Node.js 18+（实际 `engines` >=24）、pnpm 9.12.2（实际 `packageManager` 1
 ### Next Steps
 
 - None - task complete
+
+
+## Session 232: 护栏脚手架：tools/guards 框架取代三份手抄清单
+
+**Date**: 2026-09-26
+**Task**: 护栏脚手架：tools/guards 框架取代三份手抄清单
+**Branch**: `main`
+
+### Summary
+
+把 6 条 check_*.py 护栏迁进 tools/guards 框架：注册表=checks/ 目录本身（放文件即生效，删文件即下线），stage/scope 由护栏自述，package.json/ci.yml/lefthook.yml 三份手写清单收敛为三次单行调用。框架统一兜住仓库根定位（全仓一处，禁 parents[N]）、反空转（scanned=0 判护栏失效而非通过）、退出码三档（0/1/2 可区分违规与工具坏了）、强制配套单测。顺带修两处真实缺陷：font_family 与 codemirror 护栏此前只挂本地 lint、CI 从不执行；worktree 护栏的 git 术语表匹配不到 git_commit() 导致误豁免。台账数据（MANIFEST / SIZE_CAPS / SIGNATURES）外置到 ledger/*.json。pnpm lint + 110 单测全绿。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+(No commits - planning session)
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
