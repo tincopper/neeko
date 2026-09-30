@@ -25,7 +25,7 @@ pre-commit:
         - "vitest.config.ts"
         - ".eslintrc.cjs"
         - ".prettierrc"
-      run: pnpm lint:fe:static
+      run: pnpm lint:fe
     # 依赖与构建脚本的改动同样会让 fmt / clippy 的结论失效，故与 .rs 并列。
     lint-rust:
       glob:
@@ -60,7 +60,7 @@ pre-push:
         - "tsconfig.json"
         - "vite.config.ts"
         - "vitest.config.ts"
-      run: pnpm test:run
+      run: pnpm test
     # Rust 全量测试（lib + integration，暖态 ~3min）。
     rust-tests:
       glob:
