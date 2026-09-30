@@ -158,7 +158,7 @@ beforeEach(() => {
   useProjectStore.setState({
     activeProject: { id: 'p1', name: 'proj', path: PROJECT } as never,
   });
-  useWorktreeStore.setState({ activeWorktreePath: null });
+  useWorktreeStore.setState({ byProject: {} });
   dapVariables.mockResolvedValue([]);
 });
 

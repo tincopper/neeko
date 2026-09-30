@@ -5,6 +5,7 @@ import { BROWSER_URL_CHANGED_EVENT, GIT_CHANGED_EVENT } from '@/shared/events';
 import { useFileChangedEvent } from '@/shared/hooks/useFileChangedEvent';
 import { useProjectBrowserStore } from '@/shared/store/browserStore';
 import { useProjectStore } from '@/shared/store/projectStore';
+import { repoKeyOf } from '@/shared/utils/repoRef';
 
 import { useBrowserPanelEvents } from '../useBrowserPanelEvents';
 
@@ -94,7 +95,11 @@ describe('useBrowserPanelEvents — git-changed 武装自动刷新', () => {
     renderHook(() => useBrowserPanelEvents(params));
 
     act(() => {
-      listeners.get(GIT_CHANGED_EVENT)!('proj-1');
+      // 载荷是 `{ repo_key, project_id }`（仓库单元身份补齐后不再是裸 project_id 字符串）
+      listeners.get(GIT_CHANGED_EVENT)!({
+        repo_key: repoKeyOf('proj-1', null),
+        project_id: 'proj-1',
+      });
     });
 
     expect(params.refreshRef.current).toHaveBeenCalledTimes(1);
@@ -105,7 +110,10 @@ describe('useBrowserPanelEvents — git-changed 武装自动刷新', () => {
     renderHook(() => useBrowserPanelEvents(params));
 
     act(() => {
-      listeners.get(GIT_CHANGED_EVENT)!('proj-1');
+      listeners.get(GIT_CHANGED_EVENT)!({
+        repo_key: repoKeyOf('proj-1', null),
+        project_id: 'proj-1',
+      });
     });
 
     expect(params.refreshRef.current).not.toHaveBeenCalled();
@@ -114,7 +122,11 @@ describe('useBrowserPanelEvents — git-changed 武装自动刷新', () => {
 
 describe('useBrowserPanelEvents — file:// 面板的同文件判定走身份抽象', () => {
   /** 取生产代码注册的 file-changed 处理器（该 hook 在测试里被 mock 成 vi.fn）。 */
-  function grabFileChangedHandler(): (event: { project_id: string; paths: string[] }) => void {
+  function grabFileChangedHandler(): (event: {
+    repo_key: string;
+    project_id: string;
+    paths: string[];
+  }) => void {
     const calls = vi.mocked(useFileChangedEvent).mock.calls;
     const handler = calls[calls.length - 1]?.[0];
     if (!handler) throw new Error('file-changed handler not registered');
@@ -139,11 +151,13 @@ describe('useBrowserPanelEvents — file:// 面板的同文件判定走身份抽
     return { refresh, handler: grabFileChangedHandler() };
   }
 
+  const MAIN_KEY = repoKeyOf('proj-1', null);
+
   it('变更路径属本文件（canonical 形态）→ 刷新', () => {
     const { refresh, handler } = setup('/repo', 'file:///repo/docs/main.html');
 
     act(() => {
-      handler({ project_id: 'proj-1', paths: ['docs/main.html'] });
+      handler({ repo_key: MAIN_KEY, project_id: 'proj-1', paths: ['docs/main.html'] });
     });
 
     expect(refresh).toHaveBeenCalledTimes(1);
@@ -155,20 +169,20 @@ describe('useBrowserPanelEvents — file:// 面板的同文件判定走身份抽
     const { refresh, handler } = setup('/repo/', 'file:///repo/docs/main.html');
 
     act(() => {
-      handler({ project_id: 'proj-1', paths: ['docs/main.html'] });
+      handler({ repo_key: MAIN_KEY, project_id: 'proj-1', paths: ['docs/main.html'] });
     });
 
     expect(refresh).toHaveBeenCalledTimes(1);
   });
 
   it('事件路径回退为**绝对路径**（watcher strip_prefix 失败）也必须命中', () => {
-    // 生产者契约：`strip_prefix(project_root).unwrap_or(&abs_path)` —— 项目根外的文件
-    // 会以**绝对路径**下发。拼接 `${projectRoot}/${rel}` 会得到 `/repo//repo/docs/main.html`
+    // 生产者契约：`strip_prefix(work_dir).unwrap_or(&abs_path)` —— 工作树根外的文件
+    // 会以**绝对路径**下发。拼接 `${root}/${rel}` 会得到 `/repo//repo/docs/main.html`
     // ⇒ 恒不命中 ⇒ 面板永不刷新（审计 §一 第①条，比尾斜杠更严重）。
     const { refresh, handler } = setup('/repo', 'file:///repo/docs/main.html');
 
     act(() => {
-      handler({ project_id: 'proj-1', paths: ['/repo/docs/main.html'] });
+      handler({ repo_key: MAIN_KEY, project_id: 'proj-1', paths: ['/repo/docs/main.html'] });
     });
 
     expect(refresh).toHaveBeenCalledTimes(1);
@@ -178,7 +192,23 @@ describe('useBrowserPanelEvents — file:// 面板的同文件判定走身份抽
     const { refresh, handler } = setup('/repo', 'file:///repo/docs/main.html');
 
     act(() => {
-      handler({ project_id: 'proj-1', paths: ['docs//main.html'] });
+      handler({ repo_key: MAIN_KEY, project_id: 'proj-1', paths: ['docs//main.html'] });
+    });
+
+    expect(refresh).toHaveBeenCalledTimes(1);
+  });
+
+  it('worktree 单元：路径相对**该单元工作树根**（不是项目根）→ 必须命中', () => {
+    // 回归：`paths` 的基准是产出单元的工作树根。用项目根（/repo）拼相对路径会落到主仓的
+    // 另一个同名文件上 ⇒ 面板不刷新。见任务 09-26 的载荷基准变更。
+    const { refresh, handler } = setup('/repo', 'file:///repo-wt/docs/main.html');
+
+    act(() => {
+      handler({
+        repo_key: repoKeyOf('proj-1', '/repo-wt'),
+        project_id: 'proj-1',
+        paths: ['docs/main.html'],
+      });
     });
 
     expect(refresh).toHaveBeenCalledTimes(1);
@@ -188,7 +218,7 @@ describe('useBrowserPanelEvents — file:// 面板的同文件判定走身份抽
     const { refresh, handler } = setup('/repo', 'file:///repo/docs/main.html');
 
     act(() => {
-      handler({ project_id: 'proj-1', paths: ['docs/other.html'] });
+      handler({ repo_key: MAIN_KEY, project_id: 'proj-1', paths: ['docs/other.html'] });
     });
 
     expect(refresh).not.toHaveBeenCalled();

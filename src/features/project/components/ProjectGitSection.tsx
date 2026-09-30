@@ -1,9 +1,10 @@
 import React, { useMemo } from 'react';
 
 import { useGitStore } from '@/shared/store/gitStore';
-import { useWorktreeStore } from '@/shared/store/worktreeStore';
+import { useProjectStore } from '@/shared/store/projectStore';
+import { selectActiveWorktreePath, useWorktreeStore } from '@/shared/store/worktreeStore';
 import type { Project } from '@/shared/types';
-import { aheadBehindKey } from '@/shared/utils/aheadBehindKey';
+import { repoKeyOf } from '@/shared/utils/repoRef';
 
 import SessionRow from './SessionRow';
 import WorktreeList from './WorktreeList';
@@ -30,20 +31,25 @@ function ProjectGitSection({ project, isActive, shortcut, actions }: ProjectGitS
   const { onSelectProject, onRefreshGit, onOpenWorktreeTerminal, onShowToast } = actions;
 
   const worktrees = project.git_info?.worktrees ?? [];
-  const activeWorktreePath = useWorktreeStore((s) => s.activeWorktreePath);
-  const aheadBehind = useGitStore(
-    (s) => s.aheadBehind[aheadBehindKey('local', project.id, project.id)],
-  );
+  // 响应式读取（渲染期读 `getState()` 会停在旧值：切回主仓时高亮不更新）
+  const activeWorktreePath = useWorktreeStore((s) => selectActiveWorktreePath(s, project.id));
+  /** 主仓单元的键：本行显示的一切（ahead/behind、+A -D 聚合）都取主仓单元。 */
+  const mainRepoKey = repoKeyOf(project.id, null);
 
-  // local 主终端的 +A -D = project.changed_files 聚合
+  // local 主终端行的 ahead/behind 取**主仓单元**的键（旧实现的 `local:{projectId}` 键没有任何写
+  // 入侧，于是徽标恒空）；该数字只在主仓视图（`localActive`）显示，与 worktree 的数字互不相关。
+  const aheadBehind = useGitStore((s) => s.aheadBehind[mainRepoKey]);
+
+  // local 主终端的 +A -D 聚合自**主仓单元**的 status（worktree 的变更不进这里）
+  const mainEntries = useProjectStore((s) => s.statuses[mainRepoKey]?.entries);
   const localChanges = useMemo(() => {
-    const files = project.git_info?.changed_files ?? [];
+    const files = mainEntries ?? [];
     if (files.length === 0) return undefined;
     const add = files.reduce((s, f) => s + f.additions, 0);
     const del = files.reduce((s, f) => s + f.deletions, 0);
     if (add === 0 && del === 0) return undefined;
     return { add, del };
-  }, [project.git_info?.changed_files]);
+  }, [mainEntries]);
 
   const localActive = isActive && !activeWorktreePath;
 

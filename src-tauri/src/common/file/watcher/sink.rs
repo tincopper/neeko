@@ -17,8 +17,8 @@
 use tauri::{AppHandle, Emitter};
 
 use super::types::{
-    FileChangedEvent, FileTreeChangedEvent, GitPerfSuggestionEvent, FILE_CHANGED_EVENT,
-    FILE_TREE_CHANGED_EVENT, GIT_CHANGED_EVENT, GIT_PERF_SUGGESTION_EVENT,
+    FileChangedEvent, FileTreeChangedEvent, GitChangedEvent, GitPerfSuggestionEvent,
+    FILE_CHANGED_EVENT, FILE_TREE_CHANGED_EVENT, GIT_CHANGED_EVENT, GIT_PERF_SUGGESTION_EVENT,
 };
 use crate::common::file::watcher::types::GIT_STATUS_SNAPSHOT_EVENT;
 use crate::common::git::status_worker::GitStatusSnapshot;
@@ -31,8 +31,8 @@ pub enum WatcherEvent<'a> {
     FileChanged(&'a FileChangedEvent),
     /// `file-tree-changed`：结构事件（受影响目录集合）
     TreeChanged(&'a FileTreeChangedEvent),
-    /// `git-changed`：worktree / 外部 git 状态变化（载荷为 project_id）
-    GitChanged(&'a str),
+    /// `git-changed`：某单元的 git 元数据变化提示（载荷含 repo_key + project_id）
+    GitChanged(&'a GitChangedEvent),
     /// `git-status-snapshot`：versioned 全量 status 快照
     StatusSnapshot(&'a GitStatusSnapshot),
     /// `git-perf-suggestion`：一次性性能建议
@@ -70,8 +70,8 @@ impl WatcherEventSink for AppHandleSink {
             WatcherEvent::TreeChanged(payload) => {
                 let _ = self.app.emit(FILE_TREE_CHANGED_EVENT, payload);
             }
-            WatcherEvent::GitChanged(project_id) => {
-                let _ = self.app.emit(GIT_CHANGED_EVENT, project_id);
+            WatcherEvent::GitChanged(payload) => {
+                let _ = self.app.emit(GIT_CHANGED_EVENT, payload);
             }
             WatcherEvent::StatusSnapshot(payload) => {
                 let _ = self.app.emit(GIT_STATUS_SNAPSHOT_EVENT, payload);
@@ -135,13 +135,18 @@ pub(crate) mod test_support {
     fn collecting_sink_records_event_names() {
         use super::super::types::FileChangedEvent;
 
+        // 夹具也不手拼 key：身份一律由 RepoRef 产出（护栏判据 6 对测试支撑代码同样生效）
+        let repo = crate::common::git::RepoRef::main("p1", "/repo");
         let sink = CollectingSink::new();
         let payload = FileChangedEvent {
+            repo_key: repo.key(),
             project_id: "p1".into(),
             paths: vec!["a.txt".into()],
         };
         sink.emit(WatcherEvent::FileChanged(&payload));
-        sink.emit(WatcherEvent::GitChanged("p1"));
+        sink.emit(WatcherEvent::GitChanged(
+            &crate::common::file::watcher::types::GitChangedEvent::new(&repo),
+        ));
 
         assert_eq!(sink.count(FILE_CHANGED_EVENT), 1);
         assert_eq!(sink.count(GIT_CHANGED_EVENT), 1);

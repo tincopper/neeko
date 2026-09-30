@@ -90,11 +90,7 @@ function seedStore(
     remoteAuthStore: new Map(),
     pendingAuthEntry: null,
   });
-  useWorktreeStore.setState({
-    activeWorktreePath: null,
-    openedWorktrees: [],
-    worktreeStateMap: {},
-  });
+  useWorktreeStore.setState({ byProject: {} });
   useEditorStore.setState({
     tabs: {},
   });

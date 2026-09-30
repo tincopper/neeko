@@ -10,7 +10,7 @@ import { useMruTabsStore } from '../mruTabsStore';
 import { advanceTabCycle, buildTabCycleOrder, useTabCycleStore } from '../tabCycleStore';
 
 function seedStores() {
-  useWorktreeStore.setState({ activeWorktreePath: null, activeWorktreeBranch: '' });
+  useWorktreeStore.setState({ byProject: {} });
   useProjectStore.setState({
     activeProjectId: 'p1',
     activeProject: createProject({ id: 'p1' }),

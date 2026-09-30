@@ -1,5 +1,5 @@
 use crate::common::git::operations;
-use crate::common::git::path_guard::{resolve_validated_work_dir, validate_repo_relative_path};
+use crate::common::git::path_guard::validate_repo_relative_path;
 use crate::common::git::types::DiffResult;
 use crate::project::types::{
     AheadBehind, CommitDetail, CommitEntry, CommitFileChange, StashActionResult, StashEntry,
@@ -55,8 +55,8 @@ pub async fn get_stash_list(
     worktree_path: Option<String>,
     state: State<'_, AppStateWrapper>,
 ) -> Result<Vec<StashEntry>, AppError> {
-    let (t, wd) = state.resolve_project(&project_id)?;
-    let repo_path = resolve_validated_work_dir(&t, &worktree_path, &wd)?;
+    let (t, repo) = state.resolve_repo(&project_id, worktree_path.as_deref())?;
+    let repo_path = repo.work_dir();
     operations::get_stash_list(&t, repo_path)
         .await
         .map_err(AppError::from)
@@ -70,8 +70,8 @@ pub async fn get_stash_files(
     worktree_path: Option<String>,
     state: State<'_, AppStateWrapper>,
 ) -> Result<Vec<CommitFileChange>, AppError> {
-    let (t, wd) = state.resolve_project(&project_id)?;
-    let repo_path = resolve_validated_work_dir(&t, &worktree_path, &wd)?;
+    let (t, repo) = state.resolve_repo(&project_id, worktree_path.as_deref())?;
+    let repo_path = repo.work_dir();
     operations::get_stash_files(&t, repo_path, &selector)
         .await
         .map_err(AppError::from)
@@ -87,8 +87,8 @@ pub async fn get_stash_file_diff(
     worktree_path: Option<String>,
     state: State<'_, AppStateWrapper>,
 ) -> Result<DiffResult, AppError> {
-    let (t, wd) = state.resolve_project(&project_id)?;
-    let repo_path = resolve_validated_work_dir(&t, &worktree_path, &wd)?;
+    let (t, repo) = state.resolve_repo(&project_id, worktree_path.as_deref())?;
+    let repo_path = repo.work_dir();
     operations::get_stash_file_diff(
         &t,
         repo_path,
@@ -108,11 +108,14 @@ pub async fn stash_apply(
     worktree_path: Option<String>,
     state: State<'_, AppStateWrapper>,
 ) -> Result<StashActionResult, AppError> {
-    let (t, wd) = state.resolve_project(&project_id)?;
-    let repo_path = resolve_validated_work_dir(&t, &worktree_path, &wd)?;
-    operations::stash_apply(&t, repo_path, &selector)
+    let (t, repo) = state.resolve_repo(&project_id, worktree_path.as_deref())?;
+    let repo_path = repo.work_dir();
+    let outcome = operations::stash_apply(&t, repo_path, &selector)
         .await
-        .map_err(AppError::from)
+        .map_err(AppError::from)?;
+    // stash 落回工作树 ⇒ 该单元 status 变了。本命令已带 worktree_path，戳的就是被写的单元。
+    crate::git::services::status::wait_status_fresh(&state, &repo).await;
+    Ok(outcome)
 }
 
 /// Pop (apply + drop) a stash entry.
@@ -123,11 +126,14 @@ pub async fn stash_pop(
     worktree_path: Option<String>,
     state: State<'_, AppStateWrapper>,
 ) -> Result<StashActionResult, AppError> {
-    let (t, wd) = state.resolve_project(&project_id)?;
-    let repo_path = resolve_validated_work_dir(&t, &worktree_path, &wd)?;
-    operations::stash_pop(&t, repo_path, &selector)
+    let (t, repo) = state.resolve_repo(&project_id, worktree_path.as_deref())?;
+    let repo_path = repo.work_dir();
+    let outcome = operations::stash_pop(&t, repo_path, &selector)
         .await
-        .map_err(AppError::from)
+        .map_err(AppError::from)?;
+    // stash 落回工作树 ⇒ 该单元 status 变了。本命令已带 worktree_path，戳的就是被写的单元。
+    crate::git::services::status::wait_status_fresh(&state, &repo).await;
+    Ok(outcome)
 }
 
 /// Get the diff for a file in a commit.
@@ -153,8 +159,8 @@ pub async fn get_ahead_behind(
     worktree_path: Option<String>,
     state: State<'_, AppStateWrapper>,
 ) -> Result<AheadBehind, AppError> {
-    let (t, wd) = state.resolve_project(&project_id)?;
-    let repo_path = resolve_validated_work_dir(&t, &worktree_path, &wd)?;
+    let (t, repo) = state.resolve_repo(&project_id, worktree_path.as_deref())?;
+    let repo_path = repo.work_dir();
     operations::get_ahead_behind(&t, repo_path)
         .await
         .map_err(AppError::from)

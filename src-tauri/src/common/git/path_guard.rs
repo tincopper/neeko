@@ -58,37 +58,78 @@ pub fn validate_repo_relative_paths(
     Ok(())
 }
 
-/// 校验 worktree 绝对路径。
+/// 归一化并校验 worktree / 项目根绝对路径，返回可用作**身份**的字符串形态。
 ///
-/// - 词法层：拒绝 NUL 与 `..` 分量（允许项目根外的合法位置）。
-/// - canonical 层（仅 Local 且路径已存在）：canonicalize 规范化，消除符号链接
-///   与 `..` 的二义性。
-pub fn validate_worktree_path(target: &ExecTarget, path: &str) -> Result<()> {
+/// - 词法层（所有 ExecTarget）：拒绝 NUL 与 `..` 分量（允许项目根之外的合法位置 ——
+///   worktree 由用户自选位置，如 `~/.neeko/worktrees/<name>`）；
+/// - canonical 层（仅 Local）：路径存在 → `canonicalize()`（解析符号链接、`.`、
+///   尾分隔符）；不存在 → 词法归一（`git worktree add` 之前目标目录尚不存在）；
+/// - WSL / SSH：**纯字符串**词法归一（远端 Linux 路径，绝不能经宿主 `std::path` —— 见下方分支注释）；
+/// - 非 UTF-8 可表示的路径一律拒绝：git CLI 参数与 IPC 都需要 UTF-8。
+///
+/// **为什么不「校验完返回原串」**：旧实现正是这样，于是同一个工作树可以以符号链接
+/// 形态、realpath 形态、带尾分隔符形态分别进入 watcher 表 / diff 缓存键 / 前端槽位，
+/// 各自成为一份独立身份 —— worktree 场景 changes 列表串数据的一维根因。归一化结果
+/// 必须被返回并向上贯穿，身份才有单一实现处（配 [`crate::common::git::RepoRef`]）。
+///
+/// [`crate::common::git::RepoRef`]: crate::common::git::RepoRef
+pub fn canonicalize_worktree_path(target: &ExecTarget, path: &str) -> Result<String> {
     lexical_worktree_check(path)?;
     if matches!(target, ExecTarget::Local) {
         let p = std::path::Path::new(path);
-        if p.exists() {
+        let normalized = if p.exists() {
             p.canonicalize()
-                .map_err(|e| anyhow::anyhow!("cannot canonicalize worktree path `{path}`: {e}"))?;
-        }
+                .map_err(|e| anyhow::anyhow!("cannot canonicalize worktree path `{path}`: {e}"))?
+        } else {
+            lexical_normalize(p)
+        };
+        return normalized
+            .to_str()
+            .map(std::string::ToString::to_string)
+            .ok_or_else(|| anyhow::anyhow!("worktree path `{path}` is not UTF-8"));
     }
-    Ok(())
+    // WSL / SSH：远端 Linux 路径，本地无法 canonicalize，只做词法归一。
+    //
+    // **绝不能经 `PathBuf`**：那不是「同一份逻辑换个输入」，而是换了物理语义 —— 路径分隔符
+    // 属于宿主 OS（`std::path` 的文档语义），而这条路径的消费者是**远端 Linux**。Windows 宿主上
+    // `Path::components("/home/u/p")` 把前导 `/` 当作 `RootDir` 再 push 回去，结果是 `\home\u\p`。
+    // 后果有两层：① 身份（`RepoRef::key()`）在不同宿主上分叉；② 该字符串直接进 `git -C` /
+    // WSL 登录脚本的 `cd`（`common/executor/wsl.rs`），远端根本没有这个路径 —— 远端单元的
+    // status 与文件读全部失效。纯字符串归一与宿主 OS 无关。
+    Ok(lexical_normalize_posix(path))
 }
 
-/// `resolve_worktree_path` + 校验组合：前端传入的 worktree_path 为空时回落项目根
-/// （项目根来自 resolve_project，属受信来源，不再校验）。
-pub fn resolve_validated_work_dir<'a>(
-    target: &ExecTarget,
-    worktree_path: &'a Option<String>,
-    wd: &'a str,
-) -> Result<&'a str> {
-    match worktree_path.as_deref() {
-        Some(p) if !p.trim().is_empty() => {
-            validate_worktree_path(target, p)?;
-            Ok(p)
+/// 词法归一：去掉 `.` 分量与尾分隔符（`..` 已被 [`lexical_worktree_check`] 拒绝）。
+///
+/// 仅用于 **Local**：`PathBuf` 的分隔符即宿主平台的分隔符，本地语义成立。
+fn lexical_normalize(path: &std::path::Path) -> std::path::PathBuf {
+    let mut out = std::path::PathBuf::new();
+    for comp in path.components() {
+        match comp {
+            std::path::Component::CurDir => {}
+            other => out.push(other.as_os_str()),
         }
-        _ => Ok(wd),
     }
+    out
+}
+
+/// 远端（WSL / SSH）POSIX 路径的词法归一：去 `.` 与空段、去尾分隔符，保留前导 `/`。
+///
+/// 全字符串实现（不碰 `PathBuf`）：归一结果必须在 macOS / Windows / Linux 三端逐字相同，
+/// 因为它就是远端 `git -C` / `cd` 的参数与仓库单元身份的一部分。判据与理由见
+/// [`canonicalize_worktree_path`] 的 WSL / SSH 分支。
+fn lexical_normalize_posix(path: &str) -> String {
+    let joined = path
+        .split('/')
+        .filter(|seg| !seg.is_empty() && *seg != ".")
+        .collect::<Vec<_>>()
+        .join("/");
+    if path.starts_with('/') {
+        // `/` 本身（或全被裁掉的 `/./`）归一为根：保留「根」这一事实，不返回空串 ——
+        // 空串与「没传路径」同形，会让身份与报错信息失去可读性。
+        return format!("/{joined}");
+    }
+    joined
 }
 
 // ─── 内部实现 ───────────────────────────────────────────────────────────────
@@ -278,13 +319,13 @@ mod tests {
         assert!(validate_repo_relative_paths(&t, &root, &paths).is_ok());
     }
 
-    // ── worktree 路径 ────────────────────────────────────────────────────
+    // ── worktree 路径归一化 ──────────────────────────────────────────────
 
     #[test]
     fn worktree_rejects_traversal_and_nul() {
         let t = ExecTarget::Local;
-        assert!(validate_worktree_path(&t, "/repo/../evil").is_err());
-        assert!(validate_worktree_path(&t, "a\0b").is_err());
+        assert!(canonicalize_worktree_path(&t, "/repo/../evil").is_err());
+        assert!(canonicalize_worktree_path(&t, "a\0b").is_err());
     }
 
     #[test]
@@ -292,61 +333,96 @@ mod tests {
         // worktree 允许放在项目根之外（~/.neeko/worktrees/<name>）
         let t = ExecTarget::Local;
         let dir = tempfile::tempdir().unwrap();
-        assert!(validate_worktree_path(&t, dir.path().to_str().unwrap()).is_ok());
+        let got = canonicalize_worktree_path(&t, dir.path().to_str().unwrap()).unwrap();
+        assert_eq!(
+            got,
+            dir.path()
+                .canonicalize()
+                .unwrap()
+                .to_string_lossy()
+                .to_string(),
+            "存在的目录必须返回 canonical 形态（而非原串）"
+        );
     }
 
     #[test]
-    fn worktree_nonexistent_path_passes_lexical_only() {
-        // create_worktree 场景：路径尚不存在，词法校验后放行
+    fn worktree_nonexistent_path_is_lexically_normalized() {
+        // create_worktree 场景：路径尚不存在 → 词法归一后放行（不得 canonicalize 失败即拒）
         let t = ExecTarget::Local;
-        assert!(validate_worktree_path(&t, "/tmp/definitely-not-exists-neeko/wt").is_ok());
+        let dir = tempfile::tempdir().unwrap();
+        let base = dir.path().canonicalize().unwrap();
+        let missing = format!("{}/new-wt/", base.to_string_lossy());
+        let got = canonicalize_worktree_path(&t, &missing).unwrap();
+        assert_eq!(got, format!("{}/new-wt", base.to_string_lossy()));
+    }
+
+    #[test]
+    fn symlink_and_trailing_separator_collapse() {
+        let t = ExecTarget::Local;
+        let dir = tempfile::tempdir().unwrap();
+        let real = dir.path().join("real");
+        std::fs::create_dir_all(&real).unwrap();
+        let link = dir.path().join("link");
+        #[cfg(unix)]
+        std::os::unix::fs::symlink(&real, &link).unwrap();
+        #[cfg(windows)]
+        std::os::windows::fs::symlink_dir(&real, &link).unwrap();
+        assert_eq!(
+            canonicalize_worktree_path(&t, &format!("{}/", link.to_string_lossy())).unwrap(),
+            canonicalize_worktree_path(&t, &real.to_string_lossy()).unwrap()
+        );
     }
 
     #[test]
     fn worktree_remote_target_skips_local_fs() {
-        // WSL/SSH 路径是远端 Linux 路径，不能本地 canonicalize
+        // WSL/SSH 路径是远端 Linux 路径，不能本地 canonicalize，只做词法归一
         let t = ExecTarget::Remote {
             host: "example.com".to_string(),
             port: 22,
             username: "user".to_string(),
             auth: crate::common::connection::types::AuthMethod::Password("x".to_string()),
         };
-        assert!(validate_worktree_path(&t, "/home/user/proj").is_ok());
+        assert_eq!(
+            canonicalize_worktree_path(&t, "/home/user/proj/").unwrap(),
+            "/home/user/proj"
+        );
+        assert!(canonicalize_worktree_path(&t, "/home/user/../etc").is_err());
     }
 
-    // ── resolve_validated_work_dir ───────────────────────────────────────
-
+    /// 远端路径的归一结果**必须与宿主 OS 无关**。
+    ///
+    /// 回归：旧实现把远端路径交给 `PathBuf` 归一，Windows 宿主上 `Path::components("/home/u/p")`
+    /// 的 `RootDir` 分量会被 push 成 `\` ⇒ 结果是 `\home\u\p`。身份字符串（`RepoRef::key()`）因此
+    /// 跨宿主分叉，且该字符串直接进远端 `git -C` / WSL 登录脚本的 `cd` —— 远端单元直接失效。
+    ///
+    /// 本用例的断言是**纯字符串语义**（不含路径敏感 API，不硬编码"存在的"宿主路径），
+    /// 因此在三端逐字成立；这正是修复的判据本身。
     #[test]
-    fn resolves_empty_worktree_to_root() {
-        let t = ExecTarget::Local;
-        assert_eq!(
-            resolve_validated_work_dir(&t, &None, "/repo").unwrap(),
-            "/repo"
-        );
-        assert_eq!(
-            resolve_validated_work_dir(&t, &Some(String::new()), "/repo").unwrap(),
-            "/repo"
-        );
-        assert_eq!(
-            resolve_validated_work_dir(&t, &Some("   ".to_string()), "/repo").unwrap(),
-            "/repo"
-        );
-    }
-
-    #[test]
-    fn resolves_valid_worktree() {
-        let t = ExecTarget::Local;
-        let dir = tempfile::tempdir().unwrap();
-        let wt = dir.path().to_str().unwrap().to_string();
-        assert_eq!(
-            resolve_validated_work_dir(&t, &Some(wt.clone()), "/repo").unwrap(),
-            wt
-        );
-    }
-
-    #[test]
-    fn rejects_traversal_worktree() {
-        let t = ExecTarget::Local;
-        assert!(resolve_validated_work_dir(&t, &Some("../evil".to_string()), "/repo").is_err());
+    fn remote_posix_path_is_never_rewritten_with_host_separators() {
+        let ssh = ExecTarget::Remote {
+            host: "example.com".to_string(),
+            port: 22,
+            username: "user".to_string(),
+            auth: crate::common::connection::types::AuthMethod::Password("x".to_string()),
+        };
+        let wsl = ExecTarget::Wsl {
+            distro: "Ubuntu-22.04".to_string(),
+        };
+        for t in [&ssh, &wsl] {
+            // 前导 `/` 与分段必须是 POSIX 形态（宿主为 Windows 时也不得变 `\`）
+            assert_eq!(
+                canonicalize_worktree_path(t, "/home/user/proj/.worktrees/dev").unwrap(),
+                "/home/user/proj/.worktrees/dev"
+            );
+            // `.` 与尾分隔符仍按与 Local 相同的语义收敛
+            assert_eq!(
+                canonicalize_worktree_path(t, "/home/user/proj/./x/").unwrap(),
+                "/home/user/proj/x"
+            );
+            // 相对形态保留相对性（远端 worktree 路径允许相对写法）
+            assert_eq!(canonicalize_worktree_path(t, "sub/wt/").unwrap(), "sub/wt");
+            // 根仍是根（不塌成空串 —— 空串与「没传路径」同形）
+            assert_eq!(canonicalize_worktree_path(t, "/./").unwrap(), "/");
+        }
     }
 }

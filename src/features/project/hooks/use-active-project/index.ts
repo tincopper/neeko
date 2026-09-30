@@ -10,7 +10,7 @@
 import { useMemo } from 'react';
 
 import { useProjectStore } from '@/shared/store/projectStore';
-import { useWorktreeStore } from '@/shared/store/worktreeStore';
+import { useActiveWorktreePath } from '@/shared/store/worktreeStore';
 import type { ActiveProjectContext } from '@/shared/types/activeProject';
 import { environmentToConnectionContext } from '@/shared/types/project';
 
@@ -25,7 +25,7 @@ import { createProjectCommands } from './commandFactory';
  */
 export function useActiveProject(): ActiveProjectContext {
   const activeProject = useProjectStore((s) => s.activeProject);
-  const activeWorktreePath = useWorktreeStore((s) => s.activeWorktreePath);
+  const activeWorktreePath = useActiveWorktreePath();
 
   const commands = useMemo(() => {
     if (!activeProject) return null;

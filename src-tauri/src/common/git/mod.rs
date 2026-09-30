@@ -12,7 +12,8 @@ pub mod perf;
 pub mod pr;
 pub mod provider;
 pub mod refs;
-pub mod remote;
+/// 仓库工作树身份（git 状态的唯一寻址单位）。
+pub mod repo_ref;
 pub mod status_worker;
 pub mod transport;
 pub mod types;
@@ -25,7 +26,7 @@ pub use parsers::*;
 pub use pr::*;
 pub use provider::*;
 pub use refs::*;
-pub use remote::*;
+pub use repo_ref::{RepoRef, WorktreeRef};
 pub use types::*;
 #[cfg(target_os = "windows")]
 pub use wsl::*;

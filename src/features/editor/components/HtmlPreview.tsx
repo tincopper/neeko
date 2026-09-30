@@ -8,6 +8,7 @@ import { Globe, RefreshCw } from '@/shared/components/icons';
 import { useProjectStore } from '@/shared/store/projectStore';
 import type { FileChangedEvent } from '@/shared/types';
 import { pathsContainFile } from '@/shared/utils/fileRef';
+import { unitWorkDir } from '@/shared/utils/repoRef';
 
 interface HtmlPreviewProps {
   projectId: string;
@@ -113,15 +114,19 @@ function HtmlPreview({ projectId, filePath, fileName }: HtmlPreviewProps) {
 
   // file-changed 事件订阅（与 useFileTabRefresh / useBrowserPanel 共享同一 IPC 监听）。
   //
-  // **同文件判定必须走身份抽象**：watcher 发出的 `paths` 是**项目相对路径**
-  // （Rust 侧 `strip_prefix(project_root)`；strip 失败时回退绝对路径），而本组件的 `filePath`
-  // 是 tab 的规范**绝对**路径。原先的 `p === filePath || p.endsWith('/' + filePath)` 在正常路径下
-  // **恒不命中**（绝对路径的 `endsWith('//abs')` 永假）⇒ 预览不刷新、显示过期内容。
+  // **同文件判定必须走身份抽象，且基准必须与产出侧同源**：watcher 挂在**仓库单元**上，
+  // 发出的 `paths` 是**该单元工作树根**相对路径（Rust 侧 `strip_prefix(repo.work_dir())`；
+  // strip 失败时回退绝对路径），而本组件的 `filePath` 是 tab 的规范**绝对**路径。
+  // 用项目根拼 worktree 相对路径会落到主仓的另一个同名文件上 ⇒ 恒漏配、预览不刷新。
+  // 原先的 `p === filePath || p.endsWith('/' + filePath)` 更是恒不命中（绝对路径的
+  // `endsWith('//abs')` 永假）—— 两次事故同果：预览显示过期内容。
   useFileChangedEvent(
     useCallback(
       (event: FileChangedEvent) => {
-        const root =
+        const projectPath =
           useProjectStore.getState().projects.find((p) => p.id === projectId)?.path ?? '';
+        // 基准 = 事件自带身份所指单元的工作树根（主仓单元回落到项目根）
+        const root = unitWorkDir(event.repo_key, projectPath);
         if (pathsContainFile(root, event.paths, filePath)) loadHtmlContent();
       },
       [projectId, filePath, loadHtmlContent],

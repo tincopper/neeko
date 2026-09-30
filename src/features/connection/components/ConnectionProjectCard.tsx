@@ -9,18 +9,12 @@ import ConfirmDialog from '@/shared/components/ConfirmDialog';
 import ContextMenu, { type ContextMenuItem } from '@/shared/components/ContextMenu';
 import ProjectSettingsDialog from '@/shared/components/ProjectSettingsDialog';
 import { useGitStore } from '@/shared/store/gitStore';
-import { useWorktreeStore } from '@/shared/store/worktreeStore';
-import type { FileChange } from '@/shared/types';
-import { aheadBehindKey } from '@/shared/utils/aheadBehindKey';
+import { selectEntries, useProjectStore } from '@/shared/store/projectStore';
+import { selectActiveWorktreePath, useWorktreeStore } from '@/shared/store/worktreeStore';
 import { getIdeIconByCommand } from '@/shared/utils/idePresets';
+import { repoKeyOf } from '@/shared/utils/repoRef';
 
-import {
-  renameWorktree,
-  removeWorktree,
-  getWorktreeChangedFiles,
-  isWorktreeDirty,
-  // eslint-disable-next-line import/no-restricted-paths -- connection feature needs git API for worktree operations
-} from '../../git/api/gitApi';
+import { useConnectionWorktreeActions } from '../hooks/useConnectionWorktreeActions';
 
 import ConnectionWorktreeList from './ConnectionWorktreeList';
 import type { ConnectionProjectCardProps } from './types';
@@ -49,16 +43,17 @@ const ConnectionProjectCard: React.FC<ConnectionProjectCardProps> = React.memo(
     onSaveProjectSettings,
   }) => {
     const isWsl = source.type === 'wsl';
-    const identifier = source.type === 'wsl' ? source.distro : source.entryId;
+    const identifier = isWsl ? source.distro : source.entryId;
     const logTag = LOG_TAG[source.type] ?? '';
     const connectionId = identifier;
 
-    // Active worktree path from unified store field
-    const activeWorktreePath = useWorktreeStore((s) => s.activeWorktreePath);
+    // 本卡片渲染的是 project.id 的行 → 单元归属按该 projectId 取（不是「当前激活项目」的镜像）
+    const activeWorktreePath = useWorktreeStore((s) => selectActiveWorktreePath(s, project.id));
 
-    // ahead/behind 仅在 active 项目时显�?
-    const aheadKey = aheadBehindKey(isWsl ? 'wsl' : 'remote', identifier, project.id);
-    const aheadBehind = useGitStore((s) => s.aheadBehind[aheadKey]);
+    // ahead/behind 仅在 active 项目时显示；键 = 该项目的**激活单元**（与写入侧同一把键）。
+    // 旧键带 `{source}:{identifier}` 前缀，而那三个写入点的 identifier 约定各不相同 ⇒ 读不到。
+    const unitRepoKey = repoKeyOf(project.id, activeWorktreePath);
+    const aheadBehind = useGitStore((s) => s.aheadBehind[unitRepoKey]);
 
     const [collapsed, setCollapsed] = useState(true);
     const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
@@ -87,22 +82,8 @@ const ConnectionProjectCard: React.FC<ConnectionProjectCardProps> = React.memo(
       [onOpenWorktreeTerminal, connectionId],
     );
 
-    const handleRenameWorktree = useCallback(
-      (oldPath: string, newName: string) => {
-        const newFullPath = oldPath.replace(/[^/\\]+$/, newName);
-        renameWorktree(project.id, oldPath, newFullPath).catch(console.error);
-      },
-      [project.id],
-    );
-
-    const handleRemoveWorktree = useCallback(
-      (wtPath: string) => {
-        removeWorktree(project.id, wtPath).catch((e: unknown) => {
-          console.error(`${logTag} Failed to remove worktree:`, e);
-        });
-      },
-      [project.id, logTag],
-    );
+    // worktree 行的命令面（改名 / 删除 / 取变更 / 脏检查）收拢在本 feature 的 hook 里
+    const worktreeActions = useConnectionWorktreeActions(project.id, logTag);
 
     const handleRemove = useCallback(() => {
       setConfirmRemove(true);
@@ -114,20 +95,6 @@ const ConnectionProjectCard: React.FC<ConnectionProjectCardProps> = React.memo(
           ? () => onOpenIde(connectionId, project.path, project.selected_ide ?? '')
           : undefined,
       [onOpenIde, connectionId, project.path, project.selected_ide],
-    );
-
-    const handleGetWorktreeChangedFiles = useCallback(
-      (worktreePath: string): Promise<FileChange[]> => {
-        return getWorktreeChangedFiles(project.id, worktreePath).catch(() => [] as FileChange[]);
-      },
-      [project.id],
-    );
-
-    const handleIsWorktreeDirty = useCallback(
-      (worktreePath: string): Promise<boolean> => {
-        return isWorktreeDirty(project.id, worktreePath).catch(() => false);
-      },
-      [project.id],
     );
 
     const handleContextMenu = (e: React.MouseEvent) => {
@@ -180,15 +147,18 @@ const ConnectionProjectCard: React.FC<ConnectionProjectCardProps> = React.memo(
       ? getIdeIconByCommand(project.selected_ide, ideCommandOverrides)
       : undefined;
 
-    // local 主终端的 +A -D = project.changed_files 聚合
+    // local 主终端行的 +A -D = **主仓单元**的 status 条目（worktree 单元各有自己的条目）。
+    // 缺失 = 未知（未挂载 / 刚被切走）→ 不显示 chip；绝不沿用其它单元的条目。
+    const mainEntries = useProjectStore((s) => selectEntries(s, repoKeyOf(project.id, null)));
+
     const localChanges = useMemo(() => {
-      const files = gitInfo?.changed_files ?? [];
+      const files = mainEntries ?? [];
       if (files.length === 0) return undefined;
       const add = files.reduce((s, f) => s + f.additions, 0);
       const del = files.reduce((s, f) => s + f.deletions, 0);
       if (add === 0 && del === 0) return undefined;
       return { add, del };
-    }, [gitInfo?.changed_files]);
+    }, [mainEntries]);
 
     const localActive = isActive && !activeWorktreePath;
 
@@ -243,10 +213,10 @@ const ConnectionProjectCard: React.FC<ConnectionProjectCardProps> = React.memo(
               worktrees={worktrees}
               activeWorktreePath={isActive ? activeWorktreePath : null}
               onOpenWorktreeTerminal={handleOpenWorktreeTerminal}
-              onCommitRenameWorktree={handleRenameWorktree}
-              onRemoveWorktree={handleRemoveWorktree}
-              onGetWorktreeChangedFiles={handleGetWorktreeChangedFiles}
-              onIsWorktreeDirty={handleIsWorktreeDirty}
+              onCommitRenameWorktree={worktreeActions.rename}
+              onRemoveWorktree={worktreeActions.remove}
+              onGetWorktreeChangedFiles={worktreeActions.getChangedFiles}
+              onIsWorktreeDirty={worktreeActions.checkDirty}
             />
           </div>
         </ProjectGroup>

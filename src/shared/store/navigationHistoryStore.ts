@@ -8,7 +8,7 @@ import { create } from 'zustand';
 import { readFileContent } from '@/features/file/api/fileApi';
 import { useEditorStore } from '@/shared/store/editorStore';
 import { useProjectStore } from '@/shared/store/projectStore';
-import { useWorktreeStore } from '@/shared/store/worktreeStore';
+import { selectActiveWorktreePath, useWorktreeStore } from '@/shared/store/worktreeStore';
 import type { Tab } from '@/shared/types';
 import { preloadLanguageExtension } from '@/shared/utils/codemirror';
 import { getFileName, getTabId } from '@/shared/utils/fileTree';
@@ -43,12 +43,12 @@ function syncFlags(set: (p: Partial<NavHistoryState>) => void) {
 /** Best-effort current file + caret as a history entry. */
 export function captureCurrentNavLocation(): NavLocation | null {
   const proj = useProjectStore.getState();
-  const wt = useWorktreeStore.getState();
+  const worktrees = useWorktreeStore.getState();
   const editor = useEditorStore.getState();
   const projectId = proj.activeProjectId;
   if (!projectId) return null;
 
-  const tabKey = resolveTabKey(projectId, wt.activeWorktreePath);
+  const tabKey = resolveTabKey(projectId, selectActiveWorktreePath(worktrees, projectId));
 
   const projectTabs = editor.tabs[tabKey];
   if (!projectTabs?.activeTabId) return null;

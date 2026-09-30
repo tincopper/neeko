@@ -22,13 +22,14 @@ import { CLOSE_TAB_EVENT } from '@/shared/events';
 import { useKeyboardShortcuts } from '@/shared/hooks/useKeyboardShortcuts';
 import { useNotificationStore } from '@/shared/store/notificationStore';
 import { useProjectStore } from '@/shared/store/projectStore';
-import { useWorktreeStore } from '@/shared/store/worktreeStore';
+import { getActiveWorktreePath } from '@/shared/store/worktreeStore';
 import { safeUnlisten } from '@/shared/utils/safeUnlisten';
 
 import type { ToolbarFooterProps } from '../components/ToolbarFooter';
 
 import { type AppShellData } from './buildAppShellValues';
 import { closeActiveTabCommand } from './closeActiveTabCommand';
+import { useActiveRepoUnitSync } from './useActiveRepoUnitSync';
 import { useAppEntryAddRefresh } from './useAppEntryAddRefresh';
 import { useAppInitialGitRefresh } from './useAppInitialGitRefresh';
 import { useAppStoreSync } from './useAppStoreSync';
@@ -117,28 +118,24 @@ export function useAppShellData(): UseAppShellDataResult {
     handleDragEnd: handleRemoteDragEnd,
   } = remote;
 
-  const {
-    activeWorktreePath,
-    updateWtPath,
-    setActiveWorktreePath,
-    setActiveWorktreeBranch,
-    setOpenedWorktrees,
-  } = useWorktreeState(activeProjectId);
+  const { activeWorktreePath, activateWorktree, markWorktreeOpened } =
+    useWorktreeState(activeProjectId);
   useEffect(() => {
     if (!activeWorktreePath || !activeProject?.git_info) return;
     const worktrees = activeProject.git_info.worktrees;
-    // worktrees 为空可能是「尚未加载完成」而非「确实没有」，此时不清理激活态，
-    // 避免启动恢复 activeWorktreePath 与 worktree 列表加载之间的竞态。
+    // worktrees 为空可能是「尚未加载完成」而非「确实没有」，此时不清理激活态。
+    // 两侧路径都是后端 canonical 形态（RepoRef 构造时归一），因此等值比较是身份比较，
+    // 不再是旧实现里「符号链接形态 vs realpath」互相认不出来的那种字符串猜谜。
     if (worktrees.length > 0 && !worktrees.some((wt) => wt.path === activeWorktreePath)) {
-      setActiveWorktreePath(null);
-      setActiveWorktreeBranch('');
+      console.warn('[worktree] active unit disappeared, falling back to main:', activeWorktreePath);
+      activateWorktree(activeProject.id, null, '');
     }
   }, [
     activeProject?.git_info?.worktrees,
     activeWorktreePath,
-    setActiveWorktreePath,
-    setActiveWorktreeBranch,
+    activateWorktree,
     activeProject?.git_info,
+    activeProject?.id,
   ]);
 
   const wslActionsWrap = useProjectActions({
@@ -166,9 +163,8 @@ export function useAppShellData(): UseAppShellDataResult {
     saveSession: session.saveSession,
   });
   const worktreeActionsWrap = useWorktreeActions({
-    setActiveWorktreePath,
-    setActiveWorktreeBranch,
-    setOpenedWorktrees,
+    activateWorktree,
+    markWorktreeOpened,
     saveWorktreeState: session.saveWorktreeState,
   });
   const remoteAuthActions = useRemoteAuthActions({ saveSession: session.saveSession });
@@ -204,9 +200,7 @@ export function useAppShellData(): UseAppShellDataResult {
     const projectId = useProjectStore.getState().activeProjectId ?? null;
     if (!projectId) return;
     const rootPath =
-      useWorktreeStore.getState().activeWorktreePath ??
-      useProjectStore.getState().activeProject?.path ??
-      undefined;
+      getActiveWorktreePath() ?? useProjectStore.getState().activeProject?.path ?? undefined;
     // force = true: manual refresh must bypass the "already loaded" idempotency
     // check, otherwise a loaded tree would never re-fetch (the root cause of
     // "refresh button does nothing after file changes").
@@ -216,6 +210,8 @@ export function useAppShellData(): UseAppShellDataResult {
     wslActionsWrap.setWslDiffState?.(null);
   }, [wslActionsWrap]);
 
+  // 当前视图所在仓库单元 → 后端挂载的唯一同步点（决策 D-B 落地点）
+  useActiveRepoUnitSync();
   const { initializing } = useSessionBootstrap({
     loadProjects,
     restoreWorktreeState: session.restoreWorktreeState,
@@ -249,6 +245,15 @@ export function useAppShellData(): UseAppShellDataResult {
     handleOpenIdeCallback: agentActionsWrap.handleOpenIdeCallback,
     handleSetProjectIde: agentActionsWrap.handleSetProjectIde,
   });
+  // 快捷键循环 worktree 永远作用于「当前激活项目」：调用时经 getState 现取项目 id
+  //（mutator 显式收 projectId，渲染期闭包在切换竞态下是旧值）
+  const updateWtPath = useCallback(
+    (path: string | null, branch: string) => {
+      const pid = useProjectStore.getState().activeProjectId;
+      if (pid) activateWorktree(pid, path, branch);
+    },
+    [activateWorktree],
+  );
   useKeyboardShortcuts({
     updateWtPath,
     activeTabId,

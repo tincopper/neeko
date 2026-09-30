@@ -4,7 +4,11 @@ import { bumpGitRefresh } from '@/shared/hooks/useGitRefresh';
 import { useConnectionStore } from '@/shared/store/connectionStore';
 import { useEditorStore } from '@/shared/store/editorStore';
 import { useProjectStore } from '@/shared/store/projectStore';
-import { useWorktreeStore } from '@/shared/store/worktreeStore';
+import {
+  selectActiveWorktreePath,
+  useActiveWorktreePath,
+  useWorktreeStore,
+} from '@/shared/store/worktreeStore';
 import type { AgentConfig, AppConfig, RemoteEntrySession, Tab } from '@/shared/types';
 import { updateProjectInEntries } from '@/shared/utils/entryUpdates';
 
@@ -46,8 +50,9 @@ interface UseProjectActionsParams {
  * 统一的项目 action hook —— 替代 useWslActions / useRemoteActions。
  *
  * 通过 `environment` 参数分派 WSL 或 Remote 的内部实现。
- * 移除了对 worktreeStore 废弃字段（wslActiveWtBranch / remoteActiveWtBranch / etc.）的依赖，
- * 全部使用 worktreeStateMap 的统一接口。
+ * 工作树状态只有一份表示（`worktreeStore.byProject[projectId]`），本 hook 一律经
+ * selector / 显式 mutator 读写它 —— 旧的 `activeWorktreePath` / `activeWorktreeBranch`
+ * 全局镜像与 `worktreeStateMap` 都已删除（镜像会让跨项目刷新读到别的项目的单元）。
  */
 export function useProjectActions({
   environment,
@@ -60,12 +65,12 @@ export function useProjectActions({
   // ── Store selectors ──────────────────────────────────────────────────────
   const remoteEntries = useConnectionStore((state) => state.remoteEntries);
   const remoteAuthStore = useConnectionStore((state) => state.remoteAuthStore);
-  const unifiedActiveWtPath = useWorktreeStore((s) => s.activeWorktreePath);
+  const activeWorktreePath = useActiveWorktreePath();
 
   // ── Diff state (WSL-only) ────────────────────────────────────────────────
   const [wslDiffState, setWslDiffState] = useState<WslDiffState | null>(null);
 
-  // ── Worktree operations (unified via worktreeStateMap) ──────────────────
+  // ── Worktree operations（唯一表示：byProject[projectId]）──────────────────
 
   const openWorktreeTerminal = useCallback(
     (worktreePath: string, branch: string) => {
@@ -79,27 +84,9 @@ export function useProjectActions({
         const onboardingState = await loadOnboardingState(onboardingKey);
         if (onboardingState === null) return;
 
-        useWorktreeStore.setState({ activeWorktreePath: worktreePath });
-        useWorktreeStore.setState((s) => {
-          const prev = s.worktreeStateMap[pid] ?? {
-            activePath: null,
-            activeBranch: '',
-            opened: [],
-          };
-          return {
-            worktreeStateMap: {
-              ...s.worktreeStateMap,
-              [pid]: {
-                ...prev,
-                activeBranch: branch,
-                opened: prev.opened.some((item) => item.path === worktreePath)
-                  ? prev.opened
-                  : [...prev.opened, { path: worktreePath, branch }],
-              },
-            },
-            activeWorktreeBranch: branch,
-          };
-        });
+        const worktrees = useWorktreeStore.getState();
+        worktrees.setActiveWorktree(pid, worktreePath, branch);
+        worktrees.markWorktreeOpened(pid, worktreePath, branch);
         if (isWsl) {
           setWslDiffState(null);
         }
@@ -109,10 +96,8 @@ export function useProjectActions({
   );
 
   const resetTransientState = useCallback(() => {
-    useWorktreeStore.setState({
-      activeWorktreePath: null,
-      activeWorktreeBranch: '',
-    });
+    const pid = useProjectStore.getState().activeProjectId;
+    if (pid) useWorktreeStore.getState().clearActiveWorktree(pid);
     if (isWsl) {
       setWslDiffState(null);
     }
@@ -122,7 +107,8 @@ export function useProjectActions({
 
   const refreshGit = useMemo(() => {
     const handler = async (_connectionId: string, projectId: string): Promise<void> => {
-      const worktreePath = unifiedActiveWtPath;
+      // 单元归属按被刷新的 projectId 取（旧实现读全局镜像 → 跨项目刷新会串到别的工作树）
+      const worktreePath = selectActiveWorktreePath(useWorktreeStore.getState(), projectId);
       const gitInfo = await getGitInfo(projectId, worktreePath).catch((e) => {
         console.error(`[${isWsl ? 'WSL' : 'SSH'}] Failed to refresh git info:`, e);
         return null;
@@ -148,7 +134,7 @@ export function useProjectActions({
       });
     };
     return handler;
-  }, [isWsl, unifiedActiveWtPath]);
+  }, [isWsl]);
 
   const handleRefreshGit = useCallback(
     async (connectionId: string, projectId: string) => {
@@ -320,10 +306,12 @@ export function useProjectActions({
   // ── Return ───────────────────────────────────────────────────────────────
 
   return {
-    // Worktree state
-    activeWorktreePath: unifiedActiveWtPath,
-    setActiveWorktreePath: (path: string | null) =>
-      useWorktreeStore.setState({ activeWorktreePath: path }),
+    // Worktree state（读：当前激活项目的单元；写：按 projectId 落 byProject，无镜像）
+    activeWorktreePath,
+    setActiveWorktreePath: (path: string | null) => {
+      const pid = useProjectStore.getState().activeProjectId;
+      if (pid) useWorktreeStore.getState().setActiveWorktree(pid, path);
+    },
 
     // Diff state (WSL-only)
     wslDiffState: isWsl ? wslDiffState : undefined,

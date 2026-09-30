@@ -2,7 +2,7 @@ import { useCallback } from 'react';
 
 import { useEditorStore } from '@/shared/store/editorStore';
 import { useProjectStore } from '@/shared/store/projectStore';
-import { useWorktreeStore } from '@/shared/store/worktreeStore';
+import { selectActiveWorktreePath, useWorktreeStore } from '@/shared/store/worktreeStore';
 
 import { setActiveProject } from '../api/projectApi';
 
@@ -16,21 +16,9 @@ export function useProjectSelection() {
   const selectProject = useCallback(async (projectId: string) => {
     // Read all current state first (before any mutations)
     const editorTabs = useEditorStore.getState().tabs[projectId];
-    const wtStateMap = useWorktreeStore.getState().worktreeStateMap;
-    const wtCur = wtStateMap[projectId];
-    const nextWtMap =
-      wtCur && wtCur.activePath !== null
-        ? { ...wtStateMap, [projectId]: { ...wtCur, activePath: null, activeBranch: '' } }
-        : wtStateMap;
+    const wtStore = useWorktreeStore.getState();
     const targetProject =
       useProjectStore.getState().projects.find((p) => p.id === projectId) ?? null;
-
-    // Compute all deltas upfront
-    const worktreeDelta = {
-      worktreeStateMap: nextWtMap,
-      activeWorktreePath: null,
-      activeWorktreeBranch: '',
-    };
 
     const projectDelta = {
       activeProjectId: projectId,
@@ -41,8 +29,10 @@ export function useProjectSelection() {
       activeTabId: editorTabs?.activeTabId ?? null,
     };
 
-    // Apply all mutations
-    useWorktreeStore.setState(worktreeDelta);
+    // 选中项目 = 回到该项目的主仓单元（后端挂载由 useActiveRepoUnitSync 跟随激活态变化）
+    if (selectActiveWorktreePath(wtStore, projectId) !== null) {
+      wtStore.clearActiveWorktree(projectId);
+    }
     useProjectStore.setState(projectDelta);
     useEditorStore.setState(editorDelta);
 

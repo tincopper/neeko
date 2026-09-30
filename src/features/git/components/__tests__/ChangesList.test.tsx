@@ -2,6 +2,7 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
 import type { FileChange } from '@/shared/types';
+import { repoKeyOf } from '@/shared/utils/repoRef';
 
 import ChangesList from '../ChangesList';
 
@@ -28,6 +29,8 @@ const baseProps = {
   onOpenFile: vi.fn(),
   onExpandUntrackedDir: vi.fn(),
   loading: false,
+  /** 本列表渲染的仓库单元（展开缓存的 file-changed 失效信号按它过滤）。 */
+  repoKey: repoKeyOf('p1', null),
 };
 
 const TRACKED = [

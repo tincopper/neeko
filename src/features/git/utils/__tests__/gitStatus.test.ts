@@ -1,146 +1,163 @@
 // @vitest-environment node
-import { beforeEach, describe, expect, it, vi } from 'vitest';
-
-const mocks = vi.hoisted(() => ({
-  versionGateAccepts: vi.fn(() => true),
-}));
-
-vi.mock('@/shared/store/projectStore', () => ({
-  useProjectStore: { setState: vi.fn() },
-  // G2 version gate 已由 projectStore 单测覆盖；此处放行以聚焦本模块逻辑
-  versionGateAccepts: mocks.versionGateAccepts,
-}));
-
-vi.mock('../../api/gitApi', () => ({
-  getWorktreeChangedFilesVersioned: vi.fn(),
-}));
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { useProjectStore } from '@/shared/store/projectStore';
-import type { FileChange, ChangedFilesPayload, GitInfo } from '@/shared/types';
+import type { FileChange, GitStatusSnapshot } from '@/shared/types';
+import { repoKeyOf } from '@/shared/utils/repoRef';
 
-import { getWorktreeChangedFilesVersioned } from '../../api/gitApi';
-import { refreshGitFileStates, createDebouncedGitRefresh } from '../gitStatus';
+vi.mock('../../api/gitApi', () => ({
+  getRepoStatus: vi.fn(),
+}));
 
-const mockGetWorktreeChangedFiles = vi.mocked(getWorktreeChangedFilesVersioned);
-const mockSetState = vi.mocked(useProjectStore.setState);
-
-const payload = (files: FileChange[], version = 0): ChangedFilesPayload => ({ files, version });
-
-const makeGitInfo = (changedFiles: FileChange[] = []): GitInfo => ({
-  current_branch: 'main',
-  branches: ['main'],
-  worktrees: [],
-  changed_files: changedFiles,
-  is_clean: changedFiles.length === 0,
-  git_provider: 'local',
-});
-
-interface TestProject {
-  id: string;
-  git_info: GitInfo;
-}
-
-const makeState = (projects: TestProject[], activeProjectId: string | null) => ({
-  projects,
-  activeProjectId,
-  activeProject: activeProjectId ? (projects.find((p) => p.id === activeProjectId) ?? null) : null,
-});
+import { getRepoStatus } from '../../api/gitApi';
+import { createDebouncedStatusRefresh, refreshRepoStatus } from '../gitStatus';
 
 /**
- * 捕获 setState 的 updater 并在 await 之后手动执行断言。
+ * `refreshRepoStatus` / `createDebouncedStatusRefresh`。
  *
- * 不得在 mockImplementation 回调内断言：生产代码 refreshGitFileStates 的
- * try/catch 会吞掉回调内抛出的 AssertionError，导致断言失败被静默吞掉（假绿）。
- * 所有状态断言一律在 await 之后执行。
+ * 迁移说明：旧文件测的是 `refreshGitFileStates(projectId, worktreePath)` +
+ * `createDebouncedGitRefresh`，并 mock 掉 projectStore 只观察 `setState` 的 updater。
+ * 两处不再成立：
+ * - 刷新目标是**仓库单元**（`RepoKey`），不再是「projectId + 从全局镜像现取的 worktreePath」；
+ * - worktree / WSL 分支不再回 `version: 0` 的无版本载荷（`getWorktreeChangedFilesVersioned`
+ *   已删），所以旧文件里那条「并发刷新只留最新一代」的用例失去实现载体 —— 乱序覆盖现在由
+ *   `applyStatus` 的 per-unit 门控结构性消除（见 `shared/store/__tests__/projectStore.test.ts`），
+ *   本文件改为断言「刷新入口不自建第二道门控、迟到快照由 store 拒收」。
+ *
+ * 这里刻意**不 mock projectStore**：失败语义（「不清空也不覆盖」）只有在真实槽位上才测得准。
  */
-const captureUpdater = () => {
-  let captured: ((s: unknown) => unknown) | null = null;
-  mockSetState.mockImplementation((updater) => {
-    captured = updater;
-  });
-  return () => captured;
-};
 
-describe('refreshGitFileStates', () => {
-  beforeEach(() => {
-    // resetAllMocks：清除实现与调用记录，杜绝上一用例的 mockImplementation 泄漏进下一用例
-    vi.resetAllMocks();
-  });
+const mockGetRepoStatus = vi.mocked(getRepoStatus);
 
-  it('worktree 路径透传给变更快照 API', async () => {
-    mockGetWorktreeChangedFiles.mockResolvedValue(payload([]));
-    const takeUpdater = captureUpdater();
+const fc = (path: string): FileChange => ({
+  path,
+  status: 'Modified',
+  additions: 1,
+  deletions: 0,
+  is_dir: false,
+});
 
-    await refreshGitFileStates('p1', '/wt/path');
+function snapshotOf(
+  projectId: string,
+  worktreePath: string | null,
+  version: number,
+  entries: FileChange[],
+): GitStatusSnapshot {
+  return {
+    repo_key: repoKeyOf(projectId, worktreePath),
+    version,
+    project_id: projectId,
+    worktree_path: worktreePath,
+    branch: worktreePath === null ? 'main' : `wt-${version}`,
+    entries,
+    truncated: false,
+  };
+}
 
-    expect(mockGetWorktreeChangedFiles).toHaveBeenCalledWith('p1', '/wt/path');
-    expect(takeUpdater()).not.toBeNull();
-  });
+const slotOf = (repoKey: string): GitStatusSnapshot | undefined =>
+  useProjectStore.getState().statuses[repoKey];
 
-  it('changed_files 失败时静默忽略（不抛出、不 patch）', async () => {
-    mockGetWorktreeChangedFiles.mockRejectedValue(new Error('boom'));
-    await expect(refreshGitFileStates('p1', '')).resolves.toBeUndefined();
-    expect(mockSetState).not.toHaveBeenCalled();
-  });
-
-  it('并发刷新时仅最新一代的全量快照生效，陈旧请求的结果被丢弃', async () => {
-    // 复现 build 场景：git-changed 短时间内多次触发 refreshGitFileStates。
-    // 较早发出的 A 请求较慢、较晚发出的 B 请求较快。
-    // 期望 B（更新）的快照最终生效；A（陈旧）解析后 setState 被跳过。
-    //
-    // 为避免依赖微任务调度顺序（Node 上两条 setState 相对顺序不稳定），
-    // 用 mockSetState 的实现作为信号：第一次 setState（B 的快照）触发后再
-    // 解析 A，从而保证 A 的 setState 一定在 B 之后执行。
-    let resolveA!: (v: ChangedFilesPayload) => void;
-    let resolveB!: (v: ChangedFilesPayload) => void;
-    const promiseA = new Promise<ChangedFilesPayload>((r) => {
-      resolveA = r;
-    });
-    const promiseB = new Promise<ChangedFilesPayload>((r) => {
-      resolveB = r;
-    });
-    mockGetWorktreeChangedFiles
-      .mockReturnValueOnce(promiseA as never)
-      .mockReturnValueOnce(promiseB as never);
-
-    let firstSetStateResolve!: () => void;
-    const firstSetStateDone = new Promise<void>((r) => {
-      firstSetStateResolve = r;
-    });
-    let setStateCount = 0;
-    mockSetState.mockImplementation(() => {
-      setStateCount += 1;
-      if (setStateCount === 1) {
-        resolveA(payload([{ path: 'stale.ts', status: 'Modified', additions: 0, deletions: 0 }]));
-        firstSetStateResolve();
-      }
-    });
-
-    const callA = refreshGitFileStates('p1', '');
-    const callB = refreshGitFileStates('p1', '');
-
-    // B 先返回（build 后期发出，捕获更新快照）
-    resolveB(payload([{ path: 'newer.ts', status: 'Modified', additions: 1, deletions: 0 }]));
-
-    // 等待 B 的 setState 触发（A 在该回调内被解析）
-    await firstSetStateDone;
-
-    await callA;
-    await callB;
-
-    // 至少应有一次 setState（来自 B）；A 的迟到结果不应覆盖 B。
-    expect(mockSetState).toHaveBeenCalled();
-    const calls = mockSetState.mock.calls;
-    const lastUpdater = calls[calls.length - 1][0] as (s: unknown) => unknown;
-    const state = makeState([{ id: 'p1', git_info: makeGitInfo() }], 'p1');
-    const next = lastUpdater(state) as { projects: { git_info: GitInfo }[] };
-    expect(next.projects[0].git_info.changed_files).toEqual([
-      { path: 'newer.ts', status: 'Modified', additions: 1, deletions: 0 },
-    ]);
+beforeEach(() => {
+  mockGetRepoStatus.mockReset();
+  useProjectStore.setState({
+    statuses: {},
+    projects: [],
+    activeProjectId: null,
+    activeProject: null,
   });
 });
 
-describe('createDebouncedGitRefresh', () => {
+describe('refreshRepoStatus — status 的唯一显式刷新入口', () => {
+  let consoleError: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(() => {
+    consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    consoleError.mockRestore();
+  });
+
+  it('主仓单元解析为 (projectId, null) —— 不得用空串表示主仓', async () => {
+    mockGetRepoStatus.mockResolvedValue(snapshotOf('p1', null, 1, []));
+
+    await refreshRepoStatus(repoKeyOf('p1'));
+
+    expect(mockGetRepoStatus).toHaveBeenCalledWith('p1', null);
+  });
+
+  it('worktree 单元解析出 canonical 路径并按该路径查询', async () => {
+    mockGetRepoStatus.mockResolvedValue(snapshotOf('p1', '/wt/a', 1, []));
+
+    await refreshRepoStatus(repoKeyOf('p1', '/wt/a'));
+
+    expect(mockGetRepoStatus).toHaveBeenCalledWith('p1', '/wt/a');
+  });
+
+  it('无分隔符的裸 projectId（防御旧形态载荷）按主仓单元处理', async () => {
+    mockGetRepoStatus.mockResolvedValue(snapshotOf('p1', null, 1, []));
+
+    await refreshRepoStatus('p1');
+
+    expect(mockGetRepoStatus).toHaveBeenCalledWith('p1', null);
+    expect(slotOf(repoKeyOf('p1'))?.version).toBe(1);
+  });
+
+  it('成功时快照整体入该单元槽位（全量替换，不做增量合并）', async () => {
+    useProjectStore.getState().applyStatus(snapshotOf('p1', null, 1, [fc('old.ts')]));
+    mockGetRepoStatus.mockResolvedValue(snapshotOf('p1', null, 2, [fc('new.ts'), fc('n.ts')]));
+
+    await refreshRepoStatus(repoKeyOf('p1'));
+
+    expect(slotOf(repoKeyOf('p1'))?.entries).toEqual([fc('new.ts'), fc('n.ts')]);
+    expect(slotOf(repoKeyOf('p1'))?.version).toBe(2);
+  });
+
+  it('命令失败 = 状态未知：既不写空列表也不清空既有槽位', async () => {
+    useProjectStore.getState().applyStatus(snapshotOf('p1', null, 4, [fc('keep.ts')]));
+    const before = slotOf(repoKeyOf('p1'));
+    mockGetRepoStatus.mockRejectedValue(new Error('boom'));
+
+    await expect(refreshRepoStatus(repoKeyOf('p1'))).resolves.toBeUndefined();
+
+    // 「空列表」是一个断言（该单元确实干净），错误不是断言 —— 绝不得据此写入
+    expect(slotOf(repoKeyOf('p1'))).toBe(before);
+    expect(slotOf(repoKeyOf('p1'))?.entries).toEqual([fc('keep.ts')]);
+    expect(consoleError).toHaveBeenCalled();
+  });
+
+  it('失败时不得凭空造出槽位（未挂载的单元保持「未知」）', async () => {
+    mockGetRepoStatus.mockRejectedValue(new Error('not mounted'));
+
+    await refreshRepoStatus(repoKeyOf('p1', '/wt/a'));
+
+    expect(slotOf(repoKeyOf('p1', '/wt/a'))).toBeUndefined();
+  });
+
+  it('刷新入口不自建第二道 version 门控：迟到快照交给 store 拒收', async () => {
+    useProjectStore.getState().applyStatus(snapshotOf('p1', null, 9, [fc('newer.ts')]));
+    mockGetRepoStatus.mockResolvedValue(snapshotOf('p1', null, 3, [fc('stale.ts')]));
+
+    await refreshRepoStatus(repoKeyOf('p1'));
+
+    expect(slotOf(repoKeyOf('p1'))?.entries).toEqual([fc('newer.ts')]);
+    expect(slotOf(repoKeyOf('p1'))?.version).toBe(9);
+  });
+
+  it('刷新一个单元不触碰同项目其它单元的槽位（串数据回归）', async () => {
+    useProjectStore.getState().applyStatus(snapshotOf('p1', '/wt/a', 1, [fc('wtA.ts')]));
+    const wtSlotBefore = slotOf(repoKeyOf('p1', '/wt/a'));
+    mockGetRepoStatus.mockResolvedValue(snapshotOf('p1', null, 5, [fc('main.ts')]));
+
+    await refreshRepoStatus(repoKeyOf('p1'));
+
+    expect(slotOf(repoKeyOf('p1'))?.entries).toEqual([fc('main.ts')]);
+    expect(slotOf(repoKeyOf('p1', '/wt/a'))).toBe(wtSlotBefore);
+    expect(slotOf(repoKeyOf('p1', '/wt/a'))?.entries).toEqual([fc('wtA.ts')]);
+  });
+});
+
+describe('createDebouncedStatusRefresh — 按单元去抖合并', () => {
   beforeEach(() => {
     vi.useFakeTimers();
   });
@@ -149,54 +166,92 @@ describe('createDebouncedGitRefresh', () => {
     vi.useRealTimers();
   });
 
-  it('窗口内多次 schedule 同一 projectId 只执行一次，且用最新 worktreePath', () => {
-    const debounced = createDebouncedGitRefresh(500);
+  it('窗口内同一单元多次调度只执行一次，并拿到该单元的 key', () => {
+    const debounced = createDebouncedStatusRefresh(500);
     const run = vi.fn();
+    const key = repoKeyOf('p1', '/wt/a');
 
-    // build 期间事件风暴：同一 projectId 在窗口内连续触发多次
-    debounced.schedule('p1', '', run);
-    debounced.schedule('p1', '', run);
-    debounced.schedule('p1', '/wt/path', run);
+    debounced.schedule(key, run);
+    debounced.schedule(key, run);
+    debounced.schedule(key, run);
 
     expect(run).not.toHaveBeenCalled();
-
-    // 窗口尚未结束：仍不应执行
     vi.advanceTimersByTime(499);
     expect(run).not.toHaveBeenCalled();
 
-    // 窗口结束：仅执行一次，且 worktreePath 为最新一次调度的值
     vi.advanceTimersByTime(1);
     expect(run).toHaveBeenCalledTimes(1);
-    expect(run).toHaveBeenCalledWith('/wt/path');
+    expect(run).toHaveBeenCalledWith(String(key));
   });
 
-  it('不同 projectId 的去抖窗口相互独立', () => {
-    const debounced = createDebouncedGitRefresh(500);
-    const runA = vi.fn();
-    const runB = vi.fn();
+  it('同一项目的两个单元各占一个窗口，互不取消（旧实现按 projectId 去抖会丢一次刷新）', () => {
+    const debounced = createDebouncedStatusRefresh(500);
+    const run = vi.fn();
+    const main = repoKeyOf('p1');
+    const worktree = repoKeyOf('p1', '/wt/a');
 
-    debounced.schedule('p1', '', runA);
-    debounced.schedule('p2', '', runB);
+    debounced.schedule(main, run);
+    debounced.schedule(worktree, run);
 
-    // 推进 300ms 后 p1 再次调度：p2 的窗口继续，p1 的窗口重置
+    vi.advanceTimersByTime(500);
+    expect(run).toHaveBeenCalledTimes(2);
+    expect(run).toHaveBeenCalledWith(String(main));
+    expect(run).toHaveBeenCalledWith(String(worktree));
+  });
+
+  it('不同单元的窗口相互独立：重置本单元不影响另一单元到期', () => {
+    const debounced = createDebouncedStatusRefresh(500);
+    const runMain = vi.fn();
+    const runWt = vi.fn();
+    const main = repoKeyOf('p1');
+    const worktree = repoKeyOf('p1', '/wt/a');
+
+    debounced.schedule(main, runMain);
+    debounced.schedule(worktree, runWt);
+
     vi.advanceTimersByTime(300);
-    debounced.schedule('p1', '', runA);
+    debounced.schedule(main, runMain); // 主仓风暴：只重置主仓窗口
 
     vi.advanceTimersByTime(200);
-    // p2 窗口（500ms）到期执行；p1 被重置后仍未到期
-    expect(runB).toHaveBeenCalledTimes(1);
-    expect(runA).not.toHaveBeenCalled();
+    expect(runWt).toHaveBeenCalledTimes(1); // worktree 满 500ms 到期
+    expect(runMain).not.toHaveBeenCalled(); // 主仓刚被重置
 
     vi.advanceTimersByTime(300);
-    expect(runA).toHaveBeenCalledTimes(1);
+    expect(runMain).toHaveBeenCalledTimes(1);
   });
 
-  it('clear() 取消全部 pending 调度，之后不再执行', () => {
-    const debounced = createDebouncedGitRefresh(500);
+  it('执行后定时器条目即释放：同一单元可再次调度并再次执行', () => {
+    const debounced = createDebouncedStatusRefresh(500);
+    const run = vi.fn();
+    const key = repoKeyOf('p1');
+
+    debounced.schedule(key, run);
+    vi.advanceTimersByTime(500);
+    debounced.schedule(key, run);
+    vi.advanceTimersByTime(500);
+
+    expect(run).toHaveBeenCalledTimes(2);
+  });
+
+  it('RepoKey 与等价裸字符串视为同一单元（去重键取字符串形态）', () => {
+    const debounced = createDebouncedStatusRefresh(500);
+    const run = vi.fn();
+    const key = repoKeyOf('p1', '/wt/a');
+
+    debounced.schedule(key, run);
+    debounced.schedule(String(key), run);
+
+    vi.advanceTimersByTime(500);
+    expect(run).toHaveBeenCalledTimes(1);
+  });
+
+  it('clear() 取消全部 pending 调度（卸载防泄漏）', () => {
+    const debounced = createDebouncedStatusRefresh(500);
     const run = vi.fn();
 
-    debounced.schedule('p1', '', run);
-    debounced.schedule('p2', '', run);
+    debounced.schedule(repoKeyOf('p1'), run);
+    debounced.schedule(repoKeyOf('p1', '/wt/a'), run);
+    debounced.schedule(repoKeyOf('p2'), run);
     debounced.clear();
 
     vi.advanceTimersByTime(1000);

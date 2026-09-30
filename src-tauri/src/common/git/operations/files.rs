@@ -7,9 +7,9 @@ use crate::common::git::cache;
 use crate::common::git::credential::{
     credential_approve, credential_reject, resolve_credential_helper, Credential,
 };
-use crate::common::git::operations::diff::get_worktree_changed_files_shell;
 use crate::common::git::parsers::{parse_numstat_line, parse_status_line};
 use crate::common::git::provider::detect_provider;
+use crate::common::git::status_worker::parse_porcelain;
 use crate::common::git::transport::{ErrorKind, GitExecError, GitTransport};
 use crate::common::git::types::PushOutcome;
 use crate::common::git::types::{DiffHunk, DiffLine, DiffResult};
@@ -20,20 +20,42 @@ use crate::project::types::{
 };
 use anyhow::{bail, Result};
 
-pub async fn get_worktree_changed_files(
+/// 计算某仓库单元的 status：**porcelain 单一引擎**（三端一致）。
+///
+/// 取代旧的 `get_worktree_changed_files`（libgit2 一套 + CLI 一套）：双引擎除维护成本外，
+/// 更致命的是词表与语义不一致（`renamed_from` 在 libgit2 分支恒 `None`），且 libgit2
+/// 分支**没有 version 语义**，读接口只能返回 `version: 0` 让前端「恒放行」—— 于是任何
+/// 一次 pull 都能覆盖任何时刻的 push 快照。
+///
+/// 行数（additions/deletions）不在本函数职责内：由 `get_changed_files_diff_stats`
+/// 按需拉取（G4，status 主链路保持单次 porcelain）。
+pub async fn status_porcelain(
     transport: &dyn GitTransport,
-    worktree_path: &str,
-) -> Result<Vec<FileChange>> {
-    crate::common::git::local::assert_git_repo(std::path::Path::new(worktree_path))?;
-    if let Some(repo) = transport.open_repo(worktree_path) {
-        tokio::task::spawn_blocking(move || {
-            crate::common::git::local::get_changed_files_from_repo(&repo)
-        })
-        .await
-        .map_err(|e| anyhow::anyhow!("git changed files task join error: {e}"))?
-    } else {
-        get_worktree_changed_files_shell(transport, worktree_path).await
+    work_dir: &str,
+) -> Result<(Vec<FileChange>, String)> {
+    // 「是不是仓库」必须由 transport 判定：WSL / SSH 的工作树在别的机器上，
+    // 本地 `path.join(".git").exists()` 必然为 false —— 用本地判定会把远端单元的
+    // status 一律判死（本次改造实测踩过，见任务 09-26 的 AC13）。
+    if !transport.is_git_repo(work_dir).await {
+        bail!("not a git repository: {work_dir}");
     }
+    let output = transport
+        .run_git_opts(&["status", "--porcelain"], work_dir, readonly_opts())
+        .await?;
+    let entries = parse_porcelain(&output);
+    let branch = transport
+        .run_git(&["rev-parse", "--abbrev-ref", "HEAD"], work_dir)
+        .await
+        .map(|head| {
+            let head = head.trim().to_string();
+            if head.is_empty() {
+                "HEAD".to_string()
+            } else {
+                head
+            }
+        })
+        .unwrap_or_default();
+    Ok((entries, branch))
 }
 
 /// List untracked files under `dir_path`, expanding a collapsed untracked-dir

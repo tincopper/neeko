@@ -1,5 +1,5 @@
 use crate::common::git::operations;
-use crate::common::git::path_guard::{resolve_validated_work_dir, validate_repo_relative_paths};
+use crate::common::git::path_guard::validate_repo_relative_paths;
 use crate::project::types::CommitResult;
 use crate::AppError;
 use crate::AppStateWrapper;
@@ -14,12 +14,15 @@ pub async fn commit_files(
     worktree_path: Option<String>,
     state: State<'_, AppStateWrapper>,
 ) -> Result<CommitResult, AppError> {
-    let (t, wd) = state.resolve_project(&project_id)?;
-    let repo_path = resolve_validated_work_dir(&t, &worktree_path, &wd)?;
+    let (t, repo) = state.resolve_repo(&project_id, worktree_path.as_deref())?;
+    let repo_path = repo.work_dir();
     validate_repo_relative_paths(&t, repo_path, &file_paths)?;
-    operations::commit_files(&t, repo_path, &file_paths, &message)
+    let result = operations::commit_files(&t, repo_path, &file_paths, &message)
         .await
-        .map_err(AppError::from)
+        .map_err(AppError::from)?;
+    // 写成功后让**该单元**的快照落地再返回（spec/backend/git-domain.md §10）
+    crate::git::services::status::wait_status_fresh(&state, &repo).await;
+    Ok(result)
 }
 
 /// Cherry-pick a commit.
@@ -32,7 +35,12 @@ pub async fn cherry_pick(
     let (t, wd) = state.resolve_project(&project_id)?;
     operations::cherry_pick(&t, &wd, &commit_hash)
         .await
-        .map_err(AppError::from)
+        .map_err(AppError::from)?;
+    // cherry-pick 改 HEAD 与工作树 ⇒ 被写入的那个单元的快照必须落地后再返回，
+    // 否则前端立刻重读拿到的还是写前数据（「操作成功但列表要手动刷新」同因）。
+    // 本命令只接受 project_id（作用于主仓），因此被写入的单元就是主仓单元。
+    crate::git::services::status::wait_main_status_fresh(&state, &project_id).await;
+    Ok(())
 }
 
 /// Revert a commit.
@@ -45,7 +53,9 @@ pub async fn revert(
     let (t, wd) = state.resolve_project(&project_id)?;
     operations::revert(&t, &wd, &commit_hash)
         .await
-        .map_err(AppError::from)
+        .map_err(AppError::from)?;
+    crate::git::services::status::wait_main_status_fresh(&state, &project_id).await;
+    Ok(())
 }
 
 /// Create a Git tag.

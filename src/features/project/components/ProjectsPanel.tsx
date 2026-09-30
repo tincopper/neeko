@@ -23,7 +23,7 @@ import { useRemoteContext } from '@/shared/contexts/RemoteContext';
 import { useWslContext } from '@/shared/contexts/WslContext';
 import { useAheadBehindSync } from '@/shared/hooks/useAheadBehindSync';
 import { useProjectStore } from '@/shared/store/projectStore';
-import { useWorktreeStore } from '@/shared/store/worktreeStore';
+import { useActiveWorktreePath } from '@/shared/store/worktreeStore';
 import { getDistroIcon } from '@/shared/utils/distros';
 import { withTimeout } from '@/shared/utils/withTimeout';
 
@@ -34,7 +34,7 @@ const ProjectsPanel: React.FC = () => {
   const { config, agents, ideCommandOverrides, showToast } = useAppContext();
   const projects = useProjectStore((state) => state.projects);
   const activeProjectId = useProjectStore((state) => state.activeProjectId);
-  const activeWorktreePath = useWorktreeStore((state) => state.activeWorktreePath);
+  const activeWorktreePath = useActiveWorktreePath();
   const {
     onRemoveProject,
     onSelectProject,

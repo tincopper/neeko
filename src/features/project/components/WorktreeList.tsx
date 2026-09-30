@@ -1,21 +1,15 @@
-import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
+import React, { useEffect, useMemo, useRef } from 'react';
 
-import { terminalCache, destroyTerminalCache } from '@/features/terminal';
 import { cn } from '@/lib/utils';
 import ConfirmDialog from '@/shared/components/ConfirmDialog';
 import { BranchIcon, TrashIcon, FolderGitIcon } from '@/shared/components/icons';
-import { useWorktreeStore } from '@/shared/store/worktreeStore';
+import { useProjectStore } from '@/shared/store/projectStore';
+import { useActiveWorktree } from '@/shared/store/worktreeStore';
 import { Worktree } from '@/shared/types';
-import { reportFrontendError } from '@/shared/utils/errorReporting';
+import { repoKeyOf } from '@/shared/utils/repoRef';
 
-import {
-  removeWorktree,
-  deleteBranch,
-  renameWorktree,
-  getWorktreeChangedFiles,
-  isWorktreeDirty,
-} from '../../git/api/gitApi';
-import { closeTerminalSession } from '../../terminal/api/terminalApi';
+import { getRepoStatus } from '../../git/api/gitApi';
+import { useWorktreeListActions } from '../hooks/useWorktreeListActions';
 
 import SessionChips from './SessionChips';
 
@@ -40,125 +34,70 @@ const WorktreeList: React.FC<WorktreeListProps> = ({
   onRefreshGit,
   onShowToast,
 }) => {
-  const [changeStats, setChangeStats] = useState<Record<string, ChangeStat>>({});
-  const [renaming, setRenaming] = useState<string | null>(null);
-  const [renameValue, setRenameValue] = useState('');
-  const renameInputRef = useRef<HTMLInputElement>(null);
-  const [deleting, setDeleting] = useState<string | null>(null);
-  const [confirmDelete, setConfirmDelete] = useState<{
-    path: string;
-    branch: string;
-    isDirty: boolean;
-  } | null>(null);
-  const activeWorktreePath = useWorktreeStore((s) => s.activeWorktreePath);
+  const {
+    renaming,
+    renameValue,
+    setRenameValue,
+    renameInputRef,
+    deleting,
+    confirmDelete,
+    dismissConfirmDelete,
+    handleRemove,
+    performRemove,
+    startRename,
+    commitRename,
+    cancelRename,
+  } = useWorktreeListActions(projectId, onRefreshGit, onShowToast);
+
+  // 响应式订阅：这里读的是「哪一行高亮」，用 getState() 快照会在激活态变化后停在旧值
+  // （列表看起来点了没反应）。命令式取法只允许出现在事件回调里。
+  const activeWorktreePath = useActiveWorktree(projectId).activePath;
 
   const filteredWorktrees = useMemo(() => worktrees, [worktrees]);
 
-  useEffect(() => {
-    if (renaming !== null && renameInputRef.current) {
-      renameInputRef.current.focus();
-      renameInputRef.current.select();
-    }
-  }, [renaming]);
-
-  // Worktree changes 仅用�?+A -D chip 聚合，懒加载一次�?
-  // 不再展开 FileTree（移�?DiffView）�?
+  // 每个工作树的 chip 读**自己单元**的 status。后端只挂当前视图那个单元（决策 D-B），
+  // 其余单元在此按需 pull 并落进同一张快照表（projectStore.statuses）；
+  // 拉不到就保持「未知」（chip 不显示），绝不写 0/0 假装干净。
+  const unitStatuses = useProjectStore((s) => s.statuses);
+  // 新鲜度守卫按**组件挂载**记账，不按全局槽位：槽位跨挂载持久，若拿 `key in statuses`
+  // 当跳过守卫，未挂载单元（没有任何生产者）的 chip 一旦拉过就永久陈旧且抑制重拉
+  // （= 旧数据伪装成事实）。挂载级 ref 恢复「重新打开面板即重拉」的新鲜度；同一挂载内
+  // 它同时防住 applyStatus → statuses 变化 → effect 重跑 → 再拉取的自激环
+  // （未挂载单元的 pull 每次都盖新号，version 闸门拦不住自触发）。
+  const chipFetchedRef = useRef<Set<string>>(new Set());
   useEffect(() => {
     let cancelled = false;
     for (const wt of filteredWorktrees) {
-      if (changeStats[wt.path]) continue;
-      getWorktreeChangedFiles(projectId, wt.path)
-        .then((files) => {
-          if (cancelled) return;
-          const add = files.reduce((s, f) => s + f.additions, 0);
-          const del = files.reduce((s, f) => s + f.deletions, 0);
-          setChangeStats((prev) => ({ ...prev, [wt.path]: { add, del } }));
+      const key = repoKeyOf(projectId, wt.path);
+      if (chipFetchedRef.current.has(key)) continue;
+      chipFetchedRef.current.add(key);
+      getRepoStatus(projectId, wt.path)
+        .then((snapshot) => {
+          if (cancelled || snapshot.repo_key !== key) return;
+          useProjectStore.getState().applyStatus(snapshot);
         })
         .catch(() => {
-          if (cancelled) return;
-          setChangeStats((prev) => ({ ...prev, [wt.path]: { add: 0, del: 0 } }));
+          // 拉取失败 = 未知：退出已拉清单，让下一次触发（清单变化 / 重挂载）可以重试
+          chipFetchedRef.current.delete(key);
         });
     }
     return () => {
       cancelled = true;
     };
-    // intentionally rerun on worktrees identity / projectId
-  }, [filteredWorktrees, projectId, changeStats]);
+  }, [filteredWorktrees, projectId]);
 
-  const handleRemove = useCallback(
-    async (worktreePath: string, branch: string, e: React.MouseEvent) => {
-      e.stopPropagation();
-      try {
-        const isDirty = await isWorktreeDirty(projectId, worktreePath);
-        setConfirmDelete({ path: worktreePath, branch, isDirty });
-      } catch {
-        setConfirmDelete({ path: worktreePath, branch, isDirty: false });
-      }
-    },
-    [projectId],
-  );
-
-  const performRemove = useCallback(
-    async (worktreePath: string, branch: string) => {
-      setConfirmDelete(null);
-      setDeleting(worktreePath);
-      try {
-        const wtCacheKey = `${projectId}:wt:${worktreePath}`;
-        const wtCache = terminalCache.get(wtCacheKey);
-        if (wtCache?.sessionId) {
-          await closeTerminalSession(wtCache.sessionId).catch((err) =>
-            reportFrontendError('project.closeTerminal', err),
-          );
-        }
-        destroyTerminalCache(wtCacheKey);
-        await removeWorktree(projectId, worktreePath);
-        let branchError: string | null = null;
-        try {
-          await deleteBranch(projectId, branch, false);
-        } catch (e: unknown) {
-          branchError = String(e);
-        }
-        await new Promise((r) => setTimeout(r, 450));
-        onRefreshGit(projectId);
-        if (branchError) {
-          onShowToast?.(`Branch "${branch}" could not be deleted: ${branchError}`, 'error');
-        }
-      } catch (e: unknown) {
-        onShowToast?.(`Failed to remove worktree: ${String(e)}`, 'error');
-      } finally {
-        setDeleting(null);
-      }
-    },
-    [projectId, onRefreshGit, onShowToast],
-  );
-
-  const startRename = useCallback((worktreePath: string, e: React.MouseEvent) => {
-    e.stopPropagation();
-    setRenaming(worktreePath);
-    setRenameValue(worktreePath.split(/[\\/]/).pop() ?? worktreePath);
-  }, []);
-
-  const commitRename = useCallback(async () => {
-    const oldPath = renaming;
-    if (!oldPath) return;
-    const newName = renameValue.trim();
-    setRenaming(null);
-    if (!newName) return;
-    const oldDirName = oldPath.split(/[\\/]/).pop() ?? '';
-    if (newName === oldDirName) return;
-    try {
-      const newFullPath = oldPath.replace(/[^/\\]+$/, newName);
-      await renameWorktree(projectId, oldPath, newFullPath);
-      onRefreshGit(projectId);
-    } catch (e: unknown) {
-      onShowToast?.(String(e), 'error');
+  const changeStats = useMemo(() => {
+    const next: Record<string, ChangeStat> = {};
+    for (const wt of filteredWorktrees) {
+      const entries = unitStatuses[repoKeyOf(projectId, wt.path)]?.entries;
+      if (!entries) continue;
+      next[wt.path] = {
+        add: entries.reduce((s, f) => s + f.additions, 0),
+        del: entries.reduce((s, f) => s + f.deletions, 0),
+      };
     }
-  }, [renaming, renameValue, projectId, onRefreshGit, onShowToast]);
-
-  const cancelRename = useCallback(() => {
-    setRenaming(null);
-    setRenameValue('');
-  }, []);
+    return next;
+  }, [filteredWorktrees, projectId, unitStatuses]);
 
   if (filteredWorktrees.length === 0) return null;
 
@@ -266,7 +205,7 @@ const WorktreeList: React.FC<WorktreeListProps> = ({
         <ConfirmDialog
           open={true}
           onOpenChange={(open) => {
-            if (!open) setConfirmDelete(null);
+            if (!open) dismissConfirmDelete();
           }}
           title="Remove Worktree"
           description={

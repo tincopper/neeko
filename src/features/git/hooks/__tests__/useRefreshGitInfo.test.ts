@@ -5,23 +5,40 @@ import { useGitStore } from '@/shared/store/gitStore';
 import { useProjectStore } from '@/shared/store/projectStore';
 import { useWorktreeStore } from '@/shared/store/worktreeStore';
 import type {
-  ConnectionContext,
   GitInfo,
+  GitStatusSnapshot,
   Project,
   ProjectCommands,
   ProjectView,
 } from '@/shared/types';
+import { repoKeyOf } from '@/shared/utils/repoRef';
 
 import { useRefreshGitInfo } from '../useRefreshGitInfo';
 
+const MAIN_KEY = repoKeyOf('proj-1', null);
+const WT_KEY = repoKeyOf('proj-1', '/test/wt');
+
 function makeGitInfo(overrides?: Partial<GitInfo>): GitInfo {
+  // GitInfo 只剩 per-project 元数据：分支 / 工作树清单 / provider。
+  // 「改了哪些文件、是否干净」是 per 工作树 的事实，随 GitStatusSnapshot 走。
   return {
     current_branch: 'main',
     branches: ['main'],
     worktrees: [],
-    changed_files: [],
-    is_clean: true,
     git_provider: 'git',
+    ...overrides,
+  };
+}
+
+function makeSnapshot(overrides?: Partial<GitStatusSnapshot>): GitStatusSnapshot {
+  return {
+    repo_key: MAIN_KEY,
+    version: 1,
+    project_id: 'proj-1',
+    worktree_path: null,
+    branch: 'dev',
+    entries: [{ path: 'a.ts', status: 'Modified', additions: 1, deletions: 1 }],
+    truncated: false,
     ...overrides,
   };
 }
@@ -57,7 +74,8 @@ function makeView(overrides?: Partial<ProjectView>): ProjectView {
 
 function makeCommands(overrides?: Partial<ProjectCommands>): ProjectCommands {
   return {
-    refreshGitInfo: vi.fn().mockResolvedValue(makeGitInfo({ current_branch: 'dev' })),
+    refreshGitInfo: vi.fn().mockResolvedValue(makeGitInfo({ branches: ['main', 'dev'] })),
+    refreshRepoStatus: vi.fn().mockResolvedValue(makeSnapshot()),
     getAheadBehind: vi.fn().mockResolvedValue({ ahead: 1, behind: 2 }),
     ...overrides,
   } as unknown as ProjectCommands;
@@ -68,108 +86,132 @@ beforeEach(() => {
     projects: [makeProject()],
     activeProjectId: 'proj-1',
     activeProject: makeProject(),
+    statuses: {},
   });
   useGitStore.setState({ aheadBehind: {} });
-  useWorktreeStore.setState({ activeWorktreePath: null, activeWorktreeBranch: null });
+  useWorktreeStore.setState({ byProject: {} });
 });
 
 describe('useRefreshGitInfo', () => {
   it('should_update_project_git_info_in_store', async () => {
     const commands = makeCommands();
-    const { result } = renderHook(() =>
-      useRefreshGitInfo(makeView(), commands, { type: 'local', projectId: 'proj-1' }),
-    );
+    const { result } = renderHook(() => useRefreshGitInfo(makeView(), commands));
 
     await act(async () => {
       await result.current();
     });
 
     expect(commands.refreshGitInfo).toHaveBeenCalledTimes(1);
-    const project = useProjectStore.getState().projects[0];
-    expect(project?.git_info?.current_branch).toBe('dev');
+    // 分支清单 = per-project 元数据
+    expect(useProjectStore.getState().projects[0]?.git_info?.branches).toEqual(['main', 'dev']);
+    // current_branch = **主仓单元**快照的 branch 投影（唯一写者是 applyStatus）
+    expect(useProjectStore.getState().projects[0]?.git_info?.current_branch).toBe('dev');
     expect(useProjectStore.getState().activeProject?.git_info?.current_branch).toBe('dev');
+    // 变更条目落在该单元的槽位里
+    expect(useProjectStore.getState().statuses[MAIN_KEY]?.entries).toHaveLength(1);
   });
 
-  it('should_sync_ahead_behind_to_git_store_per_connection_type', async () => {
-    const cases: Array<{ conn: ConnectionContext; expectedKey: string }> = [
-      { conn: { type: 'local', projectId: 'proj-1' }, expectedKey: 'local:proj-1' },
-      {
-        conn: { type: 'wsl', distro: 'Ubuntu', projectPath: '/test' },
-        expectedKey: 'wsl:Ubuntu:proj-1',
-      },
-      {
-        conn: {
-          type: 'remote',
-          host: 'example.com',
-          port: 22,
-          username: 'u',
-          auth: { Password: 'secret' },
-          projectPath: '/test',
-        },
-        expectedKey: 'remote:example.com:proj-1',
-      },
-    ];
+  it('ahead/behind 写在**仓库单元**键下（键空间不再有 source/connection 维度）', async () => {
+    const commands = makeCommands();
+    const { result } = renderHook(() => useRefreshGitInfo(makeView(), commands));
 
-    for (const { conn, expectedKey } of cases) {
-      useGitStore.setState({ aheadBehind: {} });
-      const commands = makeCommands();
-      const { result } = renderHook(() => useRefreshGitInfo(makeView(), commands, conn));
-      await act(async () => {
-        await result.current();
-      });
-      expect(useGitStore.getState().aheadBehind[expectedKey]).toEqual({ ahead: 1, behind: 2 });
-    }
+    await act(async () => {
+      await result.current();
+    });
+
+    const aheadBehind = useGitStore.getState().aheadBehind;
+    expect(aheadBehind[MAIN_KEY]).toEqual({ ahead: 1, behind: 2 });
+    // 回归：旧实现按 `{source}:{connectionId}:{projectId}` 拼键，而三个写入点各用一种 connectionId
+    // 约定（`distro` / `${host}:${port}` / `host`），读侧永远拼不出写侧那个键 ⇒ 徽标时有时无。
+    // 键空间里必须只有单元身份这一把键。
+    expect(Object.keys(aheadBehind)).toEqual([MAIN_KEY]);
+    expect(aheadBehind['local:proj-1']).toBeUndefined();
+    expect(aheadBehind['proj-1']).toBeUndefined();
+  });
+
+  it('worktree 单元：刷新只写该单元的键，主仓键不被动到', async () => {
+    // 该 hook 的 commands 绑定「当前激活单元」，写入侧必须跟着快照自带的身份走
+    const commands = makeCommands({
+      refreshRepoStatus: vi
+        .fn()
+        .mockResolvedValue(makeSnapshot({ repo_key: WT_KEY, worktree_path: '/test/wt' })),
+    });
+    const { result } = renderHook(() => useRefreshGitInfo(makeView(), commands));
+
+    await act(async () => {
+      await result.current();
+    });
+
+    const aheadBehind = useGitStore.getState().aheadBehind;
+    expect(aheadBehind[WT_KEY]).toEqual({ ahead: 1, behind: 2 });
+    expect(aheadBehind[MAIN_KEY]).toBeUndefined();
   });
 
   it('should_not_throw_when_ahead_behind_fails', async () => {
     const commands = makeCommands({
       getAheadBehind: vi.fn().mockRejectedValue(new Error('boom')),
     });
-    const { result } = renderHook(() =>
-      useRefreshGitInfo(makeView(), commands, { type: 'local', projectId: 'proj-1' }),
-    );
+    const { result } = renderHook(() => useRefreshGitInfo(makeView(), commands));
 
     await act(async () => {
       await expect(result.current()).resolves.toBeUndefined();
     });
-    // git_info 仍应更新
-    expect(useProjectStore.getState().projects[0]?.git_info?.current_branch).toBe('dev');
+    // 元数据与 status 仍应落地
+    expect(useProjectStore.getState().projects[0]?.git_info?.branches).toEqual(['main', 'dev']);
+    expect(useProjectStore.getState().statuses[MAIN_KEY]).toBeDefined();
   });
 
   it('should_be_noop_without_project_or_commands', async () => {
-    const { result } = renderHook(() =>
-      useRefreshGitInfo(null, null, { type: 'local', projectId: 'proj-1' }),
-    );
+    const { result } = renderHook(() => useRefreshGitInfo(null, null));
     await act(async () => {
       await result.current();
     });
     expect(useProjectStore.getState().projects[0]?.git_info?.current_branch).toBe('main');
+    expect(useProjectStore.getState().statuses).toEqual({});
   });
 
-  it('should_keep_existing_branch_when_worktree_is_active', async () => {
+  it('refreshes the active worktree unit without touching main unit state', async () => {
     useWorktreeStore.setState({
-      activeWorktreePath: '/test/wt',
-      activeWorktreeBranch: 'wt-branch',
+      byProject: { 'proj-1': { activePath: '/test/wt', activeBranch: 'wt-branch', opened: [] } },
     });
-    const commands = makeCommands();
-    const { result } = renderHook(() =>
-      useRefreshGitInfo(makeView(), commands, { type: 'local', projectId: 'proj-1' }),
-    );
+    useProjectStore.setState({
+      statuses: {
+        [MAIN_KEY]: makeSnapshot({ version: 4, branch: 'main', entries: [] }),
+      },
+    });
+    // 命令端口按「当前视图单元」绑定：这里回的是 worktree 单元的快照
+    const commands = makeCommands({
+      refreshRepoStatus: vi.fn().mockResolvedValue(
+        makeSnapshot({
+          repo_key: WT_KEY,
+          version: 1,
+          worktree_path: '/test/wt',
+          branch: 'wt-branch',
+          entries: [{ path: 'wt-only.ts', status: 'Added', additions: 2, deletions: 0 }],
+        }),
+      ),
+    });
+    const { result } = renderHook(() => useRefreshGitInfo(makeView(), commands));
 
     await act(async () => {
       await result.current();
     });
 
-    // worktree 激活时保留 local 主分支名，避免被 worktree 分支污染
-    expect(useProjectStore.getState().projects[0]?.git_info?.current_branch).toBe('main');
-    expect(useProjectStore.getState().projects[0]?.git_info?.changed_files).toEqual([]);
+    const store = useProjectStore.getState();
+    // worktree 单元写自己的槽位
+    expect(store.statuses[WT_KEY]?.entries[0]?.path).toBe('wt-only.ts');
+    // 主仓槽位不被覆盖（旧实现共用一个槽 → worktree 刷新会盖掉主仓，反之亦然）
+    expect(store.statuses[MAIN_KEY]?.version).toBe(4);
+    expect(store.statuses[MAIN_KEY]?.entries).toEqual([]);
+    // 项目卡片的 current_branch 仍是主仓 HEAD，不被 worktree 分支污染
+    // （不再是「worktree 激活时保留主分支」的特例，而是 worktree 单元根本不写这个字段）
+    expect(store.projects[0]?.git_info?.current_branch).toBe('main');
   });
 
   it('should_return_stable_callback_across_rerenders', async () => {
     const commands = makeCommands();
     const { result, rerender } = renderHook(
-      ({ project }: { project: ProjectView }) =>
-        useRefreshGitInfo(project, commands, { type: 'local', projectId: 'proj-1' }),
+      ({ project }: { project: ProjectView }) => useRefreshGitInfo(project, commands),
       { initialProps: { project: makeView() } },
     );
     const first = result.current;
@@ -177,10 +219,9 @@ describe('useRefreshGitInfo', () => {
     await waitFor(() => expect(result.current).toBe(first));
   });
 
-  // ── 非 git 项目守卫（TDD Red）──────────────────────────────────────────────
+  // ── 非 git 项目守卫 ──────────────────────────────────────────────────────
 
   it('should_skip_git_commands_for_non_git_project', async () => {
-    // 非 git 项目：store 中 git_info 为 null
     const nonGitProject = makeProject({ git_info: null });
     useProjectStore.setState({
       projects: [nonGitProject],
@@ -188,20 +229,15 @@ describe('useRefreshGitInfo', () => {
       activeProject: nonGitProject,
     });
     const commands = makeCommands();
-    // view.gitInfo 为 null 表示非 git 项目
     const view = makeView({ gitInfo: null });
-    const { result } = renderHook(() =>
-      useRefreshGitInfo(view, commands, { type: 'local', projectId: nonGitProject.id }),
-    );
+    const { result } = renderHook(() => useRefreshGitInfo(view, commands));
 
     await act(async () => {
       await result.current();
     });
 
-    // 非 git 项目不应调用 refreshGitInfo / getAheadBehind
     expect(commands.refreshGitInfo).not.toHaveBeenCalled();
     expect(commands.getAheadBehind).not.toHaveBeenCalled();
-    // store 中 git_info 保持 null
     expect(useProjectStore.getState().projects[0]?.git_info).toBeNull();
   });
 });

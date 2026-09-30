@@ -11,7 +11,6 @@ const mockSetJavaBackendLabel = vi.hoisted(() => vi.fn());
 const mockOpenDebugPanel = vi.hoisted(() => vi.fn());
 const mockPushConsole = vi.hoisted(() => vi.fn());
 const mockInvoke = vi.hoisted(() => vi.fn());
-const mockActiveWorktreePath = vi.hoisted(() => ({ value: null as string | null }));
 const mockHomeDir = vi.hoisted(() => vi.fn());
 vi.mock('@tauri-apps/api/core', () => ({ invoke: mockInvoke }));
 vi.mock('@tauri-apps/api/path', () => ({ homeDir: mockHomeDir }));
@@ -34,11 +33,8 @@ vi.mock('@/shared/store/projectStore', () => ({
   },
 }));
 
-vi.mock('@/shared/store/worktreeStore', () => ({
-  useWorktreeStore: {
-    getState: () => ({ activeWorktreePath: mockActiveWorktreePath.value }),
-  },
-}));
+// 工作树单元状态一律走**真实 store**（byProject 唯一表示），测试用显式 mutator 播种；
+// 不再 mock 该模块 —— 旧 mock 提供的是已删除的 `activeWorktreePath` 镜像形状。
 
 vi.mock('@/features/runner/store/debugStore', () => ({
   useDebugStore: {
@@ -94,6 +90,7 @@ import {
 import { useNotificationStore } from '@/shared/store/notificationStore';
 import { useOverlayStore } from '@/shared/store/overlayStore';
 import { useTaskStore } from '@/shared/store/taskStore';
+import { useWorktreeStore } from '@/shared/store/worktreeStore';
 
 import { benchmarkDebugLabel, benchmarkRunLabel } from '../../languages/go/labels';
 import { mainDebugLabel, mainRunLabel } from '../../languages/labels';
@@ -143,7 +140,7 @@ describe('useRunActions', () => {
       return Promise.resolve(false);
     });
     mockHomeDir.mockResolvedValue('/Users/tester');
-    mockActiveWorktreePath.value = null;
+    useWorktreeStore.setState({ byProject: {} });
     useTaskStore.setState({
       configs: [],
       discovered: [],
@@ -183,7 +180,7 @@ describe('useRunActions', () => {
     });
 
     it('should_prefer_worktree_root_as_cwd_when_active', async () => {
-      mockActiveWorktreePath.value = '/tmp/proj/.worktrees/fix-1';
+      useWorktreeStore.getState().setActiveWorktree('proj-1', '/tmp/proj/.worktrees/fix-1');
       const { result } = renderHook(() =>
         useRunActions({
           projectId: 'proj-1',
@@ -1326,7 +1323,7 @@ describe('useRunActions', () => {
     });
 
     it('should_probe_manifest_and_lib_under_active_worktree_not_project_root', async () => {
-      mockActiveWorktreePath.value = '/tmp/proj/.worktrees/fix-1';
+      useWorktreeStore.getState().setActiveWorktree('proj-1', '/tmp/proj/.worktrees/fix-1');
       const probed: string[] = [];
       mockInvoke.mockImplementation((cmd: string, args: { path?: string }) => {
         if (cmd === 'debug_build_test_binary') {
@@ -1691,7 +1688,7 @@ describe('useRunActions', () => {
     });
 
     it('should_worktree_cwd_when_worktree_active', async () => {
-      mockActiveWorktreePath.value = '/tmp/wt/neeko';
+      useWorktreeStore.getState().setActiveWorktree('proj-1', '/tmp/wt/neeko');
       const { result } = renderJavaDebugHook();
 
       act(() =>

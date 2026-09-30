@@ -92,11 +92,15 @@ export interface FileTab {
 }
 
 export interface FileChangedEvent {
+  /** 变更所属仓库单元（主仓或某 worktree）；路径是相对**该单元工作树根**的 */
+  repo_key: string;
   project_id: string;
   paths: string[];
 }
 
 export interface FileTreeChangedEvent {
+  /** 变更所属仓库单元；dirs 相对该单元工作树根 */
+  repo_key: string;
   project_id: string;
   /**
    * 受影响的目录相对路径集合（'' 表示项目根）。

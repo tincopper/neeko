@@ -186,19 +186,10 @@ impl ProjectManager {
         self.projects.iter().find(|p| p.id == project_id)
     }
 
-    /// Returns a copy of all projects (with cleared changed_files in Git info).
+    /// Returns a copy of all projects.
     #[must_use]
     pub fn list_projects(&self) -> Vec<Project> {
-        self.projects
-            .iter()
-            .map(|p| {
-                let mut project = p.clone();
-                if let Some(git_info) = &mut project.git_info {
-                    git_info.changed_files.clear();
-                }
-                project
-            })
-            .collect()
+        self.projects.clone()
     }
 
     /// Refreshes Git repository information for a project.

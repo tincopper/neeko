@@ -9,7 +9,7 @@ import { useBrowserTabsStore } from '@/shared/store/browserTabsStore';
 import { useEditorStore } from '@/shared/store/editorStore';
 import { useOverlayStore } from '@/shared/store/overlayStore';
 import { useProjectStore } from '@/shared/store/projectStore';
-import type { FileChangedEvent } from '@/shared/types';
+import type { FileChangedEvent, GitChangedEvent } from '@/shared/types';
 import {
   armProjectAutoRefresh,
   disarmProjectAutoRefresh,
@@ -18,6 +18,7 @@ import {
 import { fileUrlToFilePath, hostFromUrl } from '@/shared/utils/browserUtils';
 import { pathsContainFile } from '@/shared/utils/fileRef';
 import { canGoBack, canGoForward, recordNavigation } from '@/shared/utils/historyStack';
+import { unitWorkDir } from '@/shared/utils/repoRef';
 
 import {
   findAgentCliTab,
@@ -194,11 +195,14 @@ export function useBrowserTab({
     refreshRef.current = webview.refresh;
   }, [webview.refresh]);
 
-  useTauriEvent<string>(
+  // 载荷自仓库单元身份补齐起是 `{ repo_key, project_id }`（不再是裸 project_id 字符串）。
+  // 这里按**项目**维度匹配 —— 浏览器 tab 的武装窗口是 per-project 的
+  // （`armProjectAutoRefresh`），单元维度在此不参与判定，与改造前语义一致。
+  useTauriEvent<GitChangedEvent>(
     GIT_CHANGED_EVENT,
     useCallback(
       (payload) => {
-        if (payload !== projectId || !isProjectAutoRefreshArmed(projectId)) return;
+        if (payload.project_id !== projectId || !isProjectAutoRefreshArmed(projectId)) return;
         if (isCreatedRef.current) void refreshRef.current();
       },
       [projectId],
@@ -220,11 +224,15 @@ export function useBrowserTab({
     const project = useProjectStore.getState().projects.find((p) => p.id === projectId);
     if (!project) return;
 
-    // 命中判定收敛到**身份所有者**（`pathsContainFile`）：事件路径由 watcher 发出，
-    // 正常为项目相对、`strip_prefix` 失败时回退**绝对**；拼接 `${projectRoot}/${rel}`
-    // 在回退场景恒不命中（`/repo//repo/…`），也会被项目根尾斜杠/重复斜杠打断
+    // 命中判定收敛到**身份所有者**（`pathsContainFile`），基准按事件自带的**单元身份**取：
+    // watcher 挂在仓库单元上，`paths` 相对该单元工作树根 —— 用项目根拼 worktree 相对路径
+    // 会落到主仓的另一个同名文件上（`src/a.ts` 在两个工作树里同形不同义），恒漏配。
+    // 事件路径正常为单元相对、`strip_prefix` 失败时回退**绝对**；两种形态都必须命中，
+    // 拼接 `${projectRoot}/${rel}` 在回退场景恒不命中（`/repo//repo/…`）。
     // —— 后果是「tab 不刷新、显示过期内容」。与 useBrowserPanelEvents 同因同修。
-    if (pathsContainFile(project.path, paths, browserFilePath)) void refreshRef.current();
+    if (pathsContainFile(unitWorkDir(event.repo_key, project.path), paths, browserFilePath)) {
+      void refreshRef.current();
+    }
   });
 
   // 组件卸载时解除项目武装（避免孤儿定时器）

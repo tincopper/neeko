@@ -3,6 +3,7 @@ import React, { useCallback, useMemo, useState } from 'react';
 import { cn } from '@/lib/utils';
 import { Undo2, ListPlus } from '@/shared/components/icons';
 import type { FileChange } from '@/shared/types';
+import type { RepoKey } from '@/shared/utils/repoRef';
 
 import { useUntrackedDirExpansion } from '../hooks/useUntrackedDirExpansion';
 import type { DiscardIntent } from '../utils/discardIntent';
@@ -61,6 +62,18 @@ interface ChangesListProps {
   loading: boolean;
   /** G4（P3 截断显式化）：快照超过 MAX_STATUS_ENTRIES 被截断时顶部显示提示 */
   truncated?: boolean;
+  /**
+   * 该仓库单元的状态**未知**（后端未挂载 / 刚切过来还没取到首个快照）。
+   * 必须与「确实没有变更」区分渲染：把未知画成 "No changes" 就是伪造事实 ——
+   * 本次重构要根治的正是这种「看起来对、其实是别处数据」的显示。
+   */
+  unknown?: boolean;
+  /**
+   * 本列表渲染的仓库单元 key（`repoKeyOf(projectId, activeWorktreePath)`）。
+   * 展开缓存的失效信号按它过滤 `file-changed`：事件路径相对**产出单元**的工作树根，
+   * 不带单元就会拿别的工作树的同名相对路径当成本列表的变更。
+   */
+  repoKey: RepoKey;
 }
 
 type FilterStatus = 'all' | 'Modified' | 'Added' | 'Deleted' | 'Renamed';
@@ -85,6 +98,8 @@ const ChangesList: React.FC<ChangesListProps> = ({
   onExpandUntrackedDir,
   loading,
   truncated = false,
+  unknown = false,
+  repoKey,
 }) => {
   const [changesExpanded, setChangesExpanded] = useState(true);
   const [unversionedExpanded, setUnversionedExpanded] = useState(true);
@@ -95,7 +110,11 @@ const ChangesList: React.FC<ChangesListProps> = ({
   const groups = useMemo(() => buildGitStatusGroups(files), [files]);
 
   // 折叠 untracked 目录条目 → 平铺为文件行（按需拉取 + 占位，见 useUntrackedDirExpansion）
-  const { flattenedUntracked } = useUntrackedDirExpansion(groups.unversioned, onExpandUntrackedDir);
+  const { flattenedUntracked } = useUntrackedDirExpansion(
+    groups.unversioned,
+    onExpandUntrackedDir,
+    repoKey,
+  );
 
   const filterList = useCallback(
     (list: FileChange[]) => (filter === 'all' ? list : list.filter((f) => f.status === filter)),
@@ -151,6 +170,14 @@ const ChangesList: React.FC<ChangesListProps> = ({
     },
     [isAllSelected, selectedFiles, onToggleFile],
   );
+
+  if (unknown) {
+    return (
+      <div className="flex-1 flex items-center justify-center">
+        <span className="text-[var(--font-size)] text-text-muted py-4">Loading changes…</span>
+      </div>
+    );
+  }
 
   if (files.length === 0) {
     return (

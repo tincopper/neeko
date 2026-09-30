@@ -21,15 +21,7 @@ function createProject(overrides: Partial<Project> = {}): Project {
           head: 'abc',
         },
       ],
-      changed_files: [
-        {
-          path: 'src/App.tsx',
-          status: 'Modified',
-          additions: 3,
-          deletions: 1,
-        },
-      ],
-      is_clean: false,
+      // 未提交变更不在 GitInfo 里（per 工作树 的事实，经 projectStore.statuses 按单元投递）
     },
     terminal: {
       id: 't-1',

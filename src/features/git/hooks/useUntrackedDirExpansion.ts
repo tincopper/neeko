@@ -17,7 +17,7 @@ function isCollapsedDirEntry(file: FileChange): boolean {
  * 目录包含关系：`path` 是否位于折叠目录 `dir` 之下（含目录自身）。
  *
  * 这是**包含**判定而非「同一文件」判定，不构成红线 12 的身份判定：不做形态归一、
- * 不拼项目根、不比较 `FileRef` 身份。两个入参都是同形态的项目相对路径
+ * 不拼项目根、不比较 `FileRef` 身份。两个入参都是同形态的**单元相对**路径
  * （G1 契约：快照条目 path 无尾斜杠；watcher 事件路径同样无尾斜杠），因此按完整
  * 路径段比较即可 —— `dir-ab/x` 不会被 `dir-a` 误命中（兄弟目录前缀）。
  * 旧 payload 的目录条目可能带尾斜杠（G1 之前），此处只补足分隔符。
@@ -64,22 +64,26 @@ export function expandUntrackedEntries(
  *
  * 失效契约（三条信号，全部走 SWR：标记 stale 时**保留旧值**，新值落地才替换 ——
  * 否则每次失效都会让已展开的目录闪一下目录条目）：
- * - **S1 文件事件**：`file-changed` 批次里任一路径落在某折叠目录下 → 该目录需重拉。
- *   local 主路径上这是「目录内新增/删除文件」的即时通道。
- * - **S2 快照替换**：`files`（= store 的 `changed_files`）引用被整体替换 → 全部需重拉。
- *   判定落在**引用**而非快照 `version`：local 的两条刷新都不推进 version（面板刷新按钮走
- *   `get_git_info` 不经 version gate；窗口聚焦走 `versionGateAccepts(..., allowEqual=true)`
- *   同版本放行），而它们是「手动刷新必须看到最新内容」的唯一通道。
+ * - **S1 文件事件**：`file-changed` 批次里任一路径落在某折叠目录下、且事件与**本列表所属单元
+ *   同址** → 该目录需重拉。local 主路径上这是「目录内新增/删除文件」的即时通道。
+ *   同址判定不可省：事件路径相对**产出单元**的工作树根，而 `src/a.ts` 在主仓与 linked worktree
+ *   里同形不同义 —— 不比对单元就只会多一次无害重拉，但一旦哪天改成按路径取数据就会拿到别处的文件。
+ * - **S2 快照替换**：`files`（= 该单元槽位的 `entries`）引用被整体替换 → 全部需重拉。
+ *   判定落在**引用**而非快照 `version`：本列表的两次显式刷新（面板刷新按钮 / 窗口聚焦）都不保证
+ *   推进 version，而它们是「手动刷新必须看到最新内容」的唯一通道。
  * - **S3 失败抑制**：拉取失败不写缓存键（目录条目继续占位），并进入失败抑制直至下一次
  *   失效信号 —— 避免「失败 → 不写键 → effect 重跑 → 立即重试」自激。
  *
  * 去重：同一目录 in-flight 期间的多次失效只重新标记 stale，落地后合并为一次 trailing 重拉。
- * 缓存作用域：hook 状态随组件生命周期存活，跨项目切换由渲染侧的 `key={project.id}` 重置
- * （见 `GitCommitPanel` 中 `ChangesList` 的 key），故此处无需感知 projectId。
+ * 缓存作用域：hook 状态随组件生命周期存活，跨**单元**切换由渲染侧的 `key={repoKey}` 重置
+ * （见 `GitCommitPanel` 中 `ChangesList` 的 key）；`repoKey` 另外作为 S1 的过滤依据传入，
+ * 因此本 hook 不读任何全局激活态。
  */
 export function useUntrackedDirExpansion(
   files: FileChange[],
-  onExpandUntrackedDir?: (dirPath: string) => Promise<string[]>,
+  onExpandUntrackedDir: ((dirPath: string) => Promise<string[]>) | undefined,
+  /** 本列表所属仓库单元（`repoKeyOf(projectId, worktreePath)`）：S1 只接受同址事件。 */
+  repoKey: string,
 ) {
   const [dirFilesMap, setDirFilesMap] = useState<Record<string, string[]>>({});
   /** 需后台重拉但**保留旧值**的目录（SWR）；用 state 而非 ref，好让拉取 effect 随其重跑 */
@@ -91,6 +95,12 @@ export function useUntrackedDirExpansion(
   const prevCollapsedRef = useRef<FileChange[] | undefined>(undefined);
   /** 当前折叠目录路径集合：给引用稳定的订阅回调经 ref 读取最新值 */
   const entryPathsRef = useRef<string[]>([]);
+  /** 本列表所属单元：同样经 ref 读取，保持订阅回调引用稳定（事件订阅只在挂载时建立一次） */
+  const repoKeyRef = useRef(repoKey);
+
+  useEffect(() => {
+    repoKeyRef.current = repoKey;
+  }, [repoKey]);
 
   // G6：unversioned 判定优先走 porcelain XY（X=Y='?'），缺 XY 回退单 status
   const untrackedFiles = useMemo(() => files.filter(isUnversionedEntry), [files]);
@@ -104,8 +114,9 @@ export function useUntrackedDirExpansion(
     entryPathsRef.current = collapsedDirEntries.map((entry) => entry.path);
   }, [collapsedDirEntries]);
 
-  // S1：file-changed 批次命中折叠目录前缀 → 标记需重拉（并复位失败抑制，允许重试）
+  // S1：file-changed 批次**属本单元**且命中折叠目录前缀 → 标记需重拉（并复位失败抑制，允许重试）
   const handleFileChanged = useCallback((event: FileChangedEvent) => {
+    if (event.repo_key !== repoKeyRef.current) return;
     const dirsToCheck = entryPathsRef.current;
     if (dirsToCheck.length === 0 || event.paths.length === 0) return;
     const matched = new Set<string>();

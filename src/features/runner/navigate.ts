@@ -12,7 +12,7 @@
  */
 import { useEditorStore } from '@/shared/store/editorStore';
 import { useProjectStore } from '@/shared/store/projectStore';
-import { useWorktreeStore } from '@/shared/store/worktreeStore';
+import { selectActiveWorktreePath, useWorktreeStore } from '@/shared/store/worktreeStore';
 import { resolveTabKey } from '@/shared/utils/tabKey';
 
 import { frameSourceOpen, fsSourceOpen, virtualSourceOpen } from './sourceOpen';
@@ -26,7 +26,7 @@ import type { StackFrameDto } from './types';
  * 若将来出现第二个消费者（非跳转场景也需要该键），再抽成独立模块。
  */
 function targetTabKey(projectId: string): string {
-  const activeWorktree = useWorktreeStore.getState().activeWorktreePath;
+  const activeWorktree = selectActiveWorktreePath(useWorktreeStore.getState(), projectId);
   return projectId ? resolveTabKey(projectId, activeWorktree) : projectId;
 }
 

@@ -12,7 +12,7 @@
 import { readFileContent } from '@/features/file/api/fileApi';
 import { useEditorStore } from '@/shared/store/editorStore';
 import { useProjectStore } from '@/shared/store/projectStore';
-import { useWorktreeStore } from '@/shared/store/worktreeStore';
+import { selectActiveWorktreePath, useWorktreeStore } from '@/shared/store/worktreeStore';
 import type { Tab } from '@/shared/types';
 import { getLanguageExtension } from '@/shared/utils/codemirror';
 import { sourceIdentityOf } from '@/shared/utils/fileRef';
@@ -37,7 +37,7 @@ export async function openProjectFile(opts: {
     useProjectStore.getState().projects.find((p) => p.id === projectId)?.path ?? '';
   const filePath = sourceIdentityOf(projectPath, rawPath);
 
-  const wt = useWorktreeStore.getState().activeWorktreePath;
+  const wt = selectActiveWorktreePath(useWorktreeStore.getState(), projectId);
   const tabKey = resolveTabKey(projectId, wt);
   const store = useEditorStore.getState();
   const tabId = getTabId(tabKey, filePath);

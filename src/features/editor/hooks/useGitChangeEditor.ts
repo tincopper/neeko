@@ -7,8 +7,14 @@ import { useCallback, useEffect, useMemo, useRef } from 'react';
 import { loadFileLineChanges } from '@/features/git/api/fileLineChange';
 import { GIT_CHANGED_EVENT, GIT_STATUS_SNAPSHOT_EVENT } from '@/shared/events';
 import { useFileChangedEvent } from '@/shared/hooks/useFileChangedEvent';
-import type { FileChangedEvent, FileLineChange, GitStatusSnapshot } from '@/shared/types';
+import type {
+  FileChangedEvent,
+  FileLineChange,
+  GitChangedEvent,
+  GitStatusSnapshot,
+} from '@/shared/types';
 import { fileRefFromTabPath, pathsContainFile, relativeToRootOrNull } from '@/shared/utils/fileRef';
+import { repoKeyOf, unitWorkDir } from '@/shared/utils/repoRef';
 import { safeUnlisten } from '@/shared/utils/safeUnlisten';
 
 import { createGitChangeExtensions, setFileLineChangesEffect } from '../git-change';
@@ -34,19 +40,18 @@ interface UseGitChangeEditorParams {
  * tab 身份 → `get_file_diff` 仓库相对路径；不可下发（虚拟身份 / 无根绝对路径 /
  * 不在根下）返回 null（调用方跳过 fetch）。
  *
+ * `unitRoot` 是**该 tab 所属仓库单元的工作树根**（主仓 = 项目根，worktree = 其路径）：
+ * 唯一派生点是 `unitWorkDir(repo_key, projectRoot)`，调用方不得手写
+ * `worktreePath ?? projectRoot` 的等价形态（第二派生点必然漂移）。
+ *
  * 身份解析走 `fileRefFromTabPath`（禁止自造字符串归一）；剥根走 `relativeToRootOrNull`
  * （SSOT：是否「在根下」的判定集中在 fileRef，杜绝消费侧另立绝对路径正则）。
  */
-function resolveRepoRelativePath(
-  projectRoot: string | null | undefined,
-  worktreePath: string | null | undefined,
-  filePath: string,
-): string | null {
+function resolveRepoRelativePath(unitRoot: string, filePath: string): string | null {
   if (!filePath) return null;
-  const identityRoot = worktreePath ?? projectRoot ?? '';
-  const ref = fileRefFromTabPath(identityRoot, filePath);
+  const ref = fileRefFromTabPath(unitRoot, filePath);
   if (ref.kind !== 'fs') return null;
-  return relativeToRootOrNull(identityRoot, ref.path);
+  return relativeToRootOrNull(unitRoot, ref.path);
 }
 
 /** 主/事件两条路径共用的拉取：失败返回 `[]`（静默），stale 时返回 `null` 表示丢弃。 */
@@ -112,10 +117,20 @@ export function useGitChangeEditor({
   /** git-events effect 注册的去抖入口；file-changed 共享订阅经此汇入同一窗口。 */
   const scheduleRefreshRef = useRef<() => void>(() => {});
 
-  // 剥根结果进 deps（原始 filePath/worktreePath/projectRoot 的派生），避免两侧各算一套
+  /**
+   * 本 tab 所属**仓库单元**的身份：VCS 事件（snapshot / git-changed / file-changed）
+   * 一律按 `repo_key` 定址 —— 同一项目的 worktree 与主仓是两套 HEAD/index/workdir，
+   * 只比 `project_id` 会让主仓快照触发 worktree 编辑器的重拉（反之亦然）。
+   */
+  const unitRepoKey = projectId ? repoKeyOf(projectId, worktreePath) : null;
+
+  // 单元相对路径的基准（= 该单元工作树根）。唯一派生点：`unitWorkDir`。
+  const unitRoot = unitRepoKey ? unitWorkDir(unitRepoKey, projectRoot ?? '') : (projectRoot ?? '');
+
+  // 剥根结果进 deps（原始 filePath / unitRoot 的派生），避免两侧各算一套
   const repoRelPath = useMemo(
-    () => resolveRepoRelativePath(projectRoot, worktreePath, filePath),
-    [projectRoot, worktreePath, filePath],
+    () => resolveRepoRelativePath(unitRoot, filePath),
+    [unitRoot, filePath],
   );
 
   // 主拉取/补派发路径
@@ -190,11 +205,11 @@ export function useGitChangeEditor({
     scheduleRefreshRef.current = scheduleRefresh;
 
     const onSnapshot = (event: { payload: GitStatusSnapshot }) => {
-      if (event.payload.project_id !== projectId) return;
+      if (event.payload.repo_key !== unitRepoKey) return;
       scheduleRefresh();
     };
-    const onGitChanged = (event: { payload: string }) => {
-      if (event.payload !== projectId) return;
+    const onGitChanged = (event: { payload: GitChangedEvent }) => {
+      if (event.payload.repo_key !== unitRepoKey) return;
       scheduleRefresh();
     };
 
@@ -209,7 +224,7 @@ export function useGitChangeEditor({
     };
 
     track(listen<GitStatusSnapshot>(GIT_STATUS_SNAPSHOT_EVENT, onSnapshot));
-    track(listen<string>(GIT_CHANGED_EVENT, onGitChanged));
+    track(listen<GitChangedEvent>(GIT_CHANGED_EVENT, onGitChanged));
 
     return () => {
       active = false;
@@ -221,18 +236,18 @@ export function useGitChangeEditor({
       for (const un of unlisteners) un();
       unlisteners.length = 0;
     };
-  }, [enabled, projectId, worktreePath, repoRelPath, editorViewRef]);
+  }, [enabled, projectId, worktreePath, unitRepoKey, repoRelPath, editorViewRef]);
 
-  // file-changed：共享单 IPC 订阅；身份命中后汇入 git-events 同一去抖窗口
+  // file-changed：共享单 IPC 订阅；按 repo_key 定址到本单元后汇入 git-events 同一去抖窗口
   const onFileChanged = useCallback(
     (payload: FileChangedEvent) => {
       if (!enabled || !projectId || !repoRelPath) return;
-      if (payload.project_id !== projectId) return;
-      // 相对/绝对混合形态由身份所有者归一（watcher 正常发项目相对，strip_prefix 失败回退绝对）
-      if (!pathsContainFile(projectRoot ?? worktreePath ?? '', payload.paths, filePath)) return;
+      if (payload.repo_key !== unitRepoKey) return;
+      // 相对/绝对混合形态由身份所有者归一（watcher 正常发**单元**相对，strip_prefix 失败回退绝对）
+      if (!pathsContainFile(unitRoot, payload.paths, filePath)) return;
       scheduleRefreshRef.current();
     },
-    [enabled, projectId, repoRelPath, projectRoot, worktreePath, filePath],
+    [enabled, projectId, unitRepoKey, repoRelPath, unitRoot, filePath],
   );
   useFileChangedEvent(onFileChanged);
 

@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { readFileContent, readDirTree } from '@/features/file/api/fileApi';
 import { useEditorStore } from '@/shared/store/editorStore';
 import { useProjectStore } from '@/shared/store/projectStore';
-import { useWorktreeStore } from '@/shared/store/worktreeStore';
+import { selectActiveWorktreePath, useWorktreeStore } from '@/shared/store/worktreeStore';
 import type { FileNode } from '@/shared/types';
 import type { AgentChatTabData } from '@/shared/types/tab';
 import { canonicalFsPath } from '@/shared/utils/fileRef';
@@ -73,7 +73,8 @@ export default function AgentChatTabView({
     restoreConversation,
   } = useAgentChat({ tabKey, tabId, projectId, data, mockMode });
 
-  const activeWorktreePath = useWorktreeStore((s) => s.activeWorktreePath);
+  // 单元归属按 tab 自己的 projectId 取（本 tab 可能不属于当前激活项目）
+  const activeWorktreePath = useWorktreeStore((s) => selectActiveWorktreePath(s, projectId));
   // agent 消息里的文件路径拼根基准（相对路径拼项目根——与后端缺省 base 对齐）
   const projectPath = useProjectStore(
     (s) => s.projects.find((p) => p.id === projectId)?.path ?? '',

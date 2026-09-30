@@ -80,66 +80,6 @@ pub async fn get_staged_diff(
 
 // ─── Info operations (shell-based, works for all transports) ─────────────────
 
-/// Get git info using shell commands. Falls back to shell even for local.
-pub(crate) async fn get_worktree_changed_files_shell(
-    transport: &dyn GitTransport,
-    worktree_path: &str,
-) -> Result<Vec<FileChange>> {
-    let output = transport
-        .run_git_opts(&["status", "--porcelain"], worktree_path, readonly_opts())
-        .await?;
-    let mut files: Vec<FileChange> = output.lines().filter_map(parse_status_line).collect();
-
-    // Enrich with additions/deletions from git diff --numstat
-    if !files.is_empty() {
-        let mut numstat: std::collections::HashMap<String, (usize, usize)> =
-            std::collections::HashMap::new();
-
-        // Unstaged changes
-        if let Ok(unstaged) = transport
-            .run_git_opts(&["diff", "--numstat"], worktree_path, readonly_opts())
-            .await
-        {
-            for line in unstaged.lines() {
-                if let Some((add, del, path)) = parse_numstat_line(line) {
-                    let entry = numstat.entry(path).or_insert((0, 0));
-                    entry.0 += add;
-                    entry.1 += del;
-                }
-            }
-        }
-
-        // Staged changes
-        if let Ok(staged) = transport
-            .run_git_opts(
-                &["diff", "--cached", "--numstat"],
-                worktree_path,
-                readonly_opts(),
-            )
-            .await
-        {
-            for line in staged.lines() {
-                if let Some((add, del, path)) = parse_numstat_line(line) {
-                    let entry = numstat.entry(path).or_insert((0, 0));
-                    entry.0 += add;
-                    entry.1 += del;
-                }
-            }
-        }
-
-        // Merge numstat counts into files
-        for file in &mut files {
-            let path_str = file.path.to_string_lossy().to_string();
-            if let Some((add, del)) = numstat.get(&path_str) {
-                file.additions = *add;
-                file.deletions = *del;
-            }
-        }
-    }
-
-    Ok(files)
-}
-
 /// Get file diff for a worktree path (shell-based)
 pub(crate) async fn get_file_diff_shell(
     transport: &dyn GitTransport,

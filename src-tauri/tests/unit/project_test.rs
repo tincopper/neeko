@@ -355,26 +355,36 @@ fn add_project_from_session_nonexistent_path_fails() {
 }
 
 #[test]
-fn list_projects_returns_empty_changed_files() {
+fn list_projects_carries_git_metadata_but_no_per_worktree_status() {
     let trepo = support::TestRepo::init();
 
-    // 添加一个修改的文件
+    // 脏工作树：status 事实存在，但它属于**仓库单元**，不属于项目登记信息
     std::fs::write(trepo.path().join("README.md"), "# Modified\n").unwrap();
 
     let mut pm = ProjectManager::new(|_| {});
     pm.add_project(trepo.path().to_path_buf(), None, None, None)
         .unwrap();
 
-    // list_projects 返回的项目 changed_files 应该为空
     let projects = pm.list_projects();
     assert_eq!(projects.len(), 1);
     let project = &projects[0];
 
-    // 如果 git_info 存在，changed_files 应该为空
-    if let Some(ref git_info) = project.git_info {
-        assert!(
-            git_info.changed_files.is_empty(),
-            "Expected empty changed_files in list_projects output"
-        );
-    }
+    // 项目登记只带 per-project 元数据（旧断言是「changed_files 为空」，现在类型上
+    // 就没有这个字段 —— 断言升级为「IPC 载荷里根本不允许出现这两个键」，语义不变强于不变弱）
+    let git_info = project
+        .git_info
+        .as_ref()
+        .expect("git 项目的 list_projects 必须带 git_info");
+    assert!(!git_info.current_branch.is_empty());
+
+    let json = serde_json::to_value(&projects).expect("serialize projects");
+    let dump = json.to_string();
+    assert!(
+        !dump.contains("changed_files"),
+        "list_projects 载荷不得携带 per-worktree 变更列表（它是单元事实，走 GitStatusSnapshot）\n{dump}"
+    );
+    assert!(
+        !dump.contains("is_clean"),
+        "list_projects 载荷不得携带 per-worktree clean 标记\n{dump}"
+    );
 }

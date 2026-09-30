@@ -12,7 +12,7 @@ import { useAppViewStore } from '@/shared/store/appViewStore';
 import { useConnectionStore } from '@/shared/store/connectionStore';
 import { useEditorStore } from '@/shared/store/editorStore';
 import { useProjectStore } from '@/shared/store/projectStore';
-import { useWorktreeStore } from '@/shared/store/worktreeStore';
+import { useWorktreeStore, type WorktreeUnitState } from '@/shared/store/worktreeStore';
 import { createProject } from '@/testing/factories';
 
 // mock terminal refresh functions
@@ -65,10 +65,9 @@ function seedStore(overrides: Record<string, unknown> = {}) {
     selectRemoteProject: vi.fn(),
   };
   const worktreeDefaults = {
-    activeWorktreePath: null as string | null,
-    activeWorktreeBranch: '',
-    openedWorktrees: [] as unknown[],
-    worktreeStateMap: {} as Record<string, unknown>,
+    // 单一表示：单元归属只按 projectId 存 on byProject（旧的 activeWorktreePath /
+    // activeWorktreeBranch / openedWorktrees 全局镜像已删除，worktreeStateMap 亦是）。
+    byProject: {} as Record<string, WorktreeUnitState>,
   };
 
   // Apply overrides to matching fields
@@ -225,11 +224,16 @@ describe('useKeyboardShortcuts', () => {
       ...storeState,
       activeProjectId: 'p1',
       isTerminalView: true,
-      openedWorktrees: [
-        { path: '/wt1', branch: 'main' },
-        { path: '/wt2', branch: 'develop' },
-      ],
-      activeWorktreePath: null,
+      byProject: {
+        p1: {
+          activePath: null,
+          activeBranch: '',
+          opened: [
+            { path: '/wt1', branch: 'main' },
+            { path: '/wt2', branch: 'develop' },
+          ],
+        },
+      },
     });
 
     renderHook(() => useKeyboardShortcuts(params));
@@ -244,11 +248,16 @@ describe('useKeyboardShortcuts', () => {
       ...storeState,
       activeProjectId: 'p1',
       isTerminalView: true,
-      openedWorktrees: [
-        { path: '/wt1', branch: 'main' },
-        { path: '/wt2', branch: 'develop' },
-      ],
-      activeWorktreePath: '/wt2',
+      byProject: {
+        p1: {
+          activePath: '/wt2',
+          activeBranch: 'develop',
+          opened: [
+            { path: '/wt1', branch: 'main' },
+            { path: '/wt2', branch: 'develop' },
+          ],
+        },
+      },
     });
 
     renderHook(() => useKeyboardShortcuts(params));
@@ -263,7 +272,15 @@ describe('useKeyboardShortcuts', () => {
       ...storeState,
       activeProjectId: 'p1',
       isTerminalView: true,
-      openedWorktrees: [],
+      byProject: {
+        // 单一表示回归：只有**别的项目**开过工作树时，当前项目不得被循环到它的工作树上
+        p2: {
+          activePath: '/other-wt',
+          activeBranch: 'x',
+          opened: [{ path: '/other-wt', branch: 'x' }],
+        },
+        p1: { activePath: null, activeBranch: '', opened: [] },
+      },
     });
 
     renderHook(() => useKeyboardShortcuts(params));
@@ -271,6 +288,7 @@ describe('useKeyboardShortcuts', () => {
     expect(() => {
       dispatchKey('KeyN', { ctrlKey: true });
     }).not.toThrow();
+    expect(params.updateWtPath).not.toHaveBeenCalled();
   });
 
   it('Ctrl+Q 循环到下一个项目', () => {

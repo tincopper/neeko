@@ -1,12 +1,13 @@
 import { useState, useEffect } from 'react';
 
-import { useProjectStore, versionGateAccepts } from '@/shared/store/projectStore';
+import { useProjectStore } from '@/shared/store/projectStore';
 import { useWorktreeStore } from '@/shared/store/worktreeStore';
-import type { FileChange, Worktree } from '@/shared/types';
+import type { Worktree } from '@/shared/types';
 import { reportFrontendError } from '@/shared/utils/errorReporting';
+import { repoKeyOf } from '@/shared/utils/repoRef';
 
 /* eslint-disable import/no-restricted-paths -- session bootstrap needs git API for reading git info */
-import { getWorktreeChangedFilesVersioned, getGitBranchInfo } from '../../git/api/gitApi';
+import { canonicalWorktreePath, getGitBranchInfo, getRepoStatus } from '../../git/api/gitApi';
 import { useGitPerfSuggestion } from '../../git/hooks/useGitPerfSuggestion';
 import { useGitStatusEventsSync } from '../../git/hooks/useGitStatusEventsSync';
 /* eslint-enable import/no-restricted-paths */
@@ -45,8 +46,6 @@ export function useSessionBootstrap(deps: {
           current_branch: '',
           branches: [] as string[],
           worktrees: [] as Worktree[],
-          changed_files: [] as FileChange[],
-          is_clean: true,
           git_provider: '',
         };
 
@@ -69,30 +68,28 @@ export function useSessionBootstrap(deps: {
         for (const p of projects) {
           // 非 git 项目（git_info 为 null）跳过所有 git 命令
           if (p.git_info === null) continue;
-          if (!p.git_info.changed_files?.length) {
-            // split 轻量路径：与 watcher snapshot 处理一致，避免重量级 refresh_git_info。
-            // G2 D2/D4：versioned 读 + version gate —— 与快照事件同一写入通道，
-            // 不会用旧数据覆盖更新的快照。
-            getWorktreeChangedFilesVersioned(p.id, '')
-              .then((payload) => {
-                if (!versionGateAccepts(p.id, payload.version)) return;
-                patchGitInfo(p.id, {
-                  changed_files: payload.files,
-                  is_clean: payload.files.length === 0,
-                });
+          const mainKey = repoKeyOf(p.id, null);
+          // 主仓单元 status：走同一写入口（applyStatus 内含 version gate），侧栏
+          // 变更计数因此有数据来源；激活单元由 useActiveRepoUnitSync 负责挂载与刷新。
+          if (!useProjectStore.getState().statuses[mainKey]) {
+            getRepoStatus(p.id, null)
+              .then((snapshot) => {
+                if (snapshot.repo_key !== mainKey) return;
+                useProjectStore.getState().applyStatus(snapshot);
               })
-              .catch((err) => reportFrontendError('session.gitChangedFiles', err));
-
-            getGitBranchInfo(p.id)
-              .then((branchInfo) => {
-                patchGitInfo(p.id, {
-                  current_branch: branchInfo.current_branch,
-                  branches: branchInfo.branches,
-                  worktrees: branchInfo.worktrees,
-                });
-              })
-              .catch((err) => reportFrontendError('session.gitBranchInfo', err));
+              .catch((err) => reportFrontendError('session.gitStatus', err));
           }
+
+          getGitBranchInfo(p.id)
+            .then((branchInfo) => {
+              // 只写 per-project 元数据；current_branch 的唯一写者是 applyStatus
+              // （主仓单元投影），bootstrap 不再各自覆盖它。
+              patchGitInfo(p.id, {
+                branches: branchInfo.branches,
+                worktrees: branchInfo.worktrees,
+              });
+            })
+            .catch((err) => reportFrontendError('session.gitBranchInfo', err));
         }
       } catch {
         // Ignore — best-effort branch metadata fetch
@@ -130,8 +127,6 @@ export function useSessionBootstrap(deps: {
               current_branch: '',
               branches: [] as string[],
               worktrees: [] as Worktree[],
-              changed_files: [] as FileChange[],
-              is_clean: true,
               git_provider: '',
             };
             const patchGitInfo = (patch: Partial<typeof defaultGitInfo>) => {
@@ -150,52 +145,40 @@ export function useSessionBootstrap(deps: {
                 };
               });
             };
-            getWorktreeChangedFilesVersioned(activeId, '')
-              .then((payload) => {
-                if (!versionGateAccepts(activeId, payload.version)) return;
-                patchGitInfo({
-                  changed_files: payload.files,
-                  is_clean: payload.files.length === 0,
-                });
-              })
-              .catch((err) => reportFrontendError('session.gitChangedFiles', err));
+            // 不在这里拉 status：激活哪个单元由下面的恢复流程决定，
+            // 统一由 useActiveRepoUnitSync 挂载 + 取首个快照（避免旧实现里
+            // 「先按主仓拉一次、随后才恢复 worktree」导致首屏显示主仓内容）。
             getGitBranchInfo(activeId)
-              .then((branchInfo) => {
+              .then(async (branchInfo) => {
                 patchGitInfo({
-                  current_branch: branchInfo.current_branch,
                   branches: branchInfo.branches,
                   worktrees: branchInfo.worktrees,
                 });
                 // 恢复上次激活的 worktree（session 只持久化了 path）：
                 // worktrees 此刻已加载，可校验 worktree 仍存在；且校验 effect
                 // 对空 worktrees 不再清理激活态，避免「先清后加载」竞态。
+                // 恢复上次激活的单元：只写单一表示 byProject[projectId]
+                // （旧实现同时写三份镜像字段，读镜像的事件回调因此会拿到别的单元的路径）
                 const restoredWtPath = wtState?.[activeId];
                 if (restoredWtPath) {
-                  const wt = branchInfo.worktrees.find((w) => w.path === restoredWtPath);
+                  const store = useWorktreeStore.getState();
+                  // 清单路径已由后端归一出 canonical（见 backend/git-domain §12），
+                  // 但 session 文件里存的是**上一次写入**的路径，历史版本可能非 canonical
+                  // （macOS 的 `/tmp` 与 `/private/tmp` 同指一处）。因此只对「持久化输入」
+                  // 做一次归一，再与清单比一次 —— 清单侧不需要第二次比对：归一之后
+                  // 同一单元只有一种形态，多一次比对就是第二种身份判据。
+                  const canonical = await canonicalWorktreePath(activeId, restoredWtPath).catch(
+                    () => restoredWtPath,
+                  );
+                  const wt = branchInfo.worktrees.find((w) => w.path === canonical);
                   if (wt) {
-                    useWorktreeStore.setState((s) => {
-                      const prev = s.worktreeStateMap[activeId] ?? {
-                        activePath: null,
-                        activeBranch: '',
-                        opened: [] as { path: string; branch: string }[],
-                      };
-                      const opened = prev.opened.some((o) => o.path === wt.path)
-                        ? prev.opened
-                        : [...prev.opened, { path: wt.path, branch: wt.branch }];
-                      return {
-                        worktreeStateMap: {
-                          ...s.worktreeStateMap,
-                          [activeId]: {
-                            activePath: wt.path,
-                            activeBranch: wt.branch,
-                            opened,
-                          },
-                        },
-                        activeWorktreePath: wt.path,
-                        activeWorktreeBranch: wt.branch,
-                        openedWorktrees: opened,
-                      };
-                    });
+                    store.markWorktreeOpened(activeId, wt.path, wt.branch);
+                    store.setActiveWorktree(activeId, wt.path, wt.branch);
+                  } else {
+                    // 认不出 ⇒ 交回唯一判死点（`useAppShellData` 的清单校验）判「工作树已消失」，
+                    // 这里不重复判死：两处各有各的「不存在」会互相打架，实测 main ↔ worktree
+                    // 反复重挂。
+                    store.setActiveWorktree(activeId, canonical);
                   }
                 }
               })

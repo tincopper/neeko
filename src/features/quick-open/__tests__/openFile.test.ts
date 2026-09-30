@@ -30,7 +30,7 @@ describe('openProjectFile — file tab 构造 canonical 化（quick-open 链路�
       projects: [{ id: 'p1', name: 'p1', path: '/repo' } as never],
       activeProjectId: 'p1',
     });
-    useWorktreeStore.setState({ activeWorktreePath: null });
+    useWorktreeStore.setState({ byProject: {} });
     readFileContentMock.mockImplementation(async (_projectId: string, p: string) => ({
       path: p,
       content: 'x',
@@ -58,7 +58,7 @@ describe('openProjectFile — file tab 构造 canonical 化（quick-open 链路�
   });
 
   it('worktree 激活：tab 落 worktree 键空间，路径仍按项目根 canonical（与 readFileContent 缺省 base 一致）', async () => {
-    useWorktreeStore.setState({ activeWorktreePath: '/wt' });
+    useWorktreeStore.getState().setActiveWorktree('p1', '/wt');
 
     await openProjectFile({ projectId: 'p1', filePath: 'src/a.ts' });
 
@@ -68,6 +68,20 @@ describe('openProjectFile — file tab 构造 canonical 化（quick-open 链路�
     expect(space.tabs[0].data.kind === 'file' && space.tabs[0].data.filePath).toBe(
       '/repo/src/a.ts',
     );
+  });
+
+  /**
+   * 单一表示回归：单元归属按 **projectId** 取（旧的全局镜像只有一个槽位，p2 激活 worktree
+   * 后 p1 的 tab 会被写进 p2 的键空间 → 打开的文件在 p1 视图里根本不存在）。
+   */
+  it('其它项目激活 worktree 不影响本项目的键空间', async () => {
+    useWorktreeStore.getState().setActiveWorktree('p2', '/wt-of-p2');
+
+    await openProjectFile({ projectId: 'p1', filePath: 'src/a.ts' });
+
+    const space = useEditorStore.getState().tabs['p1'];
+    expect(space.tabs[0].id).toBe('p1:/repo/src/a.ts');
+    expect(useEditorStore.getState().tabs['p1:wt:/wt-of-p2']).toBeUndefined();
   });
 
   /**
@@ -121,7 +135,7 @@ describe('openProjectFile — 语言扩展就绪屏障（await getLanguageExtens
       projects: [{ id: 'p1', name: 'p1', path: '/repo' } as never],
       activeProjectId: 'p1',
     });
-    useWorktreeStore.setState({ activeWorktreePath: null });
+    useWorktreeStore.setState({ byProject: {} });
     readFileContentMock.mockImplementation(async (_projectId: string, p: string) => ({
       path: p,
       content: 'x',

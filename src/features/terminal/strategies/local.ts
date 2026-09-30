@@ -2,7 +2,7 @@ import { useMemo } from 'react';
 
 import { useAppContext, useEditorContext } from '@/shared/contexts';
 import { useProjectStore } from '@/shared/store/projectStore';
-import { useWorktreeStore } from '@/shared/store/worktreeStore';
+import { useActiveWorktreePath } from '@/shared/store/worktreeStore';
 import { resolveTabKey } from '@/shared/utils/tabKey';
 
 import { createTerminalSession, resizeTerminal, closeTerminalSession } from '../api/terminalApi';
@@ -25,7 +25,7 @@ import { createTerminalStrategy } from './factory';
 export function useLocalTerminalStrategy(paneId: string, worktreePathOverride?: string) {
   const { config, showToast } = useAppContext();
   const activeProject = useProjectStore((s) => s.activeProject);
-  const activeWorktreePath = useWorktreeStore((s) => s.activeWorktreePath);
+  const activeWorktreePath = useActiveWorktreePath();
   const { activeTabId } = useEditorContext();
 
   return useMemo(() => {

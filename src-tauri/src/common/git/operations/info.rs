@@ -22,19 +22,6 @@ use anyhow::{bail, Result};
 
 pub async fn get_git_info_shell(transport: &dyn GitTransport, work_dir: &str) -> Result<GitInfo> {
     let branch_info = get_git_branch_info_shell(transport, work_dir).await?;
-    let changed_files = transport
-        .run_git(&["status", "--porcelain"], work_dir)
-        .await?;
-    let is_clean = changed_files.trim().is_empty();
-    let files = if is_clean {
-        vec![]
-    } else {
-        changed_files
-            .lines()
-            .filter_map(parse_status_line)
-            .collect()
-    };
-
     // 检测 Git 提供商
     let remote_url = transport
         .run_git(&["remote", "get-url", "origin"], work_dir)
@@ -50,8 +37,6 @@ pub async fn get_git_info_shell(transport: &dyn GitTransport, work_dir: &str) ->
         current_branch: branch_info.current_branch,
         branches: branch_info.branches,
         worktrees: branch_info.worktrees,
-        changed_files: files,
-        is_clean,
         git_provider,
     })
 }
@@ -102,9 +87,12 @@ pub async fn get_git_branch_info_shell(
     let worktrees_output = transport
         .run_git(&["worktree", "list", "--porcelain"], work_dir)
         .await?;
-    let mut worktrees = parse_worktree_list(&worktrees_output);
-    // The first worktree is always the main worktree (the project directory itself).
-    // Filter it out to match the behavior of git2 and parsers::parse_git_info_output.
+    // 归一化需要 transport 的 target 语义（Local canonicalize / 远端词法归一），
+    // 因此清单在解析处即归一 —— 前端会拿这些路径拼 RepoKey，必须与 RepoRef::key() 同形。
+    let mut worktrees = parse_worktree_list(&worktrees_output, &transport.exec_target());
+    // The first worktree is always the main worktree (the project directory itself):
+    // `git worktree list` 保证主工作树排在最前（2.54 实测 + git-worktree(1) 文档），
+    // git2 的 `repo.worktrees()` 同样只返回 linked worktree —— 两条路径语义一致。
     if !worktrees.is_empty() {
         worktrees.remove(0);
     }
@@ -121,8 +109,6 @@ pub async fn get_git_info(transport: &dyn GitTransport, work_dir: &str) -> Resul
     if let Some(repo) = transport.open_repo(work_dir) {
         tokio::task::spawn_blocking(move || {
             let branch_info = crate::common::git::local::get_git_branch_info_from_repo(&repo)?;
-            let changed_files = crate::common::git::local::get_changed_files_from_repo(&repo)?;
-            let is_clean = changed_files.is_empty();
             let git_provider = repo
                 .find_remote("origin")
                 .ok()
@@ -133,8 +119,6 @@ pub async fn get_git_info(transport: &dyn GitTransport, work_dir: &str) -> Resul
                 current_branch: branch_info.current_branch,
                 branches: branch_info.branches,
                 worktrees: branch_info.worktrees,
-                changed_files,
-                is_clean,
                 git_provider,
             })
         })

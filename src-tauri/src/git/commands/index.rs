@@ -1,25 +1,8 @@
 use crate::common::git::operations;
-use crate::common::git::path_guard::{resolve_validated_work_dir, validate_repo_relative_paths};
-use crate::common::git::status_worker::RECALC_WAIT_TIMEOUT;
-use crate::common::runtime::run_blocking;
+use crate::common::git::path_guard::validate_repo_relative_paths;
 use crate::AppError;
 use crate::AppStateWrapper;
 use tauri::State;
-
-/// 写操作成功后请求 status 重算并**等待落地**（有界），让随后的读接口拿到写后快照。
-///
-/// 不等待的后果：读接口（G2 D2，走 `snapshot()`）把写前快照当权威数据返回，覆盖
-/// 真实结果 —— 即「操作成功但列表要手动刷新才更新」。等待是 Condvar 阻塞原语，
-/// 经 `run_blocking` 隔离到阻塞线程池（红线 3）；超时 / 非 git 项目时放弃等待，
-/// 由 `git-status-snapshot` 事件推送最终收敛。
-async fn wait_status_fresh(state: &AppStateWrapper, project_id: &str) {
-    let manager = state.watcher_manager.clone();
-    let pid = project_id.to_string();
-    // join 失败仅发生于运行时关停，等待结果超时与否都不影响命令成败：
-    // 失败/超时场景由 git-status-snapshot 事件推送最终收敛。
-    let _ =
-        run_blocking(move || manager.poke_status_worker_and_wait(&pid, RECALC_WAIT_TIMEOUT)).await;
-}
 
 /// Stage specific files in the repository.
 #[tauri::command]
@@ -29,13 +12,13 @@ pub async fn stage_files(
     worktree_path: Option<String>,
     state: State<'_, AppStateWrapper>,
 ) -> Result<(), AppError> {
-    let (t, wd) = state.resolve_project(&project_id)?;
-    let repo_path = resolve_validated_work_dir(&t, &worktree_path, &wd)?;
+    let (t, repo) = state.resolve_repo(&project_id, worktree_path.as_deref())?;
+    let repo_path = repo.work_dir();
     validate_repo_relative_paths(&t, repo_path, &file_paths)?;
     operations::stage_files(&t, repo_path, &file_paths)
         .await
         .map_err(AppError::from)?;
-    wait_status_fresh(&state, &project_id).await;
+    crate::git::services::status::wait_status_fresh(&state, &repo).await;
     Ok(())
 }
 
@@ -47,13 +30,13 @@ pub async fn unstage_files(
     worktree_path: Option<String>,
     state: State<'_, AppStateWrapper>,
 ) -> Result<(), AppError> {
-    let (t, wd) = state.resolve_project(&project_id)?;
-    let repo_path = resolve_validated_work_dir(&t, &worktree_path, &wd)?;
+    let (t, repo) = state.resolve_repo(&project_id, worktree_path.as_deref())?;
+    let repo_path = repo.work_dir();
     validate_repo_relative_paths(&t, repo_path, &file_paths)?;
     operations::unstage_files(&t, repo_path, &file_paths)
         .await
         .map_err(AppError::from)?;
-    wait_status_fresh(&state, &project_id).await;
+    crate::git::services::status::wait_status_fresh(&state, &repo).await;
     Ok(())
 }
 
@@ -64,12 +47,12 @@ pub async fn stage_all(
     worktree_path: Option<String>,
     state: State<'_, AppStateWrapper>,
 ) -> Result<(), AppError> {
-    let (t, wd) = state.resolve_project(&project_id)?;
-    let repo_path = resolve_validated_work_dir(&t, &worktree_path, &wd)?;
+    let (t, repo) = state.resolve_repo(&project_id, worktree_path.as_deref())?;
+    let repo_path = repo.work_dir();
     operations::stage_all(&t, repo_path)
         .await
         .map_err(AppError::from)?;
-    wait_status_fresh(&state, &project_id).await;
+    crate::git::services::status::wait_status_fresh(&state, &repo).await;
     Ok(())
 }
 
@@ -80,12 +63,12 @@ pub async fn unstage_all(
     worktree_path: Option<String>,
     state: State<'_, AppStateWrapper>,
 ) -> Result<(), AppError> {
-    let (t, wd) = state.resolve_project(&project_id)?;
-    let repo_path = resolve_validated_work_dir(&t, &worktree_path, &wd)?;
+    let (t, repo) = state.resolve_repo(&project_id, worktree_path.as_deref())?;
+    let repo_path = repo.work_dir();
     operations::unstage_all(&t, repo_path)
         .await
         .map_err(AppError::from)?;
-    wait_status_fresh(&state, &project_id).await;
+    crate::git::services::status::wait_status_fresh(&state, &repo).await;
     Ok(())
 }
 
@@ -100,12 +83,12 @@ pub async fn discard_files(
     worktree_path: Option<String>,
     state: State<'_, AppStateWrapper>,
 ) -> Result<(), AppError> {
-    let (t, wd) = state.resolve_project(&project_id)?;
-    let repo_path = resolve_validated_work_dir(&t, &worktree_path, &wd)?;
+    let (t, repo) = state.resolve_repo(&project_id, worktree_path.as_deref())?;
+    let repo_path = repo.work_dir();
     validate_repo_relative_paths(&t, repo_path, &file_paths)?;
     operations::discard_paths(&t, repo_path, &file_paths)
         .await
         .map_err(AppError::from)?;
-    wait_status_fresh(&state, &project_id).await;
+    crate::git::services::status::wait_status_fresh(&state, &repo).await;
     Ok(())
 }

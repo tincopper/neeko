@@ -141,13 +141,14 @@ pub struct GitInfo {
     pub current_branch: String,
     /// All local branches.
     pub branches: Vec<String>,
-    /// Registered worktrees.
+    /// Registered worktrees（每个都是一条独立的仓库单元，见 `git::RepoRef`）。
     pub worktrees: Vec<Worktree>,
-    /// Files with uncommitted changes.
-    pub changed_files: Vec<FileChange>,
-    /// Whether the working tree has no uncommitted changes.
-    pub is_clean: bool,
     /// Detected git hosting provider.
+    ///
+    /// **注意**：未提交变更列表（changed_files）**不在**本结构里 —— 它是
+    /// 「每个工作树」的事实（HEAD/index/workdir 三者独立），随
+    /// `GitStatusSnapshot` 按 `repo_key` 投递与读取。放进 per-project 的 GitInfo
+    /// 就是 worktree 视图串主仓内容的结构性成因。
     pub git_provider: GitProvider,
 }
 

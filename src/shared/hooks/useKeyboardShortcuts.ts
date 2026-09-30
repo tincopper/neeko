@@ -21,7 +21,11 @@ import { useDockStore } from '@/shared/store/dockStore';
 import { useEditorStore } from '@/shared/store/editorStore';
 import { useNavHistoryStore } from '@/shared/store/navigationHistoryStore';
 import { useProjectStore } from '@/shared/store/projectStore';
-import { useWorktreeStore } from '@/shared/store/worktreeStore';
+import {
+  selectActiveWorktreePath,
+  selectWorktreeStateOf,
+  useWorktreeStore,
+} from '@/shared/store/worktreeStore';
 import { resolveNextTabId } from '@/shared/utils/cycleEditorTab';
 import {
   resolveBindings,
@@ -117,12 +121,14 @@ export function useKeyboardShortcuts({
         switch (action.id) {
           case 'cycleWorktree': {
             e.preventDefault();
-            const proj = useProjectStore.getState();
-            const wt = useWorktreeStore.getState();
-            if (!proj.activeProjectId) break;
-            const opened = wt.openedWorktrees ?? [];
+            const projectId = useProjectStore.getState().activeProjectId;
+            if (!projectId) break;
+            // 单一表示：只读该项目的工作树状态（旧 openedWorktrees/activeWorktreePath 镜像已删）
+            const { activePath: cur, opened } = selectWorktreeStateOf(
+              useWorktreeStore.getState(),
+              projectId,
+            );
             if (opened.length === 0) break;
-            const cur = wt.activeWorktreePath;
             if (cur === null) {
               updateWtPath(opened[0].path, opened[0].branch);
             } else {
@@ -332,11 +338,9 @@ function switchToItem(item: ProjectListItem) {
 }
 
 function resolveActiveTabKey(): string | null {
-  const proj = useProjectStore.getState();
-  const wt = useWorktreeStore.getState();
-  const currentProjectId = proj.activeProjectId ?? null;
+  const currentProjectId = useProjectStore.getState().activeProjectId ?? null;
   if (!currentProjectId) return null;
-  const worktreePath = wt.activeWorktreePath ?? null;
+  const worktreePath = selectActiveWorktreePath(useWorktreeStore.getState(), currentProjectId);
   return resolveTabKey(currentProjectId, worktreePath);
 }
 

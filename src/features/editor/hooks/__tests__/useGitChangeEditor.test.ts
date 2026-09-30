@@ -4,6 +4,7 @@ import { act, renderHook, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { GIT_CHANGED_EVENT, GIT_STATUS_SNAPSHOT_EVENT } from '@/shared/events';
+import { parseRepoKey, repoKeyOf } from '@/shared/utils/repoRef';
 
 import { fileLineChangesField } from '../../git-change';
 import { useGitChangeEditor } from '../useGitChangeEditor';
@@ -58,6 +59,33 @@ const PROJECT_ROOT = '/repo';
 const FILE_PATH = '/repo/src/a.ts';
 const REPO_REL_PATH = 'src/a.ts';
 const WORKTREE = null;
+/** 本 tab 所属仓库单元（主仓）的身份 —— VCS 事件按它定址，不按 project_id。 */
+const MAIN_KEY = repoKeyOf(PROJECT_ID, WORKTREE);
+const OTHER_UNIT_KEY = repoKeyOf(PROJECT_ID, '/repo/.wt/other');
+const OTHER_PROJECT_KEY = repoKeyOf('p2', null);
+
+function snapshotPayload(version: number, repoKey = MAIN_KEY) {
+  const { projectId, worktreePath } = parseRepoKey(repoKey);
+  return {
+    repo_key: repoKey,
+    version,
+    project_id: projectId,
+    worktree_path: worktreePath,
+    branch: 'main',
+    entries: [],
+    truncated: false,
+  };
+}
+
+/** `git-changed` 现载荷是对象（旧形态是裸 projectId 字符串，缺单元维度）。 */
+function gitChangedPayload(repoKey: string) {
+  return { repo_key: repoKey, project_id: parseRepoKey(repoKey).projectId };
+}
+
+/** `file-changed` 载荷：paths 相对**该单元工作树根**。 */
+function fileChangedPayload(repoKey: string, paths: string[]) {
+  return { repo_key: repoKey, project_id: parseRepoKey(repoKey).projectId, paths };
+}
 
 function baseParams(enabled: boolean) {
   return {
@@ -248,26 +276,12 @@ describe('useGitChangeEditor — 事件刷新 + 生命周期', () => {
     expect(mocks.listeners.has(GIT_STATUS_SNAPSHOT_EVENT)).toBe(true);
     expect(mocks.listeners.has(GIT_CHANGED_EVENT)).toBe(true);
 
-    // 同项目 snapshot 事件 ×2（去抖合并为一次）
+    // 本单元 snapshot 事件 ×2（去抖合并为一次）
+    const fireSnapshot = (payload: unknown) =>
+      mocks.listeners.get(GIT_STATUS_SNAPSHOT_EVENT)?.({ payload });
     act(() => {
-      mocks.listeners.get(GIT_STATUS_SNAPSHOT_EVENT)?.({
-        payload: {
-          version: 1,
-          project_id: PROJECT_ID,
-          branch: 'main',
-          entries: [],
-          truncated: false,
-        },
-      });
-      mocks.listeners.get(GIT_STATUS_SNAPSHOT_EVENT)?.({
-        payload: {
-          version: 2,
-          project_id: PROJECT_ID,
-          branch: 'main',
-          entries: [],
-          truncated: false,
-        },
-      });
+      fireSnapshot(snapshotPayload(1));
+      fireSnapshot(snapshotPayload(2));
     });
     await act(async () => {
       await vi.advanceTimersByTimeAsync(0);
@@ -282,27 +296,37 @@ describe('useGitChangeEditor — 事件刷新 + 生命周期', () => {
 
     // 其他项目的 snapshot 忽略
     act(() => {
-      mocks.listeners.get(GIT_STATUS_SNAPSHOT_EVENT)?.({
-        payload: { version: 3, project_id: 'other', branch: 'x', entries: [], truncated: false },
-      });
+      fireSnapshot(snapshotPayload(3, OTHER_PROJECT_KEY));
     });
     await act(async () => {
       await vi.advanceTimersByTimeAsync(600);
     });
     expect(mocks.getFileDiff).toHaveBeenCalledTimes(2);
 
-    // git-changed（payload = projectId 字符串）→ 去抖重拉
+    // 回归：同项目**另一 worktree 单元**的 snapshot 同样忽略
+    //（主仓与 linked worktree 是两套 HEAD/index/workdir，只比 project_id 会让主仓快照
+    //  重拉 worktree 编辑器的高亮，反之亦然）
     act(() => {
-      mocks.listeners.get(GIT_CHANGED_EVENT)?.({ payload: PROJECT_ID });
+      fireSnapshot(snapshotPayload(4, OTHER_UNIT_KEY));
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(600);
+    });
+    expect(mocks.getFileDiff).toHaveBeenCalledTimes(2);
+
+    // git-changed（payload = 本单元的 {repo_key, project_id}）→ 去抖重拉
+    act(() => {
+      mocks.listeners.get(GIT_CHANGED_EVENT)?.({ payload: gitChangedPayload(MAIN_KEY) });
     });
     await act(async () => {
       await vi.advanceTimersByTimeAsync(600);
     });
     expect(mocks.getFileDiff).toHaveBeenCalledTimes(3);
 
-    // 其他项目 git-changed 忽略
+    // 其他项目 / 其他单元的 git-changed 忽略
     act(() => {
-      mocks.listeners.get(GIT_CHANGED_EVENT)?.({ payload: 'other' });
+      mocks.listeners.get(GIT_CHANGED_EVENT)?.({ payload: gitChangedPayload(OTHER_PROJECT_KEY) });
+      mocks.listeners.get(GIT_CHANGED_EVENT)?.({ payload: gitChangedPayload(OTHER_UNIT_KEY) });
     });
     await act(async () => {
       await vi.advanceTimersByTimeAsync(600);
@@ -331,7 +355,7 @@ describe('useGitChangeEditor — 事件刷新 + 生命周期', () => {
 
     // 不匹配路径 → 不重拉
     act(() => {
-      emitFileChanged({ project_id: PROJECT_ID, paths: ['src/other.ts'] });
+      emitFileChanged(fileChangedPayload(MAIN_KEY, ['src/other.ts']));
     });
     await act(async () => {
       await vi.advanceTimersByTimeAsync(600);
@@ -340,7 +364,16 @@ describe('useGitChangeEditor — 事件刷新 + 生命周期', () => {
 
     // 其他项目 → 不重拉
     act(() => {
-      emitFileChanged({ project_id: 'other', paths: [REPO_REL_PATH] });
+      emitFileChanged(fileChangedPayload(OTHER_PROJECT_KEY, [REPO_REL_PATH]));
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(600);
+    });
+    expect(mocks.getFileDiff).toHaveBeenCalledTimes(1);
+
+    // 同项目另一单元（相对路径同形不同义）→ 不重拉
+    act(() => {
+      emitFileChanged(fileChangedPayload(OTHER_UNIT_KEY, [REPO_REL_PATH]));
     });
     await act(async () => {
       await vi.advanceTimersByTimeAsync(600);
@@ -349,7 +382,7 @@ describe('useGitChangeEditor — 事件刷新 + 生命周期', () => {
 
     // 项目相对路径事件 + 绝对 tab 路径 → 身份匹配命中，重拉
     act(() => {
-      emitFileChanged({ project_id: PROJECT_ID, paths: [REPO_REL_PATH] });
+      emitFileChanged(fileChangedPayload(MAIN_KEY, [REPO_REL_PATH]));
     });
     await act(async () => {
       await vi.advanceTimersByTimeAsync(600);
@@ -358,12 +391,62 @@ describe('useGitChangeEditor — 事件刷新 + 生命周期', () => {
 
     // 绝对路径事件（watcher strip_prefix 回退）→ 同样命中
     act(() => {
-      emitFileChanged({ project_id: PROJECT_ID, paths: [FILE_PATH] });
+      emitFileChanged(fileChangedPayload(MAIN_KEY, [FILE_PATH]));
     });
     await act(async () => {
       await vi.advanceTimersByTimeAsync(600);
     });
     expect(mocks.getFileDiff).toHaveBeenCalledTimes(3);
+
+    unmount();
+    vi.useRealTimers();
+  });
+
+  it('worktree 单元的 tab 只认自己 repo_key 的事件', async () => {
+    vi.useFakeTimers();
+    mocks.getFileDiff.mockResolvedValue(resolveAddedDiff());
+
+    const wt = '/repo/.wt/feature';
+    const wtKey = repoKeyOf(PROJECT_ID, wt);
+    const editorViewRef = { current: null as EditorView | null };
+    const { unmount } = renderHook(() =>
+      useGitChangeEditor({
+        ...baseParams(true),
+        filePath: `${wt}/src/a.ts`,
+        projectRoot: PROJECT_ROOT,
+        worktreePath: wt,
+        editorViewRef,
+        editorViewEpoch: 0,
+      }),
+    );
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1);
+    });
+    expect(mocks.getFileDiff).toHaveBeenCalledTimes(1);
+
+    // 主仓单元的事件 → 该 worktree 编辑器忽略
+    act(() => {
+      mocks.listeners.get(GIT_STATUS_SNAPSHOT_EVENT)?.({
+        payload: snapshotPayload(5, MAIN_KEY),
+      });
+      emitFileChanged(fileChangedPayload(MAIN_KEY, [REPO_REL_PATH]));
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(600);
+    });
+    expect(mocks.getFileDiff).toHaveBeenCalledTimes(1);
+
+    // 自己单元的事件 → 命中
+    act(() => {
+      mocks.listeners.get(GIT_STATUS_SNAPSHOT_EVENT)?.({
+        payload: snapshotPayload(6, wtKey),
+      });
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(600);
+    });
+    expect(mocks.getFileDiff).toHaveBeenCalledTimes(2);
 
     unmount();
     vi.useRealTimers();

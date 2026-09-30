@@ -2,12 +2,14 @@ import React, { useState, useCallback, useMemo } from 'react';
 
 import { openProjectFile } from '@/features/quick-open';
 import { useGitStore } from '@/shared/store/gitStore';
+import { useProjectStore } from '@/shared/store/projectStore';
 import type { AheadBehind } from '@/shared/types';
 import type {
   ProjectView,
   ProjectCommands,
   ProjectCapabilities,
 } from '@/shared/types/activeProject';
+import type { RepoKey } from '@/shared/utils/repoRef';
 
 import {
   useAiCommitMessage,
@@ -36,6 +38,8 @@ interface GitCommitPanelProps {
   onShowToast?: (message: string, type?: 'info' | 'error') => void;
   onOpenDialog?: (type: 'new-branch' | 'new-worktree', e: React.MouseEvent) => void;
   aheadBehind: AheadBehind | null;
+  /** 本面板当前渲染的仓库单元（主仓或某 worktree）；status 按它定址读取。 */
+  repoKey: RepoKey;
 }
 
 const GitCommitPanel: React.FC<GitCommitPanelProps> = ({
@@ -47,16 +51,17 @@ const GitCommitPanel: React.FC<GitCommitPanelProps> = ({
   onShowToast,
   onOpenDialog,
   aheadBehind,
+  repoKey,
 }) => {
   const [commitMessage, setCommitMessage] = useState('');
 
-  // G4（P3）：快照截断状态（versioned snapshot 的 truncated 位；store 响应式）
-  const statusTruncated = useGitStore((s) => s.truncatedByProject[project.id] ?? false);
+  // G4（P3）：快照截断状态（按单元存，主仓与 worktree 互不相关）
+  const statusTruncated = useGitStore((s) => s.truncatedByRepo[repoKey] ?? false);
 
-  const changedFiles = useMemo(
-    () => project.gitInfo?.changed_files ?? [],
-    [project.gitInfo?.changed_files],
-  );
+  // 唯一权威源：projectStore.statuses[repoKey]（后端按单元推送/计算，version gate 在 store 内）。
+  // `undefined` = 该单元状态未知（未挂载 / 首个快照未到）→ 渲染空态，绝不沿用别处的数据。
+  const status = useProjectStore((s) => s.statuses[repoKey]);
+  const changedFiles = useMemo(() => status?.entries ?? [], [status]);
 
   const noCommits =
     project.gitInfo !== null &&
@@ -198,9 +203,12 @@ const GitCommitPanel: React.FC<GitCommitPanelProps> = ({
           </div>
         ) : (
           <ChangesList
-            /* 缓存作用域：切换项目即重挂载 —— 展开缓存（dirFilesMap）按目录 path 键存
-               在 hook 状态里，跨项目复用会把上一个项目的子文件显示到同名目录下 */
-            key={project.id}
+            /* 缓存作用域 = 仓库单元：主仓与 worktree 的相对路径**同形不同义**
+               （同一 `src/a.ts` 在两个工作树里是两个文件），因此展开缓存
+               （dirFilesMap）与勾选集必须随单元重挂载，不能只按项目。 */
+            key={repoKey}
+            repoKey={repoKey}
+            unknown={status === undefined}
             files={changedFilesWithStats}
             selectedFiles={selectedFiles}
             onToggleFile={toggleFile}

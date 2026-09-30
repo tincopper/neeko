@@ -1,11 +1,11 @@
 #![allow(clippy::unwrap_used, clippy::expect_used, missing_docs)]
 
-use std::path::{Path, PathBuf};
 use std::sync::{mpsc, Arc, Condvar, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
 
 use crate::common::executor::factory::ExecTarget;
+use crate::common::git::RepoRef;
 use crate::core::exec::collect_blocking;
 
 use super::collapsed_probe::{collapsed_dirs_digest, Digest};
@@ -51,25 +51,22 @@ pub struct GitStatusWorker {
 }
 
 impl GitStatusWorker {
-    /// Start the worker for the given `repo_path`.
-    pub fn start(
-        repo_path: PathBuf,
-        on_change: impl Fn(GitStatusSnapshot) + Send + 'static,
-    ) -> Self {
+    /// Start the worker for the given repository **unit** (main repo or one linked worktree).
+    pub fn start(repo: RepoRef, on_change: impl Fn(GitStatusSnapshot) + Send + 'static) -> Self {
         let (signal_tx, signal_rx) = mpsc::channel::<()>();
         let sync = Arc::new(RecalcSync::default());
 
         thread::Builder::new()
             .name(format!(
                 "git-worker-{}",
-                repo_path
+                repo.work_dir_pathbuf()
                     .file_name()
                     .map(|n| n.to_string_lossy().to_string())
                     .unwrap_or_else(|| "unknown".to_string())
             ))
             .spawn({
                 let sync = Arc::clone(&sync);
-                move || worker_loop(repo_path, signal_rx, on_change, sync)
+                move || worker_loop(repo, signal_rx, on_change, sync)
             })
             .expect("Failed to spawn git worker thread");
 
@@ -130,7 +127,7 @@ impl GitStatusWorker {
 /// 输出或分支变化）都产出**完整快照**（version 单调递增）并整体通知 —— 事件携带
 /// 全量数据而非增量 patch（D3），前端以 version 门控替换，乱序/回退从结构上消除（P1）。
 fn worker_loop(
-    repo_path: PathBuf,
+    repo: RepoRef,
     signal_rx: mpsc::Receiver<()>,
     on_change: impl Fn(GitStatusSnapshot),
     sync: Arc<RecalcSync>,
@@ -141,7 +138,7 @@ fn worker_loop(
     // `None` = 尚未探测 → 放行 emit。
     let mut last_collapsed_digest: Option<Digest> = None;
     let mut version: u64 = 0;
-    let path_str = repo_path.display().to_string();
+    let path_str = repo.work_dir().to_string();
 
     log::debug!("[GitWorker] Worker started for {}", path_str);
 
@@ -164,8 +161,8 @@ fn worker_loop(
 
         log::debug!("[GitWorker] Running git status for {}", path_str);
 
-        let current = git_status_porcelain(&repo_path);
-        let current_branch = get_current_branch(&repo_path);
+        let current = git_status_porcelain(&repo);
+        let current_branch = get_current_branch(&repo);
 
         let mut current_files = parse_porcelain(&current);
 
@@ -191,7 +188,7 @@ fn worker_loop(
         // 快照且没有任何失效信号（本任务要修的盲区）。摘要只喂闸门，不进快照载荷，
         // 因此 IPC 条目数、折叠语义都不变。
         // 取截断后的集合：超出上限的条目本就不进快照，也就无需为其探测。
-        let collapsed_digest = collapsed_dirs_digest(&repo_path, &current_files);
+        let collapsed_digest = collapsed_dirs_digest(repo.work_dir_path(), &current_files);
 
         let status_unchanged = current == last_status && current_branch == last_branch;
         // 未知摘要一律放行（宁可多发一次快照，不可漏发）；已知且与上次相等才算「真无变化」
@@ -230,13 +227,11 @@ fn worker_loop(
             current_files.len()
         );
 
-        on_change(GitStatusSnapshot {
-            version,
-            project_id: String::new(),
-            branch: current_branch,
-            entries: current_files,
-            truncated,
-        });
+        let mut snapshot = GitStatusSnapshot::for_unit(&repo, version);
+        snapshot.branch = current_branch;
+        snapshot.entries = current_files;
+        snapshot.truncated = truncated;
+        on_change(snapshot);
 
         // 迭代终点：emit 已冲刷后才算落地（`check_and_wait` 依赖此顺序 ——
         // 等待返回时快照写入与事件推送均已完成）。
@@ -249,8 +244,8 @@ fn worker_loop(
 }
 
 /// Get current branch name (detached HEAD → "HEAD"), empty on error.
-pub(crate) fn get_current_branch(repo_path: &Path) -> String {
-    let path_str = repo_path.to_str().unwrap_or(".");
+pub(crate) fn get_current_branch(repo: &RepoRef) -> String {
+    let path_str = repo.work_dir();
     match collect_blocking(
         &ExecTarget::Local,
         "git",
@@ -263,14 +258,14 @@ pub(crate) fn get_current_branch(repo_path: &Path) -> String {
     }
 }
 
-/// Execute `git status --porcelain` for `repo_path`.
+/// Execute `git status --porcelain` for one repository unit.
 ///
 /// 只读语义（不 refresh index、不取 optional lock）由 exec facade 统一注入
 /// `GIT_OPTIONAL_LOCKS=0` 承担（见 `common::git::git_env`），因此这里**不再**传
 /// `--no-optional-locks`，也就不需要"老 git 不支持该标志"的回退分支 —— 回退分支
 /// 恰恰是当年漏掉锁语义的地方之一。
-fn git_status_porcelain(repo_path: &Path) -> String {
-    let path_str = repo_path.to_str().unwrap_or(".");
+fn git_status_porcelain(repo: &RepoRef) -> String {
+    let path_str = repo.work_dir();
     match collect_blocking(
         &ExecTarget::Local,
         "git",
@@ -282,7 +277,7 @@ fn git_status_porcelain(repo_path: &Path) -> String {
                 let (code, signal) = exit_diagnostics(output.exit_code);
                 log::warn!(
                     "[GitWorker] git status failed at {}: exit={:?} signal={:?} stderr={}",
-                    repo_path.display(),
+                    path_str,
                     code,
                     signal,
                     stderr.trim()
@@ -291,11 +286,7 @@ fn git_status_porcelain(repo_path: &Path) -> String {
             String::from_utf8_lossy(&output.stdout).to_string()
         }
         Err(e) => {
-            log::error!(
-                "[GitWorker] Failed to spawn git at {}: {}",
-                repo_path.display(),
-                e
-            );
+            log::error!("[GitWorker] Failed to spawn git at {}: {}", path_str, e);
             String::new()
         }
     }
@@ -304,6 +295,12 @@ fn git_status_porcelain(repo_path: &Path) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::common::executor::factory::ExecTarget;
+
+    /// 主仓形态的 `RepoRef`（测试夹具：`tempdir()` 派生路径，红线 13）。
+    fn main_ref(path: &std::path::Path) -> RepoRef {
+        RepoRef::main("p1", &path.to_string_lossy())
+    }
 
     fn create_repo_with_commit() -> (tempfile::TempDir, git2::Repository) {
         let tmp = tempfile::tempdir().unwrap();
@@ -326,7 +323,7 @@ mod tests {
     fn get_current_branch_returns_initial_branch() {
         let (tmp, repo) = create_repo_with_commit();
         let expected = repo.head().unwrap().shorthand().unwrap().to_string();
-        assert_eq!(get_current_branch(tmp.path()), expected);
+        assert_eq!(get_current_branch(&main_ref(tmp.path())), expected);
     }
 
     #[test]
@@ -337,13 +334,16 @@ mod tests {
         repo.branch("feature-commands", &commit, false).unwrap();
         repo.set_head("refs/heads/feature-commands").unwrap();
         repo.checkout_head(None).unwrap();
-        assert_eq!(get_current_branch(tmp.path()), "feature-commands");
+        assert_eq!(
+            get_current_branch(&main_ref(tmp.path())),
+            "feature-commands"
+        );
     }
 
     #[test]
     fn get_current_branch_returns_empty_for_non_repo() {
         let tmp = tempfile::tempdir().unwrap();
-        assert_eq!(get_current_branch(tmp.path()), "");
+        assert_eq!(get_current_branch(&main_ref(tmp.path())), "");
     }
 
     /// Nit 4 核心契约：写入 → `check_and_wait` 返回 true 时，emit（快照推送 +
@@ -356,7 +356,7 @@ mod tests {
 
         let (tmp, _repo) = create_repo_with_commit();
         let (emit_tx, emit_rx) = mpsc::channel::<GitStatusSnapshot>();
-        let worker = GitStatusWorker::start(tmp.path().to_path_buf(), move |snap| {
+        let worker = GitStatusWorker::start(main_ref(tmp.path()), move |snap| {
             let _ = emit_tx.send(snap);
         });
 
@@ -385,7 +385,7 @@ mod tests {
 
         let (tmp, _repo) = create_repo_with_commit();
         let (emit_tx, emit_rx) = mpsc::channel::<GitStatusSnapshot>();
-        let worker = GitStatusWorker::start(tmp.path().to_path_buf(), move |snap| {
+        let worker = GitStatusWorker::start(main_ref(tmp.path()), move |snap| {
             let _ = emit_tx.send(snap);
         });
 
@@ -415,7 +415,7 @@ mod tests {
         use std::time::Duration;
 
         let (tmp, _repo) = create_repo_with_commit();
-        let worker = GitStatusWorker::start(tmp.path().to_path_buf(), |_| {});
+        let worker = GitStatusWorker::start(main_ref(tmp.path()), |_| {});
         assert!(
             !worker.check_and_wait(Duration::ZERO),
             "zero deadline must time out, not report success"
@@ -431,7 +431,7 @@ mod tests {
         std::fs::write(tmp.path().join("README.md"), "# Changed\n").unwrap();
 
         let (emit_tx, emit_rx) = mpsc::channel::<GitStatusSnapshot>();
-        let worker = GitStatusWorker::start(tmp.path().to_path_buf(), move |diff| {
+        let worker = GitStatusWorker::start(main_ref(tmp.path()), move |diff| {
             let _ = emit_tx.send(diff);
         });
 
@@ -457,7 +457,7 @@ mod tests {
 
         let (tmp, _repo) = create_repo_with_commit();
         let (emit_tx, emit_rx) = mpsc::channel::<GitStatusSnapshot>();
-        let worker = GitStatusWorker::start(tmp.path().to_path_buf(), move |snap| {
+        let worker = GitStatusWorker::start(main_ref(tmp.path()), move |snap| {
             let _ = emit_tx.send(snap);
         });
 
@@ -498,7 +498,7 @@ mod tests {
 
         let (tmp, _repo) = create_repo_with_commit();
         let (emit_tx, emit_rx) = mpsc::channel::<GitStatusSnapshot>();
-        let worker = GitStatusWorker::start(tmp.path().to_path_buf(), move |snap| {
+        let worker = GitStatusWorker::start(main_ref(tmp.path()), move |snap| {
             let _ = emit_tx.send(snap);
         });
 
@@ -559,7 +559,7 @@ mod tests {
 
         let (tmp, repo) = create_repo_with_commit();
         let (emit_tx, emit_rx) = mpsc::channel::<GitStatusSnapshot>();
-        let worker = GitStatusWorker::start(tmp.path().to_path_buf(), move |snap| {
+        let worker = GitStatusWorker::start(main_ref(tmp.path()), move |snap| {
             let _ = emit_tx.send(snap);
         });
 

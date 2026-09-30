@@ -1,15 +1,10 @@
 //! git 元数据 watcher 集成与注入测试：真实 FS 事件送达、失败分支、自愈补挂。
 
 use super::super::paths::{resolve_git_meta_paths, GitMetaPaths};
-use super::super::watcher::{
-    apply_rearm_result, create_git_meta_watcher, create_git_meta_watcher_with,
-    is_gitignore_rules_change,
-};
-use notify::{RecommendedWatcher, Watcher};
-use std::collections::HashSet;
-use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
-use std::sync::{Arc, Mutex};
+use super::super::watcher::{create_git_meta_watcher, create_git_meta_watcher_with};
+use notify::RecommendedWatcher;
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 // ── 真实文件系统集成测试：验证 notify 事件送达（方案 B 修复的核心假设） ────
@@ -56,10 +51,9 @@ fn spawn_git_meta_watcher_spy() -> (
         move || {
             index_flag.fetch_add(1, Ordering::SeqCst);
         },
-        move |_has_wt| {
+        move || {
             head_flag.fetch_add(1, Ordering::SeqCst);
         },
-        |_| {},
     )
     .expect("git meta watcher should be created");
 
@@ -127,87 +121,6 @@ fn git_meta_watcher_detects_head_change_on_real_fs() {
 
 // ── worktrees 自愈补挂（会话中途 git worktree add） ────────────────────────
 
-/// 自愈补挂集成验证（G3 语义）：会话中途 `git worktree add`（worktrees 目录出现）后，
-/// 心跳线程调用 `rearm_worktrees_if_needed` 补挂递归监听，此后该 worktree 区域
-/// （`.git/worktrees/<n>/HEAD` / index）的变更触发 `on_worktree_meta_changed`
-/// （驱动 git-changed → 前端按 activeWorktree 刷新；不再依赖主 HEAD 的 has_wt 语义）。
-#[test]
-fn git_meta_watcher_rearms_worktrees_watch_after_dir_appears() {
-    let tmp = tempfile::tempdir().unwrap();
-    let repo = tmp.path();
-    let git_dir = repo.join(".git");
-    std::fs::create_dir_all(&git_dir).unwrap();
-    // 与 spy 同一约定：watcher 建立在空 .git 上，不预写 HEAD/index（FSEvents
-    // 会把注册前写入漏进流内）；各阶段事件由测试自行写入触发。
-    let meta = resolve_git_meta_paths(repo).unwrap();
-    assert!(!meta.has_worktrees, "启动时应无 worktrees");
-
-    let wt_changed = Arc::new(AtomicUsize::new(0));
-    let wt_flag = wt_changed.clone();
-    // 记录 worktree 回调送到的具体路径：step 4 用「HEAD 路径已送达」精确断言
-    // rearm 的递归监听生效——HEAD（depth-2）只能由 rearm 后的递归监听送达，
-    // 无需 before_rearm 快照 / 墙钟窗口。
-    let seen: Arc<Mutex<HashSet<PathBuf>>> = Arc::new(Mutex::new(HashSet::new()));
-    let seen_cb = seen.clone();
-    let handle = create_git_meta_watcher(
-        "rearm-test".to_string(),
-        &meta,
-        || {},
-        |_| {},
-        move |paths| {
-            seen_cb
-                .lock()
-                .expect("infallible: rearm seen")
-                .extend(paths.iter().cloned());
-            wt_flag.fetch_add(1, Ordering::SeqCst);
-        },
-    )
-    .expect("git meta watcher should be created");
-
-    // 1. 启动时无 worktrees：rearm 为 no-op
-    handle.rearm_worktrees_if_needed();
-
-    // 2. 会话中途 git worktree add：worktrees 目录出现（rearm 的前置条件）。
-    //    「写-轮询」：反复在 `.git/worktrees/` 下写 marker 文件（depth-1，
-    //    非递归 .git 监听可见；每次覆盖产生新 Modify 事件）直到被捕获——
-    //    不依赖单次 Create 的送达时序，真正的自愈。create_dir_all 幂等，仅
-    //    保证 worktrees/dev 存在（step 4 写入的前提）。
-    let wt_dir = meta.git_dir.join("worktrees").join("dev");
-    let marker = meta.git_dir.join("worktrees").join("marker");
-    assert!(
-        wait_until(
-            || {
-                std::fs::create_dir_all(&wt_dir).unwrap();
-                std::fs::write(&marker, "x").unwrap();
-                wt_changed.load(Ordering::SeqCst) >= 1
-            },
-            Duration::from_secs(5),
-        ),
-        "worktrees 区域事件应送达（分类为 WorktreeMetaChanged）"
-    );
-
-    // 3. 自愈补挂：worktrees 目录已出现 → 挂上递归监听
-    handle.rearm_worktrees_if_needed();
-
-    // 4. rearm 后：worktree HEAD 变更（lock + rename，git 真实行为）应触发
-    //    on_worktree_meta_changed（驱动前端 activeWorktree 刷新）。「写-轮询」
-    //    反复写入直到 HEAD 路径被回调看到——该路径只在递归监听生效后可达。
-    assert!(
-        wait_until(
-            || {
-                std::fs::write(wt_dir.join("HEAD.lock"), "ref: refs/heads/feature\n").unwrap();
-                std::fs::rename(wt_dir.join("HEAD.lock"), wt_dir.join("HEAD")).unwrap();
-                seen.lock()
-                    .expect("infallible: rearm seen")
-                    .contains(&wt_dir.join("HEAD"))
-            },
-            Duration::from_secs(5),
-        ),
-        "rearm 后 worktree HEAD 变更应触发 on_worktree_meta_changed"
-    );
-    drop(handle);
-}
-
 // ── create_git_meta_watcher 失败分支（确定性注入，跨平台安全） ─────────────
 
 /// 核心 `git_dir` 监听失败 = watcher 无意义 → 返回 `None`。
@@ -230,8 +143,7 @@ fn create_git_meta_watcher_returns_none_when_git_dir_watch_fails() {
         "test".to_string(),
         &meta,
         || {},
-        |_| {},
-        |_| {},
+        || {},
         |_watcher: &mut RecommendedWatcher, _path, _mode| {
             Err(notify::Error::generic("simulated watch failure"))
         },
@@ -239,110 +151,5 @@ fn create_git_meta_watcher_returns_none_when_git_dir_watch_fails() {
     assert!(
         result.is_none(),
         "核心 git_dir 监听失败 → watcher 无意义 → None"
-    );
-}
-
-/// `.git/worktrees` 子监听失败 = 非致命 → 仍返回 watcher
-/// （本仓库 HEAD/index 监听保持有效）。
-#[test]
-fn create_git_meta_watcher_tolerates_worktree_subwatch_failure() {
-    let tmp = tempfile::tempdir().unwrap();
-    let repo = tmp.path();
-    let git_dir = repo.join(".git");
-    std::fs::create_dir_all(&git_dir).unwrap();
-    // worktrees 目录存在，使「子监听失败」分支被走到
-    std::fs::create_dir_all(git_dir.join("worktrees")).unwrap();
-    std::fs::write(git_dir.join("HEAD"), "ref: refs/heads/main\n").unwrap();
-    std::fs::write(git_dir.join("index"), "\0").unwrap();
-    let meta = resolve_git_meta_paths(repo).unwrap();
-
-    // 注入：核心 git_dir 监听成功，仅 worktrees 子目录监听失败
-    let result = create_git_meta_watcher_with(
-        "test".to_string(),
-        &meta,
-        || {},
-        |_| {},
-        |_| {},
-        |watcher: &mut RecommendedWatcher, path, mode| {
-            if path.ends_with("worktrees") {
-                Err(notify::Error::generic("simulated worktrees watch failure"))
-            } else {
-                watcher.watch(path, mode)
-            }
-        },
-    );
-    assert!(
-        result.is_some(),
-        "worktrees 子监听失败 → 非致命 → 仍返回 watcher"
-    );
-}
-
-// ── rearm 结果状态迁移（apply_rearm_result 纯函数） ────────────────────────
-
-/// rearm 失败：标志保持 false，返回 false（下轮 10s 后重试）——确定性覆盖
-/// `rearm_worktrees_if_needed` 的 Err 分支（真实 notify 对不可监听路径的行为
-/// 三平台不统一，故经纯函数注入错误直接断言状态迁移）。
-#[test]
-fn apply_rearm_result_on_failure_keeps_flags_clear_for_retry() {
-    let armed = AtomicBool::new(false);
-    let has_wt = AtomicBool::new(false);
-    let ok = apply_rearm_result(
-        Path::new("/repo/.git/worktrees"),
-        Err(notify::Error::generic("simulated rearm failure")),
-        &armed,
-        &has_wt,
-    );
-    assert!(!ok, "rearm 失败应返回 false");
-    assert!(
-        !armed.load(Ordering::SeqCst),
-        "失败后 armed 应保持 false（下轮重试）"
-    );
-    assert!(!has_wt.load(Ordering::SeqCst), "失败后 has_wt 应保持 false");
-}
-
-/// rearm 成功：置位 armed + has_wt，返回 true（worktree HEAD 事件此后
-/// 携带 has_wt=true 驱动全量刷新）。
-#[test]
-fn apply_rearm_result_on_success_sets_flags() {
-    let armed = AtomicBool::new(false);
-    let has_wt = AtomicBool::new(false);
-    let ok = apply_rearm_result(Path::new("/repo/.git/worktrees"), Ok(()), &armed, &has_wt);
-    assert!(ok, "rearm 成功应返回 true");
-    assert!(armed.load(Ordering::SeqCst), "成功后 armed 应置位");
-    assert!(has_wt.load(Ordering::SeqCst), "成功后 has_wt 应置位");
-}
-
-// ── worktree 规则变更判定（is_gitignore_rules_change） ──────────────────────
-
-/// worktree 区域 `.gitignore` / `exclude` 变更判定：命中规则文件 → true
-/// （驱动目录树刷新 → 读树重建 worktree 根过滤器，等效热重载）；
-/// 普通文件 / HEAD / index → false。
-#[test]
-fn is_gitignore_rules_change_detects_rule_files_only() {
-    let wt = std::path::PathBuf::from("/wt");
-    assert!(
-        is_gitignore_rules_change(&[wt.join(".gitignore")]),
-        "worktree 根 .gitignore 应命中"
-    );
-    assert!(
-        is_gitignore_rules_change(&[wt.join("src").join(".gitignore")]),
-        "嵌套 .gitignore 应命中"
-    );
-    assert!(
-        is_gitignore_rules_change(&[wt.join(".git").join("info").join("exclude")]),
-        "exclude 应命中"
-    );
-    assert!(
-        !is_gitignore_rules_change(&[wt.join("src").join("a.ts")]),
-        "普通文件不应命中"
-    );
-    assert!(
-        !is_gitignore_rules_change(&[wt.join("HEAD")]),
-        "HEAD 不应命中"
-    );
-    // 混合列表：任一命中即可
-    assert!(
-        is_gitignore_rules_change(&[wt.join("src").join("a.ts"), wt.join(".gitignore")]),
-        "混合列表含规则文件应命中"
     );
 }

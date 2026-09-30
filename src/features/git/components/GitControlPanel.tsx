@@ -39,12 +39,15 @@ interface GitControlPanelProps {
   connectionContext: ConnectionContext | null;
   /** worktree 激活时使用 worktree 专属 tab key（diff tab / stash diff） */
   activeWorktreePath?: string | null;
+  /** 当前渲染的仓库单元 key（status 按它定址） */
+  repoKey: import('@/shared/utils/repoRef').RepoKey;
   /** 面板在 dock 中是否可见（激活门控数据加载） */
   active: boolean;
   onRefreshGit: () => Promise<void>;
   onShowToast?: (message: string, type?: 'info' | 'error') => void;
   aheadBehind: AheadBehind | null;
-  changedFileCount: number;
+  /** 当前单元的变更条数；`undefined` = 未知（未挂载 / 首快照未到），徽章不渲染（未知 ≠ 0）。 */
+  changedFileCount: number | undefined;
 }
 
 const GitControlPanel: React.FC<GitControlPanelProps> = ({
@@ -53,6 +56,7 @@ const GitControlPanel: React.FC<GitControlPanelProps> = ({
   capabilities,
   connectionContext,
   activeWorktreePath,
+  repoKey,
   active,
   onRefreshGit,
   onShowToast,
@@ -164,7 +168,7 @@ const GitControlPanel: React.FC<GitControlPanelProps> = ({
           onClick={() => setTab('changes')}
         >
           Changes
-          {changedFileCount > 0 ? (
+          {changedFileCount != null && changedFileCount > 0 ? (
             <span
               className={cn(
                 'min-w-[1.1rem] rounded-full px-1 text-center text-[calc(var(--font-size)-3px)] leading-4 tabular-nums',
@@ -223,6 +227,7 @@ const GitControlPanel: React.FC<GitControlPanelProps> = ({
       <div className="min-h-0 flex-1">
         <div className={cn('h-full min-h-0', tab !== 'changes' && 'hidden')}>
           <GitCommitPanel
+            repoKey={repoKey}
             project={project}
             commands={commands}
             capabilities={capabilities}

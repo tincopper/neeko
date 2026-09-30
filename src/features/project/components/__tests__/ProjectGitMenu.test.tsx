@@ -13,12 +13,9 @@ describe('ProjectGitMenu', () => {
     git_info: {
       current_branch: 'main',
       branches: ['main'],
-      changed_files: [],
       worktrees: [],
-      ahead: 0,
-      behind: 0,
-      is_dirty: false,
-    } as never,
+      git_provider: '',
+    },
   });
 
   // eslint-disable-next-line vitest/expect-expect

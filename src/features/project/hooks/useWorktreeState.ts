@@ -1,8 +1,15 @@
 import { useCallback } from 'react';
-import { useShallow } from 'zustand/shallow';
 
 import { useEditorStore } from '@/shared/store/editorStore';
-import { useWorktreeStore } from '@/shared/store/worktreeStore';
+import { useProjectStore } from '@/shared/store/projectStore';
+import {
+  activeRepoKeyOf,
+  selectActiveWorktreePath,
+  useActiveWorktree,
+  useWorktreeStore,
+  type WorktreeSnapshotItem,
+} from '@/shared/store/worktreeStore';
+import { repoKeyOf } from '@/shared/utils/repoRef';
 import { resolveTabKey } from '@/shared/utils/tabKey';
 
 export interface WorktreeItem {
@@ -10,132 +17,60 @@ export interface WorktreeItem {
   branch: string;
 }
 
-interface WorktreeState {
-  activePath: string | null;
-  activeBranch: string;
-  opened: WorktreeItem[];
-}
-
-const EMPTY_STATE: WorktreeState = { activePath: null, activeBranch: '', opened: [] };
-
+/**
+ * 「当前项目的仓库单元」视图 hook。
+ *
+ * 单一表示：状态只有 `worktreeStore.byProject[projectId]` 一份（旧版本并行维护过
+ * `activeWorktreePath` 等全局镜像，事件回调读镜像 → 读到别的项目/别的工作树的值）。
+ * 单一方向：本 hook **只写激活态并作废旧单元槽位**，不发 git 命令 —— 后端挂载由
+ * `useActiveRepoUnitSync`（composition 层）对激活态的订阅统一完成。两个发起点必然产生
+ * 时序差，那正是旧实现里「列表要不要手动刷新」取决于谁先跑完的根因。
+ *
+ * **mutator 的目标项目一律显式传入**（第一参数 `projectId`）：渲染期闭包捕获的
+ * `activeProjectId` 在跨项目动作里是「切换前」的旧值 —— 同一事件内先
+ * `setState({activeProjectId})` 再调 mutator 时回调不会重新绑定，激活态会被写进**旧项目**
+ * 的 byProject（跨项目串写；回归契约见 `useWorktreeActions.test.ts`「跨项目打开
+ * worktree」与 `useWorktreeState.test.ts`「mutator 按传入 projectId 写状态」）。
+ * 读取全部经 `getState()` 现取，回调引用因此永久稳定。
+ */
 export function useWorktreeState(activeProjectId: string | null) {
-  const worktreeStateMap = useWorktreeStore(useShallow((s) => s.worktreeStateMap));
+  const { activePath, activeBranch, opened } = useActiveWorktree(activeProjectId);
 
-  const currentWtState: WorktreeState = activeProjectId
-    ? (worktreeStateMap[activeProjectId] ?? EMPTY_STATE)
-    : EMPTY_STATE;
+  const activateWorktree = useCallback((projectId: string, path: string | null, branch = '') => {
+    const prevKey = activeRepoKeyOf(projectId);
+    const nextKey = repoKeyOf(projectId, path);
+    useWorktreeStore.getState().setActiveWorktree(projectId, path, branch);
+    // 旧单元此后没有任何生产者，残留数据不得被渲染（未挂载 = 未知）
+    if (prevKey && prevKey !== nextKey) useProjectStore.getState().invalidateStatus(prevKey);
+    // 切到新的 tab 空间（tabKey 已按单元分域）
+    const tabs = useEditorStore.getState().tabs[resolveTabKey(projectId, path)];
+    useEditorStore.setState({ activeTabId: tabs?.activeTabId ?? null });
+  }, []);
 
-  const activeWorktreePath = currentWtState.activePath;
-  const activeWorktreeBranch = currentWtState.activeBranch;
-  const openedWorktrees = currentWtState.opened;
+  const markWorktreeOpened = useCallback((projectId: string, path: string, branch: string) => {
+    useWorktreeStore.getState().markWorktreeOpened(projectId, path, branch);
+  }, []);
 
-  const updateWtPath = useCallback(
-    (path: string | null, branch: string) => {
-      if (!activeProjectId) return;
-      useWorktreeStore.setState((s) => {
-        const prev = s.worktreeStateMap[activeProjectId] ?? EMPTY_STATE;
-        return {
-          worktreeStateMap: {
-            ...s.worktreeStateMap,
-            [activeProjectId]: {
-              ...prev,
-              activePath: path,
-              activeBranch: branch,
-            },
-          },
-          activeWorktreePath: path,
-          activeWorktreeBranch: branch,
-        };
-      });
-      // Sync activeTabId from editor tabs
-      const tabKey = resolveTabKey(activeProjectId, path);
-      const projectTabs = useEditorStore.getState().tabs[tabKey];
-      useEditorStore.setState({ activeTabId: projectTabs?.activeTabId ?? null });
-    },
-    [activeProjectId],
-  );
+  /** 只改展示用分支名（不切换单元、不触发挂载）。路径现取该项目的当前激活值。 */
+  const setActiveWorktreeBranch = useCallback((projectId: string, branch: string) => {
+    const path = selectActiveWorktreePath(useWorktreeStore.getState(), projectId);
+    useWorktreeStore.getState().setActiveWorktree(projectId, path, branch);
+  }, []);
 
-  const setActiveWorktreePath = useCallback(
-    (path: string | null) => {
-      if (!activeProjectId) return;
-      useWorktreeStore.setState((s) => {
-        const prev = s.worktreeStateMap[activeProjectId] ?? EMPTY_STATE;
-        return {
-          worktreeStateMap: {
-            ...s.worktreeStateMap,
-            [activeProjectId]: {
-              ...prev,
-              activePath: path,
-            },
-          },
-          activeWorktreePath: path,
-        };
-      });
-      // Sync activeTabId from editor tabs
-      const tabKey = resolveTabKey(activeProjectId, path);
-      const projectTabs = useEditorStore.getState().tabs[tabKey];
-      useEditorStore.setState({ activeTabId: projectTabs?.activeTabId ?? null });
-    },
-    [activeProjectId],
-  );
-
-  const setActiveWorktreeBranch = useCallback(
-    (branch: string) => {
-      if (!activeProjectId) return;
-      useWorktreeStore.setState((s) => ({
-        worktreeStateMap: {
-          ...s.worktreeStateMap,
-          [activeProjectId]: {
-            ...(s.worktreeStateMap[activeProjectId] ?? EMPTY_STATE),
-            activeBranch: branch,
-          },
-        },
-        activeWorktreeBranch: branch,
-      }));
-    },
-    [activeProjectId],
-  );
-
-  const setOpenedWorktrees = useCallback(
-    (updater: WorktreeItem[] | ((prev: WorktreeItem[]) => WorktreeItem[])) => {
-      if (!activeProjectId) return;
-      useWorktreeStore.setState((s) => {
-        const cur = s.worktreeStateMap[activeProjectId] ?? EMPTY_STATE;
-        const newOpened = typeof updater === 'function' ? updater(cur.opened) : updater;
-        return {
-          worktreeStateMap: {
-            ...s.worktreeStateMap,
-            [activeProjectId]: { ...cur, opened: newOpened },
-          },
-          openedWorktrees: newOpened,
-        };
-      });
-    },
-    [activeProjectId],
-  );
-
-  // Clear worktree active path for a specific project (e.g. when switching projects)
-  const clearWorktreeForProject = useCallback((pid: string) => {
-    useWorktreeStore.setState((s) => {
-      const cur = s.worktreeStateMap[pid];
-      if (!cur || cur.activePath === null) return {};
-      return {
-        worktreeStateMap: {
-          ...s.worktreeStateMap,
-          [pid]: { ...cur, activePath: null, activeBranch: '' },
-        },
-      };
-    });
+  const clearActiveWorktree = useCallback((projectId: string) => {
+    // 槽位作废随 store 级 mutator 单点发生（worktreeStore.clearActiveWorktree），此处不重复
+    useWorktreeStore.getState().clearActiveWorktree(projectId);
   }, []);
 
   return {
-    activeWorktreePath,
-    activeWorktreeBranch,
-    openedWorktrees,
-    updateWtPath,
-    setActiveWorktreePath,
+    activeWorktreePath: activePath,
+    activeWorktreeBranch: activeBranch,
+    openedWorktrees: opened as WorktreeItem[],
+    activateWorktree,
+    markWorktreeOpened,
     setActiveWorktreeBranch,
-    setOpenedWorktrees,
-    clearWorktreeForProject,
+    clearActiveWorktree,
   };
 }
+
+export type { WorktreeSnapshotItem };

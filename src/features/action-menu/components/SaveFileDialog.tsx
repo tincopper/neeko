@@ -4,14 +4,11 @@ import React, { useState, useCallback, useRef, useEffect, startTransition } from
 import DirectoryPickerDialog from '@/features/action-menu/components/DirectoryPickerDialog';
 import { readDirTree, saveNewFile } from '@/features/file/api/fileApi';
 import { useFileStore } from '@/features/file/store';
-import { refreshGitFileStates } from '@/features/git';
-import { closeEditorTab } from '@/features/terminal';
-import { useEditorStore } from '@/shared/store/editorStore';
+// eslint-disable-next-line import/no-restricted-paths -- Save As 后需显式刷新该仓库单元的 git status（git feature 未把该入口纳入门面）
+import { refreshRepoStatus } from '@/features/git/utils/gitStatus';
 import { useProjectStore } from '@/shared/store/projectStore';
-import { useWorktreeStore } from '@/shared/store/worktreeStore';
-import type { FileContent } from '@/shared/types';
-import { canonicalFsPath } from '@/shared/utils/fileRef';
-import { getTabId } from '@/shared/utils/fileTree';
+import { selectActiveWorktreePath, useWorktreeStore } from '@/shared/store/worktreeStore';
+import { repoKeyOf } from '@/shared/utils/repoRef';
 import {
   Dialog,
   DialogContent,
@@ -22,13 +19,16 @@ import {
 } from '@/ui/Dialog';
 
 import { useSaveAsStore } from '../store/saveAsStore';
+import { retargetTabAfterSave } from '../utils/retargetTabAfterSave';
 
 const SaveFileDialog: React.FC = () => {
   const request = useSaveAsStore((s) => s.request);
   const clearSaveAs = useSaveAsStore((s) => s.clearSaveAs);
   const activeProject = useProjectStore((s) => s.activeProject);
-  // Worktree 激活时，保存目标根目录应为 worktree 路径
-  const activeWorktreePath = useWorktreeStore((s) => s.activeWorktreePath);
+  // Worktree 激活时，保存目标根目录应为**该请求项目**的激活 worktree 路径 —— 单元归属
+  // 一律按 projectId 取（旧的「当前项目镜像」字段已删除，它会把别的项目的路径用在这里）。
+  const wtProjectId = request?.projectId ?? null;
+  const activeWorktreePath = useWorktreeStore((s) => selectActiveWorktreePath(s, wtProjectId));
 
   const [filename, setFilename] = useState('');
   const [directory, setDirectory] = useState('');
@@ -93,7 +93,7 @@ const SaveFileDialog: React.FC = () => {
         force: true,
         silent: true,
       });
-      void refreshGitFileStates(request.projectId, activeWorktreePath ?? '');
+      void refreshRepoStatus(repoKeyOf(request.projectId, activeWorktreePath));
     } catch {
       /* 树刷新失败不影响保存结果 */
     }
@@ -119,46 +119,17 @@ const SaveFileDialog: React.FC = () => {
         request.content,
         activeWorktreePath ?? undefined,
       );
-      // tab 身份恒为 canonical 绝对路径：Save As 根与 saveNewFile 的 resolve_base
-      // 对齐（worktree 激活用 worktree 根，否则项目根）
-      const saveRoot = activeWorktreePath ?? activeProject.path;
-      const canonicalPath = canonicalFsPath(saveRoot, relPath);
-      const newTabId = getTabId(request.tabKey, canonicalPath);
-      const store = useEditorStore.getState();
-      // Save As 目标路径已作为 tab 打开（id 冲突）→ renameTab 会拒绝迁移
-      //（tab id 必须唯一）。磁盘已被新内容覆盖：关闭源 tab（untitled），激活
-      // 既有目标 tab，不残留「id 与 filePath 脱钩」的重复 tab。
-      const targetOpen = store.tabs[request.tabKey]?.tabs.some((t) => t.id === newTabId);
-      if (targetOpen) {
-        closeEditorTab(request.tabKey, request.tabId);
-        store.activateTab(request.tabKey, newTabId);
-        void refreshFileTree();
-        clearSaveAs();
-        return;
-      }
-      store.updateTab(request.tabKey, request.tabId, {
-        filePath: canonicalPath,
-        title: fn,
-        isDirty: false,
-        isUntitled: false,
-        initialPreviewMode: undefined,
-        content: {
-          path: canonicalPath,
-          content: request.content,
-          size: request.content.length,
-          is_binary: false,
-        } satisfies FileContent,
+      // 落盘后的 tab 身份迁移收拢在 `retargetTabAfterSave`（本组件只负责编排与状态）
+      retargetTabAfterSave({
+        tabKey: request.tabKey,
+        tabId: request.tabId,
+        // Save As 根与 saveNewFile 的 resolve_base 对齐：worktree 激活用工作树根，否则项目根
+        saveRoot: activeWorktreePath ?? activeProject.path,
+        relPath,
+        filename: fn,
+        content: request.content,
+        closeAfterSave: request.closeAfterSave,
       });
-      // 修身份脱钩：updateTab 只改 data 不改 id，Save As 后必须把 tab.id 同步
-      // 迁移到新 canonical path 的身份（否则 id 与 filePath 永久不一致）。
-      store.renameTab(request.tabKey, request.tabId, newTabId);
-      if (request.closeAfterSave) {
-        // 关闭确认触发的 Save As：保存成功即关 tab（untitled「保存后关闭」闭环），
-        // 无需再激活该 tab；经 terminal 门面保证 PTY 回收等清理一致。
-        closeEditorTab(request.tabKey, newTabId);
-      } else {
-        store.activateTab(request.tabKey, newTabId);
-      }
       void refreshFileTree();
       clearSaveAs();
     } catch (err) {

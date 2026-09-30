@@ -2,52 +2,57 @@ import { useCallback, useEffect, useRef } from 'react';
 
 import { useGitStore } from '@/shared/store/gitStore';
 import { useProjectStore } from '@/shared/store/projectStore';
-import { useWorktreeStore } from '@/shared/store/worktreeStore';
-import type { ConnectionContext, ProjectCommands, ProjectView } from '@/shared/types';
-import { aheadBehindKey } from '@/shared/utils/aheadBehindKey';
-import { mergeGitInfoForStore } from '@/shared/utils/git';
+import type { ProjectCommands, ProjectView } from '@/shared/types';
 
 /**
- * 刷新当前项目的 git_info 并同步 ahead/behind 到全局 store（单数据源）。
+ * 刷新当前项目的 git 元数据 + **当前视图所在仓库单元**的 status。
  *
- * - 内部用 ref 读取最新 project/commands/connectionContext，避免依赖循环：
- *   刷新会更新 projectStore → activeProject 变化 → commands 引用变化 → 回调引用变化
- *   → effect 重跑的死循环（重构前 wrapper 里用 refs 打破的同一个循环）。
- * - 返回稳定引用回调，可安全放入 effect 依赖 / 传给子组件。
- * - ahead/behind 刷新失败不阻塞主流程（与重构前语义一致）。
+ * - 用 ref 读最新的 project/commands，避免「刷新 → store 更新 → commands 引用变化 →
+ *   回调变化 → effect 重跑」的死循环；返回稳定引用，可安全进依赖数组。
+ * - status 一律经 `applyStatus` 写（唯一写入口 + per-unit version gate）；元数据
+ *   （分支清单 / 工作树清单 / provider）是 per-project 事实，写进 `git_info`。
+ * - 不再需要「worktree 激活时保留主分支名」那类特例：分支随快照按单元走，主仓单元的
+ *   HEAD 由 `applyStatus` 投影到项目卡片。
+ * - 不再需要 connectionContext：ahead/behind 的键就是单元身份，与连接形态无关。
+ * - ahead/behind 失败不阻塞主流程。
  */
 export function useRefreshGitInfo(
   project: ProjectView | null,
   commands: ProjectCommands | null,
-  connectionContext: ConnectionContext | null,
 ): () => Promise<void> {
   const commandsRef = useRef(commands);
   const projectRef = useRef(project);
-  const connectionContextRef = useRef(connectionContext);
   useEffect(() => {
     commandsRef.current = commands;
     projectRef.current = project;
-    connectionContextRef.current = connectionContext;
   });
 
   return useCallback(async () => {
     const cmds = commandsRef.current;
     const proj = projectRef.current;
-    const cc = connectionContextRef.current;
     if (!proj || !cmds) return;
 
-    // 非 git 项目（store 中 git_info 为 null）跳过所有 git 命令，
-    // 避免对非 git 仓库执行 git rev-parse / git status 等命令。
+    // 非 git 项目（store 中 git_info 为 null）跳过所有 git 命令
     const storeProject = useProjectStore.getState().projects.find((p) => p.id === proj.id);
     if (storeProject?.git_info === null) return;
 
-    const gitInfo = await cmds.refreshGitInfo();
-    // worktree 激活时保留 local 主分支名，避免 store 中 current_branch 被 worktree 分支污染
-    const worktreeActive = useWorktreeStore.getState().activeWorktreePath != null;
+    const [gitInfo, snapshot] = await Promise.all([
+      cmds.refreshGitInfo(),
+      cmds.refreshRepoStatus(),
+    ]);
+
     useProjectStore.setState((state) => {
       const nextProjects = state.projects.map((p) =>
-        p.id === proj.id
-          ? { ...p, git_info: mergeGitInfoForStore(p.git_info, gitInfo, worktreeActive) }
+        p.id === proj.id && p.git_info
+          ? {
+              ...p,
+              git_info: {
+                ...p.git_info,
+                branches: gitInfo.branches,
+                worktrees: gitInfo.worktrees,
+                git_provider: gitInfo.git_provider,
+              },
+            }
           : p,
       );
       return {
@@ -58,17 +63,14 @@ export function useRefreshGitInfo(
             : state.activeProject,
       };
     });
+    useProjectStore.getState().applyStatus(snapshot);
+    useGitStore.getState().setStatusTruncated(snapshot.repo_key, snapshot.truncated);
 
-    // Sync ahead/behind to global store for sidebar
     try {
       const ab = await cmds.getAheadBehind();
-      if (cc?.type === 'wsl') {
-        useGitStore.getState().setAheadBehind(aheadBehindKey('wsl', cc.distro, proj.id), ab);
-      } else if (cc?.type === 'remote') {
-        useGitStore.getState().setAheadBehind(aheadBehindKey('remote', cc.host, proj.id), ab);
-      } else {
-        useGitStore.getState().setAheadBehind(aheadBehindKey('local', proj.id, proj.id), ab);
-      }
+      // 键 = 该单元的仓库身份（`RepoKey`）：ahead/behind 是每个工作树的事实，与连接形态无关
+      // （旧键里的 `{source}:{connectionId}` 前缀让读侧永远拼不出写侧那个键）。
+      useGitStore.getState().setAheadBehind(snapshot.repo_key, ab);
     } catch {
       // ahead/behind 刷新失败不应阻塞主流程
     }

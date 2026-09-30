@@ -6,7 +6,7 @@ import { useEditorContext } from '@/shared/contexts';
 import { useAppContext } from '@/shared/contexts/AppContext';
 import { useEditorStore } from '@/shared/store/editorStore';
 import { useProjectStore } from '@/shared/store/projectStore';
-import { useWorktreeStore } from '@/shared/store/worktreeStore';
+import { useActiveWorktreePath } from '@/shared/store/worktreeStore';
 import type { Tab, FileTabData } from '@/shared/types';
 import { isFileTab } from '@/shared/utils/fileTree';
 import { resolveTabKey } from '@/shared/utils/tabKey';
@@ -40,7 +40,7 @@ function FileViewer() {
   const { config } = useAppContext();
   const activeProjectId = useProjectStore((state) => state.activeProjectId);
   const activeProject = useProjectStore((state) => state.activeProject);
-  const activeWorktreePath = useWorktreeStore((state) => state.activeWorktreePath);
+  const effectiveWorktreePath = useActiveWorktreePath();
   const { onFileSave: onSave, onFileContentChange: onContentChange } = useFileActionsContext();
 
   const theme = config.theme;
@@ -49,7 +49,6 @@ function FileViewer() {
 
   // Composite tab key: unified across local/WSL/remote projects
   const currentProjectId = activeProjectId ?? activeProject?.id ?? null;
-  const effectiveWorktreePath = activeWorktreePath ?? null;
   const tabKey = currentProjectId
     ? resolveTabKey(currentProjectId, effectiveWorktreePath)
     : currentProjectId;

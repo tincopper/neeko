@@ -5,7 +5,7 @@ import { readDirTree } from '@/features/file/api/fileApi';
 import { useFileStore } from '@/features/file/store';
 import { useEditorStore } from '@/shared/store/editorStore';
 import { useProjectStore } from '@/shared/store/projectStore';
-import { useWorktreeStore } from '@/shared/store/worktreeStore';
+import { useActiveWorktreePath } from '@/shared/store/worktreeStore';
 import type { FileNode } from '@/shared/types';
 import type { ProjectCommands } from '@/shared/types/activeProject';
 import { DEFAULT_TREE_DEPTH } from '@/shared/types/file';
@@ -30,7 +30,7 @@ export function useFileView(
 ) {
   const activeProject = useProjectStore((state) => state.activeProject);
   const activeProjectId = useProjectStore((state) => state.activeProjectId);
-  const activeWorktreePath = useWorktreeStore((state) => state.activeWorktreePath);
+  const activeWorktreePath = useActiveWorktreePath();
   const [error, setError] = useState<string | null>(null);
 
   // Unified current project ID — covers local/WSL/remote via unified store

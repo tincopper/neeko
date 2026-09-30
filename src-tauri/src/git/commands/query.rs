@@ -1,33 +1,27 @@
 use crate::common::git::operations;
-use crate::common::git::path_guard::{resolve_validated_work_dir, validate_repo_relative_path};
+use crate::common::git::path_guard::validate_repo_relative_path;
+use crate::common::git::status_worker::GitStatusSnapshot;
 use crate::common::git::transport::GitTransport;
 use crate::common::git::types::DiffResult;
-use crate::project::types::{FileChange, FileDiffStats, GitBranchInfo, GitInfo};
+use crate::project::types::{FileDiffStats, GitBranchInfo, GitInfo};
 use crate::AppError;
 use crate::AppStateWrapper;
 use tauri::State;
 
-/// Get repository information.
+/// Get repository information（per-project 部分：分支 / 工作树清单 / provider）。
+///
+/// **未提交变更不在此处** —— 它是「每个工作树」的事实（HEAD / index / workdir 三者独立），
+/// 走 [`get_repo_status`]。把它塞进 per-project 结构正是 worktree 视图串主仓内容的结构成因。
 #[tauri::command]
 pub async fn get_git_info(
     project_id: String,
     worktree_path: Option<String>,
     state: State<'_, AppStateWrapper>,
 ) -> Result<GitInfo, AppError> {
-    let (t, wd) = state.resolve_project(&project_id)?;
-    let repo_path = resolve_validated_work_dir(&t, &worktree_path, &wd)?;
-    let mut info = operations::get_git_info(&t, repo_path)
+    let (t, repo) = state.resolve_repo(&project_id, worktree_path.as_deref())?;
+    operations::get_git_info(&t, repo.work_dir())
         .await
-        .map_err(AppError::from)?;
-    // G2 单一权威化：主路径（未指定 worktree）且有权威快照时，changed_files 一律
-    // 以快照为准（CLI porcelain 唯一计算路径），避免 libgit2 第二套 status 的
-    // 全量结果覆盖更新的快照事件（P1 跨源覆盖残留）。
-    if worktree_path.as_deref().unwrap_or("").is_empty() {
-        if let Some(snap) = state.watcher_manager.snapshot(&project_id) {
-            info.changed_files = snap.entries.clone();
-        }
-    }
-    Ok(info)
+        .map_err(AppError::from)
 }
 
 /// Get branch information.
@@ -37,57 +31,57 @@ pub async fn get_git_branch_info(
     worktree_path: Option<String>,
     state: State<'_, AppStateWrapper>,
 ) -> Result<GitBranchInfo, AppError> {
-    let (t, wd) = state.resolve_project(&project_id)?;
-    let repo_path = resolve_validated_work_dir(&t, &worktree_path, &wd)?;
-    operations::get_git_branch_info(&t, repo_path)
+    let (t, repo) = state.resolve_repo(&project_id, worktree_path.as_deref())?;
+    operations::get_git_branch_info(&t, repo.work_dir())
         .await
         .map_err(AppError::from)
 }
 
-/// Changed-file query result（G2 D2 收编）：`version=0` 表示无 versioned 快照语义
-/// （WSL/SSH / worktree 兜底），前端只在 `version>0` 时做 version gate。
-#[derive(Debug, Clone, serde::Serialize)]
-pub struct ChangedFilesPayload {
-    /// 变更文件列表（相对仓库根的路径 + 状态）。
-    pub files: Vec<FileChange>,
-    /// 快照版本号：`0` 表示无 versioned 快照语义。
-    pub version: u64,
+/// 读取某**仓库单元**的权威 status（主仓与 worktree 同一条读路径、同一种载荷）。
+///
+/// 取代旧的 `get_worktree_changed_files` + `ChangedFilesPayload{version: 0}`：那张「无版本
+/// 语义」的口子使 version gate 只能恒放行，push 快照与 pull 结果在同一槽里后到者胜
+/// —— worktree 视图串主仓内容的直接成因。
+#[tauri::command]
+pub async fn get_repo_status(
+    project_id: String,
+    worktree_path: Option<String>,
+    state: State<'_, AppStateWrapper>,
+) -> Result<GitStatusSnapshot, AppError> {
+    let (_t, repo) = state.resolve_repo(&project_id, worktree_path.as_deref())?;
+    crate::git::services::status::read_unit_status(&state, &repo).await
 }
 
-/// Get changed files in a worktree.
+/// 激活一个仓库单元（决策 D-B：只挂当前视图所在的那个单元）。
 ///
-/// G2 D2 收编：主路径（空 worktree_path）且已有权威快照 → 直接读 watcher 快照
-/// （CLI porcelain 唯一计算路径的产物，与 git-status-snapshot 事件同源同版本），
-/// 不再跑第二套 libgit2 status。worktree / WSL / SSH（watcher 不挂）走原 transport
-/// 兜底（version=0）。
+/// 释放该项目下其它单元 → 挂载本单元 → 有界等待首个快照。「当前视图」在前端只有一个
+/// 派生函数，它是本命令的唯一调用方；编排逻辑见 `git::services::status::activate`。
 #[tauri::command]
-pub async fn get_worktree_changed_files(
+pub async fn set_active_repo_unit(
     project_id: String,
-    worktree_path: String,
+    worktree_path: Option<String>,
+    app: tauri::AppHandle,
     state: State<'_, AppStateWrapper>,
-) -> Result<ChangedFilesPayload, AppError> {
-    if worktree_path.is_empty() {
-        if let Some(snap) = state.watcher_manager.snapshot(&project_id) {
-            log::debug!(
-                "[GitWorker] get_worktree_changed_files({}) served from snapshot v{} ({} entries)",
-                project_id,
-                snap.version,
-                snap.entries.len()
-            );
-            return Ok(ChangedFilesPayload {
-                files: snap.entries.clone(),
-                version: snap.version,
-            });
-        }
-    }
-    let (t, wd) = state.resolve_project(&project_id)?;
-    // 空串视为未指定 worktree（回落项目根），并校验非空路径
-    let wt = Some(worktree_path);
-    let repo_path = resolve_validated_work_dir(&t, &wt, &wd)?;
-    let files = operations::get_worktree_changed_files(&t, repo_path)
-        .await
-        .map_err(AppError::from)?;
-    Ok(ChangedFilesPayload { files, version: 0 })
+) -> Result<GitStatusSnapshot, AppError> {
+    let (_t, repo) = state.resolve_repo(&project_id, worktree_path.as_deref())?;
+    crate::git::services::status::activate(&state, &app, &repo).await
+}
+
+/// 把调用方持有的 worktree 路径归一成后端使用的 canonical 形态。
+///
+/// 前端不自己做路径归一（红线 12：路径身份只有一个判定处），而 session 里存的可能是
+/// canonical 保证落地之前写下的形态（macOS `/tmp` ↔ `/private/tmp`）。恢复激活态必须先
+/// 换成与 `git worktree list` 同一形态，否则「该单元是否还存在」的校验必然认不出来 ——
+/// 实测表现为：重启后恢复的 worktree 被立刻判没、回落主仓。
+#[tauri::command]
+pub async fn canonical_worktree_path(
+    project_id: String,
+    path: String,
+    state: State<'_, AppStateWrapper>,
+) -> Result<String, AppError> {
+    let (target, _) = state.resolve_project(&project_id)?;
+    crate::common::git::path_guard::canonicalize_worktree_path(&target, &path)
+        .map_err(AppError::from)
 }
 
 /// List untracked files under a directory (expands a collapsed untracked-dir
@@ -96,16 +90,13 @@ pub async fn get_worktree_changed_files(
 #[tauri::command]
 pub async fn get_untracked_files(
     project_id: String,
-    worktree_path: String,
+    worktree_path: Option<String>,
     dir_path: String,
     state: State<'_, AppStateWrapper>,
 ) -> Result<Vec<String>, AppError> {
-    let (t, wd) = state.resolve_project(&project_id)?;
-    // 空串视为未指定 worktree（回落项目根），并校验非空路径
-    let wt = Some(worktree_path);
-    let repo_path = resolve_validated_work_dir(&t, &wt, &wd)?;
-    validate_repo_relative_path(&t, repo_path, &dir_path)?;
-    operations::get_untracked_files(&t, repo_path, &dir_path)
+    let (t, repo) = state.resolve_repo(&project_id, worktree_path.as_deref())?;
+    validate_repo_relative_path(&t, repo.work_dir(), &dir_path).map_err(AppError::from)?;
+    operations::get_untracked_files(&t, repo.work_dir(), &dir_path)
         .await
         .map_err(AppError::from)
 }
@@ -117,9 +108,8 @@ pub async fn get_changed_files_diff_stats(
     worktree_path: Option<String>,
     state: State<'_, AppStateWrapper>,
 ) -> Result<Vec<FileDiffStats>, AppError> {
-    let (t, wd) = state.resolve_project(&project_id)?;
-    let repo_path = resolve_validated_work_dir(&t, &worktree_path, &wd)?;
-    operations::get_changed_files_diff_stats(&t, repo_path)
+    let (t, repo) = state.resolve_repo(&project_id, worktree_path.as_deref())?;
+    operations::get_changed_files_diff_stats(&t, repo.work_dir())
         .await
         .map_err(AppError::from)
 }
@@ -134,11 +124,10 @@ pub async fn get_file_diff(
     state: State<'_, AppStateWrapper>,
 ) -> Result<DiffResult, AppError> {
     let t0 = std::time::Instant::now();
-    let (t, wd) = state.resolve_project(&project_id)?;
-    let repo_path = resolve_validated_work_dir(&t, &worktree_path, &wd)?;
-    validate_repo_relative_path(&t, repo_path, &file_path)?;
+    let (t, repo) = state.resolve_repo(&project_id, worktree_path.as_deref())?;
+    validate_repo_relative_path(&t, repo.work_dir(), &file_path)?;
     let collapse = collapse.unwrap_or(true);
-    let result = operations::get_file_diff(&t, repo_path, &file_path, collapse)
+    let result = operations::get_file_diff(&t, repo.work_dir(), &file_path, collapse)
         .await
         .map_err(AppError::from);
     let elapsed_ms = t0.elapsed().as_millis();

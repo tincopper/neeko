@@ -2,7 +2,7 @@ import { useMemo } from 'react';
 
 import { useAppContext, useEditorContext } from '@/shared/contexts';
 import { useProjectStore } from '@/shared/store/projectStore';
-import { useWorktreeStore } from '@/shared/store/worktreeStore';
+import { useActiveWorktreePath } from '@/shared/store/worktreeStore';
 import { resolveTabKey } from '@/shared/utils/tabKey';
 
 import { createTerminalSession, resizeTerminal, closeTerminalSession } from '../api/terminalApi';
@@ -27,7 +27,7 @@ export function useWslTerminalStrategy(paneId: string): TerminalStrategy | null 
   const { config, showToast } = useAppContext();
   const { activeTabId } = useEditorContext();
   const activeProject = useProjectStore((state) => state.activeProject);
-  const activeWorktreePath = useWorktreeStore((state) => state.activeWorktreePath);
+  const activeWorktreePath = useActiveWorktreePath();
 
   return useMemo(() => {
     if (!activeProject || activeProject.environment.type !== 'Wsl') return null;

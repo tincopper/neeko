@@ -25,9 +25,6 @@ export { useAheadBehindSync } from './hooks/useAheadBehindSync';
 export { useFileChangedEvent } from './hooks/useFileChangedEvent';
 export { useRefreshGitInfo } from './hooks/useRefreshGitInfo';
 
-// Utils
-export { refreshGitFileStates } from './utils/gitStatus';
-
 // Components
 export { default as BranchStatusBarWidget } from './components/BranchStatusBarWidget';
 export { default as CommitDialog } from './components/CommitDialog';

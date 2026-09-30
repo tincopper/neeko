@@ -1,11 +1,10 @@
 //! Tauri commands for project lifecycle management.
 
-use crate::common::file::watcher::AppHandleSink;
+use crate::common::runtime::run_blocking;
 use crate::project::types::{GitInfo, Project};
 use crate::AppError;
 use crate::AppStateWrapper;
 use std::path::PathBuf;
-use std::sync::Arc;
 use tauri::State;
 
 /// Adds a new local project to the project list.
@@ -38,7 +37,7 @@ pub fn remove_project(project_id: String, state: State<AppStateWrapper>) -> Resu
         .remove_project(&project_id);
 
     state.terminal_router.local().close_session(&project_id);
-    state.watcher_manager.unwatch(&project_id);
+    state.watcher_manager.unwatch_project(&project_id);
 
     // 若被删的是激活项目，清空 active_project_id（前端 useLocalProjects 会选出下一个并触发 set_active_project）
     if let Ok(mut active) = state.active_project_id.lock() {
@@ -93,7 +92,6 @@ pub fn refresh_git_info(
 pub async fn set_active_project(
     project_id: String,
     state: State<'_, AppStateWrapper>,
-    app_handle: tauri::AppHandle,
 ) -> Result<(), AppError> {
     // 与当前 active 比对，相同则 no-op（避免重复 unwatch/watch 抖动）
     let current = state
@@ -119,28 +117,20 @@ pub async fn set_active_project(
         (new_path, old_path)
     };
 
-    // unwatch 旧激活项目（轻量，保留在主线程）
+    // 释放旧激活项目的挂载：drop notify watcher（递归反注册）可能短暂阻塞 → run_blocking
+    // 隔离（红线 3），与挂载侧 mount_only 对称。（remove_project / change_project_path 是
+    // 同步命令，不跑在 Tokio worker 上，其直调是合法的。）
     if let Some(old_id) = current.as_deref() {
-        state.watcher_manager.unwatch(old_id);
+        let manager = state.watcher_manager.clone();
+        let old_id = old_id.to_string();
+        let _ = run_blocking(move || manager.unwatch_project(&old_id)).await;
     }
 
-    // watch 新激活项目：notify::RecommendedWatcher 在 Linux 上对 RecursiveMode
-    // 会同步遍历整树并逐个 inotify_add_watch，阻塞 Tauri IPC 线程会引发 UI 冻结
-    // → 经 AppRuntime spawn_blocking，避免阻塞当前 worker / WebView IPC 通道
-    let watcher_manager = state.watcher_manager.clone();
-    let pid = project_id.clone();
-    let path_for_watch = new_path.clone();
-    state
-        .runtime
-        .spawn_blocking(move || {
-            watcher_manager.watch(
-                pid,
-                path_for_watch,
-                Arc::new(AppHandleSink::new(app_handle)),
-            );
-        })
-        .await
-        .map_err(|e| AppError::Unknown(format!("watch task join error: {e}")))?;
+    // 这里**不**挂新项目的 watcher：挂载的唯一发起点是前端 `useActiveRepoUnitSync`
+    // （反应 `(activeProjectId, 激活 worktree)` → `set_active_repo_unit`），旧项目已在上一步
+    // `unwatch_project` 释放。以前在命令层按项目预挂主仓单元，等于给「谁在看」加了第二个
+    // 发起点：切到带激活 worktree 的项目时，先挂主仓再被前端改挂 worktree，中间那份主仓
+    // 快照既没人看也白跑一次 git status（2026-09-28 隔离实例日志实测到 already watched 告警）。
 
     // 更新 active_project_id
     *state.active_project_id.lock().map_err(AppError::from)? = Some(project_id.clone());
@@ -284,13 +274,12 @@ pub fn rename_project(
     Ok(())
 }
 
-/// Changes the filesystem path of a project and updates the watcher.
+/// Changes the filesystem path of a project and releases its mounted units.
 #[tauri::command]
 pub fn change_project_path(
     project_id: String,
     new_path: String,
     state: State<AppStateWrapper>,
-    app_handle: tauri::AppHandle,
 ) -> Result<(), AppError> {
     {
         let mut pm = state.project_manager.lock().map_err(AppError::from)?;
@@ -306,12 +295,9 @@ pub fn change_project_path(
         .as_deref()
         == Some(project_id.as_str());
     if is_active {
-        state.watcher_manager.unwatch(&project_id);
-        state.watcher_manager.watch(
-            project_id,
-            PathBuf::from(new_path),
-            Arc::new(AppHandleSink::new(app_handle)),
-        );
+        // 根路径变了 ⇒ 旧 root 下所有单元的身份都失效（包括激活的那个 worktree）。
+        // 只释放，不预挂：前端在成功后清掉激活态，挂载由唯一发起点重新驱动。
+        state.watcher_manager.unwatch_project(&project_id);
     }
 
     Ok(())

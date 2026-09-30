@@ -6,9 +6,7 @@ import { useAppContext } from '@/shared/contexts';
 import { useDockStore } from '@/shared/store/dockStore';
 import { useEditorStore } from '@/shared/store/editorStore';
 import { useProjectStore } from '@/shared/store/projectStore';
-import { useWorktreeStore } from '@/shared/store/worktreeStore';
 import type { Tab } from '@/shared/types';
-import { mergeGitInfoForStore } from '@/shared/utils/git';
 import { parseProjectIdFromTabKey, resolveTabKey } from '@/shared/utils/tabKey';
 
 /**
@@ -41,12 +39,21 @@ const PullRequestsPanelWrapper: React.FC = React.memo(() => {
       void _projectId;
       if (!project || !commands) return;
       const gitInfo = await commands.refreshGitInfo();
-      // worktree 激活时保留 local 主分支名，避免 store 中 current_branch 被 worktree 分支污染
-      const worktreeActive = useWorktreeStore.getState().activeWorktreePath != null;
+      // 只合并 per-project 字段（分支清单 / 工作树清单 / provider）。
+      // current_branch 的唯一写者是 applyStatus（主仓单元投影）—— 旧实现靠
+      // 「worktree 激活时保留主分支名」的特例，是共享单槽造出来的补丁。
       useProjectStore.setState((state) => {
         const nextProjects = state.projects.map((p) =>
-          p.id === project.id
-            ? { ...p, git_info: mergeGitInfoForStore(p.git_info, gitInfo, worktreeActive) }
+          p.id === project.id && p.git_info
+            ? {
+                ...p,
+                git_info: {
+                  ...p.git_info,
+                  branches: gitInfo.branches,
+                  worktrees: gitInfo.worktrees,
+                  git_provider: gitInfo.git_provider,
+                },
+              }
             : p,
         );
         return {

@@ -4,7 +4,11 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 import { useLocalProjects } from '@/features/project/hooks/useLocalProjects';
 import { useEditorStore } from '@/shared/store/editorStore';
+import { useGitStore } from '@/shared/store/gitStore';
 import { useProjectStore } from '@/shared/store/projectStore';
+import { useWorktreeStore, type WorktreeUnitState } from '@/shared/store/worktreeStore';
+import type { Project } from '@/shared/types';
+import { repoKeyOf } from '@/shared/utils/repoRef';
 import { parseProjectIdFromTabKey, resolveTabKey } from '@/shared/utils/tabKey';
 import { createProject } from '@/testing/factories';
 import { invoke } from '@/testing/tauriCore';
@@ -348,29 +352,218 @@ describe('useLocalProjects', () => {
     expect(mockInvoke).toHaveBeenCalledWith('set_active_project', { projectId: 'sel-1' });
   });
 
-  it('handleRefreshGit 刷新 git 信息与 ahead/behind', async () => {
-    mockInvoke.mockImplementation(async (cmd: string) => {
-      if (cmd === 'get_worktree_changed_files') return { files: [], version: 0 };
-      if (cmd === 'get_git_branch_info') {
-        return { current_branch: 'main', branches: ['main'], worktrees: [] };
-      }
-      if (cmd === 'get_ahead_behind') return { ahead: 2, behind: 0 };
-      return undefined;
+  describe('handleRefreshGit — 刷新目标 = 本项目自己激活的仓库单元', () => {
+    const WT_A = '/repo/wt-a';
+    const WT_B = '/repo/wt-b';
+
+    /** 后端形态：get_repo_status 回的是**被请求那个单元**的快照（repo_key 自带身份）。 */
+    function snapshotFor(projectId: string, worktreePath: string | null) {
+      return {
+        repo_key: repoKeyOf(projectId, worktreePath),
+        version: 7,
+        project_id: projectId,
+        worktree_path: worktreePath,
+        branch: worktreePath === null ? 'main' : `wt-${projectId}`,
+        entries: [],
+        truncated: false,
+      };
+    }
+
+    function gitProject(id: string, overrides: Partial<Project> = {}): Project {
+      return createProject({
+        id,
+        git_info: {
+          current_branch: 'main',
+          branches: ['main'],
+          worktrees: [{ path: WT_A, branch: 'feature-a', head: 'abc' }],
+          git_provider: '',
+        },
+        ...overrides,
+      });
+    }
+
+    function seedUnits(byProject: Record<string, WorktreeUnitState>): void {
+      useWorktreeStore.setState({ byProject });
+    }
+
+    beforeEach(() => {
+      useWorktreeStore.setState({ byProject: {} });
+      useProjectStore.setState({
+        projects: [gitProject('p1'), gitProject('p2')],
+        activeProjectId: 'p1',
+        activeProject: gitProject('p1'),
+        statuses: {},
+      });
+      useGitStore.setState({ aheadBehind: {}, truncatedByRepo: {} });
+      mockInvoke.mockImplementation(async (cmd: string, args?: Record<string, unknown>) => {
+        const projectId = String(args?.projectId ?? '');
+        const worktreePath = (args?.worktreePath ?? null) as string | null;
+        if (cmd === 'get_repo_status') return snapshotFor(projectId, worktreePath);
+        if (cmd === 'get_git_branch_info') {
+          return { current_branch: 'main', branches: ['main'], worktrees: [] };
+        }
+        if (cmd === 'get_ahead_behind') return { ahead: 2, behind: 0 };
+        return undefined;
+      });
     });
 
-    const { result } = renderHook(() => useLocalProjects());
+    async function refreshGit(projectId: string): Promise<void> {
+      const { result } = renderHook(() => useLocalProjects());
+      await act(async () => {
+        await result.current.handleRefreshGit(projectId);
+      });
+    }
 
-    await act(async () => {
-      await result.current.handleRefreshGit('p1');
+    it('主仓单元：三条命令都带 worktreePath=null（不再用空串表示主仓）', async () => {
+      await refreshGit('p1');
+
+      expect(mockInvoke).toHaveBeenCalledWith('get_repo_status', {
+        projectId: 'p1',
+        worktreePath: null,
+      });
+      expect(mockInvoke).toHaveBeenCalledWith('get_git_branch_info', {
+        projectId: 'p1',
+        worktreePath: null,
+      });
+      expect(mockInvoke).toHaveBeenCalledWith('get_ahead_behind', {
+        projectId: 'p1',
+        worktreePath: null,
+      });
+      // 快照落进**该单元**的槽位
+      expect(useProjectStore.getState().statuses[repoKeyOf('p1', null)]).toMatchObject({
+        version: 7,
+      });
     });
 
-    expect(mockInvoke).toHaveBeenCalledWith('get_worktree_changed_files', {
-      projectId: 'p1',
-      worktreePath: '',
+    it('本项目激活了 worktree → 刷新打到该 worktree 单元，ahead/behind 也按单元存键', async () => {
+      seedUnits({ p1: { activePath: WT_A, activeBranch: 'feature-a', opened: [] } });
+
+      await refreshGit('p1');
+
+      expect(mockInvoke).toHaveBeenCalledWith('get_repo_status', {
+        projectId: 'p1',
+        worktreePath: WT_A,
+      });
+      expect(mockInvoke).toHaveBeenCalledWith('get_ahead_behind', {
+        projectId: 'p1',
+        worktreePath: WT_A,
+      });
+      expect(useProjectStore.getState().statuses[repoKeyOf('p1', WT_A)]).toMatchObject({
+        version: 7,
+        worktree_path: WT_A,
+      });
+      expect(useGitStore.getState().aheadBehind[repoKeyOf('p1', WT_A)]).toEqual({
+        ahead: 2,
+        behind: 0,
+      });
+      // 主仓槽位不得被 worktree 的刷新结果占用
+      expect(useProjectStore.getState().statuses[repoKeyOf('p1', null)]).toBeUndefined();
     });
-    expect(mockInvoke).toHaveBeenCalledWith('get_ahead_behind', {
-      projectId: 'p1',
-      worktreePath: null,
+
+    it('回归：刷新 p2 用的是 p2 自己的激活单元，p1 的 worktree 路径不得串过来', async () => {
+      // p1 正在看 worktree，p2 在主仓；activeProjectId 也是 p1（旧实现读全局镜像 → 取到 WT_A）
+      seedUnits({
+        p1: { activePath: WT_A, activeBranch: 'feature-a', opened: [] },
+        p2: { activePath: null, activeBranch: '', opened: [] },
+      });
+
+      await refreshGit('p2');
+
+      const statusCalls = mockInvoke.mock.calls
+        .filter((call) => call[0] === 'get_repo_status')
+        .map((call) => call[1]);
+      expect(statusCalls).toEqual([{ projectId: 'p2', worktreePath: null }]);
+      expect(mockInvoke).toHaveBeenCalledWith('get_ahead_behind', {
+        projectId: 'p2',
+        worktreePath: null,
+      });
+      expect(useGitStore.getState().aheadBehind[repoKeyOf('p2', null)]).toEqual({
+        ahead: 2,
+        behind: 0,
+      });
+      expect(useProjectStore.getState().statuses[repoKeyOf('p1', WT_A)]).toBeUndefined();
+    });
+
+    it('两个项目各自有激活 worktree 时互不串用', async () => {
+      seedUnits({
+        p1: { activePath: WT_A, activeBranch: 'feature-a', opened: [] },
+        p2: { activePath: WT_B, activeBranch: 'feature-b', opened: [] },
+      });
+
+      await refreshGit('p2');
+
+      expect(mockInvoke).toHaveBeenCalledWith('get_repo_status', {
+        projectId: 'p2',
+        worktreePath: WT_B,
+      });
+      expect(mockInvoke).not.toHaveBeenCalledWith('get_repo_status', {
+        projectId: 'p2',
+        worktreePath: WT_A,
+      });
+    });
+
+    it('非 git 项目（git_info === null）不发任何 git 命令', async () => {
+      useProjectStore.setState({
+        projects: [createProject({ id: 'p1', git_info: null })],
+        activeProjectId: 'p1',
+        activeProject: createProject({ id: 'p1', git_info: null }),
+      });
+
+      await refreshGit('p1');
+
+      expect(mockInvoke).not.toHaveBeenCalledWith('get_repo_status', expect.anything());
+      expect(mockInvoke).not.toHaveBeenCalledWith('get_git_branch_info', expect.anything());
+      expect(mockInvoke).not.toHaveBeenCalledWith('get_ahead_behind', expect.anything());
+    });
+
+    it('分支信息写回本项目 git_info（worktree 刷新不得改写主仓分支名）', async () => {
+      seedUnits({ p1: { activePath: WT_A, activeBranch: 'feature-a', opened: [] } });
+      // 主仓单元的快照先落地：current_branch 的唯一写者就是它（主仓单元投影）
+      useProjectStore.getState().applyStatus(snapshotFor('p1', null));
+      expect(useProjectStore.getState().projects[0]?.git_info?.current_branch).toBe('main');
+      mockInvoke.mockImplementation(async (cmd: string) => {
+        if (cmd === 'get_repo_status') return snapshotFor('p1', WT_A);
+        if (cmd === 'get_git_branch_info') {
+          return {
+            current_branch: 'feature-a',
+            branches: ['main', 'feature-a'],
+            worktrees: [{ path: WT_A, branch: 'feature-a', head: 'abc' }],
+          };
+        }
+        if (cmd === 'get_ahead_behind') return { ahead: 1, behind: 1 };
+        return undefined;
+      });
+
+      await refreshGit('p1');
+
+      const p1 = useProjectStore.getState().projects.find((p) => p.id === 'p1');
+      // 刷新时激活单元是 worktree：`current_branch` **必须仍是主仓单元投影的那个分支**，
+      // 不得被 worktree 的分支覆盖（旧实现就是这么写的 ⇒ 卡片分支名随视图抖动）。
+      expect(p1?.git_info?.current_branch).toBe('main');
+      // per-project 元数据仍然被刷新
+      expect(p1?.git_info?.branches).toEqual(['main', 'feature-a']);
+      expect(p1?.git_info?.worktrees).toEqual([{ path: WT_A, branch: 'feature-a', head: 'abc' }]);
+      // worktree 单元 HEAD 进自己的槽位，不进 git_info
+      expect(useProjectStore.getState().statuses[repoKeyOf('p1', WT_A)]?.branch).toBe('wt-p1');
+      // p2 完全没有被触碰
+      expect(useProjectStore.getState().statuses[repoKeyOf('p2', null)]).toBeUndefined();
+    });
+
+    it('status 刷新失败时不写入空列表（失败 = 未知，不是「无变更」）', async () => {
+      mockInvoke.mockImplementation(async (cmd: string) => {
+        if (cmd === 'get_repo_status') throw new Error('backend unavailable');
+        if (cmd === 'get_git_branch_info') {
+          return { current_branch: 'main', branches: ['main'], worktrees: [] };
+        }
+        if (cmd === 'get_ahead_behind') return { ahead: 0, behind: 0 };
+        return undefined;
+      });
+      const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+      await refreshGit('p1');
+
+      expect(useProjectStore.getState().statuses).toEqual({});
+      consoleSpy.mockRestore();
     });
   });
 

@@ -29,7 +29,7 @@ import { INSERT_TO_AGENT_INPUT_EVENT } from '@/shared/events';
 import { useDockStore } from '@/shared/store/dockStore';
 import { useEditorStore } from '@/shared/store/editorStore';
 import { useProjectStore } from '@/shared/store/projectStore';
-import { useWorktreeStore } from '@/shared/store/worktreeStore';
+import { useActiveWorktreePath } from '@/shared/store/worktreeStore';
 import type { AgentConfig } from '@/shared/types';
 import { createUntitledFileTab } from '@/shared/utils/createUntitledFileTab';
 import { resolveTabKey } from '@/shared/utils/tabKey';
@@ -45,7 +45,7 @@ function ProjectWorkspace() {
     useRemoteContext();
   const { agents, onAgentClick } = useEditorContext();
   const activeProject = useProjectStore((state) => state.activeProject);
-  const activeWorktreePath = useWorktreeStore((state) => state.activeWorktreePath);
+  const activeWorktreePath = useActiveWorktreePath();
 
   // Determine the current project ID (all types via unified store)
   const currentProjectId = activeProject?.id ?? null;

@@ -95,18 +95,12 @@ pub fn run() {
                 }
             }
 
-            // 只为激活项目挂 watcher；非激活项目由 set_active_project 触发时再挂
-            if let Some(id) = active_id {
-                if let Some((_, path)) = projects.iter().find(|(pid, _)| pid == &id) {
-                    state.watcher_manager.watch(
-                        id,
-                        path.clone(),
-                        std::sync::Arc::new(crate::common::file::watcher::AppHandleSink::new(
-                            app.handle().clone(),
-                        )),
-                    );
-                }
-            }
+            // 启动期**不**预挂任何单元：挂载的唯一发起点是前端 `useActiveRepoUnitSync`
+            // （它反应 `(activeProjectId, 激活 worktree)` → `set_active_repo_unit`）。
+            // 旧实现在这里按 session 的激活项目先挂主仓单元，于是每次启动都出现
+            // 「先挂主仓、1 秒后改挂 worktree」的两发起点时序差（实测日志报 already watched），
+            // 且与「只挂当前视图那一个单元」的取舍无关 —— 前端未落地时槽位缺失就是「未知」，
+            // Changes 面板本来就走加载态。
 
             // Load custom agents + migrate legacy agentSkillPathOverrides → skill_path
             if let Ok(mut config) = state.storage_manager.load_config() {

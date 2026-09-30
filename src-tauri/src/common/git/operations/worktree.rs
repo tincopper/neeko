@@ -99,10 +99,41 @@ pub async fn default_branch(transport: &dyn GitTransport, work_dir: &str) -> Res
     Ok(branch.to_string())
 }
 
-// ─── Commit Log ──────────────────────────────────────────────────────────────
+// ─── Worktree list ───────────────────────────────────────────────────────────
 
-/// Get commit log: `git log --format=...`
-pub(crate) fn parse_worktree_list(output: &str) -> Vec<Worktree> {
+/// 单条清单条目的归一化出口（唯一）：归一失败返回 `None`，由调用方丢弃该条目。
+fn normalized_worktree(
+    target: &ExecTarget,
+    raw_path: &str,
+    branch: String,
+    head: String,
+) -> Option<Worktree> {
+    match crate::common::git::path_guard::canonicalize_worktree_path(target, raw_path) {
+        Ok(path) => Some(Worktree {
+            path: std::path::PathBuf::from(path),
+            branch,
+            head,
+        }),
+        Err(e) => {
+            log::warn!("[git] dropping worktree `{raw_path}`: path is not normalizable: {e}");
+            None
+        }
+    }
+}
+
+/// Parse `git worktree list --porcelain` into the authoritative worktree list.
+///
+/// **路径即身份**：这些路径会被前端拼成 `RepoKey`，必须与 `RepoRef::key()` 逐字同形 ——
+/// 因此**产出即归一**（`target` 决定语义：Local 走文件系统 canonicalize，WSL / SSH 走词法
+/// 归一，远端路径绝不能经宿主 `std::path`，详见 `path_guard::canonicalize_worktree_path`）。
+/// 归一漏掉时同一单元会有两种形态：前端按清单拼的 key 取不到快照（侧栏 +A/-D 空白）、
+/// 存活校验把激活单元误判成已消失并回落主仓。
+///
+/// 实测（2026-09-30）git 输出的已是 realpath 形态，所以此处当前是幂等加固；显式归一 +
+/// 同名单测是为了让「产物必须与消费侧身份同形」成为可执行契约，而非依赖 git 的实现细节。
+///
+/// 归一失败的条目不进清单：宁可缺一项，也不对外产出第二种身份表示。
+pub(crate) fn parse_worktree_list(output: &str, target: &ExecTarget) -> Vec<Worktree> {
     let mut worktrees = Vec::new();
     let mut current_path = String::new();
     let mut current_branch = String::new();
@@ -112,11 +143,14 @@ pub(crate) fn parse_worktree_list(output: &str) -> Vec<Worktree> {
         let line = line.trim();
         if let Some(stripped) = line.strip_prefix("worktree ") {
             if !current_path.is_empty() {
-                worktrees.push(Worktree {
-                    path: std::path::PathBuf::from(&current_path),
-                    branch: std::mem::take(&mut current_branch),
-                    head: std::mem::take(&mut current_head),
-                });
+                if let Some(wt) = normalized_worktree(
+                    target,
+                    &current_path,
+                    std::mem::take(&mut current_branch),
+                    std::mem::take(&mut current_head),
+                ) {
+                    worktrees.push(wt);
+                }
             }
             current_path = stripped.to_string();
         } else if let Some(ref_str) = line.strip_prefix("branch ") {
@@ -128,11 +162,9 @@ pub(crate) fn parse_worktree_list(output: &str) -> Vec<Worktree> {
         }
     }
     if !current_path.is_empty() {
-        worktrees.push(Worktree {
-            path: std::path::PathBuf::from(current_path),
-            branch: current_branch,
-            head: current_head,
-        });
+        if let Some(wt) = normalized_worktree(target, &current_path, current_branch, current_head) {
+            worktrees.push(wt);
+        }
     }
     worktrees
 }

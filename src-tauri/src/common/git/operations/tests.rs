@@ -39,6 +39,78 @@ fn resolve_worktree_path_uses_worktree_path_when_provided() {
     let wt = Some("/repo/wt".to_string());
     assert_eq!(resolve_worktree_path(&wt, &wd), "/repo/wt");
 }
+
+// ── parse_worktree_list（清单产出即归一，#1 的回归钉）────────────────────
+
+/// 清单路径会被前端拼成 `RepoKey`，因此必须与 `RepoRef::key()` 同形。
+/// 局部路径（Local）要 canonicalize：`git worktree add` 记录的字符串不保证归一。
+#[test]
+fn parse_worktree_list_normalizes_local_paths_to_repo_ref_form() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let root = tmp.path().join("repo");
+    let wt = tmp.path().join("wt-a");
+    std::fs::create_dir_all(&root).expect("mkdir repo");
+    std::fs::create_dir_all(&wt).expect("mkdir worktree");
+
+    // 尾分隔符 + `.` 成分：同一目录的另一种写法，git 会把原样记进清单
+    let raw = format!("{}/./", wt.to_string_lossy());
+    let output = format!(
+        "worktree {}\nHEAD 1111111111111111111111111111111111111111\nbranch refs/heads/main\n\nworktree {raw}\nHEAD 2222222222222222222222222222222222222222\nbranch refs/heads/dev\n",
+        root.to_string_lossy()
+    );
+
+    let list = parse_worktree_list(&output, &ExecTarget::Local);
+    assert_eq!(list.len(), 2);
+    assert_eq!(list[1].branch, "dev");
+    let identity = crate::common::git::RepoRef::resolve(
+        "p1",
+        &root.to_string_lossy(),
+        Some(&raw),
+        &ExecTarget::Local,
+    )
+    .expect("identity must resolve");
+    assert_eq!(
+        list[1].path.to_string_lossy(),
+        identity.worktree_path().expect("linked unit has a path"),
+        "清单路径与 RepoRef 身份必须同形"
+    );
+    assert_eq!(
+        list[1].path,
+        wt.canonicalize().expect("canonicalize fixture worktree")
+    );
+}
+
+/// 远端（WSL / SSH）路径只能词法归一：绝不能经宿主 `std::path`（Windows 宿主会把
+/// 前导 `/` 变成 `\`），且归一结果必须与 `RepoRef::resolve` 的非 Local 分支一致。
+#[test]
+fn parse_worktree_list_lexically_normalizes_remote_paths() {
+    let remote = ExecTarget::Remote {
+        host: "h".to_string(),
+        port: 22,
+        username: "u".to_string(),
+        auth: crate::common::connection::types::AuthMethod::Password("x".to_string()),
+    };
+    let output = "worktree /srv/app\nHEAD a\nbranch refs/heads/main\n\nworktree /srv/app-wt/./\nHEAD b\nbranch refs/heads/dev\n";
+    let list = parse_worktree_list(output, &remote);
+    assert_eq!(list.len(), 2);
+    assert_eq!(list[1].path.to_string_lossy(), "/srv/app-wt");
+    let identity =
+        crate::common::git::RepoRef::resolve("p1", "/srv/app", Some("/srv/app-wt/./"), &remote)
+            .expect("identity must resolve");
+    assert_eq!(
+        list[1].path.to_string_lossy(),
+        identity.worktree_path().expect("linked unit has a path")
+    );
+}
+
+/// 归一失败的条目不得进清单：宁可缺一项，也不产出第二种身份表示（红线 8）。
+#[test]
+fn parse_worktree_list_drops_unnormalizable_entries() {
+    let output = "worktree /repo\nHEAD a\nbranch refs/heads/main\n\nworktree /repo/../escape\nHEAD b\nbranch refs/heads/dev\n";
+    let list = parse_worktree_list(output, &ExecTarget::Local);
+    assert_eq!(list.len(), 1, "含 `..` 的清单条目必须被丢弃");
+    assert!(list[0].branch == "main");
+}
 use async_trait::async_trait;
 use tempfile::tempdir;
 
@@ -358,6 +430,10 @@ impl GitTransport for UnstageGateTransport {
         None
     }
 
+    fn exec_target(&self) -> ExecTarget {
+        ExecTarget::Local
+    }
+
     async fn is_git_repo(&self, _path: &str) -> bool {
         true
     }
@@ -476,6 +552,10 @@ impl GitTransport for NoHunkShellTransport {
         None
     }
 
+    fn exec_target(&self) -> ExecTarget {
+        ExecTarget::Local
+    }
+
     async fn is_git_repo(&self, _path: &str) -> bool {
         true
     }
@@ -580,6 +660,10 @@ impl GitTransport for DiffTextTransport {
         None
     }
 
+    fn exec_target(&self) -> ExecTarget {
+        ExecTarget::Local
+    }
+
     async fn is_git_repo(&self, _path: &str) -> bool {
         true
     }
@@ -653,18 +737,57 @@ async fn get_commit_file_diff_collapse_false_expands_full_context() {
     );
 }
 
+/// **AC13（远端 status 不被本地判定误杀）**：`status_porcelain` 的「是不是仓库」必须由
+/// transport 决定。旧写法先跑本地 `path.join(".git").exists()`，而 WSL / SSH 的工作树
+/// 在别的机器上 ⇒ 远端单元的 status 一律失败（Changes 面板永远 Loading）。
+#[tokio::test]
+async fn status_porcelain_uses_transport_repo_check_not_local_filesystem() {
+    use crate::common::git::operations::status_porcelain;
+
+    let transport = DiffTextTransport::new(long_context_diff());
+    // 一个本地绝对不存在的路径：只有「按 transport 判定」才可能成功
+    let remote_work_dir = "/definitely-not-a-local-path/remote/proj";
+
+    let (entries, branch) = status_porcelain(&transport, remote_work_dir)
+        .await
+        .expect("远端 work_dir 不得被本地文件系统判定判死");
+    assert!(
+        transport
+            .last_args()
+            .iter()
+            .any(|args| args.contains("status --porcelain")),
+        "必须真的发出 porcelain 命令，got: {:?}",
+        transport.last_args()
+    );
+    let _ = (entries, branch);
+}
+
 // ── 公理2契约：只读查询必须携带 GIT_OPTIONAL_LOCKS=0（不写 .git/index）──
 
-/// 高频只读查询（changed_files / ignored_files / file_diff / staged_diff）
+/// 高频只读查询（status_porcelain / file_diff / staged_diff）
 /// 必须经 `readonly_opts()` 注入 `GIT_OPTIONAL_LOCKS=0`——缺 env 时 git
 /// 可能 stat-refresh 写 index，与 .git 元数据 watcher 形成自反馈回路。
 #[tokio::test]
 async fn readonly_queries_inject_git_optional_locks() {
+    // status 查询前置 `assert_git_repo`，夹具必须是真实仓库（红线 13：tempdir 派生），
+    // 否则它会在校验处提前返回、根本走不到 transport，覆盖被静默削掉。
+    let (_dir, repo_path) = init_repo().await;
     let transport = DiffTextTransport::new(long_context_diff());
 
-    let _ = get_worktree_changed_files(&transport, "/tmp").await;
+    let _ = status_porcelain(&transport, &repo_path)
+        .await
+        .expect("status 查询必须在真实仓库上跑到 transport");
     let _ = get_file_diff(&transport, "/tmp", "a.txt", true).await;
     let _ = get_staged_diff(&transport, "/tmp", 100).await;
+
+    assert!(
+        transport
+            .last_args()
+            .iter()
+            .any(|args| args.contains("status --porcelain")),
+        "status 查询必须真的发出 porcelain 命令，got: {:?}",
+        transport.last_args()
+    );
 
     let envs = transport.last_env();
     assert!(!envs.is_empty(), "只读查询必须携带 env");

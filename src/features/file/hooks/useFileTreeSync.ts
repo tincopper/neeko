@@ -4,8 +4,10 @@ import { useCallback, useEffect, useRef } from 'react';
 import { readDirTree } from '@/features/file/api/fileApi';
 import { useFileStore } from '@/features/file/store';
 import { FILE_TREE_CHANGED_EVENT } from '@/shared/events';
+import { selectActiveWorktreePath, useWorktreeStore } from '@/shared/store/worktreeStore';
 import type { ProjectCommands, ProjectView, FileTreeChangedEvent } from '@/shared/types';
 import { DEFAULT_TREE_DEPTH } from '@/shared/types/file';
+import { repoKeyOf } from '@/shared/utils/repoRef';
 import { safeUnlisten } from '@/shared/utils/safeUnlisten';
 
 export interface UseFileTreeSyncOptions {
@@ -120,9 +122,13 @@ export function useFileTreeSync({
   // 仅本地项目响应此事件（WSL/Remote 不经过本地 notify watcher）
   useEffect(() => {
     const unlistenPromise = listen<FileTreeChangedEvent>(FILE_TREE_CHANGED_EVENT, (event) => {
-      const { project_id, dirs } = event.payload;
+      const { project_id, repo_key, dirs } = event.payload;
       // 只响应当前活动项目的事件 + 仅本地项目（WSL/Remote 不经过本地 notify watcher）
       if (!activeProjectId || project_id !== activeProjectId) return;
+      // 按**仓库单元**定址：树的作用域含工作树根路径，收别的单元的事件会用它
+      // 不相关的目录集合重载当前树（相对路径在两个工作树里同形不同义）。
+      const unitPath = selectActiveWorktreePath(useWorktreeStore.getState(), activeProjectId);
+      if (repo_key !== repoKeyOf(activeProjectId, unitPath)) return;
       if (!project || project.type !== 'Local') return;
       // 移除 isActive 限制：即使文件面板未激活，文件变更仍应触发刷新，
       // 确保用户切换到文件面板时看到的是最新状态。

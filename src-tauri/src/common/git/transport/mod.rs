@@ -189,6 +189,14 @@ pub trait GitTransport: Send + Sync {
     /// Returns None for non-Local transports.
     fn open_repo(&self, path: &str) -> Option<git2::Repository>;
 
+    /// The execution environment this transport targets.
+    ///
+    /// 用于**平台相关的路径归一**：清单里回传的工作树路径会被前端拼成 `RepoKey`，
+    /// 必须与 `RepoRef::key()` 同形 —— Local 需文件系统 `canonicalize()`（符号链接 /
+    /// 尾分隔符 / `.` 折叠），WSL / SSH 只能词法归一（远端 Linux 路径绝不能经宿主
+    /// `std::path`，见 `path_guard::canonicalize_worktree_path`）。
+    fn exec_target(&self) -> ExecTarget;
+
     /// Check if a directory is a git repo.
     async fn is_git_repo(&self, path: &str) -> bool;
 }
@@ -284,6 +292,10 @@ impl GitTransport for ExecTarget {
             ExecTarget::Wsl { .. } => None,
             ExecTarget::Remote { .. } => None,
         }
+    }
+
+    fn exec_target(&self) -> ExecTarget {
+        self.clone()
     }
 
     async fn is_git_repo(&self, path: &str) -> bool {

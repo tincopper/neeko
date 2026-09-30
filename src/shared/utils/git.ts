@@ -1,4 +1,4 @@
-import type { GitInfo, Worktree } from '@/shared/types';
+import type { Worktree } from '@/shared/types';
 
 export function filterWorktreeBranches(branches: string[], worktrees: Worktree[]): string[] {
   const excluded = new Set(worktrees.map((wt) => wt.branch));
@@ -6,30 +6,9 @@ export function filterWorktreeBranches(branches: string[], worktrees: Worktree[]
 }
 
 /**
- * 判断 worktree 是否激活：null / undefined / 空字符串均视为未激活，
- * 与 resolveTabKey 的空串语义保持一致（避免 '' 被误判为激活）。
+ * 判断是否处于 linked worktree 单元：null / undefined / 空字符串 = 主仓单元。
+ * 与 `resolveTabKey` 的空串语义一致（避免 '' 被误判为 worktree）。
  */
 export function isActiveWorktree(path: string | null | undefined): boolean {
   return path !== null && path !== undefined && path !== '';
-}
-
-/**
- * 合并 worktree 场景下写回 projectStore 的 git_info：
- * worktree 激活时保留主分支（local 入口）的 current_branch，
- * 避免 store 中项目的 current_branch 被 worktree 分支名污染。
- * 其余字段（changed_files 等）仍使用 worktree 的最新数据。
- *
- * 注：ignored（忽略列表）已于 S5 退役为后端读层原生标注（FileNode.ignored），
- * 不再经由 GitInfo 传递；此函数仅负责 changed/branch/worktree 字段的合并。
- */
-export function mergeGitInfoForStore(
-  existing: GitInfo | null | undefined,
-  incoming: GitInfo,
-  worktreeActive: boolean,
-): GitInfo {
-  const merged = { ...existing, ...incoming };
-  if (!worktreeActive) return merged;
-  // worktree 激活时保留主分支（local 入口）的 current_branch，
-  // 避免 store 中项目的 current_branch 被 worktree 分支名污染。
-  return { ...merged, current_branch: existing?.current_branch ?? incoming.current_branch };
 }

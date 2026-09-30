@@ -52,11 +52,7 @@ describe('useRemoteProjects', () => {
       remoteAuthStore: new Map(),
       pendingAuthEntry: null,
     });
-    useWorktreeStore.setState({
-      activeWorktreePath: null,
-      openedWorktrees: [],
-      worktreeStateMap: {},
-    });
+    useWorktreeStore.setState({ byProject: {} });
   });
 
   // The old wrapper useRemoteProjects now calls new useConnectionProjects which

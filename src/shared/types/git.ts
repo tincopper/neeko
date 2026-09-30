@@ -46,9 +46,13 @@ export interface GitInfo {
   current_branch: string;
   branches: string[];
   worktrees: Worktree[];
-  changed_files: FileChange[];
-  is_clean: boolean;
   git_provider: string;
+  /**
+   * 注意：**没有** changed_files / is_clean。未提交变更属于「每个工作树」
+   * （HEAD / index / workdir 三者独立），经 `GitStatusSnapshot` 按 `repo_key` 投递，
+   * 存于 `projectStore.statuses`。放进这份 per-project 结构正是 worktree 视图
+   * 串主仓内容的结构成因。
+   */
 }
 
 export interface CommitEntry {
@@ -248,19 +252,28 @@ export interface GitStatusFile {
  * worker 每次实质变化产出完整快照整体替换 —— 前端按 `version` 单调递增门控消费，
  * 乱序/回退覆盖从结构上消除（P1）。entries 直接复用 FileChange（含 is_dir）。
  */
+/**
+ * 一个仓库单元的权威 status（与 Rust `GitStatusSnapshot` 同形，字段名 snake_case）。
+ *
+ * `repo_key` 由后端产出（`RepoRef::key()`），前端只透传 + 作 map 键，
+ * 见 `src/shared/utils/repoRef.ts`。`version` 在该单元内单调递增，**恒 > 0**。
+ */
 export interface GitStatusSnapshot {
+  repo_key: string;
   version: number;
   project_id: string;
+  /** linked worktree 的 canonical 路径；主仓为 null */
+  worktree_path: string | null;
   branch: string;
   entries: FileChange[];
   truncated: boolean;
 }
 
-/** `get_worktree_changed_files` 读接口返回（G2 D2 收编）：`version=0` 表示无
- * versioned 快照语义（WSL/SSH / worktree 兜底），前端只在 version>0 时 gate。 */
-export interface ChangedFilesPayload {
-  files: FileChange[];
-  version: number;
+/** `git-changed` 事件载荷：某单元的 git 元数据（HEAD 等）变了 → 「该重查了」的提示。
+ * 事实本身由 `git-status-snapshot` 携带；旧形态是裸 project_id 字符串（缺单元维度）。 */
+export interface GitChangedEvent {
+  repo_key: string;
+  project_id: string;
 }
 
 export interface GitStatusDiff {

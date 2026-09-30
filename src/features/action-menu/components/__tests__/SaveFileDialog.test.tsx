@@ -8,17 +8,19 @@ import { useProjectStore } from '@/shared/store/projectStore';
 import { useWorktreeStore } from '@/shared/store/worktreeStore';
 import type { FileTabData, Tab } from '@/shared/types';
 import type { Project } from '@/shared/types/project';
+import { repoKeyOf } from '@/shared/utils/repoRef';
 
-const { saveNewFileMock, closeEditorTabMock } = vi.hoisted(() => ({
+const { saveNewFileMock, closeEditorTabMock, refreshRepoStatusMock } = vi.hoisted(() => ({
   saveNewFileMock: vi.fn(),
   closeEditorTabMock: vi.fn(),
+  refreshRepoStatusMock: vi.fn(),
 }));
 
 vi.mock('@/features/file/api/fileApi', () => ({
   readDirTree: vi.fn(() => Promise.resolve([])),
   saveNewFile: saveNewFileMock,
 }));
-vi.mock('@/features/git', () => ({ refreshGitFileStates: vi.fn() }));
+vi.mock('@/features/git/utils/gitStatus', () => ({ refreshRepoStatus: refreshRepoStatusMock }));
 vi.mock('@/features/terminal', () => ({
   // 忠实模拟真实 closeEditorTab（terminalTabCleanup）：PTY 清理 + 从 store 移除 tab。
   // 测试需观察 store 级关闭效果（源 tab 移除 / 目标 id 唯一），纯记录式 mock 不够。
@@ -82,7 +84,7 @@ describe('SaveFileDialog closeAfterSave', () => {
     vi.clearAllMocks();
     useEditorStore.setState({ tabs: {}, editorLayout: {}, activeTabId: null });
     useProjectStore.setState({ activeProject });
-    useWorktreeStore.setState({ activeWorktreePath: null });
+    useWorktreeStore.setState({ byProject: {} });
     saveNewFileMock.mockResolvedValue('notes/Untitled-1.ts');
   });
 
@@ -154,7 +156,7 @@ describe('SaveFileDialog closeAfterSave', () => {
   });
 
   it('worktree 激活：canonical 根对齐 worktree（与 saveNewFile 的 resolve_base 一致）', async () => {
-    useWorktreeStore.setState({ activeWorktreePath: '/wt' });
+    useWorktreeStore.getState().setActiveWorktree('p1', '/wt');
     act(() => {
       useEditorStore.getState().addTab('p1', makeUntitledTab('u1', { untitledName: 'Untitled-1' }));
     });
@@ -166,6 +168,8 @@ describe('SaveFileDialog closeAfterSave', () => {
     await waitFor(() => {
       expect(saveNewFileMock).toHaveBeenCalledWith('p1', '/repo', 'Untitled-1', 'hello', '/wt');
     });
+    // 刷新按**仓库单元**定址（不是「项目 + 现取的全局镜像」）
+    expect(refreshRepoStatusMock).toHaveBeenCalledWith(repoKeyOf('p1', '/wt'));
     expect(
       useEditorStore.getState().tabs['p1']!.tabs.some((t) => t.id === 'p1:/wt/notes/Untitled-1.ts'),
     ).toBe(true);

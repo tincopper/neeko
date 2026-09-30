@@ -12,11 +12,11 @@
  *   请同步调整本文件的注入点，但**不要**删掉调用次数断言。
  * - 一个「批次」= 一条 `file-changed` 事件（后端已做 200ms 滑动 / 1.5s 上限去抖），
  *   载荷里的多条 `paths` 属同一批次。
- * - hook 与项目无关（面板单项目展示），payload 的 `project_id` 不参与判定。
+ * - S1 的**同址判定**参与：事件必须属于本列表所属单元（`repo_key`）。事件路径相对**产出单元**
+ *   的工作树根，`src/a.ts` 在主仓与 linked worktree 里同形不同义，故 `project_id` 不足以定址。
  *
  * S2（快照替换失效）用例见下方第二个 describe：判定落在「`files` 引用被替换」上，**不用**
- * 快照 version —— local 主路径的两条刷新都不推进 version（面板刷新按钮走 `get_git_info`，
- * 不经过 version gate；窗口聚焦走 `versionGateAccepts(..., allowEqual=true)` 同版本放行）。
+ * 快照 version（本列表的两次显式刷新 —— 面板刷新按钮 / 窗口聚焦 —— 都不保证推进 version）。
  * 该判定要求上游 `files` 引用稳定（`useCommitPanelAux` 已 memo），否则会退化成每次
  * render 都重拉 —— 因此**本文件所有用例都必须传稳定引用**（实测：内联数组字面量会 1s 内
  * 触发 26k 次拉取）。
@@ -28,6 +28,10 @@ import { act, renderHook, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { FileChange, FileChangedEvent } from '@/shared/types';
+import { repoKeyOf } from '@/shared/utils/repoRef';
+
+/** 本列表所属的仓库单元（主仓形态）。S1 只接受同址事件，故所有用例都必须显式给出。 */
+const UNIT_KEY = repoKeyOf('p1', null);
 
 type Subscriber = (event: FileChangedEvent) => void;
 
@@ -78,11 +82,11 @@ function collapsedDir(path: string): FileChange {
   };
 }
 
-/** 模拟后端一条 file-changed 批次（含 N 条路径） */
-function emitBurst(paths: string[]) {
+/** 模拟后端一条 file-changed 批次（含 N 条路径）；`repoKey` 缺省为本列表所属单元 */
+function emitBurst(paths: string[], repoKey: string = UNIT_KEY) {
   act(() => {
     for (const callback of [...subscribers]) {
-      callback({ project_id: 'p1', paths });
+      callback({ repo_key: repoKey, project_id: 'p1', paths });
     }
   });
 }
@@ -107,7 +111,7 @@ describe('useUntrackedDirExpansion — AC7 事件风暴的调用次数上界', (
   it('装配自检：hook 必须订阅 file-changed（否则 S1 用例会「假绿」）', async () => {
     const files = [collapsedDir('dir-a')];
     const expand = vi.fn(() => Promise.resolve([]));
-    renderHook(() => useUntrackedDirExpansion(files, expand));
+    renderHook(() => useUntrackedDirExpansion(files, expand, UNIT_KEY));
 
     await waitFor(() => expect(subscribers.size).toBeGreaterThan(0));
   });
@@ -116,7 +120,7 @@ describe('useUntrackedDirExpansion — AC7 事件风暴的调用次数上界', (
     // 引用稳定性是契约：files 每次 render 换引用会被 S2 判为「快照替换」→ 持续重拉
     const files = [collapsedDir('tmp-untracked')];
     const expand = vi.fn(() => Promise.resolve(['tmp-untracked/a.txt']));
-    renderHook(() => useUntrackedDirExpansion(files, expand));
+    renderHook(() => useUntrackedDirExpansion(files, expand, UNIT_KEY));
 
     // 首次展开（缓存为空）→ 1 次
     await waitFor(() => expect(expand).toHaveBeenCalledTimes(1));
@@ -133,7 +137,7 @@ describe('useUntrackedDirExpansion — AC7 事件风暴的调用次数上界', (
   it('AC7-2 同一批次命中 2 个折叠目录 → 每目录各 1 次（总 +2）', async () => {
     const files = [collapsedDir('dir-a'), collapsedDir('dir-b')];
     const expand = vi.fn((dirPath: string) => Promise.resolve([`${dirPath}/a.txt`]));
-    renderHook(() => useUntrackedDirExpansion(files, expand));
+    renderHook(() => useUntrackedDirExpansion(files, expand, UNIT_KEY));
 
     await waitFor(() => expect(expand).toHaveBeenCalledTimes(2));
 
@@ -159,7 +163,7 @@ describe('useUntrackedDirExpansion — AC7 事件风暴的调用次数上界', (
     });
 
     const files = [collapsedDir('dir-a')];
-    renderHook(() => useUntrackedDirExpansion(files, expand));
+    renderHook(() => useUntrackedDirExpansion(files, expand, UNIT_KEY));
     await waitFor(() => expect(expand).toHaveBeenCalledTimes(1));
 
     // 首次拉取未落地时连续 3 个批次命同一目录 → 不得并发 3 次拉取
@@ -182,7 +186,7 @@ describe('useUntrackedDirExpansion — AC7 事件风暴的调用次数上界', (
   it('AC7-4 批次内路径不命中任何折叠目录 → 0 次额外拉取', async () => {
     const files = [collapsedDir('dir-a')];
     const expand = vi.fn(() => Promise.resolve(['dir-a/a.txt']));
-    renderHook(() => useUntrackedDirExpansion(files, expand));
+    renderHook(() => useUntrackedDirExpansion(files, expand, UNIT_KEY));
 
     await waitFor(() => expect(expand).toHaveBeenCalledTimes(1));
 
@@ -191,6 +195,26 @@ describe('useUntrackedDirExpansion — AC7 事件风暴的调用次数上界', (
 
     // 不相关路径不得触发重拉
     expect(expand).toHaveBeenCalledTimes(1);
+  });
+
+  it('别的仓库单元的事件不得驱动本列表重拉（相对路径同形不同义）', async () => {
+    // 载荷基准随身份补齐而改变：watcher 挂在**单元**上，`paths` 相对该单元工作树根。
+    // 主仓与 linked worktree 里 `tmp-untracked/a.txt` 是两个不同文件 ⇒ 不带同址判定就会
+    // 拿别的工作树的变更当成本列表的变更（多一次无害重拉是轻的，按路径取数据时会取错文件）。
+    const files = [collapsedDir('tmp-untracked')];
+    const expand = vi.fn(() => Promise.resolve(['tmp-untracked/a.txt']));
+    renderHook(() => useUntrackedDirExpansion(files, expand, UNIT_KEY));
+
+    await waitFor(() => expect(expand).toHaveBeenCalledTimes(1));
+    await settle();
+
+    emitBurst(['tmp-untracked/foreign.txt'], repoKeyOf('p1', '/repo-wt'));
+    await settle();
+    expect(expand).toHaveBeenCalledTimes(1);
+
+    // 本单元的事件必须仍然生效（否则过滤把通道整体关死了）
+    emitBurst(['tmp-untracked/own.txt']);
+    await waitFor(() => expect(expand).toHaveBeenCalledTimes(2));
   });
 });
 
@@ -211,7 +235,7 @@ describe('useUntrackedDirExpansion — S2 快照替换失效（changed_files 引
   it('S2-1 引用被替换 → 后台重拉；新值落地前旧值保留（SWR，不闪回目录占位）', async () => {
     const expand = vi.fn(async () => ['dir-a/old.txt']);
     const { result, rerender } = renderHook(
-      ({ files }: { files: FileChange[] }) => useUntrackedDirExpansion(files, expand),
+      ({ files }: { files: FileChange[] }) => useUntrackedDirExpansion(files, expand, UNIT_KEY),
       { initialProps: { files: [collapsedDir('dir-a')] } },
     );
 
@@ -243,7 +267,7 @@ describe('useUntrackedDirExpansion — S2 快照替换失效（changed_files 引
     const files = [collapsedDir('dir-a')];
     const expand = vi.fn(async () => ['dir-a/a.txt']);
     const { rerender } = renderHook(
-      ({ f }: { f: FileChange[] }) => useUntrackedDirExpansion(f, expand),
+      ({ f }: { f: FileChange[] }) => useUntrackedDirExpansion(f, expand, UNIT_KEY),
       { initialProps: { f: files } },
     );
 
@@ -258,7 +282,7 @@ describe('useUntrackedDirExpansion — S2 快照替换失效（changed_files 引
   it('S2-3 折叠目录从列表消失 → 缓存键丢弃；再次出现时重新拉取', async () => {
     const expand = vi.fn(async () => ['dir-a/a.txt']);
     const { rerender } = renderHook(
-      ({ f }: { f: FileChange[] }) => useUntrackedDirExpansion(f, expand),
+      ({ f }: { f: FileChange[] }) => useUntrackedDirExpansion(f, expand, UNIT_KEY),
       { initialProps: { f: [collapsedDir('dir-a')] } },
     );
 
@@ -308,7 +332,7 @@ describe('useUntrackedDirExpansion — S3 失败语义（不缓存空列表 + �
     const expand = vi.fn(async () => {
       throw new Error('IPC failed');
     });
-    const { result } = renderHook(() => useUntrackedDirExpansion(files, expand));
+    const { result } = renderHook(() => useUntrackedDirExpansion(files, expand, UNIT_KEY));
 
     await waitFor(() => expect(expand).toHaveBeenCalledTimes(1));
     await settle();
@@ -331,7 +355,7 @@ describe('useUntrackedDirExpansion — S3 失败语义（不缓存空列表 + �
     const expand = vi.fn(async () => {
       throw new Error('boom');
     });
-    renderHook(() => useUntrackedDirExpansion(files, expand));
+    renderHook(() => useUntrackedDirExpansion(files, expand, UNIT_KEY));
 
     await waitFor(() => expect(expand).toHaveBeenCalledTimes(2));
     await settle();

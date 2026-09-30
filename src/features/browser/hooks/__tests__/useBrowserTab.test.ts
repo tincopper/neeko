@@ -6,6 +6,7 @@ import { useBrowserTabsStore } from '@/shared/store/browserTabsStore';
 import { useEditorStore } from '@/shared/store/editorStore';
 import { useProjectStore } from '@/shared/store/projectStore';
 import { armProjectAutoRefresh, disarmProjectAutoRefresh } from '@/shared/utils/browserAutoRefresh';
+import { repoKeyOf } from '@/shared/utils/repoRef';
 
 // 轻量化依赖：terminal 调用 + webview/picker 子 hook 打桩，聚焦 hook 自身逻辑
 vi.mock('@/features/terminal', () => ({
@@ -180,21 +181,26 @@ describe('useBrowserTab — file:// tab 的变更命中判定走身份抽象', (
   const TAB_ID = 'tab_f';
   const TAB_KEY = 'p1';
   const FILE_URL = 'file:///repo/docs/main.html';
+  const MAIN_KEY = repoKeyOf('p1', null);
 
-  function grabFileChangedHandler(): (event: { project_id: string; paths: string[] }) => void {
+  function grabFileChangedHandler(): (event: {
+    repo_key: string;
+    project_id: string;
+    paths: string[];
+  }) => void {
     const calls = vi.mocked(useFileChangedEvent).mock.calls;
     const handler = calls[calls.length - 1]?.[0];
     if (!handler) throw new Error('file-changed handler not registered');
     return handler as never;
   }
 
-  function setup(projectPath: string) {
+  function setup(projectPath: string, fileUrl: string = FILE_URL) {
     useBrowserTabsStore.setState({ states: {} });
     useBrowserTabsStore.getState().setTabState(TAB_ID, {
       label: `neeko-browser-tab-${TAB_ID}`,
-      url: FILE_URL,
+      url: fileUrl,
       isCreated: true,
-      history: { entries: [FILE_URL], index: 0 },
+      history: { entries: [fileUrl], index: 0 },
     });
     useProjectStore.setState({
       activeProjectId: 'p1',
@@ -224,7 +230,7 @@ describe('useBrowserTab — file:// tab 的变更命中判定走身份抽象', (
     const handler = setup('/repo');
 
     act(() => {
-      handler({ project_id: 'p1', paths: ['docs/main.html'] });
+      handler({ repo_key: MAIN_KEY, project_id: 'p1', paths: ['docs/main.html'] });
     });
 
     expect(mockRefresh).toHaveBeenCalledTimes(1);
@@ -234,7 +240,7 @@ describe('useBrowserTab — file:// tab 的变更命中判定走身份抽象', (
     const handler = setup('/repo');
 
     act(() => {
-      handler({ project_id: 'p1', paths: ['/repo/docs/main.html'] });
+      handler({ repo_key: MAIN_KEY, project_id: 'p1', paths: ['/repo/docs/main.html'] });
     });
 
     expect(mockRefresh).toHaveBeenCalledTimes(1);
@@ -244,7 +250,23 @@ describe('useBrowserTab — file:// tab 的变更命中判定走身份抽象', (
     const handler = setup('/repo/');
 
     act(() => {
-      handler({ project_id: 'p1', paths: ['docs//main.html'] });
+      handler({ repo_key: MAIN_KEY, project_id: 'p1', paths: ['docs//main.html'] });
+    });
+
+    expect(mockRefresh).toHaveBeenCalledTimes(1);
+  });
+
+  it('worktree 单元：路径相对**该单元工作树根**（不是项目根）→ 必须命中', () => {
+    // 回归：`paths` 的基准是产出单元的工作树根；用项目根拼会落到主仓的另一个同名文件上
+    // ⇒ tab 不刷新。见任务 09-26 的载荷基准变更。
+    const handler = setup('/repo', 'file:///repo-wt/docs/main.html');
+
+    act(() => {
+      handler({
+        repo_key: repoKeyOf('p1', '/repo-wt'),
+        project_id: 'p1',
+        paths: ['docs/main.html'],
+      });
     });
 
     expect(mockRefresh).toHaveBeenCalledTimes(1);
@@ -254,7 +276,7 @@ describe('useBrowserTab — file:// tab 的变更命中判定走身份抽象', (
     const handler = setup('/repo');
 
     act(() => {
-      handler({ project_id: 'p1', paths: ['docs/other.html'] });
+      handler({ repo_key: MAIN_KEY, project_id: 'p1', paths: ['docs/other.html'] });
     });
 
     expect(mockRefresh).not.toHaveBeenCalled();

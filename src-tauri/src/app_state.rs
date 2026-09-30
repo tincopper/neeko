@@ -7,6 +7,7 @@
 use crate::agent::AgentManager;
 use crate::common::executor::factory::ExecTarget;
 use crate::common::file::watcher::WatcherManager;
+use crate::common::git::RepoRef;
 use crate::common::runtime::AppRuntime;
 use crate::conversation::ConversationManager;
 use crate::library;
@@ -126,6 +127,22 @@ impl AppStateWrapper {
     pub fn resolve_project(&self, project_id: &str) -> Result<(ExecTarget, String), AppError> {
         let (environment, path) = self.project_context(project_id)?;
         Ok((environment.to_exec_target(), path))
+    }
+
+    /// 项目 + worktree 路径 → **仓库单元身份**（[`RepoRef`]）与执行环境。
+    ///
+    /// git 域所有命令的唯一入口解析器：取代旧的 `path_guard::resolve_validated_work_dir`
+    /// （后者校验时 canonicalize、返回时丢弃结果，于是同一工作树可以有多种字符串身份）。
+    /// 校验、归一化与「路径其实等于项目根 → 主仓」的收敛都在 [`RepoRef::resolve`] 内。
+    pub fn resolve_repo(
+        &self,
+        project_id: &str,
+        worktree_path: Option<&str>,
+    ) -> Result<(ExecTarget, crate::common::git::RepoRef), AppError> {
+        let (target, project_root) = self.resolve_project(project_id)?;
+        let repo = RepoRef::resolve(project_id, &project_root, worktree_path, &target)
+            .map_err(AppError::from)?;
+        Ok((target, repo))
     }
 
     /// Resolve a project's execution environment.

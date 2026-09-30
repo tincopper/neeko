@@ -13,7 +13,9 @@ pub async fn checkout_branch(
     let (t, wd) = state.resolve_project(&project_id)?;
     operations::checkout_branch(&t, &wd, &branch_name)
         .await
-        .map_err(AppError::from)
+        .map_err(AppError::from)?;
+    crate::git::services::status::wait_main_status_fresh(&state, &project_id).await;
+    Ok(())
 }
 
 /// Create a new branch.
@@ -55,7 +57,10 @@ pub async fn rename_branch(
     let (t, wd) = state.resolve_project(&project_id)?;
     operations::rename_branch(&t, &wd, &old_name, &new_name)
         .await
-        .map_err(AppError::from)
+        .map_err(AppError::from)?;
+    // 改的正是当前检出分支时，`.git/HEAD` 的目标 ref 变了 ⇒ 快照的 branch 字段跟着变。
+    crate::git::services::status::wait_main_status_fresh(&state, &project_id).await;
+    Ok(())
 }
 
 /// Create and switch to a new branch.
@@ -68,7 +73,10 @@ pub async fn create_and_switch_branch(
     let (t, wd) = state.resolve_project(&project_id)?;
     operations::create_and_switch_branch(&t, &wd, &branch_name)
         .await
-        .map_err(AppError::from)
+        .map_err(AppError::from)?;
+    // 建并切 = HEAD 与工作树都变了，与 checkout_branch 同一收口契约（§10）。
+    crate::git::services::status::wait_main_status_fresh(&state, &project_id).await;
+    Ok(())
 }
 
 /// Checkout a commit in detached HEAD state.
@@ -81,5 +89,7 @@ pub async fn checkout_detached(
     let (t, wd) = state.resolve_project(&project_id)?;
     operations::checkout_detached(&t, &wd, &commit_hash)
         .await
-        .map_err(AppError::from)
+        .map_err(AppError::from)?;
+    crate::git::services::status::wait_main_status_fresh(&state, &project_id).await;
+    Ok(())
 }

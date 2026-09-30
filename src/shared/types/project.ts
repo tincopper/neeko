@@ -9,6 +9,7 @@ import type {
   CommitResult,
   DiffResult,
   GitInfo,
+  GitStatusSnapshot,
   PushOutcome,
   StashActionResult,
   StashEntry,
@@ -104,6 +105,8 @@ export interface ProjectView {
 
 export interface ProjectCommands {
   refreshGitInfo(): Promise<GitInfo>;
+  /** 读取**本命令所属仓库单元**（主仓或该 worktree）的权威 status */
+  refreshRepoStatus(): Promise<GitStatusSnapshot>;
   getAheadBehind(): Promise<AheadBehind>;
   getChangedFilesDiffStats(): Promise<
     Array<{ path: string; additions: number; deletions: number }>

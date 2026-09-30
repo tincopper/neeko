@@ -2,7 +2,7 @@ import { useMemo } from 'react';
 
 import { useAppContext, useEditorContext } from '@/shared/contexts';
 import { useProjectStore } from '@/shared/store/projectStore';
-import { useWorktreeStore } from '@/shared/store/worktreeStore';
+import { useActiveWorktreePath } from '@/shared/store/worktreeStore';
 import type { AuthMethod } from '@/shared/types';
 import { resolveTabKey } from '@/shared/utils/tabKey';
 
@@ -64,7 +64,7 @@ export function useTerminalStrategy(options: UseTerminalStrategyOptions): Termin
   const { config, showToast } = useAppContext();
   const { activeTabId } = useEditorContext();
   const activeProject = useProjectStore((s) => s.activeProject);
-  const activeWorktreePath = useWorktreeStore((s) => s.activeWorktreePath);
+  const activeWorktreePath = useActiveWorktreePath();
   const { paneId, remoteConfig, worktreePathOverride } = options;
 
   return useMemo(() => {

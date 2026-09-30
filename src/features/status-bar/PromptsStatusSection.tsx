@@ -8,7 +8,7 @@ import { MessageSquare } from '@/shared/components/icons';
 import { useAppContext, useTerminalInsert } from '@/shared/contexts';
 import { useEditorStore } from '@/shared/store/editorStore';
 import { useProjectStore } from '@/shared/store/projectStore';
-import { useWorktreeStore } from '@/shared/store/worktreeStore';
+import { selectActiveWorktreePath, useWorktreeStore } from '@/shared/store/worktreeStore';
 import type { PromptResource } from '@/shared/types/library';
 import { resolveTabKey } from '@/shared/utils/tabKey';
 
@@ -51,7 +51,10 @@ function filterPrompts(prompts: PromptResource[], query: string): PromptResource
  */
 function revealTerminalTab(projectId: string): void {
   const editorState = useEditorStore.getState();
-  const tabKey = resolveTabKey(projectId, useWorktreeStore.getState().activeWorktreePath);
+  const tabKey = resolveTabKey(
+    projectId,
+    selectActiveWorktreePath(useWorktreeStore.getState(), projectId),
+  );
   const group = editorState.tabs[tabKey];
   const tabs = group?.tabs ?? [];
   if (tabs.some((t) => t.id === group?.activeTabId && t.data.kind === 'terminal')) return;

@@ -11,7 +11,7 @@ import {
   revealInFileManager,
 } from '@/features/file/api/fileApi';
 import { useFileStore } from '@/features/file/store';
-import { refreshGitFileStates } from '@/features/git';
+import { refreshRepoStatus } from '@/features/git/utils/gitStatus';
 import { useActiveProject } from '@/features/project';
 import { useAppContext } from '@/shared/contexts';
 import { useDockStore } from '@/shared/store/dockStore';
@@ -21,6 +21,7 @@ import {
   openHtmlInBrowserPanel,
   resolveAbsolutePath,
 } from '@/shared/utils/browserUtils';
+import { repoKeyOf } from '@/shared/utils/repoRef';
 import { resolveTabKey } from '@/shared/utils/tabKey';
 
 /**
@@ -39,7 +40,10 @@ const FilesPanelWrapper: React.FC = React.memo(() => {
   const activeFilePath = useFileStore((s) => s.activeFilePath);
   const activeProjectId = useProjectStore((s) => s.activeProjectId);
   const projectPath = fileRootPath;
-  const changedFiles = project?.gitInfo?.changed_files;
+  // 变更条目按**仓库单元**取：文件树在 worktree 视图下渲染的是该单元的工作树，
+  // 用主仓的条目着色会把别的文件标成已修改（同一相对路径在两个工作树里不同义）。
+  const repoKey = project ? repoKeyOf(project.id, worktreePath) : null;
+  const changedFiles = useProjectStore((s) => (repoKey ? s.statuses[repoKey]?.entries : undefined));
   // 定位当前编辑器 file tab 到文件树（复用面板内「点击选中」逻辑）
   const tabKey = project ? resolveTabKey(project.id, worktreePath) : '';
   const { canLocateFile, filePath: locateTargetPath } = useLocateFileInTree(tabKey, fileRootPath);
@@ -116,11 +120,10 @@ const FilesPanelWrapper: React.FC = React.memo(() => {
         await createDirectory(projectId, relPath, fileRootPath ?? null);
       }
       handleRefresh();
-      // watcher 只监听主项目路径，worktree 内新建文件不会自动刷新 git 状态，
-      // 显式刷新 changed_files 使新文件立即着色（Untracked）
-      void refreshGitFileStates(projectId, worktreePath ?? '');
+      // 显式刷新**该单元**的 status，使新文件立即着色（Untracked）
+      if (repoKey) void refreshRepoStatus(repoKey);
     },
-    [projectId, fileRootPath, handleRefresh, worktreePath],
+    [projectId, fileRootPath, handleRefresh, repoKey],
   );
 
   const handleCreateFile = useCallback(
@@ -138,9 +141,9 @@ const FilesPanelWrapper: React.FC = React.memo(() => {
       if (!projectId) return;
       await deletePath(projectId, path, fileRootPath ?? null);
       handleRefresh();
-      void refreshGitFileStates(projectId, worktreePath ?? '');
+      if (repoKey) void refreshRepoStatus(repoKey);
     },
-    [projectId, fileRootPath, handleRefresh, worktreePath],
+    [projectId, fileRootPath, handleRefresh, repoKey],
   );
 
   const handleRenamePath = useCallback(
@@ -148,9 +151,9 @@ const FilesPanelWrapper: React.FC = React.memo(() => {
       if (!projectId) return;
       await renamePath(projectId, path, newName, fileRootPath ?? null);
       handleRefresh();
-      void refreshGitFileStates(projectId, worktreePath ?? '');
+      if (repoKey) void refreshRepoStatus(repoKey);
     },
-    [projectId, fileRootPath, handleRefresh, worktreePath],
+    [projectId, fileRootPath, handleRefresh, repoKey],
   );
 
   return (

@@ -15,7 +15,6 @@ pub use crate::common::git::local::{
 pub use crate::common::git::parsers::*;
 pub use crate::common::git::pr::*;
 pub use crate::common::git::refs::*;
-pub use crate::common::git::remote::*;
 pub use crate::common::git::types::*;
 #[cfg(target_os = "windows")]
 pub use crate::common::git::wsl::*;

@@ -4,7 +4,6 @@ import type { FileNode, FileContent } from '../../file/types';
 import type {
   GitInfo,
   GitBranchInfo,
-  FileChange,
   FileDiffStats,
   DiffResult,
   CommitEntry,
@@ -15,7 +14,7 @@ import type {
   PushOutcome,
   StashActionResult,
   StashEntry,
-  ChangedFilesPayload,
+  GitStatusSnapshot,
 } from '../types';
 export type { PushOutcome };
 
@@ -208,26 +207,47 @@ export function getGitBranchInfo(
   return invoke<GitBranchInfo>('get_git_branch_info', { projectId, worktreePath });
 }
 
-/** G2 收编后命令返回 `{ files, version }`；数组形态 API 保持（调用面不炸） */
-export async function getWorktreeChangedFiles(
+/**
+ * 读取某**仓库单元**的权威 status（主仓与 worktree 同一条路径、同一种载荷）。
+ *
+ * 取代旧的 `get_worktree_changed_files` + `ChangedFilesPayload{version: 0}`：那张无版本
+ * 语义的口子使前端 gate 只能恒放行，pull 结果与 push 快照在同一槽后到者胜（串数据）。
+ * 命令失败 = 该单元状态**未知**，调用方不得把错误当「无变更」。
+ */
+export function getRepoStatus(
   projectId: string,
-  worktreePath: string,
-): Promise<FileChange[]> {
-  const payload = await getWorktreeChangedFilesVersioned(projectId, worktreePath);
-  return payload.files;
+  worktreePath?: string | null,
+): Promise<GitStatusSnapshot> {
+  return invoke<GitStatusSnapshot>('get_repo_status', { projectId, worktreePath });
 }
 
-/** 版本化读（G2 D2/D4）：version>0 = watcher 权威快照，供刷新路径做 version gate */
-export function getWorktreeChangedFilesVersioned(
+/**
+ * 激活一个仓库单元（决策 D-B：后端只挂当前视图所在的那一个单元）。
+ *
+ * 后端会释放该项目下其它单元的挂载、挂载本单元并等待首个快照。
+ * 唯一调用方是 `useActivateRepoUnit`（前端「当前视图」的唯一派生点）。
+ */
+export function setActiveRepoUnit(
   projectId: string,
-  worktreePath: string,
-): Promise<ChangedFilesPayload> {
-  return invoke<ChangedFilesPayload>('get_worktree_changed_files', { projectId, worktreePath });
+  worktreePath?: string | null,
+): Promise<GitStatusSnapshot> {
+  return invoke<GitStatusSnapshot>('set_active_repo_unit', { projectId, worktreePath });
+}
+
+/**
+ * 让后端把一个 worktree 路径归一成 canonical 形态。
+ *
+ * 路径身份的唯一归一点在后端（红线 8/12），前端不得自己 `realpath`/剥尾分隔符。
+ * 用在「从 session 恢复激活单元」：旧 session 里的形态可能与 `git worktree list`
+ * 回传的不是同一个字符串而指的却是同一个目录，不归一就会被存活校验误判为已消失。
+ */
+export function canonicalWorktreePath(projectId: string, path: string): Promise<string> {
+  return invoke<string>('canonical_worktree_path', { projectId, path });
 }
 
 export function getUntrackedFiles(
   projectId: string,
-  worktreePath: string,
+  worktreePath: string | null | undefined,
   dirPath: string,
 ): Promise<string[]> {
   return invoke<string[]>('get_untracked_files', { projectId, worktreePath, dirPath });

@@ -9,20 +9,20 @@ import { bumpGitRefresh } from '@/shared/hooks/useGitRefresh';
 import { useEditorStore } from '@/shared/store/editorStore';
 import { useGitStore } from '@/shared/store/gitStore';
 import { useProjectStore } from '@/shared/store/projectStore';
-import { useWorktreeStore } from '@/shared/store/worktreeStore';
-import type { Project, AgentConfig, Tab, FileChange, Worktree } from '@/shared/types';
-import { aheadBehindKey } from '@/shared/utils/aheadBehindKey';
+import { selectActiveWorktreePath, useWorktreeStore } from '@/shared/store/worktreeStore';
+import type { Project, AgentConfig, Tab, Worktree } from '@/shared/types';
 import { applyStateAction } from '@/shared/utils/entryUpdates';
 import { getMacAppNameByCommand, resolveIdeLaunchCommand } from '@/shared/utils/idePresets';
 import { randomAvatarColor } from '@/shared/utils/projectAvatar';
+import { repoKeyOf } from '@/shared/utils/repoRef';
 import { parseProjectIdFromTabKey } from '@/shared/utils/tabKey';
 
 // eslint-disable-next-line import/no-restricted-paths -- useLocalProjects needs agent API for listing agents
 import { listAgents } from '../../agent/api/agentApi';
 // eslint-disable-next-line import/no-restricted-paths -- useLocalProjects needs git API for branch/worktree info
 import { getGitBranchInfo, getAheadBehind } from '../../git/api/gitApi';
-// eslint-disable-next-line import/no-restricted-paths -- useLocalProjects reuses the gated refresh entry for changed_files
-import { refreshGitFileStates } from '../../git/utils/gitStatus';
+// eslint-disable-next-line import/no-restricted-paths -- useLocalProjects reuses the gated refresh entry for unit status
+import { refreshRepoStatus } from '../../git/utils/gitStatus';
 // eslint-disable-next-line import/no-restricted-paths -- useLocalProjects needs session API for persistence
 import { saveSession } from '../../session/api/sessionApi';
 import {
@@ -38,7 +38,6 @@ export function useLocalProjects() {
   const projects = useProjectStore(useShallow((state) => state.projects));
   const activeProjectId = useProjectStore((state) => state.activeProjectId);
   const activeProject = useProjectStore((state) => state.activeProject);
-  const activeWorktreePath = useWorktreeStore((s) => s.activeWorktreePath);
 
   const setProjects: Dispatch<SetStateAction<Project[]>> = useCallback((updater) => {
     useProjectStore.setState((state) => {
@@ -79,30 +78,10 @@ export function useLocalProjects() {
 
   const loadProjects = useCallback(async () => {
     try {
-      const projectList = await listProjects();
-
-      // 合并逻辑：保�?store 中已有的 git_info.changed_files
-      // list_projects 返回的项�?changed_files 为空（轻量版�?
-      // changed_files �?watcher/handleRefreshGit 维护
-      setProjects((prev) => {
-        const prevMap = new Map(prev.map((p) => [p.id, p]));
-        return projectList.map((newProject) => {
-          const existing = prevMap.get(newProject.id);
-          if (existing?.git_info?.changed_files && existing.git_info.changed_files.length > 0) {
-            // 保留已有�?changed_files
-            return {
-              ...newProject,
-              git_info: newProject.git_info
-                ? {
-                    ...newProject.git_info,
-                    changed_files: existing.git_info.changed_files,
-                  }
-                : existing.git_info,
-            };
-          }
-          return newProject;
-        });
-      });
+      // 直接采用后端返回值：git_info 只含 per-project 元数据（分支 / 工作树清单 /
+      // provider）。旧实现在此「保留已有 changed_files 防止被轻量返回覆盖」——
+      // 那是共享单槽的补丁：它会把上一个单元 / 上一次会话的变更列表永久留在槽里。
+      setProjects(await listProjects());
     } catch (error) {
       console.error('[App] Failed to load projects:', error);
     }
@@ -250,68 +229,67 @@ export function useLocalProjects() {
     [activeProjectId, setActiveProjectId],
   );
 
-  const handleRefreshGit = useCallback(
-    async (projectId: string) => {
-      // 通知 diff 等依赖 Git 状态的缓存失效
-      bumpGitRefresh(projectId);
-      const defaultGitInfo = {
-        current_branch: '',
-        branches: [] as string[],
-        worktrees: [] as Worktree[],
-        changed_files: [] as FileChange[],
-        is_clean: true,
-        git_provider: '',
-      };
+  const handleRefreshGit = useCallback(async (projectId: string) => {
+    // 通知 diff 等依赖 Git 状态的缓存失效
+    bumpGitRefresh(projectId);
+    const defaultGitInfo = {
+      current_branch: '',
+      branches: [] as string[],
+      worktrees: [] as Worktree[],
+      git_provider: '',
+    };
 
-      const updateProjectGitInfo = (patch: Partial<typeof defaultGitInfo>) => {
-        useProjectStore.setState((state) => {
-          const nextProjects = state.projects.map((p) => {
-            if (p.id !== projectId) return p;
-            return { ...p, git_info: { ...(p.git_info ?? defaultGitInfo), ...patch } };
-          });
-          return {
-            projects: nextProjects,
-            activeProject:
-              state.activeProjectId === projectId
-                ? (nextProjects.find((p) => p.id === projectId) ?? state.activeProject)
-                : state.activeProject,
-          };
+    const updateProjectGitInfo = (patch: Partial<typeof defaultGitInfo>) => {
+      useProjectStore.setState((state) => {
+        const nextProjects = state.projects.map((p) => {
+          if (p.id !== projectId) return p;
+          return { ...p, git_info: { ...(p.git_info ?? defaultGitInfo), ...patch } };
         });
-      };
+        return {
+          projects: nextProjects,
+          activeProject:
+            state.activeProjectId === projectId
+              ? (nextProjects.find((p) => p.id === projectId) ?? state.activeProject)
+              : state.activeProject,
+        };
+      });
+    };
 
-      try {
-        // 非 git 项目跳过所有 git 命令
-        const proj = useProjectStore.getState().projects.find((p) => p.id === projectId);
-        if (proj?.git_info === null) return;
+    try {
+      // 非 git 项目跳过所有 git 命令
+      const proj = useProjectStore.getState().projects.find((p) => p.id === projectId);
+      if (proj?.git_info === null) return;
 
-        // changed_files 走唯一权威刷新入口（versioned 读 + version gate + 单一写通道，
-        // G2 D4）：不再绕过 gate 裸写，避免手动刷新响应与更新的快照事件竞态覆盖。
-        await refreshGitFileStates(projectId, activeWorktreePath ?? '');
+      // 刷新目标 = **本项目**当前激活的单元（旧实现读全局镜像的 activeWorktreePath，
+      // 于是刷新 B 项目会用 A 项目的 worktree 路径，结果写进 B 的槽）。
+      const unitPath = selectActiveWorktreePath(useWorktreeStore.getState(), projectId);
+      await refreshRepoStatus(repoKeyOf(projectId, unitPath));
 
-        getGitBranchInfo(projectId, activeWorktreePath)
-          .then((branchInfo) => {
-            updateProjectGitInfo({
-              current_branch: branchInfo.current_branch,
-              branches: branchInfo.branches,
-              worktrees: branchInfo.worktrees,
-            });
-          })
-          .catch((error) => console.error('Failed to refresh git branch info:', error));
+      getGitBranchInfo(projectId, unitPath)
+        .then((branchInfo) => {
+          // 只合并 per-project 元数据（分支清单 / 工作树清单）。
+          // `current_branch` **不在这里写**：它是「某个仓库单元的 HEAD」，唯一写者是
+          // `projectStore.applyStatus` 的主仓单元投影 —— 视图分支由各面板按单元槽位读
+          // （`selectBranch` / GitControlPanelWrapper）。在这里写会拿**激活单元**（可能是
+          // worktree）的分支覆盖项目卡片，随后主仓快照一到又改回去（抖动），
+          // 且与 useSessionBootstrap / PullRequestsPanelWrapper 声明的唯一写者自相矛盾。
+          updateProjectGitInfo({
+            branches: branchInfo.branches,
+            worktrees: branchInfo.worktrees,
+          });
+        })
+        .catch((error) => console.error('Failed to refresh git branch info:', error));
 
-        // 同步 ahead/behind（待 push 数量），与 changed_files 一并刷新
-        getAheadBehind(projectId, activeWorktreePath)
-          .then((ab) => {
-            useGitStore
-              .getState()
-              .setAheadBehind(aheadBehindKey('local', projectId, projectId), ab);
-          })
-          .catch((error) => console.error('Failed to refresh ahead/behind:', error));
-      } catch (error) {
-        console.error('Failed to refresh git info:', error);
-      }
-    },
-    [activeWorktreePath],
-  );
+      // 同步 ahead/behind（待 push 数量），键 = 该项目的激活单元身份
+      getAheadBehind(projectId, unitPath)
+        .then((ab) => {
+          useGitStore.getState().setAheadBehind(repoKeyOf(projectId, unitPath), ab);
+        })
+        .catch((error) => console.error('Failed to refresh ahead/behind:', error));
+    } catch (error) {
+      console.error('Failed to refresh git info:', error);
+    }
+  }, []);
 
   const handleOpenIde = useCallback(
     async (project: { id: string; selected_ide: string | null }) => {

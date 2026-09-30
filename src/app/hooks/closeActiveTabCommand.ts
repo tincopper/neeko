@@ -4,7 +4,7 @@ import {
 } from '@/features/editor/store/closeConfirmStore';
 import { useEditorStore } from '@/shared/store/editorStore';
 import { useProjectStore } from '@/shared/store/projectStore';
-import { useWorktreeStore } from '@/shared/store/worktreeStore';
+import { getActiveWorktreePath } from '@/shared/store/worktreeStore';
 import { resolveTabKey } from '@/shared/utils/tabKey';
 
 /**
@@ -22,7 +22,7 @@ const APP_SETTINGS_PROJECT_ID = '__app__';
 export function resolveCurrentTabKey(): string {
   const projectId = useProjectStore.getState().activeProjectId;
   if (!projectId) return APP_SETTINGS_PROJECT_ID;
-  const worktreePath = useWorktreeStore.getState().activeWorktreePath;
+  const worktreePath = getActiveWorktreePath();
   return resolveTabKey(projectId, worktreePath);
 }
 

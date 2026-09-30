@@ -41,11 +41,10 @@ export function useCrossTypeSelection({
     async (projectId: string) => {
       closeSettingsView();
 
-      // Reset all transient worktree state
-      useWorktreeStore.setState({
-        activeWorktreePath: null,
-        activeWorktreeBranch: '',
-      });
+      // 切换项目类型：清掉各项目的激活单元（后端挂载由 useActiveRepoUnitSync 跟随）
+      for (const pid of Object.keys(useWorktreeStore.getState().byProject)) {
+        useWorktreeStore.getState().clearActiveWorktree(pid);
+      }
       wslActions.setWslDiffState?.(null);
       remoteActions.resetTransientState();
 

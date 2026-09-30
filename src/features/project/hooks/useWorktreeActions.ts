@@ -2,48 +2,45 @@ import { useCallback } from 'react';
 
 import { useEditorStore } from '@/shared/store/editorStore';
 import { useProjectStore } from '@/shared/store/projectStore';
-import { useWorktreeStore } from '@/shared/store/worktreeStore';
+import { selectActiveWorktreePath, useWorktreeStore } from '@/shared/store/worktreeStore';
 import { reportFrontendError } from '@/shared/utils/errorReporting';
 import { isActiveWorktree } from '@/shared/utils/git';
 
 import { loadOnboardingState } from '../api/onboardingApi';
 import { setActiveProject, setViewTerminal } from '../api/projectApi';
 
-import type { WorktreeItem } from './useWorktreeState';
-
 interface UseWorktreeActionsParams {
-  setActiveWorktreePath: (path: string | null) => void;
-  setActiveWorktreeBranch: (branch: string) => void;
-  setOpenedWorktrees: React.Dispatch<React.SetStateAction<WorktreeItem[]>>;
+  /** 激活某仓库单元（`null` = 主仓）。只写激活态，后端挂载由 useActiveRepoUnitSync 跟随。 */
+  activateWorktree: (projectId: string, path: string | null, branch?: string) => void;
+  /** 记入「打开过的工作树」清单。 */
+  markWorktreeOpened: (projectId: string, path: string, branch: string) => void;
   saveWorktreeState: (projectId: string, wtPath: string | null) => void;
 }
 
 export function useWorktreeActions({
-  setActiveWorktreePath,
-  setActiveWorktreeBranch,
-  setOpenedWorktrees,
+  activateWorktree,
+  markWorktreeOpened,
   saveWorktreeState,
 }: UseWorktreeActionsParams) {
-  const activeWorktreePath = useWorktreeStore((s) => s.activeWorktreePath);
   const activeProjectId = useProjectStore((s) => s.activeProjectId);
 
   const handleBackToMainTerminal = useCallback(
     (projectId: string) => {
-      if (isActiveWorktree(activeWorktreePath)) {
-        setActiveWorktreePath(null);
-        setActiveWorktreeBranch('');
+      const path = selectActiveWorktreePath(useWorktreeStore.getState(), projectId);
+      if (isActiveWorktree(path)) {
+        activateWorktree(projectId, null, '');
         saveWorktreeState(projectId, null);
         setViewTerminal(projectId).catch((err) =>
           reportFrontendError('project.setViewTerminal', err),
         );
       }
     },
-    [activeWorktreePath, setActiveWorktreePath, setActiveWorktreeBranch, saveWorktreeState],
+    [activateWorktree, saveWorktreeState],
   );
 
   const handleOpenWorktreeTerminal = useCallback(
     async (projectId: string, worktreePath: string, branch: string) => {
-      // Check if this is the first visit to this worktree
+      // 首次访问该工作树时展示引导页，否则直接进入终端
       const worktreeKey = `${projectId}::${worktreePath}`;
       const onboardingState = await loadOnboardingState(worktreeKey);
       const isFirstVisit = onboardingState === null;
@@ -61,32 +58,21 @@ export function useWorktreeActions({
         setActiveProject(projectId).catch(console.error);
       }
 
-      setActiveWorktreePath(worktreePath);
-      setActiveWorktreeBranch(branch);
-      setOpenedWorktrees((prev) => {
-        if (prev.some((item) => item.path === worktreePath)) {
-          return prev;
-        }
-        return [...prev, { path: worktreePath, branch }];
-      });
+      // mutator 显式收目标项目：上面的 setState 不会让渲染期闭包重新绑定，
+      // 靠闭包里的 activeProjectId 会把激活态写进切换前的旧项目（跨项目串写）。
+      activateWorktree(projectId, worktreePath, branch);
+      markWorktreeOpened(projectId, worktreePath, branch);
       saveWorktreeState(projectId, worktreePath);
 
-      // Only auto-create terminal tab if this is not the first visit
-      // First visit shows the onboarding page instead
       if (!isFirstVisit) {
         setViewTerminal(projectId).catch((err) =>
           reportFrontendError('project.setViewTerminal', err),
         );
       }
     },
-    [
-      activeProjectId,
-      setActiveWorktreePath,
-      setActiveWorktreeBranch,
-      setOpenedWorktrees,
-      saveWorktreeState,
-    ],
+    [activeProjectId, activateWorktree, markWorktreeOpened, saveWorktreeState],
   );
+
   return {
     handleBackToMainTerminal,
     handleOpenWorktreeTerminal,

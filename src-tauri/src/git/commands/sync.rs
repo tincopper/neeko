@@ -1,5 +1,4 @@
 use crate::common::git::operations;
-use crate::common::git::path_guard::resolve_validated_work_dir;
 use crate::common::git::types::PushOutcome;
 use crate::AppError;
 use crate::AppStateWrapper;
@@ -12,8 +11,8 @@ pub async fn fetch(
     worktree_path: Option<String>,
     state: State<'_, AppStateWrapper>,
 ) -> Result<PushOutcome, AppError> {
-    let (t, wd) = state.resolve_project(&project_id)?;
-    let repo_path = resolve_validated_work_dir(&t, &worktree_path, &wd)?;
+    let (t, repo) = state.resolve_repo(&project_id, worktree_path.as_deref())?;
+    let repo_path = repo.work_dir();
     operations::fetch(&t, repo_path)
         .await
         .map_err(AppError::from)
@@ -26,11 +25,14 @@ pub async fn pull(
     worktree_path: Option<String>,
     state: State<'_, AppStateWrapper>,
 ) -> Result<PushOutcome, AppError> {
-    let (t, wd) = state.resolve_project(&project_id)?;
-    let repo_path = resolve_validated_work_dir(&t, &worktree_path, &wd)?;
-    operations::pull(&t, repo_path)
+    let (t, repo) = state.resolve_repo(&project_id, worktree_path.as_deref())?;
+    let repo_path = repo.work_dir();
+    let outcome = operations::pull(&t, repo_path)
         .await
-        .map_err(AppError::from)
+        .map_err(AppError::from)?;
+    // pull 会改写工作树/HEAD ⇒ 被拉取的那个单元必须同步收口。
+    crate::git::services::status::wait_status_fresh(&state, &repo).await;
+    Ok(outcome)
 }
 
 /// Push to remote.
@@ -41,8 +43,8 @@ pub async fn push(
     worktree_path: Option<String>,
     state: State<'_, AppStateWrapper>,
 ) -> Result<PushOutcome, AppError> {
-    let (t, wd) = state.resolve_project(&project_id)?;
-    let repo_path = resolve_validated_work_dir(&t, &worktree_path, &wd)?;
+    let (t, repo) = state.resolve_repo(&project_id, worktree_path.as_deref())?;
+    let repo_path = repo.work_dir();
     operations::push(&t, repo_path, set_upstream.unwrap_or(false))
         .await
         .map_err(AppError::from)
@@ -57,8 +59,8 @@ pub async fn fetch_with_credentials(
     worktree_path: Option<String>,
     state: State<'_, AppStateWrapper>,
 ) -> Result<PushOutcome, AppError> {
-    let (t, wd) = state.resolve_project(&project_id)?;
-    let repo_path = resolve_validated_work_dir(&t, &worktree_path, &wd)?;
+    let (t, repo) = state.resolve_repo(&project_id, worktree_path.as_deref())?;
+    let repo_path = repo.work_dir();
     operations::fetch_with_credentials(&t, repo_path, &username, &password)
         .await
         .map_err(AppError::from)
@@ -73,11 +75,14 @@ pub async fn pull_with_credentials(
     worktree_path: Option<String>,
     state: State<'_, AppStateWrapper>,
 ) -> Result<PushOutcome, AppError> {
-    let (t, wd) = state.resolve_project(&project_id)?;
-    let repo_path = resolve_validated_work_dir(&t, &worktree_path, &wd)?;
-    operations::pull_with_credentials(&t, repo_path, &username, &password)
+    let (t, repo) = state.resolve_repo(&project_id, worktree_path.as_deref())?;
+    let repo_path = repo.work_dir();
+    let outcome = operations::pull_with_credentials(&t, repo_path, &username, &password)
         .await
-        .map_err(AppError::from)
+        .map_err(AppError::from)?;
+    // pull 会改写工作树/HEAD ⇒ 被拉取的那个单元必须同步收口。
+    crate::git::services::status::wait_status_fresh(&state, &repo).await;
+    Ok(outcome)
 }
 
 /// Push to remote with authentication.
@@ -90,8 +95,8 @@ pub async fn push_with_credentials(
     worktree_path: Option<String>,
     state: State<'_, AppStateWrapper>,
 ) -> Result<PushOutcome, AppError> {
-    let (t, wd) = state.resolve_project(&project_id)?;
-    let repo_path = resolve_validated_work_dir(&t, &worktree_path, &wd)?;
+    let (t, repo) = state.resolve_repo(&project_id, worktree_path.as_deref())?;
+    let repo_path = repo.work_dir();
     operations::push_with_credentials(
         &t,
         repo_path,

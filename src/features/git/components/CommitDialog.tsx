@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 
 import { useImeSpaceGuard } from '@/shared/hooks/useImeSpaceGuard';
 import { useProjectStore } from '@/shared/store/projectStore';
-import { useWorktreeStore } from '@/shared/store/worktreeStore';
+import { selectActiveWorktreePath, useWorktreeStore } from '@/shared/store/worktreeStore';
 import type { FileChange } from '@/shared/types';
 import { reportFrontendError } from '@/shared/utils/errorReporting';
 import { withTimeout } from '@/shared/utils/withTimeout';
@@ -15,7 +15,7 @@ import {
   commitFiles,
   push,
   pull,
-  getWorktreeChangedFiles,
+  getRepoStatus,
   getCommitLog,
   type PushOutcome,
 } from '../api/gitApi';
@@ -29,7 +29,7 @@ interface CommitDialogProps {
 
 function CommitDialog({ projectId, onClose, onRefreshGit }: CommitDialogProps) {
   const activeProjectId = useProjectStore((s) => s.activeProjectId);
-  const activeWorktreePath = useWorktreeStore((s) => s.activeWorktreePath);
+  const activeWorktreePath = useWorktreeStore((s) => selectActiveWorktreePath(s, activeProjectId));
   const worktreePath = activeProjectId === projectId ? activeWorktreePath : null;
 
   const [files, setFiles] = useState<FileChange[]>([]);
@@ -49,11 +49,11 @@ function CommitDialog({ projectId, onClose, onRefreshGit }: CommitDialogProps) {
   }, [amend]);
 
   useEffect(() => {
-    getWorktreeChangedFiles(projectId, worktreePath ?? '')
-      .then((result) => {
-        const untracked = result.filter((f) => f.status === 'Untracked');
+    getRepoStatus(projectId, worktreePath)
+      .then((snapshot) => {
+        const untracked = snapshot.entries.filter((f) => f.status === 'Untracked');
         setUntrackedCount(untracked.length);
-        setFiles(result.filter((f) => f.status !== 'Untracked'));
+        setFiles(snapshot.entries.filter((f) => f.status !== 'Untracked'));
       })
       .catch((e) => setError(String(e)))
       .finally(() => setFilesLoading(false));

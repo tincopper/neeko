@@ -138,7 +138,7 @@ describe('PromptsStatusSection', () => {
     resetLibraryState();
     setProject(true);
     setEditorTabs([], null);
-    useWorktreeStore.setState({ activeWorktreePath: null });
+    useWorktreeStore.setState({ byProject: {} });
     hoisted.api.current = {};
     hoisted.toast.mockClear();
   });

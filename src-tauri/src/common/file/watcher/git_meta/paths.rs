@@ -1,11 +1,15 @@
-//! git 元数据监听路径解析：HEAD / index / git_dir / worktrees 定位。
+//! git 元数据监听路径解析：单个仓库单元的 HEAD / index / git_dir 定位。
 //!
-//! 独立监听 `.git` 目录（非递归），绕过 git 忽略过滤（该过滤会丢弃 .git 内事件）：
+//! 独立监听该单元的 git 目录（非递归），绕过 git 忽略过滤（该过滤会丢弃 .git 内事件）：
 //! - HEAD：分支切换（checkout 改写 HEAD）；
-//! - index：git add / rm --cached / reset / commit 等只改 `.git/index`、不触碰
-//!   工作区文件的操作——主 watcher 无法感知，若不监听，ignored_files（文件树
-//!   .gitignore 灰色）与 staged 状态会残留旧值；
-//! - `.git/worktrees`：linked worktree 内 checkout 改写该目录下 HEAD。
+//! - index：`git add` / `git rm --cached` / `git reset` / `git commit` 等只改
+//!   `.git/index`、不触碰工作区文件的操作 —— 主 watcher 无法感知，若不监听，
+//!   ignored_files（文件树 .gitignore 灰色）与 staged 状态会残留旧值。
+//!
+//! **每个单元只看自己的 git 目录**：linked worktree 的 HEAD/index 位于其私有 gitdir
+//! （`<common>/.git/worktrees/<name>/`），由该单元自己的这条 watcher 负责；别的工作树的
+//! 元数据与本题无关（旧实现在主仓 watcher 里递归监听 `.git/worktrees/**` 与其他工作树的
+//! 工作目录，那是「worktree 没有自己的资源」这一前提的补丁，前提已随身份补全而消失）。
 
 use std::path::{Path, PathBuf};
 
@@ -33,21 +37,14 @@ pub(super) fn resolve_git_head_path(repo_path: &Path) -> Option<PathBuf> {
 }
 
 /// Git 元数据监听路径解析结果。
-///
-/// `index` 是本次修复的核心：`git add` / `git rm --cached` / `git reset` /
-/// `git commit` 等只改写 `.git/index`、不触碰工作区文件的操作，主 watcher
-/// 完全无法感知，导致 `ignored_files`（文件树 .gitignore 灰色）与 staged 状态
-/// 残留旧值。git 元数据 watcher 单独监听 `git_dir` 以捕获这些事件。
 #[derive(Debug, Clone)]
 pub(in crate::common::file::watcher) struct GitMetaPaths {
     /// HEAD 文件绝对路径（分支切换检测）
     pub(super) head: PathBuf,
     /// index 文件绝对路径（暂存 / 取消暂存检测）
     pub(super) index: PathBuf,
-    /// HEAD 所在目录（普通仓库为 `<repo>/.git`，linked worktree 为其 gitdir）
+    /// 该单元的 git 目录（HEAD 所在目录：普通仓库为 `<repo>/.git`，linked worktree 为其 gitdir）
     pub(super) git_dir: PathBuf,
-    /// 是否存在 linked worktree（决定是否递归监听 `.git/worktrees`）
-    pub(super) has_worktrees: bool,
 }
 
 /// 解析 git 元数据监听所需路径。非 git 目录返回 `None`。
@@ -61,52 +58,16 @@ pub(in crate::common::file::watcher) fn resolve_git_meta_paths(
     repo_path: &Path,
 ) -> Option<GitMetaPaths> {
     let head = resolve_git_head_path(repo_path)?;
-    let parent = head.parent()?;
-    let git_dir = parent
-        .canonicalize()
-        .unwrap_or_else(|_| parent.to_path_buf());
+    // 先取 parent（`?` 已保证存在），再在它上面 canonicalize —— 失败就退回未归一的同一路径，
+    // 不用 `expect`：本函数属于挂载路径，任何 panic 都会变成整个应用的 abort。
+    let git_dir_parent = head.parent()?.to_path_buf();
+    let git_dir = git_dir_parent.canonicalize().unwrap_or(git_dir_parent);
     // head/index 一律从归一化后的 git_dir 派生，与 notify realpath 事件对齐
     let head = git_dir.join("HEAD");
     let index = git_dir.join("index");
-    let has_worktrees = git_dir.join("worktrees").is_dir();
     Some(GitMetaPaths {
         head,
         index,
         git_dir,
-        has_worktrees,
     })
-}
-
-/// 解析 linked worktree 的工作目录绝对路径列表。
-///
-/// git 在 `.git/worktrees/<name>/gitdir` 文件中写入**裸绝对路径**，指向该 worktree
-/// 工作目录内的 `.git` 文件（如 `/workspace/wt-dev/.git`，无 `gitdir: ` 前缀——
-/// 前缀格式属于 worktree 侧的 `.git` 文件，此处防御性兼容）。指向的是 `.git`
-/// 文件而非工作目录本身，须剥掉末尾 `.git` 分量才得到监听根。
-/// 用于对 worktree 工作目录补挂递归监听（G3，P4：worktree 内文件编辑即时感知）。
-pub(super) fn resolve_worktree_roots(git_dir: &Path) -> Vec<PathBuf> {
-    let wts = git_dir.join("worktrees");
-    let Ok(entries) = std::fs::read_dir(&wts) else {
-        return Vec::new();
-    };
-    entries
-        .filter_map(Result::ok)
-        .filter_map(|e| {
-            let gitdir_file = e.path().join("gitdir");
-            let content = std::fs::read_to_string(gitdir_file).ok()?;
-            let line = content.lines().map(str::trim).find(|l| !l.is_empty())?;
-            let raw = line.strip_prefix("gitdir:").map(str::trim).unwrap_or(line);
-            let git_file = PathBuf::from(raw);
-            let root = if git_file.file_name() == Some(std::ffi::OsStr::new(".git")) {
-                git_file.parent()?.to_path_buf()
-            } else {
-                git_file
-            };
-            if root.as_os_str().is_empty() {
-                return None;
-            }
-            // 归一化：与 notify realpath 事件对齐（macOS /var → /private/var）
-            Some(root.canonicalize().unwrap_or(root))
-        })
-        .collect()
 }

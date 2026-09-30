@@ -5,6 +5,7 @@ import type { ProjectCommands } from '@/shared/types/activeProject';
 import { DEFAULT_TREE_DEPTH, type FileNode, type FileContent } from '@/shared/types/file';
 import type {
   GitInfo,
+  GitStatusSnapshot,
   AheadBehind,
   CommitEntry,
   CommitDetail,
@@ -23,6 +24,9 @@ export function createProjectCommands(
   return {
     refreshGitInfo(): Promise<GitInfo> {
       return invoke<GitInfo>('get_git_info', { projectId, worktreePath });
+    },
+    refreshRepoStatus(): Promise<GitStatusSnapshot> {
+      return invoke<GitStatusSnapshot>('get_repo_status', { projectId, worktreePath });
     },
     getAheadBehind(): Promise<AheadBehind> {
       return invoke<AheadBehind>('get_ahead_behind', { projectId, worktreePath });
@@ -45,11 +49,7 @@ export function createProjectCommands(
     },
 
     listUntrackedFiles(dirPath: string): Promise<string[]> {
-      return invoke<string[]>('get_untracked_files', {
-        projectId,
-        worktreePath: worktreePath ?? '',
-        dirPath,
-      });
+      return invoke<string[]>('get_untracked_files', { projectId, worktreePath, dirPath });
     },
 
     stageFiles(filePaths: string[]): Promise<void> {

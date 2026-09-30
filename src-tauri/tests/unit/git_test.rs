@@ -4,7 +4,7 @@ use neeko_lib::common::git::operations;
 use neeko_lib::common::git::refs::RefKind;
 use neeko_lib::common::git::types::DiffLine;
 use neeko_lib::git;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use tempfile::TempDir;
 
 use super::support;
@@ -119,42 +119,73 @@ fn is_git_repo_returns_false_for_plain_dir() {
     assert!(!git::is_git_repo(tmp.path()));
 }
 
-// --- get_git_info ---
+// --- get_git_info / status ---
 
-#[test]
-fn get_git_info_on_clean_repo() {
+/// `GitInfo` 只承载 per-project 元数据（分支 / 工作树 / provider）；
+/// 「工作树是否 clean、改了哪些文件」是 **per-unit** 事实，唯一生产者 =
+/// `operations::status_porcelain`（G2 单一权威化 + 引擎收口）。
+/// 因此本用例把旧 `info.is_clean` / `info.changed_files` 两条断言拆到 status 上，
+/// 事实本身没有变弱。
+#[tokio::test]
+async fn get_git_info_on_clean_repo() {
     let (tmp, _repo) = create_test_repo();
-    let info = git::get_git_info(tmp.path()).unwrap();
+    let path = tmp.path().to_string_lossy().to_string();
+    let transport = ExecTarget::Local;
 
-    assert!(info.is_clean);
-    assert!(info.changed_files.is_empty());
+    let info = operations::get_git_info(&transport, &path).await.unwrap();
     assert!(!info.current_branch.is_empty());
+
+    let (changed, branch) = operations::status_porcelain(&transport, &path)
+        .await
+        .expect("clean 仓库的 status 查询必须成功");
+    assert!(
+        changed.is_empty(),
+        "clean 工作树不得有任何变更条目（旧 is_clean 等价断言）"
+    );
+    assert_eq!(
+        branch, info.current_branch,
+        "status 与元数据必须报同一个分支（同一工作树不允许两种身份）"
+    );
 }
 
-#[test]
-fn get_git_info_detects_modified_file() {
+#[tokio::test]
+async fn status_detects_modified_file() {
     let (tmp, _repo) = create_test_repo();
+    let path = tmp.path().to_string_lossy().to_string();
     std::fs::write(tmp.path().join("README.md"), "# Modified\n").unwrap();
 
-    let info = git::get_git_info(tmp.path()).unwrap();
-    assert!(!info.is_clean);
-    assert!(info
-        .changed_files
-        .iter()
-        .any(|f| f.path == PathBuf::from("README.md")));
+    let transport = ExecTarget::Local;
+    let (changed, _branch) = operations::status_porcelain(&transport, &path)
+        .await
+        .expect("status 查询必须成功");
+    assert!(
+        !changed.is_empty(),
+        "有工作区修改时不得判定为 clean（旧 is_clean 断言）"
+    );
+    assert!(
+        changed.iter().any(|f| f.path == Path::new("README.md")),
+        "变更列表必须包含 README.md"
+    );
 }
 
-#[test]
-fn get_git_info_detects_added_file() {
+#[tokio::test]
+async fn status_detects_added_file() {
     let (tmp, _repo) = create_test_repo();
+    let path = tmp.path().to_string_lossy().to_string();
     std::fs::write(tmp.path().join("new_file.txt"), "new content\n").unwrap();
 
-    let info = git::get_git_info(tmp.path()).unwrap();
-    assert!(!info.is_clean);
-    assert!(info
-        .changed_files
-        .iter()
-        .any(|f| f.path == PathBuf::from("new_file.txt")));
+    let transport = ExecTarget::Local;
+    let (changed, _branch) = operations::status_porcelain(&transport, &path)
+        .await
+        .expect("status 查询必须成功");
+    assert!(
+        !changed.is_empty(),
+        "新增未跟踪文件时不得判定为 clean（旧 is_clean 断言）"
+    );
+    assert!(
+        changed.iter().any(|f| f.path == Path::new("new_file.txt")),
+        "变更列表必须包含 new_file.txt"
+    );
 }
 
 // --- get_file_diff ---
@@ -509,13 +540,17 @@ async fn stash_apply_restores_changes_keeps_entry() {
     // 语义层断言：apply 后 stash 中的变更恢复到工作区。
     // 1) git 归一化视图（status）为 oracle：README.md 相对 HEAD 应为修改状态。
     //    status 基于归一化 blob 比较，行尾无关，不受平台 autocrlf 影响；
-    //    必须用 async 版本（operations::get_git_info），同步版走同步桥，禁止在 #[tokio::test] 调用。
-    let info = operations::get_git_info(&transport, &path).await.unwrap();
-    assert!(!info.is_clean, "apply 后工作区应非 clean");
+    //    status 是 per-unit 事实，唯一生产者 = operations::status_porcelain（旧
+    //    GitInfo.is_clean / changed_files 已退役）。
+    let (changed, _branch) = operations::status_porcelain(&transport, &path)
+        .await
+        .expect("apply 后 status 查询必须成功");
     assert!(
-        info.changed_files
-            .iter()
-            .any(|f| f.path == PathBuf::from("README.md")),
+        !changed.is_empty(),
+        "apply 后工作区应非 clean（旧 is_clean 断言）"
+    );
+    assert!(
+        changed.iter().any(|f| f.path == Path::new("README.md")),
         "apply 后 README.md 应处于修改状态"
     );
     // 2) 工作区字节做行尾无关比较：git smudge 可能把 LF 转成平台 CRLF，
@@ -678,11 +713,11 @@ async fn get_ahead_behind_rejects_non_git_repo() {
 }
 
 #[tokio::test]
-async fn get_worktree_changed_files_rejects_non_git_repo() {
+async fn status_porcelain_rejects_non_git_repo() {
     let tmp = create_plain_dir();
     let path = tmp.path().to_string_lossy().to_string();
     let transport = ExecTarget::Local;
-    let err = operations::get_worktree_changed_files(&transport, &path)
+    let err = operations::status_porcelain(&transport, &path)
         .await
         .unwrap_err();
     assert!(

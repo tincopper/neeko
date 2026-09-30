@@ -11,7 +11,7 @@ import { create } from 'zustand';
 
 import { useEditorStore } from '@/shared/store/editorStore';
 import { useProjectStore } from '@/shared/store/projectStore';
-import { useWorktreeStore } from '@/shared/store/worktreeStore';
+import { selectActiveWorktreePath, useWorktreeStore } from '@/shared/store/worktreeStore';
 import { resolveTabKey } from '@/shared/utils/tabKey';
 
 import { useMruTabsStore } from './mruTabsStore';
@@ -35,7 +35,7 @@ interface TabCycleState {
 }
 
 function currentTabKey(projectId: string): string {
-  const wt = useWorktreeStore.getState().activeWorktreePath;
+  const wt = selectActiveWorktreePath(useWorktreeStore.getState(), projectId);
   return resolveTabKey(projectId, wt);
 }
 

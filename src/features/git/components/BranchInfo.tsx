@@ -11,7 +11,7 @@ import {
   CloudDownload,
 } from '@/shared/components/icons';
 import { useGitStore } from '@/shared/store/gitStore';
-import { useWorktreeStore } from '@/shared/store/worktreeStore';
+import { useActiveWorktreePath, useActiveWorktreeBranch } from '@/shared/store/worktreeStore';
 import type { GitInfo, AheadBehind } from '@/shared/types';
 import { filterWorktreeBranches, isActiveWorktree } from '@/shared/utils';
 
@@ -51,8 +51,8 @@ const BranchInfo: React.FC<BranchInfoProps> = ({
   const toggleFavorite = useGitStore((s) => s.toggleFavorite);
 
   // Worktree 绑定独立分支，不允许在 changes 面板切换分支（与 BranchStatusBarWidget 一致）
-  const activeWorktreePath = useWorktreeStore((s) => s.activeWorktreePath);
-  const activeWorktreeBranch = useWorktreeStore((s) => s.activeWorktreeBranch);
+  const activeWorktreePath = useActiveWorktreePath();
+  const activeWorktreeBranch = useActiveWorktreeBranch();
   const isWorktreeActive = isActiveWorktree(activeWorktreePath);
 
   const handleToggleBranchDropdown = useCallback(() => {

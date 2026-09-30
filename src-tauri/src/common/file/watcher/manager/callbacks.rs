@@ -8,6 +8,7 @@ use super::super::registration::WatchMaintenance;
 use super::super::sink::{WatcherEvent, WatcherEventSink};
 use super::super::types::FileTreeChangedEvent;
 use super::classify::{relevant_event_paths, structure_event_paths};
+use crate::common::git::RepoRef;
 use notify::event::ModifyKind;
 use notify::{Event, EventKind};
 use std::path::PathBuf;
@@ -24,7 +25,7 @@ use std::sync::{mpsc, Arc};
 ///   投递 tree-debounce（父目录集合聚合后定向刷新）+ 注册维护。
 #[allow(clippy::too_many_arguments)]
 pub(super) fn build_notify_callback(
-    pid_log: String,
+    repo: RepoRef,
     sink: Arc<dyn WatcherEventSink>,
     gitignore_filter_for_notify: Option<Arc<GitIgnoreFilter>>,
     maintenance_tx_for_closure: mpsc::Sender<WatchMaintenance>,
@@ -33,6 +34,8 @@ pub(super) fn build_notify_callback(
     scheduler_tx: Option<mpsc::Sender<()>>,
     git_repo: bool,
 ) -> impl FnMut(Result<Event, notify::Error>) + Send + 'static {
+    let pid_log = repo.key();
+    let project_id = repo.project_id().to_string();
     move |result: Result<Event, notify::Error>| {
         let event = match result {
             Ok(ev) => ev,
@@ -42,7 +45,8 @@ pub(super) fn build_notify_callback(
                 // 无法保证目录缓存一致 —— 发送空 dirs 的 tree-changed，
                 // 通知前端退回全树刷新（orca 同款 overflow→full refresh 语义）。
                 sink.emit(WatcherEvent::TreeChanged(&FileTreeChangedEvent {
-                    project_id: pid_log.clone(),
+                    repo_key: pid_log.clone(),
+                    project_id: project_id.clone(),
                     dirs: Vec::new(),
                 }));
                 return;
@@ -57,7 +61,7 @@ pub(super) fn build_notify_callback(
             });
             if rules_changed {
                 filter.reload();
-                crate::common::file::services::invalidate_remote_ignored_cache(&pid_log);
+                crate::common::file::services::invalidate_remote_ignored_cache(&project_id);
                 // S2：规则变化 → 注册层全量重算（独立线程执行，回调不 watch）
                 let _ = maintenance_tx_for_closure.send(WatchMaintenance::ReloadAll);
             }

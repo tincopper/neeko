@@ -14,10 +14,11 @@ import { useTauriEvent } from '@/shared/hooks/useTauriEvent';
 import { useProjectBrowserStore, type BrowserPanelState } from '@/shared/store/browserStore';
 import { useEditorStore } from '@/shared/store/editorStore';
 import { useProjectStore } from '@/shared/store/projectStore';
-import type { FileChangedEvent } from '@/shared/types';
+import type { FileChangedEvent, GitChangedEvent } from '@/shared/types';
 import { fileUrlToFilePath } from '@/shared/utils/browserUtils';
 import { pathsContainFile } from '@/shared/utils/fileRef';
 import { recordNavigation } from '@/shared/utils/historyStack';
+import { unitWorkDir } from '@/shared/utils/repoRef';
 
 import { browserNavigate } from '../api/browserApi';
 import { isAgentCliTab, formatPickerMessage, type PickerElement } from '../components/pickerUtils';
@@ -171,13 +172,17 @@ export function useBrowserPanelEvents({
   );
 
   // Listen: git-changed — auto-refresh browser when armed
-  useTauriEvent<string>(
+  //
+  // 载荷自仓库单元身份补齐起是 `{ repo_key, project_id }`（不再是裸 project_id 字符串）。
+  // 这里按**项目**维度匹配：面板状态本就是 per-project（`useProjectBrowserStore`），
+  // 单元维度在此不参与判定 —— 与改造前的语义一致。
+  useTauriEvent<GitChangedEvent>(
     GIT_CHANGED_EVENT,
     useCallback(
       (payload) => {
         if (pendingRefreshTimerRef.current === null) return;
         const currentProjectId = useProjectStore.getState().activeProjectId;
-        if (payload !== currentProjectId) return;
+        if (payload.project_id !== currentProjectId) return;
         void refreshRef.current?.();
       },
       [pendingRefreshTimerRef, refreshRef],
@@ -199,10 +204,16 @@ export function useBrowserPanelEvents({
     const project = state.projects.find((p) => p.id === project_id);
     if (!project) return;
 
-    // 同文件判定收敛到**身份所有者**（`pathsContainFile`）：原实现拼接 `projectRoot + '/' + rel`，
-    // 在事件回退为绝对路径（watcher strip_prefix 失败）或项目根带尾斜杠时漏配
-    // —— 后果是「面板不刷新 → 显示过期内容」。
-    const matched = pathsContainFile(project.path, paths, browserFilePath);
+    // 同文件判定收敛到**身份所有者**（`pathsContainFile`），且基准按事件自带的**单元身份**取：
+    // watcher 挂在仓库单元上，`paths` 相对该单元工作树根 —— 用项目根拼 worktree 相对路径
+    // 会落到主仓的另一个同名文件上，恒漏配。原实现自拼 `projectRoot + '/' + rel`，
+    // 在事件回退为绝对路径（watcher strip_prefix 失败）或项目根带尾斜杠时同样漏配
+    // —— 后果都是「面板不刷新 → 显示过期内容」。
+    const matched = pathsContainFile(
+      unitWorkDir(event.repo_key, project.path),
+      paths,
+      browserFilePath,
+    );
 
     if (matched) {
       void refreshRef.current?.();
