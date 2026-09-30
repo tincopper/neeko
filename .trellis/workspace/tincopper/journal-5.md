@@ -869,3 +869,103 @@ implement.md Step 0–8 全部勾选；PRD 的 AC1–AC12 已打勾（AC4/AC6/AC
 - **既存 U+FFFD 乱码**：`HtmlPreview.tsx`(9) / `useFileView.ts`(6) / `ProjectGitSection.tsx`(8) 待单独一轮核对原文
 - `useDiffData` 跨单元幂等重取（无害，可选收口）
 - 用户提交这批改动（AI 不代提交）
+
+
+## Session 242: 挂载收敛判据拆分：修 pull 槽位误判与 already-watched 告警，判据/机制分层落文档
+
+**Date**: 2026-09-30
+**Task**: 挂载收敛判据拆分：修 pull 槽位误判与 already-watched 告警，判据/机制分层落文档
+**Branch**: `main`
+
+### Summary
+
+一笔收口：把 useActiveRepoUnitSync 压成一个 hasSnapshot 的判断拆成两个判据（请求挂载按意图边沿、是否重试才按槽位为空），修掉「pull 读预填槽位被当成后端已挂载」导致切项目/冷启动不挂载、以及「失败后改 ref 不重跑 effect」导致永久 Loading changes 两条同源症状；同时把 mount_only 的幂等性提到资源所有者层（回正 already watched 告警语义）、新增 repoKeyLabel 修掉 RepoKey 入日志带 NUL 的问题、删掉仅供测试的 peek；spec 规则 6/8 按「判据留、机制让位」重写。门禁：cargo fmt/clippy 通过、cargo test --lib 1367 passed、pnpm lint:fe 4383 passed、guards 7/7 零违规；代码未提交。
+
+### Main Changes
+
+### A. 根因（第一性原理）
+
+前端**没有**「后端此刻挂着哪个单元」的可观测面，唯一合法的替代证据是**自己的请求历史**。而
+`useActiveRepoUnitSync` 把「槽位非空」当成了「后端已挂载」。槽位是**数据面** ——
+`useSessionBootstrap` 启动时对每个 git 项目的主仓单元各做一次 pull 读并写槽位，而 pull 不建立
+push 生产者。两个判据（*要不要请求挂载* / *要不要重试*）被压成一个 `hasSnapshot`，于是两类症状同源：
+
+1. **该挂载时不挂载**：冷启动竞态与「切到该项目」都会跳过 `set_active_repo_unit` ⇒ 该单元没有
+   watcher，Changes 冻结在那一刻（文件树着色、侧栏徽标一并静止）—— 正是本任务系列要根治的形态；
+2. **该重试时不重试**：「失败后只把一个 ref 置回 null」，而 ref 不参与渲染 ⇒ 没有任何东西会再
+   发起一次，永久停在 `Loading changes…`。
+
+### B. 代码
+
+- `app/hooks/useActiveRepoUnitSync.ts`：判据拆分 —— *请求挂载*按**意图边沿**（`requestedIntent`），
+  *是否重试*才按槽位为空；重试驱动由 `then` 改为 `finally`（一轮的结束与结局无关，不建立在
+  「callee 永不 reject」这条只写在注释里的契约上；万一契约被改坏，rejection 仍经全局
+  `unhandledrejection` 进 `neeko.log`，不会被吞）；预算耗尽时只上报一次 `logFrontendError`（不弹
+  toast）。docstring 写明**所依赖的前提**（后端释放当前单元必须在前端可观察：换意图或作废槽位，
+  否则要给后端可查询的挂载状态，而不是再加前端启发式）与实例级记账带来的幂等重挂载下界。
+- `shared/store/worktreeStore.ts`：新增 `useActiveRepoKey(projectId)`（复用 `selectActiveRepoKey`），
+  消除 hook 里手写 `repoKeyOf(activeProjectId ?? '', …)` 这**第二处**身份派生 —— 且无项目时会产出
+  `'\u0000'` 这种谁也匹配不上的键。
+- `shared/utils/repoRef.ts`：新增 `repoKeyLabel`（`p1 (main)` / `p1 → /wt/a`），形态刻意与 key 不像
+  （护栏只拦 `:` / `|` 形态的手拼 key，对展示形态没有约束力，防误用只能靠形态自证 + 文档禁令）。
+  修掉 `String(RepoKey)` 入日志把 NUL 分隔符带进日志文件的问题（实测一次失败日志就让 vitest 输出被
+  `file(1)` 判成 `data`）；3 个站点复用：`useActivateRepoUnit` / `gitStatus` / 本 hook 的放弃上报。
+- `common/file/watcher/manager/core.rs`：`mount_only` **自身幂等**（已挂载则不转调 `watch`）。
+  重申挂载（前端重试、激活态被改写成 canonical 形态后的一次重发）是合法路径，不该命中 `watch` 的
+  「重复注册」告警分支 —— 那条 WARN 的语义是「有人绕过了唯一挂载入口」，AC12 的现场核对正以
+  「0 条 already watched」为证据，被合法路径触发等于把告警作废。
+- `shared/utils/retryBudget.ts`：删除仅供测试观测的 `peek()`；契约文档写清 `acquire` / `release`
+  的非对称语义（后者只用于「已收敛」或「请求根本没发出去」）。
+- `.trellis/spec/frontend/state-management.md`：规则 6 改为「请求挂载 / 重试」两条判据 + 各自的
+  **禁止形态**，机制叙事让位给 hook docstring（本规则只留判据与禁令），保留墙钟上界（约 8s）与
+  耗尽后的恢复条件；规则 8 补上 `useActiveRepoKey` 这第三种合法派生形态。
+
+### C. 测试（先红后绿）
+
+- 新回归用例 2 条，对改前版本**红**（`expected +0 to be 1`）：① 槽位已被 pull 预填时仍必须请求挂载；
+  ② 切到「主仓槽位已被 pull 预填」的项目必须为新单元挂载。
+- 新增：退避窗内快照到达 ⇒ 取消本轮重试、耗尽后 `≤ maxAttempts` 且槽位保持「未知」+ 放弃上报恰好
+  一次且不含 NUL、意图变化 ⇒ 预算归零、非 git 项目零命令、`mount_only` 重申是空操作（Rust）、
+  `useActiveRepoKey`（store）、`repoKeyLabel`（纯函数）。
+- 夹具改为小步推进虚拟时钟，不再把断言钉死在策略的具体毫秒值上。
+
+### D. 门禁
+
+`cargo fmt --check` / `cargo clippy -D warnings` 通过；`cargo test --lib` **1367 passed / 0 failed**；
+`pnpm lint:fe` **490 files / 4383 passed**（Type Errors 无）；`tools/guards run` **7/7 通过 / 0 违规**。
+
+### E. 状态与遗留
+
+- 代码已按三条提交落地（拆分即下方建议）：`b5a2db18` 前端判据拆分 + 身份派生 + 日志 → `1de42d36`
+  `mount_only` 幂等（含 Rust 测试）→ `e2d8ab9c` spec 规则 6/8 订正；本条会话记录另以
+  `chore: record journal` 提交。三条提交的 pre-commit 钩子均未绕过（前端链路 117s、Rust 链路
+  4.6s（含 java-host）、纯文档那次按各护栏 scope 跳过），commitlint 全过。
+- `neeko-check` 13 维中第 12 条（`serde(default)`）与第 13 条（tauri-specta `bindings.ts`）与本仓既有
+  决策冲突：D-C 明令禁止 snapshot 载荷加 `serde(default)`，本仓也无 specta（用 `shared/types` +
+  双端 golden 测试对齐）。建议在规范里标注豁免并指向落点，避免每次审查重新争论。
+
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `b5a2db18` | (see git log) |
+| `1de42d36` | (see git log) |
+| `e2d8ab9c` | (see git log) |
+
+### Testing
+
+- [OK] 护栏：`python3 tools/guards/run.py run` → **7/7 通过 / 0 违规 / 0 护栏失效**（框架自测 183 tests OK）
+- [OK] `cargo fmt --all -- --check` → OK；`cargo clippy -- -D warnings` → 0；`cargo test --lib` → **1367 passed / 4 ignored**
+- [OK] `npx tsc --noEmit` → 0 error；`pnpm lint:fe`（eslint + tsc + vitest --typecheck）→ 490 files / **4383 passed** / 1 skipped / Type Errors: none；`npx eslint <改动文件>` → 0 error
+- [OK] 红→绿：2 条新回归用例对改前版本红（`expected +0 to be 1` —— ① 槽位已被 pull 预填仍须请求挂载 ② 切到「主仓槽位已被 pull 预填」的项目仍须为新单元挂载），改后绿；其余新增用例（退避窗内快照到达即取消重试、耗尽 `≤ maxAttempts` 且槽位保持未知、放弃上报恰好一次且不含 NUL、意图变化预算归零、非 git 项目零命令、`mount_only` 重申是空操作）覆盖各自分支
+- [OK] 文本完整性：15 个改动/新增文件 `file(1)` 全为 Unicode/UTF-8 text（无 `data`）；NUL 字节扫描为空；U+FFFD 计数 0。本次修复的正是「`String(RepoKey)` 入日志把 NUL 带进日志文件」，测试输出侧实测由 `data` 变回 text
+
+### Status
+
+[OK] **Completed**（判据拆分 + 幂等下沉 + 日志 NUL + spec 分层四件事齐，并按三条提交落地）
+
+### Next Steps
+
+- 提交拆分已执行（见 Git Commits 与 E 节）；工作树在本次记录提交后应无残留改动
+- `neeko-check` 规范第 12 条（`serde(default)`）与第 13 条（tauri-specta `bindings.ts`）与本仓既有决策冲突，建议在规范里标注豁免并指向落点（D-C 禁 snapshot 载荷加 `serde(default)`；本仓无 specta，用 `shared/types` + 双端 golden 对齐）

@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-5.md`
-- **Total Sessions**: 241
-- **Last Active**: 2026-09-29
+- **Total Sessions**: 242
+- **Last Active**: 2026-09-30
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-5.md` | ~871 | Active |
+| `journal-5.md` | ~971 | Active |
 | `journal-4.md` | ~1989 | Archived |
 | `journal-3.md` | ~1978 | Archived |
 | `journal-2.md` | ~1991 | Archived |
@@ -33,6 +33,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 242 | 2026-09-30 | 挂载收敛判据拆分：修 pull 槽位误判与 already-watched 告警，判据/机制分层落文档 | `b5a2db18`, `1de42d36`, `e2d8ab9c` | `main` |
 | 241 | 2026-09-29 | Worktree 身份 P1/P2 收尾 + spec 契约同步与迁移前路径清零 | - | `main` |
 | 240 | 2026-09-29 | Worktree 身份第八轮：现场日志暴露 version 号段随释放归零，号段与快照数据分离修掉 | - | `main` |
 | 239 | 2026-09-29 | Worktree 身份第六/七轮：远端两个自引入漏洞修好，AC4 编辑→推送 P95 机器出数，账面三处失真更正 | - | `main` |
