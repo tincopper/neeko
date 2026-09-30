@@ -546,11 +546,21 @@ impl WatcherManager {
     /// 线程与句柄白占、同一变更推两份快照（AC11「恰好 1 条」被破）。同一单元的并发挂载
     /// 也会穿过 `watch()` 内部的 check-then-insert，建出两套监听。
     /// 不变量属于资源所有者，不靠调用方记得「先释放再挂载」的顺序来维持。
+    ///
+    /// **语义是「确保该单元挂载」，不是「注册一次」**：已挂载时直接返回，不转调 [`Self::watch`]。
+    /// 调用方会合法地重申同一单元 —— 前端首个快照未落地时的有界重试、激活态被改写成后端
+    /// canonical 形态后的一次重发。那时走 `watch` 只会命中它的「重复注册」告警分支，而那条
+    /// WARN 的诊断语义是「有人绕过了唯一挂载入口」（D-B 落地前正是它暴露了启动期双发起点，
+    /// 现场核对以「0 条 already watched」为证据）。被合法路径触发等于把告警作废，因此把幂等性
+    /// 提到本方法：重复注册告警只留给真正绕过 `mount_only` 的调用方。
     #[must_use = "返回被释放的单元 key；忽略它等于丢掉一次可观测的生命周期事件"]
     pub fn mount_only(&self, repo: RepoRef, sink: Arc<dyn WatcherEventSink>) -> Vec<String> {
         let _mount_guard = self.mount_lock.lock().unwrap_or_else(|e| e.into_inner());
         let released = self.release_except_inner(&repo.key());
-        self.watch(repo, sink);
+        // 重申挂载是空操作：不重建 watcher，也不动已落地的快照（worker 的产出可能刚刚到）。
+        if !self.is_watched(&repo) {
+            self.watch(repo, sink);
+        }
         released
     }
 

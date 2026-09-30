@@ -1285,6 +1285,56 @@ fn concurrent_mount_of_same_unit_creates_exactly_one_watcher_set() {
     );
 }
 
+/// 重申挂载同一单元 = 空操作（`mount_only` 的语义是「确保该单元挂载」，不是「注册一次」）。
+///
+/// 契约来源：调用方会**合法地**重申同一单元 —— 前端首个快照未落地时的有界重试，以及激活态被
+/// 后端改写成 canonical 形态后的一次重发。旧实现把重申直接转给 `watch`，于是每次都命中它的
+/// 「重复注册」告警分支；那条 WARN 的诊断语义是「有人绕过了唯一挂载入口」（D-B 落地前正是它
+/// 暴露了启动期双发起点，现场核对以「0 条 already watched」为证据），被合法路径触发即失效。
+///
+/// 本用例钉住重申的**可观察契约**：不重建资源、不动挂载集合、不释放任何单元。
+#[test]
+fn mount_only_reasserting_same_unit_is_a_noop() {
+    let tmp = tempfile::tempdir().unwrap();
+    let root = tmp.path().to_path_buf();
+    let sink = CollectingSink::new();
+    let manager = WatcherManager::new();
+
+    assert!(
+        manager
+            .mount_only(main_unit(&root), sink.clone())
+            .is_empty(),
+        "首次挂载没有可释放的单元"
+    );
+    assert_eq!(manager.watcher_set_creations(), 1);
+
+    assert!(
+        manager
+            .mount_only(main_unit(&root), sink.clone())
+            .is_empty(),
+        "重申挂载不得释放任何单元（含自身）"
+    );
+    assert_eq!(
+        manager.watcher_set_creations(),
+        1,
+        "重申挂载不得重建 watcher（重建=再泄漏一套线程/句柄）"
+    );
+    assert_eq!(manager.watched_units(), vec![main_unit(&root).key()]);
+
+    // 重申不能被实现成「摘掉再挂」：事件投递必须仍然可用
+    std::thread::sleep(WATCH_SETTLE);
+    assert!(
+        touch_and_wait(
+            &root,
+            "after-reassert.txt",
+            &sink,
+            FILE_CHANGED_EVENT,
+            FIRST_EVENT_TIMEOUT
+        ),
+        "重申挂载后事件投递必须仍然可用"
+    );
+}
+
 /// 并发 pull **同一未挂载单元**：取号互不撞号，槽位永远收敛到最大号且条目与号同轮。
 ///
 /// 钉住的竞态形态：旧实现里取号（`version_floors` 锁）与槽位插入（`store` 锁）是两次
