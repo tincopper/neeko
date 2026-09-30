@@ -1100,10 +1100,26 @@ export function createDebouncedStatusRefresh(ms: number): { schedule(repoKey, ru
 5. **激活态只有一个真源**：`worktreeStore.byProject[projectId]`。全局
    `activeWorktreePath / activeWorktreeBranch / openedWorktrees` 镜像字段已删除 —— 镜像需要有人
    同步，而「谁在看」这件事一旦有两份表示，就会有两份不一致的视图。
-6. **挂载唯一发起点**：只有 `useActiveRepoUnitSync`（反应 `(activeProjectId, activeWorktreePath)`
-   变化）会请求后端挂载/取回快照；用户动作（点 worktree、切回主仓）只写激活态。两个发起点必然
-   有时序差。后端因此可以维持「每项目至多一套挂载资源」的成本决策，而前端不需要知道它挂了谁 ——
-   它只按 `repo_key` 读自己的槽。
+6. **挂载唯一发起点 + 两个判据分离**：只有 `useActiveRepoUnitSync` 会请求后端挂载/取回快照；用户
+   动作（点 worktree、切回主仓）只写激活态。两个发起点必然有时序差。后端因此可以维持「每项目至多
+   一套挂载资源」的成本决策，而前端不需要知道它挂了谁 —— 它只按 `repo_key` 读自己的槽。
+
+   **「请求挂载」与「重试」是两个判据，合成就出洞**（2026-09-30 修）：
+   - **请求挂载的判据是意图边沿**（意图变化 ⇒ 必须请后端接管该单元）。**禁止**用「槽位非空」
+     代替 —— 槽位是**数据面**（`get_repo_status` 的 pull 读也写它），不证明后端有 push 生产者；
+     后端资源状态才是唯一权威，前端的合法替代证据只有**自己的请求历史**。
+   - **重试的判据是槽位为空**（有权威数据即收敛完成）。**禁止**按请求结局
+     （`mounted / stale / failed`）分支 —— 失败与「槽位被别的写者作废」之后意图可以完全没变，
+     按结局分支就没有任何东西会再发起，`ChangesList` 永久停在 `unknown`（"Loading changes…"）。
+   **机制、触发场景与实现取舍**见 `app/hooks/useActiveRepoUnitSync.ts` 的 docstring（本规则只留
+   判据与禁令 —— 同一条理由写两遍，改一处必漏另一处）。
+   **How to apply**：重试**有界**（策略在 `shared/utils/retryBudget.ts`，纯函数、按意图作用域、
+   指数退避封顶），墙钟最坏约 8s（每次尝试内含后端 1.5s 有界等待）；耗尽 ⇒ 保持「未知」且**只
+   上报一次**（`logFrontendError`，只落日志不弹 toast），此后靠意图变化或 push 事件恢复 —— 耗尽
+   只停主动轮询，不是死局。**重试本身绝不判死** —— 「激活单元已从清单消失 ⇒ 回落主仓」的判据
+   仍然只有 `useAppShellData` 那一处（两处判死互抖是 2026-09-28 的既成事故）。把 `RepoKey` 写进
+   日志/提示一律走 `repoKeyLabel` —— 键含 NUL 分隔符，直接插值会让日志文件被判成二进制
+   （`file(1)` 报 `data`，检索与轮转一并失效）。
 7. **ahead/behind 的键就是 `RepoKey`**（无 `{source}:{connectionId}` 前缀）。复合键 helper
    `aheadBehindKey(kind, entryId, projectId)` 已退役（护栏 `RETIRED_FRONTEND` 按符号钉）。
    **Why**：同一份数字曾有四种键约定 —— 写侧 `{kind}:{distro|host}:{unit}` 与
@@ -1116,10 +1132,12 @@ export function createDebouncedStatusRefresh(ms: number): { schedule(repoKey, ru
    是**同一事实的不同时刻**，键必须同形；读侧一律 `aheadBehind[repoKeyOf(projectId, unitPath)]`，
    `unitPath` 取自 store selector（`selectActiveWorktreePath`）。
 8. **激活单元 key 只有一个派生点**：`selectActiveRepoKey(state, projectId)`（React 形态）/
-   `activeRepoKeyOf(projectId?)`（命令式形态），都在 `worktreeStore.ts`。任何文件直读
-   `.byProject[...].activePath` 即违规（护栏 `STORE_STATE_ACCESS_RE` 钉住）—— 判据拦的是
+   `activeRepoKeyOf(projectId?)`（命令式形态）、`useActiveRepoKey(projectId)`（渲染期形态），
+   都在 `worktreeStore.ts`。任何文件直读 `.byProject[...].activePath` 即违规
+   （护栏 `STORE_STATE_ACCESS_RE` 钉住）—— 判据拦的是
    **形态**而非字段名，因为「别处再手写一遍 `repoKeyOf(pid, byProject[pid]?.activePath ?? null)`」
-   正是下一次分叉的入口。渲染期直读还会停在旧值（非响应式）。
+   正是下一次分叉的入口（`projectId` 为空时还会产出 `'\u0000'` 这种谁也匹配不上的键）。渲染期直读
+   还会停在旧值（非响应式）。
 9. **`file-changed` / `file-tree-changed` 的路径基准 = 单元工作树根**：载荷是
    `{ repo_key, project_id, paths | dirs }`，路径**相对该单元工作树根**（后端
    `strip_prefix(repo.work_dir_pathbuf())`，失败才回退绝对路径）。消费侧的归一基准必须由
