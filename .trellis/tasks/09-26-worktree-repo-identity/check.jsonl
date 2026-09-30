@@ -1,0 +1,11 @@
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "检查红线：阻塞 IO 隔离、mod.rs 极薄、平台差异集中化、禁止模式清单"}
+{"file": ".trellis/spec/backend/concurrency-guidelines.md", "reason": "检查多单元 watcher/worker 是否真正释放、是否存在跨 await 持锁与重复 watch"}
+{"file": ".trellis/spec/backend/git-domain.md", "reason": "检查 §9 只读语义与 §10 poke-and-wait 契约在多单元化后是否仍然成立且契约主键已同步更新"}
+{"file": ".trellis/spec/frontend/state-management.md", "reason": "检查是否仍存在第二份「激活 worktree」表示、是否有绕过唯一写入口的裸 setState、路径身份台账是否漂移（红线 12）"}
+{"file": ".trellis/spec/security/allowlist.md", "reason": "检查 worktree 路径校验与 capabilities 未放开"}
+{"file": ".trellis/spec/unit-test/backend-testing.md", "reason": "检查新增 linked-worktree fixture 的确定性（无硬编码 POSIX 路径、无工作区换行字节级断言）"}
+{"file": ".trellis/spec/unit-test/frontend-testing.md", "reason": "检查竞态类用例（聚焦风暴、跨项目事件、启动顺序）是否可确定性复现而非 sleep 等待"}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "检查四层（生产者/事件/存储/消费者）是否全部改到，有无只在单层打补丁"}
+{"file": ".trellis/tasks/09-26-worktree-repo-identity/prd.md", "reason": "验收标准 AC1-AC13 与 R5.1 不可回归清单、Out-of-scope 边界（禁止顺手扩大范围）"}
+{"file": ".trellis/tasks/09-26-worktree-repo-identity/design.md", "reason": "检查实现是否偏离既定模型（尤其 §5 被否决方案不得以变体形式重新出现）"}
+{"file": ".trellis/tasks/09-26-worktree-repo-identity/implement.md", "reason": "检查门禁清单逐条通过、红→绿双向验证留痕、实测记录已填写"}

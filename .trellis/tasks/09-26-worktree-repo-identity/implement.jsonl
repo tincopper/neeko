@@ -1,0 +1,29 @@
+{"file": ".trellis/spec/backend/git-domain.md", "reason": "§9 只读 git 语义单点注入、§10 写后 poke-and-wait 契约（本任务把契约主键从 project 升为 RepoRef，须同步该节）"}
+{"file": ".trellis/spec/backend/concurrency-guidelines.md", "reason": "后台线程单一强所有者 + Weak 借用者契约；多单元 worker/watcher 实例化与释放、spawn_blocking 边界（红线 3）"}
+{"file": ".trellis/spec/backend/command-guidelines.md", "reason": "Command 层极薄 + IPC 2MB 边界（红线 6/4）：读接口收敛为「读该 RepoRef 快照」时的落点约束"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "禁止模式与平台差异集中化；新文件 common/git/repo_ref.rs 的 mod.rs 极薄要求（红线 9/10）"}
+{"file": ".trellis/spec/backend/directory-structure.md", "reason": "Domain-Driven 分层与新增文件落点"}
+{"file": ".trellis/spec/frontend/state-management.md", "reason": "禁止冗余状态、单一表示、路径身份台账（红线 12）——worktreeStore 镜像合一与 statuses 按 RepoKey 分槽的规范依据"}
+{"file": ".trellis/spec/frontend/hook-guidelines.md", "reason": "事件同步类 hook 的依赖与竞态口径（useGitStatusEventsSync / useRefreshGitInfo 改造）"}
+{"file": ".trellis/spec/security/allowlist.md", "reason": "红线 8：worktree 路径 canonicalize 与 capabilities 不得放开"}
+{"file": ".trellis/spec/unit-test/backend-testing.md", "reason": "确定性测试仓库 builder、换行边界与夹具路径平台无关（红线 11/13）——新增 linked-worktree fixture 必须遵守"}
+{"file": ".trellis/spec/unit-test/frontend-testing.md", "reason": "组件级 mock invoke 约定与覆盖率基线（Step 1/2 的红用例写法）"}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "本缺陷本质是跨层身份缺失，按该指南核对「生产者/事件/存储/消费者」四层是否同时改到"}
+{"file": ".trellis/spec/guides/code-reuse-thinking-guide.md", "reason": "复用优先判定：GitStatusWorker/create_git_meta_watcher/resolve_git_meta_paths/tabKey 复合键的复用边界"}
+{"file": ".trellis/tasks/archive/2026-09/09-24-watcher-lifecycle-and-git-lock/prd.md", "reason": "上一任务立的 watcher 生命周期与只读语义基线（本任务多单元化必须保持其 AC）"}
+{"file": "src-tauri/src/common/file/watcher/manager/core.rs", "reason": "watch/unwatch、snapshots 表与 worker/scheduler/heartbeat 组装点（资源键 project → RepoRef 的主改造处）"}
+{"file": "src-tauri/src/common/git/status_worker/worker.rs", "reason": "status 唯一计算路径与查询-比较闸门、version 语义（多单元后必须原样复用）"}
+{"file": "src-tauri/src/common/git/status_worker/writer.rs", "reason": "GitStatusSnapshot 载荷形状（加 repo_key 的落点）"}
+{"file": "src-tauri/src/common/file/watcher/sink.rs", "reason": "事件出口唯一实现处与载荷枚举（红线 5 事件名常量的收口）"}
+{"file": "src-tauri/src/common/git/path_guard.rs", "reason": "校验后返回原串 → 改为回传 canonical（D7）；worktree 路径不做 containment 的现状"}
+{"file": "src-tauri/src/common/git/operations/files.rs", "reason": "worktree 的 libgit2 第二引擎分支（Step 4 删除对象）"}
+{"file": "src-tauri/src/common/git/local/status.rs", "reason": "第二引擎细节与 renamed_from 恒 None 的词表差异（D4）"}
+{"file": "src-tauri/src/git/commands/query.rs", "reason": "读接口双形态（主路径读快照 / worktree 返回 version=0）的收口点"}
+{"file": "src-tauri/src/git/commands/index.rs", "reason": "wait_status_fresh 现状按 project poke（D5），5 处写命令的契约落点"}
+{"file": "src-tauri/src/common/file/watcher/git_meta/paths.rs", "reason": "HEAD/index/gitdir 指针与 linked worktree 根解析（多单元化后的归属，design.md Q3）"}
+{"file": "src-tauri/src/common/git/operations/info.rs", "reason": "工作树清单第二生产者与 remove(0) 顺序假设（D8）"}
+{"file": "src/shared/store/projectStore.ts", "reason": "单槽 changed_files + statusVersionByProject + 声明唯一实则多写的入口（Step 2 主改造）"}
+{"file": "src/shared/store/worktreeStore.ts", "reason": "全局镜像与 per-project map 双份表示（Step 1 合一对象）"}
+{"file": "src/features/git/hooks/useGitStatusEventsSync.ts", "reason": "聚焦硬编码 ''（F3）与「worktree 激活即丢主快照」守卫（F4）所在地"}
+{"file": "src/features/git/utils/gitStatus.ts", "reason": "refreshGitFileStates / debounce 调度器的 key 语义（改为 RepoKey 的落点）"}
+{"file": "src/shared/utils/tabKey.ts", "reason": "既有正确的复合身份键 —— R1.1 的复用样板，禁止另发明第三套键"}

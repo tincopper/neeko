@@ -163,3 +163,709 @@ Node.js 18+（实际 `engines` >=24）、pnpm 9.12.2（实际 `packageManager` 1
 ### Next Steps
 
 - None - task complete
+
+
+## Session 233: Worktree 场景 git status 仓库单元身份补全（RepoRef 端到端）
+
+**Date**: 2026-09-28
+**Task**: Worktree 场景 git status 仓库单元身份补全（RepoRef 端到端）
+**Branch**: `main`
+
+### Summary
+
+把 git status 的身份从 project 补齐到真实的 1+N 仓库单元（后端 RepoRef + 按单元挂载生产者 + 载荷换形状 + poke 单点化；前端 statuses 分槽 + applyStatus 唯一写入口 + 去全局镜像 + 挂载唯一发起点 + 护栏），并修掉过程中被新契约测试证红的两个真实缺陷（watch 首快照被删、version 双号源）。cargo test 1360+103、pnpm test:run 4324、pnpm lint 全绿；未提交代码，现场 pnpm tauri dev 手测待跑。
+
+### Main Changes
+
+# 会话：worktree 场景 git status 身份补全（任务 `09-26-worktree-repo-identity`）
+
+## 做了什么
+
+把「一个 project 一个 git 身份」补齐成真实的「1 + N 个仓库单元」粒度，端到端一次做穿（不打补丁）：
+
+- **后端身份层**：新增 `common/git/repo_ref.rs`（`RepoRef` / `WorktreeRef` / `key()` =
+  `{project_id}\u0000{canonical worktree path}`，NUL 作分隔符是因为它在 POSIX 路径里不可能出现，
+  反解因此永无歧义）；`path_guard.rs` 改为 `canonicalize_worktree_path`（校验后**返回** canonical，
+  不再丢弃）。`RepoRef` 刻意不携带 `ExecTarget`：目标是连接属性不是身份属性，且它不实现
+  `Hash/PartialEq`。
+- **生产者按单元实例化**：`WatcherManager` 的 `watchers` / `snapshots` 主键改成单元 key；
+  删除跨 worktree 补挂那套机制（`resolve_worktree_roots` / `rearm_worktrees_if_needed` /
+  `WorktreeMetaChanged`）—— 它存在的唯一前提是「worktree 没有自己的资源」，前提消失即退役。
+  linked worktree 的 HEAD/index 在其私有 gitdir，由该单元自己的 git-meta watcher 监听。
+- **删掉第二台 status 引擎**：`local/status.rs`（libgit2）整体删除，读路径只走 CLI porcelain +
+  `parsers::status`；载荷一步换成含 `repo_key` 的新结构，不留 `version: 0` / `serde(default)` 兜底。
+- **挂载唯一入口**：`git/services/status.rs::activate`（释放该项目其它单元 → 挂载目标 → 有界等待
+  首个快照），前端唯一发起点 `app/hooks/useActiveRepoUnitSync.ts`；用户动作只写激活态。
+- **前端分槽**：`projectStore.statuses: Record<RepoKey, RepoStatus>` + `applyStatus` 唯一写入口
+  （per-key version 闸门，无 `allowEqual`、无「version<=0 恒放行」）+ `invalidateStatus`；
+  `worktreeStore` 删掉三个全局镜像字段只留 `byProject`；未挂载 = 未知，`ChangesList` 新增
+  `unknown` 形态（"Loading changes…" 而不是 "No changes"）。
+- **护栏**：`tools/guards/checks/check_repo_unit_identity.py`（退役符号 / 镜像属性 / status 命令
+  出口白名单 / 手拼 key 四类判据，命中即违规、刻意不配 debt 台账）+ 9 条自测，已进 `pnpm lint` 与 CI。
+
+## 过程中修掉的两个真实缺陷（都由新契约测试先证红）
+
+1. `watch()` 里 `drop_snapshot_if_present` 留在函数尾部：worker 线程可能在 `check()` 里就产出并
+   插入首个快照，随后那句把它删掉 ⇒ 「已挂载却读不到权威数据」，只在首轮落地够快时复现。
+   移到 `check()` 之前。连带发现 `unwatch_drops_only_that_unit_snapshot` 里「重挂载后槽位必须为空」
+   这条断言**只有在该 bug 存在时才成立**，是 bug 的副产品 —— 改成断言真契约（新纪元或未知）。
+2. `version` 曾有两个号源（worker 线程私有计数器 vs 注册表 `prev+1`），push/pull 交错必然出现平手，
+   而前端闸门 `version <= prev ⇒ 丢弃` ⇒ 静默丢掉更新。改为注册表统一盖章（`store_snapshot`），
+   事件载荷与槽位同源同号；并规定 pull 不得覆盖挂载中单元已有的 push 快照（晚到的 pull 必然更旧，
+   但它盖的号还会看起来更新）。
+
+## 质量门禁（全绿）
+
+- `cargo test` 1360 passed（lib，含 15 条 `lifecycle_tests`）+ 103 passed（integration）
+- `pnpm test:run` 484 files / 4324 passed / 2 skipped；`pnpm lint:fe` 0 error、Type Errors none
+- `pnpm lint`：`cargo fmt --check` + `clippy -D warnings` + 7 条护栏（`check_repo_unit_identity`
+  扫描 1373 文件 0 违规）+ 160 条护栏自测 + java-host 21 条
+- 迁移期间前端失败数轨迹 43 → 8 → 0
+
+## 知识沉淀
+
+- `.trellis/spec/backend/git-domain.md` 新增 §12「仓库单元身份（RepoRef）与 status 生产者单源」，
+  §10 写后 poke 的契约主键由 project 改为 `RepoRef`，「相关文件」清单去掉已删文件
+- `.trellis/spec/frontend/state-management.md` 新增场景「仓库单元分槽 + 激活态单源」；
+  2026-08-07 那条「generation Map」场景标记为已被取代（问题仍在，机制换了 —— 保留历史不删）
+- `src-tauri/AGENTS.md` 补一条链接（体积仍在预算内：11,374B / cap 16,384B）
+
+## 未完成 / 下一步
+
+- **现场手测未跑**（需要人在 `pnpm tauri dev` 里看）：AC12 全链路、AC11③ 冷启动 P95 与切换 20 次
+  线程曲线、AC3 逐命令（stage/unstage/discard/commit）视图更新、AC6 符号链接形态激活态
+- 按用户指示**未提交代码**（工作树 136 个文件待用户自行提交）
+- PRD 里 AC13 与 D-C 自相矛盾（它要求保住 `version: 0` 语义，而 D-C 明令删除）：已在 PRD 的
+  「AC 交付状态」里记下，不改写历史条目
+- 两条真实缺口未修（已核对定位）：`ConnectionWorktreeList.tsx:62` 远端侧栏 `+A/-D` 仍是
+  「首拉即永久」；`WorktreeList.tsx:117` 删除 worktree 时用两段式键查四段式终端缓存键 ⇒ 关联
+  PTY 不会被关掉（属终端身份空间，另开任务）
+
+
+### Git Commits
+
+(No commits - planning session)
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
+
+
+## Session 234: Worktree 身份收口第二轮：写命令全覆盖 + 单元生命周期 + 护栏接线判据
+
+**Date**: 2026-09-28
+**Task**: Worktree 身份收口第二轮：写命令全覆盖 + 单元生命周期 + 护栏接线判据
+**Branch**: `main`
+
+### Summary
+
+审计 R2.4 后发现收口只覆盖 PRD 点名的四条命令，补齐 cherry_pick/revert/rename_branch/checkout_*/stash_*/pull*，删除与改名 worktree 时释放该单元挂载（RepoRef 必须在破坏性操作前解析），前端 WorktreeList 删除/改名后作废对应槽位并收口激活态；命令层接线改由护栏第 4 类判据静态钉住（命令层跑不起单测）。门禁：cargo 1360+103、fmt/clippy 干净、pnpm lint:fe 485 文件 4327 通过、7 条护栏 165 自测全过。未提交代码。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+(No commits - planning session)
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
+
+
+## Session 235: Worktree 身份第三轮：隔离 HOME 真跑应用，修掉恢复/双判死/多发起点三个缺陷
+
+**Date**: 2026-09-28
+**Task**: Worktree 身份第三轮：隔离 HOME 真跑应用，修掉恢复/双判死/多发起点三个缺陷
+**Branch**: `main`
+
+### Summary
+
+(Add summary)
+
+### Main Changes
+
+# 会话：worktree 身份第三轮 —— 用隔离 HOME 真跑应用，抓出三个只有跑起来才暴露的缺陷
+
+## 为什么这轮值得单独记
+
+前两轮全靠 `cargo test` / `vitest`。这次用**隔离 `HOME=/tmp/neeko-ac12/home`** 起真实 dev 二进制
+（不碰用户已安装的 Neeko.app 与 `~/.neeko`），配一个真仓库 + 两个 linked worktree 的夹具，
+把 session 里的激活单元写成**符号链接形态** `/tmp/...` —— 这正是 AC6 要求覆盖的形态。
+三个缺陷都是这么冒出来的，单测一个都没抓到。
+
+## 修掉的三个真缺陷
+
+1. **恢复的 worktree 被立刻判没（AC6/AC7 真失败）**：`useSessionBootstrap` 用
+   `worktrees.find(w => w.path === persistedPath)` 判存活，而 session 里的路径是
+   `canonical` 保证落地之前写下的形态（`/tmp` ↔ `/private/tmp`）→ 认不出 → 清激活态 → 回落主仓。
+   这是 PRD R1.3 明令禁止的「裸字符串等值判定 worktree 存活」。
+   修法：恢复流程先请后端归一（**新增 `canonical_worktree_path` 命令**，唯一归一实现仍是
+   `path_guard::canonicalize_worktree_path`），再按 canonical 比清单。前端不 `realpath`、不剥尾分隔符。
+2. **两个判死点互抖**：我在挂载发起点加的「IPC 失败 ⇒ 回落主仓」与 `useAppShellData` 的清单
+   校验构成第二个判死点。冷启动首个快照还没落地时 `activate()` 返回 Err 是**正常现象**
+   （快照由 worker 异步产出），于是 main ↔ worktree 反复重挂，日志里 80ms 内翻了三轮，
+   每轮都在释放/重建 watcher 资源。修法：挂载失败只放开「同意图重发」的门闸、保留激活意图、
+   槽位置为未知；判死只有清单校验那一处。
+3. **挂载发起点其实不止前端一个**：`app.rs` 启动恢复与 `project/commands.rs::set_active_project`
+   都按项目预挂主仓单元，实测每次启动都出现「先挂主仓、1 秒后改挂 worktree」并打出
+   `already watched` 告警；而且旧写法只回收**同项目**的其它单元，切项目时上一个项目的挂载
+   无人释放。修法：删掉两处默认挂载（`change_project_path` 的释放保留、不预挂），
+   并把回收做成管理器级 `WatcherManager::release_except(keep)`（**全局**只留当前视图那一个，
+   可单测，配 `activate_style_release_except_keeps_only_the_target_unit`）。
+
+顺带：`useActivateRepoUnit` 现在把激活态改写成后端回传的 `worktree_path`（形态自愈），
+`release_one` 抽出公共内核并补 `released unit <key>` debug 日志（红线 13：生命周期要可观测）。
+
+## 现场硬证据（隔离实例日志）
+
+```text
+16:50:04.491 Started watching unit ac12-0001\0 at /private/tmp/neeko-ac12/repo
+16:50:04.521 Emitting snapshot v1 for .../repo (branch main): 0 entries
+16:50:04.567 released unit ac12-0001\0
+16:50:04.569 Started watching unit ac12-0001\0/private/tmp/neeko-ac12/wt-a
+16:50:04.590 Emitting snapshot v1 for .../wt-a (branch feat-a): 2 entries
+16:51:08.689 Emitting snapshot v2 for .../wt-a (branch feat-a): 3 entries
+```
+
+- AC4：在 wt-a 内新建文件并 `git add` ⇒ 该单元自动推 `v2(3 条)`，与
+  `git -C wt-a status --porcelain`（`M README.md / A live-edit.txt / ?? changed-in-a.txt`）逐条一致
+- AC5① / AC11①：同一时刻往**已卸载**的主仓写文件 ⇒ 零推送；心跳只剩 wt-a 一个单元
+- AC6 / AC7：session 的 `/tmp` 形态经后端归一后恢复成 wt-a 单元
+- 启动无 panic / error，`already watched` 告警消失
+
+## 新增/改动的测试
+
+- `useSessionBootstrap.test.ts`：符号链接形态恢复用例（先红后绿）
+- `useActiveRepoUnitSync.test.ts`（新文件，3 条）：同一意图不重发、失败不作判死、切换即改挂
+- `useActivateRepoUnit.test.ts`：canonical 回写（+4 条，共 11 条）
+- `lifecycle_tests.rs`：`activate_style_release_except_keeps_only_the_target_unit`
+
+## 门禁（本轮收尾重跑，全绿）
+
+- `pnpm lint` exit 0：`cargo fmt --check` + `cargo clippy -- -D warnings` + 7 条护栏（命令层 9 个文件、0 收口缺口）+ 170 条护栏自测 + java-host
+- `pnpm lint:fe` exit 0：eslint 0 error、`tsc --noEmit` 无错、`vitest run --typecheck` **486 文件 / 4335 通过 / 2 跳过**、Type Errors none
+- `cargo test`：**1361 passed（lib）+ 103 passed（integration）**，0 失败
+
+## 仍未完成
+
+Step 7.2 里需要眼睛的部分：Changes 面板可见性与闪现、10 次失焦聚焦、大仓冷启动时延观感。
+AI 侧无法完成：这台机器的 `screencapture` 没有屏幕录制权限（`could not create image from display`），
+而用户已安装的 `/Applications/Neeko.app` 与 dev 实例共用 `~/.neeko/`。
+按用户要求**未提交代码**。
+
+
+### Git Commits
+
+(No commits - planning session)
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
+
+
+## Session 236: Worktree 身份收尾：面板渲染级验证、连击与冷启动 P95 实测、手测夹具脚本
+
+**Date**: 2026-09-28
+**Task**: Worktree 身份收尾：面板渲染级验证、连击与冷启动 P95 实测、手测夹具脚本
+**Branch**: `main`
+
+### Summary
+
+(Add summary)
+
+### Main Changes
+
+# 会话：worktree 身份收尾 —— 面板渲染级、连击、冷启动 P95、20 次切换、手测夹具脚本
+
+## 这一轮在做什么
+
+前三轮把代码与门禁做完了，剩下 4 项 AC 挂着，原因是「需要眼睛」。这一轮的目标是
+**把还能自动化的东西全部搬进自动化**，并把确实搬不动的那部分变成一条命令可复现的手测。
+
+## 新增的验证（都是先红后绿）
+
+- `GitCommitPanel.unit.test.tsx`（4 条，**渲染级**）：把 issue #2 的原始症状钉在真实渲染输出上 ——
+  单元有权威快照 ⇒ 文件行真的出现；槽位缺失 ⇒ `Loading changes…` 且对面单元的条目不出现；
+  快照为空 ⇒ 才是 `No changes`；主仓 ↔ worktree 交替 ⇒ 每格只含自己的行。
+  它一开始根本跑不起来（缺 `AppProvider` 替身、缺 `getChangedFilesDiffStats` 等容器依赖），
+  这本身就说明：这个容器此前没有任何渲染级覆盖，「列表看不见」没人守着。
+- `useGitStatusEventsSync.test.ts`：聚焦/失焦 **10 次连击**专项（假计时器）。断言 10 轮后 worktree
+  槽位仍只含自己条目、已卸载的主仓不被产出、也不出现「空串 worktreePath」开的第三格。
+- `lifecycle_tests.rs`：`twenty_unit_switches_do_not_accumulate_mounts` —— 20 轮 main ↔ linked
+  worktree 来回切，每轮断言挂载表只剩当前单元、回收数 ≤ 1，末轮清空。
+- 冷启动**实测**（隔离 HOME，4 次真启动，被测仓库 = 本工作树 146 条未提交改动）：
+  进程首行 → 首个快照 **820–850ms**；`Running git status` → emit **90–110ms**；entries 恒为 146
+  与 `git status --porcelain` 一致。结论：身份链路只占 ~110ms，其余 ~700ms 是应用初始化。
+  小仓同口径 21–30ms。
+
+## 新交付物：`tools/worktree-handtest.sh`
+
+Step 0.2 要求的「真实 linked worktree 手测夹具」现在是一条命令：独立 `HOME`、repo + 两个**同级**
+linked worktree（嵌在主仓工作树里会污染「主仓应干净」这条判据）、每单元各自的脏改动、
+session 里的激活单元**故意写成符号链接形态**，并打印真值命令与待人工确认的 4 项。
+已端到端验证：主仓挂载 → `released unit` → 恢复出 `…\0/private/var/…/wt-a` 且 `entries=1` 与真值一致。
+
+## 仍然开着（诚实记录）
+
+AC4 / AC7 / AC12 的像素级观感与 AC13 的 WSL / SSH 逐项对比。这台机器对我关着两条观测通道：
+`screencapture` 无屏幕录制权限、`osascript` 无辅助访问权限；仓库里也没有 Playwright/Puppeteer，
+临时装一套浏览器驱动属于你没要求的环境变更，所以没做。AC13 还需真实 Windows/WSL 与真实 SSH 目标。
+
+## 门禁（本轮收尾重跑）
+
+`pnpm lint` exit 0 · `pnpm lint:fe` exit 0（eslint 0 error、tsc 无错、**487 文件 / 4340 通过 / 2 跳过**、
+Type Errors none）· `pnpm type-check` exit 0 · `pnpm test:run` exit 0 · `cargo test`
+**1362 passed（lib）+ 103 passed（integration）**，0 失败 · `cargo fmt --check` 与 `clippy -D warnings` 干净 ·
+7 条护栏全过。**未提交任何代码**（HEAD 仍为 `1739cc70`）。
+
+
+### Git Commits
+
+(No commits - planning session)
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
+
+
+## Session 237: Worktree 身份第五轮：挂载唯一入口与写后收口升级为护栏判据，并留下 AC13 的具体线索
+
+**Date**: 2026-09-28
+**Task**: Worktree 身份第五轮：挂载唯一入口与写后收口升级为护栏判据，并留下 AC13 的具体线索
+**Branch**: `main`
+
+### Summary
+
+把「生产代码只有 activate 能挂载体」与「写命令必须收口」写成护栏第 4/5 类判据（+9 条自测，护栏自测共 169 条）；对抗性自查确认远端 status 的本地 assert_git_repo 属 HEAD 既有行为而非本次回归，并把这条线索写进 PRD 已知缺口以免 AC13 误判。pnpm lint 与 7 条护栏全绿，未提交代码。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+(No commits - planning session)
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
+
+
+## Session 238: 修掉本任务引入的远端回归：仓库存在性判定交回 transport，远端激活改为收口+pull
+
+**Date**: 2026-09-28
+**Task**: 修掉本任务引入的远端回归：仓库存在性判定交回 transport，远端激活改为收口+pull
+**Branch**: `main`
+
+### Summary
+
+删掉命令层默认挂载后，activate 与 status_porcelain 仍用本地 fs 判定 git 仓库，导致 WSL/SSH 单元 status 一律失败、Changes 面板永远 Loading（HEAD 走 transport 脚本，故属本次引入）。改为 transport.is_git_repo + 新增 supports_push_producer（只有 Local 有 push 生产者，远端激活=收口+立刻 pull），并补两条在旧代码上必红的测试。cargo test 1364 + 103、pnpm lint:fe 487 文件/4340 通过、7 条护栏与 clippy/fmt 全绿；未提交代码。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+(No commits - planning session)
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
+
+
+## Session 239: Worktree 身份第六/七轮：远端两个自引入漏洞修好，AC4 编辑→推送 P95 机器出数，账面三处失真更正
+
+**Date**: 2026-09-29
+**Task**: Worktree 身份第六/七轮：远端两个自引入漏洞修好，AC4 编辑→推送 P95 机器出数，账面三处失真更正
+**Branch**: `main`
+
+### Summary
+
+把本任务自己引入的两个远端漏洞改回来：仓库存在性判定交回 transport（新增 supports_push_producer，远端激活=释放挂载+立刻 pull），read_unit_status 改为「先问有没有生产者再信缓存」（否则未挂载单元的首次 pull 结果被永久当权威，违反 I1-b）。新增 #[ignore] 测量型测试采两类单元各 20 轮「写入→快照 version 前进」：linked worktree P95 57.1ms vs 主仓 56.8ms，差值在噪声内。修复 PRD 的半截句子、「未实测项」与 AC11 矛盾、护栏自测数 9→18。pnpm lint / type-check / test:run（487 文件 4340 通过）/ cargo test（1364+103）全绿；上一轮单条 FE 失败复跑不复现，判为负载抖动非回归。代码未提交。
+
+### Main Changes
+
+# 会话：worktree 身份第六/七轮 —— 远端两个漏洞、AC4 时延出数、账面修复
+
+## 第六轮：自查抓到本任务自己引入的两个远端漏洞（都先红后绿）
+
+1. **仓库存在性判定用错了主体**。删掉命令层的默认挂载后，远端项目只剩 `activate()` 一条路，
+   而它与 `status_porcelain` 都用**本地** `is_git_repo` 判存在性 ⇒ WSL / SSH 单元 status 一律失败、
+   Changes 面板永远 Loading。判据：HEAD 的远端走 `remote_git_info_command` 经 transport 现算，
+   不受影响 ⇒ 确证是本次引入而非既有行为。改为 `transport.is_git_repo()`，并新增
+   `supports_push_producer`（只有 `ExecTarget::Local` 有 push 生产者；远端激活 = 释放挂载 + 立刻 pull）。
+   测试 `status_porcelain_uses_transport_repo_check_not_local_filesystem`（传一个本地绝对不存在的
+   远端路径）与 `only_local_targets_get_a_push_producer` 在旧代码上必红。
+2. **读接口的判序反了**。`read_unit_status` 先查缓存再看挂载 ⇒ 未挂载单元第一次 pull 的结果被
+   永久当成权威返回，`refreshRepoStatus` 成空操作 —— 正是 I1-b 明令禁止的「旧数据伪装成事实」。
+   改为「先问有没有生产者，再决定能不能信缓存」。该顺序依赖 `AppStateWrapper` 这个组合根，
+   `cargo test` 里断言不了，规则与不可测原因一并写进 `.trellis/spec/backend/git-domain.md` §12。
+
+## 第七轮：AC4 的现场时延项改成机器出数
+
+新增 `#[ignore]` 的测量型测试 `lifecycle_tests::edit_to_push_latency_p95_worktree_vs_main`：
+同一份 linked-worktree 夹具，两类单元各采 20 轮「`fs::write` 返回 → 该单元快照 version 前进」，
+每轮都断言该次推送确实包含本轮新增文件（否则样本无法归因）。
+
+- linked worktree 单元：p50 47.7ms / **p95 57.1ms** / max 57.1ms
+- 主仓单元：p50 43.9ms / **p95 56.8ms** / max 56.8ms
+
+差 0.3ms 在噪声内 ⇒ worktree 单元没有被特殊拖慢（两者共用同一条 notify → throttle →
+`worker.check()` → `store_snapshot` → `emit` 链路）。默认 ignore 的理由：它测时序不测行为，
+进 CI 只会抖动。`tools/worktree-handtest.sh` 的检查清单同步改成只核「列表真的跟着变」。
+
+## 账面修复（这三处都是「文档说的和代码做的不一致」，比缺代码更坑）
+
+- `prd.md` 尾部（AC4/AC7 之外的三条 AC 交付状态、决策 D-A/D-B/D-C 与 I1-a/I1-b、Notes）曾在一次
+  脚本批量编辑里被切掉，按本会话已确认原文重建并**显式标注重建**；本轮又发现 AC11 条目里新旧两句
+  拼在一起成了半截句子，合并重写，并把口径写明是**挂载表**而非 OS 线程数曲线。
+- `prd.md`「未实测项」一条仍在说 AC11③ 大仓冷启动 P95 未测 —— 与同文件 AC11 条目矛盾，改为
+  「未交付项（仅剩需要眼睛的现场）」并列出已出的两组时延数字。
+- AC9 的护栏自测数 9 → 18（第五类判据「写命令收口 / 挂载单点」新增的自测没回写）；
+  `implement.md` 里用例文件名更正为 `GitCommitPanel.unit.test.tsx`。
+
+## 门禁（第七轮复跑，PRD 修复之后）
+
+- `pnpm lint` exit 0：`cargo fmt --check` + `cargo clippy -- -D warnings` + 7 条护栏 / 169 自测
+  （`check_repo_unit_identity` 扫 1373 文件 0 违规）+ java-host 22 项
+- `pnpm type-check` exit 0；`pnpm test:run` 487 文件 / 4340 通过 / 2 skip；`pnpm lint:fe` Type Errors 0
+- `cargo test` 1364 lib（+4 ignored）+ 103 integration 全绿
+- 上一轮 `lint:fe` 的单条失败（`records usage and forwards variable-free prompts directly` 耗时
+  178727ms、只收集到 479/487 文件）复跑不复现 ⇒ 判为机器负载抖动（该用例属 agent-prompt 模块，
+  与本任务无关），不是回归
+
+## 状态
+
+代码未提交（用户要求「不要主动提交代码」，HEAD 仍为 `1739cc70`）。任务只剩需要人的眼睛的现场项：
+implement.md 7.2 与 AC4/AC7/AC12 的观感确认（`bash tools/worktree-handtest.sh --run`），
+AC13 需真实 WSL / SSH 环境。
+
+
+### Git Commits
+
+(No commits - planning session)
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
+
+
+## Session 240: Worktree 身份第八轮：现场日志暴露 version 号段随释放归零，号段与快照数据分离修掉
+
+**Date**: 2026-09-29
+**Task**: Worktree 身份第八轮：现场日志暴露 version 号段随释放归零，号段与快照数据分离修掉
+**Branch**: `main`
+
+### Summary
+
+用户现场确认手测通过后，回读他那次会话的 ~/.neeko/neeko.log 发现 13 次快照推送全是 v1 —— 取号源是槽位里那份快照，而 release 连槽位一起删 ⇒ 切项目 A→B→A 后第一份新快照被前端 version<=prev 判成旧的丢弃，界面停在离开时的旧数据（同 issue #2 原症状）。修法是把号段（version_floors）与快照数据分开存：release 只作废数据，号段仅在 unwatch_project 时随项目回收；取号与水位推进同一次持锁完成，并发生产者不会撞号。先红（remount_continues_the_unit_version_sequence 报「切回后的第一份是 1，而槽位里还留着切走前的 2」）后绿，并更正既有用例「重挂后 version==1 才算作废」的错误判据；前端补契约用例（不得加『重新挂载⇒号归零』特例）；手测夹具脚本补 A→B→A 专项。第八轮门禁：cargo test 1366+103、pnpm lint（7 护栏/169 自测）、test:run 487 文件/4341 通过、type-check、fmt、clippy 全绿。AC13 仍留开（本机无 WSL/SSH 项目）。代码未提交。
+
+### Main Changes
+
+# 会话：worktree 身份第八轮 —— 现场日志暴露「version 号段随释放归零」，先红后绿
+
+## 用户现场核对通过后，读他的日志读出一个真缺陷
+
+用户跑完手测并确认「手动验证没有问题了」。我回读那次会话自己的日志
+（`~/.neeko/neeko.log`，09:16:40–09:20:50）做账面收口，看到 **13 次快照推送全是 `v1`**：
+
+```
+[GitWorker] Emitting snapshot v1 for /Users/tomgs/RustroverProjects/neeko (branch main): 147 entries
+[GitWorker] Emitting snapshot v1 for …/.qoder/worktrees/agents-md-opt (branch worktree-agents-md-opt): 1 entries
+```
+
+每次挂载都从 1 起号 ⇒ `store_snapshot` 的取号源是**槽位里那份快照的 version**，而
+`release_one` 把槽位条目一起删了。后果落在「切项目」这条路上（A→B→A）：这条路上没有任何人
+作废 A 的前端槽位（`invalidateStatus` 只在 worktree 切换 / 删除 / 改名 / 挂载失败四处发），
+切回后 worker 的第一份快照 `v1 <= prev v3` 被前端乱序闸门静默丢弃 ⇒ 界面继续显示离开时的
+旧快照，要等 push 爬到 v4 才恢复 —— **与 issue #2 的原症状同形**。
+
+为什么既有测试全都没抓到：它们一律只断言「同一挂载周期内单调」，跨挂载周期的号没人看过。
+这类缺陷只有真跑一遍、并且把日志当证据读才会浮出来。
+
+## 修法（号段与数据分离，不是给前端补特例）
+
+- 新增 `WatcherManager::version_floors`：每单元历史最高水位，与 `snapshots` 分开存。
+  `store_snapshot` 取号 = `max(水位, 槽位现有) + 1`，且取号与水位推进在**同一次持锁**里完成
+  （两个生产者并发盖章不会撞号）。
+- `release_one` 只作废数据，不作废号段；号段仅在**项目移除**时随 `unwatch_project` 回收，
+  规模以「项目 × 该项目的单元数」为界（一个项目 = 主仓 1 + 每个 linked worktree 至多 1）。
+- 前端保持严格闸门，**不加**「看着像新纪元的 v1 也放行」的特例 —— 那正是当初 pull 覆盖 push
+  的入口。
+
+## 红→绿
+
+- `remount_continues_the_unit_version_sequence`：挂载 v1 → 编辑 v2 → 释放 → 重挂，断言新快照
+  `> v2`。旧代码报「切回后的第一份是 1，而前端槽位里还留着切走前的 2」。
+- `pull_after_a_release_still_continues_the_sequence`：push / pull 共用一条号段。旧代码报
+  「挂载首轮快照要接在同一号段之后：1 <= 2」。
+- 既有判据更正：`unwatch_drops_only_that_unit_snapshot` 原以「重挂后 `version == 1`」为
+  「槽位已作废」的证据，与新单调性互斥 ⇒ 改为「新快照必须严格大于切走前的水位」（更强，
+  残留槽位的号不可能变大）。
+- 前端契约用例：`projectStore.test.ts`「切项目回来时槽位可能未作废：入槽只看号大小，没有
+  『重新挂载 ⇒ 号归零』的特例」。
+
+## 顺带的手测日志核对结论（可复核）
+
+- 那次会话 **0 条 ERROR**、0 条 `already watched`、0 条 `not a git repository`、0 条 git 失败关键字。
+- 被测的是 `src-tauri/target/debug/neeko`（`/Applications/Neeko.app` 里的二进制是 09-24 的旧版，
+  且日志里没有旧载荷形态）⇒ 现场核对确实覆盖了本任务的代码。
+- 项目里 `ssh` / `wsl` 关键字命中 0 次，且 11 个项目 `environment.type` 全是 `Local`
+  ⇒ **AC13（WSL / SSH 不恶化）本机无从执行**，仍留开。
+- 另记一条既有缺陷（非本次引入）：每次会话数百到数千条
+  `[exec] collect_blocking_with called from within a runtime context (local/mod.rs:31:5)` ——
+  diff-stats 路径每个变更文件一次 `wc -l`，在 async 上下文里调同步门面，门面为自愈每次另起一条
+  OS 线程（红线 3 的反面）。同款 WARN 在本任务开工前的 09-24 / 09-25 滚动日志里已有 6517 / 4590 条。
+
+## 门禁（第八轮）
+
+`cargo fmt --check` / `cargo clippy -- -D warnings` / `cargo test` 1366 lib + 103 integration 全绿；
+`pnpm lint`（7 条护栏 / 169 自测 + java-host 22 项）exit 0；`pnpm test:run` 与 `pnpm type-check` 见
+同轮记录。代码仍未提交（用户要求「不要主动提交代码」，HEAD 为 `1739cc70`）。
+
+## 状态
+
+implement.md Step 0–8 全部勾选；PRD 的 AC1–AC12 已打勾（AC4/AC6/AC7/AC12 依用户现场结论），
+**AC13 留开**：需要真实 WSL / SSH 项目。
+
+
+### Git Commits
+
+(No commits - planning session)
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
+
+
+## Session 241: Worktree 身份 P1/P2 收尾 + spec 契约同步与迁移前路径清零
+
+**Date**: 2026-09-29
+**Task**: Worktree 身份 P1/P2 收尾 + spec 契约同步与迁移前路径清零
+**Branch**: `main`
+
+### Summary
+
+三轮一笔：① 代码修 P1-1（远端路径不进宿主 PathBuf）/P1-2（ahead-behind 键收敛为 RepoKey）/P1-3（事件路径基准=单元工作树根）+ 顺带扫出的 git-changed 载荷静默死亡；② P2 同类清零（mount_only 原子化、current_branch 第二写者、单一派生点、死代码与夹具）；③ 文档把新不变量落档并把迁移前的 store/hook/目录/类型文件引用（约 100 处）清到零。门禁 7/7 护栏 + cargo test + tsc/vitest 全绿；AC13 仍需真实 WSL/SSH 现场；代码未提交。
+
+### Main Changes
+
+### A. 代码：P1-1 / P1-2 / P1-3（跨平台、双键、事件路径基准）
+
+- **P1-1 远端路径不进宿主 PathBuf**（`common/git/path_guard.rs`）：`canonicalize_worktree_path`
+  按 `ExecTarget` 分叉 —— Local 用 `PathBuf` 词法归一，WSL / SSH 改走纯字符串
+  `lexical_normalize_posix`。旧实现下 Windows 宿主会把 `/home/u/p` 归一成 `\home\u\p`，两层后果：
+  ① 身份 key 跨宿主分叉（同一远端单元在 Windows / macOS 算出两个 key）；② WSL 执行器是
+  `cd <dir> && exec …`，`cd \home\u\p` 必失败 ⇒ Windows 宿主上 WSL/SSH 项目的 changes 直接瘫痪。
+  回归钉子 `remote_posix_path_is_never_rewritten_with_host_separators`（SSH / WSL 两个 target，
+  纯字符串断言、与宿主 OS 无关）。`repo_ref.rs` 的两条 golden 用例随之恢复平台无关。
+
+- **P1-2 ahead/behind 只剩一种键**：键 = `RepoKey`（仓库单元身份），删除
+  `shared/utils/aheadBehindKey.ts`（连带删掉只为拼这个键而存在的 `useRefreshGitInfo`
+  `connectionContext` 参数）。根因不是「双键」而是**四种键约定**：写侧
+  `{kind}:{distro|host}:{unit}` 与 `{kind}:{host}:{port}:{projectId}`，读侧 `local:{projectId}`
+  与裸 `aheadBehind[projectId]` —— 读侧永远拼不出写侧的键，于是 `BranchStatusBarWidget` 徽标恒空、
+  主仓行显示的是**激活单元**的数字。`project.id` 本身是 UUID，`RepoKey` 已全局唯一 ⇒
+  `{source}:{connectionId}` 维度纯冗余。写侧 4 处统一（`useRefreshGitInfo` /
+  `useLocalProjects` / `useGitStatusEventsSync` / `useAheadBehindSync`），读侧 4 处统一
+  （`GitControlPanelWrapper` / `ProjectGitSection` / `BranchStatusBarWidget` /
+  `ConnectionProjectCard`）；新增 `BranchStatusBarWidget.test.tsx`（**读侧此前完全没有测试**，
+  恒空 bug 因此长期无人发现）。
+
+- **P1-3 事件路径基准 = 单元工作树根**：新增 `unitWorkDir(repoKey, projectRoot)`（与 Rust
+  `RepoRef::work_dir()` 同义：主仓回落项目登记路径，linked worktree 用后端回传的 canonical 路径）。
+  三个未跟改造的消费点改用它 —— `HtmlPreview.tsx` / `useBrowserPanelEvents.ts` /
+  `useBrowserTab.ts`；`useUntrackedDirExpansion` 补必填 `repoKey` + 同址过滤（跨单元事件不得驱动
+  本列表重拉）。
+  顺带扫出**同类 P1**：`git-changed` 载荷已从裸 `project_id` 改成
+  `GitChangedEvent{repo_key, project_id}`，但两个浏览器消费点仍是 `useTauriEvent<string>` +
+  `payload !== projectId` ⇒ 对象 ≠ 字符串恒早返回 ⇒ **整条通道静默死亡**（不报错、不留痕），
+  且它们的测试用裸字符串发事件，所以一直是绿的 —— 夹具跟着代码一起没跟契约。已修 + 夹具同步。
+  未改：`git/components/diff/useDiffData.ts` 仍只按 `project_id` 匹配（两侧都是单元相对，跨单元
+  只会多一次幂等重取，后端按指纹命中缓存，不会显示错误数据）。
+
+### B. 代码：P2 同类清零
+
+| 项 | 处理 |
+| --- | --- |
+| 挂载不变量原子化 | 新增 `WatcherManager::mount_only(repo, sink)`：`release_except` + `watch` 在**同一临界区**（`mount_lock: Arc<Mutex<()>>`），内部走无锁内核 `release_except_inner` 避免自死锁；`activate()` 改调它。旧写法两步各自加锁，并发 `activate`（快速切项目 / 连点）可交错成 `c1.release, c2.release, c1.watch, c2.watch` ⇒ 两套挂载常驻。+2 条并发用例（2 线程布障挂不同单元 ⇒ 恰好一套；4 线程挂同单元 ⇒ 只建一套 watcher），临时去掉锁后 3/3 次稳定变红 |
+| `current_branch` 第二写者 | `useLocalProjects.handleRefreshGit` 不再写（唯一写者 = `applyStatus` 的主仓投影）。该用例原本标题写着「worktree 刷新**不得**改写主仓分支名」而断言在钉旧行为，一并改写为真判据 |
+| 当前单元 key 单一派生点 | 新增 `selectActiveRepoKey(state, projectId)` / `activeRepoKeyOf(projectId?)`（`worktreeStore.ts`），收敛原 6 处手写的 `repoKeyOf(pid, byProject[pid]?.activePath ?? null)`；护栏新增「直读 `.byProject[...].activePath` 即违规」判据 + 2 条自测；`ProjectGitSection` 的渲染期 `getState()` 改响应式 selector |
+| 死代码 | 删 `common/git/remote.rs` 整文件（`get_remote_git_info` 无调用者 + 仅它用的采集脚本）、`parse_git_info_output`（102 行）、`WatcherManager::unwatch_unit`（与 `release_one` 逐行重复）；前端删 `getActiveWorktreeBranch` / `useOpenedWorktrees` / `replaceAll` / `selectWorktrees` / `setStatusVersion`（最后一个原本只是「测试注入点」却挂在生产接口上，测试改用 `setState` 铺陈旧基线）|
+| 夹具残留 | `ProjectItem.test.tsx` / `ProjectGitMenu.test.tsx` 去掉已删的 `changed_files` / `is_clean`（`...overrides` 展开抑制了 tsc 的多余属性检查，所以此前一直绿着）|
+
+**不动的一点**：`operations/info.rs` 的 `worktrees.remove(0)` **保留** —— 先实证了
+`git worktree list` 保证主工作树排在最前（git 2.54 实测 3/3 + git-worktree(1) 文档），
+改成「按路径字符串过滤」反而对路径形态敏感（正是 P1-1 那类别名问题）。
+
+### C. 文档：本次改动引入的契约落档
+
+- `backend/git-domain.md` §12：补 ① 远端路径纯字符串归一（两层后果 + 「判据必须与宿主 OS 无关」）；
+  ② `mount_only` 原子性（「不变量属于资源所有者」）；测试清单同步。
+- `backend/concurrency-guidelines.md`：幂等粒度 project → `RepoRef::key()`；新增「挂载临界区
+  原子化」契约 + Wrong/Correct 对；线程模型标题改为「每个已挂载仓库单元」，补 git 单元另加
+  status worker / git-meta 监听。
+- `frontend/state-management.md`：新增场景第 7/8/9 条（ahead/behind 键 = `RepoKey` + 四种键约定
+  的漂移史、激活单元 key 单一派生点、事件路径基准 = 单元工作树根 + **载荷形状本身是契约**）；
+  旧「跨域共用切片 + 复合 key 2026-05-18」场景标记为被取代并改写；「Project/File 单源化迁移」
+  场景按域 store 重写；架构图与状态分类段重画。
+- `frontend/api-layer.md`：事件表补 `git-status-snapshot` / `file-changed` / `file-tree-changed`，
+  `git-changed` 载荷从 `string (projectId)` 修正为 `GitChangedEvent{repo_key, project_id}`；
+  `listen<string>` 示例换成 `useTauriEvent` + 单一常量源，并写明裸写法在载荷演进时静默死亡。
+- `frontend/hook-guidelines.md`：「现有 Hooks 参考」两张表**逐行核验重建**（删 6 个已删 hook、
+  补落点列）；`useAheadBehindSync` 小节按现状重写（旧版写的是三域三 effect + `useAppStore`）。
+- `src/AGENTS.md`：状态管理原则新增第 4 条「同一事实只有一个表示 / 派生点」，指向
+  `state-management.md` 新场景。
+
+### D. 文档：迁移前符号与路径清零（约 100 处）
+
+类别 = 「spec 指向已不存在的 store / hook / 目录 / 类型文件」。先写机械扫描器（抽出 spec 内所有
+`` `src/...` `` / `` `src-tauri/...` `` 路径逐个验存在性，排除带「旧 / 已删除 / →」的历史行）拿到
+权威清单，再逐条核实现状后清：
+
+| 旧 | 现 |
+| --- | --- |
+| `useAppStore`（单一 store，27 处） | 域 store：`projectStore` / `worktreeStore` / `editorStore` / `dockStore` / `appViewStore` / `gitStore` / `connectionStore` + feature store（`@/features/file/store`、`@/features/skill/store`）|
+| `useSyncToStore` / `useAppContainer` | `useAppStoreSync` / `useAppShell`（= `useAppGlobalEffects` + `useAppShellData` + `buildAppShellValues`）|
+| `src/store|hooks|context|contexts/` | `src/shared/{store,hooks,contexts}/` 或 `src/features/<domain>/…` |
+| `src/types.ts` / `src-tauri/src/state.rs` | `src/shared/types/<domain>.ts` / `common/types.rs` + 各域 `*/types.rs` + `core/project.rs` |
+| `src/components/**` | `features/*/components/`（真正被多 feature 共用的在 `shared/components/`）|
+| `src/tailwind.css` | `src/styles/index.css`（只聚合）+ `tokens/*` 的 `@theme` + `components/*.css` |
+| `src/test/setup.ts`、`src/tests/` | `src/testing/setup.ts`；测试文件**同层** `__tests__/`（引 `vitest.config.ts` 的 `include`）|
+| `src-tauri/src/{commands,storage.rs,models/}`、`skill/` | `session/commands.rs` / `session/manager.rs` / `session/types.rs` / `library/` |
+| `git/{commands,local,remote,wsl,operations,pr}.rs` | `git/commands/`（按主题分文件）+ `git/services/` + `common/git/` |
+| `crate::opencode_theme` / `crate::pi_theme` | `crate::theme::opencode` / `crate::theme::pi` |
+| 已删符号：`RemoteItems.tsx`、`RemoteProjectView.tsx`、`AppLayout`、`SkillContext`、`useLsp`/`useLspDiagnostics`/`useLspHover`/`useLspCompletion`、`useSideTerminalResize`、`WSLItem`/`RemoteItem`、`fileTabs`/`activeFileTabId`/`fileTree`/`fileViewLoading` | 换成现存对应物，或按「已删除 / 原…时代」显式标注 |
+| 已退役字段 `is_clean` / `changed_files` | `branches` / `worktrees` / `truncated` / `git_provider` |
+
+另修掉自己上一轮写错的一处：`cross-layer-thinking-guide.md` 把「内存 `Project`」指向了
+`src-tauri/src/project/types.rs`（那其实是 2 行 `pub use` barrel），真身是
+`src-tauri/src/core/project.rs`。
+
+**扫尾结果**：路径扫描器 MISS 30 → **8**，剩余 8 条全是显式历史 / 条件引用
+（`src-tauri/.rustfmt.toml`「如存在」、`src/adapters` 的 2026-05-06 变更记录，以及 5 处我写的
+「旧 → 新」对照行）；裸名复扫剩余 `state.rs` 4 处全是「**没有 / 不再有** `state.rs`」的声明。
+
+### E. 门禁（三轮各自跑过，下面是终态）
+
+- `python3 tools/guards/run.py run`：**7/7 通过、0 违规**（`check_repo_unit_identity` 1371 文件
+  0 违规；护栏自测 169 → 173；`check_agents_md_size` 通过）。
+- `cargo fmt --all -- --check` / `cargo clippy -- -D warnings`：0 / 0。
+- `cargo test`：lib **1360 passed / 4 ignored**；integration **103 passed**。
+- `npx tsc --noEmit` / `npx vitest run --typecheck`：0 error / **489 files、4360 passed、2 skipped、
+  Type Errors: none**。
+- `npx eslint src/`：0 error（仅 1 条既存 VirtualList warning）。
+- 文本完整性：改动文件无 NUL / 非法 UTF-8 / ESC；`HtmlPreview.tsx`（9）、`useFileView.ts`（6）、
+  `ProjectGitSection.tsx`（8）的 U+FFFD 与 HEAD **逐数一致 = 既存**，非本次引入；
+  所有改动 `.md` 代码围栏偶数配对。
+
+### F. 如实说明与留开项
+
+- **AC13 仍未执行**：需真实 WSL / SSH 现场（本机 11 个项目 `environment.type` 全是 `Local`）。
+  P1-1 是 Windows-only 缺陷，本机（macOS）造不出旧实现的红 —— 与红线 13 自己写的
+  「唯一可靠判定是 CI 的 Windows `cargo test` job」一致；结构性保险是远端分支已不可能再拿到
+  `PathBuf`。
+- 3 个文件的**既存 U+FFFD 乱码**保持不动（猜原文比重写更危险），留给单独一轮决定。
+- **新发现（代码，本次只记档未改）**：
+  1. **类型双份定义**：`session/types.rs` 与 `session/model.rs` 各完整定义一份
+     `ProjectSession` / `WSLProjectSession` / `RemoteProjectSession` / `SessionStore`
+     （`model.rs` 头注写着 "alternate module path"）；`common/connection/types.rs` 与
+     `model.rs` 同样各定义一份 `AuthMethod`。已在 cross-layer guide 对照表标注「⚠️ 待收敛」，
+     收敛本身涉及 40+ 处 import 归口，应单独一轮。
+  2. `useDiffData` 的跨单元**幂等重取**（无害，未收口）。
+- 代码**未提交**：`git diff --cached` 为空，改动全部未暂存，HEAD 仍为 `1739cc70` —— 按用户要求
+  不由 AI 提交。
+
+### Git Commits
+
+（**未提交** —— `git diff --cached` 为空、改动全部未暂存，HEAD 仍为 `1739cc70`；
+用户要求「不要主动提交代码」，故本会话不代提交）
+
+### Testing
+
+- [OK] 护栏：`python3 tools/guards/run.py run` → **7/7 通过 / 0 违规 / 0 护栏失效**，自测 173 tests OK（169 → 173）
+- [OK] `cargo fmt --all -- --check` → OK；`cargo clippy -- -D warnings` → 0
+- [OK] `cargo test` → lib **1360 passed / 4 ignored**；integration **103 passed**
+- [OK] `npx tsc --noEmit` → 0 error；`npx vitest run --typecheck` → 489 files / **4360 passed** / 2 skipped / Type Errors: none
+- [OK] `npx eslint src/` → 0 error（1 条既存 VirtualList warning）
+- [OK] 红→绿逐类验证：P1-3 三类（HtmlPreview 基准 / useUntrackedDirExpansion 同址过滤 / 浏览器载荷形状）临时回退变红；P2-4 去掉 `mount_lock` 后并发用例 3/3 次稳定红；P2-5 恢复旧写者后变红；P1-1 与 P1-2 为 Windows-only / 恒空类缺陷，本机造不出旧红，已如实说明判据边界
+- [OK] 文本完整性：所有改动文件无 NUL / 非法 UTF-8 / ESC；3 个文件的 U+FFFD 与 HEAD 逐数一致（既存）；改动 `.md` 围栏全部偶数配对
+
+### Status
+
+[OK] **Completed**（代码 P1/P2 + spec 契约同步 + 迁移前路径清零三轮全部完成）
+
+### Next Steps
+
+- **AC13**：需真实 WSL / SSH 项目现场（本机 11 个项目全为 `Local`）；并关注 **Windows CI 的 `cargo test`** —— P1-1 的红→绿只在 Windows 成立
+- **类型双份定义收敛**：`session/{types,model}.rs` 与 `common/connection/{types,model}.rs` 各有一份同名类型，需归口
+- **既存 U+FFFD 乱码**：`HtmlPreview.tsx`(9) / `useFileView.ts`(6) / `ProjectGitSection.tsx`(8) 待单独一轮核对原文
+- `useDiffData` 跨单元幂等重取（无害，可选收口）
+- 用户提交这批改动（AI 不代提交）

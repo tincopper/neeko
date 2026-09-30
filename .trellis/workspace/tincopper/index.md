@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-5.md`
-- **Total Sessions**: 232
-- **Last Active**: 2026-09-26
+- **Total Sessions**: 241
+- **Last Active**: 2026-09-29
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-5.md` | ~165 | Active |
+| `journal-5.md` | ~871 | Active |
 | `journal-4.md` | ~1989 | Archived |
 | `journal-3.md` | ~1978 | Archived |
 | `journal-2.md` | ~1991 | Archived |
@@ -33,6 +33,15 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 241 | 2026-09-29 | Worktree 身份 P1/P2 收尾 + spec 契约同步与迁移前路径清零 | - | `main` |
+| 240 | 2026-09-29 | Worktree 身份第八轮：现场日志暴露 version 号段随释放归零，号段与快照数据分离修掉 | - | `main` |
+| 239 | 2026-09-29 | Worktree 身份第六/七轮：远端两个自引入漏洞修好，AC4 编辑→推送 P95 机器出数，账面三处失真更正 | - | `main` |
+| 238 | 2026-09-28 | 修掉本任务引入的远端回归：仓库存在性判定交回 transport，远端激活改为收口+pull | - | `main` |
+| 237 | 2026-09-28 | Worktree 身份第五轮：挂载唯一入口与写后收口升级为护栏判据，并留下 AC13 的具体线索 | - | `main` |
+| 236 | 2026-09-28 | Worktree 身份收尾：面板渲染级验证、连击与冷启动 P95 实测、手测夹具脚本 | - | `main` |
+| 235 | 2026-09-28 | Worktree 身份第三轮：隔离 HOME 真跑应用，修掉恢复/双判死/多发起点三个缺陷 | - | `main` |
+| 234 | 2026-09-28 | Worktree 身份收口第二轮：写命令全覆盖 + 单元生命周期 + 护栏接线判据 | - | `main` |
+| 233 | 2026-09-28 | Worktree 场景 git status 仓库单元身份补全（RepoRef 端到端） | - | `main` |
 | 232 | 2026-09-26 | 护栏脚手架：tools/guards 框架取代三份手抄清单 | - | `main` |
 | 231 | 2026-09-25 | AGENTS.md 治理收口（体积预算/台账校验/章节去重）+ 贡献指南去镜像 | `512d9cf6`, `f25d2ec0`, `e3b706df` | `main` |
 | 230 | 2026-09-25 | git discard 统一入口 + 写后快照新鲜度（watcher-lifecycle 任务收尾归档） | `f2fd39ca`, `53ebc610` | `main` |
