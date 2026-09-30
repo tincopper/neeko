@@ -32,8 +32,10 @@ jobs:
       - name: Install frontend dependencies
         run: pnpm install
 
-      - name: TypeScript check
-        run: pnpm tsc --noEmit
+      # 与本地 commit 档**同一条命令**（静态检查的定义单点在 package.json）：eslint + tsc。
+      # 此前 eslint 只在本地 pre-commit 跑、CI 不跑 ⇒ 门的强度取决于「谁装了钩子」。
+      - name: Frontend static checks
+        run: pnpm lint:fe:static
 
   frontend-test:
     needs: frontend-check
@@ -54,8 +56,9 @@ jobs:
       - name: Install frontend dependencies
         run: pnpm install
 
+      # 与本地 push 档同一条命令（非 watch 形态）。
       - name: Unit tests
-        run: pnpm test
+        run: pnpm test:run
 
   # ──────────────────────────────────────────────
   # Java 调试 host：编译 + 自检（源码解析顺序 / 缓存布局 / 断点 FQN 推导）
@@ -112,6 +115,12 @@ jobs:
 
       - name: Rust check
         run: cargo check
+        working-directory: ./src-tauri
+
+      # `cargo fmt --check` 同样此前只在本地 `pnpm lint` 里跑（pre-commit 的 lint-rust），
+      # CI 只跑 check/clippy/test ⇒ 格式化门也补进 CI。
+      - name: Rust format
+        run: cargo fmt --check
         working-directory: ./src-tauri
 
       - name: Rust clippy

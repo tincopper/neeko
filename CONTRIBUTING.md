@@ -62,7 +62,8 @@ pnpm tauri dev        # start the dev app (frontend on port 1420)
 | `pnpm tauri dev` | Run the app in development mode |
 | `pnpm tauri build` | Build a release bundle |
 | `pnpm lint` | Rust fmt + clippy(-D warnings) + all Python guards + guard unit tests + Java host |
-| `pnpm lint:fe` | Frontend ESLint + `tsc --noEmit` + vitest typecheck |
+| `pnpm lint:fe:static` | Frontend static checks (ESLint + `tsc --noEmit`) — what `pre-commit` runs |
+| `pnpm lint:fe` | `lint:fe:static` then the frontend test run (local all-in-one) |
 | `pnpm lint:all` | Both Rust and frontend lint |
 | `pnpm type-check` | TypeScript type check only |
 | `pnpm test` | Vitest watch mode |
@@ -176,11 +177,16 @@ commit. Hooks are installed via `pnpm prepare` (or `pnpm lefthook install`).
 
 | Hook | Trigger | Runs |
 | --- | --- | --- |
-| `pre-commit` | changed `src/**/*.{ts,tsx,js,jsx}` | `pnpm lint:fe` |
+| `pre-commit` | changed `src/**/*.{ts,tsx,js,jsx}` | `pnpm lint:fe:static` |
 | `pre-commit` | changed `src-tauri/**/*.rs` | `pnpm lint` |
 | `pre-commit` | changed `tools/java-host/**` | `pnpm lint:host` |
 | `pre-commit` | every commit | `pnpm guards run --stage commit --staged` |
 | `commit-msg` | every commit | `pnpm commitlint` |
+| `pre-push` | pushed files match `src/**/*.{ts,tsx,js,jsx}` | `pnpm test:run` |
+| `pre-push` | pushed files match `src-tauri/**/*.rs` | `cargo test` |
+
+Both unit-test suites run at push, not at commit: commit stays a sub-minute static gate,
+push pays for the tests. A pushed file list that matches neither glob skips both.
 
 ### Adding a guard
 

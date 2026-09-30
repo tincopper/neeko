@@ -47,7 +47,7 @@ docs/                架构、需求与设计文档
 pnpm install                 pnpm tauri dev            pnpm tauri build
 pnpm lint          # Rust fmt + clippy(-D warnings) + 全部护栏（tools/guards）+ java-host
 pnpm guards list   # 列当前护栏清单与其 stage/scope（清单即 tools/guards/checks/ 目录）
-pnpm lint:fe       # ESLint + tsc + vitest typecheck
+pnpm lint:fe       # ESLint + tsc + 前端测试（静态部分单点：lint:fe:static）
 pnpm type-check    # npx tsc --noEmit
 pnpm test / test:run / test:coverage
 cargo test --manifest-path src-tauri/Cargo.toml

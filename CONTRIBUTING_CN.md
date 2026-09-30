@@ -58,7 +58,8 @@ pnpm tauri dev        # 启动开发模式（前端端口 1420）
 | `pnpm tauri dev` | 运行开发模式 |
 | `pnpm tauri build` | 构建发布版本 |
 | `pnpm lint` | Rust fmt + clippy(-D warnings) + 全部 Python 护栏 + 护栏单测 + Java host |
-| `pnpm lint:fe` | 前端 ESLint + `tsc --noEmit` + vitest typecheck |
+| `pnpm lint:fe:static` | 前端静态检查（ESLint + `tsc --noEmit`）—— `pre-commit` 跑的就是这条 |
+| `pnpm lint:fe` | 先 `lint:fe:static`，再跑一次前端测试（本地一把梭） |
 | `pnpm lint:all` | Rust 与前端全部 lint |
 | `pnpm type-check` | 仅 TypeScript 类型检查 |
 | `pnpm test` | Vitest 监听模式 |
@@ -161,11 +162,16 @@ Hooks 通过 `pnpm prepare`（或 `pnpm lefthook install`）安装。
 
 | Hook | 触发条件 | 执行内容 |
 | --- | --- | --- |
-| `pre-commit` | 改动 `src/**/*.{ts,tsx,js,jsx}` | `pnpm lint:fe` |
+| `pre-commit` | 改动 `src/**/*.{ts,tsx,js,jsx}` | `pnpm lint:fe:static` |
 | `pre-commit` | 改动 `src-tauri/**/*.rs` | `pnpm lint` |
 | `pre-commit` | 改动 `tools/java-host/**` | `pnpm lint:host` |
 | `pre-commit` | 每次提交 | `pnpm guards run --stage commit --staged` |
 | `commit-msg` | 每次提交 | `pnpm commitlint` |
+| `pre-push` | 推送文件命中 `src/**/*.{ts,tsx,js,jsx}` | `pnpm test:run` |
+| `pre-push` | 推送文件命中 `src-tauri/**/*.rs` | `cargo test` |
+
+两套单元测试都只在 push 档跑（commit 保持亚分钟级的静态门）：前端与 Rust 对称，不再出现
+「前端测试在 commit、Rust 测试没地方跑」。推送文件两个 glob 都不命中时两个 job 都跳过。
 
 ### 新增一条护栏
 

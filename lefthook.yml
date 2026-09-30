@@ -4,9 +4,10 @@
 pre-commit:
   parallel: true
   commands:
+    # commit 档只做**静态**检查（eslint + tsc）：单元测试统一放 pre-push（见文件末尾的边界说明）。
     lint-frontend:
       glob: "src/**/*.{ts,tsx,js,jsx}"
-      run: pnpm lint:fe
+      run: pnpm lint:fe:static
     lint-rust:
       glob: "src-tauri/**/*.rs"
       run: pnpm lint
@@ -23,4 +24,24 @@ commit-msg:
   commands:
     commitlint:
       run: pnpm commitlint --edit {1}
+
+# push 档：**两套单元测试都只在这里跑** —— commit 档只做静态检查。
+#
+# 阶段边界按**延迟预算**划，不按语言划：commit 是秒级~1 分钟的静态检查（fmt / eslint / tsc /
+# 提交信息），push 是分钟级的测试套件（前端 ~1 分钟、Rust ~3 分钟），CI 是三平台终审。
+# 判据：每个检查只放一处 —— CI 已有的不重复；只有本地有的补进 CI（见 ci.yml）；
+# 测试一律放 push（前端与 Rust 对称，不再出现「前端测试在 commit、Rust 测试没地方跑」）。
+pre-push:
+  parallel: true
+  commands:
+    # Rust 全量测试（lib + integration，暖缓存 ~3 分钟）。glob 按**推送涉及的文件**匹配，
+    # 因此纯前端 / 纯文档推送不付这笔成本。
+    rust-tests:
+      glob: "src-tauri/**/*.rs"
+      run: cargo test --manifest-path src-tauri/Cargo.toml
+    # 前端全量测试（~1 分钟）：与 Rust 侧对称，统一在 push 档跑一次；
+    # 顺带兜住「提交绕过钩子」与「提交时校验对象是工作树而非提交内容」两类情形。
+    frontend-tests:
+      glob: "src/**/*.{ts,tsx,js,jsx}"
+      run: pnpm test:run
 
