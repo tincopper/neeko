@@ -354,15 +354,34 @@ function jdtIdentityOfJdkCachePath(p: string): string | null {
 }
 
 /**
- * LSP 文档 uri 推导：fs → `file://${path}`；jdt 需原始 query 才能重建，
+ * canonical fs 路径 → `file://` uri（**形态单点**，构造方向唯一实现）。
+ *
+ * 盘符形态必须补第三个斜杠：canonical 形态是 `C:/…`（盘符开头、无前导斜杠），直接拼 `file://`
+ * 得到 `file://C:/…` —— 按 RFC 3986 的 authority 语义 `C:` 被当作 host，服务端拿到的路径退化
+ * 为 `/…`（jdtls / rust-analyzer 会因此找不到文件）。POSIX 绝对路径天然得到 `file:///…`。
+ *
+ * 入参必须是 canonical 绝对路径：相对路径先经 [`canonicalFsPath`]（拼根）或
+ * [`fileRefFromTabPath`] 锚定 —— 形态构造与锚定分离，各自只有一个实现。
+ */
+export function fileUriOfPath(path: string): string {
+  return isDriveStart(path) ? `file:///${path}` : `file://${path}`;
+}
+
+/**
+ * LSP 文档 uri 推导：fs → `file://<path>`（**盘符形态补第三斜杠**）；jdt 需原始 query 才能重建，
  * `jdtQuery` 缺省返回 null；**虚拟源码恒 null**（适配器持字节，没有 LSP 文档）。
+ *
+ * 盘符分支不是形式主义：canonical 形态是 `C:/…`（盘符开头、无前导斜杠），直接拼 `file://` 得到
+ * `file://C:/…` —— 按 RFC 3986 的 authority 语义 `C:` 会被当作 host，服务端拿到的路径退化为
+ * `/…`（jdtls 的 `textDocument/documentSymbol` 会因此找不到文件）。`languageMap.toFileUri`
+ * 对同一输入给的是 `file:///C:/…`，两侧形态必须一致。
  *
  * 注意 jdt 身份的扩展名已 canonical 为 `.java`，
  * 反编译类（`.class` 源）的原始 uri 无法从 ref 逐字重建——需要原始 uri 时
  * 必须由 tab 的 `virtualUri` 携带，不经此函数。
  */
 export function lspUriOf(ref: FileRef, opts?: { jdtQuery?: string }): string | null {
-  if (ref.kind === 'fs') return `file://${ref.path}`;
+  if (ref.kind === 'fs') return fileUriOfPath(ref.path);
   if (ref.kind === 'virtual') return null;
   const query = opts?.jdtQuery;
   if (query === undefined) return null;

@@ -12,6 +12,8 @@
  * 换 key 意味着旧条目不再被命中，无上限就会随编辑次数单调增长（见 MAX_CACHE_ENTRIES）。
  */
 
+import { canonicalFsPath, fileUriOfPath } from '@/shared/utils/fileRef';
+
 import { isLspLanguageReady } from '../../utils/lspReadiness';
 import type { LineTarget, OverlayProvider } from '../contract';
 import { langIo } from '../io';
@@ -95,7 +97,8 @@ export async function fetchRunnablesForLines(
   const cached = readCache(key);
   if (cached) return cached;
 
-  const uri = `file://${args.absFilePath}`;
+  // 绝对路径可能带反斜杠或相对（类型注释保证绝对，但归一由 fileRef 单点负责）。
+  const uri = fileUriOfPath(canonicalFsPath(args.projectPath, args.absFilePath));
   await Promise.all(
     args.targets.map(async ({ line, kind }) => {
       try {

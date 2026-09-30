@@ -6,6 +6,7 @@ import {
   fileRefFromLspUri,
   fileRefFromTabPath,
   isJdtRef,
+  fileUriOfPath,
   lspUriOf,
   sameIdentity,
   pathsContainFile,
@@ -424,9 +425,34 @@ describe('relativeToRootOrNull — 安全剥根（不在根下 → null，IPC �
   });
 });
 
+describe('fileUriOfPath — canonical 路径 → file:// uri（构造形态单点）', () => {
+  it('POSIX 绝对路径：`file://` + `/…` 即三斜杠形态', () => {
+    expect(fileUriOfPath('/repo/src/a.ts')).toBe('file:///repo/src/a.ts');
+  });
+
+  it('盘符形态补第三斜杠（`file://C:/…` 会把盘符当作 authority）', () => {
+    expect(fileUriOfPath('C:/ws/src/a.ts')).toBe('file:///C:/ws/src/a.ts');
+  });
+});
+
 describe('lspUriOf — LSP 文档 uri 推导', () => {
   it('fs → file://<path>', () => {
     expect(lspUriOf(fileRefFromTabPath('/repo', 'a.ts'))).toBe('file:///repo/a.ts');
+  });
+
+  /**
+   * 盘符形态必须补第三个斜杠：canonical 形态是 `C:/…`（盘符开头、无前导斜杠），
+   * 直接拼 `file://` 会得到 `file://C:/…` —— 按 RFC 3986 的 authority 语义，`C:` 被当作 host，
+   * 服务端看到的路径退化为 `/…`（`languageMap.toFileUri` 对同一输入给的是 `file:///C:/…`）。
+   */
+  it('盘符形态补第三斜杠（否则盘符被当作 authority）', () => {
+    expect(lspUriOf(fileRefFromTabPath('C:/ws', 'C:/ws/src/A.java'))).toBe(
+      'file:///C:/ws/src/A.java',
+    );
+  });
+
+  it('相对路径先锚定项目根再构造（Windows 项目根，symbols.ts 的入参形态）', () => {
+    expect(lspUriOf(fileRefFromTabPath('C:/ws', 'src/A.java'))).toBe('file:///C:/ws/src/A.java');
   });
 
   it('jdt 无 query → null（原始 uri 不可从 canonical 身份重建）', () => {

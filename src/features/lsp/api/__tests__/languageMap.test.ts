@@ -10,6 +10,7 @@ import {
   getLspLanguageId,
   resolveLspLanguageId,
   applyBackendExtensionMap,
+  toFileUri,
 } from '../languageMap';
 import * as lspApi from '../lspApi';
 
@@ -88,5 +89,28 @@ describe('LSP 覆盖度护栏', () => {
     expect(LSP_EXTENSIONS.length).toBeGreaterThan(0);
     const missing = LSP_EXTENSIONS.filter((ext) => !LANGUAGE_BY_EXTENSION[ext]);
     expect(missing).toEqual([]);
+  });
+});
+
+/**
+ * LSP 文档 uri 的形态契约（锚定 + 形态各自单点：`canonicalFsPath` / `fileUriOfPath`）。
+ * 关键是**盘符必须占第三斜杠**：`file://C:/…` 的 `C:` 会被服务端按 RFC 3986 当作 authority，
+ * 路径退化为 `/…`；相对入参在 Windows 项目根上尤其容易踩（旧实现只在绝对分支判盘符）。
+ */
+describe('toFileUri — 文档 uri 形态', () => {
+  it('POSIX 绝对路径：三斜杠', () => {
+    expect(toFileUri('/repo', '/repo/src/a.ts')).toBe('file:///repo/src/a.ts');
+  });
+
+  it('POSIX 相对路径：先锚定项目根', () => {
+    expect(toFileUri('/repo', 'src/a.ts')).toBe('file:///repo/src/a.ts');
+  });
+
+  it('Windows 绝对路径：盘符占第三斜杠（不落 host 位）', () => {
+    expect(toFileUri('C:/ws', 'C:/ws/src/a.ts')).toBe('file:///C:/ws/src/a.ts');
+  });
+
+  it('Windows 相对路径：锚定后仍走盘符分支（旧实现此处产出 file://C:/…）', () => {
+    expect(toFileUri('C:/ws', 'src\\a.ts')).toBe('file:///C:/ws/src/a.ts');
   });
 });

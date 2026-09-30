@@ -9,6 +9,7 @@
  * registry (custom plugins) is authoritative; the local map is a sync cache.
  */
 
+import { canonicalFsPath, fileUriOfPath } from '@/shared/utils/fileRef';
 import { LANGUAGE_BY_EXTENSION, extensionOf } from '@/shared/utils/languageRegistry';
 
 import * as lspApi from './lspApi';
@@ -152,15 +153,13 @@ export async function resolveLspLanguageId(filePath: string): Promise<string | n
   return getLspLanguageId(filePath);
 }
 
+/**
+ * 本地路径 → LSP 文档 uri（`file://` 形态）。入参 `filePath` 允许相对（对项目根）或绝对，
+ * 锚定走 `canonicalFsPath`、形态走 `fileRef.fileUriOfPath` —— 两者都是单一实现，本函数只负责
+ * 「LSP 文档场景」这一层契约（虚拟文档 `jdt://` 不走这里，见 `virtualUri`）。
+ */
 export function toFileUri(projectPath: string, filePath: string): string {
-  const normalized = filePath.replace(/\\/g, '/');
-  if (normalized.startsWith('/')) {
-    return `file://${normalized}`;
-  }
-  if (normalized.match(/^[A-Za-z]:/)) {
-    return `file:///${normalized}`;
-  }
-  return `file://${projectPath.replace(/\\/g, '/')}/${normalized}`;
+  return fileUriOfPath(canonicalFsPath(projectPath, filePath));
 }
 
 export function fromFileUri(uri: string): string {

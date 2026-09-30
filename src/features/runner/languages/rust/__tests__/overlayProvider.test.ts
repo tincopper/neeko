@@ -92,6 +92,22 @@ describe('fetchRunnablesForLines', () => {
     });
   });
 
+  it('Windows 盘符路径 → uri 三斜杠（否则盘符被服务端当作 authority）', async () => {
+    mockSessions.value = { 'C:/ws': { rust: { status: 'ready' } } };
+    mockLspRequest.mockResolvedValue(specific('tests::case_2'));
+
+    await fetchRunnablesForLines({
+      ...args([{ line: 3, kind: 'test' }]),
+      projectPath: 'C:/ws',
+      absFilePath: 'C:/ws/src/main.rs',
+    });
+
+    expect(mockLspRequest).toHaveBeenCalledWith('C:/ws', 'rust', 'experimental/runnables', {
+      textDocument: { uri: 'file:///C:/ws/src/main.rs' },
+      position: { line: 2, character: 0 },
+    });
+  });
+
   it('单行失败不影响其它行（异常吞掉，不抛到渲染路径）', async () => {
     mockSessions.value = { '/proj': { rust: { status: 'ready' } } };
     mockLspRequest

@@ -57,13 +57,6 @@
       "kind": "legit",
       "note": "兼容旧 payload 的命令入参归一"
     },
-    "src/features/lsp/api/languageMap.ts": {
-      "counts": {
-        "backslash": 2
-      },
-      "kind": "legit",
-      "note": "路径 → LSP file:// uri"
-    },
     "src/features/project/utils/cloneFormUtils.ts": {
       "counts": {
         "strip": 1
