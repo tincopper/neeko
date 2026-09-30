@@ -56,10 +56,12 @@ jobs:
       - name: Install frontend dependencies
         run: pnpm install
 
-      # 与本地 push 档同一条命令（非 watch 形态）；裸 `pnpm test` 是三套串接，
-      # 这个 job 只要前端那一套。
-      - name: Unit tests
-        run: pnpm test:fe
+      # 带覆盖率跑（同一趟测试，多出 v8 插桩开销 ~30%）：`vitest.config.ts` 里的地板
+      # （全局回归底线 + 按文件 pin 的阈值）**只在这里生效** —— 此前 `test:fe:coverage`
+      # 没有任何调用方，于是地板是装饰性的，`useFileEditorLsp.ts` 就是那样漂掉的。
+      # 本地 push 档不跑它（延迟预算），要提前发现就跑 `pnpm test:fe:coverage`。
+      - name: Unit tests + coverage floors
+        run: pnpm test:fe:coverage
 
   # ──────────────────────────────────────────────
   # Java 调试 host：编译 + 自检（源码解析顺序 / 缓存布局 / 断点 FQN 推导）

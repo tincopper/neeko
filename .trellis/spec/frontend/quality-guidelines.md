@@ -327,24 +327,29 @@ pnpm tauri dev    # 启动完整的 Tauri 开发环境
 ### 质量门禁
 
 ```bash
-pnpm lint         # 全部静态检查：lint:fe（eslint + tsc）+ lint:rust（cargo fmt + clippy）+ 护栏
-pnpm lint:fe      # 仅前端静态检查（pre-commit 与 CI 跑的就是这条）
-pnpm type-check   # 仅 TypeScript 类型检查
-pnpm lint:fix     # ESLint 写回（--fix）
-pnpm test:fe      # 跑一次前端测试（push 档与 CI 用它；监听 / 覆盖率见 test:fe:watch / test:fe:coverage）
-pnpm test         # 三套串接：test:fe + test:rust + test:host
-pnpm check        # 本地全量：lint + 两套单元测试 + host 自检
+pnpm lint           # 全部静态检查：lint:fe（eslint + tsc）+ lint:rust（cargo fmt + clippy）+ 护栏
+pnpm lint:fe        # 仅前端静态检查（pre-commit 与 CI 跑的就是这条）
+pnpm type-check     # 仅 TypeScript 类型检查
+pnpm lint:fix       # ESLint 写回（--fix）
+pnpm test:fe        # 跑一次前端测试（push 档用它）
+pnpm test:fe:coverage  # 带覆盖率跑同一套（CI 用它；地板见 vitest.config.ts）
+pnpm test           # 三套串接：test:fe + test:rust + test:host
+pnpm check          # 本地全量：lint + 两套单元测试 + host 自检
 ```
 
 > 命令的**定义单点在 `package.json`**（本文件只引用脚本名）。hook 与 CI 调用的名字必须与它一致 ——
 > 这是必需的：改名时漏改一处，门就会静默失效。
+>
+> **覆盖率是 CI 门禁，不进本地 hook**（延迟预算）：`vitest.config.ts` 的全局地板与 per-file pin
+> 只在 `pnpm test:fe:coverage` 下判定 —— 该命令此前没有任何调用方，于是 pin 漂了也没人知道
+> （`useFileEditorLsp.ts` 的 100% 就是这么失效的）。**动了带 pin 的文件，本地就跑一次它。**
 
 ### CI 流水线（`.github/workflows/ci.yml`）
 
 在 push/PR 到 `main` 时运行：
 
 - `frontend-check`：`pnpm lint:fe`（eslint + tsc，无平台差异 ⇒ 单平台）
-- `frontend-test`：`pnpm test:fe`
+- `frontend-test`：`pnpm test:fe:coverage`（测试 + 覆盖率地板）
 - `backend-check`：`cargo check`（三平台矩阵）+ `pnpm lint:rust` + `pnpm guards run --stage ci`
 - `backend-test`：`pnpm test:rust`（三平台矩阵）
 - `java-host-check`：`bash tools/java-host/build.sh`（内含 `pnpm test:host` 的同一份自检）
