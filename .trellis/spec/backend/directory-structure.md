@@ -351,10 +351,10 @@ pub fn get_task_configs(...) -> Result<Vec<TaskConfig>, AppError> {
 - **services.rs 提取**：`src-tauri/src/terminal/services.rs` —— `spawn_pty_pipeline()`、`graceful_kill()`、`create_pty()` 等纯 PTY 逻辑从 `mod.rs` 提取到独立文件
 - **命令委派 services**：`src-tauri/src/connection/commands.rs` —— `get_wsl_distros` 命令直接委派给 `connection/services.rs`，无需访问 State
 - **类型定义**：`src-tauri/src/project/types.rs` —— 共享数据模型按领域拆分到 `types.rs` 或 `model.rs`
-- **命令分布**：`src-tauri/src/git/commands.rs` —— 约 40 个 Git 命令集中在一个 `commands.rs` 中
+- **命令分布**：`src-tauri/src/git/commands/` —— 按主题分文件（`branch` / `commit` / `index` / `query` / `sync` / `history` / `worktree` / `pr`），`mod.rs` 只做 `mod` + `pub use`
 - **中枢模式**：`src-tauri/src/app.rs` —— Tauri Builder + 命令注册表 + setup 闭包
 - **状态组装**：`src-tauri/src/app_state.rs` —— `AppStateWrapper` 定义，组装所有 Manager
 - **命令注册**：`src-tauri/src/lib.rs` —— `neeko_invoke_handler!` 宏维护完整命令清单
-- **SSH 认证统一**：`src-tauri/src/utils/command/ssh_auth.rs` —— `connect_and_authenticate()` 函数
+- **SSH 认证统一**：`src-tauri/src/common/executor/ssh_auth.rs` —— `connect_and_authenticate()` 函数
 - **主题模块化**：`src-tauri/src/theme/` —— `common.rs` 共享工具 + `opencode.rs`/`pi.rs` 域逻辑 + `service.rs` 编排层
-- **领域自治**：`src-tauri/src/git/` —— 自包含 Git 模块：`commands.rs` 调用 `local.rs`/`remote.rs`/`wsl.rs`/`operations.rs`/`pr.rs`
+- **领域自治**：`src-tauri/src/git/` —— 命令层（`commands/`）+ 服务层（`services/`）；纯实现落在 `src-tauri/src/common/git/`（`local/` / `operations/` / `parsers/` / `status_worker/` / `pr/` / `wsl.rs` / `transport/`）

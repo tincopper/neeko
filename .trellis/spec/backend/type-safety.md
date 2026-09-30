@@ -6,32 +6,31 @@
 
 ## 概述
 
-所有数据模型类型定义在 `src-tauri/src/state.rs` 中。类型使用 `serde` 进行序列化，并与前端 TypeScript 类型（`src/types.ts`）手动同步。
+数据模型类型按域存放：通用模型在 `src-tauri/src/common/types.rs`，各域在 `*/types.rs` / `*/model.rs`，核心模型在 `src-tauri/src/core/project.rs`。类型使用 `serde` 序列化，并与前端 TypeScript 类型（`src/shared/types/`）手动同步。**没有 `state.rs` 这个单文件**。
 
 ---
 
 ## 类型组织
 
-### 所有共享类型集中在 `state.rs` 中
+### 共享类型按域存放（不再有 `state.rs`）
 
-| 分类 | 类型 |
-|------|------|
-| 应用配置 | `AppConfig`（不在 state.rs 中——以 `serde_json::Value` 加载） |
-| 项目 | `Project`、`ViewMode` |
-| 终端 | `TerminalSession`、`TerminalStatus` |
-| Git | `GitInfo`、`FileChange`、`FileStatus`、`Worktree` |
-| Diff | `DiffResult`、`DiffHunk`、`DiffLine` |
-| Agent | `AgentConfig` |
-| WSL | `WSLEntrySession`、`WSLProjectSession` |
-| SSH | `RemoteEntrySession`、`RemoteProjectSession`、`AuthMethod` |
-| 持久化 | `SessionStore`、`ProjectSession` |
+| 分类 | 类型 | 落点 |
+|------|------|------|
+| 应用配置 | `AppConfig` | 以 `serde_json::Value` 加载，无专用 struct |
+| 项目 | `Project`、`ViewMode` | `core/project.rs` |
+| 终端 | `TerminalSession`、`TerminalStatus` | `common/terminal/types.rs` |
+| Git | `GitInfo`、`FileChange`、`FileStatus`、`Worktree` | `common/types.rs` |
+| Diff | `DiffResult`、`DiffHunk` | `common/git/types.rs` |
+| Agent | `AgentConfig` | `common/agent/types.rs` |
+| WSL / SSH | `WSLEntrySession`、`RemoteEntrySession`、`AuthMethod` | `session/types.rs` / `common/connection/types.rs` |
+| 持久化 | `SessionStore`、`ProjectSession` | `session/types.rs` |
 
 ### Manager 本地类型
 
 仅在某个 Manager 内部使用的类型定义在该 Manager 的文件中：
 
 ```rust
-// terminal.rs —— 不在 state.rs 中
+// terminal/manager.rs —— 就地定义，不进共享 types
 struct PtyHandle {
     master: Box<dyn MasterPty + Send>,
     child: Box<dyn Child + Send + Sync>,
@@ -61,7 +60,7 @@ pub struct GitInfo {
 
 ### 结构体字段可见性
 
-- **`state.rs` 中的模型类型**：所有字段为 `pub`
+- **共享模型类型**（`*/types.rs` / `common/types.rs` / `core/project.rs`）：所有字段为 `pub`
 - **Manager 结构体**：字段为私有，需要跨模块访问的方法为 `pub`
 
 ---
@@ -126,7 +125,7 @@ pub enum ViewMode {
 
 ## Rust 到 TypeScript 的类型映射
 
-类型在 `src-tauri/src/state.rs` 和 `src/types.ts` 之间**手动同步**。没有自动生成工具。
+类型在 `src-tauri/src/**/types.rs`（+ `core/project.rs`、`common/types.rs`）和 `src/shared/types/` 之间**手动同步**。没有自动生成工具。
 
 ### 映射规则
 
@@ -159,14 +158,18 @@ pub struct GitInfo {
 // TypeScript —— 同样是 snake_case
 interface GitInfo {
   current_branch: string;
-  is_clean: boolean;
+  branches: string[];
+  worktrees: Worktree[];
+  git_provider: GitProvider;
+  // 未提交变更列表（changed_files）**不在**这里 —— 它是「每个工作树」的事实，
+  // 随 GitStatusSnapshot 按 repo_key 投递（见 git-domain.md §12）
 }
 ```
 
 ### 修改类型时的步骤
 
-1. 更新 `state.rs` 中的 Rust 结构体
-2. 更新 `src/types.ts` 中对应的 TypeScript 接口
+1. 更新对应域的 Rust 结构体（`*/types.rs` / `core/project.rs` / `common/types.rs`）
+2. 更新 `src/shared/types/<domain>.ts` 中对应的 TypeScript 接口
 3. 在新字段上添加 `#[serde(default)]` 以确保与已有持久化数据的向后兼容
 4. 用 `cargo check` 和 `pnpm tsc --noEmit` 验证
 
@@ -201,7 +204,7 @@ pub new_field: Vec<String>,
 
 ### 2. Rust 修改后没有更新 TypeScript 类型
 
-由于类型是手动同步的，忘记更新 `src/types.ts` 会导致运行时不匹配。始终同时更新两端，并运行两个类型检查。
+由于类型是手动同步的，忘记更新 `src/shared/types/` 会导致运行时不匹配。始终同时更新两端，并运行两个类型检查。
 
 ### 3. 对有类型的数据使用 `serde_json::Value`
 

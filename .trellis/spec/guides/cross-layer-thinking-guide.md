@@ -72,11 +72,22 @@
 
 ## Per-Project 元数据扩展四步法
 
+> **符号已随目录重构迁移（后端 domain 化 + 前端 shared/features 化）**：本文下面的**具体路径**
+> 是重构前的写法，四步法的**步骤本身**仍然是漏一步出 bug 的地方。当前落点：
+>
+> | 步骤 | 现落点 |
+> | --- | --- |
+> | (a) 内存 `Project` / `ViewMode` | `src-tauri/src/core/project.rs` |
+> | (a) 三处 session struct（`ProjectSession` / `WSLProjectSession` / `RemoteProjectSession`） | `src-tauri/src/session/types.rs`（`model.rs` 是同样的类型定义，⚠️ 双份定义待收敛） |
+> | (b) 保存 / 加载 | `src-tauri/src/session/manager.rs`（`save_session`）、`src-tauri/src/project/manager.rs`（`add_project_from_session`）、`src-tauri/src/app.rs` |
+> | (c) 对称 setter | `src-tauri/src/project/manager.rs`（如 `set_avatar_color`）+ `project/commands*.rs`，且必须在 `src-tauri/src/lib.rs` 的 `neeko_invoke_handler!` 注册 |
+> | (d) 前端类型 / UI | `src/shared/types/project.ts`、`src/shared/types/connection.ts`；组件在 `src/features/*/components/` |
+
 在 `Project` / `WSLProject` / `RemoteProject` 三种项目模型上加一条"每个项目一份"的元数据（如 `selected_agent`、`selected_ide`、`avatar_color`），在本仓库需要走完下面四步才不会落下半截。漏掉任何一步都会出现"重启丢字段、添加项目无值、UI 无法读"等典型 bug。
 
 ### 步骤 (a)：Rust struct 加字段
 
-In-memory `Project`（`src-tauri/src/models/project.rs`）+ 三处持久化 session struct（`ProjectSession` / `WSLProjectSession` / `RemoteProjectSession`，均在 `src-tauri/src/models/session.rs`）必须同时加，**所有持久化字段都加 `#[serde(default)]`** 才能保证旧 sessions.json 反序列化不报错：
+In-memory `Project`（`src-tauri/src/project/types.rs`）+ 三处持久化 session struct（`ProjectSession` / `WSLProjectSession` / `RemoteProjectSession`，均在 `src-tauri/src/session/types.rs`）必须同时加，**所有持久化字段都加 `#[serde(default)]`** 才能保证旧 sessions.json 反序列化不报错：
 
 ```rust
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -91,8 +102,8 @@ pub struct ProjectSession {
 
 这一步最容易漏。本仓库的项目状态有两条数据路径：
 
-- **保存路径**：`storage::create_session_from_projects(...)` 把内存 `Project[]` 转成 `ProjectSession[]` 落盘——必须 clone 新字段
-- **加载路径**：`app.rs` / `project::add_project_from_session(...)` 把 `ProjectSession` 还原回内存 `Project`——必须读出新字段
+- **保存路径**：`session::manager::save_session(...)` 把内存 `Project[]` 转成 `ProjectSession[]` 落盘——必须 clone 新字段
+- **加载路径**：`src-tauri/src/app.rs` / `project::manager::add_project_from_session(...)` 把 `ProjectSession` 还原回内存 `Project`——必须读出新字段
 
 只补一边的话，"保存了但启动后丢失"或反之。
 
@@ -110,11 +121,11 @@ pub struct ProjectSession {
 
 ### 步骤 (d)：前端三处 TS interface + UI
 
-- `src/types/project.ts` 加 `Project` 字段
-- `src/types/connection.ts` 加 `WSLProject` / `RemoteProject` 字段
-- store 透传：`useAppStore.projects` 系列直接消费新字段，无须额外切片
+- `src/shared/types/project.ts` 加 `Project` 字段
+- `src/shared/types/connection.ts` 加 `WSLProject` / `RemoteProject` 字段
+- store 透传：`useProjectStore.projects` / `useConnectionStore` 的条目直接消费新字段，无须额外切片
 - 渲染组件接收新字段（如 `ProjectGroup` 的 `avatarColor` prop）
-- 修改 UI 调对应 setter（`ProjectPanel.tsx` 的 `handleAvatarColorChange`）
+- 修改 UI 调对应 setter（`src/features/settings/components/ProjectPanel.tsx` 的 `handleAvatarColorChange`）
 
 ### 漏步骤的症状对照表
 
@@ -130,9 +141,9 @@ pub struct ProjectSession {
 
 ### 实例参考
 
-`avatar_color` 完整改动横跨：
-- 后端：`src-tauri/src/models/project.rs:67`、`src-tauri/src/models/session.rs:13`、`src-tauri/src/project.rs`、`src-tauri/src/storage.rs`、`src-tauri/src/app.rs`、`src-tauri/src/commands/{project,wsl,remote}.rs`
-- 前端：`src/types/project.ts`、`src/types/connection.ts`、`src/utils/projectAvatar.ts`、`src/components/project/ProjectGroup.tsx`、`src/components/settings/ProjectPanel.tsx`、`src/hooks/useLocalProjects.ts`、`src/components/connections/{WSLDialog,RemoteDialog}.tsx`
+`avatar_color` 完整改动横跨（路径已按当前目录更新）：
+- 后端：`src-tauri/src/project/types.rs`、`src-tauri/src/session/types.rs`、`src-tauri/src/project/manager.rs`、`src-tauri/src/session/manager.rs`、`src-tauri/src/app.rs`、`src-tauri/src/project/commands*.rs` / `src-tauri/src/connection/` 下的对应命令
+- 前端：`src/shared/types/project.ts`、`src/shared/types/connection.ts`、`src/shared/utils/projectAvatar.ts`、`src/features/project/components/ProjectGroup.tsx`、`src/features/settings/components/ProjectPanel.tsx`、`src/features/project/hooks/useLocalProjects.ts`、`src/features/connection/components/{WSLDialog,RemoteDialog}.tsx`
 
 ### 检查清单
 
@@ -141,7 +152,7 @@ pub struct ProjectSession {
 - [ ] `create_session_from_projects` clone 该字段
 - [ ] `add_project_from_session` 接收并填充该字段
 - [ ] 三个对称 setter 命令实现并注册到 `neeko_invoke_handler!`
-- [ ] `src/types/project.ts` 与 `src/types/connection.ts` 同步加字段（snake_case 镜像）
+- [ ] `src/shared/types/project.ts` 与 `src/shared/types/connection.ts` 同步加字段（snake_case 镜像）
 - [ ] UI 调用对应 setter
 - [ ] 写 serde 往返单测验证缺字段反序列化为 None
 
@@ -244,7 +255,7 @@ export function destroyTerminalCache(cacheKey: string) {
 2. **应用层最小化职责**：仅监听 `term.onData` 并转发到 PTY，不再自行维护 composition 状态。
 3. **避免伪造事件**：不再派发 fake `compositionend` 干预 xterm.js 内部状态。
 
-**落地方式**（`src/components/terminal/terminalInput.ts`）：
+**落地方式**（`src/shared/utils/terminalInput.ts`）：
 ```typescript
 export function setupTerminalInput({ term, sendInput }: { term: Terminal; sendInput: (text: string) => void }) {
   const disposable = term.onData((data) => {
@@ -285,7 +296,7 @@ export function setupTerminalInput({ term, sendInput }: { term: Terminal; sendIn
 **教训**：
 1. **凡是后端已有注册表（agents、IDE 预设、shell 预设...），前端必须 fetch，不得维护并行的硬编码列表。**
 2. 如果某些纯展示元数据（如默认 skill 路径、icon 文件名）确实只对前端有意义，**也应放进后端 struct + serde 字段**而不是另起一份前端常量；通过加 `is_builtin: bool` 这类区分字段让前端按需过滤。
-3. 类型字段加在后端时同步给 `src/types/agent.ts`，并保持 snake_case（与项目其他字段一致，参见 `backend/type-safety.md`）。
+3. 类型字段加在后端时同步给 `src/shared/types/agent.ts`，并保持 snake_case（与项目其他字段一致，参见 `backend/type-safety.md`）。
 4. 改完后用 `cargo test` + `pnpm test` 双跑，确认前端测试中 `expect(invoke).toHaveBeenCalledWith('list_agents')` 一类断言仍生效。
 
 **正确模式**：

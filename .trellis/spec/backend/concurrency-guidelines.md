@@ -25,9 +25,18 @@
 |------|------|------|
 | I/O | `ssh-io-{id[..8]}` | 运行独立的 `tokio::runtime::Runtime`，通过 `tokio::select!` 多路复用输入/输出/调整大小 |
 
-### 每个项目：文件监视线程
+### 每个已挂载仓库单元：文件监视线程（git 单元另加 status 生产者）
 
-由 `notify` crate 的 debouncer 管理 —— 1 个防抖线程 + 1 个轮询线程（10 秒间隔）。
+粒度是**仓库单元**（`RepoRef::key()`），不是 project —— 一个 project 有 1 + N 个单元
+（linked worktree 各有一套 HEAD / index / workdir）。
+
+- 文件监听：由 `notify` crate 的 debouncer 管理 —— 1 个防抖线程 + 1 个轮询线程（10 秒间隔）；
+- git 单元另加：`GitStatusWorker`（status 的 push 生产者）+ `ThrottleScheduler`（合并 notify
+  事件驱动 `worker.check()`）+ git-meta 监听（`.git/HEAD` 等，外部切分支时刷新）；
+- 非 git 单元只保留文件监听，不启动任何 git 资源。
+
+「每项目至多一套挂载资源」是用户决策 D-B：并发挂载的原子化与释放范围见本文件
+「后台线程资源所有权」小节。
 
 ### 线程命名约定
 
@@ -110,7 +119,7 @@ std::thread::spawn(move || {
 stop.store(true, Ordering::Relaxed);
 ```
 
-### 后台线程资源所有权 —— 单一强所有者 + Weak 借用者（watcher 生命周期契约）
+### 后台线程资源所有权 —— 单一强所有者 + Weak 借用者（watcher 生命周期与挂载契约）
 
 > 2026-09-24 缺陷沉淀：旧 watcher 不释放（同一变更 emit 多次、每次项目激活泄漏一套线程），
 > 根因是 `spawn_maintenance_thread` 强持有 `Arc<Mutex<RecommendedWatcher>>`，而退出条件
@@ -119,21 +128,35 @@ stop.store(true, Ordering::Relaxed);
 
 **契约**（`common/file/watcher/`）：
 
-1. **单一强所有者**：`WatcherHandle` 聚合项目全部运行资源（watcher / 线程 / 发送端），
+1. **单一强所有者**：`WatcherHandle` 聚合**该仓库单元**全部运行资源（watcher / 线程 / 发送端），
    drop 即释放。后台辅助线程（maintenance）一律持 `Weak`：每条消息 `upgrade()`，失败即
    `break`——「所有者已释放 ⇒ 无需再维护」，**复用既有的断开即退出语义，不新造停机协议**。
-2. **入口幂等**：`watch()` 遇同 project_id 已注册 → `log::warn!` 直接返回。重复注册会
-   **翻倍投递事件并再泄漏一套线程**，不变量必须在所有者入口强制，而非依赖调用方自觉。
-3. **事件出口依赖倒置**：watcher 域不接触 Tauri `AppHandle`——统一走
+2. **入口幂等**：`watch()` 遇同 key 已注册 → `log::warn!` 直接返回。**key 的粒度是仓库单元
+   （`RepoRef::key()`），不是 project** —— 一个 project 有 1 + N 个单元（linked worktree 的
+   HEAD / index / workdir 各自独立），按 project 幂等会把 worktree 的挂载判成「已注册」而
+   整块跳过（`common/git/repo_ref.rs`，详版 `git-domain.md` §12）。重复注册会**翻倍投递事件
+   并再泄漏一套线程**，不变量必须在所有者入口强制，而非依赖调用方自觉。
+3. **挂载临界区原子化**：`release_except` + `watch` 这一对必须由 `mount_only(repo, sink)` 在
+   **同一个临界区**内完成（`mount_lock: Arc<Mutex<()>>`）。单线程下「先释放再挂载」看起来等价，
+   但两个并发的 `activate`（快速切项目 / 连点）会交错成 `c1.release, c2.release, c1.watch,
+   c2.watch` ⇒ 两套挂载常驻。**不变量属于资源所有者**：只要调用方还需要记得调用顺序，
+   它就不是不变量，而是约定。锁内走无锁内核 `release_except_inner`（否则自死锁）。
+4. **事件出口依赖倒置**：watcher 域不接触 Tauri `AppHandle`——统一走
    `WatcherEventSink`（`sink.rs`，`WatcherEvent` 枚举 + 单方法 trait），生产适配器
    `AppHandleSink` 在组合根注入。这同时让**无 GUI 契约测试**成为可能
    （`lifecycle_tests.rs` 注入 `CollectingSink`）。
-4. **契约测试必须 Red 验证**：新加的生命周期测试要临时回退修复确认会失败
-   （当年 4/5 失败、恢复后 5/5 绿），否则「恰好绿」抓不住回归。
+5. **契约测试必须 Red 验证**：新加的生命周期测试要临时回退修复确认会失败
+   （当年 4/5 失败、恢复后 5/5 绿），否则「恰好绿」抓不住回归。并发不变量尤其如此 ——
+   去掉 `mount_lock` 后 `concurrent_mount_*` 用例必须（在布障同步下）稳定变红，
+   否则用例只是顺序重复了一遍。
 
 **Wrong**：新建后台线程时把 `Arc<T>` clone 进线程，又把回传的 sender 存进 `T` 内部——
 环形强引用让「断开即退出」永不触发。
 **Correct**：线程持 `Weak<T>` + 每消息 `upgrade()`；或确保持有的引用链严格单向（所有者 → 线程）。
+
+**Wrong**（挂载）：调用方依次写 `manager.release_except(&keep); manager.watch(repo, sink);` ——
+两步各自加锁，中间那段敞开着，并发调用即可留下两套挂载。
+**Correct**（挂载）：只调 `manager.mount_only(repo, sink)`；锁在所有者内部，调用方无从破坏顺序。
 
 ### `tokio::sync::mpsc::UnboundedSender/Receiver` —— 用于 SSH I/O 通道
 

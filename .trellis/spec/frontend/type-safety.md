@@ -6,32 +6,32 @@
 
 ## 概述
 
-项目使用 **TypeScript 5.3+**，启用**严格模式**。类型集中在 `src/types.ts` 中。类型与 Rust 后端结构体保持镜像——手动同步（没有自动生成）。
+项目使用 **TypeScript 5.3+**，启用**严格模式**。类型集中在 `src/shared/types/`（按域分文件，`index.ts` 聚合导出）。类型与 Rust 后端结构体保持镜像——手动同步（没有自动生成）。
 
 ---
 
 ## 类型组织
 
-### `src/types.ts` 中的集中共享类型
+### `src/shared/types/` 中的按域共享类型
 
-| 类型 | 领域 |
+| 文件 | 类型 |
 |------|------|
-| `AppConfig`、`DiffMode` | 应用配置 |
-| `Project` | 本地项目模型 |
-| `AgentConfig` | Agent 定义 |
-| `FileChange`、`GitInfo`、`Worktree` | Git 领域 |
-| `WSLProject`、`WSLEntrySession` | WSL 领域 |
-| `RemoteProject`、`RemoteEntrySession`、`AuthMethod` | SSH 领域 |
-| `TerminalEntry` | 终端类型的可辨识联合 |
+| `settings.ts` | `AppConfig`、`DiffMode` |
+| `project.ts` | `Project`、`TerminalEntry` |
+| `agent.ts` | `AgentConfig` |
+| `git.ts` | `FileChange`、`GitInfo`、`Worktree`、`GitStatusSnapshot` |
+| `connection.ts` | `WSLProject` / `RemoteProject`、`WSLEntrySession` / `RemoteEntrySession`、`AuthMethod` |
+| `file.ts` | 文件树与文件变更事件 |
+| `session.ts` | `SessionStore` 等持久化模型 |
 
 ### 组件本地类型
 
-Props 接口定义在**组件同一文件中**，不放在 `types.ts`：
+Props 接口定义在**组件同一文件中**，不放 `shared/types/`：
 
 ```tsx
 // 在 MyComponent.tsx 中
 interface MyComponentProps {
-  project: Project;     // 领域类型——从 types.ts 导入
+  project: Project;     // 领域类型——从 @/shared/types 导入
   isActive: boolean;    // 组件特有的 prop
   onSelect: () => void; // 回调 prop
 }
@@ -66,7 +66,7 @@ interface WorktreeState {
 不使用 Zod、Yup 等。从后端加载持久化数据时进行手动运行时校验：
 
 ```tsx
-// src/hooks/useAppConfig.ts —— 逐字段手动校验
+// src/features/settings/hooks/useAppConfig.ts —— 逐字段手动校验
 const saved = await invoke<Record<string, any>>("load_config");
 if (saved && typeof saved === "object") {
   setConfig({
@@ -159,11 +159,11 @@ type WorktreeStateMap = Record<string, WorktreeState>;
 
 ## Tauri 前后端类型同步
 
-`src/types.ts` 中的类型必须手动匹配 `src-tauri/` 中的 Rust `serde` 结构体。没有自动类型生成工具。
+`src/shared/types/` 中的类型必须手动匹配 `src-tauri/` 中的 Rust `serde` 结构体。没有自动类型生成工具。
 
 **修改 Tauri 命令返回类型时：**
 1. 更新 `src-tauri/` 中的 Rust 结构体
-2. 更新 `src/types.ts` 中对应的接口
+2. 更新 `src/shared/types/<domain>.ts` 中对应的接口
 3. 用 `pnpm tsc --noEmit` 和 `cargo check` 验证
 
 ### 层间命名约定
@@ -171,8 +171,9 @@ type WorktreeStateMap = Record<string, WorktreeState>;
 | Rust（snake_case） | TypeScript（snake_case） | 说明 |
 |-------------------|------------------------|------|
 | `current_branch: String` | `current_branch: string` | TS 通过 serde 镜像 Rust 命名 |
-| `is_clean: bool` | `is_clean: boolean` | |
-| `changed_files: Vec<FileChange>` | `changed_files: FileChange[]` | |
+| `branches: Vec<String>` | `branches: string[]` | |
+| `worktrees: Vec<Worktree>` | `worktrees: Worktree[]` | |
+| `truncated: bool` | `truncated: boolean` | |
 
 注意：TypeScript 接口使用 **snake_case** 字段名（匹配 Rust serde 输出），而非 camelCase。
 

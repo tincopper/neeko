@@ -45,7 +45,7 @@ export default defineConfig({
 
 ### 全局测试配置
 
-创建 `src/tests/setup.ts`：
+创建 `src/testing/setup.ts`：
 
 ```typescript
 import '@testing-library/jest-dom/vitest';
@@ -100,13 +100,13 @@ vi.mock('@tauri-apps/plugin-dialog', () => ({
 
 ## 测试工具函数（纯函数）
 
-`src/utils/` 中的工具函数最容易测试——不涉及 React 和 Tauri。
+`src/shared/utils/`（以及 `src/features/*/utils/`）中的工具函数最容易测试——不涉及 React 和 Tauri。测试放在同层 `__tests__/` 目录（如 `src/shared/utils/__tests__/`）。
 
-### 示例：`src/utils/platform.test.ts`
+### 示例：`src/shared/utils/__tests__/platform.test.ts`
 
 ```typescript
 import { describe, it, expect } from 'vitest';
-import { IS_WINDOWS, IS_MACOS } from './platform';
+import { IS_WINDOWS, IS_MACOS } from '../../utils/platform';
 
 describe('platform detection', () => {
   it('exports boolean constants', () => {
@@ -119,11 +119,11 @@ describe('platform detection', () => {
 });
 ```
 
-### 示例：`src/utils/terminal.test.ts`
+### 示例：`src/shared/utils/__tests__/terminal.test.ts`
 
 ```typescript
 import { describe, it, expect } from 'vitest';
-import { buildFontFamily } from './terminal';
+import { buildFontFamily } from '../../utils/terminal';
 
 describe('buildFontFamily', () => {
   it('没有自定义字体时返回默认 monospace', () => {

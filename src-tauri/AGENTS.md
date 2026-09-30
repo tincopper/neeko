@@ -23,7 +23,7 @@
 命令注册单一事实源是 `lib.rs` 的 `neeko_invoke_handler!`；`app.rs` 保持
 `.invoke_handler(crate::neeko_invoke_handler!())` 固定调用。
 
-## 架构要点（终端 / SSH / 持久化）
+## 架构要点（终端 / SSH / 持久化 / Git 仓库单元）
 
 - **PTY 会话在组件卸载时保持存活**（DOM detach/reattach），不要把进程生命周期绑到 React 挂载周期。
 - **终端缓存 key 的唯一实现处**是前端 `src/features/terminal/components/terminalCache.ts` 与
@@ -36,6 +36,11 @@
   output: `channel.wait()` → emit `terminal-output-{id}`。事件名受根文件红线 5 约束。
 - **持久化**：`~/.neeko/sessions.json`（项目、WSL、SSH、宽度、Worktree 状态）与
   `~/.neeko/config.json`（字体、Diff 模式、Shell、IDE/Agent 覆盖）。
+- **Git status 的身份是「仓库单元」而不是 project**：一个 project = 1 + N 个单元（linked worktree
+  的 HEAD / index / workdir 各自独立），身份、快照槽、watcher 资源、写后 poke 一律按 `RepoRef`
+  定址（前端对应 `RepoKey`）。契约全文与退役清单：
+  `.trellis/spec/backend/git-domain.md` §12（前端侧见 `state-management.md` 同名场景）；护栏
+  `tools/guards/checks/check_repo_unit_identity.py` 钉住（已接 `pnpm lint` 与 CI）。
 - 旧根文档记载的「Agent 自动启动延迟：本地即时 / WSL 500ms / SSH 800ms」在本次核对中**未在代码里找到
   对应常量**，故不复述；要恢复请先定位实现，不要抄文档。
 

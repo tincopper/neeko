@@ -90,7 +90,7 @@ mod tests {
 }
 ```
 
-### `state.rs` —— Serde 往返测试
+### 共享类型（`*/types.rs` / `common/types.rs`）—— Serde 往返测试
 
 验证序列化/反序列化的正确性，特别是枚举：
 
@@ -376,12 +376,13 @@ fn parse_unified_diff_empty_input() {
 
 | 模块 | 策略 | 依赖 |
 |------|------|------|
-| `agent.rs` | 直接单元测试 | 无 |
-| `state.rs` | Serde 往返测试 | 无 |
-| `project.rs` | 使用 `tempfile` 的单元测试 | 文件系统 |
-| `git.rs` | 使用 `tempfile` + `git2` 的真实临时仓库 | 文件系统、git2 |
-| `storage.rs` | 使用临时目录的单元测试 | 文件系统 |
-| `terminal.rs` | **跳过** —— 必要时提取纯函数 | PTY、线程、Tauri 事件 |
+| `agent/` | 直接单元测试 | 无 |
+| `common/types.rs` + `*/types.rs` | Serde 往返测试 | 无 |
+| `core/project.rs`、`project/` | 使用 `tempfile` 的单元测试 | 文件系统 |
+| `common/git/parsers/` | 纯函数直接测（`parse_unified_diff` 等） | 无 |
+| `common/git/`（操作层） | 使用 `tempfile` + `git` 的真实临时仓库 | 文件系统、git |
+| `session/manager.rs` | 使用临时目录的单元测试 | 文件系统 |
+| `terminal/` | **跳过** —— 必要时提取纯函数 | PTY、线程、Tauri 事件 |
 | `remote.rs` | **跳过** —— 需要真实 SSH 服务器 | SSH、线程、Tauri 事件 |
 | `watcher.rs` | 可选的集成测试（临时目录 + 文件写入） | notify、Tauri 事件 |
 | `lib.rs` | 测试内部 Manager，不测试命令包装 | Tauri State |

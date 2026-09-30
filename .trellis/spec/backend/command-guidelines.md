@@ -267,10 +267,10 @@ macro_rules! neeko_invoke_handler {
 
 ### 读取配置的辅助函数
 
-配置读取函数放在 `opencode_theme.rs` 或其他合适模块中，从 `~/.neeko/config.json` 读取布尔字段，缺失/失败默认返回 `false`：
+配置读取函数放在 `src-tauri/src/theme/opencode.rs`（或 theme 域其他合适模块）中，从 `~/.neeko/config.json` 读取布尔字段，缺失/失败默认返回 `false`：
 
 ```rust
-// src-tauri/src/opencode_theme.rs
+// src-tauri/src/theme/opencode.rs
 /// 从 ~/.neeko/config.json 读取 enablePiThemeSync 字段
 /// 默认返回 false（如果读取失败或字段不存在）
 pub fn read_enable_pi_theme_sync() -> bool {
@@ -299,8 +299,8 @@ pub fn read_enable_pi_theme_sync() -> bool {
 在 PTY 创建、SSH 连接等非命令路径中使用：
 
 ```rust
-if crate::opencode_theme::read_enable_pi_theme_sync() {
-    if let Err(e) = crate::pi_theme::write_project_pi_settings(path, &theme) {
+if crate::theme::opencode::read_enable_pi_theme_sync() {
+    if let Err(e) = crate::theme::pi::write_project_pi_settings(path, &theme) {
         log::warn!("[PTY] Failed to write Pi settings.json: {}", e);
     }
 }
@@ -313,7 +313,7 @@ if crate::opencode_theme::read_enable_pi_theme_sync() {
 ```rust
 #[tauri::command]
 pub fn sync_agent_theme(theme: String, targets: ProjectThemeTargets) -> Result<(), AppError> {
-    if crate::opencode_theme::read_enable_pi_theme_sync() {
+    if crate::theme::opencode::read_enable_pi_theme_sync() {
         // Pi 主题同步逻辑
     }
     Ok(())
@@ -324,15 +324,15 @@ pub fn sync_agent_theme(theme: String, targets: ProjectThemeTargets) -> Result<(
 
 1. **默认值必须是安全选择**：`unwrap_or(false)`——字段未设置时默认为关闭
 2. **静默失败不影响主流程**：配置读取失败不报错，门控内操作失败仅 warn 日志
-3. **不与 `State<AppStateWrapper>` 耦合**：配置读取函数不依赖 Tauri state，使得在非命令路径（terminal.rs、remote.rs）也可用
-4. **前端对应 TypeScript 字段**：在 `src/types/app.ts` 的 `AppConfig` 中同时声明，由 `save_config`/`load_config` 持久化
+3. **不与 `State<AppStateWrapper>` 耦合**：配置读取函数不依赖 Tauri state，使得在非命令路径（PTY/SSH 会话创建、`theme/service.rs`、`app_menu.rs` 等）也可用
+4. **前端对应 TypeScript 字段**：在 `src/shared/types/settings.ts` 的 `AppConfig` 中同时声明，由 `save_config`/`load_config` 持久化
 ---
 
 ## 场景：Prompt 资源命令契约 2026-07-29
 
 ### 1. Scope / Trigger
 - Trigger：新增 Prompt 资源类型（`prompts` 表），需要 CRUD + slash 解析 + usage 追踪
-- Scope：`src-tauri/src/skill/commands.rs`（复用 skill 模块）、`src-tauri/src/skill/repository.rs`、`src-tauri/src/skill/migrations.rs`（v3→v4）
+- Scope：`src-tauri/src/library/`（skill 与 prompt 已并入 library 域：`library/skill/`、`library/store.rs`、`library/migrations.rs`）
 
 ### 2. Signatures
 
@@ -501,9 +501,11 @@ pub use project::*;  // 必须显式导出，否则 app.rs 无法引用
 
 ### 变更文件
 
-- `src-tauri/src/commands/config.rs`
-- `src-tauri/src/storage.rs`
-- `src-tauri/src/models/session.rs`
+> 路径已按当前目录更新（该契约写于 2026-04-17，此后后端按领域重组；`commands/`、`storage.rs`、`models/` 均不存在）。
+
+- `src-tauri/src/session/commands.rs`（`save_session` / `load_session` / `save_config` / `load_config` 命令）
+- `src-tauri/src/session/manager.rs`（落盘与读取实现）
+- `src-tauri/src/session/types.rs`（`*Session` struct）
 
 ### 命令签名
 
@@ -524,7 +526,7 @@ pub fn save_session(
 
 - 已移除字段：`side_terminal_width`
 - 持久化字段保留：`sidebar_width`、`worktree_state`
-- `SessionStore` 必须与前端 `src/types.ts` 的 `SessionStore` 同步
+- `SessionStore` 必须与前端 `src/shared/types/session.ts` 的 `SessionStore` 同步
 
 ### 校验与错误矩阵
 

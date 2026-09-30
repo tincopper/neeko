@@ -91,7 +91,7 @@ gitChangedHandler?.({
 
 ### 3. Tauri `getCurrentWindow` —— 窗口控制
 
-已在 `src/test/setup.ts` 中配置（参见[前端测试](./frontend-testing.md)）：
+已在 `src/testing/setup.ts` 中配置（参见[前端测试](./frontend-testing.md)）：
 
 ```typescript
 vi.mock('@tauri-apps/api/window', () => ({
@@ -222,7 +222,7 @@ assert_eq!(project.name, "test");
 ### Mock 失效时
 
 如果 Tauri API 发生变化（如 `invoke` 签名），需更新：
-1. `src/test/setup.ts` —— 全局 mock
+1. `src/testing/setup.ts` —— 全局 mock
 2. 覆盖了全局 mock 的各个测试文件
 
 ### 测试数据工厂

@@ -91,11 +91,11 @@
 
 ### 后端（Rust）
 
-1. `agent.rs` —— 纯逻辑，零依赖，简单易测
-2. `state.rs` —— serde 往返测试，捕获序列化 bug
-3. `project.rs` —— 核心领域逻辑，需要 `tempfile`
-4. `git.rs` —— `parse_unified_diff`（纯函数），git 操作（临时仓库）
-5. `storage.rs` —— 使用临时目录的文件持久化
+1. `common/git/parsers/` —— 纯函数（`parse_unified_diff` 等），零依赖，简单易测
+2. `common/types.rs` + `*/types.rs` —— serde 往返测试，捕获序列化 bug
+3. `core/project.rs` / `project/` —— 核心领域逻辑，需要 `tempfile`
+4. `common/git/` 操作层 —— 真实临时仓库
+5. `session/manager.rs` —— 使用临时目录的文件持久化
 
 ### 前端（TypeScript）
 
@@ -131,34 +131,33 @@ cargo test -- --nocapture  # 显示 println 输出
 
 ### 前端
 
-测试文件统一放在 `src/tests/` 独立目录下，按模块类型分子目录，使用 `.test.ts` / `.test.tsx` 后缀：
+测试文件**与被测源码同层**，放在 `__tests__/` 目录下（`vitest.config.ts` 的 `include` 就是 `src/**/__tests__/*.{test,spec}.{ts,tsx}`）：
 
 ```
 src/
-├── tests/                              # 前端测试独立目录
-│   ├── setup.ts                        # 全局测试配置（Tauri API mock）
+├── testing/                            # 跨 feature 的测试基建
+│   ├── setup.ts                        # 全局测试配置（Tauri API mock，setupFiles 指向它）
 │   ├── factories.ts                    # 共享测试数据工厂
+│   └── tauriCore.ts
+├── shared/
 │   ├── utils/
-│   │   ├── platform.test.ts            # 工具函数测试
-│   │   ├── terminal.test.ts
-│   │   └── ...
-│   ├── hooks/
-│   │   ├── useToast.test.ts            # Hook 测试
-│   │   ├── useAppConfig.test.ts
-│   │   └── ...
-│   └── components/
-│       ├── FileTree.test.tsx            # 组件测试
-│       └── ...
-├── utils/
-├── hooks/
-└── components/
+│   │   ├── platform.ts
+│   │   └── __tests__/platform.test.ts  # 工具函数测试（与被测文件同层）
+│   └── store/
+│       ├── projectStore.ts
+│       └── __tests__/projectStore.test.ts
+└── features/
+    └── project/
+        └── components/
+            ├── ProjectItem.tsx
+            └── __tests__/ProjectItem.test.tsx
 ```
 
 测试文件通过相对路径导入源码：
 
 ```typescript
 import { IS_WINDOWS } from '../../utils/platform';
-import { useToast } from '../../hooks/useToast';
+import { useToast } from '@/shared/hooks/useToast';
 ```
 
 ### 后端

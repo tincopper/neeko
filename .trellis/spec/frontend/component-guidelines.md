@@ -6,7 +6,7 @@
 
 ## 概述
 
-组件使用 **React 18** + **TypeScript** 构建。大多数组件用 `React.memo` 包裹以优化性能。样式使用 **Tailwind CSS v4**（`src/tailwind.css`）——通过 `@theme` 映射 CSS 变量到 Tailwind 主题色。
+组件使用 **React 18** + **TypeScript** 构建。大多数组件用 `React.memo` 包裹以优化性能。样式使用 **Tailwind CSS v4**（入口 `src/styles/index.css`）——通过 `@theme` 映射 CSS 变量到 Tailwind 主题色。
 
 ---
 
@@ -45,7 +45,7 @@ export default React.memo(MyComponent);
 **模式 A —— `React.FC` + 箭头函数**（适用于小/中型组件，首选）：
 
 ```tsx
-// src/components/layout/AgentIcon.tsx
+// src/shared/components/AgentIcon.tsx
 interface AgentIconProps {
   icon?: string | null;
   size?: number;
@@ -62,14 +62,12 @@ export default React.memo(AgentIcon);
 **模式 B —— 具名函数**（用于较大的组件）：
 
 ```tsx
-// src/components/layout/TitleBar.tsx
+// src/layout/TitleBar.tsx（真实形态：骨架组件只收 slot）
 interface TitleBarProps {
-  activeProject: Project | null;
-  onOpenSettings: () => void;
-  // ...
+  actions?: React.ReactNode;
 }
 
-function TitleBar({ activeProject, onOpenSettings, ... }: TitleBarProps) {
+function TitleBar({ actions }: TitleBarProps) {
   // ...
 }
 
@@ -78,7 +76,8 @@ export default React.memo(TitleBar);
 
 ### 根组件 App（例外）
 
-`App.tsx` 是唯一**不**用 `React.memo` 包裹的组件。当前职责是壳层编排，状态协调逻辑位于 `useAppContainer`。
+`App.tsx` 是唯一**不**用 `React.memo` 包裹的组件。它只做装配（`<AppProviders>` + `<AppShell/>`），
+状态协调逻辑位于 `src/app/hooks/` 的 `useAppShell`（`useAppGlobalEffects` + `useAppShellData` + `buildAppShellValues`）。
 
 ---
 
@@ -97,7 +96,7 @@ export default React.memo(TitleBar);
 2. **Props 接口定义在组件同一文件中**，紧邻组件上方
 3. **回调 Props** 使用 `onXxx` 命名：`onSelectAgent`、`onToggleAddMenu`、`onAddProject`
 4. **可选 Props** 使用 `?`，通过解构赋默认值
-5. **领域模型类型** 从 `types.ts` 导入（`Project`、`AgentConfig` 等）
+5. **领域模型类型** 从 `@/shared/types` 导入（`Project`、`AgentConfig` 等）
 
 ### 大型组件 Props 分组约定
 
@@ -263,7 +262,7 @@ const LibraryDetail: React.FC = React.memo(() => {
 
 ### Tailwind CSS v4 + CSS 自定义属性
 
-样式使用 **Tailwind CSS v4**，入口文件为 `src/tailwind.css`。CSS 自定义属性通过 `@theme` 块映射到 Tailwind 主题色：
+样式使用 **Tailwind CSS v4**，入口为 `src/styles/index.css`（只聚合：`tokens/` → `base/` → `components/`）。CSS 自定义属性在 `src/styles/tokens/tailwind.css` / `theme.css` 的 `@theme` 块里映射到 Tailwind 主题色：
 
 ```css
 @theme {
@@ -312,7 +311,7 @@ import { cn } from '@/lib/utils';
 
 ### 复杂 CSS
 
-无法用实用类表达的样式（`:has()` 选择器、伪元素 `::after`、动画、滚动条样式、xterm 终端覆盖等）保留在 `src/tailwind.css` 的 `@layer components` 中。
+无法用实用类表达的样式（`:has()` 选择器、伪元素 `::after`、动画、滚动条样式、xterm 终端覆盖等）按组件域拆到 `src/styles/components/*.css` 的 `@layer components` 中（每文件一个组件域）。
 
 ### Tauri 拖拽区域
 
@@ -383,7 +382,13 @@ return (
 
 当多个领域（local / WSL / SSH）需要同款视觉，但底层数据形态与 IPC 命令不同时，把视觉抽成纯展示组件，由各域调用方做 adapter（数据 normalize + 回调注入）。
 
-**实例**：`ProjectGroup` + `SessionRow` + `SessionChips`（`src/components/project/`）三端共用，`ProjectItem`（local，`src/components/project/ProjectItem.tsx`）与 `ConnectionProjectCard`（wsl/remote，`src/components/connections/ConnectionProjectCard.tsx`）各自做 adapter。
+**实例**：`SessionChips`（真正共用，落 `src/shared/components/SessionChips.tsx`）被三端复用；adapter 侧
+`ProjectItem`（local，`src/features/project/components/ProjectItem.tsx`）与 `ConnectionProjectCard`
+（wsl/remote，`src/features/connection/components/ConnectionProjectCard.tsx`）各自把领域模型映射成展示
+组件期望的 props（`SessionRow` / `ProjectGroup` 在 `src/features/project/components/`）。
+
+> 约定：被**多个 feature** 消费的展示组件放 `src/shared/components/`；feature 内出现同名文件且内容只有
+> `export { default } from '@/shared/components/<X>'` 时，那是门面转发，不是第二实现。
 
 **纯展示组件契约**：
 1. 不直接 `invoke` Tauri 命令、不读写 store
@@ -394,17 +399,17 @@ return (
 **adapter 调用方契约**：
 1. 数据 normalize：把领域模型映射成展示组件期望的 props（如把 `git_info.worktrees` 映射成 `SessionRow` 数组）
 2. 回调注入：把领域 IPC 包装成展示组件期望的回调（如 `onAddWorktree = () => onOpenDialog("new-worktree", ...)`）
-3. store 读写在 adapter 层完成（如 `aheadBehind` 用 `aheadBehindKey()` 查表）
+3. store 读写在 adapter 层完成（如 `aheadBehind` 用**仓库单元键** `repoKeyOf(projectId, unitPath)` 查表；`unitPath` 取自 `selectActiveRepoKey` / `selectActiveWorktreePath`，不各自猜）
 
-**反模式**：让纯展示组件 import `invoke` 或 `useAppStore`——会立刻丧失三端复用能力，把 wsl/remote 路径推回写另一份并行实现。
+**反模式**：让纯展示组件 import `invoke` 或 `useGitStore`——会立刻丧失三端复用能力，把 wsl/remote 路径推回写另一份并行实现。
 
 **好坏对照**：
 
 ```tsx
-// Wrong —— 展示组件直接读 store，硬编码 local key 形态
+// Wrong —— 展示组件直接读 store，且把裸 projectId 当键
 const SessionRow = ({ project }) => {
-  const ahead = useAppStore((s) => s.aheadBehind[project.id]?.ahead);
-  // wsl/remote 永远 lookup 失败
+  const ahead = useGitStore((s) => s.aheadBehind[project.id]?.ahead);
+  // 键空间里只有仓库单元键 ⇒ 恒为 undefined（既存 bug 形态：徽标永远不显示）
 };
 ```
 
@@ -415,18 +420,10 @@ interface SessionRowProps {
   changes?: { add: number; del: number };
 }
 
-// adapter（local）
-<SessionRow
-  ahead={
-    useAppStore((s) => s.aheadBehind[aheadBehindKey("local", id, id)])?.ahead
-  }
-/>;
-// adapter（wsl）
-<SessionRow
-  ahead={
-    useAppStore((s) => s.aheadBehind[aheadBehindKey("wsl", distro, id)])?.ahead
-  }
-/>;
+// adapter（local / wsl / remote 同形）：键 = 本项目**当前单元**的身份
+const unitKey = useWorktreeStore((s) => selectActiveRepoKey(s, project.id));
+const ahead = useGitStore((s) => (unitKey ? s.aheadBehind[unitKey]?.ahead : undefined));
+<SessionRow ahead={ahead} />;
 ```
 
 ---
@@ -446,8 +443,8 @@ interface SessionRowProps {
 - 同屏避免出现两层强 header（视觉抢中心、识别成本高）
 
 **实例参考**：
-- Section header：`src/components/connections/RemoteItems.tsx` 的 `WSLItem` / `RemoteItem` 顶部
-- Project header：`src/components/project/ProjectGroup.tsx`
+- Section header：`src/features/project/components/SectionHeader.tsx`（WSL/SSH 分组标题 + hover 才显示的 +/Trash 动作槽），消费方 `ProjectsPanel.tsx`
+- Project header：`src/features/project/components/ProjectGroup.tsx`
 
 ---
 
@@ -512,19 +509,19 @@ function ToolRow({ tool, onOpenFile }) {
 
 | 入口 | 文件 | 语义 | UX |
 |------|------|------|-----|
-| **全局 Settings → Project 子面板** | `src/components/settings/ProjectPanel.tsx` | **即时保存**：每个控件 onChange 立即 `invoke` + `patchProject` 更新 store；无 Save / Cancel 按钮 | 用户改一个字段→实时落盘+实时反映；适合"调试式探索" |
-| **项目右键菜单 → Settings dialog** | `src/components/project/ProjectSettingsDialog.tsx` | **显式 Save / Cancel**：受控 state 暂存改动，Save 按钮一次性 invoke 多个 setter；Cancel 丢弃 | 用户可以试错；适合"提交式确认" |
+| **全局 Settings → Project 子面板** | `src/features/settings/components/ProjectPanel.tsx` | **即时保存**：每个控件 onChange 立即 `invoke` + `patchProject` 更新 store；无 Save / Cancel 按钮 | 用户改一个字段→实时落盘+实时反映；适合"调试式探索" |
+| **项目右键菜单 → Settings dialog** | `src/shared/components/ProjectSettingsDialog.tsx`（`features/project/components/` 同名文件只是门面转发） | **显式 Save / Cancel**：受控 state 暂存改动，Save 按钮一次性 invoke 多个 setter；Cancel 丢弃 | 用户可以试错；适合"提交式确认" |
 
 ### 选择规则
 
 - **新增字段属于"反复调整、马上看效果"类型**（如颜色、Agent、IDE 选择）→ 优先放 ProjectPanel.tsx，即时保存
 - **新增字段属于"批量决策、确认提交"类型**（如同时改名 + 切 IDE + 切 Agent）→ 优先放 dialog，受控 + Save
-- **两类都需要** → 抽出共享子组件（如 `<AppearanceSwatches>`），ProjectPanel 直接渲染，Dialog 受控包一层
+- **两类都需要** → 抽出共享子组件：纯展示内核放 `src/shared/components/`（不碰 store），两种入口各自决定何时提交
 
 ### 即时保存模式落地（ProjectPanel）
 
 ```tsx
-// src/components/settings/ProjectPanel.tsx
+// src/features/settings/components/ProjectPanel.tsx
 import { setProjectColor } from "@/features/project/api/projectApi";
 
 const handleAvatarColorChange = useCallback(
@@ -544,12 +541,12 @@ const handleAvatarColorChange = useCallback(
 ### 显式 Save 模式落地（Dialog）
 
 ```tsx
-// src/components/project/ProjectSettingsDialog.tsx
+// src/shared/components/ProjectSettingsDialog.tsx
 const [selectedAgentId, setSelectedAgentId] = useState<string | null>(currentAgent);
 const [selectedIdeId, setSelectedIdeId] = useState<string | null>(null);
 
 const handleSave = useCallback(async () => {
-  await setProjectAgent(projectId, selectedAgentId);
+  await setProjectAgents(projectId, selectedAgentId ? [selectedAgentId] : []);
   await setProjectIde(projectId, ideCommand);
   onSave(selectedAgentId, ideCommand);
   onClose();
@@ -585,8 +582,8 @@ const handleSave = useCallback(async () => {
 
 1. **领域 Context**：`useEditorContext()`、`useWslContext()`、`useRemoteContext()` 等
 2. **全局 Context**：`useAppContext()` — 配置、toast
-3. **Store 快照**：`useAppStore(s => s.field)` — 带 memo 的响应式
-4. **Store 门面**：`useAppStore.getState()` — 一次性读取，用于事件回调
+3. **Store 快照**：对应域 store 的 selector（`useProjectStore(s => s.field)` / `useEditorStore(s => s.tabs[tabKey])` / `useWorktreeStore(s => …)` / `useFileStore(s => …)` …）— 带 memo 的响应式
+4. **Store 门面**：对应 store 的 `getState()`（`useProjectStore.getState()` 等）— 一次性读取，用于事件回调；按需取那一个域，不是一个"全量快照"
 5. **领域 Hook**：`useEditorGroupLayout(tabKey)` 等
 
 ### Props 塌缩步骤
@@ -615,8 +612,7 @@ const handleSave = useCallback(async () => {
 // Pane 内部
 const { agents } = useEditorContext();
 const { config, showToast } = useAppContext();
-const store = useAppStore.getState();
-store.activateTab(tabKey, tabId);  // 代替 onActivateTab prop
+useEditorStore.getState().activateTab(tabKey, tabId);  // 代替 onActivateTab prop（命令式一次读取）
 ```
 
 ### 保留哪些 Props
@@ -647,10 +643,10 @@ interface Project {
 }
 ```
 
-**正确做法** —— 从 `types.ts` 导入：
+**正确做法** —— 从 `@/shared/types` 导入：
 
 ```tsx
-import { Project, AgentConfig } from "../../types";
+import type { Project, AgentConfig } from "@/shared/types";
 ```
 
 ### 2. 忘记使用 `React.memo`

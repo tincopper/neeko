@@ -63,7 +63,7 @@
 ### 模块可见性
 
 - **所有模块为私有**（`mod name;` 不带 `pub`）
-- **模型结构体字段为 `pub`**（在 `state.rs` 中）
+- **模型结构体字段为 `pub`**（模型类型现在按域放在 `*/types.rs` / `common/types.rs` / `core/project.rs`，没有 `state.rs`）
 - **Manager 结构体字段为私有**
 - **Manager 方法为 `pub`**（需要跨模块访问的）
 - **辅助函数为私有**
@@ -555,7 +555,7 @@ pnpm tauri build       # 生产环境构建，包含打包
 
 ### 依赖方向
 
-1. **单向依赖**：`commands.rs` → `services.rs` → `manager.rs` → `state.rs`，禁止反向依赖。
+1. **单向依赖**（域内）：`commands.rs` → `services.rs` → `manager.rs` → 该域的 `types.rs`，禁止反向依赖。
 2. **跨域访问**：通过 `pub use` re-export 暴露的类型，禁止直接引用其他域的内部模块。
 3. **共享基础设施**：`common/` 提供错误、日志、运行时工具，所有域依赖 `common/`。
 

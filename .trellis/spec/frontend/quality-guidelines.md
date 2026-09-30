@@ -291,7 +291,7 @@ try {
 - 测试文件：`*.test.ts` / `*.test.tsx`，与源文件放在一起
 - Hook 测试：`renderHook` + `act` / `waitFor`
 - 组件测试：`render` + `screen` 查询
-- 在 `src/test/setup.ts` 中全局 mock Tauri API
+- 在 `src/testing/setup.ts` 中全局 mock Tauri API（`vitest.config.ts` 的 `setupFiles` 指向它）
 
 ---
 
@@ -304,7 +304,7 @@ try {
 - [ ] 新组件使用 `React.memo` 导出
 - [ ] 作为 Props 传递的回调使用了 `useCallback`
 - [ ] Tauri `invoke` 调用有错误处理
-- [ ] 领域模型类型从 `types.ts` 导入（没有本地重复声明）
+- [ ] 领域模型类型从 `@/shared/types` 导入（没有本地重复声明）
 - [ ] 新的组件子目录有桶文件 `index.ts`
 - [ ] 没有在 `api/` 目录外直接 import `invoke`（使用对应域的 API wrapper 或 `connectionApi` 再导出）
 - [ ] Tauri 事件监听器在 `useEffect` 返回函数中清理

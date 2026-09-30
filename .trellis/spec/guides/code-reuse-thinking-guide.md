@@ -62,7 +62,7 @@ grep -r "keyword" .
 
 **症状**：两个文件 90%+ 重复，差异仅在调用的 IPC 命令名称或回调名。
 
-**实例**：`WorktreeList`（local，`src/components/project/WorktreeList.tsx`）与 `ConnectionWorktreeList`（wsl/ssh，`src/components/connections/ConnectionWorktreeList.tsx`），~92% 同源，差异主要在 `invoke("get_worktree_changed_files")` vs `invoke("wsl_get_worktree_changed_files")` 等命令名。
+**实例**：`WorktreeList`（local，`src/features/project/components/WorktreeList.tsx`）与 `ConnectionWorktreeList`（wsl/ssh，`src/features/connection/components/ConnectionWorktreeList.tsx`）—— 同款视觉与交互，但**接口形态已经分叉**：local 版收 `projectId` 自己在内部取数据，connection 版收一整组回调（`onGetWorktreeChangedFiles` / `onIsWorktreeDirty` / `onOpenWorktreeTerminal` …）由父级注入。这正是模式 4 想避免的：两端各长一套数据获取约定，新增字段要改两遍（参见 `component-guidelines.md` 的「展示组件 + 数据 adapter 跨域复用模式」）。
 
 **为什么发生**：
 - 早期只有 local 路径，加 wsl/ssh 时直接 fork 一份"复用不动"
@@ -72,35 +72,40 @@ grep -r "keyword" .
 **正确做法**：用 callback 接口注入 IPC，让 local 与 connection 都走同一组件：
 
 ```tsx
-// Bad —— 两份并行实现
+// Bad —— 两份并行实现，数据获取约定各长一套
 function WorktreeList({ projectId }) {
-  await invoke("get_worktree_changed_files", { projectId, ... });
+  // local 版：组件内部自己按 projectId 取
+  const snapshot = await getRepoStatus(projectId, worktreePath);
 }
-function ConnectionWorktreeList({ entryId }) {
-  await invoke("wsl_get_worktree_changed_files", { entryId, ... });
+function ConnectionWorktreeList({ projectId, ... }) {
+  // connection 版：同一份数据改由父级回调注入，接口与 local 版对不上
+  const entries = await onGetWorktreeChangedFiles(worktreePath);
 }
 ```
 
 ```tsx
-// Good —— callback 接口 + invoke 注入
+// Good —— callback 接口 + 数据获取注入（真实形态见 ConnectionProjectCard.tsx）
 interface WorktreeListProps {
   worktrees: Worktree[];
-  onGetChangedFiles(path: string): Promise<FileChange[]>;
-  onIsDirty(path: string): Promise<boolean>;
-  onRemoveWorktree(path: string): void;
+  onGetWorktreeChangedFiles(path: string): Promise<FileChange[]>;
+  onIsWorktreeDirty(path: string): Promise<boolean>;
+  onRemoveWorktree(path: string, branch: string): void;
 }
 
-// adapter（local）
+// adapter（connection）：把按单元的状态读取包成回调
+const handleGetWorktreeChangedFiles = useCallback(
+  (worktreePath: string) =>
+    getRepoStatus(project.id, worktreePath)
+      .then((snapshot) => snapshot.entries)
+      .catch(() => [] as FileChange[]), // 失败 = 未知，不当作「无变更」
+  [project.id],
+);
+
 <WorktreeList
-  onGetChangedFiles={(p) =>
-    invoke("get_worktree_changed_files", { projectId, worktreePath: p })
-  }
-/>;
-// adapter（wsl）
-<WorktreeList
-  onGetChangedFiles={(p) =>
-    invoke("wsl_get_worktree_changed_files", { distro, worktreePath: p })
-  }
+  worktrees={worktrees}
+  onGetWorktreeChangedFiles={handleGetWorktreeChangedFiles}
+  onIsWorktreeDirty={handleIsWorktreeDirty}
+  onRemoveWorktree={/* … */}
 />;
 ```
 

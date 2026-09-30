@@ -6,11 +6,11 @@
 
 ## 概述
 
-所有自定义 Hooks 位于 `src/hooks/` 扁平目录或 `src/features/<domain>/hooks/` 中。项目以 **React 内置 Hooks** 为主，并使用 **Zustand** 作为跨域共享状态源。项目没有外部数据获取库。所有后端通信通过 **Tauri IPC** 进行，通过 `src/features/<domain>/api/<domain>Api.ts` 中的 API wrapper 封装。
+所有自定义 Hooks 位于 `src/shared/hooks/`（跨域共享）或 `src/features/<domain>/hooks/`（域内）中。项目以 **React 内置 Hooks** 为主，并使用 **Zustand 域 store**（`src/shared/store/` + feature `store.ts`）作为跨域共享状态源。项目没有外部数据获取库。所有后端通信通过 **Tauri IPC** 进行，通过 `src/features/<domain>/api/<domain>Api.ts` 中的 API wrapper 封装。
 
 Hook 分两类：
-- **领域 Hook**：管理特定领域状态（项目、WSL、SSH、Worktree）
-- **编排 Hook**：从 `useAppContainer` 提取的横切逻辑（保存、Context 组装、快捷键同步）
+- **领域 Hook**：管理特定领域状态（项目、WSL、SSH、Worktree），放在 `src/features/<domain>/hooks/`
+- **编排 Hook**：横切逻辑（保存、Context 组装、视图状态回写），放在 `src/app/hooks/`（如 `useAppShellData` / `useAppStoreSync` / `useAppGlobalEffects`）；纯共享工具型 hook 在 `src/shared/hooks/`（如 `useKeyboardShortcuts` / `useTauriEvent`）
 
 ---
 
@@ -19,7 +19,7 @@ Hook 分两类：
 ### 标准 Hook 结构
 
 ```tsx
-// src/hooks/useToast.ts
+// src/shared/hooks/useToast.ts
 import { useState, useRef, useCallback } from "react";
 
 export function useToast() {
@@ -74,96 +74,114 @@ export function useAgentActions(params: {
 
 **规则**：
 - 编排 Hook 按领域命名，避免“全局回调大杂烩”
-- 优先从 `useAppStore` 读取跨域状态，减少参数数量
+- 优先从对应域的 store 读取跨域状态（`useProjectStore` / `useWorktreeStore` / `useEditorStore` / `@/features/file/store` …），减少参数数量 —— 没有单一 app store 可查
 - 仅暴露本领域回调，使用 `useCallback` 保持引用稳定
 - Hook 文件规模以 ≤300 行为红线：超线时按职责拆出独立 hook（如 `useSessionBootstrap` 的 git 事件监听块抽为 `useGitStatusEventsSync`，监听注册/清理与恢复逻辑解耦）
 
 ### Store 快照模式
 
-全局事件处理器通过 `useAppStore.getState()` 读取最新快照，避免 stale closure 和大量 Ref 同步：
+非渲染路径（全局事件处理器、命令式分支）用 `getState()` 读最新值，避免 stale closure 和大量 Ref 同步。
+**按需取那一个域的 store**，而不是抓一个「全量快照」：
 
 ```tsx
-// src/hooks/useKeyboardShortcuts.ts
-useEffect(() => {
-  const handleKeyDown = () => {
-    const snapshot = useAppStore.getState();
-    // 读取 snapshot.activeProjectId / snapshot.wslEntries / snapshot.selectProject
-  };
-  window.addEventListener("keydown", handleKeyDown, true);
-  return () => window.removeEventListener("keydown", handleKeyDown, true);
-}, []);
+// src/shared/hooks/useKeyboardShortcuts.ts（真实用法，节选）
+const projectId = useProjectStore.getState().activeProjectId;
+const worktreePath = selectActiveWorktreePath(useWorktreeStore.getState(), projectId);
+useDockStore.getState().togglePanel('projects');
 ```
 
-该模式用于跨域读取场景。领域状态直接写入 `useAppStore`。`useSyncToStore` 仅负责连接快照和快捷键依赖动作引用的同步，不再镜像 project/file 字段。
+该模式用于跨域读取场景。领域状态直接由各自的域 store 持有。把「视图状态 + 动作引用」回写到
+`projectStore` 的那一段是 `useAppStoreSync`（`src/app/hooks/useAppStoreSync.ts`），它**不再镜像
+project/file 状态字段**（镜像 = 第二份表示）。
 
 ---
 
 ## 场景：FileView Hook 单源状态契约 2026-04-21
 
+> **结论仍是硬约束，符号已随迁移改名**：要根治的是「文件树/Tab 状态由 `useState` 持有并跨层透传」
+> ⇒ 状态归所属 store、hook 只出动作与派生值。名称对照：`src/hooks/useFileView.ts` →
+> `src/features/editor/hooks/useFileView.ts`；`useAppContainer` → `useAppShell`（`src/app/hooks/`）；
+> `AppLayout` / `FileViewer` → 现在是 `src/app/shell/` + `src/features/editor/components/FileViewer.tsx`
+> 与 `src/features/file/components/FilesPanel.tsx`；`useAppStore` → 域 store（树在
+> `@/features/file/store`，tab 在 `shared/store/editorStore`）。`fileTabs` / `activeFileTabId` /
+> `fileTree` / `fileViewLoading` **都不是 store 字段**（见下第 2 节）。
+
 ### 1. Scope / Trigger
 
 - Trigger：文件树和 Tab 状态由 `useState` 持有并跨层透传，消费端难以统一，易产生双源读取。
-- Scope：`useFileView`、`useAppContainer`、`FileActionsContext`、`AppLayout`、`FileViewer`。
+- Scope：`src/features/editor/hooks/useFileView.ts`、`src/features/file/store.ts`、
+  `src/shared/store/editorStore.ts`、`src/app/hooks/`、`src/features/editor/FileActionsContext.tsx`、
+  `src/features/file/components/FilesPanel.tsx`。
 
 ### 2. Signatures
 
 ```ts
-// src/hooks/useFileView.ts
-export function useFileView(): {
-  fileTree: FileNode[];
-  tabs: FileTab[];
-  activeTabId: string | null;
-  activeTab: FileTab | null;
-  activeFilePath: string | null;
-  isLoading: boolean;
+// src/features/editor/hooks/useFileView.ts（现状；tab 操作为主签名，其余见源码）
+export function useFileView(
+  externalCommands?: ProjectCommands | null,      // WSL/Remote 经 ProjectCommands 接入
+  externalWorktreePath?: string | null,
+): {
+  activeFilePath: string | null;                              // 派生值：不是 store 字段
   error: string | null;
-  loadFileTree(projectId: string): Promise<void>;
-  openFile(projectId: string, filePath: string): Promise<void>;
-  closeTab(tabId: string): void;
-  activateTab(tabId: string): void;
-  updateTabContent(tabId: string, content: string): void;
-  saveFile(content: string): Promise<boolean>;
-  clearFileView(): void;
-}
+  loadFileTree: (projectId: string, worktreePath?: string, force?: boolean) => Promise<void>;
+  expandSubTree: (dirPath: string) => Promise<void>;
+  openFile: (rawPath: string) => Promise<boolean>;
+  closeTab: (tabId: string) => void;
+  activateTab: (tabId: string) => void;                       // 内部走 editorStore.activateTab(tabKey, tabId)
+  updateTabContent: (tabId: string, content: string) => void;
+  saveFile: (content: string, tabId?: string, closeAfterSave?: boolean) => Promise<boolean>;
+  saveTabById: (tabId: string) => Promise<boolean>;
+  setTabDirty: (tabId: string, isDirty: boolean) => void;
+  clearFileView: () => void;
+};
 ```
+
+`fileTabs` / `activeFileTabId` 是 hook 内部由 `editorStore.tabs[tabKey]` **派生**的 `useMemo`
+结果，不再作为 store 字段存在。
 
 ### 3. Contracts
 
-1. `useFileView` 不持有 `fileTree/fileTabs/activeFileTabId` 的本地 `useState`，统一使用 `useAppStore`。
-2. `openFile` 的 tab 唯一键为 `tabId = \`${projectId}:${filePath}\``。
-3. `activeFilePath` 由 `fileTabs + activeFileTabId` 派生并写回 store，禁止在组件层重复推导。
-4. `FileViewer` 与 `AppLayout` 只读 store 状态，动作通过 `FileActionsContext` 下发。
+1. `useFileView` 不持有文件树/tab 的本地 `useState`：树进 `@/features/file/store`（`dirs` /
+   `loadStates` / `owner`），tab 进 `editorStore`（`tabs[tabKey]` / `activeTabId`）。
+2. **tab 空间按复合 `tabKey` 分槽**：`tabKey = resolveTabKey(projectId, worktreePath)`
+   （`src/shared/utils/tabKey.ts`），主仓单元的 key 就是 `projectId`。worktree 因此有独立 tab 空间，
+   不再靠 `${projectId}:${filePath}` 这类自造身份。
+3. `activeFilePath` 是**派生值**（由当前 `tabKey` 的激活 file tab 推出），在 hook 内 `useMemo`
+   计算，禁止在组件层重复推导、也不要为它另建一份 store 状态。
+4. `FilesPanel` / `FileViewer` 只经 selector 读 store，动作通过 `FileActionsContext` 下发。
 
 ### 4. Validation & Error Matrix
 
 | 场景 | 输入 | 预期 | 错误处理 |
 |------|------|------|---------|
-| 打开重复文件 | 现有 `tabId` | 只切换激活 tab | 不触发 IPC |
-| 打开新文件 | 新 `tabId` | 创建 tab 并激活 | IPC 失败写 `error` |
+| 打开重复文件 | 同一 tab 身份 | 只切换激活 tab | 不触发 IPC |
+| 打开新文件 | 新 tab 身份 | 创建 tab 并激活 | IPC 失败写 `error` |
 | 关闭活动 tab | `tabId` 命中活动项 | 激活相邻 tab 或置空 | 无 |
 | 保存文件 | 活动 tab 存在 | 返回 `true` 并清除脏标记 | IPC 失败返回 `false` |
+| 目录加载失败 | loader 抛错 | **保留旧内容** + 标 error | 不置空（`file/store` 语义） |
 
 ### 5. Good/Base/Bad Cases
 
 - Good：`openFile` 新建 tab，`activeFilePath` 同步为目标路径。
-- Base：连续切换 tab，`activeFilePath` 始终和 `activeFileTabId` 对齐。
+- Base：连续切换 tab，`activeFilePath` 始终和激活 tab 对齐。
 - Bad：`saveFile` 在无活动 tab 时直接返回 `false`，不触发写文件命令。
 
 ### 6. Tests Required
 
-- Hook 断言  
-`openFile` 重复打开同一路径不增加 tab 数量。  
-`closeTab` 关闭最后一个 tab 后 `activeFileTabId` 为 `null`。  
+- Hook 断言
+`openFile` 重复打开同一路径不增加 file tab 数量。
+`closeTab` 关闭最后一个 tab 后该 `tabKey` 的 `activeTabId` 为 `null`。
 `updateTabContent` 后 `isDirty` 与原始内容比较一致。
-- 集成断言  
-`FileViewer` 调用 `onFileSave` 时根据返回值维持脏标记。  
-`AppLayout` 切到 files 面板时触发 `onLoadFileTree(activeProjectId)`。
+- 集成断言
+`FilesPanel` 切到 files 面板时触发目录加载；`onFileSave` 的返回值决定脏标记是否维持。
+`FileActionsContext` 只提供动作，状态一律从 store 读。
 
 ### 7. Wrong vs Correct
 
 #### Wrong
 
 ```tsx
+// 状态在组件/hook 内 useState 持有，再跨层透传（双源）
 const [tabs, setTabs] = useState<FileTab[]>([]);
 const [activeTabId, setActiveTabId] = useState<string | null>(null);
 ```
@@ -171,57 +189,73 @@ const [activeTabId, setActiveTabId] = useState<string | null>(null);
 #### Correct
 
 ```tsx
-const tabs = useAppStore((s) => s.fileTabs);
-const activeTabId = useAppStore((s) => s.activeFileTabId);
-useAppStore.setState({ fileTabs: nextTabs, activeFileTabId: nextId });
+// tab 状态归 editorStore，按复合 tabKey 分槽；hook 只负责动作与派生
+const projectTabs = useEditorStore((s) => s.tabs[tabKey]);
+const activeTabId = projectTabs?.activeTabId ?? null;
+useEditorStore.getState().activateTab(tabKey, tabId);
 ```
 
 ---
 
-## 跨域 active-切换 lazy invoke 模式
+## 跨域共享切片的「单一编排 hook」模式
 
-当某项数据需要 per-active-target、按需获取（不批量预热），且三域（local / WSL / SSH）各有独立 active 概念时，用三个并列 effect 分别响应各自的 active 变化、写入同一张共用切片。
+当某份数据按 active 目标获取（不批量预热）、且三个域（local / WSL / SSH）都要消费时，**只允许
+一份编排 hook 写入共用切片**，各域不自己持状态。
 
-**实例**：`useAheadBehindSync`（`src/hooks/useAheadBehindSync.ts`）
-- 一份 hook 同时挂三个 `useEffect`：分别监听 `useAppStore.activeProjectId`、`activeWslProject`、`activeRemoteProject`
-- 每个 effect 在切换时单次 invoke 对应后端命令（`get_ahead_behind_command` / `wsl_get_ahead_behind` / `remote_get_ahead_behind`）
-- 结果统一写到 `aheadBehind: Record<key, AheadBehind>`，key 由 `aheadBehindKey()` 派生（参见 `state-management.md` 跨域共用切片场景）
+**实例**：`useAheadBehindSync`（`shared/hooks/useAheadBehindSync.ts`）
+
+- 一个 `useEffect`，依赖 `(activeProjectId, activeWorktreePath, commands)`。`commands` 来自
+  `useActiveProject()`，**已按当前单元绑定**，所以取回的就是该单元的数字；
+- 结果写进 `gitStore.aheadBehind`，**键 = 仓库单元身份 `RepoKey`**
+  （`repoKeyOf(activeProjectId, activeWorktreePath)`），不带 `{source}:{connectionId}` 前缀 ——
+  理由与「为什么前缀必错」见 `state-management.md` 场景「仓库单元分槽 + 激活态单源」第 7 条；
+- 它在 `ProjectsPanel` 顶层挂一次。与 `useRefreshGitInfo` 是**同一事实的两个触发时机**
+  （切换项目 vs 手动刷新），键与语义必须同形。
 
 **契约**：
-1. effect 仅在 active 切换时触发，不批量预热（避免 SSH 网络抖动放大成本）
-2. 失败路径调用 `setAheadBehind(key, null)`，让消费侧不渲染陈旧 chip
-3. 三个 effect 互不依赖；不要合并成一个"超级 effect" + 大型 switch
+1. 只在 active 切换时触发，不批量预热（避免 SSH 网络抖动放大成本）
+2. 失败路径调用 `setAheadBehind(repoKey, null)`，让消费侧不渲染陈旧 chip
+3. 键由唯一产出点 `repoKeyOf` 给出；禁止消费侧另算一份「等价键」
 4. hook 在跨域容器（如 `ProjectsPanel`）顶层调用一次即可，禁止在每个 ProjectGroup 内重复挂载
 
-**反模式**：在 `useLocalProjects` / `useWslProjects` / `useRemoteProjects` 各自 invoke + 自己持状态——三处 staleness 难以统一。
+**反模式**：让 `useLocalProjects` / `useWslProjects` / `useRemoteProjects` 各自 invoke + 自己持状态
+——三处 staleness 难以统一。
 
 **好坏对照**：
 
 ```tsx
-// Wrong —— 在每个领域 hook 里各自维护 ahead/behind
+// Wrong —— 每个领域 hook 各自维护一份：消费侧从 3 处来源取数据，永远不一致
 function useLocalProjects() {
   const [aheadBehind, setAheadBehind] = useState<Record<string, AheadBehind>>({});
 }
-function useWslProjects() {
-  const [aheadBehind, setAheadBehind] = useState<Record<string, AheadBehind>>({});
-}
-// 消费侧从 3 处来源取数据，永远不一致
+function useWslProjects() { /* 同上 */ }
+// 更隐蔽的错法：切片共用了，但键各拼一份前缀 ⇒ 读侧永远拼不出写侧的键
+setAheadBehind(aheadBehindKey('wsl', `${host}:${port}`, projectId), info);
 ```
 
 ```tsx
-// Correct —— 一份编排 hook + 共用切片
-function useAheadBehindSync() {
-  const activeProjectId = useAppStore((s) => s.activeProjectId);
-  const activeWslProject = useAppStore((s) => s.activeWslProject);
-  const activeRemoteProject = useAppStore((s) => s.activeRemoteProject);
+// Correct —— 一份编排 hook + 共用切片 + 单元身份键
+function useAheadBehindSync(commands?: AheadBehindCommands | null) {
+  const activeProjectId = useProjectStore((s) => s.activeProjectId);
+  const activeProject = useProjectStore((s) => s.activeProject);
+  const activeWorktreePath = useActiveWorktreePath();
+  const setAheadBehind = useGitStore((s) => s.setAheadBehind);
 
-  useEffect(() => { /* local invoke + setAheadBehind */ }, [activeProjectId]);
-  useEffect(() => { /* wsl invoke + setAheadBehind */ }, [activeWslProject]);
-  useEffect(() => { /* remote invoke + setAheadBehind */ }, [activeRemoteProject]);
+  useEffect(() => {
+    if (!commands || !activeProjectId || !activeProject?.git_info) return;
+    const repoKey = repoKeyOf(activeProjectId, activeWorktreePath);
+    let cancelled = false;
+    commands
+      .getAheadBehind()
+      .then((info) => { if (!cancelled) setAheadBehind(repoKey, info); })
+      .catch(() => { if (!cancelled) setAheadBehind(repoKey, null); });
+    return () => { cancelled = true; };
+  }, [activeProjectId, activeProject, activeWorktreePath, commands, setAheadBehind]);
 }
 
-// ProjectsPanel.tsx 顶层一次调用
-useAheadBehindSync();
+// ProjectsPanel.tsx 顶层一次调用（commands 已按当前单元绑定）
+const { commands } = useActiveProject();
+useAheadBehindSync(commands);
 ```
 
 ---
@@ -259,18 +293,24 @@ export function addProject(path: string, agentId?: string | null): Promise<Proje
 
 ### 事件监听
 
-对于后端推送的事件，使用 Tauri 的 `listen`：
+对于后端推送的事件，优先用 `useTauriEvent`（自动 listen/unlisten、竞态安全），事件名与载荷类型
+必须来自单一事实源（`shared/events.ts` 常量 + `shared/types`）：
 
 ```tsx
-import { listen } from "@tauri-apps/api/event";
+import { GIT_CHANGED_EVENT } from "@/shared/events";
+import { useTauriEvent } from "@/shared/hooks/useTauriEvent";
+import type { GitChangedEvent } from "@/shared/types";
 
-useEffect(() => {
-  const unlisten = listen<string>("git-changed", (event) => {
-    // 处理 event.payload
-  });
-  return () => { unlisten.then(fn => fn()); };
-}, []);
+useTauriEvent<GitChangedEvent>(
+  GIT_CHANGED_EVENT,
+  useCallback((payload) => {
+    if (payload.project_id !== projectId) return;
+  }, [projectId]),
+);
 ```
+
+> ⚠️ 禁止 `listen<string>("git-changed")` 这类裸写法：既绕过常量源，又会在载荷形状演进时静默死亡
+> （详见 `api-layer.md` 事件监听）。
 
 ### 配置持久化模式
 
@@ -341,7 +381,7 @@ const saveWorktreeState = useCallback((projectId: string, wtPath: string | null)
 | 约定 | 示例 |
 |------|------|
 | 文件名：`use<Domain>.ts` | `useAppConfig.ts`、`useLocalProjects.ts` |
-| 文件名（编排）：`use<Domain>Actions.ts` / `use*ToStore.ts` | `useAgentActions.ts`、`useWorktreeActions.ts`、`useSyncToStore.ts` |
+| 文件名（编排）：`use<Domain>Actions.ts` / `use*ToStore.ts` | `useAgentActions.ts`、`useWorktreeActions.ts`、`useAppStoreSync.ts` |
 | 导出：命名函数 | `export function useAppConfig()` |
 | 返回值：带命名字段的对象 | `{ config, saveConfig, settingsOpen }` |
 | 回调：动作动词 | `showToast`、`saveConfig`、`updateWtPath` |
@@ -350,36 +390,37 @@ const saveWorktreeState = useCallback((projectId: string, wtPath: string | null)
 
 ## 现有 Hooks 参考
 
+> 落点速查：跨域共享的放 `src/shared/hooks/`，域内的放 `src/features/<domain>/hooks/`，
+> 应用编排的放 `src/app/hooks/`。
+
 ### 领域 Hook
 
-| Hook | 用途 | 关键返回值 |
-|------|------|-----------|
-| `useAppConfig` | 应用配置持久化 | `config`、`saveConfig`、`settingsOpen` |
-| `useToast` | Toast 通知（3 秒自动消失） | `toast`、`showToast` |
-| `useLocalProjects` | 本地项目 CRUD 与状态 | 项目列表、CRUD 回调、Agent 管理 |
-| `useFileView` | 文件树和编辑 Tab 状态动作 | `loadFileTree`、`openFile`、`saveFile` |
-| `useWslProjects` | WSL 发行版管理 | WSL 会话、CRUD 回调 |
-| `useRemoteProjects` | SSH 远程管理 + 认证 | 远程条目、CRUD 回调、认证状态 |
-| `useKeyboardShortcuts` | 全局键盘快捷键 | （仅副作用） |
-| `useSideTerminalResize` | 拖拽调整终端面板大小 | 宽度状态、鼠标事件处理 |
-| `useWorktreeState` | 按项目追踪 worktree 状态 | 路径、分支、已打开的 worktrees |
-| `useLsp` | LSP 文档生命周期（打开/变更/关闭） | `openDocument`, `changeDocument`, `closeDocument`, `request` |
-| `useLspDiagnostics` | LSP 诊断事件监听（Tauri event） | `diagnosticsMap`, `getDiagnostics`, `clearDiagnostics` |
-| `useLspHover` | LSP hover 请求（防抖） | `hoverState`, `setDocument`, `onMouseMove`, `hideHover` |
-| `useLspDefinition` | Go to Definition + Find References | `goToDefinition`, `findReferences` |
-| `useLspCompletion` | LSP 自动补全源 | `setContext`, `getCompletions` |
-| `useLspDiagnosticExtensions` | CodeMirror 诊断装饰（波浪线 + gutter） | `Extension[]` |
-| `useLspHoverExtension` | CodeMirror hover 鼠标事件处理器 | `Extension` |
+| Hook | 落点 | 用途 | 关键返回值 |
+|------|------|------|-----------|
+| `useAppConfig` | `features/settings/hooks/` | 应用配置持久化 | `config`、`saveConfig`、`settingsOpen` |
+| `useToast` | `shared/hooks/` | Toast 通知（3 秒自动消失） | `toast`、`showToast` |
+| `useLocalProjects` | `features/project/hooks/` | 本地项目 CRUD 与状态 | 项目列表、CRUD 回调、Agent 管理 |
+| `useConnectionProjects` | `shared/hooks/` | WSL/Remote 统一入口 | 连接条目、CRUD 回调 |
+| `useWorktreeState` | `features/project/hooks/` | 按项目追踪激活单元（worktree） | `activePath`、`activeBranch`、`opened` |
+| `useFileView` | `features/editor/hooks/` | 文件树与 tab 的动作/派生（状态在 store） | `loadFileTree`、`openFile`、`saveFile` |
+| `useKeyboardShortcuts` | `shared/hooks/` | 全局键盘快捷键 | （仅副作用） |
+| `useDeltaBatcher` | `features/agent-chat/hooks/` | 流式增量 rAF 批处理 | `flush`、批处理后的 state |
+| `useDiagnosticQuickFix` | `features/lsp/hooks/` | 单条诊断 quickfix 状态机（展开才拉 codeAction） | 展开/应用动作 |
+| `useLspDefinition` | `features/lsp/hooks/` | Go to Definition + Find References | `goToDefinition`、`findReferences` |
+| `useLspLinkHighlight` | `features/lsp/hooks/` | Cmd/Ctrl + hover 定义探针（去抖 + pending 去重） | 高亮状态 |
 
-### 编排 Hook（从 App.tsx 提取）
+> `useWslProjects` / `useRemoteProjects`（`features/connection/hooks/`）仍在，但已 **deprecated** ——
+> 新代码走 `useConnectionProjects`。
+
+### 编排 Hook（`src/app/hooks/`）
 
 | Hook | 用途 | 关键返回值 |
 |------|------|-----------|
-| `useSessionPersistence` | 统一会话保存逻辑 | `saveSession`、`saveWorktreeState`、`saveSidebarWidth`、`worktreeState` |
-| `useSyncToStore` | 同步连接快照与快捷键动作引用到 app store | （仅副作用，无返回值） |
-| `useAgentActions` | 本地 agent、IDE、项目设置保存 | Agent 与 IDE 回调 |
-| `useWorktreeActions` | 本地 worktree 导航与 diff 切换 | Worktree 回调 |
-| `useRemoteAuthActions` | SSH 认证取消与确认 | Remote auth 回调 |
+| `useAppShell` | 薄组合器：`useAppGlobalEffects` + `useAppShellData` + `buildAppShellValues` | `initializing`、`appProvidersProps`、`appModalsProps` |
+| `useAppShellData` | 领域 Hook 编排 + 副作用注册 | `AppShellData` + `toolbarProps` |
+| `useAppStoreSync` | 同步视图状态与动作引用到 `projectStore` | （仅副作用，无返回值） |
+| `useSessionPersistence` | 统一会话保存逻辑 | `saveSession`、`saveWorktreeState`、`saveSidebarWidth` |
+| `useActiveRepoUnitSync` | 反应激活单元变化、请求后端挂载（唯一发起点） | （仅副作用） |
 
 ---
 
@@ -453,9 +494,9 @@ const handler = useCallback(() => {
   console.log(activeProjectId); // 过期了！
 }, []); // 空依赖以保持引用稳定
 
-// 正确 —— 从 store 快照读取
+// 正确 —— 从对应域 store 的命令式快照读取
 const handler = useCallback(() => {
-  console.log(useAppStore.getState().activeProjectId); // 始终是最新的
+  console.log(useProjectStore.getState().activeProjectId); // 始终是最新的
 }, []);
 ```
 

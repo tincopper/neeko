@@ -173,9 +173,22 @@ src-tauri/
 
 ## 模块组织
 
-### 目录变更 2026-04-21 / 2026-05-31 / 2026-07-24
+### 目录变更 2026-04-21 / 2026-05-26 / 2026-05-31 / 2026-07-24
 
-2026-04-21：`ProjectStateContext` 已移除，文件视图状态进入 `useAppStore`。
+2026-04-21：`ProjectStateContext` 已移除，文件视图状态进入当时的 `appStore`（后续去向见下一条）。
+
+2026-05-26（appStore 拆分）：`src/store/appStore.ts` 单文件拆为域 store。
+**`shared/store/appStore.ts` 从未落地** —— 旧文档里的这一格是未实现的目标路径，不要照抄。
+
+| 旧字段域 | 现在的 store |
+|------|------|
+| projects / activeProject / IDE 动作 | `shared/store/projectStore.ts` |
+| WSL + Remote 条目 / 认证 | `shared/store/connectionStore.ts` |
+| worktree 激活态 | `shared/store/worktreeStore.ts` |
+| tabs / editorLayout / tab CRUD | `shared/store/editorStore.ts` |
+| aheadBehind | `shared/store/gitStore.ts` |
+| leftPanelWidth（运行期像素） | `shared/store/dockStore.ts` |
+| 文件树 / 文件视图 | 后迁到 feature store：`@/features/file/store.ts` |
 
 2026-05-31 (Phase B)：重构目录布局、文件命名合规化、去除 `src/components/` 中间层。
 
@@ -214,7 +227,7 @@ layout/      ← app/        (app 组装骨架并填充 slot)
 | `context/sidebar-context.tsx` | `shared/contexts/SidebarContext.tsx` | PascalCase 文件名 |
 | `hooks/useFileView.ts` | `features/editor/hooks/useFileView.ts` | Hook 下沉到 editor 域 |
 | `contexts/file-actions-context.tsx` | `features/editor/FileActionsContext.tsx` | PascalCase 文件名 |
-| `stores/appStore.ts` | `shared/store/appStore.ts` | 统一到 shared |
+| ~~`stores/appStore.ts`~~ | 未落地（见 2026-05-26：实际拆为域 store，`shared/store/appStore.ts` 从未存在） | ~~统一到 shared~~ |
 | `utils/` | `shared/utils/` | 统一到 shared |
 | `components/panels/` | 分散到 `features/*/components/` | 按 feature 域分布 |
 | `components/connections/` | `features/connection/components/` | 按 feature 域分布 |
@@ -241,7 +254,7 @@ layout/      ← app/        (app 组装骨架并填充 slot)
 
 | 目录 | 领域 | 包含内容 |
 |------|------|---------|
-| `layout/` | 窗口边框（纯骨架） | AppLayout、TitleBar、WindowControls、AddProjectMenu、DockRegistryContext |
+| `layout/` | 窗口边框（纯骨架） | TitleBar、WindowControls、DockRegistryContext、useFullscreen、islands |
 | `layout/dock-layout/` | Dock 布局框架 | DockBar、DockLayout、DockZone、拖拽 Hook 等 |
 | `app/components/` | app 协调组件 | ProjectWorkspace、DockBarButton、OpenIdeButton、SplashScreen |
 | `app/dock/` | Dock UI 注册表 + 胶水 | registry、wrappers/（每面板一文件） |
@@ -285,7 +298,7 @@ export { createTerminalForProject } from "./terminalFactory";
 | 新的领域状态分发 | `features/<domain>/contexts/` 或 `app/<domain>/<Name>Context.tsx` |
 | 纯工具函数 | `shared/utils/<name>.ts` |
 | IPC 封装（必需） | `features/<domain>/api/<domain>Api.ts`，每个 feature 域一个；或 `app/<domain>/api/<domain>Api.ts`（如 editor 域） |
-| 共享类型 | `types.ts`，或 `features/<domain>/types.ts`，或 `app/<domain>/types.ts` |
+| 共享类型 | 跨域放 `shared/types/<domain>.ts`（`index.ts` 聚合）；域内放 `features/<domain>/types.ts` |
 | Feature 域入口 | `features/<domain>/` 域目录结构参考 features/agent/ |
 | App 协调组件 | `app/components/<Name>.tsx` / `app/dock/`；业务域仍在 `features/<domain>/` |
 | 测试配置 | `testing/setup.ts`, `testing/factories.ts` |
@@ -300,42 +313,51 @@ export { createTerminalForProject } from "./terminalFactory";
 ### 1. Scope / Trigger
 
 - Trigger：跨组件共享状态字段过多时，Context 容易膨胀并引入重复读取路径。
-- Scope：`src/context/`、`src/contexts/`、`src/store/`、`src/hooks/`。
+- Scope：`src/shared/contexts/`、`src/features/*/contexts/` + `src/features/*/*Context.tsx`、`src/shared/store/`、`src/features/*/store.ts`、`src/shared/hooks/`、`src/app/hooks/`。
 
 ### 2. Signatures
 
 ```text
-src/context/         基础 UI 上下文（App / Skill / Editor / TerminalInsert）
-src/contexts/        领域动作上下文（ProjectActions / FileActions / Wsl / Remote / Editor）
-src/store/           共享状态单源（useAppStore）
-src/hooks/           动作封装、IPC 调用、状态写入协调
+src/shared/contexts/        横切上下文（App / Editor / TerminalInsert / Wsl / Remote / ConnectionProject）
+src/features/*/contexts/    域内动作上下文（如 features/editor/FileActionsContext.tsx、
+                            features/project/ProjectContext.tsx、features/connection/contexts/*）
+src/shared/store/           跨域状态（projectStore / worktreeStore / editorStore / dockStore /
+                            appViewStore / gitStore / connectionStore …）
+src/features/*/store.ts     域内状态（如 features/file/store.ts、features/skill/store.ts）
+src/shared/hooks/           跨域共享 hook（useToast / useTauriEvent / useKeyboardShortcuts …）
+src/app/hooks/              应用编排 hook（useAppShell / useAppShellData / useAppStoreSync …）
 ```
+
+`src/context/`、`src/contexts/`、`src/store/`、`src/hooks/` 这四个扁平目录**都已不存在**；
+`appStore.ts` 也已拆分（见「目录变更 2026-05-26」）。
 
 ### 3. Contracts
 
-1. `context/` 只放稳定基础上下文，避免混入领域状态快照。  
-2. `contexts/` 放领域动作上下文，字段应以副作用函数为主。  
-3. 共享状态字段新增时优先进入 `store/appStore.ts`，消费者通过 selector 读取。  
-4. `AppProviders.tsx` 只负责 Provider 组装，禁止承担业务计算。
+1. `shared/contexts/` 只放横切的稳定上下文，避免混入领域状态快照；域内动作上下文归属该 feature
+   （`features/*/contexts/` 或根级 `<X>Context.tsx`）。
+2. Context 字段以副作用函数为主。
+3. 共享状态字段新增时进入**对应域的 store**（跨域放 `shared/store/`，域内放 `features/*/store.ts`），
+   消费者通过 selector 读取；禁止再造大一统 store。
+4. `src/app/AppProviders.tsx` 只负责 Provider 组装，禁止承担业务计算。
 
 ### 4. Validation & Error Matrix
 
 | 检查项 | 规则 | 失败信号 |
 |--------|------|---------|
-| 新增共享字段位置 | 优先写 `store/` | 在 Context 中出现同名状态快照 |
-| 新增 Context 文件位置 | 放 `contexts/` 或 `context/` 对应层 | 混放导致 import 路径混乱 |
+| 新增共享字段位置 | 写对应域 store | 在 Context 中出现同名状态快照 |
+| 新增 Context 文件位置 | 横切放 `shared/contexts/`，域内放该 feature | 混放导致 import 路径混乱 |
 | Provider 组合深度 | 新增前评估是否可复用现有 Provider | `AppProviders.tsx` 持续膨胀 |
 
 ### 5. Good/Base/Bad Cases
 
-- Good：新增文件域动作时创建 `file-actions-context.tsx`，状态仍放 store。
+- Good：新增文件域动作时扩 `features/editor/FileActionsContext.tsx`，状态仍放 store。
 - Base：新增只在单页使用的 UI 状态，保持组件本地 `useState`。
-- Bad：在 `contexts/*` 新增大块状态字段并与 store 并存。
+- Bad：在 `features/*/contexts/*` 新增大块状态字段并与 store 并存。
 
 ### 6. Tests Required
 
-- 静态检查：`rg "useProjectStateContext|project-state-context"` 结果应为空。  
-- 类型检查：`npx tsc --noEmit`。  
+- 静态检查：`rg "useProjectStateContext|project-state-context"` 结果应为空。
+- 类型检查：`npx tsc --noEmit`。
 - 回归测试：`pnpm test:run`。
 
 ### 7. Wrong vs Correct
@@ -343,21 +365,21 @@ src/hooks/           动作封装、IPC 调用、状态写入协调
 #### Wrong
 
 ```tsx
-// contexts 中继续承载状态快照
+// Context 中继续承载状态快照（双数据源）
 interface ProjectStateContextValue {
-  fileTabs: FileTab[];
-  activeFileTabId: string | null;
+  tabs: ProjectTabs[];
+  activeTabId: string | null;
 }
 ```
 
 #### Correct
 
 ```tsx
-// contexts 只承载动作；状态由 store 读取
+// Context 只承载动作；状态由所属域 store 读取
 interface FileActionsContextValue {
   onFileSave(content: string): Promise<boolean>;
 }
-const tabs = useAppStore((s) => s.fileTabs);
+const projectTabs = useEditorStore((s) => s.tabs[tabKey]);
 ```
 
 ---
@@ -377,7 +399,7 @@ const tabs = useAppStore((s) => s.fileTabs);
 
 ## 示例
 
-- 纯布局骨架：`src/layout/` —— AppLayout/TitleBar/DockLayout 只暴露 slots，不 import features
+- 纯布局骨架：`src/layout/` —— TitleBar/DockLayout/WindowControls 只暴露 slots，不 import features（`AppLayout` 已删除）
 - app 协调层：`src/app/components/ProjectWorkspace.tsx` + `src/app/dock/wrappers/`（每面板一文件）
 - Hook 模式：`src/shared/hooks/` 与 `src/app/hooks/useAppShell.ts`
 - 工具模式：`src/shared/utils/platform.ts`

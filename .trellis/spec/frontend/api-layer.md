@@ -268,19 +268,28 @@ export function getGitInfo(transport: GitTransportKind): Promise<GitInfo> {
 
 ## 事件监听
 
-对于后端推送的事件，使用 Tauri 的 `listen`。这部分不经过 API wrapper（事件是 Tauri `@tauri-apps/api/event` 的职责）：
+对于后端推送的事件，优先走 `shared/hooks/useTauriEvent`（内部是 Tauri 的 `listen`，自动管理
+listen/unlisten）。这部分不经过 API wrapper（事件是 Tauri `@tauri-apps/api/event` 的职责），
+但**事件名与载荷类型必须来自单一事实源** —— 名字取 `src/shared/events.ts` 的常量，类型取
+`src/shared/types/`：
 
 ```typescript
-import { listen } from "@tauri-apps/api/event";
+import { GIT_CHANGED_EVENT } from "@/shared/events";
+import { useTauriEvent } from "@/shared/hooks/useTauriEvent";
+import type { GitChangedEvent } from "@/shared/types";
 
-useEffect(() => {
-  const unlisten = listen<string>("git-changed", (event) => {
-    console.log("[Git] Changed:", event.payload);
-  });
-
-  return () => { unlisten.then(fn => fn()); };
-}, []);
+useTauriEvent<GitChangedEvent>(GIT_CHANGED_EVENT, (payload) => {
+  console.log("[Git] Changed:", payload.repo_key);
+});
 ```
+
+> 需要 `unlisten` 精确控制时用 `listen<T>(常量, handler)` 并在 cleanup 里调用返回的 `unlisten`；
+> 事件名与类型仍必须来自单一事实源（见下）。
+
+> ⚠️ **禁止手写事件名与载荷类型**（红线 5）。`listen<string>("git-changed")` 这类裸写法不仅绕过了
+> 常量源，还会在载荷形状演进时**静默死亡**：`git-changed` 已从裸 `project_id` 字符串改为
+> `GitChangedEvent{repo_key, project_id}`，仍按 `payload !== projectId` 比较的消费点「对象 ≠ 字符串」
+> 恒早返回，通道不再触发且不报错。推荐经 `shared/hooks/useTauriEvent` 统一挂载/卸载。
 
 ### 项目中使用的事件
 
@@ -289,8 +298,18 @@ useEffect(() => {
 | `terminal-input-{id}` | 终端输入（前端 emit） | `number[]` (UTF-8 bytes) |
 | `terminal-output-{id}` | 终端输出 | `number[]` |
 | `terminal-closed-{id}` | 终端关闭通知 | `null` |
-| `git-changed` | Git 状态变更 | `string` (projectId) |
+| `git-changed` | Git 状态变更（HEAD 外部变化等主动刷新 fallback） | `GitChangedEvent`（`repo_key` + `project_id`） |
+| `git-status-snapshot` | 单元 status 权威全量快照（按 `repo_key` 覆盖对应槽） | `GitStatusSnapshot` |
+| `file-changed` | 文件内容变更批次（已去抖） | `FileChangedEvent`（`repo_key` + `project_id` + `paths`） |
+| `file-tree-changed` | 文件树结构变更（Create/Remove/Rename） | `FileTreeChangedEvent`（`repo_key` + `project_id` + `dirs?`） |
 | `lsp-diagnostics-{project_path}` | LSP 诊断推送 | `LspDiagnosticsEvent` (uri + diagnostics[]) |
+
+**带 `repo_key` 的事件，路径基准是「该单元的工作树根」，不是 project 根**：`file-changed` 的
+`paths` 与 `file-tree-changed` 的 `dirs` 都由后端 `strip_prefix(repo.work_dir_pathbuf())` 得到
+（strip 失败才回退绝对路径）。消费侧归一基准必须同源 —— 用 `unitWorkDir(repo_key, projectRoot)`
+（主仓单元回落项目登记路径，linked worktree 用后端回传的 canonical 路径），**不能**用 `project.path`：
+worktree 视图下把单元相对路径拼到主仓根，同文件判定恒不命中，HTML 预览 / 浏览器 auto-refresh
+就不再刷新。详见 `state-management.md` 场景「仓库单元分槽 + 激活态单源」第 9 条。
 
 ---
 
@@ -494,12 +513,14 @@ useEffect(() => {
 
 ### 变更文件
 
-- `src/components/terminal/TerminalView.tsx`
-- `src/components/terminal/WSLTerminalView.tsx`
-- `src/components/terminal/RemoteTerminalView.tsx`
+> 路径已按当前目录更新（该契约写于 2026-04-17，此后 `components/` → `features/`、`types.ts` → `shared/types/`）。
+> `RemoteProjectView.tsx` 已不存在（远程项目视图并入统一工作区）。
+
+- `src/features/terminal/components/TerminalView.tsx`
+- `src/features/terminal/components/WSLTerminalView.tsx`
+- `src/features/terminal/components/RemoteTerminalView.tsx`
 - `src/app/components/ProjectWorkspace.tsx`
-- `src/components/RemoteProjectView.tsx`
-- `src/types.ts`
+- `src/shared/types/`
 
 ### 会话键契约
 
@@ -531,9 +552,9 @@ useEffect(() => {
 
 ### Good/Base/Bad 用例
 
-- Good：`src/hooks/__tests__/useSplitLayout.test.ts::splitPane 创建新 pane 并设置为 active`
-- Base：`src/hooks/__tests__/useSplitLayout.test.ts::layoutId 变化会重置布局`
-- Bad：`src/hooks/__tests__/useSplitLayout.test.ts::达到上限后 canSplit=false`
+- Good：`src/features/editor/hooks/__tests__/useSplitLayout.test.ts::splitPane 创建新 pane 并设置为 active`
+- Base：`src/features/editor/hooks/__tests__/useSplitLayout.test.ts::layoutId 变化会重置布局`
+- Bad：`src/features/editor/hooks/__tests__/useSplitLayout.test.ts::达到上限后 canSplit=false`
 
 ### 必测断言点
 
