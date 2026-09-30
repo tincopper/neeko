@@ -94,6 +94,16 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      # Rust 门禁经 package.json 的脚本名调用（`pnpm lint:rust` / `pnpm test:rust`），
+      # 因此需要 pnpm；脚本自带 --manifest-path，不需要 node_modules。
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
       - name: Install Rust stable
         uses: dtolnay/rust-toolchain@stable
 
@@ -117,15 +127,11 @@ jobs:
         run: cargo check
         working-directory: ./src-tauri
 
-      # `cargo fmt --check` 同样此前只在本地 `pnpm lint` 里跑（pre-commit 的 lint-rust），
-      # CI 只跑 check/clippy/test ⇒ 格式化门也补进 CI。
-      - name: Rust format
-        run: cargo fmt --check
-        working-directory: ./src-tauri
-
-      - name: Rust clippy
-        run: cargo clippy -- -D warnings
-        working-directory: ./src-tauri
+      # 与本地 commit 档**同一条命令**（静态检查的定义单点在 package.json）：
+      # fmt + clippy(-D warnings)。此前这两条只在本地 `pnpm lint` 里跑、CI 各自手写，
+      # 于是同一个门有两份定义。
+      - name: Rust static checks
+        run: pnpm lint:rust
 
       # 护栏清单 = tools/guards/checks/ 目录本身；这里只声明「在哪个 stage 跑」，
       # 不再逐条列脚本（三份手写清单正是本地与 CI 门禁集漂移的根因）。
@@ -144,6 +150,16 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      # Rust 门禁经 package.json 的脚本名调用（`pnpm lint:rust` / `pnpm test:rust`），
+      # 因此需要 pnpm；脚本自带 --manifest-path，不需要 node_modules。
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
 
       - name: Install Rust stable
         uses: dtolnay/rust-toolchain@stable
@@ -164,6 +180,6 @@ jobs:
             librsvg2-dev \
             patchelf
 
+      # 与本地 push 档同一条命令（定义单点在 package.json）。
       - name: Rust test
-        run: cargo test
-        working-directory: ./src-tauri
+        run: pnpm test:rust

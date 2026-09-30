@@ -1,19 +1,40 @@
 # Git hooks managed by lefthook (https://github.com/evilmartians/lefthook)
 # Install hooks with: pnpm lefthook install
+#
+# 阶段边界按**延迟预算**划，不按语言划：commit 是静态检查（fmt / clippy / eslint / tsc /
+# 提交信息，暖缓存 ~10s），push 是两套分钟级单元测试（前端 ~50s、Rust ~3min），
+# CI 是三平台终审。两条判据：
+#   ① 每个检查只放一处，且一律经 package.json 的脚本名调用 —— 改名只改一处调用点；
+#   ② 测试一律放 push（前端与 Rust 对称，不再出现「前端测试在 commit、Rust 测试没地方跑」）。
 
 pre-commit:
   parallel: true
   commands:
-    # commit 档只做**静态**检查（eslint + tsc）：单元测试统一放 pre-push（见文件末尾的边界说明）。
+    # 只跑 eslint + tsc（--cache 后暖态 ~6s）：单元测试统一放 pre-push。
+    # glob 不只覆盖源码 —— 下面这些文件同样能改变 lint / tsc 的结论，此前改它们本地零门禁。
+    # 两条 `src/*` 是必需的：lefthook 的 `**/` 要求至少一层目录，`src/**/*.ts` 匹配不到
+    # `src/` 的直接子文件（探针实测：src/x.ts 被跳过、src/app/x.ts 命中）。
     lint-frontend:
-      glob: "src/**/*.{ts,tsx,js,jsx}"
+      glob:
+        - "src/*.{ts,tsx,js,jsx}"
+        - "src/**/*.{ts,tsx,js,jsx}"
+        - "package.json"
+        - "pnpm-lock.yaml"
+        - "tsconfig.json"
+        - "vite.config.ts"
+        - "vitest.config.ts"
+        - ".eslintrc.cjs"
+        - ".prettierrc"
       run: pnpm lint:fe:static
+    # 依赖与构建脚本的改动同样会让 fmt / clippy 的结论失效，故与 .rs 并列。
     lint-rust:
-      glob: "src-tauri/**/*.rs"
-      run: pnpm lint
-    lint-java-host:
-      glob: "tools/java-host/**"
-      run: pnpm lint:host
+      glob:
+        - "src-tauri/*.rs"
+        - "src-tauri/**/*.rs"
+        - "src-tauri/Cargo.toml"
+        - "src-tauri/Cargo.lock"
+        - "src-tauri/build.rs"
+      run: pnpm lint:rust
     # 护栏清单 = tools/guards/checks/ 目录本身，这里不列具体护栏，只声明「提交场合跑什么」。
     # 不带 glob：纯 AGENTS.md / 台账 / 框架自身的提交也要过护栏，原先靠一条手写 glob 兜，
     # 漏一种文件类型就要等 CI 才发现体积或路由退化。--staged 让框架按各护栏自报的 scope 跳过无关检查。
@@ -25,23 +46,32 @@ commit-msg:
     commitlint:
       run: pnpm commitlint --edit {1}
 
-# push 档：**两套单元测试都只在这里跑** —— commit 档只做静态检查。
-#
-# 阶段边界按**延迟预算**划，不按语言划：commit 是秒级~1 分钟的静态检查（fmt / eslint / tsc /
-# 提交信息），push 是分钟级的测试套件（前端 ~1 分钟、Rust ~3 分钟），CI 是三平台终审。
-# 判据：每个检查只放一处 —— CI 已有的不重复；只有本地有的补进 CI（见 ci.yml）；
-# 测试一律放 push（前端与 Rust 对称，不再出现「前端测试在 commit、Rust 测试没地方跑」）。
+# push 档：**两套单元测试 + java host 自检都只在这里跑** —— commit 档只做静态检查。
 pre-push:
   parallel: true
   commands:
-    # Rust 全量测试（lib + integration，暖缓存 ~3 分钟）。glob 按**推送涉及的文件**匹配，
-    # 因此纯前端 / 纯文档推送不付这笔成本。
-    rust-tests:
-      glob: "src-tauri/**/*.rs"
-      run: cargo test --manifest-path src-tauri/Cargo.toml
-    # 前端全量测试（~1 分钟）：与 Rust 侧对称，统一在 push 档跑一次；
-    # 顺带兜住「提交绕过钩子」与「提交时校验对象是工作树而非提交内容」两类情形。
+    # 前端全量测试（暖态 ~50s）。
     frontend-tests:
-      glob: "src/**/*.{ts,tsx,js,jsx}"
+      glob:
+        - "src/*.{ts,tsx,js,jsx}"
+        - "src/**/*.{ts,tsx,js,jsx}"
+        - "package.json"
+        - "pnpm-lock.yaml"
+        - "tsconfig.json"
+        - "vite.config.ts"
+        - "vitest.config.ts"
       run: pnpm test:run
-
+    # Rust 全量测试（lib + integration，暖态 ~3min）。
+    rust-tests:
+      glob:
+        - "src-tauri/*.rs"
+        - "src-tauri/**/*.rs"
+        - "src-tauri/Cargo.toml"
+        - "src-tauri/Cargo.lock"
+        - "src-tauri/build.rs"
+      run: pnpm test:rust
+    # java host 是宿主 jar，cargo 门禁覆盖不到：它是**测试**（从源码重编译 + 自检断言），
+    # 按「commit 只静态」放在这一档。无 JDK / 缺依赖 jar 时脚本自行 exit 0 并打印跳过原因。
+    host-tests:
+      glob: "tools/java-host/**"
+      run: pnpm test:host
