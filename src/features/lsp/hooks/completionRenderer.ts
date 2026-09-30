@@ -12,6 +12,7 @@
  *   - Info panel: signature header + documentation body + parameter table +
  *     returns — full context without jumping to source.
  */
+import { fileRefFromLspUri } from '@/shared/utils/fileRef';
 
 /** LSP CompletionItemKind → CM6 icon type mapping (mirrors @codemirror/lsp-client). */
 const KIND_TO_TYPE: Record<number, string> = {
@@ -317,9 +318,17 @@ export function buildModuleNodeFromCompletion(completion: {
   return buildModuleNode(completion.detail ?? '', completion.label);
 }
 
-/** `file:///home/dev/proj/event/dispatcher/dispatch_test.go` → relative-ish path. */
+/**
+ * `file:///home/dev/proj/event/dispatcher/dispatch_test.go` → relative-ish path.
+ *
+ * uri → 路径形态的换算**不在本文件实现**：`fileRef` 是形态换算的唯一所有权模块
+ * （per-segment `decodeURIComponent`、Windows 盘符 `/C:/…` → `C:/…`、UNC host 保留）。
+ * 旧写法自带一套 `file://` 剥离，既不 decode（`%20` 原样进补全提示）也不处理盘符形态。
+ * 非 `file://` 的 uri（`jdt://…`）按不透明字符串分段截断，不做路径解释。
+ */
 function formatUriPath(uri: string): string {
-  const path = uri.replace(/^file:\/\//, '').replace(/^\/+/, '/');
+  const ref = fileRefFromLspUri(uri);
+  const path = ref?.kind === 'fs' ? ref.path : uri;
   const segments = path.split('/').filter(Boolean);
   // Keep the last three segments so the module line stays short, matching
   // the prototype's `event/dispatcher/dispatch.go` style.

@@ -173,6 +173,28 @@ describe('buildModuleNodeFromCompletion (module path second line)', () => {
     expect(node!.textContent).toBe('event/dispatcher/dispatch_test.go');
   });
 
+  it('decodes percent-escapes in the source uri (空格不得漏进提示行)', () => {
+    const completion = {
+      label: 'dispatch',
+      detail: '',
+      data: { URI: 'file:///home/dev/proj/event/my%20dir/dispatch.go' },
+    } as any;
+    const node = buildModuleNodeFromCompletion(completion);
+
+    expect(node!.textContent).toBe('event/my dir/dispatch.go');
+  });
+
+  it('非文件 uri 保持原样形态（只做分段截断，不做路径解释）', () => {
+    const completion = {
+      label: 'PrintStream',
+      detail: '',
+      data: { URI: 'jdt://contents/java.base/java.lang/String.class' },
+    } as any;
+    const node = buildModuleNodeFromCompletion(completion);
+
+    expect(node!.textContent).toBe('java.base/java.lang/String.class');
+  });
+
   it('returns null when no module info and no data URI', () => {
     const completion = { label: 'count', detail: 'int' } as any;
     const node = buildModuleNodeFromCompletion(completion);
