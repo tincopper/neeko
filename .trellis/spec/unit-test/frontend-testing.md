@@ -50,10 +50,21 @@ export default defineConfig({
 ```typescript
 import '@testing-library/jest-dom/vitest';
 import { cleanup } from '@testing-library/react';
-import { afterEach, vi } from 'vitest';
+import { afterAll, afterEach, vi } from 'vitest';
+
+import { installTimerTracking } from './timers';
+
+// 文件结束时取消本文件所有挂起的定时器 / RAF —— 见「环境边界：定时器与 RAF 的文件级收口」。
+const timerTracking = installTimerTracking();
 
 afterEach(() => {
   cleanup();
+  vi.useRealTimers();
+});
+
+afterAll(() => {
+  vi.useRealTimers();
+  timerTracking.releaseAll();
 });
 
 // 全局 mock：@tauri-apps/api/core
@@ -415,6 +426,48 @@ act(() => {
 
 ---
 
+## 环境边界：定时器与 RAF 的文件级收口
+
+**症状**：所有用例都通过，整轮 vitest 却判红 —— `Unhandled Errors` 里是
+`TypeError: Failed to execute 'dispatchEvent' on 'EventTarget': parameter 1 is not of type 'Event'`
+（或 `document is not defined` 一类），且**一轮红一轮绿**，报错来源只指向某个「当时正在跑」的文件
+（2026-09-30 实测：来源指向 `McpTagGroupDialog.test.tsx`，同一份代码约 1/6 轮红）。
+
+**机制**（必须跨文件看才成立）：组件卸载与绘制调度里的副作用都排在**宏任务**上 —— Radix 的
+FocusScope（Dialog / DropdownMenu / ContextMenu / Select 等所有弹层共用）在 mount effect 的 cleanup
+里 `setTimeout(0)` 派发 `focusScope.autoFocusOnUnmount` 并归还焦点；终端与布局用
+`requestAnimationFrame` 做测量与折叠。而全局 `afterEach` 的 `cleanup()` 正是触发卸载的地方。
+vitest 在**文件结束**时销毁 jsdom 环境：全局 `Event` 还原成 Node 原生实现、`document` 失效 ——
+那一刻仍挂起的回调一旦触发就抛错：**没有任何用例失败，整轮却红**。
+
+**为什么不能只修那一个文件**：全仓 32 个弹层测试文件与所有 RAF 调用点都带着同一颗雷；同理，
+打开 `dangerouslyIgnoreUnhandledErrors` 等于把真问题一起静音。
+
+**约定**：`src/testing/timers.ts` 在 setup 期包装 `setTimeout` / `setInterval` /
+`requestAnimationFrame`（以及对应的 clear），登记挂起项；`afterAll` 调 `releaseAll()` **一次性取消**。
+不变式是 **「文件结束前排下的调度，不可能在文件结束之后跑」**。机制单测在
+`src/testing/__tests__/timers.test.ts`（注入假 scope，不依赖真实时钟）。
+
+**为什么是取消，而不是「等一个宏任务」**：等待只覆盖 0ms 那一类（Radix 的卸载事件），RAF
+（jsdom 下 ~16ms）与更长延时都漏网，而且仍是竞态；取消对所有延时都成立，也不付出真实等待。文件
+结束时已无任何用例在跑，因此「取消」与「让它跑」在语义上等价。
+
+**边界**（新增异步机制时照此判断）：
+
+| 情况 | 是否覆盖 |
+|------|---------|
+| `setTimeout` / `setInterval` / `requestAnimationFrame`（含库内部：Radix / CodeMirror / xterm） | ✅ 文件结束时统一取消 |
+| 微任务（`await`、已 mock 的 `invoke`） | ✅ teardown 前排空 |
+| 伪时钟（`vi.useFakeTimers`）排下的任务 | ✅ 全局 `afterEach` 的 `vi.useRealTimers()` 直接丢弃时钟 |
+| 文件结束后（teardown 期间）新排的调度 | ❌ 刻意不接管 —— 那是 harness 自己的事，接管会把 vitest 的收尾调度一起掐死 |
+| 非定时器的外部异步（真实 I/O 完成回调） | ❌ 理论上仍可跨边界；测试里应 mock 掉这类来源 |
+
+**新增调度机制时**：先量一次「文件结束时取消了多少个」——临时在 `afterAll` 打印 `releaseAll()` 的
+返回值，跑一个含该机制的测试文件：**>0 才算被纳管**（弹层文件实测 3，纯逻辑文件 0）。若某类调度不在
+上表覆盖内，扩展 `timers.ts` 的包装集并补一条机制单测，**不要**在业务用例里加 `sleep` 或改用例顺序。
+
+---
+
 ## 常见错误
 
 ### 1. 忘记在测试间重置 mock
@@ -518,4 +571,12 @@ expect(activeTabId()).toBe(B_TAB);
 **判定准则**：写完交错用例后，**在缺陷代码（或临时移除守卫 / 让守卫恒真）上跑一次**——必须是红的。不红就先怀疑时序（断言早于迟到链）或断言面选错了，而不是宣布「bug 不存在」。
 
 **禁止**：用 `await` 顺序或调用次序模仿交错（那只是顺序执行，测不出竞态）；用 `sleep` 凑时序（不稳定且掩盖问题根源）。
+
+### 10. 用例全绿但整轮判红：卸载副作用跑到了环境销毁之后
+
+`Unhandled Errors` 里出现 `dispatchEvent ... parameter 1 is not of type 'Event'` / `document is not
+defined`，且**一轮红一轮绿**：组件卸载排下的宏任务（Radix 弹层的 `autoFocusOnUnmount`、终端的 RAF
+测量）在 jsdom 环境销毁之后才触发。收口机制与排查手法见
+[「环境边界：定时器与 RAF 的文件级收口」](#环境边界定时器与-raf-的文件级收口) —— 不要用
+`dangerouslyIgnoreUnhandledErrors` 掩盖，也不要给业务用例加 `sleep`。
 
