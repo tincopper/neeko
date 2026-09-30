@@ -1076,3 +1076,119 @@ pre-push 的真实文件集是 `git diff --name-only HEAD @{push}`（29 文件�
 ### Next Steps
 
 - None - task complete
+
+
+## Session 244: 覆盖率门禁落地与测试环境边界收口
+
+**Date**: 2026-10-01
+**Task**: 覆盖率门禁落地与测试环境边界收口
+**Branch**: `main`
+
+### Summary
+
+test 家族语义补齐（裸 test = 三套）；前端与 Rust 覆盖率成为 CI 门禁（修正被门禁漏掉的 useFileEditorLsp pin 漂移，Rust 首测 61.75% → 地板 60）；用文件级定时器取消替代与 jsdom 拆除竞态，根治弹层测试的随机红
+
+### Main Changes
+
+这是「门禁分层与脚本命名收敛」的后续收尾：把 `test` 家族的语义补齐、把两套覆盖率从"装饰性地板"
+变成真门禁、并解决测试环境边界上的一个随机红问题。上一轮记录（session 243）止于 `0a80dc24`，
+本条覆盖其后的 6 笔提交。
+
+### A. 清理陈旧副本（`c9aa42da`）
+
+`temp_spec.md`（仓库根、被跟踪）是 `.trellis/spec/frontend/state-management.md` 重构前（`useAppContainer`
+/ `useSyncToStore` / `useWslProjects` 时代）的 316 行快照，live spec 已 1405 行且明确标注这些符号被取代。
+全仓无引用。留着等于对同一问题给出第二份互相矛盾的答案 —— 删除。
+
+### B. `test` 家族语义补齐（`6ff147a6`）
+
+上一轮把裸 `lint` 定义成"全部静态"之后，裸 `test` 仍只跑前端 → **改完 Rust 敲 `pnpm test` 会拿到
+"绿"的假象**（与当初修 `lint` 的理由同构）。补齐后：
+
+```
+test = test:fe + test:rust + test:host      test:fe = vitest run
+test:fe:watch / test:fe:coverage            test:rust / test:host
+check = lint && test                        check:fe = lint:fe && test:fe
+```
+
+`check:fe` 必须同改（否则它会从"前端"悄悄升级成"全量"）；`lefthook` 的 pre-push 前端那条与 CI 的
+frontend-test job 改调 `test:fe`（用裸名会把 Rust 与 host 各跑第二遍）。**改名+调用方+文档必须同
+一个 diff** —— 新护栏 `check_script_references` 是全量扫描，分两步提交必然卡在钩子上。BREAKING：
+`pnpm test` 现在跑三套（~4 分钟）。
+
+### C. 两套覆盖率从"地板"变"门禁"
+
+- **前端（`e874e9ae`）**：`vitest.config.ts` 里的地板（全局回归底线 + per-file pin）此前**没有任何
+  调用方**，第一次真跑就发现 pin 已漂：`useFileEditorLsp.ts` 实测 91.66% lines / 80% functions 对
+  100% pin —— 组合冒烟测试刻意 stub 掉 `lspQuickFix`（只验证接线），于是 `getLanguageId` 这条
+  quickfix 路径恒未覆盖。补 `useFileEditorLsp.test.ts`（renderHook，两臂：有 uri → 语言 id，无 uri
+  → null）后地板恢复；`frontend-test` job 改跑 `test:fe:coverage`，覆盖率成为 CI 门禁（本地 hook
+  仍不跑，守延迟预算）。
+- **Rust（`280cdaea`）**：此前只有行为式要求（纯函数 100% / Manager 核心路径 100%），没有可测量
+  地板。先量后钉：`cargo llvm-cov` 实测 lines **61.75%** / regions 64.29% / functions 57.89%
+  （`theme/*` 与多数薄 `#[tauri::command]` 层为 0%，需要 Tauri 运行时），地板取 **60**（余量 1.75pt，
+  与前端同理，只防回退）。新增 `backend-coverage` job：仅 ubuntu、仅当 PR 动了 `src-tauri/**` 或
+  `package.json`；**job 常驻、只把重活条件化**（required check 被 job 级 `if` 跳过会永远 pending，
+  卡死合并）；不挂 rust-cache（插桩产物 5.3GB，仓库缓存预算 10GB，会挤掉另外 6 个 job）。
+
+### D. 测试环境边界收口（`c6dd50ab` + `c1714418`）
+
+**症状**：所有用例通过、整轮 vitest 判红（`Unhandled Errors`：`Failed to execute 'dispatchEvent' …
+parameter 1 is not of type 'Event'`），一轮红一轮绿（实测约 1/6 轮，报错来源指向
+`McpTagGroupDialog.test.tsx`）。
+
+**根因**：Radix FocusScope 在 mount effect 的 cleanup 里 `setTimeout(0)` 派发
+`focusScope.autoFocusOnUnmount`，而全局 `afterEach` 的 `cleanup()` 正是触发卸载的地方；vitest 在
+**文件结束**时销毁 jsdom（全局 `Event` 还原成 Node 原生实现），挂起回调此刻触发即抛 brand check 错。
+全仓 32 个弹层测试文件 + 所有 RAF 调用点同此一雷。
+
+**过程**：第一版是"`afterAll` 等一个宏任务"——只覆盖 0ms 那一类、RAF（jsdom ~16ms）与长延时漏网，
+仍是竞态；改为**结构性**做法：`src/testing/timers.ts` 包装 `setTimeout`/`setInterval`/RAF 及对应
+clear 登记挂起项，文件结束时 `releaseAll()` **一次性取消**。不变式变成「文件结束前排下的调度，不可能
+在文件结束之后跑」。取证的层次：机制单测（假 scope，5 例）→ 端到端探针（弹层文件取消 3 个挂起、
+纯逻辑文件 0 个）→ 全量 3 轮 0 unhandled。刻意不接管"文件结束后新排的调度"（那是 harness 自己的
+收尾，接了会把 vitest 关停掐死）。规范落地在 `.trellis/spec/unit-test/frontend-testing.md` 新增章节
+「环境边界：定时器与 RAF 的文件级收口」，含覆盖边界表与"新增调度机制时先用探针量 >0"的扩展手法。
+
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `c9aa42da` | (see git log) |
+| `6ff147a6` | (see git log) |
+| `e874e9ae` | (see git log) |
+| `280cdaea` | (see git log) |
+| `c6dd50ab` | (see git log) |
+| `c1714418` | (see git log) |
+
+### Testing
+
+- [OK] 护栏：`pnpm guards run --stage local` → **8/8 通过 / 0 违规**（新增 `check_script_references`：
+  52 文件 / 189 处 pnpm 引用 / 72 个已知名字；有效性用"删掉 `scripts.test:host` → 7 处 file:line 违规"
+  验证过，恢复即绿）
+- [OK] 前端：`pnpm test:fe` **494 文件 / 4422 通过 / 1 skip**；`pnpm test:fe:coverage` exit 0
+  （修 pin 漂移前是 exit 1）；覆盖率实测 stmts 60.42 / branch 52.92 / funcs 54.14 / lines 61.55，
+  全局地板 54/47/48/55 有富余，`useFileEditorLsp.ts` 的 100% pin 由新用例补回
+- [OK] Rust：`pnpm test:rust` **1367 + 103 通过**；`pnpm test:rust:coverage` exit 0（暖态 42.8s；
+  lines **61.76%** ≥ 地板 60，regions 64.30% / functions 57.89%）
+- [OK] 全量：`pnpm check` exit 0 / **261–277s**（lint + 三套测试 + host 自检）
+- [OK] 定时器收口：机制单测 5/5（假 scope，零真实时钟依赖）；端到端探针 `releaseAll()` 计数
+  —— 弹层文件 **3** / 纯逻辑文件 **0**（>0 才算纳管）；全量 `test:fe` **×3 轮 0 unhandled errors**
+  （修复前实测约 1/6 轮红）
+- [OK] 静态与文档：`lint:fe`（eslint + tsc）、`lint:rust` 全绿；改名后实时面零残留旧脚本名
+  （由护栏保证，不靠人肉 grep）
+- [OK] 文本完整性：新增/改动文件 NUL 0、U+FFFD 0、行尾无空白残留
+
+### Status
+
+[OK] **Completed**（6 笔全部落地：陈旧副本清理、`test` 家族语义补齐、两套覆盖率成为 CI 门禁、
+测试环境边界的结构性收口、规范记录）。两条**待人工**的动作见 Next Steps。
+
+### Next Steps
+
+- **GitHub 分支保护手动加 `backend-coverage`**：`.github/BRANCH_PROTECTION.md` 已写进 required checks
+  清单，但仓库设置改不了 —— 不加之前这个门只跑不拦
+- 首次真实 PR 触发 `backend-coverage`（冷构建插桩依赖，预计 8–15 分钟），顺带验证本次新引入的两个
+  第三方 action（`taiki-e/install-action@cargo-llvm-cov`、`dorny/paths-filter@v3`）在 CI 上可用
+- 覆盖率刻意不进 `pnpm check`（保持 ~4.5 分钟）；需要全量数据时单独跑 `pnpm test:coverage`（~99s）
