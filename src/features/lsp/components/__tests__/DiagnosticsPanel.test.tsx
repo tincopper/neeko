@@ -311,3 +311,35 @@ describe('DiagnosticsPanel', () => {
     expect(onJump).not.toHaveBeenCalled();
   });
 });
+
+describe('DiagnosticsPanel —— 行身份（React key）', () => {
+  beforeEach(() => {
+    useLspStore.setState({ diagnosticsByProject: {}, problemsPanelOpen: false });
+  });
+
+  /**
+   * 回归契约：同一文件内**内容完全相同**的两条诊断（同一 message/行列/severity）必须各自成行。
+   *
+   * 旧 key 是内容指纹（`message-line-char-severity`）且不含 `source`/`code`/序号 ⇒ 两条同指纹
+   * 诊断在 React 里是同一个 key：dev 打 duplicate key 警告，更新时该组可能错配/丢行。真实来源
+   * 是同一 LS 在同一位置用两条规则报同一句话（`code` 不同，而 `code` 不在指纹里）。
+   */
+  it('同文件内同指纹的重复诊断不碰撞行 key', () => {
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      seed({
+        'file:///proj/src/a.ts': [diag(0, 1, 'same text'), diag(0, 1, 'same text')],
+      });
+
+      render(<DiagnosticsPanel projectPath={PROJECT} />);
+
+      expect(screen.getAllByTestId('diagnostic-row')).toHaveLength(2);
+      const duplicateKeyWarnings = consoleError.mock.calls.filter((call) =>
+        String(call[0]).includes('same key'),
+      );
+      expect(duplicateKeyWarnings).toEqual([]);
+    } finally {
+      consoleError.mockRestore();
+    }
+  });
+});
