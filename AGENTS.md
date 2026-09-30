@@ -34,9 +34,15 @@ SSH 远程三种项目类型。核心目标：把终端会话、Git 操作、文
 src/                 React 前端（Feature-Based）→ 规则见 src/AGENTS.md
 src-tauri/           Rust 后端（Domain-Driven）→ 规则见 src-tauri/AGENTS.md
 tools/guards/        护栏框架与注册表（清单 = `checks/` 目录本身，新增文件即生效）
+packages/            独立发布的 npm 包（`dsh-neeko`）→ 见下方门禁豁免
 docs/                架构、需求与设计文档
 .trellis/            spec 知识库、任务、会话日志（Trellis 管理）
 ```
+
+`packages/` 下的包**不纳入本地与 CI 门禁**（所以根 `lint` / `test` / `check` 与 lefthook glob 都不覆盖
+它）：它的门禁是发布时的 `prepublishOnly`（自带的 `check` / `test` / `lint:package`）。要纳入时，需同时
+新增根脚本 + CI job + lefthook glob + `.github/BRANCH_PROTECTION.md` 的 required checks —— 只改一处会
+得到一条看起来存在、实际不触发的门。
 
 子目录清单一律以 `ls` / Glob 为准，本文档不维护树状图。详版：`docs/ARCHITECTURE.md`、
 `.trellis/spec/{backend,frontend}/directory-structure.md`。
