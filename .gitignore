@@ -54,6 +54,9 @@ src-tauri/gen/
 tsconfig.app.tsbuildinfo
 nul
 
+# ESLint 增量缓存（lint:fe:static / lint:fix 的 --cache 产物）
+.eslintcache
+
 # Git worktrees
 .worktrees/
 
