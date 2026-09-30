@@ -16,11 +16,8 @@ import { useActiveProject } from '@/features/project';
 import { useAppContext } from '@/shared/contexts';
 import { useDockStore } from '@/shared/store/dockStore';
 import { useProjectStore } from '@/shared/store/projectStore';
-import {
-  filePathToFileUrl,
-  openHtmlInBrowserPanel,
-  resolveAbsolutePath,
-} from '@/shared/utils/browserUtils';
+import { filePathToFileUrl, openHtmlInBrowserPanel } from '@/shared/utils/browserUtils';
+import { canonicalFsPath } from '@/shared/utils/fileRef';
 import { repoKeyOf } from '@/shared/utils/repoRef';
 import { resolveTabKey } from '@/shared/utils/tabKey';
 
@@ -76,7 +73,7 @@ const FilesPanelWrapper: React.FC = React.memo(() => {
   const handleOpenInBrowser = useCallback(
     (filePath: string) => {
       if (project?.type === 'Local' && projectPath) {
-        openHtmlInBrowserPanel(resolveAbsolutePath(projectPath, filePath));
+        openHtmlInBrowserPanel(canonicalFsPath(projectPath, filePath));
       }
     },
     [project?.type, projectPath],
@@ -86,7 +83,7 @@ const FilesPanelWrapper: React.FC = React.memo(() => {
   const handleOpenInSystemBrowser = useCallback(
     (filePath: string) => {
       if (project?.type === 'Local' && projectPath) {
-        const absPath = resolveAbsolutePath(projectPath, filePath);
+        const absPath = canonicalFsPath(projectPath, filePath);
         const fileUrl = filePathToFileUrl(absPath);
         openInDefaultBrowser(fileUrl, project.id).catch((err) => {
           console.error('[FilesPanelWrapper] Failed to open in system browser:', err);
@@ -100,7 +97,7 @@ const FilesPanelWrapper: React.FC = React.memo(() => {
   // 在系统文件管理器中显示文件（确保传绝对路径）
   const handleRevealInExplorer = useCallback(
     (filePath: string) => {
-      const absPath = projectPath ? resolveAbsolutePath(projectPath, filePath) : filePath;
+      const absPath = projectPath ? canonicalFsPath(projectPath, filePath) : filePath;
       revealInFileManager(absPath).catch((err) => {
         console.error('[FilesPanelWrapper] Failed to reveal in file manager:', err);
       });

@@ -8,13 +8,12 @@ import type { FileTab } from '@/shared/types';
 import type { EditorAction } from '@/shared/utils/agentPrompt';
 import { buildCodeMessage } from '@/shared/utils/agentPrompt';
 import { buildAgentPromptCommand } from '@/shared/utils/agentPromptCommand';
-import { resolveAbsolutePath } from '@/shared/utils/browserUtils';
 import {
   getCachedLanguageExtension,
   getLanguageExtension,
   isMarkdownFile,
 } from '@/shared/utils/codemirror';
-import { relativeToRoot } from '@/shared/utils/fileRef';
+import { canonicalFsPath, relativeToRoot } from '@/shared/utils/fileRef';
 import { isHtmlFile, isJsonFile, isSvgFile } from '@/shared/utils/fileTree';
 
 import {
@@ -59,9 +58,9 @@ export function useFileEditorState({ tab, projectPath }: UseFileEditorStateParam
   const currentContent = tab.content.content;
   const basePath = useMemo(() => {
     if (!projectPath) return undefined;
-    // resolveAbsolutePath handles both relative and absolute filePaths correctly,
-    // avoiding the double-root bug (e.g. "E:/ws/C:/project") when filePath is absolute.
-    const absFilePath = resolveAbsolutePath(projectPath, tab.filePath);
+    // canonicalFsPath 同时处理相对与绝对 filePath（绝对路径不与 projectPath 二次拼接，
+    // 即历史上的 "E:/ws/C:/project" 双根 bug），并归一多斜杠/尾斜杠形态。
+    const absFilePath = canonicalFsPath(projectPath, tab.filePath);
     const lastSlash = absFilePath.lastIndexOf('/');
     return lastSlash >= 0 ? absFilePath.substring(0, lastSlash) : projectPath.replace(/\\/g, '/');
   }, [projectPath, tab.filePath]);

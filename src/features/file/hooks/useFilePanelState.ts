@@ -17,7 +17,7 @@ import {
 import { useCopyToClipboard } from '@/shared/hooks/useCopyToClipboard';
 import { useNotificationStore } from '@/shared/store/notificationStore';
 import type { FileNode } from '@/shared/types';
-import { resolveAbsolutePath } from '@/shared/utils/browserUtils';
+import { canonicalFsPath } from '@/shared/utils/fileRef';
 
 import { displayHomePath, getParentPath, getParentPaths } from '../utils/fileTreeUtils';
 import { isJavaSourceRoot, isUnderJavaSourceRoot } from '../utils/javaPackageTree';
@@ -384,7 +384,7 @@ export function useFilePanelState(params: UseFilePanelStateParams) {
         label: 'Copy Path',
         icon: Copy,
         action: () => {
-          const absPath = projectPath ? resolveAbsolutePath(projectPath, node.path) : node.path;
+          const absPath = projectPath ? canonicalFsPath(projectPath, node.path) : node.path;
           void copyToClipboard(absPath, 'path');
         },
       });

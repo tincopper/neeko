@@ -115,10 +115,10 @@
     },
     "src/shared/utils/browserUtils.ts": {
       "counts": {
-        "backslash": 3
+        "backslash": 1
       },
       "kind": "legit",
-      "note": "相对→绝对解析 + file:// URL 构建"
+      "note": "路径 → file:// URL 构建（浏览器地址栏形态，非 LSP 文档 uri）；相对→绝对与 uri→路径已归 fileRef"
     },
     "src/shared/utils/fileRef.ts": {
       "counts": {
