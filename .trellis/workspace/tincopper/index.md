@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-5.md`
-- **Total Sessions**: 242
+- **Total Sessions**: 243
 - **Last Active**: 2026-09-30
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-5.md` | ~971 | Active |
+| `journal-5.md` | ~1078 | Active |
 | `journal-4.md` | ~1989 | Archived |
 | `journal-3.md` | ~1978 | Archived |
 | `journal-2.md` | ~1991 | Archived |
@@ -33,6 +33,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 243 | 2026-09-30 | 门禁分层与脚本命名收敛：lint 只静态、test 只动态、check 聚合 | `28da4037`, `059a1e03`, `4a4b54de`, `526abb72`, `bbb9df7a`, `7e391c5c`, `0a80dc24` | `main` |
 | 242 | 2026-09-30 | 挂载收敛判据拆分：修 pull 槽位误判与 already-watched 告警，判据/机制分层落文档 | `b5a2db18`, `1de42d36`, `e2d8ab9c` | `main` |
 | 241 | 2026-09-29 | Worktree 身份 P1/P2 收尾 + spec 契约同步与迁移前路径清零 | - | `main` |
 | 240 | 2026-09-29 | Worktree 身份第八轮：现场日志暴露 version 号段随释放归零，号段与快照数据分离修掉 | - | `main` |

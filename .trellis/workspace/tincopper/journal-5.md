@@ -969,3 +969,110 @@ push 生产者。两个判据（*要不要请求挂载* / *要不要重试*）�
 
 - 提交拆分已执行（见 Git Commits 与 E 节）；工作树在本次记录提交后应无残留改动
 - `neeko-check` 规范第 12 条（`serde(default)`）与第 13 条（tauri-specta `bindings.ts`）与本仓既有决策冲突，建议在规范里标注豁免并指向落点（D-C 禁 snapshot 载荷加 `serde(default)`；本仓无 specta，用 `shared/types` + 双端 golden 对齐）
+
+
+## Session 243: 门禁分层与脚本命名收敛：lint 只静态、test 只动态、check 聚合
+
+**Date**: 2026-09-30
+**Task**: 门禁分层与脚本命名收敛：lint 只静态、test 只动态、check 聚合
+**Branch**: `main`
+
+### Summary
+
+commit 档只做静态（eslint --cache + tsc + fmt + clippy + 护栏），push 档才跑两套单元测试；脚本名收敛为 lint*/test*/check* 三层，新增 check_script_references 护栏钉住引用
+
+### Main Changes
+
+本次会话从「commit 只做 lint、push 才做 test 是否合理」这一问题开始，最终收敛为一次门禁分层 +
+脚本命名的整理。工作区里原本已有一版未提交的分档改动（`lint:fe:static` + 新增 pre-push），先作为基线提交。
+
+### A. 判定（先说判据）
+
+- 阶段边界按**延迟预算**划，不按语言划：commit 是静态检查（暖缓存 ~10s），push 是两套单元测试
+  （前端 ~50s、Rust ~3min），CI 是三平台终审。本地 hook 是**建议性**的，权威门禁是 CI。
+- 「commit 档很快」在原实现下**不成立**：`eslint src/` 无缓存 61s（`--cache` 后 1.4s）。这是最该先修的
+  一项 —— 本仓 guards 的 `budget_ms` 注释写过「慢到没人愿意跑的门禁等价于从门禁里消失」，
+  而 lefthook 层此前恰好在违反它自己的原则（61s 的提交会把人逼向 `--no-verify`，一按就同时废掉
+  commitlint 与全部护栏）。
+- 「`test`=watch 会让 CI 挂起」经实测不成立：CI / 非交互（管道、重定向 stdin）会自动降级为 run 模式，
+  只有**真终端**才 watch —— 而从终端执行 `git commit` 时 hook 继承 TTY，所以这个改动仍值得做，
+  但定级是「防误用」而非「修故障」。
+- 顺带纠正两处事实：`npx tsc` 优先用本地 bin（不会下载另一个 tsc）；lefthook 的 `**/` 要求至少一层
+  目录，所以 `src/**/*.ts` 从来匹配不到 `src/` 的直接子文件。
+
+### B. 命名收敛（终态 20 条脚本）
+
+`lint*` 只做静态、`test*` 只做动态、`check*` 做聚合，后缀表达作用域：
+
+- `lint` = 全部静态（`lint:fe` + `lint:rust` + guards）；`lint:fe` = eslint + tsc；
+  `lint:fix` = eslint 写回；`type-check` 独立可调；`guards` 有子命令（同 `tauri`）不参与该语法。
+- `test` = `vitest run`（新增 `test:watch`）；`test:rust` / `test:host` 与前端对称。
+- `check:fe` / `check:rust` / `check` = 聚合，`check` 成为「最小回归集」单点（此前是 4 条命令被抄进
+  AGENTS.md 与两份 CONTRIBUTING）。
+- 删除 `lint:fe:static` / `lint:all` / `lint:host` / `test:run`。
+
+### C. 落地顺序（每步一个提交，旧名先留、调用方先切、语义后改）
+
+1. `28da4037` 基线：工作区既有的分档改动 + CI 补 eslint / fmt（门的强度不再取决于谁装了钩子）。
+2. `059a1e03` 纯新增：`lint:rust` / `test:rust` / `test:host` / `lint:fix`；`type-check` 去 `npx`；
+   `build` 显式 `--noEmit`；`lint:fe:static` 加 `--cache`（旧名全在，中间态全绿）。
+3. `4a4b54de` 调用方切换：lefthook 与 CI 改调脚本名 → 顺带消灭「guards 与 java-host 每次提交跑两遍」
+   （旧的 `pnpm lint` 里还套了一遍 `guards --stage local` 与 `lint:host`，且口径不同）；
+   glob 扩到配置 / 锁文件 / `build.rs`，并修掉 `**/` 不匹配直接子文件的既有缺陷。
+4. `526abb72` 语义重定义 + 删别名：`lint` 变全量静态、`test` 变 run-once、新增 `check*`。
+5. `bbb9df7a` 文档同步：AGENTS.md、两份 CONTRIBUTING、PR 模板、BRANCH_PROTECTION、
+   `.trellis/spec` 4 个文件、`docs/neeko-development-spec.md`（删掉已被本次改动实现的反向建议）。
+6. `7e391c5c` 新增护栏 `check_script_references`：hook / CI / 文档里的 `pnpm <script>` 必须存在。
+7. `0a80dc24` 记录 `packages/dsh-neeko` 的门禁豁免与加入配方。
+
+### D. 实测（本机 / 2026-09-30）
+
+| 检查 | 结果 | 耗时 |
+| --- | --- | --- |
+| `pnpm lint:fe`（eslint --cache + tsc） | exit 0 | 61s 冷 → **5.9s 暖** |
+| `pnpm lint:rust`（fmt + clippy） | exit 0 | 1.7s 暖（59s 仅一次：探针改过 Cargo.toml mtime） |
+| `pnpm lint`（全部静态 + 8 条护栏） | exit 0 | 10.4s |
+| `pnpm test` | 492 文件 / 4418 通过 / 1 skip | 47.9s |
+| `pnpm test:rust` | 1367 + 103 通过 | ~3min |
+| `pnpm test:host` | Java 自检 OK（真跑，非跳过） | 数秒 |
+| `pnpm check`（全量） | exit 0 | 276.8s |
+| 护栏框架 | 8/8 通过 / 192 用例 | 0.4s |
+
+glob 选择用**探针矩阵**验证（11 种文件形态 × 两个 hook），并用「改成不可能匹配的 glob」做反证；
+pre-push 的真实文件集是 `git diff --name-only HEAD @{push}`（29 文件、`src-tauri/` 0 个 ⇒ rust-tests
+正确跳过）。真 push 用临时本地裸仓库验证（真 hook + 真测试，47.9s 通过），探针与临时 remote 已清理。
+
+### E. 残留风险与遗留
+
+- **CI 未实跑**：两个 Rust job 新增了 `pnpm/action-setup` + `setup-node`（脚本名调用需要 pnpm），
+  本地无法验证，需下一次 PR 确认；`cargo check` 保持原始步骤（平台矩阵专用，无脚本名）。
+- `temp_spec.md` 是 `state-management` spec 的陈旧副本（仓库根、被跟踪），本次只同步了它的两条命令；
+  建议单独删除。
+- `.claude/settings.local.json`（本地未跟踪）里仍有 `pnpm test:run *` / `pnpm lint:fe` 的权限条目，
+  下次会触发一次授权提示，可按需更新。
+- `bundle` 未动、未推送 origin；工作树在本次 journal 提交后无残留。
+
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `28da4037` | (see git log) |
+| `059a1e03` | (see git log) |
+| `4a4b54de` | (see git log) |
+| `526abb72` | (see git log) |
+| `bbb9df7a` | (see git log) |
+| `7e391c5c` | (see git log) |
+| `0a80dc24` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
