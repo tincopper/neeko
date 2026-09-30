@@ -31,6 +31,7 @@ backend-check (windows-latest)
 backend-test (ubuntu-latest)
 backend-test (macos-latest)
 backend-test (windows-latest)
+backend-coverage
 ```
 
 > **注意**：GitHub 会在 CI 第一次运行后自动识别 job 名称。首次配置时可以只添加 `frontend-check` 和 `backend-check (ubuntu-latest)`，后续再补全。
@@ -48,7 +49,9 @@ backend-test (windows-latest)
 ## 效果
 
 - 开发者不能直接 push 到 main，必须通过 PR
-- PR 必须通过 CI 的 required jobs 才能合并：前端静态检查与单元测试、三平台 `cargo check` +
-  `pnpm lint:rust` + `pnpm test:rust`（命令定义见 `package.json`，与本地 commit/push 档同源）、
-  java host 自检
+- PR 必须通过 CI 的 required jobs 才能合并：前端静态检查与单元测试 + 覆盖率地板、三平台
+  `cargo check` + `pnpm lint:rust` + `pnpm test:rust`（命令定义见 `package.json`，与本地
+  commit/push 档同源）、`backend-coverage` 的 Rust 行覆盖率地板、java host 自检
+- `backend-coverage` 在**没动 Rust 的 PR 上会跳过重活但仍报成功**（job 常驻、步骤条件化）：
+  若把判断挪到 job 级 `if`，required check 会一直 pending，PR 永远合不进去
 - 跨平台编译问题在 PR 阶段被发现，不会延迟到打 tag

@@ -70,13 +70,17 @@ pnpm tauri dev        # start the dev app (frontend on port 1420)
 | `pnpm test:fe` | Frontend tests once (`test:fe:watch` for watch) |
 | `pnpm test:fe:coverage` | Frontend tests with coverage — enforces the floors in `vitest.config.ts` |
 | `pnpm test:rust` | Run Rust tests |
+| `pnpm test:rust:coverage` | Rust tests with coverage — enforces `--fail-under-lines` from `package.json` |
+| `pnpm test:coverage` | Both coverage gates |
 | `pnpm test:host` | Java debug host self-check (needs a JDK; skips loudly otherwise) |
 | `pnpm check` | Everything local: `lint` + both test suites + the host self-check |
 | `pnpm release <version>` | Bump version, generate changelog, tag (see [Release](#release-process)) |
 
-Coverage is a **CI gate, not a push gate**: the local hooks stay inside the latency budget while
-`frontend-test` runs `pnpm test:fe:coverage`, so a floor that slips fails in CI. Run the same
-command locally when you touch a file that has a per-file pin in `vitest.config.ts`.
+Coverage is a **CI gate, not a push gate**: the local hooks stay inside the latency budget, while
+`frontend-test` runs `pnpm test:fe:coverage` and `backend-coverage` runs `pnpm test:rust:coverage`
+(only when a PR touches `src-tauri/**` or `package.json`), so a floor that slips fails in CI.
+Run the same command locally when you touch a file that has a per-file pin in `vitest.config.ts`,
+or add untested Rust code (the floor has ~1.75pt of headroom, not more).
 
 ## Project Structure
 

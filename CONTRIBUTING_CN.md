@@ -66,12 +66,16 @@ pnpm tauri dev        # 启动开发模式（前端端口 1420）
 | `pnpm test:fe` | 运行一次前端测试（监听用 `test:fe:watch`） |
 | `pnpm test:fe:coverage` | 带覆盖率跑前端测试 —— 会执行 `vitest.config.ts` 里的地板 |
 | `pnpm test:rust` | 运行 Rust 测试 |
+| `pnpm test:rust:coverage` | 带覆盖率跑 Rust 测试 —— 执行 `package.json` 里的 `--fail-under-lines` |
+| `pnpm test:coverage` | 两套覆盖率门禁 |
 | `pnpm test:host` | Java 调试 host 自检（需 JDK，缺失时明确跳过） |
 | `pnpm check` | 本地全量：`lint` + 两套单元测试 + host 自检 |
 | `pnpm release <version>` | 升级版本、生成 changelog、打 tag（见[发布流程](#发布流程)） |
 
 覆盖率是 **CI 门禁、不是 push 门禁**：本地 hook 守住延迟预算，`frontend-test` job 跑
-`pnpm test:fe:coverage`，地板下滑会在 CI 失败。改动带 per-file pin 的文件时，本地也跑一遍同一条命令。
+`pnpm test:fe:coverage`、`backend-coverage` job 跑 `pnpm test:rust:coverage`（仅当 PR 动了
+`src-tauri/**` 或 `package.json`），地板下滑会在 CI 失败。改动带 per-file pin 的文件、或新增
+未测试的 Rust 代码时，本地也跑一遍同一条命令（Rust 地板只有 ~1.75pt 余量）。
 
 ## 项目结构
 

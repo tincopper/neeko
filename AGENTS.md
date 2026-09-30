@@ -57,8 +57,8 @@ pnpm guards list   # 列当前护栏清单与其 stage/scope（清单即 tools/g
 pnpm lint:fix      # ESLint 写回（--fix）
 pnpm type-check    # 仅 TypeScript 类型检查
 pnpm test          # 全部三套：test:fe（前端）+ test:rust + test:host
-pnpm test:fe       # 仅前端（test:fe:watch / test:fe:coverage 是它的两个形态）
-pnpm test:rust · pnpm test:host
+pnpm test:fe · pnpm test:rust · pnpm test:host
+pnpm test:coverage # 两套覆盖率门禁（前端地板在 vitest.config.ts、Rust 在 package.json）
 ```
 
 最小回归集：`pnpm check`（定义单点在 `package.json` 的 `check` —— 这里不再复述它的组成）。

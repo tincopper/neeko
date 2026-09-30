@@ -352,6 +352,7 @@ pnpm check          # 本地全量：lint + 两套单元测试 + host 自检
 - `frontend-test`：`pnpm test:fe:coverage`（测试 + 覆盖率地板）
 - `backend-check`：`cargo check`（三平台矩阵）+ `pnpm lint:rust` + `pnpm guards run --stage ci`
 - `backend-test`：`pnpm test:rust`（三平台矩阵）
+- `backend-coverage`：`pnpm test:rust:coverage`（仅 ubuntu，按路径过滤；见后端 spec 的覆盖率要求）
 - `java-host-check`：`bash tools/java-host/build.sh`（内含 `pnpm test:host` 的同一份自检）
 
 ### 发布构建（`.github/workflows/build.yml`）

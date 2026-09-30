@@ -120,10 +120,9 @@ pnpm test              # 三套串接（前端 + Rust + host）
 ### 后端
 
 ```bash
-cd src-tauri
-cargo test             # 所有测试
-cargo test agent       # 匹配 "agent" 的测试
-cargo test -- --nocapture  # 显示 println 输出
+pnpm test:rust             # 所有测试（lib + integration；push 档与 CI 用它）
+pnpm test:rust:coverage    # 带行覆盖率地板（cargo-llvm-cov，CI 的 backend-coverage job）
+cd src-tauri && cargo test agent  # 匹配 "agent" 的测试（本地筛选用）
 ```
 
 ---

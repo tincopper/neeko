@@ -423,6 +423,7 @@ pnpm tauri dev         # 完整开发环境（前端 + 后端）
 ```bash
 pnpm lint:rust                  # cargo fmt --check + clippy（后端静态检查单点）
 pnpm test:rust                  # cargo test（lib + integration）
+pnpm test:rust:coverage         # cargo llvm-cov + 行覆盖率地板（CI 的 backend-coverage job）
 pnpm lint                       # 全部静态检查：lint:fe + lint:rust + 全部护栏（tools/guards）
 pnpm guards list                # 当前护栏清单 + 各自 stage / scope / 关联红线
 pnpm guards run --stage local   # 只跑护栏
@@ -498,6 +499,8 @@ pub fn reorder(&self, ids: &[String]) -> Result<()> {
 在 push/PR 到 `main` 时运行：
 - `cargo check`（Windows、macOS、Linux 三平台矩阵，平台编译问题专用）
 - `pnpm lint:rust` + `pnpm test:rust`（三平台矩阵；与本地 commit / push 档同一条命令）
+- `pnpm test:rust:coverage`（`backend-coverage`，仅 ubuntu、仅当 PR 动了 `src-tauri/**` 或
+  `package.json`；job 常驻而重活条件化，避免 required check 被 skip 卡住合并）
 - `pnpm guards run --stage ci`（`ubuntu-latest` 上跑全部护栏；本地 `pnpm lint` 跑 `--stage local`，
   两边集合由护栏自己的 `stages` 声明决定，不再各写一份清单）
 
@@ -591,3 +594,12 @@ pnpm tauri build       # 生产环境构建，包含打包
 | Manager 核心逻辑 | 核心路径 100% |
 | 错误处理 | 所有错误分支 |
 | 序列化（serde） | 往返测试 |
+
+上表是**评审判据**（人工/评审看的是「这条路径有没有测」）；另有一条**可测量的回退地板**：
+`pnpm test:rust:coverage`（cargo-llvm-cov）以 `--fail-under-lines` 钉住整仓行覆盖率，由 CI 的
+`backend-coverage` job 判定。
+
+首测口径（2026-09-30）：lines **61.75%** / regions 64.29% / functions 57.89%，地板取 **60**
+（留 1.75pt，与前端全局地板同理）—— 只防回退，不是目标值。整仓数字被 `theme/*`、多数
+`*/commands.rs`（薄命令层，需 Tauri 运行时）拉低，所以**不要**用它衡量单个模块的质量。
+新增未测试代码把地板打穿时，正解是补测试，而不是下调地板。

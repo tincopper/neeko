@@ -186,3 +186,67 @@ jobs:
       # 与本地 push 档同一条命令（定义单点在 package.json）。
       - name: Rust test
         run: pnpm test:rust
+
+  # ──────────────────────────────────────────────
+  # Rust 覆盖率门禁：llvm-cov 只在 ubuntu 跑（Windows 支持差），重活只对**改动 Rust 的 PR** 生效。
+  #
+  # 为什么 job 常驻、只把重活做成条件步骤：required check 被 `if` 跳过时既不是成功也不是失败，
+  # 合并会被永久 pending 卡住 —— 所以「跳过」必须是一个成功的步骤，判断只能放在 job 内部。
+  # 为什么 package.json 也算 Rust 改动：地板（--fail-under-lines）就定义在那里。
+  # 插桩是整棵依赖树的重建（本地实测 130s / 5.3GB 独立 target dir），因此这里**不挂 rust-cache**：
+  # 仓库缓存预算 10GB，5.3GB 的插桩产物会挤掉另外 6 个 Rust job 的缓存。要提速再加缓存。
+  # ──────────────────────────────────────────────
+  backend-coverage:
+    needs: backend-check
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Detect Rust changes
+        id: changes
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            rust:
+              - 'src-tauri/**'
+              - 'package.json'
+
+      - name: Setup pnpm
+        if: steps.changes.outputs.rust == 'true'
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        if: steps.changes.outputs.rust == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: Install Rust stable
+        if: steps.changes.outputs.rust == 'true'
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: llvm-tools-preview
+
+      - name: Install cargo-llvm-cov
+        if: steps.changes.outputs.rust == 'true'
+        uses: taiki-e/install-action@cargo-llvm-cov
+
+      - name: Install Linux dependencies
+        if: steps.changes.outputs.rust == 'true'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libgtk-3-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            patchelf
+
+      # 与本地同一条命令：地板（--fail-under-lines）定义在 package.json。
+      - name: Rust coverage gate
+        if: steps.changes.outputs.rust == 'true'
+        run: pnpm test:rust:coverage
