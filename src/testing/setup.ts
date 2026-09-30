@@ -1,9 +1,24 @@
 import '@testing-library/jest-dom/vitest';
 import { cleanup } from '@testing-library/react';
-import { afterEach, vi } from 'vitest';
+import { afterAll, afterEach, vi } from 'vitest';
+
+import { installTimerTracking } from './timers';
+
+// 文件结束时取消本文件所有挂起的定时器 / RAF。为什么必须这样做、以及为什么是"取消"而不是
+// "等一个宏任务"，见 `timers.ts` 的模块注释：Radix 弹层的卸载事件、终端与布局的 RAF 测量都排在
+// 宏任务上，会在 jsdom 环境销毁之后触发（全局 Event 已还原成 Node 原生实现 ⇒ brand check 抛错），
+// 没有任何用例失败却让整轮 vitest 判红。
+const timerTracking = installTimerTracking();
 
 afterEach(() => {
   cleanup();
+  // 伪时钟不跨用例泄漏：它下面排的宏任务永远不会跑，会把后续用例的时序搅乱。
+  vi.useRealTimers();
+});
+
+afterAll(() => {
+  vi.useRealTimers();
+  timerTracking.releaseAll();
 });
 
 // jsdom 未实现 scrollIntoView；文件树「选中即滚动」逻辑会调用它。
