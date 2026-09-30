@@ -56,7 +56,8 @@ pnpm check         # 本地全量门禁：lint + test + test:rust + test:host
 pnpm guards list   # 列当前护栏清单与其 stage/scope（清单即 tools/guards/checks/ 目录）
 pnpm lint:fix      # ESLint 写回（--fix）
 pnpm type-check    # 仅 TypeScript 类型检查
-pnpm test / test:watch / test:coverage
+pnpm test          # 全部三套：test:fe（前端）+ test:rust + test:host
+pnpm test:fe       # 仅前端（test:fe:watch / test:fe:coverage 是它的两个形态）
 pnpm test:rust · pnpm test:host
 ```
 

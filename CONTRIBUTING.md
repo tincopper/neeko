@@ -66,9 +66,8 @@ pnpm tauri dev        # start the dev app (frontend on port 1420)
 | `pnpm lint:rust` | Rust static checks (`cargo fmt --check` + `clippy -D warnings`) |
 | `pnpm lint:fix` | ESLint write-back (`--fix`) |
 | `pnpm type-check` | TypeScript type check only |
-| `pnpm test` | Run frontend tests once |
-| `pnpm test:watch` | Vitest watch mode |
-| `pnpm test:coverage` | Run frontend tests with coverage |
+| `pnpm test` | All three suites: `test:fe` + `test:rust` + `test:host` |
+| `pnpm test:fe` | Frontend tests once (`test:fe:watch` / `test:fe:coverage` for watch / coverage) |
 | `pnpm test:rust` | Run Rust tests |
 | `pnpm test:host` | Java debug host self-check (needs a JDK; skips loudly otherwise) |
 | `pnpm check` | Everything local: `lint` + both test suites + the host self-check |
@@ -183,7 +182,7 @@ commit. Hooks are installed via `pnpm prepare` (or `pnpm lefthook install`).
 | `pre-commit` | changed `src-tauri/**/*.rs` or `Cargo.toml` / `Cargo.lock` / `build.rs` | `pnpm lint:rust` |
 | `pre-commit` | every commit | `pnpm guards run --stage commit --staged` |
 | `commit-msg` | every commit | `pnpm commitlint` |
-| `pre-push` | pushed files match the frontend globs | `pnpm test` |
+| `pre-push` | pushed files match the frontend globs | `pnpm test:fe` |
 | `pre-push` | pushed files match the Rust globs | `pnpm test:rust` |
 | `pre-push` | pushed files match `tools/java-host/**` | `pnpm test:host` |
 

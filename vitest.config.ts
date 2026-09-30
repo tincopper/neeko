@@ -44,7 +44,7 @@ export default defineConfig({
        * 临时设成 `101` 跑一次，能按**文件名**报出该文件的 ERROR 才算条目生效（空转会静默通过）。
        * 本切片新增的 `fileRef.ts` / `stopLocation.ts` 两个条目均已如此复验过。
        * 全局阈值按**本次测量到的文件**计算，因此 `vitest run --coverage <子集>` 必然
-       * 因只测了少量文件而失败 —— 该地板只对全量 `pnpm test:coverage` 有意义。
+       * 因只测了少量文件而失败 —— 该地板只对全量 `pnpm test:fe:coverage` 有意义。
        */
       thresholds: {
         statements: 54,

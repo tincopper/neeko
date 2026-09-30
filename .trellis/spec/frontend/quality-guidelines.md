@@ -10,9 +10,9 @@
 
 1. **ESLint**（`pnpm lint:fe` 的第一半 = `eslint src/ --cache`）—— 架构约束 + 代码风格 + 命名规范
 2. **TypeScript 类型检查**（`tsc --noEmit`）—— 类型安全
-3. **Vitest** 回归测试（`pnpm test`）
+3. **Vitest** 回归测试（`pnpm test:fe`）
 
-CI 在 `frontend-check` job 跑 `pnpm lint:fe`（eslint + tsc），在 `frontend-test` job 跑 `pnpm test`
+CI 在 `frontend-check` job 跑 `pnpm lint:fe`（eslint + tsc），在 `frontend-test` job 跑 `pnpm test:fe`
 —— 与本地 commit 档、push 档**同一条命令**。本地一把梭是 `pnpm check`（含 Rust 侧与 host 自检）。
 
 ### ESLint 配置要点
@@ -331,7 +331,8 @@ pnpm lint         # 全部静态检查：lint:fe（eslint + tsc）+ lint:rust（
 pnpm lint:fe      # 仅前端静态检查（pre-commit 与 CI 跑的就是这条）
 pnpm type-check   # 仅 TypeScript 类型检查
 pnpm lint:fix     # ESLint 写回（--fix）
-pnpm test         # 跑一次前端测试（push 档与 CI 用它；监听用 test:watch）
+pnpm test:fe      # 跑一次前端测试（push 档与 CI 用它；监听 / 覆盖率见 test:fe:watch / test:fe:coverage）
+pnpm test         # 三套串接：test:fe + test:rust + test:host
 pnpm check        # 本地全量：lint + 两套单元测试 + host 自检
 ```
 
@@ -343,7 +344,7 @@ pnpm check        # 本地全量：lint + 两套单元测试 + host 自检
 在 push/PR 到 `main` 时运行：
 
 - `frontend-check`：`pnpm lint:fe`（eslint + tsc，无平台差异 ⇒ 单平台）
-- `frontend-test`：`pnpm test`
+- `frontend-test`：`pnpm test:fe`
 - `backend-check`：`cargo check`（三平台矩阵）+ `pnpm lint:rust` + `pnpm guards run --stage ci`
 - `backend-test`：`pnpm test:rust`（三平台矩阵）
 - `java-host-check`：`bash tools/java-host/build.sh`（内含 `pnpm test:host` 的同一份自检）

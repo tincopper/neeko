@@ -353,7 +353,7 @@ interface FileActionsContextValue {
 文件动作经 `FileActionsContext` 下发，组件不直接 invoke。
 - 回归断言
 `pnpm type-check` 必须通过。
-`pnpm test` 必须通过。
+`pnpm test:fe` 必须通过。
 
 ### 7. Wrong vs Correct
 

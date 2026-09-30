@@ -62,9 +62,8 @@ pnpm tauri dev        # 启动开发模式（前端端口 1420）
 | `pnpm lint:rust` | Rust 静态检查（`cargo fmt --check` + `clippy -D warnings`） |
 | `pnpm lint:fix` | ESLint 写回（`--fix`） |
 | `pnpm type-check` | 仅 TypeScript 类型检查 |
-| `pnpm test` | 运行一次前端测试 |
-| `pnpm test:watch` | Vitest 监听模式 |
-| `pnpm test:coverage` | 带覆盖率运行前端测试 |
+| `pnpm test` | 全部三套：`test:fe` + `test:rust` + `test:host` |
+| `pnpm test:fe` | 运行一次前端测试（`test:fe:watch` / `test:fe:coverage` 是它的两个形态） |
 | `pnpm test:rust` | 运行 Rust 测试 |
 | `pnpm test:host` | Java 调试 host 自检（需 JDK，缺失时明确跳过） |
 | `pnpm check` | 本地全量：`lint` + 两套单元测试 + host 自检 |
@@ -168,7 +167,7 @@ Hooks 通过 `pnpm prepare`（或 `pnpm lefthook install`）安装。
 | `pre-commit` | 改动 `src-tauri/**/*.rs` 或 `Cargo.toml` / `Cargo.lock` / `build.rs` | `pnpm lint:rust` |
 | `pre-commit` | 每次提交 | `pnpm guards run --stage commit --staged` |
 | `commit-msg` | 每次提交 | `pnpm commitlint` |
-| `pre-push` | 推送文件命中前端 glob | `pnpm test` |
+| `pre-push` | 推送文件命中前端 glob | `pnpm test:fe` |
 | `pre-push` | 推送文件命中 Rust glob | `pnpm test:rust` |
 | `pre-push` | 推送文件命中 `tools/java-host/**` | `pnpm test:host` |
 

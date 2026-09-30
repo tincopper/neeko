@@ -297,7 +297,7 @@ export function setupTerminalInput({ term, sendInput }: { term: Terminal; sendIn
 1. **凡是后端已有注册表（agents、IDE 预设、shell 预设...），前端必须 fetch，不得维护并行的硬编码列表。**
 2. 如果某些纯展示元数据（如默认 skill 路径、icon 文件名）确实只对前端有意义，**也应放进后端 struct + serde 字段**而不是另起一份前端常量；通过加 `is_builtin: bool` 这类区分字段让前端按需过滤。
 3. 类型字段加在后端时同步给 `src/shared/types/agent.ts`，并保持 snake_case（与项目其他字段一致，参见 `backend/type-safety.md`）。
-4. 改完后用 `cargo test` + `pnpm test` 双跑，确认前端测试中 `expect(invoke).toHaveBeenCalledWith('list_agents')` 一类断言仍生效。
+4. 改完后用 `pnpm test:rust` + `pnpm test:fe` 双跑，确认前端测试中 `expect(invoke).toHaveBeenCalledWith('list_agents')` 一类断言仍生效。
 
 **正确模式**：
 ```typescript

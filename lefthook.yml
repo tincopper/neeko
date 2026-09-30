@@ -50,7 +50,8 @@ commit-msg:
 pre-push:
   parallel: true
   commands:
-    # 前端全量测试（暖态 ~50s）。
+    # 前端全量测试（暖态 ~50s）。这里必须是 `test:fe` —— 裸 `test` 是三套串接，
+    # 用它会让前端这条把 Rust 与 host 也跑一遍，与下面两个 job 重复。
     frontend-tests:
       glob:
         - "src/*.{ts,tsx,js,jsx}"
@@ -60,7 +61,7 @@ pre-push:
         - "tsconfig.json"
         - "vite.config.ts"
         - "vitest.config.ts"
-      run: pnpm test
+      run: pnpm test:fe
     # Rust 全量测试（lib + integration，暖态 ~3min）。
     rust-tests:
       glob:

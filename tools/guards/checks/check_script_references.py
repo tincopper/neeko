@@ -30,7 +30,8 @@ from guards.core.contract import Context, Finding, Guard, GuardResult
 
 PACKAGE_JSON = "package.json"
 
-# 实时面：hook / CI / 仓库级文档 / spec 树。
+# 实时面：hook / CI / 仓库级文档 / spec 树 + 两个构建配置（它们的注释里也会写脚本名，
+# 实测 vitest.config.ts 的注释就写了 `pnpm test:coverage` —— 改名时同样要改）。
 SCAN_PATTERNS = (
     "lefthook.yml",
     ".github/workflows/*.yml",
@@ -41,6 +42,8 @@ SCAN_PATTERNS = (
     "CONTRIBUTING_CN.md",
     "docs/*.md",
     ".trellis/spec/**/*.md",
+    "vite.config.ts",
+    "vitest.config.ts",
 )
 
 PNPM_BUILTINS = frozenset(
@@ -118,6 +121,8 @@ GUARD = Guard(
         "CONTRIBUTING_CN.md",
         "docs/",
         ".trellis/spec/",
+        "vite.config.ts",
+        "vitest.config.ts",
     ),
     red_lines=(),
     fix_hint=(

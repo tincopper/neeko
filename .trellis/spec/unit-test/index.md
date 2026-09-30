@@ -111,9 +111,10 @@
 ### 前端
 
 ```bash
-pnpm test              # 单次运行（push 档与 CI 用它）
-pnpm test:watch        # 监听模式
-pnpm test:coverage     # 带覆盖率报告
+pnpm test:fe           # 单次运行（push 档与 CI 用它）
+pnpm test:fe:watch     # 监听模式
+pnpm test:fe:coverage  # 带覆盖率报告
+pnpm test              # 三套串接（前端 + Rust + host）
 ```
 
 ### 后端

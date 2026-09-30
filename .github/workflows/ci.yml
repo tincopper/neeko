@@ -56,9 +56,10 @@ jobs:
       - name: Install frontend dependencies
         run: pnpm install
 
-      # 与本地 push 档同一条命令（非 watch 形态）。
+      # 与本地 push 档同一条命令（非 watch 形态）；裸 `pnpm test` 是三套串接，
+      # 这个 job 只要前端那一套。
       - name: Unit tests
-        run: pnpm test
+        run: pnpm test:fe
 
   # ──────────────────────────────────────────────
   # Java 调试 host：编译 + 自检（源码解析顺序 / 缓存布局 / 断点 FQN 推导）

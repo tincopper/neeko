@@ -89,9 +89,10 @@ vi.mock('@tauri-apps/plugin-dialog', () => ({
 ```json
 {
   "scripts": {
-    "test": "vitest run",
-    "test:watch": "vitest",
-    "test:coverage": "vitest run --coverage"
+    "test": "pnpm test:fe && pnpm test:rust && pnpm test:host",
+    "test:fe": "vitest run",
+    "test:fe:watch": "vitest",
+    "test:fe:coverage": "vitest run --coverage"
   }
 }
 ```
