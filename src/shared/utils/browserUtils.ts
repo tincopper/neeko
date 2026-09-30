@@ -2,30 +2,26 @@
  * 浏览器域的展示/导航工具（面板地址 ↔ 本地路径、打开面板、标题兜底）。
  *
  * **路径形态换算不在这里**：`shared/utils/fileRef` 是路径身份与形态的唯一所有权模块
- * （`canonicalFsPath` 拼根归零、`fileRefFromLspUri` uri→路径）。本文件只保留「浏览器语义」的
- * 两个方向 —— 本机路径 → 地址栏 URL（形态与 LSP 文档 uri 不同，见下），以及地址 → 路径的
- * **适配器**。消费侧要拼根/剥根时直接用 `fileRef`，不要再在此处加第二个实现。
+ * （`fileUriOfPath` 路径→`file://` uri、`fileRefFromLspUri` uri→路径、`canonicalFsPath` 锚定）。
+ * 本文件只保留「浏览器语义」的两个入口：本机路径 → 地址栏 URL（收路径字符串），以及地址 →
+ * 本地路径的**适配器**。消费侧要拼根/剥根时直接用 `fileRef`，不要再在此处加第二个实现。
  */
 import { useBrowserStore } from '@/shared/store/browserStore';
 import { useDockStore } from '@/shared/store/dockStore';
-import { fileRefFromLspUri } from '@/shared/utils/fileRef';
+import { canonicalFsPath, fileRefFromLspUri, fileUriOfPath } from '@/shared/utils/fileRef';
 
 /**
- * 将本地文件路径转换为 file:// URL
+ * 将**绝对**本地路径转换为 file:// URL（相对路径会产出 host 形态 `file://a.html`，
+ * 须由调用方先拼根 —— 本函数不做锚定）。
  * Windows: C:\path\file.html → file:///C:/path/file.html
  * Unix: /path/file.html → file:///path/file.html
  *
- * 不复用 `fileRef::lspUriOf`：那是 **LSP 文档 uri** 的构造点（`file://` + canonical path），
- * Windows 盘符会落在 host 位（`file://C:/…`）；浏览器地址栏要的是 `file:///C:/…` 形态。
+ * 形态与锚定都委托 `fileRef`（`fileUriOfPath` 负责盘符补第三斜杠，`canonicalFsPath` 负责
+ * 反斜杠归一）：与 `lspUriOf` 的差别只在**输入契约** —— 本函数收路径字符串（浏览器地址栏场景），
+ * `lspUriOf` 收 `FileRef` 并覆盖 jdt / 虚拟文档。
  */
 export function filePathToFileUrl(filePath: string): string {
-  const normalized = filePath.replace(/\\/g, '/');
-  // Windows 路径: C:/... → file:///C:/...
-  if (/^[A-Za-z]:/.test(normalized)) {
-    return `file:///${normalized}`;
-  }
-  // Unix 路径: /... → file:///...
-  return `file://${normalized}`;
+  return fileUriOfPath(canonicalFsPath('', filePath));
 }
 
 /**
