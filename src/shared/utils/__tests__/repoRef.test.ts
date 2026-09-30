@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest';
 
-import { REPO_KEY_SEP, isMainUnit, parseRepoKey, repoKeyOf, unitWorkDir } from '../repoRef';
+import {
+  REPO_KEY_SEP,
+  isMainUnit,
+  parseRepoKey,
+  repoKeyLabel,
+  repoKeyOf,
+  unitWorkDir,
+} from '../repoRef';
 
 describe('repoKeyOf', () => {
   /**
@@ -58,6 +65,18 @@ describe('isMainUnit', () => {
   it('only the empty tail is main', () => {
     expect(isMainUnit(`p1${REPO_KEY_SEP}`)).toBe(true);
     expect(isMainUnit(repoKeyOf('p1', '/wt/a'))).toBe(false);
+  });
+});
+
+describe('repoKeyLabel — 日志/提示用的可读标签', () => {
+  it('主仓单元与 worktree 单元各有可读形态', () => {
+    expect(repoKeyLabel(repoKeyOf('p1'))).toBe('p1 (main)');
+    expect(repoKeyLabel(repoKeyOf('p1', '/wt/a'))).toBe('p1 → /wt/a');
+  });
+
+  it('绝不把 NUL 分隔符带出去（带进日志会让日志文件被判成二进制）', () => {
+    expect(repoKeyLabel(repoKeyOf('p1', '/wt/a'))).not.toContain(REPO_KEY_SEP);
+    expect(repoKeyLabel(repoKeyOf('p1'))).not.toContain(REPO_KEY_SEP);
   });
 });
 

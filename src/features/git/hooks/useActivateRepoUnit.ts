@@ -2,7 +2,7 @@ import { useCallback } from 'react';
 
 import { useProjectStore } from '@/shared/store/projectStore';
 import { activeRepoKeyOf, useWorktreeStore } from '@/shared/store/worktreeStore';
-import { repoKeyOf } from '@/shared/utils/repoRef';
+import { repoKeyLabel, repoKeyOf } from '@/shared/utils/repoRef';
 
 import { setActiveRepoUnit } from '../api/gitApi';
 
@@ -23,6 +23,11 @@ export type ActivateOutcome = 'mounted' | 'stale' | 'skipped' | 'failed';
  *
  * 失败语义：该单元置为「未知」（槽位缺失），调用方渲染空态/加载态 —— 绝不沿用上一个
  * 单元的数据。非 git 项目（`git_info === null`）不发任何 git 命令。
+ *
+ * **一次失败不是事故**：调用方（唯一发起点）会按有界预算重试，并在放弃时上报一次。因此这里
+ * 只落一条 dev 侧诊断（带错误对象），不弹提示、不升级为用户可见错误 —— 首个快照未落地是冷启动
+ * 的正常窗口。日志里的单元身份走 `repoKeyLabel`：`String(repoKey)` 会把分隔符 NUL 带进日志，
+ * 让日志文件被判成二进制（实测过）。
  */
 export function useActivateRepoUnit(
   projectId: string | null,
@@ -49,7 +54,7 @@ export function useActivateRepoUnit(
         return 'mounted';
       } catch (e) {
         store.invalidateStatus(key);
-        console.error('[useActivateRepoUnit] activate repo unit failed for', String(key), e);
+        console.error('[useActivateRepoUnit] activate repo unit failed for', repoKeyLabel(key), e);
         return 'failed';
       }
     },

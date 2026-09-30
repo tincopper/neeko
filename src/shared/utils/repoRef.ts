@@ -46,6 +46,23 @@ export function isMainUnit(key: string): boolean {
 }
 
 /**
+ * 日志 / 提示用的可读标签：`p1 (main)` / `p1 → /wt/a`。
+ *
+ * **只用于展示，禁止反解回去当 key 用** —— 它是有损的（路径里出现 `→` 时无法还原）。
+ * 形态刻意与 `RepoKey` 不像（空格 + 箭头，而非「两段拼接」），因为护栏只拦 `:` / `|` 形态的
+ * 手拼 key（`check_repo_unit_identity` 的第 6 类判据），对展示形态没有约束力 —— 防误用只能靠
+ * 形态自证 + 这条禁令。
+ *
+ * 存在理由是 `String(repoKey)` 会把分隔符 NUL（`REPO_KEY_SEP`）带进日志：实测一次挂载失败
+ * 日志就让日志文件被 `file(1)` 判成 `data`（二进制），日志检索与轮转工具一并失效。凡是
+ * 「把 RepoKey 写进日志/用户提示」的地方都走本函数。
+ */
+export function repoKeyLabel(key: RepoKey | string): string {
+  const { projectId, worktreePath } = parseRepoKey(String(key));
+  return worktreePath === null ? `${projectId} (main)` : `${projectId} → ${worktreePath}`;
+}
+
+/**
  * 单元相对路径的**基准目录**（= 该单元的工作树根，与 Rust `RepoRef::work_dir()` 同义）。
  *
  * `file-changed` / `file-tree-changed` 的 `paths` / `dirs`、以及 status 快照条目的 path，都是

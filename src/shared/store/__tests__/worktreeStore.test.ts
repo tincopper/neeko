@@ -7,6 +7,7 @@
  * 要根治的症状形态。本文件钉住**唯一**派生点的语义，护栏
  * （`check_repo_unit_identity`）禁止绕过它直读 `.byProject[...].activePath`。
  */
+import { act, renderHook } from '@testing-library/react';
 import { beforeEach, describe, expect, it } from 'vitest';
 
 import { useProjectStore } from '@/shared/store/projectStore';
@@ -14,6 +15,7 @@ import {
   activeRepoKeyOf,
   selectActiveRepoKey,
   selectActiveWorktreePath,
+  useActiveRepoKey,
   useWorktreeStore,
 } from '@/shared/store/worktreeStore';
 import { repoKeyOf } from '@/shared/utils/repoRef';
@@ -53,6 +55,24 @@ describe('selectActiveRepoKey —— 当前视图单元的唯一派生点', () =
     expect(selectActiveRepoKey(state, 'p1')).toBe(
       repoKeyOf('p1', selectActiveWorktreePath(state, 'p1')),
     );
+  });
+});
+
+describe('useActiveRepoKey —— 渲染期形态（与 selectActiveRepoKey 同源）', () => {
+  it('跟随激活态变化重算，且无 projectId 时为 null（不产出 NUL 空键）', () => {
+    const { result, rerender } = renderHook(({ pid }) => useActiveRepoKey(pid), {
+      initialProps: { pid: 'p1' as string | null },
+    });
+    // 无激活条目 ⇒ 主仓单元（不是 null —— 「该项目还没选过 worktree」不等于「未知项目」）
+    expect(result.current).toBe(MAIN_KEY);
+
+    act(() => {
+      useWorktreeStore.getState().setActiveWorktree('p1', WT_A, 'feature-a');
+    });
+    expect(result.current).toBe(WT_KEY);
+
+    rerender({ pid: null });
+    expect(result.current).toBeNull();
   });
 });
 

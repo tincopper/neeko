@@ -1,5 +1,5 @@
 import { useProjectStore } from '@/shared/store/projectStore';
-import { parseRepoKey, type RepoKey } from '@/shared/utils/repoRef';
+import { parseRepoKey, repoKeyLabel, type RepoKey } from '@/shared/utils/repoRef';
 
 import { getRepoStatus } from '../api/gitApi';
 
@@ -22,7 +22,7 @@ export async function refreshRepoStatus(repoKey: RepoKey | string): Promise<void
     const snapshot = await getRepoStatus(projectId, worktreePath);
     useProjectStore.getState().applyStatus(snapshot);
   } catch (e) {
-    console.error('[refreshRepoStatus] status refresh failed for', String(repoKey), e);
+    console.error('[refreshRepoStatus] status refresh failed for', repoKeyLabel(repoKey), e);
   }
 }
 

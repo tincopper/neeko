@@ -153,6 +153,18 @@ export function useActiveWorktreePath(): string | null {
   return useWorktreeStore((s) => selectActiveWorktreePath(s, projectId));
 }
 
+/**
+ * React 侧：「当前激活单元」的 key（响应式形态，供渲染期需要身份的 hook 使用）。
+ *
+ * 存在的理由与 [`selectActiveRepoKey`] 同一个：身份只能有一个派生点。消费者若自己写
+ * `repoKeyOf(projectId, useActiveWorktreePath() ?? null)`，那就是第二次派生 —— 且
+ * `projectId` 为空的中间态会产出 `'\u0000'` 这种「谁也匹配不上」的键（真值恒为「未知」，
+ * 会被误当成「未挂载」）。取值与 [`selectActiveRepoKey`] 逐字同源。
+ */
+export function useActiveRepoKey(projectId: string | null): RepoKey | null {
+  return useWorktreeStore((s) => selectActiveRepoKey(s, projectId));
+}
+
 export function useActiveWorktreeBranch(): string {
   const projectId = useProjectStore((s) => s.activeProjectId);
   return useWorktreeStore((s) => selectWorktreeStateOf(s, projectId).activeBranch);
