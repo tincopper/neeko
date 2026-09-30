@@ -23,10 +23,7 @@ Closes #<issue_number>
 
 请描述你如何验证你的变更：
 
-- [ ] 前端测试通过（`pnpm test:run`）
-- [ ] 前端类型检查通过（`pnpm type-check`）
-- [ ] Rust 测试通过（`cargo test --manifest-path src-tauri/Cargo.toml`）
-- [ ] Rust lint 通过（`pnpm lint`）
+- [ ] 本地全量门禁通过（`pnpm check`：全部静态检查 + 两套单元测试 + host 自检）
 
 ## 检查清单（Checklist）
 

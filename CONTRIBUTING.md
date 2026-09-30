@@ -61,15 +61,17 @@ pnpm tauri dev        # start the dev app (frontend on port 1420)
 | --- | --- |
 | `pnpm tauri dev` | Run the app in development mode |
 | `pnpm tauri build` | Build a release bundle |
-| `pnpm lint` | Rust fmt + clippy(-D warnings) + all Python guards + guard unit tests + Java host |
-| `pnpm lint:fe:static` | Frontend static checks (ESLint + `tsc --noEmit`) — what `pre-commit` runs |
-| `pnpm lint:fe` | `lint:fe:static` then the frontend test run (local all-in-one) |
-| `pnpm lint:all` | Both Rust and frontend lint |
+| `pnpm lint` | Every static check: `lint:fe` + `lint:rust` + all guards (no tests) |
+| `pnpm lint:fe` | Frontend static checks (ESLint + `tsc --noEmit`) — what `pre-commit` runs |
+| `pnpm lint:rust` | Rust static checks (`cargo fmt --check` + `clippy -D warnings`) |
+| `pnpm lint:fix` | ESLint write-back (`--fix`) |
 | `pnpm type-check` | TypeScript type check only |
-| `pnpm test` | Vitest watch mode |
-| `pnpm test:run` | Run frontend tests once |
+| `pnpm test` | Run frontend tests once |
+| `pnpm test:watch` | Vitest watch mode |
 | `pnpm test:coverage` | Run frontend tests with coverage |
-| `cargo test --manifest-path src-tauri/Cargo.toml` | Run Rust tests |
+| `pnpm test:rust` | Run Rust tests |
+| `pnpm test:host` | Java debug host self-check (needs a JDK; skips loudly otherwise) |
+| `pnpm check` | Everything local: `lint` + both test suites + the host self-check |
 | `pnpm release <version>` | Bump version, generate changelog, tag (see [Release](#release-process)) |
 
 ## Project Structure
@@ -177,16 +179,17 @@ commit. Hooks are installed via `pnpm prepare` (or `pnpm lefthook install`).
 
 | Hook | Trigger | Runs |
 | --- | --- | --- |
-| `pre-commit` | changed `src/**/*.{ts,tsx,js,jsx}` | `pnpm lint:fe:static` |
-| `pre-commit` | changed `src-tauri/**/*.rs` | `pnpm lint` |
-| `pre-commit` | changed `tools/java-host/**` | `pnpm lint:host` |
+| `pre-commit` | changed source / config files (see the globs in `lefthook.yml`) | `pnpm lint:fe` |
+| `pre-commit` | changed `src-tauri/**/*.rs` or `Cargo.toml` / `Cargo.lock` / `build.rs` | `pnpm lint:rust` |
 | `pre-commit` | every commit | `pnpm guards run --stage commit --staged` |
 | `commit-msg` | every commit | `pnpm commitlint` |
-| `pre-push` | pushed files match `src/**/*.{ts,tsx,js,jsx}` | `pnpm test:run` |
-| `pre-push` | pushed files match `src-tauri/**/*.rs` | `cargo test` |
+| `pre-push` | pushed files match the frontend globs | `pnpm test` |
+| `pre-push` | pushed files match the Rust globs | `pnpm test:rust` |
+| `pre-push` | pushed files match `tools/java-host/**` | `pnpm test:host` |
 
-Both unit-test suites run at push, not at commit: commit stays a sub-minute static gate,
-push pays for the tests. A pushed file list that matches neither glob skips both.
+Both unit-test suites and the host self-check run at push, not at commit: commit stays
+a static gate (~10s warm), push pays for the tests. Each command is skipped when none
+of the pushed files match its globs.
 
 ### Adding a guard
 

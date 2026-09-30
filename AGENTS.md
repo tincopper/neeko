@@ -45,15 +45,16 @@ docs/                架构、需求与设计文档
 
 ```bash
 pnpm install                 pnpm tauri dev            pnpm tauri build
-pnpm lint          # Rust fmt + clippy(-D warnings) + 全部护栏（tools/guards）+ java-host
+pnpm lint          # 全部静态检查：lint:fe（eslint + tsc）+ lint:rust（fmt + clippy）+ 全部护栏
+pnpm check         # 本地全量门禁：lint + test + test:rust + test:host
 pnpm guards list   # 列当前护栏清单与其 stage/scope（清单即 tools/guards/checks/ 目录）
-pnpm lint:fe       # ESLint + tsc + 前端测试（静态部分单点：lint:fe:static）
-pnpm type-check    # npx tsc --noEmit
-pnpm test / test:run / test:coverage
-cargo test --manifest-path src-tauri/Cargo.toml
+pnpm lint:fix      # ESLint 写回（--fix）
+pnpm type-check    # 仅 TypeScript 类型检查
+pnpm test / test:watch / test:coverage
+pnpm test:rust · pnpm test:host
 ```
 
-最小回归集：`pnpm lint` + `pnpm type-check` + `pnpm test:run` + `cargo test`。
+最小回归集：`pnpm check`（定义单点在 `package.json` 的 `check` —— 这里不再复述它的组成）。
 
 ## 架构基本原则（强制）
 

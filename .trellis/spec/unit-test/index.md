@@ -111,8 +111,8 @@
 ### 前端
 
 ```bash
-pnpm test              # 监听模式
-pnpm test:run          # 单次运行
+pnpm test              # 单次运行（push 档与 CI 用它）
+pnpm test:watch        # 监听模式
 pnpm test:coverage     # 带覆盖率报告
 ```
 

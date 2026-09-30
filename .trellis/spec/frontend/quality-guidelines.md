@@ -8,11 +8,12 @@
 
 项目当前的主要质量门禁是：
 
-1. **ESLint**（`eslint src/`）—— 架构约束 + 代码风格 + 命名规范
+1. **ESLint**（`pnpm lint:fe` 的第一半 = `eslint src/ --cache`）—— 架构约束 + 代码风格 + 命名规范
 2. **TypeScript 类型检查**（`tsc --noEmit`）—— 类型安全
-3. **Vitest** 回归测试
+3. **Vitest** 回归测试（`pnpm test`）
 
-CI 在所有三个平台（Windows、macOS、Linux）上运行 `pnpm tsc --noEmit`。本地通过 `pnpm lint` 运行全部质量检查。
+CI 在 `frontend-check` job 跑 `pnpm lint:fe`（eslint + tsc），在 `frontend-test` job 跑 `pnpm test`
+—— 与本地 commit 档、push 档**同一条命令**。本地一把梭是 `pnpm check`（含 Rust 侧与 host 自检）。
 
 ### ESLint 配置要点
 
@@ -299,7 +300,7 @@ try {
 
 提交代码前，验证以下项目：
 
-- [ ] `pnpm tsc --noEmit` 通过，无错误
+- [ ] `pnpm lint:fe` 通过（eslint + `tsc --noEmit`，脚本名定义在 `package.json`）
 - [ ] 没有引入新的无理由 `any` 类型
 - [ ] 新组件使用 `React.memo` 导出
 - [ ] 作为 Props 传递的回调使用了 `useCallback`
@@ -326,16 +327,26 @@ pnpm tauri dev    # 启动完整的 Tauri 开发环境
 ### 质量门禁
 
 ```bash
-pnpm lint         # 运行全部质量检查：cargo fmt + clippy + eslint + tsc
+pnpm lint         # 全部静态检查：lint:fe（eslint + tsc）+ lint:rust（cargo fmt + clippy）+ 护栏
+pnpm lint:fe      # 仅前端静态检查（pre-commit 与 CI 跑的就是这条）
 pnpm type-check   # 仅 TypeScript 类型检查
-pnpm lint:fix     # 自动修复 ESLint/prettier 问题（如需要，手动执行 npx eslint --fix）
+pnpm lint:fix     # ESLint 写回（--fix）
+pnpm test         # 跑一次前端测试（push 档与 CI 用它；监听用 test:watch）
+pnpm check        # 本地全量：lint + 两套单元测试 + host 自检
 ```
+
+> 命令的**定义单点在 `package.json`**（本文件只引用脚本名）。hook 与 CI 调用的名字必须与它一致 ——
+> 这是必需的：改名时漏改一处，门就会静默失效。
 
 ### CI 流水线（`.github/workflows/ci.yml`）
 
 在 push/PR 到 `main` 时运行：
-1. `pnpm tsc --noEmit` —— TypeScript 检查（Windows、macOS、Linux）
-2. `cargo check` —— Rust 检查（Windows、macOS、Linux）
+
+- `frontend-check`：`pnpm lint:fe`（eslint + tsc，无平台差异 ⇒ 单平台）
+- `frontend-test`：`pnpm test`
+- `backend-check`：`cargo check`（三平台矩阵）+ `pnpm lint:rust` + `pnpm guards run --stage ci`
+- `backend-test`：`pnpm test:rust`（三平台矩阵）
+- `java-host-check`：`bash tools/java-host/build.sh`（内含 `pnpm test:host` 的同一份自检）
 
 ### 发布构建（`.github/workflows/build.yml`）
 

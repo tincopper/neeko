@@ -171,7 +171,7 @@ interface GitInfo {
 1. 更新对应域的 Rust 结构体（`*/types.rs` / `core/project.rs` / `common/types.rs`）
 2. 更新 `src/shared/types/<domain>.ts` 中对应的 TypeScript 接口
 3. 在新字段上添加 `#[serde(default)]` 以确保与已有持久化数据的向后兼容
-4. 用 `cargo check` 和 `pnpm tsc --noEmit` 验证
+4. 用 `cargo check` 和 `pnpm type-check` 验证
 
 ---
 

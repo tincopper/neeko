@@ -6,7 +6,8 @@
 
 ## 概述
 
-后端的质量门禁是 **`cargo check`**（在 CI 中三平台运行）与 **`cargo clippy`** + **`cargo fmt --check`**（通过 `pnpm lint` 在本地执行）。
+后端的质量门禁是 **`cargo check`**（在 CI 中三平台运行）与 **`pnpm lint:rust`**（= `cargo fmt --all -- --check` + `cargo clippy -- -D warnings`，本地 commit 档与 CI 共用同一条命令）。
+测试是 **`pnpm test:rust`**（本地 push 档与 CI 共用）。
 
 质量门禁配置：
 - Clippy lint 级别在 `src-tauri/Cargo.toml` 的 `[lints.clippy]` 和 `[lints.rust]` 段定义
@@ -22,7 +23,7 @@
 - [ ] **平台判断先行**：本次改动是否新增/修改平台专属逻辑（`target_os = "macos"/"windows"/"linux"` / `unix` / `windows`）？若是，是否已确定主题归属（`platform/<theme>/` 或独立模块 `job_object`/`wsl`）？
 - [ ] **import 与使用点同 cfg**：所有平台专属 `use`（如 `BTreeSet`/`Path` 仅在 macOS 分支使用、`windows_sys::*` 仅在 Windows 分支使用）是否已与使用点同条件 `#[cfg(...)]` 门控？禁止顶层无条件 `use` 仅在 `#[cfg]` 块内使用（`clippy -D unused_imports` 会在非目标平台失败，见 `fonts.rs` 2026-09 回归）。
 - [ ] **Platform Adapter 分层**：多平台/单平台专属实现是否已抽入 `src-tauri/src/platform/<theme>/`（`mod.rs` 仅 `mod` + `pub use` 门控，业务代码无 `#[cfg]` 块）？独立模块（`job_object`/`wsl`）是否豁免但仍保持 import 门控？
-- [ ] **本地门禁 ≠ 跨平台门禁**：`pnpm lint` / `cargo clippy` 仅在宿主机（macOS）跑，平台 `unused_imports` 问题需靠 `pnpm guards run --only check_platform_imports`（已接入 `pnpm lint`）或 CI 三平台矩阵兜底；改动后是否已跑 `pnpm lint` 且该护栏通过？
+- [ ] **本地门禁 ≠ 跨平台门禁**：`pnpm lint:rust`（fmt + clippy）只在宿主机（macOS）跑，平台 `unused_imports` 问题需靠 `pnpm guards run --only check_platform_imports`（已接入 `pnpm lint`）或 CI 三平台矩阵兜底；改动后是否已跑 `pnpm lint`（含该护栏）且通过？
 
 ---
 
@@ -420,7 +421,9 @@ pnpm tauri dev         # 完整开发环境（前端 + 后端）
 ### 质量门禁脚本
 
 ```bash
-pnpm lint                       # cargo fmt + clippy + 全部护栏（tools/guards）+ java-host
+pnpm lint:rust                  # cargo fmt --check + clippy（后端静态检查单点）
+pnpm test:rust                  # cargo test（lib + integration）
+pnpm lint                       # 全部静态检查：lint:fe + lint:rust + 全部护栏（tools/guards）
 pnpm guards list                # 当前护栏清单 + 各自 stage / scope / 关联红线
 pnpm guards run --stage local   # 只跑护栏
 ```
@@ -493,7 +496,8 @@ pub fn reorder(&self, ids: &[String]) -> Result<()> {
 ### CI 流水线（`.github/workflows/ci.yml`）
 
 在 push/PR 到 `main` 时运行：
-- `cargo check` + `cargo clippy -- -D warnings`（Windows、macOS、Linux 三平台矩阵）
+- `cargo check`（Windows、macOS、Linux 三平台矩阵，平台编译问题专用）
+- `pnpm lint:rust` + `pnpm test:rust`（三平台矩阵；与本地 commit / push 档同一条命令）
 - `pnpm guards run --stage ci`（`ubuntu-latest` 上跑全部护栏；本地 `pnpm lint` 跑 `--stage local`，
   两边集合由护栏自己的 `stages` 声明决定，不再各写一份清单）
 

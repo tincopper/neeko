@@ -352,8 +352,8 @@ interface FileActionsContextValue {
 `FilesPanel`（原 `FileViewer` / `AppLayout` 时代）读 `@/features/file/store` 的 `dirs` / `activeFilePath` 渲染。
 文件动作经 `FileActionsContext` 下发，组件不直接 invoke。
 - 回归断言
-`npx tsc --noEmit` 必须通过。
-`pnpm test:run` 必须通过。
+`pnpm type-check` 必须通过。
+`pnpm test` 必须通过。
 
 ### 7. Wrong vs Correct
 

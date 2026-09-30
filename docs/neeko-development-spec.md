@@ -357,13 +357,13 @@ pub mod commands;    // pub: 对外暴露 Tauri 命令
 
 ### 4.5 CI 集成
 
-```bash
-# 与 pnpm lint 同级：Rust 质量门
-cargo fmt --manifest-path src-tauri/Cargo.toml --all -- --check
-cargo clippy --manifest-path src-tauri/Cargo.toml -- -D warnings
-```
+Rust 静态门与前端静态门一样，**定义单点在 `package.json`**，CI 与本地 hook 调同一个脚本名：
 
-> **建议**：将两行合并入 `package.json` 的 `lint` 脚本，确保 `pnpm lint` 同时覆盖前后端。
+```bash
+pnpm lint:rust    # = cargo fmt --all -- --check && cargo clippy -- -D warnings
+pnpm lint         # 全部静态检查：lint:fe（eslint + tsc）+ lint:rust + 全部护栏
+pnpm check        # 本地全量门禁：lint + test + test:rust + test:host
+```
 
 ---
 

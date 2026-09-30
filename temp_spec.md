@@ -270,8 +270,8 @@ interface FileActionsContextValue {
 `AppLayout` 使用 `useAppStore` 的 `fileTree`、`activeFilePath` 渲染。  
 `FileViewer` 通过 `FileActionsContext` 调用保存与切换动作。
 - 回归断言  
-`npx tsc --noEmit` 必须通过。  
-`pnpm test:run` 必须通过。
+`pnpm type-check` 必须通过。  
+`pnpm test` 必须通过。
 
 ### 7. Wrong vs Correct
 

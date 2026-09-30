@@ -357,8 +357,8 @@ src/app/hooks/              应用编排 hook（useAppShell / useAppShellData / 
 ### 6. Tests Required
 
 - 静态检查：`rg "useProjectStateContext|project-state-context"` 结果应为空。
-- 类型检查：`npx tsc --noEmit`。
-- 回归测试：`pnpm test:run`。
+- 类型检查：`pnpm type-check`。
+- 回归测试：`pnpm test`。
 
 ### 7. Wrong vs Correct
 

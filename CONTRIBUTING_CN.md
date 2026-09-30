@@ -57,15 +57,17 @@ pnpm tauri dev        # 启动开发模式（前端端口 1420）
 | --- | --- |
 | `pnpm tauri dev` | 运行开发模式 |
 | `pnpm tauri build` | 构建发布版本 |
-| `pnpm lint` | Rust fmt + clippy(-D warnings) + 全部 Python 护栏 + 护栏单测 + Java host |
-| `pnpm lint:fe:static` | 前端静态检查（ESLint + `tsc --noEmit`）—— `pre-commit` 跑的就是这条 |
-| `pnpm lint:fe` | 先 `lint:fe:static`，再跑一次前端测试（本地一把梭） |
-| `pnpm lint:all` | Rust 与前端全部 lint |
+| `pnpm lint` | 全部静态检查：`lint:fe` + `lint:rust` + 全部护栏（不含测试） |
+| `pnpm lint:fe` | 前端静态检查（ESLint + `tsc --noEmit`）—— `pre-commit` 跑的就是这条 |
+| `pnpm lint:rust` | Rust 静态检查（`cargo fmt --check` + `clippy -D warnings`） |
+| `pnpm lint:fix` | ESLint 写回（`--fix`） |
 | `pnpm type-check` | 仅 TypeScript 类型检查 |
-| `pnpm test` | Vitest 监听模式 |
-| `pnpm test:run` | 运行一次前端测试 |
+| `pnpm test` | 运行一次前端测试 |
+| `pnpm test:watch` | Vitest 监听模式 |
 | `pnpm test:coverage` | 带覆盖率运行前端测试 |
-| `cargo test --manifest-path src-tauri/Cargo.toml` | 运行 Rust 测试 |
+| `pnpm test:rust` | 运行 Rust 测试 |
+| `pnpm test:host` | Java 调试 host 自检（需 JDK，缺失时明确跳过） |
+| `pnpm check` | 本地全量：`lint` + 两套单元测试 + host 自检 |
 | `pnpm release <version>` | 升级版本、生成 changelog、打 tag（见[发布流程](#发布流程)） |
 
 ## 项目结构
@@ -162,16 +164,16 @@ Hooks 通过 `pnpm prepare`（或 `pnpm lefthook install`）安装。
 
 | Hook | 触发条件 | 执行内容 |
 | --- | --- | --- |
-| `pre-commit` | 改动 `src/**/*.{ts,tsx,js,jsx}` | `pnpm lint:fe:static` |
-| `pre-commit` | 改动 `src-tauri/**/*.rs` | `pnpm lint` |
-| `pre-commit` | 改动 `tools/java-host/**` | `pnpm lint:host` |
+| `pre-commit` | 改动源码 / 配置文件（具体 glob 见 `lefthook.yml`） | `pnpm lint:fe` |
+| `pre-commit` | 改动 `src-tauri/**/*.rs` 或 `Cargo.toml` / `Cargo.lock` / `build.rs` | `pnpm lint:rust` |
 | `pre-commit` | 每次提交 | `pnpm guards run --stage commit --staged` |
 | `commit-msg` | 每次提交 | `pnpm commitlint` |
-| `pre-push` | 推送文件命中 `src/**/*.{ts,tsx,js,jsx}` | `pnpm test:run` |
-| `pre-push` | 推送文件命中 `src-tauri/**/*.rs` | `cargo test` |
+| `pre-push` | 推送文件命中前端 glob | `pnpm test` |
+| `pre-push` | 推送文件命中 Rust glob | `pnpm test:rust` |
+| `pre-push` | 推送文件命中 `tools/java-host/**` | `pnpm test:host` |
 
-两套单元测试都只在 push 档跑（commit 保持亚分钟级的静态门）：前端与 Rust 对称，不再出现
-「前端测试在 commit、Rust 测试没地方跑」。推送文件两个 glob 都不命中时两个 job 都跳过。
+两套单元测试与 host 自检都只在 push 档跑（commit 保持静态门，暖缓存 ~10s）：前端与 Rust 对称，
+不再出现「前端测试在 commit、Rust 测试没地方跑」。推送文件不命中某条命令的 glob 时该命令跳过。
 
 ### 新增一条护栏
 
