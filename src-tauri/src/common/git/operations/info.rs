@@ -89,7 +89,14 @@ pub async fn get_git_branch_info_shell(
         .await?;
     // 归一化需要 transport 的 target 语义（Local canonicalize / 远端词法归一），
     // 因此清单在解析处即归一 —— 前端会拿这些路径拼 RepoKey，必须与 RepoRef::key() 同形。
-    let mut worktrees = parse_worktree_list(&worktrees_output, &transport.exec_target());
+    //
+    // 每条目的归一含 `exists` / `canonicalize`（阻塞 fs）⇒ 整份清单在**一次** `spawn_blocking`
+    // 内解析（红线 3）：逐条 hop 会把线程池往返乘以条目数，且让清单内部来自不同时刻的 fs 视图。
+    let parse_target = transport.exec_target();
+    let mut worktrees =
+        tokio::task::spawn_blocking(move || parse_worktree_list(&worktrees_output, &parse_target))
+            .await
+            .map_err(|e| anyhow::anyhow!("worktree list parsing task failed: {e}"))?;
     // The first worktree is always the main worktree (the project directory itself):
     // `git worktree list` 保证主工作树排在最前（2.54 实测 + git-worktree(1) 文档），
     // git2 的 `repo.worktrees()` 同样只返回 linked worktree —— 两条路径语义一致。

@@ -14,7 +14,9 @@ pub async fn commit_files(
     worktree_path: Option<String>,
     state: State<'_, AppStateWrapper>,
 ) -> Result<CommitResult, AppError> {
-    let (t, repo) = state.resolve_repo(&project_id, worktree_path.as_deref())?;
+    let (t, repo) = state
+        .resolve_repo(&project_id, worktree_path.as_deref())
+        .await?;
     let repo_path = repo.work_dir();
     validate_repo_relative_paths(&t, repo_path, &file_paths)?;
     let result = operations::commit_files(&t, repo_path, &file_paths, &message)

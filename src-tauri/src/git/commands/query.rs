@@ -18,7 +18,9 @@ pub async fn get_git_info(
     worktree_path: Option<String>,
     state: State<'_, AppStateWrapper>,
 ) -> Result<GitInfo, AppError> {
-    let (t, repo) = state.resolve_repo(&project_id, worktree_path.as_deref())?;
+    let (t, repo) = state
+        .resolve_repo(&project_id, worktree_path.as_deref())
+        .await?;
     operations::get_git_info(&t, repo.work_dir())
         .await
         .map_err(AppError::from)
@@ -31,7 +33,9 @@ pub async fn get_git_branch_info(
     worktree_path: Option<String>,
     state: State<'_, AppStateWrapper>,
 ) -> Result<GitBranchInfo, AppError> {
-    let (t, repo) = state.resolve_repo(&project_id, worktree_path.as_deref())?;
+    let (t, repo) = state
+        .resolve_repo(&project_id, worktree_path.as_deref())
+        .await?;
     operations::get_git_branch_info(&t, repo.work_dir())
         .await
         .map_err(AppError::from)
@@ -48,7 +52,9 @@ pub async fn get_repo_status(
     worktree_path: Option<String>,
     state: State<'_, AppStateWrapper>,
 ) -> Result<GitStatusSnapshot, AppError> {
-    let (_t, repo) = state.resolve_repo(&project_id, worktree_path.as_deref())?;
+    let (_t, repo) = state
+        .resolve_repo(&project_id, worktree_path.as_deref())
+        .await?;
     crate::git::services::status::read_unit_status(&state, &repo).await
 }
 
@@ -63,7 +69,9 @@ pub async fn set_active_repo_unit(
     app: tauri::AppHandle,
     state: State<'_, AppStateWrapper>,
 ) -> Result<GitStatusSnapshot, AppError> {
-    let (_t, repo) = state.resolve_repo(&project_id, worktree_path.as_deref())?;
+    let (_t, repo) = state
+        .resolve_repo(&project_id, worktree_path.as_deref())
+        .await?;
     crate::git::services::status::activate(&state, &app, &repo).await
 }
 
@@ -83,7 +91,8 @@ pub async fn canonical_worktree_path(
     state: State<'_, AppStateWrapper>,
 ) -> Result<String, AppError> {
     let (target, _) = state.resolve_project(&project_id)?;
-    crate::common::git::unit_path::UnitPath::resolve(&target, &path)
+    crate::common::git::unit_path::UnitPath::resolve_async(&target, &path)
+        .await
         .map(|resolved| resolved.identity().to_string())
         .map_err(AppError::from)
 }
@@ -98,7 +107,9 @@ pub async fn get_untracked_files(
     dir_path: String,
     state: State<'_, AppStateWrapper>,
 ) -> Result<Vec<String>, AppError> {
-    let (t, repo) = state.resolve_repo(&project_id, worktree_path.as_deref())?;
+    let (t, repo) = state
+        .resolve_repo(&project_id, worktree_path.as_deref())
+        .await?;
     validate_repo_relative_path(&t, repo.work_dir(), &dir_path).map_err(AppError::from)?;
     operations::get_untracked_files(&t, repo.work_dir(), &dir_path)
         .await
@@ -112,7 +123,9 @@ pub async fn get_changed_files_diff_stats(
     worktree_path: Option<String>,
     state: State<'_, AppStateWrapper>,
 ) -> Result<Vec<FileDiffStats>, AppError> {
-    let (t, repo) = state.resolve_repo(&project_id, worktree_path.as_deref())?;
+    let (t, repo) = state
+        .resolve_repo(&project_id, worktree_path.as_deref())
+        .await?;
     operations::get_changed_files_diff_stats(&t, repo.work_dir())
         .await
         .map_err(AppError::from)
@@ -128,7 +141,9 @@ pub async fn get_file_diff(
     state: State<'_, AppStateWrapper>,
 ) -> Result<DiffResult, AppError> {
     let t0 = std::time::Instant::now();
-    let (t, repo) = state.resolve_repo(&project_id, worktree_path.as_deref())?;
+    let (t, repo) = state
+        .resolve_repo(&project_id, worktree_path.as_deref())
+        .await?;
     validate_repo_relative_path(&t, repo.work_dir(), &file_path)?;
     let collapse = collapse.unwrap_or(true);
     let result = operations::get_file_diff(&t, repo.work_dir(), &file_path, collapse)

@@ -11,7 +11,9 @@ pub async fn fetch(
     worktree_path: Option<String>,
     state: State<'_, AppStateWrapper>,
 ) -> Result<PushOutcome, AppError> {
-    let (t, repo) = state.resolve_repo(&project_id, worktree_path.as_deref())?;
+    let (t, repo) = state
+        .resolve_repo(&project_id, worktree_path.as_deref())
+        .await?;
     let repo_path = repo.work_dir();
     operations::fetch(&t, repo_path)
         .await
@@ -25,7 +27,9 @@ pub async fn pull(
     worktree_path: Option<String>,
     state: State<'_, AppStateWrapper>,
 ) -> Result<PushOutcome, AppError> {
-    let (t, repo) = state.resolve_repo(&project_id, worktree_path.as_deref())?;
+    let (t, repo) = state
+        .resolve_repo(&project_id, worktree_path.as_deref())
+        .await?;
     let repo_path = repo.work_dir();
     let outcome = operations::pull(&t, repo_path)
         .await
@@ -43,7 +47,9 @@ pub async fn push(
     worktree_path: Option<String>,
     state: State<'_, AppStateWrapper>,
 ) -> Result<PushOutcome, AppError> {
-    let (t, repo) = state.resolve_repo(&project_id, worktree_path.as_deref())?;
+    let (t, repo) = state
+        .resolve_repo(&project_id, worktree_path.as_deref())
+        .await?;
     let repo_path = repo.work_dir();
     operations::push(&t, repo_path, set_upstream.unwrap_or(false))
         .await
@@ -59,7 +65,9 @@ pub async fn fetch_with_credentials(
     worktree_path: Option<String>,
     state: State<'_, AppStateWrapper>,
 ) -> Result<PushOutcome, AppError> {
-    let (t, repo) = state.resolve_repo(&project_id, worktree_path.as_deref())?;
+    let (t, repo) = state
+        .resolve_repo(&project_id, worktree_path.as_deref())
+        .await?;
     let repo_path = repo.work_dir();
     operations::fetch_with_credentials(&t, repo_path, &username, &password)
         .await
@@ -75,7 +83,9 @@ pub async fn pull_with_credentials(
     worktree_path: Option<String>,
     state: State<'_, AppStateWrapper>,
 ) -> Result<PushOutcome, AppError> {
-    let (t, repo) = state.resolve_repo(&project_id, worktree_path.as_deref())?;
+    let (t, repo) = state
+        .resolve_repo(&project_id, worktree_path.as_deref())
+        .await?;
     let repo_path = repo.work_dir();
     let outcome = operations::pull_with_credentials(&t, repo_path, &username, &password)
         .await
@@ -95,7 +105,9 @@ pub async fn push_with_credentials(
     worktree_path: Option<String>,
     state: State<'_, AppStateWrapper>,
 ) -> Result<PushOutcome, AppError> {
-    let (t, repo) = state.resolve_repo(&project_id, worktree_path.as_deref())?;
+    let (t, repo) = state
+        .resolve_repo(&project_id, worktree_path.as_deref())
+        .await?;
     let repo_path = repo.work_dir();
     operations::push_with_credentials(
         &t,

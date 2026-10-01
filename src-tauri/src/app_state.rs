@@ -134,14 +134,30 @@ impl AppStateWrapper {
     /// git 域所有命令的唯一入口解析器：取代旧的 `path_guard::resolve_validated_work_dir`
     /// （后者校验时 canonicalize、返回时丢弃结果，于是同一工作树可以有多种字符串身份）。
     /// 校验、归一化与「路径其实等于项目根 → 主仓」的收敛都在 [`RepoRef::resolve`] 内。
-    pub fn resolve_repo(
+    ///
+    /// **异步**：解析内含 `exists` / `canonicalize`（阻塞 fs），故「项目根 + worktree」两次解析
+    /// 在**同一次** `spawn_blocking` 内完成（红线 3）—— 一次线程池 hop，且两次解析共用同一时刻的
+    /// fs 视图。线程池 panic / 运行时关停才走 `AppError::Unknown`，领域错误逐字保留。
+    pub async fn resolve_repo(
         &self,
         project_id: &str,
         worktree_path: Option<&str>,
     ) -> Result<(ExecTarget, crate::common::git::RepoRef), AppError> {
         let (target, project_root) = self.resolve_project(project_id)?;
-        let repo = RepoRef::resolve(project_id, &project_root, worktree_path, &target)
-            .map_err(AppError::from)?;
+        let task_target = target.clone();
+        let task_project_id = project_id.to_string();
+        let task_worktree_path = worktree_path.map(str::to_string);
+        let repo = tokio::task::spawn_blocking(move || {
+            RepoRef::resolve(
+                &task_project_id,
+                &project_root,
+                task_worktree_path.as_deref(),
+                &task_target,
+            )
+        })
+        .await
+        .map_err(|e| AppError::Unknown(e.to_string()))?
+        .map_err(AppError::from)?;
         Ok((target, repo))
     }
 

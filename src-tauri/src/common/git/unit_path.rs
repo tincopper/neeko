@@ -57,6 +57,9 @@ pub struct UnitPath {
 impl UnitPath {
     /// 归一化并校验一个 worktree / 项目根绝对路径。
     ///
+    /// **阻塞**（`exists` / `canonicalize` 是同步 fs）：异步上下文请用
+    /// [`Self::resolve_async`]（红线 3），本入口只允许出现在同步上下文或已在阻塞池内的代码里。
+    ///
     /// - 词法层（所有 target）：拒绝 NUL 与 `..` 分量；
     /// - Local：存在 → `canonicalize`；不存在 → `identity` 锚定到最深已存在祖先、`exec`
     ///   保持调用者拼写；
@@ -79,6 +82,19 @@ impl UnitPath {
                 })
             }
         }
+    }
+
+    /// 异步入口（红线 3）：把 [`Self::resolve`] 的阻塞 fs 隔离到阻塞池。
+    ///
+    /// **命令层（`#[tauri::command] async fn`）一律用这个**：`canonicalize` 在网络盘 /
+    /// 未响应挂载点上可以阻塞到秒级，直接跑在 Tokio worker 上会挂起事件循环。
+    /// 校验错误与渲染错误原样穿过异步边界（不被 `JoinError` 吞并）。
+    pub async fn resolve_async(target: &ExecTarget, raw: &str) -> Result<Self> {
+        let target = target.clone();
+        let raw = raw.to_string();
+        tokio::task::spawn_blocking(move || Self::resolve(&target, &raw))
+            .await
+            .map_err(|e| anyhow!("worktree path resolution task failed: {e}"))?
     }
 
     /// 身份渲染（**平台无关字母表**）：跨端契约，前端 `RepoKey` 与后端所有槽位都用它。
@@ -453,5 +469,26 @@ mod tests {
             assert!(UnitPath::resolve(target, "/repo/../evil").is_err());
             assert!(UnitPath::resolve(target, "a\0b").is_err());
         }
+    }
+
+    // ── 异步入口（红线 3）────────────────────────────────────────────────
+
+    /// 异步入口必须与同步入口逐字同结果（同一个 φ），且错误原样穿过异步边界。
+    #[tokio::test]
+    async fn async_entry_matches_sync_entry() {
+        let (_d, root) = fixture("wt");
+        std::fs::create_dir_all(&root).unwrap();
+        let raw = root.to_string_lossy().to_string();
+
+        let sync = UnitPath::resolve(&local(), &raw).unwrap();
+        let via_task = UnitPath::resolve_async(&local(), &raw).await.unwrap();
+        assert_eq!(via_task.identity(), sync.identity());
+        assert_eq!(via_task.exec(), sync.exec());
+
+        // 拒绝路径：错误类型与信息不得被 `JoinError` 覆盖
+        let err = UnitPath::resolve_async(&local(), "/repo/../evil")
+            .await
+            .unwrap_err();
+        assert!(err.to_string().contains(".."), "got: {err}");
     }
 }

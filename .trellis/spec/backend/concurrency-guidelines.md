@@ -304,6 +304,113 @@ pub fn close_terminal_session(session_id: String, state: State<AppStateWrapper>)
 
 ---
 
+## Scenario: 命令入口的路径解析不阻塞 worker（路径归一 = 阻塞 fs）
+
+### 1. Scope / Trigger
+
+- Trigger：命令入口把「项目 + worktree 路径」解析成仓库单元身份时会走 `exists` / `canonicalize`
+  （同步阻塞 fs）。网络盘 / 无响应挂载点上单次调用可阻塞到秒级，而这条路径位于**每次
+  git / file 命令的入口** ⇒ 同一 worker 承载的 PTY 输出、watcher 事件与 IPC 全部停摆。
+- Scope：`AppStateWrapper::resolve_repo`（29 处调用点）、`file/commands.rs::resolve_base`（8 处）、
+  命令层直连的 `UnitPath::resolve`（6 处）、`file/commands.rs::read_dir_tree` 的单元身份解析（1 处）、
+  `common/git/operations/info.rs::get_git_branch_info_shell` 的清单逐条归一（1 份清单）。
+  例外（已在阻塞池内，无需再包）：`common/git/local/worktree.rs::get_worktrees` —— 只在
+  `info.rs` 的 `spawn_blocking` 闭包内被调用。
+
+### 2. Signatures
+
+```rust
+// 领域原语（同步、纯 + fs）：单元测试与「已在阻塞池内」的代码用
+pub fn resolve(target: &ExecTarget, raw: &str) -> Result<UnitPath>;
+
+// 唯一异步入口：把 fs 调用隔离到阻塞池
+pub async fn resolve_async(target: &ExecTarget, raw: &str) -> Result<UnitPath>;
+
+// 域级入口（async，各自只包一次 spawn_blocking）
+pub async fn resolve_repo(&self, project_id: &str, worktree_path: Option<&str>)
+    -> Result<(ExecTarget, RepoRef), AppError>;                       // app_state.rs
+async fn resolve_base(target: &ExecTarget, root_path: Option<&str>, wd: &str)
+    -> Result<String, AppError>;                                      // file/commands.rs
+```
+
+### 3. Contracts
+
+1. 命令层（`#[tauri::command] async fn`）只允许经 `resolve_async` / `resolve_repo` / `resolve_base`
+   触达路径归一，**禁止**直接调同步的 `UnitPath::resolve` / `RepoRef::resolve`。
+2. 领域原语保持同步：要能在 `#[cfg(test)]` 里无运行时直接跑，也要能被已在阻塞池内的代码复用
+   （把领域模型改成 async 会把 async 传染给全部测试与调用方）。
+3. `resolve_repo` 用**一次** `spawn_blocking` 包住「项目根 + worktree」两次解析：一次 hop，
+   且两次解析共用同一时刻的 fs 视图。
+4. 错误两级穿透：闭包内的领域错误（`..` / NUL / 非 UTF-8 / `canonicalize` 失败）逐字保留；
+   只有 `JoinError`（阻塞池 panic / 运行时关停）才映射为 `AppError::Unknown`。
+5. `spawn_blocking` 不可取消：本场景不引入超时语义。
+6. 需要解析**一批**路径（如 `git worktree list` 的清单）时，一次 `spawn_blocking` 包住整批：
+   逐条 hop 会把线程池往返乘以条目数，并让批内结果来自不同时刻的 fs 视图。
+7. 同一命令里若两个返回值来自**不同的解析语义**（如 `resolve_base` 的空路径回落 vs 单元身份），
+   保持各自一次 hop，不要为省一次往返而合并 —— 合并会顺手改变语义（行为变更不在本场景范围）。
+
+### 4. Validation & Error Matrix
+
+| 场景 | 预期行为 | 错误风险 |
+|------|----------|----------|
+| 存在的 worktree（Local） | worker 不阻塞；结果与同步版逐字相同 | 直连同步原语 ⇒ 挂起 worker |
+| 不存在的目标路径（create / rename） | 一次 hop 内完成「最深已存在祖先」锚定（syscall 数量级 = 路径深度） | 同上，且次数被放大 |
+| 路径含 `..` / NUL / 非 UTF-8 | 领域错误原样返回 | 两级 `?` 缺一个即被 `JoinError` 文案覆盖 |
+| 阻塞池 panic / 运行时关停 | `AppError::Unknown`（`path resolution task failed`） | 与领域错误混淆会让用户看到错误提示 |
+
+### 5. Good/Base/Bad Cases
+
+- Good：`let (t, repo) = state.resolve_repo(&project_id, worktree_path.as_deref()).await?;`
+- Base：`resolve_base` 内部先 `UnitPath::resolve_async(target, path).await`，再投影 `.exec()`。
+- Bad：`let worktree_path = UnitPath::resolve(&t, &worktree_path)?;` 直接写在
+  `#[tauri::command] async fn` 里。
+
+### 6. Tests Required
+
+- `unit_path::tests::async_entry_matches_sync_entry`：异步入口 ≡ 同步入口（identity / exec 逐字）
+  + 校验错误穿透（`..` 文案不得被 `JoinError` 覆盖）。
+- 回归：`cargo test --lib` 与 `pnpm test:fe` 逐条不变 —— 这是「只改边界、不改行为」的判据。
+
+### 7. Wrong vs Correct
+
+#### Wrong
+
+```rust
+#[tauri::command]
+pub async fn is_worktree_dirty(
+    project_id: String,
+    worktree_path: String,
+    state: State<'_, AppStateWrapper>,
+) -> Result<bool, AppError> {
+    let (t, _wd) = state.resolve_project(&project_id)?;
+    // 阻塞 fs 跑在 worker 线程上
+    let worktree_path = UnitPath::resolve(&t, &worktree_path)?;
+    operations::is_worktree_dirty(&t, worktree_path.exec())
+        .await
+        .map_err(AppError::from)
+}
+```
+
+#### Correct
+
+```rust
+#[tauri::command]
+pub async fn is_worktree_dirty(
+    project_id: String,
+    worktree_path: String,
+    state: State<'_, AppStateWrapper>,
+) -> Result<bool, AppError> {
+    let (t, _wd) = state.resolve_project(&project_id)?;
+    // 阻塞 fs 落阻塞池
+    let worktree_path = UnitPath::resolve_async(&t, &worktree_path).await?;
+    operations::is_worktree_dirty(&t, worktree_path.exec())
+        .await
+        .map_err(AppError::from)
+}
+```
+
+---
+
 ## Scenario: 进程树兜底（清理脱离进程组的 Agent 残留）
 
 ### 1. Scope / Trigger

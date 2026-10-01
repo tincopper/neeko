@@ -12,7 +12,9 @@ pub async fn stage_files(
     worktree_path: Option<String>,
     state: State<'_, AppStateWrapper>,
 ) -> Result<(), AppError> {
-    let (t, repo) = state.resolve_repo(&project_id, worktree_path.as_deref())?;
+    let (t, repo) = state
+        .resolve_repo(&project_id, worktree_path.as_deref())
+        .await?;
     let repo_path = repo.work_dir();
     validate_repo_relative_paths(&t, repo_path, &file_paths)?;
     operations::stage_files(&t, repo_path, &file_paths)
@@ -30,7 +32,9 @@ pub async fn unstage_files(
     worktree_path: Option<String>,
     state: State<'_, AppStateWrapper>,
 ) -> Result<(), AppError> {
-    let (t, repo) = state.resolve_repo(&project_id, worktree_path.as_deref())?;
+    let (t, repo) = state
+        .resolve_repo(&project_id, worktree_path.as_deref())
+        .await?;
     let repo_path = repo.work_dir();
     validate_repo_relative_paths(&t, repo_path, &file_paths)?;
     operations::unstage_files(&t, repo_path, &file_paths)
@@ -47,7 +51,9 @@ pub async fn stage_all(
     worktree_path: Option<String>,
     state: State<'_, AppStateWrapper>,
 ) -> Result<(), AppError> {
-    let (t, repo) = state.resolve_repo(&project_id, worktree_path.as_deref())?;
+    let (t, repo) = state
+        .resolve_repo(&project_id, worktree_path.as_deref())
+        .await?;
     let repo_path = repo.work_dir();
     operations::stage_all(&t, repo_path)
         .await
@@ -63,7 +69,9 @@ pub async fn unstage_all(
     worktree_path: Option<String>,
     state: State<'_, AppStateWrapper>,
 ) -> Result<(), AppError> {
-    let (t, repo) = state.resolve_repo(&project_id, worktree_path.as_deref())?;
+    let (t, repo) = state
+        .resolve_repo(&project_id, worktree_path.as_deref())
+        .await?;
     let repo_path = repo.work_dir();
     operations::unstage_all(&t, repo_path)
         .await
@@ -83,7 +91,9 @@ pub async fn discard_files(
     worktree_path: Option<String>,
     state: State<'_, AppStateWrapper>,
 ) -> Result<(), AppError> {
-    let (t, repo) = state.resolve_repo(&project_id, worktree_path.as_deref())?;
+    let (t, repo) = state
+        .resolve_repo(&project_id, worktree_path.as_deref())
+        .await?;
     let repo_path = repo.work_dir();
     validate_repo_relative_paths(&t, repo_path, &file_paths)?;
     operations::discard_paths(&t, repo_path, &file_paths)

@@ -41,7 +41,7 @@ pub async fn wait_status_fresh(state: &AppStateWrapper, repo: &RepoRef) {
 /// 主仓是唯一正确的做法；等命令哪天补上 `worktree_path` 参数，就必须换成 [`wait_status_fresh`]
 /// —— 编译器不会提醒，所以把这条写在名字里。
 pub async fn wait_main_status_fresh(state: &AppStateWrapper, project_id: &str) {
-    match state.resolve_repo(project_id, None) {
+    match state.resolve_repo(project_id, None).await {
         Ok((_target, main)) => wait_status_fresh(state, &main).await,
         // 解析失败不影响命令成败：数据最终由 `git-status-snapshot` 推送收敛。
         Err(e) => log::warn!("[GitStatus] cannot resolve main unit for {project_id}: {e}"),

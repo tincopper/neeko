@@ -21,7 +21,9 @@ pub async fn generate_commit_message(
 
     let (agent_cmd, prompt_args, post_prompt_args) = resolve_agent_for_remote(&state, &agent_id);
     let prompt = ai_svc::build_simple_commit_prompt(&file_paths);
-    let (t, repo) = state.resolve_repo(&project_id, worktree_path.as_deref())?;
+    let (t, repo) = state
+        .resolve_repo(&project_id, worktree_path.as_deref())
+        .await?;
     let repo_path = repo.work_dir().to_string();
 
     let output = match &t {
