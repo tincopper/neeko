@@ -25,6 +25,8 @@ export function usePromptInsert(
             .getState()
             .openVariableDialog(prompt.content)
             .then((rendered) => {
+              // null = 取消 / 关闭 / 无宿主：没有拿到可用文本，不插入也不计次数。
+              if (rendered === null) return;
               void recordUsage(prompt.id);
               onInsertPrompt?.({ ...prompt, content: rendered }, target);
             });

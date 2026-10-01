@@ -26,11 +26,28 @@ interface CloseConfirmStoreState {
 // Promise resolver 存 store 外（模块级）：未决 Promise 不可序列化，不进 zustand 状态。
 let resolver: ((action: CloseAction) => void) | null = null;
 
+/**
+ * 宿主（`AppModals` 里的 `CloseConfirmDialog`）是否已挂载，由宿主自己置位。
+ *
+ * 为什么需要：`request` 的 Promise 只有对话框才会结算。`AppModals` 在 `SplashScreen`
+ * 期间尚未挂载（`App.tsx:32-34`），此时若无守卫，`await closeTabWithConfirmation(...)`
+ * 的调用方会**永久挂起** —— 关闭 tab 的操作静默失效。故无宿主时按 cancel 立即结算
+ * （fail-closed：绝不替用户丢弃未保存改动）。与 `confirmStore.hostMounted` 同一条不变式。
+ */
+let hostMounted = false;
+
+/** 宿主挂载 / 卸载时同步就绪标记。 */
+export function setCloseConfirmHostMounted(mounted: boolean): void {
+  hostMounted = mounted;
+}
+
 export const useCloseConfirmStore = create<CloseConfirmStoreState>((set) => ({
   pending: null,
   request: (fileName) => {
     // 并发请求：旧请求按 cancel 结算 —— 用户已转向关闭另一个 tab，旧 tab 保持打开。
     resolver?.('cancel');
+    resolver = null;
+    if (!hostMounted) return Promise.resolve('cancel');
     // 浮层上报：对话框打开期间隐藏内容区 Browser webview（z-order 专项，id 幂等）。
     useOverlayStore.getState().setOverlayOpen(CLOSE_CONFIRM_OVERLAY_ID, true);
     set({ pending: { fileName } });

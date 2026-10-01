@@ -1,16 +1,32 @@
 // @vitest-environment node
 // closeConfirmStore 行为断言（自 useCloseConfirmation.test.ts 迁移）：
-// open/close、三选回传、并发排队（旧请求 resolve 'cancel'）、overlay 计数。
+// open/close、三选回传、并发排队（旧请求 resolve 'cancel'）、overlay 计数、无宿主 fail-closed。
 import { beforeEach, describe, expect, it } from 'vitest';
 
 import { useOverlayStore } from '@/shared/store/overlayStore';
 
-import { useCloseConfirmStore } from '../closeConfirmStore';
+import { setCloseConfirmHostMounted, useCloseConfirmStore } from '../closeConfirmStore';
 
 describe('closeConfirmStore', () => {
   beforeEach(() => {
     useOverlayStore.getState().reset();
     useCloseConfirmStore.setState({ pending: null });
+    // 对话框由 AppModals 常驻渲染，默认视为已就绪（未就绪路径单独测）。
+    setCloseConfirmHostMounted(true);
+  });
+
+  /**
+   * 与 `confirmStore` 同一条不变式：Promise 只有对话框才会结算。`AppModals` 在
+   * `SplashScreen` 期间尚未挂载（`App.tsx:32-34`），此时若无宿主守卫，
+   * `await closeTabWithConfirmation(...)` 的调用方会永久挂起。
+   */
+  it('无宿主时 request 立即以 cancel 结算（绝不悬挂）', async () => {
+    setCloseConfirmHostMounted(false);
+
+    await expect(useCloseConfirmStore.getState().request('a.ts')).resolves.toBe('cancel');
+
+    expect(useCloseConfirmStore.getState().pending).toBeNull();
+    expect(useOverlayStore.getState().count).toBe(0);
   });
 
   it('request 打开对话框并记录文件名，用户操作前 Promise 未决', async () => {

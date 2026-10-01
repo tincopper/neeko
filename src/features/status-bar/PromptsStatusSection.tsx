@@ -10,6 +10,7 @@ import { useEditorStore } from '@/shared/store/editorStore';
 import { useProjectStore } from '@/shared/store/projectStore';
 import { selectActiveWorktreePath, useWorktreeStore } from '@/shared/store/worktreeStore';
 import type { PromptResource } from '@/shared/types/library';
+import { filterPromptsByQuery } from '@/shared/utils/promptQuery';
 import { resolveTabKey } from '@/shared/utils/tabKey';
 
 /** 描述规则：description 优先，为空回退 content 首 120 字（换行转空格）。 */
@@ -24,21 +25,6 @@ function sortPrompts(prompts: PromptResource[]): PromptResource[] {
     if (a.favorite !== b.favorite) return a.favorite ? -1 : 1;
     return (b.lastUsedAt ?? 0) - (a.lastUsedAt ?? 0);
   });
-}
-
-/** 过滤复用 PromptInsertDialog 逻辑（name/slash/description/tags），取前 20。 */
-function filterPrompts(prompts: PromptResource[], query: string): PromptResource[] {
-  const q = query.trim().toLowerCase();
-  if (!q) return prompts.slice(0, 20);
-  return prompts
-    .filter(
-      (p) =>
-        p.name.toLowerCase().includes(q) ||
-        p.slash?.toLowerCase().includes(q) ||
-        p.description?.toLowerCase().includes(q) ||
-        p.tags.some((t) => t.toLowerCase().includes(q)),
-    )
-    .slice(0, 20);
 }
 /**
  * 插入成功后把终端推到前台。
@@ -93,7 +79,10 @@ export function PromptsStatusSection() {
   );
   const insert = usePromptInsert(handleInsertPrompt);
 
-  const filtered = useMemo(() => filterPrompts(sortPrompts(prompts), query), [prompts, query]);
+  const filtered = useMemo(
+    () => filterPromptsByQuery(sortPrompts(prompts), query),
+    [prompts, query],
+  );
 
   // 打开时 prompts 为空则拉取一次；聚焦搜索框。（高亮重置在打开/输入事件里做，避免 effect 内 setState。）
   useEffect(() => {

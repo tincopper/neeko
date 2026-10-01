@@ -1,7 +1,10 @@
 // @vitest-environment node
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { useCloseConfirmStore } from '@/features/editor/store/closeConfirmStore';
+import {
+  setCloseConfirmHostMounted,
+  useCloseConfirmStore,
+} from '@/features/editor/store/closeConfirmStore';
 import { closeEditorTab } from '@/features/terminal';
 import { useEditorStore } from '@/shared/store/editorStore';
 import { useOverlayStore } from '@/shared/store/overlayStore';
@@ -57,6 +60,9 @@ describe('closeActiveTabCommand — Cmd+W 关闭当前激活 tab（根治竞态/
     // 单一表示：worktreeStore 只有 byProject（旧的全局镜像字段已删除）
     useWorktreeStore.setState({ byProject: {} });
     useCloseConfirmStore.setState({ pending: null });
+    // 本套用例自己扮演对话框（直接 resolve 请求）：声明宿主就绪，否则 request 走
+    // 「无宿主 → cancel」的 fail-closed 分支，关闭流程根本不会继续。
+    setCloseConfirmHostMounted(true);
     useOverlayStore.getState().reset();
   });
 

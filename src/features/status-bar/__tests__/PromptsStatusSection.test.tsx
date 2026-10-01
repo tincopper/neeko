@@ -1,6 +1,7 @@
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { PromptDialogHost } from '@/features/library';
 import { resetLibraryState, useLibraryStore } from '@/features/library/store/libraryStore';
 import type { TerminalInsertApi } from '@/shared/contexts';
 import { useEditorStore } from '@/shared/store/editorStore';
@@ -25,6 +26,8 @@ vi.mock('@/shared/contexts', async (importOriginal) => {
 
 vi.mock('@/features/library/api/libraryApi', () => ({
   listPrompts: vi.fn().mockResolvedValue([]),
+  savePrompt: vi.fn().mockResolvedValue(undefined),
+  updatePrompt: vi.fn().mockResolvedValue(undefined),
   deletePrompt: vi.fn().mockResolvedValue(undefined),
   recordPromptUsage: vi.fn().mockResolvedValue(undefined),
 }));
@@ -235,16 +238,57 @@ describe('PromptsStatusSection', () => {
     expect(hoisted.toast).toHaveBeenCalledWith(expect.stringContaining('无活动终端'), 'info');
   });
 
-  it('含 {{var}} 的行点击先弹变量框，确认前不插入', () => {
+  /**
+   * 缺陷回归守卫：弹窗开关是全局 store 状态，触发点在状态栏，而 Library 视图是**懒挂载**的
+   * （`AppCenter.tsx:38-44,61-73`，本次会话没进过 Library 就没有渲染点）。此前只断言
+   * `variableDialogOpen === true` ⇒ 弹窗没出现、Promise 永久悬挂、插入静默丢失，测试照样绿。
+   * 这里渲染 chip + 全局宿主，走真实表单流程（全程不挂 LibraryPanel）。
+   */
+  it('含 {{var}} 的行点击：宿主弹出变量表单，确认后把渲染文本写入终端', async () => {
     const insertToTerminal = vi.fn(() => true);
     hoisted.api.current = { insertToTerminal };
     useLibraryStore.setState({ prompts: [WITH_VAR] });
-    render(<PromptsStatusSection />);
+    render(
+      <>
+        <PromptsStatusSection />
+        <PromptDialogHost />
+      </>,
+    );
     fireEvent.click(screen.getByTestId('prompts-status-chip'));
     fireEvent.click(screen.getByTestId('prompts-status-row-p3'));
-    expect(useLibraryStore.getState().variableDialogOpen).toBe(true);
+
+    expect(await screen.findByText('Fill Variables')).toBeInTheDocument();
     expect(insertToTerminal).not.toHaveBeenCalled();
+
+    fireEvent.change(screen.getByLabelText('name'), { target: { value: 'tom' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Insert' }));
+
+    // 结算在 `.then` 微任务里：必须等它跑完，否则断言早于投递。
+    await waitFor(() => expect(insertToTerminal).toHaveBeenCalledWith('hi tom'));
+    expect(useLibraryStore.getState().variableRequest).toBeNull();
     expect(hoisted.toast).not.toHaveBeenCalled();
+  });
+
+  it('变量表单取消：不插入、不计使用次数、不留过期请求', async () => {
+    const insertToTerminal = vi.fn(() => true);
+    const recordUsage = vi.fn(async (): Promise<void> => {});
+    hoisted.api.current = { insertToTerminal };
+    useLibraryStore.setState({ prompts: [WITH_VAR], recordUsage });
+    render(
+      <>
+        <PromptsStatusSection />
+        <PromptDialogHost />
+      </>,
+    );
+    fireEvent.click(screen.getByTestId('prompts-status-chip'));
+    fireEvent.click(screen.getByTestId('prompts-status-row-p3'));
+
+    expect(await screen.findByText('Fill Variables')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+
+    expect(insertToTerminal).not.toHaveBeenCalled();
+    expect(recordUsage).not.toHaveBeenCalled();
+    expect(useLibraryStore.getState().variableRequest).toBeNull();
   });
   it('Enter 确认当前高亮首项：插入并关闭下拉、无 toast', () => {
     const insertToTerminal = vi.fn(() => true);

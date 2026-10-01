@@ -4,6 +4,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useLibraryStore } from '@/features/library/store/libraryStore';
 import { cn } from '@/lib/utils';
 import type { PromptInsertTarget, PromptResource } from '@/shared/types/library';
+import { filterPromptsByQuery } from '@/shared/utils/promptQuery';
 import { Dialog, DialogContent, DialogTitle } from '@/ui/Dialog';
 
 interface PromptInsertDialogProps {
@@ -32,30 +33,24 @@ const PromptInsertDialog: React.FC<PromptInsertDialogProps> = React.memo(({ onIn
     }
   }, [open, prompts.length, refreshPrompts]);
 
-  const filtered = useMemo(() => {
-    const list = prompts;
-    if (!query.trim()) return list.slice(0, 20);
-    const q = query.toLowerCase();
-    return list
-      .filter(
-        (p) =>
-          p.name.toLowerCase().includes(q) ||
-          p.slash?.toLowerCase().includes(q) ||
-          p.description?.toLowerCase().includes(q) ||
-          p.tags.some((t) => t.toLowerCase().includes(q)),
-      )
-      .slice(0, 20);
-  }, [prompts, query]);
+  const filtered = useMemo(() => filterPromptsByQuery(prompts, query), [prompts, query]);
+
+  const deliver = useCallback(
+    (prompt: PromptResource, target: PromptInsertTarget) => {
+      // 先关选择器再投递：投递可能立刻弹出变量框（含 `{{var}}` 的 prompt），两个 modal
+      // 同帧共存会互抢焦点陷阱。
+      closeInsert();
+      onInsert(prompt, target);
+    },
+    [onInsert, closeInsert],
+  );
 
   const handleConfirm = useCallback(
     (target: PromptInsertTarget = 'agent') => {
       const prompt = filtered[selectedIdx];
-      if (prompt) {
-        onInsert(prompt, target);
-        closeInsert();
-      }
+      if (prompt) deliver(prompt, target);
     },
-    [filtered, selectedIdx, onInsert, closeInsert],
+    [filtered, selectedIdx, deliver],
   );
 
   const handleKeyDown = useCallback(
@@ -114,6 +109,7 @@ const PromptInsertDialog: React.FC<PromptInsertDialogProps> = React.memo(({ onIn
             {query && (
               <button
                 type="button"
+                aria-label="Clear search"
                 className="absolute right-2 top-1/2 -translate-y-1/2 p-0.5 rounded text-text-muted hover:text-text-primary"
                 onClick={() => setQuery('')}
               >
@@ -141,14 +137,12 @@ const PromptInsertDialog: React.FC<PromptInsertDialogProps> = React.memo(({ onIn
                 onMouseEnter={() => setSelectedIdx(idx)}
                 onClick={() => {
                   setSelectedIdx(idx);
-                  onInsert(prompt, 'agent');
-                  closeInsert();
+                  deliver(prompt, 'agent');
                 }}
                 onContextMenu={(e) => {
                   e.preventDefault();
                   setSelectedIdx(idx);
-                  onInsert(prompt, 'terminal');
-                  closeInsert();
+                  deliver(prompt, 'terminal');
                 }}
                 title="Left-click: insert to agent · Right-click / Shift+Enter: insert to terminal"
               >

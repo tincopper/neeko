@@ -1,8 +1,12 @@
-import React, { useCallback } from 'react';
+import React, { useCallback, useEffect } from 'react';
 
 import { RemoteAuthDialog, RemoteDialog, WSLDialog } from '@/features/connection';
 import { CloseConfirmDialog } from '@/features/editor';
-import { useCloseConfirmStore } from '@/features/editor/store/closeConfirmStore';
+import {
+  setCloseConfirmHostMounted,
+  useCloseConfirmStore,
+} from '@/features/editor/store/closeConfirmStore';
+import { PromptDialogHost } from '@/features/library';
 import { CloneProjectDialog } from '@/features/project';
 import ConfirmDialog from '@/shared/components/ConfirmDialog';
 import ConfirmHost from '@/shared/components/ConfirmHost';
@@ -77,6 +81,17 @@ function AppModals({
     () => resolveCloseConfirm('cancel'),
     [resolveCloseConfirm],
   );
+
+  // 本组件是 close-confirm 的唯一渲染点：挂载即声明就绪，卸载时把在途请求按 cancel 结算 ——
+  // 否则 `closeTabWithConfirmation` 的 await 永久挂起（见 closeConfirmStore 的 hostMounted）。
+  useEffect(() => {
+    setCloseConfirmHostMounted(true);
+    return () => {
+      setCloseConfirmHostMounted(false);
+      useCloseConfirmStore.getState().resolve('cancel');
+    };
+  }, []);
+
   const unsavedCount = unsavedFileNames.length;
   const unsavedPreview = unsavedFileNames.slice(0, 3).join(', ');
   return (
@@ -149,6 +164,9 @@ function AppModals({
       {/* 通用确认宿主（store 驱动）：非 React 模块（runner / store action）经
           `confirmAction` 询问用户时的唯一渲染点。 */}
       <ConfirmHost />
+      {/* Prompt 弹窗宿主（store 驱动）：触发点在状态栏/命令面板，与中心视图无关，
+          故渲染点必须常驻本组合层（见 `PromptDialogHost` 模块注释）。 */}
+      <PromptDialogHost />
     </>
   );
 }

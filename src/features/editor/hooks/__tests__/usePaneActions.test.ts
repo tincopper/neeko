@@ -8,7 +8,10 @@ vi.mock('@/features/terminal', () => ({
 }));
 
 import type { ActionRegistryItem } from '@/features/action-menu/types/actionMenu';
-import { useCloseConfirmStore } from '@/features/editor/store/closeConfirmStore';
+import {
+  setCloseConfirmHostMounted,
+  useCloseConfirmStore,
+} from '@/features/editor/store/closeConfirmStore';
 import { closeEditorTab } from '@/features/terminal';
 import { useEditorStore } from '@/shared/store/editorStore';
 import { useOverlayStore } from '@/shared/store/overlayStore';
@@ -48,6 +51,9 @@ describe('usePaneActions', () => {
   beforeEach(() => {
     useEditorStore.setState({ tabs: {}, editorLayout: {}, activeTabId: null });
     useCloseConfirmStore.setState({ pending: null });
+    // 本套用例自己扮演对话框（直接 resolve 请求）：声明宿主就绪，否则 request 走
+    // 「无宿主 → cancel」的 fail-closed 分支，关闭流程根本不会继续。
+    setCloseConfirmHostMounted(true);
     useOverlayStore.getState().reset();
     vi.clearAllMocks();
   });

@@ -4,7 +4,11 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { PromptResource } from '@/shared/types/library';
 
-import { resetLibraryState, useLibraryStore } from '../../store/libraryStore';
+import {
+  resetLibraryState,
+  setPromptDialogHostMounted,
+  useLibraryStore,
+} from '../../store/libraryStore';
 import { usePromptInsert } from '../usePromptInsert';
 
 const prompt: PromptResource = {
@@ -21,6 +25,8 @@ const prompt: PromptResource = {
 };
 beforeEach(() => {
   resetLibraryState();
+  // 变量请求只有在宿主挂载时才会挂起等待结算；默认模拟宿主已就绪（AppModals 常驻挂载）。
+  setPromptDialogHostMounted(true);
 });
 
 /**
@@ -44,7 +50,7 @@ describe('usePromptInsert', () => {
 
     expect(recordUsage).toHaveBeenCalledWith('p1');
     expect(onInsert).toHaveBeenCalledWith(prompt, 'agent');
-    expect(useLibraryStore.getState().variableDialogOpen).toBe(false);
+    expect(useLibraryStore.getState().variableRequest).toBeNull();
   });
 
   it('opens the variable dialog for agent inserts with placeholders', () => {
@@ -56,7 +62,7 @@ describe('usePromptInsert', () => {
       result.current({ ...prompt, content: 'hi {{name}}' }, 'agent');
     });
 
-    expect(useLibraryStore.getState().variableDialogOpen).toBe(true);
+    expect(useLibraryStore.getState().variableRequest).toBe('hi {{name}}');
     expect(onInsert).not.toHaveBeenCalled();
     expect(recordUsage).not.toHaveBeenCalled();
   });
@@ -72,14 +78,14 @@ describe('usePromptInsert', () => {
     expect(recordUsage).not.toHaveBeenCalled();
 
     await act(async () => {
-      useLibraryStore.getState().variableDialogResolve?.('hi tom');
+      useLibraryStore.getState().settleVariableDialog('hi tom');
     });
 
     expect(recordUsage).toHaveBeenCalledWith('p1');
     expect(onInsert).toHaveBeenCalledWith({ ...prompt, content: 'hi tom' }, 'agent');
   });
 
-  it('does not count usage when the variable dialog is cancelled', () => {
+  it('does not count usage when the variable dialog is cancelled', async () => {
     const recordUsage = stubRecordUsage();
     const onInsert = vi.fn();
     const { result } = renderHook(() => usePromptInsert(onInsert));
@@ -87,14 +93,33 @@ describe('usePromptInsert', () => {
     act(() => {
       result.current({ ...prompt, content: 'hi {{name}}' }, 'terminal');
     });
-    expect(useLibraryStore.getState().variableDialogOpen).toBe(true);
+    expect(useLibraryStore.getState().variableRequest).toBe('hi {{name}}');
 
-    act(() => {
-      useLibraryStore.getState().closeVariableDialog();
+    await act(async () => {
+      useLibraryStore.getState().settleVariableDialog(null);
     });
 
     expect(recordUsage).not.toHaveBeenCalled();
     expect(onInsert).not.toHaveBeenCalled();
+  });
+
+  /**
+   * 无宿主 = 请求立即按「未获得内容」结算（fail-closed）。此前这里是一条永久悬挂的
+   * Promise：弹窗没渲染 ⇒ `.then` 永不执行 ⇒ 用户点了没反应、也没有任何报错。
+   */
+  it('inserts nothing when no dialog host is mounted', async () => {
+    const recordUsage = stubRecordUsage();
+    const onInsert = vi.fn();
+    setPromptDialogHostMounted(false);
+    const { result } = renderHook(() => usePromptInsert(onInsert));
+
+    await act(async () => {
+      result.current({ ...prompt, content: 'hi {{name}}' }, 'terminal');
+    });
+
+    expect(onInsert).not.toHaveBeenCalled();
+    expect(recordUsage).not.toHaveBeenCalled();
+    expect(useLibraryStore.getState().variableRequest).toBeNull();
   });
 
   it('opens the variable dialog for terminal inserts with placeholders', () => {
@@ -106,7 +131,7 @@ describe('usePromptInsert', () => {
       result.current({ ...prompt, content: 'hi {{name}}' }, 'terminal');
     });
 
-    expect(useLibraryStore.getState().variableDialogOpen).toBe(true);
+    expect(useLibraryStore.getState().variableRequest).toBe('hi {{name}}');
     expect(onInsert).not.toHaveBeenCalled();
     expect(recordUsage).not.toHaveBeenCalled();
   });
@@ -117,7 +142,7 @@ describe('usePromptInsert', () => {
 
     result.current(prompt, 'terminal');
 
-    expect(useLibraryStore.getState().variableDialogOpen).toBe(false);
+    expect(useLibraryStore.getState().variableRequest).toBeNull();
     expect(onInsert).toHaveBeenCalledWith(prompt, 'terminal');
   });
 });

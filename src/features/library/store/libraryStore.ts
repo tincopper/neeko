@@ -1,9 +1,15 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 
+import { useOverlayStore } from '@/shared/store/overlayStore';
 import type { ResourceKind, ViewMode, ScopeFilter, PromptResource } from '@/shared/types/library';
 
 import { listPrompts, deletePrompt as deletePromptApi, recordPromptUsage } from '../api/libraryApi';
+
+/** 三个 prompt 弹窗的浮层 id（z-order 专项：弹窗打开期间隐藏内容区 Browser webview）。 */
+const PROMPT_EDITOR_OVERLAY_ID = 'prompt-editor';
+const PROMPT_INSERT_OVERLAY_ID = 'prompt-insert';
+const PROMPT_VARIABLES_OVERLAY_ID = 'prompt-variables';
 
 /** Sort mode for resource lists. */
 export type SortMode = 'recent' | 'frequent' | 'alphabetical';
@@ -52,16 +58,11 @@ interface LibraryState {
   /** Which resource type the editor is for (disambiguates the shared open flag). */
   editorKind: EditorKind | null;
   editingPrompt: PromptResource | null;
-  /** Pre-filled content when opening the editor for a new prompt (e.g. "Save as Prompt"). */
-  initialContent: string | null;
 
   /** Insert dialog state. */
   insertOpen: boolean;
-  /** Variable dialog state — content pending variable fill. */
-  variableDialogOpen: boolean;
-  variableDialogContent: string | null;
-  /** Callback invoked with the rendered content after variable fill. */
-  variableDialogResolve: ((rendered: string) => void) | null;
+  /** 待填变量的原始内容；null = 变量弹窗关闭。渲染点见 `PromptDialogHost`。 */
+  variableRequest: string | null;
 }
 
 // ─── Actions ────────────────────────────────────────────────────────────────
@@ -88,14 +89,18 @@ interface LibraryActions {
   resolveVariables: (content: string, values: Record<string, string>) => string;
 
   openEditor: (prompt?: PromptResource | null) => void;
-  /** Open the editor for a new prompt with pre-filled content (e.g. "Save as Prompt"). */
-  openEditorWithContent: (content: string) => void;
   closeEditor: () => void;
   openInsert: () => void;
   closeInsert: () => void;
-  /** Open the variable dialog for content with `{{var}}` placeholders. */
-  openVariableDialog: (content: string) => Promise<string>;
-  closeVariableDialog: () => void;
+  /**
+   * 请求用户为 `{{var}}` 占位符填值。
+   *
+   * @returns 渲染后的内容；**取消 / 关闭 / 宿主未挂载时为 `null`** —— 调用方据此既不插入也不计
+   *   使用次数。契约与 `confirmStore.request` 同构：Promise 必然结算，绝不悬挂。
+   */
+  openVariableDialog: (content: string) => Promise<string | null>;
+  /** 唯一的变量弹窗关闭 + 结算入口（`rendered === null` 表示未获得内容）。 */
+  settleVariableDialog: (rendered: string | null) => void;
 }
 
 // ─── Initial state ──────────────────────────────────────────────────────────
@@ -115,12 +120,20 @@ const initialState: LibraryState = {
   editorOpen: false,
   editorKind: null,
   editingPrompt: null,
-  initialContent: null,
   insertOpen: false,
-  variableDialogOpen: false,
-  variableDialogContent: null,
-  variableDialogResolve: null,
+  variableRequest: null,
 };
+
+// Promise resolver 与宿主就绪标记存 store 外（模块级）：未决 Promise 不可序列化，不进 zustand 状态。
+// 宿主标记的必要性同 `confirmStore.hostMounted`：`openVariableDialog` 的 Promise 只有渲染弹窗的宿主
+// 才会结算，无宿主时必须按「未获得内容」立即结算，否则 await 方永久挂起（⇒ 插入静默丢失）。
+let variableResolver: ((rendered: string | null) => void) | null = null;
+let hostMounted = false;
+
+/** `PromptDialogHost` 挂载 / 卸载时同步就绪标记。 */
+export function setPromptDialogHostMounted(mounted: boolean): void {
+  hostMounted = mounted;
+}
 
 // ─── Store ──────────────────────────────────────────────────────────────────
 
@@ -186,45 +199,47 @@ export const useLibraryStore = create<LibraryState & LibraryActions>()(
           name in values ? values[name] : `{{${name}}}`,
         ),
 
-      openEditor: (prompt) =>
+      openEditor: (prompt) => {
+        useOverlayStore.getState().setOverlayOpen(PROMPT_EDITOR_OVERLAY_ID, true);
         set({
           editorOpen: true,
           editorKind: 'prompt',
           editingPrompt: prompt ?? null,
-          initialContent: null,
-        }),
-      openEditorWithContent: (content) =>
-        set({
-          editorOpen: true,
-          editorKind: 'prompt',
-          editingPrompt: null,
-          initialContent: content,
-        }),
-      closeEditor: () =>
+        });
+      },
+      closeEditor: () => {
+        useOverlayStore.getState().setOverlayOpen(PROMPT_EDITOR_OVERLAY_ID, false);
         set({
           editorOpen: false,
           editorKind: null,
           editingPrompt: null,
-          initialContent: null,
-        }),
-      openInsert: () => set({ insertOpen: true }),
-      closeInsert: () => set({ insertOpen: false }),
-      openVariableDialog: (content) =>
-        new Promise<string>((resolve) => {
-          set({
-            variableDialogOpen: true,
-            variableDialogContent: content,
-            variableDialogResolve: (rendered: string) => {
-              resolve(rendered);
-            },
-          });
-        }),
-      closeVariableDialog: () =>
-        set({
-          variableDialogOpen: false,
-          variableDialogContent: null,
-          variableDialogResolve: null,
-        }),
+        });
+      },
+      openInsert: () => {
+        useOverlayStore.getState().setOverlayOpen(PROMPT_INSERT_OVERLAY_ID, true);
+        set({ insertOpen: true });
+      },
+      closeInsert: () => {
+        useOverlayStore.getState().setOverlayOpen(PROMPT_INSERT_OVERLAY_ID, false);
+        set({ insertOpen: false });
+      },
+      openVariableDialog: (content) => {
+        // 并发请求：旧请求按「未获得内容」结算 —— 用户已转向新的填写，旧的不再插入。
+        variableResolver?.(null);
+        variableResolver = null;
+        if (!hostMounted) return Promise.resolve(null);
+        useOverlayStore.getState().setOverlayOpen(PROMPT_VARIABLES_OVERLAY_ID, true);
+        set({ variableRequest: content });
+        return new Promise<string | null>((resolve) => {
+          variableResolver = resolve;
+        });
+      },
+      settleVariableDialog: (rendered) => {
+        useOverlayStore.getState().setOverlayOpen(PROMPT_VARIABLES_OVERLAY_ID, false);
+        set({ variableRequest: null });
+        variableResolver?.(rendered);
+        variableResolver = null;
+      },
     }),
     {
       name: 'neeko-library',

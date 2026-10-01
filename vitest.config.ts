@@ -117,6 +117,40 @@ export default defineConfig({
           functions: 100,
           branches: 95,
         },
+        // prompt 匹配的唯一产出点（纯函数，2026-10-01 从状态栏下拉与 Insert 选择器两处重复里抽出）：
+        // 仓库红线要求纯函数 100%，实测即 100/100/100/100。
+        '**/shared/utils/promptQuery.ts': {
+          lines: 100,
+          statements: 100,
+          functions: 100,
+          branches: 100,
+        },
+        // prompt 弹窗宿主（AppModals 常驻的唯一渲染点）与投递语义（terminal→agent→clipboard）：
+        // 二者都是「缺一条分支就静默丢功能」的连接层，实测 100，故直接钉满。
+        '**/library/components/PromptDialogHost.tsx': {
+          lines: 100,
+          statements: 100,
+          functions: 100,
+          branches: 100,
+        },
+        '**/library/hooks/useInsertPromptToWorkspace.ts': {
+          lines: 100,
+          statements: 100,
+          functions: 100,
+          branches: 100,
+        },
+        // prompt 两个表单弹窗（2026-10-01 起由 PromptDialogHost 全局渲染，影响面从「Library 视图内」
+        // 扩大到「任何触发点之上」，故补齐字段校验 / 保存 payload / 失败不吞输入 / 键盘导航）：
+        // 组件只门控行与语句（同 FileEditor.tsx 的理由 —— 剩余分支是内联回调与 <details> 展开态，
+        // 行为归属各自用例），实测 EditorDialog 90.5/91.6、InsertDialog 100/100，各留 2-5pt 余量。
+        '**/library/components/PromptEditorDialog.tsx': {
+          lines: 88,
+          statements: 89,
+        },
+        '**/library/components/PromptInsertDialog.tsx': {
+          lines: 95,
+          statements: 95,
+        },
         '**/editor/hooks/useDebugStopReveal.ts': {
           lines: 100,
           statements: 90,

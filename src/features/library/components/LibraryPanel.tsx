@@ -7,14 +7,9 @@ import type { PromptInsertTarget, PromptResource } from '@/shared/types/library'
 import { ISLAND_CLASS } from '@/ui/Island';
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '@/ui/Resizable';
 
-import { usePromptInsert } from '../hooks/usePromptInsert';
-
 import LibraryActivityBar from './LibraryActivityBar';
 import LibraryDetail from './LibraryDetail';
 import LibraryNavTree from './LibraryNavTree';
-import PromptEditorDialog from './PromptEditorDialog';
-import PromptInsertDialog from './PromptInsertDialog';
-import VariableDialog from './VariableDialog';
 
 /** Nav column constraints: content-driven px floor, proportional ceiling. */
 const NAV_MIN_PX = 200;
@@ -28,10 +23,6 @@ interface LibraryPanelProps {
 
 const LibraryPanel: React.FC<LibraryPanelProps> = React.memo(({ onInsertPrompt }) => {
   const refreshPrompts = useLibraryStore((s) => s.refreshPrompts);
-  const variableDialogOpen = useLibraryStore((s) => s.variableDialogOpen);
-  const variableDialogContent = useLibraryStore((s) => s.variableDialogContent);
-  const variableDialogResolve = useLibraryStore((s) => s.variableDialogResolve);
-  const closeVariableDialog = useLibraryStore((s) => s.closeVariableDialog);
   const navSize = useLibraryStore((s) => s.navSize);
   const setNavSize = useLibraryStore((s) => s.setNavSize);
   const navPanelRef = usePanelRef();
@@ -51,16 +42,6 @@ const LibraryPanel: React.FC<LibraryPanelProps> = React.memo(({ onInsertPrompt }
       }
     },
     [navPanelRef, setNavSize],
-  );
-
-  const handleInsert = usePromptInsert(onInsertPrompt);
-
-  const handleVariableConfirm = useCallback(
-    (rendered: string) => {
-      variableDialogResolve?.(rendered);
-      closeVariableDialog();
-    },
-    [variableDialogResolve, closeVariableDialog],
   );
 
   return (
@@ -91,15 +72,6 @@ const LibraryPanel: React.FC<LibraryPanelProps> = React.memo(({ onInsertPrompt }
           <LibraryDetail onInsertPrompt={onInsertPrompt} />
         </ResizablePanel>
       </ResizablePanelGroup>
-      <PromptEditorDialog />
-      <PromptInsertDialog onInsert={handleInsert} />
-      {variableDialogOpen && variableDialogContent && (
-        <VariableDialog
-          content={variableDialogContent}
-          onConfirm={handleVariableConfirm}
-          onCancel={closeVariableDialog}
-        />
-      )}
     </div>
   );
 });

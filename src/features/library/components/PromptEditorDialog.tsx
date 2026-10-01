@@ -61,7 +61,6 @@ function trimOr(s: string): string {
 const PromptEditorDialog: React.FC = React.memo(() => {
   const open = useLibraryStore((s) => s.editorOpen && s.editorKind === 'prompt');
   const editing = useLibraryStore((s) => s.editingPrompt);
-  const initialContent = useLibraryStore((s) => s.initialContent);
   const closeEditor = useLibraryStore((s) => s.closeEditor);
   const refreshPrompts = useLibraryStore((s) => s.refreshPrompts);
   const activeProjectId = useProjectStore((s) => s.activeProjectId);
@@ -84,14 +83,11 @@ const PromptEditorDialog: React.FC = React.memo(() => {
         kind: (editing.kind as 'prompt' | 'command') ?? 'prompt',
         variables: JSON.stringify(editing.variables ?? [], null, 2),
       });
-    } else if (initialContent) {
-      // Pre-filled from "Save as Prompt" — keep defaults for the rest.
-      setForm({ ...EMPTY_FORM, content: initialContent });
     } else {
       setForm({ ...EMPTY_FORM });
     }
     setError(null);
-  }, [open, editing, initialContent]);
+  }, [open, editing]);
 
   const update = useCallback(<K extends keyof FormState>(key: K, value: FormState[K]) => {
     setForm((prev) => ({ ...prev, [key]: value }));
