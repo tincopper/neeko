@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-5.md`
-- **Total Sessions**: 245
-- **Last Active**: 2026-10-01
+- **Total Sessions**: 246
+- **Last Active**: 2026-10-02
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-5.md` | ~1225 | Active |
+| `journal-5.md` | ~1259 | Active |
 | `journal-4.md` | ~1989 | Archived |
 | `journal-3.md` | ~1978 | Archived |
 | `journal-2.md` | ~1991 | Archived |
@@ -33,6 +33,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 246 | 2026-10-02 | 路径解析的阻塞 I/O 落阻塞池（红线 3） | `a99e05c6`, `15e11744` | `main` |
 | 245 | 2026-10-01 | 路径身份字母表：identity 与 exec 双渲染（修 CI Windows 红） | - | `main` |
 | 244 | 2026-10-01 | 覆盖率门禁落地与测试环境边界收口 | `c9aa42da`, `6ff147a6`, `e874e9ae`, `280cdaea`, `c6dd50ab`, `c1714418` | `main` |
 | 243 | 2026-09-30 | 门禁分层与脚本命名收敛：lint 只静态、test 只动态、check 聚合 | `28da4037`, `059a1e03`, `4a4b54de`, `526abb72`, `bbb9df7a`, `7e391c5c`, `0a80dc24` | `main` |

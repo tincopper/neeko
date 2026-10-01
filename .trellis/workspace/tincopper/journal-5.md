@@ -1223,3 +1223,37 @@ RepoRef::key() 的身份不再绑定宿主路径表示：UnitPath 一个值两�
 ### Next Steps
 
 - None - task complete
+
+
+## Session 246: 路径解析的阻塞 I/O 落阻塞池（红线 3）
+
+**Date**: 2026-10-02
+**Task**: 路径解析的阻塞 I/O 落阻塞池（红线 3）
+**Branch**: `main`
+
+### Summary
+
+resolve_repo / resolve_base / 6 处命令直连改走 UnitPath::resolve_async（spawn_blocking 唯一异步入口）；验证期补漏 read_dir_tree 身份解析与 worktree 清单整批归一；行为零变化（1386 条 lib 测试逐条不变，仅 +1 新用例）；spec 增 Scenario
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `a99e05c6` | (see git log) |
+| `15e11744` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
