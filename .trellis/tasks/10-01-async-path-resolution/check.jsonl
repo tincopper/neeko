@@ -1,0 +1,3 @@
+{"_example": "Fill with {\"file\": \"<path>\", \"reason\": \"<why>\"}. Put spec/research files only — no code paths. Run `python3 .trellis/scripts/get_context.py --mode packages` to list available specs. Delete this line once real entries are added."}
+{"file": ".trellis/spec/backend/concurrency-guidelines.md", "reason": "验收：异步命令里不得直接做阻塞 fs"}
+{"file": ".trellis/spec/backend/git-domain.md", "reason": "验收：身份与执行语义逐条不变（1385 条回归）"}

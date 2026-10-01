@@ -1,0 +1,4 @@
+{"_example": "Fill with {\"file\": \"<path>\", \"reason\": \"<why>\"}. Put spec/research files only — no code paths. Run `python3 .trellis/scripts/get_context.py --mode packages` to list available specs. Delete this line once real entries are added."}
+{"file": ".trellis/spec/backend/concurrency-guidelines.md", "reason": "红线 3 的判据、正例与同步桥语义：本次改动的直接依据"}
+{"file": ".trellis/spec/backend/command-guidelines.md", "reason": "命令边界的两条硬约束：入口解析改 async 后仍是同一职责"}
+{"file": ".trellis/spec/backend/git-domain.md", "reason": "§12 仓库单元身份：resolve_repo 是 git 域唯一入口，行为必须零变化"}

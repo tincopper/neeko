@@ -18,7 +18,9 @@
   "commit": null,
   "pr_url": null,
   "subtasks": [],
-  "children": [],
+  "children": [
+    "10-01-async-path-resolution"
+  ],
   "parent": "09-26-worktree-repo-identity",
   "relatedFiles": [],
   "notes": "",
