@@ -149,6 +149,11 @@ export function MyFeatureItem() {
    与 `LspStatusSection` 现状一致）。
 7. **文件行数**：item ≤300 行（P10 红线）；UI 骨架大的（如下拉面板）
    拆成 `items/XxxItem.tsx`（薄）+ 同 feature 内面板组件（如 `LspStatusSection`）。
+8. **不得依赖某个中心视图已挂载**：bar 常驻，而面板/中心视图是条件挂载的。item 需要弹表单、
+   确认框或等待用户输入时，只调 store 动作，渲染点必须在应用级宿主（判据、宿主三件套、
+   事故证据一律见 `component-guidelines.md`「store 驱动弹窗的全局宿主（强制）」，勿在此复述）。
+   ❌ 反例（2026-10-01 事故）：`PromptsStatusSection` 的 `{{var}}` 表单由 `LibraryPanel` 渲染，
+   而 Library 面板首次进入 Library 才挂载 ⇒ 状态栏点下去毫无反应。
 
 ### 命名与归属
 

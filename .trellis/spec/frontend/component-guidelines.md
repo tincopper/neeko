@@ -163,9 +163,7 @@ const LibraryPanel: React.FC = React.memo(() => {
           <LibraryDetail />        {/* 工具栏 + 搜索 + 内容路由 */}
         </ResizablePanel>
       </ResizablePanelGroup>
-      <PromptEditorDialog />
-      <PromptInsertDialog onInsert={handleInsert} />
-      ...
+      {/* 不渲染任何 store 驱动弹窗：见「store 驱动弹窗的全局宿主（强制）」 */}
     </div>
   );
 });
@@ -205,6 +203,56 @@ const LibraryDetail: React.FC = React.memo(() => {
 ### 示例
 
 `features/library/components/LibraryPanel.tsx`（2026-07-29）
+
+---
+
+## store 驱动弹窗的全局宿主（强制）
+
+> 触发事故：状态栏 Prompts 选含 `{{var}}` 的 prompt 后「Fill Variables」不出现，用户打开 Library
+> 视图时它才蹦出来（2026-10-01）。根因不是状态栏，而是**渲染点放错了层**。
+
+### 判据
+
+弹窗的开关来自 zustand store（`xxxOpen` / `pending` / `variableRequest` 等全局字段）⇒ 它是
+**应用级 UI**，渲染点必须在应用级常驻组件里：`src/app/AppModals.tsx`（或它挂载的 feature 宿主组件）。
+
+禁止把这类弹窗渲染进任何「按视图条件挂载」的容器：`AppCenter` 的 settings/library 分支、
+`DockZone` 的面板、tab 内容组件、懒挂载（`React.lazy` + 首次进入才 mount）的面板。
+
+### 为什么必须（两条独立失效）
+
+1. **静默不出现**：flag 翻起时没有渲染点，用户点了没反应、没有任何报错。
+   `AppCenter.tsx` 的 Library 面板首进才挂载 ⇒ 「本次会话没打开过 Library」是常态而非边角。
+2. **Promise 永久悬挂**：若流程 `await` 弹窗结算（`openVariableDialog` / `confirmAction`），
+   无渲染点 = 无结算者 ⇒ 后续动作（计次、插入、关闭 tab）整条链静默丢失。
+
+注意：`ui/Dialog.tsx` 走 Radix portal，所以「隐藏但已挂载」（`DockZone` 的 `hidden` class）**无害**；
+有害的是**真卸载**（条件渲染 / 懒挂载）。别用「它只是被藏起来了」安慰自己。
+
+### 宿主三件套（照 `ConfirmHost` 抄）
+
+| 件 | 做法 | 参照 |
+| --- | --- | --- |
+| 渲染点 | 一个 feature 内的 `XxxHost` 组件，由 `AppModals` 挂载，内部只做 store ↔ 弹窗连线 | `src/shared/components/ConfirmHost.tsx` · `src/features/library/components/PromptDialogHost.tsx` |
+| 就绪标记 | 宿主 effect 挂载时 `setXHostMounted(true)`、卸载时 `false` 并结算在途请求；store 侧无宿主即 fail-closed 立即结算 | `confirmStore.ts` 的 `setConfirmHostMounted` · `libraryStore.ts` 的 `setPromptDialogHostMounted` · `closeConfirmStore.ts` 的 `setCloseConfirmHostMounted` |
+| 浮层上报 | 开/关时 `useOverlayStore.setOverlayOpen(id, bool)`（id kebab-case），否则弹窗被 Browser 子 webview 遮挡（`useBrowserTab.ts` 靠 `count > 0` 隐藏） | `quickOpenStore.ts` · `closeConfirmStore.ts` |
+
+硬约束：**resolver 不进 zustand 状态**（未决 Promise 不可序列化，放模块级 `let`）；
+取消 / × / Esc / 遮罩 / 宿主卸载都必须结算（用 `null` 表达「没拿到内容」，与「用户确认的空字符串」区分开）。
+
+### 禁止模式
+
+❌ 面板内渲染 store 驱动弹窗 + 触发点靠「先把面板切出来」救场：那只是把「弹个表单」变成
+「换掉用户的工作区」，且在面板根本没挂载的视图（settings）下依然失效。
+❌ 用 `setTimeout`/轮询等宿主出现：时序补丁，掩盖的是层放置错误。
+❌ 只断言 `store.xxxOpen === true` 的测试：证明不了弹窗渲染过 —— 本次事故就是这样漏网的。
+必须渲染宿主并断言 DOM（`PromptDialogHost.test.tsx` 的「仅凭 store flag 即渲染」是范本）。
+
+### 测试写法陷阱
+
+`act(() => store.openXDialog(...))` 里若回调 **return** 了 Promise，React 的 `act` 会当成
+async 作用域且永不收敛 ⇒ 后续渲染全部丢失（表现为「明明状态已写入，DOM 里什么都没有」）。
+必须写块级 body：`act(() => { store.openXDialog(...); })`。
 
 ---
 
