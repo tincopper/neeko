@@ -52,9 +52,9 @@ docs/                架构、需求与设计文档
 ```bash
 pnpm install                 pnpm tauri dev            pnpm tauri build
 pnpm lint          # 全部静态检查：lint:fe（eslint + tsc）+ lint:rust（fmt + clippy）+ 全部护栏
-pnpm check         # 本地全量门禁：lint + test + test:rust + test:host
+pnpm check         # 本地全量门禁：lint + test（各自三套串接，组成见 package.json）
 pnpm guards list   # 列当前护栏清单与其 stage/scope（清单即 tools/guards/checks/ 目录）
-pnpm lint:fix      # ESLint 写回（--fix）
+pnpm lint:fix      # 写回修复：cargo fmt（Rust）+ eslint --fix（前端）
 pnpm type-check    # 仅 TypeScript 类型检查
 pnpm test          # 全部三套：test:fe（前端）+ test:rust + test:host
 pnpm test:fe · pnpm test:rust · pnpm test:host

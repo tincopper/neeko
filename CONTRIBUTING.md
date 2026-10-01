@@ -64,7 +64,7 @@ pnpm tauri dev        # start the dev app (frontend on port 1420)
 | `pnpm lint` | Every static check: `lint:fe` + `lint:rust` + all guards (no tests) |
 | `pnpm lint:fe` | Frontend static checks (ESLint + `tsc --noEmit`) — what `pre-commit` runs |
 | `pnpm lint:rust` | Rust static checks (`cargo fmt --check` + `clippy -D warnings`) |
-| `pnpm lint:fix` | ESLint write-back (`--fix`) |
+| `pnpm lint:fix` | Write-back fixes: `cargo fmt` (Rust) + ESLint `--fix` (frontend) |
 | `pnpm type-check` | TypeScript type check only |
 | `pnpm test` | All three suites: `test:fe` + `test:rust` + `test:host` |
 | `pnpm test:fe` | Frontend tests once (`test:fe:watch` for watch) |

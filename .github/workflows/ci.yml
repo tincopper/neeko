@@ -64,6 +64,33 @@ jobs:
         run: pnpm test:fe:coverage
 
   # ──────────────────────────────────────────────
+  # 打包门：tsc --noEmit + vite build（定义单点在 package.json 的 build）。
+  # 此前 bundle 只在打 tag 的 build.yml 里**第一次**被执行 —— tsc 抓不到的打包期问题
+  # （vite 插件、动态 import 解析、产物图异常）会一路溜到发版才炸。
+  # 不 needs frontend-check：自带 tsc，静态检查结论不构成前置条件，独立并行出反馈更快。
+  # ──────────────────────────────────────────────
+  frontend-build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: 'pnpm'
+
+      - name: Install frontend dependencies
+        run: pnpm install
+
+      - name: Production build
+        run: pnpm build
+
+  # ──────────────────────────────────────────────
   # Java 调试 host：编译 + 自检（源码解析顺序 / 缓存布局 / 断点 FQN 推导）
   # host 是宿主 jar，Rust/cargo 门禁覆盖不到，故单列一个 job（需 JDK + Maven Central）
   # ──────────────────────────────────────────────
@@ -73,15 +100,27 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      # build:host 经 package.json 脚本名调用，因此需要 pnpm（脚本只跑 bash，
+      # 不需要 node_modules，与 backend-check 的注释同理）。
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
       - name: Setup Java
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '21'
 
-      # build.sh：下载 core + 依赖 → 编译 host → 自检（test.sh）→ 打 fat jar
+      # build.sh：下载 core + 依赖 → 编译 host → 自检（test.sh）→ 打 fat jar。
+      # 经 package.json 脚本名调用（原则①：门禁不设裸脚本调用点）；与本地 pre-push 的
+      # `pnpm test:host` 同源 —— build.sh 第 3 步就是跑同一份 test.sh。
       - name: Build host and run self-check
-        run: bash tools/java-host/build.sh
+        run: pnpm build:host
 
   # ──────────────────────────────────────────────
   # 后端检查：全平台 check（发现跨平台编译问题）

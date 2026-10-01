@@ -1,6 +1,7 @@
 name: Build Neeko
 
-# 只在打 tag 时触发发布构建（CI 已在 PR 阶段验证过编译）
+# 只在打 tag 时触发发布构建（类型、bundle、Rust 编译已由 PR 的
+# frontend-build / frontend-check / backend-check 验证，本 workflow 只做打包分发）
 on:
   push:
     tags:

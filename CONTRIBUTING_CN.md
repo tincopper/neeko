@@ -60,7 +60,7 @@ pnpm tauri dev        # 启动开发模式（前端端口 1420）
 | `pnpm lint` | 全部静态检查：`lint:fe` + `lint:rust` + 全部护栏（不含测试） |
 | `pnpm lint:fe` | 前端静态检查（ESLint + `tsc --noEmit`）—— `pre-commit` 跑的就是这条 |
 | `pnpm lint:rust` | Rust 静态检查（`cargo fmt --check` + `clippy -D warnings`） |
-| `pnpm lint:fix` | ESLint 写回（`--fix`） |
+| `pnpm lint:fix` | 写回修复：`cargo fmt`（Rust）+ ESLint `--fix`（前端） |
 | `pnpm type-check` | 仅 TypeScript 类型检查 |
 | `pnpm test` | 全部三套：`test:fe` + `test:rust` + `test:host` |
 | `pnpm test:fe` | 运行一次前端测试（监听用 `test:fe:watch`） |

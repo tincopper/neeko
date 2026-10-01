@@ -94,7 +94,7 @@ else
 fi
 
 echo "==> 3/4 Running host self-check (test/, framework-free main assertions)"
-# 单一实现见 test.sh（同一脚本也被 `pnpm lint` 的 lint:host 复用）。
+# 单一实现见 test.sh（`pnpm test:host` 单独跑它；`pnpm build:host` 即本脚本，会复用它）。
 bash "${HOST_DIR}/test.sh"
 
 echo "==> 4/4 Building fat host jar (${OUT_JAR})"
