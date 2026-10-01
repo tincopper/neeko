@@ -1,5 +1,6 @@
 import { Library, MessageSquare, PlusCircle } from 'lucide-react';
 
+import { useLibraryStore } from '@/features/library/store/libraryStore';
 import {
   Bot,
   ExternalLink,
@@ -114,7 +115,8 @@ const ACTION_ITEMS: ActionRegistryItem[] = [
     icon: PlusCircle,
     keywords: ['prompt', 'new', 'create', 'library'],
     execute: (ctx) => {
-      ctx.openLibrary?.({ kind: 'prompt' });
+      // 表单由 `PromptDialogHost`（AppModals 常驻）渲染，就地打开即可，无需切换中心视图。
+      useLibraryStore.getState().openEditor();
       ctx.closeMenu();
     },
   },
@@ -126,7 +128,7 @@ const ACTION_ITEMS: ActionRegistryItem[] = [
     icon: MessageSquare,
     keywords: ['prompt', 'insert', 'library', 'slash'],
     execute: (ctx) => {
-      ctx.openLibrary?.({ kind: 'prompt' });
+      useLibraryStore.getState().openInsert();
       ctx.closeMenu();
     },
   },

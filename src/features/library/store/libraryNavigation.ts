@@ -11,8 +11,6 @@ export interface OpenLibraryOptions {
   kind?: ResourceKind;
   /** Skill sub-view to select (only applies when kind is 'skill'). */
   skillView?: SkillView;
-  /** Open the prompt insert dialog (only applies when kind is 'prompt'). */
-  insert?: boolean;
 }
 
 /**
@@ -24,9 +22,12 @@ export interface OpenLibraryOptions {
  * cycle (LibraryDetail renders SkillContent); importing it from `utils/` trips
  * the import firewall. State is set before the tab opens, so the panel mounts
  * with the right selection — no deferred timers needed.
+ *
+ * 只负责**导航**：弹窗（编辑器 / 插入选择器）由 `PromptDialogHost` 常驻渲染，
+ * 直接调 `useLibraryStore` 的 open 动作，不经此处（打开表单不该换掉工作区）。
  */
 export function openLibraryAt(opts: OpenLibraryOptions = {}): void {
-  const { kind = 'skill', skillView, insert = false } = opts;
+  const { kind = 'skill', skillView } = opts;
   if (kind === 'skill' && skillView) {
     const skill = useSkillStore.getState();
     skill.setActiveSkillView(skillView);
@@ -36,8 +37,5 @@ export function openLibraryAt(opts: OpenLibraryOptions = {}): void {
   useLibraryStore.getState().setActiveKind(kind);
   if (useAppViewStore.getState().appView !== 'library') {
     useDockStore.getState().togglePanel('library');
-  }
-  if (insert && kind === 'prompt') {
-    useLibraryStore.getState().openInsert();
   }
 }

@@ -245,7 +245,8 @@ function ProjectWorkspace() {
       openLibrary: (opts) => {
         const kind = opts?.kind ?? 'skill';
         // 'action' predates the skill/prompt/mcp tabs — falls back to skills.
-        openLibraryAt(kind === 'prompt' ? { kind: 'prompt', insert: true } : { kind: 'skill' });
+        // 纯导航：prompt 弹窗走 `PromptDialogHost`，不在这里劫持中心视图。
+        openLibraryAt({ kind: kind === 'prompt' ? 'prompt' : 'skill' });
       },
     }),
     [currentProjectId, tabKey, agents],

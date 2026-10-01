@@ -40,11 +40,16 @@ describe('openLibraryAt', () => {
     expect(useAppViewStore.getState().appView).toBe('library');
   });
 
-  it('opens the prompt tab with the insert dialog', () => {
-    openLibraryAt({ kind: 'prompt', insert: true });
+  /**
+   * `openLibraryAt` 只做导航：prompt 表单/选择器由 `PromptDialogHost` 常驻渲染，
+   * 触发点直接调 store 的 open 动作，不该顺手把中心视图换成 Library。
+   */
+  it('opens the prompt tab without opening any dialog', () => {
+    openLibraryAt({ kind: 'prompt' });
 
     expect(useLibraryStore.getState().activeKind).toBe('prompt');
-    expect(useLibraryStore.getState().insertOpen).toBe(true);
+    expect(useLibraryStore.getState().insertOpen).toBe(false);
+    expect(useLibraryStore.getState().editorOpen).toBe(false);
     expect(useAppViewStore.getState().appView).toBe('library');
   });
 
