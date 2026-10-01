@@ -1,0 +1,4 @@
+{"_example": "Fill with {\"file\": \"<path>\", \"reason\": \"<why>\"}. Put spec/research files only — no code paths. Run `python3 .trellis/scripts/get_context.py --mode packages` to list available specs. Delete this line once real entries are added."}
+{"file": ".trellis/spec/backend/git-domain.md", "reason": "§12 仓库单元身份（RepoRef）：本次要改的契约落点"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "平台差异集中化（红线 10）与禁止模式：渲染规则必须落 platform/"}
+{"file": ".trellis/spec/unit-test/backend-testing.md", "reason": "后端测试硬约束：夹具路径平台无关、不硬编码分隔符"}

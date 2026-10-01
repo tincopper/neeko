@@ -18,7 +18,9 @@
   "commit": null,
   "pr_url": null,
   "subtasks": [],
-  "children": [],
+  "children": [
+    "10-01-path-identity-alphabet"
+  ],
   "parent": null,
   "relatedFiles": [
     "src-tauri/src/common/file/watcher/manager/core.rs",
