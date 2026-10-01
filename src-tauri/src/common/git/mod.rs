@@ -17,6 +17,8 @@ pub mod repo_ref;
 pub mod status_worker;
 pub mod transport;
 pub mod types;
+/// 仓库单元路径（身份 / 执行双渲染，红线 12）。
+pub mod unit_path;
 /// WSL-specific git operations and IDE launch helpers.
 #[cfg(target_os = "windows")]
 pub mod wsl;
@@ -28,5 +30,6 @@ pub use provider::*;
 pub use refs::*;
 pub use repo_ref::{RepoRef, WorktreeRef};
 pub use types::*;
+pub use unit_path::UnitPath;
 #[cfg(target_os = "windows")]
 pub use wsl::*;

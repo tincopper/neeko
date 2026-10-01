@@ -102,8 +102,11 @@ pub struct FileNode {
 /// A git worktree entry.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Worktree {
-    /// Filesystem path to the worktree.
-    pub path: PathBuf,
+    /// Worktree **身份渲染**（平台无关字母表，见 `common/git/unit_path.rs`）。
+    ///
+    /// 刻意不是 `PathBuf`：这个值经 IPC 直接成为前端 `RepoKey` 的路径分量，是**身份**而非
+    /// OS 路径。需要交给 git / 文件系统的宿主形态时，用 `UnitPath::exec()`，不要在这里转换。
+    pub path: String,
     /// Currently checked-out branch name.
     pub branch: String,
     /// HEAD commit hash.

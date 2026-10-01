@@ -1,5 +1,5 @@
 use crate::common::executor::factory::ExecTarget;
-use crate::common::git::path_guard::canonicalize_worktree_path;
+use crate::common::git::unit_path::UnitPath;
 use crate::common::git::RepoRef;
 use crate::platform::reveal::{build_reveal_command, normalize_path};
 use crate::project::types::{FileContent, FileNode};
@@ -43,14 +43,20 @@ pub fn file_exists(path: String) -> Result<bool, AppError> {
 
 /// 解析 file 操作基准目录：`root_path` 是 worktree 用户输入，必须先校验；
 /// 为空时回落到 `resolve_project()` 返回的受信项目根。
+///
+/// 取 **`exec`（宿主形态）** 而非身份：这个值是 `std::fs`、gitignore 过滤器与
+/// `FileAccessScope` 的输入，必须与 watcher 挂载根（同样来自 `RepoRef::work_dir()` 的
+/// 宿主形态）逐字同源，否则 `same_root` 类比较会静默失配。
 fn resolve_base(
     target: &ExecTarget,
     root_path: Option<&str>,
     wd: &str,
 ) -> Result<String, AppError> {
     match root_path.filter(|path| !path.trim().is_empty()) {
-        // 传入的 base 若是某个工作树根，归一化后即该单元的身份；否则退回项目根语义。
-        Some(path) => canonicalize_worktree_path(target, path).map_err(AppError::from),
+        // 传入的 base 若是某个工作树根，归一化后取宿主观；否则退回项目根语义。
+        Some(path) => UnitPath::resolve(target, path)
+            .map(|resolved| resolved.exec().to_string())
+            .map_err(AppError::from),
         None => Ok(wd.to_string()),
     }
 }

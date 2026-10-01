@@ -73,6 +73,9 @@ pub async fn set_active_repo_unit(
 /// canonical 保证落地之前写下的形态（macOS `/tmp` ↔ `/private/tmp`）。恢复激活态必须先
 /// 换成与 `git worktree list` 同一形态，否则「该单元是否还存在」的校验必然认不出来 ——
 /// 实测表现为：重启后恢复的 worktree 被立刻判没、回落主仓。
+///
+/// 返回的是**身份渲染**（平台无关字母表，见 `common/git/unit_path.rs`）—— 它就是前端
+/// 用来拼 `RepoKey` 的那个分量；宿主可执行形态（`exec`）绝不外泄给前端。
 #[tauri::command]
 pub async fn canonical_worktree_path(
     project_id: String,
@@ -80,7 +83,8 @@ pub async fn canonical_worktree_path(
     state: State<'_, AppStateWrapper>,
 ) -> Result<String, AppError> {
     let (target, _) = state.resolve_project(&project_id)?;
-    crate::common::git::path_guard::canonicalize_worktree_path(&target, &path)
+    crate::common::git::unit_path::UnitPath::resolve(&target, &path)
+        .map(|resolved| resolved.identity().to_string())
         .map_err(AppError::from)
 }
 

@@ -22,6 +22,7 @@
 //! | `menu` | `build_edit_submenu` | `app_menu.rs` |
 //! | `file_url` | `file_url_to_path` | `lsp/session/root.rs` |
 //! | `notify_base` | `notify_base` | `browser/scripts.rs` |
+//! | `path_identity` | `portable_render` / `posix_render` | `common/git/unit_path.rs` |
 //! | `watch_strategy` | `watch_selectively` | `common/file/watcher/registration.rs` |
 
 pub mod devtools;
@@ -31,6 +32,7 @@ pub mod host_path;
 pub mod ide_launch;
 pub mod menu;
 pub mod notify_base;
+pub mod path_identity;
 pub mod process_memory;
 pub mod process_spawn;
 pub mod process_tree;

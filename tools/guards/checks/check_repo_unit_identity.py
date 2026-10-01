@@ -134,7 +134,7 @@ KEY_MATERIAL_ALLOWLIST = {
     "src/shared/utils/repoRef.ts": "RepoKey 的唯一产出点（与后端 RepoRef::key 逐字对齐）",
     "src-tauri/src/common/git/repo_ref.rs": "RepoRef::key 的唯一产出点 + 内联 golden 测试",
     "src-tauri/src/common/git/status_worker/writer.rs": "快照序列化的 golden 断言（repo_key 的 JSON 形态）",
-    "src-tauri/src/common/git/path_guard.rs": "NUL 拒绝路径的测试夹具（canonicalize_worktree_path 输入校验）",
+    "src-tauri/src/common/git/path_guard.rs": "NUL 拒绝路径的测试夹具（UnitPath::resolve 的输入校验闸门）",
 }
 # 冒号式复合键流入 repo-key 消费点（历史缺陷 `${projectId}:wt:${path}` 的同形复发）。
 # 只拦「projectId 插值模板串 + 消费词同现」：tab / 终端缓存 / onboarding 的 `:` 命名空间各自合法。

@@ -10,9 +10,10 @@
  * 对齐（双端各有一条 golden 测试钉住同一输入 → 同一输出）。除本文件外不得再手写
  * `{projectId}:{wtPath}` 之类的拼接（那是同一份身份的第二种表示，会再次分叉）。
  *
- * **路径分量必须是 canonical 形态**：由后端产出（`RepoRef::resolve` 在构造时就
- * canonicalize，见 `path_guard::canonicalize_worktree_path`）。前端不做任何字符串归一 ——
- * 归一化属路径身份判定（红线 12），双向各归一必然漂移。
+ * **路径分量必须是后端产出的身份形态**：`RepoRef::resolve` 在构造时归一，
+ * 落在 `src-tauri/src/common/git/unit_path.rs` 的 **identity 渲染**（平台无关字母表：
+ * `/` 分隔、无 `\\?\` 前缀、盘符大写）。前端不做任何字符串归一 —— 归一化属路径身份判定
+ * （红线 12），双向各归一必然漂移。
  */
 
 /** 分隔符：NUL 在 POSIX 与 Windows 文件名里都不允许出现 → key 反解永无歧义。 */

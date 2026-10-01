@@ -7,20 +7,22 @@
 //! 不更新）、与主仓共用一个槽（串 main 内容）。症状是身份缺失的投影，因此修法是补上
 //! 身份，而不是在消费侧加「谁该丢弃事件」的守卫。
 //!
-//! **key 的形态**：`{project_id}\0{canonical_worktree_path}`，主仓的 path 段为空。
+//! **key 的形态**：`{project_id}\0{identity(worktree_path)}`，主仓的 path 段为空。
 //! 分隔符选 NUL 而非 `:` / `:wt:` —— NUL 是 POSIX 与 Windows 文件名里唯一绝对不允许
 //! 出现的字符，因此 key 在任何真实路径下都不歧义。key 只由本文件产出（前端只做透传与
 //! map 键；`src/shared/utils/repoRef.ts` 有与本文件 golden 用例逐字对齐的测试）。
 //!
-//! **路径一律存 canonical 后的 `String`**：构造期即拒绝非 UTF-8 路径（git CLI 参数与
-//! IPC 都需要 UTF-8），因此 [`RepoRef::work_dir`] 返回 `&str` 不存在失败分支，也不需要
-//! 任何 `unwrap_or(".")` 式的静默兜底。
+//! **路径是 [`UnitPath`]（一个值两个渲染）**：key / IPC 用**身份渲染**（平台无关字母表），
+//! `-C` / 文件系统用**执行渲染**（宿主形态）。两个渲染的判据与不变量见
+//! [`crate::common::git::unit_path`]。构造期即拒绝非 UTF-8 路径（git CLI 参数与 IPC 都
+//! 需要 UTF-8），因此 [`RepoRef::work_dir`] 返回 `&str` 不存在失败分支，也不需要任何
+//! `unwrap_or(".")` 式的静默兜底。
 
 use std::fmt;
 use std::path::{Path, PathBuf};
 
 use crate::common::executor::factory::ExecTarget;
-use crate::common::git::path_guard::canonicalize_worktree_path;
+use crate::common::git::unit_path::UnitPath;
 
 /// 分隔符：见模块级注释（NUL 不可能出现在合法路径中 → key 无歧义）。
 pub const KEY_SEP: char = '\0';
@@ -30,11 +32,11 @@ pub const KEY_SEP: char = '\0';
 pub enum WorktreeRef {
     /// 主工作树（项目根目录本身，`.git` 为目录）。
     Main,
-    /// linked worktree。`path` 为 canonical 形态（Local 由
-    /// [`canonicalize_worktree_path`] 保证；WSL/SSH 为远端原样路径）。
+    /// linked worktree。`path` 的**身份渲染**即 key 的路径分量（Local 由
+    /// [`UnitPath::resolve`] 保证平台无关形态；WSL/SSH 为远端 POSIX 形态）。
     Linked {
-        /// 工作树根目录（canonical，UTF-8）
-        path: String,
+        /// 工作树根目录（身份形态 + 宿主形态，见 [`UnitPath`]）
+        path: UnitPath,
     },
 }
 
@@ -52,8 +54,8 @@ pub enum WorktreeRef {
 #[derive(Debug, Clone)]
 pub struct RepoRef {
     project_id: String,
-    /// 项目根（canonical）。用于把「传入路径其实等于项目根」归一成 [`WorktreeRef::Main`]，
-    /// 消除同一仓库的两种身份表示。
+    /// 项目根的**执行渲染**（宿主形态）。用于把「传入路径其实等于项目根」归一成
+    /// [`WorktreeRef::Main`]（按身份比较，见 [`RepoRef::resolve`]），并作为 `Main` 的工作目录。
     project_root: String,
     worktree: WorktreeRef,
 }
@@ -76,11 +78,13 @@ impl std::hash::Hash for RepoRef {
 impl RepoRef {
     /// 由前端传入的 worktree 路径构造（**唯一**构造入口）。
     ///
-    /// - `worktree_path` 为 `None` / 全空白 / canonical 后等于项目根 → [`WorktreeRef::Main`]；
+    /// - `worktree_path` 为 `None` / 全空白 / **身份等于项目根** → [`WorktreeRef::Main`]；
     /// - 否则为 [`WorktreeRef::Linked`]。
     ///
     /// 校验与归一化同处发生（红线 8）：调用方拿不到未归一化的形态，也就无法用两种字符
     /// 串指代同一个仓库（旧现实：`path_guard` 校验时 canonicalize、返回时丢弃结果）。
+    /// 「等于项目根」按**身份渲染**比较：两个渲染各自可能随调用时刻/平台变化，
+    /// 身份才是对象的等价类（见 [`crate::common::git::unit_path`]）。
     ///
     /// # Errors
     /// 路径含 `..` / NUL、或非 UTF-8 可表示时返回错误。路径**不存在**不报错 ——
@@ -91,15 +95,27 @@ impl RepoRef {
         worktree_path: Option<&str>,
         target: &ExecTarget,
     ) -> Result<Self, anyhow::Error> {
-        let root = canonicalize_worktree_path(target, project_root)?;
+        let root = UnitPath::resolve(target, project_root)?;
         let Some(raw) = worktree_path.map(str::trim).filter(|s| !s.is_empty()) else {
-            return Ok(Self::new(project_id, root, WorktreeRef::Main));
+            return Ok(Self::new(
+                project_id,
+                root.exec().to_string(),
+                WorktreeRef::Main,
+            ));
         };
-        let path = canonicalize_worktree_path(target, raw)?;
-        if path == root {
-            return Ok(Self::new(project_id, root, WorktreeRef::Main));
+        let path = UnitPath::resolve(target, raw)?;
+        if path.identity() == root.identity() {
+            return Ok(Self::new(
+                project_id,
+                root.exec().to_string(),
+                WorktreeRef::Main,
+            ));
         }
-        Ok(Self::new(project_id, root, WorktreeRef::Linked { path }))
+        Ok(Self::new(
+            project_id,
+            root.exec().to_string(),
+            WorktreeRef::Linked { path },
+        ))
     }
 
     /// 主仓单元（项目根本身）。`project_root` 由调用方保证为受信形态（来自项目登记表）。
@@ -134,12 +150,12 @@ impl RepoRef {
         matches!(self.worktree, WorktreeRef::Main)
     }
 
-    /// 该单元的工作目录 = 一切 git 调用（`-C`）与文件监听的根。
+    /// 该单元的工作目录 = 一切 git 调用（`-C`）与文件监听的根（**执行渲染**，宿主形态）。
     #[must_use]
     pub fn work_dir(&self) -> &str {
         match &self.worktree {
             WorktreeRef::Main => &self.project_root,
-            WorktreeRef::Linked { path } => path,
+            WorktreeRef::Linked { path } => path.exec(),
         }
     }
 
@@ -149,12 +165,13 @@ impl RepoRef {
         Path::new(self.work_dir())
     }
 
-    /// 工作树路径的 IPC 形态：主仓为 `None`，linked worktree 为 canonical 字符串。
+    /// 工作树路径的 IPC 形态（**身份渲染**，平台无关字母表）：主仓为 `None`，
+    /// linked worktree 为身份串 —— 前端拿它拼 `RepoKey`，前端不做任何归一。
     #[must_use]
     pub fn worktree_path(&self) -> Option<&str> {
         match &self.worktree {
             WorktreeRef::Main => None,
-            WorktreeRef::Linked { path } => Some(path),
+            WorktreeRef::Linked { path } => Some(path.identity()),
         }
     }
 
@@ -291,9 +308,12 @@ mod tests {
         )
         .unwrap();
         assert_ne!(a.key(), b.key());
+        // 身份渲染必须指向同一对象（不是比对字符串形态：形态是平台细节）
+        let identity = a.worktree_path().expect("linked unit has a path");
         assert_eq!(
-            a.worktree_path(),
-            Some(wt_a.canonicalize().unwrap().to_string_lossy().as_ref())
+            std::fs::canonicalize(identity).unwrap(),
+            wt_a.canonicalize().unwrap(),
+            "身份渲染必须与真实目录同对象"
         );
         assert!(!a.is_main());
     }
@@ -420,6 +440,67 @@ mod tests {
         assert!(
             RepoRef::resolve("p1", &root.to_string_lossy(), Some(&bad), &t).is_err(),
             "含 `..` 成分的路径必须被拒绝（红线 8）"
+        );
+    }
+
+    /// I3（时刻无关）在 **key 层**的回归钉：同一路径在创建前后必须是同一单元。
+    ///
+    /// 这正是 CI（Windows）报错那一类的正确断言层次 —— 断言身份不变量，而不是字符串表示。
+    /// 夹具**刻意不做** canonicalize：macOS 的 tempdir 是符号链接根，锚定到 canonical
+    /// 祖先之前，创建前会算出 `/var/…` 而创建后是 `/private/var/…`（两个 key）。
+    #[test]
+    fn key_is_stable_across_worktree_creation() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = existing(&tmp, "repo");
+        let missing = tmp.path().join("new-wt");
+        let t = ExecTarget::Local;
+
+        let before = RepoRef::resolve(
+            "p1",
+            &root.to_string_lossy(),
+            Some(&missing.to_string_lossy()),
+            &t,
+        )
+        .unwrap();
+        std::fs::create_dir_all(&missing).unwrap();
+        let after = RepoRef::resolve(
+            "p1",
+            &root.to_string_lossy(),
+            Some(&missing.to_string_lossy()),
+            &t,
+        )
+        .unwrap();
+
+        assert_eq!(
+            before.key(),
+            after.key(),
+            "同一工作树创建前后必须是同一单元 key"
+        );
+    }
+
+    /// key 的路径分量是**身份渲染**，工作目录是**执行渲染**：两者可不同（Windows），
+    /// 但必须指向同一对象。
+    #[test]
+    fn key_carries_identity_rendering_while_work_dir_carries_exec_rendering() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = existing(&tmp, "repo");
+        let wt = existing(&tmp, "wt");
+        let t = ExecTarget::Local;
+
+        let linked = RepoRef::resolve(
+            "p1",
+            &root.to_string_lossy(),
+            Some(&wt.to_string_lossy()),
+            &t,
+        )
+        .unwrap();
+
+        let identity = linked.worktree_path().expect("linked unit has a path");
+        assert_eq!(linked.key(), format!("p1{KEY_SEP}{identity}"));
+        assert_eq!(
+            std::fs::canonicalize(linked.work_dir()).unwrap(),
+            std::fs::canonicalize(identity).unwrap(),
+            "两个渲染（执行 / 身份）必须指向同一对象"
         );
     }
 

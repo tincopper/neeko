@@ -282,10 +282,11 @@ stderr 文本匹配只允许用于「错误分类展示」（`classify_stderr` �
 并**删除**了为此而存在的第二实现，而不是在旁边加分支。
 
 **身份**：`common/git/repo_ref.rs` 的 `RepoRef{project_id, project_root, worktree}`，
-`key()` = `"{project_id}\u0000{canonical worktree path}"`（主仓 `worktree = None` ⇒ key 以
+`key()` = `"{project_id}\u0000{identity(worktree path)}"`（主仓 `worktree = None` ⇒ key 以
 NUL 结尾）。选 NUL 做分隔符是因为它是 POSIX 路径里唯一不可能出现的字符 —— 分隔符可证无歧义，
-`parse_key` 因此是单射。路径必须 canonical（红线 8 / 12），唯一入口
-`path_guard::canonicalize_worktree_path`。前端 `shared/utils/repoRef.ts` 与之同形，两侧靠
+`parse_key` 因此是单射。路径身份的唯一入口是
+`common/git/unit_path.rs` 的 `UnitPath::resolve`（红线 8 / 12；见下方「身份字母表」）。
+前端 `shared/utils/repoRef.ts` 与之同形，两侧靠
 golden 测试钉住（`golden_key_format_matches_frontend_contract` ↔ `repoRef.test.ts`）——
 「同一 key 两处各自实现」一定会漂移，这是唯一防线。
 `RepoRef` 刻意**不**携带 `ExecTarget`：后者不实现 `Hash/PartialEq`，且目标是**连接**属性不是
@@ -328,23 +329,47 @@ versioned_snapshot_without_manual_poke` 就是为钉这条顺序而写红的）�
 **未挂载 = 未知，不是「无变更」**：`snapshot()` 返回 `None` 时读接口必须失败让前端渲染空态，
 不得退化成空列表 —— 把「没有生产者」说成「没有改动」是伪造事实。
 
-**canonical 形态只有一个出处**：`path_guard::canonicalize_worktree_path`，且**只在后端**。
-前端持有/持久化的 worktree 路径必须全部来自后端回传（`git worktree list` 条目、快照的
-`worktree_path`）。三个实测踩过的形态陷阱：
+**身份字母表（identity）与执行形态（exec）是同一个值的两个渲染**（2026-10-01 起）：唯一入口
+`common/git/unit_path.rs::UnitPath::resolve`，且**只在后端**。前端持有/持久化的 worktree 路径
+必须全部来自后端回传（`git worktree list` 条目、快照的 `worktree_path`、
+`canonical_worktree_path` 命令），且它拿到的是 **identity** 渲染。
+
+| 渲染 | 字母表 | 消费者 |
+| --- | --- | --- |
+| `identity()` | **平台无关**：`/` 分隔、无 `\\?\`/`\\.\` 前缀、盘符 ASCII 大写、UNC → `//server/share/…`、无尾分隔符 | `RepoRef::key()` / `worktree_path()`、IPC `Worktree.path`、watcher·diff·status 槽位、前端 `RepoKey` |
+| `exec()` | **宿主形态**（存在 → `fs::canonicalize` 原样，Windows 含 `\\?\`；不存在 → 调用者拼写） | git argv、`std::fs`、notify 根、`strip_prefix`、gitignore `same_root`、缓存键前缀、`file/commands.rs::resolve_base` |
+
+不变量（φ 的判据，违反即同一单元裂成两个 key → 侧栏数据空白 / 激活态反复回落主仓）：
+
+- **I1 写法无关**：`p`、`p/`、`p/./`、符号链接形态 → 同一 identity（Local 存在时 canonicalize）；
+- **I2 区分性**：不同对象 → 不同 identity（**不**做大小写折叠、**不**做 Unicode 归一 ——
+  在大小写敏感文件系统上折叠会把两个对象并成一个）；
+- **I3 时刻无关**：`git worktree add` / `move` 的目标**尚不存在**时，identity = 
+  `canonicalize(最深已存在祖先) ⊕ 尾分量` —— 不锚定就会「创建前 `\\?\…\new-wt` / 创建后
+  另一个串」，这正是 Windows CI 上 `worktree_nonexistent_path_is_lexically_normalized` 暴露的形态。
+  `exec` 在此时保持调用者拼写（那正是将要被创建的字节），两个渲染因此**允许不同**。
+- **非目标**：Unicode NFD/NFC 归一、大小写不敏感文件系统上输入大小写的折叠、
+  `\\?\Volume{GUID}` 形态（原样保留）。
+
+平台差异（verbatim 剥除、盘符规范化、UNC 渲染）在 `platform/path_identity/`（红线 10）：
+规则体是纯字符串函数（三端编译、三端测试），平台差异只体现在**选择**上；远端路径走
+`posix_render`，与宿主平台无关。
+
+三个实测踩过的形态陷阱：
 - session 恢复：旧 session 里可能是 `/tmp` 这类符号链接形态，而清单是 `/private/tmp`，
   两侧不同形 ⇒ 存活校验把刚恢复的 worktree 立刻判没，挂载在 main ↔ worktree 反复翻。
   解法是恢复流程先请后端归一（`canonical_worktree_path` 命令）再比清单；
 - 破坏性操作（`remove_worktree` / `rename_worktree`）要释放的单元身份必须在**操作之前**解析，
-  目录消失后归一只剩词法形态，算出的 key 与挂载时的 key 不同，释放会打空；
-- **远端路径不得进宿主路径语义**：`canonicalize_worktree_path` 按 `ExecTarget` 分叉 ——
-  Local 用 `PathBuf` 词法归一（路径确实是宿主 OS 的），WSL / SSH 用**纯字符串**
-  `lexical_normalize_posix`。`std::path` 的分隔符是**宿主** OS 的属性，而这条路径的消费者是
+  目录消失后归一只剩祖先锚定形态，算出的 key 与挂载时的 key 不同，释放会打空；
+- **远端路径不得进宿主路径语义**：`UnitPath::resolve` 按 `ExecTarget` 分叉 ——
+  Local 走宿主语义（`exists` / `canonicalize`），WSL / SSH 走**纯字符串**
+  `posix_render`。`std::path` 的分隔符是**宿主** OS 的属性，而这条路径的消费者是
   **远端 Linux**：Windows 宿主上 `Path::components("/home/u/p")` push 回来变成 `\home\u\p`，
   两层后果 —— ① 身份分叉：同一远端单元在 Windows 与 macOS 上算出两个 key；
   ② 命令参数失效：WSL 执行器是 `cd <dir> && exec …`（`common/executor/wsl.rs`），
   `cd \home\u\p` 必失败 ⇒ Windows 宿主上 WSL/SSH 项目的 changes 直接瘫痪。
   判据因此必须与宿主 OS 无关（纯字符串断言，不硬编码宿主绝对路径 —— 红线 13）：
-  `remote_posix_path_is_never_rewritten_with_host_separators`（SSH / WSL 两个 target，
+  `remote_identity_is_posix_and_host_independent`（SSH / WSL 两个 target，
   POSIX 形态不被改写、`.` 与尾分隔符收敛、相对性保留、根不塌成空串）。
 
 **判死只能有一个点**：「激活单元是否还存在」由前端的 canonical 清单校验（`useAppShellData`）
@@ -369,17 +394,22 @@ libgit2 第二 status 引擎（`get_worktree_changed_files` / `get_changed_files
 `version: 0` 无语义载荷、`resolve_validated_work_dir`（校验时 canonicalize、返回时丢弃）、
 跨 worktree 补挂广播（`rearm_worktrees_if_needed` / `resolve_worktree_roots` /
 `WorktreeMetaChanged` / `has_worktrees`）、前端 `applyGitStatus` / `versionGateAccepts` /
-`allowEqual` / `mergeGitInfoForStore` / `worktreeStore` 全局镜像字段。
+`allowEqual` / `mergeGitInfoForStore` / `worktreeStore` 全局镜像字段、后端单串归一入口
+`path_guard::canonicalize_worktree_path`（一个返回值同时当身份与宿主路径 —— 见上方「身份字母表」）。
 
-**测试**：`repo_ref.rs`（key 形态 / parse 单射 / canonical 一致性）、`path_guard`（`..` / NUL /
-非 UTF-8 拒绝 / **远端路径形态与宿主 OS 无关**）、`manager/lifecycle_tests.rs`（两单元独立槽、
+**测试**：`repo_ref.rs`（key 形态 / parse 单射 / 身份一致性 / **创建前后同 key**）、
+`common/git/unit_path.rs`（**I1 写法无关 / I3 时刻无关 / 两个渲染同对象 / 远端形态与宿主 OS 无关**）、
+`platform/path_identity/rules.rs`（Windows 形态渲染纯字符串用例，三端运行）、
+`path_guard`（`..` / NUL / 非 UTF-8 拒绝）、`manager/lifecycle_tests.rs`（两单元独立槽、
 poke 打对单元、编辑即推送、未挂载兄弟单元零泄漏、pull 不覆盖 push、unwatch/unwatch_project
 收口、**并发挂载不同单元 ⇒ 恰好一套挂载**、**并发挂载同单元 ⇒ 只建一套 watcher**）。
 
 ## 相关文件
 
 - `src-tauri/src/common/git/repo_ref.rs` — 仓库单元身份（`RepoRef` / `WorktreeRef` / key 契约）
-- `src-tauri/src/common/git/path_guard.rs` — 工作树路径校验 + canonical 化唯一入口
+- `src-tauri/src/common/git/unit_path.rs` — 路径身份唯一入口（identity / exec 双渲染 + I1/I2/I3）
+- `src-tauri/src/platform/path_identity/` — 身份字母表的平台渲染规则（红线 10）
+- `src-tauri/src/common/git/path_guard.rs` — 工作树路径与仓库内相对路径的**校验**（归一不在此）
 - `src-tauri/src/common/git/refs.rs` — refs 分类纯函数
 - `src-tauri/src/common/git/parsers/` — `status` / `numstat` / `commit` / `quoting`（C 转义唯一解码点）
 - `src-tauri/src/common/git/cache/` — `get_cached_worktree_diff` / `FileFingerprint` / LRU diff 缓存

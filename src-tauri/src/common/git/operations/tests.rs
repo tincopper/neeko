@@ -42,8 +42,8 @@ fn resolve_worktree_path_uses_worktree_path_when_provided() {
 
 // ── parse_worktree_list（清单产出即归一，#1 的回归钉）────────────────────
 
-/// 清单路径会被前端拼成 `RepoKey`，因此必须与 `RepoRef::key()` 同形。
-/// 局部路径（Local）要 canonicalize：`git worktree add` 记录的字符串不保证归一。
+/// 清单路径会被前端拼成 `RepoKey`，因此必须与 `RepoRef::key()` 同形（身份渲染）。
+/// 局部路径（Local）要归一：`git worktree add` 记录的字符串不保证归一。
 #[test]
 fn parse_worktree_list_normalizes_local_paths_to_repo_ref_form() {
     let tmp = tempfile::tempdir().expect("tempdir");
@@ -70,12 +70,13 @@ fn parse_worktree_list_normalizes_local_paths_to_repo_ref_form() {
     )
     .expect("identity must resolve");
     assert_eq!(
-        list[1].path.to_string_lossy(),
+        list[1].path,
         identity.worktree_path().expect("linked unit has a path"),
         "清单路径与 RepoRef 身份必须同形"
     );
+    // 断对象而不是断字符串形态（形态是平台细节）
     assert_eq!(
-        list[1].path,
+        std::fs::canonicalize(&list[1].path).expect("identity must be a usable path"),
         wt.canonicalize().expect("canonicalize fixture worktree")
     );
 }
@@ -93,12 +94,12 @@ fn parse_worktree_list_lexically_normalizes_remote_paths() {
     let output = "worktree /srv/app\nHEAD a\nbranch refs/heads/main\n\nworktree /srv/app-wt/./\nHEAD b\nbranch refs/heads/dev\n";
     let list = parse_worktree_list(output, &remote);
     assert_eq!(list.len(), 2);
-    assert_eq!(list[1].path.to_string_lossy(), "/srv/app-wt");
+    assert_eq!(list[1].path, "/srv/app-wt");
     let identity =
         crate::common::git::RepoRef::resolve("p1", "/srv/app", Some("/srv/app-wt/./"), &remote)
             .expect("identity must resolve");
     assert_eq!(
-        list[1].path.to_string_lossy(),
+        list[1].path,
         identity.worktree_path().expect("linked unit has a path")
     );
 }
