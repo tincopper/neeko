@@ -1,9 +1,11 @@
 import { act, renderHook } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { useBrowserWebview } from '@/features/browser/hooks/useBrowserWebview';
 import { useFileChangedEvent } from '@/shared/hooks/useFileChangedEvent';
 import { useBrowserTabsStore } from '@/shared/store/browserTabsStore';
 import { useEditorStore } from '@/shared/store/editorStore';
+import { useOverlayStore } from '@/shared/store/overlayStore';
 import { useProjectStore } from '@/shared/store/projectStore';
 import { armProjectAutoRefresh, disarmProjectAutoRefresh } from '@/shared/utils/browserAutoRefresh';
 import { repoKeyOf } from '@/shared/utils/repoRef';
@@ -280,5 +282,54 @@ describe('useBrowserTab — file:// tab 的变更命中判定走身份抽象', (
     });
 
     expect(mockRefresh).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * 浮层 z-order 防线（AC6）：Browser tab 由 OS 级悬浮 webview 渲染，**恒在主 React webview 之上**；
+ * 任何 DOM 浮层（含三个 prompt 弹窗）打开期间若不隐藏它，弹窗会被子 webview 遮挡、点不到。
+ *
+ * 判据链：prompt 弹窗 → `libraryStore` 上报 `overlayStore.count > 0`（`PromptDialogHost` 是唯一
+ * 上报点）→ `useBrowserTab` 把 `visible=false` 传给 webview。这里只钉住链条末端的派生公式
+ * （`isActive && !anyOverlayOpen && !!tabExists`）；上报侧由 `AppModals.test` 覆盖。
+ */
+describe('useBrowserTab — 浮层打开期间隐藏 webview', () => {
+  const browserTab = {
+    id: 'tab_bw',
+    projectId: 'p1',
+    title: 'B',
+    order: 0,
+    data: { kind: 'browser' as const, url: 'https://a.com' },
+  };
+
+  beforeEach(() => {
+    useBrowserTabsStore.setState({ states: {} });
+    useOverlayStore.getState().reset();
+    vi.mocked(useBrowserWebview).mockClear();
+    useEditorStore.setState({ tabs: { p1: { tabs: [browserTab], activeTabId: 'tab_bw' } } });
+  });
+
+  it('无浮层 → visible；有浮层 → 隐藏；关闭后 → 恢复', () => {
+    renderHook(() =>
+      useBrowserTab({
+        tabKey: 'p1',
+        tabId: 'tab_bw',
+        projectId: 'p1',
+        isActive: true,
+        showToast: vi.fn(),
+      }),
+    );
+    const webviewMock = vi.mocked(useBrowserWebview);
+    expect(webviewMock.mock.lastCall?.[0].visible).toBe(true);
+
+    act(() => {
+      useOverlayStore.getState().setOverlayOpen('prompt-variables', true);
+    });
+    expect(webviewMock.mock.lastCall?.[0].visible).toBe(false);
+
+    act(() => {
+      useOverlayStore.getState().setOverlayOpen('prompt-variables', false);
+    });
+    expect(webviewMock.mock.lastCall?.[0].visible).toBe(true);
   });
 });

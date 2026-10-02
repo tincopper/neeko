@@ -290,6 +290,46 @@ describe('PromptsStatusSection', () => {
     expect(recordUsage).not.toHaveBeenCalled();
     expect(useLibraryStore.getState().variableRequest).toBeNull();
   });
+  /**
+   * AC2「取消即结算」的四条关闭路径。`usePromptInsert` 只在 `rendered !== null` 时插入 +
+   * 计使用次数，取消分支是「不插入、不计次数」的唯一兑现点。此前只测了 Cancel 按钮 ——
+   * × / Esc / 遮罩同样会走 `onOpenChange(false) → settleVariableDialog(null)`，不看住就会
+   * 让某条路径悄悄退化成「关而不结算」（Promise 悬挂 ⇒ 插入静默丢失）。
+   */
+  it.each(['cancel', 'close', 'escape', 'overlay'] as const)(
+    '变量表单经 %s 关闭：不插入、不计使用次数、不留过期请求',
+    async (closePath) => {
+      const insertToTerminal = vi.fn(() => true);
+      const recordUsage = vi.fn(async (): Promise<void> => {});
+      hoisted.api.current = { insertToTerminal };
+      useLibraryStore.setState({ prompts: [WITH_VAR], recordUsage });
+      render(
+        <>
+          <PromptsStatusSection />
+          <PromptDialogHost />
+        </>,
+      );
+      fireEvent.click(screen.getByTestId('prompts-status-chip'));
+      fireEvent.click(screen.getByTestId('prompts-status-row-p3'));
+      expect(await screen.findByText('Fill Variables')).toBeInTheDocument();
+
+      if (closePath === 'cancel') {
+        fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+      } else if (closePath === 'close') {
+        fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+      } else if (closePath === 'escape') {
+        fireEvent.keyDown(document, { key: 'Escape' });
+      } else {
+        // Radix Dialog 的遮罩/外部关闭走 `pointerdown`（非 mousedown）。
+        fireEvent.pointerDown(document.body);
+      }
+
+      await waitFor(() => expect(useLibraryStore.getState().variableRequest).toBeNull());
+      expect(insertToTerminal).not.toHaveBeenCalled();
+      expect(recordUsage).not.toHaveBeenCalled();
+    },
+  );
+
   it('Enter 确认当前高亮首项：插入并关闭下拉、无 toast', () => {
     const insertToTerminal = vi.fn(() => true);
     hoisted.api.current = { insertToTerminal };
