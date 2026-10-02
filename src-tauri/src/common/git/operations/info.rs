@@ -112,8 +112,8 @@ pub async fn get_git_branch_info_shell(
 }
 
 pub async fn get_git_info(transport: &dyn GitTransport, work_dir: &str) -> Result<GitInfo> {
-    crate::common::git::local::assert_git_repo(std::path::Path::new(work_dir))?;
-    if let Some(repo) = transport.open_repo(work_dir) {
+    crate::common::git::local::assert_git_repo_async(work_dir).await?;
+    if let Some(repo) = transport.open_repo_async(work_dir).await {
         tokio::task::spawn_blocking(move || {
             let branch_info = crate::common::git::local::get_git_branch_info_from_repo(&repo)?;
             let git_provider = repo
@@ -141,8 +141,8 @@ pub async fn get_git_branch_info(
     transport: &dyn GitTransport,
     work_dir: &str,
 ) -> Result<GitBranchInfo> {
-    crate::common::git::local::assert_git_repo(std::path::Path::new(work_dir))?;
-    if let Some(repo) = transport.open_repo(work_dir) {
+    crate::common::git::local::assert_git_repo_async(work_dir).await?;
+    if let Some(repo) = transport.open_repo_async(work_dir).await {
         tokio::task::spawn_blocking(move || {
             crate::common::git::local::get_git_branch_info_from_repo(&repo)
         })

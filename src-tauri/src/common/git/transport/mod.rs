@@ -185,9 +185,16 @@ pub trait GitTransport: Send + Sync {
         stdin: &[u8],
     ) -> Result<String>;
 
-    /// Open a git2 Repository for local transport, if git2 is available.
+    /// 同步核心：打开本地 git2 仓库。**只允许**同步上下文或已在阻塞池内的调用方使用（红线 3）——
+    /// 异步上下文一律用 [`Self::open_repo_async`]。
     /// Returns None for non-Local transports.
     fn open_repo(&self, path: &str) -> Option<git2::Repository>;
+
+    /// 异步入口：打开本地 git2 仓库，阻塞 fs 隔离到阻塞池（红线 3）。
+    ///
+    /// **刻意没有默认实现**：默认体只能回落同步核心，于是未来的 transport impl 会「默认阻塞」——
+    /// 那正是本契约要消灭的形态。缺实现时编译器直接报错，而不是留下一个假异步。
+    async fn open_repo_async(&self, path: &str) -> Option<git2::Repository>;
 
     /// The execution environment this transport targets.
     ///
@@ -294,13 +301,40 @@ impl GitTransport for ExecTarget {
         }
     }
 
+    async fn open_repo_async(&self, path: &str) -> Option<git2::Repository> {
+        match self {
+            // git2 open 走文件系统（红线 3）：宿主路径必须在阻塞池内打开。
+            ExecTarget::Local => {
+                let target = self.clone();
+                let dir = path.to_string();
+                tokio::task::spawn_blocking(move || target.open_repo(&dir))
+                    .await
+                    .unwrap_or_else(|e| {
+                        log::warn!("[git] open repo task failed for `{path}`: {e}");
+                        None
+                    })
+            }
+            // WSL / SSH 不碰宿主 fs：与同步核心同语义（None ⇒ 调用方走 shell 兜底）。
+            ExecTarget::Wsl { .. } | ExecTarget::Remote { .. } => None,
+        }
+    }
+
     fn exec_target(&self) -> ExecTarget {
         self.clone()
     }
 
     async fn is_git_repo(&self, path: &str) -> bool {
         match self {
-            ExecTarget::Local => local::is_git_repo_local(path),
+            // `.git` 探测同样是阻塞 fs：async 方法里直接调同步 helper 就是「假异步」。
+            ExecTarget::Local => {
+                let dir = path.to_string();
+                tokio::task::spawn_blocking(move || local::is_git_repo_local(&dir))
+                    .await
+                    .unwrap_or_else(|e| {
+                        log::warn!("[git] is_git_repo task failed for `{path}`: {e}");
+                        false
+                    })
+            }
             ExecTarget::Wsl { .. } => wsl::is_git_repo_wsl(self, path).await,
             ExecTarget::Remote { .. } => ssh::is_git_repo_remote(self, path).await,
         }

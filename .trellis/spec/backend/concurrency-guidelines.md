@@ -313,9 +313,12 @@ pub fn close_terminal_session(session_id: String, state: State<AppStateWrapper>)
   git / file 命令的入口** ⇒ 同一 worker 承载的 PTY 输出、watcher 事件与 IPC 全部停摆。
 - Scope：`AppStateWrapper::resolve_repo`（29 处调用点）、`file/commands.rs::resolve_base`（8 处）、
   命令层直连的 `UnitPath::resolve`（6 处）、`file/commands.rs::read_dir_tree` 的单元身份解析（1 处）、
-  `common/git/operations/info.rs::get_git_branch_info_shell` 的清单逐条归一（1 份清单）。
+  `common/git/operations/info.rs::get_git_branch_info_shell` 的清单逐条归一（1 份清单）；
+  以及**仓库打开 / 校验**这一类（2026-10-02 补齐）：`transport.open_repo`（git2 `Repository::open`）、
+  `local::assert_git_repo`、`is_git_repo` 的 Local 分支。
   例外（已在阻塞池内，无需再包）：`common/git/local/worktree.rs::get_worktrees` —— 只在
-  `info.rs` 的 `spawn_blocking` 闭包内被调用。
+  `info.rs` 的 `spawn_blocking` 闭包内被调用；`operations/worktree.rs::normalized_worktree` ——
+  同步函数，调用方（`parse_worktree_list`）在阻塞池里等它。
 
 ### 2. Signatures
 
@@ -325,6 +328,12 @@ pub fn resolve(target: &ExecTarget, raw: &str) -> Result<UnitPath>;
 
 // 唯一异步入口：把 fs 调用隔离到阻塞池
 pub async fn resolve_async(target: &ExecTarget, raw: &str) -> Result<UnitPath>;
+
+// 仓库打开 / 校验同构：同步核心 + 异步入口成对提供（同步核心只给「已在池内」的调用方）
+fn open_repo(&self, path: &str) -> Option<git2::Repository>;              // 池内
+async fn open_repo_async(&self, path: &str) -> Option<git2::Repository>;  // 无默认实现
+pub fn assert_git_repo(path: &Path) -> Result<()>;                        // 池内
+pub async fn assert_git_repo_async(path: &str) -> Result<()>;
 
 // 域级入口（async，各自只包一次 spawn_blocking）
 pub async fn resolve_repo(&self, project_id: &str, worktree_path: Option<&str>)
@@ -348,6 +357,15 @@ async fn resolve_base(target: &ExecTarget, root_path: Option<&str>, wd: &str)
    逐条 hop 会把线程池往返乘以条目数，并让批内结果来自不同时刻的 fs 视图。
 7. 同一命令里若两个返回值来自**不同的解析语义**（如 `resolve_base` 的空路径回落 vs 单元身份），
    保持各自一次 hop，不要为省一次往返而合并 —— 合并会顺手改变语义（行为变更不在本场景范围）。
+8. **成对提供，异步层只许用异步入口**：每个阻塞原语都有「同步核心 + 异步入口」两件套
+   （`UnitPath::resolve` / `open_repo` / `assert_git_repo` 是核心；`*_async` 与 async trait 方法是入口）。
+   异步 trait 方法里直接调同步 helper 就是**假异步**（契约与实现相反）。
+9. **异步入口不设默认实现**：trait 默认体只能回落同步核心 ⇒ 未来的 impl 会「默认阻塞」。
+   缺实现时编译器报错，比默认值安全。
+10. 护栏：`tools/guards/checks/check_blocking_fs_in_commands.py`（判据 = 同步原语 ∧ `async fn` 体内
+    ∧ 不在 `spawn_blocking` / `run_blocking` / `run_blocking_result` 括号内；`std::fs::*` 刻意不收，
+    见该文件文档）。判据在**抹平注释与字面量后的等长文本**上做字符配对 —— 原始文本上的配对会被
+    `// 结束 }` 截断函数体（漏报）、被闭包里的 `'('` 破坏配平（误报），两个形态都有回归用例。
 
 ### 4. Validation & Error Matrix
 
@@ -364,11 +382,23 @@ async fn resolve_base(target: &ExecTarget, root_path: Option<&str>, wd: &str)
 - Base：`resolve_base` 内部先 `UnitPath::resolve_async(target, path).await`，再投影 `.exec()`。
 - Bad：`let worktree_path = UnitPath::resolve(&t, &worktree_path)?;` 直接写在
   `#[tauri::command] async fn` 里。
+- Bad（仓库打开/校验类，2026-10-02 修）：`crate::common::git::local::assert_git_repo(...)?` 与
+  `transport.open_repo(work_dir)` 直接写在 `pub async fn get_git_info` 里 → 改用
+  `assert_git_repo_async(...).await` / `transport.open_repo_async(...).await`。
 
 ### 6. Tests Required
 
 - `unit_path::tests::async_entry_matches_sync_entry`：异步入口 ≡ 同步入口（identity / exec 逐字）
   + 校验错误穿透（`..` 文案不得被 `JoinError` 覆盖）。
+- `local::diff::tests::assert_git_repo_async_matches_sync_core`：仓库校验的同步核心 / 异步入口同结果，
+  `not a git repository` 原样穿过异步边界。
+- `transport::tests::test_local_open_repo_async_matches_sync_core`：`ExecTarget::Local` 的
+  `open_repo_async` 必须真的打开仓库（其余 impl 全是返回 `None` 的假实现，无此直测则该分支
+  坏了也全绿 —— 它是「静默退化到 shell 兜底」的唯一哨兵）。
+- 护栏单测（框架强制）：`tools/guards/tests/test_check_blocking_fs_in_commands.py` —— 违规三形、
+  同步函数体、池内闭包（`spawn_blocking` / `run_blocking` / `run_blocking_result` 三形态）、
+  异步入口、`#[cfg(test)]` 豁免、scope 外文件；外加**判据自身的健壮性**：注释里的 `}`、闭包里的
+  `'('`、`mod tests;` 分号形态、`use` 导入后的裸名（四个都曾是真实漏报 / 误报窗口）。
 - 回归：`cargo test --lib` 与 `pnpm test:fe` 逐条不变 —— 这是「只改边界、不改行为」的判据。
 
 ### 7. Wrong vs Correct
@@ -568,7 +598,7 @@ export function drainTaskProcessOutputWait(sessionId: string, timeoutMs: number)
 | closed/missing | `None` → `NotFound`，前端停挂 + 后端 debug 日志 | 错误串改动不影响前端（按变体匹配） |
 | 门闸满时首块到达 | `write` 照常，续拉经 `maybePending`→`onWriteDigested` | 若 `wait_drain` 不自复位标志，下一 push 的 notify 被吞（Warn-1 实测教训） |
 | dispose / terminal-closed | 循环即停、迟到丢弃；closed 事件监听与 `entry.unlisten` 双收口（幂等） | 仅 dispose 置 flag，pending fetch 由后端超时回收 |
-| SSH 背压期间 | `tokio::time::sleep.await`，input/resize 不饿死 | 误用 `thread::sleep` 会饿死 select（2026-09 实测遗留，Pillar 7） |
+| SSH 背压期间 | `tokio::time::sleep.await`，input/resize 不饿死 | 误用 `thread::sleep` 会饿死 select（2026-09 实测遗留，红线 3） |
 
 ### 5. Good/Base/Bad Cases
 

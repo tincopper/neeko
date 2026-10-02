@@ -184,6 +184,28 @@ async fn test_local_is_git_repo() {
     assert!(!transport.is_git_repo("/tmp").await);
 }
 
+/// `ExecTarget::Local` 是唯一带 git2 open 的 `open_repo_async` 实现：三个测试假实现一律返回
+/// `None`，所以这条生产分支若无直测，被改坏（例如 Local 忘了返回 `Some`）会静默退化到 shell 兜底。
+#[tokio::test]
+async fn test_local_open_repo_async_matches_sync_core() {
+    let (_tmp, root) = repo_with_untracked_file();
+    let raw = root.to_str().unwrap();
+    let transport = ExecTarget::Local;
+
+    assert!(
+        transport.open_repo(raw).is_some(),
+        "sync core must find the repo"
+    );
+    assert!(
+        transport.open_repo_async(raw).await.is_some(),
+        "async entry must return the same repo, not silently degrade"
+    );
+    assert!(transport
+        .open_repo_async("/definitely/not/a/repo")
+        .await
+        .is_none());
+}
+
 // ── 只读语义：git status 不得刷新 index（GIT_OPTIONAL_LOCKS=0 默认生效）──────────
 
 /// 造一个含 1 次提交的仓库，并让 index 处于「可被刷新」状态（新增未跟踪文件）。

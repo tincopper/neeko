@@ -170,7 +170,7 @@ pub(crate) async fn get_revision_file_diff(
 
 /// Get ahead/behind counts: `git rev-list --left-right --count`
 pub async fn get_ahead_behind(transport: &dyn GitTransport, work_dir: &str) -> Result<AheadBehind> {
-    crate::common::git::local::assert_git_repo(std::path::Path::new(work_dir))?;
+    crate::common::git::local::assert_git_repo_async(work_dir).await?;
     let branch = transport
         .run_git(&["rev-parse", "--abbrev-ref", "HEAD"], work_dir)
         .await?;

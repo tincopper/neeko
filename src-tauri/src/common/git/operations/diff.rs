@@ -230,7 +230,7 @@ pub async fn get_changed_files_diff_stats(
     transport: &dyn GitTransport,
     work_dir: &str,
 ) -> Result<Vec<FileDiffStats>> {
-    if transport.open_repo(work_dir).is_some() {
+    if transport.open_repo_async(work_dir).await.is_some() {
         let work_dir_owned = work_dir.to_string();
         tokio::task::spawn_blocking(move || {
             crate::common::git::local::get_changed_files_diff_stats(std::path::Path::new(
@@ -252,7 +252,7 @@ pub async fn get_file_diff(
     file_path: &str,
     collapse: bool,
 ) -> Result<DiffResult> {
-    if let Some(_repo) = transport.open_repo(work_dir) {
+    if let Some(_repo) = transport.open_repo_async(work_dir).await {
         let work_dir_owned = work_dir.to_string();
         let file_path_owned = file_path.to_string();
         tokio::task::spawn_blocking(move || {

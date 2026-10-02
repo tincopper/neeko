@@ -238,8 +238,9 @@ pub fn get_file_diff(repo_path: &Path, file_path: &str, collapse: bool) -> Resul
 /// Check whether the given path is a valid git repository.
 ///
 /// 轻量判定：`.git` 条目存在即视为 git 仓库（目录 = 普通仓库 / linked worktree，
-/// 文件 = worktree / submodule 的 gitdir 指针）。与 `transport.rs` 的
-/// `ExecTarget::is_git_repo` 保持同一语义，避免多端判定漂移。
+/// 文件 = worktree / submodule 的 gitdir 指针）。本函数是该判定的**唯一实现** ——
+/// `ExecTarget::is_git_repo` 的 Local 分支与 `transport::local::is_git_repo_local` 都委托到这里，
+/// 避免多份 `.git` 探测判定漂移。
 /// 注意：bare repo（无 `.git` 条目）判定为 false —— Neeko 项目均为工作区仓库，
 /// 不支持 bare repo 作为项目根。
 #[must_use]
@@ -263,6 +264,18 @@ pub fn assert_git_repo(path: &Path) -> Result<()> {
     } else {
         anyhow::bail!("not a git repository: {}", path.display())
     }
+}
+
+/// 异步入口：[`assert_git_repo`] 的阻塞池版本（红线 3）。
+///
+/// `.git` 探测是同步 fs；`get_git_info` / `get_git_branch_info` / `get_ahead_behind` 是 async
+/// 且位于命令入口，直接调同步核心会把探测压在 Tokio worker 上（网络盘上可达秒级）。
+/// 语义与同步核心逐字相同，同步核心保留给「已在阻塞池内」的调用方。
+pub async fn assert_git_repo_async(path: &str) -> Result<()> {
+    let path = path.to_string();
+    tokio::task::spawn_blocking(move || assert_git_repo(std::path::Path::new(&path)))
+        .await
+        .map_err(|e| anyhow::anyhow!("git repo check task failed: {e}"))?
 }
 
 /// 获取指定文件相对于 HEAD 的 diff（未 staged 也包含）。
@@ -468,5 +481,28 @@ mod tests {
         std::fs::write(repo_path.join("small.txt"), "a\nb\nc\n").unwrap();
         let small = get_file_diff(repo_path, "small.txt", false).unwrap();
         assert!(!small.truncated);
+    }
+
+    // ── 异步入口（红线 3）────────────────────────────────────────────
+
+    /// 异步入口必须与同步核心逐字同结果，且拒绝原因不被 `JoinError` 覆盖。
+    #[tokio::test]
+    async fn assert_git_repo_async_matches_sync_core() {
+        let dir = tempfile::tempdir().unwrap();
+        Repository::init(dir.path()).unwrap();
+        let raw = dir.path().to_string_lossy().to_string();
+
+        assert!(assert_git_repo(Path::new(&raw)).is_ok());
+        assert!(assert_git_repo_async(&raw).await.is_ok());
+
+        let missing = dir.path().join("no-such-dir").to_string_lossy().to_string();
+        assert!(assert_git_repo(Path::new(&missing)).is_err());
+        let err = assert_git_repo_async(&missing)
+            .await
+            .expect_err("non-repo path must be rejected through the async entry too");
+        assert!(
+            err.to_string().contains("not a git repository"),
+            "领域错误不得被 JoinError 文案覆盖, got: {err}"
+        );
     }
 }

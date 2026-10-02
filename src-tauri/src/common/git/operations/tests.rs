@@ -431,6 +431,10 @@ impl GitTransport for UnstageGateTransport {
         None
     }
 
+    async fn open_repo_async(&self, _path: &str) -> Option<git2::Repository> {
+        None
+    }
+
     fn exec_target(&self) -> ExecTarget {
         ExecTarget::Local
     }
@@ -553,6 +557,10 @@ impl GitTransport for NoHunkShellTransport {
         None
     }
 
+    async fn open_repo_async(&self, _path: &str) -> Option<git2::Repository> {
+        None
+    }
+
     fn exec_target(&self) -> ExecTarget {
         ExecTarget::Local
     }
@@ -658,6 +666,10 @@ impl GitTransport for DiffTextTransport {
     }
 
     fn open_repo(&self, _path: &str) -> Option<git2::Repository> {
+        None
+    }
+
+    async fn open_repo_async(&self, _path: &str) -> Option<git2::Repository> {
         None
     }
 
