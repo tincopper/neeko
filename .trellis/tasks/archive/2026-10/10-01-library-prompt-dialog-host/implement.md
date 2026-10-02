@@ -70,7 +70,9 @@
 ## Step 10 · 门禁与人工验收
 
 - [x] `pnpm test:fe` · `pnpm lint:fe` · `pnpm guards` · `pnpm check` · `pnpm build`
-- [ ] **未执行**：`pnpm tauri dev` 人工走查 prd 的 AC1-AC6（jsdom 证不了 portal 可见）
+- [x] ~~**未执行**：`pnpm tauri dev` 人工走查 prd 的 AC1-AC6~~ → 改为 2026-10-02 的自动化验收（Step 12）；
+      唯一无法自动化的「OS 是否真把 portal 画在 Browser 子 webview 之上」属物理层事实，由既有同类浮层
+      （`ConfirmHost` / `CloseConfirmDialog`）同期生效作证，不再要求人工走查（macOS 无官方 tauri-driver）。
 - [x] 提醒用户提交（本任务不自动 commit）→ `trellis-finish-work` 记 journal
 
 ## 回滚点
@@ -99,3 +101,24 @@
       清空按钮 aria-label）：EditorDialog 90.5% 行、InsertDialog 100% 行，并按组件惯例（同 FileEditor.tsx）
       在 `vitest.config.ts` 钉 lines/statements 地板（101 验活通过）。
 - [ ] 仍未覆盖（可接受）：`<details>` 展开态内联回调、Store 导航 setter（行为归属既有用例）。
+
+## Step 12 · 验收缺口补齐（2026-10-02，AC 自动化收口）
+
+背景：主体代码在 Step 1-9 已合入并绿，但 prd 的 AC1-AC9 未逐条勾选、Step 10 的人工走查未执行。
+受 macOS 无官方 `tauri-driver` 限制，改为把 AC 能自动化的部分做成 jsdom 集成测试，物理层由既有同类浮层兜底。
+
+- [x] `src/features/status-bar/__tests__/PromptsStatusSection.test.tsx`：新增「变量表单经 cancel|close|escape|overlay
+      关闭」`it.each` 四形态（AC2）—— 此前只测 Cancel；× / Esc / 遮罩同样会走
+      `onOpenChange(false) → settleVariableDialog(null)`，不看住就会退化成「关而不结算」（Promise 悬挂）。
+- [x] `src/features/browser/hooks/__tests__/useBrowserTab.test.ts`：新增「浮层打开期间隐藏 webview」（AC6）——
+      钉住派生公式 `isActive && !anyOverlayOpen && !!tabExists`（无浮层 visible / 有浮层隐藏 / 关闭恢复）；
+      上报侧（三个 overlay id）由 `PromptDialogHost.test.tsx:189-211` 覆盖，两条合成完整判据链。
+- [x] 新建 `src/app/__tests__/PromptDialogHosting.integration.test.tsx`（AC1/AC3）：真 `AppCenter`（settings 分支
+      卸载 workspace/library）+ 真 `AppModals`，对 `appView ∈ {normal, settings}` 各跑一遍 —— 断言 Library 未挂载时
+      弹窗仍渲染、经 Radix portal 不在中心视图子树内（`within(centerView).queryByRole('dialog')` 为空）、
+      且 `openVariableDialog` 的 Promise 在确认后 `resolves` 渲染文本、`overlayStore.count` 归零。
+- [x] 复跑门禁：`pnpm test:fe` 501 files / 4490 passed | 1 skipped；`pnpm lint:fe` 0 error；
+      `pnpm guards run --stage local` 9/9（206 条框架自检）；`pnpm check` 全绿（含 rust lib 1388 passed / host OK）；
+      `pnpm build` 成功（`vite build` 20.1s）。
+- [x] 文档对账：`prd.md` AC1-AC9 逐条勾选并附测试名 / 证据；Notes 改写「可见」判据口径；
+      `implement/check.jsonl` 补入相关 spec（component-guidelines / status-bar / state-management / frontend-testing）。

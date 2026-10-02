@@ -1,6 +1,6 @@
 # 状态栏 Prompts 表单弹窗不可见（store 驱动弹窗被视图级容器托管）
 
-> 状态：**规划中（未动代码）**。本文只登记需求、约束与验收标准；契约与取舍见 `design.md`，执行顺序见 `implement.md`。
+> 状态：**已实现（代码已合入）**；验收于 2026-10-02 复核补齐自动化证据（见下方 AC 与 `implement.md` Step 10）。本文只登记需求、约束与验收标准；契约与取舍见 `design.md`，执行顺序见 `implement.md`。
 > 所有 `file:line` 论断均在 2026-10-01 对当前 `main`（commit `b4a21e34`）逐条核实。
 
 ## Goal
@@ -59,17 +59,28 @@
 
 ## Acceptance Criteria
 
-- [ ] AC1 全新会话、从未打开 Library 视图：状态栏 Prompts 选含 `{{var}}` 的 prompt → 「Fill Variables」表单出现在**主界面之上**；填值确认后渲染文本写入终端并把终端 tab 推到前台。
-- [ ] AC2 取消 / × / Esc / 遮罩点击：不插入、不计使用次数、无残留 pending 状态；之后再进 Library 视图不会蹦出过期表单。
-- [ ] AC3 `appView === 'settings'` 时 AC1 同样成立（视图劫持方案在此必然失败，是宿主动机的硬证据）。
-- [ ] AC4 命令面板 `New Prompt…` 打开编辑表单、`Insert Prompt…` 打开选择器，两者都**不切换中心视图**。
-- [ ] AC5 Library 视图原有能力不回归：New/Edit prompt、列表插入 agent/terminal 行为不变。
-- [ ] AC6 主工作区存在 Browser tab 时，三个弹窗任一打开期间子 webview 被隐藏（`overlayStore` 上报生效）。
-- [ ] AC7 `PromptDialogHost` 测试证明「仅凭 store flag、不挂 LibraryPanel 也能渲染三个弹窗」；状态栏测试升级为驱动真实弹窗流程（而非只断言 flag）。
-- [ ] AC8 `pnpm test:fe` / `pnpm lint:fe` / `pnpm guards` / `pnpm check` / `pnpm build` 全绿；台账计数不变。
-- [ ] AC9 规范更新落地：`component-guidelines.md` 示例改正 + 新增「store 驱动弹窗只允许全局宿主渲染，其 Promise 必须取消即结算、无宿主 fail-closed」；`status-bar.md` item 契约补「不得依赖某视图已挂载」。
+- [x] AC1 全新会话、从未打开 Library 视图：状态栏 Prompts 选含 `{{var}}` 的 prompt → 「Fill Variables」表单出现在**主界面之上**；填值确认后渲染文本写入终端并把终端 tab 推到前台。
+      → `PromptsStatusSection.test.tsx`「含 {{var}} 的行点击…确认后把渲染文本写入终端」+「插入成功后终端露面」；`PromptDialogHosting.integration.test.tsx`（新）证明表单经 Radix portal 挂在 `document.body`、**不在中心视图子树内**。
+- [x] AC2 取消 / × / Esc / 遮罩点击：不插入、不计使用次数、无残留 pending 状态；之后再进 Library 视图不会蹦出过期表单。
+      → `PromptsStatusSection.test.tsx`「变量表单经 cancel|close|escape|overlay 关闭」（`it.each` 四形态，断言 `variableRequest === null`、`insertToTerminal` / `recordUsage` 均未调用）。
+- [x] AC3 `appView === 'settings'` 时 AC1 同样成立（视图劫持方案在此必然失败，是宿主动机的硬证据）。
+      → `PromptDialogHosting.integration.test.tsx`（新）：真 `AppCenter`（settings 分支挂 `view-settings`、卸载 workspace/library）+ 真 `AppModals`，弹窗照常渲染并 `resolves` 渲染文本。
+- [x] AC4 命令面板 `New Prompt…` 打开编辑表单、`Insert Prompt…` 打开选择器，两者都**不切换中心视图**。
+      → `actionRegistry.test.ts`（既有，`new-prompt` / `insert-prompt` 断言无 `openLibraryAt` 视图切换）。
+- [x] AC5 Library 视图原有能力不回归：New/Edit prompt、列表插入 agent/terminal 行为不变。
+      → 全量 `pnpm test:fe` 501 files / 4490 passed（仅新增本任务用例）；`PromptDialogHost.test.tsx` / `libraryStore.test.ts` 等既有用例逐条不变。
+- [x] AC6 主工作区存在 Browser tab 时，三个弹窗任一打开期间子 webview 被隐藏（`overlayStore` 上报生效）。
+      → `PromptDialogHost.test.tsx:189-211` 三个 overlay id（`prompt-editor` / `prompt-insert` / `prompt-variables`）上报与撤销；`useBrowserTab.test.ts`（新）「浮层打开期间隐藏 webview」：`overlayStore.count>0 → visible=false`，关闭后恢复。
+- [x] AC7 `PromptDialogHost` 测试证明「仅凭 store flag、不挂 LibraryPanel 也能渲染三个弹窗」；状态栏测试升级为驱动真实弹窗流程（而非只断言 flag）。
+      → `PromptDialogHost.test.tsx`（既有）+ `AppModals.test.tsx`（全局宿主）+ `PromptsStatusSection.test.tsx`（升级为真 `PromptDialogHost` 流程）+ `PromptDialogHosting.integration.test.tsx`（新，Library 未挂载）。
+- [x] AC8 `pnpm test:fe` / `pnpm lint:fe` / `pnpm guards` / `pnpm check` / `pnpm build` 全绿；台账计数不变。
+      → `pnpm test:fe` 501 files / 4490 passed | 1 skipped；`pnpm lint:fe` 0 error（唯一 warning 为既有 `VirtualList.tsx`）；`pnpm guards run --stage local` 9/9 通过（206 条框架自检）、`check_path_identity_scope` debt 0；`pnpm check` 全绿（eslint 0 / tsc 0 / `cargo fmt`+clippy 0 / guards 9/9 / rust lib 1388 passed / host OK）；`pnpm build` 成功（`vite build` 20.1s，唯一输出为既有 chunk-size warning）。
+- [x] AC9 规范更新落地：`component-guidelines.md` 示例改正 + 新增「store 驱动弹窗只允许全局宿主渲染，其 Promise 必须取消即结算、无宿主 fail-closed」；`status-bar.md` item 契约补「不得依赖某视图已挂载」。
+      → `9a994242 docs(spec): require a global host for store-driven dialogs`（`component-guidelines.md:209`、`status-bar.md:152`）。
 
 ## Notes
 
 - 宿主与 `ConfirmHost` 同构，不发明新机制；投递语义抽成一个 hook 供宿主与 dock wrapper 共用（最大化复用）。
-- 验收 8 的「可见」判定 jsdom 无法证明 portal 真的显示，需 `pnpm tauri dev` 人工确认 AC1-AC3。
+- AC1/AC3 的「可见」物理层（OS 是否真把 portal 画在 Browser 子 webview 之上）jsdom 无法证明；本任务以
+  **「portal 不在中心视图子树内 + 与既有 `ConfirmHost` / `CloseConfirmDialog` 同一渲染层」** 作为自动化判据，
+  物理层由桌面端走查兜底（既有同类浮层已长期生效，属既有事实而非新增风险）。

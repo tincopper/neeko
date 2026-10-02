@@ -1,0 +1,4 @@
+{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "全局宿主规则（本次新增）+ 弹窗渲染点约定"}
+{"file": ".trellis/spec/frontend/status-bar.md", "reason": "状态栏项契约（不得依赖某视图已挂载）"}
+{"file": ".trellis/spec/frontend/state-management.md", "reason": "store 驱动弹窗的 Promise 结算与 fail-closed"}
+{"file": ".trellis/spec/unit-test/frontend-testing.md", "reason": "前端测试构成与 RTL 断言口径"}
