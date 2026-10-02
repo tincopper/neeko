@@ -1295,3 +1295,91 @@ resolve_repo / resolve_base / 6 处命令直连改走 UnitPath::resolve_async（
 ### Next Steps
 
 - None - task complete
+
+
+## Session 248: 收口 10-01-library-prompt-dialog-host：AC 自动化验收并归档
+
+**Date**: 2026-10-02
+**Task**: 收口 10-01-library-prompt-dialog-host：AC 自动化验收并归档
+**Branch**: `main`
+
+### Summary
+
+状态栏 Prompts 弹窗宿主任务收口：补 4/1/2 条测试覆盖 AC1-AC3/AC6，prd AC1-AC9 逐条勾选，门禁全绿，任务归档到 archive/2026-10
+
+### Main Changes
+
+## 背景
+
+`10-01-library-prompt-dialog-host`（状态栏 Prompts 表单弹窗不可见）的代码在早前会话已合入并绿，
+但 prd 的 AC1-AC9 未逐条勾选、`implement.md` Step 10 的人工 `pnpm tauri dev` 走查未执行，
+任务一直停在 `in_progress`。本次收口。
+
+## 关键决策：把「人工走查」换成 jsdom 集成判据
+
+macOS 无官方 Tauri WebDriver（`tauri-driver` 仅 Linux/Windows），native 窗口自动化不可用。
+选择「方案 A'」：把 AC 中能被 jsdom 证明的部分做成应用级集成测试，零新依赖、复用既有
+`AppModals.test.tsx` 的 Provider 组合。
+
+唯一无法自动化的物理层事实 —— 「OS 是否真把 portal 画在 Browser 子 webview 之上」 ——
+由既有同类浮层（`ConfirmHost` / `CloseConfirmDialog`）长期生效作证，不再要求人工走查。
+
+## 改动（测试补强，3 个文件）
+
+1. `src/features/status-bar/__tests__/PromptsStatusSection.test.tsx`
+   新增 `it.each(['cancel','close','escape','overlay'])` 四关闭路径（AC2）。此前只测 Cancel；
+   × / Esc / 遮罩同样走 `onOpenChange(false) → settleVariableDialog(null)`，不看住就会退化成
+   「关而不结算」（Promise 悬挂 ⇒ 插入静默丢失）。Radix 外部关闭是 `pointerdown`（不是 mousedown）——
+   首跑 overlay 用例即红（`variableRequest` 仍为 `"hi {{name}}"`），改事件类型后绿。
+2. `src/features/browser/hooks/__tests__/useBrowserTab.test.ts`
+   新增「浮层打开期间隐藏 webview」（AC6）：钉住派生公式 `isActive && !anyOverlayOpen && !!tabExists`
+   （无浮层 visible / 有浮层隐藏 / 关闭恢复）。断言点在 `useBrowserWebview` mock 的
+   `mock.lastCall[0].visible` —— 该值不对外返回。
+3. `src/app/__tests__/PromptDialogHosting.integration.test.tsx`（新）
+   真 `AppCenter`（settings 分支卸载 workspace/library）+ 真 `AppModals`，`appView ∈ {normal, settings}`
+   各跑一遍（AC1/AC3）：Library 未挂载时弹窗仍渲染、经 Radix portal 不在中心视图子树内
+   （`within(centerView).queryByRole('dialog')` 为空，不直取 node）、确认后 Promise `resolves` 渲染文本、
+   `overlayStore.count` 归零。
+
+## 门禁
+
+- `pnpm test:fe` → 501 files / 4490 passed | 1 skipped（+1 file / +7 tests，全为本任务新增）
+- `pnpm lint:fe` → 0 error（唯一 warning 为既有 `VirtualList.tsx`）
+- `pnpm guards run --stage local` → 9/9 通过（206 条框架自检），`check_path_identity_scope` debt 0
+- `pnpm check` → 全绿（eslint 0 / tsc 0 / cargo fmt+clippy 0 / rust lib 1388 passed / host OK）
+- `pnpm build` → 成功（vite build 20.1s）
+
+修掉的 lint 拦路：新文件需 PASCAL_CASE → 改名 `PromptDialogHosting.integration.test.tsx`；
+`closest`/`document.body` 触发 `testing-library/no-node-access` → 改用 `within(...)` + `getByRole`；
+`useBrowserTab.test.ts` 导入顺序按 `import/order` 重排。
+
+## 台账
+
+- `prd.md` AC1-AC9 逐条勾选 + 证据（测试名 / 命令输出）；状态行从「规划中（未动代码）」改为「已实现」。
+- `implement.md` 新增 Step 12 记录本次收口；Step 10 的人工走查条目标为已由自动化替代。
+- `implement.jsonl` / `check.jsonl` 补入 4 + 3 条 spec 引用（component-guidelines / status-bar /
+  state-management / frontend-testing）。
+- `task.py archive library-prompt-dialog-host` → `archive/2026-10/`，auto-commit `fc4fb9dc`。
+
+## 遗留
+
+测试改动（3 个文件）**未提交**，留待用户按仓库约定提交（本会话遵循「不主动提交代码」）。
+
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `fc4fb9dc` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

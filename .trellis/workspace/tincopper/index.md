@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-5.md`
-- **Total Sessions**: 247
+- **Total Sessions**: 248
 - **Last Active**: 2026-10-02
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-5.md` | ~1294 | Active |
+| `journal-5.md` | ~1385 | Active |
 | `journal-4.md` | ~1989 | Archived |
 | `journal-3.md` | ~1978 | Archived |
 | `journal-2.md` | ~1991 | Archived |
@@ -33,6 +33,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 248 | 2026-10-02 | 收口 10-01-library-prompt-dialog-host：AC 自动化验收并归档 | `fc4fb9dc` | `main` |
 | 247 | 2026-10-02 | 阻塞 fs 收口：仓库打开/校验清扫 + 命令层护栏（红线 3） | `e0f50516`, `90fac3bb`, `af0847a7` | `main` |
 | 246 | 2026-10-02 | 路径解析的阻塞 I/O 落阻塞池（红线 3） | `a99e05c6`, `15e11744` | `main` |
 | 245 | 2026-10-01 | 路径身份字母表：identity 与 exec 双渲染（修 CI Windows 红） | - | `main` |
