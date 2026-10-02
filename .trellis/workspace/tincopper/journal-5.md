@@ -1257,3 +1257,41 @@ resolve_repo / resolve_base / 6 处命令直连改走 UnitPath::resolve_async（
 ### Next Steps
 
 - None - task complete
+
+
+## Session 247: 阻塞 fs 收口：仓库打开/校验清扫 + 命令层护栏（红线 3）
+
+**Date**: 2026-10-02
+**Task**: 阻塞 fs 收口：仓库打开/校验清扫 + 命令层护栏（红线 3）
+**Branch**: `main`
+
+### Summary
+
+同步核心 + 异步入口成对提供（open_repo_async 无默认实现 / is_git_repo Local 分支落池 / assert_git_repo_async）；5 处调用点改走异步入口；新增 check_blocking_fs_in_commands 护栏（含 run_blocking_result 与抹平注释字面量的判据健壮性修复，单测 14 条）与两条生产分支直测；is_git_repo 探测收敛为单一实现；第三轮 neeko-check 复核同轮收口 spec 与台账
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `e0f50516` | (see git log) |
+| `90fac3bb` | (see git log) |
+| `af0847a7` | (see git log) |
+
+### Testing
+
+- [OK] `pnpm check` EXIT=0（lint:fe + lint:rust + 9/9 护栏 + test:fe + test:rust + test:host）
+- [OK] `cargo test --lib` 1388 passed（1386 → +2：`transport::tests::test_local_open_repo_async_matches_sync_core`、`local::diff::tests::assert_git_repo_async_matches_sync_core`）
+- [OK] 前端 500 files / 4483 passed；护栏 `check_blocking_fs_in_commands` scanned=44 / 0 命中；框架自检 206 条
+- [OK] 旧判据对 5 个新形态的漏报/误报用 scratch 脚本逐一复现，确认修复改变了判据结论而非只多写了用例
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
