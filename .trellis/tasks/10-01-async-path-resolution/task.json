@@ -18,7 +18,9 @@
   "commit": null,
   "pr_url": null,
   "subtasks": [],
-  "children": [],
+  "children": [
+    "10-02-blocking-fs-sweep"
+  ],
   "parent": "10-01-path-identity-alphabet",
   "relatedFiles": [],
   "notes": "",

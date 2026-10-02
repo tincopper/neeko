@@ -1,0 +1,3 @@
+{"_example": "Fill with {\"file\": \"<path>\", \"reason\": \"<why>\"}. Put spec/research files only — no code paths. Run `python3 .trellis/scripts/get_context.py --mode packages` to list available specs. Delete this line once real entries are added."}
+{"file": ".trellis/spec/backend/concurrency-guidelines.md", "reason": "红线 3 判据 + 本族 Scenario（10-01 已落）"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "护栏框架与平台差异集中化的既有模式"}
