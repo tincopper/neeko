@@ -3,10 +3,15 @@
 // 故此处显式引入所需类型/函数（AGENTS.md 规则 #9：mod.rs 只留声明与 pub use）。
 use super::*;
 
+use std::sync::{Arc, Mutex};
+
 use anyhow::Result;
 
 use crate::common::executor::factory::ExecTarget;
-use crate::common::git::transport::{ErrorKind, GitExecError, GitExecOptions, GitTransport};
+use crate::common::executor::{ExecChunkSink, ExecStream};
+use crate::common::git::transport::{
+    ErrorKind, GitExecError, GitExecOptions, GitRunHooks, GitTransport,
+};
 use crate::common::git::types::DiffLine;
 use crate::core::exec::collect;
 
@@ -1143,5 +1148,129 @@ async fn get_commit_log_scoped_to_head_excludes_isolated_tool_refs() {
             .iter()
             .any(|r| r.kind == crate::common::git::refs::RefKind::Branch),
         "HEAD commit should still expose its branch ref"
+    );
+}
+
+// ── commit_files：输出实时进 Console（on_output 流式）────────────────────
+
+fn collecting_sink() -> (ExecChunkSink, Arc<Mutex<Vec<(ExecStream, String)>>>) {
+    let calls: Arc<Mutex<Vec<(ExecStream, String)>>> = Arc::new(Mutex::new(Vec::new()));
+    let sink: ExecChunkSink = {
+        let calls = Arc::clone(&calls);
+        Arc::new(move |stream: ExecStream, text: &str| {
+            calls.lock().unwrap().push((stream, text.to_string()));
+        })
+    };
+    (sink, calls)
+}
+
+#[tokio::test]
+async fn commit_files_streams_commit_output_to_sink() {
+    let (_dir, path) = init_repo().await;
+    std::fs::write(std::path::Path::new(&path).join("streamed.txt"), "x\n").expect("write file");
+    stage_files(&ExecTarget::Local, &path, &["streamed.txt".to_string()])
+        .await
+        .expect("stage");
+
+    let (sink, calls) = collecting_sink();
+    let result = commit_files(
+        &ExecTarget::Local,
+        &path,
+        &[],
+        "stream me",
+        GitRunHooks {
+            on_output: Some(sink),
+            cancel: None,
+        },
+    )
+    .await
+    .expect("commit should succeed");
+
+    assert!(!result.hash.is_empty(), "commit hash should be parsed");
+    let text: String = calls
+        .lock()
+        .unwrap()
+        .iter()
+        .map(|(_, t)| t.as_str())
+        .collect();
+    assert!(
+        text.contains("stream me"),
+        "commit 输出（含 message 摘要）必须实时交付，got: {text:?}"
+    );
+}
+
+#[tokio::test]
+async fn commit_files_without_sink_still_returns_hash() {
+    let (_dir, path) = init_repo().await;
+    std::fs::write(std::path::Path::new(&path).join("quiet.txt"), "x\n").expect("write file");
+    stage_files(&ExecTarget::Local, &path, &["quiet.txt".to_string()])
+        .await
+        .expect("stage");
+
+    let result = commit_files(
+        &ExecTarget::Local,
+        &path,
+        &[],
+        "no sink",
+        GitRunHooks::none(),
+    )
+    .await
+    .expect("commit without sink must keep working");
+    assert!(!result.hash.is_empty());
+}
+
+// ── 取消：长 pre-push hook 必须被杀掉并快速返回 ──────────────────────────
+
+#[cfg(unix)]
+#[tokio::test]
+async fn push_cancel_aborts_pre_push_hook_and_returns_promptly() {
+    use std::os::unix::fs::PermissionsExt;
+
+    use crate::common::git::transport::GitSyncHandle;
+
+    let (_dir, path) = init_repo().await;
+    let remote_dir = tempdir().expect("remote tempdir");
+    let remote = remote_dir.path().to_string_lossy().to_string();
+    let out = git_local(&remote, &["init", "--bare", "-q"]).await;
+    assert_eq!(out.exit_code, 0, "bare init failed");
+    let out = git_local(&path, &["remote", "add", "origin", &remote]).await;
+    assert_eq!(out.exit_code, 0, "remote add failed");
+
+    // 模拟本仓真实的 pre-push（分钟级测试）：hook 树不取消时会让 push 挂住。
+    let hook = std::path::Path::new(&path).join(".git/hooks/pre-push");
+    std::fs::write(&hook, "#!/bin/sh\nsleep 30\n").expect("write pre-push hook");
+    let mut perm = std::fs::metadata(&hook)
+        .expect("hook metadata")
+        .permissions();
+    perm.set_mode(0o755);
+    std::fs::set_permissions(&hook, perm).expect("chmod hook");
+
+    let handle = GitSyncHandle::new();
+    let handle_for_task = handle.clone();
+    let repo_path = path.clone();
+    let push_task = tokio::spawn(async move {
+        push(
+            &ExecTarget::Local,
+            &repo_path,
+            true,
+            GitRunHooks {
+                on_output: None,
+                cancel: Some(handle_for_task),
+            },
+        )
+        .await
+    });
+
+    tokio::time::sleep(std::time::Duration::from_millis(400)).await;
+    handle.cancel().expect("receiver alive");
+
+    let result = tokio::time::timeout(std::time::Duration::from_secs(5), push_task)
+        .await
+        .expect("cancel must abort the push promptly (hook tree killed)")
+        .expect("join");
+    let err = result.expect_err("cancelled push must surface an error");
+    assert!(
+        format!("{err:#}").to_lowercase().contains("cancel"),
+        "error must be the cancellation one, got: {err:#}"
     );
 }

@@ -9,7 +9,9 @@ use crate::common::git::credential::{
 };
 use crate::common::git::parsers::{parse_numstat_line, parse_status_line};
 use crate::common::git::provider::detect_provider;
-use crate::common::git::transport::{ErrorKind, GitExecError, GitTransport};
+use crate::common::git::transport::{
+    ErrorKind, GitExecError, GitExecOptions, GitRunHooks, GitTransport,
+};
 use crate::common::git::types::PushOutcome;
 use crate::common::git::types::{DiffHunk, DiffLine, DiffResult};
 use crate::core::exec::collect;
@@ -19,8 +21,24 @@ use crate::project::types::{
 };
 use anyhow::{bail, Result};
 
-pub async fn fetch(transport: &dyn GitTransport, work_dir: &str) -> Result<PushOutcome> {
-    let result = transport.run_git(&["fetch", "--all"], work_dir).await;
+/// 跑一条 git 命令并把输出块实时交给 Console（`hooks` 缺省时等价 `run_git`）。
+async fn run_git_streaming(
+    transport: &dyn GitTransport,
+    args: &[&str],
+    work_dir: &str,
+    hooks: GitRunHooks,
+) -> Result<String> {
+    transport
+        .run_git_opts_streaming(args, work_dir, GitExecOptions::default(), hooks)
+        .await
+}
+
+pub async fn fetch(
+    transport: &dyn GitTransport,
+    work_dir: &str,
+    hooks: GitRunHooks,
+) -> Result<PushOutcome> {
+    let result = run_git_streaming(transport, &["fetch", "--all"], work_dir, hooks).await;
     match result {
         Ok(_) => {
             invalidate_caches(work_dir);
@@ -36,8 +54,17 @@ pub async fn fetch_with_credentials(
     work_dir: &str,
     username: &str,
     password: &str,
+    hooks: GitRunHooks,
 ) -> Result<PushOutcome> {
-    exec_with_credentials(transport, work_dir, &["fetch", "--all"], username, password).await?;
+    exec_with_credentials(
+        transport,
+        work_dir,
+        &["fetch", "--all"],
+        username,
+        password,
+        hooks,
+    )
+    .await?;
     invalidate_caches(work_dir);
     Ok(PushOutcome::Success {})
 }
@@ -47,10 +74,11 @@ pub async fn push(
     transport: &dyn GitTransport,
     work_dir: &str,
     set_upstream: bool,
+    hooks: GitRunHooks,
 ) -> Result<PushOutcome> {
     let owned = push_args(transport, work_dir, set_upstream).await;
     let args: Vec<&str> = owned.iter().map(|s| s.as_str()).collect();
-    let result = transport.run_git(&args, work_dir).await;
+    let result = run_git_streaming(transport, &args, work_dir, hooks).await;
     match result {
         Ok(_) => {
             invalidate_caches(work_dir);
@@ -67,27 +95,40 @@ pub async fn push_with_credentials(
     set_upstream: bool,
     username: &str,
     password: &str,
+    hooks: GitRunHooks,
 ) -> Result<PushOutcome> {
     let owned = push_args(transport, work_dir, set_upstream).await;
     let args: Vec<&str> = owned.iter().map(|s| s.as_str()).collect();
-    exec_with_credentials(transport, work_dir, &args, username, password).await?;
+    exec_with_credentials(transport, work_dir, &args, username, password, hooks).await?;
     invalidate_caches(work_dir);
     Ok(PushOutcome::Success {})
 }
 
 /// Pull: fetch + merge --ff-only
-pub async fn pull(transport: &dyn GitTransport, work_dir: &str) -> Result<PushOutcome> {
+pub async fn pull(
+    transport: &dyn GitTransport,
+    work_dir: &str,
+    hooks: GitRunHooks,
+) -> Result<PushOutcome> {
     let branch = transport
         .run_git(&["rev-parse", "--abbrev-ref", "HEAD"], work_dir)
         .await?;
     let branch = branch.trim();
-    let _ = transport
-        .run_git(&["fetch", "origin", branch], work_dir)
-        .await;
+    let _ = run_git_streaming(
+        transport,
+        &["fetch", "origin", branch],
+        work_dir,
+        hooks.clone(),
+    )
+    .await;
     let remote_branch = format!("origin/{}", branch);
-    let result = transport
-        .run_git(&["merge", "--ff-only", &remote_branch], work_dir)
-        .await;
+    let result = run_git_streaming(
+        transport,
+        &["merge", "--ff-only", &remote_branch],
+        work_dir,
+        hooks,
+    )
+    .await;
     match result {
         Ok(_) => {
             invalidate_caches(work_dir);
@@ -103,6 +144,7 @@ pub async fn pull_with_credentials(
     work_dir: &str,
     username: &str,
     password: &str,
+    hooks: GitRunHooks,
 ) -> Result<PushOutcome> {
     let branch = transport
         .run_git(&["rev-parse", "--abbrev-ref", "HEAD"], work_dir)
@@ -114,12 +156,17 @@ pub async fn pull_with_credentials(
         &["fetch", "origin", branch],
         username,
         password,
+        hooks.clone(),
     )
     .await?;
     let remote_branch = format!("origin/{}", branch);
-    let result = transport
-        .run_git(&["merge", "--ff-only", &remote_branch], work_dir)
-        .await;
+    let result = run_git_streaming(
+        transport,
+        &["merge", "--ff-only", &remote_branch],
+        work_dir,
+        hooks,
+    )
+    .await;
     match result {
         Ok(_) => {
             invalidate_caches(work_dir);
@@ -158,6 +205,7 @@ async fn exec_with_credentials(
     args: &[&str],
     username: &str,
     password: &str,
+    hooks: GitRunHooks,
 ) -> Result<PushOutcome> {
     let remote_url = get_remote_url(transport, work_dir)
         .await
@@ -165,7 +213,7 @@ async fn exec_with_credentials(
     let helper = resolve_credential_helper(transport, work_dir).await?;
     // 如果 remote_url 不是合法 URL（如 "unknown"），跳过 credential 流程直接执行
     if remote_url == "unknown" || !remote_url.contains("://") {
-        let result = transport.run_git(args, work_dir).await;
+        let result = run_git_streaming(transport, args, work_dir, hooks).await;
         return match result {
             Ok(_) => Ok(PushOutcome::Success {}),
             Err(e) => classify_git_error(transport, work_dir, e).await,
@@ -175,7 +223,7 @@ async fn exec_with_credentials(
         Ok(c) => c,
         Err(_) => {
             // URL 格式无法解析，跳过 credential 流程
-            let result = transport.run_git(args, work_dir).await;
+            let result = run_git_streaming(transport, args, work_dir, hooks).await;
             return match result {
                 Ok(_) => Ok(PushOutcome::Success {}),
                 Err(e) => classify_git_error(transport, work_dir, e).await,
@@ -183,7 +231,7 @@ async fn exec_with_credentials(
         }
     };
     let _ = credential_approve(transport, work_dir, &helper, &cred, username, password).await;
-    let result = transport.run_git(args, work_dir).await;
+    let result = run_git_streaming(transport, args, work_dir, hooks).await;
     match result {
         Ok(_) => Ok(PushOutcome::Success {}),
         Err(e) => {

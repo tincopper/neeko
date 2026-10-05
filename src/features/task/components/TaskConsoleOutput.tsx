@@ -46,7 +46,8 @@ function TaskConsoleOutput({ run, active }: Props) {
   /** How much of `run.output` has already been written to the terminal. */
   const writtenLenRef = useRef(0);
 
-  const readOnly = run.source === 'lsp' || run.status !== 'running';
+  // Non-task sources (LSP logs / git output) are output-only: no keyboard input.
+  const readOnly = (run.source ?? 'task') !== 'task' || run.status !== 'running';
 
   // Create / dispose terminal once per run id
   useEffect(() => {
@@ -146,7 +147,7 @@ function TaskConsoleOutput({ run, active }: Props) {
     inputControllerRef.current?.dispose();
     inputControllerRef.current = null;
 
-    if (!term || run.source === 'lsp' || run.status !== 'running' || !processId) {
+    if (!term || (run.source ?? 'task') !== 'task' || run.status !== 'running' || !processId) {
       return;
     }
 

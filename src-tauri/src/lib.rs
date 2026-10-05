@@ -197,6 +197,7 @@ macro_rules! neeko_invoke_handler {
             $crate::git::commands::fetch,
             $crate::git::commands::pull,
             $crate::git::commands::push,
+            $crate::git::commands::cancel_git_sync,
             $crate::git::commands::fetch_with_credentials,
             $crate::git::commands::pull_with_credentials,
             $crate::git::commands::push_with_credentials,

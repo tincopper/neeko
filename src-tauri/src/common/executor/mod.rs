@@ -16,9 +16,14 @@ mod traits;
 mod types;
 mod wsl;
 
-pub use collect::collect_child_output;
+pub use collect::{
+    collect_child_output, collect_child_output_streaming,
+    collect_child_output_streaming_cancellable,
+};
 pub(crate) use env_defaults::with_default_env;
 pub use error::{format_command_failed_msg, ExecError};
 pub use process_guard::ProcessGuard;
 pub use traits::CommandExecutor;
-pub use types::{BoxAsyncRead, BoxAsyncWrite, ExecChild, ExecOutput, SpawnOptions};
+pub use types::{
+    BoxAsyncRead, BoxAsyncWrite, ExecChild, ExecChunkSink, ExecOutput, ExecStream, SpawnOptions,
+};

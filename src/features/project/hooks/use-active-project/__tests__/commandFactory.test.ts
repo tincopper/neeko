@@ -20,6 +20,8 @@ describe('createProjectCommands (Local)', () => {
   const mockInvoke = vi.mocked(invoke);
   const payload = () => ({ projectId });
   const wtPayload = () => ({ projectId, worktreePath: undefined });
+  /** 长操作带 Console 流式透传参数（无 runId 时显式 null）。 */
+  const streamPayload = () => ({ ...wtPayload(), consoleRunId: null });
 
   beforeEach(() => mockInvoke.mockClear());
 
@@ -60,7 +62,7 @@ describe('createProjectCommands (Local)', () => {
   it('commitFiles should call commit_files', async () => {
     await commands.commitFiles(['src/foo.ts'], 'fix: foo');
     expect(mockInvoke).toHaveBeenCalledWith('commit_files', {
-      ...wtPayload(),
+      ...streamPayload(),
       filePaths: ['src/foo.ts'],
       message: 'fix: foo',
     });
@@ -68,18 +70,18 @@ describe('createProjectCommands (Local)', () => {
 
   it('fetch should call fetch', async () => {
     await commands.fetch();
-    expect(mockInvoke).toHaveBeenCalledWith('fetch', wtPayload());
+    expect(mockInvoke).toHaveBeenCalledWith('fetch', streamPayload());
   });
 
   it('pull should call pull', async () => {
     await commands.pull();
-    expect(mockInvoke).toHaveBeenCalledWith('pull', wtPayload());
+    expect(mockInvoke).toHaveBeenCalledWith('pull', streamPayload());
   });
 
   it('push should call push with setUpstream default false', async () => {
     await commands.push();
     expect(mockInvoke).toHaveBeenCalledWith('push', {
-      ...wtPayload(),
+      ...streamPayload(),
       setUpstream: false,
     });
   });
@@ -87,7 +89,7 @@ describe('createProjectCommands (Local)', () => {
   it('push(true) should call push with setUpstream true', async () => {
     await commands.push(true);
     expect(mockInvoke).toHaveBeenCalledWith('push', {
-      ...wtPayload(),
+      ...streamPayload(),
       setUpstream: true,
     });
   });
@@ -95,7 +97,7 @@ describe('createProjectCommands (Local)', () => {
   it('fetchWithCredentials should call fetch_with_credentials', async () => {
     await commands.fetchWithCredentials('user', 'pass');
     expect(mockInvoke).toHaveBeenCalledWith('fetch_with_credentials', {
-      ...wtPayload(),
+      ...streamPayload(),
       username: 'user',
       password: 'pass',
     });
@@ -104,7 +106,7 @@ describe('createProjectCommands (Local)', () => {
   it('pullWithCredentials should call pull_with_credentials', async () => {
     await commands.pullWithCredentials('user', 'pass');
     expect(mockInvoke).toHaveBeenCalledWith('pull_with_credentials', {
-      ...wtPayload(),
+      ...streamPayload(),
       username: 'user',
       password: 'pass',
     });
@@ -113,7 +115,7 @@ describe('createProjectCommands (Local)', () => {
   it('pushWithCredentials should call push_with_credentials', async () => {
     await commands.pushWithCredentials(false, 'user', 'pass');
     expect(mockInvoke).toHaveBeenCalledWith('push_with_credentials', {
-      ...wtPayload(),
+      ...streamPayload(),
       setUpstream: false,
       username: 'user',
       password: 'pass',
@@ -279,6 +281,7 @@ describe('createProjectCommands with worktreePath', () => {
       filePaths: ['src/foo.ts'],
       message: 'feat: foo',
       worktreePath,
+      consoleRunId: null,
     });
   });
 
@@ -306,6 +309,7 @@ describe('createProjectCommands with worktreePath', () => {
       projectId,
       setUpstream: true,
       worktreePath,
+      consoleRunId: null,
     });
   });
 

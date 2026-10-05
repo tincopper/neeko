@@ -25,10 +25,10 @@ import { useAheadBehindSync } from '@/shared/hooks/useAheadBehindSync';
 import { useProjectStore } from '@/shared/store/projectStore';
 import { useActiveWorktreePath } from '@/shared/store/worktreeStore';
 import { getDistroIcon } from '@/shared/utils/distros';
-import { withTimeout } from '@/shared/utils/withTimeout';
 
 import serverIcon from '../../../assets/server.svg';
 import { push, pull, type PushOutcome } from '../../git/api/gitApi';
+import { runGitConsoleOp, GIT_BUSY_MESSAGE } from '../../git/api/gitConsoleRun';
 
 const ProjectsPanel: React.FC = () => {
   const { config, agents, ideCommandOverrides, showToast } = useAppContext();
@@ -178,10 +178,22 @@ const ProjectsPanel: React.FC = () => {
 
   const handlePush = useCallback(
     async (projectId: string) => {
+      const projectPath = projects.find((p) => p.id === projectId)?.path ?? '';
       try {
         const worktreePath = activeProjectId === projectId ? activeWorktreePath : null;
-        const outcome = await withTimeout(push(projectId, false, worktreePath), 30_000, 'push');
-        const msg = pushOutcomeMsg(outcome);
+        const result = await runGitConsoleOp({
+          header: 'git push',
+          projectId,
+          projectPath,
+          run: (runId) => push(projectId, false, worktreePath, runId),
+          isAuthRequired: (o) => 'AuthRequired' in o,
+        });
+        if (result.status === 'busy') {
+          showToast?.(GIT_BUSY_MESSAGE, 'error');
+          return;
+        }
+        if (result.status === 'stopped') return; // 用户取消
+        const msg = pushOutcomeMsg(result.value);
         if (msg) {
           showToast?.(msg, 'error');
           return;
@@ -191,15 +203,27 @@ const ProjectsPanel: React.FC = () => {
         showToast?.(String(e), 'error');
       }
     },
-    [activeProjectId, activeWorktreePath, onRefreshGit, showToast],
+    [projects, activeProjectId, activeWorktreePath, onRefreshGit, showToast],
   );
 
   const handlePull = useCallback(
     async (projectId: string) => {
+      const projectPath = projects.find((p) => p.id === projectId)?.path ?? '';
       try {
         const worktreePath = activeProjectId === projectId ? activeWorktreePath : null;
-        const outcome = await withTimeout(pull(projectId, worktreePath), 30_000, 'pull');
-        const msg = pushOutcomeMsg(outcome);
+        const result = await runGitConsoleOp({
+          header: 'git pull',
+          projectId,
+          projectPath,
+          run: (runId) => pull(projectId, worktreePath, runId),
+          isAuthRequired: (o) => 'AuthRequired' in o,
+        });
+        if (result.status === 'busy') {
+          showToast?.(GIT_BUSY_MESSAGE, 'error');
+          return;
+        }
+        if (result.status === 'stopped') return; // 用户取消
+        const msg = pushOutcomeMsg(result.value);
         if (msg) {
           showToast?.(msg, 'error');
           return;
@@ -209,7 +233,7 @@ const ProjectsPanel: React.FC = () => {
         showToast?.(String(e), 'error');
       }
     },
-    [activeProjectId, activeWorktreePath, onRefreshGit, showToast],
+    [projects, activeProjectId, activeWorktreePath, onRefreshGit, showToast],
   );
 
   return (

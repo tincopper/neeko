@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { useAgentActions, useAgentClickHandler } from '@/features/agent';
 import { useRemoteAuthActions } from '@/features/connection';
 import { useFileTabRefresh, useFileView, useTabManagement } from '@/features/editor';
+import { useGitConsoleBridge } from '@/features/git';
 import {
   useActiveProject,
   useConnectionProjects,
@@ -68,6 +69,8 @@ export function useAppShellData(): UseAppShellDataResult {
   });
   // Skill auto-load: install bound tag-group skills on project select (no remove)
   useApplyProjectSkills();
+  // Git 长操作（push/fetch/pull/commit）的实时输出 → Console（app 级订阅，面板关闭也收流）
+  useGitConsoleBridge();
 
   const {
     activeProjectId,

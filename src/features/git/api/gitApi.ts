@@ -54,20 +54,42 @@ export function discardFiles(
 
 // ─── Remote operations ───────────────────────────────────────────────────────
 
-export function fetch(projectId: string, worktreePath?: string | null): Promise<PushOutcome> {
-  return invoke<PushOutcome>('fetch', { projectId, worktreePath });
+export function fetch(
+  projectId: string,
+  worktreePath?: string | null,
+  consoleRunId?: string | null,
+): Promise<PushOutcome> {
+  return invoke<PushOutcome>('fetch', {
+    projectId,
+    worktreePath,
+    consoleRunId: consoleRunId ?? null,
+  });
 }
 
-export function pull(projectId: string, worktreePath?: string | null): Promise<PushOutcome> {
-  return invoke<PushOutcome>('pull', { projectId, worktreePath });
+export function pull(
+  projectId: string,
+  worktreePath?: string | null,
+  consoleRunId?: string | null,
+): Promise<PushOutcome> {
+  return invoke<PushOutcome>('pull', {
+    projectId,
+    worktreePath,
+    consoleRunId: consoleRunId ?? null,
+  });
 }
 
 export function push(
   projectId: string,
   setUpstream?: boolean,
   worktreePath?: string | null,
+  consoleRunId?: string | null,
 ): Promise<PushOutcome> {
-  return invoke<PushOutcome>('push', { projectId, setUpstream, worktreePath });
+  return invoke<PushOutcome>('push', {
+    projectId,
+    setUpstream,
+    worktreePath,
+    consoleRunId: consoleRunId ?? null,
+  });
 }
 
 export function fetchWithCredentials(
@@ -75,12 +97,14 @@ export function fetchWithCredentials(
   username: string,
   password: string,
   worktreePath?: string | null,
+  consoleRunId?: string | null,
 ): Promise<PushOutcome> {
   return invoke<PushOutcome>('fetch_with_credentials', {
     projectId,
     username,
     password,
     worktreePath,
+    consoleRunId: consoleRunId ?? null,
   });
 }
 
@@ -89,12 +113,14 @@ export function pullWithCredentials(
   username: string,
   password: string,
   worktreePath?: string | null,
+  consoleRunId?: string | null,
 ): Promise<PushOutcome> {
   return invoke<PushOutcome>('pull_with_credentials', {
     projectId,
     username,
     password,
     worktreePath,
+    consoleRunId: consoleRunId ?? null,
   });
 }
 
@@ -104,6 +130,7 @@ export function pushWithCredentials(
   username: string,
   password: string,
   worktreePath?: string | null,
+  consoleRunId?: string | null,
 ): Promise<PushOutcome> {
   return invoke<PushOutcome>('push_with_credentials', {
     projectId,
@@ -111,6 +138,7 @@ export function pushWithCredentials(
     username,
     password,
     worktreePath,
+    consoleRunId: consoleRunId ?? null,
   });
 }
 
@@ -119,8 +147,25 @@ export function commitFiles(
   filePaths: string[],
   message: string,
   worktreePath?: string | null,
+  consoleRunId?: string | null,
 ): Promise<CommitResult> {
-  return invoke<CommitResult>('commit_files', { projectId, filePaths, message, worktreePath });
+  return invoke<CommitResult>('commit_files', {
+    projectId,
+    filePaths,
+    message,
+    worktreePath,
+    consoleRunId: consoleRunId ?? null,
+  });
+}
+
+/**
+ * Cancel the in-flight git sync operation (push / fetch / pull / commit).
+ *
+ * `consoleRunId` 限定取消目标：与后端单飞槽里的 run id 匹配才生效，避免用陈旧的
+ * 仓库 run id 误取消另一个仓库正在跑的操作。幂等：没有在跑的操作时 no-op。
+ */
+export function cancelGitSync(consoleRunId?: string | null): Promise<void> {
+  return invoke<void>('cancel_git_sync', { consoleRunId: consoleRunId ?? null });
 }
 
 // ─── Cherry-pick / Revert / Tag ──────────────────────────────────────────────

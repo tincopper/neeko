@@ -2,24 +2,42 @@
 
 #![allow(unused_imports, missing_docs)]
 
+pub mod cancel;
 pub mod local;
 pub mod ssh;
 pub mod wsl;
 
+pub use cancel::{GitSyncGuard, GitSyncHandle, GitSyncSlots};
+
 use std::time::Duration;
 
-use crate::common::executor::with_default_env;
+use crate::common::executor::factory::{create_executor, ExecTarget};
+use crate::common::executor::{
+    collect_child_output_streaming_cancellable, with_default_env, ExecChunkSink, ExecError,
+    ExecOutput, SpawnOptions,
+};
 use anyhow::Result;
 use async_trait::async_trait;
-
-use crate::common::executor::factory::ExecTarget;
 
 // ── Timeouts ───────────────────────────────────────────────────────────────
 
 /// Timeout for local (non-network) git commands.
 pub(crate) const LOCAL_GIT_TIMEOUT: Duration = Duration::from_secs(30);
-/// Timeout for network git commands (push, fetch, pull, clone).
-pub(crate) const NETWORK_GIT_TIMEOUT: Duration = Duration::from_secs(30);
+
+/// Wall-clock bound for a git command; `None` = unbounded.
+///
+/// 长操作（push / fetch / pull / commit）的耗时由 hook 与网络决定、**没有上界** ——
+/// 墙钟兜它们只会把「正常慢」误判成失败（2026-10-01 的 push 事故：pre-push 跑测试约
+/// 3 分钟，30s 上限先弹失败）。挂死防护走取消通道，而不是把上限调大。
+/// 读类命令保留上界：一个卡住的轮询不应占死调用方。策略与依据见
+/// `.trellis/spec/backend/git-domain.md`「长操作超时策略」。
+#[must_use]
+pub(crate) fn git_command_timeout(args: &[&str]) -> Option<Duration> {
+    match args.first().copied() {
+        Some("push" | "fetch" | "pull" | "commit") => None,
+        _ => Some(LOCAL_GIT_TIMEOUT),
+    }
+}
 
 /// Terminal prompt disabled — all git subprocesses avoid hanging on interactive input.
 pub(crate) const GIT_TERMINAL_PROMPT: &str = "0";
@@ -157,6 +175,34 @@ impl<'a> GitExecOptions<'a> {
     }
 }
 
+// ── Run hooks ──────────────────────────────────────────────────────────────
+
+/// 一次 git 运行的 Console 出口与取消句柄。
+///
+/// 缺省（[`GitRunHooks::none`]）= 无流式、不可取消：读类命令的常规路径。
+/// 长操作由命令层装配 `on_output`（事件发射）与 `cancel`（单飞槽里的句柄）。
+///
+/// `cancel` 持有 `GitSyncHandle`（watch sender/receiver 的廉价 `Clone`）而非借用：
+/// 命令层可在 `begin_git_run` 里一次性产出 hooks，无需自引用生命周期。
+#[derive(Clone)]
+pub struct GitRunHooks {
+    /// 输出块回调（stdout/stderr 按 UTF-8 边界成块到达）。
+    pub on_output: Option<ExecChunkSink>,
+    /// 取消句柄；触发时杀掉进程树并让本次运行以取消错误结束。
+    pub cancel: Option<GitSyncHandle>,
+}
+
+impl GitRunHooks {
+    /// 无流式、不可取消。
+    #[must_use]
+    pub const fn none() -> Self {
+        Self {
+            on_output: None,
+            cancel: None,
+        }
+    }
+}
+
 // ── Trait ──────────────────────────────────────────────────────────────────
 
 /// Transport-agnostic git operations trait.
@@ -175,6 +221,22 @@ pub trait GitTransport: Send + Sync {
         work_dir: &str,
         opts: GitExecOptions<'_>,
     ) -> Result<String>;
+
+    /// [`Self::run_git_opts`] 的流式变体：每个 stdout/stderr 文本块到达时即交给
+    /// `hooks.on_output`（Console 可见性用），`hooks.cancel` 触发时杀掉进程树；
+    /// 聚合返回值与 `run_git_opts` 一致（取消时返回错误）。
+    ///
+    /// 默认实现忽略 hooks、退化为聚合调用 —— 测试假实现无需改动；
+    /// `ExecTarget` 覆写为 Local / WSL / SSH 三路真实流式与取消。
+    async fn run_git_opts_streaming(
+        &self,
+        args: &[&str],
+        work_dir: &str,
+        opts: GitExecOptions<'_>,
+        _hooks: GitRunHooks,
+    ) -> Result<String> {
+        self.run_git_opts(args, work_dir, opts).await
+    }
 
     /// Execute a git command with stdin bytes (for credential helpers etc.).
     async fn run_git_with_stdin(
@@ -215,6 +277,77 @@ pub(crate) fn shell_quote(v: &str) -> String {
     format!("'{}'", v.replace('\'', "'\\''"))
 }
 
+/// 共享的「spawn 包装器 → 流式采集 →（可选）墙钟 / 取消」核心。
+///
+/// Local / WSL / SSH 的差异只有 `program`（`sh` / `bash`）与 shell 命令字符串；
+/// 生命周期（stdin 关闭、`kill_tree` 树杀、取消赛跑、错误映射）完全同构 —— 收敛到
+/// 这里，避免三份复制各自漂移（其中一个修了另一个忘改）。
+///
+/// `label` 用于取消 / 超时错误文案；`timeout: None` = 无墙钟（长操作，
+/// 见 [`git_command_timeout`]）。
+pub(crate) async fn run_shell_streaming(
+    target: &ExecTarget,
+    program: &str,
+    shell_cmd: &str,
+    label: &str,
+    timeout: Option<Duration>,
+    hooks: GitRunHooks,
+) -> Result<ExecOutput> {
+    let cancelled = || anyhow::anyhow!("git command cancelled: {label}");
+    if hooks
+        .cancel
+        .as_ref()
+        .is_some_and(GitSyncHandle::is_cancelled)
+    {
+        return Err(cancelled());
+    }
+
+    let executor = create_executor(target);
+    let child = executor
+        .spawn_with(SpawnOptions::new(program, &["-c", shell_cmd]).with_kill_tree())
+        .await
+        .map_err(|e| anyhow::anyhow!("git command failed to spawn: {}", e))?;
+
+    let GitRunHooks { on_output, cancel } = hooks;
+    let cancel = async move {
+        match cancel {
+            Some(handle) => handle.cancelled().await,
+            None => std::future::pending::<()>().await,
+        }
+    };
+    let collect = collect_child_output_streaming_cancellable(child, on_output, cancel);
+    let output = match timeout {
+        Some(limit) => tokio::time::timeout(limit, collect).await.map_err(|_| {
+            anyhow::anyhow!("git command timed out after {}s: {label}", limit.as_secs())
+        })?,
+        None => collect.await,
+    }
+    .map_err(|e| match e {
+        // 取消路径是 Killed 的唯一预期来源（超时只停止等待、不杀进程）。
+        ExecError::Killed => cancelled(),
+        other => anyhow::anyhow!("failed to collect git output: {}", other),
+    })?;
+    Ok(output)
+}
+
+/// 把 [`ExecOutput`] 收敛成 `run_git*` 的返回值：非零退出 ⇒ 携带真实 stderr / stdout /
+/// exit_code 的 [`GitExecError`]；成功 ⇒ stdout 文本。三 transport 共用同一语义。
+pub(crate) fn finish_git_output(output: ExecOutput, command: &str) -> Result<String> {
+    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+    if output.exit_code != 0 {
+        let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+        return Err(GitExecError {
+            kind: classify_stderr(&stderr),
+            stderr,
+            stdout,
+            command: command.to_string(),
+            exit_code: output.exit_code,
+        }
+        .into());
+    }
+    Ok(stdout)
+}
+
 // ── Trait implementation ───────────────────────────────────────────────────
 
 #[async_trait]
@@ -230,15 +363,22 @@ impl GitTransport for ExecTarget {
         work_dir: &str,
         opts: GitExecOptions<'_>,
     ) -> Result<String> {
+        self.run_git_opts_streaming(args, work_dir, opts, GitRunHooks::none())
+            .await
+    }
+
+    async fn run_git_opts_streaming(
+        &self,
+        args: &[&str],
+        work_dir: &str,
+        opts: GitExecOptions<'_>,
+        hooks: GitRunHooks,
+    ) -> Result<String> {
         let is_network_op = args
             .first()
             .map(|a| matches!(*a, "push" | "fetch" | "pull" | "clone"))
             .unwrap_or(false);
-        let timeout = if is_network_op {
-            NETWORK_GIT_TIMEOUT
-        } else {
-            LOCAL_GIT_TIMEOUT
-        };
+        let timeout = git_command_timeout(args);
 
         // 只读语义默认生效（GIT_OPTIONAL_LOCKS=0）：读路径（status 等）不再 refresh index，
         // 避免与 IDE / 用户 git 争 index 锁。见 common::git::git_env 的第一性依据。
@@ -251,13 +391,13 @@ impl GitTransport for ExecTarget {
 
         match self {
             ExecTarget::Local => {
-                local::run_git_local(self, args, work_dir, &env, config_args, timeout).await
+                local::run_git_local(self, args, work_dir, &env, config_args, timeout, hooks).await
             }
             ExecTarget::Wsl { .. } => {
-                wsl::run_git_wsl(self, args, work_dir, &env, config_args).await
+                wsl::run_git_wsl(self, args, work_dir, &env, config_args, hooks).await
             }
             ExecTarget::Remote { .. } => {
-                ssh::run_git_remote(self, args, work_dir, &env, config_args).await
+                ssh::run_git_remote(self, args, work_dir, &env, config_args, hooks).await
             }
         }
     }

@@ -90,6 +90,8 @@ const GitCommitPanel: React.FC<GitCommitPanelProps> = ({
     handleCommitAndPush,
   } = useGitActions({
     commands,
+    projectId: project.id,
+    projectPath: project.path,
     onRefreshGit,
     onShowToast,
     onCommitMessageClear: () => setCommitMessage(''),

@@ -8,15 +8,19 @@ use crate::common::executor::factory::{create_executor, ExecTarget};
 use crate::common::utils::command::local::safe_path;
 use crate::core::exec::run;
 
-use super::{classify_stderr, shell_quote, GitExecError};
+use super::{classify_stderr, shell_quote, GitExecError, GitRunHooks};
 
-/// Remote (SSH) execution of `git` via `run` with shell quoting.
+/// Remote (SSH) execution of `git` via a remote shell, streaming output chunks.
+///
+/// 与 `run_git_local` / `run_git_wsl` 共享 [`super::run_shell_streaming`]；失败时携带真实
+/// stderr / stdout / exit_code。
 pub(crate) async fn run_git_remote(
     target: &ExecTarget,
     args: &[&str],
     work_dir: &str,
     env: &[(&str, &str)],
     mut config_args: Vec<String>,
+    hooks: GitRunHooks,
 ) -> Result<String> {
     let sp = safe_path(work_dir);
     let env_prefix: String = env
@@ -27,16 +31,10 @@ pub(crate) async fn run_git_remote(
     config_args.extend(args.iter().map(|a| shell_quote(a)));
     let git_cmd = format!("{}git {}", env_prefix, config_args.join(" "));
     let cmd = format!("cd '{sp}' && {git_cmd}");
-    run(target, "sh", &["-c", &cmd]).await.map_err(|e| {
-        GitExecError {
-            kind: classify_stderr(&e.to_string()),
-            stderr: e.to_string(),
-            stdout: String::new(),
-            command: cmd,
-            exit_code: -1,
-        }
-        .into()
-    })
+
+    // SSH 不参与本地墙钟（与旧行为一致：长操作无上限，靠取消通道兜挂死）。
+    let output = super::run_shell_streaming(target, "sh", &cmd, &cmd, None, hooks).await?;
+    super::finish_git_output(output, &cmd)
 }
 
 /// WSL/Remote shared stdin path: spawn git directly, write stdin, collect output.

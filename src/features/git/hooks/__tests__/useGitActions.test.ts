@@ -1,10 +1,16 @@
 import { act, renderHook } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { cancelGitSync } from '@/features/git/api/gitApi';
+import { gitConsoleSessionId, useTaskStore } from '@/shared/store/taskStore';
 import type { FileChange } from '@/shared/types';
 import type { ProjectCommands } from '@/shared/types/activeProject';
 
 import { hasConflictedSelected, useGitActions } from '../useGitActions';
+
+vi.mock('@/features/git/api/gitApi', () => ({
+  cancelGitSync: vi.fn().mockResolvedValue(undefined),
+}));
 
 function fc(
   path: string,
@@ -21,12 +27,20 @@ function fc(
   };
 }
 
+const REPO_PATH = '/repo/main';
+const REPO_ID = 'p1';
+
+/** Git Console 状态归 task store 所有：每个用例从空状态开始，避免跨用例串扰。 */
+beforeEach(() => {
+  useTaskStore.setState({ consoleSessions: [], activeConsoleId: null, consolePanelOpen: false });
+});
+
 function setup(overrides?: Partial<Parameters<typeof useGitActions>[0]>) {
   const commands = {
     commitFiles: vi.fn().mockResolvedValue({ success: true, hash: 'abc1234', message: 'm' }),
     push: vi.fn().mockResolvedValue({ Success: {} }),
-    fetch: vi.fn(),
-    pull: vi.fn(),
+    fetch: vi.fn().mockResolvedValue({ Success: {} }),
+    pull: vi.fn().mockResolvedValue({ Success: {} }),
     stageFiles: vi.fn(),
     discardFiles: vi.fn().mockResolvedValue(undefined),
   } as unknown as ProjectCommands;
@@ -39,6 +53,8 @@ function setup(overrides?: Partial<Parameters<typeof useGitActions>[0]>) {
   const { result } = renderHook(() =>
     useGitActions({
       commands,
+      projectId: REPO_ID,
+      projectPath: REPO_PATH,
       onRefreshGit,
       onShowToast,
       onCommitMessageClear,
@@ -171,7 +187,7 @@ describe('useGitActions — 提交前冲突拦截（W1 根治）', () => {
     await act(async () => {
       await result.current.handleCommit('msg');
     });
-    expect(commands.commitFiles).toHaveBeenCalledWith(['mod.ts'], 'msg');
+    expect(commands.commitFiles).toHaveBeenCalledWith(['mod.ts'], 'msg', expect.any(String));
     expect(onRefreshGit).toHaveBeenCalled();
     expect(onSelectedFilesClear).toHaveBeenCalled();
     expect(onShowToast).toHaveBeenCalledWith(expect.stringContaining('Committed'), 'info');
@@ -291,5 +307,164 @@ describe('useGitActions — handleConfirmDiscard（执行范围 = 确认过的�
 
     expect(onShowToast).toHaveBeenCalledWith(expect.stringContaining('refresh failed'), 'error');
     expect(result.current.loading).toBe(false);
+  });
+});
+
+describe('useGitActions — Git Console 接线', () => {
+  const runId = gitConsoleSessionId(REPO_PATH);
+
+  const gitRun = () => useTaskStore.getState().consoleSessions.find((s) => s.id === runId);
+
+  it('handleCommit 打开仓库级 Console、透传 runId，成功后收尾为 idle', async () => {
+    const { result, commands } = setup({
+      selectedFiles: new Set(['mod.ts']),
+      changedFiles: [fc('mod.ts', 'Modified', { x: ' ', y: 'M' })],
+    });
+    await act(async () => {
+      await result.current.handleCommit('msg');
+    });
+
+    expect(commands.commitFiles).toHaveBeenCalledWith(['mod.ts'], 'msg', runId);
+    const run = gitRun();
+    expect(run?.source).toBe('git');
+    expect(run?.status).toBe('idle');
+    expect(run?.output).toContain('$ git commit');
+    expect(useTaskStore.getState().consolePanelOpen).toBe(true);
+  });
+
+  it('handleCommit 失败时错误落进 Console 并标 failed（缓冲区保留）', async () => {
+    const commands = {
+      commitFiles: vi.fn().mockRejectedValue(new Error('hook failed')),
+    } as unknown as ProjectCommands;
+    const { result } = setup({
+      commands,
+      selectedFiles: new Set(['mod.ts']),
+      changedFiles: [fc('mod.ts', 'Modified', { x: ' ', y: 'M' })],
+    });
+    await act(async () => {
+      await result.current.handleCommit('msg');
+    });
+
+    const run = gitRun();
+    expect(run?.status).toBe('failed');
+    expect(run?.output).toContain('hook failed');
+  });
+
+  it('handlePush 透传 runId；成功收尾为 idle', async () => {
+    const { result, commands } = setup();
+    await act(async () => {
+      await result.current.handlePush();
+    });
+
+    expect(commands.push).toHaveBeenCalledWith(false, runId);
+    const run = gitRun();
+    expect(run?.status).toBe('idle');
+    expect(run?.output).toContain('$ git push');
+  });
+
+  it('同一仓库的多次操作复用同一 tab，并追加新的命令头', async () => {
+    const { result } = setup();
+    await act(async () => {
+      await result.current.handlePush();
+    });
+    await act(async () => {
+      await result.current.handleFetch();
+    });
+
+    const runs = useTaskStore.getState().consoleSessions.filter((s) => s.id === runId);
+    expect(runs).toHaveLength(1);
+    expect(runs[0].output).toContain('$ git push');
+    expect(runs[0].output).toContain('$ git fetch');
+  });
+
+  it('AuthRequired 时标注等待认证且不算失败（凭据对话接管）', async () => {
+    const commands = {
+      push: vi.fn().mockResolvedValue({
+        AuthRequired: { remote_url: 'https://x/y.git', username_hint: null, ssh: false },
+      }),
+    } as unknown as ProjectCommands;
+    const { result } = setup({ commands });
+    await act(async () => {
+      await result.current.handlePush();
+    });
+
+    const run = gitRun();
+    expect(run?.status).toBe('idle');
+    expect(run?.output).toContain('[authentication required]');
+  });
+
+  it('handleCommitAndPush：commit 与 push 共享一个 runId、一段 output', async () => {
+    const { result, commands } = setup({
+      selectedFiles: new Set(['mod.ts']),
+      changedFiles: [fc('mod.ts', 'Modified', { x: ' ', y: 'M' })],
+    });
+    await act(async () => {
+      await result.current.handleCommitAndPush('msg');
+    });
+
+    expect(commands.commitFiles).toHaveBeenCalledWith(['mod.ts'], 'msg', runId);
+    expect(commands.push).toHaveBeenCalledWith(false, runId);
+    const run = gitRun();
+    expect(run?.status).toBe('idle');
+    expect(run?.output).toContain('$ git commit && git push');
+  });
+
+  it('去墙钟：push 悬挂 200s 也不判失败（对齐 VS Code 的无超时模型）', async () => {
+    vi.useFakeTimers();
+    try {
+      const commands = {
+        push: vi.fn().mockReturnValue(new Promise<never>(() => {})),
+      } as unknown as ProjectCommands;
+      const { result, onShowToast } = setup({ commands });
+
+      await act(async () => {
+        void result.current.handlePush();
+        await Promise.resolve();
+      });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(200_000);
+      });
+
+      expect(onShowToast).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('用户取消：先置 stopping，命令 reject 后按 [Stopped] 收尾且不弹错误 toast', async () => {
+    let rejectPush!: (reason: unknown) => void;
+    const commands = {
+      push: vi.fn().mockReturnValue(
+        new Promise((_resolve, reject) => {
+          rejectPush = reject;
+        }),
+      ),
+    } as unknown as ProjectCommands;
+    const { result, onShowToast } = setup({ commands });
+
+    let pushPromise: Promise<void> = Promise.resolve();
+    await act(async () => {
+      pushPromise = result.current.handlePush();
+      await Promise.resolve();
+    });
+    expect(gitRun()?.status).toBe('running');
+
+    // 面板 Cancel 按钮 = store 置 stopping + 调后端取消（单飞：取消当前唯一那个）
+    await act(async () => {
+      await useTaskStore.getState().cancelGitConsole(runId);
+    });
+    expect(cancelGitSync).toHaveBeenCalledTimes(1);
+    expect(cancelGitSync).toHaveBeenCalledWith(runId);
+    expect(gitRun()?.status).toBe('stopping');
+
+    await act(async () => {
+      rejectPush(new Error('git command cancelled: git push'));
+      await pushPromise;
+    });
+
+    const run = gitRun();
+    expect(run?.status).toBe('idle');
+    expect(run?.output).toContain('[Stopped]');
+    expect(onShowToast).not.toHaveBeenCalled();
   });
 });

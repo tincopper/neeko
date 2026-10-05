@@ -693,20 +693,27 @@ let output = tokio::time::timeout(
 .map_err(|e| anyhow::anyhow!("git command failed: {}", e))?;
 ```
 
-**默认超时**：本地操作 30s，网络操作（push/fetch/pull/clone）180s。定义在 `transport.rs`：
+**超时策略（2026-10 起）**：读类命令保留 30s 上界（`LOCAL_GIT_TIMEOUT`）；长操作
+（push / fetch / pull / commit）**不设墙钟** —— 耗时由 hook 与网络决定、没有上界，
+墙钟会把「正常慢」误判成失败（pre-push 跑两套测试是分钟级）。判据单点在
+`transport::git_command_timeout(args)`；挂死防护走取消通道（`GitSyncSlots` 按
+`RepoRef::key()` 分槽：同仓库单元串行、异单元并行 + `cancel_git_sync(console_run_id)`
+按 run id 匹配 + `kill_tree` 树杀（kill 确认有界 5s，防远端不收敛永久占槽））。长操作的 stdout/stderr 经
+`collect_child_output_streaming` **按 16KB / 50ms 合流**后 emit（EOF 冲刷尾巴）——不可逐读块
+发事件（macOS 事件送达 = 每次 `evaluateJavaScript`，会重演终端内存事故）。
+依据与实测见 `backend/git-domain.md`「长操作超时策略与 Console 可见性」。
 
 ```rust
-const LOCAL_GIT_TIMEOUT: Duration = Duration::from_secs(30);
-const NETWORK_GIT_TIMEOUT: Duration = Duration::from_secs(180);
+/// 读类 30s；长操作 None（无墙钟，靠取消通道兜挂死）。
+pub(crate) fn git_command_timeout(args: &[&str]) -> Option<Duration> {
+    match args.first().copied() {
+        Some("push" | "fetch" | "pull" | "commit") => None,
+        _ => Some(LOCAL_GIT_TIMEOUT),
+    }
+}
 ```
 
-网络操作检测：
-```rust
-let is_network_op = args
-    .first()
-    .map(|a| matches!(*a, "push" | "fetch" | "pull" | "clone"))
-    .unwrap_or(false);
-```
+`is_network_op`（检测同上）现仅用于注入 `GIT_TERMINAL_PROMPT=0`，不再决定超时。
 
 ### 6. Git 鉴权错误检测
 

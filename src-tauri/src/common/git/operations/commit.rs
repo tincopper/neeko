@@ -10,7 +10,9 @@ use crate::common::git::credential::{
 use crate::common::git::operations::stage::stage_files;
 use crate::common::git::parsers::{parse_numstat_line, parse_status_line};
 use crate::common::git::provider::detect_provider;
-use crate::common::git::transport::{ErrorKind, GitExecError, GitTransport};
+use crate::common::git::transport::{
+    ErrorKind, GitExecError, GitExecOptions, GitRunHooks, GitTransport,
+};
 use crate::common::git::types::PushOutcome;
 use crate::common::git::types::{DiffHunk, DiffLine, DiffResult};
 use crate::core::exec::collect;
@@ -44,13 +46,20 @@ pub async fn commit_files(
     work_dir: &str,
     file_paths: &[String],
     message: &str,
+    hooks: GitRunHooks,
 ) -> Result<CommitResult> {
     if !file_paths.is_empty() {
         ensure_no_unmerged(transport, work_dir, file_paths).await?;
         stage_files(transport, work_dir, file_paths).await?;
     }
+    // commit 会触发 pre-commit hook（eslint / tsc 等）：输出实时进 Console。
     let output = transport
-        .run_git(&["commit", "-m", message], work_dir)
+        .run_git_opts_streaming(
+            &["commit", "-m", message],
+            work_dir,
+            GitExecOptions::default(),
+            hooks,
+        )
         .await?;
     invalidate_caches(work_dir);
     let hash = crate::common::git::parsers::extract_commit_hash_from_output(&output);

@@ -18,6 +18,9 @@ export const FILE_TREE_CHANGED_EVENT = 'file-tree-changed';
 export const GIT_STATUS_SNAPSHOT_EVENT = 'git-status-snapshot';
 /** Git 状态变更事件（worktree HEAD 外部变化等场景的主动刷新 fallback）：`git-changed` */
 export const GIT_CHANGED_EVENT = 'git-changed';
+/** Git 长操作（push/fetch/pull/commit）实时输出块：`git-operation-output`
+ *（与 `src-tauri/src/git/events.rs` 常量保持同步） */
+export const GIT_OPERATION_OUTPUT_EVENT = 'git-operation-output';
 
 /** 应用关闭请求事件（后端阻止关闭后通知前端弹「确认退出」框）：`app-close-requested` */
 export const APP_CLOSE_REQUESTED_EVENT = 'app-close-requested';

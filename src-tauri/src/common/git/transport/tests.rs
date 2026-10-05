@@ -1,5 +1,109 @@
 use super::*;
 
+use std::sync::{Arc, Mutex};
+
+use crate::common::executor::ExecChunkSink;
+use crate::common::executor::ExecStream;
+
+// ── run_git_opts_streaming：Console 可见性的传输能力 ─────────────────────
+
+type StreamCalls = Arc<Mutex<Vec<(ExecStream, String)>>>;
+
+fn collecting_sink(calls: &StreamCalls) -> ExecChunkSink {
+    let calls = Arc::clone(calls);
+    Arc::new(move |stream, text: &str| {
+        calls.lock().unwrap().push((stream, text.to_string()));
+    })
+}
+
+fn joined_stream(calls: &StreamCalls, stream: ExecStream) -> String {
+    calls
+        .lock()
+        .unwrap()
+        .iter()
+        .filter(|(s, _)| *s == stream)
+        .map(|(_, t)| t.as_str())
+        .collect()
+}
+
+#[tokio::test]
+async fn streaming_delivers_stdout_chunks_and_matches_aggregate() {
+    let calls: StreamCalls = Arc::new(Mutex::new(Vec::new()));
+    let sink = collecting_sink(&calls);
+
+    let out = ExecTarget::Local
+        .run_git_opts_streaming(
+            &["--version"],
+            ".",
+            GitExecOptions::default(),
+            GitRunHooks {
+                on_output: Some(sink),
+                cancel: None,
+            },
+        )
+        .await
+        .expect("git --version should succeed");
+
+    assert_eq!(
+        joined_stream(&calls, ExecStream::Stdout),
+        out,
+        "流式块拼接必须与聚合返回值一致"
+    );
+    assert!(out.contains("git version"));
+    assert!(
+        calls
+            .lock()
+            .unwrap()
+            .iter()
+            .all(|(s, _)| *s == ExecStream::Stdout),
+        "git --version 只写 stdout"
+    );
+}
+
+#[tokio::test]
+async fn streaming_tags_stderr_and_still_returns_classified_git_error() {
+    let calls: StreamCalls = Arc::new(Mutex::new(Vec::new()));
+    let sink = collecting_sink(&calls);
+
+    let err = ExecTarget::Local
+        .run_git_opts_streaming(
+            &["--no-such-flag"],
+            ".",
+            GitExecOptions::default(),
+            GitRunHooks {
+                on_output: Some(sink),
+                cancel: None,
+            },
+        )
+        .await
+        .expect_err("unknown flag must fail");
+
+    let git_err = err
+        .downcast_ref::<GitExecError>()
+        .expect("failure must stay a classified GitExecError");
+    assert_eq!(git_err.kind, ErrorKind::Other);
+    assert_ne!(git_err.exit_code, 0);
+
+    let streamed_stderr = joined_stream(&calls, ExecStream::Stderr);
+    assert!(!streamed_stderr.is_empty(), "stderr 必须以流式块交付");
+    assert_eq!(
+        streamed_stderr, git_err.stderr,
+        "流式 stderr 必须与 GitExecError 携带的内容逐字一致"
+    );
+}
+
+#[test]
+fn git_command_timeout_leaves_long_ops_unbounded() {
+    // 长操作：耗时由 hook / 网络决定 ⇒ 不设墙钟（VS Code 模型）。
+    assert_eq!(git_command_timeout(&["push", "--progress"]), None);
+    assert_eq!(git_command_timeout(&["fetch", "--all"]), None);
+    assert_eq!(git_command_timeout(&["pull"]), None);
+    assert_eq!(git_command_timeout(&["commit", "-m", "x"]), None);
+    // 读类命令保留上界，避免卡住的轮询占死调用方。
+    assert_eq!(git_command_timeout(&["status"]), Some(LOCAL_GIT_TIMEOUT));
+    assert_eq!(git_command_timeout(&[]), Some(LOCAL_GIT_TIMEOUT));
+}
+
 // ── run_git_opts 空 work_dir 纵深防御 ─────────────────────────────────
 
 #[tokio::test]

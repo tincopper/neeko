@@ -2,6 +2,7 @@ use git2::{Repository, Signature};
 use neeko_lib::common::executor::factory::ExecTarget;
 use neeko_lib::common::git::operations;
 use neeko_lib::common::git::refs::RefKind;
+use neeko_lib::common::git::transport::GitRunHooks;
 use neeko_lib::common::git::types::DiffLine;
 use neeko_lib::git;
 use std::path::{Path, PathBuf};
@@ -637,9 +638,15 @@ async fn commit_files_rejects_unresolved_conflict() {
         neeko_lib::core::exec::collect(&transport, "git", &["merge", "feature"], Some(&path)).await;
 
     // 守卫：未解决冲突必须拒绝提交，不得被 git add 清除标记后当作已解决提交
-    let err = operations::commit_files(&transport, &path, &["README.md".to_string()], "msg")
-        .await
-        .expect_err("commit with unresolved conflict must be rejected");
+    let err = operations::commit_files(
+        &transport,
+        &path,
+        &["README.md".to_string()],
+        "msg",
+        GitRunHooks::none(),
+    )
+    .await
+    .expect_err("commit with unresolved conflict must be rejected");
     assert!(
         err.to_string().contains("unresolved merge conflict"),
         "错误应指明冲突，实际: {err}"
@@ -653,9 +660,15 @@ async fn commit_files_succeeds_without_conflict() {
     let transport = ExecTarget::Local;
 
     std::fs::write(tmp.path().join("README.md"), "# Updated\n").unwrap();
-    let result = operations::commit_files(&transport, &path, &["README.md".to_string()], "msg")
-        .await
-        .expect("clean commit should succeed");
+    let result = operations::commit_files(
+        &transport,
+        &path,
+        &["README.md".to_string()],
+        "msg",
+        GitRunHooks::none(),
+    )
+    .await
+    .expect("clean commit should succeed");
     assert!(result.success);
     assert!(!result.hash.is_empty(), "commit should produce a hash");
 }

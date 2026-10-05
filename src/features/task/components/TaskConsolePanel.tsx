@@ -53,6 +53,7 @@ function TaskConsolePanel() {
   const setActiveConsoleId = useTaskStore((s) => s.setActiveConsoleId);
   const closeConsoleSession = useTaskStore((s) => s.closeConsoleSession);
   const stopTask = useTaskStore((s) => s.stopTask);
+  const cancelGitConsole = useTaskStore((s) => s.cancelGitConsole);
   const refreshLspLogConsole = useTaskStore((s) => s.refreshLspLogConsole);
   const { config } = useAppContext();
 
@@ -199,11 +200,14 @@ function TaskConsolePanel() {
             <button
               type="button"
               className="shrink-0 flex items-center gap-1 px-2 h-6 rounded text-[calc(var(--font-size)-1px)] text-accent-red hover:bg-bg-hover cursor-pointer"
-              title="Stop task"
-              onClick={() => stopTask(active.id)}
+              title={active.source === 'git' ? 'Cancel git operation' : 'Stop task'}
+              onClick={() => {
+                if (active.source === 'git') void cancelGitConsole(active.id);
+                else stopTask(active.id);
+              }}
             >
               <Square size={11} fill="currentColor" strokeWidth={0} />
-              Stop
+              {active.source === 'git' ? 'Cancel' : 'Stop'}
             </button>
           ) : null}
 

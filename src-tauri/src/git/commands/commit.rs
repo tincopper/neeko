@@ -1,9 +1,10 @@
+use super::sync::begin_git_run;
 use crate::common::git::operations;
 use crate::common::git::path_guard::validate_repo_relative_paths;
 use crate::project::types::CommitResult;
 use crate::AppError;
 use crate::AppStateWrapper;
-use tauri::State;
+use tauri::{AppHandle, State};
 
 /// Commit specific files with a message.
 #[tauri::command]
@@ -12,14 +13,17 @@ pub async fn commit_files(
     file_paths: Vec<String>,
     message: String,
     worktree_path: Option<String>,
+    console_run_id: Option<String>,
     state: State<'_, AppStateWrapper>,
+    app_handle: AppHandle,
 ) -> Result<CommitResult, AppError> {
     let (t, repo) = state
         .resolve_repo(&project_id, worktree_path.as_deref())
         .await?;
     let repo_path = repo.work_dir();
     validate_repo_relative_paths(&t, repo_path, &file_paths)?;
-    let result = operations::commit_files(&t, repo_path, &file_paths, &message)
+    let (hooks, _slot) = begin_git_run(&state, &repo, &app_handle, console_run_id.as_deref())?;
+    let result = operations::commit_files(&t, repo_path, &file_paths, &message, hooks)
         .await
         .map_err(AppError::from)?;
     // 写成功后让**该单元**的快照落地再返回（spec/backend/git-domain.md §10）

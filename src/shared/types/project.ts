@@ -123,16 +123,33 @@ export interface ProjectCommands {
    * 还是恢复（已跟踪）由仓库状态决定，不由前端声明 —— 保证确认文案与执行范围一致。
    */
   discardFiles(filePaths: string[]): Promise<void>;
-  commitFiles(filePaths: string[], message: string): Promise<CommitResult>;
-  fetch(): Promise<PushOutcome>;
-  pull(): Promise<PushOutcome>;
-  push(setUpstream?: boolean): Promise<PushOutcome>;
-  fetchWithCredentials(username: string, password: string): Promise<PushOutcome>;
-  pullWithCredentials(username: string, password: string): Promise<PushOutcome>;
+  /**
+   * 长操作可带 `consoleRunId`：非空时后端把 stdout/stderr 以
+   * `git-operation-output` 事件实时推给 Console（落点见 `useGitConsoleBridge`）。
+   */
+  commitFiles(
+    filePaths: string[],
+    message: string,
+    consoleRunId?: string | null,
+  ): Promise<CommitResult>;
+  fetch(consoleRunId?: string | null): Promise<PushOutcome>;
+  pull(consoleRunId?: string | null): Promise<PushOutcome>;
+  push(setUpstream?: boolean, consoleRunId?: string | null): Promise<PushOutcome>;
+  fetchWithCredentials(
+    username: string,
+    password: string,
+    consoleRunId?: string | null,
+  ): Promise<PushOutcome>;
+  pullWithCredentials(
+    username: string,
+    password: string,
+    consoleRunId?: string | null,
+  ): Promise<PushOutcome>;
   pushWithCredentials(
     setUpstream: boolean,
     username: string,
     password: string,
+    consoleRunId?: string | null,
   ): Promise<PushOutcome>;
   checkoutBranch(branchName: string): Promise<void>;
   createBranch(branchName: string, startPoint?: string): Promise<void>;

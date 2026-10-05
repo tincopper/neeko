@@ -2,6 +2,8 @@
 
 /// Tauri command handlers for Git operations.
 pub mod commands;
+/// Tauri event constants and payloads for Git operations (single source, red line 5).
+pub mod events;
 /// Commit agent integration services.
 pub mod services;
 

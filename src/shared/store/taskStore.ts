@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 
 /* eslint-disable import/no-restricted-paths -- taskStore depends on task/lsp feature APIs (inherent dependency) */
+import { cancelGitSync } from '@/features/git/api/gitApi';
 import { lspGetServerLogs } from '@/features/lsp/api/lspApi';
 import {
   getTaskConfigs,
@@ -42,6 +43,17 @@ const processHandles = new Map<string, TaskProcessHandle>();
 /** Stable console session id for an LSP server log tab. */
 export function lspConsoleSessionId(projectPath: string, languageId: string): string {
   return `lsp:${projectPath}:${languageId}`;
+}
+
+/** Stable console session id for a repo's git output tab (one tab per repo). */
+export function gitConsoleSessionId(projectPath: string): string {
+  return `git:${projectPath}`;
+}
+
+/** Tab label for the git console: last path segment of the repo path. */
+function repoDisplayName(projectPath: string): string {
+  const trimmed = projectPath.replace(/[/\\]+$/, '');
+  return trimmed.split(/[/\\]/).filter(Boolean).pop() ?? 'repo';
 }
 
 function formatLspLogs(
@@ -108,6 +120,31 @@ interface TaskStoreState {
   }) => Promise<void>;
   /** Refresh output for an LSP log tab (used by Console poll). */
   refreshLspLogConsole: (sessionId: string) => Promise<void>;
+  /**
+   * Open/focus the per-repo Git Console tab and return its run id.
+   *
+   * One stable tab per repo — every git op appends there (`header` is written as
+   * the `$ …` command line). Backend output arrives via `git-operation-output`
+   * events routed by `useGitConsoleBridge`.
+   */
+  openGitConsole: (args: { projectId: string; projectPath: string; header: string }) => string;
+  /** Append a streamed chunk to a git Console run (no-op when the tab was closed). */
+  appendGitConsoleOutput: (runId: string, chunk: string) => void;
+  /** Mark a git Console run finished (`ok=false` → failed, buffer kept). */
+  finishGitConsole: (runId: string, ok: boolean) => void;
+  /**
+   * 失败收尾：错误行落进 Console 再标 failed（缓冲区保留，便于回看现场）。
+   * 返回 true 表示这次是**用户取消**（已按 `[Stopped]` 收尾，调用方不应再弹错误 toast）。
+   */
+  failGitConsole: (runId: string, error: unknown) => boolean;
+  /** AuthRequired 收尾：标注等待认证并按非失败结束本次运行（凭据对话接管）。 */
+  awaitAuthGitConsole: (runId: string) => void;
+  /**
+   * 请求取消进行中的 git 同步操作；`runId` 透传给后端做目标限定（单飞槽里 run id 匹配才取消），
+   * 避免陈旧的仓库 tab 误取消另一个仓库的操作。
+   * 状态先置 `stopping`；后端进程树被杀后由命令的 reject 路径按 [Stopped] 收尾。
+   */
+  cancelGitConsole: (runId: string) => Promise<void>;
 }
 
 function filterDiscovered(discovered: DiscoveredTask[], configs: TaskConfig[]): DiscoveredTask[] {
@@ -472,8 +509,8 @@ export const useTaskStore = create<TaskStoreState>((rawSet, get) => {
       }
 
       const session = state.consoleSessions.find((s) => s.id === id);
-      // LSP log tabs have no process to stop — ignore.
-      if (!session || session.source === 'lsp') {
+      // LSP log tabs / git output tabs have no task process to stop — ignore.
+      if (!session || (session.source ?? 'task') !== 'task') {
         console.warn('[TaskStore] stopTask: not a task run', id);
         return;
       }
@@ -635,6 +672,91 @@ export const useTaskStore = create<TaskStoreState>((rawSet, get) => {
         }));
       } catch (e) {
         console.warn('[TaskStore] refreshLspLogConsole failed:', e);
+      }
+    },
+
+    openGitConsole: ({ projectId, projectPath, header }) => {
+      const id = gitConsoleSessionId(projectPath);
+      const sessions = get().consoleSessions;
+      const existing = sessions.find((s) => s.id === id);
+      const headerLine = `\x1b[36m$ ${header}\x1b[0m\r\n`;
+
+      if (existing) {
+        useTaskStore.setState((state) => ({
+          consoleSessions: state.consoleSessions.map((s) =>
+            s.id === id
+              ? {
+                  ...s,
+                  status: 'running' as const,
+                  processId: null,
+                  endedAt: null,
+                  output: (s.output ? `${s.output}\r\n` : '') + headerLine,
+                }
+              : s,
+          ),
+          consolePanelOpen: true,
+          activeConsoleId: id,
+        }));
+      } else {
+        const run: TaskRun = {
+          id,
+          projectId,
+          projectPath,
+          configId: id,
+          name: `Git · ${repoDisplayName(projectPath)}`,
+          command: header,
+          status: 'running',
+          processId: null,
+          output: headerLine,
+          exitCode: null,
+          startedAt: Date.now(),
+          endedAt: null,
+          source: 'git',
+        };
+        set({
+          consolePanelOpen: true,
+          activeConsoleId: id,
+          consoleSessions: [...sessions, run],
+        });
+      }
+      return id;
+    },
+
+    appendGitConsoleOutput: (runId, chunk) => {
+      appendOutput(runId, chunk);
+    },
+
+    finishGitConsole: (runId, ok) => {
+      finalizeRun(runId, ok ? 0 : 1);
+    },
+
+    failGitConsole: (runId, error) => {
+      const run = get().consoleSessions.find((s) => s.id === runId);
+      if (run?.status === 'stopping') {
+        // 用户已请求取消：按 [Stopped] 优雅收尾，不计失败。
+        finalizeRun(runId, 1);
+        return true;
+      }
+      appendOutput(runId, `\x1b[31m${String(error)}\x1b[0m\r\n`);
+      finalizeRun(runId, 1);
+      return false;
+    },
+
+    awaitAuthGitConsole: (runId) => {
+      appendOutput(runId, '\x1b[33m[authentication required]\x1b[0m\r\n');
+      finalizeRun(runId, 0);
+    },
+
+    cancelGitConsole: async (runId) => {
+      useTaskStore.setState((state) => ({
+        consoleSessions: state.consoleSessions.map((s) =>
+          s.id === runId && s.status === 'running' ? { ...s, status: 'stopping' as const } : s,
+        ),
+      }));
+      try {
+        await cancelGitSync(runId);
+      } catch (e) {
+        console.warn('[TaskStore] cancelGitConsole failed:', e);
       }
     },
   };

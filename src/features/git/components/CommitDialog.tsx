@@ -5,7 +5,6 @@ import { useProjectStore } from '@/shared/store/projectStore';
 import { selectActiveWorktreePath, useWorktreeStore } from '@/shared/store/worktreeStore';
 import type { FileChange } from '@/shared/types';
 import { reportFrontendError } from '@/shared/utils/errorReporting';
-import { withTimeout } from '@/shared/utils/withTimeout';
 import { Button } from '@/ui/Button';
 import { Checkbox } from '@/ui/Checkbox';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/ui/Dialog';
@@ -19,6 +18,7 @@ import {
   getCommitLog,
   type PushOutcome,
 } from '../api/gitApi';
+import { beginGitConsoleRun, GIT_BUSY_MESSAGE, runGitConsoleOp } from '../api/gitConsoleRun';
 import { isConflictedEntry } from '../utils/gitStatusGroups';
 
 interface CommitDialogProps {
@@ -31,6 +31,9 @@ function CommitDialog({ projectId, onClose, onRefreshGit }: CommitDialogProps) {
   const activeProjectId = useProjectStore((s) => s.activeProjectId);
   const activeWorktreePath = useWorktreeStore((s) => selectActiveWorktreePath(s, activeProjectId));
   const worktreePath = activeProjectId === projectId ? activeWorktreePath : null;
+  const projectPath = useProjectStore(
+    (s) => s.projects.find((p) => p.id === projectId)?.path ?? '',
+  );
 
   const [files, setFiles] = useState<FileChange[]>([]);
   const [untrackedCount, setUntrackedCount] = useState(0);
@@ -90,36 +93,69 @@ function CommitDialog({ projectId, onClose, onRefreshGit }: CommitDialogProps) {
         setError('Cannot commit: unresolved merge conflict selected. Resolve conflicts first.');
         return;
       }
-      setSubmitting(true);
       setError(null);
+      const filePaths = files.map((f) => f.path);
+      // commit 与 push 共用一个 Console run（同 useGitActions）：一个 header，两段输出连续落屏。
+      const consoleRun = pushAfter
+        ? beginGitConsoleRun(projectId, projectPath, 'git commit && git push')
+        : null;
+      if (pushAfter && !consoleRun) {
+        setError(GIT_BUSY_MESSAGE);
+        return;
+      }
+      setSubmitting(true);
       try {
-        const filePaths = files.map((f) => f.path);
-        await commitFiles(projectId, filePaths, message.trim(), worktreePath);
-        if (pushAfter) {
-          const outcome = await withTimeout(push(projectId, false, worktreePath), 30_000, 'push');
-          const msg = pushOutcomeMsg(outcome);
-          if (msg) {
-            setError(msg);
+        if (consoleRun) {
+          await commitFiles(projectId, filePaths, message.trim(), worktreePath, consoleRun.runId);
+          const outcome = await push(projectId, false, worktreePath, consoleRun.runId);
+          if ('AuthRequired' in outcome) {
+            consoleRun.awaitAuth();
+            setError(pushOutcomeMsg(outcome) ?? 'Authentication required.');
             return;
           }
+          consoleRun.finishOk();
+        } else {
+          const result = await runGitConsoleOp({
+            header: 'git commit',
+            projectId,
+            projectPath,
+            run: (runId) => commitFiles(projectId, filePaths, message.trim(), worktreePath, runId),
+          });
+          if (result.status === 'busy') {
+            setError(GIT_BUSY_MESSAGE);
+            return;
+          }
+          if (result.status === 'stopped') return; // 用户取消
         }
         onRefreshGit(projectId);
         onClose();
       } catch (e) {
+        if (consoleRun?.fail(e)) return; // 用户取消：静默（已按 [Stopped] 收尾）
         setError(String(e));
       } finally {
         setSubmitting(false);
       }
     },
-    [projectId, worktreePath, message, files, onRefreshGit, onClose],
+    [projectId, projectPath, worktreePath, message, files, onRefreshGit, onClose],
   );
 
   const handlePush = useCallback(async () => {
     setSubmitting(true);
     setError(null);
     try {
-      const outcome = await withTimeout(push(projectId, false, worktreePath), 30_000, 'push');
-      const msg = pushOutcomeMsg(outcome);
+      const result = await runGitConsoleOp({
+        header: 'git push',
+        projectId,
+        projectPath,
+        run: (runId) => push(projectId, false, worktreePath, runId),
+        isAuthRequired: (o) => 'AuthRequired' in o,
+      });
+      if (result.status === 'busy') {
+        setError(GIT_BUSY_MESSAGE);
+        return;
+      }
+      if (result.status === 'stopped') return; // 用户取消
+      const msg = pushOutcomeMsg(result.value);
       if (msg) {
         setError(msg);
         return;
@@ -131,14 +167,25 @@ function CommitDialog({ projectId, onClose, onRefreshGit }: CommitDialogProps) {
     } finally {
       setSubmitting(false);
     }
-  }, [projectId, worktreePath, onRefreshGit, onClose]);
+  }, [projectId, projectPath, worktreePath, onRefreshGit, onClose]);
 
   const handlePull = useCallback(async () => {
     setSubmitting(true);
     setError(null);
     try {
-      const outcome = await withTimeout(pull(projectId, worktreePath), 30_000, 'pull');
-      const msg = pushOutcomeMsg(outcome);
+      const result = await runGitConsoleOp({
+        header: 'git pull',
+        projectId,
+        projectPath,
+        run: (runId) => pull(projectId, worktreePath, runId),
+        isAuthRequired: (o) => 'AuthRequired' in o,
+      });
+      if (result.status === 'busy') {
+        setError(GIT_BUSY_MESSAGE);
+        return;
+      }
+      if (result.status === 'stopped') return; // 用户取消
+      const msg = pushOutcomeMsg(result.value);
       if (msg) {
         setError(msg);
         return;
@@ -150,7 +197,7 @@ function CommitDialog({ projectId, onClose, onRefreshGit }: CommitDialogProps) {
     } finally {
       setSubmitting(false);
     }
-  }, [projectId, worktreePath, onRefreshGit, onClose]);
+  }, [projectId, projectPath, worktreePath, onRefreshGit, onClose]);
 
   return (
     <Dialog open onOpenChange={(open) => !open && onClose()}>

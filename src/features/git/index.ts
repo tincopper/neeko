@@ -23,6 +23,7 @@ export type {
 // Hooks
 export { useAheadBehindSync } from './hooks/useAheadBehindSync';
 export { useFileChangedEvent } from './hooks/useFileChangedEvent';
+export { useGitConsoleBridge } from './hooks/useGitConsoleBridge';
 export { useRefreshGitInfo } from './hooks/useRefreshGitInfo';
 
 // Components

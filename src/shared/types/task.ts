@@ -19,8 +19,8 @@ export interface DiscoveredTask {
 
 export type TaskRunStatus = 'running' | 'stopping' | 'idle' | 'failed';
 
-/** Origin of a Console tab: task process output or LSP server logs. */
-export type ConsoleSessionSource = 'task' | 'lsp';
+/** Origin of a Console tab: task process output, LSP server logs, or git operations. */
+export type ConsoleSessionSource = 'task' | 'lsp' | 'git';
 
 /**
  * One task *run* (or LSP log stream) shown as a tab in the bottom Console panel.

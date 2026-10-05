@@ -28,6 +28,21 @@ pub struct ExecOutput {
     pub exit_code: i32,
 }
 
+/// Which standard stream a chunk of process output came from.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ExecStream {
+    /// Standard output.
+    Stdout,
+    /// Standard error.
+    Stderr,
+}
+
+/// 输出块回调：`(stream, text)`，`text` 仅在回调调用期间有效。
+///
+/// 用 `Arc` 持有而非 `&dyn` 借用：借用形态在 `async_trait` 生成的高阶生命周期
+/// 边界上无法稳定推导（E0308 / E0521），owned 句柄可在双流读取任务间直接克隆共享。
+pub type ExecChunkSink = std::sync::Arc<dyn Fn(ExecStream, &str) + Send + Sync>;
+
 /// Handle to a running child process.
 ///
 /// Provides access to stdin / stdout / stderr as async read/write streams,
@@ -136,9 +151,11 @@ pub struct SpawnOptions<'a> {
     /// 该 spawn 是否需要**连后代一起清理**（包装器脚本 → 服务进程，如
     /// jdtls → JVM、dlv → 调试目标）。
     ///
-    /// 默认 `false`：不改变进程组语义、`kill()` 只杀直接子进程 —— 短命令
-    /// （git / 探测 / 克隆）无需树杀，不应被无条件改 `pgid`。
+    /// 默认 `false`：不改变进程组语义、`kill()` 只杀直接子进程 —— 短探测命令
+    /// 不需要树杀，不应被无条件改 `pgid`。
     /// `true` 时：Unix 本地让子进程自成进程组并按组杀；SSH 按远端进程组杀。
+    /// git 传输层开 `true`：git 会跑 hook（pre-push → pnpm → vitest/cargo），
+    /// 取消必须能摘掉整棵测试进程树。
     pub kill_tree: bool,
 }
 

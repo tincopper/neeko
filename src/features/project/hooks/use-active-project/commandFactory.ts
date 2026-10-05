@@ -62,43 +62,73 @@ export function createProjectCommands(
       return invoke<void>('discard_files', { projectId, filePaths, worktreePath });
     },
 
-    commitFiles(filePaths: string[], message: string): Promise<CommitResult> {
-      return invoke<CommitResult>('commit_files', { projectId, filePaths, message, worktreePath });
+    commitFiles(
+      filePaths: string[],
+      message: string,
+      consoleRunId?: string | null,
+    ): Promise<CommitResult> {
+      return invoke<CommitResult>('commit_files', {
+        projectId,
+        filePaths,
+        message,
+        worktreePath,
+        consoleRunId: consoleRunId ?? null,
+      });
     },
 
-    fetch(): Promise<PushOutcome> {
-      return invoke<PushOutcome>('fetch', { projectId, worktreePath });
+    fetch(consoleRunId?: string | null): Promise<PushOutcome> {
+      return invoke<PushOutcome>('fetch', {
+        projectId,
+        worktreePath,
+        consoleRunId: consoleRunId ?? null,
+      });
     },
-    pull(): Promise<PushOutcome> {
-      return invoke<PushOutcome>('pull', { projectId, worktreePath });
+    pull(consoleRunId?: string | null): Promise<PushOutcome> {
+      return invoke<PushOutcome>('pull', {
+        projectId,
+        worktreePath,
+        consoleRunId: consoleRunId ?? null,
+      });
     },
-    push(setUpstream?: boolean): Promise<PushOutcome> {
+    push(setUpstream?: boolean, consoleRunId?: string | null): Promise<PushOutcome> {
       return invoke<PushOutcome>('push', {
         projectId,
         setUpstream: setUpstream ?? false,
         worktreePath,
+        consoleRunId: consoleRunId ?? null,
       });
     },
-    fetchWithCredentials(username: string, password: string): Promise<PushOutcome> {
+    fetchWithCredentials(
+      username: string,
+      password: string,
+      consoleRunId?: string | null,
+    ): Promise<PushOutcome> {
       return invoke<PushOutcome>('fetch_with_credentials', {
         projectId,
         username,
         password,
         worktreePath,
+        consoleRunId: consoleRunId ?? null,
       });
     },
-    pullWithCredentials(username: string, password: string): Promise<PushOutcome> {
+    pullWithCredentials(
+      username: string,
+      password: string,
+      consoleRunId?: string | null,
+    ): Promise<PushOutcome> {
       return invoke<PushOutcome>('pull_with_credentials', {
         projectId,
         username,
         password,
         worktreePath,
+        consoleRunId: consoleRunId ?? null,
       });
     },
     pushWithCredentials(
       setUpstream: boolean,
       username: string,
       password: string,
+      consoleRunId?: string | null,
     ): Promise<PushOutcome> {
       return invoke<PushOutcome>('push_with_credentials', {
         projectId,
@@ -106,6 +136,7 @@ export function createProjectCommands(
         username,
         password,
         worktreePath,
+        consoleRunId: consoleRunId ?? null,
       });
     },
 

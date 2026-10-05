@@ -40,6 +40,9 @@ pub struct AppStateWrapper {
     pub active_project_id: Mutex<Option<String>>,
     /// Running project clone handle (single-clone slot; None when idle).
     pub project_clone: Mutex<Option<crate::project::clone::CloneHandle>>,
+    /// Running long git ops, keyed by repo unit (`RepoRef::key()`): same unit is
+    /// mutually exclusive, different units (main / linked worktrees) run in parallel.
+    pub git_sync: crate::common::git::transport::GitSyncSlots,
     /// File-system watcher for project changes.
     pub watcher_manager: WatcherManager,
     /// Shared skill store (tag groups, installed skills).
@@ -289,6 +292,7 @@ impl AppStateWrapper {
             storage_manager,
             active_project_id: Mutex::new(None),
             project_clone: Mutex::new(None),
+            git_sync: crate::common::git::transport::GitSyncSlots::default(),
             watcher_manager: WatcherManager::new(),
             library_store,
             lsp_manager,

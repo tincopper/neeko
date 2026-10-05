@@ -404,6 +404,86 @@ libgit2 第二 status 引擎（`get_worktree_changed_files` / `get_changed_files
 poke 打对单元、编辑即推送、未挂载兄弟单元零泄漏、pull 不覆盖 push、unwatch/unwatch_project
 收口、**并发挂载不同单元 ⇒ 恰好一套挂载**、**并发挂载同单元 ⇒ 只建一套 watcher**）。
 
+## 13. 长操作超时策略与 Console 可见性（push / fetch / pull / commit）
+
+**判据**：墙钟超时的正当用途是防「卡死」，而 push / fetch / pull / commit 的耗时由
+pre-push/pre-commit hook 与网络决定、**没有上界**（pre-push 在本仓跑两套测试，分钟级）。
+用墙钟兜它们必然把「正常慢」误判成失败 —— 2026-10-01 事故：push 的 hook 约 3 分钟，
+应用 30s 上限先弹失败，而 git 进程并未被终止（超时只停止等待），远端状态未知。
+对齐 VS Code 的模型：**无墙钟 + 可取消 + 进度可见**（clone 早已是这条路线：
+`clone.rs` 的 "No timeout by design"）。
+
+- 单一判据函数：`transport::git_command_timeout(args)` —— 上述四个操作返回 `None`，
+  读类命令保留 `LOCAL_GIT_TIMEOUT`（一个卡住的轮询不应占死调用方）。
+  前端对称：**所有**入口（Git 面板 `useGitActions` / `ProjectsPanel` / `CommitDialog`）
+  对这四个操作一律**不包 `withTimeout`**（stage/discard 保留 30s），且统一经
+  `runGitConsoleOp` 编排 —— 新增入口必须复用同一编排，否则会重新引入
+  「正常慢被 30s 误判成失败、后端进程继续跑」。**护栏**：
+  `check_long_git_op_wall_clock`（禁 `withTimeout(push|pull|fetch|commitFiles(…)`）。
+- 无界期间的挂死防护不是调大上限，而是**取消通道**；SSH 交互式凭据/指纹提示仍会挂起
+  （`BatchMode` 未设，与 VS Code 的 askpass 是已知差距）。
+- `pull` 内嵌的 `merge --ff-only` 保留上界：纯本地毫秒级操作，不满足「没有上界」的判据。
+
+**取消通道（仓库单元单飞 + 目标限定）**：`AppStateWrapper.git_sync` 是 `GitSyncSlots`
+注册表（`Mutex<HashMap<RepoRef::key(), GitSyncEntry>>`，`GitSyncHandle` 是 watch 通道，
+与 `CloneHandle` 同构）。**互斥粒度 = 仓库单元**（`RepoRef::key()`）：同一单元
+（同 HEAD/index/workdir）串行、主仓与各 linked worktree 并行 —— 与 §12 的身份模型一致
+（`git status` 的写入单位是仓库单元，不是 project，也不是全局进程）；跨仓不再误拒。
+`cancel_git_sync(console_run_id)` 经 `GitSyncEntry::matches` 只取消 run id 匹配的运行
+（前端 tab 是仓库级的，匹配把两个身份面钉在一起，避免陈旧 run id 误取消别的仓库）；
+`None` = 取消全部。命令层唯一装配点 `begin_git_run(state, repo, app_handle, run_id)`
+（占槽 + 产 hooks，任何返回路径由 RAII `GitSyncGuard` 释放）。transport 侧用 `select!` 让
+「读流 + 等退出」与取消信号赛跑，取消时调用 kill 闭包 —— spawn 带 `kill_tree`，
+pre-push 的 pnpm → vitest/cargo 整棵树一起摘除（实测：取消后无残留 `sleep` 进程）。
+取消时等待 kill 确认有界（`executor::collect` 的 `KILL_GRACE = 5s`）：远端 kill 确认
+（SSH 新通道）可能永不到达，无界等待会让该单元永久 busy、前端 tab 永远 `stopping`；超时仍
+按 `Killed` 返回（信号已尽力发出，宁可放行槽也不永久卡死）。
+同单元第二个写操作争 index 锁从「偶发失败」变为显式拒绝
+（`AppError::Conflict`，文案 `common/git/transport/cancel.rs::BUSY_MESSAGE`，与前端
+`GIT_BUSY_MESSAGE` 同文案且两端各有 pin 测试）。Console 侧：Cancel 按钮 →
+`taskStore.cancelGitConsole(runId)`（状态置 `stopping` + 把 runId 透给后端）→ 后端被杀 →
+命令 reject → `finalizeRun` 按 `[Stopped]` 收尾（不计失败、不弹错误 toast）。
+
+**可见性**：四个操作把 stdout/stderr 按 UTF-8 边界成块（跨读边界的多字节字符在
+`executor::collect_child_output_streaming` 补齐，不产生 `U+FFFD`）经
+`git-operation-output` 事件推给 Console。**事件必须合流**：`drain_stream` 按
+`FLUSH_BYTES`(16KB) / `FLUSH_INTERVAL`(50ms) 把高频小读攒成低频事件、EOF 强制冲刷尾巴 ——
+macOS 上 Tauri 事件送达 = 每次 `evaluateJavaScript`，逐读块 `emit` 会把长操作输出风暴
+放大成同类内存压力（对照终端合流泵）。红线 5：常量单源在 `git/events.rs`，前端常量在
+`shared/events.ts`、payload 在 `shared/types/git.ts`；事件按 `consoleRunId` 落入
+`taskStore.openGitConsole` 的仓库级 tab（一仓一 tab），app 级订阅 `useGitConsoleBridge`
+保证面板关闭期间继续收流。hook 输出走 stderr —— 这是「推送成功却看不到任何输出」的根因
+（成功路径旧实现丢弃 stderr）。前端编排单点在 `features/git/api/gitConsoleRun.ts`：
+`runGitConsoleOp` 统一 begin → 成功/认证/失败收尾，并在**该仓 tab 已有 run 在飞
+（`running` 或 `stopping`）时返回 `busy` 且不触碰 tab** —— 多个入口共用同一个仓库级 tab，
+若不去重，第二个入口的失败收尾会把正在跑的第一个 run 误标 `failed`（旧 run 的 reject 回调
+也会误伤被接管的新 tab）。
+
+**DRY（同一生命周期只留一份）**：命令层的「占槽 + 产 hooks」收敛到 `begin_git_run`
+（此前 7 处各写一段）；Local / WSL / SSH 的「spawn 包装器 → 流式采集 → 取消赛跑 →
+错误映射」收敛到 `transport::run_shell_streaming` + `finish_git_output`（此前三份复制）。
+`GitTransport::run_git_opts_streaming` 的默认实现**只服务测试假实现**（静默退化为聚合调用、
+忽略 hooks）；它是唯一生产实现 `ExecTarget` 必须覆写的方法 —— 与红线 3「默认体不得回落
+同步核心」同理，默认体不得成为生产路径。
+
+**已知残留（有意，不在本任务范围）**：Tauri 命令没有取消协议 —— 前端 `invoke` 被丢弃 / 页面
+卸载不会 drop 后端命令 future（异步命令一般跑到完成），实际的 drop 只发生在运行时关停 /
+应用退出。这些路径下 git 传输层未接 `ProcessGuard`，spawn 的 git 子树可能随进程退出变成
+孤儿（长命 pre-push hook 会继续跑一会）。修它需要「全局子进程登记 + 退出时树杀」，独立于
+本任务的取消通道，需另开任务。
+
+**测试**：`transport/tests.rs`（`git_command_timeout_leaves_long_ops_unbounded` +
+流式交付与聚合逐字一致）、`transport/cancel.rs`（取消先于等待 / 唤醒等待者 /
+`GitSyncEntry::matches` 只命中同关联标识 / `GitSyncSlots` 同单元互斥·异单元并行·守卫释放 /
+busy → `AppError::Conflict`）、`executor/collect.rs`（取消杀进程闭包 + 返回 Killed /
+kill 不收敛仍有界返回 / 合流：小读合流 / 宽限交付 / EOF 尾巴不丢）、`git/events.rs`（run id 校验 /
+流标签 / 原样回传）、`operations/tests.rs`（`commit_files` 输出实时进 sink；
+`push_cancel_aborts_pre_push_hook_and_returns_promptly` 端到端取消 + 树杀）、
+前端 `gitConsoleRun.test.ts`（busy / stopping 不接管 / 取消返回 stopped /
+认证收尾 / ok 透传 runId）、`taskStore.gitConsole.test.ts`（稳定去重 / 追加 / 失败态 /
+取消置 stopping 且透传 runId）、`useGitActions.test.ts`（runId 透传、AuthRequired 收尾、
+悬挂 200s 不判失败、取消后 [Stopped] 收尾且不弹错误 toast）。
+
 ## 相关文件
 
 - `src-tauri/src/common/git/repo_ref.rs` — 仓库单元身份（`RepoRef` / `WorktreeRef` / key 契约）
@@ -418,4 +498,6 @@ poke 打对单元、编辑即推送、未挂载兄弟单元零泄漏、pull 不�
 - `src-tauri/src/common/file/watcher/manager/` — 按单元挂载的资源注册表（`watchers` / `snapshots` 主键 = `RepoRef::key()`）
 - `src-tauri/src/common/git/operations/` + `local/` — `get_commit_log` / `get_stash_list` / `get_stash_files` / `get_file_diff` / `status_porcelain`
 - `src-tauri/src/git/commands/` + `src-tauri/src/lib.rs` — 命令透传与注册
+- `src-tauri/src/git/events.rs` + `src/shared/events.ts` / `src/shared/types/git.ts` — 长操作输出事件的常量与 payload 双端单一源（红线 5）
+- `src/features/git/hooks/useGitConsoleBridge.ts` — 事件 → Console tab 的 app 级路由（面板关闭也收流）
 - `src/features/git/components/diff/useDiffData.ts` — 前端无状态 diff 消费者（git-status-diff / file-changed / 手动刷新驱动重拉）

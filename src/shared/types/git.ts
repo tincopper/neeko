@@ -353,3 +353,18 @@ export interface PRReviewComment {
   createdAt: string;
   updatedAt?: string;
 }
+
+// ─── Git 长操作输出事件 ───────────────────────────────────────────────────
+
+/** Git 长操作（push/fetch/pull/commit）输出块来自哪条标准流。 */
+export type GitOutputStream = 'stdout' | 'stderr';
+
+/** `git-operation-output` 事件载荷（camelCase，镜像 Rust `Serialize` 形态）。 */
+export interface GitOperationOutputPayload {
+  /** Console run id（后端 `console_run_id` 原样回传）。 */
+  runId: string;
+  /** 输出块来自哪条标准流。 */
+  stream: GitOutputStream;
+  /** UTF-8 文本块（跨读边界的多字节字符已由采集层合流补齐）。 */
+  chunk: string;
+}

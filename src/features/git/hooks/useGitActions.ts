@@ -4,14 +4,19 @@ import type { CommitResult, FileChange, PushOutcome } from '@/shared/types';
 import type { ProjectCommands } from '@/shared/types/activeProject';
 import { withTimeout } from '@/shared/utils/withTimeout';
 
+import { beginGitConsoleRun, GIT_BUSY_MESSAGE, runGitConsoleOp } from '../api/gitConsoleRun';
 import { formatGitHost } from '../formatGitHost';
 import type { DiscardIntent } from '../utils/discardIntent';
 import { isConflictedEntry } from '../utils/gitStatusGroups';
 
-/** 本地 git 操作超时（discard/stage/commit）。 */
+/**
+ * 本地快操作（discard/stage）的超时。
+ *
+ * fetch/pull/push/commit **刻意没有墙钟**：耗时由 hook 与网络决定、没有上界，
+ * 墙钟只会把「正常慢」误判成失败（对齐 VS Code：无超时 + 可取消）。见
+ * `.trellis/spec/backend/git-domain.md`「长操作超时策略」。
+ */
 const TIMEOUT_LOCAL_MS = 30_000;
-/** 网络 git 操作超时（fetch/pull/push）。 */
-const TIMEOUT_NETWORK_MS = 120_000;
 
 export interface CredentialDialogState {
   open: boolean;
@@ -41,6 +46,9 @@ export function hasConflictedSelected(
 
 interface UseGitActionsParams {
   commands: ProjectCommands;
+  /** 仓库身份：Console tab 按 projectPath 稳定去重（一仓一 tab）。 */
+  projectId: string;
+  projectPath: string;
   onRefreshGit: () => Promise<void>;
   onShowToast?: (message: string, type?: 'info' | 'error') => void;
   /** 提交成功后清空 commit message（commit message 状态归 CommitForm 侧持有） */
@@ -67,6 +75,8 @@ interface UseGitActionsParams {
  */
 export function useGitActions({
   commands,
+  projectId,
+  projectPath,
   onRefreshGit,
   onShowToast,
   onCommitMessageClear,
@@ -110,12 +120,19 @@ export function useGitActions({
       setCredentialDialog((prev) => ({ ...prev, open: false }));
       setLoading(true);
       try {
-        const outcome = await withTimeout(
-          commands.pushWithCredentials(setUpstream, username, password),
-          TIMEOUT_NETWORK_MS,
-          'push',
-        );
-        if (!handlePushOutcome(outcome, 'push', setUpstream)) {
+        const result = await runGitConsoleOp({
+          header: 'git push',
+          projectId,
+          projectPath,
+          run: (runId) => commands.pushWithCredentials(setUpstream, username, password, runId),
+          isAuthRequired: (o) => 'AuthRequired' in o,
+        });
+        if (result.status === 'busy') {
+          onShowToast?.(GIT_BUSY_MESSAGE, 'error');
+          return;
+        }
+        if (result.status === 'stopped') return; // 用户取消
+        if (!handlePushOutcome(result.value, 'push', setUpstream)) {
           await onRefreshGit();
           onSelectedFilesClear();
           onCommitMessageClear();
@@ -129,6 +146,8 @@ export function useGitActions({
     },
     [
       commands,
+      projectId,
+      projectPath,
       onRefreshGit,
       onShowToast,
       handlePushOutcome,
@@ -141,13 +160,24 @@ export function useGitActions({
   const runNetworkOp = useCallback(
     async (
       opName: string,
-      op: () => Promise<PushOutcome>,
+      op: (consoleRunId: string) => Promise<PushOutcome>,
       successMessage: string,
     ): Promise<void> => {
       setLoading(true);
       try {
-        const outcome: PushOutcome = await withTimeout(op(), TIMEOUT_NETWORK_MS, opName);
-        if (handlePushOutcome(outcome, opName)) return;
+        const result = await runGitConsoleOp({
+          header: `git ${opName}`,
+          projectId,
+          projectPath,
+          run: op,
+          isAuthRequired: (o) => 'AuthRequired' in o,
+        });
+        if (result.status === 'busy') {
+          onShowToast?.(GIT_BUSY_MESSAGE, 'error');
+          return;
+        }
+        if (result.status === 'stopped') return; // 用户取消
+        if (handlePushOutcome(result.value, opName)) return; // 凭据对话接管
         await onRefreshGit();
         onShowToast?.(successMessage, 'info');
       } catch (e: unknown) {
@@ -156,21 +186,21 @@ export function useGitActions({
         setLoading(false);
       }
     },
-    [handlePushOutcome, onRefreshGit, onShowToast],
+    [projectId, projectPath, handlePushOutcome, onRefreshGit, onShowToast],
   );
 
   const handleFetch = useCallback(
-    () => runNetworkOp('fetch', () => commands.fetch(), 'Fetched successfully'),
+    () => runNetworkOp('fetch', (runId) => commands.fetch(runId), 'Fetched successfully'),
     [commands, runNetworkOp],
   );
 
   const handlePull = useCallback(
-    () => runNetworkOp('pull', () => commands.pull(), 'Pulled successfully'),
+    () => runNetworkOp('pull', (runId) => commands.pull(runId), 'Pulled successfully'),
     [commands, runNetworkOp],
   );
 
   const handlePush = useCallback(
-    () => runNetworkOp('push', () => commands.push(false), 'Pushed successfully'),
+    () => runNetworkOp('push', (runId) => commands.push(false, runId), 'Pushed successfully'),
     [commands, runNetworkOp],
   );
 
@@ -296,16 +326,22 @@ export function useGitActions({
       }
       setLoading(true);
       try {
-        const result = (await withTimeout(
-          commands.commitFiles(files, message),
-          TIMEOUT_LOCAL_MS,
-          'commit',
-        )) as CommitResult;
+        const result = await runGitConsoleOp<CommitResult>({
+          header: 'git commit',
+          projectId,
+          projectPath,
+          run: (runId) => commands.commitFiles(files, message, runId),
+        });
+        if (result.status === 'busy') {
+          onShowToast?.(GIT_BUSY_MESSAGE, 'error');
+          return;
+        }
+        if (result.status === 'stopped') return; // 用户取消
         await onRefreshGit();
         onSelectedFilesClear();
         onCommitMessageClear();
         onShowToast?.(
-          `Committed ${result.hash ? result.hash.slice(0, 7) : 'successfully'}`,
+          `Committed ${result.value.hash ? result.value.hash.slice(0, 7) : 'successfully'}`,
           'info',
         );
       } catch (e: unknown) {
@@ -318,6 +354,8 @@ export function useGitActions({
       selectedFiles,
       changedFiles,
       commands,
+      projectId,
+      projectPath,
       onRefreshGit,
       onShowToast,
       onSelectedFilesClear,
@@ -340,21 +378,27 @@ export function useGitActions({
         );
         return;
       }
+      // commit 与 push 共用一个 Console run：一个 header，两段输出连续落屏。
+      const consoleRun = beginGitConsoleRun(projectId, projectPath, 'git commit && git push');
+      if (!consoleRun) {
+        onShowToast?.(GIT_BUSY_MESSAGE, 'error');
+        return;
+      }
       setLoading(true);
       try {
-        await withTimeout(commands.commitFiles(files, message), TIMEOUT_LOCAL_MS, 'commit');
-        const outcome: PushOutcome = await withTimeout(
-          commands.push(false),
-          TIMEOUT_NETWORK_MS,
-          'push',
-        );
-        if (handlePushOutcome(outcome, 'push')) return; // AuthRequired handled
+        await commands.commitFiles(files, message, consoleRun.runId);
+        const outcome: PushOutcome = await commands.push(false, consoleRun.runId);
+        if (handlePushOutcome(outcome, 'push')) {
+          consoleRun.awaitAuth();
+          return;
+        }
+        consoleRun.finishOk();
         await onRefreshGit();
         onSelectedFilesClear();
         onCommitMessageClear();
         onShowToast?.('Committed & pushed successfully', 'info');
       } catch (e: unknown) {
-        onShowToast?.(String(e), 'error');
+        if (!consoleRun.fail(e)) onShowToast?.(String(e), 'error');
       } finally {
         setLoading(false);
       }
@@ -363,6 +407,8 @@ export function useGitActions({
       selectedFiles,
       changedFiles,
       commands,
+      projectId,
+      projectPath,
       onRefreshGit,
       onShowToast,
       handlePushOutcome,

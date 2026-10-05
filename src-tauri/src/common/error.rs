@@ -25,6 +25,9 @@ pub enum AppError {
     /// The provided input was invalid.
     #[error("Invalid input: {0}")]
     InvalidInput(String),
+    /// The operation conflicts with current state (e.g. another operation is already in progress).
+    #[error("Conflict: {0}")]
+    Conflict(String),
     /// A remote connection/host operation failed.
     #[error("Remote error: {0}")]
     Remote(String),
