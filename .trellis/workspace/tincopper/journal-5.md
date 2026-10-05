@@ -1383,3 +1383,37 @@ macOS 无官方 Tauri WebDriver（`tauri-driver` 仅 Linux/Windows），native �
 ### Next Steps
 
 - None - task complete
+
+
+## Session 249: Git 长操作取消通道 + Console 可见性
+
+**Date**: 2026-10-05
+**Task**: Git 长操作取消通道 + Console 可见性
+**Branch**: `main`
+
+### Summary
+
+push/fetch/pull/commit 去墙钟 + 可取消（GitSyncSlots 按 RepoRef::key() 分槽、kill_tree 树杀、kill 确认有界 5s）+ stdout/stderr 16KB/50ms 合流进仓库级 Console；全入口统一 runGitConsoleOp（含 ProjectsPanel/CommitDialog）；新增 check_long_git_op_wall_clock 护栏。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `d4e3b05d` | (see git log) |
+| `24b13ff3` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

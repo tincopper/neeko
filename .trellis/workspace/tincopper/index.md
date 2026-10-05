@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-5.md`
-- **Total Sessions**: 248
-- **Last Active**: 2026-10-02
+- **Total Sessions**: 249
+- **Last Active**: 2026-10-05
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-5.md` | ~1385 | Active |
+| `journal-5.md` | ~1419 | Active |
 | `journal-4.md` | ~1989 | Archived |
 | `journal-3.md` | ~1978 | Archived |
 | `journal-2.md` | ~1991 | Archived |
@@ -33,6 +33,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 249 | 2026-10-05 | Git 长操作取消通道 + Console 可见性 | `d4e3b05d`, `24b13ff3` | `main` |
 | 248 | 2026-10-02 | 收口 10-01-library-prompt-dialog-host：AC 自动化验收并归档 | `fc4fb9dc` | `main` |
 | 247 | 2026-10-02 | 阻塞 fs 收口：仓库打开/校验清扫 + 命令层护栏（红线 3） | `e0f50516`, `90fac3bb`, `af0847a7` | `main` |
 | 246 | 2026-10-02 | 路径解析的阻塞 I/O 落阻塞池（红线 3） | `a99e05c6`, `15e11744` | `main` |
