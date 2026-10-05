@@ -1417,3 +1417,40 @@ push/fetch/pull/commit 去墙钟 + 可取消（GitSyncSlots 按 RepoRef::key() �
 ### Next Steps
 
 - None - task complete
+
+
+## Session 250: 归档 worktree 身份链 + 承接 AC13 遗留任务
+
+**Date**: 2026-10-05
+**Task**: 归档 worktree 身份链 + 承接 AC13 遗留任务
+**Branch**: `main`
+
+### Summary
+
+归档 10-02-blocking-fs-sweep / 10-01-async-path-resolution / 10-01-path-identity-alphabet / 09-26-worktree-repo-identity（接受 AC13 为已知缺口）；新建 10-05-wsl-ssh-remote-changes-parity 承接 WSL/SSH 远端 Changes 现场核对。归档前逐条核验：unit_path::resolve 为唯一产出点、canonicalize_worktree_path 无调用点、resolve_base 已 async、git/commands 无 UnitPath::resolve(、§12 已同步。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `7921e52e` | (see git log) |
+| `6a3e4f7d` | (see git log) |
+| `307a1a52` | (see git log) |
+| `05cf52fd` | (see git log) |
+| `a469ec30` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
