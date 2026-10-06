@@ -1,0 +1,2 @@
+{"file": ".trellis/spec/backend/git-domain.md", "reason": "git 传输生命周期与退出收敛（§13）"}
+{"file": ".trellis/spec/backend/concurrency-guidelines.md", "reason": "进程/阻塞纪律 + 退出清理"}
