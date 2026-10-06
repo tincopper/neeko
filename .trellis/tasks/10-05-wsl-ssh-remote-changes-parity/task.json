@@ -1,8 +1,8 @@
 {
   "id": "wsl-ssh-remote-changes-parity",
   "name": "wsl-ssh-remote-changes-parity",
-  "title": "WSL/SSH 远端项目 Changes 面板现场核对（worktree 身份链 AC13 遗留）",
-  "description": "09-26-worktree-repo-identity 归档后遗留的现场核对项：在有 WSL / SSH 项目的机器上确认远端单元的 Changes 面板能出条目、且与改动前行为一致（原 AC13）。本机 11 个项目全为 Local，远端分支从未被跑过。",
+  "title": "WSL/SSH 远端项目现场核对（Changes 面板 + 退出收敛）",
+  "description": "现场核对（无代码交付）：① 09-26-worktree-repo-identity 归档遗留 AC13 —— 在有 WSL / SSH 项目的机器上确认远端单元的 Changes 面板能出条目且与改动前一致；② 承接 626dd7a3 的 WSL/SSH 退出收敛 —— 长操作进行中退出 Neeko，确认远端 git/hook 子树被远端 kill 收敛。本机 11 个项目全为 Local，远端分支从未被跑过。",
   "status": "planning",
   "dev_type": null,
   "scope": null,
