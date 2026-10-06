@@ -14,8 +14,7 @@ use tokio::io::{AsyncReadExt, BufReader};
 
 use crate::common::error::AppError;
 use crate::common::executor::factory::{create_executor, ExecTarget};
-use crate::common::executor::ExecError;
-use crate::common::executor::SpawnOptions;
+use crate::common::executor::{KillFn, SpawnOptions, WaitFuture};
 use crate::common::git::transport::{classify_stderr, ErrorKind};
 use crate::project::events::CloneProgressEvent;
 
@@ -339,16 +338,6 @@ fn handle_progress_line<F>(
         }
     }
 }
-
-/// Kill future factory produced by `ExecChild::into_wait_and_kill`.
-type KillFn = Box<
-    dyn FnOnce()
-            -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<(), ExecError>> + Send>>
-        + Send,
->;
-/// Exit-code future produced by `ExecChild::into_wait_and_kill`.
-type WaitFuture =
-    std::pin::Pin<Box<dyn std::future::Future<Output = Result<i32, ExecError>> + Send>>;
 
 /// Kill the clone process, reap it, and remove the partial destination.
 async fn finish_cancelled(kill_fn: KillFn, wait: &mut WaitFuture, dest: &Path) {

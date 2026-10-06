@@ -87,6 +87,12 @@ impl AppStateWrapper {
             ),
             ("watcher", Box::new(move || watcher_manager.stop_all())),
             ("lsp", Box::new(move || lsp_manager.close_all_sessions())),
+            // git 长操作子进程树（git → hook → pnpm → vitest/cargo）没有自己的生命周期
+            // 守卫：退出前按登记表逐个驱动终止策略（宿主本地树杀 / SSH 远端 kill）。
+            (
+                "git-children",
+                Box::new(crate::common::executor::kill_all_live),
+            ),
         ];
         crate::common::shutdown::run_cleanup_and_exit(tasks);
     }

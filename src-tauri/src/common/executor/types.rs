@@ -43,6 +43,14 @@ pub enum ExecStream {
 /// 边界上无法稳定推导（E0308 / E0521），owned 句柄可在双流读取任务间直接克隆共享。
 pub type ExecChunkSink = std::sync::Arc<dyn Fn(ExecStream, &str) + Send + Sync>;
 
+/// 子进程退出 future 的类型。
+pub type WaitFuture = Pin<Box<dyn Future<Output = Result<i32, ExecError>> + Send>>;
+/// 强制终止 future 的类型。
+pub type KillFuture = Pin<Box<dyn Future<Output = Result<(), ExecError>> + Send>>;
+/// 可重复调用的强制终止动作。`cancel`（主动终止）与退出收敛**共用同一个动作**：
+/// 由 executor 按其执行目标（Local/WSL 本地树杀、SSH 远端 kill）构造，不存在第二条 kill 途径。
+pub type KillFn = std::sync::Arc<dyn Fn() -> KillFuture + Send + Sync>;
+
 /// Handle to a running child process.
 ///
 /// Provides access to stdin / stdout / stderr as async read/write streams,
@@ -58,39 +66,32 @@ pub struct ExecChild {
     /// Standard error stream.
     pub stderr: Option<BoxAsyncRead>,
     /// Future that resolves when the process exits, returning the exit code.
-    pub wait: Pin<Box<dyn Future<Output = Result<i32, ExecError>> + Send>>,
-    /// Internal kill function — called by [`ExecChild::kill`].
-    kill_fn:
-        Box<dyn FnOnce() -> Pin<Box<dyn Future<Output = Result<(), ExecError>> + Send>> + Send>,
+    pub wait: WaitFuture,
+    /// 可重复调用的强制终止动作（cancel 与退出收敛共用；见 [`KillFn`]）。
+    kill: KillFn,
     /// Best-effort OS / remote process id when known (local, WSL host, SSH remote).
     pub pid: Option<u32>,
 }
 
 impl ExecChild {
     /// Create a new `ExecChild` from its parts.
-    #[allow(clippy::type_complexity)]
     pub fn new(
         stdin: Option<BoxAsyncWrite>,
         stdout: Option<BoxAsyncRead>,
         stderr: Option<BoxAsyncRead>,
         wait: impl Future<Output = Result<i32, ExecError>> + Send + 'static,
-        kill_fn: impl FnOnce() -> Pin<Box<dyn Future<Output = Result<(), ExecError>> + Send>>
-            + Send
-            + 'static,
+        kill: impl Fn() -> KillFuture + Send + Sync + 'static,
     ) -> Self {
-        Self::new_with_pid(stdin, stdout, stderr, wait, kill_fn, None)
+        Self::new_with_pid(stdin, stdout, stderr, wait, kill, None)
     }
 
     /// Create a new `ExecChild` including an optional process id.
-    #[allow(clippy::type_complexity)]
     pub fn new_with_pid(
         stdin: Option<BoxAsyncWrite>,
         stdout: Option<BoxAsyncRead>,
         stderr: Option<BoxAsyncRead>,
         wait: impl Future<Output = Result<i32, ExecError>> + Send + 'static,
-        kill_fn: impl FnOnce() -> Pin<Box<dyn Future<Output = Result<(), ExecError>> + Send>>
-            + Send
-            + 'static,
+        kill: impl Fn() -> KillFuture + Send + Sync + 'static,
         pid: Option<u32>,
     ) -> Self {
         Self {
@@ -98,9 +99,15 @@ impl ExecChild {
             stdout,
             stderr,
             wait: Box::pin(wait),
-            kill_fn: Box::new(kill_fn),
+            kill: std::sync::Arc::new(kill),
             pid,
         }
+    }
+
+    /// 取出可重复调用的终止动作（退出收敛登记用）；与 [`Self::kill`] 共用**同一动作**。
+    #[must_use]
+    pub(crate) fn kill_action(&self) -> KillFn {
+        std::sync::Arc::clone(&self.kill)
     }
 
     /// Forcefully kill the child process.
@@ -108,11 +115,10 @@ impl ExecChild {
     /// For local / WSL processes this sends SIGKILL (or equivalent).
     /// For SSH processes this opens a new channel and executes `kill -9`.
     pub async fn kill(self) -> Result<(), ExecError> {
-        (self.kill_fn)().await
+        (self.kill)().await
     }
 
     /// Take stdio handles and leave wait/kill for lifecycle management.
-    #[allow(clippy::type_complexity)]
     pub fn take_stdio(
         &mut self,
     ) -> (
@@ -123,16 +129,10 @@ impl ExecChild {
         (self.stdin.take(), self.stdout.take(), self.stderr.take())
     }
 
-    /// Consume into wait future + kill future factory (after stdio taken).
-    #[allow(clippy::type_complexity)]
+    /// Consume into wait future + re-callable kill action (after stdio taken).
     #[must_use]
-    pub fn into_wait_and_kill(
-        self,
-    ) -> (
-        Pin<Box<dyn Future<Output = Result<i32, ExecError>> + Send>>,
-        Box<dyn FnOnce() -> Pin<Box<dyn Future<Output = Result<(), ExecError>> + Send>> + Send>,
-    ) {
-        (self.wait, self.kill_fn)
+    pub fn into_wait_and_kill(self) -> (WaitFuture, KillFn) {
+        (self.wait, self.kill)
     }
 }
 

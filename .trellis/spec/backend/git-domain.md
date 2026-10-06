@@ -466,11 +466,21 @@ macOS 上 Tauri 事件送达 = 每次 `evaluateJavaScript`，逐读块 `emit` �
 忽略 hooks）；它是唯一生产实现 `ExecTarget` 必须覆写的方法 —— 与红线 3「默认体不得回落
 同步核心」同理，默认体不得成为生产路径。
 
-**已知残留（有意，不在本任务范围）**：Tauri 命令没有取消协议 —— 前端 `invoke` 被丢弃 / 页面
-卸载不会 drop 后端命令 future（异步命令一般跑到完成），实际的 drop 只发生在运行时关停 /
-应用退出。这些路径下 git 传输层未接 `ProcessGuard`，spawn 的 git 子树可能随进程退出变成
-孤儿（长命 pre-push hook 会继续跑一会）。修它需要「全局子进程登记 + 退出时树杀」，独立于
-本任务的取消通道，需另开任务。
+**退出收敛（子进程登记表）**：git 传输层用 `kill_tree` 自组 spawn，但 kill 动作只在**主动取消**时被
+调用 —— 应用退出 / 运行时空停时 future 被丢弃、kill 不执行，整棵树（git → hook → pnpm →
+vitest/cargo）会孤儿化。`common/executor` 的 `child_registry` 让 `run_shell_streaming` 在子进程
+**存活期**登记它的 `KillFn`（= `Arc<dyn Fn() -> KillFuture>`，**与取消共用同一个动作**；动作的
+宿主/远端差异由 executor 在构造时按 `ExecTarget` 定下，传输层与登记表都不分支执行目标）。
+`AppStateWrapper::shutdown_background_and_exit` 的 CleanupTask（`"git-children"`）在所有后台服务
+关停前调 `kill_all_live()`，逐个同步驱动该动作（确认有界 5s）：
+
+- **宿主本地（Local / WSL）** 的动作 = 本地进程组树杀（`platform::process_spawn::kill_process_tree`，
+  红线 10 门面）；
+- **远端（SSH）** 的动作 = 在**远端**新开一个通道执行 `kill -9 -<remote_pid>`。**绝不能本地按 pid 杀**
+  —— 远端 pid 与本地 pid 取值区间无关联，按 pid 本地树杀会误杀本机无关进程。
+
+已结束的项早已注销 ⇒ 降低 pid / 进程组复用误杀。「运行期 future 被 drop（非退出）自动树杀」不在范围
+（无取消协议时该场景不可达）。
 
 **测试**：`transport/tests.rs`（`git_command_timeout_leaves_long_ops_unbounded` +
 流式交付与聚合逐字一致）、`transport/cancel.rs`（取消先于等待 / 唤醒等待者 /

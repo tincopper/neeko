@@ -703,6 +703,27 @@ let output = tokio::time::timeout(
 发事件（macOS 事件送达 = 每次 `evaluateJavaScript`，会重演终端内存事故）。
 依据与实测见 `backend/git-domain.md`「长操作超时策略与 Console 可见性」。
 
+### 5b. 退出时子进程收敛（子进程登记表）
+
+**判据**：应用退出（`Destroyed` → `shutdown_background_and_exit`）时，**仍在跑**的长操作子进程树
+必须被收敛，不得孤儿化（父进程退出不回收子进程）。
+
+- **登记表**：`common/executor::child_registry`——`run_shell_streaming` 在子进程存活期登记它的
+  `KillFn`（= `Arc<dyn Fn() -> KillFuture>`，**与取消共用同一个动作**），返回 RAII `ChildLease`
+  （正常完成 / 取消即注销）。动作的宿主/远端差异由 executor 按 `ExecTarget` 构造，登记表与传输层
+  都不分支执行目标。**只对仍登记（存活）的项动手**，降低 pid / 进程组复用误杀。
+- **收敛点**：`shutdown_background_and_exit` 的 `CleanupTask`（`"git-children"`）在所有后台服务
+  关停前调 `kill_all_live()`（同步驱动，确认有界 5s）；Local / WSL 的动作用平台门面
+  `platform::process_spawn::kill_process_tree`（红线 10）本地树杀；SSH 的动作在**远端** `kill -9`
+  （新通道）—— 远端 pid 与本地 pid 无关，**不得**本地按 pid 杀。
+- **不变量**：退出驱动与真实 killer 解耦（`kill_all_with(&dyn Fn(&KillFn))`），单测不触碰真实进程。
+- **executor 契约**：`ExecChild.wait` 的实现**不得**跨 `await` 持有子进程句柄的 `Mutex`——否则退出收敛驱动
+  共享 kill 动作时抢不到锁而死锁（Local / WSL 用短锁轮询 `try_wait`，不跨 `await` 持锁；回归测试
+  `local::tests::kill_action_does_not_deadlock_while_wait_is_polling`）。
+- **边界**：不改 Tauri 取消协议（运行期 future 被 drop 自动树杀不在范围）；不做远端同步清理。
+
+机制详解与实测：`backend/git-domain.md`「退出收敛（子进程登记表）」。
+
 ```rust
 /// 读类 30s；长操作 None（无墙钟，靠取消通道兜挂死）。
 pub(crate) fn git_command_timeout(args: &[&str]) -> Option<Duration> {

@@ -9,24 +9,16 @@
 //! - kill 信号可共享（transport 需要在自身错误路径上主动终止进程）；
 //! - `Drop` 兜底：任何提前返回 / 条目移除 / 进程退出都不泄漏子进程。
 
-use std::future::Future;
-use std::pin::Pin;
 use std::sync::Arc;
 use std::time::Duration;
 
 use tokio::sync::Notify;
 use tokio::task::JoinHandle;
 
-use super::ExecError;
+use super::types::{KillFn, WaitFuture};
 
 /// `terminate` 等待 reaper 收敛的宽限；超时只告警，不再阻塞更久。
 const REAPER_GRACE: Duration = Duration::from_secs(5);
-
-/// reaper 待等待的退出 future（[`into_wait_and_kill`](super::CommandExecutor::into_wait_and_kill) 的产物）。
-type WaitFuture = Pin<Box<dyn Future<Output = Result<i32, ExecError>> + Send>>;
-/// 强制终止回调（同上）。
-type KillFn =
-    Box<dyn FnOnce() -> Pin<Box<dyn Future<Output = Result<(), ExecError>> + Send>> + Send>;
 
 /// 子进程清理守卫。
 pub struct ProcessGuard {
@@ -97,7 +89,8 @@ mod tests {
     }
 
     fn recording_kill(flag: Arc<AtomicBool>) -> KillFn {
-        Box::new(move || {
+        Arc::new(move || {
+            let flag = Arc::clone(&flag);
             Box::pin(async move {
                 flag.store(true, Ordering::SeqCst);
                 Ok(())

@@ -7,6 +7,8 @@
 
 #[cfg(target_os = "windows")]
 use std::sync::Arc;
+#[cfg(target_os = "windows")]
+use std::time::Duration;
 
 use async_trait::async_trait;
 #[cfg(target_os = "windows")]
@@ -17,6 +19,11 @@ use tokio::sync::Mutex;
 #[cfg(target_os = "windows")]
 use super::{BoxAsyncRead, BoxAsyncWrite};
 use super::{CommandExecutor, ExecChild, ExecError, SpawnOptions};
+
+/// wait 轮询 `try_wait` 的间隔：**不得**跨 `await` 持有 `Mutex<Child>` —— 退出收敛会在本 wait
+/// future 仍存活时直接驱动共享 kill 动作，持锁等待会死锁。短锁轮询使 kill 总能拿到锁。
+#[cfg(target_os = "windows")]
+const WAIT_POLL_INTERVAL: Duration = Duration::from_millis(20);
 
 /// Executor that runs commands inside a WSL distribution.
 ///
@@ -108,18 +115,22 @@ impl CommandExecutor for WslExecutor {
         let child_lock = Arc::new(Mutex::new(child));
         let wait_child = Arc::clone(&child_lock);
         let wait = async move {
-            let mut guard = wait_child.lock().await;
-            guard
-                .wait()
-                .await
-                .map_err(ExecError::Io)?
-                .code()
-                .ok_or(ExecError::Killed)
+            loop {
+                let status = {
+                    let mut guard = wait_child.lock().await;
+                    guard.try_wait().map_err(ExecError::Io)?
+                };
+                if let Some(status) = status {
+                    return status.code().ok_or(ExecError::Killed);
+                }
+                tokio::time::sleep(WAIT_POLL_INTERVAL).await;
+            }
         };
         let kill_child = Arc::clone(&child_lock);
         let kill_pid = pid;
         let kill_tree = opts.kill_tree;
-        let kill_fn = move || {
+        let kill = move || {
+            let kill_child = Arc::clone(&kill_child);
             async move {
                 let mut guard = kill_child.lock().await;
                 // 宿主侧(`wsl.exe`)按进程树杀,覆盖其 Windows 侧子进程;
@@ -136,7 +147,7 @@ impl CommandExecutor for WslExecutor {
         };
 
         Ok(ExecChild::new_with_pid(
-            stdin, stdout, stderr, wait, kill_fn, pid,
+            stdin, stdout, stderr, wait, kill, pid,
         ))
     }
 }

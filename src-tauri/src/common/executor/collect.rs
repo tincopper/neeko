@@ -5,12 +5,13 @@
 //! [`collect_child_output`] / [`collect_child_output_streaming`]。
 
 use std::future::Future;
-use std::pin::Pin;
 use std::time::Duration;
 
 use tokio::io::AsyncReadExt;
 
-use super::{BoxAsyncRead, ExecChild, ExecChunkSink, ExecError, ExecOutput, ExecStream};
+use super::{
+    BoxAsyncRead, ExecChild, ExecChunkSink, ExecError, ExecOutput, ExecStream, KillFn, WaitFuture,
+};
 
 /// 关闭 stdin 后并发抽干 stdout/stderr 并等待退出，返回原始字节与退出码。
 pub async fn collect_child_output(child: ExecChild) -> Result<ExecOutput, ExecError> {
@@ -35,10 +36,6 @@ pub async fn collect_child_output_streaming(
 /// 取消时等待 kill 确认的上界：远端（SSH `kill -9` 新通道）可能永不到达；
 /// 无界等待会让单飞槽被永久占用（前端 tab 永远 `stopping`）。超时仍按 Killed 返回。
 const KILL_GRACE: Duration = Duration::from_secs(5);
-
-/// kill 闭包类型（与 [`ExecChild::into_wait_and_kill`] 的产出同形）。
-type KillFn =
-    Box<dyn FnOnce() -> Pin<Box<dyn Future<Output = Result<(), ExecError>> + Send>> + Send>;
 
 /// 有界等待 kill 确认：`true` = 在 `grace` 内收敛。
 /// 远端确认可能永不到达（见 [`KILL_GRACE`]），不能无界 await。
@@ -79,9 +76,6 @@ where
         }
     }
 }
-
-/// 进程退出 future 的类型（与 [`ExecChild::into_wait_and_kill`] 的产出同形）。
-type WaitFuture = Pin<Box<dyn Future<Output = Result<i32, ExecError>> + Send>>;
 
 /// spawn 拆包后的共享核心：并发抽干双流 + 等退出。
 async fn collect_streams(
@@ -218,6 +212,7 @@ mod tests {
     use std::time::Duration;
 
     use futures::FutureExt;
+    use std::pin::Pin;
     use tokio::io::{duplex, AsyncWriteExt};
 
     use super::*;
@@ -528,7 +523,7 @@ mod tests {
     #[tokio::test]
     async fn await_kill_bounded_returns_false_when_kill_hangs() {
         let settled = await_kill_bounded(
-            Box::new(|| Box::pin(std::future::pending::<Result<(), ExecError>>())),
+            Arc::new(|| Box::pin(std::future::pending::<Result<(), ExecError>>())),
             Duration::from_millis(20),
         )
         .await;
@@ -538,7 +533,7 @@ mod tests {
     #[tokio::test]
     async fn await_kill_bounded_returns_true_when_kill_settles() {
         let settled = await_kill_bounded(
-            Box::new(|| Box::pin(async { Ok(()) })),
+            Arc::new(|| Box::pin(async { Ok(()) })),
             Duration::from_millis(200),
         )
         .await;

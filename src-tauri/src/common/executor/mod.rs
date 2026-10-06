@@ -4,6 +4,7 @@
 //! WSL, and SSH command execution. Callers use the same API regardless
 //! of the target environment.
 
+mod child_registry;
 pub mod collect;
 mod env_defaults;
 mod error;
@@ -16,6 +17,7 @@ mod traits;
 mod types;
 mod wsl;
 
+pub(crate) use child_registry::{kill_all_live, register};
 pub use collect::{
     collect_child_output, collect_child_output_streaming,
     collect_child_output_streaming_cancellable,
@@ -25,5 +27,6 @@ pub use error::{format_command_failed_msg, ExecError};
 pub use process_guard::ProcessGuard;
 pub use traits::CommandExecutor;
 pub use types::{
-    BoxAsyncRead, BoxAsyncWrite, ExecChild, ExecChunkSink, ExecOutput, ExecStream, SpawnOptions,
+    BoxAsyncRead, BoxAsyncWrite, ExecChild, ExecChunkSink, ExecOutput, ExecStream, KillFn,
+    KillFuture, SpawnOptions, WaitFuture,
 };

@@ -307,6 +307,10 @@ pub(crate) async fn run_shell_streaming(
         .spawn_with(SpawnOptions::new(program, &["-c", shell_cmd]).with_kill_tree())
         .await
         .map_err(|e| anyhow::anyhow!("git command failed to spawn: {}", e))?;
+    // 存活期登记**同一个** kill 动作（与取消共用）；正常完成 / 取消时 lease drop 注销。
+    // 该动作由 executor 按其执行目标构造（Local/WSL 本地树杀 / SSH 远端 kill），
+    // 退出时 `kill_all_live` 直接驱动它 —— 不存在第二条 kill 途径。
+    let _lease = crate::common::executor::register(child.kill_action());
 
     let GitRunHooks { on_output, cancel } = hooks;
     let cancel = async move {

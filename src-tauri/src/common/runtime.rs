@@ -113,6 +113,14 @@ where
     run_blocking(func).await?
 }
 
+/// 在**非 runtime 线程**（如退出清理线程）同步驱动一个 future。
+///
+/// 退出清理走独立 OS 线程，因此不在 runtime 内；借 Tauri 全局 runtime 执行。
+/// **不得**在 runtime 线程内调用（`block_on` 会 panic）。
+pub fn block_on_shutdown<F: Future>(future: F) -> F::Output {
+    tauri::async_runtime::block_on(future)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

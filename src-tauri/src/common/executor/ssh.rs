@@ -15,6 +15,7 @@
 //!   stdout and `ExtendedData` to stderr via separate `mpsc` channels.
 
 use std::pin::Pin;
+use std::sync::Arc;
 use std::task::{Context, Poll};
 
 use async_trait::async_trait;
@@ -26,7 +27,9 @@ use tokio::sync::mpsc::{self, UnboundedSender};
 use russh::client;
 use russh::client::Handle;
 
-use super::{BoxAsyncRead, BoxAsyncWrite, CommandExecutor, ExecChild, ExecError, SpawnOptions};
+use super::{
+    BoxAsyncRead, BoxAsyncWrite, CommandExecutor, ExecChild, ExecError, KillFuture, SpawnOptions,
+};
 use crate::common::connection::types::AuthMethod;
 use crate::common::executor::ssh_auth;
 use crate::common::executor::ssh_auth::Client;
@@ -131,15 +134,19 @@ impl CommandExecutor for SshExecutor {
     async fn spawn_with(&self, opts: SpawnOptions<'_>) -> Result<ExecChild, ExecError> {
         use crate::common::utils::command::local::{join_quoted_command, quote_shell_arg};
 
-        let handle =
+        let handle = Arc::new(tokio::sync::Mutex::new(
             ssh_auth::connect_and_authenticate(&self.host, self.port, &self.username, &self.auth)
                 .await
-                .map_err(|e| ExecError::Ssh(e.to_string()))?;
+                .map_err(|e| ExecError::Ssh(e.to_string()))?,
+        ));
 
-        let mut channel = handle
-            .channel_open_session()
-            .await
-            .map_err(|e| ExecError::Ssh(format!("channel_open_session: {e}")))?;
+        let mut channel = {
+            let guard = handle.lock().await;
+            guard
+                .channel_open_session()
+                .await
+                .map_err(|e| ExecError::Ssh(format!("channel_open_session: {e}")))?
+        };
 
         // Login shell so remote profile PATH applies (nvm/fnm/cargo, …).
         // First line prints remote PID for kill support; then exec the user command.
@@ -181,7 +188,9 @@ impl CommandExecutor for SshExecutor {
         let stdout: BoxAsyncRead = Box::pin(RusshReadAdapter::new(stdout_rx));
         let stderr: BoxAsyncRead = Box::pin(RusshReadAdapter::new(stderr_rx));
         let wait = wait_from_watch(exit_rx);
-        let kill = kill_for(handle, remote_pid, opts.kill_tree);
+        // 远端 pid 与本地 pid 无关：kill 动作在**远端**执行（新通道 `kill -9`），
+        // 由 cancel 与退出收敛共用同一个动作。
+        let kill = kill_for(Arc::clone(&handle), remote_pid, opts.kill_tree);
 
         Ok(ExecChild::new_with_pid(
             Some(stdin),
@@ -300,18 +309,19 @@ async fn wait_from_watch(
 /// 远端终止：`kill_tree` 时先按**进程组**杀（sshd 为每个会话 `setsid`，故会话内
 /// 命令与其后代同组），组不存在再回退直接杀该 pid —— 一条命令覆盖两种语义。
 fn kill_for(
-    handle: Handle<Client>,
+    handle: Arc<tokio::sync::Mutex<Handle<Client>>>,
     pid: u32,
     kill_tree: bool,
-) -> impl FnOnce() -> Pin<Box<dyn std::future::Future<Output = Result<(), ExecError>> + Send>>
-       + Send
-       + 'static {
+) -> impl Fn() -> KillFuture + Send + Sync + 'static {
     move || {
+        let handle = Arc::clone(&handle);
         async move {
-            let kc = handle
+            let guard = handle.lock().await;
+            let kc = guard
                 .channel_open_session()
                 .await
                 .map_err(|e| ExecError::Ssh(format!("kill channel: {e}")))?;
+            drop(guard);
             let kill_cmd = if kill_tree {
                 format!("kill -9 -{pid} 2>/dev/null || kill -9 {pid} 2>/dev/null || true")
             } else {

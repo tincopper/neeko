@@ -5,6 +5,7 @@
 //! plus common package-manager extras via `resolve_full_path`).
 
 use std::sync::Arc;
+use std::time::Duration;
 
 use async_trait::async_trait;
 use futures::FutureExt;
@@ -12,6 +13,10 @@ use tokio::process::Command;
 use tokio::sync::Mutex;
 
 use super::{BoxAsyncRead, BoxAsyncWrite, CommandExecutor, ExecChild, ExecError, SpawnOptions};
+
+/// wait 轮询 `try_wait` 的间隔：**不得**跨 `await` 持有 `Mutex<Child>` —— 退出收敛会在本 wait
+/// future 仍存活时直接驱动共享 kill 动作，持锁等待会死锁。短锁轮询使 kill 总能拿到锁。
+const WAIT_POLL_INTERVAL: Duration = Duration::from_millis(20);
 
 /// Executor that runs commands on the local machine.
 ///
@@ -52,19 +57,23 @@ impl CommandExecutor for LocalExecutor {
 
         let wait_child = Arc::clone(&child_lock);
         let wait = async move {
-            let mut guard = wait_child.lock().await;
-            guard
-                .wait()
-                .await
-                .map_err(ExecError::Io)?
-                .code()
-                .ok_or(ExecError::Killed)
+            loop {
+                let status = {
+                    let mut guard = wait_child.lock().await;
+                    guard.try_wait().map_err(ExecError::Io)?
+                };
+                if let Some(status) = status {
+                    return status.code().ok_or(ExecError::Killed);
+                }
+                tokio::time::sleep(WAIT_POLL_INTERVAL).await;
+            }
         };
 
         let kill_child = Arc::clone(&child_lock);
         let kill_pid = pid;
         let kill_tree = opts.kill_tree;
-        let kill_fn = move || {
+        let kill = move || {
+            let kill_child = Arc::clone(&kill_child);
             async move {
                 let mut guard = kill_child.lock().await;
                 // 仅当调用方声明 kill_tree(该 spawn 已自成进程组)才组杀:
@@ -83,7 +92,7 @@ impl CommandExecutor for LocalExecutor {
         };
 
         Ok(ExecChild::new_with_pid(
-            stdin, stdout, stderr, wait, kill_fn, pid,
+            stdin, stdout, stderr, wait, kill, pid,
         ))
     }
 
@@ -114,7 +123,36 @@ impl CommandExecutor for LocalExecutor {
 #[cfg(all(test, unix))]
 mod tests {
     use super::*;
+    use crate::common::executor::collect_child_output_streaming_cancellable;
     use std::time::{Duration, Instant};
+
+    /// 退出收敛会在 wait future **仍存活**时直接驱动 kill 动作；Local 的 wait 若跨
+    /// `await` 持 `Mutex<Child>`，kill 动作会抢不到锁而死锁 —— 回归钉子。
+    #[tokio::test]
+    async fn kill_action_does_not_deadlock_while_wait_is_polling() {
+        let child = LocalExecutor
+            .spawn_with(SpawnOptions::new("sh", &["-c", "sleep 30"]).with_kill_tree())
+            .await
+            .expect("spawn sh");
+        let kill = child.kill_action();
+
+        // wait future 在后台轮询（模拟退出收敛时该 future 仍存活）。
+        let collect =
+            collect_child_output_streaming_cancellable(child, None, std::future::pending::<()>());
+        let task = tokio::spawn(async move {
+            let _ = collect.await;
+        });
+
+        // 给 wait future 足够时间获取锁并进入等待。
+        tokio::time::sleep(Duration::from_millis(200)).await;
+
+        let killed = tokio::time::timeout(Duration::from_secs(2), kill()).await;
+        assert!(
+            killed.is_ok(),
+            "kill 动作在 wait 轮询期间必须可执行（不得死锁）"
+        );
+        let _ = task.await;
+    }
 
     /// `kill()` 必须连带杀死后代进程。回归背景:jdtls 的包装器脚本被杀后,
     /// 它拉起的 JVM 孤儿化,堆积后互抢 Eclipse workspace 锁导致服务器永不
