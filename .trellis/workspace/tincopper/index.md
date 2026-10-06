@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-5.md`
-- **Total Sessions**: 250
-- **Last Active**: 2026-10-05
+- **Total Sessions**: 251
+- **Last Active**: 2026-10-06
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-5.md` | ~1456 | Active |
+| `journal-5.md` | ~1490 | Active |
 | `journal-4.md` | ~1989 | Archived |
 | `journal-3.md` | ~1978 | Archived |
 | `journal-2.md` | ~1991 | Archived |
@@ -33,6 +33,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 251 | 2026-10-06 | 应用退出时收敛 git 子进程树（共享单一 kill 动作） | `626dd7a3`, `d2397ca1` | `main` |
 | 250 | 2026-10-05 | 归档 worktree 身份链 + 承接 AC13 遗留任务 | `7921e52e`, `6a3e4f7d`, `307a1a52`, `05cf52fd`, `a469ec30` | `main` |
 | 249 | 2026-10-05 | Git 长操作取消通道 + Console 可见性 | `d4e3b05d`, `24b13ff3` | `main` |
 | 248 | 2026-10-02 | 收口 10-01-library-prompt-dialog-host：AC 自动化验收并归档 | `fc4fb9dc` | `main` |

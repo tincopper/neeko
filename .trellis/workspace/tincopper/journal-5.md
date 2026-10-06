@@ -1454,3 +1454,37 @@ push/fetch/pull/commit 去墙钟 + 可取消（GitSyncSlots 按 RepoRef::key() �
 ### Next Steps
 
 - None - task complete
+
+
+## Session 251: 应用退出时收敛 git 子进程树（共享单一 kill 动作）
+
+**Date**: 2026-10-06
+**Task**: 应用退出时收敛 git 子进程树（共享单一 kill 动作）
+**Branch**: `main`
+
+### Summary
+
+commit cancel 与 exit 到同一个可重调 KillFn（Arc<dyn Fn()->KillFuture>）：新增 common/executor/child_registry 在子进程存活期登记该动作，shutdown_background_and_exit 的 CleanupTask 驱动 kill_all_live；Local/WSL 本地树杀、SSH 远端新通道 kill -9。修了一个 Block：Local/WSL 的 wait 跨 await 持 Mutex<Child> 导致退出 kill 抢不到锁而死锁，改为短锁 try_wait 轮询并加回归测试。WSL/SSH 本地未验证，交 CI windows job 与 10-05-wsl-ssh-remote-changes-parity。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `626dd7a3` | (see git log) |
+| `d2397ca1` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
