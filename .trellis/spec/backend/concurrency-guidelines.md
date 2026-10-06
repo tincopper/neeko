@@ -145,6 +145,10 @@ stop.store(true, Ordering::Relaxed);
    `WatcherEventSink`（`sink.rs`，`WatcherEvent` 枚举 + 单方法 trait），生产适配器
    `AppHandleSink` 在组合根注入。这同时让**无 GUI 契约测试**成为可能
    （`lifecycle_tests.rs` 注入 `CollectingSink`）。
+   **变体→事件名映射由 `WatcherEvent::name()` 单点承载**（纯数据、无 GUI 可断言），
+   `AppHandleSink` 只做载荷路由、不含事件名字面量；替身 `CollectingSink` 复用同一方法。
+   回归护栏：`sink::tests::every_variant_maps_to_its_wire_event_name`（断言 wire 字面量，
+   已 Red 验证）。
 5. **契约测试必须 Red 验证**：新加的生命周期测试要临时回退修复确认会失败
    （当年 4/5 失败、恢复后 5/5 绿），否则「恰好绿」抓不住回归。并发不变量尤其如此 ——
    去掉 `mount_lock` 后 `concurrent_mount_*` 用例必须（在布障同步下）稳定变红，
