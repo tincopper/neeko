@@ -7,7 +7,6 @@ use anyhow::Result;
 use crate::common::executor::factory::ExecTarget;
 use crate::common::git::{cache, invalidate_repo_caches};
 use crate::common::types::GitProvider;
-use crate::core::exec::run;
 use crate::project::types::{
     PRComment, PRCommit, PRFileChange, PRInfo, PRListItem, PRMergeResult, PRReviewComment, PrLabel,
 };
@@ -152,33 +151,6 @@ pub async fn merge_pr(
 pub async fn close_pr(repo_path: &Path, target: &ExecTarget, pr_number: u64) -> Result<()> {
     let client = provider_from_repo(repo_path, target)?;
     client.close_pr(pr_number).await?;
-    invalidate_after_write(repo_path);
-    Ok(())
-}
-
-/// Check out a pull request locally as a branch.
-pub async fn checkout_pr(repo_path: &Path, target: &ExecTarget, pr_number: u64) -> Result<()> {
-    let repo_str = repo_path.to_string_lossy().to_string();
-    run(
-        target,
-        "git",
-        &[
-            "-C",
-            &repo_str,
-            "fetch",
-            "origin",
-            &format!("pull/{}/head:pr-{}", pr_number, pr_number),
-        ],
-    )
-    .await
-    .map_err(|e| anyhow::anyhow!("git fetch failed: {}", e))?;
-    run(
-        target,
-        "git",
-        &["-C", &repo_str, "checkout", &format!("pr-{}", pr_number)],
-    )
-    .await
-    .map_err(|e| anyhow::anyhow!("git checkout failed: {}", e))?;
     invalidate_after_write(repo_path);
     Ok(())
 }

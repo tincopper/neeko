@@ -606,7 +606,6 @@ async fn file_diff_shell_fallback_crlf_file_strips_carriage_returns() {
 struct DiffTextTransport {
     output: String,
     captured_args: std::sync::Mutex<Vec<String>>,
-    captured_env: std::sync::Mutex<Vec<(String, String)>>,
 }
 
 impl DiffTextTransport {
@@ -614,16 +613,11 @@ impl DiffTextTransport {
         Self {
             output,
             captured_args: std::sync::Mutex::new(Vec::new()),
-            captured_env: std::sync::Mutex::new(Vec::new()),
         }
     }
 
     fn last_args(&self) -> Vec<String> {
         self.captured_args.lock().unwrap().clone()
-    }
-
-    fn last_env(&self) -> Vec<(String, String)> {
-        self.captured_env.lock().unwrap().clone()
     }
 }
 
@@ -643,19 +637,13 @@ impl GitTransport for DiffTextTransport {
         &self,
         args: &[&str],
         _work_dir: &str,
-        opts: GitExecOptions<'_>,
+        _opts: GitExecOptions<'_>,
     ) -> Result<String> {
         self.captured_args.lock().unwrap().push(
             args.iter()
                 .map(|s| s.to_string())
                 .collect::<Vec<_>>()
                 .join(" "),
-        );
-        self.captured_env.lock().unwrap().push(
-            opts.env
-                .iter()
-                .map(|(k, v)| (k.to_string(), v.to_string()))
-                .collect(),
         );
         Ok(self.output.clone())
     }
@@ -778,44 +766,6 @@ async fn status_porcelain_uses_transport_repo_check_not_local_filesystem() {
         transport.last_args()
     );
     let _ = (entries, branch);
-}
-
-// ── 公理2契约：只读查询必须携带 GIT_OPTIONAL_LOCKS=0（不写 .git/index）──
-
-/// 高频只读查询（status_porcelain / file_diff / staged_diff）
-/// 必须经 `readonly_opts()` 注入 `GIT_OPTIONAL_LOCKS=0`——缺 env 时 git
-/// 可能 stat-refresh 写 index，与 .git 元数据 watcher 形成自反馈回路。
-#[tokio::test]
-async fn readonly_queries_inject_git_optional_locks() {
-    // status 查询前置 `assert_git_repo`，夹具必须是真实仓库（红线 13：tempdir 派生），
-    // 否则它会在校验处提前返回、根本走不到 transport，覆盖被静默削掉。
-    let (_dir, repo_path) = init_repo().await;
-    let transport = DiffTextTransport::new(long_context_diff());
-
-    let _ = status_porcelain(&transport, &repo_path)
-        .await
-        .expect("status 查询必须在真实仓库上跑到 transport");
-    let _ = get_file_diff(&transport, "/tmp", "a.txt", true).await;
-    let _ = get_staged_diff(&transport, "/tmp", 100).await;
-
-    assert!(
-        transport
-            .last_args()
-            .iter()
-            .any(|args| args.contains("status --porcelain")),
-        "status 查询必须真的发出 porcelain 命令，got: {:?}",
-        transport.last_args()
-    );
-
-    let envs = transport.last_env();
-    assert!(!envs.is_empty(), "只读查询必须携带 env");
-    for env in envs {
-        assert_eq!(
-            env,
-            ("GIT_OPTIONAL_LOCKS".to_string(), "0".to_string()),
-            "只读查询必须注入 GIT_OPTIONAL_LOCKS=0（公理2：查询无副作用）"
-        );
-    }
 }
 
 // ── shell 路径（WSL/SSH transport）collapse 契约 ──────────────────────

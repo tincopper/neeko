@@ -310,7 +310,7 @@ async fn test_local_open_repo_async_matches_sync_core() {
         .is_none());
 }
 
-// ── 只读语义：git status 不得刷新 index（GIT_OPTIONAL_LOCKS=0 默认生效）──────────
+// ── 只读语义：git status 不得刷新 index（默认 env 见 common::executor::env_defaults）──
 
 /// 造一个含 1 次提交的仓库，并让 index 处于「可被刷新」状态（新增未跟踪文件）。
 fn repo_with_untracked_file() -> (tempfile::TempDir, std::path::PathBuf) {
@@ -343,7 +343,7 @@ fn index_mtime(root: &std::path::Path) -> std::time::SystemTime {
 ///
 /// `git status` 默认会 refresh index（写 `.git/index`），这是**可选**锁操作；它与
 /// IDE / 用户手工 git 争 `.git/index.lock`（现场两次 `git commit` 因此失败）。
-/// 传输层已默认注入 `GIT_OPTIONAL_LOCKS=0`（见 `common::git::git_env`），故 index 不得被改。
+/// 传输层已默认注入只读语义 env（见 `common::executor::env_defaults`），故 index 不得被改。
 #[tokio::test]
 async fn git_status_does_not_refresh_index() {
     let (_tmp, root) = repo_with_untracked_file();

@@ -125,7 +125,7 @@ pub fn command_exists_blocking(target: &ExecTarget, cmd: &str) -> bool {
 /// 为什么在这里：`git status` 会 refresh index（读路径的写副作用，与 IDE / 用户 git 争
 /// `.git/index.lock`）。若要求每个调用点自己传 opts，必然遗漏（2026-09-24 的漏点是
 /// `operations/info.rs` / `worktree.rs`）；收敛到此入口后，新增调用默认即正确。
-/// 依据与取舍见 [`crate::common::git::git_env`]。
+/// 依据与取舍见 [`crate::common::executor::with_default_env`]。
 ///
 /// 注：WSL/SSH 的 git 调用不走这里 —— 它们由 `common::git::transport` 把 env 渲染成远端
 /// shell 前缀（同样默认注入）。
@@ -526,7 +526,7 @@ mod tests {
         assert_eq!(value, "bridged");
     }
     /// 同步桥（`status_worker` / `collapsed_probe` 走这条路径）同样必须只读：
-    /// 「`git status` 不得刷新 `.git/index`」。依据见 `common::git::git_env`。
+    /// 「`git status` 不得刷新 `.git/index`」。依据见 `common::executor::env_defaults`。
     #[test]
     fn collect_blocking_git_status_does_not_refresh_index() {
         let tmp = tempfile::tempdir().unwrap();
@@ -559,7 +559,7 @@ mod tests {
 
         assert_eq!(
             before, after,
-            "facade 默认注入 GIT_OPTIONAL_LOCKS=0：git status 不得刷新 index"
+            "facade 默认注入只读 env（见 common/executor/env_defaults.rs）：git status 不得刷新 index"
         );
     }
 }

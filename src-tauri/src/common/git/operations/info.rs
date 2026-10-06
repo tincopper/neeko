@@ -1,25 +1,12 @@
 // Git operations — info sub-module (split from operations.rs God File).
 
-#![allow(unused_imports, missing_docs)]
-use super::{invalidate_caches, readonly_opts, READONLY_ENV};
-use crate::common::executor::factory::ExecTarget;
-use crate::common::git::cache;
-use crate::common::git::credential::{
-    credential_approve, credential_reject, resolve_credential_helper, Credential,
-};
 use crate::common::git::operations::worktree::parse_worktree_list;
-use crate::common::git::parsers::{parse_numstat_line, parse_status_line};
 use crate::common::git::provider::detect_provider;
-use crate::common::git::transport::{ErrorKind, GitExecError, GitTransport};
-use crate::common::git::types::PushOutcome;
-use crate::common::git::types::{DiffHunk, DiffLine, DiffResult};
-use crate::core::exec::collect;
-use crate::project::types::{
-    AheadBehind, CommitDetail, CommitEntry, CommitFileChange, CommitResult, FileChange,
-    FileDiffStats, GitBranchInfo, GitInfo, GitProvider, StashActionResult, StashEntry, Worktree,
-};
-use anyhow::{bail, Result};
+use crate::common::git::transport::GitTransport;
+use crate::project::types::{GitBranchInfo, GitInfo, GitProvider};
+use anyhow::Result;
 
+/// 经 transport（shell）查询仓库信息：分支 + provider 检测，三端一致。
 pub async fn get_git_info_shell(transport: &dyn GitTransport, work_dir: &str) -> Result<GitInfo> {
     let branch_info = get_git_branch_info_shell(transport, work_dir).await?;
     // 检测 Git 提供商
@@ -111,6 +98,7 @@ pub async fn get_git_branch_info_shell(
     })
 }
 
+/// 查询仓库信息：本地可开 repo 时走 git2 快路径，否则回落 shell 实现。
 pub async fn get_git_info(transport: &dyn GitTransport, work_dir: &str) -> Result<GitInfo> {
     crate::common::git::local::assert_git_repo_async(work_dir).await?;
     if let Some(repo) = transport.open_repo_async(work_dir).await {

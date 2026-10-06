@@ -260,10 +260,9 @@ pub(crate) fn get_current_branch(repo: &RepoRef) -> String {
 
 /// Execute `git status --porcelain` for one repository unit.
 ///
-/// 只读语义（不 refresh index、不取 optional lock）由 exec facade 统一注入
-/// `GIT_OPTIONAL_LOCKS=0` 承担（见 `common::git::git_env`），因此这里**不再**传
-/// `--no-optional-locks`，也就不需要"老 git 不支持该标志"的回退分支 —— 回退分支
-/// 恰恰是当年漏掉锁语义的地方之一。
+/// 只读语义（不 refresh index、不取 optional lock）由 exec facade 统一注入只读 env
+/// 承担（见 `common::executor::env_defaults`），因此这里**不再**传 CLI 可选锁标志，
+/// 也就不需要"老 git 不支持该标志"的回退分支 —— 回退分支恰恰是当年漏掉锁语义的地方之一。
 fn git_status_porcelain(repo: &RepoRef) -> String {
     let path_str = repo.work_dir();
     match collect_blocking(

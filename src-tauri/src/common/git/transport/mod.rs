@@ -384,8 +384,8 @@ impl GitTransport for ExecTarget {
             .unwrap_or(false);
         let timeout = git_command_timeout(args);
 
-        // 只读语义默认生效（GIT_OPTIONAL_LOCKS=0）：读路径（status 等）不再 refresh index，
-        // 避免与 IDE / 用户 git 争 index 锁。见 common::git::git_env 的第一性依据。
+        // 只读语义默认生效（见 common::executor::env_defaults）：读路径（status 等）不再 refresh index，
+        // 避免与 IDE / 用户 git 争 index 锁。见 common::executor::env_defaults 的第一性依据。
         let mut env: Vec<(&str, &str)> = with_default_env("git", opts.env);
         if is_network_op {
             env.push(("GIT_TERMINAL_PROMPT", GIT_TERMINAL_PROMPT));
@@ -413,8 +413,8 @@ impl GitTransport for ExecTarget {
         opts: GitExecOptions<'_>,
         stdin: &[u8],
     ) -> Result<String> {
-        // 只读语义默认生效（GIT_OPTIONAL_LOCKS=0）：读路径（status 等）不再 refresh index，
-        // 避免与 IDE / 用户 git 争 index 锁。见 common::git::git_env 的第一性依据。
+        // 只读语义默认生效（见 common::executor::env_defaults）：读路径（status 等）不再 refresh index，
+        // 避免与 IDE / 用户 git 争 index 锁。见 common::executor::env_defaults 的第一性依据。
         let mut env: Vec<(&str, &str)> = with_default_env("git", opts.env);
         env.push(("GIT_TERMINAL_PROMPT", GIT_TERMINAL_PROMPT));
 

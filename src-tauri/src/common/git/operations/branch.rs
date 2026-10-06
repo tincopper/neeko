@@ -1,24 +1,10 @@
 // Git operations — branch sub-module (split from operations.rs God File).
 
-#![allow(unused_imports, missing_docs)]
-use super::{invalidate_caches, readonly_opts, READONLY_ENV};
-use crate::common::executor::factory::ExecTarget;
-use crate::common::git::cache;
-use crate::common::git::credential::{
-    credential_approve, credential_reject, resolve_credential_helper, Credential,
-};
-use crate::common::git::parsers::{parse_numstat_line, parse_status_line};
-use crate::common::git::provider::detect_provider;
-use crate::common::git::transport::{ErrorKind, GitExecError, GitTransport};
-use crate::common::git::types::PushOutcome;
-use crate::common::git::types::{DiffHunk, DiffLine, DiffResult};
-use crate::core::exec::collect;
-use crate::project::types::{
-    AheadBehind, CommitDetail, CommitEntry, CommitFileChange, CommitResult, FileChange,
-    FileDiffStats, GitBranchInfo, GitInfo, GitProvider, StashActionResult, StashEntry, Worktree,
-};
-use anyhow::{bail, Result};
+use super::invalidate_caches;
+use crate::common::git::transport::GitTransport;
+use anyhow::Result;
 
+/// 切换到指定分支（工作区随之更新）。
 pub async fn checkout_branch(
     transport: &dyn GitTransport,
     work_dir: &str,

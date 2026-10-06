@@ -1,23 +1,8 @@
 // Git operations — files sub-module (split from operations.rs God File).
 
-#![allow(unused_imports, missing_docs)]
-use super::{invalidate_caches, readonly_opts, READONLY_ENV};
-use crate::common::executor::factory::ExecTarget;
-use crate::common::git::cache;
-use crate::common::git::credential::{
-    credential_approve, credential_reject, resolve_credential_helper, Credential,
-};
-use crate::common::git::parsers::{parse_numstat_line, parse_status_line};
-use crate::common::git::provider::detect_provider;
 use crate::common::git::status_worker::parse_porcelain;
-use crate::common::git::transport::{ErrorKind, GitExecError, GitTransport};
-use crate::common::git::types::PushOutcome;
-use crate::common::git::types::{DiffHunk, DiffLine, DiffResult};
-use crate::core::exec::collect;
-use crate::project::types::{
-    AheadBehind, CommitDetail, CommitEntry, CommitFileChange, CommitResult, FileChange,
-    FileDiffStats, GitBranchInfo, GitInfo, GitProvider, StashActionResult, StashEntry, Worktree,
-};
+use crate::common::git::transport::GitTransport;
+use crate::project::types::FileChange;
 use anyhow::{bail, Result};
 
 /// 计算某仓库单元的 status：**porcelain 单一引擎**（三端一致）。
@@ -40,7 +25,7 @@ pub async fn status_porcelain(
         bail!("not a git repository: {work_dir}");
     }
     let output = transport
-        .run_git_opts(&["status", "--porcelain"], work_dir, readonly_opts())
+        .run_git(&["status", "--porcelain"], work_dir)
         .await?;
     let entries = parse_porcelain(&output);
     let branch = transport
@@ -74,7 +59,7 @@ pub async fn get_untracked_files(
         return Ok(Vec::new());
     }
     let output = transport
-        .run_git_opts(
+        .run_git(
             // -z：NUL 分隔且 git **不做 C 转义**。文本形态下含非 ASCII 的名字会被转成
             // `"test/\346\265\213\350\257\225.txt"`（core.quotePath 默认开启），
             // 直接进 UI 就是乱码、拿它当 pathspec 也找不到目录。
@@ -87,7 +72,6 @@ pub async fn get_untracked_files(
                 dir,
             ],
             worktree_path,
-            readonly_opts(),
         )
         .await?;
     // -z 形态下路径是原样字节：不做 trim（文件名可以合法地含首尾空格），只丢弃

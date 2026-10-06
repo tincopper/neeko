@@ -1,24 +1,13 @@
 // Git operations — sync sub-module (split from operations.rs God File).
 
-#![allow(unused_imports, missing_docs)]
-use super::{invalidate_caches, readonly_opts, READONLY_ENV};
-use crate::common::executor::factory::ExecTarget;
-use crate::common::git::cache;
+use super::invalidate_caches;
 use crate::common::git::credential::{
     credential_approve, credential_reject, resolve_credential_helper, Credential,
 };
-use crate::common::git::parsers::{parse_numstat_line, parse_status_line};
-use crate::common::git::provider::detect_provider;
 use crate::common::git::transport::{
     ErrorKind, GitExecError, GitExecOptions, GitRunHooks, GitTransport,
 };
 use crate::common::git::types::PushOutcome;
-use crate::common::git::types::{DiffHunk, DiffLine, DiffResult};
-use crate::core::exec::collect;
-use crate::project::types::{
-    AheadBehind, CommitDetail, CommitEntry, CommitFileChange, CommitResult, FileChange,
-    FileDiffStats, GitBranchInfo, GitInfo, GitProvider, StashActionResult, StashEntry, Worktree,
-};
 use anyhow::{bail, Result};
 
 /// 跑一条 git 命令并把输出块实时交给 Console（`hooks` 缺省时等价 `run_git`）。
@@ -33,6 +22,7 @@ async fn run_git_streaming(
         .await
 }
 
+/// `git fetch`（长操作：支持 Console 实时输出与取消）。
 pub async fn fetch(
     transport: &dyn GitTransport,
     work_dir: &str,

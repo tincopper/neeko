@@ -104,14 +104,14 @@ pub fn collapsed_dirs_digest(repo_path: &Path, entries: &[FileChange]) -> Digest
 /// 走 worker 线程上的同步桥（红线：同步桥只在独立 OS 线程 / spawn_blocking 内调用，
 /// worker 正是独立 OS 线程）。
 fn list_untracked_paths(repo_path: &str, dir: &str) -> Option<Vec<u8>> {
+    // 只读语义（不 refresh index）由 exec facade 单点注入 env（`.trellis/spec/backend/git-domain.md` §9）；
+    // 这里不再传 CLI 可选锁标志（它曾是散落的第二处副本，已随单源化退役）。
     let output = collect_blocking(
         &ExecTarget::Local,
         "git",
         &[
             "-C",
             repo_path,
-            // 全局选项必须位于子命令之前；避免探测顺手刷新 index 形成自反馈回路
-            "--no-optional-locks",
             "ls-files",
             "--others",
             "--exclude-standard",

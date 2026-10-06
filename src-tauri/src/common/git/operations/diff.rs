@@ -1,24 +1,13 @@
 // Git operations — diff sub-module (split from operations.rs God File).
 
-#![allow(unused_imports, missing_docs)]
-use super::{invalidate_caches, readonly_opts, READONLY_ENV};
 use crate::common::executor::factory::ExecTarget;
-use crate::common::git::cache;
-use crate::common::git::credential::{
-    credential_approve, credential_reject, resolve_credential_helper, Credential,
-};
-use crate::common::git::parsers::{parse_numstat_line, parse_status_line};
-use crate::common::git::provider::detect_provider;
-use crate::common::git::transport::{ErrorKind, GitExecError, GitTransport};
-use crate::common::git::types::PushOutcome;
+use crate::common::git::transport::GitTransport;
 use crate::common::git::types::{DiffHunk, DiffLine, DiffResult};
 use crate::core::exec::collect;
-use crate::project::types::{
-    AheadBehind, CommitDetail, CommitEntry, CommitFileChange, CommitResult, FileChange,
-    FileDiffStats, GitBranchInfo, GitInfo, GitProvider, StashActionResult, StashEntry, Worktree,
-};
-use anyhow::{bail, Result};
+use crate::project::types::FileDiffStats;
+use anyhow::Result;
 
+/// 返回指定文件相对 HEAD 的 unified diff（超行数上限时截断并附 `--stat` 摘要）。
 pub async fn get_diff_for_files(
     transport: &dyn GitTransport,
     work_dir: &str,
@@ -57,17 +46,16 @@ pub async fn get_staged_diff(
     work_dir: &str,
     line_limit: usize,
 ) -> Result<String> {
-    // 只读查询：GIT_OPTIONAL_LOCKS=0 防止 stat-refresh 写 .git/index（自反馈回路公理2）
-    let diff_text = transport
-        .run_git_opts(&["diff", "--cached"], work_dir, readonly_opts())
-        .await?;
+    // 只读语义由执行层单点注入（见 `common::executor::env_defaults`），此处不再逐点补 opts
+    // （`.trellis/spec/backend/git-domain.md` §9）；测试护栏见 `transport/tests.rs`。
+    let diff_text = transport.run_git(&["diff", "--cached"], work_dir).await?;
     let lines: Vec<&str> = diff_text.lines().collect();
     if lines.len() <= line_limit {
         Ok(diff_text)
     } else {
         let truncated: String = lines[..line_limit].join("\n");
         let stat = transport
-            .run_git_opts(&["diff", "--cached", "--stat"], work_dir, readonly_opts())
+            .run_git(&["diff", "--cached", "--stat"], work_dir)
             .await?;
         Ok(format!(
             "{}\n\n[diff truncated at {} lines]\n\nFile change summary:\n{}",
@@ -103,9 +91,7 @@ pub(crate) async fn get_file_diff_shell(
     args.push("--".to_string());
     args.push(file_path.to_string());
     let arg_refs: Vec<&str> = args.iter().map(String::as_str).collect();
-    let output = transport
-        .run_git_opts(&arg_refs, work_dir, readonly_opts())
-        .await?;
+    let output = transport.run_git(&arg_refs, work_dir).await?;
     let mut result = crate::common::git::parsers::parse_unified_diff(&output);
     if result.hunks.is_empty() {
         let path = std::path::Path::new(work_dir).join(file_path);

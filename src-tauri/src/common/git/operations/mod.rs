@@ -5,20 +5,30 @@
 
 mod support;
 
+/// 分支：切换 / 创建 / 删除 / 重命名 / detached checkout。
 pub mod branch;
+/// 提交与历史改写：提交选中文件、cherry-pick、revert、打 tag。
 pub mod commit;
+/// Diff 读取：staged / 单文件 / 变更统计。
 pub mod diff;
 pub mod discard;
+/// 文件 / status 查询（porcelain 单一引擎）与近期提交消息。
 pub mod files;
+/// 仓库信息（分支、provider 检测）。
 pub mod info;
+/// 提交历史与 ahead-behind。
 pub mod log;
+/// 暂存区：stage / unstage（单文件与全量）。
 pub mod stage;
+/// Stash 栈操作。
 pub mod stash;
+/// 远端同步（fetch / pull / push）。
 pub mod sync;
+/// Linked worktree 管理。
 pub mod worktree;
 
+pub(crate) use support::invalidate_caches;
 pub use support::resolve_worktree_path;
-pub(crate) use support::{invalidate_caches, readonly_opts, READONLY_ENV};
 
 pub use branch::*;
 pub use commit::*;

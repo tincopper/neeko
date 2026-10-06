@@ -1,17 +1,8 @@
 //! `operations` 各子模块共享的常量与 helpers（原先平铺在 `mod.rs`）。
-
-use crate::common::git::transport::GitExecOptions;
-
-/// 只读 git 查询的执行环境（公理 2：查询无副作用）。
-pub(crate) const READONLY_ENV: &[(&str, &str)] = &[("GIT_OPTIONAL_LOCKS", "0")];
-
-/// 构造只读查询的 [`GitExecOptions`]（env 为静态切片，可安全跨 await 借用）。
-pub(crate) const fn readonly_opts() -> GitExecOptions<'static> {
-    GitExecOptions {
-        env: READONLY_ENV,
-        extra_config: &[],
-    }
-}
+//!
+//! **只读 git 语义不在此处声明** —— 它由执行层单点注入（`common::executor::env_defaults.rs`，
+//! 经 `core::exec` facade + `common::git::transport` 三端），业务代码禁止逐点补 opts /
+//! CLI 标志；依据与护栏见 `.trellis/spec/backend/git-domain.md` §9。
 
 /// 写操作成功后失效该仓库的全部内存缓存（AGENTS.md：缓存失效不得散落调用点遗漏）。
 pub(crate) fn invalidate_caches(work_dir: &str) {
