@@ -200,17 +200,38 @@ git ls-files --others --exclude-standard -z -- test/  ->  test/测试.txt       
 2. `common/git/transport` 的 `run_git_opts` / `run_git_with_stdin` 共用 env 组装处：
    **三端（Local / WSL / SSH）同时生效**（WSL/SSH 把 env 渲染成远端 shell 前缀）。
 
-构造点：`common/git/git_env.rs`（`with_optional_locks_disabled` 尊重调用方显式覆盖）。
-已退役的散落机制：`status_worker` 的 `--no-optional-locks` CLI 标志与「老 git 回退」分支——
-**回退分支正是当年漏锁语义的地方**。`readonly_opts()` 仅剩显式意图标注用途，勿再往里加锁语义。
+构造点：`common/executor/env_defaults.rs` 的命令默认环境表 + `with_default_env`（尊重调用方
+显式覆盖）。**已全部退役的散落机制**（本不变量历史复发 4 次的完整清单，勿再重犯）：
+
+1. 调用点漏传 opts（`operations/info.rs` / `worktree.rs`）；
+2. `status_worker/worker.rs` 的 `--no-optional-locks` + 「老 git 回退」分支；
+3. `operations/support.rs` 的 `readonly_opts()` / `READONLY_ENV` 逐点注入；
+4. `status_worker/collapsed_probe.rs` 的第二处 `--no-optional-locks`。
+
+**强制单一源（防复发）**：`tools/guards/checks/check_git_optional_locks_single_source.py` ——
+`GIT_OPTIONAL_LOCKS` / `--no-optional-locks` / `optionalLocks` 字面量在整个
+`src-tauri/{src,tests}` 的 `.rs` 中**只允许出现在一个文件**里（`common/executor/env_defaults.rs`
+数据表 + 其单测），**注释里也不允许复述**（要说明请指向该文件）。删掉散落副本只是清今天，
+护栏才能拦住明天；选“单文件唯一”而非“剔除注释后再匹配”，是为了不引入自写的 Rust
+词法扫描器（持续维护 + 漏报面），且 `grep` 全仓只剩一处文件本身就是最好的可读性。
 
 **验证方式（行为断言，非 mock）**：`git status` 前后 `stat .git/index` 的 mtime 严格相等——
-`git_env::tests` 与 `collect_blocking_git_status_does_not_refresh_index` 两条用例钉死；
+`common/executor/env_defaults.rs::tests`、`transport/tests.rs::git_status_does_not_refresh_index`
+与 `collect_blocking_git_status_does_not_refresh_index` 三条用例钉死；
 写路径（stage/commit/stash/checkout）回归全绿证明 optional ≠ 必需。
 
 **Wrong**：新增读命令时 `run_git(&args, wd)` 之外再手动拼 `--no-optional-locks` 或 opts env——
 散落注入必然在下一处新增调用点被遗漏（info.rs / worktree.rs 两处缺口即前车之鉴）。
 **Correct**：直接走 facade / transport 默认注入；发现读路径写 index 立即回来改注入点。
+
+**已知边界（勿踩）**：facade 的注入键是 `opts.cmd == "git"` —— 若用 `sh -c "git …"` 包裹调用，
+注入会**静默失效**。transport 内部的 `sh -c` 是合法特例（env 已由 transport 渲染成 shell 前缀）；
+新增本地 git 调用一律令 `cmd == "git"`，不要自行 shell 包裹。
+
+**谁的 git 走哪条路**：Local 同步桥（`status_worker` / `collapsed_probe`）走 `core::exec` facade；
+而 **WSL/SSH 的 git 一律走 `GitTransport`** —— facade 的默认 env 设在本地 `wsl.exe`/`ssh`
+进程上、无法穿透到远端，经 facade 跑远程 git 会静默丢掉只读语义（本仓当前**无**此类调用；
+曾有唯一实例 `pr::checkout_pr`，因零调用方作为死代码删除）。
 
 ## 10. 写后 status 快照新鲜度契约（poke-and-wait）
 
