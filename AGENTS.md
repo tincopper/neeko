@@ -178,7 +178,7 @@ Tauri Event 字符串（如 `terminal-output-{id}`、`git-status-diff`）禁止�
 单侧 playbook 在对应嵌套文件（新增命令 → `src-tauri/AGENTS.md`「Rust 命令层约定」；改前端容器逻辑 →
 `src/AGENTS.md`「前端架构约定」），此处只留跨栈条目。
 
-- **改构建或权限配置**：同步检查 `package.json`、`vite.config.ts`、`tauri.conf.json`、`capabilities/default.json`，验证 `pnpm tauri dev` 与 `build`
+- **改构建或权限配置**：同步检查 `package.json`、`vite.config.ts`、`tauri.conf.json`、`capabilities/default.json`、`rust-toolchain.toml`（Rust 工具链唯一版本源；workflow 内不得再写 `dtolnay/rust-toolchain@stable`，那会让 CI 比本地先滚动），验证 `pnpm tauri dev` 与 `build`
 
 ## 相关文档
 

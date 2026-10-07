@@ -40,8 +40,7 @@ jobs:
           node-version: '24'
           cache: 'pnpm'
 
-      - name: Install Rust stable
-        uses: dtolnay/rust-toolchain@stable
+      # 工具链版本与组件的唯一定义点在仓库根 rust-toolchain.toml（rustup 会按它自动安装）。
 
       - name: Rust cache
         uses: swatinem/rust-cache@v2

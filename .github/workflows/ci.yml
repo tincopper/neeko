@@ -146,8 +146,7 @@ jobs:
         with:
           node-version: '24'
 
-      - name: Install Rust stable
-        uses: dtolnay/rust-toolchain@stable
+      # 工具链版本与组件的唯一定义点在仓库根 rust-toolchain.toml（rustup 会按它自动安装）。
 
       - name: Rust cache
         uses: swatinem/rust-cache@v2
@@ -203,8 +202,7 @@ jobs:
         with:
           node-version: '24'
 
-      - name: Install Rust stable
-        uses: dtolnay/rust-toolchain@stable
+      # 工具链版本与组件的唯一定义点在仓库根 rust-toolchain.toml（rustup 会按它自动安装）。
 
       - name: Rust cache
         uses: swatinem/rust-cache@v2
@@ -264,11 +262,7 @@ jobs:
         with:
           node-version: '24'
 
-      - name: Install Rust stable
-        if: steps.changes.outputs.rust == 'true'
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          components: llvm-tools-preview
+      # 工具链版本与组件（含 llvm-tools-preview）的唯一定义点在仓库根 rust-toolchain.toml。
 
       - name: Install cargo-llvm-cov
         if: steps.changes.outputs.rust == 'true'

@@ -1,0 +1,13 @@
+# Rust 工具链的唯一定义点：本地与 CI 都以此为准，升级一律人工进行。
+#
+# 为什么钉死具体版本：此前 CI 用 `dtolnay/rust-toolchain@stable`，它会比本地先滚动。
+# 2026-10-07 的 CI 红就是这条漂移 —— 1.99.0 改了 clippy `double_must_use` 的判据
+# （改为复用 rustc 的 MustUsePath，会穿透 Pin<Box<dyn Future>> 看到 Output 的 Result），
+# 而本地 stable 还停在 1.97.1，于是 `pnpm lint:rust` 本地全绿、CI 报出 39+1 条错误。
+#
+# 升级流程：改下面 channel → 重新 `pnpm install` 无关，直接跑 `pnpm check` → 单独提交，
+# 不要与功能改动混在同一提交里。components 带 llvm-tools-preview 是覆盖率门
+# `pnpm test:rust:coverage` 的前置条件。
+[toolchain]
+channel = "1.99.0"
+components = ["clippy", "rustfmt", "llvm-tools-preview"]
