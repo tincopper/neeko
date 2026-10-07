@@ -1,0 +1,4 @@
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "红线 1/10 的命令执行豁免清单与平台差异集中化判据"}
+{"file": ".trellis/spec/backend/git-domain.md", "reason": "git 传输层行为冻结项与 §12 渲染契约；'合法特例' 退役落点"}
+{"file": ".trellis/spec/backend/concurrency-guidelines.md", "reason": "run_shell_streaming 的子进程登记/取消/同步桥语义不得改动"}
+{"file": ".trellis/tasks/10-07-unify-command-execution/research/command-execution-audit.md", "reason": "全仓违规点清单与复跑判据"}

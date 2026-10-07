@@ -1,0 +1,4 @@
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "验收：护栏判据与平台化纪律"}
+{"file": ".trellis/spec/backend/git-domain.md", "reason": "验收：git 行为冻结（argv/env/timeout/错误分类不变）"}
+{"file": ".trellis/spec/unit-test/backend-testing.md", "reason": "验收：测试夹具与断言平台无关（红线 13 相关）"}
+{"file": ".trellis/tasks/10-07-unify-command-execution/research/command-execution-audit.md", "reason": "验收：三条 grep 零命中"}
