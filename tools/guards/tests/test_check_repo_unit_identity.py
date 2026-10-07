@@ -99,6 +99,36 @@ class RepoUnitIdentityTest(unittest.TestCase):
         )
         self.assertEqual(result.verdict, PASS)
 
+    def test_direct_project_statuses_read_is_a_violation(self):
+        # 判据 7：status 的唯一读取口是 selectors，store 的内部表示不得外泄。
+        result = self.run_fe(
+            "src/features/git/components/Leak.tsx",
+            "const entries = useProjectStore((s) => s.statuses[repoKey]?.entries);\n",
+        )
+        self.assertEqual(result.verdict, VIOLATION)
+        self.assertTrue(any("statuses" in f.message for f in result.findings))
+
+    def test_statuses_destructuring_is_a_violation(self):
+        result = self.run_fe(
+            "src/features/git/components/Leak.tsx",
+            "const { statuses } = useProjectStore();\n",
+        )
+        self.assertEqual(result.verdict, VIOLATION)
+
+    def test_selector_status_form_is_accepted(self):
+        result = self.run_fe(
+            "src/features/git/components/Ok.tsx",
+            "const entries = selectEntries(s, repoKey);\nconst branch = selectBranch(s, repoKey);\n",
+        )
+        self.assertEqual(result.verdict, PASS)
+
+    def test_project_store_may_access_its_own_statuses(self):
+        result = self.run_fe(
+            "src/shared/store/projectStore.ts",
+            "export const pick = (s: any, k: string) => s.statuses[k];\n",
+        )
+        self.assertEqual(result.verdict, PASS)
+
     def test_status_command_must_go_through_git_api(self):
         bad = self.run_fe(
             "src/features/git/hooks/leak.ts",

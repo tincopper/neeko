@@ -96,12 +96,23 @@ export const useProjectStore = create<ProjectStoreState>((set) => ({
 }));
 
 // ── selectors（消费端唯一读取口；不得绕过它们直接摸 statuses）──
+// 「不得绕过」已由护栏 `check_repo_unit_identity` 的判据 7 强制：生产代码里
+// `projectStore.statuses` 直读（或解构 `{ statuses }`）命中即违规，白名单仅本文件。
 
 export function selectStatus(
   state: ProjectStoreState,
   repoKey: RepoKey | string,
 ): RepoStatus | undefined {
   return state.statuses[String(repoKey)];
+}
+
+/** 该单元是否已有权威状态。
+ *
+ * 用于区分「未知」（未挂载 / 刚被切走）与「已知且干净」（`entries` 为空数组）——
+ * 两者不得混同（把未知当干净正是本次根治的症状形态）。
+ */
+export function selectHasStatus(state: ProjectStoreState, repoKey: RepoKey | string): boolean {
+  return String(repoKey) in state.statuses;
 }
 
 /** 某单元的变更条目；`undefined` = 未知（未挂载），空数组 = 确实干净。 */

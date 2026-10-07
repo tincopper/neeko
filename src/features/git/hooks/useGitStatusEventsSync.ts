@@ -4,7 +4,7 @@ import { useEffect } from 'react';
 
 import { GIT_CHANGED_EVENT, GIT_STATUS_SNAPSHOT_EVENT } from '@/shared/events';
 import { useGitStore } from '@/shared/store/gitStore';
-import { useProjectStore } from '@/shared/store/projectStore';
+import { useProjectStore, selectStatus } from '@/shared/store/projectStore';
 import { activeRepoKeyOf } from '@/shared/store/worktreeStore';
 import type { GitChangedEvent, GitStatusSnapshot } from '@/shared/types';
 import { parseRepoKey } from '@/shared/utils/repoRef';
@@ -74,7 +74,7 @@ export function useGitStatusEventsSync() {
     const unlistenSnapshot = listen<GitStatusSnapshot>(GIT_STATUS_SNAPSHOT_EVENT, (event) => {
       const snap = event.payload;
       const store = useProjectStore.getState();
-      const prevBranch = store.statuses[snap.repo_key]?.branch;
+      const prevBranch = selectStatus(store, snap.repo_key)?.branch;
       store.applyStatus(snap);
       useGitStore.getState().setStatusTruncated(snap.repo_key, snap.truncated);
       // 分支变化 → 该单元的分支清单 / ahead-behind 需要重取（status 快照不含这些）

@@ -72,7 +72,10 @@ pub async fn set_active_repo_unit(
     let (_t, repo) = state
         .resolve_repo(&project_id, worktree_path.as_deref())
         .await?;
-    crate::git::services::status::activate(&state, &app, &repo).await
+    // 交付适配器只在此处构造（服务层只认端口，见 `common/file/watcher/sink.rs`）。
+    let sink: std::sync::Arc<dyn crate::common::file::watcher::WatcherEventSink> =
+        std::sync::Arc::new(crate::common::file::watcher::AppHandleSink::new(app));
+    crate::git::services::status::activate(&state, sink, &repo).await
 }
 
 /// 把调用方持有的 worktree 路径归一成后端使用的 canonical 形态。

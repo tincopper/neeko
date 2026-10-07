@@ -86,6 +86,8 @@ export default React.memo(TitleBar);
 
 **开发硬指标**：组件文件严禁超过 300 行（neeko-check P10）。超线时按职责抽取子组件到独立文件（同目录），抽取不改变公开 API：
 
+> **已升为机器门禁**：由 `check_component_size` ratchet 护栏强制 —— 未登记在 `tools/guards/ledger/component_size.json` 基线的文件越 300 行即 CI 红；已登记基线（存量 59 个）只允许缩小、不得回涨。存量还债是独立任务。
+
 - 列表分区、行块等内嵌展示块 → 独立组件文件，如 `ChangesList` 的 `Section` 抽为 `ChangesSection.tsx`
 - 纯展示子块用 `React.memo` 包裹保持引用稳定
 - 抽取仅迁移 JSX 与依赖（`cn`/icons/类型），行为零漂移——用 `git diff -w` 对照抽取前后验证语义一致

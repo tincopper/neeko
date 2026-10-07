@@ -4,39 +4,37 @@ import { cn } from '@/lib/utils';
 import ConfirmDialog from '@/shared/components/ConfirmDialog';
 import { BranchIcon, TrashIcon, FolderGitIcon } from '@/shared/components/icons';
 import SessionChips from '@/shared/components/SessionChips';
-import type { FileChange, Worktree } from '@/shared/types';
+import { useWorktreeChangeStats } from '@/shared/hooks/useWorktreeChangeStats';
+import type { GitStatusSnapshot, Worktree } from '@/shared/types';
 
 interface ConnectionWorktreeListProps {
+  /** 本列表所属项目 —— 状态槽位按 `repoKeyOf(projectId, wt.path)` 定址（与本地侧栏同一张表）。 */
+  projectId: string;
   worktrees: Worktree[];
-  /** 当前激活的 worktree 路径（来�?connection-specific store 字段�?*/
+  /** 当前激活的 worktree 路径 */
   activeWorktreePath: string | null;
   /** 点击 worktree 行：触发外部 onOpenWorktreeTerminal */
   onOpenWorktreeTerminal: (worktreePath: string, branch: string) => void;
-  /** 双击 worktree label：开始重命名（提�?newName 由父级处理） */
+  /** 双击 worktree label：开始重命名（提交 newName 由父级处理） */
   onCommitRenameWorktree: (oldPath: string, newName: string) => void;
-  /** 删除 worktree（含分支�?*/
+  /** 删除 worktree（含分支） */
   onRemoveWorktree: (worktreePath: string, branch: string) => void;
-  /** 懒加�?worktree changed_files（用�?+A -D chip�?*/
-  onGetWorktreeChangedFiles?: (worktreePath: string) => Promise<FileChange[]>;
-  /** 检�?worktree 是否 dirty */
+  /** 按需拉取某单元的 status（落进 `projectStore.statuses`）；失败返回 `null` = 未知。 */
+  onFetchStatus?: (worktreePath: string) => Promise<GitStatusSnapshot | null>;
+  /** 检查 worktree 是否 dirty */
   onIsWorktreeDirty?: (worktreePath: string) => Promise<boolean>;
 }
 
-interface ChangeStat {
-  add: number;
-  del: number;
-}
-
 const ConnectionWorktreeList: React.FC<ConnectionWorktreeListProps> = ({
+  projectId,
   worktrees,
   activeWorktreePath,
   onOpenWorktreeTerminal,
   onCommitRenameWorktree,
   onRemoveWorktree,
-  onGetWorktreeChangedFiles,
+  onFetchStatus,
   onIsWorktreeDirty,
 }) => {
-  const [changeStats, setChangeStats] = useState<Record<string, ChangeStat>>({});
   const [renaming, setRenaming] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState('');
   const renameInputRef = useRef<HTMLInputElement>(null);
@@ -54,28 +52,9 @@ const ConnectionWorktreeList: React.FC<ConnectionWorktreeListProps> = ({
     }
   }, [renaming]);
 
-  // 懒加�?worktree changed_files 用于 +A -D chip 聚合�?
-  useEffect(() => {
-    if (!onGetWorktreeChangedFiles) return;
-    let cancelled = false;
-    for (const wt of worktrees) {
-      if (changeStats[wt.path]) continue;
-      onGetWorktreeChangedFiles(wt.path)
-        .then((files) => {
-          if (cancelled) return;
-          const add = files.reduce((s, f) => s + f.additions, 0);
-          const del = files.reduce((s, f) => s + f.deletions, 0);
-          setChangeStats((prev) => ({ ...prev, [wt.path]: { add, del } }));
-        })
-        .catch(() => {
-          if (cancelled) return;
-          setChangeStats((prev) => ({ ...prev, [wt.path]: { add: 0, del: 0 } }));
-        });
-    }
-    return () => {
-      cancelled = true;
-    };
-  }, [worktrees, onGetWorktreeChangedFiles, changeStats]);
+  // 每个 worktree 的 chip 读**自己单元**的 status（与本地侧栏同一张表、同一把键、同一份
+  // 挂载级新鲜度守卫）—— 收在 `useWorktreeChangeStats`，避免本地 / 远端两套形态漂移。
+  const changeStats = useWorktreeChangeStats(projectId, worktrees, onFetchStatus);
 
   const handleRemove = useCallback(
     async (worktreePath: string, branch: string, e: React.MouseEvent) => {

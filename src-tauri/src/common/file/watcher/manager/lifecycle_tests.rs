@@ -98,19 +98,7 @@ fn paths_of(entries: &[FileChange]) -> Vec<&Path> {
 fn repo_with_linked_worktree(tmp: &Path) -> (PathBuf, PathBuf) {
     let main = tmp.join("repo");
     std::fs::create_dir_all(&main).expect("create main repo dir");
-    let repo = git2::Repository::init(&main).expect("init git repo");
-    let sig = git2::Signature::now("Test", "test@test.com").expect("signature");
-    std::fs::write(main.join("README.md"), "# Test\n").expect("write README");
-    {
-        let mut index = repo.index().expect("index");
-        index.add_path(Path::new("README.md")).expect("add README");
-        index.write().expect("write index");
-        let tree = repo
-            .find_tree(index.write_tree().expect("write tree"))
-            .expect("find tree");
-        repo.commit(Some("HEAD"), &sig, &sig, "init", &tree, &[])
-            .expect("initial commit");
-    }
+    crate::common::testing::init_git_repo(&main);
     let worktree = tmp.join("repo-wt");
     git_in(
         &main,

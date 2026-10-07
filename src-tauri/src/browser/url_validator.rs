@@ -84,16 +84,8 @@ pub fn resolve_allowed_file_root(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::session::StorageManager;
-    use std::sync::Arc;
-
-    /// 构造隔离的 AppStateWrapper：StorageManager 指向临时目录，
-    /// 严禁使用默认 `~/.neeko`（否则 add_project 的 auto-save 会覆盖用户数据）。
-    fn isolated_state(tmp: &tempfile::TempDir) -> crate::app_state::AppStateWrapper {
-        let storage = StorageManager::with_dir(tmp.path().join(".neeko")).unwrap();
-        let store = Arc::new(crate::library::LibraryStore::open_in_memory().unwrap());
-        crate::app_state::AppStateWrapper::new_with_storage_and_library(storage, store)
-    }
+    // 隔离 AppStateWrapper 夹具唯一实现在 common::testing（消三份重复）。
+    use crate::common::testing::isolated_state;
 
     #[test]
     fn test_validate_url_scheme_http() {

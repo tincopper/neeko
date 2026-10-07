@@ -1,7 +1,7 @@
 import React, { useMemo } from 'react';
 
 import { useGitStore } from '@/shared/store/gitStore';
-import { useProjectStore } from '@/shared/store/projectStore';
+import { useProjectStore, selectEntries } from '@/shared/store/projectStore';
 import { selectActiveWorktreePath, useWorktreeStore } from '@/shared/store/worktreeStore';
 import type { Project } from '@/shared/types';
 import { repoKeyOf } from '@/shared/utils/repoRef';
@@ -41,7 +41,7 @@ function ProjectGitSection({ project, isActive, shortcut, actions }: ProjectGitS
   const aheadBehind = useGitStore((s) => s.aheadBehind[mainRepoKey]);
 
   // local 主终端的 +A -D 聚合自**主仓单元**的 status（worktree 的变更不进这里）
-  const mainEntries = useProjectStore((s) => s.statuses[mainRepoKey]?.entries);
+  const mainEntries = useProjectStore((s) => selectEntries(s, mainRepoKey));
   const localChanges = useMemo(() => {
     const files = mainEntries ?? [];
     if (files.length === 0) return undefined;

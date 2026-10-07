@@ -6,7 +6,7 @@ import { useAppContext } from '@/shared/contexts';
 import { bumpGitRefresh } from '@/shared/hooks/useGitRefresh';
 import { useDockStore } from '@/shared/store/dockStore';
 import { useGitStore } from '@/shared/store/gitStore';
-import { useProjectStore, selectBranch } from '@/shared/store/projectStore';
+import { useProjectStore, selectBranch, selectEntries } from '@/shared/store/projectStore';
 import { repoKeyOf, type RepoKey } from '@/shared/utils/repoRef';
 
 /**
@@ -53,7 +53,7 @@ const GitControlPanelWrapper: React.FC = React.memo(() => {
   // 当前单元变更数（Changes tab 徽章）与分支名 —— 都按单元取。
   // **未知 ≠ 0**：槽位缺失（未挂载 / 首快照未到）时保持 undefined，由徽章侧决定不渲染；
   // 在这里折算成 0 等于让「还不知道」伪装成「干净」（ChangesList 已显式区分这两态）。
-  const changedFileCount = useProjectStore((s) => s.statuses[repoKey]?.entries.length);
+  const changedFileCount = useProjectStore((s) => selectEntries(s, repoKey)?.length);
   const unitBranch = useProjectStore((s) => selectBranch(s, repoKey));
 
   const aheadBehindMap = useGitStore((s) => s.aheadBehind);

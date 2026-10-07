@@ -18,6 +18,8 @@ pub mod runtime;
 /// 退出前的后台清理机制（组合根只声明任务表）。
 pub mod shutdown;
 pub mod terminal;
+#[cfg(test)]
+pub mod testing;
 pub mod theme_types;
 pub mod types;
 pub mod utils;

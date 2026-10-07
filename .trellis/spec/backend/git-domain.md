@@ -342,6 +342,20 @@ golden 测试钉住（`golden_key_format_matches_frontend_contract` ↔ `repoRef
 worktree、切回主仓）只写激活态，不直接发命令 —— 挂载/释放必须与「当前视图」严格一致，两个
 发起点就有时序差。
 
+**服务层只依赖端口（依赖倒置，已被护栏铉住）**：`activate()` 收 `Arc<dyn WatcherEventSink>`，
+不接收 `tauri::AppHandle`、也不自己 `new AppHandleSink` —— 交付适配器的构造留在命令边界
+（`git/commands/query.rs::set_active_repo_unit`）。这样服务层可用测试替身（`CollectingSink`）
+驱动：`status.rs` 的编排测试（注入 sink + 隔离 `AppStateWrapper` + tempdir 真实 git 仓）
+覆盖「Local 走挂载 + 首份快照经端口投递」与「激活新单元释放旧单元（D-B 在编排层成立）」
+—— 后者此前只在 `mount_only` 层被测，服务层组合无人验证。护栏 `check_service_no_delivery_dep`
+钉住 `git/services/**` 不得出现 `tauri::` / `AppHandle` / `AppHandleSink`（注释除外）。
+
+**远端 pull 分支已有代码级测试**（AC13 的代码层闭合）：`activate_with(…, &ExecTarget::Local,
+has_push_producer=false)` 用**本地 transport** 驱动同一条分支（收口 + 现算 + 不挂载 + 不产生
+watcher 事件），无需真机、也无需假 transport。判据：
+`remote_branch_pulls_without_mounting_and_releases_the_previous_unit` 与
+`read_unit_status_of_an_unmounted_unit_computes_and_records`；真机验证降级为确认。
+
 **实现时踩过的顺序坑**：`watch()` 里「作废切走前快照」那句必须在 `worker.check()` **之前**。
 留在函数尾部时，worker 线程可以在 `watch()` 返回前就插入首个快照，随后那句把它删掉 ——
 表现为「已挂载却读不到权威数据」，且只在首轮落地够快时复现（`linked_worktree_edit_pushes_

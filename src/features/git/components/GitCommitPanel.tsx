@@ -2,7 +2,7 @@ import React, { useState, useCallback, useMemo } from 'react';
 
 import { openProjectFile } from '@/features/quick-open';
 import { useGitStore } from '@/shared/store/gitStore';
-import { useProjectStore } from '@/shared/store/projectStore';
+import { useProjectStore, selectStatus } from '@/shared/store/projectStore';
 import type { AheadBehind } from '@/shared/types';
 import type {
   ProjectView,
@@ -60,7 +60,7 @@ const GitCommitPanel: React.FC<GitCommitPanelProps> = ({
 
   // 唯一权威源：projectStore.statuses[repoKey]（后端按单元推送/计算，version gate 在 store 内）。
   // `undefined` = 该单元状态未知（未挂载 / 首个快照未到）→ 渲染空态，绝不沿用别处的数据。
-  const status = useProjectStore((s) => s.statuses[repoKey]);
+  const status = useProjectStore((s) => selectStatus(s, repoKey));
   const changedFiles = useMemo(() => status?.entries ?? [], [status]);
 
   const noCommits =

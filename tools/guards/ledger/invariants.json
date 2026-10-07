@@ -1,0 +1,181 @@
+{
+  "tiers": {
+    "type": "编译期：非法状态写不出来（最强）",
+    "structure": "模块 / 所有权：装配点唯一，绕不过",
+    "guard": "确定性静态判据（CI 可复现）",
+    "lint": "既有 lint 规则",
+    "test": "行为测试（含护栏自测与 golden）",
+    "prose": "无法机械化：文档 + AI 复审（必须写明理由，每次运行可见）"
+  },
+  "invariants": [
+    {
+      "id": "repo-unit-key-single-source",
+      "title": "仓库单元身份只能由 RepoRef / repoKeyOf 产出（唯一派生点）",
+      "tier": "guard",
+      "enforcement": [
+        {
+          "kind": "guard",
+          "ref": "check_repo_unit_identity"
+        },
+        {
+          "kind": "test",
+          "ref": "tools/guards/tests/test_check_repo_unit_identity.py"
+        }
+      ],
+      "red_line": 12
+    },
+    {
+      "id": "mount-entry-singularity",
+      "title": "仓库单元挂载只有一个入口（git/services/status.rs::activate）",
+      "tier": "structure",
+      "enforcement": [
+        {
+          "kind": "guard",
+          "ref": "check_repo_unit_identity",
+          "note": "生产代码里 WatcherManager::watch 调用点唯一；structure 指「挂载资源所有权集中在 activate」"
+        },
+        {
+          "kind": "test",
+          "ref": "tools/guards/tests/test_check_repo_unit_identity.py"
+        }
+      ],
+      "red_line": 12
+    },
+    {
+      "id": "blocking-io-off-async-thread",
+      "title": "async 上下文不得直连阻塞原语（须走阻塞池或异步入口）",
+      "tier": "guard",
+      "enforcement": [
+        {
+          "kind": "guard",
+          "ref": "check_blocking_fs_in_commands"
+        },
+        {
+          "kind": "test",
+          "ref": "tools/guards/tests/test_check_blocking_fs_in_commands.py"
+        }
+      ],
+      "red_line": 3
+    },
+    {
+      "id": "platform-diff-in-platform-adapter",
+      "title": "平台差异与单平台代码必须落在 platform/<theme>/",
+      "tier": "guard",
+      "enforcement": [
+        {
+          "kind": "guard",
+          "ref": "check_platform_imports"
+        },
+        {
+          "kind": "test",
+          "ref": "tools/guards/tests/test_check_platform_imports.py"
+        }
+      ],
+      "red_line": 10
+    },
+    {
+      "id": "worktree-byte-assertion-ban",
+      "title": "禁止对工作区换行做字节级断言、禁止注入 core.autocrlf",
+      "tier": "guard",
+      "enforcement": [
+        {
+          "kind": "guard",
+          "ref": "check_worktree_byte_assertions"
+        },
+        {
+          "kind": "test",
+          "ref": "tools/guards/tests/test_check_worktree_byte_assertions.py"
+        }
+      ],
+      "red_line": [
+        11,
+        13
+      ]
+    },
+    {
+      "id": "git-optional-lock-single-source",
+      "title": "可选 git 锁语义只允许一个事实源",
+      "tier": "guard",
+      "enforcement": [
+        {
+          "kind": "guard",
+          "ref": "check_git_optional_locks_single_source"
+        },
+        {
+          "kind": "test",
+          "ref": "tools/guards/tests/test_check_git_optional_locks_single_source.py"
+        }
+      ],
+      "red_line": 1
+    },
+    {
+      "id": "ipc-large-payload-boundary",
+      "title": "单次 Command 返回 JSON 不超过 2MB（大载荷走二进制流/分页）",
+      "tier": "prose",
+      "enforcement": [
+        {
+          "kind": "prose",
+          "reason": "判据是运行时载荷体积与序列化量，静态扫描不可判（红线 4 原文：膨胀机制与终端 5.2GB 事故见 command-guidelines.md）。兜底：命令层 review + 大载荷一律走 Response<Vec<u8>> 或分页；待引入序列化体积探针后可升级为 test。"
+        }
+      ],
+      "red_line": 4
+    },
+    {
+      "id": "service-no-delivery-dependency",
+      "title": "git 服务层只依赖端口，不得依赖交付机制（AppHandle / AppHandleSink）",
+      "tier": "structure",
+      "enforcement": [
+        {
+          "kind": "guard",
+          "ref": "check_service_no_delivery_dep"
+        },
+        {
+          "kind": "test",
+          "ref": "tools/guards/tests/test_check_service_no_delivery_dep.py"
+        },
+        {
+          "kind": "test",
+          "ref": "src-tauri/src/git/services/status.rs",
+          "note": "编排层用例内联在该源文件的 #[cfg(test)] 模块（挂载 / 释放 / 远端 pull 分支）"
+        }
+      ],
+      "red_line": null
+    },
+    {
+      "id": "status-single-read-path",
+      "title": "projectStore.statuses 只能经 selectors 读（消费端不得直摸内部表示）",
+      "tier": "structure",
+      "enforcement": [
+        {
+          "kind": "guard",
+          "ref": "check_repo_unit_identity"
+        },
+        {
+          "kind": "test",
+          "ref": "tools/guards/tests/test_check_repo_unit_identity.py"
+        },
+        {
+          "kind": "test",
+          "ref": "src/shared/store/__tests__/projectStore.test.ts"
+        }
+      ],
+      "red_line": 12
+    },
+    {
+      "id": "component-size-budget",
+      "title": "组件 / hook 文件规模 ≤300 行（ratchet：新债止步、旧债只许缩小）",
+      "tier": "guard",
+      "enforcement": [
+        {
+          "kind": "guard",
+          "ref": "check_component_size"
+        },
+        {
+          "kind": "test",
+          "ref": "tools/guards/tests/test_check_component_size.py"
+        }
+      ],
+      "red_line": null
+    }
+  ]
+}

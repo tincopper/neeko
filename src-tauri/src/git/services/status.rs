@@ -12,7 +12,7 @@
 use std::sync::Arc;
 
 use crate::common::executor::factory::ExecTarget;
-use crate::common::file::watcher::AppHandleSink;
+use crate::common::file::watcher::WatcherEventSink;
 use crate::common::git::status_worker::{GitStatusSnapshot, RECALC_WAIT_TIMEOUT};
 use crate::common::git::transport::GitTransport;
 use crate::common::git::RepoRef;
@@ -101,17 +101,21 @@ pub async fn read_unit_status(
         )));
     }
     // 情形 3：没有 push 生产者，缓存不可信 ⇒ 每次读都经 transport 现算
-    compute_and_record(state, repo).await
+    let (target, _) = state.resolve_project(repo.project_id())?;
+    compute_and_record(state, repo, &target).await
 }
 
 /// 现算一次并登记（pull 生产者）。WSL / SSH / 未挂载单元专用。
+///
+/// transport 由调用方给出（生产 = 项目的 `ExecTarget`，测试可换本地 transport 驱动同一条
+/// 分支） —— 这是「远端 pull 分支可被 `cargo test` 跑到」的唯一缝。
 async fn compute_and_record(
     state: &AppStateWrapper,
     repo: &RepoRef,
+    transport: &dyn GitTransport,
 ) -> Result<GitStatusSnapshot, AppError> {
-    let (target, _) = state.resolve_project(repo.project_id())?;
     let (entries, branch) =
-        crate::common::git::operations::status_porcelain(&target, repo.work_dir())
+        crate::common::git::operations::status_porcelain(transport, repo.work_dir())
             .await
             .map_err(AppError::from)?;
     let snap = state.watcher_manager.record_computed(repo, entries, branch);
@@ -138,20 +142,40 @@ pub const fn supports_push_producer(target: &ExecTarget) -> bool {
 /// 因此本命令返回的必然是**挂载后重算**的结果，不是切走前的旧数据。
 ///
 /// 远端（WSL / SSH）不挂载，但仍然收口（释放上一个本地项目的挂载）后立刻 pull 一次。
+///
+/// **依赖倒置**：挂载所需的事件出口以端口 [`WatcherEventSink`] 注入，本函数不再接收
+/// `tauri::AppHandle`、也不自己 `new AppHandleSink` —— 交付适配器的构造属于命令边界
+/// （`git/commands/query.rs`）。这样服务层可用测试替身（`CollectingSink`）驱动，
+/// 且模块结构上不再依赖 Tauri（另有护栏 `check_service_no_delivery_dep` 钉住）。
 pub async fn activate(
     state: &AppStateWrapper,
-    app: &tauri::AppHandle,
+    sink: Arc<dyn WatcherEventSink>,
     repo: &RepoRef,
 ) -> Result<GitStatusSnapshot, AppError> {
     let (target, _) = state.resolve_project(repo.project_id())?;
+    activate_with(state, sink, repo, &target, supports_push_producer(&target)).await
+}
+
+/// `activate` 的编排核心：transport 与「有没有 push 生产者」都从参数来。
+///
+/// 存在的理由是最小化可测性缝：把 `ExecTarget` 换成**本地 transport**、`has_push_producer=false`，
+/// 就能在 `cargo test` 里驱动原来只有真机才能跑的「远端 pull 分支」（收口 + 现算 + 不挂载），
+/// 而无需任何假 transport。生产入口 [`activate`] 恒传 `&target` + `supports_push_producer(&target)`。
+async fn activate_with(
+    state: &AppStateWrapper,
+    sink: Arc<dyn WatcherEventSink>,
+    repo: &RepoRef,
+    transport: &dyn GitTransport,
+    has_push_producer: bool,
+) -> Result<GitStatusSnapshot, AppError> {
     // 仓库存在性由 transport 判定（本地 fs 判定会误杀 WSL / SSH 单元）
-    if !target.is_git_repo(repo.work_dir()).await {
+    if !transport.is_git_repo(repo.work_dir()).await {
         return Err(AppError::NotFound(format!(
             "unit {} is not a git repository",
             repo.key()
         )));
     }
-    if !supports_push_producer(&target) {
+    if !has_push_producer {
         // WSL / SSH：工作树在别的机器上，本地 notify 监听不到、git 子进程也拿不到 ⇒
         // 这类单元没有 push 生产者，激活 = 立刻 pull 一次（HEAD 之前也是这么工作的：
         // 远端 status 由 transport 现算）。
@@ -159,10 +183,9 @@ pub async fn activate(
         let manager = state.watcher_manager.clone();
         let keep = repo.key();
         let _ = run_blocking(move || manager.release_except(&keep)).await;
-        return compute_and_record(state, repo).await;
+        return compute_and_record(state, repo, transport).await;
     }
     let manager = state.watcher_manager.clone();
-    let sink = Arc::new(AppHandleSink::new(app.clone()));
     let watch_repo = repo.clone();
     // notify 的递归 watch 在 Linux 上会同步遍历整树 → 必须离开 IPC/async 线程（红线 3）。
     // `mount_only` 而非「release_except + watch」两连调：D-B 的不变量（至多一套挂载）必须
@@ -182,8 +205,12 @@ pub async fn activate(
 
 #[cfg(test)]
 mod tests {
-    use super::supports_push_producer;
+    use std::path::Path;
+
+    use super::{activate, activate_with, read_unit_status, supports_push_producer};
     use crate::common::executor::factory::ExecTarget;
+    use crate::common::file::watcher::CollectingSink;
+    use crate::common::testing::{init_git_repo, plain_project_state};
 
     /// **AC13 的分叉点**：远端单元没有 push 生产者，因此 `activate` 必须绕开挂载去 pull。
     /// 若这条判据写反（例如误把 WSL 也当 Local 挂上 watcher），远端项目的 Changes 面板
@@ -200,5 +227,128 @@ mod tests {
             username: "u".into(),
             auth: crate::common::connection::types::AuthMethod::KeyFile("/keys/id".into()),
         }));
+    }
+
+    /// 注册一个 Local git 项目（第二个及以上单元用）。
+    fn add_git_project(state: &crate::AppStateWrapper, dir: &Path) -> String {
+        std::fs::create_dir_all(dir).expect("create project dir");
+        init_git_repo(dir);
+        state
+            .project_manager
+            .lock()
+            .expect("project_manager")
+            .add_project(dir.to_path_buf(), None, None, None)
+            .expect("add project")
+            .id
+    }
+
+    /// 服务层编排可被**注入端口**驱动（旧签名收 `&AppHandle` ⇒ 本用例根本无法编译）。
+    /// 这条同时钉住：Local 单元走挂载、首份快照经注入的 sink 投递、返回权威快照。
+    #[tokio::test]
+    async fn activate_mounts_the_unit_and_emits_to_the_injected_sink() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let (state, project_id) = plain_project_state(&tmp);
+        init_git_repo(&tmp.path().join("proj"));
+
+        let (_target, repo) = state
+            .resolve_repo(&project_id, None)
+            .await
+            .expect("resolve repo");
+        let sink = CollectingSink::new();
+        let snapshot = activate(&state, sink.clone(), &repo)
+            .await
+            .expect("activate local unit");
+
+        assert_eq!(snapshot.repo_key, repo.key());
+        assert!(state.watcher_manager.is_watched(&repo));
+        assert!(
+            !sink.event_names().is_empty(),
+            "首份快照应经注入的端口投递（服务层不依赖交付机制）"
+        );
+    }
+
+    /// D-B「至多一套挂载」在**编排层**成立：激活新单元必须释放旧单元。
+    /// 此前该不变量只在 `WatcherManager::mount_only` 层被测，服务层组合无人验证。
+    #[tokio::test]
+    async fn activate_releases_the_previous_unit() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let (state, project_a) = plain_project_state(&tmp);
+        init_git_repo(&tmp.path().join("proj"));
+        let project_b = add_git_project(&state, &tmp.path().join("proj-b"));
+
+        let (_ta, repo_a) = state.resolve_repo(&project_a, None).await.expect("repo a");
+        let (_tb, repo_b) = state.resolve_repo(&project_b, None).await.expect("repo b");
+
+        activate(&state, CollectingSink::new(), &repo_a)
+            .await
+            .expect("activate a");
+        assert!(state.watcher_manager.is_watched(&repo_a));
+
+        activate(&state, CollectingSink::new(), &repo_b)
+            .await
+            .expect("activate b");
+        assert!(state.watcher_manager.is_watched(&repo_b));
+        assert!(
+            !state.watcher_manager.is_watched(&repo_a),
+            "激活新单元必须释放旧单元（D-B：全局至多一套挂载）"
+        );
+    }
+
+    /// **AC13 的代码层闭合**：远端（WSL / SSH）分支 = 收口 + 现算，**绝不挂载**。
+    ///
+    /// 用 `&ExecTarget::Local`（本地真仓）+ `has_push_producer=false` 驱动同一条分支，
+    /// 无需真机也无需假 transport —— 这正是 `activate_with` 这个缝要买到的东西。
+    #[tokio::test]
+    async fn remote_branch_pulls_without_mounting_and_releases_the_previous_unit() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let (state, project_a) = plain_project_state(&tmp);
+        init_git_repo(&tmp.path().join("proj"));
+        let project_b = add_git_project(&state, &tmp.path().join("proj-b"));
+
+        let (_ta, repo_a) = state.resolve_repo(&project_a, None).await.expect("repo a");
+        let (_tb, repo_b) = state.resolve_repo(&project_b, None).await.expect("repo b");
+
+        // A 按 Local 正常挂载（有 push 生产者）
+        activate(&state, CollectingSink::new(), &repo_a)
+            .await
+            .expect("mount a");
+        assert!(state.watcher_manager.is_watched(&repo_a));
+
+        // B 走「远端形态」：本地 transport + 无 push 生产者
+        let sink = CollectingSink::new();
+        let snapshot = activate_with(&state, sink.clone(), &repo_b, &ExecTarget::Local, false)
+            .await
+            .expect("pull b");
+
+        assert_eq!(snapshot.repo_key, repo_b.key());
+        assert!(
+            !state.watcher_manager.is_watched(&repo_b),
+            "远端单元绝不挂载（无 push 生产者）"
+        );
+        assert!(
+            !state.watcher_manager.is_watched(&repo_a),
+            "切到远端项目必须释放上一个本地挂载（D-B 全局一套）"
+        );
+        assert!(
+            sink.event_names().is_empty(),
+            "pull 分支不产生 watcher 事件（没有 worker）"
+        );
+    }
+
+    /// 未挂载单元的读路径：**每次读都现算并登记同一张表**（不信任任何缓存）。
+    #[tokio::test]
+    async fn read_unit_status_of_an_unmounted_unit_computes_and_records() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let (state, project_id) = plain_project_state(&tmp);
+        init_git_repo(&tmp.path().join("proj"));
+        let (_t, repo) = state.resolve_repo(&project_id, None).await.expect("repo");
+
+        assert!(!state.watcher_manager.is_watched(&repo));
+        let snapshot = read_unit_status(&state, &repo).await.expect("compute");
+        assert_eq!(snapshot.repo_key, repo.key());
+        assert!(
+            state.watcher_manager.snapshot(&repo).is_some(),
+            "pull 结果必须登记进同一张快照表（供侧栏 chip 等复用）"
+        );
     }
 }

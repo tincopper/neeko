@@ -370,19 +370,11 @@ mod tests {
     use std::sync::Arc;
 
     use super::*;
+    use crate::common::testing::isolated_state;
     use crate::dap::adapter::java::capability::JavaDebugCapability;
     use crate::dap::adapter::{DebugRequest, SessionPlan};
-    use crate::session::StorageManager;
 
     const LAUNCHER: &str = "/home/u/.neeko/junit-platform-console-standalone-1.14.4.jar";
-
-    /// 隔离的 `AppStateWrapper`：StorageManager 指向临时目录 —— 严禁用默认 `~/.neeko`，
-    /// 否则 project 的 auto-save 会覆盖用户数据。
-    fn isolated_state(tmp: &tempfile::TempDir) -> AppStateWrapper {
-        let storage = StorageManager::with_dir(tmp.path().join(".neeko")).expect("storage");
-        let store = Arc::new(crate::library::LibraryStore::open_in_memory().expect("library"));
-        AppStateWrapper::new_with_storage_and_library(storage, store)
-    }
 
     /// 注入式能力探测 fake：路由单测不构造 LSP 运行时。
     struct FakeCapability(JavaDebugCapability);

@@ -1148,6 +1148,17 @@ export function createDebouncedStatusRefresh(ms: number): { schedule(repoKey, ru
    `GitChangedEvent{repo_key, project_id}`，仍按 `useTauriEvent<string>` + `payload !== projectId`
    比较的消费点会「对象 ≠ 字符串」恒早返回 ⇒ 整条通道静默死亡（不报错、不留痕）。事件名与载荷
    类型一律取自 `shared/events.ts` + `shared/types`，禁止手写 `listen<string>`。
+10. **`statuses` 只能经 selectors 读（消费端不摸内部表示）**：`selectStatus` / `selectEntries` /
+    `selectBranch` / `selectHasStatus`（均在 `projectStore.ts`）。生产代码里 `.statuses` 直读或
+    解构 `{ statuses }` 即违规（护栏 `check_repo_unit_identity` 判据 7，白名单仅 `projectStore.ts`）。
+    **Why**：字段是 store 的内部表示，公开它就等于让每个消费者都耦合到「容器形状 + key 拼法 +
+    缺失 = 未知语义」；selector 是追加式约定（可绕过），判据才是排他式机制。**How to apply**：
+    需要按**多个 key** 取值（循环里不能订阅 hook，如 worktree 侧栏为每个 worktree 取条目）用
+    `useProjectStore(useShallow((s) => keys.map((k) => selectEntries(s, k))))` —— 精确到「本列表
+    这些单元」，别的单元 / 项目的快照不触发重渲；存在性判断用 `selectHasStatus`（区分「未知」与
+    「已知且干净」）。**远端（WSL/SSH）侧栏 worktree chip 与本地侧栏读同一张表**：两侧共用
+    `shared/hooks/useWorktreeChangeStats`（按单元浅订阅 + 挂载级新鲜度守卫，拉不到 = 未知、
+    不出 chip 且允许重试），不存在第二份组件本地 `useState`。
 
 ### 4. Validation & Error Matrix
 

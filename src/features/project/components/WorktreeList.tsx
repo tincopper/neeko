@@ -1,12 +1,11 @@
-import React, { useEffect, useMemo, useRef } from 'react';
+import React, { useCallback, useMemo } from 'react';
 
 import { cn } from '@/lib/utils';
 import ConfirmDialog from '@/shared/components/ConfirmDialog';
 import { BranchIcon, TrashIcon, FolderGitIcon } from '@/shared/components/icons';
-import { useProjectStore } from '@/shared/store/projectStore';
+import { useWorktreeChangeStats } from '@/shared/hooks/useWorktreeChangeStats';
 import { useActiveWorktree } from '@/shared/store/worktreeStore';
 import { Worktree } from '@/shared/types';
-import { repoKeyOf } from '@/shared/utils/repoRef';
 
 import { getRepoStatus } from '../../git/api/gitApi';
 import { useWorktreeListActions } from '../hooks/useWorktreeListActions';
@@ -20,11 +19,6 @@ interface WorktreeListProps {
   onOpenWorktreeTerminal?: (projectId: string, path: string, branch: string) => void;
   onRefreshGit: (projectId: string) => void;
   onShowToast?: (message: string, type?: 'info' | 'error') => void;
-}
-
-interface ChangeStat {
-  add: number;
-  del: number;
 }
 
 const WorktreeList: React.FC<WorktreeListProps> = ({
@@ -55,49 +49,13 @@ const WorktreeList: React.FC<WorktreeListProps> = ({
 
   const filteredWorktrees = useMemo(() => worktrees, [worktrees]);
 
-  // 每个工作树的 chip 读**自己单元**的 status。后端只挂当前视图那个单元（决策 D-B），
-  // 其余单元在此按需 pull 并落进同一张快照表（projectStore.statuses）；
-  // 拉不到就保持「未知」（chip 不显示），绝不写 0/0 假装干净。
-  const unitStatuses = useProjectStore((s) => s.statuses);
-  // 新鲜度守卫按**组件挂载**记账，不按全局槽位：槽位跨挂载持久，若拿 `key in statuses`
-  // 当跳过守卫，未挂载单元（没有任何生产者）的 chip 一旦拉过就永久陈旧且抑制重拉
-  // （= 旧数据伪装成事实）。挂载级 ref 恢复「重新打开面板即重拉」的新鲜度；同一挂载内
-  // 它同时防住 applyStatus → statuses 变化 → effect 重跑 → 再拉取的自激环
-  // （未挂载单元的 pull 每次都盖新号，version 闸门拦不住自触发）。
-  const chipFetchedRef = useRef<Set<string>>(new Set());
-  useEffect(() => {
-    let cancelled = false;
-    for (const wt of filteredWorktrees) {
-      const key = repoKeyOf(projectId, wt.path);
-      if (chipFetchedRef.current.has(key)) continue;
-      chipFetchedRef.current.add(key);
-      getRepoStatus(projectId, wt.path)
-        .then((snapshot) => {
-          if (cancelled || snapshot.repo_key !== key) return;
-          useProjectStore.getState().applyStatus(snapshot);
-        })
-        .catch(() => {
-          // 拉取失败 = 未知：退出已拉清单，让下一次触发（清单变化 / 重挂载）可以重试
-          chipFetchedRef.current.delete(key);
-        });
-    }
-    return () => {
-      cancelled = true;
-    };
-  }, [filteredWorktrees, projectId]);
-
-  const changeStats = useMemo(() => {
-    const next: Record<string, ChangeStat> = {};
-    for (const wt of filteredWorktrees) {
-      const entries = unitStatuses[repoKeyOf(projectId, wt.path)]?.entries;
-      if (!entries) continue;
-      next[wt.path] = {
-        add: entries.reduce((s, f) => s + f.additions, 0),
-        del: entries.reduce((s, f) => s + f.deletions, 0),
-      };
-    }
-    return next;
-  }, [filteredWorktrees, projectId, unitStatuses]);
+  // 每个工作树的 chip 读**自己单元**的 status：订阅 + 挂载级新鲜度守卫收在共享 hook 里
+  // （与 WSL/SSH 侧栏同款），拉不到保持「未知」（chip 不显示），绝不写 0/0 假装干净。
+  const fetchStatus = useCallback(
+    (worktreePath: string) => getRepoStatus(projectId, worktreePath).catch(() => null),
+    [projectId],
+  );
+  const changeStats = useWorktreeChangeStats(projectId, filteredWorktrees, fetchStatus);
 
   if (filteredWorktrees.length === 0) return null;
 

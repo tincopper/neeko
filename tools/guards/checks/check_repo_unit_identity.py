@@ -37,6 +37,10 @@
    —— 那恰是「把旧通道接回来」时最可能写的形态。冒号式（历史缺陷 `${projectId}:wt:${path}`）
    只在**流入 repo-key 消费点**的同形判据下拦截：tab / 终端缓存 / onboarding 各有自己合法的
    `:` 分隔命名空间，全面禁冒号必然误伤。
+7. **status 单一读取口**：`projectStore.statuses` 是 store 的内部表示，消费端只能经
+   `selectStatus` / `selectEntries` / `selectBranch` / `selectHasStatus` 读。
+   直读字段（含解构 `{ statuses }`）命中即违规，白名单仅 `projectStore.ts`。这条以前只是
+   注释里的「不得绕过」，与判据 2 同构 —— 注释够不着的地方，护栏来管。
 
 判据全是「命中即违规」，刻意不配计数台账 —— 台账服务于「已知违例逐个消债」，
 这里要的是「永远为零」。扫描集为空由框架统一拦截（见 `core/contract.py`）。
@@ -108,6 +112,10 @@ MIRROR_ACCESS_RE = re.compile(
 STORE_STATE_ACCESS_RE = re.compile(r"\.byProject\b[^\n]*\.(?:activePath|activeBranch|opened)\b")
 # 允许在自己的定义处（store 实现文件）访问内部状态
 STORE_STATE_ALLOWLIST = ("src/shared/store/worktreeStore.ts",)
+# status 单一读取口：`projectStore.statuses` 只能在定义处直读，消费端走 selectors。
+# 直读 + 解构（`{ statuses }`）两种绕过都拦。
+PROJECT_STATUSES_RE = re.compile(r"\.statuses\b|[{,]\s*statuses\b")
+PROJECT_STATUSES_ALLOWLIST = ("src/shared/store/projectStore.ts",)
 # status 寻址面的命令名特征（repo_status / repo_unit / status_snapshot）而非枚举两个名字：
 # 新增同族命令默认设防（deny-by-default），不需要记得回来扩清单。
 STATUS_INVOKE_RE = re.compile(
@@ -243,6 +251,16 @@ def scan_frontend(ctx: Context) -> tuple:
                         "绕过 selector 直读 store 内部状态（`.byProject[...].activePath`）："
                         "「当前单元」的唯一派生点是 `selectActiveRepoKey` / `activeRepoKeyOf`"
                         "（渲染期直读还会停在旧值 —— 非响应式）",
+                        rel,
+                        number,
+                    )
+                )
+            if rel not in PROJECT_STATUSES_ALLOWLIST and PROJECT_STATUSES_RE.search(line):
+                findings.append(
+                    Finding(
+                        "直读 `projectStore.statuses`：status 的唯一读取口是 selectors"
+                        "（selectStatus / selectEntries / selectBranch /"
+                        " selectHasStatus；多 key 场景用 useShallow 按引用浅选）",
                         rel,
                         number,
                     )

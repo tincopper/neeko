@@ -210,12 +210,13 @@ const ConnectionProjectCard: React.FC<ConnectionProjectCardProps> = React.memo(
               }}
             />
             <ConnectionWorktreeList
+              projectId={project.id}
               worktrees={worktrees}
               activeWorktreePath={isActive ? activeWorktreePath : null}
               onOpenWorktreeTerminal={handleOpenWorktreeTerminal}
               onCommitRenameWorktree={worktreeActions.rename}
               onRemoveWorktree={worktreeActions.remove}
-              onGetWorktreeChangedFiles={worktreeActions.getChangedFiles}
+              onFetchStatus={worktreeActions.fetchStatus}
               onIsWorktreeDirty={worktreeActions.checkDirty}
             />
           </div>

@@ -347,4 +347,17 @@ describe('selectors — 消费端唯一读取口', () => {
     expect(mod.selectEntries(state, WT_B)).toBeUndefined();
     expect(mod.selectBranch(state, WT_B)).toBe('');
   });
+
+  it('selectHasStatus 区分「未知」与「已知且干净」', () => {
+    store().applyStatus(snapshot({ version: 1, branch: 'main', entries: [fc('m.ts')] }));
+    store().applyStatus(
+      snapshot({ version: 1, worktree_path: '/wt/a', branch: 'wt-a', entries: [] }),
+    );
+    const state = mod.useProjectStore.getState();
+
+    expect(mod.selectHasStatus(state, MAIN)).toBe(true);
+    // 空数组 = 已知且干净 ⇒ 仍是「有状态」（与无效单元的「未知」严格区分）
+    expect(mod.selectHasStatus(state, WT_A)).toBe(true);
+    expect(mod.selectHasStatus(state, WT_B)).toBe(false);
+  });
 });

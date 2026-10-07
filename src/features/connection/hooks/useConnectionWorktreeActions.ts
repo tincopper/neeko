@@ -1,6 +1,6 @@
 import { useCallback, useMemo } from 'react';
 
-import type { FileChange } from '@/shared/types';
+import type { GitStatusSnapshot } from '@/shared/types';
 
 import {
   getRepoStatus,
@@ -38,13 +38,10 @@ export function useConnectionWorktreeActions(projectId: string, logTag: string) 
     [projectId, logTag],
   );
 
-  const getChangedFiles = useCallback(
-    (worktreePath: string): Promise<FileChange[]> => {
-      // 命令失败 = 该单元状态未知（由调用方按「无 chip」渲染），不当作「无变更」写进任何槽位
-      return getRepoStatus(projectId, worktreePath)
-        .then((snapshot) => snapshot.entries)
-        .catch(() => [] as FileChange[]);
-    },
+  const fetchStatus = useCallback(
+    (worktreePath: string): Promise<GitStatusSnapshot | null> =>
+      // 失败 = 该单元状态未知（由调用方按「无 chip」渲染并允许重试），绝不返回空数组假装「干净」。
+      getRepoStatus(projectId, worktreePath).catch(() => null),
     [projectId],
   );
 
@@ -57,7 +54,7 @@ export function useConnectionWorktreeActions(projectId: string, logTag: string) 
 
   // 稳定引用：消费方（ConnectionWorktreeList 的 effect 依赖）不应因每次渲染换新函数而重跑
   return useMemo(
-    () => ({ rename, remove, getChangedFiles, checkDirty }),
-    [rename, remove, getChangedFiles, checkDirty],
+    () => ({ rename, remove, fetchStatus, checkDirty }),
+    [rename, remove, fetchStatus, checkDirty],
   );
 }

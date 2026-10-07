@@ -23,39 +23,14 @@ use super::protocol::encode_message;
 use super::session::DapSession;
 use super::sessions::SessionRegistry;
 use super::types::{BreakpointSpec, DapEventPayload, DapSessionInfo, LaunchConfig};
-use crate::session::StorageManager;
 use crate::AppStateWrapper;
 
 // ── AppState 夹具 ────────────────────────────────────────────────────────────
-
-/// 隔离的 `AppStateWrapper`：StorageManager 指向临时目录 —— 严禁用默认 `~/.neeko`，
-/// 否则 project 的 auto-save 会覆盖用户数据。与 `browser/url_validator` 测试同款。
-#[must_use]
-pub fn isolated_state(tmp: &tempfile::TempDir) -> AppStateWrapper {
-    let storage =
-        StorageManager::with_dir(tmp.path().join(".neeko")).expect("fixture: storage manager");
-    let store = Arc::new(
-        crate::library::LibraryStore::open_in_memory().expect("fixture: in-memory library store"),
-    );
-    AppStateWrapper::new_with_storage_and_library(storage, store)
-}
-
-/// 注册一个普通项目（无语言后端），返回 `(state, project_id)`。
-///
-/// 断点 / 静音 / 会话编排的单测只依赖项目注册 + 磁盘路径。
-#[must_use]
-pub fn plain_project_state(tmp: &tempfile::TempDir) -> (AppStateWrapper, String) {
-    let state = isolated_state(tmp);
-    let project_dir = tmp.path().join("proj");
-    std::fs::create_dir_all(&project_dir).expect("fixture: project dir");
-    let project = state
-        .project_manager
-        .lock()
-        .expect("fixture: project_manager")
-        .add_project(project_dir, None, None, None)
-        .expect("fixture: add_project");
-    (state, project.id)
-}
+//
+// 隔离 AppStateWrapper 夹具已收归 `common::testing`（消三份重复，见该文件头）。
+// 这里只 re-export，保持 `crate::dap::testing::{isolated_state, plain_project_state}`
+// 的既有调用点零改动。
+pub use crate::common::testing::{isolated_state, plain_project_state};
 
 /// **用例模块级别**的夹具：就地装配四个协作者 + `DapContext`。
 ///

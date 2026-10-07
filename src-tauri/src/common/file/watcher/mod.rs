@@ -24,6 +24,9 @@ pub use gitignore::GitIgnoreFilter;
 pub use manager::WatcherManager;
 // 事件出口（组合根注入；测试注入收集器）
 pub use sink::{AppHandleSink, WatcherEvent, WatcherEventSink};
+// 测试用收集器：跨域单测（如 git 服务层编排）需要驱动端口时复用同一实现。
+#[cfg(test)]
+pub(crate) use sink::test_support::CollectingSink;
 pub use types::{
     FileChangedEvent, FileTreeChangedEvent, FILE_CHANGED_EVENT, FILE_TREE_CHANGED_EVENT,
     GIT_CHANGED_EVENT,

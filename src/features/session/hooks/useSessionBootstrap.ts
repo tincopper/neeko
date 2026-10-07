@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 
-import { useProjectStore } from '@/shared/store/projectStore';
+import { useProjectStore, selectHasStatus } from '@/shared/store/projectStore';
 import { useWorktreeStore } from '@/shared/store/worktreeStore';
 import type { Worktree } from '@/shared/types';
 import { reportFrontendError } from '@/shared/utils/errorReporting';
@@ -71,7 +71,7 @@ export function useSessionBootstrap(deps: {
           const mainKey = repoKeyOf(p.id, null);
           // 主仓单元 status：走同一写入口（applyStatus 内含 version gate），侧栏
           // 变更计数因此有数据来源；激活单元由 useActiveRepoUnitSync 负责挂载与刷新。
-          if (!useProjectStore.getState().statuses[mainKey]) {
+          if (!selectHasStatus(useProjectStore.getState(), mainKey)) {
             getRepoStatus(p.id, null)
               .then((snapshot) => {
                 if (snapshot.repo_key !== mainKey) return;

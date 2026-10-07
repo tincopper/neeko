@@ -243,6 +243,31 @@ A commit is blocked until all gates pass. Before opening a PR, run the **minimal
 regression set** locally — its definition lives in [`AGENTS.md`](./AGENTS.md) →
 "Development Commands" (single source of truth, not restated here).
 
+### Adding an invariant
+
+Every "hard metric" / red line / invariant must be enforced at the strongest
+level available, and its enforcement must be machine-resolvable. Register it in
+`tools/guards/ledger/invariants.json` (pointer-only — the rule text stays in its
+spec):
+
+```jsonc
+{
+  "id": "my-invariant",
+  "title": "…",
+  "tier": "structure",            // type | structure | guard | lint | test | prose
+  "enforcement": [ { "kind": "guard", "ref": "check_my_rule" } ],
+  "red_line": 12                  // optional; must exist in the red-line ledger
+}
+```
+
+The `check_invariant_enforcement` guard resolves each pointer (`guard` →
+`checks/{ref}.py`, `test` → file, `lint` → rule in `.eslintrc.cjs`,
+`type`/`structure` → file + `note`) and fails CI when one cannot be resolved.
+Invariants that genuinely cannot be mechanized use `tier: "prose"` **with a
+`reason`** and are printed on every run — visible debt, not silent debt. See
+[`.trellis/spec/guides/invariant-enforcement.md`](./.trellis/spec/guides/invariant-enforcement.md)
+for the tier ladder and rationale.
+
 ## Testing Requirements
 
 The per-layer coverage baseline lives in [`AGENTS.md`](./AGENTS.md) → "TDD 开发模式";

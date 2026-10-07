@@ -24,6 +24,7 @@
 | [代码复用思维指南](./code-reuse-thinking-guide.md) | 识别重复模式，减少代码冗余 | 当你发现重复的代码模式时 |
 | [跨层思维指南](./cross-layer-thinking-guide.md) | 梳理跨层数据流 | 涉及多层的功能开发时 |
 | [调研与验证](./investigation.md) | 浏览器自动化在开发中的使用 | 调研参考网站、验证开发效果 |
+| [不变量强制层级](./invariant-enforcement.md) | 把「约定」判给正确的强制层（类型/结构/guard/lint/测试/prose） | 新增或审查「硬指标 / 红线 / 不变量」时 |
 
 ---
 
