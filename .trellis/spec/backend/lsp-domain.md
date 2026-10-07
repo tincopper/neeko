@@ -206,10 +206,11 @@ syntax-error（缺分号必须显示），也不让陈旧 E0425 覆盖跟随正�
   的 option 形态，禁止回头解析 LSP 载荷。
 - 测试：三态行为差异 + 持久化 roundtrip + 缺字段回落 auto。
 
-## 5. Problems 大项目性能（09-20-problems-perf：P1-P3）
+## 5. Problems 大项目性能（P1-P4：09-20-problems-perf + 分组增量）
 
 > 触发：jdtls 初次构建短时对数百文件逐个 `publishDiagnostics`，N 次直写 → N 次订阅通知
-> → 面板 N 次全量 buildGroups + 全行挂载，千行级卡顿。
+> → 面板 N 次全量重投影（当时的 `buildGroups`，现为 `utils/diagnosticGroups.
+> orderDiagnosticFileGroups`）+ 全行挂载，千行级卡顿。
 
 - **P1 发布合并**：`subscribeToProject` 内 `pendingDiag` 待处理表 + `queueMicrotask` 单次
   flush；写路径收敛到 store action `setProjectDiagnosticsBatch(projectPath, entries)`
@@ -226,8 +227,19 @@ syntax-error（缺分号必须显示），也不让陈旧 E0425 覆盖跟随正�
 - 护栏测试：`lspDiagnosticsBurst.test.ts`（200 uri ≤3 通知 / 同 uri 覆盖 / 卸载 flush 兜底 /
   会话边界清缓冲）、`DiagnosticsPanel.perf.test.tsx`（30 组折叠 / 20 组展开 / 无关 publish
   行不重渲染）。
-- 已知边界（不扩）：`buildGroups` 每次 store 变化全量重排（虚拟滚动/增量分组范畴）；
-  行 key `${message}-${line}-${char}-${severity}` 重复诊断碰撞（既存）。
+- **分组增量契约（防回退）**：未变 uri 的数组引用不变 ⇒ 该分组既不重排也不重渲染
+  （`DiagnosticGroup` / `DiagnosticGroupHeader` 的 memo，行再叠 `DiagnosticRow` 的 memo）。
+  落点：`DiagnosticsPanel.perf.test.tsx`「does not re-render untouched group headers」。
+- **列表投影每次 flush 重算（决策，非债务）**：`orderDiagnosticFileGroups` 每次 flush 重跑
+  标签计算 + O(G log G) 排序（G = 文件组数）。实测 0.10ms / 200 组（含 `file://` 解析与路径
+  归一；本机口径，非 SLA），且**与每文件诊断行数无关** —— 行数那一维已被折叠 + 行 memo 挡住。
+  升级触发条件：G > 1000 或实测 flush > 1ms → 再考虑 `uri→label` 缓存（随 `projectPath`
+  失效）。**虚拟滚动解决的是另一维（DOM 行数），两者不可互相替代。**
+- **行 key 唯一性**：`diagnosticRowKeys` = 内容指纹 + 同指纹出现序号（指纹 `M-L-C-S` 自右
+  分解唯一，序号消同指纹重复）。台账落点：`problems-row-key-uniqueness`。
+- **折叠阈值 20（决策，非债务）**：`COLLAPSED_GROUP_THRESHOLD` 是首屏渲染策略，不是用户语义
+  上可配置的事实（项目的诊断规模是客观属性，不是偏好）。若将来确需可变：改成 **prop +
+  默认值**（依赖注入），不要进全局设置 —— 那要同时动 settings 类型 / 持久化 / 面板控件三处。
 
 ## 6. 诊断行展示：code 形态无关（勿回退）
 
@@ -245,7 +257,7 @@ syntax-error（缺分号必须显示），也不让陈旧 E0425 覆盖跟随正�
 - 护栏测试：`diagnosticCode.test.ts`（12 例，含数字/字符串/带链接/兜底文案）+ 面板级
   「`16777218` 不得出现在行上」「`2339` 不在行尾但进 title」。
 
-## 4. 常见坑
+## 7. 常见坑
 
 1. **Vite 预打包缓存**：改 `patches/*.patch` 后只重启 dev 不够（lockfile 哈希不变仍命中旧
    bundle），必须 `rm -rf node_modules/.vite` 或 `vite optimize --force`。
