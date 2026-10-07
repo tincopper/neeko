@@ -10,6 +10,7 @@ mod env_defaults;
 mod error;
 pub mod factory;
 mod local;
+mod login_script;
 mod process_guard;
 mod ssh;
 pub mod ssh_auth;
@@ -28,5 +29,5 @@ pub use process_guard::ProcessGuard;
 pub use traits::CommandExecutor;
 pub use types::{
     BoxAsyncRead, BoxAsyncWrite, ExecChild, ExecChunkSink, ExecOutput, ExecStream, KillFn,
-    KillFuture, SpawnOptions, WaitFuture,
+    KillFuture, ScriptOptions, SpawnOptions, WaitFuture,
 };

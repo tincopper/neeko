@@ -12,7 +12,9 @@ use futures::FutureExt;
 use tokio::process::Command;
 use tokio::sync::Mutex;
 
-use super::{BoxAsyncRead, BoxAsyncWrite, CommandExecutor, ExecChild, ExecError, SpawnOptions};
+use super::{
+    BoxAsyncRead, BoxAsyncWrite, CommandExecutor, ExecChild, ExecError, ScriptOptions, SpawnOptions,
+};
 
 /// wait 轮询 `try_wait` 的间隔：**不得**跨 `await` 持有 `Mutex<Child>` —— 退出收敛会在本 wait
 /// future 仍存活时直接驱动共享 kill 动作，持锁等待会死锁。短锁轮询使 kill 总能拿到锁。
@@ -94,6 +96,20 @@ impl CommandExecutor for LocalExecutor {
         Ok(ExecChild::new_with_pid(
             stdin, stdout, stderr, wait, kill, pid,
         ))
+    }
+
+    /// Script form: Local decides the shell by platform (`cmd /C` / `sh -c`) and
+    /// delegates to [`Self::spawn_with`] — argv, `current_dir`, `env` 都走同一条
+    /// 直启路径（原生吃 Windows verbatim 路径，不经 shell 解析）。
+    async fn spawn_script(&self, opts: ScriptOptions<'_>) -> Result<ExecChild, ExecError> {
+        let (program, argv) = crate::platform::shell_launch::shell_argv(opts.script);
+        self.spawn_with(
+            SpawnOptions::new(program, &argv)
+                .with_current_dir_if(opts.current_dir)
+                .with_env(opts.env)
+                .with_kill_tree_if(opts.kill_tree),
+        )
+        .await
     }
 
     /// Detached GUI / long-lived process launch (IDE, default browser, …).

@@ -202,4 +202,73 @@ impl<'a> SpawnOptions<'a> {
         self.kill_tree = true;
         self
     }
+
+    /// Set [`SpawnOptions::kill_tree`] only when `true`.
+    #[must_use]
+    pub const fn with_kill_tree_if(mut self, kill_tree: bool) -> Self {
+        self.kill_tree = kill_tree;
+        self
+    }
+}
+
+/// Options for spawning a **shell script** — see [`CommandExecutor::spawn_script`].
+///
+/// 与 [`SpawnOptions`] 的区别：调用方只给「一段脚本」，不给命令 / 参数。要不要经
+/// shell、用哪个 shell、如何 `cd` / 送达 env 全由执行目标决定（这就是把「执行细节」
+/// 收在 executor 的意义）。
+///
+/// [`CommandExecutor::spawn_script`]: crate::common::executor::CommandExecutor::spawn_script
+#[derive(Debug, Clone, Copy)]
+pub struct ScriptOptions<'a> {
+    /// 脚本内容（调用方不得自带 shell 程序名 / 引号转义）。
+    pub script: &'a str,
+    /// 目标环境中的工作目录（Local 宿主路径 / WSL·SSH 远端 Linux 路径）。
+    pub current_dir: Option<&'a str>,
+    /// 额外环境变量。
+    pub env: &'a [(&'a str, &'a str)],
+    /// 是否需要连后代一起清理（见 [`SpawnOptions::kill_tree`]）。
+    pub kill_tree: bool,
+}
+
+impl<'a> ScriptOptions<'a> {
+    /// Script options without cwd / env.
+    #[must_use]
+    pub const fn new(script: &'a str) -> Self {
+        Self {
+            script,
+            current_dir: None,
+            env: &[],
+            kill_tree: false,
+        }
+    }
+
+    /// Set the working directory in the target environment.
+    #[must_use]
+    pub const fn with_current_dir(mut self, current_dir: &'a str) -> Self {
+        self.current_dir = Some(current_dir);
+        self
+    }
+
+    /// Set the working directory only when `Some`.
+    #[must_use]
+    pub const fn with_current_dir_if(self, current_dir: Option<&'a str>) -> Self {
+        match current_dir {
+            Some(dir) => self.with_current_dir(dir),
+            None => self,
+        }
+    }
+
+    /// Set extra environment variables for the script.
+    #[must_use]
+    pub const fn with_env(mut self, env: &'a [(&'a str, &'a str)]) -> Self {
+        self.env = env;
+        self
+    }
+
+    /// Declare that this spawn may need its whole process tree killed.
+    #[must_use]
+    pub const fn with_kill_tree(mut self) -> Self {
+        self.kill_tree = true;
+        self
+    }
 }

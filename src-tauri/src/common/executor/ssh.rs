@@ -28,7 +28,8 @@ use russh::client;
 use russh::client::Handle;
 
 use super::{
-    BoxAsyncRead, BoxAsyncWrite, CommandExecutor, ExecChild, ExecError, KillFuture, SpawnOptions,
+    BoxAsyncRead, BoxAsyncWrite, CommandExecutor, ExecChild, ExecError, KillFuture, ScriptOptions,
+    SpawnOptions,
 };
 use crate::common::connection::types::AuthMethod;
 use crate::common::executor::ssh_auth;
@@ -127,12 +128,17 @@ impl SshExecutor {
             auth,
         }
     }
-}
 
-#[async_trait]
-impl CommandExecutor for SshExecutor {
-    async fn spawn_with(&self, opts: SpawnOptions<'_>) -> Result<ExecChild, ExecError> {
-        use crate::common::utils::command::local::{join_quoted_command, quote_shell_arg};
+    /// Open a channel and run `bash -lc <body>` on the remote host.
+    ///
+    /// argv / script 两种形态的唯一差异是 `body` 的内容（前缀渲染见
+    /// [`super::login_script`]），channel / 采集 / pid / kill 生命周期完全同构。
+    async fn spawn_login_script(
+        &self,
+        body: String,
+        kill_tree: bool,
+    ) -> Result<ExecChild, ExecError> {
+        use crate::common::utils::command::local::quote_shell_arg;
 
         let handle = Arc::new(tokio::sync::Mutex::new(
             ssh_auth::connect_and_authenticate(&self.host, self.port, &self.username, &self.auth)
@@ -149,22 +155,7 @@ impl CommandExecutor for SshExecutor {
         };
 
         // Login shell so remote profile PATH applies (nvm/fnm/cargo, …).
-        // First line prints remote PID for kill support; then exec the user command.
-        let mut body = String::new();
-        for (key, value) in opts.env {
-            body.push_str("export ");
-            body.push_str(key);
-            body.push('=');
-            body.push_str(&quote_shell_arg(value));
-            body.push_str("; ");
-        }
-        if let Some(dir) = opts.current_dir {
-            body.push_str("cd ");
-            body.push_str(&quote_shell_arg(dir));
-            body.push_str(" && ");
-        }
-        body.push_str("exec ");
-        body.push_str(&join_quoted_command(opts.cmd, opts.args));
+        // First line prints remote PID for kill support; then run the body.
         let script = format!("echo $$; {body}");
         let full_cmd = format!("bash -lc {}", quote_shell_arg(&script));
 
@@ -190,7 +181,7 @@ impl CommandExecutor for SshExecutor {
         let wait = wait_from_watch(exit_rx);
         // 远端 pid 与本地 pid 无关：kill 动作在**远端**执行（新通道 `kill -9`），
         // 由 cancel 与退出收敛共用同一个动作。
-        let kill = kill_for(Arc::clone(&handle), remote_pid, opts.kill_tree);
+        let kill = kill_for(Arc::clone(&handle), remote_pid, kill_tree);
 
         Ok(ExecChild::new_with_pid(
             Some(stdin),
@@ -200,6 +191,24 @@ impl CommandExecutor for SshExecutor {
             kill,
             Some(remote_pid),
         ))
+    }
+}
+
+#[async_trait]
+impl CommandExecutor for SshExecutor {
+    async fn spawn_with(&self, opts: SpawnOptions<'_>) -> Result<ExecChild, ExecError> {
+        let body = super::login_script::render_argv_script(
+            opts.env,
+            opts.current_dir,
+            opts.cmd,
+            opts.args,
+        );
+        self.spawn_login_script(body, opts.kill_tree).await
+    }
+
+    async fn spawn_script(&self, opts: ScriptOptions<'_>) -> Result<ExecChild, ExecError> {
+        let body = super::login_script::render_script(opts.env, opts.current_dir, opts.script);
+        self.spawn_login_script(body, opts.kill_tree).await
     }
 }
 

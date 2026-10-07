@@ -44,6 +44,20 @@ pub fn quote_shell_arg(s: &str) -> String {
     format!("'{}'", s.replace('\'', "'\\''"))
 }
 
+/// 生成「把 base64 文本解码后写入 `path`」的 shell 脚本：
+/// `printf '%s' '<encoded>' | base64 -d > '<path>'`。
+///
+/// 文件内容由调用方先行 base64 编码（本函数只负责拼装 + 路径转义），因此内容含
+/// 引号 / 换行 / 反斜杠也不会破坏脚本。WSL/SSH 的「写文件」共用此单点
+/// （`common/file/services/file_write.rs` 与 `theme/common.rs`）。
+#[must_use]
+pub fn base64_write_script(encoded: &str, path: &str) -> String {
+    format!(
+        "printf '%s' '{encoded}' | base64 -d > '{}'",
+        safe_path(path)
+    )
+}
+
 /// Build a POSIX argv string with each argument shell-quoted.
 pub fn join_quoted_command(cmd: &str, args: &[&str]) -> String {
     std::iter::once(cmd)
@@ -257,6 +271,14 @@ mod tests {
         assert_eq!(
             join_quoted_command("echo", &["hello world"]),
             "'echo' 'hello world'"
+        );
+    }
+
+    #[test]
+    fn base64_write_script_decodes_into_escaped_path() {
+        assert_eq!(
+            base64_write_script("aGk=", "/tmp/it's file"),
+            "printf '%s' 'aGk=' | base64 -d > '/tmp/it'\\''s file'"
         );
     }
 

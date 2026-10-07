@@ -19,6 +19,15 @@ pub fn build_task_command(task_command: &str) -> CommandBuilder {
 /// Windows 无需 locale 环境变量。
 pub const fn apply_locale_env(_cmd: &mut CommandBuilder) {}
 
+/// 命令执行（非 PTY）的 shell 选择：Windows `cmd /C <script>`。
+///
+/// 与 [`build_task_command`] 同主题、同平台判据，区别只是不构造 portable-pty 的
+/// `CommandBuilder`。调用方一律经 `core::exec::collect_script` 使用它，业务层零 `#[cfg]`。
+#[must_use]
+pub const fn shell_argv(script: &str) -> (&'static str, [&str; 2]) {
+    ("cmd", ["/C", script])
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -37,5 +46,10 @@ mod tests {
         let mut cmd = CommandBuilder::new("cmd");
         apply_locale_env(&mut cmd);
         assert!(cmd.get_env("LANG").is_none());
+    }
+
+    #[test]
+    fn shell_argv_uses_cmd_slash_c() {
+        assert_eq!(shell_argv("echo hi"), ("cmd", ["/C", "echo hi"]));
     }
 }

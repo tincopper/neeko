@@ -3,7 +3,7 @@
 use async_trait::async_trait;
 
 use super::error::ExecError;
-use super::types::{ExecChild, SpawnOptions};
+use super::types::{ExecChild, ScriptOptions, SpawnOptions};
 
 /// Unified command executor that abstracts over execution environments.
 ///
@@ -30,6 +30,20 @@ pub trait CommandExecutor: Send + Sync {
     /// * WSL — distro login shell (`bash -lc`)
     /// * SSH — remote login shell (`bash -lc`)
     async fn spawn_with(&self, opts: SpawnOptions<'_>) -> Result<ExecChild, ExecError>;
+
+    /// Spawn a **shell script** in the target environment's own shell.
+    ///
+    /// 调用方只给脚本，不给 shell 程序名 / 转义：
+    /// * Local — Windows `cmd /C`、Unix `sh -c`（`platform::shell_launch`）；
+    /// * WSL / SSH — 脚本作为登录 shell（`bash -lc`）的执行体，login 前缀由
+    ///   [`super::login_script`] 渲染。
+    ///
+    /// 与 [`Self::spawn_with`] 的分工：命令与参数可枚举时用 argv；确有管道 /
+    /// 重定向 / 用户命令串时才用 script。
+    ///
+    /// **没有默认实现**：每个执行环境必须显式回答「脚本怎么跑」，缺实现时编译器
+    /// 直接报错，而不是默默回落一个可能错误的 shell。
+    async fn spawn_script(&self, opts: ScriptOptions<'_>) -> Result<ExecChild, ExecError>;
 
     /// Fire-and-forget launch: spawn `cmd` detached and return immediately.
     ///

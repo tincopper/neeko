@@ -19,6 +19,15 @@ pub fn build_task_command(task_command: &str) -> CommandBuilder {
     c
 }
 
+/// 命令执行（非 PTY）的 shell 选择：Unix `sh -c <script>`。
+///
+/// 与 [`build_task_command`] 同主题、同平台判据，区别只是不构造 portable-pty 的
+/// `CommandBuilder`。调用方一律经 `core::exec::collect_script` 使用它，业务层零 `#[cfg]`。
+#[must_use]
+pub const fn shell_argv(script: &str) -> (&'static str, [&str; 2]) {
+    ("sh", ["-c", script])
+}
+
 /// 应用 Unix locale 环境变量。
 pub fn apply_locale_env(cmd: &mut CommandBuilder) {
     cmd.env("LANG", "en_US.UTF-8");
@@ -37,6 +46,11 @@ mod tests {
         assert_eq!(argv[0].to_string_lossy(), "sh");
         assert_eq!(argv[1].to_string_lossy(), "-c");
         assert_eq!(argv[2].to_string_lossy(), "echo hi");
+    }
+
+    #[test]
+    fn shell_argv_uses_sh_dash_c() {
+        assert_eq!(shell_argv("echo hi"), ("sh", ["-c", "echo hi"]));
     }
 
     #[test]

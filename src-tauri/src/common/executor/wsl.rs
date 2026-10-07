@@ -18,7 +18,7 @@ use tokio::sync::Mutex;
 
 #[cfg(target_os = "windows")]
 use super::{BoxAsyncRead, BoxAsyncWrite};
-use super::{CommandExecutor, ExecChild, ExecError, SpawnOptions};
+use super::{CommandExecutor, ExecChild, ExecError, ScriptOptions, SpawnOptions};
 
 /// wait 轮询 `try_wait` 的间隔：**不得**跨 `await` 持有 `Mutex<Child>` —— 退出收敛会在本 wait
 /// future 仍存活时直接驱动共享 kill 动作，持锁等待会死锁。短锁轮询使 kill 总能拿到锁。
@@ -54,37 +54,17 @@ impl WslExecutor {
             distro: Some(distro),
         }
     }
-}
 
-/// Build a login-shell command script that changes to the working directory
-/// and executes the requested command.
-#[cfg(target_os = "windows")]
-fn build_login_script(opts: &SpawnOptions<'_>) -> String {
-    use crate::common::utils::command::local::{join_quoted_command, quote_shell_arg};
-    let mut script = String::new();
-    for (key, value) in opts.env {
-        script.push_str("export ");
-        script.push_str(key);
-        script.push('=');
-        script.push_str(&quote_shell_arg(value));
-        script.push_str("; ");
-    }
-    if let Some(dir) = opts.current_dir {
-        script.push_str("cd ");
-        script.push_str(&quote_shell_arg(dir));
-        script.push_str(" && ");
-    }
-    script.push_str("exec ");
-    script.push_str(&join_quoted_command(opts.cmd, opts.args));
-    script
-}
-
-#[cfg(target_os = "windows")]
-#[async_trait]
-impl CommandExecutor for WslExecutor {
-    async fn spawn_with(&self, opts: SpawnOptions<'_>) -> Result<ExecChild, ExecError> {
-        let script = build_login_script(&opts);
-
+    /// Spawn `wsl.exe -- bash -lc <script>` and wrap the child handle.
+    ///
+    /// argv / script 两种形态的唯一差异是 `script` 的内容（前缀渲染见
+    /// [`super::login_script`]），spawn / 采集 / kill 生命周期完全同构 —— 收敛到
+    /// 这里，避免两份复制。
+    async fn spawn_login_script(
+        &self,
+        script: String,
+        kill_tree: bool,
+    ) -> Result<ExecChild, ExecError> {
         let mut wsl_args: Vec<String> = Vec::new();
         if let Some(ref d) = self.distro {
             wsl_args.push("-d".into());
@@ -128,7 +108,6 @@ impl CommandExecutor for WslExecutor {
         };
         let kill_child = Arc::clone(&child_lock);
         let kill_pid = pid;
-        let kill_tree = opts.kill_tree;
         let kill = move || {
             let kill_child = Arc::clone(&kill_child);
             async move {
@@ -152,10 +131,35 @@ impl CommandExecutor for WslExecutor {
     }
 }
 
+#[cfg(target_os = "windows")]
+#[async_trait]
+impl CommandExecutor for WslExecutor {
+    async fn spawn_with(&self, opts: SpawnOptions<'_>) -> Result<ExecChild, ExecError> {
+        let script = super::login_script::render_argv_script(
+            opts.env,
+            opts.current_dir,
+            opts.cmd,
+            opts.args,
+        );
+        self.spawn_login_script(script, opts.kill_tree).await
+    }
+
+    async fn spawn_script(&self, opts: ScriptOptions<'_>) -> Result<ExecChild, ExecError> {
+        let script = super::login_script::render_script(opts.env, opts.current_dir, opts.script);
+        self.spawn_login_script(script, opts.kill_tree).await
+    }
+}
+
 #[cfg(not(target_os = "windows"))]
 #[async_trait]
 impl CommandExecutor for WslExecutor {
     async fn spawn_with(&self, _opts: SpawnOptions<'_>) -> Result<ExecChild, ExecError> {
+        Err(ExecError::Wsl(
+            "WSL is only supported on Windows".to_string(),
+        ))
+    }
+
+    async fn spawn_script(&self, _opts: ScriptOptions<'_>) -> Result<ExecChild, ExecError> {
         Err(ExecError::Wsl(
             "WSL is only supported on Windows".to_string(),
         ))

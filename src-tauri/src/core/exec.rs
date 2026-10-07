@@ -12,7 +12,7 @@
 use crate::common::executor::factory::{create_executor, ExecTarget};
 use crate::common::executor::with_default_env;
 use crate::common::executor::{
-    collect_child_output, ExecChild, ExecError, ExecOutput, SpawnOptions,
+    collect_child_output, ExecChild, ExecError, ExecOutput, ScriptOptions, SpawnOptions,
 };
 use crate::core::exec_env;
 
@@ -75,6 +75,71 @@ pub async fn collect(
     .await
 }
 
+/// 在目标环境用**该环境的 shell** 执行一段脚本（script 形态）。
+///
+/// 调用方只给脚本，不给 shell 程序名、不拼 `cd`/`VAR=v` 前缀：「怎么跑」由 executor
+/// 决定（Local `cmd /C` / `sh -c`；WSL / SSH 登录 `bash -lc`）。
+///
+/// 仅在确有管道 / 重定向 / heredoc / 用户给定的命令串时使用；命令与参数可枚举时用
+/// [`collect`]（argv 形态）—— 两者都不让业务层感知 shell（红线 2）。
+///
+/// # Errors
+/// spawn 失败、采集失败、或 shell 无法启动时返回 [`ExecError`]；脚本非零退出**不**报错，
+/// 由返回的 [`ExecOutput::exit_code`] 表达（与 [`collect`] 一致）。
+pub async fn collect_script(
+    target: &ExecTarget,
+    script: &str,
+    current_dir: Option<&str>,
+    env: &[(&str, &str)],
+) -> Result<ExecOutput, ExecError> {
+    let child = create_executor(target)
+        .spawn_script(
+            ScriptOptions::new(script)
+                .with_current_dir_if(current_dir)
+                .with_env(env),
+        )
+        .await?;
+    collect_child_output(child).await
+}
+
+/// Spawn a long-lived **shell script** (stdio pipes) on `target`.
+///
+/// shell 选择同样由 executor 决定；`kill_tree` 恒开 —— 它面向受管长驻进程
+/// （DAP 调试目标等），`kill()` 必须能连带清理后代。短命令脚本走 [`collect_script`]。
+pub async fn spawn_script(
+    target: &ExecTarget,
+    script: &str,
+    current_dir: Option<&str>,
+) -> Result<ExecChild, ExecError> {
+    create_executor(target)
+        .spawn_script(
+            ScriptOptions::new(script)
+                .with_current_dir_if(current_dir)
+                .with_kill_tree(),
+        )
+        .await
+}
+
+/// [`collect_script`] 的便捷包装：成功返回**去除首尾空白**的 stdout。
+///
+/// 成功判定为 `exit_code == 0`；非零退出返回 [`ExecError::CommandFailed`]（保留原始
+/// stdout / stderr / 退出码），与 [`run`] 的失败语义一致。
+///
+/// # Errors
+/// 同 [`collect_script`]；另在非零退出时返回 [`ExecError::CommandFailed`]。
+pub async fn run_script(target: &ExecTarget, script: &str) -> Result<String, ExecError> {
+    let output = collect_script(target, script, None, &[]).await?;
+    if output.exit_code == 0 {
+        Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
+    } else {
+        Err(ExecError::CommandFailed {
+            code: output.exit_code,
+            stdout: output.stdout,
+            stderr: output.stderr,
+        })
+    }
+}
+
 /// Whether `cmd` exists in the target environment's user tool PATH.
 ///
 /// * Local: host process PATH (after [`exec_env::init_host_user_path`]).
@@ -83,16 +148,11 @@ pub async fn command_exists(target: &ExecTarget, cmd: &str) -> bool {
     match target {
         ExecTarget::Local => exec_env::local_command_exists(cmd),
         ExecTarget::Wsl { .. } | ExecTarget::Remote { .. } => {
-            // Login-shell wrapping is applied by the executor; a simple
-            // `command -v` is enough (do not nest another `bash -c` unnecessarily).
-            match run(
-                target,
-                "sh",
-                &["-c", &format!("command -v {}", shell_quote(cmd))],
-            )
-            .await
-            {
-                Ok(out) => !out.trim().is_empty(),
+            // `command -v` 是 shell builtin，故走 script 形态；shell 选择由执行层承担。
+            // `cmd` 是受信的静态命令名（调用方传字面量），直接内插；若将来透传用户输入，
+            // 必须先做白名单校验 / 转义。
+            match run_script(target, &format!("command -v {cmd}")).await {
+                Ok(out) => !out.is_empty(),
                 Err(_) => false,
             }
         }
@@ -256,10 +316,6 @@ pub fn spawn_detached(target: &ExecTarget, cmd: &str, args: &[&str]) -> Result<(
         let executor = create_executor(target);
         executor.spawn_detached(opts.cmd, opts.args).await
     })?
-}
-
-fn shell_quote(s: &str) -> String {
-    crate::common::utils::command::local::quote_shell_arg(s)
 }
 
 #[cfg(test)]
@@ -524,6 +580,104 @@ mod tests {
         });
         let value = tauri::async_runtime::block_on(join).expect("join");
         assert_eq!(value, "bridged");
+    }
+
+    // ── script 形态（`collect_script` / `run_script`）───────────────────
+    //
+    // Local 分支的 shell 选择由 `LocalExecutor::spawn_script`（`platform::shell_launch::shell_argv`）
+    // 决定（Windows `cmd /C`、Unix `sh -c`），平台断言在该模块的单测里；此处覆盖脚本语义。
+    // WSL / SSH 分支不可在开发机直跑（需真实 distro / 主机），其登录脚本前缀由
+    // `common::executor::login_script` 的纯函数单测与 CI 矩阵兜底。
+
+    /// 跨平台：`echo <token>` 在 `sh` 与 `cmd` 下语义一致。
+    #[tokio::test]
+    async fn collect_script_local_echoes_stdout() {
+        let output = collect_script(&ExecTarget::Local, "echo neeko-script-ok", None, &[])
+            .await
+            .unwrap();
+        assert_eq!(output.exit_code, 0);
+        assert!(
+            String::from_utf8_lossy(&output.stdout).contains("neeko-script-ok"),
+            "stdout: {:?}",
+            String::from_utf8_lossy(&output.stdout)
+        );
+    }
+
+    /// 非零退出码与 stderr 必须原样保留（`collect_script` 不把非零当错误）。
+    #[tokio::test]
+    async fn collect_script_local_propagates_nonzero_exit_and_stderr() {
+        #[cfg(unix)]
+        let script = "echo boom >&2; exit 3";
+        #[cfg(windows)]
+        let script = "echo boom 1>&2 & exit /b 3";
+
+        let output = collect_script(&ExecTarget::Local, script, None, &[])
+            .await
+            .unwrap();
+        assert_eq!(output.exit_code, 3);
+        assert!(
+            String::from_utf8_lossy(&output.stderr).contains("boom"),
+            "stderr: {:?}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+
+    /// `current_dir` 与 `env` 必须经 `SpawnOptions` 送达脚本进程（不拼 `cd` / env 前缀）。
+    #[tokio::test]
+    async fn collect_script_local_applies_current_dir_and_env() {
+        let dir = tempfile::tempdir().expect("create temp dir");
+        let dir_name = dir
+            .path()
+            .file_name()
+            .unwrap()
+            .to_string_lossy()
+            .into_owned();
+
+        #[cfg(unix)]
+        let script = "pwd; echo \"$NEEKO_TEST_ENV\"";
+        #[cfg(windows)]
+        let script = "cd & echo %NEEKO_TEST_ENV%";
+
+        let output = collect_script(
+            &ExecTarget::Local,
+            script,
+            Some(dir.path().to_str().unwrap()),
+            &[("NEEKO_TEST_ENV", "42")],
+        )
+        .await
+        .unwrap();
+
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        assert_eq!(output.exit_code, 0, "stdout: {stdout}");
+        assert!(
+            stdout.contains(&dir_name),
+            "stdout should mention cwd: {stdout}"
+        );
+        assert!(stdout.contains("42"), "stdout should mention env: {stdout}");
+    }
+
+    /// `run_script` 成功路径：返回 trim 后的 stdout（`echo` 的换行被去掉）。
+    #[tokio::test]
+    async fn run_script_returns_trimmed_stdout() {
+        let out = run_script(&ExecTarget::Local, "echo neeko-run")
+            .await
+            .unwrap();
+        assert_eq!(out, "neeko-run");
+    }
+
+    /// `run_script` 失败路径：非零退出收敛为结构化 `CommandFailed`。
+    #[tokio::test]
+    async fn run_script_returns_command_failed_on_nonzero_exit() {
+        #[cfg(unix)]
+        let script = "exit 3";
+        #[cfg(windows)]
+        let script = "exit /b 3";
+
+        let err = run_script(&ExecTarget::Local, script).await.unwrap_err();
+        match err {
+            ExecError::CommandFailed { code, .. } => assert_eq!(code, 3),
+            other => panic!("expected CommandFailed, got {other:?}"),
+        }
     }
     /// 同步桥（`status_worker` / `collapsed_probe` 走这条路径）同样必须只读：
     /// 「`git status` 不得刷新 `.git/index`」。依据见 `common::executor::env_defaults`。
