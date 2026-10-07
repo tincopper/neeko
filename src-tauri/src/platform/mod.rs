@@ -24,9 +24,11 @@
 //! | `notify_base` | `notify_base` | `browser/scripts.rs` |
 //! | `path_identity` | `portable_render` / `posix_render` | `common/git/unit_path.rs` |
 //! | `watch_strategy` | `watch_selectively` | `common/file/watcher/registration.rs` |
+//! | `fonts` | `get_system_fonts` | `common/utils/fonts.rs` |
 
 pub mod devtools;
 pub mod file_url;
+pub mod fonts;
 pub mod git_credential;
 pub mod host_path;
 pub mod ide_launch;
