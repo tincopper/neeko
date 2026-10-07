@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-5.md`
-- **Total Sessions**: 255
+- **Total Sessions**: 256
 - **Last Active**: 2026-10-07
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-5.md` | ~1614 | Active |
+| `journal-5.md` | ~1669 | Active |
 | `journal-4.md` | ~1989 | Archived |
 | `journal-3.md` | ~1978 | Archived |
 | `journal-2.md` | ~1991 | Archived |
@@ -33,6 +33,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 256 | 2026-10-07 | 核查 Problems 面板三项延期声明：按性质分层落位（spec 决策记录 + 台账不变量） | `4175c8b2`, `a4a0bcc6` | `main` |
 | 255 | 2026-10-07 | 收口 neeko-check Nit 清单：单飞去重 + 已拉清单收敛 + 护栏容错 | - | `main` |
 | 254 | 2026-10-07 | 修复 neeko-check 违规清单：StrictMode 丢结果 + 订阅粒度 + 护栏误伤 + 夹具重复 | - | `main` |
 | 253 | 2026-10-06 | WSL/SSH 代码层闭合：远端 status 编排可测 + 远端侧栏 chip 与本地同源 | - | `main` |

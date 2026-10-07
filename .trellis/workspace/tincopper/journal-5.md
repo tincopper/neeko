@@ -1612,3 +1612,64 @@ Block：useWorktreeChangeStats 误把组件生命周期取消（cancelled）用�
 ### Next Steps
 
 - None - task complete
+
+
+## Session 256: 核查 Problems 面板三项延期声明：按性质分层落位（spec 决策记录 + 台账不变量）
+
+**Date**: 2026-10-07
+**Task**: 核查 Problems 面板三项延期声明：按性质分层落位（spec 决策记录 + 台账不变量）
+**Branch**: `main`
+
+### Summary
+
+把三条延期声明按性质分层：行 key 碰撞是**不变量**（机制已在、登记缺失）→ 落台账 tier=test（problems-row-key-uniqueness / problems-group-render-incrementality）；投影重算与阈值硬编码是**成本决策**→ 只留 spec prose（带实测 0.10ms/200 组与升级触发条件 G>1000 或 >1ms），不进台账（避免被 prose 档标成债务）。改 spec §5 四条 + 修重复编号 ## 4.→## 7. + 标题 P1-P3→P1-P4，台账 +2 条；零代码改动。门禁：pnpm lint 全绿（tsc + eslint + cargo fmt/clippy -D warnings + 14 护栏 + 护栏自测 265 OK），check_invariant_enforcement 12 条不变量 / 0 违规，guards list 仍 14 条；已拆为 `4175c8b2` + `a4a0bcc6` 两次原子提交。
+
+### Main Changes
+
+**核查结论（三条延期声明的真实性质）**
+
+| Note | 性质 | 现状 |
+| --- | --- | --- |
+| 行 key `${message}-${line}-${char}-${severity}` 重复诊断碰撞 | **不变量**（违反=React 错配/丢行，用户可见，已违反过一次） | 机制已在（`fe893baf` 加 `#occurrence`），但未登记 |
+| `buildGroups` 每次 store 变化全量重排 | **成本决策** | 函数已改名 `orderDiagnosticFileGroups`；实测 0.10ms/200 组，与行数无关 |
+| `COLLAPSED_GROUP_THRESHOLD=20` 硬编码无设置项 | **成本决策** | 保持不变（可配置性成本 > 收益） |
+
+**A `.trellis/spec/backend/lsp-domain.md`（+22/-5，§5）**：删掉两行「已知边界（不扩）」，替换为
+① 分组增量契约（落点 `DiagnosticsPanel.perf.test.tsx`）；② 列表投影每 flush 重算 —— 决策非债务，
+带实测 0.10ms/200 组（本机口径非 SLA）、与行数无关、升级触发条件 G>1000 或 flush>1ms，并显式
+区分「虚拟滚动解的是 DOM 行数，另一维，不可互相替代」；③ 行 key 唯一性（指纹 `M-L-C-S` 自右分解
+唯一 + 同指纹序号）；④ 折叠阈值 20 —— 决策非债务，若可变化走 prop+默认值而非全局设置。标题
+`P1-P3`→`P1-P4`（与代码注释的 P4 对齐）；触发叙事里的 `buildGroups` 标为历史名并给出当前落点；
+顺带修掉重复编号 `## 4. 常见坑`→`## 7.`（该文件原有两个 `## 4.`）。
+
+**B `tools/guards/ledger/invariants.json`（+28）**：追加 `problems-row-key-uniqueness`（落点
+`diagnosticGroups.test.ts` + `DiagnosticsPanel.test.tsx`）与 `problems-group-render-incrementality`
+（落点 `DiagnosticsPanel.perf.test.tsx`），`red_line: null`。判据：只登记**不变量**（必须成立、可
+机械判定、有历史违反）；Note 1/3 是**决策**，留在 spec prose 不进台账——否则 `prose` 档会把一个正确
+的取舍标成「每次门禁可见的债务」。复用既有机制（台账只存指针 → 已有机理），未新增护栏、未改一行
+checks 代码。
+
+**未做（触发条件已写入 spec）**：虚拟滚动、`uri→label` 缓存、阈值设置项。
+
+
+### Git Commits
+
+- `4175c8b2` docs(spec): turn the Problems panel's lingering notes into decision records
+- `a4a0bcc6` chore(guards): register the two Problems-rendering invariants
+- 本文件（workspace 记录）随本次提交落地
+
+### Testing
+
+- [OK] `pnpm lint` 全绿：`tsc --noEmit` + eslint + `cargo fmt --check` + `cargo clippy -D warnings`；14 条护栏 14 通过 / 0 违规，护栏自测 265 tests OK
+- [OK] `check_invariant_enforcement`：12 条不变量 / 15 个 guard 文件 / 0 处违规（新增 2 条落点解析通过，`red_line: null` 合法）
+- [OK] `pnpm guards list` 仍 14 条（未新增护栏、无 stage/scope 变更）
+- [OK] 台账落点测试实跑 15 passed（`diagnosticGroups.test.ts` + `DiagnosticsPanel.perf.test.tsx`）；前端零改动故未跑 `test:fe`
+- [OK] `rg buildGroups .trellis/ docs/ src/` 仅剩 2 处**历史引用**（spec §5 已标注「当时」；另一处为归档任务 prd，不改写）
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
