@@ -195,10 +195,13 @@ git ls-files --others --exclude-standard -z -- test/  ->  test/测试.txt       
 
 **单一事实源在执行层**，业务代码**禁止**再逐点补 opts / CLI 标志：
 
-1. `core::exec` 的 `spawn_target()`（本地 facade 唯一 spawn 入口）：`cmd == "git"` 时自动补
-   `GIT_OPTIONAL_LOCKS=0`（`collect` / `run` / `spawn_with` / `collect_blocking*` 全覆盖）；
+1. `core::exec` 的 `spawn_target()`（本地 facade 的 **argv 形态**唯一 spawn 入口）：`cmd == "git"`
+   时自动补 `GIT_OPTIONAL_LOCKS=0`（`collect` / `run` / `spawn_with` / `collect_blocking*` 全覆盖）。
+   script 形态（`collect_script` / `spawn_script`）不经此入口 —— 它的 `cmd` 是环境 shell
+   （`sh` / `cmd`），永不为 `git`，本就不在默认环境表内；
 2. `common/git/transport` 的 `run_git_opts` / `run_git_with_stdin` 共用 env 组装处：
-   **三端（Local / WSL / SSH）同时生效**（WSL/SSH 把 env 渲染成远端 shell 前缀）。
+   **三端（Local / WSL / SSH）同时生效**（env 经 `SpawnOptions` 由 executor 送达，见
+   `backend/command-execution.md`）。
 
 构造点：`common/executor/env_defaults.rs` 的命令默认环境表 + `with_default_env`（尊重调用方
 显式覆盖）。**已全部退役的散落机制**（本不变量历史复发 4 次的完整清单，勿再重犯）：
@@ -225,13 +228,20 @@ git ls-files --others --exclude-standard -z -- test/  ->  test/测试.txt       
 **Correct**：直接走 facade / transport 默认注入；发现读路径写 index 立即回来改注入点。
 
 **已知边界（勿踩）**：facade 的注入键是 `opts.cmd == "git"` —— 若用 `sh -c "git …"` 包裹调用，
-注入会**静默失效**。transport 内部的 `sh -c` 是合法特例（env 已由 transport 渲染成 shell 前缀）；
-新增本地 git 调用一律令 `cmd == "git"`，不要自行 shell 包裹。
+注入会**静默失效**。transport 已不再自拼 shell（统一走 `SpawnOptions` + executor，见
+`backend/command-execution.md`）；新增本地 git 调用一律令 `cmd == "git"`，不要自行 shell 包裹。
 
 **谁的 git 走哪条路**：Local 同步桥（`status_worker` / `collapsed_probe`）走 `core::exec` facade；
 而 **WSL/SSH 的 git 一律走 `GitTransport`** —— facade 的默认 env 设在本地 `wsl.exe`/`ssh`
-进程上、无法穿透到远端，经 facade 跑远程 git 会静默丢掉只读语义（本仓当前**无**此类调用；
-曾有唯一实例 `pr::checkout_pr`，因零调用方作为死代码删除）。
+进程上、无法穿透到远端，经 facade 跑远程 git 会静默丢掉只读语义（除下方已知例外外，本仓**无**
+此类调用；曾有唯一实例 `pr::checkout_pr`，因零调用方作为死代码删除）。
+
+**已知例外（已评估，勿误改）**：`common/file/services/ignored_cache.rs::fetch_remote_ignored_paths`
+在 WSL/SSH 上经 `core::exec` facade 跑
+`git ls-files --others --ignored --exclude-standard --directory` 取被忽略路径集合。
+它**不构成只读语义缺口**：§9 的实测表已钉死 `git ls-files --others` 不刷新 `.git/index`（非争用源）；
+且该调用属文件树读取，经 `GitTransport` 反而把文件域耦合到 git 传输层。
+若未来把 `ls-files` 换成会写 index 的命令，必须改走 transport。
 
 ## 10. 写后 status 快照新鲜度契约（poke-and-wait）
 
@@ -496,14 +506,14 @@ macOS 上 Tauri 事件送达 = 每次 `evaluateJavaScript`，逐读块 `emit` �
 
 **DRY（同一生命周期只留一份）**：命令层的「占槽 + 产 hooks」收敛到 `begin_git_run`
 （此前 7 处各写一段）；Local / WSL / SSH 的「spawn 包装器 → 流式采集 → 取消赛跑 →
-错误映射」收敛到 `transport::run_shell_streaming` + `finish_git_output`（此前三份复制）。
+错误映射」收敛到 `transport::run_spawn_streaming` + `finish_git_output`（此前三份复制）。
 `GitTransport::run_git_opts_streaming` 的默认实现**只服务测试假实现**（静默退化为聚合调用、
 忽略 hooks）；它是唯一生产实现 `ExecTarget` 必须覆写的方法 —— 与红线 3「默认体不得回落
 同步核心」同理，默认体不得成为生产路径。
 
 **退出收敛（子进程登记表）**：git 传输层用 `kill_tree` 自组 spawn，但 kill 动作只在**主动取消**时被
 调用 —— 应用退出 / 运行时空停时 future 被丢弃、kill 不执行，整棵树（git → hook → pnpm →
-vitest/cargo）会孤儿化。`common/executor` 的 `child_registry` 让 `run_shell_streaming` 在子进程
+vitest/cargo）会孤儿化。`common/executor` 的 `child_registry` 让 `run_spawn_streaming` 在子进程
 **存活期**登记它的 `KillFn`（= `Arc<dyn Fn() -> KillFuture>`，**与取消共用同一个动作**；动作的
 宿主/远端差异由 executor 在构造时按 `ExecTarget` 定下，传输层与登记表都不分支执行目标）。
 `AppStateWrapper::shutdown_background_and_exit` 的 CleanupTask（`"git-children"`）在所有后台服务

@@ -712,7 +712,7 @@ let output = tokio::time::timeout(
 **判据**：应用退出（`Destroyed` → `shutdown_background_and_exit`）时，**仍在跑**的长操作子进程树
 必须被收敛，不得孤儿化（父进程退出不回收子进程）。
 
-- **登记表**：`common/executor::child_registry`——`run_shell_streaming` 在子进程存活期登记它的
+- **登记表**：`common/executor::child_registry`——`run_spawn_streaming` 在子进程存活期登记它的
   `KillFn`（= `Arc<dyn Fn() -> KillFuture>`，**与取消共用同一个动作**），返回 RAII `ChildLease`
   （正常完成 / 取消即注销）。动作的宿主/远端差异由 executor 按 `ExecTarget` 构造，登记表与传输层
   都不分支执行目标。**只对仍登记（存活）的项动手**，降低 pid / 进程组复用误杀。

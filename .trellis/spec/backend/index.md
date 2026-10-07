@@ -15,6 +15,7 @@
 | 指南 | 说明 | 状态 |
 |------|------|------|
 | [目录结构](./directory-structure.md) | 模块布局与文件组织 | 已填写 |
+| [统一命令执行](./command-execution.md) | 执行 vs 编排边界、argv/script 两形态、shell 选择落点、禁止形态与护栏 | 已填写 |
 | [命令指南](./command-guidelines.md) | Tauri 命令模式、状态访问、错误返回 | 已填写 |
 | [类型安全](./type-safety.md) | 结构体、枚举、serde、Rust-TS 类型同步 | 已填写 |
 | [错误处理](./error-handling.md) | anyhow、Result 模式、命令边界 | 已填写 |
