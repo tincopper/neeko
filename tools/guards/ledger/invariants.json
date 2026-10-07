@@ -176,6 +176,34 @@
         }
       ],
       "red_line": null
+    },
+    {
+      "id": "problems-row-key-uniqueness",
+      "title": "Problems 面板诊断行 key 必须唯一（内容指纹 + 同指纹出现序号）",
+      "tier": "test",
+      "enforcement": [
+        {
+          "kind": "test",
+          "ref": "src/features/lsp/utils/__tests__/diagnosticGroups.test.ts"
+        },
+        {
+          "kind": "test",
+          "ref": "src/features/lsp/components/__tests__/DiagnosticsPanel.test.tsx"
+        }
+      ],
+      "red_line": null
+    },
+    {
+      "id": "problems-group-render-incrementality",
+      "title": "未变 uri 的诊断分组不得重排 / 重渲染（分组级增量边界）",
+      "tier": "test",
+      "enforcement": [
+        {
+          "kind": "test",
+          "ref": "src/features/lsp/components/__tests__/DiagnosticsPanel.perf.test.tsx"
+        }
+      ],
+      "red_line": null
     }
   ]
 }
