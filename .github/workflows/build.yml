@@ -1,7 +1,11 @@
 name: Build Neeko
 
-# 只在打 tag 时触发发布构建（类型、bundle、Rust 编译已由 PR 的
-# frontend-build / frontend-check / backend-check 验证，本 workflow 只做打包分发）
+# 只在打 tag 时触发发布构建（改动命中发布面时，先用 workflow_dispatch 手动预跑一遍）。
+# PR 已覆盖：eslint + tsc（frontend-check）、web 产物 `pnpm build`（frontend-build，与下面
+# beforeBuildCommand 是同一条命令）、Rust check/clippy（backend-check）、以及 debug profile
+# 的编译与**链接**（backend-test 的 `cargo test` 会链接出 src/main.rs 二进制并执行）。
+# PR 不覆盖：release profile codegen、Tauri bundler（NSIS / dmg / AppImage）、更新器签名 ——
+# 这三样首次执行就在本 workflow。`tauri.conf.json` 的 bundle 段在 PR 里没有任何消费方。
 on:
   push:
     tags:
