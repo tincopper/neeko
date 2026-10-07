@@ -3,7 +3,10 @@ use serde_json::json;
 use std::fs;
 use std::path::Path;
 
-use super::common::{base64_encode, map_theme_name, shell_escape};
+use super::common::{
+    base64_std, ensure_wsl_dir, map_theme_name, shell_escape, sync_wsl_theme_json, write_wsl_file,
+    wsl_home, wsl_target,
+};
 use crate::common::utils::command::ssh::exec;
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -114,19 +117,10 @@ pub fn write_project_pi_settings(project_path: &str, neeko_theme: &str) -> Resul
 
 /// 通过 WSL 安装主题文件到 WSL 内部的 ~/.pi/agent/themes/
 pub async fn install_wsl_pi_theme_files(distro: &str) -> Result<()> {
-    let themes_dir = "$HOME/.pi/agent/themes";
-    {
-        let target = crate::common::executor::factory::ExecTarget::Wsl {
-            distro: distro.to_string(),
-        };
-        crate::core::exec::run(
-            &target,
-            "bash",
-            &["-c", &format!("mkdir -p {}", themes_dir)],
-        )
-        .await
-        .map_err(|e| anyhow::anyhow!("{}", e))?;
-    }
+    let target = wsl_target(distro);
+    // 先把 `$HOME` 解析成绝对路径，再当字面量用（单引号转义后不再依赖 shell 展开）。
+    let themes_dir = format!("{}/.pi/agent/themes", wsl_home(&target).await?);
+    ensure_wsl_dir(&target, &themes_dir).await?;
     log::debug!("[WSL][PiTheme] mkdir -p {} (distro={})", themes_dir, distro);
 
     let themes = [
@@ -139,23 +133,9 @@ pub async fn install_wsl_pi_theme_files(distro: &str) -> Result<()> {
 
     for (name, theme_json) in &themes {
         let json_str = serde_json::to_string_pretty(theme_json)?;
-        let encoded = base64_encode(&json_str);
         let path = format!("{}/{}.json", themes_dir, name);
-        let cmd = format!("echo '{}' | base64 -d > {}", encoded, path);
-        log::debug!(
-            "[WSL][PiTheme] Writing {} ({} bytes base64, distro={})",
-            path,
-            encoded.len(),
-            distro
-        );
-        if let Err(e) = {
-            let target = crate::common::executor::factory::ExecTarget::Wsl {
-                distro: distro.to_string(),
-            };
-            crate::core::exec::run(&target, "bash", &["-c", &cmd])
-                .await
-                .map_err(|e| anyhow::anyhow!("{}", e))
-        } {
+        log::debug!("[WSL][PiTheme] Writing {} (distro={})", path, distro);
+        if let Err(e) = write_wsl_file(&target, &path, &json_str).await {
             log::error!("[WSL][PiTheme] Failed to write {}: {}", path, e);
             return Err(e);
         }
@@ -184,88 +164,8 @@ pub async fn write_wsl_pi_settings(
         theme_name
     );
 
-    {
-        let target = crate::common::executor::factory::ExecTarget::Wsl {
-            distro: distro.to_string(),
-        };
-        crate::core::exec::run(
-            &target,
-            "bash",
-            &["-c", &format!("mkdir -p {}", shell_escape(&pi_dir))],
-        )
-        .await
-        .map_err(|e| anyhow::anyhow!("{}", e))?;
-    }
-
-    // 备份（如果 settings.json 存在且备份不存在）
-    let _ = {
-        let target = crate::common::executor::factory::ExecTarget::Wsl {
-            distro: distro.to_string(),
-        };
-        crate::core::exec::run(
-            &target,
-            "bash",
-            &[
-                "-c",
-                &format!(
-                    "test -f {} && test ! -f {} && cp {} {}",
-                    shell_escape(&settings_path),
-                    shell_escape(&backup_path),
-                    shell_escape(&settings_path),
-                    shell_escape(&backup_path)
-                ),
-            ],
-        )
-        .await
-        .map_err(|e| anyhow::anyhow!("{}", e))
-    };
-
-    // 读取并合并已有 settings.json
-    let res = {
-        let target = crate::common::executor::factory::ExecTarget::Wsl {
-            distro: distro.to_string(),
-        };
-        crate::core::exec::run(
-            &target,
-            "bash",
-            &["-c", &format!("cat {}", shell_escape(&settings_path))],
-        )
-        .await
-        .map_err(|e| anyhow::anyhow!("{}", e))
-    };
-    let merged_content = match res {
-        Ok(raw) => {
-            let mut config: serde_json::Value =
-                serde_json::from_str(raw.trim()).unwrap_or_else(|_| json!({}));
-            if let Some(obj) = config.as_object_mut() {
-                obj.insert("theme".to_string(), json!(theme_name));
-            }
-            serde_json::to_string_pretty(&config)?
-        }
-        Err(_) => serde_json::to_string_pretty(&json!({ "theme": theme_name }))?,
-    };
-
-    // 写入 settings.json
-    let encoded = base64_encode(&merged_content);
-    {
-        let target = crate::common::executor::factory::ExecTarget::Wsl {
-            distro: distro.to_string(),
-        };
-        crate::core::exec::run(
-            &target,
-            "bash",
-            &[
-                "-c",
-                &format!(
-                    "echo '{}' | base64 -d > {}",
-                    encoded,
-                    shell_escape(&settings_path)
-                ),
-            ],
-        )
-        .await
-        .map_err(|e| anyhow::anyhow!("{}", e))?;
-    }
+    let target = wsl_target(distro);
+    sync_wsl_theme_json(&target, &pi_dir, &settings_path, &backup_path, theme_name).await?;
 
     log::info!(
         "[PiTheme] Written WSL settings.json to {} with theme={} (merged)",
@@ -297,7 +197,7 @@ pub async fn install_remote_pi_theme_files(
     let mut script = format!("mkdir -p {}", themes_dir);
     for (name, theme_json) in &themes {
         let json_str = serde_json::to_string_pretty(theme_json)?;
-        let encoded = base64_encode(&json_str);
+        let encoded = base64_std(&json_str);
         let path = format!("{}/{}.json", themes_dir, name);
         script.push_str(&format!(" && echo '{}' | base64 -d > {}", encoded, path));
     }
@@ -326,7 +226,7 @@ pub async fn write_remote_pi_settings(
 
     let config = json!({ "theme": theme_name });
     let content = serde_json::to_string_pretty(&config)?;
-    let encoded = base64_encode(&content);
+    let encoded = base64_std(&content);
 
     // mkdir + backup + write 合并为一条命令
     let script = format!(
