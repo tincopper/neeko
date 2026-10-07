@@ -17,8 +17,7 @@
 use std::path::{Path, PathBuf};
 
 use crate::common::executor::factory::ExecTarget;
-use crate::common::utils::command::local::safe_path;
-use crate::core::exec::run;
+use crate::core::exec::{collect, run};
 use crate::project::types::FileContent;
 use crate::AppError;
 
@@ -121,28 +120,18 @@ async fn read_file_shell(
     req: FileReadRequest,
 ) -> Result<FileContent, AppError> {
     let full = join_path(&req.base, &req.path);
-    let safe = safe_path(full.to_string_lossy().as_ref());
-    let shell = match req.target {
-        ExecTarget::Wsl { .. } => "bash",
-        _ => "sh",
-    };
+    let full_str = full.to_string_lossy().into_owned();
 
     // scope 校验：Trusted 信任调用方；InProject 的远程 root 校验为已知欠账
     //（现状 read_file_content_shell 同样没有），补齐需远程 realpath，单独立项。
     let _ = scope;
 
-    let size: u64 = run(
-        &req.target,
-        shell,
-        &[
-            "-c",
-            &format!("stat -c '%s' '{safe}' 2>/dev/null || echo 0"),
-        ],
-    )
-    .await
-    .ok()
-    .and_then(|s| s.trim().parse().ok())
-    .unwrap_or(0);
+    // argv 形态：`stat` / `head` / `cat` 均为独立可执行文件，不经 shell。
+    let size: u64 = run(&req.target, "stat", &["-c", "%s", &full_str])
+        .await
+        .ok()
+        .and_then(|s| s.trim().parse().ok())
+        .unwrap_or(0);
     if let Some(cap) = req.max_bytes {
         if size > cap {
             return Err(AppError::File(format!(
@@ -152,11 +141,10 @@ async fn read_file_shell(
     }
 
     let is_binary = if req.detect_binary {
-        let cmd =
-            format!("head -c 8192 '{safe}' | grep -ql '\\x00' 2>/dev/null && echo 1 || echo 0");
-        run(&req.target, shell, &["-c", &cmd])
+        // 二进制判定在字节层完成：不再用 `head | grep '\\x00'` 管道。
+        collect(&req.target, "head", &["-c", "8192", &full_str], None)
             .await
-            .map(|out| out.trim() == "1")
+            .map(|out| out.stdout.contains(&0))
             .unwrap_or(false)
     } else {
         false
@@ -165,7 +153,7 @@ async fn read_file_shell(
     let content = if is_binary {
         String::new()
     } else {
-        run(&req.target, shell, &["-c", &format!("cat '{safe}'")])
+        run(&req.target, "cat", &[&full_str])
             .await
             .map_err(|e| AppError::File(format!("Failed to read file content: {}", e)))?
     };

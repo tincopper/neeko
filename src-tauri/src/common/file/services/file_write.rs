@@ -7,11 +7,41 @@ use std::path::Path;
 
 use crate::common::executor::factory::ExecTarget;
 use crate::common::runtime::run_blocking_result;
-use crate::common::utils::command::local::safe_path;
+use crate::common::utils::command::local::base64_write_script;
 use crate::core::exec::run;
 use crate::AppError;
 
-use super::shell_cmd::{build_mkdir_command, remote_shell_name};
+/// WSL/Remote：argv 形态创建父目录（`mkdir -p`），mkdir 失败忽略（与旧行为一致）。
+///
+/// 非 UTF-8 父路径无法转成 argv，显式报错而非静默跳过（静默会让后续写入报出更含糊的错）。
+async fn ensure_parent_dir(target: &ExecTarget, full_path: &str) -> Result<(), AppError> {
+    let Some(parent) = Path::new(full_path).parent() else {
+        return Ok(());
+    };
+    let dir = parent.to_str().ok_or_else(|| {
+        AppError::File(format!(
+            "non-UTF-8 path is not supported: {}",
+            parent.display()
+        ))
+    })?;
+    let _ = run(target, "mkdir", &["-p", dir]).await;
+    Ok(())
+}
+
+/// WSL/Remote：base64 管道写入文件（script 形态：确有管道 / 重定向）。
+async fn write_remote_file(
+    target: &ExecTarget,
+    full_path: &str,
+    content: &str,
+) -> Result<(), AppError> {
+    use base64::Engine;
+    let encoded = base64::engine::general_purpose::STANDARD.encode(content.as_bytes());
+    let script = base64_write_script(&encoded, full_path);
+    let _ = crate::core::exec::collect_script(target, &script, None, &[])
+        .await
+        .map_err(|e| AppError::File(format!("Failed to write file: {e}")))?;
+    Ok(())
+}
 
 /// 统一写入文件内容，按 ExecTarget 类型分发。
 ///
@@ -124,20 +154,8 @@ pub async fn save_new_file(
         }
         ExecTarget::Wsl { .. } | ExecTarget::Remote { .. } => {
             let full_path = format!("{}/{}", base_path, rel_path);
-            let safe_fp = safe_path(&full_path);
-            let shell = remote_shell_name(target);
-
-            if let Some(parent) = Path::new(&full_path).parent() {
-                let safe_parent = safe_path(parent.to_str().unwrap_or(""));
-                let mkdir_cmd = build_mkdir_command(&safe_parent);
-                let _ = run(target, shell, &["-c", &mkdir_cmd]).await;
-            }
-
-            let escaped = content.replace('\'', "'\\''");
-            let write_cmd = format!("cat > '{safe_fp}' << 'EOF'\n{escaped}\nEOF");
-            run(target, shell, &["-c", &write_cmd])
-                .await
-                .map_err(|e| AppError::File(format!("Failed to write file: {e}")))?;
+            ensure_parent_dir(target, &full_path).await?;
+            write_remote_file(target, &full_path, &content).await?;
             Ok(rel_path)
         }
     }
@@ -162,46 +180,21 @@ fn save_new_file_local(base_path: &str, rel_path: &str, content: &str) -> Result
     std::fs::write(&full, content).map_err(|e| AppError::File(format!("Failed to write file: {e}")))
 }
 
-/// 通过 shell 创建新文件（WSL / Remote）
+/// 通过 argv 创建新文件（WSL / Remote）
 async fn create_new_file_remote(target: &ExecTarget, full_path: &str) -> Result<(), AppError> {
-    let safe_fp = safe_path(full_path);
-    let shell = remote_shell_name(target);
-
-    if let Some(parent) = std::path::Path::new(full_path).parent() {
-        let safe_parent = safe_path(parent.to_str().unwrap_or(""));
-        let mkdir_cmd = build_mkdir_command(&safe_parent);
-        let _ = run(target, shell, &["-c", &mkdir_cmd]).await;
-    }
-
-    let touch_cmd = format!("touch '{safe_fp}'");
-    run(target, shell, &["-c", &touch_cmd])
+    ensure_parent_dir(target, full_path).await?;
+    run(target, "touch", &[full_path])
         .await
-        .map_err(|e| AppError::File(format!("Failed to create file: {}", e)))?;
-
+        .map_err(|e| AppError::File(format!("Failed to create file: {e}")))?;
     Ok(())
 }
 
-/// 通过 shell 写入文件内容（WSL / Remote）
+/// 通过 base64 管道写入文件内容（WSL / Remote）
 async fn write_file_content_remote(
     target: &ExecTarget,
     full_path: &str,
     content: &str,
 ) -> Result<(), AppError> {
-    let safe_fp = safe_path(full_path);
-    let shell = remote_shell_name(target);
-
-    if let Some(parent) = std::path::Path::new(full_path).parent() {
-        let safe_parent = safe_path(parent.to_str().unwrap_or(""));
-        let mkdir_cmd = build_mkdir_command(&safe_parent);
-        let _ = run(target, shell, &["-c", &mkdir_cmd]).await;
-    }
-
-    use base64::Engine;
-    let encoded = base64::engine::general_purpose::STANDARD.encode(content.as_bytes());
-    let write_cmd = format!("echo '{}' | base64 -d > '{safe_fp}'", encoded);
-    run(target, shell, &["-c", &write_cmd])
-        .await
-        .map_err(|e| AppError::File(format!("Failed to write file: {}", e)))?;
-
-    Ok(())
+    ensure_parent_dir(target, full_path).await?;
+    write_remote_file(target, full_path, content).await
 }

@@ -1,14 +1,13 @@
 //! ignored_cache：远程 ignored 路径缓存与获取测试。
 
 use super::super::ignored_cache::{
-    apply_ignored_to_tree, build_git_ignored_command, get_or_fetch_remote_ignored_paths,
-    invalidate_remote_ignored_cache, is_remote_ignored_cache_fresh, parse_remote_ignored_output,
-    remote_ignored_cache, remote_target_id, CachedRemoteIgnoredPaths, RemoteIgnoredCacheKey,
-    MAX_IGNORED_PATHS, REMOTE_IGNORED_PATHS_TTL,
+    apply_ignored_to_tree, get_or_fetch_remote_ignored_paths, invalidate_remote_ignored_cache,
+    is_remote_ignored_cache_fresh, parse_remote_ignored_output, remote_ignored_cache,
+    remote_target_id, CachedRemoteIgnoredPaths, RemoteIgnoredCacheKey, MAX_IGNORED_PATHS,
+    REMOTE_IGNORED_PATHS_TTL,
 };
 use crate::common::connection::types::AuthMethod;
 use crate::common::executor::factory::ExecTarget;
-use crate::common::utils::command::local::safe_path;
 use crate::project::types::FileNode;
 use std::collections::HashSet;
 
@@ -216,30 +215,6 @@ async fn cached_remote_ignored_paths_refetches_after_ttl_expires() {
     assert_eq!(paths, HashSet::from(["fresh".to_string()]));
     assert_eq!(calls.load(std::sync::atomic::Ordering::SeqCst), 1);
     invalidate_remote_ignored_cache(project_id);
-}
-
-#[test]
-fn build_git_ignored_command_escapes_and_uses_ls_files() {
-    let cmd = build_git_ignored_command("/home/user/project");
-    assert!(
-        cmd.contains("git ls-files --others --ignored --exclude-standard --directory"),
-        "应使用 git ls-files 获取被忽略路径: {cmd}"
-    );
-    assert!(
-        cmd.starts_with("cd '/home/user/project'"),
-        "应 cd 到项目根: {cmd}"
-    );
-}
-
-#[test]
-fn build_git_ignored_command_escapes_single_quotes() {
-    // safe_path 将 ' 替换为 '\''，避免 shell 单引号提前闭合
-    let safe = safe_path("/home/user/it's dir");
-    let cmd = build_git_ignored_command(&safe);
-    assert!(
-        cmd.contains("it'\\''s dir"),
-        "单引号应被 safe_path 转义: {cmd}"
-    );
 }
 
 #[test]

@@ -5,14 +5,8 @@
 
 use crate::common::executor::factory::ExecTarget;
 use crate::common::runtime::run_blocking_result;
-use crate::common::utils::command::local::safe_path;
 use crate::core::exec::run;
 use crate::AppError;
-
-use super::shell_cmd::{
-    build_exists_check_command, build_mkdir_command, build_mv_command, build_rm_command,
-    remote_shell_name,
-};
 
 /// 创建目录（包含父目录），按 ExecTarget 类型分发。
 pub async fn create_directory(
@@ -68,9 +62,8 @@ pub async fn create_directory(
         }
         ExecTarget::Wsl { .. } | ExecTarget::Remote { .. } => {
             let full_path = format!("{}/{}", base_path, dir_path);
-            let safe_fp = safe_path(&full_path);
-            let mkdir_cmd = build_mkdir_command(&safe_fp);
-            run(target, remote_shell_name(target), &["-c", &mkdir_cmd])
+            // argv 形态：`mkdir` 是独立可执行文件，不经 shell。
+            run(target, "mkdir", &["-p", &full_path])
                 .await
                 .map_err(|e| AppError::File(format!("Failed to create directory: {}", e)))?;
             Ok(())
@@ -144,18 +137,12 @@ pub async fn delete_path(target: &ExecTarget, base_path: &str, path: &str) -> Re
         }
         ExecTarget::Wsl { .. } | ExecTarget::Remote { .. } => {
             let full_path = format!("{}/{}", base_path, path);
-            let safe_fp = safe_path(&full_path);
-            // 与 Local 分支保持一致的 NotFound 契约：目标不存在时报错
-            let exists_cmd = build_exists_check_command(&safe_fp);
-            let exists = run(target, remote_shell_name(target), &["-c", &exists_cmd])
-                .await
-                .map(|out| out.trim() == "yes")
-                .unwrap_or(false);
-            if !exists {
+            // argv 形态：`test` / `rm` 均为独立可执行文件，不经 shell。
+            // 与 Local 分支保持一致的 NotFound 契约：目标不存在时报错。
+            if run(target, "test", &["-e", &full_path]).await.is_err() {
                 return Err(AppError::NotFound(format!("Path does not exist: {}", path)));
             }
-            let rm_cmd = build_rm_command(&safe_fp);
-            run(target, remote_shell_name(target), &["-c", &rm_cmd])
+            run(target, "rm", &["-rf", &full_path])
                 .await
                 .map_err(|e| AppError::File(format!("Failed to delete path: {}", e)))?;
             Ok(())
@@ -251,22 +238,15 @@ pub async fn rename_path(
         ExecTarget::Wsl { .. } | ExecTarget::Remote { .. } => {
             let old_full = format!("{}/{}", base_path, old_path);
             let new_full = format!("{}/{}", base_path, new_rel);
-            let safe_old = safe_path(&old_full);
-            let safe_new = safe_path(&new_full);
-            // 与 Local 分支一致：旧路径不存在时报 NotFound
-            let exists_cmd = build_exists_check_command(&safe_old);
-            let exists = run(target, remote_shell_name(target), &["-c", &exists_cmd])
-                .await
-                .map(|out| out.trim() == "yes")
-                .unwrap_or(false);
-            if !exists {
+            // argv 形态：`test` / `mv` 均为独立可执行文件，不经 shell。
+            // 与 Local 分支一致：旧路径不存在时报 NotFound。
+            if run(target, "test", &["-e", &old_full]).await.is_err() {
                 return Err(AppError::NotFound(format!(
                     "Path does not exist: {}",
                     old_path
                 )));
             }
-            let mv_cmd = build_mv_command(&safe_old, &safe_new);
-            run(target, remote_shell_name(target), &["-c", &mv_cmd])
+            run(target, "mv", &[&old_full, &new_full])
                 .await
                 .map_err(|e| AppError::File(format!("Failed to rename path: {}", e)))?;
             Ok(())

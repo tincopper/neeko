@@ -1,7 +1,7 @@
 //! tree_read：目录树读取、远程子路径校验与读层 gitignore 过滤器测试。
 
 use super::super::tree_read::{
-    build_find_tree_command, flatten_join_result, read_dir_recursive, validate_remote_sub_path,
+    build_find_tree_args, flatten_join_result, read_dir_recursive, validate_remote_sub_path,
 };
 use super::temp_root;
 use crate::common::executor::factory::ExecTarget;
@@ -160,24 +160,22 @@ fn read_dir_tree_prunes_ignored_dirs_before_descending() {
 }
 
 #[test]
-fn find_tree_command_excludes_git_but_keeps_others() {
-    let cmd = build_find_tree_command("/safe/path", 3);
+fn find_tree_args_exclude_git_but_keep_others() {
+    let args = build_find_tree_args("/safe/path", 3);
+    let joined = args.join(" ");
     assert!(
-        cmd.contains("-not -path '*/.git/*'"),
-        "find 应排除 .git 内部内容: {}",
-        cmd
+        joined.contains("-not -path */.git/*"),
+        "find 应排除 .git 内部内容: {joined}"
     );
     assert!(
-        cmd.contains("-not -name '.git'"),
-        "find 应排除 .git 条目本身: {}",
-        cmd
+        joined.contains("-not -name .git"),
+        "find 应排除 .git 条目本身: {joined}"
     );
     assert!(
-        !cmd.contains("*/node_modules/*"),
-        "node_modules 不再由后端 find 排除: {}",
-        cmd
+        !joined.contains("node_modules"),
+        "node_modules 不再由后端 find 排除: {joined}"
     );
-    assert!(cmd.contains("-maxdepth 3"), "应保留最大深度: {}", cmd);
+    assert!(joined.contains("-maxdepth 3"), "应保留最大深度: {joined}");
 }
 
 // ── 读层 gitignore 过滤器解析（watcher 挂载 race 兜底）─────────────────

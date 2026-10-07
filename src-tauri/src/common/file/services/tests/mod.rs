@@ -3,7 +3,6 @@
 
 mod ignored_cache;
 mod path_ops;
-mod shell_cmd;
 mod tree_read;
 
 use std::fs;

@@ -4,7 +4,6 @@
 use crate::common::executor::factory::ExecTarget;
 use crate::common::file::watcher::GitIgnoreFilter;
 use crate::common::git::parsers::build_file_tree_from_find;
-use crate::common::utils::command::local::safe_path;
 use crate::core::exec::collect;
 use crate::project::types::FileNode;
 use crate::AppError;
@@ -79,20 +78,20 @@ pub async fn read_dir_tree(
                 Some(sp) => format!("{}/{}", root_path, sp),
                 None => root_path.to_string(),
             };
-            let safe_ap = safe_path(&actual_path);
-            let cmd = build_find_tree_command(&safe_ap, max_depth);
-            let shell = if matches!(target, ExecTarget::Wsl { .. }) {
-                "bash"
-            } else {
-                "sh"
-            };
-            let output = collect(target, shell, &["-c", &cmd], None)
+            let args = build_find_tree_args(&actual_path, max_depth);
+            let arg_refs: Vec<&str> = args.iter().map(String::as_str).collect();
+            // argv 形态：`find` 是独立可执行文件；stderr 由 `collect` 分开保留（原本的
+            // `2>/dev/null` 不再需要），尾部 `| sort` 改在 Rust 侧排序。
+            let output = collect(target, "find", &arg_refs, None)
                 .await
                 .map_err(|e| AppError::File(format!("Failed to read dir tree: {}", e)))?;
 
             // find 非零退出（如个别目录无权限）不代表整树失败：stdout 仍包含已扫描路径。
             // 故用 collect（保留非零退出）而非 run（非零即 Err），避免整树被丢弃。
-            let find_output = String::from_utf8_lossy(&output.stdout);
+            let raw = String::from_utf8_lossy(&output.stdout);
+            let mut lines: Vec<&str> = raw.lines().collect();
+            lines.sort_unstable();
+            let find_output = lines.join("\n");
             let mut tree = build_file_tree_from_find(&find_output, &actual_path);
             if let Some(sp) = effective_sub {
                 prefix_paths(&mut tree, sp);
@@ -110,16 +109,21 @@ pub async fn read_dir_tree(
     }
 }
 
-/// 构建 WSL/Remote 文件树扫描命令。
+/// 构建 WSL/Remote 文件树扫描的 `find` argv。
 /// 仅排除 git 元数据目录 `.git`（`git status --ignored` 永不报告它，且不是用户工作文件）；
 /// `node_modules`、`target` 等改由前端基于 .gitignore 灰显，不再在后端硬编码排除。
-pub(super) fn build_find_tree_command(safe_path: &str, max_depth: u32) -> String {
-    format!(
-        "find '{safe_path}' -maxdepth {max_depth} \
-         -not -path '*/.git/*' \
-         -not -name '.git' \
-          2>/dev/null | sort"
-    )
+pub(super) fn build_find_tree_args(actual_path: &str, max_depth: u32) -> Vec<String> {
+    vec![
+        actual_path.to_string(),
+        "-maxdepth".to_string(),
+        max_depth.to_string(),
+        "-not".to_string(),
+        "-path".to_string(),
+        "*/.git/*".to_string(),
+        "-not".to_string(),
+        "-name".to_string(),
+        ".git".to_string(),
+    ]
 }
 
 /// 读层现场构建的 gitignore 过滤器缓存（键 = 过滤器根）。

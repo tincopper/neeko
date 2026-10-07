@@ -4,15 +4,12 @@
 //! （与 Local `GitIgnoreFilter` 同语义）；watcher 失效是主失效路径，TTL 仅兜底。
 
 use crate::common::executor::factory::ExecTarget;
-use crate::common::utils::command::local::safe_path;
 use crate::core::exec::collect;
 use crate::project::types::FileNode;
 use std::collections::{HashMap, HashSet};
 use std::future::Future;
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, Instant};
-
-use super::shell_cmd::remote_shell_name;
 
 /// 远程 ignored 路径解析上限：异常仓库 / 异常输出不能造成无界内存增长。
 pub(super) const MAX_IGNORED_PATHS: usize = 100_000;
@@ -176,15 +173,17 @@ where
     paths
 }
 
-/// 构建远程 `git ls-files --ignored` 命令（路径已 safe_path 转义）。
+/// 远程 `git ls-files --ignored` 的 argv。
 /// `--directory` 将整个被忽略目录折叠为单条路径；`--exclude-standard` 尊重
 /// `.gitignore` / `.git/info/exclude` / 全局排除。输出为相对项目根的路径，
 /// 目录带尾斜杠（`node_modules/`）。
-pub(super) fn build_git_ignored_command(safe_root: &str) -> String {
-    format!(
-        "cd '{safe_root}' && git ls-files --others --ignored --exclude-standard --directory 2>/dev/null"
-    )
-}
+const GIT_IGNORED_ARGS: &[&str] = &[
+    "ls-files",
+    "--others",
+    "--ignored",
+    "--exclude-standard",
+    "--directory",
+];
 
 /// 远程获取被忽略路径集合（相对项目根，尾斜杠已去除）。
 /// 非 git 项目 / git 不可用时返回空集合（树保持原样，退化为仅 .git 硬过滤）。
@@ -192,10 +191,8 @@ pub(super) async fn fetch_remote_ignored_paths(
     target: &ExecTarget,
     root_path: &str,
 ) -> HashSet<String> {
-    let safe_root = safe_path(root_path);
-    let cmd = build_git_ignored_command(&safe_root);
-    let shell = remote_shell_name(target);
-    let output = collect(target, shell, &["-c", &cmd], None).await;
+    // argv 形态：`current_dir` 由 executor 渲染成登录脚本的 `cd`，不经 shell。
+    let output = collect(target, "git", GIT_IGNORED_ARGS, Some(root_path)).await;
     match output {
         Ok(out) if out.exit_code == 0 => {
             parse_remote_ignored_output(&String::from_utf8_lossy(&out.stdout))
