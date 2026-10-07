@@ -1,0 +1,6 @@
+{"_example": "Fill with {\"file\": \"<path>\", \"reason\": \"<why>\"}. Put spec/research files only — no code paths. Run `python3 .trellis/scripts/get_context.py --mode packages` to list available specs. Delete this line once real entries are added."}
+{"file": "CONTRIBUTING.md", "reason": "护栏作者契约：GUARD/check/自测、退出码、预算"}
+{"file": "tools/guards/core/contract.py", "reason": "Context/Guard/GuardResult 唯一接口"}
+{"file": "tools/guards/core/ledger.py", "reason": "台账加载与非空约束"}
+{"file": "tools/guards/checks/check_agents_md_size.py", "reason": "机读台账+一致性判据范式"}
+{"file": "tools/guards/tests/support.py", "reason": "夹具设施 make_repo/context/temp_repo"}

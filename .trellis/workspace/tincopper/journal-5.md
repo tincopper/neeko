@@ -1488,3 +1488,127 @@ commit cancel 与 exit 到同一个可重调 KillFn（Arc<dyn Fn()->KillFuture>�
 ### Next Steps
 
 - None - task complete
+
+
+## Session 252: 不变量强制层级：元机制 + 三条延期项落层
+
+**Date**: 2026-10-06
+**Task**: 不变量强制层级：元机制 + 三条延期项落层
+**Branch**: `main`
+
+### Summary
+
+把『约定无机制』类债务根治：新增 invariants.json 台账 + check_invariant_enforcement 门禁（含 guard→红线引用完整性），并把三条延期项落层 —— activate 收 WatcherEventSink 端口（依赖倒置）+ services 禁 tauri 护栏、status 收敛到 selectors + 判据 7、组件 ≤300 ratchet（基线 59）。新增 4 条护栏 / 三份台账 / 共享 AppStateWrapper 夹具（消 3 份重复）；pnpm lint（14 护栏/263 自测）、test:fe 503 文件 4514 通过、test:rust、test:host 全绿；未提交。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+(No commits - planning session)
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
+
+
+## Session 253: WSL/SSH 代码层闭合：远端 status 编排可测 + 远端侧栏 chip 与本地同源
+
+**Date**: 2026-10-06
+**Task**: WSL/SSH 代码层闭合：远端 status 编排可测 + 远端侧栏 chip 与本地同源
+**Branch**: `main`
+
+### Summary
+
+① 把 activate 抽出 activate_with(transport, has_push_producer) 内部缝，用本地 transport + has_push_producer=false 驱动原「远端 pull 分支」，新增 2 条 cargo test（收口+现算+不挂载+不产事件；未挂载读必现算并登记），AC13 真机项降级为确认；② 远端侧栏 ConnectionWorktreeList 的 chip 改为订阅 projectStore.statuses + 挂载级新鲜度守卫（失败=未知不出 chip 且可重试，不再写 0/0、不再一生只拉一次），并抽共享 hook useWorktreeChangeStats 供本地/远端侧栏复用（消重 + 组件 300→252）。护栏 14/263 自测、test:rust 1419+103、test:fe 504 文件/4517、test:host 全绿；未提交。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+(No commits - planning session)
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
+
+
+## Session 254: 修复 neeko-check 违规清单：StrictMode 丢结果 + 订阅粒度 + 护栏误伤 + 夹具重复
+
+**Date**: 2026-10-07
+**Task**: 修复 neeko-check 违规清单：StrictMode 丢结果 + 订阅粒度 + 护栏误伤 + 夹具重复
+**Branch**: `main`
+
+### Summary
+
+Block：useWorktreeChangeStats 误把组件生命周期取消（cancelled）用到全局 store 写入上，StrictMode 重挂下『首轮丢弃 + 次轮跳过』⇒ chip 永不出现；删除 cancelled 并补 StrictMode 回归（临时回插 cancelled 实测变红→绿）。Warning：改用 useShallow 按单元浅订阅 selectEntries（别的单元/项目快照不再重渲本列表），并删除随之无用的 selectStatuses（更紧的封装）；check_service_no_delivery_dep 匹配前剥字符串与行内注释（消误伤，+2 测试）。Nit：init_git_repo 抽到 common/testing（status.rs 与 lifecycle_tests 共用，消第 2 份重复）；『不重拉』断言去 setTimeout 改确定性；台账指针补 note。门禁：pnpm lint（14 护栏/265 自测）、test:rust 1419+103、test:fe 504 文件/4518、test:host 全绿；未提交。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+(No commits - planning session)
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
+
+
+## Session 255: 收口 neeko-check Nit 清单：单飞去重 + 已拉清单收敛 + 护栏容错
+
+**Date**: 2026-10-07
+**Task**: 收口 neeko-check Nit 清单：单飞去重 + 已拉清单收敛 + 护栏容错
+**Branch**: `main`
+
+### Summary
+
+逐条优化：① useWorktreeChangeStats 的 ChangeStat 收为非导出；② 已拉清单随列表收敛（移出后再加回会重拉、不再无界增长）；③ 新增进程级单飞 inFlight，本地+远端侧栏同挂同一单元不再 2× RPC（+1 测试）；④ check_component_size._line_count 容错（非 UTF-8/IO 跳过而非打成护栏 ERROR）；⑤ check_invariant_enforcement 真实台账用例改断言 !=ERROR（台账写错报 VIOLATION 而非伪装成护栏坏了）；⑥ check_service_no_delivery_dep docstring 声明行级字符串剥离的边界。门禁：pnpm lint（14 护栏/265 自测）、test:rust 1419+103、test:fe 504 文件/4520、test:host 全绿；未提交。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+(No commits - planning session)
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

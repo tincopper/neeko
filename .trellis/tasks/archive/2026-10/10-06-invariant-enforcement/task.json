@@ -1,0 +1,29 @@
+{
+  "id": "invariant-enforcement",
+  "name": "invariant-enforcement",
+  "title": "不变量强制层级：元机制 + 三条落地",
+  "description": "根治「约定无机制」类债务：建立不变量→强制层级→落点的机读台账与一致性门禁，并把三条延期项落层。",
+  "status": "completed",
+  "dev_type": null,
+  "scope": null,
+  "package": null,
+  "priority": "P1",
+  "creator": "tincopper",
+  "assignee": "tincopper",
+  "createdAt": "2026-10-06",
+  "completedAt": "2026-10-06",
+  "branch": null,
+  "base_branch": "main",
+  "worktree_path": null,
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [
+    "10-06-invariant-ledger-guard",
+    "10-06-invariant-landing"
+  ],
+  "parent": null,
+  "relatedFiles": [],
+  "notes": "",
+  "meta": {}
+}

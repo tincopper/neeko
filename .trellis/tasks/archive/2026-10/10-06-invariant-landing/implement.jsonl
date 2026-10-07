@@ -1,0 +1,6 @@
+{"_example": "Fill with {\"file\": \"<path>\", \"reason\": \"<why>\"}. Put spec/research files only — no code paths. Run `python3 .trellis/scripts/get_context.py --mode packages` to list available specs. Delete this line once real entries are added."}
+{"file": ".trellis/spec/backend/git-domain.md", "reason": "git 服务层/端口/挂载契约"}
+{"file": ".trellis/spec/frontend/state-management.md", "reason": "store selector 与单一读取口"}
+{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "组件 ≤300 行红线"}
+{"file": ".trellis/spec/unit-test/backend-testing.md", "reason": "Rust 测试夹具与 tempdir 约定"}
+{"file": ".trellis/spec/guides/code-reuse-thinking-guide.md", "reason": "DRY：三份夹具抽取的判据"}
