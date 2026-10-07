@@ -37,7 +37,7 @@ pub fn get_wsl_directories(distro: &str, path: Option<&str>) -> Result<Vec<Strin
         let target = ExecTarget::Wsl {
             distro: distro.clone(),
         };
-        let output = run(&target, "bash", &["-c", &cmd])
+        let output = crate::core::exec::run_script(&target, &cmd)
             .await
             .map_err(|e| AppError::Wsl(format!("Failed to list WSL directories: {}", e)))?;
         let entries: Vec<String> = output
@@ -58,7 +58,7 @@ pub fn get_wsl_home_dir(distro: &str) -> Result<String, AppError> {
         let target = ExecTarget::Wsl {
             distro: distro.clone(),
         };
-        let output = run(&target, "bash", &["-c", "echo $HOME"])
+        let output = run(&target, "printenv", &["HOME"])
             .await
             .map_err(|e| AppError::Wsl(format!("Failed to get WSL home dir: {}", e)))?;
         Ok(output.trim().to_string())

@@ -70,7 +70,7 @@ pub async fn get_remote_home_dir(
         username: username.clone(),
         auth: auth.clone(),
     };
-    crate::core::exec::run(&target, "sh", &["-c", "echo $HOME"])
+    crate::core::exec::run(&target, "printenv", &["HOME"])
         .await
         .map(|s| s.trim().to_string())
         .map_err(|e| AppError::from(anyhow::anyhow!("{}", e)))
