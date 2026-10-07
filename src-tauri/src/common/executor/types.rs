@@ -130,7 +130,7 @@ impl ExecChild {
     }
 
     /// Consume into wait future + re-callable kill action (after stdio taken).
-    #[must_use]
+    #[must_use = "dropping the tuple drops both the wait future and the kill handle"]
     pub fn into_wait_and_kill(self) -> (WaitFuture, KillFn) {
         (self.wait, self.kill)
     }

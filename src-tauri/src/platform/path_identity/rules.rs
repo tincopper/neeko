@@ -114,7 +114,7 @@ fn strip_windows_prefix(raw: &str) -> (&str, bool) {
     (raw, false)
 }
 
-fn is_drive_segment(seg: &str) -> bool {
+const fn is_drive_segment(seg: &str) -> bool {
     let bytes = seg.as_bytes();
     bytes.len() == 2 && bytes[1] == b':' && bytes[0].is_ascii_alphabetic()
 }
