@@ -436,7 +436,7 @@ fn two_units_of_one_project_keep_independent_snapshots() {
     assert_eq!(main_snap.entries[0].path, Path::new("main-only.txt"));
     assert_eq!(wt_snap.entries[0].path, Path::new("wt-only.txt"));
     assert_eq!(main_snap.worktree_path, None);
-    assert_eq!(wt_snap.worktree_path.as_deref(), Some(wt_unit.work_dir()));
+    assert_eq!(wt_snap.worktree_path.as_deref(), wt_unit.worktree_path());
     assert_eq!(main_snap.project_id, "p1");
     assert_eq!(wt_snap.project_id, "p1");
 }
@@ -623,7 +623,7 @@ fn poke_after_unit_switch_recomputes_the_unit_that_was_written() {
         unit_b.key(),
         "快照必须落在 worktree 单元的槽上"
     );
-    assert_eq!(snap_b.worktree_path.as_deref(), Some(unit_b.work_dir()));
+    assert_eq!(snap_b.worktree_path.as_deref(), unit_b.worktree_path());
     assert_eq!(
         paths_of(&snap_b.entries),
         vec![Path::new("worktree-only.txt")],

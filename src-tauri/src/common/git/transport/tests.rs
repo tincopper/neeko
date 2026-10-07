@@ -203,16 +203,26 @@ fn should_classify_other_for_empty_or_unknown() {
     );
 }
 
-// ── shell_quote ────────────────────────────────────────────────────────
+// ── argv 形态（行为冻结 golden）─────────────────────────────────────────
+//
+// 迁移前 Local 拼 `git -c k=v <args>`、WSL/SSH 拼 `git -c k=v -- <args>`（`--` 在
+// 全局选项与子命令之间，实测被 git 拒绝：`unknown option: --`）。统一为 argv 形态后
+// 不再插入 `--`，且调用方零 shell 拼装 —— 本用例把「最终 argv」钉死。
 
 #[test]
-fn should_shell_quote_simple_value() {
-    assert_eq!(shell_quote("hello"), "'hello'");
+fn git_argv_matches_pre_migration_shape_and_omits_stray_double_dash() {
+    let opts = GitExecOptions {
+        env: &[],
+        extra_config: &[("core.autocrlf", "false")],
+    };
+    let argv = build_git_argv(opts.config_args(), &["status", "--porcelain"]);
+    assert_eq!(argv, ["-c", "core.autocrlf=false", "status", "--porcelain"]);
 }
 
 #[test]
-fn should_shell_quote_embedded_quote() {
-    assert_eq!(shell_quote("a'b"), "'a'\\''b'");
+fn git_argv_without_extra_config_is_just_the_args() {
+    let argv = build_git_argv(Vec::new(), &["rev-parse", "--abbrev-ref", "HEAD"]);
+    assert_eq!(argv, ["rev-parse", "--abbrev-ref", "HEAD"]);
 }
 
 // ── run_git_opts: env + extra_config 注入 ───────────────────────────────

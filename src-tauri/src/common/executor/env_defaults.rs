@@ -22,7 +22,8 @@
 //! 该副作用会与 IDE / 用户手工 git 争 `.git/index.lock`（现场：两次 `git commit` 因
 //! `Unable to create '.git/index.lock': File exists` 失败）。注入点有两处，共同覆盖全部 git 调用：
 //! 1. [`crate::core::exec`]（本地执行 facade；`status_worker` / `collapsed_probe` 走的同步桥）；
-//! 2. [`crate::common::git::transport`]（Local/WSL/SSH 三端；WSL/SSH 会把 env 渲染成远端 shell 前缀）。
+//! 2. [`crate::common::git::transport`]（Local/WSL/SSH 三端；env 经 `SpawnOptions` 由 executor 送达，
+//!    WSL/SSH 由 executor 渲染进登录脚本）；
 //!
 //! **明确否决**进程级 `std::env::set_var`：会被 Tauri 拉起的终端 / agent 子进程继承，
 //! 等于改变用户可见环境（用户自己敲的 `git status` 也不再刷新 index）。

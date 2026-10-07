@@ -13,8 +13,8 @@ use std::time::Duration;
 
 use crate::common::executor::factory::{create_executor, ExecTarget};
 use crate::common::executor::{
-    collect_child_output_streaming_cancellable, with_default_env, ExecChunkSink, ExecError,
-    ExecOutput, SpawnOptions,
+    collect_child_output, collect_child_output_streaming_cancellable, with_default_env,
+    ExecChunkSink, ExecError, ExecOutput, SpawnOptions,
 };
 use anyhow::Result;
 use async_trait::async_trait;
@@ -272,23 +272,28 @@ pub trait GitTransport: Send + Sync {
 
 // ── Shared helper ──────────────────────────────────────────────────────────
 
-/// POSIX single-quote shell escaping: wraps value in `'...'` and escapes `'` as `'\''`.
-pub(crate) fn shell_quote(v: &str) -> String {
-    format!("'{}'", v.replace('\'', "'\\''"))
+/// 拼 git argv：`-c k=v` 配置项在前，用户 args 在后。
+///
+/// 纯函数，供 golden 测试钉住「迁移前逐字一致」的 argv 形态（尤其是**不**插入 `--`，
+/// 见 `.trellis/tasks/10-07-unify-command-execution/design.md` §5.3）。
+pub(crate) fn build_git_argv(config_args: Vec<String>, args: &[&str]) -> Vec<String> {
+    config_args
+        .into_iter()
+        .chain(args.iter().map(ToString::to_string))
+        .collect()
 }
 
-/// 共享的「spawn 包装器 → 流式采集 →（可选）墙钟 / 取消」核心。
+/// 共享的「spawn → 流式采集 →（可选）墙钟 / 取消」核心。
 ///
-/// Local / WSL / SSH 的差异只有 `program`（`sh` / `bash`）与 shell 命令字符串；
-/// 生命周期（stdin 关闭、`kill_tree` 树杀、取消赛跑、错误映射）完全同构 —— 收敛到
-/// 这里，避免三份复制各自漂移（其中一个修了另一个忘改）。
+/// Local / WSL / SSH 完全同构：调用方只给 `SpawnOptions`（命令 + 参数 + cwd + env），
+/// 「怎么跑」（要不要 shell、哪个 shell、如何 `cd`）由 executor 按执行目标决定 —— 传输层
+/// 不再感知 shell（红线 2）。生命周期（`kill_tree` 树杀、取消赛跑、错误映射）保留在此。
 ///
 /// `label` 用于取消 / 超时错误文案；`timeout: None` = 无墙钟（长操作，
 /// 见 [`git_command_timeout`]）。
-pub(crate) async fn run_shell_streaming(
+pub(crate) async fn run_spawn_streaming(
     target: &ExecTarget,
-    program: &str,
-    shell_cmd: &str,
+    opts: SpawnOptions<'_>,
     label: &str,
     timeout: Option<Duration>,
     hooks: GitRunHooks,
@@ -304,7 +309,7 @@ pub(crate) async fn run_shell_streaming(
 
     let executor = create_executor(target);
     let child = executor
-        .spawn_with(SpawnOptions::new(program, &["-c", shell_cmd]).with_kill_tree())
+        .spawn_with(opts.with_kill_tree())
         .await
         .map_err(|e| anyhow::anyhow!("git command failed to spawn: {}", e))?;
     // 存活期登记**同一个** kill 动作（与取消共用）；正常完成 / 取消时 lease drop 注销。
@@ -378,11 +383,21 @@ impl GitTransport for ExecTarget {
         opts: GitExecOptions<'_>,
         hooks: GitRunHooks,
     ) -> Result<String> {
+        if work_dir.trim().is_empty() {
+            return Err(anyhow::anyhow!(
+                "git command called with empty work directory"
+            ));
+        }
+
         let is_network_op = args
             .first()
             .map(|a| matches!(*a, "push" | "fetch" | "pull" | "clone"))
             .unwrap_or(false);
-        let timeout = git_command_timeout(args);
+        // 墙钟策略逐字保持迁移前行为：Local 有上界，WSL/SSH 无（见 git_command_timeout）。
+        let timeout = match self {
+            ExecTarget::Local => git_command_timeout(args),
+            ExecTarget::Wsl { .. } | ExecTarget::Remote { .. } => None,
+        };
 
         // 只读语义默认生效（见 common::executor::env_defaults）：读路径（status 等）不再 refresh index，
         // 避免与 IDE / 用户 git 争 index 锁。见 common::executor::env_defaults 的第一性依据。
@@ -391,19 +406,17 @@ impl GitTransport for ExecTarget {
             env.push(("GIT_TERMINAL_PROMPT", GIT_TERMINAL_PROMPT));
         }
 
-        let config_args = opts.config_args();
+        let argv = build_git_argv(opts.config_args(), args);
+        let arg_refs: Vec<&str> = argv.iter().map(String::as_str).collect();
+        let label = format!("git {}", argv.join(" "));
 
-        match self {
-            ExecTarget::Local => {
-                local::run_git_local(self, args, work_dir, &env, config_args, timeout, hooks).await
-            }
-            ExecTarget::Wsl { .. } => {
-                wsl::run_git_wsl(self, args, work_dir, &env, config_args, hooks).await
-            }
-            ExecTarget::Remote { .. } => {
-                ssh::run_git_remote(self, args, work_dir, &env, config_args, hooks).await
-            }
-        }
+        // 「怎么跑」全部交给 executor：Local 直启（current_dir 原生吃 `\\?\`），
+        // WSL/SSH 由 executor 包登录 shell 并渲染 `export …; cd …; exec git …`。
+        let spawn = SpawnOptions::new("git", &arg_refs)
+            .with_current_dir(work_dir)
+            .with_env(&env);
+        let output = run_spawn_streaming(self, spawn, &label, timeout, hooks).await?;
+        finish_git_output(output, &label)
     }
 
     async fn run_git_with_stdin(
@@ -413,28 +426,52 @@ impl GitTransport for ExecTarget {
         opts: GitExecOptions<'_>,
         stdin: &[u8],
     ) -> Result<String> {
+        use tokio::io::AsyncWriteExt;
+
         // 只读语义默认生效（见 common::executor::env_defaults）：读路径（status 等）不再 refresh index，
         // 避免与 IDE / 用户 git 争 index 锁。见 common::executor::env_defaults 的第一性依据。
         let mut env: Vec<(&str, &str)> = with_default_env("git", opts.env);
         env.push(("GIT_TERMINAL_PROMPT", GIT_TERMINAL_PROMPT));
 
-        let config_args = opts.config_args();
-        let mut full_args: Vec<String> = config_args;
-        full_args.extend(args.iter().map(|s| s.to_string()));
+        let full_args = build_git_argv(opts.config_args(), args);
+        let arg_refs: Vec<&str> = full_args.iter().map(String::as_str).collect();
         let command = format!("git {}", full_args.join(" "));
 
-        match self {
-            ExecTarget::Local => {
-                local::run_git_with_stdin_local(self, work_dir, &env, &full_args, &command, stdin)
-                    .await
-            }
-            ExecTarget::Wsl { .. } => {
-                ssh::exec_git_with_stdin_remote(self, &full_args, &command, stdin).await
-            }
-            ExecTarget::Remote { .. } => {
-                ssh::exec_git_with_stdin_remote(self, &full_args, &command, stdin).await
-            }
+        let executor = create_executor(self);
+        let mut child = executor
+            .spawn_with(
+                SpawnOptions::new("git", &arg_refs)
+                    .with_current_dir(work_dir)
+                    .with_env(&env),
+            )
+            .await
+            .map_err(|e| anyhow::anyhow!("failed to spawn git: {}", e))?;
+
+        if let Some(mut child_stdin) = child.stdin.take() {
+            child_stdin
+                .write_all(stdin)
+                .await
+                .map_err(|e| anyhow::anyhow!("failed to write git stdin: {}", e))?;
         }
+
+        let timeout = match self {
+            ExecTarget::Local => Some(LOCAL_GIT_TIMEOUT),
+            ExecTarget::Wsl { .. } | ExecTarget::Remote { .. } => None,
+        };
+        let output = match timeout {
+            Some(limit) => tokio::time::timeout(limit, collect_child_output(child))
+                .await
+                .map_err(|_| {
+                    anyhow::anyhow!(
+                        "git command timed out after {}s: {}",
+                        limit.as_secs(),
+                        command
+                    )
+                })?,
+            None => collect_child_output(child).await,
+        }
+        .map_err(|e| anyhow::anyhow!("failed to collect git output: {}", e))?;
+        finish_git_output(output, &command)
     }
 
     fn open_repo(&self, path: &str) -> Option<git2::Repository> {
