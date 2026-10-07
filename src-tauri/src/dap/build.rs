@@ -4,7 +4,7 @@
 //! 校验、Windows 命令转引、shell argv 组装、执行与双流截断全部内聚在本模块，命令
 //! 层不再平铺进程控制细节。产物语义解析仍留前端纯函数（本服务只回原文）。
 
-use super::launch_support::{build_shell_argv, resolve_build_dir, windows_cmd_quote};
+use super::launch_support::{resolve_build_dir, windows_cmd_quote};
 use super::types::DebugBuildOutput;
 use crate::common::executor::factory::ExecTarget;
 use crate::AppError;
@@ -51,8 +51,9 @@ pub async fn build_test_binary(
     } else {
         command.to_string()
     };
-    let (shell, args) = build_shell_argv(&command);
-    let output = crate::core::exec::collect(&target, shell, &args, Some(dir.as_str()))
+    // 统一 script 形态：shell 选择（Windows `cmd /C` / Unix `sh -c`）由
+    // `core::exec::collect_script` → `platform::shell_launch::shell_argv` 决定。
+    let output = crate::core::exec::collect_script(&target, &command, Some(dir.as_str()), &[])
         .await
         .map_err(|e| AppError::Dap(format!("debug build spawn failed: {e}")))?;
     Ok(DebugBuildOutput {

@@ -56,7 +56,7 @@ pub async fn run_pre_launch_task(target: &ExecTarget, task: &str) -> Result<(), 
         return Ok(());
     }
     log::info!("[DAP] preLaunchTask: {task}");
-    let output = exec::collect(target, "bash", &["-lc", task], None)
+    let output = exec::collect_script(target, task, None, &[])
         .await
         .map_err(|e| AppError::Dap(format!("preLaunchTask failed to start: {e}")))?;
     if output.exit_code != 0 {

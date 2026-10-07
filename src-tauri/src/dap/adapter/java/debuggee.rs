@@ -36,12 +36,11 @@ impl JavaDebuggee {
     /// 无需再做兜底。成功返回后子进程生命周期由 [`ProcessGuard`] 接管。
     pub(crate) async fn launch(
         target: &ExecTarget,
-        shell: &str,
-        args: &[&str],
+        script: &str,
         dir: &str,
     ) -> Result<Self, AppError> {
         // ── 1. spawn 测试 JVM（suspend=y 挂到 attach 后才跑测试）──────────────
-        let mut child = crate::core::exec::spawn_with(target, shell, args, Some(dir))
+        let mut child = crate::core::exec::spawn_script(target, script, Some(dir))
             .await
             .map_err(|e| AppError::Dap(format!("java debug JVM spawn failed: {e}")))?;
         let stdout = child

@@ -86,19 +86,6 @@ pub(crate) fn windows_cmd_quote(cmd: &str) -> String {
     out
 }
 
-/// Shell argv for an opaque build command string: Unix `sh -c`, Windows
-/// `cmd /C` (mirrors `platform::shell_launch` without the PTY builder).
-pub(crate) const fn build_shell_argv(command: &str) -> (&'static str, [&str; 2]) {
-    #[cfg(windows)]
-    {
-        ("cmd", ["/C", command])
-    }
-    #[cfg(not(windows))]
-    {
-        ("sh", ["-c", command])
-    }
-}
-
 /// 泵附属 debuggee 的输出（Debug Console）直到通道关闭，随后执行 `on_exit` 收尾。
 ///
 /// **为什么"关闭后收尾"也在这里**：通道关闭（stdout/stderr 双 EOF）是"被调试进程已退出"
@@ -125,21 +112,6 @@ pub(crate) async fn pump_output<F, Fe, Fut>(
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    #[cfg(unix)]
-    fn shell_argv_uses_sh_dash_c_on_unix() {
-        let (shell, args) = build_shell_argv("cargo test --no-run");
-        assert_eq!(shell, "sh");
-        assert_eq!(args, ["-c", "cargo test --no-run"]);
-    }
-
-    #[test]
-    fn shell_argv_carries_full_command_verbatim() {
-        let cmd = "cargo test 'parse_simple' --no-run --message-format=json";
-        let (_, args) = build_shell_argv(cmd);
-        assert_eq!(args[1], cmd);
-    }
 
     #[test]
     fn windows_cmd_quote_rewrites_posix_quotes_to_cmd_quotes() {

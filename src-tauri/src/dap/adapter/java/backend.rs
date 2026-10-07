@@ -143,15 +143,15 @@ impl JavaBackend {
         } else {
             command.clone()
         };
-        let (shell, args) = launch_support::build_shell_argv(&command);
-
+        // script 形态：Windows 本地经 `cmd /C`、Unix `sh -c`，WSL/SSH 经登录 shell ——
+        // shell 选择由执行层决定，本处不感知。
         // ── 1-3. spawn 测试 JVM → 解析 jdwp 端口 → 输出泵 + 清理句柄 ───────────
         // 进程生命周期内聚在 JavaDebuggee（失败路径自带清理）。
         let JavaDebuggee {
             port,
             output_rx,
             guard,
-        } = JavaDebuggee::launch(&target, shell, &args, dir.as_str()).await?;
+        } = JavaDebuggee::launch(&target, &command, dir.as_str()).await?;
         // ── 4. attach 配置（JavaAdapter.build_launch_args 消费 port）───────────
         let config = LaunchConfig {
             name: format!("Debug test: {test_name}"),
