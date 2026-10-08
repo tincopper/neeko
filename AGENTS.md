@@ -39,10 +39,12 @@ docs/                架构、需求与设计文档
 .trellis/            spec 知识库、任务、会话日志（Trellis 管理）
 ```
 
-`packages/` 下的包**不纳入本地与 CI 门禁**（所以根 `lint` / `test` / `check` 与 lefthook glob 都不覆盖
-它）：它的门禁是发布时的 `prepublishOnly`（自带的 `check` / `test` / `lint:package`）。要纳入时，需同时
-新增根脚本 + CI job + lefthook glob + `.github/BRANCH_PROTECTION.md` 的 required checks —— 只改一处会
-得到一条看起来存在、实际不触发的门。
+`packages/` 下的包**不纳入本地与 CI 门禁**（所以根 `lint` / `test` / `check` 与 `ledger/gates.json`
+都不覆盖它）：它的门禁是发布时的 `prepublishOnly`（自带的 `check` / `test` / `lint:package`）。要纳入时，
+在 `tools/guards/ledger/gates.json` 增一条声明并同步以下接线：根脚本 + CI job +
+`.github/BRANCH_PROTECTION.md` 的 required checks —— 只改一处会得到一条看起来存在、实际不触发的门。
+声明与 CI/lefthook 接线的一致性由 `check_gate_topology`（A1/A3）机器校验；`BRANCH_PROTECTION` 的
+required check 核对属批次 2。
 
 子目录清单一律以 `ls` / Glob 为准，本文档不维护树状图。详版：`docs/ARCHITECTURE.md`、
 `.trellis/spec/{backend,frontend}/directory-structure.md`。
@@ -51,9 +53,9 @@ docs/                架构、需求与设计文档
 
 ```bash
 pnpm install                 pnpm tauri dev            pnpm tauri build
-pnpm lint          # 全部静态检查：lint:fe（eslint + tsc）+ lint:rust（fmt + clippy）+ 全部护栏
-pnpm check         # 本地全量门禁：lint + test（各自三套串接，组成见 package.json）
-pnpm guards list   # 列当前护栏清单与其 stage/scope（清单即 tools/guards/checks/ 目录）
+pnpm lint          # 全部静态检查：进程内判据 + lint_fe（eslint + tsc）+ lint_rust（fmt + clippy）
+pnpm check         # 本地全量门禁：lint + test（单次框架调用，组成声明在 ledger/gates.json）
+pnpm guards list   # 列当前门禁清单与其 stage/scope/argv（checks/ 目录 + ledger/gates.json）
 pnpm lint:fix      # 写回修复：cargo fmt（Rust）+ eslint --fix（前端）
 pnpm type-check    # 仅 TypeScript 类型检查
 pnpm test          # 全部三套：test:fe（前端）+ test:rust + test:host

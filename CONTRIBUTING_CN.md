@@ -57,19 +57,19 @@ pnpm tauri dev        # 启动开发模式（前端端口 1420）
 | --- | --- |
 | `pnpm tauri dev` | 运行开发模式 |
 | `pnpm tauri build` | 构建发布版本 |
-| `pnpm lint` | 全部静态检查：`lint:fe` + `lint:rust` + 全部护栏（不含测试） |
-| `pnpm lint:fe` | 前端静态检查（ESLint + `tsc --noEmit`）—— `pre-commit` 跑的就是这条 |
+| `pnpm lint` | 全部静态检查：进程内判据 + `lint:fe` + `lint:rust`（不含测试） |
+| `pnpm lint:fe` | 前端静态检查（ESLint + `tsc --noEmit`）—— `lint_fe` gate 的 argv |
 | `pnpm lint:rust` | Rust 静态检查（`cargo fmt --check` + `clippy -D warnings`） |
 | `pnpm lint:fix` | 写回修复：`cargo fmt`（Rust）+ ESLint `--fix`（前端） |
 | `pnpm type-check` | 仅 TypeScript 类型检查 |
-| `pnpm test` | 全部三套：`test:fe` + `test:rust` + `test:host` |
+| `pnpm test` | 全部测试门禁：`test:fe` + `test:rust` + `test:host` |
 | `pnpm test:fe` | 运行一次前端测试（监听用 `test:fe:watch`） |
 | `pnpm test:fe:coverage` | 带覆盖率跑前端测试 —— 会执行 `vitest.config.ts` 里的地板 |
 | `pnpm test:rust` | 运行 Rust 测试 |
 | `pnpm test:rust:coverage` | 带覆盖率跑 Rust 测试 —— 执行 `package.json` 里的 `--fail-under-lines` |
 | `pnpm test:coverage` | 两套覆盖率门禁 |
 | `pnpm test:host` | Java 调试 host 自检（需 JDK，缺失时明确跳过） |
-| `pnpm check` | 本地全量：`lint` + 两套单元测试 + host 自检 |
+| `pnpm check` | 本地全量：`lint` + 全部测试门禁（单次框架调用） |
 | `pnpm release <version>` | 升级版本、生成 changelog、打 tag（见[发布流程](#发布流程)） |
 
 覆盖率是 **CI 门禁、不是 push 门禁**：本地 hook 守住延迟预算，`frontend-test` job 跑
@@ -167,20 +167,17 @@ fix(file): refresh expanded dir caches on file move/delete
 
 [lefthook](https://github.com/evilmartians/lefthook) 会在提交时自动执行。
 Hooks 通过 `pnpm prepare`（或 `pnpm lefthook install`）安装。
-**Hook 清单以 `lefthook.yml` 为准**（下表为概览）：
+**Hook 清单以 `lefthook.yml` 为准**，且每个 hook 只做**一次框架调用** —— 哪些门禁在哪个场合
+跑只声明在 `tools/guards/ledger/gates.json`，绝不在 `lefthook.yml` 里重抄一份：
 
 | Hook | 触发条件 | 执行内容 |
 | --- | --- | --- |
-| `pre-commit` | 改动源码 / 配置文件（具体 glob 见 `lefthook.yml`） | `pnpm lint:fe` |
-| `pre-commit` | 改动 `src-tauri/**/*.rs` 或 `Cargo.toml` / `Cargo.lock` / `build.rs` | `pnpm lint:rust` |
 | `pre-commit` | 每次提交 | `pnpm guards run --stage commit --staged` |
 | `commit-msg` | 每次提交 | `pnpm commitlint` |
-| `pre-push` | 推送文件命中前端 glob | `pnpm test:fe` |
-| `pre-push` | 推送文件命中 Rust glob | `pnpm test:rust` |
-| `pre-push` | 推送文件命中 `tools/java-host/**` | `pnpm test:host` |
+| `pre-push` | 每次推送 | `pnpm guards run --stage push --changed {push_files} --jobs 3` |
 
-两套单元测试与 host 自检都只在 push 档跑（commit 保持静态门，暖缓存 ~10s）：前端与 Rust 对称，
-不再出现「前端测试在 commit、Rust 测试没地方跑」。推送文件不命中某条命令的 glob 时该命令跳过。
+单元测试与 host 自检都只在 push 档跑（commit 保持静态门，暖缓存 ~10s）。跳过不再来自手写 glob，
+而是各门禁自报的 `scopes` —— 能改变某条门禁结论的文件，都由该门禁自己的声明覆盖。
 
 ### 新增一条护栏
 
@@ -215,6 +212,17 @@ hook 就会拿新测试去跑旧框架 —— 报错看起来像代码 bug，实
 
 所有质量门通过前提交会被拦截。开 PR 前请在本地跑一遍**最小回归集** —— 定义见
 [`AGENTS.md`](./AGENTS.md)「Development Commands」（单一事实源，此处不复述）。
+
+### 新增一条 gate
+
+**gate** 是「判据来自外部命令（`argv`）而非进程内函数」的护栏，声明在
+`tools/guards/ledger/gates.json` 的一个对象里：`argv` / `kind`（lint|test）/ `stages` /
+`ci_job`（当且仅当 `stages` 含 `ci`）/ `platforms` / `budget_ms` / `scopes`（展开形态，
+不用 `{a,b}` 花括号）/ `fix_hint`。消费端**零改动**：`pnpm lint` / `test` / `check` /
+`test:coverage`、`lefthook.yml` 与 CI guards job 全部按 stage/kind/形态选择。未知键在加载时
+报错（拼错 `stage` 不许静默按默认值生效），且每条 gate 与 CI workflow / lefthook hook 的一致性
+由 `check_gate_topology`（A1/A3）校验：声明在某个 CI job 跑、命令却不在该 job 的步骤里 = 失败，
+而不是静默的空转。
 
 ## 测试要求
 

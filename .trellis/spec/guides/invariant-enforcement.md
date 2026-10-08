@@ -86,3 +86,40 @@
 | `check_invariant_enforcement` | 每条不变量**有可解析的强制落点**；`prose` 债务可见；guard → 红线引用完整 |
 
 前者管「规则写在哪」，后者管「规则靠什么强制」。两者都以机读台账为单一事实源。
+
+---
+
+## 编排单源：门禁声明与接线（gate orchestration）
+
+**什么被收敛**：门禁的「命令 / 归属套件 / 生效上下文 / 平台 / 目标 CI job / 预算 / scope」
+声明在唯一数据文件 `tools/guards/ledger/gates.json`；三个消费端（`package.json`、
+`lefthook.yml`、`.github/workflows/ci.yml`）只**读**它，不再各自手抄门禁清单。
+不变量 `gate-topology-single-source` 由 `check_gate_topology` 强制：
+**A1** 声明了 `ci` 的 gate 必须出现在它声明的 `ci_job` 里（支持 `pnpm <script>` 与裸命令）；
+**A3** `lefthook.yml` 的 hook 只允许对框架的单次调用，不得再手写门禁命令或出现 `&&`。
+
+**可见债务（批次 2，尚未落地）**：`BRANCH_PROTECTION.md` 的 required check 集 ==
+`ci.yml` 的 job 集（A2）、`AGENTS.md` 的 `packages/` 豁免 == registry excludes（A4）、
+缺工具链即 ERROR 的 `require_tools`。在这三条落地前，它们仍是 `prose` 级约束 —— 已知
+且可见，不是沉默债务。
+
+**新增一条门禁**：改 `gates.json` 加一条对象即可，消费端零改动（字段与校验规则见
+`CONTRIBUTING.md` → "Adding a gate"）。
+
+### 陷阱：verdict 由 findings 推导 ⇒「空 findings」是假绿
+
+判据结论 `GuardResult.verdict` 的优先级是 `error > findings > skip > pass`。因此**任何
+新的执行路径**只要能在「非零退出 / 判为违规」时产生**空 findings**，就会被判成 PASS。
+2026-10-08 实测（gate orchestration 任务）：命令门禁退出码非 0 且零输出时
+`verdict == PASS, exit == 0` —— 由独立探针发现，**单元测试当时全绿**。
+
+两条防线（缺一不可）：
+
+- `core/runner.py::_run_gate`：非零退出且无输出时，**合成一条**携带退出码的 `Finding`；
+- `core/contract.py::GuardResult.violated()`：空 findings **直接 `raise`** —— 让这个非法
+  状态在构造期就写不出来。
+
+**判据**：给框架新增第三种判据形态时，先回答「违规时它给出哪一条 Finding」；答不上来
+就说明它会静默通过。回归测试：
+`tools/guards/tests/test_runner.py::GateExecutionTest::test_nonzero_exit_without_output_is_still_a_violation`、
+`tools/guards/tests/test_contract.py::VerdictTest::test_violated_requires_at_least_one_finding`。

@@ -61,19 +61,19 @@ pnpm tauri dev        # start the dev app (frontend on port 1420)
 | --- | --- |
 | `pnpm tauri dev` | Run the app in development mode |
 | `pnpm tauri build` | Build a release bundle |
-| `pnpm lint` | Every static check: `lint:fe` + `lint:rust` + all guards (no tests) |
-| `pnpm lint:fe` | Frontend static checks (ESLint + `tsc --noEmit`) — what `pre-commit` runs |
+| `pnpm lint` | Every static check: in-process guards + `lint:fe` + `lint:rust` (no tests) |
+| `pnpm lint:fe` | Frontend static checks (ESLint + `tsc --noEmit`) — the `lint_fe` gate's argv |
 | `pnpm lint:rust` | Rust static checks (`cargo fmt --check` + `clippy -D warnings`) |
 | `pnpm lint:fix` | Write-back fixes: `cargo fmt` (Rust) + ESLint `--fix` (frontend) |
 | `pnpm type-check` | TypeScript type check only |
-| `pnpm test` | All three suites: `test:fe` + `test:rust` + `test:host` |
+| `pnpm test` | All test gates: `test:fe` + `test:rust` + `test:host` |
 | `pnpm test:fe` | Frontend tests once (`test:fe:watch` for watch) |
 | `pnpm test:fe:coverage` | Frontend tests with coverage — enforces the floors in `vitest.config.ts` |
 | `pnpm test:rust` | Run Rust tests |
 | `pnpm test:rust:coverage` | Rust tests with coverage — enforces `--fail-under-lines` from `package.json` |
 | `pnpm test:coverage` | Both coverage gates |
 | `pnpm test:host` | Java debug host self-check (needs a JDK; skips loudly otherwise) |
-| `pnpm check` | Everything local: `lint` + both test suites + the host self-check |
+| `pnpm check` | Everything local: `lint` + every test gate (one framework call) |
 | `pnpm release <version>` | Bump version, generate changelog, tag (see [Release](#release-process)) |
 
 Coverage is a **CI gate, not a push gate**: the local hooks stay inside the latency budget, while
@@ -183,21 +183,47 @@ Keep commits **atomic**: split unrelated changes into separate commits.
 
 [lefthook](https://github.com/evilmartians/lefthook) runs automatically on
 commit. Hooks are installed via `pnpm prepare` (or `pnpm lefthook install`).
-**`lefthook.yml` owns the hook list** (table below is an overview):
+**`lefthook.yml` owns the hook list**, and each hook is a **single call into the
+guard framework** — which gates run in which context is declared once in
+`tools/guards/ledger/gates.json`, never restated in `lefthook.yml`:
 
 | Hook | Trigger | Runs |
 | --- | --- | --- |
-| `pre-commit` | changed source / config files (see the globs in `lefthook.yml`) | `pnpm lint:fe` |
-| `pre-commit` | changed `src-tauri/**/*.rs` or `Cargo.toml` / `Cargo.lock` / `build.rs` | `pnpm lint:rust` |
 | `pre-commit` | every commit | `pnpm guards run --stage commit --staged` |
 | `commit-msg` | every commit | `pnpm commitlint` |
-| `pre-push` | pushed files match the frontend globs | `pnpm test:fe` |
-| `pre-push` | pushed files match the Rust globs | `pnpm test:rust` |
-| `pre-push` | pushed files match `tools/java-host/**` | `pnpm test:host` |
+| `pre-push` | every push | `pnpm guards run --stage push --changed {push_files} --jobs 3` |
 
-Both unit-test suites and the host self-check run at push, not at commit: commit stays
-a static gate (~10s warm), push pays for the tests. Each command is skipped when none
-of the pushed files match its globs.
+The tests and the host self-check run at push, not at commit: commit stays a static
+gate (~10s warm), push pays for the tests. Skipping now comes from each gate's
+declared `scopes` (not from hand-written `lefthook.yml` globs), so a file that can
+change a gate's verdict is covered by that gate's own declaration.
+
+### Adding a gate
+
+A **gate** is a guard whose verdict comes from an external command (`argv`) rather
+than an in-process function. It is declared in `tools/guards/ledger/gates.json`:
+
+```jsonc
+{
+  "id": "lint_fe",
+  "title": "eslint + tsc",
+  "argv": ["pnpm", "lint:fe"],
+  "kind": "lint",                  // lint | test
+  "stages": ["local", "commit", "ci"],
+  "ci_job": "frontend-check",      // required iff "ci" ∈ stages
+  "platforms": ["linux", "macos", "windows"],
+  "budget_ms": 180000,             // over budget ⇒ exit 2 (gate unavailable)
+  "scopes": ["src/*.ts", "src/**/*.tsx"],   // expanded form — no `{a,b}` braces
+  "fix_hint": "…"
+}
+```
+
+Consumers need **zero** edits: `pnpm lint` / `test` / `check` / `test:coverage`,
+`lefthook.yml` and the CI guards job all select by `stage`/`kind`/`form`. Unknown
+keys are rejected at load (a typo like `stage` must not silently fall back to a
+default), `ci` ⇔ `ci_job`, and every gate is validated against the CI workflow
+and the lefthook hooks by `check_gate_topology` (A1/A3) — a gate declared for a
+CI job whose command is not in that job's steps is a failure, not a silent no-op.
 
 ### Adding a guard
 
