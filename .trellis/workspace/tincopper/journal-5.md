@@ -1673,3 +1673,38 @@ checks 代码。
 ### Next Steps
 
 - None - task complete
+
+
+## Session 257: Git changes realtime: refs watcher + ahead/behind on the single snapshot
+
+**Date**: 2026-10-08
+**Task**: Git changes realtime: refs watcher + ahead/behind on the single snapshot
+**Branch**: `main`
+
+### Summary
+
+Made the Changes panel reflect external git operations (push/fetch/commit) without manual refresh. Closed the freshness gap by watching refs/** and packed-refs (incl. linked-worktree common gitdir) and by folding ahead/behind into the authoritative GitStatusSnapshot under one producer/version. The change gate now compares the whole snapshot (PartialEq) so new derived fields enter it by type; ahead/behind parsing, entry cap, and the upstream check each have one implementation (shared parser, GitStatusSnapshot::enforce_entry_cap, transport.is_git_repo). Frontend consumes ahead/behind from the version-gated snapshot only; rejected stale snapshots write no derived value. pnpm check green (15/15 guards, FE 4521, Rust 1438+104).
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `286aefbf` | (see git log) |
+| `d7f79965` | (see git log) |
+| `494f3cc0` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
