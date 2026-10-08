@@ -1,0 +1,5 @@
+{"_example": "Fill with {\"file\": \"<path>\", \"reason\": \"<why>\"}. Put spec/research files only — no code paths. Run `python3 .trellis/scripts/get_context.py --mode packages` to list available specs. Delete this line once real entries are added."}
+{"file": ".trellis/spec/backend/dap-domain.md", "reason": "check 子代理核对 DAP 不变量的唯一正文"}
+{"file": ".trellis/spec/backend/command-guidelines.md", "reason": "命令层极薄（红线 6）：新增 param 后不得平铺逻辑"}
+{"file": ".trellis/spec/unit-test/backend-testing.md", "reason": "Rust 测试约定 + tempdir 夹具（红线 13）"}
+{"file": ".trellis/spec/unit-test/frontend-testing.md", "reason": "前端测试层级与 invoke mock 策略"}

@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { DAP_EVENT } from '@/shared/events';
 import { useNotificationStore } from '@/shared/store/notificationStore';
+import { useWorktreeStore } from '@/shared/store/worktreeStore';
 import { deferred, flushMicrotasks } from '@/testing/async';
 
 import type * as DebugApi from '../api/debugApi';
@@ -17,6 +18,9 @@ const dapStackTrace = vi.hoisted(() => vi.fn());
 const dapControl = vi.hoisted(() => vi.fn());
 const dapStopSession = vi.hoisted(() => vi.fn());
 const dapEvaluate = vi.hoisted(() => vi.fn());
+const dapCheckAdapter = vi.hoisted(() => vi.fn());
+const debugJavaAttach = vi.hoisted(() => vi.fn());
+const debugJavaStart = vi.hoisted(() => vi.fn());
 const ensureStopSourceTab = vi.hoisted(() => vi.fn());
 
 vi.mock('../api/debugApi', async (importOriginal) => ({
@@ -27,6 +31,9 @@ vi.mock('../api/debugApi', async (importOriginal) => ({
   dapControl,
   dapStopSession,
   dapEvaluate,
+  dapCheckAdapter,
+  debugJavaAttach,
+  debugJavaStart,
 }));
 
 // 隔离 store 编排与 tab 生命周期（tab 生命周期由 navigate.test.ts 覆盖）。
@@ -81,6 +88,7 @@ function expansionState() {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  useWorktreeStore.setState({ byProject: {} });
   dapVariables.mockResolvedValue([]);
   useDebugStore.setState({
     session: null,
@@ -260,6 +268,59 @@ describe('javaDebugStore.startJavaAttach', () => {
     ).rejects.toThrow();
     const texts = useDebugStore.getState().consoleLines.map((l) => l.text);
     expect(texts[0]).toBe('$ java -agentlib:jdwp=transport=dt_socket -jar launcher.jar');
+  });
+
+  // Java 两条链路的执行单元根透传：漏传/传成 null 会静默回退主仓，Java worktree 调试失效。
+  it('激活 worktree → debugJavaAttach 携带该单元根', async () => {
+    const wt = '/home/u/.neeko/worktrees/fix-1';
+    useWorktreeStore.getState().setActiveWorktree('p1', wt);
+    dapCheckAdapter.mockResolvedValue(true);
+    debugJavaAttach.mockResolvedValue({
+      sessionId: 's1',
+      projectId: 'p1',
+      projectPath: wt,
+      configName: 'cfg',
+      status: 'running',
+    });
+
+    await useJavaDebugStore
+      .getState()
+      .startJavaAttach('p1', 'java -jar launcher.jar', `${wt}/mod`, 'test1', ['/a']);
+
+    expect(debugJavaAttach).toHaveBeenCalledWith('p1', wt, {
+      command: 'java -jar launcher.jar',
+      cwd: `${wt}/mod`,
+      testName: 'test1',
+      classpath: ['/a'],
+    });
+  });
+
+  it('无激活 worktree → debugJavaStart 携带 null（主仓单元）', async () => {
+    const target = { probeClass: 'A', cwd: '/proj', testName: 't', mainClass: 'A', args: [] };
+    debugJavaStart.mockResolvedValue({
+      kind: 'unavailable',
+      message: 'no bundle',
+      staticallyDetectable: false,
+    });
+
+    await useJavaDebugStore.getState().startJavaDebug('p1', target);
+
+    expect(debugJavaStart).toHaveBeenCalledWith('p1', null, target);
+  });
+
+  it('激活 worktree → debugJavaStart 携带该单元根', async () => {
+    const wt = '/home/u/.neeko/worktrees/fix-1';
+    useWorktreeStore.getState().setActiveWorktree('p1', wt);
+    const target = { probeClass: 'A', cwd: `${wt}/mod`, testName: 't', mainClass: 'A', args: [] };
+    debugJavaStart.mockResolvedValue({
+      kind: 'unavailable',
+      message: 'no bundle',
+      staticallyDetectable: false,
+    });
+
+    await useJavaDebugStore.getState().startJavaDebug('p1', target);
+
+    expect(debugJavaStart).toHaveBeenCalledWith('p1', wt, target);
   });
 });
 

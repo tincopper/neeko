@@ -32,34 +32,43 @@ fn event_sink(app: AppHandle) -> Arc<dyn DapEventSink> {
 #[tauri::command]
 pub fn dap_list_configs(
     project_id: String,
+    worktree_path: Option<String>,
     state: State<'_, AppStateWrapper>,
 ) -> Result<Vec<LaunchConfig>, AppError> {
-    launch_config::list_or_discover_configs(&state, &project_id)
+    launch_config::list_or_discover_configs(&state, &project_id, worktree_path.as_deref())
 }
 
 /// Save launch configs for a project.
 #[tauri::command]
 pub fn dap_save_configs(
     project_id: String,
+    worktree_path: Option<String>,
     configurations: Vec<LaunchConfig>,
     state: State<'_, AppStateWrapper>,
 ) -> Result<(), AppError> {
-    launch_config::save_configs(&state, &project_id, configurations)
+    launch_config::save_configs(
+        &state,
+        &project_id,
+        worktree_path.as_deref(),
+        configurations,
+    )
 }
 
 /// Discover entry points for a project.
 #[tauri::command]
 pub fn dap_discover_entries(
     project_id: String,
+    worktree_path: Option<String>,
     state: State<'_, AppStateWrapper>,
 ) -> Result<Vec<EntryPoint>, AppError> {
-    launch_config::discover_entry_points(&state, &project_id)
+    launch_config::discover_entry_points(&state, &project_id, worktree_path.as_deref())
 }
 
 /// Start a DAP debug session.
 #[tauri::command]
 pub async fn dap_start_session(
     project_id: String,
+    worktree_path: Option<String>,
     config_name: Option<String>,
     current_file: Option<String>,
     state: State<'_, AppStateWrapper>,
@@ -71,6 +80,7 @@ pub async fn dap_start_session(
             &state,
             event_sink(app),
             &project_id,
+            worktree_path.as_deref(),
             config_name,
             current_file,
         )
@@ -82,13 +92,20 @@ pub async fn dap_start_session(
 #[tauri::command]
 pub async fn dap_start_session_config(
     project_id: String,
+    worktree_path: Option<String>,
     config: LaunchConfig,
     state: State<'_, AppStateWrapper>,
     app: AppHandle,
 ) -> Result<DapSessionInfo, AppError> {
     state
         .dap_manager
-        .start_session_config(&state, event_sink(app), &project_id, config)
+        .start_session_config(
+            &state,
+            event_sink(app),
+            &project_id,
+            worktree_path.as_deref(),
+            config,
+        )
         .await
 }
 
@@ -275,41 +292,46 @@ pub async fn dap_check_adapter(
 #[tauri::command]
 pub async fn debug_build_test_binary(
     project_id: String,
+    worktree_path: Option<String>,
     command: String,
     cwd: String,
     state: State<'_, AppStateWrapper>,
 ) -> Result<DebugBuildOutput, AppError> {
-    build::build_test_binary(&state, &project_id, &command, &cwd).await
+    build::build_test_binary(
+        &state,
+        &project_id,
+        worktree_path.as_deref(),
+        &command,
+        &cwd,
+    )
+    .await
 }
 
 /// Java attach-first 调试：spawn 测试 JVM（Console Launcher + jdwp suspend=y，
-/// `command` 由前端 buildJavaDebugCommand 构造）→ 解析 jdwp 端口 →
+/// `target.command` 由前端 buildJavaDebugCommand 构造）→ 解析 jdwp 端口 →
 /// JavaAdapter attach 会话。编排在 Java 语言后端（`adapter::java::backend`），
 /// JVM 生命周期随会话清理。
-/// `classpath` 为 debuggee 运行时 classpath 条目（前端 buildJavaClasspathEntries），
-/// 供 host 解析库源码。
+/// `target.classpath` 为 debuggee 运行时 classpath 条目（前端 buildJavaClasspathEntries），
+/// 供 host 解析库源码。`worktree_path` = 执行单元根（激活 worktree / 主仓）——
+/// cwd 校验基准与适配器 workspace（worktree 可在项目根之外）。
 #[tauri::command]
 pub async fn debug_java_attach(
     project_id: String,
-    command: String,
-    cwd: String,
-    test_name: String,
-    classpath: Vec<String>,
+    worktree_path: Option<String>,
+    target: JavaDebugTarget,
     state: State<'_, AppStateWrapper>,
     app: AppHandle,
 ) -> Result<DapSessionInfo, AppError> {
-    let target = JavaDebugTarget {
-        command,
-        cwd,
-        test_name,
-        classpath,
-    };
     match state
         .dap_manager
         .start_language_debug(
             &state,
             event_sink(app),
-            crate::dap::adapter::DebugRequest::JavaAttach { project_id, target },
+            crate::dap::adapter::DebugRequest::JavaAttach {
+                project_id,
+                worktree_path,
+                target,
+            },
         )
         .await?
     {
@@ -334,6 +356,7 @@ pub async fn debug_java_attach(
 #[tauri::command]
 pub async fn debug_java_start(
     project_id: String,
+    worktree_path: Option<String>,
     target: JavaJdtlsTarget,
     state: State<'_, AppStateWrapper>,
     app: AppHandle,
@@ -343,7 +366,11 @@ pub async fn debug_java_start(
         .start_language_debug(
             &state,
             event_sink(app),
-            crate::dap::adapter::DebugRequest::JavaJdtls { project_id, target },
+            crate::dap::adapter::DebugRequest::JavaJdtls {
+                project_id,
+                worktree_path,
+                target,
+            },
         )
         .await
 }

@@ -33,6 +33,9 @@ pub enum DebugRequest {
     JavaAttach {
         /// 目标项目 id（解析执行环境 / 项目根用）。
         project_id: String,
+        /// 执行单元根（激活 worktree 根 / 主仓）—— 编排所需的 cwd 校验基准与
+        /// 适配器 workspace。与 `target.cwd` 同源于一次编辑器 Debug 动作。
+        worktree_path: Option<String>,
         /// attach-first 调试目标（command / cwd / test_name / classpath）。
         target: JavaDebugTarget,
     },
@@ -40,6 +43,8 @@ pub enum DebugRequest {
     JavaJdtls {
         /// 目标项目 id（解析执行环境 / 项目根用）。
         project_id: String,
+        /// 执行单元根（激活 worktree 根 / 主仓）—— jdtls 能力探测与启动的 workspace。
+        worktree_path: Option<String>,
         /// JDTLS 后端调试目标（probe_class / main_class / args / project_name）。
         target: JavaJdtlsTarget,
     },
@@ -65,6 +70,19 @@ impl DebugRequest {
     pub fn project_id(&self) -> &str {
         match self {
             Self::JavaAttach { project_id, .. } | Self::JavaJdtls { project_id, .. } => project_id,
+        }
+    }
+
+    /// 执行单元根（激活 worktree / 主仓）。
+    ///
+    /// `None` / 空串 = 主仓单元（由 `resolve_repo` 收敛）。语言后端的 `plan` 与
+    /// 启动器共用同一值，保证能力探测、构建校验与会话 workspace 同源。
+    #[must_use]
+    pub fn worktree_path(&self) -> Option<&str> {
+        match self {
+            Self::JavaAttach { worktree_path, .. } | Self::JavaJdtls { worktree_path, .. } => {
+                worktree_path.as_deref()
+            }
         }
     }
 }
@@ -195,12 +213,16 @@ pub trait LanguageBackend: Send + Sync {
 
     /// 会话形态规划：返回三态（`Launch` / `Warming` / `Unavailable`）。
     ///
+    /// `unit` 是**已解析的执行单元**（由调用方单点解析）—— 后端**不得**自己再解一次：
+    /// 它同时给出环境（`unit.target`）与 cwd 校验 / workspace 基准（`unit.root`）。
+    ///
     /// `Launch` 时**尚未**建立任何会话；调用方负责起会话 —— 保证"不可用时绝不建会话、
     /// 绝不换引擎"的可单测不变式。**无默认体**：spawn + 通用载荷是未注册 backend 时
     /// manager 的通用路径（§9.7），不是本方法的默认行为。
     async fn plan(
         &self,
         state: &AppStateWrapper,
+        unit: &super::super::project_context::ExecUnit,
         request: &DebugRequest,
     ) -> Result<SessionPlan, AppError>;
 
@@ -226,15 +248,17 @@ mod tests {
     fn debug_request_reports_language_kind_and_project() {
         let attach = DebugRequest::JavaAttach {
             project_id: "p1".into(),
+            worktree_path: Some("/wt/fix-1".into()),
             target: JavaDebugTarget {
                 command: "java".into(),
-                cwd: "/proj".into(),
+                cwd: "/wt/fix-1".into(),
                 test_name: "t".into(),
                 classpath: vec![],
             },
         };
         let jdtls = DebugRequest::JavaJdtls {
             project_id: "p2".into(),
+            worktree_path: None,
             target: JavaJdtlsTarget {
                 probe_class: "A".into(),
                 cwd: "/proj".into(),
@@ -250,5 +274,8 @@ mod tests {
         assert_eq!(jdtls.kind(), crate::dap::types::AdapterKind::Java);
         assert_eq!(attach.project_id(), "p1");
         assert_eq!(jdtls.project_id(), "p2");
+        // 执行单元根随请求携带（主仓 = None），语言后端与启动器共用它。
+        assert_eq!(attach.worktree_path(), Some("/wt/fix-1"));
+        assert_eq!(jdtls.worktree_path(), None);
     }
 }

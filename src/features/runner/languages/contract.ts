@@ -111,7 +111,10 @@ export interface LangIo {
   targetPlatform(projectId: string): 'windows' | 'unix';
   /** LSP 请求（未就绪/失败由调用方兜住，不抛）。 */
   lspRequest(projectPath: string, lang: string, method: string, params: unknown): Promise<unknown>;
-  /** 无头执行一条命令（构建 / 生成 classpath 产物），返回输出而非抛错。 */
+  /** 无头执行一条命令（构建 / 生成 classpath 产物），返回输出而非抛错。
+   *
+   *  语言模块只给命令与 cwd；**执行单元根由本 IO 门面自行派生**（见 `io.ts`）——
+   *  语言模块永不感知 worktree。 */
   runBuild(spec: {
     projectId: string;
     command: string;

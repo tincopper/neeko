@@ -14,6 +14,7 @@ import { create } from 'zustand';
 import { useNotificationStore } from '@/shared/store/notificationStore';
 
 import { debugJavaAttach, debugJavaStart } from '../api/debugApi';
+import { unitRootForProject } from '../exec/context';
 import type {
   DapSessionInfo,
   JavaBackendLabel,
@@ -123,7 +124,13 @@ export const useJavaDebugStore = create<JavaDebugState>((set, get) => ({
     // `reset: false`：本方法已自行复位（顺序见上），避免 store 再次清空刚回显的命令。
     await debug.startWithConfig(projectId, config, {
       reset: false,
-      starter: () => debugJavaAttach(projectId, command, cwd, testName, classpath),
+      starter: () =>
+        debugJavaAttach(projectId, unitRootForProject(projectId), {
+          command,
+          cwd,
+          testName,
+          classpath,
+        }),
     });
     // 登记 Rerun 意图（重放 = 重新走 attach 链，与 launch 一致，评审 P4）。
     // 必须在 startWithConfig 成功之后覆盖其通用登记：重放要带 Java 侧复位 + 回显。
@@ -146,7 +153,7 @@ export const useJavaDebugStore = create<JavaDebugState>((set, get) => ({
       debug.resetSession();
       get().resetSession();
       debug.pushConsole('sys', `JDTLS backend: probing ${target.probeClass} …`);
-      const result = await debugJavaStart(projectId, target);
+      const result = await debugJavaStart(projectId, unitRootForProject(projectId), target);
       if (result.kind === 'session') {
         const session: DapSessionInfo = result.session;
         debug.attachSession(session);

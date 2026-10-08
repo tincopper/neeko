@@ -56,15 +56,21 @@ async function readExternal(
 /**
  * Load the source at a debug stop.
  *
- * In-project files take the normal read. When that fails and the path is
- * absolute, fall back to the external read-only channel — the backend
- * authorizes it only while the session is stopped at that exact frame source, so
- * a missing `sessionId` (or a non-stop path) simply yields `failed`.
+ * In-project files take the normal read. `unitRoot` is the **execution unit root**
+ * (active worktree root / project root) — the `InProject` scope for that read. Without
+ * it the backend falls back to the project root, and a file inside a worktree (which may
+ * live *outside* the project root) is misjudged as out-of-project and falls through to
+ * the read-only external channel.
+ *
+ * When the in-project read fails and the path is absolute, fall back to the external
+ * read-only channel — the backend authorizes it only while the session is stopped at that
+ * exact frame source, so a missing `sessionId` (or a non-stop path) simply yields `failed`.
  */
 export async function loadStopSourceContent(
   projectId: string,
   sourcePath: string,
   sessionId?: string,
+  unitRoot?: string,
 ): Promise<StopSourceContent> {
   // jdt 引用不是项目内文件：直接走外部通道，不做注定失败的往返。
   if (isJdtSourceRef(sourcePath)) {
@@ -76,7 +82,10 @@ export async function loadStopSourceContent(
         };
   }
   try {
-    return { kind: 'project', content: await readFileContent(projectId, sourcePath, null) };
+    return {
+      kind: 'project',
+      content: await readFileContent(projectId, sourcePath, unitRoot ?? null),
+    };
   } catch (projectError) {
     if (!sessionId || !isAbsoluteSourcePath(sourcePath)) {
       return { kind: 'failed', error: projectError };

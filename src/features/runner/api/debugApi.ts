@@ -14,25 +14,39 @@ import type {
   VariableDto,
 } from '../types';
 
-export function dapListConfigs(projectId: string): Promise<LaunchConfig[]> {
-  return invoke<LaunchConfig[]>('dap_list_configs', { projectId });
+export function dapListConfigs(
+  projectId: string,
+  worktreePath: string | null,
+): Promise<LaunchConfig[]> {
+  return invoke<LaunchConfig[]>('dap_list_configs', { projectId, worktreePath });
 }
 
-export function dapSaveConfigs(projectId: string, configurations: LaunchConfig[]): Promise<void> {
-  return invoke('dap_save_configs', { projectId, configurations });
+export function dapSaveConfigs(
+  projectId: string,
+  worktreePath: string | null,
+  configurations: LaunchConfig[],
+): Promise<void> {
+  return invoke('dap_save_configs', { projectId, worktreePath, configurations });
 }
 
-export function dapDiscoverEntries(projectId: string): Promise<EntryPoint[]> {
-  return invoke<EntryPoint[]>('dap_discover_entries', { projectId });
+export function dapDiscoverEntries(
+  projectId: string,
+  worktreePath: string | null,
+): Promise<EntryPoint[]> {
+  return invoke<EntryPoint[]>('dap_discover_entries', { projectId, worktreePath });
 }
 
+/** `worktreePath` = 执行单元根（激活 worktree / 项目根；无 worktree 传 null）。
+ *  后端据此派生 cwd 校验基准、适配器 workspace、`${workspaceFolder}` 与 launch.json 读取根。 */
 export function dapStartSession(
   projectId: string,
+  worktreePath: string | null,
   configName?: string | null,
   currentFile?: string | null,
 ): Promise<DapSessionInfo> {
   return invoke<DapSessionInfo>('dap_start_session', {
     projectId,
+    worktreePath,
     configName: configName ?? null,
     currentFile: currentFile ?? null,
   });
@@ -40,28 +54,35 @@ export function dapStartSession(
 
 export function dapStartSessionConfig(
   projectId: string,
+  worktreePath: string | null,
   config: LaunchConfig,
 ): Promise<DapSessionInfo> {
-  return invoke<DapSessionInfo>('dap_start_session_config', { projectId, config });
+  return invoke<DapSessionInfo>('dap_start_session_config', { projectId, worktreePath, config });
+}
+
+/** `debug_java_attach` 的 nested target（Rust `JavaDebugTarget`；IPC 契约为 camelCase）。 */
+export interface JavaAttachTarget {
+  /** 已就绪的 debuggee shell 命令（前端 `buildJavaDebugCommand` 产物）。 */
+  command: string;
+  /** 运行目录（模块根）。 */
+  cwd: string;
+  /** 会话显示名中的用例名。 */
+  testName: string;
+  /** debuggee 运行时 classpath 条目。 */
+  classpath: string[];
 }
 
 /** Java attach-first（J3）：后端 spawn 测试 JVM（jdwp suspend=y）→ 解析端口 → attach 会话。
  *  `classpath` 为 debuggee 运行时 classpath 条目：随 attach 载荷的 `sourcePaths`
- *  送达 host，供其解析第三方库 / JDK 源码。 */
+ *  送达 host，供其解析第三方库 / JDK 源码。
+ *  `worktreePath` = 执行单元根（激活 worktree / 项目根）；后端用它做 cwd 校验基准
+ *  与适配器 workspace（worktree 可在项目根之外）。 */
 export function debugJavaAttach(
   projectId: string,
-  command: string,
-  cwd: string,
-  testName: string,
-  classpath: string[],
+  worktreePath: string | null,
+  target: JavaAttachTarget,
 ): Promise<DapSessionInfo> {
-  return invoke<DapSessionInfo>('debug_java_attach', {
-    projectId,
-    command,
-    cwd,
-    testName,
-    classpath,
-  });
+  return invoke<DapSessionInfo>('debug_java_attach', { projectId, worktreePath, target });
 }
 
 export function dapStopSession(sessionId: string): Promise<void> {
@@ -165,7 +186,8 @@ export function dapCheckAdapter(projectId: string, adapterType: string): Promise
  *  按 `staticallyDetectable` 决定"一次性询问改用 Host"还是"报错 + 显式入口"。 */
 export function debugJavaStart(
   projectId: string,
+  worktreePath: string | null,
   target: JavaJdtlsTarget,
 ): Promise<JavaDebugStartResult> {
-  return invoke<JavaDebugStartResult>('debug_java_start', { projectId, target });
+  return invoke<JavaDebugStartResult>('debug_java_start', { projectId, worktreePath, target });
 }

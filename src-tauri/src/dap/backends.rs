@@ -85,6 +85,7 @@ mod tests {
         async fn plan(
             &self,
             _state: &crate::AppStateWrapper,
+            _unit: &crate::dap::project_context::ExecUnit,
             _request: &DebugRequest,
         ) -> Result<crate::dap::adapter::SessionPlan, AppError> {
             Err(AppError::Dap("not exercised".into()))

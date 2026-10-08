@@ -30,9 +30,28 @@ function targetTabKey(projectId: string): string {
   return projectId ? resolveTabKey(projectId, activeWorktree) : projectId;
 }
 
-/** 会话快照缺失时回落到当前激活项目路径（canonical 构造的根）。同上：入口层的输入解析。 */
-function resolveProjectPath(projectPath: string): string {
-  return projectPath || useProjectStore.getState().activeProject?.path || '';
+/**
+ * 指定项目的登记根路径（主仓单元根）；项目不在表里 → 空串。
+ */
+function projectRootOf(projectId: string): string {
+  return useProjectStore.getState().projects.find((p) => p.id === projectId)?.path ?? '';
+}
+
+/**
+ * 本次打开的执行单元根（**与 tab 空间、编辑器读/写根同源**；红线 12）。
+ *
+ * 第一性原理：源内容读取的 `InProject` scope 必须等于该 tab 所属的**当前执行单元**，
+ * 因为编辑器对 tab 的保存/重读根也取自当前单元（`useFileViewTabOps` 的
+ * `worktreePathRef`）。若这里返回另一个单元，就会产出「能读不能写」的假可编辑 tab。
+ * 因此规则恒为：激活 worktree → 该项目的登记根（主仓）；`fallbackPath` 仅当项目表
+ * 缺失时兜底（**不得**先用调用方传入的会话单元根：会话可能属于另一个 worktree）。
+ *
+ * 推论（有意为之）：会话存活期间切到另一个单元时，旧单元的栈帧落在当前单元根之外，
+ * 会回落**只读外部通道** —— 这是与 tab 空间/保存根一致的安全降级，不是缺陷。
+ */
+function resolveUnitRoot(projectId: string, fallbackPath: string): string {
+  const activeWorktree = selectActiveWorktreePath(useWorktreeStore.getState(), projectId);
+  return activeWorktree || projectRootOf(projectId) || fallbackPath;
 }
 
 export interface OpenSourceOptions {
@@ -55,7 +74,10 @@ function publishNavigateGoal(
   });
 }
 
-/** 用户意图：打开源文件并跳到指定行（点断点 / 终端与任务链接等）。 */
+/** 用户意图：打开源文件并跳到指定行（点断点 / 终端与任务链接等）。
+ *
+ * `projectPath` 仅作项目表缺失时的兜底 —— 实际读取 scope 恒取**当前执行单元**
+ *（激活 worktree / 该项目的登记根），见 `resolveUnitRoot`。 */
 export async function openSourceAtLine(
   projectId: string,
   projectPath: string,
@@ -67,7 +89,7 @@ export async function openSourceAtLine(
   const tabKey = targetTabKey(projectId);
   if (!tabKey) return;
 
-  const projectRoot = resolveProjectPath(projectPath);
+  const projectRoot = resolveUnitRoot(projectId, projectPath);
   const target = await ensureSourceTab({
     tabKey,
     projectId,
@@ -98,8 +120,8 @@ export async function openVirtualSourceAtLine(
   const target = await ensureSourceTab({
     tabKey,
     projectId,
-    // 虚拟身份与 root 无关（`dap-source:` 不拼根），这里取当前项目根只为满足统一入参。
-    projectRoot: resolveProjectPath(''),
+    // 虚拟身份与 root 无关（`dap-source:` 不拼根），这里取当前单元根只为满足统一入参。
+    projectRoot: resolveUnitRoot(projectId, ''),
     request,
     line,
     column,
@@ -111,6 +133,7 @@ export async function openVirtualSourceAtLine(
 /** 停点源码可见性请求。 */
 export interface StopSourceRequest {
   projectId: string;
+  /** 项目表缺失时的兜底根；实际读取 scope 恒取**当前执行单元**（见 `resolveUnitRoot`）。 */
   projectPath: string;
   frame: StackFrameDto;
   sessionId?: string;
@@ -135,7 +158,7 @@ export async function ensureStopSourceTab(
   const tabKey = targetTabKey(projectId);
   if (!tabKey) return null;
 
-  const projectRoot = resolveProjectPath(projectPath);
+  const projectRoot = resolveUnitRoot(projectId, projectPath);
   const request = frameSourceOpen(frame, projectRoot, projectId, sessionId);
   if (!request) return null;
 

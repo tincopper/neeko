@@ -25,7 +25,7 @@ use super::config::expand_config;
 use super::context::DapContext;
 use super::events::DapEventSink;
 use super::launch_config;
-use super::project_context::{adapter_binary_override, project_path};
+use super::project_context::{adapter_binary_override, resolve_unit, ExecUnit};
 use super::session::DapSession;
 use super::source_translation;
 use super::types::{BreakpointSpec, DapSessionInfo, LaunchConfig};
@@ -33,20 +33,27 @@ use crate::common::executor::ProcessGuard;
 use crate::AppError;
 
 /// Start a new DAP debug session for a project with the given config.
+///
+/// 所有路径事实（launch.json 读取根、`${workspaceFolder}` 展开、适配器 workspace、
+/// 构建 cwd 校验）一律由 `worktree_path` 指定的**执行单元根**派生
+/// （linked worktree 可在项目根之外）。
 pub(crate) async fn start_session(
     ctx: &DapContext<'_>,
     sink: Arc<dyn DapEventSink>,
     project_id: &str,
+    worktree_path: Option<&str>,
     config_name: Option<String>,
     current_file: Option<String>,
 ) -> Result<DapSessionInfo, AppError> {
-    let path = project_path(ctx.state, project_id)?;
+    let unit = resolve_unit(ctx.state, project_id, worktree_path).await?;
+    let workspace = std::path::PathBuf::from(&unit.root);
 
     // Prefer existing launch.json; if empty, discover and materialize
     // （与 `list_or_discover_configs` 同一实现，不再各写一份）。
     // 读盘 + 入口点扫描是阻塞 IO，搬进阻塞线程池（Gate #3）。
+    // 读取根是**单元根**：worktree 有自己的一份 `.vscode/launch.json`。
     let configs = crate::common::runtime::run_blocking_result({
-        let path = path.clone();
+        let path = workspace.clone();
         move || launch_config::load_or_discover(&path)
     })
     .await?;
@@ -58,7 +65,7 @@ pub(crate) async fn start_session(
             .ok_or_else(|| AppError::NotFound(format!("Launch config not found: {name}")))?
     } else {
         // Prefer config matching current file's package if possible.
-        pick_config_for_file(&configs, current_file.as_deref(), &path)
+        pick_config_for_file(&configs, current_file.as_deref(), &workspace)
             .or_else(|| configs.into_iter().next())
             .ok_or_else(|| {
                 AppError::Dap(
@@ -73,6 +80,7 @@ pub(crate) async fn start_session(
         ctx,
         sink,
         project_id,
+        &unit,
         raw,
         current_file.as_deref(),
         SessionRoute::spawn(),
@@ -95,6 +103,7 @@ pub(crate) async fn launch_session(
     ctx: &DapContext<'_>,
     sink: Arc<dyn DapEventSink>,
     project_id: &str,
+    unit: &ExecUnit,
     raw_config: LaunchConfig,
     current_file: Option<&str>,
     route: SessionRoute<'_>,
@@ -104,12 +113,13 @@ pub(crate) async fn launch_session(
         entry.shutdown().await;
     }
 
-    let path = project_path(ctx.state, project_id)?;
-    let env = ctx.state.project_environment(project_id)?;
-    let target = env.to_exec_target();
+    // 执行环境与适配器 workspace 同源于同一个**执行单元**：`unit.target` 由
+    // `state.resolve_repo` 解析（与 `project_environment` 同值），`unit.root` 是
+    // 适配器的 workspace / 变量展开根 / 外部源码判定根（worktree 可在项目根之外）。
+    let target = unit.target.clone();
 
     let SessionRoute { debuggee, endpoint } = route;
-    let config = expand_config(&raw_config, &path, current_file);
+    let config = expand_config(&raw_config, std::path::Path::new(&unit.root), current_file);
     // 启动/重跑路径同样走 effective 过滤（评审 P1）：mute 下新会话载荷为空。
     // 断点 + 静音位一次快照取全（同源），避免两次取锁之间被改写。
     breakpoint_service::ensure_loaded(ctx, project_id).await?;
@@ -130,16 +140,11 @@ pub(crate) async fn launch_session(
     )
     .await;
 
-    // 项目根要作为适配器 workspace 与 IPC 字段下发：**不可表示即拒绝**，
-    // 不用 `to_string_lossy` 把路径悄悄换成另一个（适配器会拿错误 workspace 去解析
-    // 源码，症状是"断点全是 verified:false"）。
-    let Some(project_root) = path.to_str() else {
-        return Err(AppError::Dap(format!(
-            "Project path is not valid UTF-8 and cannot be used as a debug workspace: {}",
-            path.display()
-        )));
-    };
-    let project_root = project_root.to_string();
+    // 适配器 workspace / IPC `projectPath` = **单元根**。
+    // `ExecUnit::root` 由 `RepoRef::work_dir()` 产出（恒为 UTF-8 的 `&str`），
+    // 不可表示路径在 `resolve_unit` 已 fail-closed 拒绝，不再需要 `to_string_lossy`
+    // 的回退分支（`dap-domain.md` §2.6）。
+    let unit_root = unit.root.clone();
 
     let session = match endpoint {
         // 外部 DAP 端点（B'）：不 spawn、不查 adapter 覆盖、不看 is_available。
@@ -148,7 +153,7 @@ pub(crate) async fn launch_session(
                 addr,
                 sink,
                 project_id.to_string(),
-                project_root,
+                unit_root,
                 config,
                 adapter_bps,
             )
@@ -161,7 +166,7 @@ pub(crate) async fn launch_session(
             DapSession::start(
                 sink,
                 project_id.to_string(),
-                project_root,
+                unit_root,
                 target,
                 config,
                 adapter_bps,
@@ -191,12 +196,15 @@ pub(crate) async fn start_session_config(
     ctx: &DapContext<'_>,
     sink: Arc<dyn DapEventSink>,
     project_id: &str,
+    worktree_path: Option<&str>,
     raw_config: LaunchConfig,
 ) -> Result<DapSessionInfo, AppError> {
+    let unit = resolve_unit(ctx.state, project_id, worktree_path).await?;
     launch_session(
         ctx,
         sink,
         project_id,
+        &unit,
         raw_config,
         None,
         SessionRoute::spawn(),
@@ -223,13 +231,15 @@ pub(crate) async fn start_language_debug(
     // kind 由请求自身给出（`DebugRequest::kind`）—— 不在调用点硬编码语言名。
     let kind = request.kind();
     let project_id = request.project_id().to_string();
+    // 单元根从请求携带的 worktree 解析：语言后端的 `plan` 也用它（同一事实源）。
+    let unit = resolve_unit(ctx.state, &project_id, request.worktree_path()).await?;
     let backend = ctx.backends.get(kind).ok_or_else(|| {
         AppError::Dap(format!(
             "no orchestration backend for debug kind {}",
             kind.as_str()
         ))
     })?;
-    let plan = backend.plan(ctx.state, &request).await?;
+    let plan = backend.plan(ctx.state, &unit, &request).await?;
 
     match plan {
         crate::dap::adapter::SessionPlan::Launch {
@@ -250,7 +260,7 @@ pub(crate) async fn start_language_debug(
                 debuggee,
                 endpoint: endpoint.as_deref(),
             };
-            let info = launch_session(ctx, sink, &project_id, *config, None, route).await?;
+            let info = launch_session(ctx, sink, &project_id, &unit, *config, None, route).await?;
             emit_console_notes(ctx, &info.session_id, &notes).await;
             mount_debuggee_output(ctx, info.session_id.clone(), output_rx).await;
             Ok(crate::dap::adapter::DebugStartOutcome::Session { session: info })
@@ -397,6 +407,7 @@ mod tests {
         async fn plan(
             &self,
             _state: &AppStateWrapper,
+            _unit: &ExecUnit,
             _request: &DebugRequest,
         ) -> Result<SessionPlan, AppError> {
             Err(AppError::Dap("not exercised by this test".into()))
@@ -423,6 +434,7 @@ mod tests {
         async fn plan(
             &self,
             _state: &AppStateWrapper,
+            _unit: &ExecUnit,
             _request: &DebugRequest,
         ) -> Result<SessionPlan, AppError> {
             Ok(match &self.0 {
@@ -472,10 +484,14 @@ mod tests {
         adapter: &FakeAdapter,
         config: LaunchConfig,
     ) -> Result<DapSessionInfo, AppError> {
+        let unit = resolve_unit(&f.state, &f.project_id, None)
+            .await
+            .expect("fixture unit");
         launch_session(
             &f.ctx(),
             sink,
             &f.project_id,
+            &unit,
             config,
             None,
             SessionRoute {
@@ -499,6 +515,7 @@ mod tests {
     fn java_attach_request(project_id: &str) -> DebugRequest {
         DebugRequest::JavaAttach {
             project_id: project_id.to_string(),
+            worktree_path: None,
             target: JavaDebugTarget {
                 command: "java".into(),
                 cwd: "/proj".into(),

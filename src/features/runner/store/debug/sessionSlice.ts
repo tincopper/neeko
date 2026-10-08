@@ -7,6 +7,7 @@ import {
   dapStartSessionConfig,
   dapStopSession,
 } from '../../api/debugApi';
+import { unitRootForProject } from '../../exec/context';
 import { withStopLocation } from '../../stopLocation';
 import type { DapSessionInfo, EntryPoint, LaunchConfig } from '../../types';
 import { languageHooks } from '../languageHooks';
@@ -100,6 +101,26 @@ export const createSessionSlice: DebugSliceCreator<DebugSessionSlice> = (set, ge
       throw e;
     }
   };
+  /** 成功启动后记录 Rerun 意图（**唯一写入点**）：快照 config 避引用漂移、`starter` 闭包透传、失败不覆盖。 */
+  const recordLaunch = (
+    projectId: string,
+    config: LaunchConfig,
+    starter?: () => Promise<DapSessionInfo>,
+  ) => {
+    const configSnapshot = { ...config };
+    set({
+      lastLaunch: {
+        projectId,
+        label: config.name,
+        replay: () =>
+          get().startWithConfig(
+            projectId,
+            configSnapshot,
+            starter ? { starter, reset: true } : { reset: true },
+          ),
+      },
+    });
+  };
 
   return {
     session: null,
@@ -151,16 +172,10 @@ export const createSessionSlice: DebugSliceCreator<DebugSessionSlice> = (set, ge
       // 防 config 区与工具栏并发启动双链。
       set({ isLaunching: true });
       try {
-        await launchSession(projectId, config, () => dapStartSession(projectId, name, currentFile));
-        // 仅成功启动后记录 intent（快照 config，避免引用漂移）；失败不覆盖（D6）。
-        const configSnapshot = { ...config };
-        set({
-          lastLaunch: {
-            projectId,
-            label: config.name,
-            replay: () => get().startWithConfig(projectId, configSnapshot),
-          },
-        });
+        await launchSession(projectId, config, () =>
+          dapStartSession(projectId, unitRootForProject(projectId), name, currentFile),
+        );
+        recordLaunch(projectId, config);
       } finally {
         set({ isLaunching: false });
       }
@@ -176,25 +191,11 @@ export const createSessionSlice: DebugSliceCreator<DebugSessionSlice> = (set, ge
         await launchSession(
           projectId,
           config,
-          opts?.starter ?? (() => dapStartSessionConfig(projectId, config)),
+          opts?.starter ??
+            (() => dapStartSessionConfig(projectId, unitRootForProject(projectId), config)),
         );
-        // 仅成功启动后记录 intent；starter 闭包透传（Java attach 重放一致，D7）。
-        // replay 快照 config（与 `start` 的 configSnapshot 同构，架构审查 Minor）：
-        // 调用方之后 mutate config 对象不影响重放。
-        const starter = opts?.starter;
-        const configSnapshot = { ...config };
-        set({
-          lastLaunch: {
-            projectId,
-            label: config.name,
-            replay: () =>
-              get().startWithConfig(
-                projectId,
-                configSnapshot,
-                starter ? { starter, reset: true } : { reset: true },
-              ),
-          },
-        });
+        // starter 闭包透传（Java attach 重放一致，D7）。
+        recordLaunch(projectId, config, opts?.starter);
       } finally {
         set({ isLaunching: false });
       }

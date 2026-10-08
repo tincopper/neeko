@@ -49,7 +49,7 @@ describe('openSourceAtLine — DAP 停止行打开源文件（canonical 构造�
   beforeEach(() => {
     vi.clearAllMocks();
     useEditorStore.setState({ tabs: {}, editorLayout: {}, activeTabId: null });
-    useProjectStore.setState({ activeProject: null });
+    useProjectStore.setState({ activeProject: null, projects: [] });
     useWorktreeStore.setState({ byProject: {} });
     readFileContentMock.mockImplementation(async (_projectId: string, p: string) => content(p));
   });
@@ -65,17 +65,29 @@ describe('openSourceAtLine — DAP 停止行打开源文件（canonical 构造�
     );
   });
 
-  it('projectPath 快照缺失 → 回退 activeProject.path 作 canonical 根', async () => {
+  it('无 worktree → 读取 scope 是该项目的登记根（主仓单元）', async () => {
     useProjectStore.setState({
+      projects: [{ id: 'p1', path: '/repo' }] as never,
       activeProject: { id: 'p1', path: '/repo' } as never,
     });
 
     await openSourceAtLine('p1', '', '/repo/src/main.rs', 1);
 
-    const space = useEditorStore.getState().tabs['p1'];
-    expect(space.tabs[0].data.kind === 'file' && space.tabs[0].data.filePath).toBe(
-      '/repo/src/main.rs',
-    );
+    expect(readFileContentMock).toHaveBeenCalledWith('p1', '/repo/src/main.rs', '/repo');
+  });
+
+  it('会话属于 worktree A 但已切回主仓 → scope 是项目根，不对 A 产假可编辑 tab', async () => {
+    useProjectStore.setState({
+      projects: [{ id: 'p1', path: '/repo' }] as never,
+      activeProject: { id: 'p1', path: '/repo' } as never,
+    });
+    const wt = '/home/u/.neeko/worktrees/fix-1';
+
+    // 无激活 worktree（已切回主仓），但调用方仍传会话快照的单元根 wt。
+    await openSourceAtLine('p1', wt, `${wt}/src/main.rs`, 2);
+
+    // 读取 scope 必须是当前单元（项目根）—— 否则会产下「能读不能写」的 tab。
+    expect(readFileContentMock).toHaveBeenCalledWith('p1', `${wt}/src/main.rs`, '/repo');
   });
 
   it('同一路径再次停止 → 复用既有 tab（canonical 身份命中）', async () => {
@@ -85,6 +97,18 @@ describe('openSourceAtLine — DAP 停止行打开源文件（canonical 构造�
     const space = useEditorStore.getState().tabs['p1'];
     expect(space.tabs).toHaveLength(1);
     expect(space.activeTabId).toBe('p1:/repo/src/main.rs');
+  });
+
+  it('激活 worktree → 项目内读取的 scope 是 worktree 根（不因在项目根外而转只读）', async () => {
+    const wt = '/home/u/.neeko/worktrees/fix-1';
+    useWorktreeStore.getState().setActiveWorktree('p1', wt);
+
+    await openSourceAtLine('p1', '/repo', `${wt}/src/main.rs`, 3);
+
+    // 读取以**执行单元根**为 InProject scope（第三个参数），否则 worktree 文件被判越界。
+    expect(readFileContentMock).toHaveBeenCalledWith('p1', `${wt}/src/main.rs`, wt);
+    const tab = useEditorStore.getState().tabs[`p1:wt:${wt}`]?.tabs[0];
+    expect(tab?.data.kind === 'file' && tab.data.readOnly).toBeUndefined();
   });
 });
 

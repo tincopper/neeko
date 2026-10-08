@@ -211,8 +211,13 @@ export function useFileViewTabOps({
           // WSL/Remote 模式：通过 ProjectCommands 接口调用
           await cmds.writeFileContent(fileTab.data.filePath, content, rootPath);
         } else {
-          // Local 模式：通过 unified 命令
-          await writeFileContent(fileTab.projectId, fileTab.data.filePath, content);
+          // Local：与 openFile 读取同源，传单元根作 rootPath（worktree 可在项目根外）。
+          await writeFileContent(
+            fileTab.projectId,
+            fileTab.data.filePath,
+            content,
+            rootPath ?? null,
+          );
         }
 
         // Update tab: mark as not dirty, update content

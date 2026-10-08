@@ -1794,3 +1794,34 @@ Fix the Windows-only flake where git-meta watcher tests asserted an absolute zer
 ### Next Steps
 
 - None - task complete
+
+
+## Session 260: Worktree 场景下的程序运行与调试：执行单元根唯一化
+
+**Date**: 2026-10-08
+**Task**: Worktree 场景下的程序运行与调试：执行单元根唯一化
+**Branch**: `main`
+
+### Summary
+
+DAP 域新增唯一单元解析点 ExecUnit/resolve_unit（复用 RepoRef）；构建 cwd 校验基准、会话 workspace、${workspaceFolder}、launch.json 读写根全部改为单元根；5+3 个 DAP 命令新增 worktree_path（前端经 unitRootForProject 派生）；停点源码读取补 InProject scope（worktree 源码恢复可编辑）。pnpm check 22/22 绿。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+(No commits - planning session)
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

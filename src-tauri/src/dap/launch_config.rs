@@ -11,7 +11,6 @@ use std::path::Path;
 
 use super::config::{load_launch_file, save_launch_file};
 use super::discover::{discover_entries, entry_to_launch_config, EntryPoint};
-use super::project_context::project_path;
 use super::types::{LaunchConfig, LaunchFile};
 use crate::AppError;
 use crate::AppStateWrapper;
@@ -52,38 +51,45 @@ pub(super) fn load_or_discover(path: &Path) -> Result<Vec<LaunchConfig>, AppErro
 pub fn list_or_discover_configs(
     state: &AppStateWrapper,
     project_id: &str,
+    worktree_path: Option<&str>,
 ) -> Result<Vec<LaunchConfig>, AppError> {
-    let path = project_path(state, project_id)?;
-    load_or_discover(&path)
+    // 读取根 = **执行单元根**：worktree 有自己的一份 `.vscode/launch.json`。
+    let root = super::project_context::resolve_unit_root(state, project_id, worktree_path)?;
+    load_or_discover(std::path::Path::new(&root))
 }
 
 /// Persist launch configs to disk for a project.
 pub fn save_configs(
     state: &AppStateWrapper,
     project_id: &str,
+    worktree_path: Option<&str>,
     configurations: Vec<LaunchConfig>,
 ) -> Result<(), AppError> {
-    let path = project_path(state, project_id)?;
+    // 写路径与读路径同源（单元根）：否则在 worktree 视图保存的配置会落到主仓、
+    // 下次 `list_or_discover_configs` 读不到（"我保存了却没生效"）。
+    let root = super::project_context::resolve_unit_root(state, project_id, worktree_path)?;
     let file = LaunchFile {
         version: LAUNCH_FILE_VERSION.to_string(),
         configurations,
     };
-    save_launch_file(&path, &file)
+    save_launch_file(std::path::Path::new(&root), &file)
 }
 
 /// Discover entry points (main packages) for a project.
 pub fn discover_entry_points(
     state: &AppStateWrapper,
     project_id: &str,
+    worktree_path: Option<&str>,
 ) -> Result<Vec<EntryPoint>, AppError> {
-    let path = project_path(state, project_id)?;
+    let root = super::project_context::resolve_unit_root(state, project_id, worktree_path)?;
     // 既有行为：扫描是尽力而为，找不到就返回空列表（不是错误）。
-    Ok(discover_entries(&path))
+    Ok(discover_entries(std::path::Path::new(&root)))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::dap::project_context::project_path;
     use crate::dap::testing::{isolated_state, plain_project_state};
 
     /// 手工写一份 launch.json（模拟用户已配置过）。
@@ -156,7 +162,7 @@ mod tests {
         let project_dir = tmp.path().join("proj");
         std::fs::write(project_dir.join("main.go"), "package main\n").expect("main.go");
 
-        let discovered = list_or_discover_configs(&state, &project_id).expect("list");
+        let discovered = list_or_discover_configs(&state, &project_id, None).expect("list");
         assert_eq!(discovered.len(), 1);
 
         let custom = vec![LaunchConfig {
@@ -165,27 +171,27 @@ mod tests {
             request: "launch".into(),
             ..LaunchConfig::default()
         }];
-        save_configs(&state, &project_id, custom).expect("save");
-        let reloaded = list_or_discover_configs(&state, &project_id).expect("list");
+        save_configs(&state, &project_id, None, custom).expect("save");
+        let reloaded = list_or_discover_configs(&state, &project_id, None).expect("list");
         assert_eq!(reloaded.len(), 1);
         assert_eq!(reloaded[0].name, "Only mine");
 
         // 入口点扫描门面：与发现结果同源。
-        let entries = discover_entry_points(&state, &project_id).expect("entries");
+        let entries = discover_entry_points(&state, &project_id, None).expect("entries");
         assert_eq!(entries.len(), 1);
         assert_eq!(entries[0].adapter_type, "go");
 
         // 未知项目 → `NotFound`（不静默返回空列表）。
         assert!(matches!(
-            list_or_discover_configs(&state, "missing"),
+            list_or_discover_configs(&state, "missing", None),
             Err(AppError::NotFound(_))
         ));
         assert!(matches!(
-            discover_entry_points(&state, "missing"),
+            discover_entry_points(&state, "missing", None),
             Err(AppError::NotFound(_))
         ));
         assert!(matches!(
-            save_configs(&state, "missing", Vec::new()),
+            save_configs(&state, "missing", None, Vec::new()),
             Err(AppError::NotFound(_))
         ));
     }

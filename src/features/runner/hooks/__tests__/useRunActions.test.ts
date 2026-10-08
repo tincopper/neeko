@@ -1076,6 +1076,7 @@ describe('useRunActions', () => {
       await waitFor(() =>
         expect(mockInvoke).toHaveBeenCalledWith('debug_build_test_binary', {
           projectId: 'proj-1',
+          worktreePath: null,
           command: "go build -o '.neeko/test-bin/main' -gcflags 'all=-N -l' './cmd/agent'",
           cwd: '/tmp/proj',
         }),
@@ -1259,6 +1260,7 @@ describe('useRunActions', () => {
       await waitFor(() =>
         expect(mockInvoke).toHaveBeenCalledWith('debug_build_test_binary', {
           projectId: 'proj-1',
+          worktreePath: null,
           command: "cargo test 'parse_simple' --no-run --lib --message-format=json",
           cwd: '/tmp/proj',
         }),
@@ -1361,7 +1363,8 @@ describe('useRunActions', () => {
       );
 
       // member 定位与 lib 探测基准 = 实际执行目录（worktree），构建命令带
-      // `--manifest-path`（探测命中 worktree 清单）；cwd 也是 worktree。
+      // `--manifest-path`（探测命中 worktree 清单）；cwd 与 worktreePath（cwd 校验基准）
+      // 都是 worktree —— worktree 可在项目根之外，后端不能用项目根校验。
       await waitFor(() =>
         expect(mockInvoke).toHaveBeenCalledWith(
           'debug_build_test_binary',
@@ -1369,6 +1372,7 @@ describe('useRunActions', () => {
             command:
               "cargo test 'parse_simple' --no-run --lib --manifest-path 'src-tauri/Cargo.toml' --message-format=json",
             cwd: '/tmp/proj/.worktrees/fix-1',
+            worktreePath: '/tmp/proj/.worktrees/fix-1',
           }),
         ),
       );
@@ -1564,6 +1568,7 @@ describe('useRunActions', () => {
       await waitFor(() =>
         expect(mockInvoke).toHaveBeenCalledWith('debug_build_test_binary', {
           projectId: 'proj-1',
+          worktreePath: null,
           command: "go test -c -o '.neeko/test-bin/TestAdd' -gcflags 'all=-N -l' './pkg/math'",
           cwd: '/tmp/proj',
         }),
@@ -1637,6 +1642,7 @@ describe('useRunActions', () => {
       await waitFor(() =>
         expect(mockInvoke).toHaveBeenCalledWith('debug_build_test_binary', {
           projectId: 'proj-1',
+          worktreePath: null,
           command: "go test -c -o '.neeko/test-bin/TestAdd' -gcflags 'all=-N -l' './pkg/math'",
           cwd: '/tmp/proj',
         }),

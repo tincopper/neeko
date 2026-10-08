@@ -137,6 +137,36 @@ WSL 项目的根可能是 `\\wsl$\…` UNC 路径，同步读会占住 worker �
 日志与用户可见文案（Console note、错误消息）用英文（见
 [质量指南](./quality-guidelines.md)）；模块/函数注释用中文。
 
+### 2.11 执行单元根（worktree）唯一化
+
+一次 Run/Debug 的路径事实基准是**执行单元根**（激活 worktree 根 / 主仓项目根），
+不是 project 根。worktree 由用户自选位置，**可以在项目根之外**
+（默认 `~/.neeko/worktrees/<name>`，见 `common/git/path_guard.rs` 的分层策略）。
+
+- **唯一解析点**：`project_context::resolve_unit(state, project_id, worktree_path)`
+  （异步；同步命令用 `resolve_unit_root`）。两者共用私有 `unit_root(&RepoRef)` 提取 + 空根
+  fail-closed —— 未来加成员资格校验只改这一处。主仓是 `root == project_root` 的退化取值。
+- **单次解析**：`LanguageBackend::plan` 接收已解析的 `&ExecUnit`（不再自己 `resolve_unit`）——
+  编排后端是单元的**消费者**，不是解析者（低耦合）。
+- **派生出四处**（禁止再读 project 根）：`resolve_build_dir` 的 containment 基准、
+  会话 `DapSession::project_path`（adapter cwd / `build_launch_args` workspace / 外部源码判定根 /
+  回传前端的 `projectPath`）、`expand_config` 的 `${workspaceFolder}`、launch.json 读**写**根。
+- **IPC**：DAP 命令接受 `worktree_path: Option<String>`（与 git 域同一个 seam）；
+  `debug_java_attach` 的 target 内联为 camelCase struct（避免长参数列表）。前端经
+  `exec/context::unitRootForProject` / `resolveRunCwd` 派生（**前端唯一派生点**）。
+- **停点源码读取**：`read_file_content(rootPath)` 的 `InProject` scope 必须是**当前执行单元根**，
+  否则 worktree 文件被判越界 → 回落只读外部通道（症状：停点源码打开后无法编辑）。
+  **不变量：读取 scope == tab 空间 == 编辑器保存根（均为当前单元）** —— 因此栈帧属于
+  非当前单元时（会话存活期间切换 worktree）有意降级为只读；返回会话的单元根会产下
+  「能读不能写」的假可编辑 tab（`navigate.ts::resolveUnitRoot` 据此不取会话快照）。
+- **信任模型**：与 git 域一致 —— 前端 `worktreeStore` 是单元清单的事实源，后端只做
+  词法校验 + canonicalize（`RepoRef::resolve`），不额外调 `git worktree list` 验成员资格。
+- **不做**（已登记缺口）：LSP 会话跟随 worktree 根；会话按单元并行（当前维持
+  「一个项目一个活动会话」）。
+
+护栏：`dap::project_context::tests::resolve_unit_*`、`dap::launch_support::tests::resolve_build_dir_*`、
+前端 `sessionSlice.test.ts` / `useRunActions.test.ts` / `navigate.test.ts` 的 worktree 用例。
+
 ---
 
 ## 3. 常见坑

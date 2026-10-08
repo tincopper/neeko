@@ -9,28 +9,32 @@ use std::future::Future;
 use crate::common::executor::factory::ExecTarget;
 use crate::AppError;
 
-/// Validate the build working directory: Local → canonicalize + containment in
-/// the project root (blocking FS call isolated via spawn_blocking); remote →
-/// lexical NUL rejection only.
+/// Validate the build working directory against the **execution unit root**:
+/// Local → canonicalize + containment in the unit root (blocking FS isolated via
+/// spawn_blocking); remote → lexical NUL rejection only.
+///
+/// `unit_root` 是调用方经 `project_context::ExecUnit::root` 得到的**单元根**
+/// （主仓 = 项目根；linked worktree = worktree 根）。传入项目根会让默认路径
+/// `~/.neeko/worktrees/<name>` 下的调试构建被误拒 —— 那不是「越界」，是基准选错。
 pub(crate) async fn resolve_build_dir(
     target: &ExecTarget,
-    project_root: &str,
+    unit_root: &str,
     cwd: &str,
 ) -> Result<String, AppError> {
     match target {
         ExecTarget::Local => {
-            let root = project_root.to_string();
+            let root = unit_root.to_string();
             let cwd = cwd.to_string();
             tokio::task::spawn_blocking(move || {
                 let canonical_root = std::path::Path::new(&root).canonicalize().map_err(|e| {
-                    AppError::InvalidInput(format!("invalid project root `{root}`: {e}"))
+                    AppError::InvalidInput(format!("invalid unit root `{root}`: {e}"))
                 })?;
                 let canonical = std::path::Path::new(&cwd).canonicalize().map_err(|_| {
                     AppError::InvalidInput(format!("build cwd not found or inaccessible: {cwd}"))
                 })?;
                 if !canonical.starts_with(&canonical_root) {
                     return Err(AppError::InvalidInput(
-                        "build cwd is outside the project root".into(),
+                        "build cwd is outside the execution unit root".into(),
                     ));
                 }
                 Ok(canonical.to_string_lossy().to_string())
@@ -192,5 +196,68 @@ mod tests {
             ],
             "必须先排空输出、再恰好收尾一次"
         );
+    }
+
+    // ── `resolve_build_dir`：基准是**执行单元根**，不是项目根 ──────────────────────
+
+    /// worktree 根在项目根**之外**（默认 `~/.neeko/worktrees/<name>`）时，
+    /// 以单元根为基准的校验必须放行 —— 这是本任务修复的核心症状（S1）。
+    #[tokio::test]
+    async fn resolve_build_dir_accepts_cwd_inside_unit_root_outside_project_root() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let project_root = tmp.path().join("proj");
+        let worktree_root = tmp.path().join("worktrees").join("fix-1");
+        let module_dir = worktree_root.join("module-a");
+        std::fs::create_dir_all(&project_root).expect("project dir");
+        std::fs::create_dir_all(&module_dir).expect("module dir");
+        let worktree_root = worktree_root.to_string_lossy().to_string();
+
+        let dir = resolve_build_dir(
+            &ExecTarget::Local,
+            &worktree_root,
+            &module_dir.to_string_lossy(),
+        )
+        .await
+        .expect("cwd inside unit root must be accepted");
+        assert_eq!(dir, module_dir.canonicalize().unwrap().to_string_lossy());
+    }
+
+    /// 越出单元根仍必须拒绝（fail-closed）；错误文案不得再声称项目根。
+    #[tokio::test]
+    async fn resolve_build_dir_rejects_cwd_outside_unit_root() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let worktree_root = tmp.path().join("worktrees").join("fix-1");
+        let outside = tmp.path().join("elsewhere");
+        std::fs::create_dir_all(&worktree_root).expect("worktree dir");
+        std::fs::create_dir_all(&outside).expect("outside dir");
+
+        let err = resolve_build_dir(
+            &ExecTarget::Local,
+            &worktree_root.to_string_lossy(),
+            &outside.to_string_lossy(),
+        )
+        .await
+        .expect_err("cwd outside unit root must be rejected");
+        assert!(
+            err.to_string().contains("execution unit root"),
+            "expected unit-root error, got: {err}"
+        );
+    }
+
+    /// 远端（WSL/SSH）不做 canonicalize，仅做词法 NUL 拒绝 —— 语义不变。
+    #[tokio::test]
+    async fn resolve_build_dir_remote_only_rejects_nul() {
+        let target = ExecTarget::Wsl {
+            distro: "Ubuntu".into(),
+        };
+        assert_eq!(
+            resolve_build_dir(&target, "/home/u/wt", "/home/u/wt/mod")
+                .await
+                .expect("remote passthrough"),
+            "/home/u/wt/mod"
+        );
+        assert!(resolve_build_dir(&target, "/home/u/wt", "bad\0path")
+            .await
+            .is_err());
     }
 }

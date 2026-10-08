@@ -166,6 +166,7 @@ impl DapManager {
         state: &AppStateWrapper,
         sink: Arc<dyn DapEventSink>,
         project_id: &str,
+        worktree_path: Option<&str>,
         config_name: Option<String>,
         current_file: Option<String>,
     ) -> Result<DapSessionInfo, AppError> {
@@ -173,6 +174,7 @@ impl DapManager {
             &self.context(state),
             sink,
             project_id,
+            worktree_path,
             config_name,
             current_file,
         )
@@ -185,9 +187,17 @@ impl DapManager {
         state: &AppStateWrapper,
         sink: Arc<dyn DapEventSink>,
         project_id: &str,
+        worktree_path: Option<&str>,
         raw_config: LaunchConfig,
     ) -> Result<DapSessionInfo, AppError> {
-        launch::start_session_config(&self.context(state), sink, project_id, raw_config).await
+        launch::start_session_config(
+            &self.context(state),
+            sink,
+            project_id,
+            worktree_path,
+            raw_config,
+        )
+        .await
     }
 
     /// 语言编排调试入口（`plan` 三态 → 会话 / Warming / Unavailable）。
@@ -340,10 +350,12 @@ impl DapManager {
         config: LaunchConfig,
         endpoint: &str,
     ) -> Result<DapSessionInfo, AppError> {
+        let unit = super::project_context::resolve_unit(state, project_id, None).await?;
         launch::launch_session(
             &self.context(state),
             sink,
             project_id,
+            &unit,
             config,
             None,
             launch::SessionRoute {

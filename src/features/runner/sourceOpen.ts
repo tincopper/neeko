@@ -49,7 +49,9 @@ export function fsSourceOpen(
   return {
     identity,
     tabTitle: getFileName(identity),
-    load: () => loadStopSourceContent(projectId, loadPath, sessionId),
+    // `projectRoot` = 执行单元根：既是身份归一基准，也是项目内读取的 `InProject` scope
+    //（worktree 可在项目根之外，用项目根 scope 会把 worktree 文件误判为越界而转只读）。
+    load: () => loadStopSourceContent(projectId, loadPath, sessionId, projectRoot),
   };
 }
 

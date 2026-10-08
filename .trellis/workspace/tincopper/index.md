@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-5.md`
-- **Total Sessions**: 259
+- **Total Sessions**: 260
 - **Last Active**: 2026-10-08
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-5.md` | ~1796 | Active |
+| `journal-5.md` | ~1827 | Active |
 | `journal-4.md` | ~1989 | Archived |
 | `journal-3.md` | ~1978 | Archived |
 | `journal-2.md` | ~1991 | Archived |
@@ -33,6 +33,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 260 | 2026-10-08 | Worktree 场景下的程序运行与调试：执行单元根唯一化 | - | `main` |
 | 259 | 2026-10-08 | Real-source test determinism contract | `adcf1399`, `c95c5347`, `4c4150cd`, `b723c7c4` | `main` |
 | 258 | 2026-10-08 | Gate orchestration: declare lint/test/check gates once | `c6c6e352`, `8f75c6f9`, `50423c75` | `main` |
 | 257 | 2026-10-08 | Git changes realtime: refs watcher + ahead/behind on the single snapshot | `286aefbf`, `d7f79965`, `494f3cc0` | `main` |

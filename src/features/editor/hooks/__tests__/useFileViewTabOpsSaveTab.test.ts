@@ -40,11 +40,11 @@ function makeFileTab(id: string, overrides: Partial<FileTabData> = {}): Tab {
   };
 }
 
-function renderOps(setError = vi.fn()) {
+function renderOps(setError = vi.fn(), worktreePath: string | null = null) {
   return renderHook(() =>
     useFileViewTabOps({
       tabKeyRef: { current: 'p1' },
-      worktreePathRef: { current: null },
+      worktreePathRef: { current: worktreePath },
       externalCommandsRef: { current: null },
       setError,
     }),
@@ -75,7 +75,7 @@ describe('useFileViewTabOps saveTabById', () => {
       saved = await result.current.saveTabById('t1');
     });
 
-    expect(writeFileContentMock).toHaveBeenCalledWith('p1', 't1.ts', 'new content');
+    expect(writeFileContentMock).toHaveBeenCalledWith('p1', 't1.ts', 'new content', null);
     expect(saved).toBe(true);
     const tab = useEditorStore.getState().tabs['p1']!.tabs.find((t) => t.id === 't1')!;
     expect(isFileTab(tab)).toBe(true);
@@ -83,6 +83,31 @@ describe('useFileViewTabOps saveTabById', () => {
       expect(tab.data.isDirty).toBe(false);
       expect(tab.data.content.content).toBe('new content');
     }
+  });
+
+  it('worktree：绝对路径以单元根为 rootPath 保存（与读取同源，可写）', async () => {
+    // 回归：Local 保存曾漏传 rootPath → 后端以项目根为 containment 基准，
+    // 绝对 worktree 路径被拒（能读不能写的假可编辑 tab）。
+    const wt = '/home/u/.neeko/worktrees/fix-1';
+    const abs = `${wt}/src/a.ts`;
+    act(() => {
+      useEditorStore.getState().addTab(
+        'p1',
+        makeFileTab('a', {
+          filePath: abs,
+          fileName: 'a.ts',
+          content: { path: abs, content: 'edit', size: 4, is_binary: false },
+        }),
+      );
+    });
+    writeFileContentMock.mockResolvedValue(undefined);
+
+    const { result } = renderOps(vi.fn(), wt);
+    await act(async () => {
+      await result.current.saveTabById('a');
+    });
+
+    expect(writeFileContentMock).toHaveBeenCalledWith('p1', abs, 'edit', wt);
   });
 
   it('untitled tab：saveTabById 触发 Save As 并携带 closeAfterSave: true（关闭确认链路）', async () => {

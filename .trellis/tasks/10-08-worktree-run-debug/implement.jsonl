@@ -1,0 +1,6 @@
+{"_example": "Fill with {\"file\": \"<path>\", \"reason\": \"<why>\"}. Put spec/research files only — no code paths. Run `python3 .trellis/scripts/get_context.py --mode packages` to list available specs. Delete this line once real entries are added."}
+{"file": ".trellis/spec/backend/dap-domain.md", "reason": "DAP 域分层/不变量/坑表：本次改变会话 project_path 语义与 resolve_build_dir 判据，必须对齐 §2.6 路径不降级与 §3 坑表"}
+{"file": ".trellis/spec/backend/type-safety.md", "reason": "IPC 类型手动同步约定 + serde default；命令新增 worktree_path 参数须同步前端 wrapper"}
+{"file": ".trellis/spec/frontend/api-layer.md", "reason": "invoke 只在 api/ 目录；wrapper 命名与 camelCase→snake_case 约定；LangIo 是语言模块唯一 IO 通道"}
+{"file": ".trellis/spec/frontend/state-management.md", "reason": "前端红线 12 路径身份唯一化与仓库单元分槽；navigate.ts 单元根派生单点"}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "跨栈数据流与契约对齐判据（Rust 声明 ↔ TS 消费）"}

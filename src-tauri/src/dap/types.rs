@@ -78,7 +78,8 @@ pub const MAX_SOURCE_BYTES: u64 = 512 * 1024;
 ///
 /// 四个字段同源（编辑器同一次 Debug 动作产出）且共同回答「要调试什么」——
 /// 收进单一结构体，避免 manager / 命令层之间的长参数列表各自漂移。
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct JavaDebugTarget {
     /// 已就绪的 debuggee shell 命令（前端 `buildJavaDebugCommand` 产物）。
     pub command: String,
@@ -648,6 +649,22 @@ mod java_backend_tests {
         assert!(target.args.is_empty());
         assert!(target.launcher_jar.is_none());
         assert!(target.project_name.is_none());
+    }
+
+    /// IPC 契约：`JavaDebugTarget` 为 camelCase（`debug_java_attach` 的 nested `target` 参数）。
+    #[test]
+    fn java_debug_target_deserializes_camel_case() {
+        let target: JavaDebugTarget = serde_json::from_value(serde_json::json!({
+            "command": "java -agentlib:jdwp=x",
+            "cwd": "/wt/fix-1/module-a",
+            "testName": "testAdd",
+            "classpath": ["/a", "/b"]
+        }))
+        .expect("deserialize");
+        assert_eq!(target.command, "java -agentlib:jdwp=x");
+        assert_eq!(target.cwd, "/wt/fix-1/module-a");
+        assert_eq!(target.test_name, "testAdd");
+        assert_eq!(target.classpath, vec!["/a".to_string(), "/b".to_string()]);
     }
 
     /// 结果三态以 `kind` 为 tag（前端按 kind 分发）——断言统一的 `DebugStartOutcome`

@@ -23,12 +23,14 @@ const DEBUG_BUILD_STREAM_LIMIT: usize = DEBUG_BUILD_OUTPUT_LIMIT / 2;
 /// `--message-format=json` 行，永不与 stderr 混流），stderr 是 go/cargo 的构建
 /// 报错流（前端失败时渲染进 DebugPanel console）。
 ///
-/// `cwd` 在 Local 上做 canonicalize + 项目根包含校验（阻塞 FS 调用已在
-/// [`resolve_build_dir`] 内隔离到 `spawn_blocking`），远端仅做 NUL 字面检查
-/// —— 远程无法 canonicalize。
+/// `cwd` 的校验基准是 `worktree_path` 指定的**执行单元根**（Local 下 canonicalize +
+/// 落在单元根内；远端仅做 NUL 字面检查）—— 阻塞 FS 调用已在 [`resolve_build_dir`]
+/// 内隔离到 `spawn_blocking`。worktree 可以位于项目根之外（默认
+/// `~/.neeko/worktrees/<name>`），故不能用项目根当基准。
 pub async fn build_test_binary(
     state: &AppStateWrapper,
     project_id: &str,
+    worktree_path: Option<&str>,
     command: &str,
     cwd: &str,
 ) -> Result<DebugBuildOutput, AppError> {
@@ -42,18 +44,18 @@ pub async fn build_test_binary(
             "debug build cwd must not be empty".into(),
         ));
     }
-    let (target, project_root) = state.resolve_project(project_id)?;
-    let dir = resolve_build_dir(&target, &project_root, cwd).await?;
+    let unit = super::project_context::resolve_unit(state, project_id, worktree_path).await?;
+    let dir = resolve_build_dir(&unit.target, &unit.root, cwd).await?;
     // Windows 本地经 `cmd /C` 执行，前端命令的 POSIX 单引号（`cargo test 'name'`）
     // 在 cmd 下是字面字符——转成 cmd 双引号；非 Windows Local 原样透传。
-    let command = if matches!(target, ExecTarget::Local) && cfg!(windows) {
+    let command = if matches!(unit.target, ExecTarget::Local) && cfg!(windows) {
         windows_cmd_quote(command)
     } else {
         command.to_string()
     };
     // 统一 script 形态：shell 选择（Windows `cmd /C` / Unix `sh -c`）由
     // `core::exec::collect_script` → `platform::shell_launch::shell_argv` 决定。
-    let output = crate::core::exec::collect_script(&target, &command, Some(dir.as_str()), &[])
+    let output = crate::core::exec::collect_script(&unit.target, &command, Some(dir.as_str()), &[])
         .await
         .map_err(|e| AppError::Dap(format!("debug build spawn failed: {e}")))?;
     Ok(DebugBuildOutput {
