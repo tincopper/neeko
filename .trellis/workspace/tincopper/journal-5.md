@@ -1722,7 +1722,19 @@ Promoted the in-process guard framework to supervise external-command gates. lin
 
 ### Main Changes
 
-
+- 复用判据层而非新建框架：`Gate(Guard)` 把外部命令门禁接进既有 registry / runner /
+  report / selftest；`tools/guards/core/` 里零工具链名（AC4）。
+- 单一声明源 `tools/guards/ledger/gates.json`（10 条 gate）+ `--suite`（kind）/`--source`
+  （形态）两个正交过滤；`package.json` / `lefthook.yml` / `ci.yml` 收敛为单次框架调用，
+  孤儿 `check:fe` / `check:rust` 链删除。
+- 三态与可见性不退化：平台不匹配记显式 SKIPPED（计数可见，不再把「没检查」伪装成通过）、
+  `--jobs` 并发、fail-fast 不中断已在跑的门禁、门禁输出末行进 metrics、输出有界。
+- 新护栏 `check_gate_topology`：A1（声明了 `ci` 的 gate 必须在指定 job 内）与 A3
+  （hook 只允许单次框架调用，不得再手写门禁或出现 `&&`）。
+- **缺陷修复**：非零退出 + 零输出曾落回 PASS（verdict 由 findings 推导）——`_run_gate`
+  合成携带退出码的 Finding，`GuardResult.violated()` 拒绝空 findings；两个回归测试。
+- 文档/台账：`invariants.json` 登记 `gate-topology-single-source`；CONTRIBUTING /
+  CONTRIBUTING_CN / AGENTS / `.trellis/spec/guides/invariant-enforcement.md` 同步。
 
 ### Git Commits
 
@@ -1734,7 +1746,10 @@ Promoted the in-process guard framework to supervise external-command gates. lin
 
 ### Testing
 
-- [OK] (Add test results)
+- [OK] 框架自检 379 用例 OK；`pnpm check` 21/21 全绿（test_fe 48.6s / test_rust 309s / test_host 0.9s）
+- [OK] `run --stage commit --staged` 18/18；`run --stage ci --suite lint --source python` 16/16；`lefthook validate` All good
+- [OK] AC3 与改造前基线逐字对比：15 条既有护栏的 stage 集合无变化、无丢失
+- [OK] A1/A3 由 `check_gate_topology` 在真实仓库与 16 个夹具用例上验证；A2/A4/`require_tools` 登记为批次 2 可见债务
 
 ### Status
 
