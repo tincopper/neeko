@@ -79,7 +79,10 @@
 ### 指导原则
 
 1. **测试内部逻辑，而非框架包装** —— 测试 `ProjectManager.add_project()`，而非 `#[tauri::command] fn add_project()` 包装层
-2. **真实优于 mock** —— 使用真实的临时 git 仓库，而非 mock git2
+2. **真实优于 mock** —— 使用真实的临时 git 仓库，而非 mock git2。
+   **对偶条款**：真实源只承诺「至少一次」可达，断言必须单向（`≥`），不得对事件观察者做
+   精确集合 / 绝对零断言。判定表、正/反例与观察原语见
+   [真实源测试的确定性契约](./real-source-determinism.md)。
 3. **在边界处 mock** —— 前端 mock Tauri IPC（`invoke`/`listen`），不 mock React 内部逻辑
 4. **每个测试聚焦一个断言** —— 每个测试验证一个行为
 

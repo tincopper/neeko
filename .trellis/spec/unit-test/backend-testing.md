@@ -514,3 +514,11 @@ assert!(info.changed_files.iter().any(|f| f.path == "README.md"));
 > 体内调用**（`src-tauri/AGENTS.md` 红线 1）；async 测试里用 `operations::get_git_info(...).await` 版本。
 > 护栏脚本 `tools/guards/checks/check_worktree_byte_assertions.py` 会检出该模式（已接入
 > `pnpm lint` 与 CI）。
+
+### 6. 对真实源事件观察者做绝对零 / 精确集合断言（Windows CI 必挂）
+
+真实源（FS 事件 / 进程 / 时钟 / 调度）只承诺「至少一次」可达，不承诺事件集合精确。
+`assert_eq!(refs.load(..), 0)` 这类跨回调绝对零断言在 Windows `ReadDirectoryChangesW` 的
+目录级事件下必挂（2026-10-08 事故）；正向用 `CallbackProbe::wait_reached`，分类负向下沉
+`units.rs` 纯函数，生命周期负向改差分式（`assert_eq!(count, baseline)`）。
+完整判定表、正/反例与观察原语见 [真实源测试的确定性契约](./real-source-determinism.md)。
