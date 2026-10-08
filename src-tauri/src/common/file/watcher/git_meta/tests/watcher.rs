@@ -2,10 +2,9 @@
 
 use super::super::paths::{resolve_git_meta_paths, GitMetaPaths};
 use super::super::watcher::{create_git_meta_watcher, create_git_meta_watcher_with};
+use crate::common::file::watcher::probe::CallbackProbe;
 use notify::{RecommendedWatcher, RecursiveMode};
-use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::Arc;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 // ── 真实文件系统集成测试：验证 notify 事件送达（方案 B 修复的核心假设） ────
 //
@@ -14,69 +13,57 @@ use std::time::{Duration, Instant};
 // 2. `.git/HEAD` 的原子写能被捕获 → on_head_changed
 // 3. worktree 区域事件经 rearm 递归监听送达（自愈补挂）
 //
-// 确定性约定：
-// - 不设注册预热 / 观察窗口 sleep，不用墙钟窗口做负向断言；
-// - 「写-轮询」等待事件到达（25ms 有界轮询，整体 5s 上限）——notify 未就绪时
-//   首事件可能丢失，重试写入即自愈；
-// - 负向分类属性（config / ORIG_HEAD → Nothing）由 units.rs 纯函数测试确定性覆盖，
-//   不在真实 FS 上做「一段时间内无事件」的墙钟断言。
+// 确定性约定（完整规则见 .trellis/spec/unit-test/real-source-determinism.md）：
+// - 真实源只承诺「至少一次」可达，故只做正向可达断言（CallbackProbe::wait_reached）；
+// - 不设注册预热 / 观察窗口 sleep，不用墙钟窗口做负向 / 分类断言；
+// - 负向分类属性（index / HEAD / refs 互斥，config / ORIG_HEAD → Nothing）由 units.rs
+//   纯函数测试确定性覆盖，不在真实 FS 上做「某回调计数不得增长」的绝对零断言。
 
-/// 集成测试助手：为给定 `GitMetaPaths` 建 watcher，返回各回调计数 flag。
+/// 集成测试助手：为给定 `GitMetaPaths` 建 watcher，返回各回调的到达探针。
 ///
 /// 调用方负责让 `meta` 对应的目录保持存活（`TempDir` 不得在此函数内 drop）。
-#[allow(clippy::type_complexity)]
 fn spawn_watcher_for(
     meta: &GitMetaPaths,
 ) -> (
     super::super::watcher::GitMetaWatcherHandle,
-    Arc<AtomicUsize>,
-    Arc<AtomicUsize>,
-    Arc<AtomicUsize>,
+    CallbackProbe,
+    CallbackProbe,
+    CallbackProbe,
 ) {
-    let index_changed = Arc::new(AtomicUsize::new(0));
-    let head_changed = Arc::new(AtomicUsize::new(0));
-    let refs_changed = Arc::new(AtomicUsize::new(0));
-    let index_flag = index_changed.clone();
-    let head_flag = head_changed.clone();
-    let refs_flag = refs_changed.clone();
+    let index_changed = CallbackProbe::new();
+    let head_changed = CallbackProbe::new();
+    let refs_changed = CallbackProbe::new();
 
     let watcher = create_git_meta_watcher(
         "integration-test".to_string(),
         meta,
-        move || {
-            index_flag.fetch_add(1, Ordering::SeqCst);
-        },
-        move || {
-            head_flag.fetch_add(1, Ordering::SeqCst);
-        },
-        move || {
-            refs_flag.fetch_add(1, Ordering::SeqCst);
-        },
+        index_changed.callback(),
+        head_changed.callback(),
+        refs_changed.callback(),
     )
     .expect("git meta watcher should be created");
 
     (watcher, index_changed, head_changed, refs_changed)
 }
 
-/// 集成测试助手：创建临时普通仓库 + git 元数据 watcher，返回各回调计数 flag。
+/// 集成测试助手：创建临时普通仓库 + git 元数据 watcher，返回各回调到达探针。
 /// `tempfile::TempDir` 必须随返回保持存活，否则目录被删、watcher 无事件。
 /// 返回 `(tmp, handle, meta, index_changed, head_changed, refs_changed)`。
-#[allow(clippy::type_complexity)]
 fn spawn_git_meta_watcher_spy() -> (
     tempfile::TempDir,
     super::super::watcher::GitMetaWatcherHandle,
     GitMetaPaths,
-    Arc<AtomicUsize>,
-    Arc<AtomicUsize>,
-    Arc<AtomicUsize>,
+    CallbackProbe,
+    CallbackProbe,
+    CallbackProbe,
 ) {
     let tmp = tempfile::tempdir().unwrap();
     let repo = tmp.path();
     let git_dir = repo.join(".git");
     std::fs::create_dir_all(git_dir.join("refs").join("heads")).unwrap();
     // 注意：不得在 watcher 建立前写入 HEAD/index —— macOS FSEvents 异步送达会把
-    // 注册前写入的迟到事件漏进流内，污染负向测试的绝对零断言（CI 实测 index_changed
-    // 被污染为 2）。各测试在 watcher 建立后自行 lock+rename 写入。
+    // 注册前写入的迟到事件漏进流内，污染观察窗口（CI 实测 index_changed 被污染为 2）。
+    // 各测试在 watcher 建立后自行 lock+rename 写入。
     let meta = resolve_git_meta_paths(repo).unwrap();
 
     let (watcher, index_changed, head_changed, refs_changed) = spawn_watcher_for(&meta);
@@ -91,44 +78,24 @@ fn spawn_git_meta_watcher_spy() -> (
     )
 }
 
-/// 有界轮询等待条件成立（notify 异步送达，避免 flaky）
-fn wait_until(cond: impl Fn() -> bool, timeout: Duration) -> bool {
-    let deadline = Instant::now() + timeout;
-    while Instant::now() < deadline {
-        if cond() {
-            return true;
-        }
-        std::thread::sleep(Duration::from_millis(25));
-    }
-    cond()
-}
-
 /// 集成验证：`.git/index` 原子写（lock + rename，git add / rm --cached /
 /// reset / commit 的真实行为）能触发 on_index_changed——这是方案 B 修复
 /// 的核心假设：外部只改 index 的 git 操作必须驱动 git-changed 全量刷新，
 /// 否则 ignored_files（文件树 .gitignore 灰色）残留旧值。
 #[test]
 fn git_meta_watcher_detects_index_change_on_real_fs() {
-    let (_tmp, watcher, meta, index_changed, head_changed, refs_changed) =
+    let (_tmp, watcher, meta, index_changed, _head_changed, _refs_changed) =
         spawn_git_meta_watcher_spy();
 
     // 模拟 git 原子写 index（lock + rename）。「写-轮询」：反复写入直到被捕获，
     // 不设注册预热 sleep——notify 未就绪时首事件可能丢失，重试写入即自愈。
     assert!(
-        wait_until(
-            || {
-                std::fs::write(meta.git_dir.join("index.lock"), "v2").unwrap();
-                std::fs::rename(meta.git_dir.join("index.lock"), meta.git_dir.join("index"))
-                    .unwrap();
-                index_changed.load(Ordering::SeqCst) > 0
-            },
-            Duration::from_secs(5),
-        ),
+        index_changed.wait_reached(Duration::from_secs(5), || {
+            std::fs::write(meta.git_dir.join("index.lock"), "v2").unwrap();
+            std::fs::rename(meta.git_dir.join("index.lock"), meta.git_dir.join("index")).unwrap();
+        }),
         "index 变更应触发 on_index_changed"
     );
-    // index 变更不应触发 HEAD / refs 回调
-    assert_eq!(head_changed.load(Ordering::SeqCst), 0);
-    assert_eq!(refs_changed.load(Ordering::SeqCst), 0);
     drop(watcher);
 }
 
@@ -140,14 +107,10 @@ fn git_meta_watcher_detects_head_change_on_real_fs() {
 
     // 模拟 git 切分支改写 HEAD（lock + rename）。「写-轮询」：反复写入直到被捕获。
     assert!(
-        wait_until(
-            || {
-                std::fs::write(meta.git_dir.join("HEAD.lock"), "ref: refs/heads/dev\n").unwrap();
-                std::fs::rename(meta.git_dir.join("HEAD.lock"), meta.git_dir.join("HEAD")).unwrap();
-                head_changed.load(Ordering::SeqCst) > 0
-            },
-            Duration::from_secs(5),
-        ),
+        head_changed.wait_reached(Duration::from_secs(5), || {
+            std::fs::write(meta.git_dir.join("HEAD.lock"), "ref: refs/heads/dev\n").unwrap();
+            std::fs::rename(meta.git_dir.join("HEAD.lock"), meta.git_dir.join("HEAD")).unwrap();
+        }),
         "HEAD 变更应触发 on_head_changed"
     );
     drop(watcher);
@@ -188,23 +151,17 @@ fn git_meta_watcher_detects_refs_change_on_real_fs() {
         spawn_git_meta_watcher_spy();
 
     assert!(
-        wait_until(
-            || {
-                let heads = meta.refs_dir.join("heads");
-                std::fs::create_dir_all(&heads).unwrap();
-                std::fs::write(
-                    heads.join("dev"),
-                    "0123456789abcdef0123456789abcdef01234567\n",
-                )
-                .unwrap();
-                refs_changed.load(Ordering::SeqCst) > 0
-            },
-            Duration::from_secs(5),
-        ),
+        refs_changed.wait_reached(Duration::from_secs(5), || {
+            let heads = meta.refs_dir.join("heads");
+            std::fs::create_dir_all(&heads).unwrap();
+            std::fs::write(
+                heads.join("dev"),
+                "0123456789abcdef0123456789abcdef01234567\n",
+            )
+            .unwrap();
+        }),
         "写 .git/refs/heads/<b> 应触发 on_refs_changed"
     );
-    assert_eq!(_index_changed.load(Ordering::SeqCst), 0);
-    assert_eq!(_head_changed.load(Ordering::SeqCst), 0);
     drop(watcher);
 }
 
@@ -223,13 +180,9 @@ fn git_meta_watcher_detects_packed_refs_change_in_common_gitdir() {
 
     let (watcher, _index_changed, _head_changed, refs_changed) = spawn_watcher_for(&meta);
     assert!(
-        wait_until(
-            || {
-                std::fs::write(&meta.packed_refs, "# pack-refs\n").unwrap();
-                refs_changed.load(Ordering::SeqCst) > 0
-            },
-            Duration::from_secs(5),
-        ),
+        refs_changed.wait_reached(Duration::from_secs(5), || {
+            std::fs::write(&meta.packed_refs, "# pack-refs\n").unwrap();
+        }),
         "写公共 gitdir 的 packed-refs 应触发 on_refs_changed"
     );
     drop(watcher);
