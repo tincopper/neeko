@@ -1,0 +1,4 @@
+{"file": ".trellis/spec/unit-test/index.md", "reason": "测试理念与指导原则的落点：本任务给「真实优于 mock」（第 2 条）补对偶条款并接新 spec，须对齐其结构与措辞"}
+{"file": ".trellis/spec/unit-test/backend-testing.md", "reason": "Rust 测试约定与「常见错误」清单的落点：新增「错误 #6 真实源绝对零断言」、含临时仓库/文件系统测试基建说明"}
+{"file": ".trellis/spec/guides/invariant-enforcement.md", "reason": "不变量强制层级（type/structure/guard/lint/test/prose）与 invariants.json 台账格式、新增不变量流程 —— R5 登记与 R4 tier 判定的依据"}
+{"file": "src-tauri/AGENTS.md", "reason": "后端侧红线与测试/并发约束；确认本次改动只落 #[cfg(test)] 与 tests 目录、不碰生产语义"}

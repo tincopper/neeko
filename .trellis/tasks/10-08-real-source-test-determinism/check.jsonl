@@ -1,0 +1,4 @@
+{"file": ".trellis/spec/unit-test/backend-testing.md", "reason": "核验真机测试断言是否符合双向准则与负向分类法；核验「常见错误」条目已落地且指向唯一 spec 正文"}
+{"file": ".trellis/spec/unit-test/index.md", "reason": "核验「真实优于 mock」的对偶条款已加且从 trellis-before-dev 加载路径可达（AC2）"}
+{"file": ".trellis/spec/guides/invariant-enforcement.md", "reason": "核验 invariants.json 条目（tier/指针/红线）满足 check_invariant_enforcement 的字段与落点规则（AC5）"}
+{"file": ".trellis/spec/unit-test/real-source-determinism.md", "reason": "真实源测试确定性契约的唯一规则正文（判定表/正反例/事故锚点/CallbackProbe 用法/guard id/收敛规则）—— check 子代理须读"}
