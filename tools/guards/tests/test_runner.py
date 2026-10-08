@@ -2,8 +2,10 @@
 from __future__ import annotations
 
 import io
+import os
 import pathlib
 import shutil
+import sys
 import tempfile
 import time
 import unittest
@@ -16,9 +18,11 @@ from guards.core.contract import (
     EXIT_OK,
     EXIT_VIOLATION,
     PASS,
+    SKIP,
     VIOLATION,
     Context,
     Finding,
+    Gate,
     Guard,
     GuardResult,
 )
@@ -33,6 +37,39 @@ def reg(check, guard=None, stage=("local",), scopes=("src/**",)) -> Registration
         module_name="sample_guard",
         source=pathlib.Path("sample_guard.py"),
     )
+
+
+def gate_reg(
+    gate_id,
+    argv,
+    *,
+    kind="test",
+    stages=("local",),
+    platforms=("linux", "macos", "windows"),
+    budget_ms=120_000,
+    scopes=("src/**",),
+) -> Registration:
+    return Registration(
+        guard=Gate(
+            id=gate_id,
+            title="命令门禁",
+            scopes=scopes,
+            stages=stages,
+            kind=kind,
+            argv=tuple(argv),
+            platforms=platforms,
+            budget_ms=budget_ms,
+            fix_hint="修掉它",
+        ),
+        check=None,
+        module_name=f"gate_{gate_id}",
+        source=pathlib.Path("ledger/gates.json"),
+    )
+
+
+def py(script: str, *extra: str) -> tuple:
+    """夹具外部命令一律由 `sys.executable` 派生（红线 13，不得硬编码绝对路径 / bash）。"""
+    return (sys.executable, "-c", script, *extra)
 
 
 class SelectTest(unittest.TestCase):
@@ -92,6 +129,15 @@ class RunOneTest(unittest.TestCase):
         result = self.outcome(lambda ctx: GuardResult.broken("lockfile 不存在")).result
         self.assertEqual(result.verdict, ERROR)
         self.assertIn("lockfile 不存在", result.error)
+
+    def test_skipped_result_is_exempt_from_the_vacuous_scan_check(self):
+        """「跳过」不是「扫了 0 个还报绿」——退出码 0 的合法不跑不该被反空转转成 ERROR。"""
+        result = self.outcome(lambda ctx: GuardResult.skipped("平台不适用")).result
+        self.assertEqual(result.verdict, SKIP)
+
+    def test_a_violation_with_an_empty_scan_is_still_a_guard_error(self):
+        result = self.outcome(lambda ctx: GuardResult.violated(0, [Finding("x")])).result
+        self.assertEqual(result.verdict, ERROR)
 
     def test_real_findings_stay_a_violation(self):
         check = lambda ctx: GuardResult.violated(4, [Finding("裸 font-family")])
@@ -190,6 +236,60 @@ class ExecuteTest(unittest.TestCase):
         _, out, _ = self.run_with(regs, fmt="github-actions")
         self.assertIn("::error file=src/a.ts,line=7::", out)
 
+    def test_platform_mismatched_gate_is_skipped_and_counted(self):
+        regs = [
+            gate_reg("host_gate", py("print('should not run')"), platforms=("linux", "macos"))
+        ]
+        with mock.patch.object(runner, "platform_tag", lambda: "windows"):
+            code, out, _ = self.run_with(regs)
+        self.assertEqual(code, EXIT_OK)
+        self.assertIn("1 条跳过", out)
+        self.assertIn("SKIP", out)
+
+    def test_jobs_run_command_gates_concurrently_in_declaration_order(self):
+        slow = py("import time; time.sleep(1)")
+        regs = [gate_reg(f"g{i}", slow) for i in range(3)]
+        started = time.perf_counter()
+        code, out, _ = self.run_with(regs, jobs=3)
+        elapsed = time.perf_counter() - started
+        self.assertEqual(code, EXIT_OK)
+        self.assertLess(elapsed, 2.0, "三条各 sleep 1s 的 gate 在 jobs=3 下应并发")
+        positions = [out.index(f"g{i}") for i in range(3)]
+        self.assertEqual(positions, sorted(positions))
+
+    def test_fail_fast_does_not_start_later_gates(self):
+        marker_dir = pathlib.Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, marker_dir, True)
+        marker = marker_dir / "second-ran"
+        first = gate_reg("first", py("import sys; print('boom'); sys.exit(1)"))
+        second = gate_reg(
+            "second",
+            py("import pathlib, sys; pathlib.Path(sys.argv[1]).write_text('x')", str(marker)),
+        )
+        code, _, _ = self.run_with([first, second], jobs=1)
+        self.assertEqual(code, EXIT_VIOLATION)
+        self.assertFalse(marker.exists(), "fail-fast 之后不得再启动新的 gate")
+
+    def test_command_gate_violation_exits_one_with_the_output(self):
+        regs = [
+            gate_reg("bad_gate", py("import sys; print('the failure detail'); sys.exit(3)"))
+        ]
+        code, out, _ = self.run_with(regs)
+        self.assertEqual(code, EXIT_VIOLATION)
+        self.assertIn("the failure detail", out)
+
+    def test_command_gate_over_budget_exits_two(self):
+        regs = [gate_reg("slow_gate", py("import time; time.sleep(5)"), budget_ms=100)]
+        code, out, _ = self.run_with(regs)
+        self.assertEqual(code, EXIT_GUARD_ERROR)
+        self.assertIn("超时", out)
+
+    def test_missing_command_exits_two(self):
+        regs = [gate_reg("ghost_gate", ("no-such-command-xyz",))]
+        code, out, _ = self.run_with(regs)
+        self.assertEqual(code, EXIT_GUARD_ERROR)
+        self.assertIn("无法", out)
+
     def test_unrelated_change_skips_without_a_green_verdict(self):
         """增量过滤后为空是正常情形（提交与任何护栏的 scope 无关），不该报错也不该假装全绿。"""
         regs = [reg(lambda ctx: GuardResult.passed(1), stage=("commit",))]
@@ -222,6 +322,119 @@ class ExecuteTest(unittest.TestCase):
         code, out, _ = self.run_with(regs)
         self.assertEqual(code, EXIT_GUARD_ERROR)
         self.assertIn("超过预算", out)
+
+
+class SelectFilterTest(unittest.TestCase):
+    """`--suite`（kind）与 `--source`（形态）是两个正交过滤器，不引入重载语义的套件名。"""
+
+    def setUp(self):
+        self.regs = [
+            reg(
+                lambda ctx: GuardResult.passed(1),
+                Guard(id="check_a", title="t", scopes=("src/**",), stages=("local",)),
+            ),
+            gate_reg("gate_lint", py("pass"), kind="lint"),
+            gate_reg("gate_test", py("pass"), kind="test"),
+        ]
+
+    def ids(self, **kwargs):
+        return [r.id for r in select(self.regs, "local", [], [], **kwargs)]
+
+    def test_suite_filters_by_kind(self):
+        self.assertEqual(self.ids(suite="lint"), ["check_a", "gate_lint"])
+        self.assertEqual(self.ids(suite="test"), ["gate_test"])
+
+    def test_source_filters_by_form(self):
+        self.assertEqual(self.ids(source="python"), ["check_a"])
+        self.assertEqual(self.ids(source="command"), ["gate_lint", "gate_test"])
+
+    def test_filters_are_orthogonal(self):
+        self.assertEqual(self.ids(suite="lint", source="command"), ["gate_lint"])
+        self.assertEqual(self.ids(suite="test", source="python"), [])
+
+
+class GateExecutionTest(unittest.TestCase):
+    """命令门禁唯一的新执行路径：argv → 退出码 → 三态；超时/命令缺失是护栏失效。"""
+
+    def setUp(self):
+        self.tmp = pathlib.Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.tmp, True)
+        self.ctx = Context(repo_root=self.tmp)
+
+    def run_gate(self, argv, **kwargs):
+        return runner._run_gate(gate_reg("g", argv, **kwargs), self.ctx)
+
+    def test_exit_zero_is_a_pass(self):
+        outcome = self.run_gate(py("print('all good')"))
+        self.assertEqual(outcome.result.verdict, PASS)
+        self.assertIn("all good", outcome.result.metrics)
+
+    def test_nonzero_exit_is_a_violation_and_carries_the_output(self):
+        outcome = self.run_gate(py("import sys; print('bad thing'); sys.exit(3)"))
+        self.assertEqual(outcome.result.verdict, VIOLATION)
+        self.assertTrue(any("bad thing" in f.message for f in outcome.result.findings))
+
+    def test_nonzero_exit_without_output_is_still_a_violation(self):
+        """退出码非 0 但零输出：verdict 由 findings 决定，空 findings 会落回 PASS。
+
+        这是「静默失败伪装成通过」——本框架存在的理由，故必须显式坐实为 VIOLATION。
+        """
+        outcome = self.run_gate(py("import sys; sys.exit(9)"))
+        self.assertEqual(outcome.result.verdict, VIOLATION)
+        self.assertTrue(outcome.result.findings)
+        self.assertIn("9", outcome.result.findings[0].message)
+
+    def test_output_is_bounded(self):
+        script = "import sys; print('\\n'.join(str(i) for i in range(100))); sys.exit(1)"
+        outcome = self.run_gate(py(script))
+        self.assertLessEqual(len(outcome.result.findings), 41)
+        self.assertTrue(any("截断" in f.message for f in outcome.result.findings))
+
+    def test_a_line_longer_than_the_cap_is_truncated(self):
+        outcome = self.run_gate(py("import sys; print('x'*600); sys.exit(1)"))
+        self.assertTrue(all(len(f.message) <= 500 for f in outcome.result.findings))
+        self.assertTrue(any("截断" in f.message for f in outcome.result.findings))
+
+    def test_over_budget_is_a_guard_error(self):
+        outcome = self.run_gate(py("import time; time.sleep(5)"), budget_ms=100)
+        self.assertEqual(outcome.result.verdict, ERROR)
+        self.assertIn("超时", outcome.result.error)
+
+    def test_missing_command_is_a_guard_error_not_a_violation(self):
+        outcome = self.run_gate(("definitely-not-a-real-command-xyz",))
+        self.assertEqual(outcome.result.verdict, ERROR)
+        self.assertIn("无法", outcome.result.error)
+
+    def test_platform_mismatch_is_skipped_not_passed(self):
+        with mock.patch.object(runner, "platform_tag", lambda: "windows"):
+            outcome = self.run_gate(py("print('nope')"), platforms=("linux", "macos"))
+        self.assertEqual(outcome.result.verdict, SKIP)
+        self.assertIn("windows", outcome.result.skip_reason)
+
+    def test_metrics_is_the_last_non_empty_line(self):
+        outcome = self.run_gate(py("print('first'); print('skip: no jdk'); print()"))
+        self.assertEqual(outcome.result.metrics, "skip: no jdk")
+
+    def test_metrics_is_bounded(self):
+        outcome = self.run_gate(py("print('y'*300)"))
+        self.assertLessEqual(len(outcome.result.metrics), 120)
+
+    @unittest.skipUnless(os.name == "posix", "进程组语义仅 POSIX 可测")
+    def test_timeout_kills_the_whole_process_group(self):
+        marker = self.tmp / "grandchild-ran"
+        script = (
+            "import subprocess, sys, time\n"
+            "subprocess.Popen([sys.executable, '-c',"
+            " 'import pathlib,sys,time; time.sleep(0.4);"
+            " pathlib.Path(sys.argv[1]).write_text(\"x\")', sys.argv[1]])\n"
+            "time.sleep(10)\n"
+        )
+        outcome = runner._run_gate(
+            gate_reg("g", py(script, str(marker)), budget_ms=150), self.ctx
+        )
+        self.assertEqual(outcome.result.verdict, ERROR)
+        time.sleep(0.6)
+        self.assertFalse(marker.exists(), "超时后孙进程仍在运行 —— 进程组未被清理")
 
 
 class BudgetTest(unittest.TestCase):

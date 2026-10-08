@@ -20,8 +20,25 @@ EXIT_OK = 0
 EXIT_VIOLATION = 1
 EXIT_GUARD_ERROR = 2
 
-STAGES = ("local", "ci", "commit")
-ALL_STAGES = STAGES
+STAGES = ("local", "commit", "push", "ci", "manual")
+# 既有进程内护栏全部依赖这个默认值。它必须逐字等于改造前的 `ALL_STAGES`——包括**顺序**，
+# 因为 `pnpm guards list` 逐字打印 `','.join(g.stages)`，AC3 要求改造前后该输出完全一致。
+# 把「词汇表」（STAGES）与「默认值」（本常量）混成一个常量，正是「加一个 stage 就让
+# 全部门禁多跑一遍」的成因，因此 ALL_STAGES 这个名字被删除，不留别名。
+DEFAULT_STAGES = ("local", "ci", "commit")
+
+# 命令门禁的默认上下文：**不含 ci**。CI 是显式选择，而且一旦选了就**必须点名 job**
+# （见 Gate 的 ci⇔ci_job 双向校验）—— 若默认含 ci，一条没写 stages 的 gate 会直接撞上
+# 「说了在 CI 跑却没说在哪个 job」，反而逼人把它写出来；默认不含 ci 更诚实。
+# 首批 10 条 gate 全部显式声明 stages，不依赖本默认值。
+DEFAULT_GATE_STAGES = ("local", "commit")
+
+# 归属套件 —— 与「上下文」正交：上下文决定何时跑，套件决定它属于静态检查还是测试。
+KINDS = ("lint", "test")
+
+# 平台词汇表。命令门禁在此集合之外不跑（显式记 SKIPPED），而不是把脚本自报的
+# 「我跳过了」当成通过。
+PLATFORMS = ("linux", "macos", "windows")
 
 # 单条护栏的时间预算。默认给得很松（当前 6 条全量实测 ~0.42s），它的定位不是性能调优，
 # 而是「门禁不可用」的探测器：一条慢到没人愿意跑的护栏，实际等价于从门禁里消失 ——
@@ -31,6 +48,7 @@ DEFAULT_BUDGET_MS = 10_000
 PASS = "PASS"
 VIOLATION = "VIOLATION"
 ERROR = "ERROR"
+SKIP = "SKIP"
 
 
 @dataclass(frozen=True)
@@ -64,15 +82,35 @@ class GuardResult:
     notes: tuple = ()
     metrics: str = ""
     error: str = ""
+    # 不用 `skipped` 做字段名：`GuardResult.skipped(reason)` 是构造跳过的唯一入口，
+    # 同名 classmethod 会在 dataclass 建类时被当成字段默认值（实例全变 SKIP）。
+    # 对外 JSON 仍输出 `skipped` 键（见 report._render_json）。
+    skip_reason: str = ""
 
     @classmethod
     def passed(cls, scanned: int, metrics: str = "", notes: Sequence[str] = ()) -> "GuardResult":
         return cls(scanned=scanned, metrics=metrics, notes=tuple(notes))
 
     @classmethod
+    def skipped(cls, reason: str) -> "GuardResult":
+        """合法不跑（平台不适用 / 缺工具链）——带原因，且在汇总里可见。
+
+        这不是「未被选中」（那由 select 过滤掉），而是**被选中但无法执行**。
+        `scanned=0` 的反空转判定对它豁免（见 runner）。
+        """
+        return cls(skip_reason=reason)
+
+    @classmethod
     def violated(
         cls, scanned: int, findings: Sequence[Finding], metrics: str = "", notes: Sequence[str] = ()
     ) -> "GuardResult":
+        if not findings:
+            # 空 findings 的 verdict 会落回 PASS —— 把违规伪装成通过。用 passed() 表示通过，
+            # 或给出至少一条 Finding；这个非法状态必须在构造期就写不出来。
+            raise ValueError(
+                "GuardResult.violated 至少需要一条 Finding：空 findings 会落回 PASS，"
+                "把违规伪装成通过（用 passed() 表示通过）"
+            )
         return cls(
             scanned=scanned,
             findings=tuple(findings),
@@ -89,7 +127,11 @@ class GuardResult:
     def verdict(self) -> str:
         if self.error:
             return ERROR
-        return VIOLATION if self.findings else PASS
+        if self.findings:
+            return VIOLATION
+        if self.skip_reason:
+            return SKIP
+        return PASS
 
 
 @dataclass(frozen=True)
@@ -106,21 +148,61 @@ class Guard:
     id: str
     title: str
     scopes: tuple
-    stages: tuple = ALL_STAGES
+    stages: tuple = DEFAULT_STAGES
     red_lines: tuple = ()
     docs: str = ""
     ledger: str = ""
     fix_hint: str = ""
     budget_ms: int = DEFAULT_BUDGET_MS
+    kind: str = "lint"
 
     def __post_init__(self) -> None:
         if not self.id or not self.title or not self.scopes or not self.stages:
             raise ValueError(f"guard {self.id!r}: id/title/scopes/stages 都不允许为空")
         if self.budget_ms <= 0:
             raise ValueError(f"guard {self.id!r}: budget_ms 必须为正数")
+        if self.kind not in KINDS:
+            raise ValueError(f"guard {self.id!r}: 未知 kind {self.kind!r}（可选 {KINDS}）")
         for stage in self.stages:
             if stage not in STAGES:
                 raise ValueError(f"guard {self.id!r}: 未知 stage {stage!r}（可选 {STAGES}）")
+
+
+@dataclass(frozen=True)
+class Gate(Guard):
+    """外部命令门禁 = 进程内判据（Guard） + 一次进程调用（argv）。
+
+    继承 `Guard` 而不是抽一个 `Check` 基类：字段与需求完全重合，抽基类只换来纯改名
+    噪音与更弱的类型关系。代价是一条 Gate 也带一个空 `ledger` 字段 —— 可接受：它是
+    `Gate` 的合法字段，写进 `gates.json` 只会被忽略（注册表不对 gate 校验 ledger）。
+
+    `ci_job` 与 `"ci" ∈ stages` 互为充要条件：声明了 CI 门禁却不说它在哪个 job，
+    拓扑校验（A1）就无从下手；反过来，任务里没 `ci` 却指定 job 是悬空指针。
+    """
+
+    argv: tuple = ()
+    platforms: tuple = PLATFORMS
+    ci_job: str = ""
+    stages: tuple = DEFAULT_GATE_STAGES
+
+    def __post_init__(self) -> None:
+        super().__post_init__()
+        if not self.argv or not all(isinstance(a, str) for a in self.argv):
+            raise ValueError(f"gate {self.id!r}: argv 必须是非空的字符串序列")
+        if not self.argv[0]:
+            raise ValueError(f"gate {self.id!r}: argv[0] 不能为空")
+        if not self.platforms:
+            raise ValueError(f"gate {self.id!r}: platforms 不能为空")
+        for platform in self.platforms:
+            if platform not in PLATFORMS:
+                raise ValueError(
+                    f"gate {self.id!r}: 未知 platform {platform!r}（可选 {PLATFORMS}）"
+                )
+        if ("ci" in self.stages) != bool(self.ci_job):
+            raise ValueError(
+                f"gate {self.id!r}: `ci` 上下文与 ci_job 必须同时出现或同时缺席"
+                f"（stages={self.stages!r} ci_job={self.ci_job!r}）"
+            )
 
 
 @dataclass(frozen=True)

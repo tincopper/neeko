@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import json
 
-from .contract import ERROR, EXIT_GUARD_ERROR, EXIT_OK, EXIT_VIOLATION, PASS, VIOLATION
+from .contract import ERROR, EXIT_GUARD_ERROR, EXIT_OK, EXIT_VIOLATION, PASS, SKIP, VIOLATION
 
 FORMATS = ("text", "github-actions", "json")
 
@@ -31,7 +31,7 @@ def render(outcomes, fmt: str, summary: str) -> str:
     return "\n".join(lines)
 
 
-_MARK = {PASS: "ok  ", VIOLATION: "FAIL", ERROR: "ERR!"}
+_MARK = {PASS: "ok  ", VIOLATION: "FAIL", ERROR: "ERR!", SKIP: "SKIP"}
 
 
 def _render_one_text(o):
@@ -51,6 +51,9 @@ def _render_one_text(o):
             out.append(f"        - {f.as_text()}")
         if o.guard.fix_hint:
             out.append(f"      修复：{o.guard.fix_hint}")
+        return out
+    if r.skip_reason:
+        out.append(f"      跳过：{r.skip_reason}")
     return out
 
 
@@ -66,6 +69,9 @@ def _render_one_gh(o):
     r = o.result
     if r.verdict == PASS:
         return _render_one_text(o)
+    if r.verdict == SKIP:
+        # 合法不跑：不是 error 注解，但也不能消失 —— 用 notice 保持可见。
+        return [*_render_one_text(o), _annotation("notice", f"{o.id}: 跳过 — {r.skip_reason}")]
     lines = [f"::group::{o.id} — {r.verdict}"]
     lines.extend(_render_one_text(o))
     lines.append("::endgroup::")
@@ -89,13 +95,17 @@ def _render_json(outcomes, summary):
                     "id": o.id,
                     "title": o.guard.title,
                     "verdict": o.result.verdict,
+                    "kind": o.guard.kind,
                     "redLines": list(o.guard.red_lines),
                     "stages": list(o.guard.stages),
+                    "platforms": list(getattr(o.guard, "platforms", ())),
+                    "argv": list(getattr(o.guard, "argv", ())),
                     "scanned": o.result.scanned,
                     "durationMs": o.duration_ms,
                     "budgetMs": o.guard.budget_ms,
                     "metrics": o.result.metrics,
                     "error": o.result.error,
+                    "skipped": o.result.skip_reason,
                     "findings": [
                         {"file": f.file, "line": f.line, "message": f.message}
                         for f in o.result.findings

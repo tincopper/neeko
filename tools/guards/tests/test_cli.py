@@ -12,7 +12,7 @@ import unittest
 from unittest import mock
 
 from guards.core import cli
-from guards.core.contract import Guard
+from guards.core.contract import Gate, Guard
 from guards.core.registry import Registration
 
 
@@ -25,6 +25,32 @@ def reg(name: str, stages: tuple) -> Registration:
         check=lambda ctx: None,
         module_name=name,
         source=pathlib.Path(f"{name}.py"),
+    )
+
+
+def gate_reg(
+    name: str,
+    stages: tuple = ("local",),
+    argv: tuple = ("pnpm", "x"),
+    kind: str = "lint",
+    platforms: tuple = ("linux",),
+    budget_ms: int = 1_000,
+) -> Registration:
+    return Registration(
+        guard=Gate(
+            id=name,
+            title=name,
+            scopes=("src/**",),
+            stages=stages,
+            kind=kind,
+            argv=argv,
+            platforms=platforms,
+            budget_ms=budget_ms,
+            fix_hint="改法示意",
+        ),
+        check=None,
+        module_name=f"gate_{name}",
+        source=pathlib.Path("ledger/gates.json"),
     )
 
 
@@ -82,6 +108,35 @@ class RegistryTableTest(CliTestBase):
         self.assertEqual(
             seen, {"only": ["check_demo"], "list_mode": True, "run_selftest": False}
         )
+
+    def test_registry_table_shows_gate_execution_metadata(self):
+        self.regs = [gate_reg("gate_a")]
+        _, text, _ = self.capture(["list"])
+        self.assertIn("kind=lint", text)
+        self.assertIn("argv=pnpm x", text)
+        self.assertIn("platforms=linux", text)
+        self.assertIn("预算=1,000ms", text)
+
+    def test_in_process_checks_are_marked_as_such(self):
+        self.regs = [reg("check_a", ("local",))]
+        _, text, _ = self.capture(["list"])
+        self.assertIn("kind=lint", text)
+        self.assertIn("进程内", text)
+
+    def test_stage_suite_and_source_filters_compose(self):
+        self.regs = [reg("check_a", ("local",)), gate_reg("gate_a", stages=("local",))]
+        _, text, _ = self.capture(
+            ["list", "--stage", "local", "--suite", "lint", "--source", "python"]
+        )
+        self.assertIn("check_a", text)
+        self.assertNotIn("  gate_a\n", text)
+        self.assertIn("1 / 2 条在册", text)
+
+    def test_source_command_shows_only_command_gates(self):
+        self.regs = [reg("check_a", ("local",)), gate_reg("gate_a", stages=("local",))]
+        _, text, _ = self.capture(["list", "--stage", "local", "--source", "command"])
+        self.assertIn("gate_a", text)
+        self.assertNotIn("  check_a\n", text)
 
 
 class BrokenRegistryTest(CliTestBase):
@@ -146,6 +201,30 @@ class RunCommandTest(CliTestBase):
     def test_changed_flag_feeds_the_scope_filter(self):
         self.capture(["run", "--changed", "docs/x.md"])
         self.assertEqual(self.calls["changed"], ["docs/x.md"])
+
+    def test_suite_source_and_jobs_are_forwarded(self):
+        self.capture(["run", "--suite", "lint", "--source", "command", "--jobs", "3"])
+        self.assertEqual(self.calls["suite"], "lint")
+        self.assertEqual(self.calls["source"], "command")
+        self.assertEqual(self.calls["jobs"], 3)
+
+    def test_defaults_are_the_unfiltered_sequential_form(self):
+        self.capture(["run"])
+        self.assertEqual(self.calls["suite"], "all")
+        self.assertEqual(self.calls["source"], "any")
+        self.assertEqual(self.calls["jobs"], 1)
+
+    def test_jobs_must_be_positive(self):
+        with self.assertRaises(SystemExit) as ctx:
+            self.capture(["run", "--jobs", "0"])
+        self.assertEqual(ctx.exception.code, 2)
+
+    def test_unknown_suite_or_source_is_rejected_by_the_parser(self):
+        for flag, value in (("--suite", "nope"), ("--source", "shell")):
+            with self.subTest(flag=flag):
+                with self.assertRaises(SystemExit) as ctx:
+                    self.capture(["run", flag, value])
+                self.assertEqual(ctx.exception.code, 2)
 
 
 if __name__ == "__main__":

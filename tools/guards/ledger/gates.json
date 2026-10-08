@@ -1,0 +1,155 @@
+{
+  "gates": [
+    {
+      "id": "lint_fe",
+      "title": "eslint + tsc（前端静态检查）",
+      "argv": ["pnpm", "lint:fe"],
+      "kind": "lint",
+      "stages": ["local", "commit", "ci"],
+      "ci_job": "frontend-check",
+      "budget_ms": 180000,
+      "scopes": [
+        "src/*.ts", "src/*.tsx", "src/*.js", "src/*.jsx",
+        "src/**/*.ts", "src/**/*.tsx", "src/**/*.js", "src/**/*.jsx",
+        "package.json", "pnpm-lock.yaml",
+        "tsconfig.json", "tsconfig.app.json", "tsconfig.node.json",
+        "vite.config.ts", "vitest.config.ts",
+        ".eslintrc.cjs", ".prettierrc"
+      ],
+      "fix_hint": "按 eslint / tsc 报出的具体问题修复（tsc 结论同样会影响 vite build）"
+    },
+    {
+      "id": "lint_rust",
+      "title": "cargo fmt --check + clippy -D warnings（Rust 静态检查）",
+      "argv": ["pnpm", "lint:rust"],
+      "kind": "lint",
+      "stages": ["local", "commit", "ci"],
+      "ci_job": "backend-check",
+      "budget_ms": 600000,
+      "scopes": [
+        "src-tauri/*.rs", "src-tauri/**/*.rs",
+        "src-tauri/Cargo.toml", "src-tauri/Cargo.lock", "src-tauri/build.rs"
+      ],
+      "fix_hint": "cargo fmt 写回格式化；clippy 警告按提示修复，不得用 allow 压掉"
+    },
+    {
+      "id": "rust_check",
+      "title": "cargo check（三平台编译检查）",
+      "argv": ["cargo", "check"],
+      "kind": "lint",
+      "stages": ["ci"],
+      "ci_job": "backend-check",
+      "budget_ms": 900000,
+      "scopes": [
+        "src-tauri/*.rs", "src-tauri/**/*.rs",
+        "src-tauri/Cargo.toml", "src-tauri/Cargo.lock", "src-tauri/build.rs"
+      ],
+      "fix_hint": "修掉编译错误；cargo check 无 pnpm wrapper，是 CI job 里的裸命令形态"
+    },
+    {
+      "id": "build_web",
+      "title": "vite 生产打包（tsc --noEmit + vite build）",
+      "argv": ["pnpm", "build"],
+      "kind": "lint",
+      "stages": ["ci"],
+      "ci_job": "frontend-build",
+      "budget_ms": 600000,
+      "scopes": [
+        "src/*.ts", "src/*.tsx", "src/*.js", "src/*.jsx",
+        "src/**/*.ts", "src/**/*.tsx", "src/**/*.js", "src/**/*.jsx",
+        "package.json", "pnpm-lock.yaml",
+        "tsconfig.json", "tsconfig.app.json", "tsconfig.node.json",
+        "vite.config.ts", "vitest.config.ts",
+        ".eslintrc.cjs", ".prettierrc"
+      ],
+      "fix_hint": "修掉打包期问题：vite 插件报错、动态 import 解析失败、产物图异常"
+    },
+    {
+      "id": "test_fe",
+      "title": "前端单元测试（vitest run，不含覆盖率地板）",
+      "argv": ["pnpm", "test:fe"],
+      "kind": "test",
+      "stages": ["local", "push"],
+      "budget_ms": 300000,
+      "scopes": [
+        "src/*.ts", "src/*.tsx", "src/*.js", "src/*.jsx",
+        "src/**/*.ts", "src/**/*.tsx", "src/**/*.js", "src/**/*.jsx",
+        "package.json", "pnpm-lock.yaml",
+        "tsconfig.json", "tsconfig.app.json", "tsconfig.node.json",
+        "vite.config.ts", "vitest.config.ts",
+        ".eslintrc.cjs", ".prettierrc"
+      ],
+      "fix_hint": "按 vitest 输出修实现或测试；覆盖率地板只在 test_fe_coverage（CI）里生效"
+    },
+    {
+      "id": "test_rust",
+      "title": "Rust 单元 + 集成测试（cargo test）",
+      "argv": ["pnpm", "test:rust"],
+      "kind": "test",
+      "stages": ["local", "push", "ci"],
+      "ci_job": "backend-test",
+      "budget_ms": 900000,
+      "scopes": [
+        "src-tauri/*.rs", "src-tauri/**/*.rs",
+        "src-tauri/Cargo.toml", "src-tauri/Cargo.lock", "src-tauri/build.rs"
+      ],
+      "fix_hint": "按 cargo test 失败用例修实现；新增行为必须补测试（TDD 红线）"
+    },
+    {
+      "id": "test_host",
+      "title": "Java 调试 host 自检（需 JDK；非 POSIX 平台显式跳过）",
+      "argv": ["pnpm", "test:host"],
+      "kind": "test",
+      "stages": ["local", "push"],
+      "platforms": ["linux", "macos"],
+      "budget_ms": 300000,
+      "scopes": ["tools/java-host/"],
+      "fix_hint": "按 test.sh 输出修 host 实现；缺 JDK 时脚本会自报跳过原因（metrics 可见）"
+    },
+    {
+      "id": "test_fe_coverage",
+      "title": "前端测试 + 覆盖率地板（vitest --coverage）",
+      "argv": ["pnpm", "test:fe:coverage"],
+      "kind": "test",
+      "stages": ["ci", "manual"],
+      "ci_job": "frontend-test",
+      "budget_ms": 600000,
+      "scopes": [
+        "src/*.ts", "src/*.tsx", "src/*.js", "src/*.jsx",
+        "src/**/*.ts", "src/**/*.tsx", "src/**/*.js", "src/**/*.jsx",
+        "package.json", "pnpm-lock.yaml",
+        "tsconfig.json", "tsconfig.app.json", "tsconfig.node.json",
+        "vite.config.ts", "vitest.config.ts",
+        ".eslintrc.cjs", ".prettierrc"
+      ],
+      "fix_hint": "补测试把覆盖率抬回 vitest.config.ts 的地板（全局底线 + 按文件 pin）"
+    },
+    {
+      "id": "test_rust_coverage",
+      "title": "Rust 测试 + 覆盖率地板（cargo llvm-cov --fail-under-lines）",
+      "argv": ["pnpm", "test:rust:coverage"],
+      "kind": "test",
+      "stages": ["ci", "manual"],
+      "ci_job": "backend-coverage",
+      "budget_ms": 1200000,
+      "scopes": [
+        "src-tauri/*.rs", "src-tauri/**/*.rs",
+        "src-tauri/Cargo.toml", "src-tauri/Cargo.lock", "src-tauri/build.rs",
+        "package.json"
+      ],
+      "fix_hint": "补 Rust 测试抬回 --fail-under-lines 地板；地板定义在 package.json，故 package.json 也在 scope 内"
+    },
+    {
+      "id": "build_host",
+      "title": "Java host 构建 + 自检（build.sh，需 JDK）",
+      "argv": ["pnpm", "build:host"],
+      "kind": "test",
+      "stages": ["ci"],
+      "ci_job": "java-host-check",
+      "platforms": ["linux", "macos"],
+      "budget_ms": 600000,
+      "scopes": ["tools/java-host/"],
+      "fix_hint": "按 build.sh 输出修 host 构建；build.sh 第 3 步即 test.sh 自检"
+    }
+  ]
+}

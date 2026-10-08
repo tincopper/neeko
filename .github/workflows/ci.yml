@@ -178,7 +178,7 @@ jobs:
       # 不再逐条列脚本（三份手写清单正是本地与 CI 门禁集漂移的根因）。
       - name: Run repository guards
         if: matrix.os == 'ubuntu-latest'
-        run: python3 tools/guards/run.py run --stage ci --format github-actions
+        run: python3 tools/guards/run.py run --stage ci --suite lint --source python --format github-actions
 
   backend-test:
     needs: backend-check

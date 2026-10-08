@@ -178,6 +178,22 @@
       "red_line": null
     },
     {
+      "id": "gate-topology-single-source",
+      "title": "门禁的编排声明只有一个事实源（ledger/gates.json），且与 CI/lefthook 接线一致",
+      "tier": "guard",
+      "enforcement": [
+        {
+          "kind": "guard",
+          "ref": "check_gate_topology"
+        },
+        {
+          "kind": "test",
+          "ref": "tools/guards/tests/test_check_gate_topology.py"
+        }
+      ],
+      "red_line": null
+    },
+    {
       "id": "problems-row-key-uniqueness",
       "title": "Problems 面板诊断行 key 必须唯一（内容指纹 + 同指纹出现序号）",
       "tier": "test",

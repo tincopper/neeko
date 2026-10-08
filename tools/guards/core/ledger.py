@@ -16,10 +16,18 @@ class LedgerError(RuntimeError):
     pass
 
 
-def load_ledger(name: str, required_keys: tuple[str, ...] = ()) -> dict:
-    path = LEDGER_DIR / f"{name}.json"
+def load_ledger(
+    name: str,
+    required_keys: tuple[str, ...] = (),
+    path: pathlib.Path | None = None,
+) -> dict:
+    path = path if path is not None else LEDGER_DIR / f"{name}.json"
     if not path.is_file():
-        raise LedgerError(f"台账文件缺失：{path.relative_to(LEDGER_DIR.parent)}")
+        try:
+            shown = path.relative_to(LEDGER_DIR.parent)
+        except ValueError:
+            shown = path  # 注入的临时路径（单测）不在 ledger/ 下，直接显示全路径
+        raise LedgerError(f"台账文件缺失：{shown}")
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
     except json.JSONDecodeError as exc:

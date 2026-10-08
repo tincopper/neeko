@@ -10,7 +10,7 @@ import subprocess
 import sys
 
 from . import repo, runner
-from .contract import STAGES
+from .contract import KINDS, STAGES
 from .registry import RegistryError, discover
 from .report import FORMATS
 
@@ -38,7 +38,15 @@ def _changed(args, extra: list[str]) -> list:
     return list(args.changed or [])
 
 
-def _registry_table(stage: str | None = None) -> int:
+def _positive_int(value: str) -> int:
+    """`--jobs 0` 会被 ThreadPoolExecutor 拒绝；在 argparse 层就说清楚，别等到运行期。"""
+    number = int(value)
+    if number < 1:
+        raise argparse.ArgumentTypeError(f"--jobs 必须 ≥ 1（收到 {value}）")
+    return number
+
+
+def _registry_table(stage: str | None = None, suite: str = "all", source: str = "any") -> int:
     try:
         registrations = discover(repo.find_repo_root())
     except RegistryError as exc:
@@ -48,7 +56,13 @@ def _registry_table(stage: str | None = None) -> int:
         return 2
 
     shown = [r for r in registrations if not stage or stage in r.guard.stages]
-    excluded = [r.id for r in registrations if r not in shown]
+    if suite != "all":
+        shown = [r for r in shown if r.guard.kind == suite]
+    if source == "python":
+        shown = [r for r in shown if r.check is not None]
+    elif source == "command":
+        shown = [r for r in shown if r.check is None]
+    excluded = sorted(r.id for r in registrations if r.id not in {s.id for s in shown})
 
     scope_note = f"（stage={stage}）" if stage else ""
     print(f"护栏清单{scope_note}（来源：guards/checks/ 目录本身，新增文件即注册）\n")
@@ -57,7 +71,14 @@ def _registry_table(stage: str | None = None) -> int:
         reds = ",".join(str(n) for n in g.red_lines) or "-"
         print(f"  {g.id}")
         print(f"      {g.title}")
-        print(f"      stage={','.join(g.stages)}  红线={reds}  台账={g.ledger or '-'}  预算={g.budget_ms:,}ms")
+        print(
+            f"      stage={','.join(g.stages)}  kind={g.kind}  红线={reds}  "
+            f"台账={g.ledger or '-'}  预算={g.budget_ms:,}ms"
+        )
+        if reg.check is None:
+            print(f"      argv={' '.join(g.argv)}  platforms={','.join(g.platforms)}")
+        else:
+            print("      形态=进程内判据")
         print(f"      scope={', '.join(g.scopes)}")
         if g.docs:
             print(f"      机制详解：{g.docs}")
@@ -84,6 +105,16 @@ def build_parser() -> argparse.ArgumentParser:
     run.add_argument("--stage", choices=STAGES, default="local")
     run.add_argument("--format", choices=FORMATS, default="text", dest="fmt")
     run.add_argument("--only", action="append", default=[], help="只跑指定护栏（可重复）")
+    run.add_argument(
+        "--suite", choices=("all",) + KINDS, default="all", help="按归属套件过滤（lint / test）"
+    )
+    run.add_argument(
+        "--source",
+        choices=("any", "python", "command"),
+        default="any",
+        help="按形态过滤：python=进程内判据 / command=外部命令门禁",
+    )
+    run.add_argument("--jobs", type=_positive_int, default=1, help="命令门禁并发度")
     run.add_argument("--staged", action="store_true", help="用 git 暂存集跳过无关护栏")
     run.add_argument("--changed", nargs="*", default=[], help="显式改动集（相对仓库根）")
     run.add_argument("--no-selftest", action="store_true", help="跳过护栏自身单测")
@@ -91,6 +122,12 @@ def build_parser() -> argparse.ArgumentParser:
     lst = sub.add_parser("list", help="列护栏清单；带护栏 id 则打印该护栏的台账明细")
     lst.add_argument("guard_id", nargs="?")
     lst.add_argument("--stage", choices=STAGES, help="只看某个 stage 实际会门禁的集合")
+    lst.add_argument(
+        "--suite", choices=("all",) + KINDS, default="all", help="只列某个归属套件"
+    )
+    lst.add_argument(
+        "--source", choices=("any", "python", "command"), default="any", help="只列某种形态"
+    )
     return parser
 
 
@@ -99,7 +136,7 @@ def main(argv: list[str]) -> int:
     args = build_parser().parse_args(head)
     if args.command == "list":
         if not args.guard_id:
-            return _registry_table(args.stage)
+            return _registry_table(args.stage, args.suite, args.source)
         return runner.execute(only=[args.guard_id], list_mode=True, run_selftest=False)
 
     try:
@@ -113,4 +150,7 @@ def main(argv: list[str]) -> int:
         only=args.only,
         fmt=args.fmt,
         run_selftest=not args.no_selftest,
+        suite=args.suite,
+        source=args.source,
+        jobs=args.jobs,
     )

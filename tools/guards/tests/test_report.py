@@ -5,13 +5,29 @@ import json
 import unittest
 
 from guards.core import report
-from guards.core.contract import Finding, Guard, GuardResult
+from guards.core.contract import Finding, Gate, Guard, GuardResult
 from guards.core.runner import Outcome
 
 
 def outcome(result, guard_id="sample_guard") -> Outcome:
     return Outcome(
         guard=Guard(id=guard_id, title="标题", scopes=("src/**",), fix_hint="改法"),
+        result=result,
+    )
+
+
+def gate_outcome(result, gate_id="lint_fe") -> Outcome:
+    return Outcome(
+        guard=Gate(
+            id=gate_id,
+            title="标题",
+            scopes=("src/**",),
+            stages=("ci",),
+            ci_job="frontend-check",
+            argv=("pnpm", "lint:fe"),
+            kind="lint",
+            fix_hint="改法",
+        ),
         result=result,
     )
 
@@ -36,6 +52,42 @@ class TextTest(unittest.TestCase):
     def test_summary_is_appended(self):
         text = report.render([outcome(GuardResult.passed(1))], "text", "6 条护栏：6 通过")
         self.assertTrue(text.rstrip().endswith("6 条护栏：6 通过"))
+
+
+class SkipTest(unittest.TestCase):
+    """SKIPPED = 合法不跑：不是 error，但也不许从输出里消失。"""
+
+    def test_text_marks_skip_and_shows_the_reason(self):
+        text = report.render(
+            [gate_outcome(GuardResult.skipped("平台不适用（windows）"))],
+            "text",
+            "1 条护栏：0 通过 / 0 违规 / 0 护栏失效 / 1 条跳过",
+        )
+        self.assertIn("SKIP", text)
+        self.assertIn("平台不适用（windows）", text)
+        self.assertIn("1 条跳过", text)
+
+    def test_github_format_does_not_error_on_a_skip_but_keeps_it_visible(self):
+        text = report.render(
+            [gate_outcome(GuardResult.skipped("平台不适用"))], "github-actions", "s"
+        )
+        self.assertNotIn("::error", text)
+        self.assertIn("::notice", text)
+
+    def test_json_carries_the_declarative_fields_and_skip_reason(self):
+        payload = json.loads(
+            report.render([gate_outcome(GuardResult.skipped("平台不适用"))], "json", "s")
+        )
+        gate = payload["guards"][0]
+        self.assertEqual(gate["verdict"], "SKIP")
+        self.assertEqual(gate["kind"], "lint")
+        self.assertEqual(gate["stages"], ["ci"])
+        self.assertEqual(gate["platforms"], ["linux", "macos", "windows"])
+        self.assertEqual(gate["argv"], ["pnpm", "lint:fe"])
+        self.assertEqual(gate["skipped"], "平台不适用")
+
+    def test_skip_does_not_change_the_exit_code(self):
+        self.assertEqual(report.exit_code([gate_outcome(GuardResult.skipped("x"))]), 0)
 
 
 class GitHubTest(unittest.TestCase):

@@ -3,41 +3,17 @@
 #
 # 阶段边界按**延迟预算**划，不按语言划：commit 是静态检查（fmt / clippy / eslint / tsc /
 # 提交信息，暖缓存 ~10s），push 是两套分钟级单元测试（前端 ~50s、Rust ~3min），
-# CI 是三平台终审。两条判据：
-#   ① 每个检查只放一处，且一律经 package.json 的脚本名调用 —— 改名只改一处调用点；
-#   ② 测试一律放 push（前端与 Rust 对称，不再出现「前端测试在 commit、Rust 测试没地方跑」）。
+# CI 是三平台终审。
+#
+# 每个 hook 只声明**一次**「在什么场合跑什么」——具体跑哪些门禁由各门禁自报的 stage
+# 决定（工具链在 `tools/guards/ledger/gates.json` 声明），命令在 pre-commit/pre-push 里
+# 各自只有一行。这里不再手写第二份门禁清单，也不再手写 glob（scope 由门禁自己声明），
+# 否则本地与 CI 的门禁集又会漂移 —— `check_gate_topology` 会拦下这种回退。
 
 pre-commit:
-  parallel: true
   commands:
-    # 只跑 eslint + tsc（--cache 后暖态 ~6s）：单元测试统一放 pre-push。
-    # glob 不只覆盖源码 —— 下面这些文件同样能改变 lint / tsc 的结论，此前改它们本地零门禁。
-    # 两条 `src/*` 是必需的：lefthook 的 `**/` 要求至少一层目录，`src/**/*.ts` 匹配不到
-    # `src/` 的直接子文件（探针实测：src/x.ts 被跳过、src/app/x.ts 命中）。
-    lint-frontend:
-      glob:
-        - "src/*.{ts,tsx,js,jsx}"
-        - "src/**/*.{ts,tsx,js,jsx}"
-        - "package.json"
-        - "pnpm-lock.yaml"
-        - "tsconfig.json"
-        - "vite.config.ts"
-        - "vitest.config.ts"
-        - ".eslintrc.cjs"
-        - ".prettierrc"
-      run: pnpm lint:fe
-    # 依赖与构建脚本的改动同样会让 fmt / clippy 的结论失效，故与 .rs 并列。
-    lint-rust:
-      glob:
-        - "src-tauri/*.rs"
-        - "src-tauri/**/*.rs"
-        - "src-tauri/Cargo.toml"
-        - "src-tauri/Cargo.lock"
-        - "src-tauri/build.rs"
-      run: pnpm lint:rust
-    # 护栏清单 = tools/guards/checks/ 目录本身，这里不列具体护栏，只声明「提交场合跑什么」。
-    # 不带 glob：纯 AGENTS.md / 台账 / 框架自身的提交也要过护栏，原先靠一条手写 glob 兜，
-    # 漏一种文件类型就要等 CI 才发现体积或路由退化。--staged 让框架按各护栏自报的 scope 跳过无关检查。
+    # 静态检查档：进程内判据 + lint_fe / lint_rust（stage=commit 的门禁）。
+    # --staged 让框架按各门禁自报的 scope 跳过无关检查（取代原先的 7 条手写 glob）。
     guards:
       run: python3 tools/guards/run.py run --stage commit --staged
 
@@ -48,31 +24,8 @@ commit-msg:
 
 # push 档：**两套单元测试 + java host 自检都只在这里跑** —— commit 档只做静态检查。
 pre-push:
-  parallel: true
   commands:
-    # 前端全量测试（暖态 ~50s）。这里必须是 `test:fe` —— 裸 `test` 是三套串接，
-    # 用它会让前端这条把 Rust 与 host 也跑一遍，与下面两个 job 重复。
-    frontend-tests:
-      glob:
-        - "src/*.{ts,tsx,js,jsx}"
-        - "src/**/*.{ts,tsx,js,jsx}"
-        - "package.json"
-        - "pnpm-lock.yaml"
-        - "tsconfig.json"
-        - "vite.config.ts"
-        - "vitest.config.ts"
-      run: pnpm test:fe
-    # Rust 全量测试（lib + integration，暖态 ~3min）。
-    rust-tests:
-      glob:
-        - "src-tauri/*.rs"
-        - "src-tauri/**/*.rs"
-        - "src-tauri/Cargo.toml"
-        - "src-tauri/Cargo.lock"
-        - "src-tauri/build.rs"
-      run: pnpm test:rust
-    # java host 是宿主 jar，cargo 门禁覆盖不到：它是**测试**（从源码重编译 + 自检断言），
-    # 按「commit 只静态」放在这一档。无 JDK / 缺依赖 jar 时脚本自行 exit 0 并打印跳过原因。
-    host-tests:
-      glob: "tools/java-host/**"
-      run: pnpm test:host
+    # stage=push 的门禁恰好是 test_fe / test_rust / test_host（三条）。现状是三者并行
+    # （墙钟 ≈ 3min），`--jobs 3` 保持并发；--changed 用 push 文件集做增量跳过。
+    gates:
+      run: python3 tools/guards/run.py run --stage push --changed {push_files} --jobs 3

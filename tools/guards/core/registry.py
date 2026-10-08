@@ -18,6 +18,7 @@ import pathlib
 from dataclasses import dataclass
 
 from .contract import Guard, GuardResult
+from .gates import GateLedgerError, load_gates
 from .ledger import LEDGER_DIR
 from .repo import find_repo_root
 
@@ -32,7 +33,7 @@ class RegistryError(RuntimeError):
 @dataclass(frozen=True)
 class Registration:
     guard: Guard
-    check: object
+    check: object | None
     module_name: str
     source: pathlib.Path
 
@@ -93,6 +94,54 @@ def _returns_result(check) -> bool:
     return hint is GuardResult or hint == "GuardResult"
 
 
+def _load_gates() -> tuple:
+    """加载 gate 声明台账；把声明错误包成 RegistryError（同一类「框架自身失效」）。
+
+    单独抽一层是为了让注册表单测能注入夹具声明，而不必去碰真实 ledger/gates.json。
+    """
+    try:
+        return load_gates()
+    except GateLedgerError as exc:
+        raise RegistryError([str(exc)]) from exc
+
+
+def _discover_gates(root: pathlib.Path, problems: list[str]) -> list["Registration"]:
+    """把 ledger/gates.json 声明的命令门禁并进注册表。
+
+    与 checks/ 的两处差异：gate 不要求 `tests/test_<id>.py`（它有 `tests/test_gates.py`
+    统一守 schema），且 `check` 为 None —— 它的执行体是 argv，不是进程内函数。
+    """
+    try:
+        declared = _load_gates()
+    except RegistryError as exc:
+        problems.extend(exc.args[0] if isinstance(exc.args[0], list) else [exc.args[0]])
+        return []
+    if not declared:
+        return []
+
+    if not (TESTS_DIR / "test_gates.py").is_file():
+        problems.append(
+            "gate 声明缺少配套单测 tests/test_gates.py —— 声明层没有测试就等于没有声明"
+        )
+
+    registrations: list[Registration] = []
+    for gate in declared:
+        if gate.docs and not (root / gate.docs).exists():
+            problems.append(
+                f"gate {gate.id}: docs 指向的文档不存在：{gate.docs}（相对仓库根）"
+            )
+            continue
+        registrations.append(
+            Registration(
+                guard=gate,
+                check=None,
+                module_name=f"gate_{gate.id}",
+                source=LEDGER_DIR / "gates.json",
+            )
+        )
+    return registrations
+
+
 def discover(root: pathlib.Path | None = None) -> list[Registration]:
     """导入 checks/ 下所有模块并校验契约；任何问题都抛 RegistryError。"""
     paths = _candidate_modules()
@@ -125,6 +174,13 @@ def discover(root: pathlib.Path | None = None) -> list[Registration]:
             Registration(guard=guard, check=check, module_name=module_name, source=path)
         )
 
+    gate_registrations = _discover_gates(root, problems)
+
+    # checks 与 gates 是两源同表：同名 = CLI / 拓扑校验指向两条门禁，必须拒绝。
+    conflicts = sorted({r.id for r in registrations} & {r.id for r in gate_registrations})
+    if conflicts:
+        problems.append(f"check 与 gate id 冲突：{', '.join(conflicts)}")
+
     if problems:
         raise RegistryError(problems)
-    return sorted(registrations, key=lambda r: r.id)
+    return sorted(registrations + gate_registrations, key=lambda r: r.id)

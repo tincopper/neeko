@@ -14,7 +14,7 @@ import unittest
 from unittest import mock
 
 from guards.core import registry
-from guards.core.contract import Guard, GuardResult
+from guards.core.contract import Gate, Guard, GuardResult
 from guards.core.registry import RegistryError
 
 
@@ -41,6 +41,7 @@ class DiscoverTest(unittest.TestCase):
         self.tests.mkdir()
         self._patch(registry, "CHECKS_DIR", self.checks)
         self._patch(registry, "TESTS_DIR", self.tests)
+        self._patch(registry, "_load_gates", lambda: ())
         self.importer = self._patch(registry, "importlib", mock.Mock())
 
     def _patch(self, target_obj, name, value):
@@ -170,6 +171,95 @@ class PointerValidationTest(unittest.TestCase):
         with self.assertRaises(RegistryError) as ctx:
             registry._validate(module, pathlib.Path("sample_guard.py"), self.root)
         self.assertIn("缺少可调用的", str(ctx.exception.args[0]))
+
+
+class GateRegistrationTest(unittest.TestCase):
+    """checks/ 与 ledger/gates.json 是两源同表 —— 两源的契约差异与冲突必须被机器固定。"""
+
+    def setUp(self):
+        tmp = pathlib.Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, tmp, True)
+        self.root = tmp / "repo"
+        (self.root / "docs").mkdir(parents=True)
+        (self.root / "docs" / "real.md").write_text("# ok", encoding="utf-8")
+        self.checks = tmp / "checks"
+        self.checks.mkdir()
+        self.tests = tmp / "tests"
+        self.tests.mkdir()
+        self.ledger = tmp / "ledger"
+        self.ledger.mkdir()
+        self.gates: tuple = ()
+        self._patch(registry, "CHECKS_DIR", self.checks)
+        self._patch(registry, "TESTS_DIR", self.tests)
+        self._patch(registry, "LEDGER_DIR", self.ledger)
+        self._patch(registry, "_load_gates", lambda: self.gates)
+        self.importer = self._patch(registry, "importlib", mock.Mock())
+
+    def _patch(self, target_obj, name, value):
+        patcher = mock.patch.object(target_obj, name, value)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        return value
+
+    def add_check(self, stem):
+        (self.checks / f"{stem}.py").write_text("", encoding="utf-8")
+        (self.tests / f"test_{stem}.py").write_text("", encoding="utf-8")
+        self.importer.import_module.return_value = module_with(
+            Guard(id=stem, title="t", scopes=("src/**",))
+        )
+
+    def gate(self, **kwargs):
+        base = dict(
+            id="a_gate", title="t", scopes=("src/**",), argv=("x",), fix_hint="fix"
+        )
+        base.update(kwargs)
+        return Gate(**base)
+
+    def mark_gate_suite(self):
+        (self.tests / "test_gates.py").write_text("", encoding="utf-8")
+
+    def test_gates_are_merged_with_checks_and_sorted_by_id(self):
+        self.add_check("z_check")
+        self.gates = (self.gate(id="a_gate"),)
+        self.mark_gate_suite()
+        self.assertEqual([r.id for r in registry.discover(self.root)], ["a_gate", "z_check"])
+
+    def test_a_gate_carries_no_in_process_check_and_points_at_the_ledger(self):
+        self.add_check("z_check")
+        self.gates = (self.gate(id="a_gate"),)
+        self.mark_gate_suite()
+        gate_reg = next(r for r in registry.discover(self.root) if r.id == "a_gate")
+        self.assertIsNone(gate_reg.check)
+        self.assertEqual(gate_reg.source.name, "gates.json")
+
+    def test_a_gate_needs_no_companion_test_of_its_own(self):
+        self.add_check("z_check")
+        self.gates = (self.gate(id="a_gate"),)
+        self.mark_gate_suite()
+        self.assertEqual(len(registry.discover(self.root)), 2)
+
+    def test_missing_gate_suite_is_rejected(self):
+        self.add_check("z_check")
+        self.gates = (self.gate(id="a_gate"),)
+        with self.assertRaises(RegistryError) as ctx:
+            registry.discover(self.root)
+        self.assertIn("test_gates.py", str(ctx.exception))
+
+    def test_check_and_gate_id_conflict_is_rejected(self):
+        self.add_check("same_id")
+        self.gates = (self.gate(id="same_id"),)
+        self.mark_gate_suite()
+        with self.assertRaises(RegistryError) as ctx:
+            registry.discover(self.root)
+        self.assertIn("same_id", str(ctx.exception))
+
+    def test_gate_with_dangling_docs_pointer_is_rejected(self):
+        self.add_check("z_check")
+        self.gates = (self.gate(id="a_gate", docs="docs/gone.md"),)
+        self.mark_gate_suite()
+        with self.assertRaises(RegistryError) as ctx:
+            registry.discover(self.root)
+        self.assertIn("docs", str(ctx.exception))
 
 
 class RealChecksTest(unittest.TestCase):
