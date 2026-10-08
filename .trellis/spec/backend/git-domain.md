@@ -539,6 +539,87 @@ kill 不收敛仍有界返回 / 合流：小读合流 / 宽限交付 / EOF 尾�
 取消置 stopping 且透传 runId）、`useGitActions.test.ts`（runId 透传、AuthRequired 收尾、
 悬挂 200s 不判失败、取消后 [Stopped] 收尾且不弹错误 toast）。
 
+## 14. 派生值新鲜度契约（依赖集合 ⊆ 监听集合）与 ahead/behind 单源
+
+**第一性原理**：仓库是文件系统数据库，UI 里的一切都是「磁盘状态 → 派生值」的缓存。缓存新鲜度
+是一条**集合包含**关系：
+
+> `被监听/被触发重算的输入集合 ⊇ 该派生值依赖的输入集合`
+
+落在监听集合之外的输入 = **无上界陈旧**（不是「慢」，是「永不自己更新」）。历史缺陷：Changes
+面板的 ahead/behind 徽标依赖 `refs`（本地分支 ref + remote-tracking ref），而 git-meta watcher
+只覆盖 `HEAD` / `index`、heartbeat 只重算 porcelain+branch —— 外部 `git push` 改写的
+`.git/refs/remotes/**` 无人监听，徽标无界陈旧（2026-10-07 修复）。
+
+**契约**：
+
+1. **一个仓库单元的展示态 = 一个派生值、一个生产者**（与 §12 同一前提）：
+   `GitStatusSnapshot = f(HEAD, index, workdir, refs)`，其中 `entries/truncated/branch` 来自前三者，
+   **`ahead` / `behind` 来自 refs**。四个输入都必须落在同一套监听里，产物必须随**同一个
+   `version`** 经**同一条 `git-status-snapshot` 通道**投递。
+2. **refs 监听范围**：git-meta watcher 除 `HEAD` / `index` 外，还要监听 **`refs/`（递归）** 与
+   **`packed-refs`**（linked worktree 的 refs / packed-refs 位于 shared common gitdir，由
+   `resolve_common_git_dir` 定位；`packed_refs` 的父目录需单独非递归监听）。外部 `git push`
+   改写 loose ref（实测 `refs/remotes/origin/<branch>`）即被捕获。
+3. **监听层只发信号，不携带事实**：refs 回调只 `ThrottleScheduler.send(())`，由 worker 的
+   查询-比较闸门决定是否 emit；**不新增事件名**（红线 5）、不 emit、不形成「写 refs → 事件 →
+   再写」自反馈。
+4. **change gate 比较「即将 emit 的快照本身」，而非一组平行局部变量**：`GitStatusSnapshot`
+   `derive(PartialEq)`，worker 先组装候选快照（`version` 归零 —— 注册表 `store_snapshot` 盖章，
+   worker 私有 counter 已被覆盖），再以 `last_snapshot.as_ref() == Some(&candidate)` 判定。
+   新增快照字段**自动纳入闸门**，不需要维护一组布尔合取 —— 历史写法
+   `current == last_status && current_branch == last_branch && ahead == last_ahead && behind == last_behind`
+   已退役：它要求每加一个派生字段都手动补进合取，漏一个就是「静默永不 emit」（本 bug 的形态）。
+   折叠摘要（gate-only 探针，不进快照载荷）仍单独比较；未知一律放行（宁可多发，不可漏发）。
+5. **计算语义**：`git rev-list --left-right --count @{upstream}...HEAD`，left=behind、right=ahead；
+   无 upstream / detached / 命令失败 → `(0, 0)`（不是错误）。**解析的唯一实现**是
+   `common/git/parsers/ahead_behind.rs::parse_ahead_behind` —— worker（同步 facade）与
+   `operations::get_ahead_behind`（async transport）都委托它，禁止各自 `split('\t')`（两处实现 = 两处可漂移口径）。
+   **禁止硬编码 `origin/`** —— 非 origin 远端会算错（唯一入口 `operations::get_ahead_behind`，
+   仓库存在性校验交 `transport.is_git_repo`，**不得**用宿主 `assert_git_repo_async`
+   （WSL/SSH 会误判非仓库并静默归零））。
+   即使仓库存在 `origin/<branch>`，只要当前分支没配置 upstream（`@{upstream}` 解析失败），此处也
+   一律报 `(0, 0)` / 命令错误，而**不再**退回按 `origin/<branch>` 计数 —— 这是更正确的语义。
+6. **条目上限与快照承载是同一条不变量**：`MAX_STATUS_ENTRIES` 与 `truncated` 由
+   `GitStatusSnapshot::enforce_entry_cap()` **单点施加**（worker 与 pull 生产者共用），
+   禁止各自 `truncate`（重复实现即两处上限可漂移，且 pull 侧容易漏掉 `truncated`）。
+   pull 生产者构造**完整快照**后交 `record_computed(snapshot)`（不再用
+   `(repo, entries, branch, ahead, behind)` 的伸缩参数 —— 下一个派生面不必再改签名）。
+7. **前端单通道消费**：`useGitStatusEventsSync` 在**快照被 version gate 接受后**才
+   `setAheadBehind(repo_key, {ahead, behind})`（被拒的陈旧快照不得覆盖徽标）；不得再有第二条
+   pull 写入点。`useAheadBehindSync` 只作冷启动初始种子（快照到达前），语义与键（`RepoKey`）与
+   快照同形。
+
+**Wrong**：
+
+```rust
+// 监听只有 HEAD/index；ahead/behind 靠独立 pull + 散落触发 —— 外部 push 永不触发
+```
+
+**Correct**：
+
+```rust
+// 组装候选快照 → 整值比较（新增字段自动入闸，无需维护布尔合取）
+let mut candidate = GitStatusSnapshot::for_unit(&repo, 0);
+// candidate.branch / entries / ahead / behind = ...
+candidate.enforce_entry_cap();
+let changed = last_snapshot.as_ref() != Some(&candidate) || collapsed_digest.is_unknown();
+if changed {
+    last_snapshot = Some(candidate.clone());
+    on_change(candidate); // 注册表盖章 version
+}
+```
+
+**测试**：`status_worker/worker.rs`（`ahead_behind_*` 三态 + **`worker_emits_new_snapshot_on_pure_ref_change`**
+回归钉子 —— 撤掉 ahead/behind 参与比较即超时）、`parsers/ahead_behind.rs`（left/right→behind/ahead、
+缺字段 / 非法 / 空白容错）、`git_meta/classify.rs`（`refs/heads|remotes/**`、`packed-refs` → `RefsChanged`；
+`config`/`ORIG_HEAD` → `Nothing`）、`git_meta/tests/watcher.rs`（真实 FS 写 refs / common-gitdir
+packed-refs 触发 `on_refs_changed`；common-dir watch 失败仍存活）、
+`manager/lifecycle_tests.rs`（`external_ref_update_pushes_a_new_snapshot_without_manual_poke`：
+watcher→scheduler→worker→snapshot 端到端，无手动 poke）、`git/services/status.rs`（远端 pull
+生产者填 `ahead/behind`；`get_ahead_behind` 走 transport 校验而非宿主 fs）、前端
+`useGitStatusEventsSync.test.ts`（快照写入徽标；**被拒快照不得覆盖**）。
+
 ## 相关文件
 
 - `src-tauri/src/common/git/repo_ref.rs` — 仓库单元身份（`RepoRef` / `WorktreeRef` / key 契约）
@@ -551,6 +632,7 @@ kill 不收敛仍有界返回 / 合流：小读合流 / 宽限交付 / EOF 尾�
 - `src-tauri/src/common/git/status_worker/` — status 快照唯一计算路径（含折叠 untracked 目录内容摘要 `collapsed_probe.rs`）
 - `src-tauri/src/git/services/status.rs` — 单元 status 读接口与挂载编排（`read_unit_status` / `activate` / `wait_status_fresh`）
 - `src-tauri/src/common/file/watcher/manager/` — 按单元挂载的资源注册表（`watchers` / `snapshots` 主键 = `RepoRef::key()`）
+- `src-tauri/src/common/file/watcher/git_meta/` — 单元 git 元数据监听（HEAD / index / `refs/**` / `packed-refs`）
 - `src-tauri/src/common/git/operations/` + `local/` — `get_commit_log` / `get_stash_list` / `get_stash_files` / `get_file_diff` / `status_porcelain`
 - `src-tauri/src/git/commands/` + `src-tauri/src/lib.rs` — 命令透传与注册
 - `src-tauri/src/git/events.rs` + `src/shared/events.ts` / `src/shared/types/git.ts` — 长操作输出事件的常量与 payload 双端单一源（红线 5）
