@@ -1,0 +1,4 @@
+{"file": ".trellis/spec/unit-test/index.md", "reason": "护栏框架的判据：没有测试的新代码不允许合入、测试必须独立且快、夹具路径由 tempdir 派生（红线 13）。新增的 test_gates / test_check_gate_topology 与 runner 的并发用例都要符合。"}
+{"file": ".trellis/spec/guides/invariant-enforcement.md", "reason": "校验 ledger/invariants.json 的新条目是否可解析、tier 是否取到最强、是否存在空转（prose 例外必须写明理由）。"}
+{"file": ".trellis/tasks/10-08-gate-orchestration/research/current-gate-topology.md", "reason": "检查改动是否与改造前命令集合逐条等价（AC13）：lint/test/check/pre-commit/pre-push/ci guards job 六个场合。"}
+{"file": "CONTRIBUTING.md", "reason": "核对文档与实现是否一致：Quality Gates 表、Adding a gate 的「零改动」承诺必须能在代码里找到对应判据。"}

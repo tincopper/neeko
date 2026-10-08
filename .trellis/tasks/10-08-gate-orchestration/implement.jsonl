@@ -1,0 +1,4 @@
+{"file": ".trellis/tasks/10-08-gate-orchestration/research/current-gate-topology.md", "reason": "改造前的逐行实测快照：package.json / lefthook.yml / ci.yml / BRANCH_PROTECTION 四个声明面的完整内容，以及 ALL_STAGES 默认值、无 pyyaml、glob 不支持花括号等硬约束。实现全部对照此表。"}
+{"file": ".trellis/spec/guides/invariant-enforcement.md", "reason": "新增的编排单源不变量必须登记进 ledger/invariants.json 并给出可解析落点；本文件是 tier 与 enforcement 指针的判据。"}
+{"file": ".trellis/spec/guides/code-reuse-thinking-guide.md", "reason": "本次的核心约束是复用判据层已验证的 contract/registry/runner/report 基础设施、不新造第二套框架；本文件是复用判据。"}
+{"file": "CONTRIBUTING.md", "reason": "护栏机制的对外契约（Quality Gates 表、Adding a guard、Adding an invariant）。新增「Adding a gate」与更新 stage 表必须与实现同一 diff 落地。"}
