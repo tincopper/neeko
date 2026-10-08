@@ -85,6 +85,17 @@ fn paths_of(entries: &[FileChange]) -> Vec<&Path> {
     entries.iter().map(|entry| entry.path.as_path()).collect()
 }
 
+/// pull 生产者的测试夹具：绑定到 `unit` 的一份快照（branch = "main"、ahead/behind = 0）。
+///
+/// `record_computed` 的入参是**完整快照**（与 push 生产者同形），因此测试也按快照构造，
+/// 而不是一串展开的参数（后者会把「同一份快照的不同字段」在调用点摊成多个位置参数）。
+fn pull_snapshot(unit: &RepoRef, entries: Vec<FileChange>) -> GitStatusSnapshot {
+    let mut snap = GitStatusSnapshot::for_unit(unit, 0);
+    snap.entries = entries;
+    snap.branch = "main".to_string();
+    snap
+}
+
 /// 真实 linked worktree 夹具：主仓（含 1 次提交）+ `git worktree add` 的第二工作树。
 ///
 /// 为什么不用「两个独立 `git2::Repository::init`」（本文件其余夹具的形态）：那条路下
@@ -867,11 +878,10 @@ fn pull_cannot_overwrite_a_live_push_snapshot() {
     assert!(manager.poke_status_worker_and_wait(&unit, FIRST_EVENT_TIMEOUT));
     let push = manager.snapshot(&unit).expect("push 快照必须已落地");
 
-    let pulled = manager.record_computed(
+    let pulled = manager.record_computed(pull_snapshot(
         &unit,
         parse_porcelain("?? from-a-late-pull.txt"),
-        "main".into(),
-    );
+    ));
     assert_eq!(
         pulled.version, push.version,
         "回读的必须是 push 本身，而不是 pull 另起一个号"
@@ -938,8 +948,8 @@ fn unmounted_pulls_advance_the_same_registry_sequence() {
     let manager = WatcherManager::new();
     assert!(!manager.is_watched(&unit), "夹具前提：该单元未挂载");
 
-    let first = manager.record_computed(&unit, parse_porcelain("?? a.txt"), "main".into());
-    let second = manager.record_computed(&unit, parse_porcelain("?? b.txt"), "main".into());
+    let first = manager.record_computed(pull_snapshot(&unit, parse_porcelain("?? a.txt")));
+    let second = manager.record_computed(pull_snapshot(&unit, parse_porcelain("?? b.txt")));
     assert_eq!(first.version, 1);
     assert_eq!(
         second.version,
@@ -1016,8 +1026,8 @@ fn pull_after_a_release_still_continues_the_sequence() {
     let unit = main_unit(&main);
     let manager = WatcherManager::new();
 
-    let first = manager.record_computed(&unit, parse_porcelain("?? a.txt"), "main".into());
-    let second = manager.record_computed(&unit, parse_porcelain("?? b.txt"), "main".into());
+    let first = manager.record_computed(pull_snapshot(&unit, parse_porcelain("?? a.txt")));
+    let second = manager.record_computed(pull_snapshot(&unit, parse_porcelain("?? b.txt")));
     assert!(second.version > first.version);
     let mut high_water = second.version;
 
@@ -1044,7 +1054,7 @@ fn pull_after_a_release_still_continues_the_sequence() {
     high_water = mounted.version;
     manager.unwatch(&unit);
 
-    let after = manager.record_computed(&unit, parse_porcelain("?? c.txt"), "main".into());
+    let after = manager.record_computed(pull_snapshot(&unit, parse_porcelain("?? c.txt")));
     assert!(
         after.version > high_water,
         "释放之后 pull 拿到的号不得回退到切走前那一段：{} <= {}",
@@ -1350,11 +1360,10 @@ fn concurrent_pulls_on_one_unit_never_regress_the_slot() {
             let unit = unit.clone();
             std::thread::spawn(move || {
                 barrier.wait();
-                let snap = manager.record_computed(
+                let snap = manager.record_computed(pull_snapshot(
                     &unit,
                     parse_porcelain(&format!("?? f{i}.txt")),
-                    "main".into(),
-                );
+                ));
                 (snap.version, snap.entries[0].path.clone())
             })
         })
@@ -1381,4 +1390,92 @@ fn concurrent_pulls_on_one_unit_never_regress_the_slot() {
         slot.entries[0].path, *max_path,
         "槽位数据必须与最大版本号（v{max_version}）同轮"
     );
+}
+
+/// **AC4 的代码层闭环**：挂载中的单元，外部 ref 变化必须经
+/// watcher（refs 递归监听）→ scheduler → worker 自动推送新快照，**无需任何手动 poke**。
+///
+/// 外部 `git push` 只改写 `.git/refs/remotes/<remote>/<b>`（loose ref），HEAD / index /
+/// workdir 一字未动 —— 这正是「↑N 徽标无界陈旧」的根因。本用例把整条链路打通验证：
+/// 纯 ref 变化（`commit-tree` + `update-ref`，不碰工作区）后，新快照的事件必须自己到达，
+/// 且快照里 ahead/behind 已更新。
+#[test]
+fn external_ref_update_pushes_a_new_snapshot_without_manual_poke() {
+    let tmp = tempfile::tempdir().unwrap();
+    // bare origin + 首个提交已 push（建立 @{upstream}）
+    let remote = tmp.path().join("origin.git");
+    std::fs::create_dir_all(&remote).unwrap();
+    git_in(&remote, &["init", "--bare"]);
+    let main = tmp.path().join("repo");
+    std::fs::create_dir_all(&main).unwrap();
+    crate::common::testing::init_git_repo(&main);
+    git_in(
+        &main,
+        &["remote", "add", "origin", &remote.to_string_lossy()],
+    );
+    git_in(&main, &["push", "--set-upstream", "origin", "HEAD"]);
+
+    let unit = main_unit(&main);
+    let sink = CollectingSink::new();
+    let manager = WatcherManager::new();
+    manager.watch(unit.clone(), sink.clone());
+    assert!(
+        wait_for_event(&sink, GIT_STATUS_SNAPSHOT_EVENT, FIRST_EVENT_TIMEOUT),
+        "挂载即应产出首份快照"
+    );
+    let baseline = sink.count(GIT_STATUS_SNAPSHOT_EVENT);
+    {
+        let first = manager.snapshot(&unit).expect("首份快照");
+        assert_eq!((first.ahead, first.behind), (0, 0));
+    }
+
+    // 纯 ref 变化：只前移 remote-tracking ref（等价外部 push 改写 .git/refs/remotes/**），
+    // HEAD / index / workdir 全不动。
+    let tree = git_in(&main, &["rev-parse", "HEAD^{tree}"])
+        .trim()
+        .to_string();
+    let parent = git_in(&main, &["rev-parse", "HEAD"]).trim().to_string();
+    let upstream_only = git_in(
+        &main,
+        &[
+            "-c",
+            "user.name=Test",
+            "-c",
+            "user.email=test@test.com",
+            "commit-tree",
+            &tree,
+            "-p",
+            &parent,
+            "-m",
+            "upstream only",
+        ],
+    )
+    .trim()
+    .to_string();
+    let upstream_ref = format!(
+        "refs/remotes/{}",
+        git_in(
+            &main,
+            &[
+                "rev-parse",
+                "--abbrev-ref",
+                "--symbolic-full-name",
+                "@{upstream}",
+            ],
+        )
+        .trim()
+    );
+    git_in(&main, &["update-ref", &upstream_ref, &upstream_only]);
+
+    assert!(
+        wait_for_more_events(
+            &sink,
+            GIT_STATUS_SNAPSHOT_EVENT,
+            baseline,
+            FIRST_EVENT_TIMEOUT
+        ),
+        "外部 ref 变化必须经 watcher→scheduler→worker 自动推送新快照（无需手动 poke）"
+    );
+    let after = manager.snapshot(&unit).expect("refs 变化后的新快照");
+    assert_eq!((after.ahead, after.behind), (0, 1));
 }

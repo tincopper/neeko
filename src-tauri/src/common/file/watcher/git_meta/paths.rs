@@ -1,15 +1,19 @@
-//! git 元数据监听路径解析：单个仓库单元的 HEAD / index / git_dir 定位。
+//! git 元数据监听路径解析：单个仓库单元的 HEAD / index / refs / git_dir 定位。
 //!
 //! 独立监听该单元的 git 目录（非递归），绕过 git 忽略过滤（该过滤会丢弃 .git 内事件）：
 //! - HEAD：分支切换（checkout 改写 HEAD）；
 //! - index：`git add` / `git rm --cached` / `git reset` / `git commit` 等只改
 //!   `.git/index`、不触碰工作区文件的操作 —— 主 watcher 无法感知，若不监听，
-//!   ignored_files（文件树 .gitignore 灰色）与 staged 状态会残留旧值。
+//!   ignored_files（文件树 .gitignore 灰色）与 staged 状态会残留旧值；
+//! - refs（`refs/**` 递归 + `packed-refs`）：本地分支 / remote-tracking ref 变化。
+//!   外部 `git push` / `fetch` 只改这里（HEAD / index / workdir 都不动），而 ahead/behind
+//!   正是由这些 ref 决定 —— 不在监听集合内就会无界陈旧。
 //!
-//! **每个单元只看自己的 git 目录**：linked worktree 的 HEAD/index 位于其私有 gitdir
-//! （`<common>/.git/worktrees/<name>/`），由该单元自己的这条 watcher 负责；别的工作树的
-//! 元数据与本题无关（旧实现在主仓 watcher 里递归监听 `.git/worktrees/**` 与其他工作树的
-//! 工作目录，那是「worktree 没有自己的资源」这一前提的补丁，前提已随身份补全而消失）。
+//! **每个单元只看自己的 refs 所在 gitdir**：linked worktree 的 HEAD/index 位于其私有 gitdir
+//! （`<common>/.git/worktrees/<name>/`），而 refs 位于**公共 gitdir**（`commondir` 指向），
+//! 由 `resolve_common_git_dir` 定位；别的工作树的元数据与本题无关（旧实现在主仓 watcher 里
+//! 递归监听 `.git/worktrees/**` 与其它工作树的工作目录，那是「worktree 没有自己的资源」
+//! 这一前提的补丁，前提已随身份补全而消失）。
 
 use std::path::{Path, PathBuf};
 
@@ -45,6 +49,36 @@ pub(in crate::common::file::watcher) struct GitMetaPaths {
     pub(super) index: PathBuf,
     /// 该单元的 git 目录（HEAD 所在目录：普通仓库为 `<repo>/.git`，linked worktree 为其 gitdir）
     pub(super) git_dir: PathBuf,
+    /// refs 根目录（递归监听）。普通仓库 = `git_dir/refs`；linked worktree 的 refs 在
+    /// **公共 gitdir**（`commondir` 指向），不是私有 gitdir —— 否则 worktree 视图看不到
+    /// 外部 push。refs 目录不存在（尚无任何 ref）时不监听，不算失败。
+    pub(super) refs_dir: PathBuf,
+    /// `packed-refs` 文件（refs 被 gc 打包后的形态）。与 `refs_dir` 同源（公共 gitdir）。
+    pub(super) packed_refs: PathBuf,
+}
+
+/// 解析 refs 所在的**公共 gitdir**：linked worktree 的私有 gitdir 里有 `commondir`
+/// 指针文件（内容相对私有 gitdir，如 `../..`），refs / packed-refs 都在那里。
+/// 普通仓库没有 `commondir`，返回 `git_dir` 自身。
+///
+/// 不解析公共目录的后果：worktree 的 `@{upstream}` 只在公共 refs 变化时变，
+/// 而私有 gitdir 下根本没有 `refs/` —— 外部 `git push` 永远不会触发 worktree 视图重算。
+///
+/// **阻塞前置条件**：本函数内含同步 `std::fs::read_to_string` + `canonicalize`（红线 3 的
+/// 阻塞 I/O）。调用方必须在阻塞池内运行（当前唯一调用链是 `mount_only` → `watch`，由
+/// `git/services/status.rs` 的 `run_blocking` 包裹）—— 不得在 async 上下文直呼。
+fn resolve_common_git_dir(git_dir: &Path) -> PathBuf {
+    let commondir_file = git_dir.join("commondir");
+    let Ok(content) = std::fs::read_to_string(&commondir_file) else {
+        return git_dir.to_path_buf();
+    };
+    let rel = content.trim();
+    if rel.is_empty() {
+        return git_dir.to_path_buf();
+    }
+    let candidate = git_dir.join(rel);
+    // 与 notify 上报的 realpath 对齐；失败（罕见权限/删除）时退回未归一的同一路径。
+    candidate.canonicalize().unwrap_or(candidate)
 }
 
 /// 解析 git 元数据监听所需路径。非 git 目录返回 `None`。
@@ -65,9 +99,14 @@ pub(in crate::common::file::watcher) fn resolve_git_meta_paths(
     // head/index 一律从归一化后的 git_dir 派生，与 notify realpath 事件对齐
     let head = git_dir.join("HEAD");
     let index = git_dir.join("index");
+    let common_git_dir = resolve_common_git_dir(&git_dir);
+    let refs_dir = common_git_dir.join("refs");
+    let packed_refs = common_git_dir.join("packed-refs");
     Some(GitMetaPaths {
         head,
         index,
         git_dir,
+        refs_dir,
+        packed_refs,
     })
 }

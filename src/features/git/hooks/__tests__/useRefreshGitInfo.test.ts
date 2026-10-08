@@ -39,6 +39,8 @@ function makeSnapshot(overrides?: Partial<GitStatusSnapshot>): GitStatusSnapshot
     branch: 'dev',
     entries: [{ path: 'a.ts', status: 'Modified', additions: 1, deletions: 1 }],
     truncated: false,
+    ahead: 1,
+    behind: 2,
     ...overrides,
   };
 }
@@ -111,7 +113,7 @@ describe('useRefreshGitInfo', () => {
     expect(useProjectStore.getState().statuses[MAIN_KEY]?.entries).toHaveLength(1);
   });
 
-  it('ahead/behind 写在**仓库单元**键下（键空间不再有 source/connection 维度）', async () => {
+  it('不再单独触发 getAheadBehind（ahead/behind 随权威快照单通道投递）', async () => {
     const commands = makeCommands();
     const { result } = renderHook(() => useRefreshGitInfo(makeView(), commands));
 
@@ -119,17 +121,14 @@ describe('useRefreshGitInfo', () => {
       await result.current();
     });
 
-    const aheadBehind = useGitStore.getState().aheadBehind;
-    expect(aheadBehind[MAIN_KEY]).toEqual({ ahead: 1, behind: 2 });
-    // 回归：旧实现按 `{source}:{connectionId}:{projectId}` 拼键，而三个写入点各用一种 connectionId
-    // 约定（`distro` / `${host}:${port}` / `host`），读侧永远拼不出写侧那个键 ⇒ 徽标时有时无。
-    // 键空间里必须只有单元身份这一把键。
-    expect(Object.keys(aheadBehind)).toEqual([MAIN_KEY]);
-    expect(aheadBehind['local:proj-1']).toBeUndefined();
-    expect(aheadBehind['proj-1']).toBeUndefined();
+    // 单通道契约：刷新路径不再拉第二份 ahead/behind，键空间保持空
+    expect(commands.getAheadBehind).not.toHaveBeenCalled();
+    expect(useGitStore.getState().aheadBehind).toEqual({});
+    // 快照仍然被应用（status 写入不受影响）
+    expect(useProjectStore.getState().statuses[MAIN_KEY]).toBeDefined();
   });
 
-  it('worktree 单元：刷新只写该单元的键，主仓键不被动到', async () => {
+  it('worktree 单元：刷新只写该单元的 status 槽，主仓槽不被动到', async () => {
     // 该 hook 的 commands 绑定「当前激活单元」，写入侧必须跟着快照自带的身份走
     const commands = makeCommands({
       refreshRepoStatus: vi
@@ -142,23 +141,9 @@ describe('useRefreshGitInfo', () => {
       await result.current();
     });
 
-    const aheadBehind = useGitStore.getState().aheadBehind;
-    expect(aheadBehind[WT_KEY]).toEqual({ ahead: 1, behind: 2 });
-    expect(aheadBehind[MAIN_KEY]).toBeUndefined();
-  });
-
-  it('should_not_throw_when_ahead_behind_fails', async () => {
-    const commands = makeCommands({
-      getAheadBehind: vi.fn().mockRejectedValue(new Error('boom')),
-    });
-    const { result } = renderHook(() => useRefreshGitInfo(makeView(), commands));
-
-    await act(async () => {
-      await expect(result.current()).resolves.toBeUndefined();
-    });
-    // 元数据与 status 仍应落地
-    expect(useProjectStore.getState().projects[0]?.git_info?.branches).toEqual(['main', 'dev']);
-    expect(useProjectStore.getState().statuses[MAIN_KEY]).toBeDefined();
+    const store = useProjectStore.getState();
+    expect(store.statuses[WT_KEY]).toBeDefined();
+    expect(store.statuses[MAIN_KEY]).toBeUndefined();
   });
 
   it('should_be_noop_without_project_or_commands', async () => {

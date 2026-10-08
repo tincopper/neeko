@@ -23,7 +23,7 @@ pub enum FileStatus {
 }
 
 /// A file change with its status and line counts.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct FileChange {
     /// Path relative to the repository root.
     pub path: PathBuf,
@@ -251,9 +251,9 @@ pub struct CommitResult {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AheadBehind {
     /// Number of commits ahead of the upstream.
-    pub ahead: usize,
+    pub ahead: u32,
     /// Number of commits behind the upstream.
-    pub behind: usize,
+    pub behind: u32,
 }
 
 // ─── PR types ─────────────────────────────────────────────────────────────────

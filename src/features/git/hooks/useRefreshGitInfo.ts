@@ -14,7 +14,9 @@ import type { ProjectCommands, ProjectView } from '@/shared/types';
  * - 不再需要「worktree 激活时保留主分支名」那类特例：分支随快照按单元走，主仓单元的
  *   HEAD 由 `applyStatus` 投影到项目卡片。
  * - 不再需要 connectionContext：ahead/behind 的键就是单元身份，与连接形态无关。
- * - ahead/behind 失败不阻塞主流程。
+ * - ahead/behind 不再在这里单独取（不再触发 `getAheadBehind`）—— 它随权威快照
+ *   `git-status-snapshot` 单通道投递（见 `useGitStatusEventsSync`），冷启动由
+ *   `useAheadBehindSync` 作初始种子。
  */
 export function useRefreshGitInfo(
   project: ProjectView | null,
@@ -65,14 +67,5 @@ export function useRefreshGitInfo(
     });
     useProjectStore.getState().applyStatus(snapshot);
     useGitStore.getState().setStatusTruncated(snapshot.repo_key, snapshot.truncated);
-
-    try {
-      const ab = await cmds.getAheadBehind();
-      // 键 = 该单元的仓库身份（`RepoKey`）：ahead/behind 是每个工作树的事实，与连接形态无关
-      // （旧键里的 `{source}:{connectionId}` 前缀让读侧永远拼不出写侧那个键）。
-      useGitStore.getState().setAheadBehind(snapshot.repo_key, ab);
-    } catch {
-      // ahead/behind 刷新失败不应阻塞主流程
-    }
   }, []);
 }

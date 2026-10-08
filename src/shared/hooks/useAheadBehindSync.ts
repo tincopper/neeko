@@ -20,6 +20,11 @@ interface AheadBehindCommands {
  *
  * 与 `useRefreshGitInfo` 的关系：两者是**同一事实的两个触发时机**（本项目切换 vs 手动刷新），
  * 键与语义完全一致，不存在第二个身份。
+ *
+ * **定位（本次改造后）**：权威生产者是仓库单元的 `GitStatusSnapshot`（`git-status-snapshot`
+ * 事件单通道投递 ahead/behind，见 `useGitStatusEventsSync`）。本 hook 只作**冷启动初始种子**
+ * ——首个快照到达前让徽标不空；快照到达后由权威值接管。因此它保留一份冗余 pull，不参与
+ * 任何版本门控（快照一到就会被覆盖）。
  */
 export function useAheadBehindSync(commands?: AheadBehindCommands | null) {
   const activeProject = useProjectStore((s) => s.activeProject);

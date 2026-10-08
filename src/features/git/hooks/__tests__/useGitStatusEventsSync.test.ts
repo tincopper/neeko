@@ -32,6 +32,7 @@ vi.mock('@tauri-apps/api/core', () => ({
 }));
 
 import { GIT_CHANGED_EVENT, GIT_STATUS_SNAPSHOT_EVENT } from '@/shared/events';
+import { useGitStore } from '@/shared/store/gitStore';
 import { useProjectStore } from '@/shared/store/projectStore';
 import { useWorktreeStore } from '@/shared/store/worktreeStore';
 import { repoKeyOf } from '@/shared/utils/repoRef';
@@ -51,6 +52,8 @@ function snapshot(overrides: Record<string, unknown>) {
     branch: 'main',
     entries: [],
     truncated: false,
+    ahead: 0,
+    behind: 0,
     ...overrides,
   };
 }
@@ -193,6 +196,20 @@ describe('useGitStatusEventsSync — 事件按仓库单元定址', () => {
     });
   });
 
+  it('收到含 ahead/behind 的快照后写入 gitStore.aheadBehind[repoKey]（单通道）', async () => {
+    useGitStore.setState({ aheadBehind: {} });
+    renderHook(() => useGitStatusEventsSync());
+    await waitFor(() => expect(listeners[GIT_STATUS_SNAPSHOT_EVENT]?.length).toBe(1));
+
+    emit(GIT_STATUS_SNAPSHOT_EVENT, snapshot({ version: 2, ahead: 3, behind: 1 }));
+
+    await waitFor(() =>
+      expect(useGitStore.getState().aheadBehind[MAIN_KEY]).toEqual({ ahead: 3, behind: 1 }),
+    );
+    // 不同单元的键互不影响（键 = RepoKey）
+    expect(useGitStore.getState().aheadBehind[WT_KEY]).toBeUndefined();
+  });
+
   it('同一单元的旧版本快照被拒（per-unit version gate）', async () => {
     useProjectStore.setState({
       statuses: { [MAIN_KEY]: snapshot({ version: 7, entries: [{ path: 'new.ts' }] }) },
@@ -207,6 +224,21 @@ describe('useGitStatusEventsSync — 事件按仓库单元定址', () => {
       MAIN_KEY
     ];
     expect(kept.version).toBe(7);
+  });
+
+  it('被拒的陈旧快照不得覆盖 ahead/behind（Fix 3：徽标同样过 version gate）', async () => {
+    useProjectStore.setState({
+      statuses: { [MAIN_KEY]: snapshot({ version: 7, entries: [{ path: 'new.ts' }] }) },
+    } as never);
+    useGitStore.setState({ aheadBehind: { [String(MAIN_KEY)]: { ahead: 4, behind: 2 } } });
+    renderHook(() => useGitStatusEventsSync());
+    await waitFor(() => expect(listeners[GIT_STATUS_SNAPSHOT_EVENT]?.length).toBe(1));
+
+    // 陈旧快照（更低版本）带不同的 ahead/behind：被 applyStatus 拒绝，徽标不得被改写
+    emit(GIT_STATUS_SNAPSHOT_EVENT, snapshot({ version: 6, ahead: 9, behind: 9 }));
+    await new Promise((r) => setTimeout(r, 100));
+
+    expect(useGitStore.getState().aheadBehind[String(MAIN_KEY)]).toEqual({ ahead: 4, behind: 2 });
   });
 
   it('另一个单元的高版本不影响本单元的门控', async () => {

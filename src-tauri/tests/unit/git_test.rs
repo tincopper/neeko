@@ -725,6 +725,55 @@ async fn get_ahead_behind_rejects_non_git_repo() {
     );
 }
 
+/// 测试专用 git CLI 调用（该文件属集成测试，不受红线 1 的生产代码豁免）。
+fn git_cli(dir: &Path, args: &[&str]) -> String {
+    let out = std::process::Command::new("git")
+        .arg("-C")
+        .arg(dir)
+        .args(args)
+        .output()
+        .expect("git should be available");
+    assert!(
+        out.status.success(),
+        "git {:?} failed: {}",
+        args,
+        String::from_utf8_lossy(&out.stderr)
+    );
+    String::from_utf8_lossy(&out.stdout).trim().to_string()
+}
+
+/// **非 origin 远端**：`@{upstream}` 解析是唯一正确口径。旧实现硬编码
+/// `origin/<branch>...<branch>`，对名为 `upstream` 的远端会因 revision 不存在而报错
+/// （ahead/behind 永远拿不到），本次修正后应正确算出。
+#[tokio::test]
+async fn get_ahead_behind_uses_upstream_not_hardcoded_origin() {
+    let (tmp, repo) = create_test_repo();
+
+    // bare remote 命名为 `upstream`（不是 origin），先把初始提交推上去以建立 tracking。
+    let remote = tmp.path().join("upstream.git");
+    std::fs::create_dir_all(&remote).unwrap();
+    git_cli(&remote, &["init", "--bare"]);
+    git_cli(
+        tmp.path(),
+        &["remote", "add", "upstream", &remote.to_string_lossy()],
+    );
+    git_cli(tmp.path(), &["push", "-u", "upstream", "HEAD"]);
+
+    // 推送后再在本地加一个提交 → 领先 upstream
+    let sig = Signature::now("Test", "test@test.com").unwrap();
+    let head = repo.head().unwrap().peel_to_commit().unwrap();
+    let tree = head.tree().unwrap();
+    repo.commit(Some("HEAD"), &sig, &sig, "local ahead", &tree, &[&head])
+        .unwrap();
+
+    let path = tmp.path().to_string_lossy().to_string();
+    let ab = operations::get_ahead_behind(&ExecTarget::Local, &path)
+        .await
+        .expect("non-origin upstream must be resolvable via @{upstream}");
+    assert_eq!(ab.ahead, 1, "本地领先 upstream 一个提交");
+    assert_eq!(ab.behind, 0);
+}
+
 #[tokio::test]
 async fn status_porcelain_rejects_non_git_repo() {
     let tmp = create_plain_dir();

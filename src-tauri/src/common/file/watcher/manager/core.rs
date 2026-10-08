@@ -159,20 +159,9 @@ impl WatcherManager {
     /// 挂载中但尚无快照（冷启动窗口）仍然登记：那正是 pull 存在的意义，且 worker 首个推送
     /// 会拿到更大的号自然接管。
     #[must_use]
-    pub fn record_computed(
-        &self,
-        repo: &RepoRef,
-        entries: Vec<crate::project::types::FileChange>,
-        branch: String,
-    ) -> Arc<GitStatusSnapshot> {
-        const MAX_STATUS_ENTRIES: usize = 1000;
-        let truncated = entries.len() > MAX_STATUS_ENTRIES;
-        let mut entries = entries;
-        entries.truncate(MAX_STATUS_ENTRIES);
-        let mut snapshot = GitStatusSnapshot::for_unit(repo, 0);
-        snapshot.entries = entries;
-        snapshot.branch = branch;
-        snapshot.truncated = truncated;
+    pub fn record_computed(&self, mut snapshot: GitStatusSnapshot) -> Arc<GitStatusSnapshot> {
+        // 上限的唯一实现（与 worker 共用，禁止各写一份）。
+        snapshot.enforce_entry_cap();
         store_snapshot(
             &self.snapshots,
             &self.version_floors,
@@ -365,9 +354,11 @@ impl WatcherManager {
                 let scheduler_tx = scheduler.as_ref().map(|s| s.sender());
                 let unit_index = unit.clone();
                 let unit_head = unit.clone();
+                let unit_refs = unit.clone();
                 let git_changed = GitChangedEvent::new(&repo);
                 let sink_for_head = Arc::clone(&sink);
                 let scheduler_tx_for_head = scheduler_tx.clone();
+                let scheduler_tx_for_refs = scheduler_tx.clone();
                 create_git_meta_watcher(
                     unit.clone(),
                     &meta,
@@ -394,6 +385,18 @@ impl WatcherManager {
                             let _ = tx.send(());
                         }
                         sink_for_head.emit(WatcherEvent::GitChanged(&git_changed));
+                    },
+                    move || {
+                        // refs 变更（外部 push / fetch / 本地 commit）只发**信号**，
+                        // 不 emit 事实、不新增事件名（红线 5）—— 事实一律由
+                        // `git-status-snapshot` 携带（与 index 回调同构）。
+                        log::debug!(
+                            "[Watcher:{}] git refs changed, hinting git status check",
+                            unit_refs
+                        );
+                        if let Some(tx) = &scheduler_tx_for_refs {
+                            let _ = tx.send(());
+                        }
                     },
                 )
             })

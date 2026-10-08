@@ -402,7 +402,6 @@ describe('useLocalProjects', () => {
         if (cmd === 'get_git_branch_info') {
           return { current_branch: 'main', branches: ['main'], worktrees: [] };
         }
-        if (cmd === 'get_ahead_behind') return { ahead: 2, behind: 0 };
         return undefined;
       });
     });
@@ -414,7 +413,7 @@ describe('useLocalProjects', () => {
       });
     }
 
-    it('主仓单元：三条命令都带 worktreePath=null（不再用空串表示主仓）', async () => {
+    it('主仓单元：刷新命令都带 worktreePath=null（不再用空串表示主仓）', async () => {
       await refreshGit('p1');
 
       expect(mockInvoke).toHaveBeenCalledWith('get_repo_status', {
@@ -425,17 +424,15 @@ describe('useLocalProjects', () => {
         projectId: 'p1',
         worktreePath: null,
       });
-      expect(mockInvoke).toHaveBeenCalledWith('get_ahead_behind', {
-        projectId: 'p1',
-        worktreePath: null,
-      });
+      // ahead/behind 不再独立 pull：它随权威快照单通道携带（R2.2 / Fix 2）
+      expect(mockInvoke).not.toHaveBeenCalledWith('get_ahead_behind', expect.anything());
       // 快照落进**该单元**的槽位
       expect(useProjectStore.getState().statuses[repoKeyOf('p1', null)]).toMatchObject({
         version: 7,
       });
     });
 
-    it('本项目激活了 worktree → 刷新打到该 worktree 单元，ahead/behind 也按单元存键', async () => {
+    it('本项目激活了 worktree → 刷新打到该 worktree 单元', async () => {
       seedUnits({ p1: { activePath: WT_A, activeBranch: 'feature-a', opened: [] } });
 
       await refreshGit('p1');
@@ -444,17 +441,10 @@ describe('useLocalProjects', () => {
         projectId: 'p1',
         worktreePath: WT_A,
       });
-      expect(mockInvoke).toHaveBeenCalledWith('get_ahead_behind', {
-        projectId: 'p1',
-        worktreePath: WT_A,
-      });
+      expect(mockInvoke).not.toHaveBeenCalledWith('get_ahead_behind', expect.anything());
       expect(useProjectStore.getState().statuses[repoKeyOf('p1', WT_A)]).toMatchObject({
         version: 7,
         worktree_path: WT_A,
-      });
-      expect(useGitStore.getState().aheadBehind[repoKeyOf('p1', WT_A)]).toEqual({
-        ahead: 2,
-        behind: 0,
       });
       // 主仓槽位不得被 worktree 的刷新结果占用
       expect(useProjectStore.getState().statuses[repoKeyOf('p1', null)]).toBeUndefined();
@@ -473,14 +463,6 @@ describe('useLocalProjects', () => {
         .filter((call) => call[0] === 'get_repo_status')
         .map((call) => call[1]);
       expect(statusCalls).toEqual([{ projectId: 'p2', worktreePath: null }]);
-      expect(mockInvoke).toHaveBeenCalledWith('get_ahead_behind', {
-        projectId: 'p2',
-        worktreePath: null,
-      });
-      expect(useGitStore.getState().aheadBehind[repoKeyOf('p2', null)]).toEqual({
-        ahead: 2,
-        behind: 0,
-      });
       expect(useProjectStore.getState().statuses[repoKeyOf('p1', WT_A)]).toBeUndefined();
     });
 

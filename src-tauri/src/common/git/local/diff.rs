@@ -250,10 +250,14 @@ pub fn is_git_repo(path: &Path) -> bool {
 
 /// Guard: bail with an explicit error if `path` is not a git repository.
 ///
-/// All git read operations (`get_git_info`, `get_git_branch_info`, `get_ahead_behind`,
-/// `get_worktree_changed_files`) must call this before spawning any git subprocess, so
-/// that non-git projects (where `git_info` is `null`) produce a clean, early error
-/// instead of executing `git rev-parse` etc. and surfacing a raw `fatal: not a git repository`.
+/// Host-local git read operations (`get_git_info`, `get_git_branch_info`) call this before
+/// spawning any git subprocess, so that non-git projects (where `git_info` is `null`)
+/// produce a clean, early error instead of executing `git rev-parse` etc. and surfacing a
+/// raw `fatal: not a git repository`.
+///
+/// **Not for remote work trees**: WSL / SSH paths live on another machine, so this host
+/// filesystem probe would misjudge them. Operations that must work across transports
+/// (`status_porcelain`, `get_ahead_behind`) check `transport.is_git_repo` instead.
 ///
 /// 与 [`is_git_repo`] 共用同一轻量判定（`.git` 目录或文件存在），避免调用方
 /// `transport.open_repo()` 内部 git2 open 与守卫判定不一致导致的误判

@@ -768,6 +768,32 @@ async fn status_porcelain_uses_transport_repo_check_not_local_filesystem() {
     let _ = (entries, branch);
 }
 
+/// **Fix 5 / R3.2 的远端回归**：`get_ahead_behind` 的「是不是仓库」必须由 transport 判定。
+/// 旧写法先跑本地 `assert_git_repo`（`path.join(".git")`），WSL / SSH 的 work_dir 在别的
+/// 机器上 ⇒ 远端 ahead/behind 一律失败、被 pull 生产者软化成 `(0,0)`（PRD R3.2 未达）。
+/// 用本地不存在的 work_dir 驱动：只有按 transport 判定才可能成功。
+#[tokio::test]
+async fn get_ahead_behind_uses_transport_repo_check_not_local_filesystem() {
+    let transport = DiffTextTransport::new("3\t7\n".to_string());
+    // 一个本地绝对不存在的路径：只有「按 transport 判定」才可能成功
+    let remote_work_dir = "/definitely-not-a-local-path/remote/proj";
+
+    let ab = get_ahead_behind(&transport, remote_work_dir)
+        .await
+        .expect("远端 work_dir 不得被本地文件系统判定判死");
+    // `@{upstream}...HEAD` 的 left = behind、right = ahead
+    assert_eq!(ab.behind, 3);
+    assert_eq!(ab.ahead, 7);
+    assert!(
+        transport
+            .last_args()
+            .iter()
+            .any(|args| args.contains("rev-list --left-right --count @{upstream}...HEAD")),
+        "必须真的发出 rev-list 命令，got: {:?}",
+        transport.last_args()
+    );
+}
+
 // ── shell 路径（WSL/SSH transport）collapse 契约 ──────────────────────
 
 /// `get_file_diff_shell`（open_repo=None → shell 实现）的 collapse 参数映射：

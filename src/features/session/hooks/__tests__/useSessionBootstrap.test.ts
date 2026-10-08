@@ -105,6 +105,8 @@ beforeEach(() => {
     branch: 'master',
     entries: [],
     truncated: false,
+    ahead: 0,
+    behind: 0,
   });
   mockLoadSession.mockResolvedValue({
     active_project_id: null,
@@ -124,7 +126,7 @@ afterEach(() => {
 });
 
 describe('useSessionBootstrap — git-changed 按事件自带的仓库单元刷新', () => {
-  it('主仓单元事件 → getGitBranchInfo/getAheadBehind 传 null（而非空字符串，回归）', async () => {
+  it('主仓单元事件 → getGitBranchInfo 传 null（而非空字符串，回归）；不再单独拉 ahead/behind', async () => {
     setup();
 
     const handler = captureHandler(GIT_CHANGED_EVENT);
@@ -138,7 +140,8 @@ describe('useSessionBootstrap — git-changed 按事件自带的仓库单元刷�
 
     // 回归①：空字符串会被 Rust 端当字面路径 → 必须 null（→ Rust None → 项目根）。
     expect(mockGetGitBranchInfo).toHaveBeenCalledWith('p1', null);
-    expect(mockGetAheadBehind).toHaveBeenCalledWith('p1', null);
+    // ahead/behind 随权威快照 `git-status-snapshot` 单通道投递，事件刷新不再单独拉。
+    expect(mockGetAheadBehind).not.toHaveBeenCalled();
   });
 
   it('worktree 单元事件 → 按该 worktree 路径刷新（身份来自事件，不来自全局状态）', async () => {
@@ -154,7 +157,7 @@ describe('useSessionBootstrap — git-changed 按事件自带的仓库单元刷�
     });
 
     expect(mockGetGitBranchInfo).toHaveBeenCalledWith('p1', '/repo/wt/Test');
-    expect(mockGetAheadBehind).toHaveBeenCalledWith('p1', '/repo/wt/Test');
+    expect(mockGetAheadBehind).not.toHaveBeenCalled();
   });
 
   it('回归：主仓事件不再被「当前正看 worktree」劫持（旧实现读全局镜像猜目标）', async () => {

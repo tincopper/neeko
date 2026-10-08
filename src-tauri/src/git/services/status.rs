@@ -118,7 +118,28 @@ async fn compute_and_record(
         crate::common::git::operations::status_porcelain(transport, repo.work_dir())
             .await
             .map_err(AppError::from)?;
-    let snap = state.watcher_manager.record_computed(repo, entries, branch);
+    // ahead/behind 是 status 的第四类输入（refs），与 entries/branch 由**同一个生产者**
+    // 在同一份快照里产出（git-domain §12）。无 upstream / detached / 命令失败 → (0,0)，
+    // 不是错误（R3.1）—— 不得因此把已有徽标打回 0 之外的东西（它本就是 0）。
+    let (ahead, behind) =
+        match crate::common::git::operations::get_ahead_behind(transport, repo.work_dir()).await {
+            Ok(ab) => (ab.ahead, ab.behind),
+            Err(e) => {
+                log::debug!(
+                    "[GitStatus] ahead/behind unavailable for {}: {e}",
+                    repo.work_dir()
+                );
+                (0, 0)
+            }
+        };
+    // 生产者交出的是一份**完整快照**（与 push 生产者同形）：条目上限由
+    // `record_computed` 内部的 `enforce_entry_cap` 单点施加（GitStatusSnapshot 拥有该不变量）。
+    let mut snapshot = GitStatusSnapshot::for_unit(repo, 0);
+    snapshot.entries = entries;
+    snapshot.branch = branch;
+    snapshot.ahead = ahead;
+    snapshot.behind = behind;
+    let snap = state.watcher_manager.record_computed(snapshot);
     Ok(Arc::unwrap_or_clone(snap))
 }
 
@@ -350,5 +371,66 @@ mod tests {
             state.watcher_manager.snapshot(&repo).is_some(),
             "pull 结果必须登记进同一张快照表（供侧栏 chip 等复用）"
         );
+    }
+
+    /// 测试专用：运行 git CLI（生产路径一律走 `GitTransport` / exec facade）。
+    fn git_run(dir: &Path, args: &[&str]) -> String {
+        let out = std::process::Command::new("git")
+            .arg("-C")
+            .arg(dir)
+            .args(args)
+            .output()
+            .expect("git should be available");
+        assert!(
+            out.status.success(),
+            "git {:?} failed: {}",
+            args,
+            String::from_utf8_lossy(&out.stderr)
+        );
+        String::from_utf8_lossy(&out.stdout).trim().to_string()
+    }
+
+    /// 把 `<root>/proj` 接上 bare upstream 并推一次首提交，再在本地多一个提交 → ahead=1。
+    fn setup_upstream_with_local_commit(root: &Path) {
+        let work = root.join("proj");
+        let remote = root.join("origin.git");
+        std::fs::create_dir_all(&remote).expect("bare dir");
+        git_run(&remote, &["init", "--bare"]);
+        git_run(
+            &work,
+            &["remote", "add", "origin", &remote.to_string_lossy()],
+        );
+        git_run(&work, &["push", "--set-upstream", "origin", "HEAD"]);
+        std::fs::write(work.join("ahead.txt"), "x\n").unwrap();
+        git_run(&work, &["add", "ahead.txt"]);
+        git_run(
+            &work,
+            &[
+                "-c",
+                "user.name=Test",
+                "-c",
+                "user.email=test@test.com",
+                "commit",
+                "-m",
+                "local commit",
+            ],
+        );
+    }
+
+    /// **R3.2 / P3**：pull 生产者（未挂载 / 远端）必须在同一份快照里填 ahead/behind，
+    /// 不得把它们留 0。用本地 transport 驱动同一条 `compute_and_record` 分支。
+    #[tokio::test]
+    async fn pull_producer_fills_ahead_behind() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let (state, project_id) = plain_project_state(&tmp);
+        init_git_repo(&tmp.path().join("proj"));
+        setup_upstream_with_local_commit(tmp.path());
+
+        let (_t, repo) = state.resolve_repo(&project_id, None).await.expect("repo");
+        assert!(!state.watcher_manager.is_watched(&repo), "夹具前提：未挂载");
+
+        let snapshot = read_unit_status(&state, &repo).await.expect("compute");
+        assert_eq!(snapshot.ahead, 1, "本地领先 upstream 一个提交");
+        assert_eq!(snapshot.behind, 0);
     }
 }

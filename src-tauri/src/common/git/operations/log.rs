@@ -155,27 +155,28 @@ pub(crate) async fn get_revision_file_diff(
     Ok(result)
 }
 
-/// Get ahead/behind counts: `git rev-list --left-right --count`
+/// Get ahead/behind counts relative to the tracked upstream (`@{upstream}`).
+///
+/// Uses `@{upstream}` rather than a hardcoded `origin/<branch>` so non-origin remotes
+/// (and any branch whose tracking remote differs) are counted correctly. Output is
+/// `left\tright` where `left` = upstream-only = behind and `right` = HEAD-only = ahead.
+/// No upstream / detached HEAD → git exits non-zero; the caller decides whether that is
+/// a soft `(0, 0)` (pull producer) or a propagated error (command layer).
+///
+/// 「是不是仓库」必须由 **transport** 判定（与 `status_porcelain` 同款）：WSL / SSH 的工作树
+/// 在别的机器上，本地 `path.join(".git").exists()` 必然为 false —— 用本地判定会把远端单元
+/// 的 ahead/behind 一律判死（Fix 5 / R3.2）。
 pub async fn get_ahead_behind(transport: &dyn GitTransport, work_dir: &str) -> Result<AheadBehind> {
-    crate::common::git::local::assert_git_repo_async(work_dir).await?;
-    let branch = transport
-        .run_git(&["rev-parse", "--abbrev-ref", "HEAD"], work_dir)
-        .await?;
-    let branch = branch.trim().to_string();
+    if !transport.is_git_repo(work_dir).await {
+        anyhow::bail!("not a git repository: {work_dir}");
+    }
     let output = transport
         .run_git(
-            &[
-                "rev-list",
-                "--left-right",
-                "--count",
-                &format!("origin/{}...{}", branch, branch),
-            ],
+            &["rev-list", "--left-right", "--count", "@{upstream}...HEAD"],
             work_dir,
         )
         .await?;
-    let parts: Vec<&str> = output.trim().split('\t').collect();
-    Ok(AheadBehind {
-        ahead: parts.get(1).and_then(|s| s.parse().ok()).unwrap_or(0),
-        behind: parts.first().and_then(|s| s.parse().ok()).unwrap_or(0),
-    })
+    // 语义（left=behind / right=ahead）的唯一实现是 parsers::ahead_behind。
+    let (ahead, behind) = crate::common::git::parsers::parse_ahead_behind(&output);
+    Ok(AheadBehind { ahead, behind })
 }

@@ -41,8 +41,12 @@ interface ProjectStoreState {
    * 「version=0 恒放行」、「allowEqual 同版本也放行」这类分支 —— 那两条正是
    * pull 结果覆盖 push 快照（串数据）的入口。生产者一律（含 pull 计算的 WSL/SSH）
    * 都保证 version 前进。
+   *
+   * **返回值**：快照被接受为 `true`、被 version gate 拒绝为 `false`。消费同一份快照的
+   * 其他派生值（如 `gitStore.aheadBehind`）必须据此决定是否跟进，否则被拒的陈旧快照
+   * 会把徽标打回去（事件回调里曾无条件写入）。
    */
-  applyStatus: (snapshot: RepoStatus) => void;
+  applyStatus: (snapshot: RepoStatus) => boolean;
   /** 作废一个单元（离开视图 / 后端 unwatch）：槽位不得残留可被渲染的旧数据。 */
   invalidateStatus: (repoKey: RepoKey | string) => void;
   selectProject: (id: string) => void;
@@ -58,10 +62,12 @@ export const useProjectStore = create<ProjectStoreState>((set) => ({
 
   statuses: {},
 
-  applyStatus: (snapshot) =>
+  applyStatus: (snapshot) => {
+    let applied = false;
     set((state) => {
       const prev = state.statuses[snapshot.repo_key];
       if (prev && snapshot.version <= prev.version) return state;
+      applied = true;
       const next: Partial<ProjectStoreState> = {
         statuses: { ...state.statuses, [snapshot.repo_key]: snapshot },
       };
@@ -80,7 +86,9 @@ export const useProjectStore = create<ProjectStoreState>((set) => ({
         }
       }
       return next;
-    }),
+    });
+    return applied;
+  },
 
   invalidateStatus: (repoKey) =>
     set((state) => {

@@ -4,6 +4,12 @@ use crate::common::git::parsers::parse_status_line;
 use crate::common::git::RepoRef;
 use crate::project::types::FileChange;
 
+/// 全链路 status 条目上限（公理：随输入规模增长的结构必须有界；对齐 orca 1000 条截断）。
+///
+/// 单一实现点：worker 与 pull 生产者都经 [`GitStatusSnapshot::enforce_entry_cap`] 施加上限，
+/// 不再各自复制常量（复制必然漂移，且「上限」是恰好一个不变量）。
+pub const MAX_STATUS_ENTRIES: usize = 1000;
+
 /// Versioned, authoritative git-status snapshot for **one repository unit**.
 ///
 /// G2 单一权威化（D1/D3）+ 本次身份补全：worker 每次检测到实质变化就产出**完整**快照
@@ -15,7 +21,7 @@ use crate::project::types::FileChange;
 /// 一个 project 承载 `1 + N` 个工作树（主仓 + linked worktree），它们的 HEAD / index /
 /// workdir 全部独立 —— 缺这一维时，worktree 视图与主仓视图会共用同一个槽，
 /// 于是「串 main 内容」与「没有权威生产者」两类症状同时出现。
-#[derive(Debug, Clone, serde::Serialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
 pub struct GitStatusSnapshot {
     /// 该快照所属仓库单元的寻址 key（前端只透传 + 作 map 键）。
     pub repo_key: String,
@@ -31,6 +37,13 @@ pub struct GitStatusSnapshot {
     pub entries: Vec<FileChange>,
     /// True when entries were capped at MAX_STATUS_ENTRIES (UI shows a banner, G4).
     pub truncated: bool,
+    /// 相对 `@{upstream}` 的领先提交数（无 upstream / detached / 非 git → 0）。
+    /// 由**同一个生产者**与 entries/branch 在同一次重算内产出（见 git-domain §12）。
+    #[serde(default)]
+    pub ahead: u32,
+    /// 相对 `@{upstream}` 的落后提交数（无 upstream / detached / 非 git → 0）。
+    #[serde(default)]
+    pub behind: u32,
 }
 
 impl GitStatusSnapshot {
@@ -45,7 +58,23 @@ impl GitStatusSnapshot {
             branch: String::new(),
             entries: Vec::new(),
             truncated: false,
+            ahead: 0,
+            behind: 0,
         }
+    }
+
+    /// 施加全链路条目上限：截断 `entries` 并置 `truncated`，返回**是否发生了截断**
+    /// （调用方据此决定是否打告警；`truncated` 字段本身供 UI 显示横幅）。
+    ///
+    /// `enforce_entry_cap` 是上限的**唯一实现**：worker 与 pull 生产者都必须调用它，
+    /// 不得各自 `truncate`（重复实现 = 两处上限可漂移，且 pull 生产者容易漏掉 `truncated`）。
+    pub fn enforce_entry_cap(&mut self) -> bool {
+        if self.entries.len() > MAX_STATUS_ENTRIES {
+            self.entries.truncate(MAX_STATUS_ENTRIES);
+            self.truncated = true;
+            return true;
+        }
+        false
     }
 }
 
@@ -134,6 +163,8 @@ mod tests {
         assert_eq!(main_snap.branch, "");
         assert!(main_snap.entries.is_empty());
         assert!(!main_snap.truncated);
+        assert_eq!(main_snap.ahead, 0);
+        assert_eq!(main_snap.behind, 0);
 
         let linked = RepoRef::resolve(
             "p1",

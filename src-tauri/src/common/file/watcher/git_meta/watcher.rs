@@ -28,21 +28,26 @@ pub(in crate::common::file::watcher) struct GitMetaWatcherHandle {
 ///
 /// 回调经参数注入，便于脱离 `AppHandle` 做真实文件系统集成测试：
 /// - `on_index_changed`：index 变更时调用（调用方负责查询调度，见 `WatcherManager::watch`）；
-/// - `on_head_changed`：本单元 HEAD 变更时调用。
+/// - `on_head_changed`：本单元 HEAD 变更时调用；
+/// - `on_refs_changed`：`refs/**` / `packed-refs` 变更时调用（外部 push / fetch）。
 ///
-/// 失败语义（显式约定）：核心 `git_dir` 监听失败 = watcher 无意义 → 返回 `None`（仅告警）。
+/// 失败语义（显式约定）：核心 `git_dir` 监听失败 = watcher 无意义 → 返回 `None`（仅告警）；
+/// 新增的 `refs_dir` / 公共 gitdir（linked worktree 的 `packed-refs` 所在目录）监听失败
+/// 只告警，不影响 HEAD/index（各自独立）。
 #[allow(clippy::type_complexity)]
 pub(in crate::common::file::watcher) fn create_git_meta_watcher(
     unit: String,
     meta: &GitMetaPaths,
     on_index_changed: impl FnMut() + Send + 'static,
     on_head_changed: impl FnMut() + Send + 'static,
+    on_refs_changed: impl FnMut() + Send + 'static,
 ) -> Option<GitMetaWatcherHandle> {
     create_git_meta_watcher_with(
         unit,
         meta,
         on_index_changed,
         on_head_changed,
+        on_refs_changed,
         |watcher, path, mode| watcher.watch(path, mode),
     )
 }
@@ -59,6 +64,7 @@ pub(super) fn create_git_meta_watcher_with<W>(
     meta: &GitMetaPaths,
     mut on_index_changed: impl FnMut() + Send + 'static,
     mut on_head_changed: impl FnMut() + Send + 'static,
+    mut on_refs_changed: impl FnMut() + Send + 'static,
     mut watch_fn: W,
 ) -> Option<GitMetaWatcherHandle>
 where
@@ -66,6 +72,8 @@ where
 {
     let head_path = meta.head.clone();
     let index_path = meta.index.clone();
+    let refs_dir = meta.refs_dir.clone();
+    let packed_refs = meta.packed_refs.clone();
     let unit_for_cb = unit.clone();
     let result = RecommendedWatcher::new(
         move |result: Result<Event, notify::Error>| {
@@ -76,10 +84,17 @@ where
                     return;
                 }
             };
-            match classify_git_meta_event(&event.paths, &head_path, &index_path) {
+            match classify_git_meta_event(
+                &event.paths,
+                &head_path,
+                &index_path,
+                &refs_dir,
+                &packed_refs,
+            ) {
                 GitMetaChange::Nothing => {}
                 GitMetaChange::IndexChanged => on_index_changed(),
                 GitMetaChange::HeadChanged => on_head_changed(),
+                GitMetaChange::RefsChanged => on_refs_changed(),
             }
         },
         Config::default(),
@@ -107,6 +122,45 @@ where
         unit,
         meta.git_dir.display()
     );
+
+    // refs 递归监听：本地分支 / remote-tracking ref 的变化（外部 push / fetch / commit）
+    // 不在 HEAD / index / workdir 里体现，必须在监听集合内，否则 ahead/behind 无界陈旧。
+    // 失败只告警、**不**使整条 watcher 失效 —— HEAD/index 仍然有效（R3.3 行为兼容）。
+    if meta.refs_dir.is_dir() {
+        match watch_fn(&mut watcher, &meta.refs_dir, RecursiveMode::Recursive) {
+            Ok(()) => log::info!(
+                "[Watcher:{}] Watching git refs dir {} (recursive)",
+                unit,
+                meta.refs_dir.display()
+            ),
+            Err(e) => log::warn!(
+                "[Watcher:{}] watch git refs dir error for {}: {} (HEAD/index still active)",
+                unit,
+                meta.refs_dir.display(),
+                e
+            ),
+        }
+    }
+    // `packed-refs` 位于**公共 gitdir 根**下（linked worktree 时它是私有 gitdir 的兄弟，
+    // `refs/` 递归监听覆盖不到），`git gc` / `pack-refs` 改写它必须能触发重算。
+    // 普通仓库该目录就是 `meta.git_dir`（已非递归监听），跳过避免重复。失败只告警（R3.3）。
+    if let Some(common_dir) = meta.packed_refs.parent() {
+        if common_dir != meta.git_dir && common_dir.is_dir() {
+            match watch_fn(&mut watcher, common_dir, RecursiveMode::NonRecursive) {
+                Ok(()) => log::info!(
+                    "[Watcher:{}] Watching common git dir {} (non-recursive, packed-refs)",
+                    unit,
+                    common_dir.display()
+                ),
+                Err(e) => log::warn!(
+                    "[Watcher:{}] watch common git dir error for {}: {} (HEAD/index/refs still active)",
+                    unit,
+                    common_dir.display(),
+                    e
+                ),
+            }
+        }
+    }
     Some(GitMetaWatcherHandle {
         _watcher: Arc::new(Mutex::new(watcher)),
     })

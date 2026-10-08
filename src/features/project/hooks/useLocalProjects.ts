@@ -7,7 +7,6 @@ import { useShallow } from 'zustand/shallow';
 import { destroyTerminalCachesByPrefix } from '@/features/terminal';
 import { bumpGitRefresh } from '@/shared/hooks/useGitRefresh';
 import { useEditorStore } from '@/shared/store/editorStore';
-import { useGitStore } from '@/shared/store/gitStore';
 import { useProjectStore } from '@/shared/store/projectStore';
 import { selectActiveWorktreePath, useWorktreeStore } from '@/shared/store/worktreeStore';
 import type { Project, AgentConfig, Tab, Worktree } from '@/shared/types';
@@ -20,7 +19,7 @@ import { parseProjectIdFromTabKey } from '@/shared/utils/tabKey';
 // eslint-disable-next-line import/no-restricted-paths -- useLocalProjects needs agent API for listing agents
 import { listAgents } from '../../agent/api/agentApi';
 // eslint-disable-next-line import/no-restricted-paths -- useLocalProjects needs git API for branch/worktree info
-import { getGitBranchInfo, getAheadBehind } from '../../git/api/gitApi';
+import { getGitBranchInfo } from '../../git/api/gitApi';
 // eslint-disable-next-line import/no-restricted-paths -- useLocalProjects reuses the gated refresh entry for unit status
 import { refreshRepoStatus } from '../../git/utils/gitStatus';
 // eslint-disable-next-line import/no-restricted-paths -- useLocalProjects needs session API for persistence
@@ -279,13 +278,6 @@ export function useLocalProjects() {
           });
         })
         .catch((error) => console.error('Failed to refresh git branch info:', error));
-
-      // 同步 ahead/behind（待 push 数量），键 = 该项目的激活单元身份
-      getAheadBehind(projectId, unitPath)
-        .then((ab) => {
-          useGitStore.getState().setAheadBehind(repoKeyOf(projectId, unitPath), ab);
-        })
-        .catch((error) => console.error('Failed to refresh ahead/behind:', error));
     } catch (error) {
       console.error('Failed to refresh git info:', error);
     }

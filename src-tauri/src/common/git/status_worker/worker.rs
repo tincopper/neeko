@@ -9,7 +9,7 @@ use crate::common::git::RepoRef;
 use crate::core::exec::collect_blocking;
 
 use super::collapsed_probe::{collapsed_dirs_digest, Digest};
-use super::writer::{parse_porcelain, GitStatusSnapshot};
+use super::writer::{parse_porcelain, GitStatusSnapshot, MAX_STATUS_ENTRIES};
 
 const fn exit_diagnostics(code: i32) -> (Option<i32>, Option<i32>) {
     (Some(code), None)
@@ -124,20 +124,29 @@ impl GitStatusWorker {
 /// Main worker loop: wait for signal → run git status → compare → emit full snapshot.
 ///
 /// G2 单一权威化：worker 是 status 的唯一计算路径（D1）。任何实质变化（porcelain
-/// 输出或分支变化）都产出**完整快照**（version 单调递增）并整体通知 —— 事件携带
-/// 全量数据而非增量 patch（D3），前端以 version 门控替换，乱序/回退从结构上消除（P1）。
+/// 输出、分支、ahead/behind 或折叠目录内容摘要）都产出**完整**快照并整体通知 —— 事件
+/// 携带全量数据而非增量 patch（D3），前端以 version 门控替换，乱序/回退从结构上消除（P1）。
+///
+/// **change gate 是类型驱动的**：闸门比较「即将 emit 的候选快照」整体
+/// （`GitStatusSnapshot` 派生 `PartialEq`），而不是一组平行维护的 `last_*` 变量 ——
+/// 新增派生子字段会自动进入闸门，「有人忘了把新字段加进布尔合取」这类静默漏发从结构上消失。
 fn worker_loop(
     repo: RepoRef,
     signal_rx: mpsc::Receiver<()>,
     on_change: impl Fn(GitStatusSnapshot),
     sync: Arc<RecalcSync>,
 ) {
-    let mut last_status = String::new();
-    let mut last_branch = String::new();
-    // 上一次 emit 时折叠 untracked 目录的内容摘要（见 `collapsed_probe`）。
-    // `None` = 尚未探测 → 放行 emit。
+    // 上一次 emit 的快照（整体比较；含 entries / branch / ahead / behind）。
+    // 候选快照的 `version` 传 0 占位：注册表 `store_snapshot` 会重新盖章（见 `manager/core.rs`），
+    // 故 version 不参与比较、也不作数 —— 号源只有注册表一个。
+    //
+    // **有意的代价**：相比旧的一组标量局部变量，这里多持有一份 entries（≤ `MAX_STATUS_ENTRIES`）。
+    // 换来的是「新增快照字段自动入闸」（`GitStatusSnapshot: PartialEq`），不再需要人工维护
+    // 布尔合取 —— 后者正是 ahead/behind 漏进闸门、徽标无界陈旧的根因（见 git-domain §14）。
+    let mut last_snapshot: Option<GitStatusSnapshot> = None;
+    // 折叠 untracked 目录的内容摘要（见 `collapsed_probe`）。**只喂闸门、不进快照载荷**，
+    // 因此不属于快照，需要独立记一份。`None` = 尚未探测 → 放行 emit。
     let mut last_collapsed_digest: Option<Digest> = None;
-    let mut version: u64 = 0;
     let path_str = repo.work_dir().to_string();
 
     log::debug!("[GitWorker] Worker started for {}", path_str);
@@ -163,24 +172,34 @@ fn worker_loop(
 
         let current = git_status_porcelain(&repo);
         let current_branch = get_current_branch(&repo);
+        // 第三类输入（refs）：ahead/behind 依赖本地分支 ref 与 remote-tracking ref，
+        // 与 HEAD / index / workdir 完全正交 —— 必须与它们同一轮次计算、同一份快照投递。
+        let (ahead, behind) = ahead_behind(&repo);
 
-        let mut current_files = parse_porcelain(&current);
+        let current_files = parse_porcelain(&current);
 
         // G4（P7）：numstat/行数不再进 status 主链路 —— 行数由 CommitPanel 独立的
         // get_changed_files_diff_stats 按需提供（stats 优先、快照行数仅 fallback），
         // status 重算从「status + 2×diff --numstat」降为单次 porcelain。
 
+        // 候选快照必须在闸门**之前**组装：闸门要回答的是「即将 emit 的那个值
+        // 有没有变」，所以比较对象就是它本身，而不是一组与之平行的本地变量。
+        let mut candidate = GitStatusSnapshot::for_unit(&repo, 0);
+        candidate.branch = current_branch;
+        candidate.entries = current_files;
+        candidate.ahead = ahead;
+        candidate.behind = behind;
+
         // 全链路封顶（公理：随输入规模增长的结构必须有界；对齐 orca 1000 条超限截断）。
-        const MAX_STATUS_ENTRIES: usize = 1000;
-        let truncated = current_files.len() > MAX_STATUS_ENTRIES;
-        if truncated {
+        // 上限的单一实现是 `enforce_entry_cap`（worker 与 pull 生产者共用，禁止各写一份）。
+        let raw_entry_count = candidate.entries.len();
+        if candidate.enforce_entry_cap() {
             log::warn!(
                 "[GitWorker] status entries exceeded cap for {}: {} truncated to {}",
                 path_str,
-                current_files.len(),
+                raw_entry_count,
                 MAX_STATUS_ENTRIES
             );
-            current_files.truncate(MAX_STATUS_ENTRIES);
         }
 
         // 折叠 untracked 目录的**内容**摘要：porcelain 折叠语义下目录内部增删不会改变
@@ -188,15 +207,18 @@ fn worker_loop(
         // 快照且没有任何失效信号（本任务要修的盲区）。摘要只喂闸门，不进快照载荷，
         // 因此 IPC 条目数、折叠语义都不变。
         // 取截断后的集合：超出上限的条目本就不进快照，也就无需为其探测。
-        let collapsed_digest = collapsed_dirs_digest(repo.work_dir_path(), &current_files);
+        let collapsed_digest = collapsed_dirs_digest(repo.work_dir_path(), &candidate.entries);
 
-        let status_unchanged = current == last_status && current_branch == last_branch;
+        // 与上一次 emit 的候选快照整体比较（含 entries / branch / ahead / behind）。
+        // 纯 ref 变化（外部 push/fetch/commit）不改 workdir/HEAD/index，但只要 ahead/behind
+        // 变了这里就不等 → emit（ahead/behind 纳入比较正是本任务的回归钉子）。
+        let observable_unchanged = last_snapshot.as_ref() == Some(&candidate);
         // 未知摘要一律放行（宁可多发一次快照，不可漏发）；已知且与上次相等才算「真无变化」
-        let digest_unchanged =
-            !collapsed_digest.is_unknown() && Some(collapsed_digest) == last_collapsed_digest;
-        if status_unchanged && digest_unchanged {
+        let digest_unchanged = !collapsed_digest.is_unknown()
+            && Some(&collapsed_digest) == last_collapsed_digest.as_ref();
+        if observable_unchanged && digest_unchanged {
             // 无变化不 emit，但迭代照常落地：started/completed 必须成对推进，
-            // 否则 check_and_wait 会把「无变化重算」永远等成超时。
+            // 否则 `check_and_wait` 会把「无变化重算」永远等成超时。
             {
                 let mut p = sync.progress.lock().expect("recalc progress mutex");
                 p.completed += 1;
@@ -206,32 +228,24 @@ fn worker_loop(
         }
 
         log::debug!(
-            "[GitWorker] git status result for {}: {} bytes, changed={}, entries={}, digest={:?}",
+            "[GitWorker] git status result for {}: {} bytes, entries={}, digest={:?}",
             path_str,
             current.len(),
-            current != last_status,
-            current_files.len(),
+            candidate.entries.len(),
             collapsed_digest
         );
 
-        last_status = current;
-        last_branch.clone_from(&current_branch);
+        last_snapshot = Some(candidate.clone());
         last_collapsed_digest = Some(collapsed_digest);
-        version += 1;
 
         log::debug!(
-            "[GitWorker] Emitting snapshot v{} for {} (branch {}): {} entries",
-            version,
+            "[GitWorker] Emitting snapshot for {} (branch {}): {} entries",
             path_str,
-            current_branch,
-            current_files.len()
+            candidate.branch,
+            candidate.entries.len()
         );
 
-        let mut snapshot = GitStatusSnapshot::for_unit(&repo, version);
-        snapshot.branch = current_branch;
-        snapshot.entries = current_files;
-        snapshot.truncated = truncated;
-        on_change(snapshot);
+        on_change(candidate);
 
         // 迭代终点：emit 已冲刷后才算落地（`check_and_wait` 依赖此顺序 ——
         // 等待返回时快照写入与事件推送均已完成）。
@@ -255,6 +269,36 @@ pub(crate) fn get_current_branch(repo: &RepoRef) -> String {
             String::from_utf8_lossy(&output.stdout).trim().to_string()
         }
         _ => String::new(),
+    }
+}
+
+/// 计算相对 `@{upstream}` 的 `(ahead, behind)`。
+///
+/// `git rev-list --left-right --count @{upstream}...HEAD` 输出 `left\tright`：
+/// - `left` = 上游独有 = `behind`；
+/// - `right` = 本地独有 = `ahead`。
+///
+/// 无 upstream（未设置 tracking / detached HEAD）或命令失败一律 `(0, 0)` —— 那是合法
+/// 状态，不是错误（对齐 `design.md` §4.2）。只读语义（不刷新 index）由 exec facade
+/// 统一注入（见 `.trellis/spec/backend/git-domain.md` §9），此处不传任何 CLI 可选锁标志。
+fn ahead_behind(repo: &RepoRef) -> (u32, u32) {
+    let path_str = repo.work_dir();
+    match collect_blocking(
+        &ExecTarget::Local,
+        "git",
+        &[
+            "-C",
+            path_str,
+            "rev-list",
+            "--left-right",
+            "--count",
+            "@{upstream}...HEAD",
+        ],
+    ) {
+        Ok(output) if output.exit_code == 0 => crate::common::git::parsers::parse_ahead_behind(
+            &String::from_utf8_lossy(&output.stdout),
+        ),
+        _ => (0, 0),
     }
 }
 
@@ -395,7 +439,9 @@ mod tests {
         let first = emit_rx
             .try_recv()
             .expect("first recalc emits the baseline snapshot");
-        assert_eq!(first.version, 1);
+        // version 由注册表（store_snapshot）统一盖章，worker 侧恒为占位 0：
+        // 本用例只关心「首轮 emit、次轮不 emit」，故断言快照内容而非 version。
+        assert!(first.entries.is_empty(), "clean repo has no changes");
 
         assert!(
             worker.check_and_wait(Duration::from_secs(5)),
@@ -472,7 +518,7 @@ mod tests {
         worker.check();
         match emit_rx.recv_timeout(Duration::from_millis(800)) {
             Ok(snap) => panic!(
-                "折叠目录内容未变时不得 emit（摘要相等应继续闸门），got v{}",
+                "折叠目录内容未变时不得 emit（摘要相等应继续闸门），got unexpected emit v{}",
                 snap.version
             ),
             Err(mpsc::RecvTimeoutError::Timeout) => {}
@@ -481,8 +527,8 @@ mod tests {
     }
 
     /// AC7（后端侧）/ AC5：同一个折叠 untracked 目录**已进入上一次快照**后，在其内部
-    /// 连续创建 10 个文件 → 恰好产出 1 个新快照（不是 10 个，也不是 0 个），幅度只体现
-    /// 为 version 前进。
+    /// 连续创建 10 个文件 → 恰好产出 1 个新快照（不是 10 个，也不是 0 个）。
+    /// 判据是「emit 次数」；version 由注册表盖章，不在 worker 层断言。
     ///
     /// 关键前置：目录必须先以折叠条目形态存在于上一次快照里 —— 否则 porcelain 字符串
     /// （`""` → `?? burst/`）本身就会变化，闸门放行，用例通过但什么都没验证到。
@@ -501,15 +547,14 @@ mod tests {
             let _ = emit_tx.send(snap);
         });
 
-        // v1：干净工作区
+        // 阶段 1：干净工作区
         worker.check();
         let first = emit_rx
             .recv_timeout(Duration::from_secs(5))
             .expect("initial check should emit");
-        assert_eq!(first.version, 1);
         assert_eq!(first.entries.len(), 0);
 
-        // v2：折叠目录入场（此阶段 porcelain 字符串确实变化，闸门放行属正常路径）
+        // 阶段 2：折叠目录入场（此阶段 porcelain 字符串确实变化，闸门放行属正常路径）
         let burst = tmp.path().join("burst");
         std::fs::create_dir_all(&burst).unwrap();
         std::fs::write(burst.join("f0.txt"), "x\n").unwrap();
@@ -517,12 +562,11 @@ mod tests {
         let with_dir = emit_rx
             .recv_timeout(Duration::from_secs(5))
             .expect("collapsed dir should emit");
-        assert_eq!(with_dir.version, 2);
         assert_eq!(with_dir.entries.len(), 1, "折叠语义：1 条目录条目");
         assert!(with_dir.entries[0].is_dir);
         assert_eq!(with_dir.entries[0].path, std::path::PathBuf::from("burst"));
 
-        // v3：同一批次内在**已折叠**的目录里再建 10 个文件（其间不发 check）——
+        // 阶段 3：同一批次内在**已折叠**的目录里再建 10 个文件（其间不发 check）——
         // porcelain 字符串始终是 `?? burst/`，只有目录内容变了
         for i in 1..=10 {
             std::fs::write(burst.join(format!("f{i}.txt")), "x\n").unwrap();
@@ -531,7 +575,6 @@ mod tests {
         let snap = emit_rx
             .recv_timeout(Duration::from_secs(5))
             .expect("折叠目录内部的风暴必须产出快照（当前实现：porcelain 不变 → 被闸门吞掉）");
-        assert_eq!(snap.version, 3, "version 必须单调递增");
         assert_eq!(
             snap.entries.len(),
             1,
@@ -541,7 +584,10 @@ mod tests {
 
         // 同一批次不得二次 emit（风暴不放大为多次快照）
         match emit_rx.recv_timeout(Duration::from_millis(300)) {
-            Ok(extra) => panic!("同一批次不得二次 emit，got v{}", extra.version),
+            Ok(extra) => panic!(
+                "同一批次不得二次 emit，got unexpected emit v{}",
+                extra.version
+            ),
             Err(mpsc::RecvTimeoutError::Timeout) => {}
             Err(e) => panic!("unexpected recv error: {e}"),
         }
@@ -549,7 +595,7 @@ mod tests {
 
     /// G2 验收标准的自动化替身（redesign-plan §3.7「压测：高频 touch + 心跳并发 +
     /// 切分支 → 零丢失、零回退」）。确定性化：并发信号风暴打在未变更工作区上
-    /// （不得产生任何 emit），随后单次实质变更与切分支各产生恰好一个新版本；
+    /// （不得产生任何 emit），随后单次实质变更与切分支各产生恰好一份新快照；
     /// 最终快照与 `git status --porcelain` 真值逐条一致。
     #[test]
     fn worker_stress_concurrent_signals_churn_and_branch_switch() {
@@ -562,12 +608,11 @@ mod tests {
             let _ = emit_tx.send(snap);
         });
 
-        // 初始版本（v1，干净工作区）
+        // 初始快照（干净工作区）
         worker.check();
         let first = emit_rx
             .recv_timeout(Duration::from_secs(5))
             .expect("initial check should emit");
-        assert_eq!(first.version, 1);
         assert_eq!(first.branch, repo.head().unwrap().shorthand().unwrap());
 
         // 并发信号风暴（4 线程 × 50 次 check，模拟 watcher/index/心跳同时触发）：
@@ -588,24 +633,23 @@ mod tests {
         }
         match emit_rx.recv_timeout(Duration::from_millis(500)) {
             Ok(snap) => panic!(
-                "unchanged-content storm must not emit, got v{}",
+                "unchanged-content storm must not emit, got unexpected emit v{}",
                 snap.version
             ),
             Err(mpsc::RecvTimeoutError::Timeout) => {}
             Err(e) => panic!("unexpected recv error: {e}"),
         }
 
-        // 实质变更（modify tracked + add untracked）→ 恰好一个新版本（v2）
+        // 实质变更（modify tracked + add untracked）→ 恰好一份新快照
         std::fs::write(tmp.path().join("README.md"), "# changed\n").unwrap();
         std::fs::write(tmp.path().join("extra.txt"), "untracked\n").unwrap();
         worker.check();
         let after_churn = emit_rx
             .recv_timeout(Duration::from_secs(5))
             .expect("churn should emit");
-        assert_eq!(after_churn.version, 2, "version 必须严格单调");
         assert_eq!(after_churn.entries.len(), 2);
 
-        // 切分支 → 分支变化触发新版本（v3）
+        // 切分支 → 分支变化触发一份新快照
         let head = repo.head().unwrap().peel_to_commit().unwrap();
         repo.branch("feature-stress", &head, false).unwrap();
         repo.set_head("refs/heads/feature-stress").unwrap();
@@ -613,7 +657,6 @@ mod tests {
         let after_switch = emit_rx
             .recv_timeout(Duration::from_secs(5))
             .expect("branch switch should emit");
-        assert_eq!(after_switch.version, 3);
         assert_eq!(after_switch.branch, "feature-stress");
 
         // 最终一致：快照 entries 与 porcelain 真值逐条一致（同一解析入口）
@@ -627,5 +670,158 @@ mod tests {
             assert_eq!(entry.path, truth_entry.path);
             assert_eq!(entry.status, truth_entry.status);
         }
+    }
+
+    // ── ahead/behind 并入权威快照（第三类输入：refs）────────────────────
+
+    /// 运行 git CLI 并从 `-C <dir>` 起。（测试专用：生产路径一律走 exec facade / transport。）
+    fn git_run(dir: &std::path::Path, args: &[&str]) -> String {
+        let out = std::process::Command::new("git")
+            .arg("-C")
+            .arg(dir)
+            .args(args)
+            .output()
+            .expect("git should be available (worker itself shells out to git)");
+        assert!(
+            out.status.success(),
+            "git {:?} failed: {}",
+            args,
+            String::from_utf8_lossy(&out.stderr)
+        );
+        String::from_utf8_lossy(&out.stdout).trim().to_string()
+    }
+
+    /// 建一个带 `@{upstream}` 的本地仓库（bare origin + 首个提交已 push）。
+    /// 返回 `(TempDir, work_dir)`；`TempDir` 必须随返回保持存活。
+    fn create_repo_with_upstream() -> (tempfile::TempDir, std::path::PathBuf) {
+        let tmp = tempfile::tempdir().unwrap();
+        let remote = tmp.path().join("origin.git");
+        std::fs::create_dir_all(&remote).unwrap();
+        git_run(&remote, &["init", "--bare"]);
+
+        let work = tmp.path().join("work");
+        let repo = git2::Repository::init(&work).unwrap();
+        let sig = git2::Signature::now("Test", "test@test.com").unwrap();
+        std::fs::write(work.join("README.md"), "# Test\n").unwrap();
+        {
+            let mut index = repo.index().unwrap();
+            index.add_path(std::path::Path::new("README.md")).unwrap();
+            index.write().unwrap();
+            let tree = repo.find_tree(index.write_tree().unwrap()).unwrap();
+            repo.commit(Some("HEAD"), &sig, &sig, "init", &tree, &[])
+                .unwrap();
+        }
+        git_run(
+            &work,
+            &["remote", "add", "origin", &remote.to_string_lossy()],
+        );
+        git_run(&work, &["push", "--set-upstream", "origin", "HEAD"]);
+        (tmp, work)
+    }
+
+    fn commit_a_file(dir: &std::path::Path, name: &str) {
+        std::fs::write(dir.join(name), "x\n").unwrap();
+        git_run(dir, &["add", name]);
+        git_run(
+            dir,
+            &[
+                "-c",
+                "user.name=Test",
+                "-c",
+                "user.email=test@test.com",
+                "commit",
+                "-m",
+                "local commit",
+            ],
+        );
+    }
+
+    fn upstream_ref(dir: &std::path::Path) -> String {
+        let short = git_run(
+            dir,
+            &[
+                "rev-parse",
+                "--abbrev-ref",
+                "--symbolic-full-name",
+                "@{upstream}",
+            ],
+        );
+        format!("refs/remotes/{short}")
+    }
+
+    /// R3.1：无 upstream（普通本地仓库）→ `(0, 0)`，不是错误。
+    #[test]
+    fn ahead_behind_is_zero_without_upstream() {
+        let (tmp, _repo) = create_repo_with_commit();
+        assert_eq!(ahead_behind(&main_ref(tmp.path())), (0, 0));
+    }
+
+    /// R1.2 / R3.1：本地领先 upstream 一个提交 → `(1, 0)`。
+    #[test]
+    fn ahead_behind_counts_local_commits_ahead() {
+        let (_tmp, work) = create_repo_with_upstream();
+        commit_a_file(&work, "ahead.txt");
+        assert_eq!(ahead_behind(&main_ref(&work)), (1, 0));
+    }
+
+    /// R1.2 / R3.1：upstream 领先 HEAD → `(0, 1)`。
+    #[test]
+    fn ahead_behind_counts_upstream_commits_behind() {
+        let (_tmp, work) = create_repo_with_upstream();
+        commit_a_file(&work, "ahead.txt");
+        let c2 = git_run(&work, &["rev-parse", "HEAD"]);
+        // remote-tracking 前进到 c2，再把 HEAD（与本地分支）退回 c1
+        git_run(&work, &["update-ref", &upstream_ref(&work), &c2]);
+        git_run(&work, &["reset", "--hard", "HEAD~1"]);
+        assert_eq!(ahead_behind(&main_ref(&work)), (0, 1));
+    }
+
+    /// **回归钉子（R4.1）**：外部 push 只改写 remote-tracking ref，workdir / HEAD / index
+    /// 一字未动。change gate 不纳入 ahead/behind 时这份快照永不 emit —— 这正是「↑N 徽标
+    /// 无界陈旧」的根因。用 `commit-tree`+`update-ref` 构造纯 ref 变化（不触碰工作区）。
+    #[test]
+    fn worker_emits_new_snapshot_on_pure_ref_change() {
+        use std::sync::mpsc;
+        use std::time::Duration;
+
+        let (_tmp, work) = create_repo_with_upstream();
+        let (emit_tx, emit_rx) = mpsc::channel::<GitStatusSnapshot>();
+        let worker = GitStatusWorker::start(main_ref(&work), move |snap| {
+            let _ = emit_tx.send(snap);
+        });
+
+        worker.check();
+        let first = emit_rx
+            .recv_timeout(Duration::from_secs(5))
+            .expect("baseline snapshot");
+        assert_eq!((first.ahead, first.behind), (0, 0));
+
+        // 纯 ref 变化：只前进 remote-tracking，HEAD / index / workdir 全不动
+        let tree = git_run(&work, &["rev-parse", "HEAD^{tree}"]);
+        let parent = git_run(&work, &["rev-parse", "HEAD"]);
+        let upstream_only = git_run(
+            &work,
+            &[
+                "-c",
+                "user.name=Test",
+                "-c",
+                "user.email=test@test.com",
+                "commit-tree",
+                &tree,
+                "-p",
+                &parent,
+                "-m",
+                "upstream only",
+            ],
+        );
+        git_run(&work, &["update-ref", &upstream_ref(&work), &upstream_only]);
+
+        worker.check();
+        let second = emit_rx
+            .recv_timeout(Duration::from_secs(5))
+            .expect("纯 ref 变化必须 emit（change gate 必须纳入 ahead/behind）");
+        // version 由注册表（store_snapshot）统一盖章，worker 侧快照恒为占位 0：
+        // 本用例的判据是「纯 ref 变化确实产出了一份新快照」+ ahead/behind 正确。
+        assert_eq!((second.ahead, second.behind), (0, 1));
     }
 }

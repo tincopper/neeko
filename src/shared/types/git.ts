@@ -267,6 +267,13 @@ export interface GitStatusSnapshot {
   branch: string;
   entries: FileChange[];
   truncated: boolean;
+  /**
+   * 相对 `@{upstream}` 的领先/落后提交数（无 upstream / detached / 非 git → 0）。
+   * 与 entries/branch 由同一个生产者同批产出 —— 是 ahead/behind 的唯一权威通道
+   * （`git-status-snapshot`），前端不再各自触发独立的 getAheadBehind 拉取。
+   */
+  ahead: number;
+  behind: number;
 }
 
 /** `git-changed` 事件载荷：某单元的 git 元数据（HEAD 等）变了 → 「该重查了」的提示。
