@@ -1,0 +1,5 @@
+{"file": ".trellis/spec/backend/git-domain.md", "reason": "仓库单元身份（RepoRef）、status 生产者单源、§10 poke-and-wait、§12 身份字母表与挂载契约 —— 本任务改动全部落在这套模型上"}
+{"file": ".trellis/spec/backend/concurrency-guidelines.md", "reason": "watcher 生命周期/后台线程单一强所有者、按仓库单元挂载、原子挂载契约"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "平台导入门控、clippy deny、mod.rs 极薄、测试规范"}
+{"file": ".trellis/spec/frontend/state-management.md", "reason": "zustand store 单写入口与 version gate 消费模式"}
+{"file": ".trellis/spec/unit-test/backend-testing.md", "reason": "Rust 测试夹具与 tempdir/真实 git 仓约定"}

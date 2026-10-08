@@ -1,0 +1,2 @@
+{"file": ".trellis/spec/backend/git-domain.md", "reason": "验收时核对 git 行为冻结与仓库单元身份契约"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "验收 lint/clippy/平台门控"}
