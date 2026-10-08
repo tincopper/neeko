@@ -1758,3 +1758,39 @@ Promoted the in-process guard framework to supervise external-command gates. lin
 ### Next Steps
 
 - None - task complete
+
+
+## Session 259: Real-source test determinism contract
+
+**Date**: 2026-10-08
+**Task**: Real-source test determinism contract
+**Branch**: `main`
+
+### Summary
+
+Fix the Windows-only flake where git-meta watcher tests asserted an absolute zero on an event observer. Replace the cross-callback zero asserts with a positive-only CallbackProbe, codify the determinism contract (real sources promise reachability, not an exact event set; classification negatives live in the pure layer, lifecycle negatives must be differential), add the check_nondeterministic_event_assertions domain guard plus its ledger invariant, and wire the spec index/backend-testing pointers. Windows leg of AC1 still needs CI backend-test (windows-latest).
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `adcf1399` | (see git log) |
+| `c95c5347` | (see git log) |
+| `4c4150cd` | (see git log) |
+| `b723c7c4` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
