@@ -93,6 +93,22 @@
       ]
     },
     {
+      "id": "nondeterministic-event-assertion-ban",
+      "title": "真实源事件观察：断言只能是单向可达 / 差分式，禁止绝对零与精确集合",
+      "tier": "guard",
+      "enforcement": [
+        {
+          "kind": "guard",
+          "ref": "check_nondeterministic_event_assertions"
+        },
+        {
+          "kind": "test",
+          "ref": "tools/guards/tests/test_check_nondeterministic_event_assertions.py"
+        }
+      ],
+      "red_line": null
+    },
+    {
       "id": "git-optional-lock-single-source",
       "title": "可选 git 锁语义只允许一个事实源",
       "tier": "guard",
