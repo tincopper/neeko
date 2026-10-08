@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-5.md`
-- **Total Sessions**: 257
+- **Total Sessions**: 258
 - **Last Active**: 2026-10-08
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-5.md` | ~1710 | Active |
+| `journal-5.md` | ~1745 | Active |
 | `journal-4.md` | ~1989 | Archived |
 | `journal-3.md` | ~1978 | Archived |
 | `journal-2.md` | ~1991 | Archived |
@@ -33,6 +33,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 258 | 2026-10-08 | Gate orchestration: declare lint/test/check gates once | `c6c6e352`, `8f75c6f9`, `50423c75` | `main` |
 | 257 | 2026-10-08 | Git changes realtime: refs watcher + ahead/behind on the single snapshot | `286aefbf`, `d7f79965`, `494f3cc0` | `main` |
 | 256 | 2026-10-07 | 核查 Problems 面板三项延期声明：按性质分层落位（spec 决策记录 + 台账不变量） | `4175c8b2`, `a4a0bcc6` | `main` |
 | 255 | 2026-10-07 | 收口 neeko-check Nit 清单：单飞去重 + 已拉清单收敛 + 护栏容错 | - | `main` |

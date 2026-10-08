@@ -1708,3 +1708,38 @@ Made the Changes panel reflect external git operations (push/fetch/commit) witho
 ### Next Steps
 
 - None - task complete
+
+
+## Session 258: Gate orchestration: declare lint/test/check gates once
+
+**Date**: 2026-10-08
+**Task**: Gate orchestration: declare lint/test/check gates once
+**Branch**: `main`
+
+### Summary
+
+Promoted the in-process guard framework to supervise external-command gates. lint/test/check/test:coverage are now one framework call each (zero &&), gates are declared once in tools/guards/ledger/gates.json, and check_gate_topology pins A1/A3 so CI/lefthook wiring cannot drift. Found and fixed a false-green defect (non-zero exit with empty output fell back to PASS). pnpm check green: 379 framework tests, 21 gates, 54s/289s/0.9s test suites.
+
+### Main Changes
+
+
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `c6c6e352` | (see git log) |
+| `8f75c6f9` | (see git log) |
+| `50423c75` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
