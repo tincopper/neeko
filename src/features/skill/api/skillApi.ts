@@ -20,6 +20,11 @@ export function getSkillDocument(skillId: string): Promise<SkillDocumentDto> {
   return invoke<SkillDocumentDto>('get_skill_document', { skillId });
 }
 
+/** 保存技能文档（SKILL.md）：由后端解析库内 `central_path` 后落盘。 */
+export function saveSkillDocument(skillId: string, content: string): Promise<void> {
+  return invoke<void>('save_skill_document', { skillId, content });
+}
+
 /** Read SKILL.md from an on-disk skill directory (agent-local, not necessarily managed). */
 export function getSkillDocumentAtPath(path: string): Promise<SkillDocumentDto> {
   return invoke<SkillDocumentDto>('get_skill_document_at_path', { path });

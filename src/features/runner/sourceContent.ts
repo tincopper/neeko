@@ -12,7 +12,7 @@
  * result, so a further channel is added here alone.
  */
 import { readFileContent } from '@/features/file/api/fileApi';
-import type { FileContent } from '@/shared/types';
+import type { FileContent, WorkspaceSession } from '@/shared/types';
 
 import { dapReadExternalSource, dapSourceContent } from './api/debugApi';
 
@@ -56,22 +56,20 @@ async function readExternal(
 /**
  * Load the source at a debug stop.
  *
- * In-project files take the normal read. `workspaceRoot` is the **workspace root**
- * (active worktree root / project root) — the `InProject` scope for that read. Without
- * it the backend falls back to the project root, and a file inside a worktree (which may
- * live *outside* the project root) is misjudged as out-of-project and falls through to
- * the read-only external channel.
+ * In-project files take the normal read. `workspace` is the **地址值对象**（所属 Workspace）——
+ * 项目内读取的 `InProject` scope 由后端从其解析（worktree 可在项目根之外，用项目根 scope 会把
+ * worktree 文件误判为越界而转只读）。
  *
  * When the in-project read fails and the path is absolute, fall back to the external
  * read-only channel — the backend authorizes it only while the session is stopped at that
  * exact frame source, so a missing `sessionId` (or a non-stop path) simply yields `failed`.
  */
 export async function loadStopSourceContent(
-  projectId: string,
+  workspace: WorkspaceSession,
   sourcePath: string,
   sessionId?: string,
-  workspaceRoot?: string,
 ): Promise<StopSourceContent> {
+  const projectId = workspace.projectId;
   // jdt 引用不是项目内文件：直接走外部通道，不做注定失败的往返。
   if (isJdtSourceRef(sourcePath)) {
     return sessionId
@@ -84,7 +82,7 @@ export async function loadStopSourceContent(
   try {
     return {
       kind: 'project',
-      content: await readFileContent(projectId, sourcePath, workspaceRoot ?? null),
+      content: await readFileContent(workspace, sourcePath),
     };
   } catch (projectError) {
     if (!sessionId || !isAbsoluteSourcePath(sourcePath)) {

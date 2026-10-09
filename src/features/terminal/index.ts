@@ -20,7 +20,6 @@ export {
   BRACKETED_PASTE_START,
   BRACKETED_PASTE_END,
 } from './components/terminalCommands';
-export { worktreeKey } from './components/worktreeTerminalKey';
 export {
   cleanupTerminalsForTab,
   cleanupTerminalsForTabKey,

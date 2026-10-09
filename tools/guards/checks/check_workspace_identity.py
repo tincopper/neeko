@@ -90,7 +90,6 @@ RETIRED_BACKEND = (
 # 新实现自己的定义点（允许出现这些名字）
 FE_ALLOWLIST = (
     "src/shared/utils/workspaceRef.ts",
-    "src/shared/utils/tabKey.ts",  # tab 空间另有自己的复合键约定
 )
 # status 命令的两个合法出口：git 域的 api 封装，以及 ProjectCommands 这个**按单元绑定**的
 # 端口（`createProjectCommands(projectId, worktreePath)` —— 面板经它拿数据，不各自 invoke）。

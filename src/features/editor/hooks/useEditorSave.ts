@@ -108,7 +108,7 @@ export function useEditorSave({
   // 处理外部文件修改：重新加载
   const handleReload = useCallback(async () => {
     try {
-      const content = await readFileContent(tab.projectId, tab.filePath);
+      const content = await readFileContent(tab.workspace, tab.filePath);
       useEditorStore.getState().updateTab(tabKey, tabId, {
         kind: 'file',
         content,
@@ -121,7 +121,7 @@ export function useEditorSave({
     } catch (e) {
       console.error('[FileEditor] Failed to reload file:', e);
     }
-  }, [tab.projectId, tab.filePath, tabKey, tabId, onReloaded]);
+  }, [tab.filePath, tab.workspace, tabKey, tabId, onReloaded]);
 
   // 处理外部文件修改：保留当前编辑
   const handleKeepEdits = useCallback(() => {

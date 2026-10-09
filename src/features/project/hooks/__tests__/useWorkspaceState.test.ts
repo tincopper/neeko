@@ -6,7 +6,6 @@ import { useEditorStore } from '@/shared/store/editorStore';
 import { useProjectStore } from '@/shared/store/projectStore';
 import { useWorkspaceStore } from '@/shared/store/workspaceStore';
 import type { FileChange, GitStatusSnapshot } from '@/shared/types';
-import { resolveTabKey } from '@/shared/utils/tabKey';
 import { workspaceKeyOf, type WorkspaceKey } from '@/shared/utils/workspaceRef';
 
 const PROJECT = 'project-1';
@@ -42,7 +41,7 @@ function seededKeys(): string[] {
 
 /** 单元切换会移动编辑器激活 tab 指针 —— 给某单元建一个带激活 tab 的 tab 空间。 */
 function seedTabSpace(projectId: string, worktreePath: string | null, activeTabId: string): void {
-  const key = resolveTabKey(projectId, worktreePath);
+  const key = workspaceKeyOf(projectId, worktreePath);
   useEditorStore.setState((state) => ({
     tabs: { ...state.tabs, [key]: { tabs: [], activeTabId } },
   }));

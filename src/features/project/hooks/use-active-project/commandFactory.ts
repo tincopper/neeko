@@ -1,8 +1,8 @@
 // eslint-disable-next-line no-restricted-imports -- invoke is the foundational IPC primitive for project commands
 import { invoke } from '@tauri-apps/api/core';
 
+import type { WorkspaceSession } from '@/shared/types';
 import type { ProjectCommands } from '@/shared/types/activeProject';
-import { DEFAULT_TREE_DEPTH, type FileNode, type FileContent } from '@/shared/types/file';
 import type {
   GitInfo,
   GitStatusSnapshot,
@@ -17,10 +17,8 @@ import type {
   StashEntry,
 } from '@/shared/types/git';
 
-export function createProjectCommands(
-  projectId: string,
-  worktreePath?: string | null,
-): ProjectCommands {
+export function createProjectCommands(workspace: WorkspaceSession): ProjectCommands {
+  const { projectId, worktreePath } = workspace;
   return {
     refreshGitInfo(): Promise<GitInfo> {
       return invoke<GitInfo>('get_git_info', { projectId, worktreePath });
@@ -204,30 +202,6 @@ export function createProjectCommands(
     },
 
     // S5：ignored 剪枝/标注由后端读层原生提供，命令不再接收 ignoredFiles
-    readDirTree(rootPath?: string, subPath?: string, maxDepth?: number): Promise<FileNode[]> {
-      return invoke<FileNode[]>('read_dir_tree', {
-        projectId,
-        rootPath: rootPath ?? null,
-        subPath: subPath ?? null,
-        maxDepth: maxDepth ?? DEFAULT_TREE_DEPTH,
-      });
-    },
-    readFileContent(filePath: string, rootPath?: string): Promise<FileContent> {
-      return invoke<FileContent>('read_file_content', {
-        projectId,
-        filePath,
-        rootPath,
-      });
-    },
-    writeFileContent(filePath: string, content: string, rootPath?: string): Promise<void> {
-      return invoke<void>('write_file_content', {
-        projectId,
-        filePath,
-        content,
-        rootPath,
-      });
-    },
-
     generateCommitMessage(
       agentId: string,
       filePaths: string[],

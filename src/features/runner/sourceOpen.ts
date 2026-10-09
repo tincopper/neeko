@@ -9,6 +9,7 @@
  * - `identity` 是**规范 tab 身份**（tab / 断点 key / 黄线共用同一套归一）；
  * - `load` 决定内容通道（项目内读 / 会话门控的外部只读 / 适配器 `source` 请求）。
  */
+import type { WorkspaceSession } from '@/shared/types';
 import {
   fileRefFromTabPath,
   sourceIdentityOf,
@@ -39,8 +40,8 @@ export interface SourceOpenRequest {
  */
 export function fsSourceOpen(
   projectRoot: string,
-  projectId: string,
   sourcePath: string,
+  workspace: WorkspaceSession,
   sessionId?: string,
 ): SourceOpenRequest {
   const ref = fileRefFromTabPath(projectRoot, sourcePath);
@@ -49,9 +50,9 @@ export function fsSourceOpen(
   return {
     identity,
     tabTitle: getFileName(identity),
-    // `projectRoot` = 执行单元根：既是身份归一基准，也是项目内读取的 `InProject` scope
+    // `projectRoot` = 身份归一基准；项目内读取的 scope 由 `workspace`（地址值对象）决定
     //（worktree 可在项目根之外，用项目根 scope 会把 worktree 文件误判为越界而转只读）。
-    load: () => loadStopSourceContent(projectId, loadPath, sessionId, projectRoot),
+    load: () => loadStopSourceContent(workspace, loadPath, sessionId),
   };
 }
 
@@ -78,11 +79,11 @@ export function virtualSourceOpen(
 export function frameSourceOpen(
   frame: StackFrameDto,
   projectRoot: string,
-  projectId: string,
+  workspace: WorkspaceSession,
   sessionId?: string,
 ): SourceOpenRequest | null {
   if (frame.sourcePath) {
-    return fsSourceOpen(projectRoot, projectId, frame.sourcePath, sessionId);
+    return fsSourceOpen(projectRoot, frame.sourcePath, workspace, sessionId);
   }
   return virtualSourceOpen(frame.sourceName, frame.sourceReference ?? 0, sessionId);
 }

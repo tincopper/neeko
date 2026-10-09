@@ -10,7 +10,7 @@ import {
   captureCurrentNavLocation,
   recordNavigationJump,
 } from '@/shared/store/navigationHistoryStore';
-import type { Tab } from '@/shared/types';
+import type { Tab, WorkspaceSession } from '@/shared/types';
 import { getLanguageExtension } from '@/shared/utils/codemirror';
 import { sameFileAt } from '@/shared/utils/fileRef';
 import { getTabId, isFileTab } from '@/shared/utils/fileTree';
@@ -31,6 +31,8 @@ export interface EnsureSourceTabResult {
 export interface EnsureSourceTabRequest {
   tabKey: string;
   projectId: string;
+  /** 本 tab 所属Workspace 地址（值携带，用于文件写入/读取寻址）。 */
+  workspace: WorkspaceSession;
   /** 项目根：tab 复用比较要它才能把「项目相对形态」归一到同一身份。 */
   projectRoot: string;
   request: SourceOpenRequest;
@@ -54,7 +56,8 @@ export interface EnsureSourceTabRequest {
 export async function ensureSourceTab(
   req: EnsureSourceTabRequest,
 ): Promise<EnsureSourceTabResult | null> {
-  const { tabKey, projectId, projectRoot, request, line, column, onError, canCommit } = req;
+  const { tabKey, projectId, workspace, projectRoot, request, line, column, onError, canCommit } =
+    req;
   const { identity, tabTitle, load } = request;
 
   if (canCommit && !canCommit()) return null;
@@ -80,7 +83,7 @@ export async function ensureSourceTab(
   // recorded once the file actually opens (a failed load must not pollute the
   // navigation history).
   const from = captureCurrentNavLocation();
-  const to = { projectId, tabKey, filePath: identity, line: line1, column: col };
+  const to = { projectId, tabKey, filePath: identity, workspace, line: line1, column: col };
 
   if (existing) {
     recordNavigationJump(from, to);
@@ -107,6 +110,7 @@ export async function ensureSourceTab(
     order: fresh.tabs[tabKey]?.tabs.length ?? 0,
     data: {
       kind: 'file',
+      workspace,
       filePath: identity,
       fileName: tabTitle,
       content: loaded.content,

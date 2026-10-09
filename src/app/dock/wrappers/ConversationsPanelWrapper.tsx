@@ -12,7 +12,7 @@ import { useEditorStore } from '@/shared/store/editorStore';
 import { useProjectStore } from '@/shared/store/projectStore';
 import { useActiveCheckoutPath } from '@/shared/store/workspaceStore';
 import type { Tab } from '@/shared/types';
-import { resolveTabKey } from '@/shared/utils/tabKey';
+import { workspaceKeyOf } from '@/shared/utils/workspaceRef';
 
 /**
  * Conversations dock 面板适配层：读取 project context + agent 列表透传
@@ -34,7 +34,7 @@ const ConversationsPanelWrapper: React.FC = React.memo(() => {
   const currentProjectId = useProjectStore((s) => s.activeProjectId);
   const activeCheckoutPath = useActiveCheckoutPath();
   const tabKey = currentProjectId
-    ? resolveTabKey(currentProjectId, activeCheckoutPath)
+    ? workspaceKeyOf(currentProjectId, activeCheckoutPath)
     : currentProjectId;
 
   const handleResumeConversation = useCallback(

@@ -113,7 +113,7 @@ describe('WorktreeList — 单元生命周期收口（R2.4 / I1-b）', () => {
     expect(useWorkspaceStore.getState().byProject[PROJECT_ID]?.activePath).toBeNull();
     // PTY 回收走终端域的 tab 空间入口：真实缓存键是 `{tabKey}:{tabId}:{paneId}`，
     // 手拼 `${projectId}:wt:${path}` 两段式查不到任何条目（PTY 会一直挂着）。
-    expect(api.cleanupTerminalsForTabKey).toHaveBeenCalledWith(`p1:wt:${WT_PATH}`);
+    expect(api.cleanupTerminalsForTabKey).toHaveBeenCalledWith(workspaceKeyOf('p1', WT_PATH));
   });
 
   it('删除命令失败时不作废槽位（工作树还在，数据仍然有效）', async () => {

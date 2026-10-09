@@ -4,15 +4,18 @@ import { useCallback, useEffect, useRef } from 'react';
 import { readDirTree } from '@/features/file/api/fileApi';
 import { useFileStore } from '@/features/file/store';
 import { FILE_TREE_CHANGED_EVENT } from '@/shared/events';
-import { selectActiveCheckoutPath, useWorkspaceStore } from '@/shared/store/workspaceStore';
-import type { ProjectCommands, ProjectView, FileTreeChangedEvent } from '@/shared/types';
+import {
+  activeWorkspaceSession,
+  selectActiveCheckoutPath,
+  useWorkspaceStore,
+} from '@/shared/store/workspaceStore';
+import type { ProjectView, FileTreeChangedEvent } from '@/shared/types';
 import { DEFAULT_TREE_DEPTH } from '@/shared/types/file';
 import { safeUnlisten } from '@/shared/utils/safeUnlisten';
 import { workspaceKeyOf } from '@/shared/utils/workspaceRef';
 
 export interface UseFileTreeSyncOptions {
   project: ProjectView | null;
-  commands: ProjectCommands | null;
   activeProjectId: string | null;
   /** 文件树根路径（worktree 或项目根） */
   fileRootPath: string | null;
@@ -24,12 +27,12 @@ export interface UseFileTreeSyncOptions {
 }
 
 /**
- * 文件树同步编排（本地 vs WSL/Remote 双路径）。
+ * 文件树同步编排（Local 与 WSL/Remote 走同一后端命令，仅刷新路径不同）。
  *
  * 内聚目录加载 / file-tree-changed 事件刷新 / 手动刷新 / 懒加载展开，
  * 使 FilesPanelWrapper 保持薄适配、可独立测试。
  *
- * - 目录加载器：封装「本地命令」与「WSL/Remote 命令」两种实现，注入 store
+ * - 目录加载器：统一走 `readDirTree`（后端按 `ExecTarget` 路由三端），注入 store
  *   （store 不感知命令差异）；
  * - 加载 effect：面板激活切换 / fileRootPath 变化 / WSL-Remote 首次加载时触发，
  *   通过 prev refs 避免冗余加载；
@@ -38,7 +41,6 @@ export interface UseFileTreeSyncOptions {
  */
 export function useFileTreeSync({
   project,
-  commands,
   activeProjectId,
   fileRootPath,
   isActive,
@@ -46,26 +48,17 @@ export function useFileTreeSync({
   onFileRefresh,
   onExpandDir,
 }: UseFileTreeSyncOptions) {
-  const makeLocalLoader = useCallback(
+  const makeLoader = useCallback(
     (pid: string, dirPath: string) => () =>
       readDirTree(
-        pid,
+        activeWorkspaceSession(pid),
         dirPath || null,
-        fileRootPath,
         // S2-0：非根目录单层读取 —— 刷新成本 O(变更)，与 dirCache 一级条目语义一致；
-        // 根目录按 DEFAULT_TREE_DEPTH 预扫（初始结构成型），S5 起 ignored 由后端标注
+        // 根目录按 DEFAULT_TREE_DEPTH 预扫（初始结构成型），S5 起 ignored 由后端标注。
+        // Local / WSL / Remote 同一条后端命令，深度语义只需一份。
         dirPath ? 1 : DEFAULT_TREE_DEPTH,
       ),
-    [fileRootPath],
-  );
-  const makeWslRemoteLoader = useCallback(
-    (dirPath: string) => () => {
-      if (!commands || !fileRootPath) {
-        return Promise.reject(new Error('commands unavailable'));
-      }
-      return commands.readDirTree(fileRootPath, dirPath || undefined, DEFAULT_TREE_DEPTH);
-    },
-    [commands, fileRootPath],
+    [],
   );
 
   // Track previous values to avoid redundant file tree loads.
@@ -97,25 +90,17 @@ export function useFileTreeSync({
       if (justBecameActive || !sameProject || (sameProject && fileRootPathChanged)) {
         onLoadFileTree(activeProjectId, fileRootPath);
       }
-    } else if (project.type !== 'Local' && commands) {
+    } else if (project.type !== 'Local') {
       // WSL/Remote: always load since there's no handleSelectProjectWithClear for them
       const owner = `${project.id}:${fileRootPath}`;
-      const loader = makeWslRemoteLoader('');
+      const loader = makeLoader(project.id, '');
       void useFileStore.getState().loadDir(owner, '', loader);
     }
 
     prevProjectIdRef.current = projectId ?? null;
     prevIsActiveRef.current = isActive;
     prevFileRootPathRef.current = fileRootPath;
-  }, [
-    isActive,
-    project,
-    activeProjectId,
-    fileRootPath,
-    commands,
-    onLoadFileTree,
-    makeWslRemoteLoader,
-  ]);
+  }, [isActive, project, activeProjectId, fileRootPath, onLoadFileTree, makeLoader]);
 
   // 监听后端 file-tree-changed 事件（文件新增/删除/重命名），静默刷新目录树
   // 静默刷新：不切换 loading 态，旧树保持展示直到新数据到达，避免闪烁
@@ -138,7 +123,7 @@ export function useFileTreeSync({
       const owner = `${activeProjectId}:${fileRootPath}`;
       void useFileStore
         .getState()
-        .refreshTree(owner, (dirPath) => makeLocalLoader(activeProjectId, dirPath), {
+        .refreshTree(owner, (dirPath) => makeLoader(activeProjectId, dirPath), {
           silent: true,
           dirs,
         });
@@ -146,32 +131,32 @@ export function useFileTreeSync({
     return () => {
       unlistenPromise.then((unlisten) => safeUnlisten(unlisten)());
     };
-  }, [activeProjectId, project, fileRootPath, makeLocalLoader]);
+  }, [activeProjectId, project, fileRootPath, makeLoader]);
 
   // WSL/Remote: 通过 store.refreshTree 强制全树重载（失败保留旧内容 + error 态，不置空）。
   // Local: delegate to onFileRefresh (context → useFileView.loadFileTree, force 全树刷新)。
   const handleRefresh = useCallback(() => {
-    if (project && project.type !== 'Local' && commands && fileRootPath) {
+    if (project && project.type !== 'Local' && fileRootPath) {
       const owner = `${project.id}:${fileRootPath}`;
-      void useFileStore.getState().refreshTree(owner, (dirPath) => makeWslRemoteLoader(dirPath));
+      void useFileStore.getState().refreshTree(owner, (dirPath) => makeLoader(project.id, dirPath));
     } else {
       onFileRefresh();
     }
-  }, [project, commands, fileRootPath, onFileRefresh, makeWslRemoteLoader]);
+  }, [project, fileRootPath, onFileRefresh, makeLoader]);
 
   // 懒加载子目录：WSL/Remote 通过 store.loadDir（幂等），Local 通过 context（useFileView.expandSubTree）
   const handleExpandDir = useCallback(
     async (dirPath: string) => {
-      if (project && project.type !== 'Local' && commands && fileRootPath) {
+      if (project && project.type !== 'Local' && fileRootPath) {
         const owner = `${project.id}:${fileRootPath}`;
-        const loader = makeWslRemoteLoader(dirPath);
+        const loader = makeLoader(project.id, dirPath);
         await useFileStore.getState().loadDir(owner, dirPath, loader);
       } else {
         // Local：委托给 context（→ useFileView.expandSubTree）
         await onExpandDir(dirPath);
       }
     },
-    [project, commands, fileRootPath, onExpandDir, makeWslRemoteLoader],
+    [project, fileRootPath, onExpandDir, makeLoader],
   );
 
   return { handleRefresh, handleExpandDir };

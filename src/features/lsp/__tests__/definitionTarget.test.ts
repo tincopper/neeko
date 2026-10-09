@@ -131,7 +131,7 @@ describe('loadDefinitionTargetContent — 跳转目标内容加载策略', () =>
     expect(result.kind).toBe('external-readonly');
     expect(invokeMock).toHaveBeenCalledWith(
       'read_file_content',
-      expect.objectContaining({ projectId: 'uuid-1' }),
+      expect.objectContaining({ workspace: expect.objectContaining({ projectId: 'uuid-1' }) }),
     );
     expect(invokeMock).toHaveBeenCalledWith(
       'lsp_read_preauthorized_file',

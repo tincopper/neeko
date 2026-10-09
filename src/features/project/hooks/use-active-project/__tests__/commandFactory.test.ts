@@ -5,7 +5,6 @@ vi.mock('@tauri-apps/api/core', () => ({
   invoke: vi.fn().mockResolvedValue(undefined),
 }));
 
-import { DEFAULT_TREE_DEPTH } from '@/shared/types/file';
 import { invoke } from '@/testing/tauriCore';
 
 import { createProjectCommands } from '../commandFactory';
@@ -16,10 +15,10 @@ import { createProjectCommands } from '../commandFactory';
 
 describe('createProjectCommands (Local)', () => {
   const projectId = 'proj-123';
-  const commands = createProjectCommands(projectId);
+  const commands = createProjectCommands({ projectId, worktreePath: null });
   const mockInvoke = vi.mocked(invoke);
   const payload = () => ({ projectId });
-  const wtPayload = () => ({ projectId, worktreePath: undefined });
+  const wtPayload = () => ({ projectId, worktreePath: null });
   /** 长操作带 Console 流式透传参数（无 runId 时显式 null）。 */
   const streamPayload = () => ({ ...wtPayload(), consoleRunId: null });
 
@@ -216,45 +215,6 @@ describe('createProjectCommands (Local)', () => {
     });
   });
 
-  it('readDirTree should call read_dir_tree', async () => {
-    await commands.readDirTree();
-    expect(mockInvoke).toHaveBeenCalledWith('read_dir_tree', {
-      ...payload(),
-      rootPath: null,
-      subPath: null,
-      maxDepth: DEFAULT_TREE_DEPTH,
-    });
-  });
-
-  it('readDirTree should forward args (S5: ignored pruning moved to backend)', async () => {
-    await commands.readDirTree('root', 'src', 2);
-    expect(mockInvoke).toHaveBeenCalledWith('read_dir_tree', {
-      ...payload(),
-      rootPath: 'root',
-      subPath: 'src',
-      maxDepth: 2,
-    });
-  });
-
-  it('readFileContent should call read_file_content', async () => {
-    await commands.readFileContent('src/foo.ts');
-    expect(mockInvoke).toHaveBeenCalledWith('read_file_content', {
-      ...payload(),
-      filePath: 'src/foo.ts',
-      rootPath: undefined,
-    });
-  });
-
-  it('writeFileContent should call write_file_content', async () => {
-    await commands.writeFileContent('src/foo.ts', 'content');
-    expect(mockInvoke).toHaveBeenCalledWith('write_file_content', {
-      ...payload(),
-      filePath: 'src/foo.ts',
-      content: 'content',
-      rootPath: undefined,
-    });
-  });
-
   it('generateCommitMessage should call generate_commit_message', async () => {
     await commands.generateCommitMessage('opencode', ['src/foo.ts'], null);
     expect(mockInvoke).toHaveBeenCalledWith('generate_commit_message', {
@@ -269,7 +229,7 @@ describe('createProjectCommands (Local)', () => {
 describe('createProjectCommands with worktreePath', () => {
   const projectId = 'proj-123';
   const worktreePath = '/tmp/wt-feature';
-  const commands = createProjectCommands(projectId, worktreePath);
+  const commands = createProjectCommands({ projectId, worktreePath });
   const mockInvoke = vi.mocked(invoke);
 
   beforeEach(() => mockInvoke.mockClear());

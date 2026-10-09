@@ -246,15 +246,6 @@ class WorkspaceIdentityTest(unittest.TestCase):
         )
         self.assertEqual(result.verdict, PASS)
 
-    def test_tab_key_composite_is_not_flagged(self):
-        """`tabKey.ts` 的 `:wt:` 复合键是 tab 空间的正解，不该被本护栏误伤。"""
-        result = self.run_fe(
-            "src/shared/utils/tabKey.ts",
-            "const WT_SEP = ':wt:';\nexport const k = `${projectId}${WT_SEP}${p}`;\n",
-        )
-        self.assertEqual(result.verdict, PASS)
-
-
     # ── 第 4 类判据：写命令的 status 收口接线 ──────────────────────────────
 
     def run_cmd(self, body: str, rel: str = "src-tauri/src/git/commands/probe.rs"):

@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { useEditorStore } from '@/shared/store/editorStore';
 import { useProjectStore } from '@/shared/store/projectStore';
 import { useWorkspaceStore } from '@/shared/store/workspaceStore';
+import { workspaceKeyOf } from '@/shared/utils/workspaceRef';
 import { flushMicrotasks } from '@/testing/async';
 
 const { readFileContentMock, langExtMock } = vi.hoisted(() => ({
@@ -42,9 +43,9 @@ describe('openProjectFile — file tab 构造 canonical 化（quick-open 链路�
   it('相对路径 → tab id / data.filePath 存 canonical 绝对路径（root=项目根）', async () => {
     await openProjectFile({ projectId: 'p1', filePath: 'src/a.ts' });
 
-    const space = useEditorStore.getState().tabs['p1'];
+    const space = useEditorStore.getState().tabs[workspaceKeyOf('p1', null)];
     expect(space.tabs).toHaveLength(1);
-    expect(space.tabs[0].id).toBe('p1:/repo/src/a.ts');
+    expect(space.tabs[0].id).toBe(`${workspaceKeyOf('p1', null)}:/repo/src/a.ts`);
     expect(space.tabs[0].data.kind === 'file' && space.tabs[0].data.filePath).toBe(
       '/repo/src/a.ts',
     );
@@ -54,19 +55,23 @@ describe('openProjectFile — file tab 构造 canonical 化（quick-open 链路�
     await openProjectFile({ projectId: 'p1', filePath: 'src/a.ts' });
     await openProjectFile({ projectId: 'p1', filePath: 'src/a.ts' });
 
-    expect(useEditorStore.getState().tabs['p1'].tabs).toHaveLength(1);
+    expect(useEditorStore.getState().tabs[workspaceKeyOf('p1', null)].tabs).toHaveLength(1);
   });
 
-  it('worktree 激活：tab 落 worktree 键空间，路径仍按项目根 canonical（与 readFileContent 缺省 base 一致）', async () => {
+  it('worktree 激活：tab 落 worktree 键空间，路径按 worktree 根 canonical（与读取单元同源）', async () => {
     useWorkspaceStore.getState().setActiveWorkspace('p1', '/wt');
 
     await openProjectFile({ projectId: 'p1', filePath: 'src/a.ts' });
 
-    const space = useEditorStore.getState().tabs['p1:wt:/wt'];
+    const space = useEditorStore.getState().tabs[workspaceKeyOf('p1', '/wt')];
     expect(space).toBeDefined();
-    expect(space.tabs[0].id).toBe('p1:wt:/wt:/repo/src/a.ts');
-    expect(space.tabs[0].data.kind === 'file' && space.tabs[0].data.filePath).toBe(
-      '/repo/src/a.ts',
+    expect(space.tabs[0].id).toBe(`${workspaceKeyOf('p1', '/wt')}:/wt/src/a.ts`);
+    expect(space.tabs[0].data.kind === 'file' && space.tabs[0].data.filePath).toBe('/wt/src/a.ts');
+    // 读取地址与身份基准必须是同一个单元：基准=worktree 根、地址 worktreePath='/wt'，
+    // 否则后端 InProject containment 拒绝（worktree 激活时 quick-open 静默失效）。
+    expect(readFileContentMock).toHaveBeenCalledWith(
+      { projectId: 'p1', worktreePath: '/wt' },
+      '/wt/src/a.ts',
     );
   });
 
@@ -79,9 +84,9 @@ describe('openProjectFile — file tab 构造 canonical 化（quick-open 链路�
 
     await openProjectFile({ projectId: 'p1', filePath: 'src/a.ts' });
 
-    const space = useEditorStore.getState().tabs['p1'];
-    expect(space.tabs[0].id).toBe('p1:/repo/src/a.ts');
-    expect(useEditorStore.getState().tabs['p1:wt:/wt-of-p2']).toBeUndefined();
+    const space = useEditorStore.getState().tabs[workspaceKeyOf('p1', null)];
+    expect(space.tabs[0].id).toBe(`${workspaceKeyOf('p1', null)}:/repo/src/a.ts`);
+    expect(useEditorStore.getState().tabs[workspaceKeyOf('p1', '/wt-of-p2')]).toBeUndefined();
   });
 
   /**
@@ -93,8 +98,8 @@ describe('openProjectFile — file tab 构造 canonical 化（quick-open 链路�
   it('身份化入参（dap-source: 虚拟源码）→ 原样作为 tab 身份，不拼项目根', async () => {
     await openProjectFile({ projectId: 'p1', filePath: 'dap-source:/9/f9' });
 
-    const space = useEditorStore.getState().tabs['p1'];
-    expect(space.tabs[0].id).toBe('p1:dap-source:/9/f9');
+    const space = useEditorStore.getState().tabs[workspaceKeyOf('p1', null)];
+    expect(space.tabs[0].id).toBe(`${workspaceKeyOf('p1', null)}:dap-source:/9/f9`);
     expect(space.tabs[0].data.kind === 'file' && space.tabs[0].data.filePath).toBe(
       'dap-source:/9/f9',
     );
@@ -103,8 +108,10 @@ describe('openProjectFile — file tab 构造 canonical 化（quick-open 链路�
   it('身份化入参（jdt 展示路径）→ 原样，且与停点打开的 JDK 源码是同一个 tab', async () => {
     await openProjectFile({ projectId: 'p1', filePath: 'jdt:/java.base/java/io/PrintStream.java' });
 
-    const space = useEditorStore.getState().tabs['p1'];
-    expect(space.tabs[0].id).toBe('p1:jdt:/java.base/java/io/PrintStream.java');
+    const space = useEditorStore.getState().tabs[workspaceKeyOf('p1', null)];
+    expect(space.tabs[0].id).toBe(
+      `${workspaceKeyOf('p1', null)}:jdt:/java.base/java/io/PrintStream.java`,
+    );
   });
 
   it('JDK 解压缓存路径 → 收敛为 jdt 身份（同一份源码一种身份）', async () => {
@@ -114,8 +121,10 @@ describe('openProjectFile — file tab 构造 canonical 化（quick-open 链路�
         '/home/u/.neeko/java-src-cache/jdk-src-21.0.12.1/java.base/java/io/PrintStream.java',
     });
 
-    const space = useEditorStore.getState().tabs['p1'];
-    expect(space.tabs[0].id).toBe('p1:jdt:/java.base/java/io/PrintStream.java');
+    const space = useEditorStore.getState().tabs[workspaceKeyOf('p1', null)];
+    expect(space.tabs[0].id).toBe(
+      `${workspaceKeyOf('p1', null)}:jdt:/java.base/java/io/PrintStream.java`,
+    );
   });
 });
 
@@ -159,12 +168,12 @@ describe('openProjectFile — 语言扩展就绪屏障（await getLanguageExtens
     // 屏障等待期间（扩展未就绪）：不读内容、不建 tab。
     expect(langExtMock).toHaveBeenCalledWith('/repo/src/a.ts');
     expect(readFileContentMock).not.toHaveBeenCalled();
-    expect(useEditorStore.getState().tabs['p1']).toBeUndefined();
+    expect(useEditorStore.getState().tabs[workspaceKeyOf('p1', null)]).toBeUndefined();
 
     releaseLang(null);
     await pending;
 
     // 屏障放行后照常提交（读内容 + 建 tab）。
-    expect(useEditorStore.getState().tabs['p1'].tabs).toHaveLength(1);
+    expect(useEditorStore.getState().tabs[workspaceKeyOf('p1', null)].tabs).toHaveLength(1);
   });
 });

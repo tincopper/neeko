@@ -74,7 +74,12 @@ export function useRemoteTerminalStrategy(params: RemoteStrategyParams): Termina
       onSessionReady: onSessionReady ? () => onSessionReady(projectId) : undefined,
       setupFileLinks: (term) => {
         if (projectPath) {
-          setupTerminalLinks(term, { projectPath, tabKey: projectId, projectId, showToast });
+          setupTerminalLinks(term, {
+            projectPath,
+            tabKey: projectId,
+            workspace: { projectId, worktreePath: null },
+            showToast,
+          });
         }
       },
     });

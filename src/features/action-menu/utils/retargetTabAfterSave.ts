@@ -37,7 +37,7 @@ export interface RetargetTabAfterSaveArgs {
  */
 export function retargetTabAfterSave(args: RetargetTabAfterSaveArgs): void {
   const { tabKey, tabId, saveRoot, relPath, filename, content, closeAfterSave } = args;
-  // tab 身份恒为 canonical 绝对路径：Save As 根与 saveNewFile 的 resolve_base 对齐
+  // tab 身份恒为 canonical 绝对路径：Save As 根与 saveNewFile 的 Workspace 寻址同源
   const canonicalPath = canonicalFsPath(saveRoot, relPath);
   const newTabId = getTabId(tabKey, canonicalPath);
   const store = useEditorStore.getState();

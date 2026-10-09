@@ -1,23 +1,25 @@
 /**
  * Open a file in the editor (shared by Goto File / Recent / search / history).
  *
- * 输入可能是**项目根相对路径**（quick-open 索引本就按项目根），也可能是**已规范的身份**
+ * 输入可能是**单元根相对路径**（quick-open 索引按当前视图单元的 `readDirTree` 读取 ——
+ * worktree 激活时即 worktree 根相对），也可能是**已规范的身份**
  * （最近文件列表存的就是 tab 身份：`dap-source:` 虚拟源码 / `jdt:` / JDK 缓存路径）。
  * 两者都由身份所有者归一（`sourceIdentityOf`），**不得**用 `canonicalFsPath` ——
- * 它会把非文件路径当相对路径拼上项目根，产出伪身份并开出重复 tab。
+ * 它会把非文件路径当相对路径拼上根，产出伪身份并开出重复 tab。
  *
- * worktree 激活时索引与读取 base 仍为项目根，与后端 `read_file_content` 缺省
- * resolve_base 一致。
+ * 身份归一基准与读取地址**同源**：都取自同一个 `activeWorkspaceSession` 值 ——
+ * 基准若用项目根而读取用 worktree 根，后端 `InProject` containment 会拒绝
+ * （worktree 激活时 quick-open 静默打不开任何文件）。
  */
 import { readFileContent } from '@/features/file/api/fileApi';
 import { useEditorStore } from '@/shared/store/editorStore';
 import { useProjectStore } from '@/shared/store/projectStore';
-import { selectActiveCheckoutPath, useWorkspaceStore } from '@/shared/store/workspaceStore';
+import { activeWorkspaceSession } from '@/shared/store/workspaceStore';
 import type { Tab } from '@/shared/types';
 import { getLanguageExtension } from '@/shared/utils/codemirror';
 import { sourceIdentityOf } from '@/shared/utils/fileRef';
 import { getFileName, getTabId } from '@/shared/utils/fileTree';
-import { resolveTabKey } from '@/shared/utils/tabKey';
+import { workspaceKeyOf } from '@/shared/utils/workspaceRef';
 
 import { useRecentFilesStore } from './store/recentFilesStore';
 
@@ -35,10 +37,10 @@ export async function openProjectFile(opts: {
 
   const projectPath =
     useProjectStore.getState().projects.find((p) => p.id === projectId)?.path ?? '';
-  const filePath = sourceIdentityOf(projectPath, rawPath);
-
-  const wt = selectActiveCheckoutPath(useWorkspaceStore.getState(), projectId);
-  const tabKey = resolveTabKey(projectId, wt);
+  // 一次捕获当前视图单元的值：身份基准、组键、读取地址全部由它派生（零重取、零解析）。
+  const workspace = activeWorkspaceSession(projectId);
+  const filePath = sourceIdentityOf(workspace.worktreePath ?? projectPath, rawPath);
+  const tabKey = workspaceKeyOf(projectId, workspace.worktreePath);
   const store = useEditorStore.getState();
   const tabId = getTabId(tabKey, filePath);
   const existing = store.tabs[tabKey]?.tabs.find((t) => t.id === tabId);
@@ -55,7 +57,7 @@ export async function openProjectFile(opts: {
   // 缓存命中即时返回）—— 扩展就绪后 tab 才挂载，CodeMirror 只配置一次，消灭
   // 「兑现后 reconfigure 重排」。quick-open 语义为 last-write-wins，屏障后不做许可复检。
   await getLanguageExtension(filePath);
-  const content = await readFileContent(projectId, filePath);
+  const content = await readFileContent(workspace, filePath);
   const newTab: Tab = {
     id: tabId,
     projectId,
@@ -63,6 +65,7 @@ export async function openProjectFile(opts: {
     order: store.tabs[tabKey]?.tabs.length ?? 0,
     data: {
       kind: 'file',
+      workspace,
       filePath,
       fileName: getFileName(filePath),
       content,

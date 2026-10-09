@@ -6,7 +6,7 @@ import { useEditorStore } from '@/shared/store/editorStore';
 import { useProjectStore } from '@/shared/store/projectStore';
 import { useWorkspaceStore } from '@/shared/store/workspaceStore';
 import type { ConnectionContext } from '@/shared/types';
-import { buildWorktreeTabKey } from '@/shared/utils/tabKey';
+import { workspaceKeyOf } from '@/shared/utils/workspaceRef';
 
 describe('useSingletonDiff worktree tab projectId', () => {
   beforeEach(() => {
@@ -27,7 +27,7 @@ describe('useSingletonDiff worktree tab projectId', () => {
       result.current.openFileInDiff('src/main.ts');
     });
 
-    const tabKey = buildWorktreeTabKey(projectId, wtPath);
+    const tabKey = workspaceKeyOf(projectId, wtPath);
     const diffTab = useEditorStore
       .getState()
       .tabs[tabKey]?.tabs.find((t) => t.data.kind === 'diff');

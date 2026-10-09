@@ -1,6 +1,4 @@
-use crate::common::executor::factory::ExecTarget;
-use crate::common::git::checkout_path::CheckoutPath;
-use crate::common::git::WorkspaceRef;
+use crate::common::git::WorkspaceSession;
 use crate::platform::reveal::{build_reveal_command, normalize_path};
 use crate::project::types::{FileContent, FileNode};
 use crate::AppError;
@@ -40,65 +38,34 @@ pub fn file_exists(path: String) -> Result<bool, AppError> {
 }
 
 // ── File operations ──────────────────────────────────────────────────────────
-
-/// 解析 file 操作基准目录：`root_path` 是 worktree 用户输入，必须先校验；
-/// 为空时回落到 `resolve_project()` 返回的受信项目根。
-///
-/// 取 **`exec`（宿主形态）** 而非身份：这个值是 `std::fs`、gitignore 过滤器与
-/// `FileAccessScope` 的输入，必须与 watcher 挂载根（同样来自 `WorkspaceRef::root()` 的
-/// 宿主形态）逐字同源，否则 `same_root` 类比较会静默失配。
-///
-/// **异步**：归一含 `exists` / `canonicalize`（阻塞 fs），经 [`CheckoutPath::resolve_async`]
-/// 隔离到阻塞池（红线 3）。
-async fn resolve_base(
-    target: &ExecTarget,
-    root_path: Option<&str>,
-    wd: &str,
-) -> Result<String, AppError> {
-    match root_path.filter(|path| !path.trim().is_empty()) {
-        // 传入的 base 若是某个工作树根，归一化后取宿主观；否则退回项目根语义。
-        Some(path) => CheckoutPath::resolve_async(target, path)
-            .await
-            .map(|resolved| resolved.exec().to_string())
-            .map_err(AppError::from),
-        None => Ok(wd.to_string()),
-    }
-}
+//
+// **按 Workspace 寻址**：每个文件命令的地址是一个 [`WorkspaceSession`]（`worktree_path = None` =
+// 主 checkout），由 `AppStateWrapper::resolve_workspace_target` **唯一解析**为
+// `(执行环境, WorkspaceRef)`；工作树根取 `WorkspaceRef::root()`（宿主形态）—— 与 git 的 `-C`、
+// watcher 挂载根、gitignore 过滤器同源。不再有「任意 root 路径」参数，也不再有各自拼
+// `project_id` + `root_path` 的散参。
 
 /// Read the directory tree.
 #[tauri::command]
 pub async fn read_dir_tree(
-    project_id: String,
-    root_path: Option<String>,
+    workspace: WorkspaceSession,
     sub_path: Option<String>,
     max_depth: Option<u32>,
     state: State<'_, AppStateWrapper>,
 ) -> Result<Vec<FileNode>, AppError> {
     // 深度常量单一事实源：crate::common::file::services::DEFAULT_TREE_DEPTH
     let depth = max_depth.unwrap_or(crate::common::file::services::DEFAULT_TREE_DEPTH);
-    let (t, wd) = state.resolve_project(&project_id)?;
-    let target = t;
-    let base_owned = resolve_base(&target, root_path.as_deref(), &wd).await?;
-    let base = base_owned.as_str();
+    let (target, repo) = state.resolve_workspace_target(&workspace).await?;
+    let base = repo.root();
     // S5：gitignore 语义由 watcher 的分层过滤器原生提供（读前剪枝 + ignored 标记），
     // 前端 ignored_files 平行数组退役。watcher 未挂载（切换项目时首载与 watch
     // 并发的 race）→ resolve_gitignore_filter 现场构建兜底，保证首屏即带 ignored
     // 标注；非 git 项目 → None（仅 .git 硬过滤）。
     // 过滤器按**Workspace**取：主仓与 worktree 的 .gitignore 规则链不同（各自工作树根
-    // + 各自 gitdir 的 exclude）。未挂载（首载与 watch 并发）→ 现场构建兜底。
+    // + 各自 gitdir 的 exclude）。
     //
-    // 与上面 `resolve_base` 各自一次 hop 而不是合并成一次解析：两者的**空路径语义不同**
-    // （base 为空时回落 `wd` 原串，身份不允许空尾），合并会顺手把项目根也 canonicalize ——
-    // 那是行为变更，不属本任务（只隔离阻塞 fs，不改语义）。阻塞 fs 同样落阻塞池（红线 3）。
-    let repo = tokio::task::spawn_blocking({
-        let (project_id, wd) = (project_id.clone(), wd.clone());
-        let target = target.clone();
-        let root_path = root_path.clone();
-        move || WorkspaceRef::resolve(&project_id, &wd, root_path.as_deref(), &target)
-    })
-    .await
-    .map_err(|e| AppError::Unknown(e.to_string()))?
-    .map_err(AppError::from)?;
+    // base 与 gitignore 单元来自**同一个** WorkspaceRef（一次解析）—— 归一含
+    // `exists` / `canonicalize`（阻塞 fs），经 `resolve_workspace_target` 内部隔离到阻塞池（红线 3）。
     let gitignore = crate::common::file::services::resolve_gitignore_filter(
         &target,
         state.watcher_manager.gitignore_for(&repo),
@@ -106,7 +73,7 @@ pub async fn read_dir_tree(
     )
     .await;
     crate::common::file::services::read_dir_tree(
-        &project_id,
+        repo.project_id(),
         &target,
         base,
         sub_path.as_deref(),
@@ -119,15 +86,12 @@ pub async fn read_dir_tree(
 /// Read file content.
 #[tauri::command]
 pub async fn read_file_content(
-    project_id: String,
+    workspace: WorkspaceSession,
     file_path: String,
-    root_path: Option<String>,
     state: State<'_, AppStateWrapper>,
 ) -> Result<FileContent, AppError> {
-    let (t, wd) = state.resolve_project(&project_id)?;
-    let target = t;
-    let base_owned = resolve_base(&target, root_path.as_deref(), &wd).await?;
-    let base = base_owned.as_str();
+    let (target, ws) = state.resolve_workspace_target(&workspace).await?;
+    let base = ws.root();
     crate::common::file::reader::read_file(
         crate::common::file::reader::FileAccessScope::InProject {
             root: std::path::PathBuf::from(base),
@@ -147,96 +111,72 @@ pub async fn read_file_content(
 /// Write file content.
 #[tauri::command]
 pub async fn write_file_content(
-    project_id: String,
+    workspace: WorkspaceSession,
     file_path: String,
     content: String,
-    root_path: Option<String>,
     state: State<'_, AppStateWrapper>,
 ) -> Result<(), AppError> {
-    let (t, wd) = state.resolve_project(&project_id)?;
-    let target = t;
-    let base_owned = resolve_base(&target, root_path.as_deref(), &wd).await?;
-    let base = base_owned.as_str();
-    crate::common::file::services::write_file_content(&target, base, &file_path, content).await
+    let (target, ws) = state.resolve_workspace_target(&workspace).await?;
+    crate::common::file::services::write_file_content(&target, ws.root(), &file_path, content).await
 }
 
 /// Create a new empty file (with parent directories).
 #[tauri::command]
 pub async fn create_new_file(
-    project_id: String,
+    workspace: WorkspaceSession,
     file_path: String,
-    root_path: Option<String>,
     state: State<'_, AppStateWrapper>,
 ) -> Result<(), AppError> {
-    let (t, wd) = state.resolve_project(&project_id)?;
-    let target = t;
-    let base_owned = resolve_base(&target, root_path.as_deref(), &wd).await?;
-    let base = base_owned.as_str();
-    crate::common::file::services::create_new_file(&target, base, &file_path).await
+    let (target, ws) = state.resolve_workspace_target(&workspace).await?;
+    crate::common::file::services::create_new_file(&target, ws.root(), &file_path).await
 }
 
 /// Save a new file with content at `directory/filename`, returning the relative path.
 #[tauri::command]
 pub async fn save_new_file(
-    project_id: String,
+    workspace: WorkspaceSession,
     directory: String,
     filename: String,
     content: String,
-    root_path: Option<String>,
     state: State<'_, AppStateWrapper>,
 ) -> Result<String, AppError> {
-    let (t, wd) = state.resolve_project(&project_id)?;
-    let target = t;
-    let base_owned = resolve_base(&target, root_path.as_deref(), &wd).await?;
-    let base = base_owned.as_str();
-    crate::common::file::services::save_new_file(&target, base, &directory, &filename, content)
+    let (target, ws) = state.resolve_workspace_target(&workspace).await?;
+    crate::common::file::services::save_new_file(&target, ws.root(), &directory, &filename, content)
         .await
 }
 
 /// Create a new directory (with parent directories).
 #[tauri::command]
 pub async fn create_directory(
-    project_id: String,
+    workspace: WorkspaceSession,
     dir_path: String,
-    root_path: Option<String>,
     state: State<'_, AppStateWrapper>,
 ) -> Result<(), AppError> {
-    let (t, wd) = state.resolve_project(&project_id)?;
-    let target = t;
-    let base_owned = resolve_base(&target, root_path.as_deref(), &wd).await?;
-    let base = base_owned.as_str();
-    crate::common::file::services::create_directory(&target, base, &dir_path).await
+    let (target, ws) = state.resolve_workspace_target(&workspace).await?;
+    crate::common::file::services::create_directory(&target, ws.root(), &dir_path).await
 }
 
 /// Delete a file or directory (recursively for directories).
 #[tauri::command]
 pub async fn delete_path(
-    project_id: String,
+    workspace: WorkspaceSession,
     path: String,
-    root_path: Option<String>,
     state: State<'_, AppStateWrapper>,
 ) -> Result<(), AppError> {
-    let (t, wd) = state.resolve_project(&project_id)?;
-    let target = t;
-    let base_owned = resolve_base(&target, root_path.as_deref(), &wd).await?;
-    let base = base_owned.as_str();
-    crate::common::file::services::delete_path(&target, base, &path).await
+    let (target, ws) = state.resolve_workspace_target(&workspace).await?;
+    crate::common::file::services::delete_path(&target, ws.root(), &path).await
 }
 
 /// Rename a file or directory (within the same parent directory).
 #[tauri::command]
 pub async fn rename_path(
-    project_id: String,
+    workspace: WorkspaceSession,
     path: String,
     new_name: String,
-    root_path: Option<String>,
     state: State<'_, AppStateWrapper>,
 ) -> Result<(), AppError> {
-    let (t, wd) = state.resolve_project(&project_id)?;
-    let target = t;
-    let base_owned = resolve_base(&target, root_path.as_deref(), &wd).await?;
-    let base = base_owned.as_str();
-    crate::common::file::services::rename_path(&target, base, &path, &new_name).await
+    let (target, ws) = state.resolve_workspace_target(&workspace).await?;
+    crate::common::file::services::rename_path(&target, ws.root(), &path, &new_name).await
 }
 
 // ── Tests ────────────────────────────────────────────────────────────────────
@@ -248,25 +188,6 @@ mod tests {
     #[cfg(target_os = "windows")]
     use crate::platform::reveal::normalize_path;
     use std::fs;
-
-    #[tokio::test]
-    async fn resolve_base_accepts_valid_worktree_and_rejects_traversal() {
-        let tmp = tempfile::tempdir().unwrap();
-        let path = tmp.path().to_string_lossy().to_string();
-        let root = Some(path);
-        assert!(
-            resolve_base(&ExecTarget::Local, root.as_deref(), "/trusted")
-                .await
-                .is_ok()
-        );
-
-        let traversal = Some("../../etc".to_string());
-        assert!(
-            resolve_base(&ExecTarget::Local, traversal.as_deref(), "/trusted")
-                .await
-                .is_err()
-        );
-    }
 
     #[test]
     fn test_normalize_path_windows() {

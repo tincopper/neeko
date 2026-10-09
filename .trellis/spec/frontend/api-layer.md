@@ -59,6 +59,13 @@ export function removeProject(projectId: string): Promise<void> {
 >
 > **例外：`invoke` 再导出**。`src/features/connection/api/connectionApi.ts` 同时再导出 `invoke` 本身，供 `features/terminal/strategies/` 等非组件脚本文件（无法 import API wrapper）使用。此模式仅限确需直接调用 `invoke` 的策略/脚本层使用，且必须通过 `connectionApi` 这一已知中介再导出，不得随意新增 `invoke` 直接导入点。
 
+> **文件命令的地址是一个 `WorkspaceSession` 值对象**（`{ projectId, worktreePath }`，`worktreePath === null` = 主 checkout）：
+> `readFileContent(workspace, filePath)` / `writeFileContent(workspace, filePath, content)` / `readDirTree(workspace, subPath?, maxDepth?)`
+> 等 8 个包装器（`features/file/api/fileApi.ts`）首参即该地址，**必填**（漏传 = 编译失败）。取当前单元用
+> `activeWorkspaceSession(projectId)`（`shared/store/workspaceStore`）。原始 `invoke('read_file_content'|…)`
+> 只允许出现在 `fileApi.ts`（护栏 `check_file_io_scope`）；WSL/Remote 与 Local 走同一后端命令
+> （按 `ExecTarget` 路由），`ProjectCommands` 不再有文件方法。
+
 ### 命名约定
 
 | 项目 | 约定 | 示例 |

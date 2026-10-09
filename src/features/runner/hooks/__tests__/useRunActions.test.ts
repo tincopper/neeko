@@ -541,7 +541,8 @@ describe('useRunActions', () => {
         ],
       };
       mockInvoke.mockImplementation((cmd: string, args: { filePath?: string }) =>
-        cmd === 'read_file_content' && args.filePath === 'node_modules/.neeko/vitest-report.json'
+        cmd === 'read_file_content' &&
+        args.filePath?.endsWith('node_modules/.neeko/vitest-report.json')
           ? Promise.resolve({
               path: 'x',
               content: JSON.stringify(report),
@@ -574,9 +575,8 @@ describe('useRunActions', () => {
       );
       // 报告经 run 根相对路径读取（rootPath = run cwd）
       expect(mockInvoke).toHaveBeenCalledWith('read_file_content', {
-        projectId: 'proj-1',
-        filePath: 'node_modules/.neeko/vitest-report.json',
-        rootPath: '/tmp/proj',
+        workspace: expect.objectContaining({ projectId: 'proj-1' }),
+        filePath: expect.stringContaining('node_modules/.neeko/vitest-report.json'),
       });
       // 未命中的用例不落状态
       expect(statusForCase('proj-1', 'src/a.test.ts', 'other')).toBeNull();
@@ -786,7 +786,7 @@ describe('useRunActions', () => {
           return Promise.resolve(true); // 用例类已编译 → 通过编译产物预检
         }
         return cmd === 'read_file_content' &&
-          args.filePath === '.neeko/junit-reports/TEST-com.example.CalculatorTest.xml'
+          args.filePath?.endsWith('.neeko/junit-reports/TEST-com.example.CalculatorTest.xml')
           ? Promise.resolve({ path: 'x', content: xml, size: 1, is_binary: false })
           : Promise.resolve(false);
       });
@@ -820,9 +820,10 @@ describe('useRunActions', () => {
       );
       // 报告经 run 根相对路径读取（rootPath = run cwd）
       expect(mockInvoke).toHaveBeenCalledWith('read_file_content', {
-        projectId: 'proj-1',
-        filePath: '.neeko/junit-reports/TEST-com.example.CalculatorTest.xml',
-        rootPath: '/tmp/proj',
+        workspace: expect.objectContaining({ projectId: 'proj-1' }),
+        filePath: expect.stringContaining(
+          '.neeko/junit-reports/TEST-com.example.CalculatorTest.xml',
+        ),
       });
       // 未命中的用例不落状态（testFail/testSkip 与运行用例 testAdd 不同名）
       expect(

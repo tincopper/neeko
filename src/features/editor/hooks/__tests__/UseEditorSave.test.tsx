@@ -101,6 +101,7 @@ function seedStoreFileTab(options: { content: string; isDirty: boolean }): void 
             order: 0,
             data: {
               kind: 'file',
+              workspace: { projectId: 'test-project-id', worktreePath: null },
               filePath: 'index.html',
               fileName: 'index.html',
               content: {

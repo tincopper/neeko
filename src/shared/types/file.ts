@@ -4,6 +4,8 @@
  */
 export const DEFAULT_TREE_DEPTH = 2;
 
+import type { WorkspaceSession } from './workspace';
+
 /** 目录内容的加载状态：`loading` 中重复请求幂等合并；`error` 保留旧内容可重试 */
 export type DirLoadState = 'idle' | 'loading' | 'loaded' | 'error';
 
@@ -77,6 +79,8 @@ export interface FileViewState {
 export interface FileTab {
   id: string;
   projectId: string;
+  /** 所属Workspace 地址（由统一 `FileTabData.workspace` 透传）。 */
+  workspace: WorkspaceSession;
   filePath: string;
   fileName: string;
   content: FileContent;

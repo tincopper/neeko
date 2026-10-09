@@ -9,6 +9,7 @@ import { closeEditorTab } from '@/features/terminal';
 import { useEditorStore } from '@/shared/store/editorStore';
 import { useOverlayStore } from '@/shared/store/overlayStore';
 import type { Tab } from '@/shared/types/tab';
+import { workspaceKeyOf } from '@/shared/utils/workspaceRef';
 
 import { useTabManagement } from '../useTabManagement';
 
@@ -68,7 +69,10 @@ describe('useTabManagement handleCloseTab', () => {
     // mistakenly match against.
     useEditorStore.setState({
       tabs: {
-        p1: { tabs: [makeTerminalTab('tab-1', 'p1')], activeTabId: 'tab-1' },
+        [workspaceKeyOf('p1', null)]: {
+          tabs: [makeTerminalTab('tab-1', 'p1')],
+          activeTabId: 'tab-1',
+        },
         p2: { tabs: [makeTerminalTab('tab-2', 'p2')], activeTabId: 'tab-2' },
       },
       activeTabId: 'tab-1',
@@ -90,13 +94,13 @@ describe('useTabManagement handleCloseTab', () => {
 
     // Must target the active tabKey only, not scan state.tabs for the tabId.
     expect(mockCloseEditorTab).toHaveBeenCalledTimes(1);
-    expect(mockCloseEditorTab).toHaveBeenCalledWith('p1', 'tab-1');
+    expect(mockCloseEditorTab).toHaveBeenCalledWith(workspaceKeyOf('p1', null), 'tab-1');
   });
 
   it('非 dirty 文件 tab → 直关，不弹确认', async () => {
     useEditorStore.setState({
       tabs: {
-        p1: { tabs: [makeFileTab('f1', 'p1', false)], activeTabId: 'f1' },
+        [workspaceKeyOf('p1', null)]: { tabs: [makeFileTab('f1', 'p1', false)], activeTabId: 'f1' },
         p2: { tabs: [makeTerminalTab('tab-2', 'p2')], activeTabId: 'tab-2' },
       },
       editorLayout: {},
@@ -110,7 +114,7 @@ describe('useTabManagement handleCloseTab', () => {
       await result.current.handleCloseTab('f1');
     });
 
-    expect(mockCloseEditorTab).toHaveBeenCalledWith('p1', 'f1');
+    expect(mockCloseEditorTab).toHaveBeenCalledWith(workspaceKeyOf('p1', null), 'f1');
     expect(saveTabById).not.toHaveBeenCalled();
     expect(useCloseConfirmStore.getState().pending).toBeNull();
   });
@@ -118,7 +122,7 @@ describe('useTabManagement handleCloseTab', () => {
   it('dirty 文件 tab：cancel → 不关闭', async () => {
     useEditorStore.setState({
       tabs: {
-        p1: { tabs: [makeFileTab('f1', 'p1', true)], activeTabId: 'f1' },
+        [workspaceKeyOf('p1', null)]: { tabs: [makeFileTab('f1', 'p1', true)], activeTabId: 'f1' },
         p2: { tabs: [makeTerminalTab('tab-2', 'p2')], activeTabId: 'tab-2' },
       },
       editorLayout: {},
@@ -146,7 +150,7 @@ describe('useTabManagement handleCloseTab', () => {
   it('dirty 文件 tab：discard → 直接关闭（不调用保存）', async () => {
     useEditorStore.setState({
       tabs: {
-        p1: { tabs: [makeFileTab('f1', 'p1', true)], activeTabId: 'f1' },
+        [workspaceKeyOf('p1', null)]: { tabs: [makeFileTab('f1', 'p1', true)], activeTabId: 'f1' },
         p2: { tabs: [makeTerminalTab('tab-2', 'p2')], activeTabId: 'tab-2' },
       },
       editorLayout: {},
@@ -167,13 +171,13 @@ describe('useTabManagement handleCloseTab', () => {
     });
 
     expect(saveTabById).not.toHaveBeenCalled();
-    expect(mockCloseEditorTab).toHaveBeenCalledWith('p1', 'f1');
+    expect(mockCloseEditorTab).toHaveBeenCalledWith(workspaceKeyOf('p1', null), 'f1');
   });
 
   it('dirty 文件 tab：save 成功 → 先保存再关闭', async () => {
     useEditorStore.setState({
       tabs: {
-        p1: { tabs: [makeFileTab('f1', 'p1', true)], activeTabId: 'f1' },
+        [workspaceKeyOf('p1', null)]: { tabs: [makeFileTab('f1', 'p1', true)], activeTabId: 'f1' },
         p2: { tabs: [makeTerminalTab('tab-2', 'p2')], activeTabId: 'tab-2' },
       },
       editorLayout: {},
@@ -194,13 +198,13 @@ describe('useTabManagement handleCloseTab', () => {
     });
 
     expect(saveTabById).toHaveBeenCalledWith('f1');
-    expect(mockCloseEditorTab).toHaveBeenCalledWith('p1', 'f1');
+    expect(mockCloseEditorTab).toHaveBeenCalledWith(workspaceKeyOf('p1', null), 'f1');
   });
 
   it('dirty 文件 tab：save 失败 → 不关闭', async () => {
     useEditorStore.setState({
       tabs: {
-        p1: { tabs: [makeFileTab('f1', 'p1', true)], activeTabId: 'f1' },
+        [workspaceKeyOf('p1', null)]: { tabs: [makeFileTab('f1', 'p1', true)], activeTabId: 'f1' },
         p2: { tabs: [makeTerminalTab('tab-2', 'p2')], activeTabId: 'tab-2' },
       },
       editorLayout: {},

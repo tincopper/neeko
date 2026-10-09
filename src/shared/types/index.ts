@@ -12,3 +12,4 @@ export * from './split';
 export * from './tab';
 export * from './task';
 export * from './terminal';
+export * from './workspace';

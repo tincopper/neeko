@@ -67,6 +67,10 @@ describe('parseWorkspaceKey', () => {
 });
 
 describe('isMainCheckout', () => {
+  it('接受 WorkspaceSession 值形态：worktreePath=null 即主仓（唯一判别）', () => {
+    expect(isMainCheckout({ projectId: 'p1', worktreePath: null })).toBe(true);
+    expect(isMainCheckout({ projectId: 'p1', worktreePath: '/wt/a' })).toBe(false);
+  });
   it('only the empty tail is main', () => {
     expect(isMainCheckout(`p1${WORKSPACE_KEY_SEP}`)).toBe(true);
     expect(isMainCheckout(workspaceKeyOf('p1', '/wt/a'))).toBe(false);

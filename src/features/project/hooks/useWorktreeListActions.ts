@@ -9,7 +9,6 @@ import {
 import { cleanupTerminalsForTabKey } from '@/features/terminal';
 import { useProjectStore } from '@/shared/store/projectStore';
 import { selectActiveCheckoutPath, useWorkspaceStore } from '@/shared/store/workspaceStore';
-import { resolveTabKey } from '@/shared/utils/tabKey';
 import { workspaceKeyOf } from '@/shared/utils/workspaceRef';
 
 import {
@@ -73,10 +72,10 @@ export function useWorktreeListActions(
       setDeleting(worktreePath);
       try {
         // 删除前回收该工作树 tab 空间下的**全部**终端 PTY（分屏 / 多个 tab 都在内）。
-        // 复用终端域自己的清理入口，不手拼 cache key：真实键是
-        // `{tabKey}:{tabId}:{paneId}`（`${projectId}:wt:${path}` 只是前缀），
-        // 按两段式查表恒查不到，PTY 会一直挂在即将消失的目录上。
-        cleanupTerminalsForTabKey(resolveTabKey(projectId, worktreePath));
+        // 传 editor 组键（canonical WorkspaceKey）：终端域在自己的单点把它换算成
+        // `:wt:` cache-key 命名空间的前缀（见 terminalTabCleanup 的 terminalSpacePrefix），
+        // 调用方不手拼 cache key —— 换算缺失时前缀永不命中，PTY 会一直挂在即将消失的目录上。
+        cleanupTerminalsForTabKey(workspaceKeyOf(projectId, worktreePath));
         await removeWorktree(projectId, worktreePath);
         // 该单元从此没有任何生产者，槽位必须作废（I1-b「未知 ≠ 旧数据」）——命令成功后才做，
         // 失败时工作树还在、挂载与数据仍然有效。作废**只发生一次**：

@@ -71,6 +71,18 @@ App
 
 **持久化例外**（改名需迁移，登记为不动）：`worktree_state`（sessions.json 字段）、`repo_key_prefix`（git 缓存键前缀）。
 
+## 寻址根 vs 展示根（文件 IO 契约）
+
+文件读写的**地址 = `WorkspaceSession`**（`{ projectId, worktreePath }`，`worktreePath === null` = 主 checkout）；
+后端由 `AppStateWrapper::resolve_workspace` **唯一解析**出**寻址根**（= `workspace.root`，宿主形态）。
+
+- **寻址根**：`workspace` 地址对象 → 后端解析（`read_file` 的 `InProject` scope、watcher/gitignore 根同源）。
+  前端**不**传任意 root 路径（那会把同一份身份变成散参，且在 worktree 下默认值恒错）。
+- **展示根**：`workspaceRootOf(workspaceKey, projectRoot)`（前端主机绝对路径），只用于路径相对化 / 同文件判定；
+  与寻址根**不得**混用为同一个 `rootPath`。
+
+**编辑 tab 组键 = checkout 的身份 `WorkspaceKey`**（唯一编码；`:wt:` 已退役）。
+
 ## 未完成（登记）
 
 - 若某子系统的状态键仍是 `Project`（如 debug 活动会话、LSP 会话根），它尚未达到「按 `Workspace` 隔离」——

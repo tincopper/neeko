@@ -3,7 +3,8 @@ import { useMemo } from 'react';
 import { useAppContext, useEditorContext } from '@/shared/contexts';
 import { useProjectStore } from '@/shared/store/projectStore';
 import { useActiveCheckoutPath } from '@/shared/store/workspaceStore';
-import { resolveTabKey } from '@/shared/utils/tabKey';
+import type { WorkspaceSession } from '@/shared/types';
+import { workspaceKeyOf } from '@/shared/utils/workspaceRef';
 
 import { createTerminalSession, resizeTerminal, closeTerminalSession } from '../api/terminalApi';
 import {
@@ -75,8 +76,12 @@ export function useLocalTerminalStrategy(paneId: string, worktreePathOverride?: 
       },
       setupFileLinks: (term) => {
         if (projectPath) {
-          const tabKey = resolveTabKey(projectId, isWorktree ? effWorktreePath : null);
-          setupTerminalLinks(term, { projectPath, tabKey, projectId, showToast });
+          const tabWorkspace: WorkspaceSession = {
+            projectId,
+            worktreePath: isWorktree ? (effWorktreePath ?? null) : null,
+          };
+          const tabKey = workspaceKeyOf(tabWorkspace.projectId, tabWorkspace.worktreePath);
+          setupTerminalLinks(term, { projectPath, tabKey, workspace: tabWorkspace, showToast });
         }
       },
     });

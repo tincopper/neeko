@@ -8,8 +8,7 @@ import { useGitStore } from '@/shared/store/gitStore';
 import { useProjectStore } from '@/shared/store/projectStore';
 import { useWorkspaceStore, type WorkspaceState } from '@/shared/store/workspaceStore';
 import type { Project } from '@/shared/types';
-import { parseProjectIdFromTabKey, resolveTabKey } from '@/shared/utils/tabKey';
-import { workspaceKeyOf } from '@/shared/utils/workspaceRef';
+import { parseWorkspaceKey, workspaceKeyOf } from '@/shared/utils/workspaceRef';
 import { createProject } from '@/testing/factories';
 import { invoke } from '@/testing/tauriCore';
 
@@ -196,7 +195,7 @@ describe('useLocalProjects', () => {
     /** 归属判定复用 tabKey.ts 的解析器（与生产实现同源，覆盖基础键 + worktree 变体）。 */
     function projectKeySpaces(projectId: string): string[] {
       return Object.keys(useEditorStore.getState().tabs).filter(
-        (key) => parseProjectIdFromTabKey(key) === projectId,
+        (key) => parseWorkspaceKey(key).projectId === projectId,
       );
     }
 
@@ -226,7 +225,7 @@ describe('useLocalProjects', () => {
         await result.current.loadProjects();
       });
 
-      const wtKey = resolveTabKey('p1', '/repo/wt-a');
+      const wtKey = workspaceKeyOf('p1', '/repo/wt-a');
       act(() => {
         seedFileTab('p1', 'p1', 'f1');
         seedFileTab('p1', 'p1', 'f2');
@@ -285,7 +284,7 @@ describe('useLocalProjects', () => {
         await result.current.loadProjects();
       });
 
-      const wtKey = resolveTabKey('p1', '/repo/wt-a');
+      const wtKey = workspaceKeyOf('p1', '/repo/wt-a');
       act(() => {
         seedFileTab(wtKey, 'p1', 'fwt');
         seedFileTab('p2', 'p2', 'g1');

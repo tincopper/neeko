@@ -27,7 +27,7 @@
 //! | 渲染 | 形态 | 消费者 |
 //! |------|------|--------|
 //! | [`CheckoutPath::identity`] | **平台无关字母表**：`/` 分隔、无 `\\?\`/`\\.\` 前缀、盘符 ASCII 大写、UNC → `//server/share/…`、无尾分隔符 | `WorkspaceRef::key()` / `worktree_path()`、IPC `Worktree.path`、`canonical_worktree_path` 命令、watcher·diff·status 槽位、前端 `WorkspaceKey` |
-//! | [`CheckoutPath::exec`] | **宿主形态**（与本次改造前逐字相同） | git argv、`std::fs`、notify 根、`strip_prefix`、gitignore `same_root`、缓存键前缀、`file/commands.rs::resolve_base` |
+//! | [`CheckoutPath::exec`] | **宿主形态**（与本次改造前逐字相同） | git argv、`std::fs`、notify 根、`strip_prefix`、gitignore `same_root`、缓存键前缀、file 域命令（`resolve_workspace_target` → `WorkspaceRef::root()`） |
 //!
 //! 两个渲染允许不同：不存在路径的 `exec` 是「将要被创建的字节」（调用者的拼写，语义正确），
 //! `identity` 是「对象的等价类」（必须锚定到已存在祖先）。这不是权宜 —— 是角色的语义差异。

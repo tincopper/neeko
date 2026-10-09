@@ -222,24 +222,53 @@ pub async fn get_skill_document_at_path(path: String) -> Result<SkillDocumentDto
     .await
 }
 
+/// Save the documentation content (SKILL.md) for a skill.
+///
+/// 与 [`get_skill_document`] 对称：由后端从库内解析 `central_path` 后再落盘（技能目录不属任何
+/// 项目/Workspace，不能借 `write_file_content` 的 Workspace 寻址）。
+#[tauri::command]
+pub async fn save_skill_document(
+    skill_id: String,
+    content: String,
+    store: State<'_, Arc<LibraryStore>>,
+) -> Result<(), AppError> {
+    let store = store.inner().clone();
+    run_blocking_result(move || {
+        let skill = store
+            .get_skill_by_id(&skill_id)
+            .map_err(AppError::from)?
+            .ok_or_else(|| AppError::NotFound("Skill not found".to_string()))?;
+        let dir = PathBuf::from(&skill.central_path);
+        // 写回**读取命中的同一个文件**；目录里还没有任何文档时才新建 SKILL.md。
+        let path = existing_skill_doc_path(&dir).unwrap_or_else(|| dir.join("SKILL.md"));
+        std::fs::write(&path, content).map_err(AppError::from)
+    })
+    .await
+}
+
+/// 技能目录内的文档文件名候选（唯一清单：读与写共用，防止「读 skill.md、写
+/// SKILL.md」的不对称 —— 那会新建文件遮蔽原文档）。
+const DOC_CANDIDATES: &[&str] = &[
+    "SKILL.md",
+    "skill.md",
+    "CLAUDE.md",
+    "README.md",
+    "readme.md",
+];
+
+/// 目录中**实际存在**的首个文档文件；无则 None。
+fn existing_skill_doc_path(dir: &std::path::Path) -> Option<std::path::PathBuf> {
+    DOC_CANDIDATES
+        .iter()
+        .map(|name| dir.join(name))
+        .find(|path| path.exists())
+}
+
 fn read_skill_doc_from_dir(dir: &std::path::Path) -> Result<SkillDocumentDtoOut, AppError> {
-    let candidates = [
-        "SKILL.md",
-        "skill.md",
-        "CLAUDE.md",
-        "README.md",
-        "readme.md",
-    ];
-    for name in &candidates {
-        let path = dir.join(name);
-        if path.exists() {
-            let content = std::fs::read_to_string(&path).map_err(AppError::from)?;
-            return Ok(SkillDocumentDtoOut { content });
-        }
-    }
-    Err(AppError::NotFound(
-        "No documentation file found".to_string(),
-    ))
+    let path = existing_skill_doc_path(dir)
+        .ok_or_else(|| AppError::NotFound("No documentation file found".to_string()))?;
+    let content = std::fs::read_to_string(&path).map_err(AppError::from)?;
+    Ok(SkillDocumentDtoOut { content })
 }
 
 /// Re-parse every managed skill's SKILL.md and write descriptions back to DB.
@@ -3162,4 +3191,24 @@ pub async fn get_all_prompt_tags_cmd(
 ) -> Result<Vec<String>, AppError> {
     let store = store.inner().clone();
     run_blocking_result(move || store.get_all_prompt_tags().map_err(AppError::from)).await
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn doc_candidates_resolve_first_existing_and_none_for_empty_dir() {
+        let tmp = tempfile::tempdir().unwrap();
+        // 空目录 → None（读写两侧据此回落 / 报 NotFound）
+        assert!(existing_skill_doc_path(tmp.path()).is_none());
+
+        // 存在次候选 skill.md → 读与写必须命中**同一个已存在文件**（不新建 SKILL.md
+        // 遮蔽）。macOS/Windows 默认文件系统大小写不敏感，`SKILL.md` 的 exists()
+        // 对 skill.md 为真 —— 断言只取「找到了它、内容一致」，不断言大小写形态（红线 13 同源教训）。
+        std::fs::write(tmp.path().join("skill.md"), "body").unwrap();
+        let found = existing_skill_doc_path(tmp.path()).expect("skill.md 必须被候选表命中");
+        assert_eq!(std::fs::read_to_string(&found).unwrap(), "body");
+        assert!(found.parent().unwrap() == tmp.path());
+    }
 }

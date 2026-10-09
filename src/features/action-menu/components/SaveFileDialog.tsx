@@ -7,7 +7,11 @@ import { useFileStore } from '@/features/file/store';
 // eslint-disable-next-line import/no-restricted-paths -- Save As 后需显式刷新该Workspace的 git status（git feature 未把该入口纳入门面）
 import { refreshWorkspaceStatus } from '@/features/git/utils/gitStatus';
 import { useProjectStore } from '@/shared/store/projectStore';
-import { selectActiveCheckoutPath, useWorkspaceStore } from '@/shared/store/workspaceStore';
+import {
+  activeWorkspaceSession,
+  selectActiveCheckoutPath,
+  useWorkspaceStore,
+} from '@/shared/store/workspaceStore';
 import { workspaceKeyOf } from '@/shared/utils/workspaceRef';
 import {
   Dialog,
@@ -88,7 +92,7 @@ const SaveFileDialog: React.FC = () => {
     try {
       const rootPath = activeCheckoutPath ?? activeProject.path;
       const owner = `${request.projectId}:${rootPath}`;
-      const loader = () => readDirTree(request.projectId, null, activeCheckoutPath ?? null);
+      const loader = () => readDirTree(activeWorkspaceSession(request.projectId), null);
       await useFileStore.getState().loadDir(owner, '', loader, {
         force: true,
         silent: true,
@@ -113,17 +117,16 @@ const SaveFileDialog: React.FC = () => {
     setError(null);
     try {
       const relPath = await saveNewFile(
-        request.projectId,
+        activeWorkspaceSession(request.projectId),
         dir,
         fn,
         request.content,
-        activeCheckoutPath ?? undefined,
       );
       // 落盘后的 tab 身份迁移收拢在 `retargetTabAfterSave`（本组件只负责编排与状态）
       retargetTabAfterSave({
         tabKey: request.tabKey,
         tabId: request.tabId,
-        // Save As 根与 saveNewFile 的 resolve_base 对齐：worktree 激活用工作树根，否则项目根
+        // Save As 根 = 该单元的工作树根（与 saveNewFile 的 Workspace 寻址同源）
         saveRoot: activeCheckoutPath ?? activeProject.path,
         relPath,
         filename: fn,

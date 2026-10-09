@@ -9,12 +9,11 @@ import type {
   AgentSkillGroup,
 } from '@/shared/types';
 
-import { writeFileContent as writeFileContentApi } from '../file/api/fileApi';
-
 import {
   getManagedSkills,
   deleteManagedSkill,
   getSkillDocument as getSkillDocumentApi,
+  saveSkillDocument as saveSkillDocumentApi,
   refreshSkillMetadata as refreshSkillMetadataApi,
   clearAllManagedSkills as clearAllManagedSkillsApi,
   getTagGroups as getTagGroupsApi,
@@ -39,11 +38,6 @@ import {
   updateSkill as updateSkillApi,
   setManagedSkillEnabled as setManagedSkillEnabledApi,
 } from './api/skillApi';
-
-// ─── 常量 ────────────────────────────────────────────────────────────────────
-
-/** skill 文档文件名，与 Rust get_skill_document 查找顺序首位一致 */
-const SKILL_DOC_FILENAME = 'SKILL.md';
 
 // ─── State ──────────────────────────────────────────────────────────────────
 
@@ -505,7 +499,7 @@ export const useSkillStore = create<SkillStoreState & SkillStoreActions>()((set,
     if (!skill) {
       throw new Error(`Skill not found: ${skillId}`);
     }
-    await writeFileContentApi(skill.central_path, SKILL_DOC_FILENAME, content);
+    await saveSkillDocumentApi(skillId, content);
     await get().refreshSkills();
   },
 

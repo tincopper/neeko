@@ -16,6 +16,7 @@ import { lspRequest } from '@/features/lsp/api/lspApi';
 import { confirmAction } from '@/shared/store/confirmStore';
 import { useNotificationStore } from '@/shared/store/notificationStore';
 import { useProjectStore } from '@/shared/store/projectStore';
+import { activeWorkspaceSession } from '@/shared/store/workspaceStore';
 import { IS_WINDOWS } from '@/shared/utils/platform';
 
 import { buildTestBinaryRemote } from '../api/debugBuildApi';
@@ -26,9 +27,12 @@ import type { LangIo } from './contract';
 export const langIo: LangIo = {
   fileExists: (absPath) => fileExists(absPath).catch(() => false),
 
-  readText: async (projectId, relPath, root) => {
+  readText: async (projectId, relPath, base) => {
     try {
-      const file = await readFileContent(projectId, relPath, root);
+      // base（模块根 / 任务 cwd）是**子目录**：拼成绝对路径交给后端（`Path::join` 对绝对值原样
+      // 采用，`canonicalize` 归一分隔符 —— 前端不做形态重写）；scope 恒取当前Workspace。
+      const filePath = base && base.trim() !== '' ? `${base}/${relPath}` : relPath;
+      const file = await readFileContent(activeWorkspaceSession(projectId), filePath);
       return file.content || null;
     } catch {
       return null;

@@ -8,6 +8,7 @@ import { create } from 'zustand';
 import { useShallow } from 'zustand/shallow';
 
 import { useProjectStore } from '@/shared/store/projectStore';
+import type { WorkspaceSession } from '@/shared/types/workspace';
 import { workspaceKeyOf, type WorkspaceKey } from '@/shared/utils/workspaceRef';
 
 /** `opened` 清单里的一项：一个被打开过的 workspace 的 checkout 元数据（git worktree 条目）。 */
@@ -146,6 +147,35 @@ export function getActiveCheckoutPath(): string | null {
 export function activeWorkspaceKeyOf(projectId?: string | null): WorkspaceKey | null {
   const pid = projectId ?? useProjectStore.getState().activeProjectId;
   return selectActiveWorkspaceKey(useWorkspaceStore.getState(), pid);
+}
+
+/**
+ * 当前视图的 **Workspace 地址**（命令寻址用）。与 [`activeWorkspaceKeyOf`] 同源：
+ * `worktreePath === null` ⟺ 主 checkout。这是「当前视图单元」的**唯一构造点**之一
+ * （另两个来源是 tab / 事件），消费者不得自造。
+ */
+export function activeWorkspaceSession(projectId: string): WorkspaceSession {
+  const raw = selectActiveCheckoutPath(useWorkspaceStore.getState(), projectId);
+  // '' / 空白必须与 codec（workspaceKeyOf）同一归一规则回落主仓 —— 否则 key 判主仓而
+  // isMainCheckout(session) 判 worktree，同一事实出现两种结论（不变量 4）。
+  return { projectId, worktreePath: raw && raw.trim() !== '' ? raw : null };
+}
+
+/**
+ * React 侧：某项目「当前单元」的**地址值**（响应式形态）。
+ *
+ * 与 [`activeWorkspaceSession`]（命令式）、[`useActiveWorkspaceKey`]（key 形态）同源 ——
+ * 渲染期需要身份值的消费者用本 hook，**不得**再各自 `useMemo({ projectId, worktreePath })`
+ * （手写会漏掉空串→主仓的归一）。
+ */
+export function useActiveWorkspaceSession(projectId: string | null): WorkspaceSession | null {
+  return useWorkspaceStore(
+    useShallow((s) => {
+      if (!projectId) return null;
+      const raw = selectActiveCheckoutPath(s, projectId);
+      return { projectId, worktreePath: raw && raw.trim() !== '' ? raw : null };
+    }),
+  );
 }
 
 /** React 侧：某项目的完整 Workspace 状态。 */

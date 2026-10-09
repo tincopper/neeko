@@ -8,11 +8,10 @@ import { create } from 'zustand';
 import { readFileContent } from '@/features/file/api/fileApi';
 import { useEditorStore } from '@/shared/store/editorStore';
 import { useProjectStore } from '@/shared/store/projectStore';
-import { selectActiveCheckoutPath, useWorkspaceStore } from '@/shared/store/workspaceStore';
+import { activeWorkspaceKeyOf } from '@/shared/store/workspaceStore';
 import type { Tab } from '@/shared/types';
 import { preloadLanguageExtension } from '@/shared/utils/codemirror';
 import { getFileName, getTabId } from '@/shared/utils/fileTree';
-import { resolveTabKey } from '@/shared/utils/tabKey';
 
 import { createNavigationHistory, type NavLocation } from './navigationHistory';
 
@@ -43,12 +42,13 @@ function syncFlags(set: (p: Partial<NavHistoryState>) => void) {
 /** Best-effort current file + caret as a history entry. */
 export function captureCurrentNavLocation(): NavLocation | null {
   const proj = useProjectStore.getState();
-  const worktrees = useWorkspaceStore.getState();
   const editor = useEditorStore.getState();
   const projectId = proj.activeProjectId;
   if (!projectId) return null;
 
-  const tabKey = resolveTabKey(projectId, selectActiveCheckoutPath(worktrees, projectId));
+  // 激活 key 唯一派生点（不在消费侧重算 workspaceKeyOf 组合）
+  const tabKey = activeWorkspaceKeyOf(projectId);
+  if (!tabKey) return null;
 
   const projectTabs = editor.tabs[tabKey];
   if (!projectTabs?.activeTabId) return null;
@@ -60,6 +60,7 @@ export function captureCurrentNavLocation(): NavLocation | null {
     projectId,
     tabKey,
     filePath: tab.data.filePath,
+    workspace: tab.data.workspace,
     line: Math.max(1, cursor?.line ?? 1),
     column: Math.max(0, cursor?.col ?? 0),
   };
@@ -86,7 +87,7 @@ async function restoreLocation(loc: NavLocation): Promise<void> {
   // Open file tab then activate (goal redeemed by useNavigateGoal once the view is ready).
   preloadLanguageExtension(loc.filePath);
   try {
-    const content = await readFileContent(loc.projectId, loc.filePath);
+    const content = await readFileContent(loc.workspace, loc.filePath);
     const newTab: Tab = {
       id: tabId,
       projectId: loc.projectId,
@@ -94,6 +95,7 @@ async function restoreLocation(loc: NavLocation): Promise<void> {
       order: existing?.tabs.length ?? 0,
       data: {
         kind: 'file',
+        workspace: loc.workspace,
         filePath: loc.filePath,
         fileName: getFileName(loc.filePath),
         content,

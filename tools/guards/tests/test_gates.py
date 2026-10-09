@@ -329,8 +329,8 @@ class ContextCommandSetTest(unittest.TestCase):
             self.command_ids("local"),
             ["lint_fe", "lint_rust", "test_fe", "test_host", "test_rust"],
         )
-        # 16 条既有进程内判据 + 本次新增的 check_nondeterministic_event_assertions
-        self.assertEqual(self.in_process_count("local"), 17)
+        # 16 条既有进程内判据 + check_nondeterministic_event_assertions + check_file_io_scope
+        self.assertEqual(self.in_process_count("local"), 18)
 
     def test_coverage_entry_is_the_manual_stage(self):
         self.assertEqual(
@@ -347,7 +347,7 @@ class ContextCommandSetTest(unittest.TestCase):
 
     def test_ci_guards_job_stays_in_process_only(self):
         self.assertEqual(self.command_ids("ci", suite="lint", source="python"), [])
-        self.assertEqual(self.in_process_count("ci", suite="lint", source="python"), 17)
+        self.assertEqual(self.in_process_count("ci", suite="lint", source="python"), 18)
 
 
 if __name__ == "__main__":

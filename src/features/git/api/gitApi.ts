@@ -1,6 +1,5 @@
 import { invoke } from '@tauri-apps/api/core';
 
-import type { FileNode, FileContent } from '../../file/types';
 import type {
   GitInfo,
   GitBranchInfo,
@@ -424,34 +423,6 @@ export function stashPop(
 
 export function defaultBranch(projectId: string): Promise<string> {
   return invoke<string>('default_branch', { projectId });
-}
-
-// ─── File operations ─────────────────────────────────────────────────────────
-
-export function readDirTree(
-  projectId: string,
-  rootPath?: string | null,
-  subPath?: string | null,
-  maxDepth?: number | null,
-): Promise<FileNode[]> {
-  return invoke<FileNode[]>('read_dir_tree', { projectId, rootPath, subPath, maxDepth });
-}
-
-export function readFileContent(
-  projectId: string,
-  filePath: string,
-  rootPath?: string | null,
-): Promise<FileContent> {
-  return invoke<FileContent>('read_file_content', { projectId, filePath, rootPath });
-}
-
-export function writeFileContent(
-  projectId: string,
-  filePath: string,
-  content: string,
-  rootPath?: string | null,
-): Promise<void> {
-  return invoke<void>('write_file_content', { projectId, filePath, content, rootPath });
 }
 
 // ─── Commit message generation ───────────────────────────────────────────────

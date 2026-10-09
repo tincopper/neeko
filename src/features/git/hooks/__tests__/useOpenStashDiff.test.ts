@@ -6,7 +6,7 @@ import type { StashEntry } from '@/features/git/types';
 import { useEditorStore } from '@/shared/store/editorStore';
 import { useProjectStore } from '@/shared/store/projectStore';
 import { useWorkspaceStore } from '@/shared/store/workspaceStore';
-import { buildWorktreeTabKey } from '@/shared/utils/tabKey';
+import { workspaceKeyOf } from '@/shared/utils/workspaceRef';
 
 const STASHES: StashEntry[] = [
   {
@@ -39,7 +39,9 @@ describe('useOpenStashDiff', () => {
       result.current('stash@{0}', 'src/a.ts');
     });
 
-    const tab = useEditorStore.getState().tabs['proj-1']?.tabs.find((t) => t.data.kind === 'diff');
+    const tab = useEditorStore
+      .getState()
+      .tabs[workspaceKeyOf('proj-1', null)]?.tabs.find((t) => t.data.kind === 'diff');
     expect(tab).toBeDefined();
     expect(tab?.projectId).toBe('proj-1');
     expect(tab?.title).toBe('stash@{0}: WIP on feature-x');
@@ -59,7 +61,9 @@ describe('useOpenStashDiff', () => {
       result.current('stash@{1}', 'src/b.ts');
     });
 
-    const tab = useEditorStore.getState().tabs['proj-1']?.tabs.find((t) => t.data.kind === 'diff');
+    const tab = useEditorStore
+      .getState()
+      .tabs[workspaceKeyOf('proj-1', null)]?.tabs.find((t) => t.data.kind === 'diff');
     expect(tab?.title).toBe('stash@{1}');
   });
 
@@ -71,7 +75,7 @@ describe('useOpenStashDiff', () => {
     });
     const first = useEditorStore
       .getState()
-      .tabs['proj-1']?.tabs.find((t) => t.data.kind === 'diff');
+      .tabs[workspaceKeyOf('proj-1', null)]?.tabs.find((t) => t.data.kind === 'diff');
 
     act(() => {
       result.current('stash@{0}', 'src/a.ts');
@@ -79,7 +83,7 @@ describe('useOpenStashDiff', () => {
 
     const diffTabs = useEditorStore
       .getState()
-      .tabs['proj-1']?.tabs.filter((t) => t.data.kind === 'diff');
+      .tabs[workspaceKeyOf('proj-1', null)]?.tabs.filter((t) => t.data.kind === 'diff');
     expect(diffTabs).toHaveLength(1);
     expect(useEditorStore.getState().activeTabId).toBe(first?.id);
   });
@@ -94,7 +98,7 @@ describe('useOpenStashDiff', () => {
       result.current('stash@{0}', 'src/a.ts');
     });
 
-    const tabKey = buildWorktreeTabKey('proj-1', wtPath);
+    const tabKey = workspaceKeyOf('proj-1', wtPath);
     const tab = useEditorStore.getState().tabs[tabKey]?.tabs.find((t) => t.data.kind === 'diff');
     expect(tab).toBeDefined();
     expect(tab?.projectId).toBe('proj-1');

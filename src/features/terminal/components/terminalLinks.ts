@@ -4,7 +4,7 @@ import type { Terminal } from '@xterm/xterm';
 import { useBrowserStore } from '@/shared/store/browserStore';
 import { useDockStore } from '@/shared/store/dockStore';
 import { useEditorStore } from '@/shared/store/editorStore';
-import type { Tab } from '@/shared/types';
+import type { Tab, WorkspaceSession } from '@/shared/types';
 import { canonicalFsPath } from '@/shared/utils/fileRef';
 import { getFileName, getTabId } from '@/shared/utils/fileTree';
 
@@ -13,7 +13,12 @@ import { revealInFileManager, readFileContent } from '../../file/api/fileApi';
 interface FilePathLinkOptions {
   projectPath: string;
   tabKey: string;
-  projectId: string;
+  /**
+   * 该终端 pane **自己的** Workspace 地址值（strategies 构造时就已知，随 options
+   * 携带）。链接点击的读取与 tab 记录都用它 —— 不再取「点击时的激活视图」，
+   * 否则终端在 worktree A、视图已切到 B 时读被 InProject 拒绝（单元漂移）。
+   */
+  workspace: WorkspaceSession;
   showToast?: (message: string, type?: 'info' | 'error') => void;
 }
 
@@ -29,7 +34,7 @@ const FILE_PATH_REGEX =
 // 连续斜杠压缩；相对路径拼项目根），identity 与后端读取 base 一致。
 
 function createFilePathLinkProvider(term: Terminal, options: FilePathLinkOptions) {
-  const { projectPath, tabKey, projectId, showToast } = options;
+  const { projectPath, tabKey, workspace, showToast } = options;
 
   return {
     provideLinks(bufferLineNumber: number, callback: (links: any[] | undefined) => void) {
@@ -60,7 +65,7 @@ function createFilePathLinkProvider(term: Terminal, options: FilePathLinkOptions
           text: match[0],
           activate: (event: MouseEvent) => {
             if (event.metaKey || event.ctrlKey) {
-              openFileInEditor(fullPath, tabKey, projectId, showToast, lineNum, colNum);
+              openFileInEditor(fullPath, tabKey, workspace, showToast, lineNum, colNum);
             } else {
               revealInFileManager(fullPath).catch((err) => {
                 console.error(`[TerminalLinks] Failed to reveal file '${fullPath}':`, err);
@@ -78,7 +83,7 @@ function createFilePathLinkProvider(term: Terminal, options: FilePathLinkOptions
 async function openFileInEditor(
   fullPath: string,
   tabKey: string,
-  projId: string,
+  workspace: WorkspaceSession,
   showToast?: (message: string, type?: 'info' | 'error') => void,
   line?: number,
   col?: number,
@@ -99,14 +104,15 @@ async function openFileInEditor(
   }
 
   try {
-    const content = await readFileContent(projId, fullPath);
+    const content = await readFileContent(workspace, fullPath);
     const newTab: Tab = {
       id: tabId,
-      projectId: projId,
+      projectId: workspace.projectId,
       title: getFileName(fullPath),
       order: existing?.tabs.length ?? 0,
       data: {
         kind: 'file',
+        workspace,
         filePath: fullPath,
         fileName: getFileName(fullPath),
         content,

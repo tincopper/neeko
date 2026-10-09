@@ -7,7 +7,7 @@ export function filterWorktreeBranches(branches: string[], worktrees: Worktree[]
 
 /**
  * 判断是否处于 linked worktree 单元：null / undefined / 空字符串 = 主仓单元。
- * 与 `resolveTabKey` 的空串语义一致（避免 '' 被误判为 worktree）。
+ * 与 `workspaceKeyOf` 的空串语义一致（避免 '' 被误判为 worktree）。
  */
 export function isActiveWorktree(path: string | null | undefined): boolean {
   return path !== null && path !== undefined && path !== '';

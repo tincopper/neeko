@@ -10,7 +10,7 @@
 import { useMemo } from 'react';
 
 import { useProjectStore } from '@/shared/store/projectStore';
-import { useActiveCheckoutPath } from '@/shared/store/workspaceStore';
+import { activeWorkspaceSession, useActiveCheckoutPath } from '@/shared/store/workspaceStore';
 import type { ActiveProjectContext } from '@/shared/types/activeProject';
 import { environmentToConnectionContext } from '@/shared/types/project';
 
@@ -29,7 +29,7 @@ export function useActiveProject(): ActiveProjectContext {
 
   const commands = useMemo(() => {
     if (!activeProject) return null;
-    return createProjectCommands(activeProject.id, activeCheckoutPath);
+    return createProjectCommands(activeWorkspaceSession(activeProject.id));
   }, [activeProject, activeCheckoutPath]);
 
   return useMemo((): ActiveProjectContext => {

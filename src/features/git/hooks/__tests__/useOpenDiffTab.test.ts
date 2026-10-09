@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { useEditorStore } from '@/shared/store/editorStore';
 import { useProjectStore } from '@/shared/store/projectStore';
 import type { ConnectionContext, Tab } from '@/shared/types';
+import { workspaceKeyOf } from '@/shared/utils/workspaceRef';
 
 import { useOpenDiffTab } from '../useOpenDiffTab';
 
@@ -22,7 +23,7 @@ describe('useOpenDiffTab', () => {
       result.current('src/App.tsx');
     });
 
-    const tabs = useEditorStore.getState().tabs['proj-1']?.tabs ?? [];
+    const tabs = useEditorStore.getState().tabs[workspaceKeyOf('proj-1', null)]?.tabs ?? [];
     expect(tabs).toHaveLength(1);
     const tab = tabs[0] as Tab;
     expect(tab.projectId).toBe('proj-1');
@@ -32,7 +33,9 @@ describe('useOpenDiffTab', () => {
       expect(tab.data.filePath).toBe('src/App.tsx');
       expect(tab.data.diffSource).toEqual({ type: 'local', projectId: 'proj-1' });
     }
-    expect(useEditorStore.getState().tabs['proj-1']?.activeTabId).toBe(tab.id);
+    expect(useEditorStore.getState().tabs[workspaceKeyOf('proj-1', null)]?.activeTabId).toBe(
+      tab.id,
+    );
   });
 
   it('should_activate_existing_diff_tab_for_same_file_instead_of_duplicating', () => {
@@ -45,7 +48,7 @@ describe('useOpenDiffTab', () => {
       result.current('src/App.tsx');
     });
 
-    const tabs = useEditorStore.getState().tabs['proj-1']?.tabs ?? [];
+    const tabs = useEditorStore.getState().tabs[workspaceKeyOf('proj-1', null)]?.tabs ?? [];
     expect(tabs).toHaveLength(1);
   });
 
@@ -80,7 +83,7 @@ describe('useOpenDiffTab', () => {
       result.current('README.md');
     });
 
-    const tab = useEditorStore.getState().tabs['proj-1']?.tabs[0] as Tab;
+    const tab = useEditorStore.getState().tabs[workspaceKeyOf('proj-1', null)]?.tabs[0] as Tab;
     if (tab.data.kind === 'diff') {
       expect(tab.data.diffSource).toEqual({
         type: 'wsl',

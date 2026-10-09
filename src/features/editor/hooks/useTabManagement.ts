@@ -6,19 +6,18 @@ import {
 } from '@/features/editor/store/closeConfirmStore';
 import { useTerminalTabs } from '@/features/terminal';
 import { useEditorStore } from '@/shared/store/editorStore';
-import { resolveTabKey } from '@/shared/utils/tabKey';
+import { useActiveWorkspaceKey } from '@/shared/store/workspaceStore';
 
 const APP_SETTINGS_PROJECT_ID = '__app__';
 
 interface UseTabManagementOptions {
   activeProject: { id: string; selected_agents?: string[] } | null;
-  activeCheckoutPath: string | null;
   /** 保存指定文件 tab（关闭确认「保存」分支），由 useAppShellData 注入 fileView.saveTabById。 */
   saveTabById?: SaveTabAction;
 }
 
 export function useTabManagement(options: UseTabManagementOptions) {
-  const { activeProject, activeCheckoutPath, saveTabById } = options;
+  const { activeProject, saveTabById } = options;
 
   const {
     getTabs,
@@ -30,9 +29,9 @@ export function useTabManagement(options: UseTabManagementOptions) {
 
   const currentProjectId = activeProject?.id ?? null;
 
-  const tabKey = currentProjectId
-    ? resolveTabKey(currentProjectId, activeCheckoutPath)
-    : APP_SETTINGS_PROJECT_ID;
+  // 激活 key 走唯一派生点（激活态单源）；无激活项目 = 应用设置空间。
+  const activeKey = useActiveWorkspaceKey(currentProjectId);
+  const tabKey = currentProjectId ? activeKey : APP_SETTINGS_PROJECT_ID;
 
   const tabs = tabKey ? getTabs(tabKey) : [];
   const activeTabId = useEditorStore((state) => state.activeTabId);

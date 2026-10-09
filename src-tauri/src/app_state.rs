@@ -170,6 +170,18 @@ impl AppStateWrapper {
         Ok((target, repo))
     }
 
+    /// 文件/通用命令的统一入口：**Workspace 目标 → (执行环境, 已解析 [`WorkspaceRef`])**。
+    ///
+    /// 与 [`Self::resolve_workspace`] 同源（委托），使「按 Workspace 寻址」的命令不必各自拼
+    /// `project_id` + `worktree_path` —— 地址是一个值对象（[`crate::common::git::WorkspaceSession`]）。
+    pub async fn resolve_workspace_target(
+        &self,
+        workspace: &crate::common::git::WorkspaceSession,
+    ) -> Result<(ExecTarget, crate::common::git::WorkspaceRef), AppError> {
+        self.resolve_workspace(&workspace.project_id, workspace.worktree_path.as_deref())
+            .await
+    }
+
     /// Resolve a project's execution environment.
     ///
     /// 由 [`Self::project_context`] 派生：两者是同一份"按 id 读项目"逻辑的两个投影，

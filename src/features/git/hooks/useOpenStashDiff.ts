@@ -4,7 +4,7 @@ import type { StashEntry } from '@/features/git/types';
 import { useEditorStore } from '@/shared/store/editorStore';
 import { useProjectStore } from '@/shared/store/projectStore';
 import type { Tab } from '@/shared/types';
-import { parseProjectIdFromTabKey, resolveTabKey } from '@/shared/utils/tabKey';
+import { workspaceKeyOf } from '@/shared/utils/workspaceRef';
 
 /**
  * 点击 stash 文件打开 diff tab（与 history 打开 diff 文件机制一致）。
@@ -21,10 +21,8 @@ export function useOpenStashDiff(
     (selector: string, filePath: string) => {
       const projectState = useProjectStore.getState();
       const editorState = useEditorStore.getState();
-      const tabKey = resolveTabKey(
-        projectState.activeProjectId ?? projectId ?? '',
-        activeCheckoutPath,
-      );
+      const realProjectId = projectState.activeProjectId ?? projectId ?? '';
+      const tabKey = workspaceKeyOf(realProjectId, activeCheckoutPath);
       const existingTabs = editorState.tabs[tabKey];
       const existingDiffTab = existingTabs?.tabs.find(
         (t) =>
@@ -42,9 +40,8 @@ export function useOpenStashDiff(
       const tabId = `tab_${crypto.randomUUID()}`;
       const tabItem: Tab = {
         id: tabId,
-        // tab 的 projectId 必须是真实 project id，不能用复合 worktree tab key
-        //（否则后端 resolve_project 找不到项目）
-        projectId: parseProjectIdFromTabKey(tabKey),
+        // tab 的 projectId 是真实 project id（持值，不从 tabKey 解回）
+        projectId: realProjectId,
         title: message ? `${selector}: ${message}` : selector,
         order: existingTabs?.tabs.length ?? 0,
         data: {
@@ -53,7 +50,7 @@ export function useOpenStashDiff(
           fileName,
           diffSource: {
             type: 'stash',
-            projectId: parseProjectIdFromTabKey(tabKey),
+            projectId: realProjectId,
             selector,
           },
         },

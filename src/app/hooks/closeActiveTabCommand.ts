@@ -5,7 +5,7 @@ import {
 import { useEditorStore } from '@/shared/store/editorStore';
 import { useProjectStore } from '@/shared/store/projectStore';
 import { getActiveCheckoutPath } from '@/shared/store/workspaceStore';
-import { resolveTabKey } from '@/shared/utils/tabKey';
+import { workspaceKeyOf } from '@/shared/utils/workspaceRef';
 
 /**
  * 设置页 tab 空间 id（与 useTabManagement 的 APP_SETTINGS_PROJECT_ID 保持一致，
@@ -23,7 +23,7 @@ export function resolveCurrentTabKey(): string {
   const projectId = useProjectStore.getState().activeProjectId;
   if (!projectId) return APP_SETTINGS_PROJECT_ID;
   const worktreePath = getActiveCheckoutPath();
-  return resolveTabKey(projectId, worktreePath);
+  return workspaceKeyOf(projectId, worktreePath);
 }
 
 /**

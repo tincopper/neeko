@@ -35,8 +35,6 @@ export { useCurrentLineHighlight } from './hooks/useCurrentLineHighlight';
 export { useDebugStopReveal } from './hooks/useDebugStopReveal';
 
 // Navigation history (IDEA-like Back / Forward)
-export type { NavLocation } from './navigationHistory';
-export { createNavigationHistory } from './navigationHistory';
 
 // Types
 export type {

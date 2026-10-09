@@ -6,6 +6,7 @@ import { readFileContent } from '@/features/file/api/fileApi';
 import { useFileChangedEvent } from '@/features/git';
 import { Globe, RefreshCw } from '@/shared/components/icons';
 import { useProjectStore } from '@/shared/store/projectStore';
+import { activeWorkspaceSession } from '@/shared/store/workspaceStore';
 import type { FileChangedEvent } from '@/shared/types';
 import { pathsContainFile } from '@/shared/utils/fileRef';
 import { workspaceRootOf } from '@/shared/utils/workspaceRef';
@@ -47,7 +48,7 @@ function HtmlPreview({ projectId, filePath, fileName }: HtmlPreviewProps) {
     setError(null);
 
     try {
-      const fileContent = await readFileContent(projectId, filePath);
+      const fileContent = await readFileContent(activeWorkspaceSession(projectId), filePath);
 
       if (fileContent.is_binary) {
         throw new Error('Cannot preview binary file');

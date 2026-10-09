@@ -87,7 +87,7 @@ export async function createTerminalForProject(
   setupTerminalLinks(term, {
     projectPath,
     tabKey: backendProjectId,
-    projectId: backendProjectId,
+    workspace: { projectId: backendProjectId, worktreePath: null },
   });
 
   const initCols = term.cols;

@@ -12,7 +12,7 @@ import { create } from 'zustand';
 import { useEditorStore } from '@/shared/store/editorStore';
 import { useProjectStore } from '@/shared/store/projectStore';
 import { selectActiveCheckoutPath, useWorkspaceStore } from '@/shared/store/workspaceStore';
-import { resolveTabKey } from '@/shared/utils/tabKey';
+import { workspaceKeyOf } from '@/shared/utils/workspaceRef';
 
 import { useMruTabsStore } from './mruTabsStore';
 
@@ -36,7 +36,7 @@ interface TabCycleState {
 
 function currentTabKey(projectId: string): string {
   const wt = selectActiveCheckoutPath(useWorkspaceStore.getState(), projectId);
-  return resolveTabKey(projectId, wt);
+  return workspaceKeyOf(projectId, wt);
 }
 
 /**

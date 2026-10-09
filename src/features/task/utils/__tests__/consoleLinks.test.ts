@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { useEditorStore } from '@/shared/store/editorStore';
 import { useWorkspaceStore } from '@/shared/store/workspaceStore';
+import { workspaceKeyOf } from '@/shared/utils/workspaceRef';
 
 const { readFileContentMock, revealInFileManagerMock } = vi.hoisted(() => ({
   readFileContentMock: vi.fn(),
@@ -71,8 +72,8 @@ describe('consoleLinks — 文件路径 Ctrl/Cmd+Click 打开编辑器（canonic
     fireEvent.mouseDown(container, { button: 0, clientX, clientY: 5, metaKey: true });
 
     await vi.waitFor(() => {
-      const space = useEditorStore.getState().tabs['p1'];
-      expect(space.tabs[0].id).toBe('p1:/repo/src/main.rs');
+      const space = useEditorStore.getState().tabs[workspaceKeyOf('p1', null)];
+      expect(space.tabs[0].id).toBe(`${workspaceKeyOf('p1', null)}:/repo/src/main.rs`);
       expect(space.tabs[0].data.kind === 'file' && space.tabs[0].data.filePath).toBe(
         '/repo/src/main.rs',
       );
@@ -89,7 +90,7 @@ describe('consoleLinks — 文件路径 Ctrl/Cmd+Click 打开编辑器（canonic
     fireEvent.mouseDown(container, { button: 0, clientX, clientY: 5, metaKey: true });
 
     await vi.waitFor(() => {
-      const space = useEditorStore.getState().tabs['p1'];
+      const space = useEditorStore.getState().tabs[workspaceKeyOf('p1', null)];
       expect(space.tabs[0].data.kind === 'file' && space.tabs[0].data.filePath).toBe(
         '/repo/src/main.rs',
       );
@@ -97,8 +98,8 @@ describe('consoleLinks — 文件路径 Ctrl/Cmd+Click 打开编辑器（canonic
   });
 });
 
-describe('consoleLinks — worktree 键空间（resolveTabKey 派生）', () => {
-  const WT_KEY = 'p1:wt:/repo/.wt/feat';
+describe('consoleLinks — worktree 键空间（workspaceKeyOf 派生）', () => {
+  const WT_KEY = workspaceKeyOf('p1', '/repo/.wt/feat');
   const TAB_ID_WT = `${WT_KEY}:/repo/src/main.rs`;
 
   beforeEach(() => {
@@ -138,7 +139,7 @@ describe('consoleLinks — worktree 键空间（resolveTabKey 派生）', () => 
       const wt = useEditorStore.getState().tabs[WT_KEY];
       expect(wt?.tabs[0]?.id).toBe(TAB_ID_WT);
       // 不污染基础键空间
-      expect(useEditorStore.getState().tabs['p1']).toBeUndefined();
+      expect(useEditorStore.getState().tabs[workspaceKeyOf('p1', null)]).toBeUndefined();
       // goal 与 tab 同键空间（键空间自洽，R4）
       expect(useEditorStore.getState().navigateGoal).toMatchObject({
         tabKey: WT_KEY,
@@ -153,11 +154,11 @@ describe('consoleLinks — worktree 键空间（resolveTabKey 派生）', () => 
     clickMainRsLink();
 
     await vi.waitFor(() => {
-      const base = useEditorStore.getState().tabs['p1'];
-      expect(base?.tabs[0]?.id).toBe('p1:/repo/src/main.rs');
+      const base = useEditorStore.getState().tabs[workspaceKeyOf('p1', null)];
+      expect(base?.tabs[0]?.id).toBe(`${workspaceKeyOf('p1', null)}:/repo/src/main.rs`);
       expect(useEditorStore.getState().navigateGoal).toMatchObject({
-        tabKey: 'p1',
-        tabId: 'p1:/repo/src/main.rs',
+        tabKey: workspaceKeyOf('p1', null),
+        tabId: `${workspaceKeyOf('p1', null)}:/repo/src/main.rs`,
         line: 10,
         col: 2,
       });

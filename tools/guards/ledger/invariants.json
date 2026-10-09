@@ -236,6 +236,22 @@
         }
       ],
       "red_line": null
+    },
+    {
+      "id": "file-io-workspace-addressing",
+      "title": "文件 IO 按 Workspace 值对象寻址（唯一命令面 / 散参退役 / 单一编码）",
+      "tier": "guard",
+      "enforcement": [
+        {
+          "kind": "guard",
+          "ref": "check_file_io_scope"
+        },
+        {
+          "kind": "test",
+          "ref": "tools/guards/tests/test_check_file_io_scope.py"
+        }
+      ],
+      "red_line": 12
     }
   ]
 }

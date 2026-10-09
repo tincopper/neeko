@@ -6,7 +6,6 @@ import { useRemoteAuthActions } from '@/features/connection';
 import { useFileTabRefresh, useFileView, useTabManagement } from '@/features/editor';
 import { useGitConsoleBridge } from '@/features/git';
 import {
-  useActiveProject,
   useConnectionProjects,
   useCrossTypeSelection,
   useLocalProjects,
@@ -170,8 +169,7 @@ export function useAppShellData(): UseAppShellDataResult {
     saveWorktreeState: session.saveWorktreeState,
   });
   const remoteAuthActions = useRemoteAuthActions({ saveSession: session.saveSession });
-  const activeContext = useActiveProject();
-  const fileView = useFileView(activeContext.commands, activeContext.worktreePath);
+  const fileView = useFileView();
   const { selectProject } = useProjectSelection();
   const cross = useCrossTypeSelection({
     wslActions: wslActionsWrap,
@@ -189,7 +187,6 @@ export function useAppShellData(): UseAppShellDataResult {
     handleTabAgentClick,
   } = useTabManagement({
     activeProject,
-    activeCheckoutPath,
     saveTabById: fileView.saveTabById,
   });
   const handleFileSelect = useCallback(
@@ -218,7 +215,7 @@ export function useAppShellData(): UseAppShellDataResult {
     loadProjects,
     restoreWorktreeState: session.restoreWorktreeState,
   });
-  useFileTabRefresh(activeContext.commands);
+  useFileTabRefresh();
 
   // 启动完成后为缺失 git_info 的 WSL/远程项目补一轮 git 刷新（仅一次）
   useAppInitialGitRefresh({

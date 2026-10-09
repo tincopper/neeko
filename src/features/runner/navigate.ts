@@ -12,8 +12,12 @@
  */
 import { useEditorStore } from '@/shared/store/editorStore';
 import { useProjectStore } from '@/shared/store/projectStore';
-import { selectActiveCheckoutPath, useWorkspaceStore } from '@/shared/store/workspaceStore';
-import { resolveTabKey } from '@/shared/utils/tabKey';
+import {
+  activeWorkspaceSession,
+  selectActiveCheckoutPath,
+  useWorkspaceStore,
+} from '@/shared/store/workspaceStore';
+import { workspaceKeyOf } from '@/shared/utils/workspaceRef';
 
 import { frameSourceOpen, fsSourceOpen, virtualSourceOpen } from './sourceOpen';
 import { ensureSourceTab } from './sourceTab';
@@ -27,7 +31,7 @@ import type { StackFrameDto } from './types';
  */
 function targetTabKey(projectId: string): string {
   const activeWorktree = selectActiveCheckoutPath(useWorkspaceStore.getState(), projectId);
-  return projectId ? resolveTabKey(projectId, activeWorktree) : projectId;
+  return projectId ? workspaceKeyOf(projectId, activeWorktree) : projectId;
 }
 
 /**
@@ -42,8 +46,8 @@ function projectRegisteredRoot(projectId: string): string {
  * 术语见 `docs/domain-model.md`。
  *
  * 第一性原理：源内容读取的 `InProject` scope 必须等于该 tab 所属的**当前执行单元**，
- * 因为编辑器对 tab 的保存/重读根也取自当前单元（`useFileViewTabOps` 的
- * `worktreePathRef`）。若这里返回另一个单元，就会产出「能读不能写」的假可编辑 tab。
+ * 因为编辑器对 tab 的保存/重读根取自 tab 携带的唯一值
+ * （`FileTabData.workspace`）。若这里返回另一个单元，就会产出「能读不能写」的假可编辑 tab。
  * 因此规则恒为：激活 worktree → 该项目的登记根（主仓）；`fallbackPath` 仅当项目表
  * 缺失时兜底（**不得**先用调用方传入的会话单元根：会话可能属于另一个 worktree）。
  *
@@ -94,8 +98,14 @@ export async function openSourceAtLine(
   const target = await ensureSourceTab({
     tabKey,
     projectId,
+    workspace: activeWorkspaceSession(projectId),
     projectRoot,
-    request: fsSourceOpen(projectRoot, projectId, sourcePath, opts?.sessionId),
+    request: fsSourceOpen(
+      projectRoot,
+      sourcePath,
+      activeWorkspaceSession(projectId),
+      opts?.sessionId,
+    ),
     line,
     column,
     onError: opts?.onError,
@@ -121,6 +131,7 @@ export async function openVirtualSourceAtLine(
   const target = await ensureSourceTab({
     tabKey,
     projectId,
+    workspace: activeWorkspaceSession(projectId),
     // 虚拟身份与 root 无关（`dap-source:` 不拼根），这里取当前单元根只为满足统一入参。
     projectRoot: workspaceRootFor(projectId, ''),
     request,
@@ -160,12 +171,13 @@ export async function ensureStopSourceTab(
   if (!tabKey) return null;
 
   const projectRoot = workspaceRootFor(projectId, projectPath);
-  const request = frameSourceOpen(frame, projectRoot, projectId, sessionId);
+  const request = frameSourceOpen(frame, projectRoot, activeWorkspaceSession(projectId), sessionId);
   if (!request) return null;
 
   const target = await ensureSourceTab({
     tabKey,
     projectId,
+    workspace: activeWorkspaceSession(projectId),
     projectRoot,
     request,
     line: frame.line,

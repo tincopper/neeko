@@ -9,6 +9,7 @@ import { create } from 'zustand';
 import { readDirTree } from '@/features/file/api/fileApi';
 import { useOverlayStore } from '@/shared/store/overlayStore';
 import { useProjectStore } from '@/shared/store/projectStore';
+import { activeWorkspaceSession } from '@/shared/store/workspaceStore';
 
 import { flattenFilePaths } from '../fileIndex';
 import { fuzzyFilter } from '../fuzzy';
@@ -91,7 +92,7 @@ function recomputeItems(
 
 async function loadFileIndex(projectId: string): Promise<string[]> {
   try {
-    const tree = await readDirTree(projectId, null, null, 12);
+    const tree = await readDirTree(activeWorkspaceSession(projectId), null, 12);
     return flattenFilePaths(tree);
   } catch (e) {
     console.warn('[quick-open] failed to load file index', e);

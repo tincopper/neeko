@@ -30,6 +30,6 @@ pub use pr::*;
 pub use provider::*;
 pub use refs::*;
 pub use types::*;
-pub use workspace_ref::{Checkout, WorkspaceRef};
+pub use workspace_ref::{Checkout, WorkspaceRef, WorkspaceSession};
 #[cfg(target_os = "windows")]
 pub use wsl::*;

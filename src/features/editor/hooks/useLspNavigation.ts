@@ -17,6 +17,7 @@ import {
   captureCurrentNavLocation,
   recordNavigationJump,
 } from '@/shared/store/navigationHistoryStore';
+import { activeWorkspaceSession } from '@/shared/store/workspaceStore';
 import type { FileTab, Tab } from '@/shared/types';
 import { getLanguageExtension, preloadLanguageExtension } from '@/shared/utils/codemirror';
 import { fileRefFromLspUri, fileRefFromTabPath, sameFile } from '@/shared/utils/fileRef';
@@ -82,12 +83,12 @@ export function useLspNavigation({
         : fromFileUri(location.uri);
       const targetLine = location.range.start.line;
       const targetChar = location.range.start.character;
-
       const from = captureCurrentNavLocation();
       const to: NavLocation = {
         projectId: projId,
         tabKey: tKey,
         filePath: targetPath,
+        workspace: activeWorkspaceSession(projId),
         line: targetLine + 1,
         column: targetChar,
       };
@@ -163,7 +164,6 @@ export function useLspNavigation({
           content = loaded.content;
           isExternalReadonly = loaded.kind === 'external-readonly';
         }
-
         // jdt:// 目标：标题取类文件显示名（uri `?` 前最后一段）；tab 的
         // filePath / id 已用 jdt 展示路径（见上），内容只读。file:// 目标沿用路径推导。
         const title = isJdtUri(location.uri)
@@ -176,6 +176,7 @@ export function useLspNavigation({
           order: 0,
           data: {
             kind: 'file' as const,
+            workspace: activeWorkspaceSession(projId),
             filePath: targetPath,
             fileName: title,
             content,
@@ -207,7 +208,6 @@ export function useLspNavigation({
   // 不 useMemo：结果是字符串，下游依赖按值比较，每次渲染重算不影响身份；
   // 用 useMemo 反而要面对 exhaustive-deps 对 tab 字段级依赖的告警。
   const lspDocumentUri = projectPath ? resolveLspDocumentUri(tab, projectPath) : null;
-
   const gotoDefCmKey = useCodeMirrorBinding('gotoDefinition');
   const gotoDefAltCmKey = useCodeMirrorBinding('gotoDefinitionAlt');
   const findRefsCmKey = useCodeMirrorBinding('findReferences');

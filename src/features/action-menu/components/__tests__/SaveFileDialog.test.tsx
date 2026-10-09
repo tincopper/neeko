@@ -65,7 +65,7 @@ function makeUntitledTab(id: string, overrides: Partial<FileTabData> = {}): Tab 
 function makeRequest(overrides: Partial<SaveAsRequest> = {}): SaveAsRequest {
   return {
     tabId: 'u1',
-    tabKey: 'p1',
+    tabKey: workspaceKeyOf('p1', null),
     projectId: 'p1',
     content: 'hello',
     defaultDirectory: '/repo',
@@ -92,7 +92,9 @@ describe('SaveFileDialog closeAfterSave', () => {
 
   it('保存成功且 closeAfterSave=true → 自动关闭该 tab', async () => {
     act(() => {
-      useEditorStore.getState().addTab('p1', makeUntitledTab('u1', { untitledName: 'Untitled-1' }));
+      useEditorStore
+        .getState()
+        .addTab(workspaceKeyOf('p1', null), makeUntitledTab('u1', { untitledName: 'Untitled-1' }));
     });
     renderDialog(makeRequest({ closeAfterSave: true }));
 
@@ -102,23 +104,37 @@ describe('SaveFileDialog closeAfterSave', () => {
     await waitFor(() => {
       // Save As 是身份迁移：tab.id 同步改为 getTabId(tabKey, canonical path)，
       // 关闭清理也以新 id 触发（旧实现只改 filePath 不改 id —— 身份脱钩 bug）。
-      expect(closeEditorTabMock).toHaveBeenCalledWith('p1', 'p1:/repo/notes/Untitled-1.ts');
+      expect(closeEditorTabMock).toHaveBeenCalledWith(
+        workspaceKeyOf('p1', null),
+        `${workspaceKeyOf('p1', null)}:/repo/notes/Untitled-1.ts`,
+      );
     });
-    expect(saveNewFileMock).toHaveBeenCalledWith('p1', '/repo', 'Untitled-1', 'hello', undefined);
+    expect(saveNewFileMock).toHaveBeenCalledWith(
+      { projectId: 'p1', worktreePath: null },
+      '/repo',
+      'Untitled-1',
+      'hello',
+    );
     // 关闭确认链路：保存成功 → 迁移到 canonical id 后按新 id 关闭，旧/新 id 均不残留
     expect(
       useEditorStore
         .getState()
-        .tabs['p1']!.tabs.some((t) => t.id === 'p1:/repo/notes/Untitled-1.ts'),
+        .tabs[
+          workspaceKeyOf('p1', null)
+        ]!.tabs.some((t) => t.id === `${workspaceKeyOf('p1', null)}:/repo/notes/Untitled-1.ts`),
     ).toBe(false);
-    expect(useEditorStore.getState().tabs['p1']!.tabs.some((t) => t.id === 'u1')).toBe(false);
+    expect(
+      useEditorStore.getState().tabs[workspaceKeyOf('p1', null)]!.tabs.some((t) => t.id === 'u1'),
+    ).toBe(false);
     // 对话框请求已消费
     expect(useSaveAsStore.getState().request).toBeNull();
   });
 
   it('保存成功但未带 closeAfterSave（Ctrl+S 链路）→ 不关 tab，且 id 已迁移', async () => {
     act(() => {
-      useEditorStore.getState().addTab('p1', makeUntitledTab('u1', { untitledName: 'Untitled-1' }));
+      useEditorStore
+        .getState()
+        .addTab(workspaceKeyOf('p1', null), makeUntitledTab('u1', { untitledName: 'Untitled-1' }));
     });
     renderDialog(makeRequest());
 
@@ -130,7 +146,9 @@ describe('SaveFileDialog closeAfterSave', () => {
     });
     expect(closeEditorTabMock).not.toHaveBeenCalled();
     // 身份迁移后 tab 保持激活（activateTab 以新 id 命中）
-    expect(useEditorStore.getState().tabs['p1']!.activeTabId).toBe('p1:/repo/notes/Untitled-1.ts');
+    expect(useEditorStore.getState().tabs[workspaceKeyOf('p1', null)]!.activeTabId).toBe(
+      `${workspaceKeyOf('p1', null)}:/repo/notes/Untitled-1.ts`,
+    );
   });
 
   it('取消 Save As → 不关 tab，请求清除', async () => {
@@ -157,10 +175,12 @@ describe('SaveFileDialog closeAfterSave', () => {
     expect(closeEditorTabMock).not.toHaveBeenCalled();
   });
 
-  it('worktree 激活：canonical 根对齐 worktree（与 saveNewFile 的 resolve_base 一致）', async () => {
+  it('worktree 激活：canonical 根对齐 worktree（与 saveNewFile 的 Workspace 寻址一致）', async () => {
     useWorkspaceStore.getState().setActiveWorkspace('p1', '/wt');
     act(() => {
-      useEditorStore.getState().addTab('p1', makeUntitledTab('u1', { untitledName: 'Untitled-1' }));
+      useEditorStore
+        .getState()
+        .addTab(workspaceKeyOf('p1', null), makeUntitledTab('u1', { untitledName: 'Untitled-1' }));
     });
     renderDialog(makeRequest());
 
@@ -168,12 +188,21 @@ describe('SaveFileDialog closeAfterSave', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Save' }));
 
     await waitFor(() => {
-      expect(saveNewFileMock).toHaveBeenCalledWith('p1', '/repo', 'Untitled-1', 'hello', '/wt');
+      expect(saveNewFileMock).toHaveBeenCalledWith(
+        { projectId: 'p1', worktreePath: '/wt' },
+        '/repo',
+        'Untitled-1',
+        'hello',
+      );
     });
     // 刷新按**Workspace**定址（不是「项目 + 现取的全局镜像」）
     expect(refreshWorkspaceStatusMock).toHaveBeenCalledWith(workspaceKeyOf('p1', '/wt'));
     expect(
-      useEditorStore.getState().tabs['p1']!.tabs.some((t) => t.id === 'p1:/wt/notes/Untitled-1.ts'),
+      useEditorStore
+        .getState()
+        .tabs[
+          workspaceKeyOf('p1', null)
+        ]!.tabs.some((t) => t.id === `${workspaceKeyOf('p1', null)}:/wt/notes/Untitled-1.ts`),
     ).toBe(true);
   });
 
@@ -182,8 +211,8 @@ describe('SaveFileDialog closeAfterSave', () => {
     // 新内容覆盖，若仍走 updateTab+renameTab 会残留 id='u1'/filePath='/repo/…'
     // 的脱钩 tab，且 close/activate 落到错误的既有 tab。
     act(() => {
-      useEditorStore.getState().addTab('p1', {
-        id: 'p1:/repo/notes/Untitled-1.ts',
+      useEditorStore.getState().addTab(workspaceKeyOf('p1', null), {
+        id: `${workspaceKeyOf('p1', null)}:/repo/notes/Untitled-1.ts`,
         projectId: 'p1',
         title: 'Untitled-1.ts',
         order: 0,
@@ -195,7 +224,9 @@ describe('SaveFileDialog closeAfterSave', () => {
           isDirty: false,
         },
       });
-      useEditorStore.getState().addTab('p1', makeUntitledTab('u1', { untitledName: 'Untitled-1' }));
+      useEditorStore
+        .getState()
+        .addTab(workspaceKeyOf('p1', null), makeUntitledTab('u1', { untitledName: 'Untitled-1' }));
     });
     renderDialog(makeRequest());
 
@@ -206,14 +237,20 @@ describe('SaveFileDialog closeAfterSave', () => {
       expect(useSaveAsStore.getState().request).toBeNull();
     });
     // 源 untitled tab 被关闭，不残留脱钩 tab
-    expect(useEditorStore.getState().tabs['p1']!.tabs.some((t) => t.id === 'u1')).toBe(false);
+    expect(
+      useEditorStore.getState().tabs[workspaceKeyOf('p1', null)]!.tabs.some((t) => t.id === 'u1'),
+    ).toBe(false);
     // 既有目标 tab 被激活（非重复新 tab）
-    expect(useEditorStore.getState().tabs['p1']!.activeTabId).toBe('p1:/repo/notes/Untitled-1.ts');
+    expect(useEditorStore.getState().tabs[workspaceKeyOf('p1', null)]!.activeTabId).toBe(
+      `${workspaceKeyOf('p1', null)}:/repo/notes/Untitled-1.ts`,
+    );
     expect(
       useEditorStore
         .getState()
-        .tabs['p1']!.tabs.filter((t) => t.id === 'p1:/repo/notes/Untitled-1.ts'),
+        .tabs[
+          workspaceKeyOf('p1', null)
+        ]!.tabs.filter((t) => t.id === `${workspaceKeyOf('p1', null)}:/repo/notes/Untitled-1.ts`),
     ).toHaveLength(1);
-    expect(closeEditorTabMock).toHaveBeenCalledWith('p1', 'u1');
+    expect(closeEditorTabMock).toHaveBeenCalledWith(workspaceKeyOf('p1', null), 'u1');
   });
 });

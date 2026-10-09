@@ -4,7 +4,7 @@ import { useEditorStore } from '@/shared/store/editorStore';
 import { useProjectStore } from '@/shared/store/projectStore';
 import type { ConnectionContext, Tab } from '@/shared/types';
 import { buildDiffSource } from '@/shared/utils/diffSource';
-import { parseProjectIdFromTabKey, resolveTabKey } from '@/shared/utils/tabKey';
+import { workspaceKeyOf } from '@/shared/utils/workspaceRef';
 
 /**
  * 在编辑器打开（或激活已存在的）Commit Diff tab。
@@ -26,10 +26,9 @@ export function useOpenDiffTab(
     (filePath: string) => {
       const projectState = useProjectStore.getState();
       const editorState = useEditorStore.getState();
-      const tabKey = resolveTabKey(
-        projectState.activeProjectId ?? projectIdFallback ?? '',
-        activeCheckoutPath,
-      );
+      // 真实 project id 直接持值（值在手边就不从 tabKey 解回），tabKey 只是它的派生索引
+      const realProjectId = projectState.activeProjectId ?? projectIdFallback ?? '';
+      const tabKey = workspaceKeyOf(realProjectId, activeCheckoutPath);
       const existingTabs = editorState.tabs[tabKey];
       const existingDiffTab = existingTabs?.tabs.find(
         (t) => t.data.kind === 'diff' && t.data.filePath === filePath,
@@ -44,7 +43,7 @@ export function useOpenDiffTab(
       const tabId = `tab_${crypto.randomUUID()}`;
       const tab: Tab = {
         id: tabId,
-        projectId: parseProjectIdFromTabKey(tabKey),
+        projectId: realProjectId,
         title: `Commit Diff · ${fileName}`,
         order: existingTabs?.tabs.length ?? 0,
         data: { kind: 'diff', filePath, fileName, diffSource },

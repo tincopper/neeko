@@ -32,7 +32,7 @@ import { useProjectStore } from '@/shared/store/projectStore';
 import { useActiveCheckoutPath } from '@/shared/store/workspaceStore';
 import type { AgentConfig } from '@/shared/types';
 import { createUntitledFileTab } from '@/shared/utils/createUntitledFileTab';
-import { resolveTabKey } from '@/shared/utils/tabKey';
+import { workspaceKeyOf } from '@/shared/utils/workspaceRef';
 import { Button } from '@/ui/Button';
 
 import { WelcomeScreen } from './WelcomeScreen';
@@ -52,7 +52,7 @@ function ProjectView() {
 
   // Composite tab key: worktree gets its own independent tab space
   const tabKey = currentProjectId
-    ? resolveTabKey(currentProjectId, activeCheckoutPath)
+    ? workspaceKeyOf(currentProjectId, activeCheckoutPath)
     : APP_SETTINGS_PROJECT_ID;
 
   // Get unified tabs from store

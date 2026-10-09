@@ -3,7 +3,10 @@ import { invoke } from '@tauri-apps/api/core';
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeAll, afterAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { readFileContent } from '@/features/file/api/fileApi';
+import { useWorkspaceStore } from '@/shared/store/workspaceStore';
 import type { SequencedEvent, StreamEvent } from '@/shared/types/agentChat';
+import { workspaceKeyOf } from '@/shared/utils/workspaceRef';
 
 import AgentChatTabView, { clearMessageCache } from '../AgentChatTabView';
 
@@ -585,21 +588,78 @@ describe('AgentChatTabView', () => {
       expect(editorMock.addTab).toHaveBeenCalledTimes(1);
     });
     const [tabKey, tab] = editorMock.addTab.mock.calls[0];
-    expect(tabKey).toBe('test-project');
+    expect(tabKey).toBe(workspaceKeyOf('test-project', null));
     expect(tab).toMatchObject({
-      id: 'test-project:/proj/src/auth/session.ts',
+      id: `${workspaceKeyOf('test-project', null)}:/proj/src/auth/session.ts`,
       projectId: 'test-project',
       title: 'session.ts',
-      data: { kind: 'file', filePath: '/proj/src/auth/session.ts', isDirty: false },
+      data: {
+        kind: 'file',
+        workspace: { projectId: 'test-project', worktreePath: null },
+        filePath: '/proj/src/auth/session.ts',
+        isDirty: false,
+      },
     });
+  });
+
+  /**
+   * worktree 场景（任务验收「agent-chat 读对单元」）：身份基准与读取地址必须取自
+   * 同一个 WorkspaceSession —— 基准用项目根而读取用 worktree 根时，后端
+   * InProject containment 拒绝，worktree 下点击路径静默打不开。
+   */
+  it('worktree 激活：身份基准与读取地址同用 worktree 根', async () => {
+    useWorkspaceStore.getState().setActiveWorkspace('test-project', '/wt');
+    try {
+      await renderView();
+      editorMock.tabs = {};
+      editorMock.addTab.mockClear();
+
+      emitEvent({
+        type: 'tool_start',
+        session_id: 's1',
+        call_id: 'c1',
+        name: 'read_file',
+        title: 'src/auth/session.ts',
+      });
+      emitEvent({ type: 'tool_end', session_id: 's1', call_id: 'c1', status: 'done' });
+
+      fireEvent.click(screen.getByTestId('file-path-link'));
+
+      await waitFor(() => {
+        expect(editorMock.addTab).toHaveBeenCalledTimes(1);
+      });
+      const [tabKey, tab] = editorMock.addTab.mock.calls[0];
+      expect(tabKey).toBe(workspaceKeyOf('test-project', '/wt'));
+      expect(tab).toMatchObject({
+        id: `${workspaceKeyOf('test-project', '/wt')}:/wt/src/auth/session.ts`,
+        data: {
+          kind: 'file',
+          workspace: { projectId: 'test-project', worktreePath: '/wt' },
+          filePath: '/wt/src/auth/session.ts',
+        },
+      });
+      expect(vi.mocked(readFileContent)).toHaveBeenCalledWith(
+        { projectId: 'test-project', worktreePath: '/wt' },
+        '/wt/src/auth/session.ts',
+      );
+    } finally {
+      // 复位激活态（本测试文件的 projectStore mock 无 getState，不能用
+      // clearActiveWorkspace mutator；直接 setState 回到「无 worktree」态）。
+      useWorkspaceStore.setState({ byProject: {} });
+    }
   });
 
   it('read_file 路径已打开时点击只 activateTab 不重复 addTab', async () => {
     await renderView();
     editorMock.tabs = {
-      'test-project': {
-        tabs: [{ id: 'test-project:/proj/src/auth/session.ts', title: 'session.ts' }],
-        activeTabId: 'test-project:/proj/src/auth/session.ts',
+      [workspaceKeyOf('test-project', null)]: {
+        tabs: [
+          {
+            id: `${workspaceKeyOf('test-project', null)}:/proj/src/auth/session.ts`,
+            title: 'session.ts',
+          },
+        ],
+        activeTabId: `${workspaceKeyOf('test-project', null)}:/proj/src/auth/session.ts`,
       },
     };
     editorMock.addTab.mockClear();
@@ -618,8 +678,8 @@ describe('AgentChatTabView', () => {
 
     await waitFor(() => {
       expect(editorMock.activateTab).toHaveBeenCalledWith(
-        'test-project',
-        'test-project:/proj/src/auth/session.ts',
+        workspaceKeyOf('test-project', null),
+        `${workspaceKeyOf('test-project', null)}:/proj/src/auth/session.ts`,
       );
     });
     expect(editorMock.addTab).not.toHaveBeenCalled();

@@ -1,12 +1,13 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
+import { readFileContent } from '@/features/file/api/fileApi';
 import { cn } from '@/lib/utils';
 import { ChevronRightIcon } from '@/shared/components/icons';
 import { reportFrontendError } from '@/shared/utils/errorReporting';
 import { fileIconSrc } from '@/shared/utils/fileIcons';
 import { noAutocorrectProps } from '@/ui/inputDefaults';
 
-import { readFileContent, listPrReviewComments, addPrReviewComment } from '../../api/gitApi';
+import { listPrReviewComments, addPrReviewComment } from '../../api/gitApi';
 import type { PRFileChange } from '../../types';
 import type { PRReviewComment } from '../../types/comment';
 import DiffTable from '../diff/DiffTable';
@@ -584,10 +585,10 @@ const AddedFileContent: React.FC<AddedFileContentProps> = ({ projectId, filePath
   const [content, setContent] = useState<string | null>(null);
   const [loadingContent, setLoadingContent] = useState(true);
   const [contentError, setContentError] = useState<string | null>(null);
-
   useEffect(() => {
     let cancelled = false;
-    readFileContent(projectId, filePath)
+    // PR diff 数据按主仓投影：与它同单元读取，不跟随激活视图（worktree 激活时会读错副本）。
+    readFileContent({ projectId, worktreePath: null }, filePath)
       .then((result) => {
         if (!cancelled) {
           setContent(result.content);
@@ -604,7 +605,6 @@ const AddedFileContent: React.FC<AddedFileContentProps> = ({ projectId, filePath
       cancelled = true;
     };
   }, [projectId, filePath]);
-
   if (loadingContent) {
     return (
       <div className="flex items-center justify-center py-8 text-[var(--font-size)] text-text-muted">

@@ -11,7 +11,7 @@ import { useProjectStore } from '@/shared/store/projectStore';
 import { selectActiveCheckoutPath, useWorkspaceStore } from '@/shared/store/workspaceStore';
 import type { PromptResource } from '@/shared/types/library';
 import { filterPromptsByQuery } from '@/shared/utils/promptQuery';
-import { resolveTabKey } from '@/shared/utils/tabKey';
+import { workspaceKeyOf } from '@/shared/utils/workspaceRef';
 
 /** 描述规则：description 优先，为空回退 content 首 120 字（换行转空格）。 */
 function promptDescription(prompt: PromptResource): string {
@@ -37,7 +37,7 @@ function sortPrompts(prompts: PromptResource[]): PromptResource[] {
  */
 function revealTerminalTab(projectId: string): void {
   const editorState = useEditorStore.getState();
-  const tabKey = resolveTabKey(
+  const tabKey = workspaceKeyOf(
     projectId,
     selectActiveCheckoutPath(useWorkspaceStore.getState(), projectId),
   );

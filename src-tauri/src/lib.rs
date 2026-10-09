@@ -301,6 +301,7 @@ macro_rules! neeko_invoke_handler {
             $crate::library::skill::commands::get_managed_skills,
             $crate::library::skill::commands::get_skill_document,
             $crate::library::skill::commands::get_skill_document_at_path,
+            $crate::library::skill::commands::save_skill_document,
             $crate::library::skill::commands::refresh_skill_metadata,
             $crate::library::skill::commands::clear_all_managed_skills,
             $crate::library::skill::commands::delete_managed_skill,

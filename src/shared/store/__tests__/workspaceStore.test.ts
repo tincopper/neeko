@@ -13,12 +13,14 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { useProjectStore } from '@/shared/store/projectStore';
 import {
   activeWorkspaceKeyOf,
+  activeWorkspaceSession,
   selectActiveWorkspaceKey,
   selectActiveCheckoutPath,
   useActiveWorkspaceKey,
+  useActiveWorkspaceSession,
   useWorkspaceStore,
 } from '@/shared/store/workspaceStore';
-import { workspaceKeyOf } from '@/shared/utils/workspaceRef';
+import { isMainCheckout, workspaceKeyOf } from '@/shared/utils/workspaceRef';
 
 const WT_A = '/wt/a';
 const MAIN_KEY = workspaceKeyOf('p1', null);
@@ -146,5 +148,53 @@ describe('激活态 mutator 的最小契约', () => {
       { path: WT_A, branch: 'feature-a' },
     ]);
     expect(activeWorkspaceKeyOf('p1')).toBe(MAIN_KEY);
+  });
+});
+
+describe('activeWorkspaceSession —— 当前视图单元的地址值构造', () => {
+  it('激活 worktree 时给出其身份；回落主仓时 worktreePath = null', () => {
+    useWorkspaceStore.getState().setActiveWorkspace('p1', WT_A, 'feature-a');
+    expect(activeWorkspaceSession('p1')).toEqual({ projectId: 'p1', worktreePath: WT_A });
+    expect(isMainCheckout(activeWorkspaceSession('p1'))).toBe(false);
+
+    useWorkspaceStore.getState().clearActiveWorkspace('p1');
+    expect(activeWorkspaceSession('p1')).toEqual({ projectId: 'p1', worktreePath: null });
+    expect(isMainCheckout(activeWorkspaceSession('p1'))).toBe(true);
+  });
+
+  /**
+   * 不变量 4 的一致性：session 的判别必须与 codec（workspaceKeyOf / key 判别）对
+   * '' / 空白的归一规则**同源** —— 否则同一激活态出现「key 判主仓、session 判
+   * worktree」两种结论（审核 Warning 的根因）。
+   */
+  it("'' / 空白激活态与 codec 归一一致（双判据同值）", () => {
+    useWorkspaceStore.setState({
+      byProject: {
+        p1: { activePath: '  ', opened: [{ path: '  ', branch: '' }] },
+      },
+    });
+    const session = activeWorkspaceSession('p1');
+    expect(isMainCheckout(session)).toBe(isMainCheckout(activeWorkspaceKeyOf('p1') ?? ''));
+  });
+
+  it('响应式形态 useActiveWorkspaceSession 与命令式同源（含空串归一、无项目 → null）', () => {
+    useWorkspaceStore.getState().setActiveWorkspace('p1', WT_A, 'feature-a');
+    const { result, rerender } = renderHook(({ pid }) => useActiveWorkspaceSession(pid), {
+      initialProps: { pid: 'p1' as string | null },
+    });
+    expect(result.current).toEqual({ projectId: 'p1', worktreePath: WT_A });
+    expect(isMainCheckout(result.current ?? '')).toBe(false);
+
+    // '' / 空白激活态 → 与 codec 同归一，回落主仓
+    act(() => {
+      useWorkspaceStore.setState({
+        byProject: { p1: { activePath: '  ', activeBranch: '', opened: [] } },
+      });
+    });
+    expect(result.current).toEqual({ projectId: 'p1', worktreePath: null });
+    expect(isMainCheckout(activeWorkspaceSession('p1'))).toBe(true);
+
+    rerender({ pid: null });
+    expect(result.current).toBeNull();
   });
 });

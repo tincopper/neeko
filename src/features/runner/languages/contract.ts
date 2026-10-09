@@ -98,8 +98,8 @@ export interface ReaderOutput {
 export interface LangIo {
   /** 目标环境文件存在性（经统一执行门面，Local/WSL/SSH 通吃）。 */
   fileExists(absPath: string): Promise<boolean>;
-  /** 读项目内文本文件（缺失/失败 → `null`）。 */
-  readText(projectId: string, relPath: string, root: string | null): Promise<string | null>;
+  /** 读项目内文本文件（缺失/失败 → `null`）；`base` 为宿主目录前缀（文件在其下），scope 恒取当前Workspace。 */
+  readText(projectId: string, relPath: string, base: string | null): Promise<string | null>;
   /** 宿主 home 目录（缓存产物落点）。 */
   homeDir(): Promise<string>;
   /**

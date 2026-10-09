@@ -1,4 +1,5 @@
 import { useEditorStore } from '@/shared/store/editorStore';
+import { activeWorkspaceSession } from '@/shared/store/workspaceStore';
 import type { EditorGroupId, Tab } from '@/shared/types';
 
 /**
@@ -25,6 +26,7 @@ export function createUntitledFileTab(
     order: projTabs.length,
     data: {
       kind: 'file',
+      workspace: activeWorkspaceSession(projectId),
       filePath: '',
       fileName: name,
       content: { path: '', content: '', size: 0, is_binary: false },

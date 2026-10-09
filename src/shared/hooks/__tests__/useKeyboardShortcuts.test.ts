@@ -13,6 +13,7 @@ import { useConnectionStore } from '@/shared/store/connectionStore';
 import { useEditorStore } from '@/shared/store/editorStore';
 import { useProjectStore } from '@/shared/store/projectStore';
 import { useWorkspaceStore, type WorkspaceState } from '@/shared/store/workspaceStore';
+import { workspaceKeyOf } from '@/shared/utils/workspaceRef';
 import { createProject } from '@/testing/factories';
 
 // mock terminal refresh functions
@@ -100,7 +101,7 @@ function dispatchKey(code: string, opts: { ctrlKey?: boolean; altKey?: boolean }
 function seedTwoTabEditor() {
   useEditorStore.setState({
     tabs: {
-      p1: {
+      [workspaceKeyOf('p1', null)]: {
         tabs: [
           {
             id: 't0',
@@ -133,7 +134,7 @@ function seedTwoTabEditor() {
       },
     },
     editorLayout: {
-      p1: {
+      [workspaceKeyOf('p1', null)]: {
         isSplit: false,
         ratio: 0.5,
         activeGroupId: 'left',
@@ -513,7 +514,7 @@ describe('useKeyboardShortcuts', () => {
 
     dispatchKeyAt(content, { code: 'ArrowLeft', key: 'ArrowLeft', altKey: true });
 
-    expect(useEditorStore.getState().tabs.p1?.activeTabId).toBe('t0');
+    expect(useEditorStore.getState().tabs[workspaceKeyOf('p1', null)]?.activeTabId).toBe('t0');
     cm.remove();
   });
 
@@ -538,7 +539,7 @@ describe('useKeyboardShortcuts', () => {
     const stopSpy = vi.spyOn(event, 'stopPropagation');
     window.dispatchEvent(event);
 
-    expect(useEditorStore.getState().tabs.p1?.activeTabId).toBe('t0');
+    expect(useEditorStore.getState().tabs[workspaceKeyOf('p1', null)]?.activeTabId).toBe('t0');
     // 阻止事件继续到达 xterm，避免同时向 shell 发送转义序列。
     expect(stopSpy).toHaveBeenCalled();
     textarea.remove();
@@ -558,7 +559,7 @@ describe('useKeyboardShortcuts', () => {
 
     dispatchKeyAt(content, { code: 'ArrowLeft', key: 'ArrowLeft', altKey: true });
 
-    expect(useEditorStore.getState().tabs.p1?.activeTabId).toBe('t0');
+    expect(useEditorStore.getState().tabs[workspaceKeyOf('p1', null)]?.activeTabId).toBe('t0');
     cm.remove();
   });
 
@@ -577,25 +578,25 @@ describe('useKeyboardShortcuts', () => {
 
     dispatchKeyAt(content, { code: 'ArrowLeft', key: 'ArrowLeft', altKey: true });
 
-    expect(useEditorStore.getState().tabs.p1?.activeTabId).toBe('t1');
+    expect(useEditorStore.getState().tabs[workspaceKeyOf('p1', null)]?.activeTabId).toBe('t1');
     cm.remove();
   });
 
   it('Ctrl+Tab 切换到 MRU 上一个 tab，且不打开 QuickOpen 面板', () => {
     params.activeTabId = 't1';
-    useMruTabsStore.setState({ byTabKey: { p1: ['t0'] } });
+    useMruTabsStore.setState({ byTabKey: { [workspaceKeyOf('p1', null)]: ['t0'] } });
     seedTwoTabEditor(); // t0 / t1, active t1
     renderHook(() => useKeyboardShortcuts(params));
 
     dispatchKey('Tab', { ctrlKey: true });
 
-    expect(useEditorStore.getState().tabs.p1?.activeTabId).toBe('t0');
+    expect(useEditorStore.getState().tabs[workspaceKeyOf('p1', null)]?.activeTabId).toBe('t0');
     expect(useQuickOpenStore.getState().open).toBe(false);
   });
 
   it('QuickOpen 面板打开时 Ctrl+Tab 不触发 tab 切换', () => {
     params.activeTabId = 't1';
-    useMruTabsStore.setState({ byTabKey: { p1: ['t0'] } });
+    useMruTabsStore.setState({ byTabKey: { [workspaceKeyOf('p1', null)]: ['t0'] } });
     seedTwoTabEditor();
     renderHook(() => useKeyboardShortcuts(params));
 
@@ -605,7 +606,7 @@ describe('useKeyboardShortcuts', () => {
 
     dispatchKey('Tab', { ctrlKey: true });
 
-    expect(useEditorStore.getState().tabs.p1?.activeTabId).toBe('t1');
+    expect(useEditorStore.getState().tabs[workspaceKeyOf('p1', null)]?.activeTabId).toBe('t1');
     expect(useQuickOpenStore.getState().mode).toBe('gotoFile');
     root.remove();
   });

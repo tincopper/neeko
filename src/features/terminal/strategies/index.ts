@@ -3,8 +3,8 @@ import { useMemo } from 'react';
 import { useAppContext, useEditorContext } from '@/shared/contexts';
 import { useProjectStore } from '@/shared/store/projectStore';
 import { useActiveCheckoutPath } from '@/shared/store/workspaceStore';
-import type { AuthMethod } from '@/shared/types';
-import { resolveTabKey } from '@/shared/utils/tabKey';
+import type { AuthMethod, WorkspaceSession } from '@/shared/types';
+import { workspaceKeyOf } from '@/shared/utils/workspaceRef';
 
 import { createTerminalSession, resizeTerminal, closeTerminalSession } from '../api/terminalApi';
 import {
@@ -131,8 +131,12 @@ export function useTerminalStrategy(options: UseTerminalStrategyOptions): Termin
         },
         setupFileLinks: (term) => {
           if (projectPath) {
-            const tabKey = resolveTabKey(projectId, isWorktree ? effWorktreePath : null);
-            setupTerminalLinks(term, { projectPath, tabKey, projectId, showToast });
+            const tabWorkspace: WorkspaceSession = {
+              projectId,
+              worktreePath: isWorktree ? (effWorktreePath ?? null) : null,
+            };
+            const tabKey = workspaceKeyOf(tabWorkspace.projectId, tabWorkspace.worktreePath);
+            setupTerminalLinks(term, { projectPath, tabKey, workspace: tabWorkspace, showToast });
           }
         },
       });
@@ -169,8 +173,12 @@ export function useTerminalStrategy(options: UseTerminalStrategyOptions): Termin
         onSessionReady: () => {},
         setupFileLinks: (term) => {
           if (projectPath) {
-            const tabKey = resolveTabKey(projectId, activeCheckoutPath);
-            setupTerminalLinks(term, { projectPath, tabKey, projectId, showToast });
+            const tabWorkspace: WorkspaceSession = {
+              projectId,
+              worktreePath: activeCheckoutPath ?? null,
+            };
+            const tabKey = workspaceKeyOf(tabWorkspace.projectId, tabWorkspace.worktreePath);
+            setupTerminalLinks(term, { projectPath, tabKey, workspace: tabWorkspace, showToast });
           }
         },
       });
@@ -205,7 +213,12 @@ export function useTerminalStrategy(options: UseTerminalStrategyOptions): Termin
           : undefined,
         setupFileLinks: (term) => {
           if (projectPath) {
-            setupTerminalLinks(term, { projectPath, tabKey: projectId, projectId, showToast });
+            setupTerminalLinks(term, {
+              projectPath,
+              tabKey: projectId,
+              workspace: { projectId, worktreePath: null },
+              showToast,
+            });
           }
         },
       });

@@ -292,8 +292,9 @@ activeProjectId: string | null;
 activeProject: Project | null;
 // src/shared/store/workspaceStore.ts
 byProject: Record<projectId, { activePath: string | null; activeBranch: string; opened: CheckoutEntry[] }>;
-// src/shared/store/editorStore.ts —— tabs 按复合 tabKey 分槽（project + worktree 各有独立 tab 空间）
-tabs: Record<tabKey, ProjectTabs>;
+// src/shared/store/editorStore.ts —— tabs 按 **checkout 身份 WorkspaceKey** 分槽（project + worktree 各有独立 tab 空间；
+// 旧 `:wt:` 编码的 `resolveTabKey` 已退役）
+tabs: Record<WorkspaceKey, ProjectTabs>;
 activeTabId: string | null;   // 全局：当前视图的激活 tab（cacheKey 等消费）
 // src/features/file/store.ts —— 文件树按目录分槽 + 归属校验
 owner: FileTreeOwner | null;               // `${projectId}:${rootPath}`，切换即作废旧缓存与在途响应
@@ -1283,8 +1284,7 @@ Context 粒度过大将放大重渲染影响。新增字段时优先放入最贴
 ### 6. 切换项目时 global `activeTabId` 未同步
 
 **问题**：tab 状态在 `editorStore` 里是两层结构 —— 全局 `activeTabId` 与按 `tabKey` 分槽的
-`tabs[tabKey].activeTabId`（`tabKey = resolveTabKey(projectId, worktreePath)`，主仓单元的 key 就是
-`projectId`）。切换项目/单元时若只写 `projectStore.activeProjectId` 而不恢复全局 `activeTabId`，
+`tabs[tabKey].activeTabId`（`tabKey = workspaceKeyOf(projectId, worktreePath)`，主仓单元的 key = `projectId\0`）。切换项目/单元时若只写 `projectStore.activeProjectId` 而不恢复全局 `activeTabId`，
 下游会用**上一个项目**的 tab id 算 `cacheKey`（终端缓存）或做 tab 解析，导致 cache miss 与孤立
 PTY 创建。
 
@@ -1344,7 +1344,7 @@ return {
 
 ### 8. Save As 请求使用 `tabKey` 而非 `projectId`
 
-**问题**：Editor store 的 tabs 按 `tabKey`（复合 key，含 worktree 时形如 `"projectId:wt:path"`）索引，而非裸 `projectId`。`SaveAsRequest` 传 `projectId` 后在 `SaveFileDialog` 中用 `store.updateTab(request.projectId, ...)` 会导致 lookup 失败。
+**问题**：Editor store 的 tabs 按 `tabKey`（= checkout 身份的 `WorkspaceKey`，主仓为 `projectId\0`）索引，而非裸 `projectId`。`SaveAsRequest` 传 `projectId` 后在 `SaveFileDialog` 中用 `store.updateTab(request.projectId, ...)` 会导致 lookup 失败。
 
 **正确模式**：`SaveAsRequest` 包含 `tabKey` 字段：
 

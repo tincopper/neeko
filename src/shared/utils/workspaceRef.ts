@@ -16,6 +16,8 @@
  * （红线 12），双向各归一必然漂移。
  */
 
+import type { WorkspaceSession } from '@/shared/types/workspace';
+
 /** 分隔符：NUL 在 POSIX 与 Windows 文件名里都不允许出现 → key 反解永无歧义。 */
 export const WORKSPACE_KEY_SEP = '\u0000';
 
@@ -41,9 +43,13 @@ export function parseWorkspaceKey(key: string): { projectId: string; worktreePat
   return { projectId: key.slice(0, idx), worktreePath: tail === '' ? null : tail };
 }
 
-/** 是否主仓单元（项目根本身）。 */
-export function isMainCheckout(key: string): boolean {
-  return parseWorkspaceKey(key).worktreePath === null;
+/** 是否主仓单元（项目根本身）。接受 key 或已构造的 [`WorkspaceSession`]。 */
+export function isMainCheckout(keyOrSession: string | WorkspaceSession): boolean {
+  const wt =
+    typeof keyOrSession === 'string'
+      ? parseWorkspaceKey(keyOrSession).worktreePath
+      : keyOrSession.worktreePath;
+  return wt === null;
 }
 
 /**

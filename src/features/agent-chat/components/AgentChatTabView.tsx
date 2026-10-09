@@ -4,12 +4,12 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { readFileContent, readDirTree } from '@/features/file/api/fileApi';
 import { useEditorStore } from '@/shared/store/editorStore';
 import { useProjectStore } from '@/shared/store/projectStore';
-import { selectActiveCheckoutPath, useWorkspaceStore } from '@/shared/store/workspaceStore';
+import { activeWorkspaceSession } from '@/shared/store/workspaceStore';
 import type { FileNode } from '@/shared/types';
 import type { AgentChatTabData } from '@/shared/types/tab';
 import { canonicalFsPath } from '@/shared/utils/fileRef';
 import { getFileName, getTabId } from '@/shared/utils/fileTree';
-import { resolveTabKey } from '@/shared/utils/tabKey';
+import { workspaceKeyOf } from '@/shared/utils/workspaceRef';
 
 import { useAgentChat } from '../hooks/useAgentChat';
 
@@ -73,9 +73,7 @@ export default function AgentChatTabView({
     restoreConversation,
   } = useAgentChat({ tabKey, tabId, projectId, data, mockMode });
 
-  // 单元归属按 tab 自己的 projectId 取（本 tab 可能不属于当前激活项目）
-  const activeCheckoutPath = useWorkspaceStore((s) => selectActiveCheckoutPath(s, projectId));
-  // agent 消息里的文件路径拼根基准（相对路径拼项目根——与后端缺省 base 对齐）
+  // agent 消息里的文件路径拼根基准（相对路径拼**当前视图单元的工作树根**——见 openAgentFile）
   const projectPath = useProjectStore(
     (s) => s.projects.find((p) => p.id === projectId)?.path ?? '',
   );
@@ -128,9 +126,12 @@ export default function AgentChatTabView({
   const openAgentFile = useCallback(
     (rawPath: string) => {
       void (async () => {
-        // agent 给绝对路径则原样（幂等归一），相对路径拼项目根 canonical
-        const filePath = canonicalFsPath(projectPath, rawPath);
-        const tabKey = resolveTabKey(projectId, activeCheckoutPath ?? undefined);
+        // 一次捕获当前视图单元的值：身份基准、组键、读取地址全部由它派生。
+        // 基准若用项目根而读取用 worktree 根，后端 InProject containment 拒绝
+        // —— 相对路径被拼成主仓同名文件身份，worktree 下静默打不开。
+        const workspace = activeWorkspaceSession(projectId);
+        const filePath = canonicalFsPath(workspace.worktreePath ?? projectPath, rawPath);
+        const tabKey = workspaceKeyOf(projectId, workspace.worktreePath);
         const tabId = getTabId(tabKey, filePath);
         const existing = useEditorStore.getState().tabs[tabKey];
         if (existing?.tabs.some((t) => t.id === tabId)) {
@@ -138,7 +139,7 @@ export default function AgentChatTabView({
           return;
         }
         try {
-          const content = await readFileContent(projectId, filePath);
+          const content = await readFileContent(workspace, filePath);
           useEditorStore.getState().addTab(tabKey, {
             id: tabId,
             projectId,
@@ -146,6 +147,7 @@ export default function AgentChatTabView({
             order: existing?.tabs.length ?? 0,
             data: {
               kind: 'file',
+              workspace,
               filePath,
               fileName: getFileName(filePath),
               content,
@@ -157,7 +159,7 @@ export default function AgentChatTabView({
         }
       })();
     },
-    [projectId, projectPath, activeCheckoutPath],
+    [projectId, projectPath],
   );
 
   const handleKeyDown = useCallback(
@@ -183,7 +185,7 @@ export default function AgentChatTabView({
   const openAttachDrop = useCallback(() => {
     if (attachFiles.length === 0 && !attachFilesLoading) {
       setAttachFilesLoading(true);
-      void readDirTree(projectId, null, null, 3)
+      void readDirTree(activeWorkspaceSession(projectId), null, 3)
         .then((tree) => setAttachFiles(tree))
         .catch(() => setAttachFiles([]))
         .finally(() => setAttachFilesLoading(false));

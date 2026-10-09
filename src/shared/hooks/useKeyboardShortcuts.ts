@@ -22,7 +22,7 @@ import { useEditorStore } from '@/shared/store/editorStore';
 import { useNavHistoryStore } from '@/shared/store/navigationHistoryStore';
 import { useProjectStore } from '@/shared/store/projectStore';
 import {
-  selectActiveCheckoutPath,
+  activeWorkspaceKeyOf,
   selectWorkspaceStateOf,
   useWorkspaceStore,
 } from '@/shared/store/workspaceStore';
@@ -33,7 +33,6 @@ import {
   SHORTCUT_ACTIONS,
   getShortcutAction,
 } from '@/shared/utils/shortcutRegistry';
-import { resolveTabKey } from '@/shared/utils/tabKey';
 
 interface UseKeyboardShortcutsParams {
   updateWtPath: (path: string | null, branch: string) => void;
@@ -340,8 +339,7 @@ function switchToItem(item: ProjectListItem) {
 function resolveActiveTabKey(): string | null {
   const currentProjectId = useProjectStore.getState().activeProjectId ?? null;
   if (!currentProjectId) return null;
-  const worktreePath = selectActiveCheckoutPath(useWorkspaceStore.getState(), currentProjectId);
-  return resolveTabKey(currentProjectId, worktreePath);
+  return activeWorkspaceKeyOf(currentProjectId);
 }
 
 /** Cycle tabs in the focused editor group (IDEA Alt+Left/Right). */

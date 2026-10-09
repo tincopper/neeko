@@ -111,11 +111,15 @@ function mergeTabData(data: TabData, partial: Partial<TabData>): TabData {
         'untitledName' in p ||
         'initialPreviewMode' in p ||
         'readOnly' in p ||
-        'virtualUri' in p;
+        'virtualUri' in p ||
+        'workspace' in p;
       if (!isFilePartial) return data;
       const d = data as FileTabData;
+      // 警示：改 `workspace` 不会迁移 tab 组键 —— 组键是它的派生索引。
+      // 调用方不得用本入口「挪单元」；确需改单元 = 关旧组 tab + 新组重开。
       return {
         kind: 'file' as const,
+        workspace: 'workspace' in p ? (p.workspace as FileTabData['workspace']) : d.workspace,
         filePath: p.filePath !== undefined ? (p.filePath as string) : d.filePath,
         fileName: p.fileName !== undefined ? (p.fileName as string) : d.fileName,
         content: p.content !== undefined ? (p.content as FileContent) : d.content,

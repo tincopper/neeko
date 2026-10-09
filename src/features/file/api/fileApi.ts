@@ -1,6 +1,6 @@
 import { invoke } from '@tauri-apps/api/core';
 
-import type { FileContent, FileNode } from '@/shared/types';
+import type { FileContent, FileNode, WorkspaceSession } from '@/shared/types';
 
 export function revealInFileManager(path: string): Promise<void> {
   return invoke<void>('reveal_in_file_manager', { path });
@@ -11,108 +11,63 @@ export function fileExists(path: string): Promise<boolean> {
   return invoke<boolean>('file_exists', { path });
 }
 
+// ── 文件读写：地址是一个 `WorkspaceSession` 值对象（首个参数，**必填**）────────────
+//
+// `worktreePath === null` = 主 checkout。后端由 `resolve_workspace_target` 唯一解析出工作树根，
+// 调用方不传「任意 root 路径」—— 那把同一份身份变成了散参，且在 worktree 场景下默认值恒错。
+
 export function readFileContent(
-  projectId: string,
+  workspace: WorkspaceSession,
   filePath: string,
-  rootPath?: string | null,
 ): Promise<FileContent> {
-  return invoke<FileContent>('read_file_content', {
-    projectId,
-    filePath,
-    rootPath: rootPath ?? null,
-  });
+  return invoke<FileContent>('read_file_content', { workspace, filePath });
 }
 
 export function readDirTree(
-  projectId: string,
+  workspace: WorkspaceSession,
   subPath?: string | null,
-  rootPath?: string | null,
   maxDepth?: number | null,
 ): Promise<FileNode[]> {
   return invoke<FileNode[]>('read_dir_tree', {
-    projectId,
-    rootPath: rootPath ?? null,
+    workspace,
     subPath: subPath ?? null,
     maxDepth: maxDepth ?? null,
   });
 }
 
-export function createNewFile(
-  projectId: string,
-  filePath: string,
-  rootPath?: string | null,
-): Promise<void> {
-  return invoke<void>('create_new_file', {
-    projectId,
-    filePath,
-    rootPath: rootPath ?? null,
-  });
+export function createNewFile(workspace: WorkspaceSession, filePath: string): Promise<void> {
+  return invoke<void>('create_new_file', { workspace, filePath });
 }
 
-export function createDirectory(
-  projectId: string,
-  dirPath: string,
-  rootPath?: string | null,
-): Promise<void> {
-  return invoke<void>('create_directory', {
-    projectId,
-    dirPath,
-    rootPath: rootPath ?? null,
-  });
+export function createDirectory(workspace: WorkspaceSession, dirPath: string): Promise<void> {
+  return invoke<void>('create_directory', { workspace, dirPath });
 }
 
-export function deletePath(
-  projectId: string,
-  path: string,
-  rootPath?: string | null,
-): Promise<void> {
-  return invoke<void>('delete_path', {
-    projectId,
-    path,
-    rootPath: rootPath ?? null,
-  });
+export function deletePath(workspace: WorkspaceSession, path: string): Promise<void> {
+  return invoke<void>('delete_path', { workspace, path });
 }
 
 export function renamePath(
-  projectId: string,
+  workspace: WorkspaceSession,
   path: string,
   newName: string,
-  rootPath?: string | null,
 ): Promise<void> {
-  return invoke<void>('rename_path', {
-    projectId,
-    path,
-    newName,
-    rootPath: rootPath ?? null,
-  });
+  return invoke<void>('rename_path', { workspace, path, newName });
 }
 
 export function saveNewFile(
-  projectId: string,
+  workspace: WorkspaceSession,
   directory: string,
   filename: string,
   content: string,
-  rootPath?: string | null,
 ): Promise<string> {
-  return invoke<string>('save_new_file', {
-    projectId,
-    directory,
-    filename,
-    content,
-    rootPath: rootPath ?? null,
-  });
+  return invoke<string>('save_new_file', { workspace, directory, filename, content });
 }
 
 export function writeFileContent(
-  projectId: string,
+  workspace: WorkspaceSession,
   filePath: string,
   content: string,
-  rootPath?: string | null,
 ): Promise<void> {
-  return invoke<void>('write_file_content', {
-    projectId,
-    filePath,
-    content,
-    rootPath: rootPath ?? null,
-  });
+  return invoke<void>('write_file_content', { workspace, filePath, content });
 }

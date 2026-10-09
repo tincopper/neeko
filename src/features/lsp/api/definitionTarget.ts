@@ -1,5 +1,6 @@
 import { readFileContent } from '@/features/file/api/fileApi';
 import { useNotificationStore } from '@/shared/store/notificationStore';
+import { activeWorkspaceSession } from '@/shared/store/workspaceStore';
 import type { FileContent } from '@/shared/types';
 import { isJdtUri } from '@/shared/utils/jdt';
 
@@ -98,7 +99,7 @@ export async function loadDefinitionTargetContent(
 
   let primaryError: unknown;
   try {
-    const content = await readFileContent(projectId, targetPath);
+    const content = await readFileContent(activeWorkspaceSession(projectId), targetPath);
     return { kind: 'project-file', content };
   } catch (err) {
     primaryError = err;

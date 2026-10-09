@@ -6,45 +6,43 @@ import { useFileStore } from '@/features/file/store';
 import { closeEditorTab } from '@/features/terminal';
 import { useEditorStore } from '@/shared/store/editorStore';
 import { useProjectStore } from '@/shared/store/projectStore';
-import type { FileContent, Tab } from '@/shared/types';
-import type { ProjectCommands } from '@/shared/types/activeProject';
+import type { FileContent, Tab, WorkspaceSession } from '@/shared/types';
 import { clearViewSnapshot, clearAllForTabKey } from '@/shared/utils/editorViewState';
 import { canonicalFsPath } from '@/shared/utils/fileRef';
 import { getFileName, getTabId, isFileTab } from '@/shared/utils/fileTree';
-import { parseProjectIdFromTabKey } from '@/shared/utils/tabKey';
 
 interface UseFileViewTabOpsParams {
   tabKeyRef: React.MutableRefObject<string | null>;
-  worktreePathRef: React.MutableRefObject<string | undefined | null>;
-  externalCommandsRef: React.MutableRefObject<ProjectCommands | null | undefined>;
+  /**
+   * 当前视图单元的身份**值**（上游单点构造）。openFile 的地址、身份基准、组键
+   * 全部由它派生 —— 不再从 tabKey 解回 projectId、不再另传 worktreePath ref
+   * （两源混合 = session 内部可不一致的根因）。
+   */
+  workspaceRef: React.MutableRefObject<WorkspaceSession | null>;
   setError: (msg: string | null) => void;
 }
 
 /**
  * useFileViewTabOps — 文件标签页操作：打开 / 关闭 / 激活 / 更新 / 保存 / 脏标记 / 清空。
- * 通过 refs 读取最新 tabKey / worktree / externalCommands，避免闭包过期。
+ * 通过 refs 读取最新 tabKey / workspace，避免闭包过期。
  */
-export function useFileViewTabOps({
-  tabKeyRef,
-  worktreePathRef,
-  externalCommandsRef,
-  setError,
-}: UseFileViewTabOpsParams) {
+export function useFileViewTabOps({ tabKeyRef, workspaceRef, setError }: UseFileViewTabOpsParams) {
   /**
    * Open a file - adds a new tab or activates existing tab
    */
   const openFile = useCallback(
     async (rawPath: string): Promise<boolean> => {
+      const ws = workspaceRef.current;
+      if (!ws) return false;
       const tk = tabKeyRef.current;
       if (!tk) return false;
 
-      const projectId = parseProjectIdFromTabKey(tk);
-      // 身份根与后端 resolve_base 对齐：worktree 激活用 worktree 根，否则项目根
+      const { projectId, worktreePath } = ws;
       const projectPath =
         useProjectStore.getState().projects.find((p) => p.id === projectId)?.path ?? '';
-      const identityRoot = worktreePathRef.current ?? projectPath;
+      // 身份基准与读取地址同源：worktree 激活用 worktree 根，否则项目根。
+      const identityRoot = worktreePath ?? projectPath;
       const filePath = canonicalFsPath(identityRoot, rawPath);
-      const rootPath = worktreePathRef.current ?? undefined;
       const tabId = getTabId(tk, filePath);
 
       // If tab already exists, re-read content from disk and activate
@@ -53,10 +51,7 @@ export function useFileViewTabOps({
       if (existingTab) {
         if (existingTab.data.kind === 'file') {
           try {
-            const cmds = externalCommandsRef.current;
-            const newContent = cmds
-              ? await cmds.readFileContent(filePath, rootPath)
-              : await readFileContent(projectId, filePath, rootPath ?? null);
+            const newContent = await readFileContent(ws, filePath);
             const oldContent = existingTab.data.content.content;
             if (newContent.content !== oldContent) {
               if (existingTab.data.isDirty) {
@@ -84,15 +79,8 @@ export function useFileViewTabOps({
       // Load file content — 不触碰文件树 loading 状态（树加载由 store.loadDir 独立治理）
       setError(null);
       try {
-        const cmds = externalCommandsRef.current;
-        let content: FileContent;
-        if (cmds) {
-          // WSL/Remote 模式：通过 ProjectCommands 接口调用
-          content = await cmds.readFileContent(filePath, rootPath);
-        } else {
-          // Local 模式：通过 unified 命令
-          content = await readFileContent(projectId, filePath, rootPath ?? null);
-        }
+        // 地址对象（单元根）：Local / WSL / Remote 同一后端命令，按 ExecTarget 路由。
+        const content: FileContent = await readFileContent(ws, filePath);
 
         const newTab: Tab = {
           id: tabId,
@@ -101,6 +89,7 @@ export function useFileViewTabOps({
           order: existing?.tabs.length ?? 0,
           data: {
             kind: 'file',
+            workspace: ws,
             filePath,
             fileName: getFileName(filePath),
             content,
@@ -115,7 +104,7 @@ export function useFileViewTabOps({
         return false;
       }
     },
-    [setError, tabKeyRef, worktreePathRef, externalCommandsRef],
+    [setError, tabKeyRef, workspaceRef],
   );
 
   /**
@@ -189,9 +178,10 @@ export function useFileViewTabOps({
 
       // Untitled tab → trigger Save As dialog
       if (fileTab.data.isUntitled) {
-        const projectPath = useProjectStore.getState().activeProject?.path ?? '';
-        // Worktree 激活时，Save As 默认目录应为 worktree 根目录，而非项目根目录
-        const defaultDirectory = worktreePathRef.current ?? projectPath;
+        const projectPath =
+          useProjectStore.getState().projects.find((p) => p.id === fileTab.projectId)?.path ?? '';
+        // Save As 默认目录 = 该 tab 所属单元的工作树根（worktree 可在项目根外）。
+        const defaultDirectory = fileTab.data.workspace.worktreePath ?? projectPath;
         useSaveAsStore.getState().requestSaveAs({
           tabId: fileTab.id,
           tabKey: tk,
@@ -205,20 +195,9 @@ export function useFileViewTabOps({
       }
 
       try {
-        const rootPath = worktreePathRef.current ?? undefined;
-        const cmds = externalCommandsRef.current;
-        if (cmds) {
-          // WSL/Remote 模式：通过 ProjectCommands 接口调用
-          await cmds.writeFileContent(fileTab.data.filePath, content, rootPath);
-        } else {
-          // Local：与 openFile 读取同源，传单元根作 rootPath（worktree 可在项目根外）。
-          await writeFileContent(
-            fileTab.projectId,
-            fileTab.data.filePath,
-            content,
-            rootPath ?? null,
-          );
-        }
+        // 地址 = 该 tab 携带的唯一值（FileTabData.workspace）——不取「当前激活视图」：
+        // 后台组保存 / 切换后保存若用现场重组的 ref，会写错工作树（单元漂移）。
+        await writeFileContent(fileTab.data.workspace, fileTab.data.filePath, content);
 
         // Update tab: mark as not dirty, update content
         useEditorStore.getState().updateTab(tk, fileTab.id, {
@@ -231,7 +210,7 @@ export function useFileViewTabOps({
         return false;
       }
     },
-    [tabKeyRef, worktreePathRef, externalCommandsRef, setError],
+    [tabKeyRef, setError],
   );
 
   /**

@@ -6,10 +6,9 @@ import { useEditorContext } from '@/shared/contexts';
 import { useAppContext } from '@/shared/contexts/AppContext';
 import { useEditorStore } from '@/shared/store/editorStore';
 import { useProjectStore } from '@/shared/store/projectStore';
-import { useActiveCheckoutPath } from '@/shared/store/workspaceStore';
+import { useActiveCheckoutPath, useActiveWorkspaceKey } from '@/shared/store/workspaceStore';
 import type { Tab, FileTabData } from '@/shared/types';
 import { isFileTab } from '@/shared/utils/fileTree';
-import { resolveTabKey } from '@/shared/utils/tabKey';
 
 import { useFileActionsContext } from '../FileActionsContext';
 
@@ -20,6 +19,7 @@ function tabToFileTab(tab: Tab & { data: FileTabData }): import('@/shared/types'
   return {
     id: tab.id,
     projectId: tab.projectId,
+    workspace: tab.data.workspace,
     filePath: tab.data.filePath,
     fileName: tab.data.fileName,
     content: tab.data.content,
@@ -47,11 +47,9 @@ function FileViewer() {
   const fontFamily = config.monoFontFamily ?? config.fontFamily ?? '';
   const fontSize = config.editorFontSize;
 
-  // Composite tab key: unified across local/WSL/remote projects
+  // Composite tab key: 唯一派生点（激活态单源）
   const currentProjectId = activeProjectId ?? activeProject?.id ?? null;
-  const tabKey = currentProjectId
-    ? resolveTabKey(currentProjectId, effectiveWorktreePath)
-    : currentProjectId;
+  const tabKey = useActiveWorkspaceKey(currentProjectId);
 
   // Read project tabs from unified store
   const projectTabs = useEditorStore(

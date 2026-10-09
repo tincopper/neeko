@@ -27,6 +27,24 @@ use crate::common::git::checkout_path::CheckoutPath;
 /// 分隔符：见模块级注释（NUL 不可能出现在合法路径中 → key 无歧义）。
 pub const KEY_SEP: char = '\0';
 
+/// 命令寻址用的 **Workspace 目标**（结构化身份）。
+///
+/// `worktree_path = None` 表示**主 checkout**（项目根本身），`Some` 表示 linked worktree（身份渲染串）。
+/// **只携带身份**，不携带解析后的根 —— 根的权威在后端受信状态，调用方无法伪造。
+///
+/// 与 [`WorkspaceRef`] 的关系：[`WorkspaceSession`] 是「地址」（wire / 前端产物），
+/// [`WorkspaceRef`] 是后端解析后的「身份 + 根」。二者经
+/// [`crate::AppStateWrapper::resolve_workspace_target`] 衔接。
+#[derive(Debug, Clone, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkspaceSession {
+    /// 所属项目 ID
+    pub project_id: String,
+    /// linked worktree 的身份串；`None` = 主 checkout
+    #[serde(default)]
+    pub worktree_path: Option<String>,
+}
+
 /// 一个仓库工作树的引用。
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Checkout {
@@ -239,6 +257,18 @@ mod tests {
             username: "u".to_string(),
             auth: crate::common::connection::types::AuthMethod::Password("x".to_string()),
         }
+    }
+
+    #[test]
+    fn workspace_session_deserializes_camel_case_with_main_default() {
+        // 命令入参契约（唯一方向）：camelCase 字段；缺 worktreePath → 主 checkout。
+        let main: WorkspaceSession = serde_json::from_str(r#"{"projectId":"p1"}"#).unwrap();
+        assert_eq!(main.project_id, "p1");
+        assert_eq!(main.worktree_path, None);
+
+        let linked: WorkspaceSession =
+            serde_json::from_str(r#"{"projectId":"p1","worktreePath":"/w/wt"}"#).unwrap();
+        assert_eq!(linked.worktree_path.as_deref(), Some("/w/wt"));
     }
 
     #[test]

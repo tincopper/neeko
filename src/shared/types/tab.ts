@@ -2,6 +2,7 @@
 import type { FileContent } from './file';
 import type { DiffSource, ViewMode, CommitFileChange } from './git';
 import type { ConversationMeta } from './session';
+import type { WorkspaceSession } from './workspace';
 
 export type TabKind =
   | 'terminal'
@@ -25,6 +26,13 @@ export interface TerminalTabData {
 
 export interface FileTabData {
   kind: 'file';
+  /**
+   * 本 tab 所属的Workspace（**地址值**：`worktreePath === null` = 主 checkout）。
+   *
+   * 由创建者在其身份源处给出（非解析 key 还原），是文件读写/刷新的**唯一地址来源** ——
+   * 消费侧（reload / 自动刷新）直接用 `tab.workspace`，不得再解 tabKey。
+   */
+  workspace: WorkspaceSession;
   filePath: string;
   fileName: string;
   content: FileContent;

@@ -16,9 +16,9 @@ import { useActiveProject } from '@/features/project';
 import { useAppContext } from '@/shared/contexts';
 import { useDockStore } from '@/shared/store/dockStore';
 import { useProjectStore, selectEntries } from '@/shared/store/projectStore';
+import { activeWorkspaceSession } from '@/shared/store/workspaceStore';
 import { filePathToFileUrl, openHtmlInBrowserPanel } from '@/shared/utils/browserUtils';
 import { canonicalFsPath } from '@/shared/utils/fileRef';
-import { resolveTabKey } from '@/shared/utils/tabKey';
 import { workspaceKeyOf } from '@/shared/utils/workspaceRef';
 
 /**
@@ -30,7 +30,7 @@ import { workspaceKeyOf } from '@/shared/utils/workspaceRef';
 
 const FilesPanelWrapper: React.FC = React.memo(() => {
   const { onFileSelect, onFileRefresh, onLoadFileTree, onExpandDir } = useFileActionsContext();
-  const { project, commands, worktreePath } = useActiveProject();
+  const { project, worktreePath } = useActiveProject();
   const { config, showToast } = useAppContext();
   const projectName = project?.name ?? null;
   const fileRootPath = worktreePath ?? project?.path ?? null;
@@ -44,7 +44,7 @@ const FilesPanelWrapper: React.FC = React.memo(() => {
     workspaceKey ? selectEntries(s, workspaceKey) : undefined,
   );
   // 定位当前编辑器 file tab 到文件树（复用面板内「点击选中」逻辑）
-  const tabKey = project ? resolveTabKey(project.id, worktreePath) : '';
+  const tabKey = project ? workspaceKeyOf(project.id, worktreePath) : '';
   const { canLocateFile, filePath: locateTargetPath } = useLocateFileInTree(tabKey, fileRootPath);
 
   // Compute projectId for use by child components (drag-and-drop, etc.)
@@ -61,7 +61,6 @@ const FilesPanelWrapper: React.FC = React.memo(() => {
   // 目录加载 / file-tree-changed 事件刷新 / 手动刷新 / 懒加载展开（feature hook）
   const { handleRefresh, handleExpandDir } = useFileTreeSync({
     project,
-    commands,
     activeProjectId,
     fileRootPath,
     isActive,
@@ -114,15 +113,15 @@ const FilesPanelWrapper: React.FC = React.memo(() => {
       if (!projectId) return;
       const relPath = dirPath ? `${dirPath}/${name}` : name;
       if (kind === 'file') {
-        await createNewFile(projectId, relPath, fileRootPath ?? null);
+        await createNewFile(activeWorkspaceSession(projectId), relPath);
       } else {
-        await createDirectory(projectId, relPath, fileRootPath ?? null);
+        await createDirectory(activeWorkspaceSession(projectId), relPath);
       }
       handleRefresh();
       // 显式刷新**该单元**的 status，使新文件立即着色（Untracked）
       if (workspaceKey) void refreshWorkspaceStatus(workspaceKey);
     },
-    [projectId, fileRootPath, handleRefresh, workspaceKey],
+    [projectId, handleRefresh, workspaceKey],
   );
 
   const handleCreateFile = useCallback(
@@ -138,21 +137,21 @@ const FilesPanelWrapper: React.FC = React.memo(() => {
   const handleDeletePath = useCallback(
     async (path: string) => {
       if (!projectId) return;
-      await deletePath(projectId, path, fileRootPath ?? null);
+      await deletePath(activeWorkspaceSession(projectId), path);
       handleRefresh();
       if (workspaceKey) void refreshWorkspaceStatus(workspaceKey);
     },
-    [projectId, fileRootPath, handleRefresh, workspaceKey],
+    [projectId, handleRefresh, workspaceKey],
   );
 
   const handleRenamePath = useCallback(
     async (path: string, newName: string) => {
       if (!projectId) return;
-      await renamePath(projectId, path, newName, fileRootPath ?? null);
+      await renamePath(activeWorkspaceSession(projectId), path, newName);
       handleRefresh();
       if (workspaceKey) void refreshWorkspaceStatus(workspaceKey);
     },
-    [projectId, fileRootPath, handleRefresh, workspaceKey],
+    [projectId, handleRefresh, workspaceKey],
   );
 
   return (

@@ -4,7 +4,7 @@ import type { DiffSource } from '@/features/git/components/diff/types';
 import { useEditorStore } from '@/shared/store/editorStore';
 import { useProjectStore } from '@/shared/store/projectStore';
 import type { CommitFileChange, ConnectionContext } from '@/shared/types';
-import { parseProjectIdFromTabKey, resolveTabKey } from '@/shared/utils/tabKey';
+import { workspaceKeyOf } from '@/shared/utils/workspaceRef';
 
 const DIFF_TAB_ID = 'diff_singleton';
 
@@ -44,10 +44,9 @@ export function useSingletonDiff(
   activeCheckoutPath?: string | null,
 ) {
   // worktree 激活时使用 worktree 专属 tab key，避免 commit diff 落入 local tab 组
-  const tabKey = resolveTabKey(
-    useProjectStore.getState().activeProjectId ?? projectId ?? '',
-    activeCheckoutPath,
-  );
+  // tab 的 projectId 直接持真实 id（值在手边就用法，不再从 tabKey 解回）
+  const realProjectId = useProjectStore.getState().activeProjectId ?? projectId ?? '';
+  const tabKey = workspaceKeyOf(realProjectId, activeCheckoutPath);
 
   const hasSingleton = useCallback(() => {
     const store = useEditorStore.getState();
@@ -79,7 +78,7 @@ export function useSingletonDiff(
           id: DIFF_TAB_ID,
           // tab 的 projectId 必须是真实 project id，不能用复合 worktree tab key
           //（否则后端 resolve_project 找不到项目）
-          projectId: parseProjectIdFromTabKey(tabKey),
+          projectId: realProjectId,
           title,
           order: 200,
           data: { kind: 'diff', ...partial },
@@ -87,7 +86,7 @@ export function useSingletonDiff(
         store.activateTab(tabKey, DIFF_TAB_ID);
       }
     },
-    [tabKey, commitHash, connectionContext],
+    [tabKey, realProjectId, commitHash, connectionContext],
   );
 
   const openCombined = useCallback(
@@ -116,7 +115,7 @@ export function useSingletonDiff(
           id: DIFF_TAB_ID,
           // tab 的 projectId 必须是真实 project id，不能用复合 worktree tab key
           //（否则后端 resolve_project 找不到项目）
-          projectId: parseProjectIdFromTabKey(tabKey),
+          projectId: realProjectId,
           title,
           order: 200,
           data: { kind: 'diff', ...partial },
@@ -124,7 +123,7 @@ export function useSingletonDiff(
         store.activateTab(tabKey, DIFF_TAB_ID);
       }
     },
-    [tabKey, commitHash, connectionContext, files],
+    [tabKey, realProjectId, commitHash, connectionContext, files],
   );
 
   const pinFile = useCallback(
@@ -137,14 +136,14 @@ export function useSingletonDiff(
       const title = `History Diff \u00b7 ${fileName}`;
       store.addTab(tabKey, {
         id: pinnedId,
-        projectId: parseProjectIdFromTabKey(tabKey),
+        projectId: realProjectId,
         title,
         order: 200,
         data: { kind: 'diff', filePath, fileName, diffSource },
       });
       store.activateTab(tabKey, pinnedId);
     },
-    [tabKey, commitHash, connectionContext],
+    [tabKey, realProjectId, commitHash, connectionContext],
   );
 
   const scrollToFile = useCallback(

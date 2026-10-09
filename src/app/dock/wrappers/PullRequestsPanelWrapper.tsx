@@ -7,7 +7,7 @@ import { useDockStore } from '@/shared/store/dockStore';
 import { useEditorStore } from '@/shared/store/editorStore';
 import { useProjectStore } from '@/shared/store/projectStore';
 import type { Tab } from '@/shared/types';
-import { parseProjectIdFromTabKey, resolveTabKey } from '@/shared/utils/tabKey';
+import { workspaceKeyOf } from '@/shared/utils/workspaceRef';
 
 /**
  * Pull Requests dock 面板适配层：仅本地项目渲染（canManagePRs capability）。
@@ -29,7 +29,7 @@ const PullRequestsPanelWrapper: React.FC = React.memo(() => {
     if (!project) return '';
     // worktree tab key 仅对 local 项目生效（WSL/Remote 使用各自的 worktree 流程）
     if (project.type === 'Local') {
-      return resolveTabKey(project.id, worktreePath);
+      return workspaceKeyOf(project.id, worktreePath);
     }
     return project.id;
   }, [project, worktreePath]);
@@ -76,9 +76,9 @@ const PullRequestsPanelWrapper: React.FC = React.memo(() => {
       const tabId = crypto.randomUUID();
       const tab: Tab = {
         id: tabId,
-        // tab 的 projectId 必须是真实 project id，不能用复合 worktree tab key
-        //（否则后端 resolve_project 找不到项目）
-        projectId: parseProjectIdFromTabKey(tabKey),
+        // tab 的 projectId 直接持真实 project id（值在手边：上面已守卫 project 非空），
+        // 不能用复合 worktree tab key，也不从 tabKey 解回
+        projectId: project.id,
         title,
         order: existingTabs?.tabs.length ?? 0,
         data: {

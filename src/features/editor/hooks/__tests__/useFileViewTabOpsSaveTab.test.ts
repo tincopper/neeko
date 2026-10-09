@@ -4,8 +4,9 @@ import { act, renderHook } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { useEditorStore } from '@/shared/store/editorStore';
-import type { FileTabData, Tab } from '@/shared/types';
+import type { FileTabData, Tab, WorkspaceSession } from '@/shared/types';
 import { isFileTab } from '@/shared/utils/fileTree';
+import { workspaceKeyOf } from '@/shared/utils/workspaceRef';
 
 import { useFileViewTabOps } from '../useFileViewTabOps';
 
@@ -23,6 +24,8 @@ vi.mock('@/features/file/api/fileApi', () => ({
   writeFileContent: writeFileContentMock,
 }));
 
+const MAIN: WorkspaceSession = { projectId: 'p1', worktreePath: null };
+
 function makeFileTab(id: string, overrides: Partial<FileTabData> = {}): Tab {
   return {
     id,
@@ -31,6 +34,7 @@ function makeFileTab(id: string, overrides: Partial<FileTabData> = {}): Tab {
     order: 0,
     data: {
       kind: 'file',
+      workspace: MAIN,
       filePath: `${id}.ts`,
       fileName: `${id}.ts`,
       content: { path: `${id}.ts`, content: 'hello', size: 5, is_binary: false },
@@ -40,12 +44,16 @@ function makeFileTab(id: string, overrides: Partial<FileTabData> = {}): Tab {
   };
 }
 
-function renderOps(setError = vi.fn(), worktreePath: string | null = null) {
+function renderOps(setError = vi.fn(), workspaceRef: WorkspaceSession | null = MAIN) {
   return renderHook(() =>
     useFileViewTabOps({
-      tabKeyRef: { current: 'p1' },
-      worktreePathRef: { current: worktreePath },
-      externalCommandsRef: { current: null },
+      tabKeyRef: {
+        current: workspaceKeyOf(
+          workspaceRef?.projectId ?? 'p1',
+          workspaceRef?.worktreePath ?? null,
+        ),
+      },
+      workspaceRef: { current: workspaceRef },
       setError,
     }),
   );
@@ -61,7 +69,7 @@ describe('useFileViewTabOps saveTabById', () => {
   it('命名文件：读取 store 内容保存到指定 tab 并清除 dirty 标记', async () => {
     act(() => {
       useEditorStore.getState().addTab(
-        'p1',
+        workspaceKeyOf('p1', null),
         makeFileTab('t1', {
           content: { path: 't1.ts', content: 'new content', size: 11, is_binary: false },
         }),
@@ -75,9 +83,15 @@ describe('useFileViewTabOps saveTabById', () => {
       saved = await result.current.saveTabById('t1');
     });
 
-    expect(writeFileContentMock).toHaveBeenCalledWith('p1', 't1.ts', 'new content', null);
+    expect(writeFileContentMock).toHaveBeenCalledWith(
+      { projectId: 'p1', worktreePath: null },
+      't1.ts',
+      'new content',
+    );
     expect(saved).toBe(true);
-    const tab = useEditorStore.getState().tabs['p1']!.tabs.find((t) => t.id === 't1')!;
+    const tab = useEditorStore
+      .getState()
+      .tabs[workspaceKeyOf('p1', null)]!.tabs.find((t) => t.id === 't1')!;
     expect(isFileTab(tab)).toBe(true);
     if (isFileTab(tab)) {
       expect(tab.data.isDirty).toBe(false);
@@ -85,15 +99,20 @@ describe('useFileViewTabOps saveTabById', () => {
     }
   });
 
-  it('worktree：绝对路径以单元根为 rootPath 保存（与读取同源，可写）', async () => {
-    // 回归：Local 保存曾漏传 rootPath → 后端以项目根为 containment 基准，
-    // 绝对 worktree 路径被拒（能读不能写的假可编辑 tab）。
+  /**
+   * 回归（审核 Block 4）：写地址必须 = tab 携带的唯一值 `FileTabData.workspace`。
+   * 旧实现从「当前激活视图」的 ref 现场重组地址 —— 后台组保存 / 切换视图后保存
+   * 会写错工作树。这里让 tab 属于 worktree 组、视图却指向主仓，断言仍写入 worktree。
+   */
+  it('worktree 组内的 tab：视图已切回主仓，写地址仍取 tab.workspace（不漂移）', async () => {
     const wt = '/home/u/.neeko/worktrees/fix-1';
     const abs = `${wt}/src/a.ts`;
+    const wtWorkspace: WorkspaceSession = { projectId: 'p1', worktreePath: wt };
     act(() => {
       useEditorStore.getState().addTab(
-        'p1',
+        workspaceKeyOf('p1', wt),
         makeFileTab('a', {
+          workspace: wtWorkspace,
           filePath: abs,
           fileName: 'a.ts',
           content: { path: abs, content: 'edit', size: 4, is_binary: false },
@@ -102,19 +121,29 @@ describe('useFileViewTabOps saveTabById', () => {
     });
     writeFileContentMock.mockResolvedValue(undefined);
 
-    const { result } = renderOps(vi.fn(), wt);
+    // 视图（refs）指向主仓；tabKeyRef 指到该 tab 所在的 worktree 组。
+    const { result } = renderHook(() =>
+      useFileViewTabOps({
+        tabKeyRef: { current: workspaceKeyOf('p1', wt) },
+        workspaceRef: { current: MAIN },
+        setError: vi.fn(),
+      }),
+    );
     await act(async () => {
       await result.current.saveTabById('a');
     });
 
-    expect(writeFileContentMock).toHaveBeenCalledWith('p1', abs, 'edit', wt);
+    expect(writeFileContentMock).toHaveBeenCalledWith(wtWorkspace, abs, 'edit');
   });
 
   it('untitled tab：saveTabById 触发 Save As 并携带 closeAfterSave: true（关闭确认链路）', async () => {
     act(() => {
       useEditorStore
         .getState()
-        .addTab('p1', makeFileTab('u1', { isUntitled: true, untitledName: 'Untitled-1' }));
+        .addTab(
+          workspaceKeyOf('p1', null),
+          makeFileTab('u1', { isUntitled: true, untitledName: 'Untitled-1' }),
+        );
     });
 
     const { result } = renderOps();
@@ -127,7 +156,7 @@ describe('useFileViewTabOps saveTabById', () => {
     expect(requestSaveAsMock).toHaveBeenCalledWith(
       expect.objectContaining({
         tabId: 'u1',
-        tabKey: 'p1',
+        tabKey: workspaceKeyOf('p1', null),
         content: 'hello',
         defaultFilename: 'Untitled-1',
         closeAfterSave: true,
@@ -140,7 +169,10 @@ describe('useFileViewTabOps saveTabById', () => {
     act(() => {
       useEditorStore
         .getState()
-        .addTab('p1', makeFileTab('u1', { isUntitled: true, untitledName: 'Untitled-1' }));
+        .addTab(
+          workspaceKeyOf('p1', null),
+          makeFileTab('u1', { isUntitled: true, untitledName: 'Untitled-1' }),
+        );
     });
 
     const { result } = renderOps();
@@ -157,7 +189,7 @@ describe('useFileViewTabOps saveTabById', () => {
 
   it('找不到 tab 或非文件 tab：返回 false 且不写盘', async () => {
     act(() => {
-      useEditorStore.getState().addTab('p1', {
+      useEditorStore.getState().addTab(workspaceKeyOf('p1', null), {
         id: 'term',
         projectId: 'p1',
         title: 'term',
@@ -183,7 +215,7 @@ describe('useFileViewTabOps saveTabById', () => {
 
   it('写盘失败：返回 false 并上报错误', async () => {
     act(() => {
-      useEditorStore.getState().addTab('p1', makeFileTab('t1'));
+      useEditorStore.getState().addTab(workspaceKeyOf('p1', null), makeFileTab('t1'));
     });
     writeFileContentMock.mockRejectedValue(new Error('disk full'));
     const setError = vi.fn();
