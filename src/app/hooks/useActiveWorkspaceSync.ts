@@ -1,11 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
 
-import { useActivateRepoUnit } from '@/features/git/hooks/useActivateRepoUnit';
+import { useActivateWorkspace } from '@/features/git/hooks/useActivateWorkspace';
 import { selectStatus, useProjectStore } from '@/shared/store/projectStore';
-import { useActiveRepoKey, useActiveWorktreePath } from '@/shared/store/worktreeStore';
+import { useActiveWorkspaceKey, useActiveCheckoutPath } from '@/shared/store/workspaceStore';
 import { logFrontendError } from '@/shared/utils/errorReporting';
-import { repoKeyLabel } from '@/shared/utils/repoRef';
 import { createRetryBudget, type RetryPolicy } from '@/shared/utils/retryBudget';
+import { workspaceKeyLabel } from '@/shared/utils/workspaceRef';
 
 /**
  * 挂载收敛策略：当前单元还没拿到权威快照时，最多再试 3 次（退避 250 → 500 → 1000ms）。
@@ -20,7 +20,7 @@ import { createRetryBudget, type RetryPolicy } from '@/shared/utils/retryBudget'
 const ACTIVATION_RETRY: RetryPolicy = { maxAttempts: 4, baseDelayMs: 250, maxDelayMs: 1000 };
 
 /**
- * 「当前视图是哪个仓库单元」→ 后端挂载 的唯一同步点（决策 D-B 的落地点）。
+ * 「当前视图是哪个Workspace」→ 后端挂载 的唯一同步点（决策 D-B 的落地点）。
  *
  * **形态是 reconciliation，不是事件响应**：收敛目标是「当前视图单元此刻有权威快照」这一个
  * 状态，而不是「某次请求返回了什么」。`mounted` / `stale` / `failed` 都只描述那一次请求，
@@ -31,15 +31,15 @@ const ACTIVATION_RETRY: RetryPolicy = { maxAttempts: 4, baseDelayMs: 250, maxDel
  * **两个判据必须分开（这是本 hook 的正确性核心）**：
  *
  * 1. **要不要发挂载请求** —— 判据是**意图边沿**（`requestedIntent`）：意图变了就必须请后端
- *    接管这个单元。**不能**用「槽位非空」代替：`get_repo_status` 的 pull 读（`useSessionBootstrap`
+ *    接管这个单元。**不能**用「槽位非空」代替：`get_workspace_status` 的 pull 读（`useSessionBootstrap`
  *    启动时对每个 git 项目的主仓单元各拉一次）同样会写槽位，而 pull 不建立 push 生产者。
  *    把「槽位非空」当「已挂载」，冷启动竞态与「切到该项目」都会跳过挂载 ⇒ 该单元没有 watcher，
  *    列表冻结在那一刻（本 hook 要根治的症状形态）。后端资源状态才是唯一权威，前端的替代证据
  *    只能是「我自己的请求历史」。
  * 2. **要不要重试** —— 判据是**槽位为空**：有权威数据就收敛完成（归还预算），没有就有界重试。
  *
- * 订阅 `(activeProjectId, 该项目激活的 worktree 路径)` 派生的意图 —— 派生点在 `worktreeStore`
- * 一处（`useActiveRepoKey`）。用户动作只写激活态（见 `useWorktreeState.activateWorktree`），
+ * 订阅 `(activeProjectId, 该项目激活的 worktree 路径)` 派生的意图 —— 派生点在 `workspaceStore`
+ * 一处（`useActiveWorkspaceKey`）。用户动作只写激活态（见 `useWorktreeState.activateWorktree`），
  * 因此挂载发起点仍然只有这一个。
  *
  * **所依赖的前提（改动前先读）**：`requestedIntent` 是前端对「后端已接管谁」的记账，它成立
@@ -50,25 +50,25 @@ const ACTIVATION_RETRY: RetryPolicy = { maxAttempts: 4, baseDelayMs: 250, maxDel
  * 启发式 —— 那正是本文件要根治的错误形态。
  *
  * 记账是**实例级**的：整树重挂（HMR / StrictMode 重挂载）后它会归零，于是对已挂载单元会多发
- * 一次 `set_active_repo_unit`。后端 `mount_only` 幂等（不重建资源、不打重复注册告警），代价是
+ * 一次 `set_active_workspace`。后端 `mount_only` 幂等（不重建资源、不打重复注册告警），代价是
  * 一次 IPC —— 这是有意接受的下界，不是重复挂载。
  *
- * 非 git 项目（`git_info === null`）不发命令（`useActivateRepoUnit` 内亦有同一守卫，
+ * 非 git 项目（`git_info === null`）不发命令（`useActivateWorkspace` 内亦有同一守卫，
  * 因为项目切换与 git_info 落地之间可能先到这里）。
  */
-export function useActiveRepoUnitSync(): void {
+export function useActiveWorkspaceSync(): void {
   const activeProjectId = useProjectStore((s) => s.activeProjectId);
-  const activeWorktreePath = useActiveWorktreePath();
+  const activeCheckoutPath = useActiveCheckoutPath();
   const isGitProject = useProjectStore((s) => {
     if (!s.activeProjectId) return false;
     const project = s.projects.find((p) => p.id === s.activeProjectId);
     // undefined（项目清单尚未加载）保守视为「先不动」；null = 明确非 git
     return project ? project.git_info !== null : false;
   });
-  const activate = useActivateRepoUnit(activeProjectId);
+  const activate = useActivateWorkspace(activeProjectId);
 
   /** 本轮要收敛的意图 = 当前视图单元的身份（与后端挂载、前端槽位同一把键）。 */
-  const intent = useActiveRepoKey(activeProjectId);
+  const intent = useActiveWorkspaceKey(activeProjectId);
   const hasSnapshot = useProjectStore(
     (s) => intent !== null && selectStatus(s, intent) !== undefined,
   );
@@ -105,9 +105,9 @@ export function useActiveRepoUnitSync(): void {
       if (reportedGiveUp.current !== intent) {
         reportedGiveUp.current = intent;
         void logFrontendError({
-          source: 'repo-unit-sync',
+          source: 'workspace-sync',
           message:
-            `no authoritative status for unit ${repoKeyLabel(intent)} after ` +
+            `no authoritative status for workspace ${workspaceKeyLabel(intent)} after ` +
             `${ACTIVATION_RETRY.maxAttempts} attempts; leaving it unknown`,
         });
       }
@@ -122,9 +122,9 @@ export function useActiveRepoUnitSync(): void {
       // 它决定的是「槽位非空时是否还需要请后端接管」，不是「数据到没到」。
       requestedIntent.current = intent;
       // `finally` 而非 `then`：一轮的结束与结局无关，收敛循环不能建立在「callee 永不 reject」
-      // 这条只写在注释里的契约上（`useActivateRepoUnit` 契约上失败即 outcome，不抛错）。
+      // 这条只写在注释里的契约上（`useActivateWorkspace` 契约上失败即 outcome，不抛错）。
       // 万一契约被改坏，rejection 仍经全局 `unhandledrejection` 上报 neeko.log，不会被吞。
-      void activate(activeWorktreePath ?? null).finally(() => {
+      void activate(activeCheckoutPath ?? null).finally(() => {
         if (inflightIntent.current === intent) inflightIntent.current = null;
         // 一轮结束仍未落地 ⇒ 推动下一轮（重试的唯一驱动源）
         if (selectStatus(useProjectStore.getState(), intent) === undefined) {
@@ -140,7 +140,7 @@ export function useActiveRepoUnitSync(): void {
     };
   }, [
     activeProjectId,
-    activeWorktreePath,
+    activeCheckoutPath,
     isGitProject,
     activate,
     hasSnapshot,

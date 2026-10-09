@@ -14,7 +14,7 @@ import { langIo } from '../languages/io';
 import type { RunTarget } from '../runTarget';
 
 import type { TestActionContext } from './context';
-import { resolveRunCwd } from './context';
+import { runCwdOf } from './context';
 import { pushBuildLogTail, notifyDebugError } from './debugConsole';
 import type { NativeDebugLaunchConfig, TestBinaryResult } from './nativeBuild';
 
@@ -111,7 +111,7 @@ export async function runNativeDebug(
     );
     return;
   }
-  const cwd = resolveRunCwd(ctx);
+  const cwd = runCwdOf(ctx);
   try {
     await useDebugStore
       .getState()

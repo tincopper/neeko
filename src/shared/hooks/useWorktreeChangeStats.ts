@@ -3,7 +3,7 @@ import { useShallow } from 'zustand/shallow';
 
 import { selectEntries, useProjectStore } from '@/shared/store/projectStore';
 import type { GitStatusSnapshot, Worktree } from '@/shared/types';
-import { repoKeyOf, type RepoKey } from '@/shared/utils/repoRef';
+import { workspaceKeyOf, type WorkspaceKey } from '@/shared/utils/workspaceRef';
 
 /** worktree 行的 +A -D 聚合（本 hook 的返回值形状，不外泄）。 */
 interface ChangeStat {
@@ -16,7 +16,7 @@ interface ChangeStat {
  *
  * 本地侧栏与 WSL/SSH 侧栏可能同时挂载同一项目 —— 两份 `fetchedRef` 各自记账，若不去重就会
  * 对同一单元发 2× RPC。单飞只合并「并发」，promise 落定即释放：后续触发（清单变化 / 重挂）
- * 仍会重拉。键是仓库单元身份（含 projectId），不做跨项目错误共享。
+ * 仍会重拉。键是Workspace身份（含 projectId），不做跨项目错误共享。
  */
 const inFlight = new Map<string, Promise<GitStatusSnapshot | null>>();
 
@@ -49,14 +49,14 @@ function fetchOnce(
  *    事实）；挂载级 ref 恢复「重新打开面板即重拉」。它同时防住
  *    `applyStatus` → statuses 变化 → effect 重跑 → 再拉取的自激环。
  *
- * 拉取失败 / 身份漂移（`repo_key` 不匹配）= 未知：退出已拉清单（允许重试），**绝不写 `0/0`**。
+ * 拉取失败 / 身份漂移（`workspace_key` 不匹配）= 未知：退出已拉清单（允许重试），**绝不写 `0/0`**。
  *
- * **不做组件生命周期取消**：`applyStatus` 写的是全局 store（按 `repo_key` 定址、version 闸门），
+ * **不做组件生命周期取消**：`applyStatus` 写的是全局 store（按 `workspace_key` 定址、version 闸门），
  * 不是组件本地 state —— 组件卸载 / `React.StrictMode` 重挂之后应用它依然正确且有益。曾用
  * `cancelled` 丢弃首轮结果，而 StrictMode（`main.tsx` 已启用）的「重挂」会让次轮因 key 已在
  * 已拉清单而跳过 ⇒ 结果被两头丢掉、chip 永不出现（测试无 StrictMode 包裹，故曾静默通过）。
  *
- * @param fetchStatus 按需拉取某单元 status 的实现（本地走 `getRepoStatus`，远端走连接域命令面）；
+ * @param fetchStatus 按需拉取某单元 status 的实现（本地走 `getWorkspaceStatus`，远端走连接域命令面）；
  *   失败应返回 `null` 而非抛出。
  */
 export function useWorktreeChangeStats(
@@ -67,25 +67,25 @@ export function useWorktreeChangeStats(
   // 精确订阅：只关心本列表每个单元自己的 entries。槽位是不可变更新，entries 引用变化 =
   // 该单元真的变了；`useShallow` 让别的单元的快照推送不触发本列表重渲。
   const perUnitEntries = useProjectStore(
-    useShallow((s) => worktrees.map((wt) => selectEntries(s, repoKeyOf(projectId, wt.path)))),
+    useShallow((s) => worktrees.map((wt) => selectEntries(s, workspaceKeyOf(projectId, wt.path)))),
   );
-  const fetchedRef = useRef<Set<RepoKey>>(new Set());
+  const fetchedRef = useRef<Set<WorkspaceKey>>(new Set());
 
   useEffect(() => {
     if (!fetchStatus) return;
     // 先收敛「已拉清单」到当前列表：单元被移出列表后它的 key 必须退出 —— 否则同一挂载内
     // 「删掉再建同路径」不会重拉，清单也会无界增长。
-    const present = new Set(worktrees.map((wt) => repoKeyOf(projectId, wt.path)));
+    const present = new Set(worktrees.map((wt) => workspaceKeyOf(projectId, wt.path)));
     for (const key of fetchedRef.current) {
       if (!present.has(key)) fetchedRef.current.delete(key);
     }
     for (const wt of worktrees) {
-      const key = repoKeyOf(projectId, wt.path);
+      const key = workspaceKeyOf(projectId, wt.path);
       if (fetchedRef.current.has(key)) continue;
       fetchedRef.current.add(key);
       fetchOnce(key, wt.path, fetchStatus)
         .then((snapshot) => {
-          if (!snapshot || snapshot.repo_key !== key) {
+          if (!snapshot || snapshot.workspace_key !== key) {
             // 失败 / 身份漂移 = 未知：退出已拉清单，下一次触发（清单变化 / 重挂载）可重试。
             fetchedRef.current.delete(key);
             return;

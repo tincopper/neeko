@@ -1,7 +1,7 @@
 """阻塞原语护栏用例。
 
 回归来源（两轮 neeko-check）：
-- 10-01：29 处 `resolve_repo` + 8 处 `resolve_base` + 6 处 `UnitPath::resolve` 直连跑在 worker 上；
+- 10-01：29 处 `resolve_workspace` + 8 处 `resolve_base` + 6 处 `CheckoutPath::resolve` 直连跑在 worker 上；
 - 10-02：`assert_git_repo` / `transport.open_repo` / `is_git_repo` 在同一代码路径上仍是同步实现。
 
 两次都是「修了旧的、新写的又踩」，故本护栏存在的意义是让第三次无法合入。判据的三条前提
@@ -44,7 +44,7 @@ class BlockingFsInCommandsTest(unittest.TestCase):
                 COMMAND_FILE: (
                     "#[tauri::command]\n"
                     "pub async fn create_worktree(p: String) -> Result<(), AppError> {\n"
-                    "    let unit = UnitPath::resolve(&t, &p)?;\n"
+                    "    let unit = CheckoutPath::resolve(&t, &p)?;\n"
                     "    Ok(())\n"
                     "}\n"
                 )
@@ -71,12 +71,12 @@ class BlockingFsInCommandsTest(unittest.TestCase):
         self.assertEqual(result.verdict, VIOLATION)
         self.assertEqual([f.line for f in result.findings], [2, 3])
 
-    def test_repo_ref_resolve_and_local_is_git_repo_in_async_fn_are_violations(self):
+    def test_workspace_ref_resolve_and_local_is_git_repo_in_async_fn_are_violations(self):
         result = self.run_guard(
             {
                 COMMAND_FILE: (
                     "pub async fn f() {\n"
-                    '    let repo = RepoRef::resolve("p1", "/r", None, &t);\n'
+                    '    let repo = WorkspaceRef::resolve("p1", "/r", None, &t);\n'
                     "    let ok = crate::git::is_git_repo(&path);\n"
                     "}\n"
                 )
@@ -93,7 +93,7 @@ class BlockingFsInCommandsTest(unittest.TestCase):
             {
                 OPS_FILE: (
                     "fn normalized_worktree(raw: &str) -> Option<Worktree> {\n"
-                    "    match UnitPath::resolve(&ExecTarget::Local, raw) {\n"
+                    "    match CheckoutPath::resolve(&ExecTarget::Local, raw) {\n"
                     "        Ok(p) => Some(Worktree { path: p.identity().to_string() }),\n"
                     "        Err(_) => None,\n"
                     "    }\n"
@@ -109,7 +109,7 @@ class BlockingFsInCommandsTest(unittest.TestCase):
                 COMMAND_FILE: (
                     "pub async fn read_dir_tree(p: String) -> Result<(), AppError> {\n"
                     "    let repo = tokio::task::spawn_blocking(move || {\n"
-                    "        RepoRef::resolve(&pid, &wd, Some(&p), &target)\n"
+                    "        WorkspaceRef::resolve(&pid, &wd, Some(&p), &target)\n"
                     "    })\n"
                     "    .await\n"
                     "    .map_err(|e| AppError::Unknown(e.to_string()))?;\n"
@@ -132,7 +132,7 @@ class BlockingFsInCommandsTest(unittest.TestCase):
                     "pub async fn f(t: &dyn T) -> Result<(), AppError> {\n"
                     "    run_blocking_result(move || {\n"
                     '        let _ = t.open_repo("/x");\n'
-                    "        RepoRef::resolve(&pid, &wd, None, &target)\n"
+                    "        WorkspaceRef::resolve(&pid, &wd, None, &target)\n"
                     "    })\n"
                     "    .await\n"
                     "}\n"
@@ -151,8 +151,8 @@ class BlockingFsInCommandsTest(unittest.TestCase):
                     "        return Ok(());\n"
                     "    }\n"
                     "    let ok = t.is_git_repo(work_dir).await;\n"
-                    "    let unit = UnitPath::resolve_async(&t, work_dir).await?;\n"
-                    "    let repo = state.resolve_repo(&pid, Some(work_dir)).await?;\n"
+                    "    let unit = CheckoutPath::resolve_async(&t, work_dir).await?;\n"
+                    "    let repo = state.resolve_workspace(&pid, Some(work_dir)).await?;\n"
                     "    Ok(())\n"
                     "}\n"
                 )
@@ -171,12 +171,12 @@ class BlockingFsInCommandsTest(unittest.TestCase):
                     "    #[tokio::test]\n"
                     "    async fn uses_sync_core() {\n"
                     '        assert!(assert_git_repo(std::path::Path::new("/x")).is_err());\n'
-                    '        let _ = UnitPath::resolve(&t, "/x");\n'
+                    '        let _ = CheckoutPath::resolve(&t, "/x");\n'
                     "    }\n"
                     "}\n"
                 ),
                 "src-tauri/src/common/git/operations/tests.rs": (
-                    'async fn fake() {\n    let _ = UnitPath::resolve(&t, "/x");\n}\n'
+                    'async fn fake() {\n    let _ = CheckoutPath::resolve(&t, "/x");\n}\n'
                 ),
             }
         )
@@ -188,7 +188,7 @@ class BlockingFsInCommandsTest(unittest.TestCase):
             {
                 "src-tauri/src/common/git/local/diff.rs": (
                     "pub fn assert_git_repo(p: &Path) -> Result<()> {\n"
-                    '    let _ = UnitPath::resolve(&t, "/x");\n'
+                    '    let _ = CheckoutPath::resolve(&t, "/x");\n'
                     "    Ok(())\n"
                     "}\n"
                 )
@@ -208,7 +208,7 @@ class BlockingFsInCommandsTest(unittest.TestCase):
                     "    run_blocking(move || {\n"
                     "        let paren = '(';\n"
                     '        let _ = t.open_repo("/x");\n'
-                    '        let unit = UnitPath::resolve(&t, "/x");\n'
+                    '        let unit = CheckoutPath::resolve(&t, "/x");\n'
                     "    })\n"
                     "    .await\n"
                     "}\n"
@@ -224,7 +224,7 @@ class BlockingFsInCommandsTest(unittest.TestCase):
                 COMMAND_FILE: (
                     "pub async fn f() -> Result<(), AppError> {\n"
                     "    // 结束 } 与开括号 (\n"
-                    '    let unit = UnitPath::resolve(&t, "/x")?;\n'
+                    '    let unit = CheckoutPath::resolve(&t, "/x")?;\n'
                     "    Ok(())\n"
                     "}\n"
                 )

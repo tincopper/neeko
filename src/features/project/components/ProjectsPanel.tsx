@@ -23,7 +23,7 @@ import { useRemoteContext } from '@/shared/contexts/RemoteContext';
 import { useWslContext } from '@/shared/contexts/WslContext';
 import { useAheadBehindSync } from '@/shared/hooks/useAheadBehindSync';
 import { useProjectStore } from '@/shared/store/projectStore';
-import { useActiveWorktreePath } from '@/shared/store/worktreeStore';
+import { useActiveCheckoutPath } from '@/shared/store/workspaceStore';
 import { getDistroIcon } from '@/shared/utils/distros';
 
 import serverIcon from '../../../assets/server.svg';
@@ -34,7 +34,7 @@ const ProjectsPanel: React.FC = () => {
   const { config, agents, ideCommandOverrides, showToast } = useAppContext();
   const projects = useProjectStore((state) => state.projects);
   const activeProjectId = useProjectStore((state) => state.activeProjectId);
-  const activeWorktreePath = useActiveWorktreePath();
+  const activeCheckoutPath = useActiveCheckoutPath();
   const {
     onRemoveProject,
     onSelectProject,
@@ -180,7 +180,7 @@ const ProjectsPanel: React.FC = () => {
     async (projectId: string) => {
       const projectPath = projects.find((p) => p.id === projectId)?.path ?? '';
       try {
-        const worktreePath = activeProjectId === projectId ? activeWorktreePath : null;
+        const worktreePath = activeProjectId === projectId ? activeCheckoutPath : null;
         const result = await runGitConsoleOp({
           header: 'git push',
           projectId,
@@ -203,14 +203,14 @@ const ProjectsPanel: React.FC = () => {
         showToast?.(String(e), 'error');
       }
     },
-    [projects, activeProjectId, activeWorktreePath, onRefreshGit, showToast],
+    [projects, activeProjectId, activeCheckoutPath, onRefreshGit, showToast],
   );
 
   const handlePull = useCallback(
     async (projectId: string) => {
       const projectPath = projects.find((p) => p.id === projectId)?.path ?? '';
       try {
-        const worktreePath = activeProjectId === projectId ? activeWorktreePath : null;
+        const worktreePath = activeProjectId === projectId ? activeCheckoutPath : null;
         const result = await runGitConsoleOp({
           header: 'git pull',
           projectId,
@@ -233,7 +233,7 @@ const ProjectsPanel: React.FC = () => {
         showToast?.(String(e), 'error');
       }
     },
-    [projects, activeProjectId, activeWorktreePath, onRefreshGit, showToast],
+    [projects, activeProjectId, activeCheckoutPath, onRefreshGit, showToast],
   );
 
   return (

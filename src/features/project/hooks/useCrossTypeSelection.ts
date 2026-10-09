@@ -3,21 +3,21 @@ import { useCallback } from 'react';
 import { useAppViewStore } from '@/shared/store/appViewStore';
 import { useConnectionStore } from '@/shared/store/connectionStore';
 import { useProjectStore } from '@/shared/store/projectStore';
-import { useWorktreeStore } from '@/shared/store/worktreeStore';
+import { useWorkspaceStore } from '@/shared/store/workspaceStore';
 
 interface WslActions {
   setWslDiffState: ((state: null) => void) | undefined;
   resetTransientState: () => void;
   handleRefreshGit: (distro: string, projectId: string, projectPath: string) => void;
   handleOpenWorktreeTerminal: (distro: string, worktreePath: string, branch: string) => void;
-  setActiveWorktreePath: (path: string | null) => void;
+  setActiveWorkspacePath: (path: string | null) => void;
 }
 
 interface RemoteActions {
   resetTransientState: () => void;
   handleRefreshGit: (entryId: string, projectId: string, projectPath: string) => void;
   handleOpenWorktreeTerminal: (entryId: string, worktreePath: string, branch: string) => void;
-  setActiveWorktreePath: (path: string | null) => void;
+  setActiveWorkspacePath: (path: string | null) => void;
 }
 
 interface UseCrossTypeSelectionOptions {
@@ -41,9 +41,9 @@ export function useCrossTypeSelection({
     async (projectId: string) => {
       closeSettingsView();
 
-      // 切换项目类型：清掉各项目的激活单元（后端挂载由 useActiveRepoUnitSync 跟随）
-      for (const pid of Object.keys(useWorktreeStore.getState().byProject)) {
-        useWorktreeStore.getState().clearActiveWorktree(pid);
+      // 切换项目类型：清掉各项目的激活单元（后端挂载由 useActiveWorkspaceSync 跟随）
+      for (const pid of Object.keys(useWorkspaceStore.getState().byProject)) {
+        useWorkspaceStore.getState().clearActiveWorkspace(pid);
       }
       wslActions.setWslDiffState?.(null);
       remoteActions.resetTransientState();

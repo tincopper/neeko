@@ -22,7 +22,7 @@ src/
 │   ├── panels/              # 固定面板体系（registry placement 单一事实源 + PanelHost 按 placement 渲染 + TitleBarActions）
 │   ├── components/          # app 级协调组件（可 import features）
 │   │   ├── AppCenter.tsx         # 中心视图路由（单一数据源 appViewStore）
-│   │   ├── ProjectWorkspace.tsx  # 项目工作区协调器（原 layout/MainContent）
+│   │   ├── ProjectView.tsx  # 项目工作区协调器（原 layout/MainContent）
 │   │   ├── ToolbarFooter.tsx     # 左 DockBar 底部按钮簇（Add Project + Settings，经 toolbarFooterLeft slot 注入）
 │   │   ├── AddProjectMenu.tsx    # 添加项目菜单（原 layout/）
 │   │   ├── DockBarButton.tsx     # Dock 栏按钮（读 feature store）
@@ -184,7 +184,7 @@ src-tauri/
 |------|------|
 | projects / activeProject / IDE 动作 | `shared/store/projectStore.ts` |
 | WSL + Remote 条目 / 认证 | `shared/store/connectionStore.ts` |
-| worktree 激活态 | `shared/store/worktreeStore.ts` |
+| worktree 激活态 | `shared/store/workspaceStore.ts` |
 | tabs / editorLayout / tab CRUD | `shared/store/editorStore.ts` |
 | aheadBehind | `shared/store/gitStore.ts` |
 | leftPanelWidth（运行期像素） | `shared/store/dockStore.ts` |
@@ -196,7 +196,7 @@ src-tauri/
 
 | 文件 / 目录（旧） | 文件 / 目录（新） | 说明 |
 |------|------|------|
-| `layout/MainContent.tsx` | `app/components/ProjectWorkspace.tsx` | app 层项目工作区协调器 |
+| `layout/MainContent.tsx` | `app/components/ProjectView.tsx` | app 层项目工作区协调器 |
 | `layout/dock-layout/DockPanelWrappers.tsx` | `app/dock/wrappers/`（每面板一文件） | feature store/context 注入到 panel |
 | `layout/OpenIdeButton.tsx` | `app/components/OpenIdeButton.tsx` | 业务按钮 |
 | `layout/dock-layout/DockBarButton.tsx` | `app/components/DockBarButton.tsx` | 依赖 feature store 的 Dock 按钮 |
@@ -209,7 +209,7 @@ src-tauri/
 ```
 ui/          ← layout/     (纯骨架：DockLayout、TitleBar slot)
 shared/      ← features/   (各自独立业务域)
-features/    ← app/        (协调层：ProjectWorkspace、app/dock/wrappers/、slot 填充)
+features/    ← app/        (协调层：ProjectView、app/dock/wrappers/、slot 填充)
 layout/      ← app/        (app 组装骨架并填充 slot)
 ```
 
@@ -256,7 +256,7 @@ layout/      ← app/        (app 组装骨架并填充 slot)
 |------|------|---------|
 | `layout/` | 窗口边框（纯骨架） | TitleBar、WindowControls、DockRegistryContext、useFullscreen、islands |
 | `layout/dock-layout/` | Dock 布局框架 | DockBar、DockLayout、DockZone、拖拽 Hook 等 |
-| `app/components/` | app 协调组件 | ProjectWorkspace、DockBarButton、OpenIdeButton、SplashScreen |
+| `app/components/` | app 协调组件 | ProjectView、DockBarButton、OpenIdeButton、SplashScreen |
 | `app/dock/` | Dock UI 注册表 + 胶水 | registry、wrappers/（每面板一文件） |
 | `shared/dock/` | Dock 纯 meta | DOCK_PANEL_META（供 dockStore） |
 | `ui/` | UI 基元 | ContextMenu、DropdownMenu、Resizable（分栏基元）、OverlayPanel、ScrollArea、ToggleGroup |
@@ -321,7 +321,7 @@ export { createTerminalForProject } from "./terminalFactory";
 src/shared/contexts/        横切上下文（App / Editor / TerminalInsert / Wsl / Remote / ConnectionProject）
 src/features/*/contexts/    域内动作上下文（如 features/editor/FileActionsContext.tsx、
                             features/project/ProjectContext.tsx、features/connection/contexts/*）
-src/shared/store/           跨域状态（projectStore / worktreeStore / editorStore / dockStore /
+src/shared/store/           跨域状态（projectStore / workspaceStore / editorStore / dockStore /
                             appViewStore / gitStore / connectionStore …）
 src/features/*/store.ts     域内状态（如 features/file/store.ts、features/skill/store.ts）
 src/shared/hooks/           跨域共享 hook（useToast / useTauriEvent / useKeyboardShortcuts …）
@@ -400,6 +400,6 @@ const projectTabs = useEditorStore((s) => s.tabs[tabKey]);
 ## 示例
 
 - 纯布局骨架：`src/layout/` —— TitleBar/DockLayout/WindowControls 只暴露 slots，不 import features（`AppLayout` 已删除）
-- app 协调层：`src/app/components/ProjectWorkspace.tsx` + `src/app/dock/wrappers/`（每面板一文件）
+- app 协调层：`src/app/components/ProjectView.tsx` + `src/app/dock/wrappers/`（每面板一文件）
 - Hook 模式：`src/shared/hooks/` 与 `src/app/hooks/useAppShell.ts`
 - 工具模式：`src/shared/utils/platform.ts`

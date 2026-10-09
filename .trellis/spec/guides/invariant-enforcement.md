@@ -14,7 +14,7 @@
 
 | 层 | 含义 | 例子 |
 | --- | --- | --- |
-| `type` | 编译期：非法状态**写不出来** | `RepoRef` 的 `Eq/Hash` 由 `key()` 定义 |
+| `type` | 编译期：非法状态**写不出来** | `WorkspaceRef` 的 `Eq/Hash` 由 `key()` 定义 |
 | `structure` | 模块 / 所有权：装配点唯一，**绕不过** | `WatcherEventSink` 端口 + 组合根装配 |
 | `guard` | 确定性静态判据（CI 可复现） | `tools/guards/checks/*` |
 | `lint` | 既有 lint 规则 | `.eslintrc.cjs` 的某条规则 |
@@ -39,11 +39,11 @@
   "invariants": [
     {
       "id": "repo-unit-key-single-source",
-      "title": "仓库单元身份只能由 RepoRef / repoKeyOf 产出",
+      "title": "Workspace身份只能由 WorkspaceRef / workspaceKeyOf 产出",
       "tier": "guard",
       "enforcement": [
-        { "kind": "guard", "ref": "check_repo_unit_identity" },
-        { "kind": "test", "ref": "tools/guards/tests/test_check_repo_unit_identity.py" }
+        { "kind": "guard", "ref": "check_workspace_identity" },
+        { "kind": "test", "ref": "tools/guards/tests/test_check_workspace_identity.py" }
       ],
       "red_line": 12
     }

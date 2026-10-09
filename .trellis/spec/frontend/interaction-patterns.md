@@ -420,7 +420,7 @@ export function stripImeSegmentationSpaces(data: string): string;
                        │ 模块级 pendingDrag: { path, projectId }
                        ▼
 ┌─────────────────────────────────────────────────────────────┐
-│  useFileDrop hook（ProjectWorkspace 顶层挂载）                │
+│  useFileDrop hook（ProjectView 顶层挂载）                │
 │  document.addEventListener('dragend', handleDragEnd)         │
 │                                                              │
 │  Priority 1: document.activeElement 是 textarea /            │

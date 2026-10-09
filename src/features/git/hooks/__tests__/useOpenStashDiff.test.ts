@@ -5,7 +5,7 @@ import { useOpenStashDiff } from '@/features/git/hooks/useOpenStashDiff';
 import type { StashEntry } from '@/features/git/types';
 import { useEditorStore } from '@/shared/store/editorStore';
 import { useProjectStore } from '@/shared/store/projectStore';
-import { useWorktreeStore } from '@/shared/store/worktreeStore';
+import { useWorkspaceStore } from '@/shared/store/workspaceStore';
 import { buildWorktreeTabKey } from '@/shared/utils/tabKey';
 
 const STASHES: StashEntry[] = [
@@ -29,7 +29,7 @@ describe('useOpenStashDiff', () => {
   beforeEach(() => {
     useEditorStore.setState({ tabs: {}, activeTabId: null });
     useProjectStore.setState({ activeProjectId: null });
-    useWorktreeStore.setState({ activeWorktreePath: null, activeWorktreeBranch: '' });
+    useWorkspaceStore.setState({ byProject: {} });
   });
 
   it('点击 stash 文件打开 diff tab：diffSource 为 stash 变体，标题 stash@{n}: <message>', () => {
@@ -87,7 +87,7 @@ describe('useOpenStashDiff', () => {
   it('worktree 激活时 diff tab 落在 worktree tab key 且 projectId 为真实 project id', () => {
     const wtPath = '/wt/proj';
     useProjectStore.setState({ activeProjectId: 'proj-1' });
-    useWorktreeStore.setState({ activeWorktreePath: wtPath, activeWorktreeBranch: 'feature-x' });
+    useWorkspaceStore.getState().setActiveWorkspace('proj-1', wtPath, 'feature-x');
     const { result } = renderHook(() => useOpenStashDiff('proj-1', wtPath, STASHES));
 
     act(() => {

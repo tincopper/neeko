@@ -32,7 +32,7 @@ pub enum WatcherEvent<'a> {
     FileChanged(&'a FileChangedEvent),
     /// `file-tree-changed`：结构事件（受影响目录集合）
     TreeChanged(&'a FileTreeChangedEvent),
-    /// `git-changed`：某单元的 git 元数据变化提示（载荷含 repo_key + project_id）
+    /// `git-changed`：某单元的 git 元数据变化提示（载荷含 workspace_key + project_id）
     GitChanged(&'a GitChangedEvent),
     /// `git-status-snapshot`：versioned 全量 status 快照
     StatusSnapshot(&'a GitStatusSnapshot),
@@ -145,11 +145,11 @@ pub(crate) mod test_support {
     fn collecting_sink_records_event_names() {
         use super::super::types::FileChangedEvent;
 
-        // 夹具也不手拼 key：身份一律由 RepoRef 产出（护栏判据 6 对测试支撑代码同样生效）
-        let repo = crate::common::git::RepoRef::main("p1", "/repo");
+        // 夹具也不手拼 key：身份一律由 WorkspaceRef 产出（护栏判据 6 对测试支撑代码同样生效）
+        let repo = crate::common::git::WorkspaceRef::main("p1", "/repo");
         let sink = CollectingSink::new();
         let payload = FileChangedEvent {
-            repo_key: repo.key(),
+            workspace_key: repo.key(),
             project_id: "p1".into(),
             paths: vec!["a.txt".into()],
         };
@@ -170,7 +170,7 @@ mod tests {
 
     use super::*;
 
-    /// 五个变体的夹具（身份一律由 `RepoRef` 产出，不手拼 key）。
+    /// 五个变体的夹具（身份一律由 `WorkspaceRef` 产出，不手拼 key）。
     struct Fixtures {
         file_changed: FileChangedEvent,
         tree_changed: FileTreeChangedEvent,
@@ -181,22 +181,22 @@ mod tests {
 
     impl Fixtures {
         fn new() -> Self {
-            let repo = crate::common::git::RepoRef::main("p1", "/repo");
+            let repo = crate::common::git::WorkspaceRef::main("p1", "/repo");
             Self {
                 file_changed: FileChangedEvent {
-                    repo_key: repo.key(),
+                    workspace_key: repo.key(),
                     project_id: "p1".into(),
                     paths: vec!["a.txt".into()],
                 },
                 tree_changed: FileTreeChangedEvent {
-                    repo_key: repo.key(),
+                    workspace_key: repo.key(),
                     project_id: "p1".into(),
                     dirs: vec!["src".into()],
                 },
                 git_changed: GitChangedEvent::new(&repo),
                 snapshot: GitStatusSnapshot::for_unit(&repo, 1),
                 perf: GitPerfSuggestionEvent {
-                    repo_key: repo.key(),
+                    workspace_key: repo.key(),
                     project_id: "p1".into(),
                     suggestions: Vec::new(),
                 },

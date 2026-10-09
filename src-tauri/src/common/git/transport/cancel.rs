@@ -3,7 +3,7 @@
 //! `GitSyncHandle` 与 `project::clone::CloneHandle` 同构：watch 通道 + keep-alive 接收端，
 //! `cancel` 可从同步上下文安全调用；`cancelled()` 在「取消先于等待」时也立即返回。
 //!
-//! `GitSyncSlots` 是**单飞不变量的所有者**：互斥粒度 = 仓库单元（`RepoRef::key()`），
+//! `GitSyncSlots` 是**单飞不变量的所有者**：互斥粒度 = Workspace（`WorkspaceRef::key()`），
 //! 同一单元串行、不同单元并行。调用方只能经 `begin` / `cancel_matching` 操作，无从绕过。
 
 use std::collections::HashMap;
@@ -11,7 +11,7 @@ use std::sync::Mutex;
 
 use crate::AppError;
 
-/// 同一仓库单元已有长 git 操作在跑时的错误文案。
+/// 同一Workspace已有长 git 操作在跑时的错误文案。
 ///
 /// 前端 `features/git/api/gitConsoleRun.ts` 的 `GIT_BUSY_MESSAGE` 与之对齐（双端各一份，
 /// 但两边的值都有 pin 测试，改动会在任一端被测试抓住）。
@@ -28,7 +28,7 @@ pub struct GitSyncHandle {
 
 /// 单飞槽条目：取消句柄 + 本次运行的关联标识。
 ///
-/// 槽按**仓库单元**分（[`GitSyncSlots`]），前端 tab 按**仓库级**（project path）分 ——
+/// 槽按**Workspace**分（[`GitSyncSlots`]），前端 tab 按**仓库级**（project path）分 ——
 /// `correlation_id` 把这两个身份面钉在一起：`cancel_git_sync(console_run_id)` 只命中同一
 /// 关联标识，不会被一个陈旧的 run id 误取消。同一标识可命中同 project 的多个单元（它们
 /// 共享同一个仓库级 tab，取消即整仓取消）。`None` = 无 Console 上下文，取消时只要求
@@ -93,9 +93,9 @@ impl GitSyncHandle {
     }
 }
 
-/// 仓库单元（`RepoRef::key()`）→ 在跑的长 git 操作。
+/// Workspace（`WorkspaceRef::key()`）→ 在跑的长 git 操作。
 ///
-/// 互斥粒度与 `git-domain.md §12` 的身份模型一致：`git status` 的写入单位是仓库单元，
+/// 互斥粒度与 `git-domain.md §12` 的身份模型一致：`git status` 的写入单位是Workspace，
 /// 因此同一单元（同 HEAD/index/workdir）串行，主仓与各 linked worktree 可并行。
 #[derive(Default)]
 pub struct GitSyncSlots {
@@ -103,7 +103,7 @@ pub struct GitSyncSlots {
 }
 
 impl GitSyncSlots {
-    /// 占用 `key` 对应的仓库单元：返回取消句柄 + RAII 释放守卫。
+    /// 占用 `key` 对应的Workspace：返回取消句柄 + RAII 释放守卫。
     ///
     /// 同一单元已有操作在跑 ⇒ `AppError::Conflict`（显式拒绝，而不是排队）。
     pub fn begin(
@@ -147,7 +147,7 @@ impl GitSyncSlots {
     }
 }
 
-/// [`GitSyncSlots::begin`] 的 RAII 守卫：析构时释放本仓库单元（任何返回路径都不泄漏）。
+/// [`GitSyncSlots::begin`] 的 RAII 守卫：析构时释放本Workspace（任何返回路径都不泄漏）。
 pub struct GitSyncGuard<'a> {
     slots: &'a GitSyncSlots,
     key: String,
@@ -240,7 +240,7 @@ mod tests {
             .expect("free unit");
         assert!(
             slots.begin("unit-a".to_string(), None).is_err(),
-            "同一仓库单元必须互斥"
+            "同一Workspace必须互斥"
         );
         let (_, guard_b) = slots
             .begin("unit-b".to_string(), None)

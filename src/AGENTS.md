@@ -55,10 +55,10 @@ Feature-Based 架构，`src/` 顶层：
 2. **禁止冗余状态**：能派生计算的状态不单独存储（用 `useMemo` 替代）
 3. **单向数据流**：数据自上而下流动，事件自下向上传递，禁止子组件直接修改父组件状态
 4. **同一事实只有一个表示/派生点**：跨 feature 消费同一份事实时，身份与「当前值」必须来自唯一产出点 ——
-   激活仓库单元的 key 走 `selectActiveRepoKey` / `activeRepoKeyOf` 与 `repoKeyOf`，事件相对路径的归一
-   基准走 `unitWorkDir(repo_key, projectRoot)`，事件名/载荷类型走 `shared/events.ts` + `shared/types`。
+   激活Workspace的 key 走 `selectActiveWorkspaceKey` / `activeWorkspaceKeyOf` 与 `workspaceKeyOf`，事件相对路径的归一
+   基准走 `workspaceRootOf(workspace_key, projectRoot)`，事件名/载荷类型走 `shared/events.ts` + `shared/types`。
    禁止消费侧各自重算「等价」值（前缀拼接、自造复合键、按裸 `projectId` 查按单元存的表）。契约全文见
-   `.trellis/spec/frontend/state-management.md`「仓库单元分槽 + 激活态单源」。
+   `.trellis/spec/frontend/state-management.md`「Workspace分槽 + 激活态单源」。
 
 ## 模块导入/导出规范（Import/Export Firewall）
 

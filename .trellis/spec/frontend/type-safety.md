@@ -42,8 +42,8 @@ interface MyComponentProps {
 仅在 Hook 内部使用的类型定义在 Hook 文件中：
 
 ```tsx
-// 在 useWorktreeState.ts 中
-export interface WorktreeItem {
+// 在 useWorkspaceState.ts 中
+export interface CheckoutEntry {
   path: string;
   branch: string;
 }
@@ -51,11 +51,11 @@ export interface WorktreeItem {
 interface WorktreeState {
   activePath: string | null;
   activeBranch: string;
-  opened: WorktreeItem[];
+  opened: CheckoutEntry[];
 }
 ```
 
-仅在外部消费者需要时导出类型（如 `WorktreeItem` 被导出，`WorktreeState` 不导出）。
+仅在外部消费者需要时导出类型（如 `CheckoutEntry` 被导出，`WorktreeState` 不导出）。
 
 ---
 

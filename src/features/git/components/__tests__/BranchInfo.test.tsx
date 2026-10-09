@@ -2,7 +2,7 @@ import { act, fireEvent, render, screen } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach, afterEach, beforeAll } from 'vitest';
 
 import { useProjectStore } from '@/shared/store/projectStore';
-import { useWorktreeStore, type WorktreeUnitState } from '@/shared/store/worktreeStore';
+import { useWorkspaceStore, type WorkspaceState } from '@/shared/store/workspaceStore';
 import type { GitInfo } from '@/shared/types';
 import { createAppProviderWrapper } from '@/testing/AppProviderTestUtils';
 
@@ -14,7 +14,7 @@ beforeAll(() => {
 
 /**
  * `GitInfo` 已不含 changed_files / is_clean —— 未提交变更是 per 工作树的事实，
- * 走 projectStore.statuses[repoKey]（见 ChangesList / GitCommitPanel 的用例）。
+ * 走 projectStore.statuses[workspaceKey]（见 ChangesList / GitCommitPanel 的用例）。
  */
 const gitInfo: GitInfo = {
   current_branch: 'main',
@@ -39,7 +39,7 @@ const defaultProps = {
 
 const WORKTREE_PATH = '/tmp/proj-wt';
 
-function unit(activePath: string | null, activeBranch = ''): WorktreeUnitState {
+function unit(activePath: string | null, activeBranch = ''): WorkspaceState {
   return { activePath, activeBranch, opened: [] };
 }
 
@@ -52,13 +52,13 @@ function renderBranchInfo(props: Partial<typeof defaultProps> = {}) {
 describe('BranchInfo worktree 分支切换限制', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    // 单一表示：激活态只有 worktreeStore.byProject[activeProjectId] 一份（无全局镜像）
-    useWorktreeStore.setState({ byProject: {} });
+    // 单一表示：激活态只有 workspaceStore.byProject[activeProjectId] 一份（无全局镜像）
+    useWorkspaceStore.setState({ byProject: {} });
     useProjectStore.setState({ activeProjectId: 'proj-1', statuses: {} });
   });
 
   afterEach(() => {
-    useWorktreeStore.setState({ byProject: {} });
+    useWorkspaceStore.setState({ byProject: {} });
     useProjectStore.setState({ activeProjectId: null, statuses: {} });
   });
 
@@ -69,7 +69,7 @@ describe('BranchInfo worktree 分支切换限制', () => {
   });
 
   it('worktree 激活时点击分支徽标不打开切换面板（回归：worktree 不应允许切分支）', () => {
-    useWorktreeStore.setState({
+    useWorkspaceStore.setState({
       byProject: { 'proj-1': unit(WORKTREE_PATH, 'feature-x') },
     });
     renderBranchInfo();
@@ -79,7 +79,7 @@ describe('BranchInfo worktree 分支切换限制', () => {
   });
 
   it('worktree 激活时徽标显示 worktree 分支名而非主分支（回归：worktree 下展示错误分支）', () => {
-    useWorktreeStore.setState({
+    useWorkspaceStore.setState({
       byProject: { 'proj-1': unit(WORKTREE_PATH, 'feature-x') },
     });
     renderBranchInfo();
@@ -89,7 +89,7 @@ describe('BranchInfo worktree 分支切换限制', () => {
   });
 
   it('worktree 分支未知时不得回退画主仓分支（未知不是主仓）', () => {
-    useWorktreeStore.setState({
+    useWorkspaceStore.setState({
       byProject: { 'proj-1': unit(WORKTREE_PATH, '') },
     });
     renderBranchInfo();
@@ -99,7 +99,7 @@ describe('BranchInfo worktree 分支切换限制', () => {
   });
 
   it('激活态按项目隔离：别的项目在 worktree 上不影响本项目的分支切换（回归：全局镜像串项目）', () => {
-    useWorktreeStore.setState({
+    useWorkspaceStore.setState({
       byProject: { 'proj-2': unit(WORKTREE_PATH, 'feature-x') },
     });
     renderBranchInfo();
@@ -111,14 +111,14 @@ describe('BranchInfo worktree 分支切换限制', () => {
   });
 
   it('切回主仓（activePath=null）后徽标恢复主分支且允许切换', () => {
-    useWorktreeStore.setState({
+    useWorkspaceStore.setState({
       byProject: { 'proj-1': unit(WORKTREE_PATH, 'feature-x') },
     });
     const { rerender } = renderBranchInfo();
     expect(screen.getByText('feature-x')).toBeInTheDocument();
 
     act(() => {
-      useWorktreeStore.getState().setActiveWorktree('proj-1', null);
+      useWorkspaceStore.getState().setActiveWorkspace('proj-1', null);
     });
     rerender(<BranchInfo {...defaultProps} />);
 

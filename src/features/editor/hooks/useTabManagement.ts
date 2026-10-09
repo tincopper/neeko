@@ -12,13 +12,13 @@ const APP_SETTINGS_PROJECT_ID = '__app__';
 
 interface UseTabManagementOptions {
   activeProject: { id: string; selected_agents?: string[] } | null;
-  activeWorktreePath: string | null;
+  activeCheckoutPath: string | null;
   /** 保存指定文件 tab（关闭确认「保存」分支），由 useAppShellData 注入 fileView.saveTabById。 */
   saveTabById?: SaveTabAction;
 }
 
 export function useTabManagement(options: UseTabManagementOptions) {
-  const { activeProject, activeWorktreePath, saveTabById } = options;
+  const { activeProject, activeCheckoutPath, saveTabById } = options;
 
   const {
     getTabs,
@@ -31,7 +31,7 @@ export function useTabManagement(options: UseTabManagementOptions) {
   const currentProjectId = activeProject?.id ?? null;
 
   const tabKey = currentProjectId
-    ? resolveTabKey(currentProjectId, activeWorktreePath)
+    ? resolveTabKey(currentProjectId, activeCheckoutPath)
     : APP_SETTINGS_PROJECT_ID;
 
   const tabs = tabKey ? getTabs(tabKey) : [];

@@ -3,10 +3,10 @@ import { createContext, useCallback, useContext, useMemo, useState, type ReactNo
 /**
  * 终端/Agent 输入插入能力的显式通道（替代 window 全局函数桥接）。
  *
- * 背景：Library 面板（dock 区域）需要把 prompt 插入到 ProjectWorkspace 持有的
+ * 背景：Library 面板（dock 区域）需要把 prompt 插入到 ProjectView 持有的
  * 活动终端 / agent 输入。此前通过 `window.__neekoInsertTo*` 全局函数隐式耦合
  * （无类型契约、生命周期依赖外部挂载、竞态窗口）。改为 Context：
- * - ProjectWorkspace（能力提供方）挂载时 register，卸载时 unregister；
+ * - ProjectView（能力提供方）挂载时 register，卸载时 unregister；
  * - LibraryPanel 等消费方通过 useTerminalInsert() 读取当前可用能力；
  * - 无能力提供方时 api 为空对象，消费方自行降级（如 clipboard 兜底）。
  */

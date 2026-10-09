@@ -5,11 +5,11 @@ import { useProjectStore } from '@/shared/store/projectStore';
 import type { ProjectCommands, ProjectView } from '@/shared/types';
 
 /**
- * 刷新当前项目的 git 元数据 + **当前视图所在仓库单元**的 status。
+ * 刷新当前项目的 git 元数据 + **当前视图所在Workspace**的 status。
  *
  * - 用 ref 读最新的 project/commands，避免「刷新 → store 更新 → commands 引用变化 →
  *   回调变化 → effect 重跑」的死循环；返回稳定引用，可安全进依赖数组。
- * - status 一律经 `applyStatus` 写（唯一写入口 + per-unit version gate）；元数据
+ * - status 一律经 `applyStatus` 写（唯一写入口 + per-workspace version gate）；元数据
  *   （分支清单 / 工作树清单 / provider）是 per-project 事实，写进 `git_info`。
  * - 不再需要「worktree 激活时保留主分支名」那类特例：分支随快照按单元走，主仓单元的
  *   HEAD 由 `applyStatus` 投影到项目卡片。
@@ -40,7 +40,7 @@ export function useRefreshGitInfo(
 
     const [gitInfo, snapshot] = await Promise.all([
       cmds.refreshGitInfo(),
-      cmds.refreshRepoStatus(),
+      cmds.refreshWorkspaceStatus(),
     ]);
 
     useProjectStore.setState((state) => {
@@ -66,6 +66,6 @@ export function useRefreshGitInfo(
       };
     });
     useProjectStore.getState().applyStatus(snapshot);
-    useGitStore.getState().setStatusTruncated(snapshot.repo_key, snapshot.truncated);
+    useGitStore.getState().setStatusTruncated(snapshot.workspace_key, snapshot.truncated);
   }, []);
 }

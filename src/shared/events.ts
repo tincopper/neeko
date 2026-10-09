@@ -54,7 +54,7 @@ export const DAP_SESSION_STATUS_EVENT = 'dap-session-status';
 
 /**
  * 插入到 agent 输入框事件（DOM CustomEvent，best-effort 桥接）：`neeko:insert-to-agent-input`
- * ProjectWorkspace dispatch，agent 输入组件可监听。统一此处单一事实源，禁止硬编码。
+ * ProjectView dispatch，agent 输入组件可监听。统一此处单一事实源，禁止硬编码。
  */
 export const INSERT_TO_AGENT_INPUT_EVENT = 'neeko:insert-to-agent-input';
 

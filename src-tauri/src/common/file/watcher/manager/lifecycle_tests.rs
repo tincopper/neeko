@@ -22,7 +22,7 @@ use crate::common::executor::factory::ExecTarget;
 use crate::common::file::watcher::sink::test_support::CollectingSink;
 use crate::common::file::watcher::types::{FILE_CHANGED_EVENT, GIT_STATUS_SNAPSHOT_EVENT};
 use crate::common::git::status_worker::{parse_porcelain, GitStatusSnapshot};
-use crate::common::git::RepoRef;
+use crate::common::git::WorkspaceRef;
 use crate::common::types::FileStatus;
 use crate::core::exec::collect_blocking;
 use crate::project::types::FileChange;
@@ -37,23 +37,23 @@ const FIRST_EVENT_TIMEOUT: Duration = Duration::from_secs(8);
 /// 静默窗口：> debounce 的 max_wait（1.5s），确保"没有事件"是真结论。
 const QUIET_WINDOW: Duration = Duration::from_millis(2000);
 
-/// 被测仓库单元 = 主仓形态（Local）。
+/// 被测Workspace = 主仓形态（Local）。
 ///
-/// 走 `RepoRef::resolve` 而不是 `RepoRef::main`：与生产构造入口一致，拿到 canonical
+/// 走 `WorkspaceRef::resolve` 而不是 `WorkspaceRef::main`：与生产构造入口一致，拿到 canonical
 /// 工作目录（macOS 的 `tempdir()` 位于 `/var → /private/var` 符号链接下，非 canonical
 /// 形态会让 watcher 路径与事件路径分叉）。
-fn main_unit(root: &Path) -> RepoRef {
-    RepoRef::resolve("p1", &root.to_string_lossy(), None, &ExecTarget::Local)
+fn main_unit(root: &Path) -> WorkspaceRef {
+    WorkspaceRef::resolve("p1", &root.to_string_lossy(), None, &ExecTarget::Local)
         .expect("tempdir-derived unit path must resolve")
 }
 
-/// 被测仓库单元 = linked worktree 形态（同一 project 的第二个单元）。
+/// 被测Workspace = linked worktree 形态（同一 project 的第二个单元）。
 ///
 /// 参数只要求"两个不同工作目录"，因此单元身份类断言既可搭在真实 linked worktree 上
 /// （[`repo_with_linked_worktree`]），也可搭在两个独立 checkout 上（本文件既有夹具）。
 /// 需要「写入不得泄漏到别的单元」这类**可证伪**断言时用前者。
-fn worktree_unit(root: &Path, worktree: &Path) -> RepoRef {
-    RepoRef::resolve(
+fn worktree_unit(root: &Path, worktree: &Path) -> WorkspaceRef {
+    WorkspaceRef::resolve(
         "p1",
         &root.to_string_lossy(),
         Some(&worktree.to_string_lossy()),
@@ -89,7 +89,7 @@ fn paths_of(entries: &[FileChange]) -> Vec<&Path> {
 ///
 /// `record_computed` 的入参是**完整快照**（与 push 生产者同形），因此测试也按快照构造，
 /// 而不是一串展开的参数（后者会把「同一份快照的不同字段」在调用点摊成多个位置参数）。
-fn pull_snapshot(unit: &RepoRef, entries: Vec<FileChange>) -> GitStatusSnapshot {
+fn pull_snapshot(unit: &WorkspaceRef, entries: Vec<FileChange>) -> GitStatusSnapshot {
     let mut snap = GitStatusSnapshot::for_unit(unit, 0);
     snap.entries = entries;
     snap.branch = "main".to_string();
@@ -159,7 +159,7 @@ fn wait_for_more_events(
 /// 推送恰好包含全部改动」上就是造 flaky 测试。
 fn wait_for_entry(
     manager: &WatcherManager,
-    unit: &RepoRef,
+    unit: &WorkspaceRef,
     file: &str,
     timeout: Duration,
 ) -> Arc<GitStatusSnapshot> {
@@ -375,7 +375,7 @@ fn poke_status_worker_and_wait_confirms_fresh_snapshot_after_write() {
         "快照必须反映写后工作区（首刷旧值窗口已消除）"
     );
     assert_eq!(
-        snap.repo_key,
+        snap.workspace_key,
         unit.key(),
         "快照必须自带单元身份，否则前端无法寻址"
     );
@@ -527,7 +527,7 @@ fn unwatch_drops_only_that_unit_snapshot() {
 /// 项目被移除时必须释放该项目下**所有**单元（旧实现只有 project 粒度，天然覆盖；
 /// 身份补全后这里是唯一还能把两个单元一起收口的入口）。
 #[test]
-fn unwatch_project_releases_every_unit_of_that_project() {
+fn unwatch_project_releases_every_workspace_of_that_project() {
     let tmp = tempfile::tempdir().unwrap();
     let root = tmp.path().join("repo");
     let worktree = tmp.path().join("repo-wt");
@@ -564,7 +564,7 @@ fn unwatch_project_releases_every_unit_of_that_project() {
     std::fs::create_dir_all(&other).unwrap();
     git2::Repository::init(&other).expect("init other repo");
     let other_unit =
-        RepoRef::resolve("p2", &other.to_string_lossy(), None, &ExecTarget::Local).unwrap();
+        WorkspaceRef::resolve("p2", &other.to_string_lossy(), None, &ExecTarget::Local).unwrap();
     manager.watch(other_unit.clone(), sink.clone());
     manager.unwatch_project("p1");
     assert!(
@@ -606,7 +606,7 @@ fn poke_after_unit_switch_recomputes_the_unit_that_was_written() {
     let snap_a = manager
         .snapshot(&unit_a)
         .expect("poke 落地后 A 必须有权威快照");
-    assert_eq!(snap_a.repo_key, unit_a.key());
+    assert_eq!(snap_a.workspace_key, unit_a.key());
     assert_eq!(
         paths_of(&snap_a.entries),
         vec![Path::new("main-only.txt")],
@@ -630,7 +630,7 @@ fn poke_after_unit_switch_recomputes_the_unit_that_was_written() {
         .snapshot(&unit_b)
         .expect("worktree 单元必须有快照（旧缺陷：worktree 视图压根没有生产者）");
     assert_eq!(
-        snap_b.repo_key,
+        snap_b.workspace_key,
         unit_b.key(),
         "快照必须落在 worktree 单元的槽上"
     );
@@ -710,7 +710,7 @@ fn linked_worktree_edit_pushes_versioned_snapshot_without_manual_poke() {
         first.version,
         latest.version
     );
-    assert_eq!(latest.repo_key, unit_b.key());
+    assert_eq!(latest.workspace_key, unit_b.key());
     let mut got = paths_of(&latest.entries).into_iter().collect::<Vec<_>>();
     got.sort_unstable();
     assert_eq!(
@@ -913,7 +913,7 @@ fn activate_style_release_except_keeps_only_the_target_unit() {
     let unit_a = main_unit(&root);
     let unit_b = worktree_unit(&root, &worktree);
     let unit_other_project =
-        RepoRef::resolve("p2", &other.to_string_lossy(), None, &ExecTarget::Local).unwrap();
+        WorkspaceRef::resolve("p2", &other.to_string_lossy(), None, &ExecTarget::Local).unwrap();
 
     let sink = CollectingSink::new();
     let manager = WatcherManager::new();
@@ -961,7 +961,7 @@ fn unmounted_pulls_advance_the_same_registry_sequence() {
         vec![Path::new("b.txt")],
         "未挂载单元的数据源就是 pull 本身"
     );
-    assert_eq!(second.repo_key, unit.key());
+    assert_eq!(second.workspace_key, unit.key());
 }
 
 /// **切走再切回来时，新快照不得被前端闸门静默丢掉**：注册表的 version 号必须跨挂载周期单调。
@@ -1189,8 +1189,8 @@ fn edit_to_push_latency_p95_worktree_vs_main() {
 // （快速切项目 / 连点）会在两步之间交错，留下两套挂载（线程与句柄泄漏、同一变更推两份快照）。
 
 /// 指定项目 id 的主仓形态单元（key 只含 project_id，故两单元必须用不同 project id 才不同址）。
-fn unit_of(project_id: &str, root: &Path) -> RepoRef {
-    RepoRef::resolve(
+fn workspace_of(project_id: &str, root: &Path) -> WorkspaceRef {
+    WorkspaceRef::resolve(
         project_id,
         &root.to_string_lossy(),
         None,
@@ -1215,7 +1215,7 @@ fn concurrent_mount_of_different_units_keeps_single_mount() {
     let sink = CollectingSink::new();
     // 两个线程在同一时刻冲进「释放 + 挂载」这一段
     let barrier = Arc::new(std::sync::Barrier::new(2));
-    let units = [unit_of("p1", &dir_a), unit_of("p2", &dir_b)];
+    let units = [workspace_of("p1", &dir_a), workspace_of("p2", &dir_b)];
 
     let handles: Vec<_> = units
         .into_iter()
@@ -1250,9 +1250,9 @@ fn concurrent_mount_of_different_units_keeps_single_mount() {
 #[test]
 fn concurrent_mount_of_same_unit_creates_exactly_one_watcher_set() {
     let tmp = tempfile::tempdir().unwrap();
-    let dir = tmp.path().join("unit");
+    let dir = tmp.path().join("ws");
     std::fs::create_dir_all(&dir).unwrap();
-    let unit = unit_of("p1", &dir);
+    let unit = workspace_of("p1", &dir);
 
     let manager = WatcherManager::new();
     let sink = CollectingSink::new();
@@ -1342,9 +1342,9 @@ fn mount_only_reasserting_same_unit_is_a_noop() {
 #[test]
 fn concurrent_pulls_on_one_unit_never_regress_the_slot() {
     let tmp = tempfile::tempdir().unwrap();
-    let dir = tmp.path().join("unit");
+    let dir = tmp.path().join("ws");
     std::fs::create_dir_all(&dir).unwrap();
-    let unit = unit_of("p1", &dir);
+    let unit = workspace_of("p1", &dir);
     let manager = WatcherManager::new();
     assert!(
         !manager.is_watched(&unit),

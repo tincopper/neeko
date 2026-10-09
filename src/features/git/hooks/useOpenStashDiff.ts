@@ -8,13 +8,13 @@ import { parseProjectIdFromTabKey, resolveTabKey } from '@/shared/utils/tabKey';
 
 /**
  * 点击 stash 文件打开 diff tab（与 history 打开 diff 文件机制一致）。
- * tabKey 与 ProjectWorkspace 对齐：使用 store 中的原始项目 ID，而非 use-active-project
+ * tabKey 与 ProjectView 对齐：使用 store 中的原始项目 ID，而非 use-active-project
  * 的统一 ID（wsl:distro:path / remote:host:path）；worktree 激活时使用 worktree 专属 tab key，
  * 避免 diff tab 落入 local tab 组。
  */
 export function useOpenStashDiff(
   projectId: string | undefined,
-  activeWorktreePath?: string | null,
+  activeCheckoutPath?: string | null,
   stashes: StashEntry[] = [],
 ): (selector: string, filePath: string) => void {
   return useCallback(
@@ -23,7 +23,7 @@ export function useOpenStashDiff(
       const editorState = useEditorStore.getState();
       const tabKey = resolveTabKey(
         projectState.activeProjectId ?? projectId ?? '',
-        activeWorktreePath,
+        activeCheckoutPath,
       );
       const existingTabs = editorState.tabs[tabKey];
       const existingDiffTab = existingTabs?.tabs.find(
@@ -61,6 +61,6 @@ export function useOpenStashDiff(
       editorState.addTab(tabKey, tabItem);
       editorState.activateTab(tabKey, tabId);
     },
-    [projectId, activeWorktreePath, stashes],
+    [projectId, activeCheckoutPath, stashes],
   );
 }

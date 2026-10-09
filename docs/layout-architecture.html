@@ -206,7 +206,7 @@
       <span class="rname">center-area <span class="pill">min 20%</span></span>
       <span class="rfile">AppCenter ← appViewStore</span>
       <div class="center-route">
-        <span class="route-tag hot">normal · ProjectWorkspace</span>
+        <span class="route-tag hot">normal · ProjectView</span>
         <span class="route-tag">skills</span>
         <span class="route-tag">settings</span>
         <span class="route-tag">library</span>
@@ -407,7 +407,7 @@
       name: 'center-area（中心工作区）', path: 'src/app/components/AppCenter.tsx',
       points: [
         '只读 <code>appViewStore.appView</code> 决定渲染 —— 单一中心路由源',
-        'normal → ProjectWorkspace（终端/编辑器/Agent）；skills 激活挂载；settings/library 条件渲染',
+        'normal → ProjectView（终端/编辑器/Agent）；skills 激活挂载；settings/library 条件渲染',
         '写入方受控：toolbar / dockStore 耦合面板（skills）/ tab-mode（library），禁止业务组件直读 zone 状态判断视图',
         'min 20%，永不折叠',
       ],

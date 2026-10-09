@@ -3,7 +3,7 @@ import type { Terminal } from '@xterm/xterm';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { useEditorStore } from '@/shared/store/editorStore';
-import { useWorktreeStore } from '@/shared/store/worktreeStore';
+import { useWorkspaceStore } from '@/shared/store/workspaceStore';
 
 const { readFileContentMock, revealInFileManagerMock } = vi.hoisted(() => ({
   readFileContentMock: vi.fn(),
@@ -104,7 +104,7 @@ describe('consoleLinks — worktree 键空间（resolveTabKey 派生）', () => 
   beforeEach(() => {
     vi.clearAllMocks();
     useEditorStore.setState({ tabs: {}, editorLayout: {}, activeTabId: null, navigateGoal: null });
-    useWorktreeStore.setState({ byProject: {} });
+    useWorkspaceStore.setState({ byProject: {} });
     readFileContentMock.mockImplementation(async (_projectId: string, p: string) => ({
       path: p,
       content: 'x',
@@ -130,7 +130,7 @@ describe('consoleLinks — worktree 键空间（resolveTabKey 派生）', () => 
   }
 
   it('worktree 激活 → tab 落 worktree 键空间且 navigateGoal 写同键空间', async () => {
-    useWorktreeStore.getState().setActiveWorktree('p1', '/repo/.wt/feat');
+    useWorkspaceStore.getState().setActiveWorkspace('p1', '/repo/.wt/feat');
     clickMainRsLink();
 
     await vi.waitFor(() => {
@@ -165,7 +165,7 @@ describe('consoleLinks — worktree 键空间（resolveTabKey 派生）', () => 
   });
 
   it('worktree 激活且 tab 已在 worktree 空间打开 → 只激活不重复建 tab，goal 同键空间', async () => {
-    useWorktreeStore.getState().setActiveWorktree('p1', '/repo/.wt/feat');
+    useWorkspaceStore.getState().setActiveWorkspace('p1', '/repo/.wt/feat');
     useEditorStore.setState({
       tabs: {
         [WT_KEY]: {

@@ -75,7 +75,7 @@ grep -r "keyword" .
 // Bad —— 两份并行实现，数据获取约定各长一套
 function WorktreeList({ projectId }) {
   // local 版：组件内部自己按 projectId 取
-  const snapshot = await getRepoStatus(projectId, worktreePath);
+  const snapshot = await getWorkspaceStatus(projectId, worktreePath);
 }
 function ConnectionWorktreeList({ projectId, ... }) {
   // connection 版：同一份数据改由父级回调注入，接口与 local 版对不上
@@ -95,7 +95,7 @@ interface WorktreeListProps {
 // adapter（connection）：把按单元的状态读取包成回调
 const handleGetWorktreeChangedFiles = useCallback(
   (worktreePath: string) =>
-    getRepoStatus(project.id, worktreePath)
+    getWorkspaceStatus(project.id, worktreePath)
       .then((snapshot) => snapshot.entries)
       .catch(() => [] as FileChange[]), // 失败 = 未知，不当作「无变更」
   [project.id],

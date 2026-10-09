@@ -11,15 +11,15 @@ import {
   revealInFileManager,
 } from '@/features/file/api/fileApi';
 import { useFileStore } from '@/features/file/store';
-import { refreshRepoStatus } from '@/features/git/utils/gitStatus';
+import { refreshWorkspaceStatus } from '@/features/git/utils/gitStatus';
 import { useActiveProject } from '@/features/project';
 import { useAppContext } from '@/shared/contexts';
 import { useDockStore } from '@/shared/store/dockStore';
 import { useProjectStore, selectEntries } from '@/shared/store/projectStore';
 import { filePathToFileUrl, openHtmlInBrowserPanel } from '@/shared/utils/browserUtils';
 import { canonicalFsPath } from '@/shared/utils/fileRef';
-import { repoKeyOf } from '@/shared/utils/repoRef';
 import { resolveTabKey } from '@/shared/utils/tabKey';
+import { workspaceKeyOf } from '@/shared/utils/workspaceRef';
 
 /**
  * Files dock 面板适配层：读取 file context + store 并透传给 FilesPanel。
@@ -37,10 +37,12 @@ const FilesPanelWrapper: React.FC = React.memo(() => {
   const activeFilePath = useFileStore((s) => s.activeFilePath);
   const activeProjectId = useProjectStore((s) => s.activeProjectId);
   const projectPath = fileRootPath;
-  // 变更条目按**仓库单元**取：文件树在 worktree 视图下渲染的是该单元的工作树，
+  // 变更条目按**Workspace**取：文件树在 worktree 视图下渲染的是该单元的工作树，
   // 用主仓的条目着色会把别的文件标成已修改（同一相对路径在两个工作树里不同义）。
-  const repoKey = project ? repoKeyOf(project.id, worktreePath) : null;
-  const changedFiles = useProjectStore((s) => (repoKey ? selectEntries(s, repoKey) : undefined));
+  const workspaceKey = project ? workspaceKeyOf(project.id, worktreePath) : null;
+  const changedFiles = useProjectStore((s) =>
+    workspaceKey ? selectEntries(s, workspaceKey) : undefined,
+  );
   // 定位当前编辑器 file tab 到文件树（复用面板内「点击选中」逻辑）
   const tabKey = project ? resolveTabKey(project.id, worktreePath) : '';
   const { canLocateFile, filePath: locateTargetPath } = useLocateFileInTree(tabKey, fileRootPath);
@@ -118,9 +120,9 @@ const FilesPanelWrapper: React.FC = React.memo(() => {
       }
       handleRefresh();
       // 显式刷新**该单元**的 status，使新文件立即着色（Untracked）
-      if (repoKey) void refreshRepoStatus(repoKey);
+      if (workspaceKey) void refreshWorkspaceStatus(workspaceKey);
     },
-    [projectId, fileRootPath, handleRefresh, repoKey],
+    [projectId, fileRootPath, handleRefresh, workspaceKey],
   );
 
   const handleCreateFile = useCallback(
@@ -138,9 +140,9 @@ const FilesPanelWrapper: React.FC = React.memo(() => {
       if (!projectId) return;
       await deletePath(projectId, path, fileRootPath ?? null);
       handleRefresh();
-      if (repoKey) void refreshRepoStatus(repoKey);
+      if (workspaceKey) void refreshWorkspaceStatus(workspaceKey);
     },
-    [projectId, fileRootPath, handleRefresh, repoKey],
+    [projectId, fileRootPath, handleRefresh, workspaceKey],
   );
 
   const handleRenamePath = useCallback(
@@ -148,9 +150,9 @@ const FilesPanelWrapper: React.FC = React.memo(() => {
       if (!projectId) return;
       await renamePath(projectId, path, newName, fileRootPath ?? null);
       handleRefresh();
-      if (repoKey) void refreshRepoStatus(repoKey);
+      if (workspaceKey) void refreshWorkspaceStatus(workspaceKey);
     },
-    [projectId, fileRootPath, handleRefresh, repoKey],
+    [projectId, fileRootPath, handleRefresh, workspaceKey],
   );
 
   return (

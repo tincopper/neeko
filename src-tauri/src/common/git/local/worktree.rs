@@ -1,22 +1,22 @@
 #![allow(unused_imports, missing_docs)]
 use super::run_cmd_local;
 use crate::common::executor::factory::ExecTarget;
-use crate::common::git::unit_path::UnitPath;
+use crate::common::git::checkout_path::CheckoutPath;
 use crate::project::types::Worktree;
 use git2::Repository;
 
 /// linked worktree 清单（Local）。**本函数是 Local 侧清单的唯一产出点。**
 ///
-/// **路径即身份**：返回值会被前端拼成 `RepoKey`，必须与后端 `RepoRef::key()` 逐字同形 ——
-/// 因此对外字段取 [`UnitPath::identity`]（平台无关字母表），而 `git -C` 入参取
-/// [`UnitPath::exec`]（宿主形态）。`RepoRef::resolve` 只在**消费侧**归一；产出侧若漏掉，
+/// **路径即身份**：返回值会被前端拼成 `WorkspaceKey`，必须与后端 `WorkspaceRef::key()` 逐字同形 ——
+/// 因此对外字段取 [`CheckoutPath::identity`]（平台无关字母表），而 `git -C` 入参取
+/// [`CheckoutPath::exec`]（宿主形态）。`WorkspaceRef::resolve` 只在**消费侧**归一；产出侧若漏掉，
 /// 同一工作树就会有两种形态（清单一种、快照另一种）——前端按清单拼的 key 取不到快照
 /// （侧栏 +A/-D 空白），存活校验还会把激活单元误判成「已消失」并回落主仓。
 ///
 /// 实测（2026-09-30，macOS 符号链接 tempdir）：git 与 libgit2 今天返回的都已是 realpath
 /// 形态（`git worktree list --porcelain` 亦然），所以这里当前是**幂等加固**而不是修一个
 /// 现场缺陷 —— 但那是两者的实现细节，不是本仓可以依赖的契约；产出侧显式归一并由
-/// `listed_worktree_paths_are_canonical_repo_ref_identity` 钉住，换实现（例如设计里计划的
+/// `listed_worktree_paths_are_canonical_workspace_ref_identity` 钉住，换实现（例如设计里计划的
 /// 「合并为单一清单实现」）时才不会静默漂移。
 ///
 /// 归一失败的条目不进清单：宁可缺一项，也不对外产出第二种身份表示。
@@ -31,13 +31,13 @@ pub(crate) fn get_worktrees(repo: &Repository) -> Vec<Worktree> {
             continue;
         };
         // 归一先于任何消费：`-C` 入参、分支探测与对外路径全部用归一后的形态。
-        // 非 UTF-8 直接丢弃（`UnitPath` 的构造期同样拒绝非 UTF-8 —— git CLI 的 argv
+        // 非 UTF-8 直接丢弃（`CheckoutPath` 的构造期同样拒绝非 UTF-8 —— git CLI 的 argv
         // 与 IPC 都要求 UTF-8，`to_string_lossy` 会把它悄悄换成 U+FFFD 的第二身份）。
         let Some(raw_path) = wt.path().to_str() else {
             log::warn!("[git] dropping worktree `{name}`: path is not valid UTF-8");
             continue;
         };
-        let Ok(path) = UnitPath::resolve(&ExecTarget::Local, raw_path) else {
+        let Ok(path) = CheckoutPath::resolve(&ExecTarget::Local, raw_path) else {
             log::warn!("[git] dropping worktree `{name}`: path `{raw_path}` is not normalizable");
             continue;
         };
@@ -69,7 +69,7 @@ pub(crate) fn get_worktrees(repo: &Repository) -> Vec<Worktree> {
         };
 
         worktrees.push(Worktree {
-            // 对外路径 = **身份渲染**（前端据此拼 `RepoKey`，见函数头注释）
+            // 对外路径 = **身份渲染**（前端据此拼 `WorkspaceKey`，见函数头注释）
             path: path.identity().to_string(),
             branch,
             head,
@@ -132,7 +132,7 @@ mod tests {
         (repo, main, worktree)
     }
 
-    /// **清单路径 ≡ `RepoRef` 身份形态**（前端按清单拼 `RepoKey` 所依赖的契约）。
+    /// **清单路径 ≡ `WorkspaceRef` 身份形态**（前端按清单拼 `WorkspaceKey` 所依赖的契约）。
     ///
     /// 断言的是「同一目录的另一种写法（尾分隔符 + `.` 成分）经身份入口解析后与清单逐字相同」。
     /// 实测 libgit2 今天已返回 realpath 形态，故本用例当前不会由红转绿；它的价值是钉住
@@ -142,7 +142,7 @@ mod tests {
     /// 第二条断言刻意比对**对象**而不是字符串形态：形态是平台细节（Windows `\\?\` /
     /// 分隔符），比对字符串就是在断言平台（红线 13 的同族陷阱）。
     #[test]
-    fn listed_worktree_paths_are_canonical_repo_ref_identity() {
+    fn listed_worktree_paths_are_canonical_workspace_ref_identity() {
         let tmp = tempfile::tempdir().unwrap();
         let (repo, main, worktree) = repo_with_worktree(tmp.path());
 
@@ -152,7 +152,7 @@ mod tests {
 
         // 同一目录的另一种写法（尾分隔符 + `.` 成分）经身份入口解析 ⇒ 必须与清单逐字相同
         let other_form = format!("{}/./", worktree.to_string_lossy());
-        let identity = crate::common::git::RepoRef::resolve(
+        let identity = crate::common::git::WorkspaceRef::resolve(
             "p1",
             &main.to_string_lossy(),
             Some(&other_form),
@@ -161,8 +161,10 @@ mod tests {
         .expect("identity must resolve");
         assert_eq!(
             list[0].path,
-            identity.worktree_path().expect("linked unit has a path"),
-            "清单路径与 RepoRef 身份必须同形（否则前端 key 与快照 key 分叉）"
+            identity
+                .worktree_path()
+                .expect("linked checkout has a path"),
+            "清单路径与 WorkspaceRef 身份必须同形（否则前端 key 与快照 key 分叉）"
         );
         assert_eq!(
             std::fs::canonicalize(&list[0].path).expect("identity must be a usable path"),

@@ -4,7 +4,7 @@ import { act, renderHook, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { GIT_CHANGED_EVENT, GIT_STATUS_SNAPSHOT_EVENT } from '@/shared/events';
-import { parseRepoKey, repoKeyOf } from '@/shared/utils/repoRef';
+import { parseWorkspaceKey, workspaceKeyOf } from '@/shared/utils/workspaceRef';
 
 import { fileLineChangesField } from '../../git-change';
 import { useGitChangeEditor } from '../useGitChangeEditor';
@@ -59,15 +59,15 @@ const PROJECT_ROOT = '/repo';
 const FILE_PATH = '/repo/src/a.ts';
 const REPO_REL_PATH = 'src/a.ts';
 const WORKTREE = null;
-/** 本 tab 所属仓库单元（主仓）的身份 —— VCS 事件按它定址，不按 project_id。 */
-const MAIN_KEY = repoKeyOf(PROJECT_ID, WORKTREE);
-const OTHER_UNIT_KEY = repoKeyOf(PROJECT_ID, '/repo/.wt/other');
-const OTHER_PROJECT_KEY = repoKeyOf('p2', null);
+/** 本 tab 所属Workspace（主仓）的身份 —— VCS 事件按它定址，不按 project_id。 */
+const MAIN_KEY = workspaceKeyOf(PROJECT_ID, WORKTREE);
+const OTHER_UNIT_KEY = workspaceKeyOf(PROJECT_ID, '/repo/.wt/other');
+const OTHER_PROJECT_KEY = workspaceKeyOf('p2', null);
 
-function snapshotPayload(version: number, repoKey = MAIN_KEY) {
-  const { projectId, worktreePath } = parseRepoKey(repoKey);
+function snapshotPayload(version: number, workspaceKey = MAIN_KEY) {
+  const { projectId, worktreePath } = parseWorkspaceKey(workspaceKey);
   return {
-    repo_key: repoKey,
+    workspace_key: workspaceKey,
     version,
     project_id: projectId,
     worktree_path: worktreePath,
@@ -78,13 +78,17 @@ function snapshotPayload(version: number, repoKey = MAIN_KEY) {
 }
 
 /** `git-changed` 现载荷是对象（旧形态是裸 projectId 字符串，缺单元维度）。 */
-function gitChangedPayload(repoKey: string) {
-  return { repo_key: repoKey, project_id: parseRepoKey(repoKey).projectId };
+function gitChangedPayload(workspaceKey: string) {
+  return { workspace_key: workspaceKey, project_id: parseWorkspaceKey(workspaceKey).projectId };
 }
 
 /** `file-changed` 载荷：paths 相对**该单元工作树根**。 */
-function fileChangedPayload(repoKey: string, paths: string[]) {
-  return { repo_key: repoKey, project_id: parseRepoKey(repoKey).projectId, paths };
+function fileChangedPayload(workspaceKey: string, paths: string[]) {
+  return {
+    workspace_key: workspaceKey,
+    project_id: parseWorkspaceKey(workspaceKey).projectId,
+    paths,
+  };
 }
 
 function baseParams(enabled: boolean) {
@@ -314,7 +318,7 @@ describe('useGitChangeEditor — 事件刷新 + 生命周期', () => {
     });
     expect(mocks.getFileDiff).toHaveBeenCalledTimes(2);
 
-    // git-changed（payload = 本单元的 {repo_key, project_id}）→ 去抖重拉
+    // git-changed（payload = 本单元的 {workspace_key, project_id}）→ 去抖重拉
     act(() => {
       mocks.listeners.get(GIT_CHANGED_EVENT)?.({ payload: gitChangedPayload(MAIN_KEY) });
     });
@@ -402,12 +406,12 @@ describe('useGitChangeEditor — 事件刷新 + 生命周期', () => {
     vi.useRealTimers();
   });
 
-  it('worktree 单元的 tab 只认自己 repo_key 的事件', async () => {
+  it('worktree 单元的 tab 只认自己 workspace_key 的事件', async () => {
     vi.useFakeTimers();
     mocks.getFileDiff.mockResolvedValue(resolveAddedDiff());
 
     const wt = '/repo/.wt/feature';
-    const wtKey = repoKeyOf(PROJECT_ID, wt);
+    const wtKey = workspaceKeyOf(PROJECT_ID, wt);
     const editorViewRef = { current: null as EditorView | null };
     const { unmount } = renderHook(() =>
       useGitChangeEditor({

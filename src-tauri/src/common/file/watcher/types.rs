@@ -1,7 +1,7 @@
 //! 事件名常量与事件 payload 类型（单一事实源，前端经 `shared/events.ts` 同步引用）。
 //!
-//! **寻址维度**：所有 git / 文件类事件都携带 `repo_key`（[`crate::common::git::RepoRef::key`]
-//! 的字符串形态）。一个 project 承载 `1 + N` 个仓库单元（主仓 + linked worktree），
+//! **寻址维度**：所有 git / 文件类事件都携带 `workspace_key`（[`crate::common::git::WorkspaceRef::key`]
+//! 的字符串形态）。一个 project 承载 `1 + N` 个Workspace（主仓 + linked worktree），
 //! 只有 project_id 的事件无法表达「哪个工作树变了」，消费端就只能靠「当前激活 worktree」
 //! 这类全局可变状态去猜 —— 猜错的两种结果就是本次修掉的缺陷：列表不更新、串主仓数据。
 
@@ -21,8 +21,8 @@ pub const GIT_PERF_SUGGESTION_EVENT: &str = "git-perf-suggestion";
 /// Git 性能建议事件 payload（大仓库 + 未启用原生缓存的引导）
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct GitPerfSuggestionEvent {
-    /// 变更事件所属仓库单元的寻址 key
-    pub repo_key: String,
+    /// 变更事件所属Workspace的寻址 key
+    pub workspace_key: String,
     /// 项目 ID
     pub project_id: String,
     /// 建议列表（可能为空集合，调用方保证非空才发）
@@ -34,8 +34,8 @@ pub struct GitPerfSuggestionEvent {
 /// 文件内容变更事件 payload，发送给前端用于刷新已打开的 tab
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct FileChangedEvent {
-    /// 变更事件所属仓库单元的寻址 key（前端据此判定是否与当前视图相关）
-    pub repo_key: String,
+    /// 变更事件所属Workspace的寻址 key（前端据此判定是否与当前视图相关）
+    pub workspace_key: String,
     /// 项目 ID
     pub project_id: String,
     /// 相对于**该单元工作树根**的变更文件路径列表（使用 `/` 分隔符）
@@ -45,8 +45,8 @@ pub struct FileChangedEvent {
 /// 文件树结构变更事件 payload（文件新增/删除/重命名），前端收到后应刷新目录树
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct FileTreeChangedEvent {
-    /// 变更事件所属仓库单元的寻址 key
-    pub repo_key: String,
+    /// 变更事件所属Workspace的寻址 key
+    pub workspace_key: String,
     /// 项目 ID
     pub project_id: String,
     /// 受影响的目录相对路径集合（以 `/` 分隔，'' 表示该单元的工作树根）。
@@ -62,17 +62,17 @@ pub struct FileTreeChangedEvent {
 /// 旧形态是裸 `project_id` 字符串，收不到「哪个工作树」这一维。
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct GitChangedEvent {
-    /// 变化的仓库单元寻址 key
-    pub repo_key: String,
+    /// 变化的Workspace寻址 key
+    pub workspace_key: String,
     /// 所属项目 ID
     pub project_id: String,
 }
 
 impl GitChangedEvent {
     #[must_use]
-    pub fn new(repo: &crate::common::git::RepoRef) -> Self {
+    pub fn new(repo: &crate::common::git::WorkspaceRef) -> Self {
         Self {
-            repo_key: repo.key(),
+            workspace_key: repo.key(),
             project_id: repo.project_id().to_string(),
         }
     }

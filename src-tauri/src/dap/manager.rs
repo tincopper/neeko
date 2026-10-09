@@ -350,12 +350,12 @@ impl DapManager {
         config: LaunchConfig,
         endpoint: &str,
     ) -> Result<DapSessionInfo, AppError> {
-        let unit = super::project_context::resolve_unit(state, project_id, None).await?;
+        let exec = super::project_context::resolve_exec_workspace(state, project_id, None).await?;
         launch::launch_session(
             &self.context(state),
             sink,
             project_id,
-            &unit,
+            &exec,
             config,
             None,
             launch::SessionRoute {

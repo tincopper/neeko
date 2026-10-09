@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { useGitStore } from '@/shared/store/gitStore';
 import { useProjectStore } from '@/shared/store/projectStore';
-import { useWorktreeStore } from '@/shared/store/worktreeStore';
+import { useWorkspaceStore } from '@/shared/store/workspaceStore';
 import type {
   GitInfo,
   GitStatusSnapshot,
@@ -11,12 +11,12 @@ import type {
   ProjectCommands,
   ProjectView,
 } from '@/shared/types';
-import { repoKeyOf } from '@/shared/utils/repoRef';
+import { workspaceKeyOf } from '@/shared/utils/workspaceRef';
 
 import { useRefreshGitInfo } from '../useRefreshGitInfo';
 
-const MAIN_KEY = repoKeyOf('proj-1', null);
-const WT_KEY = repoKeyOf('proj-1', '/test/wt');
+const MAIN_KEY = workspaceKeyOf('proj-1', null);
+const WT_KEY = workspaceKeyOf('proj-1', '/test/wt');
 
 function makeGitInfo(overrides?: Partial<GitInfo>): GitInfo {
   // GitInfo 只剩 per-project 元数据：分支 / 工作树清单 / provider。
@@ -32,7 +32,7 @@ function makeGitInfo(overrides?: Partial<GitInfo>): GitInfo {
 
 function makeSnapshot(overrides?: Partial<GitStatusSnapshot>): GitStatusSnapshot {
   return {
-    repo_key: MAIN_KEY,
+    workspace_key: MAIN_KEY,
     version: 1,
     project_id: 'proj-1',
     worktree_path: null,
@@ -77,7 +77,7 @@ function makeView(overrides?: Partial<ProjectView>): ProjectView {
 function makeCommands(overrides?: Partial<ProjectCommands>): ProjectCommands {
   return {
     refreshGitInfo: vi.fn().mockResolvedValue(makeGitInfo({ branches: ['main', 'dev'] })),
-    refreshRepoStatus: vi.fn().mockResolvedValue(makeSnapshot()),
+    refreshWorkspaceStatus: vi.fn().mockResolvedValue(makeSnapshot()),
     getAheadBehind: vi.fn().mockResolvedValue({ ahead: 1, behind: 2 }),
     ...overrides,
   } as unknown as ProjectCommands;
@@ -91,7 +91,7 @@ beforeEach(() => {
     statuses: {},
   });
   useGitStore.setState({ aheadBehind: {} });
-  useWorktreeStore.setState({ byProject: {} });
+  useWorkspaceStore.setState({ byProject: {} });
 });
 
 describe('useRefreshGitInfo', () => {
@@ -131,9 +131,9 @@ describe('useRefreshGitInfo', () => {
   it('worktree 单元：刷新只写该单元的 status 槽，主仓槽不被动到', async () => {
     // 该 hook 的 commands 绑定「当前激活单元」，写入侧必须跟着快照自带的身份走
     const commands = makeCommands({
-      refreshRepoStatus: vi
+      refreshWorkspaceStatus: vi
         .fn()
-        .mockResolvedValue(makeSnapshot({ repo_key: WT_KEY, worktree_path: '/test/wt' })),
+        .mockResolvedValue(makeSnapshot({ workspace_key: WT_KEY, worktree_path: '/test/wt' })),
     });
     const { result } = renderHook(() => useRefreshGitInfo(makeView(), commands));
 
@@ -155,8 +155,8 @@ describe('useRefreshGitInfo', () => {
     expect(useProjectStore.getState().statuses).toEqual({});
   });
 
-  it('refreshes the active worktree unit without touching main unit state', async () => {
-    useWorktreeStore.setState({
+  it('refreshes the active worktree unit without touching main checkout state', async () => {
+    useWorkspaceStore.setState({
       byProject: { 'proj-1': { activePath: '/test/wt', activeBranch: 'wt-branch', opened: [] } },
     });
     useProjectStore.setState({
@@ -166,9 +166,9 @@ describe('useRefreshGitInfo', () => {
     });
     // 命令端口按「当前视图单元」绑定：这里回的是 worktree 单元的快照
     const commands = makeCommands({
-      refreshRepoStatus: vi.fn().mockResolvedValue(
+      refreshWorkspaceStatus: vi.fn().mockResolvedValue(
         makeSnapshot({
-          repo_key: WT_KEY,
+          workspace_key: WT_KEY,
           version: 1,
           worktree_path: '/test/wt',
           branch: 'wt-branch',

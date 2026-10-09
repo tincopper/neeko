@@ -1,11 +1,11 @@
-//! 仓库单元（[`RepoRef`]）git status 的**读取与挂载编排**。
+//! Workspace（[`WorkspaceRef`]）git status 的**读取与挂载编排**。
 //!
 //! 命令层（`git/commands/query.rs`）只做参数校验 + 委派（红线 6），本模块承担编排：
 //! 快照优先、冷启动有界等待、未挂载单元退化为一次 pull 计算并登记同一张表。
 //!
 //! **单一形态**：无论生产者是 push（挂载中的 watcher worker）还是 pull（本文件的
 //! `compute_and_record`），读出来的都是同一个 `GitStatusSnapshot` —— 同一个 `version`
-//! 语义、同一个 `repo_key` 寻址。旧实现里 worktree / WSL / SSH 返回 `version: 0`
+//! 语义、同一个 `workspace_key` 寻址。旧实现里 worktree / WSL / SSH 返回 `version: 0`
 //! 让前端「恒放行」，等于开了第二条身份不明的数据通道，任何一次 pull 都能覆盖任何
 //! 时刻的 push 快照（= 串数据）。
 
@@ -15,7 +15,7 @@ use crate::common::executor::factory::ExecTarget;
 use crate::common::file::watcher::WatcherEventSink;
 use crate::common::git::status_worker::{GitStatusSnapshot, RECALC_WAIT_TIMEOUT};
 use crate::common::git::transport::GitTransport;
-use crate::common::git::RepoRef;
+use crate::common::git::WorkspaceRef;
 use crate::common::runtime::run_blocking;
 use crate::AppError;
 use crate::AppStateWrapper;
@@ -24,8 +24,8 @@ use crate::AppStateWrapper;
 ///
 /// 见 `.trellis/spec/backend/git-domain.md` §10：任何经 IPC 的 git 写命令成功后都必须
 /// 戳**被写入的那个单元**，否则读接口拿写前快照当权威数据返回（「操作成功但列表要手动
-/// 刷新才更新」的根因）。契约主键本次随身份一起从 project 升为 `RepoRef`。
-pub async fn wait_status_fresh(state: &AppStateWrapper, repo: &RepoRef) {
+/// 刷新才更新」的根因）。契约主键本次随身份一起从 project 升为 `WorkspaceRef`。
+pub async fn wait_status_fresh(state: &AppStateWrapper, repo: &WorkspaceRef) {
     let manager = state.watcher_manager.clone();
     let repo = repo.clone();
     // Condvar 等待是阻塞原语 → run_blocking 隔离（红线 3）。join 失败仅发生于运行时关停，
@@ -41,10 +41,10 @@ pub async fn wait_status_fresh(state: &AppStateWrapper, repo: &RepoRef) {
 /// 主仓是唯一正确的做法；等命令哪天补上 `worktree_path` 参数，就必须换成 [`wait_status_fresh`]
 /// —— 编译器不会提醒，所以把这条写在名字里。
 pub async fn wait_main_status_fresh(state: &AppStateWrapper, project_id: &str) {
-    match state.resolve_repo(project_id, None).await {
+    match state.resolve_workspace(project_id, None).await {
         Ok((_target, main)) => wait_status_fresh(state, &main).await,
         // 解析失败不影响命令成败：数据最终由 `git-status-snapshot` 推送收敛。
-        Err(e) => log::warn!("[GitStatus] cannot resolve main unit for {project_id}: {e}"),
+        Err(e) => log::warn!("[GitStatus] cannot resolve main checkout for {project_id}: {e}"),
     }
 }
 
@@ -59,13 +59,13 @@ pub async fn wait_main_status_fresh(state: &AppStateWrapper, project_id: &str) {
 ///
 /// **阻塞语义**：drop notify watcher（递归反注册 inotify/FSEvents 句柄）可能短暂阻塞 →
 /// 经 `run_blocking` 隔离（红线 3），与挂载侧 `mount_only` 对称。
-pub async fn release_unit(state: &AppStateWrapper, repo: &RepoRef) {
+pub async fn release_workspace(state: &AppStateWrapper, repo: &WorkspaceRef) {
     let manager = state.watcher_manager.clone();
     let repo = repo.clone();
     let _ = run_blocking(move || manager.unwatch(&repo)).await;
 }
 
-/// 读取某仓库单元的权威 status。**先看有没有生产者，再看缓存**：
+/// 读取某Workspace的权威 status。**先看有没有生产者，再看缓存**：
 ///
 /// 1. 挂载中且已有快照 → 直接返回（与 `git-status-snapshot` 事件同源同版本，新鲜度由
 ///    worker 负责）；
@@ -74,11 +74,11 @@ pub async fn release_unit(state: &AppStateWrapper, repo: &RepoRef) {
 /// 3. **未挂载 ⇒ 一律现算**（WSL / SSH 单元，以及侧栏要为每个 worktree 取计数的那些）。
 ///
 /// 顺序不能反过来（先查缓存再看挂载）：未挂载的单元没有任何生产者会让槽位变新，
-/// 那份 pull 结果一旦被当成权威返回，`refreshRepoStatus` 就成了空操作 —— 第一次 pull
+/// 那份 pull 结果一旦被当成权威返回，`refreshWorkspaceStatus` 就成了空操作 —— 第一次 pull
 /// 的数据会永远显示成"最新"，正是 I1-b 禁止的「旧数据伪装成事实」。
-pub async fn read_unit_status(
+pub async fn read_workspace_status(
     state: &AppStateWrapper,
-    repo: &RepoRef,
+    repo: &WorkspaceRef,
 ) -> Result<GitStatusSnapshot, AppError> {
     let manager = state.watcher_manager.clone();
     if manager.is_watched(repo) {
@@ -96,7 +96,7 @@ pub async fn read_unit_status(
             return Ok((*snap).clone());
         }
         return Err(AppError::NotFound(format!(
-            "status for unit {} is not available yet",
+            "status for workspace {} is not available yet",
             repo.key()
         )));
     }
@@ -111,23 +111,23 @@ pub async fn read_unit_status(
 /// 分支） —— 这是「远端 pull 分支可被 `cargo test` 跑到」的唯一缝。
 async fn compute_and_record(
     state: &AppStateWrapper,
-    repo: &RepoRef,
+    repo: &WorkspaceRef,
     transport: &dyn GitTransport,
 ) -> Result<GitStatusSnapshot, AppError> {
     let (entries, branch) =
-        crate::common::git::operations::status_porcelain(transport, repo.work_dir())
+        crate::common::git::operations::status_porcelain(transport, repo.root())
             .await
             .map_err(AppError::from)?;
     // ahead/behind 是 status 的第四类输入（refs），与 entries/branch 由**同一个生产者**
     // 在同一份快照里产出（git-domain §12）。无 upstream / detached / 命令失败 → (0,0)，
     // 不是错误（R3.1）—— 不得因此把已有徽标打回 0 之外的东西（它本就是 0）。
     let (ahead, behind) =
-        match crate::common::git::operations::get_ahead_behind(transport, repo.work_dir()).await {
+        match crate::common::git::operations::get_ahead_behind(transport, repo.root()).await {
             Ok(ab) => (ab.ahead, ab.behind),
             Err(e) => {
                 log::debug!(
                     "[GitStatus] ahead/behind unavailable for {}: {e}",
-                    repo.work_dir()
+                    repo.root()
                 );
                 (0, 0)
             }
@@ -153,7 +153,7 @@ pub const fn supports_push_producer(target: &ExecTarget) -> bool {
     matches!(target, ExecTarget::Local)
 }
 
-/// 激活一个仓库单元：释放其它单元的挂载 → 挂载本单元 → 有界等待首个快照。
+/// 激活一个Workspace：释放其它单元的挂载 → 挂载本单元 → 有界等待首个快照。
 ///
 /// **为什么由前端显式驱动**：决策 D-B 是「只挂当前视图所在的那个单元」，每项目常驻
 /// 至多一套资源。挂载/释放因此必须有一个唯一入口 —— 否则「谁在看」又会散落到各处，
@@ -171,7 +171,7 @@ pub const fn supports_push_producer(target: &ExecTarget) -> bool {
 pub async fn activate(
     state: &AppStateWrapper,
     sink: Arc<dyn WatcherEventSink>,
-    repo: &RepoRef,
+    repo: &WorkspaceRef,
 ) -> Result<GitStatusSnapshot, AppError> {
     let (target, _) = state.resolve_project(repo.project_id())?;
     activate_with(state, sink, repo, &target, supports_push_producer(&target)).await
@@ -185,14 +185,14 @@ pub async fn activate(
 async fn activate_with(
     state: &AppStateWrapper,
     sink: Arc<dyn WatcherEventSink>,
-    repo: &RepoRef,
+    repo: &WorkspaceRef,
     transport: &dyn GitTransport,
     has_push_producer: bool,
 ) -> Result<GitStatusSnapshot, AppError> {
     // 仓库存在性由 transport 判定（本地 fs 判定会误杀 WSL / SSH 单元）
-    if !transport.is_git_repo(repo.work_dir()).await {
+    if !transport.is_git_repo(repo.root()).await {
         return Err(AppError::NotFound(format!(
-            "unit {} is not a git repository",
+            "workspace {} is not a git repository",
             repo.key()
         )));
     }
@@ -221,14 +221,14 @@ async fn activate_with(
         );
     }
 
-    read_unit_status(state, repo).await
+    read_workspace_status(state, repo).await
 }
 
 #[cfg(test)]
 mod tests {
     use std::path::Path;
 
-    use super::{activate, activate_with, read_unit_status, supports_push_producer};
+    use super::{activate, activate_with, read_workspace_status, supports_push_producer};
     use crate::common::executor::factory::ExecTarget;
     use crate::common::file::watcher::CollectingSink;
     use crate::common::testing::{init_git_repo, plain_project_state};
@@ -272,15 +272,15 @@ mod tests {
         init_git_repo(&tmp.path().join("proj"));
 
         let (_target, repo) = state
-            .resolve_repo(&project_id, None)
+            .resolve_workspace(&project_id, None)
             .await
             .expect("resolve repo");
         let sink = CollectingSink::new();
         let snapshot = activate(&state, sink.clone(), &repo)
             .await
-            .expect("activate local unit");
+            .expect("activate local workspace");
 
-        assert_eq!(snapshot.repo_key, repo.key());
+        assert_eq!(snapshot.workspace_key, repo.key());
         assert!(state.watcher_manager.is_watched(&repo));
         assert!(
             !sink.event_names().is_empty(),
@@ -297,8 +297,14 @@ mod tests {
         init_git_repo(&tmp.path().join("proj"));
         let project_b = add_git_project(&state, &tmp.path().join("proj-b"));
 
-        let (_ta, repo_a) = state.resolve_repo(&project_a, None).await.expect("repo a");
-        let (_tb, repo_b) = state.resolve_repo(&project_b, None).await.expect("repo b");
+        let (_ta, repo_a) = state
+            .resolve_workspace(&project_a, None)
+            .await
+            .expect("repo a");
+        let (_tb, repo_b) = state
+            .resolve_workspace(&project_b, None)
+            .await
+            .expect("repo b");
 
         activate(&state, CollectingSink::new(), &repo_a)
             .await
@@ -326,8 +332,14 @@ mod tests {
         init_git_repo(&tmp.path().join("proj"));
         let project_b = add_git_project(&state, &tmp.path().join("proj-b"));
 
-        let (_ta, repo_a) = state.resolve_repo(&project_a, None).await.expect("repo a");
-        let (_tb, repo_b) = state.resolve_repo(&project_b, None).await.expect("repo b");
+        let (_ta, repo_a) = state
+            .resolve_workspace(&project_a, None)
+            .await
+            .expect("repo a");
+        let (_tb, repo_b) = state
+            .resolve_workspace(&project_b, None)
+            .await
+            .expect("repo b");
 
         // A 按 Local 正常挂载（有 push 生产者）
         activate(&state, CollectingSink::new(), &repo_a)
@@ -341,7 +353,7 @@ mod tests {
             .await
             .expect("pull b");
 
-        assert_eq!(snapshot.repo_key, repo_b.key());
+        assert_eq!(snapshot.workspace_key, repo_b.key());
         assert!(
             !state.watcher_manager.is_watched(&repo_b),
             "远端单元绝不挂载（无 push 生产者）"
@@ -358,15 +370,18 @@ mod tests {
 
     /// 未挂载单元的读路径：**每次读都现算并登记同一张表**（不信任任何缓存）。
     #[tokio::test]
-    async fn read_unit_status_of_an_unmounted_unit_computes_and_records() {
+    async fn read_workspace_status_of_an_unmounted_unit_computes_and_records() {
         let tmp = tempfile::tempdir().expect("tempdir");
         let (state, project_id) = plain_project_state(&tmp);
         init_git_repo(&tmp.path().join("proj"));
-        let (_t, repo) = state.resolve_repo(&project_id, None).await.expect("repo");
+        let (_t, repo) = state
+            .resolve_workspace(&project_id, None)
+            .await
+            .expect("repo");
 
         assert!(!state.watcher_manager.is_watched(&repo));
-        let snapshot = read_unit_status(&state, &repo).await.expect("compute");
-        assert_eq!(snapshot.repo_key, repo.key());
+        let snapshot = read_workspace_status(&state, &repo).await.expect("compute");
+        assert_eq!(snapshot.workspace_key, repo.key());
         assert!(
             state.watcher_manager.snapshot(&repo).is_some(),
             "pull 结果必须登记进同一张快照表（供侧栏 chip 等复用）"
@@ -426,10 +441,13 @@ mod tests {
         init_git_repo(&tmp.path().join("proj"));
         setup_upstream_with_local_commit(tmp.path());
 
-        let (_t, repo) = state.resolve_repo(&project_id, None).await.expect("repo");
+        let (_t, repo) = state
+            .resolve_workspace(&project_id, None)
+            .await
+            .expect("repo");
         assert!(!state.watcher_manager.is_watched(&repo), "夹具前提：未挂载");
 
-        let snapshot = read_unit_status(&state, &repo).await.expect("compute");
+        let snapshot = read_workspace_status(&state, &repo).await.expect("compute");
         assert_eq!(snapshot.ahead, 1, "本地领先 upstream 一个提交");
         assert_eq!(snapshot.behind, 0);
     }

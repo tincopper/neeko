@@ -75,7 +75,7 @@ impl DebugRequest {
 
     /// 执行单元根（激活 worktree / 主仓）。
     ///
-    /// `None` / 空串 = 主仓单元（由 `resolve_repo` 收敛）。语言后端的 `plan` 与
+    /// `None` / 空串 = 主仓单元（由 `resolve_workspace` 收敛）。语言后端的 `plan` 与
     /// 启动器共用同一值，保证能力探测、构建校验与会话 workspace 同源。
     #[must_use]
     pub fn worktree_path(&self) -> Option<&str> {
@@ -213,8 +213,8 @@ pub trait LanguageBackend: Send + Sync {
 
     /// 会话形态规划：返回三态（`Launch` / `Warming` / `Unavailable`）。
     ///
-    /// `unit` 是**已解析的执行单元**（由调用方单点解析）—— 后端**不得**自己再解一次：
-    /// 它同时给出环境（`unit.target`）与 cwd 校验 / workspace 基准（`unit.root`）。
+    /// `exec` 是**已解析的执行单元**（由调用方单点解析）—— 后端**不得**自己再解一次：
+    /// 它同时给出环境（`exec.target`）与 cwd 校验 / workspace 基准（`exec.root`）。
     ///
     /// `Launch` 时**尚未**建立任何会话；调用方负责起会话 —— 保证"不可用时绝不建会话、
     /// 绝不换引擎"的可单测不变式。**无默认体**：spawn + 通用载荷是未注册 backend 时
@@ -222,7 +222,7 @@ pub trait LanguageBackend: Send + Sync {
     async fn plan(
         &self,
         state: &AppStateWrapper,
-        unit: &super::super::project_context::ExecUnit,
+        exec: &super::super::project_context::ExecWorkspace,
         request: &DebugRequest,
     ) -> Result<SessionPlan, AppError>;
 

@@ -18,7 +18,7 @@ import type { FileChangedEvent, GitChangedEvent } from '@/shared/types';
 import { fileUrlToFilePath } from '@/shared/utils/browserUtils';
 import { pathsContainFile } from '@/shared/utils/fileRef';
 import { recordNavigation } from '@/shared/utils/historyStack';
-import { unitWorkDir } from '@/shared/utils/repoRef';
+import { workspaceRootOf } from '@/shared/utils/workspaceRef';
 
 import { browserNavigate } from '../api/browserApi';
 import { isAgentCliTab, formatPickerMessage, type PickerElement } from '../components/pickerUtils';
@@ -173,7 +173,7 @@ export function useBrowserPanelEvents({
 
   // Listen: git-changed — auto-refresh browser when armed
   //
-  // 载荷自仓库单元身份补齐起是 `{ repo_key, project_id }`（不再是裸 project_id 字符串）。
+  // 载荷自Workspace身份补齐起是 `{ workspace_key, project_id }`（不再是裸 project_id 字符串）。
   // 这里按**项目**维度匹配：面板状态本就是 per-project（`useProjectBrowserStore`），
   // 单元维度在此不参与判定 —— 与改造前的语义一致。
   useTauriEvent<GitChangedEvent>(
@@ -205,12 +205,12 @@ export function useBrowserPanelEvents({
     if (!project) return;
 
     // 同文件判定收敛到**身份所有者**（`pathsContainFile`），且基准按事件自带的**单元身份**取：
-    // watcher 挂在仓库单元上，`paths` 相对该单元工作树根 —— 用项目根拼 worktree 相对路径
+    // watcher 挂在Workspace上，`paths` 相对该单元工作树根 —— 用项目根拼 worktree 相对路径
     // 会落到主仓的另一个同名文件上，恒漏配。原实现自拼 `projectRoot + '/' + rel`，
     // 在事件回退为绝对路径（watcher strip_prefix 失败）或项目根带尾斜杠时同样漏配
     // —— 后果都是「面板不刷新 → 显示过期内容」。
     const matched = pathsContainFile(
-      unitWorkDir(event.repo_key, project.path),
+      workspaceRootOf(event.workspace_key, project.path),
       paths,
       browserFilePath,
     );

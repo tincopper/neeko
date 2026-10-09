@@ -4,11 +4,11 @@ import React, { useState, useCallback, useRef, useEffect, startTransition } from
 import DirectoryPickerDialog from '@/features/action-menu/components/DirectoryPickerDialog';
 import { readDirTree, saveNewFile } from '@/features/file/api/fileApi';
 import { useFileStore } from '@/features/file/store';
-// eslint-disable-next-line import/no-restricted-paths -- Save As 后需显式刷新该仓库单元的 git status（git feature 未把该入口纳入门面）
-import { refreshRepoStatus } from '@/features/git/utils/gitStatus';
+// eslint-disable-next-line import/no-restricted-paths -- Save As 后需显式刷新该Workspace的 git status（git feature 未把该入口纳入门面）
+import { refreshWorkspaceStatus } from '@/features/git/utils/gitStatus';
 import { useProjectStore } from '@/shared/store/projectStore';
-import { selectActiveWorktreePath, useWorktreeStore } from '@/shared/store/worktreeStore';
-import { repoKeyOf } from '@/shared/utils/repoRef';
+import { selectActiveCheckoutPath, useWorkspaceStore } from '@/shared/store/workspaceStore';
+import { workspaceKeyOf } from '@/shared/utils/workspaceRef';
 import {
   Dialog,
   DialogContent,
@@ -28,7 +28,7 @@ const SaveFileDialog: React.FC = () => {
   // Worktree 激活时，保存目标根目录应为**该请求项目**的激活 worktree 路径 —— 单元归属
   // 一律按 projectId 取（旧的「当前项目镜像」字段已删除，它会把别的项目的路径用在这里）。
   const wtProjectId = request?.projectId ?? null;
-  const activeWorktreePath = useWorktreeStore((s) => selectActiveWorktreePath(s, wtProjectId));
+  const activeCheckoutPath = useWorkspaceStore((s) => selectActiveCheckoutPath(s, wtProjectId));
 
   const [filename, setFilename] = useState('');
   const [directory, setDirectory] = useState('');
@@ -86,18 +86,18 @@ const SaveFileDialog: React.FC = () => {
   const refreshFileTree = useCallback(async () => {
     if (!request || !activeProject) return;
     try {
-      const rootPath = activeWorktreePath ?? activeProject.path;
+      const rootPath = activeCheckoutPath ?? activeProject.path;
       const owner = `${request.projectId}:${rootPath}`;
-      const loader = () => readDirTree(request.projectId, null, activeWorktreePath ?? null);
+      const loader = () => readDirTree(request.projectId, null, activeCheckoutPath ?? null);
       await useFileStore.getState().loadDir(owner, '', loader, {
         force: true,
         silent: true,
       });
-      void refreshRepoStatus(repoKeyOf(request.projectId, activeWorktreePath));
+      void refreshWorkspaceStatus(workspaceKeyOf(request.projectId, activeCheckoutPath));
     } catch {
       /* 树刷新失败不影响保存结果 */
     }
-  }, [request, activeProject, activeWorktreePath]);
+  }, [request, activeProject, activeCheckoutPath]);
 
   const handleSubmit = useCallback(async () => {
     if (!request || !activeProject) return;
@@ -117,14 +117,14 @@ const SaveFileDialog: React.FC = () => {
         dir,
         fn,
         request.content,
-        activeWorktreePath ?? undefined,
+        activeCheckoutPath ?? undefined,
       );
       // 落盘后的 tab 身份迁移收拢在 `retargetTabAfterSave`（本组件只负责编排与状态）
       retargetTabAfterSave({
         tabKey: request.tabKey,
         tabId: request.tabId,
         // Save As 根与 saveNewFile 的 resolve_base 对齐：worktree 激活用工作树根，否则项目根
-        saveRoot: activeWorktreePath ?? activeProject.path,
+        saveRoot: activeCheckoutPath ?? activeProject.path,
         relPath,
         filename: fn,
         content: request.content,
@@ -145,7 +145,7 @@ const SaveFileDialog: React.FC = () => {
     filename,
     directory,
     clearSaveAs,
-    activeWorktreePath,
+    activeCheckoutPath,
     refreshFileTree,
   ]);
 

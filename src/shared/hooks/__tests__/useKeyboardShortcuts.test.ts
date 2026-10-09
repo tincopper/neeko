@@ -12,7 +12,7 @@ import { useAppViewStore } from '@/shared/store/appViewStore';
 import { useConnectionStore } from '@/shared/store/connectionStore';
 import { useEditorStore } from '@/shared/store/editorStore';
 import { useProjectStore } from '@/shared/store/projectStore';
-import { useWorktreeStore, type WorktreeUnitState } from '@/shared/store/worktreeStore';
+import { useWorkspaceStore, type WorkspaceState } from '@/shared/store/workspaceStore';
 import { createProject } from '@/testing/factories';
 
 // mock terminal refresh functions
@@ -67,7 +67,7 @@ function seedStore(overrides: Record<string, unknown> = {}) {
   const worktreeDefaults = {
     // 单一表示：单元归属只按 projectId 存 on byProject（旧的 activeWorktreePath /
     // activeWorktreeBranch / openedWorktrees 全局镜像已删除，worktreeStateMap 亦是）。
-    byProject: {} as Record<string, WorktreeUnitState>,
+    byProject: {} as Record<string, WorkspaceState>,
   };
 
   // Apply overrides to matching fields
@@ -79,7 +79,7 @@ function seedStore(overrides: Record<string, unknown> = {}) {
 
   useProjectStore.setState(projectDefaults);
   useConnectionStore.setState(connectionDefaults);
-  useWorktreeStore.setState(worktreeDefaults);
+  useWorkspaceStore.setState(worktreeDefaults);
 
   return { ...projectDefaults, ...connectionDefaults, ...worktreeDefaults };
 }

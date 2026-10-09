@@ -7,7 +7,7 @@ import type { AuthMethod, RemoteEntrySession, WSLEntrySession } from '@/shared/t
 export interface WslContextValue {
   wslEntries: WSLEntrySession[];
   wslOpenSessions: Set<string>;
-  activeWslWorktreePath: string | null;
+  activeWslCheckoutPath: string | null;
   wslDiffState: { distro: string; projectPath: string; filePath: string } | null;
   setWslOpenSessions: (updater: (prev: Set<string>) => Set<string>) => void;
   onCloseWslProject: (entryId: string, projectId: string) => void;
@@ -27,7 +27,7 @@ export interface WslContextValue {
 export interface RemoteContextValue {
   remoteEntries: RemoteEntrySession[];
   remoteOpenSessions: Set<string>;
-  activeRemoteWorktreePath: string | null;
+  activeRemoteCheckoutPath: string | null;
   remoteAuthStore: Map<string, AuthMethod>;
   setRemoteOpenSessions: (updater: (prev: Set<string>) => Set<string>) => void;
   onCloseRemoteProject: (entryId: string, projectId: string) => void;

@@ -253,30 +253,30 @@ export function getGitBranchInfo(
 }
 
 /**
- * 读取某**仓库单元**的权威 status（主仓与 worktree 同一条路径、同一种载荷）。
+ * 读取某**Workspace**的权威 status（主仓与 worktree 同一条路径、同一种载荷）。
  *
  * 取代旧的 `get_worktree_changed_files` + `ChangedFilesPayload{version: 0}`：那张无版本
  * 语义的口子使前端 gate 只能恒放行，pull 结果与 push 快照在同一槽后到者胜（串数据）。
  * 命令失败 = 该单元状态**未知**，调用方不得把错误当「无变更」。
  */
-export function getRepoStatus(
+export function getWorkspaceStatus(
   projectId: string,
   worktreePath?: string | null,
 ): Promise<GitStatusSnapshot> {
-  return invoke<GitStatusSnapshot>('get_repo_status', { projectId, worktreePath });
+  return invoke<GitStatusSnapshot>('get_workspace_status', { projectId, worktreePath });
 }
 
 /**
- * 激活一个仓库单元（决策 D-B：后端只挂当前视图所在的那一个单元）。
+ * 激活一个Workspace（决策 D-B：后端只挂当前视图所在的那一个单元）。
  *
  * 后端会释放该项目下其它单元的挂载、挂载本单元并等待首个快照。
- * 唯一调用方是 `useActivateRepoUnit`（前端「当前视图」的唯一派生点）。
+ * 唯一调用方是 `useActivateWorkspace`（前端「当前视图」的唯一派生点）。
  */
-export function setActiveRepoUnit(
+export function activateWorkspace(
   projectId: string,
   worktreePath?: string | null,
 ): Promise<GitStatusSnapshot> {
-  return invoke<GitStatusSnapshot>('set_active_repo_unit', { projectId, worktreePath });
+  return invoke<GitStatusSnapshot>('set_active_workspace', { projectId, worktreePath });
 }
 
 /**

@@ -22,13 +22,13 @@
 // src/app/hooks/useAppShell.ts
 export function useAppShell() {
   useAppGlobalEffects();                     // 应用级副作用（paste 监听 / quick-open 跟踪 / 滚动条自动隐藏）
-  const data = useAppShellData();            // 领域 Hook 编排（useLocalProjects / useWorktreeState / useFileView / useKeyboardShortcuts …）
+  const data = useAppShellData();            // 领域 Hook 编排（useLocalProjects / useWorkspaceState / useFileView / useKeyboardShortcuts …）
   const values = buildAppShellValues(data);  // context value 装配（纯函数，可单测）
   return { initializing: data.initializing, appProvidersProps: values.appProvidersProps, ... };
 }
 ```
 
-- 状态按域落在 `src/shared/store/`（`projectStore` / `worktreeStore` / `editorStore` / `dockStore` /
+- 状态按域落在 `src/shared/store/`（`projectStore` / `workspaceStore` / `editorStore` / `dockStore` /
   `appViewStore` / `gitStore` / `connectionStore` …）与 feature store（如 `@/features/file/store`）。
   消费者按域直导对应 store，禁止再造「大容器 hook」或统一聚合层。
 - `App.tsx` 只做装配（`<AppProviders>` + `<AppShell/>`），零布局/面板编排；壳层骨架在
@@ -45,12 +45,12 @@ export function useAppShell() {
 
 | Context | 作用范围 | 典型消费者 |
 |--------|---------|-----------|
-| `AppContext` | 全局配置、agents、toast | `ProjectsPanel`、`ProjectWorkspace` |
-| `ProjectActionsContext` | 项目与 worktree 副作用动作（含 local/WSL/Remote） | `ProjectsPanel`、`ProjectWorkspace` |
+| `AppContext` | 全局配置、agents、toast | `ProjectsPanel`、`ProjectView` |
+| `ProjectActionsContext` | 项目与 worktree 副作用动作（含 local/WSL/Remote） | `ProjectsPanel`、`ProjectView` |
 | `FileActionsContext` | 文件树加载、文件保存与 Tab 操作动作（`@/features/editor/FileActionsContext`） | `FilesPanel`、`FileViewer` |
-| `WslContext` (legacy) | WSL 项目状态 + 操作（deprecated，使用 ProjectActionsContext） | `ProjectsPanel`、`ProjectWorkspace` |
-| `RemoteContext` (legacy) | SSH 项目状态 + 操作（deprecated，使用 ProjectActionsContext） | `ProjectsPanel`、`ProjectWorkspace` |
-| `EditorContext` | 终端 tabs 与 agent bar | `ProjectWorkspace` |
+| `WslContext` (legacy) | WSL 项目状态 + 操作（deprecated，使用 ProjectActionsContext） | `ProjectsPanel`、`ProjectView` |
+| `RemoteContext` (legacy) | SSH 项目状态 + 操作（deprecated，使用 ProjectActionsContext） | `ProjectsPanel`、`ProjectView` |
+| `EditorContext` | 终端 tabs 与 agent bar | `ProjectView` |
 
 > Context 只放**动作**与稳定基础数据（`shared/contexts/` 为横切，feature 自带 `contexts/` 或
 > `<X>Context.tsx`）。领域**状态**一律进 store —— 曾经的 `SkillContext` 已迁到 feature store
@@ -110,7 +110,7 @@ await saveSession(session);
 
 - `settings`：条件渲染（切走即卸载）
 - `library`：首次进入后常驻（hidden 切换，见 `AppCenter`）；再次激活后台刷新
-- `normal`：`ProjectWorkspace`（常驻）
+- `normal`：`ProjectView`（常驻）
 
 **写入方（禁止绕过）**：
 
@@ -142,12 +142,16 @@ await saveSession(session);
 | 归属 | store | 典型字段 |
 | --- | --- | --- |
 | 项目 | `projectStore` | `projects` / `activeProjectId` / `activeProject` / `statuses` / `git_info` 投影 |
-| 仓库单元激活态 | `worktreeStore` | `byProject[projectId].activePath / activeBranch / opened` |
+| Workspace激活态 | `workspaceStore` | `byProject[projectId].activePath / activeBranch / opened` |
 | 编辑器 tab | `editorStore` | `tabs[tabKey]` / `activeTabId` / `editorLayout` / `navigateGoal` |
 | 文件视图 | `@/features/file/store` | `dirs` / `loadStates` / `activeFilePath` |
 | 视图路由 | `appViewStore` | `appView` |
+
+> 术语：`workspaceStore` 存的是**当前 `Workspace` 的激活态**（`Workspace` = Project 下的能力容器，
+> 承载 IDE/Agent/editor/debug/LSP/terminal）。领域分层定义见
+> [`docs/domain-model.md`](../../../docs/domain-model.md)（唯一定义处，本文不复述）。
 | Dock | `dockStore` | 面板开合 / 宽度 |
-| Git 元数据 | `gitStore` | `aheadBehind`（键 = `RepoKey`） |
+| Git 元数据 | `gitStore` | `aheadBehind`（键 = `WorkspaceKey`） |
 
 适合放入应用级状态的场景：
 
@@ -213,7 +217,7 @@ const debouncedSave = useCallback(() => {
 │ useAppShell 编排入口                            │
 │  useAppGlobalEffects + useAppShellData         │
 │  （useLocalProjects / useProjectActions /      │
-│    useWorktreeState / useFileView / ...）       │
+│    useWorkspaceState / useFileView / ...）       │
 │  buildAppShellValues（纯函数装配 context value）│
 │  useAppStoreSync（仅视图状态+动作引用回写）     │
 └────────────────────────────────────────────────┘
@@ -286,8 +290,8 @@ const debouncedSave = useCallback(() => {
 projects: Project[];
 activeProjectId: string | null;
 activeProject: Project | null;
-// src/shared/store/worktreeStore.ts
-byProject: Record<projectId, { activePath: string | null; activeBranch: string; opened: WorktreeSnapshotItem[] }>;
+// src/shared/store/workspaceStore.ts
+byProject: Record<projectId, { activePath: string | null; activeBranch: string; opened: CheckoutEntry[] }>;
 // src/shared/store/editorStore.ts —— tabs 按复合 tabKey 分槽（project + worktree 各有独立 tab 空间）
 tabs: Record<tabKey, ProjectTabs>;
 activeTabId: string | null;   // 全局：当前视图的激活 tab（cacheKey 等消费）
@@ -312,7 +316,7 @@ interface FileActionsContextValue {
 ### 3. Contracts
 
 1. 状态归属契约
-`projects` / `activeProject*` 在 `projectStore`；`activeWorktree*` 在 `worktreeStore`；tabs 在
+`projects` / `activeProject*` 在 `projectStore`；`activeWorktree*` 在 `workspaceStore`；tabs 在
 `editorStore`；文件树与 `activeFilePath` 在 `@/features/file/store`。组件按域经 selector 读取，
 **不存在「一个 store 装全部」的聚合层**。
 
@@ -378,9 +382,9 @@ const projectTabs = useEditorStore.getState().tabs[tabKey]; // tab 按复合 tab
 
 ## 场景：异步全量刷新防陈旧覆盖 (git status 竞态) 2026-08-07
 
-> **机制已被下文「仓库单元分槽 + 激活态单源」(2026-09-26) 取代**：本场景要解决的问题（乱序
+> **机制已被下文「Workspace分槽 + 激活态单源」(2026-09-26) 取代**：本场景要解决的问题（乱序
 > 响应回退 store）依然存在，但解法从「前端自造 per-project generation Map」换成了「后端为每
-> 个仓库单元盖权威 version + 前端 per-key 闸门」。换的原因不是风格，而是 generation Map 与
+> 个Workspace盖权威 version + 前端 per-key 闸门」。换的原因不是风格，而是 generation Map 与
 > `worktreePath` 全局镜像同构 —— 都是前端自己维护的第二份身份/顺序表示，恰恰是 worktree 串
 > 数据的来源。以下代码只作历史保留，**不要照抄**。
 
@@ -476,10 +480,10 @@ export async function refreshGitFileStates(projectId: string) {
 
 ## 场景：跨域共用切片 + 复合 key 2026-05-18
 
-> **「复合 key」部分已被下文「仓库单元分槽 + 激活态单源」(2026-09-26) 取代**：本条要解决的
+> **「复合 key」部分已被下文「Workspace分槽 + 激活态单源」(2026-09-26) 取代**：本条要解决的
 > 问题（三端共用一张 `Record<key, T>` 表、key 不许各处手拼）依然成立，但**key 的形态**换了 ——
 > `aheadBehindKey(kind, entryId, projectId)` 工具已删除（护栏 `RETIRED_FRONTEND` 按符号钉），
-> 定址只允许仓库单元身份 `RepoKey` 本身。换的原因不是风格：`{source}:{connectionId}` 前缀在
+> 定址只允许Workspace身份 `WorkspaceKey` 本身。换的原因不是风格：`{source}:{connectionId}` 前缀在
 > 三个写入点各有一种 `connectionId` 约定（`distro` / `${host}:${port}` / `host`），读侧永远
 > 拼不出写侧的键，于是徽标时有时无。下面第 3 节的「单一切片 / 幂等写入 / 清理」三条契约仍然
 > 有效；第 2、4、7 节已按现行形态改写（历史形态只在对应位置留下一行注记，不要照抄）。
@@ -490,8 +494,8 @@ export async function refreshGitFileStates(projectId: string) {
   一份状态。**当年的前提已被证伪**：`projectId` 在 wsl/remote 之间并非不唯一 —— `project.id` 是
   `ProjectManager` 生成的 UUID，全局唯一。于是当时的「复合 key」方案
   （`{source}:{connectionId}:{projectId}`）不但冗余，还因为三个写入点各用一种 `connectionId`
-  约定（`distro` / `${host}:${port}` / `host`）而让读侧永远拼不出写侧的键 —— 键最终收敛为仓库单元
-  身份 `RepoKey`（见 2026-09-26 场景第 7 条）。
+  约定（`distro` / `${host}:${port}` / `host`）而让读侧永远拼不出写侧的键 —— 键最终收敛为Workspace
+  身份 `WorkspaceKey`（见 2026-09-26 场景第 7 条）。
 - Scope：`shared/store/gitStore.ts`（`aheadBehind` 切片）、`shared/hooks/useAheadBehindSync.ts` 与读取
   `aheadBehind` 切片的所有展示组件（`shared/utils/aheadBehindKey.ts` 已删除，见下）。
 
@@ -501,22 +505,22 @@ export async function refreshGitFileStates(projectId: string) {
 // 历史形态（已删除）：key = `${kind}:${entryId}:${projectId}`，且三端各用一种 entryId 约定
 // export function aheadBehindKey(kind: AheadBehindKind, entryId: string, projectId: string): string;
 
-// 现行形态：键的语义类型是仓库单元身份 `RepoKey`（`shared/utils/repoRef.ts` 的 `repoKeyOf`）；
-// 结构类型仍是 `string`，因此「传了非 RepoKey 的字符串」不会编译报错 —— 靠本契约与护栏守。
+// 现行形态：键的语义类型是Workspace身份 `WorkspaceKey`（`shared/utils/workspaceRef.ts` 的 `workspaceKeyOf`）；
+// 结构类型仍是 `string`，因此「传了非 WorkspaceKey 的字符串」不会编译报错 —— 靠本契约与护栏守。
 interface GitStoreState {
-  aheadBehind: Record<string, AheadBehind>; // 键 = RepoKey
+  aheadBehind: Record<string, AheadBehind>; // 键 = WorkspaceKey
 }
 
 interface GitStoreActions {
-  setAheadBehind(repoKey: string, info: AheadBehind | null): void;
+  setAheadBehind(workspaceKey: string, info: AheadBehind | null): void;
 }
 ```
 
 ### 3. Contracts
 
-1. Key 派生契约（**已改**）：所有写入/读取路径必须经过唯一产出点 `repoKeyOf(projectId, worktreePath)`
-   —— 就是「场景：仓库单元分槽 + 激活态单源」第 7 条。不允许任何前缀拼接（`source` / `connectionId`
-   维度已判为冗余：`project.id` 是 UUID，`RepoKey` 已全局唯一）。
+1. Key 派生契约（**已改**）：所有写入/读取路径必须经过唯一产出点 `workspaceKeyOf(projectId, worktreePath)`
+   —— 就是「场景：Workspace分槽 + 激活态单源」第 7 条。不允许任何前缀拼接（`source` / `connectionId`
+   维度已判为冗余：`project.id` 是 UUID，`WorkspaceKey` 已全局唯一）。
 2. 单一切片契约：跨三域的同语义状态共用一张表（`Record<key, T>`），不为每域单建独立切片。
 3. 写入幂等契约：`setAheadBehind` 必须做同值短路（防止无意义 re-render）。
 4. 清理契约：传 `null` 时从表中删除该 key，避免命令失败后陈旧数据残留。
@@ -525,9 +529,9 @@ interface GitStoreActions {
 
 | 场景 | 输入 | 预期 |
 |------|------|------|
-| local 写入 | `setAheadBehind(repoKeyOf(pid, null), ab)` | 只在主仓单元读到 |
-| worktree 写入 | `setAheadBehind(repoKeyOf(pid, wt), ab)` | 只在该单元读到，主仓单元不受影响 |
-| 命令失败 | invoke reject | `setAheadBehind(repoKey, null)` 删除 key |
+| local 写入 | `setAheadBehind(workspaceKeyOf(pid, null), ab)` | 只在主仓单元读到 |
+| worktree 写入 | `setAheadBehind(workspaceKeyOf(pid, wt), ab)` | 只在该单元读到，主仓单元不受影响 |
+| 命令失败 | invoke reject | `setAheadBehind(workspaceKey, null)` 删除 key |
 | 重复同值写入 | 现值 deepEqual 新值 | 不触发 setState |
 
 ### 5. Good/Base/Bad Cases
@@ -539,8 +543,8 @@ interface GitStoreActions {
 
 ### 6. Tests Required
 
-- `repoKeyOf` golden 形态与后端 `RepoRef::key()` 逐字一致（`shared/utils/__tests__/repoRef.test.ts`）。
-- `gitStore` 单测：`setAheadBehind(repoKey, null)` 后该 key 不存在；同值写入不触发订阅。
+- `workspaceKeyOf` golden 形态与后端 `WorkspaceRef::key()` 逐字一致（`shared/utils/__tests__/workspaceRef.test.ts`）。
+- `gitStore` 单测：`setAheadBehind(workspaceKey, null)` 后该 key 不存在；同值写入不触发订阅。
 - 集成断言：主仓单元与 worktree 单元的 key 互不读到对方数据
   （`useRefreshGitInfo.test.ts` / `BranchStatusBarWidget.test.tsx` / `ConnectionProjectCard.test.tsx`）。
 
@@ -557,10 +561,10 @@ useGitStore.getState().setAheadBehind(k, info);
 #### Correct
 
 ```ts
-import { repoKeyOf } from '../utils/repoRef';
+import { workspaceKeyOf } from '../utils/workspaceRef';
 
 // 单元身份本身即键；unitPath 取自 store selector，不各自猜
-const k = repoKeyOf(projectId, selectActiveWorktreePath(useWorktreeStore.getState(), projectId));
+const k = workspaceKeyOf(projectId, selectActiveCheckoutPath(useWorkspaceStore.getState(), projectId));
 useGitStore.getState().setAheadBehind(k, info);
 ```
 
@@ -1039,57 +1043,57 @@ rerun: async (projectId) => {
 
 ---
 
-## 场景：仓库单元分槽 + 激活态单源（git status 身份补全）2026-09-26
+## 场景：Workspace分槽 + 激活态单源（git status 身份补全）2026-09-26
 
 ### 1. Scope / Trigger
 
 - Trigger（issue #2）：worktree 场景下 changes 列表「总是不可见，还可能出现 main 中的内容，
   要手动刷新才恢复」。第一性原理：`git status = f(HEAD, index, workdir)`，linked worktree 的
-  这三者全都独立（只共享 object DB）⇒ 一个 project 在 git 语义下是 **1 + N 个仓库单元**。前端
+  这三者全都独立（只共享 object DB）⇒ 一个 project 在 git 语义下是 **1 + N 个Workspace**。前端
   当时只有 per-project 一个 `changed_files` 槽 + 一个 per-project version 计数，两个单元共槽
   必然互相覆盖；worktree 又没有权威生产者，于是「不刷新就不动」。
-- Scope：`shared/utils/repoRef.ts`（身份）、`shared/store/projectStore.ts`（`statuses` 分槽 +
-  唯一写入口）、`shared/store/worktreeStore.ts`（激活态单源）、`features/git/hooks/useRepoUnit.ts`
-  + `app/hooks/useActiveRepoUnitSync.ts`（挂载唯一入口）、`features/git/utils/gitStatus.ts`。
+- Scope：`shared/utils/workspaceRef.ts`（身份）、`shared/store/projectStore.ts`（`statuses` 分槽 +
+  唯一写入口）、`shared/store/workspaceStore.ts`（激活态单源）、`features/git/hooks/useRepoUnit.ts`
+  + `app/hooks/useActiveWorkspaceSync.ts`（挂载唯一入口）、`features/git/utils/gitStatus.ts`。
 
 ### 2. Signatures
 
 ```ts
-// shared/utils/repoRef.ts —— key 的唯一产出/反解处（与 Rust RepoRef::key() 双端 golden 对齐）
-export const REPO_KEY_SEP = '\u0000';
-export type RepoKey = string & { readonly __repoKey: unique symbol };
-export function repoKeyOf(projectId: string, worktreePath?: string | null): RepoKey;
-export function parseRepoKey(key: string): { projectId: string; worktreePath: string | null };
-// 单元工作树根（= Rust RepoRef::work_dir()）：事件相对路径的归一基准，主仓回落项目登记路径
-export function unitWorkDir(repoKey: string, projectRoot: string): string;
+// shared/utils/workspaceRef.ts —— key 的唯一产出/反解处（与 Rust WorkspaceRef::key() 双端 golden 对齐）
+export const WORKSPACE_KEY_SEP = '\u0000';
+export type WorkspaceKey = string & { readonly __workspaceKey: unique symbol };
+export function workspaceKeyOf(projectId: string, worktreePath?: string | null): WorkspaceKey;
+export function parseWorkspaceKey(key: string): { projectId: string; worktreePath: string | null };
+// 单元工作树根（= Rust WorkspaceRef::work_dir()）：事件相对路径的归一基准，主仓回落项目登记路径
+export function workspaceRootOf(workspaceKey: string, projectRoot: string): string;
 
 // shared/store/projectStore.ts
-statuses: Record<string, RepoStatus>;                    // 缺失 = 未知，不是「无变更」
-applyStatus: (snapshot: RepoStatus) => void;             // 唯一写入口，内含 per-key version gate
-invalidateStatus: (repoKey: RepoKey | string) => void;   // 切走 / unwatch 时作废
-export function selectEntries(state, repoKey): FileChange[] | undefined;  // undefined = 未知
+statuses: Record<string, WorkspaceStatus>;                    // 缺失 = 未知，不是「无变更」
+applyStatus: (snapshot: WorkspaceStatus) => void;             // 唯一写入口，内含 per-key version gate
+invalidateStatus: (workspaceKey: WorkspaceKey | string) => void;   // 切走 / unwatch 时作废
+export function selectEntries(state, workspaceKey): FileChange[] | undefined;  // undefined = 未知
 
-// shared/store/gitStore.ts —— 键 = RepoKey（单元身份），无 source/connection 前缀
-aheadBehind: Record<string, AheadBehind>;                // 键 = RepoKey（结构类型是 string）
-setAheadBehind: (repoKey: string, info: AheadBehind | null) => void;
+// shared/store/gitStore.ts —— 键 = WorkspaceKey（单元身份），无 source/connection 前缀
+aheadBehind: Record<string, AheadBehind>;                // 键 = WorkspaceKey（结构类型是 string）
+setAheadBehind: (workspaceKey: string, info: AheadBehind | null) => void;
 
-// shared/store/worktreeStore.ts —— 只有 byProject，没有任何全局镜像
-byProject: Record<projectId, { activePath: string | null; activeBranch: string; opened: WorktreeSnapshotItem[] }>;
+// shared/store/workspaceStore.ts —— 只有 byProject，没有任何全局镜像
+byProject: Record<projectId, { activePath: string | null; activeBranch: string; opened: CheckoutEntry[] }>;
 // 「当前视图单元」的唯二派生点（React 形态 / 命令式形态）
-export function selectActiveRepoKey(state, projectId: string | null | undefined): RepoKey | null;
-export function activeRepoKeyOf(projectId?: string | null): RepoKey | null;
+export function selectActiveWorkspaceKey(state, projectId: string | null | undefined): WorkspaceKey | null;
+export function activeWorkspaceKeyOf(projectId?: string | null): WorkspaceKey | null;
 
 // features/git/utils/gitStatus.ts
-export async function refreshRepoStatus(repoKey: RepoKey | string): Promise<void>;
-export function createDebouncedStatusRefresh(ms: number): { schedule(repoKey, run): void; clear(): void };
+export async function refreshWorkspaceStatus(workspaceKey: WorkspaceKey | string): Promise<void>;
+export function createDebouncedStatusRefresh(ms: number): { schedule(workspaceKey, run): void; clear(): void };
 ```
 
 ### 3. Contracts
 
-1. **身份单源**：`RepoKey` 只能由 `repoKeyOf` 产出、只能由 `parseRepoKey` 反解。任何调用点手拼
+1. **身份单源**：`WorkspaceKey` 只能由 `workspaceKeyOf` 产出、只能由 `parseWorkspaceKey` 反解。任何调用点手拼
    `` `${projectId}\0${wt}` `` 或自行 `split('\0')` = 同一身份的第二种表示，必然与后端漂移。
-   刷新目标必须是 `RepoKey` 入参，**禁止**「projectId + 现取全局镜像的 worktreePath」。
-2. **一格一单元**：status 按 `repo_key` 分槽。跨单元的数据共享只允许发生在**投影**上
+   刷新目标必须是 `WorkspaceKey` 入参，**禁止**「projectId + 现取全局镜像的 worktreePath」。
+2. **一格一单元**：status 按 `workspace_key` 分槽。跨单元的数据共享只允许发生在**投影**上
    （主仓单元的 branch 投影进项目卡片 `git_info.current_branch`，写者唯一）。
 3. **唯一写入口 + 单一闸门**：`applyStatus` 是 `statuses` 的唯一写者，闸门只有一条规则
    `version <= prev ⇒ 丢弃`（同一 key 内比较）。禁止 `version === 0 恒放行`、禁止
@@ -1097,60 +1101,60 @@ export function createDebouncedStatusRefresh(ms: number): { schedule(repoKey, ru
    恒有意义，前端不需要也不可能「遇到无语义版本就放行」。
 4. **未知 ≠ 空**：槽位缺失或 `invalidateStatus` 后，消费端必须渲染加载/空态（`ChangesList` 的
    `unknown` 形态），不得沿用上一个单元的数据、也不得把空数组当「工作区干净」的断言。
-5. **激活态只有一个真源**：`worktreeStore.byProject[projectId]`。全局
+5. **激活态只有一个真源**：`workspaceStore.byProject[projectId]`。全局
    `activeWorktreePath / activeWorktreeBranch / openedWorktrees` 镜像字段已删除 —— 镜像需要有人
    同步，而「谁在看」这件事一旦有两份表示，就会有两份不一致的视图。
-6. **挂载唯一发起点 + 两个判据分离**：只有 `useActiveRepoUnitSync` 会请求后端挂载/取回快照；用户
+6. **挂载唯一发起点 + 两个判据分离**：只有 `useActiveWorkspaceSync` 会请求后端挂载/取回快照；用户
    动作（点 worktree、切回主仓）只写激活态。两个发起点必然有时序差。后端因此可以维持「每项目至多
-   一套挂载资源」的成本决策，而前端不需要知道它挂了谁 —— 它只按 `repo_key` 读自己的槽。
+   一套挂载资源」的成本决策，而前端不需要知道它挂了谁 —— 它只按 `workspace_key` 读自己的槽。
 
    **「请求挂载」与「重试」是两个判据，合成就出洞**（2026-09-30 修）：
    - **请求挂载的判据是意图边沿**（意图变化 ⇒ 必须请后端接管该单元）。**禁止**用「槽位非空」
-     代替 —— 槽位是**数据面**（`get_repo_status` 的 pull 读也写它），不证明后端有 push 生产者；
+     代替 —— 槽位是**数据面**（`get_workspace_status` 的 pull 读也写它），不证明后端有 push 生产者；
      后端资源状态才是唯一权威，前端的合法替代证据只有**自己的请求历史**。
    - **重试的判据是槽位为空**（有权威数据即收敛完成）。**禁止**按请求结局
      （`mounted / stale / failed`）分支 —— 失败与「槽位被别的写者作废」之后意图可以完全没变，
      按结局分支就没有任何东西会再发起，`ChangesList` 永久停在 `unknown`（"Loading changes…"）。
-   **机制、触发场景与实现取舍**见 `app/hooks/useActiveRepoUnitSync.ts` 的 docstring（本规则只留
+   **机制、触发场景与实现取舍**见 `app/hooks/useActiveWorkspaceSync.ts` 的 docstring（本规则只留
    判据与禁令 —— 同一条理由写两遍，改一处必漏另一处）。
    **How to apply**：重试**有界**（策略在 `shared/utils/retryBudget.ts`，纯函数、按意图作用域、
    指数退避封顶），墙钟最坏约 8s（每次尝试内含后端 1.5s 有界等待）；耗尽 ⇒ 保持「未知」且**只
    上报一次**（`logFrontendError`，只落日志不弹 toast），此后靠意图变化或 push 事件恢复 —— 耗尽
    只停主动轮询，不是死局。**重试本身绝不判死** —— 「激活单元已从清单消失 ⇒ 回落主仓」的判据
-   仍然只有 `useAppShellData` 那一处（两处判死互抖是 2026-09-28 的既成事故）。把 `RepoKey` 写进
-   日志/提示一律走 `repoKeyLabel` —— 键含 NUL 分隔符，直接插值会让日志文件被判成二进制
+   仍然只有 `useAppShellData` 那一处（两处判死互抖是 2026-09-28 的既成事故）。把 `WorkspaceKey` 写进
+   日志/提示一律走 `workspaceKeyLabel` —— 键含 NUL 分隔符，直接插值会让日志文件被判成二进制
    （`file(1)` 报 `data`，检索与轮转一并失效）。
-7. **ahead/behind 的键就是 `RepoKey`**（无 `{source}:{connectionId}` 前缀）。复合键 helper
+7. **ahead/behind 的键就是 `WorkspaceKey`**（无 `{source}:{connectionId}` 前缀）。复合键 helper
    `aheadBehindKey(kind, entryId, projectId)` 已退役（护栏 `RETIRED_FRONTEND` 按符号钉）。
    **Why**：同一份数字曾有四种键约定 —— 写侧 `{kind}:{distro|host}:{unit}` 与
    `{kind}:{host}:{port}:{projectId}`，读侧 `local:{projectId}` 与裸 `aheadBehind[projectId]`；
    读侧永远拼不出写侧的键 ⇒ `BranchStatusBarWidget` 的徽标恒空、主仓行显示的是**激活单元**的数字。
-   而 `project.id` 已是 UUID（`ProjectManager` 生成）、`RepoKey` 已全局唯一 ⇒
+   而 `project.id` 已是 UUID（`ProjectManager` 生成）、`WorkspaceKey` 已全局唯一 ⇒
    `{source}:{connectionId}` 维度纯冗余，且三个调用点各用一种 connectionId 约定（`distro` /
    `${host}:${port}` / `host`），只制造漂移。**How to apply**：写侧四个触发时机
    （`useRefreshGitInfo` / `useLocalProjects` / `useGitStatusEventsSync` / `useAheadBehindSync`）
-   是**同一事实的不同时刻**，键必须同形；读侧一律 `aheadBehind[repoKeyOf(projectId, unitPath)]`，
-   `unitPath` 取自 store selector（`selectActiveWorktreePath`）。
-8. **激活单元 key 只有一个派生点**：`selectActiveRepoKey(state, projectId)`（React 形态）/
-   `activeRepoKeyOf(projectId?)`（命令式形态）、`useActiveRepoKey(projectId)`（渲染期形态），
-   都在 `worktreeStore.ts`。任何文件直读 `.byProject[...].activePath` 即违规
+   是**同一事实的不同时刻**，键必须同形；读侧一律 `aheadBehind[workspaceKeyOf(projectId, unitPath)]`，
+   `unitPath` 取自 store selector（`selectActiveCheckoutPath`）。
+8. **激活单元 key 只有一个派生点**：`selectActiveWorkspaceKey(state, projectId)`（React 形态）/
+   `activeWorkspaceKeyOf(projectId?)`（命令式形态）、`useActiveWorkspaceKey(projectId)`（渲染期形态），
+   都在 `workspaceStore.ts`。任何文件直读 `.byProject[...].activePath` 即违规
    （护栏 `STORE_STATE_ACCESS_RE` 钉住）—— 判据拦的是
-   **形态**而非字段名，因为「别处再手写一遍 `repoKeyOf(pid, byProject[pid]?.activePath ?? null)`」
+   **形态**而非字段名，因为「别处再手写一遍 `workspaceKeyOf(pid, byProject[pid]?.activePath ?? null)`」
    正是下一次分叉的入口（`projectId` 为空时还会产出 `'\u0000'` 这种谁也匹配不上的键）。渲染期直读
    还会停在旧值（非响应式）。
 9. **`file-changed` / `file-tree-changed` 的路径基准 = 单元工作树根**：载荷是
-   `{ repo_key, project_id, paths | dirs }`，路径**相对该单元工作树根**（后端
+   `{ workspace_key, project_id, paths | dirs }`，路径**相对该单元工作树根**（后端
    `strip_prefix(repo.work_dir_pathbuf())`，失败才回退绝对路径）。消费侧的归一基准必须由
-   `unitWorkDir(repo_key, projectRoot)` 给出 —— 主仓单元回落项目登记路径，linked worktree 用
+   `workspaceRootOf(workspace_key, projectRoot)` 给出 —— 主仓单元回落项目登记路径，linked worktree 用
    后端回传的 canonical 路径；**禁止用 `project.path`**：worktree 视图下工作树文件的相对路径
    拼到主仓根 ⇒ 同文件判定恒不命中 ⇒ HTML 预览 / 浏览器 auto-refresh 静默不再刷新。
    同理，**事件载荷形状本身是契约**：`git-changed` 已从裸 `project_id` 字符串改为
-   `GitChangedEvent{repo_key, project_id}`，仍按 `useTauriEvent<string>` + `payload !== projectId`
+   `GitChangedEvent{workspace_key, project_id}`，仍按 `useTauriEvent<string>` + `payload !== projectId`
    比较的消费点会「对象 ≠ 字符串」恒早返回 ⇒ 整条通道静默死亡（不报错、不留痕）。事件名与载荷
    类型一律取自 `shared/events.ts` + `shared/types`，禁止手写 `listen<string>`。
 10. **`statuses` 只能经 selectors 读（消费端不摸内部表示）**：`selectStatus` / `selectEntries` /
     `selectBranch` / `selectHasStatus`（均在 `projectStore.ts`）。生产代码里 `.statuses` 直读或
-    解构 `{ statuses }` 即违规（护栏 `check_repo_unit_identity` 判据 7，白名单仅 `projectStore.ts`）。
+    解构 `{ statuses }` 即违规（护栏 `check_workspace_identity` 判据 7，白名单仅 `projectStore.ts`）。
     **Why**：字段是 store 的内部表示，公开它就等于让每个消费者都耦合到「容器形状 + key 拼法 +
     缺失 = 未知语义」；selector 是追加式约定（可绕过），判据才是排他式机制。**How to apply**：
     需要按**多个 key** 取值（循环里不能订阅 hook，如 worktree 侧栏为每个 worktree 取条目）用
@@ -1168,30 +1172,30 @@ export function createDebouncedStatusRefresh(ms: number): { schedule(repoKey, ru
 | 乱序/回退 | `applyStatus(v2)` 后再来 `v2` 或 `v1` | 丢弃，槽位不变 | 静默 |
 | 另一单元的高版本 | A 已有 v9，收到 B 的 v1 | B 的槽写入 v1 | — |
 | 切换单元 | `invalidateStatus(oldKey)` + 新单元尚未推送 | 旧槽删除、新槽 `undefined` | 渲染加载态 |
-| 刷新失败 | `getRepoStatus` reject | **不动槽位**（不写空列表） | `console.error`，由调用方决定是否提示 |
+| 刷新失败 | `getWorkspaceStatus` reject | **不动槽位**（不写空列表） | `console.error`，由调用方决定是否提示 |
 | 非 git 项目 | `project.git_info === null` | 不发任何 git 命令 | — |
 
 ### 5. Good/Base/Bad Cases
 
 - Good：主仓 ↔ worktreeA ↔ worktreeB 交替，每格只显示自己单元的条目；未挂载的 B 在侧栏走
   pull 通道，仍然按 key 定址同一张表。
-- Base：单主仓项目，行为与改造前一致（多了一层 `repoKeyOf(projectId, null)`）。
+- Base：单主仓项目，行为与改造前一致（多了一层 `workspaceKeyOf(projectId, null)`）。
 - Bad（都会重新引入本 issue 的症状）：把 `statuses` 又拍平回 per-project；在组件里
-  `useWorktreeStore.getState().activeWorktreePath`（或 `.byProject[pid].activePath`）取当前单元；
+  `useWorkspaceStore.getState().activeWorktreePath`（或 `.byProject[pid].activePath`）取当前单元；
   给 `applyStatus` 加「`version === 0` 也放行」的兼容分支；在 `useEffect` 里再调一次
-  `set_active_repo_unit`；给 ahead/behind 再拼一次 `{source}:{connectionId}` 前缀；事件消费点
+  `set_active_workspace`；给 ahead/behind 再拼一次 `{source}:{connectionId}` 前缀；事件消费点
   用 `project.path` 当相对路径基准。
 
 ### 6. Tests Required
 
-- `shared/utils/__tests__/repoRef.test.ts`：golden key 形态必须与后端
-  `repo_ref.rs::golden_key_format_matches_frontend_contract` 逐字一致（`'proj-1\0'` /
-  `'proj-1\0/srv/app/.worktrees/dev'`）；`unitWorkDir` 主仓回落 / worktree 取路径。
+- `shared/utils/__tests__/workspaceRef.test.ts`：golden key 形态必须与后端
+  `workspace_ref.rs::golden_key_format_matches_frontend_contract` 逐字一致（`'proj-1\0'` /
+  `'proj-1\0/srv/app/.worktrees/dev'`）；`workspaceRootOf` 主仓回落 / worktree 取路径。
 - `shared/store/__tests__/projectStore.test.ts`：`applyStatus` 拒旧（含同版本）、跨单元互不覆盖、
   `invalidateStatus` 只作废一个。
-- `shared/store/__tests__/worktreeStore.test.ts`：`selectActiveRepoKey` / `activeRepoKeyOf` 的
+- `shared/store/__tests__/workspaceStore.test.ts`：`selectActiveWorkspaceKey` / `activeWorkspaceKeyOf` 的
   两个形态同语义、跨项目不串用。
-- `features/git/hooks/__tests__/useActivateRepoUnit.test.ts`：迟到响应在当前视图已切换时必须丢弃；
+- `features/git/hooks/__tests__/useActivateWorkspace.test.ts`：迟到响应在当前视图已切换时必须丢弃；
   激活失败 → 该单元置为未知（不是保留旧数据）。
 - ahead/behind 键契约：`useRefreshGitInfo.test.ts`（键空间里只有单元身份，旧前缀键必须为
   `undefined`；worktree 刷新不碰主仓键）、`git/components/__tests__/BranchStatusBarWidget.test.tsx`
@@ -1199,7 +1203,7 @@ export function createDebouncedStatusRefresh(ms: number): { schedule(repoKey, ru
 - 事件基准：`HtmlPreview.test.tsx` / `useBrowserPanelEvents.test.ts` / `useBrowserTab.test.ts`
   各自断言「单元相对路径 + 绝对回退 + 非规范等价形态（重复斜杠 / 尾斜杠）」三种输入都必须命中；
   `useUntrackedDirExpansion.test.ts` 断言**别的单元**的事件不得驱动本列表重拉。
-- 护栏 `tools/guards/checks/check_repo_unit_identity.py`：退役符号 / 镜像属性 / 裸 `.byProject[..]`
+- 护栏 `tools/guards/checks/check_workspace_identity.py`：退役符号 / 镜像属性 / 裸 `.byProject[..]`
   直读 / status 命令出口白名单 / 手拼 key 五类判据，命中即违规且**刻意不配计数台账**
   （要的是永远为零）。植入违规必须红 —— 退化方式不是「忘了」，而是「把旧通道又接回来」。
 
@@ -1209,7 +1213,7 @@ export function createDebouncedStatusRefresh(ms: number): { schedule(repoKey, ru
 
 ```ts
 // 身份来自全局镜像 + 兼容无语义版本：worktree 视图串主仓内容、pull 覆盖 push
-const worktreePath = useWorktreeStore.getState().activeWorktreePath;
+const worktreePath = useWorkspaceStore.getState().activeWorktreePath;
 await refreshGitFileStates(projectId, worktreePath);
 if (payload.version === 0 || payload.version > prev.version) applyGitStatus(payload);
 // 「没有数据」被渲染成「没有改动」
@@ -1232,19 +1236,19 @@ useTauriEvent<string>(GIT_CHANGED_EVENT, (payload) => {
 
 ```ts
 // 身份由入参给出，闸门只有一条规则，未知与空是两种界面形态
-const repoKey = repoKeyOf(projectId, selectActiveWorktreePath(useWorktreeStore.getState(), projectId));
-await refreshRepoStatus(repoKey);
+const workspaceKey = workspaceKeyOf(projectId, selectActiveCheckoutPath(useWorkspaceStore.getState(), projectId));
+await refreshWorkspaceStatus(workspaceKey);
 useProjectStore.getState().applyStatus(snapshot); // 内部：version <= prev ⇒ 丢弃
-const status = useProjectStore((s) => selectStatus(s, repoKey));
+const status = useProjectStore((s) => selectStatus(s, workspaceKey));
 <ChangesList entries={status?.entries ?? []} unknown={status === undefined} />;
 
 // ahead/behind 的键 = 单元身份本身；写侧四个时机同形，读侧经唯一派生点取
-setAheadBehind(snapshot.repo_key, ab); // 写
-const unitKey = useWorktreeStore((s) => selectActiveRepoKey(s, projectId)); // 读
+setAheadBehind(snapshot.workspace_key, ab); // 写
+const unitKey = useWorkspaceStore((s) => selectActiveWorkspaceKey(s, projectId)); // 读
 const ab = useGitStore((s) => (unitKey ? s.aheadBehind[unitKey] : null));
 
 // 事件的归一基准与产出侧同源（单元工作树根）
-if (pathsContainFile(unitWorkDir(event.repo_key, projectPath), event.paths, filePath)) reload();
+if (pathsContainFile(workspaceRootOf(event.workspace_key, projectPath), event.paths, filePath)) reload();
 // 载荷类型跟着契约走
 useTauriEvent<GitChangedEvent>(GIT_CHANGED_EVENT, (payload) => {
   if (payload.project_id !== projectId) return;
@@ -1299,7 +1303,7 @@ useProjectStore.setState({ activeProjectId: projectId, activeProject: targetProj
 ```
 
 **涉及位置**：`useProjectSelection.ts`（`selectProject`）、`useWorktreeActions.ts`（跨项目切 worktree）、
-`useWorktreeState.ts`（切回主仓）、`useLocalProjects.ts`（handleRemoveProject / 项目恢复）。
+`useWorkspaceState.ts`（切回主仓）、`useLocalProjects.ts`（handleRemoveProject / 项目恢复）。
 
 **下游防御性 guard**：终端缓存/tab 解析一侧同样要校验 `activeTabId` 是否属于当前 `tabKey` 的
 tabs，不属于则跳过（不要用别的项目的 id 建 PTY 或算 `cacheKey`）：

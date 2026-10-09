@@ -6,7 +6,7 @@ import { useEditorContext } from '@/shared/contexts';
 import { useAppContext } from '@/shared/contexts/AppContext';
 import { useEditorStore } from '@/shared/store/editorStore';
 import { useProjectStore } from '@/shared/store/projectStore';
-import { useActiveWorktreePath } from '@/shared/store/worktreeStore';
+import { useActiveCheckoutPath } from '@/shared/store/workspaceStore';
 import type { Tab, FileTabData } from '@/shared/types';
 import { isFileTab } from '@/shared/utils/fileTree';
 import { resolveTabKey } from '@/shared/utils/tabKey';
@@ -40,7 +40,7 @@ function FileViewer() {
   const { config } = useAppContext();
   const activeProjectId = useProjectStore((state) => state.activeProjectId);
   const activeProject = useProjectStore((state) => state.activeProject);
-  const effectiveWorktreePath = useActiveWorktreePath();
+  const effectiveWorktreePath = useActiveCheckoutPath();
   const { onFileSave: onSave, onFileContentChange: onContentChange } = useFileActionsContext();
 
   const theme = config.theme;

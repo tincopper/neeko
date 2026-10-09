@@ -1,6 +1,6 @@
 use crate::common::executor::factory::ExecTarget;
-use crate::common::git::unit_path::UnitPath;
-use crate::common::git::RepoRef;
+use crate::common::git::checkout_path::CheckoutPath;
+use crate::common::git::WorkspaceRef;
 use crate::platform::reveal::{build_reveal_command, normalize_path};
 use crate::project::types::{FileContent, FileNode};
 use crate::AppError;
@@ -45,10 +45,10 @@ pub fn file_exists(path: String) -> Result<bool, AppError> {
 /// 为空时回落到 `resolve_project()` 返回的受信项目根。
 ///
 /// 取 **`exec`（宿主形态）** 而非身份：这个值是 `std::fs`、gitignore 过滤器与
-/// `FileAccessScope` 的输入，必须与 watcher 挂载根（同样来自 `RepoRef::work_dir()` 的
+/// `FileAccessScope` 的输入，必须与 watcher 挂载根（同样来自 `WorkspaceRef::root()` 的
 /// 宿主形态）逐字同源，否则 `same_root` 类比较会静默失配。
 ///
-/// **异步**：归一含 `exists` / `canonicalize`（阻塞 fs），经 [`UnitPath::resolve_async`]
+/// **异步**：归一含 `exists` / `canonicalize`（阻塞 fs），经 [`CheckoutPath::resolve_async`]
 /// 隔离到阻塞池（红线 3）。
 async fn resolve_base(
     target: &ExecTarget,
@@ -57,7 +57,7 @@ async fn resolve_base(
 ) -> Result<String, AppError> {
     match root_path.filter(|path| !path.trim().is_empty()) {
         // 传入的 base 若是某个工作树根，归一化后取宿主观；否则退回项目根语义。
-        Some(path) => UnitPath::resolve_async(target, path)
+        Some(path) => CheckoutPath::resolve_async(target, path)
             .await
             .map(|resolved| resolved.exec().to_string())
             .map_err(AppError::from),
@@ -84,7 +84,7 @@ pub async fn read_dir_tree(
     // 前端 ignored_files 平行数组退役。watcher 未挂载（切换项目时首载与 watch
     // 并发的 race）→ resolve_gitignore_filter 现场构建兜底，保证首屏即带 ignored
     // 标注；非 git 项目 → None（仅 .git 硬过滤）。
-    // 过滤器按**仓库单元**取：主仓与 worktree 的 .gitignore 规则链不同（各自工作树根
+    // 过滤器按**Workspace**取：主仓与 worktree 的 .gitignore 规则链不同（各自工作树根
     // + 各自 gitdir 的 exclude）。未挂载（首载与 watch 并发）→ 现场构建兜底。
     //
     // 与上面 `resolve_base` 各自一次 hop 而不是合并成一次解析：两者的**空路径语义不同**
@@ -94,7 +94,7 @@ pub async fn read_dir_tree(
         let (project_id, wd) = (project_id.clone(), wd.clone());
         let target = target.clone();
         let root_path = root_path.clone();
-        move || RepoRef::resolve(&project_id, &wd, root_path.as_deref(), &target)
+        move || WorkspaceRef::resolve(&project_id, &wd, root_path.as_deref(), &target)
     })
     .await
     .map_err(|e| AppError::Unknown(e.to_string()))?

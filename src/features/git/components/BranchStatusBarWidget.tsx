@@ -6,10 +6,10 @@ import { cn } from '@/lib/utils';
 import { BranchIcon, ArrowDown, ArrowUp } from '@/shared/components/icons';
 import { useGitStore } from '@/shared/store/gitStore';
 import { useProjectStore } from '@/shared/store/projectStore';
-import { useActiveWorktreePath, useActiveWorktreeBranch } from '@/shared/store/worktreeStore';
+import { useActiveCheckoutPath, useActiveCheckoutBranch } from '@/shared/store/workspaceStore';
 import type { GitInfo } from '@/shared/types';
 import { filterWorktreeBranches, isActiveWorktree } from '@/shared/utils';
-import { repoKeyOf } from '@/shared/utils/repoRef';
+import { workspaceKeyOf } from '@/shared/utils/workspaceRef';
 
 import BranchSwitcherPanel from './BranchSwitcherPanel';
 
@@ -35,18 +35,18 @@ function BranchStatusBarWidget({
   const projectId = activeProject?.id ?? '';
   const currentBranch = gitInfo?.current_branch ?? '';
 
-  const activeWorktreePath = useActiveWorktreePath();
-  const activeWorktreeBranch = useActiveWorktreeBranch();
-  const isWorktreeActive = isActiveWorktree(activeWorktreePath);
-  const displayBranch = isWorktreeActive ? activeWorktreeBranch : currentBranch;
+  const activeCheckoutPath = useActiveCheckoutPath();
+  const activeCheckoutBranch = useActiveCheckoutBranch();
+  const isWorktreeActive = isActiveWorktree(activeCheckoutPath);
+  const displayBranch = isWorktreeActive ? activeCheckoutBranch : currentBranch;
 
   const favoriteBranches = useGitStore(useShallow((s) => s.favoriteBranches[projectId] ?? []));
   const toggleFavorite = useGitStore((s) => s.toggleFavorite);
-  // ahead/behind 按**仓库单元**取（显示的分支就来自该单元的 HEAD）：
+  // ahead/behind 按**Workspace**取（显示的分支就来自该单元的 HEAD）：
   // 旧实现读 `aheadBehind[projectId]` —— 键空间里从来没有这个键，徽标恒空。
-  const unitRepoKey = repoKeyOf(projectId, activeWorktreePath);
+  const workspaceKey = workspaceKeyOf(projectId, activeCheckoutPath);
   const aheadBehind = useGitStore(
-    useShallow((s) => (projectId ? (s.aheadBehind[unitRepoKey] ?? null) : null)),
+    useShallow((s) => (projectId ? (s.aheadBehind[workspaceKey] ?? null) : null)),
   );
 
   const availableBranches = useMemo(

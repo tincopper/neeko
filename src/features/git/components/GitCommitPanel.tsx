@@ -9,7 +9,7 @@ import type {
   ProjectCommands,
   ProjectCapabilities,
 } from '@/shared/types/activeProject';
-import type { RepoKey } from '@/shared/utils/repoRef';
+import type { WorkspaceKey } from '@/shared/utils/workspaceRef';
 
 import {
   useAiCommitMessage,
@@ -38,8 +38,8 @@ interface GitCommitPanelProps {
   onShowToast?: (message: string, type?: 'info' | 'error') => void;
   onOpenDialog?: (type: 'new-branch' | 'new-worktree', e: React.MouseEvent) => void;
   aheadBehind: AheadBehind | null;
-  /** 本面板当前渲染的仓库单元（主仓或某 worktree）；status 按它定址读取。 */
-  repoKey: RepoKey;
+  /** 本面板当前渲染的Workspace（主仓或某 worktree）；status 按它定址读取。 */
+  workspaceKey: WorkspaceKey;
 }
 
 const GitCommitPanel: React.FC<GitCommitPanelProps> = ({
@@ -51,16 +51,16 @@ const GitCommitPanel: React.FC<GitCommitPanelProps> = ({
   onShowToast,
   onOpenDialog,
   aheadBehind,
-  repoKey,
+  workspaceKey,
 }) => {
   const [commitMessage, setCommitMessage] = useState('');
 
   // G4（P3）：快照截断状态（按单元存，主仓与 worktree 互不相关）
-  const statusTruncated = useGitStore((s) => s.truncatedByRepo[repoKey] ?? false);
+  const statusTruncated = useGitStore((s) => s.truncatedByRepo[workspaceKey] ?? false);
 
-  // 唯一权威源：projectStore.statuses[repoKey]（后端按单元推送/计算，version gate 在 store 内）。
+  // 唯一权威源：projectStore.statuses[workspaceKey]（后端按单元推送/计算，version gate 在 store 内）。
   // `undefined` = 该单元状态未知（未挂载 / 首个快照未到）→ 渲染空态，绝不沿用别处的数据。
-  const status = useProjectStore((s) => selectStatus(s, repoKey));
+  const status = useProjectStore((s) => selectStatus(s, workspaceKey));
   const changedFiles = useMemo(() => status?.entries ?? [], [status]);
 
   const noCommits =
@@ -205,11 +205,11 @@ const GitCommitPanel: React.FC<GitCommitPanelProps> = ({
           </div>
         ) : (
           <ChangesList
-            /* 缓存作用域 = 仓库单元：主仓与 worktree 的相对路径**同形不同义**
+            /* 缓存作用域 = Workspace：主仓与 worktree 的相对路径**同形不同义**
                （同一 `src/a.ts` 在两个工作树里是两个文件），因此展开缓存
                （dirFilesMap）与勾选集必须随单元重挂载，不能只按项目。 */
-            key={repoKey}
-            repoKey={repoKey}
+            key={workspaceKey}
+            workspaceKey={workspaceKey}
             unknown={status === undefined}
             files={changedFilesWithStats}
             selectedFiles={selectedFiles}

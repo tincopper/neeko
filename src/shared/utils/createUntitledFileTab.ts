@@ -3,7 +3,7 @@ import type { EditorGroupId, Tab } from '@/shared/types';
 
 /**
  * Create and activate an untitled file tab for the given project tab key.
- * Centralises the logic that was duplicated in ProjectWorkspace and
+ * Centralises the logic that was duplicated in ProjectView and
  * EditorGroupPane. `targetGroup` 指定落组（缺省走 addTab 既有落组逻辑）。
  */
 export function createUntitledFileTab(

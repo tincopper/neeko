@@ -8,7 +8,7 @@ import { useEditorStore } from '@/shared/store/editorStore';
 import { useOverlayStore } from '@/shared/store/overlayStore';
 import { useProjectStore } from '@/shared/store/projectStore';
 import { armProjectAutoRefresh, disarmProjectAutoRefresh } from '@/shared/utils/browserAutoRefresh';
-import { repoKeyOf } from '@/shared/utils/repoRef';
+import { workspaceKeyOf } from '@/shared/utils/workspaceRef';
 
 // 轻量化依赖：terminal 调用 + webview/picker 子 hook 打桩，聚焦 hook 自身逻辑
 vi.mock('@/features/terminal', () => ({
@@ -183,10 +183,10 @@ describe('useBrowserTab — file:// tab 的变更命中判定走身份抽象', (
   const TAB_ID = 'tab_f';
   const TAB_KEY = 'p1';
   const FILE_URL = 'file:///repo/docs/main.html';
-  const MAIN_KEY = repoKeyOf('p1', null);
+  const MAIN_KEY = workspaceKeyOf('p1', null);
 
   function grabFileChangedHandler(): (event: {
-    repo_key: string;
+    workspace_key: string;
     project_id: string;
     paths: string[];
   }) => void {
@@ -232,7 +232,7 @@ describe('useBrowserTab — file:// tab 的变更命中判定走身份抽象', (
     const handler = setup('/repo');
 
     act(() => {
-      handler({ repo_key: MAIN_KEY, project_id: 'p1', paths: ['docs/main.html'] });
+      handler({ workspace_key: MAIN_KEY, project_id: 'p1', paths: ['docs/main.html'] });
     });
 
     expect(mockRefresh).toHaveBeenCalledTimes(1);
@@ -242,7 +242,7 @@ describe('useBrowserTab — file:// tab 的变更命中判定走身份抽象', (
     const handler = setup('/repo');
 
     act(() => {
-      handler({ repo_key: MAIN_KEY, project_id: 'p1', paths: ['/repo/docs/main.html'] });
+      handler({ workspace_key: MAIN_KEY, project_id: 'p1', paths: ['/repo/docs/main.html'] });
     });
 
     expect(mockRefresh).toHaveBeenCalledTimes(1);
@@ -252,7 +252,7 @@ describe('useBrowserTab — file:// tab 的变更命中判定走身份抽象', (
     const handler = setup('/repo/');
 
     act(() => {
-      handler({ repo_key: MAIN_KEY, project_id: 'p1', paths: ['docs//main.html'] });
+      handler({ workspace_key: MAIN_KEY, project_id: 'p1', paths: ['docs//main.html'] });
     });
 
     expect(mockRefresh).toHaveBeenCalledTimes(1);
@@ -265,7 +265,7 @@ describe('useBrowserTab — file:// tab 的变更命中判定走身份抽象', (
 
     act(() => {
       handler({
-        repo_key: repoKeyOf('p1', '/repo-wt'),
+        workspace_key: workspaceKeyOf('p1', '/repo-wt'),
         project_id: 'p1',
         paths: ['docs/main.html'],
       });
@@ -278,7 +278,7 @@ describe('useBrowserTab — file:// tab 的变更命中判定走身份抽象', (
     const handler = setup('/repo');
 
     act(() => {
-      handler({ repo_key: MAIN_KEY, project_id: 'p1', paths: ['docs/other.html'] });
+      handler({ workspace_key: MAIN_KEY, project_id: 'p1', paths: ['docs/other.html'] });
     });
 
     expect(mockRefresh).not.toHaveBeenCalled();

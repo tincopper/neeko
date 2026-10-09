@@ -47,10 +47,10 @@ fn resolve_worktree_path_uses_worktree_path_when_provided() {
 
 // ── parse_worktree_list（清单产出即归一，#1 的回归钉）────────────────────
 
-/// 清单路径会被前端拼成 `RepoKey`，因此必须与 `RepoRef::key()` 同形（身份渲染）。
+/// 清单路径会被前端拼成 `WorkspaceKey`，因此必须与 `WorkspaceRef::key()` 同形（身份渲染）。
 /// 局部路径（Local）要归一：`git worktree add` 记录的字符串不保证归一。
 #[test]
-fn parse_worktree_list_normalizes_local_paths_to_repo_ref_form() {
+fn parse_worktree_list_normalizes_local_paths_to_workspace_ref_form() {
     let tmp = tempfile::tempdir().expect("tempdir");
     let root = tmp.path().join("repo");
     let wt = tmp.path().join("wt-a");
@@ -67,7 +67,7 @@ fn parse_worktree_list_normalizes_local_paths_to_repo_ref_form() {
     let list = parse_worktree_list(&output, &ExecTarget::Local);
     assert_eq!(list.len(), 2);
     assert_eq!(list[1].branch, "dev");
-    let identity = crate::common::git::RepoRef::resolve(
+    let identity = crate::common::git::WorkspaceRef::resolve(
         "p1",
         &root.to_string_lossy(),
         Some(&raw),
@@ -76,8 +76,10 @@ fn parse_worktree_list_normalizes_local_paths_to_repo_ref_form() {
     .expect("identity must resolve");
     assert_eq!(
         list[1].path,
-        identity.worktree_path().expect("linked unit has a path"),
-        "清单路径与 RepoRef 身份必须同形"
+        identity
+            .worktree_path()
+            .expect("linked checkout has a path"),
+        "清单路径与 WorkspaceRef 身份必须同形"
     );
     // 断对象而不是断字符串形态（形态是平台细节）
     assert_eq!(
@@ -87,7 +89,7 @@ fn parse_worktree_list_normalizes_local_paths_to_repo_ref_form() {
 }
 
 /// 远端（WSL / SSH）路径只能词法归一：绝不能经宿主 `std::path`（Windows 宿主会把
-/// 前导 `/` 变成 `\`），且归一结果必须与 `RepoRef::resolve` 的非 Local 分支一致。
+/// 前导 `/` 变成 `\`），且归一结果必须与 `WorkspaceRef::resolve` 的非 Local 分支一致。
 #[test]
 fn parse_worktree_list_lexically_normalizes_remote_paths() {
     let remote = ExecTarget::Remote {
@@ -100,12 +102,18 @@ fn parse_worktree_list_lexically_normalizes_remote_paths() {
     let list = parse_worktree_list(output, &remote);
     assert_eq!(list.len(), 2);
     assert_eq!(list[1].path, "/srv/app-wt");
-    let identity =
-        crate::common::git::RepoRef::resolve("p1", "/srv/app", Some("/srv/app-wt/./"), &remote)
-            .expect("identity must resolve");
+    let identity = crate::common::git::WorkspaceRef::resolve(
+        "p1",
+        "/srv/app",
+        Some("/srv/app-wt/./"),
+        &remote,
+    )
+    .expect("identity must resolve");
     assert_eq!(
         list[1].path,
-        identity.worktree_path().expect("linked unit has a path")
+        identity
+            .worktree_path()
+            .expect("linked checkout has a path")
     );
 }
 

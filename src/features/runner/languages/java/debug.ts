@@ -12,7 +12,7 @@ import { useJavaDebugStore } from '@/features/runner/store/javaDebugStore';
 import type { JavaDebugBackend, JavaJdtlsTarget } from '@/features/runner/types';
 import { prefersJdtlsBackend } from '@/shared/utils/javaDebugBackend';
 
-import { resolveRunCwd, type TestActionContext } from '../../exec/context';
+import { runCwdOf, type TestActionContext } from '../../exec/context';
 import { notifyDebugError } from '../../exec/debugConsole';
 import type { RunTarget } from '../../runTarget';
 import { langIo } from '../io';
@@ -304,7 +304,7 @@ async function debugJavaViaJdtls(
 
 export async function debugJava(target: RunTarget, ctx: TestActionContext): Promise<void> {
   const debug = useDebugStore.getState();
-  const cwd = resolveRunCwd(ctx);
+  const cwd = runCwdOf(ctx);
   const javaRoot = await resolveJavaRunRoot(cwd, ctx.filePath, langIo);
   // 编译产物预检：未编译时 JVM 报 ClassNotFound、直接退出，断点永不命中 ——
   // fail fast 给出指引，不启动会话（避免 Debug 面板永久 running）。

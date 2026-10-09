@@ -1,11 +1,11 @@
 import { renderHook, act } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { useWorkspaceState } from '@/features/project/hooks/useWorkspaceState';
 import { useWorktreeActions } from '@/features/project/hooks/useWorktreeActions';
-import { useWorktreeState } from '@/features/project/hooks/useWorktreeState';
 import { useEditorStore } from '@/shared/store/editorStore';
 import { useProjectStore } from '@/shared/store/projectStore';
-import { useWorktreeStore, type WorktreeUnitState } from '@/shared/store/worktreeStore';
+import { useWorkspaceStore, type WorkspaceState } from '@/shared/store/workspaceStore';
 import { createProject } from '@/testing/factories';
 
 const mockInvoke = vi.hoisted(() => vi.fn());
@@ -23,7 +23,7 @@ const OTHER_PROJECT = 'p-other';
 const WT_PATH = '/path/to/worktree';
 const WT_BRANCH = 'feature/test';
 
-function unit(overrides: Partial<WorktreeUnitState> = {}): WorktreeUnitState {
+function unit(overrides: Partial<WorkspaceState> = {}): WorkspaceState {
   return { activePath: null, activeBranch: '', opened: [], ...overrides };
 }
 
@@ -35,14 +35,14 @@ function seedStore(state: Record<string, unknown> = {}): void {
     statuses: {},
     ...state,
   });
-  useWorktreeStore.setState({ byProject: {} });
+  useWorkspaceStore.setState({ byProject: {} });
   useEditorStore.setState({ tabs: {}, activeTabId: null });
 }
 
 function createDeps() {
   return {
-    activateWorktree: vi.fn(),
-    markWorktreeOpened: vi.fn(),
+    activateWorkspace: vi.fn(),
+    markWorkspaceOpened: vi.fn(),
     saveWorktreeState: vi.fn(),
   };
 }
@@ -67,8 +67,8 @@ describe('useWorktreeActions', () => {
       });
 
       expect(mockInvoke).not.toHaveBeenCalledWith('set_view_terminal', expect.anything());
-      expect(deps.activateWorktree).toHaveBeenCalledWith(PROJECT, WT_PATH, WT_BRANCH);
-      expect(deps.markWorktreeOpened).toHaveBeenCalledWith(PROJECT, WT_PATH, WT_BRANCH);
+      expect(deps.activateWorkspace).toHaveBeenCalledWith(PROJECT, WT_PATH, WT_BRANCH);
+      expect(deps.markWorkspaceOpened).toHaveBeenCalledWith(PROJECT, WT_PATH, WT_BRANCH);
       expect(deps.saveWorktreeState).toHaveBeenCalledWith(PROJECT, WT_PATH);
     });
 
@@ -83,7 +83,7 @@ describe('useWorktreeActions', () => {
       });
 
       expect(mockInvoke).toHaveBeenCalledWith('set_view_terminal', { projectId: PROJECT });
-      expect(deps.activateWorktree).toHaveBeenCalledWith(PROJECT, WT_PATH, WT_BRANCH);
+      expect(deps.activateWorkspace).toHaveBeenCalledWith(PROJECT, WT_PATH, WT_BRANCH);
     });
 
     it('引导状态按 project + worktree 维度读取（同一项目不同工作树不共用引导进度）', async () => {
@@ -127,7 +127,7 @@ describe('useWorktreeActions', () => {
 
       expect(mockInvoke).not.toHaveBeenCalledWith('set_active_project', expect.anything());
       expect(mockInvoke).not.toHaveBeenCalledWith('set_view_terminal', expect.anything());
-      expect(deps.activateWorktree).toHaveBeenCalledTimes(1);
+      expect(deps.activateWorkspace).toHaveBeenCalledTimes(1);
     });
 
     // 回归契约（曾是生产缺陷）：mutator 曾经由 useWorktreeState(activeProjectId) 的渲染期
@@ -143,10 +143,10 @@ describe('useWorktreeActions', () => {
       const saveWorktreeState = vi.fn();
       const { result } = renderHook(() => {
         const activeId = useProjectStore((s) => s.activeProjectId);
-        const st = useWorktreeState(activeId);
+        const st = useWorkspaceState(activeId);
         return useWorktreeActions({
-          activateWorktree: st.activateWorktree,
-          markWorktreeOpened: st.markWorktreeOpened,
+          activateWorkspace: st.activateWorkspace,
+          markWorkspaceOpened: st.markWorkspaceOpened,
           saveWorktreeState,
         });
       });
@@ -155,8 +155,8 @@ describe('useWorktreeActions', () => {
         await result.current.handleOpenWorktreeTerminal(PROJECT, WT_PATH, WT_BRANCH);
       });
 
-      expect(useWorktreeStore.getState().byProject[OTHER_PROJECT]).toBeUndefined();
-      expect(useWorktreeStore.getState().byProject[PROJECT]).toMatchObject({
+      expect(useWorkspaceStore.getState().byProject[OTHER_PROJECT]).toBeUndefined();
+      expect(useWorkspaceStore.getState().byProject[PROJECT]).toMatchObject({
         activePath: WT_PATH,
       });
     });
@@ -164,7 +164,7 @@ describe('useWorktreeActions', () => {
 
   describe('handleBackToMainTerminal — 激活态按项目读取（无全局镜像）', () => {
     it('该项目有激活 worktree 时切回主仓并落盘 + 切终端视图', () => {
-      useWorktreeStore.setState({
+      useWorkspaceStore.setState({
         byProject: { [PROJECT]: unit({ activePath: WT_PATH, activeBranch: WT_BRANCH }) },
       });
       const deps = createDeps();
@@ -174,7 +174,7 @@ describe('useWorktreeActions', () => {
         result.current.handleBackToMainTerminal(PROJECT);
       });
 
-      expect(deps.activateWorktree).toHaveBeenCalledWith(PROJECT, null, '');
+      expect(deps.activateWorkspace).toHaveBeenCalledWith(PROJECT, null, '');
       expect(deps.saveWorktreeState).toHaveBeenCalledWith(PROJECT, null);
       expect(mockInvoke).toHaveBeenCalledWith('set_view_terminal', { projectId: PROJECT });
     });
@@ -187,13 +187,13 @@ describe('useWorktreeActions', () => {
         result.current.handleBackToMainTerminal(PROJECT);
       });
 
-      expect(deps.activateWorktree).not.toHaveBeenCalled();
+      expect(deps.activateWorkspace).not.toHaveBeenCalled();
       expect(deps.saveWorktreeState).not.toHaveBeenCalled();
       expect(mockInvoke).not.toHaveBeenCalledWith('set_view_terminal', expect.anything());
     });
 
     it('别的项目有激活 worktree 时，本项目「返回主仓」不得误伤那个项目', () => {
-      useWorktreeStore.setState({
+      useWorkspaceStore.setState({
         byProject: { [OTHER_PROJECT]: unit({ activePath: WT_PATH, activeBranch: WT_BRANCH }) },
       });
       const deps = createDeps();
@@ -203,14 +203,14 @@ describe('useWorktreeActions', () => {
         result.current.handleBackToMainTerminal(PROJECT);
       });
 
-      expect(deps.activateWorktree).not.toHaveBeenCalled();
-      expect(useWorktreeStore.getState().byProject[OTHER_PROJECT]).toMatchObject({
+      expect(deps.activateWorkspace).not.toHaveBeenCalled();
+      expect(useWorkspaceStore.getState().byProject[OTHER_PROJECT]).toMatchObject({
         activePath: WT_PATH,
       });
     });
 
     it('主仓路径以 null 判定，空串不得当作 worktree 激活', () => {
-      useWorktreeStore.setState({ byProject: { [PROJECT]: unit({ activePath: '' }) } });
+      useWorkspaceStore.setState({ byProject: { [PROJECT]: unit({ activePath: '' }) } });
       const deps = createDeps();
       const { result } = renderHook(() => useWorktreeActions(deps));
 
@@ -218,7 +218,7 @@ describe('useWorktreeActions', () => {
         result.current.handleBackToMainTerminal(PROJECT);
       });
 
-      expect(deps.activateWorktree).not.toHaveBeenCalled();
+      expect(deps.activateWorkspace).not.toHaveBeenCalled();
     });
   });
 });

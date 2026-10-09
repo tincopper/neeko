@@ -10,33 +10,33 @@
   "invariants": [
     {
       "id": "repo-unit-key-single-source",
-      "title": "仓库单元身份只能由 RepoRef / repoKeyOf 产出（唯一派生点）",
+      "title": "Workspace身份只能由 WorkspaceRef / workspaceKeyOf 产出（唯一派生点）",
       "tier": "guard",
       "enforcement": [
         {
           "kind": "guard",
-          "ref": "check_repo_unit_identity"
+          "ref": "check_workspace_identity"
         },
         {
           "kind": "test",
-          "ref": "tools/guards/tests/test_check_repo_unit_identity.py"
+          "ref": "tools/guards/tests/test_check_workspace_identity.py"
         }
       ],
       "red_line": 12
     },
     {
       "id": "mount-entry-singularity",
-      "title": "仓库单元挂载只有一个入口（git/services/status.rs::activate）",
+      "title": "Workspace挂载只有一个入口（git/services/status.rs::activate）",
       "tier": "structure",
       "enforcement": [
         {
           "kind": "guard",
-          "ref": "check_repo_unit_identity",
+          "ref": "check_workspace_identity",
           "note": "生产代码里 WatcherManager::watch 调用点唯一；structure 指「挂载资源所有权集中在 activate」"
         },
         {
           "kind": "test",
-          "ref": "tools/guards/tests/test_check_repo_unit_identity.py"
+          "ref": "tools/guards/tests/test_check_workspace_identity.py"
         }
       ],
       "red_line": 12
@@ -164,11 +164,11 @@
       "enforcement": [
         {
           "kind": "guard",
-          "ref": "check_repo_unit_identity"
+          "ref": "check_workspace_identity"
         },
         {
           "kind": "test",
-          "ref": "tools/guards/tests/test_check_repo_unit_identity.py"
+          "ref": "tools/guards/tests/test_check_workspace_identity.py"
         },
         {
           "kind": "test",

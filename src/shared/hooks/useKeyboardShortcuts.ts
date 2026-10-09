@@ -22,10 +22,10 @@ import { useEditorStore } from '@/shared/store/editorStore';
 import { useNavHistoryStore } from '@/shared/store/navigationHistoryStore';
 import { useProjectStore } from '@/shared/store/projectStore';
 import {
-  selectActiveWorktreePath,
-  selectWorktreeStateOf,
-  useWorktreeStore,
-} from '@/shared/store/worktreeStore';
+  selectActiveCheckoutPath,
+  selectWorkspaceStateOf,
+  useWorkspaceStore,
+} from '@/shared/store/workspaceStore';
 import { resolveNextTabId } from '@/shared/utils/cycleEditorTab';
 import {
   resolveBindings,
@@ -124,8 +124,8 @@ export function useKeyboardShortcuts({
             const projectId = useProjectStore.getState().activeProjectId;
             if (!projectId) break;
             // 单一表示：只读该项目的工作树状态（旧 openedWorktrees/activeWorktreePath 镜像已删）
-            const { activePath: cur, opened } = selectWorktreeStateOf(
-              useWorktreeStore.getState(),
+            const { activePath: cur, opened } = selectWorkspaceStateOf(
+              useWorkspaceStore.getState(),
               projectId,
             );
             if (opened.length === 0) break;
@@ -340,7 +340,7 @@ function switchToItem(item: ProjectListItem) {
 function resolveActiveTabKey(): string | null {
   const currentProjectId = useProjectStore.getState().activeProjectId ?? null;
   if (!currentProjectId) return null;
-  const worktreePath = selectActiveWorktreePath(useWorktreeStore.getState(), currentProjectId);
+  const worktreePath = selectActiveCheckoutPath(useWorkspaceStore.getState(), currentProjectId);
   return resolveTabKey(currentProjectId, worktreePath);
 }
 

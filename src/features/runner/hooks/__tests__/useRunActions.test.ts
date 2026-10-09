@@ -90,7 +90,7 @@ import {
 import { useNotificationStore } from '@/shared/store/notificationStore';
 import { useOverlayStore } from '@/shared/store/overlayStore';
 import { useTaskStore } from '@/shared/store/taskStore';
-import { useWorktreeStore } from '@/shared/store/worktreeStore';
+import { useWorkspaceStore } from '@/shared/store/workspaceStore';
 
 import { benchmarkDebugLabel, benchmarkRunLabel } from '../../languages/go/labels';
 import { mainDebugLabel, mainRunLabel } from '../../languages/labels';
@@ -140,7 +140,7 @@ describe('useRunActions', () => {
       return Promise.resolve(false);
     });
     mockHomeDir.mockResolvedValue('/Users/tester');
-    useWorktreeStore.setState({ byProject: {} });
+    useWorkspaceStore.setState({ byProject: {} });
     useTaskStore.setState({
       configs: [],
       discovered: [],
@@ -180,7 +180,7 @@ describe('useRunActions', () => {
     });
 
     it('should_prefer_worktree_root_as_cwd_when_active', async () => {
-      useWorktreeStore.getState().setActiveWorktree('proj-1', '/tmp/proj/.worktrees/fix-1');
+      useWorkspaceStore.getState().setActiveWorkspace('proj-1', '/tmp/proj/.worktrees/fix-1');
       const { result } = renderHook(() =>
         useRunActions({
           projectId: 'proj-1',
@@ -1325,7 +1325,7 @@ describe('useRunActions', () => {
     });
 
     it('should_probe_manifest_and_lib_under_active_worktree_not_project_root', async () => {
-      useWorktreeStore.getState().setActiveWorktree('proj-1', '/tmp/proj/.worktrees/fix-1');
+      useWorkspaceStore.getState().setActiveWorkspace('proj-1', '/tmp/proj/.worktrees/fix-1');
       const probed: string[] = [];
       mockInvoke.mockImplementation((cmd: string, args: { path?: string }) => {
         if (cmd === 'debug_build_test_binary') {
@@ -1694,7 +1694,7 @@ describe('useRunActions', () => {
     });
 
     it('should_worktree_cwd_when_worktree_active', async () => {
-      useWorktreeStore.getState().setActiveWorktree('proj-1', '/tmp/wt/neeko');
+      useWorkspaceStore.getState().setActiveWorkspace('proj-1', '/tmp/wt/neeko');
       const { result } = renderJavaDebugHook();
 
       act(() =>

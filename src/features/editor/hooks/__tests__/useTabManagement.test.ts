@@ -80,7 +80,7 @@ describe('useTabManagement handleCloseTab', () => {
     const { result } = renderHook(() =>
       useTabManagement({
         activeProject: { id: 'p1' },
-        activeWorktreePath: null,
+        activeCheckoutPath: null,
       }),
     );
 
@@ -103,7 +103,7 @@ describe('useTabManagement handleCloseTab', () => {
     });
     const saveTabById = vi.fn().mockResolvedValue(true);
     const { result } = renderHook(() =>
-      useTabManagement({ activeProject: { id: 'p1' }, activeWorktreePath: null, saveTabById }),
+      useTabManagement({ activeProject: { id: 'p1' }, activeCheckoutPath: null, saveTabById }),
     );
 
     await act(async () => {
@@ -125,7 +125,7 @@ describe('useTabManagement handleCloseTab', () => {
     });
     const saveTabById = vi.fn().mockResolvedValue(true);
     const { result } = renderHook(() =>
-      useTabManagement({ activeProject: { id: 'p1' }, activeWorktreePath: null, saveTabById }),
+      useTabManagement({ activeProject: { id: 'p1' }, activeCheckoutPath: null, saveTabById }),
     );
 
     let closing: Promise<void> | undefined;
@@ -153,7 +153,7 @@ describe('useTabManagement handleCloseTab', () => {
     });
     const saveTabById = vi.fn().mockResolvedValue(true);
     const { result } = renderHook(() =>
-      useTabManagement({ activeProject: { id: 'p1' }, activeWorktreePath: null, saveTabById }),
+      useTabManagement({ activeProject: { id: 'p1' }, activeCheckoutPath: null, saveTabById }),
     );
 
     let closing: Promise<void> | undefined;
@@ -180,7 +180,7 @@ describe('useTabManagement handleCloseTab', () => {
     });
     const saveTabById = vi.fn().mockResolvedValue(true);
     const { result } = renderHook(() =>
-      useTabManagement({ activeProject: { id: 'p1' }, activeWorktreePath: null, saveTabById }),
+      useTabManagement({ activeProject: { id: 'p1' }, activeCheckoutPath: null, saveTabById }),
     );
 
     let closing: Promise<void> | undefined;
@@ -207,7 +207,7 @@ describe('useTabManagement handleCloseTab', () => {
     });
     const saveTabById = vi.fn().mockResolvedValue(false);
     const { result } = renderHook(() =>
-      useTabManagement({ activeProject: { id: 'p1' }, activeWorktreePath: null, saveTabById }),
+      useTabManagement({ activeProject: { id: 'p1' }, activeCheckoutPath: null, saveTabById }),
     );
 
     let closing: Promise<void> | undefined;

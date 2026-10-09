@@ -34,18 +34,18 @@ vi.mock('@tauri-apps/api/core', () => ({
 import { GIT_CHANGED_EVENT, GIT_STATUS_SNAPSHOT_EVENT } from '@/shared/events';
 import { useGitStore } from '@/shared/store/gitStore';
 import { useProjectStore } from '@/shared/store/projectStore';
-import { useWorktreeStore } from '@/shared/store/worktreeStore';
-import { repoKeyOf } from '@/shared/utils/repoRef';
+import { useWorkspaceStore } from '@/shared/store/workspaceStore';
+import { workspaceKeyOf } from '@/shared/utils/workspaceRef';
 
 import { useGitStatusEventsSync } from '../useGitStatusEventsSync';
 
 const DEBOUNCE_MS = 500;
-const MAIN_KEY = repoKeyOf('p1', null);
-const WT_KEY = repoKeyOf('p1', '/wt/a');
+const MAIN_KEY = workspaceKeyOf('p1', null);
+const WT_KEY = workspaceKeyOf('p1', '/wt/a');
 
 function snapshot(overrides: Record<string, unknown>) {
   return {
-    repo_key: MAIN_KEY,
+    workspace_key: MAIN_KEY,
     version: 1,
     project_id: 'p1',
     worktree_path: null,
@@ -62,13 +62,13 @@ function emit(event: string, payload: unknown) {
   for (const cb of listeners[event] ?? []) cb({ payload });
 }
 
-describe('useGitStatusEventsSync — 事件按仓库单元定址', () => {
+describe('useGitStatusEventsSync — 事件按Workspace定址', () => {
   beforeEach(() => {
     focusHandlers.length = 0;
     for (const key of Object.keys(listeners)) delete listeners[key];
     invokeSpy.mockReset();
     invokeSpy.mockImplementation((cmd: string) => {
-      if (cmd === 'get_repo_status') {
+      if (cmd === 'get_workspace_status') {
         return Promise.resolve(snapshot({ version: 9, entries: [{ path: 'from-pull.ts' }] }));
       }
       if (cmd === 'get_git_branch_info') {
@@ -82,7 +82,7 @@ describe('useGitStatusEventsSync — 事件按仓库单元定址', () => {
       activeProject: null,
       statuses: {},
     } as never);
-    useWorktreeStore.setState({ byProject: {} });
+    useWorkspaceStore.setState({ byProject: {} });
   });
 
   afterEach(() => {
@@ -90,7 +90,7 @@ describe('useGitStatusEventsSync — 事件按仓库单元定址', () => {
   });
 
   it('focused=true 时只刷新**当前视图单元**（不写死主仓）', async () => {
-    useWorktreeStore.setState({
+    useWorkspaceStore.setState({
       byProject: { p1: { activePath: '/wt/a', activeBranch: 'wt', opened: [] } },
     });
     renderHook(() => useGitStatusEventsSync());
@@ -101,14 +101,14 @@ describe('useGitStatusEventsSync — 事件按仓库单元定址', () => {
     });
 
     await waitFor(() =>
-      expect(invokeSpy).toHaveBeenCalledWith('get_repo_status', {
+      expect(invokeSpy).toHaveBeenCalledWith('get_workspace_status', {
         projectId: 'p1',
         worktreePath: '/wt/a',
       }),
     );
     // 回归：旧实现在此处传 ''（主仓），把主仓的变更列表写进 worktree 视图
     expect(invokeSpy).not.toHaveBeenCalledWith(
-      'get_repo_status',
+      'get_workspace_status',
       expect.objectContaining({ worktreePath: null }),
     );
   });
@@ -122,7 +122,7 @@ describe('useGitStatusEventsSync — 事件按仓库单元定址', () => {
     });
 
     await new Promise((r) => setTimeout(r, DEBOUNCE_MS + 200));
-    expect(invokeSpy).not.toHaveBeenCalledWith('get_repo_status', expect.anything());
+    expect(invokeSpy).not.toHaveBeenCalledWith('get_workspace_status', expect.anything());
   });
 
   it('无 activeProjectId 时不触发刷新', async () => {
@@ -135,21 +135,21 @@ describe('useGitStatusEventsSync — 事件按仓库单元定址', () => {
     });
 
     await new Promise((r) => setTimeout(r, DEBOUNCE_MS + 200));
-    expect(invokeSpy).not.toHaveBeenCalledWith('get_repo_status', expect.anything());
+    expect(invokeSpy).not.toHaveBeenCalledWith('get_workspace_status', expect.anything());
   });
 
   it('主仓快照落在主仓槽位，不覆盖正在查看的 worktree 槽位', async () => {
     useProjectStore.setState({
       statuses: {
         [WT_KEY]: snapshot({
-          repo_key: WT_KEY,
+          workspace_key: WT_KEY,
           worktree_path: '/wt/a',
           version: 3,
           entries: [{ path: 'wt-only.ts' }],
         }),
       },
     } as never);
-    useWorktreeStore.setState({
+    useWorkspaceStore.setState({
       byProject: { p1: { activePath: '/wt/a', activeBranch: 'wt', opened: [] } },
     });
     renderHook(() => useGitStatusEventsSync());
@@ -173,30 +173,30 @@ describe('useGitStatusEventsSync — 事件按仓库单元定址', () => {
   });
 
   it('git-changed 刷新事件自己的单元，而不是当前激活单元', async () => {
-    useWorktreeStore.setState({
+    useWorkspaceStore.setState({
       byProject: { p1: { activePath: '/wt/a', activeBranch: 'wt', opened: [] } },
     });
     renderHook(() => useGitStatusEventsSync());
     await waitFor(() => expect(listeners[GIT_CHANGED_EVENT]?.length).toBe(1));
 
     invokeSpy.mockClear();
-    emit(GIT_CHANGED_EVENT, { repo_key: MAIN_KEY, project_id: 'p1' });
+    emit(GIT_CHANGED_EVENT, { workspace_key: MAIN_KEY, project_id: 'p1' });
 
     await waitFor(() =>
-      expect(invokeSpy).toHaveBeenCalledWith('get_repo_status', {
+      expect(invokeSpy).toHaveBeenCalledWith('get_workspace_status', {
         projectId: 'p1',
         worktreePath: null,
       }),
     );
     // 回归：旧实现从全局镜像取 worktree 路径 → 主仓的元数据变化会去刷 worktree，
     // 反之亦然（「列表不动」与「串数据」的共同根因）
-    expect(invokeSpy).not.toHaveBeenCalledWith('get_repo_status', {
+    expect(invokeSpy).not.toHaveBeenCalledWith('get_workspace_status', {
       projectId: 'p1',
       worktreePath: '/wt/a',
     });
   });
 
-  it('收到含 ahead/behind 的快照后写入 gitStore.aheadBehind[repoKey]（单通道）', async () => {
+  it('收到含 ahead/behind 的快照后写入 gitStore.aheadBehind[workspaceKey]（单通道）', async () => {
     useGitStore.setState({ aheadBehind: {} });
     renderHook(() => useGitStatusEventsSync());
     await waitFor(() => expect(listeners[GIT_STATUS_SNAPSHOT_EVENT]?.length).toBe(1));
@@ -206,11 +206,11 @@ describe('useGitStatusEventsSync — 事件按仓库单元定址', () => {
     await waitFor(() =>
       expect(useGitStore.getState().aheadBehind[MAIN_KEY]).toEqual({ ahead: 3, behind: 1 }),
     );
-    // 不同单元的键互不影响（键 = RepoKey）
+    // 不同单元的键互不影响（键 = WorkspaceKey）
     expect(useGitStore.getState().aheadBehind[WT_KEY]).toBeUndefined();
   });
 
-  it('同一单元的旧版本快照被拒（per-unit version gate）', async () => {
+  it('同一单元的旧版本快照被拒（per-workspace version gate）', async () => {
     useProjectStore.setState({
       statuses: { [MAIN_KEY]: snapshot({ version: 7, entries: [{ path: 'new.ts' }] }) },
     } as never);
@@ -244,7 +244,7 @@ describe('useGitStatusEventsSync — 事件按仓库单元定址', () => {
   it('另一个单元的高版本不影响本单元的门控', async () => {
     useProjectStore.setState({
       statuses: {
-        [WT_KEY]: snapshot({ repo_key: WT_KEY, worktree_path: '/wt/a', version: 50 }),
+        [WT_KEY]: snapshot({ workspace_key: WT_KEY, worktree_path: '/wt/a', version: 50 }),
       },
     } as never);
     renderHook(() => useGitStatusEventsSync());
@@ -266,7 +266,7 @@ describe('useGitStatusEventsSync — 失焦/聚焦连击下单元不串（AC1 �
     for (const key of Object.keys(listeners)) delete listeners[key];
     invokeSpy.mockReset();
     useProjectStore.setState({ statuses: {} } as never);
-    useWorktreeStore.setState({ byProject: {} });
+    useWorkspaceStore.setState({ byProject: {} });
   });
 
   afterEach(() => {
@@ -277,15 +277,15 @@ describe('useGitStatusEventsSync — 失焦/聚焦连击下单元不串（AC1 �
     // 每轮刷新都要过 500ms 去抖窗口，10 轮用真实计时器要 5s+ 且不稳定 → 本用例走假计时器。
     vi.useFakeTimers();
     try {
-      useWorktreeStore.setState({
+      useWorkspaceStore.setState({
         byProject: { p1: { activePath: '/wt/a', activeBranch: 'feat-a', opened: [] } },
       });
       invokeSpy.mockImplementation((cmd: string, args?: { worktreePath?: string | null }) => {
-        if (cmd === 'get_repo_status') {
+        if (cmd === 'get_workspace_status') {
           const wt = args?.worktreePath ?? null;
           return Promise.resolve(
             snapshot({
-              repo_key: wt ? WT_KEY : MAIN_KEY,
+              workspace_key: wt ? WT_KEY : MAIN_KEY,
               worktree_path: wt,
               version: 5,
               entries: [{ path: wt ? 'only-in-wt.ts' : 'only-in-main.ts' }],

@@ -7,7 +7,7 @@
 use crate::agent::AgentManager;
 use crate::common::executor::factory::ExecTarget;
 use crate::common::file::watcher::WatcherManager;
-use crate::common::git::RepoRef;
+use crate::common::git::WorkspaceRef;
 use crate::common::runtime::AppRuntime;
 use crate::conversation::ConversationManager;
 use crate::library;
@@ -40,7 +40,7 @@ pub struct AppStateWrapper {
     pub active_project_id: Mutex<Option<String>>,
     /// Running project clone handle (single-clone slot; None when idle).
     pub project_clone: Mutex<Option<crate::project::clone::CloneHandle>>,
-    /// Running long git ops, keyed by repo unit (`RepoRef::key()`): same unit is
+    /// Running long git ops, keyed by workspace (`WorkspaceRef::key()`): same workspace is
     /// mutually exclusive, different units (main / linked worktrees) run in parallel.
     pub git_sync: crate::common::git::transport::GitSyncSlots,
     /// File-system watcher for project changes.
@@ -138,26 +138,26 @@ impl AppStateWrapper {
         Ok((environment.to_exec_target(), path))
     }
 
-    /// 项目 + worktree 路径 → **仓库单元身份**（[`RepoRef`]）与执行环境。
+    /// 项目 + worktree 路径 → **Workspace身份**（[`WorkspaceRef`]）与执行环境。
     ///
     /// git 域所有命令的唯一入口解析器：取代旧的 `path_guard::resolve_validated_work_dir`
     /// （后者校验时 canonicalize、返回时丢弃结果，于是同一工作树可以有多种字符串身份）。
-    /// 校验、归一化与「路径其实等于项目根 → 主仓」的收敛都在 [`RepoRef::resolve`] 内。
+    /// 校验、归一化与「路径其实等于项目根 → 主仓」的收敛都在 [`WorkspaceRef::resolve`] 内。
     ///
     /// **异步**：解析内含 `exists` / `canonicalize`（阻塞 fs），故「项目根 + worktree」两次解析
     /// 在**同一次** `spawn_blocking` 内完成（红线 3）—— 一次线程池 hop，且两次解析共用同一时刻的
     /// fs 视图。线程池 panic / 运行时关停才走 `AppError::Unknown`，领域错误逐字保留。
-    pub async fn resolve_repo(
+    pub async fn resolve_workspace(
         &self,
         project_id: &str,
         worktree_path: Option<&str>,
-    ) -> Result<(ExecTarget, crate::common::git::RepoRef), AppError> {
+    ) -> Result<(ExecTarget, crate::common::git::WorkspaceRef), AppError> {
         let (target, project_root) = self.resolve_project(project_id)?;
         let task_target = target.clone();
         let task_project_id = project_id.to_string();
         let task_worktree_path = worktree_path.map(str::to_string);
         let repo = tokio::task::spawn_blocking(move || {
-            RepoRef::resolve(
+            WorkspaceRef::resolve(
                 &task_project_id,
                 &project_root,
                 task_worktree_path.as_deref(),

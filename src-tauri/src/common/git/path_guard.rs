@@ -11,7 +11,7 @@
 //! WSL/SSH 路径是远端 Linux 路径，无法本地 canonicalize，仅做词法校验。
 //!
 //! **本模块只负责「校验」**：归一化与身份（identity / exec 双渲染）在
-//! [`crate::common::git::unit_path`]。校验与归一分开是有意的 —— 校验的判据是「能不能安全消费」，
+//! [`crate::common::git::checkout_path`]。校验与归一分开是有意的 —— 校验的判据是「能不能安全消费」，
 //! 归一的判据是「是不是同一个对象」，两者的例外集不同（例如不存在的路径归一是合法的，
 //! 但不能假设它可被消费）。
 
@@ -91,7 +91,7 @@ fn lexical_check(rel: &str) -> Result<()> {
 /// worktree 路径的词法校验（所有 ExecTarget）：拒绝 NUL 与 `..` 分量。
 ///
 /// 只做「分量恰好等于 `..`」的判定：`a..b` / `..name` 是合法文件名，不得误杀。
-/// 这里是 [`crate::common::git::unit_path::UnitPath::resolve`] 的第一道闸门。
+/// 这里是 [`crate::common::git::checkout_path::CheckoutPath::resolve`] 的第一道闸门。
 pub(crate) fn lexical_worktree_check(path: &str) -> Result<()> {
     if path.contains('\0') {
         bail!("worktree path contains NUL byte");

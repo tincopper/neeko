@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { useProjectStore } from '@/shared/store/projectStore';
 import type { FileChange, GitStatusSnapshot, ProjectCapabilities } from '@/shared/types';
-import { repoKeyOf, type RepoKey } from '@/shared/utils/repoRef';
+import { workspaceKeyOf, type WorkspaceKey } from '@/shared/utils/workspaceRef';
 
 // 面板经 `useCommitPanelAux` 取 AppProvider 的 config（只用到 agentCommandOverrides），
 // 这里给一个最小替身，避免为了渲染容器而把整个组合根搬进单测。
@@ -13,8 +13,8 @@ vi.mock('@/shared/contexts', () => ({
 
 import GitCommitPanel from '../GitCommitPanel';
 
-const MAIN_KEY = repoKeyOf('p1', null);
-const WT_KEY = repoKeyOf('p1', '/private/tmp/repo/wt-a');
+const MAIN_KEY = workspaceKeyOf('p1', null);
+const WT_KEY = workspaceKeyOf('p1', '/private/tmp/repo/wt-a');
 
 function file(path: string): FileChange {
   return {
@@ -27,10 +27,14 @@ function file(path: string): FileChange {
   };
 }
 
-function snapshot(repoKey: RepoKey, entries: FileChange[], version = 1): GitStatusSnapshot {
-  const [, tail] = String(repoKey).split('\u0000');
+function snapshot(
+  workspaceKey: WorkspaceKey,
+  entries: FileChange[],
+  version = 1,
+): GitStatusSnapshot {
+  const [, tail] = String(workspaceKey).split('\u0000');
   return {
-    repo_key: String(repoKey),
+    workspace_key: String(workspaceKey),
     version,
     project_id: 'p1',
     worktree_path: tail === '' ? null : tail,
@@ -83,7 +87,7 @@ const commands = {
   push: vi.fn().mockResolvedValue(undefined),
 } as never;
 
-function renderPanel(repoKey: RepoKey) {
+function renderPanel(workspaceKey: WorkspaceKey) {
   return render(
     <GitCommitPanel
       project={project}
@@ -91,7 +95,7 @@ function renderPanel(repoKey: RepoKey) {
       capabilities={capabilities}
       onRefreshGit={vi.fn().mockResolvedValue(undefined)}
       aheadBehind={null}
-      repoKey={repoKey}
+      workspaceKey={workspaceKey}
     />,
   );
 }
@@ -150,7 +154,7 @@ describe('GitCommitPanel — 面板可见性由「单元槽位」决定（issue 
         capabilities={capabilities}
         onRefreshGit={vi.fn().mockResolvedValue(undefined)}
         aheadBehind={null}
-        repoKey={WT_KEY}
+        workspaceKey={WT_KEY}
       />,
     );
     expect(screen.getByText('only-in-wt.ts')).toBeInTheDocument();
@@ -165,7 +169,7 @@ describe('GitCommitPanel — 面板可见性由「单元槽位」决定（issue 
         capabilities={capabilities}
         onRefreshGit={vi.fn().mockResolvedValue(undefined)}
         aheadBehind={null}
-        repoKey={MAIN_KEY}
+        workspaceKey={MAIN_KEY}
       />,
     );
     expect(screen.getByText('only-in-main.ts')).toBeInTheDocument();

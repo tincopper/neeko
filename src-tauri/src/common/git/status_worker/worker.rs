@@ -5,7 +5,7 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use crate::common::executor::factory::ExecTarget;
-use crate::common::git::RepoRef;
+use crate::common::git::WorkspaceRef;
 use crate::core::exec::collect_blocking;
 
 use super::collapsed_probe::{collapsed_dirs_digest, Digest};
@@ -51,15 +51,18 @@ pub struct GitStatusWorker {
 }
 
 impl GitStatusWorker {
-    /// Start the worker for the given repository **unit** (main repo or one linked worktree).
-    pub fn start(repo: RepoRef, on_change: impl Fn(GitStatusSnapshot) + Send + 'static) -> Self {
+    /// Start the worker for the given repository **workspace** (main repo or one linked worktree).
+    pub fn start(
+        repo: WorkspaceRef,
+        on_change: impl Fn(GitStatusSnapshot) + Send + 'static,
+    ) -> Self {
         let (signal_tx, signal_rx) = mpsc::channel::<()>();
         let sync = Arc::new(RecalcSync::default());
 
         thread::Builder::new()
             .name(format!(
                 "git-worker-{}",
-                repo.work_dir_pathbuf()
+                repo.root_pathbuf()
                     .file_name()
                     .map(|n| n.to_string_lossy().to_string())
                     .unwrap_or_else(|| "unknown".to_string())
@@ -131,7 +134,7 @@ impl GitStatusWorker {
 /// （`GitStatusSnapshot` 派生 `PartialEq`），而不是一组平行维护的 `last_*` 变量 ——
 /// 新增派生子字段会自动进入闸门，「有人忘了把新字段加进布尔合取」这类静默漏发从结构上消失。
 fn worker_loop(
-    repo: RepoRef,
+    repo: WorkspaceRef,
     signal_rx: mpsc::Receiver<()>,
     on_change: impl Fn(GitStatusSnapshot),
     sync: Arc<RecalcSync>,
@@ -147,7 +150,7 @@ fn worker_loop(
     // 折叠 untracked 目录的内容摘要（见 `collapsed_probe`）。**只喂闸门、不进快照载荷**，
     // 因此不属于快照，需要独立记一份。`None` = 尚未探测 → 放行 emit。
     let mut last_collapsed_digest: Option<Digest> = None;
-    let path_str = repo.work_dir().to_string();
+    let path_str = repo.root().to_string();
 
     log::debug!("[GitWorker] Worker started for {}", path_str);
 
@@ -207,7 +210,7 @@ fn worker_loop(
         // 快照且没有任何失效信号（本任务要修的盲区）。摘要只喂闸门，不进快照载荷，
         // 因此 IPC 条目数、折叠语义都不变。
         // 取截断后的集合：超出上限的条目本就不进快照，也就无需为其探测。
-        let collapsed_digest = collapsed_dirs_digest(repo.work_dir_path(), &candidate.entries);
+        let collapsed_digest = collapsed_dirs_digest(repo.root_path(), &candidate.entries);
 
         // 与上一次 emit 的候选快照整体比较（含 entries / branch / ahead / behind）。
         // 纯 ref 变化（外部 push/fetch/commit）不改 workdir/HEAD/index，但只要 ahead/behind
@@ -258,8 +261,8 @@ fn worker_loop(
 }
 
 /// Get current branch name (detached HEAD → "HEAD"), empty on error.
-pub(crate) fn get_current_branch(repo: &RepoRef) -> String {
-    let path_str = repo.work_dir();
+pub(crate) fn get_current_branch(repo: &WorkspaceRef) -> String {
+    let path_str = repo.root();
     match collect_blocking(
         &ExecTarget::Local,
         "git",
@@ -281,8 +284,8 @@ pub(crate) fn get_current_branch(repo: &RepoRef) -> String {
 /// 无 upstream（未设置 tracking / detached HEAD）或命令失败一律 `(0, 0)` —— 那是合法
 /// 状态，不是错误（对齐 `design.md` §4.2）。只读语义（不刷新 index）由 exec facade
 /// 统一注入（见 `.trellis/spec/backend/git-domain.md` §9），此处不传任何 CLI 可选锁标志。
-fn ahead_behind(repo: &RepoRef) -> (u32, u32) {
-    let path_str = repo.work_dir();
+fn ahead_behind(repo: &WorkspaceRef) -> (u32, u32) {
+    let path_str = repo.root();
     match collect_blocking(
         &ExecTarget::Local,
         "git",
@@ -302,13 +305,13 @@ fn ahead_behind(repo: &RepoRef) -> (u32, u32) {
     }
 }
 
-/// Execute `git status --porcelain` for one repository unit.
+/// Execute `git status --porcelain` for one workspace.
 ///
 /// 只读语义（不 refresh index、不取 optional lock）由 exec facade 统一注入只读 env
 /// 承担（见 `common::executor::env_defaults`），因此这里**不再**传 CLI 可选锁标志，
 /// 也就不需要"老 git 不支持该标志"的回退分支 —— 回退分支恰恰是当年漏掉锁语义的地方之一。
-fn git_status_porcelain(repo: &RepoRef) -> String {
-    let path_str = repo.work_dir();
+fn git_status_porcelain(repo: &WorkspaceRef) -> String {
+    let path_str = repo.root();
     match collect_blocking(
         &ExecTarget::Local,
         "git",
@@ -340,9 +343,9 @@ mod tests {
     use super::*;
     use crate::common::executor::factory::ExecTarget;
 
-    /// 主仓形态的 `RepoRef`（测试夹具：`tempdir()` 派生路径，红线 13）。
-    fn main_ref(path: &std::path::Path) -> RepoRef {
-        RepoRef::main("p1", &path.to_string_lossy())
+    /// 主仓形态的 `WorkspaceRef`（测试夹具：`tempdir()` 派生路径，红线 13）。
+    fn main_ref(path: &std::path::Path) -> WorkspaceRef {
+        WorkspaceRef::main("p1", &path.to_string_lossy())
     }
 
     fn create_repo_with_commit() -> (tempfile::TempDir, git2::Repository) {

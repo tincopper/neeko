@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 import type { Worktree } from '@/shared/types';
 
 import { filterWorktreeBranches, isActiveWorktree } from '../git';
-import { isMainUnit, repoKeyOf } from '../repoRef';
+import { isMainCheckout, workspaceKeyOf } from '../workspaceRef';
 
 /**
  * `shared/utils/git` 纯函数。
@@ -12,7 +12,7 @@ import { isMainUnit, repoKeyOf } from '../repoRef';
  * 迁移说明：本文件此前覆盖 `mergeGitInfoForStore`（「worktree 激活时保留主分支 /
  * 保留 changed_files」的合并特例）。该函数已随 per-repo-unit 改造整体删除 —— 那份
  * 特例存在的唯一原因是「per-project 只有一个 status 槽、且分支名与主仓共用」；现在
- * status 与分支各按 `RepoKey` 定址（`projectStore.applyStatus`），合并语义退化为
+ * status 与分支各按 `WorkspaceKey` 定址（`projectStore.applyStatus`），合并语义退化为
  * 「元数据 = per-project 字段覆盖」，不再需要工具函数。此处不留等价用例，改由
  * `shared/store/__tests__/projectStore.test.ts` 的投影用例守住同一批回归。
  */
@@ -59,13 +59,13 @@ describe('isActiveWorktree — 「是否 linked worktree 单元」', () => {
     expect(isActiveWorktree('relative/wt')).toBe(true);
   });
 
-  it('与 repoKeyOf / isMainUnit 的主仓判定一致（同一份「主仓」语义不能有两个答案）', () => {
-    // 只覆盖后端真能产出的形态（canonical 路径 / null）：`repoKeyOf` 额外把
+  it('与 workspaceKeyOf / isMainCheckout 的主仓判定一致（同一份「主仓」语义不能有两个答案）', () => {
+    // 只覆盖后端真能产出的形态（canonical 路径 / null）：`workspaceKeyOf` 额外把
     // 「纯空白串」也归为主仓，而本函数按非空字符串判为 worktree —— 该分叉已作为
     // 不一致点上报（空白路径现实中不会由后端 canonicalize 产出），故不在此固化。
     for (const path of [null, undefined, ''] as const) {
-      expect(isActiveWorktree(path)).toBe(!isMainUnit(repoKeyOf('p1', path)));
+      expect(isActiveWorktree(path)).toBe(!isMainCheckout(workspaceKeyOf('p1', path)));
     }
-    expect(isActiveWorktree('/wt/a')).toBe(!isMainUnit(repoKeyOf('p1', '/wt/a')));
+    expect(isActiveWorktree('/wt/a')).toBe(!isMainCheckout(workspaceKeyOf('p1', '/wt/a')));
   });
 });

@@ -556,8 +556,8 @@ projectStore (Zustand + persist: localStorage)
   ├── projects: Project[]                   // Local projects
   ├── activeProjectId: string | null
   ├── activeProject: Project | null
-  ├── activeWorktreePath / activeWorktreeBranch
-  ├── openedWorktrees: WorktreeSnapshotItem[]
+  ├── activeCheckoutPath / activeCheckoutBranch
+  ├── openedCheckouts: CheckoutEntry[]
   ├── worktreeStateMap: Record<string, WorktreeState>
   └── leftPanelWidth: number
 

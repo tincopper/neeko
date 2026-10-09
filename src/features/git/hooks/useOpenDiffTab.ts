@@ -9,7 +9,7 @@ import { parseProjectIdFromTabKey, resolveTabKey } from '@/shared/utils/tabKey';
 /**
  * 在编辑器打开（或激活已存在的）Commit Diff tab。
  *
- * - tabKey 与 ProjectWorkspace 对齐：使用 store 中的原始项目 ID（而非 use-active-project
+ * - tabKey 与 ProjectView 对齐：使用 store 中的原始项目 ID（而非 use-active-project
  *   的统一 ID wsl:distro:path / remote:host:path）；worktree 激活时使用 worktree 专属
  *   tab key，避免 diff tab 落入 local tab 组。
  * - 同文件 diff tab 已存在时只激活不重复创建（editorStore.addTab 对 diff 有
@@ -19,7 +19,7 @@ import { parseProjectIdFromTabKey, resolveTabKey } from '@/shared/utils/tabKey';
  */
 export function useOpenDiffTab(
   connectionContext: ConnectionContext | null,
-  activeWorktreePath?: string | null,
+  activeCheckoutPath?: string | null,
   projectIdFallback?: string,
 ): (filePath: string) => void {
   return useCallback(
@@ -28,7 +28,7 @@ export function useOpenDiffTab(
       const editorState = useEditorStore.getState();
       const tabKey = resolveTabKey(
         projectState.activeProjectId ?? projectIdFallback ?? '',
-        activeWorktreePath,
+        activeCheckoutPath,
       );
       const existingTabs = editorState.tabs[tabKey];
       const existingDiffTab = existingTabs?.tabs.find(
@@ -39,7 +39,7 @@ export function useOpenDiffTab(
         return;
       }
 
-      const diffSource = buildDiffSource(connectionContext, activeWorktreePath);
+      const diffSource = buildDiffSource(connectionContext, activeCheckoutPath);
       const fileName = filePath.split(/[\\/]/).pop() || filePath;
       const tabId = `tab_${crypto.randomUUID()}`;
       const tab: Tab = {
@@ -52,6 +52,6 @@ export function useOpenDiffTab(
       editorState.addTab(tabKey, tab);
       editorState.activateTab(tabKey, tabId);
     },
-    [connectionContext, activeWorktreePath, projectIdFallback],
+    [connectionContext, activeCheckoutPath, projectIdFallback],
   );
 }

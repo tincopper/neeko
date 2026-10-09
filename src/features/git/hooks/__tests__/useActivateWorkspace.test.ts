@@ -8,21 +8,21 @@ vi.mock('@tauri-apps/api/core', () => ({
   convertFileSrc: vi.fn((p: string) => `asset://${p}`),
 }));
 
-import { useActivateRepoUnit } from '@/features/git/hooks/useActivateRepoUnit';
+import { useActivateWorkspace } from '@/features/git/hooks/useActivateWorkspace';
 import { useProjectStore } from '@/shared/store/projectStore';
-import { useWorktreeStore } from '@/shared/store/worktreeStore';
+import { useWorkspaceStore } from '@/shared/store/workspaceStore';
 import type { GitStatusSnapshot } from '@/shared/types';
-import { repoKeyOf } from '@/shared/utils/repoRef';
+import { workspaceKeyOf } from '@/shared/utils/workspaceRef';
 
-const MAIN_KEY = repoKeyOf('p1', null);
-const WT_A = repoKeyOf('p1', '/wt/a');
-const WT_B = repoKeyOf('p1', '/wt/b');
+const MAIN_KEY = workspaceKeyOf('p1', null);
+const WT_A = workspaceKeyOf('p1', '/wt/a');
+const WT_B = workspaceKeyOf('p1', '/wt/b');
 
 function snapshotFor(key: string, version: number): GitStatusSnapshot {
   const [projectId, tail] = key.split('\u0000');
   const worktreePath = tail === '' ? null : tail;
   return {
-    repo_key: key,
+    workspace_key: key,
     version,
     project_id: projectId,
     worktree_path: worktreePath,
@@ -34,7 +34,7 @@ function snapshotFor(key: string, version: number): GitStatusSnapshot {
 
 function setActive() {
   invokeSpy.mockImplementation((_cmd: string, args: { worktreePath?: string | null }) =>
-    Promise.resolve(snapshotFor(repoKeyOf('p1', args?.worktreePath ?? null), 1)),
+    Promise.resolve(snapshotFor(workspaceKeyOf('p1', args?.worktreePath ?? null), 1)),
   );
 }
 
@@ -54,26 +54,26 @@ beforeEach(() => {
     activeProject: null,
     statuses: {},
   });
-  useWorktreeStore.setState({ byProject: {} });
+  useWorkspaceStore.setState({ byProject: {} });
 });
 
-// 「当前视图单元」的派生已收敛到 store（`worktreeStore.selectActiveRepoKey` /
-// `activeRepoKeyOf`），其判据见 `shared/store/__tests__/worktreeStore.test.ts`。
+// 「当前视图单元」的派生已收敛到 store（`workspaceStore.selectActiveWorkspaceKey` /
+// `activeWorkspaceKeyOf`），其判据见 `shared/store/__tests__/workspaceStore.test.ts`。
 
-describe('useActivateRepoUnit —— 后端只挂当前视图单元（决策 D-B）的命令出口', () => {
-  it('激活即发 set_active_repo_unit，并把返回快照写进该单元槽位', async () => {
-    // 生产顺序（useWorktreeState.activateWorktree → useActiveRepoUnitSync）：先写激活态，
+describe('useActivateWorkspace —— 后端只挂当前视图单元（决策 D-B）的命令出口', () => {
+  it('激活即发 set_active_workspace，并把返回快照写进该单元槽位', async () => {
+    // 生产顺序（useWorktreeState.activateWorktree → useActiveWorkspaceSync）：先写激活态，
     // 再请求挂载。反过来会命中「响应已不属于当前视图」的丢弃分支。
-    useWorktreeStore.setState({
+    useWorkspaceStore.setState({
       byProject: { p1: { activePath: '/wt/a', activeBranch: 'a', opened: [] } },
     });
-    const { result } = renderHook(() => useActivateRepoUnit('p1'));
+    const { result } = renderHook(() => useActivateWorkspace('p1'));
     await act(async () => {
       await result.current('/wt/a');
     });
 
     await waitFor(() =>
-      expect(invokeSpy).toHaveBeenCalledWith('set_active_repo_unit', {
+      expect(invokeSpy).toHaveBeenCalledWith('set_active_workspace', {
         projectId: 'p1',
         worktreePath: '/wt/a',
       }),
@@ -84,12 +84,12 @@ describe('useActivateRepoUnit —— 后端只挂当前视图单元（决策 D-B
   });
 
   it('挂载失败 → 目标单元保持「未知」，不写空列表也不清空其它单元', async () => {
-    useWorktreeStore.setState({
+    useWorkspaceStore.setState({
       byProject: { p1: { activePath: '/wt/a', activeBranch: 'a', opened: [] } },
     });
     useProjectStore.setState({ statuses: { [MAIN_KEY]: snapshotFor(MAIN_KEY, 4) } } as never);
     invokeSpy.mockRejectedValueOnce(new Error('mount refused'));
-    const { result } = renderHook(() => useActivateRepoUnit('p1'));
+    const { result } = renderHook(() => useActivateWorkspace('p1'));
 
     await act(async () => {
       await result.current('/wt/a');
@@ -108,13 +108,13 @@ describe('useActivateRepoUnit —— 后端只挂当前视图单元（决策 D-B
           resolveLate = resolve;
         }),
     );
-    const { result } = renderHook(() => useActivateRepoUnit('p1'));
+    const { result } = renderHook(() => useActivateWorkspace('p1'));
     const pending = act(async () => {
       await result.current('/wt/a');
     });
 
     // 期间用户切到 /wt/b，且 B 的响应先到
-    useWorktreeStore.setState({
+    useWorkspaceStore.setState({
       byProject: { p1: { activePath: '/wt/b', activeBranch: 'b', opened: [] } },
     });
     invokeSpy.mockResolvedValueOnce(snapshotFor(WT_B, 2));
@@ -131,11 +131,11 @@ describe('useActivateRepoUnit —— 后端只挂当前视图单元（决策 D-B
   });
 
   it('视图已切走时到达的响应不写旧单元（守卫的另一半）', async () => {
-    useWorktreeStore.setState({
+    useWorkspaceStore.setState({
       byProject: { p1: { activePath: '/wt/b', activeBranch: 'b', opened: [] } },
     });
     invokeSpy.mockResolvedValueOnce(snapshotFor(WT_A, 5));
-    const { result } = renderHook(() => useActivateRepoUnit('p1'));
+    const { result } = renderHook(() => useActivateWorkspace('p1'));
     await act(async () => {
       await result.current('/wt/a');
     });
@@ -146,7 +146,7 @@ describe('useActivateRepoUnit —— 后端只挂当前视图单元（决策 D-B
     useProjectStore.setState({
       projects: [{ id: 'p1', name: 'P1', path: '/repo/p1', git_info: null } as never],
     });
-    const { result } = renderHook(() => useActivateRepoUnit('p1'));
+    const { result } = renderHook(() => useActivateWorkspace('p1'));
     await act(async () => {
       await result.current('/wt/a');
     });
@@ -154,53 +154,57 @@ describe('useActivateRepoUnit —— 后端只挂当前视图单元（决策 D-B
   });
 
   it('无 projectId 时不动 store 不发命令', async () => {
-    const { result } = renderHook(() => useActivateRepoUnit(null));
+    const { result } = renderHook(() => useActivateWorkspace(null));
     await act(async () => {
       await result.current('/wt/a');
     });
     expect(invokeSpy).not.toHaveBeenCalled();
   });
 });
-describe('useActivateRepoUnit —— 后端是路径身份的唯一归一点（AC6 / 红线 12）', () => {
+describe('useActivateWorkspace —— 后端是路径身份的唯一归一点（AC6 / 红线 12）', () => {
   it('后端回传 canonical 形态时把激活态改写成后端形态（旧 session 的 /tmp 形态因此自愈）', async () => {
     const hint = '/tmp/x/wt-a';
     const canonical = '/private/tmp/x/wt-a';
-    useWorktreeStore.getState().setActiveWorktree('p1', hint, 'feat-a');
-    invokeSpy.mockImplementation(() => Promise.resolve(snapshotFor(repoKeyOf('p1', canonical), 1)));
+    useWorkspaceStore.getState().setActiveWorkspace('p1', hint, 'feat-a');
+    invokeSpy.mockImplementation(() =>
+      Promise.resolve(snapshotFor(workspaceKeyOf('p1', canonical), 1)),
+    );
 
-    const { result } = renderHook(() => useActivateRepoUnit('p1'));
+    const { result } = renderHook(() => useActivateWorkspace('p1'));
     let outcome: string | undefined;
     await act(async () => {
       outcome = await result.current(hint);
     });
 
     expect(outcome).toBe('mounted');
-    expect(useWorktreeStore.getState().byProject['p1']?.activePath).toBe(canonical);
-    expect(useProjectStore.getState().statuses[String(repoKeyOf('p1', canonical))]).toBeDefined();
+    expect(useWorkspaceStore.getState().byProject['p1']?.activePath).toBe(canonical);
+    expect(
+      useProjectStore.getState().statuses[String(workspaceKeyOf('p1', canonical))],
+    ).toBeDefined();
     // 意图形态不该留下槽位（否则两份形态各占一格）
-    expect(useProjectStore.getState().statuses[String(repoKeyOf('p1', hint))]).toBeUndefined();
+    expect(useProjectStore.getState().statuses[String(workspaceKeyOf('p1', hint))]).toBeUndefined();
   });
 
   it('主仓单元保持 null 形态（不该被改写成项目根路径）', async () => {
-    const { result } = renderHook(() => useActivateRepoUnit('p1'));
+    const { result } = renderHook(() => useActivateWorkspace('p1'));
     let outcome: string | undefined;
     await act(async () => {
       outcome = await result.current(null);
     });
     expect(outcome).toBe('mounted');
-    expect(useWorktreeStore.getState().byProject['p1']?.activePath ?? null).toBeNull();
+    expect(useWorkspaceStore.getState().byProject['p1']?.activePath ?? null).toBeNull();
   });
 
   it('后端解析不了该单元 → 返回 failed，槽位置为未知', async () => {
     invokeSpy.mockRejectedValue(new Error('unit not found'));
-    const { result } = renderHook(() => useActivateRepoUnit('p1'));
+    const { result } = renderHook(() => useActivateWorkspace('p1'));
     let outcome: string | undefined;
     await act(async () => {
       outcome = await result.current('/wt/gone');
     });
     expect(outcome).toBe('failed');
     expect(
-      useProjectStore.getState().statuses[String(repoKeyOf('p1', '/wt/gone'))],
+      useProjectStore.getState().statuses[String(workspaceKeyOf('p1', '/wt/gone'))],
     ).toBeUndefined();
   });
 
@@ -209,7 +213,7 @@ describe('useActivateRepoUnit —— 后端是路径身份的唯一归一点（A
       projects: [{ id: 'p1', name: 'P1', path: '/x', git_info: null } as never],
     });
     invokeSpy.mockClear();
-    const { result } = renderHook(() => useActivateRepoUnit('p1'));
+    const { result } = renderHook(() => useActivateWorkspace('p1'));
     let outcome: string | undefined;
     await act(async () => {
       outcome = await result.current(null);

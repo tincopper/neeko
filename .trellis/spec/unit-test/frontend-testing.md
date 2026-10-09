@@ -157,7 +157,7 @@ describe('buildFontFamily', () => {
 
 ### 模式：无 Tauri 依赖的 Hooks
 
-像 `useToast` 和 `useWorktreeState` 这样仅使用 React 原生 API 的 Hooks——直接测试：
+像 `useToast` 和 `useWorkspaceState` 这样仅使用 React 原生 API 的 Hooks——直接测试：
 
 ```typescript
 import { describe, it, expect, vi } from 'vitest';

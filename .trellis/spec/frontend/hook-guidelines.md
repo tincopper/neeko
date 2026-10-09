@@ -74,7 +74,7 @@ export function useAgentActions(params: {
 
 **规则**：
 - 编排 Hook 按领域命名，避免“全局回调大杂烩”
-- 优先从对应域的 store 读取跨域状态（`useProjectStore` / `useWorktreeStore` / `useEditorStore` / `@/features/file/store` …），减少参数数量 —— 没有单一 app store 可查
+- 优先从对应域的 store 读取跨域状态（`useProjectStore` / `useWorkspaceStore` / `useEditorStore` / `@/features/file/store` …），减少参数数量 —— 没有单一 app store 可查
 - 仅暴露本领域回调，使用 `useCallback` 保持引用稳定
 - Hook 文件规模以 ≤300 行为红线：超线时按职责拆出独立 hook（如 `useSessionBootstrap` 的 git 事件监听块抽为 `useGitStatusEventsSync`，监听注册/清理与恢复逻辑解耦）
 
@@ -86,7 +86,7 @@ export function useAgentActions(params: {
 ```tsx
 // src/shared/hooks/useKeyboardShortcuts.ts（真实用法，节选）
 const projectId = useProjectStore.getState().activeProjectId;
-const worktreePath = selectActiveWorktreePath(useWorktreeStore.getState(), projectId);
+const worktreePath = selectActiveCheckoutPath(useWorkspaceStore.getState(), projectId);
 useDockStore.getState().togglePanel('projects');
 ```
 
@@ -204,18 +204,18 @@ useEditorStore.getState().activateTab(tabKey, tabId);
 
 **实例**：`useAheadBehindSync`（`shared/hooks/useAheadBehindSync.ts`）
 
-- 一个 `useEffect`，依赖 `(activeProjectId, activeWorktreePath, commands)`。`commands` 来自
+- 一个 `useEffect`，依赖 `(activeProjectId, activeCheckoutPath, commands)`。`commands` 来自
   `useActiveProject()`，**已按当前单元绑定**，所以取回的就是该单元的数字；
-- 结果写进 `gitStore.aheadBehind`，**键 = 仓库单元身份 `RepoKey`**
-  （`repoKeyOf(activeProjectId, activeWorktreePath)`），不带 `{source}:{connectionId}` 前缀 ——
-  理由与「为什么前缀必错」见 `state-management.md` 场景「仓库单元分槽 + 激活态单源」第 7 条；
+- 结果写进 `gitStore.aheadBehind`，**键 = Workspace身份 `WorkspaceKey`**
+  （`workspaceKeyOf(activeProjectId, activeCheckoutPath)`），不带 `{source}:{connectionId}` 前缀 ——
+  理由与「为什么前缀必错」见 `state-management.md` 场景「Workspace分槽 + 激活态单源」第 7 条；
 - 它在 `ProjectsPanel` 顶层挂一次。与 `useRefreshGitInfo` 是**同一事实的两个触发时机**
   （切换项目 vs 手动刷新），键与语义必须同形。
 
 **契约**：
 1. 只在 active 切换时触发，不批量预热（避免 SSH 网络抖动放大成本）
-2. 失败路径调用 `setAheadBehind(repoKey, null)`，让消费侧不渲染陈旧 chip
-3. 键由唯一产出点 `repoKeyOf` 给出；禁止消费侧另算一份「等价键」
+2. 失败路径调用 `setAheadBehind(workspaceKey, null)`，让消费侧不渲染陈旧 chip
+3. 键由唯一产出点 `workspaceKeyOf` 给出；禁止消费侧另算一份「等价键」
 4. hook 在跨域容器（如 `ProjectsPanel`）顶层调用一次即可，禁止在每个 ProjectGroup 内重复挂载
 
 **反模式**：让 `useLocalProjects` / `useWslProjects` / `useRemoteProjects` 各自 invoke + 自己持状态
@@ -238,19 +238,19 @@ setAheadBehind(aheadBehindKey('wsl', `${host}:${port}`, projectId), info);
 function useAheadBehindSync(commands?: AheadBehindCommands | null) {
   const activeProjectId = useProjectStore((s) => s.activeProjectId);
   const activeProject = useProjectStore((s) => s.activeProject);
-  const activeWorktreePath = useActiveWorktreePath();
+  const activeCheckoutPath = useActiveCheckoutPath();
   const setAheadBehind = useGitStore((s) => s.setAheadBehind);
 
   useEffect(() => {
     if (!commands || !activeProjectId || !activeProject?.git_info) return;
-    const repoKey = repoKeyOf(activeProjectId, activeWorktreePath);
+    const workspaceKey = workspaceKeyOf(activeProjectId, activeCheckoutPath);
     let cancelled = false;
     commands
       .getAheadBehind()
-      .then((info) => { if (!cancelled) setAheadBehind(repoKey, info); })
-      .catch(() => { if (!cancelled) setAheadBehind(repoKey, null); });
+      .then((info) => { if (!cancelled) setAheadBehind(workspaceKey, info); })
+      .catch(() => { if (!cancelled) setAheadBehind(workspaceKey, null); });
     return () => { cancelled = true; };
-  }, [activeProjectId, activeProject, activeWorktreePath, commands, setAheadBehind]);
+  }, [activeProjectId, activeProject, activeCheckoutPath, commands, setAheadBehind]);
 }
 
 // ProjectsPanel.tsx 顶层一次调用（commands 已按当前单元绑定）
@@ -401,7 +401,7 @@ const saveWorktreeState = useCallback((projectId: string, wtPath: string | null)
 | `useToast` | `shared/hooks/` | Toast 通知（3 秒自动消失） | `toast`、`showToast` |
 | `useLocalProjects` | `features/project/hooks/` | 本地项目 CRUD 与状态 | 项目列表、CRUD 回调、Agent 管理 |
 | `useConnectionProjects` | `shared/hooks/` | WSL/Remote 统一入口 | 连接条目、CRUD 回调 |
-| `useWorktreeState` | `features/project/hooks/` | 按项目追踪激活单元（worktree） | `activePath`、`activeBranch`、`opened` |
+| `useWorkspaceState` | `features/project/hooks/` | 按项目追踪激活单元（worktree） | `activePath`、`activeBranch`、`opened` |
 | `useFileView` | `features/editor/hooks/` | 文件树与 tab 的动作/派生（状态在 store） | `loadFileTree`、`openFile`、`saveFile` |
 | `useKeyboardShortcuts` | `shared/hooks/` | 全局键盘快捷键 | （仅副作用） |
 | `useDeltaBatcher` | `features/agent-chat/hooks/` | 流式增量 rAF 批处理 | `flush`、批处理后的 state |
@@ -420,7 +420,7 @@ const saveWorktreeState = useCallback((projectId: string, wtPath: string | null)
 | `useAppShellData` | 领域 Hook 编排 + 副作用注册 | `AppShellData` + `toolbarProps` |
 | `useAppStoreSync` | 同步视图状态与动作引用到 `projectStore` | （仅副作用，无返回值） |
 | `useSessionPersistence` | 统一会话保存逻辑 | `saveSession`、`saveWorktreeState`、`saveSidebarWidth` |
-| `useActiveRepoUnitSync` | 反应激活单元变化、请求后端挂载（唯一发起点） | （仅副作用） |
+| `useActiveWorkspaceSync` | 反应激活单元变化、请求后端挂载（唯一发起点） | （仅副作用） |
 
 ---
 

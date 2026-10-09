@@ -10,7 +10,7 @@ import { useAppContext } from '@/shared/contexts';
 import { useDockStore } from '@/shared/store/dockStore';
 import { useEditorStore } from '@/shared/store/editorStore';
 import { useProjectStore } from '@/shared/store/projectStore';
-import { useActiveWorktreePath } from '@/shared/store/worktreeStore';
+import { useActiveCheckoutPath } from '@/shared/store/workspaceStore';
 import type { Tab } from '@/shared/types';
 import { resolveTabKey } from '@/shared/utils/tabKey';
 
@@ -32,9 +32,9 @@ const ConversationsPanelWrapper: React.FC = React.memo(() => {
 
   // Determine project ID and tab key for opening conversation tabs
   const currentProjectId = useProjectStore((s) => s.activeProjectId);
-  const activeWorktreePath = useActiveWorktreePath();
+  const activeCheckoutPath = useActiveCheckoutPath();
   const tabKey = currentProjectId
-    ? resolveTabKey(currentProjectId, activeWorktreePath)
+    ? resolveTabKey(currentProjectId, activeCheckoutPath)
     : currentProjectId;
 
   const handleResumeConversation = useCallback(

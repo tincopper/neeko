@@ -12,7 +12,7 @@
  *   请同步调整本文件的注入点，但**不要**删掉调用次数断言。
  * - 一个「批次」= 一条 `file-changed` 事件（后端已做 200ms 滑动 / 1.5s 上限去抖），
  *   载荷里的多条 `paths` 属同一批次。
- * - S1 的**同址判定**参与：事件必须属于本列表所属单元（`repo_key`）。事件路径相对**产出单元**
+ * - S1 的**同址判定**参与：事件必须属于本列表所属单元（`workspace_key`）。事件路径相对**产出单元**
  *   的工作树根，`src/a.ts` 在主仓与 linked worktree 里同形不同义，故 `project_id` 不足以定址。
  *
  * S2（快照替换失效）用例见下方第二个 describe：判定落在「`files` 引用被替换」上，**不用**
@@ -28,10 +28,10 @@ import { act, renderHook, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { FileChange, FileChangedEvent } from '@/shared/types';
-import { repoKeyOf } from '@/shared/utils/repoRef';
+import { workspaceKeyOf } from '@/shared/utils/workspaceRef';
 
-/** 本列表所属的仓库单元（主仓形态）。S1 只接受同址事件，故所有用例都必须显式给出。 */
-const UNIT_KEY = repoKeyOf('p1', null);
+/** 本列表所属的Workspace（主仓形态）。S1 只接受同址事件，故所有用例都必须显式给出。 */
+const UNIT_KEY = workspaceKeyOf('p1', null);
 
 type Subscriber = (event: FileChangedEvent) => void;
 
@@ -82,11 +82,11 @@ function collapsedDir(path: string): FileChange {
   };
 }
 
-/** 模拟后端一条 file-changed 批次（含 N 条路径）；`repoKey` 缺省为本列表所属单元 */
-function emitBurst(paths: string[], repoKey: string = UNIT_KEY) {
+/** 模拟后端一条 file-changed 批次（含 N 条路径）；`workspaceKey` 缺省为本列表所属单元 */
+function emitBurst(paths: string[], workspaceKey: string = UNIT_KEY) {
   act(() => {
     for (const callback of [...subscribers]) {
-      callback({ repo_key: repoKey, project_id: 'p1', paths });
+      callback({ workspace_key: workspaceKey, project_id: 'p1', paths });
     }
   });
 }
@@ -197,7 +197,7 @@ describe('useUntrackedDirExpansion — AC7 事件风暴的调用次数上界', (
     expect(expand).toHaveBeenCalledTimes(1);
   });
 
-  it('别的仓库单元的事件不得驱动本列表重拉（相对路径同形不同义）', async () => {
+  it('别的Workspace的事件不得驱动本列表重拉（相对路径同形不同义）', async () => {
     // 载荷基准随身份补齐而改变：watcher 挂在**单元**上，`paths` 相对该单元工作树根。
     // 主仓与 linked worktree 里 `tmp-untracked/a.txt` 是两个不同文件 ⇒ 不带同址判定就会
     // 拿别的工作树的变更当成本列表的变更（多一次无害重拉是轻的，按路径取数据时会取错文件）。
@@ -208,7 +208,7 @@ describe('useUntrackedDirExpansion — AC7 事件风暴的调用次数上界', (
     await waitFor(() => expect(expand).toHaveBeenCalledTimes(1));
     await settle();
 
-    emitBurst(['tmp-untracked/foreign.txt'], repoKeyOf('p1', '/repo-wt'));
+    emitBurst(['tmp-untracked/foreign.txt'], workspaceKeyOf('p1', '/repo-wt'));
     await settle();
     expect(expand).toHaveBeenCalledTimes(1);
 

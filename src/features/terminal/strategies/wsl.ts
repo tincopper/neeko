@@ -2,7 +2,7 @@ import { useMemo } from 'react';
 
 import { useAppContext, useEditorContext } from '@/shared/contexts';
 import { useProjectStore } from '@/shared/store/projectStore';
-import { useActiveWorktreePath } from '@/shared/store/worktreeStore';
+import { useActiveCheckoutPath } from '@/shared/store/workspaceStore';
 import { resolveTabKey } from '@/shared/utils/tabKey';
 
 import { createTerminalSession, resizeTerminal, closeTerminalSession } from '../api/terminalApi';
@@ -27,7 +27,7 @@ export function useWslTerminalStrategy(paneId: string): TerminalStrategy | null 
   const { config, showToast } = useAppContext();
   const { activeTabId } = useEditorContext();
   const activeProject = useProjectStore((state) => state.activeProject);
-  const activeWorktreePath = useActiveWorktreePath();
+  const activeCheckoutPath = useActiveCheckoutPath();
 
   return useMemo(() => {
     if (!activeProject || activeProject.environment.type !== 'Wsl') return null;
@@ -35,10 +35,10 @@ export function useWslTerminalStrategy(paneId: string): TerminalStrategy | null 
     const env = activeProject.environment;
     const distro = env.distro;
     const projectId = activeProject.id;
-    const projectPath = activeWorktreePath ?? activeProject.path ?? '';
+    const projectPath = activeCheckoutPath ?? activeProject.path ?? '';
 
-    const cacheKeySuffix = activeWorktreePath
-      ? `:wt:${btoa(activeWorktreePath).replace(/=/g, '')}`
+    const cacheKeySuffix = activeCheckoutPath
+      ? `:wt:${btoa(activeCheckoutPath).replace(/=/g, '')}`
       : '';
 
     const cacheKey = `${wslCacheKey(distro, projectId)}${activeTabId ? `:${activeTabId}` : ''}${cacheKeySuffix}:${paneId}`;
@@ -62,14 +62,14 @@ export function useWslTerminalStrategy(paneId: string): TerminalStrategy | null 
       onSessionReady: () => {},
       setupFileLinks: (term) => {
         if (projectPath) {
-          const tabKey = resolveTabKey(projectId, activeWorktreePath);
+          const tabKey = resolveTabKey(projectId, activeCheckoutPath);
           setupTerminalLinks(term, { projectPath, tabKey, projectId, showToast });
         }
       },
     });
   }, [
     activeProject,
-    activeWorktreePath,
+    activeCheckoutPath,
     activeTabId,
     paneId,
     showToast,

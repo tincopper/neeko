@@ -2,7 +2,7 @@
 
 use super::sink::{WatcherEvent, WatcherEventSink};
 use super::types::{FileChangedEvent, FileTreeChangedEvent, FILE_TREE_CHANGED_EVENT};
-use crate::common::git::RepoRef;
+use crate::common::git::WorkspaceRef;
 use std::{
     path::{Path, PathBuf},
     sync::{mpsc, Arc},
@@ -66,12 +66,12 @@ pub(super) struct DebounceSender {
 }
 
 impl DebounceSender {
-    pub(super) fn new(repo: RepoRef, sink: Arc<dyn WatcherEventSink>) -> Self {
+    pub(super) fn new(repo: WorkspaceRef, sink: Arc<dyn WatcherEventSink>) -> Self {
         let project_id = repo.project_id().to_string();
-        let repo_key = repo.key();
+        let workspace_key = repo.key();
         // 线程名不能用 key（含 NUL 分隔符 → `spawn()` 直接失败），只作诊断标签
         let thread_tag = repo.thread_tag();
-        let project_root = repo.work_dir_pathbuf();
+        let project_root = repo.root_pathbuf();
         let (tx, rx) = mpsc::channel::<PathBuf>();
 
         std::thread::Builder::new()
@@ -123,7 +123,7 @@ impl DebounceSender {
                             // deadline 到期，flush
                             if !buffer.is_empty() {
                                 let event = FileChangedEvent {
-                                    repo_key: repo_key.clone(),
+                                    workspace_key: workspace_key.clone(),
                                     project_id: project_id.clone(),
                                     paths: std::mem::take(&mut buffer),
                                 };
@@ -207,12 +207,12 @@ pub(super) struct TreeChangeDebounceSender {
 }
 
 impl TreeChangeDebounceSender {
-    pub(super) fn new(repo: RepoRef, sink: Arc<dyn WatcherEventSink>) -> Self {
+    pub(super) fn new(repo: WorkspaceRef, sink: Arc<dyn WatcherEventSink>) -> Self {
         let project_id = repo.project_id().to_string();
-        let repo_key = repo.key();
+        let workspace_key = repo.key();
         // 线程名不能用 key（含 NUL 分隔符 → `spawn()` 直接失败），只作诊断标签
         let thread_tag = repo.thread_tag();
-        let project_root = repo.work_dir_pathbuf();
+        let project_root = repo.root_pathbuf();
         let (tx, rx) = mpsc::channel::<PathBuf>();
 
         std::thread::Builder::new()
@@ -260,7 +260,7 @@ impl TreeChangeDebounceSender {
                         dirs.len()
                     );
                     sink.emit(WatcherEvent::TreeChanged(&FileTreeChangedEvent {
-                        repo_key: repo_key.clone(),
+                        workspace_key: workspace_key.clone(),
                         project_id: project_id.clone(),
                         dirs,
                     }));

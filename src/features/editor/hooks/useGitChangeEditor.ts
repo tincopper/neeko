@@ -14,8 +14,8 @@ import type {
   GitStatusSnapshot,
 } from '@/shared/types';
 import { fileRefFromTabPath, pathsContainFile, relativeToRootOrNull } from '@/shared/utils/fileRef';
-import { repoKeyOf, unitWorkDir } from '@/shared/utils/repoRef';
 import { safeUnlisten } from '@/shared/utils/safeUnlisten';
+import { workspaceKeyOf, workspaceRootOf } from '@/shared/utils/workspaceRef';
 
 import { createGitChangeExtensions, setFileLineChangesEffect } from '../git-change';
 
@@ -40,18 +40,18 @@ interface UseGitChangeEditorParams {
  * tab 身份 → `get_file_diff` 仓库相对路径；不可下发（虚拟身份 / 无根绝对路径 /
  * 不在根下）返回 null（调用方跳过 fetch）。
  *
- * `unitRoot` 是**该 tab 所属仓库单元的工作树根**（主仓 = 项目根，worktree = 其路径）：
- * 唯一派生点是 `unitWorkDir(repo_key, projectRoot)`，调用方不得手写
+ * `workspaceRoot` 是**该 tab 所属Workspace的工作树根**（主仓 = 项目根，worktree = 其路径）：
+ * 唯一派生点是 `workspaceRootOf(workspace_key, projectRoot)`，调用方不得手写
  * `worktreePath ?? projectRoot` 的等价形态（第二派生点必然漂移）。
  *
  * 身份解析走 `fileRefFromTabPath`（禁止自造字符串归一）；剥根走 `relativeToRootOrNull`
  * （SSOT：是否「在根下」的判定集中在 fileRef，杜绝消费侧另立绝对路径正则）。
  */
-function resolveRepoRelativePath(unitRoot: string, filePath: string): string | null {
+function resolveWorkspaceRelativePath(workspaceRoot: string, filePath: string): string | null {
   if (!filePath) return null;
-  const ref = fileRefFromTabPath(unitRoot, filePath);
+  const ref = fileRefFromTabPath(workspaceRoot, filePath);
   if (ref.kind !== 'fs') return null;
-  return relativeToRootOrNull(unitRoot, ref.path);
+  return relativeToRootOrNull(workspaceRoot, ref.path);
 }
 
 /** 主/事件两条路径共用的拉取：失败返回 `[]`（静默），stale 时返回 `null` 表示丢弃。 */
@@ -118,19 +118,21 @@ export function useGitChangeEditor({
   const scheduleRefreshRef = useRef<() => void>(() => {});
 
   /**
-   * 本 tab 所属**仓库单元**的身份：VCS 事件（snapshot / git-changed / file-changed）
-   * 一律按 `repo_key` 定址 —— 同一项目的 worktree 与主仓是两套 HEAD/index/workdir，
+   * 本 tab 所属**Workspace**的身份：VCS 事件（snapshot / git-changed / file-changed）
+   * 一律按 `workspace_key` 定址 —— 同一项目的 worktree 与主仓是两套 HEAD/index/workdir，
    * 只比 `project_id` 会让主仓快照触发 worktree 编辑器的重拉（反之亦然）。
    */
-  const unitRepoKey = projectId ? repoKeyOf(projectId, worktreePath) : null;
+  const workspaceKey = projectId ? workspaceKeyOf(projectId, worktreePath) : null;
 
-  // 单元相对路径的基准（= 该单元工作树根）。唯一派生点：`unitWorkDir`。
-  const unitRoot = unitRepoKey ? unitWorkDir(unitRepoKey, projectRoot ?? '') : (projectRoot ?? '');
+  // 单元相对路径的基准（= 该单元工作树根）。唯一派生点：`workspaceRootOf`。
+  const workspaceRoot = workspaceKey
+    ? workspaceRootOf(workspaceKey, projectRoot ?? '')
+    : (projectRoot ?? '');
 
-  // 剥根结果进 deps（原始 filePath / unitRoot 的派生），避免两侧各算一套
+  // 剥根结果进 deps（原始 filePath / workspaceRoot 的派生），避免两侧各算一套
   const repoRelPath = useMemo(
-    () => resolveRepoRelativePath(unitRoot, filePath),
-    [unitRoot, filePath],
+    () => resolveWorkspaceRelativePath(workspaceRoot, filePath),
+    [workspaceRoot, filePath],
   );
 
   // 主拉取/补派发路径
@@ -205,11 +207,11 @@ export function useGitChangeEditor({
     scheduleRefreshRef.current = scheduleRefresh;
 
     const onSnapshot = (event: { payload: GitStatusSnapshot }) => {
-      if (event.payload.repo_key !== unitRepoKey) return;
+      if (event.payload.workspace_key !== workspaceKey) return;
       scheduleRefresh();
     };
     const onGitChanged = (event: { payload: GitChangedEvent }) => {
-      if (event.payload.repo_key !== unitRepoKey) return;
+      if (event.payload.workspace_key !== workspaceKey) return;
       scheduleRefresh();
     };
 
@@ -236,18 +238,18 @@ export function useGitChangeEditor({
       for (const un of unlisteners) un();
       unlisteners.length = 0;
     };
-  }, [enabled, projectId, worktreePath, unitRepoKey, repoRelPath, editorViewRef]);
+  }, [enabled, projectId, worktreePath, workspaceKey, repoRelPath, editorViewRef]);
 
-  // file-changed：共享单 IPC 订阅；按 repo_key 定址到本单元后汇入 git-events 同一去抖窗口
+  // file-changed：共享单 IPC 订阅；按 workspace_key 定址到本单元后汇入 git-events 同一去抖窗口
   const onFileChanged = useCallback(
     (payload: FileChangedEvent) => {
       if (!enabled || !projectId || !repoRelPath) return;
-      if (payload.repo_key !== unitRepoKey) return;
+      if (payload.workspace_key !== workspaceKey) return;
       // 相对/绝对混合形态由身份所有者归一（watcher 正常发**单元**相对，strip_prefix 失败回退绝对）
-      if (!pathsContainFile(unitRoot, payload.paths, filePath)) return;
+      if (!pathsContainFile(workspaceRoot, payload.paths, filePath)) return;
       scheduleRefreshRef.current();
     },
-    [enabled, projectId, unitRepoKey, repoRelPath, unitRoot, filePath],
+    [enabled, projectId, workspaceKey, repoRelPath, workspaceRoot, filePath],
   );
   useFileChangedEvent(onFileChanged);
 

@@ -2,7 +2,7 @@ import { useMemo } from 'react';
 
 import { useAppContext, useEditorContext } from '@/shared/contexts';
 import { useProjectStore } from '@/shared/store/projectStore';
-import { useActiveWorktreePath } from '@/shared/store/worktreeStore';
+import { useActiveCheckoutPath } from '@/shared/store/workspaceStore';
 import type { AuthMethod } from '@/shared/types';
 import { resolveTabKey } from '@/shared/utils/tabKey';
 
@@ -64,7 +64,7 @@ export function useTerminalStrategy(options: UseTerminalStrategyOptions): Termin
   const { config, showToast } = useAppContext();
   const { activeTabId } = useEditorContext();
   const activeProject = useProjectStore((s) => s.activeProject);
-  const activeWorktreePath = useActiveWorktreePath();
+  const activeCheckoutPath = useActiveCheckoutPath();
   const { paneId, remoteConfig, worktreePathOverride } = options;
 
   return useMemo(() => {
@@ -92,7 +92,7 @@ export function useTerminalStrategy(options: UseTerminalStrategyOptions): Termin
       const projectId = activeProject?.id ?? null;
       if (!projectId) return null;
 
-      const effWorktreePath = worktreePathOverride ?? activeWorktreePath;
+      const effWorktreePath = worktreePathOverride ?? activeCheckoutPath;
       const isWorktree = !!effWorktreePath;
       const projectPath = effWorktreePath ?? activeProject?.path ?? null;
       const cacheKey = projectId
@@ -142,10 +142,10 @@ export function useTerminalStrategy(options: UseTerminalStrategyOptions): Termin
     function buildWslStrategy(env: { type: 'Wsl'; distro: string }): TerminalStrategy | null {
       const distro = env.distro;
       const projectId = activeProject!.id;
-      const projectPath = activeWorktreePath ?? activeProject!.path ?? '';
+      const projectPath = activeCheckoutPath ?? activeProject!.path ?? '';
 
-      const cacheKeySuffix = activeWorktreePath
-        ? `:wt:${btoa(activeWorktreePath).replace(/=/g, '')}`
+      const cacheKeySuffix = activeCheckoutPath
+        ? `:wt:${btoa(activeCheckoutPath).replace(/=/g, '')}`
         : '';
 
       const cacheKey = `${wslCacheKey(distro, projectId)}${activeTabId ? `:${activeTabId}` : ''}${cacheKeySuffix}:${paneId}`;
@@ -169,7 +169,7 @@ export function useTerminalStrategy(options: UseTerminalStrategyOptions): Termin
         onSessionReady: () => {},
         setupFileLinks: (term) => {
           if (projectPath) {
-            const tabKey = resolveTabKey(projectId, activeWorktreePath);
+            const tabKey = resolveTabKey(projectId, activeCheckoutPath);
             setupTerminalLinks(term, { projectPath, tabKey, projectId, showToast });
           }
         },
@@ -212,7 +212,7 @@ export function useTerminalStrategy(options: UseTerminalStrategyOptions): Termin
     }
   }, [
     activeProject,
-    activeWorktreePath,
+    activeCheckoutPath,
     paneId,
     remoteConfig,
     worktreePathOverride,

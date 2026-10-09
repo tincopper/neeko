@@ -20,7 +20,7 @@ function makeParams(overrides: Partial<Parameters<typeof useRemoteProjectSession
   return {
     activeProject: null,
     remoteAuthStore: new Map<string, AuthMethod>(),
-    activeRemoteWorktreePath: null,
+    activeRemoteCheckoutPath: null,
     setRemoteOpenSessions: vi.fn(),
     setPendingAuthEntry: vi.fn(),
     ...overrides,

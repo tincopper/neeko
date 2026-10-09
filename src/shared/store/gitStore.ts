@@ -4,28 +4,28 @@ import type { AheadBehind } from '@/shared/types';
 
 interface GitStoreState {
   /**
-   * 各**仓库单元**的 ahead/behind（键 = `RepoKey`，见 `shared/utils/repoRef.ts`）。
+   * 各**Workspace**的 ahead/behind（键 = `WorkspaceKey`，见 `shared/utils/workspaceRef.ts`）。
    *
    * 键里曾经还带 `{source}:{connectionId}` 前缀（`local:p1` / `wsl:Ubuntu:p1` / `remote:host:p1`，
    * 由已删除的 `aheadBehindKey(source, connectionId, projectId)` 拼出），但读写两侧各自拼这个前缀、
    * 三个调用点用了三种 connectionId 约定（`distro` / `${host}:${port}` / `host`）⇒ 写进去的键
    * 读侧永远拼不出来，徽标时有时无。project id 本身是 UUID（`ProjectManager` 生成），
-   * `RepoKey` 已全局唯一 —— connection 维度只会制造漂移，定址只留仓库单元。
+   * `WorkspaceKey` 已全局唯一 —— connection 维度只会制造漂移，定址只留Workspace。
    */
   aheadBehind: Record<string, AheadBehind>;
-  setAheadBehind: (repoKey: string, info: AheadBehind | null) => void;
+  setAheadBehind: (workspaceKey: string, info: AheadBehind | null) => void;
 
   favoriteBranches: Record<string, string[]>;
   setFavoriteBranches: (projectId: string, branches: string[]) => void;
   toggleFavorite: (projectId: string, branchName: string) => void;
 
   /**
-   * G4：各**仓库单元**的 status 是否被截断（entries 超过 MAX_STATUS_ENTRIES=1000）。
+   * G4：各**Workspace**的 status 是否被截断（entries 超过 MAX_STATUS_ENTRIES=1000）。
    * ChangesList 顶部据此显示截断 banner（P3：截断显式化，对齐 orca too-many-changes）。
-   * 键为 RepoKey —— 主仓与 worktree 的截断状态互不相关。
+   * 键为 WorkspaceKey —— 主仓与 worktree 的截断状态互不相关。
    */
   truncatedByRepo: Record<string, boolean>;
-  setStatusTruncated: (repoKey: string, truncated: boolean) => void;
+  setStatusTruncated: (workspaceKey: string, truncated: boolean) => void;
 }
 
 export const useGitStore = create<GitStoreState>((set) => ({
@@ -49,10 +49,10 @@ export const useGitStore = create<GitStoreState>((set) => ({
 
   truncatedByRepo: {},
 
-  setStatusTruncated: (repoKey, truncated) =>
+  setStatusTruncated: (workspaceKey, truncated) =>
     set((state) => {
-      if (state.truncatedByRepo[repoKey] === truncated) return state;
-      return { truncatedByRepo: { ...state.truncatedByRepo, [repoKey]: truncated } };
+      if (state.truncatedByRepo[workspaceKey] === truncated) return state;
+      return { truncatedByRepo: { ...state.truncatedByRepo, [workspaceKey]: truncated } };
     }),
 
   setFavoriteBranches: (projectId, branches) =>

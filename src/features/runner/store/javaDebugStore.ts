@@ -14,7 +14,7 @@ import { create } from 'zustand';
 import { useNotificationStore } from '@/shared/store/notificationStore';
 
 import { debugJavaAttach, debugJavaStart } from '../api/debugApi';
-import { unitRootForProject } from '../exec/context';
+import { activeWorkspaceRoot } from '../exec/context';
 import type {
   DapSessionInfo,
   JavaBackendLabel,
@@ -125,7 +125,7 @@ export const useJavaDebugStore = create<JavaDebugState>((set, get) => ({
     await debug.startWithConfig(projectId, config, {
       reset: false,
       starter: () =>
-        debugJavaAttach(projectId, unitRootForProject(projectId), {
+        debugJavaAttach(projectId, activeWorkspaceRoot(projectId), {
           command,
           cwd,
           testName,
@@ -153,7 +153,7 @@ export const useJavaDebugStore = create<JavaDebugState>((set, get) => ({
       debug.resetSession();
       get().resetSession();
       debug.pushConsole('sys', `JDTLS backend: probing ${target.probeClass} …`);
-      const result = await debugJavaStart(projectId, unitRootForProject(projectId), target);
+      const result = await debugJavaStart(projectId, activeWorkspaceRoot(projectId), target);
       if (result.kind === 'session') {
         const session: DapSessionInfo = result.session;
         debug.attachSession(session);

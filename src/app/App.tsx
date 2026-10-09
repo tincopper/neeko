@@ -2,7 +2,7 @@ import { SplashScreen } from '@/app/components/SplashScreen';
 import { useAppShell, useDockBarButtons } from '@/app/hooks';
 import { useEditorStore } from '@/shared/store/editorStore';
 import { useProjectStore } from '@/shared/store/projectStore';
-import { useWorktreeStore } from '@/shared/store/worktreeStore';
+import { useWorkspaceStore } from '@/shared/store/workspaceStore';
 
 import AppProviders from './AppProviders';
 import { installDebugBridge } from './debugBridge';
@@ -12,7 +12,7 @@ import AppShell from './shell/AppShell';
 installDebugBridge({
   projectStore: useProjectStore,
   editorStore: useEditorStore,
-  worktreeStore: useWorktreeStore,
+  workspaceStore: useWorkspaceStore,
 });
 
 /**

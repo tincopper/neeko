@@ -15,7 +15,7 @@ import type { ILinkProvider, Terminal } from '@xterm/xterm';
 import { useBrowserStore } from '@/shared/store/browserStore';
 import { useDockStore } from '@/shared/store/dockStore';
 import { useEditorStore } from '@/shared/store/editorStore';
-import { selectActiveWorktreePath, useWorktreeStore } from '@/shared/store/worktreeStore';
+import { selectActiveCheckoutPath, useWorkspaceStore } from '@/shared/store/workspaceStore';
 import type { Tab } from '@/shared/types';
 import { canonicalFsPath } from '@/shared/utils/fileRef';
 import { getFileName, getTabId } from '@/shared/utils/fileTree';
@@ -109,7 +109,7 @@ async function openFileInEditor(
   // 空间而 UI 读取 worktree 空间，目标无法兑现。空 worktree 回落基础键空间。
   const tabKey = resolveTabKey(
     projId,
-    selectActiveWorktreePath(useWorktreeStore.getState(), projId),
+    selectActiveCheckoutPath(useWorkspaceStore.getState(), projId),
   );
   const tabId = getTabId(tabKey, fullPath);
   const existing = useEditorStore.getState().tabs[tabKey];

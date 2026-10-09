@@ -29,7 +29,7 @@ import { INSERT_TO_AGENT_INPUT_EVENT } from '@/shared/events';
 import { useDockStore } from '@/shared/store/dockStore';
 import { useEditorStore } from '@/shared/store/editorStore';
 import { useProjectStore } from '@/shared/store/projectStore';
-import { useActiveWorktreePath } from '@/shared/store/worktreeStore';
+import { useActiveCheckoutPath } from '@/shared/store/workspaceStore';
 import type { AgentConfig } from '@/shared/types';
 import { createUntitledFileTab } from '@/shared/utils/createUntitledFileTab';
 import { resolveTabKey } from '@/shared/utils/tabKey';
@@ -38,21 +38,21 @@ import { Button } from '@/ui/Button';
 import { WelcomeScreen } from './WelcomeScreen';
 const APP_SETTINGS_PROJECT_ID = '__app__';
 
-function ProjectWorkspace() {
+function ProjectView() {
   const { showToast } = useAppContext();
   const { onAddProject } = useProjectActionsContext();
-  const { remoteAuthStore, activeRemoteWorktreePath, setRemoteOpenSessions, setPendingAuthEntry } =
+  const { remoteAuthStore, activeRemoteCheckoutPath, setRemoteOpenSessions, setPendingAuthEntry } =
     useRemoteContext();
   const { agents, onAgentClick } = useEditorContext();
   const activeProject = useProjectStore((state) => state.activeProject);
-  const activeWorktreePath = useActiveWorktreePath();
+  const activeCheckoutPath = useActiveCheckoutPath();
 
   // Determine the current project ID (all types via unified store)
   const currentProjectId = activeProject?.id ?? null;
 
   // Composite tab key: worktree gets its own independent tab space
   const tabKey = currentProjectId
-    ? resolveTabKey(currentProjectId, activeWorktreePath)
+    ? resolveTabKey(currentProjectId, activeCheckoutPath)
     : APP_SETTINGS_PROJECT_ID;
 
   // Get unified tabs from store
@@ -84,7 +84,7 @@ function ProjectWorkspace() {
   const { needsRemoteAuth, remoteProjectProp, handleEnterCredentials } = useRemoteProjectSession({
     activeProject,
     remoteAuthStore,
-    activeRemoteWorktreePath,
+    activeRemoteCheckoutPath,
     setRemoteOpenSessions,
     setPendingAuthEntry,
   });
@@ -132,7 +132,7 @@ function ProjectWorkspace() {
       const opened = handleAgentClick(agent);
       if (opened && currentProjectId) {
         setProjectAgents(currentProjectId, [agent.id]).catch((err) => {
-          console.error('[ProjectWorkspace] Failed to set project agent:', err);
+          console.error('[ProjectView] Failed to set project agent:', err);
         });
       }
     },
@@ -219,7 +219,7 @@ function ProjectWorkspace() {
           }
           return pasteToTerminal(activeProjectId, text, activeTabId);
         } catch (err) {
-          console.error('[ProjectWorkspace] insertToTerminal failed:', err);
+          console.error('[ProjectView] insertToTerminal failed:', err);
           return false;
         }
       },
@@ -286,7 +286,7 @@ function ProjectWorkspace() {
           projectPath={activeProject.path}
           selectedAgentIds={activeProject.selected_agents ?? []}
           selectedAgent={selectedAgent}
-          worktreePath={activeWorktreePath}
+          worktreePath={activeCheckoutPath}
           onOpenTerminal={handleGuideOpenTerminal}
           onOpenAgent={handleGuideOpenAgent}
           onOpenAgentChat={handleGuideOpenAgentChat}
@@ -305,4 +305,4 @@ function ProjectWorkspace() {
   );
 }
 
-export default React.memo(ProjectWorkspace);
+export default React.memo(ProjectView);

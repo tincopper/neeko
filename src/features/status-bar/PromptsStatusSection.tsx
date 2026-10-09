@@ -8,7 +8,7 @@ import { MessageSquare } from '@/shared/components/icons';
 import { useAppContext, useTerminalInsert } from '@/shared/contexts';
 import { useEditorStore } from '@/shared/store/editorStore';
 import { useProjectStore } from '@/shared/store/projectStore';
-import { selectActiveWorktreePath, useWorktreeStore } from '@/shared/store/worktreeStore';
+import { selectActiveCheckoutPath, useWorkspaceStore } from '@/shared/store/workspaceStore';
 import type { PromptResource } from '@/shared/types/library';
 import { filterPromptsByQuery } from '@/shared/utils/promptQuery';
 import { resolveTabKey } from '@/shared/utils/tabKey';
@@ -39,7 +39,7 @@ function revealTerminalTab(projectId: string): void {
   const editorState = useEditorStore.getState();
   const tabKey = resolveTabKey(
     projectId,
-    selectActiveWorktreePath(useWorktreeStore.getState(), projectId),
+    selectActiveCheckoutPath(useWorkspaceStore.getState(), projectId),
   );
   const group = editorState.tabs[tabKey];
   const tabs = group?.tabs ?? [];

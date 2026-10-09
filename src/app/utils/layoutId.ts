@@ -2,7 +2,7 @@ import type { Project } from '@/shared/types';
 
 /**
  * 生成编辑器分组布局的持久化 key（含项目环境前缀）。
- * 从 ProjectWorkspace 抽出为纯函数：Local/WSL/SSH 各自独立布局空间。
+ * 从 ProjectView 抽出为纯函数：Local/WSL/SSH 各自独立布局空间。
  */
 export function buildLayoutId(
   project: Project | null,

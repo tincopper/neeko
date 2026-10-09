@@ -44,18 +44,19 @@ pub async fn build_test_binary(
             "debug build cwd must not be empty".into(),
         ));
     }
-    let unit = super::project_context::resolve_unit(state, project_id, worktree_path).await?;
-    let dir = resolve_build_dir(&unit.target, &unit.root, cwd).await?;
+    let exec =
+        super::project_context::resolve_exec_workspace(state, project_id, worktree_path).await?;
+    let dir = resolve_build_dir(&exec.target, &exec.root, cwd).await?;
     // Windows 本地经 `cmd /C` 执行，前端命令的 POSIX 单引号（`cargo test 'name'`）
     // 在 cmd 下是字面字符——转成 cmd 双引号；非 Windows Local 原样透传。
-    let command = if matches!(unit.target, ExecTarget::Local) && cfg!(windows) {
+    let command = if matches!(exec.target, ExecTarget::Local) && cfg!(windows) {
         windows_cmd_quote(command)
     } else {
         command.to_string()
     };
     // 统一 script 形态：shell 选择（Windows `cmd /C` / Unix `sh -c`）由
     // `core::exec::collect_script` → `platform::shell_launch::shell_argv` 决定。
-    let output = crate::core::exec::collect_script(&unit.target, &command, Some(dir.as_str()), &[])
+    let output = crate::core::exec::collect_script(&exec.target, &command, Some(dir.as_str()), &[])
         .await
         .map_err(|e| AppError::Dap(format!("debug build spawn failed: {e}")))?;
     Ok(DebugBuildOutput {

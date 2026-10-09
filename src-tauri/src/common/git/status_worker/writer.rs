@@ -1,7 +1,7 @@
 #![allow(clippy::unwrap_used, clippy::expect_used, missing_docs)]
 
 use crate::common::git::parsers::parse_status_line;
-use crate::common::git::RepoRef;
+use crate::common::git::WorkspaceRef;
 use crate::project::types::FileChange;
 
 /// 全链路 status 条目上限（公理：随输入规模增长的结构必须有界；对齐 orca 1000 条截断）。
@@ -10,22 +10,22 @@ use crate::project::types::FileChange;
 /// 不再各自复制常量（复制必然漂移，且「上限」是恰好一个不变量）。
 pub const MAX_STATUS_ENTRIES: usize = 1000;
 
-/// Versioned, authoritative git-status snapshot for **one repository unit**.
+/// Versioned, authoritative git-status snapshot for **one workspace**.
 ///
 /// G2 单一权威化（D1/D3）+ 本次身份补全：worker 每次检测到实质变化就产出**完整**快照
 /// 并整体替换 —— 事件不再携带增量 patch，前端按 `version` 单调递增门控消费
 /// （P1：乱序/回退覆盖从结构上消灭）。entries 直接复用 `FileChange`
 /// （含 G1 `is_dir` 字段，path 无尾斜杠），前端 `changed_files` 零转换整体替换。
 ///
-/// **身份**：`repo_key` 是 [`RepoRef::key`] 的字符串形态，双端共用的唯一寻址单位。
+/// **身份**：`workspace_key` 是 [`WorkspaceRef::key`] 的字符串形态，双端共用的唯一寻址单位。
 /// 一个 project 承载 `1 + N` 个工作树（主仓 + linked worktree），它们的 HEAD / index /
 /// workdir 全部独立 —— 缺这一维时，worktree 视图与主仓视图会共用同一个槽，
 /// 于是「串 main 内容」与「没有权威生产者」两类症状同时出现。
 #[derive(Debug, Clone, PartialEq, serde::Serialize)]
 pub struct GitStatusSnapshot {
-    /// 该快照所属仓库单元的寻址 key（前端只透传 + 作 map 键）。
-    pub repo_key: String,
-    /// Monotonically increasing version (per unit, increments on every emitted snapshot).
+    /// 该快照所属Workspace的寻址 key（前端只透传 + 作 map 键）。
+    pub workspace_key: String,
+    /// Monotonically increasing version (per workspace, increments on every emitted snapshot).
     pub version: u64,
     /// 所属项目 ID（冗余保留：事件消费者按项目分组渲染）
     pub project_id: String,
@@ -47,11 +47,11 @@ pub struct GitStatusSnapshot {
 }
 
 impl GitStatusSnapshot {
-    /// 由仓库单元构造快照骨架（worker 与 pull 计算两条生产者共用，避免字段各写一份）。
+    /// 由Workspace构造快照骨架（worker 与 pull 计算两条生产者共用，避免字段各写一份）。
     #[must_use]
-    pub fn for_unit(repo: &RepoRef, version: u64) -> Self {
+    pub fn for_unit(repo: &WorkspaceRef, version: u64) -> Self {
         Self {
-            repo_key: repo.key(),
+            workspace_key: repo.key(),
             version,
             project_id: repo.project_id().to_string(),
             worktree_path: repo.worktree_path().map(str::to_string),
@@ -138,7 +138,7 @@ mod tests {
 
     #[test]
     fn snapshot_serializes_with_version_and_entries() {
-        let repo = RepoRef::main("p1", "/repo");
+        let repo = WorkspaceRef::main("p1", "/repo");
         let mut snap = GitStatusSnapshot::for_unit(&repo, 3);
         snap.branch = "main".into();
         snap.entries = parse_porcelain(" M a.txt\n?? dir/\n");
@@ -155,9 +155,9 @@ mod tests {
     /// 否则前端只能共用一个槽（本次重构的根因）。
     #[test]
     fn snapshot_for_unit_carries_repo_identity_for_both_variants() {
-        let main = RepoRef::main("p1", "/repo");
+        let main = WorkspaceRef::main("p1", "/repo");
         let main_snap = GitStatusSnapshot::for_unit(&main, 1);
-        assert_eq!(main_snap.repo_key, main.key());
+        assert_eq!(main_snap.workspace_key, main.key());
         assert_eq!(main_snap.worktree_path, None);
         assert_eq!(main_snap.project_id, "p1");
         assert_eq!(main_snap.branch, "");
@@ -166,7 +166,7 @@ mod tests {
         assert_eq!(main_snap.ahead, 0);
         assert_eq!(main_snap.behind, 0);
 
-        let linked = RepoRef::resolve(
+        let linked = WorkspaceRef::resolve(
             "p1",
             "/repo",
             Some("/repo-wt"),
@@ -179,13 +179,13 @@ mod tests {
         )
         .unwrap();
         let linked_snap = GitStatusSnapshot::for_unit(&linked, 7);
-        assert_eq!(linked_snap.repo_key, "p1\0/repo-wt");
+        assert_eq!(linked_snap.workspace_key, "p1\0/repo-wt");
         assert_eq!(linked_snap.worktree_path.as_deref(), Some("/repo-wt"));
         assert_ne!(
-            linked_snap.repo_key, main_snap.repo_key,
+            linked_snap.workspace_key, main_snap.workspace_key,
             "同一项目的两个工作树不得共用一个快照 key"
         );
         let json = serde_json::to_string(&linked_snap).unwrap();
-        assert!(json.contains("\"repo_key\":\"p1\\u0000/repo-wt\""));
+        assert!(json.contains("\"workspace_key\":\"p1\\u0000/repo-wt\""));
     }
 }

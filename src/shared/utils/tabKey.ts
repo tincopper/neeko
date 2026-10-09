@@ -25,10 +25,10 @@ export function parseProjectIdFromTabKey(tabKey: string): string {
  */
 export function resolveTabKey(
   projectId: string,
-  activeWorktreePath: string | null | undefined,
+  activeCheckoutPath: string | null | undefined,
 ): string {
-  if (activeWorktreePath) {
-    return buildWorktreeTabKey(projectId, activeWorktreePath);
+  if (activeCheckoutPath) {
+    return buildWorktreeTabKey(projectId, activeCheckoutPath);
   }
   return projectId;
 }

@@ -3,31 +3,31 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { useProjectStore } from '@/shared/store/projectStore';
 import type { FileChange, GitStatusSnapshot } from '@/shared/types';
-import { repoKeyOf } from '@/shared/utils/repoRef';
+import { workspaceKeyOf } from '@/shared/utils/workspaceRef';
 
 vi.mock('../../api/gitApi', () => ({
-  getRepoStatus: vi.fn(),
+  getWorkspaceStatus: vi.fn(),
 }));
 
-import { getRepoStatus } from '../../api/gitApi';
-import { createDebouncedStatusRefresh, refreshRepoStatus } from '../gitStatus';
+import { getWorkspaceStatus } from '../../api/gitApi';
+import { createDebouncedStatusRefresh, refreshWorkspaceStatus } from '../gitStatus';
 
 /**
- * `refreshRepoStatus` / `createDebouncedStatusRefresh`。
+ * `refreshWorkspaceStatus` / `createDebouncedStatusRefresh`。
  *
  * 迁移说明：旧文件测的是 `refreshGitFileStates(projectId, worktreePath)` +
  * `createDebouncedGitRefresh`，并 mock 掉 projectStore 只观察 `setState` 的 updater。
  * 两处不再成立：
- * - 刷新目标是**仓库单元**（`RepoKey`），不再是「projectId + 从全局镜像现取的 worktreePath」；
+ * - 刷新目标是**Workspace**（`WorkspaceKey`），不再是「projectId + 从全局镜像现取的 worktreePath」；
  * - worktree / WSL 分支不再回 `version: 0` 的无版本载荷（`getWorktreeChangedFilesVersioned`
  *   已删），所以旧文件里那条「并发刷新只留最新一代」的用例失去实现载体 —— 乱序覆盖现在由
- *   `applyStatus` 的 per-unit 门控结构性消除（见 `shared/store/__tests__/projectStore.test.ts`），
+ *   `applyStatus` 的 per-workspace 门控结构性消除（见 `shared/store/__tests__/projectStore.test.ts`），
  *   本文件改为断言「刷新入口不自建第二道门控、迟到快照由 store 拒收」。
  *
  * 这里刻意**不 mock projectStore**：失败语义（「不清空也不覆盖」）只有在真实槽位上才测得准。
  */
 
-const mockGetRepoStatus = vi.mocked(getRepoStatus);
+const mockGetWorkspaceStatus = vi.mocked(getWorkspaceStatus);
 
 const fc = (path: string): FileChange => ({
   path,
@@ -44,7 +44,7 @@ function snapshotOf(
   entries: FileChange[],
 ): GitStatusSnapshot {
   return {
-    repo_key: repoKeyOf(projectId, worktreePath),
+    workspace_key: workspaceKeyOf(projectId, worktreePath),
     version,
     project_id: projectId,
     worktree_path: worktreePath,
@@ -54,11 +54,11 @@ function snapshotOf(
   };
 }
 
-const slotOf = (repoKey: string): GitStatusSnapshot | undefined =>
-  useProjectStore.getState().statuses[repoKey];
+const slotOf = (workspaceKey: string): GitStatusSnapshot | undefined =>
+  useProjectStore.getState().statuses[workspaceKey];
 
 beforeEach(() => {
-  mockGetRepoStatus.mockReset();
+  mockGetWorkspaceStatus.mockReset();
   useProjectStore.setState({
     statuses: {},
     projects: [],
@@ -67,7 +67,7 @@ beforeEach(() => {
   });
 });
 
-describe('refreshRepoStatus — status 的唯一显式刷新入口', () => {
+describe('refreshWorkspaceStatus — status 的唯一显式刷新入口', () => {
   let consoleError: ReturnType<typeof vi.spyOn>;
 
   beforeEach(() => {
@@ -79,81 +79,81 @@ describe('refreshRepoStatus — status 的唯一显式刷新入口', () => {
   });
 
   it('主仓单元解析为 (projectId, null) —— 不得用空串表示主仓', async () => {
-    mockGetRepoStatus.mockResolvedValue(snapshotOf('p1', null, 1, []));
+    mockGetWorkspaceStatus.mockResolvedValue(snapshotOf('p1', null, 1, []));
 
-    await refreshRepoStatus(repoKeyOf('p1'));
+    await refreshWorkspaceStatus(workspaceKeyOf('p1'));
 
-    expect(mockGetRepoStatus).toHaveBeenCalledWith('p1', null);
+    expect(mockGetWorkspaceStatus).toHaveBeenCalledWith('p1', null);
   });
 
   it('worktree 单元解析出 canonical 路径并按该路径查询', async () => {
-    mockGetRepoStatus.mockResolvedValue(snapshotOf('p1', '/wt/a', 1, []));
+    mockGetWorkspaceStatus.mockResolvedValue(snapshotOf('p1', '/wt/a', 1, []));
 
-    await refreshRepoStatus(repoKeyOf('p1', '/wt/a'));
+    await refreshWorkspaceStatus(workspaceKeyOf('p1', '/wt/a'));
 
-    expect(mockGetRepoStatus).toHaveBeenCalledWith('p1', '/wt/a');
+    expect(mockGetWorkspaceStatus).toHaveBeenCalledWith('p1', '/wt/a');
   });
 
   it('无分隔符的裸 projectId（防御旧形态载荷）按主仓单元处理', async () => {
-    mockGetRepoStatus.mockResolvedValue(snapshotOf('p1', null, 1, []));
+    mockGetWorkspaceStatus.mockResolvedValue(snapshotOf('p1', null, 1, []));
 
-    await refreshRepoStatus('p1');
+    await refreshWorkspaceStatus('p1');
 
-    expect(mockGetRepoStatus).toHaveBeenCalledWith('p1', null);
-    expect(slotOf(repoKeyOf('p1'))?.version).toBe(1);
+    expect(mockGetWorkspaceStatus).toHaveBeenCalledWith('p1', null);
+    expect(slotOf(workspaceKeyOf('p1'))?.version).toBe(1);
   });
 
   it('成功时快照整体入该单元槽位（全量替换，不做增量合并）', async () => {
     useProjectStore.getState().applyStatus(snapshotOf('p1', null, 1, [fc('old.ts')]));
-    mockGetRepoStatus.mockResolvedValue(snapshotOf('p1', null, 2, [fc('new.ts'), fc('n.ts')]));
+    mockGetWorkspaceStatus.mockResolvedValue(snapshotOf('p1', null, 2, [fc('new.ts'), fc('n.ts')]));
 
-    await refreshRepoStatus(repoKeyOf('p1'));
+    await refreshWorkspaceStatus(workspaceKeyOf('p1'));
 
-    expect(slotOf(repoKeyOf('p1'))?.entries).toEqual([fc('new.ts'), fc('n.ts')]);
-    expect(slotOf(repoKeyOf('p1'))?.version).toBe(2);
+    expect(slotOf(workspaceKeyOf('p1'))?.entries).toEqual([fc('new.ts'), fc('n.ts')]);
+    expect(slotOf(workspaceKeyOf('p1'))?.version).toBe(2);
   });
 
   it('命令失败 = 状态未知：既不写空列表也不清空既有槽位', async () => {
     useProjectStore.getState().applyStatus(snapshotOf('p1', null, 4, [fc('keep.ts')]));
-    const before = slotOf(repoKeyOf('p1'));
-    mockGetRepoStatus.mockRejectedValue(new Error('boom'));
+    const before = slotOf(workspaceKeyOf('p1'));
+    mockGetWorkspaceStatus.mockRejectedValue(new Error('boom'));
 
-    await expect(refreshRepoStatus(repoKeyOf('p1'))).resolves.toBeUndefined();
+    await expect(refreshWorkspaceStatus(workspaceKeyOf('p1'))).resolves.toBeUndefined();
 
     // 「空列表」是一个断言（该单元确实干净），错误不是断言 —— 绝不得据此写入
-    expect(slotOf(repoKeyOf('p1'))).toBe(before);
-    expect(slotOf(repoKeyOf('p1'))?.entries).toEqual([fc('keep.ts')]);
+    expect(slotOf(workspaceKeyOf('p1'))).toBe(before);
+    expect(slotOf(workspaceKeyOf('p1'))?.entries).toEqual([fc('keep.ts')]);
     expect(consoleError).toHaveBeenCalled();
   });
 
   it('失败时不得凭空造出槽位（未挂载的单元保持「未知」）', async () => {
-    mockGetRepoStatus.mockRejectedValue(new Error('not mounted'));
+    mockGetWorkspaceStatus.mockRejectedValue(new Error('not mounted'));
 
-    await refreshRepoStatus(repoKeyOf('p1', '/wt/a'));
+    await refreshWorkspaceStatus(workspaceKeyOf('p1', '/wt/a'));
 
-    expect(slotOf(repoKeyOf('p1', '/wt/a'))).toBeUndefined();
+    expect(slotOf(workspaceKeyOf('p1', '/wt/a'))).toBeUndefined();
   });
 
   it('刷新入口不自建第二道 version 门控：迟到快照交给 store 拒收', async () => {
     useProjectStore.getState().applyStatus(snapshotOf('p1', null, 9, [fc('newer.ts')]));
-    mockGetRepoStatus.mockResolvedValue(snapshotOf('p1', null, 3, [fc('stale.ts')]));
+    mockGetWorkspaceStatus.mockResolvedValue(snapshotOf('p1', null, 3, [fc('stale.ts')]));
 
-    await refreshRepoStatus(repoKeyOf('p1'));
+    await refreshWorkspaceStatus(workspaceKeyOf('p1'));
 
-    expect(slotOf(repoKeyOf('p1'))?.entries).toEqual([fc('newer.ts')]);
-    expect(slotOf(repoKeyOf('p1'))?.version).toBe(9);
+    expect(slotOf(workspaceKeyOf('p1'))?.entries).toEqual([fc('newer.ts')]);
+    expect(slotOf(workspaceKeyOf('p1'))?.version).toBe(9);
   });
 
   it('刷新一个单元不触碰同项目其它单元的槽位（串数据回归）', async () => {
     useProjectStore.getState().applyStatus(snapshotOf('p1', '/wt/a', 1, [fc('wtA.ts')]));
-    const wtSlotBefore = slotOf(repoKeyOf('p1', '/wt/a'));
-    mockGetRepoStatus.mockResolvedValue(snapshotOf('p1', null, 5, [fc('main.ts')]));
+    const wtSlotBefore = slotOf(workspaceKeyOf('p1', '/wt/a'));
+    mockGetWorkspaceStatus.mockResolvedValue(snapshotOf('p1', null, 5, [fc('main.ts')]));
 
-    await refreshRepoStatus(repoKeyOf('p1'));
+    await refreshWorkspaceStatus(workspaceKeyOf('p1'));
 
-    expect(slotOf(repoKeyOf('p1'))?.entries).toEqual([fc('main.ts')]);
-    expect(slotOf(repoKeyOf('p1', '/wt/a'))).toBe(wtSlotBefore);
-    expect(slotOf(repoKeyOf('p1', '/wt/a'))?.entries).toEqual([fc('wtA.ts')]);
+    expect(slotOf(workspaceKeyOf('p1'))?.entries).toEqual([fc('main.ts')]);
+    expect(slotOf(workspaceKeyOf('p1', '/wt/a'))).toBe(wtSlotBefore);
+    expect(slotOf(workspaceKeyOf('p1', '/wt/a'))?.entries).toEqual([fc('wtA.ts')]);
   });
 });
 
@@ -169,7 +169,7 @@ describe('createDebouncedStatusRefresh — 按单元去抖合并', () => {
   it('窗口内同一单元多次调度只执行一次，并拿到该单元的 key', () => {
     const debounced = createDebouncedStatusRefresh(500);
     const run = vi.fn();
-    const key = repoKeyOf('p1', '/wt/a');
+    const key = workspaceKeyOf('p1', '/wt/a');
 
     debounced.schedule(key, run);
     debounced.schedule(key, run);
@@ -187,8 +187,8 @@ describe('createDebouncedStatusRefresh — 按单元去抖合并', () => {
   it('同一项目的两个单元各占一个窗口，互不取消（旧实现按 projectId 去抖会丢一次刷新）', () => {
     const debounced = createDebouncedStatusRefresh(500);
     const run = vi.fn();
-    const main = repoKeyOf('p1');
-    const worktree = repoKeyOf('p1', '/wt/a');
+    const main = workspaceKeyOf('p1');
+    const worktree = workspaceKeyOf('p1', '/wt/a');
 
     debounced.schedule(main, run);
     debounced.schedule(worktree, run);
@@ -203,8 +203,8 @@ describe('createDebouncedStatusRefresh — 按单元去抖合并', () => {
     const debounced = createDebouncedStatusRefresh(500);
     const runMain = vi.fn();
     const runWt = vi.fn();
-    const main = repoKeyOf('p1');
-    const worktree = repoKeyOf('p1', '/wt/a');
+    const main = workspaceKeyOf('p1');
+    const worktree = workspaceKeyOf('p1', '/wt/a');
 
     debounced.schedule(main, runMain);
     debounced.schedule(worktree, runWt);
@@ -223,7 +223,7 @@ describe('createDebouncedStatusRefresh — 按单元去抖合并', () => {
   it('执行后定时器条目即释放：同一单元可再次调度并再次执行', () => {
     const debounced = createDebouncedStatusRefresh(500);
     const run = vi.fn();
-    const key = repoKeyOf('p1');
+    const key = workspaceKeyOf('p1');
 
     debounced.schedule(key, run);
     vi.advanceTimersByTime(500);
@@ -233,10 +233,10 @@ describe('createDebouncedStatusRefresh — 按单元去抖合并', () => {
     expect(run).toHaveBeenCalledTimes(2);
   });
 
-  it('RepoKey 与等价裸字符串视为同一单元（去重键取字符串形态）', () => {
+  it('WorkspaceKey 与等价裸字符串视为同一单元（去重键取字符串形态）', () => {
     const debounced = createDebouncedStatusRefresh(500);
     const run = vi.fn();
-    const key = repoKeyOf('p1', '/wt/a');
+    const key = workspaceKeyOf('p1', '/wt/a');
 
     debounced.schedule(key, run);
     debounced.schedule(String(key), run);
@@ -249,9 +249,9 @@ describe('createDebouncedStatusRefresh — 按单元去抖合并', () => {
     const debounced = createDebouncedStatusRefresh(500);
     const run = vi.fn();
 
-    debounced.schedule(repoKeyOf('p1'), run);
-    debounced.schedule(repoKeyOf('p1', '/wt/a'), run);
-    debounced.schedule(repoKeyOf('p2'), run);
+    debounced.schedule(workspaceKeyOf('p1'), run);
+    debounced.schedule(workspaceKeyOf('p1', '/wt/a'), run);
+    debounced.schedule(workspaceKeyOf('p2'), run);
     debounced.clear();
 
     vi.advanceTimersByTime(1000);

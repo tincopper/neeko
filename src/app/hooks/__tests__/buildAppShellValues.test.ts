@@ -47,7 +47,7 @@ function makeData(): AppShellData {
     fileView,
     wslEntries: [],
     wslOpenSessions: [],
-    activeWslWorktreePath: '/wt',
+    activeWslCheckoutPath: '/wt',
     wslDiffState: { distro: 'Ubuntu', projectPath: '/p', filePath: 'f.ts' },
     setWslOpenSessions: fn,
     handleCloseWslProject: fn,
@@ -66,7 +66,7 @@ function makeData(): AppShellData {
     handleWslEntryAdd: fn,
     remoteEntries: [],
     remoteOpenSessions: [],
-    activeRemoteWorktreePath: null,
+    activeRemoteCheckoutPath: null,
     remoteAuthStore: {} as AppShellData['remoteAuthStore'],
     setRemoteOpenSessions: fn,
     handleCloseRemoteProject: fn,
@@ -143,7 +143,7 @@ describe('buildAppShellValues', () => {
     // WSL
     expect(connectionProjectValue.wslEntries).toBe(data.wslEntries);
     expect(connectionProjectValue.wslOpenSessions).toBe(data.wslOpenSessions);
-    expect(connectionProjectValue.activeWslWorktreePath).toBe('/wt');
+    expect(connectionProjectValue.activeWslCheckoutPath).toBe('/wt');
     expect(connectionProjectValue.wslDiffState).toEqual(data.wslDiffState);
     expect(connectionProjectValue.onCloseWslProject).toBe(data.handleCloseWslProject);
     expect(connectionProjectValue.onSelectWslFile).toBe(data.handleSelectWslFile);
@@ -156,7 +156,7 @@ describe('buildAppShellValues', () => {
     // Remote
     expect(connectionProjectValue.remoteEntries).toBe(data.remoteEntries);
     expect(connectionProjectValue.remoteOpenSessions).toBe(data.remoteOpenSessions);
-    expect(connectionProjectValue.activeRemoteWorktreePath).toBeNull();
+    expect(connectionProjectValue.activeRemoteCheckoutPath).toBeNull();
     expect(connectionProjectValue.remoteAuthStore).toBe(data.remoteAuthStore);
     expect(connectionProjectValue.onCloseRemoteProject).toBe(data.handleCloseRemoteProject);
     expect(connectionProjectValue.onRefreshRemoteGit).toBe(data.handleRefreshRemoteGit);

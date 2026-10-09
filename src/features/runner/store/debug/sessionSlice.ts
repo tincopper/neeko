@@ -7,7 +7,7 @@ import {
   dapStartSessionConfig,
   dapStopSession,
 } from '../../api/debugApi';
-import { unitRootForProject } from '../../exec/context';
+import { activeWorkspaceRoot } from '../../exec/context';
 import { withStopLocation } from '../../stopLocation';
 import type { DapSessionInfo, EntryPoint, LaunchConfig } from '../../types';
 import { languageHooks } from '../languageHooks';
@@ -173,7 +173,7 @@ export const createSessionSlice: DebugSliceCreator<DebugSessionSlice> = (set, ge
       set({ isLaunching: true });
       try {
         await launchSession(projectId, config, () =>
-          dapStartSession(projectId, unitRootForProject(projectId), name, currentFile),
+          dapStartSession(projectId, activeWorkspaceRoot(projectId), name, currentFile),
         );
         recordLaunch(projectId, config);
       } finally {
@@ -192,7 +192,7 @@ export const createSessionSlice: DebugSliceCreator<DebugSessionSlice> = (set, ge
           projectId,
           config,
           opts?.starter ??
-            (() => dapStartSessionConfig(projectId, unitRootForProject(projectId), config)),
+            (() => dapStartSessionConfig(projectId, activeWorkspaceRoot(projectId), config)),
         );
         // starter 闭包透传（Java attach 重放一致，D7）。
         recordLaunch(projectId, config, opts?.starter);

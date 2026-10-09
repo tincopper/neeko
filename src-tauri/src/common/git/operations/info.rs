@@ -75,7 +75,7 @@ pub async fn get_git_branch_info_shell(
         .run_git(&["worktree", "list", "--porcelain"], work_dir)
         .await?;
     // 归一化需要 transport 的 target 语义（Local canonicalize / 远端词法归一），
-    // 因此清单在解析处即归一 —— 前端会拿这些路径拼 RepoKey，必须与 RepoRef::key() 同形。
+    // 因此清单在解析处即归一 —— 前端会拿这些路径拼 WorkspaceKey，必须与 WorkspaceRef::key() 同形。
     //
     // 每条目的归一含 `exists` / `canonicalize`（阻塞 fs）⇒ 整份清单在**一次** `spawn_blocking`
     // 内解析（红线 3）：逐条 hop 会把线程池往返乘以条目数，且让清单内部来自不同时刻的 fs 视图。

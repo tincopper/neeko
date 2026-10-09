@@ -8,11 +8,11 @@ import { useWorktreeChangeStats } from '@/shared/hooks/useWorktreeChangeStats';
 import type { GitStatusSnapshot, Worktree } from '@/shared/types';
 
 interface ConnectionWorktreeListProps {
-  /** 本列表所属项目 —— 状态槽位按 `repoKeyOf(projectId, wt.path)` 定址（与本地侧栏同一张表）。 */
+  /** 本列表所属项目 —— 状态槽位按 `workspaceKeyOf(projectId, wt.path)` 定址（与本地侧栏同一张表）。 */
   projectId: string;
   worktrees: Worktree[];
   /** 当前激活的 worktree 路径 */
-  activeWorktreePath: string | null;
+  activeCheckoutPath: string | null;
   /** 点击 worktree 行：触发外部 onOpenWorktreeTerminal */
   onOpenWorktreeTerminal: (worktreePath: string, branch: string) => void;
   /** 双击 worktree label：开始重命名（提交 newName 由父级处理） */
@@ -28,7 +28,7 @@ interface ConnectionWorktreeListProps {
 const ConnectionWorktreeList: React.FC<ConnectionWorktreeListProps> = ({
   projectId,
   worktrees,
-  activeWorktreePath,
+  activeCheckoutPath,
   onOpenWorktreeTerminal,
   onCommitRenameWorktree,
   onRemoveWorktree,
@@ -114,7 +114,7 @@ const ConnectionWorktreeList: React.FC<ConnectionWorktreeListProps> = ({
         const stats = changeStats[wt.path];
         const isRenaming = renaming === wt.path;
         const isDeleting = deleting === wt.path;
-        const isActive = activeWorktreePath === wt.path;
+        const isActive = activeCheckoutPath === wt.path;
         const label = wt.path.split(/[\\/]/).pop() ?? wt.path;
 
         return (

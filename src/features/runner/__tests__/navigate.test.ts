@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { useEditorStore } from '@/shared/store/editorStore';
 import { useProjectStore } from '@/shared/store/projectStore';
-import { useWorktreeStore } from '@/shared/store/worktreeStore';
+import { useWorkspaceStore } from '@/shared/store/workspaceStore';
 import type { FileContent } from '@/shared/types';
 import { deferred, flushMicrotasks } from '@/testing/async';
 import { createStackFrame } from '@/testing/factories';
@@ -50,7 +50,7 @@ describe('openSourceAtLine — DAP 停止行打开源文件（canonical 构造�
     vi.clearAllMocks();
     useEditorStore.setState({ tabs: {}, editorLayout: {}, activeTabId: null });
     useProjectStore.setState({ activeProject: null, projects: [] });
-    useWorktreeStore.setState({ byProject: {} });
+    useWorkspaceStore.setState({ byProject: {} });
     readFileContentMock.mockImplementation(async (_projectId: string, p: string) => content(p));
   });
 
@@ -101,7 +101,7 @@ describe('openSourceAtLine — DAP 停止行打开源文件（canonical 构造�
 
   it('激活 worktree → 项目内读取的 scope 是 worktree 根（不因在项目根外而转只读）', async () => {
     const wt = '/home/u/.neeko/worktrees/fix-1';
-    useWorktreeStore.getState().setActiveWorktree('p1', wt);
+    useWorkspaceStore.getState().setActiveWorkspace('p1', wt);
 
     await openSourceAtLine('p1', '/repo', `${wt}/src/main.rs`, 3);
 
@@ -117,7 +117,7 @@ describe('openSourceAtLine — 项目外栈帧源码兜底（外部只读通道�
     vi.clearAllMocks();
     useEditorStore.setState({ tabs: {}, editorLayout: {}, activeTabId: null });
     useProjectStore.setState({ activeProject: null });
-    useWorktreeStore.setState({ byProject: {} });
+    useWorkspaceStore.setState({ byProject: {} });
     readFileContentMock.mockRejectedValue(new Error('Path is outside root directory'));
   });
 
@@ -180,7 +180,7 @@ describe('openSourceAtLine — JDK 缓存路径身份归一（同一份源码同
   beforeEach(() => {
     vi.clearAllMocks();
     useProjectStore.setState({ activeProject: null });
-    useWorktreeStore.setState({ byProject: {} });
+    useWorkspaceStore.setState({ byProject: {} });
     useEditorStore.setState({ tabs: {}, editorLayout: {}, activeTabId: null });
   });
 
@@ -245,7 +245,7 @@ describe('openSourceAtLine — jdt 虚拟文档（不拼根、不读 fs）', () 
     vi.clearAllMocks();
     useEditorStore.setState({ tabs: {}, editorLayout: {}, activeTabId: null });
     useProjectStore.setState({ activeProject: null });
-    useWorktreeStore.setState({ byProject: {} });
+    useWorkspaceStore.setState({ byProject: {} });
   });
 
   it('虚拟文档已打开 → 激活既有 tab，不触发任何读取', async () => {
@@ -340,7 +340,7 @@ describe('openVirtualSourceAtLine — 适配器虚拟源码（sourceReference）
     vi.clearAllMocks();
     useEditorStore.setState({ tabs: {}, editorLayout: {}, activeTabId: null });
     useProjectStore.setState({ activeProject: null });
-    useWorktreeStore.setState({ byProject: {} });
+    useWorkspaceStore.setState({ byProject: {} });
   });
 
   it('有 sessionId + reference → 建只读虚拟 tab（身份 dap-source:）', async () => {
@@ -411,7 +411,7 @@ describe('ensureStopSourceTab — 停点只确保源码可见（不写跳转目�
       navigateGoal: null,
     });
     useProjectStore.setState({ activeProject: null });
-    useWorktreeStore.setState({ byProject: {} });
+    useWorkspaceStore.setState({ byProject: {} });
     readFileContentMock.mockImplementation(async (_projectId: string, p: string) => content(p));
   });
 
@@ -719,7 +719,7 @@ describe('ensureSourceTab — 语言扩展就绪屏障（await getLanguageExtens
     langExtMock.mockResolvedValue(null);
     useEditorStore.setState({ tabs: {}, editorLayout: {}, activeTabId: null });
     useProjectStore.setState({ activeProject: null });
-    useWorktreeStore.setState({ byProject: {} });
+    useWorkspaceStore.setState({ byProject: {} });
     readFileContentMock.mockImplementation(async (_projectId: string, p: string) => content(p));
   });
 

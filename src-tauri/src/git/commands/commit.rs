@@ -18,9 +18,9 @@ pub async fn commit_files(
     app_handle: AppHandle,
 ) -> Result<CommitResult, AppError> {
     let (t, repo) = state
-        .resolve_repo(&project_id, worktree_path.as_deref())
+        .resolve_workspace(&project_id, worktree_path.as_deref())
         .await?;
-    let repo_path = repo.work_dir();
+    let repo_path = repo.root();
     validate_repo_relative_paths(&t, repo_path, &file_paths)?;
     let (hooks, _slot) = begin_git_run(&state, &repo, &app_handle, console_run_id.as_deref())?;
     let result = operations::commit_files(&t, repo_path, &file_paths, &message, hooks)

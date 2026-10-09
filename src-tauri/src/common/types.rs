@@ -102,10 +102,10 @@ pub struct FileNode {
 /// A git worktree entry.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Worktree {
-    /// Worktree **身份渲染**（平台无关字母表，见 `common/git/unit_path.rs`）。
+    /// Worktree **身份渲染**（平台无关字母表，见 `common/git/checkout_path.rs`）。
     ///
-    /// 刻意不是 `PathBuf`：这个值经 IPC 直接成为前端 `RepoKey` 的路径分量，是**身份**而非
-    /// OS 路径。需要交给 git / 文件系统的宿主形态时，用 `UnitPath::exec()`，不要在这里转换。
+    /// 刻意不是 `PathBuf`：这个值经 IPC 直接成为前端 `WorkspaceKey` 的路径分量，是**身份**而非
+    /// OS 路径。需要交给 git / 文件系统的宿主形态时，用 `CheckoutPath::exec()`，不要在这里转换。
     pub path: String,
     /// Currently checked-out branch name.
     pub branch: String,
@@ -144,13 +144,13 @@ pub struct GitInfo {
     pub current_branch: String,
     /// All local branches.
     pub branches: Vec<String>,
-    /// Registered worktrees（每个都是一条独立的仓库单元，见 `git::RepoRef`）。
+    /// Registered worktrees（每个都是一条独立的Workspace，见 `git::WorkspaceRef`）。
     pub worktrees: Vec<Worktree>,
     /// Detected git hosting provider.
     ///
     /// **注意**：未提交变更列表（changed_files）**不在**本结构里 —— 它是
     /// 「每个工作树」的事实（HEAD/index/workdir 三者独立），随
-    /// `GitStatusSnapshot` 按 `repo_key` 投递与读取。放进 per-project 的 GitInfo
+    /// `GitStatusSnapshot` 按 `workspace_key` 投递与读取。放进 per-project 的 GitInfo
     /// 就是 worktree 视图串主仓内容的结构性成因。
     pub git_provider: GitProvider,
 }

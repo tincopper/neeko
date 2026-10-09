@@ -67,12 +67,12 @@ impl LanguageBackend for JavaBackend {
     async fn plan(
         &self,
         state: &AppStateWrapper,
-        unit: &crate::dap::project_context::ExecUnit,
+        exec: &crate::dap::project_context::ExecWorkspace,
         request: &DebugRequest,
     ) -> Result<SessionPlan, AppError> {
         match request {
-            DebugRequest::JavaAttach { target, .. } => self.plan_attach(unit, target).await,
-            DebugRequest::JavaJdtls { target, .. } => self.plan_jdtls(state, unit, target).await,
+            DebugRequest::JavaAttach { target, .. } => self.plan_attach(exec, target).await,
+            DebugRequest::JavaJdtls { target, .. } => self.plan_jdtls(state, exec, target).await,
         }
     }
 
@@ -109,7 +109,7 @@ impl JavaBackend {
     /// 随后经 `DebugRequest::JavaAttach` 的输出通道挂载 JVM 输出泵。
     async fn plan_attach(
         &self,
-        unit: &crate::dap::project_context::ExecUnit,
+        exec: &crate::dap::project_context::ExecWorkspace,
         target: &crate::dap::types::JavaDebugTarget,
     ) -> Result<SessionPlan, AppError> {
         let crate::dap::types::JavaDebugTarget {
@@ -129,12 +129,12 @@ impl JavaBackend {
             ));
         }
         // 执行单元已由调用方解析（单元根不变式）：cwd 校验基准与 debuggee 工作目录。
-        if java_debug_unsupported(&unit.target) {
+        if java_debug_unsupported(&exec.target) {
             return Err(unsupported_remote_error());
         }
-        let dir = launch_support::resolve_build_dir(&unit.target, &unit.root, cwd).await?;
+        let dir = launch_support::resolve_build_dir(&exec.target, &exec.root, cwd).await?;
         // Windows 本地经 cmd /C：POSIX 单引号转 cmd 双引号（对齐 debug_build_test_binary）。
-        let command = if matches!(unit.target, ExecTarget::Local) && cfg!(windows) {
+        let command = if matches!(exec.target, ExecTarget::Local) && cfg!(windows) {
             launch_support::windows_cmd_quote(command)
         } else {
             command.clone()
@@ -147,7 +147,7 @@ impl JavaBackend {
             port,
             output_rx,
             guard,
-        } = JavaDebuggee::launch(&unit.target, &command, dir.as_str()).await?;
+        } = JavaDebuggee::launch(&exec.target, &command, dir.as_str()).await?;
         // ── 4. attach 配置（JavaAdapter.build_launch_args 消费 port）───────────
         let config = LaunchConfig {
             name: format!("Debug test: {test_name}"),
@@ -182,7 +182,7 @@ impl JavaBackend {
     async fn plan_jdtls(
         &self,
         state: &AppStateWrapper,
-        unit: &crate::dap::project_context::ExecUnit,
+        exec: &crate::dap::project_context::ExecWorkspace,
         target: &crate::dap::types::JavaJdtlsTarget,
     ) -> Result<SessionPlan, AppError> {
         if target.cwd.trim().is_empty() {
@@ -210,7 +210,7 @@ impl JavaBackend {
         }
 
         // 执行单元已由调用方解析（单元根不变式）：能力探测与启动的 workspace 同源。
-        if java_debug_unsupported(&unit.target) {
+        if java_debug_unsupported(&exec.target) {
             return Err(unsupported_remote_error());
         }
         // **不猜项目名**：只把"候选"交给端口，由 jdt.ls 验证后采信。
@@ -229,7 +229,7 @@ impl JavaBackend {
         // 探测根是**单元根**：jdt.ls 按它建项目，换根就应重新探测。
         let capability = self
             .capability
-            .probe(&unit.root, &target.probe_class, candidate)
+            .probe(&exec.root, &target.probe_class, candidate)
             .await;
 
         let (port, module_paths, mut class_paths, verified_project_name) = match capability {
@@ -264,7 +264,7 @@ impl JavaBackend {
             }
         }
 
-        let dir = launch_support::resolve_build_dir(&unit.target, &unit.root, &target.cwd).await?;
+        let dir = launch_support::resolve_build_dir(&exec.target, &exec.root, &target.cwd).await?;
         let config = LaunchConfig {
             name: format!("Debug test: {}", target.test_name),
             type_: "java".into(),
@@ -369,11 +369,13 @@ mod tests {
     use crate::common::testing::isolated_state;
     use crate::dap::adapter::java::capability::JavaDebugCapability;
     use crate::dap::adapter::{DebugRequest, SessionPlan};
-    use crate::dap::project_context::{resolve_unit, ExecUnit};
+    use crate::dap::project_context::{resolve_exec_workspace, ExecWorkspace};
 
     /// 测试用执行单元：**走生产唯一解析点**（主仓单元，`worktree_path = None`）。
-    async fn unit_of(state: &AppStateWrapper, project_id: &str) -> ExecUnit {
-        resolve_unit(state, project_id, None).await.expect("unit")
+    async fn workspace_of(state: &AppStateWrapper, project_id: &str) -> ExecWorkspace {
+        resolve_exec_workspace(state, project_id, None)
+            .await
+            .expect("exec")
     }
 
     const LAUNCHER: &str = "/home/u/.neeko/junit-platform-console-standalone-1.14.4.jar";
@@ -516,7 +518,7 @@ mod tests {
         match fake_backend(ready_capability())
             .plan(
                 &state,
-                &unit_of(&state, &project_id).await,
+                &workspace_of(&state, &project_id).await,
                 &DebugRequest::JavaJdtls {
                     project_id,
                     worktree_path: None,
@@ -550,7 +552,7 @@ mod tests {
         let err = match fake_backend(ready_capability())
             .plan(
                 &state,
-                &unit_of(&state, &project_id).await,
+                &workspace_of(&state, &project_id).await,
                 &DebugRequest::JavaJdtls {
                     project_id,
                     worktree_path: None,
@@ -575,7 +577,7 @@ mod tests {
             fake_backend(ready_capability())
                 .plan(
                     &state,
-                    &unit_of(&state, &project_id).await,
+                    &workspace_of(&state, &project_id).await,
                     &DebugRequest::JavaJdtls {
                         project_id: project_id.clone(),
                         worktree_path: None,
@@ -592,7 +594,7 @@ mod tests {
             fake_backend(ready_capability())
                 .plan(
                     &state,
-                    &unit_of(&state, &project_id).await,
+                    &workspace_of(&state, &project_id).await,
                     &DebugRequest::JavaJdtls {
                         project_id: project_id.clone(),
                         worktree_path: None,
@@ -609,7 +611,7 @@ mod tests {
             fake_backend(ready_capability())
                 .plan(
                     &state,
-                    &unit_of(&state, &project_id).await,
+                    &workspace_of(&state, &project_id).await,
                     &DebugRequest::JavaJdtls {
                         project_id,
                         worktree_path: None,
@@ -636,7 +638,7 @@ mod tests {
         })
         .plan(
             &state,
-            &unit_of(&state, &project_id).await,
+            &workspace_of(&state, &project_id).await,
             &DebugRequest::JavaJdtls {
                 project_id,
                 worktree_path: None,
@@ -668,7 +670,7 @@ mod tests {
         })
         .plan(
             &state,
-            &unit_of(&state, &project_id).await,
+            &workspace_of(&state, &project_id).await,
             &DebugRequest::JavaJdtls {
                 project_id,
                 worktree_path: None,
@@ -715,7 +717,7 @@ mod tests {
         })
         .plan(
             &state,
-            &unit_of(&state, &project_id).await,
+            &workspace_of(&state, &project_id).await,
             &DebugRequest::JavaJdtls {
                 project_id,
                 worktree_path: None,
@@ -808,7 +810,7 @@ mod tests {
             fake_backend(ready_capability())
                 .plan(
                     &state,
-                    &unit_of(&state, &project_id).await,
+                    &workspace_of(&state, &project_id).await,
                     &DebugRequest::JavaAttach {
                         project_id: project_id.clone(),
                         worktree_path: None,
@@ -829,7 +831,7 @@ mod tests {
             fake_backend(ready_capability())
                 .plan(
                     &state,
-                    &unit_of(&state, &project_id).await,
+                    &workspace_of(&state, &project_id).await,
                     &DebugRequest::JavaAttach {
                         project_id,
                         worktree_path: None,

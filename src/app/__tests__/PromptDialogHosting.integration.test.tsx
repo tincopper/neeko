@@ -9,7 +9,7 @@ import { useAppViewStore } from '@/shared/store/appViewStore';
 import { useOverlayStore } from '@/shared/store/overlayStore';
 
 // Center views stubbed: the test cares about「宿主是否随中心视图懒挂载」, not the views themselves.
-vi.mock('@/app/components/ProjectWorkspace', () => ({
+vi.mock('@/app/components/ProjectView', () => ({
   default: () => <div data-testid="view-workspace">Workspace</div>,
 }));
 vi.mock('@/features/settings/components/SettingsView', () => ({

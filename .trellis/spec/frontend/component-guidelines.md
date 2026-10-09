@@ -449,7 +449,7 @@ return (
 **adapter 调用方契约**：
 1. 数据 normalize：把领域模型映射成展示组件期望的 props（如把 `git_info.worktrees` 映射成 `SessionRow` 数组）
 2. 回调注入：把领域 IPC 包装成展示组件期望的回调（如 `onAddWorktree = () => onOpenDialog("new-worktree", ...)`）
-3. store 读写在 adapter 层完成（如 `aheadBehind` 用**仓库单元键** `repoKeyOf(projectId, unitPath)` 查表；`unitPath` 取自 `selectActiveRepoKey` / `selectActiveWorktreePath`，不各自猜）
+3. store 读写在 adapter 层完成（如 `aheadBehind` 用**Workspace键** `workspaceKeyOf(projectId, unitPath)` 查表；`unitPath` 取自 `selectActiveWorkspaceKey` / `selectActiveCheckoutPath`，不各自猜）
 
 **反模式**：让纯展示组件 import `invoke` 或 `useGitStore`——会立刻丧失三端复用能力，把 wsl/remote 路径推回写另一份并行实现。
 
@@ -459,7 +459,7 @@ return (
 // Wrong —— 展示组件直接读 store，且把裸 projectId 当键
 const SessionRow = ({ project }) => {
   const ahead = useGitStore((s) => s.aheadBehind[project.id]?.ahead);
-  // 键空间里只有仓库单元键 ⇒ 恒为 undefined（既存 bug 形态：徽标永远不显示）
+  // 键空间里只有Workspace键 ⇒ 恒为 undefined（既存 bug 形态：徽标永远不显示）
 };
 ```
 
@@ -471,7 +471,7 @@ interface SessionRowProps {
 }
 
 // adapter（local / wsl / remote 同形）：键 = 本项目**当前单元**的身份
-const unitKey = useWorktreeStore((s) => selectActiveRepoKey(s, project.id));
+const unitKey = useWorkspaceStore((s) => selectActiveWorkspaceKey(s, project.id));
 const ahead = useGitStore((s) => (unitKey ? s.aheadBehind[unitKey]?.ahead : undefined));
 <SessionRow ahead={ahead} />;
 ```
@@ -632,7 +632,7 @@ const handleSave = useCallback(async () => {
 
 1. **领域 Context**：`useEditorContext()`、`useWslContext()`、`useRemoteContext()` 等
 2. **全局 Context**：`useAppContext()` — 配置、toast
-3. **Store 快照**：对应域 store 的 selector（`useProjectStore(s => s.field)` / `useEditorStore(s => s.tabs[tabKey])` / `useWorktreeStore(s => …)` / `useFileStore(s => …)` …）— 带 memo 的响应式
+3. **Store 快照**：对应域 store 的 selector（`useProjectStore(s => s.field)` / `useEditorStore(s => s.tabs[tabKey])` / `useWorkspaceStore(s => …)` / `useFileStore(s => …)` …）— 带 memo 的响应式
 4. **Store 门面**：对应 store 的 `getState()`（`useProjectStore.getState()` 等）— 一次性读取，用于事件回调；按需取那一个域，不是一个"全量快照"
 5. **领域 Hook**：`useEditorGroupLayout(tabKey)` 等
 
@@ -655,7 +655,7 @@ const handleSave = useCallback(async () => {
       />
 
 // After（直接读取 Context/Store）
-// ProjectWorkspace 不再传递 agents/config/showToast
+// ProjectView 不再传递 agents/config/showToast
 <EditorGroupLayout ... />
   └─ <EditorGroupPane ... />  // 内部调用 useEditorContext() / useAppContext()
 
@@ -678,7 +678,7 @@ useEditorStore.getState().activateTab(tabKey, tabId);  // 代替 onActivateTab p
 |-------------|--------|-----------|
 | 30+ | ~13 | `tabKey`, `tabs`, `activeTabId`, `pinnedTabId`, `isFocused`, `onActivateTab`, `onCloseTab`, `agents`, `compactMode`, `showAgentBar`, `hiddenAgentIds`, `onToggleHiddenAgent`, `onAgentClick`, `config`, `showToast` |
 
-删除路径：`EditorGroupPaneProps` → `EditorGroupLayoutProps` → `sharedPaneProps` → `ProjectWorkspace` JSX。每一层都同步删除。
+删除路径：`EditorGroupPaneProps` → `EditorGroupLayoutProps` → `sharedPaneProps` → `ProjectView` JSX。每一层都同步删除。
 
 
 
@@ -967,14 +967,14 @@ const items = useStore(
 
 ### 状态读取
 
-使用 `useWorktreeStore` 读取当前激活的 worktree 状态：
+使用 `useWorkspaceStore` 读取当前激活的 worktree 状态：
 
 ```tsx
-import { useWorktreeStore } from '@/shared/store/worktreeStore';
+import { useWorkspaceStore } from '@/shared/store/workspaceStore';
 
-const activeWorktreePath = useWorktreeStore((s) => s.activeWorktreePath);
-const activeWorktreeBranch = useWorktreeStore((s) => s.activeWorktreeBranch);
-const isWorktreeActive = activeWorktreePath !== null;
+const activeCheckoutPath = useActiveCheckoutPath();
+const activeCheckoutBranch = useActiveCheckoutBranch();
+const isWorktreeActive = activeCheckoutPath !== null;
 ```
 
 ### 展示覆盖模式
@@ -983,7 +983,7 @@ const isWorktreeActive = activeWorktreePath !== null;
 
 ```tsx
 // 正确：根据 worktree 状态决定展示内容
-const displayBranch = isWorktreeActive ? activeWorktreeBranch : currentBranch;
+const displayBranch = isWorktreeActive ? activeCheckoutBranch : currentBranch;
 ```
 
 ### 交互禁用模式

@@ -5,7 +5,7 @@ import { BROWSER_URL_CHANGED_EVENT, GIT_CHANGED_EVENT } from '@/shared/events';
 import { useFileChangedEvent } from '@/shared/hooks/useFileChangedEvent';
 import { useProjectBrowserStore } from '@/shared/store/browserStore';
 import { useProjectStore } from '@/shared/store/projectStore';
-import { repoKeyOf } from '@/shared/utils/repoRef';
+import { workspaceKeyOf } from '@/shared/utils/workspaceRef';
 
 import { useBrowserPanelEvents } from '../useBrowserPanelEvents';
 
@@ -95,9 +95,9 @@ describe('useBrowserPanelEvents — git-changed 武装自动刷新', () => {
     renderHook(() => useBrowserPanelEvents(params));
 
     act(() => {
-      // 载荷是 `{ repo_key, project_id }`（仓库单元身份补齐后不再是裸 project_id 字符串）
+      // 载荷是 `{ workspace_key, project_id }`（Workspace身份补齐后不再是裸 project_id 字符串）
       listeners.get(GIT_CHANGED_EVENT)!({
-        repo_key: repoKeyOf('proj-1', null),
+        workspace_key: workspaceKeyOf('proj-1', null),
         project_id: 'proj-1',
       });
     });
@@ -111,7 +111,7 @@ describe('useBrowserPanelEvents — git-changed 武装自动刷新', () => {
 
     act(() => {
       listeners.get(GIT_CHANGED_EVENT)!({
-        repo_key: repoKeyOf('proj-1', null),
+        workspace_key: workspaceKeyOf('proj-1', null),
         project_id: 'proj-1',
       });
     });
@@ -123,7 +123,7 @@ describe('useBrowserPanelEvents — git-changed 武装自动刷新', () => {
 describe('useBrowserPanelEvents — file:// 面板的同文件判定走身份抽象', () => {
   /** 取生产代码注册的 file-changed 处理器（该 hook 在测试里被 mock 成 vi.fn）。 */
   function grabFileChangedHandler(): (event: {
-    repo_key: string;
+    workspace_key: string;
     project_id: string;
     paths: string[];
   }) => void {
@@ -151,13 +151,13 @@ describe('useBrowserPanelEvents — file:// 面板的同文件判定走身份抽
     return { refresh, handler: grabFileChangedHandler() };
   }
 
-  const MAIN_KEY = repoKeyOf('proj-1', null);
+  const MAIN_KEY = workspaceKeyOf('proj-1', null);
 
   it('变更路径属本文件（canonical 形态）→ 刷新', () => {
     const { refresh, handler } = setup('/repo', 'file:///repo/docs/main.html');
 
     act(() => {
-      handler({ repo_key: MAIN_KEY, project_id: 'proj-1', paths: ['docs/main.html'] });
+      handler({ workspace_key: MAIN_KEY, project_id: 'proj-1', paths: ['docs/main.html'] });
     });
 
     expect(refresh).toHaveBeenCalledTimes(1);
@@ -169,7 +169,7 @@ describe('useBrowserPanelEvents — file:// 面板的同文件判定走身份抽
     const { refresh, handler } = setup('/repo/', 'file:///repo/docs/main.html');
 
     act(() => {
-      handler({ repo_key: MAIN_KEY, project_id: 'proj-1', paths: ['docs/main.html'] });
+      handler({ workspace_key: MAIN_KEY, project_id: 'proj-1', paths: ['docs/main.html'] });
     });
 
     expect(refresh).toHaveBeenCalledTimes(1);
@@ -182,7 +182,7 @@ describe('useBrowserPanelEvents — file:// 面板的同文件判定走身份抽
     const { refresh, handler } = setup('/repo', 'file:///repo/docs/main.html');
 
     act(() => {
-      handler({ repo_key: MAIN_KEY, project_id: 'proj-1', paths: ['/repo/docs/main.html'] });
+      handler({ workspace_key: MAIN_KEY, project_id: 'proj-1', paths: ['/repo/docs/main.html'] });
     });
 
     expect(refresh).toHaveBeenCalledTimes(1);
@@ -192,7 +192,7 @@ describe('useBrowserPanelEvents — file:// 面板的同文件判定走身份抽
     const { refresh, handler } = setup('/repo', 'file:///repo/docs/main.html');
 
     act(() => {
-      handler({ repo_key: MAIN_KEY, project_id: 'proj-1', paths: ['docs//main.html'] });
+      handler({ workspace_key: MAIN_KEY, project_id: 'proj-1', paths: ['docs//main.html'] });
     });
 
     expect(refresh).toHaveBeenCalledTimes(1);
@@ -205,7 +205,7 @@ describe('useBrowserPanelEvents — file:// 面板的同文件判定走身份抽
 
     act(() => {
       handler({
-        repo_key: repoKeyOf('proj-1', '/repo-wt'),
+        workspace_key: workspaceKeyOf('proj-1', '/repo-wt'),
         project_id: 'proj-1',
         paths: ['docs/main.html'],
       });
@@ -218,7 +218,7 @@ describe('useBrowserPanelEvents — file:// 面板的同文件判定走身份抽
     const { refresh, handler } = setup('/repo', 'file:///repo/docs/main.html');
 
     act(() => {
-      handler({ repo_key: MAIN_KEY, project_id: 'proj-1', paths: ['docs/other.html'] });
+      handler({ workspace_key: MAIN_KEY, project_id: 'proj-1', paths: ['docs/other.html'] });
     });
 
     expect(refresh).not.toHaveBeenCalled();

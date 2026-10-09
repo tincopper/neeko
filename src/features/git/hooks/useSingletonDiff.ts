@@ -41,12 +41,12 @@ export function useSingletonDiff(
   commitHash: string | null,
   files: CommitFileChange[],
   connectionContext: ConnectionContext | null,
-  activeWorktreePath?: string | null,
+  activeCheckoutPath?: string | null,
 ) {
   // worktree 激活时使用 worktree 专属 tab key，避免 commit diff 落入 local tab 组
   const tabKey = resolveTabKey(
     useProjectStore.getState().activeProjectId ?? projectId ?? '',
-    activeWorktreePath,
+    activeCheckoutPath,
   );
 
   const hasSingleton = useCallback(() => {

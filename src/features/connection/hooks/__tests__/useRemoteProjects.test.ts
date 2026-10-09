@@ -4,7 +4,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { useRemoteProjects } from '@/features/connection/hooks/useRemoteProjects';
 import { useConnectionStore } from '@/shared/store/connectionStore';
 import { useProjectStore } from '@/shared/store/projectStore';
-import { useWorktreeStore } from '@/shared/store/worktreeStore';
+import { useWorkspaceStore } from '@/shared/store/workspaceStore';
 import type { RemoteEntrySession, AuthMethod } from '@/shared/types';
 
 vi.mock('@/features/terminal/components/terminalCache', () => ({
@@ -52,7 +52,7 @@ describe('useRemoteProjects', () => {
       remoteAuthStore: new Map(),
       pendingAuthEntry: null,
     });
-    useWorktreeStore.setState({ byProject: {} });
+    useWorkspaceStore.setState({ byProject: {} });
   });
 
   // The old wrapper useRemoteProjects now calls new useConnectionProjects which

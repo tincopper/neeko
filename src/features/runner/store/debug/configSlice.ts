@@ -4,7 +4,7 @@ import {
   dapListConfigs,
   dapSaveConfigs,
 } from '../../api/debugApi';
-import { unitRootForProject } from '../../exec/context';
+import { activeWorkspaceRoot } from '../../exec/context';
 
 import { notifyError } from './shared';
 import type { DebugConfigSlice, DebugSliceCreator } from './types';
@@ -22,7 +22,7 @@ export const createConfigSlice: DebugSliceCreator<DebugConfigSlice> = (set, get)
 
   loadConfigs: async (projectId) => {
     try {
-      const configs = await dapListConfigs(projectId, unitRootForProject(projectId));
+      const configs = await dapListConfigs(projectId, activeWorkspaceRoot(projectId));
       const selected =
         get().selectedConfigName && configs.some((c) => c.name === get().selectedConfigName)
           ? get().selectedConfigName
@@ -40,7 +40,7 @@ export const createConfigSlice: DebugSliceCreator<DebugConfigSlice> = (set, get)
 
   loadEntries: async (projectId) => {
     try {
-      const entries = await dapDiscoverEntries(projectId, unitRootForProject(projectId));
+      const entries = await dapDiscoverEntries(projectId, activeWorkspaceRoot(projectId));
       set({ entries });
     } catch {
       set({ entries: [] });
@@ -52,7 +52,7 @@ export const createConfigSlice: DebugSliceCreator<DebugConfigSlice> = (set, get)
   saveConfigs: async (projectId, configurations) => {
     set({ error: null });
     try {
-      await dapSaveConfigs(projectId, unitRootForProject(projectId), configurations);
+      await dapSaveConfigs(projectId, activeWorkspaceRoot(projectId), configurations);
       set({
         configs: configurations,
         selectedConfigName:

@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 
 import { useImeSpaceGuard } from '@/shared/hooks/useImeSpaceGuard';
 import { useProjectStore } from '@/shared/store/projectStore';
-import { selectActiveWorktreePath, useWorktreeStore } from '@/shared/store/worktreeStore';
+import { selectActiveCheckoutPath, useWorkspaceStore } from '@/shared/store/workspaceStore';
 import type { FileChange } from '@/shared/types';
 import { reportFrontendError } from '@/shared/utils/errorReporting';
 import { Button } from '@/ui/Button';
@@ -14,7 +14,7 @@ import {
   commitFiles,
   push,
   pull,
-  getRepoStatus,
+  getWorkspaceStatus,
   getCommitLog,
   type PushOutcome,
 } from '../api/gitApi';
@@ -29,8 +29,8 @@ interface CommitDialogProps {
 
 function CommitDialog({ projectId, onClose, onRefreshGit }: CommitDialogProps) {
   const activeProjectId = useProjectStore((s) => s.activeProjectId);
-  const activeWorktreePath = useWorktreeStore((s) => selectActiveWorktreePath(s, activeProjectId));
-  const worktreePath = activeProjectId === projectId ? activeWorktreePath : null;
+  const activeCheckoutPath = useWorkspaceStore((s) => selectActiveCheckoutPath(s, activeProjectId));
+  const worktreePath = activeProjectId === projectId ? activeCheckoutPath : null;
   const projectPath = useProjectStore(
     (s) => s.projects.find((p) => p.id === projectId)?.path ?? '',
   );
@@ -52,7 +52,7 @@ function CommitDialog({ projectId, onClose, onRefreshGit }: CommitDialogProps) {
   }, [amend]);
 
   useEffect(() => {
-    getRepoStatus(projectId, worktreePath)
+    getWorkspaceStatus(projectId, worktreePath)
       .then((snapshot) => {
         const untracked = snapshot.entries.filter((f) => f.status === 'Untracked');
         setUntrackedCount(untracked.length);

@@ -56,9 +56,9 @@ pub async fn get_stash_list(
     state: State<'_, AppStateWrapper>,
 ) -> Result<Vec<StashEntry>, AppError> {
     let (t, repo) = state
-        .resolve_repo(&project_id, worktree_path.as_deref())
+        .resolve_workspace(&project_id, worktree_path.as_deref())
         .await?;
-    let repo_path = repo.work_dir();
+    let repo_path = repo.root();
     operations::get_stash_list(&t, repo_path)
         .await
         .map_err(AppError::from)
@@ -73,9 +73,9 @@ pub async fn get_stash_files(
     state: State<'_, AppStateWrapper>,
 ) -> Result<Vec<CommitFileChange>, AppError> {
     let (t, repo) = state
-        .resolve_repo(&project_id, worktree_path.as_deref())
+        .resolve_workspace(&project_id, worktree_path.as_deref())
         .await?;
-    let repo_path = repo.work_dir();
+    let repo_path = repo.root();
     operations::get_stash_files(&t, repo_path, &selector)
         .await
         .map_err(AppError::from)
@@ -92,9 +92,9 @@ pub async fn get_stash_file_diff(
     state: State<'_, AppStateWrapper>,
 ) -> Result<DiffResult, AppError> {
     let (t, repo) = state
-        .resolve_repo(&project_id, worktree_path.as_deref())
+        .resolve_workspace(&project_id, worktree_path.as_deref())
         .await?;
-    let repo_path = repo.work_dir();
+    let repo_path = repo.root();
     operations::get_stash_file_diff(
         &t,
         repo_path,
@@ -115,9 +115,9 @@ pub async fn stash_apply(
     state: State<'_, AppStateWrapper>,
 ) -> Result<StashActionResult, AppError> {
     let (t, repo) = state
-        .resolve_repo(&project_id, worktree_path.as_deref())
+        .resolve_workspace(&project_id, worktree_path.as_deref())
         .await?;
-    let repo_path = repo.work_dir();
+    let repo_path = repo.root();
     let outcome = operations::stash_apply(&t, repo_path, &selector)
         .await
         .map_err(AppError::from)?;
@@ -135,9 +135,9 @@ pub async fn stash_pop(
     state: State<'_, AppStateWrapper>,
 ) -> Result<StashActionResult, AppError> {
     let (t, repo) = state
-        .resolve_repo(&project_id, worktree_path.as_deref())
+        .resolve_workspace(&project_id, worktree_path.as_deref())
         .await?;
-    let repo_path = repo.work_dir();
+    let repo_path = repo.root();
     let outcome = operations::stash_pop(&t, repo_path, &selector)
         .await
         .map_err(AppError::from)?;
@@ -170,9 +170,9 @@ pub async fn get_ahead_behind(
     state: State<'_, AppStateWrapper>,
 ) -> Result<AheadBehind, AppError> {
     let (t, repo) = state
-        .resolve_repo(&project_id, worktree_path.as_deref())
+        .resolve_workspace(&project_id, worktree_path.as_deref())
         .await?;
-    let repo_path = repo.work_dir();
+    let repo_path = repo.root();
     operations::get_ahead_behind(&t, repo_path)
         .await
         .map_err(AppError::from)

@@ -5,7 +5,7 @@ import { useLibraryStore } from '@/features/library/store/libraryStore';
 import { useAppViewStore } from '@/shared/store/appViewStore';
 
 // Mock the three center views so the routing test focuses on which one mounts.
-vi.mock('@/app/components/ProjectWorkspace', () => ({
+vi.mock('@/app/components/ProjectView', () => ({
   default: () => <div data-testid="view-workspace">Workspace</div>,
 }));
 vi.mock('@/features/settings/components/SettingsView', () => ({
@@ -23,7 +23,7 @@ describe('AppCenter — single-source center routing (appViewStore)', () => {
     vi.restoreAllMocks();
   });
 
-  it('renders ProjectWorkspace for the normal view', () => {
+  it('renders ProjectView for the normal view', () => {
     useAppViewStore.setState({ appView: 'normal' });
     render(<AppCenter />);
     expect(screen.getByTestId('view-workspace')).toBeInTheDocument();

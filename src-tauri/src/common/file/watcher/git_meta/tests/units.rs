@@ -1,6 +1,6 @@
 //! git 元数据路径解析与事件分类的纯函数测试。
 //!
-//! 身份补全后（每个仓库单元自带一条 git 元数据 watcher），本文件钉住两件事：
+//! 身份补全后（每个Workspace自带一条 git 元数据 watcher），本文件钉住两件事：
 //! 1. linked worktree 解析到**它自己的**私有 gitdir（HEAD / index），不是主仓的；
 //! 2. 分类只认本单元的 HEAD / index —— 别的工作树的元数据路径一律 `Nothing`
 //!    （旧实现靠主仓递归监听 `.git/worktrees/**` 代收，事件会串到错误身份上）。

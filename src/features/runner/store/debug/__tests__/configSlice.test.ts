@@ -1,7 +1,7 @@
 // @vitest-environment node
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { useWorktreeStore } from '@/shared/store/worktreeStore';
+import { useWorkspaceStore } from '@/shared/store/workspaceStore';
 
 import type * as DebugApi from '../../../api/debugApi';
 import { useDebugStore } from '../../debugStore';
@@ -27,7 +27,7 @@ const WORKTREE = '/home/u/.neeko/worktrees/fix-1';
 
 beforeEach(() => {
   vi.clearAllMocks();
-  useWorktreeStore.setState({ byProject: {} });
+  useWorkspaceStore.setState({ byProject: {} });
   dapListConfigs.mockResolvedValue([]);
   dapGetSession.mockResolvedValue(null);
   dapGetBreakpoints.mockResolvedValue([]);
@@ -37,7 +37,7 @@ beforeEach(() => {
 
 describe('configSlice 启动配置 / 入口点按执行单元根读写', () => {
   it('激活 worktree → list / discover / save 的 worktreePath 均带该根', async () => {
-    useWorktreeStore.getState().setActiveWorktree('p1', WORKTREE);
+    useWorkspaceStore.getState().setActiveWorkspace('p1', WORKTREE);
 
     await useDebugStore.getState().loadConfigs('p1');
     expect(dapListConfigs).toHaveBeenCalledWith('p1', WORKTREE);

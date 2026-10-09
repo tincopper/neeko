@@ -3,14 +3,14 @@ import { beforeEach, describe, expect, it } from 'vitest';
 
 import { useEditorStore } from '@/shared/store/editorStore';
 import { useProjectStore } from '@/shared/store/projectStore';
-import { useWorktreeStore } from '@/shared/store/worktreeStore';
+import { useWorkspaceStore } from '@/shared/store/workspaceStore';
 import { createProject } from '@/testing/factories';
 
 import { useMruTabsStore } from '../mruTabsStore';
 import { advanceTabCycle, buildTabCycleOrder, useTabCycleStore } from '../tabCycleStore';
 
 function seedStores() {
-  useWorktreeStore.setState({ byProject: {} });
+  useWorkspaceStore.setState({ byProject: {} });
   useProjectStore.setState({
     activeProjectId: 'p1',
     activeProject: createProject({ id: 'p1' }),

@@ -4,14 +4,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 // hoisted：确保 vi.mock 工厂执行前 mock 已初始化（工厂 eager 读取变量会触发 TDZ）。
 const {
   mockListen,
-  mockGetRepoStatus,
+  mockGetWorkspaceStatus,
   mockGetGitBranchInfo,
   mockGetAheadBehind,
   mockLoadSession,
   mockCanonicalWtPath,
 } = vi.hoisted(() => ({
   mockListen: vi.fn(),
-  mockGetRepoStatus: vi.fn(),
+  mockGetWorkspaceStatus: vi.fn(),
   mockGetGitBranchInfo: vi.fn(),
   mockGetAheadBehind: vi.fn(),
   mockLoadSession: vi.fn(),
@@ -24,9 +24,9 @@ vi.mock('@tauri-apps/api/event', () => ({
 }));
 
 vi.mock('../../../git/api/gitApi', () => ({
-  // status 读接口的唯一形态：按仓库单元的 versioned 快照
-  getRepoStatus: mockGetRepoStatus,
-  setActiveRepoUnit: vi.fn(() => Promise.resolve({})),
+  // status 读接口的唯一形态：按Workspace的 versioned 快照
+  getWorkspaceStatus: mockGetWorkspaceStatus,
+  activateWorkspace: vi.fn(() => Promise.resolve({})),
   getGitBranchInfo: mockGetGitBranchInfo,
   getAheadBehind: mockGetAheadBehind,
   canonicalWorktreePath: mockCanonicalWtPath,
@@ -51,13 +51,13 @@ vi.mock('@/shared/store/gitStore', () => ({
 
 import { GIT_CHANGED_EVENT } from '@/shared/events';
 import { useProjectStore } from '@/shared/store/projectStore';
-import { useWorktreeStore } from '@/shared/store/worktreeStore';
-import { repoKeyOf } from '@/shared/utils/repoRef';
+import { useWorkspaceStore } from '@/shared/store/workspaceStore';
+import { workspaceKeyOf } from '@/shared/utils/workspaceRef';
 
 import { useSessionBootstrap } from '../useSessionBootstrap';
 
-const MAIN_KEY = repoKeyOf('p1', null);
-const WT_KEY = repoKeyOf('p1', '/repo/wt/Test');
+const MAIN_KEY = workspaceKeyOf('p1', null);
+const WT_KEY = workspaceKeyOf('p1', '/repo/wt/Test');
 
 /** 从 listen mock 中取出指定事件的 handler。 */
 function captureHandler(eventName: string) {
@@ -82,7 +82,7 @@ function setup() {
     activeProject: null,
     statuses: {},
   });
-  useWorktreeStore.setState({ byProject: {} });
+  useWorkspaceStore.setState({ byProject: {} });
   renderHook(() =>
     useSessionBootstrap({
       loadProjects: () => Promise.resolve(),
@@ -97,8 +97,8 @@ beforeEach(() => {
   vi.clearAllMocks();
   mockListen.mockReset();
   mockListen.mockResolvedValue(() => {});
-  mockGetRepoStatus.mockResolvedValue({
-    repo_key: MAIN_KEY,
+  mockGetWorkspaceStatus.mockResolvedValue({
+    workspace_key: MAIN_KEY,
     version: 1,
     project_id: 'p1',
     worktree_path: null,
@@ -125,7 +125,7 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-describe('useSessionBootstrap — git-changed 按事件自带的仓库单元刷新', () => {
+describe('useSessionBootstrap — git-changed 按事件自带的Workspace刷新', () => {
   it('主仓单元事件 → getGitBranchInfo 传 null（而非空字符串，回归）；不再单独拉 ahead/behind', async () => {
     setup();
 
@@ -134,7 +134,7 @@ describe('useSessionBootstrap — git-changed 按事件自带的仓库单元刷�
     mockGetGitBranchInfo.mockClear();
     mockGetAheadBehind.mockClear();
     await act(async () => {
-      handler({ payload: { repo_key: MAIN_KEY, project_id: 'p1' } });
+      handler({ payload: { workspace_key: MAIN_KEY, project_id: 'p1' } });
       await vi.advanceTimersByTimeAsync(600);
     });
 
@@ -152,7 +152,7 @@ describe('useSessionBootstrap — git-changed 按事件自带的仓库单元刷�
     mockGetGitBranchInfo.mockClear();
     mockGetAheadBehind.mockClear();
     await act(async () => {
-      handler({ payload: { repo_key: WT_KEY, project_id: 'p1' } });
+      handler({ payload: { workspace_key: WT_KEY, project_id: 'p1' } });
       await vi.advanceTimersByTimeAsync(600);
     });
 
@@ -163,7 +163,7 @@ describe('useSessionBootstrap — git-changed 按事件自带的仓库单元刷�
   it('回归：主仓事件不再被「当前正看 worktree」劫持（旧实现读全局镜像猜目标）', async () => {
     setup();
     // setup() 重置了 worktree store，renderHook 之后再置激活态模拟「正在看 worktree」
-    useWorktreeStore.setState({
+    useWorkspaceStore.setState({
       byProject: { p1: { activePath: '/repo/wt/Test', activeBranch: 'Test', opened: [] } },
     });
 
@@ -172,7 +172,7 @@ describe('useSessionBootstrap — git-changed 按事件自带的仓库单元刷�
     mockGetGitBranchInfo.mockClear();
     mockGetAheadBehind.mockClear();
     await act(async () => {
-      handler({ payload: { repo_key: MAIN_KEY, project_id: 'p1' } });
+      handler({ payload: { workspace_key: MAIN_KEY, project_id: 'p1' } });
       await vi.advanceTimersByTimeAsync(600);
     });
 
@@ -197,7 +197,7 @@ describe('useSessionBootstrap — 启动恢复 session 激活 worktree', () => {
     setup();
     await act(async () => {});
 
-    const unit = useWorktreeStore.getState().byProject['p1'];
+    const unit = useWorkspaceStore.getState().byProject['p1'];
     expect(unit?.activePath).toBe('/repo/wt/Test');
     expect(unit?.activeBranch).toBe('Test');
     expect(unit?.opened).toEqual([{ path: '/repo/wt/Test', branch: 'Test' }]);
@@ -221,9 +221,9 @@ describe('useSessionBootstrap — 启动恢复 session 激活 worktree', () => {
     setup();
     await act(async () => {});
 
-    expect(useWorktreeStore.getState().byProject['p1']?.activePath).toBe('/repo/wt/Gone');
+    expect(useWorkspaceStore.getState().byProject['p1']?.activePath).toBe('/repo/wt/Gone');
     // 不在清单里就不进 opened（那部分是纯本地展示，没有身份含义）
-    expect(useWorktreeStore.getState().byProject['p1']?.opened).toEqual([]);
+    expect(useWorkspaceStore.getState().byProject['p1']?.opened).toEqual([]);
   });
 
   it('session 存的是符号链接形态路径 → 交后端归一后按 canonical 形态恢复（AC6）', async () => {
@@ -247,10 +247,10 @@ describe('useSessionBootstrap — 启动恢复 session 激活 worktree', () => {
 
     // 必须恢复成**后端形态**：存活校验比的也是后端形态，写成 /tmp 形态会被立刻判没，
     // 表现为 main ↔ worktree 反复重挂（2026-09-28 隔离实例实测）。
-    expect(useWorktreeStore.getState().byProject['p1']?.activePath).toBe(
+    expect(useWorkspaceStore.getState().byProject['p1']?.activePath).toBe(
       '/private/tmp/repo/wt/Test',
     );
-    expect(useWorktreeStore.getState().byProject['p1']?.opened).toEqual([
+    expect(useWorkspaceStore.getState().byProject['p1']?.opened).toEqual([
       { path: '/private/tmp/repo/wt/Test', branch: 'Test' },
     ]);
   });
@@ -265,7 +265,7 @@ describe('useSessionBootstrap — 初始化兜底（splash 退出保证）', () 
       activeProject: null,
       statuses: {},
     });
-    useWorktreeStore.setState({ byProject: {} });
+    useWorkspaceStore.setState({ byProject: {} });
     renderHook(() => {
       const r = useSessionBootstrap({
         loadProjects: () => Promise.resolve(),

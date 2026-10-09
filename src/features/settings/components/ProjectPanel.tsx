@@ -3,10 +3,10 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 
 import { useLspStore } from '@/features/lsp/store/lspStore';
 import { useProjectStore } from '@/shared/store/projectStore';
-import { useWorktreeStore } from '@/shared/store/worktreeStore';
+import { useWorkspaceStore } from '@/shared/store/workspaceStore';
 import type { Project } from '@/shared/types';
 import { reportFrontendError } from '@/shared/utils/errorReporting';
-import { repoKeyOf } from '@/shared/utils/repoRef';
+import { workspaceKeyOf } from '@/shared/utils/workspaceRef';
 import { Input, Button, Separator } from '@/ui';
 
 import { setProjectAgents, listAgents } from '../../agent/api/agentApi';
@@ -91,10 +91,10 @@ const ProjectPanel: React.FC<ProjectPanelProps> = ({ projectId, customIdes, onPr
       await changeProjectPath(projectId, selected);
       // 根路径变了 ⇒ 主仓单元的 workdir 指向了另一个目录，它的槽位内容立刻失效（I1-b）；
       // 激活的 worktree 单元同样失效。两份作废各一次：主仓槽在此显式作废
-      // （`clearActiveWorktree` 只覆盖 worktree 那一个槽，激活态为主仓时它本就无事可做），
+      // （`clearActiveWorkspace` 只覆盖 worktree 那一个槽，激活态为主仓时它本就无事可做），
       // worktree 槽随该 mutator **单点**发生 —— 调用方不重复补刀。
-      useProjectStore.getState().invalidateStatus(repoKeyOf(projectId, null));
-      useWorktreeStore.getState().clearActiveWorktree(projectId);
+      useProjectStore.getState().invalidateStatus(workspaceKeyOf(projectId, null));
+      useWorkspaceStore.getState().clearActiveWorkspace(projectId);
     }
   }, [projectId]);
 

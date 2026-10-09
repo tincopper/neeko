@@ -8,9 +8,9 @@ import {
 
 import { cleanupTerminalsForTabKey } from '@/features/terminal';
 import { useProjectStore } from '@/shared/store/projectStore';
-import { selectActiveWorktreePath, useWorktreeStore } from '@/shared/store/worktreeStore';
-import { repoKeyOf } from '@/shared/utils/repoRef';
+import { selectActiveCheckoutPath, useWorkspaceStore } from '@/shared/store/workspaceStore';
 import { resolveTabKey } from '@/shared/utils/tabKey';
+import { workspaceKeyOf } from '@/shared/utils/workspaceRef';
 
 import {
   removeWorktree,
@@ -32,7 +32,7 @@ export interface ConfirmDeleteState {
  *
  * 生命周期收口契约（与本 hook 的实现一一对应）：
  * - 删除成功后：该单元槽位作废（I1-b「未知 ≠ 旧数据」）+ 它是当前视图时激活态回落主仓
- *   （回落由 `useActiveRepoUnitSync` 反应成「挂载主仓」，这里不手动刷数据）；
+ *   （回落由 `useActiveWorkspaceSync` 反应成「挂载主仓」，这里不手动刷数据）；
  * - 改名成功后：旧路径槽位作废 + 它是当前视图时激活态改指**后端 canonical** 的新路径
  *   （前端派生串不得直接写激活态 —— 归一只能问后端，红线 8/12）。
  */
@@ -80,14 +80,14 @@ export function useWorktreeListActions(
         await removeWorktree(projectId, worktreePath);
         // 该单元从此没有任何生产者，槽位必须作废（I1-b「未知 ≠ 旧数据」）——命令成功后才做，
         // 失败时工作树还在、挂载与数据仍然有效。作废**只发生一次**：
-        // - 删的正是当前视图所在单元 ⇒ 由 `clearActiveWorktree` 单点完成（同时把激活态回落
-        //   主仓，`useActiveRepoUnitSync` 据此重挂主仓，这里不手动刷任何数据）；
+        // - 删的正是当前视图所在单元 ⇒ 由 `clearActiveWorkspace` 单点完成（同时把激活态回落
+        //   主仓，`useActiveWorkspaceSync` 据此重挂主仓，这里不手动刷任何数据）；
         // - 否则该槽位不会被任何其他路径碰到，在此显式作废。
-        // 两条路互斥，避免「同一槽作废两次」让 `clearActiveWorktree` 的单点契约变假。
-        if (selectActiveWorktreePath(useWorktreeStore.getState(), projectId) === worktreePath) {
-          useWorktreeStore.getState().clearActiveWorktree(projectId);
+        // 两条路互斥，避免「同一槽作废两次」让 `clearActiveWorkspace` 的单点契约变假。
+        if (selectActiveCheckoutPath(useWorkspaceStore.getState(), projectId) === worktreePath) {
+          useWorkspaceStore.getState().clearActiveWorkspace(projectId);
         } else {
-          useProjectStore.getState().invalidateStatus(repoKeyOf(projectId, worktreePath));
+          useProjectStore.getState().invalidateStatus(workspaceKeyOf(projectId, worktreePath));
         }
         let branchError: string | null = null;
         try {
@@ -128,16 +128,16 @@ export function useWorktreeListActions(
       await renameWorktree(projectId, oldPath, newFullPath);
       // 旧路径的单元身份从此不存在：后端已释放其挂载，前端槽位同步作废；
       // 若它正是当前视图，激活态改指新路径（下一轮由挂载唯一入口取回新单元数据）。
-      useProjectStore.getState().invalidateStatus(repoKeyOf(projectId, oldPath));
-      const wtStore = useWorktreeStore.getState();
-      if (selectActiveWorktreePath(wtStore, projectId) === oldPath) {
-        // activePath 必须是后端 canonical 形态（worktreeStore 的不变量，红线 8/12）：
+      useProjectStore.getState().invalidateStatus(workspaceKeyOf(projectId, oldPath));
+      const wtStore = useWorkspaceStore.getState();
+      if (selectActiveCheckoutPath(wtStore, projectId) === oldPath) {
+        // activePath 必须是后端 canonical 形态（workspaceStore 的不变量，红线 8/12）：
         // newFullPath 只是前端正则派生的字符串，符号链接根上与 `git worktree list`
         // 回传形态不同形，存活校验（裸等值比较 canonical 清单）会把它误判成
         // 「单元消失」回落主仓。归一只能问后端；归一失败宁可回落主仓，也不留
         // 第二种身份表示。
         const canonical = await canonicalWorktreePath(projectId, newFullPath).catch(() => null);
-        useWorktreeStore.getState().setActiveWorktree(projectId, canonical, undefined);
+        useWorkspaceStore.getState().setActiveWorkspace(projectId, canonical, undefined);
       }
       onRefreshGit(projectId);
     } catch (e: unknown) {

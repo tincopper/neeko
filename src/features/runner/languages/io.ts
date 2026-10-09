@@ -19,7 +19,7 @@ import { useProjectStore } from '@/shared/store/projectStore';
 import { IS_WINDOWS } from '@/shared/utils/platform';
 
 import { buildTestBinaryRemote } from '../api/debugBuildApi';
-import { unitRootForProject } from '../exec/context';
+import { activeWorkspaceRoot } from '../exec/context';
 
 import type { LangIo } from './contract';
 
@@ -50,8 +50,8 @@ export const langIo: LangIo = {
       projectId: spec.projectId,
       // 执行单元根由本门面派生（语言模块不感知 worktree）：后端用它做 cwd 的
       // containment 基准。`null` = 主仓单元（后端收敛成项目根）。
-      // 复用命令式唯一派生点，不在语言 IO 层重复调 `selectActiveWorktreePath`。
-      worktreePath: unitRootForProject(spec.projectId),
+      // 复用命令式唯一派生点，不在语言 IO 层重复调 `selectActiveCheckoutPath`。
+      worktreePath: activeWorkspaceRoot(spec.projectId),
       command: spec.command,
       cwd: spec.cwd,
     }),

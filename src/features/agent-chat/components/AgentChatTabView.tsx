@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { readFileContent, readDirTree } from '@/features/file/api/fileApi';
 import { useEditorStore } from '@/shared/store/editorStore';
 import { useProjectStore } from '@/shared/store/projectStore';
-import { selectActiveWorktreePath, useWorktreeStore } from '@/shared/store/worktreeStore';
+import { selectActiveCheckoutPath, useWorkspaceStore } from '@/shared/store/workspaceStore';
 import type { FileNode } from '@/shared/types';
 import type { AgentChatTabData } from '@/shared/types/tab';
 import { canonicalFsPath } from '@/shared/utils/fileRef';
@@ -74,7 +74,7 @@ export default function AgentChatTabView({
   } = useAgentChat({ tabKey, tabId, projectId, data, mockMode });
 
   // 单元归属按 tab 自己的 projectId 取（本 tab 可能不属于当前激活项目）
-  const activeWorktreePath = useWorktreeStore((s) => selectActiveWorktreePath(s, projectId));
+  const activeCheckoutPath = useWorkspaceStore((s) => selectActiveCheckoutPath(s, projectId));
   // agent 消息里的文件路径拼根基准（相对路径拼项目根——与后端缺省 base 对齐）
   const projectPath = useProjectStore(
     (s) => s.projects.find((p) => p.id === projectId)?.path ?? '',
@@ -130,7 +130,7 @@ export default function AgentChatTabView({
       void (async () => {
         // agent 给绝对路径则原样（幂等归一），相对路径拼项目根 canonical
         const filePath = canonicalFsPath(projectPath, rawPath);
-        const tabKey = resolveTabKey(projectId, activeWorktreePath ?? undefined);
+        const tabKey = resolveTabKey(projectId, activeCheckoutPath ?? undefined);
         const tabId = getTabId(tabKey, filePath);
         const existing = useEditorStore.getState().tabs[tabKey];
         if (existing?.tabs.some((t) => t.id === tabId)) {
@@ -157,7 +157,7 @@ export default function AgentChatTabView({
         }
       })();
     },
-    [projectId, projectPath, activeWorktreePath],
+    [projectId, projectPath, activeCheckoutPath],
   );
 
   const handleKeyDown = useCallback(

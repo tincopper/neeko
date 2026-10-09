@@ -4,7 +4,7 @@
  * 从 `utils/testCommands.ts` 的 `buildDebugLaunchConfig` / `buildMainDebugLaunchConfig` 按语言拆出
  * （方案 B 阶段 2）：Rust 侧走 lldb 的 `program + args` 形态（测试：libtest 子串过滤；main：无参）。
  */
-import { resolveRunCwd } from '../../exec/context';
+import { runCwdOf } from '../../exec/context';
 import type { NativeDebugLaunchConfig } from '../../exec/nativeBuild';
 import { runNativeBuild, type NativeDebugHooks } from '../../exec/nativeDebug';
 import type { RunTarget } from '../../runTarget';
@@ -63,7 +63,7 @@ export function rustTestDebugLaunchConfig(
  */
 export const RUST_DEBUG_HOOKS: NativeDebugHooks = {
   async build(target, ctx) {
-    const cwd = resolveRunCwd(ctx);
+    const cwd = runCwdOf(ctx);
     const manifestDir = await resolveCargoManifestDirForFile(cwd, ctx.filePath, langIo.fileExists);
     if (target.kind === 'test') {
       // lib+bin 共享 src/ 时 artifact 的 src_path 是 crate root、与源文件行永不匹配，故构建期锁定 target。

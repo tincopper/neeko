@@ -6,7 +6,7 @@ import { resetLibraryState, useLibraryStore } from '@/features/library/store/lib
 import type { TerminalInsertApi } from '@/shared/contexts';
 import { useEditorStore } from '@/shared/store/editorStore';
 import { useProjectStore } from '@/shared/store/projectStore';
-import { useWorktreeStore } from '@/shared/store/worktreeStore';
+import { useWorkspaceStore } from '@/shared/store/workspaceStore';
 import type { Project } from '@/shared/types';
 import type { PromptResource } from '@/shared/types/library';
 import type { Tab } from '@/shared/types/tab';
@@ -141,7 +141,7 @@ describe('PromptsStatusSection', () => {
     resetLibraryState();
     setProject(true);
     setEditorTabs([], null);
-    useWorktreeStore.setState({ byProject: {} });
+    useWorkspaceStore.setState({ byProject: {} });
     hoisted.api.current = {};
     hoisted.toast.mockClear();
   });

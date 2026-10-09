@@ -221,8 +221,8 @@ macro_rules! neeko_invoke_handler {
             // info / read
             $crate::git::commands::get_git_info,
             $crate::git::commands::get_git_branch_info,
-            $crate::git::commands::get_repo_status,
-            $crate::git::commands::set_active_repo_unit,
+            $crate::git::commands::get_workspace_status,
+            $crate::git::commands::set_active_workspace,
             $crate::git::commands::get_untracked_files,
             $crate::git::commands::get_changed_files_diff_stats,
             $crate::git::commands::get_file_diff,

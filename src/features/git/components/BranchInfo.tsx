@@ -11,7 +11,7 @@ import {
   CloudDownload,
 } from '@/shared/components/icons';
 import { useGitStore } from '@/shared/store/gitStore';
-import { useActiveWorktreePath, useActiveWorktreeBranch } from '@/shared/store/worktreeStore';
+import { useActiveCheckoutPath, useActiveCheckoutBranch } from '@/shared/store/workspaceStore';
 import type { GitInfo, AheadBehind } from '@/shared/types';
 import { filterWorktreeBranches, isActiveWorktree } from '@/shared/utils';
 
@@ -51,9 +51,9 @@ const BranchInfo: React.FC<BranchInfoProps> = ({
   const toggleFavorite = useGitStore((s) => s.toggleFavorite);
 
   // Worktree 绑定独立分支，不允许在 changes 面板切换分支（与 BranchStatusBarWidget 一致）
-  const activeWorktreePath = useActiveWorktreePath();
-  const activeWorktreeBranch = useActiveWorktreeBranch();
-  const isWorktreeActive = isActiveWorktree(activeWorktreePath);
+  const activeCheckoutPath = useActiveCheckoutPath();
+  const activeCheckoutBranch = useActiveCheckoutBranch();
+  const isWorktreeActive = isActiveWorktree(activeCheckoutPath);
 
   const handleToggleBranchDropdown = useCallback(() => {
     if (isWorktreeActive) return;
@@ -74,7 +74,7 @@ const BranchInfo: React.FC<BranchInfoProps> = ({
 
   const currentBranch = gitInfo?.current_branch ?? '';
   // worktree 激活时显示 worktree 分支名，而非主分支的 current_branch
-  const displayBranch = isWorktreeActive ? activeWorktreeBranch : currentBranch;
+  const displayBranch = isWorktreeActive ? activeCheckoutBranch : currentBranch;
   const branches = useMemo(() => gitInfo?.branches ?? [], [gitInfo?.branches]);
   const worktrees = useMemo(() => gitInfo?.worktrees ?? [], [gitInfo?.worktrees]);
   // Exclude branches that are already checked out in a worktree

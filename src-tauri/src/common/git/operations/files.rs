@@ -5,7 +5,7 @@ use crate::common::git::transport::GitTransport;
 use crate::project::types::FileChange;
 use anyhow::{bail, Result};
 
-/// 计算某仓库单元的 status：**porcelain 单一引擎**（三端一致）。
+/// 计算某Workspace的 status：**porcelain 单一引擎**（三端一致）。
 ///
 /// 取代旧的 `get_worktree_changed_files`（libgit2 一套 + CLI 一套）：双引擎除维护成本外，
 /// 更致命的是词表与语义不一致（`renamed_from` 在 libgit2 分支恒 `None`），且 libgit2

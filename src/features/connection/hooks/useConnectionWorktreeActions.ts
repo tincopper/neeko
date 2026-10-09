@@ -3,7 +3,7 @@ import { useCallback, useMemo } from 'react';
 import type { GitStatusSnapshot } from '@/shared/types';
 
 import {
-  getRepoStatus,
+  getWorkspaceStatus,
   isWorktreeDirty,
   removeWorktree,
   renameWorktree,
@@ -41,7 +41,7 @@ export function useConnectionWorktreeActions(projectId: string, logTag: string) 
   const fetchStatus = useCallback(
     (worktreePath: string): Promise<GitStatusSnapshot | null> =>
       // 失败 = 该单元状态未知（由调用方按「无 chip」渲染并允许重试），绝不返回空数组假装「干净」。
-      getRepoStatus(projectId, worktreePath).catch(() => null),
+      getWorkspaceStatus(projectId, worktreePath).catch(() => null),
     [projectId],
   );
 

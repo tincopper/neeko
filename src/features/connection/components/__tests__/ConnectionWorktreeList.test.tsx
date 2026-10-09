@@ -5,13 +5,13 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import ConnectionWorktreeList from '@/features/connection/components/ConnectionWorktreeList';
 import { useProjectStore } from '@/shared/store/projectStore';
 import type { GitStatusSnapshot, Worktree } from '@/shared/types';
-import { repoKeyOf } from '@/shared/utils/repoRef';
+import { workspaceKeyOf } from '@/shared/utils/workspaceRef';
 
 const WT: Worktree = { path: '/home/u/wts/feature-x', branch: 'feature/x', head: 'abc' };
 
 function makeSnapshot(projectId: string, worktreePath: string): GitStatusSnapshot {
   return {
-    repo_key: repoKeyOf(projectId, worktreePath),
+    workspace_key: workspaceKeyOf(projectId, worktreePath),
     version: 1,
     project_id: projectId,
     worktree_path: worktreePath,
@@ -42,7 +42,7 @@ function List({
     <ConnectionWorktreeList
       projectId="p1"
       worktrees={worktrees}
-      activeWorktreePath={null}
+      activeCheckoutPath={null}
       onOpenWorktreeTerminal={vi.fn()}
       onCommitRenameWorktree={vi.fn()}
       onRemoveWorktree={vi.fn()}
@@ -76,7 +76,9 @@ describe('ConnectionWorktreeList — 远端侧栏 chip（按单元订阅，不�
     expect(await screen.findByText('+2')).toBeInTheDocument();
     expect(screen.getByText('-1')).toBeInTheDocument();
     // 数据确实落在共享槽位（本地/远端侧栏同表），而不是组件私有 state
-    expect(useProjectStore.getState().statuses[repoKeyOf('p1', WT.path)]?.entries).toHaveLength(1);
+    expect(
+      useProjectStore.getState().statuses[workspaceKeyOf('p1', WT.path)]?.entries,
+    ).toHaveLength(1);
   });
 
   it('同一挂载内不重复拉取已成功单元', async () => {
@@ -116,7 +118,7 @@ describe('ConnectionWorktreeList — 远端侧栏 chip（按单元订阅，不�
     await waitFor(() => expect(onFetchStatus).toHaveBeenCalledTimes(1));
     d.resolve(makeSnapshot('p1', WT.path));
     await waitFor(() =>
-      expect(useProjectStore.getState().statuses[repoKeyOf('p1', WT.path)]).toBeDefined(),
+      expect(useProjectStore.getState().statuses[workspaceKeyOf('p1', WT.path)]).toBeDefined(),
     );
     expect(onFetchStatus).toHaveBeenCalledTimes(1);
   });

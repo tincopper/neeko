@@ -25,8 +25,8 @@ export function createProjectCommands(
     refreshGitInfo(): Promise<GitInfo> {
       return invoke<GitInfo>('get_git_info', { projectId, worktreePath });
     },
-    refreshRepoStatus(): Promise<GitStatusSnapshot> {
-      return invoke<GitStatusSnapshot>('get_repo_status', { projectId, worktreePath });
+    refreshWorkspaceStatus(): Promise<GitStatusSnapshot> {
+      return invoke<GitStatusSnapshot>('get_workspace_status', { projectId, worktreePath });
     },
     getAheadBehind(): Promise<AheadBehind> {
       return invoke<AheadBehind>('get_ahead_behind', { projectId, worktreePath });

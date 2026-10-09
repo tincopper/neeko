@@ -18,7 +18,7 @@ import {
 import { fileUrlToFilePath, hostFromUrl } from '@/shared/utils/browserUtils';
 import { pathsContainFile } from '@/shared/utils/fileRef';
 import { canGoBack, canGoForward, recordNavigation } from '@/shared/utils/historyStack';
-import { unitWorkDir } from '@/shared/utils/repoRef';
+import { workspaceRootOf } from '@/shared/utils/workspaceRef';
 
 import {
   findAgentCliTab,
@@ -195,7 +195,7 @@ export function useBrowserTab({
     refreshRef.current = webview.refresh;
   }, [webview.refresh]);
 
-  // 载荷自仓库单元身份补齐起是 `{ repo_key, project_id }`（不再是裸 project_id 字符串）。
+  // 载荷自Workspace身份补齐起是 `{ workspace_key, project_id }`（不再是裸 project_id 字符串）。
   // 这里按**项目**维度匹配 —— 浏览器 tab 的武装窗口是 per-project 的
   // （`armProjectAutoRefresh`），单元维度在此不参与判定，与改造前语义一致。
   useTauriEvent<GitChangedEvent>(
@@ -225,14 +225,14 @@ export function useBrowserTab({
     if (!project) return;
 
     // 命中判定收敛到**身份所有者**（`pathsContainFile`），基准按事件自带的**单元身份**取：
-    // watcher 挂在仓库单元上，`paths` 相对该单元工作树根 —— 用项目根拼 worktree 相对路径
+    // watcher 挂在Workspace上，`paths` 相对该单元工作树根 —— 用项目根拼 worktree 相对路径
     // 会落到主仓的另一个同名文件上（`src/a.ts` 在两个工作树里同形不同义），恒漏配。
     // 事件路径正常为单元相对、`strip_prefix` 失败时回退**绝对**；两种形态都必须命中，
     // 拼接 `${projectRoot}/${rel}` 在回退场景恒不命中（`/repo//repo/…`）。
     // —— 后果是「tab 不刷新、显示过期内容」。与 useBrowserPanelEvents 同因同修。
-    if (pathsContainFile(unitWorkDir(event.repo_key, project.path), paths, browserFilePath)) {
-      void refreshRef.current();
-    }
+    const workspaceRoot = workspaceRootOf(event.workspace_key, project.path);
+    if (!pathsContainFile(workspaceRoot, paths, browserFilePath)) return;
+    void refreshRef.current();
   });
 
   // 组件卸载时解除项目武装（避免孤儿定时器）

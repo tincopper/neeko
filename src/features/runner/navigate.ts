@@ -12,7 +12,7 @@
  */
 import { useEditorStore } from '@/shared/store/editorStore';
 import { useProjectStore } from '@/shared/store/projectStore';
-import { selectActiveWorktreePath, useWorktreeStore } from '@/shared/store/worktreeStore';
+import { selectActiveCheckoutPath, useWorkspaceStore } from '@/shared/store/workspaceStore';
 import { resolveTabKey } from '@/shared/utils/tabKey';
 
 import { frameSourceOpen, fsSourceOpen, virtualSourceOpen } from './sourceOpen';
@@ -26,19 +26,20 @@ import type { StackFrameDto } from './types';
  * 若将来出现第二个消费者（非跳转场景也需要该键），再抽成独立模块。
  */
 function targetTabKey(projectId: string): string {
-  const activeWorktree = selectActiveWorktreePath(useWorktreeStore.getState(), projectId);
+  const activeWorktree = selectActiveCheckoutPath(useWorkspaceStore.getState(), projectId);
   return projectId ? resolveTabKey(projectId, activeWorktree) : projectId;
 }
 
 /**
  * 指定项目的登记根路径（主仓单元根）；项目不在表里 → 空串。
  */
-function projectRootOf(projectId: string): string {
+function projectRegisteredRoot(projectId: string): string {
   return useProjectStore.getState().projects.find((p) => p.id === projectId)?.path ?? '';
 }
 
 /**
- * 本次打开的执行单元根（**与 tab 空间、编辑器读/写根同源**；红线 12）。
+ * 本次打开的 **Workspace 根**（`workspace.root`；**与 tab 空间、编辑器读/写根同源**；红线 12）。
+ * 术语见 `docs/domain-model.md`。
  *
  * 第一性原理：源内容读取的 `InProject` scope 必须等于该 tab 所属的**当前执行单元**，
  * 因为编辑器对 tab 的保存/重读根也取自当前单元（`useFileViewTabOps` 的
@@ -49,9 +50,9 @@ function projectRootOf(projectId: string): string {
  * 推论（有意为之）：会话存活期间切到另一个单元时，旧单元的栈帧落在当前单元根之外，
  * 会回落**只读外部通道** —— 这是与 tab 空间/保存根一致的安全降级，不是缺陷。
  */
-function resolveUnitRoot(projectId: string, fallbackPath: string): string {
-  const activeWorktree = selectActiveWorktreePath(useWorktreeStore.getState(), projectId);
-  return activeWorktree || projectRootOf(projectId) || fallbackPath;
+function workspaceRootFor(projectId: string, fallbackPath: string): string {
+  const activeWorktree = selectActiveCheckoutPath(useWorkspaceStore.getState(), projectId);
+  return activeWorktree || projectRegisteredRoot(projectId) || fallbackPath;
 }
 
 export interface OpenSourceOptions {
@@ -77,7 +78,7 @@ function publishNavigateGoal(
 /** 用户意图：打开源文件并跳到指定行（点断点 / 终端与任务链接等）。
  *
  * `projectPath` 仅作项目表缺失时的兜底 —— 实际读取 scope 恒取**当前执行单元**
- *（激活 worktree / 该项目的登记根），见 `resolveUnitRoot`。 */
+ *（激活 worktree / 该项目的登记根），见 `workspaceRootFor`。 */
 export async function openSourceAtLine(
   projectId: string,
   projectPath: string,
@@ -89,7 +90,7 @@ export async function openSourceAtLine(
   const tabKey = targetTabKey(projectId);
   if (!tabKey) return;
 
-  const projectRoot = resolveUnitRoot(projectId, projectPath);
+  const projectRoot = workspaceRootFor(projectId, projectPath);
   const target = await ensureSourceTab({
     tabKey,
     projectId,
@@ -121,7 +122,7 @@ export async function openVirtualSourceAtLine(
     tabKey,
     projectId,
     // 虚拟身份与 root 无关（`dap-source:` 不拼根），这里取当前单元根只为满足统一入参。
-    projectRoot: resolveUnitRoot(projectId, ''),
+    projectRoot: workspaceRootFor(projectId, ''),
     request,
     line,
     column,
@@ -133,7 +134,7 @@ export async function openVirtualSourceAtLine(
 /** 停点源码可见性请求。 */
 export interface StopSourceRequest {
   projectId: string;
-  /** 项目表缺失时的兜底根；实际读取 scope 恒取**当前执行单元**（见 `resolveUnitRoot`）。 */
+  /** 项目表缺失时的兜底根；实际读取 scope 恒取**当前执行单元**（见 `workspaceRootFor`）。 */
   projectPath: string;
   frame: StackFrameDto;
   sessionId?: string;
@@ -158,7 +159,7 @@ export async function ensureStopSourceTab(
   const tabKey = targetTabKey(projectId);
   if (!tabKey) return null;
 
-  const projectRoot = resolveUnitRoot(projectId, projectPath);
+  const projectRoot = workspaceRootFor(projectId, projectPath);
   const request = frameSourceOpen(frame, projectRoot, projectId, sessionId);
   if (!request) return null;
 

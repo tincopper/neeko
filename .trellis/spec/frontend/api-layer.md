@@ -107,7 +107,7 @@ import { getWorktreeChangedFiles } from "../../git/api/gitApi";
 ### 在 App 协调层消费（使用 `@/` 别名）
 
 ```typescript
-// src/app/components/ProjectWorkspace.tsx
+// src/app/components/ProjectView.tsx
 import { checkAgentsInstalled } from "@/features/agent/api/agentApi";
 ```
 
@@ -260,7 +260,7 @@ export function getGitInfo(transport: GitTransportKind): Promise<GitInfo> {
 
 | 组件 | 使用的 API |
 |---|---|
-| `app/components/ProjectWorkspace.tsx` | `agentApi`、`libraryApi`（openLibrary + insertToAgentInput） |
+| `app/components/ProjectView.tsx` | `agentApi`、`libraryApi`（openLibrary + insertToAgentInput） |
 | `app/components/OpenIdeButton.tsx` | `sessionApi` |
 | `app/dock/wrappers/FilesPanelWrapper.tsx` | `fileApi` |
 
@@ -279,7 +279,7 @@ import { useTauriEvent } from "@/shared/hooks/useTauriEvent";
 import type { GitChangedEvent } from "@/shared/types";
 
 useTauriEvent<GitChangedEvent>(GIT_CHANGED_EVENT, (payload) => {
-  console.log("[Git] Changed:", payload.repo_key);
+  console.log("[Git] Changed:", payload.workspace_key);
 });
 ```
 
@@ -288,7 +288,7 @@ useTauriEvent<GitChangedEvent>(GIT_CHANGED_EVENT, (payload) => {
 
 > ⚠️ **禁止手写事件名与载荷类型**（红线 5）。`listen<string>("git-changed")` 这类裸写法不仅绕过了
 > 常量源，还会在载荷形状演进时**静默死亡**：`git-changed` 已从裸 `project_id` 字符串改为
-> `GitChangedEvent{repo_key, project_id}`，仍按 `payload !== projectId` 比较的消费点「对象 ≠ 字符串」
+> `GitChangedEvent{workspace_key, project_id}`，仍按 `payload !== projectId` 比较的消费点「对象 ≠ 字符串」
 > 恒早返回，通道不再触发且不报错。推荐经 `shared/hooks/useTauriEvent` 统一挂载/卸载。
 
 ### 项目中使用的事件
@@ -298,18 +298,18 @@ useTauriEvent<GitChangedEvent>(GIT_CHANGED_EVENT, (payload) => {
 | `terminal-input-{id}` | 终端输入（前端 emit） | `number[]` (UTF-8 bytes) |
 | `terminal-output-{id}` | 终端输出 | `number[]` |
 | `terminal-closed-{id}` | 终端关闭通知 | `null` |
-| `git-changed` | Git 状态变更（HEAD 外部变化等主动刷新 fallback） | `GitChangedEvent`（`repo_key` + `project_id`） |
-| `git-status-snapshot` | 单元 status 权威全量快照（按 `repo_key` 覆盖对应槽） | `GitStatusSnapshot` |
-| `file-changed` | 文件内容变更批次（已去抖） | `FileChangedEvent`（`repo_key` + `project_id` + `paths`） |
-| `file-tree-changed` | 文件树结构变更（Create/Remove/Rename） | `FileTreeChangedEvent`（`repo_key` + `project_id` + `dirs?`） |
+| `git-changed` | Git 状态变更（HEAD 外部变化等主动刷新 fallback） | `GitChangedEvent`（`workspace_key` + `project_id`） |
+| `git-status-snapshot` | 单元 status 权威全量快照（按 `workspace_key` 覆盖对应槽） | `GitStatusSnapshot` |
+| `file-changed` | 文件内容变更批次（已去抖） | `FileChangedEvent`（`workspace_key` + `project_id` + `paths`） |
+| `file-tree-changed` | 文件树结构变更（Create/Remove/Rename） | `FileTreeChangedEvent`（`workspace_key` + `project_id` + `dirs?`） |
 | `lsp-diagnostics-{project_path}` | LSP 诊断推送 | `LspDiagnosticsEvent` (uri + diagnostics[]) |
 
-**带 `repo_key` 的事件，路径基准是「该单元的工作树根」，不是 project 根**：`file-changed` 的
+**带 `workspace_key` 的事件，路径基准是「该单元的工作树根」，不是 project 根**：`file-changed` 的
 `paths` 与 `file-tree-changed` 的 `dirs` 都由后端 `strip_prefix(repo.work_dir_pathbuf())` 得到
-（strip 失败才回退绝对路径）。消费侧归一基准必须同源 —— 用 `unitWorkDir(repo_key, projectRoot)`
+（strip 失败才回退绝对路径）。消费侧归一基准必须同源 —— 用 `workspaceRootOf(workspace_key, projectRoot)`
 （主仓单元回落项目登记路径，linked worktree 用后端回传的 canonical 路径），**不能**用 `project.path`：
 worktree 视图下把单元相对路径拼到主仓根，同文件判定恒不命中，HTML 预览 / 浏览器 auto-refresh
-就不再刷新。详见 `state-management.md` 场景「仓库单元分槽 + 激活态单源」第 9 条。
+就不再刷新。详见 `state-management.md` 场景「Workspace分槽 + 激活态单源」第 9 条。
 
 ---
 
@@ -519,7 +519,7 @@ useEffect(() => {
 - `src/features/terminal/components/TerminalView.tsx`
 - `src/features/terminal/components/WSLTerminalView.tsx`
 - `src/features/terminal/components/RemoteTerminalView.tsx`
-- `src/app/components/ProjectWorkspace.tsx`
+- `src/app/components/ProjectView.tsx`
 - `src/shared/types/`
 
 ### 会话键契约

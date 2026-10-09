@@ -10,7 +10,7 @@
 import { useMemo } from 'react';
 
 import { useProjectStore } from '@/shared/store/projectStore';
-import { useActiveWorktreePath } from '@/shared/store/worktreeStore';
+import { useActiveCheckoutPath } from '@/shared/store/workspaceStore';
 import type { ActiveProjectContext } from '@/shared/types/activeProject';
 import { environmentToConnectionContext } from '@/shared/types/project';
 
@@ -25,12 +25,12 @@ import { createProjectCommands } from './commandFactory';
  */
 export function useActiveProject(): ActiveProjectContext {
   const activeProject = useProjectStore((s) => s.activeProject);
-  const activeWorktreePath = useActiveWorktreePath();
+  const activeCheckoutPath = useActiveCheckoutPath();
 
   const commands = useMemo(() => {
     if (!activeProject) return null;
-    return createProjectCommands(activeProject.id, activeWorktreePath);
-  }, [activeProject, activeWorktreePath]);
+    return createProjectCommands(activeProject.id, activeCheckoutPath);
+  }, [activeProject, activeCheckoutPath]);
 
   return useMemo((): ActiveProjectContext => {
     if (!activeProject) {
@@ -55,8 +55,8 @@ export function useActiveProject(): ActiveProjectContext {
       commands,
       capabilities: getCapabilities(activeProject.environment.type),
       connectionContext,
-      worktreePath: activeWorktreePath,
+      worktreePath: activeCheckoutPath,
       isLoading: false,
     };
-  }, [activeProject, activeWorktreePath, commands]);
+  }, [activeProject, activeCheckoutPath, commands]);
 }

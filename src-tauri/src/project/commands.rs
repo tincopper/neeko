@@ -126,8 +126,8 @@ pub async fn set_active_project(
         let _ = run_blocking(move || manager.unwatch_project(&old_id)).await;
     }
 
-    // 这里**不**挂新项目的 watcher：挂载的唯一发起点是前端 `useActiveRepoUnitSync`
-    // （反应 `(activeProjectId, 激活 worktree)` → `set_active_repo_unit`），旧项目已在上一步
+    // 这里**不**挂新项目的 watcher：挂载的唯一发起点是前端 `useActiveWorkspaceSync`
+    // （反应 `(activeProjectId, 激活 worktree)` → `set_active_workspace`），旧项目已在上一步
     // `unwatch_project` 释放。以前在命令层按项目预挂主仓单元，等于给「谁在看」加了第二个
     // 发起点：切到带激活 worktree 的项目时，先挂主仓再被前端改挂 worktree，中间那份主仓
     // 快照既没人看也白跑一次 git status（2026-09-28 隔离实例日志实测到 already watched 告警）。

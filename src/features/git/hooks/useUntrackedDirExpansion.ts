@@ -75,15 +75,15 @@ export function expandUntrackedEntries(
  *   失效信号 —— 避免「失败 → 不写键 → effect 重跑 → 立即重试」自激。
  *
  * 去重：同一目录 in-flight 期间的多次失效只重新标记 stale，落地后合并为一次 trailing 重拉。
- * 缓存作用域：hook 状态随组件生命周期存活，跨**单元**切换由渲染侧的 `key={repoKey}` 重置
- * （见 `GitCommitPanel` 中 `ChangesList` 的 key）；`repoKey` 另外作为 S1 的过滤依据传入，
+ * 缓存作用域：hook 状态随组件生命周期存活，跨**单元**切换由渲染侧的 `key={workspaceKey}` 重置
+ * （见 `GitCommitPanel` 中 `ChangesList` 的 key）；`workspaceKey` 另外作为 S1 的过滤依据传入，
  * 因此本 hook 不读任何全局激活态。
  */
 export function useUntrackedDirExpansion(
   files: FileChange[],
   onExpandUntrackedDir: ((dirPath: string) => Promise<string[]>) | undefined,
-  /** 本列表所属仓库单元（`repoKeyOf(projectId, worktreePath)`）：S1 只接受同址事件。 */
-  repoKey: string,
+  /** 本列表所属Workspace（`workspaceKeyOf(projectId, worktreePath)`）：S1 只接受同址事件。 */
+  workspaceKey: string,
 ) {
   const [dirFilesMap, setDirFilesMap] = useState<Record<string, string[]>>({});
   /** 需后台重拉但**保留旧值**的目录（SWR）；用 state 而非 ref，好让拉取 effect 随其重跑 */
@@ -96,11 +96,11 @@ export function useUntrackedDirExpansion(
   /** 当前折叠目录路径集合：给引用稳定的订阅回调经 ref 读取最新值 */
   const entryPathsRef = useRef<string[]>([]);
   /** 本列表所属单元：同样经 ref 读取，保持订阅回调引用稳定（事件订阅只在挂载时建立一次） */
-  const repoKeyRef = useRef(repoKey);
+  const workspaceKeyRef = useRef(workspaceKey);
 
   useEffect(() => {
-    repoKeyRef.current = repoKey;
-  }, [repoKey]);
+    workspaceKeyRef.current = workspaceKey;
+  }, [workspaceKey]);
 
   // G6：unversioned 判定优先走 porcelain XY（X=Y='?'），缺 XY 回退单 status
   const untrackedFiles = useMemo(() => files.filter(isUnversionedEntry), [files]);
@@ -116,7 +116,7 @@ export function useUntrackedDirExpansion(
 
   // S1：file-changed 批次**属本单元**且命中折叠目录前缀 → 标记需重拉（并复位失败抑制，允许重试）
   const handleFileChanged = useCallback((event: FileChangedEvent) => {
-    if (event.repo_key !== repoKeyRef.current) return;
+    if (event.workspace_key !== workspaceKeyRef.current) return;
     const dirsToCheck = entryPathsRef.current;
     if (dirsToCheck.length === 0 || event.paths.length === 0) return;
     const matched = new Set<string>();

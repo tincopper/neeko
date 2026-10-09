@@ -1,7 +1,7 @@
 """git 服务层禁止依赖交付机制 —— 钉住依赖倒置的结构边界。
 
-第一性原理：`git/services/**` 是**编排层**（`activate` / `read_unit_status` / `wait_status_fresh`
-等），只应依赖**端口**（`WatcherEventSink`、`RepoRef`…），不应依赖**交付适配器**
+第一性原理：`git/services/**` 是**编排层**（`activate` / `read_workspace_status` / `wait_status_fresh`
+等），只应依赖**端口**（`WatcherEventSink`、`WorkspaceRef`…），不应依赖**交付适配器**
 （`tauri::AppHandle` → `AppHandleSink`）。一旦服务层自己 `new AppHandleSink(app.clone())`，
 高层就依赖了低层实现细节：`activate` 无法在无 GUI 的 `cargo test` 里被驱动，编排分支
 （Local 挂载 vs WSL/SSH pull）成了最没测试覆盖的地方 —— 而它恰是「远端 Changes 面板永远

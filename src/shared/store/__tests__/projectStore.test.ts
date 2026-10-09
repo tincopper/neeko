@@ -2,7 +2,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { FileChange, GitInfo, GitStatusSnapshot } from '@/shared/types';
-import { repoKeyOf } from '@/shared/utils/repoRef';
+import { workspaceKeyOf } from '@/shared/utils/workspaceRef';
 import { createProject } from '@/testing/factories';
 
 import type * as projectStoreModule from '../projectStore';
@@ -11,13 +11,13 @@ import type * as projectStoreModule from '../projectStore';
  * `applyStatus` —— changed_files 的唯一权威写入口（G2 D4 version gate 的现形态）。
  *
  * 迁移说明：本文件此前测的是 `versionGateAccepts` + `applyGitStatus`（per-project 单槽）。
- * 一个 Neeko project 在 git 语义下是 `1 + N` 个仓库单元（主仓 + N 个 linked worktree，
- * HEAD / index / workdir 各自独立），因此门控与槽位都按 `RepoKey` 定址。旧 API 的两条
+ * 一个 Neeko project 在 git 语义下是 `1 + N` 个Workspace（主仓 + N 个 linked worktree，
+ * HEAD / index / workdir 各自独立），因此门控与槽位都按 `WorkspaceKey` 定址。旧 API 的两条
  * 特殊分支已整体删除，**不再有意义**，故不再保留等价用例：
  * - `version <= 0` 恒放行：那是「WSL/worktree 兜底载荷无版本语义」的补丁；现在所有生产者
- *   （含 pull 计算的 WSL/SSH）都产出恒 > 0 的 per-unit version（见 `getRepoStatus`）。
+ *   （含 pull 计算的 WSL/SSH）都产出恒 > 0 的 per-workspace version（见 `getWorkspaceStatus`）。
  * - `allowEqual` 同版本幂等放行：那是「worktree 激活期丢弃主快照后切回来要能恢复」的补丁；
- *   丢弃守卫已不存在（快照按 repo_key 定址，不存在被别的单元吃掉的数据），所以恢复需求消失。
+ *   丢弃守卫已不存在（快照按 workspace_key 定址，不存在被别的单元吃掉的数据），所以恢复需求消失。
  *
  * 每个用例经 `vi.resetModules` + 动态 import 拿到全新 store 实例，保证互不依赖。
  */
@@ -34,7 +34,7 @@ const fc = (path: string): FileChange => ({
   is_dir: false,
 });
 
-/** per-project 元数据（**没有** changed_files / is_clean —— 那是 per-unit 事实） */
+/** per-project 元数据（**没有** changed_files / is_clean —— 那是 per-workspace 事实） */
 const gitInfo = (overrides: Partial<GitInfo> = {}): GitInfo => ({
   current_branch: 'main',
   branches: ['main', 'dev'],
@@ -43,9 +43,9 @@ const gitInfo = (overrides: Partial<GitInfo> = {}): GitInfo => ({
   ...overrides,
 });
 
-const MAIN = repoKeyOf('p1');
-const WT_A = repoKeyOf('p1', '/wt/a');
-const WT_B = repoKeyOf('p1', '/wt/b');
+const MAIN = workspaceKeyOf('p1');
+const WT_A = workspaceKeyOf('p1', '/wt/a');
+const WT_B = workspaceKeyOf('p1', '/wt/b');
 
 function snapshot(
   opts: Pick<GitStatusSnapshot, 'version'> & Partial<Omit<GitStatusSnapshot, 'version'>>,
@@ -53,7 +53,7 @@ function snapshot(
   const projectId = opts.project_id ?? 'p1';
   const worktreePath = opts.worktree_path ?? null;
   return {
-    repo_key: opts.repo_key ?? repoKeyOf(projectId, worktreePath),
+    workspace_key: opts.workspace_key ?? workspaceKeyOf(projectId, worktreePath),
     version: opts.version,
     project_id: projectId,
     worktree_path: worktreePath,
@@ -71,7 +71,7 @@ beforeEach(async () => {
 
 const store = () => mod.useProjectStore.getState();
 
-describe('applyStatus — per-unit version gate（槽位按 RepoKey 定址）', () => {
+describe('applyStatus — per-workspace version gate（槽位按 WorkspaceKey 定址）', () => {
   it('该单元首个快照直接入槽，entries 原样保存', () => {
     store().applyStatus(snapshot({ version: 7, branch: 'main', entries: [fc('a.ts')] }));
 
@@ -153,7 +153,7 @@ describe('applyStatus — per-unit version gate（槽位按 RepoKey 定址）', 
     store().applyStatus(snapshot({ version: 10, project_id: 'p1' }));
     store().applyStatus(snapshot({ version: 1, project_id: 'p2' }));
 
-    expect(store().statuses[repoKeyOf('p2')]?.version).toBe(1);
+    expect(store().statuses[workspaceKeyOf('p2')]?.version).toBe(1);
   });
 
   it('门控拒旧时主仓投影同样不发生（不会用陈旧分支改写 git_info）', () => {

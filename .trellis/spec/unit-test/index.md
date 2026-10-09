@@ -103,7 +103,7 @@
 ### 前端（TypeScript）
 
 1. `utils/*.ts` —— 纯函数（平台检测、图标查找）
-2. `useToast` / `useWorktreeState` —— 没有 Tauri 依赖的 Hooks
+2. `useToast` / `useWorkspaceState` —— 没有 Tauri 依赖的 Hooks
 3. `useAppConfig` —— 简单的 Tauri invoke 模式
 4. `useLocalProjects` —— 复杂 Hook，价值最高
 

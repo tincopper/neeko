@@ -31,7 +31,7 @@ export function setDragFile(path: string, projectId: string): void {
 }
 
 // ---------------------------------------------------------------------------
-// Hook — mount once at the top of the component tree (ProjectWorkspace)
+// Hook — mount once at the top of the component tree (ProjectView)
 // ---------------------------------------------------------------------------
 
 export function useFileDrop(): void {

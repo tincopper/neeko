@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { DAP_EVENT } from '@/shared/events';
 import { useNotificationStore } from '@/shared/store/notificationStore';
-import { useWorktreeStore } from '@/shared/store/worktreeStore';
+import { useWorkspaceStore } from '@/shared/store/workspaceStore';
 import { deferred, flushMicrotasks } from '@/testing/async';
 
 import type * as DebugApi from '../api/debugApi';
@@ -88,7 +88,7 @@ function expansionState() {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  useWorktreeStore.setState({ byProject: {} });
+  useWorkspaceStore.setState({ byProject: {} });
   dapVariables.mockResolvedValue([]);
   useDebugStore.setState({
     session: null,
@@ -273,7 +273,7 @@ describe('javaDebugStore.startJavaAttach', () => {
   // Java 两条链路的执行单元根透传：漏传/传成 null 会静默回退主仓，Java worktree 调试失效。
   it('激活 worktree → debugJavaAttach 携带该单元根', async () => {
     const wt = '/home/u/.neeko/worktrees/fix-1';
-    useWorktreeStore.getState().setActiveWorktree('p1', wt);
+    useWorkspaceStore.getState().setActiveWorkspace('p1', wt);
     dapCheckAdapter.mockResolvedValue(true);
     debugJavaAttach.mockResolvedValue({
       sessionId: 's1',
@@ -310,7 +310,7 @@ describe('javaDebugStore.startJavaAttach', () => {
 
   it('激活 worktree → debugJavaStart 携带该单元根', async () => {
     const wt = '/home/u/.neeko/worktrees/fix-1';
-    useWorktreeStore.getState().setActiveWorktree('p1', wt);
+    useWorkspaceStore.getState().setActiveWorkspace('p1', wt);
     const target = { probeClass: 'A', cwd: `${wt}/mod`, testName: 't', mainClass: 'A', args: [] };
     debugJavaStart.mockResolvedValue({
       kind: 'unavailable',

@@ -7,7 +7,7 @@ use std::path::Path;
 
 /// 采集项目的 git **元数据**（分支 / 工作树清单 / provider）。
 ///
-/// 不含未提交变更：status 是「每个工作树」的事实，经 `RepoRef` 寻址、由
+/// 不含未提交变更：status 是「每个工作树」的事实，经 `WorkspaceRef` 寻址、由
 /// `status_worker`（push）或 `operations::status_porcelain`（pull）产出。
 /// 项目登记（`ProjectManager`）只需要这份 per-project 的元数据。
 pub fn get_git_info(repo_path: &Path) -> Result<GitInfo> {

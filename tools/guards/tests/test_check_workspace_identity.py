@@ -1,4 +1,4 @@
-"""仓库单元身份护栏用例 —— 重点是「注释里允许、代码里禁止」这条边界。
+"""Workspace身份护栏用例 —— 重点是「注释里允许、代码里禁止」这条边界。
 
 退役符号被记录在注释里是**有价值的**（说明为什么不能再接回来）；但判据一旦放行注释，
 就可能被「把违规代码写成注释样式」绕过，因此同时钉住：真代码必须报、注释必须不报、
@@ -8,12 +8,12 @@ from __future__ import annotations
 
 import unittest
 
-from guards.checks import check_repo_unit_identity as subject
+from guards.checks import check_workspace_identity as subject
 from guards.core.contract import PASS, VIOLATION
 from guards.tests.support import context, make_repo, temp_repo
 
 
-class RepoUnitIdentityTest(unittest.TestCase):
+class WorkspaceIdentityTest(unittest.TestCase):
     def setUp(self):
         self.root = temp_repo(self)
 
@@ -50,7 +50,7 @@ class RepoUnitIdentityTest(unittest.TestCase):
         self.assertGreater(result.scanned, 0)
 
     def test_retired_ahead_behind_key_helper_is_a_violation(self):
-        # ahead/behind 的键只允许是仓库单元身份；带 `{source}:{connectionId}` 的复合键 helper
+        # ahead/behind 的键只允许是Workspace身份；带 `{source}:{connectionId}` 的复合键 helper
         # 是「读侧拼不出写侧」的根源，不得重新引入。
         result = self.run_fe(
             "src/features/git/behind.ts",
@@ -70,24 +70,24 @@ class RepoUnitIdentityTest(unittest.TestCase):
     def test_store_mirror_access_is_a_violation(self):
         result = self.run_fe(
             "src/features/x/Panel.tsx",
-            "const p = useWorktreeStore((s) => s.activeWorktreePath);\n",
+            "const p = useWorkspaceStore((s) => s.activeWorktreePath);\n",
         )
         self.assertEqual(result.verdict, VIOLATION)
         self.assertTrue(any("镜像" in f.message for f in result.findings))
 
     def test_direct_byproject_active_path_is_a_violation(self):
-        # 「当前单元」的唯一派生点是 selectActiveRepoKey / activeRepoKeyOf —— 直摸 store 内部
+        # 「当前单元」的唯一派生点是 selectActiveWorkspaceKey / activeWorkspaceKeyOf —— 直摸 store 内部
         # 状态既会分叉身份，渲染期还会停在旧值（非响应式）。
         result = self.run_fe(
             "src/features/x/hook.ts",
-            "const p = useWorktreeStore.getState().byProject[pid]?.activePath ?? null;\n",
+            "const p = useWorkspaceStore.getState().byProject[pid]?.activePath ?? null;\n",
         )
         self.assertEqual(result.verdict, VIOLATION)
         self.assertTrue(any("selector" in f.message for f in result.findings))
 
     def test_store_implementation_may_access_its_own_state(self):
         result = self.run_fe(
-            "src/shared/store/worktreeStore.ts",
+            "src/shared/store/workspaceStore.ts",
             "export const pick = (s: any, pid: string) => s.byProject[pid]?.activePath;\n",
         )
         self.assertEqual(result.verdict, PASS)
@@ -95,7 +95,7 @@ class RepoUnitIdentityTest(unittest.TestCase):
     def test_selector_form_is_accepted(self):
         result = self.run_fe(
             "src/features/x/Ok.ts",
-            "const p = selectActiveWorktreePath(useWorktreeStore.getState(), projectId);\n",
+            "const p = selectActiveCheckoutPath(useWorkspaceStore.getState(), projectId);\n",
         )
         self.assertEqual(result.verdict, PASS)
 
@@ -103,7 +103,7 @@ class RepoUnitIdentityTest(unittest.TestCase):
         # 判据 7：status 的唯一读取口是 selectors，store 的内部表示不得外泄。
         result = self.run_fe(
             "src/features/git/components/Leak.tsx",
-            "const entries = useProjectStore((s) => s.statuses[repoKey]?.entries);\n",
+            "const entries = useProjectStore((s) => s.statuses[workspaceKey]?.entries);\n",
         )
         self.assertEqual(result.verdict, VIOLATION)
         self.assertTrue(any("statuses" in f.message for f in result.findings))
@@ -118,7 +118,7 @@ class RepoUnitIdentityTest(unittest.TestCase):
     def test_selector_status_form_is_accepted(self):
         result = self.run_fe(
             "src/features/git/components/Ok.tsx",
-            "const entries = selectEntries(s, repoKey);\nconst branch = selectBranch(s, repoKey);\n",
+            "const entries = selectEntries(s, workspaceKey);\nconst branch = selectBranch(s, workspaceKey);\n",
         )
         self.assertEqual(result.verdict, PASS)
 
@@ -132,24 +132,24 @@ class RepoUnitIdentityTest(unittest.TestCase):
     def test_status_command_must_go_through_git_api(self):
         bad = self.run_fe(
             "src/features/git/hooks/leak.ts",
-            "const r = await invoke('get_repo_status', { projectId });\n",
+            "const r = await invoke('get_workspace_status', { projectId });\n",
         )
         self.assertEqual(bad.verdict, VIOLATION)
         good = self.run_fe(
             "src/features/git/api/gitApi.ts",
-            "return invoke<GitStatusSnapshot>('get_repo_status', { projectId });\n",
+            "return invoke<GitStatusSnapshot>('get_workspace_status', { projectId });\n",
         )
         self.assertEqual(good.verdict, PASS)
 
-    def test_handbuilt_repo_key_outside_repo_ref_is_a_violation(self):
+    def test_handbuilt_workspace_key_outside_workspace_ref_is_a_violation(self):
         bad = self.run_fe(
             "src/features/git/utils/key.ts",
             "const key = projectId + '\\0' + worktreePath;\n",
         )
         self.assertEqual(bad.verdict, VIOLATION)
         good = self.run_fe(
-            "src/shared/utils/repoRef.ts",
-            "export const REPO_KEY_SEP = '\\u0000';\n",
+            "src/shared/utils/workspaceRef.ts",
+            "export const WORKSPACE_KEY_SEP = '\\u0000';\n",
         )
         self.assertEqual(good.verdict, PASS)
 
@@ -172,16 +172,16 @@ class RepoUnitIdentityTest(unittest.TestCase):
         self.assertEqual(result.verdict, VIOLATION)
 
     def test_key_sep_import_outside_producer_is_a_violation(self):
-        """引用分隔符常量自拼 = 第二处 key 实现（消费方应该用 repoKeyOf）。"""
+        """引用分隔符常量自拼 = 第二处 key 实现（消费方应该用 workspaceKeyOf）。"""
         result = self.run_fe(
             "src/features/git/utils/key4.ts",
-            "import { REPO_KEY_SEP } from '@/shared/utils/repoRef';\n"
-            "export const k = `${projectId}${REPO_KEY_SEP}${wtPath}`;\n",
+            "import { WORKSPACE_KEY_SEP } from '@/shared/utils/workspaceRef';\n"
+            "export const k = `${projectId}${WORKSPACE_KEY_SEP}${wtPath}`;\n",
         )
         self.assertEqual(result.verdict, VIOLATION)
 
     def test_other_namespace_nul_composite_is_not_flagged(self):
-        """runner 测试结果键（projectId + filePath）是另一个合法命名空间：无仓库单元
+        """runner 测试结果键（projectId + filePath）是另一个合法命名空间：无Workspace
         上下文词，不得误伤（真实形态：src/features/runner/store/testResults.ts）。"""
         result = self.run_fe(
             "src/features/runner/store/results.ts",
@@ -199,18 +199,18 @@ class RepoUnitIdentityTest(unittest.TestCase):
         self.assertTrue(any("材质化" in f.message for f in result.findings))
 
     def test_backend_git_z_parsing_is_not_flagged(self):
-        """git `-z` 输出解析的 split('\\0') 与 RepoKey 无关（无域上下文词），不得误伤。"""
+        """git `-z` 输出解析的 split('\\0') 与 WorkspaceKey 无关（无域上下文词），不得误伤。"""
         result = self.run_be(
             "pub fn parse(output: &str) -> Vec<&str> {\n"
             "    output.split('\\0').collect()\n}\n"
         )
         self.assertEqual(result.verdict, PASS)
 
-    def test_colon_key_flowing_into_repo_key_consumer_is_a_violation(self):
+    def test_colon_key_flowing_into_workspace_key_consumer_is_a_violation(self):
         """历史缺陷形态 `${projectId}:wt:${path}` 的同形复发：流入 status 消费点即拦。"""
         result = self.run_fe(
             "src/features/git/utils/key5.ts",
-            "applyStatus({ repo_key: `${projectId}:${wtPath}` } as never);\n",
+            "applyStatus({ workspace_key: `${projectId}:${wtPath}` } as never);\n",
         )
         self.assertEqual(result.verdict, VIOLATION)
         self.assertTrue(any("冒号式" in f.message for f in result.findings))
@@ -228,7 +228,7 @@ class RepoUnitIdentityTest(unittest.TestCase):
         """解构是绕过 selector 的另一种拿法（旧判据只认 `.prop` 与 `prop:` 字面量）。"""
         result = self.run_fe(
             "src/features/x/destructure.ts",
-            "const { activeWorktreePath } = useWorktreeStore.getState();\n",
+            "const { activeWorktreePath } = useWorkspaceStore.getState();\n",
         )
         self.assertEqual(result.verdict, VIOLATION)
         self.assertTrue(any("镜像" in f.message for f in result.findings))
@@ -277,7 +277,7 @@ class RepoUnitIdentityTest(unittest.TestCase):
         self.assertTrue(any("没有收口" in f.message for f in result.findings))
 
     def test_closure_via_any_of_the_three_helpers_passes(self):
-        for marker in ("wait_status_fresh", "wait_main_status_fresh", "release_unit"):
+        for marker in ("wait_status_fresh", "wait_main_status_fresh", "release_workspace"):
             result = self.run_cmd(
                 "#[tauri::command]\npub async fn stage_files(project_id: String) -> Result<(), AppError> {\n"
                 "    operations::stage_files(&t, &wd, &paths)\n"
@@ -372,7 +372,7 @@ class RepoUnitIdentityTest(unittest.TestCase):
         result = self.run_backend_files(
             {
                 "src-tauri/src/common/file/watcher/manager/core.rs": (
-                    "    pub fn watch(&self, repo: RepoRef, sink: Arc<dyn WatcherEventSink>) {}\n"
+                    "    pub fn watch(&self, repo: WorkspaceRef, sink: Arc<dyn WatcherEventSink>) {}\n"
                 ),
                 "src-tauri/src/common/file/watcher/keeper.rs": (
                     "pub fn keep() {}\n// 这里的 .watch( 只是注释里的提及\n"

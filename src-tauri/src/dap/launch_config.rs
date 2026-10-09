@@ -54,7 +54,7 @@ pub fn list_or_discover_configs(
     worktree_path: Option<&str>,
 ) -> Result<Vec<LaunchConfig>, AppError> {
     // 读取根 = **执行单元根**：worktree 有自己的一份 `.vscode/launch.json`。
-    let root = super::project_context::resolve_unit_root(state, project_id, worktree_path)?;
+    let root = super::project_context::resolve_workspace_root(state, project_id, worktree_path)?;
     load_or_discover(std::path::Path::new(&root))
 }
 
@@ -67,7 +67,7 @@ pub fn save_configs(
 ) -> Result<(), AppError> {
     // 写路径与读路径同源（单元根）：否则在 worktree 视图保存的配置会落到主仓、
     // 下次 `list_or_discover_configs` 读不到（"我保存了却没生效"）。
-    let root = super::project_context::resolve_unit_root(state, project_id, worktree_path)?;
+    let root = super::project_context::resolve_workspace_root(state, project_id, worktree_path)?;
     let file = LaunchFile {
         version: LAUNCH_FILE_VERSION.to_string(),
         configurations,
@@ -81,7 +81,7 @@ pub fn discover_entry_points(
     project_id: &str,
     worktree_path: Option<&str>,
 ) -> Result<Vec<EntryPoint>, AppError> {
-    let root = super::project_context::resolve_unit_root(state, project_id, worktree_path)?;
+    let root = super::project_context::resolve_workspace_root(state, project_id, worktree_path)?;
     // 既有行为：扫描是尽力而为，找不到就返回空列表（不是错误）。
     Ok(discover_entries(std::path::Path::new(&root)))
 }

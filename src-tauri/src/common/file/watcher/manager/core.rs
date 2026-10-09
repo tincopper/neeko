@@ -1,7 +1,7 @@
-//! `WatcherManager` 编排：为每个**仓库单元**挂载文件监听，计算 git status 快照。
+//! `WatcherManager` 编排：为每个**Workspace**挂载文件监听，计算 git status 快照。
 //!
-//! 身份维度（本次结构性变更的核心）：资源与快照的键是 [`RepoRef::key`]，不是 project_id。
-//! 一个 project 在 git 语义下承载 `1 + N` 个仓库单元（主仓 + linked worktree，各自的
+//! 身份维度（本次结构性变更的核心）：资源与快照的键是 [`WorkspaceRef::key`]，不是 project_id。
+//! 一个 project 在 git 语义下承载 `1 + N` 个Workspace（主仓 + linked worktree，各自的
 //! HEAD / index / workdir 全都独立），只以 project_id 为身份时，worktree 视图既没有权威
 //! 生产者（列表不更新）、又与主仓共用一个槽（串 main 内容）。
 //!
@@ -19,7 +19,7 @@ use super::callbacks::build_notify_callback;
 use super::handle::WatcherHandle;
 use crate::common::git::local::is_git_repo;
 use crate::common::git::status_worker::{GitStatusSnapshot, GitStatusWorker};
-use crate::common::git::RepoRef;
+use crate::common::git::WorkspaceRef;
 use notify::{Config, RecommendedWatcher, Watcher};
 #[cfg(test)]
 use std::sync::atomic::AtomicUsize;
@@ -33,13 +33,13 @@ use std::{
     time::Duration,
 };
 
-/// Manages file-system watchers per repository unit (main repo or one linked worktree).
+/// Manages file-system watchers per repository workspace (main repo or one linked worktree).
 ///
-/// Each mounted unit gets a dedicated watcher thread that monitors file changes,
+/// Each mounted workspace gets a dedicated watcher thread that monitors file changes,
 /// computes authoritative git status snapshots, and emits them to the frontend.
 #[derive(Clone)]
 pub struct WatcherManager {
-    /// Map of `RepoRef::key()` to active watcher handles.
+    /// Map of `WorkspaceRef::key()` to active watcher handles.
     watchers: Arc<Mutex<HashMap<String, WatcherHandle>>>,
     /// G2 单一权威化：每单元最新 versioned 快照（push 生产者 = worker 写入；
     /// pull 生产者 = [`Self::record_computed`] 写入。同一张表、同一套 version 语义）。
@@ -92,7 +92,7 @@ impl WatcherManager {
     /// 该单元的 git 语义忽略过滤器（S5：读目录层复用做读前剪枝 + ignored 标记；
     /// 非 git 单元 / 尚未挂载时为 None —— 读层退化为仅 .git 硬过滤）。
     #[must_use]
-    pub fn gitignore_for(&self, repo: &RepoRef) -> Option<Arc<GitIgnoreFilter>> {
+    pub fn gitignore_for(&self, repo: &WorkspaceRef) -> Option<Arc<GitIgnoreFilter>> {
         self.watchers
             .lock()
             .ok()?
@@ -123,7 +123,7 @@ impl WatcherManager {
     /// （超时场景由快照事件推送最终收敛）。
     /// 非 git 单元 / 尚未挂载 / 超时 → `false`。
     #[must_use]
-    pub fn poke_status_worker_and_wait(&self, repo: &RepoRef, timeout: Duration) -> bool {
+    pub fn poke_status_worker_and_wait(&self, repo: &WorkspaceRef, timeout: Duration) -> bool {
         let Some(handle) = self
             .watchers
             .lock()
@@ -140,7 +140,7 @@ impl WatcherManager {
     ///
     /// **调用方不得把 `None` 当作「无变更」** —— 那是「未知」，渲染成空列表等于伪造事实。
     #[must_use]
-    pub fn snapshot(&self, repo: &RepoRef) -> Option<Arc<GitStatusSnapshot>> {
+    pub fn snapshot(&self, repo: &WorkspaceRef) -> Option<Arc<GitStatusSnapshot>> {
         self.snapshots.lock().ok()?.get(&repo.key()).cloned()
     }
 
@@ -171,18 +171,18 @@ impl WatcherManager {
         )
     }
 
-    /// Start watching one repository unit for file changes and maintain its snapshot.
-    pub fn watch(&self, repo: RepoRef, sink: Arc<dyn WatcherEventSink>) {
-        let unit = repo.key();
-        let path = repo.work_dir_pathbuf();
+    /// Start watching one repository workspace for file changes and maintain its snapshot.
+    pub fn watch(&self, repo: WorkspaceRef, sink: Arc<dyn WatcherEventSink>) {
+        let workspace = repo.key();
+        let path = repo.root_pathbuf();
         // 入口不变量：同一单元只允许一套 watcher。重复注册会**翻倍投递事件**并再泄漏
         // 一套后台线程（实测：同项目被 watch 4 次 → 单次变更 emit 3 次）。
         // 「配置变更」不需要重建 watcher —— 它走 `WatchMaintenance::ReloadAll`。
         if let Ok(watchers) = self.watchers.lock() {
-            if watchers.contains_key(&unit) {
+            if watchers.contains_key(&workspace) {
                 log::warn!(
-                    "[Watcher] unit {} is already watched at {}, ignoring duplicate watch",
-                    unit,
+                    "[Watcher] workspace {} is already watched at {}, ignoring duplicate watch",
+                    workspace,
                     path.display()
                 );
                 return;
@@ -195,7 +195,7 @@ impl WatcherManager {
         // 生产者，残留快照会被当成权威数据渲染（= 本次要根治的症状形态）。
         // 顺序不能颠倒 —— worker 在下面的 `check()` 里就可能在**本函数返回前**插入新快照，
         // 那句 drop 若留在尾部会把刚产出的首个快照一起删掉（表现为「已挂载却读不到权威数据」）。
-        drop_snapshot_if_present(&self.snapshots, &unit);
+        drop_snapshot_if_present(&self.snapshots, &workspace);
 
         // 非 git 单元：跳过所有 git 相关资源（worker / scheduler / heartbeat / git meta watcher），
         // 仅保留文件监听 + 文件树变更事件。避免对非 git 目录启动 git status worker 执行 git rev-parse 等命令。
@@ -208,10 +208,10 @@ impl WatcherManager {
             let snapshots_store = self.snapshots.clone();
             let floors_store = self.version_floors.clone();
             let watchers_store = self.watchers.clone();
-            let unit_for_cb = unit.clone();
+            let unit_for_cb = workspace.clone();
             let worker = GitStatusWorker::start(repo.clone(), move |snapshot| {
                 // 写共享快照：读接口与事件同源同版本（key 由快照自带，不再二次赋值）
-                debug_assert_eq!(snapshot.repo_key, unit_for_cb);
+                debug_assert_eq!(snapshot.workspace_key, unit_for_cb);
                 // version 由注册表盖章后**再**推送：事件里的 version 必须与槽位里的一致，
                 // 否则前端的乱序闸门会拿两套序号互比（见 `store_snapshot`）。
                 let stamped = store_snapshot(
@@ -236,8 +236,8 @@ impl WatcherManager {
             (Some(worker), Some(scheduler))
         } else {
             log::info!(
-                "[Watcher] Skipping git status worker for non-git unit {} at {}",
-                unit,
+                "[Watcher] Skipping git status worker for non-git workspace {} at {}",
+                workspace,
                 path.display()
             );
             (None, None)
@@ -305,7 +305,7 @@ impl WatcherManager {
                 Err(e) => {
                     log::warn!(
                         "[Watcher:{}] watcher mutex poisoned during registration: {}",
-                        unit,
+                        workspace,
                         e
                     );
                     return;
@@ -316,7 +316,7 @@ impl WatcherManager {
                 Err(e) => {
                     log::warn!(
                         "[Watcher:{}] registration mutex poisoned during registration: {}",
-                        unit,
+                        workspace,
                         e
                     );
                     return;
@@ -335,8 +335,8 @@ impl WatcherManager {
         );
 
         log::info!(
-            "[Watcher] Started watching unit {} at {}",
-            unit,
+            "[Watcher] Started watching workspace {} at {}",
+            workspace,
             path.display()
         );
 
@@ -352,15 +352,15 @@ impl WatcherManager {
         let head_watcher = if git_repo {
             crate::common::file::watcher::git_meta::resolve_git_meta_paths(&path).and_then(|meta| {
                 let scheduler_tx = scheduler.as_ref().map(|s| s.sender());
-                let unit_index = unit.clone();
-                let unit_head = unit.clone();
-                let unit_refs = unit.clone();
+                let unit_index = workspace.clone();
+                let unit_head = workspace.clone();
+                let unit_refs = workspace.clone();
                 let git_changed = GitChangedEvent::new(&repo);
                 let sink_for_head = Arc::clone(&sink);
                 let scheduler_tx_for_head = scheduler_tx.clone();
                 let scheduler_tx_for_refs = scheduler_tx.clone();
                 create_git_meta_watcher(
-                    unit.clone(),
+                    workspace.clone(),
                     &meta,
                     move || {
                         // 公理1（信号≠事实）：index 写入只作为查询调度提示，
@@ -445,7 +445,7 @@ impl WatcherManager {
         // 只提示不代改用户仓库配置）。仅 git 单元：与 worker/heartbeat 同款门控。
         if git_repo {
             let sink_for_perf = Arc::clone(&sink);
-            let perf_unit = unit.clone();
+            let perf_unit = workspace.clone();
             let perf_project_id = repo.project_id().to_string();
             let perf_root = path.clone();
             let perf_tag = repo.thread_tag();
@@ -462,7 +462,7 @@ impl WatcherManager {
                         suggestions.len()
                     );
                     sink_for_perf.emit(WatcherEvent::PerfSuggestion(&GitPerfSuggestionEvent {
-                        repo_key: perf_unit,
+                        workspace_key: perf_unit,
                         project_id: perf_project_id,
                         suggestions,
                     }));
@@ -471,7 +471,7 @@ impl WatcherManager {
 
         if let Ok(mut watchers) = self.watchers.lock() {
             watchers.insert(
-                unit,
+                workspace,
                 WatcherHandle {
                     _watcher: watcher,
                     _registration: registration,
@@ -494,7 +494,7 @@ impl WatcherManager {
 
     /// 释放某单元的全部资源（watcher 句柄 drop → debounce channel 关闭、停止信号置位），
     /// 并作废其快照 —— 未挂载期间没有生产者，残留快照会被当成权威数据渲染。
-    pub fn unwatch(&self, repo: &RepoRef) {
+    pub fn unwatch(&self, repo: &WorkspaceRef) {
         self.release_one(&repo.key());
         crate::common::file::services::invalidate_remote_ignored_cache(repo.project_id());
     }
@@ -511,16 +511,20 @@ impl WatcherManager {
             .lock()
             .map(|m| {
                 m.keys()
-                    .filter(|k| RepoRef::parse_key(k).is_some_and(|(pid, _)| pid == project_id))
+                    .filter(|k| {
+                        WorkspaceRef::parse_key(k).is_some_and(|(pid, _)| pid == project_id)
+                    })
                     .cloned()
                     .collect()
             })
             .unwrap_or_default();
-        for unit in units {
-            self.release_one(&unit);
+        for workspace in units {
+            self.release_one(&workspace);
         }
         if let Ok(mut floors) = self.version_floors.lock() {
-            floors.retain(|k, _| !RepoRef::parse_key(k).is_some_and(|(pid, _)| pid == project_id));
+            floors.retain(|k, _| {
+                !WorkspaceRef::parse_key(k).is_some_and(|(pid, _)| pid == project_id)
+            });
         }
         crate::common::file::services::invalidate_remote_ignored_cache(project_id);
     }
@@ -557,7 +561,7 @@ impl WatcherManager {
     /// 现场核对以「0 条 already watched」为证据）。被合法路径触发等于把告警作废，因此把幂等性
     /// 提到本方法：重复注册告警只留给真正绕过 `mount_only` 的调用方。
     #[must_use = "返回被释放的单元 key；忽略它等于丢掉一次可观测的生命周期事件"]
-    pub fn mount_only(&self, repo: RepoRef, sink: Arc<dyn WatcherEventSink>) -> Vec<String> {
+    pub fn mount_only(&self, repo: WorkspaceRef, sink: Arc<dyn WatcherEventSink>) -> Vec<String> {
         let _mount_guard = self.mount_lock.lock().unwrap_or_else(|e| e.into_inner());
         let released = self.release_except_inner(&repo.key());
         // 重申挂载是空操作：不重建 watcher，也不动已落地的快照（worker 的产出可能刚刚到）。
@@ -574,8 +578,8 @@ impl WatcherManager {
             .lock()
             .map(|m| m.keys().filter(|k| k.as_str() != keep).cloned().collect())
             .unwrap_or_default();
-        for unit in &stale {
-            self.release_one(unit);
+        for workspace in &stale {
+            self.release_one(workspace);
         }
         stale
     }
@@ -584,25 +588,25 @@ impl WatcherManager {
     ///
     /// **只作废数据，不作废号段**（`version_floors` 保留）：释放的语义是「该单元当前没有权威
     /// 数据」，不是「该单元从未被看过」。
-    fn release_one(&self, unit: &str) {
+    fn release_one(&self, workspace: &str) {
         if let Ok(mut watchers) = self.watchers.lock() {
-            if let Some(handle) = watchers.remove(unit) {
+            if let Some(handle) = watchers.remove(workspace) {
                 handle.stop_signal.store(true, Ordering::Relaxed);
-                log::debug!("[Watcher] released unit {unit}");
+                log::debug!("[Watcher] released workspace {workspace}");
             }
         }
-        drop_snapshot_if_present(&self.snapshots, unit);
+        drop_snapshot_if_present(&self.snapshots, workspace);
     }
 
     /// 该单元是否已挂载资源（区分「冷启动中」与「压根没挂 → 走 pull」两种 None）。
     #[must_use]
-    pub fn is_watched(&self, repo: &RepoRef) -> bool {
+    pub fn is_watched(&self, repo: &WorkspaceRef) -> bool {
         self.watchers
             .lock()
             .is_ok_and(|m| m.contains_key(&repo.key()))
     }
 
-    /// 当前挂载中的单元 key 集合（测试观测口 + `set_active_repo_unit` 的释放依据）。
+    /// 当前挂载中的单元 key 集合（测试观测口 + `set_active_workspace` 的释放依据）。
     #[must_use]
     pub fn watched_units(&self) -> Vec<String> {
         self.watchers
@@ -617,7 +621,9 @@ impl WatcherManager {
         let stopped: Vec<(String, String)> = if let Ok(mut watchers) = self.watchers.lock() {
             let units: Vec<(String, String)> = watchers
                 .keys()
-                .filter_map(|k| RepoRef::parse_key(k).map(|(pid, _)| (k.clone(), pid.to_string())))
+                .filter_map(|k| {
+                    WorkspaceRef::parse_key(k).map(|(pid, _)| (k.clone(), pid.to_string()))
+                })
                 .collect();
             for (_unit, watcher) in watchers.drain() {
                 watcher.stop_signal.store(true, Ordering::Relaxed);
@@ -636,10 +642,10 @@ impl WatcherManager {
 /// 作废一个单元的快照条目。
 fn drop_snapshot_if_present(
     store: &Arc<Mutex<HashMap<String, Arc<GitStatusSnapshot>>>>,
-    unit: &str,
+    workspace: &str,
 ) {
     if let Ok(mut map) = store.lock() {
-        map.remove(unit);
+        map.remove(workspace);
     }
 }
 
@@ -691,7 +697,7 @@ fn store_snapshot(
     source: SnapshotSource,
     mut snapshot: GitStatusSnapshot,
 ) -> Arc<GitStatusSnapshot> {
-    let key = snapshot.repo_key.clone();
+    let key = snapshot.workspace_key.clone();
     let mut store = store
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner);

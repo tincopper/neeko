@@ -1,6 +1,6 @@
 import React, { lazy, Suspense, useEffect, useState } from 'react';
 
-import ProjectWorkspace from '@/app/components/ProjectWorkspace';
+import ProjectView from '@/app/components/ProjectView';
 import { useLibraryStore } from '@/features/library/store/libraryStore';
 import { SettingsView } from '@/features/settings';
 import { ISLAND_SPLIT_GROUP_CLASS } from '@/layout/islands';
@@ -27,7 +27,7 @@ function LibrarySkeleton() {
 /**
  * 中心视图路由（单一数据源：appViewStore）。
  * - settings：条件渲染（切走即卸载）
- * - normal：ProjectWorkspace（常驻）
+ * - normal：ProjectView（常驻）
  * - library：首次进入后常驻（hidden 切换），消除重复挂载 + 数据回填的闪烁；
  *   再次激活时后台刷新（旧列表保持可见，新数据到达后更新）
  * - Skills/Prompts/MCP 统一收敛到 Library（activeKind 切换）
@@ -56,7 +56,7 @@ function AppCenter() {
     content = (
       <>
         <Island className={cn('flex-1 h-full', libraryActive && 'hidden')}>
-          <ProjectWorkspace />
+          <ProjectView />
         </Island>
         {libraryMounted ? (
           // Library 自带双岛 + 海面：裸挂（仅 hidden 切换的透明包装），禁止再套岛屿

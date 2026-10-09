@@ -4,10 +4,10 @@ import { cn } from '@/lib/utils';
 import ConfirmDialog from '@/shared/components/ConfirmDialog';
 import { BranchIcon, TrashIcon, FolderGitIcon } from '@/shared/components/icons';
 import { useWorktreeChangeStats } from '@/shared/hooks/useWorktreeChangeStats';
-import { useActiveWorktree } from '@/shared/store/worktreeStore';
+import { useActiveWorkspace } from '@/shared/store/workspaceStore';
 import { Worktree } from '@/shared/types';
 
-import { getRepoStatus } from '../../git/api/gitApi';
+import { getWorkspaceStatus } from '../../git/api/gitApi';
 import { useWorktreeListActions } from '../hooks/useWorktreeListActions';
 
 import SessionChips from './SessionChips';
@@ -45,14 +45,14 @@ const WorktreeList: React.FC<WorktreeListProps> = ({
 
   // 响应式订阅：这里读的是「哪一行高亮」，用 getState() 快照会在激活态变化后停在旧值
   // （列表看起来点了没反应）。命令式取法只允许出现在事件回调里。
-  const activeWorktreePath = useActiveWorktree(projectId).activePath;
+  const activeCheckoutPath = useActiveWorkspace(projectId).activePath;
 
   const filteredWorktrees = useMemo(() => worktrees, [worktrees]);
 
   // 每个工作树的 chip 读**自己单元**的 status：订阅 + 挂载级新鲜度守卫收在共享 hook 里
   // （与 WSL/SSH 侧栏同款），拉不到保持「未知」（chip 不显示），绝不写 0/0 假装干净。
   const fetchStatus = useCallback(
-    (worktreePath: string) => getRepoStatus(projectId, worktreePath).catch(() => null),
+    (worktreePath: string) => getWorkspaceStatus(projectId, worktreePath).catch(() => null),
     [projectId],
   );
   const changeStats = useWorktreeChangeStats(projectId, filteredWorktrees, fetchStatus);
@@ -65,7 +65,7 @@ const WorktreeList: React.FC<WorktreeListProps> = ({
         const stats = changeStats[wt.path];
         const isRenaming = renaming === wt.path;
         const isDeleting = deleting === wt.path;
-        const isActive = activeWorktreePath === wt.path;
+        const isActive = activeCheckoutPath === wt.path;
         const label = wt.path.split(/[\\/]/).pop() ?? wt.path;
 
         return (

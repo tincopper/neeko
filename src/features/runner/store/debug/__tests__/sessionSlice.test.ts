@@ -1,7 +1,7 @@
 // @vitest-environment node
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { useWorktreeStore } from '@/shared/store/worktreeStore';
+import { useWorkspaceStore } from '@/shared/store/workspaceStore';
 
 import type * as DebugApi from '../../../api/debugApi';
 import type { DapSessionInfo, LaunchConfig } from '../../../types';
@@ -46,7 +46,7 @@ const CFG: LaunchConfig = {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  useWorktreeStore.setState({ byProject: {} });
+  useWorkspaceStore.setState({ byProject: {} });
   dapCheckAdapter.mockResolvedValue(true);
   dapStartSession.mockResolvedValue(sessionFor('p1'));
   dapStartSessionConfig.mockResolvedValue(sessionFor('p1'));
@@ -199,7 +199,7 @@ describe('sessionSlice.isLaunching 覆盖全部启动入口（评审 P3）', () 
 
 describe('sessionSlice 启动链携带执行单元根（worktree 可在项目根之外）', () => {
   it('激活 worktree → dapStartSession / dapStartSessionConfig 的 worktreePath 为该根', async () => {
-    useWorktreeStore.getState().setActiveWorktree('p1', '/home/u/.neeko/worktrees/fix-1');
+    useWorkspaceStore.getState().setActiveWorkspace('p1', '/home/u/.neeko/worktrees/fix-1');
 
     await useDebugStore.getState().start('p1');
     expect(dapStartSession).toHaveBeenCalledWith(

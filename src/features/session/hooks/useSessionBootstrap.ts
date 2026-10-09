@@ -1,13 +1,13 @@
 import { useState, useEffect } from 'react';
 
 import { useProjectStore, selectHasStatus } from '@/shared/store/projectStore';
-import { useWorktreeStore } from '@/shared/store/worktreeStore';
+import { useWorkspaceStore } from '@/shared/store/workspaceStore';
 import type { Worktree } from '@/shared/types';
 import { reportFrontendError } from '@/shared/utils/errorReporting';
-import { repoKeyOf } from '@/shared/utils/repoRef';
+import { workspaceKeyOf } from '@/shared/utils/workspaceRef';
 
 /* eslint-disable import/no-restricted-paths -- session bootstrap needs git API for reading git info */
-import { canonicalWorktreePath, getGitBranchInfo, getRepoStatus } from '../../git/api/gitApi';
+import { canonicalWorktreePath, getGitBranchInfo, getWorkspaceStatus } from '../../git/api/gitApi';
 import { useGitPerfSuggestion } from '../../git/hooks/useGitPerfSuggestion';
 import { useGitStatusEventsSync } from '../../git/hooks/useGitStatusEventsSync';
 /* eslint-enable import/no-restricted-paths */
@@ -68,13 +68,13 @@ export function useSessionBootstrap(deps: {
         for (const p of projects) {
           // 非 git 项目（git_info 为 null）跳过所有 git 命令
           if (p.git_info === null) continue;
-          const mainKey = repoKeyOf(p.id, null);
+          const mainKey = workspaceKeyOf(p.id, null);
           // 主仓单元 status：走同一写入口（applyStatus 内含 version gate），侧栏
-          // 变更计数因此有数据来源；激活单元由 useActiveRepoUnitSync 负责挂载与刷新。
+          // 变更计数因此有数据来源；激活单元由 useActiveWorkspaceSync 负责挂载与刷新。
           if (!selectHasStatus(useProjectStore.getState(), mainKey)) {
-            getRepoStatus(p.id, null)
+            getWorkspaceStatus(p.id, null)
               .then((snapshot) => {
-                if (snapshot.repo_key !== mainKey) return;
+                if (snapshot.workspace_key !== mainKey) return;
                 useProjectStore.getState().applyStatus(snapshot);
               })
               .catch((err) => reportFrontendError('session.gitStatus', err));
@@ -146,7 +146,7 @@ export function useSessionBootstrap(deps: {
               });
             };
             // 不在这里拉 status：激活哪个单元由下面的恢复流程决定，
-            // 统一由 useActiveRepoUnitSync 挂载 + 取首个快照（避免旧实现里
+            // 统一由 useActiveWorkspaceSync 挂载 + 取首个快照（避免旧实现里
             // 「先按主仓拉一次、随后才恢复 worktree」导致首屏显示主仓内容）。
             getGitBranchInfo(activeId)
               .then(async (branchInfo) => {
@@ -161,7 +161,7 @@ export function useSessionBootstrap(deps: {
                 // （旧实现同时写三份镜像字段，读镜像的事件回调因此会拿到别的单元的路径）
                 const restoredWtPath = wtState?.[activeId];
                 if (restoredWtPath) {
-                  const store = useWorktreeStore.getState();
+                  const store = useWorkspaceStore.getState();
                   // 清单路径已由后端归一出 canonical（见 backend/git-domain §12），
                   // 但 session 文件里存的是**上一次写入**的路径，历史版本可能非 canonical
                   // （macOS 的 `/tmp` 与 `/private/tmp` 同指一处）。因此只对「持久化输入」
@@ -172,13 +172,13 @@ export function useSessionBootstrap(deps: {
                   );
                   const wt = branchInfo.worktrees.find((w) => w.path === canonical);
                   if (wt) {
-                    store.markWorktreeOpened(activeId, wt.path, wt.branch);
-                    store.setActiveWorktree(activeId, wt.path, wt.branch);
+                    store.markWorkspaceOpened(activeId, wt.path, wt.branch);
+                    store.setActiveWorkspace(activeId, wt.path, wt.branch);
                   } else {
                     // 认不出 ⇒ 交回唯一判死点（`useAppShellData` 的清单校验）判「工作树已消失」，
                     // 这里不重复判死：两处各有各的「不存在」会互相打架，实测 main ↔ worktree
                     // 反复重挂。
-                    store.setActiveWorktree(activeId, canonical);
+                    store.setActiveWorkspace(activeId, canonical);
                   }
                 }
               })

@@ -54,7 +54,7 @@ export interface AppShellData {
   // wsl
   wslEntries: ConnectionProjectContextValue['wslEntries'];
   wslOpenSessions: ConnectionProjectContextValue['wslOpenSessions'];
-  activeWslWorktreePath: ConnectionProjectContextValue['activeWslWorktreePath'];
+  activeWslCheckoutPath: ConnectionProjectContextValue['activeWslCheckoutPath'];
   wslDiffState: ConnectionProjectContextValue['wslDiffState'];
   setWslOpenSessions: ConnectionProjectContextValue['setWslOpenSessions'];
   handleCloseWslProject: ConnectionProjectContextValue['onCloseWslProject'];
@@ -74,7 +74,7 @@ export interface AppShellData {
   // remote
   remoteEntries: ConnectionProjectContextValue['remoteEntries'];
   remoteOpenSessions: ConnectionProjectContextValue['remoteOpenSessions'];
-  activeRemoteWorktreePath: ConnectionProjectContextValue['activeRemoteWorktreePath'];
+  activeRemoteCheckoutPath: ConnectionProjectContextValue['activeRemoteCheckoutPath'];
   remoteAuthStore: ConnectionProjectContextValue['remoteAuthStore'];
   setRemoteOpenSessions: ConnectionProjectContextValue['setRemoteOpenSessions'];
   handleCloseRemoteProject: ConnectionProjectContextValue['onCloseRemoteProject'];
@@ -136,7 +136,7 @@ export function buildAppShellValues(data: AppShellData) {
     fileView,
     wslEntries,
     wslOpenSessions,
-    activeWslWorktreePath,
+    activeWslCheckoutPath,
     wslDiffState,
     setWslOpenSessions,
     handleCloseWslProject,
@@ -155,7 +155,7 @@ export function buildAppShellValues(data: AppShellData) {
     handleWslEntryAdd,
     remoteEntries,
     remoteOpenSessions,
-    activeRemoteWorktreePath,
+    activeRemoteCheckoutPath,
     remoteAuthStore,
     setRemoteOpenSessions,
     handleCloseRemoteProject,
@@ -219,7 +219,7 @@ export function buildAppShellValues(data: AppShellData) {
     // WSL fields
     wslEntries,
     wslOpenSessions,
-    activeWslWorktreePath,
+    activeWslCheckoutPath,
     wslDiffState: wslDiffState ?? null,
     setWslOpenSessions,
     onCloseWslProject: handleCloseWslProject,
@@ -235,7 +235,7 @@ export function buildAppShellValues(data: AppShellData) {
     // Remote fields
     remoteEntries,
     remoteOpenSessions,
-    activeRemoteWorktreePath,
+    activeRemoteCheckoutPath,
     remoteAuthStore,
     setRemoteOpenSessions,
     onCloseRemoteProject: handleCloseRemoteProject,

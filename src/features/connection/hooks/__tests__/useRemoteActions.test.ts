@@ -11,7 +11,7 @@ import {
 import { useConnectionStore } from '@/shared/store/connectionStore';
 import { useEditorStore } from '@/shared/store/editorStore';
 import { useProjectStore } from '@/shared/store/projectStore';
-import { useWorktreeStore } from '@/shared/store/worktreeStore';
+import { useWorkspaceStore } from '@/shared/store/workspaceStore';
 import type { RemoteEntrySession } from '@/shared/types';
 
 vi.mock('@/features/terminal/components/terminalCache', () => ({
@@ -90,7 +90,7 @@ function seedStore(
     remoteAuthStore: new Map(),
     pendingAuthEntry: null,
   });
-  useWorktreeStore.setState({ byProject: {} });
+  useWorkspaceStore.setState({ byProject: {} });
   useEditorStore.setState({
     tabs: {},
   });

@@ -162,7 +162,7 @@ interface GitInfo {
   worktrees: Worktree[];
   git_provider: GitProvider;
   // 未提交变更列表（changed_files）**不在**这里 —— 它是「每个工作树」的事实，
-  // 随 GitStatusSnapshot 按 repo_key 投递（见 git-domain.md §12）
+  // 随 GitStatusSnapshot 按 workspace_key 投递（见 git-domain.md §12）
 }
 ```
 

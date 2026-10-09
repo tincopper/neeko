@@ -95,8 +95,8 @@ pub fn run() {
                 }
             }
 
-            // 启动期**不**预挂任何单元：挂载的唯一发起点是前端 `useActiveRepoUnitSync`
-            // （它反应 `(activeProjectId, 激活 worktree)` → `set_active_repo_unit`）。
+            // 启动期**不**预挂任何单元：挂载的唯一发起点是前端 `useActiveWorkspaceSync`
+            // （它反应 `(activeProjectId, 激活 worktree)` → `set_active_workspace`）。
             // 旧实现在这里按 session 的激活项目先挂主仓单元，于是每次启动都出现
             // 「先挂主仓、1 秒后改挂 worktree」的两发起点时序差（实测日志报 already watched），
             // 且与「只挂当前视图那一个单元」的取舍无关 —— 前端未落地时槽位缺失就是「未知」，

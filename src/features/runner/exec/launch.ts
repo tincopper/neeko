@@ -21,7 +21,7 @@ import { targetLang, type RunTarget } from '../runTarget';
 import { useTestResultsStore } from '../store/testResults';
 import type { MainEntry, TestCaseInfo } from '../syntax/contract';
 
-import { MAX_CAPTURED_OUTPUT_CHARS, resolveRunCwd, type TestActionContext } from './context';
+import { MAX_CAPTURED_OUTPUT_CHARS, runCwdOf, type TestActionContext } from './context';
 import { finalizeRunResults } from './results';
 
 /**
@@ -74,7 +74,7 @@ export function runTestCase(
   lsp: LanguageOverlay | null = null,
 ): void {
   void (async () => {
-    const runRoot = resolveRunCwd(ctx);
+    const runRoot = runCwdOf(ctx);
     // Run 开始：清该文件旧状态并标记进行中（gutter 半透明占位）
     useTestResultsStore.getState().beginRun(ctx.projectId, ctx.filePath);
     await launchRun(testCase, ctx, runRoot, lsp);
@@ -88,7 +88,7 @@ export function runMain(
   lsp: LanguageOverlay | null = null,
 ): void {
   void (async () => {
-    const runRoot = resolveRunCwd(ctx);
+    const runRoot = runCwdOf(ctx);
     const plan = await runnerFor(entry.language).planMainRun({
       ctx,
       entry,

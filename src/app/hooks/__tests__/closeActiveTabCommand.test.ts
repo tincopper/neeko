@@ -9,7 +9,7 @@ import { closeEditorTab } from '@/features/terminal';
 import { useEditorStore } from '@/shared/store/editorStore';
 import { useOverlayStore } from '@/shared/store/overlayStore';
 import { useProjectStore } from '@/shared/store/projectStore';
-import { useWorktreeStore } from '@/shared/store/worktreeStore';
+import { useWorkspaceStore } from '@/shared/store/workspaceStore';
 import type { Tab } from '@/shared/types/tab';
 
 import {
@@ -57,8 +57,8 @@ describe('closeActiveTabCommand — Cmd+W 关闭当前激活 tab（根治竞态/
     mockCloseEditorTab.mockClear();
     useEditorStore.setState({ tabs: {}, activeTabId: null, editorLayout: {} });
     useProjectStore.setState({ activeProjectId: null });
-    // 单一表示：worktreeStore 只有 byProject（旧的全局镜像字段已删除）
-    useWorktreeStore.setState({ byProject: {} });
+    // 单一表示：workspaceStore 只有 byProject（旧的全局镜像字段已删除）
+    useWorkspaceStore.setState({ byProject: {} });
     useCloseConfirmStore.setState({ pending: null });
     // 本套用例自己扮演对话框（直接 resolve 请求）：声明宿主就绪，否则 request 走
     // 「无宿主 → cancel」的 fail-closed 分支，关闭流程根本不会继续。
@@ -78,7 +78,7 @@ describe('closeActiveTabCommand — Cmd+W 关闭当前激活 tab（根治竞态/
 
     it('有项目且有 worktree → worktree 专属 tab 空间', () => {
       useProjectStore.setState({ activeProjectId: 'p1' });
-      useWorktreeStore.setState({
+      useWorkspaceStore.setState({
         byProject: { p1: { activePath: '/repo/wt', activeBranch: '', opened: [] } },
       });
       expect(resolveCurrentTabKey()).toBe('p1:wt:/repo/wt');
@@ -86,7 +86,7 @@ describe('closeActiveTabCommand — Cmd+W 关闭当前激活 tab（根治竞态/
 
     it('激活态按项目取：别的项目有激活 worktree 时不得改写在激活项目的 tab 空间', () => {
       useProjectStore.setState({ activeProjectId: 'p1' });
-      useWorktreeStore.setState({
+      useWorkspaceStore.setState({
         byProject: { p2: { activePath: '/repo/wt-of-p2', activeBranch: '', opened: [] } },
       });
       expect(resolveCurrentTabKey()).toBe('p1');
@@ -94,7 +94,7 @@ describe('closeActiveTabCommand — Cmd+W 关闭当前激活 tab（根治竞态/
 
     it('activePath 为 null 与缺省（该项目从未切过单元）等价', () => {
       useProjectStore.setState({ activeProjectId: 'p1' });
-      useWorktreeStore.setState({
+      useWorkspaceStore.setState({
         byProject: { p1: { activePath: null, activeBranch: 'main', opened: [] } },
       });
       expect(resolveCurrentTabKey()).toBe('p1');
@@ -227,7 +227,7 @@ describe('closeActiveTabCommand — Cmd+W 关闭当前激活 tab（根治竞态/
 
     it('worktree 场景：关闭 worktree 专属 tab 空间的激活 tab', async () => {
       useProjectStore.setState({ activeProjectId: 'p1' });
-      useWorktreeStore.setState({
+      useWorkspaceStore.setState({
         byProject: { p1: { activePath: '/repo/wt', activeBranch: 'feature-x', opened: [] } },
       });
       useEditorStore.setState({
@@ -242,7 +242,7 @@ describe('closeActiveTabCommand — Cmd+W 关闭当前激活 tab（根治竞态/
 
     it('worktree 切回主仓后：关闭的是主仓 tab 空间（不残留 worktree 键）', async () => {
       useProjectStore.setState({ activeProjectId: 'p1' });
-      useWorktreeStore.setState({
+      useWorkspaceStore.setState({
         byProject: { p1: { activePath: '/repo/wt', activeBranch: 'feature-x', opened: [] } },
       });
       useEditorStore.setState({
@@ -252,7 +252,7 @@ describe('closeActiveTabCommand — Cmd+W 关闭当前激活 tab（根治竞态/
         },
       });
 
-      useWorktreeStore.getState().setActiveWorktree('p1', null);
+      useWorkspaceStore.getState().setActiveWorkspace('p1', null);
       expect(await closeActiveTabCommand()).toBe(true);
       expect(mockCloseEditorTab).toHaveBeenCalledWith('p1', 'm1');
     });

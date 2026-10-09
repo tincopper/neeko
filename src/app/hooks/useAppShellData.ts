@@ -14,7 +14,7 @@ import {
   useProjectList,
   useProjectSelection,
   useWorktreeActions,
-  useWorktreeState,
+  useWorkspaceState,
 } from '@/features/project';
 import { useSessionBootstrap, useSessionPersistence } from '@/features/session';
 import { useAppConfig } from '@/features/settings';
@@ -23,14 +23,14 @@ import { CLOSE_TAB_EVENT } from '@/shared/events';
 import { useKeyboardShortcuts } from '@/shared/hooks/useKeyboardShortcuts';
 import { useNotificationStore } from '@/shared/store/notificationStore';
 import { useProjectStore } from '@/shared/store/projectStore';
-import { getActiveWorktreePath } from '@/shared/store/worktreeStore';
+import { getActiveCheckoutPath } from '@/shared/store/workspaceStore';
 import { safeUnlisten } from '@/shared/utils/safeUnlisten';
 
 import type { ToolbarFooterProps } from '../components/ToolbarFooter';
 
 import { type AppShellData } from './buildAppShellValues';
 import { closeActiveTabCommand } from './closeActiveTabCommand';
-import { useActiveRepoUnitSync } from './useActiveRepoUnitSync';
+import { useActiveWorkspaceSync } from './useActiveWorkspaceSync';
 import { useAppEntryAddRefresh } from './useAppEntryAddRefresh';
 import { useAppInitialGitRefresh } from './useAppInitialGitRefresh';
 import { useAppStoreSync } from './useAppStoreSync';
@@ -121,22 +121,21 @@ export function useAppShellData(): UseAppShellDataResult {
     handleDragEnd: handleRemoteDragEnd,
   } = remote;
 
-  const { activeWorktreePath, activateWorktree, markWorktreeOpened } =
-    useWorktreeState(activeProjectId);
+  const { activeCheckoutPath, activateWorkspace, markWorkspaceOpened } =
+    useWorkspaceState(activeProjectId);
   useEffect(() => {
-    if (!activeWorktreePath || !activeProject?.git_info) return;
+    if (!activeCheckoutPath || !activeProject?.git_info) return;
     const worktrees = activeProject.git_info.worktrees;
     // worktrees 为空可能是「尚未加载完成」而非「确实没有」，此时不清理激活态。
-    // 两侧路径都是后端 canonical 形态（RepoRef 构造时归一），因此等值比较是身份比较，
-    // 不再是旧实现里「符号链接形态 vs realpath」互相认不出来的那种字符串猜谜。
-    if (worktrees.length > 0 && !worktrees.some((wt) => wt.path === activeWorktreePath)) {
-      console.warn('[worktree] active unit disappeared, falling back to main:', activeWorktreePath);
-      activateWorktree(activeProject.id, null, '');
+    // 路径为后端 canonical 形态（WorkspaceRef 归一）→ 等值比较即身份比较。
+    if (worktrees.length > 0 && !worktrees.some((wt) => wt.path === activeCheckoutPath)) {
+      console.warn('[worktree] active workspace gone, fallback to main:', activeCheckoutPath);
+      activateWorkspace(activeProject.id, null, '');
     }
   }, [
     activeProject?.git_info?.worktrees,
-    activeWorktreePath,
-    activateWorktree,
+    activeCheckoutPath,
+    activateWorkspace,
     activeProject?.git_info,
     activeProject?.id,
   ]);
@@ -166,8 +165,8 @@ export function useAppShellData(): UseAppShellDataResult {
     saveSession: session.saveSession,
   });
   const worktreeActionsWrap = useWorktreeActions({
-    activateWorktree,
-    markWorktreeOpened,
+    activateWorkspace,
+    markWorkspaceOpened,
     saveWorktreeState: session.saveWorktreeState,
   });
   const remoteAuthActions = useRemoteAuthActions({ saveSession: session.saveSession });
@@ -190,7 +189,7 @@ export function useAppShellData(): UseAppShellDataResult {
     handleTabAgentClick,
   } = useTabManagement({
     activeProject,
-    activeWorktreePath,
+    activeCheckoutPath,
     saveTabById: fileView.saveTabById,
   });
   const handleFileSelect = useCallback(
@@ -203,7 +202,7 @@ export function useAppShellData(): UseAppShellDataResult {
     const projectId = useProjectStore.getState().activeProjectId ?? null;
     if (!projectId) return;
     const rootPath =
-      getActiveWorktreePath() ?? useProjectStore.getState().activeProject?.path ?? undefined;
+      getActiveCheckoutPath() ?? useProjectStore.getState().activeProject?.path ?? undefined;
     // force = true: manual refresh must bypass the "already loaded" idempotency
     // check, otherwise a loaded tree would never re-fetch (the root cause of
     // "refresh button does nothing after file changes").
@@ -213,8 +212,8 @@ export function useAppShellData(): UseAppShellDataResult {
     wslActionsWrap.setWslDiffState?.(null);
   }, [wslActionsWrap]);
 
-  // 当前视图所在仓库单元 → 后端挂载的唯一同步点（决策 D-B 落地点）
-  useActiveRepoUnitSync();
+  // 当前视图所在Workspace → 后端挂载的唯一同步点（决策 D-B 落地点）
+  useActiveWorkspaceSync();
   const { initializing } = useSessionBootstrap({
     loadProjects,
     restoreWorktreeState: session.restoreWorktreeState,
@@ -243,7 +242,7 @@ export function useAppShellData(): UseAppShellDataResult {
   const isTerminalView = activeProject?.active_view === 'Terminal';
   useAppStoreSync({
     isTerminalView,
-    activeWorktreePath,
+    activeCheckoutPath,
     selectProject: cross.handleSelectProject,
     handleOpenIdeCallback: agentActionsWrap.handleOpenIdeCallback,
     handleSetProjectIde: agentActionsWrap.handleSetProjectIde,
@@ -253,9 +252,9 @@ export function useAppShellData(): UseAppShellDataResult {
   const updateWtPath = useCallback(
     (path: string | null, branch: string) => {
       const pid = useProjectStore.getState().activeProjectId;
-      if (pid) activateWorktree(pid, path, branch);
+      if (pid) activateWorkspace(pid, path, branch);
     },
-    [activateWorktree],
+    [activateWorkspace],
   );
   useKeyboardShortcuts({
     updateWtPath,
@@ -354,7 +353,7 @@ export function useAppShellData(): UseAppShellDataResult {
     fileView,
     wslEntries,
     wslOpenSessions,
-    activeWslWorktreePath: wslActionsWrap.activeWorktreePath,
+    activeWslCheckoutPath: wslActionsWrap.activeCheckoutPath,
     wslDiffState: wslActionsWrap.wslDiffState ?? null,
     setWslOpenSessions,
     handleCloseWslProject,
@@ -373,7 +372,7 @@ export function useAppShellData(): UseAppShellDataResult {
     handleWslEntryAdd: handleWslEntryAddRefresh,
     remoteEntries,
     remoteOpenSessions,
-    activeRemoteWorktreePath: remoteActionsWrap.activeWorktreePath,
+    activeRemoteCheckoutPath: remoteActionsWrap.activeCheckoutPath,
     remoteAuthStore,
     setRemoteOpenSessions,
     handleCloseRemoteProject,

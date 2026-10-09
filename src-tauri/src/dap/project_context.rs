@@ -22,58 +22,62 @@ use crate::AppStateWrapper;
 /// 「项目根」不能充当 cwd 校验基准 / 适配器 workspace / 变量展开根 —— 这三件事的事实
 /// 基准是**单元根**。主仓是 `root == project_root` 的退化取值，没有第二条代码路径。
 ///
-/// 解析复用 git 域的 [`AppStateWrapper::resolve_repo`]（校验 + canonicalize +
+/// 解析复用 git 域的 [`AppStateWrapper::resolve_workspace`]（校验 + canonicalize +
 /// 「worktreePath 等于项目根 ⇒ 主仓」收敛全在里面），本域不新造第二套路径归一。
 #[derive(Clone)]
-pub struct ExecUnit {
+pub struct ExecWorkspace {
     /// 执行环境（Local / WSL / SSH）。
     pub target: ExecTarget,
-    /// 单元根（[`crate::common::git::RepoRef::work_dir`] 的 exec 形态，宿主分隔符 /
+    /// 单元根（[`crate::common::git::WorkspaceRef::root`] 的 exec 形态，宿主分隔符 /
     /// 远端 POSIX）：构建 cwd 校验基准、适配器 workspace、`${workspaceFolder}` 展开根。
     pub root: String,
 }
 
 /// 解析一次 Run/Debug 的**执行单元** —— DAP 域唯一的单元解析点。
 ///
-/// `worktree_path` 为 `None` / 空串 / 等于项目根时收敛成主仓单元（由 `RepoRef` 保证）。
+/// `worktree_path` 为 `None` / 空串 / 等于项目根时收敛成主仓单元（由 `WorkspaceRef` 保证）。
 /// 空根 fail-closed：绝不 `to_string_lossy` 换成另一个路径交给适配器
 /// （`dap-domain.md` §2.6：适配器拿错 workspace 的症状是「断点全是 verified:false」）。
-pub async fn resolve_unit(
+pub async fn resolve_exec_workspace(
     state: &AppStateWrapper,
     project_id: &str,
     worktree_path: Option<&str>,
-) -> Result<ExecUnit, AppError> {
-    let (target, repo) = state.resolve_repo(project_id, worktree_path).await?;
-    Ok(ExecUnit {
+) -> Result<ExecWorkspace, AppError> {
+    let (target, repo) = state.resolve_workspace(project_id, worktree_path).await?;
+    Ok(ExecWorkspace {
         target,
-        root: unit_root(&repo)?,
+        root: workspace_root(&repo)?,
     })
 }
 
 /// 同步版单元根解析：给**同步** `#[tauri::command]`（launch.json 列表/发现/保存）用。
 ///
-/// 与 [`resolve_unit`] 同一事实源（[`crate::common::git::RepoRef`]），只是不经
+/// 与 [`resolve_exec_workspace`] 同一事实源（[`crate::common::git::WorkspaceRef`]），只是不经
 /// `spawn_blocking` —— 同步命令本身不在异步 worker 上，阻塞 fs 允许（红线 3 只管异步路径）。
-pub fn resolve_unit_root(
+pub fn resolve_workspace_root(
     state: &AppStateWrapper,
     project_id: &str,
     worktree_path: Option<&str>,
 ) -> Result<String, AppError> {
     let (target, project_root) = state.resolve_project(project_id)?;
-    let repo =
-        crate::common::git::RepoRef::resolve(project_id, &project_root, worktree_path, &target)?;
-    unit_root(&repo)
+    let repo = crate::common::git::WorkspaceRef::resolve(
+        project_id,
+        &project_root,
+        worktree_path,
+        &target,
+    )?;
+    workspace_root(&repo)
 }
 
-/// 从已解析的仓库单元提取**单元根**（exec 形态）并 fail-closed 拒空根。
+/// 从已解析的Workspace提取**单元根**（exec 形态）并 fail-closed 拒空根。
 ///
 /// 异步 / 同步两个入口**共用**它 —— 未来若要在单元解析上加强校验（如验 `git worktree list`
 /// 成员资格），只加在这一处，两个入口自动生效。
-fn unit_root(repo: &crate::common::git::RepoRef) -> Result<String, AppError> {
-    let root = repo.work_dir().to_string();
+fn workspace_root(repo: &crate::common::git::WorkspaceRef) -> Result<String, AppError> {
+    let root = repo.root().to_string();
     if root.is_empty() {
         return Err(AppError::InvalidInput(
-            "execution unit root must not be empty".into(),
+            "workspace root must not be empty".into(),
         ));
     }
     Ok(root)
@@ -397,63 +401,67 @@ mod tests {
         assert_eq!(adapter_binary_override(&state, AdapterKind::Go).await, None);
     }
 
-    // ── 执行单元根（worktree：`RepoRef` 唯一解析点）────────────────────────────────
+    // ── 执行单元根（worktree：`WorkspaceRef` 唯一解析点）────────────────────────────────
 
     /// 主仓单元：`worktree_path = None` → 单元根就是项目根（无行为分叉）。
     #[tokio::test]
-    async fn resolve_unit_without_worktree_is_the_project_root() {
+    async fn resolve_exec_workspace_without_worktree_is_the_project_root() {
         let tmp = tempfile::tempdir().expect("tempdir");
         let (state, project_id) = plain_project_state(&tmp);
 
-        let unit = resolve_unit(&state, &project_id, None).await.expect("unit");
+        let exec = resolve_exec_workspace(&state, &project_id, None)
+            .await
+            .expect("exec");
         let project_root = project_path(&state, &project_id).expect("project root");
         let canonical_root = project_root
             .canonicalize()
             .expect("canonicalize project root");
 
-        assert_eq!(unit.root, canonical_root.to_string_lossy());
-        assert!(matches!(unit.target, ExecTarget::Local));
+        assert_eq!(exec.root, canonical_root.to_string_lossy());
+        assert!(matches!(exec.target, ExecTarget::Local));
     }
 
     /// linked worktree **在项目根之外**（默认 `~/.neeko/worktrees/<name>` 形态）：
     /// 单元根必须是 worktree 本身，而不是项目根 —— 这正是 cwd 校验 / 适配器 workspace
     /// 的事实基准。
     #[tokio::test]
-    async fn resolve_unit_prefers_worktree_root_outside_the_project() {
+    async fn resolve_exec_workspace_prefers_worktree_root_outside_the_project() {
         let tmp = tempfile::tempdir().expect("tempdir");
         let (state, project_id) = plain_project_state(&tmp);
         let worktree = tmp.path().join("worktrees").join("fix-1");
         std::fs::create_dir_all(&worktree).expect("worktree dir");
         let worktree = worktree.to_string_lossy().to_string();
 
-        let unit = resolve_unit(&state, &project_id, Some(&worktree))
+        let exec = resolve_exec_workspace(&state, &project_id, Some(&worktree))
             .await
-            .expect("unit");
+            .expect("exec");
         let canonical_worktree = std::path::Path::new(&worktree)
             .canonicalize()
             .expect("canonical");
         let project_root = project_path(&state, &project_id).expect("project root");
         let canonical_project_root = project_root.canonicalize().expect("canonical project root");
 
-        assert_eq!(unit.root, canonical_worktree.to_string_lossy());
+        assert_eq!(exec.root, canonical_worktree.to_string_lossy());
         assert!(
-            !std::path::Path::new(&unit.root).starts_with(&canonical_project_root),
+            !std::path::Path::new(&exec.root).starts_with(&canonical_project_root),
             "worktree root must be outside the project root for this fixture"
         );
     }
 
     /// `worktree_path` 等于项目根 → 收敛成主仓单元（不得产生两个身份）。
     #[tokio::test]
-    async fn resolve_unit_collapses_worktree_equal_to_project_root_into_main() {
+    async fn resolve_exec_workspace_collapses_worktree_equal_to_project_root_into_main() {
         let tmp = tempfile::tempdir().expect("tempdir");
         let (state, project_id) = plain_project_state(&tmp);
         let project_root = project_path(&state, &project_id).expect("project root");
         let project_root = project_root.to_string_lossy().to_string();
 
-        let with_root = resolve_unit(&state, &project_id, Some(&project_root))
+        let with_root = resolve_exec_workspace(&state, &project_id, Some(&project_root))
             .await
-            .expect("unit");
-        let without_root = resolve_unit(&state, &project_id, None).await.expect("unit");
+            .expect("exec");
+        let without_root = resolve_exec_workspace(&state, &project_id, None)
+            .await
+            .expect("exec");
 
         assert_eq!(with_root.root, without_root.root);
     }

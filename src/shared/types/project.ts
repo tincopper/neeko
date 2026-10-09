@@ -105,8 +105,8 @@ export interface ProjectView {
 
 export interface ProjectCommands {
   refreshGitInfo(): Promise<GitInfo>;
-  /** 读取**本命令所属仓库单元**（主仓或该 worktree）的权威 status */
-  refreshRepoStatus(): Promise<GitStatusSnapshot>;
+  /** 读取**本命令所属Workspace**（主仓或该 worktree）的权威 status */
+  refreshWorkspaceStatus(): Promise<GitStatusSnapshot>;
   getAheadBehind(): Promise<AheadBehind>;
   getChangedFilesDiffStats(): Promise<
     Array<{ path: string; additions: number; deletions: number }>

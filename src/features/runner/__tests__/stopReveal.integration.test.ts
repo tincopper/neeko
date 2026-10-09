@@ -20,7 +20,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { useDebugStopReveal } from '@/features/editor';
 import { useEditorStore } from '@/shared/store/editorStore';
 import { useProjectStore } from '@/shared/store/projectStore';
-import { useWorktreeStore } from '@/shared/store/worktreeStore';
+import { useWorkspaceStore } from '@/shared/store/workspaceStore';
 import type { FileContent } from '@/shared/types';
 import { sourceIdentityOf } from '@/shared/utils/fileRef';
 import { deferred, flushMicrotasks } from '@/testing/async';
@@ -158,7 +158,7 @@ beforeEach(() => {
   useProjectStore.setState({
     activeProject: { id: 'p1', name: 'proj', path: PROJECT } as never,
   });
-  useWorktreeStore.setState({ byProject: {} });
+  useWorkspaceStore.setState({ byProject: {} });
   dapVariables.mockResolvedValue([]);
 });
 

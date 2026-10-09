@@ -10,9 +10,9 @@ import ContextMenu, { type ContextMenuItem } from '@/shared/components/ContextMe
 import ProjectSettingsDialog from '@/shared/components/ProjectSettingsDialog';
 import { useGitStore } from '@/shared/store/gitStore';
 import { selectEntries, useProjectStore } from '@/shared/store/projectStore';
-import { selectActiveWorktreePath, useWorktreeStore } from '@/shared/store/worktreeStore';
+import { selectActiveCheckoutPath, useWorkspaceStore } from '@/shared/store/workspaceStore';
 import { getIdeIconByCommand } from '@/shared/utils/idePresets';
-import { repoKeyOf } from '@/shared/utils/repoRef';
+import { workspaceKeyOf } from '@/shared/utils/workspaceRef';
 
 import { useConnectionWorktreeActions } from '../hooks/useConnectionWorktreeActions';
 
@@ -48,12 +48,12 @@ const ConnectionProjectCard: React.FC<ConnectionProjectCardProps> = React.memo(
     const connectionId = identifier;
 
     // 本卡片渲染的是 project.id 的行 → 单元归属按该 projectId 取（不是「当前激活项目」的镜像）
-    const activeWorktreePath = useWorktreeStore((s) => selectActiveWorktreePath(s, project.id));
+    const activeCheckoutPath = useWorkspaceStore((s) => selectActiveCheckoutPath(s, project.id));
 
     // ahead/behind 仅在 active 项目时显示；键 = 该项目的**激活单元**（与写入侧同一把键）。
     // 旧键带 `{source}:{identifier}` 前缀，而那三个写入点的 identifier 约定各不相同 ⇒ 读不到。
-    const unitRepoKey = repoKeyOf(project.id, activeWorktreePath);
-    const aheadBehind = useGitStore((s) => s.aheadBehind[unitRepoKey]);
+    const workspaceKey = workspaceKeyOf(project.id, activeCheckoutPath);
+    const aheadBehind = useGitStore((s) => s.aheadBehind[workspaceKey]);
 
     const [collapsed, setCollapsed] = useState(true);
     const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
@@ -149,7 +149,7 @@ const ConnectionProjectCard: React.FC<ConnectionProjectCardProps> = React.memo(
 
     // local 主终端行的 +A -D = **主仓单元**的 status 条目（worktree 单元各有自己的条目）。
     // 缺失 = 未知（未挂载 / 刚被切走）→ 不显示 chip；绝不沿用其它单元的条目。
-    const mainEntries = useProjectStore((s) => selectEntries(s, repoKeyOf(project.id, null)));
+    const mainEntries = useProjectStore((s) => selectEntries(s, workspaceKeyOf(project.id, null)));
 
     const localChanges = useMemo(() => {
       const files = mainEntries ?? [];
@@ -160,7 +160,7 @@ const ConnectionProjectCard: React.FC<ConnectionProjectCardProps> = React.memo(
       return { add, del };
     }, [mainEntries]);
 
-    const localActive = isActive && !activeWorktreePath;
+    const localActive = isActive && !activeCheckoutPath;
 
     const style = {
       transform: CSS.Transform.toString(transform),
@@ -212,7 +212,7 @@ const ConnectionProjectCard: React.FC<ConnectionProjectCardProps> = React.memo(
             <ConnectionWorktreeList
               projectId={project.id}
               worktrees={worktrees}
-              activeWorktreePath={isActive ? activeWorktreePath : null}
+              activeCheckoutPath={isActive ? activeCheckoutPath : null}
               onOpenWorktreeTerminal={handleOpenWorktreeTerminal}
               onCommitRenameWorktree={worktreeActions.rename}
               onRemoveWorktree={worktreeActions.remove}

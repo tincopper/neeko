@@ -1,4 +1,4 @@
-//! git 元数据监听路径解析：单个仓库单元的 HEAD / index / refs / git_dir 定位。
+//! git 元数据监听路径解析：单个Workspace的 HEAD / index / refs / git_dir 定位。
 //!
 //! 独立监听该单元的 git 目录（非递归），绕过 git 忽略过滤（该过滤会丢弃 .git 内事件）：
 //! - HEAD：分支切换（checkout 改写 HEAD）；

@@ -11,14 +11,14 @@
 2. 该行位于某个 **`async fn` 函数体**内 —— 同步函数体内调用同步核心是本分
    （例如 `operations/worktree.rs::normalized_worktree`，它的调用方在阻塞池里等它）；
 3. **不在阻塞池包装内**：`spawn_blocking(...)` / `run_blocking(...)` / `run_blocking_result(...)`
-   的括号区间内一律豁免（`spawn_blocking(move || RepoRef::resolve(..))` 正是正确写法）。
+   的括号区间内一律豁免（`spawn_blocking(move || WorkspaceRef::resolve(..))` 正是正确写法）。
    三个包装名缺一不可：`run_blocking_result` 是本仓命令层的主力形态（`library/skill/commands.rs`
    51 处、`library/mcp/commands.rs` 28 处都在扫描集内），漏识别会让池内合法调用集体变成误报。
 
 | 禁止（同步核心） | 必须改用（异步入口） |
 | --- | --- |
-| `UnitPath::resolve(` | `UnitPath::resolve_async(...).await` |
-| `RepoRef::resolve(` | `AppStateWrapper::resolve_repo(...).await` |
+| `CheckoutPath::resolve(` | `CheckoutPath::resolve_async(...).await` |
+| `WorkspaceRef::resolve(` | `AppStateWrapper::resolve_workspace(...).await` |
 | `assert_git_repo(` | `assert_git_repo_async(...).await` |
 | `.open_repo(` | `.open_repo_async(...).await` |
 | `...git::(local::)?is_git_repo(` | `transport.is_git_repo(...).await` |
@@ -55,15 +55,15 @@ GUARD = Guard(
     red_lines=(3,),
     docs=".trellis/spec/backend/concurrency-guidelines.md",
     fix_hint=(
-        "改用对应异步入口：UnitPath::resolve_async(...).await / state.resolve_repo(...).await / "
+        "改用对应异步入口：CheckoutPath::resolve_async(...).await / state.resolve_workspace(...).await / "
         "assert_git_repo_async(...).await / transport.open_repo_async(...).await / "
         "transport.is_git_repo(...).await；若该段必须同步执行，就把它包进 spawn_blocking"
     ),
 )
 
 FORBIDDEN = (
-    (re.compile(r"\bUnitPath::resolve\s*\("), "UnitPath::resolve_async(...).await"),
-    (re.compile(r"\bRepoRef::resolve\s*\("), "AppStateWrapper::resolve_repo(...).await"),
+    (re.compile(r"\bCheckoutPath::resolve\s*\("), "CheckoutPath::resolve_async(...).await"),
+    (re.compile(r"\bWorkspaceRef::resolve\s*\("), "AppStateWrapper::resolve_workspace(...).await"),
     (re.compile(r"\bassert_git_repo\s*\("), "assert_git_repo_async(...).await"),
     (re.compile(r"\.open_repo\s*\("), ".open_repo_async(...).await"),
     (

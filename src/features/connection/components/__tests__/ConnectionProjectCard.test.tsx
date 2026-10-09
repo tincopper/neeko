@@ -4,19 +4,19 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import ConnectionProjectCard from '@/features/connection/components/ConnectionProjectCard';
 import { useGitStore } from '@/shared/store/gitStore';
 import { useProjectStore } from '@/shared/store/projectStore';
-import { useWorktreeStore } from '@/shared/store/worktreeStore';
+import { useWorkspaceStore } from '@/shared/store/workspaceStore';
 import type { FileChange, GitStatusSnapshot, WSLProject } from '@/shared/types';
-import { repoKeyOf } from '@/shared/utils/repoRef';
+import { workspaceKeyOf } from '@/shared/utils/workspaceRef';
 import { invoke } from '@/testing/tauriCore';
 
-/** 某仓库单元的权威 status（主仓 worktree_path = null）。 */
+/** 某Workspace的权威 status（主仓 worktree_path = null）。 */
 function makeSnapshot(
   projectId: string,
   worktreePath: string | null,
   entries: FileChange[],
 ): GitStatusSnapshot {
   return {
-    repo_key: repoKeyOf(projectId, worktreePath),
+    workspace_key: workspaceKeyOf(projectId, worktreePath),
     version: 1,
     project_id: projectId,
     worktree_path: worktreePath,
@@ -53,7 +53,7 @@ function makeWslProject(overrides: Partial<WSLProject> = {}): WSLProject {
         },
       ],
       // 注意：GitInfo 不再有 changed_files / is_clean —— 未提交变更属于每个工作树，
-      // 经 projectStore.statuses[repoKeyOf(projectId, worktreePath)] 按单元投递。
+      // 经 projectStore.statuses[workspaceKeyOf(projectId, worktreePath)] 按单元投递。
     },
     ...overrides,
   };
@@ -64,7 +64,7 @@ describe('ConnectionProjectCard (WSL)', () => {
     vi.mocked(invoke).mockReset();
     vi.mocked(invoke).mockResolvedValue([]);
     // reset store（工作树单元状态只有 byProject 一份表示）
-    useWorktreeStore.setState({ byProject: {} });
+    useWorkspaceStore.setState({ byProject: {} });
     useProjectStore.setState({ statuses: {} });
     useGitStore.setState({
       aheadBehind: {},
@@ -147,10 +147,10 @@ describe('ConnectionProjectCard (WSL)', () => {
 
   it('active + 无 active worktree 时 local 行显示 ↑N（来自 store 的 aheadBehind）', async () => {
     const project = makeWslProject();
-    // 键 = 仓库单元身份（主仓单元）。旧键是 `wsl:Ubuntu:wsl-p1` —— 三个写入点各用一种
+    // 键 = Workspace身份（主仓单元）。旧键是 `wsl:Ubuntu:wsl-p1` —— 三个写入点各用一种
     // connectionId 约定，读侧拼不出写侧的键，徽标因此时有时无。
     useGitStore.setState({
-      aheadBehind: { [repoKeyOf(project.id, null)]: { ahead: 3, behind: 0 } },
+      aheadBehind: { [workspaceKeyOf(project.id, null)]: { ahead: 3, behind: 0 } },
     });
     render(
       <ConnectionProjectCard
@@ -172,12 +172,12 @@ describe('ConnectionProjectCard (WSL)', () => {
   it('active worktree 与 isActive 都成立时 local 行不显示 ↑N（显示的是该 worktree 的视图）', async () => {
     const project = makeWslProject();
     const wtPath = '/home/user/wts/feature-x';
-    useWorktreeStore.getState().setActiveWorktree(project.id, wtPath);
+    useWorkspaceStore.getState().setActiveWorkspace(project.id, wtPath);
     // 两个单元的键都给值：主仓的数字**不得**泄漏到 worktree 视图的 local 行上
     useGitStore.setState({
       aheadBehind: {
-        [repoKeyOf(project.id, null)]: { ahead: 3, behind: 0 },
-        [repoKeyOf(project.id, wtPath)]: { ahead: 9, behind: 0 },
+        [workspaceKeyOf(project.id, null)]: { ahead: 3, behind: 0 },
+        [workspaceKeyOf(project.id, wtPath)]: { ahead: 9, behind: 0 },
       },
     });
     render(
@@ -202,11 +202,11 @@ describe('ConnectionProjectCard (WSL)', () => {
    * worktree 行的条目来自按单元的状态命令；主仓单元在 store 里**没有**条目（未知）。
    * 断言 `+4` 只出现 **1 次**：若主仓行泄漏 worktree 条目，它会出现在两行里（=2）。
    */
-  it('worktree 单元的变更不泄漏到 local 主终端行（按 repo_key 分域）', async () => {
+  it('worktree 单元的变更不泄漏到 local 主终端行（按 workspace_key 分域）', async () => {
     const project = makeWslProject();
     const wtPath = '/home/user/wts/feature-x';
     vi.mocked(invoke).mockImplementation(async (cmd) =>
-      cmd === 'get_repo_status' ? makeSnapshot(project.id, wtPath, [MODIFIED]) : [],
+      cmd === 'get_workspace_status' ? makeSnapshot(project.id, wtPath, [MODIFIED]) : [],
     );
     render(
       <ConnectionProjectCard

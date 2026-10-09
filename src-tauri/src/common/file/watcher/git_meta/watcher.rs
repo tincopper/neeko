@@ -1,4 +1,4 @@
-//! git 元数据 watcher 组装：单个仓库单元的 notify watcher 创建与事件分类回调。
+//! git 元数据 watcher 组装：单个Workspace的 notify watcher 创建与事件分类回调。
 
 use super::classify::{classify_git_meta_event, GitMetaChange};
 use super::paths::GitMetaPaths;
@@ -9,7 +9,7 @@ use std::sync::{Arc, Mutex};
 /// Git 元数据 watcher 句柄。
 ///
 /// 只承担**保活**职责：drop 即释放该 watcher 及其监听。跨目录自愈补挂
-/// （`rearm_worktrees_if_needed`）已随身份补全退役 —— 每个仓库单元自带一条
+/// （`rearm_worktrees_if_needed`）已随身份补全退役 —— 每个Workspace自带一条
 /// git 元数据 watcher，不再需要由主仓代为监听别人的 HEAD / index / 工作目录。
 #[derive(Clone)]
 pub(in crate::common::file::watcher) struct GitMetaWatcherHandle {
@@ -36,14 +36,14 @@ pub(in crate::common::file::watcher) struct GitMetaWatcherHandle {
 /// 只告警，不影响 HEAD/index（各自独立）。
 #[allow(clippy::type_complexity)]
 pub(in crate::common::file::watcher) fn create_git_meta_watcher(
-    unit: String,
+    workspace: String,
     meta: &GitMetaPaths,
     on_index_changed: impl FnMut() + Send + 'static,
     on_head_changed: impl FnMut() + Send + 'static,
     on_refs_changed: impl FnMut() + Send + 'static,
 ) -> Option<GitMetaWatcherHandle> {
     create_git_meta_watcher_with(
-        unit,
+        workspace,
         meta,
         on_index_changed,
         on_head_changed,
@@ -60,7 +60,7 @@ pub(in crate::common::file::watcher) fn create_git_meta_watcher(
 /// 不存在的路径不报错），以真实 notify 断言失败会跨平台 flaky。注入后失败分支
 /// 可确定性验证（见测试 `create_git_meta_watcher_*_failure`）。
 pub(super) fn create_git_meta_watcher_with<W>(
-    unit: String,
+    workspace: String,
     meta: &GitMetaPaths,
     mut on_index_changed: impl FnMut() + Send + 'static,
     mut on_head_changed: impl FnMut() + Send + 'static,
@@ -74,7 +74,7 @@ where
     let index_path = meta.index.clone();
     let refs_dir = meta.refs_dir.clone();
     let packed_refs = meta.packed_refs.clone();
-    let unit_for_cb = unit.clone();
+    let unit_for_cb = workspace.clone();
     let result = RecommendedWatcher::new(
         move |result: Result<Event, notify::Error>| {
             let event = match result {
@@ -102,7 +102,11 @@ where
     let mut watcher = match result {
         Ok(w) => w,
         Err(e) => {
-            log::warn!("[Watcher:{}] create git meta watcher error: {}", unit, e);
+            log::warn!(
+                "[Watcher:{}] create git meta watcher error: {}",
+                workspace,
+                e
+            );
             return None;
         }
     };
@@ -111,7 +115,7 @@ where
     if let Err(e) = watch_fn(&mut watcher, &meta.git_dir, RecursiveMode::NonRecursive) {
         log::warn!(
             "[Watcher:{}] watch git meta dir error for {}: {}",
-            unit,
+            workspace,
             meta.git_dir.display(),
             e
         );
@@ -119,7 +123,7 @@ where
     }
     log::info!(
         "[Watcher:{}] Watching git meta dir {}",
-        unit,
+        workspace,
         meta.git_dir.display()
     );
 
@@ -130,12 +134,12 @@ where
         match watch_fn(&mut watcher, &meta.refs_dir, RecursiveMode::Recursive) {
             Ok(()) => log::info!(
                 "[Watcher:{}] Watching git refs dir {} (recursive)",
-                unit,
+                workspace,
                 meta.refs_dir.display()
             ),
             Err(e) => log::warn!(
                 "[Watcher:{}] watch git refs dir error for {}: {} (HEAD/index still active)",
-                unit,
+                workspace,
                 meta.refs_dir.display(),
                 e
             ),
@@ -149,12 +153,12 @@ where
             match watch_fn(&mut watcher, common_dir, RecursiveMode::NonRecursive) {
                 Ok(()) => log::info!(
                     "[Watcher:{}] Watching common git dir {} (non-recursive, packed-refs)",
-                    unit,
+                    workspace,
                     common_dir.display()
                 ),
                 Err(e) => log::warn!(
                     "[Watcher:{}] watch common git dir error for {}: {} (HEAD/index/refs still active)",
-                    unit,
+                    workspace,
                     common_dir.display(),
                     e
                 ),

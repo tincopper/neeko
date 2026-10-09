@@ -26,7 +26,7 @@ export {
 export { useProjectSelection } from './hooks/useProjectSelection';
 export { useCrossTypeSelection } from './hooks/useCrossTypeSelection';
 export { useWorktreeActions } from './hooks/useWorktreeActions';
-export { useWorktreeState, type WorktreeItem } from './hooks/useWorktreeState';
+export { useWorkspaceState, type CheckoutEntry } from './hooks/useWorkspaceState';
 export { useActiveProject } from './hooks/use-active-project';
 export { useConnectionProjects } from './hooks/useConnectionProjects';
 export { useProjectActions } from './hooks/useProjectActions';

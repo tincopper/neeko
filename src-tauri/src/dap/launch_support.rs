@@ -9,32 +9,32 @@ use std::future::Future;
 use crate::common::executor::factory::ExecTarget;
 use crate::AppError;
 
-/// Validate the build working directory against the **execution unit root**:
-/// Local → canonicalize + containment in the unit root (blocking FS isolated via
+/// Validate the build working directory against the **workspace root**:
+/// Local → canonicalize + containment in the workspace root (blocking FS isolated via
 /// spawn_blocking); remote → lexical NUL rejection only.
 ///
-/// `unit_root` 是调用方经 `project_context::ExecUnit::root` 得到的**单元根**
+/// `workspace_root` 是调用方经 `project_context::ExecWorkspace::root` 得到的**单元根**
 /// （主仓 = 项目根；linked worktree = worktree 根）。传入项目根会让默认路径
 /// `~/.neeko/worktrees/<name>` 下的调试构建被误拒 —— 那不是「越界」，是基准选错。
 pub(crate) async fn resolve_build_dir(
     target: &ExecTarget,
-    unit_root: &str,
+    workspace_root: &str,
     cwd: &str,
 ) -> Result<String, AppError> {
     match target {
         ExecTarget::Local => {
-            let root = unit_root.to_string();
+            let root = workspace_root.to_string();
             let cwd = cwd.to_string();
             tokio::task::spawn_blocking(move || {
                 let canonical_root = std::path::Path::new(&root).canonicalize().map_err(|e| {
-                    AppError::InvalidInput(format!("invalid unit root `{root}`: {e}"))
+                    AppError::InvalidInput(format!("invalid workspace root `{root}`: {e}"))
                 })?;
                 let canonical = std::path::Path::new(&cwd).canonicalize().map_err(|_| {
                     AppError::InvalidInput(format!("build cwd not found or inaccessible: {cwd}"))
                 })?;
                 if !canonical.starts_with(&canonical_root) {
                     return Err(AppError::InvalidInput(
-                        "build cwd is outside the execution unit root".into(),
+                        "build cwd is outside the workspace root".into(),
                     ));
                 }
                 Ok(canonical.to_string_lossy().to_string())
@@ -203,7 +203,7 @@ mod tests {
     /// worktree 根在项目根**之外**（默认 `~/.neeko/worktrees/<name>`）时，
     /// 以单元根为基准的校验必须放行 —— 这是本任务修复的核心症状（S1）。
     #[tokio::test]
-    async fn resolve_build_dir_accepts_cwd_inside_unit_root_outside_project_root() {
+    async fn resolve_build_dir_accepts_cwd_inside_workspace_root_outside_project_root() {
         let tmp = tempfile::tempdir().expect("tempdir");
         let project_root = tmp.path().join("proj");
         let worktree_root = tmp.path().join("worktrees").join("fix-1");
@@ -218,13 +218,13 @@ mod tests {
             &module_dir.to_string_lossy(),
         )
         .await
-        .expect("cwd inside unit root must be accepted");
+        .expect("cwd inside workspace root must be accepted");
         assert_eq!(dir, module_dir.canonicalize().unwrap().to_string_lossy());
     }
 
     /// 越出单元根仍必须拒绝（fail-closed）；错误文案不得再声称项目根。
     #[tokio::test]
-    async fn resolve_build_dir_rejects_cwd_outside_unit_root() {
+    async fn resolve_build_dir_rejects_cwd_outside_workspace_root() {
         let tmp = tempfile::tempdir().expect("tempdir");
         let worktree_root = tmp.path().join("worktrees").join("fix-1");
         let outside = tmp.path().join("elsewhere");
@@ -237,10 +237,10 @@ mod tests {
             &outside.to_string_lossy(),
         )
         .await
-        .expect_err("cwd outside unit root must be rejected");
+        .expect_err("cwd outside workspace root must be rejected");
         assert!(
-            err.to_string().contains("execution unit root"),
-            "expected unit-root error, got: {err}"
+            err.to_string().contains("workspace root"),
+            "expected workspace-root error, got: {err}"
         );
     }
 

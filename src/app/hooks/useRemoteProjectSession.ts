@@ -20,7 +20,7 @@ export interface RemoteProjectProp {
 interface UseRemoteProjectSessionParams {
   activeProject: Project | null;
   remoteAuthStore: Map<string, AuthMethod>;
-  activeRemoteWorktreePath: string | null;
+  activeRemoteCheckoutPath: string | null;
   setRemoteOpenSessions: (updater: (prev: Set<string>) => Set<string>) => void;
   setPendingAuthEntry: React.Dispatch<React.SetStateAction<RemoteEntrySession | null>>;
 }
@@ -28,12 +28,12 @@ interface UseRemoteProjectSessionParams {
 /**
  * 远程项目会话派生逻辑：是否需要鉴权、供给 EditorGroupLayout 的 remoteProject、
  * 以及「输入凭据」动作。
- * 从 ProjectWorkspace 抽出，集中 Remote 环境判断与 store 查询。
+ * 从 ProjectView 抽出，集中 Remote 环境判断与 store 查询。
  */
 export function useRemoteProjectSession({
   activeProject,
   remoteAuthStore,
-  activeRemoteWorktreePath,
+  activeRemoteCheckoutPath,
   setRemoteOpenSessions,
   setPendingAuthEntry,
 }: UseRemoteProjectSessionParams): {
@@ -64,9 +64,9 @@ export function useRemoteProjectSession({
     if (!entry) return null;
     const auth = remoteAuthStore.get(entry.id);
     if (!auth) return null;
-    const projectPath = activeRemoteWorktreePath ?? activeProject.path;
-    const cacheKeySuffix = activeRemoteWorktreePath
-      ? `:wt:${btoa(activeRemoteWorktreePath).replace(/=/g, '')}`
+    const projectPath = activeRemoteCheckoutPath ?? activeProject.path;
+    const cacheKeySuffix = activeRemoteCheckoutPath
+      ? `:wt:${btoa(activeRemoteCheckoutPath).replace(/=/g, '')}`
       : '';
     return {
       entryId: entry.id,
@@ -80,7 +80,7 @@ export function useRemoteProjectSession({
       cacheKeySuffix,
       onSessionReady: onRemoteSessionReady,
     };
-  }, [activeProject, remoteAuthStore, activeRemoteWorktreePath, onRemoteSessionReady]);
+  }, [activeProject, remoteAuthStore, activeRemoteCheckoutPath, onRemoteSessionReady]);
 
   const handleEnterCredentials = useCallback(() => {
     const p = useProjectStore.getState().activeProject;

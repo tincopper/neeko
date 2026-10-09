@@ -2,7 +2,7 @@ import { useMemo } from 'react';
 
 import { useAppContext, useEditorContext } from '@/shared/contexts';
 import { useProjectStore } from '@/shared/store/projectStore';
-import { useActiveWorktreePath } from '@/shared/store/worktreeStore';
+import { useActiveCheckoutPath } from '@/shared/store/workspaceStore';
 import { resolveTabKey } from '@/shared/utils/tabKey';
 
 import { createTerminalSession, resizeTerminal, closeTerminalSession } from '../api/terminalApi';
@@ -25,14 +25,14 @@ import { createTerminalStrategy } from './factory';
 export function useLocalTerminalStrategy(paneId: string, worktreePathOverride?: string) {
   const { config, showToast } = useAppContext();
   const activeProject = useProjectStore((s) => s.activeProject);
-  const activeWorktreePath = useActiveWorktreePath();
+  const activeCheckoutPath = useActiveCheckoutPath();
   const { activeTabId } = useEditorContext();
 
   return useMemo(() => {
     const projectId = activeProject?.id ?? null;
     if (!projectId) return null;
 
-    const effWorktreePath = worktreePathOverride ?? activeWorktreePath;
+    const effWorktreePath = worktreePathOverride ?? activeCheckoutPath;
     const isWorktree = Boolean(effWorktreePath);
     const projectPath = effWorktreePath ?? activeProject?.path ?? null;
     const cacheKey = projectId
@@ -82,7 +82,7 @@ export function useLocalTerminalStrategy(paneId: string, worktreePathOverride?: 
     });
   }, [
     activeProject,
-    activeWorktreePath,
+    activeCheckoutPath,
     worktreePathOverride,
     paneId,
     activeTabId,

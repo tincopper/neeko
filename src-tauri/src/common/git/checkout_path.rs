@@ -1,8 +1,8 @@
-//! 仓库单元路径：**一个值，两个渲染**（identity / exec）。
+//! Workspace路径：**一个值，两个渲染**（identity / exec）。
 //!
 //! # 契约（φ 的唯一定义）
 //!
-//! `RepoRef::key()` 承诺「同一仓库单元 → 同一字节串」。这要求存在函数 φ 满足：
+//! `WorkspaceRef::key()` 承诺「同一Workspace → 同一字节串」。这要求存在函数 φ 满足：
 //!
 //! - **I1 写法无关**：a、b 指同一文件系统对象 ⟹ φ(a) = φ(b)
 //! - **I2 区分性**：不同对象 ⟹ 不同串（因此**不**做大小写折叠、**不**做 Unicode 归一 ——
@@ -26,8 +26,8 @@
 //!
 //! | 渲染 | 形态 | 消费者 |
 //! |------|------|--------|
-//! | [`UnitPath::identity`] | **平台无关字母表**：`/` 分隔、无 `\\?\`/`\\.\` 前缀、盘符 ASCII 大写、UNC → `//server/share/…`、无尾分隔符 | `RepoRef::key()` / `worktree_path()`、IPC `Worktree.path`、`canonical_worktree_path` 命令、watcher·diff·status 槽位、前端 `RepoKey` |
-//! | [`UnitPath::exec`] | **宿主形态**（与本次改造前逐字相同） | git argv、`std::fs`、notify 根、`strip_prefix`、gitignore `same_root`、缓存键前缀、`file/commands.rs::resolve_base` |
+//! | [`CheckoutPath::identity`] | **平台无关字母表**：`/` 分隔、无 `\\?\`/`\\.\` 前缀、盘符 ASCII 大写、UNC → `//server/share/…`、无尾分隔符 | `WorkspaceRef::key()` / `worktree_path()`、IPC `Worktree.path`、`canonical_worktree_path` 命令、watcher·diff·status 槽位、前端 `WorkspaceKey` |
+//! | [`CheckoutPath::exec`] | **宿主形态**（与本次改造前逐字相同） | git argv、`std::fs`、notify 根、`strip_prefix`、gitignore `same_root`、缓存键前缀、`file/commands.rs::resolve_base` |
 //!
 //! 两个渲染允许不同：不存在路径的 `exec` 是「将要被创建的字节」（调用者的拼写，语义正确），
 //! `identity` 是「对象的等价类」（必须锚定到已存在祖先）。这不是权宜 —— 是角色的语义差异。
@@ -46,15 +46,15 @@ use crate::common::executor::factory::ExecTarget;
 use crate::common::git::path_guard;
 use crate::platform::path_identity;
 
-/// 仓库单元路径：一个值，两个渲染。相等 / 定序 / 哈希一律按 [`Self::identity`]（红线 12：
+/// Workspace路径：一个值，两个渲染。相等 / 定序 / 哈希一律按 [`Self::identity`]（红线 12：
 /// 同一对象一个等价类）。
 #[derive(Debug, Clone)]
-pub struct UnitPath {
+pub struct CheckoutPath {
     identity: String,
     exec: String,
 }
 
-impl UnitPath {
+impl CheckoutPath {
     /// 归一化并校验一个 worktree / 项目根绝对路径。
     ///
     /// **阻塞**（`exists` / `canonicalize` 是同步 fs）：异步上下文请用
@@ -97,7 +97,7 @@ impl UnitPath {
             .map_err(|e| anyhow!("worktree path resolution task failed: {e}"))?
     }
 
-    /// 身份渲染（**平台无关字母表**）：跨端契约，前端 `RepoKey` 与后端所有槽位都用它。
+    /// 身份渲染（**平台无关字母表**）：跨端契约，前端 `WorkspaceKey` 与后端所有槽位都用它。
     #[must_use]
     pub fn identity(&self) -> &str {
         &self.identity
@@ -139,33 +139,33 @@ impl UnitPath {
     }
 }
 
-impl PartialEq for UnitPath {
+impl PartialEq for CheckoutPath {
     fn eq(&self, other: &Self) -> bool {
         self.identity == other.identity
     }
 }
 
-impl Eq for UnitPath {}
+impl Eq for CheckoutPath {}
 
-impl std::hash::Hash for UnitPath {
+impl std::hash::Hash for CheckoutPath {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         self.identity.hash(state);
     }
 }
 
-impl PartialOrd for UnitPath {
+impl PartialOrd for CheckoutPath {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
         Some(self.cmp(other))
     }
 }
 
-impl Ord for UnitPath {
+impl Ord for CheckoutPath {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
         self.identity.cmp(&other.identity)
     }
 }
 
-impl std::fmt::Display for UnitPath {
+impl std::fmt::Display for CheckoutPath {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str(&self.identity)
     }
@@ -259,7 +259,7 @@ mod tests {
         let (_d, root) = fixture("wt");
         std::fs::create_dir_all(&root).unwrap();
         let base = root.to_string_lossy().to_string();
-        let expected = UnitPath::resolve(&local(), &base).unwrap();
+        let expected = CheckoutPath::resolve(&local(), &base).unwrap();
         let sep = std::path::MAIN_SEPARATOR;
 
         for spelling in [
@@ -269,7 +269,7 @@ mod tests {
             format!("{base}/./"),         // 宿主外分隔符写法
             format!("{base}{sep}.{sep}./"),
         ] {
-            let got = UnitPath::resolve(&local(), &spelling).unwrap();
+            let got = CheckoutPath::resolve(&local(), &spelling).unwrap();
             assert_eq!(
                 got.identity(),
                 expected.identity(),
@@ -288,8 +288,8 @@ mod tests {
         #[cfg(windows)]
         std::os::windows::fs::symlink_dir(&real, &link).unwrap();
 
-        let via_link = UnitPath::resolve(&local(), &link.to_string_lossy()).unwrap();
-        let via_real = UnitPath::resolve(&local(), &real.to_string_lossy()).unwrap();
+        let via_link = CheckoutPath::resolve(&local(), &link.to_string_lossy()).unwrap();
+        let via_real = CheckoutPath::resolve(&local(), &real.to_string_lossy()).unwrap();
         assert_eq!(
             via_link.identity(),
             via_real.identity(),
@@ -306,9 +306,9 @@ mod tests {
         let (_d, missing) = fixture("new-wt");
         let input = format!("{}{}", missing.to_string_lossy(), std::path::MAIN_SEPARATOR);
 
-        let before = UnitPath::resolve(&local(), &input).unwrap();
+        let before = CheckoutPath::resolve(&local(), &input).unwrap();
         std::fs::create_dir_all(&missing).unwrap();
-        let after = UnitPath::resolve(&local(), &missing.to_string_lossy()).unwrap();
+        let after = CheckoutPath::resolve(&local(), &missing.to_string_lossy()).unwrap();
 
         assert_eq!(
             before.identity(),
@@ -323,7 +323,7 @@ mod tests {
     fn exec_and_identity_refer_to_the_same_object() {
         let (_d, root) = fixture("wt");
         std::fs::create_dir_all(&root).unwrap();
-        let resolved = UnitPath::resolve(&local(), &root.to_string_lossy()).unwrap();
+        let resolved = CheckoutPath::resolve(&local(), &root.to_string_lossy()).unwrap();
 
         let canon = |s: &str| std::fs::canonicalize(s).unwrap();
         assert_eq!(
@@ -339,7 +339,7 @@ mod tests {
     fn identity_carries_no_host_separators_nor_verbatim_prefix() {
         let (_d, root) = fixture("a b/wt");
         std::fs::create_dir_all(&root).unwrap();
-        let resolved = UnitPath::resolve(&local(), &root.to_string_lossy()).unwrap();
+        let resolved = CheckoutPath::resolve(&local(), &root.to_string_lossy()).unwrap();
 
         assert!(
             !resolved.identity().contains('\\'),
@@ -360,7 +360,7 @@ mod tests {
         // 只有尾分隔符按词法归一去。
         let (_d, missing) = fixture("new-wt");
         let input = format!("{}{}", missing.to_string_lossy(), std::path::MAIN_SEPARATOR);
-        let resolved = UnitPath::resolve(&local(), &input).unwrap();
+        let resolved = CheckoutPath::resolve(&local(), &input).unwrap();
         assert_eq!(resolved.exec(), missing.to_string_lossy());
     }
 
@@ -370,28 +370,28 @@ mod tests {
         // Windows 上这一条同时钉住 `\\?\` 前缀仍在 exec 里（长路径支持不退化）。
         let (_d, root) = fixture("wt");
         std::fs::create_dir_all(&root).unwrap();
-        let resolved = UnitPath::resolve(&local(), &root.to_string_lossy()).unwrap();
+        let resolved = CheckoutPath::resolve(&local(), &root.to_string_lossy()).unwrap();
         assert_eq!(
             resolved.exec(),
             root.canonicalize().unwrap().to_string_lossy()
         );
     }
 
-    /// **回传不变量**：前端把 identity 原样回传当路径参数（`RepoKey` → `worktreePath`），
+    /// **回传不变量**：前端把 identity 原样回传当路径参数（`WorkspaceKey` → `worktreePath`），
     /// 后端必须收敛到同一身份 —— 否则每过一次 IPC 就多一种形态。
     #[test]
     fn identity_is_idempotent_when_fed_back() {
         let (_d, root) = fixture("wt");
         std::fs::create_dir_all(&root).unwrap();
-        let first = UnitPath::resolve(&local(), &root.to_string_lossy()).unwrap();
-        let again = UnitPath::resolve(&local(), first.identity()).unwrap();
+        let first = CheckoutPath::resolve(&local(), &root.to_string_lossy()).unwrap();
+        let again = CheckoutPath::resolve(&local(), first.identity()).unwrap();
         assert_eq!(again.identity(), first.identity());
         assert_eq!(again.exec(), first.exec());
 
         // 不存在的路径同样必须收敛（create/rename 的预览路径会经 IPC 往返）
         let (_d2, missing) = fixture("new-wt");
-        let before = UnitPath::resolve(&local(), &missing.to_string_lossy()).unwrap();
-        let round_trip = UnitPath::resolve(&local(), before.identity()).unwrap();
+        let before = CheckoutPath::resolve(&local(), &missing.to_string_lossy()).unwrap();
+        let round_trip = CheckoutPath::resolve(&local(), before.identity()).unwrap();
         assert_eq!(round_trip.identity(), before.identity());
     }
 
@@ -399,8 +399,8 @@ mod tests {
     #[test]
     fn relative_missing_path_without_any_existing_ancestor_is_stable() {
         let raw = "neeko-definitely-missing-path/wt";
-        let first = UnitPath::resolve(&local(), raw).unwrap();
-        let second = UnitPath::resolve(&local(), raw).unwrap();
+        let first = CheckoutPath::resolve(&local(), raw).unwrap();
+        let second = CheckoutPath::resolve(&local(), raw).unwrap();
         assert!(!first.identity().is_empty());
         assert_eq!(first.identity(), second.identity());
     }
@@ -422,7 +422,7 @@ mod tests {
         let link = dir.path().join("link-utf8");
         std::os::unix::fs::symlink(&target, &link).unwrap();
 
-        let err = UnitPath::resolve(&local(), link.to_str().unwrap()).unwrap_err();
+        let err = CheckoutPath::resolve(&local(), link.to_str().unwrap()).unwrap_err();
         assert!(
             err.to_string().contains("not UTF-8"),
             "必须拒绝而非产出 U+FFFD 身份，got: {err}"
@@ -434,26 +434,29 @@ mod tests {
     #[test]
     fn remote_identity_is_posix_and_host_independent() {
         for target in [&ssh(), &wsl()] {
-            let resolved = UnitPath::resolve(target, "/home/user/proj/.worktrees/dev").unwrap();
+            let resolved = CheckoutPath::resolve(target, "/home/user/proj/.worktrees/dev").unwrap();
             assert_eq!(resolved.identity(), "/home/user/proj/.worktrees/dev");
             assert_eq!(resolved.exec(), resolved.identity());
 
             assert_eq!(
-                UnitPath::resolve(target, "/home/user/proj/./x/")
+                CheckoutPath::resolve(target, "/home/user/proj/./x/")
                     .unwrap()
                     .identity(),
                 "/home/user/proj/x"
             );
             // 相对形态保留相对性（远端 worktree 路径允许相对写法）
             assert_eq!(
-                UnitPath::resolve(target, "sub/wt/").unwrap().identity(),
+                CheckoutPath::resolve(target, "sub/wt/").unwrap().identity(),
                 "sub/wt"
             );
             // 根仍是根（不塌成空串 —— 空串与「没传路径」同形）
-            assert_eq!(UnitPath::resolve(target, "/./").unwrap().identity(), "/");
+            assert_eq!(
+                CheckoutPath::resolve(target, "/./").unwrap().identity(),
+                "/"
+            );
             // 反斜杠是 POSIX 的合法文件名字符：Windows 宿主上也不得改写
             assert_eq!(
-                UnitPath::resolve(target, r"/home/u/a\b")
+                CheckoutPath::resolve(target, r"/home/u/a\b")
                     .unwrap()
                     .identity(),
                 r"/home/u/a\b"
@@ -466,8 +469,8 @@ mod tests {
     #[test]
     fn traversal_and_nul_are_rejected_for_every_target() {
         for target in [&local(), &ssh(), &wsl()] {
-            assert!(UnitPath::resolve(target, "/repo/../evil").is_err());
-            assert!(UnitPath::resolve(target, "a\0b").is_err());
+            assert!(CheckoutPath::resolve(target, "/repo/../evil").is_err());
+            assert!(CheckoutPath::resolve(target, "a\0b").is_err());
         }
     }
 
@@ -480,13 +483,13 @@ mod tests {
         std::fs::create_dir_all(&root).unwrap();
         let raw = root.to_string_lossy().to_string();
 
-        let sync = UnitPath::resolve(&local(), &raw).unwrap();
-        let via_task = UnitPath::resolve_async(&local(), &raw).await.unwrap();
+        let sync = CheckoutPath::resolve(&local(), &raw).unwrap();
+        let via_task = CheckoutPath::resolve_async(&local(), &raw).await.unwrap();
         assert_eq!(via_task.identity(), sync.identity());
         assert_eq!(via_task.exec(), sync.exec());
 
         // 拒绝路径：错误类型与信息不得被 `JoinError` 覆盖
-        let err = UnitPath::resolve_async(&local(), "/repo/../evil")
+        let err = CheckoutPath::resolve_async(&local(), "/repo/../evil")
             .await
             .unwrap_err();
         assert!(err.to_string().contains(".."), "got: {err}");

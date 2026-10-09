@@ -2,7 +2,7 @@ import { useCallback } from 'react';
 
 import { useEditorStore } from '@/shared/store/editorStore';
 import { useProjectStore } from '@/shared/store/projectStore';
-import { selectActiveWorktreePath, useWorktreeStore } from '@/shared/store/worktreeStore';
+import { selectActiveCheckoutPath, useWorkspaceStore } from '@/shared/store/workspaceStore';
 import { reportFrontendError } from '@/shared/utils/errorReporting';
 import { isActiveWorktree } from '@/shared/utils/git';
 
@@ -10,32 +10,32 @@ import { loadOnboardingState } from '../api/onboardingApi';
 import { setActiveProject, setViewTerminal } from '../api/projectApi';
 
 interface UseWorktreeActionsParams {
-  /** 激活某仓库单元（`null` = 主仓）。只写激活态，后端挂载由 useActiveRepoUnitSync 跟随。 */
-  activateWorktree: (projectId: string, path: string | null, branch?: string) => void;
+  /** 激活某Workspace（`null` = 主仓）。只写激活态，后端挂载由 useActiveWorkspaceSync 跟随。 */
+  activateWorkspace: (projectId: string, path: string | null, branch?: string) => void;
   /** 记入「打开过的工作树」清单。 */
-  markWorktreeOpened: (projectId: string, path: string, branch: string) => void;
+  markWorkspaceOpened: (projectId: string, path: string, branch: string) => void;
   saveWorktreeState: (projectId: string, wtPath: string | null) => void;
 }
 
 export function useWorktreeActions({
-  activateWorktree,
-  markWorktreeOpened,
+  activateWorkspace,
+  markWorkspaceOpened,
   saveWorktreeState,
 }: UseWorktreeActionsParams) {
   const activeProjectId = useProjectStore((s) => s.activeProjectId);
 
   const handleBackToMainTerminal = useCallback(
     (projectId: string) => {
-      const path = selectActiveWorktreePath(useWorktreeStore.getState(), projectId);
+      const path = selectActiveCheckoutPath(useWorkspaceStore.getState(), projectId);
       if (isActiveWorktree(path)) {
-        activateWorktree(projectId, null, '');
+        activateWorkspace(projectId, null, '');
         saveWorktreeState(projectId, null);
         setViewTerminal(projectId).catch((err) =>
           reportFrontendError('project.setViewTerminal', err),
         );
       }
     },
-    [activateWorktree, saveWorktreeState],
+    [activateWorkspace, saveWorktreeState],
   );
 
   const handleOpenWorktreeTerminal = useCallback(
@@ -60,8 +60,8 @@ export function useWorktreeActions({
 
       // mutator 显式收目标项目：上面的 setState 不会让渲染期闭包重新绑定，
       // 靠闭包里的 activeProjectId 会把激活态写进切换前的旧项目（跨项目串写）。
-      activateWorktree(projectId, worktreePath, branch);
-      markWorktreeOpened(projectId, worktreePath, branch);
+      activateWorkspace(projectId, worktreePath, branch);
+      markWorkspaceOpened(projectId, worktreePath, branch);
       saveWorktreeState(projectId, worktreePath);
 
       if (!isFirstVisit) {
@@ -70,7 +70,7 @@ export function useWorktreeActions({
         );
       }
     },
-    [activeProjectId, activateWorktree, markWorktreeOpened, saveWorktreeState],
+    [activeProjectId, activateWorkspace, markWorkspaceOpened, saveWorktreeState],
   );
 
   return {

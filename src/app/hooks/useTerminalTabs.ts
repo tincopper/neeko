@@ -7,7 +7,7 @@ const MAX_TERMINAL_TABS = 10;
 
 /**
  * 工作区终端 Tab 创建：普通终端 + 指定 agent 的终端。
- * 从 ProjectWorkspace 抽出，集中终端 Tab 的构造与激活。
+ * 从 ProjectView 抽出，集中终端 Tab 的构造与激活。
  */
 export function useTerminalTabs(
   tabKey: string | null,

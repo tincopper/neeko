@@ -25,9 +25,9 @@
 |------|------|------|
 | I/O | `ssh-io-{id[..8]}` | 运行独立的 `tokio::runtime::Runtime`，通过 `tokio::select!` 多路复用输入/输出/调整大小 |
 
-### 每个已挂载仓库单元：文件监视线程（git 单元另加 status 生产者）
+### 每个已挂载Workspace：文件监视线程（git 单元另加 status 生产者）
 
-粒度是**仓库单元**（`RepoRef::key()`），不是 project —— 一个 project 有 1 + N 个单元
+粒度是**Workspace**（`WorkspaceRef::key()`），不是 project —— 一个 project 有 1 + N 个单元
 （linked worktree 各有一套 HEAD / index / workdir）。
 
 - 文件监听：由 `notify` crate 的 debouncer 管理 —— 1 个防抖线程 + 1 个轮询线程（10 秒间隔）；
@@ -128,13 +128,13 @@ stop.store(true, Ordering::Relaxed);
 
 **契约**（`common/file/watcher/`）：
 
-1. **单一强所有者**：`WatcherHandle` 聚合**该仓库单元**全部运行资源（watcher / 线程 / 发送端），
+1. **单一强所有者**：`WatcherHandle` 聚合**该Workspace**全部运行资源（watcher / 线程 / 发送端），
    drop 即释放。后台辅助线程（maintenance）一律持 `Weak`：每条消息 `upgrade()`，失败即
    `break`——「所有者已释放 ⇒ 无需再维护」，**复用既有的断开即退出语义，不新造停机协议**。
-2. **入口幂等**：`watch()` 遇同 key 已注册 → `log::warn!` 直接返回。**key 的粒度是仓库单元
-   （`RepoRef::key()`），不是 project** —— 一个 project 有 1 + N 个单元（linked worktree 的
+2. **入口幂等**：`watch()` 遇同 key 已注册 → `log::warn!` 直接返回。**key 的粒度是Workspace
+   （`WorkspaceRef::key()`），不是 project** —— 一个 project 有 1 + N 个单元（linked worktree 的
    HEAD / index / workdir 各自独立），按 project 幂等会把 worktree 的挂载判成「已注册」而
-   整块跳过（`common/git/repo_ref.rs`，详版 `git-domain.md` §12）。重复注册会**翻倍投递事件
+   整块跳过（`common/git/workspace_ref.rs`，详版 `git-domain.md` §12）。重复注册会**翻倍投递事件
    并再泄漏一套线程**，不变量必须在所有者入口强制，而非依赖调用方自觉。
 3. **挂载临界区原子化**：`release_except` + `watch` 这一对必须由 `mount_only(repo, sink)` 在
    **同一个临界区**内完成（`mount_lock: Arc<Mutex<()>>`）。单线程下「先释放再挂载」看起来等价，
@@ -312,11 +312,11 @@ pub fn close_terminal_session(session_id: String, state: State<AppStateWrapper>)
 
 ### 1. Scope / Trigger
 
-- Trigger：命令入口把「项目 + worktree 路径」解析成仓库单元身份时会走 `exists` / `canonicalize`
+- Trigger：命令入口把「项目 + worktree 路径」解析成Workspace身份时会走 `exists` / `canonicalize`
   （同步阻塞 fs）。网络盘 / 无响应挂载点上单次调用可阻塞到秒级，而这条路径位于**每次
   git / file 命令的入口** ⇒ 同一 worker 承载的 PTY 输出、watcher 事件与 IPC 全部停摆。
-- Scope：`AppStateWrapper::resolve_repo`（29 处调用点）、`file/commands.rs::resolve_base`（8 处）、
-  命令层直连的 `UnitPath::resolve`（6 处）、`file/commands.rs::read_dir_tree` 的单元身份解析（1 处）、
+- Scope：`AppStateWrapper::resolve_workspace`（29 处调用点）、`file/commands.rs::resolve_base`（8 处）、
+  命令层直连的 `CheckoutPath::resolve`（6 处）、`file/commands.rs::read_dir_tree` 的单元身份解析（1 处）、
   `common/git/operations/info.rs::get_git_branch_info_shell` 的清单逐条归一（1 份清单）；
   以及**仓库打开 / 校验**这一类（2026-10-02 补齐）：`transport.open_repo`（git2 `Repository::open`）、
   `local::assert_git_repo`、`is_git_repo` 的 Local 分支。
@@ -328,10 +328,10 @@ pub fn close_terminal_session(session_id: String, state: State<AppStateWrapper>)
 
 ```rust
 // 领域原语（同步、纯 + fs）：单元测试与「已在阻塞池内」的代码用
-pub fn resolve(target: &ExecTarget, raw: &str) -> Result<UnitPath>;
+pub fn resolve(target: &ExecTarget, raw: &str) -> Result<CheckoutPath>;
 
 // 唯一异步入口：把 fs 调用隔离到阻塞池
-pub async fn resolve_async(target: &ExecTarget, raw: &str) -> Result<UnitPath>;
+pub async fn resolve_async(target: &ExecTarget, raw: &str) -> Result<CheckoutPath>;
 
 // 仓库打开 / 校验同构：同步核心 + 异步入口成对提供（同步核心只给「已在池内」的调用方）
 fn open_repo(&self, path: &str) -> Option<git2::Repository>;              // 池内
@@ -340,19 +340,19 @@ pub fn assert_git_repo(path: &Path) -> Result<()>;                        // 池
 pub async fn assert_git_repo_async(path: &str) -> Result<()>;
 
 // 域级入口（async，各自只包一次 spawn_blocking）
-pub async fn resolve_repo(&self, project_id: &str, worktree_path: Option<&str>)
-    -> Result<(ExecTarget, RepoRef), AppError>;                       // app_state.rs
+pub async fn resolve_workspace(&self, project_id: &str, worktree_path: Option<&str>)
+    -> Result<(ExecTarget, WorkspaceRef), AppError>;                       // app_state.rs
 async fn resolve_base(target: &ExecTarget, root_path: Option<&str>, wd: &str)
     -> Result<String, AppError>;                                      // file/commands.rs
 ```
 
 ### 3. Contracts
 
-1. 命令层（`#[tauri::command] async fn`）只允许经 `resolve_async` / `resolve_repo` / `resolve_base`
-   触达路径归一，**禁止**直接调同步的 `UnitPath::resolve` / `RepoRef::resolve`。
+1. 命令层（`#[tauri::command] async fn`）只允许经 `resolve_async` / `resolve_workspace` / `resolve_base`
+   触达路径归一，**禁止**直接调同步的 `CheckoutPath::resolve` / `WorkspaceRef::resolve`。
 2. 领域原语保持同步：要能在 `#[cfg(test)]` 里无运行时直接跑，也要能被已在阻塞池内的代码复用
    （把领域模型改成 async 会把 async 传染给全部测试与调用方）。
-3. `resolve_repo` 用**一次** `spawn_blocking` 包住「项目根 + worktree」两次解析：一次 hop，
+3. `resolve_workspace` 用**一次** `spawn_blocking` 包住「项目根 + worktree」两次解析：一次 hop，
    且两次解析共用同一时刻的 fs 视图。
 4. 错误两级穿透：闭包内的领域错误（`..` / NUL / 非 UTF-8 / `canonicalize` 失败）逐字保留；
    只有 `JoinError`（阻塞池 panic / 运行时关停）才映射为 `AppError::Unknown`。
@@ -362,7 +362,7 @@ async fn resolve_base(target: &ExecTarget, root_path: Option<&str>, wd: &str)
 7. 同一命令里若两个返回值来自**不同的解析语义**（如 `resolve_base` 的空路径回落 vs 单元身份），
    保持各自一次 hop，不要为省一次往返而合并 —— 合并会顺手改变语义（行为变更不在本场景范围）。
 8. **成对提供，异步层只许用异步入口**：每个阻塞原语都有「同步核心 + 异步入口」两件套
-   （`UnitPath::resolve` / `open_repo` / `assert_git_repo` 是核心；`*_async` 与 async trait 方法是入口）。
+   （`CheckoutPath::resolve` / `open_repo` / `assert_git_repo` 是核心；`*_async` 与 async trait 方法是入口）。
    异步 trait 方法里直接调同步 helper 就是**假异步**（契约与实现相反）。
 9. **异步入口不设默认实现**：trait 默认体只能回落同步核心 ⇒ 未来的 impl 会「默认阻塞」。
    缺实现时编译器报错，比默认值安全。
@@ -382,9 +382,9 @@ async fn resolve_base(target: &ExecTarget, root_path: Option<&str>, wd: &str)
 
 ### 5. Good/Base/Bad Cases
 
-- Good：`let (t, repo) = state.resolve_repo(&project_id, worktree_path.as_deref()).await?;`
-- Base：`resolve_base` 内部先 `UnitPath::resolve_async(target, path).await`，再投影 `.exec()`。
-- Bad：`let worktree_path = UnitPath::resolve(&t, &worktree_path)?;` 直接写在
+- Good：`let (t, repo) = state.resolve_workspace(&project_id, worktree_path.as_deref()).await?;`
+- Base：`resolve_base` 内部先 `CheckoutPath::resolve_async(target, path).await`，再投影 `.exec()`。
+- Bad：`let worktree_path = CheckoutPath::resolve(&t, &worktree_path)?;` 直接写在
   `#[tauri::command] async fn` 里。
 - Bad（仓库打开/校验类，2026-10-02 修）：`crate::common::git::local::assert_git_repo(...)?` 与
   `transport.open_repo(work_dir)` 直接写在 `pub async fn get_git_info` 里 → 改用
@@ -392,7 +392,7 @@ async fn resolve_base(target: &ExecTarget, root_path: Option<&str>, wd: &str)
 
 ### 6. Tests Required
 
-- `unit_path::tests::async_entry_matches_sync_entry`：异步入口 ≡ 同步入口（identity / exec 逐字）
+- `checkout_path::tests::async_entry_matches_sync_entry`：异步入口 ≡ 同步入口（identity / exec 逐字）
   + 校验错误穿透（`..` 文案不得被 `JoinError` 覆盖）。
 - `local::diff::tests::assert_git_repo_async_matches_sync_core`：仓库校验的同步核心 / 异步入口同结果，
   `not a git repository` 原样穿过异步边界。
@@ -418,7 +418,7 @@ pub async fn is_worktree_dirty(
 ) -> Result<bool, AppError> {
     let (t, _wd) = state.resolve_project(&project_id)?;
     // 阻塞 fs 跑在 worker 线程上
-    let worktree_path = UnitPath::resolve(&t, &worktree_path)?;
+    let worktree_path = CheckoutPath::resolve(&t, &worktree_path)?;
     operations::is_worktree_dirty(&t, worktree_path.exec())
         .await
         .map_err(AppError::from)
@@ -436,7 +436,7 @@ pub async fn is_worktree_dirty(
 ) -> Result<bool, AppError> {
     let (t, _wd) = state.resolve_project(&project_id)?;
     // 阻塞 fs 落阻塞池
-    let worktree_path = UnitPath::resolve_async(&t, &worktree_path).await?;
+    let worktree_path = CheckoutPath::resolve_async(&t, &worktree_path).await?;
     operations::is_worktree_dirty(&t, worktree_path.exec())
         .await
         .map_err(AppError::from)
@@ -701,7 +701,7 @@ let output = tokio::time::timeout(
 （push / fetch / pull / commit）**不设墙钟** —— 耗时由 hook 与网络决定、没有上界，
 墙钟会把「正常慢」误判成失败（pre-push 跑两套测试是分钟级）。判据单点在
 `transport::git_command_timeout(args)`；挂死防护走取消通道（`GitSyncSlots` 按
-`RepoRef::key()` 分槽：同仓库单元串行、异单元并行 + `cancel_git_sync(console_run_id)`
+`WorkspaceRef::key()` 分槽：同Workspace串行、异单元并行 + `cancel_git_sync(console_run_id)`
 按 run id 匹配 + `kill_tree` 树杀（kill 确认有界 5s，防远端不收敛永久占槽））。长操作的 stdout/stderr 经
 `collect_child_output_streaming` **按 16KB / 50ms 合流**后 emit（EOF 冲刷尾巴）——不可逐读块
 发事件（macOS 事件送达 = 每次 `evaluateJavaScript`，会重演终端内存事故）。

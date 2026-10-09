@@ -5,7 +5,7 @@ import { isActiveWorktree } from '@/shared/utils/git';
 
 interface UseAppStoreSyncParams {
   isTerminalView: boolean;
-  activeWorktreePath: string | null;
+  activeCheckoutPath: string | null;
   selectProject: (id: string) => void;
   handleOpenIdeCallback: (project: { id: string; selected_ide: string | null }) => void;
   handleSetProjectIde: (projectId: string, ideCommand: string | null) => void;
@@ -17,21 +17,21 @@ interface UseAppStoreSyncParams {
  */
 export function useAppStoreSync({
   isTerminalView,
-  activeWorktreePath,
+  activeCheckoutPath,
   selectProject,
   handleOpenIdeCallback,
   handleSetProjectIde,
 }: UseAppStoreSyncParams): void {
   useEffect(() => {
     useProjectStore.setState({
-      isTerminalView: isTerminalView || isActiveWorktree(activeWorktreePath),
+      isTerminalView: isTerminalView || isActiveWorktree(activeCheckoutPath),
       selectProject,
       openIde: handleOpenIdeCallback,
       setProjectIde: handleSetProjectIde,
     });
   }, [
     isTerminalView,
-    activeWorktreePath,
+    activeCheckoutPath,
     selectProject,
     handleOpenIdeCallback,
     handleSetProjectIde,

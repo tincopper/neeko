@@ -5,7 +5,7 @@
  * （方案 B 阶段 2）：两个函数原先用 `lang === 'go'` 分支服务两门语言，拆开后各自只描述本语言的
  * 适配器载荷形态（Go：`type: 'go'` + `mode: 'exec'`）。
  */
-import { resolveRunCwd } from '../../exec/context';
+import { runCwdOf } from '../../exec/context';
 import type { NativeDebugLaunchConfig } from '../../exec/nativeBuild';
 import { resolveBinaryPath } from '../../exec/nativeBuild';
 import { runNativeBuild, type NativeDebugHooks } from '../../exec/nativeDebug';
@@ -72,7 +72,7 @@ export function goTestDebugLaunchConfig(
  */
 export const GO_DEBUG_HOOKS: NativeDebugHooks = {
   async build(target, ctx) {
-    const cwd = resolveRunCwd(ctx);
+    const cwd = runCwdOf(ctx);
     const goPkg = await goPkgDir(ctx.filePath, cwd, langIo.fileExists);
     if (target.kind === 'test') {
       const outRelPath = goDebugBinaryRelPath(target.testCase.name);

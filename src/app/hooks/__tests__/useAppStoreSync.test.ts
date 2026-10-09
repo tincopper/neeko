@@ -8,7 +8,7 @@ import { useAppStoreSync } from '../useAppStoreSync';
 function makeParams(overrides: Partial<Parameters<typeof useAppStoreSync>[0]> = {}) {
   return {
     isTerminalView: false,
-    activeWorktreePath: null,
+    activeCheckoutPath: null,
     selectProject: vi.fn(),
     handleOpenIdeCallback: vi.fn(),
     handleSetProjectIde: vi.fn(),
@@ -33,7 +33,7 @@ describe('useAppStoreSync', () => {
   });
 
   it('marks terminal view when a worktree path is active', () => {
-    renderHook(() => useAppStoreSync(makeParams({ activeWorktreePath: '/repo/.git/wt' })));
+    renderHook(() => useAppStoreSync(makeParams({ activeCheckoutPath: '/repo/.git/wt' })));
     expect(useProjectStore.getState().isTerminalView).toBe(true);
   });
 

@@ -38,9 +38,9 @@ interface GitControlPanelProps {
   capabilities: ProjectCapabilities;
   connectionContext: ConnectionContext | null;
   /** worktree 激活时使用 worktree 专属 tab key（diff tab / stash diff） */
-  activeWorktreePath?: string | null;
-  /** 当前渲染的仓库单元 key（status 按它定址） */
-  repoKey: import('@/shared/utils/repoRef').RepoKey;
+  activeCheckoutPath?: string | null;
+  /** 当前渲染的Workspace key（status 按它定址） */
+  workspaceKey: import('@/shared/utils/workspaceRef').WorkspaceKey;
   /** 面板在 dock 中是否可见（激活门控数据加载） */
   active: boolean;
   onRefreshGit: () => Promise<void>;
@@ -55,8 +55,8 @@ const GitControlPanel: React.FC<GitControlPanelProps> = ({
   commands,
   capabilities,
   connectionContext,
-  activeWorktreePath,
-  repoKey,
+  activeCheckoutPath,
+  workspaceKey,
   active,
   onRefreshGit,
   onShowToast,
@@ -106,11 +106,11 @@ const GitControlPanel: React.FC<GitControlPanelProps> = ({
   } = useStashList(commands, active);
 
   const { openFileInDiff, openCombined, pinFile, scrollToFile, refreshOpenDiff, hasSingleton } =
-    useSingletonDiff(project?.id, selectedHash, files, connectionContext, activeWorktreePath);
+    useSingletonDiff(project?.id, selectedHash, files, connectionContext, activeCheckoutPath);
 
-  const openStashDiff = useOpenStashDiff(project?.id, activeWorktreePath, stashes);
+  const openStashDiff = useOpenStashDiff(project?.id, activeCheckoutPath, stashes);
 
-  const openCommitDiffTab = useOpenDiffTab(connectionContext, activeWorktreePath, project?.id);
+  const openCommitDiffTab = useOpenDiffTab(connectionContext, activeCheckoutPath, project?.id);
 
   // Changes 提交 / stash apply/pop 后：刷新 git info（wrapper） + 日志
   const handleRefreshAll = useCallback(async () => {
@@ -227,7 +227,7 @@ const GitControlPanel: React.FC<GitControlPanelProps> = ({
       <div className="min-h-0 flex-1">
         <div className={cn('h-full min-h-0', tab !== 'changes' && 'hidden')}>
           <GitCommitPanel
-            repoKey={repoKey}
+            workspaceKey={workspaceKey}
             project={project}
             commands={commands}
             capabilities={capabilities}

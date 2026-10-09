@@ -12,7 +12,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { useFileChangedEvent } from '@/shared/hooks/useFileChangedEvent';
 import { useProjectStore } from '@/shared/store/projectStore';
-import { repoKeyOf } from '@/shared/utils/repoRef';
+import { workspaceKeyOf } from '@/shared/utils/workspaceRef';
 import { createProject } from '@/testing/factories';
 
 const readFileContent = vi.hoisted(() => vi.fn());
@@ -25,11 +25,11 @@ import HtmlPreview from '../HtmlPreview';
 const PROJECT_PATH = '/repo';
 const FILE_PATH = `${PROJECT_PATH}/docs/main.html`;
 /** 主仓单元与某 linked worktree 单元的 key（由唯一产出点构造，不手拼分隔符）。 */
-const MAIN_KEY = repoKeyOf('p1', null);
+const MAIN_KEY = workspaceKeyOf('p1', null);
 const WT_PATH = '/repo-wt';
-const WT_KEY = repoKeyOf('p1', WT_PATH);
+const WT_KEY = workspaceKeyOf('p1', WT_PATH);
 
-function grabFileChangedHandler(): (event: { repo_key: string; paths: string[] }) => void {
+function grabFileChangedHandler(): (event: { workspace_key: string; paths: string[] }) => void {
   const calls = vi.mocked(useFileChangedEvent).mock.calls;
   const handler = calls[calls.length - 1]?.[0];
   if (!handler) throw new Error('file-changed handler not registered');
@@ -63,7 +63,7 @@ describe('HtmlPreview — 变更事件按身份命中本文件', () => {
     const before = readFileContent.mock.calls.length;
 
     await act(async () => {
-      handler({ repo_key: MAIN_KEY, paths: ['docs/main.html'] });
+      handler({ workspace_key: MAIN_KEY, paths: ['docs/main.html'] });
     });
 
     expect(readFileContent.mock.calls.length).toBe(before + 1);
@@ -76,7 +76,7 @@ describe('HtmlPreview — 变更事件按身份命中本文件', () => {
     const before = readFileContent.mock.calls.length;
 
     await act(async () => {
-      handler({ repo_key: MAIN_KEY, paths: [FILE_PATH] });
+      handler({ workspace_key: MAIN_KEY, paths: [FILE_PATH] });
     });
 
     expect(readFileContent.mock.calls.length).toBe(before + 1);
@@ -87,7 +87,7 @@ describe('HtmlPreview — 变更事件按身份命中本文件', () => {
     const before = readFileContent.mock.calls.length;
 
     await act(async () => {
-      handler({ repo_key: MAIN_KEY, paths: ['docs//main.html'] });
+      handler({ workspace_key: MAIN_KEY, paths: ['docs//main.html'] });
     });
 
     expect(readFileContent.mock.calls.length).toBe(before + 1);
@@ -102,7 +102,7 @@ describe('HtmlPreview — 变更事件按身份命中本文件', () => {
     const before = readFileContent.mock.calls.length;
 
     await act(async () => {
-      handler({ repo_key: WT_KEY, paths: ['docs/main.html'] });
+      handler({ workspace_key: WT_KEY, paths: ['docs/main.html'] });
     });
 
     expect(readFileContent.mock.calls.length).toBe(before + 1);
@@ -114,7 +114,7 @@ describe('HtmlPreview — 变更事件按身份命中本文件', () => {
     const before = readFileContent.mock.calls.length;
 
     await act(async () => {
-      handler({ repo_key: MAIN_KEY, paths: ['docs/main.html'] });
+      handler({ workspace_key: MAIN_KEY, paths: ['docs/main.html'] });
     });
 
     expect(readFileContent.mock.calls.length).toBe(before);
@@ -125,7 +125,7 @@ describe('HtmlPreview — 变更事件按身份命中本文件', () => {
     const before = readFileContent.mock.calls.length;
 
     await act(async () => {
-      handler({ repo_key: MAIN_KEY, paths: ['docs/other.html'] });
+      handler({ workspace_key: MAIN_KEY, paths: ['docs/other.html'] });
     });
 
     expect(readFileContent.mock.calls.length).toBe(before);

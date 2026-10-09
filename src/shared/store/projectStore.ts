@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 
 import type { FileChange, GitStatusSnapshot, Project } from '@/shared/types';
-import type { RepoKey } from '@/shared/utils/repoRef';
+import type { WorkspaceKey } from '@/shared/utils/workspaceRef';
 
 /** 打开 IDE 用的最小投影（项目卡片回传）。 */
 interface IdeProject {
@@ -14,13 +14,13 @@ function noop(): void {
 }
 
 /**
- * 一个仓库单元（主仓或某个 linked worktree）的 git status。
+ * 一个Workspace（主仓或某个 linked worktree）的 git status。
  *
- * 与后端 `GitStatusSnapshot` 同形：`repo_key` 是 [`RepoKey`] 的字符串形态，
+ * 与后端 `GitStatusSnapshot` 同形：`workspace_key` 是 [`WorkspaceKey`] 的字符串形态，
  * `version` 在该单元内单调递增。**per-project 的 `git_info` 不再持有 changed_files** ——
  * 未提交变更是 per-工作树 的事实（HEAD / index / workdir 各自独立）。
  */
-export type RepoStatus = GitStatusSnapshot;
+export type WorkspaceStatus = GitStatusSnapshot;
 
 interface ProjectStoreState {
   projects: Project[];
@@ -28,12 +28,12 @@ interface ProjectStoreState {
   activeProject: Project | null;
   isTerminalView: boolean;
   /**
-   * 各仓库单元的权威 status，键为 `repoKeyOf(projectId, worktreePath)`。
+   * 各Workspace的权威 status，键为 `workspaceKeyOf(projectId, worktreePath)`。
    *
    * **缺失 = 未知**（该单元未挂载 / 刚被切走 / 非 git）—— 消费端必须渲染空态或加载态，
    * 严禁把「未知」当「无变更」或直接沿用上一个单元的数据：那正是本次根治的症状形态。
    */
-  statuses: Record<string, RepoStatus>;
+  statuses: Record<string, WorkspaceStatus>;
   /**
    * changed_files 的**唯一**写入口（内含 version gate）。
    *
@@ -46,9 +46,9 @@ interface ProjectStoreState {
    * 其他派生值（如 `gitStore.aheadBehind`）必须据此决定是否跟进，否则被拒的陈旧快照
    * 会把徽标打回去（事件回调里曾无条件写入）。
    */
-  applyStatus: (snapshot: RepoStatus) => boolean;
+  applyStatus: (snapshot: WorkspaceStatus) => boolean;
   /** 作废一个单元（离开视图 / 后端 unwatch）：槽位不得残留可被渲染的旧数据。 */
-  invalidateStatus: (repoKey: RepoKey | string) => void;
+  invalidateStatus: (workspaceKey: WorkspaceKey | string) => void;
   selectProject: (id: string) => void;
   openIde: (project: IdeProject) => void;
   setProjectIde: (projectId: string, ideCommand: string | null) => void;
@@ -65,11 +65,11 @@ export const useProjectStore = create<ProjectStoreState>((set) => ({
   applyStatus: (snapshot) => {
     let applied = false;
     set((state) => {
-      const prev = state.statuses[snapshot.repo_key];
+      const prev = state.statuses[snapshot.workspace_key];
       if (prev && snapshot.version <= prev.version) return state;
       applied = true;
       const next: Partial<ProjectStoreState> = {
-        statuses: { ...state.statuses, [snapshot.repo_key]: snapshot },
+        statuses: { ...state.statuses, [snapshot.workspace_key]: snapshot },
       };
       // 主仓单元的 HEAD 投影到项目卡片（`git_info.current_branch` 的唯一写者）。
       // worktree 的分支不进这里 —— 它属于该单元的槽位，视图经 selectBranch 读取。
@@ -90,11 +90,11 @@ export const useProjectStore = create<ProjectStoreState>((set) => ({
     return applied;
   },
 
-  invalidateStatus: (repoKey) =>
+  invalidateStatus: (workspaceKey) =>
     set((state) => {
-      if (!(repoKey in state.statuses)) return state;
+      if (!(workspaceKey in state.statuses)) return state;
       const rest = { ...state.statuses };
-      delete rest[repoKey];
+      delete rest[workspaceKey];
       return { statuses: rest };
     }),
 
@@ -104,14 +104,14 @@ export const useProjectStore = create<ProjectStoreState>((set) => ({
 }));
 
 // ── selectors（消费端唯一读取口；不得绕过它们直接摸 statuses）──
-// 「不得绕过」已由护栏 `check_repo_unit_identity` 的判据 7 强制：生产代码里
+// 「不得绕过」已由护栏 `check_workspace_identity` 的判据 7 强制：生产代码里
 // `projectStore.statuses` 直读（或解构 `{ statuses }`）命中即违规，白名单仅本文件。
 
 export function selectStatus(
   state: ProjectStoreState,
-  repoKey: RepoKey | string,
-): RepoStatus | undefined {
-  return state.statuses[String(repoKey)];
+  workspaceKey: WorkspaceKey | string,
+): WorkspaceStatus | undefined {
+  return state.statuses[String(workspaceKey)];
 }
 
 /** 该单元是否已有权威状态。
@@ -119,18 +119,24 @@ export function selectStatus(
  * 用于区分「未知」（未挂载 / 刚被切走）与「已知且干净」（`entries` 为空数组）——
  * 两者不得混同（把未知当干净正是本次根治的症状形态）。
  */
-export function selectHasStatus(state: ProjectStoreState, repoKey: RepoKey | string): boolean {
-  return String(repoKey) in state.statuses;
+export function selectHasStatus(
+  state: ProjectStoreState,
+  workspaceKey: WorkspaceKey | string,
+): boolean {
+  return String(workspaceKey) in state.statuses;
 }
 
 /** 某单元的变更条目；`undefined` = 未知（未挂载），空数组 = 确实干净。 */
 export function selectEntries(
   state: ProjectStoreState,
-  repoKey: RepoKey | string,
+  workspaceKey: WorkspaceKey | string,
 ): FileChange[] | undefined {
-  return selectStatus(state, repoKey)?.entries;
+  return selectStatus(state, workspaceKey)?.entries;
 }
 
-export function selectBranch(state: ProjectStoreState, repoKey: RepoKey | string): string {
-  return selectStatus(state, repoKey)?.branch ?? '';
+export function selectBranch(
+  state: ProjectStoreState,
+  workspaceKey: WorkspaceKey | string,
+): string {
+  return selectStatus(state, workspaceKey)?.branch ?? '';
 }

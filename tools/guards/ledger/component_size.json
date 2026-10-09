@@ -2,7 +2,7 @@
   "max_lines": 300,
   "note": "基线由 tools/guards/checks/check_component_size.py 的模块 docstring 所述命令一次性生成；只许缩小。",
   "baseline": {
-    "src/app/components/ProjectWorkspace.tsx": 308,
+    "src/app/components/ProjectView.tsx": 308,
     "src/app/hooks/buildAppShellValues.ts": 316,
     "src/app/hooks/useAppShellData.ts": 410,
     "src/features/agent-chat/hooks/useAgentChat.ts": 834,

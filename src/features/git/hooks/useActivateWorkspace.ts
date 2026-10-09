@@ -1,18 +1,18 @@
 import { useCallback } from 'react';
 
 import { useProjectStore } from '@/shared/store/projectStore';
-import { activeRepoKeyOf, useWorktreeStore } from '@/shared/store/worktreeStore';
-import { repoKeyLabel, repoKeyOf } from '@/shared/utils/repoRef';
+import { activeWorkspaceKeyOf, useWorkspaceStore } from '@/shared/store/workspaceStore';
+import { workspaceKeyLabel, workspaceKeyOf } from '@/shared/utils/workspaceRef';
 
-import { setActiveRepoUnit } from '../api/gitApi';
+import { activateWorkspace } from '../api/gitApi';
 
 /** 挂载结果，供唯一发起点决定下一步（不要把语义藏在 resolve(void) 里）。 */
 export type ActivateOutcome = 'mounted' | 'stale' | 'skipped' | 'failed';
 
 /**
- * 请后端把某仓库单元挂为「当前单元」并取回首个快照（决策 D-B：后端只挂当前视图所在的那一个单元）。
+ * 请后端把某Workspace挂为「当前单元」并取回首个快照（决策 D-B：后端只挂当前视图所在的那一个单元）。
  *
- * **只由 `useActiveRepoUnitSync`（composition 层）调用** —— 用户动作（点 worktree、
+ * **只由 `useActiveWorkspaceSync`（composition 层）调用** —— 用户动作（点 worktree、
  * 切回主仓）只写激活态，不直接发命令。理由：挂载/释放必须与「当前视图」严格一致，
  * 有两个发起点就有时序差（旧实现正是散落在 effect、事件回调、刷新按钮里各自取全局镜像）。
  *
@@ -26,10 +26,10 @@ export type ActivateOutcome = 'mounted' | 'stale' | 'skipped' | 'failed';
  *
  * **一次失败不是事故**：调用方（唯一发起点）会按有界预算重试，并在放弃时上报一次。因此这里
  * 只落一条 dev 侧诊断（带错误对象），不弹提示、不升级为用户可见错误 —— 首个快照未落地是冷启动
- * 的正常窗口。日志里的单元身份走 `repoKeyLabel`：`String(repoKey)` 会把分隔符 NUL 带进日志，
+ * 的正常窗口。日志里的单元身份走 `workspaceKeyLabel`：`String(workspaceKey)` 会把分隔符 NUL 带进日志，
  * 让日志文件被判成二进制（实测过）。
  */
-export function useActivateRepoUnit(
+export function useActivateWorkspace(
   projectId: string | null,
 ): (path: string | null) => Promise<ActivateOutcome> {
   return useCallback(
@@ -38,23 +38,27 @@ export function useActivateRepoUnit(
       const store = useProjectStore.getState();
       const project = store.projects.find((p) => p.id === projectId);
       if (!project || project.git_info === null) return 'skipped';
-      const key = repoKeyOf(projectId, path);
+      const key = workspaceKeyOf(projectId, path);
       try {
-        const snapshot = await setActiveRepoUnit(projectId, path);
-        // 快照自带 repo_key；只接受仍然指向当前视图的结果（切换竞态下丢弃迟到响应）
-        const latest = activeRepoKeyOf(projectId);
-        if (latest !== key && snapshot.repo_key !== latest) return 'stale';
+        const snapshot = await activateWorkspace(projectId, path);
+        // 快照自带 workspace_key；只接受仍然指向当前视图的结果（切换竞态下丢弃迟到响应）
+        const latest = activeWorkspaceKeyOf(projectId);
+        if (latest !== key && snapshot.workspace_key !== latest) return 'stale';
         store.applyStatus(snapshot);
         const canonical = snapshot.worktree_path ?? null;
         if (canonical !== (path ?? null)) {
-          useWorktreeStore
+          useWorkspaceStore
             .getState()
-            .setActiveWorktree(projectId, canonical, snapshot.branch || undefined);
+            .setActiveWorkspace(projectId, canonical, snapshot.branch || undefined);
         }
         return 'mounted';
       } catch (e) {
         store.invalidateStatus(key);
-        console.error('[useActivateRepoUnit] activate repo unit failed for', repoKeyLabel(key), e);
+        console.error(
+          '[useActivateWorkspace] activate workspace failed for',
+          workspaceKeyLabel(key),
+          e,
+        );
         return 'failed';
       }
     },

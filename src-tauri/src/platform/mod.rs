@@ -22,7 +22,7 @@
 //! | `menu` | `build_edit_submenu` | `app_menu.rs` |
 //! | `file_url` | `file_url_to_path` | `lsp/session/root.rs` |
 //! | `notify_base` | `notify_base` | `browser/scripts.rs` |
-//! | `path_identity` | `portable_render` / `posix_render` | `common/git/unit_path.rs` |
+//! | `path_identity` | `portable_render` / `posix_render` | `common/git/checkout_path.rs` |
 //! | `watch_strategy` | `watch_selectively` | `common/file/watcher/registration.rs` |
 //! | `fonts` | `get_system_fonts` | `common/utils/fonts.rs` |
 

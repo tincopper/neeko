@@ -1,6 +1,6 @@
 import type { useEditorStore } from '@/shared/store/editorStore';
 import type { useProjectStore } from '@/shared/store/projectStore';
-import type { useWorktreeStore } from '@/shared/store/worktreeStore';
+import type { useWorkspaceStore } from '@/shared/store/workspaceStore';
 
 /**
  * DEV-only 调试桥：把核心 store 单例挂到 `window.__neekoStores`。
@@ -16,7 +16,7 @@ import type { useWorktreeStore } from '@/shared/store/worktreeStore';
 interface NeekoDebugBridge {
   projectStore: typeof useProjectStore;
   editorStore: typeof useEditorStore;
-  worktreeStore: typeof useWorktreeStore;
+  workspaceStore: typeof useWorkspaceStore;
 }
 
 declare global {

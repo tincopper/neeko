@@ -8,20 +8,20 @@ import { destroyTerminalCachesByPrefix } from '@/features/terminal';
 import { bumpGitRefresh } from '@/shared/hooks/useGitRefresh';
 import { useEditorStore } from '@/shared/store/editorStore';
 import { useProjectStore } from '@/shared/store/projectStore';
-import { selectActiveWorktreePath, useWorktreeStore } from '@/shared/store/worktreeStore';
+import { selectActiveCheckoutPath, useWorkspaceStore } from '@/shared/store/workspaceStore';
 import type { Project, AgentConfig, Tab, Worktree } from '@/shared/types';
 import { applyStateAction } from '@/shared/utils/entryUpdates';
 import { getMacAppNameByCommand, resolveIdeLaunchCommand } from '@/shared/utils/idePresets';
 import { randomAvatarColor } from '@/shared/utils/projectAvatar';
-import { repoKeyOf } from '@/shared/utils/repoRef';
 import { parseProjectIdFromTabKey } from '@/shared/utils/tabKey';
+import { workspaceKeyOf } from '@/shared/utils/workspaceRef';
 
 // eslint-disable-next-line import/no-restricted-paths -- useLocalProjects needs agent API for listing agents
 import { listAgents } from '../../agent/api/agentApi';
 // eslint-disable-next-line import/no-restricted-paths -- useLocalProjects needs git API for branch/worktree info
 import { getGitBranchInfo } from '../../git/api/gitApi';
-// eslint-disable-next-line import/no-restricted-paths -- useLocalProjects reuses the gated refresh entry for unit status
-import { refreshRepoStatus } from '../../git/utils/gitStatus';
+// eslint-disable-next-line import/no-restricted-paths -- useLocalProjects reuses the gated refresh entry for workspace status
+import { refreshWorkspaceStatus } from '../../git/utils/gitStatus';
 // eslint-disable-next-line import/no-restricted-paths -- useLocalProjects needs session API for persistence
 import { saveSession } from '../../session/api/sessionApi';
 import {
@@ -261,13 +261,13 @@ export function useLocalProjects() {
 
       // 刷新目标 = **本项目**当前激活的单元（旧实现读全局镜像的 activeWorktreePath，
       // 于是刷新 B 项目会用 A 项目的 worktree 路径，结果写进 B 的槽）。
-      const unitPath = selectActiveWorktreePath(useWorktreeStore.getState(), projectId);
-      await refreshRepoStatus(repoKeyOf(projectId, unitPath));
+      const checkoutPath = selectActiveCheckoutPath(useWorkspaceStore.getState(), projectId);
+      await refreshWorkspaceStatus(workspaceKeyOf(projectId, checkoutPath));
 
-      getGitBranchInfo(projectId, unitPath)
+      getGitBranchInfo(projectId, checkoutPath)
         .then((branchInfo) => {
           // 只合并 per-project 元数据（分支清单 / 工作树清单）。
-          // `current_branch` **不在这里写**：它是「某个仓库单元的 HEAD」，唯一写者是
+          // `current_branch` **不在这里写**：它是「某个Workspace的 HEAD」，唯一写者是
           // `projectStore.applyStatus` 的主仓单元投影 —— 视图分支由各面板按单元槽位读
           // （`selectBranch` / GitControlPanelWrapper）。在这里写会拿**激活单元**（可能是
           // worktree）的分支覆盖项目卡片，随后主仓快照一到又改回去（抖动），

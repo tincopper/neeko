@@ -254,8 +254,8 @@ watcher**——不主动通知，快照停留在写前状态，读接口把陈�
 `git/services/status.rs`，命令层只调用 —— 红线 6）：
 
 - 链路：命令层 → `run_blocking`（Condvar 等待是阻塞原语，**禁止**在 async 线程直呼）→
-  `WatcherManager::poke_status_worker_and_wait(&RepoRef, RECALC_WAIT_TIMEOUT)` →
-  `GitStatusWorker::check_and_wait`。**契约主键是仓库单元（`RepoRef`），不是 project**
+  `WatcherManager::poke_status_worker_and_wait(&WorkspaceRef, RECALC_WAIT_TIMEOUT)` →
+  `GitStatusWorker::check_and_wait`。**契约主键是Workspace（`WorkspaceRef`），不是 project**
   （见 §12）：在 worktree 里 stage 却戳主仓的 worker，主仓 porcelain 一字未变 → 闸门判定
   「无变化」→ 什么都不更新，正是「操作成功但列表要手动刷新」的形态；
 - 有界等待（1.5s 上限）：返回 `true` = 一轮**晚于写入启动**的重算已落地（emit 已冲刷，读接口
@@ -272,17 +272,17 @@ watcher**——不主动通知，快照停留在写前状态，读接口把陈�
 `checkout_branch` / `create_and_switch_branch` / `checkout_detached` / `rename_branch`、
 `stash_apply` / `stash_pop`、`pull*` 同样要收口；命令只接受 `project_id` 时走
 `wait_main_status_fresh`（被写入的单元必然是主仓单元），已带 `worktree_path` 的命令直接戳解析出的
-那个 `RepoRef`。**不**收口的操作必须进护栏的显式台账并写清理由（`push` / `fetch` 只动 remote-tracking、
+那个 `WorkspaceRef`。**不**收口的操作必须进护栏的显式台账并写清理由（`push` / `fetch` 只动 remote-tracking、
 `create_branch` / `delete_branch` 不触碰 HEAD 与工作树、`create_tag` 不进 status、`stash_drop` 不改工作树）。
 
-**单元生命周期**：`remove_worktree` / `rename_worktree` 除收口外还必须 `release_unit`
+**单元生命周期**：`remove_worktree` / `rename_worktree` 除收口外还必须 `release_workspace`
 （释放该单元的挂载）。目录已不存在却留着挂载 = 线程与句柄白占 + 一份永不更新的快照继续被当权威
-数据渲染（I1-b）。**释放用的 `RepoRef` 要在破坏性操作之前解析**：目录消失后 canonicalize 只能退回
+数据渲染（I1-b）。**释放用的 `WorkspaceRef` 要在破坏性操作之前解析**：目录消失后 canonicalize 只能退回
 词法归一，在符号链接根上（macOS `/var` ↔ `/private/var`）会算出与挂载时不同的 key，于是释放请求
 打在不存在的挂载上、真正的挂载继续泄漏。
 
 **为什么用静态护栏而不是单测**：命令层需要 `State<AppStateWrapper>` 才能执行，`cargo test` 造不出
-那个组合根。接线因此由 `tools/guards/checks/check_repo_unit_identity.py` 的「写命令必须收口」判据
+那个组合根。接线因此由 `tools/guards/checks/check_workspace_identity.py` 的「写命令必须收口」判据
 钉住（扫描 `git/commands/`，改变 status 的 operation 后必须出现三个收口函数之一）。
 
 **测试**：`check_and_wait_confirms_recalc_landed_after_write`（等待返回时 emit 已冲刷）、
@@ -304,27 +304,30 @@ stderr 文本匹配只允许用于「错误分类展示」（`classify_stderr` �
 回归钉子：`discard_paths_should_not_trust_stderr_sniff_when_head_exists`（stderr 偏说
 "unknown revision" 而 HEAD 实际存在时，兜底不得触发）。
 
-## 12. 仓库单元身份（RepoRef）与 status 生产者单源
+## 12. Workspace身份（WorkspaceRef）与 status 生产者单源
+
+> 术语：`WorkspaceRef` / `CheckoutPath` 是 `workspace.checkout`（`Workspace` 的 git 属性）的身份与路径值对象。
+> 领域分层定义见 [`docs/domain-model.md`](../../../docs/domain-model.md)（唯一定义处，本文不复述）。
 
 **第一性原理**：`git status = f(HEAD, index, workdir)`，而 linked worktree 的这三者**全都
-独立**（只共享 object DB）。所以一个 project 在 git 语义下是 `1 + N` 个仓库单元，不是 1 个。
+独立**（只共享 object DB）。所以一个 project 在 git 语义下是 `1 + N` 个Workspace，不是 1 个。
 以 `project_id` 为身份的一切设计都会在同一处必然出错：worktree 视图没有权威生产者（列表不
 更新、要靠手动刷新）、与主仓共用一个槽（串 main 内容）。2026-09 的重构把身份补到真实粒度，
 并**删除**了为此而存在的第二实现，而不是在旁边加分支。
 
-**身份**：`common/git/repo_ref.rs` 的 `RepoRef{project_id, project_root, worktree}`，
+**身份**：`common/git/workspace_ref.rs` 的 `WorkspaceRef{project_id, project_root, worktree}`，
 `key()` = `"{project_id}\u0000{identity(worktree path)}"`（主仓 `worktree = None` ⇒ key 以
 NUL 结尾）。选 NUL 做分隔符是因为它是 POSIX 路径里唯一不可能出现的字符 —— 分隔符可证无歧义，
 `parse_key` 因此是单射。路径身份的唯一入口是
-`common/git/unit_path.rs` 的 `UnitPath::resolve`（红线 8 / 12；见下方「身份字母表」）。
-前端 `shared/utils/repoRef.ts` 与之同形，两侧靠
-golden 测试钉住（`golden_key_format_matches_frontend_contract` ↔ `repoRef.test.ts`）——
+`common/git/checkout_path.rs` 的 `CheckoutPath::resolve`（红线 8 / 12；见下方「身份字母表」）。
+前端 `shared/utils/workspaceRef.ts` 与之同形，两侧靠
+golden 测试钉住（`golden_key_format_matches_frontend_contract` ↔ `workspaceRef.test.ts`）——
 「同一 key 两处各自实现」一定会漂移，这是唯一防线。
-`RepoRef` 刻意**不**携带 `ExecTarget`：后者不实现 `Hash/PartialEq`，且目标是**连接**属性不是
-**身份**属性（同一单元在 Local/WSL 下是同一个 git 仓库单元）。
+`WorkspaceRef` 刻意**不**携带 `ExecTarget`：后者不实现 `Hash/PartialEq`，且目标是**连接**属性不是
+**身份**属性（同一单元在 Local/WSL 下是同一个 git Workspace）。
 
 **生产者**：一个单元一套资源（worker + file watcher + git-meta watcher），
-`WatcherManager` 的 `watchers` / `snapshots` 主键一律 `RepoRef::key()`。
+`WatcherManager` 的 `watchers` / `snapshots` 主键一律 `WorkspaceRef::key()`。
 
 - push 生产者 = 挂载中的 `GitStatusWorker`；pull 生产者 = `record_computed`（WSL / SSH /
   未挂载单元，例如侧栏要为每个 worktree 取计数）。两者产出同一种 `GitStatusSnapshot`、
@@ -346,15 +349,15 @@ golden 测试钉住（`golden_key_format_matches_frontend_contract` ↔ `repoRef
   耗时以百毫秒计，晚到的 pull 若照常写表，注册表盖的号还会让它看起来比它覆盖的 push 更新。
   冷挂载窗口（已挂载、尚无快照）仍然登记 —— 那正是 pull 存在的意义。
 
-**挂载唯一入口（已被护栏钉住）**：`set_active_repo_unit` → `git/services/status.rs::activate`，语义 =
+**挂载唯一入口（已被护栏钉住）**：`set_active_workspace` → `git/services/status.rs::activate`，语义 =
 释放该项目下其它单元 → 挂载目标单元 → 有界等待首个快照；生产代码里 `WatcherManager::watch` 的调用点由护栏第 5 类判据限定为**只有** `activate`（实测破过一次：`app.rs` 启动恢复与 `set_active_project` 各按项目预挂主仓单元，于是每次启动都有两个发起点，日志报 `already watched`）。每项目同时**至多一套**挂载资源
-（用户决策 D-B）。前端唯一发起点是 `app/hooks/useActiveRepoUnitSync.ts`；用户动作（点
+（用户决策 D-B）。前端唯一发起点是 `app/hooks/useActiveWorkspaceSync.ts`；用户动作（点
 worktree、切回主仓）只写激活态，不直接发命令 —— 挂载/释放必须与「当前视图」严格一致，两个
 发起点就有时序差。
 
 **服务层只依赖端口（依赖倒置，已被护栏铉住）**：`activate()` 收 `Arc<dyn WatcherEventSink>`，
 不接收 `tauri::AppHandle`、也不自己 `new AppHandleSink` —— 交付适配器的构造留在命令边界
-（`git/commands/query.rs::set_active_repo_unit`）。这样服务层可用测试替身（`CollectingSink`）
+（`git/commands/query.rs::set_active_workspace`）。这样服务层可用测试替身（`CollectingSink`）
 驱动：`status.rs` 的编排测试（注入 sink + 隔离 `AppStateWrapper` + tempdir 真实 git 仓）
 覆盖「Local 走挂载 + 首份快照经端口投递」与「激活新单元释放旧单元（D-B 在编排层成立）」
 —— 后者此前只在 `mount_only` 层被测，服务层组合无人验证。护栏 `check_service_no_delivery_dep`
@@ -364,7 +367,7 @@ worktree、切回主仓）只写激活态，不直接发命令 —— 挂载/释
 has_push_producer=false)` 用**本地 transport** 驱动同一条分支（收口 + 现算 + 不挂载 + 不产生
 watcher 事件），无需真机、也无需假 transport。判据：
 `remote_branch_pulls_without_mounting_and_releases_the_previous_unit` 与
-`read_unit_status_of_an_unmounted_unit_computes_and_records`；真机验证降级为确认。
+`read_workspace_status_of_an_unmounted_unit_computes_and_records`；真机验证降级为确认。
 
 **实现时踩过的顺序坑**：`watch()` 里「作废切走前快照」那句必须在 `worker.check()` **之前**。
 留在函数尾部时，worker 线程可以在 `watch()` 返回前就插入首个快照，随后那句把它删掉 ——
@@ -375,13 +378,13 @@ versioned_snapshot_without_manual_poke` 就是为钉这条顺序而写红的）�
 不得退化成空列表 —— 把「没有生产者」说成「没有改动」是伪造事实。
 
 **身份字母表（identity）与执行形态（exec）是同一个值的两个渲染**（2026-10-01 起）：唯一入口
-`common/git/unit_path.rs::UnitPath::resolve`，且**只在后端**。前端持有/持久化的 worktree 路径
+`common/git/checkout_path.rs::CheckoutPath::resolve`，且**只在后端**。前端持有/持久化的 worktree 路径
 必须全部来自后端回传（`git worktree list` 条目、快照的 `worktree_path`、
 `canonical_worktree_path` 命令），且它拿到的是 **identity** 渲染。
 
 | 渲染 | 字母表 | 消费者 |
 | --- | --- | --- |
-| `identity()` | **平台无关**：`/` 分隔、无 `\\?\`/`\\.\` 前缀、盘符 ASCII 大写、UNC → `//server/share/…`、无尾分隔符 | `RepoRef::key()` / `worktree_path()`、IPC `Worktree.path`、watcher·diff·status 槽位、前端 `RepoKey` |
+| `identity()` | **平台无关**：`/` 分隔、无 `\\?\`/`\\.\` 前缀、盘符 ASCII 大写、UNC → `//server/share/…`、无尾分隔符 | `WorkspaceRef::key()` / `worktree_path()`、IPC `Worktree.path`、watcher·diff·status 槽位、前端 `WorkspaceKey` |
 | `exec()` | **宿主形态**（存在 → `fs::canonicalize` 原样，Windows 含 `\\?\`；不存在 → 调用者拼写） | git argv、`std::fs`、notify 根、`strip_prefix`、gitignore `same_root`、缓存键前缀、`file/commands.rs::resolve_base` |
 
 不变量（φ 的判据，违反即同一单元裂成两个 key → 侧栏数据空白 / 激活态反复回落主仓）：
@@ -406,7 +409,7 @@ versioned_snapshot_without_manual_poke` 就是为钉这条顺序而写红的）�
   解法是恢复流程先请后端归一（`canonical_worktree_path` 命令）再比清单；
 - 破坏性操作（`remove_worktree` / `rename_worktree`）要释放的单元身份必须在**操作之前**解析，
   目录消失后归一只剩祖先锚定形态，算出的 key 与挂载时的 key 不同，释放会打空；
-- **远端路径不得进宿主路径语义**：`UnitPath::resolve` 按 `ExecTarget` 分叉 ——
+- **远端路径不得进宿主路径语义**：`CheckoutPath::resolve` 按 `ExecTarget` 分叉 ——
   Local 走宿主语义（`exists` / `canonicalize`），WSL / SSH 走**纯字符串**
   `posix_render`。`std::path` 的分隔符是**宿主** OS 的属性，而这条路径的消费者是
   **远端 Linux**：Windows 宿主上 `Path::components("/home/u/p")` push 回来变成 `\home\u\p`，
@@ -434,16 +437,16 @@ release 再 watch」的顺序维持 —— 两个并发的 `activate`（快速�
 落点是 `mount_lock: Arc<Mutex<()>>`，`release_except` 公共面同样取该锁（语义不变），内部走无锁
 内核 `release_except_inner` 以免自死锁；每单元的释放原语只有 `release_one` 一个。
 
-**退役清单**（不得回潮，护栏 `tools/guards/checks/check_repo_unit_identity.py` 按符号钉）：
+**退役清单**（不得回潮，护栏 `tools/guards/checks/check_workspace_identity.py` 按符号钉）：
 libgit2 第二 status 引擎（`get_worktree_changed_files` / `get_changed_files_from_repo`）、
 `version: 0` 无语义载荷、`resolve_validated_work_dir`（校验时 canonicalize、返回时丢弃）、
 跨 worktree 补挂广播（`rearm_worktrees_if_needed` / `resolve_worktree_roots` /
 `WorktreeMetaChanged` / `has_worktrees`）、前端 `applyGitStatus` / `versionGateAccepts` /
-`allowEqual` / `mergeGitInfoForStore` / `worktreeStore` 全局镜像字段、后端单串归一入口
+`allowEqual` / `mergeGitInfoForStore` / `workspaceStore` 全局镜像字段、后端单串归一入口
 `path_guard::canonicalize_worktree_path`（一个返回值同时当身份与宿主路径 —— 见上方「身份字母表」）。
 
-**测试**：`repo_ref.rs`（key 形态 / parse 单射 / 身份一致性 / **创建前后同 key**）、
-`common/git/unit_path.rs`（**I1 写法无关 / I3 时刻无关 / 两个渲染同对象 / 远端形态与宿主 OS 无关**）、
+**测试**：`workspace_ref.rs`（key 形态 / parse 单射 / 身份一致性 / **创建前后同 key**）、
+`common/git/checkout_path.rs`（**I1 写法无关 / I3 时刻无关 / 两个渲染同对象 / 远端形态与宿主 OS 无关**）、
 `platform/path_identity/rules.rs`（Windows 形态渲染纯字符串用例，三端运行）、
 `path_guard`（`..` / NUL / 非 UTF-8 拒绝）、`manager/lifecycle_tests.rs`（两单元独立槽、
 poke 打对单元、编辑即推送、未挂载兄弟单元零泄漏、pull 不覆盖 push、unwatch/unwatch_project
@@ -469,11 +472,11 @@ pre-push/pre-commit hook 与网络决定、**没有上界**（pre-push 在本仓
   （`BatchMode` 未设，与 VS Code 的 askpass 是已知差距）。
 - `pull` 内嵌的 `merge --ff-only` 保留上界：纯本地毫秒级操作，不满足「没有上界」的判据。
 
-**取消通道（仓库单元单飞 + 目标限定）**：`AppStateWrapper.git_sync` 是 `GitSyncSlots`
-注册表（`Mutex<HashMap<RepoRef::key(), GitSyncEntry>>`，`GitSyncHandle` 是 watch 通道，
-与 `CloneHandle` 同构）。**互斥粒度 = 仓库单元**（`RepoRef::key()`）：同一单元
+**取消通道（Workspace单飞 + 目标限定）**：`AppStateWrapper.git_sync` 是 `GitSyncSlots`
+注册表（`Mutex<HashMap<WorkspaceRef::key(), GitSyncEntry>>`，`GitSyncHandle` 是 watch 通道，
+与 `CloneHandle` 同构）。**互斥粒度 = Workspace**（`WorkspaceRef::key()`）：同一单元
 （同 HEAD/index/workdir）串行、主仓与各 linked worktree 并行 —— 与 §12 的身份模型一致
-（`git status` 的写入单位是仓库单元，不是 project，也不是全局进程）；跨仓不再误拒。
+（`git status` 的写入单位是Workspace，不是 project，也不是全局进程）；跨仓不再误拒。
 `cancel_git_sync(console_run_id)` 经 `GitSyncEntry::matches` 只取消 run id 匹配的运行
 （前端 tab 是仓库级的，匹配把两个身份面钉在一起，避免陈旧 run id 误取消别的仓库）；
 `None` = 取消全部。命令层唯一装配点 `begin_git_run(state, repo, app_handle, run_id)`
@@ -553,7 +556,7 @@ kill 不收敛仍有界返回 / 合流：小读合流 / 宽限交付 / EOF 尾�
 
 **契约**：
 
-1. **一个仓库单元的展示态 = 一个派生值、一个生产者**（与 §12 同一前提）：
+1. **一个Workspace的展示态 = 一个派生值、一个生产者**（与 §12 同一前提）：
    `GitStatusSnapshot = f(HEAD, index, workdir, refs)`，其中 `entries/truncated/branch` 来自前三者，
    **`ahead` / `behind` 来自 refs**。四个输入都必须落在同一套监听里，产物必须随**同一个
    `version`** 经**同一条 `git-status-snapshot` 通道**投递。
@@ -586,8 +589,8 @@ kill 不收敛仍有界返回 / 合流：小读合流 / 宽限交付 / EOF 尾�
    pull 生产者构造**完整快照**后交 `record_computed(snapshot)`（不再用
    `(repo, entries, branch, ahead, behind)` 的伸缩参数 —— 下一个派生面不必再改签名）。
 7. **前端单通道消费**：`useGitStatusEventsSync` 在**快照被 version gate 接受后**才
-   `setAheadBehind(repo_key, {ahead, behind})`（被拒的陈旧快照不得覆盖徽标）；不得再有第二条
-   pull 写入点。`useAheadBehindSync` 只作冷启动初始种子（快照到达前），语义与键（`RepoKey`）与
+   `setAheadBehind(workspace_key, {ahead, behind})`（被拒的陈旧快照不得覆盖徽标）；不得再有第二条
+   pull 写入点。`useAheadBehindSync` 只作冷启动初始种子（快照到达前），语义与键（`WorkspaceKey`）与
    快照同形。
 
 **Wrong**：
@@ -622,16 +625,16 @@ watcher→scheduler→worker→snapshot 端到端，无手动 poke）、`git/ser
 
 ## 相关文件
 
-- `src-tauri/src/common/git/repo_ref.rs` — 仓库单元身份（`RepoRef` / `WorktreeRef` / key 契约）
-- `src-tauri/src/common/git/unit_path.rs` — 路径身份唯一入口（identity / exec 双渲染 + I1/I2/I3）
+- `src-tauri/src/common/git/workspace_ref.rs` — Workspace身份（`WorkspaceRef` / `Checkout` / key 契约）
+- `src-tauri/src/common/git/checkout_path.rs` — 路径身份唯一入口（identity / exec 双渲染 + I1/I2/I3）
 - `src-tauri/src/platform/path_identity/` — 身份字母表的平台渲染规则（红线 10）
 - `src-tauri/src/common/git/path_guard.rs` — 工作树路径与仓库内相对路径的**校验**（归一不在此）
 - `src-tauri/src/common/git/refs.rs` — refs 分类纯函数
 - `src-tauri/src/common/git/parsers/` — `status` / `numstat` / `commit` / `quoting`（C 转义唯一解码点）
 - `src-tauri/src/common/git/cache/` — `get_cached_worktree_diff` / `FileFingerprint` / LRU diff 缓存
 - `src-tauri/src/common/git/status_worker/` — status 快照唯一计算路径（含折叠 untracked 目录内容摘要 `collapsed_probe.rs`）
-- `src-tauri/src/git/services/status.rs` — 单元 status 读接口与挂载编排（`read_unit_status` / `activate` / `wait_status_fresh`）
-- `src-tauri/src/common/file/watcher/manager/` — 按单元挂载的资源注册表（`watchers` / `snapshots` 主键 = `RepoRef::key()`）
+- `src-tauri/src/git/services/status.rs` — 单元 status 读接口与挂载编排（`read_workspace_status` / `activate` / `wait_status_fresh`）
+- `src-tauri/src/common/file/watcher/manager/` — 按单元挂载的资源注册表（`watchers` / `snapshots` 主键 = `WorkspaceRef::key()`）
 - `src-tauri/src/common/file/watcher/git_meta/` — 单元 git 元数据监听（HEAD / index / `refs/**` / `packed-refs`）
 - `src-tauri/src/common/git/operations/` + `local/` — `get_commit_log` / `get_stash_list` / `get_stash_files` / `get_file_diff` / `status_porcelain`
 - `src-tauri/src/git/commands/` + `src-tauri/src/lib.rs` — 命令透传与注册
