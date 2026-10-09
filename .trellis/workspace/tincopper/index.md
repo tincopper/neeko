@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-5.md`
-- **Total Sessions**: 260
-- **Last Active**: 2026-10-08
+- **Total Sessions**: 261
+- **Last Active**: 2026-10-09
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-5.md` | ~1827 | Active |
+| `journal-5.md` | ~1860 | Active |
 | `journal-4.md` | ~1989 | Archived |
 | `journal-3.md` | ~1978 | Archived |
 | `journal-2.md` | ~1991 | Archived |
@@ -33,6 +33,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 261 | 2026-10-09 | 领域命名收敛：App → Project → Workspace（全栈对齐 + 四轮复核修复） | `f784b8e7` | `main` |
 | 260 | 2026-10-08 | Worktree 场景下的程序运行与调试：执行单元根唯一化 | - | `main` |
 | 259 | 2026-10-08 | Real-source test determinism contract | `adcf1399`, `c95c5347`, `4c4150cd`, `b723c7c4` | `main` |
 | 258 | 2026-10-08 | Gate orchestration: declare lint/test/check gates once | `c6c6e352`, `8f75c6f9`, `50423c75` | `main` |

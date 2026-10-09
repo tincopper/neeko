@@ -1825,3 +1825,36 @@ DAP 域新增唯一单元解析点 ExecUnit/resolve_unit（复用 RepoRef）；�
 ### Next Steps
 
 - None - task complete
+
+
+## Session 261: 领域命名收敛：App → Project → Workspace（全栈对齐 + 四轮复核修复）
+
+**Date**: 2026-10-09
+**Task**: 领域命名收敛：App → Project → Workspace（全栈对齐 + 四轮复核修复）
+**Branch**: `main`
+
+### Summary
+
+分层术语统一为 App→Project→Workspace（能力容器）/ checkout（git 属性）/ worktree（仅 git 原生）。全栈落地：Rust 类型(RepoRef→WorkspaceRef/WorktreeRef→Checkout/UnitPath→CheckoutPath/ExecUnit→ExecWorkspace)、wire(repo_key→workspace_key)、命令(get_repo_status→get_workspace_status/set_active_repo_unit→set_active_workspace)、前端(RepoKey→WorkspaceKey/worktreeStore→workspaceStore/useWorktreeState→useWorkspaceState)、护栏(check_repo_unit_identity→check_workspace_identity)。四轮复核修复残留 unit/repo/worktree 命名并沉淀边界规则到 docs/domain-model.md。pnpm check 22/22 全绿。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `f784b8e7` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
