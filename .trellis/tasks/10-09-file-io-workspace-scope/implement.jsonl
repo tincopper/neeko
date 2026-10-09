@@ -1,0 +1,7 @@
+{"file": ".trellis/spec/frontend/api-layer.md", "reason": "IPC 包装器与 scope 参数的约定落点；必填参数/命名规范判据"}
+{"file": ".trellis/spec/frontend/state-management.md", "reason": "workspaceStore 是「当前单元」唯一派生点（红线 12）；禁止第二派生"}
+{"file": ".trellis/spec/backend/command-guidelines.md", "reason": "命令层极薄 + 路径解析（resolve_project / 受信根）口径"}
+{"file": ".trellis/spec/security/allowlist.md", "reason": "FileAccessScope::InProject 白名单边界（路径安全）"}
+{"file": ".trellis/spec/backend/git-domain.md", "reason": "git 域「按 (project_id, worktree_path) 寻址」的既有范式，本任务对齐"}
+{"file": ".trellis/spec/unit-test/frontend-testing.md", "reason": "前端测试约定（renderHook/act、mock IPC）"}
+{"file": "docs/domain-model.md", "reason": "Workspace/checkout/worktree 术语唯一定义；寻址根 vs 展示根"}

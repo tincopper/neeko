@@ -1,0 +1,6 @@
+{"file": "AGENTS.md", "reason": "架构基本原则（单一事实/派生点、高内聚低耦合）判定依据"}
+{"file": "src/AGENTS.md", "reason": "前端红线 12：路径身份唯一化；第二派生 = Block"}
+{"file": "src-tauri/AGENTS.md", "reason": "后端红线 1/3/6/8：exec、阻塞隔离、命令层极薄、路径安全校验"}
+{"file": ".trellis/spec/frontend/api-layer.md", "reason": "api wrapper 必填 scope 与命名一致性核对"}
+{"file": ".trellis/spec/backend/command-guidelines.md", "reason": "命令层是否保持极薄；解析是否单一同源"}
+{"file": ".trellis/spec/unit-test/frontend-testing.md", "reason": "测试是否独立、是否覆盖 worktree 正常/边界/错误路径"}
