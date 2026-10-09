@@ -770,6 +770,91 @@ mod tests {
         }
     }
 
+    /// **AC3 回归**：Java B'（jdtls）plan 在**项目根之外**的 linked worktree 单元下，
+    /// cwd 落在 worktree 根内即放行 —— 修复前必报 containment（旧基准是项目根）。
+    ///
+    /// 反向断言：同一单元下 cwd 落在单元根**之外**仍被拒 —— 证明放行来自「基准 = 单元根」
+    /// 而非「取消了校验」。与本模块上游 `resolve_build_dir` 单测（AC1）互补：本用例走完整
+    /// `plan` 链（探测 → cwd 校验 → 载荷），证明单元根从 `resolve_exec_workspace` 一路传到
+    /// cwd 校验，不是某一层的孤立行为。native 构建链的同类校验见 `launch_support` 单测。
+    #[tokio::test]
+    async fn plan_java_debug_accepts_worktree_cwd_and_rejects_cwd_outside_the_unit() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let (state, project_id) = java_route_state(&tmp, ready_capability());
+        let project_dir = tmp.path().join("proj");
+
+        // worktree 在项目根 **之外**（默认 `~/.neeko/worktrees/<name>` 形态）；路径全部由
+        // tempdir 推导（红线 13）。
+        let worktree = tmp.path().join("worktrees").join("fix-1");
+        let module_dir = worktree.join("module-a");
+        std::fs::create_dir_all(&module_dir).expect("mkdir worktree module");
+        let worktree = worktree.to_string_lossy().to_string();
+        let module_dir = module_dir.to_string_lossy().to_string();
+        let canonical_module = std::path::Path::new(&module_dir)
+            .canonicalize()
+            .expect("canonical cwd")
+            .to_string_lossy()
+            .to_string();
+
+        // 单元根由生产唯一解析点解析 —— 与 plan 内部同一事实源。
+        let exec = resolve_exec_workspace(&state, &project_id, Some(&worktree))
+            .await
+            .expect("exec");
+        assert!(
+            !std::path::Path::new(&exec.root)
+                .starts_with(project_dir.canonicalize().expect("canonical project root")),
+            "夹具不变量：worktree 根必须在项目根之外"
+        );
+
+        // cwd 在单元根内 → Launch（修复前此处必报 "outside the project root"）。
+        match fake_backend(ready_capability())
+            .plan(
+                &state,
+                &exec,
+                &DebugRequest::JavaJdtls {
+                    project_id: project_id.clone(),
+                    worktree_path: Some(worktree.clone()),
+                    target: jdtls_target(&module_dir),
+                },
+            )
+            .await
+            .expect("worktree cwd inside the unit root must not fail containment")
+        {
+            SessionPlan::Launch { config, .. } => {
+                assert_eq!(
+                    config.cwd.as_deref(),
+                    Some(canonical_module.as_str()),
+                    "会话 cwd 必须是 canonical 后的 worktree 内目录"
+                );
+            }
+            other => panic!("expected Launch, got {}", plan_name(&other)),
+        }
+
+        // 同一单元下 cwd 在单元根外（项目根）→ 仍被拒（校验没被放宽成"任意路径"）。
+        let err = match fake_backend(ready_capability())
+            .plan(
+                &state,
+                &exec,
+                &DebugRequest::JavaJdtls {
+                    project_id,
+                    worktree_path: Some(worktree),
+                    target: jdtls_target(&project_dir.to_string_lossy()),
+                },
+            )
+            .await
+        {
+            Err(e) => e,
+            Ok(other) => panic!(
+                "cwd outside the unit root must be rejected, got {}",
+                plan_name(&other)
+            ),
+        };
+        assert!(
+            err.to_string().contains("outside the workspace root"),
+            "{err}"
+        );
+    }
+
     /// `dap.javaBackend` 权威读取：缺键/非法一律 `auto`。
     #[tokio::test]
     async fn java_backend_is_read_from_config_with_auto_default() {
